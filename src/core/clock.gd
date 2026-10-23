@@ -1,21 +1,45 @@
 extends Node
-## Game clock (stub for Phase 0, filled in by the Phase 1 clock issue).
-## The sim advances in fixed ticks, independent of frame rate. Speed changes
-## how many ticks run per real second; it never changes the tick length.
+## Converts real frame time into fixed simulation ticks. Speed changes tick
+## frequency, never tick length. Menu phases do not accumulate a backlog.
 
-## Phases of one in-game day (DESIGN.md section 3).
-enum Phase { MORNING, OPEN, LAST_ORDERS, CLOSED }
+## Keep the public phase names available to existing Clock callers.
+const Phase: Dictionary = SimClock.Phase
 
 ## Sim ticks per in-game second.
 const TICKS_PER_SECOND: int = 10
+const MAX_TICKS_PER_FRAME: int = 40
 
 ## Allowed speed multipliers. 0 = paused.
 const SPEEDS: Array[int] = [0, 1, 2, 4]
 
-var day: int = 1
-var phase: Phase = Phase.MORNING
+var sim: SimClock = SimClock.new():
+	set(value):
+		if value == null or value == sim:
+			return
+		if sim.phase_changed.is_connected(_on_phase_changed):
+			sim.phase_changed.disconnect(_on_phase_changed)
+		sim = value
+		sim.phase_changed.connect(_on_phase_changed)
+		_accumulator = 0.0
+
+## Compatibility accessors for the original autoload's clock state.
+var day: int:
+	get:
+		return sim.day
+var phase: SimClock.Phase:
+	get:
+		return sim.phase
+var tick: int:
+	get:
+		return sim.tick
+
 var speed: int = 0
-var tick: int = 0
+var _last_non_zero_speed: int = 1
+var _accumulator: float = 0.0
+
+
+func _init() -> void:
+	sim.phase_changed.connect(_on_phase_changed)
 
 
 ## Sets the speed. Only values in SPEEDS are accepted; returns false otherwise.
@@ -23,4 +47,42 @@ func set_speed(value: int) -> bool:
 	if not SPEEDS.has(value):
 		return false
 	speed = value
+	if value > 0:
+		_last_non_zero_speed = value
 	return true
+
+
+func _process(delta: float) -> void:
+	if sim.phase != SimClock.Phase.OPEN and sim.phase != SimClock.Phase.LAST_ORDERS:
+		_accumulator = 0.0
+		return
+	_accumulator += maxf(delta, 0.0) * speed * TICKS_PER_SECOND
+	var ticks_this_frame: int = 0
+	while _accumulator >= 1.0 and ticks_this_frame < MAX_TICKS_PER_FRAME:
+		if sim.phase != SimClock.Phase.OPEN and sim.phase != SimClock.Phase.LAST_ORDERS:
+			_accumulator = 0.0
+			break
+		sim.advance()
+		EventBus.sim_ticked.emit(sim.tick)
+		_accumulator -= 1.0
+		ticks_this_frame += 1
+	if ticks_this_frame == MAX_TICKS_PER_FRAME:
+		# Discard overdue whole ticks; retain only the sub-tick fraction.
+		_accumulator = fmod(_accumulator, 1.0)
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_echo():
+		return
+	if event.is_action_pressed(&"speed_pause"):
+		set_speed(_last_non_zero_speed if speed == 0 else 0)
+	elif event.is_action_pressed(&"speed_1"):
+		set_speed(1)
+	elif event.is_action_pressed(&"speed_2"):
+		set_speed(2)
+	elif event.is_action_pressed(&"speed_4"):
+		set_speed(4)
+
+
+func _on_phase_changed(current_day: int, current_phase: SimClock.Phase) -> void:
+	EventBus.day_phase_changed.emit(current_day, current_phase)
