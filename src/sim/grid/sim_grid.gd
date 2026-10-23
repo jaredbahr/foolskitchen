@@ -169,6 +169,12 @@ func place(footprint: Vector2i, origin: Vector2i, quarter_turns: int, solid: boo
 	return item
 
 
+## Places an item from its content definition (footprint, solidity, work and
+## seat cells come from the def). Returns null if it doesn't fit.
+func place_def(def: ItemDef, origin: Vector2i, quarter_turns: int = 0) -> PlacedItem:
+	return place(def.footprint, origin, quarter_turns, def.solid, def.work_cells, def.seat_cells, def)
+
+
 ## Removes an item by id. Returns false if there is no such item.
 func remove(item_id: int) -> bool:
 	if not _items.has(item_id):

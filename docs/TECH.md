@@ -91,6 +91,15 @@ docs/
     - **At the end:** the board drains to zero, and every healing path (timeout, agent removed, target gone, unreachable) must have fired at least once.
     - **Mutation check:** with both the agent-level and board-level timeouts switched off, the test fails.
     - Run it again after any change to agents.
+- **Shops as data (FK-025, `src/sim/shop/`):**
+  - A `ShopLayout` (`data/layouts/*.tres`) holds ASCII terrain rows, `placements` (`ShopPlacement`: item id, origin, quarter turns) and `staff_spawns` (role → cell).
+  - `ShopBuilder.build(layout, content, errors) -> SimWorld`, and `ShopBuilder.items_with_def(world, id)`.
+  - `SimGrid.place_def(item_def, origin, turns)` places an item from its definition.
+  - The Tier 1 hole-in-the-wall is `data/layouts/tier1_hole_in_the_wall.tres`:
+    - kitchen at the top (fridge, prep counter and stove facing down, with a kitchen door at x=7);
+    - the pass at (5,4), worked from both sides;
+    - three two-seat tables in the dining room;
+    - street entry at (6,11) and (7,11).
 - **Customers:** a state machine (`Arriving`, `Queued`, `Seated`, `Ordering`, `Waiting`, `Eating`, `Paying`, `Leaving`, `Left`). Every state has a maximum duration and an exit path.
 - **Debug overlay (F3):** paths, claimed tasks, agent states and the task board, from Phase 1 onward.
 
