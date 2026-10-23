@@ -7,7 +7,9 @@ Status: v0.2 (2026-10-23), revised after the [TasteMaker audit](research/TASTEMA
 A low-poly 3D restaurant tycoon game. You're one guy who starts with a hole-in-the-wall shop and builds it into a restaurant chain. Staff and customers run on their own, like the Sims. You design the space, set the menu, hire, and buy your way up the property ladder. Short optional mini-games give bonuses.
 
 - **Inspiration:** TasteMaker (Steam app 1289340), for ideas only. We keep what players love (relaxing, build your own place, it runs itself) and fix what they criticise (shallow content, stuck AI, no long progression). Nothing is copied: no assets, names or UI.
-- **Audience:** family and friends, including kids. Hobby scope. Single player, offline. Family-friendly humour.
+- **Who it's for:** a friend asked Jared for this game. Their complaint about TasteMaker is that eventually there's *nothing left to do*, so long-term goals are the top design priority. Also for Jared's family (his wife is a big Sims fan) and kids. Hobby scope. Single player, offline. Family-friendly humour.
+- **Clean-room rule:** inspiration only. We work from public information and videos of TasteMaker being played, and we never copy, decompile or reverse-engineer it.
+- **Name:** "Fool's Kitchen", possessive: it's your kitchen, and you're the fool cooking in it.
 - **No story.** Just the progression.
 
 ## 2. Pillars
@@ -15,7 +17,7 @@ A low-poly 3D restaurant tycoon game. You're one guy who starts with a hole-in-t
 1. **Watching it run is the fun, and it's readable.** At a glance you can see who's waiting, what's cooking, and why a customer left. Click anyone to see what they're doing and why.
 2. **Every tier changes how you play.** Each property tier adds a new decision, not just bigger numbers. (This fixes TasteMaker's top complaint.)
 3. **It never breaks.** Agents never get stuck for long. Edits re-check paths. A broken sim is a bug, never the player's fault.
-4. **Your place, your style.** Building and themes count as much as profit.
+4. **Your place, your style (Sims-style building).** Decorating counts as much as profit: colour palettes, wallpaper, lighting, chandeliers. This is Jared's favourite part, so the build tools get first-class effort.
 5. **Mini-games are optional seasoning.** Skipping one never blocks progress. Playing one gives a bonus.
 
 ## 3. Core loop
@@ -74,6 +76,8 @@ Morning (closed): plan menu and prices, buy stock, hire, rebuild
 - **Land:** buy adjacent plots to expand. A second floor is a Tier 4 upgrade.
 
 ### 4.4 Decor and themes
+- **Colour everywhere:** walls, floors and most furniture have paint and material slots, chosen from curated palette swatches (Sims-style). Recolouring is free, so it encourages experimenting.
+- **Lighting as decor:** lamps, sconces and chandeliers (Tier 3+) add ambience and change the room's light.
 - **Ambience per seat:** decor within a radius of each seat. Each item type has diminishing returns (the 1st candle counts fully, the 5th barely counts), and **variety earns a bonus**. This stops TasteMaker's candle-stacking exploit.
 - **Negative items:** a mop or bin next to a table subtracts ambience.
 - **Theme score:** the share of placed items tagged with a theme. Above the threshold, the restaurant counts as that theme (Diner, Italian, Sushi, Fine Dining, and more later).
@@ -94,12 +98,14 @@ Morning (closed): plan menu and prices, buy stock, hire, rebuild
 | 1 | Hole-in-the-wall (rented, tiny) | start | menu and price basics, your first hire |
 | 2 | Corner diner (rented) | level 3 | seating layout, restroom, cleaner, the cat |
 | 3 | Bistro (rent or buy) | level 6 | themes, plate cycle, staff specialisation |
-| 4 | Restaurant and bar (buy) | level 10 | drinks, evening service, a second floor |
-| 5 | Fine dining (buy) | level 15 | critics, plating mini-game, premium ingredients |
+| 4 | Restaurant and piano bar (buy) | level 10 | drinks, evening service with live piano, a second floor |
+| 5 | Fine dining (buy) | level 15 | critics, premium ingredients, chandeliers and a dress code |
 | 6 | The chain (several sites) | level 20 | managers run other sites in a simplified background sim |
 
 - **Owning vs renting:** buying costs more up front, removes rent, and allows structural upgrades and a second floor.
-- **Moving up:** you can keep an old property (it becomes a chain site at Tier 6) or sell it.
+- **Moving up:** you can keep an old property or sell it.
+- **Second location (the friend's request):** unlocks at Tier 3. You can keep your previous shop running as a second site. Switch between sites at any time. The one you're not at runs in the simplified background sim, and both feed the same bank account. Tier 6 grows this into a chain with managers.
+- **No running out of things to do:** the late game has no end state. A chain to grow, rotating weekly challenges, a collection of every recipe, item and theme, and sandbox mode.
 
 ### 4.6 Mini-games (start with 3)
 | Mini-game | Trigger | Reward | If skipped |
@@ -124,6 +130,7 @@ Multiplayer, a story or campaign, scenario mode (career milestones replace it), 
 | D3 | Fail state | No game over. Going broke triggers an automatic bank loan (4.5) | 2026-10-23 |
 | D4 | Owner control | Click-to-assign: pick a station, the owner walks there and works it | 2026-10-23 |
 | D5 | Engine | Godot 4.7.2, Compatibility renderer (TECH.md section 1) | 2026-10-23 |
+| D11 | Platform | Both: a web build (play from a link) and a Windows download, from the same Godot project | 2026-10-23 |
 | D6 | Starting property | A rented hole-in-the-wall shop with 2 to 3 tables (not an outdoor food cart: indoor is simpler to simulate and to build) | 2026-10-23 |
 | D7 | Mode structure | Career mode only at first. A sandbox comes in Phase 5. No scenario mode. | 2026-10-23 |
 | D8 | Restroom need | Kept, family-friendly (an unmet need means the guest leaves unhappy, no mess) | 2026-10-23 |
@@ -131,5 +138,6 @@ Multiplayer, a story or campaign, scenario mode (career milestones replace it), 
 | D10 | Agent movement | Grid pathfinding owned by the sim (`AStarGrid2D`), not the navmesh (TECH 2.3) | 2026-10-23 |
 
 ## 7. Open questions (for Jared: taste)
-1. **Art mood:** warm and cosy (wood, warm lights) or bright and toy-like (saturated, Overcooked-style)? This decides the palette in Phase 4. The default is warm and cosy.
-2. **Owner look:** one fixed character, or a few choices (skin, hair, apron colour)?
+1. **First-person (the friend's request). Proposal:** management and building stay in the top-down camera. Press **V** to step into the owner's eyes and walk your restaurant in first person: admire your build, chat to guests, pet the cat. **Cooking mini-games play in first person** at the station (for example flipping a pan, chopping, plating). Staff and customers keep running while you do. Is this the right amount of first person, or should more of the game be playable that way?
+2. **Art mood:** warm and cosy (wood, warm lights) or bright and toy-like (saturated, Overcooked-style)? This decides the palette in Phase 4. The default is warm and cosy.
+3. **Owner look:** one fixed character, or a few choices (skin, hair, apron colour)?

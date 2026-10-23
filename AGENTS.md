@@ -35,6 +35,9 @@ This file is read by every coding agent (Codex, harness workers, Claude). Read `
 6. No runtime network calls, and no AI or API calls in the game.
 7. Nothing that breaks the web export: no threads that need special headers, no C#, no GDExtension unless an issue says so.
 
+## Files Godot generates
+- Commit `*.uid` and `*.import` files next to their sources. Never commit `.godot/` or `.tools/`.
+
 ## Before you finish
 - Run `tools/check.sh` (created in Phase 0). It must pass.
 - Add or update tests for any sim logic you touched.

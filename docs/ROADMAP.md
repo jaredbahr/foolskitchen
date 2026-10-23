@@ -38,6 +38,7 @@ The Tier 1 hole-in-the-wall: 1 door, 3 two-seat tables, 1 fridge, 1 prep counter
 ## Phase 2: Build mode and running the shop
 - [ ] Grid placement (move, rotate, sell) with live path warnings, closed-only structural edits
 - [ ] Blueprints (save and stamp)
+- [ ] Paint and colour slots on walls, floors and furniture from palette swatches (Sims-style). Lighting decor (lamps, then chandeliers at Tier 3).
 - [ ] Menu screen: choose dishes, set prices against the standard price
 - [ ] Shops: ingredient market and furniture catalogue, auto-reorder
 - [ ] Hiring pool, traits, wages, the priority matrix
@@ -55,7 +56,9 @@ The Tier 1 hole-in-the-wall: 1 door, 3 two-seat tables, 1 fridge, 1 prep counter
 - [ ] Customer types
 - [ ] Career milestones
 - [ ] Loan rule
-- [ ] Mini-games: chop rhythm, supplier haggle, plating
+- [ ] First-person walk mode as the owner (pending DESIGN open question 1)
+- [ ] Mini-games in first person at the station: chop rhythm, pan flip, plating. Supplier haggle (a menu game).
+- [ ] Second location from Tier 3: switch sites, background sim, shared cash
 - [ ] Staff XP and levelling
 
 **Exit criteria:** you can climb from a hole-in-the-wall to a bistro in about 3 to 5 hours, and each tier plays differently.
@@ -69,7 +72,7 @@ The Tier 1 hole-in-the-wall: 1 door, 3 two-seat tables, 1 fridge, 1 prep counter
 - [ ] Web build published for family and friends
 
 ## Phase 5: Expansion
-- [ ] Tiers 4 to 6: the bar and evening service, a second floor, fine dining and critics, the chain with managers
+- [ ] Tiers 4 to 6: the piano bar and evening service, a second floor, fine dining and critics, the chain with managers
 - [ ] Events (inspector, rush hour, viral review)
 - [ ] Sandbox mode
 - [ ] More recipes, themes and mini-games
