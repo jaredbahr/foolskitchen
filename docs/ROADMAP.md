@@ -56,7 +56,7 @@ The Tier 1 hole-in-the-wall: 1 door, 3 two-seat tables, 1 fridge, 1 prep counter
 - [ ] Customer types
 - [ ] Career milestones
 - [ ] Loan rule
-- [ ] First-person walk mode as the owner (pending DESIGN open question 1)
+- [ ] First-person walk mode as the owner (D12)
 - [ ] Mini-games in first person at the station: chop rhythm, pan flip, plating. Supplier haggle (a menu game).
 - [ ] Second location from Tier 3: switch sites, background sim, shared cash
 - [ ] Staff XP and levelling
@@ -64,7 +64,7 @@ The Tier 1 hole-in-the-wall: 1 door, 3 two-seat tables, 1 fridge, 1 prep counter
 **Exit criteria:** you can climb from a hole-in-the-wall to a bistro in about 3 to 5 hours, and each tier plays differently.
 
 ## Phase 4: Look and feel
-- [ ] Art direction locked (palette, mood). Final models for the core set (TECH 3).
+- [ ] Art direction locked: the palette texture, a lighting rig and a style sheet (warm and cosy, D13). Final models for the core set (TECH 3).
 - [ ] Animations: walk, carry, cook, eat, sit
 - [ ] Lighting over the day, particles (steam, smoke)
 - [ ] Audio: ambience, UI sounds, music
