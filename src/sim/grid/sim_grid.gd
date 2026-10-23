@@ -25,6 +25,12 @@ signal item_removed(item: PlacedItem)
 
 const NO_CELL := Vector2i(-1, -1)
 
+## How many nearby open cells a buried agent tries before giving up.
+const ESCAPE_CANDIDATES: int = 16
+
+const _DIRS: Array[Vector2i] = [Vector2i(0, -1), Vector2i(1, 0), Vector2i(0, 1), Vector2i(-1, 0),
+		Vector2i(1, -1), Vector2i(1, 1), Vector2i(-1, 1), Vector2i(-1, -1)]
+
 ## Grid size in cells. Read-only.
 var size: Vector2i:
 	get:
@@ -202,8 +208,8 @@ func items() -> Array[PlacedItem]:
 ## Shortest path from start to goal, both inclusive. Empty if the goal is not
 ## walkable or unreachable. If the start is not walkable (furniture landed on
 ## an agent), the path begins at start and continues from the nearest walkable
-## cell, so an agent is never trapped; that first step may be longer than one
-## cell when the agent was buried deep inside a large item.
+## cell that can reach the goal, so an agent is never trapped; that first step
+## may be longer than one cell when the agent was buried inside a large item.
 func find_path(start: Vector2i, goal: Vector2i) -> Array[Vector2i]:
 	if not in_bounds(start) or not is_walkable(goal):
 		return []
@@ -211,15 +217,18 @@ func find_path(start: Vector2i, goal: Vector2i) -> Array[Vector2i]:
 		return [start]
 	if is_walkable(start):
 		return _astar.get_id_path(start, goal)
-	var exit := nearest_walkable(start)
-	if exit == NO_CELL:
-		return []
-	var rest: Array[Vector2i] = [exit] if exit == goal else _astar.get_id_path(exit, goal)
-	if rest.is_empty():
-		return []
-	var path: Array[Vector2i] = [start]
-	path.append_array(rest)
-	return path
+	for exit in _walkable_rings(start, ESCAPE_CANDIDATES):
+		var rest: Array[Vector2i] = []
+		if exit == goal:
+			rest.append(exit)
+		else:
+			rest = _astar.get_id_path(exit, goal)
+		if rest.is_empty():
+			continue
+		var path: Array[Vector2i] = [start]
+		path.append_array(rest)
+		return path
+	return []
 
 
 ## Nearest walkable cell to `cell` by grid steps (the cell itself if it is
@@ -230,23 +239,8 @@ func nearest_walkable(cell: Vector2i) -> Vector2i:
 		return NO_CELL
 	if is_walkable(cell):
 		return cell
-	var seen: Dictionary[Vector2i, bool] = {cell: true}
-	var frontier: Array[Vector2i] = [cell]
-	var dirs: Array[Vector2i] = [Vector2i(0, -1), Vector2i(1, 0), Vector2i(0, 1), Vector2i(-1, 0),
-			Vector2i(1, -1), Vector2i(1, 1), Vector2i(-1, 1), Vector2i(-1, -1)]
-	while not frontier.is_empty():
-		var next: Array[Vector2i] = []
-		for c in frontier:
-			for d in dirs:
-				var n := c + d
-				if not in_bounds(n) or seen.has(n):
-					continue
-				if is_walkable(n):
-					return n
-				seen[n] = true
-				next.append(n)
-		frontier = next
-	return NO_CELL
+	var found := _walkable_rings(cell, 1)
+	return NO_CELL if found.is_empty() else found[0]
 
 
 ## Cheapest path from start to any of the goals (ties go to the earlier goal).
@@ -289,6 +283,30 @@ func free_seat_cell(it: PlacedItem) -> Vector2i:
 
 func is_reachable(start: Vector2i, goal: Vector2i) -> bool:
 	return not find_path(start, goal).is_empty()
+
+
+## Walkable cells nearest to `cell` (excluding it), ring by ring in a fixed
+## direction order, up to `limit` of them.
+func _walkable_rings(cell: Vector2i, limit: int) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	var seen: Dictionary[Vector2i, bool] = {cell: true}
+	var frontier: Array[Vector2i] = [cell]
+	while not frontier.is_empty() and out.size() < limit:
+		var next: Array[Vector2i] = []
+		for c in frontier:
+			for d in _DIRS:
+				var n := c + d
+				if not in_bounds(n) or seen.has(n):
+					continue
+				seen[n] = true
+				if is_walkable(n):
+					out.append(n)
+					if out.size() >= limit:
+						return out
+				else:
+					next.append(n)
+		frontier = next
+	return out
 
 
 func _free_cell(it: PlacedItem, cells: Array[Vector2i]) -> Vector2i:
