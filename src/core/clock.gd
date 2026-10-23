@@ -49,6 +49,7 @@ func set_speed(value: int) -> bool:
 	speed = value
 	if value > 0:
 		_last_non_zero_speed = value
+	EventBus.speed_changed.emit(speed)
 	return true
 
 
