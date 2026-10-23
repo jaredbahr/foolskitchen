@@ -176,3 +176,66 @@ func test_buried_cook_walks_out() -> void:
 	_run(200)
 	assert_eq(completed, [t.id] as Array[int])
 	assert_eq(cook.cell, Vector2i(1, 5))
+
+
+func test_removed_agent_gives_task_back() -> void:
+	var cook := _cook(Vector2i(4, 4))
+	var t := _cook_task()
+	world.board.post(t, world.now)
+	_run(20)
+	assert_eq(cook.task, t)
+	world.remove_agent(cook)
+	assert_eq(t.state, SimTask.State.OPEN, "the task is back on the board")
+	for c in fridge.work_cells + stove.work_cells:
+		assert_eq(fridge.reserved_by(c), -1)
+		assert_eq(stove.reserved_by(c), -1)
+	var other := _cook(Vector2i(4, 4))
+	_run(300)
+	assert_eq(completed, [t.id] as Array[int], "someone else finished it")
+	assert_null(other.task)
+
+
+func test_task_posted_for_missing_item_fails_fast() -> void:
+	_cook(Vector2i(4, 4))
+	world.grid.remove(fridge.id)
+	var t := _cook_task()
+	world.board.post(t, world.now)
+	_run(2)
+	assert_eq(t.state, SimTask.State.CANCELLED)
+	assert_eq(failed, [&"target_gone"] as Array[StringName])
+
+
+func test_deeply_buried_cook_escapes_with_long_step() -> void:
+	var grid := SimGrid.new(Vector2i(30, 12))
+	var w := SimWorld.new(grid)
+	var cook := StaffAgent.new(&"cook", 3)
+	cook.cell = Vector2i(15, 6)
+	w.add_agent(cook)
+	grid.place(Vector2i(25, 11), Vector2i(2, 0), 0, true)
+	var t := SimTask.new(&"go", &"cook", "Walk")
+	t.steps.append(TaskStep.go_to_cell(Vector2i(0, 11), "walking"))
+	w.board.post(t, w.now)
+	for i in 400:
+		w.advance()
+	assert_eq(t.state, SimTask.State.DONE, "escaped and arrived (%s)" % [w.event_log])
+	assert_eq(cook.cell, Vector2i(0, 11))
+
+
+func test_drop_signal_sees_final_state() -> void:
+	var b := TaskBoard.new()
+	var t := SimTask.new(&"x", &"cook", "x")
+	t.steps.append(TaskStep.work(1))
+	b.post(t, 0)
+	var states: Array[int] = []
+	b.task_dropped.connect(func(task: SimTask, _a: int, _r: StringName) -> void: states.append(task.state))
+	for i in TaskBoard.MAX_DROPS:
+		b.claim(t, 1, 0)
+		b.drop(t, &"stuck")
+	assert_eq(states, [SimTask.State.OPEN, SimTask.State.OPEN, SimTask.State.CANCELLED] as Array[int])
+	assert_false(b.claim(t, 2, 0))
+
+
+func test_any_task_uses_own_role_skill() -> void:
+	var a := StaffAgent.new(&"server", 5)
+	assert_eq(a.skill_for(&"any"), 5)
+	assert_almost_eq(a.work_speed(&"any"), 1.1)

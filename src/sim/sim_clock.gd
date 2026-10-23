@@ -5,6 +5,9 @@ extends RefCounted
 
 enum Phase { MORNING, OPEN, LAST_ORDERS, CLOSED }
 
+## Sim ticks per game second at 1x speed (Clock drives this many per real second).
+const TICKS_PER_SECOND: int = 10
+
 ## Emitted after every transition, with the new day and phase.
 signal phase_changed(day: int, phase: Phase)
 

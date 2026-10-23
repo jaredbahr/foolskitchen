@@ -19,7 +19,10 @@ var _next_id: int = 1
 
 
 ## Puts a task on the board and returns its id.
+## Posting the same task object twice returns its existing id.
 func post(task: SimTask, now_tick: int) -> int:
+	if task.id != 0 and _tasks.get(task.id, null) == task:
+		return task.id
 	task.id = _next_id
 	_next_id += 1
 	task.state = SimTask.State.OPEN
@@ -59,12 +62,17 @@ func drop(task: SimTask, reason: StringName) -> void:
 		return
 	var agent_id := task.claimed_by
 	task.drops += 1
-	task.state = SimTask.State.OPEN
 	task.claimed_by = -1
 	task.claimed_tick = -1
-	task_dropped.emit(task, agent_id, reason)
-	if task.drops >= MAX_DROPS:
+	# Settle the final state before any signal, so a listener can't claim a
+	# task that is about to fail.
+	var failing := task.drops >= MAX_DROPS
+	if failing:
 		_finish(task, SimTask.State.CANCELLED)
+	else:
+		task.state = SimTask.State.OPEN
+	task_dropped.emit(task, agent_id, reason)
+	if failing:
 		task_failed.emit(task, &"dropped_too_often")
 
 

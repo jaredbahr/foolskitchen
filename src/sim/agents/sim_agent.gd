@@ -37,13 +37,17 @@ func why() -> String:
 	return "Idle"
 
 
-## Plans a path to `goal`. False if unreachable (path cleared).
+## Plans a path to `goal`. False if unreachable (path cleared). If the new
+## path heads into the same next cell, progress toward it is kept, so a
+## re-plan never snaps the agent backwards.
 func set_destination(grid: SimGrid, goal: Vector2i) -> bool:
+	var old_next := next_cell()
 	_goal = goal
 	needs_repath = false
-	move_progress = 0.0
 	path = grid.find_path(cell, goal)
 	path_index = 1
+	if path.size() < 2 or path[1] != old_next:
+		move_progress = 0.0
 	return not path.is_empty()
 
 
@@ -75,12 +79,18 @@ func step_move(world: SimWorld) -> MoveResult:
 	# A buried agent's exit step can be longer than one cell.
 	step_len = maxf(step_len, float(maxi(absi(d.x), absi(d.y))))
 	move_progress += move_speed / step_len
+	last_progress_tick = world.now
 	if move_progress >= 1.0:
 		move_progress = 0.0
 		cell = next
 		path_index += 1
 		last_progress_tick = world.now
 	return MoveResult.ARRIVED if has_arrived() else MoveResult.MOVING
+
+
+## Called by SimWorld.remove_agent: give back anything held (tasks, cells).
+func on_removed(_world: SimWorld) -> void:
+	pass
 
 
 ## Stops walking.

@@ -83,7 +83,14 @@ docs/
     - `skills` and `priorities` per role. Claim score = (priority+1) × role priority × skill ÷ (1 + distance).
     - Work speed is 0.6 + 0.1 × skill.
     - Before waiting for a station, it releases the one it held, so two workers can't deadlock.
-  - **Proven by** `tests/sim/test_agent_soak.gd`: 8,000 ticks of random tasks while furniture is dropped on and around the staff. Every tick it checks that no task is held past its timeout and no agent is stuck. After that the board must drain to zero. Run it again after any change to agents.
+  - **The board heals itself too** (`SimWorld._heal_board`, every tick): a claimed task whose claimant is gone, or that is more than one tick past its timeout, is dropped. An open task aimed at an item that no longer exists fails with `target_gone`. `remove_agent()` makes the agent give back its task and cells.
+  - **A dropped task restarts at step 0** when it's claimed again, so `on_done` callbacks must be safe to run twice (check or record progress in `task.payload`).
+  - **Proven by** `tests/sim/test_agent_soak.gd`: 8,000 ticks of deliberate chaos.
+    - **The chaos:** random blockers dropped on and around 5 staff, a station boxed in, stations removed and re-placed, workers leaving mid-task, and tasks whose timeout is shorter than their work.
+    - **Checked every tick:** no task is held past its timeout; every claimed task's holder is alive and working on it; no reservation is held by an idle or missing agent; nobody is stuck.
+    - **At the end:** the board drains to zero, and every healing path (timeout, agent removed, target gone, unreachable) must have fired at least once.
+    - **Mutation check:** with both the agent-level and board-level timeouts switched off, the test fails.
+    - Run it again after any change to agents.
 - **Customers:** a state machine (`Arriving`, `Queued`, `Seated`, `Ordering`, `Waiting`, `Eating`, `Paying`, `Leaving`, `Left`). Every state has a maximum duration and an exit path.
 - **Debug overlay (F3):** paths, claimed tasks, agent states and the task board, from Phase 1 onward.
 

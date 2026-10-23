@@ -18,6 +18,7 @@ var agents: Array[SimAgent] = []
 var event_log: PackedStringArray = []
 
 var _next_agent_id: int = 1
+var _open_cache: Array[SimTask] = []
 
 
 func _init(world_grid: SimGrid, world_clock: SimClock = null) -> void:
@@ -39,7 +40,9 @@ func add_agent(agent: SimAgent) -> SimAgent:
 	return agent
 
 
+## Removes an agent; it gives back its task and reserved cells first.
 func remove_agent(agent: SimAgent) -> void:
+	agent.on_removed(self)
 	agents.erase(agent)
 
 
@@ -50,12 +53,40 @@ func agent(agent_id: int) -> SimAgent:
 	return null
 
 
-## Runs one tick: the clock, then every agent in id order.
+## Runs one tick: the clock, the board backstops, then every agent in id order.
 func advance() -> void:
 	now += 1
 	clock.advance()
+	_heal_board()
+	_open_cache = board.open_tasks()
 	for a: SimAgent in agents.duplicate():
 		a.tick(self)
+	_open_cache = []
+
+
+## Open tasks as of the start of this tick, built once per tick so idle
+## agents don't each sort the board. Claimed-this-tick tasks are still in the
+## list: check task.state before using one.
+func open_tasks_this_tick() -> Array[SimTask]:
+	return _open_cache if not _open_cache.is_empty() else board.open_tasks()
+
+
+## The board heals itself instead of trusting every claimant:
+## - a claimed task whose claimant is gone, or that is past its timeout plus a
+##   grace tick, is dropped;
+## - an open task aimed at an item that no longer exists fails at once.
+func _heal_board() -> void:
+	for t in board.claimed_tasks():
+		var holder := agent(t.claimed_by)
+		if holder == null:
+			board.drop(t, &"claimant_gone")
+		elif now - t.claimed_tick > t.timeout_ticks + 1:
+			board.drop(t, &"timeout")
+	for t in board.open_tasks():
+		for s in t.steps:
+			if s.kind == TaskStep.Kind.GO_TO_ITEM and grid.item(s.item_id) == null:
+				board.cancel(t, &"target_gone")
+				break
 
 
 func log_event(text: String) -> void:

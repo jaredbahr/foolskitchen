@@ -33,9 +33,23 @@ func _init(staff_role: StringName = &"cook", skill: int = 3) -> void:
 	priorities[&"any"] = 1
 
 
-## Work units per tick for a role: 0.7 at skill 1 up to 1.1 at skill 5.
-func work_speed(for_role: StringName) -> float:
-	return 0.6 + 0.1 * skills.get(for_role, 1)
+## Skill used for a task role: role-free (&"any") tasks use the agent's own role.
+func skill_for(task_role: StringName) -> int:
+	var r := role if task_role == &"any" else task_role
+	return skills.get(r, 1)
+
+
+## Work units per tick for a task role: 0.7 at skill 1 up to 1.1 at skill 5.
+func work_speed(task_role: StringName) -> float:
+	return 0.6 + 0.1 * skill_for(task_role)
+
+
+## Gives the task back (drop) and frees held cells when leaving the world.
+func on_removed(world: SimWorld) -> void:
+	if task != null:
+		var t := task
+		_let_go(world)
+		world.board.drop(t, &"agent_removed")
 
 
 func tick(world: SimWorld) -> void:
@@ -66,7 +80,7 @@ func why() -> String:
 		var s := task.steps[step_index]
 		step_text = s.label
 		if s.kind == TaskStep.Kind.WORK and _step_started:
-			step_text += " (%ds left)" % ceili(work_left / (work_speed(task.role) * 10.0))
+			step_text += " (%ds left)" % ceili(work_left / (work_speed(task.role) * SimClock.TICKS_PER_SECOND))
 	if not _waiting_for.is_empty():
 		step_text = "waiting for %s" % _waiting_for
 	return task.label if step_text.is_empty() else "%s: %s" % [task.label, step_text]
@@ -75,7 +89,9 @@ func why() -> String:
 func _try_claim(world: SimWorld) -> void:
 	var best: SimTask = null
 	var best_score := 0.0
-	for t in world.board.open_tasks():
+	for t in world.open_tasks_this_tick():
+		if t.state != SimTask.State.OPEN:
+			continue
 		var score := _score(world, t)
 		if score > best_score:
 			best = t
@@ -104,7 +120,7 @@ func _score(world: SimWorld, t: SimTask) -> float:
 		if it == null:
 			return 0.0
 		target = it.origin
-	var skill: int = skills.get(for_role, 1) if for_role != &"any" else 3
+	var skill := skill_for(for_role)
 	return float((t.priority + 1) * role_prio * skill) / (1.0 + GridMath.octile(cell, target))
 
 
