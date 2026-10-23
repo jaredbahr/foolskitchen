@@ -1,0 +1,127 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://src/ui/evening_report.gd" id="1_script"]
+[ext_resource type="Theme" path="res://src/ui/theme/main_theme.tres" id="2_theme"]
+
+[node name="EveningReport" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = ExtResource("2_theme")
+script = ExtResource("1_script")
+
+[node name="Panel" type="PanelContainer" parent="."]
+layout_mode = 0
+anchor_left = 0.12
+anchor_top = 0.06
+anchor_right = 0.88
+anchor_bottom = 0.94
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Scroll" type="ScrollContainer" parent="Panel"]
+layout_mode = 2
+horizontal_scroll_mode = 0
+
+[node name="Content" type="VBoxContainer" parent="Panel/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Header" type="Label" parent="Panel/Scroll/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "Day 1: Closed"
+horizontal_alignment = 1
+
+[node name="Profit" type="Label" parent="Panel/Scroll/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 36
+text = "$0 profit"
+horizontal_alignment = 1
+
+[node name="Finances" type="HBoxContainer" parent="Panel/Scroll/Content"]
+layout_mode = 2
+
+[node name="Income" type="VBoxContainer" parent="Panel/Scroll/Content/Finances"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Heading" type="Label" parent="Panel/Scroll/Content/Finances/Income"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "Income"
+
+[node name="IncomeRows" type="GridContainer" parent="Panel/Scroll/Content/Finances/Income"]
+unique_name_in_owner = true
+layout_mode = 2
+columns = 2
+
+[node name="Costs" type="VBoxContainer" parent="Panel/Scroll/Content/Finances"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Heading" type="Label" parent="Panel/Scroll/Content/Finances/Costs"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "Costs"
+
+[node name="CostRows" type="GridContainer" parent="Panel/Scroll/Content/Finances/Costs"]
+unique_name_in_owner = true
+layout_mode = 2
+columns = 2
+
+[node name="DishHeading" type="Label" parent="Panel/Scroll/Content"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "Dishes sold"
+
+[node name="DishRows" type="GridContainer" parent="Panel/Scroll/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+columns = 2
+
+[node name="GuestHeading" type="Label" parent="Panel/Scroll/Content"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "Guests"
+
+[node name="Guests" type="Label" parent="Panel/Scroll/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "No guests visited today"
+
+[node name="GuestBar" type="ProgressBar" parent="Panel/Scroll/Content"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 12)
+layout_mode = 2
+show_percentage = false
+
+[node name="ReasonHeading" type="Label" parent="Panel/Scroll/Content"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "Why guests left"
+
+[node name="ReasonRows" type="GridContainer" parent="Panel/Scroll/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+columns = 2
+
+[node name="ReviewHeading" type="Label" parent="Panel/Scroll/Content"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "What guests said"
+
+[node name="ReviewRows" type="VBoxContainer" parent="Panel/Scroll/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="NextDay" type="Button" parent="Panel/Scroll/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 4
+text = "Next day"
