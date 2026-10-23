@@ -39,7 +39,7 @@ func test_take_consumes_fifo_and_keeps_remaining_batch_date() -> void:
 	stock.add(&"bun", 3, 2)
 	assert_true(stock.take(&"bun", 3))
 	assert_eq(stock.count(&"bun"), 2)
-	assert_eq(stock.to_dict()["batches"]["bun"], [{"qty": 2, "bought_day": 2}])
+	assert_eq(stock.to_dict()["batches"]["bun"], [{"qty": "2", "bought_day": "2"}])
 
 
 ## Inserting an older dated batch still keeps FIFO in purchase-day order.
@@ -48,7 +48,7 @@ func test_out_of_order_addition_is_consumed_oldest_first() -> void:
 	stock.add(&"bun", 3, 3)
 	stock.add(&"bun", 2, 1)
 	assert_true(stock.take(&"bun", 2))
-	assert_eq(stock.to_dict()["batches"]["bun"], [{"qty": 3, "bought_day": 3}])
+	assert_eq(stock.to_dict()["batches"]["bun"], [{"qty": "3", "bought_day": "3"}])
 
 
 ## A short single-ingredient take cannot partially consume its batches.
@@ -162,3 +162,32 @@ func test_empty_snapshot_has_no_batches() -> void:
 	var stock: Stock = Stock.from_dict({})
 	assert_eq(stock.to_dict(), {"batches": {}})
 	assert_eq(stock.count(&"bun"), 0)
+
+
+## JSON preserves FIFO quantities beyond the exact integer range of doubles.
+func test_json_round_trip_preserves_large_quantity() -> void:
+	var large: int = 9007199254740993
+	var stock: Stock = Stock.new()
+	stock.add(&"bun", large, 1)
+	stock.add(&"bun", 3, 2)
+	var snapshot: Dictionary = stock.to_dict()
+	var restored: Stock = Stock.from_dict(JSON.parse_string(JSON.stringify(snapshot)))
+	assert_eq(restored.to_dict(), snapshot)
+	assert_eq(restored.count(&"bun"), large + 3)
+	assert_true(restored.take(&"bun", large))
+	assert_eq(restored.count(&"bun"), 3)
+	assert_eq(restored.expire(4, {&"bun": 2}), {&"bun": 3})
+
+
+## MAX_QUANTITY and large purchase days remain usable after an actual JSON cycle.
+func test_json_round_trip_preserves_maximum_quantity() -> void:
+	var day: int = 9007199254740993
+	var stock: Stock = Stock.new()
+	stock.add(&"bun", Stock.MAX_QUANTITY, day)
+	var restored: Stock = Stock.from_dict(JSON.parse_string(JSON.stringify(stock.to_dict())))
+	assert_eq(restored.count(&"bun"), Stock.MAX_QUANTITY)
+	assert_true(restored.has(&"bun", Stock.MAX_QUANTITY))
+	assert_true(restored.take(&"bun", 1))
+	assert_eq(restored.count(&"bun"), Stock.MAX_QUANTITY - 1)
+	assert_eq(stock.count(&"bun"), Stock.MAX_QUANTITY)
+	assert_eq(restored.expire(day + 2, {&"bun": 2}), {&"bun": Stock.MAX_QUANTITY - 1})

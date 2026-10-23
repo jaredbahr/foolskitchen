@@ -91,11 +91,11 @@ func prune_before(day: int) -> void:
 			_history_costs.erase(archived_day)
 
 
-## Returns independent, JSON-safe state, including the archived graph totals.
+## Returns independent state; decimal strings preserve int64 values through JSON.
 func to_dict() -> Dictionary:
 	var entries: Array[Dictionary] = []
 	for entry: Dictionary in _entries:
-		entries.append({"day": int(entry["day"]), "amount": int(entry["amount"]),
+		entries.append({"day": str(entry["day"]), "amount": str(entry["amount"]),
 			"category": String(entry["category"]), "note": String(entry["note"])})
 	var archived: Dictionary = {}
 	var income: Dictionary = {}
@@ -103,11 +103,11 @@ func to_dict() -> Dictionary:
 	for day: int in history:
 		var totals: Dictionary = {}
 		for category: StringName in history[day]:
-			totals[String(category)] = int(history[day][category])
+			totals[String(category)] = str(history[day][category])
 		archived[str(day)] = totals
-		income[str(day)] = int(_history_income.get(day, 0))
-		costs[str(day)] = int(_history_costs.get(day, 0))
-	return {"cash": cash, "entries": entries, "history": archived,
+		income[str(day)] = str(_history_income.get(day, 0))
+		costs[str(day)] = str(_history_costs.get(day, 0))
+	return {"cash": str(cash), "entries": entries, "history": archived,
 		"history_income": income, "history_costs": costs}
 
 

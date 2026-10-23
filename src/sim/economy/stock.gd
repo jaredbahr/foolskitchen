@@ -96,11 +96,14 @@ func expire(today: int, shelf_life_days: Dictionary) -> Dictionary:
 	return expired
 
 
-## Returns independent, JSON-safe batch data for a save.
+## Returns independent batches; decimal strings preserve int64 values through JSON.
 func to_dict() -> Dictionary:
 	var batches: Dictionary = {}
 	for id: StringName in _batches:
-		batches[String(id)] = _batches[id].duplicate(true)
+		var saved: Array[Dictionary] = []
+		for batch: Dictionary in _batches[id]:
+			saved.append({"qty": str(batch["qty"]), "bought_day": str(batch["bought_day"])})
+		batches[String(id)] = saved
 	return {"batches": batches}
 
 

@@ -159,7 +159,7 @@ func test_buy_ingredient_records_cost_and_batch_atomically() -> void:
 	assert_eq(_economy.cash, 8)
 	assert_eq(_economy.stock.count(&"bun"), 3)
 	assert_eq(_economy.ledger.day_totals(Clock.day), {Ledger.INGREDIENTS: -12})
-	assert_eq(_economy.stock.to_dict()["batches"]["bun"][0]["bought_day"], Clock.day)
+	assert_eq(_economy.stock.to_dict()["batches"]["bun"][0]["bought_day"], str(Clock.day))
 	assert_eq(_events.size(), 1)
 	assert_eq(_events[0]["stock"], 3)
 	assert_eq(_events[0]["delta"], -12)
@@ -217,3 +217,39 @@ func _make_economy() -> void:
 func _on_cash_changed(balance: int, amount: int, reason: StringName) -> void:
 	_events.append({"cash": balance, "delta": amount, "reason": reason,
 		"stock": _economy.stock.count(&"bun")})
+
+
+## JSON retains large live entries and archived gross/category amounts exactly.
+func test_json_round_trip_preserves_values_above_double_integer_precision() -> void:
+	var large: int = 9007199254740993
+	var ledger: Ledger = Ledger.new()
+	ledger.record(1, large, Ledger.SALE)
+	ledger.record(1, -(large - 7), Ledger.RENT)
+	ledger.prune_before(2)
+	ledger.record(2, large, Ledger.TIP)
+	ledger.record(2, -3, Ledger.OTHER)
+	var snapshot: Dictionary = ledger.to_dict()
+	var restored: Ledger = Ledger.from_dict(JSON.parse_string(JSON.stringify(snapshot)))
+	assert_eq(restored.to_dict(), snapshot)
+	assert_eq(restored.cash, large + 4)
+	assert_eq(restored.day_totals(1)[Ledger.SALE], large)
+	assert_eq(restored.day_totals(1)[Ledger.RENT], -(large - 7))
+	assert_eq(restored.day_income(1), large)
+	assert_eq(restored.day_costs(1), large - 7)
+	assert_eq(restored.entries_for_day(2)[0]["amount"], large)
+
+
+## The largest signed integer and large day numbers survive live and archived JSON.
+func test_json_round_trip_preserves_maximum_cash() -> void:
+	var maximum: int = 9223372036854775807
+	var day: int = 9007199254740993
+	var ledger: Ledger = Ledger.new()
+	ledger.record(day, maximum, Ledger.SALE)
+	var restored: Ledger = Ledger.from_dict(JSON.parse_string(JSON.stringify(ledger.to_dict())))
+	assert_eq(restored.cash, maximum)
+	assert_eq(restored.entries_for_day(day)[0]["amount"], maximum)
+	restored.prune_before(day + 1)
+	var archived: Ledger = Ledger.from_dict(JSON.parse_string(JSON.stringify(restored.to_dict())))
+	assert_eq(archived.cash, maximum)
+	assert_eq(archived.day_totals(day)[Ledger.SALE], maximum)
+	assert_eq(archived.day_income(day), maximum)
