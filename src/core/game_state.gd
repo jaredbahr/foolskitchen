@@ -23,20 +23,23 @@ func _capture_save() -> Dictionary:
 
 
 func _restore_save(data: Dictionary) -> bool:
-	var seed_text: String = str(data.get("master_seed", ""))
+	var seed_value: Variant = data.get("master_seed", null)
 	var systems_value: Variant = data.get("rngs", null)
-	if not seed_text.is_valid_int() or not systems_value is Dictionary:
+	if not _is_int64_text(seed_value) or not systems_value is Dictionary:
 		return false
+	var seed_text: String = seed_value
 	var systems: Dictionary = systems_value
 	var restored: Dictionary[StringName, RandomNumberGenerator] = {}
 	for system: Variant in systems:
 		if not system is String or not systems[system] is Dictionary:
 			return false
 		var entry: Dictionary = systems[system]
-		var rng_seed: String = str(entry.get("seed", ""))
-		var rng_state: String = str(entry.get("state", ""))
-		if not rng_seed.is_valid_int() or not rng_state.is_valid_int():
+		var seed_variant: Variant = entry.get("seed", null)
+		var state_variant: Variant = entry.get("state", null)
+		if not _is_int64_text(seed_variant) or not _is_int64_text(state_variant):
 			return false
+		var rng_seed: String = seed_variant
+		var rng_state: String = state_variant
 		var generator: RandomNumberGenerator = RandomNumberGenerator.new()
 		generator.seed = rng_seed.to_int()
 		generator.state = rng_state.to_int()
@@ -44,6 +47,24 @@ func _restore_save(data: Dictionary) -> bool:
 	master_seed = seed_text.to_int()
 	_rngs = restored
 	return true
+
+
+func _is_int64_text(value: Variant) -> bool:
+	if not value is String or value.is_empty():
+		return false
+	var text: String = value
+	var negative: bool = text.begins_with("-")
+	var digits: String = text.substr(1) if negative else text
+	if digits.is_empty():
+		return false
+	for character: String in digits:
+		if character < "0" or character > "9":
+			return false
+	digits = digits.lstrip("0")
+	if digits.is_empty():
+		return true
+	var limit: String = "9223372036854775808" if negative else "9223372036854775807"
+	return digits.length() < limit.length() or (digits.length() == limit.length() and digits <= limit)
 
 
 ## Starts a new run: sets the master seed and drops all per-system RNGs.

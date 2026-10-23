@@ -5,6 +5,16 @@ const SaveScript := preload("res://src/core/save_system.gd")
 const GameScript := preload("res://src/core/game_state.gd")
 const ClockScript := preload("res://src/core/clock.gd")
 
+class FailedRename:
+	extends "res://src/core/save_system.gd"
+	var fail_publish: bool = false
+	var fail_backup: bool = false
+
+	func _rename_file(source: String, destination: String) -> Error:
+		if (fail_publish and source.ends_with(".tmp")) or (fail_backup and destination.ends_with(".bak")):
+			return ERR_CANT_CREATE
+		return super._rename_file(source, destination)
+
 var _save: SaveScript
 var _game: GameScript
 var _clock: ClockScript
@@ -186,6 +196,178 @@ func test_invalid_rng_section_leaves_existing_run_unchanged() -> void:
 	var original: Dictionary = _game._capture_save()
 	assert_false(_game._restore_save({"master_seed": "1", "rngs": {"customers": {"seed": "1", "state": "bad"}}}))
 	assert_eq(_game._capture_save(), original)
+
+
+func test_interrupted_states_prefer_final_then_recover_backup() -> void:
+	assert_eq(_save.save_game("recover"), OK)
+	_first["value"] = 4
+	assert_eq(_save.save_game("recover"), OK)
+	# Before rotating the final, an old backup and an uncommitted tmp can exist.
+	_write("recover.json.tmp", "{unfinished", false)
+	_first.clear()
+	assert_eq(_save.load_game("recover"), OK)
+	assert_eq(int(_first["value"]), 4)
+	# After rotation and before publication, only backup + tmp may remain.
+	assert_eq(DirAccess.remove_absolute(_path("recover") + ".bak"), OK)
+	assert_eq(DirAccess.rename_absolute(_path("recover"), _path("recover") + ".bak"), OK)
+	_first.clear()
+	assert_eq(_save.list_slots(), PackedStringArray(["recover"]))
+	assert_eq(_save.load_game("recover"), OK)
+	assert_eq(int(_first["value"]), 4)
+	# Resume after interruption, retaining the valid backup during publication.
+	_first["value"] = 5
+	assert_eq(_save.save_game("recover"), OK)
+	assert_true(FileAccess.file_exists(_path("recover") + ".bak"))
+	_first.clear()
+	assert_eq(_save.load_game("recover"), OK)
+	assert_eq(int(_first["value"]), 5)
+
+
+func test_rng_rejects_out_of_range_integer_strings_without_mutating_run() -> void:
+	_game = GameScript.new()
+	_game.new_run(42)
+	_game.rng(&"customers").randi()
+	var original: Dictionary = _game._capture_save()
+	for invalid: String in ["9223372036854775808", "-9223372036854775809", "9".repeat(100), "-" + "9".repeat(100)]:
+		var master: Dictionary = original.duplicate(true)
+		master["master_seed"] = invalid
+		assert_false(_game._restore_save(master))
+		assert_eq(_game._capture_save(), original)
+		for field: String in ["seed", "state"]:
+			var system: Dictionary = original.duplicate(true)
+			system["rngs"]["customers"][field] = invalid
+			assert_false(_game._restore_save(system))
+			assert_eq(_game._capture_save(), original)
+	assert_true(_game._restore_save({"master_seed": "-9223372036854775808",
+		"rngs": {"customers": {"seed": "9223372036854775807", "state": "-9223372036854775808"}}}))
+	assert_eq(_game.master_seed, -9223372036854775807 - 1)
+	assert_eq(_game.rng(&"customers").seed, 9223372036854775807)
+
+
+func test_clock_rejects_malformed_numeric_fields_without_replacing_sim() -> void:
+	_clock = ClockScript.new()
+	_clock.sim.start_service()
+	_clock.sim.advance()
+	var original: SimClock = _clock.sim
+	var original_data: Dictionary = original.to_dict()
+	for key: String in original_data:
+		for invalid: Variant in [{}, [], "1", true, -1, 0.5, 1e30]:
+			var data: Dictionary = original_data.duplicate(true)
+			data[key] = invalid
+			assert_false(_clock._restore_save(data), key)
+			assert_true(_clock.sim == original, key)
+			assert_eq(_clock.sim.to_dict(), original_data)
+	for malformed: Dictionary in [{"day": 0}, {"phase": 4}, {"open_ticks": 0},
+		{"last_orders_max_ticks": 0}, {"display_open_minute": 1441},
+		{"display_close_minute": 1441}, {"display_open_minute": 900, "display_close_minute": 800}]:
+		assert_false(_clock._restore_save(malformed))
+		assert_true(_clock.sim == original)
+	# Numbers parsed from a valid JSON clock remain supported.
+	var parsed: Dictionary = JSON.parse_string(JSON.stringify(original_data))
+	assert_true(_clock._restore_save(parsed))
+	assert_eq(_clock.sim.to_dict(), original_data)
+
+
+func test_corrupt_final_recovers_backup_and_ignores_temporary() -> void:
+	assert_eq(_save.save_game("recover"), OK)
+	_first["value"] = 8
+	assert_eq(_save.save_game("recover"), OK)
+	_write("recover", "{damaged")
+	_write("recover.json.tmp", JSON.stringify({"version": 1, "data": {"first": {"value": 99}}}), false)
+	_first.clear()
+	assert_eq(_save.load_game("recover"), OK)
+	assert_eq(int(_first["value"]), 3)
+	# Another successful save must retain that last readable copy.
+	_first["value"] = 10
+	assert_eq(_save.save_game("recover"), OK)
+	_write("recover", "{damaged again")
+	assert_eq(_save.load_game("recover"), OK)
+	assert_eq(int(_first["value"]), 3)
+
+
+func test_failed_publication_after_rotating_existing_backup_keeps_latest_save() -> void:
+	var failing: FailedRename = _use_failing_save()
+	assert_eq(_save.save_game("fail"), OK)
+	_first["value"] = 8
+	assert_eq(_save.save_game("fail"), OK)
+	failing.fail_publish = true
+	_first["value"] = 12
+	assert_eq(_save.save_game("fail"), ERR_CANT_CREATE)
+	assert_false(FileAccess.file_exists(_path("fail")))
+	assert_true(FileAccess.file_exists(_path("fail") + ".bak"))
+	assert_false(FileAccess.file_exists(_path("fail") + ".tmp"))
+	_first.clear()
+	assert_eq(_save.load_game("fail"), OK)
+	assert_eq(int(_first["value"]), 8)
+
+
+func test_failed_backup_move_preserves_final_after_old_backup_removed() -> void:
+	var failing: FailedRename = _use_failing_save()
+	assert_eq(_save.save_game("fail"), OK)
+	_first["value"] = 8
+	assert_eq(_save.save_game("fail"), OK)
+	failing.fail_backup = true
+	_first["value"] = 12
+	assert_eq(_save.save_game("fail"), ERR_CANT_CREATE)
+	assert_true(FileAccess.file_exists(_path("fail")))
+	_first.clear()
+	assert_eq(_save.load_game("fail"), OK)
+	assert_eq(int(_first["value"]), 8)
+
+
+func test_failed_publish_with_damaged_final_preserves_only_valid_backup() -> void:
+	var failing: FailedRename = _use_failing_save()
+	assert_eq(_save.save_game("fail"), OK)
+	_first["value"] = 8
+	assert_eq(_save.save_game("fail"), OK)
+	_write("fail", "{damaged")
+	failing.fail_publish = true
+	_first["value"] = 12
+	assert_eq(_save.save_game("fail"), ERR_CANT_CREATE)
+	_first.clear()
+	assert_eq(_save.load_game("fail"), OK)
+	assert_eq(int(_first["value"]), 3)
+
+
+func test_unreadable_backup_is_not_restored_and_unknown_future_is_not_rolled_back() -> void:
+	_write("bad.json.bak", "{bad backup", false)
+	assert_eq(_save.load_game("bad"), ERR_PARSE_ERROR)
+	_write("bad", "{bad final")
+	assert_eq(_save.load_game("bad"), ERR_PARSE_ERROR)
+	# A future save is not corruption: preserve its explicit version error.
+	assert_eq(_save.save_game("future"), OK)
+	_first["value"] = 8
+	assert_eq(_save.save_game("future"), OK)
+	_write("future", JSON.stringify({"version": 2, "data": {}}))
+	assert_eq(_save.load_game("future"), ERR_FILE_UNRECOGNIZED)
+	assert_eq(_restore_calls, 0)
+
+
+func test_delete_removes_backup_and_temporary_to_prevent_resurrection() -> void:
+	assert_eq(_save.save_game("delete"), OK)
+	assert_eq(_save.save_game("delete"), OK)
+	_write("delete.json.tmp", "{partial", false)
+	assert_eq(_save.delete_slot("delete"), OK)
+	assert_false(FileAccess.file_exists(_path("delete")))
+	assert_false(FileAccess.file_exists(_path("delete") + ".bak"))
+	assert_false(FileAccess.file_exists(_path("delete") + ".tmp"))
+	assert_eq(_save.load_game("delete"), ERR_FILE_NOT_FOUND)
+	assert_eq(_save.list_slots(), PackedStringArray())
+	assert_eq(_save.save_game("backup_only"), OK)
+	assert_eq(DirAccess.rename_absolute(_path("backup_only"), _path("backup_only") + ".bak"), OK)
+	assert_eq(_save.delete_slot("backup_only"), OK)
+	assert_eq(_save.list_slots(), PackedStringArray())
+
+
+func _use_failing_save() -> FailedRename:
+	var directory: String = _save.save_dir
+	_save.free()
+	var failing: FailedRename = FailedRename.new()
+	failing.save_dir = directory
+	failing.register("first", _capture_first, _restore_first)
+	failing.register("second", _capture_second, _restore_second)
+	_save = failing
+	return failing
 
 
 func _capture_first() -> Dictionary:

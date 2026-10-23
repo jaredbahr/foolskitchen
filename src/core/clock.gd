@@ -51,8 +51,39 @@ func _capture_save() -> Dictionary:
 
 
 func _restore_save(data: Dictionary) -> bool:
+	# Validate before SimClock.from_dict converts numbers and before replacing sim.
+	var minimums: Dictionary[String, int] = {
+		"day": 1, "phase": 0, "tick": 0, "phase_tick": 0,
+		"open_ticks": 1, "last_orders_max_ticks": 1,
+		"display_open_minute": 0, "display_close_minute": 0,
+	}
+	for key: String in minimums:
+		if not data.has(key):
+			continue
+		var maximum: int = 9223372036854775807
+		if key == "phase":
+			maximum = SimClock.Phase.CLOSED
+		elif key.begins_with("display_"):
+			maximum = 24 * 60
+		if not _valid_save_integer(data[key], minimums[key], maximum):
+			return false
+	var opening: int = int(data.get("display_open_minute", 11 * 60))
+	var closing: int = int(data.get("display_close_minute", 21 * 60))
+	if closing < opening:
+		return false
 	sim = SimClock.from_dict(data)
 	return true
+
+
+func _valid_save_integer(value: Variant, minimum: int, maximum: int) -> bool:
+	if value is int:
+		return value >= minimum and value <= maximum
+	if not value is float:
+		return false
+	# JSON parses numbers as floats. Reject fractions/nonfinite values and the
+	# rounded 2^63 boundary before any int conversion can overflow.
+	var number: float = value
+	return is_finite(number) and number >= minimum and number <= maximum and number < 9223372036854775808.0 and floorf(number) == number
 
 
 ## Sets the speed. Only values in SPEEDS are accepted; returns false otherwise.

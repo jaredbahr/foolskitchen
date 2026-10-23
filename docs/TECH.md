@@ -72,7 +72,7 @@ docs/
 - JSON in `user://saves/`, with a `version` field and migration functions per version.
 - Only sim state is saved, never nodes. The world is rebuilt from sim state on load.
 - `SaveSystem.register(key, capture, restore)` replaces a unique section provider; capture returns a dictionary and restore returns success.
-- `save_game(slot)` / `load_game(slot)` return error codes. Validated slots use a same-directory temporary file renamed over the saved JSON.
+- `save_game(slot)` / `load_game(slot)` return errors. Writes use `.tmp`, move the previous final to `.bak`, then publish to an absent final; loads prefer a valid final or recover a valid backup. This is a recoverable transaction, not a filesystem-atomic Windows overwrite or power-loss durability guarantee (Godot 4.7.2's Windows rename removes an existing destination before moving).
 - Missing sections are skipped; `MIGRATIONS` maps each old version to one upgrade step. Clock and GameState register state in `_ready`.
 - RNG seed/state and the master seed use decimal strings to preserve 64-bit integers through JSON parsing.
 
