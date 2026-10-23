@@ -1,0 +1,16 @@
+# Godot cache, editor state, and export credentials.
+.godot/
+.godot-test-user/
+export_credentials.cfg
+
+# Downloaded tools, check logs, and exported builds.
+.tools/
+exports/
+builds/
+
+# GUT's generated editor configuration and results.
+.gut_editor_config.json
+.gut_editor_shortcuts.cfg
+.gut_user_preferences.json
+gut_result*.json
+gut_result*.xml

@@ -1,0 +1,3 @@
+* text=auto eol=lf
+# Preserve upstream GUT whitespace without flagging it as first-party errors.
+addons/gut/** -whitespace

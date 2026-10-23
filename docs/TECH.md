@@ -1,7 +1,7 @@
 # Fool's Kitchen: Technical Plan
 
 ## 1. Engine
-- **Godot 4.x**, latest stable when the project is created. Record the exact version here and in `AGENTS.md` and do not upgrade mid-phase. Version: TBD (Phase 0).
+- **Godot 4.7.2 stable**, the latest stable when the project was created (verified 2026-10-23 against the [official download page](https://godotengine.org/download/linux/) and [official release](https://github.com/godotengine/godot-builds/releases/tag/4.7.2-stable)). Do not upgrade mid-phase.
 - **Language:** GDScript with static typing everywhere (`var x: int`, typed function signatures). No C#: it keeps one toolchain and avoids the .NET export setup.
 - **Renderer:** Compatibility (OpenGL). Godot's web export only supports this renderer. It runs on older family laptops, and low-poly flat shading doesn't need Forward+ effects. It can be switched to Forward+ later for a Steam build, but lighting and shaders would need a retune.
 - **Targets:** Windows desktop, plus a web build so family and friends can play from a link. Steam is optional, later.
@@ -53,8 +53,21 @@ docs/
 - Only sim state is saved, never nodes. The world is rebuilt from sim state on load.
 
 ### 2.5 Testing
-- **GUT** (Godot Unit Test) for `src/sim/` and `src/core/`.
-- `tools/check.sh` runs a headless import and parse, then the GUT tests. Every worker's diff must pass it.
+- **GUT 9.7.1** (Godot Unit Test) for `src/sim/` and `src/core/`, vendored unchanged from the official [v9.7.1 tag](https://github.com/bitwes/Gut/tree/v9.7.1/addons/gut), commit `aeb5d4f3f7f0a6c9b5e178876d6c99b791fda605`. Its [version table](https://github.com/bitwes/Gut/blob/v9.7.1/addons/gut/versions.json) supports Godot 4.7 through 4.7.999. The addon and bundled fonts retain their upstream licenses.
+- `tools/check.sh` runs a headless import, loads all first-party scripts to catch parse/compile errors (even unused scripts), then runs the GUT tests. It rejects logged engine/script errors as well as nonzero exits. Logs are retained in ignored `.tools/check.*/` directories. Every worker's diff must pass it.
+
+On a clean Linux clone (Bash, `curl`, `unzip`, and `sha256sum` required):
+
+```sh
+export GODOT="$(tools/get_godot.sh)"
+tools/check.sh
+```
+
+`get_godot.sh` downloads the pinned standard Linux editor for x86_64 or ARM64 into `.tools/`, checks its SHA-256 against the official release asset digest, and prints its absolute path. The standard editor supports `--headless`; no separate headless build is needed. `check.sh` accepts a single executable path in `$GODOT` (including spaces), or falls back to `godot` on PATH, and verifies the pinned version.
+
+For editor verification, open `project.godot` in Godot 4.7.2 and check the Output panel for errors and warnings. The main scene is an empty `Node3D`. The `Web` export preset uses `variant/thread_support=false`; export templates and an actual export are not required for the skeleton.
+
+`GameState` owns `customers`, `staff`, `events`, and `minigames` RNG streams. `reset_rngs(seed)` starts each from a seed derived from the run seed and system name; `get_rng(name)` returns that existing stream. Reproduction is scoped to the pinned engine. Clock, economy, persistence, and EventBus behavior will be defined by later issues; persistence stubs explicitly return `ERR_UNAVAILABLE`.
 
 ## 3. Art pipeline
 - **Style:** low-poly and flat-shaded, using a palette texture (one small gradient atlas shared by most models). This keeps the look consistent and draw calls low.

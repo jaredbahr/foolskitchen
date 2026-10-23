@@ -3,7 +3,8 @@
 This file is read by every coding agent (Codex, harness workers, Claude). Read `docs/DESIGN.md` and `docs/TECH.md` before starting a task.
 
 ## Project
-- A low-poly 3D restaurant tycoon game. Godot 4 (exact version: TBD in Phase 0), typed GDScript, Compatibility renderer (it must stay web-exportable).
+- A low-poly 3D restaurant tycoon game. Godot **4.7.2 stable**, typed GDScript, Compatibility renderer (it must stay web-exportable). Do not upgrade mid-phase.
+- GUT **9.7.1**, vendored in `addons/gut/` (Godot 4.7.x compatible).
 - Hobby project with a light process.
 
 ## Workflow

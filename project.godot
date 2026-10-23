@@ -1,0 +1,21 @@
+; Godot 4.7.2 stable. Edit project settings with this pinned editor.
+config_version=5
+
+[application]
+config/name="Fool's Kitchen"
+run/main_scene="res://src/world/Main.tscn"
+config/features=PackedStringArray("4.7", "GL Compatibility")
+
+[autoload]
+EventBus="*res://src/core/event_bus.gd"
+GameState="*res://src/core/game_state.gd"
+Clock="*res://src/core/clock.gd"
+Economy="*res://src/core/economy.gd"
+SaveSystem="*res://src/core/save_system.gd"
+
+[editor_plugins]
+enabled=PackedStringArray("res://addons/gut/plugin.cfg")
+
+[rendering]
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
