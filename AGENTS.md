@@ -39,6 +39,9 @@ This file is read by every coding agent (Codex, harness workers, Claude). Read `
 ## Files Godot generates
 - Commit `*.uid` and `*.import` files next to their sources. Never commit `.godot/` or `.tools/`.
 
+## Changelog (required)
+- Every PR adds at least one line under `## Unreleased` in `CHANGELOG.md`, in the right group (Players / Content / Under the hood), ending with `(#<PR number>)`. Use plain words a player would understand for player-facing changes. CI fails without it. The `no-changelog` label is for changelog-only fixes and reverts.
+
 ## Before you finish
 - Run `tools/check.sh` (created in Phase 0). It must pass.
 - Add or update tests for any sim logic you touched.

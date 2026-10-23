@@ -8,5 +8,6 @@ A low-poly 3D restaurant tycoon game (Godot 4). You run a restaurant: staff and 
 - TasteMaker audit: [docs/research/TASTEMAKER_AUDIT.md](docs/research/TASTEMAKER_AUDIT.md)
 - Tech plan: [docs/TECH.md](docs/TECH.md)
 - Roadmap: [docs/ROADMAP.md](docs/ROADMAP.md)
+- What's new: [CHANGELOG.md](CHANGELOG.md)
 - AI worker rules: [AGENTS.md](AGENTS.md)
 - Tasks: GitHub issues (template in `.github/ISSUE_TEMPLATE/task.md`)
