@@ -130,6 +130,9 @@ Multiplayer, a story or campaign, scenario mode (career milestones replace it), 
 | D3 | Fail state | No game over. Going broke triggers an automatic bank loan (4.5) | 2026-10-23 |
 | D4 | Owner control | Click-to-assign: pick a station, the owner walks there and works it | 2026-10-23 |
 | D5 | Engine | Godot 4.7.2, Compatibility renderer (TECH.md section 1) | 2026-10-23 |
+| D12 | First person | Management and building stay top-down. **V** walks the restaurant in first person as the owner. Cooking mini-games play in first person at the station. The sim keeps running throughout. | 2026-10-23 |
+| D13 | Art mood | Warm and cosy (wood, warm light). **Consistency beats detail:** one palette, one lighting setup, one level of model detail (TECH section 3) | 2026-10-23 |
+| D14 | Owner look | One fixed character for now | 2026-10-23 |
 | D11 | Platform | Both: a web build (play from a link) and a Windows download, from the same Godot project | 2026-10-23 |
 | D6 | Starting property | A rented hole-in-the-wall shop with 2 to 3 tables (not an outdoor food cart: indoor is simpler to simulate and to build) | 2026-10-23 |
 | D7 | Mode structure | Career mode only at first. A sandbox comes in Phase 5. No scenario mode. | 2026-10-23 |
@@ -137,7 +140,5 @@ Multiplayer, a story or campaign, scenario mode (career milestones replace it), 
 | D9 | Unit tests | An in-repo headless test runner, not GUT (no third-party download, nothing to version-match) | 2026-10-23 |
 | D10 | Agent movement | Grid pathfinding owned by the sim (`AStarGrid2D`), not the navmesh (TECH 2.3) | 2026-10-23 |
 
-## 7. Open questions (for Jared: taste)
-1. **First-person (the friend's request). Proposal:** management and building stay in the top-down camera. Press **V** to step into the owner's eyes and walk your restaurant in first person: admire your build, chat to guests, pet the cat. **Cooking mini-games play in first person** at the station (for example flipping a pan, chopping, plating). Staff and customers keep running while you do. Is this the right amount of first person, or should more of the game be playable that way?
-2. **Art mood:** warm and cosy (wood, warm lights) or bright and toy-like (saturated, Overcooked-style)? This decides the palette in Phase 4. The default is warm and cosy.
-3. **Owner look:** one fixed character, or a few choices (skin, hair, apron colour)?
+## 7. Open questions
+None right now.

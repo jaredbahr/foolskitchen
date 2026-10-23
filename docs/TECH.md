@@ -67,6 +67,11 @@ docs/
 - **Sim tests run without the scene tree** wherever possible (`RefCounted` classes, which can be built directly in tests).
 
 ## 3. Art pipeline
+**Mood: warm and cosy, and consistency comes first (D13).** Every asset must look like it came from the same hand. When in doubt, match the existing assets rather than adding detail.
+- **One palette:** a single shared palette texture (`assets/textures/palette.png`, locked in Phase 4) used by every model. No one-off colours or materials.
+- **One lighting setup:** a warm key light from the upper left, a soft cool fill, and warm interior lamps. Assets never bake their own lighting.
+- **One level of detail:** flat-shaded, bevel-free, chunky proportions. Small props don't get more polygons per metre than furniture.
+- **Placeholders follow the palette too,** so early builds already look consistent.
 - **Style:** low-poly and flat-shaded, using a palette texture (one small gradient atlas shared by most models). This keeps the look consistent and draw calls low.
 - **Tools:** Blender, and Tripo AI for drafts that are then cleaned up in Blender.
 - **Format:** `.glb` (glTF binary), 1 unit = 1 metre, Y-up, origin at the base centre of the footprint, facing -Z.
