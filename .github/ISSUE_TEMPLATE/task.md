@@ -20,6 +20,7 @@ The design or tech doc sections to read, and the files that already exist and ma
 - Things that are out of scope and must not be touched.
 
 ## Done when
+- [ ] A `CHANGELOG.md` entry under `## Unreleased`.
 - [ ] Acceptance criteria that can be checked (a test, a visible behaviour, `tools/check.sh` green).
 
 ## Report back (in the PR body)
