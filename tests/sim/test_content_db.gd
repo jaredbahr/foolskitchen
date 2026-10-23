@@ -30,6 +30,10 @@ func test_lists_are_sorted_and_do_not_expose_index_arrays() -> void:
 	for definition: RecipeDef in db.recipes():
 		recipe_ids.append(definition.id)
 	assert_eq(recipe_ids, [&"burger", &"grilled_cheese", &"tomato_soup"])
+	var item_ids: Array[StringName] = []
+	for definition: ItemDef in db.items():
+		item_ids.append(definition.id)
+	assert_eq(item_ids, [&"chair", &"door", &"fridge", &"pass_counter", &"potted_plant", &"prep_counter", &"stove", &"table_2"])
 	var copy: Array[ItemDef] = db.items()
 	copy.clear()
 	assert_eq(db.items().size(), 8)

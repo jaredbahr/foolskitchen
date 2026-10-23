@@ -64,7 +64,7 @@ func ingredients() -> Array[IngredientDef]:
 	var result: Array[IngredientDef] = []
 	var ids: Array[StringName] = []
 	ids.assign(_ingredients.keys())
-	ids.sort()
+	ids.sort_custom(_id_before)
 	for id: StringName in ids:
 		result.append(_ingredients[id])
 	return result
@@ -74,7 +74,7 @@ func recipes() -> Array[RecipeDef]:
 	var result: Array[RecipeDef] = []
 	var ids: Array[StringName] = []
 	ids.assign(_recipes.keys())
-	ids.sort()
+	ids.sort_custom(_id_before)
 	for id: StringName in ids:
 		result.append(_recipes[id])
 	return result
@@ -84,7 +84,7 @@ func items() -> Array[ItemDef]:
 	var result: Array[ItemDef] = []
 	var ids: Array[StringName] = []
 	ids.assign(_items.keys())
-	ids.sort()
+	ids.sort_custom(_id_before)
 	for id: StringName in ids:
 		result.append(_items[id])
 	return result
@@ -143,6 +143,11 @@ static func validate_definitions(ingredient_defs: Array[IngredientDef], recipe_d
 			if step.station_type.is_empty() or not stations.has(step.station_type):
 				errors.append("recipe '%s': step[%d] has unknown station '%s'" % [definition.id, step_index, step.station_type])
 	return errors
+
+
+## StringName ordering follows interned identities; content lists need lexical IDs.
+static func _id_before(first: StringName, second: StringName) -> bool:
+	return String(first) < String(second)
 
 
 static func _check_id(id: StringName, kind: String, seen: Dictionary[StringName, bool], errors: PackedStringArray) -> void:
