@@ -3,7 +3,8 @@
 #   1. headless import (builds the .godot cache, catches broken resources)
 #   2. compile check of every .gd script, with autoloads loaded (tools/parse_all.gd)
 #   3. unit tests (tools/run_tests.gd)
-# Any "SCRIPT ERROR", "Parse Error" or "ERROR:" line in the output fails the check.
+# Any "SCRIPT ERROR", "Parse Error" or "ERROR:" line in the output fails the check, so code
+# paths exercised by tests must not push_error() on purpose (test the return value instead).
 # Each step has a 5-minute timeout so a hung script fails instead of blocking CI.
 # Godot binary: $GODOT, else .tools/ (from tools/get_godot.sh), else `godot` on PATH.
 set -uo pipefail
@@ -25,7 +26,8 @@ has_errors() { grep -E "SCRIPT ERROR|Parse Error|^ERROR:|^\s*ERROR:" "$1" >/dev/
 
 echo "== import"
 timeout 300 "$GODOT" --headless --path . --import >"$log" 2>&1
-if has_errors "$log"; then cat "$log"; echo "FAIL: import"; fail=1; else echo "ok"; fi
+code=$?
+if [[ $code -ne 0 ]] || has_errors "$log"; then cat "$log"; echo "FAIL: import"; fail=1; else echo "ok"; fi
 
 echo "== parse"
 timeout 300 "$GODOT" --headless --path . --script tools/parse_all.gd >"$log" 2>&1

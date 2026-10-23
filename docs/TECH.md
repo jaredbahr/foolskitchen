@@ -62,7 +62,8 @@ docs/
 
 ### 2.5 Testing
 - **In-repo runner, not GUT** (decision D9). `tools/run_tests.gd` finds `tests/**/test_*.gd`, runs every `test_*` method, and exits non-zero on failure. Tests extend `tests/test_case.gd`, which provides `assert_eq`, `assert_true`, `assert_false`, `assert_almost_eq` and `assert_null`. No downloads and nothing to version-match. The sim is pure logic, so it doesn't need mocks.
-- `tools/check.sh` runs a headless import, then a script parse check, then the tests. Every diff must pass it.
+- A test also fails if it raises an engine or script error (a null call, `push_error`), even when its asserts pass. So code paths exercised by tests report problems through return values, not `push_error`.
+- `tools/check.sh` runs a headless import, then loads every script and resource (`tools/parse_all.gd`, which also catches scenes pointing at missing files), then the tests. Untyped declarations are errors (`untyped_declaration=2`). Every diff must pass it.
 - **Sim tests run without the scene tree** wherever possible (`RefCounted` classes, which can be built directly in tests).
 
 ## 3. Art pipeline

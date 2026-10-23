@@ -1,7 +1,8 @@
 extends SceneTree
 ## Headless test runner. Finds res://tests/**/test_*.gd, runs every test_*
 ## method on a fresh instance per test, prints a summary and exits 1 on any
-## failure. Usage: godot --headless --path . --script tools/run_tests.gd
+## failure. A test also fails if it raises an engine or script error (a null call,
+## push_error) even when its asserts pass. Usage: godot --headless --path . --script tools/run_tests.gd
 ## Optional filter: ... --script tools/run_tests.gd -- --filter=clock
 
 const TEST_ROOT: String = "res://tests"
@@ -12,8 +13,14 @@ func _initialize() -> void:
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--filter="):
 			filter = arg.trim_prefix("--filter=")
+	var errors := ErrorCounter.new()
+	OS.add_logger(errors)
 	var files := _find_tests(TEST_ROOT)
 	files.sort()
+	if files.is_empty():
+		print("FAIL: no test files found under %s" % TEST_ROOT)
+		quit(1)
+		return
 	var passed := 0
 	var failed := 0
 	for path in files:
@@ -34,10 +41,13 @@ func _initialize() -> void:
 				failed += 1
 				break
 			var tc: TestCase = t
+			var errors_before := errors.count()
 			tc.before_each()
 			tc.call(name)
 			tc.after_each()
 			var failures := tc.take_failures()
+			if errors.count() > errors_before:
+				failures.append("raised %d engine/script error(s), see the log above" % (errors.count() - errors_before))
 			if failures.is_empty():
 				passed += 1
 			else:
