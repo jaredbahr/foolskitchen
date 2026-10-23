@@ -51,7 +51,13 @@ func test_recursive_resource_discovery_returns_sorted_original_tres_names() -> v
 	var errors: PackedStringArray = []
 	var paths: PackedStringArray = ContentDB._resource_paths("res://data", errors)
 	assert_eq(errors.size(), 0)
-	assert_eq(paths.size(), 18)
+	# Count only the content folders, so other data (layouts, ...) can grow freely.
+	var content_paths := 0
+	for path: String in paths:
+		if path.begins_with("res://data/ingredients/") or path.begins_with("res://data/recipes/") \
+				or path.begins_with("res://data/items/"):
+			content_paths += 1
+	assert_eq(content_paths, 18)
 	assert_true(paths.has("res://data/ingredients/bun.tres"))
 	assert_true(paths.has("res://data/recipes/burger.tres"))
 	assert_true(paths.has("res://data/items/table_2.tres"))
