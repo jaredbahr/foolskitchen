@@ -29,8 +29,16 @@ extends Node3D
 @export_range(0.1, 30.0, 0.1) var rotation_response: float = 10.0
 
 @export_group("Test floor")
-## The floor and rig share this scene-local material, without cross-node paths.
-@export var grid_material: ShaderMaterial
+## The containing scene supplies its actual floor node. Exporting the material
+## itself would duplicate a scene-local Resource across the rig scene boundary.
+@export var grid_floor: MeshInstance3D
+
+## Always use the material rendered by this floor instance, never a copied one.
+var grid_material: ShaderMaterial:
+	get:
+		if not is_instance_valid(grid_floor):
+			return null
+		return grid_floor.material_override as ShaderMaterial
 
 var grid_visible: bool = true
 var _camera: Camera3D
@@ -194,5 +202,6 @@ func _apply_camera() -> void:
 
 
 func _apply_grid() -> void:
-	if grid_material != null:
-		grid_material.set_shader_parameter("grid_visible", grid_visible)
+	var material: ShaderMaterial = grid_material
+	if material != null:
+		material.set_shader_parameter("grid_visible", grid_visible)

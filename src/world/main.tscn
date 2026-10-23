@@ -48,5 +48,5 @@ material_override = SubResource("ShaderMaterial_grid")
 position = Vector3(0, 0.875, 0)
 mesh = SubResource("CapsuleMesh_reference")
 
-[node name="CameraRig" parent="." instance=ExtResource("1_camera")]
-grid_material = SubResource("ShaderMaterial_grid")
+[node name="CameraRig" parent="." node_paths=PackedStringArray("grid_floor") instance=ExtResource("1_camera")]
+grid_floor = NodePath("../TestFloor")

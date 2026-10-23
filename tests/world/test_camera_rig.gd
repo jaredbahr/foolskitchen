@@ -1,5 +1,5 @@
 extends TestCase
-## Source-level camera behavior checks; visual feel still requires a playtest.
+## Camera behavior checks; visual feel still requires a playtest.
 
 const RigScene: PackedScene = preload("res://src/world/camera_rig.tscn")
 const MainScene: PackedScene = preload("res://src/world/main.tscn")
@@ -125,7 +125,36 @@ func test_key_press_rotates_once_and_g_toggles_shared_grid_material() -> void:
 	assert_false(rig.grid_visible)
 	assert_eq(rig.grid_material.get_shader_parameter("grid_visible"), false)
 	var floor: MeshInstance3D = main.get_node("TestFloor") as MeshInstance3D
+	assert_true(rig.grid_floor == floor, "the exported node binds to the containing scene's floor")
 	assert_true(floor.material_override == rig.grid_material)
+	var material: ShaderMaterial = floor.material_override as ShaderMaterial
+	assert_eq(material.get_shader_parameter("grid_visible"), false, "G changes the material actually rendered by the floor")
+
+
+func test_grid_material_is_shared_within_each_main_and_isolated_between_mains() -> void:
+	var first: Node3D = MainScene.instantiate() as Node3D
+	var second: Node3D = MainScene.instantiate() as Node3D
+	_nodes.append(first)
+	_nodes.append(second)
+	var first_rig: CameraRig = first.get_node("CameraRig") as CameraRig
+	var second_rig: CameraRig = second.get_node("CameraRig") as CameraRig
+	var first_floor: MeshInstance3D = first.get_node("TestFloor") as MeshInstance3D
+	var second_floor: MeshInstance3D = second.get_node("TestFloor") as MeshInstance3D
+	first_rig.reset_view()
+	second_rig.reset_view()
+	assert_true(first_rig.grid_floor == first_floor)
+	assert_true(second_rig.grid_floor == second_floor)
+	assert_true(first_rig.grid_material == first_floor.material_override)
+	assert_true(second_rig.grid_material == second_floor.material_override)
+	assert_true(first_floor.material_override != second_floor.material_override,
+		"each main instance retains its own scene-local material")
+	first_rig.toggle_grid()
+	var first_material: ShaderMaterial = first_floor.material_override as ShaderMaterial
+	var second_material: ShaderMaterial = second_floor.material_override as ShaderMaterial
+	assert_eq(first_material.get_shader_parameter("grid_visible"), false)
+	assert_eq(second_material.get_shader_parameter("grid_visible"), true,
+		"toggling one scene cannot change another scene's grid")
+	assert_true(second_rig.grid_visible)
 
 
 func test_default_scene_has_20_metre_floor_and_1_75_metre_reference() -> void:
