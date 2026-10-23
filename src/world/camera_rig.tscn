@@ -1,0 +1,16 @@
+[gd_scene load_steps=2 format=3 uid="uid://8lo61morncho"]
+
+[ext_resource type="Script" path="res://src/world/camera_rig.gd" id="1_rig"]
+
+[node name="CameraRig" type="Node3D"]
+rotation = Vector3(0, 0.7853982, 0)
+script = ExtResource("1_rig")
+
+[node name="Camera3D" type="Camera3D" parent="."]
+position = Vector3(0, 32.65986, 23.09401)
+rotation = Vector3(-0.9553166, 0, 0)
+projection = 1
+current = true
+size = 26.0
+fov = 30.0
+far = 200.0

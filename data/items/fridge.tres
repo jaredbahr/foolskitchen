@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="ItemDef" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/sim/content/item_def.gd" id="1_script"]
+
+[resource]
+script = ExtResource("1_script")
+id = &"fridge"
+display_name = "Fridge"
+category = 4
+footprint = Vector2i(2, 1)
+solid = true
+work_cells = Array[Vector2i]([Vector2i(0, -1)])
+seat_cells = Array[Vector2i]([])
+station_type = &"fridge"
+capacity = 20
+quality_bonus = 0.0
+price = 80
+charm = 0
+theme_tags = Array[StringName]([&"diner"])
+placeholder_color = Color(0.83, 0.79, 0.67, 1)

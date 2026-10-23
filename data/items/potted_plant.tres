@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="ItemDef" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/sim/content/item_def.gd" id="1_script"]
+
+[resource]
+script = ExtResource("1_script")
+id = &"potted_plant"
+display_name = "Potted plant"
+category = 6
+footprint = Vector2i(1, 1)
+solid = true
+work_cells = Array[Vector2i]([])
+seat_cells = Array[Vector2i]([])
+station_type = &""
+capacity = 1
+quality_bonus = 0.0
+price = 15
+charm = 2
+theme_tags = Array[StringName]([&"diner"])
+placeholder_color = Color(0.39, 0.48, 0.27, 1)
