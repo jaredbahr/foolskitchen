@@ -1,0 +1,104 @@
+class_name DayReport
+extends RefCounted
+## Plain end-of-day results, independent of the ledger, clock and scene tree.
+
+var day: int = 1
+var income: Dictionary = {}
+var costs: Dictionary = {}
+var dishes_sold: Dictionary = {}
+var customers_served: int = 0
+var customers_lost: int = 0
+var leave_reasons: Dictionary = {}
+var reviews: Array[String] = []
+
+
+## Returns income across all categories in whole currency units.
+func total_income() -> int:
+	return _sum(income)
+
+
+## Returns costs as a positive amount in whole currency units.
+func total_costs() -> int:
+	return _sum(costs)
+
+
+## Returns income minus costs; a loss is negative.
+func profit() -> int:
+	return total_income() - total_costs()
+
+
+## Returns the most-sold recipe, breaking ties by its alphabetical id.
+func best_dish() -> StringName:
+	return _highest_count(dishes_sold)
+
+
+## Returns the leading departure reason, or an empty id if there are none.
+func top_leave_reason() -> StringName:
+	return _highest_count(leave_reasons)
+
+
+## Returns a detached JSON-compatible snapshot using string keys.
+func to_dict() -> Dictionary:
+	return {
+		"day": day,
+		"income": _string_counts(income),
+		"costs": _string_counts(costs),
+		"dishes_sold": _string_counts(dishes_sold),
+		"customers_served": customers_served,
+		"customers_lost": customers_lost,
+		"leave_reasons": _string_counts(leave_reasons),
+		"reviews": reviews.duplicate(),
+	}
+
+
+## Restores a snapshot, including JSON's string keys and numeric values.
+static func from_dict(data: Dictionary) -> DayReport:
+	var report: DayReport = DayReport.new()
+	report.day = int(data.get("day", 1))
+	report.income = _name_counts(data.get("income", {}))
+	report.costs = _name_counts(data.get("costs", {}))
+	report.dishes_sold = _name_counts(data.get("dishes_sold", {}))
+	report.customers_served = int(data.get("customers_served", 0))
+	report.customers_lost = int(data.get("customers_lost", 0))
+	report.leave_reasons = _name_counts(data.get("leave_reasons", {}))
+	var saved_reviews: Variant = data.get("reviews", [])
+	if saved_reviews is Array:
+		for quote: Variant in saved_reviews:
+			report.reviews.append(str(quote))
+	return report
+
+
+static func _sum(counts: Dictionary) -> int:
+	var total: int = 0
+	for value: Variant in counts.values():
+		total += int(value)
+	return total
+
+
+static func _highest_count(counts: Dictionary) -> StringName:
+	var best: StringName = &""
+	var best_count: int = 0
+	var found: bool = false
+	for key: Variant in counts:
+		var id: StringName = StringName(str(key))
+		var count: int = int(counts[key])
+		if not found or count > best_count or (count == best_count and String(id) < String(best)):
+			best = id
+			best_count = count
+			found = true
+	return best
+
+
+static func _string_counts(counts: Dictionary) -> Dictionary:
+	var result: Dictionary = {}
+	for key: Variant in counts:
+		result[str(key)] = int(counts[key])
+	return result
+
+
+static func _name_counts(value: Variant) -> Dictionary:
+	var result: Dictionary = {}
+	if value is Dictionary:
+		for key: Variant in value:
+			result[StringName(str(key))] = int(value[key])
+	return result
