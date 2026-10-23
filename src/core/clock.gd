@@ -6,7 +6,7 @@ extends Node
 const Phase: Dictionary = SimClock.Phase
 
 ## Sim ticks per in-game second.
-const TICKS_PER_SECOND: int = 10
+const TICKS_PER_SECOND: int = SimClock.TICKS_PER_SECOND
 const MAX_TICKS_PER_FRAME: int = 40
 
 ## Allowed speed multipliers. 0 = paused.

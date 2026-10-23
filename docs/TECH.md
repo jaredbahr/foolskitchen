@@ -65,6 +65,32 @@ docs/
   - **No progress for N ticks** (the agent hasn't moved and its task step hasn't advanced) triggers a re-path. A second failure drops the task.
   - A path that is blocked after a build edit makes every affected agent re-plan in the same tick.
   - An **invariant test** runs several seeded sim days headless and asserts: every customer leaves, no task stays claimed past its timeout, and no agent is stuck for more than N ticks.
+- **Agent API (FK-013, `src/sim/agents/`, `src/sim/sim_world.gd`):**
+  - `SimWorld(grid, clock)`:
+    - `advance()` runs the clock, then every agent in id order. `now` is the world tick.
+    - `add_agent()`, `agent(id)`, and `log_event()` / `event_log` for the overlay.
+    - It sets `needs_repath` on agents whose path crosses `cells_changed`, and cancels tasks aimed at a removed item.
+  - `TaskBoard`:
+    - `post(task, now)`, `claim`, `drop(task, reason)` (reopens; fails after `MAX_DROPS` = 3), `complete`, `cancel`, `open_tasks()`/`claimed_tasks()` (in id order).
+    - Signals: `task_posted`, `task_completed`, `task_failed(task, reason)`, `task_dropped`. Posters listen to `task_completed` and `task_failed`.
+  - `SimTask(kind, role, label)`: `priority` 0–3, `timeout_ticks` (default 600), `payload` for the poster's data, and `steps`.
+  - `TaskStep`:
+    - `go_to_item(item_id, label, seat)` reserves a free work cell (or seat) and walks there.
+    - `go_to_cell(cell, label)`.
+    - `work(ticks, label, on_done)`. `on_done(agent) -> bool`; false cancels the task with `step_failed`.
+  - `SimAgent` (movement base, which customers will extend): `cell`, `path`, `path_index`, `move_progress` (0–1 toward `next_cell()`, which the world view lerps), `set_destination`, `step_move`, `why()`.
+  - `StaffAgent(role, skill)`:
+    - `skills` and `priorities` per role. Claim score = (priority+1) × role priority × skill ÷ (1 + distance).
+    - Work speed is 0.6 + 0.1 × skill.
+    - Before waiting for a station, it releases the one it held, so two workers can't deadlock.
+  - **The board heals itself too** (`SimWorld._heal_board`, every tick): a claimed task whose claimant is gone, or that is more than one tick past its timeout, is dropped. An open task aimed at an item that no longer exists fails with `target_gone`. `remove_agent()` makes the agent give back its task and cells.
+  - **A dropped task restarts at step 0** when it's claimed again, so `on_done` callbacks must be safe to run twice (check or record progress in `task.payload`).
+  - **Proven by** `tests/sim/test_agent_soak.gd`: 8,000 ticks of deliberate chaos.
+    - **The chaos:** random blockers dropped on and around 5 staff, a station boxed in, stations removed and re-placed, workers leaving mid-task, and tasks whose timeout is shorter than their work.
+    - **Checked every tick:** no task is held past its timeout; every claimed task's holder is alive and working on it; no reservation is held by an idle or missing agent; nobody is stuck.
+    - **At the end:** the board drains to zero, and every healing path (timeout, agent removed, target gone, unreachable) must have fired at least once.
+    - **Mutation check:** with both the agent-level and board-level timeouts switched off, the test fails.
+    - Run it again after any change to agents.
 - **Customers:** a state machine (`Arriving`, `Queued`, `Seated`, `Ordering`, `Waiting`, `Eating`, `Paying`, `Leaving`, `Left`). Every state has a maximum duration and an exit path.
 - **Debug overlay (F3):** paths, claimed tasks, agent states and the task board, from Phase 1 onward.
 

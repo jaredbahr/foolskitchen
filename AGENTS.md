@@ -33,7 +33,8 @@ This file is read by every coding agent (Codex, harness workers, Claude). Read `
 4. Cross-system communication goes through `EventBus` signals.
 5. No global `randf()`/`randi()`. Use the system's seeded RNG from `GameState`.
 6. No runtime network calls, and no AI or API calls in the game.
-7. Nothing that breaks the web export: no threads that need special headers, no C#, no GDExtension unless an issue says so.
+7. Connect signals to **methods**, not lambdas that use `self`, when the signal's owner is (directly or indirectly) owned by `self`. Such a lambda keeps both objects alive (a reference cycle), and the leak warning at exit fails `check.sh`.
+8. Nothing that breaks the web export: no threads that need special headers, no C#, no GDExtension unless an issue says so.
 
 ## Files Godot generates
 - Commit `*.uid` and `*.import` files next to their sources. Never commit `.godot/` or `.tools/`.
