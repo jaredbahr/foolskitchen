@@ -47,6 +47,16 @@ docs/
 - **The sim owns movement.** Pathfinding runs in `src/sim/` on the 0.5 m build grid using `AStarGrid2D` (a `RefCounted`, so no nodes are involved). Agents have a grid position and a path. Visual nodes in `world/` only interpolate between grid points and play animations.
   - Why not `NavigationAgent3D`: it lives in the scene tree. That would break headless tests, determinism and background simulation of other sites (TECH 2.2 rule 1).
   - Diagonal moves are allowed, but corners can't be cut. Furniture marks cells solid, and stations expose "work cells" where a worker stands.
+- **Grid API (FK-012, `src/sim/grid/`):**
+  - `GridMath`: `CELL_SIZE` 0.5 m. `rotate_cell(cell, footprint, quarter_turns)` turns clockwise seen from above, mapping one turn `(x, y) → (d-1-y, x)`. `rotated_footprint`, `cell_to_world`/`world_to_cell`, `path_cost`. Cell x → world +X, cell y → world +Z, and an unrotated item faces −Y (world −Z).
+  - `SimGrid`:
+    - `from_ascii(rows)`: `.` floor, `#` wall, `E` street entry, space for outside.
+    - `place(footprint, origin, turns, solid, work_cells, seat_cells, def) -> PlacedItem` (or null), with `can_place` returning `PlaceResult`.
+    - `remove(id)`, `item(id)`, `item_at(cell)`, `items()` (in placement order), `entries()`, `is_walkable(cell)`.
+    - `find_path(a, b) -> Array[Vector2i]` includes both ends, is empty when there's no path, and lets an agent walk out of a cell that just became blocked. `find_path_to_any(a, goals)`.
+    - `cells_changed(cells)` fires on every walkability change.
+  - `PlacedItem`: absolute `cells`, `work_cells` and `seat_cells`. One-agent reservations: `reserve`, `release`, `release_all`, `reserved_by`, `free_work_cell`, `free_seat_cell`.
+  - Agents don't block each other.
 - **Task board:** stations, tables and orders post tasks (`take_order`, `cook`, `deliver`, `bus_table`, `clean`, `seat`). Each idle agent scores the open tasks: role priority x skill / distance, and claims the best one. Claims are exclusive.
 - **Self-healing (fixes TasteMaker's stuck-AI complaint):**
   - Every task has a timeout. When it expires, the agent drops it, the task goes back on the board, and the drop is logged.
