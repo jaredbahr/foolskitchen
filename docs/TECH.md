@@ -3,13 +3,15 @@
 ## 1. Engine
 - **Godot 4.x**, latest stable when the project is created. Record the exact version here and in `AGENTS.md` and do not upgrade mid-phase. Version: TBD (Phase 0).
 - **Language:** GDScript with static typing everywhere (`var x: int`, typed function signatures). No C#: it keeps one toolchain and avoids the .NET export setup.
-- **Renderer:** Forward+ for desktop. Recheck at Phase 0 if a web build is wanted.
-- **Targets:** Windows desktop first. Web and Steam are later, optional.
+- **Renderer:** Compatibility (OpenGL). Godot's web export only supports this renderer. It runs on older family laptops, and low-poly flat shading doesn't need Forward+ effects. It can be switched to Forward+ later for a Steam build, but lighting and shaders would need a retune.
+- **Targets:** Windows desktop, plus a web build so family and friends can play from a link. Steam is optional, later.
+- **CI and AI workers:** workers run in Linux containers. Download the official Godot Linux binary (the version pinned above) in the environment's setup script so `tools/check.sh` can run headless.
 
 ### Why Godot (decision record)
 - Pathfinding, UI, animation, resources and export are built in. Three.js would mean building them ourselves.
 - Scenes (`.tscn`) and resources (`.tres`) are text, so AI workers can read and change them.
 - Free and MIT-licensed.
+- **Re-evaluated 2026-10-23** against Unity, Three.js and Babylon.js for an AI-worker workflow. Unity needs licence activation and a heavy editor install for headless CI, and its scenes are hard to edit as text. Three.js and Babylon.js are the easiest for AI to write and test, but the tycoon systems would have to be built ourselves. Godot can be tested headless, its files are text, and it exports to the web.
 - **Risk:** AI models sometimes write Godot 3 syntax. Mitigated by the Godot 3 to 4 table in `AGENTS.md` and by a checks script that fails on parse errors.
 
 ## 2. Architecture

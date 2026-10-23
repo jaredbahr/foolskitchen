@@ -3,7 +3,7 @@
 This file is read by every coding agent (Codex, harness workers, Claude). Read `docs/DESIGN.md` and `docs/TECH.md` before starting a task.
 
 ## Project
-- A low-poly 3D restaurant tycoon game. Godot 4 (exact version: TBD in Phase 0), typed GDScript.
+- A low-poly 3D restaurant tycoon game. Godot 4 (exact version: TBD in Phase 0), typed GDScript, Compatibility renderer (it must stay web-exportable).
 - Hobby project with a light process.
 
 ## Workflow
@@ -33,6 +33,7 @@ This file is read by every coding agent (Codex, harness workers, Claude). Read `
 4. Cross-system communication goes through `EventBus` signals.
 5. No global `randf()`/`randi()`. Use the system's seeded RNG from `GameState`.
 6. No runtime network calls, and no AI or API calls in the game.
+7. Nothing that breaks the web export: no threads that need special headers, no C#, no GDExtension unless an issue says so.
 
 ## Before you finish
 - Run `tools/check.sh` (created in Phase 0). It must pass.

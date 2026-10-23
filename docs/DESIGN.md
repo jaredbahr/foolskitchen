@@ -35,7 +35,7 @@ Plan (menu, prices, staff, layout)
 ### 4.1 Simulation (auto mode)
 - **Customers:** arrive based on reputation, time of day, theme and price level. They queue, are seated, order, wait, eat, pay, review and leave. Patience drops while they wait. They leave if it runs out.
 - **Staff roles:** chef, server, host, cleaner, and later dishwasher and manager. Each has skill, speed, wage and mood. They pick tasks from a shared task board (see TECH.md).
-- **The owner (you):** an avatar who can be assigned to a station to cover a gap. This is also where mini-games are launched.
+- **The owner (you):** an avatar you click-to-assign to a station to cover a gap (D4). He uses the same task system as staff. Mini-games are launched from his station.
 - **Kitchen flow:** order ticket, then prep, cook and plate stations, then pass, then table. Stations have capacity and a quality modifier.
 - **Cleanliness:** dirty tables and floors lower satisfaction. Cleaners or the owner fix it.
 
@@ -92,10 +92,11 @@ Multiplayer, a story or campaign, character creation beyond basic choices, mod s
 |---|---|---|---|
 | D1 | Game name | "Fool's Kitchen" (working title, fine for now) | 2026-10-23 |
 | D2 | How the day ends | A timer, then last orders: no new customers, and those already seated finish | 2026-10-23 |
-| D3 | Fail state | Game over on bankruptcy (rule below) | 2026-10-23 |
+| D3 | Fail state | No game over. Going broke triggers an automatic bank loan (rule below) | 2026-10-23 |
+| D4 | Owner control | Click-to-assign: pick a station, the owner walks there and works it. Mini-games launch from his station. | 2026-10-23 |
+| D5 | Engine | Godot 4, Compatibility renderer (see TECH.md section 1) | 2026-10-23 |
 
-**Bankruptcy rule (draft, tune in Phase 3):** if cash is below 0 at the end of 3 days in a row, it's game over. A warning shows from the first negative day. The save is kept, so you can reload an earlier day.
+**Loan rule (draft, tune in Phase 3):** if cash ends a day below 0, the bank covers it with a loan at interest. Repayments come out of daily income. While a loan is open, you can't buy property or expensive upgrades. There is no game over.
 
 ## 7. Open questions
-1. **Owner control.** Is the owner click-to-assign (pick a station, he walks there and works it), or steered directly with WASD or clicks?
-   - Recommendation: click-to-assign for Phase 1. It fits auto mode and reuses the staff task system. Direct control can be added later as a "take over" toggle without rewriting anything. Decide before Phase 3, when the mini-games are tied to the owner.
+None right now.
