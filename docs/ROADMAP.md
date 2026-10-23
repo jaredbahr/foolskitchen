@@ -1,57 +1,79 @@
 # Fool's Kitchen: Roadmap
 
-Hobby pace: there are no dates, only exit criteria. Each phase ends with a playable build. Placeholder art is fine until Phase 4. Each checkbox becomes one or more GitHub issues when its phase starts.
+Hobby pace: there are no dates, only exit criteria. Each phase ends with a playable build. Placeholder art (primitive shapes, free CC0 Kenney packs) is fine until Phase 4.
+
+## How work flows
+- **Claude (director):** keeps the design, breaks phases into issues, builds the foundation pieces other work depends on, and reviews every PR against its issue and `AGENTS.md`.
+- **OpenAI workers:** take issues labelled `worker-ready`. One issue per PR, `Closes #N`.
+- **Jared:** taste and lore calls, playtests each phase build, merges or asks for changes.
+- Each phase has a tracking issue (`Phase N: ...`) that lists its task issues.
 
 ## Phase 0: Foundation
-- [ ] Install Godot 4 (latest stable) and record the version in `docs/TECH.md` and `AGENTS.md`.
-- [ ] Create the project skeleton (the folder layout in TECH.md 2.1), autoloads as stubs, and GUT installed.
-- [ ] `tools/check.sh` (headless parse and import, plus GUT) passing.
-- [ ] An isometric camera (pan, zoom, rotate in 90 degree steps) over a flat test floor.
+- [ ] Project skeleton, autoload stubs, test runner, `check.sh`, `get_godot.sh` (FK-001, Claude)
+- [ ] CI on every PR (FK-003)
+- [ ] Isometric camera and test floor (FK-002)
 
-**Exit criteria:** the project opens, the camera works, and the checks are green.
+**Exit criteria:** the project opens, the camera works, CI is green.
 
-## Phase 1: One kitchen, one day (MVP)
-- [ ] Clock with day start and end, and speeds of pause, 1x, 2x and 4x.
-- [ ] A fixed layout: a door, 4 tables, 1 stove, 1 counter.
-- [ ] Customers: arrive, sit, order, wait (patience), eat, pay, leave.
-- [ ] One chef and one server on the task board.
-- [ ] 3 recipes and a simple ingredient stock.
-- [ ] HUD: money, time, customer moods. A summary screen at the end of the day.
-- [ ] Save and load.
+## Phase 1: One shop, one day (the vertical slice)
+The Tier 1 hole-in-the-wall: 1 door, 3 two-seat tables, 1 fridge, 1 prep counter, 1 stove, 1 pass. One cook, one server, and the owner. 3 recipes.
 
-**Exit criteria:** you can play 3 days in a row, money goes up or down for understandable reasons, and the sim unit tests are green.
+- [ ] Sim clock: a fixed tick, the day phases (morning, open, last orders, closed), speed controls
+- [ ] Content resources: `Recipe`, `Ingredient`, `ItemDef` classes, plus the first data files
+- [ ] Grid and pathfinding: `SimGrid` on `AStarGrid2D`, item footprints and work cells
+- [ ] Task board and the staff agent: claim, timeout, self-heal
+- [ ] Customer agent: the state machine, patience, ordering, eating, paying, review
+- [ ] Kitchen chain: ticket, fetch, prep, cook, pass, deliver, bus
+- [ ] Economy: stock, cash, a daily profit-and-loss total
+- [ ] World view: a fixed shop scene, agent visuals interpolating sim positions, placeholder meshes
+- [ ] HUD: cash, clock, speed buttons, customer mood icons. Click an agent to see the "why" readout.
+- [ ] Evening report screen
+- [ ] Owner click-to-assign
+- [ ] Save and load (JSON, versioned)
+- [ ] Debug overlay (F3)
+- [ ] Sim invariant test (several seeded days, no stuck agents, every customer leaves)
 
-## Phase 2: Build mode and menu
-- [ ] Grid placement, rotation, selling and moving items, with a navmesh rebake.
-- [ ] Path validation warnings.
-- [ ] A menu screen: choose dishes and set prices.
-- [ ] Shops: an ingredient market and a furniture catalogue.
-- [ ] Hiring screen, wages, and staff skill.
+**Exit criteria:** you can play 3 days in a row. Money goes up or down for reasons you can see. The invariant test is green. Jared has playtested it.
 
-**Exit criteria:** you can redesign the restaurant and see the effect on throughput.
+## Phase 2: Build mode and running the shop
+- [ ] Grid placement (move, rotate, sell) with live path warnings, closed-only structural edits
+- [ ] Blueprints (save and stamp)
+- [ ] Menu screen: choose dishes, set prices against the standard price
+- [ ] Shops: ingredient market and furniture catalogue, auto-reorder
+- [ ] Hiring pool, traits, wages, the priority matrix
+- [ ] Plate cycle (sink, dirty plates)
+- [ ] Cleanliness and the cleaner role
+- [ ] Trays (carry capacity upgrade)
+
+**Exit criteria:** you can redesign the shop and see throughput change. Staff choices visibly matter.
 
 ## Phase 3: Progression
-- [ ] Owner XP and levels, and reputation stars from reviews.
-- [ ] Unlock tables for recipes and items.
-- [ ] Property tiers 1 to 3 (cart, diner, bistro), with buy or rent.
-- [ ] Themes: a theme score and its effects.
-- [ ] The first 3 mini-games (chop, plating, haggle).
+- [ ] Owner XP, level, reputation stars, review quotes
+- [ ] Property Tiers 1 to 3 (hole-in-the-wall, diner, bistro), rent or buy, moving up
+- [ ] Unlock tables. The restaurant cat (Tier 2). The restroom need (Tier 2).
+- [ ] Decor ambience (diminishing returns, variety) and themes
+- [ ] Customer types
+- [ ] Career milestones
+- [ ] Loan rule
+- [ ] Mini-games: chop rhythm, supplier haggle, plating
+- [ ] Staff XP and levelling
 
-**Exit criteria:** you can climb from a cart to a bistro in about 3 to 5 hours of play.
+**Exit criteria:** you can climb from a hole-in-the-wall to a bistro in about 3 to 5 hours, and each tier plays differently.
 
 ## Phase 4: Look and feel
-- [ ] Final low-poly models for the core set (see TECH.md section 3).
-- [ ] Character animations: walk, carry, cook, eat, sit.
-- [ ] Audio: ambient sound, UI sounds, music.
-- [ ] Lighting with a day and night tint, and particles (steam, smoke).
-- [ ] A UI art pass.
+- [ ] Art direction locked (palette, mood). Final models for the core set (TECH 3).
+- [ ] Animations: walk, carry, cook, eat, sit
+- [ ] Lighting over the day, particles (steam, smoke)
+- [ ] Audio: ambience, UI sounds, music
+- [ ] A UI art pass
+- [ ] Web build published for family and friends
 
 ## Phase 5: Expansion
-- [ ] Property tiers 4 and up, including the bar and the night shift.
-- [ ] Multiple locations with background sim and managers.
-- [ ] Events: critic, inspector, rush hour.
-- [ ] More mini-games and themes.
-- [ ] A balance pass, and playtests with family and friends.
+- [ ] Tiers 4 to 6: the bar and evening service, a second floor, fine dining and critics, the chain with managers
+- [ ] Events (inspector, rush hour, viral review)
+- [ ] Sandbox mode
+- [ ] More recipes, themes and mini-games
+- [ ] A balance pass, and playtests with family and friends
 
 ## Phase 6 (optional): Release prep
-- [ ] Steam page and build, settings menu, controller support, achievements.
+- [ ] Steam page and build, settings, controller support, achievements

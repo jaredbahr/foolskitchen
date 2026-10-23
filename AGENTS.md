@@ -3,7 +3,7 @@
 This file is read by every coding agent (Codex, harness workers, Claude). Read `docs/DESIGN.md` and `docs/TECH.md` before starting a task.
 
 ## Project
-- A low-poly 3D restaurant tycoon game. Godot 4 (exact version: TBD in Phase 0), typed GDScript, Compatibility renderer (it must stay web-exportable).
+- A low-poly 3D restaurant tycoon game. Godot 4.7.2, typed GDScript, Compatibility renderer (it must stay web-exportable).
 - Hobby project with a light process.
 
 ## Workflow
@@ -28,7 +28,7 @@ This file is read by every coding agent (Codex, harness workers, Claude). Read `
 
 ## Code rules
 1. Static typing everywhere: variables, parameters, return types.
-2. `src/sim/` has no Node or scene dependencies. It contains `RefCounted` or `Resource` classes only, and is unit tested with GUT.
+2. `src/sim/` has no Node or scene dependencies. It contains `RefCounted` or `Resource` classes only, and is unit tested (`tests/test_*.gd`, see `docs/TECH.md` 2.5). Pathfinding is `AStarGrid2D` in the sim, not `NavigationAgent3D`.
 3. Content lives in `data/*.tres`. Don't hard-code recipes, prices or items.
 4. Cross-system communication goes through `EventBus` signals.
 5. No global `randf()`/`randi()`. Use the system's seeded RNG from `GameState`.
@@ -37,7 +37,8 @@ This file is read by every coding agent (Codex, harness workers, Claude). Read `
 
 ## Before you finish
 - Run `tools/check.sh` (created in Phase 0). It must pass.
-- Add or update GUT tests for any sim logic you touched.
+- Add or update tests for any sim logic you touched.
+- Setup: `bash tools/get_godot.sh` once (it downloads Godot into `.tools/`), then `bash tools/check.sh`.
 - In the PR body: what changed, how you tested it, and any open questions.
 
 ## Art assets

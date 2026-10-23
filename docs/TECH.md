@@ -1,11 +1,11 @@
 # Fool's Kitchen: Technical Plan
 
 ## 1. Engine
-- **Godot 4.x**, latest stable when the project is created. Record the exact version here and in `AGENTS.md` and do not upgrade mid-phase. Version: TBD (Phase 0).
+- **Godot 4.7.2 stable** (pinned 2026-10-23). It's recorded here, in `AGENTS.md` and in `tools/godot_version.txt`. Don't upgrade mid-phase. Upgrades are their own issue.
 - **Language:** GDScript with static typing everywhere (`var x: int`, typed function signatures). No C#: it keeps one toolchain and avoids the .NET export setup.
 - **Renderer:** Compatibility (OpenGL). Godot's web export only supports this renderer. It runs on older family laptops, and low-poly flat shading doesn't need Forward+ effects. It can be switched to Forward+ later for a Steam build, but lighting and shaders would need a retune.
 - **Targets:** Windows desktop, plus a web build so family and friends can play from a link. Steam is optional, later.
-- **CI and AI workers:** workers run in Linux containers. Download the official Godot Linux binary (the version pinned above) in the environment's setup script so `tools/check.sh` can run headless.
+- **CI and AI workers:** workers run in Linux containers. `tools/get_godot.sh` downloads the pinned official Linux binary from godotengine.org into `.tools/`. Put it in the environment's setup script.
 
 ### Why Godot (decision record)
 - Pathfinding, UI, animation, resources and export are built in. Three.js would mean building them ourselves.
@@ -31,7 +31,7 @@ assets/
   models/      # .glb only
   textures/
   audio/
-tests/         # GUT unit tests
+tests/         # unit tests (test_*.gd), run by tools/run_tests.gd
 tools/         # check scripts
 docs/
 ```
@@ -44,17 +44,26 @@ docs/
 5. **Deterministic randomness:** one seeded `RandomNumberGenerator` per system, held in `GameState`. This makes bugs reproducible.
 
 ### 2.3 AI (agents)
-- **Task board:** stations and tables post tasks (`cook`, `serve`, `clean`, `seat`). Staff claim tasks by priority, distance and skill. This works like Sims autonomy and is simple to debug.
-- **Movement:** `NavigationAgent3D` on a baked navmesh, rebaked when build mode commits a change.
-- **Customers:** a simple state machine (`Arriving`, `Queued`, `Seated`, `Ordering`, `Waiting`, `Eating`, `Paying`, `Leaving`).
+- **The sim owns movement.** Pathfinding runs in `src/sim/` on the 0.5 m build grid using `AStarGrid2D` (a `RefCounted`, so no nodes are involved). Agents have a grid position and a path. Visual nodes in `world/` only interpolate between grid points and play animations.
+  - Why not `NavigationAgent3D`: it lives in the scene tree. That would break headless tests, determinism and background simulation of other sites (TECH 2.2 rule 1).
+  - Diagonal moves are allowed, but corners can't be cut. Furniture marks cells solid, and stations expose "work cells" where a worker stands.
+- **Task board:** stations, tables and orders post tasks (`take_order`, `cook`, `deliver`, `bus_table`, `clean`, `seat`). Each idle agent scores the open tasks: role priority x skill / distance, and claims the best one. Claims are exclusive.
+- **Self-healing (fixes TasteMaker's stuck-AI complaint):**
+  - Every task has a timeout. When it expires, the agent drops it, the task goes back on the board, and the drop is logged.
+  - **No progress for N ticks** (the agent hasn't moved and its task step hasn't advanced) triggers a re-path. A second failure drops the task.
+  - A path that is blocked after a build edit makes every affected agent re-plan in the same tick.
+  - An **invariant test** runs several seeded sim days headless and asserts: every customer leaves, no task stays claimed past its timeout, and no agent is stuck for more than N ticks.
+- **Customers:** a state machine (`Arriving`, `Queued`, `Seated`, `Ordering`, `Waiting`, `Eating`, `Paying`, `Leaving`, `Left`). Every state has a maximum duration and an exit path.
+- **Debug overlay (F3):** paths, claimed tasks, agent states and the task board, from Phase 1 onward.
 
 ### 2.4 Save system
 - JSON in `user://saves/`, with a `version` field and migration functions per version.
 - Only sim state is saved, never nodes. The world is rebuilt from sim state on load.
 
 ### 2.5 Testing
-- **GUT** (Godot Unit Test) for `src/sim/` and `src/core/`.
-- `tools/check.sh` runs a headless import and parse, then the GUT tests. Every worker's diff must pass it.
+- **In-repo runner, not GUT** (decision D9). `tools/run_tests.gd` finds `tests/**/test_*.gd`, runs every `test_*` method, and exits non-zero on failure. Tests extend `tests/test_case.gd`, which provides `assert_eq`, `assert_true`, `assert_false`, `assert_almost_eq` and `assert_null`. No downloads and nothing to version-match. The sim is pure logic, so it doesn't need mocks.
+- `tools/check.sh` runs a headless import, then a script parse check, then the tests. Every diff must pass it.
+- **Sim tests run without the scene tree** wherever possible (`RefCounted` classes, which can be built directly in tests).
 
 ## 3. Art pipeline
 - **Style:** low-poly and flat-shaded, using a palette texture (one small gradient atlas shared by most models). This keeps the look consistent and draw calls low.
