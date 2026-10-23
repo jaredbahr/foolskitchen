@@ -109,6 +109,7 @@ func test_drag_uses_pixel_displacement_without_frame_time() -> void:
 func test_key_press_rotates_once_and_g_toggles_shared_grid_material() -> void:
 	var main: Node3D = MainScene.instantiate() as Node3D
 	_nodes.append(main)
+	main.call("initialize")
 	var rig: CameraRig = main.get_node("CameraRig") as CameraRig
 	rig.reset_view()
 	var key: InputEventKey = InputEventKey.new()
@@ -124,7 +125,7 @@ func test_key_press_rotates_once_and_g_toggles_shared_grid_material() -> void:
 	rig._unhandled_input(key)
 	assert_false(rig.grid_visible)
 	assert_eq(rig.grid_material.get_shader_parameter("grid_visible"), false)
-	var floor: MeshInstance3D = main.get_node("TestFloor") as MeshInstance3D
+	var floor: MeshInstance3D = main.get_node("ShopView/Floor") as MeshInstance3D
 	assert_true(rig.grid_floor == floor, "the exported node binds to the containing scene's floor")
 	assert_true(floor.material_override == rig.grid_material)
 	var material: ShaderMaterial = floor.material_override as ShaderMaterial
@@ -136,10 +137,12 @@ func test_grid_material_is_shared_within_each_main_and_isolated_between_mains() 
 	var second: Node3D = MainScene.instantiate() as Node3D
 	_nodes.append(first)
 	_nodes.append(second)
+	first.call("initialize")
+	second.call("initialize")
 	var first_rig: CameraRig = first.get_node("CameraRig") as CameraRig
 	var second_rig: CameraRig = second.get_node("CameraRig") as CameraRig
-	var first_floor: MeshInstance3D = first.get_node("TestFloor") as MeshInstance3D
-	var second_floor: MeshInstance3D = second.get_node("TestFloor") as MeshInstance3D
+	var first_floor: MeshInstance3D = first.get_node("ShopView/Floor") as MeshInstance3D
+	var second_floor: MeshInstance3D = second.get_node("ShopView/Floor") as MeshInstance3D
 	first_rig.reset_view()
 	second_rig.reset_view()
 	assert_true(first_rig.grid_floor == first_floor)
@@ -157,13 +160,14 @@ func test_grid_material_is_shared_within_each_main_and_isolated_between_mains() 
 	assert_true(second_rig.grid_visible)
 
 
-func test_default_scene_has_20_metre_floor_and_1_75_metre_reference() -> void:
+func test_default_scene_has_shop_floor_and_1_75_metre_staff() -> void:
 	var main: Node3D = MainScene.instantiate() as Node3D
 	_nodes.append(main)
-	var floor: MeshInstance3D = main.get_node("TestFloor") as MeshInstance3D
-	var plane: PlaneMesh = floor.mesh as PlaneMesh
-	assert_eq(plane.size, Vector2(20.0, 20.0))
-	var reference: MeshInstance3D = main.get_node("ScaleReference") as MeshInstance3D
+	main.call("initialize")
+	var view: ShopView = main.get_node("ShopView") as ShopView
+	assert_not_null(view.floor_mesh.mesh)
+	assert_eq(view.agent_nodes.size(), 2)
+	var reference: MeshInstance3D = view.agent_nodes.values()[0]
 	var capsule: CapsuleMesh = reference.mesh as CapsuleMesh
 	assert_almost_eq(capsule.height, 1.75)
 	assert_almost_eq(reference.position.y, capsule.height / 2.0)
