@@ -1,0 +1,9 @@
+# Godot
+.godot/
+*.translation
+export/
+# Downloaded tools (tools/get_godot.sh)
+.tools/
+# OS
+.DS_Store
+Thumbs.db

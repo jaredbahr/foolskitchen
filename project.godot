@@ -1,0 +1,38 @@
+; Engine configuration file.
+; Fool's Kitchen. Godot 4.7.2, Compatibility renderer (web-exportable).
+
+config_version=5
+
+[application]
+
+config/name="Fool's Kitchen"
+config/description="A low-poly 3D restaurant tycoon game."
+run/main_scene="res://src/world/main.tscn"
+config/features=PackedStringArray("4.7", "GL Compatibility")
+config/icon="res://icon.svg"
+
+[autoload]
+
+EventBus="*res://src/core/event_bus.gd"
+GameState="*res://src/core/game_state.gd"
+Clock="*res://src/core/clock.gd"
+Economy="*res://src/core/economy.gd"
+SaveSystem="*res://src/core/save_system.gd"
+
+[debug]
+
+gdscript/warnings/untyped_declaration=2
+gdscript/warnings/inferred_declaration=0
+gdscript/warnings/unsafe_property_access=0
+
+[display]
+
+window/size/viewport_width=1600
+window/size/viewport_height=900
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
