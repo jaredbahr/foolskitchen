@@ -2,7 +2,6 @@
 name: Task
 about: A scoped task for an AI or human worker
 title: "FK-<id>: <short title>"
-labels: task
 ---
 
 **Phase:** <0-6>
