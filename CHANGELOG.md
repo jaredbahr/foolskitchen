@@ -25,7 +25,7 @@ Each line ends with its PR number.
 - Grid and pathfinding for the shop floor: 8-way movement without corner cutting, furniture placement with rotation, and seat and work-spot reservations. (#21)
 - A deterministic simulation clock: fixed ticks, the speed never changes the tick length, and saves keep the day length. (#15)
 - Typed content definitions with validation (unique ids, valid references, known stations). (#23)
-- Release notes process: every PR must add a line here (checked by CI), and a published build's "What's new" is this whole section. (#30)
+- Release notes process: every PR must add a line here (checked by CI), and a published build's "What's new" is this whole section. (#32)
 - Automatic checks on every pull request and on `main`. (#16)
 - Godot 4.7.2 project skeleton, a built-in test runner, and a strict checks script (untyped code, broken references and leaks fail the build). (#5)
 - The game plan: TasteMaker audit, design v0.2, tech plan, roadmap, decisions D1–D14, AI worker rules and the issue template. (#1, #5, #13, #14)
