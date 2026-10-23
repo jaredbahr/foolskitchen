@@ -11,24 +11,29 @@ const LEAVE_LABELS: Dictionary = {
 const PROFIT_GREEN: Color = Color("38764b")
 const LOSS_RED: Color = Color("a83e35")
 
-@onready var _header: Label = %Header
-@onready var _profit: Label = %Profit
-@onready var _income: GridContainer = %IncomeRows
-@onready var _costs: GridContainer = %CostRows
-@onready var _dishes: GridContainer = %DishRows
-@onready var _guests: Label = %Guests
-@onready var _guest_bar: ProgressBar = %GuestBar
-@onready var _reasons: GridContainer = %ReasonRows
-@onready var _reviews: VBoxContainer = %ReviewRows
+var _header: Label
+var _profit: Label
+var _income: GridContainer
+var _costs: GridContainer
+var _dishes: GridContainer
+var _guests: Label
+var _guest_bar: ProgressBar
+var _reasons: GridContainer
+var _reviews: VBoxContainer
+var _nodes_bound: bool = false
+var _report_shown: bool = false
 
 
 func _ready() -> void:
-	%NextDay.pressed.connect(_on_next_day_pressed)
-	show_report(DayReport.new())
+	_bind_nodes()
+	if not _report_shown:
+		show_report(DayReport.new())
 
 
 ## Replaces every section with the supplied day's results, including empty states.
 func show_report(report: DayReport) -> void:
+	_bind_nodes()
+	_report_shown = true
 	_header.text = "Day %d: Closed" % report.day
 	_profit.text = "%s profit" % _money(report.profit())
 	_profit.add_theme_color_override("font_color", PROFIT_GREEN if report.profit() >= 0 else LOSS_RED)
@@ -57,6 +62,23 @@ func show_report(report: DayReport) -> void:
 	if report.reviews.is_empty():
 		_add_label(_reviews, "No reviews yet — tomorrow is a fresh start")
 	show()
+
+
+func _bind_nodes() -> void:
+	if _nodes_bound:
+		return
+	_header = %Header
+	_profit = %Profit
+	_income = %IncomeRows
+	_costs = %CostRows
+	_dishes = %DishRows
+	_guests = %Guests
+	_guest_bar = %GuestBar
+	_reasons = %ReasonRows
+	_reviews = %ReviewRows
+	var next_day: Button = %NextDay
+	next_day.pressed.connect(_on_next_day_pressed)
+	_nodes_bound = true
 
 
 func _fill_money(rows: GridContainer, amounts: Dictionary, empty_text: String) -> void:

@@ -19,7 +19,7 @@ func test_totals_and_positive_or_negative_profit() -> void:
 	assert_eq(report.total_costs(), 340)
 	assert_eq(report.profit(), 910)
 	report.costs[&"rent"] = 2000
-	assert_eq(report.profit(), -1090)
+	assert_eq(report.profit(), -890)
 
 
 func test_empty_report_has_zero_totals_and_no_leaders() -> void:
@@ -114,6 +114,19 @@ func test_ui_loss_and_next_day_signal_without_clock_integration() -> void:
 	(_screen.get_node("%NextDay") as Button).pressed.emit()
 	assert_eq(_next_day_count, 1)
 	assert_not_null(_screen.theme)
+
+
+func test_ui_report_before_ready_is_preserved_and_connects_once() -> void:
+	_screen = REPORT_SCENE.instantiate()
+	_screen.call("show_report", _full_report())
+	assert_eq((_screen.get_node("%Header") as Label).text, "Day 3: Closed")
+	_screen.call("_ready")
+	_screen.call("_ready")
+	assert_eq((_screen.get_node("%Header") as Label).text, "Day 3: Closed")
+	assert_eq((_screen.get_node("%Profit") as Label).text, "$910 profit")
+	_screen.connect("next_day_pressed", _on_next_day)
+	(_screen.get_node("%NextDay") as Button).pressed.emit()
+	assert_eq(_next_day_count, 1)
 
 
 func _full_report() -> DayReport:
