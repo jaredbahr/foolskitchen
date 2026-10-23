@@ -40,9 +40,21 @@ static func world_to_cell(pos: Vector3) -> Vector2i:
 
 
 ## Movement cost of a path (straight steps 1, diagonal steps DIAGONAL_COST).
+## Steps are counted as integers first, so equal paths always give equal costs.
 static func path_cost(path: Array[Vector2i]) -> float:
-	var cost := 0.0
+	var straight := 0
+	var diagonal := 0
 	for i in range(1, path.size()):
 		var d := path[i] - path[i - 1]
-		cost += DIAGONAL_COST if d.x != 0 and d.y != 0 else 1.0
-	return cost
+		if d.x != 0 and d.y != 0:
+			diagonal += 1
+		else:
+			straight += 1
+	return straight + diagonal * DIAGONAL_COST
+
+
+## Lower bound on the path cost between two cells (octile distance).
+static func octile(a: Vector2i, b: Vector2i) -> float:
+	var dx := absi(a.x - b.x)
+	var dy := absi(a.y - b.y)
+	return maxi(dx, dy) - mini(dx, dy) + mini(dx, dy) * DIAGONAL_COST

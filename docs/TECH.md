@@ -56,7 +56,9 @@ docs/
     - `find_path(a, b) -> Array[Vector2i]` includes both ends, is empty when there's no path, and lets an agent walk out of a cell that just became blocked. `find_path_to_any(a, goals)`.
     - `cells_changed(cells)` fires on every walkability change.
   - `PlacedItem`: absolute `cells`, `work_cells` and `seat_cells`. One-agent reservations: `reserve`, `release`, `release_all`, `reserved_by`, `free_work_cell`, `free_seat_cell`.
+  - `find_path` from a blocked start (furniture placed on an agent) starts at that cell and continues from `nearest_walkable`, so agents are never trapped. `free_work_cell(item)`/`free_seat_cell(item)` skip reserved and unwalkable cells. `item_removed(item)` fires when an item is removed, and a removed item can't be reserved.
   - Agents don't block each other.
+  - **World view:** Godot's positive `rotation.y` turns counter-clockwise seen from above, so a placed item uses `rotation.y = -quarter_turns * PI / 2`, with its mesh anchored at the rotated footprint's minimum corner.
 - **Task board:** stations, tables and orders post tasks (`take_order`, `cook`, `deliver`, `bus_table`, `clean`, `seat`). Each idle agent scores the open tasks: role priority x skill / distance, and claims the best one. Claims are exclusive.
 - **Self-healing (fixes TasteMaker's stuck-AI complaint):**
   - Every task has a timeout. When it expires, the agent drops it, the task goes back on the board, and the drop is logged.

@@ -68,21 +68,14 @@ func test_path_from_street_into_room() -> void:
 
 
 func test_no_corner_cutting() -> void:
-	var g := SimGrid.from_ascii(PackedStringArray([
-		"...",
-		".#.",
-		"...",
-	]))
-	g.set_terrain(Vector2i(1, 0), SimGrid.Terrain.WALL)
-	# (0,0) -> (2,1) must not squeeze diagonally past the walls at (1,0)/(1,1).
-	var path := g.find_path(Vector2i(0, 0), Vector2i(2, 2))
-	for i in range(1, path.size()):
-		var d := path[i] - path[i - 1]
-		if d.x != 0 and d.y != 0:
-			var side_a := path[i - 1] + Vector2i(d.x, 0)
-			var side_b := path[i - 1] + Vector2i(0, d.y)
-			assert_true(g.is_walkable(side_a) and g.is_walkable(side_b),
-					"diagonal step %s->%s cuts a corner" % [path[i - 1], path[i]])
+	# The wall at (0,1) means (0,0)->(1,1) may not step diagonally past it.
+	var g := SimGrid.from_ascii(PackedStringArray(["..", "#."]))
+	assert_eq(g.find_path(Vector2i(0, 0), Vector2i(1, 1)),
+			[Vector2i(0, 0), Vector2i(1, 0), Vector2i(1, 1)] as Array[Vector2i])
+	assert_eq(g.find_path(Vector2i(1, 1), Vector2i(0, 0)),
+			[Vector2i(1, 1), Vector2i(1, 0), Vector2i(0, 0)] as Array[Vector2i])
+	var open := SimGrid.from_ascii(PackedStringArray(["..", ".."]))
+	assert_eq(open.find_path(Vector2i(0, 0), Vector2i(1, 1)).size(), 2, "open corner allows the diagonal")
 
 
 func test_place_blocks_and_remove_reopens() -> void:
@@ -159,14 +152,14 @@ func test_reservations() -> void:
 	var g := _room()
 	var table := g.place(Vector2i(2, 2), Vector2i(2, 2), 0, true, [] as Array[Vector2i],
 			[Vector2i(-1, 0), Vector2i(2, 1)] as Array[Vector2i])
-	var seat_a := table.free_seat_cell()
+	var seat_a := g.free_seat_cell(table)
 	assert_eq(seat_a, Vector2i(1, 2))
 	assert_true(table.reserve(seat_a, 7))
 	assert_true(table.reserve(seat_a, 7), "re-reserve own cell")
 	assert_false(table.reserve(seat_a, 8), "taken by someone else")
-	assert_eq(table.free_seat_cell(), Vector2i(4, 3))
+	assert_eq(g.free_seat_cell(table), Vector2i(4, 3))
 	assert_true(table.reserve(Vector2i(4, 3), 8))
-	assert_eq(table.free_seat_cell(), NONE)
+	assert_eq(g.free_seat_cell(table), NONE)
 	assert_false(table.reserve(Vector2i(0, 0), 9), "not one of its cells")
 	table.release_all(7)
 	assert_eq(table.reserved_by(seat_a), -1)
@@ -182,3 +175,76 @@ func test_items_are_in_placement_order() -> void:
 	for it in g.items():
 		ids.append(it.id)
 	assert_eq(ids, [a.id, b.id] as Array[int])
+
+
+func test_agent_buried_under_large_item_gets_out() -> void:
+	var g := _room()
+	g.place(Vector2i(3, 3), Vector2i(2, 1), 0, true)
+	var path := g.find_path(Vector2i(3, 2), Vector2i(1, 4))
+	assert_false(path.is_empty(), "the centre of a 3x3 item still has a way out")
+	assert_eq(path[0], Vector2i(3, 2))
+	for k in range(1, path.size()):
+		assert_true(g.is_walkable(path[k]), "only the start may be blocked")
+	var exit := g.nearest_walkable(Vector2i(3, 2))
+	assert_true(g.is_walkable(exit))
+	assert_eq(maxi(absi(exit.x - 3), absi(exit.y - 2)), 2, "exit is in the first open ring")
+	assert_eq(g.nearest_walkable(Vector2i(3, 2)), exit, "same answer every time")
+
+
+func test_free_cells_skip_unwalkable() -> void:
+	var g := _room()
+	# A table against the left wall: its left seat lands on the wall.
+	var table := g.place(Vector2i(2, 2), Vector2i(1, 1), 0, true, [] as Array[Vector2i],
+			[Vector2i(-1, 0), Vector2i(2, 0)] as Array[Vector2i])
+	assert_eq(g.free_seat_cell(table), Vector2i(3, 1), "the wall seat is skipped")
+	# A stove whose work cell then gets covered by another item.
+	var stove := g.place(Vector2i(2, 1), Vector2i(4, 3), 0, true, [Vector2i(0, 1)] as Array[Vector2i])
+	assert_eq(g.free_work_cell(stove), Vector2i(4, 4))
+	g.place(Vector2i(1, 1), Vector2i(4, 4), 0, true)
+	assert_eq(g.free_work_cell(stove), NONE, "a covered work cell is not offered")
+
+
+func test_removed_item_is_inert() -> void:
+	var g := _room()
+	var removed: Array[int] = []
+	g.item_removed.connect(func(it: PlacedItem) -> void: removed.append(it.id))
+	var table := g.place(Vector2i(2, 2), Vector2i(2, 2), 0, true, [] as Array[Vector2i],
+			[Vector2i(-1, 0)] as Array[Vector2i])
+	assert_true(table.reserve(Vector2i(1, 2), 5))
+	g.remove(table.id)
+	assert_eq(removed, [table.id] as Array[int])
+	assert_true(table.removed)
+	assert_eq(table.reserved_by(Vector2i(1, 2)), -1, "reservations cleared")
+	assert_false(table.reserve(Vector2i(1, 2), 5), "can't reserve a removed item")
+	assert_eq(g.free_seat_cell(table), NONE)
+
+
+func test_set_terrain_refuses_under_items() -> void:
+	var g := _room()
+	g.place(Vector2i(1, 1), Vector2i(2, 2), 0, true)
+	assert_false(g.set_terrain(Vector2i(2, 2), SimGrid.Terrain.WALL))
+	assert_eq(g.terrain(Vector2i(2, 2)), SimGrid.Terrain.FLOOR)
+	assert_true(g.set_terrain(Vector2i(3, 3), SimGrid.Terrain.WALL))
+	assert_false(g.set_terrain(Vector2i(99, 0), SimGrid.Terrain.FLOOR))
+
+
+func test_empty_ascii_is_outside() -> void:
+	var g := SimGrid.from_ascii(PackedStringArray())
+	assert_eq(g.size, Vector2i(1, 1))
+	assert_false(g.is_walkable(Vector2i.ZERO))
+
+
+func test_path_cost_is_exact_for_equal_paths() -> void:
+	var a: Array[Vector2i] = [Vector2i(0, 0), Vector2i(1, 1), Vector2i(2, 1), Vector2i(3, 2)]
+	var b: Array[Vector2i] = [Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 1), Vector2i(3, 2)]
+	assert_true(GridMath.path_cost(a) == GridMath.path_cost(b), "same step mix, same cost")
+	assert_almost_eq(GridMath.path_cost(a), 1.0 + 2.0 * GridMath.DIAGONAL_COST)
+	assert_true(GridMath.octile(Vector2i(0, 0), Vector2i(3, 2)) <= GridMath.path_cost(a), "octile is a lower bound")
+
+
+func test_find_path_to_any_tie_goes_to_earlier_goal() -> void:
+	var g := SimGrid.new(Vector2i(5, 5))
+	assert_eq(g.find_path_to_any(Vector2i(2, 2), [Vector2i(4, 2), Vector2i(0, 2)] as Array[Vector2i])[-1],
+			Vector2i(4, 2), "equal cost: the first listed goal wins")
+	assert_eq(g.find_path_to_any(Vector2i(2, 2), [Vector2i(0, 2), Vector2i(4, 2)] as Array[Vector2i])[-1],
+			Vector2i(0, 2), "and the order decides, not the position")
