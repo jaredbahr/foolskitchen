@@ -6,4 +6,4 @@ A low-poly 3D restaurant tycoon game (Godot 4). You run a restaurant: staff and 
 - Tech plan: [docs/TECH.md](docs/TECH.md)
 - Roadmap: [docs/ROADMAP.md](docs/ROADMAP.md)
 - AI worker rules: [AGENTS.md](AGENTS.md)
-- Task briefs: [docs/briefs/](docs/briefs/)
+- Tasks: GitHub issues (template in `.github/ISSUE_TEMPLATE/task.md`)

@@ -1,6 +1,6 @@
 # Fool's Kitchen: Roadmap
 
-Hobby pace: there are no dates, only exit criteria. Each phase ends with a playable build. Placeholder art is fine until Phase 4.
+Hobby pace: there are no dates, only exit criteria. Each phase ends with a playable build. Placeholder art is fine until Phase 4. Each checkbox becomes one or more GitHub issues when its phase starts.
 
 ## Phase 0: Foundation
 - [ ] Install Godot 4 (latest stable) and record the version in `docs/TECH.md` and `AGENTS.md`.

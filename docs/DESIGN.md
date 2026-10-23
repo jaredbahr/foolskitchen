@@ -87,8 +87,15 @@ Rush hour, health inspector, critic, broken equipment, a viral review.
 ## 5. Out of scope (for now)
 Multiplayer, a story or campaign, character creation beyond basic choices, mod support, consoles, and AI running inside the game (no API calls at runtime).
 
-## 6. Open questions
-1. The game name. Is "Fool's Kitchen" final?
-2. How is the owner avatar controlled: click-to-assign only, or direct control? Draft: click-to-assign.
-3. Does a day end on a timer or when the last customer leaves? Draft: a timer, then last orders.
-4. Is there a fail state (bankruptcy), or a soft floor with a loan? Draft: a loan, no game over.
+## 6. Decisions
+| # | Question | Decision | Date |
+|---|---|---|---|
+| D1 | Game name | "Fool's Kitchen" (working title, fine for now) | 2026-10-23 |
+| D2 | How the day ends | A timer, then last orders: no new customers, and those already seated finish | 2026-10-23 |
+| D3 | Fail state | Game over on bankruptcy (rule below) | 2026-10-23 |
+
+**Bankruptcy rule (draft, tune in Phase 3):** if cash is below 0 at the end of 3 days in a row, it's game over. A warning shows from the first negative day. The save is kept, so you can reload an earlier day.
+
+## 7. Open questions
+1. **Owner control.** Is the owner click-to-assign (pick a station, he walks there and works it), or steered directly with WASD or clicks?
+   - Recommendation: click-to-assign for Phase 1. It fits auto mode and reuses the staff task system. Direct control can be added later as a "take over" toggle without rewriting anything. Decide before Phase 3, when the mini-games are tied to the owner.
