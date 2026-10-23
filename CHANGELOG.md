@@ -25,6 +25,8 @@ Each line ends with its PR number.
 - Grid and pathfinding for the shop floor: 8-way movement without corner cutting, furniture placement with rotation, and seat and work-spot reservations. (#21)
 - A deterministic simulation clock: fixed ticks, the speed never changes the tick length, and saves keep the day length. (#15)
 - Typed content definitions with validation (unique ids, valid references, known stations). (#23)
+- Saving and loading: versioned save slots, with old saves upgraded automatically. A backup copy means a crash while saving can't destroy your save: loading falls back to the last good copy. The clock and random seeds are saved, so a loaded day continues exactly. (#30)
+- Money and stock: every cash change is recorded with a reason (sales, tips, ingredients, wages, rent…) for the daily report. Ingredients are tracked in dated batches, used oldest first, and expire after their shelf life. You can't spend money you don't have yet (loans come later). (#31)
 - Release notes process: every PR must add a line here (checked by CI), and a published build's "What's new" is this whole section. (#32)
 - Automatic checks on every pull request and on `main`. (#16)
 - Godot 4.7.2 project skeleton, a built-in test runner, and a strict checks script (untyped code, broken references and leaks fail the build). (#5)
