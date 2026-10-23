@@ -42,6 +42,19 @@ func _init() -> void:
 	sim.phase_changed.connect(_on_phase_changed)
 
 
+func _ready() -> void:
+	SaveSystem.register("clock", _capture_save, _restore_save)
+
+
+func _capture_save() -> Dictionary:
+	return sim.to_dict()
+
+
+func _restore_save(data: Dictionary) -> bool:
+	sim = SimClock.from_dict(data)
+	return true
+
+
 ## Sets the speed. Only values in SPEEDS are accepted; returns false otherwise.
 func set_speed(value: int) -> bool:
 	if not SPEEDS.has(value):
