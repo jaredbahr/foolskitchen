@@ -100,7 +100,16 @@ docs/
     - the pass at (5,4), worked from both sides;
     - three two-seat tables in the dining room;
     - street entry at (6,11) and (7,11).
-- **Customers:** a state machine (`Arriving`, `Queued`, `Seated`, `Ordering`, `Waiting`, `Eating`, `Paying`, `Leaving`, `Left`). Every state has a maximum duration and an exit path.
+- **Customers and orders (FK-014, `src/sim/restaurant/`):**
+  - `RestaurantSim.create(layout, content, seed, errors)` owns `world`, `orders`, the tier-one `menu`, and a seeded `spawner`. It adds a cook and server from the layout spawns.
+  - `start_day()` resets `served_today`, `lost_today`, `leave_reasons_today` and the arrival countdown; open the world's clock separately. `advance()` runs one world tick, then arrivals and departure cleanup; empty last orders closes the clock.
+  - Signals: `customer_arrived(customer)`, `customer_paid(customer, order, amount)`, `customer_left(customer, reason)`. Payment is emitted once at the captured recipe price; there is no economy dependency.
+  - `CustomerAgent` extends `SimAgent`: `state`, `table_item_id`, `seat_cell`, `order`, `leave_reason`, `paid`, and `why()`. Seats are reserved in placement order and released on leaving or removal. A server takes each order through ordinary `TaskStep`s.
+  - `queue_patience` (300 ticks), `food_patience` (1200 ticks, including order-taking) and `eat_ticks` (300 ticks) are configurable. Missing food cancels work and tickets. An unreachable exit is logged and forcibly removed after 100 ticks.
+  - `OrderBook.place(order, now)`, `get_order(id)`, `set_state(order, state)`, `orders_in_state(state)`; placed/ready/delivered/cancelled signals. Delivered and cancelled tickets are terminal. Tickets retain their recipe, price, guest, table, seat and placement tick for reports.
+  - `CustomerSpawner` draws uniform `min_gap`..`max_gap` (150..400 ticks) only during OPEN; street choice and each guest's private seed come from its injected RNG.
+  - `SimGrid.walkable_neighbours(cell)` returns cardinal then diagonal neighbours in fixed order, without corner cutting. The server uses the nearest neighbour of the reserved seat.
+  - `tests/sim/test_customers.gd` includes a three-day seeded fake-kitchen soak with random delays and missing deliveries; it prints arrivals, payments and losses by reason.
 - **Debug overlay (F3):** paths, claimed tasks, agent states and the task board, from Phase 1 onward.
 
 ### 2.4 Save system

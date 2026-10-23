@@ -128,6 +128,21 @@ func is_walkable(cell: Vector2i) -> bool:
 	return in_bounds(cell) and not _astar.is_point_solid(cell)
 
 
+## Walkable adjacent cells in north/east/south/west then diagonal order.
+## Diagonals obey the same no-corner-cutting rule as find_path().
+func walkable_neighbours(cell: Vector2i) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	for direction: Vector2i in _DIRS:
+		var neighbour: Vector2i = cell + direction
+		if not is_walkable(neighbour):
+			continue
+		if direction.x != 0 and direction.y != 0:
+			if not is_walkable(cell + Vector2i(direction.x, 0)) or not is_walkable(cell + Vector2i(0, direction.y)):
+				continue
+		out.append(neighbour)
+	return out
+
+
 ## Checks whether an item could go at origin with the given rotation.
 ## Items need FLOOR under every footprint cell and no other item there.
 func can_place(footprint: Vector2i, origin: Vector2i, quarter_turns: int) -> PlaceResult:
