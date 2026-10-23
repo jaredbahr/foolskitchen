@@ -1,0 +1,30 @@
+[gd_resource type="Resource" script_class="RecipeDef" load_steps=9 format=3]
+
+[ext_resource type="Script" path="res://src/sim/content/recipe_def.gd" id="1_recipe"]
+[ext_resource type="Script" path="res://src/sim/content/ingredient_def.gd" id="2_ingredient"]
+[ext_resource type="Script" path="res://src/sim/content/recipe_step.gd" id="3_step"]
+[ext_resource type="Resource" path="res://data/ingredients/bun.tres" id="ingredient_bun"]
+[ext_resource type="Resource" path="res://data/ingredients/beef_patty.tres" id="ingredient_beef_patty"]
+[ext_resource type="Resource" path="res://data/ingredients/lettuce.tres" id="ingredient_lettuce"]
+
+[sub_resource type="Resource" id="Step_prep"]
+script = ExtResource("3_step")
+station_type = &"prep_counter"
+duration_ticks = 40
+
+[sub_resource type="Resource" id="Step_cook"]
+script = ExtResource("3_step")
+station_type = &"stove"
+duration_ticks = 80
+
+[resource]
+script = ExtResource("1_recipe")
+id = &"burger"
+display_name = "Burger"
+ingredients = Array[ExtResource("2_ingredient")]([ExtResource("ingredient_bun"), ExtResource("ingredient_beef_patty"), ExtResource("ingredient_lettuce")])
+steps = Array[ExtResource("3_step")]([SubResource("Step_prep"), SubResource("Step_cook")])
+base_quality = 0.6
+standard_price = 9
+unlock_tier = 1
+unlock_level = 1
+theme_tags = Array[StringName]([&"diner"])
