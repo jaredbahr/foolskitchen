@@ -53,10 +53,23 @@ func refresh() -> void:
 
 
 func _exit_tree() -> void:
+	_disconnect_events()
+
+
+func _notification(what: int) -> void:
+	# Removal before SceneTree readiness still needs to release refresh() bindings.
+	if what == NOTIFICATION_UNPARENTED:
+		_disconnect_events()
+
+
+func _disconnect_events() -> void:
 	if EventBus.sim_ticked.is_connected(_on_sim_ticked):
 		EventBus.sim_ticked.disconnect(_on_sim_ticked)
+	if EventBus.day_phase_changed.is_connected(_on_phase_changed):
 		EventBus.day_phase_changed.disconnect(_on_phase_changed)
+	if EventBus.speed_changed.is_connected(_on_speed_changed):
 		EventBus.speed_changed.disconnect(_on_speed_changed)
+	if EventBus.cash_changed.is_connected(_on_cash_changed):
 		EventBus.cash_changed.disconnect(_on_cash_changed)
 
 

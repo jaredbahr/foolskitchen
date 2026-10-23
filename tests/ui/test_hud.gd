@@ -51,6 +51,11 @@ func test_scene_tree_binding_and_exit_cleanup_do_not_require_ready() -> void:
 	assert_true(EventBus.speed_changed.is_connected(callback))
 	tree.root.remove_child(_hud)
 	assert_false(EventBus.speed_changed.is_connected(callback))
+	assert_false(EventBus.sim_ticked.is_connected(Callable(_hud, "_on_sim_ticked")))
+	assert_false(EventBus.day_phase_changed.is_connected(Callable(_hud, "_on_phase_changed")))
+	assert_false(EventBus.cash_changed.is_connected(Callable(_hud, "_on_cash_changed")))
+	# Both lifecycle paths may fire for the same removal; cleanup is idempotent.
+	_hud.call("_exit_tree")
 	_hud.call("refresh")
 	assert_true(EventBus.speed_changed.is_connected(callback))
 
