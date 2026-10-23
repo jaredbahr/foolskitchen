@@ -43,6 +43,32 @@ func test_reloading_does_not_duplicate_definitions() -> void:
 	assert_eq(db.items().size(), 8)
 
 
+func test_recursive_resource_discovery_returns_sorted_original_tres_names() -> void:
+	var errors: PackedStringArray = []
+	var paths: PackedStringArray = ContentDB._resource_paths("res://data", errors)
+	assert_eq(errors.size(), 0)
+	assert_eq(paths.size(), 18)
+	assert_true(paths.has("res://data/ingredients/bun.tres"))
+	assert_true(paths.has("res://data/recipes/burger.tres"))
+	assert_true(paths.has("res://data/items/table_2.tres"))
+	var sorted_paths: PackedStringArray = paths.duplicate()
+	sorted_paths.sort()
+	assert_eq(paths, sorted_paths)
+	for path: String in paths:
+		assert_true(path.ends_with(".tres"), "discovery returns source names, not export remap filenames")
+
+
+func test_missing_resource_directories_report_errors_and_clear_old_indices() -> void:
+	var db: ContentDB = _starter_db()
+	var errors: PackedStringArray = db.load_all("res://data/missing_content_db_test_root")
+	assert_eq(errors.size(), 3)
+	assert_true(_has_error(errors, "Cannot open content directory:"))
+	assert_eq(db.ingredients().size(), 0)
+	assert_eq(db.recipes().size(), 0)
+	assert_eq(db.items().size(), 0)
+	assert_null(db.recipe(&"burger"))
+
+
 func test_recipe_without_steps_is_reported() -> void:
 	var recipe_def: RecipeDef = _recipe()
 	recipe_def.steps.clear()

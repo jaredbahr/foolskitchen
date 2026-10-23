@@ -156,15 +156,19 @@ static func _check_id(id: StringName, kind: String, seen: Dictionary[StringName,
 
 static func _resource_paths(folder: String, errors: PackedStringArray) -> PackedStringArray:
 	var paths: PackedStringArray = []
-	var directory: DirAccess = DirAccess.open(folder)
-	if directory == null:
+	# Check accessibility only. ResourceLoader supplies the original filenames
+	# even when export has converted a .tres into a remapped binary resource.
+	if DirAccess.open(folder) == null:
 		errors.append("Cannot open content directory: %s" % folder)
 		return paths
-	for filename: String in directory.get_files():
-		if filename.ends_with(".tres"):
-			paths.append(folder.path_join(filename))
-	for subdirectory: String in directory.get_directories():
-		if not subdirectory.begins_with("."):
-			paths.append_array(_resource_paths(folder.path_join(subdirectory), errors))
+	var entries: PackedStringArray = ResourceLoader.list_directory(folder)
+	entries.sort()
+	for entry: String in entries:
+		if entry.ends_with("/"):
+			var subdirectory: String = entry.trim_suffix("/")
+			if not subdirectory.begins_with("."):
+				paths.append_array(_resource_paths(folder.path_join(subdirectory), errors))
+		elif entry.ends_with(".tres"):
+			paths.append(folder.path_join(entry))
 	paths.sort()
 	return paths
