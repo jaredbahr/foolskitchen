@@ -4,6 +4,7 @@ extends TestCase
 const MAIN: PackedScene = preload("res://src/world/main.tscn")
 const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
 const TUNING: EconomyTuning = preload("res://data/balance/tier1_economy.tres")
+const PROGRESSION: ProgressionTuning = preload("res://data/balance/progression.tres")
 const SLOT: String = "shop_edit"
 
 var _mains: Array[Node] = []
@@ -134,10 +135,54 @@ func test_restore_callback_only_stages_a_decoded_layout() -> void:
 func test_saved_furniture_on_staff_spawn_loads_and_staff_can_escape() -> void:
 	var first: Node = _start()
 	var spawn: Vector2i = LAYOUT.staff_spawns[&"server"]
+	var morning_file: String = FileAccess.get_file_as_string(_path())
+	var before_books: Dictionary = Economy.ledger.to_dict()
+	assert_false(first.call("shop_buy", &"potted_plant", spawn), "level one cannot buy a new plant")
+	assert_eq((first.get("shop_editor") as ShopEditor).last_check.why, "Unlocks at level 2")
+	assert_eq(Economy.ledger.to_dict(), before_books)
+	assert_eq(FileAccess.get_file_as_string(_path()), morning_file)
+	assert_false(first.call("menu_set_enabled", &"tomato_melt", true),
+		"the new recipe is locked before level two")
+	# Drive the production closing path with known happy guests to unlock it;
+	# keep the first morning snapshot intact until the next normal autosave.
+	var progress: OwnerProgress = first.get("owner_progress") as OwnerProgress
+	var happy_needed: int = ceili(float(progress.threshold_for(2)) / float(PROGRESSION.happy_guest_xp))
+	(first.get("sim") as RestaurantSim).leave_reasons_today[&"happy"] = happy_needed
+	Clock.sim.phase = SimClock.Phase.CLOSED
+	first.call("_on_service_closed", Clock.sim.day)
+	assert_eq(progress.level, 2)
+	var report: DayReport = first.get("shown_report") as DayReport
+	assert_eq(report.owner_level_before, 1)
+	assert_eq(report.owner_level_after, 2)
+	assert_eq(report.owner_unlocks, ["Potted plant", "Tomato melt recipe"] as Array[String],
+		"the level-up banner lists only the two authored unlocks")
+	var panel: Control = first.get_node("Overlay/EveningReport") as Control
+	var banner: Label = panel.get_node("Panel/Scroll/Content/LevelUpCallout/OwnerLevelUp") as Label
+	var unlocks: Label = panel.get_node("Panel/Scroll/Content/LevelUpCallout/OwnerUnlocks") as Label
+	assert_true(banner.visible)
+	assert_eq(banner.text, "Level up! Level 2 reached")
+	assert_eq(unlocks.text, "Unlocked: Potted plant, Tomato melt recipe")
+	var xp_rows: GridContainer = panel.get_node("Panel/Scroll/Content/OwnerXPRows") as GridContainer
+	assert_eq(xp_rows.get_child_count(), 8, "the native report shows four labelled XP sources")
+	assert_eq((xp_rows.get_child(7) as Label).text, "+%d XP" % report.owner_xp_breakdown["total_xp"])
+	assert_eq(FileAccess.get_file_as_string(_path()), morning_file)
 	assert_true(first.call("shop_buy", &"potted_plant", spawn))
-	assert_eq(SaveSystem.save_game(SLOT), OK)
+	assert_eq(FileAccess.get_file_as_string(_path()), morning_file, "unlock and purchase do not save immediately")
+	assert_true(Clock.sim.next_day())
+	assert_true(first.call("menu_set_enabled", &"tomato_melt", true),
+		"the unlocked dish can be planned next morning")
+	var saved_progress: Dictionary = progress.to_dict()
+	var raw_progress: Dictionary = _document()["data"]["owner"]["progress"]
+	assert_eq(raw_progress.size(), saved_progress.size())
+	for key: String in saved_progress:
+		assert_true(raw_progress.has(key))
+	var decoded: OwnerProgress = OwnerProgress.new(progress.tuning)
+	assert_true(decoded.from_dict(raw_progress), "the morning JSON stores valid owner progress")
+	assert_eq(decoded.to_dict(), saved_progress)
 	_close(first)
 	var second: Node = _start()
+	assert_eq((second.get("owner_progress") as OwnerProgress).to_dict(), saved_progress,
+		"level-two XP and its awarded-day guard survive the morning reload")
 	var world: SimWorld = second.get("world")
 	assert_false(world.grid.is_walkable(spawn))
 	var server: SimAgent = world.agents[1]

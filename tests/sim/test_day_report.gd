@@ -84,6 +84,10 @@ func test_missing_saved_fields_restore_an_empty_report() -> void:
 	assert_true(report.review_cards.is_empty())
 	assert_almost_eq(report.reputation_before, 3.0)
 	assert_almost_eq(report.reputation_after, 3.0)
+	assert_eq(report.owner_level_before, 1)
+	assert_eq(report.owner_level_after, 1)
+	assert_true(report.owner_xp_breakdown.is_empty())
+	assert_true(report.owner_unlocks.is_empty())
 
 
 func test_review_cards_round_trip_without_sim_cause_ids_or_shared_mutation() -> void:
@@ -105,6 +109,26 @@ func test_review_cards_round_trip_without_sim_cause_ids_or_shared_mutation() -> 
 	cards[0]["quote"] = "Modified snapshot"
 	assert_eq(report.review_cards[0]["quote"], "Fast and tasty")
 	assert_eq(restored.review_cards[0]["quote"], "Fast and tasty")
+
+
+func test_owner_progress_report_round_trip_detaches_breakdown_and_unlock_names() -> void:
+	var report: DayReport = DayReport.new()
+	report.owner_level_before = 1
+	report.owner_level_after = 2
+	report.owner_xp_breakdown = {"happy_xp": 8, "profit_xp": 5, "review_xp": 3,
+		"total_xp": 16, "internal_cause": 99}
+	report.owner_unlocks = ["Tomato melt", "Potted plant"]
+	var snapshot: Dictionary = report.to_dict()
+	assert_false(snapshot["owner_xp_breakdown"].has("internal_cause"))
+	var decoded: Dictionary = JSON.parse_string(JSON.stringify(snapshot))
+	var restored: DayReport = DayReport.from_dict(decoded)
+	assert_eq(restored.to_dict(), snapshot)
+	snapshot["owner_xp_breakdown"]["happy_xp"] = 0
+	snapshot["owner_unlocks"][0] = "Changed"
+	assert_eq(report.owner_xp_breakdown["happy_xp"], 8)
+	assert_eq(restored.owner_xp_breakdown["happy_xp"], 8)
+	assert_eq(report.owner_unlocks[0], "Tomato melt")
+	assert_eq(restored.owner_unlocks[0], "Tomato melt")
 
 
 func test_ui_review_summary_and_star_quotes_then_clear() -> void:
@@ -135,6 +159,35 @@ func test_ui_review_summary_and_star_quotes_then_clear() -> void:
 	assert_eq((lines.get_child(0) as Label).text, "No reviews today")
 
 
+func test_ui_owner_xp_breakdown_level_up_and_unlocks_preserve_review_cards() -> void:
+	_screen = REPORT_SCENE.instantiate()
+	(Engine.get_main_loop() as SceneTree).root.add_child(_screen)
+	var report: DayReport = DayReport.new()
+	report.review_cards = [{"stars": 5, "quote": "Lovely meal"}]
+	report.owner_level_before = 1
+	report.owner_level_after = 2
+	report.owner_xp_breakdown = {"happy_xp": 8, "profit_xp": 5, "review_xp": 3, "total_xp": 16}
+	report.owner_unlocks = ["Tomato melt", "Potted plant"]
+	_screen.call("show_report", report)
+	assert_eq((_screen.get_node("%OwnerLevel") as Label).text, "Owner level 2")
+	assert_true((_screen.get_node("%OwnerLevelUp") as Label).visible)
+	assert_eq((_screen.get_node("%OwnerLevelUp") as Label).text, "Level up! Level 2 reached")
+	var rows: Node = _screen.get_node("%OwnerXPRows")
+	assert_eq(rows.get_child_count(), 8)
+	assert_eq((rows.get_child(0) as Label).text, "Happy guests")
+	assert_eq((rows.get_child(1) as Label).text, "+8 XP")
+	assert_eq((rows.get_child(6) as Label).text, "Total")
+	assert_eq((rows.get_child(7) as Label).text, "+16 XP")
+	assert_eq((_screen.get_node("%OwnerUnlocks") as Label).text, "Unlocked: Tomato melt, Potted plant")
+	assert_eq((_screen.get_node("%ReviewRows").get_child(0) as Label).text, '5 stars - "Lovely meal"')
+	_screen.call("show_report", DayReport.new())
+	assert_eq((_screen.get_node("%OwnerLevel") as Label).text, "Owner level 1")
+	assert_false((_screen.get_node("%OwnerLevelUp") as Label).visible)
+	assert_false((_screen.get_node("%OwnerUnlocks") as Label).visible)
+	assert_eq((rows.get_child(0) as Label).text, "No owner XP recorded")
+	assert_eq((_screen.get_node("%ReviewRows").get_child(0) as Label).text, "No reviews today")
+
+
 func test_first_three_review_quotes_fit_without_scrolling_at_both_capture_sizes() -> void:
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	await tree.process_frame
@@ -158,9 +211,17 @@ func test_first_three_review_quotes_fit_without_scrolling_at_both_capture_sizes(
 	report.today_review_average = 4.0
 	report.reputation_before = 3.0
 	report.reputation_after = 3.2
+	report.owner_level_before = 1
+	report.owner_level_after = 2
+	report.owner_unlocks = ["Potted plant", "Tomato melt recipe"]
 	_screen.call("show_report", report)
 	var scroll: ScrollContainer = _screen.get_node("Panel/Scroll") as ScrollContainer
 	var rows: VBoxContainer = _screen.get_node("%ReviewRows") as VBoxContainer
+	var profit: Label = _screen.get_node("%Profit") as Label
+	var callout: HBoxContainer = _screen.get_node("Panel/Scroll/Content/LevelUpCallout") as HBoxContainer
+	var banner: Label = _screen.get_node("%OwnerLevelUp") as Label
+	var unlocks: Label = _screen.get_node("%OwnerUnlocks") as Label
+	var finances: HBoxContainer = _screen.get_node("Panel/Scroll/Content/Finances") as HBoxContainer
 	for bounds: Vector2 in [Vector2(1600.0, 900.0), Vector2(1280.0, 720.0)]:
 		_host.size = bounds
 		scroll.scroll_vertical = 0
@@ -170,6 +231,19 @@ func test_first_three_review_quotes_fit_without_scrolling_at_both_capture_sizes(
 		assert_eq(scroll.scroll_vertical, 0)
 		assert_eq(rows.get_child_count(), 3)
 		var viewport: Rect2 = scroll.get_global_rect()
+		assert_true(callout.visible and banner.visible and unlocks.visible)
+		assert_eq(banner.text, "Level up! Level 2 reached")
+		assert_eq(unlocks.text, "Unlocked: Potted plant, Tomato melt recipe")
+		assert_true(callout.get_global_rect().position.y >= profit.get_global_rect().end.y - 1.0)
+		assert_true(callout.get_global_rect().end.y <= finances.get_global_rect().position.y + 1.0)
+		for label: Label in [banner, unlocks]:
+			var label_rect: Rect2 = label.get_global_rect()
+			assert_true(label_rect.size.x > 0.0 and label_rect.size.y > 0.0)
+			assert_true(label_rect.position.x >= viewport.position.x - 1.0
+				and label_rect.end.x <= viewport.end.x + 1.0
+				and label_rect.position.y >= viewport.position.y - 1.0
+				and label_rect.end.y <= viewport.end.y + 1.0,
+				"the level-up payoff fits the unscrolled %dx%d report" % [int(bounds.x), int(bounds.y)])
 		for index: int in range(3):
 			var card: Dictionary = report.review_cards[index]
 			var native: Label = rows.get_child(index) as Label

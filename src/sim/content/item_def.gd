@@ -20,6 +20,8 @@ enum Category { DOOR, TABLE, CHAIR, STATION, STORAGE, PASS, DECOR }
 @export var capacity: int = 1
 @export var quality_bonus: float = 0.0
 @export var price: int = 0
+## Owner level required for new purchases. Existing placed items remain valid.
+@export var unlock_level: int = 1
 @export var charm: int = 0
 @export var theme_tags: Array[StringName] = []
 ## Warm placeholder palette until the shared model palette is locked in Phase 4.

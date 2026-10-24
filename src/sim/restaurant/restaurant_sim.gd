@@ -74,7 +74,7 @@ static func create(layout: ShopLayout, content: ContentDB, seed: int, errors: Ar
 		owner.cell = sim.staff_spawns[&"owner"]
 		sim.world.add_agent(owner)
 	for recipe: RecipeDef in content.recipes():
-		if recipe.unlock_tier == 1:
+		if recipe.unlock_tier == 1 and recipe.unlock_level <= 1:
 			sim.menu.append(recipe)
 	sim.stock = stock if stock != null else Stock.new()
 	if with_kitchen:

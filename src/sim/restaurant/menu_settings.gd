@@ -2,6 +2,8 @@ class_name MenuSettings
 extends RefCounted
 ## Per-shop choices over an injected cookable catalog. Recipe resources stay unchanged.
 
+signal owner_level_changed(level: int)
+
 const MAX_PRICE: int = 9223372036854775807
 const MAX_JSON_INTEGER: int = 9007199254740991
 const MAX_PRICE_DIV_TEN: int = 922337203685477580
@@ -12,29 +14,56 @@ var _by_id: Dictionary[StringName, RecipeDef] = {}
 var _standards: Dictionary[StringName, int] = {}
 var _enabled: Dictionary[StringName, bool] = {}
 var _prices: Dictionary[StringName, int] = {}
+var _owner_level: int = 1
 
 
-func _init(cookable_recipes: Array[RecipeDef] = []) -> void:
-	if cookable_recipes.is_empty():
+func _init(cookable_recipes: Array[RecipeDef] = [], owner_level: int = 1) -> void:
+	if cookable_recipes.is_empty() or owner_level < 1:
 		return
 	var seen: Dictionary[StringName, bool] = {}
+	var available: int = 0
 	for definition: RecipeDef in cookable_recipes:
 		if definition == null or String(definition.id).strip_edges().is_empty() \
-				or seen.has(definition.id) or definition.standard_price < 0:
+				or seen.has(definition.id) or definition.standard_price < 0 or definition.unlock_level < 1:
 			return
 		seen[definition.id] = true
+		if definition.unlock_level <= owner_level:
+			available += 1
+	if available == 0:
+		return
+	_owner_level = owner_level
 	_recipes.assign(cookable_recipes)
 	_recipes.sort_custom(_recipe_before)
 	for definition: RecipeDef in _recipes:
 		_by_id[definition.id] = definition
 		_standards[definition.id] = definition.standard_price
-		_enabled[definition.id] = true
+		if definition.unlock_level <= _owner_level:
+			_enabled[definition.id] = true
 		_prices[definition.id] = definition.standard_price
 	_valid = true
 
 
 func is_valid() -> bool:
 	return _valid
+
+
+func owner_level() -> int:
+	return _owner_level
+
+
+## A level-up makes recipes selectable without changing today's chosen menu.
+## A downgrade cannot leave a recipe enabled above the new level.
+func set_owner_level(value: int) -> bool:
+	if not _valid or value < 1:
+		return false
+	for id: StringName in _enabled:
+		if _by_id[id].unlock_level > value:
+			return false
+	if value == _owner_level:
+		return true
+	_owner_level = value
+	owner_level_changed.emit(value)
+	return true
 
 
 ## New arrays in lexical ID order; callers cannot reorder the model's catalog.
@@ -87,6 +116,8 @@ func set_enabled(id: StringName, enabled: bool) -> bool:
 	if not _by_id.has(id):
 		return false
 	if enabled:
+		if _by_id[id].unlock_level > _owner_level:
+			return false
 		_enabled[id] = true
 	elif _enabled.has(id):
 		if _enabled.size() == 1:
@@ -97,7 +128,7 @@ func set_enabled(id: StringName, enabled: bool) -> bool:
 
 ## Known dishes accept a whole-dollar request and clamp it to their bounds.
 func set_price(id: StringName, price: int) -> bool:
-	if not _by_id.has(id):
+	if not _by_id.has(id) or _by_id[id].unlock_level > _owner_level:
 		return false
 	_prices[id] = clampi(price, minimum_price(id), maximum_price(id))
 	return true
@@ -132,14 +163,15 @@ func from_dict(data: Variant) -> bool:
 		return false
 	var enabled_data: Array = section["enabled"]
 	var price_data: Dictionary = section["prices"]
-	if enabled_data.is_empty() or price_data.size() != _recipes.size():
+	if enabled_data.is_empty() or price_data.size() > _recipes.size():
 		return false
 	var next_enabled: Dictionary[StringName, bool] = {}
 	for value: Variant in enabled_data:
 		if typeof(value) != TYPE_STRING:
 			return false
 		var id: StringName = StringName(value)
-		if not _by_id.has(id) or next_enabled.has(id):
+		if not _by_id.has(id) or next_enabled.has(id) \
+				or _by_id[id].unlock_level > _owner_level:
 			return false
 		next_enabled[id] = true
 	var next_prices: Dictionary[StringName, int] = {}
@@ -153,6 +185,15 @@ func from_dict(data: Variant) -> bool:
 		if price < minimum_price(id) or price > maximum_price(id):
 			return false
 		next_prices[id] = price
+	# An older save cannot know a newly authored level-locked dish. Give only
+	# that disabled dish its standard price; all prior level-one entries and
+	# every enabled dish still require an explicit, valid saved price.
+	for definition: RecipeDef in _recipes:
+		if next_prices.has(definition.id):
+			continue
+		if definition.unlock_level <= 1 or next_enabled.has(definition.id):
+			return false
+		next_prices[definition.id] = definition.standard_price
 	_enabled = next_enabled
 	_prices = next_prices
 	return true

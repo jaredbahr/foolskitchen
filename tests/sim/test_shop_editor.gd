@@ -160,6 +160,31 @@ func test_purchase_books_one_upgrade_and_repeat_invalid_purchase_is_free() -> vo
 	assert_eq(_changes.size(), 1)
 
 
+func test_level_locked_purchase_keeps_books_unchanged_but_starter_plant_stays_editable() -> void:
+	var starter: int = _id(&"potted_plant")
+	var snapshot: Dictionary = _editor.to_dict()
+	var check: EditCheck = _editor.check_buy(&"potted_plant", Vector2i(11, 9))
+	assert_false(check.ok)
+	assert_eq(check.why, "Unlocks at level 2")
+	assert_false(_editor.buy(&"potted_plant", Vector2i(11, 9)))
+	assert_eq(_cash, 1000)
+	assert_eq(_entries.size(), 0)
+	assert_eq(_changes.size(), 0)
+	assert_eq(_editor.to_dict(), snapshot)
+	assert_true(_editor.check_move(starter, Vector2i(11, 9), 0).ok)
+	var errors: Array[String] = []
+	assert_not_null(ShopEditor.from_dict(snapshot, LAYOUT, _content, errors))
+	assert_eq(errors, [] as Array[String], "old layouts may contain the starter plant")
+	_editor.set_owner_level(2)
+	assert_true(_editor.buy(&"potted_plant", Vector2i(11, 9)))
+	assert_eq(_cash, 985)
+	assert_eq(_entries.size(), 1)
+	_editor.set_owner_level(1)
+	assert_false(_editor.buy(&"potted_plant", Vector2i(12, 9)))
+	assert_true(_editor.check_sell(starter).ok)
+	assert_eq(_entries.size(), 1)
+
+
 func test_insufficient_cash_cannot_borrow_or_place() -> void:
 	_cash = 0
 	var before: Dictionary = _editor.to_dict()
@@ -219,6 +244,7 @@ func test_last_required_station_and_door_guards_use_real_categories() -> void:
 
 
 func test_unreachable_seats_and_each_pass_side_warn_but_do_not_block() -> void:
+	_editor.set_owner_level(2)
 	var table_id: int = _id(&"table_2")
 	assert_true(_editor.buy(&"potted_plant", Vector2i(1, 7)))
 	var check: EditCheck = _editor.check_buy(&"potted_plant", Vector2i(4, 7))
@@ -298,6 +324,7 @@ func test_import_cannot_remove_a_template_door() -> void:
 
 
 func test_edited_spawn_allowance_preserves_authored_checks_and_escape() -> void:
+	_editor.set_owner_level(2)
 	var spawn: Vector2i = LAYOUT.staff_spawns[&"server"]
 	assert_true(_editor.buy(&"potted_plant", spawn))
 	var errors: Array[String] = []

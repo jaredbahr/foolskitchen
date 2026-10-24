@@ -43,6 +43,8 @@ func test_initial_labels_and_shared_theme_before_ready() -> void:
 	assert_eq((_control("Reputation") as Label).text, "3.0★")
 	assert_eq((_control("Reputation") as Label).tooltip_text,
 		"3.0 stars from your last 5 reviews")
+	assert_eq((_hud.get_node("Top/Row/OwnerProgress/OwnerLevel") as Label).text, "Lv 1")
+	assert_almost_eq((_hud.get_node("Top/Row/OwnerProgress/OwnerXPBar") as ProgressBar).value, 0.0)
 	_hud.call("set_plate_counts", 9, 12, 2, 1)
 	assert_eq((_control("Plates") as Label).text, "Plates 9/12")
 	assert_eq((_control("Plates") as Label).tooltip_text, "Clean: 9 | Dirty: 2 | In use: 1")
@@ -66,6 +68,43 @@ func test_reputation_presentation_survives_refresh_and_tracks_window_count() -> 
 	assert_eq(reputation.text, "3.4★")
 	_hud.call("set_reputation", 4.0, 7)
 	assert_eq(reputation.tooltip_text, "4.0 stars from your last 7 reviews")
+
+
+func test_owner_level_and_xp_bar_refresh_beside_reputation() -> void:
+	var reputation: Label = _control("Reputation") as Label
+	var owner: VBoxContainer = _hud.get_node("Top/Row/OwnerProgress") as VBoxContainer
+	var label: Label = owner.get_node("OwnerLevel") as Label
+	var bar: ProgressBar = owner.get_node("OwnerXPBar") as ProgressBar
+	assert_eq(owner.get_index(), reputation.get_index() + 1)
+	_hud.call("set_owner_progress", 2, 17, 45)
+	assert_eq(label.text, "Lv 2")
+	assert_almost_eq(bar.value, 17.0)
+	assert_almost_eq(bar.max_value, 45.0)
+	assert_eq(label.tooltip_text, "Owner level 2: 17 / 45 XP to next level")
+	assert_eq(bar.tooltip_text, label.tooltip_text)
+	_hud.call("refresh")
+	assert_eq(label.text, "Lv 2")
+	assert_almost_eq(bar.value, 17.0)
+	_hud.call("set_owner_progress", 3, 100, 50)
+	assert_almost_eq(bar.value, 50.0, 0.0001, "the display clamps an invalid overfull fraction")
+
+
+func test_owner_progress_keeps_top_bar_inside_a_1280_viewport() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	await tree.process_frame
+	var viewport: SubViewport = SubViewport.new()
+	viewport.size = Vector2i(1280, 720)
+	tree.root.add_child(viewport)
+	viewport.add_child(_hud)
+	_hud.call("set_owner_progress", 2, 17, 45)
+	await tree.process_frame
+	await tree.process_frame
+	var top: Control = _hud.get_node("Top") as Control
+	var row: HBoxContainer = _hud.get_node("Top/Row") as HBoxContainer
+	assert_true(top.get_global_rect().end.x <= 1268.0)
+	assert_true(row.get_global_rect().end.x <= top.get_global_rect().end.x)
+	viewport.remove_child(_hud)
+	viewport.free()
 
 
 func test_paint_button_shares_top_row_and_theme_with_build() -> void:
