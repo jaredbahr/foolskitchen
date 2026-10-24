@@ -45,6 +45,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- Compare seeded shop set-ups in one manual balance table, with guests, sales, costs and profit side by side. (#92)
 - AI workers now merge the latest main, self-review against the issue, and post a done-checklist before asking for review; the roadmap shows what Phase 2 has finished. (#90)
 - Plate totals save as ordinary numbers, while older string totals still load and invalid totals use the existing fresh-shop defaults. (#77)
 - Save tests keep each process's files in its own folder, so concurrent runs in separate worktrees cannot overwrite each other's saves. (#61)

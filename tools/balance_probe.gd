@@ -1,78 +1,14 @@
 extends SceneTree
-## Plays whole days of the real game session headlessly and prints each day's
-## books, for balancing. Nothing is saved. Usage:
-##   godot --headless --path . --script tools/balance_probe.gd -- --days=5
-##     [--gap=150,400] [--price=1.0] [--seed=1] [--extra-cook=4]
-## --gap overrides the guest arrival gap (ticks), --price multiplies every
-## per-shop price override. Recipe standard prices remain unchanged.
+## Load the probe only after autoloads have joined the scene tree. Godot compiles
+## a --script SceneTree before they exist, so this entry has no game references.
+
 
 func _initialize() -> void:
-	var days := 5
-	var gap := Vector2i(-1, -1)
-	var price := 1.0
-	var seed_value := 1
-	var extra_cook: int = 0
-	for arg in OS.get_cmdline_user_args():
-		if arg.begins_with("--days="):
-			days = int(arg.trim_prefix("--days="))
-		elif arg.begins_with("--gap="):
-			var p := arg.trim_prefix("--gap=").split(",")
-			gap = Vector2i(int(p[0]), int(p[1]))
-		elif arg.begins_with("--price="):
-			price = float(arg.trim_prefix("--price="))
-		elif arg.begins_with("--seed="):
-			seed_value = int(arg.trim_prefix("--seed="))
-		elif arg.begins_with("--extra-cook="):
-			extra_cook = int(arg.trim_prefix("--extra-cook="))
-			if extra_cook < 1 or extra_cook > 5:
-				printerr("--extra-cook must be a skill from 1 to 5")
-				quit(2)
-				return
-	var main: Node = (load("res://src/world/main.tscn") as PackedScene).instantiate()
-	main.set("use_saves", false)
-	root.add_child(main)
-	main.call("start")
-	root.get_node("GameState").call("new_run", seed_value)
-	var sim: RestaurantSim = main.get("sim")
-	sim.use_rng(root.get_node("GameState").call("rng", &"customers"))
-	if extra_cook > 0:
-		# Explicit manual scenario, independent of the random hiring pool. This
-		# changes the roster through its strict decoder, never sim task/stock data.
-		var roster: StaffRoster = main.get("staff_roster")
-		var snapshot: Dictionary = roster.to_dict()
-		var member: StaffMember = StaffMember.new()
-		member.id = &"probe_extra_cook"
-		member.display_name = "Extra cook"
-		member.skill = extra_cook
-		member.wage = sim.pricing_tuning.staff_wage(&"cook", extra_cook)
-		snapshot["members"].append(member.to_dict())
-		if not roster.from_dict(snapshot) or not sim.set_staff_roster(roster.members()):
-			printerr("Cannot install the requested probe roster")
-			quit(2)
-			return
-	print("PROBE roster=%s seed=%d wages=%d" % ["default" if extra_cook == 0 else "extra-cook-%d" % extra_cook,
-		seed_value, (main.get("staff_roster") as StaffRoster).total_wages()])
-	if gap.x > 0:
-		sim.spawner.min_gap = gap.x
-		sim.spawner.max_gap = gap.y
-	if price != 1.0:
-		for recipe: RecipeDef in sim.menu:
-			sim.prices[recipe.id] = maxi(0, roundi(recipe.standard_price * price))
-	var clock: Node = root.get_node("Clock")
-	var economy: Node = root.get_node("Economy")
-	var total := 0
-	for d in days:
-		sim.start_day()
-		(clock.get("sim") as SimClock).start_service()
-		for i in 40:
-			main.call("run_ticks", 500)
-			if (clock.get("sim") as SimClock).phase == SimClock.Phase.CLOSED:
-				break
-		var r: DayReport = main.get("shown_report")
-		total += r.profit()
-		print("PROBE day=%d served=%d lost=%d income=%d costs=%d profit=%d cash=%d reasons=%s dishes=%s" % [
-			r.day, r.customers_served, r.customers_lost, r.total_income(), r.total_costs(), r.profit(),
-			economy.get("cash"), r.leave_reasons, r.dishes_sold])
-		(clock.get("sim") as SimClock).next_day()
-	print("PROBE total_profit=%d over %d days" % [total, days])
-	quit()
+	await process_frame
+	var core: GDScript = load("res://tools/balance_probe_core.gd")
+	if core == null:
+		printerr("Cannot load the balance probe core")
+		quit(2)
+		return
+	var status: int = core.run_cli(self, OS.get_cmdline_user_args())
+	quit(status)
