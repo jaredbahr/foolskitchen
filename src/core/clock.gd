@@ -42,12 +42,17 @@ var _last_non_zero_speed: int = 1
 var _accumulator: float = 0.0
 ## Optional full world tick driver. Null retains the standalone clock mode.
 var attached_world: SimWorld
+## Optional callable run once per tick instead of attached_world.advance(),
+## e.g. RestaurantSim.advance (which advances the world and its arrivals).
+var tick_driver: Callable = Callable()
 
 
-## Uses a world's clock and advances its agents once per fixed tick.
-## Detaching retains the current clock, but stops advancing the old world.
-func attach_world(world: SimWorld) -> void:
+## Uses a world's clock and advances it once per fixed tick, through `driver`
+## when given (it must advance the world itself). Detaching retains the
+## current clock, but stops advancing the old world.
+func attach_world(world: SimWorld, driver: Callable = Callable()) -> void:
 	attached_world = world
+	tick_driver = driver if world != null else Callable()
 	if world != null:
 		sim = world.clock
 	_accumulator = 0.0
@@ -58,6 +63,12 @@ func _init() -> void:
 
 
 func _ready() -> void:
+	register_save_provider()
+
+
+## Registers this autoload's save section. Idempotent; the game session also
+## calls it, because some hosts (the test runner) never deliver _ready().
+func register_save_provider() -> void:
 	SaveSystem.register("clock", _capture_save, _restore_save)
 
 
@@ -123,7 +134,10 @@ func _process(delta: float) -> void:
 			_accumulator = 0.0
 			break
 		if attached_world != null and attached_world.clock == sim:
-			attached_world.advance()
+			if tick_driver.is_valid():
+				tick_driver.call()
+			else:
+				attached_world.advance()
 		else:
 			sim.advance()
 		EventBus.sim_ticked.emit(sim.tick)

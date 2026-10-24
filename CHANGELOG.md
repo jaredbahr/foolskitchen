@@ -11,6 +11,9 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- A real day: guests now come in, sit and wait; money moves with every sale and cost; wages ($55) and rent ($40) are charged at closing; the evening report appears with the day's real numbers; "Next day" starts a new morning with the fridge restocked. Guests still inside at closing are sent home and counted in that evening's report. Until the kitchen is in, guests leave hungry. (#40)
+- The game autosaves every morning and picks up where you left off; **F10** starts a new game. Each new game gets its own random guest arrivals, which continue correctly after loading; a save that can't be read safely starts a new game and is kept untouched. (#40)
+- The evening report sits below the top bar instead of covering it. (#40)
 - A top bar shows the day, time, shop phase and cash, with pause and speed buttons, floating cash changes, and buttons to open the shop or start the next day. (#33)
 - The camera's pan area is centred on the shop with a 2 m margin, so it can't drift into empty space. (#36)
 - The starter shop now appears in 3D with warm furniture placeholders and two staff walking a temporary demonstration route. (#34)
@@ -19,11 +22,14 @@ Each line ends with its PR number.
 - An evening report screen (not yet shown during play): profit, income and costs by category, dishes sold with the best seller marked, guests served versus lost, why guests left, and review quotes. (#25)
 
 ### Content
+- Tier 1 money numbers as data: $300 starting cash, $40 rent, wages of $30 (cook) and $25 (server), and a daily fridge restock. (#40)
 - Starter content as data: 7 ingredients, 3 recipes (burger, grilled cheese, tomato soup) and 8 items (door, two-seat table, chair, fridge, prep counter, stove, pass counter, potted plant). (#23)
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
 - A working kitchen: cooks fetch stock, prepare dishes and plate on the pass; servers deliver meals and clear dirty tables before guests can sit again. Missing ingredients give guests a clear reason to leave. (#PR_NUMBER)
+- `tools/screenshot.sh --open --fast=N` opens the shop and fast-forwards, to capture a full day. (#40)
+- `tools/screenshot.sh` renders the real game under a virtual display and saves screenshots, for reviews and PRs. (#39)
 - Guests find reachable seats, queue, order through servers, eat and pay. Bounded waits recover blocked routes, and closing clears every visit with a reason for the daily report. (#35)
 - Shop layouts are data files, and `ShopBuilder` turns one into a running simulation. (#26)
 - Staff task system with self-healing: staff claim jobs, walk to stations and wait their turn. A job that runs too long is handed back, a blocked route is re-planned, and a deleted target cancels its job. Staff buried under new furniture walk out, and two workers can no longer deadlock over stations. A chaos stress test proves this on every change. (#24)

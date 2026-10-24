@@ -15,6 +15,39 @@ var cash: int:
 			add_cash(value - ledger.cash, Ledger.OTHER)
 
 
+func _ready() -> void:
+	register_save_provider()
+
+
+## Registers this autoload's save section. Idempotent; the game session also
+## calls it, because some hosts (the test runner) never deliver _ready().
+func register_save_provider() -> void:
+	SaveSystem.register("economy", _capture_save, _restore_save)
+
+
+## Starts a fresh game's books: no history, the given cash, empty stock.
+func reset(starting_cash: int) -> void:
+	ledger = Ledger.new()
+	ledger.cash = starting_cash
+	stock = Stock.new()
+	EventBus.cash_changed.emit(cash, 0, Ledger.OTHER)
+
+
+func _capture_save() -> Dictionary:
+	return {"ledger": ledger.to_dict(), "stock": stock.to_dict()}
+
+
+func _restore_save(data: Dictionary) -> bool:
+	var ledger_data: Variant = data.get("ledger", null)
+	var stock_data: Variant = data.get("stock", null)
+	if not ledger_data is Dictionary or not stock_data is Dictionary:
+		return false
+	ledger = Ledger.from_dict(ledger_data)
+	stock = Stock.from_dict(stock_data)
+	EventBus.cash_changed.emit(cash, 0, Ledger.OTHER)
+	return true
+
+
 ## Adds (or, with a negative amount, removes) cash and announces it.
 func add_cash(amount: int, reason: StringName) -> void:
 	ledger.record(Clock.day, amount, reason)
