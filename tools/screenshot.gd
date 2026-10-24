@@ -12,6 +12,8 @@ extends SceneTree
 ##   --staff     show the real morning Staff panel, paused, with no altered roster
 ##   --settings  open Main -> Menu -> Settings at the usual 1600x900 / 100%
 ##   --settings-world  use the gear, select 150%, keyboard Close, show the world
+##   --hud-layout --window-size=1280x720|1600x900 --speed=0 --frames=12,90
+##             use the gear and keyboard Close; capture native HUD at 125%, then 150%
 ##   --report    require a closed-day report with at least two real review cards
 ##   --build=green|red  hold a checked buy preview through the production input API
 ##   --paint     show a painted morning shop using the production paint controls
@@ -44,6 +46,9 @@ var _settings_from_menu: bool = false
 var _settings_world: bool = false
 var _settings_scale: int = 100
 var _settings_keyboard: Dictionary = {}
+var _hud_layout: bool = false
+var _hud_window_size: Vector2i = Vector2i(1600, 900)
+var _hud_layout_scale: int = 125
 var _report_requested: bool = false
 var _build: String = ""
 var _paint: bool = false
@@ -57,6 +62,12 @@ var _finish_requested: bool = false
 
 func _initialize() -> void:
 	OS.add_logger(_errors)
+	var layout_options: Dictionary = hud_layout_options(OS.get_cmdline_user_args())
+	if not String(layout_options["error"]).is_empty():
+		_fail_capture(layout_options["error"])
+		return
+	_hud_layout = layout_options["enabled"]
+	_hud_window_size = layout_options["window_size"]
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--out="):
 			_out = arg.trim_prefix("--out=")
@@ -166,6 +177,48 @@ func _initialize() -> void:
 	root.add_child(_main)
 
 
+## Only the opt-in HUD sequence reserves window size and a two-frame schedule.
+## Legacy options pass through unchanged and do not instantiate a SceneTree here.
+static func hud_layout_options(arguments: PackedStringArray) -> Dictionary:
+	var result: Dictionary = {"enabled": false, "window_size": Vector2i(1600, 900), "error": ""}
+	var window_seen: bool = false
+	for argument: String in arguments:
+		if argument.begins_with("--hud-layout"):
+			if argument != "--hud-layout" or result["enabled"]:
+				result["error"] = "--hud-layout is a single flag without a value"
+				return result
+			result["enabled"] = true
+		elif argument.begins_with("--window-size"):
+			if window_seen or argument not in ["--window-size=1280x720", "--window-size=1600x900"]:
+				result["error"] = "--window-size supports one 1280x720 or 1600x900 value"
+				return result
+			window_seen = true
+			result["window_size"] = Vector2i(1280, 720) if argument.ends_with("1280x720") else Vector2i(1600, 900)
+	if not result["enabled"]:
+		if window_seen:
+			result["error"] = "--window-size requires --hud-layout"
+		return result
+	var speed_count: int = 0
+	var frames_count: int = 0
+	for argument: String in arguments:
+		if argument.begins_with("--speed"):
+			speed_count += 1
+			if argument != "--speed=0":
+				result["error"] = "--hud-layout requires --speed=0"
+		elif argument.begins_with("--frames"):
+			frames_count += 1
+			if argument != "--frames=12,90":
+				result["error"] = "--hud-layout requires --frames=12,90"
+		elif argument.begins_with("--scene") and argument != "--scene=res://src/world/main.tscn":
+			result["error"] = "--hud-layout requires the actual Main scene"
+		for prefix: String in ["--open", "--fast", "--select", "--assign-owner", "--f3", "--menu", "--staff", "--settings", "--report", "--build", "--paint", "--quarter"]:
+			if argument.begins_with(prefix):
+				result["error"] = "--hud-layout cannot combine with other view or service options"
+	if speed_count != 1 or frames_count != 1:
+		result["error"] = "--hud-layout requires one --speed=0 and one --frames=12,90"
+	return result
+
+
 func _process(_delta: float) -> bool:
 	if _finished:
 		return true
@@ -200,6 +253,10 @@ func _process(_delta: float) -> bool:
 			_configure_settings()
 			if _failed:
 				return true
+		if _hud_layout:
+			_open_settings_control(true, _hud_layout_scale)
+			if _failed:
+				return true
 		if not _build.is_empty():
 			_configure_build()
 			if _failed:
@@ -208,11 +265,16 @@ func _process(_delta: float) -> bool:
 			_configure_paint()
 			if _failed:
 				return true
-	if _settings_world and _frames == 8:
+	if _hud_layout and _frames == 24:
+		_hud_layout_scale = 150
+		_open_settings_control(true, _hud_layout_scale)
+		if _failed:
+			return true
+	if ((_settings_world or _hud_layout) and _frames == 8) or (_hud_layout and _frames == 29):
 		_close_settings_with_keyboard()
 		if _failed:
 			return true
-	if _settings_world and _frames == 9:
+	if ((_settings_world or _hud_layout) and _frames == 9) or (_hud_layout and _frames == 30):
 		_settings_keyboard["settings_closed"] = not bool(_main.call("is_settings_visible"))
 		_settings_keyboard["menu_visible"] = _main.call("is_menu_visible")
 		_settings_keyboard["verification_frame"] = _frames
@@ -286,12 +348,16 @@ func _capture_world() -> SimWorld:
 
 
 func _configure_settings() -> void:
+	_open_settings_control(_settings_world, _settings_scale)
+
+
+func _open_settings_control(from_gear: bool, percent: int) -> void:
 	if not _main.has_method("set_menu_visible") or not _main.has_method("is_menu_visible") \
 			or not _main.has_method("is_settings_visible"):
 		_fail_capture("Settings capture requires Main's production panel APIs")
 		return
-	var button_path: NodePath = ^"HUD/Top/Row/Settings" if _settings_world else ^"Overlay/MenuPanel/Panel/Content/SettingsButton"
-	if not _settings_world and (not bool(_main.call("set_menu_visible", true)) or not bool(_main.call("is_menu_visible"))):
+	var button_path: NodePath = ^"HUD/Top/Row/Settings" if from_gear else ^"Overlay/MenuPanel/Panel/Content/SettingsButton"
+	if not from_gear and (not bool(_main.call("set_menu_visible", true)) or not bool(_main.call("is_menu_visible"))):
 		_fail_capture("--settings requires Main's production morning Menu")
 		return
 	var button: Button = _main.get_node_or_null(button_path) as Button
@@ -299,17 +365,17 @@ func _configure_settings() -> void:
 	if button == null or button.disabled or not button.is_visible_in_tree() or panel == null:
 		_fail_capture("Settings capture requires its native entry button and Settings panel")
 		return
-	_settings_from_menu = not _settings_world
+	_settings_from_menu = not from_gear
 	button.pressed.emit()
 	if not bool(_main.call("is_settings_visible")) or bool(_main.call("is_menu_visible")):
 		_fail_capture("native Settings request did not open the production panel")
 		return
 	var scale: OptionButton = panel.get_node_or_null("Panel/Column/Scroll/Content/ScaleChoice") as OptionButton
-	if scale == null or scale.get_item_index(_settings_scale) < 0:
+	if scale == null or scale.get_item_index(percent) < 0:
 		_fail_capture("Settings panel does not offer the requested UI scale")
 		return
 	# Use the player's control path: this applies and saves preferences normally.
-	var index: int = scale.get_item_index(_settings_scale)
+	var index: int = scale.get_item_index(percent)
 	scale.select(index)
 	scale.item_selected.emit(index)
 
@@ -345,6 +411,38 @@ func _settings_capture_valid(state: Dictionary, world: SimWorld) -> bool:
 		and is_equal_approx(float(state.get("content_scale_factor", 0.0)), float(_settings_scale) / 100.0) \
 		and state.get("window_mode") == Window.MODE_WINDOWED and state.get("fullscreen_enabled") == false \
 		and state.get("window_size") == expected_size and state.get("display_size") == expected_size \
+		and world != null and world.clock.phase == SimClock.Phase.MORNING and world.now == 0
+
+
+func _hud_layout_state() -> Dictionary:
+	var state: Dictionary = _settings_state()
+	var header: Control = _main.get_node_or_null("HUD/Top") as Control
+	if state.is_empty() or header == null:
+		return {}
+	var bounds: Rect2 = _settings_pixel_rect(header)
+	var clock: Node = root.get_node_or_null("Clock")
+	state.merge({"frame": _frames, "drawn_frame": Engine.get_frames_drawn(),
+		"clock_speed": clock.get("speed") if clock != null else null,
+		"header_visible": header.is_visible_in_tree(),
+		"header_bounds": [bounds.position.x, bounds.position.y, bounds.size.x, bounds.size.y]})
+	return state
+
+
+func _hud_layout_capture_valid(state: Dictionary, world: SimWorld) -> bool:
+	var percent: int = 125 if _capture_frame == 12 else 150
+	var close_frame: int = 9 if _capture_frame == 12 else 30
+	var expected_size: Array[int] = [_hud_window_size.x, _hud_window_size.y]
+	return _capture_frame in [12, 90] and state.get("frame") == _capture_frame \
+		and state.get("ui_scale_percent") == percent and state.get("selected_ui_scale_percent") == percent \
+		and is_equal_approx(float(state.get("content_scale_factor", 0.0)), float(percent) / 100.0) \
+		and state.get("window_size") == expected_size and state.get("display_size") == expected_size \
+		and state.get("window_mode") == Window.MODE_WINDOWED and state.get("fullscreen_enabled") == false \
+		and state.get("visible") == false and state.get("menu_visible") == false \
+		and state.get("header_visible") == true and state.get("entered_from_menu") == false \
+		and _settings_keyboard.get("settings_closed") == true \
+		and _settings_keyboard.get("tab_to_close") == true and _settings_keyboard.get("close_visible") == true \
+		and _settings_keyboard.get("verification_frame") == close_frame \
+		and state.get("clock_speed") == 0 \
 		and world != null and world.clock.phase == SimClock.Phase.MORNING and world.now == 0
 
 
@@ -634,8 +732,12 @@ func _capture() -> void:
 		inspection = _main.call("inspection_state")
 	var world: SimWorld = _capture_world()
 	var settings_state: Dictionary = _settings_state() if _settings else {}
+	var hud_layout_state: Dictionary = _hud_layout_state() if _hud_layout else {}
 	if _settings and not _settings_capture_valid(settings_state, world):
 		_fail_capture("requested Settings view, UI scale or usual 1600x900 window did not match the rendered morning frame")
+		return
+	if _hud_layout and not _hud_layout_capture_valid(hud_layout_state, world):
+		_fail_capture("HUD layout capture did not match its actual paused scale, window, frame or native Close path")
 		return
 	var build: Dictionary = _build_state()
 	if not _build.is_empty() and (build.get("active") != true or build.get("has_ghost") != true \
@@ -711,6 +813,9 @@ func _capture() -> void:
 	if _settings and (image == null or image.get_size() != SETTINGS_CAPTURE_SIZE):
 		_fail_capture("Settings viewport image did not match the usual 1600x900 dimensions")
 		return
+	if _hud_layout and (image == null or image.get_size() != _hud_window_size):
+		_fail_capture("HUD layout viewport image did not match its requested window size")
+		return
 	var world_render: Dictionary = _settings_world_evidence(image) if _settings_world else {}
 	if image == null or image.is_empty() or image.save_png(path) != OK:
 		_fail_capture("cannot save viewport image: " + path)
@@ -773,6 +878,10 @@ func _capture() -> void:
 			"requested_ui_scale_percent": _settings_scale,
 			"requested_window_size": [SETTINGS_CAPTURE_SIZE.x, SETTINGS_CAPTURE_SIZE.y],
 			"requested_clear_world": _settings_world, "world_render": world_render})
+	if _hud_layout:
+		metadata.merge({"requested_hud_layout": true, "hud_layout": hud_layout_state,
+			"requested_ui_scale_percent": 125 if _capture_frame == 12 else 150,
+			"requested_window_size": [_hud_window_size.x, _hud_window_size.y]})
 	var file: FileAccess = FileAccess.open(path.get_basename() + ".json", FileAccess.WRITE)
 	if file == null:
 		_fail_capture("cannot write capture metadata")
