@@ -21,6 +21,7 @@ var _clock: ClockScript
 var _first: Dictionary = {"value": 3}
 var _second: Dictionary = {"name": "Diner", "items": ["bun", "cheese"]}
 var _restore_calls: int = 0
+var _validation_calls: int = 0
 
 
 func before_each() -> void:
@@ -75,6 +76,21 @@ func test_registering_same_key_replaces_provider() -> void:
 	assert_eq(document["data"].size(), 2)
 
 
+func test_unregister_removes_only_the_expected_capture_owner() -> void:
+	assert_false(_save.unregister("missing", _capture_first))
+	_save.register("first", _capture_second, _restore_second)
+	assert_false(_save.unregister("first", _capture_first), "old owner cannot remove its replacement")
+	assert_eq(_save.save_game("owners"), OK)
+	var document: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(_path("owners")))
+	assert_eq(document["data"]["first"]["name"], "Diner")
+	assert_true(_save.unregister("first", _capture_second))
+	assert_false(_save.unregister("first", _capture_second))
+	assert_eq(_save.save_game("owners"), OK)
+	document = JSON.parse_string(FileAccess.get_file_as_string(_path("owners")))
+	assert_false(document["data"].has("first"))
+	assert_eq(document["data"]["second"]["name"], "Diner", "other keys keep their provider")
+
+
 func test_missing_corrupt_and_future_version_errors() -> void:
 	assert_eq(_save.load_game("missing"), ERR_FILE_NOT_FOUND)
 	_write("broken", "{bad json")
@@ -82,6 +98,95 @@ func test_missing_corrupt_and_future_version_errors() -> void:
 	_write("future", JSON.stringify({"version": 2, "data": {}}))
 	assert_eq(_save.load_game("future"), ERR_FILE_UNRECOGNIZED)
 	assert_eq(_restore_calls, 0)
+
+
+func test_candidate_rejection_applies_no_providers() -> void:
+	_first["value"] = -1
+	assert_eq(_save.save_game("candidate"), OK)
+	_first["value"] = 77
+	_second["name"] = "Keep me"
+	assert_eq(_save.load_game("candidate", _validate_first_nonnegative), ERR_INVALID_DATA)
+	assert_eq(_validation_calls, 1)
+	assert_eq(_restore_calls, 0)
+	assert_eq(_first["value"], 77)
+	assert_eq(_second["name"], "Keep me")
+
+
+func test_rejected_primary_restores_validated_backup_once() -> void:
+	assert_eq(_save.save_game("candidate"), OK)
+	_first["value"] = -1
+	_second["name"] = "Rejected primary"
+	assert_eq(_save.save_game("candidate"), OK)
+	_first["value"] = 77
+	assert_eq(_save.load_game("candidate", _validate_first_nonnegative), OK)
+	assert_eq(_validation_calls, 2)
+	assert_eq(_restore_calls, 2, "each provider runs once, only for the accepted backup")
+	assert_eq(int(_first["value"]), 3)
+	assert_eq(_second["name"], "Diner")
+
+
+func test_rejected_backup_also_applies_no_providers() -> void:
+	_first["value"] = -2
+	assert_eq(_save.save_game("candidate"), OK)
+	_first["value"] = -1
+	assert_eq(_save.save_game("candidate"), OK)
+	_first["value"] = 77
+	assert_eq(_save.load_game("candidate", _validate_first_nonnegative), ERR_INVALID_DATA)
+	assert_eq(_validation_calls, 2)
+	assert_eq(_restore_calls, 0)
+	assert_eq(_first["value"], 77)
+
+
+func test_omitting_validator_keeps_legacy_primary_preference() -> void:
+	assert_eq(_save.save_game("candidate"), OK)
+	_first["value"] = -1
+	assert_eq(_save.save_game("candidate"), OK)
+	_first.clear()
+	assert_eq(_save.load_game("candidate"), OK)
+	assert_eq(int(_first["value"]), -1, "no optional semantic policy is applied")
+	assert_eq(_validation_calls, 0)
+	assert_eq(_restore_calls, 2)
+
+
+func test_candidate_validator_receives_a_deep_copy() -> void:
+	assert_eq(_save.save_game("candidate"), OK)
+	_first.clear()
+	_second.clear()
+	assert_eq(_save.load_game("candidate", _mutate_candidate_copy), OK)
+	assert_eq(int(_first["value"]), 3)
+	assert_eq(_second["items"], ["bun", "cheese"])
+	assert_eq(_restore_calls, 2)
+
+
+func test_validator_does_not_roll_back_unsupported_future_primary() -> void:
+	assert_eq(_save.save_game("future"), OK)
+	assert_eq(_save.save_game("future"), OK)
+	_write("future", JSON.stringify({"version": 2, "data": {"first": {"value": -1}}}))
+	assert_eq(_save.load_game("future", _validate_first_nonnegative), ERR_FILE_UNRECOGNIZED)
+	assert_eq(_validation_calls, 0)
+	assert_eq(_restore_calls, 0)
+
+
+func test_candidate_shapes_and_validator_results_are_checked_before_restore() -> void:
+	_write("shape", JSON.stringify({"version": 1, "data": {"first": []}}))
+	assert_eq(_save.load_game("shape", _validate_first_nonnegative), ERR_PARSE_ERROR)
+	assert_eq(_validation_calls, 0)
+	assert_eq(_save.save_game("candidate"), OK)
+	assert_eq(_save.load_game("candidate", _non_boolean_validation), ERR_INVALID_DATA)
+	assert_eq(_save.load_game("candidate", Callable(_save, "missing_validator")), ERR_INVALID_PARAMETER)
+	assert_eq(_restore_calls, 0)
+
+
+func test_provider_restore_failure_does_not_fallback_or_rollback_after_preflight() -> void:
+	assert_eq(_save.save_game("candidate"), OK)
+	_first["value"] = 8
+	assert_eq(_save.save_game("candidate"), OK)
+	_save.register("second", _capture_second, _reject_restore)
+	_first["value"] = 77
+	assert_eq(_save.load_game("candidate", _validate_first_nonnegative), FAILED)
+	assert_eq(_validation_calls, 1, "provider failure must not try the backup")
+	assert_eq(_restore_calls, 1)
+	assert_eq(int(_first["value"]), 8, "legacy partial-restore behavior is explicit")
 
 
 func test_invalid_slot_names_never_create_files() -> void:
@@ -285,6 +390,72 @@ func test_corrupt_final_recovers_backup_and_ignores_temporary() -> void:
 	assert_eq(int(_first["value"]), 3)
 
 
+func test_save_after_semantic_recovery_preserves_the_good_backup() -> void:
+	assert_eq(_save.save_game("recover"), OK)
+	_first["value"] = -1
+	assert_eq(_save.save_game("recover"), OK)
+	assert_eq(_save.load_game("recover", _validate_first_nonnegative), OK)
+	_first["value"] = 10
+	assert_eq(_save.save_game("recover"), OK)
+	_write("recover", "{damaged after recovery")
+	_first.clear()
+	assert_eq(_save.load_game("recover", _validate_first_nonnegative), OK)
+	assert_eq(int(_first["value"]), 3, "rejected readable primary must not replace the good backup")
+	assert_eq(_restore_calls, 4)
+
+
+func test_rejected_primary_fingerprint_does_not_match_a_replacement_file() -> void:
+	assert_eq(_save.save_game("recover"), OK)
+	_first["value"] = -1
+	assert_eq(_save.save_game("recover"), OK)
+	assert_eq(_save.load_game("recover", _validate_first_nonnegative), OK)
+	_write("recover", JSON.stringify({"version": 1, "data": {"first": {"value": 7}, "second": _second}}))
+	_first["value"] = 10
+	assert_eq(_save.save_game("recover"), OK)
+	_write("recover", "{damaged replacement")
+	assert_eq(_save.load_game("recover", _validate_first_nonnegative), OK)
+	assert_eq(int(_first["value"]), 7, "a different readable primary follows ordinary backup rotation")
+
+
+func test_same_primary_accepted_without_validator_survives_failed_publish() -> void:
+	_assert_accepted_primary_survives_failed_publish(Callable())
+
+
+func test_same_primary_accepted_by_new_validator_survives_failed_publish() -> void:
+	_assert_accepted_primary_survives_failed_publish(_accept_candidate)
+
+
+func test_failed_primary_restore_keeps_its_rejection_marker() -> void:
+	var failing: FailedRename = _use_failing_save()
+	assert_eq(_save.save_game("recover"), OK)
+	_first["value"] = -1
+	assert_eq(_save.save_game("recover"), OK)
+	assert_eq(_save.load_game("recover", _validate_first_nonnegative), OK)
+	_save.register("second", _capture_second, _reject_restore)
+	assert_eq(_save.load_game("recover", _accept_candidate), FAILED)
+	_save.register("second", _capture_second, _restore_second)
+	failing.fail_publish = true
+	_first["value"] = 10
+	assert_eq(_save.save_game("recover"), ERR_CANT_CREATE)
+	assert_eq(_save.load_game("recover", _validate_first_nonnegative), OK)
+	assert_eq(int(_first["value"]), 3, "failed restore must not promote the previously rejected primary")
+
+
+func test_failed_publish_after_semantic_recovery_keeps_the_good_backup() -> void:
+	var failing: FailedRename = _use_failing_save()
+	assert_eq(_save.save_game("recover"), OK)
+	_first["value"] = -1
+	assert_eq(_save.save_game("recover"), OK)
+	assert_eq(_save.load_game("recover", _validate_first_nonnegative), OK)
+	failing.fail_publish = true
+	_first["value"] = 10
+	assert_eq(_save.save_game("recover"), ERR_CANT_CREATE)
+	assert_false(FileAccess.file_exists(_path("recover")))
+	assert_false(FileAccess.file_exists(_path("recover") + ".tmp"))
+	assert_eq(_save.load_game("recover", _validate_first_nonnegative), OK)
+	assert_eq(int(_first["value"]), 3)
+
+
 func test_failed_publication_after_rotating_existing_backup_keeps_latest_save() -> void:
 	var failing: FailedRename = _use_failing_save()
 	assert_eq(_save.save_game("fail"), OK)
@@ -359,6 +530,26 @@ func test_delete_removes_backup_and_temporary_to_prevent_resurrection() -> void:
 	assert_eq(_save.list_slots(), PackedStringArray())
 
 
+func _assert_accepted_primary_survives_failed_publish(validate_sections: Callable) -> void:
+	var failing: FailedRename = _use_failing_save()
+	assert_eq(_save.save_game("accepted"), OK)
+	_first["value"] = -1
+	assert_eq(_save.save_game("accepted"), OK)
+	var primary_text: String = FileAccess.get_file_as_string(_path("accepted"))
+	assert_eq(_save.load_game("accepted", _validate_first_nonnegative), OK)
+	assert_eq(int(_first["value"]), 3, "first load recovers the older accepted backup")
+	assert_eq(_save.load_game("accepted", validate_sections), OK)
+	assert_eq(int(_first["value"]), -1, "second load accepts the unchanged primary")
+	assert_eq(FileAccess.get_file_as_string(_path("accepted")), primary_text)
+	failing.fail_publish = true
+	_first["value"] = 10
+	assert_eq(_save.save_game("accepted"), ERR_CANT_CREATE)
+	assert_false(FileAccess.file_exists(_path("accepted")))
+	_first.clear()
+	assert_eq(_save.load_game("accepted", validate_sections), OK)
+	assert_eq(int(_first["value"]), -1, "failed publication retains the latest accepted primary as backup")
+
+
 func _use_failing_save() -> FailedRename:
 	var directory: String = _save.save_dir
 	_save.free()
@@ -392,6 +583,26 @@ func _restore_second(data: Dictionary) -> bool:
 
 func _reject_restore(_data: Dictionary) -> bool:
 	return false
+
+
+func _validate_first_nonnegative(sections: Dictionary) -> bool:
+	_validation_calls += 1
+	var first: Dictionary = sections.get("first", {})
+	return not first.has("value") or float(first["value"]) >= 0.0
+
+
+func _accept_candidate(_sections: Dictionary) -> bool:
+	return true
+
+
+func _mutate_candidate_copy(sections: Dictionary) -> bool:
+	sections["first"]["value"] = 99
+	sections["second"]["items"][0] = "changed only in the validator's copy"
+	return true
+
+
+func _non_boolean_validation(_sections: Dictionary) -> Variant:
+	return 1
 
 
 func _path(slot: String) -> String:
