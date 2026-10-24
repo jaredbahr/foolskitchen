@@ -22,7 +22,7 @@ project.godot
 src/
   core/        # autoloads: GameState, Clock, Economy, SaveSystem, EventBus
   sim/         # pure simulation logic: customers, staff, tasks, kitchen
-  build/       # build mode, grid, placement validation
+  build/       # pure interaction controller; placement checks live in sim/shop
   ui/          # HUD, menus, panels
   minigames/   # one folder per mini-game, each a self-contained scene
   world/       # restaurant scenes, the camera, agents' visual nodes
@@ -124,6 +124,20 @@ docs/
   - `Kitchen.mark_table_dirty(id)` runs before an occupied seat is released (also on forced/external removal); failed seat walks do not dirty a table. Customers skip `is_table_dirty(id)` tables. A real priority-1 server task reserves a free table seat and works 40 units before removing the dirty hold. Terminal bus failures keep the flag and log a reason;   - CLOSED immediately removes guests, terminalizes their tickets and cancels their cook/deliver tasks. Real bussing may continue while the evening report is open. Each morning `start_day()` runs the overnight tidy (decision on #45): staff clean up after hours, so every dirty table is cleared, any leftover kitchen task is cancelled (`overnight_tidy`) and staff start at their posts. This is a deliberate rule, not a hidden failure: unfinished work never spills into the next day.ions and `Kitchen.is_clean()`. `start_day()` never clears dirty tables to conceal unfinished work.
   - The current playable `Clock` driver stops at CLOSED and does not yet drive this cleanup interval; future restaurant/world integration must do so. `RestaurantSim.advance()` remains exactly one world tick per call, with no internal drain loop.
 - **Debug overlay (F3):** paths, claimed tasks, agent states and the task board, from Phase 1 onward.
+- **Owner assignment (FK-020):** the restaurant factory creates one `OwnerAgent`
+  at the authored owner spawn, with cook/server skill 3 and default `rest`.
+  `owner_agent()` returns that live agent and `assign_owner(mode) -> bool`
+  accepts `kitchen` (3/0 cook/server priorities), `floor` (0/3), `help` (1/1)
+  or `rest` (0/0). The role stays `owner`; owner/any priorities are always zero.
+  A newly disabled task is dropped on the next owner tick through the ordinary
+  task board and StaffAgent cleanup, including reservations and drop limits.
+  Rest walks home through real path/movement steps; unreachable or stalled
+  routes have three bounded attempts and wait honestly for a grid change.
+  Morning staff resets retain the mode. The owner is excluded from wages.
+- `OwnerAssignment.resolve(world_position, grid)` reads footprints and rotated
+  external work cells. Fridge, prep counter, stove and pass side 0 choose kitchen;
+  tables and pass side 1 choose floor. Footprint pass clicks choose the nearest
+  side with deterministic ties. It changes no grid, reservation or agent state.
 
 ### 2.3b Game session (FK-024, `src/world/main.gd`)
 - `main.tscn` is the game session for one shop. It builds a `RestaurantSim` from the layout and content, and points `sim.stock` at `Economy.stock`.
@@ -136,6 +150,28 @@ docs/
 - `customer_paid` records a SALE and counts the dish.
 - **Saves:** the slot is "autosave" (F10 deletes it and restarts). Autoloads register save providers through `register_save_provider()`, which `main.start()` also calls, because the test runner never delivers `_ready()`.
 - `run_ticks(n)` fast-forwards for tests and tools.
+- With the owner selected, Main resolves assignment targets before ordinary
+  agent/item picking and retains owner selection. K/F/H/R and the inspector's
+  Kitchen/Floor/Help/Rest buttons use the same guarded `assign_owner_mode`
+  command. Other selections retain normal inspection. The inspector preserves
+  native button press attempts across frame/tick refreshes and emits primitive
+  requests; it never assigns sim work itself.
+- A small `owner` save section stores only the mode through Main's capture and
+  restore methods, with `OwnerModeSettings` validating the plain mode data.
+  Like the shop and menu providers, these callbacks belong to the active Main.
+  Startup applies the validated mode only after a complete
+  successful MORNING load; missing old-save data defaults to rest, and failed
+  loads reset it with the existing fresh-game/skip-one-autosave behavior.
+  Assignment commands in every phase wait for the next normal MORNING autosave;
+  quitting before that checkpoint loses those assignment changes. No service
+  snapshot or additional stock purchase is introduced by a service hotkey.
+- Capture option `--select=owner --assign-owner=kitchen --open` selects the live
+  factory owner and uses the same command. At each requested image it permits
+  at most 900 extra normal sim ticks to observe actual claimed cooking work.
+  Post-draw metadata reports the real selected owner/mode/task/claimant/step,
+  world tick and warmup count; it fails when these cannot be established.
+  It installs no task, guest, stock or altered staff fixture. The existing
+  sequential visual-review job includes an owner kitchen image for review.
 
 ### 2.3c Furniture edits (FK-031)
 - `ShopEditor(sim, content, books)` is pure `RefCounted` logic. `ShopEditBooks`
@@ -213,6 +249,27 @@ docs/
   `tools/screenshot.sh --menu --speed=0 --frames=12` requests the production
   morning panel, verifies its actual visible state and captures after drawing;
   no workflow or renderer setting is changed by the option.
+
+### 2.3e Build controls (FK-032)
+- `src/build/build_mode.gd` is a typed `RefCounted` interaction controller.
+  It reads `ShopEditor` checks and commits only through Main's shop wrappers.
+- Main owns one input route. B or the HUD toggle enters only in MORNING/CLOSED;
+  active build input takes precedence over ordinary selection and service keys.
+- Pick-up preserves the clicked tile's offset from the item's origin. Hover and
+  each click use the actual Camera3D floor ray, including during camera smoothing.
+- R cycles world quarter turns. Click commits a valid preview; Delete sells only
+  a held MOVE item. Esc cancels a preview, then exits. Hints show available actions.
+- Previews/cancellation never change the grid or books. Placement failures use
+  short sentences from `ShopEditor.placement_reason`; path warnings do not block.
+- Valid checks supply unreachable IDs (0 for a proposed buy); committed warnings
+  use actual IDs and survive invalid proposals, cancellation and exit until fixed.
+- Build forces the rendered grid while retaining the G preference; phase changes,
+  exit and presentation rebinding cancel previews and restore that preference.
+- Build closes Menu and inspection; opening Menu exits build. GUI controls consume
+  their clicks. Content-sized hints/catalogue use bounded scrolling when needed.
+- CLOSED edits hide the report; exit rebuilds it without recharging or day setup.
+- Sale results/books are authoritative; shared HUD feedback retains its same-frame
+  coalescing and zero suppression. Only the existing morning boundary autosaves.
 
 ### 2.4 Save system
 - JSON in `user://saves/`, with a `version` field and migration functions per version.

@@ -6,13 +6,13 @@ extends TestCase
 const MainScene: PackedScene = preload("res://src/world/main.tscn")
 const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
 const TUNING: EconomyTuning = preload("res://data/balance/tier1_economy.tres")
-const TEST_SAVES: String = "user://test_invariant_saves/"
 const SLOT: String = "test_invariants"
 const DAYS: int = 5
 const RELOAD_BEFORE_DAY: int = 3
 
 var _mains: Array[Node] = []
 var _old_save_dir: String
+var _save_dir: String
 var _arrivals_today: int = 0
 var _paid_today: int = 0
 var _sales_today: int = 0
@@ -20,7 +20,8 @@ var _sales_today: int = 0
 
 func before_each() -> void:
 	_old_save_dir = SaveSystem.save_dir
-	SaveSystem.save_dir = TEST_SAVES
+	_save_dir = SaveTestPaths.case_dir(OS.get_process_id(), "multi_day_invariants")
+	SaveSystem.save_dir = _save_dir
 	SaveSystem.delete_slot(SLOT)
 
 
@@ -29,7 +30,8 @@ func after_each() -> void:
 		_free(main)
 	_mains.clear()
 	SaveSystem.delete_slot(SLOT)
-	DirAccess.remove_absolute(TEST_SAVES)
+	DirAccess.remove_absolute(_save_dir)
+	DirAccess.remove_absolute(SaveTestPaths.process_dir(OS.get_process_id()))
 	SaveSystem.save_dir = _old_save_dir
 	Clock.set_speed(0)
 	Economy.reset(0)

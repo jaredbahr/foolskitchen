@@ -76,8 +76,11 @@ jobs:
           done
           bash tools/screenshot.sh --out=screens/visual-review/inspect-guest --open --fast=5 --select=guest --frames=60 --speed=1
           bash tools/screenshot.sh --out=screens/visual-review/debug-busy --open --fast=5 --select=guest --f3 --frames=60 --speed=1
+          bash tools/screenshot.sh --out=screens/visual-review/owner-kitchen --open --fast=5 --select=owner --assign-owner=kitchen --frames=60 --speed=1
           bash tools/screenshot.sh --out=screens/visual-review/mood-waits --open --fast=8 --frames=120,180,240,300 --speed=1
           bash tools/screenshot.sh --out=screens/visual-review/menu --menu --speed=0 --frames=12
+          bash tools/screenshot.sh --out=screens/visual-review/build-green --build=green --quarter=0 --frames=12 --speed=1
+          bash tools/screenshot.sh --out=screens/visual-review/build-red --build=red --quarter=0 --frames=12 --speed=1
 
       - name: Verify capture identity and image metadata
         shell: bash
@@ -93,10 +96,13 @@ jobs:
           root = Path('screens/visual-review')
           captures = [('default', -1, False, False, 60)] + [(f'quarter-{q}', q, False, False, 60) for q in range(4)]
           captures += [('inspect-guest', -1, True, False, 60), ('debug-busy', -1, True, True, 60)]
+          captures += [('owner-kitchen', -1, False, False, 60)]
           captures += [('mood-waits', -1, False, False, frame) for frame in (120, 180, 240, 300)]
           captures += [('menu', -1, False, False, 12)]
+          captures += [('build-green', 0, False, False, 12), ('build-red', 0, False, False, 12)]
           observed_bands = set()
           for name, requested, inspect_guest, debug, frame in captures:
+              inspect_owner = name == 'owner-kitchen'
               png = root / name / f'shot_{frame:04d}.png'
               raw = png.read_bytes()
               assert raw[:8] == b'\x89PNG\r\n\x1a\n' and len(raw) > 1000, f'{name}: missing/invalid PNG'
@@ -115,22 +121,40 @@ jobs:
               assert (data['width'], data['height'], data['frame']) == (1600, 900, frame), f'{name}: wrong viewport/frame'
               assert 'llvmpipe' in data['video_adapter'].lower(), f'{name}: not the requested software Mesa adapter'
               assert data['lowered_wall_cells'], f'{name}: no lowered walls'
-              assert data['requested_selection'] == ('guest' if inspect_guest else ''), f'{name}: wrong requested selection'
+              assert data['requested_selection'] == ('owner' if inspect_owner else 'guest' if inspect_guest else ''), f'{name}: wrong requested selection'
               assert data['requested_debug_visible'] is debug, f'{name}: wrong requested F3 state'
               menu = name == 'menu'
               assert data['requested_menu_visible'] is menu, f'{name}: wrong requested menu state'
               assert data['menu_visible'] is menu, f'{name}: wrong actual menu visibility'
+              build_kind = name.removeprefix('build-') if name.startswith('build-') else ''
+              assert data['requested_build'] == build_kind, f'{name}: wrong requested build preview'
+              if build_kind:
+                  build = data['build']
+                  assert build['active'] is True and build['has_ghost'] is True and build['ghost_visible'] is True, f'{name}: missing native ghost'
+                  assert build['ok'] is build['ghost_valid'] is (build_kind == 'green'), f'{name}: wrong editor/native validity'
+                  assert build['state'] == 3 and build['origin'] == build['pointer_cell'], f'{name}: incoherent buy preview pointer'
+                  assert data['day_phase'] == 0 and data['capture_parameters'] == {'open': False, 'fast_ticks_per_frame': 0, 'speed': 1}
+                  assert build_kind != 'red' or build['why'], f'{name}: missing placement reason'
               assert data['debug_visible'] is debug, f'{name}: wrong actual F3 state'
-              assert data['panel_visible'] is inspect_guest, f'{name}: wrong actual inspect panel state'
+              assert data['panel_visible'] is (inspect_guest or inspect_owner), f'{name}: wrong actual inspect panel state'
               assert data['selected_item_id'] == -1, f'{name}: unexpected item selection'
               assert type(data['world_tick']) is int and data['world_tick'] >= 0, f'{name}: invalid world tick'
-              if inspect_guest:
+              if inspect_guest or inspect_owner:
                   assert type(data['selected_agent_id']) is int and data['selected_agent_id'] > 0, f'{name}: no selected agent id'
-                  assert data['selected_role'] == 'guest' and data['selected_agent_live'] is True, f'{name}: selected agent is not a live guest'
+                  assert data['selected_role'] == ('owner' if inspect_owner else 'guest') and data['selected_agent_live'] is True, f'{name}: selected agent is not the requested live agent'
                   assert data['world_tick'] > 0, f'{name}: busy world did not advance'
               else:
                   assert data['selected_agent_id'] == -1 and data['selected_role'] == '', f'{name}: unexpected agent selection'
                   assert data['selected_agent_live'] is False, f'{name}: unexpected live selection'
+              assert data['requested_owner_mode'] == ('kitchen' if inspect_owner else ''), f'{name}: wrong requested owner mode'
+              if inspect_owner:
+                  assert data['capture_parameters'] == {'open': True, 'fast_ticks_per_frame': 5, 'speed': 1}, 'wrong owner capture parameters'
+                  assert data['owner_mode'] == 'kitchen', 'owner is not assigned to kitchen'
+                  assert type(data['owner_warmup_ticks']) is int and 0 <= data['owner_warmup_ticks'] <= 900, 'invalid owner warmup budget'
+                  assert type(data['selected_task_id']) is int and data['selected_task_id'] > 0, 'owner has no actual task'
+                  assert data['selected_task_role'] == 'cook' and data['selected_task_label'], 'owner is not cooking'
+                  assert data['selected_task_state'] == 1 and data['selected_task_claimant'] == data['selected_agent_id'], 'owner does not hold the real CLAIMED task'
+                  assert type(data['selected_task_step']) is int and data['selected_task_step'] >= 0, 'invalid actual task step'
               if menu:
                   assert type(data['day_phase']) is int and data['day_phase'] == 0, 'menu capture is not MORNING'
                   assert data['capture_parameters'] == {'open': False, 'fast_ticks_per_frame': 0, 'speed': 0}, 'wrong paused menu capture parameters'

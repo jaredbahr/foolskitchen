@@ -1,0 +1,98 @@
+name: Build
+
+# Playable builds for testers. Runs by hand (Actions > Build > Run workflow),
+# on a version tag (vX.Y.Z, which also publishes a GitHub Release), and on PRs
+# that change the build setup itself. It never runs on ordinary PRs.
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - .github/workflows/build.yml
+      - export_presets.cfg
+      - tools/export.sh
+      - tools/get_export_templates.sh
+      - tools/release_notes.sh
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Export Windows and Web
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Restore Godot cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .tools/
+          key: ${{ runner.os }}-godot-${{ hashFiles('tools/godot_version.txt') }}
+
+      - name: Restore export templates cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.local/share/godot/export_templates/
+          key: ${{ runner.os }}-godot-templates-${{ hashFiles('tools/godot_version.txt') }}
+
+      - name: Download Godot and export templates if needed
+        run: |
+          bash tools/get_godot.sh
+          bash tools/get_export_templates.sh
+
+      - name: Checks
+        run: bash tools/check.sh
+
+      - name: Export
+        run: bash tools/export.sh all
+
+      - name: Upload builds
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: FoolsKitchen-${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || github.sha }}
+          path: |
+            export/FoolsKitchen-windows.zip
+            export/FoolsKitchen-web.zip
+          retention-days: 30
+
+  release:
+    name: Publish release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download builds
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: FoolsKitchen-${{ github.ref_name }}
+          path: export
+
+      - name: Release notes (the whole CHANGELOG section for this version)
+        run: bash tools/release_notes.sh "${{ github.ref_name }}" > notes.md
+
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            export/FoolsKitchen-windows.zip export/FoolsKitchen-web.zip \
+            --repo "${{ github.repository }}" \
+            --title "Fool's Kitchen ${{ github.ref_name }}" \
+            --notes-file notes.md

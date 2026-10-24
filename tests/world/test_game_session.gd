@@ -4,15 +4,16 @@ extends TestCase
 
 const MainScene: PackedScene = preload("res://src/world/main.tscn")
 const TUNING: EconomyTuning = preload("res://data/balance/tier1_economy.tres")
-const TEST_SAVES: String = "user://test_session_saves/"
 
 var _mains: Array[Node] = []
 var _old_save_dir: String
+var _save_dir: String
 
 
 func before_each() -> void:
 	_old_save_dir = SaveSystem.save_dir
-	SaveSystem.save_dir = TEST_SAVES
+	_save_dir = SaveTestPaths.case_dir(OS.get_process_id(), "game_session")
+	SaveSystem.save_dir = _save_dir
 	SaveSystem.delete_slot("test_session")
 
 
@@ -25,7 +26,8 @@ func after_each() -> void:
 			m.free()
 	_mains.clear()
 	SaveSystem.delete_slot("test_session")
-	DirAccess.remove_absolute(TEST_SAVES)
+	DirAccess.remove_absolute(_save_dir)
+	DirAccess.remove_absolute(SaveTestPaths.process_dir(OS.get_process_id()))
 	SaveSystem.save_dir = _old_save_dir
 	Clock.set_speed(0)
 	Economy.reset(0)
@@ -186,7 +188,7 @@ func test_half_broken_save_starts_fresh_and_keeps_the_file() -> void:
 	(Engine.get_main_loop() as SceneTree).root.remove_child(first)
 	first.free()
 	# Corrupt only the economy section.
-	var path := TEST_SAVES.path_join("test_session.json")
+	var path := _save_dir.path_join("test_session.json")
 	var doc: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
 	doc["data"]["economy"] = {"ledger": 5}
 	var f := FileAccess.open(path, FileAccess.WRITE)

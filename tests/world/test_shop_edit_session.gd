@@ -4,16 +4,17 @@ extends TestCase
 const MAIN: PackedScene = preload("res://src/world/main.tscn")
 const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
 const TUNING: EconomyTuning = preload("res://data/balance/tier1_economy.tres")
-const SAVE_DIR: String = "user://test_shop_edit_sessions/"
 const SLOT: String = "shop_edit"
 
 var _mains: Array[Node] = []
 var _old_save_dir: String
+var _save_dir: String
 
 
 func before_each() -> void:
 	_old_save_dir = SaveSystem.save_dir
-	SaveSystem.save_dir = SAVE_DIR
+	_save_dir = SaveTestPaths.case_dir(OS.get_process_id(), "shop_edit_session")
+	SaveSystem.save_dir = _save_dir
 	SaveSystem.delete_slot(SLOT)
 
 
@@ -21,7 +22,8 @@ func after_each() -> void:
 	for main: Node in _mains.duplicate():
 		_close(main)
 	SaveSystem.delete_slot(SLOT)
-	DirAccess.remove_absolute(SAVE_DIR)
+	DirAccess.remove_absolute(_save_dir)
+	DirAccess.remove_absolute(SaveTestPaths.process_dir(OS.get_process_id()))
 	SaveSystem.save_dir = _old_save_dir
 	Clock.set_speed(0)
 	Economy.reset(0)
@@ -210,7 +212,7 @@ func _id(main: Node, def_id: StringName) -> int:
 
 
 func _path() -> String:
-	return SAVE_DIR.path_join(SLOT + ".json")
+	return _save_dir.path_join(SLOT + ".json")
 
 
 func _document() -> Dictionary:

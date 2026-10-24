@@ -7,6 +7,7 @@ const PHASE_NAMES: Array[String] = ["Morning", "Open", "Last orders", "Closed"]
 const GAIN_COLOR: Color = Color("286B3B")
 const LOSS_COLOR: Color = Color("A42E2E")
 
+signal build_toggled()
 signal menu_pressed()
 
 var _day_label: Label
@@ -22,6 +23,15 @@ var _buttons: Array[Button] = []
 var _cash: int = 0
 var _wall_button: Button
 var _shop_view: ShopView
+var _build_button: Button
+var _build_hints: PanelContainer
+var _build_hint_text: Label
+var _build_hint_scroll: ScrollContainer
+var _hint_viewport: Viewport
+var _build_available: bool = false
+var _build_active: bool = false
+var _build_reason: String = ""
+var _build_state: int = BuildMode.State.IDLE
 var _menu_button: Button
 
 
@@ -40,6 +50,17 @@ func refresh() -> void:
 		_deltas = get_node("Deltas") as Control
 		_wall_button = get_node("Top/Row/Walls") as Button
 		_wall_button.pressed.connect(_on_wall_button_pressed)
+		_build_button = get_node("Top/Row/Build") as Button
+		_build_hints = get_node("BuildHints") as PanelContainer
+		_build_hint_scroll = get_node("BuildHints/Scroll") as ScrollContainer
+		_build_hint_text = get_node("BuildHints/Scroll/Text") as Label
+		var style: StyleBox = _build_hints.theme.get_stylebox("panel", "PanelContainer").duplicate() as StyleBox
+		style.set_content_margin(SIDE_LEFT, 10.0)
+		style.set_content_margin(SIDE_RIGHT, 10.0)
+		style.set_content_margin(SIDE_TOP, 6.0)
+		style.set_content_margin(SIDE_BOTTOM, 6.0)
+		_build_hints.add_theme_stylebox_override("panel", style)
+		_build_button.pressed.connect(_on_build_pressed)
 		_menu_button = get_node("Top/Row/Menu") as Button
 		_menu_button.pressed.connect(_on_menu_pressed)
 		_cash = Economy.cash
@@ -61,8 +82,83 @@ func refresh() -> void:
 	_context.text = "Open shop" if Clock.sim.phase == SimClock.Phase.MORNING else "Next day"
 	_on_speed_changed(Clock.speed)
 	_refresh_wall_mode()
+	if is_inside_tree() and _hint_viewport != get_viewport():
+		if _hint_viewport != null and _hint_viewport.size_changed.is_connected(_layout_build_hints):
+			_hint_viewport.size_changed.disconnect(_layout_build_hints)
+		_hint_viewport = get_viewport()
+		_hint_viewport.size_changed.connect(_layout_build_hints)
+	_refresh_build_controls()
 	_menu_button.disabled = Clock.sim.phase != SimClock.Phase.MORNING
 	_menu_button.tooltip_text = "Choose today's menu and prices" if not _menu_button.disabled else "Menu changes are available in the morning."
+
+
+## State changes only: a refresh between native down/up preserves the button.
+func set_build_state(available: bool, active: bool, reason: String = "", held_state: int = BuildMode.State.IDLE) -> void:
+	_build_available = available
+	_build_active = active
+	_build_reason = reason
+	_build_state = held_state
+	if _build_button == null:
+		refresh()
+	else:
+		_refresh_build_controls()
+
+
+func _refresh_build_controls() -> void:
+	var allowed: bool = _build_available and (
+		Clock.sim.phase == SimClock.Phase.MORNING or Clock.sim.phase == SimClock.Phase.CLOSED)
+	if _build_button.disabled == allowed:
+		_build_button.disabled = not allowed
+	if _build_button.button_pressed != _build_active:
+		_build_button.set_pressed_no_signal(_build_active)
+	var tooltip: String = "Build furniture (B)" if allowed else "Build furniture in the morning or after closing"
+	if _build_button.tooltip_text != tooltip:
+		_build_button.tooltip_text = tooltip
+	var resize_hint: bool = _build_hints.visible != _build_active
+	if resize_hint:
+		_build_hints.visible = _build_active
+	var text: String = "Esc Exit"
+	if _build_state == BuildMode.State.MOVE:
+		text = "R Rotate  |  Del Sell  |  Esc Cancel"
+	elif _build_state == BuildMode.State.BUY:
+		text = "R Rotate  |  Esc Cancel"
+	if not _build_reason.is_empty():
+		text += "\n" + _build_reason
+	if _build_hint_text.text != text:
+		_build_hint_text.text = text
+		resize_hint = true
+	if resize_hint:
+		_layout_build_hints()
+
+
+func _layout_build_hints() -> void:
+	if _build_hint_text == null:
+		return
+	var viewport_size: Vector2 = get_viewport().get_visible_rect().size if is_inside_tree() else Vector2(1600.0, 900.0)
+	var padding: Vector2 = _build_hints.get_theme_stylebox("panel").get_minimum_size()
+	var top: float = minf(104.0, maxf(12.0, viewport_size.y - 64.0))
+	var available: Vector2 = Vector2(minf(520.0, viewport_size.x - 24.0), viewport_size.y - top - 12.0) - padding
+	if available.x <= 0.0 or available.y <= 0.0:
+		return
+	var font: Font = _build_hint_text.get_theme_font("font")
+	var font_size: int = _build_hint_text.get_theme_font_size("font_size")
+	var natural_width: float = 0.0
+	for line: String in _build_hint_text.text.split("\n"):
+		natural_width = maxf(natural_width, font.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1.0, font_size).x)
+	var width: float = minf(ceilf(natural_width), available.x)
+	var text_size: Vector2 = font.get_multiline_string_size(_build_hint_text.text, HORIZONTAL_ALIGNMENT_LEFT, width, font_size)
+	var bar_width: float = _build_hint_scroll.get_v_scroll_bar().get_combined_minimum_size().x if text_size.y > available.y else 0.0
+	width = minf(width, available.x - bar_width)
+	text_size = font.get_multiline_string_size(_build_hint_text.text, HORIZONTAL_ALIGNMENT_LEFT, width, font_size)
+	_build_hint_text.custom_minimum_size = Vector2(width, 0.0)
+	_build_hint_scroll.custom_minimum_size = Vector2(width + bar_width, minf(ceilf(text_size.y), available.y))
+	_build_hints.size = _build_hint_scroll.custom_minimum_size + padding
+	_build_hints.position = Vector2(12.0, top)
+
+
+func _on_build_pressed() -> void:
+	if _build_available and (Clock.sim.phase == SimClock.Phase.MORNING or Clock.sim.phase == SimClock.Phase.CLOSED):
+		build_toggled.emit()
 
 
 ## Binds this presentation control to the containing shop view, idempotently.
@@ -86,6 +182,9 @@ func _notification(what: int) -> void:
 
 
 func _disconnect_events() -> void:
+	if _hint_viewport != null and _hint_viewport.size_changed.is_connected(_layout_build_hints):
+		_hint_viewport.size_changed.disconnect(_layout_build_hints)
+	_hint_viewport = null
 	if EventBus.sim_ticked.is_connected(_on_sim_ticked):
 		EventBus.sim_ticked.disconnect(_on_sim_ticked)
 	if EventBus.day_phase_changed.is_connected(_on_phase_changed):
