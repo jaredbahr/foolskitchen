@@ -159,8 +159,10 @@ docs/
   becomes DELIVERED at its own stop; the guest's existing eating and payment
   path runs once. A cancelled meal recovers its own held plate and the other
   stops remain on the trip. A failed trip cancels only its still-READY meals.
-  Bussing keeps one table per task and collects at most the same capacity;
-  returned plates beyond that limit queue another task for that table.
+  A dropped prepared batch remains one delivery task covering its READY meals;
+  another pickup cannot absorb its primary and orphan the other stops. Trays
+  affect delivery only: bussing still clears every returned plate at one table
+  in one task, independent of carry capacity.
   Main offers two MORNING-only, ordered purchases at the prices in
   `tier1_economy.tres` ($60/$150 initially) under `Ledger.UPGRADES`.
   The shop save section adds `tray_level` (0/1/2); old sections default to 0.

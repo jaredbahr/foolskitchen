@@ -378,7 +378,10 @@ func _nearest_order(sim: RestaurantSim, from_cell: Vector2i, orders: Array[Order
 func _open_delivery_for(order_id: int) -> SimTask:
 	for task: SimTask in _tasks.values():
 		if task.kind == &"deliver" and task.state == SimTask.State.OPEN \
+				and not bool(task.payload.get("batch_prepared", false)) \
 				and int(task.payload.get("order_id", 0)) == order_id:
+			# A dropped prepared trip is OPEN again, but it still covers every
+			# READY order in order_ids. Absorbing its primary would strand the rest.
 			return task
 	return null
 
@@ -431,7 +434,7 @@ func _on_task_completed(task: SimTask) -> void:
 		return
 	if task.kind == &"bus_table":
 		var table_id: int = int(task.payload["table_item_id"])
-		if _plates.collect_table(table_id, maxi(1, sim.carry_capacity)) > 0:
+		if _plates.collect_table(table_id) > 0:
 			_notify_plates()
 		_bus_tasks.erase(table_id)
 		if _plates.returned_at_table(table_id) > 0:

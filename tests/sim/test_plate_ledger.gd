@@ -85,16 +85,15 @@ func test_collection_takes_only_returned_plates_at_the_requested_table() -> void
 	_assert_counts(ledger, 4, 1, 3, 0)
 
 
-func test_bussing_capacity_limits_one_table_without_losing_returned_plates() -> void:
+func test_one_bus_trip_collects_all_returned_plates_at_one_table() -> void:
 	var ledger: PlateLedger = PlateLedger.new(4)
 	for id: int in [1, 2, 3]:
 		assert_true(ledger.take(id, 10))
 		assert_true(ledger.return_to_table(id, 10))
 	assert_eq(ledger.returned_at_table(10), 3)
-	assert_eq(ledger.collect_table(10, 2), 2)
-	assert_eq(ledger.returned_at_table(10), 1)
-	_assert_counts(ledger, 4, 1, 2, 1)
-	assert_eq(ledger.collect_table(10, 2), 1)
+	assert_eq(ledger.collect_table(10), 3)
+	assert_eq(ledger.returned_at_table(10), 0)
+	assert_eq(ledger.collect_table(10), 0)
 	_assert_counts(ledger, 4, 1, 3, 0)
 
 

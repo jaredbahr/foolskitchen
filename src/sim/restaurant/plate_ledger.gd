@@ -54,13 +54,11 @@ func return_to_table(order_id: int, table_id: int) -> bool:
 
 
 ## Multiple seats remain distinct: an active diner's plate cannot be collected.
-func collect_table(table_id: int, capacity: int = MAX_TOTAL) -> int:
+func collect_table(table_id: int) -> int:
 	if table_id <= 0:
 		return 0
 	var collected: int = 0
 	for order_id: int in _tables_by_order.keys():
-		if collected >= capacity:
-			break
 		if _tables_by_order[order_id] == table_id and _returned.has(order_id):
 			if _retire_order(order_id):
 				collected += 1
