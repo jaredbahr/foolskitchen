@@ -9,6 +9,7 @@ const SHARED_THEME: Theme = preload("res://src/ui/theme/main_theme.tres")
 const STANDARD_COLOR: Color = Color("3b2a20")
 const LOWER_COLOR: Color = Color("38764b")
 const HIGHER_COLOR: Color = Color("a83e35")
+const LOCKED_COLOR: Color = Color("766b60")
 const MORNING_HINT: String = "Menu changes are available in the morning."
 
 var _menu: MenuSettings
@@ -26,8 +27,12 @@ func _ready() -> void:
 
 func bind_menu(model: MenuSettings) -> void:
 	if _menu != model:
+		if _menu != null and _menu.owner_level_changed.is_connected(_on_owner_level_changed):
+			_menu.owner_level_changed.disconnect(_on_owner_level_changed)
 		_menu = model
 		_needs_rebuild = true
+		if _menu != null:
+			_menu.owner_level_changed.connect(_on_owner_level_changed)
 	refresh()
 
 
@@ -47,26 +52,37 @@ func refresh() -> void:
 		return
 	for definition: RecipeDef in _menu.recipes():
 		var row: Dictionary = _rows[definition.id]
+		var title: Label = row["title"]
+		var unlock: Label = row["unlock"]
 		var toggle: Button = row["toggle"]
 		var minus: Button = row["minus"]
 		var plus: Button = row["plus"]
 		var amount: Label = row["amount"]
 		var standard_label: Label = row["standard"]
 		var ratio_label: Label = row["ratio"]
+		var locked: bool = definition.unlock_level > _menu.owner_level()
+		var unlock_hint: String = "Unlocks at level %d" % definition.unlock_level
 		var enabled: bool = _menu.is_enabled(definition.id)
 		var last_enabled: bool = enabled and _menu.enabled_count() == 1
 		var price: int = _menu.price_of(definition)
 		var standard: int = _menu.standard_price(definition.id)
 		var minimum: int = _menu.minimum_price(definition.id)
 		var maximum: int = _menu.maximum_price(definition.id)
+		unlock.visible = locked
+		unlock.text = unlock_hint if locked else ""
+		for label: Label in [title, amount, standard_label]:
+			if locked:
+				label.add_theme_color_override("font_color", LOCKED_COLOR)
+			else:
+				label.remove_theme_color_override("font_color")
 		toggle.set_pressed_no_signal(enabled)
-		toggle.text = "On menu" if enabled else "Off menu"
-		toggle.disabled = not editable or last_enabled
-		toggle.tooltip_text = MORNING_HINT if not editable else ("Keep at least one dish on the menu." if last_enabled else "Offer this dish today.")
-		minus.disabled = not editable or price <= minimum
-		plus.disabled = not editable or price >= maximum
-		minus.tooltip_text = MORNING_HINT if not editable else "Minimum price: $%d" % minimum
-		plus.tooltip_text = MORNING_HINT if not editable else "Maximum price: $%d" % maximum
+		toggle.text = "Locked" if locked else ("On menu" if enabled else "Off menu")
+		toggle.disabled = locked or not editable or last_enabled
+		toggle.tooltip_text = unlock_hint if locked else (MORNING_HINT if not editable else ("Keep at least one dish on the menu." if last_enabled else "Offer this dish today."))
+		minus.disabled = locked or not editable or price <= minimum
+		plus.disabled = locked or not editable or price >= maximum
+		minus.tooltip_text = unlock_hint if locked else (MORNING_HINT if not editable else "Minimum price: $%d" % minimum)
+		plus.tooltip_text = unlock_hint if locked else (MORNING_HINT if not editable else "Maximum price: $%d" % maximum)
 		amount.text = "$%d" % price
 		standard_label.text = "Standard $%d" % standard
 		if standard == 0:
@@ -77,12 +93,18 @@ func refresh() -> void:
 			ratio_label.text = "%.0f%% of standard" % (ratio * 100.0)
 			var color: Color = LOWER_COLOR if price < standard else (HIGHER_COLOR if price > standard else STANDARD_COLOR)
 			ratio_label.add_theme_color_override("font_color", color)
+		if locked:
+			ratio_label.add_theme_color_override("font_color", LOCKED_COLOR)
 
 
 ## Read-only access to generated controls for session tests and captures.
 func row_for(recipe_id: StringName) -> Control:
 	var row: Dictionary = _rows.get(recipe_id, {})
 	return row.get("root") as Control
+
+
+func _on_owner_level_changed(_level: int) -> void:
+	refresh()
 
 
 func _bind_nodes() -> void:
@@ -114,6 +136,9 @@ func _rebuild_rows() -> void:
 		var toggle: Button = _add_button(top, "Enabled", "On menu")
 		toggle.toggle_mode = true
 		toggle.toggled.connect(_on_enable_toggled.bind(definition.id))
+		var unlock: Label = _add_label(row, "Unlock", "")
+		unlock.visible = false
+		unlock.add_theme_color_override("font_color", LOCKED_COLOR)
 		var price_line: HBoxContainer = _add_line(row, "Price")
 		var minus: Button = _add_button(price_line, "Minus", "−")
 		minus.pressed.connect(_on_price_step.bind(definition.id, -1))
@@ -132,7 +157,8 @@ func _rebuild_rows() -> void:
 		separator.theme = SHARED_THEME
 		separator.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		row.add_child(separator)
-		_rows[definition.id] = {"root": row, "toggle": toggle, "minus": minus,
+		_rows[definition.id] = {"root": row, "title": title, "unlock": unlock,
+			"toggle": toggle, "minus": minus,
 			"plus": plus, "amount": amount, "standard": standard, "ratio": ratio}
 		index += 1
 
@@ -170,7 +196,9 @@ func _add_button(parent: Node, title: String, text: String) -> Button:
 
 
 func _on_enable_toggled(enabled: bool, recipe_id: StringName) -> void:
-	if _phase != SimClock.Phase.MORNING or _menu == null or _menu.recipe(recipe_id) == null:
+	var definition: RecipeDef = _menu.recipe(recipe_id) if _menu != null else null
+	if _phase != SimClock.Phase.MORNING or definition == null \
+			or definition.unlock_level > _menu.owner_level():
 		refresh()
 		return
 	var current: bool = _menu.is_enabled(recipe_id)
@@ -184,7 +212,7 @@ func _on_price_step(recipe_id: StringName, direction: int) -> void:
 	if _phase != SimClock.Phase.MORNING or _menu == null or (direction != -1 and direction != 1):
 		return
 	var definition: RecipeDef = _menu.recipe(recipe_id)
-	if definition == null:
+	if definition == null or definition.unlock_level > _menu.owner_level():
 		return
 	var price: int = _menu.price_of(definition)
 	# Check bounds before +/- 1: the upper bound can be the largest int64.

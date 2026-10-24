@@ -15,6 +15,7 @@ const TUNING: EconomyTuning = preload("res://data/balance/tier1_economy.tres")
 const CLEANLINESS_TUNING: CleanlinessTuning = preload("res://data/balance/cleanliness.tres")
 const REVIEW_TUNING: ReviewTuning = preload("res://data/balance/reviews.tres")
 const REVIEW_QUOTES: ReviewQuotes = preload("res://data/reviews/quotes.tres")
+const PROGRESSION_TUNING: ProgressionTuning = preload("res://data/balance/progression.tres")
 const AUTOSAVE_SLOT: String = "autosave"
 
 ## Save slot used by autosave and the startup load. Tests change it.
@@ -38,6 +39,7 @@ var menu_settings: MenuSettings
 var staff_roster: StaffRoster
 ## Last thirty eligible reviews, including five virtual three-star starters.
 var reputation: ReputationBook = ReputationBook.new()
+var owner_progress: OwnerProgress = OwnerProgress.new(PROGRESSION_TUNING)
 ## Zero is one plate; the two purchased levels carry two and four.
 var tray_level: int = 0
 
@@ -51,6 +53,10 @@ var _loaded_staff: StaffRoster = null
 var _loaded_plates: PlateLedger = null
 var _loaded_reputation: ReputationBook = null
 var _loaded_tray_level: int = 0
+var _owner_award_today: Dictionary = {}
+var _owner_unlocks_today: Array[String] = []
+var _owner_award_day: int = 0
+var _closed_report_day: int = 0
 var _report: Control
 var _inspect_panel: InspectPanel
 var _debug_overlay: DebugOverlay
@@ -85,7 +91,7 @@ func initialize() -> void:
 		sim = null
 		return
 	world = sim.world
-	menu_settings = MenuSettings.new(_cookable_recipes(LAYOUT))
+	menu_settings = MenuSettings.new(_cookable_recipes(LAYOUT), owner_progress.level)
 	_apply_menu(sim, menu_settings)
 	_bind_world_presentation()
 
@@ -126,6 +132,7 @@ func _bind_world_presentation() -> void:
 	_debug_geometry = $DebugGeometry
 	_build_catalogue = $Overlay/BuildCatalogue
 	_build_catalogue.bind_content(content)
+	_build_catalogue.set_owner_level(owner_progress.level)
 	_build_catalogue.set_build_visible(false)
 	_build_catalogue.set_paint_visible(false)
 	_paint_swatch_id = _build_catalogue.selected_swatch_id
@@ -224,6 +231,7 @@ func start() -> void:
 	sim.spawner.max_gap = TUNING.arrival_gap_max
 	shop_editor = ShopEditor.new(sim, content, ShopEditBooks.new(Economy.can_spend_without_loan, Economy.add_cash),
 		_loaded_layout if _loaded_layout != null else LAYOUT)
+	shop_editor.set_owner_level(owner_progress.level)
 	_connect_session()
 	Clock.attach_world(world, sim.advance)
 	_begin_morning()
@@ -768,6 +776,18 @@ func build_report(day: int) -> DayReport:
 		if not report.review_cards.is_empty() else 0.0
 	report.reputation_before = sim.reputation_before_day
 	report.reputation_after = reputation.average()
+	report.owner_level_before = owner_progress.level
+	report.owner_level_after = owner_progress.level
+	if _owner_award_day == day:
+		report.owner_xp_breakdown = {
+			"happy_xp": int(_owner_award_today["happy_xp"]),
+			"profit_xp": int(_owner_award_today["profit_xp"]),
+			"review_xp": int(_owner_award_today["review_xp"]),
+			"total_xp": int(_owner_award_today["total_xp"]),
+		}
+		report.owner_level_before = int(_owner_award_today.get("level_before", owner_progress.level))
+		report.owner_level_after = owner_progress.level
+		report.owner_unlocks = _owner_unlocks_today.duplicate()
 	return report
 
 
@@ -780,6 +800,11 @@ func _new_game() -> void:
 	Economy.reset(TUNING.starting_cash)
 	_loaded_layout = null
 	_owner_preferences.reset()
+	owner_progress = OwnerProgress.new(PROGRESSION_TUNING)
+	_owner_award_today.clear()
+	_owner_unlocks_today.clear()
+	_owner_award_day = 0
+	_closed_report_day = 0
 	sim.assign_owner(&"rest")
 	_loaded_menu = null
 	_loaded_staff = null
@@ -814,8 +839,11 @@ func _load_autosave() -> bool:
 	if Clock.sim.phase != SimClock.Phase.MORNING:
 		world.log_event("Autosave is not from a morning; starting a new game")
 		return false
+	if owner_progress.last_awarded_day >= Clock.sim.day:
+		world.log_event("Autosave owner progress is ahead of this morning; starting a new game")
+		return false
 	var layout: ShopLayout = _loaded_layout if _loaded_layout != null else LAYOUT
-	var choices: MenuSettings = _loaded_menu if _loaded_menu != null else MenuSettings.new(_cookable_recipes(layout))
+	var choices: MenuSettings = _loaded_menu if _loaded_menu != null else MenuSettings.new(_cookable_recipes(layout), owner_progress.level)
 	if not choices.is_valid():
 		return false
 	var employees: StaffRoster = _loaded_staff if _loaded_staff != null else StaffRoster.new(TUNING)
@@ -872,12 +900,26 @@ func _on_plates_changed(clean: int, total: int, dirty: int, in_use: int) -> void
 
 
 func _capture_owner() -> Dictionary:
-	return _owner_preferences.to_dict()
+	return {"mode": String(_owner_preferences.current_mode()),
+		"progress": owner_progress.to_dict()}
 
 
-## Stage only the mode; apply it after the whole MORNING load succeeds.
+## Accept old mode-only sections; validate mode and XP before staging either.
 func _restore_owner(data: Dictionary) -> bool:
-	return _owner_preferences.restore(data)
+	if not data.has("mode") or data.size() > 2:
+		return false
+	for key: Variant in data:
+		if typeof(key) != TYPE_STRING or (key != "mode" and key != "progress"):
+			return false
+	var preferences: OwnerModeSettings = OwnerModeSettings.new()
+	if not preferences.restore({"mode": data["mode"]}):
+		return false
+	var progress: OwnerProgress = OwnerProgress.new(PROGRESSION_TUNING)
+	if data.has("progress") and not progress.from_dict(data["progress"]):
+		return false
+	_owner_preferences = preferences
+	owner_progress = progress
+	return true
 
 
 func _capture_shop() -> Dictionary:
@@ -930,7 +972,7 @@ func _capture_menu() -> Dictionary:
 
 func _restore_menu(data: Dictionary) -> bool:
 	var layout: ShopLayout = _loaded_layout if _loaded_layout != null else LAYOUT
-	var choices: MenuSettings = MenuSettings.new(_cookable_recipes(layout))
+	var choices: MenuSettings = MenuSettings.new(_cookable_recipes(layout), owner_progress.level)
 	if not choices.from_dict(data):
 		return false
 	_loaded_menu = choices
@@ -1144,6 +1186,10 @@ func _begin_morning() -> void:
 	sim.spawner.max_gap = maxi(sim.spawner.min_gap, roundi(float(TUNING.arrival_gap_max) / rate))
 	sim.start_day()
 	$HUD.set_reputation(reputation.average(), reputation.scores().size())
+	_owner_award_today.clear()
+	_owner_unlocks_today.clear()
+	_owner_award_day = 0
+	_closed_report_day = 0
 	# Loading today's persisted pool must not advance the saved hiring stream.
 	if staff_roster.candidate_day != Clock.sim.day:
 		staff_roster.draw_candidates(Clock.sim.day, GameState.rng(&"hiring"))
@@ -1156,6 +1202,7 @@ func _begin_morning() -> void:
 	if use_saves and not _skip_next_autosave:
 		SaveSystem.save_game(save_slot)
 	_skip_next_autosave = false
+	$HUD.set_owner_progress(owner_progress.level, owner_progress.xp_into_level(), owner_progress.xp_in_level())
 	refresh_presentation()
 
 
@@ -1189,11 +1236,42 @@ func _on_review_recorded(_row: Dictionary) -> void:
 
 ## Service is over and every guest's departure is recorded: close the books.
 func _on_service_closed(day: int) -> void:
+	if day != Clock.sim.day or _closed_report_day == day:
+		return
+	_closed_report_day = day
 	_charge_closing_costs()
 	shown_report = build_report(day)
+	var five_star_reviews: int = 0
+	for row: Dictionary in sim.reviews_today:
+		if int(row.get("stars", 0)) == 5:
+			five_star_reviews += 1
+	var level_before: int = owner_progress.level
+	_owner_award_today = owner_progress.award_day(day,
+		int(sim.leave_reasons_today.get(&"happy", 0)), shown_report.profit(), five_star_reviews)
+	if not _owner_award_today.is_empty():
+		_owner_award_day = day
+		_owner_unlocks_today = _unlocked_at_levels(level_before, owner_progress.level)
+		menu_settings.set_owner_level(owner_progress.level)
+		shop_editor.set_owner_level(owner_progress.level)
+		_build_catalogue.set_owner_level(owner_progress.level)
+		$HUD.set_owner_progress(owner_progress.level, owner_progress.xp_into_level(), owner_progress.xp_in_level())
+		shown_report = build_report(day)
 	_report.call(&"show_report", shown_report)
 	if _paint_active:
 		_report.hide()
+
+
+## Only authored display names enter the public level-up banner.
+func _unlocked_at_levels(previous_level: int, current_level: int) -> Array[String]:
+	var unlocked: Array[String] = []
+	for recipe: RecipeDef in content.recipes():
+		if recipe.unlock_tier == 1 and recipe.unlock_level > previous_level and recipe.unlock_level <= current_level:
+			unlocked.append(recipe.display_name + " recipe")
+	for item: ItemDef in content.items():
+		if item.unlock_level > previous_level and item.unlock_level <= current_level:
+			unlocked.append(item.display_name)
+	unlocked.sort()
+	return unlocked
 
 
 func _on_day_phase_changed(_day: int, phase: int) -> void:

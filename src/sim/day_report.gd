@@ -18,6 +18,12 @@ var review_cards: Array[Dictionary] = []
 var today_review_average: float = 0.0
 var reputation_before: float = 3.0
 var reputation_after: float = 3.0
+## Day-close owner XP with happy_xp, profit_xp, review_xp and total_xp.
+var owner_xp_breakdown: Dictionary = {}
+var owner_level_before: int = 1
+var owner_level_after: int = 1
+## Player-facing unlock names, supplied by the caller rather than raw ids.
+var owner_unlocks: Array[String] = []
 
 
 ## Returns income across all categories in whole currency units.
@@ -64,6 +70,10 @@ func to_dict() -> Dictionary:
 		"today_review_average": today_review_average,
 		"reputation_before": reputation_before,
 		"reputation_after": reputation_after,
+		"owner_xp_breakdown": _owner_xp(owner_xp_breakdown),
+		"owner_level_before": owner_level_before,
+		"owner_level_after": owner_level_after,
+		"owner_unlocks": owner_unlocks.duplicate(),
 	}
 
 
@@ -90,6 +100,14 @@ static func from_dict(data: Dictionary) -> DayReport:
 	report.today_review_average = float(data.get("today_review_average", 0.0))
 	report.reputation_before = float(data.get("reputation_before", 3.0))
 	report.reputation_after = float(data.get("reputation_after", 3.0))
+	report.owner_xp_breakdown = _owner_xp(data.get("owner_xp_breakdown", {}))
+	report.owner_level_before = maxi(1, int(data.get("owner_level_before", 1)))
+	report.owner_level_after = maxi(1, int(data.get("owner_level_after", 1)))
+	var saved_unlocks: Variant = data.get("owner_unlocks", [])
+	if saved_unlocks is Array:
+		for name: Variant in saved_unlocks:
+			if name is String:
+				report.owner_unlocks.append(name)
 	return report
 
 
@@ -99,6 +117,18 @@ static func _public_review_card(card: Dictionary) -> Dictionary:
 		"stars": clampi(int(card.get("stars", 1)), 1, 5),
 		"quote": str(card.get("quote", "")),
 	}
+
+
+## Only known numeric display fields survive a report snapshot.
+static func _owner_xp(value: Variant) -> Dictionary:
+	var result: Dictionary = {}
+	if not value is Dictionary:
+		return result
+	var amounts: Dictionary = value
+	for key: String in ["happy_xp", "profit_xp", "review_xp", "total_xp"]:
+		if amounts.has(key):
+			result[key] = maxi(0, int(amounts[key]))
+	return result
 
 
 static func _sum(counts: Dictionary) -> int:

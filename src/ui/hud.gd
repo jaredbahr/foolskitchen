@@ -20,6 +20,8 @@ var _time_label: Label
 var _phase_label: Label
 var _cash_label: Label
 var _reputation_label: Label
+var _owner_level_label: Label
+var _owner_xp_bar: ProgressBar
 var _plate_label: Label
 var _context: Button
 var _deltas: Control
@@ -31,6 +33,9 @@ var _pause_bars: Array[ColorRect] = []
 var _cash: int = 0
 var _reputation_average: float = 3.0
 var _reputation_count: int = 5
+var _owner_level: int = 1
+var _owner_xp_into: int = 0
+var _owner_xp_needed: int = 1
 var _wall_button: Button
 var _shop_view: ShopView
 var _build_button: Button
@@ -61,6 +66,8 @@ func refresh() -> void:
 		_phase_label = get_node("Top/Row/Phase") as Label
 		_cash_label = get_node("Top/Row/Cash") as Label
 		_reputation_label = get_node("Top/Row/Reputation") as Label
+		_owner_level_label = get_node("Top/Row/OwnerProgress/OwnerLevel") as Label
+		_owner_xp_bar = get_node("Top/Row/OwnerProgress/OwnerXPBar") as ProgressBar
 		_context = get_node("Top/Row/Context") as Button
 		_deltas = get_node("Deltas") as Control
 		_wall_button = get_node("Top/Row/Walls") as Button
@@ -102,6 +109,7 @@ func refresh() -> void:
 	_phase_label.text = PHASE_NAMES[Clock.sim.phase]
 	_cash_label.text = Fmt.money(_cash)
 	_render_reputation()
+	_render_owner_progress()
 	_context.visible = Clock.sim.phase == SimClock.Phase.MORNING or Clock.sim.phase == SimClock.Phase.CLOSED
 	_context.text = "Open shop" if Clock.sim.phase == SimClock.Phase.MORNING else "Next day"
 	_on_speed_changed(Clock.speed)
@@ -132,6 +140,27 @@ func _render_reputation() -> void:
 	_reputation_label.text = "%.1f★" % _reputation_average
 	_reputation_label.tooltip_text = "%.1f stars from your last %d reviews" % [
 		_reputation_average, _reputation_count]
+
+
+## Main supplies XP within the current level and the next-level requirement.
+func set_owner_progress(level: int, into: int, needed: int) -> void:
+	_owner_level = maxi(level, 1)
+	_owner_xp_needed = maxi(needed, 1)
+	_owner_xp_into = clampi(into, 0, _owner_xp_needed)
+	if _owner_level_label == null:
+		_owner_level_label = get_node("Top/Row/OwnerProgress/OwnerLevel") as Label
+		_owner_xp_bar = get_node("Top/Row/OwnerProgress/OwnerXPBar") as ProgressBar
+	_render_owner_progress()
+
+
+func _render_owner_progress() -> void:
+	_owner_level_label.text = "Lv %d" % _owner_level
+	_owner_xp_bar.max_value = _owner_xp_needed
+	_owner_xp_bar.value = _owner_xp_into
+	var detail: String = "Owner level %d: %d / %d XP to next level" % [
+		_owner_level, _owner_xp_into, _owner_xp_needed]
+	_owner_level_label.tooltip_text = detail
+	_owner_xp_bar.tooltip_text = detail
 
 
 ## Keep the reputation, plate and action labels readable at laptop widths.

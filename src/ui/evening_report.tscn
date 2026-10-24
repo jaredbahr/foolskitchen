@@ -44,6 +44,25 @@ theme_override_font_sizes/font_size = 36
 text = "$0 profit"
 horizontal_alignment = 1
 
+[node name="LevelUpCallout" type="HBoxContainer" parent="Panel/Scroll/Content"]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="OwnerLevelUp" type="Label" parent="Panel/Scroll/Content/LevelUpCallout"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "Level up!"
+
+[node name="OwnerUnlocks" type="Label" parent="Panel/Scroll/Content/LevelUpCallout"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+size_flags_horizontal = 3
+autowrap_mode = 3
+
 [node name="Finances" type="HBoxContainer" parent="Panel/Scroll/Content"]
 layout_mode = 2
 
@@ -131,6 +150,21 @@ theme_override_font_sizes/font_size = 22
 text = "Why guests left"
 
 [node name="ReasonRows" type="GridContainer" parent="Panel/Scroll/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+columns = 2
+
+[node name="OwnerHeading" type="Label" parent="Panel/Scroll/Content"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "Owner progress"
+
+[node name="OwnerLevel" type="Label" parent="Panel/Scroll/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Owner level 1"
+
+[node name="OwnerXPRows" type="GridContainer" parent="Panel/Scroll/Content"]
 unique_name_in_owner = true
 layout_mode = 2
 columns = 2

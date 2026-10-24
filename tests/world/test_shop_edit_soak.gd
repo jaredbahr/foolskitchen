@@ -13,7 +13,7 @@ const CUSTOMER_SEED: int = 530317
 const MAX_EDIT_CHECKS: int = 512
 const MAX_DAY_BATCHES: int = 30
 const EDITS_PER_MORNING: int = 4
-const DECOR_ID: StringName = &"potted_plant"
+const TEMP_ITEM_ID: StringName = &"chair"
 
 var _mains: Array[Node] = []
 var _old_save_dir: String
@@ -127,14 +127,14 @@ func _start() -> Node:
 
 
 ## Exercise different furniture and both money directions every morning. The
-## temporary extra plant is sold again so the six-seat service remains useful.
+## temporary level-one chair is sold again so the six-seat service remains useful.
 func _edit_morning(main: Node, day: int) -> bool:
 	_upgrade_delta_today = 0
 	_edit_actions_today = 0
 	for category: ItemDef.Category in [ItemDef.Category.TABLE, ItemDef.Category.DECOR]:
 		if not _move_furniture(main, day, category):
 			return false
-	if not _buy_and_sell_decor(main, day):
+	if not _buy_and_sell_furniture(main, day):
 		return false
 	assert_eq(_edit_actions_today, EDITS_PER_MORNING, "two moves, one purchase and one sale each morning")
 	return true
@@ -192,11 +192,11 @@ func _move_furniture(main: Node, day: int, category: ItemDef.Category) -> bool:
 	return false
 
 
-func _buy_and_sell_decor(main: Node, day: int) -> bool:
+func _buy_and_sell_furniture(main: Node, day: int) -> bool:
 	var editor: ShopEditor = main.get("shop_editor")
 	var world: SimWorld = main.get("world")
 	var content: ContentDB = main.get("content")
-	var definition: ItemDef = content.item(DECOR_ID)
+	var definition: ItemDef = content.item(TEMP_ITEM_ID)
 	assert_not_null(definition)
 	if definition == null:
 		return false
@@ -219,13 +219,13 @@ func _buy_and_sell_decor(main: Node, day: int) -> bool:
 			break
 		checked += 1
 		var turns: int = _edit_rng.randi_range(0, 3)
-		var check: EditCheck = editor.check_buy(DECOR_ID, origin, turns)
+		var check: EditCheck = editor.check_buy(TEMP_ITEM_ID, origin, turns)
 		if not check.ok or not check.unreachable.is_empty():
 			continue
 		if not _buy_keeps_access(world.grid, definition, origin, turns):
 			continue
 		var before_buy: Dictionary = _edit_state()
-		var bought: bool = main.call("shop_buy", DECOR_ID, origin, turns)
+		var bought: bool = main.call("shop_buy", TEMP_ITEM_ID, origin, turns)
 		assert_true(bought, "day %d: a prechecked purchase succeeds" % day)
 		if not bought:
 			return false
@@ -243,11 +243,11 @@ func _buy_and_sell_decor(main: Node, day: int) -> bool:
 		assert_eq(world.grid.items().size(), previous_ids.size() + 1)
 		if additions != 1 or purchased == null:
 			return false
-		assert_eq((purchased.def as ItemDef).id, DECOR_ID)
+		assert_eq((purchased.def as ItemDef).id, TEMP_ITEM_ID)
 		assert_eq(purchased.origin, origin)
 		assert_eq(purchased.quarter_turns, turns)
 		var sell_check: EditCheck = editor.check_sell(purchased.id)
-		assert_true(sell_check.ok, "the added decor can be sold")
+		assert_true(sell_check.ok, "the added chair can be sold")
 		assert_true(sell_check.unreachable.is_empty())
 		if not sell_check.ok or not sell_check.unreachable.is_empty():
 			return false
@@ -359,7 +359,8 @@ func _fixed_snapshot(grid: SimGrid) -> Array[Dictionary]:
 	var placements: Array[Dictionary] = []
 	for item: PlacedItem in grid.items():
 		var definition: ItemDef = item.def as ItemDef
-		if definition.category != ItemDef.Category.TABLE and definition.category != ItemDef.Category.DECOR:
+		if definition.category != ItemDef.Category.TABLE and definition.category != ItemDef.Category.CHAIR \
+				and definition.category != ItemDef.Category.DECOR:
 			placements.append({"def_id": definition.id, "origin": item.origin, "turns": item.quarter_turns})
 	return placements
 

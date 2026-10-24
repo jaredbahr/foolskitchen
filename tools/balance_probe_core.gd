@@ -15,8 +15,8 @@ static func run_cli(tree: SceneTree, args: PackedStringArray) -> int:
 	var lines: PackedStringArray = PackedStringArray()
 	lines.append("Godot: %s" % str(Engine.get_version_info().get("string", "unknown")))
 	lines.append("Git SHA: %s" % _git_sha())
-	lines.append("| Set-up | Seed | Arrivals | Served | Lost (top 2 reasons) | Sales | Wages | Rent | Ingredients | Profit | Ending cash |")
-	lines.append("|---|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|")
+	lines.append("| Set-up | Seed | Arrivals | Served | Lost (top 2 reasons) | Sales | Wages | Rent | Ingredients | Profit | Ending cash | Owner XP | Final level | Level days |")
+	lines.append("|---|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---|")
 	var setups: Array[String] = []
 	for name: Variant in options["setups"]:
 		setups.append(String(name))
@@ -50,16 +50,18 @@ static func run_case(tree: SceneTree, seed_value: int, setup_name: String, days:
 		return {"error": "The game scene did not load"}
 	var main: Node = scene.instantiate()
 	main.set("use_saves", false)
+	main.set("new_game_seed_override", seed_value)
 	tree.root.add_child(main)
 	main.call("start")
 	var sim: RestaurantSim = main.get("sim") as RestaurantSim
 	if sim == null:
 		_free_main(main)
 		return {"error": "The game session did not start"}
-	# Main has prepared the real morning, including stock, before this override.
-	# Reset the customer stream and first gap for this independent seed.
+	# Main prepared the real morning, including stock, with the probe seed.
+	# Reset before the first gap so each independent case starts identically.
 	GameState.new_run(seed_value)
 	sim.use_rng(GameState.rng(&"customers"))
+	# new_run replaced the RNG objects Main had bound; rebind the reviews too.
 	sim.configure_reviews(sim.review_book, sim.review_tuning, sim.review_quotes,
 		GameState.rng(&"reviews"))
 	if gap.x > 0:
@@ -88,6 +90,17 @@ static func run_case(tree: SceneTree, seed_value: int, setup_name: String, days:
 		if report == null:
 			_free_main(main)
 			return {"error": "No evening report on day %d" % (day_index + 1)}
+		var progress: OwnerProgress = main.get("owner_progress") as OwnerProgress
+		if progress == null:
+			_free_main(main)
+			return {"error": "Owner progression was not installed"}
+		totals["owner_xp"] = progress.total_xp
+		totals["owner_level"] = progress.level
+		var level_days: Dictionary = totals["level_days"]
+		for reached: int in range(2, mini(progress.level, 6) + 1):
+			if not level_days.has(reached):
+				level_days[reached] = day_index + 1
+		totals["level_days"] = level_days
 		var book: Dictionary = Economy.ledger.day_totals(report.day)
 		totals["arrivals"] = int(totals["arrivals"]) + sim.served_today + sim.lost_today
 		totals["served"] = int(totals["served"]) + report.customers_served
@@ -113,12 +126,13 @@ static func run_case(tree: SceneTree, seed_value: int, setup_name: String, days:
 static func _empty_stats() -> Dictionary:
 	return {"arrivals": 0, "served": 0, "lost": 0, "sales": 0,
 		"wages": 0, "rent": 0, "ingredients": 0, "profit": 0,
-		"cash": 0, "reasons": {}}
+		"cash": 0, "reasons": {}, "owner_xp": 0, "owner_level": 0,
+		"level_days": {}}
 
 
 static func _add_stats(target: Dictionary, source: Dictionary) -> void:
 	for key: String in ["arrivals", "served", "lost", "sales", "wages", "rent",
-			"ingredients", "profit", "cash"]:
+			"ingredients", "profit", "cash", "owner_xp", "owner_level"]:
 		target[key] = int(target[key]) + int(source[key])
 	var reasons: Dictionary = target["reasons"]
 	var source_reasons: Dictionary = source["reasons"]
@@ -129,12 +143,22 @@ static func _add_stats(target: Dictionary, source: Dictionary) -> void:
 
 static func _format_row(setup_name: String, seed_label: String, stats: Dictionary,
 		divisor: int) -> String:
-	return "| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |" % [
+	return "| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |" % [
 		setup_name, seed_label, _number(int(stats["arrivals"]), divisor),
 		_number(int(stats["served"]), divisor), _lost_text(stats, divisor),
 		_number(int(stats["sales"]), divisor), _number(int(stats["wages"]), divisor),
 		_number(int(stats["rent"]), divisor), _number(int(stats["ingredients"]), divisor),
-		_number(int(stats["profit"]), divisor), _number(int(stats["cash"]), divisor)]
+		_number(int(stats["profit"]), divisor), _number(int(stats["cash"]), divisor),
+		_number(int(stats["owner_xp"]), divisor), _number(int(stats["owner_level"]), divisor),
+		_level_days_text(stats) if divisor == 1 else "see seeds"]
+
+
+static func _level_days_text(stats: Dictionary) -> String:
+	var days: Dictionary = stats["level_days"]
+	var labels: Array[String] = []
+	for level: int in [2, 3, 6]:
+		labels.append("L%d: day %d" % [level, int(days[level])] if days.has(level) else "L%d: pending" % level)
+	return ", ".join(labels)
 
 
 static func _number(value: int, divisor: int) -> String:

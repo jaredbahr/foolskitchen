@@ -6,7 +6,7 @@ func test_starter_data_loads_without_validation_errors() -> void:
 	var db: ContentDB = ContentDB.new()
 	assert_eq(db.load_all().size(), 0)
 	assert_eq(db.ingredients().size(), 7)
-	assert_eq(db.recipes().size(), 3)
+	assert_eq(db.recipes().size(), 4)
 	assert_eq(db.items().size(), 9)
 
 
@@ -14,6 +14,8 @@ func test_lookups_find_each_kind_and_unknown_ids_return_null() -> void:
 	var db: ContentDB = _starter_db()
 	assert_eq(db.ingredient(&"beef_patty").display_name, "Beef patty")
 	assert_eq(db.recipe(&"burger").standard_price, 12)
+	assert_eq(db.recipe(&"tomato_melt").unlock_level, 2)
+	assert_eq(db.item(&"potted_plant").unlock_level, 2)
 	assert_eq(db.item(&"prep_counter").station_type, &"prep_counter")
 	assert_eq(db.item(&"sink").footprint, Vector2i.ONE)
 	assert_eq(db.item(&"sink").work_cells.size(), 1)
@@ -32,7 +34,7 @@ func test_lists_are_sorted_and_do_not_expose_index_arrays() -> void:
 	var recipe_ids: Array[StringName] = []
 	for definition: RecipeDef in db.recipes():
 		recipe_ids.append(definition.id)
-	assert_eq(recipe_ids, [&"burger", &"grilled_cheese", &"tomato_soup"])
+	assert_eq(recipe_ids, [&"burger", &"grilled_cheese", &"tomato_melt", &"tomato_soup"])
 	var item_ids: Array[StringName] = []
 	for definition: ItemDef in db.items():
 		item_ids.append(definition.id)
@@ -48,7 +50,7 @@ func test_reloading_does_not_duplicate_definitions() -> void:
 	var db: ContentDB = _starter_db()
 	assert_eq(db.load_all().size(), 0)
 	assert_eq(db.ingredients().size(), 7)
-	assert_eq(db.recipes().size(), 3)
+	assert_eq(db.recipes().size(), 4)
 	assert_eq(db.items().size(), 9)
 
 
@@ -62,7 +64,7 @@ func test_recursive_resource_discovery_returns_sorted_original_tres_names() -> v
 		if path.begins_with("res://data/ingredients/") or path.begins_with("res://data/recipes/") \
 				or path.begins_with("res://data/items/"):
 			content_paths += 1
-	assert_eq(content_paths, 19)
+	assert_eq(content_paths, 20)
 	assert_true(paths.has("res://data/ingredients/bun.tres"))
 	assert_true(paths.has("res://data/recipes/burger.tres"))
 	assert_true(paths.has("res://data/items/table_2.tres"))
