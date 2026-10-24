@@ -36,13 +36,15 @@ The Tier 1 hole-in-the-wall: 1 door, 3 two-seat tables, 1 fridge, 1 prep counter
 **Exit criteria:** you can play 3 days in a row. Money goes up or down for reasons you can see. The invariant test is green. Jared has playtested it.
 
 ## Phase 2: Build mode and running the shop
-- [ ] Grid placement (move, rotate, sell) with live path warnings, closed-only structural edits
+- [x] Grid placement (move, rotate, sell) with live path warnings, closed-only structural edits
 - [ ] Blueprints (save and stamp)
-- [ ] Paint and colour slots on walls, floors and furniture from palette swatches (Sims-style). Lighting decor (lamps, then chandeliers at Tier 3).
-- [ ] Menu screen: choose dishes, set prices against the standard price
-- [ ] Shops: ingredient market and furniture catalogue, auto-reorder
-- [ ] Hiring pool, traits, wages, the priority matrix
-- [ ] Plate cycle (sink, dirty plates)
+- [ ] Paint and colour slots on walls, floors and furniture from palette swatches (Sims-style)
+- [ ] Lighting decor (lamps, then chandeliers at Tier 3)
+- [x] Menu screen: choose dishes, set prices against the standard price
+- [ ] Shops: ingredient market and furniture catalogue (done), stock panel and auto-reorder (#54)
+- [x] Hiring pool, traits, wages
+- [ ] The priority matrix
+- [x] Plate cycle (sink, dirty plates)
 - [ ] Cleanliness and the cleaner role
 - [ ] Trays (carry capacity upgrade)
 
