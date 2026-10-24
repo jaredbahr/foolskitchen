@@ -139,7 +139,7 @@ func test_next_morning_persists_roster_and_pool_reload_draws_no_hiring_rng() -> 
 	assert_eq(_roster(first).candidates().size(), 3)
 	var saved: Dictionary = _roster(first).to_dict()
 	var rng_state: int = GameState.rng(&"hiring").state
-	assert_eq(_document()["data"]["staff"], saved)
+	assert_eq(_document()["data"]["staff"], JSON.parse_string(JSON.stringify(saved)))
 	_close(first)
 	var second: Node = _start()
 	assert_eq(Clock.sim.day, 2)
