@@ -3,7 +3,6 @@ extends RefCounted
 ## Conserved plate stock. Held plates belong to one order until collection or recovery.
 
 const MAX_TOTAL: int = 9223372036854775807
-const _MAX_TOTAL_DIV_TEN: int = 922337203685477580
 
 var total: int:
 	get:
@@ -133,9 +132,9 @@ func state() -> Dictionary:
 	}
 
 
-## Only owned stock survives a save; decimal text preserves every int64 value.
+## Only owned stock survives a save; service counters and tokens are transient.
 func to_dict() -> Dictionary:
-	return {"version": 1, "total": str(_total)}
+	return {"version": 1, "total": _total}
 
 
 ## Validate the complete section before constructing a fresh, all-clean ledger.
@@ -151,12 +150,25 @@ static func from_dict(data: Dictionary) -> PlateLedger:
 	# Godot's JSON parser represents the writer's integer version as a float.
 	if version != 1:
 		return null
-	if typeof(data["total"]) != TYPE_STRING:
+	var saved_total: Variant = data["total"]
+	if typeof(saved_total) == TYPE_STRING:
+		var text: String = saved_total
+		# Version 1 from #75 wrote canonical decimal text. The saved range has
+		# at most three digits, so oversized text never reaches to_int().
+		if text.length() > 3 or not text.is_valid_int():
+			return null
+		saved_total = text.to_int()
+		if str(saved_total) != text:
+			return null
+	elif typeof(saved_total) != TYPE_INT and typeof(saved_total) != TYPE_FLOAT:
 		return null
-	var decoded_total: int = _decode_total(data["total"])
-	if decoded_total < 0:
+	# JSON.parse_string returns numeric totals as floats. Check them before
+	# conversion so fractions, nonfinite values and overflow never truncate.
+	if typeof(saved_total) == TYPE_FLOAT and (not is_finite(saved_total) or floor(saved_total) != saved_total):
 		return null
-	return PlateLedger.new(decoded_total)
+	if saved_total < 1 or saved_total > 999:
+		return null
+	return PlateLedger.new(int(saved_total))
 
 
 func _retire_order(order_id: int) -> bool:
@@ -168,16 +180,3 @@ func _retire_order(order_id: int) -> bool:
 	# A held plate existed, so dirty is strictly below total before this increment.
 	_dirty += 1
 	return true
-
-
-static func _decode_total(text: String) -> int:
-	if text.is_empty() or text.length() > 19 or (text.length() > 1 and text.begins_with("0")):
-		return -1
-	var decoded: int = 0
-	for index: int in range(text.length()):
-		var digit: int = text.unicode_at(index) - 48
-		if digit < 0 or digit > 9 or decoded > _MAX_TOTAL_DIV_TEN \
-				or (decoded == _MAX_TOTAL_DIV_TEN and digit > 7):
-			return -1
-		decoded = decoded * 10 + digit
-	return decoded

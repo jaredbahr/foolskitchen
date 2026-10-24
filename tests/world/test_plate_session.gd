@@ -95,7 +95,11 @@ func test_only_total_persists_at_the_next_morning_and_survives_world_rebuild() -
 	assert_eq(Clock.sim.day, 2)
 	var document: Dictionary = JSON.parse_string(_saved_text())
 	var sections: Dictionary = document["data"]
-	assert_eq(sections["plates"], {"version": 1.0, "total": "5"})
+	var saved_plates: Dictionary = sections["plates"]
+	assert_eq(saved_plates, {"version": 1.0, "total": 5.0})
+	assert_eq(typeof(saved_plates["total"]), TYPE_FLOAT, "the actual JSON file contains a number")
+	var captured_plates: Dictionary = _main.call("_capture_plates")
+	assert_eq(typeof(captured_plates["total"]), TYPE_INT, "the morning provider writes an integer")
 	var books: Dictionary = Economy.ledger.to_dict()
 	var stock: Dictionary = Economy.stock.to_dict()
 	var old_world: SimWorld = _sim().world
@@ -109,6 +113,28 @@ func test_only_total_persists_at_the_next_morning_and_survives_world_rebuild() -
 	assert_eq((_main.get_node("HUD/Top/Row/Plates") as Label).text, "Plates 5/5")
 	assert_eq(Economy.ledger.to_dict(), books)
 	assert_eq(Economy.stock.to_dict(), stock)
+
+
+func test_previous_string_plate_total_loads_and_the_normal_morning_save_writes_a_number() -> void:
+	await _start()
+	var document: Dictionary = JSON.parse_string(_saved_text())
+	var sections: Dictionary = document["data"]
+	sections["plates"] = {"version": 1, "total": "7"}
+	_write_document(document)
+	var books: Dictionary = Economy.ledger.to_dict()
+	var stock: Dictionary = Economy.stock.to_dict()
+	_reload_main()
+	assert_eq(Clock.sim.phase, SimClock.Phase.MORNING)
+	assert_eq(_sim().kitchen.plates.total, 7)
+	assert_eq(_sim().kitchen.clean_plates, 7)
+	assert_eq(_sim().kitchen.dirty_plates, 0)
+	assert_eq(_sim().kitchen.in_use_plates, 0)
+	assert_eq((_main.get_node("HUD/Top/Row/Plates") as Label).text, "Plates 7/7")
+	assert_eq(Economy.ledger.to_dict(), books)
+	assert_eq(Economy.stock.to_dict(), stock)
+	var rewritten: Dictionary = JSON.parse_string(_saved_text())
+	assert_eq(rewritten["data"]["plates"], {"version": 1.0, "total": 7.0})
+	assert_eq(typeof(rewritten["data"]["plates"]["total"]), TYPE_FLOAT)
 
 
 func test_pre_sink_save_keeps_its_layout_and_defaults_missing_plate_stock() -> void:
@@ -152,12 +178,14 @@ func test_pre_sink_save_keeps_its_layout_and_defaults_missing_plate_stock() -> v
 func test_invalid_plate_save_stages_no_live_change_and_fresh_start_clears_staged_stock() -> void:
 	await _start()
 	assert_true(_main.call("_restore_plates", {"version": 1, "total": "7"}))
+	assert_true(_main.call("_restore_plates", {"version": 1, "total": 7}))
 	assert_eq(_sim().kitchen.plates.total, 12, "provider validation stages only primitive durable stock")
 	assert_false(_main.call("_restore_plates", {"version": 1, "total": "-1"}))
+	assert_false(_main.call("_restore_plates", {"version": 1, "total": 1000}))
 	assert_eq(_sim().kitchen.plates.total, 12)
 	var document: Dictionary = JSON.parse_string(_saved_text())
 	var sections: Dictionary = document["data"]
-	sections["plates"] = {"version": 1, "total": "-1"}
+	sections["plates"] = {"version": 1, "total": 1000}
 	_write_document(document)
 	var broken: String = _saved_text()
 	_reload_main()
