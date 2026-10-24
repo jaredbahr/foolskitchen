@@ -10,9 +10,8 @@ const VALID_ALPHA: float = 0.92
 const INVALID_ALPHA: float = 0.68
 const WORK_COLOR: Color = Color("579fa8")
 const SEAT_COLOR: Color = Color("ddbd70")
-const OUTLINE_WIDTH: float = 0.025
 
-var ghost_mesh: MeshInstance3D
+var ghost_mesh: ItemVisual
 var work_markers: Array[MeshInstance3D] = []
 var seat_markers: Array[MeshInstance3D] = []
 var warning_nodes: Dictionary[int, Node3D] = {}
@@ -20,10 +19,9 @@ var _controller: BuildMode
 var _shop_view: ShopView
 var _grid: SimGrid
 var _ghost_root: Node3D
-var _hidden_original: MeshInstance3D
+var _hidden_original: ItemVisual
 var _original_visible: bool = true
 var _reason: String = ""
-var _outline_material: StandardMaterial3D
 
 
 ## Explicit binding also works before _ready in the custom test runner.
@@ -56,7 +54,7 @@ func visual_state() -> Dictionary:
 		"work_markers": _native_markers(work_markers), "seat_markers": _native_markers(seat_markers),
 		"warning_ids": [] as Array[int], "warnings": [] as Array[Dictionary]}
 	if is_instance_valid(ghost_mesh):
-		var ghost: Dictionary = _native_mesh_state(ghost_mesh)
+		var ghost: Dictionary = _native_item_state(ghost_mesh)
 		var valid: Variant = ghost_mesh.get_meta("valid", null)
 		ghost["valid"] = valid if valid is bool else null
 		result["ghost"] = ghost
@@ -115,6 +113,27 @@ static func _native_mesh_state(node: MeshInstance3D) -> Dictionary:
 	return result
 
 
+static func _native_item_state(node: ItemVisual) -> Dictionary:
+	var result: Dictionary = _native_node_state(node)
+	var meshes: Array[MeshInstance3D] = node.rendered_meshes()
+	result["mesh_class"] = meshes[0].mesh.get_class() if not meshes.is_empty() else ""
+	result["mesh_size"] = _vector_values(node.get_aabb().size)
+	result["bounds_position"] = _vector_values(node.get_aabb().position)
+	result["material_color"] = [] as Array[float]
+	result["transparency"] = -1
+	result["model_scene"] = node.prop.scene_file_path if node.prop != null else ""
+	result["meshes"] = [] as Array[Dictionary]
+	for mesh_node: MeshInstance3D in meshes:
+		result["meshes"].append(_native_mesh_state(mesh_node))
+	var body: BaseMaterial3D = node.primary_body_material()
+	result["body_material_name"] = body.resource_name if body != null else ""
+	if body != null:
+		var color: Color = body.albedo_color
+		result["material_color"] = [color.r, color.g, color.b, color.a]
+		result["transparency"] = int(body.transparency)
+	return result
+
+
 static func _native_markers(markers: Array[MeshInstance3D]) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
 	for reference: Variant in markers:
@@ -157,6 +176,7 @@ func refresh() -> void:
 			if is_instance_valid(_hidden_original):
 				_original_visible = _hidden_original.visible
 				_hidden_original.visible = false
+				_shop_view.refresh_item_selection()
 		if not valid:
 			reason = snapshot.get("why", "")
 	var warning_ids: Array[int] = []
@@ -225,6 +245,8 @@ func _clear_geometry() -> void:
 	if is_instance_valid(_hidden_original):
 		_hidden_original.visible = _original_visible
 	_hidden_original = null
+	if is_instance_valid(_shop_view):
+		_shop_view.refresh_item_selection()
 	if is_instance_valid(_ghost_root):
 		_free_node(_ghost_root)
 	_ghost_root = null
@@ -242,16 +264,13 @@ func _build_ghost(definition: ItemDef, origin: Vector2i, turns: int, valid: bool
 	_ghost_root.name = "Ghost"
 	add_child(_ghost_root)
 	var height: float = ShopView.HEIGHTS.get(definition.category, 0.6)
-	var size: Vector3 = Vector3(definition.footprint.x * GridMath.CELL_SIZE, height,
-		definition.footprint.y * GridMath.CELL_SIZE)
 	var tint: Color = definition.placeholder_color.lerp(VALID_COLOR if valid else INVALID_COLOR, 0.8)
 	tint.a = VALID_ALPHA if valid else INVALID_ALPHA
-	ghost_mesh = _box(size, _material(tint, true))
+	ghost_mesh = ItemVisual.create(definition, height, _material(definition.placeholder_color))
+	ghost_mesh.set_ghost_tint(tint)
 	ghost_mesh.name = "Furniture"
-	var footprint: Vector2i = GridMath.rotated_footprint(definition.footprint, turns)
-	ghost_mesh.position = Vector3((origin.x + footprint.x * 0.5) * GridMath.CELL_SIZE,
-		height * 0.5, (origin.y + footprint.y * 0.5) * GridMath.CELL_SIZE)
-	ghost_mesh.rotation.y = -turns * PI / 2.0
+	ghost_mesh.transform = ItemVisual.placed_transform(definition, origin, turns)
+	ghost_mesh.rotation.y = -turns * PI * 0.5
 	ghost_mesh.set_meta("valid", valid)
 	_ghost_root.add_child(ghost_mesh)
 	for offset: Vector2i in definition.work_cells:
@@ -283,33 +302,17 @@ func _build_ghost(definition: ItemDef, origin: Vector2i, turns: int, valid: bool
 func _build_warning(id: int, definition: ItemDef, origin: Vector2i, turns: int) -> void:
 	if warning_nodes.has(id):
 		return
-	if _outline_material == null:
-		_outline_material = _material(INVALID_COLOR)
-		_outline_material.no_depth_test = true
-	var root: Node3D = Node3D.new()
+	var root: BoundsOutline = BoundsOutline.new()
 	root.name = "Unreachable%d" % id
 	root.set_meta("item_id", id)
-	var footprint: Vector2i = GridMath.rotated_footprint(definition.footprint, turns)
-	var width: float = footprint.x * GridMath.CELL_SIZE
-	var depth: float = footprint.y * GridMath.CELL_SIZE
 	var height: float = ShopView.HEIGHTS.get(definition.category, 0.6)
-	root.position = Vector3(origin.x * GridMath.CELL_SIZE, 0.02, origin.y * GridMath.CELL_SIZE)
-	for y: float in [0.0, height]:
-		for z: float in [0.0, depth]:
-			_rail(root, Vector3(width + OUTLINE_WIDTH, OUTLINE_WIDTH, OUTLINE_WIDTH), Vector3(width * 0.5, y, z))
-		for x: float in [0.0, width]:
-			_rail(root, Vector3(OUTLINE_WIDTH, OUTLINE_WIDTH, depth + OUTLINE_WIDTH), Vector3(x, y, depth * 0.5))
-	for x: float in [0.0, width]:
-		for z: float in [0.0, depth]:
-			_rail(root, Vector3(OUTLINE_WIDTH, height, OUTLINE_WIDTH), Vector3(x, height * 0.5, z))
+	var sample: ItemVisual = ItemVisual.create(definition, height, _material(definition.placeholder_color))
+	root.draw_bounds(sample.get_aabb(), INVALID_COLOR)
+	sample.free()
+	root.transform = ItemVisual.placed_transform(definition, origin, turns)
+	root.rotation.y = -turns * PI * 0.5
 	warning_nodes[id] = root
 	add_child(root)
-
-
-func _rail(parent: Node3D, size: Vector3, center: Vector3) -> void:
-	var rail: MeshInstance3D = _box(size, _outline_material)
-	rail.position = center
-	parent.add_child(rail)
 
 
 func _set_reason(reason: String) -> void:

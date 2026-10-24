@@ -1,6 +1,6 @@
 class_name ShopView
 extends Node3D
-## Read-only placeholder view. Simulation ownership stays with the caller.
+## Read-only restaurant view. Simulation ownership stays with the caller.
 
 const GRID_SHADER: Shader = preload("res://src/world/build_grid.gdshader")
 const HEIGHTS: Dictionary[int, float] = {
@@ -21,7 +21,9 @@ enum WallMode { UP, CUTAWAY, DOWN }
 
 signal wall_mode_changed(mode: int)
 
-const WALL_HEIGHT: float = 2.4
+const WALL_HEIGHT: float = ArtScale.WALL_HEIGHT
+## Distinct from -1 (no model hit), so Main must not select floor furniture through a wall.
+const OCCLUDED_ITEM: int = -2
 const LOWERED_HEIGHT: float = 0.35
 const AWAY_FROM_CAMERA: Array[Vector2i] = [
 	Vector2i(-1, -1), Vector2i(-1, 1), Vector2i(1, 1), Vector2i(1, -1),
@@ -37,7 +39,7 @@ var _wall_nodes: Dictionary[Vector2i, MeshInstance3D] = {}
 
 var world: SimWorld
 var floor_mesh: MeshInstance3D
-var item_nodes: Dictionary[int, MeshInstance3D] = {}
+var item_nodes: Dictionary[int, ItemVisual] = {}
 var agent_nodes: Dictionary[int, MeshInstance3D] = {}
 var dirt_nodes: Dictionary[Vector2i, MeshInstance3D] = {}
 var mood_nodes: Dictionary[int, GuestMoodIndicator] = {}
@@ -56,6 +58,9 @@ var _preview_kind: StringName = &""
 var _preview_item_id: int = -1
 var _preview_swatch_id: StringName = &""
 var _walls: Node3D
+var selection_outline: BoundsOutline
+var _selected_item_id: int = -1
+var _selection_bounds: AABB
 
 
 ## Replaces a previous world and its signal bindings without modifying either.
@@ -74,6 +79,8 @@ func show_world(value: SimWorld) -> void:
 	dirt_nodes.clear()
 	_wall_nodes.clear()
 	floor_mesh = null
+	selection_outline = null
+	_selected_item_id = -1
 	world = value
 	if previous_world != value:
 		_cleanliness = null
@@ -230,7 +237,7 @@ func paint_cell_at_ray(ray_origin: Vector3, ray_direction: Vector3) -> Variant:
 	var nearest: float = -ray_origin.y / ray_direction.y
 	var result: Variant = null
 	for id: int in item_nodes:
-		var node: MeshInstance3D = item_nodes[id]
+		var node: ItemVisual = item_nodes[id]
 		if not node.is_visible_in_tree():
 			continue
 		var distance: float = _ray_box_distance(ray_origin, ray_direction, node.global_transform * node.get_aabb())
@@ -248,6 +255,68 @@ func paint_cell_at_ray(ray_origin: Vector3, ray_direction: Vector3) -> Variant:
 			nearest = distance
 			result = cell
 	return result
+
+
+## Nearest combined item bounds before the floor, or -1 for floor fallback.
+## OCCLUDED_ITEM means a wall is in front: callers retain agent priority but
+## must not fall back to a furniture cell behind that wall.
+func item_at_ray(ray_origin: Vector3, ray_direction: Vector3) -> int:
+	if world == null or ray_direction.y >= -0.00001:
+		return -1
+	var nearest: float = -ray_origin.y / ray_direction.y
+	var result: int = -1
+	for wall: MeshInstance3D in _wall_nodes.values():
+		if not wall.is_visible_in_tree():
+			continue
+		var distance: float = _ray_box_distance(ray_origin, ray_direction, wall.global_transform * wall.get_aabb())
+		if distance >= 0.0 and distance < nearest:
+			nearest = distance
+			result = OCCLUDED_ITEM
+	for id: int in item_nodes:
+		var node: ItemVisual = item_nodes[id]
+		if not node.is_visible_in_tree():
+			continue
+		var distance: float = _ray_box_distance(ray_origin, ray_direction, node.global_transform * node.get_aabb())
+		if distance >= 0.0 and (distance < nearest or (distance == nearest and result >= 0 and id < result)):
+			nearest = distance
+			result = id
+	return result
+
+
+## Shop-local displayed bounds, shared by diagnostics and selection tests.
+func item_bounds(id: int) -> AABB:
+	var node: ItemVisual = item_nodes.get(id) as ItemVisual
+	return node.transform * node.get_aabb() if is_instance_valid(node) else AABB()
+
+
+func set_selected_item(id: int) -> void:
+	_selected_item_id = id
+	_sync_item_selection()
+
+
+func refresh_item_selection() -> void:
+	_sync_item_selection()
+
+
+func _sync_item_selection() -> void:
+	var node: ItemVisual = item_nodes.get(_selected_item_id) as ItemVisual
+	if not is_instance_valid(node) or not node.visible:
+		if is_instance_valid(selection_outline):
+			selection_outline.hide()
+		return
+	var bounds: AABB = node.get_aabb()
+	if not is_instance_valid(selection_outline):
+		selection_outline = BoundsOutline.new()
+		selection_outline.name = "ItemSelection"
+		selection_outline.set_meta("shop_geometry", true)
+		add_child(selection_outline)
+		selection_outline.draw_bounds(bounds, DebugGeometry.RING_COLOR)
+	elif bounds != _selection_bounds:
+		selection_outline.draw_bounds(bounds, DebugGeometry.RING_COLOR)
+	_selection_bounds = bounds
+	selection_outline.transform = node.transform
+	selection_outline.set_meta("item_id", _selected_item_id)
+	selection_outline.show()
 
 
 ## Wall-only query retained for wall geometry diagnostics.
@@ -314,7 +383,11 @@ func _apply_paint() -> void:
 			continue
 		var definition: ItemDef = placed.def as ItemDef
 		var swatch_id: StringName = _preview_swatch_id if _preview_kind == &"item" and id == _preview_item_id else placed.swatch_id
-		item_nodes[id].material_override = _paint_material(swatch_id, definition.placeholder_color)
+		var swatch: SwatchDef = _paint_content.swatch(swatch_id) if _paint_content != null else null
+		if definition.paintable and swatch != null:
+			item_nodes[id].apply_paint(swatch.color, _paint_material(swatch_id, definition.placeholder_color))
+		else:
+			item_nodes[id].clear_paint()
 
 
 ## Selects the wall presentation without changing terrain or pathfinding.
@@ -380,29 +453,29 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _build_item(item: PlacedItem) -> void:
 	var definition: ItemDef = item.def as ItemDef
-	if definition == null or definition.category == ItemDef.Category.DOOR:
+	if definition == null or (definition.category == ItemDef.Category.DOOR and definition.view_scene == null):
 		return
 	if item_nodes.has(item.id):
 		_remove_item(item.id)
 	var height: float = HEIGHTS.get(definition.category, 0.6)
-	var mesh: MeshInstance3D = _box(Vector3(definition.footprint.x * GridMath.CELL_SIZE, height, definition.footprint.y * GridMath.CELL_SIZE), definition.placeholder_color)
-	var footprint: Vector2i = GridMath.rotated_footprint(definition.footprint, item.quarter_turns)
-	# Centred box rotated around its centre: its AABB starts at the rotated min corner.
-	mesh.position = Vector3((item.origin.x + footprint.x * 0.5) * GridMath.CELL_SIZE, height * 0.5, (item.origin.y + footprint.y * 0.5) * GridMath.CELL_SIZE)
-	mesh.rotation.y = -item.quarter_turns * PI / 2.0
-	mesh.name = "Item%d" % item.id
-	mesh.set_meta("item_id", item.id)
-	mesh.set_meta("shop_geometry", true)
-	item_nodes[item.id] = mesh
-	add_child(mesh)
+	var node: ItemVisual = ItemVisual.create(definition, height, _material(definition.placeholder_color))
+	node.transform = ItemVisual.placed_transform(definition, item.origin, item.quarter_turns)
+	node.rotation.y = -item.quarter_turns * PI * 0.5
+	node.name = "Item%d" % item.id
+	node.set_meta("item_id", item.id)
+	node.set_meta("shop_geometry", true)
+	item_nodes[item.id] = node
+	add_child(node)
+	_sync_item_selection()
 
 
 func _remove_item(id: int) -> void:
 	if item_nodes.has(id):
-		var mesh: MeshInstance3D = item_nodes[id]
-		remove_child(mesh)
-		mesh.free()
+		var node: ItemVisual = item_nodes[id]
+		remove_child(node)
+		node.free()
 		item_nodes.erase(id)
+		_sync_item_selection()
 
 
 func _on_cells_changed(cells: Array[Vector2i]) -> void:
@@ -426,6 +499,7 @@ func _process(delta: float) -> void:
 	if world == null:
 		return
 	_sync_dirt_spots()
+	_sync_item_selection()
 	var alive: Dictionary[int, bool] = {}
 	for agent: SimAgent in world.agents:
 		alive[agent.id] = true

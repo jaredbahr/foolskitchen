@@ -140,17 +140,38 @@ func test_all_camera_and_item_quarters_match_checked_min_corner_and_rotated_mark
 	assert_eq(_entries.size(), 0)
 
 
+func test_kenney_ghost_keeps_combined_model_bounds_at_every_quarter() -> void:
+	var original: ItemVisual = _view.item_nodes[_id(&"fridge")]
+	assert_not_null(original.prop)
+	assert_true(_mode.enter())
+	assert_true(_mode.begin_buy(&"fridge", Vector2i(8, 8)))
+	for turn: int in range(4):
+		assert_not_null(_preview.ghost_mesh.prop)
+		assert_null(_preview.ghost_mesh.fallback)
+		assert_eq(_preview.ghost_mesh.get_aabb(), original.get_aabb())
+		assert_eq(_preview.ghost_mesh.rendered_meshes().size(), original.rendered_meshes().size())
+		assert_almost_eq(_preview.ghost_mesh.rotation.y, -turn * PI * 0.5)
+		assert_eq(_preview.ghost_mesh.get_meta("valid"), _mode.current_check.ok)
+		var native: Dictionary = _preview.visual_state()["ghost"]
+		assert_eq(native["model_scene"], "res://assets/props/fridge.tscn")
+		assert_eq(native["meshes"].size(), original.rendered_meshes().size())
+		assert_true(_mode.rotate())
+	assert_eq(_changes, 0)
+	assert_eq(_entries.size(), 0)
+
+
 func test_valid_and_invalid_tints_are_private_and_reason_matches_editor() -> void:
 	var id: int = _id(&"potted_plant")
-	var original: MeshInstance3D = _view.item_nodes[id]
-	var material: StandardMaterial3D = original.material_override as StandardMaterial3D
+	var original: ItemVisual = _view.item_nodes[id]
+	var material: StandardMaterial3D = original.primary_body_material() as StandardMaterial3D
 	var color: Color = material.albedo_color
+	var placeholder_color: Color = _content.item(&"potted_plant").placeholder_color
 	assert_true(_mode.enter())
 	assert_true(_mode.pick_up(id))
 	_mode.update_origin(Vector2i(11, 9))
 	assert_true(_mode.current_check.ok)
 	assert_false(original.visible)
-	var green: StandardMaterial3D = _preview.ghost_mesh.material_override as StandardMaterial3D
+	var green: StandardMaterial3D = _preview.ghost_mesh.primary_body_material() as StandardMaterial3D
 	assert_true(green != material)
 	assert_true(green.albedo_color.g > green.albedo_color.r)
 	assert_almost_eq(green.albedo_color.a, 0.92)
@@ -160,16 +181,16 @@ func test_valid_and_invalid_tints_are_private_and_reason_matches_editor() -> voi
 	var check: EditCheck = _editor.check_move(id, Vector2i(-1, 0), _mode.quarter_turns)
 	assert_false(check.ok)
 	assert_eq(_preview.invalid_reason(), check.why)
-	var red: StandardMaterial3D = _preview.ghost_mesh.material_override as StandardMaterial3D
+	var red: StandardMaterial3D = _preview.ghost_mesh.primary_body_material() as StandardMaterial3D
 	assert_true(red.albedo_color.r > red.albedo_color.g)
 	assert_almost_eq(red.albedo_color.a, 0.68)
 	assert_true(red != material)
 	assert_eq(material.albedo_color, color)
-	assert_eq(_content.item(&"potted_plant").placeholder_color, color)
+	assert_eq(_content.item(&"potted_plant").placeholder_color, placeholder_color)
 	# Deliberately diverge native presentation from the checked model. Capture
 	# evidence must report these actual nodes and must never mirror/repair them.
 	var checked_before: Dictionary = _mode.presentation_state()
-	var native_ghost: MeshInstance3D = _preview.ghost_mesh
+	var native_ghost: ItemVisual = _preview.ghost_mesh
 	native_ghost.position += Vector3(0.125, 0.25, 0.5)
 	native_ghost.visible = false
 	native_ghost.set_meta("valid", true)
@@ -184,7 +205,7 @@ func test_valid_and_invalid_tints_are_private_and_reason_matches_editor() -> voi
 	assert_eq(native["ghost"]["position"], [native_position.x, native_position.y, native_position.z] as Array[float])
 	assert_eq(native["ghost"]["material_color"], [red.albedo_color.r, red.albedo_color.g, red.albedo_color.b, red.albedo_color.a])
 	assert_eq(native["ghost"]["transparency"], int(red.transparency))
-	var native_size: Vector3 = native_ghost.mesh.get_aabb().size
+	var native_size: Vector3 = native_ghost.get_aabb().size
 	assert_eq(native["ghost"]["mesh_size"], [native_size.x, native_size.y, native_size.z] as Array[float])
 	assert_true(JSON.parse_string(JSON.stringify(native)) is Dictionary)
 	native["ghost"]["position"][0] = 999.0
@@ -200,7 +221,7 @@ func test_valid_and_invalid_tints_are_private_and_reason_matches_editor() -> voi
 
 
 func test_cancel_rebind_and_clear_restore_exact_original_visibility_and_remove_nodes() -> void:
-	var original: MeshInstance3D = _view.item_nodes[_id(&"table_2")]
+	var original: ItemVisual = _view.item_nodes[_id(&"table_2")]
 	assert_true(_mode.enter())
 	assert_true(_mode.pick_up(_id(&"table_2")))
 	assert_false(original.visible)
@@ -249,7 +270,7 @@ func test_buy_zero_warning_becomes_actual_id_after_commit_and_clears_after_fix()
 	assert_eq(actual_warnings["warnings"][0]["rails"].size(), 12)
 	assert_eq(actual_warnings["warnings"][0]["rails"][0]["mesh_class"], "BoxMesh")
 	assert_eq(_mode.current_check.unreachable, [0] as Array[int], "reading does not rewrite model warnings")
-	assert_eq(warning_root.position.x, 5.625)
+	assert_eq(warning_root.position.x, warning_position.x + 0.125)
 	warning_root.position = warning_position
 	warning_root.set_meta("item_id", 0)
 	warning_root.free()
@@ -265,7 +286,7 @@ func test_buy_zero_warning_becomes_actual_id_after_commit_and_clears_after_fix()
 	assert_true(_preview.warning_nodes.has(fridge.id))
 	assert_eq(_preview.displayed_warning_ids(), _editor.check_current().unreachable)
 	assert_eq(_preview.warning_nodes[fridge.id].get_meta("item_id"), fridge.id)
-	assert_eq(_preview.warning_nodes[fridge.id].position, Vector3(5.5, 0.02, 0.5))
+	assert_eq(_preview.warning_nodes[fridge.id].position, ItemVisual.placed_transform(_content.item(&"fridge"), Vector2i(11, 1), 0).origin)
 	_mode.exit()
 	assert_null(_preview.ghost_mesh)
 	assert_true(_preview.warning_nodes.has(fridge.id), "leaving build mode keeps committed warnings")
@@ -284,10 +305,10 @@ func test_buy_zero_warning_becomes_actual_id_after_commit_and_clears_after_fix()
 	_mode.update_origin(Vector2i(11, 2))
 	assert_true(_mode.current_check.ok)
 	assert_true(_mode.current_check.unreachable.has(fridge.id))
-	assert_eq(_preview.warning_nodes[fridge.id].position, Vector3(5.5, 0.02, 1.0), "a valid moved warning follows the proposed pose")
+	assert_eq(_preview.warning_nodes[fridge.id].position, ItemVisual.placed_transform(_content.item(&"fridge"), Vector2i(11, 2), 0).origin, "a valid moved warning follows the proposed pose")
 	_mode.update_origin(Vector2i(-1, 0))
 	assert_false(_mode.current_check.ok)
-	assert_eq(_preview.warning_nodes[fridge.id].position, Vector3(5.5, 0.02, 0.5), "an invalid proposal keeps the actual warning pose")
+	assert_eq(_preview.warning_nodes[fridge.id].position, ItemVisual.placed_transform(_content.item(&"fridge"), Vector2i(11, 1), 0).origin, "an invalid proposal keeps the actual warning pose")
 	_mode.update_origin(Vector2i(3, 3))
 	assert_true(_mode.current_check.ok)
 	assert_false(_mode.current_check.unreachable.has(fridge.id))
@@ -322,7 +343,7 @@ func test_removed_item_and_replaced_shop_mesh_leave_no_hidden_or_orphan_nodes() 
 	var id: int = _id(&"potted_plant")
 	assert_true(_mode.enter())
 	assert_true(_mode.pick_up(id))
-	var old_mesh: MeshInstance3D = _view.item_nodes[id]
+	var old_mesh: ItemVisual = _view.item_nodes[id]
 	assert_true(_editor.move(id, Vector2i(11, 9), 1))
 	assert_false(is_instance_valid(old_mesh))
 	# The controller can notify before ShopView rebuilds. The preview's later
@@ -342,7 +363,7 @@ func test_removed_item_and_replaced_shop_mesh_leave_no_hidden_or_orphan_nodes() 
 
 
 func test_free_while_holding_restores_mesh_and_disconnects_even_before_tree_entry() -> void:
-	var original: MeshInstance3D = _view.item_nodes[_id(&"potted_plant")]
+	var original: ItemVisual = _view.item_nodes[_id(&"potted_plant")]
 	assert_true(_mode.enter())
 	assert_true(_mode.pick_up(_id(&"potted_plant")))
 	assert_false(original.visible)
@@ -354,7 +375,7 @@ func test_free_while_holding_restores_mesh_and_disconnects_even_before_tree_entr
 func test_tree_exit_restores_mesh_and_reentry_rebinds_checked_geometry() -> void:
 	assert_true(_mode.enter())
 	assert_true(_mode.pick_up(_id(&"potted_plant")))
-	var original: MeshInstance3D = _view.item_nodes[_id(&"potted_plant")]
+	var original: ItemVisual = _view.item_nodes[_id(&"potted_plant")]
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	await tree.process_frame
 	_host = Node3D.new()
@@ -392,7 +413,7 @@ func test_unparent_before_tree_readiness_restores_mesh_and_detaches_sources() ->
 	_host.add_child(_preview)
 	assert_true(_mode.enter())
 	assert_true(_mode.pick_up(_id(&"potted_plant")))
-	var original: MeshInstance3D = _view.item_nodes[_id(&"potted_plant")]
+	var original: ItemVisual = _view.item_nodes[_id(&"potted_plant")]
 	assert_false(original.visible)
 	_host.remove_child(_preview)
 	assert_false(_preview.is_node_ready())

@@ -387,7 +387,7 @@ func test_forced_grid_preserves_both_preferences_and_rebinds_the_actual_new_floo
 		_rig().toggle_grid()
 	assert_true(_main.call("set_build_active", true))
 	_click(_project(_world().grid.item(_id(&"potted_plant")).cells[0]))
-	var old_mesh: MeshInstance3D = (_main.get_node("ShopView") as ShopView).item_nodes[_id(&"potted_plant")]
+	var old_mesh: ItemVisual = (_main.get_node("ShopView") as ShopView).item_nodes[_id(&"potted_plant")]
 	assert_false(old_mesh.visible)
 	var old_floor: MeshInstance3D = _rig().grid_floor
 	var old_clock: SimClock = Clock.sim
@@ -626,7 +626,7 @@ func test_paint_during_service_previews_then_commits_without_books_or_immediate_
 	assert_true(_main.call("is_paint_active"))
 	_main.call("preview_paint_cell", plant.cells[0])
 	assert_eq(plant.swatch_id, &"", "hover only changes the view")
-	assert_eq((view.item_nodes[plant.id].material_override as StandardMaterial3D).albedo_color,
+	assert_eq(view.item_nodes[plant.id].primary_body_material().albedo_color,
 		(_main.get("content") as ContentDB).swatch(&"butter").color)
 	assert_true(_main.call("paint_cell", plant.cells[0]))
 	assert_eq(plant.swatch_id, &"butter")
@@ -656,7 +656,7 @@ func test_paint_screen_pick_uses_visible_item_depth_before_wall_or_floor() -> vo
 	var view: ShopView = _main.get_node("ShopView") as ShopView
 	for def_id: StringName in [&"potted_plant", &"prep_counter"]:
 		var item: PlacedItem = _world().grid.item(_id(def_id))
-		var mesh: MeshInstance3D = view.item_nodes[item.id]
+		var mesh: ItemVisual = view.item_nodes[item.id]
 		var bounds: AABB = mesh.global_transform * mesh.get_aabb()
 		var top_center: Vector3 = bounds.position + Vector3(bounds.size.x * 0.5, bounds.size.y, bounds.size.z * 0.5)
 		var pointer: Vector2 = _camera().unproject_position(top_center)

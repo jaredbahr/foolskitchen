@@ -21,8 +21,8 @@ func test_tier_one_geometry_counts_and_shared_color_materials() -> void:
 	_show(world)
 	var expected: int = 0
 	for item: PlacedItem in world.grid.items():
-		if (item.def as ItemDef).category != ItemDef.Category.DOOR:
-			expected += 1
+		expected += 1
+		assert_not_null(_view.item_nodes[item.id].prop, "authored furniture and doors use their wrapper")
 	assert_eq(_view.item_nodes.size(), expected)
 	var walls: int = 0
 	var floors: int = 0
@@ -36,7 +36,7 @@ func test_tier_one_geometry_counts_and_shared_color_materials() -> void:
 	assert_eq(_view.get_node("Walls").get_child_count(), walls)
 	assert_eq(_view.floor_mesh.mesh.get_faces().size(), floors * 6)
 	var tables: Array[PlacedItem] = ShopBuilder.items_with_def(world, &"table_2")
-	assert_true(_view.item_nodes[tables[0].id].material_override == _view.item_nodes[tables[1].id].material_override)
+	assert_true(_view.item_nodes[tables[0].id].primary_body_material() == _view.item_nodes[tables[1].id].primary_body_material())
 	assert_eq(world.now, 0, "view never advances simulation")
 
 
@@ -65,7 +65,16 @@ func test_paint_preview_reuses_materials_and_restores_room_colours() -> void:
 	tables[0].swatch_id = &"terracotta"
 	tables[1].swatch_id = &"terracotta"
 	_view.set_paint(content, &"sage", &"walnut")
-	assert_true(_view.item_nodes[tables[0].id].material_override == _view.item_nodes[tables[1].id].material_override)
+	var first_material: BaseMaterial3D = _view.item_nodes[tables[0].id].primary_body_material()
+	var second_material: BaseMaterial3D = _view.item_nodes[tables[1].id].primary_body_material()
+	assert_eq(first_material.albedo_color, content.swatch(&"terracotta").color)
+	assert_eq(second_material.albedo_color, first_material.albedo_color)
+	assert_true(first_material != second_material, "body tint copies stay local to each model")
+	_view.preview_paint(&"item", tables[0].id, &"sage")
+	assert_eq(first_material.albedo_color, content.swatch(&"sage").color)
+	assert_eq(second_material.albedo_color, content.swatch(&"terracotta").color)
+	_view.clear_paint_preview()
+	assert_eq(first_material.albedo_color, content.swatch(&"terracotta").color)
 	assert_eq(errors, [] as Array[String])
 
 
@@ -180,7 +189,7 @@ func test_all_rotations_match_grid_bounds() -> void:
 		grid.place_def(definition, Vector2i(1 + turn * 3, 1), turn)
 	_show(SimWorld.new(grid))
 	for item: PlacedItem in grid.items():
-		var node: MeshInstance3D = _view.item_nodes[item.id]
+		var node: ItemVisual = _view.item_nodes[item.id]
 		var bounds: AABB = node.transform * node.get_aabb()
 		var footprint: Vector2i = GridMath.rotated_footprint(definition.footprint, item.quarter_turns)
 		assert_almost_eq(bounds.position.x, item.origin.x * 0.5)

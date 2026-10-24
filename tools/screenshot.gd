@@ -491,8 +491,8 @@ func _paint_state() -> Dictionary:
 		return {}
 	var wall: MeshInstance3D = view.get_node("Walls").get_child(0) as MeshInstance3D
 	var floor_shader: ShaderMaterial = view.floor_mesh.material_override as ShaderMaterial
-	var table_material: StandardMaterial3D = view.item_nodes[tables[0].id].material_override as StandardMaterial3D
-	var plant_material: StandardMaterial3D = view.item_nodes[plants[0].id].material_override as StandardMaterial3D
+	var table_material: BaseMaterial3D = view.item_nodes[tables[0].id].primary_body_material()
+	var plant_material: BaseMaterial3D = view.item_nodes[plants[0].id].primary_body_material()
 	var content: ContentDB = _main.get("content") as ContentDB
 	return {"active": _main.call("is_paint_active"), "catalogue_visible": catalogue.is_visible_in_tree(),
 		"swatch_count": catalogue.swatch_buttons.size(), "grid_forced": rig.is_grid_forced(),
@@ -553,7 +553,7 @@ func _build_state() -> Dictionary:
 	var preview: BuildPreview = _main.get_node_or_null("BuildPreview") as BuildPreview
 	if mode == null or preview == null:
 		return {}
-	var ghost: MeshInstance3D = preview.ghost_mesh
+	var ghost: ItemVisual = preview.ghost_mesh
 	var pointer_cell: Variant = _main.call("build_cell_at_screen_position", root.get_mouse_position())
 	return {"active": mode.is_active(), "state": int(mode.state), "has_ghost": mode.has_ghost(),
 		"definition": String(mode.selected_definition.id) if mode.selected_definition != null else "",
