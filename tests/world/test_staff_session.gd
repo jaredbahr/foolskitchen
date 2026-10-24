@@ -211,7 +211,10 @@ func test_cleanup_completed_after_service_close_is_flushed_before_morning_save()
 	assert_not_null(panel.offer_row_for(&"starter_server"))
 	_close(main)
 	var restored: Node = _start()
-	assert_eq(_roster(restored).to_dict(), morning_staff)
+	# Compare the complete saved representation on both sides: JSON restores
+	# untyped arrays/floats, while the live roster uses typed arrays/integers.
+	var restored_staff: Dictionary = JSON.parse_string(JSON.stringify(_roster(restored).to_dict()))
+	assert_eq(restored_staff, morning_staff)
 	assert_eq(_live_staff(restored, &"starter_server").skill_for(&"server"), 4)
 	restored.call("_begin_morning")
 	assert_eq(_member(restored, &"starter_server").growth_state().pending_raise_count(), 1,
