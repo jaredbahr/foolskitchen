@@ -134,7 +134,7 @@ docs/
 - **Saves:** the slot is "autosave" (F10 deletes it and restarts). Autoloads register save providers through `register_save_provider()`, which `main.start()` also calls, because the test runner never delivers `_ready()`.
 - `run_ticks(n)` fast-forwards for tests and tools.
 
-### 2.3c Furniture edits and closed checkpoints (FK-031)
+### 2.3c Furniture edits (FK-031)
 - `ShopEditor(sim, content, books)` is pure `RefCounted` logic. `ShopEditBooks`
   receives typed method Callables for `can_spend_without_loan` and `add_cash`;
   checks never change live placements, reservations, books or grid signals.
@@ -158,31 +158,21 @@ docs/
   errors)` validates an isolated layout or returns null; it never replaces a
   live world. Terrain/staff spawns come from the template, with required station
   and template-door safeguards. Missing old-save `shop` sections use the layout.
-- The session owns `shop_editor` and `shop_move`, `shop_buy`, `shop_sell` wrappers.
-  They autosave once after grid and books commit. `save_shop_changes() -> Error`
-  retries only persistence; `last_shop_save_error` reports failure without undoing
-  or repeating the edit. Autosave failures are logged. A failed/unsupported
-  startup slot stays protected from automatic and edit saves until F10 new game.
-- `shop` stores the exact editor snapshot; `shop_session` stores the matching
-  day/phase, guest totals/reasons and dishes sold. All shop/checkpoint validation
-  runs before provider restores. Live world installation waits for successful
-  `load_game`; there is no hot session-load API or all-provider rollback promise.
+- The session exposes `shop_editor` and plain `shop_move`, `shop_buy`,
+  `shop_sell` wrappers. Edits change the grid/books without saving. The next
+  normal morning autosave persists the latest items, including CLOSED edits.
+- One `shop` provider stores the editor snapshot. Its restore callback decodes
+  an isolated layout and holds it until `load_game` succeeds and the saved
+  phase is MORNING; only then does startup rebuild the restaurant and rebind
+  its presentation, stock, clock and customer RNG. Provider failure follows
+  the existing fresh-game path; SaveSystem is unchanged.
 - `RestaurantSim.create(..., allow_blocked_spawns=false)` forwards the opt-in to
   ShopBuilder only for a validated edited layout. Solid furniture covering a
   FLOOR spawn is allowed; wall/outside spawns remain errors. Staff retain the
   existing blocked-start escape behavior.
-- A loaded MORNING initializes the day once to draw the tested next customer
-  gap from the restored named RNG, without restocking or replaying purchases.
-  A saved CLOSED checkpoint resumes a clean paused shop, with no unfinished
-  bussing tasks or reservations. It restores counters and rebuilds the evening
-  report from the saved books without charging closing costs or starting morning
-  again. Legacy non-MORNING saves without a valid checkpoint are unsupported.
-- Current-day reports read the ledger's retained `entries_for_day(day)` and add
-  positive and negative flows separately per category. A furniture purchase and
-  refund therefore appear in both costs and income, even within `upgrades`;
-  report gross totals match `day_income`/`day_costs` while profit and cash still
-  reconcile. `day_totals` continues to return signed net category amounts. The
-  session never prunes the active day's detailed entries before its report.
+- Loaded mornings retain the normal day setup: one customer-gap draw from the
+  restored RNG, stock top-up, ledger prune and autosave. Missing old-save `shop`
+  sections use the authored layout. Non-MORNING saves remain unsupported.
 
 ### 2.4 Save system
 - JSON in `user://saves/`, with a `version` field and migration functions per version.
@@ -190,15 +180,8 @@ docs/
 - `SaveSystem.register(key, capture, restore)` replaces a unique section provider; capture returns a dictionary and restore returns success.
 - `save_game(slot)` / `load_game(slot)` return errors. Writes use `.tmp`, move the previous final to `.bak`, then publish to an absent final; loads prefer a valid final or recover a valid backup. This is a recoverable transaction, not a filesystem-atomic Windows overwrite or power-loss durability guarantee (Godot 4.7.2's Windows rename removes an existing destination before moving).
 - Missing sections are skipped; `MIGRATIONS` maps each old version to one upgrade step. Clock and GameState register state in `_ready`.
-- `load_game(slot, validate_sections = Callable())` can run a pure bool validator
-  on deep-copied sections after document migration/shape checks and before any
-  provider restore. A rejected primary can recover from a valid backup; a future
-  format is still unsupported. Provider restore failures return FAILED without
-  rollback or another fallback. The startup session resets its fresh defaults
-  after such a failure instead of keeping partially restored core state.
-- `unregister(key, expected_capture)` removes a provider only when its capture
-  Callable still belongs to that owner. A known rejected-primary fingerprint
-  preserves the readable recovery backup during a later successful save.
+- Autosaves remain morning-only. If startup cannot load an existing slot, it
+  starts fresh and skips only the next autosave; later morning saves resume.
 - RNG seed/state and the master seed use decimal strings to preserve 64-bit integers through JSON parsing.
 
 ### 2.5 Testing
