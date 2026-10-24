@@ -6,9 +6,6 @@ const SPEEDS: Array[int] = [0, 1, 2, 4]
 const PHASE_NAMES: Array[String] = ["Morning", "Open", "Last orders", "Closed"]
 const GAIN_COLOR: Color = Color("286B3B")
 const LOSS_COLOR: Color = Color("A42E2E")
-const HEADER_ACTIONS: Array[String] = ["Walls", "Build", "Paint", "Context", "Menu", "Staff"]
-const BUTTON_STATES: Array[StringName] = [&"normal", &"hover", &"pressed", &"hover_pressed", &"disabled"]
-const NARROW_BUTTON_MARGIN: float = 6.0
 
 signal build_toggled()
 signal paint_toggled()
@@ -31,7 +28,6 @@ var _merge_label: Label = null
 var _merge_frame: int = -1
 var _merge_amount: int = 0
 var _buttons: Array[Button] = []
-var _pause_bars: Array[ColorRect] = []
 var _cash: int = 0
 var _reputation_average: float = 3.0
 var _reputation_count: int = 5
@@ -54,7 +50,6 @@ var _build_state: int = BuildMode.State.IDLE
 var _menu_button: Button
 var _staff_button: Button
 var _settings_button: Button
-var _header_compact: bool = false
 var _header_bottom: float = -1.0
 var _preferences: SettingsPreferences
 
@@ -100,17 +95,13 @@ func refresh() -> void:
 		_staff_button.pressed.connect(_on_staff_pressed)
 		_settings_button = get_node("Top/Row/Settings") as Button
 		_settings_button.pressed.connect(_on_settings_pressed)
-		_style_settings_button()
+		_style_header()
 		(get_node("Top") as Control).resized.connect(_on_header_resized)
-		for name: String in ["Left", "Right"]:
-			_pause_bars.append(get_node("Top/Row/Speed0/Pause/Bars/" + name) as ColorRect)
 		_cash = Economy.cash
 		for speed: int in SPEEDS:
 			var button: Button = get_node("Top/Row/Speed%d" % speed) as Button
 			_buttons.append(button)
 			button.pressed.connect(_set_speed.bind(speed))
-			if speed == 0:
-				button.draw.connect(_refresh_pause_icon)
 		_context.pressed.connect(_on_context_pressed)
 	if not EventBus.sim_ticked.is_connected(_on_sim_ticked):
 		EventBus.sim_ticked.connect(_on_sim_ticked)
@@ -125,6 +116,7 @@ func refresh() -> void:
 	_render_owner_progress()
 	_context.visible = Clock.sim.phase == SimClock.Phase.MORNING or Clock.sim.phase == SimClock.Phase.CLOSED
 	_context.text = "Open shop" if Clock.sim.phase == SimClock.Phase.MORNING else "Next day"
+	_context.tooltip_text = "Open for today's service" if Clock.sim.phase == SimClock.Phase.MORNING else "Begin the next morning"
 	_on_speed_changed(Clock.speed)
 	_refresh_wall_mode()
 	if is_inside_tree() and _hint_viewport != get_viewport():
@@ -150,7 +142,7 @@ func set_reputation(average: float, count: int) -> void:
 
 
 func _render_reputation() -> void:
-	_reputation_label.text = "%.1f★" % _reputation_average
+	_reputation_label.text = "%.1f" % _reputation_average
 	_reputation_label.tooltip_text = "%.1f stars from your last %d reviews" % [
 		_reputation_average, _reputation_count]
 
@@ -176,28 +168,10 @@ func _render_owner_progress() -> void:
 	_owner_xp_bar.tooltip_text = detail
 
 
-## Window's visible rect already uses the content-scaled UI coordinates.
-## Keep the usual single row; native flow wraps intact labels when needed.
+## Window's visible rect already uses content-scaled UI coordinates. The row
+## container measures native content and wraps intact groups when needed.
 func _layout_header() -> void:
-	var width: float = get_viewport().get_visible_rect().size.x if is_inside_tree() else 1600.0
-	var separation: int = 2 if width < 1320.0 else (4 if width < 1440.0 else 8)
-	var row: HFlowContainer = get_node("Top/Row") as HFlowContainer
-	if row.get_theme_constant("h_separation") != separation:
-		row.add_theme_constant_override("h_separation", separation)
-	var compact: bool = width < 1440.0
-	if compact == _header_compact:
-		return
-	_header_compact = compact
-	for name: String in HEADER_ACTIONS:
-		var button: Button = row.get_node(name) as Button
-		for state: StringName in BUTTON_STATES:
-			if not compact:
-				button.remove_theme_stylebox_override(state)
-				continue
-			var style: StyleBox = button.get_theme_stylebox(state, &"Button").duplicate() as StyleBox
-			style.set_content_margin(SIDE_LEFT, NARROW_BUTTON_MARGIN)
-			style.set_content_margin(SIDE_RIGHT, NARROW_BUTTON_MARGIN)
-			button.add_theme_stylebox_override(state, style)
+	(get_node("Top/Row") as Container).queue_sort()
 
 
 ## Main uses the final native header height to keep morning panels below it.
@@ -224,16 +198,25 @@ func _on_settings_pressed() -> void:
 	settings_pressed.emit()
 
 
-## Keep the approved 28px gear on the existing 46px bar, tinted like its text.
-func _style_settings_button() -> void:
-	for state: StringName in BUTTON_STATES:
-		var font_color: StringName = &"font_color" if state == &"normal" else StringName("font_%s_color" % state)
-		_settings_button.add_theme_color_override(StringName("icon_%s_color" % state),
-			_settings_button.theme.get_color(font_color, &"Button"))
-		var style: StyleBox = _settings_button.theme.get_stylebox(state, &"Button").duplicate() as StyleBox
-		for side: int in [SIDE_LEFT, SIDE_RIGHT, SIDE_TOP, SIDE_BOTTOM]:
-			style.set_content_margin(side, 9.0)
-		_settings_button.add_theme_stylebox_override(state, style)
+func _style_header() -> void:
+	var roles: Dictionary[String, StringName] = {"Speed0": &"pause", "Speed1": &"speed_1",
+		"Speed2": &"speed_2", "Speed4": &"speed_4", "Build": &"build", "Menu": &"menu",
+		"Staff": &"staff", "Context": &"open_shop", "Settings": &"settings"}
+	for child: Node in (get_node("Top/Row") as Container).get_children():
+		var button: Button = child as Button
+		if button == null:
+			continue
+		if roles.has(String(button.name)):
+			var label: String = "Pause" if button == get_node("Top/Row/Speed0") else ("Settings" if button == _settings_button else button.text)
+			IconStyle.configure_button(button, roles[String(button.name)], label, button.tooltip_text,
+				IconCatalogue.TOP_BAR_SIZE, button == _settings_button or String(button.name) == "Speed0")
+		IconStyle.compact_button(button)
+	IconStyle.decorate_label(_reputation_label, &"reputation", IconCatalogue.TOP_BAR_SIZE)
+	_day_label.tooltip_text = "Current day"
+	_time_label.tooltip_text = "Shop clock"
+	_phase_label.tooltip_text = "Today's service phase"
+	_cash_label.tooltip_text = "Available cash"
+	(get_node("Top/Row/Plates") as Label).tooltip_text = "Clean plates available for service"
 
 
 ## State changes only: a refresh between native down/up preserves the button.
@@ -381,26 +364,6 @@ func _on_speed_changed(speed: int) -> void:
 		var button: Button = _buttons[index]
 		var active: bool = SPEEDS[index] == speed
 		button.set_pressed_no_signal(active)
-	_refresh_pause_icon()
-
-
-func _refresh_pause_icon() -> void:
-	# Shapes use the same foreground as the native button text, without a font
-	# fallback dependency (the pause character is absent from the Web font).
-	var pause: Button = _buttons[0]
-	var color_name: StringName = &"font_color"
-	match pause.get_draw_mode():
-		BaseButton.DRAW_PRESSED:
-			color_name = &"font_pressed_color"
-		BaseButton.DRAW_HOVER_PRESSED:
-			color_name = &"font_hover_pressed_color"
-		BaseButton.DRAW_HOVER:
-			color_name = &"font_hover_color"
-		BaseButton.DRAW_DISABLED:
-			color_name = &"font_disabled_color"
-	var ink: Color = pause.theme.get_color(color_name, &"Button") if pause.theme.has_color(color_name, &"Button") else pause.get_theme_color(color_name)
-	for bar: ColorRect in _pause_bars:
-		bar.color = ink
 
 
 func _on_wall_button_pressed() -> void:

@@ -116,6 +116,8 @@ func _bind_nodes() -> void:
 	_empty = %Empty
 	_rows_node = %Rows
 	_settings_button = %SettingsButton
+	IconStyle.decorate_label(get_node("Panel/Content/Title") as Label, &"menu")
+	IconStyle.configure_button(_settings_button, &"settings", "Settings", "Audio, display and controls", IconCatalogue.PANEL_SIZE)
 	_settings_button.pressed.connect(_on_settings_pressed)
 
 

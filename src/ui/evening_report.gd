@@ -113,6 +113,11 @@ func _bind_nodes() -> void:
 	_owner_xp_rows = %OwnerXPRows
 	_owner_unlocks = %OwnerUnlocks
 	var next_day: Button = %NextDay
+	IconStyle.decorate_label(_header, &"report")
+	for path: String in ["ReviewHeading", "GuestHeading", "ReasonHeading", "OwnerHeading"]:
+		IconStyle.decorate_label(get_node("Panel/Scroll/Content/" + path) as Label,
+			&"reputation" if path == "ReviewHeading" else (&"staff" if path == "GuestHeading" else &"report"))
+	IconStyle.configure_button(next_day, &"next_day", "Next day", "Begin the next morning", IconCatalogue.PANEL_SIZE)
 	next_day.pressed.connect(_on_next_day_pressed)
 	_nodes_bound = true
 

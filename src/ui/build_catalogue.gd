@@ -160,7 +160,9 @@ func _refresh_title() -> void:
 	var title: Label = get_node("Panel/Margin/Rows/Scroll/Content/Title") as Label
 	if not _paint_visible:
 		title.text = "Furniture   |   Square: work tile   Circle: seat"
+		IconStyle.decorate_label(title, &"catalogue")
 		return
+	IconStyle.decorate_label(title, &"paint")
 	var selected: SwatchDef = _content.swatch(selected_swatch_id) if _content != null else null
 	var name: String = selected.display_name if selected != null else "Pick a colour"
 	title.text = "Paint | %s - Click a wall, floor or item" % name

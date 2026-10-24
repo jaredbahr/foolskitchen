@@ -60,6 +60,9 @@ func set_trays(level: int, prices: PackedInt32Array, cash: int) -> void:
 
 
 func refresh() -> void:
+	IconStyle.decorate_label($Panel/Content/Title, &"staff")
+	IconStyle.decorate_label(%RosterTitle, &"staff")
+	IconStyle.decorate_label($Panel/Content/Scroll/List/CandidateTitle, &"staff")
 	if _roster == null:
 		return
 	var snapshot: Dictionary = _roster.to_dict()
