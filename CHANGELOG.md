@@ -12,8 +12,8 @@ Each line ends with its PR number.
 
 ### Players
 - A working kitchen: cooks fetch stock, prepare dishes and plate on the pass; servers deliver meals and clear dirty tables before guests can sit again. Missing ingredients give guests a clear reason to leave. (#44)
-- A first balance pass: Tier 1 now breaks even to a small profit on a typical day (about 16–18 guests served, about +$10–25 after the first day's full fridge stock). Prices are $12 burger, $8 grilled cheese and $9 tomato soup, guests arrive a little more often, and the morning restock is bigger so the fridge rarely runs out. With 6 seats the shop tops out around 18 guests a day. (#45)
-- Guests always give a reason you can understand: any behind-the-scenes kitchen problem shows as "The kitchen couldn't make the dish", and guests who already paid and are walking out at closing count as happy, not "Shop closed". (#45)
+- A first balance pass: Tier 1 now breaks even to a small profit on a typical day (about 16–18 guests served, about +$10–25 after the first day's full fridge stock). Prices are $12 burger, $8 grilled cheese and $9 tomato soup, guests arrive a little more often, and the morning restock is bigger so the fridge rarely runs out. With 6 seats the shop tops out around 18 guests a day. (#46)
+- Guests always give a reason you can understand: any behind-the-scenes kitchen problem shows as "The kitchen couldn't make the dish", and guests who already paid and are walking out at closing count as happy, not "Shop closed". (#46)
 - A real day: guests now come in, sit and wait; money moves with every sale and cost; wages ($55) and rent ($40) are charged at closing; the evening report appears with the day's real numbers; "Next day" starts a new morning with the fridge restocked. Guests still inside at closing are sent home and counted in that evening's report. (#40)
 - The game autosaves every morning and picks up where you left off; **F10** starts a new game. Each new game gets its own random guest arrivals, which continue correctly after loading; a save that can't be read safely starts a new game and is kept untouched. (#40)
 - The evening report sits below the top bar instead of covering it. (#40)
@@ -30,7 +30,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
-- `tools/balance_probe.gd` plays whole days headlessly and prints each day's books, with overrides for arrival gaps, prices and seed, for balancing. Guest arrival gaps are now part of the balance data. (#45)
+- `tools/balance_probe.gd` plays whole days headlessly and prints each day's books, with overrides for arrival gaps, prices and seed, for balancing. Guest arrival gaps are now part of the balance data. (#46)
 - `tools/screenshot.sh --open --fast=N` opens the shop and fast-forwards, to capture a full day. (#40)
 - `tools/screenshot.sh` renders the real game under a virtual display and saves screenshots, for reviews and PRs. (#39)
 - Guests find reachable seats, queue, order through servers, eat and pay. Bounded waits recover blocked routes, and closing clears every visit with a reason for the daily report. (#35)
