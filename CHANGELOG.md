@@ -45,6 +45,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- Plate totals save as ordinary numbers, while older string totals still load and invalid totals use the existing fresh-shop defaults. (#77)
 - Save tests keep each process's files in its own folder, so concurrent runs in separate worktrees cannot overwrite each other's saves. (#61)
 - Save-test diagnostics preserve normal test ordering and record live providers, autoloads and save files before cleanup, with bounded repeated runs and complete failure logs. (#61)
 - `tools/export.sh` and `tools/get_export_templates.sh` make release builds; the Build workflow runs by hand or on a version tag and publishes a release whose notes are that version's whole CHANGELOG section (`tools/release_notes.sh`, tested in `check.sh`). (#67)
