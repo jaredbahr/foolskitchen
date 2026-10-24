@@ -54,8 +54,8 @@ func test_real_two_plate_service_day_conserves_every_tick_and_finishes_cleanup()
 	_assert_cleanup()
 
 
-func test_real_missing_sink_exhaustion_waits_at_pass_then_restored_sink_serves_order() -> void:
-	var removed_sink: PlacedItem = _exhaust_one_plate_without_sink()
+func test_real_blocked_sink_exhaustion_waits_at_pass_then_repaired_sink_serves_order() -> void:
+	var blocked_sink: PlacedItem = _exhaust_one_plate_with_blocked_sink()
 	var guest: CustomerAgent = _guest()
 	var waiting: SimTask = _wait_for_plate(guest)
 	assert_not_null(waiting)
@@ -75,7 +75,7 @@ func test_real_missing_sink_exhaustion_waits_at_pass_then_restored_sink_serves_o
 		assert_eq(waiting.drops, 0, "resource waits do not enter the stuck recovery path")
 		assert_true(cook.why().contains("Waiting for a clean plate"))
 		_assert_counts(0, 1, 0)
-	var replacement: PlacedItem = _restore_sink(removed_sink)
+	var replacement: PlacedItem = _unblock_sink(blocked_sink)
 	assert_not_null(replacement)
 	if replacement == null:
 		return
@@ -101,7 +101,7 @@ func test_real_missing_sink_exhaustion_waits_at_pass_then_restored_sink_serves_o
 
 
 func test_real_plate_wait_uses_existing_timeout_drop_limit_and_readable_guest_reason() -> void:
-	_exhaust_one_plate_without_sink()
+	_exhaust_one_plate_with_blocked_sink()
 	var guest: CustomerAgent = _guest()
 	# Test-only patience keeps the guest present long enough to observe all three
 	# ordinary cook timeouts. Production patience and task limits are untouched.
@@ -137,7 +137,7 @@ func test_real_ready_and_carrying_cancellations_recover_exactly_one_plate() -> v
 func test_real_wait_target_removal_and_stale_predicates_never_allocate_a_plate() -> void:
 	for remove_pass: bool in [false, true]:
 		_new_restaurant()
-		var removed_sink: PlacedItem = _exhaust_one_plate_without_sink()
+		var blocked_sink: PlacedItem = _exhaust_one_plate_with_blocked_sink()
 		var guest: CustomerAgent = _guest()
 		var waiting: SimTask = _wait_for_plate(guest)
 		assert_not_null(waiting)
@@ -151,7 +151,7 @@ func test_real_wait_target_removal_and_stale_predicates_never_allocate_a_plate()
 		assert_eq(waiting.state, SimTask.State.CANCELLED)
 		assert_eq(guest.order.state, Order.State.CANCELLED)
 		assert_false(_sim.kitchen.plates.has_order(guest.order.id))
-		assert_not_null(_restore_sink(removed_sink))
+		assert_not_null(_unblock_sink(blocked_sink))
 		for tick: int in range(600):
 			_tick()
 			if _sim.kitchen.is_clean() and _sim.world.board.active_count() == 0 \
@@ -168,7 +168,7 @@ func test_real_wait_target_removal_and_stale_predicates_never_allocate_a_plate()
 
 func test_real_shared_table_bussing_washing_and_removal_preserve_active_diners_plate() -> void:
 	assert_true(_sim.kitchen.configure_plates(2))
-	var removed_sink: PlacedItem = _remove_sink()
+	var blocked_sink: PlacedItem = _block_sink()
 	var first: CustomerAgent = _guest(5000)
 	var second: CustomerAgent = _guest(5000)
 	assert_true(_sim.world.clock.start_service())
@@ -200,7 +200,7 @@ func test_real_shared_table_bussing_washing_and_removal_preserve_active_diners_p
 	assert_eq(second.state, CustomerAgent.State.EATING)
 	assert_true(_sim.kitchen.plates.has_order(second.order.id))
 	assert_false(_sim.kitchen.plates.state()["orders"][second.order.id]["returned"])
-	assert_not_null(_restore_sink(removed_sink))
+	assert_not_null(_unblock_sink(blocked_sink))
 	for tick: int in range(500):
 		_tick()
 		if _sim.kitchen.clean_plates == 1:
@@ -263,8 +263,8 @@ func test_isolated_wash_drop_replays_completed_steps_once_and_batches_at_most_fo
 	_assert_cleanup()
 
 
-## Isolated public-ledger fixture: cancellation and retry accounting only.
-func test_isolated_wash_cancellation_preserves_dirty_stock_until_real_topology_repair() -> void:
+## A present but genuinely inaccessible sink waits for real topology repair.
+func test_isolated_blocked_sink_cancellation_preserves_dirty_stock_until_real_topology_repair() -> void:
 	_seed_isolated_dirty_stock(3)
 	var washing: SimTask = _find_task(&"wash")
 	assert_not_null(washing)
@@ -272,14 +272,15 @@ func test_isolated_wash_cancellation_preserves_dirty_stock_until_real_topology_r
 		return
 	_wait_for_first_washed_plate(washing)
 	_assert_counts(1, 2, 0)
+	var blocked_sink: PlacedItem = _block_sink()
 	_sim.world.board.cancel(washing, &"test_sink_failure")
 	_run(80)
 	assert_eq(washing.state, SimTask.State.CANCELLED)
 	assert_null(_find_task(&"wash"), "a failed job does not hot-loop a replacement")
 	_assert_counts(1, 2, 0)
-	var removed_sink: PlacedItem = _remove_sink()
-	assert_null(_find_task(&"wash"), "without a sink the plates remain dirty")
-	var replacement: PlacedItem = _restore_sink(removed_sink)
+	assert_true(_sim.kitchen.plate_cycle_enabled, "an unreachable sink still enables the plate limit")
+	assert_null(_find_task(&"wash"), "without a reachable sink the plates remain dirty")
+	var replacement: PlacedItem = _unblock_sink(blocked_sink)
 	assert_not_null(replacement)
 	var retry: SimTask = _find_task(&"wash")
 	assert_not_null(retry)
@@ -431,24 +432,27 @@ func _find_task(kind: StringName) -> SimTask:
 	return null
 
 
-func _remove_sink() -> PlacedItem:
+func _block_sink() -> PlacedItem:
 	var sink: PlacedItem = _item(&"sink")
 	assert_not_null(sink)
 	if sink != null:
-		assert_true(_sim.world.grid.remove(sink.id))
+		assert_true(_sim.world.grid.set_terrain(sink.work_cells[0], SimGrid.Terrain.WALL))
+		assert_true(_sim.kitchen.plate_cycle_enabled)
 	return sink
 
 
-func _restore_sink(removed: PlacedItem) -> PlacedItem:
-	if removed == null:
-		fail("the removed sink must retain its real layout pose")
+func _unblock_sink(blocked: PlacedItem) -> PlacedItem:
+	if blocked == null:
+		fail("the blocked sink must retain its real layout pose")
 		return null
-	return _sim.world.grid.place_def(_content.item(&"sink"), removed.origin, removed.quarter_turns)
+	assert_eq(_sim.world.grid.item(blocked.id), blocked, "the real sink was never removed")
+	assert_true(_sim.world.grid.set_terrain(blocked.work_cells[0], SimGrid.Terrain.FLOOR))
+	return blocked
 
 
-func _exhaust_one_plate_without_sink() -> PlacedItem:
+func _exhaust_one_plate_with_blocked_sink() -> PlacedItem:
 	assert_true(_sim.kitchen.configure_plates(1))
-	var removed: PlacedItem = _remove_sink()
+	var blocked: PlacedItem = _block_sink()
 	var first: CustomerAgent = _guest()
 	assert_true(_sim.world.clock.start_service())
 	for tick: int in range(1600):
@@ -457,7 +461,7 @@ func _exhaust_one_plate_without_sink() -> PlacedItem:
 			break
 	assert_true(first.paid, "the first real meal exhausted the single plate")
 	_assert_counts(0, 1, 0)
-	return removed
+	return blocked
 
 
 func _wait_for_plate(guest: CustomerAgent) -> SimTask:
@@ -475,7 +479,7 @@ func _wait_for_plate(guest: CustomerAgent) -> SimTask:
 func _cancel_at_delivery_stage(carrying: bool) -> void:
 	_new_restaurant()
 	assert_true(_sim.kitchen.configure_plates(2))
-	_remove_sink()
+	_block_sink()
 	var guest: CustomerAgent = _guest()
 	assert_true(_sim.world.clock.start_service())
 	var observed: bool = false

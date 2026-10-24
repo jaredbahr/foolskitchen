@@ -135,15 +135,21 @@ docs/
   role remains. Existing actor scores decide eligibility and all other ties;
   claimed washing is not preempted. Ordinary drop/timeout recovery is unchanged.
   Per-step replay guards survive drops. Reachable sinks are chosen in stable
-  placement order; failed washing waits for a layout change before retrying.
+  placement order. A transient terminal wash failure retries after 30 world
+  ticks; only a shop with no reachable sink waits for a layout change.
   At the pass, `WAIT_UNTIL` gives "Waiting for a clean plate" without changing
   the existing claimed-task timeout or stuck recovery. Ready waits start the
   following plating WORK in the same tick. Overnight cleanup washes all stock.
   The ASCII HUD counter shows clean/total, with dirty/in-use in its tooltip.
   Main stages the validated `plates` save section (total only), installs it after
   a successful morning load, and saves at the existing morning boundary.
-  Older saved layouts keep their furniture and default plate stock; shops
-  without a sink can buy one. The last present sink cannot be sold.
+  Older saved layouts keep their furniture and default plate stock. Without
+  any sink, plate limits are off and the HUD says "Plates: buy a sink".
+  A present but unreachable sink still enables plate limits and cook waits.
+  Buying a sink enables counting at the next plating decision; already
+  bypassed meals remain uncounted across replay/completion/cancellation.
+  Existing held tokens still recover normally if the last sink is externally
+  removed; no live ledger reset occurs. The last present sink cannot be sold.
 - **Debug overlay (F3):** paths, claimed tasks, agent states and the task board, from Phase 1 onward.
 - **Owner assignment (FK-020):** the restaurant factory creates one `OwnerAgent`
   at the authored owner spawn, with cook/server skill 3 and default `rest`.

@@ -53,16 +53,7 @@ func test_plate_counter_uses_ascii_counts_and_fits_the_actual_1280_hud() -> void
 	assert_eq(Economy.ledger.to_dict(), books)
 	assert_eq(_sim().world.now, 0)
 	await _frames(3)
-	var previous_end: float = 0.0
-	var row: HBoxContainer = _main.get_node("HUD/Top/Row") as HBoxContainer
-	for child: Node in row.get_children():
-		var control: Control = child as Control
-		if control == null or not control.visible:
-			continue
-		var rect: Rect2 = control.get_global_rect()
-		assert_true(rect.position.x >= previous_end, "top controls do not overlap")
-		assert_true(rect.end.x <= 1268.0, "the plate count and existing buttons fit within the 12px margin")
-		previous_end = rect.end.x
+	_assert_hud_row_fits(1280.0)
 	assert_eq((_main.get_node("HUD/Top") as Control).theme, load("res://src/ui/theme/main_theme.tres"))
 
 
@@ -121,7 +112,7 @@ func test_only_total_persists_at_the_next_morning_and_survives_world_rebuild() -
 
 
 func test_pre_sink_save_keeps_its_layout_and_defaults_missing_plate_stock() -> void:
-	await _start()
+	await _start(true, Vector2i(1280, 720))
 	var document: Dictionary = JSON.parse_string(_saved_text())
 	var sections: Dictionary = document["data"]
 	sections.erase("plates")
@@ -141,7 +132,19 @@ func test_pre_sink_save_keeps_its_layout_and_defaults_missing_plate_stock() -> v
 	assert_eq(ShopBuilder.items_with_def(_sim().world, &"sink").size(), 0, "loading does not insert furniture")
 	assert_eq(ShopBuilder.items_with_def(_sim().world, &"potted_plant")[0].origin, Vector2i(11, 9))
 	assert_eq(_sim().kitchen.clean_plates, 12)
+	assert_false(_sim().kitchen.plate_cycle_enabled)
+	var label: Label = _main.get_node("HUD/Top/Row/Plates") as Label
+	assert_eq(label.text, "Plates: buy a sink")
+	assert_true(label.tooltip_text.contains("Plate limits are off"))
+	await _frames(3)
+	_assert_hud_row_fits(1280.0)
+	var before_purchase: String = _saved_text()
 	assert_true(_main.call("shop_buy", &"sink", Vector2i(10, 1), 2), "the existing shop can buy its missing sink")
+	assert_true(_sim().kitchen.plate_cycle_enabled)
+	assert_eq(label.text, "Plates 12/12", "the topology signal updates the existing counter immediately")
+	assert_eq(_saved_text(), before_purchase, "buying a sink adds no save point")
+	await _frames(3)
+	_assert_hud_row_fits(1280.0)
 	var sink: PlacedItem = ShopBuilder.items_with_def(_sim().world, &"sink")[0]
 	assert_false((_main.get("shop_editor") as ShopEditor).check_sell(sink.id).ok)
 
@@ -162,6 +165,19 @@ func test_invalid_plate_save_stages_no_live_change_and_fresh_start_clears_staged
 	assert_eq(_sim().kitchen.plates.total, 12, "failed startup discards every staged plate total")
 	assert_eq(_sim().kitchen.clean_plates, 12)
 	assert_eq(_saved_text(), broken, "the existing failed-startup autosave skip remains intact")
+
+
+func _assert_hud_row_fits(width: float) -> void:
+	var previous_end: float = 0.0
+	var row: HBoxContainer = _main.get_node("HUD/Top/Row") as HBoxContainer
+	for child: Node in row.get_children():
+		var control: Control = child as Control
+		if control == null or not control.visible:
+			continue
+		var rect: Rect2 = control.get_global_rect()
+		assert_true(rect.position.x >= previous_end, "top controls do not overlap")
+		assert_true(rect.end.x <= width - 12.0, "the plate count and existing buttons fit within the 12px margin")
+		previous_end = rect.end.x
 
 
 func _start(with_saves: bool = true, viewport_size: Vector2i = Vector2i(1600, 900)) -> void:

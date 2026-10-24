@@ -4,8 +4,13 @@ extends RefCounted
 
 signal plates_changed(clean: int, total: int, dirty: int, in_use: int)
 
+const WASH_RETRY_TICKS: int = 30
+
 var stock: Stock
 var dirty_tables: Dictionary[int, bool] = {}
+var plate_cycle_enabled: bool:
+	get:
+		return _plate_cycle_enabled
 var plates: PlateLedger:
 	get:
 		return _plates
@@ -26,6 +31,10 @@ var _bus_tasks: Dictionary[int, int] = {}
 var _plates: PlateLedger = PlateLedger.new(EconomyTuning.new().starting_plates)
 var _wash_task: int = 0
 var _wash_blocked: bool = false
+var _wash_retry_tick: int = 0
+var _plate_cycle_enabled: bool = false
+## Retain bypass decisions until morning, including after a cook task completes.
+var _plate_bypassed_orders: Dictionary[int, bool] = {}
 var _tidying: bool = false
 
 
@@ -34,6 +43,7 @@ func _init(restaurant: RestaurantSim, content: ContentDB, ingredients: Stock) ->
 	_restaurant = weakref(restaurant)
 	_content = content
 	stock = ingredients
+	_plate_cycle_enabled = _station(restaurant.world, &"sink", ItemDef.Category.STATION) != null
 	restaurant.orders.order_placed.connect(_on_order_placed)
 	restaurant.orders.order_ready.connect(_on_order_ready)
 	restaurant.orders.order_cancelled.connect(_on_order_cancelled)
@@ -75,7 +85,7 @@ func is_table_dirty(table_item_id: int) -> bool:
 
 ## Reports whether closing cleanup has returned every table to service.
 func is_clean() -> bool:
-	return dirty_tables.is_empty() and _plates.dirty == 0 and _plates.in_use == 0
+	return dirty_tables.is_empty() and (not _plate_cycle_enabled or (_plates.dirty == 0 and _plates.in_use == 0))
 
 
 ## Called before a seated guest releases its reservation, including forced removal.
@@ -116,6 +126,8 @@ func tidy_overnight() -> void:
 	_bus_tasks.clear()
 	_wash_task = 0
 	_wash_blocked = false
+	_wash_retry_tick = 0
+	_plate_bypassed_orders.clear()
 	_plates.tidy_overnight()
 	_tidying = false
 	_notify_plates()
@@ -139,6 +151,8 @@ func _on_cells_changed(_cells: Array[Vector2i]) -> void:
 	var sim: RestaurantSim = _restaurant.get_ref() as RestaurantSim
 	if sim == null:
 		return
+	var was_enabled: bool = _plate_cycle_enabled
+	_plate_cycle_enabled = _station(sim.world, &"sink", ItemDef.Category.STATION) != null
 	# Grid removal clears reservations before this signal. The ledger, rather
 	# than a table flag or prunable order, remains the authority for every plate.
 	var recovered: int = 0
@@ -149,12 +163,13 @@ func _on_cells_changed(_cells: Array[Vector2i]) -> void:
 	for table_id: int in tables:
 		if sim.world.grid.item(table_id) == null:
 			recovered += _plates.recover_table(table_id)
-	if recovered > 0:
+	if recovered > 0 or was_enabled != _plate_cycle_enabled:
 		_notify_plates()
 	var washing: SimTask = sim.world.board.get_task(_wash_task)
 	if washing != null and sim.world.grid.item(int(washing.payload["sink_id"])) == null:
 		sim.world.board.cancel(washing, &"target_gone")
 	_wash_blocked = false
+	_wash_retry_tick = 0
 	retry_dirty_tables()
 	_ensure_wash_task()
 
@@ -230,6 +245,15 @@ func _take_clean_plate(agent: SimAgent) -> bool:
 			or pass_item.reserved_by(staff.cell) != staff.id:
 		_cancel(order, &"missing_station")
 		return false
+	# A legacy shop without a sink keeps its original unlimited service. Settle
+	# this meal's decision only at the pass, and retain it across task replays
+	# and a sink purchased after plating has begun.
+	if bool(staff.task.payload.get("plate_bypassed", false)) or _plate_bypassed_orders.has(order.id) \
+			or (not _plate_cycle_enabled and not _plates.has_order(order.id)):
+		staff.task.payload["plate_bypassed"] = true
+		staff.task.payload["waiting_for_plate"] = false
+		_plate_bypassed_orders[order.id] = true
+		return true
 	var before: int = _plates.clean
 	var accepted: bool = _plates.take(order.id, order.table_item_id)
 	staff.task.payload["waiting_for_plate"] = not accepted
@@ -279,8 +303,9 @@ func _on_order_cancelled(order: Order) -> void:
 	var sim: RestaurantSim = _restaurant.get_ref() as RestaurantSim
 	if sim == null:
 		return
-	if _plates.recover_order(order.id):
-		_notify_plates()
+	if not _plate_bypassed_orders.has(order.id) and (_plate_cycle_enabled or _plates.has_order(order.id)):
+		if _plates.recover_order(order.id):
+			_notify_plates()
 	for task: SimTask in _tasks.values():
 		if int(task.payload.get("order_id", 0)) == order.id:
 			sim.world.board.cancel(task, order.cancellation_reason)
@@ -309,7 +334,7 @@ func _on_task_completed(task: SimTask) -> void:
 	if order == null or order.state == Order.State.CANCELLED:
 		return
 	if task.kind == &"cook":
-		if not _plates.has_order(order.id):
+		if not _plates.has_order(order.id) and not bool(task.payload.get("plate_bypassed", false)):
 			_cancel(order, &"no_clean_plates")
 			return
 		var cook: StaffAgent = sim.world.agent(task.claimed_by) as StaffAgent
@@ -335,9 +360,14 @@ func _on_task_failed(task: SimTask, reason: StringName) -> void:
 		return
 	if task.kind == &"wash":
 		_wash_task = 0
-		# A failed/unreachable sink gets one bounded task, then waits for an
-		# actual topology change instead of reposting an endless sequence.
-		_wash_blocked = true
+		if _tidying or not _plate_cycle_enabled:
+			_wash_blocked = false
+			_wash_retry_tick = 0
+			return
+		# Only genuinely unreachable sinks wait for a layout change. A transient
+		# task failure gets a short same-day cooldown, never an immediate repost.
+		_wash_blocked = _wash_sink(sim.world) == null
+		_wash_retry_tick = sim.world.now + WASH_RETRY_TICKS
 		return
 	if task.kind == &"bus_table":
 		var table_id: int = int(task.payload["table_item_id"])
@@ -354,10 +384,10 @@ func _on_task_failed(task: SimTask, reason: StringName) -> void:
 
 
 func _ensure_wash_task() -> void:
-	if _tidying or _wash_blocked or _wash_task != 0 or _plates.dirty <= 0:
+	if _tidying or not _plate_cycle_enabled or _wash_blocked or _wash_task != 0 or _plates.dirty <= 0:
 		return
 	var sim: RestaurantSim = _restaurant.get_ref() as RestaurantSim
-	if sim == null:
+	if sim == null or sim.world.now < _wash_retry_tick:
 		return
 	var sink: PlacedItem = _wash_sink(sim.world)
 	if sink == null:

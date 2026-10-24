@@ -167,13 +167,14 @@ func _layout_build_hints() -> void:
 
 
 ## Main forwards primitive stock counts; the HUD never owns or changes plates.
-func set_plate_counts(clean: int, total: int, dirty: int, in_use: int) -> void:
+func set_plate_counts(clean: int, total: int, dirty: int, in_use: int, enabled: bool = true) -> void:
 	if _plate_label == null:
 		_plate_label = get_node("Top/Row/Plates") as Label
-	var text: String = "Plates %d/%d" % [clean, total]
+	var text: String = "Plates %d/%d" % [clean, total] if enabled else "Plates: buy a sink"
 	if _plate_label.text != text:
 		_plate_label.text = text
-	_plate_label.tooltip_text = "Clean: %d | Dirty: %d | In use: %d" % [clean, dirty, in_use]
+	_plate_label.tooltip_text = "Clean: %d | Dirty: %d | In use: %d" % [clean, dirty, in_use] if enabled \
+		else "Plate limits are off in this shop. Buy a sink to enable plates and washing."
 
 
 func _on_build_pressed() -> void:

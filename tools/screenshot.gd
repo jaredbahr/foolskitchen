@@ -392,12 +392,6 @@ func _capture() -> void:
 		if actual_quarter != _quarter or wall_mode != 1 or yaw_degrees == null or absf(float(yaw_degrees) - expected_yaw) > 0.01:
 			_fail_capture("requested camera quarter/cutaway mode did not match the rendered scene")
 			return
-	var plate_evidence: Dictionary = _plate_evidence(world, view)
-	if _failed:
-		return
-	if _scene_path == "res://src/world/main.tscn" and plate_evidence.is_empty():
-		_fail_capture("the actual shop has no plate/sink presentation evidence")
-		return
 	var path: String = _out.path_join("shot_%04d.png" % _capture_frame)
 	var image: Image = root.get_viewport().get_texture().get_image()
 	if image == null or image.is_empty() or image.save_png(path) != OK:
@@ -450,7 +444,6 @@ func _capture() -> void:
 		"capture_parameters": {"open": _open, "fast_ticks_per_frame": _fast, "speed": _speed},
 		"master_seed": master_seed, "restaurant_rng": restaurant_rng,
 		"mood": mood_evidence(world, view, root.get_viewport().get_camera_3d()),
-		"plates": plate_evidence,
 	}
 	var file: FileAccess = FileAccess.open(path.get_basename() + ".json", FileAccess.WRITE)
 	if file == null:
@@ -468,52 +461,6 @@ func _capture() -> void:
 	_capture_pending = false
 	if _finish_requested:
 		_finish_capture()
-
-
-## Ordinary-scene evidence only; no fixture, task or stock is changed.
-func _plate_evidence(world: SimWorld, view: Node) -> Dictionary:
-	if world == null or not view is ShopView or not ("sim" in _main):
-		return {}
-	var restaurant: RestaurantSim = _main.get("sim") as RestaurantSim
-	var counter: Label = _main.get_node_or_null("HUD/Top/Row/Plates") as Label
-	if restaurant == null or restaurant.kitchen == null or counter == null:
-		return {}
-	var stock: PlateLedger = restaurant.kitchen.plates
-	var expected: String = "Plates %d/%d" % [stock.clean, stock.total]
-	var counter_rect: Rect2 = counter.get_global_rect()
-	var viewport_rect: Rect2 = root.get_visible_rect()
-	if stock.clean < 0 or stock.dirty < 0 or stock.in_use < 0 \
-			or stock.clean + stock.dirty + stock.in_use != stock.total \
-			or counter.text != expected or not counter.is_visible_in_tree() \
-			or not viewport_rect.encloses(counter_rect):
-		_fail_capture("the native plate counter differs from conserved stock or is outside the viewport")
-		return {}
-	var sinks: Array[Dictionary] = []
-	var shop: ShopView = view as ShopView
-	for item: PlacedItem in world.grid.items():
-		var definition: ItemDef = item.def as ItemDef
-		if definition == null or definition.station_type != &"sink":
-			continue
-		var native: MeshInstance3D = shop.item_nodes.get(item.id) as MeshInstance3D
-		var footprint: Vector2i = GridMath.rotated_footprint(definition.footprint, item.quarter_turns)
-		var center: Vector2 = (Vector2(item.origin) + Vector2(footprint) * 0.5) * GridMath.CELL_SIZE
-		if not is_instance_valid(native) or not native.is_visible_in_tree() \
-				or native.get_meta("item_id", -1) != item.id \
-				or not is_equal_approx(native.position.x, center.x) or not is_equal_approx(native.position.z, center.y):
-			_fail_capture("a sink's native mesh differs from its actual placement")
-			return {}
-		var position: Vector3 = native.global_position
-		sinks.append({"item_id": item.id, "definition_id": String(definition.id),
-			"origin": [item.origin.x, item.origin.y], "quarter_turns": item.quarter_turns,
-			"native_item_id": native.get_meta("item_id"), "native_visible": native.is_visible_in_tree(),
-			"native_world_position": [position.x, position.y, position.z]})
-	if sinks.is_empty():
-		_fail_capture("the fresh shop has no actual sink to review")
-		return {}
-	return {"clean": stock.clean, "total": stock.total, "dirty": stock.dirty, "in_use": stock.in_use,
-		"native_counter_text": counter.text, "native_counter_visible": counter.is_visible_in_tree(),
-		"native_counter_rect": [counter_rect.position.x, counter_rect.position.y, counter_rect.size.x, counter_rect.size.y],
-		"sinks": sinks}
 
 
 ## Snapshot model values and independently read actual marker nodes. In

@@ -632,7 +632,7 @@ func _restore_plates(data: Dictionary) -> bool:
 
 
 func _on_plates_changed(clean: int, total: int, dirty: int, in_use: int) -> void:
-	$HUD.set_plate_counts(clean, total, dirty, in_use)
+	$HUD.set_plate_counts(clean, total, dirty, in_use, sim.kitchen.plate_cycle_enabled)
 
 
 func _capture_owner() -> Dictionary:
