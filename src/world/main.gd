@@ -51,12 +51,12 @@ func initialize() -> void:
 	content = ContentDB.new()
 	var load_errors: PackedStringArray = content.load_all()
 	if not load_errors.is_empty():
-		push_error("Cannot load shop content: %s" % load_errors)
+		push_error("Cannot load shop content: %s" % [load_errors])
 		return
 	var errors: Array[String] = []
 	sim = RestaurantSim.create(LAYOUT, content, 1, errors)
 	if not errors.is_empty():
-		push_error("Cannot build shop: %s" % errors)
+		push_error("Cannot build shop: %s" % [errors])
 		sim = null
 		return
 	world = sim.world

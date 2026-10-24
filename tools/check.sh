@@ -40,5 +40,8 @@ code=$?
 cat "$log"
 if [[ $code -ne 0 ]] || has_errors "$log"; then echo "FAIL: tests"; fail=1; fi
 
+echo "== release notes"
+if ! bash tools/test_release_notes.sh; then fail=1; fi
+
 if [[ $fail -eq 0 ]]; then echo "ALL CHECKS PASSED"; else echo "CHECKS FAILED"; fi
 exit $fail
