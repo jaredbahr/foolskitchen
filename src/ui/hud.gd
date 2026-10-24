@@ -20,6 +20,7 @@ var _merge_label: Label = null
 var _merge_frame: int = -1
 var _merge_amount: int = 0
 var _buttons: Array[Button] = []
+var _pause_bars: Array[ColorRect] = []
 var _cash: int = 0
 var _wall_button: Button
 var _shop_view: ShopView
@@ -63,11 +64,15 @@ func refresh() -> void:
 		_build_button.pressed.connect(_on_build_pressed)
 		_menu_button = get_node("Top/Row/Menu") as Button
 		_menu_button.pressed.connect(_on_menu_pressed)
+		for name: String in ["Left", "Right"]:
+			_pause_bars.append(get_node("Top/Row/Speed0/Pause/Bars/" + name) as ColorRect)
 		_cash = Economy.cash
 		for speed: int in SPEEDS:
 			var button: Button = get_node("Top/Row/Speed%d" % speed) as Button
 			_buttons.append(button)
 			button.pressed.connect(_set_speed.bind(speed))
+			if speed == 0:
+				button.draw.connect(_refresh_pause_icon)
 		_context.pressed.connect(_on_context_pressed)
 	if not EventBus.sim_ticked.is_connected(_on_sim_ticked):
 		EventBus.sim_ticked.connect(_on_sim_ticked)
@@ -204,6 +209,26 @@ func _on_speed_changed(speed: int) -> void:
 		var button: Button = _buttons[index]
 		var active: bool = SPEEDS[index] == speed
 		button.set_pressed_no_signal(active)
+	_refresh_pause_icon()
+
+
+func _refresh_pause_icon() -> void:
+	# Shapes use the same foreground as the native button text, without a font
+	# fallback dependency (the pause character is absent from the Web font).
+	var pause: Button = _buttons[0]
+	var color_name: StringName = &"font_color"
+	match pause.get_draw_mode():
+		BaseButton.DRAW_PRESSED:
+			color_name = &"font_pressed_color"
+		BaseButton.DRAW_HOVER_PRESSED:
+			color_name = &"font_hover_pressed_color"
+		BaseButton.DRAW_HOVER:
+			color_name = &"font_hover_color"
+		BaseButton.DRAW_DISABLED:
+			color_name = &"font_disabled_color"
+	var ink: Color = pause.theme.get_color(color_name, &"Button") if pause.theme.has_color(color_name, &"Button") else pause.get_theme_color(color_name)
+	for bar: ColorRect in _pause_bars:
+		bar.color = ink
 
 
 func _on_wall_button_pressed() -> void:

@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- The pause icon draws reliably in browser builds, and the camera keeps the shop centred through window resizes until you pan. (#69)
 - Press B to build while the shop is closed: move, rotate, buy or sell furniture, preview its work and seat tiles, and see warnings for unreachable furniture. (#63)
 - Playable builds: a Windows download and a browser version, built automatically on GitHub (see "Play a build" in the README). Also fixes exported builds starting with an empty shop. (#67)
 - Select the owner to help in the kitchen, work the floor, help wherever needed or stand back, using station clicks, inspector buttons or K/F/H/R; assignments save with the next morning's autosave. (#64)
