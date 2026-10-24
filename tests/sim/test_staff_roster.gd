@@ -194,6 +194,52 @@ func test_generated_ids_cannot_collide_with_a_person_restored_from_an_older_pool
 	assert_eq(restored.to_dict(), roster.to_dict())
 
 
+func test_candidate_names_are_unique_and_skip_team_names_case_insensitively() -> void:
+	var definitions: StaffCatalogue = CATALOGUE.duplicate(true) as StaffCatalogue
+	definitions.candidate_names = PackedStringArray(["Alex", "Sam", "Robin", "robin", "Jamie", "Casey"])
+	var roster: StaffRoster = StaffRoster.new(TUNING, definitions)
+	assert_true(roster.draw_candidates(1, _random(720079)))
+	var names: Dictionary[String, bool] = {}
+	for member: StaffMember in roster.members():
+		names[member.display_name.to_lower()] = true
+	for member: StaffMember in roster.candidates():
+		var key: String = member.display_name.to_lower()
+		assert_false(names.has(key))
+		names[key] = true
+	assert_eq(roster.candidates().size(), 3)
+
+
+func test_insufficient_unique_names_refuse_before_rng_or_model_changes() -> void:
+	var definitions: StaffCatalogue = CATALOGUE.duplicate(true) as StaffCatalogue
+	definitions.candidate_names = PackedStringArray(["Alex", "Sam", "Robin", "robin", " "])
+	var roster: StaffRoster = StaffRoster.new(TUNING, definitions)
+	var random: RandomNumberGenerator = _random(720080)
+	var before: Dictionary = roster.to_dict()
+	var state: int = random.state
+	assert_false(roster.draw_candidates(1, random))
+	assert_eq(random.state, state)
+	assert_eq(roster.to_dict(), before)
+
+
+func test_legacy_same_day_duplicate_names_stay_saved_without_rerolling() -> void:
+	var roster: StaffRoster = StaffRoster.new(TUNING)
+	var random: RandomNumberGenerator = _random(720081)
+	assert_true(roster.draw_candidates(3, random))
+	var legacy: Dictionary = roster.to_dict()
+	legacy["candidates"][0]["name"] = "Alex"
+	legacy["candidates"][1]["name"] = "Alex"
+	assert_true(roster.from_dict(legacy))
+	var state: int = random.state
+	assert_true(roster.draw_candidates(3, random))
+	assert_eq(roster.to_dict(), legacy, "new eligibility rules never rewrite a saved morning pool")
+	assert_eq(random.state, state)
+	assert_true(roster.draw_candidates(4, random))
+	var names: Dictionary[String, bool] = {}
+	for member: StaffMember in roster.members() + roster.candidates():
+		assert_false(names.has(member.display_name.to_lower()))
+		names[member.display_name.to_lower()] = true
+
+
 func _random(seed: int) -> RandomNumberGenerator:
 	var random: RandomNumberGenerator = RandomNumberGenerator.new()
 	random.seed = seed

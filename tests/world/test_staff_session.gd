@@ -248,6 +248,20 @@ func test_native_staff_controls_survive_refresh_and_fit_web_and_capture_widths()
 	var bounds: Rect2 = (panel.get_node("Panel") as Control).get_global_rect()
 	assert_true(Rect2(0.0, 0.0, 1600.0, 900.0).encloses(bounds))
 	assert_true(panel.visible)
+	var before_close: Dictionary = _roster(main).to_dict()
+	var books: Dictionary = Economy.ledger.to_dict()
+	var hiring_state: int = GameState.rng(&"hiring").state
+	var close_button: Button = panel.get_node("Panel/Content/Close") as Button
+	point = close_button.get_global_rect().get_center()
+	_mouse(point, true)
+	panel.refresh()
+	await _frames(1)
+	_mouse(point, false)
+	assert_false(main.call("is_staff_visible"))
+	assert_eq(_roster(main).to_dict(), before_close)
+	assert_eq(Economy.ledger.to_dict(), books)
+	assert_eq(GameState.rng(&"hiring").state, hiring_state)
+	assert_eq((main.get("world") as SimWorld).now, 0)
 
 
 func _start(saves: bool = true, host: Node = null) -> Node:

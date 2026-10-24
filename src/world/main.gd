@@ -127,6 +127,7 @@ func _bind_world_presentation() -> void:
 	if not _staff_panel.hire_requested.is_connected(_on_staff_hire_requested):
 		_staff_panel.hire_requested.connect(_on_staff_hire_requested)
 		_staff_panel.let_go_requested.connect(_on_staff_let_go_requested)
+		_staff_panel.close_requested.connect(_on_staff_close_requested)
 	if not $HUD.is_connected(&"staff_pressed", toggle_staff):
 		$HUD.connect(&"staff_pressed", toggle_staff)
 	_inspect_panel.bind_world(world)
@@ -589,7 +590,8 @@ func _new_game() -> void:
 	_loaded_menu = null
 	_loaded_staff = null
 	staff_roster = StaffRoster.new(TUNING)
-	sim.set_staff_roster(staff_roster.members())
+	if not sim.set_staff_roster(staff_roster.members()):
+		push_error("Cannot install the new game's starting staff roster")
 	_staff_panel.bind_roster(staff_roster)
 	sim.stock = Economy.stock
 	world.log_event("New game: $%d to start" % TUNING.starting_cash)
@@ -733,6 +735,10 @@ func _on_staff_hire_requested(id: StringName) -> void:
 func _on_staff_let_go_requested(id: StringName) -> void:
 	staff_let_go(id)
 	_staff_panel.refresh()
+
+
+func _on_staff_close_requested() -> void:
+	set_staff_visible(false)
 
 
 ## Station definitions decide availability; temporary path/stock problems do not

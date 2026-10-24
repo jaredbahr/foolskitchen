@@ -73,13 +73,27 @@ func draw_candidates(day: int, random: RandomNumberGenerator) -> bool:
 		return true
 	if catalogue.traits.is_empty() or catalogue.candidate_names.is_empty():
 		return false
+	var used_names: Dictionary[String, bool] = {}
+	for member: StaffMember in _members:
+		used_names[member.display_name.strip_edges().to_lower()] = true
+	var names: Array[String] = []
+	for name: String in catalogue.candidate_names:
+		var key: String = name.strip_edges().to_lower()
+		if not key.is_empty() and not used_names.has(key):
+			names.append(name)
+			used_names[key] = true
+	# Check the whole pool before consuming the hiring stream or changing state.
+	if names.size() < CANDIDATE_COUNT:
+		return false
 	var next: Array[StaffMember] = []
 	for index: int in range(CANDIDATE_COUNT):
 		var member: StaffMember = StaffMember.new()
 		member.id = StringName("candidate_%d_%d" % [day, index])
 		while _find(_members, member.id) >= 0:
 			member.id = StringName(String(member.id) + "_new")
-		member.display_name = catalogue.candidate_names[random.randi_range(0, catalogue.candidate_names.size() - 1)]
+		var name_index: int = random.randi_range(0, names.size() - 1)
+		member.display_name = names[name_index]
+		names.remove_at(name_index)
 		member.role = &"cook" if random.randi_range(0, 1) == 0 else &"server"
 		member.skill = random.randi_range(1, 5)
 		member.trait_id = catalogue.traits[random.randi_range(0, catalogue.traits.size() - 1)].id

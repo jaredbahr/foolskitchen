@@ -69,6 +69,9 @@ func next_cell() -> Vector2i:
 ## (the caller should repath). The first step out of a blocked start cell is
 ## always allowed, so agents can leave furniture placed on them.
 func step_move(world: SimWorld) -> MoveResult:
+	var multiplier: float = movement_multiplier()
+	if multiplier != 1.0:
+		return _step_move_scaled(world, multiplier)
 	if has_arrived():
 		return MoveResult.ARRIVED
 	var next := path[path_index]
@@ -81,6 +84,47 @@ func step_move(world: SimWorld) -> MoveResult:
 	move_progress += move_speed / step_len
 	last_progress_tick = world.now
 	if move_progress >= 1.0:
+		move_progress = 0.0
+		cell = next
+		path_index += 1
+		last_progress_tick = world.now
+	return MoveResult.ARRIVED if has_arrived() else MoveResult.MOVING
+
+
+## Neutral agents retain the original per-tick movement above, including its
+## diagonal rounding. Staff override only this opt-in; the owner remains neutral.
+func movement_multiplier() -> float:
+	return 1.0
+
+
+## Scale the EXISTING edge's quantized travel time, rather than geometric
+## distance: a neutral 0.25 agent takes 4 straight / 6 diagonal ticks. Scaling
+## raw distance only for Quick would inadvertently give an 18% diagonal gain.
+## Budget is in baseline ticks and converts using each NEXT edge's own cost.
+## Only current path progress survives; unused arrival/blocked credit is lost.
+func _step_move_scaled(world: SimWorld, multiplier: float) -> MoveResult:
+	if has_arrived():
+		return MoveResult.ARRIVED
+	if not is_finite(multiplier) or multiplier <= 0.0 or not is_finite(move_speed) or move_speed <= 0.0:
+		return MoveResult.MOVING
+	var baseline_speed: float = move_speed / multiplier
+	if not is_finite(baseline_speed) or baseline_speed <= 0.0:
+		return MoveResult.MOVING
+	var budget: float = multiplier
+	while budget > 0.0 and not has_arrived():
+		var next: Vector2i = path[path_index]
+		if not world.grid.is_walkable(next):
+			return MoveResult.BLOCKED
+		var delta: Vector2i = next - cell
+		var length: float = GridMath.DIAGONAL_COST if delta.x != 0 and delta.y != 0 else 1.0
+		length = maxf(length, float(maxi(absi(delta.x), absi(delta.y))))
+		var cost: float = float(maxi(1, ceili(length / baseline_speed)))
+		var needed: float = (1.0 - move_progress) * cost
+		if budget < needed:
+			move_progress += budget / cost
+			last_progress_tick = world.now
+			return MoveResult.MOVING
+		budget -= needed
 		move_progress = 0.0
 		cell = next
 		path_index += 1

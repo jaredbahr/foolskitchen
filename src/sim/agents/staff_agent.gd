@@ -59,6 +59,10 @@ func configure_member(member: StaffMember, definition: StaffTrait) -> void:
 	food_patience_multiplier = definition.food_patience_multiplier
 
 
+func movement_multiplier() -> float:
+	return _walk_multiplier
+
+
 ## Skill used for a task role: role-free (&"any") tasks use the agent's own role.
 func skill_for(task_role: StringName) -> int:
 	var r := role if task_role == &"any" else task_role

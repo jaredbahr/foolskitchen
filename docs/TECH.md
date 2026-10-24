@@ -286,11 +286,21 @@ docs/
   order and defaults. MORNING `set_staff_roster` keeps retained agents and the
   exact owner, adds hires at their role's spawn and removes departures through
   normal task/reservation cleanup. Several people may share a spawn.
-- Quick changes walking by its data multiplier once; Careful adds the actual
+- Quick changes walking by its data multiplier once. Its opt-in movement carries
+  baseline-tick credit across cells: the existing neutral cadence is four ticks
+  per straight edge and six per diagonal at speed 0.25. Scaling that quantized
+  time (rather than only Quick's geometric distance) preserves every neutral
+  tick and avoids an unintended 18% diagonal arrival advantage. Residual credit
+  converts using the next edge's own cost; final arrival, blocking and path
+  resets never bank extra movement. The neutral movement body is unchanged.
+  Careful adds the actual
   completing cook's quality bonus before the normal clamp. Cheerful extends a
   guest's food-patience budget when that server takes an accepted order, inside
   the existing replay guard. Steady and the owner retain neutral values. Work
   speed, queue patience, elapsed waiting and guest RNG draws are unchanged.
+- Each new candidate pool samples names without replacement from the authored
+  list, skipping team names case-insensitively. Same-day saved pools, including
+  legacy duplicate names, remain intact and draw no new random values.
 - The HUD Staff button and request-only `StaffPanel` use MORNING commands
   `staff_hire`/`staff_let_go`. They spend no cash, draw no RNG and never save.
   Closing charges each live employee's own wage, excluding the owner.

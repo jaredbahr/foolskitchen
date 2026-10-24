@@ -4,6 +4,7 @@ extends Control
 
 signal hire_requested(id: StringName)
 signal let_go_requested(id: StringName)
+signal close_requested()
 
 const SHARED_THEME: Theme = preload("res://src/ui/theme/main_theme.tres")
 const MORNING_HINT: String = "Staff changes are available in the morning."
@@ -111,3 +112,7 @@ func _on_request(id: StringName, hiring: bool) -> void:
 	elif not hiring and _roster.can_let_go(id):
 		let_go_requested.emit(id)
 	refresh()
+
+
+func _on_close_pressed() -> void:
+	close_requested.emit()
