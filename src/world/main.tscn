@@ -1,9 +1,10 @@
-[gd_scene load_steps=5 format=3 uid="uid://b0fkmain0001"]
+[gd_scene load_steps=6 format=3 uid="uid://b0fkmain0001"]
 
 [ext_resource type="Script" path="res://src/world/main.gd" id="1"]
 [ext_resource type="PackedScene" path="res://src/world/shop_view.tscn" id="2"]
 [ext_resource type="PackedScene" path="res://src/world/camera_rig.tscn" id="3"]
 [ext_resource type="PackedScene" path="res://src/ui/hud.tscn" id="4_hud"]
+[ext_resource type="PackedScene" path="res://src/ui/evening_report.tscn" id="5_report"]
 
 [node name="Main" type="Node3D"]
 script = ExtResource("1")
@@ -13,3 +14,8 @@ script = ExtResource("1")
 [node name="CameraRig" parent="." instance=ExtResource("3")]
 
 [node name="HUD" parent="." instance=ExtResource("4_hud")]
+
+[node name="Overlay" type="CanvasLayer" parent="."]
+layer = 10
+
+[node name="EveningReport" parent="Overlay" instance=ExtResource("5_report")]

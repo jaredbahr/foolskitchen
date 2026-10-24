@@ -1,43 +1,51 @@
 extends Node3D
-## Temporary staff-only demonstration; RestaurantSim integration replaces this.
+## The game session for the Tier 1 shop: builds the restaurant, drives it from
+## Clock, keeps the books, shows the evening report at closing and autosaves
+## each new morning.
+##
+## Day loop:
+##   MORNING  -> fridge topped up, "Open shop" (HUD) starts service
+##   OPEN / LAST_ORDERS -> RestaurantSim runs (guests, staff, kitchen)
+##   CLOSED   -> wages and rent charged, evening report shown
+##   "Next day" -> MORNING of the next day, autosave
+## F10 starts a new game (deletes the autosave).
 
 const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
+const TUNING: EconomyTuning = preload("res://data/balance/tier1_economy.tres")
+const AUTOSAVE_SLOT: String = "autosave"
+
+## Save slot used by autosave and the startup load. Tests change it.
+var save_slot: String = AUTOSAVE_SLOT
+## When false, _ready() neither loads nor writes saves (used by tests).
+var use_saves: bool = true
+var sim: RestaurantSim
 var world: SimWorld
-var _demo_ticks: int = 0
-## Clock state before this scene attached its world, restored on exit.
+var content: ContentDB
+## Dishes sold today (recipe id -> count), for the evening report.
+var dishes_sold_today: Dictionary[StringName, int] = {}
+
 var _previous_clock: SimClock = null
+var _started: bool = false
+var _report: Control
 
 
-func _ready() -> void:
-	initialize()
-	if world == null:
-		return
-	_previous_clock = Clock.sim
-	Clock.attach_world(world)
-	EventBus.sim_ticked.connect(_on_sim_ticked)
-	world.clock.start_service()
-	Clock.set_speed(1)
-
-
-## Builds the read-only view even before tree readiness, without changing Clock.
+## Builds the restaurant and the read-only view. Safe before tree readiness and
+## without touching the Clock, Economy or SaveSystem autoloads.
 func initialize() -> void:
-	if world != null:
+	if sim != null:
 		return
-	var content: ContentDB = ContentDB.new()
-	var errors: PackedStringArray = content.load_all()
+	content = ContentDB.new()
+	var load_errors: PackedStringArray = content.load_all()
+	if not load_errors.is_empty():
+		push_error("Cannot load shop content: %s" % load_errors)
+		return
+	var errors: Array[String] = []
+	sim = RestaurantSim.create(LAYOUT, content, 1, errors)
 	if not errors.is_empty():
-		push_error("Cannot load shop content: %s" % errors)
+		push_error("Cannot build shop: %s" % errors)
+		sim = null
 		return
-	var build_errors: Array[String] = []
-	world = ShopBuilder.build(LAYOUT, content, build_errors)
-	if not build_errors.is_empty():
-		push_error("Cannot build shop: %s" % build_errors)
-		world = null
-		return
-	for role: StringName in [&"cook", &"server"]:
-		var staff: StaffAgent = StaffAgent.new(role)
-		staff.cell = LAYOUT.staff_spawns[role]
-		world.add_agent(staff)
+	world = sim.world
 	var view: ShopView = $ShopView
 	view.show_world(world)
 	var camera: CameraRig = $CameraRig
@@ -49,34 +57,147 @@ func initialize() -> void:
 	camera.pan_limits = shop_half + Vector2(2.0, 2.0)
 	camera.initial_zoom = 12.0
 	camera.reset_view()
-	_post_demo_tasks()
+	_report = $Overlay/EveningReport
+	_report.hide()
+
+
+func _ready() -> void:
+	start()
+
+
+## Wires the session to the autoloads and opens the first morning (loading the
+## autosave if there is one). Runs once; _ready() calls it, and tests call it
+## directly because the test runner never delivers _ready().
+func start() -> void:
+	if _started:
+		return
+	initialize()
+	if sim == null:
+		return
+	_started = true
+	for autoload: Node in [Clock, GameState, Economy]:
+		autoload.call(&"register_save_provider")
+	_report.connect(&"next_day_pressed", _on_next_day_pressed)
+	sim.customer_paid.connect(_on_customer_paid)
+	EventBus.day_phase_changed.connect(_on_day_phase_changed)
+	_previous_clock = Clock.sim
+	Clock.attach_world(world, sim.advance)
+	sim.stock = Economy.stock
+	if not (use_saves and _load_autosave()):
+		_new_game()
+	_begin_morning()
 
 
 func _exit_tree() -> void:
-	if EventBus.sim_ticked.is_connected(_on_sim_ticked):
-		EventBus.sim_ticked.disconnect(_on_sim_ticked)
+	if EventBus.day_phase_changed.is_connected(_on_day_phase_changed):
+		EventBus.day_phase_changed.disconnect(_on_day_phase_changed)
 	if world != null and Clock.attached_world == world:
 		Clock.attach_world(null)
 		if _previous_clock != null:
 			Clock.sim = _previous_clock
 
 
-func _on_sim_ticked(_tick: int) -> void:
-	_demo_ticks += 1
-	if _demo_ticks >= 30:
-		_demo_ticks = 0
-		_post_demo_tasks()
+func _unhandled_input(event: InputEvent) -> void:
+	var key := event as InputEventKey
+	if key != null and key.pressed and not key.echo and key.physical_keycode == KEY_F10:
+		start_over()
 
 
-func _post_demo_tasks() -> void:
-	# Temporary demo only: integration will own task posting. Never pile up jobs.
-	if not world.board.open_tasks().is_empty() or not world.board.claimed_tasks().is_empty():
-		return
-	for role: StringName in [&"cook", &"server"]:
-		var task: SimTask = SimTask.new(&"demo", role, "Temporary demo route")
-		for id: StringName in [&"fridge", &"stove", &"pass_counter"]:
-			var items: Array[PlacedItem] = ShopBuilder.items_with_def(world, id)
-			if not items.is_empty():
-				task.steps.append(TaskStep.go_to_item(items[0].id, "Walk to %s" % id))
-				task.steps.append(TaskStep.work(10, "Demonstrating station"))
-		world.board.post(task, world.now)
+## Deletes the autosave and restarts the scene from day 1.
+func start_over() -> void:
+	if use_saves:
+		SaveSystem.delete_slot(save_slot)
+	get_tree().reload_current_scene()
+
+
+## Advances the restaurant by `ticks` sim ticks right now (tests and tools).
+func run_ticks(ticks: int) -> void:
+	for i in ticks:
+		if Clock.sim.phase != SimClock.Phase.OPEN and Clock.sim.phase != SimClock.Phase.LAST_ORDERS:
+			return
+		sim.advance()
+		EventBus.sim_ticked.emit(Clock.sim.tick)
+
+
+## Builds the evening report for `day` from the ledger and today's counters.
+func build_report(day: int) -> DayReport:
+	var report := DayReport.new()
+	report.day = day
+	var totals: Dictionary = Economy.ledger.day_totals(day)
+	for category: StringName in totals:
+		var amount: int = totals[category]
+		if amount > 0:
+			report.income[category] = amount
+		elif amount < 0:
+			report.costs[category] = -amount
+	report.dishes_sold = dishes_sold_today.duplicate()
+	report.customers_served = sim.served_today
+	report.customers_lost = sim.lost_today
+	for reason: StringName in sim.leave_reasons_today:
+		if reason != &"happy":
+			report.leave_reasons[reason] = sim.leave_reasons_today[reason]
+	return report
+
+
+func _new_game() -> void:
+	Economy.reset(TUNING.starting_cash)
+	sim.stock = Economy.stock
+	world.log_event("New game: $%d to start" % TUNING.starting_cash)
+
+
+func _load_autosave() -> bool:
+	if not SaveSystem.list_slots().has(save_slot):
+		return false
+	if SaveSystem.load_game(save_slot) != OK:
+		world.log_event("Autosave could not be loaded; starting a new game")
+		return false
+	# Economy replaced its stock on load; the kitchen must use the new one.
+	# Saves are only written in the morning, so the loaded clock is a morning.
+	sim.stock = Economy.stock
+	return true
+
+
+## Morning setup: new counters, a stocked fridge, and an autosave.
+func _begin_morning() -> void:
+	sim.start_day()
+	dishes_sold_today.clear()
+	_restock()
+	_report.hide()
+	if use_saves:
+		SaveSystem.save_game(save_slot)
+
+
+func _restock() -> void:
+	for id: StringName in TUNING.morning_stock:
+		var ingredient := content.ingredient(id)
+		if ingredient == null:
+			continue
+		var missing: int = TUNING.morning_stock[id] - Economy.stock.count(id)
+		if missing > 0 and not Economy.buy_ingredient(id, missing, ingredient.unit_cost):
+			world.log_event("Couldn't afford %d %s this morning" % [missing, id])
+
+
+func _charge_closing_costs() -> void:
+	for role: StringName in TUNING.wages:
+		for agent: SimAgent in world.agents:
+			if agent.role == role:
+				Economy.add_cash(-TUNING.wages[role], Ledger.WAGES)
+	if TUNING.daily_rent > 0:
+		Economy.add_cash(-TUNING.daily_rent, Ledger.RENT)
+
+
+func _on_customer_paid(_customer: CustomerAgent, order: Order, amount: int) -> void:
+	Economy.add_cash(amount, Ledger.SALE)
+	dishes_sold_today[order.recipe_id] = dishes_sold_today.get(order.recipe_id, 0) + 1
+
+
+func _on_day_phase_changed(day: int, phase: int) -> void:
+	if phase == SimClock.Phase.CLOSED:
+		_charge_closing_costs()
+		_report.call(&"show_report", build_report(day))
+	elif phase == SimClock.Phase.MORNING:
+		_begin_morning()
+
+
+func _on_next_day_pressed() -> void:
+	Clock.sim.next_day()

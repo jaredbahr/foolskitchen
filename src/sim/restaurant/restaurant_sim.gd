@@ -8,6 +8,9 @@ signal customer_left(customer: CustomerAgent, reason: StringName)
 
 var world: SimWorld
 var orders: OrderBook = OrderBook.new()
+## Ingredient stock the kitchen takes from. The game session points this at
+## Economy.stock; tests can use their own.
+var stock: Stock = Stock.new()
 var menu: Array[RecipeDef] = []
 var spawner: CustomerSpawner
 var rng: RandomNumberGenerator = RandomNumberGenerator.new()
