@@ -76,10 +76,13 @@ func test_full_day_charges_costs_and_shows_report() -> void:
 	var wages := 0
 	for role: StringName in TUNING.wages:
 		wages += TUNING.wages[role]
-	assert_eq(Economy.cash, cash_at_open - wages - TUNING.daily_rent, "wages and rent at closing")
+	var sales: int = int(Economy.ledger.day_totals(Clock.sim.day).get(Ledger.SALE, 0))
+	assert_true(sales > 0, "the real kitchen serves paying guests")
+	assert_eq(Economy.cash, cash_at_open + sales - wages - TUNING.daily_rent, "meal sales, wages and rent reconcile at closing")
 	var report: Control = main.get_node("Overlay/EveningReport")
 	assert_true(report.visible, "evening report shown at CLOSED")
 	var day_report: DayReport = main.call("build_report", 1)
+	assert_eq(day_report.income.get(Ledger.SALE, 0), sales)
 	assert_eq(day_report.costs.get(Ledger.WAGES, 0), wages)
 	assert_eq(day_report.costs.get(Ledger.RENT, 0), TUNING.daily_rent)
 	assert_eq(day_report.costs.get(Ledger.INGREDIENTS, 0), _morning_stock_cost(main))

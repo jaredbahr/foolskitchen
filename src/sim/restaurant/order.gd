@@ -12,3 +12,8 @@ var recipe_id: StringName = &""
 var price: int = 0
 var placed_tick: int = 0
 var state: State = State.PLACED
+
+## Final clamped dish quality for future guest reviews.
+var quality: float = 0.0
+## Why preparation or delivery was cancelled; carried through to the guest.
+var cancellation_reason: StringName = &""

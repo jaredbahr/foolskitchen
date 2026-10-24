@@ -55,8 +55,10 @@ func tick(world: SimWorld) -> void:
 			else:
 				_leave(world, sim, &"no_table")
 	if state == State.ORDERING or state == State.WAITING_FOOD:
-		# Delivery wins over the deadline on the same tick.
-		if order != null and order.state == Order.State.DELIVERED:
+		# Terminal kitchen results win over the patience deadline on the same tick.
+		if order != null and order.state == Order.State.CANCELLED:
+			_leave(world, sim, order.cancellation_reason if not order.cancellation_reason.is_empty() else &"order_cancelled")
+		elif order != null and order.state == Order.State.DELIVERED:
 			state = State.EATING
 			_eating = 0
 		else:
@@ -86,8 +88,7 @@ func tick(world: SimWorld) -> void:
 			if _task == null or _task.state == SimTask.State.CANCELLED:
 				_post_order_task(world, sim)
 		State.WAITING_FOOD:
-			if order.state == Order.State.CANCELLED:
-				_leave(world, sim, &"order_cancelled")
+			pass
 		State.EATING:
 			_eating += 1
 			if _eating >= eat_ticks:
@@ -133,7 +134,10 @@ func on_removed(world: SimWorld) -> void:
 
 
 func _try_seat(world: SimWorld) -> bool:
+	var sim: RestaurantSim = _restaurant.get_ref() as RestaurantSim
 	for table: PlacedItem in world.grid.items():
+		if sim != null and sim.kitchen != null and sim.kitchen.is_table_dirty(table.id):
+			continue
 		for seat: Vector2i in table.seat_cells:
 			if table.reserved_by(seat) != -1 or not world.grid.is_walkable(seat):
 				continue
@@ -166,7 +170,7 @@ func _walk_to_seat(world: SimWorld, sim: RestaurantSim) -> void:
 
 
 func _requeue(world: SimWorld, sim: RestaurantSim) -> void:
-	_release_seat(world)
+	_release_seat(world, false)
 	table_item_id = 0
 	seat_cell = SimGrid.NO_CELL
 	clear_path()
@@ -262,12 +266,15 @@ func _cancel_work(world: SimWorld, sim: RestaurantSim) -> void:
 		world.board.cancel(_task, &"customer_left")
 		_task = null
 	if sim != null and order != null:
-		sim.orders.set_state(order, Order.State.CANCELLED)
+		sim.orders.set_state(order, Order.State.CANCELLED, leave_reason if leave_reason != &"happy" else &"customer_left")
 
 
-func _release_seat(world: SimWorld) -> void:
+func _release_seat(world: SimWorld, dirty: bool = true) -> void:
 	var table: PlacedItem = world.grid.item(table_item_id)
-	if table != null:
+	if table != null and table.reserved_by(seat_cell) == id:
+		var sim: RestaurantSim = _restaurant.get_ref() as RestaurantSim
+		if dirty and cell == seat_cell and sim != null and sim.kitchen != null:
+			sim.kitchen.mark_table_dirty(table.id)
 		table.release(seat_cell, id)
 
 

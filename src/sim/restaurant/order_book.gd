@@ -30,12 +30,14 @@ func get_order(id: int) -> Order:
 
 
 ## Terminal tickets cannot be changed; repeated states do not emit again.
-func set_state(order: Order, state: Order.State) -> void:
+func set_state(order: Order, state: Order.State, reason: StringName = &"") -> void:
 	if order == null or _orders.get(order.id) != order or order.state == state:
 		return
 	if order.state == Order.State.DELIVERED or order.state == Order.State.CANCELLED:
 		return
 	order.state = state
+	if state == Order.State.CANCELLED:
+		order.cancellation_reason = reason
 	match state:
 		Order.State.READY:
 			order_ready.emit(order)

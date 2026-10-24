@@ -27,6 +27,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- A working kitchen: cooks fetch stock, prepare dishes and plate on the pass; servers deliver meals and clear dirty tables before guests can sit again. Missing ingredients give guests a clear reason to leave. (#44)
 - `tools/screenshot.sh --open --fast=N` opens the shop and fast-forwards, to capture a full day. (#40)
 - `tools/screenshot.sh` renders the real game under a virtual display and saves screenshots, for reviews and PRs. (#39)
 - Guests find reachable seats, queue, order through servers, eat and pay. Bounded waits recover blocked routes, and closing clears every visit with a reason for the daily report. (#35)

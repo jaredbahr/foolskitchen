@@ -11,10 +11,15 @@ signal service_closed(day: int)
 
 var world: SimWorld
 var orders: OrderBook = OrderBook.new()
-## Ingredient stock the kitchen takes from. The game session points this at
-## Economy.stock; tests can use their own.
-var stock: Stock = Stock.new()
 var menu: Array[RecipeDef] = []
+## Ingredient stock shared with the game session. Replacing it also updates
+## the live kitchen; direct construction retains an empty default inventory.
+var stock: Stock = Stock.new():
+	set(value):
+		stock = value if value != null else Stock.new()
+		if kitchen != null:
+			kitchen.stock = stock
+var kitchen: Kitchen
 var spawner: CustomerSpawner
 var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var served_today: int = 0
@@ -25,7 +30,8 @@ var _departed: Dictionary[int, bool] = {}
 
 
 ## Builds the layout, its starting staff, and its tier-one menu.
-static func create(layout: ShopLayout, content: ContentDB, seed: int, errors: Array[String]) -> RestaurantSim:
+static func create(layout: ShopLayout, content: ContentDB, seed: int, errors: Array[String],
+		stock: Stock = null, with_kitchen: bool = true) -> RestaurantSim:
 	var sim: RestaurantSim = RestaurantSim.new()
 	sim.world = ShopBuilder.build(layout, content, errors)
 	sim.rng.seed = seed
@@ -40,6 +46,9 @@ static func create(layout: ShopLayout, content: ContentDB, seed: int, errors: Ar
 	for recipe: RecipeDef in content.recipes():
 		if recipe.unlock_tier == 1:
 			sim.menu.append(recipe)
+	sim.stock = stock if stock != null else Stock.new()
+	if with_kitchen:
+		sim.kitchen = Kitchen.new(sim, content, sim.stock)
 	sim.start_day()
 	return sim
 
@@ -51,6 +60,8 @@ func start_day() -> void:
 	leave_reasons_today.clear()
 	_departed.clear()
 	orders.prune_finished()
+	if kitchen != null:
+		kitchen.retry_dirty_tables()
 	spawner.reset()
 
 
@@ -58,6 +69,8 @@ func start_day() -> void:
 func advance() -> void:
 	var was_closed: bool = world.clock.phase == SimClock.Phase.CLOSED
 	world.advance()
+	if kitchen != null:
+		kitchen.advance()
 	spawner.advance(self)
 	for customer: CustomerAgent in customers():
 		if world.clock.phase == SimClock.Phase.CLOSED:
