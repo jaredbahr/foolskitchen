@@ -104,7 +104,10 @@ func decline_raise(member_id: StringName, day: int, phase: int) -> bool:
 	# never refused. Keep this guard even for direct calls outside the panel.
 	if offer.is_empty() or not bool(offer["requires_raise"]):
 		return false
-	return _members[index].growth_state().decline_raise(day)
+	var member: StaffMember = _members[index]
+	var protected_minimum: bool = [&"cook", &"server"].has(member.role) \
+		and _role_count(member.role) <= 1
+	return member.growth_state().decline_raise(day, protected_minimum)
 
 
 ## Settle due departures once, in roster order. A last cook or server must

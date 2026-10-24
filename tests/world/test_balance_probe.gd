@@ -122,7 +122,7 @@ func test_staff_trace_observes_once_only_board_completion_without_awarding_xp() 
 	assert_eq(rows.size(), 2)
 	assert_eq(rows[0]["member"], "Alex")
 	assert_eq(rows[0]["tasks"], 1, "owner, cancellation and repeat completion are excluded")
-	assert_eq(rows[0]["earned"], 2)
+	assert_eq(rows[0]["earned"], StaffRoster.GROWTH_TUNING.xp_for_task(&"cook"))
 	assert_eq(rows[0]["xp"], 0, "a read-only trace does not credit the roster")
 	assert_eq(roster.members()[0].growth_state().earned_today(&"cooking"), 0)
 	assert_eq(rows[1]["tasks"], 0, "an idle starter remains visible")
@@ -134,3 +134,91 @@ func test_staff_trace_flag_is_opt_in_and_rejects_ambiguous_values() -> void:
 	assert_true(BalanceProbe._parse_args(PackedStringArray(["--staff-growth=true"]))["staff_growth"])
 	assert_false(BalanceProbe._parse_args(PackedStringArray(["--staff-growth", "false"]))["staff_growth"])
 	assert_true(BalanceProbe._parse_args(PackedStringArray(["--staff-growth=maybe"])).has("error"))
+
+
+func test_auto_accept_flag_is_opt_in_and_keeps_explicit_false() -> void:
+	assert_false(BalanceProbe._parse_args(PackedStringArray())["auto_accept_raises"])
+	assert_true(BalanceProbe._parse_args(PackedStringArray(["--auto-accept-raises=true"]))["auto_accept_raises"])
+	assert_false(BalanceProbe._parse_args(PackedStringArray(["--auto-accept-raises", "false"]))["auto_accept_raises"])
+	assert_true(BalanceProbe._parse_args(PackedStringArray(["--auto-accept-raises=maybe"])).has("error"))
+
+
+func test_auto_accept_settles_all_requests_through_real_main_and_rejects_service() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	await tree.process_frame
+	var main: Node = MAIN_SCENE.instantiate()
+	main.set("use_saves", false)
+	tree.root.add_child(main)
+	main.call("start")
+	var sim: RestaurantSim = main.get("sim") as RestaurantSim
+	var roster: StaffRoster = main.get("staff_roster") as StaffRoster
+	var saved: Dictionary = roster.to_dict()
+	saved["members"][0]["skill"] = 5
+	saved["members"][0]["growth"]["skills"]["cooking"] = 5
+	saved["members"][0]["growth"]["skills"]["cleaning"] = 2
+	saved["members"][0]["growth"]["raises"] = [
+		{"skill": "cooking", "level": 4}, {"skill": "cooking", "level": 5},
+		{"skill": "cleaning", "level": 2}]
+	saved["members"][1]["skill"] = 4
+	saved["members"][1]["growth"]["skills"]["service"] = 4
+	saved["members"][1]["growth"]["raises"] = [{"skill": "service", "level": 4}]
+	assert_true(roster.from_dict(saved))
+	assert_true(sim.set_staff_roster(roster.members()))
+	var books: Dictionary = Economy.ledger.to_dict()
+	var clock: Dictionary = Clock.sim.to_dict()
+	var stock: Dictionary = Economy.stock.to_dict()
+	var random: Dictionary = GameState.call("_capture_save")
+	var accepted: Dictionary = BalanceProbe._accept_morning_raises(main)
+	assert_false(accepted.has("error"), str(accepted.get("error", "")))
+	assert_eq(accepted.get("accepted"), 4, "all members and queued no-pay acknowledgements settle")
+	roster = main.get("staff_roster") as StaffRoster
+	for member: StaffMember in roster.members():
+		assert_eq(member.growth_state().pending_raise_count(), 0)
+		assert_eq(member.growth_state().mood, 3)
+		var expected: int = sim.pricing_tuning.staff_wage(member.role, member.skill)
+		assert_eq(member.wage, expected)
+		var found: bool = false
+		for agent: SimAgent in sim.world.agents:
+			if agent is StaffAgent and not agent is OwnerAgent \
+					and (agent as StaffAgent).member_id == member.id:
+				assert_eq((agent as StaffAgent).wage, expected,
+					"using Main updates the live wage as well as the roster")
+				found = true
+		assert_true(found)
+	assert_eq(Economy.ledger.to_dict(), books)
+	assert_eq(Clock.sim.to_dict(), clock)
+	assert_eq(Economy.stock.to_dict(), stock)
+	assert_eq(GameState.call("_capture_save"), random)
+	assert_eq(sim.world.now, 0, "choosing raises requires no service ticks")
+	assert_eq(BalanceProbe._accept_morning_raises(main), {"accepted": 0})
+	assert_true(Clock.sim.start_service())
+	var before: Dictionary = roster.to_dict()
+	assert_true(BalanceProbe._accept_morning_raises(main).has("error"))
+	assert_eq(roster.to_dict(), before)
+	tree.root.remove_child(main)
+	main.free()
+
+
+func test_staff_summary_reports_each_skill_up_day_and_live_wage_without_awarding_xp() -> void:
+	var roster: StaffRoster = StaffRoster.new()
+	var before: Dictionary = BalanceProbe._staff_levels(roster)
+	var saved: Dictionary = roster.to_dict()
+	saved["members"][0]["skill"] = 5
+	saved["members"][0]["growth"]["skills"]["cooking"] = 5
+	saved["members"][0]["growth"]["skills"]["cleaning"] = 2
+	saved["members"][1]["skill"] = 4
+	saved["members"][1]["growth"]["skills"]["service"] = 4
+	assert_true(roster.from_dict(saved))
+	var events: Array[Dictionary] = BalanceProbe._staff_level_ups(before, roster, 5)
+	assert_eq(events.size(), 4, "a multi-level day retains every crossed level and secondary skill")
+	assert_eq(events[0]["level"], 4)
+	assert_eq(events[1]["level"], 5)
+	assert_eq(events[2]["skill"], &"cleaning")
+	assert_eq(events[3]["skill"], &"service")
+	var summary: Array[Dictionary] = BalanceProbe._staff_summary(roster, events)
+	assert_eq(summary.size(), 3)
+	var line: String = BalanceProbe._format_staff_summary("default", 7, summary[0])
+	assert_true(line.contains("L4: day 5, L5: day 5"))
+	assert_true(line.contains("Alex | Cooking"))
+	assert_eq(summary[0]["wage"], roster.members()[0].wage)
+	assert_eq(roster.to_dict(), saved, "summarizing does not accept raises or mutate progression")

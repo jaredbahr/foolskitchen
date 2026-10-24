@@ -89,13 +89,15 @@ func test_completed_work_closes_growth_then_morning_applies_skill_and_requested_
 		return
 	var original_save: String = FileAccess.get_file_as_string(_path())
 	assert_true(Clock.sim.start_service())
-	# The authored skill-3 cooking threshold is 110 XP at 2 XP per task.
-	for _index: int in range(55):
+	var needed: int = StaffRoster.GROWTH_TUNING.needed_for_next_level(3)
+	var task_xp: int = StaffRoster.GROWTH_TUNING.xp_for_task(&"cook")
+	var task_count: int = ceili(float(needed) / float(task_xp))
+	for _index: int in range(task_count):
 		var task: SimTask = SimTask.new(&"cook", &"cook", "Completed meal")
 		sim.world.board.post(task, sim.world.now)
 		assert_true(sim.world.board.claim(task, cook.id, sim.world.now))
 		sim.world.board.complete(task)
-	assert_eq(_member(main, &"starter_cook").growth_state().earned_today(&"cooking"), 110)
+	assert_eq(_member(main, &"starter_cook").growth_state().earned_today(&"cooking"), task_count * task_xp)
 	assert_eq(_member(main, &"starter_server").growth_state().earned_today(&"service"), 0)
 	assert_eq(FileAccess.get_file_as_string(_path()), original_save)
 	Clock.sim.phase = SimClock.Phase.CLOSED
@@ -103,6 +105,7 @@ func test_completed_work_closes_growth_then_morning_applies_skill_and_requested_
 	assert_eq(Economy.ledger.day_totals(1).get(Ledger.WAGES), -55,
 		"the old wage was charged before the earned skill was applied")
 	assert_eq(_member(main, &"starter_cook").skill, 4)
+	assert_eq(_member(main, &"starter_cook").growth_state().progress_xp(&"cooking"), task_count * task_xp - needed)
 	assert_eq(cook.skills[&"cook"], 3, "the live shift never changes skill mid-day")
 	assert_eq(cook.wage, 30)
 	assert_eq(FileAccess.get_file_as_string(_path()), original_save)
@@ -142,7 +145,10 @@ func test_cleanup_completed_after_service_close_is_flushed_before_morning_save()
 	var sim: RestaurantSim = main.get("sim") as RestaurantSim
 	var saved: Dictionary = _roster(main).to_dict()
 	# One genuinely completed bus task will cross the authored skill-3 threshold.
-	saved["members"][1]["growth"]["xp"]["service"] = 109
+	var needed: int = StaffRoster.GROWTH_TUNING.needed_for_next_level(3)
+	var task_xp: int = StaffRoster.GROWTH_TUNING.xp_for_task(&"bus_table")
+	var before_threshold: int = needed - task_xp
+	saved["members"][1]["growth"]["xp"]["service"] = before_threshold
 	var choices: StaffRoster = StaffRoster.new(TUNING)
 	assert_true(choices.from_dict(saved))
 	assert_true(sim.set_staff_roster(choices.members()))
@@ -171,7 +177,7 @@ func test_cleanup_completed_after_service_close_is_flushed_before_morning_save()
 	assert_eq(Clock.sim.phase, SimClock.Phase.CLOSED)
 	assert_true(cleanup.state != SimTask.State.DONE,
 		"the actual service_closed signal precedes completion of cleanup")
-	assert_eq(_member(main, &"starter_server").growth_state().progress_xp(&"service"), 109)
+	assert_eq(_member(main, &"starter_server").growth_state().progress_xp(&"service"), before_threshold)
 	assert_eq(_member(main, &"starter_server").growth_state().pending_raise_count(), 0)
 	var closing_books: Dictionary = Economy.ledger.to_dict()
 	# Explicit sim driving exercises the existing cleanup API. Production Clock
@@ -184,7 +190,7 @@ func test_cleanup_completed_after_service_close_is_flushed_before_morning_save()
 	assert_false(sim.kitchen.is_table_dirty(tables[0].id))
 	assert_eq(cleanup.claimed_by, _live_staff(main, &"starter_server").id)
 	sim.world.board.complete(cleanup)
-	assert_eq(_member(main, &"starter_server").growth_state().earned_today(&"service"), 1,
+	assert_eq(_member(main, &"starter_server").growth_state().earned_today(&"service"), task_xp,
 		"the stable rostered claimant is credited once after closing")
 	assert_eq(_live_staff(main, &"starter_server").skill_for(&"server"), 3)
 	assert_eq(Economy.ledger.to_dict(), closing_books, "cleanup never closes the books twice")
@@ -261,12 +267,13 @@ func test_three_rejected_requests_remove_redundant_cook_next_morning_once() -> v
 	assert_eq(notices.get_child_count(), 1)
 
 
-func test_last_cook_stays_at_mood_one_with_readable_morning_notice() -> void:
+func test_last_cook_never_dips_to_zero_after_refusal_or_next_morning() -> void:
 	var main: Node = _start(false)
 	_install_queued_raises(main, false)
-	for _index: int in range(3):
+	for mood_after: int in [2, 1, 1, 1]:
 		assert_true(main.call("staff_decline_raise", &"starter_cook"))
-	assert_eq(_member(main, &"starter_cook").growth_state().mood, 0)
+		assert_eq(_member(main, &"starter_cook").growth_state().mood, mood_after)
+		assert_eq(_member(main, &"starter_cook").growth_state().quit_due_day(), 0)
 	Clock.sim.phase = SimClock.Phase.CLOSED
 	assert_true(Clock.sim.next_day())
 	assert_eq(_roster(main).members().size(), 2)
@@ -274,15 +281,10 @@ func test_last_cook_stays_at_mood_one_with_readable_morning_notice() -> void:
 	assert_eq(_member(main, &"starter_cook").growth_state().mood, 1)
 	var panel: StaffPanel = main.get_node("Overlay/StaffPanel") as StaffPanel
 	var notices: VBoxContainer = panel.get_node("Panel/Content/Scroll/List/MorningNotices") as VBoxContainer
-	assert_true(panel.is_visible_in_tree(), "a protected worker's notice opens the Staff panel")
-	assert_true(notices.is_visible_in_tree())
-	assert_eq(notices.get_child_count(), 1)
-	if notices.get_child_count() == 0:
-		return
-	assert_eq((notices.get_child(0) as Label).text, "Alex stayed to keep the kitchen running.")
-	assert_false((notices.get_child(0) as Label).text.contains("starter_cook"))
+	assert_false(notices.visible, "an immediately protected worker has no due-quit notice")
+	assert_eq(notices.get_child_count(), 0)
 	main.call("_begin_morning")
-	assert_eq(notices.get_child_count(), 1)
+	assert_eq(notices.get_child_count(), 0)
 
 
 func test_role_minimums_and_service_phase_reject_requests_and_hide_panel() -> void:

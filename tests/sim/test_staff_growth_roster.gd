@@ -6,6 +6,14 @@ const CATALOGUE: StaffCatalogue = preload("res://data/staff/traits.tres")
 const GROWTH: StaffGrowthTuning = preload("res://data/balance/staff_growth.tres")
 
 
+func test_roster_fixture_leaves_authored_task_xp_unchanged() -> void:
+	var authored: Dictionary = GROWTH.task_xp.duplicate()
+	var tuning: StaffGrowthTuning = _fast_tuning()
+	tuning.task_xp[&"cook"] = 999
+	tuning.task_xp[&"clean_spot"] = 999
+	assert_eq(GROWTH.task_xp, authored, "roster fixtures cannot alter the shared pacing data")
+
+
 func test_authored_starters_begin_with_final_wage_even_if_template_was_read() -> void:
 	var definitions: StaffCatalogue = CATALOGUE.duplicate(true) as StaffCatalogue
 	definitions.starters[0].to_dict()
@@ -274,20 +282,49 @@ func test_three_refusals_schedule_one_next_morning_departure_when_redundant() ->
 		"a departure notice cannot be replayed")
 
 
-func test_last_cook_and_server_stay_at_mood_one_after_three_refusals() -> void:
+func test_last_cook_and_server_clamp_each_refusal_before_saving_or_morning() -> void:
 	for role: StringName in [&"cook", &"server"]:
 		var roster: StaffRoster = _low_skill_role_with_raises(role)
 		var member_id: StringName = &"starter_cook" if role == &"cook" else &"starter_server"
-		for _index: int in range(3):
+		var index: int = 0 if role == &"cook" else 1
+		var wage: int = roster.members()[index].wage
+		var remaining: int = roster.members()[index].growth_state().pending_raise_count()
+		for mood_after: int in [2, 1, 1, 1]:
 			assert_true(roster.decline_raise(member_id, 4, SimClock.Phase.MORNING))
+			remaining -= 1
+			var protected_member: StaffMember = roster.members()[index]
+			assert_eq(protected_member.growth_state().mood, mood_after,
+				"the last worker never exposes mood zero after a refusal")
+			assert_eq(protected_member.growth_state().quit_due_day(), 0)
+			assert_eq(protected_member.growth_state().pending_raise_count(), remaining)
+			assert_eq(protected_member.wage, wage)
+			var restored: StaffRoster = StaffRoster.new(TUNING, CATALOGUE, _fast_tuning())
+			assert_true(restored.from_dict(_json_copy(roster.to_dict())))
+			assert_eq(restored.to_dict(), roster.to_dict(), "every immediate save is internally consistent")
 		assert_eq(roster.process_morning_quits(4, SimClock.Phase.MORNING), [])
-		var notices: Array[Dictionary] = roster.process_morning_quits(5, SimClock.Phase.MORNING)
-		assert_eq(notices.size(), 1)
-		assert_true(String(notices[0]["message"]).contains("stayed to keep the"))
-		assert_eq(roster.members().size(), 2)
-		var protected_member: StaffMember = roster.members()[0] if role == &"cook" else roster.members()[1]
-		assert_eq(protected_member.growth_state().mood, 1)
 		assert_eq(roster.process_morning_quits(5, SimClock.Phase.MORNING), [])
+		assert_eq(roster.members().size(), 2)
+		assert_false(roster.decline_raise(member_id, 5, SimClock.Phase.MORNING))
+
+
+func test_redundant_cook_and_server_still_schedule_departure_at_zero() -> void:
+	for role: StringName in [&"cook", &"server"]:
+		var roster: StaffRoster = _low_skill_role_with_raises(role)
+		var index: int = 0 if role == &"cook" else 1
+		var member_id: StringName = roster.members()[index].id
+		var saved: Dictionary = roster.to_dict()
+		saved["members"].append({"id": "backup", "name": "Robin", "role": String(role),
+			"skill": 3, "wage": TUNING.staff_wage(role, 3), "trait": "steady"})
+		assert_true(roster.from_dict(_json_copy(saved)))
+		for mood_after: int in [2, 1, 0]:
+			assert_true(roster.decline_raise(member_id, 4, SimClock.Phase.MORNING))
+			assert_eq(roster.members()[index].growth_state().mood, mood_after)
+		assert_eq(roster.members()[index].growth_state().quit_due_day(), 5)
+		var restored: StaffRoster = StaffRoster.new(TUNING, CATALOGUE, _fast_tuning())
+		assert_true(restored.from_dict(_json_copy(roster.to_dict())))
+		assert_eq(restored.process_morning_quits(4, SimClock.Phase.MORNING), [])
+		assert_eq(restored.process_morning_quits(5, SimClock.Phase.MORNING).size(), 1)
+		assert_eq(restored.members().size(), 2)
 
 
 func test_simultaneous_due_departures_keep_the_last_cook_and_server() -> void:
@@ -375,7 +412,10 @@ func _json_copy(value: Dictionary) -> Dictionary:
 
 
 func _fast_tuning() -> StaffGrowthTuning:
-	var tuning: StaffGrowthTuning = GROWTH.duplicate() as StaffGrowthTuning
+	var tuning: StaffGrowthTuning = GROWTH.duplicate(true) as StaffGrowthTuning
+	# Small mechanic fixtures stay independent of provisional production pacing.
+	tuning.task_xp[&"cook"] = 2
+	tuning.task_xp[&"clean_spot"] = 2
 	tuning.next_level_xp = PackedInt32Array([4, 6, 8, 10])
 	return tuning
 

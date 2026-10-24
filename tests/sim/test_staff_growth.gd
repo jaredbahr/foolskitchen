@@ -14,6 +14,14 @@ func test_authored_tasks_map_to_their_worked_skill() -> void:
 	assert_eq(TUNING.needed_for_next_level(5), 0)
 
 
+func test_small_fixture_leaves_authored_task_xp_unchanged() -> void:
+	var authored: Dictionary = TUNING.task_xp.duplicate()
+	var tuning: StaffGrowthTuning = _fast_tuning()
+	tuning.task_xp[&"cook"] = 999
+	tuning.task_xp[&"clean_spot"] = 999
+	assert_eq(TUNING.task_xp, authored, "mechanics fixtures cannot retune the shared production resource")
+
+
 func test_completed_tasks_wait_until_close_and_raise_once_per_skill_up() -> void:
 	var tuning: StaffGrowthTuning = _fast_tuning()
 	var growth: StaffGrowth = StaffGrowth.new(&"cooking", 3, 30)
@@ -73,13 +81,36 @@ func test_accept_updates_wage_and_refusal_quits_only_next_morning() -> void:
 	for _index: int in range(3):
 		assert_true(unhappy.decline_raise(4))
 	assert_eq(unhappy.mood, 0)
+	var due: Dictionary = unhappy.to_dict()
+	assert_false(unhappy.decline_raise(4, true), "a direct call cannot rewrite an already scheduled quit")
+	assert_eq(unhappy.to_dict(), due)
 	assert_false(unhappy.should_quit_this_morning(4, false), "refusal cannot make a person leave immediately")
 	assert_true(unhappy.should_quit_this_morning(5, false))
 	assert_eq(unhappy.mood, 1, "a settled departure cannot serialize as mood zero without a date")
 	assert_false(unhappy.should_quit_this_morning(5, false), "a departure is never replayed")
 
 
-func test_last_cook_or_server_is_protected_at_mood_one() -> void:
+func test_protected_refusal_clamps_immediately_and_keeps_saved_state_valid() -> void:
+	var growth: StaffGrowth = StaffGrowth.new(&"service", 1, 20)
+	var tuning: StaffGrowthTuning = _fast_tuning()
+	for _index: int in range(30):
+		growth.record_task(&"deliver", tuning)
+	growth.close_day(tuning)
+	var remaining: int = growth.pending_raise_count()
+	for mood_after: int in [2, 1, 1, 1]:
+		assert_true(growth.decline_raise(8, true))
+		remaining -= 1
+		assert_eq(growth.mood, mood_after)
+		assert_eq(growth.quit_due_day(), 0)
+		assert_eq(growth.pending_raise_count(), remaining)
+		var restored: StaffGrowth = StaffGrowth.new()
+		assert_true(restored.from_dict(JSON.parse_string(JSON.stringify(growth.to_dict()))))
+		assert_eq(restored.to_dict(), growth.to_dict())
+	assert_false(growth.should_quit_this_morning(9, false))
+	assert_false(growth.decline_raise(8, true), "the empty queue is still guarded")
+
+
+func test_legacy_scheduled_quit_is_protected_at_the_morning_boundary() -> void:
 	var growth: StaffGrowth = StaffGrowth.new(&"service", 1, 20)
 	var tuning: StaffGrowthTuning = _fast_tuning()
 	for _index: int in range(30):
@@ -143,6 +174,9 @@ func test_json_roundtrip_and_invalid_decoder_leave_live_state_unchanged() -> voi
 
 
 func _fast_tuning() -> StaffGrowthTuning:
-	var tuning: StaffGrowthTuning = TUNING.duplicate() as StaffGrowthTuning
+	var tuning: StaffGrowthTuning = TUNING.duplicate(true) as StaffGrowthTuning
+	# Small mechanic fixtures stay independent of provisional production pacing.
+	tuning.task_xp[&"cook"] = 2
+	tuning.task_xp[&"clean_spot"] = 2
 	tuning.next_level_xp = PackedInt32Array([4, 6, 8, 10])
 	return tuning

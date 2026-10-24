@@ -33,7 +33,8 @@ func test_real_board_completion_credits_only_its_rostered_claimant_once() -> voi
 	_world.board.complete(cooked)
 	_world.board.complete(cooked)
 	assert_eq(_credited, [true] as Array[bool], "the board emits completion once")
-	assert_eq(_member(&"starter_cook").growth_state().earned_today(&"cooking"), 2)
+	var cooking_xp: int = StaffRoster.GROWTH_TUNING.xp_for_task(&"cook")
+	assert_eq(_member(&"starter_cook").growth_state().earned_today(&"cooking"), cooking_xp)
 	assert_eq(_member(&"starter_server").growth_state().earned_today(&"service"), 0)
 	assert_false(StaffTaskCredit.credit_completed(null, _world, _roster))
 
@@ -45,7 +46,7 @@ func test_real_board_completion_credits_only_its_rostered_claimant_once() -> voi
 	assert_eq(_member(&"starter_server").growth_state().earned_today(&"service"), 1)
 	assert_eq(_member(&"starter_cook").growth_state().earned_today(&"service"), 0)
 	assert_eq(_roster.close_growth_day(), {})
-	assert_eq(_member(&"starter_cook").growth_state().progress_xp(&"cooking"), 2)
+	assert_eq(_member(&"starter_cook").growth_state().progress_xp(&"cooking"), cooking_xp)
 	assert_eq(_member(&"starter_server").growth_state().progress_xp(&"service"), 1)
 
 

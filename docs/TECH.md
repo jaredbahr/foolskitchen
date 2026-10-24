@@ -502,25 +502,50 @@ an active edit/panel/selection first, or opens Settings when none is active.
   applies `EconomyTuning.staff_wage(role, new_level)` from that day, never below
   the current wage. If pay is already covered, the skill update has one Got it
   acknowledgement; it cannot be refused or lower mood. Refusing an actual pay
-  increase lowers mood by one. Mood starts at 3 and reaching 0
-  schedules a quit for the following morning. The last cook or server stays at
-  mood 1 to preserve the roster minimum; the last Cleaner remains optional.
+  increase lowers mood by one. Mood starts at 3. The last cook or server is
+  clamped at mood 1 immediately inside the refusal command, with no due quit;
+  other staff reaching 0 schedule a quit for the following morning. The last
+  Cleaner remains optional.
   Neither decision adds a save point.
 - The versioned growth state is nested in each employee's `staff` record:
   per-skill levels and XP, mood, wage, queued raises and any due quit day. Old
   six-field staff records restore with zero XP and mood 3. The roster decoder
   validates the full snapshot before installation. The Staff panel shows the
   current role's XP and mood, with morning-only raise requests and readable
-  departure notices; it does not mutate the roster or save by itself.
+  departure notices; it does not mutate the roster or save by itself. Morning
+  staff notices, including quit messages, are transient and are not saved.
+  Reloading after a quit loses its message; that behavior is accepted.
+- Provisional pacing data uses 3 XP per cook task, 1 per service task and 8
+  per completed floor spot, with thresholds 175/225/275/325. The prior review
+  measured starters reaching skill 5 by day 4 for service and day 7 for cooking,
+  failing the 4–6-working-day-per-level target. Raising cook XP from 2 to 3
+  brings the observed service/cooking XP ratio of about 1.6 toward 1.07, while
+  thresholds increase by 2.5 times. Cleaning's weight assumes roughly 0.4 dirt
+  opportunities per meal when arrival and paid-meal counts match; differing
+  arrival/served ratios, duplicate spots, the spot cap
+  and overnight cancellation can change actual completions. These are initial
+  tuning hypotheses, not measured corrected pacing or wage profitability.
 - The manual 4–6-working-day level-up check uses fixed seeds 1, 7 and 42 with
   the real Main session and no saves. Run
   `bash tools/balance_probe.sh --days=6 --seeds=1,7,42 --setup=default --staff-growth=true`.
   The optional per-member/day trace prints completed-task counts, earned XP,
-  skill and residual XP after close, pending requests, mood and wage. It makes
-  no automatic raise decisions. Compare each starter's first skill-3-to-4 day
+  skill and residual XP after close, pending requests, mood and wage. Its
+  default policy leaves raise requests pending. Compare each starter's first skill-3-to-4 day
   against the target; the aggregate throughput table alone cannot establish
   that timing. The actual run and 4–6-day pacing result remain pending. This
   trace is manual, not a CI job.
+- For wage creep, run the feature head manually with
+  `bash tools/balance_probe.sh --days=25 --seeds=1,7,42 --setup=default --staff-growth=true --auto-accept-raises=true`.
+  This opt-in policy accepts every morning request, including no-pay
+  acknowledgements, through Main's real `staff_accept_raise` command before
+  opening service. It reports each seed's skill-up days and final wages beside
+  the ordinary cumulative wage/profit table. Day-25 closing requests wait for
+  the next morning, outside that 25-day window. Compare against an isolated,
+  exact main run with the same days/seeds/setup and no feature-only flags;
+  paste both outputs with their exact SHAs. Repeat with `--setup=extra_cleaner`
+  to check the cleaning hypothesis with a dedicated cleaner. The required
+  25-day comparison is UNRUN; accepting every raise must not leave profit below
+  main's before this pacing is accepted. No workflow or CI probe loop is added.
 
 ### 2.4 Save system
 - JSON in `user://saves/`, with a `version` field and migration functions per version.

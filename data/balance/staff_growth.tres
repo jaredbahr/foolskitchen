@@ -13,11 +13,11 @@ task_skills = Dictionary[StringName, StringName]({
 &"clean_spot": &"cleaning"
 })
 task_xp = Dictionary[StringName, int]({
-&"cook": 2,
+&"cook": 3,
 &"take_order": 1,
 &"deliver": 1,
 &"bus_table": 1,
 &"wash": 1,
-&"clean_spot": 2
+&"clean_spot": 8
 })
-next_level_xp = PackedInt32Array(70, 90, 110, 130)
+next_level_xp = PackedInt32Array(175, 225, 275, 325)

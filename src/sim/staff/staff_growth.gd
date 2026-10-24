@@ -104,13 +104,14 @@ func accept_raise(proposed_wage: int) -> bool:
 	return true
 
 
-## A refusal reduces mood once. Reaching zero schedules departure for the
-## following morning, never during the current day's player choice.
-func decline_raise(day: int) -> bool:
-	if _raises.is_empty() or day < 1:
+## The roster supplies its current role-minimum guard. A protected worker's
+## mood stays at least 1 immediately, without a transient due-quit record.
+## Otherwise zero schedules departure for the following morning.
+func decline_raise(day: int, protected_minimum: bool = false) -> bool:
+	if _raises.is_empty() or day < 1 or _quit_day > 0:
 		return false
 	_raises.pop_front()
-	mood = maxi(0, mood - 1)
+	mood = maxi(1 if protected_minimum else 0, mood - 1)
 	if mood == 0:
 		_quit_day = day + 1
 	return true
