@@ -37,7 +37,7 @@ static func from_dict(data: Variant, catalogue: StaffCatalogue) -> StaffMember:
 	member.skill = int(row["skill"])
 	member.wage = int(row["wage"])
 	member.trait_id = StringName(row["trait"])
-	if not [&"cook", &"server"].has(member.role) or catalogue.trait(member.trait_id) == null:
+	if not [&"cook", &"server"].has(member.role) or catalogue.find_trait(member.trait_id) == null:
 		return null
 	return member
 

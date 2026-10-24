@@ -43,7 +43,7 @@ func test_seeded_pool_is_repeatable_and_uses_the_role_skill_wage_curve() -> void
 			assert_true(member.role == &"cook" or member.role == &"server")
 			assert_true(member.skill >= 1 and member.skill <= 5)
 			assert_true(CATALOGUE.candidate_names.has(member.display_name))
-			assert_not_null(CATALOGUE.trait(member.trait_id))
+			assert_not_null(CATALOGUE.find_trait(member.trait_id))
 			assert_eq(member.wage, TUNING.staff_wage(member.role, member.skill))
 		var copy: StaffMember = first.candidates()[0]
 		copy.display_name = "Only a copy"

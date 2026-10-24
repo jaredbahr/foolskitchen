@@ -61,10 +61,10 @@ func test_reapplying_quick_never_compounds_and_steady_restores_the_base_speed() 
 	var staff: StaffAgent = StaffAgent.new(&"cook", 3)
 	staff.move_speed = 0.4
 	for refresh: int in range(10):
-		staff.configure_member(member, CATALOGUE.trait(&"quick"))
+		staff.configure_member(member, CATALOGUE.find_trait(&"quick"))
 	assert_almost_eq(staff.move_speed, 0.4 * 1.15)
 	member.trait_id = &"steady"
-	staff.configure_member(member, CATALOGUE.trait(&"steady"))
+	staff.configure_member(member, CATALOGUE.find_trait(&"steady"))
 	assert_almost_eq(staff.move_speed, 0.4)
 	assert_almost_eq(staff.cook_quality_bonus, 0.0)
 	assert_almost_eq(staff.food_patience_multiplier, 1.0)
@@ -179,7 +179,7 @@ func _member(id: StringName, role: StringName, trait_id: StringName, skill: int 
 func _employee(id: StringName, role: StringName, trait_id: StringName) -> StaffAgent:
 	var member: StaffMember = _member(id, role, trait_id)
 	var staff: StaffAgent = StaffAgent.new(role, member.skill)
-	staff.configure_member(member, CATALOGUE.trait(trait_id))
+	staff.configure_member(member, CATALOGUE.find_trait(trait_id))
 	return staff
 
 

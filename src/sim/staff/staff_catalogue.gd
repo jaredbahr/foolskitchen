@@ -7,7 +7,7 @@ extends Resource
 @export var candidate_names: PackedStringArray = []
 
 
-func trait(id: StringName) -> StaffTrait:
+func find_trait(id: StringName) -> StaffTrait:
 	for definition: StaffTrait in traits:
 		if definition.id == id:
 			return definition

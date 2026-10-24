@@ -75,7 +75,7 @@ func set_staff_roster(people: Array[StaffMember], catalogue: StaffCatalogue = St
 	for member: StaffMember in people:
 		if member == null or member.id.is_empty() or by_id.has(member.id) \
 				or not [&"cook", &"server"].has(member.role) or not staff_spawns.has(member.role) \
-				or catalogue.trait(member.trait_id) == null or member.skill < 1 or member.skill > 5 or member.wage < 0:
+				or catalogue.find_trait(member.trait_id) == null or member.skill < 1 or member.skill > 5 or member.wage < 0:
 			return false
 		by_id[member.id] = member
 		roles.append(member.role)
@@ -90,13 +90,13 @@ func set_staff_roster(people: Array[StaffMember], catalogue: StaffCatalogue = St
 			world.remove_agent(employee)
 		else:
 			var member: StaffMember = by_id[employee.member_id]
-			employee.configure_member(member, catalogue.trait(member.trait_id))
+			employee.configure_member(member, catalogue.find_trait(member.trait_id))
 			retained[employee.member_id] = true
 	for member: StaffMember in people:
 		if retained.has(member.id):
 			continue
 		var employee: StaffAgent = StaffAgent.new(member.role, member.skill)
-		employee.configure_member(member, catalogue.trait(member.trait_id))
+		employee.configure_member(member, catalogue.find_trait(member.trait_id))
 		employee.cell = staff_spawns[member.role]
 		world.add_agent(employee)
 	return true

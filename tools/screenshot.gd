@@ -526,7 +526,7 @@ func _staff_capture_valid(state: Dictionary) -> bool:
 	for person: Dictionary in members + candidates:
 		var row: Dictionary = rows.get(person["id"], {})
 		var title: String = row.get("name_and_wage", "")
-		var definition: StaffTrait = StaffRoster.CATALOGUE.trait(StringName(person["trait"]))
+		var definition: StaffTrait = StaffRoster.CATALOGUE.find_trait(StringName(person["trait"]))
 		var action: String = "Let go" if members.has(person) else "Hire"
 		if row.get("visible_in_tree") != true or not title.contains(person["name"]) \
 				or not title.contains("skill %d" % int(person["skill"])) \

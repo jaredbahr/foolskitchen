@@ -93,10 +93,10 @@ func _add_row(parent: VBoxContainer, member: StaffMember, candidate: bool) -> vo
 	button.mouse_filter = Control.MOUSE_FILTER_STOP
 	button.pressed.connect(_on_request.bind(member.id, candidate))
 	top.add_child(button)
-	var trait: StaffTrait = _roster.catalogue.trait(member.trait_id)
+	var trait_def: StaffTrait = _roster.catalogue.find_trait(member.trait_id)
 	var detail: Label = Label.new()
 	detail.name = "Trait"
-	detail.text = "%s: %s" % [trait.display_name, trait.description]
+	detail.text = "%s: %s" % [trait_def.display_name, trait_def.description]
 	detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	detail.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(detail)
