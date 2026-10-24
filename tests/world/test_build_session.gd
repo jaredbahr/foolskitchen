@@ -636,6 +636,23 @@ func test_paint_during_service_previews_then_commits_without_books_or_immediate_
 	assert_false(_main.call("is_paint_active"))
 
 
+func test_paint_screen_pick_uses_visible_item_depth_before_wall_or_floor() -> void:
+	await _start()
+	assert_true(_main.call("set_paint_active", true))
+	var view: ShopView = _main.get_node("ShopView") as ShopView
+	for def_id: StringName in [&"potted_plant", &"prep_counter"]:
+		var item: PlacedItem = _world().grid.item(_id(def_id))
+		var mesh: MeshInstance3D = view.item_nodes[item.id]
+		var bounds: AABB = mesh.global_transform * mesh.get_aabb()
+		var top_center: Vector3 = bounds.position + Vector3(bounds.size.x * 0.5, bounds.size.y, bounds.size.z * 0.5)
+		var pointer: Vector2 = _camera().unproject_position(top_center)
+		assert_eq(_main.call("paint_cell_at_screen_position", pointer), item.origin,
+			"a visible %s must win over its projected floor cell or rear wall" % def_id)
+		_click(pointer)
+		assert_eq(item.swatch_id, &"butter")
+	assert_eq(_world().now, 0)
+
+
 func _start(with_saves: bool = false) -> void:
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	await tree.process_frame  # The custom runner may begin before root entry.

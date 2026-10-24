@@ -11,6 +11,7 @@ extends SceneTree
 ##   --menu      show the real menu panel in MORNING (cannot combine with --open)
 ##   --staff     show the real morning Staff panel, paused, with no altered roster
 ##   --build=green|red  hold a checked buy preview through the production input API
+##   --paint     show a painted morning shop using the production paint controls
 ## Metadata records actual waiting moods/visible markers and seeds, with no fixture.
 
 const MAX_CAPTURE_WAIT_FRAMES: int = 8
@@ -35,6 +36,7 @@ var _f3: bool = false
 var _menu: bool = false
 var _staff: bool = false
 var _build: String = ""
+var _paint: bool = false
 var _build_pointer: Vector2 = Vector2.ZERO
 var _selected_agent_id: int = -1
 var _capture_pending: bool = false
@@ -85,6 +87,8 @@ func _initialize() -> void:
 				_fail_capture("--build supports green or red")
 				return
 			_build = requested
+		elif arg == "--paint":
+			_paint = true
 		elif arg.begins_with("--scene="):
 			_scene_path = arg.trim_prefix("--scene=")
 		elif arg.begins_with("--quarter="):
@@ -103,13 +107,16 @@ func _initialize() -> void:
 	if not _build.is_empty() and (_open or _fast != 0 or not _selection.is_empty() or _assign_owner or _f3 or _menu or _staff):
 		_fail_capture("--build requires a fresh morning without other view/service flags")
 		return
+	if _paint and (_open or _fast != 0 or not _selection.is_empty() or _assign_owner or _f3 or _menu or _staff or not _build.is_empty() or _speed != 0):
+		_fail_capture("--paint requires a paused morning without other view/service flags")
+		return
 	if _menu and (_open or not _selection.is_empty()):
 		_fail_capture("--menu requires morning and cannot combine with --open or --select")
 		return
 	if _staff and (_open or _fast != 0 or not _selection.is_empty() or _assign_owner or _f3 or _menu or _speed != 0):
 		_fail_capture("--staff requires a paused morning without other service/panel options")
 		return
-	if _shots.is_empty() or _shots.min() < 1 or ((_quarter >= 0 or not _selection.is_empty() or _f3 or _menu or _staff or not _build.is_empty()) and _shots.min() < 4):
+	if _shots.is_empty() or _shots.min() < 1 or ((_quarter >= 0 or not _selection.is_empty() or _f3 or _menu or _staff or not _build.is_empty() or _paint) and _shots.min() < 4):
 		_fail_capture("capture frames must be positive, and at least 4 for requested view/UI options")
 		return
 	if DirAccess.make_dir_recursive_absolute(_out) != OK:
@@ -158,6 +165,10 @@ func _process(_delta: float) -> bool:
 				return true
 		if not _build.is_empty():
 			_configure_build()
+			if _failed:
+				return true
+		if _paint:
+			_configure_paint()
 			if _failed:
 				return true
 	if not _build.is_empty() and _frames >= 3:
@@ -224,6 +235,59 @@ func _capture_world() -> SimWorld:
 	if "world" in _main:
 		return _main.get("world") as SimWorld
 	return null
+
+
+func _configure_paint() -> void:
+	var world: SimWorld = _capture_world()
+	var catalogue: BuildCatalogue = _main.get_node_or_null("Overlay/BuildCatalogue") as BuildCatalogue
+	if world == null or world.clock.phase != SimClock.Phase.MORNING or world.now != 0 \
+			or catalogue == null or not _main.has_method("set_paint_active") or not _main.has_method("paint_cell"):
+		_fail_capture("--paint requires the production paused morning paint APIs")
+		return
+	if not bool(_main.call("set_paint_active", true)):
+		_fail_capture("scene refused paint entry")
+		return
+	var samples: Array[Dictionary] = [
+		{"swatch": &"cream", "cell": Vector2i(0, 5)},
+		{"swatch": &"walnut", "cell": Vector2i(8, 8)},
+		{"swatch": &"terracotta", "cell": Vector2i(2, 6)},
+		{"swatch": &"sage", "cell": Vector2i(12, 9)},
+	]
+	for sample: Dictionary in samples:
+		var button: Button = catalogue.swatch_buttons.get(sample["swatch"]) as Button
+		if button == null:
+			_fail_capture("paint capture cannot find the requested native swatch")
+			return
+		button.pressed.emit()
+		if not bool(_main.call("paint_cell", sample["cell"])):
+			_fail_capture("paint capture could not colour its requested shop surface")
+			return
+
+
+func _paint_state() -> Dictionary:
+	var world: SimWorld = _capture_world()
+	var editor: ShopEditor = _main.get("shop_editor") as ShopEditor
+	var view: ShopView = _main.get_node_or_null("ShopView") as ShopView
+	var catalogue: BuildCatalogue = _main.get_node_or_null("Overlay/BuildCatalogue") as BuildCatalogue
+	if world == null or editor == null or view == null or catalogue == null:
+		return {}
+	var tables: Array[PlacedItem] = ShopBuilder.items_with_def(world, &"table_2")
+	var plants: Array[PlacedItem] = ShopBuilder.items_with_def(world, &"potted_plant")
+	if tables.is_empty() or plants.is_empty() or view.get_node("Walls").get_child_count() == 0:
+		return {}
+	var wall: MeshInstance3D = view.get_node("Walls").get_child(0) as MeshInstance3D
+	var floor_shader: ShaderMaterial = view.floor_mesh.material_override as ShaderMaterial
+	var table_material: StandardMaterial3D = view.item_nodes[tables[0].id].material_override as StandardMaterial3D
+	var plant_material: StandardMaterial3D = view.item_nodes[plants[0].id].material_override as StandardMaterial3D
+	var content: ContentDB = _main.get("content") as ContentDB
+	return {"active": _main.call("is_paint_active"), "catalogue_visible": catalogue.is_visible_in_tree(),
+		"swatch_count": catalogue.swatch_buttons.size(), "wall": String(editor.wall_swatch_id),
+		"floor": String(editor.floor_swatch_id), "table": String(tables[0].swatch_id),
+		"plant": String(plants[0].swatch_id),
+		"rendered": (wall.material_override as StandardMaterial3D).albedo_color == content.swatch(&"cream").color \
+			and floor_shader.get_shader_parameter("floor_color") == content.swatch(&"walnut").color \
+			and table_material.albedo_color == content.swatch(&"terracotta").color \
+			and plant_material.albedo_color == content.swatch(&"sage").color}
 
 
 ## Review proposals only: no trial placements, transactions or save writes.
@@ -369,6 +433,14 @@ func _capture() -> void:
 			or world.now != 0 or not _staff_capture_valid(staff_state)):
 		_fail_capture("requested Staff panel did not show the real paused morning roster and pool")
 		return
+	var paint: Dictionary = _paint_state() if _paint else {}
+	if _paint and (paint.get("active") != true or paint.get("catalogue_visible") != true \
+			or paint.get("swatch_count") != 12 or paint.get("wall") != "cream" \
+			or paint.get("floor") != "walnut" or paint.get("table") != "terracotta" \
+			or paint.get("plant") != "sage" or paint.get("rendered") != true \
+			or world == null or world.now != 0 or world.clock.phase != SimClock.Phase.MORNING):
+		_fail_capture("painted shop state did not match the rendered morning frame")
+		return
 	var selected_id: int = int(inspection.get("selected_agent_id", -1))
 	var selected: SimAgent = world.agent(selected_id) if world != null else null
 	var selected_live: bool = (_selection == &"guest" and selected is CustomerAgent) or (_selection == &"owner" and selected is OwnerAgent)
@@ -453,6 +525,7 @@ func _capture() -> void:
 		"requested_menu_visible": _menu, "menu_visible": menu_visible,
 		"requested_staff_visible": _staff, "staff": staff_state,
 		"requested_build": _build, "build": build,
+		"requested_paint": _paint, "paint": paint,
 		"day_phase": int(world.clock.phase) if world != null else null,
 		"selected_agent_id": inspection.get("selected_agent_id"),
 		"selected_item_id": inspection.get("selected_item_id"),

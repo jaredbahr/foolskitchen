@@ -200,7 +200,35 @@ func clear_paint_preview() -> void:
 	preview_paint(&"", -1, &"")
 
 
-## The nearest visible wall face wins over the floor beneath the pointer.
+## Resolve the nearest visible shop mesh before using the floor plane. An item
+## returns its origin even when its top projects over a different floor cell.
+func paint_cell_at_ray(ray_origin: Vector3, ray_direction: Vector3) -> Variant:
+	if world == null or ray_direction.y >= -0.00001:
+		return null
+	var nearest: float = -ray_origin.y / ray_direction.y
+	var result: Variant = null
+	for id: int in item_nodes:
+		var node: MeshInstance3D = item_nodes[id]
+		if not node.is_visible_in_tree():
+			continue
+		var distance: float = _ray_box_distance(ray_origin, ray_direction, node.global_transform * node.get_aabb())
+		if distance >= 0.0 and distance < nearest:
+			var item: PlacedItem = world.grid.item(id)
+			if item != null:
+				nearest = distance
+				result = item.origin
+	for cell: Vector2i in _wall_nodes:
+		var wall: MeshInstance3D = _wall_nodes[cell]
+		if not wall.is_visible_in_tree():
+			continue
+		var distance: float = _ray_box_distance(ray_origin, ray_direction, wall.global_transform * wall.get_aabb())
+		if distance >= 0.0 and distance < nearest:
+			nearest = distance
+			result = cell
+	return result
+
+
+## Wall-only query retained for wall geometry diagnostics.
 func wall_cell_at_ray(ray_origin: Vector3, ray_direction: Vector3) -> Variant:
 	if world == null or ray_direction.y >= -0.00001:
 		return null

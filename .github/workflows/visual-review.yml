@@ -80,6 +80,7 @@ jobs:
           bash tools/screenshot.sh --out=screens/visual-review/mood-waits --open --fast=8 --frames=120,180,240,300 --speed=1
           bash tools/screenshot.sh --out=screens/visual-review/menu --menu --speed=0 --frames=12
           bash tools/screenshot.sh --out=screens/visual-review/staff --staff --speed=0 --frames=12
+          bash tools/screenshot.sh --out=screens/visual-review/paint --paint --speed=0 --frames=12
           bash tools/screenshot.sh --out=screens/visual-review/build-green --build=green --quarter=0 --frames=12 --speed=1
           bash tools/screenshot.sh --out=screens/visual-review/build-red --build=red --quarter=0 --frames=12 --speed=1
 
@@ -101,6 +102,7 @@ jobs:
           captures += [('mood-waits', -1, False, False, frame) for frame in (120, 180, 240, 300)]
           captures += [('menu', -1, False, False, 12)]
           captures += [('staff', -1, False, False, 12)]
+          captures += [('paint', -1, False, False, 12)]
           captures += [('build-green', 0, False, False, 12), ('build-red', 0, False, False, 12)]
           observed_bands = set()
           for name, requested, inspect_guest, debug, frame in captures:
@@ -140,6 +142,14 @@ jobs:
                   assert build['state'] == 3 and build['origin'] == build['pointer_cell'], f'{name}: incoherent buy preview pointer'
                   assert data['day_phase'] == 0 and data['capture_parameters'] == {'open': False, 'fast_ticks_per_frame': 0, 'speed': 1}
                   assert build_kind != 'red' or build['why'], f'{name}: missing placement reason'
+              paint = name == 'paint'
+              assert data['requested_paint'] is paint, f'{name}: wrong requested paint state'
+              if paint:
+                  assert data['paint'] == {'active': True, 'catalogue_visible': True, 'swatch_count': 12,
+                                           'wall': 'cream', 'floor': 'walnut', 'table': 'terracotta',
+                                           'plant': 'sage', 'rendered': True}, 'painted model/native view mismatch'
+                  assert data['day_phase'] == 0 and data['world_tick'] == 0, 'paint capture advanced the morning'
+                  assert data['capture_parameters'] == {'open': False, 'fast_ticks_per_frame': 0, 'speed': 0}, 'wrong paint capture parameters'
               assert data['debug_visible'] is debug, f'{name}: wrong actual F3 state'
               assert data['panel_visible'] is (inspect_guest or inspect_owner), f'{name}: wrong actual inspect panel state'
               assert data['selected_item_id'] == -1, f'{name}: unexpected item selection'

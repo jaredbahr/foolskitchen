@@ -414,8 +414,8 @@ func paint_cell_at_screen_position(screen_position: Vector2) -> Variant:
 		return null
 	var ray_origin: Vector3 = camera.project_ray_origin(screen_position)
 	var ray_direction: Vector3 = camera.project_ray_normal(screen_position)
-	var wall: Variant = ($ShopView as ShopView).wall_cell_at_ray(ray_origin, ray_direction)
-	return wall if wall is Vector2i else build_cell_at_screen_position(screen_position)
+	var mesh_cell: Variant = ($ShopView as ShopView).paint_cell_at_ray(ray_origin, ray_direction)
+	return mesh_cell if mesh_cell is Vector2i else build_cell_at_screen_position(screen_position)
 
 
 func preview_paint_cell(cell: Variant) -> void:
