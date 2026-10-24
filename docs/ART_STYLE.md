@@ -1,6 +1,6 @@
 # Art style lock
 
-**Status: locked (Jared, 2026-10-24, D19 and D20).** Consistency beats detail. Everything on screen must look like it came from one hand. If something you need is not covered here, stop and ask in the PR; never substitute an asset from another source or style.
+**Status: locked (Jared, 2026-10-24, D19 and D20).** Consistency beats detail. Everything on screen must look like it came from one hand. If something you need is not in the kits, it may be **made in the Kenney style** (§8), but never taken from another source or style.
 
 ## 1. Approved sources (all Kenney, CC0)
 All of them are already in the repo; never download others.
@@ -30,6 +30,16 @@ One grid cell is 0.5 units. Uniform scale only: never stretch or squash a model 
 - **Filling a footprint:** if one model is smaller than the footprint, combine pieces **from the same kit** (for example stove + cabinet for a 2×1 stove). Never scale a piece up to fill the space.
 - **Fit:** a model may not stick out of its footprint by more than 0.05.
 - All the scale constants live in one script, `src/world/art_scale.gd`. No other file hard-codes a scale.
+
+**The building is scaled to the people (Jared).** The Mini Characters set the scale for everything built around them. A person is about 0.74 high and 0.37 wide.
+- **Walls:** 1.4 high (about 1.9 people).
+- **Door openings:** at least 1.1 high and 0.5 wide.
+- **Aisles and walk paths:** at least one cell (0.5) wide, which fits one person comfortably.
+- **Counters:** about 0.5 high, around the chest of a Mini Character, as in the kits.
+- **Table tops:** about 0.36 high; a seated guest's arms rest on the table.
+- **Chair seats:** about 0.27 high, matching the `sit` pose raised onto the seat.
+
+Any new building piece (walls, windows, doors, the awning, counters) follows these numbers. Every visual PR shows at least one capture with people standing beside the furniture, so the fit can be checked.
 
 ## 3. Colour and materials
 - Keep each kit's own materials and its shared `colormap.png`. No per-model textures, no new materials on kit models, and no vertex-colour edits.
@@ -62,7 +72,17 @@ One grid cell is 0.5 units. Uniform scale only: never stretch or squash a model 
 ## 7. UI
 - **Icons:** `assets/kenney/icons/`, tinted with theme colours, at one size per context (top bar 28 px, panels 24 px).
 - **Text:** stays on the current font and theme.
-- **Missing icons:** there is no chef-hat or paint-brush icon in the pack. Use text labels for those until the director adds an approved icon. Never draw or import a substitute.
+- **Missing icons:** there is no chef-hat or paint-brush icon in the pack. Make them in the Game Icons style (§8), or use text until one exists.
 
-## 8. Review gate
+## 8. Making new items in the Kenney style
+New stoves, cooking gear, decor or icons may be made when the kits lack them (Jared). A made item must be indistinguishable in style from the kits:
+- **3D:** built in Blender (headless, scripted is fine) from the same kind of shapes as the kit:
+  - chunky, slightly bevelled boxes and cylinders, flat-shaded, low poly (under about 1,500 tris for furniture, 300 for small props);
+  - coloured only through the kit's own `colormap.png` UVs or the kit's existing material colours. No new textures.
+  - Same proportions and edge softness as the nearest kit piece. Put it next to that piece in a capture to prove it.
+- **Icons:** the Game Icons style: white, solid, rounded silhouette, 100 px, same stroke weight.
+- **Location:** made assets live in `assets/made/` (never inside `assets/kenney/`), and each is listed in `assets/made/README.md` with what it is and what it was based on.
+- **Approval:** each made item needs an issue that names it. The director checks it side by side with the kit before it merges.
+
+## 9. Review gate
 Every visual PR includes before and after captures from `tools/screenshot.sh`, and the director checks the pixels against this file. If a PR breaks a rule here, it is sent back, however good it looks.
