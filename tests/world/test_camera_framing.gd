@@ -186,7 +186,7 @@ func _assert_floor_centered() -> void:
 	assert_false(camera.is_position_behind(point))
 	var projected: Vector2 = camera.unproject_position(point)
 	var error: Vector2 = (projected - rect.get_center()).abs() / rect.size
-	assert_true(error.x <= 0.1 and error.y <= 0.1, "real floor projection must be within 10% of viewport center: %s" % error)
+	assert_true(error.x <= 0.1 and error.y <= 0.1, "real floor projection must be within 10%% of viewport center: %s" % error)
 
 
 func _motion(position: Vector2, relative: Vector2) -> void:
