@@ -81,6 +81,14 @@ focus_mode = 0
 text = "Walls: Cutaway"
 tooltip_text = "Cycle walls: Up, Cutaway, Down (C)"
 
+[node name="Build" type="Button" parent="Top/Row"]
+layout_mode = 2
+theme = ExtResource("2_theme")
+focus_mode = 0
+toggle_mode = true
+text = "Build"
+tooltip_text = "Build furniture (B)"
+
 [node name="Cash" type="Label" parent="Top/Row"]
 layout_mode = 2
 text = "$0"
@@ -94,3 +102,18 @@ text = "Open shop"
 layout_mode = 0
 mouse_filter = 2
 theme = ExtResource("2_theme")
+
+[node name="BuildHints" type="PanelContainer" parent="."]
+visible = false
+offset_left = 12.0
+offset_top = 104.0
+offset_right = 700.0
+offset_bottom = 200.0
+mouse_filter = 2
+theme = ExtResource("2_theme")
+
+[node name="Text" type="Label" parent="BuildHints"]
+layout_mode = 2
+mouse_filter = 2
+text = "R Rotate  |  Del Sell  |  Esc Cancel / Exit"
+autowrap_mode = 3

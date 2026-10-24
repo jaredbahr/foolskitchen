@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Renders the game (default: src/world/main.tscn) under a virtual display and
 # saves PNGs to screens/ (git-ignored). Needs xvfb and Mesa (software OpenGL).
-# Usage: bash tools/screenshot.sh [--out=dir] [--frames=120,400,900] [--speed=4] [--scene=res://...] [--quarter=0..3] [--open] [--fast=N] [--select=guest] [--f3]
+# Usage: bash tools/screenshot.sh [--out=dir] [--frames=120,400,900] [--speed=4] [--scene=res://...] [--quarter=0..3] [--open] [--fast=N] [--select=guest] [--f3] [--build=green|red|warning|catalogue]
+# Build captures require the fresh closed shop and exclude open/fast/inspect/F3.
+# Warning commits one disclosed, editor-checked furniture purchase; other build
+# captures only hold a real preview or show the catalogue. All saves stay off.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"

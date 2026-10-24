@@ -77,6 +77,11 @@ jobs:
           bash tools/screenshot.sh --out=screens/visual-review/inspect-guest --open --fast=5 --select=guest --frames=60 --speed=1
           bash tools/screenshot.sh --out=screens/visual-review/debug-busy --open --fast=5 --select=guest --f3 --frames=60 --speed=1
           bash tools/screenshot.sh --out=screens/visual-review/mood-waits --open --fast=8 --frames=120,180,240,300 --speed=1
+          for build in green red warning catalogue; do
+            for quarter in 0 1 2 3; do
+              bash tools/screenshot.sh "--out=screens/visual-review/build-$build-$quarter" "--build=$build" "--quarter=$quarter" --frames=12 --speed=1
+            done
+          done
 
       - name: Verify capture identity and image metadata
         shell: bash
@@ -89,10 +94,151 @@ jobs:
           from pathlib import Path
           import struct
 
+          def near(actual, expected, tolerance=1e-5):
+              assert len(actual) == len(expected) and all(math.isfinite(a) and math.isclose(a, e, rel_tol=0, abs_tol=tolerance) for a, e in zip(actual, expected)), (actual, expected)
+
+          def rect_inside(rect):
+              return len(rect) == 4 and all(math.isfinite(value) for value in rect) and rect[2] > 0 and rect[3] > 0 and rect[0] >= 6 and rect[1] >= 6 and rect[0] + rect[2] <= 1594 and rect[1] + rect[3] <= 894
+
+          def intersects(first, second, margin=0):
+              x, y, w, h = first
+              a, b, c, d = second
+              return x - margin < a + c and x + w + margin > a and y - margin < b + d and y + h + margin > b
+
+          def verify_projection(projection, build):
+              assert projection['all_in_frustum'] is True and projection['corners'] >= 8 and rect_inside(projection['rect']), 'native geometry is outside the image/camera'
+              for control in (build['hud'], build['reason']['panel'], build['catalogue']['panel']):
+                  assert not control['visible'] or not intersects(projection['rect'], control['rect'], 6), 'native geometry is obscured by HUD/reason/catalogue'
+
+          def rotate_cell(cell, footprint, turns):
+              x, y = cell
+              w, d = footprint
+              return ((x, y), (d - 1 - y, x), (w - 1 - x, d - 1 - y), (y, w - 1 - x))[turns]
+
+          def native_visible(mesh):
+              assert mesh['inside_tree'] is True and mesh['visible'] is True and mesh['visible_in_tree'] is True, 'actual native mesh is hidden'
+              assert len(mesh['global_transform']) == 12 and all(math.isfinite(value) for value in mesh['global_transform']), 'invalid native transform'
+              near(mesh['scale'], (1, 1, 1))
+
+          def verify_build(build, kind):
+              assert build['available'] is True and build['active'] is True and build['requested'] == kind
+              assert build['grid']['forced'] is True and build['grid']['effective'] is True and build['grid']['shader'] is True, 'actual rendered grid is not forced on'
+              setup, actual = build['setup'], build['actual_snapshot']
+              before, after = setup['before'], setup['after']
+              assert actual == after, 'simulation/books changed between setup and postdraw capture'
+              assert before['clock'] == after['clock'] and before['world_tick'] == after['world_tick'] == 0 and before['rng'] == after['rng'], 'build capture changed the clock or RNG'
+              assert after['clock']['phase'] == 0, 'build capture is not a real morning'
+              assert build['current_check']['ok'] is True and build['current_check']['unreachable'] == build['committed_warning_ids']
+              native = build['native']
+              assert native['inside_tree'] is True
+              assert native['warning_ids'] == build['warning_ids'], 'actual outline IDs differ from controller warnings'
+              assert build['catalogue']['root']['visible'] is True and build['catalogue']['panel']['visible'] is True and rect_inside(build['catalogue']['panel']['rect']), 'catalogue is hidden/outside image'
+              buttons = build['catalogue']['buttons']
+              assert buttons and len({row['id'] for row in buttons}) == len(buttons), 'missing/duplicate actual catalogue buttons'
+              assert any(row['clipped_rect'][2] > 0 and row['clipped_rect'][3] > 0 for row in buttons), 'all catalogue buttons are clipped'
+              for row in buttons:
+                  title = row['display_name'] or row['id']
+                  assert row['visible'] is True and row['disabled'] is False and row['mouse_filter'] == 0
+                  assert row['text'] == f'{title}\n${row["price"]}' and type(row['price']) is int and row['price'] >= 0, 'actual catalogue text/price differs from content'
+              assert build['reason']['panel']['visible'] is True and build['reason']['label']['visible'] is True and rect_inside(build['reason']['label']['rect'])
+              assert not intersects(build['reason']['label']['rect'], build['hud']['rect']) and not intersects(build['reason']['label']['rect'], build['catalogue']['panel']['rect']), 'reason text is hidden behind other UI'
+              if kind in ('green', 'red'):
+                  assert setup['fixture'] == 'none' and setup['purchased_id'] == -1 and before == after, 'preview capture performed a transaction'
+                  assert build['state'] == 3 and build['has_ghost'] is True and build['item_id'] == -1
+                  assert build['preview_check'] == build['editor_check'], 'cached preview differs from actual editor check'
+                  assert build['editor_check']['ok'] is (kind == 'green')
+                  assert build['pointer']['actual_cell'] == build['origin'] == setup['proposal']['origin'], 'per-frame pointer changed the intended ghost cell'
+                  definition = build['definition']
+                  assert definition['id'] == setup['proposal']['def_id'] and definition['price'] == setup['proposal']['price']
+                  turns = build['quarter_turns']
+                  assert type(turns) is int and 0 <= turns <= 3 and turns == setup['proposal']['quarter_turns']
+                  footprint = definition['footprint']
+                  rotated = footprint if turns % 2 == 0 else footprint[::-1]
+                  x, y = build['origin']
+                  ghost = native['ghost']
+                  native_visible(ghost)
+                  assert ghost['valid'] is (kind == 'green') and ghost['mesh_class'] == 'BoxMesh' and ghost['transparency'] == 1
+                  near(ghost['position'], ((x + rotated[0] * .5) * .5, definition['height'] * .5, (y + rotated[1] * .5) * .5))
+                  near(ghost['global_transform'][9:12], ghost['position'])
+                  near(ghost['mesh_size'], (footprint[0] * .5, definition['height'], footprint[1] * .5))
+                  near((ghost['rotation'][0], ghost['rotation'][2]), (0, 0))
+                  near((math.sin(ghost['rotation'][1]), math.cos(ghost['rotation'][1])), (math.sin(-turns * math.pi / 2), math.cos(-turns * math.pi / 2)))
+                  sine, cosine = math.sin(-turns * math.pi / 2), math.cos(-turns * math.pi / 2)
+                  near(ghost['global_transform'][:9], (cosine, 0, -sine, 0, 1, 0, sine, 0, cosine))
+                  tint = (108, 170, 123) if kind == 'green' else (206, 105, 88)
+                  near(ghost['material_color'], (*[definition['color'][i] * .2 + tint[i] / 255 * .8 for i in range(3)], .68), 1e-6)
+                  verify_projection(build['ghost_projection'], build)
+                  for marker_kind, color in (('work', (87, 159, 168)), ('seat', (221, 189, 112))):
+                      markers = native[f'{marker_kind}_markers']
+                      cells = definition[f'{marker_kind}_cells']
+                      assert len(markers) == len(cells), 'native marker count differs from actual definition'
+                      for marker, relative in zip(markers, cells):
+                          native_visible(marker)
+                          offset = rotate_cell(relative, footprint, turns)
+                          cell = [x + offset[0], y + offset[1]]
+                          assert marker['cell'] == cell, 'native marker metadata differs from rotated definition'
+                          near(marker['position'], ((cell[0] + .5) * .5, .04, (cell[1] + .5) * .5))
+                          near(marker['global_transform'][9:12], marker['position'])
+                          near(marker['global_transform'][:9], (1, 0, 0, 0, 1, 0, 0, 0, 1))
+                          near(marker['material_color'], (*[channel / 255 for channel in color], 1), 1e-6)
+                  if kind == 'red':
+                      assert build['editor_check']['why'] and build['editor_check']['why'] in build['reason']['text'], 'invalid reason is not present in actual visible label'
+              else:
+                  assert build['state'] == 1 and build['has_ghost'] is False and build['item_id'] == -1 and not build['definition'] and not native['ghost']
+                  assert not native['work_markers'] and not native['seat_markers'] and not build['ghost_projection']
+                  assert build['editor_check'] == build['current_check']
+                  if kind == 'catalogue':
+                      assert setup['fixture'] == 'none' and setup['purchased_id'] == -1 and before == after
+                      assert build['pointer']['actual_cell'] == [7, 8]
+                  else:
+                      assert setup['fixture'] == 'checked_unreachable_purchase'
+                      purchased, proposal = setup['purchased_id'], setup['proposal']
+                      assert type(purchased) is int and purchased > 0 and purchased in build['committed_warning_ids'] and 0 not in build['warning_ids'], 'warning is not a real committed item'
+                      assert build['pointer']['actual_cell'] == proposal['origin']
+                      assert proposal['check']['ok'] is True and 0 in proposal['check']['unreachable']
+                      assert after['shop']['items'][:-1] == before['shop']['items'] and len(after['shop']['items']) == len(before['shop']['items']) + 1
+                      assert after['shop']['items'][-1] == {key: proposal[key] for key in ('def_id', 'origin', 'quarter_turns')}
+                      old_books, new_books = before['books'], after['books']
+                      assert int(new_books['cash']) == int(old_books['cash']) - proposal['price']
+                      assert new_books['entries'][:-1] == old_books['entries'] and len(new_books['entries']) == len(old_books['entries']) + 1
+                      entry = new_books['entries'][-1]
+                      assert int(entry['amount']) == -proposal['price'] and entry['category'] == 'upgrades' and int(entry['day']) == after['clock']['day']
+                      assert all(new_books[key] == old_books[key] for key in old_books if key not in ('cash', 'entries')), 'warning setup changed unrelated books'
+              actual_items = {row['id']: row for row in build['warning_items']}
+              outlines = {row['item_id']: row for row in native['warnings']}
+              assert len(outlines) == len(native['warnings']) and set(outlines) == set(build['warning_ids']) == set(actual_items)
+              for item_id, outline in outlines.items():
+                  assert item_id > 0 and outline['metadata_item_id'] == item_id
+                  item = actual_items[item_id]
+                  assert outline['visible'] is True and outline['visible_in_tree'] is True and outline['inside_tree'] is True
+                  near(outline['position'], (item['origin'][0] * .5, .02, item['origin'][1] * .5))
+                  near(outline['global_transform'][9:12], outline['position'])
+                  near(outline['global_transform'][:9], (1, 0, 0, 0, 1, 0, 0, 0, 1))
+                  rails = outline['rails']
+                  assert len(rails) == 12, 'native warning is missing outline rails'
+                  for rail in rails:
+                      native_visible(rail)
+                      near(rail['global_transform'][9:12], [outline['position'][axis] + rail['position'][axis] for axis in range(3)])
+                      near(rail['global_transform'][:9], (1, 0, 0, 0, 1, 0, 0, 0, 1))
+                      near(rail['material_color'], (206 / 255, 105 / 255, 88 / 255, 1), 1e-6)
+                  footprint = item['definition']['footprint']
+                  rotated = footprint if item['quarter_turns'] % 2 == 0 else footprint[::-1]
+                  low = [min(rail['position'][axis] - rail['mesh_size'][axis] / 2 for rail in rails) for axis in range(3)]
+                  high = [max(rail['position'][axis] + rail['mesh_size'][axis] / 2 for rail in rails) for axis in range(3)]
+                  near(low, (-.0125, -.0125, -.0125))
+                  near(high, (rotated[0] * .5 + .0125, item['definition']['height'] + .0125, rotated[1] * .5 + .0125))
+              assert {row['id'] for row in build['outline_projections']} == set(outlines)
+              for row in build['outline_projections']:
+                  verify_projection(row['projection'], build)
+              for row in build['marker_projections']:
+                  verify_projection(row['projection'], build)
+              print(f'build-{kind}: actual state={build["state"]}, definition={build["definition"].get("id", "")}, turns={build["quarter_turns"]}, native outline IDs={native["warning_ids"]}, fixture={setup["fixture"]}; appearance/manual-control acceptance still requires review')
+
           root = Path('screens/visual-review')
           captures = [('default', -1, False, False, 60)] + [(f'quarter-{q}', q, False, False, 60) for q in range(4)]
           captures += [('inspect-guest', -1, True, False, 60), ('debug-busy', -1, True, True, 60)]
           captures += [('mood-waits', -1, False, False, frame) for frame in (120, 180, 240, 300)]
+          captures += [(f'build-{kind}-{q}', q, False, False, 12) for kind in ('green', 'red', 'warning', 'catalogue') for q in range(4)]
           observed_bands = set()
           for name, requested, inspect_guest, debug, frame in captures:
               png = root / name / f'shot_{frame:04d}.png'
@@ -118,6 +264,13 @@ jobs:
               assert data['debug_visible'] is debug, f'{name}: wrong actual F3 state'
               assert data['panel_visible'] is inspect_guest, f'{name}: wrong actual inspect panel state'
               assert data['selected_item_id'] == -1, f'{name}: unexpected item selection'
+              build_kind = name.split('-')[1] if name.startswith('build-') else ''
+              assert data['requested_build'] == build_kind, f'{name}: wrong requested build mode'
+              if build_kind:
+                  assert data['capture_parameters'] == {'open': False, 'fast_ticks_per_frame': 0, 'speed': 1}
+                  verify_build(data['build'], build_kind)
+              else:
+                  assert data['build']['available'] is True and data['build']['active'] is False, f'{name}: ordinary capture unexpectedly entered build mode'
               assert type(data['world_tick']) is int and data['world_tick'] >= 0, f'{name}: invalid world tick'
               if inspect_guest:
                   assert type(data['selected_agent_id']) is int and data['selected_agent_id'] > 0, f'{name}: no selected agent id'

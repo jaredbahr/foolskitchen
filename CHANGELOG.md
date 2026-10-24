@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- Press B to build while the shop is closed: move, rotate, buy or sell furniture, preview its work and seat tiles, and see warnings for unreachable furniture. (#PR)
 - Waiting guests show coloured mood dots above their heads, with ! or !! when patience runs low; their inspect text explains how they feel. (#59)
 - Click staff, guests or furniture to see what is happening and why; press F3 for remaining paths, task ages, recent events and measured frame/tick rates. (#57)
 - Cash changes now pop up as "+$12" just below the top bar and drift down, instead of floating over the cash figure. (#49)

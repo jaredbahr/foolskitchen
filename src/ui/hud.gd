@@ -7,6 +7,8 @@ const PHASE_NAMES: Array[String] = ["Morning", "Open", "Last orders", "Closed"]
 const GAIN_COLOR: Color = Color("286B3B")
 const LOSS_COLOR: Color = Color("A42E2E")
 
+signal build_toggled()
+
 var _day_label: Label
 var _time_label: Label
 var _phase_label: Label
@@ -17,6 +19,12 @@ var _buttons: Array[Button] = []
 var _cash: int = 0
 var _wall_button: Button
 var _shop_view: ShopView
+var _build_button: Button
+var _build_hints: PanelContainer
+var _build_hint_text: Label
+var _build_available: bool = false
+var _build_active: bool = false
+var _build_reason: String = ""
 
 
 func _ready() -> void:
@@ -34,6 +42,10 @@ func refresh() -> void:
 		_deltas = get_node("Deltas") as Control
 		_wall_button = get_node("Top/Row/Walls") as Button
 		_wall_button.pressed.connect(_on_wall_button_pressed)
+		_build_button = get_node("Top/Row/Build") as Button
+		_build_hints = get_node("BuildHints") as PanelContainer
+		_build_hint_text = get_node("BuildHints/Text") as Label
+		_build_button.pressed.connect(_on_build_pressed)
 		_cash = Economy.cash
 		for speed: int in SPEEDS:
 			var button: Button = get_node("Top/Row/Speed%d" % speed) as Button
@@ -53,6 +65,42 @@ func refresh() -> void:
 	_context.text = "Open shop" if Clock.sim.phase == SimClock.Phase.MORNING else "Next day"
 	_on_speed_changed(Clock.speed)
 	_refresh_wall_mode()
+	_refresh_build_controls()
+
+
+## State changes only: a refresh between native down/up preserves the button.
+func set_build_state(available: bool, active: bool, reason: String = "") -> void:
+	_build_available = available
+	_build_active = active
+	_build_reason = reason
+	if _build_button == null:
+		refresh()
+	else:
+		_refresh_build_controls()
+
+
+func _refresh_build_controls() -> void:
+	var allowed: bool = _build_available and (
+		Clock.sim.phase == SimClock.Phase.MORNING or Clock.sim.phase == SimClock.Phase.CLOSED)
+	if _build_button.disabled == allowed:
+		_build_button.disabled = not allowed
+	if _build_button.button_pressed != _build_active:
+		_build_button.set_pressed_no_signal(_build_active)
+	var tooltip: String = "Build furniture (B)" if allowed else "Build furniture in the morning or after closing"
+	if _build_button.tooltip_text != tooltip:
+		_build_button.tooltip_text = tooltip
+	if _build_hints.visible != _build_active:
+		_build_hints.visible = _build_active
+	var text: String = "R Rotate  |  Del Sell  |  Esc Cancel / Exit"
+	if not _build_reason.is_empty():
+		text += "\n" + _build_reason
+	if _build_hint_text.text != text:
+		_build_hint_text.text = text
+
+
+func _on_build_pressed() -> void:
+	if _build_available and (Clock.sim.phase == SimClock.Phase.MORNING or Clock.sim.phase == SimClock.Phase.CLOSED):
+		build_toggled.emit()
 
 
 ## Binds this presentation control to the containing shop view, idempotently.

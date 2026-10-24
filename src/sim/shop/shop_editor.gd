@@ -23,6 +23,20 @@ func can_edit() -> bool:
 		_sim.world.clock.phase == SimClock.Phase.MORNING or _sim.world.clock.phase == SimClock.Phase.CLOSED)
 
 
+## Read-only warnings for actual placements, including after a purchase has
+## received its real ID. This query neither changes last_check nor books.
+func check_current() -> EditCheck:
+	if _sim == null or _sim.world == null or _sim.world.grid == null or _content == null:
+		return EditCheck.new(false, "The shop is unavailable")
+	var ids: Dictionary[int, int] = {}
+	var preview: SimGrid = _preview_without(-1, ids)
+	if preview == null:
+		return EditCheck.new(false, "The current shop has invalid placements")
+	var check: EditCheck = EditCheck.new(true)
+	check.unreachable = _unreachable(preview, ids)
+	return check
+
+
 func check_move(item_id: int, origin: Vector2i, quarter_turns: int) -> EditCheck:
 	var check: EditCheck = _edit_check()
 	if not check.ok:

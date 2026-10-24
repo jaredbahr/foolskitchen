@@ -1,0 +1,342 @@
+class_name BuildPreview
+extends Node3D
+## Read-only geometry from BuildMode's checked snapshot. No placement or path checks.
+
+signal reason_changed(reason: String)
+
+const VALID_COLOR: Color = Color("6caa7b")
+const INVALID_COLOR: Color = Color("ce6958")
+const WORK_COLOR: Color = Color("579fa8")
+const SEAT_COLOR: Color = Color("ddbd70")
+const OUTLINE_WIDTH: float = 0.025
+
+var ghost_mesh: MeshInstance3D
+var work_markers: Array[MeshInstance3D] = []
+var seat_markers: Array[MeshInstance3D] = []
+var warning_nodes: Dictionary[int, Node3D] = {}
+var _controller: BuildMode
+var _shop_view: ShopView
+var _grid: SimGrid
+var _ghost_root: Node3D
+var _hidden_original: MeshInstance3D
+var _original_visible: bool = true
+var _reason: String = ""
+var _outline_material: StandardMaterial3D
+
+
+## Explicit binding also works before _ready in the custom test runner.
+func bind_build_mode(controller: BuildMode, shop_view: ShopView) -> void:
+	_disconnect_controller()
+	_clear_geometry()
+	_controller = controller
+	_shop_view = shop_view
+	_grid = shop_view.world.grid if is_instance_valid(shop_view) and shop_view.world != null else null
+	_connect_controller()
+	refresh()
+
+
+func invalid_reason() -> String:
+	return _reason
+
+
+func displayed_warning_ids() -> Array[int]:
+	var ids: Array[int] = []
+	ids.assign(warning_nodes.keys())
+	ids.sort()
+	return ids
+
+
+## Native-node evidence only, independent of the controller's expected state.
+## visible is the local flag; visible_in_tree additionally requires tree entry.
+## Global transforms are absent before tree entry. All values are JSON-safe copies.
+func visual_state() -> Dictionary:
+	var result: Dictionary = {"inside_tree": is_inside_tree(), "ghost": {},
+		"work_markers": _native_markers(work_markers), "seat_markers": _native_markers(seat_markers),
+		"warning_ids": [] as Array[int], "warnings": [] as Array[Dictionary]}
+	if is_instance_valid(ghost_mesh):
+		var ghost: Dictionary = _native_mesh_state(ghost_mesh)
+		var valid: Variant = ghost_mesh.get_meta("valid", null)
+		ghost["valid"] = valid if valid is bool else null
+		result["ghost"] = ghost
+	var ids: Array[int] = []
+	ids.assign(warning_nodes.keys())
+	ids.sort()
+	for id: int in ids:
+		var reference: Variant = warning_nodes[id]
+		if not is_instance_valid(reference):
+			continue
+		var root: Node3D = reference as Node3D
+		var warning: Dictionary = _native_node_state(root)
+		var metadata_id: Variant = root.get_meta("item_id", null)
+		warning["item_id"] = id
+		warning["metadata_item_id"] = metadata_id if metadata_id is int else null
+		var rails: Array[Dictionary] = []
+		for child: Node in root.get_children():
+			if child is MeshInstance3D:
+				rails.append(_native_mesh_state(child as MeshInstance3D))
+		warning["rails"] = rails
+		warning["child_count"] = root.get_child_count()
+		result["warning_ids"].append(id)
+		result["warnings"].append(warning)
+	return result
+
+
+static func _native_node_state(node: Node3D) -> Dictionary:
+	var inside: bool = node.is_inside_tree()
+	var result: Dictionary = {"name": String(node.name), "inside_tree": inside,
+		"visible": node.visible, "visible_in_tree": inside and node.is_visible_in_tree(),
+		"position": _vector_values(node.position), "rotation": _vector_values(node.rotation),
+		"scale": _vector_values(node.scale), "global_transform": [] as Array[float]}
+	if inside:
+		var actual: Transform3D = node.global_transform
+		result["global_transform"] = [actual.basis.x.x, actual.basis.x.y, actual.basis.x.z,
+			actual.basis.y.x, actual.basis.y.y, actual.basis.y.z,
+			actual.basis.z.x, actual.basis.z.y, actual.basis.z.z,
+			actual.origin.x, actual.origin.y, actual.origin.z]
+	return result
+
+
+static func _native_mesh_state(node: MeshInstance3D) -> Dictionary:
+	var result: Dictionary = _native_node_state(node)
+	result["mesh_class"] = node.mesh.get_class() if node.mesh != null else ""
+	result["mesh_size"] = _vector_values(node.mesh.get_aabb().size) if node.mesh != null else []
+	result["material_color"] = [] as Array[float]
+	result["transparency"] = -1
+	var material: Material = node.material_override
+	if node.mesh != null and node.mesh.get_surface_count() > 0:
+		material = node.get_active_material(0)
+	if material is BaseMaterial3D:
+		var native: BaseMaterial3D = material as BaseMaterial3D
+		var color: Color = native.albedo_color
+		result["material_color"] = [color.r, color.g, color.b, color.a]
+		result["transparency"] = int(native.transparency)
+	return result
+
+
+static func _native_markers(markers: Array[MeshInstance3D]) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	for reference: Variant in markers:
+		if not is_instance_valid(reference):
+			continue
+		var marker: MeshInstance3D = reference as MeshInstance3D
+		var actual: Dictionary = _native_mesh_state(marker)
+		var cell: Variant = marker.get_meta("cell", null)
+		actual["cell"] = [cell.x, cell.y] if cell is Vector2i else []
+		result.append(actual)
+	return result
+
+
+static func _vector_values(value: Vector3) -> Array[float]:
+	return [value.x, value.y, value.z]
+
+
+## Called on meaningful controller changes, never from a frame polling loop.
+func refresh() -> void:
+	_clear_geometry()
+	var reason: String = ""
+	if _controller == null or not is_instance_valid(_shop_view):
+		_set_reason(reason)
+		return
+	var snapshot: Dictionary = _controller.presentation_state()
+	if is_inside_tree() and _shop_view.is_inside_tree():
+		global_transform = _shop_view.global_transform
+	else:
+		transform = _shop_view.transform
+	var definition: ItemDef = snapshot.get("definition") as ItemDef
+	var origin: Vector2i = snapshot.get("origin", Vector2i.ZERO)
+	var turns: int = snapshot.get("quarter_turns", 0)
+	var has_ghost: bool = snapshot.get("active", false) and snapshot.get("has_ghost", false) and definition != null
+	var valid: bool = snapshot.get("check_ok", false)
+	var selected_id: int = snapshot.get("item_id", -1)
+	if has_ghost:
+		_build_ghost(definition, origin, turns, valid)
+		if selected_id > 0 and _shop_view.item_nodes.has(selected_id):
+			_hidden_original = _shop_view.item_nodes[selected_id]
+			if is_instance_valid(_hidden_original):
+				_original_visible = _hidden_original.visible
+				_hidden_original.visible = false
+		if not valid:
+			reason = snapshot.get("why", "")
+	var warning_ids: Array[int] = []
+	warning_ids.assign(snapshot.get("warning_ids", []))
+	for id: int in warning_ids:
+		# A valid check describes the proposed layout: a moved item's real ID
+		# follows its ghost. An invalid proposal retains actual-layout warnings.
+		if has_ghost and valid and (id == 0 or id == selected_id):
+			_build_warning(id, definition, origin, turns)
+		elif _shop_view.world != null:
+			var item: PlacedItem = _shop_view.world.grid.item(id)
+			if item != null and item.def is ItemDef:
+				_build_warning(id, item.def as ItemDef, item.origin, item.quarter_turns)
+	_set_reason(reason)
+
+
+func clear() -> void:
+	_disconnect_controller()
+	_clear_geometry()
+	_controller = null
+	_shop_view = null
+	_grid = null
+	_set_reason("")
+
+
+func _enter_tree() -> void:
+	_connect_controller()
+	refresh()
+
+
+func _exit_tree() -> void:
+	_disconnect_controller()
+	_clear_geometry()
+	_set_reason("")
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PREDELETE or what == NOTIFICATION_UNPARENTED:
+		_disconnect_controller()
+		_clear_geometry()
+		if what == NOTIFICATION_UNPARENTED:
+			_set_reason("")
+
+
+func _connect_controller() -> void:
+	if _controller != null and not _controller.changed.is_connected(refresh):
+		_controller.changed.connect(refresh)
+	# Bound after ShopView: its replacement mesh must be hidden as well as the
+	# old mesh seen by an earlier controller notification during the same edit.
+	if _grid != null and not _grid.cells_changed.is_connected(_on_cells_changed):
+		_grid.cells_changed.connect(_on_cells_changed)
+
+
+func _disconnect_controller() -> void:
+	if _controller != null and _controller.changed.is_connected(refresh):
+		_controller.changed.disconnect(refresh)
+	if _grid != null and _grid.cells_changed.is_connected(_on_cells_changed):
+		_grid.cells_changed.disconnect(_on_cells_changed)
+
+
+func _on_cells_changed(_cells: Array[Vector2i]) -> void:
+	refresh()
+
+
+func _clear_geometry() -> void:
+	if is_instance_valid(_hidden_original):
+		_hidden_original.visible = _original_visible
+	_hidden_original = null
+	if is_instance_valid(_ghost_root):
+		_free_node(_ghost_root)
+	_ghost_root = null
+	ghost_mesh = null
+	work_markers.clear()
+	seat_markers.clear()
+	for node: Node3D in warning_nodes.values():
+		if is_instance_valid(node):
+			_free_node(node)
+	warning_nodes.clear()
+
+
+func _build_ghost(definition: ItemDef, origin: Vector2i, turns: int, valid: bool) -> void:
+	_ghost_root = Node3D.new()
+	_ghost_root.name = "Ghost"
+	add_child(_ghost_root)
+	var height: float = ShopView.HEIGHTS.get(definition.category, 0.6)
+	var size: Vector3 = Vector3(definition.footprint.x * GridMath.CELL_SIZE, height,
+		definition.footprint.y * GridMath.CELL_SIZE)
+	var tint: Color = definition.placeholder_color.lerp(VALID_COLOR if valid else INVALID_COLOR, 0.8)
+	tint.a = 0.68
+	ghost_mesh = _box(size, _material(tint, true))
+	ghost_mesh.name = "Furniture"
+	var footprint: Vector2i = GridMath.rotated_footprint(definition.footprint, turns)
+	ghost_mesh.position = Vector3((origin.x + footprint.x * 0.5) * GridMath.CELL_SIZE,
+		height * 0.5, (origin.y + footprint.y * 0.5) * GridMath.CELL_SIZE)
+	ghost_mesh.rotation.y = -turns * PI / 2.0
+	ghost_mesh.set_meta("valid", valid)
+	_ghost_root.add_child(ghost_mesh)
+	for offset: Vector2i in definition.work_cells:
+		var cell: Vector2i = origin + GridMath.rotate_cell(offset, definition.footprint, turns)
+		var marker: MeshInstance3D = _box(Vector3(0.30, 0.045, 0.30), _material(WORK_COLOR))
+		marker.position = GridMath.cell_to_world(cell) + Vector3(0.0, 0.04, 0.0)
+		marker.set_meta("cell", cell)
+		marker.name = "Work%d" % work_markers.size()
+		work_markers.append(marker)
+		_ghost_root.add_child(marker)
+	for offset: Vector2i in definition.seat_cells:
+		var cell: Vector2i = origin + GridMath.rotate_cell(offset, definition.footprint, turns)
+		var marker: MeshInstance3D = MeshInstance3D.new()
+		var disc: CylinderMesh = CylinderMesh.new()
+		disc.top_radius = 0.16
+		disc.bottom_radius = 0.16
+		disc.height = 0.045
+		disc.radial_segments = 12
+		marker.mesh = disc
+		marker.material_override = _material(SEAT_COLOR)
+		marker.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		marker.position = GridMath.cell_to_world(cell) + Vector3(0.0, 0.04, 0.0)
+		marker.set_meta("cell", cell)
+		marker.name = "Seat%d" % seat_markers.size()
+		seat_markers.append(marker)
+		_ghost_root.add_child(marker)
+
+
+func _build_warning(id: int, definition: ItemDef, origin: Vector2i, turns: int) -> void:
+	if warning_nodes.has(id):
+		return
+	if _outline_material == null:
+		_outline_material = _material(INVALID_COLOR)
+		_outline_material.no_depth_test = true
+	var root: Node3D = Node3D.new()
+	root.name = "Unreachable%d" % id
+	root.set_meta("item_id", id)
+	var footprint: Vector2i = GridMath.rotated_footprint(definition.footprint, turns)
+	var width: float = footprint.x * GridMath.CELL_SIZE
+	var depth: float = footprint.y * GridMath.CELL_SIZE
+	var height: float = ShopView.HEIGHTS.get(definition.category, 0.6)
+	root.position = Vector3(origin.x * GridMath.CELL_SIZE, 0.02, origin.y * GridMath.CELL_SIZE)
+	for y: float in [0.0, height]:
+		for z: float in [0.0, depth]:
+			_rail(root, Vector3(width + OUTLINE_WIDTH, OUTLINE_WIDTH, OUTLINE_WIDTH), Vector3(width * 0.5, y, z))
+		for x: float in [0.0, width]:
+			_rail(root, Vector3(OUTLINE_WIDTH, OUTLINE_WIDTH, depth + OUTLINE_WIDTH), Vector3(x, y, depth * 0.5))
+	for x: float in [0.0, width]:
+		for z: float in [0.0, depth]:
+			_rail(root, Vector3(OUTLINE_WIDTH, height, OUTLINE_WIDTH), Vector3(x, height * 0.5, z))
+	warning_nodes[id] = root
+	add_child(root)
+
+
+func _rail(parent: Node3D, size: Vector3, center: Vector3) -> void:
+	var rail: MeshInstance3D = _box(size, _outline_material)
+	rail.position = center
+	parent.add_child(rail)
+
+
+func _set_reason(reason: String) -> void:
+	if _reason != reason:
+		_reason = reason
+		reason_changed.emit(_reason)
+
+
+static func _box(size: Vector3, material: StandardMaterial3D) -> MeshInstance3D:
+	var node: MeshInstance3D = MeshInstance3D.new()
+	var box: BoxMesh = BoxMesh.new()
+	box.size = size
+	node.mesh = box
+	node.material_override = material
+	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	return node
+
+
+static func _material(color: Color, transparent: bool = false) -> StandardMaterial3D:
+	var material: StandardMaterial3D = StandardMaterial3D.new()
+	material.albedo_color = color
+	material.roughness = 0.9
+	if transparent:
+		material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	return material
+
+
+static func _free_node(node: Node) -> void:
+	var parent: Node = node.get_parent()
+	if parent != null:
+		parent.remove_child(node)
+	node.free()

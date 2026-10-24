@@ -177,6 +177,54 @@ docs/
   restored RNG, stock top-up, ledger prune and autosave. Missing old-save `shop`
   sections use the authored layout. Non-MORNING saves remain unsupported.
 
+### 2.3d Build controls (FK-032)
+- **B** or the HUD Build toggle enters/exits only when `ShopEditor.can_edit()`
+  permits MORNING or CLOSED. Click furniture to hold a preview, move the pointer
+  to snap it to the 0.5 m grid, **R** to rotate in world quarter turns, and click
+  to place. **Delete** sells the selected actual item; **Esc** cancels a preview,
+  then exits on the next press. The catalogue starts buy previews. GUI clicks
+  are consumed by its controls rather than placing furniture underneath.
+- `BuildMode` is a typed `RefCounted` controller. It reads editor checks and
+  commits through injected Main `shop_move`/`shop_buy`/`shop_sell` methods;
+  holding/cancelling a preview never changes placements, reservations or books.
+  Main owns one input route, suspends inspection while building, and reprojects
+  the pointer through the actual camera each frame, including during smoothing.
+  Inactive build mode does not consume service R input or add an owner action.
+- Entering forces the rendered grid without changing the player's G preference;
+  G cannot change that preference while forced. Exit and world/floor replacement
+  restore it. Any phase transition cancels/exits; a cheap per-frame phase guard
+  also catches direct phase changes without running pathfinding each frame.
+- `check_current()` reads existing reachability logic without touching books or
+  the editor's last operation. A valid preview shows `EditCheck.unreachable`
+  (0 denotes a proposed purchase); invalid previews and cancellation retain
+  warnings for actual placements. Successful commits resolve real item IDs.
+  Outlines remain until a later edit fixes reachability, including after exit.
+- CLOSED build mode hides the report; exit rebuilds it from current books without
+  another closing charge or day setup. Accepted sales reuse the HUD's existing
+  single cash-event delta, including a legal $0 refund. Saving remains at the
+  existing morning autosave boundary; building adds no save or day reset.
+- Review captures accept `--build=green|red|warning|catalogue`; for example,
+  `tools/screenshot.sh --build=green --quarter=0 --frames=12 --speed=1` in a
+  fresh MORNING, without open/fast,
+  inspection or F3 flags. Green/red use actual editor-checked buy previews;
+  green shows table seat markers and red shows a station work marker. Warning
+  makes one ordinary checked purchase of unreachable furniture through Main's
+  pointer/input/controller/wrapper path and records its real ID, content price
+  and exact books delta. It is a disclosed build fixture, not a normal shop
+  layout or a fabricated warning. Candidate search is read-only and bounded to
+  36 origins and four world turns; there are no trial placements, RNG/guest
+  changes, direct grid writes, money overrides or saves.
+- Build captures hold the real viewport pointer with native warp/input so normal
+  Main hover updates stay coherent. Post-draw JSON records actual editor checks,
+  model selection/pose, native ghost/marker/outline geometry and projected bounds,
+  actual catalogue/reason controls, grid preference/effective shader state and
+  unchanged clock/RNG plus before/after books. Geometry must be inside the image
+  and clear of the HUD, reason panel and catalogue. All four camera quarters are
+  captured sequentially for each build view, preserving ordinary captures and
+  their strict image hash/error/identity guards. A green capture job establishes
+  those checks; actual PNG review and manual play are still needed for appearance
+  and control feel.
+
 ### 2.4 Save system
 - JSON in `user://saves/`, with a `version` field and migration functions per version.
 - Only sim state is saved, never nodes. The world is rebuilt from sim state on load.
