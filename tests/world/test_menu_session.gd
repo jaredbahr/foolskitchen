@@ -9,9 +9,11 @@ var _old_save_dir: String
 var _save_dir: String
 var _paid_amounts: Array[int] = []
 var _paid_recipes: Array[StringName] = []
+var _old_default_speed: int
 
 
 func before_each() -> void:
+	_old_default_speed = Preferences.default_open_speed
 	_old_save_dir = SaveSystem.save_dir
 	_save_dir = SaveTestPaths.case_dir(OS.get_process_id(), "menu_session")
 	SaveSystem.save_dir = _save_dir
@@ -19,6 +21,7 @@ func before_each() -> void:
 
 
 func after_each() -> void:
+	Preferences.default_open_speed = _old_default_speed
 	for main: Node in _mains.duplicate():
 		_close(main)
 	SaveSystem.delete_slot(SLOT)
@@ -116,6 +119,54 @@ func test_hud_and_real_panel_requests_enforce_morning_last_dish_and_clamps() -> 
 	assert_eq((main.get("menu_settings") as MenuSettings).to_dict(), before)
 	menu_button.pressed.emit()
 	assert_false(panel.visible)
+
+
+func test_menu_settings_entry_opens_and_returns_without_changing_dishes() -> void:
+	var main: Node = _start(false)
+	var menu_button: Button = main.get_node("HUD/Top/Row/Menu") as Button
+	var menu: MenuPanel = main.get_node("Overlay/MenuPanel") as MenuPanel
+	var settings: SettingsPanel = main.get_node("Overlay/SettingsPanel") as SettingsPanel
+	var before: Dictionary = (main.get("menu_settings") as MenuSettings).to_dict()
+	menu_button.pressed.emit()
+	assert_true(menu.visible)
+	(menu.get_node("Panel/Content/SettingsButton") as Button).pressed.emit()
+	assert_false(menu.visible)
+	assert_true(settings.visible)
+	assert_eq(settings.theme, preload("res://src/ui/theme/main_theme.tres"))
+	(settings.get_node("Panel/Scroll/Content/CloseButton") as Button).pressed.emit()
+	assert_false(settings.visible)
+	assert_true(menu.visible)
+	assert_eq((main.get("menu_settings") as MenuSettings).to_dict(), before)
+	assert_true(main.call("set_menu_visible", false))
+	Preferences.default_open_speed = 2
+	(main.get_node("HUD/Top/Row/Context") as Button).pressed.emit()
+	assert_eq(Clock.speed, 2, "the real Main binds its saved opening-speed preference")
+
+
+func test_settings_modal_blocks_outside_clicks_from_the_hud_menu() -> void:
+	var main: Node = _start(false)
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	var menu_button: Button = main.get_node("HUD/Top/Row/Menu") as Button
+	var menu: MenuPanel = main.get_node("Overlay/MenuPanel") as MenuPanel
+	var settings: SettingsPanel = main.get_node("Overlay/SettingsPanel") as SettingsPanel
+	menu_button.pressed.emit()
+	(menu.get_node("Panel/Content/SettingsButton") as Button).pressed.emit()
+	await tree.process_frame
+	await tree.process_frame
+	assert_eq(settings.mouse_filter, Control.MOUSE_FILTER_STOP)
+	var point: Vector2 = menu_button.get_global_rect().get_center()
+	var mouse: InputEventMouseButton = InputEventMouseButton.new()
+	mouse.position = point
+	mouse.global_position = point
+	mouse.button_index = MOUSE_BUTTON_LEFT
+	mouse.button_mask = MOUSE_BUTTON_MASK_LEFT
+	mouse.pressed = true
+	tree.root.push_input(mouse, true)
+	mouse.pressed = false
+	mouse.button_mask = 0
+	tree.root.push_input(mouse, true)
+	assert_true(settings.visible, "outside-card clicks stay in the modal")
+	assert_false(menu.visible, "the underlying Menu button never receives that click")
 
 
 func test_actual_kitchen_orders_and_sales_use_only_enabled_override() -> void:

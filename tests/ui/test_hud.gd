@@ -190,6 +190,17 @@ func test_context_cycles_day_and_tick_events_update_clock() -> void:
 	assert_eq(context.text, "Open shop")
 
 
+func test_open_shop_uses_the_selected_starting_speed() -> void:
+	var preferences: SettingsPreferences = SettingsPreferences.new("user://unused-hud-test.cfg")
+	preferences.default_open_speed = 2
+	_hud.call("bind_preferences", preferences)
+	(_control("Context") as Button).pressed.emit()
+	assert_eq(Clock.sim.phase, SimClock.Phase.OPEN)
+	assert_eq(Clock.speed, 2)
+	_hud.call("bind_preferences", null)
+	preferences.free()
+
+
 func test_cash_events_create_separate_signed_colored_deltas() -> void:
 	EventBus.cash_changed.emit(1246, 12, &"sale")
 	EventBus.cash_changed.emit(1216, -30, &"cost")

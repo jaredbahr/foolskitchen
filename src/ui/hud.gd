@@ -52,6 +52,11 @@ var _build_state: int = BuildMode.State.IDLE
 var _menu_button: Button
 var _staff_button: Button
 var _header_compact: bool = false
+var _preferences: SettingsPreferences
+
+
+func bind_preferences(model: SettingsPreferences) -> void:
+	_preferences = model
 
 
 func _ready() -> void:
@@ -389,7 +394,7 @@ func _on_phase_changed(_day: int, _phase: int) -> void:
 func _on_context_pressed() -> void:
 	if Clock.sim.phase == SimClock.Phase.MORNING:
 		if Clock.sim.start_service():
-			Clock.set_speed(1)
+			Clock.set_speed(_preferences.default_open_speed if _preferences != null else 1)
 	elif Clock.sim.phase == SimClock.Phase.CLOSED:
 		Clock.sim.next_day()
 	refresh()

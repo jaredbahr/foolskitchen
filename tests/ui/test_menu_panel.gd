@@ -8,15 +8,18 @@ var _menu: MenuSettings
 var _burger: RecipeDef
 var _enable_requests: Array[Dictionary] = []
 var _price_requests: Array[Dictionary] = []
+var _settings_requests: int = 0
 
 
 func before_each() -> void:
+	_settings_requests = 0
 	_burger = _recipe(&"burger", "Burger", 12)
 	_menu = MenuSettings.new([_recipe(&"tomato_soup", "Tomato soup", 9), _burger,
 		_recipe(&"grilled_cheese", "Grilled cheese", 8)])
 	_panel = PANEL.instantiate() as MenuPanel
 	_panel.enable_requested.connect(_record_enable)
 	_panel.price_requested.connect(_record_price)
+	_panel.settings_requested.connect(_record_settings)
 	_panel.bind_menu(_menu)
 
 
@@ -66,6 +69,16 @@ func test_rows_defaults_shared_styles_and_mouse_scope_work_before_ready() -> voi
 	assert_false(_label(&"burger", "Unlock").visible)
 	assert_false(_label(&"burger", "Top/Name").has_theme_color_override("font_color"))
 	assert_null(_panel.row_for(&"missing"))
+
+
+func test_secondary_settings_button_requests_panel_without_editing_dishes() -> void:
+	var before: Dictionary = _menu.to_dict()
+	var button: Button = _panel.get_node("Panel/Content/SettingsButton") as Button
+	assert_eq(button.text, "Settings")
+	assert_eq(button.theme, MenuPanel.SHARED_THEME)
+	button.pressed.emit()
+	assert_eq(_settings_requests, 1)
+	assert_eq(_menu.to_dict(), before)
 
 
 func test_locked_recipe_is_greyed_out_readable_and_never_emits_requests() -> void:
@@ -267,3 +280,7 @@ func _record_enable(id: StringName, enabled: bool) -> void:
 
 func _record_price(id: StringName, price: int) -> void:
 	_price_requests.append({"id": id, "price": price})
+
+
+func _record_settings() -> void:
+	_settings_requests += 1

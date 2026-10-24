@@ -18,6 +18,11 @@ GameState="*res://src/core/game_state.gd"
 Clock="*res://src/core/clock.gd"
 Economy="*res://src/core/economy.gd"
 SaveSystem="*res://src/core/save_system.gd"
+Preferences="*res://src/core/settings_preferences.gd"
+
+[audio]
+
+buses/default_bus_layout="res://default_bus_layout.tres"
 
 [debug]
 
