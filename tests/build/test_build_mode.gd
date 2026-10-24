@@ -276,12 +276,12 @@ func test_sell_uses_actual_selected_item_and_accepts_zero_without_double_booking
 
 func test_buy_warning_zero_becomes_the_actual_committed_item_id() -> void:
 	assert_true(_mode.enter())
-	assert_true(_mode.begin_buy(&"fridge", Vector2i(10, 1)))
+	assert_true(_mode.begin_buy(&"fridge", Vector2i(11, 1)))
 	assert_true(_mode.current_check.ok)
 	assert_true(_mode.current_check.unreachable.has(0))
 	assert_eq(_mode.warning_ids(), _mode.current_check.unreachable)
 	assert_true(_mode.commit(), "reachability warnings do not block a fitting purchase")
-	var id: int = _sim.world.grid.item_at(Vector2i(10, 1)).id
+	var id: int = _sim.world.grid.item_at(Vector2i(11, 1)).id
 	assert_true(id > 0)
 	assert_true(_mode.committed_warning_ids.has(id))
 	assert_false(_mode.committed_warning_ids.has(0))
@@ -290,8 +290,8 @@ func test_buy_warning_zero_becomes_the_actual_committed_item_id() -> void:
 
 
 func test_invalid_or_cancelled_ghost_preserves_committed_warnings_until_fixed() -> void:
-	assert_true(_editor.buy(&"fridge", Vector2i(10, 1)))
-	var id: int = _sim.world.grid.item_at(Vector2i(10, 1)).id
+	assert_true(_editor.buy(&"fridge", Vector2i(11, 1)))
+	var id: int = _sim.world.grid.item_at(Vector2i(11, 1)).id
 	assert_true(_mode.enter())
 	var warnings: Array[int] = _editor.check_current().unreachable
 	assert_true(warnings.has(id))
@@ -306,7 +306,7 @@ func test_invalid_or_cancelled_ghost_preserves_committed_warnings_until_fixed() 
 	assert_true(_mode.enter())
 	assert_eq(_mode.warning_ids(), warnings, "reentry queries the actual current shop")
 	assert_true(_mode.pick_up(id))
-	_mode.update_origin(Vector2i(10, 2))
+	_mode.update_origin(Vector2i(3, 3))
 	assert_true(_mode.current_check.ok)
 	assert_false(_mode.current_check.unreachable.has(id))
 	assert_true(_mode.commit())
@@ -315,14 +315,14 @@ func test_invalid_or_cancelled_ghost_preserves_committed_warnings_until_fixed() 
 
 
 func test_current_query_is_read_only_and_does_not_replace_last_operation_check() -> void:
-	assert_true(_editor.buy(&"fridge", Vector2i(10, 1)))
+	assert_true(_editor.buy(&"fridge", Vector2i(11, 1)))
 	var fridge: PlacedItem = _sim.world.grid.item(_id(&"fridge"))
 	assert_true(fridge.reserve(fridge.work_cells[0], 99))
 	var last: EditCheck = _editor.last_check
 	var before: Dictionary = _snapshot()
 	var check: EditCheck = _editor.check_current()
 	assert_true(check.ok)
-	assert_true(check.unreachable.has(_sim.world.grid.item_at(Vector2i(10, 1)).id))
+	assert_true(check.unreachable.has(_sim.world.grid.item_at(Vector2i(11, 1)).id))
 	check.unreachable.clear()
 	assert_false(_editor.check_current().unreachable.is_empty(), "query arrays are independent")
 	assert_true(_editor.last_check == last)
@@ -388,7 +388,7 @@ func test_same_world_rebind_detaches_replaced_clock_and_cancels_selection() -> v
 
 func test_presentation_reads_are_detached_cached_and_do_not_recheck_each_frame() -> void:
 	assert_true(_mode.enter())
-	assert_true(_mode.begin_buy(&"fridge", Vector2i(10, 1)))
+	assert_true(_mode.begin_buy(&"fridge", Vector2i(11, 1)))
 	var current_queries: int = _editor.current_queries
 	var buy_queries: int = _editor.buy_queries
 	var before: Dictionary = _snapshot()
@@ -401,7 +401,7 @@ func test_presentation_reads_are_detached_cached_and_do_not_recheck_each_frame()
 		view["warning_ids"].clear()
 		view["committed_warning_ids"].append(999)
 		_mode.warning_ids().clear()
-		_mode.update_origin(Vector2i(10, 1))
+		_mode.update_origin(Vector2i(11, 1))
 	assert_true(_mode.current_check.unreachable.has(0))
 	assert_false(_mode.committed_warning_ids.has(999))
 	assert_eq(_editor.current_queries, current_queries)

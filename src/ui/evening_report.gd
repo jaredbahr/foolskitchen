@@ -11,6 +11,7 @@ const LEAVE_LABELS: Dictionary = {
 	&"waited_too_long": "Waited too long",
 	&"too_expensive": "Too expensive",
 	&"no_table": "No table available",
+	&"no_clean_plates": "No clean plates",
 }
 const PROFIT_GREEN: Color = Color("38764b")
 const LOSS_RED: Color = Color("a83e35")

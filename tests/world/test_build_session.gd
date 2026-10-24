@@ -28,7 +28,7 @@ func before_each() -> void:
 	SaveSystem.save_dir = _save_dir
 	SaveSystem.delete_slot(SLOT)
 	Clock.set_speed(0)
-	for key: String in ["owner", "shop", "menu"]:
+	for key: String in ["owner", "shop", "menu", "plates"]:
 		if SaveSystem._providers.has(key):
 			_old_providers[key] = SaveSystem._providers[key].duplicate()
 
@@ -42,7 +42,7 @@ func after_each() -> void:
 	DirAccess.remove_absolute(_save_dir)
 	DirAccess.remove_absolute(SaveTestPaths.process_dir(OS.get_process_id()))
 	SaveSystem.save_dir = _old_save_dir
-	for key: String in ["owner", "shop", "menu"]:
+	for key: String in ["owner", "shop", "menu", "plates"]:
 		if _old_providers.has(key):
 			var provider: Dictionary = _old_providers[key]
 			SaveSystem.register(key, provider["capture"], provider["restore"])
@@ -520,15 +520,15 @@ func test_native_menu_and_build_transitions_cancel_ghost_and_preserve_data_and_a
 func test_preview_warning_ids_match_proposal_actual_purchase_cancel_exit_and_fix() -> void:
 	await _start()
 	assert_true(_main.call("set_build_active", true))
-	assert_true(_mode().begin_buy(&"fridge", Vector2i(10, 1)))
+	assert_true(_mode().begin_buy(&"fridge", Vector2i(11, 1)))
 	assert_true(_mode().current_check.ok)
 	assert_true(_mode().warning_ids().has(0))
 	assert_eq(_preview().displayed_warning_ids(), _mode().current_check.unreachable)
 	_key(KEY_ESCAPE)
 	assert_eq(_preview().displayed_warning_ids(), _editor().check_current().unreachable)
-	assert_true(_mode().begin_buy(&"fridge", Vector2i(10, 1)))
-	_click(_project(Vector2i(10, 1)))
-	var id: int = _world().grid.item_at(Vector2i(10, 1)).id
+	assert_true(_mode().begin_buy(&"fridge", Vector2i(11, 1)))
+	_click(_project(Vector2i(11, 1)))
+	var id: int = _world().grid.item_at(Vector2i(11, 1)).id
 	assert_true(_preview().displayed_warning_ids().has(id))
 	assert_false(_preview().displayed_warning_ids().has(0))
 	_key(KEY_ESCAPE)
@@ -541,7 +541,7 @@ func test_preview_warning_ids_match_proposal_actual_purchase_cancel_exit_and_fix
 	assert_eq(_preview().displayed_warning_ids(), _mode().committed_warning_ids)
 	_key(KEY_ESCAPE)
 	assert_true(_preview().displayed_warning_ids().has(id))
-	assert_true(_main.call("shop_move", id, Vector2i(10, 2), 0))
+	assert_true(_main.call("shop_move", id, Vector2i(3, 3), 0))
 	assert_eq(_preview().displayed_warning_ids(), _editor().check_current().unreachable)
 	assert_false(_preview().displayed_warning_ids().has(id))
 

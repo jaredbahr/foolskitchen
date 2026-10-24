@@ -318,6 +318,8 @@ static func _required_key(definition: ItemDef) -> String:
 		return "prep counter"
 	if definition.category == ItemDef.Category.STATION and definition.station_type == &"stove":
 		return "stove"
+	if definition.category == ItemDef.Category.STATION and definition.station_type == &"sink":
+		return "sink"
 	if definition.category == ItemDef.Category.PASS and definition.work_cells.size() >= 2:
 		return "pass"
 	return ""
@@ -326,6 +328,10 @@ static func _required_key(definition: ItemDef) -> String:
 static func _structure_key(definition: ItemDef) -> String:
 	if definition.category == ItemDef.Category.DOOR:
 		return "door:" + String(definition.id)
+	# Existing version-1 shops predate sinks. Keep their saved layouts intact;
+	# the last-present-sink sale guard applies once the player owns a sink.
+	if definition.category == ItemDef.Category.STATION and definition.station_type == &"sink":
+		return ""
 	return _required_key(definition)
 
 

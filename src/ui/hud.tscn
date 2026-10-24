@@ -18,6 +18,7 @@ theme = ExtResource("2_theme")
 
 [node name="Row" type="HBoxContainer" parent="Top"]
 layout_mode = 2
+theme_override_constants/separation = 8
 
 [node name="Day" type="Label" parent="Top/Row"]
 layout_mode = 2
@@ -116,6 +117,11 @@ tooltip_text = "Build furniture (B)"
 [node name="Cash" type="Label" parent="Top/Row"]
 layout_mode = 2
 text = "$0"
+
+[node name="Plates" type="Label" parent="Top/Row"]
+layout_mode = 2
+mouse_filter = 1
+text = "Plates --"
 
 [node name="Context" type="Button" parent="Top/Row"]
 layout_mode = 2

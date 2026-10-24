@@ -82,17 +82,35 @@ func why() -> String:
 		if s.kind == TaskStep.Kind.WORK and _step_started:
 			step_text += " (%ds left)" % ceili(work_left / (work_speed(task.role) * SimClock.TICKS_PER_SECOND))
 	if not _waiting_for.is_empty():
-		step_text = "waiting for %s" % _waiting_for
+		var prefix: String = "waiting"
+		if step_index < task.steps.size() and task.steps[step_index].kind == TaskStep.Kind.WAIT_UNTIL:
+			prefix = "Waiting"
+		step_text = "%s for %s" % [prefix, _waiting_for]
 	return task.label if step_text.is_empty() else "%s: %s" % [task.label, step_text]
 
 
 func _try_claim(world: SimWorld) -> void:
+	var candidates: Array[SimTask] = world.open_tasks_this_tick()
+	var scores: Dictionary[int, float] = {}
+	var highest_priorities: Dictionary[StringName, int] = {}
+	# Actor-local eligibility uses the existing score, including role preferences
+	# and missing targets. Another worker may have claimed a cached task already.
+	for t: SimTask in candidates:
+		if t.state != SimTask.State.OPEN or world.board.get_task(t.id) != t:
+			continue
+		var score: float = _score(world, t)
+		scores[t.id] = score
+		if score > 0.0:
+			if not highest_priorities.has(t.role) or t.priority > highest_priorities[t.role]:
+				highest_priorities[t.role] = t.priority
 	var best: SimTask = null
 	var best_score := 0.0
-	for t in world.open_tasks_this_tick():
-		if t.state != SimTask.State.OPEN:
+	for t: SimTask in candidates:
+		if t.state != SimTask.State.OPEN or world.board.get_task(t.id) != t:
 			continue
-		var score := _score(world, t)
+		if t.defer_to_higher_priority and int(highest_priorities.get(t.role, t.priority)) > t.priority:
+			continue
+		var score: float = scores.get(t.id, 0.0)
 		if score > best_score:
 			best = t
 			best_score = score
@@ -136,6 +154,8 @@ func _run_step(world: SimWorld) -> void:
 			_run_go_to_cell(world, s)
 		TaskStep.Kind.WORK:
 			_run_work(world, s)
+		TaskStep.Kind.WAIT_UNTIL:
+			_run_wait(world, s)
 
 
 func _run_go_to_item(world: SimWorld, s: TaskStep) -> void:
@@ -211,9 +231,29 @@ func _run_work(world: SimWorld, s: TaskStep) -> void:
 	_next_step(world)
 
 
+func _run_wait(world: SimWorld, s: TaskStep) -> void:
+	if not s.on_done.is_valid():
+		_drop(world, &"step_failed")
+		return
+	var ready: Variant = s.on_done.call(self)
+	if task == null or task.state != SimTask.State.CLAIMED:
+		return
+	if ready is bool and ready:
+		_waiting_for = ""
+		_next_step(world)
+		# An available resource must not add a tick to the existing work chain.
+		if task != null and task.state == SimTask.State.CLAIMED:
+			if step_index < task.steps.size() and task.steps[step_index].kind == TaskStep.Kind.WORK:
+				_run_work(world, task.steps[step_index])
+	else:
+		_waiting_for = s.label if not s.label.is_empty() else "the next step"
+		last_progress_tick = world.now
+
+
 func _next_step(world: SimWorld) -> void:
 	step_index += 1
 	_step_started = false
+	_waiting_for = ""
 	_repaths = 0
 	clear_path()
 	if step_index >= task.steps.size():

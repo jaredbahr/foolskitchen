@@ -407,7 +407,8 @@ func test_three_day_real_kitchen_customer_soak_accounts_and_drains() -> void:
 		var remaining: Array[SimTask] = _sim.world.board.open_tasks()
 		remaining.append_array(_sim.world.board.claimed_tasks())
 		for task: SimTask in remaining:
-			assert_eq(task.kind, &"bus_table", "closing leaves no live cook/delivery/order-taking work")
+			assert_true(task.kind == &"bus_table" or task.kind == &"wash",
+				"closing leaves no live cook/delivery/order-taking work")
 		var closed_arrivals: int = _arrived.size()
 		var closed_payments: int = _paid.size()
 		var closed_departures: int = _left.size()

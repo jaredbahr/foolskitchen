@@ -49,7 +49,9 @@ func _init(restaurant: RestaurantSim, random: RandomNumberGenerator) -> void:
 ## Reasons a guest can give for leaving that the player should see as-is.
 ## Any other kitchen failure (an internal reason such as a dropped task or a
 ## missing station) becomes &"kitchen_failed"; the raw reason is in the log.
-const PLAYER_REASONS: Array[StringName] = [&"out_of_stock", &"waited_too_long", &"closing", &"no_table", &"too_expensive"]
+const PLAYER_REASONS: Array[StringName] = [
+	&"out_of_stock", &"waited_too_long", &"closing", &"no_table", &"too_expensive", &"no_clean_plates",
+]
 
 
 ## Maps an order's cancellation reason to the reason a guest gives the player.
@@ -333,7 +335,7 @@ func _release_seat(world: SimWorld, dirty: bool = true) -> void:
 	if table != null and table.reserved_by(seat_cell) == id:
 		var sim: RestaurantSim = _restaurant.get_ref() as RestaurantSim
 		if dirty and cell == seat_cell and sim != null and sim.kitchen != null:
-			sim.kitchen.mark_table_dirty(table.id)
+			sim.kitchen.mark_table_dirty(table.id, order.id if order != null else 0)
 		table.release(seat_cell, id)
 
 
