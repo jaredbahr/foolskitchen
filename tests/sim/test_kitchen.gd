@@ -98,6 +98,37 @@ func test_out_of_stock_cancels_ticket_and_guest_with_same_reason() -> void:
 	_assert_drained()
 
 
+func test_default_create_has_real_kitchen_but_no_hidden_ingredients() -> void:
+	var errors: Array[String] = []
+	# Intentionally omit stock and with_kitchen: exercise the public defaults.
+	_sim = RestaurantSim.create(LAYOUT, _content, 29016, errors)
+	assert_eq(errors, [] as Array[String])
+	assert_not_null(_sim.kitchen)
+	assert_not_null(_sim.stock)
+	assert_true(_sim.kitchen.stock == _sim.stock)
+	for ingredient: IngredientDef in _content.ingredients():
+		assert_eq(_sim.stock.count(ingredient.id), 0)
+	_sim.customer_arrived.connect(_on_arrived)
+	_sim.customer_paid.connect(_on_paid)
+	_sim.customer_left.connect(_on_left)
+	_sim.menu = [_content.recipe(&"burger")] as Array[RecipeDef]
+	_no_arrivals()
+	var guest: CustomerAgent = _guest()
+	_sim.world.clock.start_service()
+	_run(3000)
+	assert_not_null(guest.order)
+	if guest.order == null:
+		return
+	assert_eq(guest.order.state, Order.State.CANCELLED)
+	assert_eq(guest.order.cancellation_reason, &"out_of_stock")
+	assert_eq(_left.get(guest.id, &""), &"out_of_stock")
+	assert_eq(_sim.served_today, 0)
+	assert_eq(_sim.lost_today, 1)
+	for ingredient: IngredientDef in _content.ingredients():
+		assert_eq(_sim.stock.count(ingredient.id), 0, "default kitchen never invents stock")
+	_assert_drained()
+
+
 func test_dirty_table_blocks_new_seat_until_real_server_busses_it() -> void:
 	var tables: Array[PlacedItem] = ShopBuilder.items_with_def(_sim.world, &"table_2")
 	var table: PlacedItem = tables[0]
