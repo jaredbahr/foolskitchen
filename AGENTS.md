@@ -63,3 +63,4 @@ This file is read by every coding agent (Codex, harness workers, Claude). Read `
 ## Art assets
 - `.glb` only, 1 unit = 1 m, Y-up, origin at the base centre, facing -Z. See `docs/TECH.md` section 3.
 - AI workers do not generate or edit 3D models. They may build placeholder shapes in scenes.
+- **Consistency is the top art rule (Jared, D19).** Everything on screen (people, furniture, kitchen equipment, food, decor, UI icons) must look like it came from one hand. Never mix in an asset, colour, font or icon from a new source or style without a director-approved issue saying so. If a needed item is missing from the approved source, stop and say so in the PR rather than substituting something that looks different. The approved style lock lives in `docs/ART_STYLE.md` once it exists; until then, ask.
