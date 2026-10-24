@@ -222,6 +222,29 @@ func test_starter_footprints_categories_and_interaction_cells() -> void:
 	assert_eq(db.item(&"potted_plant").charm, 2)
 
 
+func test_all_item_seats_are_walkable_and_reachable_in_every_rotation() -> void:
+	var db: ContentDB = ContentDB.new()
+	var errors: PackedStringArray = db.load_all()
+	assert_eq(errors, PackedStringArray(), "starter content loads")
+	var seats_checked: int = 0
+	for definition: ItemDef in db.items():
+		if definition.seat_cells.is_empty():
+			continue
+		for turns: int in range(4):
+			var grid: SimGrid = SimGrid.new(Vector2i(6, 6))
+			var item: PlacedItem = grid.place_def(definition, Vector2i(2, 2), turns)
+			assert_not_null(item, "%s fits at rotation %d" % [definition.id, turns])
+			if item == null:
+				continue
+			assert_eq(item.seat_cells.size(), definition.seat_cells.size(), "all declared seats are placed")
+			for seat: Vector2i in item.seat_cells:
+				seats_checked += 1
+				var context: String = "%s seat %s at rotation %d" % [definition.id, seat, turns]
+				assert_true(grid.is_walkable(seat), "%s is walkable" % context)
+				assert_true(grid.is_reachable(Vector2i.ZERO, seat), "%s is reachable from (0,0)" % context)
+	assert_true(seats_checked > 0, "content includes seats to check")
+
+
 func _starter_db() -> ContentDB:
 	var db: ContentDB = ContentDB.new()
 	assert_eq(db.load_all().size(), 0)
