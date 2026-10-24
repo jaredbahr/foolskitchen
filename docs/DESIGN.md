@@ -137,6 +137,7 @@ Multiplayer, a story or campaign, scenario mode (career milestones replace it), 
 | D16 | Hiring payoff | An extra hire alone doesn't pay at Tier 1. It pays off once you expand (more seats, trays): hiring and building go together | 2026-10-24 |
 | D17 | Loan interest | 4 to 6% a day on the open principal (start at 5%) | 2026-10-24 |
 | D18 | First public build | Held until more visual work lands (better props, people, food and lighting) | 2026-10-24 |
+| D19 | Visual consistency | One style everywhere: people, furniture, equipment, food, decor and UI come from one approved source or style lock. No flip-flopping styles | 2026-10-24 |
 | D11 | Platform | Both: a web build (play from a link) and a Windows download, from the same Godot project | 2026-10-23 |
 | D6 | Starting property | A rented hole-in-the-wall shop with 2 to 3 tables (not an outdoor food cart: indoor is simpler to simulate and to build) | 2026-10-23 |
 | D7 | Mode structure | Career mode only at first. A sandbox comes in Phase 5. No scenario mode. | 2026-10-23 |

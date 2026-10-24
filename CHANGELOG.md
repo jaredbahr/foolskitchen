@@ -48,6 +48,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- Art rule: every model, colour, font and icon must come from one approved style, with no mixing of sources. (#102)
 - Design decisions recorded: the game is for adults, hiring pays off when you expand, loan interest is 4 to 6% a day, and the first public build waits for more visual work. (#96)
 - Compare seeded shop set-ups in one manual balance table, with guests, sales, costs and profit side by side. (#92)
 - AI workers now merge the latest main, self-review against the issue, and post a done-checklist before asking for review; the roadmap shows what Phase 2 has finished. (#90)
