@@ -1,0 +1,12 @@
+class_name ReviewVisit
+extends RefCounted
+## Detached inputs captured when one guest departs. Wait fractions mean elapsed
+## waiting divided by that guest's patience budget, not time remaining.
+
+var served: bool = false
+var closing: bool = false
+var queue_wait_fraction: float = 0.0
+var food_wait_fraction: float = 0.0
+var price_ratio: float = 1.0
+## Zero until the optional cleanliness system is present.
+var dirt_fraction: float = 0.0

@@ -4,11 +4,16 @@ extends TestCase
 const REPORT_SCENE: PackedScene = preload("res://src/ui/evening_report.tscn")
 
 var _screen: Control = null
+var _host: Control = null
 var _next_day_count: int = 0
 
 
 func after_each() -> void:
-	if _screen != null:
+	if _host != null:
+		_host.free()
+		_host = null
+		_screen = null
+	elif _screen != null:
 		_screen.free()
 		_screen = null
 
@@ -76,6 +81,107 @@ func test_missing_saved_fields_restore_an_empty_report() -> void:
 	assert_eq(report.profit(), 0)
 	assert_true(report.reviews.is_empty())
 	assert_true(report.leave_reasons.is_empty())
+	assert_true(report.review_cards.is_empty())
+	assert_almost_eq(report.reputation_before, 3.0)
+	assert_almost_eq(report.reputation_after, 3.0)
+
+
+func test_review_cards_round_trip_without_sim_cause_ids_or_shared_mutation() -> void:
+	var report: DayReport = DayReport.new()
+	report.review_cards = [{"stars": 4, "quote": "Fast and tasty", "cause": "too_expensive"}]
+	report.today_review_average = 4.0
+	report.reputation_before = 3.0
+	report.reputation_after = 3.2
+	var saved: Dictionary = report.to_dict()
+	var cards: Array = saved["review_cards"]
+	assert_eq(cards.size(), 1)
+	assert_eq(cards[0], {"stars": 4, "quote": "Fast and tasty"})
+	var decoded: Dictionary = JSON.parse_string(JSON.stringify(saved))
+	var restored: DayReport = DayReport.from_dict(decoded)
+	assert_eq(restored.review_cards, cards)
+	assert_almost_eq(restored.today_review_average, 4.0)
+	assert_almost_eq(restored.reputation_before, 3.0)
+	assert_almost_eq(restored.reputation_after, 3.2)
+	cards[0]["quote"] = "Modified snapshot"
+	assert_eq(report.review_cards[0]["quote"], "Fast and tasty")
+	assert_eq(restored.review_cards[0]["quote"], "Fast and tasty")
+
+
+func test_ui_review_summary_and_star_quotes_then_clear() -> void:
+	_screen = REPORT_SCENE.instantiate()
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	tree.root.add_child(_screen)
+	var report: DayReport = DayReport.new()
+	report.review_cards = [
+		{"stars": 5, "quote": "Wonderful soup"},
+		{"stars": 4, "quote": "Nice and cosy"},
+		{"stars": 3, "quote": "Okay lunch"},
+		{"stars": 2, "quote": "Fourth line is hidden"},
+	]
+	report.today_review_average = 3.5
+	report.reputation_before = 3.2
+	report.reputation_after = 3.4
+	_screen.call("show_report", report)
+	assert_eq((_screen.get_node("%ReviewStats") as Label).text, "Today's reviews: 3.5 stars")
+	assert_eq((_screen.get_node("%Reputation") as Label).text, "Reputation: 3.2 to 3.4 stars")
+	var lines: Node = _screen.get_node("%ReviewRows")
+	assert_eq(lines.get_child_count(), 3)
+	assert_eq((lines.get_child(0) as Label).text, '5 stars - "Wonderful soup"')
+	assert_eq((lines.get_child(2) as Label).text, '3 stars - "Okay lunch"')
+	_screen.call("show_report", DayReport.new())
+	assert_eq((_screen.get_node("%ReviewStats") as Label).text, "Today's reviews: none")
+	assert_eq((_screen.get_node("%Reputation") as Label).text, "Reputation: 3.0 to 3.0 stars")
+	assert_eq(lines.get_child_count(), 1)
+	assert_eq((lines.get_child(0) as Label).text, "No reviews today")
+
+
+func test_first_three_review_quotes_fit_without_scrolling_at_both_capture_sizes() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	await tree.process_frame
+	_host = Control.new()
+	_host.size = Vector2(1600.0, 900.0)
+	tree.root.add_child(_host)
+	_screen = REPORT_SCENE.instantiate()
+	_host.add_child(_screen)
+	var report: DayReport = DayReport.new()
+	report.income = {&"sale": 1200, &"tip": 50}
+	report.costs = {&"ingredients": 140, &"rent": 200, &"wages": 300}
+	report.dishes_sold = {&"tomato_soup": 2, &"burger": 8}
+	report.customers_served = 12
+	report.customers_lost = 4
+	report.leave_reasons = {&"no_table": 1, &"waited_too_long": 3}
+	report.review_cards = [
+		{"stars": 5, "quote": "Warm room, good food, happy me."},
+		{"stars": 4, "quote": "I aged a little waiting for lunch. Worth a bite, though."},
+		{"stars": 3, "quote": "A little mop magic would help this place."},
+	]
+	report.today_review_average = 4.0
+	report.reputation_before = 3.0
+	report.reputation_after = 3.2
+	_screen.call("show_report", report)
+	var scroll: ScrollContainer = _screen.get_node("Panel/Scroll") as ScrollContainer
+	var rows: VBoxContainer = _screen.get_node("%ReviewRows") as VBoxContainer
+	for bounds: Vector2 in [Vector2(1600.0, 900.0), Vector2(1280.0, 720.0)]:
+		_host.size = bounds
+		scroll.scroll_vertical = 0
+		await tree.process_frame
+		await tree.process_frame
+		assert_eq(_screen.size, bounds)
+		assert_eq(scroll.scroll_vertical, 0)
+		assert_eq(rows.get_child_count(), 3)
+		var viewport: Rect2 = scroll.get_global_rect()
+		for index: int in range(3):
+			var card: Dictionary = report.review_cards[index]
+			var native: Label = rows.get_child(index) as Label
+			assert_eq(native.text, '%d stars - "%s"' % [card["stars"], card["quote"]])
+			assert_true(native.is_visible_in_tree())
+			var rect: Rect2 = native.get_global_rect()
+			assert_true(rect.size.x > 0.0 and rect.size.y > 0.0)
+			assert_true(rect.position.x >= viewport.position.x - 1.0
+				and rect.end.x <= viewport.end.x + 1.0
+				and rect.position.y >= viewport.position.y - 1.0
+				and rect.end.y <= viewport.end.y + 1.0,
+				"review %d fits the unscrolled %dx%d report" % [index, int(bounds.x), int(bounds.y)])
 
 
 func test_ui_full_report_then_empty_clears_every_section() -> void:

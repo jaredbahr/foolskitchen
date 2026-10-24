@@ -60,6 +60,8 @@ static func run_case(tree: SceneTree, seed_value: int, setup_name: String, days:
 	# Reset the customer stream and first gap for this independent seed.
 	GameState.new_run(seed_value)
 	sim.use_rng(GameState.rng(&"customers"))
+	sim.configure_reviews(sim.review_book, sim.review_tuning, sim.review_quotes,
+		GameState.rng(&"reviews"))
 	if gap.x > 0:
 		sim.spawner.min_gap = gap.x
 		sim.spawner.max_gap = gap.y

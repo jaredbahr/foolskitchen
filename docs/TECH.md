@@ -362,6 +362,37 @@ docs/
   existing visual job adds one image. Runtime/balance evidence is separate
   from source review.
 
+### 2.3a Guest reviews and reputation (FK-048)
+- `ReputationBook` holds the newest 30 scores. A new shop starts with five
+  virtual three-star reviews, so its displayed average is 3.0; those starters
+  leave the window in first-in-first-out order as real reviews arrive. Only
+  sampled, non-closing departures enter the window. The public daily rows carry
+  stars and a friendly quote, never an internal cause name.
+- `ReviewVisit` snapshots a guest's served state, queue and food waits as
+  fractions of their patience, their paid price divided by the standard menu
+  price, and a dirt fraction. Until FK-044 cleanliness lands, the dirt input is
+  zero. An unserved guest gives one star; closing departures give no review.
+  For a served guest, the score is `clamp(round(5 - penalty), 1, 5)`, where the
+  penalty is the sum of each input clamped to 0..1 times its authored weight.
+  `data/balance/reviews.tres` starts with queue 1.0, food 1.3, overprice 0.8,
+  and dirt 0.6. The largest weighted penalty chooses the complaint group;
+  otherwise the visit uses a positive quote. `data/reviews/quotes.tres` holds
+  the grouped lines.
+- A separate saved `GameState.rng(&"reviews")` stream draws the 50% chance and
+  quote. Neither reviews nor quotes consume customer, kitchen or hiring draws.
+  The 0.8x-at-one-star to 1.2x-at-five-stars arrival curve is linear in the
+  authored resource. Main samples it once before `sim.start_day()` schedules
+  the first guest, scaling the base min/max arrival gaps inversely. Reviews
+  earned during service update the HUD but do not change that day's gaps.
+- Main stages the versioned `reviews` save section and installs it only after a
+  successful full morning load. Missing sections in older saves start at the
+  five virtual reviews. A rejected section follows the existing failed-load
+  recovery path. The only write remains the normal morning autosave; the
+  evening report's review cards and before/after averages are transient. The
+  `--report` screenshot uses Main's test-only seed override (seed 1) before
+  starting a real, unsaved game, then verifies the closed report's native
+  review rows after drawing; ordinary games still choose a wall-clock seed.
+
 ### 2.3g Paint and colour slots (FK-042)
 - `data/swatches/*.tres` contains twelve named `SwatchDef` resources. `ContentDB`
   validates nonempty unique IDs and names; UI only exposes this curated list.
