@@ -8,7 +8,7 @@ var _content: ContentDB
 var _sim: RestaurantSim
 var _arrivals: int = 0
 var _drops: Dictionary[int, Array] = {}
-var _failures: Dictionary[int, StringName] = {}
+var _task_failures: Dictionary[int, StringName] = {}
 var _work_callbacks: int = 0
 
 
@@ -116,7 +116,7 @@ func test_real_plate_wait_uses_existing_timeout_drop_limit_and_readable_guest_re
 	assert_eq(waiting.state, SimTask.State.CANCELLED)
 	assert_eq(waiting.drops, TaskBoard.MAX_DROPS)
 	assert_eq(_drops.get(waiting.id, []), [&"timeout", &"timeout", &"timeout"] as Array[StringName])
-	assert_eq(_failures.get(waiting.id, &""), &"dropped_too_often")
+	assert_eq(_task_failures.get(waiting.id, &""), &"dropped_too_often")
 	assert_eq(guest.order.state, Order.State.CANCELLED)
 	assert_eq(guest.order.cancellation_reason, &"no_clean_plates")
 	assert_eq(guest.leave_reason, &"no_clean_plates")
@@ -360,7 +360,7 @@ func test_staff_false_wait_consumes_claimed_timeout_without_stuck_drops_or_follo
 	assert_eq(task.state, SimTask.State.CANCELLED)
 	assert_eq(task.drops, TaskBoard.MAX_DROPS)
 	assert_eq(_drops.get(task.id, []), [&"timeout", &"timeout", &"timeout"] as Array[StringName])
-	assert_eq(_failures.get(task.id, &""), &"dropped_too_often")
+	assert_eq(_task_failures.get(task.id, &""), &"dropped_too_often")
 	assert_eq(_work_callbacks, 0)
 	assert_null(cook.task)
 
@@ -375,14 +375,14 @@ func test_staff_false_work_callback_still_cancels_instead_of_waiting() -> void:
 			break
 	assert_eq(task.state, SimTask.State.CANCELLED)
 	assert_eq(task.drops, 0)
-	assert_eq(_failures.get(task.id, &""), &"step_failed")
+	assert_eq(_task_failures.get(task.id, &""), &"step_failed")
 	assert_null((world.agents[0] as StaffAgent).task)
 
 
 func _new_restaurant() -> void:
 	_arrivals = 0
 	_drops.clear()
-	_failures.clear()
+	_task_failures.clear()
 	var stock: Stock = Stock.new()
 	for ingredient: IngredientDef in _content.ingredients():
 		stock.add(ingredient.id, 1000, 1)
@@ -613,4 +613,4 @@ func _on_dropped(task: SimTask, _agent_id: int, reason: StringName) -> void:
 
 
 func _on_failed(task: SimTask, reason: StringName) -> void:
-	_failures[task.id] = reason
+	_task_failures[task.id] = reason

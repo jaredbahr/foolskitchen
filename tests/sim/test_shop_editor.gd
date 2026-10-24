@@ -235,7 +235,7 @@ func test_new_unreachable_station_warning_uses_zero_id() -> void:
 	# At the top wall the unrotated fridge's work cell is on the boundary wall.
 	var check: EditCheck = _editor.check_buy(&"fridge", Vector2i(4, 1))
 	assert_false(check.ok, "existing prep counter still blocks overlapping purchase")
-	check = _editor.check_buy(&"fridge", Vector2i(10, 1))
+	check = _editor.check_buy(&"fridge", Vector2i(11, 1))
 	assert_true(check.ok)
 	assert_true(check.unreachable.has(0))
 	assert_eq(_changes.size(), 0)
