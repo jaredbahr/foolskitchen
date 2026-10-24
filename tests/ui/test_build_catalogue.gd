@@ -25,6 +25,7 @@ class ClickProbe extends Node:
 var _catalogue: BuildCatalogue
 var _content: CatalogueContent
 var _requests: Array[StringName] = []
+var _swatch_requests: Array[StringName] = []
 var _host: Control
 
 
@@ -32,7 +33,9 @@ func before_each() -> void:
 	_catalogue = SCENE.instantiate() as BuildCatalogue
 	_content = CatalogueContent.new()
 	_requests.clear()
+	_swatch_requests.clear()
 	_catalogue.buy_requested.connect(_record_request)
+	_catalogue.swatch_requested.connect(_record_swatch_request)
 
 
 func after_each() -> void:
@@ -43,6 +46,30 @@ func after_each() -> void:
 	_host = null
 	_content = null
 	_requests.clear()
+	_swatch_requests.clear()
+
+
+func test_paint_chips_are_named_round_and_request_selected_swatch() -> void:
+	var shipped: ContentDB = ContentDB.new()
+	assert_eq(shipped.load_all(), PackedStringArray())
+	_catalogue.bind_content(shipped)
+	_catalogue.set_paint_visible(true)
+	_catalogue.set_build_visible(true)
+	assert_eq(_catalogue.swatch_buttons.size(), 12)
+	assert_false((_catalogue.get_node("Panel/Margin/Rows/Scroll/Content/Items") as Control).visible)
+	var sage: Button = _catalogue.swatch_buttons[&"sage"]
+	assert_eq(sage.tooltip_text, "Sage")
+	assert_eq((sage.get_theme_stylebox("normal") as StyleBoxFlat).corner_radius_top_left, 17)
+	sage.pressed.emit()
+	assert_eq(_catalogue.selected_swatch_id, &"sage")
+	assert_eq(_swatch_requests, [&"sage"] as Array[StringName])
+	assert_eq((_catalogue.get_node("Panel/Margin/Rows/Scroll/Content/Title") as Label).text,
+		"Paint | Sage - Click a wall, floor or item")
+	var outline: StyleBoxFlat = _catalogue.theme.get_stylebox("normal", "Button") as StyleBoxFlat
+	var selected_style: StyleBoxFlat = sage.get_theme_stylebox("normal") as StyleBoxFlat
+	assert_eq(selected_style.border_color, outline.border_color)
+	assert_true(sage.scale.x > 1.0)
+	assert_eq(_catalogue.swatch_buttons[&"butter"].scale, Vector2.ONE)
 
 
 func test_hidden_scene_uses_shared_theme_and_only_panel_consumes_input() -> void:
@@ -288,6 +315,10 @@ func _scroll() -> ScrollContainer:
 
 func _record_request(id: StringName) -> void:
 	_requests.append(id)
+
+
+func _record_swatch_request(id: StringName) -> void:
+	_swatch_requests.append(id)
 
 
 static func _definition(id: StringName, label: String, price: int, category: ItemDef.Category = ItemDef.Category.DECOR) -> ItemDef:

@@ -17,6 +17,13 @@ var menu: Array[RecipeDef] = []
 ## Per-shop overrides; recipe resources and their standard prices stay unchanged.
 var prices: Dictionary[StringName, int] = {}
 var pricing_tuning: EconomyTuning = EconomyTuning.new()
+## Shop-wide server capacity. Morning upgrades select one of these three values.
+var carry_capacity: int:
+	get:
+		return _carry_capacity
+	set(value):
+		_carry_capacity = value if value == 1 or value == 2 or value == 4 else 1
+var _carry_capacity: int = 1
 ## Ingredient stock shared with the game session. Replacing it also updates
 ## the live kitchen; direct construction retains an empty default inventory.
 var stock: Stock = Stock.new():

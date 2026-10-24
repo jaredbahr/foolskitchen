@@ -6,16 +6,56 @@ extends RefCounted
 const SNAPSHOT_VERSION: int = 1
 
 var last_check: EditCheck = EditCheck.new()
+## Cosmetic whole-room paint. Empty IDs use the ShopView defaults.
+var wall_swatch_id: StringName = &""
+var floor_swatch_id: StringName = &""
 var _sim: RestaurantSim
 var _content: ContentDB
 var _books: ShopEditBooks
 var _applying: bool = false
 
 
-func _init(sim: RestaurantSim, content: ContentDB, books: ShopEditBooks) -> void:
+func _init(sim: RestaurantSim, content: ContentDB, books: ShopEditBooks, layout: ShopLayout = null) -> void:
 	_sim = sim
 	_content = content
 	_books = books
+	if layout != null:
+		wall_swatch_id = _known_swatch(layout.wall_swatch_id)
+		floor_swatch_id = _known_swatch(layout.floor_swatch_id)
+
+
+## Paint is free and available during service as well as closed phases.
+func paint_wall(swatch_id: StringName) -> bool:
+	if not _can_paint(swatch_id):
+		return false
+	wall_swatch_id = swatch_id
+	return true
+
+
+func paint_floor(swatch_id: StringName) -> bool:
+	if not _can_paint(swatch_id):
+		return false
+	floor_swatch_id = swatch_id
+	return true
+
+
+func paint_item(item_id: int, swatch_id: StringName) -> bool:
+	if not _can_paint(swatch_id):
+		return false
+	var placed: PlacedItem = _sim.world.grid.item(item_id)
+	if placed == null or not placed.def is ItemDef or not (placed.def as ItemDef).paintable:
+		return false
+	placed.swatch_id = swatch_id
+	return true
+
+
+func _can_paint(swatch_id: StringName) -> bool:
+	return _sim != null and _sim.world != null and _content != null and \
+		(swatch_id.is_empty() or _content.swatch(swatch_id) != null)
+
+
+func _known_swatch(swatch_id: StringName) -> StringName:
+	return swatch_id if _content != null and _content.swatch(swatch_id) != null else &""
 
 
 func can_edit() -> bool:
@@ -148,8 +188,10 @@ func to_dict() -> Dictionary:
 	for placed: PlacedItem in _sim.world.grid.items():
 		var definition: ItemDef = placed.def as ItemDef
 		placements.append({"def_id": String(definition.id),
-			"origin": [placed.origin.x, placed.origin.y], "quarter_turns": placed.quarter_turns})
-	return {"version": SNAPSHOT_VERSION, "items": placements}
+			"origin": [placed.origin.x, placed.origin.y], "quarter_turns": placed.quarter_turns,
+			"swatch_id": String(placed.swatch_id)})
+	return {"version": SNAPSHOT_VERSION, "items": placements,
+		"wall_swatch_id": String(wall_swatch_id), "floor_swatch_id": String(floor_swatch_id)}
 
 
 ## Pure, transactional decoder. A successful layout is staged for a NEW session;
@@ -172,6 +214,8 @@ static func from_dict(data: Dictionary, template_layout: ShopLayout, content: Co
 	layout.display_name = template_layout.display_name
 	layout.rows = template_layout.rows.duplicate()
 	layout.staff_spawns = template_layout.staff_spawns.duplicate()
+	layout.wall_swatch_id = _saved_swatch(data.get("wall_swatch_id", ""), content)
+	layout.floor_swatch_id = _saved_swatch(data.get("floor_swatch_id", ""), content)
 	for value: Variant in rows:
 		if not value is Dictionary:
 			errors.append("Invalid shop placement")
@@ -194,6 +238,7 @@ static func from_dict(data: Dictionary, template_layout: ShopLayout, content: Co
 		placement.item_id = definition.id
 		placement.origin = Vector2i(int(origin[0]), int(origin[1]))
 		placement.quarter_turns = int(turns)
+		placement.swatch_id = _saved_swatch(row.get("swatch_id", ""), content) if definition.paintable else &""
 		if preview.place_def(definition, placement.origin, placement.quarter_turns) == null:
 			errors.append("Saved item does not fit on the layout's floor")
 			return null
@@ -216,6 +261,14 @@ static func from_dict(data: Dictionary, template_layout: ShopLayout, content: Co
 			errors.append("Saved shop must keep %s" % key)
 			return null
 	return layout
+
+
+## Invalid or removed palette entries revert to authored colours on old saves.
+static func _saved_swatch(value: Variant, content: ContentDB) -> StringName:
+	if not (value is String or value is StringName):
+		return &""
+	var id: StringName = StringName(value)
+	return id if content.swatch(id) != null else &""
 
 
 func _edit_check() -> EditCheck:

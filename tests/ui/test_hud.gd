@@ -68,6 +68,16 @@ func test_reputation_presentation_survives_refresh_and_tracks_window_count() -> 
 	assert_eq(reputation.tooltip_text, "4.0 stars from your last 7 reviews")
 
 
+func test_paint_button_shares_top_row_and_theme_with_build() -> void:
+	var build: Button = _control("Build") as Button
+	var paint: Button = _control("Paint") as Button
+	assert_eq(paint.get_parent(), build.get_parent())
+	assert_eq(paint.get_index(), build.get_index() + 1)
+	assert_eq(paint.theme, build.theme)
+	assert_eq(paint.focus_mode, Control.FOCUS_NONE)
+	assert_true(paint.toggle_mode)
+
+
 func test_scene_tree_binding_and_exit_cleanup_do_not_require_ready() -> void:
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	tree.root.add_child(_hud)

@@ -275,15 +275,18 @@ func _on_order_ready(order: Order) -> void:
 	if route.is_empty():
 		_cancel(order, &"unreachable")
 		return
-	var task: SimTask = SimTask.new(&"deliver", &"server", "Deliver %s" % order.recipe_id)
+	var recipe: RecipeDef = _content.recipe(order.recipe_id)
+	var task: SimTask = SimTask.new(&"deliver", &"server",
+		"Deliver %s" % (recipe.display_name if recipe != null else "meal"))
 	task.priority = 3
-	task.payload = {"kitchen": true, "order_id": order.id, "pass_id": pass_item.id}
+	task.payload = {"kitchen": true, "order_id": order.id, "order_ids": [order.id],
+		"pass_id": pass_item.id}
 	task.steps.append(TaskStep.go_to_work_cell(pass_item.id, 1, "collecting from dining side"))
 	# GO_TO_CELL intentionally retains item holds. Explicit pickup releases this
 	# pass side before the walk, without changing legacy StaffAgent behaviour.
 	task.steps.append(TaskStep.work(1, "picking up plate", _release_pass))
-	task.steps.append(TaskStep.go_to_cell(route.back(), "carrying meal to guest"))
-	task.steps.append(TaskStep.work(10, "serving meal"))
+	# The route is selected at pickup, when the other READY meals are known.
+	# A single-plate task still follows the same pass/seat path and timing.
 	_post(task, sim)
 
 
@@ -296,6 +299,107 @@ func _release_pass(agent: SimAgent) -> bool:
 	if item == null:
 		return false
 	item.release(item.work_cells[1], staff.id)
+	if not bool(staff.task.payload.get("batch_prepared", false)):
+		return _prepare_delivery(staff.task, sim, item.work_cells[1])
+	return true
+
+
+## Fold only unclaimed READY deliveries into this trip. The claimed order
+## always stays in the bundle; the remaining slots choose the closest meals
+## from the pass, then all selected tables run in nearest-next path order.
+func _prepare_delivery(task: SimTask, sim: RestaurantSim, pass_cell: Vector2i) -> bool:
+	var primary: Order = sim.orders.get_order(int(task.payload["order_id"]))
+	if primary == null or primary.state != Order.State.READY:
+		return false
+	var selected: Array[Order] = [primary]
+	var available: Array[Order] = []
+	for order: Order in sim.orders.orders_in_state(Order.State.READY):
+		if order.id == primary.id:
+			continue
+		if _open_delivery_for(order.id) != null:
+			available.append(order)
+	while selected.size() < sim.carry_capacity and not available.is_empty():
+		var next: Order = _nearest_order(sim, pass_cell, available)
+		if next == null:
+			break
+		selected.append(next)
+		available.erase(next)
+	var route_from: Vector2i = pass_cell
+	var route_order: Array[Order] = []
+	var route_cells: Array[Vector2i] = []
+	while not selected.is_empty():
+		var next: Order = _nearest_order(sim, route_from, selected)
+		if next == null:
+			break
+		var path: Array[Vector2i] = sim.world.grid.find_path_to_any(route_from,
+			sim.world.grid.walkable_neighbours(next.seat_cell))
+		route_from = path.back()
+		route_order.append(next)
+		route_cells.append(route_from)
+		selected.erase(next)
+	# Plan the complete reachable route before withdrawing any other task. If
+	# the claimed meal lost its path since READY, the normal failed-task path
+	# cancels that meal and recovers its plate. Unreachable extras keep their
+	# original OPEN task and can fail or recover independently at their pickup.
+	if not route_order.has(primary):
+		return false
+	var ids: Array[int] = []
+	for index: int in range(route_order.size()):
+		var order: Order = route_order[index]
+		ids.append(order.id)
+		if order.id != primary.id:
+			var other: SimTask = _open_delivery_for(order.id)
+			if other != null:
+				_tasks.erase(other.id)
+				sim.world.board.cancel(other, &"batched")
+		task.steps.append(TaskStep.go_to_cell(route_cells[index], "carrying meal to guest"))
+		task.steps.append(TaskStep.work(10, "serving meal", _serve_order.bind(order.id)))
+	task.payload["order_ids"] = ids
+	task.payload["carried_count"] = ids.size()
+	task.payload["batch_prepared"] = true
+	task.label = "Deliver %d meals" % ids.size() if ids.size() > 1 else task.label
+	task.timeout_ticks = 600 * maxi(1, ids.size())
+	return true
+
+
+func _nearest_order(sim: RestaurantSim, from_cell: Vector2i, orders: Array[Order]) -> Order:
+	var best: Order = null
+	var best_length: int = 2147483647
+	for order: Order in orders:
+		var path: Array[Vector2i] = sim.world.grid.find_path_to_any(from_cell,
+			sim.world.grid.walkable_neighbours(order.seat_cell))
+		if not path.is_empty() and (path.size() < best_length or
+				(path.size() == best_length and (best == null or order.id < best.id))):
+			best = order
+			best_length = path.size()
+	return best
+
+
+func _open_delivery_for(order_id: int) -> SimTask:
+	for task: SimTask in _tasks.values():
+		if task.kind == &"deliver" and task.state == SimTask.State.OPEN \
+				and not bool(task.payload.get("batch_prepared", false)) \
+				and int(task.payload.get("order_id", 0)) == order_id:
+			# A dropped prepared trip is OPEN again, but it still covers every
+			# READY order in order_ids. Absorbing its primary would strand the rest.
+			return task
+	return null
+
+
+func _serve_order(agent: SimAgent, order_id: int) -> bool:
+	var staff: StaffAgent = agent as StaffAgent
+	var sim: RestaurantSim = _restaurant.get_ref() as RestaurantSim
+	if staff == null or staff.task == null or sim == null:
+		return false
+	var order: Order = sim.orders.get_order(order_id)
+	if order == null or order.state != Order.State.READY:
+		return true  # A departing guest only loses their own meal and plate.
+	if sim.world.grid.item(order.table_item_id) == null \
+			or not sim.world.grid.walkable_neighbours(order.seat_cell).has(staff.cell):
+		_cancel(order, &"target_gone")
+		return true
+	sim.orders.set_state(order, Order.State.DELIVERED)
+	staff.task.payload["carried_count"] = maxi(0, int(staff.task.payload.get("carried_count", 0)) - 1)
 	return true
 
 
@@ -307,7 +411,16 @@ func _on_order_cancelled(order: Order) -> void:
 		if _plates.recover_order(order.id):
 			_notify_plates()
 	for task: SimTask in _tasks.values():
-		if int(task.payload.get("order_id", 0)) == order.id:
+		if task.kind == &"deliver" and task.payload.get("order_ids", []).has(order.id):
+			if bool(task.payload.get("batch_prepared", false)):
+				task.payload["carried_count"] = maxi(0, int(task.payload.get("carried_count", 0)) - 1)
+			var remaining: bool = false
+			for id: int in task.payload["order_ids"]:
+				var meal: Order = sim.orders.get_order(id)
+				remaining = remaining or (meal != null and meal.state == Order.State.READY)
+			if not remaining:
+				sim.world.board.cancel(task, order.cancellation_reason)
+		elif int(task.payload.get("order_id", 0)) == order.id:
 			sim.world.board.cancel(task, order.cancellation_reason)
 	_ensure_wash_task()
 
@@ -323,8 +436,11 @@ func _on_task_completed(task: SimTask) -> void:
 		var table_id: int = int(task.payload["table_item_id"])
 		if _plates.collect_table(table_id) > 0:
 			_notify_plates()
-		dirty_tables.erase(table_id)
 		_bus_tasks.erase(table_id)
+		if _plates.returned_at_table(table_id) > 0:
+			mark_table_dirty(table_id)
+		else:
+			dirty_tables.erase(table_id)
 		_ensure_wash_task()
 		return
 	if task.kind == &"wash":
@@ -349,8 +465,7 @@ func _on_task_completed(task: SimTask) -> void:
 				quality += (station.def as ItemDef).quality_bonus
 		order.quality = clampf(quality, 0.0, 1.0)
 		sim.orders.set_state(order, Order.State.READY)
-	elif task.kind == &"deliver":
-		sim.orders.set_state(order, Order.State.DELIVERED)
+	# Delivery settles each ticket at its own table through _serve_order.
 
 
 func _on_task_failed(task: SimTask, reason: StringName) -> void:
@@ -378,6 +493,12 @@ func _on_task_failed(task: SimTask, reason: StringName) -> void:
 			dirty_tables.erase(table_id)
 		else:
 			sim.world.log_event("Table #%d still dirty: %s" % [table_id, reason])
+		return
+	if task.kind == &"deliver":
+		for id: int in task.payload.get("order_ids", []):
+			var meal: Order = sim.orders.get_order(id)
+			if meal != null and meal.state == Order.State.READY:
+				_cancel(meal, reason)
 		return
 	var order: Order = sim.orders.get_order(int(task.payload["order_id"]))
 	if order != null and order.state != Order.State.CANCELLED:

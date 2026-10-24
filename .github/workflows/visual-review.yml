@@ -81,6 +81,7 @@ jobs:
           bash tools/screenshot.sh --out=screens/visual-review/menu --menu --speed=0 --frames=12
           bash tools/screenshot.sh --out=screens/visual-review/staff --staff --speed=0 --frames=12
           bash tools/screenshot.sh --out=screens/visual-review/report --report --open --fast=100 --speed=0 --frames=60
+          bash tools/screenshot.sh --out=screens/visual-review/paint --paint --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/build-green --build=green --quarter=0 --frames=12 --speed=1
           bash tools/screenshot.sh --out=screens/visual-review/build-red --build=red --quarter=0 --frames=12 --speed=1
 
@@ -103,6 +104,7 @@ jobs:
           captures += [('mood-waits', -1, False, False, frame) for frame in (120, 180, 240, 300)]
           captures += [('menu', -1, False, False, 12)]
           captures += [('staff', -1, False, False, 12)]
+          captures += [('paint', -1, False, False, 60)]
           captures += [('build-green', 0, False, False, 12), ('build-red', 0, False, False, 12)]
           observed_bands = set()
           for name, requested, inspect_guest, debug, frame in captures:

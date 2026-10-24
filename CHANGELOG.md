@@ -12,6 +12,8 @@ Each line ends with its PR number.
 
 ### Players
 - Guests leave star reviews with little comments on the evening report. Your recent rating appears beside cash and shapes how busy the next day is. (#95)
+- Pick from twelve cosy paint colours and recolour the whole floor, walls or individual furniture for free, even while the shop is open. Your choices return with the next morning's save. (#94)
+- Buy Trays and Big trays in the morning to let servers carry two or four meals per trip; their new tray is visible while carrying several plates. (#93)
 - Manage your team each morning: hire people with different skills and traits, let staff go, and plan their daily wages. (#74)
 - Shops with a sink use a limited stock of plates; servers collect and wash them, and the kitchen explains when it is waiting for a clean plate. Older shops keep serving freely until they buy a sink. (#75)
 - Held furniture rotates around the grabbed tile, and short placement hints fit without a scrollbar. (#71)

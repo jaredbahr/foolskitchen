@@ -18,3 +18,4 @@ price = 40
 charm = 0
 theme_tags = Array[StringName]([&"diner"])
 placeholder_color = Color(0.70, 0.73, 0.66, 1)
+paintable = false

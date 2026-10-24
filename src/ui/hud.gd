@@ -6,8 +6,12 @@ const SPEEDS: Array[int] = [0, 1, 2, 4]
 const PHASE_NAMES: Array[String] = ["Morning", "Open", "Last orders", "Closed"]
 const GAIN_COLOR: Color = Color("286B3B")
 const LOSS_COLOR: Color = Color("A42E2E")
+const HEADER_ACTIONS: Array[String] = ["Walls", "Build", "Paint", "Context", "Menu", "Staff"]
+const BUTTON_STATES: Array[StringName] = [&"normal", &"hover", &"pressed", &"hover_pressed", &"disabled"]
+const NARROW_BUTTON_MARGIN: float = 6.0
 
 signal build_toggled()
+signal paint_toggled()
 signal menu_pressed()
 signal staff_pressed()
 
@@ -30,6 +34,8 @@ var _reputation_count: int = 5
 var _wall_button: Button
 var _shop_view: ShopView
 var _build_button: Button
+var _paint_button: Button
+var _paint_active: bool = false
 var _build_hints: PanelContainer
 var _build_hint_text: Label
 var _build_hint_scroll: ScrollContainer
@@ -40,6 +46,7 @@ var _build_reason: String = ""
 var _build_state: int = BuildMode.State.IDLE
 var _menu_button: Button
 var _staff_button: Button
+var _header_compact: bool = false
 
 
 func _ready() -> void:
@@ -69,6 +76,8 @@ func refresh() -> void:
 		style.set_content_margin(SIDE_BOTTOM, 6.0)
 		_build_hints.add_theme_stylebox_override("panel", style)
 		_build_button.pressed.connect(_on_build_pressed)
+		_paint_button = get_node("Top/Row/Paint") as Button
+		_paint_button.pressed.connect(_on_paint_pressed)
 		_menu_button = get_node("Top/Row/Menu") as Button
 		_menu_button.pressed.connect(_on_menu_pressed)
 		_staff_button = get_node("Top/Row/Staff") as Button
@@ -125,13 +134,28 @@ func _render_reputation() -> void:
 		_reputation_average, _reputation_count]
 
 
-## Keep the full Staff + legacy plate message without shrinking native controls.
+## Keep the reputation, plate and action labels readable at laptop widths.
+## The Paint action shares the bar with Build; trim only button padding.
 func _layout_header() -> void:
 	var width: float = get_viewport().get_visible_rect().size.x if is_inside_tree() else 1600.0
-	var separation: int = 4 if width < 1440.0 else 8
+	var separation: int = 2 if width < 1320.0 else (4 if width < 1440.0 else 8)
 	var row: HBoxContainer = get_node("Top/Row") as HBoxContainer
 	if row.get_theme_constant("separation") != separation:
 		row.add_theme_constant_override("separation", separation)
+	var compact: bool = width < 1440.0
+	if compact == _header_compact:
+		return
+	_header_compact = compact
+	for name: String in HEADER_ACTIONS:
+		var button: Button = row.get_node(name) as Button
+		for state: StringName in BUTTON_STATES:
+			if not compact:
+				button.remove_theme_stylebox_override(state)
+				continue
+			var style: StyleBox = button.get_theme_stylebox(state, &"Button").duplicate() as StyleBox
+			style.set_content_margin(SIDE_LEFT, NARROW_BUTTON_MARGIN)
+			style.set_content_margin(SIDE_RIGHT, NARROW_BUTTON_MARGIN)
+			button.add_theme_stylebox_override(state, style)
 
 
 func _on_staff_pressed() -> void:
@@ -151,6 +175,14 @@ func set_build_state(available: bool, active: bool, reason: String = "", held_st
 		_refresh_build_controls()
 
 
+func set_paint_state(active: bool) -> void:
+	_paint_active = active
+	if _paint_button == null:
+		refresh()
+	else:
+		_refresh_build_controls()
+
+
 func _refresh_build_controls() -> void:
 	var allowed: bool = _build_available and (
 		Clock.sim.phase == SimClock.Phase.MORNING or Clock.sim.phase == SimClock.Phase.CLOSED)
@@ -158,14 +190,18 @@ func _refresh_build_controls() -> void:
 		_build_button.disabled = not allowed
 	if _build_button.button_pressed != _build_active:
 		_build_button.set_pressed_no_signal(_build_active)
+	if _paint_button.button_pressed != _paint_active:
+		_paint_button.set_pressed_no_signal(_paint_active)
 	var tooltip: String = "Build furniture (B)" if allowed else "Build furniture in the morning or after closing"
 	if _build_button.tooltip_text != tooltip:
 		_build_button.tooltip_text = tooltip
-	var resize_hint: bool = _build_hints.visible != _build_active
+	var resize_hint: bool = _build_hints.visible != (_build_active or _paint_active)
 	if resize_hint:
-		_build_hints.visible = _build_active
+		_build_hints.visible = _build_active or _paint_active
 	var text: String = "Esc Exit"
-	if _build_state == BuildMode.State.MOVE:
+	if _paint_active:
+		text = "Choose a colour, hover to preview, click to paint  |  Esc Exit"
+	elif _build_state == BuildMode.State.MOVE:
 		text = "R Rotate  |  Del Sell  |  Esc Cancel"
 	elif _build_state == BuildMode.State.BUY:
 		text = "R Rotate  |  Esc Cancel"
@@ -222,6 +258,10 @@ func set_plate_counts(clean: int, total: int, dirty: int, in_use: int, enabled: 
 func _on_build_pressed() -> void:
 	if _build_available and (Clock.sim.phase == SimClock.Phase.MORNING or Clock.sim.phase == SimClock.Phase.CLOSED):
 		build_toggled.emit()
+
+
+func _on_paint_pressed() -> void:
+	paint_toggled.emit()
 
 
 ## Binds this presentation control to the containing shop view, idempotently.

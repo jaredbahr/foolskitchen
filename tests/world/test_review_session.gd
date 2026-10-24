@@ -138,10 +138,16 @@ func test_arrival_curve_is_sampled_before_first_gap_and_locked_for_the_day() -> 
 	assert_eq(int(sim.spawner.get("_remaining")), first_gap)
 
 
-func test_next_morning_saves_review_window_and_reload_restores_it() -> void:
+func test_next_morning_saves_reviews_and_trays_together_then_reloads_both() -> void:
 	var first: Node = _start(true)
 	var sim: RestaurantSim = first.get("sim") as RestaurantSim
 	var book: ReputationBook = first.get("reputation") as ReputationBook
+	Economy.add_cash(500, Ledger.OTHER)
+	assert_true(first.call("tray_buy", 1))
+	assert_eq(first.get("tray_level"), 1)
+	assert_eq(sim.carry_capacity, 2)
+	assert_eq(_document()["data"]["shop"]["tray_level"], 0.0,
+		"a tray purchase does not rewrite the current morning checkpoint")
 	_certain_reviews(sim, book)
 	Clock.sim.open_ticks = 1
 	Clock.sim.last_orders_max_ticks = 1
@@ -157,12 +163,15 @@ func test_next_morning_saves_review_window_and_reload_restores_it() -> void:
 	var loaded_book: ReputationBook = ReputationBook.new()
 	assert_true(loaded_book.from_dict(_document()["data"]["reviews"]))
 	assert_eq(loaded_book.to_dict(), saved)
+	assert_eq(_document()["data"]["shop"]["tray_level"], 1.0)
 	_close(first)
 	GameState.new_run(999)
 	var second: Node = _start(true)
 	assert_eq(Clock.sim.day, 2)
 	assert_eq((second.get("reputation") as ReputationBook).to_dict(), saved)
 	assert_true((second.get("sim") as RestaurantSim).review_book == second.get("reputation"))
+	assert_eq(second.get("tray_level"), 1)
+	assert_eq((second.get("sim") as RestaurantSim).carry_capacity, 2)
 
 
 func test_older_morning_save_without_reviews_starts_with_virtual_three_stars() -> void:
