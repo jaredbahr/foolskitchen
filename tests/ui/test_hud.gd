@@ -477,10 +477,22 @@ func _assert_readable_control(control: Control, window: Window) -> void:
 
 
 func _assert_single_header_row() -> void:
-	var y: float = _control("Day").global_position.y
-	for name: String in ["Time", "Phase", "Speed0", "Speed1", "Speed2", "Speed4", "Walls",
+	var row: HFlowContainer = _hud.get_node("Top/Row") as HFlowContainer
+	assert_eq(row.get_line_count(), 1, "100% keeps the native header on one flow line")
+	var first: Rect2 = _control("Day").get_global_rect()
+	var shared_top: float = first.position.y
+	var shared_bottom: float = first.end.y
+	var previous_end: float = first.position.x
+	# Labels shrink to their text height and center within the native flow line.
+	# Check a shared row band and order rather than requiring equal top edges.
+	for name: String in ["Day", "Time", "Phase", "Speed0", "Speed1", "Speed2", "Speed4", "Walls",
 			"Build", "Paint", "Cash", "Reputation", "OwnerProgress", "Plates", "Context", "Menu", "Staff", "Settings"]:
-		assert_almost_eq(_control(name).global_position.y, y, 0.01, "100% keeps " + name + " on the usual row")
+		var rect: Rect2 = _control(name).get_global_rect()
+		assert_true(rect.position.x >= previous_end - 0.01, "100% keeps " + name + " in left-to-right row order")
+		previous_end = rect.end.x
+		shared_top = maxf(shared_top, rect.position.y)
+		shared_bottom = minf(shared_bottom, rect.end.y)
+	assert_true(shared_bottom > shared_top, "every 100% header control shares a positive vertical row band")
 
 
 func _assert_build_hint_layout(window: Window) -> void:
