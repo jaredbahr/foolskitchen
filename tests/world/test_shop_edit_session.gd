@@ -172,7 +172,13 @@ func test_saved_furniture_on_staff_spawn_loads_and_staff_can_escape() -> void:
 	assert_true(first.call("menu_set_enabled", &"tomato_melt", true),
 		"the unlocked dish can be planned next morning")
 	var saved_progress: Dictionary = progress.to_dict()
-	assert_eq(_document()["data"]["owner"]["progress"], saved_progress)
+	var raw_progress: Dictionary = _document()["data"]["owner"]["progress"]
+	assert_eq(raw_progress.size(), saved_progress.size())
+	for key: String in saved_progress:
+		assert_true(raw_progress.has(key))
+	var decoded: OwnerProgress = OwnerProgress.new(progress.tuning)
+	assert_true(decoded.from_dict(raw_progress), "the morning JSON stores valid owner progress")
+	assert_eq(decoded.to_dict(), saved_progress)
 	_close(first)
 	var second: Node = _start()
 	assert_eq((second.get("owner_progress") as OwnerProgress).to_dict(), saved_progress,

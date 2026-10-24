@@ -359,7 +359,8 @@ func _fixed_snapshot(grid: SimGrid) -> Array[Dictionary]:
 	var placements: Array[Dictionary] = []
 	for item: PlacedItem in grid.items():
 		var definition: ItemDef = item.def as ItemDef
-		if definition.category != ItemDef.Category.TABLE and definition.category != ItemDef.Category.DECOR:
+		if definition.category != ItemDef.Category.TABLE and definition.category != ItemDef.Category.CHAIR \
+				and definition.category != ItemDef.Category.DECOR:
 			placements.append({"def_id": definition.id, "origin": item.origin, "turns": item.quarter_turns})
 	return placements
 

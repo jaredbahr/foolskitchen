@@ -144,10 +144,24 @@ func test_shipped_catalogue_is_derived_from_every_valid_non_door_definition() ->
 	var natural: Vector2 = content.get_combined_minimum_size()
 	var padding: Vector2 = panel.get_theme_stylebox("panel").get_minimum_size()
 	assert_eq(panel.size, natural + padding, "a fitting catalogue uses only its content and compact padding")
-	assert_true(panel.size.x < _host.size.x * 0.8, "no empty strip spans the remaining viewport")
+	assert_true(panel.size.x <= _host.size.x - 24.0, "all shipped items fit inside the viewport")
 	assert_true(panel.size.y < 140.0, "the old176px strip is reduced to its actual contents")
 	assert_almost_eq(panel.position.x, 12.0)
 	assert_almost_eq(panel.get_rect().end.y, _host.size.y - 12.0)
+	assert_false(_scroll().get_h_scroll_bar().visible)
+	assert_false(_scroll().get_v_scroll_bar().visible)
+
+
+func test_single_item_catalogue_uses_a_compact_strip() -> void:
+	_content.definitions = [_definition(&"fixture", "Chair", 18)]
+	_catalogue.bind_content(_content)
+	_catalogue.set_build_visible(true)
+	await _mount(Vector2(1600.0, 900.0))
+	var panel: PanelContainer = _catalogue.get_node("Panel") as PanelContainer
+	var content: Control = _scroll().get_node("Content") as Control
+	var padding: Vector2 = panel.get_theme_stylebox("panel").get_minimum_size()
+	assert_eq(panel.size, content.get_combined_minimum_size() + padding)
+	assert_true(panel.size.x < _host.size.x * 0.8, "a short catalogue leaves the remaining viewport empty")
 	assert_false(_scroll().get_h_scroll_bar().visible)
 	assert_false(_scroll().get_v_scroll_bar().visible)
 

@@ -286,7 +286,15 @@ func _assert_saved_owner(main: Node, mode: StringName) -> void:
 	var saved: Dictionary = _document()["data"]["owner"]
 	assert_eq(saved.size(), 2)
 	assert_eq(saved["mode"], String(mode))
-	assert_eq(saved["progress"], (main.get("owner_progress") as OwnerProgress).to_dict())
+	var progress: OwnerProgress = main.get("owner_progress") as OwnerProgress
+	var raw: Dictionary = saved["progress"]
+	var expected: Dictionary = progress.to_dict()
+	assert_eq(raw.size(), expected.size(), "the save contains exactly the owner progress fields")
+	for key: String in expected:
+		assert_true(raw.has(key), "the save includes %s" % key)
+	var restored: OwnerProgress = OwnerProgress.new(progress.tuning)
+	assert_true(restored.from_dict(raw), "the saved JSON numbers pass the production decoder")
+	assert_eq(restored.to_dict(), expected)
 
 
 func _assert_selected(main: Node, owner: OwnerAgent) -> void:
