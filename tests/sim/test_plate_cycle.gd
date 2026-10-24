@@ -54,6 +54,30 @@ func test_real_two_plate_service_day_conserves_every_tick_and_finishes_cleanup()
 	_assert_cleanup()
 
 
+func test_five_real_days_with_trays_conserve_plates_every_tick() -> void:
+	_sim.carry_capacity = 4
+	_sim.spawner.min_gap = 160
+	_sim.spawner.max_gap = 250
+	var served: int = 0
+	for day: int in range(5):
+		_sim.start_day()
+		assert_true(_sim.world.clock.start_service())
+		for tick: int in range(6000):
+			_tick()
+			if _sim.world.clock.phase == SimClock.Phase.CLOSED:
+				break
+		assert_eq(_sim.world.clock.phase, SimClock.Phase.CLOSED)
+		for tick: int in range(1200):
+			if _sim.kitchen.is_clean() and _sim.world.board.active_count() == 0:
+				break
+			_tick()
+		_assert_cleanup()
+		served += _sim.served_today
+		if day < 4:
+			assert_true(_sim.world.clock.next_day())
+	assert_true(served > 0)
+
+
 func test_real_blocked_sink_exhaustion_waits_at_pass_then_repaired_sink_serves_order() -> void:
 	var blocked_sink: PlacedItem = _exhaust_one_plate_with_blocked_sink()
 	var guest: CustomerAgent = _guest()
@@ -221,6 +245,40 @@ func test_real_shared_table_bussing_washing_and_removal_preserve_active_diners_p
 			break
 	_assert_counts(2, 0, 0)
 	_assert_cleanup()
+
+
+func test_capacity_one_bus_trip_still_clears_every_returned_plate_at_its_table() -> void:
+	_sim.carry_capacity = 1
+	assert_true(_sim.kitchen.configure_plates(2))
+	_block_sink()  # Keep collected plates dirty long enough to inspect the trip.
+	var first: CustomerAgent = _guest(5000)
+	var second: CustomerAgent = _guest(5000)
+	assert_true(_sim.world.clock.start_service())
+	for tick: int in range(1600):
+		_tick()
+		if first.state == CustomerAgent.State.EATING and second.state == CustomerAgent.State.EATING:
+			break
+	assert_eq(first.state, CustomerAgent.State.EATING)
+	assert_eq(second.state, CustomerAgent.State.EATING)
+	if first.state != CustomerAgent.State.EATING or second.state != CustomerAgent.State.EATING:
+		return
+	assert_eq(first.table_item_id, second.table_item_id)
+	var table_id: int = first.table_item_id
+	_sim.world.remove_agent(first)
+	_sim.world.remove_agent(second)
+	assert_eq(_sim.kitchen.plates.returned_at_table(table_id), 2)
+	var bus: SimTask = _find_task(&"bus_table")
+	assert_not_null(bus)
+	if bus == null:
+		return
+	for tick: int in range(500):
+		_tick()
+		if bus.state == SimTask.State.DONE:
+			break
+	assert_eq(bus.state, SimTask.State.DONE)
+	assert_eq(_sim.kitchen.plates.returned_at_table(table_id), 0)
+	assert_false(_sim.kitchen.is_table_dirty(table_id))
+	_assert_counts(0, 2, 0)
 
 
 ## Isolated washing contract, not a gameplay service: no synthetic customer or

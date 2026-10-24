@@ -283,11 +283,19 @@ func _process(delta: float) -> void:
 			nose.name = "FacingMarker"
 			nose.position = Vector3(0.0, 0.62, -0.28)
 			mesh.add_child(nose)
+			var tray: MeshInstance3D = _box(Vector3(0.68, 0.045, 0.38), Color("b89568"))
+			tray.name = "Tray"
+			tray.position = Vector3(0.0, 0.02, -0.48)
+			tray.visible = false
+			mesh.add_child(tray)
 			mesh.set_meta("agent_id", agent.id)
 			mesh.set_meta("shop_geometry", true)
 			agent_nodes[agent.id] = mesh
 			add_child(mesh)
 		var node: MeshInstance3D = agent_nodes[agent.id]
+		var held_task: SimTask = (agent as StaffAgent).task if agent is StaffAgent else null
+		(node.get_node("Tray") as MeshInstance3D).visible = held_task != null \
+			and held_task.kind == &"deliver" and int(held_task.payload.get("carried_count", 0)) > 1
 		var start: Vector3 = GridMath.cell_to_world(agent.cell)
 		var end: Vector3 = GridMath.cell_to_world(agent.next_cell())
 		node.position = start.lerp(end, clampf(agent.move_progress, 0.0, 1.0)) + Vector3(0, 0.875, 0)
