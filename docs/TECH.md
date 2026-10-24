@@ -152,6 +152,23 @@ docs/
   bypassed meals remain uncounted across replay/completion/cancellation.
   Existing held tokens still recover normally if the last sink is externally
   removed; no live ledger reset occurs. The last present sink cannot be sold.
+- **Trays (FK-041):** `RestaurantSim.carry_capacity` is 1, 2 or 4 for the
+  entire shop. The server's claimed delivery gathers up to that many READY
+  orders at pass pickup, taking only unclaimed delivery tasks. It chooses
+  reachable tables in nearest-next path order with order-ID ties. Each meal
+  becomes DELIVERED at its own stop; the guest's existing eating and payment
+  path runs once. A cancelled meal recovers its own held plate and the other
+  stops remain on the trip. A failed trip cancels only its still-READY meals.
+  A dropped prepared batch remains one delivery task covering its READY meals;
+  another pickup cannot absorb its primary and orphan the other stops. Trays
+  affect delivery only: bussing still clears every returned plate at one table
+  in one task, independent of carry capacity.
+  Main offers two MORNING-only, ordered purchases at the prices in
+  `tier1_economy.tres` ($60/$150 initially) under `Ledger.UPGRADES`.
+  The shop save section adds `tray_level` (0/1/2); old sections default to 0.
+  Purchases wait for the next existing morning autosave. The Staff panel shows
+  the prices, ownership and current capacity, while the placeholder view shows
+  a tray during delivery of more than one plate.
 - **Debug overlay (F3):** paths, claimed tasks, agent states and the task board, from Phase 1 onward.
 - **Owner assignment (FK-020):** the restaurant factory creates one `OwnerAgent`
   at the authored owner spawn, with cook/server skill 3 and default `rest`.

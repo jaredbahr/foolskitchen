@@ -4,6 +4,7 @@ extends Control
 
 signal hire_requested(id: StringName)
 signal let_go_requested(id: StringName)
+signal tray_requested(level: int)
 signal close_requested()
 
 const SHARED_THEME: Theme = preload("res://src/ui/theme/main_theme.tres")
@@ -13,6 +14,9 @@ var _roster: StaffRoster
 var _phase: int = SimClock.Phase.MORNING
 var _snapshot: Dictionary = {}
 var _rows: Dictionary[StringName, Control] = {}
+var _tray_level: int = 0
+var _tray_prices: PackedInt32Array = PackedInt32Array()
+var _cash: int = 0
 
 
 func _ready() -> void:
@@ -29,6 +33,13 @@ func set_phase(phase: int) -> void:
 	refresh()
 
 
+func set_trays(level: int, prices: PackedInt32Array, cash: int) -> void:
+	_tray_level = level
+	_tray_prices = prices
+	_cash = cash
+	refresh()
+
+
 func refresh() -> void:
 	if _roster == null:
 		return
@@ -40,6 +51,19 @@ func refresh() -> void:
 	(%Status as Label).text = "No hiring fee. Wages are paid at closing. Keep a cook and a server." if editable else MORNING_HINT
 	(%RosterTitle as Label).text = "Your team (%d/%d) - $%d a day" % [_roster.members().size(), StaffRoster.CAPACITY, _roster.total_wages()]
 	(%Empty as Label).visible = _roster.candidates().is_empty()
+	(%Carry as Label).text = "Servers carry %d plate%s" % [1 << _tray_level, "" if _tray_level == 0 else "s"]
+	for level: int in [1, 2]:
+		var price: int = _tray_prices[level - 1] if _tray_prices.size() >= level else -1
+		var title: String = "Trays" if level == 1 else "Big trays"
+		var label: Label = %TraysLabel if level == 1 else %BigTraysLabel
+		var purchase: Button = %TraysBuy if level == 1 else %BigTraysBuy
+		label.text = "%s — $%d" % [title, price] if price >= 0 else "%s — price unavailable" % title
+		purchase.text = "Owned" if _tray_level >= level else "Buy"
+		purchase.disabled = not editable or price < 0 or _tray_level != level - 1 or _cash < price
+		purchase.tooltip_text = MORNING_HINT if not editable else ("Owned" if _tray_level >= level else (
+			"Buy Trays first." if level == 2 and _tray_level == 0 else (
+			"Price unavailable." if price < 0 else (
+			"Not enough cash." if _cash < price else "Servers can carry more plates."))))
 	for member: StaffMember in _roster.members():
 		var button: Button = _rows[member.id].get_node("Top/Action") as Button
 		button.disabled = not editable or not _roster.can_let_go(member.id)
@@ -116,3 +140,17 @@ func _on_request(id: StringName, hiring: bool) -> void:
 
 func _on_close_pressed() -> void:
 	close_requested.emit()
+
+
+func _on_trays_buy_pressed() -> void:
+	_request_tray(1)
+
+
+func _on_big_trays_buy_pressed() -> void:
+	_request_tray(2)
+
+
+func _request_tray(level: int) -> void:
+	if _phase == SimClock.Phase.MORNING and _tray_level == level - 1 \
+			and _tray_prices.size() >= level and _cash >= _tray_prices[level - 1]:
+		tray_requested.emit(level)

@@ -65,6 +65,14 @@ func collect_table(table_id: int) -> int:
 	return collected
 
 
+func returned_at_table(table_id: int) -> int:
+	var count: int = 0
+	for order_id: int in _returned:
+		if _tables_by_order.get(order_id, 0) == table_id:
+			count += 1
+	return count
+
+
 ## Cancellation also retires a not-yet-plated order, sealing late take callbacks.
 ## False means that no held plate moved; the positive order ID stays retired.
 func recover_order(order_id: int) -> bool:

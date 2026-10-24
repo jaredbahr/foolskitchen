@@ -5,7 +5,8 @@ extends RefCounted
 
 
 static func names() -> Array[String]:
-	return ["default", "extra_cook", "extra_server", "owner_kitchen", "owner_floor"]
+	return ["default", "extra_cook", "extra_server", "owner_kitchen", "owner_floor",
+		"trays_2", "trays_4"]
 
 
 static func apply(name: String, main: Node, extra_cook_skill: int = 3) -> bool:
@@ -23,6 +24,10 @@ static func apply(name: String, main: Node, extra_cook_skill: int = 3) -> bool:
 			return sim.assign_owner(&"kitchen")
 		"owner_floor":
 			return sim.assign_owner(&"floor")
+		"trays_2":
+			return main.call("tray_buy", 1)
+		"trays_4":
+			return main.call("tray_buy", 1) and main.call("tray_buy", 2)
 	return false
 
 

@@ -86,6 +86,52 @@ unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
 
+[node name="UpgradeTitle" type="Label" parent="Panel/Content/Scroll/List"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_font_sizes/font_size = 22
+text = "Upgrades"
+
+[node name="Carry" type="Label" parent="Panel/Content/Scroll/List"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+text = "Servers carry 1 plate"
+
+[node name="TraysRow" type="HBoxContainer" parent="Panel/Content/Scroll/List"]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="TraysLabel" type="Label" parent="Panel/Content/Scroll/List/TraysRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+text = "Trays — $60"
+
+[node name="TraysBuy" type="Button" parent="Panel/Content/Scroll/List/TraysRow"]
+unique_name_in_owner = true
+layout_mode = 2
+focus_mode = 0
+text = "Buy"
+
+[node name="BigTraysRow" type="HBoxContainer" parent="Panel/Content/Scroll/List"]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="BigTraysLabel" type="Label" parent="Panel/Content/Scroll/List/BigTraysRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+text = "Big trays — $150"
+
+[node name="BigTraysBuy" type="Button" parent="Panel/Content/Scroll/List/BigTraysRow"]
+unique_name_in_owner = true
+layout_mode = 2
+focus_mode = 0
+text = "Buy"
+
 [node name="Close" type="Button" parent="Panel/Content"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(110, 0)
@@ -96,3 +142,5 @@ focus_mode = 0
 text = "Close"
 
 [connection signal="pressed" from="Panel/Content/Close" to="." method="_on_close_pressed"]
+[connection signal="pressed" from="Panel/Content/Scroll/List/TraysRow/TraysBuy" to="." method="_on_trays_buy_pressed"]
+[connection signal="pressed" from="Panel/Content/Scroll/List/BigTraysRow/BigTraysBuy" to="." method="_on_big_trays_buy_pressed"]
