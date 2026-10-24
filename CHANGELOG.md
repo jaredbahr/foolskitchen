@@ -11,7 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
-- Click staff, guests or furniture to see what is happening and why; press F3 for remaining paths, task ages, recent events and measured frame/tick rates. (#PR)
+- Click staff, guests or furniture to see what is happening and why; press F3 for remaining paths, task ages, recent events and measured frame/tick rates. (#57)
 - Cash changes now pop up as "+$12" just below the top bar and drift down, instead of floating over the cash figure. (#49)
 - See into the shop with camera-aware cutaway walls (cycle with C), warmer lighting, clear selected speed buttons, and small facing markers on staff and guests. (#43)
 - A working kitchen: cooks fetch stock, prepare dishes and plate on the pass; servers deliver meals and clear dirty tables before guests can sit again. Missing ingredients give guests a clear reason to leave. (#44)
