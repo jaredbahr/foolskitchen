@@ -506,7 +506,7 @@ func _process(_delta: float) -> void:
 
 func _sync_agents() -> void:
 	var frames: Dictionary[int, AgentPresentationController.Frame] = AgentPresentationController.frames_for(world.agents, world)
-	var playback_speed: float = float(Clock.speed) if world.clock.phase in [SimClock.Phase.OPEN, SimClock.Phase.LAST_ORDERS] else 0.0
+	var playback_speed: float = _agent_playback_speed()
 	var alive: Dictionary[int, bool] = {}
 	for agent: SimAgent in world.agents:
 		alive[agent.id] = true
@@ -546,6 +546,19 @@ func _sync_agents() -> void:
 	for id: int in agent_nodes.keys():
 		if not alive.has(id):
 			_remove_agent_visual(id)
+
+
+func _agent_playback_speed() -> float:
+	if world == null or world.clock.phase not in [SimClock.Phase.OPEN, SimClock.Phase.LAST_ORDERS]:
+		return 0.0
+	# --script capture loads this class before autoload names are identifiers.
+	# The same root Clock node owns speed in captures, tests and the game.
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	var clock_node: Node = tree.root.get_node_or_null("Clock") if tree != null else null
+	if clock_node == null:
+		return 0.0
+	var speed: Variant = clock_node.get("speed")
+	return maxf(float(speed), 0.0) if speed is int else 0.0
 
 
 ## ART_STYLE has no Cleaner mapping yet. Keep its old capsule visibly explicit;

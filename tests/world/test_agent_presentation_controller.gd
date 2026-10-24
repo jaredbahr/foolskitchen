@@ -307,13 +307,20 @@ func test_cleaner_returns_explicit_fallback_without_assigning_a_new_model() -> v
 
 
 func test_head_and_hand_anchors_include_rig_pose_seat_lift_and_shared_scale() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	await tree.process_frame
 	var scene: PackedScene = preload("res://assets/people/person.tscn")
 	var view: PersonView = scene.instantiate() as PersonView
+	# Enter with an unsupported role so this synthetic rig loads no kit model.
+	view.role = &"anchor_test_fixture"
+	tree.root.add_child(view)
+	assert_true(view.is_inside_tree())
 	var pivot: Node3D = view.get_node("ModelPivot") as Node3D
 	pivot.scale = Vector3.ONE * ArtScale.CHARACTER_SCALE
 	pivot.position.y = 0.27
 	var skeleton: Skeleton3D = Skeleton3D.new()
 	pivot.add_child(skeleton)
+	assert_true(skeleton.is_inside_tree(), "bone setters invalidate global pose caches only inside the tree")
 	for bone: String in ["root", "head", "arm-left", "arm-right"]:
 		skeleton.add_bone(bone)
 	for index: int in range(1, 4):
@@ -330,6 +337,7 @@ func test_head_and_hand_anchors_include_rig_pose_seat_lift_and_shared_scale() ->
 	assert_almost_eq(hands.y, 0.27 + 0.28775 * ArtScale.CHARACTER_SCALE)
 	assert_almost_eq(hands.z, 0.01725 * ArtScale.CHARACTER_SCALE)
 	skeleton.set_bone_pose_position(1, Vector3(0.0, 0.20, 0.0))
+	assert_almost_eq(skeleton.get_bone_global_pose(1).origin.y, 0.20)
 	assert_almost_eq(view.head_anchor_position().y, 0.27 + (0.671325 - 0.14325) * ArtScale.CHARACTER_SCALE)
 	# The hat's band begins above the male-b head mesh, in head-bone space.
 	var band: MeshInstance3D = view.get_node("ChefHat/Band") as MeshInstance3D

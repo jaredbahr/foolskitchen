@@ -97,9 +97,9 @@ func test_native_mood_anchor_moves_when_seating_changes_inside_same_state_and_ba
 	assert_almost_eq((person.get_node("ModelPivot") as Node3D).position.y, AgentPresentationController.NOMINAL_CHAIR_SEAT_HEIGHT)
 	assert_eq(_view.mood_nodes[guest.id], icon)
 	assert_eq(icon.updates, 1, "same state and band reuse the native icon")
-	assert_ne(icon.position, original_position, "the cached band cannot freeze a moving head anchor")
+	assert_false(icon.position.is_equal_approx(original_position), "the cached band cannot freeze a moving head anchor")
 	var clearance: float = AgentPresentationController.MOOD_CLEARANCE + (icon.dot.mesh as SphereMesh).radius
-	assert_eq(icon.position, person.head_anchor_position() + Vector3.UP * clearance)
+	assert_true(icon.position.is_equal_approx(person.head_anchor_position() + Vector3.UP * clearance))
 	assert_eq(icon.get_parent(), person)
 	assert_eq(guest.rng.state, random_state)
 	assert_eq(table.reserved_by(guest.seat_cell), guest.id)
@@ -160,10 +160,23 @@ func test_playback_matches_clock_speed_and_cleaner_remains_an_explicit_fallback(
 	cleaner.cell = Vector2i(2, 2)
 	await _enter_view()
 	_world.clock.phase = SimClock.Phase.OPEN
+	Clock.set_speed(1)
+	_view._process(0.0)
+	assert_almost_eq(_person(cook.id)._player.speed_scale, 1.0)
 	Clock.set_speed(2)
 	_view._process(0.0)
 	assert_almost_eq(_person(cook.id)._player.speed_scale, 2.0)
 	Clock.set_speed(0)
+	_view._process(0.0)
+	assert_almost_eq(_person(cook.id)._player.speed_scale, 0.0)
+	_world.clock.phase = SimClock.Phase.LAST_ORDERS
+	Clock.set_speed(4)
+	_view._process(0.0)
+	assert_almost_eq(_person(cook.id)._player.speed_scale, 4.0)
+	_world.clock.phase = SimClock.Phase.MORNING
+	_view._process(0.0)
+	assert_almost_eq(_person(cook.id)._player.speed_scale, 0.0)
+	_world.clock.phase = SimClock.Phase.CLOSED
 	_view._process(0.0)
 	assert_almost_eq(_person(cook.id)._player.speed_scale, 0.0)
 	var fallback: MeshInstance3D = _view.agent_nodes[cleaner.id] as MeshInstance3D
