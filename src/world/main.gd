@@ -30,6 +30,9 @@ var _previous_clock: SimClock = null
 var _started: bool = false
 var _skip_next_autosave: bool = false
 var _report: Control
+var _inspect_panel: InspectPanel
+var _debug_overlay: DebugOverlay
+var _debug_geometry: DebugGeometry
 
 
 ## Builds the restaurant and the read-only view. Safe before tree readiness.
@@ -66,10 +69,24 @@ func initialize() -> void:
 	$HUD.bind_shop_view(view)
 	_report = $Overlay/EveningReport
 	_report.hide()
+	_inspect_panel = $Overlay/InspectPanel
+	_debug_overlay = $Overlay/DebugOverlay
+	_debug_geometry = $DebugGeometry
+	_inspect_panel.bind_world(world)
+	_debug_overlay.bind_world(world)
+	refresh_presentation()
 
 
 func _ready() -> void:
 	start()
+
+
+func _process(_delta: float) -> void:
+	if world == null:
+		return
+	_debug_overlay.sample_rates(float(Time.get_ticks_usec()) / 1000000.0, Engine.get_frames_per_second())
+	# Run after ShopView's interpolation, including while the sim is paused.
+	refresh_presentation()
 
 
 ## Wires the session to the autoloads and opens the first morning (loading the
@@ -88,6 +105,7 @@ func start() -> void:
 	sim.customer_paid.connect(_on_customer_paid)
 	sim.service_closed.connect(_on_service_closed)
 	EventBus.day_phase_changed.connect(_on_day_phase_changed)
+	EventBus.sim_ticked.connect(_on_inspection_tick)
 	_previous_clock = Clock.sim
 	Clock.attach_world(world, sim.advance)
 	sim.stock = Economy.stock
@@ -108,6 +126,8 @@ func _exit_tree() -> void:
 		sim.service_closed.disconnect(_on_service_closed)
 	if EventBus.day_phase_changed.is_connected(_on_day_phase_changed):
 		EventBus.day_phase_changed.disconnect(_on_day_phase_changed)
+	if EventBus.sim_ticked.is_connected(_on_inspection_tick):
+		EventBus.sim_ticked.disconnect(_on_inspection_tick)
 	if world != null and Clock.attached_world == world:
 		Clock.attach_world(null)
 		if _previous_clock != null:
@@ -115,9 +135,103 @@ func _exit_tree() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	var key := event as InputEventKey
-	if key != null and key.pressed and not key.echo and key.physical_keycode == KEY_F10:
-		start_over()
+	var key: InputEventKey = event as InputEventKey
+	if key != null and key.pressed and not key.echo:
+		if key.physical_keycode == KEY_F10:
+			start_over()
+		elif key.physical_keycode == KEY_F3:
+			set_debug_visible(not is_debug_visible())
+			if is_inside_tree():
+				get_viewport().set_input_as_handled()
+		elif key.physical_keycode == KEY_ESCAPE:
+			clear_selection()
+			if is_inside_tree():
+				get_viewport().set_input_as_handled()
+	var mouse: InputEventMouseButton = event as InputEventMouseButton
+	if mouse != null and mouse.pressed and mouse.button_index == MOUSE_BUTTON_LEFT:
+		pick_screen_position(mouse.position)
+		if is_inside_tree():
+			get_viewport().set_input_as_handled()
+
+
+## Uses the same floor-plane selection path for real clicks and capture tools.
+func pick_screen_position(screen_position: Vector2) -> void:
+	var camera: Camera3D = $CameraRig/Camera3D
+	if world == null or not camera.is_inside_tree():
+		return
+	var hit: Variant = Picker.floor_intersection(camera.project_ray_origin(screen_position), camera.project_ray_normal(screen_position))
+	if hit is Vector3:
+		select_at_world_position(hit)
+
+
+## Chooses the nearest drawn agent, otherwise the item at the clicked cell.
+func select_at_world_position(world_position: Vector3) -> void:
+	if world == null:
+		return
+	var view: ShopView = $ShopView
+	var agent_id: int = Picker.pick_agent(world_position, view.drawn_agent_positions())
+	if agent_id >= 0:
+		select_agent(agent_id)
+		return
+	var item: PlacedItem = world.grid.item_at(GridMath.world_to_cell(world_position))
+	if item != null:
+		_inspect_panel.show_item(item.id)
+		refresh_presentation()
+	else:
+		clear_selection()
+
+
+## Selects a live agent through the production inspector API.
+func select_agent(agent_id: int) -> bool:
+	_inspect_panel.show_agent(agent_id)
+	refresh_presentation()
+	return _inspect_panel.selected_agent_id == agent_id
+
+
+func clear_selection() -> void:
+	_inspect_panel.clear()
+	refresh_presentation()
+
+
+func set_debug_visible(value: bool) -> void:
+	_debug_overlay.set_enabled(value)
+	refresh_presentation()
+
+
+func is_debug_visible() -> bool:
+	return _debug_overlay != null and _debug_overlay.is_enabled()
+
+
+## Read-only diagnostic state used by integration tests and real captures.
+func inspection_state() -> Dictionary:
+	var role: String = ""
+	for agent: SimAgent in world.agents:
+		if agent.id == _inspect_panel.selected_agent_id:
+			role = "guest" if agent is CustomerAgent else str(agent.role)
+	return {
+		"selected_agent_id": _inspect_panel.selected_agent_id,
+		"selected_item_id": _inspect_panel.selected_item_id,
+		"selected_role": role, "panel_visible": _inspect_panel.visible,
+		"debug_visible": is_debug_visible(), "world_tick": world.now,
+	}
+
+
+## Refreshes after completed morning setup, removals and paused grid edits too.
+func refresh_presentation() -> void:
+	if _inspect_panel == null or _debug_overlay == null or _debug_geometry == null:
+		return
+	_inspect_panel.refresh()
+	if _debug_overlay.is_enabled():
+		_debug_overlay.refresh()
+	var view: ShopView = $ShopView
+	_debug_geometry.update_geometry(world, view.drawn_agent_positions(), view.drawn_agent_colors(), _inspect_panel.selected_agent_id, _debug_overlay.is_enabled())
+
+
+func _on_inspection_tick(_tick: int) -> void:
+	# Text follows every tick; geometry follows the drawn agents once per frame.
+	_inspect_panel.refresh()
+	if _debug_overlay.is_enabled():
+		_debug_overlay.refresh()
 
 
 ## Deletes the autosave and restarts the scene from day 1.
@@ -131,9 +245,10 @@ func start_over() -> void:
 func run_ticks(ticks: int) -> void:
 	for i in ticks:
 		if Clock.sim.phase != SimClock.Phase.OPEN and Clock.sim.phase != SimClock.Phase.LAST_ORDERS:
-			return
+			break
 		sim.advance()
 		EventBus.sim_ticked.emit(Clock.sim.tick)
+	refresh_presentation()
 
 
 ## Builds the evening report for `day` from the ledger and today's counters.
@@ -191,6 +306,7 @@ func _begin_morning() -> void:
 	if use_saves and not _skip_next_autosave:
 		SaveSystem.save_game(save_slot)
 	_skip_next_autosave = false
+	refresh_presentation()
 
 
 func _restock() -> void:

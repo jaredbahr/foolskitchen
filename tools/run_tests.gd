@@ -4,6 +4,9 @@ extends SceneTree
 ## failure. A test also fails if it raises an engine or script error (a null call,
 ## push_error) even when its asserts pass. Usage: godot --headless --path . --script tools/run_tests.gd
 ## Optional filter: ... --script tools/run_tests.gd -- --filter=clock
+## Tests may await a bounded number of process frames for real UI layout. The
+## runner awaits completion before teardown or counting failures; synchronous
+## tests still execute immediately. The first await lets the scene root enter.
 
 const TEST_ROOT: String = "res://tests"
 
@@ -43,7 +46,7 @@ func _initialize() -> void:
 			var tc: TestCase = t
 			var errors_before := errors.count()
 			tc.before_each()
-			tc.call(name)
+			await tc.call(name)
 			tc.after_each()
 			var failures := tc.take_failures()
 			if errors.count() > errors_before:

@@ -75,6 +75,27 @@ func _enter_tree() -> void:
 	_connect_grid()
 
 
+## Snapshot of the interpolated positions actually drawn, projected to the floor.
+func drawn_agent_positions() -> Dictionary[int, Vector3]:
+	var positions: Dictionary[int, Vector3] = {}
+	if world == null:
+		return positions
+	for agent: SimAgent in world.agents:
+		if agent_nodes.has(agent.id) and is_instance_valid(agent_nodes[agent.id]):
+			var position: Vector3 = agent_nodes[agent.id].position
+			positions[agent.id] = Vector3(position.x, 0.0, position.z)
+	return positions
+
+
+## Role colours used by the rendered bodies and the read-only debug paths.
+func drawn_agent_colors() -> Dictionary[int, Color]:
+	var colors: Dictionary[int, Color] = {}
+	if world != null:
+		for agent: SimAgent in world.agents:
+			colors[agent.id] = _agent_color(agent)
+	return colors
+
+
 func _exit_tree() -> void:
 	_disconnect_grid()
 

@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   capture:
-    name: Default and four cutaway views
+    name: Default, cutaway and inspection views
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -66,7 +66,7 @@ jobs:
             exit 1
           fi
 
-      - name: Capture actual default and four cutaway quarters sequentially
+      - name: Capture actual default, cutaway and inspection views sequentially
         shell: bash
         run: |
           set -euo pipefail
@@ -74,6 +74,8 @@ jobs:
           for quarter in 0 1 2 3; do
             bash tools/screenshot.sh "--out=screens/visual-review/quarter-$quarter" --frames=60 --speed=1 "--quarter=$quarter"
           done
+          bash tools/screenshot.sh --out=screens/visual-review/inspect-guest --open --fast=5 --select=guest --frames=60 --speed=1
+          bash tools/screenshot.sh --out=screens/visual-review/debug-busy --open --fast=5 --select=guest --f3 --frames=60 --speed=1
 
       - name: Verify capture identity and image metadata
         shell: bash
@@ -87,13 +89,17 @@ jobs:
           import struct
 
           root = Path('screens/visual-review')
-          for name, requested in [('default', -1)] + [(f'quarter-{q}', q) for q in range(4)]:
+          captures = [('default', -1, False, False)] + [(f'quarter-{q}', q, False, False) for q in range(4)]
+          captures += [('inspect-guest', -1, True, False), ('debug-busy', -1, True, True)]
+          for name, requested, inspect_guest, debug in captures:
               png = root / name / 'shot_0060.png'
               raw = png.read_bytes()
               assert raw[:8] == b'\x89PNG\r\n\x1a\n' and len(raw) > 1000, f'{name}: missing/invalid PNG'
               assert struct.unpack('>II', raw[16:24]) == (1600, 900), f'{name}: wrong PNG dimensions'
               data = json.loads(png.with_suffix('.json').read_text())
               expected = 0 if requested == -1 else requested
+              assert data['scene'] == 'res://src/world/main.tscn', f'{name}: wrong captured scene'
+              assert data['capture_timing'] == 'frame_post_draw', f'{name}: pixels/state were not captured after draw'
               assert data['requested_quarter'] == requested, f'{name}: wrong requested quarter'
               assert data['actual_quarter'] == expected, f'{name}: wrong actual quarter'
               assert math.isclose(data['yaw_degrees'], 45 + 90 * expected, abs_tol=0.01), f'{name}: wrong rendered yaw'
@@ -102,7 +108,20 @@ jobs:
               assert (data['width'], data['height'], data['frame']) == (1600, 900, 60), f'{name}: wrong viewport/frame'
               assert 'llvmpipe' in data['video_adapter'].lower(), f'{name}: not the requested software Mesa adapter'
               assert data['lowered_wall_cells'], f'{name}: no lowered walls'
-              print(f'{name}: actual quarter={expected}, Cutaway, 1600x900, sha256={hashlib.sha256(raw).hexdigest()}')
+              assert data['requested_selection'] == ('guest' if inspect_guest else ''), f'{name}: wrong requested selection'
+              assert data['requested_debug_visible'] is debug, f'{name}: wrong requested F3 state'
+              assert data['debug_visible'] is debug, f'{name}: wrong actual F3 state'
+              assert data['panel_visible'] is inspect_guest, f'{name}: wrong actual inspect panel state'
+              assert data['selected_item_id'] == -1, f'{name}: unexpected item selection'
+              assert type(data['world_tick']) is int and data['world_tick'] >= 0, f'{name}: invalid world tick'
+              if inspect_guest:
+                  assert type(data['selected_agent_id']) is int and data['selected_agent_id'] > 0, f'{name}: no selected agent id'
+                  assert data['selected_role'] == 'guest' and data['selected_agent_live'] is True, f'{name}: selected agent is not a live guest'
+                  assert data['world_tick'] > 0, f'{name}: busy world did not advance'
+              else:
+                  assert data['selected_agent_id'] == -1 and data['selected_role'] == '', f'{name}: unexpected agent selection'
+                  assert data['selected_agent_live'] is False, f'{name}: unexpected live selection'
+              print(f'{name}: actual quarter={expected}, Cutaway, guest={data["selected_agent_id"]}, F3={debug}, tick={data["world_tick"]}, 1600x900, sha256={hashlib.sha256(raw).hexdigest()}')
           PY
 
       - name: Upload actual captures, metadata and logs
