@@ -70,26 +70,26 @@ func test_projected_world_clicks_match_editor_for_four_camera_quarters_and_four_
 				_key(KEY_R)
 			assert_eq(_mode().quarter_turns, turns)
 			var bad_cell: Vector2i = Vector2i(4, 1)  # The actual prep counter.
-			assert_true(_main.call("update_build_pointer", _project(bad_cell)))
+			assert_true(_main.call("update_build_pointer", _project(bad_cell + _mode().grab_offset)))
 			var expected: EditCheck = _editor().check_move(item.id, bad_cell, turns)
 			assert_false(expected.ok)
 			assert_eq(_mode().origin, bad_cell)
 			assert_eq(_mode().current_check.ok, expected.ok)
 			assert_eq(_mode().current_check.why, expected.why)
-			_click(_project(bad_cell))
+			_click(_project(bad_cell + _mode().grab_offset))
 			assert_true(_mode().has_ghost())
 			assert_eq(item.origin, original, "red click leaves the real item unchanged")
 			var target: Vector2i = Vector2i(10, 8)
 			expected = _editor().check_move(item.id, target, turns)
 			assert_true(expected.ok)
-			assert_true(_main.call("update_build_pointer", _project(target)))
+			assert_true(_main.call("update_build_pointer", _project(target + _mode().grab_offset)))
 			assert_eq(_mode().origin, target)
 			assert_eq(_mode().current_check.ok, expected.ok)
 			assert_eq(_mode().current_check.why, expected.why)
 			assert_eq(_mode().warning_ids(), expected.unreachable)
-			_main.call("update_build_pointer", _project(bad_cell))
+			_main.call("update_build_pointer", _project(bad_cell + _mode().grab_offset))
 			# The last hover is red: click must refresh from its own position.
-			_click(_project(target))
+			_click(_project(target + _mode().grab_offset))
 			assert_eq(item.origin, target)
 			assert_eq(item.quarter_turns, turns)
 			assert_eq(_mode().state, BuildMode.State.IDLE)
@@ -140,6 +140,18 @@ func test_projected_far_side_pickup_preserves_grab_offset_at_every_camera_quarte
 		assert_eq(_mode().origin, original, "the held furniture stays still under its clicked far tile")
 		var cursor: Vector2i = far_cell + Vector2i(1, 1)
 		_main.call("update_build_pointer", _project(cursor))
+		assert_eq(_mode().origin, original + Vector2i(1, 1))
+		var offsets: Array[Vector2i] = [Vector2i(0, 1), Vector2i.ZERO, Vector2i.ZERO, Vector2i(1, 0)]
+		for step: int in range(4):
+			_native_key(KEY_R)
+			assert_eq(_mode().quarter_turns, (original_turns + step + 1) % 4)
+			assert_eq(_mode().grab_offset, offsets[step])
+			assert_eq(_mode().origin, cursor - offsets[step])
+			assert_eq(_mode().origin + _mode().grab_offset, cursor)
+			_main.call("update_build_pointer", _project(cursor))
+			assert_eq(_mode().origin, cursor - offsets[step], "the projected stationary pointer keeps its grabbed tile")
+			assert_eq(item.origin, original)
+			assert_eq(Economy.ledger.to_dict(), books)
 		assert_eq(_mode().origin, original + Vector2i(1, 1))
 		assert_eq(item.origin, original)
 		assert_true(_mode().current_check.ok)
@@ -330,6 +342,15 @@ func test_build_hints_match_available_actions_and_fit_content_or_small_viewport_
 	assert_true(label.text.contains("Del Sell"))
 	_mode().cancel()
 	assert_eq(label.text, "Esc Exit")
+	# Reproduce the real two-line red hint through the same proposal as capture.
+	assert_true(_main.call("begin_buy_item", &"fridge"))
+	assert_true(_main.call("update_build_pointer", _project(Vector2i(7, 7))))
+	_key(KEY_R)
+	assert_false(_mode().current_check.ok)
+	await _frames(3)
+	assert_eq(label.text, "R Rotate  |  Esc Cancel\nSomething is in the way")
+	assert_eq(label.get_line_count(), 2)
+	_assert_hint_content_fits(label, scroll)
 	# Presenter-only long text tests the bounded scroll, without posing sim state.
 	_viewport.size = Vector2i(360, 100)
 	_main.get_node("HUD").call("set_build_state", true, true,
@@ -340,6 +361,11 @@ func test_build_hints_match_available_actions_and_fit_content_or_small_viewport_
 	assert_true(rect.end.x <= 348.5 and rect.end.y <= 88.5)
 	assert_true(scroll.get_v_scroll_bar().max_value > scroll.get_v_scroll_bar().page)
 	assert_false(label.text.contains("Del Sell"))
+	_viewport.size = Vector2i(1600, 900)
+	_main.get_node("HUD").call("set_build_state", true, true, _mode().current_check.why, int(BuildMode.State.BUY))
+	await _frames(4)
+	assert_eq(label.get_line_count(), 2)
+	_assert_hint_content_fits(label, scroll)
 	assert_eq(_world().now, 0)
 
 
@@ -686,6 +712,16 @@ func _key_event(code: Key) -> InputEventKey:
 
 func _key(code: Key) -> void:
 	_main.call("_unhandled_input", _key_event(code))
+
+
+func _assert_hint_content_fits(label: Label, scroll: ScrollContainer) -> void:
+	assert_eq(scroll.custom_minimum_size.y, ceilf(label.get_minimum_size().y), "height follows the final native text width")
+	assert_false(scroll.get_v_scroll_bar().visible, "a short desktop hint has no vertical scrollbar")
+	assert_false(scroll.get_h_scroll_bar().visible, "a short desktop hint has no horizontal scrollbar")
+	assert_true(scroll.get_v_scroll_bar().max_value <= scroll.get_v_scroll_bar().page)
+	assert_true(scroll.get_h_scroll_bar().max_value <= scroll.get_h_scroll_bar().page)
+	assert_true(label.size.x <= scroll.size.x)
+	assert_true(label.size.y <= scroll.size.y, "the whole native Label fits inside the scroll viewport")
 
 
 func _native_key(code: Key) -> void:
