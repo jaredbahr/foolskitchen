@@ -75,7 +75,8 @@ static func score_visit(visit: ReviewVisit, tuning: ReviewTuning) -> int:
 	return clampi(roundi(5.0 - penalty), 1, 5)
 
 
-## Pick the largest weighted complaint. Stable ties keep this explicit order.
+## High ratings and visits without a substantial single complaint get a
+## positive quote. For lower ratings, stable ties keep this explicit order.
 static func cause_of(visit: ReviewVisit, tuning: ReviewTuning) -> StringName:
 	if visit == null or visit.closing or tuning == null or not tuning.is_valid():
 		return &""
@@ -94,6 +95,8 @@ static func cause_of(visit: ReviewVisit, tuning: ReviewTuning) -> StringName:
 		if penalties[index] > largest:
 			largest = penalties[index]
 			best = index
+	if score_visit(visit, tuning) >= 4 or largest < tuning.positive_penalty_threshold:
+		return &"great_value" if is_finite(visit.price_ratio) and visit.price_ratio < 0.9 else &"lovely_place"
 	if best >= 0:
 		return causes[best]
 	return &"great_value" if is_finite(visit.price_ratio) and visit.price_ratio < 0.9 else &"lovely_place"

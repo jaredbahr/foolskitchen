@@ -75,6 +75,25 @@ unique_name_in_owner = true
 layout_mode = 2
 columns = 2
 
+[node name="ReviewHeading" type="Label" parent="Panel/Scroll/Content"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "What guests said"
+
+[node name="ReviewStats" type="Label" parent="Panel/Scroll/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Today's reviews: none"
+
+[node name="Reputation" type="Label" parent="Panel/Scroll/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Reputation: 3.0 to 3.0 stars"
+
+[node name="ReviewRows" type="VBoxContainer" parent="Panel/Scroll/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+
 [node name="DishHeading" type="Label" parent="Panel/Scroll/Content"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 22
@@ -110,25 +129,6 @@ text = "Why guests left"
 unique_name_in_owner = true
 layout_mode = 2
 columns = 2
-
-[node name="ReviewHeading" type="Label" parent="Panel/Scroll/Content"]
-layout_mode = 2
-theme_override_font_sizes/font_size = 22
-text = "What guests said"
-
-[node name="ReviewStats" type="Label" parent="Panel/Scroll/Content"]
-unique_name_in_owner = true
-layout_mode = 2
-text = "Today's reviews: none"
-
-[node name="Reputation" type="Label" parent="Panel/Scroll/Content"]
-unique_name_in_owner = true
-layout_mode = 2
-text = "Reputation: 3.0 to 3.0 stars"
-
-[node name="ReviewRows" type="VBoxContainer" parent="Panel/Scroll/Content"]
-unique_name_in_owner = true
-layout_mode = 2
 
 [node name="NextDay" type="Button" parent="Panel/Scroll/Content"]
 unique_name_in_owner = true

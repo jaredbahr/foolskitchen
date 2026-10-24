@@ -7,6 +7,7 @@ const QUOTES: ReviewQuotes = preload("res://data/reviews/quotes.tres")
 
 func test_authored_weights_and_family_friendly_quote_groups_load() -> void:
 	assert_true(TUNING.is_valid())
+	assert_almost_eq(TUNING.positive_penalty_threshold, 0.5)
 	assert_true(QUOTES.is_valid())
 	assert_eq(QUOTES.groups.size(), ReviewQuotes.CAUSES.size())
 	var seen: Dictionary[String, bool] = {}
@@ -36,28 +37,73 @@ func test_unserved_is_one_star_and_closing_gives_no_review_or_rng_draw() -> void
 
 
 func test_wait_price_and_dirt_each_lower_a_served_score() -> void:
+	var tuning: ReviewTuning = TUNING.duplicate() as ReviewTuning
+	# A substantial single penalty earns three stars and its matching complaint.
+	tuning.queue_wait_weight = 2.0
+	tuning.food_wait_weight = 2.0
+	tuning.overprice_weight = 2.0
+	tuning.dirt_weight = 2.0
 	var visit: ReviewVisit = ReviewVisit.new()
 	visit.served = true
-	var base: int = ReputationBook.score_visit(visit, TUNING)
+	var base: int = ReputationBook.score_visit(visit, tuning)
 	assert_eq(base, 5)
 	visit.queue_wait_fraction = 1.0
-	assert_true(ReputationBook.score_visit(visit, TUNING) < base)
-	assert_eq(ReputationBook.cause_of(visit, TUNING), &"slow_seating")
+	assert_eq(ReputationBook.score_visit(visit, tuning), 3)
+	assert_eq(ReputationBook.cause_of(visit, tuning), &"slow_seating")
 	visit.queue_wait_fraction = 0.0
 	visit.food_wait_fraction = 1.0
-	assert_true(ReputationBook.score_visit(visit, TUNING) < base)
-	assert_eq(ReputationBook.cause_of(visit, TUNING), &"slow_food")
+	assert_eq(ReputationBook.score_visit(visit, tuning), 3)
+	assert_eq(ReputationBook.cause_of(visit, tuning), &"slow_food")
 	visit.food_wait_fraction = 0.0
 	visit.price_ratio = 2.0
-	assert_true(ReputationBook.score_visit(visit, TUNING) < base)
-	assert_eq(ReputationBook.cause_of(visit, TUNING), &"too_pricey")
+	assert_eq(ReputationBook.score_visit(visit, tuning), 3)
+	assert_eq(ReputationBook.cause_of(visit, tuning), &"too_pricey")
 	visit.price_ratio = 1.0
 	visit.dirt_fraction = 1.0
-	assert_true(ReputationBook.score_visit(visit, TUNING) < base)
-	assert_eq(ReputationBook.cause_of(visit, TUNING), &"dirty_floor")
+	assert_eq(ReputationBook.score_visit(visit, tuning), 3)
+	assert_eq(ReputationBook.cause_of(visit, tuning), &"dirty_floor")
 	visit.dirt_fraction = 0.0
 	visit.price_ratio = 0.8
+	assert_eq(ReputationBook.cause_of(visit, tuning), &"great_value")
+
+
+func test_four_and_five_star_reviews_use_positive_authored_quotes() -> void:
+	var visit: ReviewVisit = ReviewVisit.new()
+	visit.served = true
+	visit.food_wait_fraction = 0.2
+	assert_eq(ReputationBook.score_visit(visit, TUNING), 5)
+	assert_eq(ReputationBook.cause_of(visit, TUNING), &"lovely_place")
+	visit.food_wait_fraction = 0.8
+	assert_eq(ReputationBook.score_visit(visit, TUNING), 4)
+	assert_eq(ReputationBook.cause_of(visit, TUNING), &"lovely_place")
+	var book: ReputationBook = ReputationBook.new()
+	var result: Dictionary = book.record_visit(visit, _certain_tuning(), QUOTES, _random(86005))
+	assert_eq(result["stars"], 4)
+	assert_eq(result["cause"], &"lovely_place")
+	assert_true(QUOTES.groups[&"lovely_place"].has(result["quote"]))
+	visit.food_wait_fraction = 0.0
+	visit.price_ratio = 0.8
 	assert_eq(ReputationBook.cause_of(visit, TUNING), &"great_value")
+
+
+func test_diffuse_low_penalties_use_positive_threshold_even_at_three_stars() -> void:
+	var tuning: ReviewTuning = TUNING.duplicate() as ReviewTuning
+	tuning.queue_wait_weight = 0.45
+	tuning.food_wait_weight = 0.45
+	tuning.overprice_weight = 0.45
+	tuning.dirt_weight = 0.45
+	var visit: ReviewVisit = ReviewVisit.new()
+	visit.served = true
+	visit.queue_wait_fraction = 1.0
+	visit.food_wait_fraction = 1.0
+	visit.price_ratio = 2.0
+	visit.dirt_fraction = 1.0
+	assert_eq(ReputationBook.score_visit(visit, tuning), 3)
+	assert_eq(ReputationBook.cause_of(visit, tuning), &"lovely_place")
+	tuning.positive_penalty_threshold = 0.4
+	assert_eq(ReputationBook.cause_of(visit, tuning), &"slow_seating")
+	tuning.positive_penalty_threshold = -0.1
+	assert_false(tuning.is_valid())
 
 
 func test_virtual_reviews_age_out_and_arrival_curve_has_data_endpoints() -> void:

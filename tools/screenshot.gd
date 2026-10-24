@@ -449,7 +449,7 @@ func _capture() -> void:
 		_fail_capture("requested Staff panel did not show the real paused morning roster and pool")
 		return
 	if _report_requested and not _report_capture_valid(world):
-		_fail_capture("requested report did not show at least two actual reviews after service closed")
+		_fail_capture("requested report did not show visible native reviews after service closed")
 		return
 	var paint: Dictionary = _paint_state() if _paint else {}
 	if _paint and (paint.get("active") != true or paint.get("catalogue_visible") != true \
@@ -588,13 +588,20 @@ func _report_capture_valid(world: SimWorld) -> bool:
 	if report == null or report.review_cards.size() < 2 or panel == null or not panel.is_visible_in_tree():
 		return false
 	var rows: Node = panel.get_node_or_null("%ReviewRows")
-	if rows == null or rows.get_child_count() < 2:
+	var scroll: ScrollContainer = panel.get_node_or_null("Panel/Scroll") as ScrollContainer
+	if rows == null or rows.get_child_count() < 2 or scroll == null or scroll.scroll_vertical != 0:
 		return false
+	var viewport: Rect2 = scroll.get_global_rect()
 	for index: int in range(mini(report.review_cards.size(), 3)):
 		var card: Dictionary = report.review_cards[index]
 		var native: Label = rows.get_child(index) as Label
 		if native == null or String(card.get("quote", "")).is_empty() \
 				or native.text != '%d stars - "%s"' % [int(card.get("stars", 0)), String(card["quote"])]:
+			return false
+		var rect: Rect2 = native.get_global_rect()
+		if not native.is_visible_in_tree() or rect.size.x <= 0.0 or rect.size.y <= 0.0 \
+				or rect.position.x < viewport.position.x - 1.0 or rect.end.x > viewport.end.x + 1.0 \
+				or rect.position.y < viewport.position.y - 1.0 or rect.end.y > viewport.end.y + 1.0:
 			return false
 	return true
 
