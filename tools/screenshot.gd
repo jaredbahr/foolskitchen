@@ -18,6 +18,7 @@ var _quarter: int = -1
 var _main: Node
 var _scene_path: String = "res://src/world/main.tscn"
 var _failed: bool = false
+var _finished: bool = false
 var _errors: ErrorCounter = ErrorCounter.new()
 var _open: bool = false
 var _fast: int = 0
@@ -81,14 +82,14 @@ func _initialize() -> void:
 
 
 func _process(_delta: float) -> bool:
-	if _failed:
-		return false
+	if _finished:
+		return true
 	if _capture_pending:
 		# A disabled/non-drawing viewport must fail instead of waiting forever.
 		_capture_wait_frames += 1
 		if _capture_wait_frames > MAX_CAPTURE_WAIT_FRAMES:
 			_fail_capture("viewport did not finish drawing the pending capture")
-		return false
+		return _finished
 	_frames += 1
 	if _frames == 3:
 		# Autoloads aren't compile-time identifiers in a --script main loop.
@@ -98,22 +99,22 @@ func _process(_delta: float) -> bool:
 		clock.call("set_speed", _speed)
 		_configure_camera()
 		if _failed:
-			return false
+			return true
 		_configure_inspection()
 		if _failed:
-			return false
+			return true
 	if _fast > 0 and _frames > 3 and _main.has_method("run_ticks"):
 		_main.call("run_ticks", _fast)
 	if _select_guest and _frames >= 3:
 		_select_live_guest()
 		if _failed:
-			return false
+			return true
 	_finish_requested = _frames >= _shots.max()
 	if _shots.has(_frames):
 		_queue_capture()
 	if _finish_requested and not _capture_pending:
 		_finish_capture()
-	return false
+	return _finished
 
 
 func _configure_camera() -> void:
@@ -188,7 +189,7 @@ func _queue_capture() -> void:
 
 
 func _capture() -> void:
-	if _failed or not _capture_pending:
+	if _finished or _failed or not _capture_pending:
 		return
 	if _errors.count() > 0:
 		_fail_capture("engine/script errors occurred before capture")
@@ -273,13 +274,18 @@ func _capture() -> void:
 
 
 func _finish_capture() -> void:
+	if _finished:
+		return
+	# quit() is deferred; a later process/render callback must not tear down twice.
+	_finished = true
+	_capture_pending = false
+	if RenderingServer.frame_post_draw.is_connected(_capture):
+		RenderingServer.frame_post_draw.disconnect(_capture)
 	OS.remove_logger(_errors)
 	quit(1 if _failed or _errors.count() > 0 else 0)
 
 
 func _fail_capture(message: String) -> void:
 	_failed = true
-	if RenderingServer.frame_post_draw.is_connected(_capture):
-		RenderingServer.frame_post_draw.disconnect(_capture)
 	printerr("ERROR: capture failed: ", message)
-	quit(1)
+	_finish_capture()

@@ -84,22 +84,31 @@ func test_overflow_keeps_all_diagnostics_in_a_bounded_scrollable_panel() -> void
 	for index: int in range(15):
 		_world.log_event("Overflow event %02d%s" % [index, long_detail])
 	var log_before: PackedStringArray = _world.event_log.duplicate()
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	# The runner must await this test. _initialize() precedes root tree entry,
+	# so real anchor propagation and container layout require a process frame.
+	await tree.process_frame
+	assert_true(tree.root.is_inside_tree(), "layout fixture needs a live scene tree")
 	_host = Control.new()
 	_host.size = Vector2(1600.0, 900.0)
-	(Engine.get_main_loop() as SceneTree).root.add_child(_host)
+	tree.root.add_child(_host)
 	_host.add_child(_overlay)
+	assert_true(_host.is_node_ready())
+	assert_true(_overlay.is_inside_tree())
+	assert_true(_overlay.is_node_ready())
 	_overlay.bind_world(_world)
 	_overlay.set_enabled(true)
 	var panel: Control = _overlay.get_node("Panel") as Control
 	var scroll: ScrollContainer = _overlay.get_node("Panel/Margin/Scroll") as ScrollContainer
 	var content: Control = scroll.get_node("Content") as Control
-	# The synchronous runner never delivers deferred container sorting. Deliver
-	# the normal layout notification in parent-first passes, including wrapping.
+	# Resize the fixed-anchor host only. The scene's full-rect anchors must size
+	# the overlay and its bounded panel through the normal layout lifecycle.
 	for height: int in [900, 640]:
 		_host.size = Vector2(1600.0, float(height))
-		_overlay.size = _host.size
-		for _pass_index: int in range(3):
-			_sort_containers(_overlay)
+		scroll.scroll_vertical = 0
+		await tree.process_frame
+		await tree.process_frame
+		assert_eq(_overlay.size, _host.size, "full-rect anchors follow the host")
 		assert_almost_eq(panel.position.y, 112.0)
 		assert_almost_eq(panel.size.y, float(height) - 124.0)
 		assert_almost_eq(panel.get_rect().end.y, float(height) - 12.0)
@@ -109,7 +118,7 @@ func test_overflow_keeps_all_diagnostics_in_a_bounded_scrollable_panel() -> void
 		assert_true(bar.visible, "overflow exposes a usable scrollbar")
 		assert_true(bar.max_value > bar.page)
 		scroll.scroll_vertical = ceili(bar.max_value)
-		_sort_containers(_overlay)
+		await tree.process_frame
 		assert_true(scroll.scroll_vertical > 0, "the diagnostic content can be scrolled")
 		assert_true(content.position.y < 0.0)
 	assert_eq(_label("Tasks").text.split("\n").size(), 80)
@@ -194,13 +203,6 @@ func test_refresh_toggle_and_sampling_leave_the_simulation_unchanged() -> void:
 
 func _label(name: String) -> Label:
 	return _overlay.get_node("Panel/Margin/Scroll/Content/" + name) as Label
-
-
-func _sort_containers(node: Node) -> void:
-	if node is Container:
-		node.notification(Container.NOTIFICATION_SORT_CHILDREN)
-	for child: Node in node.get_children():
-		_sort_containers(child)
 
 
 func _assert_mouse_ignored(node: Node) -> void:
