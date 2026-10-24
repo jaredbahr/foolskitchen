@@ -614,6 +614,59 @@ func test_saved_startup_replaces_initial_world_before_final_controller_clock_bin
 	assert_null(_preview().ghost_mesh)
 
 
+func test_paint_during_service_previews_then_commits_without_books_or_immediate_save() -> void:
+	await _start(true)
+	assert_true(Clock.sim.start_service())
+	assert_false(_main.call("set_build_active", true))
+	var plant: PlacedItem = _world().grid.item(_id(&"potted_plant"))
+	var view: ShopView = _main.get_node("ShopView") as ShopView
+	var books: Dictionary = Economy.ledger.to_dict()
+	var saved: String = FileAccess.get_file_as_string(_save_dir.path_join(SLOT + ".json"))
+	assert_true(_main.call("set_paint_active", true))
+	assert_true(_main.call("is_paint_active"))
+	_main.call("preview_paint_cell", plant.cells[0])
+	assert_eq(plant.swatch_id, &"", "hover only changes the view")
+	assert_eq((view.item_nodes[plant.id].material_override as StandardMaterial3D).albedo_color,
+		(_main.get("content") as ContentDB).swatch(&"butter").color)
+	assert_true(_main.call("paint_cell", plant.cells[0]))
+	assert_eq(plant.swatch_id, &"butter")
+	assert_eq(Economy.ledger.to_dict(), books)
+	assert_eq(FileAccess.get_file_as_string(_save_dir.path_join(SLOT + ".json")), saved)
+	assert_true(_main.call("set_paint_active", false))
+	assert_false(_main.call("is_paint_active"))
+
+
+func test_paint_preserves_grid_preference_without_forcing_it() -> void:
+	await _start()
+	for preference: bool in [false, true]:
+		if _rig().grid_visible != preference:
+			_rig().toggle_grid()
+		assert_true(_main.call("set_paint_active", true))
+		assert_false(_rig().is_grid_forced())
+		assert_eq(_rig().effective_grid_visible(), preference)
+		assert_eq(_rig().grid_material.get_shader_parameter("grid_visible"), preference)
+		assert_true(_main.call("set_paint_active", false))
+		assert_false(_rig().is_grid_forced())
+		assert_eq(_rig().grid_visible, preference)
+
+
+func test_paint_screen_pick_uses_visible_item_depth_before_wall_or_floor() -> void:
+	await _start()
+	assert_true(_main.call("set_paint_active", true))
+	var view: ShopView = _main.get_node("ShopView") as ShopView
+	for def_id: StringName in [&"potted_plant", &"prep_counter"]:
+		var item: PlacedItem = _world().grid.item(_id(def_id))
+		var mesh: MeshInstance3D = view.item_nodes[item.id]
+		var bounds: AABB = mesh.global_transform * mesh.get_aabb()
+		var top_center: Vector3 = bounds.position + Vector3(bounds.size.x * 0.5, bounds.size.y, bounds.size.z * 0.5)
+		var pointer: Vector2 = _camera().unproject_position(top_center)
+		assert_eq(_main.call("paint_cell_at_screen_position", pointer), item.origin,
+			"a visible %s must win over its projected floor cell or rear wall" % def_id)
+		_click(pointer)
+		assert_eq(item.swatch_id, &"butter")
+	assert_eq(_world().now, 0)
+
+
 func _start(with_saves: bool = false) -> void:
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	await tree.process_frame  # The custom runner may begin before root entry.

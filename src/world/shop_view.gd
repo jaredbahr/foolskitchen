@@ -36,6 +36,14 @@ var mood_nodes: Dictionary[int, GuestMoodIndicator] = {}
 var _mood_states: Dictionary[int, int] = {}
 var _mood_bands: Dictionary[int, int] = {}
 var _materials: Dictionary[Color, StandardMaterial3D] = {}
+var _paint_materials: Dictionary[StringName, StandardMaterial3D] = {}
+var _paint_content: ContentDB
+var _wall_swatch_id: StringName = &""
+var _floor_swatch_id: StringName = &""
+var _floor_base_color: Color = Color("7d5533")
+var _preview_kind: StringName = &""
+var _preview_item_id: int = -1
+var _preview_swatch_id: StringName = &""
 var _walls: Node3D
 
 
@@ -64,6 +72,9 @@ func show_world(value: SimWorld) -> void:
 		material = floor_material.duplicate() as ShaderMaterial
 	if material.shader == null:
 		material.shader = GRID_SHADER
+	var base: Variant = material.get_shader_parameter("floor_color")
+	if base is Color:
+		_floor_base_color = base
 	floor_mesh.material_override = material
 	add_child(floor_mesh)
 	_walls = Node3D.new()
@@ -73,6 +84,7 @@ func show_world(value: SimWorld) -> void:
 	_build_terrain()
 	for item: PlacedItem in world.grid.items():
 		_build_item(item)
+	_apply_paint()
 	_connect_grid()
 	_process(0.0)
 
@@ -159,6 +171,128 @@ func _build_terrain() -> void:
 				count += 1
 	floor_mesh.mesh = surface.commit() if count > 0 else null
 	_apply_wall_heights()
+	_apply_paint()
+
+
+## One material per swatch is shared by every painted mesh, including previews.
+func set_paint(content: ContentDB, wall_id: StringName, floor_id: StringName) -> void:
+	if _paint_content != content:
+		_paint_content = content
+		_paint_materials.clear()
+		if content != null:
+			for swatch: SwatchDef in content.swatches():
+				_paint_materials[swatch.id] = _material(swatch.color)
+	_wall_swatch_id = wall_id
+	_floor_swatch_id = floor_id
+	_apply_paint()
+
+
+func preview_paint(kind: StringName, item_id: int, swatch_id: StringName) -> void:
+	if _preview_kind == kind and _preview_item_id == item_id and _preview_swatch_id == swatch_id:
+		return
+	_preview_kind = kind
+	_preview_item_id = item_id
+	_preview_swatch_id = swatch_id
+	_apply_paint()
+
+
+func clear_paint_preview() -> void:
+	preview_paint(&"", -1, &"")
+
+
+## Resolve the nearest visible shop mesh before using the floor plane. An item
+## returns its origin even when its top projects over a different floor cell.
+func paint_cell_at_ray(ray_origin: Vector3, ray_direction: Vector3) -> Variant:
+	if world == null or ray_direction.y >= -0.00001:
+		return null
+	var nearest: float = -ray_origin.y / ray_direction.y
+	var result: Variant = null
+	for id: int in item_nodes:
+		var node: MeshInstance3D = item_nodes[id]
+		if not node.is_visible_in_tree():
+			continue
+		var distance: float = _ray_box_distance(ray_origin, ray_direction, node.global_transform * node.get_aabb())
+		if distance >= 0.0 and distance < nearest:
+			var item: PlacedItem = world.grid.item(id)
+			if item != null:
+				nearest = distance
+				result = item.origin
+	for cell: Vector2i in _wall_nodes:
+		var wall: MeshInstance3D = _wall_nodes[cell]
+		if not wall.is_visible_in_tree():
+			continue
+		var distance: float = _ray_box_distance(ray_origin, ray_direction, wall.global_transform * wall.get_aabb())
+		if distance >= 0.0 and distance < nearest:
+			nearest = distance
+			result = cell
+	return result
+
+
+## Wall-only query retained for wall geometry diagnostics.
+func wall_cell_at_ray(ray_origin: Vector3, ray_direction: Vector3) -> Variant:
+	if world == null or ray_direction.y >= -0.00001:
+		return null
+	var nearest: float = -ray_origin.y / ray_direction.y
+	var result: Variant = null
+	for cell: Vector2i in _wall_nodes:
+		var wall: MeshInstance3D = _wall_nodes[cell]
+		if not wall.is_visible_in_tree():
+			continue
+		var bounds: AABB = wall.global_transform * wall.get_aabb()
+		var distance: float = _ray_box_distance(ray_origin, ray_direction, bounds)
+		if distance >= 0.0 and distance < nearest:
+			nearest = distance
+			result = cell
+	return result
+
+
+static func _ray_box_distance(ray_origin: Vector3, ray_direction: Vector3, bounds: AABB) -> float:
+	var near: float = 0.0
+	var far: float = INF
+	for axis: int in 3:
+		var start: float = ray_origin[axis]
+		var direction: float = ray_direction[axis]
+		var minimum: float = bounds.position[axis]
+		var maximum: float = bounds.end[axis]
+		if absf(direction) < 0.00001:
+			if start < minimum or start > maximum:
+				return -1.0
+			continue
+		var first: float = (minimum - start) / direction
+		var last: float = (maximum - start) / direction
+		near = maxf(near, minf(first, last))
+		far = minf(far, maxf(first, last))
+		if far < near:
+			return -1.0
+	return near
+
+
+func _paint_color(id: StringName, fallback: Color) -> Color:
+	var swatch: SwatchDef = _paint_content.swatch(id) if _paint_content != null else null
+	return swatch.color if swatch != null else fallback
+
+
+func _paint_material(id: StringName, fallback: Color) -> StandardMaterial3D:
+	return _paint_materials[id] if _paint_materials.has(id) else _material(fallback)
+
+
+func _apply_paint() -> void:
+	if world == null or floor_mesh == null:
+		return
+	var wall_id: StringName = _preview_swatch_id if _preview_kind == &"wall" else _wall_swatch_id
+	for wall: MeshInstance3D in _wall_nodes.values():
+		wall.material_override = _paint_material(wall_id, wall_color)
+	var floor_id: StringName = _preview_swatch_id if _preview_kind == &"floor" else _floor_swatch_id
+	var floor_shader: ShaderMaterial = floor_mesh.material_override as ShaderMaterial
+	if floor_shader != null:
+		floor_shader.set_shader_parameter("floor_color", _paint_color(floor_id, _floor_base_color))
+	for id: int in item_nodes:
+		var placed: PlacedItem = world.grid.item(id)
+		if placed == null or not placed.def is ItemDef:
+			continue
+		var definition: ItemDef = placed.def as ItemDef
+		var swatch_id: StringName = _preview_swatch_id if _preview_kind == &"item" and id == _preview_item_id else placed.swatch_id
+		item_nodes[id].material_override = _paint_material(swatch_id, definition.placeholder_color)
 
 
 ## Selects the wall presentation without changing terrain or pathfinding.
@@ -258,6 +392,7 @@ func _on_cells_changed(cells: Array[Vector2i]) -> void:
 			affected[item.id] = true
 	for id: int in affected:
 		_build_item(world.grid.item(id))
+	_apply_paint()
 
 
 func _on_item_removed(item: PlacedItem) -> void:

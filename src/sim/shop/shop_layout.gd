@@ -8,5 +8,8 @@ extends Resource
 @export var display_name: String = ""
 @export var rows: PackedStringArray = []
 @export var placements: Array[ShopPlacement] = []
+## Whole-room paint; empty IDs preserve the authored placeholder palette.
+@export var wall_swatch_id: StringName = &""
+@export var floor_swatch_id: StringName = &""
 ## Starting cell per staff role (&"cook", &"server", &"owner").
 @export var staff_spawns: Dictionary[StringName, Vector2i] = {}

@@ -362,6 +362,23 @@ docs/
   existing visual job adds one image. Runtime/balance evidence is separate
   from source review.
 
+### 2.3g Paint and colour slots (FK-042)
+- `data/swatches/*.tres` contains twelve named `SwatchDef` resources. `ContentDB`
+  validates nonempty unique IDs and names; UI only exposes this curated list.
+- `ItemDef.paintable` and its one `body` slot control furniture painting. A
+  `PlacedItem.swatch_id` is cosmetic; moving preserves it, removing drops it,
+  and buying starts with an empty ID and the authored placeholder colour.
+- `ShopEditor` owns whole-room wall and floor IDs plus per-item paint commands.
+  Paint is free and phase-independent. Version-1 `shop` snapshots add optional
+  swatch IDs; missing, unknown or malformed IDs restore the authored defaults.
+  The existing morning autosave writes the section; no action saves immediately.
+- Main routes Paint clicks separately from furniture edits, so an open shop can
+  be recoloured without moving, buying or selling. The build catalogue's round
+  chips show player names in tooltips. Hover previews only change presentation.
+  `ShopView` shares one material per swatch across items and walls, and updates
+  the existing floor shader's colour parameter. Paint never changes terrain,
+  paths, agent decisions, prices, books or random streams.
+
 ### 2.4 Save system
 - JSON in `user://saves/`, with a `version` field and migration functions per version.
 - Only sim state is saved, never nodes. The world is rebuilt from sim state on load.

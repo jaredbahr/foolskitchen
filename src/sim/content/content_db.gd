@@ -6,6 +6,7 @@ extends RefCounted
 var _ingredients: Dictionary[StringName, IngredientDef] = {}
 var _recipes: Dictionary[StringName, RecipeDef] = {}
 var _items: Dictionary[StringName, ItemDef] = {}
+var _swatches: Dictionary[StringName, SwatchDef] = {}
 
 
 ## On failure the database is empty, so an earlier load cannot hide bad data.
@@ -13,10 +14,12 @@ func load_all(root: String = "res://data") -> PackedStringArray:
 	_ingredients.clear()
 	_recipes.clear()
 	_items.clear()
+	_swatches.clear()
 	var errors: PackedStringArray = []
 	var ingredient_defs: Array[IngredientDef] = []
 	var recipe_defs: Array[RecipeDef] = []
 	var item_defs: Array[ItemDef] = []
+	var swatch_defs: Array[SwatchDef] = []
 	for path: String in _resource_paths(root.path_join("ingredients"), errors):
 		var resource: Resource = ResourceLoader.load(path)
 		if resource is IngredientDef:
@@ -35,7 +38,14 @@ func load_all(root: String = "res://data") -> PackedStringArray:
 			item_defs.append(resource as ItemDef)
 		else:
 			errors.append("%s: expected ItemDef" % path)
+	for path: String in _resource_paths(root.path_join("swatches"), errors):
+		var resource: Resource = ResourceLoader.load(path)
+		if resource is SwatchDef:
+			swatch_defs.append(resource as SwatchDef)
+		else:
+			errors.append("%s: expected SwatchDef" % path)
 	errors.append_array(validate_definitions(ingredient_defs, recipe_defs, item_defs))
+	errors.append_array(validate_swatches(swatch_defs))
 	if not errors.is_empty():
 		return errors
 	for definition: IngredientDef in ingredient_defs:
@@ -44,6 +54,8 @@ func load_all(root: String = "res://data") -> PackedStringArray:
 		_recipes[definition.id] = definition
 	for definition: ItemDef in item_defs:
 		_items[definition.id] = definition
+	for definition: SwatchDef in swatch_defs:
+		_swatches[definition.id] = definition
 	return errors
 
 
@@ -57,6 +69,34 @@ func recipe(id: StringName) -> RecipeDef:
 
 func item(id: StringName) -> ItemDef:
 	return _items.get(id) as ItemDef
+
+
+func swatch(id: StringName) -> SwatchDef:
+	return _swatches.get(id) as SwatchDef
+
+
+func swatches() -> Array[SwatchDef]:
+	var result: Array[SwatchDef] = []
+	var ids: Array[StringName] = []
+	ids.assign(_swatches.keys())
+	ids.sort_custom(_id_before)
+	for id: StringName in ids:
+		result.append(_swatches[id])
+	return result
+
+
+static func validate_swatches(definitions: Array[SwatchDef]) -> PackedStringArray:
+	var errors: PackedStringArray = []
+	var ids: Dictionary[StringName, bool] = {}
+	for index: int in range(definitions.size()):
+		var definition: SwatchDef = definitions[index]
+		if definition == null:
+			errors.append("swatch[%d] is null" % index)
+			continue
+		_check_id(definition.id, "swatch", ids, errors)
+		if definition.display_name.strip_edges().is_empty():
+			errors.append("swatch '%s': display_name is empty" % definition.id)
+	return errors
 
 
 ## Lists are new arrays sorted by ID; changing a list cannot change the index.
@@ -118,6 +158,8 @@ static func validate_definitions(ingredient_defs: Array[IngredientDef], recipe_d
 			errors.append("item '%s': footprint components must be >= 1" % definition.id)
 		if definition.price < 0:
 			errors.append("item '%s': price must be >= 0" % definition.id)
+		if definition.paintable and definition.paint_slot != &"body":
+			errors.append("item '%s': only the body paint slot is supported" % definition.id)
 	for index: int in range(recipe_defs.size()):
 		var definition: RecipeDef = recipe_defs[index]
 		if definition == null:

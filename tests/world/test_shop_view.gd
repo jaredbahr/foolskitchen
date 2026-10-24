@@ -39,6 +39,35 @@ func test_tier_one_geometry_counts_and_shared_color_materials() -> void:
 	assert_eq(world.now, 0, "view never advances simulation")
 
 
+func test_paint_preview_reuses_materials_and_restores_room_colours() -> void:
+	var content: ContentDB = ContentDB.new()
+	assert_eq(content.load_all(), PackedStringArray())
+	var errors: Array[String] = []
+	var world: SimWorld = ShopBuilder.build(LAYOUT, content, errors)
+	_show(world)
+	_view.set_paint(content, &"sage", &"walnut")
+	assert_eq(_view.wall_cell_at_ray(Vector3(0.25, 4.0, 0.25), Vector3.DOWN), Vector2i.ZERO)
+	var wall: MeshInstance3D = _view.get_node("Walls").get_child(0) as MeshInstance3D
+	var wall_material: Material = wall.material_override
+	assert_eq((wall_material as StandardMaterial3D).albedo_color, content.swatch(&"sage").color)
+	var floor_shader: ShaderMaterial = _view.floor_mesh.material_override as ShaderMaterial
+	assert_eq(floor_shader.get_shader_parameter("floor_color"), content.swatch(&"walnut").color)
+	_view.preview_paint(&"wall", -1, &"butter")
+	assert_eq((wall.material_override as StandardMaterial3D).albedo_color, content.swatch(&"butter").color)
+	_view.clear_paint_preview()
+	assert_true(wall.material_override == wall_material)
+	_view.preview_paint(&"floor", -1, &"cream")
+	assert_eq(floor_shader.get_shader_parameter("floor_color"), content.swatch(&"cream").color)
+	_view.clear_paint_preview()
+	assert_eq(floor_shader.get_shader_parameter("floor_color"), content.swatch(&"walnut").color)
+	var tables: Array[PlacedItem] = ShopBuilder.items_with_def(world, &"table_2")
+	tables[0].swatch_id = &"terracotta"
+	tables[1].swatch_id = &"terracotta"
+	_view.set_paint(content, &"sage", &"walnut")
+	assert_true(_view.item_nodes[tables[0].id].material_override == _view.item_nodes[tables[1].id].material_override)
+	assert_eq(errors, [] as Array[String])
+
+
 func test_all_rotations_match_grid_bounds() -> void:
 	var grid: SimGrid = SimGrid.new(Vector2i(14, 14))
 	var definition: ItemDef = ItemDef.new()

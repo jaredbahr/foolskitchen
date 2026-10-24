@@ -52,6 +52,16 @@ func test_initial_labels_and_shared_theme_before_ready() -> void:
 	assert_eq((_hud.get_node("Top") as Control).theme, load("res://src/ui/theme/main_theme.tres"))
 
 
+func test_paint_button_shares_top_row_and_theme_with_build() -> void:
+	var build: Button = _control("Build") as Button
+	var paint: Button = _control("Paint") as Button
+	assert_eq(paint.get_parent(), build.get_parent())
+	assert_eq(paint.get_index(), build.get_index() + 1)
+	assert_eq(paint.theme, build.theme)
+	assert_eq(paint.focus_mode, Control.FOCUS_NONE)
+	assert_true(paint.toggle_mode)
+
+
 func test_scene_tree_binding_and_exit_cleanup_do_not_require_ready() -> void:
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	tree.root.add_child(_hud)

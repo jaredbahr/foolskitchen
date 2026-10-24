@@ -3,13 +3,17 @@ extends Control
 ## Content-defined furniture requests only. The session/controller owns buying.
 
 signal buy_requested(def_id: StringName)
+signal swatch_requested(swatch_id: StringName)
 
 const EDGE_MARGIN: float = 12.0
 
 var item_buttons: Dictionary[StringName, Button] = {}
+var swatch_buttons: Dictionary[StringName, Button] = {}
+var selected_swatch_id: StringName = &"butter"
 var _content: ContentDB
 var _ordered_ids: Array[StringName] = []
 var _layout_ready: bool = false
+var _paint_visible: bool = false
 
 
 func bind_content(content: ContentDB) -> void:
@@ -21,6 +25,14 @@ func bind_content(content: ContentDB) -> void:
 func set_build_visible(active: bool) -> void:
 	if visible != active:
 		visible = active
+
+
+func set_paint_visible(active: bool) -> void:
+	_paint_visible = active
+	_refresh_title()
+	(get_node("Panel/Margin/Rows/Scroll/Content/Items") as Control).visible = not active
+	(get_node("Panel/Margin/Rows/Scroll/Content/PaintSwatches") as Control).visible = active
+	_fit_panel()
 
 
 func ordered_ids() -> Array[StringName]:
@@ -78,7 +90,73 @@ func refresh_content() -> void:
 			button.text = text
 		button.tooltip_text = "Buy %s for $%d" % [label, definition.price]
 	_ordered_ids = desired_ids
+	_refresh_swatches()
 	_fit_panel()
+
+
+func _refresh_swatches() -> void:
+	var row: HBoxContainer = get_node("Panel/Margin/Rows/Scroll/Content/PaintSwatches") as HBoxContainer
+	for child: Node in row.get_children():
+		row.remove_child(child)
+		child.free()
+	swatch_buttons.clear()
+	if _content == null:
+		return
+	var definitions: Array[SwatchDef] = _content.swatches()
+	if definitions.is_empty():
+		return
+	if _content.swatch(selected_swatch_id) == null:
+		selected_swatch_id = definitions[0].id
+	for definition: SwatchDef in definitions:
+		var button: Button = Button.new()
+		button.name = "Swatch_%s" % definition.id
+		button.custom_minimum_size = Vector2(34.0, 34.0)
+		button.focus_mode = Control.FOCUS_NONE
+		button.mouse_filter = Control.MOUSE_FILTER_STOP
+		button.tooltip_text = definition.display_name
+		button.pressed.connect(_on_swatch_pressed.bind(definition.id))
+		row.add_child(button)
+		swatch_buttons[definition.id] = button
+	_refresh_swatch_styles()
+
+
+func _refresh_swatch_styles() -> void:
+	if _content == null:
+		return
+	var button_outline: StyleBoxFlat = theme.get_stylebox("normal", "Button") as StyleBoxFlat
+	var selected_ring: Color = button_outline.border_color if button_outline != null else Color("3b2a20")
+	for id: StringName in swatch_buttons:
+		var definition: SwatchDef = _content.swatch(id)
+		var button: Button = swatch_buttons[id]
+		var style: StyleBoxFlat = StyleBoxFlat.new()
+		style.bg_color = definition.color
+		style.set_corner_radius_all(17)
+		style.set_border_width_all(3 if id == selected_swatch_id else 1)
+		style.border_color = selected_ring if id == selected_swatch_id else Color("5d4637")
+		button.pivot_offset = button.custom_minimum_size * 0.5
+		button.scale = Vector2.ONE * (1.1 if id == selected_swatch_id else 1.0)
+		button.add_theme_stylebox_override("normal", style)
+		button.add_theme_stylebox_override("hover", style)
+		button.add_theme_stylebox_override("pressed", style)
+	_refresh_title()
+
+
+func _refresh_title() -> void:
+	var title: Label = get_node("Panel/Margin/Rows/Scroll/Content/Title") as Label
+	if not _paint_visible:
+		title.text = "Furniture   |   Square: work tile   Circle: seat"
+		return
+	var selected: SwatchDef = _content.swatch(selected_swatch_id) if _content != null else null
+	var name: String = selected.display_name if selected != null else "Pick a colour"
+	title.text = "Paint | %s - Click a wall, floor or item" % name
+
+
+func _on_swatch_pressed(id: StringName) -> void:
+	if _content == null or _content.swatch(id) == null or not _paint_visible:
+		return
+	selected_swatch_id = id
+	_refresh_swatch_styles()
+	swatch_requested.emit(id)
 
 
 func _prepare_layout() -> void:
