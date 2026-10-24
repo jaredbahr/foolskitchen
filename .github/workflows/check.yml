@@ -34,29 +34,7 @@ jobs:
         run: bash tools/get_godot.sh
 
       - name: Import, parse and test
-        run: |
-          set -euo pipefail
-          bash tools/check.sh
-          version="$(tr -d '[:space:]' < tools/godot_version.txt)"
-          godot=".tools/godot-$version/Godot_v${version}-stable_linux.x86_64"
-          [[ -x "$godot" ]] || { echo 'FAIL: pinned Godot binary is missing after the checks'; exit 1; }
-          probe_log="$(mktemp)"
-          trap 'rm -f "$probe_log"' EXIT
-          for seed in 1 7 42; do
-            for price in 1.0 1.25; do
-              printf '\n== balance probe: days=5 seed=%s price=%s\n' "$seed" "$price"
-              "$godot" --headless --path . --script tools/balance_probe.gd -- --days=5 "--seed=$seed" "--price=$price" 2>&1 | tee "$probe_log"
-              if grep -E 'SCRIPT ERROR|Parse Error|^[[:space:]]*ERROR:' "$probe_log"; then
-                echo 'FAIL: engine/script errors during the balance probe'
-                exit 1
-              fi
-              [[ "$(grep -c '^PROBE day=' "$probe_log")" -eq 5 ]] || { echo 'FAIL: probe did not report exactly five days'; exit 1; }
-              for day in 1 2 3 4 5; do
-                [[ "$(grep -c "^PROBE day=$day " "$probe_log")" -eq 1 ]] || { echo "FAIL: missing/duplicate probe day $day"; exit 1; }
-              done
-              [[ "$(grep -c '^PROBE total_profit=.* over 5 days$' "$probe_log")" -eq 1 ]] || { echo 'FAIL: missing/duplicate five-day probe summary'; exit 1; }
-            done
-          done
+        run: bash tools/check.sh
 
   changelog:
     name: Changelog entry

@@ -194,7 +194,7 @@ docs/
   division and cannot be marked up through MenuSettings.
 - The HUD Menu button and MenuPanel requests are MORNING-only. Main's
   `menu_set_enabled`, `menu_set_price` apply accepted model changes to the sim,
-  refresh the request-only panel and autosave once. Whole-dollar prices clamp
+  then refresh the request-only panel without saving. Whole-dollar prices clamp
   to ceil(50%) through 200% of standard. Shared recipe resources never change.
 - The `menu` save section contains enabled IDs and every cookable ID's
   price as a decimal string. The strict model decoder validates all choices
@@ -205,11 +205,10 @@ docs/
   autosave is skipped after a failed load, as before.
 - Restored menu choices are installed before normal MORNING day setup, stock
   top-up, ledger prune and autosave. Future reorder settings must also restore
-  before that purchasing boundary. User menu edits explicitly autosave once
-  after committing; this MORNING-only save does not run day setup or buy stock.
-  `save_menu_changes()` retries persistence without reapplying choices, and
-  `last_menu_save_error` exposes failure. Furniture wrappers retain their
-  separate next-morning save timing.
+  before that purchasing boundary. Menu edits change no books, clock or RNG;
+  the next morning's autosave captures the latest choices, just like furniture
+  edits. Changing the menu never writes the current morning's save or bypasses
+  the skipped startup autosave after a failed load.
 - `tools/balance_probe.gd --price=1.25` now changes only sim price overrides.
   `tools/screenshot.sh --menu --speed=0 --frames=12` requests the production
   morning panel, verifies its actual visible state and captures after drawing;

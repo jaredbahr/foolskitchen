@@ -29,7 +29,6 @@ var dishes_sold_today: Dictionary[StringName, int] = {}
 var shop_editor: ShopEditor
 ## Cookable dishes/prices belong to this shop, never to shared recipe resources.
 var menu_settings: MenuSettings
-var last_menu_save_error: Error = OK
 
 var _previous_clock: SimClock = null
 var _started: bool = false
@@ -397,6 +396,7 @@ func _cookable_recipes(layout: ShopLayout) -> Array[RecipeDef]:
 	if not fridge or not pass_counter:
 		return recipes
 	for definition: RecipeDef in content.recipes():
+		# Phase 3: replace with the unlocked tier.
 		if definition.unlock_tier != 1:
 			continue
 		var cookable: bool = true
@@ -426,39 +426,20 @@ func can_edit_menu() -> bool:
 func menu_set_enabled(recipe_id: StringName, enabled: bool) -> bool:
 	if not can_edit_menu():
 		return false
-	var before: bool = menu_settings.is_enabled(recipe_id)
 	if not menu_settings.set_enabled(recipe_id, enabled):
 		return false
 	_apply_menu(sim, menu_settings)
 	_menu_panel.refresh()
-	if before != menu_settings.is_enabled(recipe_id):
-		save_menu_changes()
 	return true
 
 
 func menu_set_price(recipe_id: StringName, price: int) -> bool:
 	if not can_edit_menu() or menu_settings.recipe(recipe_id) == null:
 		return false
-	var definition: RecipeDef = menu_settings.recipe(recipe_id)
-	var before: int = menu_settings.price_of(definition)
 	menu_settings.set_price(recipe_id, price)
 	_apply_menu(sim, menu_settings)
 	_menu_panel.refresh()
-	if before != menu_settings.price_of(definition):
-		save_menu_changes()
 	return true
-
-
-func save_menu_changes() -> Error:
-	if not can_edit_menu():
-		last_menu_save_error = ERR_BUSY
-		return last_menu_save_error
-	# A user menu change is an explicit MORNING persistence boundary for #52.
-	# It saves committed settings without running day setup or restocking again.
-	last_menu_save_error = SaveSystem.save_game(save_slot) if use_saves else OK
-	if last_menu_save_error != OK:
-		world.log_event("Menu choices kept, but autosave failed (%s). Retry saving without repeating the edit" % error_string(last_menu_save_error))
-	return last_menu_save_error
 
 
 func toggle_menu() -> void:
