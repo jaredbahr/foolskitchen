@@ -25,8 +25,11 @@ func after_each() -> void:
 			m.free()
 	_mains.clear()
 	SaveSystem.delete_slot("test_session")
+	DirAccess.remove_absolute(TEST_SAVES)
 	SaveSystem.save_dir = _old_save_dir
 	Clock.set_speed(0)
+	Economy.reset(0)
+	GameState.new_run(1)
 
 
 func _start(with_saves: bool) -> Node:
@@ -131,3 +134,63 @@ func test_autosave_resumes_next_morning() -> void:
 	assert_eq(Economy.cash, cash_day2, "cash restored")
 	var sim: RestaurantSim = second.get("sim")
 	assert_true(sim.stock == Economy.stock, "kitchen uses the restored stock")
+
+
+func test_guests_sent_home_at_closing_are_in_the_report() -> void:
+	var main := _start(false)
+	var sim: RestaurantSim = main.get("sim")
+	Clock.sim.open_ticks = 600
+	Clock.sim.last_orders_max_ticks = 50
+	sim.spawner.min_gap = 20
+	sim.spawner.max_gap = 40
+	assert_true(Clock.sim.start_service())
+	main.call("run_ticks", 5000)
+	assert_eq(Clock.sim.phase, SimClock.Phase.CLOSED)
+	var closing: int = sim.leave_reasons_today.get(&"closing", 0)
+	assert_true(closing > 0, "some guests were still inside at closing (%s)" % [sim.leave_reasons_today])
+	# The report actually put on screen must include them.
+	var shown: DayReport = main.get("shown_report")
+	assert_not_null(shown, "a report was shown at closing")
+	assert_eq(shown.leave_reasons.get(&"closing", 0), closing)
+	assert_eq(shown.customers_lost, sim.lost_today)
+
+
+func test_arrivals_use_the_saved_game_state_rng() -> void:
+	var first := _start(true)
+	var sim: RestaurantSim = first.get("sim")
+	assert_true(sim.rng == GameState.rng(&"customers"), "arrivals use GameState's stream")
+	assert_true(sim.spawner.rng == sim.rng)
+	var saved_state: int = GameState.rng(&"customers").state
+	_mains.erase(first)
+	(Engine.get_main_loop() as SceneTree).root.remove_child(first)
+	first.free()
+	GameState.new_run(999)  # scramble
+	var second := _start(true)
+	var sim2: RestaurantSim = second.get("sim")
+	assert_true(sim2.rng == GameState.rng(&"customers"), "re-bound after load")
+	# The new morning draws one arrival gap from the restored stream.
+	var expected := RandomNumberGenerator.new()
+	expected.state = saved_state
+	expected.randi_range(maxi(1, sim2.spawner.min_gap), maxi(maxi(1, sim2.spawner.min_gap), sim2.spawner.max_gap))
+	assert_eq(GameState.rng(&"customers").state, expected.state, "the stream continues from the save")
+
+
+func test_half_broken_save_starts_fresh_and_keeps_the_file() -> void:
+	var first := _start(true)
+	_run_day(first)
+	(first.get_node("Overlay/EveningReport") as Control).emit_signal(&"next_day_pressed")
+	_mains.erase(first)
+	(Engine.get_main_loop() as SceneTree).root.remove_child(first)
+	first.free()
+	# Corrupt only the economy section.
+	var path := TEST_SAVES.path_join("test_session.json")
+	var doc: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	doc["data"]["economy"] = {"ledger": 5}
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	f.store_string(JSON.stringify(doc))
+	f.close()
+	var broken := FileAccess.get_file_as_string(path)
+	_start(true)
+	assert_eq(Clock.sim.day, 1, "a clean new game, not day 2 with new-game cash")
+	assert_eq(Economy.cash, TUNING.starting_cash - _morning_stock_cost(_mains[-1]))
+	assert_eq(FileAccess.get_file_as_string(path), broken, "the unreadable save was not overwritten")

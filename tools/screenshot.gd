@@ -34,6 +34,8 @@ func _initialize() -> void:
 	DirAccess.make_dir_recursive_absolute(_out)
 	var scene: PackedScene = load(scene_path)
 	_main = scene.instantiate()
+	if "use_saves" in _main:
+		_main.set("use_saves", false)  # never touch the player's autosave
 	root.add_child(_main)
 
 

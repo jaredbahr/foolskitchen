@@ -21,11 +21,14 @@ var use_saves: bool = true
 var sim: RestaurantSim
 var world: SimWorld
 var content: ContentDB
+## The last evening report put on screen (for tests and tools).
+var shown_report: DayReport = null
 ## Dishes sold today (recipe id -> count), for the evening report.
 var dishes_sold_today: Dictionary[StringName, int] = {}
 
 var _previous_clock: SimClock = null
 var _started: bool = false
+var _skip_next_autosave: bool = false
 var _report: Control
 
 
@@ -79,16 +82,24 @@ func start() -> void:
 		autoload.call(&"register_save_provider")
 	_report.connect(&"next_day_pressed", _on_next_day_pressed)
 	sim.customer_paid.connect(_on_customer_paid)
+	sim.service_closed.connect(_on_service_closed)
 	EventBus.day_phase_changed.connect(_on_day_phase_changed)
 	_previous_clock = Clock.sim
 	Clock.attach_world(world, sim.advance)
 	sim.stock = Economy.stock
-	if not (use_saves and _load_autosave()):
+	var loaded: bool = use_saves and _load_autosave()
+	if not loaded:
+		# Don't autosave over a save that exists but failed to load: its
+		# backup may still be recoverable.
+		_skip_next_autosave = use_saves and SaveSystem.list_slots().has(save_slot)
 		_new_game()
+	sim.use_rng(GameState.rng(&"customers"))
 	_begin_morning()
 
 
 func _exit_tree() -> void:
+	if sim != null and sim.service_closed.is_connected(_on_service_closed):
+		sim.service_closed.disconnect(_on_service_closed)
 	if EventBus.day_phase_changed.is_connected(_on_day_phase_changed):
 		EventBus.day_phase_changed.disconnect(_on_day_phase_changed)
 	if world != null and Clock.attached_world == world:
@@ -140,6 +151,10 @@ func build_report(day: int) -> DayReport:
 
 
 func _new_game() -> void:
+	# A fresh clock and seed too, so a half-loaded save can't leave its day
+	# or random state behind.
+	Clock.sim = SimClock.new()
+	GameState.new_run(int(Time.get_unix_time_from_system()))
 	Economy.reset(TUNING.starting_cash)
 	sim.stock = Economy.stock
 	world.log_event("New game: $%d to start" % TUNING.starting_cash)
@@ -151,8 +166,11 @@ func _load_autosave() -> bool:
 	if SaveSystem.load_game(save_slot) != OK:
 		world.log_event("Autosave could not be loaded; starting a new game")
 		return false
+	if Clock.sim.phase != SimClock.Phase.MORNING:
+		# Saves are only written in the morning; anything else is not ours.
+		world.log_event("Autosave is not from a morning; starting a new game")
+		return false
 	# Economy replaced its stock on load; the kitchen must use the new one.
-	# Saves are only written in the morning, so the loaded clock is a morning.
 	sim.stock = Economy.stock
 	return true
 
@@ -162,9 +180,11 @@ func _begin_morning() -> void:
 	sim.start_day()
 	dishes_sold_today.clear()
 	_restock()
+	Economy.ledger.prune_before(Clock.sim.day - Ledger.HISTORY_DAYS)
 	_report.hide()
-	if use_saves:
+	if use_saves and not _skip_next_autosave:
 		SaveSystem.save_game(save_slot)
+	_skip_next_autosave = false
 
 
 func _restock() -> void:
@@ -191,11 +211,15 @@ func _on_customer_paid(_customer: CustomerAgent, order: Order, amount: int) -> v
 	dishes_sold_today[order.recipe_id] = dishes_sold_today.get(order.recipe_id, 0) + 1
 
 
-func _on_day_phase_changed(day: int, phase: int) -> void:
-	if phase == SimClock.Phase.CLOSED:
-		_charge_closing_costs()
-		_report.call(&"show_report", build_report(day))
-	elif phase == SimClock.Phase.MORNING:
+## Service is over and every guest's departure is recorded: close the books.
+func _on_service_closed(day: int) -> void:
+	_charge_closing_costs()
+	shown_report = build_report(day)
+	_report.call(&"show_report", shown_report)
+
+
+func _on_day_phase_changed(_day: int, phase: int) -> void:
+	if phase == SimClock.Phase.MORNING:
 		_begin_morning()
 
 
