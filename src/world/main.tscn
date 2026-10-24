@@ -1,7 +1,9 @@
-[gd_scene load_steps=8 format=3 uid="uid://b0fkmain0001"]
+[gd_scene load_steps=9 format=3 uid="uid://b0fkmain0001"]
 
 [ext_resource type="PackedScene" path="res://src/world/camera_rig.tscn" id="1_camera"]
 [ext_resource type="Shader" path="res://src/world/build_grid.gdshader" id="2_grid"]
+
+[ext_resource type="PackedScene" path="res://src/ui/hud.tscn" id="3_hud"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_grid"]
 resource_local_to_scene = true
@@ -50,3 +52,5 @@ mesh = SubResource("CapsuleMesh_reference")
 
 [node name="CameraRig" parent="." node_paths=PackedStringArray("grid_floor") instance=ExtResource("1_camera")]
 grid_floor = NodePath("../TestFloor")
+
+[node name="HUD" parent="." instance=ExtResource("3_hud")]
