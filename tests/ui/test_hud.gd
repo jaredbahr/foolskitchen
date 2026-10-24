@@ -131,6 +131,45 @@ func test_cash_events_create_separate_signed_colored_deltas() -> void:
 	assert_eq(loss.get_theme_color("font_color"), Color("A42E2E"))
 
 
+func test_every_speed_change_has_exactly_one_pressed_button_using_shared_styles() -> void:
+	for speed: int in [0, 1, 2, 4, 2, 0]:
+		Clock.set_speed(speed)
+		var pressed: int = 0
+		for value: int in [0, 1, 2, 4]:
+			var button: Button = _control("Speed%d" % value) as Button
+			if button.button_pressed:
+				pressed += 1
+			assert_eq(button.button_pressed, value == speed)
+			assert_false(button.has_theme_color_override("font_color"))
+			assert_false(button.has_theme_color_override("font_pressed_color"))
+			var normal: StyleBoxFlat = button.get_theme_stylebox("normal") as StyleBoxFlat
+			var active: StyleBoxFlat = button.get_theme_stylebox("pressed") as StyleBoxFlat
+			assert_true(normal != active)
+			assert_eq(normal.border_width_left, 2)
+			assert_true(active.bg_color != normal.bg_color)
+			assert_true(button.get_theme_color("font_pressed_color") != button.get_theme_color("font_color"))
+		assert_eq(pressed, 1)
+
+
+func test_wall_button_tracks_c_key_and_rebinding_without_duplicate_cycles() -> void:
+	var view: ShopView = load("res://src/world/shop_view.tscn").instantiate() as ShopView
+	_hud.call("bind_shop_view", view)
+	_hud.call("bind_shop_view", view)
+	var button: Button = _control("Walls") as Button
+	assert_eq(button.text, "Walls: Cutaway")
+	button.pressed.emit()
+	assert_eq(view.wall_mode, ShopView.WallMode.DOWN)
+	assert_eq(button.text, "Walls: Down")
+	var key: InputEventKey = InputEventKey.new()
+	key.physical_keycode = KEY_C
+	key.pressed = true
+	view._unhandled_input(key)
+	assert_eq(button.text, "Walls: Up")
+	view.free()
+	_hud.call("refresh")
+	assert_true(button.disabled)
+
+
 func _control(name: String) -> Control:
 	return _hud.get_node("Top/Row/" + name) as Control
 

@@ -3,6 +3,9 @@ extends Node3D
 ## Camera-only navigation over the XZ build plane. Keyboard/edge motion uses
 ## seconds; mouse drag uses its pixel displacement and must not multiply delta.
 
+## Emitted once when the rotation target changes, before visual smoothing.
+signal yaw_snapped(quarter: int)
+
 @export_group("View")
 @export var use_orthographic: bool = true
 @export_range(10.0, 45.0, 1.0) var perspective_fov: float = 30.0
@@ -68,6 +71,7 @@ func _notification(what: int) -> void:
 
 ## Re-applies exported defaults. Also works on an instantiated, unparented rig.
 func reset_view() -> void:
+	var previous_target: float = _target_yaw
 	_camera = get_node_or_null("Camera3D") as Camera3D
 	_yaw = deg_to_rad(initial_yaw_degrees)
 	_target_yaw = _yaw
@@ -78,6 +82,8 @@ func reset_view() -> void:
 	rotation.y = _yaw
 	_apply_camera()
 	_apply_grid()
+	if not is_equal_approx(previous_target, _target_yaw):
+		yaw_snapped.emit(camera_quarter())
 
 
 func _process(delta: float) -> void:
@@ -110,8 +116,16 @@ func step_view(delta: float, pan_input: Vector2) -> void:
 
 
 func rotate_quarter(turns: int) -> void:
+	if turns == 0:
+		return
 	# Keep an unwrapped target so quick repeated presses retain their direction.
 	_target_yaw += float(turns) * PI / 2.0
+	yaw_snapped.emit(camera_quarter())
+
+
+## Absolute camera quarter: 0 is 45 degrees, followed by 135, 225 and 315.
+func camera_quarter() -> int:
+	return posmod(roundi((_target_yaw - PI / 4.0) / (PI / 2.0)), 4)
 
 
 ## Positive steps zoom out. Only the target changes; step_view smooths the view.

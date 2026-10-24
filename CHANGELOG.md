@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- See into the shop with camera-aware cutaway walls (cycle with C), warmer lighting, clear selected speed buttons, and small facing markers on staff and guests. (#PR_NUMBER)
 - A top bar shows the day, time, shop phase and cash, with pause and speed buttons, floating cash changes, and buttons to open the shop or start the next day. (#33)
 - The camera's pan area is centred on the shop with a 2 m margin, so it can't drift into empty space. (#36)
 - The starter shop now appears in 3D with warm furniture placeholders and two staff walking a temporary demonstration route. (#34)

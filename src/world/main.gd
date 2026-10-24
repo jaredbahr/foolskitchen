@@ -49,6 +49,10 @@ func initialize() -> void:
 	camera.pan_limits = shop_half + Vector2(2.0, 2.0)
 	camera.initial_zoom = 12.0
 	camera.reset_view()
+	if not camera.yaw_snapped.is_connected(view.set_camera_quarter):
+		camera.yaw_snapped.connect(view.set_camera_quarter)
+	view.set_camera_quarter(camera.camera_quarter())
+	$HUD.bind_shop_view(view)
 	_post_demo_tasks()
 
 
