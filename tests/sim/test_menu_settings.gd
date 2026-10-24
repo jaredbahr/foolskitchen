@@ -149,7 +149,9 @@ func test_invalid_or_out_of_range_prices_are_rejected_without_partial_restore() 
 	var invalid_prices: Array[Variant] = [-1, 1, 25, 12.5, INF, NAN, true, null, [], {},
 		"", "-1", "+12", "012", "12.0", " 12", "12 ", "9223372036854775808", "99999999999999999999"]
 	for price: Variant in invalid_prices:
-		var section: Dictionary = before.duplicate(true)
+		# duplicate(true) retains the writer's Dictionary[String, String] type.
+		# JSON-shaped containers must permit malformed Variants to reach validation.
+		var section: Dictionary = JSON.parse_string(JSON.stringify(before))
 		section["enabled"] = ["burger"]
 		section["prices"]["burger"] = price
 		assert_false(_menu.from_dict(section), str(price))
@@ -165,9 +167,21 @@ func test_imprecise_json_numeric_prices_are_rejected_transactionally() -> void:
 	var definition: RecipeDef = _recipe(&"large", MenuSettings.MAX_JSON_INTEGER)
 	var menu: MenuSettings = MenuSettings.new([definition])
 	var before: Dictionary = menu.to_dict()
-	assert_false(menu.from_dict({"enabled": ["large"], "prices": {"large": 9007199254740992.0}}))
+	assert_false(menu.from_dict({"enabled": ["large"], "prices": {"large": float(MenuSettings.MAX_JSON_INTEGER + 1)}}))
 	assert_eq(menu.to_dict(), before)
-	assert_true(menu.from_dict({"enabled": ["large"], "prices": {"large": 9007199254740991.0}}))
+	var imprecise: Dictionary = JSON.parse_string('{"enabled":["large"],"prices":{"large":9007199254740993}}')
+	assert_eq(typeof(imprecise["prices"]["large"]), TYPE_FLOAT)
+	assert_true(imprecise["prices"]["large"] > MenuSettings.MAX_JSON_INTEGER)
+	assert_false(menu.from_dict(imprecise), "an imprecise JSON number remains outside the safe numeric range")
+	assert_eq(menu.to_dict(), before)
+	# Godot's decimal-float literal parser rounds 9007199254740991.0 down by one.
+	# Convert the exact integer instead, so the fixture actually supplies 2^53 - 1.
+	var exact_numeric: float = float(MenuSettings.MAX_JSON_INTEGER)
+	assert_eq(int(exact_numeric), MenuSettings.MAX_JSON_INTEGER)
+	assert_true(menu.from_dict({"enabled": ["large"], "prices": {"large": exact_numeric}}))
+	assert_eq(menu.price_of(definition), MenuSettings.MAX_JSON_INTEGER)
+	assert_eq(menu.to_dict()["prices"]["large"], "9007199254740991")
+	assert_true(menu.from_dict(JSON.parse_string(JSON.stringify(before))), "canonical decimal strings stay exact through JSON")
 	assert_eq(menu.price_of(definition), MenuSettings.MAX_JSON_INTEGER)
 
 
