@@ -7,7 +7,7 @@ Status: v0.2 (2026-10-23), revised after the [TasteMaker audit](research/TASTEMA
 A low-poly 3D restaurant tycoon game. You're one guy who starts with a hole-in-the-wall shop and builds it into a restaurant chain. Staff and customers run on their own, like the Sims. You design the space, set the menu, hire, and buy your way up the property ladder. Short optional mini-games give bonuses.
 
 - **Inspiration:** TasteMaker (Steam app 1289340), for ideas only. We keep what players love (relaxing, build your own place, it runs itself) and fix what they criticise (shallow content, stuck AI, no long progression). Nothing is copied: no assets, names or UI.
-- **Who it's for:** a friend asked Jared for this game. Their complaint about TasteMaker is that eventually there's *nothing left to do*, so long-term goals are the top design priority. Also for Jared's family (his wife is a big Sims fan) and kids. Hobby scope. Single player, offline. Family-friendly humour.
+- **Who it's for:** a friend asked Jared for this game. Their complaint about TasteMaker is that eventually there's *nothing left to do*, so long-term goals are the top design priority. Also for Jared's family (his wife is a big Sims fan). **The audience is adults**, so humour can be dry and cheeky; it doesn't need to be kid-safe (D15). Hobby scope. Single player, offline.
 - **Clean-room rule:** inspiration only. We work from public information and videos of TasteMaker being played, and we never copy, decompile or reverse-engineer it.
 - **Name:** "Fool's Kitchen", possessive: it's your kitchen, and you're the fool cooking in it.
 - **No story.** Just the progression.
@@ -133,6 +133,10 @@ Multiplayer, a story or campaign, scenario mode (career milestones replace it), 
 | D12 | First person | Management and building stay top-down. **V** walks the restaurant in first person as the owner. Cooking mini-games play in first person at the station. The sim keeps running throughout. | 2026-10-23 |
 | D13 | Art mood | Warm and cosy (wood, warm light). **Consistency beats detail:** one palette, one lighting setup, one level of model detail (TECH section 3) | 2026-10-23 |
 | D14 | Owner look | One fixed character for now | 2026-10-23 |
+| D15 | Audience | Adults. Humour can be cheeky; not designed for kids | 2026-10-24 |
+| D16 | Hiring payoff | An extra hire alone doesn't pay at Tier 1. It pays off once you expand (more seats, trays): hiring and building go together | 2026-10-24 |
+| D17 | Loan interest | 4 to 6% a day on the open principal (start at 5%) | 2026-10-24 |
+| D18 | First public build | Held until more visual work lands (better props, people, food and lighting) | 2026-10-24 |
 | D11 | Platform | Both: a web build (play from a link) and a Windows download, from the same Godot project | 2026-10-23 |
 | D6 | Starting property | A rented hole-in-the-wall shop with 2 to 3 tables (not an outdoor food cart: indoor is simpler to simulate and to build) | 2026-10-23 |
 | D7 | Mode structure | Career mode only at first. A sandbox comes in Phase 5. No scenario mode. | 2026-10-23 |
