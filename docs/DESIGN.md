@@ -139,6 +139,7 @@ Multiplayer, a story or campaign, scenario mode (career milestones replace it), 
 | D18 | First public build | Held until more visual work lands (better props, people, food and lighting) | 2026-10-24 |
 | D19 | Visual consistency | One style everywhere: people, furniture, equipment, food, decor and UI come from one approved source or style lock. No flip-flopping styles | 2026-10-24 |
 | D20 | Art set | All Kenney (CC0): Furniture Kit, Food Kit, Mini Characters, Game Icons. Rules in `docs/ART_STYLE.md` | 2026-10-24 |
+| D21 | Focus | Building, designing and themes plus the self-running management sim come first and get polished. First person (D12) and mini-games are deferred; if added, mini-games are short moments for emergencies or clean-ups. Themes are designed by the player, never auto-built | 2026-10-24 |
 | D11 | Platform | Both: a web build (play from a link) and a Windows download, from the same Godot project | 2026-10-23 |
 | D6 | Starting property | A rented hole-in-the-wall shop with 2 to 3 tables (not an outdoor food cart: indoor is simpler to simulate and to build) | 2026-10-23 |
 | D7 | Mode structure | Career mode only at first. A sandbox comes in Phase 5. No scenario mode. | 2026-10-23 |
