@@ -10,6 +10,7 @@ extends SceneTree
 ##   --f3        show the scene's read-only debug overlay
 ##   --menu      show the real menu panel in MORNING (cannot combine with --open)
 ##   --staff     show the real morning Staff panel, paused, with no altered roster
+##   --settings  open Main -> Menu -> Settings at 1280x720 and 150% UI scale
 ##   --report    require a closed-day report with at least two real review cards
 ##   --build=green|red  hold a checked buy preview through the production input API
 ##   --paint     show a painted morning shop using the production paint controls
@@ -17,6 +18,8 @@ extends SceneTree
 
 const MAX_CAPTURE_WAIT_FRAMES: int = 8
 const MAX_OWNER_WARMUP_TICKS: int = 900
+const SETTINGS_CAPTURE_SIZE: Vector2i = Vector2i(1280, 720)
+const SETTINGS_CAPTURE_SCALE: int = 150
 
 var _frames: int = 0
 var _shots: Array[int] = [120, 400, 900]
@@ -36,6 +39,8 @@ var _owner_warmup_ticks: int = 0
 var _f3: bool = false
 var _menu: bool = false
 var _staff: bool = false
+var _settings: bool = false
+var _settings_from_menu: bool = false
 var _report_requested: bool = false
 var _build: String = ""
 var _paint: bool = false
@@ -83,6 +88,11 @@ func _initialize() -> void:
 				_fail_capture("--staff does not accept a value")
 				return
 			_staff = true
+		elif arg.begins_with("--settings"):
+			if arg != "--settings":
+				_fail_capture("--settings does not accept a value")
+				return
+			_settings = true
 		elif arg == "--report":
 			_report_requested = true
 		elif arg.begins_with("--build"):
@@ -123,7 +133,13 @@ func _initialize() -> void:
 	if _report_requested and (not _open or _fast <= 0 or _speed != 0 or _menu or _staff or not _build.is_empty()):
 		_fail_capture("--report requires a fast-forwarded, paused-clock service view")
 		return
-	if _shots.is_empty() or _shots.min() < 1 or ((_quarter >= 0 or not _selection.is_empty() or _f3 or _menu or _staff or not _build.is_empty() or _paint) and _shots.min() < 4):
+	if _settings and (_scene_path != "res://src/world/main.tscn" or _open or _fast != 0 \
+			or not _selection.is_empty() or _assign_owner or _f3 or _menu or _staff \
+			or _report_requested or not _build.is_empty() or _paint or _quarter >= 0 \
+			or _speed != 0 or _shots.size() != 1):
+		_fail_capture("--settings requires one paused Main capture without other view/service flags")
+		return
+	if _shots.is_empty() or _shots.min() < 1 or ((_quarter >= 0 or not _selection.is_empty() or _f3 or _menu or _staff or _settings or not _build.is_empty() or _paint) and _shots.min() < 4):
 		_fail_capture("capture frames must be positive, and at least 4 for requested view/UI options")
 		return
 	if DirAccess.make_dir_recursive_absolute(_out) != OK:
@@ -171,6 +187,10 @@ func _process(_delta: float) -> bool:
 		if _staff:
 			if not _main.has_method("set_staff_visible") or not bool(_main.call("set_staff_visible", true)):
 				_fail_capture("--staff requires the scene's morning staff API")
+				return true
+		if _settings:
+			_configure_settings()
+			if _failed:
 				return true
 		if not _build.is_empty():
 			_configure_build()
@@ -244,6 +264,77 @@ func _capture_world() -> SimWorld:
 	if "world" in _main:
 		return _main.get("world") as SimWorld
 	return null
+
+
+func _configure_settings() -> void:
+	if not _main.has_method("set_menu_visible") or not _main.has_method("is_menu_visible") \
+			or not _main.has_method("is_settings_visible") \
+			or not bool(_main.call("set_menu_visible", true)) or not bool(_main.call("is_menu_visible")):
+		_fail_capture("--settings requires Main's production morning Menu")
+		return
+	var button: Button = _main.get_node_or_null("Overlay/MenuPanel/Panel/Content/SettingsButton") as Button
+	var panel: SettingsPanel = _main.get_node_or_null("Overlay/SettingsPanel") as SettingsPanel
+	if button == null or button.disabled or not button.is_visible_in_tree() or panel == null:
+		_fail_capture("--settings requires the native Menu Settings button and Settings panel")
+		return
+	_settings_from_menu = true
+	button.pressed.emit()
+	if not bool(_main.call("is_settings_visible")) or bool(_main.call("is_menu_visible")):
+		_fail_capture("Menu Settings request did not open the production Settings panel")
+		return
+	var scale: OptionButton = panel.get_node_or_null("Panel/Scroll/Content/ScaleChoice") as OptionButton
+	if scale == null or scale.get_item_index(SETTINGS_CAPTURE_SCALE) < 0:
+		_fail_capture("Settings panel does not offer the requested UI scale")
+		return
+	# Use the player's control path: this applies and saves preferences normally.
+	var index: int = scale.get_item_index(SETTINGS_CAPTURE_SCALE)
+	scale.select(index)
+	scale.item_selected.emit(index)
+
+
+## Read the model, native control and actual window together after drawing.
+func _settings_state() -> Dictionary:
+	var preferences: SettingsPreferences = root.get_node_or_null("Preferences") as SettingsPreferences
+	var panel: SettingsPanel = _main.get_node_or_null("Overlay/SettingsPanel") as SettingsPanel
+	var scale: OptionButton = panel.get_node_or_null("Panel/Scroll/Content/ScaleChoice") as OptionButton if panel != null else null
+	if preferences == null or panel == null or scale == null:
+		return {}
+	var actual_size: Vector2i = DisplayServer.window_get_size()
+	return {"visible": panel.is_visible_in_tree(), "entered_from_menu": _settings_from_menu,
+		"menu_visible": _main.call("is_menu_visible"), "scale_control_visible": scale.is_visible_in_tree(),
+		"ui_scale_percent": preferences.ui_scale_percent, "selected_ui_scale_percent": scale.get_selected_id(),
+		"content_scale_factor": root.content_scale_factor, "window_mode": int(root.mode),
+		"fullscreen_enabled": preferences.fullscreen_enabled,
+		"window_size": [root.size.x, root.size.y], "display_size": [actual_size.x, actual_size.y]}
+
+
+func _settings_capture_valid(state: Dictionary, world: SimWorld) -> bool:
+	var expected_size: Array[int] = [SETTINGS_CAPTURE_SIZE.x, SETTINGS_CAPTURE_SIZE.y]
+	return state.get("visible") == true and state.get("entered_from_menu") == true \
+		and state.get("menu_visible") == false and state.get("scale_control_visible") == true \
+		and state.get("ui_scale_percent") == SETTINGS_CAPTURE_SCALE \
+		and state.get("selected_ui_scale_percent") == SETTINGS_CAPTURE_SCALE \
+		and is_equal_approx(float(state.get("content_scale_factor", 0.0)), float(SETTINGS_CAPTURE_SCALE) / 100.0) \
+		and state.get("window_mode") == Window.MODE_WINDOWED and state.get("fullscreen_enabled") == false \
+		and state.get("window_size") == expected_size and state.get("display_size") == expected_size \
+		and world != null and world.clock.phase == SimClock.Phase.MORNING and world.now == 0
+
+
+## Keep the engine's exact generated text recoverable from the capture log.
+func _settings_script_uids() -> Dictionary[String, String]:
+	var result: Dictionary[String, String] = {}
+	for path: String in ["src/core/settings_preferences.gd.uid", "src/ui/settings_panel.gd.uid",
+			"tests/core/test_settings_preferences.gd.uid"]:
+		var source: String = "res://" + path
+		if not FileAccess.file_exists(source):
+			_fail_capture("Godot import did not generate the required script UID: " + path)
+			return {}
+		var contents: String = FileAccess.get_file_as_string(source)
+		if not contents.begins_with("uid://") or contents.strip_edges().length() <= 6:
+			_fail_capture("cannot read the generated script UID: " + path)
+			return {}
+		result[path] = contents
+	return result
 
 
 func _configure_paint() -> void:
@@ -433,6 +524,13 @@ func _capture() -> void:
 	if _main.has_method("inspection_state"):
 		inspection = _main.call("inspection_state")
 	var world: SimWorld = _capture_world()
+	var settings_state: Dictionary = _settings_state() if _settings else {}
+	if _settings and not _settings_capture_valid(settings_state, world):
+		_fail_capture("requested Settings panel, 150% UI scale or 1280x720 window did not match the rendered morning frame")
+		return
+	var script_uids: Dictionary[String, String] = _settings_script_uids() if _settings else {}
+	if _failed:
+		return
 	var build: Dictionary = _build_state()
 	if not _build.is_empty() and (build.get("active") != true or build.get("has_ghost") != true \
 			or build.get("ghost_visible") != true or build.get("ok") != (_build == "green") \
@@ -504,6 +602,9 @@ func _capture() -> void:
 			return
 	var path: String = _out.path_join("shot_%04d.png" % _capture_frame)
 	var image: Image = root.get_viewport().get_texture().get_image()
+	if _settings and (image == null or image.get_size() != SETTINGS_CAPTURE_SIZE):
+		_fail_capture("Settings viewport image did not match the requested 1280x720 dimensions")
+		return
 	if image == null or image.is_empty() or image.save_png(path) != OK:
 		_fail_capture("cannot save viewport image: " + path)
 		return
@@ -560,6 +661,11 @@ func _capture() -> void:
 		"master_seed": master_seed, "restaurant_rng": restaurant_rng,
 		"mood": mood_evidence(world, view, root.get_viewport().get_camera_3d()),
 	}
+	if _settings:
+		metadata.merge({"requested_settings_visible": true, "settings": settings_state,
+			"requested_ui_scale_percent": SETTINGS_CAPTURE_SCALE,
+			"requested_window_size": [SETTINGS_CAPTURE_SIZE.x, SETTINGS_CAPTURE_SIZE.y],
+			"generated_script_uids": script_uids})
 	var file: FileAccess = FileAccess.open(path.get_basename() + ".json", FileAccess.WRITE)
 	if file == null:
 		_fail_capture("cannot write capture metadata")

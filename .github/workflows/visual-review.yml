@@ -84,6 +84,7 @@ jobs:
           bash tools/screenshot.sh --out=screens/visual-review/paint --paint --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/build-green --build=green --quarter=0 --frames=12 --speed=1
           bash tools/screenshot.sh --out=screens/visual-review/build-red --build=red --quarter=0 --frames=12 --speed=1
+          bash tools/screenshot.sh --out=screens/visual-review/settings --settings --speed=0 --frames=12
 
       - name: Verify capture identity and image metadata
         shell: bash
@@ -106,13 +107,15 @@ jobs:
           captures += [('staff', -1, False, False, 12)]
           captures += [('paint', -1, False, False, 60)]
           captures += [('build-green', 0, False, False, 12), ('build-red', 0, False, False, 12)]
+          captures += [('settings', -1, False, False, 12)]
           observed_bands = set()
           for name, requested, inspect_guest, debug, frame in captures:
               inspect_owner = name == 'owner-kitchen'
               png = root / name / f'shot_{frame:04d}.png'
               raw = png.read_bytes()
               assert raw[:8] == b'\x89PNG\r\n\x1a\n' and len(raw) > 1000, f'{name}: missing/invalid PNG'
-              assert struct.unpack('>II', raw[16:24]) == (1600, 900), f'{name}: wrong PNG dimensions'
+              dimensions = (1280, 720) if name == 'settings' else (1600, 900)
+              assert struct.unpack('>II', raw[16:24]) == dimensions, f'{name}: wrong PNG dimensions'
               data = json.loads(png.with_suffix('.json').read_text())
               assert data['image_file'] == png.name, f'{name}: metadata names another image'
               assert data['image_sha256'] == hashlib.sha256(raw).hexdigest(), f'{name}: image/metadata digest mismatch'
@@ -124,7 +127,7 @@ jobs:
               assert math.isclose(data['yaw_degrees'], 45 + 90 * expected, abs_tol=0.01), f'{name}: wrong rendered yaw'
               assert data['wall_mode'] == 1, f'{name}: not Cutaway'
               assert type(data['engine_errors']) is int and data['engine_errors'] == 0, f'{name}: engine/script errors'
-              assert (data['width'], data['height'], data['frame']) == (1600, 900, frame), f'{name}: wrong viewport/frame'
+              assert (data['width'], data['height'], data['frame']) == (*dimensions, frame), f'{name}: wrong viewport/frame'
               assert 'llvmpipe' in data['video_adapter'].lower(), f'{name}: not the requested software Mesa adapter'
               assert data['lowered_wall_cells'], f'{name}: no lowered walls'
               assert data['requested_selection'] == ('owner' if inspect_owner else 'guest' if inspect_guest else ''), f'{name}: wrong requested selection'
@@ -201,7 +204,7 @@ jobs:
                       assert all(type(guest[key]) is str and guest[key].lstrip('-').isdigit() for key in ('rng_seed', 'rng_state')), 'missing actual guest RNG snapshot'
                       observed_bands.add(band)
                   print(f'mood-waits frame={frame}: observed bands={sorted({row["band"] for row in visible})}, waiting ids={sorted(guests)}, seed={data["master_seed"]}, fixture=none')
-              print(f'{name}: actual quarter={expected}, Cutaway, guest={data["selected_agent_id"]}, F3={debug}, tick={data["world_tick"]}, 1600x900, sha256={hashlib.sha256(raw).hexdigest()}')
+              print(f'{name}: actual quarter={expected}, Cutaway, guest={data["selected_agent_id"]}, F3={debug}, tick={data["world_tick"]}, {dimensions[0]}x{dimensions[1]}, sha256={hashlib.sha256(raw).hexdigest()}')
           print(f'Normal mood capture observed bands across frames: {sorted(observed_bands)}; multiple-band screenshot acceptance still requires image review.')
           PY
 
@@ -210,7 +213,11 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: visual-review-${{ github.event.pull_request.number }}-${{ github.run_attempt }}
-          path: screens/visual-review/
+          path: |
+            screens/visual-review/
+            src/core/settings_preferences.gd.uid
+            src/ui/settings_panel.gd.uid
+            tests/core/test_settings_preferences.gd.uid
           if-no-files-found: error
           retention-days: 7
           compression-level: 0
