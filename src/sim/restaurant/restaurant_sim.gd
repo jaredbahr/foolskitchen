@@ -32,10 +32,11 @@ var _departed: Dictionary[int, bool] = {}
 
 
 ## Builds the layout, its starting staff, and its tier-one menu.
+## Only validated edited layouts opt into furniture covering a staff spawn.
 static func create(layout: ShopLayout, content: ContentDB, seed: int, errors: Array[String],
-		stock: Stock = null, with_kitchen: bool = true) -> RestaurantSim:
+		stock: Stock = null, with_kitchen: bool = true, allow_blocked_spawns: bool = false) -> RestaurantSim:
 	var sim: RestaurantSim = RestaurantSim.new()
-	sim.world = ShopBuilder.build(layout, content, errors)
+	sim.world = ShopBuilder.build(layout, content, errors, allow_blocked_spawns)
 	sim.rng.seed = seed
 	sim.spawner = CustomerSpawner.new(sim.rng)
 	for role: StringName in [&"cook", &"server"]:

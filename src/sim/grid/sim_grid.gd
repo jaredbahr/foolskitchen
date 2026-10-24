@@ -190,6 +190,52 @@ func place_def(def: ItemDef, origin: Vector2i, quarter_turns: int = 0) -> Placed
 	return place(def.footprint, origin, quarter_turns, def.solid, def.work_cells, def.seat_cells, def)
 
 
+## Moves/rotates an existing definition-backed item without replacing its id or
+## object. Reservations refuse the move; the editor can explain "try next morning".
+## Validation is read-only. Observers see the completed update once, never a
+## temporary removal, and retain references to the same PlacedItem.
+func relocate_def(item_id: int, origin: Vector2i, quarter_turns: int) -> bool:
+	var placed: PlacedItem = item(item_id)
+	if placed == null:
+		return false
+	var definition: ItemDef = placed.def as ItemDef
+	if definition == null or definition.footprint.x < 1 or definition.footprint.y < 1:
+		return false
+	for cell: Vector2i in placed.work_cells + placed.seat_cells:
+		if placed.reserved_by(cell) != -1:
+			return false
+	var turns: int = posmod(quarter_turns, 4)
+	var new_cells: Array[Vector2i] = _footprint_cells(definition.footprint, origin, turns)
+	for cell: Vector2i in new_cells:
+		if not in_bounds(cell) or terrain(cell) != Terrain.FLOOR:
+			return false
+		var covering: int = _cover.get(cell, 0)
+		if covering != 0 and covering != item_id:
+			return false
+	if placed.origin == origin and placed.quarter_turns == turns:
+		return true
+	var changed: Array[Vector2i] = placed.cells.duplicate()
+	for cell: Vector2i in placed.cells:
+		_cover.erase(cell)
+	placed.origin = origin
+	placed.quarter_turns = turns
+	placed.cells = new_cells
+	placed.work_cells.clear()
+	placed.seat_cells.clear()
+	for cell: Vector2i in definition.work_cells:
+		placed.work_cells.append(origin + GridMath.rotate_cell(cell, definition.footprint, turns))
+	for cell: Vector2i in definition.seat_cells:
+		placed.seat_cells.append(origin + GridMath.rotate_cell(cell, definition.footprint, turns))
+	for cell: Vector2i in new_cells:
+		_cover[cell] = item_id
+		if not changed.has(cell):
+			changed.append(cell)
+	for cell: Vector2i in changed:
+		_refresh_cell(cell)
+	cells_changed.emit(changed)
+	return true
+
+
 ## Removes an item by id. Returns false if there is no such item.
 func remove(item_id: int) -> bool:
 	if not _items.has(item_id):

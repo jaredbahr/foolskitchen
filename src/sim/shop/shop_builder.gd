@@ -6,7 +6,9 @@ extends RefCounted
 ## Returns a world with the layout's terrain and items. Problems (unknown item
 ## ids, items that don't fit) are appended to `errors`; a world is returned
 ## anyway with whatever could be placed, so the game can still show it.
-static func build(layout: ShopLayout, content: ContentDB, errors: Array[String]) -> SimWorld:
+## Validated edited layouts may cover staff spawns: agents use the grid's
+## blocked-start escape. Authored layouts retain strict spawn checks by default.
+static func build(layout: ShopLayout, content: ContentDB, errors: Array[String], allow_blocked_spawns: bool = false) -> SimWorld:
 	var grid := SimGrid.from_ascii(layout.rows)
 	for p in layout.placements:
 		var def := content.item(p.item_id)
@@ -17,7 +19,10 @@ static func build(layout: ShopLayout, content: ContentDB, errors: Array[String])
 			errors.append("%s: %s doesn't fit at %s (turns %d): %s" % [layout.id, p.item_id, p.origin,
 					p.quarter_turns, SimGrid.PlaceResult.keys()[grid.can_place(def.footprint, p.origin, p.quarter_turns)]])
 	for r: StringName in layout.staff_spawns:
-		if not grid.is_walkable(layout.staff_spawns[r]):
+		var spawn: Vector2i = layout.staff_spawns[r]
+		var covering: PlacedItem = grid.item_at(spawn)
+		var furniture_blocked: bool = grid.terrain(spawn) == SimGrid.Terrain.FLOOR and covering != null and covering.solid
+		if not grid.is_walkable(spawn) and not (allow_blocked_spawns and furniture_blocked):
 			errors.append("%s: spawn for %s at %s is not walkable" % [layout.id, r, layout.staff_spawns[r]])
 	return SimWorld.new(grid)
 
