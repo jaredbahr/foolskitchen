@@ -143,6 +143,48 @@ func test_owner_menu_and_shop_changes_restore_after_next_morning() -> void:
 	assert_eq(_owner(second).home_cell(), (second.get("sim") as RestaurantSim).staff_spawns[&"owner"])
 
 
+func test_level_two_tomato_melt_stays_enabled_after_next_morning_save_and_reload() -> void:
+	var first: Node = _start(true)
+	var first_morning: String = FileAccess.get_file_as_string(_path())
+	var progress: OwnerProgress = first.get("owner_progress") as OwnerProgress
+	var sim: RestaurantSim = first.get("sim") as RestaurantSim
+	var needed: int = ceili(float(progress.threshold_for(2)) / float(progress.tuning.happy_guest_xp))
+	assert_false(first.call("menu_set_enabled", &"tomato_melt", true))
+	sim.leave_reasons_today[&"happy"] = needed
+	Clock.sim.phase = SimClock.Phase.CLOSED
+	first.call("_on_service_closed", Clock.sim.day)
+	assert_eq(progress.level, 2)
+	assert_eq(FileAccess.get_file_as_string(_path()), first_morning,
+		"level-up does not rewrite the current morning checkpoint")
+	assert_true(Clock.sim.next_day())
+	assert_eq(Clock.sim.day, 2)
+	var day_two_morning: String = FileAccess.get_file_as_string(_path())
+	var menu: MenuSettings = first.get("menu_settings") as MenuSettings
+	assert_false(menu.is_enabled(&"tomato_melt"), "unlocking never silently adds a dish")
+	assert_true(first.call("menu_set_enabled", &"tomato_melt", true))
+	assert_true(menu.is_enabled(&"tomato_melt"))
+	assert_eq(FileAccess.get_file_as_string(_path()), day_two_morning,
+		"enabling the recipe waits for the next normal morning save")
+	Clock.sim.phase = SimClock.Phase.CLOSED
+	first.call("_on_service_closed", Clock.sim.day)
+	assert_true(Clock.sim.next_day())
+	assert_eq(Clock.sim.day, 3)
+	var saved_menu: Dictionary = _document()["data"]["menu"]
+	assert_true((saved_menu["enabled"] as Array).has("tomato_melt"))
+	var saved_progress: Dictionary = progress.to_dict()
+	_close(first)
+	var second: Node = _start(true)
+	assert_eq(Clock.sim.day, 3)
+	assert_eq((second.get("owner_progress") as OwnerProgress).to_dict(), saved_progress)
+	assert_true((second.get("menu_settings") as MenuSettings).is_enabled(&"tomato_melt"),
+		"the saved level and selected dish restore together")
+	var live_menu_ids: Array[StringName] = []
+	for recipe: RecipeDef in (second.get("sim") as RestaurantSim).menu:
+		live_menu_ids.append(recipe.id)
+	assert_true(live_menu_ids.has(&"tomato_melt"),
+		"the restored choice reaches the playable restaurant menu")
+
+
 func test_missing_owner_section_defaults_to_rest() -> void:
 	var first: Node = _start(true)
 	assert_true(first.call("select_agent", _owner(first).id))

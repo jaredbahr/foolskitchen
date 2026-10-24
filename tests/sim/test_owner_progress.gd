@@ -10,6 +10,8 @@ func test_authored_sources_and_known_day_breakdown() -> void:
 	assert_eq(TUNING.profit_step, 10)
 	assert_eq(TUNING.profit_step_xp, 1)
 	assert_eq(TUNING.five_star_review_xp, 3)
+	assert_eq(TUNING.level_base, 24)
+	assert_eq(TUNING.level_exponent, 2.0)
 	var progress: OwnerProgress = OwnerProgress.new(TUNING)
 	var gained: Dictionary = progress.award_day(1, 4, 37, 2)
 	assert_eq(gained["happy_xp"], 8)
@@ -28,9 +30,9 @@ func test_authored_sources_and_known_day_breakdown() -> void:
 func test_total_xp_thresholds_follow_the_authored_power_curve() -> void:
 	var progress: OwnerProgress = OwnerProgress.new(TUNING)
 	assert_eq(progress.threshold_for(1), 0)
-	assert_eq(progress.threshold_for(2), ceili(TUNING.level_base * pow(2.0, 1.5)))
-	assert_eq(progress.threshold_for(3), ceili(TUNING.level_base * pow(3.0, 1.5)))
-	assert_eq(progress.threshold_for(6), ceili(TUNING.level_base * pow(6.0, 1.5)))
+	assert_eq(progress.threshold_for(2), 96)
+	assert_eq(progress.threshold_for(3), 216)
+	assert_eq(progress.threshold_for(6), 864)
 	for target: int in [2, 3, 6, 20]:
 		var threshold: int = progress.threshold_for(target)
 		assert_eq(progress.level_at(threshold - 1), target - 1)
@@ -42,15 +44,28 @@ func test_total_xp_thresholds_follow_the_authored_power_curve() -> void:
 	assert_eq(progress.xp_in_level(), progress.threshold_for(3) - at_two)
 
 
+func test_level_exponent_is_authored_and_validated() -> void:
+	var alternate: ProgressionTuning = TUNING.duplicate() as ProgressionTuning
+	alternate.level_base = 10
+	alternate.level_exponent = 1.5
+	var progress: OwnerProgress = OwnerProgress.new(alternate)
+	assert_eq(progress.threshold_for(4), 80)
+	alternate.level_exponent = 2.0
+	assert_eq(progress.threshold_for(4), 160)
+	alternate.level_exponent = 0.0
+	assert_false(alternate.is_valid())
+	assert_eq(progress.threshold_for(4), OwnerProgress.MAX_TOTAL_XP + 1)
+
+
 func test_one_day_can_cross_multiple_levels_without_skipping_unlock_numbers() -> void:
 	var small: ProgressionTuning = TUNING.duplicate() as ProgressionTuning
 	small.level_base = 10
 	var progress: OwnerProgress = OwnerProgress.new(small)
-	var gained: Dictionary = progress.award_day(1, 30, 0)
-	assert_eq(gained["total_xp"], 60)
+	var gained: Dictionary = progress.award_day(1, 50, 0)
+	assert_eq(gained["total_xp"], 100)
 	assert_eq(gained["levels_gained"], [2, 3] as Array[int])
 	assert_eq(progress.level, 3)
-	assert_eq(progress.xp_into_level(), 60 - progress.threshold_for(3))
+	assert_eq(progress.xp_into_level(), 100 - progress.threshold_for(3))
 
 
 func test_negative_profit_partial_steps_and_empty_days_are_bounded() -> void:

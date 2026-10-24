@@ -211,9 +211,17 @@ func test_first_three_review_quotes_fit_without_scrolling_at_both_capture_sizes(
 	report.today_review_average = 4.0
 	report.reputation_before = 3.0
 	report.reputation_after = 3.2
+	report.owner_level_before = 1
+	report.owner_level_after = 2
+	report.owner_unlocks = ["Potted plant", "Tomato melt recipe"]
 	_screen.call("show_report", report)
 	var scroll: ScrollContainer = _screen.get_node("Panel/Scroll") as ScrollContainer
 	var rows: VBoxContainer = _screen.get_node("%ReviewRows") as VBoxContainer
+	var profit: Label = _screen.get_node("%Profit") as Label
+	var callout: HBoxContainer = _screen.get_node("Panel/Scroll/Content/LevelUpCallout") as HBoxContainer
+	var banner: Label = _screen.get_node("%OwnerLevelUp") as Label
+	var unlocks: Label = _screen.get_node("%OwnerUnlocks") as Label
+	var finances: HBoxContainer = _screen.get_node("Panel/Scroll/Content/Finances") as HBoxContainer
 	for bounds: Vector2 in [Vector2(1600.0, 900.0), Vector2(1280.0, 720.0)]:
 		_host.size = bounds
 		scroll.scroll_vertical = 0
@@ -223,6 +231,19 @@ func test_first_three_review_quotes_fit_without_scrolling_at_both_capture_sizes(
 		assert_eq(scroll.scroll_vertical, 0)
 		assert_eq(rows.get_child_count(), 3)
 		var viewport: Rect2 = scroll.get_global_rect()
+		assert_true(callout.visible and banner.visible and unlocks.visible)
+		assert_eq(banner.text, "Level up! Level 2 reached")
+		assert_eq(unlocks.text, "Unlocked: Potted plant, Tomato melt recipe")
+		assert_true(callout.get_global_rect().position.y >= profit.get_global_rect().end.y - 1.0)
+		assert_true(callout.get_global_rect().end.y <= finances.get_global_rect().position.y + 1.0)
+		for label: Label in [banner, unlocks]:
+			var label_rect: Rect2 = label.get_global_rect()
+			assert_true(label_rect.size.x > 0.0 and label_rect.size.y > 0.0)
+			assert_true(label_rect.position.x >= viewport.position.x - 1.0
+				and label_rect.end.x <= viewport.end.x + 1.0
+				and label_rect.position.y >= viewport.position.y - 1.0
+				and label_rect.end.y <= viewport.end.y + 1.0,
+				"the level-up payoff fits the unscrolled %dx%d report" % [int(bounds.x), int(bounds.y)])
 		for index: int in range(3):
 			var card: Dictionary = report.review_cards[index]
 			var native: Label = rows.get_child(index) as Label

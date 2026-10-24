@@ -132,7 +132,8 @@ func test_shipped_catalogue_is_derived_from_every_valid_non_door_definition() ->
 		var button: Button = _catalogue.item_buttons[definition.id]
 		if definition.unlock_level > 1:
 			assert_true(button.disabled)
-			assert_true(button.text.ends_with("Unlocks at level %d" % definition.unlock_level))
+			assert_true(button.text.ends_with("Level %d" % definition.unlock_level))
+			assert_eq(button.tooltip_text, "Unlocks at level %d" % definition.unlock_level)
 		else:
 			assert_false(button.disabled)
 			assert_true(button.text.ends_with("$%d" % definition.price))
@@ -144,7 +145,7 @@ func test_shipped_catalogue_is_derived_from_every_valid_non_door_definition() ->
 	var natural: Vector2 = content.get_combined_minimum_size()
 	var padding: Vector2 = panel.get_theme_stylebox("panel").get_minimum_size()
 	assert_eq(panel.size, natural + padding, "a fitting catalogue uses only its content and compact padding")
-	assert_true(panel.size.x <= _host.size.x - 24.0, "all shipped items fit inside the viewport")
+	assert_true(panel.size.x < _host.size.x * 0.8, "no empty strip spans the remaining viewport")
 	assert_true(panel.size.y < 140.0, "the old176px strip is reduced to its actual contents")
 	assert_almost_eq(panel.position.x, 12.0)
 	assert_almost_eq(panel.get_rect().end.y, _host.size.y - 12.0)
@@ -223,7 +224,7 @@ func test_locked_item_stays_visible_but_never_requests_until_owner_level_advance
 	_catalogue.set_build_visible(true)
 	var button: Button = _catalogue.item_buttons[&"plant"]
 	assert_true(button.disabled)
-	assert_eq(button.text, "Potted plant\nUnlocks at level 2")
+	assert_eq(button.text, "Potted plant\nLevel 2")
 	assert_eq(button.tooltip_text, "Unlocks at level 2")
 	button.pressed.emit()
 	_catalogue._on_buy_pressed(&"plant")

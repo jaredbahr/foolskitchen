@@ -28,6 +28,7 @@ var _review_stats: Label
 var _reputation: Label
 var _reviews: VBoxContainer
 var _owner_level: Label
+var _owner_callout: HBoxContainer
 var _owner_level_up: Label
 var _owner_xp_rows: GridContainer
 var _owner_unlocks: Label
@@ -102,6 +103,7 @@ func _bind_nodes() -> void:
 	_reputation = %Reputation
 	_reviews = %ReviewRows
 	_owner_level = %OwnerLevel
+	_owner_callout = get_node("Panel/Scroll/Content/LevelUpCallout") as HBoxContainer
 	_owner_level_up = %OwnerLevelUp
 	_owner_xp_rows = %OwnerXPRows
 	_owner_unlocks = %OwnerUnlocks
@@ -133,6 +135,7 @@ func _fill_owner_progress(report: DayReport) -> void:
 		_owner_unlocks.text = "Unlocked: %s" % names
 	else:
 		_owner_unlocks.text = ""
+	_owner_callout.visible = _owner_level_up.visible or _owner_unlocks.visible
 
 
 func _fill_money(rows: GridContainer, amounts: Dictionary, empty_text: String) -> void:

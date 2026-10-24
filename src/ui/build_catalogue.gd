@@ -98,7 +98,7 @@ func refresh_content() -> void:
 		var text: String = "%s\n$%d" % [label, definition.price]
 		var tooltip: String = "Buy %s for $%d" % [label, definition.price]
 		if locked:
-			text = "%s\nUnlocks at level %d" % [label, definition.unlock_level]
+			text = "%s\nLevel %d" % [label, definition.unlock_level]
 			tooltip = "Unlocks at level %d" % definition.unlock_level
 		if button.text != text:
 			button.text = text

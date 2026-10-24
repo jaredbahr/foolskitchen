@@ -8,4 +8,5 @@ happy_guest_xp = 2
 profit_step = 10
 profit_step_xp = 1
 five_star_review_xp = 3
-level_base = 45
+level_base = 24
+level_exponent = 2.0

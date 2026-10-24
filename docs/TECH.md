@@ -399,8 +399,10 @@ docs/
   two XP per happy departure, one per complete $10 of positive daily profit,
   and three per sampled five-star review. Its `last_awarded_day` guard prevents
   a second award for the same closing day. Level N starts at
-  `ceil(level_base * N^1.5)` total XP (level one starts at zero); the starting
-  base is 45 pending controlled seed-1/7/42 balance results.
+  `ceil(level_base * N^level_exponent)` total XP (level one starts at zero);
+  both values are authored in the tuning resource. The initial base 24 and
+  exponent 2.0 set levels two, three and six at 96, 216 and 864 total XP.
+  The 25-day seed-1/7/42 pacing probe remains pending.
 - `RecipeDef` and `ItemDef` author `unlock_level`, defaulting to one. Tomato
   soup, grilled cheese and burger stay available initially; Tomato melt and
   new potted-plant purchases unlock at level two. `MenuSettings` rejects a

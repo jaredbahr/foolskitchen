@@ -20,13 +20,13 @@ func _init(config: ProgressionTuning) -> void:
 	tuning = config
 
 
-## Level one starts at zero. Every later level uses base * N^1.5 total XP.
+## Level one starts at zero; later levels use the authored power curve.
 func threshold_for(target_level: int) -> int:
 	if target_level <= 1:
 		return 0
 	if tuning == null or not tuning.is_valid() or target_level > MAX_LEVEL:
 		return MAX_TOTAL_XP + 1
-	var threshold: float = float(tuning.level_base) * pow(float(target_level), 1.5)
+	var threshold: float = float(tuning.level_base) * pow(float(target_level), tuning.level_exponent)
 	if threshold > float(MAX_TOTAL_XP):
 		return MAX_TOTAL_XP + 1
 	return ceili(threshold)
