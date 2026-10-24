@@ -76,6 +76,7 @@ jobs:
           done
           bash tools/screenshot.sh --out=screens/visual-review/inspect-guest --open --fast=5 --select=guest --frames=60 --speed=1
           bash tools/screenshot.sh --out=screens/visual-review/debug-busy --open --fast=5 --select=guest --f3 --frames=60 --speed=1
+          bash tools/screenshot.sh --out=screens/visual-review/mood-waits --open --fast=8 --frames=120,180,240,300 --speed=1
 
       - name: Verify capture identity and image metadata
         shell: bash
@@ -89,14 +90,18 @@ jobs:
           import struct
 
           root = Path('screens/visual-review')
-          captures = [('default', -1, False, False)] + [(f'quarter-{q}', q, False, False) for q in range(4)]
-          captures += [('inspect-guest', -1, True, False), ('debug-busy', -1, True, True)]
-          for name, requested, inspect_guest, debug in captures:
-              png = root / name / 'shot_0060.png'
+          captures = [('default', -1, False, False, 60)] + [(f'quarter-{q}', q, False, False, 60) for q in range(4)]
+          captures += [('inspect-guest', -1, True, False, 60), ('debug-busy', -1, True, True, 60)]
+          captures += [('mood-waits', -1, False, False, frame) for frame in (120, 180, 240, 300)]
+          observed_bands = set()
+          for name, requested, inspect_guest, debug, frame in captures:
+              png = root / name / f'shot_{frame:04d}.png'
               raw = png.read_bytes()
               assert raw[:8] == b'\x89PNG\r\n\x1a\n' and len(raw) > 1000, f'{name}: missing/invalid PNG'
               assert struct.unpack('>II', raw[16:24]) == (1600, 900), f'{name}: wrong PNG dimensions'
               data = json.loads(png.with_suffix('.json').read_text())
+              assert data['image_file'] == png.name, f'{name}: metadata names another image'
+              assert data['image_sha256'] == hashlib.sha256(raw).hexdigest(), f'{name}: image/metadata digest mismatch'
               expected = 0 if requested == -1 else requested
               assert data['scene'] == 'res://src/world/main.tscn', f'{name}: wrong captured scene'
               assert data['capture_timing'] == 'frame_post_draw', f'{name}: pixels/state were not captured after draw'
@@ -105,7 +110,7 @@ jobs:
               assert math.isclose(data['yaw_degrees'], 45 + 90 * expected, abs_tol=0.01), f'{name}: wrong rendered yaw'
               assert data['wall_mode'] == 1, f'{name}: not Cutaway'
               assert data['engine_errors'] == 0, f'{name}: engine/script errors'
-              assert (data['width'], data['height'], data['frame']) == (1600, 900, 60), f'{name}: wrong viewport/frame'
+              assert (data['width'], data['height'], data['frame']) == (1600, 900, frame), f'{name}: wrong viewport/frame'
               assert 'llvmpipe' in data['video_adapter'].lower(), f'{name}: not the requested software Mesa adapter'
               assert data['lowered_wall_cells'], f'{name}: no lowered walls'
               assert data['requested_selection'] == ('guest' if inspect_guest else ''), f'{name}: wrong requested selection'
@@ -121,7 +126,41 @@ jobs:
               else:
                   assert data['selected_agent_id'] == -1 and data['selected_role'] == '', f'{name}: unexpected agent selection'
                   assert data['selected_agent_live'] is False, f'{name}: unexpected live selection'
+              if name == 'mood-waits':
+                  assert data['capture_parameters'] == {'open': True, 'fast_ticks_per_frame': 8, 'speed': 1}, 'wrong mood capture parameters'
+                  assert data['world_tick'] > 0, 'normal mood capture did not advance the simulation'
+                  assert type(data['master_seed']) is str and data['master_seed'].lstrip('-').isdigit(), 'missing actual master seed'
+                  assert set(data['restaurant_rng']) == {'seed', 'state'}, 'missing actual restaurant RNG snapshot'
+                  assert all(type(value) is str and value.lstrip('-').isdigit() for value in data['restaurant_rng'].values()), 'invalid restaurant RNG snapshot'
+                  mood = data['mood']
+                  assert mood['available'] is True and mood['fixture'] == 'none', 'mood capture must use the normal live scene'
+                  waiting = mood['waiting_guests']
+                  visible = mood['visible_indicators']
+                  guests = {row['id']: row for row in waiting}
+                  icons = {row['id']: row for row in visible}
+                  assert len(guests) == len(waiting) and len(icons) == len(visible), 'duplicate mood evidence ids'
+                  assert set(guests) == set(icons), 'visible indicator ids do not match actual waiting guests'
+                  colors = ((56, 118, 75), (201, 163, 70), (200, 116, 58), (168, 62, 53))
+                  for guest_id, guest in guests.items():
+                      assert type(guest_id) is int and guest_id > 0 and type(guest['state']) is int and guest['state'] in (1, 3, 4), 'invalid waiting guest'
+                      assert all(type(guest[key]) is int for key in ('queue_wait', 'queue_patience', 'food_wait', 'food_patience')), 'invalid patience snapshot'
+                      elapsed, budget = (guest['queue_wait'], guest['queue_patience']) if guest['state'] == 1 else (guest['food_wait'], guest['food_patience'])
+                      expected_mood = 0.0 if budget <= 0 else (budget - min(max(elapsed, 0), budget)) / budget
+                      assert math.isfinite(guest['mood']) and math.isclose(guest['mood'], expected_mood, rel_tol=0, abs_tol=1e-12), 'mood does not match actual patience'
+                      band = 0 if expected_mood >= .6 else 1 if expected_mood >= .35 else 2 if expected_mood >= .15 else 3
+                      icon = icons[guest_id]
+                      assert type(icon['parent_agent_id']) is int and icon['parent_agent_id'] == guest_id, 'indicator is attached to another agent'
+                      assert type(guest['band']) is int and type(icon['band']) is int and guest['band'] == icon['band'] == band, 'displayed band differs from waiting guest'
+                      assert icon['visible_in_tree'] is True and icon['dot_visible'] is True, 'indicator is hidden'
+                      assert icon['mark'] == ('', '', '!', '!!')[band] and icon['mark_visible'] is (band >= 2), 'wrong visible mood punctuation'
+                      assert len(icon['color']) == 4 and all(math.isclose(actual, expected / 255, rel_tol=0, abs_tol=1e-7) for actual, expected in zip(icon['color'], (*colors[band], 255))), 'wrong native dot color'
+                      assert icon['in_camera_frustum'] is True, 'waiting indicator is outside the captured camera'
+                      assert len(icon['screen_position']) == 2 and 0 <= icon['screen_position'][0] < data['width'] and 0 <= icon['screen_position'][1] < data['height'], 'indicator center is outside the image'
+                      assert all(type(guest[key]) is str and guest[key].lstrip('-').isdigit() for key in ('rng_seed', 'rng_state')), 'missing actual guest RNG snapshot'
+                      observed_bands.add(band)
+                  print(f'mood-waits frame={frame}: observed bands={sorted({row["band"] for row in visible})}, waiting ids={sorted(guests)}, seed={data["master_seed"]}, fixture=none')
               print(f'{name}: actual quarter={expected}, Cutaway, guest={data["selected_agent_id"]}, F3={debug}, tick={data["world_tick"]}, 1600x900, sha256={hashlib.sha256(raw).hexdigest()}')
+          print(f'Normal mood capture observed bands across frames: {sorted(observed_bands)}; multiple-band screenshot acceptance still requires image review.')
           PY
 
       - name: Upload actual captures, metadata and logs
