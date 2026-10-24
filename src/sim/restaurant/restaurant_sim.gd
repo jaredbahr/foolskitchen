@@ -37,7 +37,8 @@ var _departed: Dictionary[int, bool] = {}
 ## Builds the layout, its starting staff, and its tier-one menu.
 ## Only validated edited layouts opt into furniture covering a staff spawn.
 static func create(layout: ShopLayout, content: ContentDB, seed: int, errors: Array[String],
-		stock: Stock = null, with_kitchen: bool = true, allow_blocked_spawns: bool = false) -> RestaurantSim:
+		stock: Stock = null, with_kitchen: bool = true, allow_blocked_spawns: bool = false,
+		roster: Array[StaffMember] = [], catalogue: StaffCatalogue = StaffRoster.CATALOGUE) -> RestaurantSim:
 	var sim: RestaurantSim = RestaurantSim.new()
 	sim.world = ShopBuilder.build(layout, content, errors, allow_blocked_spawns)
 	sim.rng.seed = seed
@@ -47,9 +48,14 @@ static func create(layout: ShopLayout, content: ContentDB, seed: int, errors: Ar
 			errors.append("%s: missing %s spawn" % [layout.id, role])
 			continue
 		sim.staff_spawns[role] = layout.staff_spawns[role]
-		var staff: StaffAgent = OwnerAgent.new(layout.staff_spawns[role]) if role == &"owner" else StaffAgent.new(role)
-		staff.cell = layout.staff_spawns[role]
-		sim.world.add_agent(staff)
+	var people: Array[StaffMember] = roster if not roster.is_empty() else StaffRoster.new().members()
+	# Default order remains cook, server, owner, preserving existing agent IDs.
+	if not sim.set_staff_roster(people, catalogue):
+		errors.append("Invalid staff roster")
+	if sim.staff_spawns.has(&"owner"):
+		var owner: OwnerAgent = OwnerAgent.new(sim.staff_spawns[&"owner"])
+		owner.cell = sim.staff_spawns[&"owner"]
+		sim.world.add_agent(owner)
 	for recipe: RecipeDef in content.recipes():
 		if recipe.unlock_tier == 1:
 			sim.menu.append(recipe)
@@ -58,6 +64,42 @@ static func create(layout: ShopLayout, content: ContentDB, seed: int, errors: Ar
 		sim.kitchen = Kitchen.new(sim, content, sim.stock)
 	sim.start_day()
 	return sim
+
+
+## Morning-only staffing changes retain existing people and the exact owner.
+func set_staff_roster(people: Array[StaffMember], catalogue: StaffCatalogue = StaffRoster.CATALOGUE) -> bool:
+	if world == null or world.clock.phase != SimClock.Phase.MORNING or people.size() < 2 or people.size() > StaffRoster.CAPACITY:
+		return false
+	var by_id: Dictionary[StringName, StaffMember] = {}
+	var roles: Array[StringName] = []
+	for member: StaffMember in people:
+		if member == null or member.id.is_empty() or by_id.has(member.id) \
+				or not [&"cook", &"server"].has(member.role) or not staff_spawns.has(member.role) \
+				or catalogue.find_trait(member.trait_id) == null or member.skill < 1 or member.skill > 5 or member.wage < 0:
+			return false
+		by_id[member.id] = member
+		roles.append(member.role)
+	if not roles.has(&"cook") or not roles.has(&"server"):
+		return false
+	var retained: Dictionary[StringName, bool] = {}
+	for agent: SimAgent in world.agents.duplicate():
+		if not agent is StaffAgent or agent is OwnerAgent:
+			continue
+		var employee: StaffAgent = agent as StaffAgent
+		if not by_id.has(employee.member_id):
+			world.remove_agent(employee)
+		else:
+			var member: StaffMember = by_id[employee.member_id]
+			employee.configure_member(member, catalogue.find_trait(member.trait_id))
+			retained[employee.member_id] = true
+	for member: StaffMember in people:
+		if retained.has(member.id):
+			continue
+		var employee: StaffAgent = StaffAgent.new(member.role, member.skill)
+		employee.configure_member(member, catalogue.find_trait(member.trait_id))
+		employee.cell = staff_spawns[member.role]
+		world.add_agent(employee)
+	return true
 
 
 ## The factory's one live owner, or null for a manually constructed world.

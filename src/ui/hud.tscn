@@ -134,6 +134,12 @@ focus_mode = 0
 text = "Menu"
 tooltip_text = "Choose today's menu and prices"
 
+[node name="Staff" type="Button" parent="Top/Row"]
+layout_mode = 2
+focus_mode = 0
+text = "Staff"
+tooltip_text = "Hire staff and plan today's wages"
+
 [node name="Deltas" type="Control" parent="."]
 layout_mode = 0
 mouse_filter = 2

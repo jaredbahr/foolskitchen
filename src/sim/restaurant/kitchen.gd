@@ -341,6 +341,8 @@ func _on_task_completed(task: SimTask) -> void:
 		var recipe: RecipeDef = _content.recipe(order.recipe_id)
 		var skill: int = cook.skill_for(&"cook") if cook != null else 1
 		var quality: float = recipe.base_quality * (0.7 + 0.1 * clampi(skill, 1, 5))
+		if cook != null:
+			quality += cook.cook_quality_bonus
 		for station_id: int in task.payload["station_ids"]:
 			var station: PlacedItem = sim.world.grid.item(station_id)
 			if station != null:

@@ -28,7 +28,7 @@ func before_each() -> void:
 	SaveSystem.save_dir = _save_dir
 	SaveSystem.delete_slot(SLOT)
 	Clock.set_speed(0)
-	for key: String in ["owner", "shop", "menu", "plates"]:
+	for key: String in ["owner", "shop", "menu", "staff", "plates"]:
 		if SaveSystem._providers.has(key):
 			_old_providers[key] = SaveSystem._providers[key].duplicate()
 
@@ -42,7 +42,7 @@ func after_each() -> void:
 	DirAccess.remove_absolute(_save_dir)
 	DirAccess.remove_absolute(SaveTestPaths.process_dir(OS.get_process_id()))
 	SaveSystem.save_dir = _old_save_dir
-	for key: String in ["owner", "shop", "menu", "plates"]:
+	for key: String in ["owner", "shop", "menu", "staff", "plates"]:
 		if _old_providers.has(key):
 			var provider: Dictionary = _old_providers[key]
 			SaveSystem.register(key, provider["capture"], provider["restore"])

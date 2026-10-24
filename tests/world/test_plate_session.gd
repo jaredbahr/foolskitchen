@@ -16,7 +16,7 @@ func before_each() -> void:
 	_save_dir = SaveTestPaths.case_dir(OS.get_process_id(), "plate_session")
 	SaveSystem.save_dir = _save_dir
 	SaveSystem.delete_slot(SLOT)
-	for key: String in ["owner", "shop", "menu", "plates"]:
+	for key: String in ["owner", "shop", "menu", "staff", "plates"]:
 		if SaveSystem._providers.has(key):
 			_old_providers[key] = SaveSystem._providers[key].duplicate()
 	Clock.set_speed(0)
@@ -31,7 +31,7 @@ func after_each() -> void:
 	DirAccess.remove_absolute(_save_dir)
 	DirAccess.remove_absolute(SaveTestPaths.process_dir(OS.get_process_id()))
 	SaveSystem.save_dir = _old_save_dir
-	for key: String in ["owner", "shop", "menu", "plates"]:
+	for key: String in ["owner", "shop", "menu", "staff", "plates"]:
 		if _old_providers.has(key):
 			var provider: Dictionary = _old_providers[key]
 			SaveSystem.register(key, provider["capture"], provider["restore"])
@@ -151,12 +151,17 @@ func test_pre_sink_save_keeps_its_layout_and_defaults_missing_plate_stock() -> v
 
 func test_invalid_plate_save_stages_no_live_change_and_fresh_start_clears_staged_stock() -> void:
 	await _start()
+	var roster: StaffRoster = _main.get("staff_roster") as StaffRoster
+	assert_true(_main.call("staff_hire", roster.candidates()[0].id))
+	var staff_choices: Dictionary = (_main.get("staff_roster") as StaffRoster).to_dict()
+	assert_eq((staff_choices["members"] as Array).size(), 3)
 	assert_true(_main.call("_restore_plates", {"version": 1, "total": "7"}))
 	assert_eq(_sim().kitchen.plates.total, 12, "provider validation stages only primitive durable stock")
 	assert_false(_main.call("_restore_plates", {"version": 1, "total": "-1"}))
 	assert_eq(_sim().kitchen.plates.total, 12)
 	var document: Dictionary = JSON.parse_string(_saved_text())
 	var sections: Dictionary = document["data"]
+	sections["staff"] = staff_choices
 	sections["plates"] = {"version": 1, "total": "-1"}
 	_write_document(document)
 	var broken: String = _saved_text()
@@ -164,12 +169,18 @@ func test_invalid_plate_save_stages_no_live_change_and_fresh_start_clears_staged
 	assert_eq(Clock.sim.phase, SimClock.Phase.MORNING)
 	assert_eq(_sim().kitchen.plates.total, 12, "failed startup discards every staged plate total")
 	assert_eq(_sim().kitchen.clean_plates, 12)
+	assert_eq((_main.get("staff_roster") as StaffRoster).members().size(), 2,
+		"a later rejected plate provider cannot install the valid staged staff roster")
+	assert_eq(_sim().world.agents.size(), 3)
 	assert_eq(_saved_text(), broken, "the existing failed-startup autosave skip remains intact")
 
 
 func _assert_hud_row_fits(width: float) -> void:
 	var previous_end: float = 0.0
 	var row: HBoxContainer = _main.get_node("HUD/Top/Row") as HBoxContainer
+	assert_true((_main.get_node("HUD/Top/Row/Staff") as Button).is_visible_in_tree(),
+		"both active and legacy-off plate headers retain the Staff control")
+	assert_true((_main.get_node("HUD/Top/Row/Plates") as Label).is_visible_in_tree())
 	for child: Node in row.get_children():
 		var control: Control = child as Control
 		if control == null or not control.visible:

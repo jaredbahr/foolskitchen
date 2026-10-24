@@ -298,6 +298,51 @@ docs/
 - Sale results/books are authoritative; shared HUD feedback retains its same-frame
   coalescing and zero suppression. Only the existing morning boundary autosaves.
 
+### 2.3f Staff roster and hiring (FK-037)
+- `StaffMember` records a stable ID, name, cook/server role, skill, daily wage
+  and trait. `data/staff/traits.tres` authors the starter people, candidate names
+  and four trait effects. `EconomyTuning.staff_wage_curve` scales the existing
+  default role wages by skill; the starting skill-3 Steady team still costs $55.
+- `StaffRoster` owns copied members/candidates, role minimums and the six-person
+  cap (the owner is separate). `draw_candidates(day, rng)` draws three only when
+  the day changes. Its versioned decoder validates the complete roster and pool
+  before installation; the saved candidate day retains depleted morning pools
+  without another draw. Only `GameState.rng(&"hiring")` supplies session draws.
+- `RestaurantSim.create` appends optional roster and catalogue arguments after
+  the existing seven arguments. Omitted choices preserve cook/server/owner
+  order and defaults. MORNING `set_staff_roster` keeps retained agents and the
+  exact owner, adds hires at their role's spawn and removes departures through
+  normal task/reservation cleanup. Several people may share a spawn.
+- Quick changes walking by its data multiplier once. Its opt-in movement carries
+  baseline-tick credit across cells: the existing neutral cadence is four ticks
+  per straight edge and six per diagonal at speed 0.25. Scaling that quantized
+  time (rather than only Quick's geometric distance) preserves every neutral
+  tick and avoids an unintended 18% diagonal arrival advantage. Residual credit
+  converts using the next edge's own cost; final arrival, blocking and path
+  resets never bank extra movement. The neutral movement body is unchanged.
+  Careful adds the actual
+  completing cook's quality bonus before the normal clamp. Cheerful extends a
+  guest's food-patience budget when that server takes an accepted order, inside
+  the existing replay guard. Steady and the owner retain neutral values. Work
+  speed, queue patience, elapsed waiting and guest RNG draws are unchanged.
+- Each new candidate pool samples names without replacement from the authored
+  list, skipping team names case-insensitively. Same-day saved pools, including
+  legacy duplicate names, remain intact and draw no new random values.
+- The HUD Staff button and request-only `StaffPanel` use MORNING commands
+  `staff_hire`/`staff_let_go`. They spend no cash, draw no RNG and never save.
+  Closing charges each live employee's own wage, excluding the owner.
+- Main stages a `staff` provider alongside shop/menu/owner; installation waits
+  for the complete successful MORNING load, even without a shop section. Old
+  saves get the starter team. Candidates are prepared before the one normal
+  morning autosave; hiring changes wait until the next morning to persist.
+- Manual balance comparison: run `tools/balance_probe.gd` with `--seed=1`,
+  `--seed=7`, `--seed=42`, first normally and then with `--extra-cook=4`. This
+  explicit scenario adds a Steady cook and their wage, without altering tasks
+  or supplies. It is not called by CI. `--staff --speed=0 --frames=12` captures
+  the genuine Staff panel and native row/model metadata after drawing; the
+  existing visual job adds one image. Runtime/balance evidence is separate
+  from source review.
+
 ### 2.4 Save system
 - JSON in `user://saves/`, with a `version` field and migration functions per version.
 - Only sim state is saved, never nodes. The world is rebuilt from sim state on load.

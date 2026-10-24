@@ -1,4 +1,4 @@
-[gd_resource type="Theme" load_steps=6 format=3]
+[gd_resource type="Theme" load_steps=7 format=3]
 
 [sub_resource type="StyleBoxFlat" id="Panel_cream"]
 content_margin_left = 24.0
@@ -46,6 +46,22 @@ border_width_right = 1
 border_width_bottom = 1
 border_color = Color(0.2313726, 0.1647059, 0.1254902, 1)
 
+[sub_resource type="StyleBoxFlat" id="Button_disabled"]
+content_margin_left = 18.0
+content_margin_top = 10.0
+content_margin_right = 18.0
+content_margin_bottom = 10.0
+bg_color = Color(0.8666667, 0.8156863, 0.7254902, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.4705882, 0.3882353, 0.3137255, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
 [sub_resource type="StyleBoxFlat" id="Bar_fill"]
 bg_color = Color(0.7843137, 0.454902, 0.227451, 1)
 
@@ -58,10 +74,12 @@ Button/colors/font_color = Color(0.2313726, 0.1647059, 0.1254902, 1)
 Button/colors/font_hover_color = Color(0.2313726, 0.1647059, 0.1254902, 1)
 Button/colors/font_pressed_color = Color(0.9529412, 0.9019608, 0.8, 1)
 Button/colors/font_hover_pressed_color = Color(0.9529412, 0.9019608, 0.8, 1)
+Button/colors/font_disabled_color = Color(0.2313726, 0.1647059, 0.1254902, 1)
 Button/styles/normal = SubResource("Button_outline")
 Button/styles/hover = SubResource("Button_outline")
 Button/styles/pressed = SubResource("Button_accent")
 Button/styles/hover_pressed = SubResource("Button_accent")
+Button/styles/disabled = SubResource("Button_disabled")
 ProgressBar/styles/background = SubResource("Bar_background")
 ProgressBar/styles/fill = SubResource("Bar_fill")
 VBoxContainer/constants/separation = 10

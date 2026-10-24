@@ -9,6 +9,7 @@ const LOSS_COLOR: Color = Color("A42E2E")
 
 signal build_toggled()
 signal menu_pressed()
+signal staff_pressed()
 
 var _day_label: Label
 var _time_label: Label
@@ -35,6 +36,7 @@ var _build_active: bool = false
 var _build_reason: String = ""
 var _build_state: int = BuildMode.State.IDLE
 var _menu_button: Button
+var _staff_button: Button
 
 
 func _ready() -> void:
@@ -65,6 +67,8 @@ func refresh() -> void:
 		_build_button.pressed.connect(_on_build_pressed)
 		_menu_button = get_node("Top/Row/Menu") as Button
 		_menu_button.pressed.connect(_on_menu_pressed)
+		_staff_button = get_node("Top/Row/Staff") as Button
+		_staff_button.pressed.connect(_on_staff_pressed)
 		for name: String in ["Left", "Right"]:
 			_pause_bars.append(get_node("Top/Row/Speed0/Pause/Bars/" + name) as ColorRect)
 		_cash = Economy.cash
@@ -96,6 +100,23 @@ func refresh() -> void:
 	_refresh_build_controls()
 	_menu_button.disabled = Clock.sim.phase != SimClock.Phase.MORNING
 	_menu_button.tooltip_text = "Choose today's menu and prices" if not _menu_button.disabled else "Menu changes are available in the morning."
+	_staff_button.disabled = Clock.sim.phase != SimClock.Phase.MORNING
+	_staff_button.tooltip_text = "Hire staff and plan today's wages" if not _staff_button.disabled else "Staff changes are available in the morning."
+	_layout_header()
+
+
+## Keep the full Staff + legacy plate message without shrinking native controls.
+func _layout_header() -> void:
+	var width: float = get_viewport().get_visible_rect().size.x if is_inside_tree() else 1600.0
+	var separation: int = 4 if width < 1440.0 else 8
+	var row: HBoxContainer = get_node("Top/Row") as HBoxContainer
+	if row.get_theme_constant("separation") != separation:
+		row.add_theme_constant_override("separation", separation)
+
+
+func _on_staff_pressed() -> void:
+	if Clock.sim.phase == SimClock.Phase.MORNING:
+		staff_pressed.emit()
 
 
 ## State changes only: a refresh between native down/up preserves the button.
@@ -138,6 +159,7 @@ func _refresh_build_controls() -> void:
 
 
 func _layout_build_hints() -> void:
+	_layout_header()
 	if _build_hint_text == null:
 		return
 	var viewport_size: Vector2 = get_viewport().get_visible_rect().size if is_inside_tree() else Vector2(1600.0, 900.0)
