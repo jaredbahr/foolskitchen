@@ -143,6 +143,40 @@ func test_named_rng_injection_replays_review_and_quote_draws() -> void:
 	assert_eq(a.state, b.state)
 
 
+func test_positive_quotes_are_unique_until_exhausted_and_replay_per_seed() -> void:
+	var first: ReputationBook = ReputationBook.new()
+	var replay: ReputationBook = ReputationBook.new()
+	var first_rng: RandomNumberGenerator = _random(101001)
+	var replay_rng: RandomNumberGenerator = _random(101001)
+	var visit: ReviewVisit = ReviewVisit.new()
+	visit.served = true
+	var tuning: ReviewTuning = _certain_tuning()
+	var group: PackedStringArray = QUOTES.groups[&"lovely_place"]
+	var used: Dictionary[String, bool] = {}
+	var first_quote: String = ""
+	for index: int in range(group.size() + 1):
+		var row: Dictionary = first.record_visit(visit, tuning, QUOTES, first_rng)
+		assert_eq(row, replay.record_visit(visit, tuning, QUOTES, replay_rng))
+		assert_eq(row["cause"], &"lovely_place")
+		var quote: String = row["quote"]
+		assert_true(group.has(quote))
+		if index == 0:
+			first_quote = quote
+		if index < group.size():
+			assert_false(used.has(quote), "each unused positive line appears once")
+			used[quote] = true
+		else:
+			assert_true(used.has(quote), "exhaustion falls back to a valid repeat")
+	assert_eq(used.size(), group.size())
+	assert_eq(first_rng.state, replay_rng.state)
+	assert_eq(first.scores(), replay.scores())
+	assert_eq(first.to_dict().size(), 2, "day-local quote history is not saved")
+	first.begin_day()
+	first_rng.seed = 101001
+	assert_eq(first.record_visit(visit, tuning, QUOTES, first_rng)["quote"], first_quote,
+		"a new day may use the same first quote again")
+
+
 func test_json_roundtrip_and_invalid_decoder_are_transactional() -> void:
 	var book: ReputationBook = ReputationBook.new()
 	var visit: ReviewVisit = ReviewVisit.new()

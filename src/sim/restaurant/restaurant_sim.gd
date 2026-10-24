@@ -141,6 +141,7 @@ func start_day() -> void:
 	leave_reasons_today.clear()
 	reviews_today.clear()
 	reputation_before_day = review_book.average()
+	review_book.begin_day()
 	_departed.clear()
 	orders.prune_finished()
 	if kitchen != null:
