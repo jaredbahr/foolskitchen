@@ -77,6 +77,7 @@ jobs:
           bash tools/screenshot.sh --out=screens/visual-review/inspect-guest --open --fast=5 --select=guest --frames=60 --speed=1
           bash tools/screenshot.sh --out=screens/visual-review/debug-busy --open --fast=5 --select=guest --f3 --frames=60 --speed=1
           bash tools/screenshot.sh --out=screens/visual-review/mood-waits --open --fast=8 --frames=120,180,240,300 --speed=1
+          bash tools/screenshot.sh --out=screens/visual-review/menu --menu --speed=0 --frames=12
 
       - name: Verify capture identity and image metadata
         shell: bash
@@ -93,6 +94,7 @@ jobs:
           captures = [('default', -1, False, False, 60)] + [(f'quarter-{q}', q, False, False, 60) for q in range(4)]
           captures += [('inspect-guest', -1, True, False, 60), ('debug-busy', -1, True, True, 60)]
           captures += [('mood-waits', -1, False, False, frame) for frame in (120, 180, 240, 300)]
+          captures += [('menu', -1, False, False, 12)]
           observed_bands = set()
           for name, requested, inspect_guest, debug, frame in captures:
               png = root / name / f'shot_{frame:04d}.png'
@@ -109,12 +111,15 @@ jobs:
               assert data['actual_quarter'] == expected, f'{name}: wrong actual quarter'
               assert math.isclose(data['yaw_degrees'], 45 + 90 * expected, abs_tol=0.01), f'{name}: wrong rendered yaw'
               assert data['wall_mode'] == 1, f'{name}: not Cutaway'
-              assert data['engine_errors'] == 0, f'{name}: engine/script errors'
+              assert type(data['engine_errors']) is int and data['engine_errors'] == 0, f'{name}: engine/script errors'
               assert (data['width'], data['height'], data['frame']) == (1600, 900, frame), f'{name}: wrong viewport/frame'
               assert 'llvmpipe' in data['video_adapter'].lower(), f'{name}: not the requested software Mesa adapter'
               assert data['lowered_wall_cells'], f'{name}: no lowered walls'
               assert data['requested_selection'] == ('guest' if inspect_guest else ''), f'{name}: wrong requested selection'
               assert data['requested_debug_visible'] is debug, f'{name}: wrong requested F3 state'
+              menu = name == 'menu'
+              assert data['requested_menu_visible'] is menu, f'{name}: wrong requested menu state'
+              assert data['menu_visible'] is menu, f'{name}: wrong actual menu visibility'
               assert data['debug_visible'] is debug, f'{name}: wrong actual F3 state'
               assert data['panel_visible'] is inspect_guest, f'{name}: wrong actual inspect panel state'
               assert data['selected_item_id'] == -1, f'{name}: unexpected item selection'
@@ -126,6 +131,10 @@ jobs:
               else:
                   assert data['selected_agent_id'] == -1 and data['selected_role'] == '', f'{name}: unexpected agent selection'
                   assert data['selected_agent_live'] is False, f'{name}: unexpected live selection'
+              if menu:
+                  assert type(data['day_phase']) is int and data['day_phase'] == 0, 'menu capture is not MORNING'
+                  assert data['capture_parameters'] == {'open': False, 'fast_ticks_per_frame': 0, 'speed': 0}, 'wrong paused menu capture parameters'
+                  assert data['world_tick'] == 0, 'paused morning menu capture advanced the simulation'
               if name == 'mood-waits':
                   assert data['capture_parameters'] == {'open': True, 'fast_ticks_per_frame': 8, 'speed': 1}, 'wrong mood capture parameters'
                   assert data['world_tick'] > 0, 'normal mood capture did not advance the simulation'

@@ -90,6 +90,12 @@ layout_mode = 2
 focus_mode = 0
 text = "Open shop"
 
+[node name="Menu" type="Button" parent="Top/Row"]
+layout_mode = 2
+focus_mode = 0
+text = "Menu"
+tooltip_text = "Choose today's menu and prices"
+
 [node name="Deltas" type="Control" parent="."]
 layout_mode = 0
 mouse_filter = 2
