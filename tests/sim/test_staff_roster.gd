@@ -3,6 +3,7 @@ extends TestCase
 
 const TUNING: EconomyTuning = preload("res://data/balance/tier1_economy.tres")
 const CATALOGUE: StaffCatalogue = preload("res://data/staff/traits.tres")
+const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
 
 
 func test_defaults_keep_two_steady_skill_three_staff_and_detach_returned_choices() -> void:
@@ -40,7 +41,7 @@ func test_seeded_pool_is_repeatable_and_uses_the_role_skill_wage_curve() -> void
 		for member: StaffMember in first.candidates():
 			assert_false(ids.has(member.id))
 			ids[member.id] = true
-			assert_true(member.role == &"cook" or member.role == &"server")
+			assert_true(StaffMember.ROLES.has(member.role))
 			assert_true(member.skill >= 1 and member.skill <= 5)
 			assert_true(CATALOGUE.candidate_names.has(member.display_name))
 			assert_not_null(CATALOGUE.find_trait(member.trait_id))
@@ -50,6 +51,26 @@ func test_seeded_pool_is_repeatable_and_uses_the_role_skill_wage_curve() -> void
 		assert_ne(first.candidates()[0].display_name, copy.display_name)
 	assert_eq(TUNING.staff_wage(&"cook", 3), TUNING.wages[&"cook"])
 	assert_true(TUNING.staff_wage(&"cook", 4) > TUNING.staff_wage(&"cook", 3))
+	assert_eq(TUNING.staff_wage(&"cleaner", 3), 20)
+	assert_true(TUNING.staff_wage(&"cleaner", 3) < TUNING.staff_wage(&"server", 3))
+
+
+func test_seeded_candidate_pool_eventually_offers_a_cleaner_at_the_tier_wage() -> void:
+	var roster: StaffRoster = StaffRoster.new(TUNING)
+	var random: RandomNumberGenerator = _random(720082)
+	var offered: bool = false
+	for day: int in range(1, 13):
+		assert_true(roster.draw_candidates(day, random))
+		for member: StaffMember in roster.candidates():
+			if member.role == &"cleaner":
+				offered = true
+				assert_eq(member.wage, TUNING.staff_wage(&"cleaner", member.skill))
+				assert_true(roster.hire(member.id))
+				assert_true(roster.can_let_go(member.id))
+				break
+		if offered:
+			break
+	assert_true(offered, "the ordinary seeded hiring pool offers the optional role")
 
 
 func test_same_morning_refresh_after_hiring_preserves_pool_and_rng() -> void:
@@ -100,8 +121,19 @@ func test_role_minimums_and_unknown_ids_refuse_without_changing_choices() -> voi
 	assert_false(roster.hire(&"missing"))
 	assert_false(roster.let_go(&"missing"))
 	assert_eq(roster.to_dict(), original)
-	assert_true(roster.draw_candidates(1, _random(720075)))
-	var hire: StaffMember = roster.candidates()[0]
+	var random: RandomNumberGenerator = _random(720075)
+	var hire: StaffMember = null
+	for day: int in range(1, 11):
+		assert_true(roster.draw_candidates(day, random))
+		for candidate: StaffMember in roster.candidates():
+			if candidate.role == &"cook" or candidate.role == &"server":
+				hire = candidate
+				break
+		if hire != null:
+			break
+	assert_not_null(hire)
+	if hire == null:
+		return
 	assert_true(roster.hire(hire.id))
 	var predecessor: StringName = &""
 	for member: StaffMember in CATALOGUE.defaults(TUNING):
@@ -110,6 +142,37 @@ func test_role_minimums_and_unknown_ids_refuse_without_changing_choices() -> voi
 	assert_true(roster.let_go(predecessor), "a replacement permits the old person to leave")
 	assert_false(roster.let_go(hire.id), "the replacement is now the last person of that role")
 	assert_eq(roster.members().size(), 2)
+
+
+func test_optional_cleaner_roundtrips_and_may_be_the_last_one_let_go() -> void:
+	var roster: StaffRoster = StaffRoster.new(TUNING)
+	var saved: Dictionary = roster.to_dict()
+	saved["members"].append({"id": "mop_1", "name": "Robin", "role": "cleaner",
+		"skill": 4, "wage": TUNING.staff_wage(&"cleaner", 4), "trait": "steady"})
+	assert_true(roster.from_dict(saved))
+	var parsed: Dictionary = JSON.parse_string(JSON.stringify(roster.to_dict()))
+	var restored: StaffRoster = StaffRoster.new(TUNING)
+	assert_true(restored.from_dict(parsed), "a cleaner survives the normal roster save format")
+	assert_eq(restored.members().size(), 3)
+	assert_true(restored.can_let_go(&"mop_1"))
+	var content: ContentDB = ContentDB.new()
+	assert_true(content.load_all().is_empty())
+	var errors: Array[String] = []
+	var sim: RestaurantSim = RestaurantSim.create(LAYOUT, content, 1, errors,
+		null, false, false, restored.members())
+	assert_true(errors.is_empty(), "the optional role has a valid Tier 1 spawn")
+	var cleaner: StaffAgent = null
+	for agent: SimAgent in sim.world.agents:
+		if agent is StaffAgent and agent.role == &"cleaner":
+			cleaner = agent as StaffAgent
+	assert_not_null(cleaner)
+	if cleaner != null:
+		assert_eq(cleaner.cell, LAYOUT.staff_spawns[&"cleaner"])
+		assert_eq(cleaner.member_id, &"mop_1")
+	assert_true(restored.let_go(&"mop_1"), "a cleaner is optional, unlike the last cook or server")
+	assert_eq(restored.members().size(), 2)
+	assert_true(sim.set_staff_roster(restored.members()))
+	assert_eq(sim.world.agents.size(), 3, "the cleaner leaves while cook, server and owner remain")
 
 
 func test_capacity_keeps_the_next_candidate_available_and_wages_exact() -> void:

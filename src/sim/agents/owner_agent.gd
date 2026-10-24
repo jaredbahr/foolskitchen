@@ -109,6 +109,7 @@ func _apply_priorities() -> void:
 	priorities[&"any"] = 0
 	priorities[&"cook"] = 3 if _mode == &"kitchen" else (1 if _mode == &"help" else 0)
 	priorities[&"server"] = 3 if _mode == &"floor" else (1 if _mode == &"help" else 0)
+	priorities[&"cleaner"] = 1 if _mode == &"floor" else 0
 
 
 func _walk_home(world: SimWorld) -> void:

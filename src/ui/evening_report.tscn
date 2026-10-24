@@ -114,6 +114,11 @@ unique_name_in_owner = true
 layout_mode = 2
 text = "No guests visited today"
 
+[node name="Cleanliness" type="Label" parent="Panel/Scroll/Content"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+
 [node name="GuestBar" type="ProgressBar" parent="Panel/Scroll/Content"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 12)

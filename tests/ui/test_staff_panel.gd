@@ -37,6 +37,8 @@ func test_staff_rows_show_people_traits_wages_and_role_minimums() -> void:
 	for member: StaffMember in _roster.members():
 		var row: Control = _panel.row_for(member.id)
 		assert_true((row.get_node("Top/Name") as Label).text.contains(member.display_name))
+		assert_true((row.get_node("Top/Name") as Label).text.contains(
+			" - Cook," if member.role == &"cook" else " - Server,"))
 		assert_true((row.get_node("Top/Name") as Label).text.contains("skill 3"))
 		assert_true((row.get_node("Trait") as Label).text.contains("Steady"))
 		assert_true((row.get_node("Top/Action") as Button).disabled)
@@ -46,6 +48,47 @@ func test_staff_rows_show_people_traits_wages_and_role_minimums() -> void:
 	assert_eq(scroll.horizontal_scroll_mode, ScrollContainer.SCROLL_MODE_DISABLED)
 	assert_eq(scroll.mouse_filter, Control.MOUSE_FILTER_STOP)
 	assert_false(scroll.mouse_force_pass_scroll_events)
+
+
+func test_optional_cleaner_is_named_and_can_be_hired_then_let_go_by_request() -> void:
+	var saved: Dictionary = _roster.to_dict()
+	saved["candidates"][0]["role"] = "cleaner"
+	var expected_wage: int = EconomyTuning.new().staff_wage(
+		&"cleaner", int(saved["candidates"][0]["skill"]))
+	saved["candidates"][0]["wage"] = expected_wage
+	assert_true(_roster.from_dict(saved))
+	_panel.refresh()
+	var candidate: StaffMember = _roster.candidates()[0]
+	var row: Control = _panel.row_for(candidate.id)
+	var title: String = (row.get_node("Top/Name") as Label).text
+	assert_true(title.contains(" - Cleaner, skill "))
+	assert_true(title.contains("$%d/day" % expected_wage))
+	assert_false(title.contains(" - Server,"), "a cleaner is not shown as a server")
+	assert_false(title.contains(" - cleaner,"), "never show a raw role id")
+	assert_true((_panel.get_node("Panel/Content/Status") as Label).text.contains(
+		"Keep a cook and a server"), "the cleaner remains optional")
+	var hire: Button = row.get_node("Top/Action") as Button
+	assert_eq(hire.text, "Hire")
+	assert_false(hire.disabled)
+	assert_true(hire.tooltip_text.contains("Cleaners mop floor spots"))
+	var before: Dictionary = _roster.to_dict()
+	hire.pressed.emit()
+	assert_eq(_requests, [candidate.id] as Array[StringName])
+	assert_eq(_roster.to_dict(), before, "the panel only requests a hire")
+	assert_true(_roster.hire(candidate.id))
+	_panel.refresh()
+	var hired_row: Control = _panel.row_for(candidate.id)
+	assert_true((hired_row.get_node("Top/Name") as Label).text.contains(" - Cleaner, skill "))
+	var let_go: Button = hired_row.get_node("Top/Action") as Button
+	assert_eq(let_go.text, "Let go")
+	assert_false(let_go.disabled, "the last cleaner may be let go")
+	let_go.pressed.emit()
+	assert_eq(_requests, [candidate.id, candidate.id] as Array[StringName])
+	assert_eq(_roster.members().size(), 3, "the panel does not make staffing changes")
+	_panel.set_phase(SimClock.Phase.OPEN)
+	assert_true(let_go.disabled)
+	let_go.pressed.emit()
+	assert_eq(_requests.size(), 2, "staff changes are morning only")
 
 
 func test_tray_rows_show_price_capacity_owned_state_and_request_only() -> void:

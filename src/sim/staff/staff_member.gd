@@ -2,6 +2,8 @@ class_name StaffMember
 extends Resource
 ## A saved employee or candidate. Runtime agents receive their own copy.
 
+const ROLES: Array[StringName] = [&"cook", &"server", &"cleaner"]
+
 @export var id: StringName = &""
 @export var display_name: String = ""
 @export var role: StringName = &"cook"
@@ -37,7 +39,7 @@ static func from_dict(data: Variant, catalogue: StaffCatalogue) -> StaffMember:
 	member.skill = int(row["skill"])
 	member.wage = int(row["wage"])
 	member.trait_id = StringName(row["trait"])
-	if not [&"cook", &"server"].has(member.role) or catalogue.find_trait(member.trait_id) == null:
+	if not ROLES.has(member.role) or catalogue.find_trait(member.trait_id) == null:
 		return null
 	return member
 

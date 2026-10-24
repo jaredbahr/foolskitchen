@@ -71,7 +71,9 @@ func refresh() -> void:
 	for member: StaffMember in _roster.candidates():
 		var button: Button = _rows[member.id].get_node("Top/Action") as Button
 		button.disabled = not editable or not _roster.can_hire(member.id)
-		button.tooltip_text = MORNING_HINT if not editable else ("Tier 1 has room for six staff." if button.disabled else "Hire for no upfront cost; pay their wage at closing.")
+		button.tooltip_text = MORNING_HINT if not editable else ("Tier 1 has room for six staff." if button.disabled else (
+			"Cleaners mop floor spots. No hiring fee; wages are paid at closing."
+			if member.role == &"cleaner" else "Hire for no upfront cost; pay their wage at closing."))
 
 
 func row_for(id: StringName) -> Control:
@@ -105,7 +107,8 @@ func _add_row(parent: VBoxContainer, member: StaffMember, candidate: bool) -> vo
 	row.add_child(top)
 	var title: Label = Label.new()
 	title.name = "Name"
-	title.text = "%s - %s, skill %d - $%d/day" % [member.display_name, "Cook" if member.role == &"cook" else "Server", member.skill, member.wage]
+	title.text = "%s - %s, skill %d - $%d/day" % [
+		member.display_name, _role_name(member.role), member.skill, member.wage]
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -126,6 +129,14 @@ func _add_row(parent: VBoxContainer, member: StaffMember, candidate: bool) -> vo
 	detail.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(detail)
 	_rows[member.id] = row
+
+
+static func _role_name(staff_role: StringName) -> String:
+	match staff_role:
+		&"cook": return "Cook"
+		&"server": return "Server"
+		&"cleaner": return "Cleaner"
+	return "Team member"
 
 
 func _on_request(id: StringName, hiring: bool) -> void:

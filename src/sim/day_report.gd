@@ -10,6 +10,8 @@ var customers_served: int = 0
 var customers_lost: int = 0
 var leave_reasons: Dictionary = {}
 var reviews: Array[String] = []
+## Worst observed floor condition, already mapped to a player-facing word.
+var cleanliness_label: String = ""
 ## Player-facing reviews for this day. Each card has an integer stars (1-5)
 ## and a quote; simulation cause ids are deliberately excluded.
 var review_cards: Array[Dictionary] = []
@@ -57,6 +59,7 @@ func to_dict() -> Dictionary:
 		"customers_lost": customers_lost,
 		"leave_reasons": _string_counts(leave_reasons),
 		"reviews": reviews.duplicate(),
+		"cleanliness_label": cleanliness_label,
 		"review_cards": cards,
 		"today_review_average": today_review_average,
 		"reputation_before": reputation_before,
@@ -78,6 +81,7 @@ static func from_dict(data: Dictionary) -> DayReport:
 	if saved_reviews is Array:
 		for quote: Variant in saved_reviews:
 			report.reviews.append(str(quote))
+	report.cleanliness_label = str(data.get("cleanliness_label", ""))
 	var saved_cards: Variant = data.get("review_cards", [])
 	if saved_cards is Array:
 		for card: Variant in saved_cards:

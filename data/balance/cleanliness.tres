@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="CleanlinessTuning" format=3]
+
+[ext_resource type="Script" path="res://src/sim/cleanliness/cleanliness_tuning.gd" id="1_cleanliness"]
+
+[resource]
+script = ExtResource("1_cleanliness")
+arrival_chance = 0.15
+seat_departure_chance = 0.25
+max_spots = 12
+dirt_penalty = 0.3
+clean_work_ticks = 30
+messy_at = 1
+grubby_at = 5
+spotless_label = "Spotless"
+messy_label = "A bit messy"
+grubby_label = "Grubby"

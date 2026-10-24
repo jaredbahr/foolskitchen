@@ -169,6 +169,25 @@ docs/
   Purchases wait for the next existing morning autosave. The Staff panel shows
   the prices, ownership and current capacity, while the placeholder view shows
   a tray during delivery of more than one plate.
+- **Cleanliness (FK-040):** `CleanlinessState` owns one spot per walkable FLOOR
+  cell, capped at 12 by `data/balance/cleanliness.tres`; spots never block paths.
+  The separate saved `GameState.rng(&"cleanliness")` stream samples a 15% chance
+  at a service arrival's street-entry neighbour and a 25% chance at a paid
+  eater's departed seat. Ineligible cells and off-service arrivals draw nothing.
+  `CleanTaskController` posts one priority-0 `clean_spot` walk-and-mop task per
+  eligible spot. Mopping takes 30 work units before skill scaling; terminal
+  failures wait for a layout change before reposting. A hired Cleaner owns this
+  role; without one, servers and the Floor-mode owner take it only after their
+  eligible delivery and bussing work, regardless of distance.
+  Each arriving guest samples both queue and food patience once using
+  `1.0 - 0.3 * spots / 12`; later dirt changes do not rescale that visit.
+  The report captures the day's worst Spotless/A bit messy/Grubby band, F3
+  shows the current spot count, and ShopView draws small floor decals.
+  `start_day()` tidies all spots and mop tasks before the existing morning
+  autosave. Spots themselves are never saved; only the named RNG stream is
+  restored by GameState. The optional Cleaner joins the existing roster,
+  candidate and next-morning staff-save paths, with a skill-scaled Tier 1
+  base wage of $20 versus a server's $25; cook/server minimums still hold.
 - **Debug overlay (F3):** paths, claimed tasks, agent states and the task board, from Phase 1 onward.
 - **Owner assignment (FK-020):** the restaurant factory creates one `OwnerAgent`
   at the authored owner spawn, with cook/server skill 3 and default `rest`.
@@ -370,8 +389,10 @@ docs/
   stars and a friendly quote, never an internal cause name.
 - `ReviewVisit` snapshots a guest's served state, queue and food waits as
   fractions of their patience, their paid price divided by the standard menu
-  price, and a dirt fraction. Until FK-044 cleanliness lands, the dirt input is
-  zero. An unserved guest gives one star; closing departures give no review.
+  price, and a dirt fraction. The current departure hook still passes zero for
+  review dirt; FK-040 affects arrival patience, while review-dirt wiring is a
+  separate follow-up. An unserved guest gives one star; closing departures give
+  no review.
   For a served guest, the score is `clamp(round(5 - penalty), 1, 5)`, where the
   penalty is the sum of each input clamped to 0..1 times its authored weight.
   `data/balance/reviews.tres` starts with queue 1.0, food 1.3, overprice 0.8,

@@ -203,6 +203,91 @@ func test_unreachable_present_higher_work_exhausts_normal_drops_then_washing_pro
 	assert_eq(_world.board.active_count(), 0)
 
 
+func test_near_mop_waits_for_far_delivery_and_bussing_even_when_its_score_is_higher() -> void:
+	for kind: StringName in [&"deliver", &"bus_table"]:
+		var server: StaffAgent = _server()
+		server.skills[&"server"] = 1
+		var mop: SimTask = _post_mop(server.cell)
+		var service: SimTask = _post_service(kind, _far, 3 if kind == &"deliver" else 1)
+		assert_true(server._score(_world, mop) > server._score(_world, service),
+			"the nearby mop would win the old distance-only score")
+		_world.advance()
+		assert_eq(server.task, service, "service work must precede fallback mopping")
+		assert_eq(mop.state, SimTask.State.OPEN)
+		_world.board.cancel(service)
+		_world.advance() # Release the cancelled task through normal agent cleanup.
+		_world.advance()
+		assert_eq(server.task, mop, "mopping resumes once service work is gone")
+		_world.remove_agent(server)
+		_world.board.cancel(mop)
+		assert_eq(mop.drops, 1, "ordinary claim/drop bookkeeping is preserved")
+
+
+func test_second_server_can_mop_after_first_claims_delivery_in_same_tick() -> void:
+	var first: StaffAgent = _server()
+	var second: StaffAgent = _server()
+	var mop: SimTask = _post_mop(first.cell)
+	var delivery: SimTask = _post_service(&"deliver", _far, 3)
+	_world.advance()
+	assert_eq(first.task, delivery)
+	assert_eq(second.task, mop)
+	assert_eq(mop.claimed_by, second.id)
+	assert_eq(mop.drops, 0)
+
+
+func test_dedicated_cleaner_keeps_server_out_of_cleaner_tasks() -> void:
+	var server: StaffAgent = _server()
+	var cleaner: StaffAgent = StaffAgent.new(&"cleaner", 4)
+	cleaner.cell = server.cell
+	_world.add_agent(cleaner)
+	var mop: SimTask = _post_mop(server.cell)
+	assert_eq(server._score(_world, mop), 0.0)
+	var owner: OwnerAgent = OwnerAgent.new(server.cell)
+	assert_true(owner.assign_mode(&"floor"))
+	_world.add_agent(owner)
+	assert_eq(owner._score(_world, mop), 0.0)
+	_world.advance()
+	assert_null(server.task)
+	assert_eq(cleaner.task, mop)
+	assert_null(owner.task)
+
+
+func test_only_floor_mode_owner_mops_after_distant_service_work() -> void:
+	var owner: OwnerAgent = OwnerAgent.new(Vector2i(2, 2))
+	owner.skills[&"server"] = 1
+	_world.add_agent(owner)
+	var mop: SimTask = _post_mop(owner.cell)
+	assert_true(owner.assign_mode(&"help"))
+	assert_eq(owner._score(_world, mop), 0.0, "Help mode does not silently add cleaning")
+	assert_true(owner.assign_mode(&"floor"))
+	var bussing: SimTask = _post_service(&"bus_table", _far, 1)
+	assert_true(owner._score(_world, mop) > owner._score(_world, bussing))
+	_world.advance()
+	assert_eq(owner.task, bussing)
+	_world.board.cancel(bussing)
+	_world.advance()
+	_world.advance()
+	assert_eq(owner.task, mop)
+	_world.advance()
+	assert_eq(owner.task, mop, "Floor mode keeps the cleaner role enabled while working")
+	assert_true(owner.assign_mode(&"rest"))
+	_world.advance()
+	assert_null(owner.task)
+	assert_eq(mop.state, SimTask.State.OPEN)
+	assert_eq(mop.drops, 1, "existing owner reassignment uses ordinary drop")
+
+
+func test_cleaner_picks_nearest_dirt_cell_not_first_posted() -> void:
+	var cleaner: StaffAgent = StaffAgent.new(&"cleaner", 3)
+	cleaner.cell = Vector2i(2, 2)
+	_world.add_agent(cleaner)
+	var distant: SimTask = _post_mop(Vector2i(15, 4))
+	var nearby: SimTask = _post_mop(Vector2i(3, 2))
+	assert_true(cleaner._score(_world, nearby) > cleaner._score(_world, distant))
+	_world.advance()
+	assert_eq(cleaner.task, nearby)
+
+
 func _server() -> StaffAgent:
 	var server: StaffAgent = StaffAgent.new(&"server", 3)
 	server.cell = Vector2i(2, 2)
@@ -215,6 +300,25 @@ func _post(item: PlacedItem, task_role: StringName, priority: int, defer_claim: 
 	task.priority = priority
 	if defer_claim:
 		task.defer_to_higher_priority = true
+	task.steps.append(TaskStep.go_to_item(item.id))
+	task.steps.append(TaskStep.work(30))
+	_world.board.post(task, _world.now)
+	return task
+
+
+func _post_mop(cell: Vector2i) -> SimTask:
+	var task: SimTask = SimTask.new(&"clean_spot", &"cleaner", "Mop up a floor spot")
+	task.priority = 0
+	task.defer_to_higher_priority = true
+	task.steps.append(TaskStep.go_to_cell(cell))
+	task.steps.append(TaskStep.work(30))
+	_world.board.post(task, _world.now)
+	return task
+
+
+func _post_service(kind: StringName, item: PlacedItem, priority: int) -> SimTask:
+	var task: SimTask = SimTask.new(kind, &"server", "Serve a guest")
+	task.priority = priority
 	task.steps.append(TaskStep.go_to_item(item.id))
 	task.steps.append(TaskStep.work(30))
 	_world.board.post(task, _world.now)
