@@ -90,7 +90,8 @@ static func decorate_label(label: Label, role: StringName, pixel_size: int = Ico
 		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		label.add_child(icon)
-	var left: float = style.get_content_margin(SIDE_LEFT)
+	# Raw content margins may be -1, meaning the style's own margin applies.
+	var left: float = style.get_margin(SIDE_LEFT)
 	style.set_content_margin(SIDE_LEFT, left + float(pixel_size) + 6.0)
 	label.add_theme_stylebox_override("normal", style)
 	label.custom_minimum_size.y = maxf(label.custom_minimum_size.y, float(pixel_size))

@@ -198,7 +198,7 @@ func test_staff_headings_keep_native_paths_padding_and_caches_after_roster_refre
 		assert_eq(label.get_theme_font("font"), fonts[index])
 		assert_eq(label.get_theme_font_size("font_size"), sizes[index])
 		assert_almost_eq(label.get_theme_stylebox("normal").get_content_margin(SIDE_LEFT),
-			styles[index].get_content_margin(SIDE_LEFT) + 30.0)
+			styles[index].get_margin(SIDE_LEFT) + 30.0)
 		var plain: Label = Label.new()
 		plain.theme = MAIN_THEME
 		plain.text = label.text
@@ -212,6 +212,44 @@ func test_staff_headings_keep_native_paths_padding_and_caches_after_roster_refre
 		assert_true(label.get_combined_minimum_size().y >= 24.0)
 		plain.free()
 	staff.free()
+
+
+func test_heading_padding_resolves_style_fallback_and_restores_it_without_drift() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	await tree.process_frame
+	var holder: Control = Control.new()
+	holder.theme = MAIN_THEME
+	tree.root.add_child(holder)
+	var base: StyleBoxFlat = StyleBoxFlat.new()
+	base.border_width_left = 4
+	assert_eq(base.get_content_margin(SIDE_LEFT), -1.0, "the authored margin uses the native fallback")
+	assert_eq(base.get_margin(SIDE_LEFT), 4.0)
+	var plain: Label = Label.new()
+	plain.text = "Heading"
+	plain.add_theme_stylebox_override("normal", base)
+	holder.add_child(plain)
+	var decorated: Label = Label.new()
+	decorated.text = plain.text
+	decorated.add_theme_stylebox_override("normal", base)
+	holder.add_child(decorated)
+	assert_true(IconStyle.decorate_label(decorated, &"staff"))
+	assert_true(IconStyle.decorate_label(decorated, &"staff"))
+	await tree.process_frame
+	await tree.process_frame
+	var icon: TextureRect = decorated.get_node("ThemeIcon") as TextureRect
+	assert_eq(icon.offset_left, 4.0, "the icon starts after the effective base margin")
+	assert_eq(decorated.get_theme_stylebox("normal").get_margin(SIDE_LEFT), 34.0)
+	assert_true(decorated.get_combined_minimum_size().x >= plain.get_combined_minimum_size().x + 30.0 - 0.5,
+		"fallback padding still reserves the complete icon and gap")
+	assert_eq(base.get_content_margin(SIDE_LEFT), -1.0, "the shared original style is untouched")
+	assert_false(IconStyle.decorate_label(decorated, &"paint"))
+	await tree.process_frame
+	assert_false(icon.visible)
+	assert_eq(decorated.get_theme_stylebox("normal").get_content_margin(SIDE_LEFT), -1.0)
+	assert_eq(decorated.get_theme_stylebox("normal").get_margin(SIDE_LEFT), 4.0)
+	assert_eq(decorated.get_combined_minimum_size().x, plain.get_combined_minimum_size().x,
+		"text-only fallback restores native width without accumulating icon padding")
+	holder.free()
 
 
 func _assert_heading(label: Label, filename: String) -> void:
