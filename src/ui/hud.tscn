@@ -105,6 +105,14 @@ focus_mode = 0
 text = "Walls: Cutaway"
 tooltip_text = "Cycle walls: Up, Cutaway, Down (C)"
 
+[node name="Build" type="Button" parent="Top/Row"]
+layout_mode = 2
+theme = ExtResource("2_theme")
+focus_mode = 0
+toggle_mode = true
+text = "Build"
+tooltip_text = "Build furniture (B)"
+
 [node name="Cash" type="Label" parent="Top/Row"]
 layout_mode = 2
 text = "$0"
@@ -124,3 +132,27 @@ tooltip_text = "Choose today's menu and prices"
 layout_mode = 0
 mouse_filter = 2
 theme = ExtResource("2_theme")
+
+[node name="BuildHints" type="PanelContainer" parent="."]
+visible = false
+offset_left = 12.0
+offset_top = 104.0
+offset_right = 12.0
+offset_bottom = 104.0
+mouse_filter = 2
+theme = ExtResource("2_theme")
+
+[node name="Scroll" type="ScrollContainer" parent="BuildHints"]
+layout_mode = 2
+clip_contents = true
+mouse_filter = 0
+mouse_force_pass_scroll_events = false
+horizontal_scroll_mode = 0
+vertical_scroll_mode = 1
+
+[node name="Text" type="Label" parent="BuildHints/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+text = "Esc Exit"
+autowrap_mode = 3

@@ -22,7 +22,7 @@ project.godot
 src/
   core/        # autoloads: GameState, Clock, Economy, SaveSystem, EventBus
   sim/         # pure simulation logic: customers, staff, tasks, kitchen
-  build/       # build mode, grid, placement validation
+  build/       # pure interaction controller; placement checks live in sim/shop
   ui/          # HUD, menus, panels
   minigames/   # one folder per mini-game, each a self-contained scene
   world/       # restaurant scenes, the camera, agents' visual nodes
@@ -249,6 +249,27 @@ docs/
   `tools/screenshot.sh --menu --speed=0 --frames=12` requests the production
   morning panel, verifies its actual visible state and captures after drawing;
   no workflow or renderer setting is changed by the option.
+
+### 2.3e Build controls (FK-032)
+- `src/build/build_mode.gd` is a typed `RefCounted` interaction controller.
+  It reads `ShopEditor` checks and commits only through Main's shop wrappers.
+- Main owns one input route. B or the HUD toggle enters only in MORNING/CLOSED;
+  active build input takes precedence over ordinary selection and service keys.
+- Pick-up preserves the clicked tile's offset from the item's origin. Hover and
+  each click use the actual Camera3D floor ray, including during camera smoothing.
+- R cycles world quarter turns. Click commits a valid preview; Delete sells only
+  a held MOVE item. Esc cancels a preview, then exits. Hints show available actions.
+- Previews/cancellation never change the grid or books. Placement failures use
+  short sentences from `ShopEditor.placement_reason`; path warnings do not block.
+- Valid checks supply unreachable IDs (0 for a proposed buy); committed warnings
+  use actual IDs and survive invalid proposals, cancellation and exit until fixed.
+- Build forces the rendered grid while retaining the G preference; phase changes,
+  exit and presentation rebinding cancel previews and restore that preference.
+- Build closes Menu and inspection; opening Menu exits build. GUI controls consume
+  their clicks. Content-sized hints/catalogue use bounded scrolling when needed.
+- CLOSED edits hide the report; exit rebuilds it without recharging or day setup.
+- Sale results/books are authoritative; shared HUD feedback retains its same-frame
+  coalescing and zero suppression. Only the existing morning boundary autosaves.
 
 ### 2.4 Save system
 - JSON in `user://saves/`, with a `version` field and migration functions per version.
