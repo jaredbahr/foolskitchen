@@ -3,6 +3,7 @@ extends Control
 ## Reads the selected sim object. The session refreshes after each completed tick.
 
 signal selection_cleared()
+signal owner_mode_requested(mode: StringName)
 
 const GUEST_STATES: Array[String] = ["Arriving", "Queued", "Walking to seat", "Ordering",
 	"Waiting for food", "Eating", "Paying", "Leaving", "Left"]
@@ -18,6 +19,9 @@ var _patience: VBoxContainer
 var _patience_label: Label
 var _patience_bar: ProgressBar
 var _reservations: Label
+var _owner_modes: GridContainer
+var _owner_buttons: Dictionary[StringName, Button] = {}
+var _shown_owner_id: int = -1
 var _nodes_bound: bool = false
 
 
@@ -72,7 +76,7 @@ func refresh() -> void:
 		if agent == null:
 			clear()
 			return
-		_reset_content()
+		_reset_content(agent is OwnerAgent and _shown_owner_id == agent.id)
 		_title.text = _agent_title(agent)
 		_why.text = _agent_why(agent)
 		_why.show()
@@ -105,10 +109,15 @@ func _bind_nodes() -> void:
 	_patience_label = %PatienceLabel
 	_patience_bar = %PatienceBar
 	_reservations = %Reservations
+	_owner_modes = %OwnerModes
+	for mode: StringName in OwnerAgent.MODES:
+		var button: Button = _owner_modes.get_node(String(mode).capitalize()) as Button
+		_owner_buttons[mode] = button
+		button.pressed.connect(_on_owner_mode_pressed.bind(mode))
 	_nodes_bound = true
 
 
-func _reset_content() -> void:
+func _reset_content(keep_owner_controls: bool = false) -> void:
 	_title.text = ""
 	_why.text = ""
 	_why.hide()
@@ -119,6 +128,14 @@ func _reset_content() -> void:
 	_patience_bar.value = 0.0
 	_reservations.text = ""
 	_reservations.hide()
+	# Hiding or disabling a BaseButton cancels an in-flight native mouse press.
+	# Tick/frame refreshes must preserve controls for the same live owner.
+	if not keep_owner_controls:
+		_shown_owner_id = -1
+		_owner_modes.hide()
+		for button: Button in _owner_buttons.values():
+			button.disabled = true
+			button.set_pressed_no_signal(false)
 
 
 func _agent_title(agent: SimAgent) -> String:
@@ -153,7 +170,10 @@ func _show_staff(staff: StaffAgent) -> void:
 		skill_role = staff.role
 	var lines: PackedStringArray = ["%s skill: %d/5" % [String(skill_role).capitalize(), staff.skill_for(skill_role)]]
 	if staff.task == null:
-		lines.append("Task: Looking for work")
+		if staff is OwnerAgent and (staff as OwnerAgent).current_mode() == &"rest":
+			lines.append("Task: Standing back")
+		else:
+			lines.append("Task: Looking for work")
 	else:
 		lines.append("Task: %s" % staff.task.label)
 		var count: int = staff.task.steps.size()
@@ -165,6 +185,35 @@ func _show_staff(staff: StaffAgent) -> void:
 			lines.append("Step: No active step")
 	_details.text = "\n".join(lines)
 	_details.show()
+	if staff is OwnerAgent:
+		_show_owner_modes(staff as OwnerAgent)
+
+
+func _show_owner_modes(selected_owner: OwnerAgent) -> void:
+	_shown_owner_id = selected_owner.id
+	_owner_modes.show()
+	for mode: StringName in OwnerAgent.MODES:
+		var button: Button = _owner_buttons[mode]
+		if button.disabled:
+			button.disabled = false
+		var active: bool = mode == selected_owner.current_mode()
+		if button.button_pressed != active:
+			button.set_pressed_no_signal(active)
+
+
+func _on_owner_mode_pressed(mode: StringName) -> void:
+	_bind_nodes()
+	if not visible:
+		return
+	if _world == null or not _owner_modes.visible or not OwnerAgent.MODES.has(mode):
+		refresh()
+		return
+	var selected_owner: OwnerAgent = _world.agent(selected_agent_id) as OwnerAgent
+	if selected_owner != null and mode != selected_owner.current_mode():
+		owner_mode_requested.emit(mode)
+	# Selection and the committed mode remain owned by the session, even when
+	# a request is ignored, rejected, or synchronously changes the selection.
+	refresh()
 
 
 ## Keep reads of guest wait counters together; this presenter never advances

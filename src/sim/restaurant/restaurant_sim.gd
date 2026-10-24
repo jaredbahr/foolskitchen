@@ -42,12 +42,12 @@ static func create(layout: ShopLayout, content: ContentDB, seed: int, errors: Ar
 	sim.world = ShopBuilder.build(layout, content, errors, allow_blocked_spawns)
 	sim.rng.seed = seed
 	sim.spawner = CustomerSpawner.new(sim.rng)
-	for role: StringName in [&"cook", &"server"]:
+	for role: StringName in [&"cook", &"server", &"owner"]:
 		if not layout.staff_spawns.has(role):
 			errors.append("%s: missing %s spawn" % [layout.id, role])
 			continue
 		sim.staff_spawns[role] = layout.staff_spawns[role]
-		var staff: StaffAgent = StaffAgent.new(role)
+		var staff: StaffAgent = OwnerAgent.new(layout.staff_spawns[role]) if role == &"owner" else StaffAgent.new(role)
 		staff.cell = layout.staff_spawns[role]
 		sim.world.add_agent(staff)
 	for recipe: RecipeDef in content.recipes():
@@ -58,6 +58,21 @@ static func create(layout: ShopLayout, content: ContentDB, seed: int, errors: Ar
 		sim.kitchen = Kitchen.new(sim, content, sim.stock)
 	sim.start_day()
 	return sim
+
+
+## The factory's one live owner, or null for a manually constructed world.
+func owner_agent() -> OwnerAgent:
+	if world != null:
+		for agent: SimAgent in world.agents:
+			if agent is OwnerAgent:
+				return agent as OwnerAgent
+	return null
+
+
+## Assignment changes priorities; the next owner tick releases disabled work.
+func assign_owner(mode: StringName) -> bool:
+	var selected_owner: OwnerAgent = owner_agent()
+	return selected_owner != null and selected_owner.assign_mode(mode)
 
 
 ## Clears daily reports and redraws the first arrival; the caller opens the clock.
