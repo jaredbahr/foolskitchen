@@ -7,6 +7,7 @@ var _sim: RestaurantSim
 var _arrived: Dictionary[int, bool] = {}
 var _paid: Dictionary[int, int] = {}
 var _left: Dictionary[int, StringName] = {}
+var _cancelled_during_post: SimTask
 
 
 func before_each() -> void:
@@ -291,6 +292,65 @@ func test_quality_uses_low_cook_skill_and_each_station_bonus_once() -> void:
 	_assert_drained()
 
 
+func test_synchronous_bus_post_cancellation_keeps_dirty_hold_and_allows_retry() -> void:
+	var table: PlacedItem = _item(&"table_2")
+	var stock_before: Dictionary = _sim.stock.to_dict()
+	_sim.world.board.task_posted.connect(_cancel_bus_during_post)
+	_sim.kitchen.mark_table_dirty(table.id)
+	_sim.world.board.task_posted.disconnect(_cancel_bus_during_post)
+	assert_not_null(_cancelled_during_post)
+	if _cancelled_during_post == null:
+		return
+	assert_eq(_cancelled_during_post.state, SimTask.State.CANCELLED)
+	assert_eq(_sim.world.board.active_count(), 0)
+	assert_true(_sim.kitchen.is_table_dirty(table.id))
+	_sim.kitchen.retry_dirty_tables()
+	var retry: SimTask = _find_task(&"bus_table")
+	assert_not_null(retry, "post-time cancellation must not leave a stale bus mapping")
+	if retry == null:
+		return
+	assert_ne(retry.id, _cancelled_during_post.id)
+	assert_true(_sim.kitchen.is_table_dirty(table.id), "retry posting does not clean the table")
+	_sim.advance()
+	assert_true(_sim.kitchen.is_table_dirty(table.id), "real bussing requires work")
+	_run(500)
+	assert_eq(retry.state, SimTask.State.DONE)
+	assert_eq(_sim.stock.to_dict(), stock_before)
+	assert_eq(_sim.served_today, 0)
+	assert_eq(_sim.lost_today, 0)
+	assert_eq(_sim.leave_reasons_today.size(), 0)
+	_assert_drained()
+
+
+func test_layout_repair_retries_failed_bus_without_resetting_dirty_table() -> void:
+	var table: PlacedItem = _item(&"table_2")
+	for seat: Vector2i in table.seat_cells:
+		assert_true(_sim.world.grid.set_terrain(seat, SimGrid.Terrain.WALL))
+	_sim.kitchen.mark_table_dirty(table.id)
+	var failed: SimTask = _find_task(&"bus_table")
+	assert_not_null(failed)
+	if failed == null:
+		return
+	_sim.world.board.cancel(failed, &"unreachable")
+	assert_eq(failed.state, SimTask.State.CANCELLED)
+	_run(20)
+	assert_eq(_sim.world.board.active_count(), 0, "failed bussing does not hot-loop retries")
+	assert_true(_sim.kitchen.is_table_dirty(table.id), "failure preserves the dirty hold")
+	# Repairing access emits cells_changed, which is an explicit retry boundary.
+	assert_true(_sim.world.grid.set_terrain(table.seat_cells[0], SimGrid.Terrain.FLOOR))
+	var retry: SimTask = _find_task(&"bus_table")
+	assert_not_null(retry)
+	if retry == null:
+		return
+	assert_ne(retry.id, failed.id)
+	assert_true(_sim.kitchen.is_table_dirty(table.id), "layout repair never instantly cleans")
+	_sim.advance()
+	assert_true(_sim.kitchen.is_table_dirty(table.id))
+	_run(500)
+	assert_eq(retry.state, SimTask.State.DONE)
+	_assert_drained()
+
+
 func test_three_day_real_kitchen_customer_soak_accounts_and_drains() -> void:
 	_sim.menu = _content.recipes()
 	_sim.spawner.min_gap = 100
@@ -406,6 +466,12 @@ func _assert_drained() -> void:
 func _on_arrived(guest: CustomerAgent) -> void:
 	assert_false(_arrived.has(guest.id))
 	_arrived[guest.id] = true
+
+
+func _cancel_bus_during_post(task: SimTask) -> void:
+	if task.kind == &"bus_table":
+		_cancelled_during_post = task
+		_sim.world.board.cancel(task, &"test_cancel_during_post")
 
 
 func _on_paid(guest: CustomerAgent, order: Order, amount: int) -> void:
