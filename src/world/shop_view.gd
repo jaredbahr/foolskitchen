@@ -173,7 +173,7 @@ func _wall_is_lowered(cell: Vector2i) -> bool:
 	var direction: Vector2i = AWAY_FROM_CAMERA[_camera_quarter]
 	for distance: int in range(1, 3):
 		var terrain: SimGrid.Terrain = world.grid.terrain(cell + direction * distance)
-		if terrain == SimGrid.Terrain.FLOOR or terrain == SimGrid.Terrain.ENTRY:
+		if terrain == SimGrid.Terrain.FLOOR:
 			return true
 	return false
 

@@ -7,8 +7,8 @@ const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tr
 ## Exact Tier 1 sets, enumerated from the ASCII layout's two-cell diagonal rays.
 const LOWERED: Array[String] = [
 	"13,2;13,3;2,4;3,4;4,4;8,4;9,4;10,4;11,4;12,4;13,4;13,5;13,6;13,7;13,8;13,9;2,10;3,10;4,10;5,10;8,10;9,10;10,10;11,10;12,10;13,10",
-	"2,0;3,0;4,0;5,0;6,0;7,0;8,0;9,0;10,0;11,0;12,0;13,0;13,1;13,2;13,3;2,4;3,4;4,4;8,4;9,4;10,4;11,4;12,4;13,4;13,5;13,6;13,7;13,8;8,10",
-	"0,0;1,0;2,0;3,0;4,0;5,0;6,0;7,0;8,0;9,0;10,0;11,0;0,1;0,2;0,3;0,4;1,4;2,4;3,4;4,4;8,4;9,4;10,4;11,4;0,5;0,6;0,7;0,8;5,10",
+	"2,0;3,0;4,0;5,0;6,0;7,0;8,0;9,0;10,0;11,0;12,0;13,0;13,1;13,2;13,3;2,4;3,4;4,4;8,4;9,4;10,4;11,4;12,4;13,4;13,5;13,6;13,7;13,8",
+	"0,0;1,0;2,0;3,0;4,0;5,0;6,0;7,0;8,0;9,0;10,0;11,0;0,1;0,2;0,3;0,4;1,4;2,4;3,4;4,4;8,4;9,4;10,4;11,4;0,5;0,6;0,7;0,8",
 	"0,2;0,3;0,4;1,4;2,4;3,4;4,4;8,4;9,4;10,4;11,4;0,5;0,6;0,7;0,8;0,9;0,10;1,10;2,10;3,10;4,10;5,10;8,10;9,10;10,10;11,10",
 ]
 
@@ -56,6 +56,20 @@ func test_cutaway_two_cell_limit_and_terrain_rebuild() -> void:
 	assert_true(_view.lowered_wall_cells().has(Vector2i(3, 3)), "floor two diagonal cells away")
 	grid.set_terrain(Vector2i(1, 1), SimGrid.Terrain.OUTSIDE)
 	assert_false(_view.lowered_wall_cells().has(Vector2i(3, 3)), "floor three cells away does not qualify")
+
+
+func test_street_entry_cells_alone_do_not_lower_a_wall() -> void:
+	var grid: SimGrid = SimGrid.from_ascii(PackedStringArray(["E  ", " E ", "  #"]))
+	_view = VIEW.instantiate() as ShopView
+	_view.show_world(SimWorld.new(grid))
+	var wall: MeshInstance3D = _view.get_node("Walls").get_child(0) as MeshInstance3D
+	assert_true(_view.lowered_wall_cells().is_empty(), "street entries at both ray distances are not room floor")
+	assert_almost_eq((wall.mesh as BoxMesh).size.y, 2.4)
+	assert_not_null(_view.floor_mesh.mesh, "street entries remain rendered")
+	grid.set_terrain(Vector2i(1, 1), SimGrid.Terrain.FLOOR)
+	assert_eq(_view.lowered_wall_cells(), [Vector2i(2, 2)] as Array[Vector2i])
+	var rebuilt_wall: MeshInstance3D = _view.get_node("Walls").get_child(0) as MeshInstance3D
+	assert_almost_eq((rebuilt_wall.mesh as BoxMesh).size.y, 0.35)
 
 
 func test_c_key_cycles_up_cutaway_down_up_and_ignores_echo_release() -> void:
