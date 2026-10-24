@@ -13,7 +13,9 @@ extends Node3D
 
 @export_group("Pan")
 @export_range(0.0, 40.0, 0.1) var pan_speed: float = 8.0
-## Maximum focus distance from the origin on the world X and Z axes, in metres.
+## Centre of the pannable area on the world X/Z plane, in metres.
+@export var pan_center: Vector2 = Vector2.ZERO
+## Maximum focus distance from pan_center on the world X and Z axes, in metres.
 @export var pan_limits: Vector2 = Vector2(12.0, 12.0)
 @export var edge_pan_enabled: bool = true
 @export_range(0.0, 100.0, 1.0) var edge_margin_pixels: float = 24.0
@@ -184,8 +186,8 @@ func _clamp_zoom(value: float) -> float:
 
 
 func _clamp_focus() -> void:
-	position.x = clampf(position.x, -absf(pan_limits.x), absf(pan_limits.x))
-	position.z = clampf(position.z, -absf(pan_limits.y), absf(pan_limits.y))
+	position.x = clampf(position.x, pan_center.x - absf(pan_limits.x), pan_center.x + absf(pan_limits.x))
+	position.z = clampf(position.z, pan_center.y - absf(pan_limits.y), pan_center.y + absf(pan_limits.y))
 	position.y = 0.0
 
 

@@ -1,0 +1,208 @@
+class_name ShopView
+extends Node3D
+## Read-only placeholder view. Simulation ownership stays with the caller.
+
+const GRID_SHADER: Shader = preload("res://src/world/build_grid.gdshader")
+const HEIGHTS: Dictionary[int, float] = {
+	ItemDef.Category.TABLE: 0.75, ItemDef.Category.CHAIR: 0.45,
+	ItemDef.Category.STATION: 0.9, ItemDef.Category.STORAGE: 0.9,
+	ItemDef.Category.PASS: 1.0, ItemDef.Category.DECOR: 0.6,
+}
+const CUSTOMER_COLORS: Array[Color] = [Color("c8743a"), Color("b89568"), Color("986357")]
+
+var world: SimWorld
+var floor_mesh: MeshInstance3D
+var item_nodes: Dictionary[int, MeshInstance3D] = {}
+var agent_nodes: Dictionary[int, MeshInstance3D] = {}
+var _materials: Dictionary[Color, StandardMaterial3D] = {}
+var _walls: Node3D
+
+
+## Replaces a previous world and its signal bindings without modifying either.
+func show_world(value: SimWorld) -> void:
+	_disconnect_grid()
+	for child: Node in get_children():
+		if child.has_meta("shop_geometry"):
+			remove_child(child)
+			child.free()
+	item_nodes.clear()
+	agent_nodes.clear()
+	floor_mesh = null
+	world = value
+	if world == null:
+		return
+	floor_mesh = MeshInstance3D.new()
+	floor_mesh.name = "Floor"
+	floor_mesh.set_meta("shop_geometry", true)
+	var material: ShaderMaterial = ShaderMaterial.new()
+	material.shader = GRID_SHADER
+	floor_mesh.material_override = material
+	add_child(floor_mesh)
+	_walls = Node3D.new()
+	_walls.name = "Walls"
+	_walls.set_meta("shop_geometry", true)
+	add_child(_walls)
+	_build_terrain()
+	for item: PlacedItem in world.grid.items():
+		_build_item(item)
+	_connect_grid()
+	_process(0.0)
+
+
+func _enter_tree() -> void:
+	_connect_grid()
+
+
+func _exit_tree() -> void:
+	_disconnect_grid()
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_UNPARENTED:
+		_disconnect_grid()
+
+
+func _connect_grid() -> void:
+	if world == null:
+		return
+	if not world.grid.cells_changed.is_connected(_on_cells_changed):
+		world.grid.cells_changed.connect(_on_cells_changed)
+	if not world.grid.item_removed.is_connected(_on_item_removed):
+		world.grid.item_removed.connect(_on_item_removed)
+
+
+func _disconnect_grid() -> void:
+	if world == null:
+		return
+	if world.grid.cells_changed.is_connected(_on_cells_changed):
+		world.grid.cells_changed.disconnect(_on_cells_changed)
+	if world.grid.item_removed.is_connected(_on_item_removed):
+		world.grid.item_removed.disconnect(_on_item_removed)
+
+
+func _build_terrain() -> void:
+	for child: Node in _walls.get_children():
+		_walls.remove_child(child)
+		child.free()
+	var surface: SurfaceTool = SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var count: int = 0
+	for y: int in range(world.grid.size.y):
+		for x: int in range(world.grid.size.x):
+			var cell: Vector2i = Vector2i(x, y)
+			var terrain: SimGrid.Terrain = world.grid.terrain(cell)
+			if terrain == SimGrid.Terrain.WALL:
+				var wall: MeshInstance3D = _box(Vector3(0.5, 2.4, 0.5), Color("d8c7ab"))
+				wall.position = GridMath.cell_to_world(cell) + Vector3(0.0, 1.2, 0.0)
+				_walls.add_child(wall)
+			elif terrain == SimGrid.Terrain.FLOOR or terrain == SimGrid.Terrain.ENTRY:
+				var corner: Vector3 = Vector3(x * GridMath.CELL_SIZE, 0.0, y * GridMath.CELL_SIZE)
+				var corners: Array[Vector3] = [corner, corner + Vector3(0.5, 0, 0), corner + Vector3(0.5, 0, 0.5), corner + Vector3(0, 0, 0.5)]
+				for index: int in [0, 1, 2, 0, 2, 3]:
+					surface.set_normal(Vector3.UP)
+					surface.add_vertex(corners[index])
+				count += 1
+	floor_mesh.mesh = surface.commit() if count > 0 else null
+
+
+func _build_item(item: PlacedItem) -> void:
+	var definition: ItemDef = item.def as ItemDef
+	if definition == null or definition.category == ItemDef.Category.DOOR:
+		return
+	if item_nodes.has(item.id):
+		_remove_item(item.id)
+	var height: float = HEIGHTS.get(definition.category, 0.6)
+	var mesh: MeshInstance3D = _box(Vector3(definition.footprint.x * GridMath.CELL_SIZE, height, definition.footprint.y * GridMath.CELL_SIZE), definition.placeholder_color)
+	var footprint: Vector2i = GridMath.rotated_footprint(definition.footprint, item.quarter_turns)
+	# Centred box rotated around its centre: its AABB starts at the rotated min corner.
+	mesh.position = Vector3((item.origin.x + footprint.x * 0.5) * GridMath.CELL_SIZE, height * 0.5, (item.origin.y + footprint.y * 0.5) * GridMath.CELL_SIZE)
+	mesh.rotation.y = -item.quarter_turns * PI / 2.0
+	mesh.name = "Item%d" % item.id
+	mesh.set_meta("item_id", item.id)
+	mesh.set_meta("shop_geometry", true)
+	item_nodes[item.id] = mesh
+	add_child(mesh)
+
+
+func _remove_item(id: int) -> void:
+	if item_nodes.has(id):
+		var mesh: MeshInstance3D = item_nodes[id]
+		remove_child(mesh)
+		mesh.free()
+		item_nodes.erase(id)
+
+
+func _on_cells_changed(cells: Array[Vector2i]) -> void:
+	_build_terrain()
+	var affected: Dictionary[int, bool] = {}
+	for cell: Vector2i in cells:
+		var item: PlacedItem = world.grid.item_at(cell)
+		if item != null:
+			affected[item.id] = true
+	for id: int in affected:
+		_build_item(world.grid.item(id))
+
+
+func _on_item_removed(item: PlacedItem) -> void:
+	_remove_item(item.id)
+
+
+func _process(delta: float) -> void:
+	if world == null:
+		return
+	var alive: Dictionary[int, bool] = {}
+	for agent: SimAgent in world.agents:
+		alive[agent.id] = true
+		if not agent_nodes.has(agent.id):
+			var mesh: MeshInstance3D = MeshInstance3D.new()
+			var capsule: CapsuleMesh = CapsuleMesh.new()
+			capsule.height = 1.75
+			capsule.radius = 0.25
+			capsule.radial_segments = 12
+			capsule.rings = 4
+			mesh.mesh = capsule
+			mesh.material_override = _material(_agent_color(agent))
+			mesh.set_meta("agent_id", agent.id)
+			mesh.set_meta("shop_geometry", true)
+			agent_nodes[agent.id] = mesh
+			add_child(mesh)
+		var node: MeshInstance3D = agent_nodes[agent.id]
+		var start: Vector3 = GridMath.cell_to_world(agent.cell)
+		var end: Vector3 = GridMath.cell_to_world(agent.next_cell())
+		node.position = start.lerp(end, clampf(agent.move_progress, 0.0, 1.0)) + Vector3(0, 0.875, 0)
+		var direction: Vector3 = end - start
+		if direction.length_squared() > 0.0001:
+			var yaw: float = atan2(-direction.x, -direction.z)
+			node.rotation.y = lerp_angle(node.rotation.y, yaw, 1.0 - exp(-12.0 * maxf(delta, 0.0)))
+	for id: int in agent_nodes.keys():
+		if not alive.has(id):
+			var node: MeshInstance3D = agent_nodes[id]
+			remove_child(node)
+			node.free()
+			agent_nodes.erase(id)
+
+
+func _agent_color(agent: SimAgent) -> Color:
+	match agent.role:
+		&"cook": return Color("f3e6cc")
+		&"server": return Color("408b85")
+		&"owner": return Color("c9a346")
+	return CUSTOMER_COLORS[posmod(agent.id, CUSTOMER_COLORS.size())]
+
+
+func _box(size: Vector3, color: Color) -> MeshInstance3D:
+	var node: MeshInstance3D = MeshInstance3D.new()
+	var mesh: BoxMesh = BoxMesh.new()
+	mesh.size = size
+	node.mesh = mesh
+	node.material_override = _material(color)
+	return node
+
+
+func _material(color: Color) -> StandardMaterial3D:
+	if not _materials.has(color):
+		var material: StandardMaterial3D = StandardMaterial3D.new()
+		material.albedo_color = color
+		material.roughness = 0.9
+		_materials[color] = material
+	return _materials[color]
