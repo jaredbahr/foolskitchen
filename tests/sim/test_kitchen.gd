@@ -352,6 +352,36 @@ func test_layout_repair_retries_failed_bus_without_resetting_dirty_table() -> vo
 	_assert_drained()
 
 
+func test_overnight_tidy_starts_morning_clean_with_staff_at_posts() -> void:
+	var tables: Array[PlacedItem] = ShopBuilder.items_with_def(_sim.world, &"table_2")
+	_sim.kitchen.mark_table_dirty(tables[0].id)
+	_sim.kitchen.mark_table_dirty(tables[1].id)
+	# One server job is mid-walk overnight; the other is still on the board.
+	_run(5)
+	var server: StaffAgent = _staff(&"server")
+	assert_not_null(server.task, "a server took a bussing job before the tidy")
+	assert_ne(server.cell, LAYOUT.staff_spawns[&"server"])
+	_staff(&"cook").cell = LAYOUT.staff_spawns[&"server"]
+	_sim.start_day()
+	assert_eq(_sim.kitchen.dirty_tables.size(), 0, "every table is clean in the morning")
+	assert_eq(_sim.world.board.active_count(), 0, "no kitchen job carries over")
+	for agent: SimAgent in _sim.world.agents:
+		if agent is StaffAgent:
+			var staff: StaffAgent = agent as StaffAgent
+			assert_null(staff.task)
+			assert_eq(staff.cell, LAYOUT.staff_spawns[staff.role], "%s starts at its post" % staff.role)
+			assert_true(staff.path.is_empty())
+	_assert_drained()
+	# The morning shop still works: a new guest is seated and served.
+	var guest: CustomerAgent = _guest()
+	_sim.world.clock.start_service()
+	for tick: int in range(2500):
+		_sim.advance()
+		if guest.paid:
+			break
+	assert_true(guest.paid)
+
+
 func test_three_day_real_kitchen_customer_soak_accounts_and_drains() -> void:
 	_sim.menu = _content.recipes()
 	_sim.spawner.min_gap = 100

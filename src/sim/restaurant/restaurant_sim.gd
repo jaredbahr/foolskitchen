@@ -25,6 +25,8 @@ var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var served_today: int = 0
 var lost_today: int = 0
 var leave_reasons_today: Dictionary[StringName, int] = {}
+## Where each staff role starts the day (from the layout).
+var staff_spawns: Dictionary[StringName, Vector2i] = {}
 
 var _departed: Dictionary[int, bool] = {}
 
@@ -40,6 +42,7 @@ static func create(layout: ShopLayout, content: ContentDB, seed: int, errors: Ar
 		if not layout.staff_spawns.has(role):
 			errors.append("%s: missing %s spawn" % [layout.id, role])
 			continue
+		sim.staff_spawns[role] = layout.staff_spawns[role]
 		var staff: StaffAgent = StaffAgent.new(role)
 		staff.cell = layout.staff_spawns[role]
 		sim.world.add_agent(staff)
@@ -61,8 +64,20 @@ func start_day() -> void:
 	_departed.clear()
 	orders.prune_finished()
 	if kitchen != null:
-		kitchen.retry_dirty_tables()
+		kitchen.tidy_overnight()
+	_staff_to_posts()
 	spawner.reset()
+
+
+## Each morning staff start at their posts, with nothing in hand.
+func _staff_to_posts() -> void:
+	for agent: SimAgent in world.agents:
+		if staff_spawns.has(agent.role) and agent is StaffAgent:
+			var staff := agent as StaffAgent
+			if staff.task != null:
+				staff.on_removed(world)
+			staff.cell = staff_spawns[agent.role]
+			staff.clear_path()
 
 
 ## One fixed world tick, arrivals, then departed-guest cleanup.
