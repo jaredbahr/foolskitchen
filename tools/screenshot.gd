@@ -528,7 +528,9 @@ func _capture() -> void:
 	if _settings and not _settings_capture_valid(settings_state, world):
 		_fail_capture("requested Settings panel, 150% UI scale or 1280x720 window did not match the rendered morning frame")
 		return
-	var script_uids: Dictionary[String, String] = _settings_script_uids() if _settings else {}
+	var script_uids: Dictionary[String, String] = {}
+	if _settings:
+		script_uids = _settings_script_uids()
 	if _failed:
 		return
 	var build: Dictionary = _build_state()
