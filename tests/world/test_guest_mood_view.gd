@@ -208,6 +208,66 @@ func test_capture_evidence_reads_native_bands_independently_and_leaves_sim_uncha
 	assert_false(CAPTURE_SCRIPT.mood_evidence(_world, null)["available"])
 
 
+func test_pressure_setup_only_changes_existing_cook_public_priorities_before_open() -> void:
+	var cook: StaffAgent = StaffAgent.new(&"cook")
+	cook.priorities[&"server"] = 3
+	var server: StaffAgent = StaffAgent.new(&"server")
+	_world.add_agent(cook)
+	_world.add_agent(server)
+	var guest: CustomerAgent = _guest(CustomerAgent.State.QUEUED)
+	var before: Dictionary = _snapshot(guest)
+	var server_priorities: Dictionary = server.priorities.duplicate()
+	var setup: Dictionary = CAPTURE_SCRIPT.apply_mood_pressure(_world, true)
+	assert_true(setup["ok"])
+	assert_eq(setup["applied_staff_ids"], [cook.id] as Array[int])
+	assert_eq(setup["phase_at_application"], int(SimClock.Phase.MORNING))
+	assert_eq(setup["world_tick_at_application"], 0)
+	assert_eq(cook.priorities, {&"cook": 0, &"any": 0, &"server": 0})
+	assert_eq(server.priorities, server_priorities)
+	assert_eq(_snapshot(guest), before, "staff configuration never changes guest counters, RNG or task board")
+	var evidence: Dictionary = CAPTURE_SCRIPT.mood_pressure_evidence(_world, setup)
+	assert_true(evidence["applied"])
+	assert_eq(evidence["staff"][0]["before"], {"any": 1, "cook": 2, "server": 3})
+	assert_eq(evidence["staff"][0]["after"], {"any": 0, "cook": 0, "server": 0})
+	assert_eq(evidence["staff"][0]["current"], evidence["staff"][0]["after"])
+	assert_false(evidence["staff"][1]["configured"])
+	assert_eq(evidence["staff"][1]["before"], evidence["staff"][1]["current"])
+	# Drift must remain visible in metadata, rather than reusing the setup's
+	# frozen "after" values as an invented current-priority snapshot.
+	cook.priorities[&"cook"] = 1
+	evidence = CAPTURE_SCRIPT.mood_pressure_evidence(_world, setup)
+	assert_eq(evidence["staff"][0]["after"]["cook"], 0)
+	assert_eq(evidence["staff"][0]["current"]["cook"], 1)
+	assert_eq(evidence["current_staff"][0]["priorities"]["cook"], 1)
+
+
+func test_pressure_setup_rejects_missing_open_world_cook_or_preopen_phase_atomically() -> void:
+	var cook: StaffAgent = StaffAgent.new(&"cook")
+	_world.add_agent(cook)
+	var before: Dictionary = cook.priorities.duplicate()
+	assert_false(CAPTURE_SCRIPT.apply_mood_pressure(_world, false)["ok"])
+	assert_false(CAPTURE_SCRIPT.apply_mood_pressure(null, true)["ok"])
+	var no_cook: SimWorld = SimWorld.new(SimGrid.new(Vector2i(2, 2)))
+	no_cook.add_agent(StaffAgent.new(&"server"))
+	assert_false(CAPTURE_SCRIPT.apply_mood_pressure(no_cook, true)["ok"])
+	var invalid_cook: StaffAgent = StaffAgent.new(&"cook")
+	invalid_cook.priorities.clear()
+	_world.add_agent(invalid_cook)
+	assert_false(CAPTURE_SCRIPT.apply_mood_pressure(_world, true)["ok"])
+	assert_eq(cook.priorities, before, "validation finishes before changing any cook")
+	_world.remove_agent(invalid_cook)
+	assert_true(_world.clock.start_service())
+	assert_false(CAPTURE_SCRIPT.apply_mood_pressure(_world, true)["ok"])
+	assert_eq(cook.priorities, before)
+	var normal: Dictionary = CAPTURE_SCRIPT.mood_pressure_evidence(_world, {})
+	assert_false(normal["applied"])
+	assert_eq(normal["staff"].size(), 0)
+	assert_eq(normal["applied_staff_ids"].size(), 0)
+	assert_null(normal["phase_at_application"])
+	assert_null(normal["world_tick_at_application"])
+	assert_eq(normal["current_staff"][0]["priorities"], {"any": 1, "cook": 2})
+
+
 func _guest(state: CustomerAgent.State) -> CustomerAgent:
 	var random: RandomNumberGenerator = RandomNumberGenerator.new()
 	random.seed = 5151

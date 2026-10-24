@@ -77,6 +77,7 @@ jobs:
           bash tools/screenshot.sh --out=screens/visual-review/inspect-guest --open --fast=5 --select=guest --frames=60 --speed=1
           bash tools/screenshot.sh --out=screens/visual-review/debug-busy --open --fast=5 --select=guest --f3 --frames=60 --speed=1
           bash tools/screenshot.sh --out=screens/visual-review/mood-waits --open --fast=8 --frames=120,180,240,300 --speed=1
+          bash tools/screenshot.sh --out=screens/visual-review/mood-pressure --open --fast=8 --mood-pressure --frames=120,140,160,180,200,220 --speed=1
 
       - name: Verify capture identity and image metadata
         shell: bash
@@ -93,7 +94,8 @@ jobs:
           captures = [('default', -1, False, False, 60)] + [(f'quarter-{q}', q, False, False, 60) for q in range(4)]
           captures += [('inspect-guest', -1, True, False, 60), ('debug-busy', -1, True, True, 60)]
           captures += [('mood-waits', -1, False, False, frame) for frame in (120, 180, 240, 300)]
-          observed_bands = set()
+          captures += [('mood-pressure', -1, False, False, frame) for frame in (120, 140, 160, 180, 200, 220)]
+          observed_bands = {'mood-waits': set(), 'mood-pressure': set()}
           for name, requested, inspect_guest, debug, frame in captures:
               png = root / name / f'shot_{frame:04d}.png'
               raw = png.read_bytes()
@@ -126,14 +128,45 @@ jobs:
               else:
                   assert data['selected_agent_id'] == -1 and data['selected_role'] == '', f'{name}: unexpected agent selection'
                   assert data['selected_agent_live'] is False, f'{name}: unexpected live selection'
-              if name == 'mood-waits':
-                  assert data['capture_parameters'] == {'open': True, 'fast_ticks_per_frame': 8, 'speed': 1}, 'wrong mood capture parameters'
+              if name in ('mood-waits', 'mood-pressure'):
+                  pressure_requested = name == 'mood-pressure'
+                  fixture = 'cook_priorities_off' if pressure_requested else 'none'
+                  assert data['capture_parameters'] == {'open': True, 'fast_ticks_per_frame': 8, 'speed': 1, 'mood_pressure': pressure_requested}, 'wrong mood capture parameters'
                   assert data['world_tick'] > 0, 'normal mood capture did not advance the simulation'
                   assert type(data['master_seed']) is str and data['master_seed'].lstrip('-').isdigit(), 'missing actual master seed'
                   assert set(data['restaurant_rng']) == {'seed', 'state'}, 'missing actual restaurant RNG snapshot'
                   assert all(type(value) is str and value.lstrip('-').isdigit() for value in data['restaurant_rng'].values()), 'invalid restaurant RNG snapshot'
                   mood = data['mood']
-                  assert mood['available'] is True and mood['fixture'] == 'none', 'mood capture must use the normal live scene'
+                  assert mood['available'] is True and mood['fixture'] == fixture and mood['requested_fixture'] == fixture, 'mood capture fixture was not disclosed accurately'
+                  pressure = mood['pressure']
+                  current_staff = {row['id']: row for row in pressure['current_staff']}
+                  assert len(current_staff) == len(pressure['current_staff']), 'duplicate current staff ids'
+                  assert all(type(staff_id) is int and staff_id > 0 for staff_id in current_staff), 'invalid live staff ids'
+                  cooks = {staff_id for staff_id, row in current_staff.items() if row['role'] == 'cook'}
+                  assert cooks and any(row['role'] == 'server' for row in current_staff.values()), 'missing actual cook or server'
+                  assert all(type(row['priorities']) is dict and row['priorities'] and all(type(value) is int and value >= 0 for value in row['priorities'].values()) for row in current_staff.values()), 'invalid current public priorities'
+                  if pressure_requested:
+                      assert pressure['applied'] is True and pressure['phase_at_application'] == 0 and pressure['world_tick_at_application'] == 0, 'pressure was not applied before the fresh service opened'
+                      applied = pressure['applied_staff_ids']
+                      assert all(type(staff_id) is int and staff_id > 0 for staff_id in applied), 'invalid configured cook ids'
+                      assert len(applied) == len(set(applied)) and set(applied) == cooks, 'configured ids do not match the actual live cooks'
+                      configured_staff = {row['id']: row for row in pressure['staff']}
+                      assert all(type(staff_id) is int and staff_id > 0 for staff_id in configured_staff), 'invalid configured staff ids'
+                      assert len(configured_staff) == len(pressure['staff']) and set(configured_staff) == set(current_staff), 'configured staff snapshot differs from current actual staff'
+                      for staff_id, row in configured_staff.items():
+                          current = current_staff[staff_id]
+                          assert row['live'] is True and row['role'] == row['current_role'] == current['role'], 'configured staff is gone or changed role'
+                          assert row['current'] == current['priorities'] and set(row['before']) == set(row['after']) == set(row['current']), 'priority snapshot keys or current values differ'
+                          if staff_id in cooks:
+                              assert row['configured'] is True and any(value > 0 for value in row['before'].values()), 'cook was not active before pressure setup'
+                              assert all(value == 0 for value in row['after'].values()) and row['current'] == row['after'], 'actual cook priorities are not all off'
+                          else:
+                              assert row['configured'] is False and row['before'] == row['after'] == row['current'], 'pressure setup changed the server or other staff'
+                      print(f'{name} frame={frame}: applied cook ids={sorted(applied)}, actual current priorities={current_staff}')
+                  else:
+                      assert pressure['applied'] is False and not pressure['applied_staff_ids'] and not pressure['staff'], 'normal capture applied a pressure fixture'
+                      assert pressure['phase_at_application'] is None and pressure['world_tick_at_application'] is None, 'normal capture contains pressure setup history'
+                      assert all(row['priorities'] == {'any': 1, row['role']: 2} for row in current_staff.values()), 'normal capture changed the default staff priorities'
                   waiting = mood['waiting_guests']
                   visible = mood['visible_indicators']
                   guests = {row['id']: row for row in waiting}
@@ -157,10 +190,11 @@ jobs:
                       assert icon['in_camera_frustum'] is True, 'waiting indicator is outside the captured camera'
                       assert len(icon['screen_position']) == 2 and 0 <= icon['screen_position'][0] < data['width'] and 0 <= icon['screen_position'][1] < data['height'], 'indicator center is outside the image'
                       assert all(type(guest[key]) is str and guest[key].lstrip('-').isdigit() for key in ('rng_seed', 'rng_state')), 'missing actual guest RNG snapshot'
-                      observed_bands.add(band)
-                  print(f'mood-waits frame={frame}: observed bands={sorted({row["band"] for row in visible})}, waiting ids={sorted(guests)}, seed={data["master_seed"]}, fixture=none')
+                      observed_bands[name].add(band)
+                  print(f'{name} frame={frame}: observed bands={sorted({row["band"] for row in visible})}, waiting ids={sorted(guests)}, seed={data["master_seed"]}, fixture={fixture}')
               print(f'{name}: actual quarter={expected}, Cutaway, guest={data["selected_agent_id"]}, F3={debug}, tick={data["world_tick"]}, 1600x900, sha256={hashlib.sha256(raw).hexdigest()}')
-          print(f'Normal mood capture observed bands across frames: {sorted(observed_bands)}; multiple-band screenshot acceptance still requires image review.')
+          for name, bands in observed_bands.items():
+              print(f'{name} observed bands across frames: {sorted(bands)}; multiple-band and urgent-legibility screenshot acceptance still requires image review.')
           PY
 
       - name: Upload actual captures, metadata and logs

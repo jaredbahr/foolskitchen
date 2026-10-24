@@ -7,7 +7,8 @@ extends SceneTree
 ##   --fast=N    also run N extra sim ticks per frame (via the scene's run_ticks)
 ##   --select=guest  inspect a live guest through the scene's selection API
 ##   --f3        show the scene's read-only debug overlay
-## Metadata records actual waiting moods/visible markers and seeds, with no fixture.
+##   --mood-pressure  with --open, disable existing cooks' public work priorities
+## Metadata discloses capture-only setup with actual waiting moods/markers/seeds.
 
 const MAX_CAPTURE_WAIT_FRAMES: int = 8
 
@@ -23,6 +24,8 @@ var _finished: bool = false
 var _errors: ErrorCounter = ErrorCounter.new()
 var _open: bool = false
 var _fast: int = 0
+var _mood_pressure: bool = false
+var _mood_pressure_setup: Dictionary = {}
 var _select_guest: bool = false
 var _f3: bool = false
 var _selected_guest_id: int = -1
@@ -43,6 +46,11 @@ func _initialize() -> void:
 			_open = true
 		elif arg.begins_with("--fast="):
 			_fast = int(arg.trim_prefix("--fast="))
+		elif arg.begins_with("--mood-pressure"):
+			if arg != "--mood-pressure":
+				_fail_capture("--mood-pressure does not accept a value")
+				return
+			_mood_pressure = true
 		elif arg.begins_with("--select"):
 			if arg != "--select=guest":
 				_fail_capture("--select only supports --select=guest")
@@ -65,8 +73,11 @@ func _initialize() -> void:
 			_shots.clear()
 			for f in arg.trim_prefix("--frames=").split(","):
 				_shots.append(int(f))
-	if _shots.is_empty() or _shots.min() < 1 or ((_quarter >= 0 or _select_guest or _f3) and _shots.min() < 4):
-		_fail_capture("capture frames must be positive, and at least 4 for --quarter, --select or --f3")
+	if _mood_pressure and not _open:
+		_fail_capture("--mood-pressure requires --open")
+		return
+	if _shots.is_empty() or _shots.min() < 1 or ((_quarter >= 0 or _select_guest or _f3 or _mood_pressure) and _shots.min() < 4):
+		_fail_capture("capture frames must be positive, and at least 4 for camera/inspection/mood-pressure options")
 		return
 	if DirAccess.make_dir_recursive_absolute(_out) != OK:
 		_fail_capture("cannot create output directory")
@@ -95,6 +106,16 @@ func _process(_delta: float) -> bool:
 	if _frames == 3:
 		# Autoloads aren't compile-time identifiers in a --script main loop.
 		var clock: Node = root.get_node("Clock")
+		if _mood_pressure:
+			var live_world: SimWorld = _capture_world()
+			if live_world == null or not _main.has_method("run_ticks") \
+					or not _main.get_node_or_null("ShopView") is ShopView or clock.get("sim") != live_world.clock:
+				_fail_capture("--mood-pressure requires the live shop session, ShopView and shared clock")
+				return true
+			_mood_pressure_setup = apply_mood_pressure(live_world, _open)
+			if _mood_pressure_setup.get("ok") != true:
+				_fail_capture(str(_mood_pressure_setup.get("error", "cannot apply mood pressure")))
+				return true
 		if _open:
 			(clock.get("sim") as SimClock).start_service()
 		clock.call("set_speed", _speed)
@@ -250,6 +271,10 @@ func _capture() -> void:
 		var restaurant: RestaurantSim = _main.get("sim") as RestaurantSim
 		if restaurant != null and restaurant.rng != null:
 			restaurant_rng = {"seed": str(restaurant.rng.seed), "state": str(restaurant.rng.state)}
+	var mood: Dictionary = mood_evidence(world, view, root.get_viewport().get_camera_3d())
+	mood["requested_fixture"] = "cook_priorities_off" if _mood_pressure else "none"
+	mood["pressure"] = mood_pressure_evidence(world, _mood_pressure_setup)
+	mood["fixture"] = "cook_priorities_off" if mood["pressure"]["applied"] else "none"
 	var metadata: Dictionary = {
 		"image_file": path.get_file(), "image_sha256": image_hash,
 		"scene": _scene_path, "frame": _capture_frame, "requested_quarter": _quarter,
@@ -269,9 +294,9 @@ func _capture() -> void:
 		"panel_visible": inspection.get("panel_visible"),
 		"debug_visible": inspection.get("debug_visible"),
 		"world_tick": inspection.get("world_tick", world.now if world != null else null),
-		"capture_parameters": {"open": _open, "fast_ticks_per_frame": _fast, "speed": _speed},
+		"capture_parameters": {"open": _open, "fast_ticks_per_frame": _fast, "speed": _speed, "mood_pressure": _mood_pressure},
 		"master_seed": master_seed, "restaurant_rng": restaurant_rng,
-		"mood": mood_evidence(world, view, root.get_viewport().get_camera_3d()),
+		"mood": mood,
 	}
 	var file: FileAccess = FileAccess.open(path.get_basename() + ".json", FileAccess.WRITE)
 	if file == null:
@@ -289,6 +314,71 @@ func _capture() -> void:
 	_capture_pending = false
 	if _finish_requested:
 		_finish_capture()
+
+
+## Apply only ordinary public staff configuration, before opening service.
+## Validate every target first; failed setup never leaves partially changed cooks.
+static func apply_mood_pressure(world: SimWorld, open_requested: bool) -> Dictionary:
+	if not open_requested:
+		return {"ok": false, "error": "--mood-pressure requires --open"}
+	if world == null or world.clock == null or world.clock.phase != SimClock.Phase.MORNING:
+		return {"ok": false, "error": "--mood-pressure requires a live morning world before service opens"}
+	var cooks: Array[StaffAgent] = []
+	var staff_rows: Array[Dictionary] = []
+	for agent: SimAgent in world.agents:
+		if agent is StaffAgent:
+			var staff: StaffAgent = agent as StaffAgent
+			if staff.role == &"cook":
+				if staff.id < 1 or staff.priorities.is_empty() or staff.task != null:
+					return {"ok": false, "error": "--mood-pressure needs live idle cooks with public priorities"}
+				cooks.append(staff)
+			staff_rows.append({"id": staff.id, "role": String(staff.role),
+				"configured": staff.role == &"cook", "before": _priority_snapshot(staff)})
+	if cooks.is_empty():
+		return {"ok": false, "error": "--mood-pressure found no live cook"}
+	var applied_ids: Array[int] = []
+	for cook: StaffAgent in cooks:
+		for role: StringName in cook.priorities.keys():
+			cook.priorities[role] = 0
+		applied_ids.append(cook.id)
+	for row: Dictionary in staff_rows:
+		row["after"] = _priority_snapshot(world.agent(int(row["id"])) as StaffAgent)
+	return {"ok": true, "applied_staff_ids": applied_ids, "staff": staff_rows,
+		"phase_at_application": int(world.clock.phase), "world_tick_at_application": world.now}
+
+
+## Read current priorities again for each post-draw capture, rather than
+## presenting the setup's frozen "after" snapshot as proof of current settings.
+static func mood_pressure_evidence(world: SimWorld, setup: Dictionary) -> Dictionary:
+	var rows: Array[Dictionary] = []
+	var live_staff: Array[Dictionary] = []
+	if world != null:
+		for agent: SimAgent in world.agents:
+			if agent is StaffAgent:
+				var staff: StaffAgent = agent as StaffAgent
+				live_staff.append({"id": staff.id, "role": String(staff.role), "priorities": _priority_snapshot(staff)})
+	for value: Dictionary in setup.get("staff", []):
+		var row: Dictionary = value.duplicate(true)
+		var staff: StaffAgent = world.agent(int(row["id"])) as StaffAgent if world != null else null
+		row["live"] = staff != null
+		row["current_role"] = String(staff.role) if staff != null else ""
+		row["current"] = _priority_snapshot(staff) if staff != null else {}
+		rows.append(row)
+	return {"applied": setup.get("ok", false) == true, "staff": rows, "current_staff": live_staff,
+		"applied_staff_ids": setup.get("applied_staff_ids", []).duplicate(),
+		"phase_at_application": setup.get("phase_at_application"),
+		"world_tick_at_application": setup.get("world_tick_at_application")}
+
+
+static func _priority_snapshot(staff: StaffAgent) -> Dictionary:
+	var keys: Array[String] = []
+	for role: StringName in staff.priorities:
+		keys.append(String(role))
+	keys.sort()
+	var result: Dictionary[String, int] = {}
+	for role: String in keys:
+		result[role] = staff.priorities[StringName(role)]
+	return result
 
 
 ## Snapshot model values and independently read actual marker nodes. In
