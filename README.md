@@ -20,3 +20,8 @@ A low-poly 3D restaurant tycoon game (Godot 4). You run a restaurant: staff and 
 
 ## Make a build
 `bash tools/get_godot.sh && bash tools/get_export_templates.sh && bash tools/export.sh` (writes `export/FoolsKitchen-windows.zip` and `export/FoolsKitchen-web.zip`). To publish: rename `## Unreleased` in `CHANGELOG.md` to `## vX.Y.Z (date)`, merge, then push the tag `vX.Y.Z`. The release notes are that whole section, word for word.
+
+## Balance probe
+Run `bash tools/balance_probe.sh --days 5 --seeds 1,7,42 --setup default,extra_cook,owner_kitchen` to compare real, unsaved shop sessions.
+The command prints a Markdown row for each set-up and seed plus a mean row, with guest counts, the books and ending cash. Other set-ups are `extra_server` and `owner_floor`.
+It uses a temporary user-data folder and runs by hand only; it is not part of `check.sh` or CI.
