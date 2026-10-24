@@ -129,6 +129,37 @@ func test_default_create_has_real_kitchen_but_no_hidden_ingredients() -> void:
 	_assert_drained()
 
 
+func test_stock_reassigned_after_create_supplies_real_cooking() -> void:
+	var errors: Array[String] = []
+	_sim = RestaurantSim.create(LAYOUT, _content, 29017, errors)
+	assert_eq(errors, [] as Array[String])
+	var obsolete: Stock = _sim.stock
+	var replacement: Stock = Stock.new()
+	for ingredient: IngredientDef in _content.ingredients():
+		replacement.add(ingredient.id, 7, 1)
+	# Main integration attaches Economy.stock after construction in this way.
+	_sim.stock = replacement
+	_sim.customer_arrived.connect(_on_arrived)
+	_sim.customer_paid.connect(_on_paid)
+	_sim.customer_left.connect(_on_left)
+	_sim.menu = [_content.recipe(&"burger")] as Array[RecipeDef]
+	_no_arrivals()
+	var guest: CustomerAgent = _guest()
+	_sim.world.clock.start_service()
+	_run(3000)
+	assert_not_null(guest.order)
+	if guest.order == null:
+		return
+	assert_eq(guest.order.state, Order.State.DELIVERED)
+	assert_eq(_left.get(guest.id, &""), &"happy")
+	assert_eq(_sim.served_today, 1)
+	assert_true(_sim.stock == replacement)
+	for ingredient: IngredientDef in _content.recipe(&"burger").ingredients:
+		assert_eq(replacement.count(ingredient.id), 6, "real cooking consumes current stock")
+		assert_eq(obsolete.count(ingredient.id), 0, "obsolete empty stock is not the supply")
+	_assert_drained()
+
+
 func test_dirty_table_blocks_new_seat_until_real_server_busses_it() -> void:
 	var tables: Array[PlacedItem] = ShopBuilder.items_with_def(_sim.world, &"table_2")
 	var table: PlacedItem = tables[0]
