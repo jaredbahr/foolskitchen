@@ -5,11 +5,13 @@ extends SceneTree
 ## Optional --quarter=0..3 selects an exact cutaway camera quarter for review.
 ##   --open      press "Open shop" at the start
 ##   --fast=N    also run N extra sim ticks per frame (via the scene's run_ticks)
-##   --select=guest  inspect a live guest through the scene's selection API
+##   --select=guest|owner  inspect a live agent through the scene's selection API
+##   --assign-owner=kitchen  use the normal selected-owner command (requires --open)
 ##   --f3        show the scene's read-only debug overlay
 ## Metadata records actual waiting moods/visible markers and seeds, with no fixture.
 
 const MAX_CAPTURE_WAIT_FRAMES: int = 8
+const MAX_OWNER_WARMUP_TICKS: int = 900
 
 var _frames: int = 0
 var _shots: Array[int] = [120, 400, 900]
@@ -23,9 +25,11 @@ var _finished: bool = false
 var _errors: ErrorCounter = ErrorCounter.new()
 var _open: bool = false
 var _fast: int = 0
-var _select_guest: bool = false
+var _selection: StringName = &""
+var _assign_owner: bool = false
+var _owner_warmup_ticks: int = 0
 var _f3: bool = false
-var _selected_guest_id: int = -1
+var _selected_agent_id: int = -1
 var _capture_pending: bool = false
 var _capture_frame: int = 0
 var _capture_wait_frames: int = 0
@@ -44,10 +48,15 @@ func _initialize() -> void:
 		elif arg.begins_with("--fast="):
 			_fast = int(arg.trim_prefix("--fast="))
 		elif arg.begins_with("--select"):
-			if arg != "--select=guest":
-				_fail_capture("--select only supports --select=guest")
+			if arg not in ["--select=guest", "--select=owner"]:
+				_fail_capture("--select only supports guest or owner")
 				return
-			_select_guest = true
+			_selection = StringName(arg.trim_prefix("--select="))
+		elif arg.begins_with("--assign-owner"):
+			if arg != "--assign-owner=kitchen":
+				_fail_capture("--assign-owner only supports kitchen")
+				return
+			_assign_owner = true
 		elif arg.begins_with("--f3"):
 			if arg != "--f3":
 				_fail_capture("--f3 does not accept a value")
@@ -65,7 +74,10 @@ func _initialize() -> void:
 			_shots.clear()
 			for f in arg.trim_prefix("--frames=").split(","):
 				_shots.append(int(f))
-	if _shots.is_empty() or _shots.min() < 1 or ((_quarter >= 0 or _select_guest or _f3) and _shots.min() < 4):
+	if _assign_owner and (_selection != &"owner" or not _open):
+		_fail_capture("--assign-owner=kitchen requires --select=owner and --open")
+		return
+	if _shots.is_empty() or _shots.min() < 1 or ((_quarter >= 0 or not _selection.is_empty() or _f3) and _shots.min() < 4):
 		_fail_capture("capture frames must be positive, and at least 4 for --quarter, --select or --f3")
 		return
 	if DirAccess.make_dir_recursive_absolute(_out) != OK:
@@ -106,12 +118,16 @@ func _process(_delta: float) -> bool:
 			return true
 	if _fast > 0 and _frames > 3 and _main.has_method("run_ticks"):
 		_main.call("run_ticks", _fast)
-	if _select_guest and _frames >= 3:
-		_select_live_guest()
+	if not _selection.is_empty() and _frames >= 3:
+		_select_live_agent()
 		if _failed:
 			return true
 	_finish_requested = _frames >= _shots.max()
 	if _shots.has(_frames):
+		if _assign_owner:
+			_prepare_owner_capture()
+			if _failed:
+				return true
 		_queue_capture()
 	if _finish_requested and not _capture_pending:
 		_finish_capture()
@@ -140,13 +156,16 @@ func _configure_camera() -> void:
 
 
 func _configure_inspection() -> void:
-	if not _select_guest and not _f3:
+	if _selection.is_empty() and not _f3:
 		return
 	if not _main.has_method("inspection_state") or _capture_world() == null:
 		_fail_capture("requested inspection requires the scene's inspection state and live world APIs")
 		return
-	if _select_guest and not _main.has_method("select_agent"):
-		_fail_capture("--select=guest requires the scene's select_agent API")
+	if not _selection.is_empty() and not _main.has_method("select_agent"):
+		_fail_capture("--select requires the scene's select_agent API")
+		return
+	if _assign_owner and (not _main.has_method("assign_owner_mode") or not _main.has_method("run_ticks")):
+		_fail_capture("owner assignment requires the scene's normal command and tick APIs")
 		return
 	if _f3:
 		if not _main.has_method("set_debug_visible"):
@@ -161,23 +180,54 @@ func _capture_world() -> SimWorld:
 	return null
 
 
-func _select_live_guest() -> void:
+func _select_live_agent() -> void:
 	var world: SimWorld = _capture_world()
 	if world == null:
-		_fail_capture("--select=guest requires a live simulation world")
+		_fail_capture("--select requires a live simulation world")
 		return
-	if world.agent(_selected_guest_id) is CustomerAgent:
+	var selected: SimAgent = world.agent(_selected_agent_id)
+	if (_selection == &"guest" and selected is CustomerAgent) or (_selection == &"owner" and selected is OwnerAgent):
 		return
 	# Wait only within the requested frame budget for normal/--fast arrivals.
 	# If a previous guest departed, select the next live guest in stable id order.
-	_selected_guest_id = -1
+	_selected_agent_id = -1
 	for agent: SimAgent in world.agents:
-		if agent is CustomerAgent:
+		if (_selection == &"guest" and agent is CustomerAgent) or (_selection == &"owner" and agent is OwnerAgent):
 			if not bool(_main.call("select_agent", agent.id)):
-				_fail_capture("scene rejected selection of a live guest")
+				_fail_capture("scene rejected selection of a live " + String(_selection))
 				return
-			_selected_guest_id = agent.id
+			_selected_agent_id = agent.id
+			if _assign_owner and not bool(_main.call("assign_owner_mode", &"kitchen")):
+				_fail_capture("scene rejected the normal owner kitchen command")
 			return
+
+
+## Bounded normal simulation only: wait for actual owner cooking work rather
+## than installing a capture fixture, task, inventory or altered staff priority.
+func _prepare_owner_capture() -> void:
+	var world: SimWorld = _capture_world()
+	if world == null or not world.agent(_selected_agent_id) is OwnerAgent:
+		_fail_capture("owner kitchen capture has no live selected owner")
+		return
+	for tick: int in range(MAX_OWNER_WARMUP_TICKS + 1):
+		var selected_owner: OwnerAgent = world.agent(_selected_agent_id) as OwnerAgent
+		if _owner_cook_task(selected_owner) and selected_owner.step_index == 0:
+			return
+		if tick == MAX_OWNER_WARMUP_TICKS:
+			break
+		var before: int = world.now
+		_main.call("run_ticks", 1)
+		if world.now != before + 1:
+			break
+		_owner_warmup_ticks += 1
+	_fail_capture("normal owner did not claim fresh cooking work within the bounded capture warmup")
+
+
+func _owner_cook_task(selected_owner: OwnerAgent) -> bool:
+	return selected_owner != null and selected_owner.current_mode() == &"kitchen" and selected_owner.task != null \
+		and selected_owner.task.role == &"cook" and selected_owner.task.state == SimTask.State.CLAIMED \
+		and selected_owner.task.claimed_by == selected_owner.id and selected_owner.step_index >= 0 \
+		and selected_owner.step_index < selected_owner.task.steps.size()
 
 
 func _queue_capture() -> void:
@@ -200,15 +250,24 @@ func _capture() -> void:
 		inspection = _main.call("inspection_state")
 	var world: SimWorld = _capture_world()
 	var selected_id: int = int(inspection.get("selected_agent_id", -1))
-	var selected_live: bool = world != null and world.agent(selected_id) is CustomerAgent
-	if _select_guest:
-		if _selected_guest_id < 1 or selected_id != _selected_guest_id or not selected_live or inspection.get("selected_role") != "guest" or inspection.get("panel_visible") != true:
-			_fail_capture("requested live guest selection/panel was not present in the rendered frame")
+	var selected: SimAgent = world.agent(selected_id) if world != null else null
+	var selected_live: bool = (_selection == &"guest" and selected is CustomerAgent) or (_selection == &"owner" and selected is OwnerAgent)
+	if not _selection.is_empty():
+		if _selected_agent_id < 1 or selected_id != _selected_agent_id or not selected_live or inspection.get("selected_role") != String(_selection) or inspection.get("panel_visible") != true:
+			_fail_capture("requested live selection/panel was not present in the rendered frame")
+			return
+	if _assign_owner:
+		var selected_owner: OwnerAgent = selected as OwnerAgent
+		if not _owner_cook_task(selected_owner):
+			_fail_capture("rendered owner is not actually assigned and claiming kitchen work")
+			return
+		if inspection.get("owner_mode") != "kitchen" or inspection.get("selected_task_id") != selected_owner.task.id or inspection.get("selected_task_claimant") != selected_id or inspection.get("selected_task_role") != "cook" or inspection.get("selected_task_state") != int(SimTask.State.CLAIMED) or inspection.get("selected_task_step") != selected_owner.step_index:
+			_fail_capture("owner inspection/task metadata differs from the rendered simulation")
 			return
 	if _f3 and inspection.get("debug_visible") != true:
 		_fail_capture("requested F3 overlay was not visible in the rendered frame")
 		return
-	if (_select_guest or _f3) and (world == null or inspection.get("world_tick", -1) != world.now):
+	if (not _selection.is_empty() or _f3) and (world == null or inspection.get("world_tick", -1) != world.now):
 		_fail_capture("inspection world tick did not match the rendered simulation")
 		return
 	var rig: Node3D = _main.get_node_or_null("CameraRig") as Node3D
@@ -260,7 +319,16 @@ func _capture() -> void:
 		"video_adapter": RenderingServer.get_video_adapter_name(),
 		"engine_errors": _errors.count(),
 		"capture_timing": "frame_post_draw",
-		"requested_selection": "guest" if _select_guest else "",
+		"requested_selection": String(_selection),
+		"requested_owner_mode": "kitchen" if _assign_owner else "",
+		"owner_mode": inspection.get("owner_mode", ""),
+		"owner_warmup_ticks": _owner_warmup_ticks,
+		"selected_task_id": inspection.get("selected_task_id", -1),
+		"selected_task_role": inspection.get("selected_task_role", ""),
+		"selected_task_label": inspection.get("selected_task_label", ""),
+		"selected_task_state": inspection.get("selected_task_state", -1),
+		"selected_task_claimant": inspection.get("selected_task_claimant", -1),
+		"selected_task_step": inspection.get("selected_task_step", -1),
 		"requested_debug_visible": _f3,
 		"selected_agent_id": inspection.get("selected_agent_id"),
 		"selected_item_id": inspection.get("selected_item_id"),

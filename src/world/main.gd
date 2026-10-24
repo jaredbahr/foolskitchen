@@ -13,6 +13,9 @@ extends Node3D
 const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
 const TUNING: EconomyTuning = preload("res://data/balance/tier1_economy.tres")
 const AUTOSAVE_SLOT: String = "autosave"
+## SaveSystem keeps this pure provider alive after a scene is freed. Replacing
+## the scene replaces both provider callbacks and this lifetime keeper.
+const OWNER_PROVIDER_META: StringName = &"foolskitchen_owner_mode_provider"
 
 ## Save slot used by autosave and the startup load. Tests change it.
 var save_slot: String = AUTOSAVE_SLOT
@@ -31,6 +34,8 @@ var shop_editor: ShopEditor
 var _previous_clock: SimClock = null
 var _started: bool = false
 var _skip_next_autosave: bool = false
+var _owner_preferences: OwnerModeSettings = OwnerModeSettings.new()
+var _owner_command_save_allowed: bool = true
 var _loaded_layout: ShopLayout = null
 var _report: Control
 var _inspect_panel: InspectPanel
@@ -112,6 +117,8 @@ func start() -> void:
 	Clock.attach_world(null)
 	for autoload: Node in [Clock, GameState, Economy]:
 		autoload.call(&"register_save_provider")
+	SaveSystem.set_meta(OWNER_PROVIDER_META, _owner_preferences)
+	SaveSystem.register("owner", _owner_preferences.to_dict, _owner_preferences.restore)
 	SaveSystem.register("shop", _capture_shop, _restore_shop)
 	var loaded: bool = use_saves and _load_autosave()
 	if not loaded:
@@ -137,9 +144,13 @@ func _connect_session() -> void:
 		EventBus.day_phase_changed.connect(_on_day_phase_changed)
 	if not EventBus.sim_ticked.is_connected(_on_inspection_tick):
 		EventBus.sim_ticked.connect(_on_inspection_tick)
+	if not _inspect_panel.owner_mode_requested.is_connected(_on_owner_mode_requested):
+		_inspect_panel.owner_mode_requested.connect(_on_owner_mode_requested)
 
 
 func _exit_tree() -> void:
+	if _inspect_panel != null and _inspect_panel.owner_mode_requested.is_connected(_on_owner_mode_requested):
+		_inspect_panel.owner_mode_requested.disconnect(_on_owner_mode_requested)
 	if sim != null and sim.customer_paid.is_connected(_on_customer_paid):
 		sim.customer_paid.disconnect(_on_customer_paid)
 	if sim != null and sim.service_closed.is_connected(_on_service_closed):
@@ -167,6 +178,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			clear_selection()
 			if is_inside_tree():
 				get_viewport().set_input_as_handled()
+		else:
+			var mode: StringName = _owner_mode_for_key(key.physical_keycode)
+			if not mode.is_empty() and assign_owner_mode(mode) and is_inside_tree():
+				get_viewport().set_input_as_handled()
 	var mouse: InputEventMouseButton = event as InputEventMouseButton
 	if mouse != null and mouse.pressed and mouse.button_index == MOUSE_BUTTON_LEFT:
 		pick_screen_position(mouse.position)
@@ -188,6 +203,12 @@ func pick_screen_position(screen_position: Vector2) -> void:
 func select_at_world_position(world_position: Vector3) -> void:
 	if world == null:
 		return
+	# Resolve owner work targets before nearby agents or ordinary item picking.
+	if _selected_owner() != null:
+		var target: Dictionary = OwnerAssignment.resolve(world_position, world.grid)
+		var mode: StringName = target["mode"]
+		if not mode.is_empty() and assign_owner_mode(mode):
+			return
 	var view: ShopView = $ShopView
 	var agent_id: int = Picker.pick_agent(world_position, view.drawn_agent_positions())
 	if agent_id >= 0:
@@ -208,6 +229,44 @@ func select_agent(agent_id: int) -> bool:
 	return _inspect_panel.selected_agent_id == agent_id
 
 
+func _selected_owner() -> OwnerAgent:
+	if sim == null or world == null or _inspect_panel == null:
+		return null
+	var selected_owner: OwnerAgent = sim.owner_agent()
+	return selected_owner if selected_owner != null and _inspect_panel.selected_agent_id == selected_owner.id else null
+
+
+## The sole player command used by keys, inspector buttons and capture tools.
+## OPEN/CLOSED changes are included in the next normal MORNING checkpoint.
+func assign_owner_mode(mode: StringName) -> bool:
+	var selected_owner: OwnerAgent = _selected_owner()
+	if selected_owner == null or not OwnerAgent.MODES.has(mode):
+		return false
+	var changed: bool = selected_owner.current_mode() != mode
+	if not sim.assign_owner(mode):
+		return false
+	_owner_preferences.assign_mode(mode)
+	_inspect_panel.show_agent(selected_owner.id)
+	refresh_presentation()
+	if changed and use_saves and _started and _owner_command_save_allowed and Clock.sim.phase == SimClock.Phase.MORNING:
+		if SaveSystem.save_game(save_slot) != OK:
+			world.log_event("Owner assignment could not be saved")
+	return true
+
+
+func _on_owner_mode_requested(mode: StringName) -> void:
+	assign_owner_mode(mode)
+
+
+func _owner_mode_for_key(keycode: Key) -> StringName:
+	match keycode:
+		KEY_K: return &"kitchen"
+		KEY_F: return &"floor"
+		KEY_H: return &"help"
+		KEY_R: return &"rest"
+	return &""
+
+
 func clear_selection() -> void:
 	_inspect_panel.clear()
 	refresh_presentation()
@@ -225,14 +284,24 @@ func is_debug_visible() -> bool:
 ## Read-only diagnostic state used by integration tests and real captures.
 func inspection_state() -> Dictionary:
 	var role: String = ""
+	var selected_staff: StaffAgent = null
 	for agent: SimAgent in world.agents:
 		if agent.id == _inspect_panel.selected_agent_id:
 			role = "guest" if agent is CustomerAgent else str(agent.role)
+			selected_staff = agent as StaffAgent
+	var task: SimTask = selected_staff.task if selected_staff != null else null
 	return {
 		"selected_agent_id": _inspect_panel.selected_agent_id,
 		"selected_item_id": _inspect_panel.selected_item_id,
 		"selected_role": role, "panel_visible": _inspect_panel.visible,
 		"debug_visible": is_debug_visible(), "world_tick": world.now,
+		"owner_mode": String((selected_staff as OwnerAgent).current_mode()) if selected_staff is OwnerAgent else "",
+		"selected_task_id": task.id if task != null else -1,
+		"selected_task_role": String(task.role) if task != null else "",
+		"selected_task_label": task.label if task != null else "",
+		"selected_task_state": int(task.state) if task != null else -1,
+		"selected_task_claimant": task.claimed_by if task != null else -1,
+		"selected_task_step": selected_staff.step_index if task != null else -1,
 	}
 
 
@@ -298,6 +367,9 @@ func _new_game() -> void:
 	GameState.new_run(int(Time.get_unix_time_from_system()))
 	Economy.reset(TUNING.starting_cash)
 	_loaded_layout = null
+	_owner_preferences.reset()
+	sim.assign_owner(&"rest")
+	_owner_command_save_allowed = not _skip_next_autosave
 	sim.stock = Economy.stock
 	world.log_event("New game: $%d to start" % TUNING.starting_cash)
 
@@ -320,7 +392,7 @@ func _load_autosave() -> bool:
 		sim = candidate
 		world = candidate.world
 		_bind_world_presentation()
-	return true
+	return sim.assign_owner(_owner_preferences.current_mode())
 
 
 func _capture_shop() -> Dictionary:
@@ -358,7 +430,8 @@ func _begin_morning() -> void:
 	Economy.ledger.prune_before(Clock.sim.day - Ledger.HISTORY_DAYS)
 	_report.hide()
 	if use_saves and not _skip_next_autosave:
-		SaveSystem.save_game(save_slot)
+		if SaveSystem.save_game(save_slot) == OK:
+			_owner_command_save_allowed = true
 	_skip_next_autosave = false
 	refresh_presentation()
 
@@ -375,6 +448,8 @@ func _restock() -> void:
 
 func _charge_closing_costs() -> void:
 	for role: StringName in TUNING.wages:
+		if role == &"owner":
+			continue
 		for agent: SimAgent in world.agents:
 			if agent.role == role:
 				Economy.add_cash(-TUNING.wages[role], Ledger.WAGES)

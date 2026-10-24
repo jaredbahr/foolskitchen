@@ -25,6 +25,7 @@ offset_right = 392.0
 offset_bottom = -16.0
 grow_vertical = 0
 mouse_filter = 0
+mouse_force_pass_scroll_events = false
 
 [node name="Rows" type="VBoxContainer" parent="Panel"]
 layout_mode = 2
@@ -48,6 +49,61 @@ unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
 autowrap_mode = 3
+
+[node name="OwnerModes" type="GridContainer" parent="Panel/Rows"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+mouse_filter = 2
+columns = 2
+
+[node name="Kitchen" type="Button" parent="Panel/Rows/OwnerModes"]
+layout_mode = 2
+theme = ExtResource("2_theme")
+size_flags_horizontal = 3
+focus_mode = 0
+mouse_filter = 0
+mouse_force_pass_scroll_events = false
+disabled = true
+toggle_mode = true
+text = "Kitchen"
+tooltip_text = "Help in the kitchen (K)"
+
+[node name="Floor" type="Button" parent="Panel/Rows/OwnerModes"]
+layout_mode = 2
+theme = ExtResource("2_theme")
+size_flags_horizontal = 3
+focus_mode = 0
+mouse_filter = 0
+mouse_force_pass_scroll_events = false
+disabled = true
+toggle_mode = true
+text = "Floor"
+tooltip_text = "Help on the floor (F)"
+
+[node name="Help" type="Button" parent="Panel/Rows/OwnerModes"]
+layout_mode = 2
+theme = ExtResource("2_theme")
+size_flags_horizontal = 3
+focus_mode = 0
+mouse_filter = 0
+mouse_force_pass_scroll_events = false
+disabled = true
+toggle_mode = true
+text = "Help"
+tooltip_text = "Help wherever needed (H)"
+
+[node name="Rest" type="Button" parent="Panel/Rows/OwnerModes"]
+layout_mode = 2
+theme = ExtResource("2_theme")
+size_flags_horizontal = 3
+focus_mode = 0
+mouse_filter = 0
+mouse_force_pass_scroll_events = false
+disabled = true
+toggle_mode = true
+text = "Rest"
+tooltip_text = "Stand back and return home (R)"
 
 [node name="Patience" type="VBoxContainer" parent="Panel/Rows"]
 unique_name_in_owner = true
