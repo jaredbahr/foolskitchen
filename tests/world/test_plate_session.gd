@@ -208,6 +208,8 @@ func _assert_hud_row_fits(width: float) -> void:
 	var row: HBoxContainer = _main.get_node("HUD/Top/Row") as HBoxContainer
 	assert_true((_main.get_node("HUD/Top/Row/Staff") as Button).is_visible_in_tree(),
 		"both active and legacy-off plate headers retain the Staff control")
+	assert_true((_main.get_node("HUD/Top/Row/Paint") as Button).is_visible_in_tree(),
+		"the Paint action remains in the header at laptop width")
 	assert_true((_main.get_node("HUD/Top/Row/Plates") as Label).is_visible_in_tree())
 	for child: Node in row.get_children():
 		var control: Control = child as Control

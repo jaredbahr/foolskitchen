@@ -6,6 +6,9 @@ const SPEEDS: Array[int] = [0, 1, 2, 4]
 const PHASE_NAMES: Array[String] = ["Morning", "Open", "Last orders", "Closed"]
 const GAIN_COLOR: Color = Color("286B3B")
 const LOSS_COLOR: Color = Color("A42E2E")
+const HEADER_ACTIONS: Array[String] = ["Walls", "Build", "Paint", "Context", "Menu", "Staff"]
+const BUTTON_STATES: Array[StringName] = [&"normal", &"hover", &"pressed", &"hover_pressed", &"disabled"]
+const NARROW_BUTTON_MARGIN: float = 6.0
 
 signal build_toggled()
 signal paint_toggled()
@@ -40,6 +43,7 @@ var _build_reason: String = ""
 var _build_state: int = BuildMode.State.IDLE
 var _menu_button: Button
 var _staff_button: Button
+var _header_compact: bool = false
 
 
 func _ready() -> void:
@@ -110,13 +114,28 @@ func refresh() -> void:
 	_layout_header()
 
 
-## Keep the full Staff + legacy plate message without shrinking native controls.
+## The Paint action shares the bar with Build. At laptop widths, retain every
+## label and hit target while trimming only the theme's horizontal button padding.
 func _layout_header() -> void:
 	var width: float = get_viewport().get_visible_rect().size.x if is_inside_tree() else 1600.0
-	var separation: int = 4 if width < 1440.0 else 8
+	var separation: int = 2 if width < 1320.0 else (4 if width < 1440.0 else 8)
 	var row: HBoxContainer = get_node("Top/Row") as HBoxContainer
 	if row.get_theme_constant("separation") != separation:
 		row.add_theme_constant_override("separation", separation)
+	var compact: bool = width < 1440.0
+	if compact == _header_compact:
+		return
+	_header_compact = compact
+	for name: String in HEADER_ACTIONS:
+		var button: Button = row.get_node(name) as Button
+		for state: StringName in BUTTON_STATES:
+			if not compact:
+				button.remove_theme_stylebox_override(state)
+				continue
+			var style: StyleBox = button.get_theme_stylebox(state, &"Button").duplicate() as StyleBox
+			style.set_content_margin(SIDE_LEFT, NARROW_BUTTON_MARGIN)
+			style.set_content_margin(SIDE_RIGHT, NARROW_BUTTON_MARGIN)
+			button.add_theme_stylebox_override(state, style)
 
 
 func _on_staff_pressed() -> void:
