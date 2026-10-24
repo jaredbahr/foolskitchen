@@ -10,6 +10,12 @@ var _rngs: Dictionary[StringName, RandomNumberGenerator] = {}
 
 
 func _ready() -> void:
+	register_save_provider()
+
+
+## Registers this autoload's save section. Idempotent; the game session also
+## calls it, because some hosts (the test runner) never deliver _ready().
+func register_save_provider() -> void:
 	SaveSystem.register("game_state", _capture_save, _restore_save)
 
 

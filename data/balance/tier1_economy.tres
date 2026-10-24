@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="EconomyTuning" format=3]
+
+[ext_resource type="Script" path="res://src/sim/economy/economy_tuning.gd" id="1_htw2e"]
+
+[resource]
+script = ExtResource("1_htw2e")
+morning_stock = Dictionary[StringName, int]({
+&"beef_patty": 8,
+&"bread": 12,
+&"bun": 8,
+&"cheese": 6,
+&"lettuce": 8,
+&"soup_stock": 6,
+&"tomato": 12
+})
