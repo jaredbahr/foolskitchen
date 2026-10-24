@@ -134,6 +134,17 @@ func test_cash_events_create_separate_signed_colored_deltas() -> void:
 	assert_eq(loss.get_theme_color("font_color"), Color("A42E2E"))
 
 
+func test_same_frame_costs_show_as_one_total() -> void:
+	var deltas: Control = _hud.get_node("Deltas") as Control
+	var before: int = deltas.get_child_count()
+	EventBus.cash_changed.emit(290, -10, &"ingredients")
+	EventBus.cash_changed.emit(274, -16, &"ingredients")
+	EventBus.cash_changed.emit(286, 12, &"sale")
+	assert_eq(deltas.get_child_count(), before + 2, "same-sign changes merge; a gain starts a new label")
+	assert_eq((deltas.get_child(before) as Label).text, "−$26")
+	assert_eq((deltas.get_child(before + 1) as Label).text, "+$12")
+
+
 func test_every_speed_change_has_exactly_one_pressed_button_using_shared_styles() -> void:
 	var shared_theme: Theme = load("res://src/ui/theme/main_theme.tres") as Theme
 	for speed: int in [0, 1, 2, 4, 2, 0]:
