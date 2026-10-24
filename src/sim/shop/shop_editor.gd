@@ -125,7 +125,7 @@ func check_buy(def_id: StringName, origin: Vector2i, quarter_turns: int = 0) -> 
 	if _books == null or not _books.is_ready():
 		return EditCheck.new(false, "The shop books are unavailable")
 	if not _books.can_spend_without_loan(definition.price):
-		return EditCheck.new(false, "Not enough cash; furniture cannot use a loan")
+		return EditCheck.new(false, _books.purchase_refusal_reason(definition.price))
 	return _check_placement(definition, origin, quarter_turns, -1, 0)
 
 

@@ -5,6 +5,8 @@ extends RefCounted
 var day: int = 1
 var income: Dictionary = {}
 var costs: Dictionary = {}
+## Transient first-advance introduction, supplied by the closing session.
+var loan_first_advance: bool = false
 var dishes_sold: Dictionary = {}
 var customers_served: int = 0
 var customers_lost: int = 0
@@ -60,6 +62,7 @@ func to_dict() -> Dictionary:
 		"day": day,
 		"income": _string_counts(income),
 		"costs": _string_counts(costs),
+		"loan_first_advance": loan_first_advance,
 		"dishes_sold": _string_counts(dishes_sold),
 		"customers_served": customers_served,
 		"customers_lost": customers_lost,
@@ -83,6 +86,8 @@ static func from_dict(data: Dictionary) -> DayReport:
 	report.day = int(data.get("day", 1))
 	report.income = _name_counts(data.get("income", {}))
 	report.costs = _name_counts(data.get("costs", {}))
+	var saved_loan_notice: Variant = data.get("loan_first_advance", false)
+	report.loan_first_advance = saved_loan_notice is bool and saved_loan_notice
 	report.dishes_sold = _name_counts(data.get("dishes_sold", {}))
 	report.customers_served = int(data.get("customers_served", 0))
 	report.customers_lost = int(data.get("customers_lost", 0))

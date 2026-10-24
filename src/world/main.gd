@@ -17,6 +17,7 @@ const REVIEW_TUNING: ReviewTuning = preload("res://data/balance/reviews.tres")
 const REVIEW_QUOTES: ReviewQuotes = preload("res://data/reviews/quotes.tres")
 const PROGRESSION_TUNING: ProgressionTuning = preload("res://data/balance/progression.tres")
 const AUTOSAVE_SLOT: String = "autosave"
+const LOAN_LOCK_REASON: String = "Pay off your bank loan first"
 
 ## Save slot used by autosave and the startup load. Tests change it.
 var save_slot: String = AUTOSAVE_SLOT
@@ -59,6 +60,7 @@ var _owner_award_today: Dictionary = {}
 var _owner_unlocks_today: Array[String] = []
 var _owner_award_day: int = 0
 var _closed_report_day: int = 0
+var _loan_notice_day: int = 0
 var _report: Control
 var _inspect_panel: InspectPanel
 var _debug_overlay: DebugOverlay
@@ -131,6 +133,7 @@ func _bind_world_presentation() -> void:
 	view.set_camera_quarter(camera.camera_quarter())
 	$HUD.bind_shop_view(view)
 	$HUD.bind_preferences(Preferences)
+	_refresh_loan_hud()
 	if not $HUD.is_connected(&"header_layout_changed", _on_header_layout_changed):
 		$HUD.connect(&"header_layout_changed", _on_header_layout_changed)
 	if not $HUD.is_connected(&"settings_pressed", _on_hud_settings_requested):
@@ -173,7 +176,7 @@ func _bind_world_presentation() -> void:
 	_staff_panel = $Overlay/StaffPanel
 	_staff_panel.bind_roster(staff_roster)
 	_staff_panel.set_phase(Clock.sim.phase)
-	_staff_panel.set_trays(tray_level, TUNING.tray_prices, Economy.cash)
+	_staff_panel.set_trays(tray_level, TUNING.tray_prices, Economy.cash, _loan_upgrade_refusal())
 	if not _staff_panel.hire_requested.is_connected(_on_staff_hire_requested):
 		_staff_panel.hire_requested.connect(_on_staff_hire_requested)
 		_staff_panel.let_go_requested.connect(_on_staff_let_go_requested)
@@ -258,7 +261,8 @@ func start() -> void:
 	sim.configure_reviews(reputation, REVIEW_TUNING, REVIEW_QUOTES, GameState.rng(&"reviews"))
 	sim.spawner.min_gap = TUNING.arrival_gap_min
 	sim.spawner.max_gap = TUNING.arrival_gap_max
-	shop_editor = ShopEditor.new(sim, content, ShopEditBooks.new(Economy.can_spend_without_loan, Economy.add_cash),
+	shop_editor = ShopEditor.new(sim, content, ShopEditBooks.new(Economy.can_buy_discretionary,
+		Economy.add_cash, _furniture_purchase_refusal),
 		_loaded_layout if _loaded_layout != null else LAYOUT)
 	shop_editor.set_owner_level(owner_progress.level)
 	_connect_session()
@@ -633,10 +637,11 @@ func _on_build_buy_requested(def_id: StringName) -> void:
 
 
 func _on_build_cash_changed(_cash: int, _delta: int, _reason: StringName) -> void:
+	_refresh_loan_hud()
 	if _build_ready and is_build_active():
 		build_mode.refresh()
 	if _staff_panel != null:
-		_staff_panel.set_trays(tray_level, TUNING.tray_prices, Economy.cash)
+		_staff_panel.set_trays(tray_level, TUNING.tray_prices, Economy.cash, _loan_upgrade_refusal())
 
 
 ## Visual item bounds choose the furniture hit; the floor still locates agents
@@ -812,6 +817,7 @@ func run_ticks(ticks: int) -> void:
 func build_report(day: int) -> DayReport:
 	var report := DayReport.new()
 	report.day = day
+	report.loan_first_advance = _loan_notice_day == day
 	var totals: Dictionary = Economy.ledger.day_totals(day)
 	for category: StringName in totals:
 		var amount: int = totals[category]
@@ -865,6 +871,7 @@ func _new_game() -> void:
 	_owner_unlocks_today.clear()
 	_owner_award_day = 0
 	_closed_report_day = 0
+	_loan_notice_day = 0
 	sim.assign_owner(&"rest")
 	_loaded_menu = null
 	_loaded_staff = null
@@ -1015,12 +1022,12 @@ func tray_buy(level: int) -> bool:
 			or TUNING.tray_prices.size() < 2:
 		return false
 	var price: int = TUNING.tray_prices[level - 1]
-	if price < 0 or not Economy.can_spend_without_loan(price):
+	if price < 0 or not Economy.can_buy_upgrade(price):
 		return false
 	tray_level = level
 	sim.carry_capacity = 1 << level
 	Economy.add_cash(-price, Ledger.UPGRADES)
-	_staff_panel.set_trays(tray_level, TUNING.tray_prices, Economy.cash)
+	_staff_panel.set_trays(tray_level, TUNING.tray_prices, Economy.cash, _loan_upgrade_refusal())
 	return true
 
 
@@ -1128,7 +1135,7 @@ func set_staff_visible(value: bool) -> bool:
 		set_menu_visible(false)
 		clear_selection()
 	_staff_panel.set_phase(Clock.sim.phase)
-	_staff_panel.set_trays(tray_level, TUNING.tray_prices, Economy.cash)
+	_staff_panel.set_trays(tray_level, TUNING.tray_prices, Economy.cash, _loan_upgrade_refusal())
 	_staff_panel.visible = value
 	return true
 
@@ -1325,6 +1332,21 @@ func shop_buy(def_id: StringName, origin: Vector2i, quarter_turns: int = 0) -> b
 	return accepted
 
 
+func _furniture_purchase_refusal(amount: int) -> String:
+	if Economy.loan.principal > 0 and amount > Economy.LOAN_TERMS.large_purchase_limit:
+		return LOAN_LOCK_REASON
+	return ShopEditBooks.CASH_REFUSAL
+
+
+func _loan_upgrade_refusal() -> String:
+	return LOAN_LOCK_REASON if Economy.loan.principal > 0 else ""
+
+
+func _refresh_loan_hud() -> void:
+	$HUD.set_loan_state(Economy.loan.principal, Economy.LOAN_TERMS.repay_share,
+		Economy.LOAN_TERMS.daily_interest)
+
+
 func shop_sell(item_id: int) -> int:
 	var refund: int = shop_editor.sell(item_id) if shop_editor != null else -1
 	if _build_ready:
@@ -1366,6 +1388,7 @@ func _begin_morning() -> void:
 	_owner_unlocks_today.clear()
 	_owner_award_day = 0
 	_closed_report_day = 0
+	_loan_notice_day = 0
 	# Loading today's persisted pool must not advance the saved hiring stream.
 	if staff_roster.candidate_day != Clock.sim.day:
 		staff_roster.draw_candidates(Clock.sim.day, GameState.rng(&"hiring"))
@@ -1379,6 +1402,7 @@ func _begin_morning() -> void:
 	if use_saves and not _skip_next_autosave:
 		SaveSystem.save_game(save_slot)
 	_skip_next_autosave = false
+	_refresh_loan_hud()
 	$HUD.set_owner_progress(owner_progress.level, owner_progress.xp_into_level(), owner_progress.xp_in_level())
 	# A new raise or departure must be visible without making the player find
 	# the Staff button. Ordinary mornings still leave the panel closed.
@@ -1426,6 +1450,11 @@ func _on_service_closed(day: int) -> void:
 		return
 	_closed_report_day = day
 	_charge_closing_costs()
+	# Financing balances the books but never earns or removes owner profit XP.
+	var operating_profit: int = Economy.ledger.day_profit(day)
+	var settlement: Dictionary = Economy.settle_loan_day(day)
+	if settlement.get("first_advance", false):
+		_loan_notice_day = day
 	staff_roster.close_growth_day()
 	shown_report = build_report(day)
 	var five_star_reviews: int = 0
@@ -1434,7 +1463,7 @@ func _on_service_closed(day: int) -> void:
 			five_star_reviews += 1
 	var level_before: int = owner_progress.level
 	_owner_award_today = owner_progress.award_day(day,
-		int(sim.leave_reasons_today.get(&"happy", 0)), shown_report.profit(), five_star_reviews)
+		int(sim.leave_reasons_today.get(&"happy", 0)), operating_profit, five_star_reviews)
 	if not _owner_award_today.is_empty():
 		_owner_award_day = day
 		_owner_unlocks_today = _unlocked_at_levels(level_before, owner_progress.level)

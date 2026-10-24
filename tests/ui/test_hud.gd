@@ -60,8 +60,11 @@ func test_initial_labels_and_shared_theme_before_ready() -> void:
 
 func test_reputation_presentation_survives_refresh_and_tracks_window_count() -> void:
 	var cash: Control = _control("Cash")
+	var loan: Label = _control("Loan") as Label
 	var reputation: Label = _control("Reputation") as Label
-	assert_eq(reputation.get_index(), cash.get_index() + 1)
+	assert_eq(loan.get_index(), cash.get_index() + 1)
+	assert_eq(reputation.get_index(), loan.get_index() + 1)
+	assert_false(loan.visible, "a debt-free shop retains the compact financial group")
 	_hud.call("set_reputation", 3.44, 30)
 	assert_eq(reputation.text, "3.4")
 	assert_eq(reputation.tooltip_text, "3.4 stars from your last 30 reviews")
@@ -484,6 +487,85 @@ func _native_space(down: bool) -> void:
 	(Engine.get_main_loop() as SceneTree).root.push_input(event, true)
 
 
+func test_loan_chip_is_read_only_uses_existing_theme_and_clears_when_paid() -> void:
+	var books: Dictionary = Economy.ledger.to_dict()
+	var debt: Dictionary = Economy.loan.to_dict()
+	var clock: Dictionary = Clock.sim.to_dict()
+	var loan: Label = _control("Loan") as Label
+	assert_false(loan.visible)
+	_hud.call("set_loan_state", 150, 0.5, 0.05)
+	assert_true(loan.visible)
+	assert_eq(loan.text, "Loan $150")
+	assert_true(loan.tooltip_text.contains("50% of positive daily profit"))
+	assert_true(loan.tooltip_text.contains("5% a day"))
+	var chip: StyleBoxFlat = loan.get_theme_stylebox("normal") as StyleBoxFlat
+	var accent: StyleBoxFlat = (_hud.get_node("Top") as Control).theme.get_stylebox("pressed", "Button") as StyleBoxFlat
+	assert_eq(chip.border_color, accent.bg_color)
+	assert_eq(loan.get_theme_color("font_color"), _control("Cash").get_theme_color("font_color"))
+	var identity: int = loan.get_instance_id()
+	_hud.call("refresh")
+	_hud.call("set_loan_state", 75, 0.25, 0.04)
+	assert_eq(_control("Loan").get_instance_id(), identity)
+	assert_eq(loan.text, "Loan $75")
+	assert_true(loan.tooltip_text.contains("25% of positive daily profit"))
+	_hud.call("set_loan_state", 0, 0.5, 0.05)
+	assert_false(loan.visible)
+	assert_eq(Economy.ledger.to_dict(), books)
+	assert_eq(Economy.loan.to_dict(), debt)
+	assert_eq(Clock.sim.to_dict(), clock)
+
+
+func test_native_loan_chip_stays_in_financial_group_and_releases_space_at_supported_scales() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	await tree.process_frame
+	var host: SubViewport = SubViewport.new()
+	host.size = Vector2i(1600, 900)
+	host.gui_embed_subwindows = true
+	tree.root.add_child(host)
+	var window: Window = Window.new()
+	window.borderless = true
+	window.content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS
+	window.content_scale_aspect = Window.CONTENT_SCALE_ASPECT_EXPAND
+	window.content_scale_size = Vector2i(1600, 900)
+	host.add_child(window)
+	var view: ShopView = load("res://src/world/shop_view.tscn").instantiate() as ShopView
+	_hud.call("bind_shop_view", view)
+	_hud.call("set_plate_counts", 999, 999, 0, 0)
+	_hud.call("set_owner_progress", 99, 1234, 9999)
+	EventBus.cash_changed.emit(999999999, 0, Ledger.OTHER)
+	window.add_child(_hud)
+	var loan: Label = _control("Loan") as Label
+	var header_theme: Theme = (_hud.get_node("Top") as Control).theme
+	var accent: StyleBoxFlat = header_theme.get_stylebox("pressed", "Button") as StyleBoxFlat
+	for physical_size: Vector2i in [Vector2i(1280, 720), Vector2i(1600, 900)]:
+		window.size = physical_size
+		for scale_factor: float in [1.0, 1.25, 1.5]:
+			window.content_scale_factor = scale_factor
+			_hud.call("set_loan_state", 999999999, 0.5, 0.05)
+			await _layout_frames()
+			_assert_header_layout(window)
+			_assert_readable_control(loan, window)
+			assert_eq((loan.get_theme_stylebox("normal") as StyleBoxFlat).border_color, accent.bg_color,
+				"a HUD bound before tree entry retains the assigned warm theme")
+			var row: Control = _hud.get_node("Top/Row") as Control
+			assert_true(row.get_global_rect().grow(0.5).encloses(loan.get_global_rect()))
+			assert_true(loan.global_position.x >= _control("Cash").get_global_rect().end.x + 5.5)
+			assert_true(_control("Reputation").global_position.x >= loan.get_global_rect().end.x + 5.5)
+			for child: Node in row.get_children():
+				var control: Control = child as Control
+				if control != null and control != loan and control.visible:
+					assert_false(loan.get_global_rect().intersects(control.get_global_rect()), "loan chip does not cover " + String(control.name))
+			assert_true(float(_hud.call("panel_top")) >= (_hud.get_node("Top") as Control).get_global_rect().end.y + 12.0)
+			_hud.call("set_loan_state", 0, 0.5, 0.05)
+			await _layout_frames()
+			assert_false(loan.visible)
+			assert_almost_eq(_control("Reputation").global_position.x - _control("Cash").get_global_rect().end.x,
+				6.0, 0.5, "a repaid loan releases all chip width and its extra gap")
+	window.remove_child(_hud)
+	host.free()
+	view.free()
+
+
 func _layout_frames() -> void:
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	for frame: int in range(4):
@@ -579,7 +661,7 @@ func _assert_build_hint_layout(window: Window) -> void:
 func _assert_three_groups() -> void:
 	var groups: Array[Array] = [
 		["Day", "Time", "Phase", "Speed0", "Speed1", "Speed2", "Speed4"],
-		["Cash", "Reputation", "OwnerProgress", "Plates"],
+		["Cash", "Loan", "Reputation", "OwnerProgress", "Plates"],
 		["Walls", "Build", "Paint", "Context", "Menu", "Staff", "Settings"],
 	]
 	var bounds: Array[Rect2] = []

@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="LoanTuning" format=3]
+
+[ext_resource type="Script" path="res://src/sim/economy/loan_tuning.gd" id="1_loans"]
+
+[resource]
+script = ExtResource("1_loans")
+daily_interest = 0.05
+repay_share = 0.5
+borrowing_step = 50
+large_purchase_limit = 50

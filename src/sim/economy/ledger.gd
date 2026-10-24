@@ -8,6 +8,9 @@ const INGREDIENTS: StringName = &"ingredients"
 const WAGES: StringName = &"wages"
 const RENT: StringName = &"rent"
 const UPGRADES: StringName = &"upgrades"
+const BANK_LOAN: StringName = &"bank_loan"
+const LOAN_INTEREST: StringName = &"loan_interest"
+const LOAN_REPAYMENT: StringName = &"loan_repayment"
 const OTHER: StringName = &"other"
 const HISTORY_DAYS: int = 30
 

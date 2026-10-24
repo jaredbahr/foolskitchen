@@ -3,6 +3,13 @@ extends Control
 
 signal next_day_pressed
 
+const LOAN_INTRODUCTION: String = "The bank covered your shortfall. It'll take a share of your profits until it's paid back."
+const MONEY_LABELS: Dictionary = {
+	Ledger.BANK_LOAN: "Bank loan",
+	Ledger.LOAN_INTEREST: "Loan interest",
+	Ledger.LOAN_REPAYMENT: "Loan repayment",
+}
+
 const LEAVE_LABELS: Dictionary = {
 	&"out_of_stock": "Dish was out of stock",
 	&"kitchen_failed": "The kitchen couldn't make the dish",
@@ -20,6 +27,7 @@ var _header: Label
 var _profit: Label
 var _income: GridContainer
 var _costs: GridContainer
+var _loan_notice: Label
 var _dishes: GridContainer
 var _guests: Label
 var _cleanliness: Label
@@ -52,6 +60,8 @@ func show_report(report: DayReport) -> void:
 	_profit.add_theme_color_override("font_color", PROFIT_GREEN if report.profit() >= 0 else LOSS_RED)
 	_fill_money(_income, report.income, "No income today")
 	_fill_money(_costs, report.costs, "No costs today")
+	_loan_notice.text = LOAN_INTRODUCTION if report.loan_first_advance else ""
+	_loan_notice.visible = report.loan_first_advance
 	_clear(_dishes)
 	var best: StringName = report.best_dish()
 	for id: String in _sorted_ids(report.dishes_sold):
@@ -99,6 +109,7 @@ func _bind_nodes() -> void:
 	_profit = %Profit
 	_income = %IncomeRows
 	_costs = %CostRows
+	_loan_notice = %LoanNotice
 	_dishes = %DishRows
 	_guests = %Guests
 	_cleanliness = %Cleanliness
@@ -151,7 +162,7 @@ func _fill_owner_progress(report: DayReport) -> void:
 func _fill_money(rows: GridContainer, amounts: Dictionary, empty_text: String) -> void:
 	_clear(rows)
 	for id: String in _sorted_ids(amounts):
-		_add_row(rows, id.capitalize(), _money(int(amounts[StringName(id)])))
+		_add_row(rows, String(MONEY_LABELS.get(StringName(id), id.capitalize())), _money(int(amounts[StringName(id)])))
 	if amounts.is_empty():
 		_add_row(rows, empty_text, "")
 

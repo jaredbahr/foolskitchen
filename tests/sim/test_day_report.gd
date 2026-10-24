@@ -339,6 +339,55 @@ func test_ui_report_before_ready_is_preserved_and_connects_once() -> void:
 	assert_eq(_next_day_count, 1)
 
 
+func test_first_loan_notice_snapshot_is_boolean_and_older_reports_default_hidden() -> void:
+	var report: DayReport = DayReport.new()
+	report.loan_first_advance = true
+	var decoded: Dictionary = JSON.parse_string(JSON.stringify(report.to_dict()))
+	assert_true(DayReport.from_dict(decoded).loan_first_advance)
+	assert_false(DayReport.from_dict({}).loan_first_advance)
+	assert_false(DayReport.from_dict({"loan_first_advance": "true"}).loan_first_advance)
+
+
+func test_native_report_maps_bank_lines_and_wraps_first_notice_then_clears_it() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	await tree.process_frame
+	_host = Control.new()
+	_host.size = Vector2(1600.0, 900.0)
+	tree.root.add_child(_host)
+	_screen = REPORT_SCENE.instantiate()
+	_host.add_child(_screen)
+	var report: DayReport = DayReport.new()
+	report.income = {Ledger.BANK_LOAN: 150}
+	report.costs = {Ledger.LOAN_INTEREST: 5, Ledger.LOAN_REPAYMENT: 50}
+	report.loan_first_advance = true
+	_screen.call("show_report", report)
+	var income: GridContainer = _screen.get_node("%IncomeRows") as GridContainer
+	var costs: GridContainer = _screen.get_node("%CostRows") as GridContainer
+	assert_eq((income.get_child(0) as Label).text, "Bank loan")
+	assert_eq((income.get_child(1) as Label).text, "$150")
+	assert_eq((costs.get_child(0) as Label).text, "Loan interest")
+	assert_eq((costs.get_child(1) as Label).text, "$5")
+	assert_eq((costs.get_child(2) as Label).text, "Loan repayment")
+	assert_eq((costs.get_child(3) as Label).text, "$50")
+	var notice: Label = _screen.get_node("%LoanNotice") as Label
+	assert_eq(notice.text, "The bank covered your shortfall. It'll take a share of your profits until it's paid back.")
+	for bounds: Vector2 in [Vector2(1600.0, 900.0), Vector2(1280.0, 720.0)]:
+		_host.size = bounds
+		await tree.process_frame
+		await tree.process_frame
+		var scroll: ScrollContainer = _screen.get_node("Panel/Scroll") as ScrollContainer
+		var viewport: Rect2 = scroll.get_global_rect()
+		assert_true(notice.is_visible_in_tree())
+		assert_true(viewport.grow(0.5).encloses(notice.get_global_rect()), "the introduction fits the unscrolled report")
+		assert_true(notice.size.y >= notice.get_combined_minimum_size().y - 0.5)
+		assert_true(notice.global_position.y >= costs.get_global_rect().end.y)
+	_screen.call("show_report", DayReport.new())
+	assert_false(notice.visible)
+	assert_eq(notice.text, "")
+	assert_eq((income.get_child(0) as Label).text, "No income today")
+	assert_eq((costs.get_child(0) as Label).text, "No costs today")
+
+
 func _full_report() -> DayReport:
 	var report: DayReport = DayReport.new()
 	report.day = 3
