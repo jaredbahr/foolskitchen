@@ -4,6 +4,7 @@ extends TestCase
 
 const MainScene: PackedScene = preload("res://src/world/main.tscn")
 const TUNING: EconomyTuning = preload("res://data/balance/tier1_economy.tres")
+const PROGRESSION: ProgressionTuning = preload("res://data/balance/progression.tres")
 
 var _mains: Array[Node] = []
 var _old_save_dir: String
@@ -91,6 +92,51 @@ func test_full_day_charges_costs_and_shows_report() -> void:
 	var sim: RestaurantSim = main.get("sim")
 	assert_true(sim.served_today + sim.lost_today > 0, "guests came")
 	assert_eq(sim.customers().size(), 0, "nobody inside after closing")
+	var five_star: int = 0
+	for review: Dictionary in sim.reviews_today:
+		if int(review.get("stars", 0)) == 5:
+			five_star += 1
+	var expected_happy_xp: int = int(sim.leave_reasons_today.get(&"happy", 0)) * PROGRESSION.happy_guest_xp
+	var expected_profit_xp: int = floori(float(maxi(0, day_report.profit())) / float(PROGRESSION.profit_step)) \
+		* PROGRESSION.profit_step_xp
+	var expected_review_xp: int = five_star * PROGRESSION.five_star_review_xp
+	var expected_total: int = expected_happy_xp + expected_profit_xp + expected_review_xp
+	assert_eq(day_report.owner_xp_breakdown, {"happy_xp": expected_happy_xp,
+		"profit_xp": expected_profit_xp, "review_xp": expected_review_xp,
+		"total_xp": expected_total}, "the real day-close report explains every XP source")
+	var progress: OwnerProgress = main.get("owner_progress") as OwnerProgress
+	assert_eq(progress.total_xp, expected_total)
+	assert_eq(progress.last_awarded_day, 1)
+	assert_eq(day_report.owner_level_before, 1)
+	assert_eq(day_report.owner_level_after, progress.level)
+	var hud_level: Label = main.get_node("HUD/Top/Row/OwnerProgress/OwnerLevel") as Label
+	var hud_bar: ProgressBar = main.get_node("HUD/Top/Row/OwnerProgress/OwnerXPBar") as ProgressBar
+	assert_eq(hud_level.text, "Lv %d" % progress.level)
+	assert_eq(hud_bar.value, float(progress.xp_into_level()))
+	assert_eq(hud_bar.max_value, float(progress.xp_in_level()))
+	var cash_after_close: int = Economy.cash
+	var totals_after_close: Dictionary = Economy.ledger.day_totals(1).duplicate(true)
+	var shown: DayReport = main.get("shown_report") as DayReport
+	var shown_snapshot: Dictionary = shown.to_dict()
+	var banner: Label = report.get_node("Panel/Scroll/Content/OwnerLevelUp") as Label
+	var unlocks: Label = report.get_node("Panel/Scroll/Content/OwnerUnlocks") as Label
+	var banner_visible: bool = banner.visible
+	var banner_text: String = banner.text
+	var unlocks_visible: bool = unlocks.visible
+	var unlocks_text: String = unlocks.text
+	main.call("_on_service_closed", 1)
+	assert_eq(progress.total_xp, expected_total, "a duplicate closing callback cannot award owner XP twice")
+	assert_eq(progress.last_awarded_day, 1)
+	assert_eq(Economy.cash, cash_after_close, "a duplicate close cannot charge wages or rent twice")
+	assert_eq(Economy.ledger.day_totals(1), totals_after_close, "all closing book entries stay unchanged")
+	assert_true(report.visible, "the first report remains on screen")
+	assert_true(main.get("shown_report") == shown, "a duplicate close does not rebuild the report")
+	assert_eq((main.get("shown_report") as DayReport).to_dict(), shown_snapshot,
+		"the XP breakdown and level-up entries remain the first closing's snapshot")
+	assert_eq(banner.visible, banner_visible)
+	assert_eq(banner.text, banner_text)
+	assert_eq(unlocks.visible, unlocks_visible)
+	assert_eq(unlocks.text, unlocks_text)
 
 
 func test_sale_reaches_books_and_report() -> void:

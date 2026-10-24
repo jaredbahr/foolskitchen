@@ -68,6 +68,7 @@ func test_paint_is_free_during_service_and_round_trips_in_shop_save() -> void:
 
 
 func test_move_keeps_paint_and_selling_rebuying_uses_default() -> void:
+	_editor.set_owner_level(2)
 	var plant: PlacedItem = _item(&"potted_plant")
 	assert_true(_editor.paint_item(plant.id, &"moss"))
 	assert_true(_editor.move(plant.id, Vector2i(11, 9), 1))

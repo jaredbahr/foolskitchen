@@ -13,6 +13,7 @@ var _sim: RestaurantSim
 var _content: ContentDB
 var _books: ShopEditBooks
 var _applying: bool = false
+var _owner_level: int = 1
 
 
 func _init(sim: RestaurantSim, content: ContentDB, books: ShopEditBooks, layout: ShopLayout = null) -> void:
@@ -22,6 +23,13 @@ func _init(sim: RestaurantSim, content: ContentDB, books: ShopEditBooks, layout:
 	if layout != null:
 		wall_swatch_id = _known_swatch(layout.wall_swatch_id)
 		floor_swatch_id = _known_swatch(layout.floor_swatch_id)
+
+
+## Main injects the restored owner level before accepting a new purchase.
+## This does not change saved placements, including starter furniture.
+func set_owner_level(level: int) -> void:
+	if level >= 1:
+		_owner_level = level
 
 
 ## Paint is free and available during service as well as closed phases.
@@ -112,6 +120,8 @@ func check_buy(def_id: StringName, origin: Vector2i, quarter_turns: int = 0) -> 
 	var definition: ItemDef = _content.item(def_id)
 	if not _valid_definition(definition):
 		return EditCheck.new(false, "Unknown or invalid item definition")
+	if definition.unlock_level > _owner_level:
+		return EditCheck.new(false, "Unlocks at level %d" % definition.unlock_level)
 	if _books == null or not _books.is_ready():
 		return EditCheck.new(false, "The shop books are unavailable")
 	if not _books.can_spend_without_loan(definition.price):
@@ -359,7 +369,8 @@ static func _any_reachable(grid: SimGrid, cells: Array[Vector2i]) -> bool:
 
 
 static func _valid_definition(definition: ItemDef) -> bool:
-	return definition != null and not definition.id.is_empty() and definition.price >= 0 and definition.footprint.x > 0 and definition.footprint.y > 0
+	return definition != null and not definition.id.is_empty() and definition.price >= 0 \
+		and definition.unlock_level >= 1 and definition.footprint.x > 0 and definition.footprint.y > 0
 
 
 static func _required_key(definition: ItemDef) -> String:

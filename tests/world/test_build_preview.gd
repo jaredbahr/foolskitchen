@@ -299,6 +299,7 @@ func test_buy_zero_warning_becomes_actual_id_after_commit_and_clears_after_fix()
 
 
 func test_table_warning_highlights_match_actual_checked_ids_and_cancelled_proposal() -> void:
+	_editor.set_owner_level(2)
 	assert_true(_editor.buy(&"potted_plant", Vector2i(1, 7)))
 	assert_true(_mode.enter())
 	assert_true(_mode.begin_buy(&"potted_plant", Vector2i(4, 7)))

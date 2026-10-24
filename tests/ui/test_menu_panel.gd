@@ -63,7 +63,57 @@ func test_rows_defaults_shared_styles_and_mouse_scope_work_before_ready() -> voi
 		assert_eq(button.theme.get_stylebox("normal", "Button"), MenuPanel.SHARED_THEME.get_stylebox("normal", "Button"))
 	assert_true(_button(&"burger", "Top/Enabled").button_pressed)
 	assert_false(_button(&"burger", "Top/Enabled").disabled)
+	assert_false(_label(&"burger", "Unlock").visible)
+	assert_false(_label(&"burger", "Top/Name").has_theme_color_override("font_color"))
 	assert_null(_panel.row_for(&"missing"))
+
+
+func test_locked_recipe_is_greyed_out_readable_and_never_emits_requests() -> void:
+	var seasonal: RecipeDef = _recipe(&"seasonal", "Seasonal special", 14)
+	seasonal.unlock_level = 2
+	var menu: MenuSettings = MenuSettings.new([_burger, seasonal])
+	_panel.bind_menu(menu)
+	assert_eq(_label(&"seasonal", "Unlock").text, "Unlocks at level 2")
+	assert_true(_label(&"seasonal", "Unlock").visible)
+	for path: String in ["Top/Name", "Price/Amount", "Reference/Standard", "Reference/Ratio"]:
+		assert_eq(_label(&"seasonal", path).get_theme_color("font_color"), MenuPanel.LOCKED_COLOR)
+	assert_eq(_button(&"seasonal", "Top/Enabled").text, "Locked")
+	for phase: int in [SimClock.Phase.MORNING, SimClock.Phase.OPEN]:
+		_panel.set_phase(phase)
+		for path: String in ["Top/Enabled", "Price/Minus", "Price/Plus"]:
+			assert_true(_button(&"seasonal", path).disabled)
+			assert_eq(_button(&"seasonal", path).tooltip_text, "Unlocks at level 2")
+		_panel._on_enable_toggled(true, &"seasonal")
+		_panel._on_price_step(&"seasonal", 1)
+		_button(&"seasonal", "Top/Enabled").toggled.emit(true)
+		_button(&"seasonal", "Price/Plus").pressed.emit()
+	assert_eq(_enable_requests.size(), 0)
+	assert_eq(_price_requests.size(), 0)
+	assert_false(menu.is_enabled(&"seasonal"))
+	assert_eq(menu.price_of(seasonal), 14)
+
+
+func test_level_change_signal_refreshes_row_without_rebinding_or_auto_enable() -> void:
+	var seasonal: RecipeDef = _recipe(&"seasonal", "Seasonal special", 14)
+	seasonal.unlock_level = 2
+	var menu: MenuSettings = MenuSettings.new([_burger, seasonal])
+	_panel.bind_menu(menu)
+	var row_id: int = _panel.row_for(&"seasonal").get_instance_id()
+	assert_true(menu.set_owner_level(2))
+	assert_eq(_panel.row_for(&"seasonal").get_instance_id(), row_id)
+	assert_false(_label(&"seasonal", "Unlock").visible)
+	assert_false(_label(&"seasonal", "Top/Name").has_theme_color_override("font_color"))
+	assert_eq(_label(&"seasonal", "Reference/Ratio").get_theme_color("font_color"), MenuPanel.STANDARD_COLOR)
+	assert_false(_button(&"seasonal", "Top/Enabled").disabled)
+	assert_false(_button(&"seasonal", "Price/Plus").disabled)
+	assert_false(menu.is_enabled(&"seasonal"))
+	assert_eq(_enable_requests.size(), 0)
+	assert_eq(_price_requests.size(), 0)
+	_panel.set_phase(SimClock.Phase.OPEN)
+	assert_true(_button(&"seasonal", "Top/Enabled").disabled)
+	assert_eq(_button(&"seasonal", "Top/Enabled").tooltip_text, MenuPanel.MORNING_HINT)
+	_panel.bind_menu(null)
+	assert_false(menu.owner_level_changed.is_connected(_panel._on_owner_level_changed))
 
 
 func test_buttons_emit_primitive_requests_and_never_change_the_bound_model() -> void:

@@ -50,6 +50,64 @@ func test_at_least_one_dish_stays_enabled_and_unknown_ids_are_refused() -> void:
 	assert_eq(_menu.enabled_count(), 1)
 
 
+func test_level_locked_recipe_is_visible_but_cannot_be_enabled_or_priced() -> void:
+	var seasonal: RecipeDef = _recipe(&"seasonal", 14)
+	seasonal.unlock_level = 2
+	var menu: MenuSettings = MenuSettings.new([_burger, seasonal])
+	assert_true(menu.is_valid())
+	assert_eq(menu.owner_level(), 1)
+	assert_eq(_ids(menu.recipes()), [&"burger", &"seasonal"] as Array[StringName])
+	assert_eq(_ids(menu.enabled_recipes()), [&"burger"] as Array[StringName])
+	var before: Dictionary = menu.to_dict()
+	assert_false(menu.set_enabled(&"seasonal", true))
+	assert_false(menu.set_price(&"seasonal", 20))
+	assert_eq(menu.to_dict(), before)
+	assert_eq(menu.price_of(seasonal), seasonal.standard_price)
+	assert_eq(menu.to_dict()["prices"]["seasonal"], "14")
+
+
+func test_level_advance_allows_selection_without_enabling_it_automatically() -> void:
+	var seasonal: RecipeDef = _recipe(&"seasonal", 14)
+	seasonal.unlock_level = 2
+	var menu: MenuSettings = MenuSettings.new([_burger, seasonal])
+	assert_true(menu.set_owner_level(2))
+	assert_eq(menu.owner_level(), 2)
+	assert_false(menu.is_enabled(&"seasonal"))
+	assert_true(menu.set_price(&"seasonal", 18))
+	assert_true(menu.set_enabled(&"seasonal", true))
+	assert_eq(_ids(menu.enabled_recipes()), [&"burger", &"seasonal"] as Array[StringName])
+	assert_false(menu.set_owner_level(1), "an enabled dish cannot outlevel its owner")
+	assert_eq(menu.owner_level(), 2)
+	assert_true(menu.set_enabled(&"seasonal", false))
+	assert_true(menu.set_owner_level(1))
+	assert_false(menu.set_enabled(&"seasonal", true))
+	assert_false(menu.set_price(&"seasonal", 15))
+	assert_eq(menu.price_of(seasonal), 18)
+
+
+func test_old_menu_save_adds_only_disabled_new_locked_recipe_transactionally() -> void:
+	var seasonal: RecipeDef = _recipe(&"seasonal", 14)
+	seasonal.unlock_level = 2
+	var menu: MenuSettings = MenuSettings.new([_burger, seasonal])
+	var old_save: Dictionary = {"enabled": ["burger"], "prices": {"burger": "12"}}
+	assert_true(menu.from_dict(old_save))
+	var restored: Dictionary = menu.to_dict()
+	assert_eq(restored["enabled"], ["burger"] as Array[String])
+	assert_eq(restored["prices"], {"burger": "12", "seasonal": "14"})
+	var locked_enabled: Dictionary = {"enabled": ["burger", "seasonal"],
+		"prices": {"burger": "12", "seasonal": "14"}}
+	assert_false(menu.from_dict(locked_enabled))
+	assert_eq(menu.to_dict(), restored)
+	var missing_old_price: Dictionary = {"enabled": ["burger"],
+		"prices": {"seasonal": "14"}}
+	assert_false(menu.from_dict(missing_old_price))
+	assert_eq(menu.to_dict(), restored)
+	assert_true(menu.set_owner_level(2))
+	assert_false(menu.from_dict({"enabled": ["burger", "seasonal"],
+		"prices": {"burger": "12"}}), "an enabled dish always needs its saved price")
+	assert_eq(menu.to_dict(), restored)
+
+
 func test_whole_dollar_price_requests_clamp_to_ceil_half_and_double() -> void:
 	assert_eq(_menu.minimum_price(&"tomato_soup"), 5)
 	assert_eq(_menu.maximum_price(&"tomato_soup"), 18)
@@ -189,8 +247,12 @@ func test_invalid_injected_catalogs_fail_without_partial_defaults_or_engine_erro
 	var empty_id: RecipeDef = _recipe(&"", 9)
 	var negative: RecipeDef = _recipe(&"negative", -1)
 	var duplicate: RecipeDef = _recipe(&"burger", 10)
+	var invalid_level: RecipeDef = _recipe(&"invalid_level", 10)
+	invalid_level.unlock_level = 0
+	var locked_only: RecipeDef = _recipe(&"locked_only", 10)
+	locked_only.unlock_level = 2
 	var invalid_catalogs: Array = [[], [null], [_burger, null], [_burger, empty_id],
-		[_burger, negative], [_burger, duplicate]]
+		[_burger, negative], [_burger, duplicate], [_burger, invalid_level], [locked_only]]
 	for values: Array in invalid_catalogs:
 		var catalog: Array[RecipeDef] = []
 		catalog.assign(values)
@@ -201,6 +263,7 @@ func test_invalid_injected_catalogs_fail_without_partial_defaults_or_engine_erro
 		assert_eq(menu.to_dict(), {})
 		assert_false(menu.set_enabled(&"burger", true))
 		assert_false(menu.from_dict(_menu.to_dict()))
+	assert_false(MenuSettings.new([_burger], 0).is_valid())
 
 
 func _recipe(id: StringName, standard: int) -> RecipeDef:

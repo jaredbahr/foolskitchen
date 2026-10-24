@@ -129,7 +129,13 @@ func test_shipped_catalogue_is_derived_from_every_valid_non_door_definition() ->
 			continue
 		expected_count += 1
 		assert_true(_catalogue.item_buttons.has(definition.id))
-		assert_true(_catalogue.item_buttons[definition.id].text.ends_with("$%d" % definition.price))
+		var button: Button = _catalogue.item_buttons[definition.id]
+		if definition.unlock_level > 1:
+			assert_true(button.disabled)
+			assert_true(button.text.ends_with("Unlocks at level %d" % definition.unlock_level))
+		else:
+			assert_false(button.disabled)
+			assert_true(button.text.ends_with("$%d" % definition.price))
 	assert_eq(_catalogue.item_buttons.size(), expected_count)
 	_catalogue.set_build_visible(true)
 	await _mount(Vector2(1600.0, 900.0))
@@ -193,6 +199,31 @@ func test_buttons_emit_one_request_only_and_hidden_or_stale_items_emit_none() ->
 	_catalogue.refresh_content()
 	assert_false(is_instance_valid(button))
 	assert_true(_catalogue.item_buttons.is_empty())
+
+
+func test_locked_item_stays_visible_but_never_requests_until_owner_level_advances() -> void:
+	var definition: ItemDef = _definition(&"plant", "Potted plant", 15)
+	definition.unlock_level = 2
+	_content.definitions = [definition]
+	_catalogue.bind_content(_content)
+	_catalogue.set_build_visible(true)
+	var button: Button = _catalogue.item_buttons[&"plant"]
+	assert_true(button.disabled)
+	assert_eq(button.text, "Potted plant\nUnlocks at level 2")
+	assert_eq(button.tooltip_text, "Unlocks at level 2")
+	button.pressed.emit()
+	_catalogue._on_buy_pressed(&"plant")
+	assert_true(_requests.is_empty(), "a direct request cannot bypass the disabled button")
+	_catalogue.set_owner_level(2)
+	assert_true(_catalogue.item_buttons[&"plant"] == button)
+	assert_false(button.disabled)
+	assert_eq(button.text, "Potted plant\n$15")
+	button.pressed.emit()
+	assert_eq(_requests, [&"plant"] as Array[StringName])
+	_catalogue.set_owner_level(1)
+	assert_true(button.disabled)
+	button.pressed.emit()
+	assert_eq(_requests.size(), 1)
 
 
 func test_null_rebind_removes_old_buttons_and_can_repopulate_before_ready() -> void:

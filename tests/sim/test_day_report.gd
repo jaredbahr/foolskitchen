@@ -84,6 +84,10 @@ func test_missing_saved_fields_restore_an_empty_report() -> void:
 	assert_true(report.review_cards.is_empty())
 	assert_almost_eq(report.reputation_before, 3.0)
 	assert_almost_eq(report.reputation_after, 3.0)
+	assert_eq(report.owner_level_before, 1)
+	assert_eq(report.owner_level_after, 1)
+	assert_true(report.owner_xp_breakdown.is_empty())
+	assert_true(report.owner_unlocks.is_empty())
 
 
 func test_review_cards_round_trip_without_sim_cause_ids_or_shared_mutation() -> void:
@@ -105,6 +109,26 @@ func test_review_cards_round_trip_without_sim_cause_ids_or_shared_mutation() -> 
 	cards[0]["quote"] = "Modified snapshot"
 	assert_eq(report.review_cards[0]["quote"], "Fast and tasty")
 	assert_eq(restored.review_cards[0]["quote"], "Fast and tasty")
+
+
+func test_owner_progress_report_round_trip_detaches_breakdown_and_unlock_names() -> void:
+	var report: DayReport = DayReport.new()
+	report.owner_level_before = 1
+	report.owner_level_after = 2
+	report.owner_xp_breakdown = {"happy_xp": 8, "profit_xp": 5, "review_xp": 3,
+		"total_xp": 16, "internal_cause": 99}
+	report.owner_unlocks = ["Tomato melt", "Potted plant"]
+	var snapshot: Dictionary = report.to_dict()
+	assert_false(snapshot["owner_xp_breakdown"].has("internal_cause"))
+	var decoded: Dictionary = JSON.parse_string(JSON.stringify(snapshot))
+	var restored: DayReport = DayReport.from_dict(decoded)
+	assert_eq(restored.to_dict(), snapshot)
+	snapshot["owner_xp_breakdown"]["happy_xp"] = 0
+	snapshot["owner_unlocks"][0] = "Changed"
+	assert_eq(report.owner_xp_breakdown["happy_xp"], 8)
+	assert_eq(restored.owner_xp_breakdown["happy_xp"], 8)
+	assert_eq(report.owner_unlocks[0], "Tomato melt")
+	assert_eq(restored.owner_unlocks[0], "Tomato melt")
 
 
 func test_ui_review_summary_and_star_quotes_then_clear() -> void:
@@ -133,6 +157,35 @@ func test_ui_review_summary_and_star_quotes_then_clear() -> void:
 	assert_eq((_screen.get_node("%Reputation") as Label).text, "Reputation: 3.0 to 3.0 stars")
 	assert_eq(lines.get_child_count(), 1)
 	assert_eq((lines.get_child(0) as Label).text, "No reviews today")
+
+
+func test_ui_owner_xp_breakdown_level_up_and_unlocks_preserve_review_cards() -> void:
+	_screen = REPORT_SCENE.instantiate()
+	(Engine.get_main_loop() as SceneTree).root.add_child(_screen)
+	var report: DayReport = DayReport.new()
+	report.review_cards = [{"stars": 5, "quote": "Lovely meal"}]
+	report.owner_level_before = 1
+	report.owner_level_after = 2
+	report.owner_xp_breakdown = {"happy_xp": 8, "profit_xp": 5, "review_xp": 3, "total_xp": 16}
+	report.owner_unlocks = ["Tomato melt", "Potted plant"]
+	_screen.call("show_report", report)
+	assert_eq((_screen.get_node("%OwnerLevel") as Label).text, "Owner level 2")
+	assert_true((_screen.get_node("%OwnerLevelUp") as Label).visible)
+	assert_eq((_screen.get_node("%OwnerLevelUp") as Label).text, "Level up! Level 2 reached")
+	var rows: Node = _screen.get_node("%OwnerXPRows")
+	assert_eq(rows.get_child_count(), 8)
+	assert_eq((rows.get_child(0) as Label).text, "Happy guests")
+	assert_eq((rows.get_child(1) as Label).text, "+8 XP")
+	assert_eq((rows.get_child(6) as Label).text, "Total")
+	assert_eq((rows.get_child(7) as Label).text, "+16 XP")
+	assert_eq((_screen.get_node("%OwnerUnlocks") as Label).text, "Unlocked: Tomato melt, Potted plant")
+	assert_eq((_screen.get_node("%ReviewRows").get_child(0) as Label).text, '5 stars - "Lovely meal"')
+	_screen.call("show_report", DayReport.new())
+	assert_eq((_screen.get_node("%OwnerLevel") as Label).text, "Owner level 1")
+	assert_false((_screen.get_node("%OwnerLevelUp") as Label).visible)
+	assert_false((_screen.get_node("%OwnerUnlocks") as Label).visible)
+	assert_eq((rows.get_child(0) as Label).text, "No owner XP recorded")
+	assert_eq((_screen.get_node("%ReviewRows").get_child(0) as Label).text, "No reviews today")
 
 
 func test_first_three_review_quotes_fit_without_scrolling_at_both_capture_sizes() -> void:

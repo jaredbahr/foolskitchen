@@ -14,11 +14,20 @@ var _content: ContentDB
 var _ordered_ids: Array[StringName] = []
 var _layout_ready: bool = false
 var _paint_visible: bool = false
+var _owner_level: int = 1
 
 
 func bind_content(content: ContentDB) -> void:
 	_prepare_layout()
 	_content = content
+	refresh_content()
+
+
+## Main calls this after restoring progress and on each level change.
+func set_owner_level(level: int) -> void:
+	if level < 1 or level == _owner_level:
+		return
+	_owner_level = level
 	refresh_content()
 
 
@@ -85,10 +94,16 @@ func refresh_content() -> void:
 		if button.get_index() != index:
 			row.move_child(button, index)
 		var label: String = definition.display_name if not definition.display_name.is_empty() else String(definition.id)
+		var locked: bool = definition.unlock_level > _owner_level
 		var text: String = "%s\n$%d" % [label, definition.price]
+		var tooltip: String = "Buy %s for $%d" % [label, definition.price]
+		if locked:
+			text = "%s\nUnlocks at level %d" % [label, definition.unlock_level]
+			tooltip = "Unlocks at level %d" % definition.unlock_level
 		if button.text != text:
 			button.text = text
-		button.tooltip_text = "Buy %s for $%d" % [label, definition.price]
+		button.disabled = locked
+		button.tooltip_text = tooltip
 	_ordered_ids = desired_ids
 	_refresh_swatches()
 	_fit_panel()
@@ -209,13 +224,14 @@ func _fit_panel() -> void:
 func _on_buy_pressed(id: StringName) -> void:
 	if not visible or _content == null or not item_buttons.has(id):
 		return
-	if _buyable(_content.item(id)):
+	var definition: ItemDef = _content.item(id)
+	if _buyable(definition) and definition.unlock_level <= _owner_level:
 		buy_requested.emit(id)
 
 
 static func _buyable(definition: ItemDef) -> bool:
 	return definition != null and not definition.id.is_empty() \
-		and definition.category != ItemDef.Category.DOOR and definition.price >= 0 \
+		and definition.category != ItemDef.Category.DOOR and definition.price >= 0 and definition.unlock_level >= 1 \
 		and definition.footprint.x > 0 and definition.footprint.y > 0
 
 

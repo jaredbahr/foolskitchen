@@ -130,6 +130,34 @@ unique_name_in_owner = true
 layout_mode = 2
 columns = 2
 
+[node name="OwnerHeading" type="Label" parent="Panel/Scroll/Content"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "Owner progress"
+
+[node name="OwnerLevel" type="Label" parent="Panel/Scroll/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Owner level 1"
+
+[node name="OwnerLevelUp" type="Label" parent="Panel/Scroll/Content"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "Level up!"
+
+[node name="OwnerXPRows" type="GridContainer" parent="Panel/Scroll/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+columns = 2
+
+[node name="OwnerUnlocks" type="Label" parent="Panel/Scroll/Content"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+autowrap_mode = 3
+
 [node name="NextDay" type="Button" parent="Panel/Scroll/Content"]
 unique_name_in_owner = true
 layout_mode = 2

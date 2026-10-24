@@ -393,6 +393,31 @@ docs/
   starting a real, unsaved game, then verifies the closed report's native
   review rows after drawing; ordinary games still choose a wall-clock seed.
 
+### 2.3b Owner experience and unlocks (FK-049)
+- `OwnerProgress` earns the authored `data/balance/progression.tres` rates at
+  `RestaurantSim.service_closed`, after wages and rent enter the day ledger:
+  two XP per happy departure, one per complete $10 of positive daily profit,
+  and three per sampled five-star review. Its `last_awarded_day` guard prevents
+  a second award for the same closing day. Level N starts at
+  `ceil(level_base * N^1.5)` total XP (level one starts at zero); the starting
+  base is 45 pending controlled seed-1/7/42 balance results.
+- `RecipeDef` and `ItemDef` author `unlock_level`, defaulting to one. Tomato
+  soup, grilled cheese and burger stay available initially; Tomato melt and
+  new potted-plant purchases unlock at level two. `MenuSettings` rejects a
+  locked recipe even on a direct call, while `ShopEditor` rejects a locked
+  purchase before it reaches the books. Existing placed plants remain movable
+  and sellable. The menu and catalogue still show locked entries in muted
+  text with the level needed; unlocking never silently adds a dish to today's
+  selected menu.
+- Main stores progress inside its existing `owner` save section alongside
+  the mode. Mode-only older saves start at level one with zero XP. A present
+  progress snapshot is validated before installation; a malformed section
+  takes the usual failed-load path. The sole write remains the next normal
+  morning autosave. The evening XP breakdown, level-up notice and unlocked
+  names are transient report data. `tools/balance_probe.sh` reports final XP,
+  final level and the first days reaching levels two, three and six; it is a
+  manual tool, not an added CI job.
+
 ### 2.3g Paint and colour slots (FK-042)
 - `data/swatches/*.tres` contains twelve named `SwatchDef` resources. `ContentDB`
   validates nonempty unique IDs and names; UI only exposes this curated list.

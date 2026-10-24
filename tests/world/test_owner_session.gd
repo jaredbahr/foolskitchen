@@ -126,13 +126,16 @@ func test_owner_menu_and_shop_changes_restore_after_next_morning() -> void:
 	assert_eq(FileAccess.get_file_as_string(_path()), morning_file, "commands leave the current morning checkpoint intact")
 	_run_day(first)
 	assert_true(Clock.sim.next_day())
-	assert_eq(_document()["data"]["owner"], {"mode": "help"})
+	_assert_saved_owner(first, &"help")
+	var saved_progress: Dictionary = (first.get("owner_progress") as OwnerProgress).to_dict()
 	var snapshot: Dictionary = (first.get("shop_editor") as ShopEditor).to_dict()
 	var cash: int = Economy.cash
 	_close(first)
 	var second: Node = _start(true)
 	assert_eq(Clock.sim.day, 2)
 	assert_eq(_owner(second).current_mode(), &"help")
+	assert_eq((second.get("owner_progress") as OwnerProgress).to_dict(), saved_progress,
+		"the morning reload retains XP, level and the awarded-day guard")
 	assert_eq((second.get("shop_editor") as ShopEditor).to_dict(), snapshot)
 	assert_eq((second.get("menu_settings") as MenuSettings).to_dict(), saved_menu)
 	assert_eq((second.get("sim") as RestaurantSim).price_of((second.get("content") as ContentDB).recipe(&"burger")), 15)
@@ -150,7 +153,25 @@ func test_missing_owner_section_defaults_to_rest() -> void:
 	_close(first)
 	var second: Node = _start(true)
 	assert_eq(_owner(second).current_mode(), &"rest")
-	assert_eq(_document()["data"]["owner"], {"mode": "rest"})
+	_assert_saved_owner(second, &"rest")
+	var progress: OwnerProgress = second.get("owner_progress") as OwnerProgress
+	assert_eq(progress.level, 1)
+	assert_eq(progress.total_xp, 0)
+
+
+func test_legacy_mode_only_owner_save_defaults_progress_without_losing_mode() -> void:
+	var first: Node = _start(true)
+	var document: Dictionary = _document()
+	document["data"]["owner"] = {"mode": "kitchen"}
+	_write(document)
+	_close(first)
+	var second: Node = _start(true)
+	assert_eq(_owner(second).current_mode(), &"kitchen")
+	var progress: OwnerProgress = second.get("owner_progress") as OwnerProgress
+	assert_eq(progress.level, 1)
+	assert_eq(progress.total_xp, 0)
+	assert_eq(progress.last_awarded_day, 0)
+	_assert_saved_owner(second, &"kitchen")
 
 
 func test_bad_owner_data_starts_fresh_and_commands_leave_failed_slot_untouched() -> void:
@@ -170,7 +191,7 @@ func test_bad_owner_data_starts_fresh_and_commands_leave_failed_slot_untouched()
 	assert_eq(FileAccess.get_file_as_string(_path()), broken, "a mode hotkey cannot overwrite the protected failed load")
 	_run_day(second)
 	assert_true(Clock.sim.next_day())
-	assert_eq(_document()["data"]["owner"], {"mode": "help"})
+	_assert_saved_owner(second, &"help")
 
 
 func test_commands_leave_current_checkpoint_intact_then_next_morning_reloads_mode() -> void:
@@ -189,7 +210,7 @@ func test_commands_leave_current_checkpoint_intact_then_next_morning_reloads_mod
 	assert_eq(_owner(main).current_mode(), &"help")
 	assert_eq(FileAccess.get_file_as_string(_path()), before, "no unsupported OPEN/CLOSED snapshot is written")
 	assert_true(Clock.sim.next_day())
-	assert_eq(_document()["data"]["owner"], {"mode": "help"})
+	_assert_saved_owner(main, &"help")
 	assert_eq(int(_document()["data"]["clock"]["phase"]), int(SimClock.Phase.MORNING))
 	assert_eq(_owner(main).current_mode(), &"help")
 	_close(main)
@@ -259,6 +280,13 @@ func _owner(main: Node) -> OwnerAgent:
 
 func _item(main: Node, id: StringName) -> PlacedItem:
 	return ShopBuilder.items_with_def(main.get("world"), id)[0]
+
+
+func _assert_saved_owner(main: Node, mode: StringName) -> void:
+	var saved: Dictionary = _document()["data"]["owner"]
+	assert_eq(saved.size(), 2)
+	assert_eq(saved["mode"], String(mode))
+	assert_eq(saved["progress"], (main.get("owner_progress") as OwnerProgress).to_dict())
 
 
 func _assert_selected(main: Node, owner: OwnerAgent) -> void:

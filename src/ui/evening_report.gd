@@ -27,6 +27,10 @@ var _reasons: GridContainer
 var _review_stats: Label
 var _reputation: Label
 var _reviews: VBoxContainer
+var _owner_level: Label
+var _owner_level_up: Label
+var _owner_xp_rows: GridContainer
+var _owner_unlocks: Label
 var _nodes_bound: bool = false
 var _report_shown: bool = false
 
@@ -79,6 +83,7 @@ func show_report(report: DayReport) -> void:
 			_add_label(_reviews, '"%s"' % report.reviews[index])
 	else:
 		_add_label(_reviews, "No reviews today")
+	_fill_owner_progress(report)
 	show()
 
 
@@ -96,9 +101,38 @@ func _bind_nodes() -> void:
 	_review_stats = %ReviewStats
 	_reputation = %Reputation
 	_reviews = %ReviewRows
+	_owner_level = %OwnerLevel
+	_owner_level_up = %OwnerLevelUp
+	_owner_xp_rows = %OwnerXPRows
+	_owner_unlocks = %OwnerUnlocks
 	var next_day: Button = %NextDay
 	next_day.pressed.connect(_on_next_day_pressed)
 	_nodes_bound = true
+
+
+func _fill_owner_progress(report: DayReport) -> void:
+	_owner_level.text = "Owner level %d" % report.owner_level_after
+	_owner_level_up.visible = report.owner_level_after > report.owner_level_before
+	if _owner_level_up.visible:
+		_owner_level_up.text = "Level up! Level %d reached" % report.owner_level_after
+	_clear(_owner_xp_rows)
+	if report.owner_xp_breakdown.is_empty():
+		_add_row(_owner_xp_rows, "No owner XP recorded", "")
+	else:
+		_add_row(_owner_xp_rows, "Happy guests", "+%d XP" % int(report.owner_xp_breakdown.get("happy_xp", 0)))
+		_add_row(_owner_xp_rows, "Profit", "+%d XP" % int(report.owner_xp_breakdown.get("profit_xp", 0)))
+		_add_row(_owner_xp_rows, "Five-star reviews", "+%d XP" % int(report.owner_xp_breakdown.get("review_xp", 0)))
+		_add_row(_owner_xp_rows, "Total", "+%d XP" % int(report.owner_xp_breakdown.get("total_xp", 0)))
+	_owner_unlocks.visible = not report.owner_unlocks.is_empty()
+	if _owner_unlocks.visible:
+		var names: String = ""
+		for name: String in report.owner_unlocks:
+			if not names.is_empty():
+				names += ", "
+			names += name
+		_owner_unlocks.text = "Unlocked: %s" % names
+	else:
+		_owner_unlocks.text = ""
 
 
 func _fill_money(rows: GridContainer, amounts: Dictionary, empty_text: String) -> void:
