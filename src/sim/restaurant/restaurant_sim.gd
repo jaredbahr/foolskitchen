@@ -5,9 +5,15 @@ extends RefCounted
 signal customer_arrived(customer: CustomerAgent)
 signal customer_paid(customer: CustomerAgent, order: Order, amount: int)
 signal customer_left(customer: CustomerAgent, reason: StringName)
+## Emitted once service has closed and every guest's departure is recorded,
+## so the day's numbers are final. Listen to this, not the clock, for reports.
+signal service_closed(day: int)
 
 var world: SimWorld
 var orders: OrderBook = OrderBook.new()
+## Ingredient stock the kitchen takes from. The game session points this at
+## Economy.stock; tests can use their own.
+var stock: Stock = Stock.new()
 var menu: Array[RecipeDef] = []
 var spawner: CustomerSpawner
 var rng: RandomNumberGenerator = RandomNumberGenerator.new()
@@ -50,6 +56,7 @@ func start_day() -> void:
 
 ## One fixed world tick, arrivals, then departed-guest cleanup.
 func advance() -> void:
+	var was_closed: bool = world.clock.phase == SimClock.Phase.CLOSED
 	world.advance()
 	spawner.advance(self)
 	for customer: CustomerAgent in customers():
@@ -61,6 +68,15 @@ func advance() -> void:
 		record_departure(customer)
 	if world.clock.phase == SimClock.Phase.LAST_ORDERS and customers().is_empty():
 		world.clock.notify_restaurant_empty()
+	if not was_closed and world.clock.phase == SimClock.Phase.CLOSED:
+		service_closed.emit(world.clock.day)
+
+
+## Uses `random` for arrivals (the spawner and future guests). The game session
+## passes GameState.rng(&"customers") so the stream is saved and seeded per run.
+func use_rng(random: RandomNumberGenerator) -> void:
+	rng = random
+	spawner.rng = random
 
 
 ## Adds a guest using an independent random stream (also useful for scenarios).

@@ -113,6 +113,18 @@ docs/
   - `tests/sim/test_customers.gd` includes a three-day seeded fake-kitchen soak with random delays and missing deliveries; it prints arrivals, payments and losses by reason.
 - **Debug overlay (F3):** paths, claimed tasks, agent states and the task board, from Phase 1 onward.
 
+### 2.3b Game session (FK-024, `src/world/main.gd`)
+- `main.tscn` is the game session for one shop. It builds a `RestaurantSim` from the layout and content, and points `sim.stock` at `Economy.stock`.
+- `Clock.attach_world(world, sim.advance)` makes every tick run the restaurant (guests, staff, and the kitchen once it lands).
+- **Day loop:**
+  - **MORNING:** `sim.start_day()`, the fridge is topped up to `EconomyTuning.morning_stock` (bought through `Economy.buy_ingredient`), then autosave.
+  - **CLOSED:** wages per staff role and rent are charged through the ledger, then the evening report shows a `DayReport` built from `Ledger.day_totals` and the sim's counters.
+  - **"Next day"** (in the report or the HUD) calls `Clock.sim.next_day()`, which returns to MORNING.
+- Money numbers live in `data/balance/*.tres` (`EconomyTuning`).
+- `customer_paid` records a SALE and counts the dish.
+- **Saves:** the slot is "autosave" (F10 deletes it and restarts). Autoloads register save providers through `register_save_provider()`, which `main.start()` also calls, because the test runner never delivers `_ready()`.
+- `run_ticks(n)` fast-forwards for tests and tools.
+
 ### 2.4 Save system
 - JSON in `user://saves/`, with a `version` field and migration functions per version.
 - Only sim state is saved, never nodes. The world is rebuilt from sim state on load.
