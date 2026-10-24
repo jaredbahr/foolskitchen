@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- Chairs, tables and kitchen equipment use matching Kenney models; paint keeps their metal, glass and food details. (#131)
 - Change sound, UI size, opening speed, fullscreen and camera edge panning in Settings; your choices are remembered. (#129)
 - The shop floor now gets messy during service. Hire a Cleaner to mop it, and see the day's cleanliness in the closing report. (#105)
 - Earn owner XP from happy guests, profit and five-star reviews; new levels unlock a tomato melt and a potted plant. (#104)
