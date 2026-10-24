@@ -36,13 +36,37 @@ layout_mode = 2
 size_flags_horizontal = 3
 
 [node name="Speed0" type="Button" parent="Top/Row"]
+custom_minimum_size = Vector2(54, 46)
 layout_mode = 2
 theme = ExtResource("2_theme")
 focus_mode = 0
 toggle_mode = true
 button_group = SubResource("Speeds")
-text = "⏸"
 tooltip_text = "Pause (Space)"
+
+[node name="Pause" type="CenterContainer" parent="Top/Row/Speed0"]
+layout_mode = 0
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Bars" type="HBoxContainer" parent="Top/Row/Speed0/Pause"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 4
+
+[node name="Left" type="ColorRect" parent="Top/Row/Speed0/Pause/Bars"]
+custom_minimum_size = Vector2(4, 14)
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Right" type="ColorRect" parent="Top/Row/Speed0/Pause/Bars"]
+custom_minimum_size = Vector2(4, 14)
+layout_mode = 2
+mouse_filter = 2
 
 [node name="Speed1" type="Button" parent="Top/Row"]
 layout_mode = 2
