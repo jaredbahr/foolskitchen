@@ -207,8 +207,13 @@ func test_loaded_morning_keeps_the_existing_restock_and_autosave_policy() -> voi
 	var second: Node = _start()
 	assert_eq(Economy.stock.count(&"bun"), TUNING.morning_stock[&"bun"])
 	assert_eq(Economy.cash, cash - unit_cost, "loaded morning tops up missing stock as before")
-	var expected: Dictionary = {"ledger": Economy.ledger.to_dict(), "stock": Economy.stock.to_dict()}
-	assert_eq(_document()["data"]["economy"], expected, "the topped-up morning is autosaved")
+	var expected_loan: Dictionary = {"version": 1, "principal": "0",
+		"last_settled_day": "0", "has_borrowed": false}
+	assert_eq(Economy.loan.to_dict(), expected_loan, "a debt-free morning does not create or settle a loan")
+	var expected: Dictionary = {"ledger": Economy.ledger.to_dict(),
+		"stock": Economy.stock.to_dict(), "loan": expected_loan}
+	assert_eq(_document()["data"]["economy"], JSON.parse_string(JSON.stringify(expected)),
+		"the whole topped-up Economy section is autosaved in its JSON representation")
 	_assert_bindings(second)
 
 
