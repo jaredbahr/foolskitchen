@@ -86,6 +86,50 @@ func test_unserved_departure_scores_one_but_closing_never_draws() -> void:
 	assert_eq(_sim.reviews_today.size(), 1)
 
 
+func test_reviews_use_each_guests_arrival_dirt_after_the_floor_changes() -> void:
+	var cleanliness_tuning: CleanlinessTuning = preload("res://data/balance/cleanliness.tres").duplicate() as CleanlinessTuning
+	cleanliness_tuning.arrival_chance = 0.0
+	cleanliness_tuning.seat_departure_chance = 1.0
+	var dirt: CleanlinessState = CleanlinessState.new(_sim.world.grid, cleanliness_tuning, _random(86017))
+	assert_true(_sim.configure_cleanliness(dirt, cleanliness_tuning))
+	assert_true(_sim.world.clock.start_service())
+	var spotless_guest: CustomerAgent = _guest()
+	for y: int in range(_sim.world.grid.size.y):
+		for x: int in range(_sim.world.grid.size.x):
+			dirt.try_spawn_at_departed_seat(Vector2i(x, y))
+	assert_eq(dirt.spot_count(), cleanliness_tuning.max_spots)
+	var dirty_guest: CustomerAgent = _guest()
+	assert_almost_eq(spotless_guest.arrival_dirt_fraction, 0.0)
+	assert_almost_eq(dirty_guest.arrival_dirt_fraction, 1.0)
+	# Ordinary waits plus dirt make a lower-rated visit where dirt is the
+	# largest complaint under the real authored review weights.
+	for guest: CustomerAgent in [dirty_guest, spotless_guest]:
+		guest._queue_wait = roundi(float(guest.queue_patience) * 0.45)
+		guest._food_wait = roundi(float(guest.food_patience) * 0.35)
+		guest.order = Order.new()
+		guest.order.recipe_id = _sim.menu[0].id
+		guest.order.price = _sim.menu[0].standard_price
+		_sim.pay(guest, guest.order)
+	for spot: Vector2i in dirt.spots():
+		assert_true(dirt.clear_spot(spot))
+	assert_almost_eq(dirt.dirt_fraction(), 0.0)
+	_sim.record_departure(dirty_guest)
+	assert_eq(_sim.reviews_today[0]["stars"], 3)
+	assert_true(QUOTES.groups[&"dirty_floor"].has(_sim.reviews_today[0]["quote"]),
+		"mopping later cannot erase the arrival dirt from a departure review")
+	# Leave the second guest while the floor is dirty again. They saw it clean.
+	for y: int in range(_sim.world.grid.size.y):
+		for x: int in range(_sim.world.grid.size.x):
+			dirt.try_spawn_at_departed_seat(Vector2i(x, y))
+	assert_almost_eq(dirt.dirt_fraction(), 1.0)
+	_sim.record_departure(spotless_guest)
+	assert_eq(_sim.reviews_today[1]["stars"], 4)
+	assert_true(QUOTES.groups[&"lovely_place"].has(_sim.reviews_today[1]["quote"]),
+		"later dirt cannot become a complaint for an earlier spotless arrival")
+	assert_eq(_events.size(), 2)
+	assert_false(_sim.reviews_today[0].has("cause"), "internal review ids stay out of report rows")
+
+
 func test_review_rng_does_not_advance_arrival_or_guest_streams() -> void:
 	var guest_random: RandomNumberGenerator = _random(86013)
 	var guest: CustomerAgent = _sim.add_customer(_sim.world.grid.entries()[0], guest_random)

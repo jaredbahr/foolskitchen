@@ -25,6 +25,8 @@ var seat_cell: Vector2i = SimGrid.NO_CELL
 var order: Order = null
 var leave_reason: StringName = &"happy"
 var paid: bool = false
+## The floor seen on arrival, before this guest can add their own door spot.
+var arrival_dirt_fraction: float = 0.0
 ## Survives morning report resets so stale removal callbacks cannot count twice.
 var departure_recorded: bool = false
 var rng: RandomNumberGenerator
@@ -167,8 +169,8 @@ func mood_band() -> int:
 
 
 ## Detached review inputs from this visit's actual waits and charged price.
-## The caller supplies the recipe's unchanged standard price and, once the
-## cleanliness system exists, its bounded dirt fraction.
+## The caller supplies the recipe's unchanged standard price and the dirt
+## fraction retained from arrival, so later mopping cannot rewrite this visit.
 func review_visit(standard_price: int, dirt_fraction: float = 0.0) -> ReviewVisit:
 	var visit: ReviewVisit = ReviewVisit.new()
 	visit.served = paid

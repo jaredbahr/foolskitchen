@@ -10,6 +10,7 @@ var frames_per_second: float = 0.0
 var ticks_per_second: float = 0.0
 
 var _world: SimWorld
+var _cleanliness: CleanlinessState
 var _enabled: bool = false
 var _rates: Label
 var _tasks: Label
@@ -32,9 +33,17 @@ func _ready() -> void:
 
 ## Rebinding also discards rate history, even if the same world is supplied.
 func bind_world(value: SimWorld) -> void:
+	if _world != value:
+		_cleanliness = null
 	_world = value
 	frames_per_second = 0.0
 	_reset_sampling()
+	refresh()
+
+
+## Main supplies the optional day-local floor state after binding the world.
+func bind_cleanliness(value: CleanlinessState) -> void:
+	_cleanliness = value
 	refresh()
 
 
@@ -117,6 +126,8 @@ func _bind_nodes() -> bool:
 
 func _refresh_rates() -> void:
 	_rates.text = "FPS %.0f  |  Sim %.1f ticks/s" % [frames_per_second, ticks_per_second]
+	if _world != null and _cleanliness != null:
+		_rates.text += "  |  Floor spots %d" % _cleanliness.spot_count()
 
 
 func _task_id_before(a: SimTask, b: SimTask) -> bool:

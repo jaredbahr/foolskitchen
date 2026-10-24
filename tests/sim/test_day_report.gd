@@ -59,6 +59,7 @@ func test_json_round_trip_restores_typed_ids_and_counts() -> void:
 	var restored: DayReport = DayReport.from_dict(decoded)
 	assert_eq(restored.to_dict(), original.to_dict())
 	assert_eq(restored.income[&"sale"], 1200)
+	assert_eq(restored.cleanliness_label, "Grubby")
 	assert_eq(typeof(restored.income.keys()[0]), TYPE_STRING_NAME)
 	assert_eq(restored.best_dish(), &"burger")
 
@@ -81,6 +82,7 @@ func test_missing_saved_fields_restore_an_empty_report() -> void:
 	assert_eq(report.profit(), 0)
 	assert_true(report.reviews.is_empty())
 	assert_true(report.leave_reasons.is_empty())
+	assert_eq(report.cleanliness_label, "")
 	assert_true(report.review_cards.is_empty())
 	assert_almost_eq(report.reputation_before, 3.0)
 	assert_almost_eq(report.reputation_after, 3.0)
@@ -203,6 +205,7 @@ func test_first_three_review_quotes_fit_without_scrolling_at_both_capture_sizes(
 	report.customers_served = 12
 	report.customers_lost = 4
 	report.leave_reasons = {&"no_table": 1, &"waited_too_long": 3}
+	report.cleanliness_label = "Grubby"
 	report.review_cards = [
 		{"stars": 5, "quote": "Warm room, good food, happy me."},
 		{"stars": 4, "quote": "I aged a little waiting for lunch. Worth a bite, though."},
@@ -266,6 +269,8 @@ func test_ui_full_report_then_empty_clears_every_section() -> void:
 	assert_eq((_screen.get_node("%Header") as Label).text, "Day 3: Closed")
 	assert_eq((_screen.get_node("%Profit") as Label).text, "$910 profit")
 	assert_eq((_screen.get_node("%Guests") as Label).text, "12 served  /  4 lost")
+	assert_eq((_screen.get_node("%Cleanliness") as Label).text, "Cleanliness: Grubby")
+	assert_true((_screen.get_node("%Cleanliness") as Label).visible)
 	assert_almost_eq((_screen.get_node("%GuestBar") as ProgressBar).value, 12.0)
 	assert_almost_eq((_screen.get_node("%GuestBar") as ProgressBar).max_value, 16.0)
 	assert_eq(_screen.get_node("%ReviewRows").get_child_count(), 3)
@@ -277,9 +282,34 @@ func test_ui_full_report_then_empty_clears_every_section() -> void:
 	assert_eq((_screen.get_node("%CostRows").get_child(0) as Label).text, "No costs today")
 	assert_eq((_screen.get_node("%DishRows").get_child(0) as Label).text, "No dishes sold today")
 	assert_eq((_screen.get_node("%Guests") as Label).text, "No guests visited today")
+	assert_eq((_screen.get_node("%Cleanliness") as Label).text, "")
+	assert_false((_screen.get_node("%Cleanliness") as Label).visible)
 	assert_almost_eq((_screen.get_node("%GuestBar") as ProgressBar).value, 0.0)
 	assert_eq((_screen.get_node("%ReasonRows").get_child(0) as Label).text, "No unhappy departures today")
 	assert_eq(_screen.get_node("%ReviewRows").get_child_count(), 1)
+
+
+func test_ui_cleanliness_word_updates_without_displacing_review_quotes() -> void:
+	_screen = REPORT_SCENE.instantiate()
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	tree.root.add_child(_screen)
+	var report: DayReport = DayReport.new()
+	report.cleanliness_label = "Spotless"
+	report.review_cards = [{"stars": 4, "quote": "Lovely soup"}]
+	_screen.call("show_report", report)
+	assert_eq((_screen.get_node("%Guests") as Label).text, "No guests visited today")
+	assert_eq((_screen.get_node("%Cleanliness") as Label).text, "Cleanliness: Spotless")
+	assert_true((_screen.get_node("%Cleanliness") as Label).visible)
+	assert_eq((_screen.get_node("%ReviewRows") as VBoxContainer).get_child_count(), 1)
+	report.cleanliness_label = "A bit messy"
+	_screen.call("show_report", report)
+	assert_eq((_screen.get_node("%Cleanliness") as Label).text, "Cleanliness: A bit messy")
+	assert_eq(((_screen.get_node("%ReviewRows") as VBoxContainer).get_child(0) as Label).text,
+		'4 stars - "Lovely soup"')
+	_screen.call("show_report", DayReport.new())
+	assert_eq((_screen.get_node("%Guests") as Label).text, "No guests visited today")
+	assert_eq((_screen.get_node("%Cleanliness") as Label).text, "")
+	assert_false((_screen.get_node("%Cleanliness") as Label).visible)
 
 
 func test_ui_loss_and_next_day_signal_without_clock_integration() -> void:
@@ -319,6 +349,7 @@ func _full_report() -> DayReport:
 	report.customers_lost = 4
 	report.leave_reasons = {&"no_table": 1, &"waited_too_long": 3}
 	report.reviews = ["Lovely soup", "Cosy place", "Great burger", "Fourth quote is hidden"]
+	report.cleanliness_label = "Grubby"
 	return report
 
 

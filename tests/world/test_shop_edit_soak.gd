@@ -522,9 +522,7 @@ func _assert_closed_books(main: Node, day: int) -> void:
 	assert_true(sim.served_today > 0, "day %d: the real kitchen serves guests" % day)
 	var totals: Dictionary = Economy.ledger.day_totals(day)
 	assert_eq(int(totals.get(Ledger.SALE, 0)), _sales_today, "day %d: every sale is in the books" % day)
-	var wages: int = 0
-	for role: StringName in TUNING.wages:
-		wages += TUNING.wages[role]
+	var wages: int = (main.get("staff_roster") as StaffRoster).total_wages()
 	assert_eq(int(totals.get(Ledger.WAGES, 0)), -wages, "day %d: wages once" % day)
 	assert_eq(int(totals.get(Ledger.RENT, 0)), -TUNING.daily_rent, "day %d: rent once" % day)
 	assert_eq(int(totals.get(Ledger.UPGRADES, 0)), _upgrade_delta_today, "day %d: exact net furniture cost" % day)

@@ -61,5 +61,6 @@ placements = Array[ExtResource("1_f5t7v")]([SubResource("Resource_8swi5"), SubRe
 staff_spawns = Dictionary[StringName, Vector2i]({
 &"cook": Vector2i(6, 2),
 &"owner": Vector2i(9, 3),
-&"server": Vector2i(8, 8)
+&"server": Vector2i(8, 8),
+&"cleaner": Vector2i(9, 8)
 })

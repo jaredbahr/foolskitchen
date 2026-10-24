@@ -6,12 +6,14 @@ extends RefCounted
 
 static func names() -> Array[String]:
 	return ["default", "extra_cook", "extra_server", "owner_kitchen", "owner_floor",
-		"trays_2", "trays_4"]
+		"trays_2", "trays_4", "extra_cleaner"]
 
 
 static func apply(name: String, main: Node, extra_cook_skill: int = 3) -> bool:
 	var sim: RestaurantSim = main.get("sim") as RestaurantSim
-	if sim == null or sim.world.clock.phase != SimClock.Phase.MORNING:
+	if sim == null or sim.world.clock.phase != SimClock.Phase.MORNING or not names().has(name) \
+			or sim.cleanliness == null \
+			or not sim.cleanliness.use_rng(GameState.rng(&"cleanliness")):
 		return false
 	match name:
 		"default":
@@ -20,6 +22,8 @@ static func apply(name: String, main: Node, extra_cook_skill: int = 3) -> bool:
 			return _add_staff(main, &"cook", extra_cook_skill)
 		"extra_server":
 			return _add_staff(main, &"server", 3)
+		"extra_cleaner":
+			return _add_staff(main, &"cleaner", 3)
 		"owner_kitchen":
 			return sim.assign_owner(&"kitchen")
 		"owner_floor":
