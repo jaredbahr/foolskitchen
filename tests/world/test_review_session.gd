@@ -79,7 +79,9 @@ func test_departure_updates_report_but_not_the_current_morning_save() -> void:
 	assert_eq(report.reputation_after, book.average())
 	assert_eq(FileAccess.get_file_as_string(_path()), morning_file,
 		"a review changes memory and the report, not the morning checkpoint")
-	assert_eq(_document()["data"]["reviews"]["scores"], [3, 3, 3, 3, 3])
+	var saved_book: ReputationBook = ReputationBook.new()
+	assert_true(saved_book.from_dict(_document()["data"]["reviews"]))
+	assert_eq(saved_book.scores(), [3, 3, 3, 3, 3])
 
 
 func test_closing_departure_neither_reviews_nor_draws_review_rng() -> void:
@@ -145,12 +147,16 @@ func test_next_morning_saves_review_window_and_reload_restores_it() -> void:
 	Clock.sim.last_orders_max_ticks = 1
 	assert_true(Clock.sim.start_service())
 	_depart_unserved(sim, 86005)
-	assert_eq(_document()["data"]["reviews"]["scores"], [3, 3, 3, 3, 3])
+	var morning_book: ReputationBook = ReputationBook.new()
+	assert_true(morning_book.from_dict(_document()["data"]["reviews"]))
+	assert_eq(morning_book.scores(), [3, 3, 3, 3, 3])
 	first.call("run_ticks", 10)
 	assert_eq(Clock.sim.phase, SimClock.Phase.CLOSED)
 	assert_true(Clock.sim.next_day())
 	var saved: Dictionary = book.to_dict()
-	assert_eq(_document()["data"]["reviews"], saved)
+	var loaded_book: ReputationBook = ReputationBook.new()
+	assert_true(loaded_book.from_dict(_document()["data"]["reviews"]))
+	assert_eq(loaded_book.to_dict(), saved)
 	_close(first)
 	GameState.new_run(999)
 	var second: Node = _start(true)
