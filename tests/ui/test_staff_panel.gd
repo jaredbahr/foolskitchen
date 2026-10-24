@@ -101,7 +101,13 @@ func test_close_requests_no_arguments_without_hiding_or_changing_the_roster() ->
 
 
 func test_disabled_actions_use_the_shared_opaque_readable_theme() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	await tree.process_frame
+	assert_true(tree.root.is_inside_tree())
+	tree.root.add_child(_panel)
+	await tree.process_frame
 	var button: Button = _panel.row_for(_roster.members()[0].id).get_node("Top/Action") as Button
+	assert_true(button.is_inside_tree())
 	assert_true(button.disabled)
 	assert_true(StaffPanel.SHARED_THEME.has_stylebox("disabled", "Button"))
 	assert_true(StaffPanel.SHARED_THEME.has_color("font_disabled_color", "Button"))

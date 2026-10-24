@@ -90,8 +90,6 @@ func _add_row(parent: VBoxContainer, member: StaffMember, candidate: bool) -> vo
 	button.name = "Action"
 	button.text = "Hire" if candidate else "Let go"
 	button.theme = SHARED_THEME
-	button.add_theme_stylebox_override(&"disabled", SHARED_THEME.get_stylebox(&"disabled", &"Button"))
-	button.add_theme_color_override(&"font_disabled_color", SHARED_THEME.get_color(&"font_disabled_color", &"Button"))
 	button.focus_mode = Control.FOCUS_NONE
 	button.mouse_filter = Control.MOUSE_FILTER_STOP
 	button.pressed.connect(_on_request.bind(member.id, candidate))
