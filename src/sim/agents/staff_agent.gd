@@ -82,7 +82,10 @@ func why() -> String:
 		if s.kind == TaskStep.Kind.WORK and _step_started:
 			step_text += " (%ds left)" % ceili(work_left / (work_speed(task.role) * SimClock.TICKS_PER_SECOND))
 	if not _waiting_for.is_empty():
-		step_text = "waiting for %s" % _waiting_for
+		var prefix: String = "waiting"
+		if step_index < task.steps.size() and task.steps[step_index].kind == TaskStep.Kind.WAIT_UNTIL:
+			prefix = "Waiting"
+		step_text = "%s for %s" % [prefix, _waiting_for]
 	return task.label if step_text.is_empty() else "%s: %s" % [task.label, step_text]
 
 
@@ -136,6 +139,8 @@ func _run_step(world: SimWorld) -> void:
 			_run_go_to_cell(world, s)
 		TaskStep.Kind.WORK:
 			_run_work(world, s)
+		TaskStep.Kind.WAIT_UNTIL:
+			_run_wait(world, s)
 
 
 func _run_go_to_item(world: SimWorld, s: TaskStep) -> void:
@@ -211,9 +216,29 @@ func _run_work(world: SimWorld, s: TaskStep) -> void:
 	_next_step(world)
 
 
+func _run_wait(world: SimWorld, s: TaskStep) -> void:
+	if not s.on_done.is_valid():
+		_drop(world, &"step_failed")
+		return
+	var ready: Variant = s.on_done.call(self)
+	if task == null or task.state != SimTask.State.CLAIMED:
+		return
+	if ready is bool and ready:
+		_waiting_for = ""
+		_next_step(world)
+		# An available resource must not add a tick to the existing work chain.
+		if task != null and task.state == SimTask.State.CLAIMED:
+			if step_index < task.steps.size() and task.steps[step_index].kind == TaskStep.Kind.WORK:
+				_run_work(world, task.steps[step_index])
+	else:
+		_waiting_for = s.label if not s.label.is_empty() else "the next step"
+		last_progress_tick = world.now
+
+
 func _next_step(world: SimWorld) -> void:
 	step_index += 1
 	_step_started = false
+	_waiting_for = ""
 	_repaths = 0
 	clear_path()
 	if step_index >= task.steps.size():

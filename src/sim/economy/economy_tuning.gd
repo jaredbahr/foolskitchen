@@ -5,6 +5,8 @@ extends Resource
 
 ## Cash a new game starts with.
 @export var starting_cash: int = 300
+## Durable plates available to the new shop; overnight washing keeps this total.
+@export var starting_plates: int = 12
 ## Rent charged at the end of every day.
 @export var daily_rent: int = 40
 ## Wage per staff role, charged at the end of every day.

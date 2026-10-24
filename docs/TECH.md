@@ -123,6 +123,23 @@ docs/
   - `Order.quality` is `clamp(base_quality * (0.7 + 0.1 * cook_skill) + station_bonuses, 0, 1)` with skill clamped 1..5 (factor 0.8..1.2). Each distinct recipe station contributes its bonus once. `Order.cancellation_reason` is set by the optional reason argument to `OrderBook.set_state` and is preserved by guest departure.
   - `Kitchen.mark_table_dirty(id)` runs before an occupied seat is released (also on forced/external removal); failed seat walks do not dirty a table. Customers skip `is_table_dirty(id)` tables. A real priority-1 server task reserves a free table seat and works 40 units before removing the dirty hold. Terminal bus failures keep the flag and log a reason;   - CLOSED immediately removes guests, terminalizes their tickets and cancels their cook/deliver tasks. Real bussing may continue while the evening report is open. Each morning `start_day()` runs the overnight tidy (decision on #45): staff clean up after hours, so every dirty table is cleared, any leftover kitchen task is cancelled (`overnight_tidy`) and staff start at their posts. This is a deliberate rule, not a hidden failure: unfinished work never spills into the next day.ions and `Kitchen.is_clean()`. `start_day()` never clears dirty tables to conceal unfinished work.
   - The current playable `Clock` driver stops at CLOSED and does not yet drive this cleanup interval; future restaurant/world integration must do so. `RestaurantSim.advance()` remains exactly one world tick per call, with no internal drain loop.
+- **Plate cycle (FK-038):** `Kitchen.plates` is a pure `PlateLedger` with
+  `clean`, `dirty`, `in_use` and durable `total` (Tier 1 starts with 12).
+  Plating takes one clean plate per order. READY, carrying, seated and returned
+  table plates remain in use; completed bussing collects only returned orders.
+  Cancellation and table removal recover plates once, including terminal orders.
+  Clean + dirty + in use always equals total; returned plates are a subset of use.
+  Priority-0 server `wash` tasks work 15 units per plate, at most four per task.
+  Per-step replay guards survive drops. Reachable sinks are chosen in stable
+  placement order; failed washing waits for a layout change before retrying.
+  At the pass, `WAIT_UNTIL` gives "Waiting for a clean plate" without changing
+  the existing claimed-task timeout or stuck recovery. Ready waits start the
+  following plating WORK in the same tick. Overnight cleanup washes all stock.
+  The ASCII HUD counter shows clean/total, with dirty/in-use in its tooltip.
+  Main stages the validated `plates` save section (total only), installs it after
+  a successful morning load, and saves at the existing morning boundary.
+  Older saved layouts keep their furniture and default plate stock; shops
+  without a sink can buy one. The last present sink cannot be sold.
 - **Debug overlay (F3):** paths, claimed tasks, agent states and the task board, from Phase 1 onward.
 - **Owner assignment (FK-020):** the restaurant factory creates one `OwnerAgent`
   at the authored owner spawn, with cook/server skill 3 and default `rest`.

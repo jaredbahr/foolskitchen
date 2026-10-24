@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- Meals use a limited stock of plates; servers collect and wash them at a sink, and the kitchen explains when it is waiting for a clean plate. (#75)
 - Held furniture rotates around the grabbed tile, and short placement hints fit without a scrollbar. (#71)
 - The pause icon draws reliably in browser builds, and the camera keeps the shop centred through window resizes until you pan. (#69)
 - Press B to build while the shop is closed: move, rotate, buy or sell furniture, preview its work and seat tiles, and see warnings for unreachable furniture. (#63)

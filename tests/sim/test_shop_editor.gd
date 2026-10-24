@@ -207,7 +207,7 @@ func test_odd_and_zero_refunds_are_distinct_from_refusal() -> void:
 
 
 func test_last_required_station_and_door_guards_use_real_categories() -> void:
-	for def_id: StringName in [&"fridge", &"prep_counter", &"stove", &"pass_counter"]:
+	for def_id: StringName in [&"fridge", &"prep_counter", &"stove", &"pass_counter", &"sink"]:
 		assert_false(_editor.check_sell(_id(def_id)).ok)
 		assert_eq(_editor.sell(_id(def_id)), -1)
 	assert_true(_editor.buy(&"door", Vector2i(4, 8)))
@@ -281,7 +281,7 @@ func test_invalid_snapshots_leave_live_state_and_template_unchanged() -> void:
 		assert_null(ShopEditor.from_dict(data, LAYOUT, _content, errors))
 		assert_false(errors.is_empty())
 		assert_eq(_editor.to_dict(), original)
-	assert_eq(LAYOUT.placements.size(), 8)
+	assert_eq(LAYOUT.placements.size(), 9)
 	assert_eq(_changes.size(), 0)
 	assert_eq(_entries.size(), 0)
 
@@ -331,6 +331,22 @@ func test_grid_signal_reentry_cannot_charge_a_second_purchase() -> void:
 	assert_true(_editor.last_check.ok)
 	assert_eq(_entries.size(), 1)
 	assert_eq(_changes.size(), 1)
+
+
+func test_second_sink_can_be_sold_but_last_sink_is_preserved() -> void:
+	var first: int = _id(&"sink")
+	assert_true(_editor.buy(&"sink", Vector2i(12, 1), 2))
+	assert_true(_editor.check_sell(first).ok)
+	assert_eq(_editor.sell(first), 20)
+	var remaining: int = _id(&"sink")
+	var before: Dictionary = _editor.to_dict()
+	var entries: int = _entries.size()
+	assert_false(_editor.check_sell(remaining).ok)
+	assert_eq(_editor.last_check.why, "")  # The read-only check does not replace last_check.
+	assert_eq(_editor.sell(remaining), -1)
+	assert_true(_editor.last_check.why.contains("sink"))
+	assert_eq(_entries.size(), entries)
+	assert_eq(_editor.to_dict(), before)
 
 
 func _id(def_id: StringName) -> int:

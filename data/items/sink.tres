@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="ItemDef" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/sim/content/item_def.gd" id="1_script"]
+
+[resource]
+script = ExtResource("1_script")
+id = &"sink"
+display_name = "Sink"
+category = 3
+footprint = Vector2i(1, 1)
+solid = true
+work_cells = Array[Vector2i]([Vector2i(0, -1)])
+seat_cells = Array[Vector2i]([])
+station_type = &"sink"
+capacity = 1
+quality_bonus = 0.0
+price = 40
+charm = 0
+theme_tags = Array[StringName]([&"diner"])
+placeholder_color = Color(0.70, 0.73, 0.66, 1)

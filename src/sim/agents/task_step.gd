@@ -4,10 +4,13 @@ extends RefCounted
 ## - GO_TO_ITEM: walk to a free work cell (or seat cell) of an item and reserve it.
 ## - GO_TO_CELL: walk to a fixed cell (no reservation).
 ## - WORK: stay put for `ticks` sim ticks (scaled by the agent's work speed).
+## - WAIT_UNTIL: keep the current spot until a predicate accepts; the ordinary
+##   claimed-task timeout still bounds the wait.
 ## `on_done` (optional) runs when the step finishes: it receives the agent and
-## returns false to fail the task (for example "fridge is empty").
+## returns false to fail WORK (for example "fridge is empty"). For WAIT_UNTIL,
+## false means keep waiting, while true advances to the next step.
 
-enum Kind { GO_TO_ITEM, GO_TO_CELL, WORK }
+enum Kind { GO_TO_ITEM, GO_TO_CELL, WORK, WAIT_UNTIL }
 
 var kind: Kind = Kind.WORK
 var item_id: int = 0
@@ -52,4 +55,12 @@ static func work(duration_ticks: int, step_label: String = "", done: Callable = 
 	s.ticks = maxi(duration_ticks, 1)
 	s.label = step_label
 	s.on_done = done
+	return s
+
+
+static func wait_until(condition: Callable, step_label: String) -> TaskStep:
+	var s: TaskStep = TaskStep.new()
+	s.kind = Kind.WAIT_UNTIL
+	s.label = step_label
+	s.on_done = condition
 	return s
