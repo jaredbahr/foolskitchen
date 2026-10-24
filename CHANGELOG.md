@@ -23,6 +23,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- `tools/screenshot.sh` renders the real game under a virtual display and saves screenshots, for reviews and PRs. (#39)
 - Guests find reachable seats, queue, order through servers, eat and pay. Bounded waits recover blocked routes, and closing clears every visit with a reason for the daily report. (#35)
 - Shop layouts are data files, and `ShopBuilder` turns one into a running simulation. (#26)
 - Staff task system with self-healing: staff claim jobs, walk to stations and wait their turn. A job that runs too long is handed back, a blocked route is re-planned, and a deleted target cancels its job. Staff buried under new furniture walk out, and two workers can no longer deadlock over stations. A chaos stress test proves this on every change. (#24)
