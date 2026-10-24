@@ -15,6 +15,8 @@ var served_today: int = 0
 var lost_today: int = 0
 var leave_reasons_today: Dictionary[StringName, int] = {}
 
+var _departed: Dictionary[int, bool] = {}
+
 
 ## Builds the layout, its starting staff, and its tier-one menu.
 static func create(layout: ShopLayout, content: ContentDB, seed: int, errors: Array[String]) -> RestaurantSim:
@@ -51,13 +53,8 @@ func advance() -> void:
 	for customer: CustomerAgent in customers():
 		if customer.state != CustomerAgent.State.LEFT:
 			continue
-		var reason: StringName = customer.leave_reason
-		leave_reasons_today[reason] = leave_reasons_today.get(reason, 0) + 1
-		if not customer.paid:
-			lost_today += 1
 		world.remove_agent(customer)
-		world.log_event("Guest #%d left: %s" % [customer.id, reason])
-		customer_left.emit(customer, reason)
+		record_departure(customer)
 	if world.clock.phase == SimClock.Phase.LAST_ORDERS and customers().is_empty():
 		world.clock.notify_restaurant_empty()
 
@@ -88,3 +85,18 @@ func pay(customer: CustomerAgent, order: Order) -> void:
 	customer.paid = true
 	served_today += 1
 	customer_paid.emit(customer, order, order.price)
+
+
+## Accounts for a departure once, including direct world removal and repeated cleanup.
+func record_departure(customer: CustomerAgent) -> void:
+	if _departed.has(customer.id):
+		return
+	_departed[customer.id] = true
+	if not customer.paid and customer.leave_reason == &"happy":
+		customer.leave_reason = &"removed"
+	var reason: StringName = customer.leave_reason
+	leave_reasons_today[reason] = leave_reasons_today.get(reason, 0) + 1
+	if not customer.paid:
+		lost_today += 1
+	world.log_event("Guest #%d left: %s" % [customer.id, reason])
+	customer_left.emit(customer, reason)

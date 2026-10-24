@@ -112,8 +112,12 @@ func test_single_guest_seats_orders_eats_pays_and_leaves() -> void:
 	assert_not_null(guest.order)
 	assert_eq(_paid.get(guest.id, -1), _content.recipe(guest.order.recipe_id).standard_price)
 	assert_eq(_left.get(guest.id, &""), &"happy")
+	guest.on_removed(_sim.world)
+	_sim.record_departure(guest)
 	assert_eq(_sim.served_today, 1)
 	assert_eq(_sim.lost_today, 0)
+	assert_eq(_sim.leave_reasons_today, {&"happy": 1})
+	assert_eq(_left.size(), 1)
 	_assert_drained()
 
 
@@ -194,6 +198,17 @@ func test_external_removal_cleans_up_customer_resources() -> void:
 	_sim.world.remove_agent(guest)
 	_run(2)
 	assert_eq(guest.order.state, Order.State.CANCELLED)
+	assert_eq(_left.get(guest.id, &""), &"removed")
+	assert_eq(_sim.lost_today, 1)
+	assert_eq(_sim.served_today, 0)
+	assert_eq(_sim.leave_reasons_today, {&"removed": 1})
+	assert_eq(_arrived.size(), _paid.size() + _sim.lost_today)
+	# Both the world hook and normal sweep can reach the accounting boundary.
+	_sim.world.remove_agent(guest)
+	_sim.record_departure(guest)
+	assert_eq(_left.size(), 1)
+	assert_eq(_sim.lost_today, 1)
+	assert_eq(_sim.leave_reasons_today, {&"removed": 1})
 	_assert_drained()
 
 

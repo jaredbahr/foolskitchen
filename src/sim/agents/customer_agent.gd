@@ -115,6 +115,8 @@ func on_removed(world: SimWorld) -> void:
 	_cancel_work(world, sim)
 	_release_seat(world)
 	state = State.LEFT
+	if sim != null:
+		sim.record_departure(self)
 
 
 func _try_seat(world: SimWorld) -> bool:
