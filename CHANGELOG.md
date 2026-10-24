@@ -26,7 +26,7 @@ Each line ends with its PR number.
 - An evening report screen (not yet shown during play): profit, income and costs by category, dishes sold with the best seller marked, guests served versus lost, why guests left, and review quotes. (#25)
 
 ### Content
-- Placed chairs now have a usable seat. (#PR)
+- Placed chairs now have a usable seat. (#48)
 - Tier 1 money numbers as data: $300 starting cash, $40 rent, wages of $30 (cook) and $25 (server), and a daily fridge restock. (#40)
 - Starter content as data: 7 ingredients, 3 recipes (burger, grilled cheese, tomato soup) and 8 items (door, two-seat table, chair, fridge, prep counter, stove, pass counter, potted plant). (#23)
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
