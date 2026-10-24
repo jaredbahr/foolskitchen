@@ -273,7 +273,12 @@ func test_display_nudges_are_stable_bounded_and_independent_of_input_order() -> 
 		assert_eq(a[id].display_offset, b[id].display_offset)
 		assert_eq(a[id].display_offset, again[id].display_offset)
 		assert_almost_eq(a[id].display_offset.y, 0.0)
-		assert_true(a[id].display_offset.length() <= AgentPresentationController.DISPLAY_NUDGE_STEP)
+		# Vector3 position addition/subtraction rounds through 32-bit real_t.
+		# At this 0.75 origin the one-step offset becomes 0.450010061.
+		var nudge_length: float = a[id].display_offset.length()
+		assert_true(nudge_length <= AgentPresentationController.DISPLAY_NUDGE_STEP + 0.000001,
+			"agent %d nudge %.9f exceeds step %.9f plus 0.000001" %
+			[id, nudge_length, AgentPresentationController.DISPLAY_NUDGE_STEP])
 	assert_eq(first.cell, second.cell)
 	second.cell = Vector2i(2, 1)
 	a = AgentPresentationController.frames_for(forward, _world)
