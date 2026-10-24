@@ -43,6 +43,8 @@ func start_day() -> void:
 	served_today = 0
 	lost_today = 0
 	leave_reasons_today.clear()
+	_departed.clear()
+	orders.prune_finished()
 	spawner.reset()
 
 
@@ -51,7 +53,9 @@ func advance() -> void:
 	world.advance()
 	spawner.advance(self)
 	for customer: CustomerAgent in customers():
-		if customer.state != CustomerAgent.State.LEFT:
+		if world.clock.phase == SimClock.Phase.CLOSED:
+			customer.leave_reason = &"closing"
+		elif customer.state != CustomerAgent.State.LEFT:
 			continue
 		world.remove_agent(customer)
 		record_departure(customer)
@@ -89,9 +93,10 @@ func pay(customer: CustomerAgent, order: Order) -> void:
 
 ## Accounts for a departure once, including direct world removal and repeated cleanup.
 func record_departure(customer: CustomerAgent) -> void:
-	if _departed.has(customer.id):
+	if customer.departure_recorded or _departed.has(customer.id):
 		return
 	_departed[customer.id] = true
+	customer.departure_recorded = true
 	if not customer.paid and customer.leave_reason == &"happy":
 		customer.leave_reason = &"removed"
 	var reason: StringName = customer.leave_reason

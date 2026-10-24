@@ -5,6 +5,9 @@ extends SimAgent
 enum State { ARRIVING, QUEUED, WALKING_TO_SEAT, ORDERING, WAITING_FOOD,
 	EATING, PAYING, LEAVING, LEFT }
 
+## A seat walk must recover well before the food-wait timeout.
+const SEAT_WALK_LIMIT: int = 200
+
 var state: State = State.ARRIVING
 var queue_patience: int = 300
 var food_patience: int = 1200
@@ -14,6 +17,8 @@ var seat_cell: Vector2i = SimGrid.NO_CELL
 var order: Order = null
 var leave_reason: StringName = &"happy"
 var paid: bool = false
+## Survives morning report resets so stale removal callbacks cannot count twice.
+var departure_recorded: bool = false
 var rng: RandomNumberGenerator
 
 var _restaurant: WeakRef
@@ -23,6 +28,7 @@ var _food_wait: int = 0
 var _walk_wait: int = 0
 var _eating: int = 0
 var _exit_unreachable: int = 0
+var _ordering_block_logged: bool = false
 
 
 ## Receives a private random stream; never retains its owning restaurant strongly.
@@ -38,10 +44,16 @@ func tick(world: SimWorld) -> void:
 	if sim == null:
 		state = State.LEFT
 		return
+	# RestaurantSim removes remaining guests on this same CLOSED tick.
+	if world.clock.phase == SimClock.Phase.CLOSED:
+		return
 	if state >= State.WALKING_TO_SEAT and state <= State.PAYING:
 		var table: PlacedItem = world.grid.item(table_item_id)
 		if table == null or table.reserved_by(seat_cell) != id or not world.grid.is_walkable(seat_cell):
-			_leave(world, sim, &"no_table")
+			if state == State.WALKING_TO_SEAT:
+				_requeue(world, sim)
+			else:
+				_leave(world, sim, &"no_table")
 	if state == State.ORDERING or state == State.WAITING_FOOD:
 		# Delivery wins over the deadline on the same tick.
 		if order != null and order.state == Order.State.DELIVERED:
@@ -57,18 +69,19 @@ func tick(world: SimWorld) -> void:
 				state = State.QUEUED
 				_queue_inside(world)
 		State.QUEUED:
-			if not _try_seat(world):
+			if _queue_wait >= queue_patience:
+				_leave(world, sim, &"no_table")
+			elif not _try_seat(world):
 				_queue_inside(world)
 				_queue_wait += 1
 				if _queue_wait >= queue_patience:
 					_leave(world, sim, &"no_table")
 		State.WALKING_TO_SEAT:
 			_walk_wait += 1
-			if _walk_wait >= food_patience:
-				_leave(world, sim, &"waited_too_long")
-			elif _move(world, seat_cell):
-				state = State.ORDERING
-				_post_order_task(world, sim)
+			if _walk_wait >= SEAT_WALK_LIMIT:
+				_requeue(world, sim)
+			else:
+				_walk_to_seat(world, sim)
 		State.ORDERING:
 			if _task == null or _task.state == SimTask.State.CANCELLED:
 				_post_order_task(world, sim)
@@ -121,17 +134,49 @@ func on_removed(world: SimWorld) -> void:
 
 func _try_seat(world: SimWorld) -> bool:
 	for table: PlacedItem in world.grid.items():
-		var seat: Vector2i = world.grid.free_seat_cell(table)
-		if seat == SimGrid.NO_CELL:
-			continue
-		if not table.reserve(seat, id):
-			continue
-		table_item_id = table.id
-		seat_cell = seat
-		state = State.WALKING_TO_SEAT
-		set_destination(world.grid, seat)
-		return true
+		for seat: Vector2i in table.seat_cells:
+			if table.reserved_by(seat) != -1 or not world.grid.is_walkable(seat):
+				continue
+			if not world.grid.is_reachable(cell, seat) or not table.reserve(seat, id):
+				continue
+			if not set_destination(world.grid, seat):
+				table.release(seat, id)
+				continue
+			table_item_id = table.id
+			seat_cell = seat
+			_walk_wait = 0
+			_ordering_block_logged = false
+			state = State.WALKING_TO_SEAT
+			return true
 	return false
+
+
+func _walk_to_seat(world: SimWorld, sim: RestaurantSim) -> void:
+	if needs_repath or path.is_empty():
+		if not set_destination(world.grid, seat_cell):
+			_requeue(world, sim)
+			return
+	var result: MoveResult = step_move(world)
+	if result == MoveResult.BLOCKED:
+		if not set_destination(world.grid, seat_cell):
+			_requeue(world, sim)
+	elif result == MoveResult.ARRIVED and cell == seat_cell:
+		state = State.ORDERING
+		_post_order_task(world, sim)
+
+
+func _requeue(world: SimWorld, sim: RestaurantSim) -> void:
+	_release_seat(world)
+	table_item_id = 0
+	seat_cell = SimGrid.NO_CELL
+	clear_path()
+	# Failed walks consume the same bounded search budget, so repeated recovery
+	# cannot keep a guest alive forever even if its movement speed is zero.
+	_queue_wait += _walk_wait
+	_walk_wait = 0
+	state = State.QUEUED
+	if _queue_wait >= queue_patience:
+		_leave(world, sim, &"no_table")
 
 
 func _queue_inside(world: SimWorld) -> void:
@@ -167,6 +212,9 @@ func _post_order_task(world: SimWorld, sim: RestaurantSim) -> void:
 			distance = candidate
 			target = neighbour
 	if target == SimGrid.NO_CELL:
+		if not _ordering_block_logged:
+			world.log_event("Guest #%d cannot order: no walkable neighbour at seat %s" % [id, seat_cell])
+			_ordering_block_logged = true
 		return
 	_task = SimTask.new(&"take_order", &"server", "Take guest #%d's order" % id)
 	_task.priority = 2

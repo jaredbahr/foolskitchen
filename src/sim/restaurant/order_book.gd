@@ -24,7 +24,7 @@ func place(order: Order, now: int) -> int:
 	return order.id
 
 
-## Finds a ticket, including completed tickets, or null.
+## Finds a ticket, including completed tickets until morning pruning, or null.
 func get_order(id: int) -> Order:
 	return _orders.get(id, null)
 
@@ -55,3 +55,11 @@ func orders_in_state(state: Order.State) -> Array[Order]:
 		if _orders[id].state == state:
 			out.append(_orders[id])
 	return out
+
+
+## Discards terminal tickets at the next morning; active ids are never reused.
+func prune_finished() -> void:
+	for id: int in _orders.keys():
+		var state: Order.State = _orders[id].state
+		if state == Order.State.DELIVERED or state == Order.State.CANCELLED:
+			_orders.erase(id)
