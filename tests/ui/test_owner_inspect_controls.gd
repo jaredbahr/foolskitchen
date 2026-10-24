@@ -50,7 +50,9 @@ func test_controls_are_hidden_themed_and_mouse_contained_before_ready() -> void:
 		assert_eq(button.focus_mode, Control.FOCUS_NONE)
 		assert_eq(button.mouse_filter, Control.MOUSE_FILTER_STOP)
 		assert_false(button.mouse_force_pass_scroll_events)
-		assert_eq(button.get_theme_stylebox("pressed"), _panel.theme.get_stylebox("pressed", "Button"))
+		# Detached Controls have not resolved their effective theme cache yet.
+		# Check assignment here, then native lookup after tree entry below.
+		assert_eq(button.theme, _panel.theme)
 		assert_false(button.has_theme_stylebox_override("pressed"))
 	assert_true(_button(&"kitchen").tooltip_text.contains("(K)"))
 	assert_true(_button(&"floor").tooltip_text.contains("(F)"))
@@ -199,6 +201,10 @@ func test_native_mouse_press_survives_frame_refresh_until_release() -> void:
 	_panel.show_agent(_owner.id)
 	await tree.process_frame
 	await tree.process_frame
+	assert_true(_panel.is_node_ready())
+	for mode: StringName in OwnerAgent.MODES:
+		assert_eq(_button(mode).get_theme_stylebox("pressed"), _panel.theme.get_stylebox("pressed", "Button"))
+		assert_false(_button(mode).has_theme_stylebox_override("pressed"))
 	var button: Button = _button(&"kitchen")
 	var center: Vector2 = button.get_global_rect().get_center()
 	assert_true(button.is_visible_in_tree())
