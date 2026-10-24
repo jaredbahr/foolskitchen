@@ -34,28 +34,7 @@ jobs:
         run: bash tools/get_godot.sh
 
       - name: Import, parse and test
-        run: |
-          set +e
-          set -uo pipefail
-          ver="$(tr -d '[:space:]' < tools/godot_version.txt)"
-          export GODOT=".tools/godot-$ver/Godot_v${ver}-stable_linux.x86_64"
-          import_log="$(mktemp)"
-          timeout --kill-after=2s 120s "$GODOT" --headless --path . --import >"$import_log" 2>&1
-          import_status=$?
-          cat "$import_log"
-          diagnostic_status=1
-          if [[ "$import_status" -eq 0 ]] && ! grep -Eq 'SCRIPT ERROR|Parse Error|^[[:space:]]*ERROR:' "$import_log"; then
-            # Draft-only diagnosis; restore the normal single check.sh command before ready.
-            bash tools/repeat_game_session.sh --full
-            diagnostic_status=$?
-          else
-            echo 'PREFIX INCOMPLETE: strict headless import failed; no diagnostic samples ran.'
-            echo 'PREFIX SUMMARY: requested=20 attempted=0 passed=0 failed=0 incomplete=20'
-          fi
-          # A diagnostic failure must not prevent the ordinary full checks running.
-          bash tools/check.sh
-          checks_status=$?
-          [[ "$import_status" -eq 0 && "$diagnostic_status" -eq 0 && "$checks_status" -eq 0 ]]
+        run: bash tools/check.sh
 
   changelog:
     name: Changelog entry
