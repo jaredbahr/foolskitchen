@@ -53,6 +53,24 @@ var _zoom: float = 26.0
 var _target_zoom: float = 26.0
 var _dragging: bool = false
 var _pointer_inside: bool = false
+var _pointer_position_valid: bool = false
+var _has_panned: bool = false
+var _view_viewport: Viewport
+
+
+func _enter_tree() -> void:
+	_view_viewport = get_viewport()
+	if not _view_viewport.size_changed.is_connected(_on_viewport_resized):
+		_view_viewport.size_changed.connect(_on_viewport_resized)
+
+
+func _exit_tree() -> void:
+	if _view_viewport != null and _view_viewport.size_changed.is_connected(_on_viewport_resized):
+		_view_viewport.size_changed.disconnect(_on_viewport_resized)
+	_view_viewport = null
+	_pointer_inside = false
+	_pointer_position_valid = false
+	_dragging = false
 
 
 func _ready() -> void:
@@ -62,10 +80,13 @@ func _ready() -> void:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_MOUSE_ENTER:
 		_pointer_inside = true
+		_pointer_position_valid = false
 	elif what == NOTIFICATION_WM_MOUSE_EXIT:
 		_pointer_inside = false
+		_pointer_position_valid = false
 		_dragging = false
 	elif what == NOTIFICATION_WM_WINDOW_FOCUS_OUT:
+		_pointer_position_valid = false
 		_dragging = false
 
 
@@ -77,6 +98,8 @@ func reset_view() -> void:
 	_target_yaw = _yaw
 	_zoom = _clamp_zoom(initial_zoom)
 	_target_zoom = _zoom
+	_has_panned = false
+	_pointer_position_valid = false
 	position = Vector3(initial_focus.x, 0.0, initial_focus.y)
 	_clamp_focus()
 	rotation.y = _yaw
@@ -89,14 +112,14 @@ func reset_view() -> void:
 func _process(delta: float) -> void:
 	if not get_window().has_focus():
 		_dragging = false
+		_pointer_position_valid = false
 		return
 	if _dragging and not Input.is_mouse_button_pressed(MOUSE_BUTTON_MIDDLE):
 		_dragging = false
 	var pan_input: Vector2 = Vector2(
 		float(Input.is_physical_key_pressed(KEY_D)) - float(Input.is_physical_key_pressed(KEY_A)),
 		float(Input.is_physical_key_pressed(KEY_S)) - float(Input.is_physical_key_pressed(KEY_W)))
-	if _pointer_inside and not _dragging:
-		pan_input += edge_pan_direction(get_viewport().get_mouse_position(), get_viewport().get_visible_rect())
+	pan_input += _edge_pan_input(get_viewport().get_mouse_position(), get_viewport().get_visible_rect())
 	step_view(delta, pan_input)
 
 
@@ -110,8 +133,12 @@ func step_view(delta: float, pan_input: Vector2) -> void:
 	rotation.y = _yaw
 	var input: Vector2 = pan_input.limit_length(1.0)
 	var offset: Vector3 = Basis(Vector3.UP, _yaw) * Vector3(input.x, 0.0, input.y)
-	position += offset * pan_speed * delta
+	var movement: Vector3 = offset * pan_speed * delta
+	var previous_focus: Vector3 = position
+	position += movement
 	_clamp_focus()
+	if not movement.is_zero_approx() and not position.is_equal_approx(previous_focus):
+		_has_panned = true
 	_apply_camera()
 
 
@@ -140,8 +167,32 @@ func pan_by_drag(relative: Vector2, viewport_height: float) -> void:
 	var metres_per_pixel: float = _zoom / viewport_height * drag_sensitivity
 	var pitch: float = deg_to_rad(clampf(pitch_degrees, 20.0, 80.0))
 	var offset: Vector3 = Vector3(-relative.x, 0.0, -relative.y / sin(pitch)) * metres_per_pixel
-	position += Basis(Vector3.UP, _yaw) * offset
+	var movement: Vector3 = Basis(Vector3.UP, _yaw) * offset
+	var previous_focus: Vector3 = position
+	position += movement
 	_clamp_focus()
+	if not movement.is_zero_approx() and not position.is_equal_approx(previous_focus):
+		_has_panned = true
+
+
+## A browser can announce mouse entry before supplying a pointer position.
+## Never treat its default/stale corner coordinate as the player's first pan.
+func _edge_pan_input(mouse: Vector2, viewport_rect: Rect2) -> Vector2:
+	if not _pointer_inside or not _pointer_position_valid or _dragging:
+		return Vector2.ZERO
+	return edge_pan_direction(mouse, viewport_rect)
+
+
+## Keep the supplied floor focus through startup/canvas resizes until the player
+## translates the view. Resize must not reset their rotation, zoom or grid.
+func _on_viewport_resized() -> void:
+	_pointer_position_valid = false
+	if _view_viewport == null or not _view_viewport.get_visible_rect().has_area():
+		return
+	if not _has_panned:
+		position = Vector3(initial_focus.x, 0.0, initial_focus.y)
+		_clamp_focus()
+	_apply_camera()
 
 
 func edge_pan_direction(mouse: Vector2, viewport_rect: Rect2) -> Vector2:
@@ -191,6 +242,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventMouseMotion:
 		var motion: InputEventMouseMotion = event as InputEventMouseMotion
 		_pointer_inside = get_viewport().get_visible_rect().has_point(motion.position)
+		if not _pointer_inside:
+			_pointer_position_valid = false
+		elif not motion.relative.is_zero_approx():
+			_pointer_position_valid = true
 		if _dragging:
 			pan_by_drag(motion.relative, get_viewport().get_visible_rect().size.y)
 

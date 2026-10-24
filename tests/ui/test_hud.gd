@@ -1,5 +1,5 @@
 extends TestCase
-## Synchronous scene/event tests; rendered layout and tween timing need playtesting.
+## Scene/event tests, including native pause input; Web appearance needs playtesting.
 
 const HUD_SCENE: PackedScene = preload("res://src/ui/hud.tscn")
 var _hud: CanvasLayer
@@ -190,6 +190,89 @@ func test_wall_button_tracks_c_key_and_rebinding_without_duplicate_cycles() -> v
 	view.free()
 	_hud.call("refresh")
 	assert_true(button.disabled)
+
+
+func test_pause_uses_mouse_ignoring_shapes_with_shared_theme_foreground() -> void:
+	var pause: Button = _control("Speed0") as Button
+	assert_eq(pause.text, "", "pause needs no font glyph or platform fallback")
+	assert_eq(pause.tooltip_text, "Pause (Space)")
+	assert_true(pause.custom_minimum_size.x >= 44.0 and pause.custom_minimum_size.y >= 44.0)
+	var icon: Control = pause.get_node("Pause") as Control
+	var bars: HBoxContainer = icon.get_node("Bars") as HBoxContainer
+	assert_eq(icon.mouse_filter, Control.MOUSE_FILTER_IGNORE)
+	assert_eq(bars.mouse_filter, Control.MOUSE_FILTER_IGNORE)
+	assert_eq(bars.get_child_count(), 2)
+	for speed: int in [0, 1, 2, 4, 0]:
+		Clock.set_speed(speed)
+		var color_name: StringName = &"font_pressed_color" if speed == 0 else &"font_color"
+		for bar: ColorRect in [bars.get_node("Left") as ColorRect, bars.get_node("Right") as ColorRect]:
+			assert_eq(bar.mouse_filter, Control.MOUSE_FILTER_IGNORE)
+			assert_eq(bar.custom_minimum_size, Vector2(4.0, 14.0))
+			assert_eq(bar.color, pause.theme.get_color(color_name, &"Button"))
+		assert_eq(pause.button_pressed, speed == 0)
+
+
+func test_native_pause_click_and_physical_space_keep_one_speed_selection() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	await tree.process_frame
+	tree.root.add_child(_hud)
+	Clock.set_speed(2)
+	await tree.process_frame
+	await tree.process_frame
+	var pause: Button = _control("Speed0") as Button
+	assert_true(_hud.is_node_ready())
+	assert_eq(pause.focus_mode, Control.FOCUS_NONE)
+	assert_eq(pause.get_theme_stylebox("pressed"), pause.theme.get_stylebox("pressed", &"Button"))
+	var center: Vector2 = pause.get_global_rect().get_center()
+	for name: String in ["Left", "Right"]:
+		var bar: ColorRect = pause.get_node("Pause/Bars/" + name) as ColorRect
+		assert_true(bar.is_visible_in_tree())
+		assert_true(bar.size.x > 0.0 and bar.size.y > 0.0)
+		assert_true(pause.get_global_rect().encloses(bar.get_global_rect()))
+	EventBus.speed_changed.connect(_record_speed)
+	var motion: InputEventMouseMotion = InputEventMouseMotion.new()
+	motion.position = center
+	tree.root.push_input(motion, true)
+	_native_mouse(center, true)
+	# Let native drawing update the ink without a model/HUD refresh doing it.
+	await tree.process_frame
+	await tree.process_frame
+	assert_true(pause.get_draw_mode() == BaseButton.DRAW_PRESSED or pause.get_draw_mode() == BaseButton.DRAW_HOVER_PRESSED)
+	for name: String in ["Left", "Right"]:
+		var bar: ColorRect = pause.get_node("Pause/Bars/" + name) as ColorRect
+		assert_eq(bar.color, pause.theme.get_color(&"font_pressed_color", &"Button"), "held native press uses the pressed foreground before release")
+	_hud.call("refresh")
+	assert_true(pause.get_draw_mode() == BaseButton.DRAW_PRESSED or pause.get_draw_mode() == BaseButton.DRAW_HOVER_PRESSED, "refresh preserves the native held press")
+	await tree.process_frame
+	_native_mouse(center, false)
+	assert_eq(_speeds, [0] as Array[int], "shapes do not intercept or duplicate the native button click")
+	assert_true(pause.button_pressed)
+	_native_space(true)
+	_native_space(false)
+	assert_eq(_speeds, [0, 2] as Array[int], "physical Space still reaches the existing clock shortcut")
+	assert_true((_control("Speed2") as Button).button_pressed)
+	assert_false(pause.button_pressed)
+	_native_space(true)
+	_native_space(false)
+	assert_eq(_speeds, [0, 2, 0] as Array[int])
+	assert_true(pause.button_pressed)
+	assert_false((_control("Speed2") as Button).button_pressed)
+
+
+func _native_mouse(position: Vector2, down: bool) -> void:
+	var event: InputEventMouseButton = InputEventMouseButton.new()
+	event.position = position
+	event.button_index = MOUSE_BUTTON_LEFT
+	event.button_mask = MOUSE_BUTTON_MASK_LEFT if down else 0
+	event.pressed = down
+	(Engine.get_main_loop() as SceneTree).root.push_input(event, true)
+
+
+func _native_space(down: bool) -> void:
+	var event: InputEventKey = InputEventKey.new()
+	event.physical_keycode = KEY_SPACE
+	event.pressed = down
+	(Engine.get_main_loop() as SceneTree).root.push_input(event, true)
 
 
 func _control(name: String) -> Control:
