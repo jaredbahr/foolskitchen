@@ -133,13 +133,19 @@ func _on_cash_changed(new_cash: int, delta: int, _reason: StringName) -> void:
 	_cash = new_cash
 	_cash_label.text = Fmt.money(new_cash)
 	var label: Label = Label.new()
-	label.text = ("−" if delta < 0 else "+") + str(delta).trim_prefix("-")
+	label.text = ("−" if delta < 0 else "+") + Fmt.money(absi(delta))
 	label.add_theme_color_override("font_color", LOSS_COLOR if delta < 0 else GAIN_COLOR)
+	# A cream outline keeps it readable over the dark room background.
+	label.add_theme_color_override("font_outline_color", Color("F3E6CC"))
+	label.add_theme_constant_override("outline_size", 6)
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_deltas.add_child(label)
-	label.position = _cash_label.global_position + Vector2(0.0, 28.0)
+	# Start just under the top bar, below the cash, and drift down, so the
+	# change never covers the cash figure itself.
+	var bar_bottom: float = (get_node("Top") as Control).get_global_rect().end.y
+	label.position = Vector2(_cash_label.global_position.x, bar_bottom + 4.0)
 	if is_inside_tree():
 		var tween: Tween = create_tween().set_parallel(true)
-		tween.tween_property(label, "position:y", label.position.y - 28.0, 1.0)
+		tween.tween_property(label, "position:y", label.position.y + 24.0, 1.0)
 		tween.tween_property(label, "modulate:a", 0.0, 1.0)
 		tween.chain().tween_callback(label.queue_free)
