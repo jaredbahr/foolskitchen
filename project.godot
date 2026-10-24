@@ -37,6 +37,12 @@ window/stretch/aspect="expand"
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
 
+[editor]
+
+; Export keeps data files as text: binary conversion dropped ShopLayout.rows
+; (a PackedStringArray) in 4.7.2, so exported builds had an empty shop.
+export/convert_text_resources_to_binary=false
+
 [input]
 
 speed_pause={

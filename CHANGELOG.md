@@ -12,6 +12,7 @@ Each line ends with its PR number.
 
 ### Players
 - Press B to build while the shop is closed: move, rotate, buy or sell furniture, preview its work and seat tiles, and see warnings for unreachable furniture. (#63)
+- Playable builds: a Windows download and a browser version, built automatically on GitHub (see "Play a build" in the README). Also fixes exported builds starting with an empty shop. (#67)
 - Select the owner to help in the kitchen, work the floor, help wherever needed or stand back, using station clicks, inspector buttons or K/F/H/R; assignments save with the next morning's autosave. (#64)
 - The morning stock purchase now pops up as one total (for example "−$88") under the cash figure, instead of a pile of overlapping amounts at the left edge of the screen. (#65)
 - Choose each morning's dishes and prices from the Menu button; pricey meals can make guests leave, and the shop remembers your choices. (#62)
@@ -40,6 +41,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- `tools/export.sh` and `tools/get_export_templates.sh` make release builds; the Build workflow runs by hand or on a version tag and publishes a release whose notes are that version's whole CHANGELOG section (`tools/release_notes.sh`, tested in `check.sh`). (#67)
 - Closed-shop furniture editing now has a checked simulation API for moving, rotating, buying and selling; edited layouts are included in morning saves. (#58)
 - Worker rules: one save point (the morning autosave), no CI loops, no raw internal names in player text. (#66)
 - A five-day invariant test plays the real game (kitchen, guests, books, closing costs, report, autosave and a reload on day 3) and checks every day that guests are counted once, the books add up, wages and rent are charged once, and each morning starts clean. (#47)
