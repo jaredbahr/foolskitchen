@@ -32,8 +32,8 @@ var _skip_next_autosave: bool = false
 var _report: Control
 
 
-## Builds the restaurant and the read-only view. Safe before tree readiness and
-## without touching the Clock, Economy or SaveSystem autoloads.
+## Builds the restaurant and the read-only view. Safe before tree readiness.
+## HUD binding reads Clock/Economy; session and save registration wait for start().
 func initialize() -> void:
 	if sim != null:
 		return
@@ -60,6 +60,10 @@ func initialize() -> void:
 	camera.pan_limits = shop_half + Vector2(2.0, 2.0)
 	camera.initial_zoom = 12.0
 	camera.reset_view()
+	if not camera.yaw_snapped.is_connected(view.set_camera_quarter):
+		camera.yaw_snapped.connect(view.set_camera_quarter)
+	view.set_camera_quarter(camera.camera_quarter())
+	$HUD.bind_shop_view(view)
 	_report = $Overlay/EveningReport
 	_report.hide()
 

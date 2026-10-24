@@ -10,6 +10,24 @@ const HEIGHTS: Dictionary[int, float] = {
 }
 const CUSTOMER_COLORS: Array[Color] = [Color("c8743a"), Color("b89568"), Color("986357")]
 
+enum WallMode { UP, CUTAWAY, DOWN }
+
+signal wall_mode_changed(mode: int)
+
+const WALL_HEIGHT: float = 2.4
+const LOWERED_HEIGHT: float = 0.35
+const AWAY_FROM_CAMERA: Array[Vector2i] = [
+	Vector2i(-1, -1), Vector2i(-1, 1), Vector2i(1, 1), Vector2i(1, -1),
+]
+
+@export var wall_color: Color = Color("e6d5b8")
+@export var wall_top_color: Color = Color("b9a789")
+@export var floor_material: ShaderMaterial
+
+var wall_mode: WallMode = WallMode.CUTAWAY
+var _camera_quarter: int = 0
+var _wall_nodes: Dictionary[Vector2i, MeshInstance3D] = {}
+
 var world: SimWorld
 var floor_mesh: MeshInstance3D
 var item_nodes: Dictionary[int, MeshInstance3D] = {}
@@ -27,6 +45,7 @@ func show_world(value: SimWorld) -> void:
 			child.free()
 	item_nodes.clear()
 	agent_nodes.clear()
+	_wall_nodes.clear()
 	floor_mesh = null
 	world = value
 	if world == null:
@@ -35,7 +54,10 @@ func show_world(value: SimWorld) -> void:
 	floor_mesh.name = "Floor"
 	floor_mesh.set_meta("shop_geometry", true)
 	var material: ShaderMaterial = ShaderMaterial.new()
-	material.shader = GRID_SHADER
+	if floor_material != null:
+		material = floor_material.duplicate() as ShaderMaterial
+	if material.shader == null:
+		material.shader = GRID_SHADER
 	floor_mesh.material_override = material
 	add_child(floor_mesh)
 	_walls = Node3D.new()
@@ -84,6 +106,7 @@ func _build_terrain() -> void:
 	for child: Node in _walls.get_children():
 		_walls.remove_child(child)
 		child.free()
+	_wall_nodes.clear()
 	var surface: SurfaceTool = SurfaceTool.new()
 	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var count: int = 0
@@ -92,8 +115,13 @@ func _build_terrain() -> void:
 			var cell: Vector2i = Vector2i(x, y)
 			var terrain: SimGrid.Terrain = world.grid.terrain(cell)
 			if terrain == SimGrid.Terrain.WALL:
-				var wall: MeshInstance3D = _box(Vector3(0.5, 2.4, 0.5), Color("d8c7ab"))
-				wall.position = GridMath.cell_to_world(cell) + Vector3(0.0, 1.2, 0.0)
+				var wall: MeshInstance3D = _box(Vector3(0.5, WALL_HEIGHT, 0.5), wall_color)
+				wall.position = GridMath.cell_to_world(cell)
+				wall.set_meta("wall_cell", cell)
+				var top: MeshInstance3D = _box(Vector3(0.5, 0.02, 0.5), wall_top_color)
+				top.name = "Top"
+				wall.add_child(top)
+				_wall_nodes[cell] = wall
 				_walls.add_child(wall)
 			elif terrain == SimGrid.Terrain.FLOOR or terrain == SimGrid.Terrain.ENTRY:
 				var corner: Vector3 = Vector3(x * GridMath.CELL_SIZE, 0.0, y * GridMath.CELL_SIZE)
@@ -103,6 +131,68 @@ func _build_terrain() -> void:
 					surface.add_vertex(corners[index])
 				count += 1
 	floor_mesh.mesh = surface.commit() if count > 0 else null
+	_apply_wall_heights()
+
+
+## Selects the wall presentation without changing terrain or pathfinding.
+func set_wall_mode(mode: WallMode) -> void:
+	if mode < WallMode.UP or mode > WallMode.DOWN or mode == wall_mode:
+		return
+	wall_mode = mode
+	_apply_wall_heights()
+	wall_mode_changed.emit(wall_mode)
+
+
+## Cycles Up -> Cutaway -> Down -> Up; Cutaway is the initial mode.
+func cycle_wall_mode() -> void:
+	set_wall_mode((int(wall_mode) + 1) % 3)
+
+
+## Matches the camera's rotation target rather than its interpolated angle.
+func set_camera_quarter(quarter: int) -> void:
+	_camera_quarter = posmod(quarter, 4)
+	_apply_wall_heights()
+
+
+## Returns the currently lowered cells in stable row order for diagnostics.
+func lowered_wall_cells() -> Array[Vector2i]:
+	var cells: Array[Vector2i] = []
+	if world == null:
+		return cells
+	for y: int in range(world.grid.size.y):
+		for x: int in range(world.grid.size.x):
+			var cell: Vector2i = Vector2i(x, y)
+			if _wall_nodes.has(cell) and _wall_is_lowered(cell):
+				cells.append(cell)
+	return cells
+
+
+func _wall_is_lowered(cell: Vector2i) -> bool:
+	if wall_mode != WallMode.CUTAWAY:
+		return wall_mode == WallMode.DOWN
+	var direction: Vector2i = AWAY_FROM_CAMERA[_camera_quarter]
+	for distance: int in range(1, 3):
+		var terrain: SimGrid.Terrain = world.grid.terrain(cell + direction * distance)
+		if terrain == SimGrid.Terrain.FLOOR:
+			return true
+	return false
+
+
+func _apply_wall_heights() -> void:
+	for cell: Vector2i in _wall_nodes:
+		var wall: MeshInstance3D = _wall_nodes[cell]
+		var height: float = LOWERED_HEIGHT if _wall_is_lowered(cell) else WALL_HEIGHT
+		(wall.mesh as BoxMesh).size.y = height
+		wall.position.y = height * 0.5
+		(wall.get_node("Top") as MeshInstance3D).position.y = height * 0.5 + 0.005
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey:
+		var key: InputEventKey = event as InputEventKey
+		var code: Key = key.physical_keycode if key.physical_keycode != KEY_NONE else key.keycode
+		if key.pressed and not key.echo and code == KEY_C:
+			cycle_wall_mode()
 
 
 func _build_item(item: PlacedItem) -> void:
@@ -162,6 +252,10 @@ func _process(delta: float) -> void:
 			capsule.rings = 4
 			mesh.mesh = capsule
 			mesh.material_override = _material(_agent_color(agent))
+			var nose: MeshInstance3D = _box(Vector3(0.16, 0.14, 0.22), _agent_color(agent).darkened(0.4))
+			nose.name = "FacingMarker"
+			nose.position = Vector3(0.0, 0.62, -0.28)
+			mesh.add_child(nose)
 			mesh.set_meta("agent_id", agent.id)
 			mesh.set_meta("shop_geometry", true)
 			agent_nodes[agent.id] = mesh

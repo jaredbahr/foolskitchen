@@ -4,8 +4,6 @@ extends CanvasLayer
 
 const SPEEDS: Array[int] = [0, 1, 2, 4]
 const PHASE_NAMES: Array[String] = ["Morning", "Open", "Last orders", "Closed"]
-const ACTIVE_COLOR: Color = Color("F3E6CC")
-const INACTIVE_COLOR: Color = Color("3B2A20")
 const GAIN_COLOR: Color = Color("286B3B")
 const LOSS_COLOR: Color = Color("A42E2E")
 
@@ -17,6 +15,8 @@ var _context: Button
 var _deltas: Control
 var _buttons: Array[Button] = []
 var _cash: int = 0
+var _wall_button: Button
+var _shop_view: ShopView
 
 
 func _ready() -> void:
@@ -32,6 +32,8 @@ func refresh() -> void:
 		_cash_label = get_node("Top/Row/Cash") as Label
 		_context = get_node("Top/Row/Context") as Button
 		_deltas = get_node("Deltas") as Control
+		_wall_button = get_node("Top/Row/Walls") as Button
+		_wall_button.pressed.connect(_on_wall_button_pressed)
 		_cash = Economy.cash
 		for speed: int in SPEEDS:
 			var button: Button = get_node("Top/Row/Speed%d" % speed) as Button
@@ -50,6 +52,17 @@ func refresh() -> void:
 	_context.visible = Clock.sim.phase == SimClock.Phase.MORNING or Clock.sim.phase == SimClock.Phase.CLOSED
 	_context.text = "Open shop" if Clock.sim.phase == SimClock.Phase.MORNING else "Next day"
 	_on_speed_changed(Clock.speed)
+	_refresh_wall_mode()
+
+
+## Binds this presentation control to the containing shop view, idempotently.
+func bind_shop_view(view: ShopView) -> void:
+	if is_instance_valid(_shop_view) and _shop_view.wall_mode_changed.is_connected(_on_wall_mode_changed):
+		_shop_view.wall_mode_changed.disconnect(_on_wall_mode_changed)
+	_shop_view = view
+	if is_instance_valid(_shop_view):
+		_shop_view.wall_mode_changed.connect(_on_wall_mode_changed)
+	refresh()
 
 
 func _exit_tree() -> void:
@@ -82,8 +95,21 @@ func _on_speed_changed(speed: int) -> void:
 		var button: Button = _buttons[index]
 		var active: bool = SPEEDS[index] == speed
 		button.set_pressed_no_signal(active)
-		for color_name: String in ["font_color", "font_hover_color", "font_pressed_color", "font_hover_pressed_color"]:
-			button.add_theme_color_override(color_name, ACTIVE_COLOR if active else INACTIVE_COLOR)
+
+
+func _on_wall_button_pressed() -> void:
+	if is_instance_valid(_shop_view):
+		_shop_view.cycle_wall_mode()
+
+
+func _on_wall_mode_changed(_mode: int) -> void:
+	_refresh_wall_mode()
+
+
+func _refresh_wall_mode() -> void:
+	_wall_button.disabled = not is_instance_valid(_shop_view)
+	var names: Array[String] = ["Up", "Cutaway", "Down"]
+	_wall_button.text = "Walls: " + names[_shop_view.wall_mode] if is_instance_valid(_shop_view) else "Walls"
 
 
 func _on_sim_ticked(_tick: int) -> void:
