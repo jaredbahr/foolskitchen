@@ -29,6 +29,8 @@ func _initialize() -> void:
 	for path in files:
 		if not filter.is_empty() and not path.contains(filter):
 			continue
+		if not filter.is_empty():
+			print("TEST FILE: %s" % path)
 		var script: GDScript = load(path)
 		if script == null or not script.can_instantiate():
 			print("FAIL %s: could not load script" % path)

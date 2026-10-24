@@ -5,7 +5,6 @@ extends TestCase
 const MAIN_SCENE: PackedScene = preload("res://src/world/main.tscn")
 const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
 const TUNING: EconomyTuning = preload("res://data/balance/tier1_economy.tres")
-const TEST_SAVES: String = "user://test_shop_edit_soak_saves/"
 const SLOT: String = "test_shop_edit_soak"
 const DAYS: int = 5
 const RELOAD_BEFORE_DAY: int = 3
@@ -18,6 +17,7 @@ const DECOR_ID: StringName = &"potted_plant"
 
 var _mains: Array[Node] = []
 var _old_save_dir: String
+var _save_dir: String
 var _edit_rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _fixed_items: Array[Dictionary] = []
 var _arrivals_today: int = 0
@@ -38,7 +38,8 @@ var _edit_actions_today: int = 0
 
 func before_each() -> void:
 	_old_save_dir = SaveSystem.save_dir
-	SaveSystem.save_dir = TEST_SAVES
+	_save_dir = SaveTestPaths.case_dir(OS.get_process_id(), "shop_edit_soak")
+	SaveSystem.save_dir = _save_dir
 	SaveSystem.delete_slot(SLOT)
 	_edit_rng.seed = EDIT_SEED
 
@@ -48,7 +49,8 @@ func after_each() -> void:
 		_free(main)
 	_mains.clear()
 	SaveSystem.delete_slot(SLOT)
-	DirAccess.remove_absolute(TEST_SAVES)
+	DirAccess.remove_absolute(_save_dir)
+	DirAccess.remove_absolute(SaveTestPaths.process_dir(OS.get_process_id()))
 	SaveSystem.save_dir = _old_save_dir
 	Clock.set_speed(0)
 	Economy.reset(0)
@@ -270,7 +272,7 @@ func _buy_and_sell_decor(main: Node, day: int) -> bool:
 func _edit_state() -> Dictionary:
 	return {"cash": Economy.cash, "ledger": Economy.ledger.to_dict().duplicate(true),
 		"clock": Clock.sim.to_dict().duplicate(true), "customer_rng": GameState.rng(&"customers").state,
-		"autosave": FileAccess.get_file_as_string(TEST_SAVES.path_join(SLOT + ".json"))}
+		"autosave": FileAccess.get_file_as_string(_save_dir.path_join(SLOT + ".json"))}
 
 
 ## Check the entire ledger: a move adds nothing, while a buy/sell adds exactly
@@ -300,7 +302,7 @@ func _assert_edit_context(main: Node, before: Dictionary) -> void:
 	var world: SimWorld = main.get("world")
 	assert_eq(Clock.sim.to_dict(), before["clock"], "edits never advance the day")
 	assert_eq(GameState.rng(&"customers").state, before["customer_rng"], "edits use a separate RNG")
-	assert_eq(FileAccess.get_file_as_string(TEST_SAVES.path_join(SLOT + ".json")), before["autosave"],
+	assert_eq(FileAccess.get_file_as_string(_save_dir.path_join(SLOT + ".json")), before["autosave"],
 		"furniture edits wait for the next normal morning autosave")
 	assert_eq(_fixed_snapshot(world.grid), _fixed_items, "the kitchen line and doors stay fixed")
 	assert_true(_service_access_ok(world.grid), "all real work/seat cells and staff posts remain reachable")
@@ -407,7 +409,7 @@ func _reload_morning_autosave(old: Node) -> Node:
 
 ## Read the real normal autosave; never invoke an extra save from the soak.
 func _assert_morning_autosave(main: Node, day: int) -> void:
-	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(TEST_SAVES.path_join(SLOT + ".json")))
+	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(_save_dir.path_join(SLOT + ".json")))
 	assert_true(saved is Dictionary, "the normal morning autosave exists and parses")
 	if not saved is Dictionary:
 		return

@@ -2,18 +2,19 @@ extends TestCase
 ## Menu requests, autosave/startup staging and the real kitchen's sale prices.
 
 const MAIN: PackedScene = preload("res://src/world/main.tscn")
-const SAVE_DIR: String = "user://test_menu_sessions/"
 const SLOT: String = "menu_session"
 
 var _mains: Array[Node] = []
 var _old_save_dir: String
+var _save_dir: String
 var _paid_amounts: Array[int] = []
 var _paid_recipes: Array[StringName] = []
 
 
 func before_each() -> void:
 	_old_save_dir = SaveSystem.save_dir
-	SaveSystem.save_dir = SAVE_DIR
+	_save_dir = SaveTestPaths.case_dir(OS.get_process_id(), "menu_session")
+	SaveSystem.save_dir = _save_dir
 	SaveSystem.delete_slot(SLOT)
 
 
@@ -21,7 +22,8 @@ func after_each() -> void:
 	for main: Node in _mains.duplicate():
 		_close(main)
 	SaveSystem.delete_slot(SLOT)
-	DirAccess.remove_absolute(SAVE_DIR)
+	DirAccess.remove_absolute(_save_dir)
+	DirAccess.remove_absolute(SaveTestPaths.process_dir(OS.get_process_id()))
 	SaveSystem.save_dir = _old_save_dir
 	Clock.set_speed(0)
 	Economy.reset(0)
@@ -321,7 +323,7 @@ func _on_paid(_guest: CustomerAgent, order: Order, amount: int) -> void:
 
 
 func _path() -> String:
-	return SAVE_DIR.path_join(SLOT + ".json")
+	return _save_dir.path_join(SLOT + ".json")
 
 
 func _document(backup: bool = false) -> Dictionary:

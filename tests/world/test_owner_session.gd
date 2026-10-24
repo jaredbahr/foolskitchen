@@ -13,7 +13,7 @@ var _old_providers: Dictionary = {}
 
 func before_each() -> void:
 	_old_save_dir = SaveSystem.save_dir
-	_save_dir = "user://test_owner_session_%d/" % OS.get_process_id()
+	_save_dir = SaveTestPaths.case_dir(OS.get_process_id(), "owner_session")
 	SaveSystem.save_dir = _save_dir
 	SaveSystem.delete_slot(SLOT)
 	for key: String in ["owner", "shop", "menu"]:
@@ -26,6 +26,7 @@ func after_each() -> void:
 		_close(main)
 	SaveSystem.delete_slot(SLOT)
 	DirAccess.remove_absolute(_save_dir)
+	DirAccess.remove_absolute(SaveTestPaths.process_dir(OS.get_process_id()))
 	SaveSystem.save_dir = _old_save_dir
 	# Restore the previously registered session providers after this fixture.
 	for key: String in ["owner", "shop", "menu"]:

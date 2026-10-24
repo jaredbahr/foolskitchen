@@ -24,7 +24,7 @@ var _old_providers: Dictionary = {}
 
 func before_each() -> void:
 	_old_save_dir = SaveSystem.save_dir
-	_save_dir = "user://test_build_session_%d/" % OS.get_process_id()
+	_save_dir = SaveTestPaths.case_dir(OS.get_process_id(), "build_session")
 	SaveSystem.save_dir = _save_dir
 	SaveSystem.delete_slot(SLOT)
 	Clock.set_speed(0)
@@ -40,6 +40,7 @@ func after_each() -> void:
 		_viewport.free()
 	SaveSystem.delete_slot(SLOT)
 	DirAccess.remove_absolute(_save_dir)
+	DirAccess.remove_absolute(SaveTestPaths.process_dir(OS.get_process_id()))
 	SaveSystem.save_dir = _old_save_dir
 	for key: String in ["owner", "shop", "menu"]:
 		if _old_providers.has(key):

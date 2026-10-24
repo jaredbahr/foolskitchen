@@ -25,7 +25,7 @@ var _restore_calls: int = 0
 
 func before_each() -> void:
 	_save = SaveScript.new()
-	_save.save_dir = "user://test_saves/issue18_%s" % _save.get_instance_id()
+	_save.save_dir = SaveTestPaths.case_dir(OS.get_process_id(), "save_system_%d" % _save.get_instance_id())
 	_save.register("first", _capture_first, _restore_first)
 	_save.register("second", _capture_second, _restore_second)
 
@@ -36,6 +36,7 @@ func after_each() -> void:
 		for file: String in directory.get_files():
 			DirAccess.remove_absolute(_save.save_dir.path_join(file))
 		DirAccess.remove_absolute(_save.save_dir)
+	DirAccess.remove_absolute(SaveTestPaths.process_dir(OS.get_process_id()))
 	_save.free()
 	if _game != null:
 		_game.free()
