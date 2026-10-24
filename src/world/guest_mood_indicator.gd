@@ -5,6 +5,7 @@ extends Node3D
 const COLORS: Array[Color] = [Color("38764b"), Color("c9a346"), Color("c8743a"), Color("a83e35")]
 const MARKS: Array[String] = ["", "", "!", "!!"]
 const HEAD_OFFSET: float = 1.25
+const DISPLAY_SCALE: float = 0.6
 
 var band: int = -1
 ## Counts actual band presentation changes, independently of rendered frames.
@@ -20,8 +21,8 @@ func _init() -> void:
 	dot = MeshInstance3D.new()
 	dot.name = "Dot"
 	var sphere: SphereMesh = SphereMesh.new()
-	sphere.radius = 0.18
-	sphere.height = 0.36
+	sphere.radius = 0.18 * DISPLAY_SCALE
+	sphere.height = 0.36 * DISPLAY_SCALE
 	sphere.radial_segments = 16
 	sphere.rings = 6
 	dot.mesh = sphere
@@ -37,7 +38,7 @@ func _init() -> void:
 	mark.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	mark.no_depth_test = true
 	mark.font_size = 64
-	mark.pixel_size = 0.004
+	mark.pixel_size = 0.004 * DISPLAY_SCALE
 	mark.modulate = Color("f3e6cc")
 	mark.outline_modulate = Color("3b2a20")
 	mark.outline_size = 8

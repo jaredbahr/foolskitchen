@@ -238,7 +238,7 @@ func test_cleaner_capsule_uses_curated_sage_instead_of_a_guest_colour() -> void:
 	assert_eq(colors[cleaner.id], ShopView.CLEANER_SWATCH.color)
 	assert_false(ShopView.CUSTOMER_COLORS.has(colors[cleaner.id]))
 	assert_ne(colors[cleaner.id], colors[guest.id])
-	var body: MeshInstance3D = _view.agent_nodes[cleaner.id]
+	var body: MeshInstance3D = _view.agent_nodes[cleaner.id] as MeshInstance3D
 	assert_true(body.mesh is CapsuleMesh)
 	assert_eq((body.material_override as StandardMaterial3D).albedo_color,
 		ShopView.CLEANER_SWATCH.color)
@@ -280,6 +280,8 @@ func test_placement_removal_and_rebinding_disconnect_old_grid() -> void:
 
 
 func test_agents_interpolate_and_reconcile_without_writing_sim() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	await tree.process_frame
 	var world: SimWorld = SimWorld.new(SimGrid.new(Vector2i(4, 4)))
 	var agent: StaffAgent = StaffAgent.new(&"cook")
 	agent.cell = Vector2i(1, 1)
@@ -288,11 +290,14 @@ func test_agents_interpolate_and_reconcile_without_writing_sim() -> void:
 	agent.move_progress = 0.25
 	world.add_agent(agent)
 	_show(world)
-	var node: MeshInstance3D = _view.agent_nodes[agent.id]
-	var expected: Vector3 = GridMath.cell_to_world(agent.cell).lerp(GridMath.cell_to_world(agent.next_cell()), 0.25) + Vector3(0, 0.875, 0)
+	assert_true(_view.is_inside_tree())
+	var node: PersonView = _view.agent_nodes[agent.id] as PersonView
+	var expected: Vector3 = GridMath.cell_to_world(agent.cell).lerp(GridMath.cell_to_world(agent.next_cell()), 0.25)
 	assert_eq(node.position, expected)
-	assert_almost_eq((node.mesh as CapsuleMesh).height, 1.75)
-	assert_almost_eq((node.mesh as CapsuleMesh).radius, 0.25)
+	assert_eq(node.model_name(), PersonPresentation.COOK_MODEL)
+	assert_eq(node.current_clip(), &"walk")
+	assert_true(node.get_meta("person_ready"))
+	assert_almost_eq((node.get_node("ModelPivot") as Node3D).scale.x, ArtScale.CHARACTER_SCALE)
 	_view._process(0.1)
 	assert_true(node.rotation.y < 0.0)
 	assert_eq(agent.move_progress, 0.25)
