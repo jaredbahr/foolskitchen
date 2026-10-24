@@ -5,6 +5,10 @@ extends SceneTree
 ## Optional --quarter=0..3 selects an exact cutaway camera quarter for review.
 ##   --open      press "Open shop" at the start
 ##   --fast=N    also run N extra sim ticks per frame (via the scene's run_ticks)
+##   --select=guest  inspect a live guest through the scene's selection API
+##   --f3        show the scene's read-only debug overlay
+
+const MAX_CAPTURE_WAIT_FRAMES: int = 8
 
 var _frames: int = 0
 var _shots: Array[int] = [120, 400, 900]
@@ -17,6 +21,13 @@ var _failed: bool = false
 var _errors: ErrorCounter = ErrorCounter.new()
 var _open: bool = false
 var _fast: int = 0
+var _select_guest: bool = false
+var _f3: bool = false
+var _selected_guest_id: int = -1
+var _capture_pending: bool = false
+var _capture_frame: int = 0
+var _capture_wait_frames: int = 0
+var _finish_requested: bool = false
 
 
 func _initialize() -> void:
@@ -30,6 +41,16 @@ func _initialize() -> void:
 			_open = true
 		elif arg.begins_with("--fast="):
 			_fast = int(arg.trim_prefix("--fast="))
+		elif arg.begins_with("--select"):
+			if arg != "--select=guest":
+				_fail_capture("--select only supports --select=guest")
+				return
+			_select_guest = true
+		elif arg.begins_with("--f3"):
+			if arg != "--f3":
+				_fail_capture("--f3 does not accept a value")
+				return
+			_f3 = true
 		elif arg.begins_with("--scene="):
 			_scene_path = arg.trim_prefix("--scene=")
 		elif arg.begins_with("--quarter="):
@@ -42,8 +63,8 @@ func _initialize() -> void:
 			_shots.clear()
 			for f in arg.trim_prefix("--frames=").split(","):
 				_shots.append(int(f))
-	if _shots.is_empty() or _shots.min() < 1 or (_quarter >= 0 and _shots.min() < 4):
-		_fail_capture("capture frames must be positive, and at least 4 for --quarter")
+	if _shots.is_empty() or _shots.min() < 1 or ((_quarter >= 0 or _select_guest or _f3) and _shots.min() < 4):
+		_fail_capture("capture frames must be positive, and at least 4 for --quarter, --select or --f3")
 		return
 	if DirAccess.make_dir_recursive_absolute(_out) != OK:
 		_fail_capture("cannot create output directory")
@@ -62,6 +83,12 @@ func _initialize() -> void:
 func _process(_delta: float) -> bool:
 	if _failed:
 		return false
+	if _capture_pending:
+		# A disabled/non-drawing viewport must fail instead of waiting forever.
+		_capture_wait_frames += 1
+		if _capture_wait_frames > MAX_CAPTURE_WAIT_FRAMES:
+			_fail_capture("viewport did not finish drawing the pending capture")
+		return false
 	_frames += 1
 	if _frames == 3:
 		# Autoloads aren't compile-time identifiers in a --script main loop.
@@ -72,13 +99,20 @@ func _process(_delta: float) -> bool:
 		_configure_camera()
 		if _failed:
 			return false
+		_configure_inspection()
+		if _failed:
+			return false
 	if _fast > 0 and _frames > 3 and _main.has_method("run_ticks"):
 		_main.call("run_ticks", _fast)
+	if _select_guest and _frames >= 3:
+		_select_live_guest()
+		if _failed:
+			return false
+	_finish_requested = _frames >= _shots.max()
 	if _shots.has(_frames):
-		_capture()
-	if _shots.is_empty() or _frames >= _shots.max():
-		OS.remove_logger(_errors)
-		quit(1 if _failed or _errors.count() > 0 else 0)
+		_queue_capture()
+	if _finish_requested and not _capture_pending:
+		_finish_capture()
 	return false
 
 
@@ -103,9 +137,77 @@ func _configure_camera() -> void:
 		rig.set_process(false)
 
 
+func _configure_inspection() -> void:
+	if not _select_guest and not _f3:
+		return
+	if not _main.has_method("inspection_state") or _capture_world() == null:
+		_fail_capture("requested inspection requires the scene's inspection state and live world APIs")
+		return
+	if _select_guest and not _main.has_method("select_agent"):
+		_fail_capture("--select=guest requires the scene's select_agent API")
+		return
+	if _f3:
+		if not _main.has_method("set_debug_visible"):
+			_fail_capture("--f3 requires the scene's set_debug_visible API")
+			return
+		_main.call("set_debug_visible", true)
+
+
+func _capture_world() -> SimWorld:
+	if "world" in _main:
+		return _main.get("world") as SimWorld
+	return null
+
+
+func _select_live_guest() -> void:
+	var world: SimWorld = _capture_world()
+	if world == null:
+		_fail_capture("--select=guest requires a live simulation world")
+		return
+	if world.agent(_selected_guest_id) is CustomerAgent:
+		return
+	# Wait only within the requested frame budget for normal/--fast arrivals.
+	# If a previous guest departed, select the next live guest in stable id order.
+	_selected_guest_id = -1
+	for agent: SimAgent in world.agents:
+		if agent is CustomerAgent:
+			if not bool(_main.call("select_agent", agent.id)):
+				_fail_capture("scene rejected selection of a live guest")
+				return
+			_selected_guest_id = agent.id
+			return
+
+
+func _queue_capture() -> void:
+	_capture_pending = true
+	_capture_frame = _frames
+	_capture_wait_frames = 0
+	# MainLoop._process precedes node processing and rendering. Save pixels and
+	# inspect the scene together only after this frame has actually been drawn.
+	RenderingServer.frame_post_draw.connect(_capture, CONNECT_ONE_SHOT)
+
+
 func _capture() -> void:
+	if _failed or not _capture_pending:
+		return
 	if _errors.count() > 0:
 		_fail_capture("engine/script errors occurred before capture")
+		return
+	var inspection: Dictionary = {}
+	if _main.has_method("inspection_state"):
+		inspection = _main.call("inspection_state")
+	var world: SimWorld = _capture_world()
+	var selected_id: int = int(inspection.get("selected_agent_id", -1))
+	var selected_live: bool = world != null and world.agent(selected_id) is CustomerAgent
+	if _select_guest:
+		if _selected_guest_id < 1 or selected_id != _selected_guest_id or not selected_live or inspection.get("selected_role") != "guest" or inspection.get("panel_visible") != true:
+			_fail_capture("requested live guest selection/panel was not present in the rendered frame")
+			return
+	if _f3 and inspection.get("debug_visible") != true:
+		_fail_capture("requested F3 overlay was not visible in the rendered frame")
+		return
+	if (_select_guest or _f3) and (world == null or inspection.get("world_tick", -1) != world.now):
+		_fail_capture("inspection world tick did not match the rendered simulation")
 		return
 	var rig: Node3D = _main.get_node_or_null("CameraRig") as Node3D
 	var view: Node = _main.get_node_or_null("ShopView")
@@ -128,31 +230,56 @@ func _capture() -> void:
 		if actual_quarter != _quarter or wall_mode != 1 or yaw_degrees == null or absf(float(yaw_degrees) - expected_yaw) > 0.01:
 			_fail_capture("requested camera quarter/cutaway mode did not match the rendered scene")
 			return
-	var path: String = _out.path_join("shot_%04d.png" % _frames)
+	var path: String = _out.path_join("shot_%04d.png" % _capture_frame)
 	var image: Image = root.get_viewport().get_texture().get_image()
 	if image == null or image.is_empty() or image.save_png(path) != OK:
 		_fail_capture("cannot save viewport image: " + path)
 		return
 	var metadata: Dictionary = {
-		"scene": _scene_path, "frame": _frames, "requested_quarter": _quarter,
+		"scene": _scene_path, "frame": _capture_frame, "requested_quarter": _quarter,
 		"actual_quarter": actual_quarter, "yaw_degrees": yaw_degrees,
 		"wall_mode": wall_mode, "lowered_wall_cells": lowered,
 		"width": image.get_width(), "height": image.get_height(),
 		"godot_version": Engine.get_version_info()["string"],
 		"video_adapter": RenderingServer.get_video_adapter_name(),
 		"engine_errors": _errors.count(),
+		"capture_timing": "frame_post_draw",
+		"requested_selection": "guest" if _select_guest else "",
+		"requested_debug_visible": _f3,
+		"selected_agent_id": inspection.get("selected_agent_id"),
+		"selected_item_id": inspection.get("selected_item_id"),
+		"selected_role": inspection.get("selected_role"),
+		"selected_agent_live": selected_live,
+		"panel_visible": inspection.get("panel_visible"),
+		"debug_visible": inspection.get("debug_visible"),
+		"world_tick": inspection.get("world_tick", world.now if world != null else null),
 	}
 	var file: FileAccess = FileAccess.open(path.get_basename() + ".json", FileAccess.WRITE)
 	if file == null:
 		_fail_capture("cannot write capture metadata")
 		return
 	file.store_string(JSON.stringify(metadata, "\t"))
+	file.flush()
+	var metadata_error: Error = file.get_error()
 	file.close()
+	if metadata_error != OK:
+		_fail_capture("cannot save capture metadata")
+		return
 	print("saved ", path)
 	print("capture ", JSON.stringify(metadata))
+	_capture_pending = false
+	if _finish_requested:
+		_finish_capture()
+
+
+func _finish_capture() -> void:
+	OS.remove_logger(_errors)
+	quit(1 if _failed or _errors.count() > 0 else 0)
 
 
 func _fail_capture(message: String) -> void:
 	_failed = true
+	if RenderingServer.frame_post_draw.is_connected(_capture):
+		RenderingServer.frame_post_draw.disconnect(_capture)
 	printerr("ERROR: capture failed: ", message)
 	quit(1)

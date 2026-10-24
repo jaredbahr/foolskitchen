@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- Click staff, guests or furniture to see what is happening and why; press F3 for remaining paths, task ages, recent events and measured frame/tick rates. (#PR)
 - See into the shop with camera-aware cutaway walls (cycle with C), warmer lighting, clear selected speed buttons, and small facing markers on staff and guests. (#43)
 - A working kitchen: cooks fetch stock, prepare dishes and plate on the pass; servers deliver meals and clear dirty tables before guests can sit again. Missing ingredients give guests a clear reason to leave. (#44)
 - A first balance pass: Tier 1 now breaks even to a small profit on a typical day (about 16–18 guests served, about +$10–25 after the first day's full fridge stock). Prices are $12 burger, $8 grilled cheese and $9 tomato soup, guests arrive a little more often, and the morning restock is bigger so the fridge rarely runs out. With 6 seats the shop tops out around 18 guests a day. (#46)
