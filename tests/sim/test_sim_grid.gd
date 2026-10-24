@@ -248,3 +248,15 @@ func test_find_path_to_any_tie_goes_to_earlier_goal() -> void:
 			Vector2i(4, 2), "equal cost: the first listed goal wins")
 	assert_eq(g.find_path_to_any(Vector2i(2, 2), [Vector2i(0, 2), Vector2i(4, 2)] as Array[Vector2i])[-1],
 			Vector2i(0, 2), "and the order decides, not the position")
+
+
+## Neighbours have a stable order, skip walls, and never cut blocked corners.
+func test_walkable_neighbours_order_and_corner_rules() -> void:
+	var grid: SimGrid = SimGrid.new(Vector2i(3, 3))
+	assert_eq(grid.walkable_neighbours(Vector2i(1, 1)), [Vector2i(1, 0), Vector2i(2, 1),
+		Vector2i(1, 2), Vector2i(0, 1), Vector2i(2, 0), Vector2i(2, 2),
+		Vector2i(0, 2), Vector2i(0, 0)] as Array[Vector2i])
+	grid.set_terrain(Vector2i(1, 0), SimGrid.Terrain.WALL)
+	assert_eq(grid.walkable_neighbours(Vector2i(1, 1)), [Vector2i(2, 1), Vector2i(1, 2),
+		Vector2i(0, 1), Vector2i(2, 2), Vector2i(0, 2)] as Array[Vector2i])
+	assert_eq(grid.walkable_neighbours(Vector2i.ZERO), [Vector2i(0, 1)] as Array[Vector2i])

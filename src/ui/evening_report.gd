@@ -4,6 +4,7 @@ extends Control
 signal next_day_pressed
 
 const LEAVE_LABELS: Dictionary = {
+	&"closing": "Shop closed",
 	&"waited_too_long": "Waited too long",
 	&"too_expensive": "Too expensive",
 	&"no_table": "No table available",
