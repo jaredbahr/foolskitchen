@@ -124,7 +124,7 @@ func _add_row(parent: VBoxContainer, member: StaffMember, candidate: bool) -> vo
 	var trait_def: StaffTrait = _roster.catalogue.find_trait(member.trait_id)
 	var detail: Label = Label.new()
 	detail.name = "Trait"
-	detail.text = "%s: %s" % [trait_def.display_name, trait_def.description]
+	detail.text = "%s: %s" % [trait_def.display_name, trait_def.description_for(member.role)]
 	detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	detail.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(detail)

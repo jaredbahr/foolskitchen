@@ -179,10 +179,13 @@ docs/
   failures wait for a layout change before reposting. A hired Cleaner owns this
   role; without one, servers and the Floor-mode owner take it only after their
   eligible delivery and bussing work, regardless of distance.
-  Each arriving guest samples both queue and food patience once using
-  `1.0 - 0.3 * spots / 12`; later dirt changes do not rescale that visit.
+  Before adding their own door spot, each arriving guest retains the current
+  dirt fraction and samples both queue and food patience once using
+  `1.0 - 0.3 * spots / 12`; later dirt changes do not rescale that visit or
+  replace the retained review input.
   The report captures the day's worst Spotless/A bit messy/Grubby band, F3
-  shows the current spot count, and ShopView draws small floor decals.
+  shows the current spot count, and ShopView draws shaded, matte Walnut floor
+  decals with a roughly 0.2-unit radius, using the approved swatch palette.
   `start_day()` tidies all spots and mop tasks before the existing morning
   autosave. Spots themselves are never saved; only the named RNG stream is
   restored by GameState. The optional Cleaner joins the existing roster,
@@ -369,6 +372,9 @@ docs/
 - The HUD Staff button and request-only `StaffPanel` use MORNING commands
   `staff_hire`/`staff_let_go`. They spend no cash, draw no RNG and never save.
   Closing charges each live employee's own wage, excluding the owner.
+  Trait descriptions use authored role overrides: only cooks see Careful's
+  meal-quality bonus and only servers see Cheerful's food-patience bonus.
+  Other roles see neutral wording without an implied gameplay bonus.
 - Main stages a `staff` provider alongside shop/menu/owner; installation waits
   for the complete successful MORNING load, even without a shop section. Old
   saves get the starter team. Candidates are prepared before the one normal
@@ -389,10 +395,11 @@ docs/
   stars and a friendly quote, never an internal cause name.
 - `ReviewVisit` snapshots a guest's served state, queue and food waits as
   fractions of their patience, their paid price divided by the standard menu
-  price, and a dirt fraction. The current departure hook still passes zero for
-  review dirt; FK-040 affects arrival patience, while review-dirt wiring is a
-  separate follow-up. An unserved guest gives one star; closing departures give
-  no review.
+  price, and the dirt fraction retained on the customer before their own
+  arrival spot. Departure passes that retained fraction to `review_visit`, so
+  mopping or later dirt cannot change the floor that guest saw. Legacy visits
+  without cleanliness retain zero dirt. An unserved guest gives one star;
+  closing departures give no review.
   For a served guest, the score is `clamp(round(5 - penalty), 1, 5)`, where the
   penalty is the sum of each input clamped to 0..1 times its authored weight.
   `data/balance/reviews.tres` starts with queue 1.0, food 1.3, overprice 0.8,

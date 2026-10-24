@@ -91,6 +91,34 @@ func test_optional_cleaner_is_named_and_can_be_hired_then_let_go_by_request() ->
 	assert_eq(_requests.size(), 2, "staff changes are morning only")
 
 
+func test_candidate_trait_text_describes_only_the_bonus_available_to_their_role() -> void:
+	var cases: Array[Dictionary] = [
+		{"role": &"cook", "trait": &"careful",
+			"text": "Careful: Adds 0.05 to the quality of meals they cook."},
+		{"role": &"server", "trait": &"careful",
+			"text": "Careful: Works with care. No special bonus in this role."},
+		{"role": &"cleaner", "trait": &"careful",
+			"text": "Careful: Works with care. No special bonus in this role."},
+		{"role": &"cook", "trait": &"cheerful",
+			"text": "Cheerful: Friendly manner. No special bonus in this role."},
+		{"role": &"server", "trait": &"cheerful",
+			"text": "Cheerful: Guests they serve have 10% more patience for food."},
+		{"role": &"cleaner", "trait": &"cheerful",
+			"text": "Cheerful: Friendly manner. No special bonus in this role."},
+	]
+	for example: Dictionary in cases:
+		var saved: Dictionary = _roster.to_dict()
+		saved["candidates"][0]["role"] = String(example["role"])
+		saved["candidates"][0]["trait"] = String(example["trait"])
+		assert_true(_roster.from_dict(saved))
+		var before: Dictionary = _roster.to_dict()
+		_panel.refresh()
+		var candidate: StaffMember = _roster.candidates()[0]
+		var trait_label: Label = _panel.row_for(candidate.id).get_node("Trait") as Label
+		assert_eq(trait_label.text, example["text"])
+		assert_eq(_roster.to_dict(), before, "describing a trait never changes the roster")
+
+
 func test_tray_rows_show_price_capacity_owned_state_and_request_only() -> void:
 	assert_true((_panel.get_node("Panel/Content/Scroll/List/TraysRow/TraysBuy") as Button).disabled,
 		"the detached panel has no invented price before tuning is bound")

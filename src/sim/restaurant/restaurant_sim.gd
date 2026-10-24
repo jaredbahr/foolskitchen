@@ -252,12 +252,13 @@ func add_customer(entry: Vector2i, random: RandomNumberGenerator) -> CustomerAge
 	customer.cell = entry
 	# Only a real service arrival can dirty the floor or consume its stream.
 	if cleanliness != null and world.clock.phase == SimClock.Phase.OPEN:
-		var spot: Vector2i = cleanliness.try_spawn_on_arrival(entry)
-		if spot != SimGrid.NO_CELL and clean_tasks != null:
-			clean_tasks.sync_spots()
+		customer.arrival_dirt_fraction = cleanliness.dirt_fraction()
 		var patience_scale: float = cleanliness.patience_multiplier()
 		customer.queue_patience = maxi(1, roundi(float(customer.queue_patience) * patience_scale))
 		customer.food_patience = maxi(1, roundi(float(customer.food_patience) * patience_scale))
+		var spot: Vector2i = cleanliness.try_spawn_on_arrival(entry)
+		if spot != SimGrid.NO_CELL and clean_tasks != null:
+			clean_tasks.sync_spots()
 	world.add_agent(customer)
 	world.log_event("Guest #%d arrived" % customer.id)
 	customer_arrived.emit(customer)
@@ -305,7 +306,7 @@ func record_departure(customer: CustomerAgent) -> void:
 				if recipe.id == customer.order.recipe_id:
 					standard_price = recipe.standard_price
 					break
-		var visit: ReviewVisit = customer.review_visit(standard_price)
+		var visit: ReviewVisit = customer.review_visit(standard_price, customer.arrival_dirt_fraction)
 		# A paid guest removed at the closing cutoff retains their happy report
 		# reason, but the forced departure must not sample a late review.
 		visit.closing = visit.closing or world.clock.phase == SimClock.Phase.CLOSED

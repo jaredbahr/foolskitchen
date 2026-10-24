@@ -58,8 +58,6 @@ The Tier 1 hole-in-the-wall: 1 door, 3 two-seat tables, 1 fridge, 1 prep counter
 - [ ] Customer types
 - [ ] Career milestones
 - [ ] Loan rule
-- [ ] First-person walk mode as the owner (D12)
-- [ ] Mini-games in first person at the station: chop rhythm, pan flip, plating. Supplier haggle (a menu game).
 - [ ] Second location from Tier 3: switch sites, background sim, shared cash
 - [ ] Staff XP and levelling
 
@@ -72,6 +70,10 @@ The Tier 1 hole-in-the-wall: 1 door, 3 two-seat tables, 1 fridge, 1 prep counter
 - [ ] Audio: ambience, UI sounds, music
 - [ ] A UI art pass
 - [ ] Web build published for family and friends
+
+## Later (D21): first person and mini-games
+- [ ] First-person walk mode as the owner (D12)
+- [ ] Mini-games, mainly for emergencies and clean-ups (a short first-person moment), maybe station games later
 
 ## Phase 5: Expansion
 - [ ] Tiers 4 to 6: the piano bar and evening service, a second floor, fine dining and critics, the chain with managers

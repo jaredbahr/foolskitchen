@@ -87,6 +87,23 @@ func test_floor_dirt_decals_reuse_geometry_and_follow_cleanliness_without_changi
 	assert_eq(first_node.position, GridMath.cell_to_world(first) + Vector3(0.0, 0.015, 0.0))
 	assert_true(first_node.mesh is ArrayMesh)
 	assert_almost_eq(first_node.mesh.get_aabb().size.y, 0.0)
+	var decal_bounds: AABB = first_node.mesh.get_aabb()
+	assert_true(decal_bounds.size.x >= 0.35 and decal_bounds.size.z >= 0.3,
+		"spots need enough floor coverage to read at the normal camera zoom")
+	var decal_faces: PackedVector3Array = first_node.mesh.get_faces()
+	for vertex: Vector3 in decal_faces:
+		assert_true(vertex.length() <= 0.25, "the decal stays inside its half-metre cell")
+	for index: int in range(0, decal_faces.size(), 3):
+		var edge_one: Vector3 = decal_faces[index + 1] - decal_faces[index]
+		var edge_two: Vector3 = decal_faces[index + 2] - decal_faces[index]
+		assert_true(edge_one.cross(edge_two).y < 0.0,
+			"the shaded top is a clockwise front face with upward lighting normals")
+	var dirt_material: StandardMaterial3D = first_node.material_override as StandardMaterial3D
+	assert_eq(dirt_material.shading_mode, BaseMaterial3D.SHADING_MODE_PER_PIXEL,
+		"dirt takes the same scene lighting as the rest of the shop")
+	assert_eq(ShopView.DIRT_SWATCH.id, &"walnut", "use the approved warm dark-brown swatch")
+	assert_almost_eq(dirt_material.roughness, 1.0)
+	assert_almost_eq(dirt_material.metallic_specular, 0.0)
 	assert_eq((first_node.material_override as StandardMaterial3D).albedo_color,
 		ShopView.DIRT_SWATCH.color)
 	assert_true(world.grid.is_walkable(first))

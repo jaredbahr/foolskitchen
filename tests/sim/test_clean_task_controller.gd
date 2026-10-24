@@ -128,21 +128,33 @@ func test_restaurant_arrival_spawns_a_walkable_spot_and_samples_both_patience_bu
 	assert_true(sim.world.clock.start_service())
 	var guest_rng: RandomNumberGenerator = RandomNumberGenerator.new()
 	guest_rng.seed = 5001
+	var first_scale: float = sim.cleanliness.patience_multiplier()
 	var first: CustomerAgent = sim.add_customer(Vector2i(3, 3), guest_rng)
 	assert_eq(sim.cleanliness.spot_count(), 1)
 	var first_spot: Vector2i = sim.cleanliness.spots()[0]
 	assert_true(sim.world.grid.is_walkable(first_spot), "a dirt decal never blocks the floor")
 	assert_eq(sim.clean_tasks.active_task_count(), 1)
-	var first_scale: float = sim.cleanliness.patience_multiplier()
+	assert_almost_eq(first.arrival_dirt_fraction, 0.0, 0.0001,
+		"the guest's own door spot is not part of their arrival sample")
 	assert_eq(first.queue_patience, roundi(300.0 * first_scale))
 	assert_eq(first.food_patience, roundi(1200.0 * first_scale))
 	var first_queue_budget: int = first.queue_patience
 	var first_food_budget: int = first.food_patience
-	sim.add_customer(Vector2i(3, 3), guest_rng)
+	var second_scale: float = sim.cleanliness.patience_multiplier()
+	var second: CustomerAgent = sim.add_customer(Vector2i(3, 3), guest_rng)
 	assert_eq(sim.cleanliness.spot_count(), 2)
 	assert_eq(sim.clean_tasks.active_task_count(), 2)
+	assert_almost_eq(second.arrival_dirt_fraction, 1.0 / float(TUNING.max_spots))
+	assert_eq(second.queue_patience, roundi(300.0 * second_scale))
+	assert_eq(second.food_patience, roundi(1200.0 * second_scale))
 	assert_eq(first.queue_patience, first_queue_budget, "later dirt does not rescale a waiting guest")
 	assert_eq(first.food_patience, first_food_budget)
+	for spot: Vector2i in sim.cleanliness.spots():
+		assert_true(sim.cleanliness.clear_spot(spot))
+	assert_almost_eq(second.arrival_dirt_fraction, 1.0 / float(TUNING.max_spots), 0.0001,
+		"mopping cannot rewrite the dirt retained for a review")
+	assert_eq(second.queue_patience, roundi(300.0 * second_scale))
+	assert_eq(second.food_patience, roundi(1200.0 * second_scale))
 
 
 func test_paid_departure_posts_one_seat_spot_after_release_but_unserved_guest_does_not() -> void:
@@ -232,6 +244,7 @@ func test_legacy_restaurant_without_cleanliness_preserves_budgets_and_rng() -> v
 	assert_eq(guest.queue_patience, 300)
 	assert_eq(guest.food_patience, 1200)
 	assert_eq(guest_rng.state, before)
+	assert_almost_eq(guest.arrival_dirt_fraction, 0.0)
 	assert_null(sim.cleanliness)
 	assert_null(sim.clean_tasks)
 	assert_eq(sim.world.board.active_count(), 0)
@@ -247,6 +260,7 @@ func test_off_service_guest_injection_does_not_spawn_dirt_or_draw_its_stream() -
 	assert_eq(guest.queue_patience, 300)
 	assert_eq(guest.food_patience, 1200)
 	assert_eq(clean_rng.state, before)
+	assert_almost_eq(guest.arrival_dirt_fraction, 0.0)
 	assert_eq(sim.cleanliness.spot_count(), 0)
 	assert_eq(sim.clean_tasks.active_task_count(), 0)
 

@@ -10,11 +10,11 @@ const HEIGHTS: Dictionary[int, float] = {
 }
 const CUSTOMER_COLORS: Array[Color] = [Color("c8743a"), Color("b89568"), Color("986357")]
 ## Reuse a curated placeholder swatch rather than introduce a one-off art colour.
-const DIRT_SWATCH: SwatchDef = preload("res://data/swatches/charcoal.tres")
+const DIRT_SWATCH: SwatchDef = preload("res://data/swatches/walnut.tres")
 const CLEANER_SWATCH: SwatchDef = preload("res://data/swatches/sage.tres")
 const DIRT_OUTLINE: Array[Vector2] = [
-	Vector2(-0.14, -0.06), Vector2(-0.09, 0.09), Vector2(0.02, 0.12),
-	Vector2(0.14, 0.03), Vector2(0.08, -0.10),
+	Vector2(-0.20, -0.09), Vector2(-0.13, 0.14), Vector2(0.03, 0.20),
+	Vector2(0.20, 0.04), Vector2(0.12, -0.15),
 ]
 
 enum WallMode { UP, CUTAWAY, DOWN }
@@ -510,7 +510,9 @@ func _dirt_mesh() -> ArrayMesh:
 	var surface: SurfaceTool = SurfaceTool.new()
 	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
 	for index: int in range(DIRT_OUTLINE.size()):
-		for point: Vector2 in [Vector2.ZERO, DIRT_OUTLINE[index], DIRT_OUTLINE[(index + 1) % DIRT_OUTLINE.size()]]:
+		# Godot front faces wind clockwise. Keep the lit top on the front side
+		# so the two-sided material does not flip its UP normals from above.
+		for point: Vector2 in [Vector2.ZERO, DIRT_OUTLINE[(index + 1) % DIRT_OUTLINE.size()], DIRT_OUTLINE[index]]:
 			surface.set_normal(Vector3.UP)
 			surface.add_vertex(Vector3(point.x, 0.0, point.y))
 	_shared_dirt_mesh = surface.commit()
@@ -521,7 +523,9 @@ func _dirt_material() -> StandardMaterial3D:
 	if _shared_dirt_material == null:
 		_shared_dirt_material = StandardMaterial3D.new()
 		_shared_dirt_material.albedo_color = DIRT_SWATCH.color
-		_shared_dirt_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		_shared_dirt_material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
+		_shared_dirt_material.roughness = 1.0
+		_shared_dirt_material.metallic_specular = 0.0
 		_shared_dirt_material.cull_mode = BaseMaterial3D.CULL_DISABLED
 	return _shared_dirt_material
 
