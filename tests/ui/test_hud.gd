@@ -125,8 +125,11 @@ func test_cash_events_create_separate_signed_colored_deltas() -> void:
 	assert_eq(deltas.get_child_count(), 2)
 	var gain: Label = deltas.get_child(0) as Label
 	var loss: Label = deltas.get_child(1) as Label
-	assert_eq(gain.text, "+12")
-	assert_eq(loss.text, "−30")
+	assert_eq(gain.text, "+$12")
+	assert_eq(loss.text, "−$30")
+	var bar_bottom: float = (_hud.get_node("Top") as Control).get_global_rect().end.y
+	for delta: Label in [gain, loss]:
+		assert_true(delta.position.y >= bar_bottom, "the change appears below the top bar, never over the cash")
 	assert_eq(gain.get_theme_color("font_color"), Color("286B3B"))
 	assert_eq(loss.get_theme_color("font_color"), Color("A42E2E"))
 
