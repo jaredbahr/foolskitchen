@@ -79,6 +79,8 @@ jobs:
           bash tools/screenshot.sh --out=screens/visual-review/owner-kitchen --open --fast=5 --select=owner --assign-owner=kitchen --frames=60 --speed=1
           bash tools/screenshot.sh --out=screens/visual-review/mood-waits --open --fast=8 --frames=120,180,240,300 --speed=1
           bash tools/screenshot.sh --out=screens/visual-review/menu --menu --speed=0 --frames=12
+          bash tools/screenshot.sh --out=screens/visual-review/build-green --build=green --quarter=0 --frames=12 --speed=1
+          bash tools/screenshot.sh --out=screens/visual-review/build-red --build=red --quarter=0 --frames=12 --speed=1
 
       - name: Verify capture identity and image metadata
         shell: bash
@@ -97,6 +99,7 @@ jobs:
           captures += [('owner-kitchen', -1, False, False, 60)]
           captures += [('mood-waits', -1, False, False, frame) for frame in (120, 180, 240, 300)]
           captures += [('menu', -1, False, False, 12)]
+          captures += [('build-green', 0, False, False, 12), ('build-red', 0, False, False, 12)]
           observed_bands = set()
           for name, requested, inspect_guest, debug, frame in captures:
               inspect_owner = name == 'owner-kitchen'
@@ -123,6 +126,15 @@ jobs:
               menu = name == 'menu'
               assert data['requested_menu_visible'] is menu, f'{name}: wrong requested menu state'
               assert data['menu_visible'] is menu, f'{name}: wrong actual menu visibility'
+              build_kind = name.removeprefix('build-') if name.startswith('build-') else ''
+              assert data['requested_build'] == build_kind, f'{name}: wrong requested build preview'
+              if build_kind:
+                  build = data['build']
+                  assert build['active'] is True and build['has_ghost'] is True and build['ghost_visible'] is True, f'{name}: missing native ghost'
+                  assert build['ok'] is build['ghost_valid'] is (build_kind == 'green'), f'{name}: wrong editor/native validity'
+                  assert build['state'] == 3 and build['origin'] == build['pointer_cell'], f'{name}: incoherent buy preview pointer'
+                  assert data['day_phase'] == 0 and data['capture_parameters'] == {'open': False, 'fast_ticks_per_frame': 0, 'speed': 1}
+                  assert build_kind != 'red' or build['why'], f'{name}: missing placement reason'
               assert data['debug_visible'] is debug, f'{name}: wrong actual F3 state'
               assert data['panel_visible'] is (inspect_guest or inspect_owner), f'{name}: wrong actual inspect panel state'
               assert data['selected_item_id'] == -1, f'{name}: unexpected item selection'

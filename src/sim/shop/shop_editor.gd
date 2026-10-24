@@ -23,6 +23,20 @@ func can_edit() -> bool:
 		_sim.world.clock.phase == SimClock.Phase.MORNING or _sim.world.clock.phase == SimClock.Phase.CLOSED)
 
 
+## Read-only warnings for actual placements, including after a purchase has
+## received its real ID. This query neither changes last_check nor books.
+func check_current() -> EditCheck:
+	if _sim == null or _sim.world == null or _sim.world.grid == null or _content == null:
+		return EditCheck.new(false, "The shop is unavailable")
+	var ids: Dictionary[int, int] = {}
+	var preview: SimGrid = _preview_without(-1, ids)
+	if preview == null:
+		return EditCheck.new(false, "The current shop has invalid placements")
+	var check: EditCheck = EditCheck.new(true)
+	check.unreachable = _unreachable(preview, ids)
+	return check
+
+
 func check_move(item_id: int, origin: Vector2i, quarter_turns: int) -> EditCheck:
 	var check: EditCheck = _edit_check()
 	if not check.ok:
@@ -219,12 +233,26 @@ func _check_placement(definition: ItemDef, origin: Vector2i, turns: int, exclude
 		return EditCheck.new(false, "The current shop has invalid placements")
 	var result: SimGrid.PlaceResult = preview.can_place(definition.footprint, origin, turns)
 	if result != SimGrid.PlaceResult.OK:
-		return EditCheck.new(false, "Cannot place item: %s" % SimGrid.PlaceResult.keys()[result])
+		return EditCheck.new(false, placement_reason(result))
 	var placed: PlacedItem = preview.place_def(definition, origin, turns)
 	ids[placed.id] = result_id
 	var check: EditCheck = EditCheck.new(true)
 	check.unreachable = _unreachable(preview, ids)
 	return check
+
+
+## One presentation mapping for every geometric placement result.
+static func placement_reason(result: SimGrid.PlaceResult) -> String:
+	match result:
+		SimGrid.PlaceResult.OK:
+			return ""
+		SimGrid.PlaceResult.OUT_OF_BOUNDS:
+			return "Outside the shop"
+		SimGrid.PlaceResult.NOT_FLOOR:
+			return "Must be placed on the floor"
+		SimGrid.PlaceResult.OVERLAPS:
+			return "Something is in the way"
+	return "Cannot place this item here"
 
 
 func _preview_without(exclude_id: int, ids: Dictionary[int, int]) -> SimGrid:

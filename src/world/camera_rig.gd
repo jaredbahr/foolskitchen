@@ -36,7 +36,10 @@ signal yaw_snapped(quarter: int)
 @export_group("Test floor")
 ## The containing scene supplies its actual floor node. Exporting the material
 ## itself would duplicate a scene-local Resource across the rig scene boundary.
-@export var grid_floor: MeshInstance3D
+@export var grid_floor: MeshInstance3D:
+	set(value):
+		grid_floor = value
+		_apply_grid()
 
 ## Always use the material rendered by this floor instance, never a copied one.
 var grid_material: ShaderMaterial:
@@ -46,6 +49,7 @@ var grid_material: ShaderMaterial:
 		return grid_floor.material_override as ShaderMaterial
 
 var grid_visible: bool = true
+var _grid_forced: bool = false
 var _camera: Camera3D
 var _yaw: float = 0.0
 var _target_yaw: float = 0.0
@@ -162,9 +166,27 @@ func edge_pan_direction(mouse: Vector2, viewport_rect: Rect2) -> Vector2:
 
 
 func toggle_grid() -> bool:
-	grid_visible = not grid_visible
+	if not _grid_forced:
+		grid_visible = not grid_visible
 	_apply_grid()
 	return grid_visible
+
+
+## Build mode temporarily forces the rendered grid without changing the G
+## preference. Replacing the floor or resetting the camera preserves both.
+func set_grid_forced(value: bool) -> void:
+	if _grid_forced == value:
+		return
+	_grid_forced = value
+	_apply_grid()
+
+
+func is_grid_forced() -> bool:
+	return _grid_forced
+
+
+func effective_grid_visible() -> bool:
+	return grid_visible or _grid_forced
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -220,4 +242,4 @@ func _apply_camera() -> void:
 func _apply_grid() -> void:
 	var material: ShaderMaterial = grid_material
 	if material != null:
-		material.set_shader_parameter("grid_visible", grid_visible)
+		material.set_shader_parameter("grid_visible", effective_grid_visible())
