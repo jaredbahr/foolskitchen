@@ -19,6 +19,7 @@ var _main: Node3D
 var _viewport: SubViewport
 var _old_save_dir: String
 var _save_dir: String
+var _old_providers: Dictionary = {}
 
 
 func before_each() -> void:
@@ -27,6 +28,9 @@ func before_each() -> void:
 	SaveSystem.save_dir = _save_dir
 	SaveSystem.delete_slot(SLOT)
 	Clock.set_speed(0)
+	for key: String in ["owner", "shop", "menu"]:
+		if SaveSystem._providers.has(key):
+			_old_providers[key] = SaveSystem._providers[key].duplicate()
 
 
 func after_each() -> void:
@@ -37,6 +41,12 @@ func after_each() -> void:
 	SaveSystem.delete_slot(SLOT)
 	DirAccess.remove_absolute(_save_dir)
 	SaveSystem.save_dir = _old_save_dir
+	for key: String in ["owner", "shop", "menu"]:
+		if _old_providers.has(key):
+			var provider: Dictionary = _old_providers[key]
+			SaveSystem.register(key, provider["capture"], provider["restore"])
+		else:
+			SaveSystem._providers.erase(key)
 	Clock.set_speed(0)
 	Economy.reset(0)
 	GameState.new_run(1)
@@ -196,6 +206,59 @@ func test_open_phase_refuses_b_and_hud_and_direct_phase_writes_exit_cheaply() ->
 	assert_null(_preview().ghost_mesh)
 	assert_false(_rig().is_grid_forced())
 	assert_eq(Economy.ledger.to_dict(), books)
+	assert_eq(_world().now, 0)
+
+
+func test_native_build_input_precedes_selected_owner_keys_and_station_commands() -> void:
+	await _start(true)
+	var owner: OwnerAgent = (_main.get("sim") as RestaurantSim).owner_agent()
+	assert_not_null(owner)
+	assert_true(_main.call("select_agent", owner.id))
+	assert_true(_main.call("assign_owner_mode", &"floor"))
+	var panel: InspectPanel = _main.get_node("Overlay/InspectPanel") as InspectPanel
+	var owner_controls: Control = panel.get_node("Panel/Rows/OwnerModes") as Control
+	assert_true(owner_controls.is_visible_in_tree())
+	var books: Dictionary = Economy.ledger.to_dict()
+	var stock: Dictionary = Economy.stock.to_dict()
+	var clock: Dictionary = Clock.sim.to_dict()
+	var rng_state: int = GameState.rng(&"customers").state
+	var saved: String = FileAccess.get_file_as_string(_save_dir.path_join(SLOT + ".json"))
+	_native_key(KEY_B)
+	assert_true(_main.call("is_build_active"))
+	assert_eq(panel.selected_agent_id, -1)
+	assert_false(panel.visible)
+	assert_false(owner_controls.is_visible_in_tree())
+	assert_true(_main.call("begin_buy_item", &"chair"))
+	_main.call("update_build_pointer", _project(Vector2i(4, 9)))
+	assert_eq(_mode().quarter_turns, 0)
+	_native_key(KEY_R)
+	assert_eq(_mode().quarter_turns, 1, "native R rotates the ghost through Main's build route")
+	assert_eq(owner.current_mode(), &"floor", "the same R must not issue owner Rest")
+	assert_false(_main.call("assign_owner_mode", &"rest"), "stale owner commands are gated while building")
+	_native_key(KEY_ESCAPE)
+	var fridge: PlacedItem = _world().grid.item(_id(&"fridge"))
+	var point: Vector2 = _project(fridge.origin)
+	_viewport.push_input(_mouse_event(point, true), true)
+	_viewport.push_input(_mouse_event(point, false), true)
+	assert_eq(_mode().state, BuildMode.State.MOVE)
+	assert_eq(_mode().selected_item_id, fridge.id, "native station click picks furniture while building")
+	assert_eq(owner.current_mode(), &"floor")
+	_native_key(KEY_ESCAPE)
+	_native_key(KEY_ESCAPE)
+	assert_false(_main.call("is_build_active"))
+	assert_true(_main.call("select_agent", owner.id))
+	assert_true(owner_controls.is_visible_in_tree())
+	_native_key(KEY_R)
+	assert_eq(owner.current_mode(), &"rest", "the official owner R command works after exit and reselect")
+	_viewport.push_input(_mouse_event(point, true), true)
+	_viewport.push_input(_mouse_event(point, false), true)
+	assert_eq(owner.current_mode(), &"kitchen", "the official station assignment route also resumes")
+	assert_eq(panel.selected_agent_id, owner.id)
+	assert_eq(Economy.ledger.to_dict(), books)
+	assert_eq(Economy.stock.to_dict(), stock)
+	assert_eq(Clock.sim.to_dict(), clock)
+	assert_eq(GameState.rng(&"customers").state, rng_state)
+	assert_eq(FileAccess.get_file_as_string(_save_dir.path_join(SLOT + ".json")), saved)
 	assert_eq(_world().now, 0)
 
 
@@ -623,3 +686,10 @@ func _key_event(code: Key) -> InputEventKey:
 
 func _key(code: Key) -> void:
 	_main.call("_unhandled_input", _key_event(code))
+
+
+func _native_key(code: Key) -> void:
+	var event: InputEventKey = _key_event(code)
+	_viewport.push_input(event, true)
+	event.pressed = false
+	_viewport.push_input(event, true)

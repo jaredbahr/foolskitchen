@@ -35,6 +35,9 @@ This file is read by every coding agent (Codex, harness workers, Claude). Read `
 6. No runtime network calls, and no AI or API calls in the game.
 7. Connect signals to **methods**, not lambdas that use `self`, when the signal's owner is (directly or indirectly) owned by `self`. Such a lambda keeps both objects alive (a reference cycle), and the leak warning at exit fails `check.sh`.
 8. Nothing that breaks the web export: no threads that need special headers, no C#, no GDExtension unless an issue says so.
+9. **Saving happens in one place only:** the morning autosave in `src/world/main.gd` `_begin_morning()`. Never add a save after a player action (menu, build, owner, anything). New state joins the save by registering a section with `SaveSystem.register()` and is written at the next morning autosave. Don't change `src/core/save_system.gd` unless the issue asks for it.
+10. **Keep CI cheap:** don't add loops, repeat runs, probes or extra jobs to `.github/workflows/`. A new feature may add at most one or two captures to the visual-review job. Put state checks in GDScript tests, not inline workflow scripts. Diagnostic loops go in `tools/` and are run by hand.
+11. Player-facing text never shows raw enum or internal names (for example `OVERLAPS`, `dropped_too_often`). Map them to short plain sentences in one place.
 
 ## Files Godot generates
 - Commit `*.uid` and `*.import` files next to their sources. Never commit `.godot/` or `.tools/`.

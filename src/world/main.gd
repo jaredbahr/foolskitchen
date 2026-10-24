@@ -34,6 +34,7 @@ var menu_settings: MenuSettings
 var _previous_clock: SimClock = null
 var _started: bool = false
 var _skip_next_autosave: bool = false
+var _owner_preferences: OwnerModeSettings = OwnerModeSettings.new()
 var _loaded_layout: ShopLayout = null
 var _loaded_menu: MenuSettings = null
 var _report: Control
@@ -152,6 +153,7 @@ func start() -> void:
 	Clock.attach_world(null)
 	for autoload: Node in [Clock, GameState, Economy]:
 		autoload.call(&"register_save_provider")
+	SaveSystem.register("owner", _capture_owner, _restore_owner)
 	SaveSystem.register("shop", _capture_shop, _restore_shop)
 	SaveSystem.register("menu", _capture_menu, _restore_menu)
 	var loaded: bool = use_saves and _load_autosave()
@@ -181,6 +183,8 @@ func _connect_session() -> void:
 		EventBus.sim_ticked.connect(_on_inspection_tick)
 	if not EventBus.cash_changed.is_connected(_on_build_cash_changed):
 		EventBus.cash_changed.connect(_on_build_cash_changed)
+	if not _inspect_panel.owner_mode_requested.is_connected(_on_owner_mode_requested):
+		_inspect_panel.owner_mode_requested.connect(_on_owner_mode_requested)
 
 
 func _exit_tree() -> void:
@@ -191,6 +195,8 @@ func _exit_tree() -> void:
 		_build_preview.clear()
 	build_mode.bind_session(null, null, null, Callable(), Callable(), Callable())
 	($CameraRig as CameraRig).set_grid_forced(false)
+	if _inspect_panel != null and _inspect_panel.owner_mode_requested.is_connected(_on_owner_mode_requested):
+		_inspect_panel.owner_mode_requested.disconnect(_on_owner_mode_requested)
 	if sim != null and sim.customer_paid.is_connected(_on_customer_paid):
 		sim.customer_paid.disconnect(_on_customer_paid)
 	if sim != null and sim.service_closed.is_connected(_on_service_closed):
@@ -229,6 +235,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			else:
 				clear_selection()
 			_mark_input_handled()
+		else:
+			var mode: StringName = _owner_mode_for_key(code)
+			if not mode.is_empty() and assign_owner_mode(mode):
+				_mark_input_handled()
 	var mouse: InputEventMouseButton = event as InputEventMouseButton
 	if mouse != null and mouse.pressed and mouse.button_index == MOUSE_BUTTON_LEFT:
 		pick_screen_position(mouse.position)
@@ -394,6 +404,12 @@ func pick_screen_position(screen_position: Vector2) -> void:
 func select_at_world_position(world_position: Vector3) -> void:
 	if world == null or is_build_active():
 		return
+	# Resolve owner work targets before nearby agents or ordinary item picking.
+	if _selected_owner() != null:
+		var target: Dictionary = OwnerAssignment.resolve(world_position, world.grid)
+		var mode: StringName = target["mode"]
+		if not mode.is_empty() and assign_owner_mode(mode):
+			return
 	var view: ShopView = $ShopView
 	var agent_id: int = Picker.pick_agent(world_position, view.drawn_agent_positions())
 	if agent_id >= 0:
@@ -416,6 +432,42 @@ func select_agent(agent_id: int) -> bool:
 	return _inspect_panel.selected_agent_id == agent_id
 
 
+func _selected_owner() -> OwnerAgent:
+	if sim == null or world == null or _inspect_panel == null:
+		return null
+	var selected_owner: OwnerAgent = sim.owner_agent()
+	return selected_owner if selected_owner != null and _inspect_panel.selected_agent_id == selected_owner.id else null
+
+
+## The sole player command used by keys, inspector buttons and capture tools.
+## Changes are included in the next normal MORNING checkpoint.
+func assign_owner_mode(mode: StringName) -> bool:
+	if is_build_active():
+		return false
+	var selected_owner: OwnerAgent = _selected_owner()
+	if selected_owner == null or not OwnerAgent.MODES.has(mode):
+		return false
+	if not sim.assign_owner(mode):
+		return false
+	_owner_preferences.assign_mode(mode)
+	_inspect_panel.show_agent(selected_owner.id)
+	refresh_presentation()
+	return true
+
+
+func _on_owner_mode_requested(mode: StringName) -> void:
+	assign_owner_mode(mode)
+
+
+func _owner_mode_for_key(keycode: Key) -> StringName:
+	match keycode:
+		KEY_K: return &"kitchen"
+		KEY_F: return &"floor"
+		KEY_H: return &"help"
+		KEY_R: return &"rest"
+	return &""
+
+
 func clear_selection() -> void:
 	_inspect_panel.clear()
 	refresh_presentation()
@@ -433,14 +485,24 @@ func is_debug_visible() -> bool:
 ## Read-only diagnostic state used by integration tests and real captures.
 func inspection_state() -> Dictionary:
 	var role: String = ""
+	var selected_staff: StaffAgent = null
 	for agent: SimAgent in world.agents:
 		if agent.id == _inspect_panel.selected_agent_id:
 			role = "guest" if agent is CustomerAgent else str(agent.role)
+			selected_staff = agent as StaffAgent
+	var task: SimTask = selected_staff.task if selected_staff != null else null
 	return {
 		"selected_agent_id": _inspect_panel.selected_agent_id,
 		"selected_item_id": _inspect_panel.selected_item_id,
 		"selected_role": role, "panel_visible": _inspect_panel.visible,
 		"debug_visible": is_debug_visible(), "world_tick": world.now,
+		"owner_mode": String((selected_staff as OwnerAgent).current_mode()) if selected_staff is OwnerAgent else "",
+		"selected_task_id": task.id if task != null else -1,
+		"selected_task_role": String(task.role) if task != null else "",
+		"selected_task_label": task.label if task != null else "",
+		"selected_task_state": int(task.state) if task != null else -1,
+		"selected_task_claimant": task.claimed_by if task != null else -1,
+		"selected_task_step": selected_staff.step_index if task != null else -1,
 	}
 
 
@@ -506,6 +568,8 @@ func _new_game() -> void:
 	GameState.new_run(int(Time.get_unix_time_from_system()))
 	Economy.reset(TUNING.starting_cash)
 	_loaded_layout = null
+	_owner_preferences.reset()
+	sim.assign_owner(&"rest")
 	_loaded_menu = null
 	sim.stock = Economy.stock
 	world.log_event("New game: $%d to start" % TUNING.starting_cash)
@@ -536,7 +600,16 @@ func _load_autosave() -> bool:
 	menu_settings = choices
 	_apply_menu(sim, menu_settings)
 	_bind_world_presentation()
-	return true
+	return sim.assign_owner(_owner_preferences.current_mode())
+
+
+func _capture_owner() -> Dictionary:
+	return _owner_preferences.to_dict()
+
+
+## Stage only the mode; apply it after the whole MORNING load succeeds.
+func _restore_owner(data: Dictionary) -> bool:
+	return _owner_preferences.restore(data)
 
 
 func _capture_shop() -> Dictionary:
