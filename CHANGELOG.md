@@ -11,6 +11,9 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- A top bar shows the day, time, shop phase and cash, with pause and speed buttons, floating cash changes, and buttons to open the shop or start the next day. (#33)
+- The camera's pan area is centred on the shop with a 2 m margin, so it can't drift into empty space. (#36)
+- The starter shop now appears in 3D with warm furniture placeholders and two staff walking a temporary demonstration route. (#34)
 - The game opens on a warm wooden test floor with a 0.5 m build grid (press **G** to toggle). The isometric camera pans with WASD, screen edges or middle-mouse drag, zooms with the wheel, and rotates in 90° steps with Q and E. (#22)
 - Day clock and speed controls: each day runs morning → open → last orders → closed. **Space** pauses or resumes, and **1**, **2** and **3** set 1×, 2× and 4× speed. (#15)
 - An evening report screen (not yet shown during play): profit, income and costs by category, dishes sold with the best seller marked, guests served versus lost, why guests left, and review quotes. (#25)

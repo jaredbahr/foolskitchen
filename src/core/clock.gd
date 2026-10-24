@@ -20,6 +20,10 @@ var sim: SimClock = SimClock.new():
 			sim.phase_changed.disconnect(_on_phase_changed)
 		sim = value
 		sim.phase_changed.connect(_on_phase_changed)
+		# Save restoration replaces SimClock. Keep the attached driver's clock
+		# identical so agents continue ticking; world.now remains monotonic.
+		if attached_world != null:
+			attached_world.clock = sim
 		_accumulator = 0.0
 
 ## Compatibility accessors for the original autoload's clock state.
@@ -36,6 +40,17 @@ var tick: int:
 var speed: int = 0
 var _last_non_zero_speed: int = 1
 var _accumulator: float = 0.0
+## Optional full world tick driver. Null retains the standalone clock mode.
+var attached_world: SimWorld
+
+
+## Uses a world's clock and advances its agents once per fixed tick.
+## Detaching retains the current clock, but stops advancing the old world.
+func attach_world(world: SimWorld) -> void:
+	attached_world = world
+	if world != null:
+		sim = world.clock
+	_accumulator = 0.0
 
 
 func _init() -> void:
@@ -93,6 +108,7 @@ func set_speed(value: int) -> bool:
 	speed = value
 	if value > 0:
 		_last_non_zero_speed = value
+	EventBus.speed_changed.emit(speed)
 	return true
 
 
@@ -106,7 +122,10 @@ func _process(delta: float) -> void:
 		if sim.phase != SimClock.Phase.OPEN and sim.phase != SimClock.Phase.LAST_ORDERS:
 			_accumulator = 0.0
 			break
-		sim.advance()
+		if attached_world != null and attached_world.clock == sim:
+			attached_world.advance()
+		else:
+			sim.advance()
 		EventBus.sim_ticked.emit(sim.tick)
 		_accumulator -= 1.0
 		ticks_this_frame += 1

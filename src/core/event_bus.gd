@@ -11,3 +11,6 @@ signal sim_ticked(tick: int)
 
 ## Emitted by Economy whenever cash changes. `reason` is a short tag like "sale" or "wages".
 signal cash_changed(new_cash: int, delta: int, reason: StringName)
+
+## Emitted for each accepted clock speed request, including keyboard shortcuts.
+signal speed_changed(speed: int)
