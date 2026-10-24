@@ -122,12 +122,19 @@ func test_start_day_resets_rows_and_snapshots_persistent_reputation() -> void:
 	var guest: CustomerAgent = _guest()
 	guest.leave_reason = &"no_table"
 	_sim.record_departure(guest)
+	var first_quote: String = _sim.reviews_today[0]["quote"]
 	assert_almost_eq(_book.average(), 16.0 / 6.0)
 	_sim.start_day()
 	assert_eq(_sim.reviews_today, [] as Array[Dictionary])
 	assert_almost_eq(_sim.reputation_before_day, _book.average())
 	assert_eq(_book.scores().size(), 6)
 	assert_eq(_events.size(), 1)
+	_review_rng.seed = 86012
+	var next_guest: CustomerAgent = _guest()
+	next_guest.leave_reason = &"no_table"
+	_sim.record_departure(next_guest)
+	assert_eq(_sim.reviews_today[0]["quote"], first_quote,
+		"the new day can draw the same quote from its fresh group")
 
 
 func test_unconfigured_sim_keeps_departure_counts_without_review_draws() -> void:

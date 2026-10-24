@@ -22,7 +22,10 @@ func is_valid() -> bool:
 	return count >= 40
 
 
-func pick(cause: StringName, random: RandomNumberGenerator) -> String:
+## Prefer lines not yet shown today. When this cause group is exhausted, a
+## repeat is better than dropping the review; either path draws exactly once.
+func pick(cause: StringName, random: RandomNumberGenerator,
+		used_today: Dictionary[String, bool]) -> String:
 	if random == null:
 		return ""
 	var lines: PackedStringArray = groups.get(cause, PackedStringArray())
@@ -30,4 +33,10 @@ func pick(cause: StringName, random: RandomNumberGenerator) -> String:
 		lines = groups.get(&"lovely_place", PackedStringArray())
 	if lines.is_empty():
 		return ""
+	var unused: PackedStringArray = PackedStringArray()
+	for line: String in lines:
+		if not used_today.has(line):
+			unused.append(line)
+	if not unused.is_empty():
+		lines = unused
 	return lines[random.randi_range(0, lines.size() - 1)]
