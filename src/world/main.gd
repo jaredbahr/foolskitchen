@@ -382,7 +382,9 @@ func set_paint_active(active: bool) -> bool:
 		($ShopView as ShopView).clear_paint_preview()
 		if world.clock.phase == SimClock.Phase.CLOSED and shown_report != null:
 			_report.call(&"show_report", build_report(world.clock.day))
-	($CameraRig as CameraRig).set_grid_forced(active or is_build_active())
+	# Painting is cosmetic: keep the player's existing G preference. Only
+	# furniture building needs the temporarily forced placement grid.
+	($CameraRig as CameraRig).set_grid_forced(is_build_active())
 	_update_build_controls()
 	return true
 
@@ -514,7 +516,7 @@ func _guard_build_phase() -> void:
 
 func _on_build_changed() -> void:
 	var active: bool = is_build_active()
-	($CameraRig as CameraRig).set_grid_forced(active or _paint_active)
+	($CameraRig as CameraRig).set_grid_forced(active)
 	if active and not _was_build_active:
 		_build_phase = world.clock.phase
 		set_menu_visible(false)

@@ -68,7 +68,7 @@ func refresh() -> void:
 		style.set_content_margin(SIDE_BOTTOM, 6.0)
 		_build_hints.add_theme_stylebox_override("panel", style)
 		_build_button.pressed.connect(_on_build_pressed)
-		_paint_button = get_node("Paint") as Button
+		_paint_button = get_node("Top/Row/Paint") as Button
 		_paint_button.pressed.connect(_on_paint_pressed)
 		_menu_button = get_node("Top/Row/Menu") as Button
 		_menu_button.pressed.connect(_on_menu_pressed)

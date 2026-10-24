@@ -29,9 +29,7 @@ func set_build_visible(active: bool) -> void:
 
 func set_paint_visible(active: bool) -> void:
 	_paint_visible = active
-	(get_node("Panel/Margin/Rows/Scroll/Content/Title") as Label).text = \
-		"Paint   |   Pick a colour, then click a wall, floor or item" if active else \
-		"Furniture   |   Square: work tile   Circle: seat"
+	_refresh_title()
 	(get_node("Panel/Margin/Rows/Scroll/Content/Items") as Control).visible = not active
 	(get_node("Panel/Margin/Rows/Scroll/Content/PaintSwatches") as Control).visible = active
 	_fit_panel()
@@ -125,6 +123,8 @@ func _refresh_swatches() -> void:
 func _refresh_swatch_styles() -> void:
 	if _content == null:
 		return
+	var button_outline: StyleBoxFlat = theme.get_stylebox("normal", "Button") as StyleBoxFlat
+	var selected_ring: Color = button_outline.border_color if button_outline != null else Color("3b2a20")
 	for id: StringName in swatch_buttons:
 		var definition: SwatchDef = _content.swatch(id)
 		var button: Button = swatch_buttons[id]
@@ -132,10 +132,23 @@ func _refresh_swatch_styles() -> void:
 		style.bg_color = definition.color
 		style.set_corner_radius_all(17)
 		style.set_border_width_all(3 if id == selected_swatch_id else 1)
-		style.border_color = Color("f7ead0") if id == selected_swatch_id else Color("5d4637")
+		style.border_color = selected_ring if id == selected_swatch_id else Color("5d4637")
+		button.pivot_offset = button.custom_minimum_size * 0.5
+		button.scale = Vector2.ONE * (1.1 if id == selected_swatch_id else 1.0)
 		button.add_theme_stylebox_override("normal", style)
 		button.add_theme_stylebox_override("hover", style)
 		button.add_theme_stylebox_override("pressed", style)
+	_refresh_title()
+
+
+func _refresh_title() -> void:
+	var title: Label = get_node("Panel/Margin/Rows/Scroll/Content/Title") as Label
+	if not _paint_visible:
+		title.text = "Furniture   |   Square: work tile   Circle: seat"
+		return
+	var selected: SwatchDef = _content.swatch(selected_swatch_id) if _content != null else null
+	var name: String = selected.display_name if selected != null else "Pick a colour"
+	title.text = "Paint | %s - Click a wall, floor or item" % name
 
 
 func _on_swatch_pressed(id: StringName) -> void:

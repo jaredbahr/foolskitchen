@@ -63,6 +63,13 @@ func test_paint_chips_are_named_round_and_request_selected_swatch() -> void:
 	sage.pressed.emit()
 	assert_eq(_catalogue.selected_swatch_id, &"sage")
 	assert_eq(_swatch_requests, [&"sage"] as Array[StringName])
+	assert_eq((_catalogue.get_node("Panel/Margin/Rows/Scroll/Content/Title") as Label).text,
+		"Paint | Sage - Click a wall, floor or item")
+	var outline: StyleBoxFlat = _catalogue.theme.get_stylebox("normal", "Button") as StyleBoxFlat
+	var selected_style: StyleBoxFlat = sage.get_theme_stylebox("normal") as StyleBoxFlat
+	assert_eq(selected_style.border_color, outline.border_color)
+	assert_true(sage.scale.x > 1.0)
+	assert_eq(_catalogue.swatch_buttons[&"butter"].scale, Vector2.ONE)
 
 
 func test_hidden_scene_uses_shared_theme_and_only_panel_consumes_input() -> void:

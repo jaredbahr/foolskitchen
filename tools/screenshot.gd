@@ -240,16 +240,20 @@ func _capture_world() -> SimWorld:
 func _configure_paint() -> void:
 	var world: SimWorld = _capture_world()
 	var catalogue: BuildCatalogue = _main.get_node_or_null("Overlay/BuildCatalogue") as BuildCatalogue
+	var rig: CameraRig = _main.get_node_or_null("CameraRig") as CameraRig
 	if world == null or world.clock.phase != SimClock.Phase.MORNING or world.now != 0 \
-			or catalogue == null or not _main.has_method("set_paint_active") or not _main.has_method("paint_cell"):
+			or catalogue == null or rig == null or not _main.has_method("set_paint_active") or not _main.has_method("paint_cell"):
 		_fail_capture("--paint requires the production paused morning paint APIs")
 		return
+	# Present the colours without grid lines, as a player can by pressing G.
+	if rig.grid_visible:
+		rig.toggle_grid()
 	if not bool(_main.call("set_paint_active", true)):
 		_fail_capture("scene refused paint entry")
 		return
 	var samples: Array[Dictionary] = [
-		{"swatch": &"cream", "cell": Vector2i(0, 5)},
-		{"swatch": &"walnut", "cell": Vector2i(8, 8)},
+		{"swatch": &"sage", "cell": Vector2i(0, 5)},
+		{"swatch": &"honey", "cell": Vector2i(8, 8)},
 		{"swatch": &"terracotta", "cell": Vector2i(2, 6)},
 		{"swatch": &"sage", "cell": Vector2i(12, 9)},
 	]
@@ -269,7 +273,8 @@ func _paint_state() -> Dictionary:
 	var editor: ShopEditor = _main.get("shop_editor") as ShopEditor
 	var view: ShopView = _main.get_node_or_null("ShopView") as ShopView
 	var catalogue: BuildCatalogue = _main.get_node_or_null("Overlay/BuildCatalogue") as BuildCatalogue
-	if world == null or editor == null or view == null or catalogue == null:
+	var rig: CameraRig = _main.get_node_or_null("CameraRig") as CameraRig
+	if world == null or editor == null or view == null or catalogue == null or rig == null:
 		return {}
 	var tables: Array[PlacedItem] = ShopBuilder.items_with_def(world, &"table_2")
 	var plants: Array[PlacedItem] = ShopBuilder.items_with_def(world, &"potted_plant")
@@ -281,11 +286,12 @@ func _paint_state() -> Dictionary:
 	var plant_material: StandardMaterial3D = view.item_nodes[plants[0].id].material_override as StandardMaterial3D
 	var content: ContentDB = _main.get("content") as ContentDB
 	return {"active": _main.call("is_paint_active"), "catalogue_visible": catalogue.is_visible_in_tree(),
-		"swatch_count": catalogue.swatch_buttons.size(), "wall": String(editor.wall_swatch_id),
+		"swatch_count": catalogue.swatch_buttons.size(), "grid_forced": rig.is_grid_forced(),
+		"grid_visible": rig.effective_grid_visible(), "wall": String(editor.wall_swatch_id),
 		"floor": String(editor.floor_swatch_id), "table": String(tables[0].swatch_id),
 		"plant": String(plants[0].swatch_id),
-		"rendered": (wall.material_override as StandardMaterial3D).albedo_color == content.swatch(&"cream").color \
-			and floor_shader.get_shader_parameter("floor_color") == content.swatch(&"walnut").color \
+		"rendered": (wall.material_override as StandardMaterial3D).albedo_color == content.swatch(&"sage").color \
+			and floor_shader.get_shader_parameter("floor_color") == content.swatch(&"honey").color \
 			and table_material.albedo_color == content.swatch(&"terracotta").color \
 			and plant_material.albedo_color == content.swatch(&"sage").color}
 
@@ -435,8 +441,9 @@ func _capture() -> void:
 		return
 	var paint: Dictionary = _paint_state() if _paint else {}
 	if _paint and (paint.get("active") != true or paint.get("catalogue_visible") != true \
-			or paint.get("swatch_count") != 12 or paint.get("wall") != "cream" \
-			or paint.get("floor") != "walnut" or paint.get("table") != "terracotta" \
+			or paint.get("swatch_count") != 12 or paint.get("grid_forced") != false \
+			or paint.get("grid_visible") != false or paint.get("wall") != "sage" \
+			or paint.get("floor") != "honey" or paint.get("table") != "terracotta" \
 			or paint.get("plant") != "sage" or paint.get("rendered") != true \
 			or world == null or world.now != 0 or world.clock.phase != SimClock.Phase.MORNING):
 		_fail_capture("painted shop state did not match the rendered morning frame")

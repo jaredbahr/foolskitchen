@@ -636,6 +636,20 @@ func test_paint_during_service_previews_then_commits_without_books_or_immediate_
 	assert_false(_main.call("is_paint_active"))
 
 
+func test_paint_preserves_grid_preference_without_forcing_it() -> void:
+	await _start()
+	for preference: bool in [false, true]:
+		if _rig().grid_visible != preference:
+			_rig().toggle_grid()
+		assert_true(_main.call("set_paint_active", true))
+		assert_false(_rig().is_grid_forced())
+		assert_eq(_rig().effective_grid_visible(), preference)
+		assert_eq(_rig().grid_material.get_shader_parameter("grid_visible"), preference)
+		assert_true(_main.call("set_paint_active", false))
+		assert_false(_rig().is_grid_forced())
+		assert_eq(_rig().grid_visible, preference)
+
+
 func test_paint_screen_pick_uses_visible_item_depth_before_wall_or_floor() -> void:
 	await _start()
 	assert_true(_main.call("set_paint_active", true))
