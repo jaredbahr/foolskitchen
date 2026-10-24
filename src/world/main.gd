@@ -73,6 +73,7 @@ var _menu_panel: MenuPanel
 var _staff_panel: StaffPanel
 var _settings_panel: SettingsPanel
 var _settings_return_to_menu: bool = false
+var _settings_previous_speed: int = 0
 
 
 ## Builds the restaurant and the read-only view. Safe before tree readiness.
@@ -128,6 +129,10 @@ func _bind_world_presentation() -> void:
 	view.set_camera_quarter(camera.camera_quarter())
 	$HUD.bind_shop_view(view)
 	$HUD.bind_preferences(Preferences)
+	if not $HUD.is_connected(&"header_layout_changed", _on_header_layout_changed):
+		$HUD.connect(&"header_layout_changed", _on_header_layout_changed)
+	if not $HUD.is_connected(&"settings_pressed", _on_hud_settings_requested):
+		$HUD.connect(&"settings_pressed", _on_hud_settings_requested)
 	_report = $Overlay/EveningReport
 	_report.hide()
 	_inspect_panel = $Overlay/InspectPanel
@@ -177,7 +182,18 @@ func _bind_world_presentation() -> void:
 	_inspect_panel.bind_world(world)
 	_debug_overlay.bind_world(world)
 	_debug_overlay.bind_cleanliness(sim.cleanliness)
+	_on_header_layout_changed()
 	refresh_presentation()
+
+
+func _on_header_layout_changed() -> void:
+	var top: float = float($HUD.call("panel_top"))
+	for path: NodePath in [^"Overlay/MenuPanel/Panel", ^"Overlay/StaffPanel/Panel",
+			^"Overlay/EveningReport/Panel", ^"Overlay/DebugOverlay/Panel"]:
+		var panel: Control = get_node(path) as Control
+		panel.offset_top = top
+	if _settings_panel != null:
+		_settings_panel.set_panel_top(top)
 
 
 func _ready() -> void:
@@ -322,12 +338,14 @@ func _unhandled_input(event: InputEvent) -> void:
 	if key != null and key.pressed and not key.echo:
 		var code: Key = key.physical_keycode if key.physical_keycode != KEY_NONE else key.keycode
 		if code == KEY_ESCAPE:
-			if _menu_panel != null and _menu_panel.visible:
-				_menu_panel.hide()
+			if is_menu_visible():
+				set_menu_visible(false)
 			elif _staff_panel != null and _staff_panel.visible:
-				_staff_panel.hide()
-			else:
+				set_staff_visible(false)
+			elif _inspect_panel.selected_agent_id >= 0 or _inspect_panel.selected_item_id >= 0:
 				clear_selection()
+			else:
+				set_settings_visible(true)
 			_mark_input_handled()
 		else:
 			var mode: StringName = _owner_mode_for_key(code)
@@ -1045,8 +1063,9 @@ func set_staff_visible(value: bool) -> bool:
 		return false
 	if value:
 		if is_settings_visible():
-			_settings_panel.hide()
 			_settings_return_to_menu = false
+			if not set_settings_visible(false):
+				return false
 		if _paint_active:
 			set_paint_active(false)
 		build_mode.exit()
@@ -1156,8 +1175,9 @@ func set_menu_visible(value: bool) -> bool:
 		return false
 	if value:
 		if is_settings_visible():
-			_settings_panel.hide()
 			_settings_return_to_menu = false
+			if not set_settings_visible(false):
+				return false
 		if _paint_active:
 			set_paint_active(false)
 		build_mode.exit()
@@ -1178,10 +1198,21 @@ func set_settings_visible(value: bool) -> bool:
 		return true
 	if value:
 		_settings_return_to_menu = is_menu_visible()
+		_settings_previous_speed = Clock.speed
+		Clock.set_speed(0)
 		set_menu_visible(false)
 		set_staff_visible(false)
+		if _paint_active:
+			set_paint_active(false)
+		build_mode.exit()
+		clear_selection()
 		_settings_panel.refresh()
+	else:
+		if not _settings_panel.flush_pending_changes():
+			return false
 	_settings_panel.visible = value
+	if not value:
+		Clock.set_speed(_settings_previous_speed)
 	if not value and _settings_return_to_menu:
 		_settings_return_to_menu = false
 		set_menu_visible(true)
@@ -1194,6 +1225,10 @@ func is_settings_visible() -> bool:
 
 func _on_menu_settings_requested() -> void:
 	set_settings_visible(true)
+
+
+func _on_hud_settings_requested() -> void:
+	set_settings_visible(not is_settings_visible())
 
 
 func _on_settings_close_requested() -> void:

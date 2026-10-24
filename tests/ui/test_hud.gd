@@ -9,6 +9,7 @@ var _old_cash: int
 var _old_last_speed: int
 var _old_accumulator: float
 var _speeds: Array[int] = []
+var _settings_requests: int = 0
 
 
 func before_each() -> void:
@@ -89,22 +90,94 @@ func test_owner_level_and_xp_bar_refresh_beside_reputation() -> void:
 	assert_almost_eq(bar.value, 50.0, 0.0001, "the display clamps an invalid overfull fraction")
 
 
-func test_owner_progress_keeps_top_bar_inside_a_1280_viewport() -> void:
+func test_scaled_window_keeps_every_hud_control_readable_and_build_hints_below_header() -> void:
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	await tree.process_frame
-	var viewport: SubViewport = SubViewport.new()
-	viewport.size = Vector2i(1280, 720)
-	tree.root.add_child(viewport)
-	viewport.add_child(_hud)
+	# A real Window applies content scaling. A plain 1280px SubViewport would
+	# miss this regression; embed the Window to avoid changing the test root.
+	var host: SubViewport = SubViewport.new()
+	host.size = Vector2i(1600, 900)
+	host.gui_embed_subwindows = true
+	tree.root.add_child(host)
+	var window: Window = Window.new()
+	window.borderless = true
+	window.size = Vector2i(1280, 720)
+	window.content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS
+	window.content_scale_aspect = Window.CONTENT_SCALE_ASPECT_EXPAND
+	window.content_scale_size = Vector2i(1600, 900)
+	host.add_child(window)
+	var view: ShopView = load("res://src/world/shop_view.tscn").instantiate() as ShopView
+	_hud.call("bind_shop_view", view)
 	_hud.call("set_owner_progress", 2, 17, 45)
-	await tree.process_frame
-	await tree.process_frame
+	_hud.call("set_plate_counts", 12, 12, 0, 0)
+	window.add_child(_hud)
+	await _layout_frames()
+	assert_true(window.is_embedded(), "the fixture uses an isolated embedded Window")
+	assert_eq(window.size, Vector2i(1280, 720))
+	_assert_header_layout(window)
+	_assert_single_header_row()
 	var top: Control = _hud.get_node("Top") as Control
-	var row: HBoxContainer = _hud.get_node("Top/Row") as HBoxContainer
-	assert_true(top.get_global_rect().end.x <= 1268.0)
-	assert_true(row.get_global_rect().end.x <= top.get_global_rect().end.x)
-	viewport.remove_child(_hud)
-	viewport.free()
+	var usual_height: float = top.size.y
+	assert_almost_eq(_hud.call("panel_top"), 112.0)
+	_hud.call("set_build_state", true, true, "Keep a clear route to the kitchen and every table.")
+	# Match the project virtual base and exercise both requested physical sizes
+	# at 125% and 150%. A 150% preference gives 1066.667 logical pixels here.
+	for physical_size: Vector2i in [Vector2i(1280, 720), Vector2i(1600, 900)]:
+		window.size = physical_size
+		for percent: int in [125, 150]:
+			var scale_factor: float = float(percent) / 100.0
+			window.content_scale_factor = scale_factor
+			await _layout_frames()
+			assert_eq(window.size, physical_size)
+			assert_almost_eq(window.content_scale_factor, scale_factor)
+			assert_almost_eq(window.get_visible_rect().size.x, 1600.0 / scale_factor, 0.01)
+			assert_almost_eq(window.get_visible_rect().size.y, 900.0 / scale_factor, 0.01)
+			_assert_header_layout(window)
+			_assert_build_hint_layout(window)
+			if percent == 150:
+				assert_true(top.size.y > usual_height, "150% wraps controls instead of clipping actions")
+	# Also cover a native-size virtual base: the same physical Window now has
+	# only 853.333 logical pixels. Never divide get_visible_rect() a second time.
+	window.size = Vector2i(1280, 720)
+	window.content_scale_size = Vector2i(1280, 720)
+	await _layout_frames()
+	assert_eq(window.size, Vector2i(1280, 720))
+	assert_almost_eq(window.get_visible_rect().size.x, 1280.0 / 1.5, 0.01)
+	assert_almost_eq(window.get_visible_rect().size.y, 480.0, 0.01)
+	_assert_header_layout(window)
+	_assert_build_hint_layout(window)
+	window.content_scale_size = Vector2i(1600, 900)
+	window.content_scale_factor = 1.0
+	await _layout_frames()
+	_assert_header_layout(window)
+	_assert_single_header_row()
+	assert_almost_eq(top.size.y, usual_height, 0.01, "returning to 100% restores the usual header height")
+	assert_almost_eq((_hud.get_node("BuildHints") as Control).position.y, 104.0)
+	assert_almost_eq(_hud.call("panel_top"), 112.0)
+	window.remove_child(_hud)
+	host.free()
+	view.free()
+
+
+func test_settings_gear_uses_approved_icon_and_stays_available_during_service() -> void:
+	var button: Button = _control("Settings") as Button
+	assert_eq(button.icon.resource_path, "res://assets/kenney/icons/gear.png")
+	assert_eq(button.get_theme_constant("icon_max_width"), 28)
+	assert_eq(button.focus_mode, Control.FOCUS_NONE)
+	assert_eq(button.tooltip_text, "Settings (Esc)")
+	_hud.connect(&"settings_pressed", _record_settings)
+	for phase: SimClock.Phase in [SimClock.Phase.MORNING, SimClock.Phase.OPEN,
+			SimClock.Phase.LAST_ORDERS, SimClock.Phase.CLOSED]:
+		Clock.sim.phase = phase
+		_hud.call("refresh")
+		assert_true(button.visible)
+		assert_false(button.disabled, "Settings stays available in every day phase")
+		button.pressed.emit()
+	assert_eq(_settings_requests, 4)
+	for state: StringName in [&"normal", &"hover", &"pressed", &"hover_pressed", &"disabled"]:
+		var font_color: StringName = &"font_color" if state == &"normal" else StringName("font_%s_color" % state)
+		assert_eq(button.get_theme_color(StringName("icon_%s_color" % state)),
+			button.theme.get_color(font_color, &"Button"))
 
 
 func test_paint_button_shares_top_row_and_theme_with_build() -> void:
@@ -360,9 +433,79 @@ func _native_space(down: bool) -> void:
 	(Engine.get_main_loop() as SceneTree).root.push_input(event, true)
 
 
+func _layout_frames() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	for frame: int in range(4):
+		await tree.process_frame
+
+
+func _assert_header_layout(window: Window) -> void:
+	var top: Control = _hud.get_node("Top") as Control
+	var row: Control = _hud.get_node("Top/Row") as Control
+	var pixels: Rect2 = Rect2(Vector2.ZERO, Vector2(window.size))
+	assert_true(pixels.grow(0.5).encloses(_drawn_rect(top, window)), "the whole header stays inside the physical Window")
+	var gear: Button = _control("Settings") as Button
+	assert_eq(gear.get_combined_minimum_size(), Vector2(46.0, 46.0),
+		"the native gear minimum uses the 28px icon instead of its 100px source texture")
+	var occupied: Array[Rect2] = []
+	for name: String in ["Day", "Time", "Phase", "Speed0", "Speed1", "Speed2", "Speed4",
+			"Walls", "Build", "Paint", "Cash", "Reputation", "OwnerProgress", "Plates", "Context", "Menu", "Staff", "Settings"]:
+		var control: Control = _control(name)
+		assert_true(control.is_visible_in_tree(), name + " remains visible at every scale")
+		_assert_readable_control(control, window)
+		assert_true(top.get_global_rect().grow(0.5).encloses(control.get_global_rect()), name + " stays inside its header")
+		assert_true(row.get_global_rect().grow(0.5).encloses(control.get_global_rect()), name + " stays inside its row")
+		var rect: Rect2 = _drawn_rect(control, window)
+		for previous: Rect2 in occupied:
+			assert_false(rect.intersects(previous), name + " does not cover another HUD control")
+		occupied.append(rect)
+	for path: String in ["OwnerProgress/OwnerLevel", "OwnerProgress/OwnerXPBar",
+			"Speed0/Pause/Bars/Left", "Speed0/Pause/Bars/Right"]:
+		_assert_readable_control(row.get_node(path) as Control, window)
+
+
+func _assert_readable_control(control: Control, window: Window) -> void:
+	var minimum: Vector2 = control.get_combined_minimum_size()
+	assert_true(control.size.x > 0.0 and control.size.y > 0.0, str(control.name) + " has a drawn area")
+	assert_true(control.size.x >= minimum.x - 0.5 and control.size.y >= minimum.y - 0.5,
+		str(control.name) + " retains enough room for its full native content")
+	assert_true(window.get_visible_rect().grow(0.5).encloses(control.get_global_rect()),
+		str(control.name) + " stays within logical UI bounds")
+	var pixels: Rect2 = Rect2(Vector2.ZERO, Vector2(window.size))
+	assert_true(pixels.grow(0.5).encloses(_drawn_rect(control, window)),
+		str(control.name) + " stays within physical pixel bounds")
+
+
+func _assert_single_header_row() -> void:
+	var y: float = _control("Day").global_position.y
+	for name: String in ["Time", "Phase", "Speed0", "Speed1", "Speed2", "Speed4", "Walls",
+			"Build", "Paint", "Cash", "Reputation", "OwnerProgress", "Plates", "Context", "Menu", "Staff", "Settings"]:
+		assert_almost_eq(_control(name).global_position.y, y, 0.01, "100% keeps " + name + " on the usual row")
+
+
+func _assert_build_hint_layout(window: Window) -> void:
+	var top: Control = _hud.get_node("Top") as Control
+	var hints: Control = _hud.get_node("BuildHints") as Control
+	assert_true(hints.is_visible_in_tree())
+	_assert_readable_control(hints, window)
+	assert_true(hints.global_position.y >= top.get_global_rect().end.y + 6.0,
+		"build instructions move below the wrapped header")
+	assert_false(_drawn_rect(top, window).intersects(_drawn_rect(hints, window)))
+	assert_true(float(_hud.call("panel_top")) >= top.get_global_rect().end.y + 12.0,
+		"morning panels receive clearance below the final header height")
+
+
+func _drawn_rect(control: Control, window: Window) -> Rect2:
+	return window.get_final_transform() * control.get_global_transform_with_canvas() * Rect2(Vector2.ZERO, control.size)
+
+
 func _control(name: String) -> Control:
 	return _hud.get_node("Top/Row/" + name) as Control
 
 
 func _record_speed(speed: int) -> void:
 	_speeds.append(speed)
+
+
+func _record_settings() -> void:
+	_settings_requests += 1

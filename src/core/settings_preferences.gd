@@ -1,7 +1,7 @@
 class_name SettingsPreferences
 extends Node
-## Local player preferences. Unlike a game save, changes are written at once to
-## user://settings.cfg and never enter SaveSystem's morning snapshot.
+## Local player preferences, separate from SaveSystem's morning snapshot.
+## Slider previews apply live and persist when their adjustment finishes.
 
 signal changed(key: StringName)
 
@@ -24,10 +24,13 @@ var fullscreen_enabled: bool = false
 var edge_pan_enabled: bool = true
 
 var _file_path: String = DEFAULT_PATH
+var _disk_enabled: bool = true
+var _pending_volume_save: bool = false
 
 
 func _init(path: String = DEFAULT_PATH) -> void:
 	_file_path = path
+	_disk_enabled = should_use_disk(path, OS.get_cmdline_args())
 
 
 func _ready() -> void:
@@ -40,7 +43,8 @@ func _ready() -> void:
 ## No settings read is allowed to mutate game saves or the active simulation.
 func load_from_disk() -> bool:
 	_reset_defaults()
-	if not _file_path.begins_with("user://") or not FileAccess.file_exists(_file_path) \
+	if not _disk_enabled or not _file_path.begins_with("user://") \
+			or not FileAccess.file_exists(_file_path) \
 			or not _has_safe_config_syntax():
 		return false
 	var config: ConfigFile = ConfigFile.new()
@@ -111,7 +115,7 @@ func _has_safe_config_syntax() -> bool:
 
 
 func save_to_disk() -> bool:
-	if not _file_path.begins_with("user://"):
+	if not _disk_enabled or not _file_path.begins_with("user://"):
 		return false
 	var config: ConfigFile = ConfigFile.new()
 	config.set_value(SECTION, "version", VERSION)
@@ -122,7 +126,32 @@ func save_to_disk() -> bool:
 	config.set_value(SECTION, "default_open_speed", default_open_speed)
 	config.set_value(SECTION, "fullscreen", fullscreen_enabled)
 	config.set_value(SECTION, "edge_pan", edge_pan_enabled)
-	return config.save(_file_path) == OK
+	var saved: bool = config.save(_file_path) == OK
+	if saved:
+		_pending_volume_save = false
+	return saved
+
+
+## Test autoloads must never inspect a developer's preferences, on any OS.
+## Explicit per-test paths still exercise real isolated ConfigFile round trips.
+static func should_use_disk(path: String, arguments: PackedStringArray) -> bool:
+	if path != DEFAULT_PATH:
+		return true
+	var script_follows: bool = false
+	for argument: String in arguments:
+		if argument == "--":
+			break
+		var script_path: String = ""
+		if script_follows:
+			script_path = argument
+		elif argument.begins_with("--script="):
+			script_path = argument.trim_prefix("--script=")
+		script_follows = argument == "--script" or argument == "-s"
+		script_path = script_path.replace("\\", "/")
+		for runner: String in ["tools/run_tests.gd", "tools/parse_all.gd"]:
+			if script_path == runner or script_path.ends_with("/" + runner):
+				return false
+	return true
 
 
 func volume_percent(bus: StringName) -> int:
@@ -146,6 +175,24 @@ func set_volume_percent(bus: StringName, percent: int) -> bool:
 	apply_audio()
 	changed.emit(bus)
 	return true
+
+
+## Audio remains responsive while a pointer or keyboard changes the slider.
+## The panel coalesces these previews into one release/debounce write.
+func preview_volume_percent(bus: StringName, percent: int) -> bool:
+	if not _valid_volume(percent) or volume_percent(bus) < 0:
+		return false
+	if volume_percent(bus) == percent:
+		return true
+	_set_volume(bus, percent)
+	_pending_volume_save = true
+	apply_audio()
+	changed.emit(bus)
+	return true
+
+
+func flush_pending_volumes() -> bool:
+	return not _pending_volume_save or save_to_disk()
 
 
 func set_ui_scale_percent(percent: int) -> bool:
@@ -221,7 +268,9 @@ func apply_window(window: Window) -> void:
 		return
 	window.content_scale_factor = float(ui_scale_percent) / 100.0
 	if not OS.has_feature("web") and DisplayServer.get_name() != "headless":
-		window.mode = Window.MODE_FULLSCREEN if fullscreen_enabled else Window.MODE_WINDOWED
+		var desired_mode: Window.Mode = Window.MODE_FULLSCREEN if fullscreen_enabled else Window.MODE_WINDOWED
+		if window.mode != desired_mode:
+			window.mode = desired_mode
 
 
 func _set_volume(bus: StringName, percent: int) -> void:
@@ -236,6 +285,7 @@ static func _valid_volume(value: Variant) -> bool:
 
 
 func _reset_defaults() -> void:
+	_pending_volume_save = false
 	master_volume_percent = 100
 	music_volume_percent = 100
 	effects_volume_percent = 100
