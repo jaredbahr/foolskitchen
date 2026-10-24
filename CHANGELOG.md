@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- The bank covers closing shortfalls with an automatic loan; see repayments and interest, and pay it off before making big purchases. (#134)
 - Read the time, money and actions in grouped top-bar controls with matching Kenney icons and clearer panel headings. (#132)
 - Chairs, tables and kitchen equipment use matching Kenney models; paint keeps their metal, glass and food details. (#131)
 - Staff improve at the jobs they finish and can ask for raises; review their progress and requests each morning. (#130)
