@@ -8,6 +8,18 @@ var fallback: MeshInstance3D
 var _fallback_material: Material
 
 
+func _notification(what: int) -> void:
+	if what != NOTIFICATION_PREDELETE:
+		return
+	# Unbind private materials while every descendant renderer instance is alive.
+	# Otherwise MeshInstance3D can release surface override resources before its
+	# base destructor flushes dirty instances that still contain their material RIDs.
+	for mesh_node: MeshInstance3D in rendered_meshes():
+		mesh_node.material_override = null
+		for index: int in range(mesh_node.get_surface_override_material_count()):
+			mesh_node.set_surface_override_material(index, null)
+
+
 static func create(definition: ItemDef, fallback_height: float, material: Material) -> ItemVisual:
 	var result: ItemVisual = ItemVisual.new()
 	if definition.view_scene != null:

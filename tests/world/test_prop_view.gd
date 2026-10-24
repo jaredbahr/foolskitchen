@@ -1,6 +1,14 @@
 extends TestCase
 ## The real-model tests require the normal Godot import before the test runner.
 
+class TeardownProbe extends MeshInstance3D:
+	var observed: Dictionary = {}
+
+	func _notification(what: int) -> void:
+		if what == NOTIFICATION_PREDELETE:
+			observed[String(name)] = material_override == null \
+				and get_surface_override_material(0) == null
+
 var _views: Array[PropView] = []
 
 
@@ -122,6 +130,41 @@ func test_named_body_accessor_ignores_earlier_trim_and_glass_surfaces() -> void:
 	assert_eq((art.get_node("Trim") as MeshInstance3D).get_active_material(0), metal)
 	view.clear_body_tint()
 	assert_eq(view.active_body_material(), wood)
+
+
+func test_item_teardown_unbinds_private_materials_before_descendant_delete() -> void:
+	var observed: Dictionary = {}
+	var source: StandardMaterial3D = _material("wood")
+	var source_color: Color = source.albedo_color
+	var shared_mesh: BoxMesh = BoxMesh.new()
+	shared_mesh.material = source
+	var holder: Node3D = Node3D.new()
+	var item: ItemVisual = ItemVisual.new()
+	holder.add_child(item)
+	var nested: Node3D = Node3D.new()
+	item.add_child(nested)
+	var geometry: TeardownProbe = TeardownProbe.new()
+	geometry.name = "Geometry"
+	geometry.mesh = shared_mesh
+	geometry.material_override = source
+	geometry.observed = observed
+	item.add_child(geometry)
+	var surface: TeardownProbe = TeardownProbe.new()
+	surface.name = "Surface"
+	surface.mesh = shared_mesh
+	surface.observed = observed
+	nested.add_child(surface)
+	item.set_ghost_tint(Color.RED)
+	assert_not_null(geometry.material_override)
+	assert_true(geometry.material_override != source, "the box branch owns a private geometry override")
+	assert_not_null(surface.get_surface_override_material(0), "the model branch owns a private surface override")
+	assert_true(observed.is_empty())
+	# This deliberately starts outside the tree, as do several real preview paths.
+	# The descendant observers run before their own native mesh destructors.
+	holder.free()
+	assert_eq(observed, {"Geometry": true, "Surface": true}, "all bindings are detached before child deletion")
+	assert_eq(shared_mesh.material, source, "teardown never changes shared mesh materials")
+	assert_eq(source.albedo_color, source_color)
 
 
 func test_optional_scene_defaults_to_absent_for_the_world_box_fallback() -> void:
