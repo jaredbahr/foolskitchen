@@ -128,6 +128,7 @@ func test_panel_exposes_all_choices_and_writes_through_the_model() -> void:
 	panel.bind_preferences(_model)
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	tree.root.add_child(panel)
+	await tree.process_frame
 	assert_eq(panel.theme, preload("res://src/ui/theme/main_theme.tres"))
 	var scale: OptionButton = panel.get_node("Panel/Scroll/Content/ScaleChoice") as OptionButton
 	var speed: OptionButton = panel.get_node("Panel/Scroll/Content/SpeedChoice") as OptionButton

@@ -11,6 +11,9 @@ const VERSION: int = 1
 const UI_SCALES: Array[int] = [100, 125, 150]
 const OPEN_SPEEDS: Array[int] = [1, 2]
 const MISSING: String = "__missing_preference__"
+const INTEGER_KEYS: Array[String] = ["version", "master_volume", "music_volume",
+	"effects_volume", "ui_scale", "default_open_speed"]
+const BOOL_KEYS: Array[String] = ["fullscreen", "edge_pan"]
 
 var master_volume_percent: int = 100
 var music_volume_percent: int = 100
@@ -37,7 +40,8 @@ func _ready() -> void:
 ## No settings read is allowed to mutate game saves or the active simulation.
 func load_from_disk() -> bool:
 	_reset_defaults()
-	if not _file_path.begins_with("user://") or not FileAccess.file_exists(_file_path):
+	if not _file_path.begins_with("user://") or not FileAccess.file_exists(_file_path) \
+			or not _has_safe_config_syntax():
 		return false
 	var config: ConfigFile = ConfigFile.new()
 	if config.load(_file_path) != OK:
@@ -65,6 +69,45 @@ func load_from_disk() -> bool:
 	fullscreen_enabled = fullscreen
 	edge_pan_enabled = edge_pan
 	return true
+
+
+## ConfigFile logs a parser error for broken section tags or values. Reject
+## anything outside our eight simple authored fields before asking it to load,
+## so a damaged preferences file quietly falls back to defaults.
+func _has_safe_config_syntax() -> bool:
+	var file: FileAccess = FileAccess.open(_file_path, FileAccess.READ)
+	if file == null:
+		return false
+	var source: String = file.get_as_text()
+	file.close()
+	var section_seen: bool = false
+	var keys_seen: Dictionary[String, bool] = {}
+	for raw_line: String in source.split("\n"):
+		var line: String = raw_line.strip_edges()
+		if line.is_empty():
+			continue
+		if not section_seen:
+			if line != "[preferences]":
+				return false
+			section_seen = true
+			continue
+		var equals: int = line.find("=")
+		if equals <= 0 or line.find("=", equals + 1) >= 0:
+			return false
+		var key: String = line.substr(0, equals).strip_edges()
+		var value: String = line.substr(equals + 1).strip_edges()
+		if keys_seen.has(key):
+			return false
+		if INTEGER_KEYS.has(key):
+			if not value.is_valid_int():
+				return false
+		elif BOOL_KEYS.has(key):
+			if value != "true" and value != "false":
+				return false
+		else:
+			return false
+		keys_seen[key] = true
+	return section_seen and keys_seen.size() == INTEGER_KEYS.size() + BOOL_KEYS.size()
 
 
 func save_to_disk() -> bool:
