@@ -9,6 +9,7 @@ extends SceneTree
 ##   --assign-owner=kitchen  use the normal selected-owner command (requires --open)
 ##   --f3        show the scene's read-only debug overlay
 ##   --menu      show the real menu panel in MORNING (cannot combine with --open)
+##   --staff     show the real morning Staff panel, paused, with no altered roster
 ##   --build=green|red  hold a checked buy preview through the production input API
 ## Metadata records actual waiting moods/visible markers and seeds, with no fixture.
 
@@ -32,6 +33,7 @@ var _assign_owner: bool = false
 var _owner_warmup_ticks: int = 0
 var _f3: bool = false
 var _menu: bool = false
+var _staff: bool = false
 var _build: String = ""
 var _build_pointer: Vector2 = Vector2.ZERO
 var _selected_agent_id: int = -1
@@ -72,6 +74,11 @@ func _initialize() -> void:
 				_fail_capture("--menu does not accept a value")
 				return
 			_menu = true
+		elif arg.begins_with("--staff"):
+			if arg != "--staff":
+				_fail_capture("--staff does not accept a value")
+				return
+			_staff = true
 		elif arg.begins_with("--build"):
 			var requested: String = arg.trim_prefix("--build=")
 			if not ["green", "red"].has(requested):
@@ -93,13 +100,16 @@ func _initialize() -> void:
 	if _assign_owner and (_selection != &"owner" or not _open):
 		_fail_capture("--assign-owner=kitchen requires --select=owner and --open")
 		return
-	if not _build.is_empty() and (_open or _fast != 0 or not _selection.is_empty() or _assign_owner or _f3 or _menu):
+	if not _build.is_empty() and (_open or _fast != 0 or not _selection.is_empty() or _assign_owner or _f3 or _menu or _staff):
 		_fail_capture("--build requires a fresh morning without other view/service flags")
 		return
 	if _menu and (_open or not _selection.is_empty()):
 		_fail_capture("--menu requires morning and cannot combine with --open or --select")
 		return
-	if _shots.is_empty() or _shots.min() < 1 or ((_quarter >= 0 or not _selection.is_empty() or _f3 or _menu or not _build.is_empty()) and _shots.min() < 4):
+	if _staff and (_open or _fast != 0 or not _selection.is_empty() or _assign_owner or _f3 or _menu or _speed != 0):
+		_fail_capture("--staff requires a paused morning without other service/panel options")
+		return
+	if _shots.is_empty() or _shots.min() < 1 or ((_quarter >= 0 or not _selection.is_empty() or _f3 or _menu or _staff or not _build.is_empty()) and _shots.min() < 4):
 		_fail_capture("capture frames must be positive, and at least 4 for requested view/UI options")
 		return
 	if DirAccess.make_dir_recursive_absolute(_out) != OK:
@@ -141,6 +151,10 @@ func _process(_delta: float) -> bool:
 		if _menu:
 			if not _main.has_method("set_menu_visible") or not _main.has_method("is_menu_visible") or not bool(_main.call("set_menu_visible", true)):
 				_fail_capture("--menu requires the scene's morning menu APIs")
+				return true
+		if _staff:
+			if not _main.has_method("set_staff_visible") or not bool(_main.call("set_staff_visible", true)):
+				_fail_capture("--staff requires the scene's morning staff API")
 				return true
 		if not _build.is_empty():
 			_configure_build()
@@ -350,6 +364,11 @@ func _capture() -> void:
 	if _menu and (menu_visible != true or world == null or world.clock.phase != SimClock.Phase.MORNING):
 		_fail_capture("requested menu was not visible in the rendered morning frame")
 		return
+	var staff_state: Dictionary = _staff_state()
+	if _staff and (staff_state.get("visible") != true or world == null or world.clock.phase != SimClock.Phase.MORNING \
+			or world.now != 0 or not _staff_capture_valid(staff_state)):
+		_fail_capture("requested Staff panel did not show the real paused morning roster and pool")
+		return
 	var selected_id: int = int(inspection.get("selected_agent_id", -1))
 	var selected: SimAgent = world.agent(selected_id) if world != null else null
 	var selected_live: bool = (_selection == &"guest" and selected is CustomerAgent) or (_selection == &"owner" and selected is OwnerAgent)
@@ -432,6 +451,7 @@ func _capture() -> void:
 		"selected_task_step": inspection.get("selected_task_step", -1),
 		"requested_debug_visible": _f3,
 		"requested_menu_visible": _menu, "menu_visible": menu_visible,
+		"requested_staff_visible": _staff, "staff": staff_state,
 		"requested_build": _build, "build": build,
 		"day_phase": int(world.clock.phase) if world != null else null,
 		"selected_agent_id": inspection.get("selected_agent_id"),
@@ -461,6 +481,60 @@ func _capture() -> void:
 	_capture_pending = false
 	if _finish_requested:
 		_finish_capture()
+
+
+## Read model records and actual native rows together, after the image draw.
+func _staff_state() -> Dictionary:
+	var panel: StaffPanel = _main.get_node_or_null("Overlay/StaffPanel") as StaffPanel
+	if panel == null or not ("staff_roster" in _main):
+		return {}
+	var roster: StaffRoster = _main.get("staff_roster")
+	if roster == null:
+		return {}
+	var rows: Array[Dictionary] = []
+	var members: Array[StaffMember] = roster.members()
+	var candidates: Array[StaffMember] = roster.candidates()
+	for member: StaffMember in members + candidates:
+		var row: Control = panel.row_for(member.id)
+		if row == null:
+			continue
+		var button: Button = row.get_node("Top/Action") as Button
+		rows.append({"id": String(member.id), "name_and_wage": (row.get_node("Top/Name") as Label).text,
+			"trait": (row.get_node("Trait") as Label).text, "action": button.text,
+			"disabled": button.disabled, "visible_in_tree": row.is_visible_in_tree()})
+	return {"visible": panel.is_visible_in_tree(), "roster": roster.to_dict(), "rows": rows,
+		"member_count": members.size(), "candidate_count": candidates.size()}
+
+
+## Semantic state checks belong beside the captured native reads, not in CI.
+func _staff_capture_valid(state: Dictionary) -> bool:
+	var roster: Dictionary = state.get("roster", {})
+	var members: Array = roster.get("members", [])
+	var candidates: Array = roster.get("candidates", [])
+	if members.size() != 2 or candidates.size() != 3 \
+			or state.get("member_count") != 2 or state.get("candidate_count") != 3:
+		return false
+	var native_rows: Array = state.get("rows", [])
+	var rows: Dictionary[String, Dictionary] = {}
+	for row: Dictionary in native_rows:
+		var id: String = row.get("id", "")
+		if id.is_empty() or rows.has(id):
+			return false
+		rows[id] = row
+	if rows.size() != 5:
+		return false
+	for person: Dictionary in members + candidates:
+		var row: Dictionary = rows.get(person["id"], {})
+		var title: String = row.get("name_and_wage", "")
+		var definition: StaffTrait = StaffRoster.CATALOGUE.trait(StringName(person["trait"]))
+		var action: String = "Let go" if members.has(person) else "Hire"
+		if row.get("visible_in_tree") != true or not title.contains(person["name"]) \
+				or not title.contains("skill %d" % int(person["skill"])) \
+				or not title.contains("$%d/day" % int(person["wage"])) \
+				or row.get("action") != action or definition == null \
+				or not String(row.get("trait", "")).begins_with(definition.display_name + ":"):
+			return false
+	return true
 
 
 ## Snapshot model values and independently read actual marker nodes. In

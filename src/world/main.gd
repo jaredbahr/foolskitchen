@@ -30,6 +30,7 @@ var shop_editor: ShopEditor
 var build_mode: BuildMode = BuildMode.new()
 ## Cookable dishes/prices belong to this shop, never to shared recipe resources.
 var menu_settings: MenuSettings
+var staff_roster: StaffRoster
 
 var _previous_clock: SimClock = null
 var _started: bool = false
@@ -37,6 +38,7 @@ var _skip_next_autosave: bool = false
 var _owner_preferences: OwnerModeSettings = OwnerModeSettings.new()
 var _loaded_layout: ShopLayout = null
 var _loaded_menu: MenuSettings = null
+var _loaded_staff: StaffRoster = null
 var _report: Control
 var _inspect_panel: InspectPanel
 var _debug_overlay: DebugOverlay
@@ -48,6 +50,7 @@ var _was_build_active: bool = false
 var _build_phase: int = -1
 var _build_ui_phase: int = -1
 var _menu_panel: MenuPanel
+var _staff_panel: StaffPanel
 
 
 ## Builds the restaurant and the read-only view. Safe before tree readiness.
@@ -61,7 +64,8 @@ func initialize() -> void:
 		push_error("Cannot load shop content: %s" % [load_errors])
 		return
 	var errors: Array[String] = []
-	sim = RestaurantSim.create(LAYOUT, content, 1, errors)
+	staff_roster = StaffRoster.new(TUNING)
+	sim = RestaurantSim.create(LAYOUT, content, 1, errors, null, true, false, staff_roster.members())
 	if not errors.is_empty():
 		push_error("Cannot build shop: %s" % [errors])
 		sim = null
@@ -117,6 +121,14 @@ func _bind_world_presentation() -> void:
 		_menu_panel.price_requested.connect(_on_menu_price_requested)
 	if not $HUD.is_connected(&"menu_pressed", toggle_menu):
 		$HUD.connect(&"menu_pressed", toggle_menu)
+	_staff_panel = $Overlay/StaffPanel
+	_staff_panel.bind_roster(staff_roster)
+	_staff_panel.set_phase(Clock.sim.phase)
+	if not _staff_panel.hire_requested.is_connected(_on_staff_hire_requested):
+		_staff_panel.hire_requested.connect(_on_staff_hire_requested)
+		_staff_panel.let_go_requested.connect(_on_staff_let_go_requested)
+	if not $HUD.is_connected(&"staff_pressed", toggle_staff):
+		$HUD.connect(&"staff_pressed", toggle_staff)
 	_inspect_panel.bind_world(world)
 	_debug_overlay.bind_world(world)
 	refresh_presentation()
@@ -156,6 +168,7 @@ func start() -> void:
 	SaveSystem.register("owner", _capture_owner, _restore_owner)
 	SaveSystem.register("shop", _capture_shop, _restore_shop)
 	SaveSystem.register("menu", _capture_menu, _restore_menu)
+	SaveSystem.register("staff", _capture_staff, _restore_staff)
 	var loaded: bool = use_saves and _load_autosave()
 	if not loaded:
 		_skip_next_autosave = use_saves and SaveSystem.list_slots().has(save_slot)
@@ -232,6 +245,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		if code == KEY_ESCAPE:
 			if _menu_panel != null and _menu_panel.visible:
 				_menu_panel.hide()
+			elif _staff_panel != null and _staff_panel.visible:
+				_staff_panel.hide()
 			else:
 				clear_selection()
 			_mark_input_handled()
@@ -355,6 +370,7 @@ func _on_build_changed() -> void:
 	if active and not _was_build_active:
 		_build_phase = world.clock.phase
 		set_menu_visible(false)
+		set_staff_visible(false)
 		clear_selection()
 		_report.hide()
 	elif not active and _was_build_active and _build_ready and world.clock.phase == SimClock.Phase.CLOSED:
@@ -571,6 +587,10 @@ func _new_game() -> void:
 	_owner_preferences.reset()
 	sim.assign_owner(&"rest")
 	_loaded_menu = null
+	_loaded_staff = null
+	staff_roster = StaffRoster.new(TUNING)
+	sim.set_staff_roster(staff_roster.members())
+	_staff_panel.bind_roster(staff_roster)
 	sim.stock = Economy.stock
 	world.log_event("New game: $%d to start" % TUNING.starting_cash)
 
@@ -578,6 +598,7 @@ func _new_game() -> void:
 func _load_autosave() -> bool:
 	_loaded_layout = null
 	_loaded_menu = null
+	_loaded_staff = null
 	if not SaveSystem.list_slots().has(save_slot):
 		return false
 	if SaveSystem.load_game(save_slot) != OK:
@@ -590,13 +611,17 @@ func _load_autosave() -> bool:
 	var choices: MenuSettings = _loaded_menu if _loaded_menu != null else MenuSettings.new(_cookable_recipes(layout))
 	if not choices.is_valid():
 		return false
-	if _loaded_layout != null:
+	var employees: StaffRoster = _loaded_staff if _loaded_staff != null else StaffRoster.new(TUNING)
+	if employees.candidate_day > Clock.sim.day:
+		return false
+	if _loaded_layout != null or _loaded_staff != null:
 		var errors: Array[String] = []
-		var candidate: RestaurantSim = RestaurantSim.create(_loaded_layout, content, 1, errors, Economy.stock, true, true)
+		var candidate: RestaurantSim = RestaurantSim.create(layout, content, 1, errors, Economy.stock, true, _loaded_layout != null, employees.members())
 		if not errors.is_empty():
 			return false
 		sim = candidate
 		world = candidate.world
+	staff_roster = employees
 	menu_settings = choices
 	_apply_menu(sim, menu_settings)
 	_bind_world_presentation()
@@ -637,6 +662,77 @@ func _restore_menu(data: Dictionary) -> bool:
 		return false
 	_loaded_menu = choices
 	return true
+
+
+func _capture_staff() -> Dictionary:
+	return staff_roster.to_dict()
+
+
+## Like shop/menu, restore only stages choices; no live agent or RNG mutations.
+func _restore_staff(data: Dictionary) -> bool:
+	var choices: StaffRoster = StaffRoster.new(TUNING)
+	if not choices.from_dict(data):
+		return false
+	_loaded_staff = choices
+	return true
+
+
+func can_edit_staff() -> bool:
+	return _started and staff_roster != null and Clock.sim.phase == SimClock.Phase.MORNING
+
+
+func staff_hire(id: StringName) -> bool:
+	return _change_staff(id, true)
+
+
+func staff_let_go(id: StringName) -> bool:
+	return _change_staff(id, false)
+
+
+func _change_staff(id: StringName, hiring: bool) -> bool:
+	if not can_edit_staff():
+		return false
+	var choices: StaffRoster = StaffRoster.new(TUNING)
+	if not choices.from_dict(staff_roster.to_dict()):
+		return false
+	if not (choices.hire(id) if hiring else choices.let_go(id)):
+		return false
+	if not sim.set_staff_roster(choices.members()):
+		return false
+	staff_roster = choices
+	_staff_panel.bind_roster(staff_roster)
+	refresh_presentation()
+	return true
+
+
+func toggle_staff() -> void:
+	set_staff_visible(not is_staff_visible())
+
+
+func set_staff_visible(value: bool) -> bool:
+	if _staff_panel == null or (value and not can_edit_staff()):
+		return false
+	if value:
+		build_mode.exit()
+		set_menu_visible(false)
+		clear_selection()
+	_staff_panel.set_phase(Clock.sim.phase)
+	_staff_panel.visible = value
+	return true
+
+
+func is_staff_visible() -> bool:
+	return _staff_panel != null and _staff_panel.visible
+
+
+func _on_staff_hire_requested(id: StringName) -> void:
+	staff_hire(id)
+	_staff_panel.refresh()
+
+
+func _on_staff_let_go_requested(id: StringName) -> void:
+	staff_let_go(id)
+	_staff_panel.refresh()
 
 
 ## Station definitions decide availability; temporary path/stock problems do not
@@ -716,6 +812,7 @@ func set_menu_visible(value: bool) -> bool:
 		return false
 	if value:
 		build_mode.exit()
+		set_staff_visible(false)
 	_menu_panel.set_phase(Clock.sim.phase)
 	_menu_panel.visible = value
 	return true
@@ -759,6 +856,10 @@ func shop_sell(item_id: int) -> int:
 ## Morning setup: new counters, a stocked fridge, and an autosave.
 func _begin_morning() -> void:
 	sim.start_day()
+	# Loading today's persisted pool must not advance the saved hiring stream.
+	if staff_roster.candidate_day != Clock.sim.day:
+		staff_roster.draw_candidates(Clock.sim.day, GameState.rng(&"hiring"))
+	_staff_panel.set_phase(Clock.sim.phase)
 	dishes_sold_today.clear()
 	shown_report = null
 	_restock()
@@ -781,10 +882,9 @@ func _restock() -> void:
 
 
 func _charge_closing_costs() -> void:
-	for role: StringName in TUNING.wages:
-		for agent: SimAgent in world.agents:
-			if agent.role == role:
-				Economy.add_cash(-TUNING.wages[role], Ledger.WAGES)
+	for agent: SimAgent in world.agents:
+		if agent is StaffAgent and not agent is OwnerAgent:
+			Economy.add_cash(-(agent as StaffAgent).wage, Ledger.WAGES)
 	if TUNING.daily_rent > 0:
 		Economy.add_cash(-TUNING.daily_rent, Ledger.RENT)
 
@@ -809,6 +909,10 @@ func _on_day_phase_changed(_day: int, phase: int) -> void:
 		_menu_panel.set_phase(phase)
 		if phase != SimClock.Phase.MORNING:
 			_menu_panel.hide()
+	if _staff_panel != null:
+		_staff_panel.set_phase(phase)
+		if phase != SimClock.Phase.MORNING:
+			_staff_panel.hide()
 	if phase == SimClock.Phase.MORNING:
 		_begin_morning()
 

@@ -9,6 +9,7 @@ const LOSS_COLOR: Color = Color("A42E2E")
 
 signal build_toggled()
 signal menu_pressed()
+signal staff_pressed()
 
 var _day_label: Label
 var _time_label: Label
@@ -34,6 +35,7 @@ var _build_active: bool = false
 var _build_reason: String = ""
 var _build_state: int = BuildMode.State.IDLE
 var _menu_button: Button
+var _staff_button: Button
 
 
 func _ready() -> void:
@@ -64,6 +66,8 @@ func refresh() -> void:
 		_build_button.pressed.connect(_on_build_pressed)
 		_menu_button = get_node("Top/Row/Menu") as Button
 		_menu_button.pressed.connect(_on_menu_pressed)
+		_staff_button = get_node("Top/Row/Staff") as Button
+		_staff_button.pressed.connect(_on_staff_pressed)
 		for name: String in ["Left", "Right"]:
 			_pause_bars.append(get_node("Top/Row/Speed0/Pause/Bars/" + name) as ColorRect)
 		_cash = Economy.cash
@@ -95,6 +99,13 @@ func refresh() -> void:
 	_refresh_build_controls()
 	_menu_button.disabled = Clock.sim.phase != SimClock.Phase.MORNING
 	_menu_button.tooltip_text = "Choose today's menu and prices" if not _menu_button.disabled else "Menu changes are available in the morning."
+	_staff_button.disabled = Clock.sim.phase != SimClock.Phase.MORNING
+	_staff_button.tooltip_text = "Hire staff and plan today's wages" if not _staff_button.disabled else "Staff changes are available in the morning."
+
+
+func _on_staff_pressed() -> void:
+	if Clock.sim.phase == SimClock.Phase.MORNING:
+		staff_pressed.emit()
 
 
 ## State changes only: a refresh between native down/up preserves the button.

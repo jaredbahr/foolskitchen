@@ -18,6 +18,7 @@ theme = ExtResource("2_theme")
 
 [node name="Row" type="HBoxContainer" parent="Top"]
 layout_mode = 2
+theme_override_constants/separation = 8
 
 [node name="Day" type="Label" parent="Top/Row"]
 layout_mode = 2
@@ -127,6 +128,12 @@ layout_mode = 2
 focus_mode = 0
 text = "Menu"
 tooltip_text = "Choose today's menu and prices"
+
+[node name="Staff" type="Button" parent="Top/Row"]
+layout_mode = 2
+focus_mode = 0
+text = "Staff"
+tooltip_text = "Hire staff and plan today's wages"
 
 [node name="Deltas" type="Control" parent="."]
 layout_mode = 0

@@ -281,7 +281,7 @@ func _post_order_task(world: SimWorld, sim: RestaurantSim) -> void:
 	world.board.post(_task, world.now)
 
 
-func _take_order(_server: SimAgent) -> bool:
+func _take_order(server: SimAgent) -> bool:
 	var sim: RestaurantSim = _restaurant.get_ref() as RestaurantSim
 	if sim == null:
 		return false
@@ -305,6 +305,9 @@ func _take_order(_server: SimAgent) -> bool:
 	order.seat_cell = seat_cell
 	order.recipe_id = recipe.id
 	order.price = price
+	# Apply once, after the ticket replay guard, while food patience still matters.
+	if server is StaffAgent:
+		food_patience = roundi(food_patience * (server as StaffAgent).food_patience_multiplier)
 	state = State.WAITING_FOOD
 	sim.orders.place(order, sim.world.now)
 	return true

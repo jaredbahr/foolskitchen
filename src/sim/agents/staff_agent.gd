@@ -14,6 +14,13 @@ const STUCK_TICKS: int = 30
 var skills: Dictionary[StringName, int] = {}
 ## Priority per role: 0 off, 1 low, 2 normal, 3 high. &"any" covers role-free tasks.
 var priorities: Dictionary[StringName, int] = {}
+## Empty on the owner and legacy manually constructed agents.
+var member_id: StringName = &""
+var wage: int = 0
+var trait_id: StringName = &"steady"
+var cook_quality_bonus: float = 0.0
+var food_patience_multiplier: float = 1.0
+var _walk_multiplier: float = 1.0
 
 var task: SimTask = null
 var step_index: int = 0
@@ -31,6 +38,25 @@ func _init(staff_role: StringName = &"cook", skill: int = 3) -> void:
 	skills[staff_role] = clampi(skill, 1, 5)
 	priorities[staff_role] = 2
 	priorities[&"any"] = 1
+
+
+## Idempotent trait application; callers never configure the owner as staff.
+func configure_member(member: StaffMember, definition: StaffTrait) -> void:
+	if role != member.role:
+		role = member.role
+		skills.clear()
+		priorities.clear()
+		priorities[role] = 2
+		priorities[&"any"] = 1
+	member_id = member.id
+	display_name = member.display_name
+	wage = member.wage
+	trait_id = member.trait_id
+	skills[role] = member.skill
+	move_speed = move_speed / _walk_multiplier * definition.walk_multiplier
+	_walk_multiplier = definition.walk_multiplier
+	cook_quality_bonus = definition.cook_quality_bonus
+	food_patience_multiplier = definition.food_patience_multiplier
 
 
 ## Skill used for a task role: role-free (&"any") tasks use the agent's own role.
