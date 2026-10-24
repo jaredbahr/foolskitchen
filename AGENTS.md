@@ -47,6 +47,7 @@ This file is read by every coding agent (Codex, harness workers, Claude). Read `
 - Add or update tests for any sim logic you touched.
 - Setup: `bash tools/get_godot.sh` once (it downloads Godot into `.tools/`), then `bash tools/check.sh`.
 - In the PR body: what changed, how you tested it, and any open questions.
+- Visual changes: attach screenshots from `bash tools/screenshot.sh` (needs `xvfb` and Mesa; if your environment lacks them, say so).
 
 ## Art assets
 - `.glb` only, 1 unit = 1 m, Y-up, origin at the base centre, facing -Z. See `docs/TECH.md` section 3.
