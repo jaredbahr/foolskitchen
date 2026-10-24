@@ -43,18 +43,18 @@ jobs:
           timeout --kill-after=2s 120s "$GODOT" --headless --path . --import >"$import_log" 2>&1
           import_status=$?
           cat "$import_log"
-          baseline_status=1
+          overlap_status=1
           if [[ "$import_status" -eq 0 ]] && ! grep -Eq 'SCRIPT ERROR|Parse Error|^[[:space:]]*ERROR:' "$import_log"; then
-            bash tools/repeat_game_session.sh
-            baseline_status=$?
+            bash tools/repeat_game_session.sh --overlap
+            overlap_status=$?
           else
-            echo 'BASELINE INCOMPLETE: strict headless import failed; no baseline samples ran.'
-            echo 'BASELINE SUMMARY: requested=30 attempted=0 passed=0 failed=0 incomplete=30'
+            echo 'OVERLAP INCOMPLETE: strict headless import failed; no overlap samples ran.'
+            echo 'OVERLAP SUMMARY: requested=10 attempted=0 passed=0 failed=0 incomplete=10'
           fi
-          # A baseline failure must not prevent the ordinary full checks running.
+          # A diagnostic failure must not prevent the ordinary full checks running.
           bash tools/check.sh
           checks_status=$?
-          [[ "$import_status" -eq 0 && "$baseline_status" -eq 0 && "$checks_status" -eq 0 ]]
+          [[ "$import_status" -eq 0 && "$overlap_status" -eq 0 && "$checks_status" -eq 0 ]]
 
   changelog:
     name: Changelog entry

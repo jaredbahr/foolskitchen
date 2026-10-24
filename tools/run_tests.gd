@@ -48,6 +48,10 @@ func _initialize() -> void:
 			var tc: TestCase = t
 			var errors_before := errors.count()
 			tc.before_each()
+			if filter == "game_session":
+				print("TEST STATE: pid=%d method=%s unix_usec=%d save_dir=%s" % [
+					OS.get_process_id(), name, int(Time.get_unix_time_from_system() * 1000000.0),
+					ProjectSettings.globalize_path(SaveSystem.save_dir)])
 			await tc.call(name)
 			tc.after_each()
 			var failures := tc.take_failures()
