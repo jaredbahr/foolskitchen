@@ -14,6 +14,8 @@ signal build_toggled()
 signal paint_toggled()
 signal menu_pressed()
 signal staff_pressed()
+signal settings_pressed()
+signal header_layout_changed()
 
 var _day_label: Label
 var _time_label: Label
@@ -51,7 +53,14 @@ var _build_reason: String = ""
 var _build_state: int = BuildMode.State.IDLE
 var _menu_button: Button
 var _staff_button: Button
+var _settings_button: Button
 var _header_compact: bool = false
+var _header_bottom: float = -1.0
+var _preferences: SettingsPreferences
+
+
+func bind_preferences(model: SettingsPreferences) -> void:
+	_preferences = model
 
 
 func _ready() -> void:
@@ -89,6 +98,10 @@ func refresh() -> void:
 		_menu_button.pressed.connect(_on_menu_pressed)
 		_staff_button = get_node("Top/Row/Staff") as Button
 		_staff_button.pressed.connect(_on_staff_pressed)
+		_settings_button = get_node("Top/Row/Settings") as Button
+		_settings_button.pressed.connect(_on_settings_pressed)
+		_style_settings_button()
+		(get_node("Top") as Control).resized.connect(_on_header_resized)
 		for name: String in ["Left", "Right"]:
 			_pause_bars.append(get_node("Top/Row/Speed0/Pause/Bars/" + name) as ColorRect)
 		_cash = Economy.cash
@@ -163,14 +176,14 @@ func _render_owner_progress() -> void:
 	_owner_xp_bar.tooltip_text = detail
 
 
-## Keep the reputation, plate and action labels readable at laptop widths.
-## The Paint action shares the bar with Build; trim only button padding.
+## Window's visible rect already uses the content-scaled UI coordinates.
+## Keep the usual single row; native flow wraps intact labels when needed.
 func _layout_header() -> void:
 	var width: float = get_viewport().get_visible_rect().size.x if is_inside_tree() else 1600.0
 	var separation: int = 2 if width < 1320.0 else (4 if width < 1440.0 else 8)
-	var row: HBoxContainer = get_node("Top/Row") as HBoxContainer
-	if row.get_theme_constant("separation") != separation:
-		row.add_theme_constant_override("separation", separation)
+	var row: HFlowContainer = get_node("Top/Row") as HFlowContainer
+	if row.get_theme_constant("h_separation") != separation:
+		row.add_theme_constant_override("h_separation", separation)
 	var compact: bool = width < 1440.0
 	if compact == _header_compact:
 		return
@@ -187,9 +200,40 @@ func _layout_header() -> void:
 			button.add_theme_stylebox_override(state, style)
 
 
+## Main uses the final native header height to keep morning panels below it.
+func panel_top() -> float:
+	return maxf(112.0, (get_node("Top") as Control).get_global_rect().end.y + 12.0)
+
+
+func _on_header_resized() -> void:
+	if not is_inside_tree():
+		return
+	_layout_build_hints()
+	var bottom: float = (get_node("Top") as Control).get_global_rect().end.y
+	if not is_equal_approx(bottom, _header_bottom):
+		_header_bottom = bottom
+		header_layout_changed.emit()
+
+
 func _on_staff_pressed() -> void:
 	if Clock.sim.phase == SimClock.Phase.MORNING:
 		staff_pressed.emit()
+
+
+func _on_settings_pressed() -> void:
+	settings_pressed.emit()
+
+
+## Keep the approved 28px gear on the existing 46px bar, tinted like its text.
+func _style_settings_button() -> void:
+	for state: StringName in BUTTON_STATES:
+		var font_color: StringName = &"font_color" if state == &"normal" else StringName("font_%s_color" % state)
+		_settings_button.add_theme_color_override(StringName("icon_%s_color" % state),
+			_settings_button.theme.get_color(font_color, &"Button"))
+		var style: StyleBox = _settings_button.theme.get_stylebox(state, &"Button").duplicate() as StyleBox
+		for side: int in [SIDE_LEFT, SIDE_RIGHT, SIDE_TOP, SIDE_BOTTOM]:
+			style.set_content_margin(side, 9.0)
+		_settings_button.add_theme_stylebox_override(state, style)
 
 
 ## State changes only: a refresh between native down/up preserves the button.
@@ -249,7 +293,8 @@ func _layout_build_hints() -> void:
 		return
 	var viewport_size: Vector2 = get_viewport().get_visible_rect().size if is_inside_tree() else Vector2(1600.0, 900.0)
 	var padding: Vector2 = _build_hints.get_theme_stylebox("panel").get_minimum_size()
-	var top: float = minf(104.0, maxf(12.0, viewport_size.y - 64.0))
+	var header_bottom: float = (get_node("Top") as Control).get_global_rect().end.y
+	var top: float = minf(maxf(104.0, header_bottom + 6.0), maxf(12.0, viewport_size.y - 64.0))
 	var available: Vector2 = Vector2(minf(520.0, viewport_size.x - 24.0), viewport_size.y - top - 12.0) - padding
 	if available.x <= 0.0 or available.y <= 0.0:
 		return
@@ -389,7 +434,7 @@ func _on_phase_changed(_day: int, _phase: int) -> void:
 func _on_context_pressed() -> void:
 	if Clock.sim.phase == SimClock.Phase.MORNING:
 		if Clock.sim.start_service():
-			Clock.set_speed(1)
+			Clock.set_speed(_preferences.default_open_speed if _preferences != null else 1)
 	elif Clock.sim.phase == SimClock.Phase.CLOSED:
 		Clock.sim.next_day()
 	refresh()

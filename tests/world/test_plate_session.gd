@@ -259,8 +259,9 @@ func test_invalid_plate_save_stages_no_live_change_and_fresh_start_clears_staged
 
 
 func _assert_hud_row_fits(width: float) -> void:
-	var previous_end: float = 0.0
-	var row: HBoxContainer = _main.get_node("HUD/Top/Row") as HBoxContainer
+	var occupied: Array[Rect2] = []
+	var bounds: Rect2 = _viewport.get_visible_rect().grow(-12.0)
+	var row: Container = _main.get_node("HUD/Top/Row") as Container
 	assert_true((_main.get_node("HUD/Top/Row/Staff") as Button).is_visible_in_tree(),
 		"both active and legacy-off plate headers retain the Staff control")
 	assert_true((_main.get_node("HUD/Top/Row/Paint") as Button).is_visible_in_tree(),
@@ -271,9 +272,14 @@ func _assert_hud_row_fits(width: float) -> void:
 		if control == null or not control.visible:
 			continue
 		var rect: Rect2 = control.get_global_rect()
-		assert_true(rect.position.x >= previous_end, "top controls do not overlap")
+		assert_true(bounds.encloses(rect), "every wrapped HUD control stays within the viewport margins")
+		var minimum: Vector2 = control.get_combined_minimum_size()
+		assert_true(rect.size.x >= minimum.x - 0.5 and rect.size.y >= minimum.y - 0.5,
+			"HUD content keeps its full native size")
+		for previous: Rect2 in occupied:
+			assert_false(rect.intersects(previous), "HUD controls do not overlap across or within rows")
 		assert_true(rect.end.x <= width - 12.0, "the plate count and existing buttons fit within the 12px margin")
-		previous_end = rect.end.x
+		occupied.append(rect)
 
 
 func _start(with_saves: bool = true, viewport_size: Vector2i = Vector2i(1600, 900)) -> void:

@@ -37,6 +37,21 @@ docs/
 ```
 
 ### 2.2 Key rules
+
+**Local player preferences (FK-109):** `SettingsPreferences` owns
+`user://settings.cfg` through `ConfigFile`. Audio volumes, UI scale, opening
+speed, fullscreen and edge panning are device preferences, not simulation
+state. Discrete choices save immediately. Volume sliders preview audio live
+and save on release, after 0.5 seconds without another step, or when Settings
+closes. This is the issue's narrow exception to `AGENTS.md` rule 9; game state
+still uses only the existing morning `SaveSystem` autosave. Missing or invalid
+preference files restore the whole default set without touching a game save.
+The test and parse runners disable the default preference file before autoload
+reads; settings tests use explicit private `user://` fixtures on every platform.
+The HUD gear opens Settings during any day phase and pauses the clock. Closing
+restores the previous speed, including pause. Escape closes Settings, dismisses
+an active edit/panel/selection first, or opens Settings when none is active.
+
 1. **The sim is separate from the visuals.** `src/sim/` holds plain data and logic with no nodes. Visual nodes in `world/` read sim state and animate it. This makes the sim unit-testable and lets background properties run without visuals.
 2. **Fixed simulation tick** (for example 10 ticks per game second), independent of frame rate. Speed controls change the number of ticks per frame.
 3. **Data-driven content.** Recipes, items, themes and properties are custom `Resource` types in `data/`. Adding content means adding a `.tres` file, not code.

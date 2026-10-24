@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Renders the game (default: src/world/main.tscn) under a virtual display and
 # saves PNGs to screens/ (git-ignored). Needs xvfb and Mesa (software OpenGL).
-# Usage: bash tools/screenshot.sh [--out=dir] [--frames=120,400,900] [--speed=4] [--scene=res://...] [--quarter=0..3] [--open] [--fast=N] [--select=guest|owner] [--assign-owner=kitchen] [--f3] [--menu] [--report] [--build=green|red] [--paint]
+# Usage: bash tools/screenshot.sh [--out=dir] [--frames=120,400,900] [--speed=4] [--scene=res://...] [--quarter=0..3] [--open] [--fast=N] [--select=guest|owner] [--assign-owner=kitchen] [--f3] [--menu] [--settings] [--report] [--build=green|red] [--paint]
 # --staff --speed=0 shows the production Staff panel without changing its roster.
+# --settings --speed=0 --frames=12 shows Settings at the usual 1600x900 / 100%.
+# --settings-world --speed=0 --frames=90 selects 150%, uses keyboard Close and shows the world.
 # --report --open --fast=100 --speed=0 --frames=60 captures a real closed-day report.
 # Build previews use the production morning input API without buying or saving.
 set -euo pipefail
@@ -13,7 +15,17 @@ GODOT="${GODOT:-.tools/godot-$ver/Godot_v${ver}-stable_linux.x86_64}"
 [[ -x "$GODOT" ]] || GODOT="$(bash tools/get_godot.sh)"
 command -v xvfb-run >/dev/null || { echo "BLOCKED: xvfb-run is not preinstalled; a supported Xvfb/Mesa environment is required."; exit 2; }
 out="screens"
-for a in "$@"; do [[ "$a" == --out=* ]] && out="${a#--out=}"; done
+settings_capture=false
+for a in "$@"; do
+  [[ "$a" == --out=* ]] && out="${a#--out=}"
+  [[ "$a" == --settings || "$a" == --settings-world ]] && settings_capture=true
+done
+# This capture changes a real preference; keep it out of other capture runs.
+if "$settings_capture"; then
+  settings_data="$(mktemp -d)"
+  export XDG_DATA_HOME="$settings_data"
+  trap 'rm -rf -- "$settings_data"' EXIT
+fi
 mkdir -p "$out"
 log="$out/capture.log"
 set +e

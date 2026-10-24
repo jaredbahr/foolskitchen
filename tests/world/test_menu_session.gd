@@ -9,9 +9,11 @@ var _old_save_dir: String
 var _save_dir: String
 var _paid_amounts: Array[int] = []
 var _paid_recipes: Array[StringName] = []
+var _old_default_speed: int
 
 
 func before_each() -> void:
+	_old_default_speed = Preferences.default_open_speed
 	_old_save_dir = SaveSystem.save_dir
 	_save_dir = SaveTestPaths.case_dir(OS.get_process_id(), "menu_session")
 	SaveSystem.save_dir = _save_dir
@@ -19,6 +21,7 @@ func before_each() -> void:
 
 
 func after_each() -> void:
+	Preferences.default_open_speed = _old_default_speed
 	for main: Node in _mains.duplicate():
 		_close(main)
 	SaveSystem.delete_slot(SLOT)
@@ -116,6 +119,149 @@ func test_hud_and_real_panel_requests_enforce_morning_last_dish_and_clamps() -> 
 	assert_eq((main.get("menu_settings") as MenuSettings).to_dict(), before)
 	menu_button.pressed.emit()
 	assert_false(panel.visible)
+
+
+func test_menu_settings_entry_opens_and_returns_without_changing_dishes() -> void:
+	var main: Node = _start(false)
+	var menu_button: Button = main.get_node("HUD/Top/Row/Menu") as Button
+	var menu: MenuPanel = main.get_node("Overlay/MenuPanel") as MenuPanel
+	var settings: SettingsPanel = main.get_node("Overlay/SettingsPanel") as SettingsPanel
+	var before: Dictionary = (main.get("menu_settings") as MenuSettings).to_dict()
+	menu_button.pressed.emit()
+	assert_true(menu.visible)
+	(menu.get_node("Panel/Content/SettingsButton") as Button).pressed.emit()
+	assert_false(menu.visible)
+	assert_true(settings.visible)
+	assert_eq(settings.theme, preload("res://src/ui/theme/main_theme.tres"))
+	(settings.get_node("Panel/Column/CloseButton") as Button).pressed.emit()
+	assert_false(settings.visible)
+	assert_true(menu.visible)
+	assert_eq((main.get("menu_settings") as MenuSettings).to_dict(), before)
+	assert_true(main.call("set_menu_visible", false))
+	Preferences.default_open_speed = 2
+	(main.get_node("HUD/Top/Row/Context") as Button).pressed.emit()
+	assert_eq(Clock.speed, 2, "the real Main binds its saved opening-speed preference")
+
+
+func test_settings_modal_blocks_outside_clicks_from_the_hud_menu() -> void:
+	var main: Node = _start(false)
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	var menu_button: Button = main.get_node("HUD/Top/Row/Menu") as Button
+	var menu: MenuPanel = main.get_node("Overlay/MenuPanel") as MenuPanel
+	var settings: SettingsPanel = main.get_node("Overlay/SettingsPanel") as SettingsPanel
+	menu_button.pressed.emit()
+	(menu.get_node("Panel/Content/SettingsButton") as Button).pressed.emit()
+	await tree.process_frame
+	await tree.process_frame
+	assert_eq(settings.mouse_filter, Control.MOUSE_FILTER_STOP)
+	var point: Vector2 = menu_button.get_global_rect().get_center()
+	var mouse: InputEventMouseButton = InputEventMouseButton.new()
+	mouse.position = point
+	mouse.global_position = point
+	mouse.button_index = MOUSE_BUTTON_LEFT
+	mouse.button_mask = MOUSE_BUTTON_MASK_LEFT
+	mouse.pressed = true
+	tree.root.push_input(mouse, true)
+	mouse.pressed = false
+	mouse.button_mask = 0
+	tree.root.push_input(mouse, true)
+	assert_true(settings.visible, "outside-card clicks stay in the modal")
+	assert_false(menu.visible, "the underlying Menu button never receives that click")
+
+
+func test_settings_gear_and_escape_pause_service_and_restore_the_previous_speed() -> void:
+	var main: Node = _start(false)
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	await tree.process_frame
+	await tree.process_frame
+	assert_true(Clock.sim.start_service())
+	Clock.set_speed(2)
+	var gear: Button = main.get_node("HUD/Top/Row/Settings") as Button
+	var settings: SettingsPanel = main.get_node("Overlay/SettingsPanel") as SettingsPanel
+	var world: SimWorld = main.get("world") as SimWorld
+	var before: int = world.now
+	gear.pressed.emit()
+	assert_true(settings.visible, "the gear remains usable while the restaurant is open")
+	assert_eq(Clock.speed, 0)
+	assert_true(main.call("set_settings_visible", true), "reopening is idempotent")
+	Clock._process(0.5)
+	assert_eq(world.now, before, "service stays still while Settings is open")
+	_native_settings_key(KEY_4)
+	assert_eq(Clock.speed, 0, "modal keyboard input cannot change the remembered speed")
+	(settings.get_node("Panel/Column/CloseButton") as Button).pressed.emit()
+	assert_false(settings.visible)
+	assert_eq(Clock.speed, 2)
+	assert_eq(Clock.sim.phase, SimClock.Phase.OPEN)
+	_native_settings_key(KEY_ESCAPE)
+	assert_true(settings.visible, "Escape opens Settings during service")
+	assert_eq(Clock.speed, 0)
+	_native_settings_key(KEY_ESCAPE)
+	assert_false(settings.visible)
+	assert_eq(Clock.speed, 2)
+	Clock.set_speed(0)
+	gear.pressed.emit()
+	(settings.get_node("Panel/Column/CloseButton") as Button).pressed.emit()
+	assert_eq(Clock.speed, 0, "a previously paused service remains paused")
+
+
+func test_escape_dismisses_a_selection_or_menu_before_opening_settings() -> void:
+	var main: Node = _start(false)
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	await tree.process_frame
+	await tree.process_frame
+	var world: SimWorld = main.get("world") as SimWorld
+	assert_true(main.call("select_agent", world.agents[0].id))
+	_native_settings_key(KEY_ESCAPE)
+	assert_false(main.call("is_settings_visible"), "the active selection keeps its existing Escape dismissal")
+	assert_false((main.call("inspection_state") as Dictionary)["panel_visible"])
+	_native_settings_key(KEY_ESCAPE)
+	assert_true(main.call("is_settings_visible"), "the next Escape opens Settings")
+	_native_settings_key(KEY_ESCAPE)
+	assert_true(main.call("set_menu_visible", true))
+	_native_settings_key(KEY_ESCAPE)
+	assert_false(main.call("is_menu_visible"))
+	assert_false(main.call("is_settings_visible"), "Escape first dismisses the active Menu")
+	_native_settings_key(KEY_ESCAPE)
+	assert_true(main.call("is_settings_visible"))
+
+
+func test_wrapped_header_keeps_top_panels_and_settings_below_its_actual_bounds() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	await tree.process_frame
+	var viewport: SubViewport = SubViewport.new()
+	viewport.size = Vector2i(853, 480)
+	viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	tree.root.add_child(viewport)
+	var main: Node = _start(false, viewport)
+	main.get_node("HUD").call("refresh")
+	assert_true(main.call("set_settings_visible", true))
+	await tree.process_frame
+	await tree.process_frame
+	await tree.process_frame
+	var header: Control = main.get_node("HUD/Top") as Control
+	for path: String in ["MenuPanel", "StaffPanel", "EveningReport", "DebugOverlay"]:
+		var panel: Control = main.get_node("Overlay/" + path + "/Panel") as Control
+		assert_true(panel.get_global_rect().position.y >= header.get_global_rect().end.y + 11.0,
+			path + " starts below the rendered wrapped header")
+	var settings: SettingsPanel = main.get_node("Overlay/SettingsPanel") as SettingsPanel
+	var card: Control = settings.get_node("Panel") as Control
+	var close: Button = settings.get_node("Panel/Column/CloseButton") as Button
+	assert_true(card.get_global_rect().position.y >= header.get_global_rect().end.y + 11.0)
+	assert_true(viewport.get_visible_rect().grow(1.0).encloses(card.get_global_rect()))
+	assert_true(close.is_visible_in_tree())
+	assert_true(card.get_global_rect().encloses(close.get_global_rect()), "Close stays in the pinned footer")
+	_close(main)
+	viewport.free()
+
+
+func _native_settings_key(code: Key) -> void:
+	var event: InputEventKey = InputEventKey.new()
+	event.physical_keycode = code
+	event.keycode = code
+	event.pressed = true
+	(Engine.get_main_loop() as SceneTree).root.push_input(event, true)
+	event.pressed = false
+	(Engine.get_main_loop() as SceneTree).root.push_input(event, true)
 
 
 func test_actual_kitchen_orders_and_sales_use_only_enabled_override() -> void:
@@ -296,12 +442,14 @@ func _next_morning() -> void:
 	assert_eq(Clock.sim.phase, SimClock.Phase.MORNING)
 
 
-func _start(with_saves: bool = true) -> Node:
+func _start(with_saves: bool = true, host: Node = null) -> Node:
 	var main: Node = MAIN.instantiate()
 	main.set("use_saves", with_saves)
 	main.set("save_slot", SLOT)
 	_mains.append(main)
-	(Engine.get_main_loop() as SceneTree).root.add_child(main)
+	if host == null:
+		host = (Engine.get_main_loop() as SceneTree).root
+	host.add_child(main)
 	main.call("start")
 	return main
 

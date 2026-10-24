@@ -10,6 +10,8 @@ extends SceneTree
 ##   --f3        show the scene's read-only debug overlay
 ##   --menu      show the real menu panel in MORNING (cannot combine with --open)
 ##   --staff     show the real morning Staff panel, paused, with no altered roster
+##   --settings  open Main -> Menu -> Settings at the usual 1600x900 / 100%
+##   --settings-world  use the gear, select 150%, keyboard Close, show the world
 ##   --report    require a closed-day report with at least two real review cards
 ##   --build=green|red  hold a checked buy preview through the production input API
 ##   --paint     show a painted morning shop using the production paint controls
@@ -17,6 +19,7 @@ extends SceneTree
 
 const MAX_CAPTURE_WAIT_FRAMES: int = 8
 const MAX_OWNER_WARMUP_TICKS: int = 900
+const SETTINGS_CAPTURE_SIZE: Vector2i = Vector2i(1600, 900)
 
 var _frames: int = 0
 var _shots: Array[int] = [120, 400, 900]
@@ -36,6 +39,11 @@ var _owner_warmup_ticks: int = 0
 var _f3: bool = false
 var _menu: bool = false
 var _staff: bool = false
+var _settings: bool = false
+var _settings_from_menu: bool = false
+var _settings_world: bool = false
+var _settings_scale: int = 100
+var _settings_keyboard: Dictionary = {}
 var _report_requested: bool = false
 var _build: String = ""
 var _paint: bool = false
@@ -83,6 +91,13 @@ func _initialize() -> void:
 				_fail_capture("--staff does not accept a value")
 				return
 			_staff = true
+		elif arg.begins_with("--settings"):
+			if arg not in ["--settings", "--settings-world"]:
+				_fail_capture("Settings capture supports --settings or --settings-world")
+				return
+			_settings = true
+			_settings_world = _settings_world or arg == "--settings-world"
+			_settings_scale = 150 if _settings_world else 100
 		elif arg == "--report":
 			_report_requested = true
 		elif arg.begins_with("--build"):
@@ -123,8 +138,17 @@ func _initialize() -> void:
 	if _report_requested and (not _open or _fast <= 0 or _speed != 0 or _menu or _staff or not _build.is_empty()):
 		_fail_capture("--report requires a fast-forwarded, paused-clock service view")
 		return
-	if _shots.is_empty() or _shots.min() < 1 or ((_quarter >= 0 or not _selection.is_empty() or _f3 or _menu or _staff or not _build.is_empty() or _paint) and _shots.min() < 4):
+	if _settings and (_scene_path != "res://src/world/main.tscn" or _open or _fast != 0 \
+			or not _selection.is_empty() or _assign_owner or _f3 or _menu or _staff \
+			or _report_requested or not _build.is_empty() or _paint or _quarter >= 0 \
+			or _speed != 0 or _shots.size() != 1):
+		_fail_capture("--settings requires one paused Main capture without other view/service flags")
+		return
+	if _shots.is_empty() or _shots.min() < 1 or ((_quarter >= 0 or not _selection.is_empty() or _f3 or _menu or _staff or _settings or not _build.is_empty() or _paint) and _shots.min() < 4):
 		_fail_capture("capture frames must be positive, and at least 4 for requested view/UI options")
+		return
+	if _settings_world and _shots.min() < 90:
+		_fail_capture("--settings-world requires frame 90 or later after the native 150% change")
 		return
 	if DirAccess.make_dir_recursive_absolute(_out) != OK:
 		_fail_capture("cannot create output directory")
@@ -172,6 +196,10 @@ func _process(_delta: float) -> bool:
 			if not _main.has_method("set_staff_visible") or not bool(_main.call("set_staff_visible", true)):
 				_fail_capture("--staff requires the scene's morning staff API")
 				return true
+		if _settings:
+			_configure_settings()
+			if _failed:
+				return true
 		if not _build.is_empty():
 			_configure_build()
 			if _failed:
@@ -180,6 +208,17 @@ func _process(_delta: float) -> bool:
 			_configure_paint()
 			if _failed:
 				return true
+	if _settings_world and _frames == 8:
+		_close_settings_with_keyboard()
+		if _failed:
+			return true
+	if _settings_world and _frames == 9:
+		_settings_keyboard["settings_closed"] = not bool(_main.call("is_settings_visible"))
+		_settings_keyboard["menu_visible"] = _main.call("is_menu_visible")
+		_settings_keyboard["verification_frame"] = _frames
+		if _settings_keyboard["settings_closed"] != true or _settings_keyboard["menu_visible"] != false:
+			_fail_capture("native Close acceptance did not return from Settings to the world")
+			return true
 	if not _build.is_empty() and _frames >= 3:
 		_hold_build_pointer()
 	if _fast > 0 and _frames > 3 and _main.has_method("run_ticks"):
@@ -244,6 +283,167 @@ func _capture_world() -> SimWorld:
 	if "world" in _main:
 		return _main.get("world") as SimWorld
 	return null
+
+
+func _configure_settings() -> void:
+	if not _main.has_method("set_menu_visible") or not _main.has_method("is_menu_visible") \
+			or not _main.has_method("is_settings_visible"):
+		_fail_capture("Settings capture requires Main's production panel APIs")
+		return
+	var button_path: NodePath = ^"HUD/Top/Row/Settings" if _settings_world else ^"Overlay/MenuPanel/Panel/Content/SettingsButton"
+	if not _settings_world and (not bool(_main.call("set_menu_visible", true)) or not bool(_main.call("is_menu_visible"))):
+		_fail_capture("--settings requires Main's production morning Menu")
+		return
+	var button: Button = _main.get_node_or_null(button_path) as Button
+	var panel: SettingsPanel = _main.get_node_or_null("Overlay/SettingsPanel") as SettingsPanel
+	if button == null or button.disabled or not button.is_visible_in_tree() or panel == null:
+		_fail_capture("Settings capture requires its native entry button and Settings panel")
+		return
+	_settings_from_menu = not _settings_world
+	button.pressed.emit()
+	if not bool(_main.call("is_settings_visible")) or bool(_main.call("is_menu_visible")):
+		_fail_capture("native Settings request did not open the production panel")
+		return
+	var scale: OptionButton = panel.get_node_or_null("Panel/Column/Scroll/Content/ScaleChoice") as OptionButton
+	if scale == null or scale.get_item_index(_settings_scale) < 0:
+		_fail_capture("Settings panel does not offer the requested UI scale")
+		return
+	# Use the player's control path: this applies and saves preferences normally.
+	var index: int = scale.get_item_index(_settings_scale)
+	scale.select(index)
+	scale.item_selected.emit(index)
+
+
+## Read the model, native control and actual window together after drawing.
+func _settings_state() -> Dictionary:
+	var preferences: SettingsPreferences = root.get_node_or_null("Preferences") as SettingsPreferences
+	var panel: SettingsPanel = _main.get_node_or_null("Overlay/SettingsPanel") as SettingsPanel
+	var scale: OptionButton = panel.get_node_or_null("Panel/Column/Scroll/Content/ScaleChoice") as OptionButton if panel != null else null
+	if preferences == null or panel == null or scale == null:
+		return {}
+	var actual_size: Vector2i = DisplayServer.window_get_size()
+	return {"visible": panel.is_visible_in_tree(), "entered_from_menu": _settings_from_menu,
+		"menu_visible": _main.call("is_menu_visible"), "scale_control_visible": scale.is_visible_in_tree(),
+		"ui_scale_percent": preferences.ui_scale_percent, "selected_ui_scale_percent": scale.get_selected_id(),
+		"content_scale_factor": root.content_scale_factor, "window_mode": int(root.mode),
+		"fullscreen_enabled": preferences.fullscreen_enabled,
+		"window_size": [root.size.x, root.size.y], "display_size": [actual_size.x, actual_size.y],
+		"card_and_close_bounded": _settings_card_bounded(panel), "hud_bounded": _settings_hud_bounded(),
+		"keyboard": _settings_keyboard}
+
+
+func _settings_capture_valid(state: Dictionary, world: SimWorld) -> bool:
+	var expected_size: Array[int] = [SETTINGS_CAPTURE_SIZE.x, SETTINGS_CAPTURE_SIZE.y]
+	var expected_visible: bool = not _settings_world
+	return state.get("visible") == expected_visible and state.get("entered_from_menu") == expected_visible \
+		and state.get("menu_visible") == false and state.get("hud_bounded") == true \
+		and (_settings_world or state.get("card_and_close_bounded") == true) \
+		and (not _settings_world or (_settings_keyboard.get("settings_closed") == true \
+			and _settings_keyboard.get("tab_to_close") == true and _settings_keyboard.get("close_visible") == true)) \
+		and state.get("ui_scale_percent") == _settings_scale \
+		and state.get("selected_ui_scale_percent") == _settings_scale \
+		and is_equal_approx(float(state.get("content_scale_factor", 0.0)), float(_settings_scale) / 100.0) \
+		and state.get("window_mode") == Window.MODE_WINDOWED and state.get("fullscreen_enabled") == false \
+		and state.get("window_size") == expected_size and state.get("display_size") == expected_size \
+		and world != null and world.clock.phase == SimClock.Phase.MORNING and world.now == 0
+
+
+func _settings_pixel_rect(control: Control) -> Rect2:
+	return root.get_final_transform() * control.get_global_transform_with_canvas() * Rect2(Vector2.ZERO, control.size)
+
+
+func _settings_card_bounded(panel: SettingsPanel) -> bool:
+	var card: Control = panel.get_node("Panel") as Control
+	var close: Button = panel.get_node("Panel/Column/CloseButton") as Button
+	var header: Control = _main.get_node("HUD/Top") as Control
+	var rect: Rect2 = _settings_pixel_rect(card)
+	return panel.is_visible_in_tree() and close.is_visible_in_tree() \
+		and Rect2(Vector2.ZERO, Vector2(root.size)).grow(1.0).encloses(rect) \
+		and rect.grow(1.0).encloses(_settings_pixel_rect(close)) \
+		and rect.position.y >= _settings_pixel_rect(header).end.y + 1.0
+
+
+func _settings_hud_bounded() -> bool:
+	var window: Rect2 = Rect2(Vector2.ZERO, Vector2(root.size)).grow(1.0)
+	var top: Control = _main.get_node("HUD/Top") as Control
+	if not window.encloses(_settings_pixel_rect(top)):
+		return false
+	for child: Node in _main.get_node("HUD/Top/Row").get_children():
+		var control: Control = child as Control
+		if control != null and control.is_visible_in_tree() and control.name not in [&"LeftSpace", &"RightSpace"]:
+			var rect: Rect2 = _settings_pixel_rect(control)
+			if not rect.has_area() or not window.encloses(rect):
+				return false
+	return true
+
+
+func _close_settings_with_keyboard() -> void:
+	var panel: SettingsPanel = _main.get_node("Overlay/SettingsPanel") as SettingsPanel
+	var edge: CheckButton = panel.get_node("Panel/Column/Scroll/Content/EdgePanToggle") as CheckButton
+	var close: Button = panel.get_node("Panel/Column/CloseButton") as Button
+	var scroll: ScrollContainer = panel.get_node("Panel/Column/Scroll") as ScrollContainer
+	scroll.ensure_control_visible(edge)
+	edge.grab_focus()
+	var from_edge: bool = root.gui_get_focus_owner() == edge
+	_settings_key(KEY_TAB, true)
+	_settings_key(KEY_TAB, false)
+	_settings_keyboard = {"tab_from_edge_pan": from_edge, "tab_to_close": root.gui_get_focus_owner() == close,
+		"close_visible": _settings_card_bounded(panel), "accept_key": "Enter", "input_frame": _frames}
+	if not from_edge or _settings_keyboard["tab_to_close"] != true or _settings_keyboard["close_visible"] != true:
+		_fail_capture("native Tab did not focus the visible pinned Close button")
+		return
+	_settings_key(KEY_ENTER, true)
+	_settings_key(KEY_ENTER, false)
+
+
+func _settings_key(code: Key, pressed: bool) -> void:
+	var event: InputEventKey = InputEventKey.new()
+	event.keycode = code
+	event.physical_keycode = code
+	event.pressed = pressed
+	root.push_input(event, true)
+
+
+## Actual post-draw pixels at projected floor cells distinguish world geometry
+## from the brown clear colour. This does not manufacture a shop or alter it.
+func _settings_world_evidence(image: Image) -> Dictionary:
+	var view: ShopView = _main.get_node("ShopView") as ShopView
+	var camera: Camera3D = root.get_camera_3d()
+	var expected: Camera3D = _main.get_node("CameraRig/Camera3D") as Camera3D
+	var draws: int = root.get_render_info(Viewport.RENDER_INFO_TYPE_VISIBLE, Viewport.RENDER_INFO_DRAW_CALLS_IN_FRAME)
+	if camera != expected or view.world == null or view.floor_mesh == null:
+		return {"verified": false, "draw_calls_3d": draws}
+	var header: Rect2 = _settings_pixel_rect(_main.get_node("HUD/Top") as Control)
+	var clear: Color = image.get_pixel(image.get_width() - 1, image.get_height() - 1)
+	var candidates: int = 0
+	var coloured: int = 0
+	var witnesses: Array[Dictionary] = []
+	for y: int in range(view.world.grid.size.y):
+		for x: int in range(view.world.grid.size.x):
+			var cell: Vector2i = Vector2i(x, y)
+			if view.world.grid.terrain(cell) != SimGrid.Terrain.FLOOR:
+				continue
+			var point: Vector3 = GridMath.cell_to_world(cell)
+			var pixel: Vector2 = root.get_final_transform() * camera.unproject_position(point)
+			var at: Vector2i = Vector2i(pixel.round())
+			if not camera.is_position_in_frustum(point) or header.has_point(pixel) \
+					or at.x < 1 or at.y < 1 or at.x >= image.get_width() - 1 or at.y >= image.get_height() - 1:
+				continue
+			candidates += 1
+			var average: Color = Color(0.0, 0.0, 0.0, 0.0)
+			for dy: int in range(-1, 2):
+				for dx: int in range(-1, 2):
+					average += image.get_pixel(at.x + dx, at.y + dy) / 9.0
+			var difference: float = absf(average.r - clear.r) + absf(average.g - clear.g) + absf(average.b - clear.b)
+			if difference > 0.08 and average.r + average.g + average.b > 0.12:
+				coloured += 1
+				if witnesses.size() < 12:
+					witnesses.append({"cell": [x, y], "pixel": [at.x, at.y], "rgb": [average.r, average.g, average.b]})
+	var visible_floor: bool = view.floor_mesh.is_visible_in_tree()
+	return {"verified": draws > 0 and visible_floor and view.item_nodes.size() > 0 and candidates >= 16 and coloured >= 12,
+		"draw_calls_3d": draws, "visible_floor": visible_floor, "native_item_count": view.item_nodes.size(),
+		"floor_candidates": candidates, "coloured_floor_samples": coloured, "pixel_witnesses": witnesses,
+		"clear_rgb": [clear.r, clear.g, clear.b]}
 
 
 func _configure_paint() -> void:
@@ -433,6 +633,10 @@ func _capture() -> void:
 	if _main.has_method("inspection_state"):
 		inspection = _main.call("inspection_state")
 	var world: SimWorld = _capture_world()
+	var settings_state: Dictionary = _settings_state() if _settings else {}
+	if _settings and not _settings_capture_valid(settings_state, world):
+		_fail_capture("requested Settings view, UI scale or usual 1600x900 window did not match the rendered morning frame")
+		return
 	var build: Dictionary = _build_state()
 	if not _build.is_empty() and (build.get("active") != true or build.get("has_ghost") != true \
 			or build.get("ghost_visible") != true or build.get("ok") != (_build == "green") \
@@ -504,6 +708,10 @@ func _capture() -> void:
 			return
 	var path: String = _out.path_join("shot_%04d.png" % _capture_frame)
 	var image: Image = root.get_viewport().get_texture().get_image()
+	if _settings and (image == null or image.get_size() != SETTINGS_CAPTURE_SIZE):
+		_fail_capture("Settings viewport image did not match the usual 1600x900 dimensions")
+		return
+	var world_render: Dictionary = _settings_world_evidence(image) if _settings_world else {}
 	if image == null or image.is_empty() or image.save_png(path) != OK:
 		_fail_capture("cannot save viewport image: " + path)
 		return
@@ -560,6 +768,11 @@ func _capture() -> void:
 		"master_seed": master_seed, "restaurant_rng": restaurant_rng,
 		"mood": mood_evidence(world, view, root.get_viewport().get_camera_3d()),
 	}
+	if _settings:
+		metadata.merge({"requested_settings_visible": not _settings_world, "settings": settings_state,
+			"requested_ui_scale_percent": _settings_scale,
+			"requested_window_size": [SETTINGS_CAPTURE_SIZE.x, SETTINGS_CAPTURE_SIZE.y],
+			"requested_clear_world": _settings_world, "world_render": world_render})
 	var file: FileAccess = FileAccess.open(path.get_basename() + ".json", FileAccess.WRITE)
 	if file == null:
 		_fail_capture("cannot write capture metadata")
@@ -574,6 +787,10 @@ func _capture() -> void:
 	print("saved ", path)
 	print("capture ", JSON.stringify(metadata))
 	_capture_pending = false
+	if _settings_world and world_render.get("verified") != true:
+		# Retain this intended PNG and metadata for review, but fail the capture.
+		_fail_capture("150% capture did not prove visible rendered shop pixels at frame 90 or later")
+		return
 	if _finish_requested:
 		_finish_capture()
 

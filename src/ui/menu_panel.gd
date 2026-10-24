@@ -4,6 +4,7 @@ extends Control
 
 signal enable_requested(recipe_id: StringName, enabled: bool)
 signal price_requested(recipe_id: StringName, price: int)
+signal settings_requested()
 
 const SHARED_THEME: Theme = preload("res://src/ui/theme/main_theme.tres")
 const STANDARD_COLOR: Color = Color("3b2a20")
@@ -17,6 +18,7 @@ var _phase: int = SimClock.Phase.MORNING
 var _status: Label
 var _empty: Label
 var _rows_node: VBoxContainer
+var _settings_button: Button
 var _rows: Dictionary[StringName, Dictionary] = {}
 var _needs_rebuild: bool = true
 
@@ -113,6 +115,12 @@ func _bind_nodes() -> void:
 	_status = %Status
 	_empty = %Empty
 	_rows_node = %Rows
+	_settings_button = %SettingsButton
+	_settings_button.pressed.connect(_on_settings_pressed)
+
+
+func _on_settings_pressed() -> void:
+	settings_requested.emit()
 
 
 func _rebuild_rows() -> void:

@@ -71,3 +71,11 @@ text = "No cookable dishes are available."
 unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
+
+[node name="SettingsButton" type="Button" parent="Panel/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+theme = ExtResource("2_theme")
+focus_mode = 0
+text = "Settings"
+tooltip_text = "Audio, display and controls"

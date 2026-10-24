@@ -84,6 +84,8 @@ jobs:
           bash tools/screenshot.sh --out=screens/visual-review/paint --paint --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/build-green --build=green --quarter=0 --frames=12 --speed=1
           bash tools/screenshot.sh --out=screens/visual-review/build-red --build=red --quarter=0 --frames=12 --speed=1
+          bash tools/screenshot.sh --out=screens/visual-review/settings --settings --speed=0 --frames=12
+          bash tools/screenshot.sh --out=screens/visual-review/settings-world --settings-world --speed=0 --frames=90
 
       - name: Verify capture identity and image metadata
         shell: bash
@@ -106,6 +108,8 @@ jobs:
           captures += [('staff', -1, False, False, 12)]
           captures += [('paint', -1, False, False, 60)]
           captures += [('build-green', 0, False, False, 12), ('build-red', 0, False, False, 12)]
+          captures += [('settings', -1, False, False, 12)]
+          captures += [('settings-world', -1, False, False, 90)]
           observed_bands = set()
           for name, requested, inspect_guest, debug, frame in captures:
               inspect_owner = name == 'owner-kitchen'

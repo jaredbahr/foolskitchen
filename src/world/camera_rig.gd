@@ -60,6 +60,7 @@ var _pointer_inside: bool = false
 var _pointer_position_valid: bool = false
 var _has_panned: bool = false
 var _view_viewport: Viewport
+var _preferences: SettingsPreferences
 
 
 func _enter_tree() -> void:
@@ -69,6 +70,9 @@ func _enter_tree() -> void:
 
 
 func _exit_tree() -> void:
+	if _preferences != null and _preferences.changed.is_connected(_on_preference_changed):
+		_preferences.changed.disconnect(_on_preference_changed)
+	_preferences = null
 	if _view_viewport != null and _view_viewport.size_changed.is_connected(_on_viewport_resized):
 		_view_viewport.size_changed.disconnect(_on_viewport_resized)
 	_view_viewport = null
@@ -78,7 +82,16 @@ func _exit_tree() -> void:
 
 
 func _ready() -> void:
+	_preferences = get_node_or_null("/root/Preferences") as SettingsPreferences
+	if _preferences != null:
+		edge_pan_enabled = _preferences.edge_pan_enabled
+		_preferences.changed.connect(_on_preference_changed)
 	reset_view()
+
+
+func _on_preference_changed(key: StringName) -> void:
+	if key == &"edge_pan" and _preferences != null:
+		edge_pan_enabled = _preferences.edge_pan_enabled
 
 
 func _notification(what: int) -> void:

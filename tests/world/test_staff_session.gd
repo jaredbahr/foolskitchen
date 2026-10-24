@@ -218,15 +218,21 @@ func test_native_staff_controls_survive_refresh_and_fit_web_and_capture_widths()
 	Clock.set_speed(0)
 	await _frames(4)
 	var button: Button = main.get_node("HUD/Top/Row/Staff") as Button
-	var previous_end: float = 0.0
+	var occupied: Array[Rect2] = []
+	var hud_bounds: Rect2 = _viewport.get_visible_rect().grow(-12.0)
 	for child: Node in main.get_node("HUD/Top/Row").get_children():
 		var control: Control = child as Control
 		if not control.visible:
 			continue
 		var rect: Rect2 = control.get_global_rect()
-		assert_true(rect.position.x >= previous_end - 0.5)
+		assert_true(hud_bounds.encloses(rect), "all native HUD controls stay within the viewport margins")
+		var minimum: Vector2 = control.get_combined_minimum_size()
+		assert_true(rect.size.x >= minimum.x - 0.5 and rect.size.y >= minimum.y - 0.5,
+			"wrapped controls keep their full native content")
+		for previous: Rect2 in occupied:
+			assert_false(rect.intersects(previous), "native HUD controls do not overlap across or within rows")
 		assert_true(rect.end.x <= 1280.0, "all native HUD controls stay inside Web width")
-		previous_end = rect.end.x
+		occupied.append(rect)
 	var point: Vector2 = button.get_global_rect().get_center()
 	_mouse(point, true)
 	main.get_node("HUD").call("refresh")
