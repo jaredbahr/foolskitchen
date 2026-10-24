@@ -17,6 +17,7 @@ extends SceneTree
 ##   --report    require a closed-day report with at least two real review cards
 ##   --build=green|red  hold a checked buy preview through the production input API
 ##   --paint     show a painted morning shop using the production paint controls
+##   --door-queue  zoom the existing camera onto a real queue, or its empty entry
 ## Metadata records actual waiting moods/visible markers and seeds, with no fixture.
 
 const MAX_CAPTURE_WAIT_FRAMES: int = 8
@@ -52,6 +53,7 @@ var _hud_layout_scale: int = 125
 var _report_requested: bool = false
 var _build: String = ""
 var _paint: bool = false
+var _door_queue: bool = false
 var _build_pointer: Vector2 = Vector2.ZERO
 var _selected_agent_id: int = -1
 var _capture_pending: bool = false
@@ -119,6 +121,11 @@ func _initialize() -> void:
 			_build = requested
 		elif arg == "--paint":
 			_paint = true
+		elif arg.begins_with("--door-queue"):
+			if arg != "--door-queue":
+				_fail_capture("--door-queue does not accept a value")
+				return
+			_door_queue = true
 		elif arg.begins_with("--scene="):
 			_scene_path = arg.trim_prefix("--scene=")
 		elif arg.begins_with("--quarter="):
@@ -133,6 +140,11 @@ func _initialize() -> void:
 				_shots.append(int(f))
 	if _assign_owner and (_selection != &"owner" or not _open):
 		_fail_capture("--assign-owner=kitchen requires --select=owner and --open")
+		return
+	if _door_queue and (_scene_path != "res://src/world/main.tscn" or not _open or _fast <= 0 \
+			or not _selection.is_empty() or _assign_owner or _f3 or _menu or _staff or _settings \
+			or _report_requested or not _build.is_empty() or _paint or _quarter >= 0):
+		_fail_capture("--door-queue requires a fast-forwarded Main service without other view options")
 		return
 	if not _build.is_empty() and (_open or _fast != 0 or not _selection.is_empty() or _assign_owner or _f3 or _menu or _staff):
 		_fail_capture("--build requires a fresh morning without other view/service flags")
@@ -155,7 +167,7 @@ func _initialize() -> void:
 			or _speed != 0 or _shots.size() != 1):
 		_fail_capture("--settings requires one paused Main capture without other view/service flags")
 		return
-	if _shots.is_empty() or _shots.min() < 1 or ((_quarter >= 0 or not _selection.is_empty() or _f3 or _menu or _staff or _settings or not _build.is_empty() or _paint) and _shots.min() < 4):
+	if _shots.is_empty() or _shots.min() < 1 or ((_quarter >= 0 or not _selection.is_empty() or _f3 or _menu or _staff or _settings or not _build.is_empty() or _paint or _door_queue) and _shots.min() < 4):
 		_fail_capture("capture frames must be positive, and at least 4 for requested view/UI options")
 		return
 	if _settings_world and _shots.min() < 90:
@@ -211,7 +223,7 @@ static func hud_layout_options(arguments: PackedStringArray) -> Dictionary:
 				result["error"] = "--hud-layout requires --frames=12,90"
 		elif argument.begins_with("--scene") and argument != "--scene=res://src/world/main.tscn":
 			result["error"] = "--hud-layout requires the actual Main scene"
-		for prefix: String in ["--open", "--fast", "--select", "--assign-owner", "--f3", "--menu", "--staff", "--settings", "--report", "--build", "--paint", "--quarter"]:
+		for prefix: String in ["--open", "--fast", "--select", "--assign-owner", "--f3", "--menu", "--staff", "--settings", "--report", "--build", "--paint", "--quarter", "--door-queue"]:
 			if argument.begins_with(prefix):
 				result["error"] = "--hud-layout cannot combine with other view or service options"
 	if speed_count != 1 or frames_count != 1:
@@ -291,6 +303,10 @@ func _process(_delta: float) -> bool:
 			return true
 	_finish_requested = _frames >= _shots.max()
 	if _shots.has(_frames):
+		if _door_queue:
+			_focus_door_queue()
+			if _failed:
+				return true
 		if _assign_owner:
 			_prepare_owner_capture()
 			if _failed:
@@ -320,6 +336,30 @@ func _configure_camera() -> void:
 	if rig != null:
 		# Virtual-display focus/mouse position must not pan a review capture.
 		rig.set_process(false)
+
+
+## Camera only: no queue fixture, extra ticks, seed search or gameplay command.
+## An empty queue still gets a doorway image and explicit absence in metadata.
+func _focus_door_queue() -> void:
+	var world: SimWorld = _capture_world()
+	var shop: ShopView = _main.get_node_or_null("ShopView") as ShopView
+	var rig: CameraRig = _main.get_node_or_null("CameraRig") as CameraRig
+	if world == null or shop == null or rig == null or world.grid.entries().is_empty():
+		_fail_capture("door queue view requires the real world, entry, ShopView and CameraRig")
+		return
+	shop._process(0.0)
+	var positions: Dictionary[int, Vector3] = shop.drawn_agent_positions()
+	var focus: Vector3 = GridMath.cell_to_world(world.grid.entries()[0])
+	var queued_id: int = -1
+	for agent: SimAgent in world.agents:
+		if agent is CustomerAgent and (agent as CustomerAgent).state == CustomerAgent.State.QUEUED \
+				and positions.has(agent.id) and (queued_id < 0 or agent.id < queued_id):
+			queued_id = agent.id
+			focus = positions[agent.id]
+	rig.initial_focus = Vector2(focus.x, focus.z)
+	rig.initial_zoom = rig.minimum_zoom
+	rig.reset_view()
+	rig.set_process(false)
 
 
 func _configure_inspection() -> void:
@@ -833,6 +873,10 @@ func _capture() -> void:
 		var restaurant: RestaurantSim = _main.get("sim") as RestaurantSim
 		if restaurant != null and restaurant.rng != null:
 			restaurant_rng = {"seed": str(restaurant.rng.seed), "state": str(restaurant.rng.state)}
+	var seed_override: int = int(_main.get("new_game_seed_override")) if "new_game_seed_override" in _main else 0
+	var seed_source: String = "unavailable"
+	if "new_game_seed_override" in _main:
+		seed_source = "explicit_override" if seed_override != 0 else "wallclock_default"
 	var metadata: Dictionary = {
 		"image_file": path.get_file(), "image_sha256": image_hash,
 		"scene": _scene_path, "frame": _capture_frame, "requested_quarter": _quarter,
@@ -871,6 +915,11 @@ func _capture() -> void:
 		"world_tick": inspection.get("world_tick", world.now if world != null else null),
 		"capture_parameters": {"open": _open, "fast_ticks_per_frame": _fast, "speed": _speed},
 		"master_seed": master_seed, "restaurant_rng": restaurant_rng,
+		"new_game_seed_override": str(seed_override),
+		"seed_source": seed_source,
+		"display_minutes": world.clock.display_minutes() if world != null else null,
+		"requested_door_queue": _door_queue,
+		"people": people_evidence(world, view, root.get_viewport().get_camera_3d()),
 		"mood": mood_evidence(world, view, root.get_viewport().get_camera_3d()),
 	}
 	if _settings:
@@ -986,8 +1035,65 @@ func _staff_capture_valid(state: Dictionary) -> bool:
 	return true
 
 
-## Snapshot model values and independently read actual marker nodes. In
-## particular, never derive a marker's reported band from the guest's band.
+## Records actual rendered rigs independently beside the sim-derived expectation.
+## Frustum membership reports visibility limits; it does not prove no occlusion.
+static func people_evidence(world: SimWorld, view: Node, camera: Camera3D = null) -> Dictionary:
+	var actors: Array[Dictionary] = []
+	var queued: Array[int] = []
+	var shop: ShopView = view as ShopView
+	if world == null or shop == null:
+		return {"available": false, "fixture": "none", "queue_present": false, "queued_ids": queued, "actors": actors}
+	for agent: SimAgent in world.agents:
+		var frame: AgentPresentationController.Frame = AgentPresentationController.frame_for(agent, world)
+		var record: Dictionary = {"id": agent.id, "role": String(agent.role),
+			"cell": [agent.cell.x, agent.cell.y], "next_cell": [agent.next_cell().x, agent.next_cell().y],
+			"move_progress": agent.move_progress, "path_index": agent.path_index, "path_size": agent.path.size(),
+			"has_arrived": agent.has_arrived(), "expected_clip": String(frame.clip), "seated": frame.seated}
+		if agent is CustomerAgent:
+			var guest: CustomerAgent = agent as CustomerAgent
+			var table: PlacedItem = world.grid.item(guest.table_item_id)
+			record.merge({"state": int(guest.state), "table_id": guest.table_item_id,
+				"seat_cell": [guest.seat_cell.x, guest.seat_cell.y],
+				"seat_member": table != null and table.seat_cells.has(guest.seat_cell),
+				"seat_claimant": table.reserved_by(guest.seat_cell) if table != null else -1})
+			if guest.state == CustomerAgent.State.QUEUED:
+				queued.append(guest.id)
+		var person: PersonView = shop.agent_nodes.get(agent.id) as PersonView
+		record["native_person"] = person != null
+		if person != null:
+			record.merge({"model": String(person.model_name()), "clip": String(person.current_clip()),
+				"display_separation_blocked": person.get_meta("display_separation_blocked", false),
+				"floor_position": _point_evidence(frame.floor_position, camera),
+				"drawn_position": _point_evidence(person.global_position, camera),
+				"head": _point_evidence(person.global_transform * person.head_anchor_position(), camera),
+				"seat_lift": (person.get_node("ModelPivot") as Node3D).position.y})
+			var up: Dictionary = {}
+			if person._skeleton != null:
+				for name: String in ["root", "torso"]:
+					var bone: int = person._skeleton.find_bone(name)
+					if bone >= 0:
+						var pose: Transform3D = person._skeleton.global_transform * person._skeleton.get_bone_global_pose(bone)
+						var direction: Vector3 = pose.basis.y.normalized()
+						up[name] = [direction.x, direction.y, direction.z]
+				record["player_clip"] = String(person._player.current_animation) if person._player != null else ""
+			record["bone_up"] = up
+			var mood: GuestMoodIndicator = shop.mood_nodes.get(agent.id) as GuestMoodIndicator
+			if mood != null:
+				record["mood"] = _point_evidence(mood.global_position, camera)
+				record["mood_radius"] = (mood.dot.mesh as SphereMesh).radius
+		actors.append(record)
+	return {"available": true, "fixture": "none", "queue_present": not queued.is_empty(), "queued_ids": queued,
+		"camera_size": camera.size if camera != null else null, "actors": actors}
+
+
+static func _point_evidence(point: Vector3, camera: Camera3D) -> Dictionary:
+	var projected: Vector2 = camera.unproject_position(point) if camera != null else Vector2.ZERO
+	return {"world": [point.x, point.y, point.z],
+		"screen": [projected.x, projected.y] if camera != null else null,
+		"in_frustum": camera.is_position_in_frustum(point) if camera != null else null}
+
+
+## Read actual marker nodes; never derive their reported band from the guest.
 static func mood_evidence(world: SimWorld, view: Node, camera: Camera3D = null) -> Dictionary:
 	var waiting: Array[Dictionary] = []
 	var indicators: Array[Dictionary] = []

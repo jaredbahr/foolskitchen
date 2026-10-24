@@ -578,10 +578,12 @@ an active edit/panel/selection first, or opens Settings when none is active.
   DayReport flag shows the friendly introduction on the first advance, remains
   stable across repeated report builds for that close, and resets next morning.
   The durable borrowing flag prevents later loans from repeating it.
-- Loan model, actual Main close/save/load, editor refusal, native HUD bounds and
-  report fixtures are authored. Import/parse, tests, the forced-loss acceptance
-  run and visual review remain UNRUN while the runtime window is held; source
-  review does not establish acceptance or long-run balance.
+- Loan model, actual Main close/save/load, editor refusal, native HUD bounds,
+  report fixtures and the five-day ledger invariant run through the existing
+  `tools/check.sh` suite. The pure ten-day forced-loss fixture checks solvency
+  and accounting; playable balance and rendered loan-state UI are separate
+  review requirements. Int64 charge, shortfall and principal limits reject an
+  unrepresentable settlement before any account or ledger mutation.
 
 ### 2.4 Save system
 - JSON in `user://saves/`, with a `version` field and migration functions per version.

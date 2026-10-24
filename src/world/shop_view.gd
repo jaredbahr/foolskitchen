@@ -3,6 +3,7 @@ extends Node3D
 ## Read-only restaurant view. Simulation ownership stays with the caller.
 
 const GRID_SHADER: Shader = preload("res://src/world/build_grid.gdshader")
+const PERSON_SCENE: PackedScene = preload("res://assets/people/person.tscn")
 const HEIGHTS: Dictionary[int, float] = {
 	ItemDef.Category.TABLE: 0.75, ItemDef.Category.CHAIR: 0.45,
 	ItemDef.Category.STATION: 0.9, ItemDef.Category.STORAGE: 0.9,
@@ -40,7 +41,7 @@ var _wall_nodes: Dictionary[Vector2i, MeshInstance3D] = {}
 var world: SimWorld
 var floor_mesh: MeshInstance3D
 var item_nodes: Dictionary[int, ItemVisual] = {}
-var agent_nodes: Dictionary[int, MeshInstance3D] = {}
+var agent_nodes: Dictionary[int, Node3D] = {}
 var dirt_nodes: Dictionary[Vector2i, MeshInstance3D] = {}
 var mood_nodes: Dictionary[int, GuestMoodIndicator] = {}
 var _mood_states: Dictionary[int, int] = {}
@@ -495,57 +496,98 @@ func _on_item_removed(item: PlacedItem) -> void:
 	_remove_item(item.id)
 
 
-func _process(delta: float) -> void:
+func _process(_delta: float) -> void:
 	if world == null:
 		return
 	_sync_dirt_spots()
 	_sync_item_selection()
+	_sync_agents()
+
+
+func _sync_agents() -> void:
+	var frames: Dictionary[int, AgentPresentationController.Frame] = AgentPresentationController.frames_for(world.agents, world)
+	var playback_speed: float = _agent_playback_speed()
 	var alive: Dictionary[int, bool] = {}
 	for agent: SimAgent in world.agents:
 		alive[agent.id] = true
+		var frame: AgentPresentationController.Frame = frames[agent.id]
+		if agent_nodes.has(agent.id) and (agent_nodes[agent.id] is PersonView) != frame.look_supported:
+			_remove_agent_visual(agent.id)
 		if not agent_nodes.has(agent.id):
-			var mesh: MeshInstance3D = MeshInstance3D.new()
-			var capsule: CapsuleMesh = CapsuleMesh.new()
-			capsule.height = 1.75
-			capsule.radius = 0.25
-			capsule.radial_segments = 12
-			capsule.rings = 4
-			mesh.mesh = capsule
-			mesh.material_override = _material(_agent_color(agent))
-			var nose: MeshInstance3D = _box(Vector3(0.16, 0.14, 0.22), _agent_color(agent).darkened(0.4))
-			nose.name = "FacingMarker"
-			nose.position = Vector3(0.0, 0.62, -0.28)
-			mesh.add_child(nose)
+			var created: Node3D = PERSON_SCENE.instantiate() as PersonView if frame.look_supported else _legacy_person_fallback(agent)
+			if created is PersonView:
+				# _ready runs on add_child; record the real look before rig creation.
+				(created as PersonView).set_look(frame.role, frame.id)
+			created.name = "Agent%d" % agent.id
+			created.set_meta("agent_id", agent.id)
+			created.set_meta("shop_geometry", true)
+			created.set_meta("unsupported_role", not frame.look_supported)
+			# Keep FK-079's exact tray shape. Its size beside Mini Characters is
+			# an open visual gate pending one coordinated uniform presentation scale.
 			var tray: MeshInstance3D = _box(Vector3(0.68, 0.045, 0.38), Color("b89568"))
 			tray.name = "Tray"
-			tray.position = Vector3(0.0, 0.02, -0.48)
 			tray.visible = false
-			mesh.add_child(tray)
-			mesh.set_meta("agent_id", agent.id)
-			mesh.set_meta("shop_geometry", true)
-			agent_nodes[agent.id] = mesh
-			add_child(mesh)
-		var node: MeshInstance3D = agent_nodes[agent.id]
-		var held_task: SimTask = (agent as StaffAgent).task if agent is StaffAgent else null
-		(node.get_node("Tray") as MeshInstance3D).visible = held_task != null \
-			and held_task.kind == &"deliver" and int(held_task.payload.get("carried_count", 0)) > 1
-		var start: Vector3 = GridMath.cell_to_world(agent.cell)
-		var end: Vector3 = GridMath.cell_to_world(agent.next_cell())
-		node.position = start.lerp(end, clampf(agent.move_progress, 0.0, 1.0)) + Vector3(0, 0.875, 0)
-		var direction: Vector3 = end - start
-		if direction.length_squared() > 0.0001:
-			var yaw: float = atan2(-direction.x, -direction.z)
-			node.rotation.y = lerp_angle(node.rotation.y, yaw, 1.0 - exp(-12.0 * maxf(delta, 0.0)))
-		_update_guest_mood(agent, node)
+			created.add_child(tray)
+			agent_nodes[agent.id] = created
+			add_child(created)
+		var node: Node3D = agent_nodes[agent.id]
+		var ready_person: bool = false
+		if node is PersonView:
+			ready_person = AgentPresentationController.apply(frame, node as PersonView, playback_speed)
+		else:
+			node.position = frame.floor_position + frame.display_offset + Vector3(0.0, 0.875, 0.0)
+			if frame.facing_direction.length_squared() > 0.000001:
+				node.rotation.y = atan2(-frame.facing_direction.x, -frame.facing_direction.z)
+		node.set_meta("person_ready", ready_person)
+		node.set_meta("display_separation_blocked", frame.separation_blocked)
+		var tray: MeshInstance3D = node.get_node("Tray") as MeshInstance3D
+		tray.visible = frame.show_tray and (ready_person or not frame.look_supported)
+		tray.position = frame.tray_anchor if ready_person else Vector3(0.0, 0.02, -0.48)
+		_update_guest_mood(agent, node, frame)
 	for id: int in agent_nodes.keys():
 		if not alive.has(id):
-			_remove_mood_icon(id)
-			_mood_states.erase(id)
-			_mood_bands.erase(id)
-			var node: MeshInstance3D = agent_nodes[id]
-			remove_child(node)
-			node.free()
-			agent_nodes.erase(id)
+			_remove_agent_visual(id)
+
+
+func _agent_playback_speed() -> float:
+	if world == null or world.clock.phase not in [SimClock.Phase.OPEN, SimClock.Phase.LAST_ORDERS]:
+		return 0.0
+	# --script capture loads this class before autoload names are identifiers.
+	# The same root Clock node owns speed in captures, tests and the game.
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	var clock_node: Node = tree.root.get_node_or_null("Clock") if tree != null else null
+	if clock_node == null:
+		return 0.0
+	var speed: Variant = clock_node.get("speed")
+	return maxf(float(speed), 0.0) if speed is int else 0.0
+
+
+## ART_STYLE has no Cleaner mapping yet. Keep its old capsule visibly explicit;
+## this temporary hook prevents claiming full visual readiness for FK-053.
+func _legacy_person_fallback(agent: SimAgent) -> MeshInstance3D:
+	var mesh: MeshInstance3D = MeshInstance3D.new()
+	var capsule: CapsuleMesh = CapsuleMesh.new()
+	capsule.height = 1.75
+	capsule.radius = 0.25
+	capsule.radial_segments = 12
+	capsule.rings = 4
+	mesh.mesh = capsule
+	mesh.material_override = _material(_agent_color(agent))
+	var nose: MeshInstance3D = _box(Vector3(0.16, 0.14, 0.22), _agent_color(agent).darkened(0.4))
+	nose.name = "FacingMarker"
+	nose.position = Vector3(0.0, 0.62, -0.28)
+	mesh.add_child(nose)
+	return mesh
+
+
+func _remove_agent_visual(id: int) -> void:
+	_remove_mood_icon(id)
+	_mood_states.erase(id)
+	_mood_bands.erase(id)
+	var node: Node3D = agent_nodes[id]
+	remove_child(node)
+	node.free()
+	agent_nodes.erase(id)
 
 
 ## The pure state has no scene signals. A bounded reconciliation observes its
@@ -604,26 +646,28 @@ func _dirt_material() -> StandardMaterial3D:
 	return _shared_dirt_material
 
 
-func _update_guest_mood(agent: SimAgent, body: MeshInstance3D) -> void:
+func _update_guest_mood(agent: SimAgent, body: Node3D, frame: AgentPresentationController.Frame) -> void:
 	if not agent is CustomerAgent:
 		return
 	var guest: CustomerAgent = agent as CustomerAgent
 	var state: int = int(guest.state)
-	var band: int = guest.mood_band()
-	var waiting: bool = CustomerAgent.MOOD_WAITING_STATES.has(state)
-	if _mood_states.get(agent.id, -1) == state and _mood_bands.get(agent.id, -1) == band \
-			and (not waiting or is_instance_valid(mood_nodes.get(agent.id))):
+	var band: int = frame.mood_band
+	if frame.look_supported and not frame.anchors_ready:
+		# Off-tree scene construction records people; rig anchors follow _ready.
 		return
 	_mood_states[agent.id] = state
 	_mood_bands[agent.id] = band
-	if not waiting:
+	if not frame.mood_visible:
 		_remove_mood_icon(agent.id)
 		return
 	if not is_instance_valid(mood_nodes.get(agent.id)):
 		var icon: GuestMoodIndicator = GuestMoodIndicator.new()
 		body.add_child(icon)
 		mood_nodes[agent.id] = icon
-	mood_nodes[agent.id].set_band(band)
+	var indicator: GuestMoodIndicator = mood_nodes[agent.id]
+	# set_band is idempotent; anchor positioning must still follow every frame.
+	indicator.set_band(band)
+	indicator.position = frame.mood_anchor if frame.anchors_ready else Vector3.UP * GuestMoodIndicator.HEAD_OFFSET
 
 
 func _remove_mood_icon(id: int) -> void:

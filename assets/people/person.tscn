@@ -1,0 +1,39 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://assets/people/person.gd" id="1_person"]
+
+[sub_resource type="StandardMaterial3D" id="Material_hat"]
+albedo_color = Color(1, 1, 1, 1)
+roughness = 1.0
+
+[sub_resource type="CylinderMesh" id="Mesh_hat_band"]
+material = SubResource("Material_hat")
+top_radius = 0.115
+bottom_radius = 0.115
+height = 0.08
+radial_segments = 8
+rings = 1
+
+[sub_resource type="SphereMesh" id="Mesh_hat_puff"]
+material = SubResource("Material_hat")
+radius = 0.14
+height = 0.20
+radial_segments = 8
+rings = 3
+
+[node name="Person" type="Node3D"]
+script = ExtResource("1_person")
+
+[node name="ModelPivot" type="Node3D" parent="."]
+rotation = Vector3(0, 3.1415927, 0)
+
+[node name="ChefHat" type="Node3D" parent="."]
+visible = false
+
+[node name="Band" type="MeshInstance3D" parent="ChefHat"]
+position = Vector3(0, 0.36, 0)
+mesh = SubResource("Mesh_hat_band")
+
+[node name="Puff" type="MeshInstance3D" parent="ChefHat"]
+position = Vector3(0, 0.43, 0)
+mesh = SubResource("Mesh_hat_puff")

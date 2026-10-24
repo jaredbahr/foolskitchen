@@ -160,7 +160,7 @@ func test_grid_material_is_shared_within_each_main_and_isolated_between_mains() 
 	assert_true(second_rig.grid_visible)
 
 
-func test_default_scene_has_shop_floor_and_1_75_metre_staff() -> void:
+func test_default_scene_has_shop_floor_and_fixed_mini_character_staff() -> void:
 	var main: Node3D = MainScene.instantiate() as Node3D
 	_nodes.append(main)
 	main.call("initialize")
@@ -169,8 +169,6 @@ func test_default_scene_has_shop_floor_and_1_75_metre_staff() -> void:
 	assert_eq(view.agent_nodes.size(), 3)
 	var world: SimWorld = main.get("world")
 	var roles: Dictionary[StringName, int] = {&"cook": 0, &"server": 0, &"owner": 0}
-	var colors: Dictionary[StringName, Color] = {
-		&"cook": Color("f3e6cc"), &"server": Color("408b85"), &"owner": Color("c9a346")}
 	for agent: SimAgent in world.agents:
 		assert_true(agent is StaffAgent)
 		assert_true(roles.has(agent.role))
@@ -180,17 +178,13 @@ func test_default_scene_has_shop_floor_and_1_75_metre_staff() -> void:
 		assert_true(view.agent_nodes.has(agent.id))
 		if not view.agent_nodes.has(agent.id):
 			continue
-		var body: MeshInstance3D = view.agent_nodes[agent.id]
+		var body: PersonView = view.agent_nodes[agent.id] as PersonView
+		assert_not_null(body)
+		if body == null:
+			continue
 		assert_eq(body.get_meta("agent_id"), agent.id)
-		var capsule: CapsuleMesh = body.mesh as CapsuleMesh
-		assert_not_null(capsule)
-		if capsule != null:
-			assert_almost_eq(capsule.height, 1.75)
-			assert_almost_eq(body.position.y, capsule.height / 2.0)
-		var material: StandardMaterial3D = body.material_override as StandardMaterial3D
-		assert_not_null(material)
-		if material != null:
-			assert_eq(material.albedo_color, colors[agent.role])
+		assert_eq(body.role, agent.role)
+		assert_eq(body.position.y, 0.0)
 	assert_eq(roles, {&"cook": 1, &"server": 1, &"owner": 1})
 
 
