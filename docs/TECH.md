@@ -130,6 +130,10 @@ docs/
   Cancellation and table removal recover plates once, including terminal orders.
   Clean + dirty + in use always equals total; returned plates are a subset of use.
   Priority-0 server `wash` tasks work 15 units per plate, at most four per task.
+  Only washing opts into `SimTask.defer_to_higher_priority`: an idle actor
+  defers its claim while eligible OPEN higher-priority work of the same task
+  role remains. Existing actor scores decide eligibility and all other ties;
+  claimed washing is not preempted. Ordinary drop/timeout recovery is unchanged.
   Per-step replay guards survive drops. Reachable sinks are chosen in stable
   placement order; failed washing waits for a layout change before retrying.
   At the pass, `WAIT_UNTIL` gives "Waiting for a clean plate" without changing

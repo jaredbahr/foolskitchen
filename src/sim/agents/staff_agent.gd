@@ -90,12 +90,27 @@ func why() -> String:
 
 
 func _try_claim(world: SimWorld) -> void:
+	var candidates: Array[SimTask] = world.open_tasks_this_tick()
+	var scores: Dictionary[int, float] = {}
+	var highest_priorities: Dictionary[StringName, int] = {}
+	# Actor-local eligibility uses the existing score, including role preferences
+	# and missing targets. Another worker may have claimed a cached task already.
+	for t: SimTask in candidates:
+		if t.state != SimTask.State.OPEN or world.board.get_task(t.id) != t:
+			continue
+		var score: float = _score(world, t)
+		scores[t.id] = score
+		if score > 0.0:
+			if not highest_priorities.has(t.role) or t.priority > highest_priorities[t.role]:
+				highest_priorities[t.role] = t.priority
 	var best: SimTask = null
 	var best_score := 0.0
-	for t in world.open_tasks_this_tick():
-		if t.state != SimTask.State.OPEN:
+	for t: SimTask in candidates:
+		if t.state != SimTask.State.OPEN or world.board.get_task(t.id) != t:
 			continue
-		var score := _score(world, t)
+		if t.defer_to_higher_priority and int(highest_priorities.get(t.role, t.priority)) > t.priority:
+			continue
+		var score: float = scores.get(t.id, 0.0)
 		if score > best_score:
 			best = t
 			best_score = score

@@ -63,6 +63,7 @@ func test_real_missing_sink_exhaustion_waits_at_pass_then_restored_sink_serves_o
 		return
 	var cook: StaffAgent = _staff(&"cook")
 	var pass_item: PlacedItem = _item(&"pass_counter")
+	assert_false(waiting.defer_to_higher_priority, "ordinary cook selection is unchanged")
 	assert_eq(cook.cell, pass_item.work_cells[0])
 	assert_eq(pass_item.reserved_by(cook.cell), cook.id)
 	assert_eq(waiting.steps[cook.step_index].kind, TaskStep.Kind.WAIT_UNTIL)
@@ -232,6 +233,7 @@ func test_isolated_wash_drop_replays_completed_steps_once_and_batches_at_most_fo
 		return
 	assert_eq(washing.role, &"server")
 	assert_eq(washing.priority, 0)
+	assert_true(washing.defer_to_higher_priority, "real sink work yields at claim time")
 	assert_eq(washing.steps.size(), 5, "one walk followed by at most four plates")
 	for index: int in range(1, washing.steps.size()):
 		assert_eq(washing.steps[index].kind, TaskStep.Kind.WORK)

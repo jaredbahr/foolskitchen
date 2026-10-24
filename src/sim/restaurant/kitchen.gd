@@ -366,6 +366,7 @@ func _ensure_wash_task() -> void:
 	var count: int = mini(4, _plates.dirty)
 	var task: SimTask = SimTask.new(&"wash", &"server", "Wash up to %d plates" % count)
 	task.priority = 0
+	task.defer_to_higher_priority = true
 	task.payload = {"kitchen": true, "sink_id": sink.id, "washed_steps": [] as Array[int]}
 	task.steps.append(TaskStep.go_to_item(sink.id, "walking to the sink"))
 	for plate: int in range(count):
