@@ -113,7 +113,7 @@ func test_yaw_signal_is_once_per_target_change_not_per_smoothed_frame() -> void:
 	assert_eq(_quarters, [1, 3, 0, 0] as Array[int], "one reset changes the unwrapped target; repeated reset does not")
 
 
-func test_wall_tops_and_agent_noses_are_darker_without_sim_changes() -> void:
+func test_wall_tops_keep_contrast_and_people_use_the_approved_model_without_sim_changes() -> void:
 	var world: SimWorld = SimWorld.new(SimGrid.from_ascii(PackedStringArray(["#.", ".."])))
 	var agent: StaffAgent = StaffAgent.new(&"server")
 	agent.cell = Vector2i(1, 1)
@@ -124,11 +124,11 @@ func test_wall_tops_and_agent_noses_are_darker_without_sim_changes() -> void:
 	var wall_material: StandardMaterial3D = wall.material_override as StandardMaterial3D
 	var top_material: StandardMaterial3D = (wall.get_node("Top") as MeshInstance3D).material_override as StandardMaterial3D
 	assert_true(top_material.albedo_color.get_luminance() < wall_material.albedo_color.get_luminance())
-	var body: MeshInstance3D = _view.agent_nodes[agent.id]
-	var nose: MeshInstance3D = body.get_node("FacingMarker") as MeshInstance3D
-	assert_true(nose.position.z < 0.0, "nose points along local forward -Z")
-	assert_true(nose.position.y > 0.5, "nose sits at head height")
-	assert_true((nose.material_override as StandardMaterial3D).albedo_color.get_luminance() < (body.material_override as StandardMaterial3D).albedo_color.get_luminance())
+	var body: PersonView = _view.agent_nodes[agent.id] as PersonView
+	assert_not_null(body)
+	assert_false(body.has_node("FacingMarker"), "the kit model replaces the capsule nose")
+	assert_eq(body.role, &"server")
+	assert_eq(body.position, GridMath.cell_to_world(agent.cell))
 	assert_eq(world.now, 0)
 
 

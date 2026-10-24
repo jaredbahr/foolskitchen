@@ -29,20 +29,20 @@ func test_only_the_three_waiting_guest_states_receive_native_billboard_icons() -
 		guests.append(guest)
 	var staff: StaffAgent = StaffAgent.new(&"customer")
 	_world.add_agent(staff)
-	_view.show_world(_world)
+	await _show_world()
 	assert_eq(_view.mood_nodes.size(), 3)
 	assert_false(_view.mood_nodes.has(staff.id), "role text alone never makes staff a guest")
 	for guest: CustomerAgent in guests:
 		var waiting: bool = guest.state in [CustomerAgent.State.QUEUED,
 			CustomerAgent.State.ORDERING, CustomerAgent.State.WAITING_FOOD]
 		assert_eq(_view.mood_nodes.has(guest.id), waiting)
-		var body: MeshInstance3D = _view.agent_nodes[guest.id]
+		var body: PersonView = _view.agent_nodes[guest.id] as PersonView
 		assert_eq(body.has_node("MoodIndicator"), waiting)
 		if waiting:
 			var icon: GuestMoodIndicator = _view.mood_nodes[guest.id]
 			assert_eq(icon.get_parent(), body)
 			assert_eq(icon.band, guest.mood_band())
-			assert_true(icon.position.y + body.position.y > 1.75)
+			assert_true(icon.position.y > body.head_anchor_position().y)
 			assert_true(icon.dot.mesh is SphereMesh)
 			var material: StandardMaterial3D = icon.dot.material_override as StandardMaterial3D
 			assert_eq(material.billboard_mode, BaseMaterial3D.BILLBOARD_ENABLED)
@@ -55,7 +55,7 @@ func test_only_the_three_waiting_guest_states_receive_native_billboard_icons() -
 
 func test_band_and_state_caches_reuse_geometry_and_only_change_presentation_on_band_changes() -> void:
 	var guest: CustomerAgent = _guest(CustomerAgent.State.QUEUED)
-	_view.show_world(_world)
+	await _show_world()
 	var icon: GuestMoodIndicator = _view.mood_nodes[guest.id]
 	var mesh: Mesh = icon.dot.mesh
 	var material: Material = icon.dot.material_override
@@ -98,7 +98,7 @@ func test_band_and_state_caches_reuse_geometry_and_only_change_presentation_on_b
 func test_state_exit_and_guest_removal_free_icons_and_clear_dead_cache_entries() -> void:
 	var guest: CustomerAgent = _guest(CustomerAgent.State.WAITING_FOOD)
 	guest._food_wait = 90
-	_view.show_world(_world)
+	await _show_world()
 	var original: GuestMoodIndicator = _view.mood_nodes[guest.id]
 	var original_id: int = original.get_instance_id()
 	guest.state = CustomerAgent.State.EATING
@@ -125,7 +125,7 @@ func test_state_exit_and_guest_removal_free_icons_and_clear_dead_cache_entries()
 func test_world_rebind_clears_icons_and_caches_even_when_agent_ids_repeat() -> void:
 	var first: CustomerAgent = _guest(CustomerAgent.State.QUEUED)
 	first._queue_wait = 90
-	_view.show_world(_world)
+	await _show_world()
 	var old_icon: GuestMoodIndicator = _view.mood_nodes[first.id]
 	var next_world: SimWorld = SimWorld.new(SimGrid.new(Vector2i(4, 4)))
 	var random: RandomNumberGenerator = RandomNumberGenerator.new()
@@ -163,11 +163,12 @@ func test_markers_follow_interpolated_bodies_without_advancing_sim_or_rng() -> v
 	guest.move_progress = 0.25
 	guest._queue_wait = 80
 	var before: Dictionary = _snapshot(guest)
-	_view.show_world(_world)
+	await _show_world()
 	var icon: GuestMoodIndicator = _view.mood_nodes[guest.id]
-	var body: MeshInstance3D = _view.agent_nodes[guest.id]
-	var expected: Vector3 = GridMath.cell_to_world(guest.cell).lerp(GridMath.cell_to_world(guest.next_cell()), 0.25) \
-		+ Vector3(0.0, 0.875 + GuestMoodIndicator.HEAD_OFFSET, 0.0)
+	var body: PersonView = _view.agent_nodes[guest.id] as PersonView
+	var head_offset: Vector3 = body.head_anchor_position() + Vector3.UP * \
+		(AgentPresentationController.MOOD_CLEARANCE + (icon.dot.mesh as SphereMesh).radius)
+	var expected: Vector3 = body.transform * head_offset
 	assert_eq(body.transform * icon.position, expected)
 	for _frame: int in range(4):
 		_view._process(0.1)
@@ -181,7 +182,7 @@ func test_capture_evidence_reads_native_bands_independently_and_leaves_sim_uncha
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	await tree.process_frame
 	tree.root.add_child(_view)
-	_view.show_world(_world)
+	await _show_world()
 	var before: Dictionary = _snapshot(guest)
 	var evidence: Dictionary = CAPTURE_SCRIPT.mood_evidence(_world, _view)
 	assert_true(evidence["available"])
@@ -206,6 +207,16 @@ func test_capture_evidence_reads_native_bands_independently_and_leaves_sim_uncha
 	assert_eq(evidence["visible_indicators"].size(), 0)
 	assert_eq(_snapshot(guest), before)
 	assert_false(CAPTURE_SCRIPT.mood_evidence(_world, null)["available"])
+
+
+func _show_world() -> void:
+	if not _view.is_inside_tree():
+		var tree: SceneTree = Engine.get_main_loop() as SceneTree
+		await tree.process_frame
+		tree.root.add_child(_view)
+	assert_true(_view.is_inside_tree(), "native rigs require actual scene-tree entry")
+	_view.set_process(false)
+	_view.show_world(_world)
 
 
 func _guest(state: CustomerAgent.State) -> CustomerAgent:
