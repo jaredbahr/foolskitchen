@@ -49,6 +49,8 @@ func test_staff_rows_show_people_traits_wages_and_role_minimums() -> void:
 
 
 func test_tray_rows_show_price_capacity_owned_state_and_request_only() -> void:
+	assert_true((_panel.get_node("Panel/Content/Scroll/List/TraysRow/TraysBuy") as Button).disabled,
+		"the detached panel has no invented price before tuning is bound")
 	_panel.set_trays(0, PackedInt32Array([60, 150]), 200)
 	var first: Button = _panel.get_node("Panel/Content/Scroll/List/TraysRow/TraysBuy") as Button
 	var second: Button = _panel.get_node("Panel/Content/Scroll/List/BigTraysRow/BigTraysBuy") as Button

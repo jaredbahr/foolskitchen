@@ -96,6 +96,10 @@ func log_event(text: String) -> void:
 
 
 func _on_task_failed(t: SimTask, reason: StringName) -> void:
+	# A READY delivery folded into a tray trip is successful handoff, not a
+	# failed job. Keep the board cancellation for its claimant/ownership cleanup.
+	if t.kind == &"deliver" and reason == &"batched":
+		return
 	log_event("Task failed: %s (%s)" % [t.label, reason])
 
 

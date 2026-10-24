@@ -454,6 +454,8 @@ func test_tray_delivery_serves_two_ready_meals_in_one_nearest_next_trip() -> voi
 		return
 	assert_eq(batch.payload["order_ids"].size(), 2)
 	assert_eq(batch.steps.size(), 6, "one pickup and two table stops")
+	for event: String in _sim.world.event_log:
+		assert_false(event.contains("batched"), "a successful tray handoff is not logged as a failure")
 	var pass_cell: Vector2i = _item(&"pass_counter").work_cells[1]
 	var first_stop: Vector2i = batch.steps[2].cell
 	var second_stop: Vector2i = batch.steps[4].cell
@@ -494,6 +496,52 @@ func test_guest_leaving_mid_tray_trip_recovers_only_their_plate() -> void:
 	assert_false(cancelled.paid)
 	assert_eq(_paid.size(), 1)
 	assert_eq(batch.state, SimTask.State.DONE)
+
+
+func test_path_change_at_pickup_fails_primary_and_recovers_held_plate() -> void:
+	var guest: CustomerAgent = _guest()
+	assert_true(_sim.world.clock.start_service())
+	for tick: int in range(1200):
+		_sim.advance()
+		if guest.order != null:
+			break
+	assert_not_null(guest.order)
+	if guest.order == null:
+		return
+	var server: StaffAgent = _staff(&"server")
+	server.priorities[&"server"] = 0
+	server.priorities[&"any"] = 0
+	for tick: int in range(3000):
+		_sim.advance()
+		_assert_tray_plates()
+		if guest.order.state == Order.State.READY:
+			break
+	assert_eq(guest.order.state, Order.State.READY)
+	assert_true(_sim.kitchen.plates.has_order(guest.order.id))
+	server.priorities[&"server"] = 2
+	server.priorities[&"any"] = 1
+	var claimed: SimTask = null
+	for tick: int in range(1200):
+		_sim.advance()
+		if server.task != null and server.task.kind == &"deliver":
+			claimed = server.task
+			break
+	assert_not_null(claimed)
+	if claimed == null:
+		return
+	var approaches: Array[Vector2i] = _sim.world.grid.walkable_neighbours(guest.order.seat_cell)
+	assert_true(approaches.size() > 0)
+	for cell: Vector2i in approaches:
+		assert_true(_sim.world.grid.set_terrain(cell, SimGrid.Terrain.WALL))
+	assert_true(_sim.world.grid.walkable_neighbours(guest.order.seat_cell).is_empty())
+	for tick: int in range(500):
+		_sim.advance()
+		_assert_tray_plates()
+		if claimed.state == SimTask.State.CANCELLED:
+			break
+	assert_eq(claimed.state, SimTask.State.CANCELLED)
+	assert_eq(guest.order.state, Order.State.CANCELLED, "the READY order is never silently lost")
+	assert_false(_sim.kitchen.plates.has_order(guest.order.id), "the held plate is recovered")
 
 
 func _two_ready_guests_for_trays() -> Array[CustomerAgent]:

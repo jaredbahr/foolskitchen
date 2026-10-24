@@ -300,17 +300,17 @@ func _release_pass(agent: SimAgent) -> bool:
 		return false
 	item.release(item.work_cells[1], staff.id)
 	if not bool(staff.task.payload.get("batch_prepared", false)):
-		_prepare_delivery(staff.task, sim, item.work_cells[1])
+		return _prepare_delivery(staff.task, sim, item.work_cells[1])
 	return true
 
 
 ## Fold only unclaimed READY deliveries into this trip. The claimed order
 ## always stays in the bundle; the remaining slots choose the closest meals
 ## from the pass, then all selected tables run in nearest-next path order.
-func _prepare_delivery(task: SimTask, sim: RestaurantSim, pass_cell: Vector2i) -> void:
+func _prepare_delivery(task: SimTask, sim: RestaurantSim, pass_cell: Vector2i) -> bool:
 	var primary: Order = sim.orders.get_order(int(task.payload["order_id"]))
 	if primary == null or primary.state != Order.State.READY:
-		return
+		return false
 	var selected: Array[Order] = [primary]
 	var available: Array[Order] = []
 	for order: Order in sim.orders.orders_in_state(Order.State.READY):
@@ -337,6 +337,12 @@ func _prepare_delivery(task: SimTask, sim: RestaurantSim, pass_cell: Vector2i) -
 		route_order.append(next)
 		route_cells.append(route_from)
 		selected.erase(next)
+	# Plan the complete reachable route before withdrawing any other task. If
+	# the claimed meal lost its path since READY, the normal failed-task path
+	# cancels that meal and recovers its plate. Unreachable extras keep their
+	# original OPEN task and can fail or recover independently at their pickup.
+	if not route_order.has(primary):
+		return false
 	var ids: Array[int] = []
 	for index: int in range(route_order.size()):
 		var order: Order = route_order[index]
@@ -353,6 +359,7 @@ func _prepare_delivery(task: SimTask, sim: RestaurantSim, pass_cell: Vector2i) -
 	task.payload["batch_prepared"] = true
 	task.label = "Deliver %d meals" % ids.size() if ids.size() > 1 else task.label
 	task.timeout_ticks = 600 * maxi(1, ids.size())
+	return true
 
 
 func _nearest_order(sim: RestaurantSim, from_cell: Vector2i, orders: Array[Order]) -> Order:
