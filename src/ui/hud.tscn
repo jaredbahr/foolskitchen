@@ -114,14 +114,6 @@ toggle_mode = true
 text = "Build"
 tooltip_text = "Build furniture (B)"
 
-[node name="Paint" type="Button" parent="Top/Row"]
-layout_mode = 2
-theme = ExtResource("2_theme")
-focus_mode = 0
-toggle_mode = true
-text = "Paint"
-tooltip_text = "Paint walls, floor and furniture (P)"
-
 [node name="Cash" type="Label" parent="Top/Row"]
 layout_mode = 2
 text = "$0"
@@ -147,6 +139,21 @@ layout_mode = 2
 focus_mode = 0
 text = "Staff"
 tooltip_text = "Hire staff and plan today's wages"
+
+[node name="Paint" type="Button" parent="."]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -92.0
+offset_top = 80.0
+offset_right = -12.0
+offset_bottom = 116.0
+grow_horizontal = 0
+theme = ExtResource("2_theme")
+focus_mode = 0
+toggle_mode = true
+text = "Paint"
+tooltip_text = "Paint walls, floor and furniture (P)"
 
 [node name="Deltas" type="Control" parent="."]
 layout_mode = 0

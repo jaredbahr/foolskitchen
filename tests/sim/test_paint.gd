@@ -60,7 +60,7 @@ func test_paint_is_free_during_service_and_round_trips_in_shop_save() -> void:
 	var restored: RestaurantSim = RestaurantSim.new()
 	restored.world = ShopBuilder.build(layout, _content, errors, true)
 	var restored_editor: ShopEditor = ShopEditor.new(restored, _content, ShopEditBooks.new(_can_spend, _cash_change), layout)
-	assert_eq(restored_editor.to_dict(), data)
+	assert_eq(restored_editor.to_dict(), _editor.to_dict(), "JSON round-trip keeps the same paint and placements")
 	assert_eq(restored_editor.wall_swatch_id, &"sage")
 	assert_eq(restored_editor.floor_swatch_id, &"terracotta")
 	assert_eq(restored.world.grid.items()[7].swatch_id, &"walnut")
