@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Renders the game (default: src/world/main.tscn) under a virtual display and
 # saves PNGs to screens/ (git-ignored). Needs xvfb and Mesa (software OpenGL).
-# Usage: bash tools/screenshot.sh [--out=dir] [--frames=120,400,900] [--speed=4] [--scene=res://...] [--quarter=0..3] [--open] [--fast=N] [--select=guest|owner] [--assign-owner=kitchen] [--f3] [--menu] [--build=green|red]
+# Usage: bash tools/screenshot.sh [--out=dir] [--frames=120,400,900] [--speed=4] [--scene=res://...] [--quarter=0..3] [--open] [--fast=N] [--select=guest|owner] [--assign-owner=kitchen] [--f3] [--menu] [--report] [--build=green|red]
 # --staff --speed=0 shows the production Staff panel without changing its roster.
+# --report --open --fast=100 --speed=0 --frames=60 captures a real closed-day report.
 # Build previews use the production morning input API without buying or saving.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"

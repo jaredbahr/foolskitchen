@@ -92,6 +92,9 @@ func _assert_clean_morning(main: Node, day: int) -> void:
 	_assert_plate_conservation(sim, day)
 	assert_eq(sim.kitchen.clean_plates, sim.kitchen.plates.total, "day %d: every plate clean overnight" % day)
 	assert_eq(sim.served_today + sim.lost_today, 0, "day %d: counters reset" % day)
+	var reputation: ReputationBook = main.get("reputation") as ReputationBook
+	assert_true(reputation.average() >= 0.0 and reputation.average() <= 5.0,
+		"day %d: morning reputation stays within the star scale" % day)
 	for agent: SimAgent in world.agents:
 		if agent is StaffAgent:
 			assert_null((agent as StaffAgent).task)
@@ -131,6 +134,17 @@ func _assert_closed_books(main: Node, day: int) -> void:
 	for reason: StringName in sim.leave_reasons_today:
 		reasons += sim.leave_reasons_today[reason]
 	assert_eq(reasons, _arrivals_today, "day %d: every guest has a reason" % day)
+	var reputation: ReputationBook = main.get("reputation") as ReputationBook
+	assert_true(reputation.average() >= 0.0 and reputation.average() <= 5.0,
+		"day %d: closing reputation stays within the star scale" % day)
+	assert_true(reputation.scores().size() >= ReputationBook.INITIAL_REVIEWS
+		and reputation.scores().size() <= ReputationBook.WINDOW,
+		"day %d: the rolling window remains bounded" % day)
+	assert_true(sim.reviews_today.size() <= _arrivals_today,
+		"day %d: each arriving guest reviews at most once" % day)
+	for row: Dictionary in sim.reviews_today:
+		assert_true(int(row.get("stars", 0)) >= 1 and int(row.get("stars", 0)) <= 5)
+		assert_false(String(row.get("quote", "")).is_empty())
 	for reason: StringName in sim.leave_reasons_today:
 		assert_true(reason == &"happy" or reason == &"no_menu" or reason == &"too_expensive"
 			or CustomerAgent.PLAYER_REASONS.has(reason) or reason == &"kitchen_failed",
@@ -160,6 +174,9 @@ func _assert_closed_books(main: Node, day: int) -> void:
 	assert_eq(shown.day, day)
 	assert_eq(shown.customers_served, sim.served_today)
 	assert_eq(shown.customers_lost, sim.lost_today)
+	assert_eq(shown.review_cards.size(), sim.reviews_today.size(),
+		"day %d: every review reaches the evening report" % day)
+	assert_eq(shown.reputation_after, reputation.average())
 	assert_eq(int(shown.income.get(Ledger.SALE, 0)), _sales_today)
 	var dishes: int = 0
 	for recipe: StringName in shown.dishes_sold:

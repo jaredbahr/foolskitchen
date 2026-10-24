@@ -15,6 +15,7 @@ var _day_label: Label
 var _time_label: Label
 var _phase_label: Label
 var _cash_label: Label
+var _reputation_label: Label
 var _plate_label: Label
 var _context: Button
 var _deltas: Control
@@ -24,6 +25,8 @@ var _merge_amount: int = 0
 var _buttons: Array[Button] = []
 var _pause_bars: Array[ColorRect] = []
 var _cash: int = 0
+var _reputation_average: float = 3.0
+var _reputation_count: int = 5
 var _wall_button: Button
 var _shop_view: ShopView
 var _build_button: Button
@@ -50,6 +53,7 @@ func refresh() -> void:
 		_time_label = get_node("Top/Row/Time") as Label
 		_phase_label = get_node("Top/Row/Phase") as Label
 		_cash_label = get_node("Top/Row/Cash") as Label
+		_reputation_label = get_node("Top/Row/Reputation") as Label
 		_context = get_node("Top/Row/Context") as Button
 		_deltas = get_node("Deltas") as Control
 		_wall_button = get_node("Top/Row/Walls") as Button
@@ -88,6 +92,7 @@ func refresh() -> void:
 	_time_label.text = Fmt.clock(Clock.sim.display_minutes())
 	_phase_label.text = PHASE_NAMES[Clock.sim.phase]
 	_cash_label.text = Fmt.money(_cash)
+	_render_reputation()
 	_context.visible = Clock.sim.phase == SimClock.Phase.MORNING or Clock.sim.phase == SimClock.Phase.CLOSED
 	_context.text = "Open shop" if Clock.sim.phase == SimClock.Phase.MORNING else "Next day"
 	_on_speed_changed(Clock.speed)
@@ -103,6 +108,21 @@ func refresh() -> void:
 	_staff_button.disabled = Clock.sim.phase != SimClock.Phase.MORNING
 	_staff_button.tooltip_text = "Hire staff and plan today's wages" if not _staff_button.disabled else "Staff changes are available in the morning."
 	_layout_header()
+
+
+## Main supplies the rolling score and sample count; the HUD only presents it.
+func set_reputation(average: float, count: int) -> void:
+	_reputation_average = clampf(average, 0.0, 5.0)
+	_reputation_count = clampi(count, 0, 30)
+	if _reputation_label == null:
+		_reputation_label = get_node("Top/Row/Reputation") as Label
+	_render_reputation()
+
+
+func _render_reputation() -> void:
+	_reputation_label.text = "%.1f★" % _reputation_average
+	_reputation_label.tooltip_text = "%.1f stars from your last %d reviews" % [
+		_reputation_average, _reputation_count]
 
 
 ## Keep the full Staff + legacy plate message without shrinking native controls.

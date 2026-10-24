@@ -116,6 +116,16 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 22
 text = "What guests said"
 
+[node name="ReviewStats" type="Label" parent="Panel/Scroll/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Today's reviews: none"
+
+[node name="Reputation" type="Label" parent="Panel/Scroll/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Reputation: 3.0 to 3.0 stars"
+
 [node name="ReviewRows" type="VBoxContainer" parent="Panel/Scroll/Content"]
 unique_name_in_owner = true
 layout_mode = 2

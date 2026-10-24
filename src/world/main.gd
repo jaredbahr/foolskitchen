@@ -12,12 +12,16 @@ extends Node3D
 
 const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
 const TUNING: EconomyTuning = preload("res://data/balance/tier1_economy.tres")
+const REVIEW_TUNING: ReviewTuning = preload("res://data/balance/reviews.tres")
+const REVIEW_QUOTES: ReviewQuotes = preload("res://data/reviews/quotes.tres")
 const AUTOSAVE_SLOT: String = "autosave"
 
 ## Save slot used by autosave and the startup load. Tests change it.
 var save_slot: String = AUTOSAVE_SLOT
 ## When false, _ready() neither loads nor writes saves (used by tests).
 var use_saves: bool = true
+## Test/capture override only; zero keeps the normal wall-clock new-game seed.
+var new_game_seed_override: int = 0
 var sim: RestaurantSim
 var world: SimWorld
 var content: ContentDB
@@ -31,6 +35,8 @@ var build_mode: BuildMode = BuildMode.new()
 ## Cookable dishes/prices belong to this shop, never to shared recipe resources.
 var menu_settings: MenuSettings
 var staff_roster: StaffRoster
+## Last thirty eligible reviews, including five virtual three-star starters.
+var reputation: ReputationBook = ReputationBook.new()
 
 var _previous_clock: SimClock = null
 var _started: bool = false
@@ -40,6 +46,7 @@ var _loaded_layout: ShopLayout = null
 var _loaded_menu: MenuSettings = null
 var _loaded_staff: StaffRoster = null
 var _loaded_plates: PlateLedger = null
+var _loaded_reputation: ReputationBook = null
 var _report: Control
 var _inspect_panel: InspectPanel
 var _debug_overlay: DebugOverlay
@@ -114,6 +121,7 @@ func _bind_world_presentation() -> void:
 	if not $HUD.build_toggled.is_connected(_on_build_toggled):
 		$HUD.build_toggled.connect(_on_build_toggled)
 	$HUD.set_build_state(false, false)
+	$HUD.set_reputation(reputation.average(), reputation.scores().size())
 	_menu_panel = $Overlay/MenuPanel
 	_menu_panel.bind_menu(menu_settings)
 	_menu_panel.set_phase(Clock.sim.phase)
@@ -172,6 +180,7 @@ func start() -> void:
 	SaveSystem.register("menu", _capture_menu, _restore_menu)
 	SaveSystem.register("staff", _capture_staff, _restore_staff)
 	SaveSystem.register("plates", _capture_plates, _restore_plates)
+	SaveSystem.register("reviews", _capture_reviews, _restore_reviews)
 	var loaded: bool = use_saves and _load_autosave()
 	if not loaded:
 		_skip_next_autosave = use_saves and SaveSystem.list_slots().has(save_slot)
@@ -179,6 +188,7 @@ func start() -> void:
 	world.clock = Clock.sim
 	sim.stock = Economy.stock
 	sim.use_rng(GameState.rng(&"customers"))
+	sim.configure_reviews(reputation, REVIEW_TUNING, REVIEW_QUOTES, GameState.rng(&"reviews"))
 	sim.spawner.min_gap = TUNING.arrival_gap_min
 	sim.spawner.max_gap = TUNING.arrival_gap_max
 	shop_editor = ShopEditor.new(sim, content, ShopEditBooks.new(Economy.can_spend_without_loan, Economy.add_cash))
@@ -192,6 +202,7 @@ func _connect_session() -> void:
 	if not _report.is_connected(&"next_day_pressed", _on_next_day_pressed):
 		_report.connect(&"next_day_pressed", _on_next_day_pressed)
 	sim.customer_paid.connect(_on_customer_paid)
+	sim.review_recorded.connect(_on_review_recorded)
 	sim.service_closed.connect(_on_service_closed)
 	if sim.kitchen != null:
 		sim.kitchen.plates_changed.connect(_on_plates_changed)
@@ -219,6 +230,8 @@ func _exit_tree() -> void:
 		_inspect_panel.owner_mode_requested.disconnect(_on_owner_mode_requested)
 	if sim != null and sim.customer_paid.is_connected(_on_customer_paid):
 		sim.customer_paid.disconnect(_on_customer_paid)
+	if sim != null and sim.review_recorded.is_connected(_on_review_recorded):
+		sim.review_recorded.disconnect(_on_review_recorded)
 	if sim != null and sim.kitchen != null and sim.kitchen.plates_changed.is_connected(_on_plates_changed):
 		sim.kitchen.plates_changed.disconnect(_on_plates_changed)
 	if sim != null and sim.service_closed.is_connected(_on_service_closed):
@@ -583,6 +596,15 @@ func build_report(day: int) -> DayReport:
 	for reason: StringName in sim.leave_reasons_today:
 		if reason != &"happy":
 			report.leave_reasons[reason] = sim.leave_reasons_today[reason]
+	var star_total: int = 0
+	for row: Dictionary in sim.reviews_today:
+		var stars: int = int(row.get("stars", 0))
+		star_total += stars
+		report.review_cards.append({"stars": stars, "quote": String(row.get("quote", ""))})
+	report.today_review_average = float(star_total) / float(report.review_cards.size()) \
+		if not report.review_cards.is_empty() else 0.0
+	report.reputation_before = sim.reputation_before_day
+	report.reputation_after = reputation.average()
 	return report
 
 
@@ -590,13 +612,16 @@ func _new_game() -> void:
 	# A fresh clock and seed too, so a half-loaded save can't leave its day
 	# or random state behind.
 	Clock.sim = SimClock.new()
-	GameState.new_run(int(Time.get_unix_time_from_system()))
+	GameState.new_run(new_game_seed_override if new_game_seed_override != 0
+		else int(Time.get_unix_time_from_system()))
 	Economy.reset(TUNING.starting_cash)
 	_loaded_layout = null
 	_owner_preferences.reset()
 	sim.assign_owner(&"rest")
 	_loaded_menu = null
 	_loaded_staff = null
+	_loaded_reputation = null
+	reputation = ReputationBook.new()
 	staff_roster = StaffRoster.new(TUNING)
 	if not sim.set_staff_roster(staff_roster.members()):
 		push_error("Cannot install the new game's starting staff roster")
@@ -613,6 +638,7 @@ func _load_autosave() -> bool:
 	_loaded_menu = null
 	_loaded_staff = null
 	_loaded_plates = null
+	_loaded_reputation = null
 	if not SaveSystem.list_slots().has(save_slot):
 		return false
 	if SaveSystem.load_game(save_slot) != OK:
@@ -636,6 +662,7 @@ func _load_autosave() -> bool:
 		sim = candidate
 		world = candidate.world
 	staff_roster = employees
+	reputation = _loaded_reputation if _loaded_reputation != null else ReputationBook.new()
 	menu_settings = choices
 	_apply_menu(sim, menu_settings)
 	if sim.kitchen == null or not sim.kitchen.configure_plates(
@@ -655,6 +682,19 @@ func _restore_plates(data: Dictionary) -> bool:
 	if restored == null:
 		return false
 	_loaded_plates = restored
+	return true
+
+
+func _capture_reviews() -> Dictionary:
+	return reputation.to_dict()
+
+
+## Stage the rolling window. Install it only after the full morning load works.
+func _restore_reviews(data: Dictionary) -> bool:
+	var restored: ReputationBook = ReputationBook.new()
+	if not restored.from_dict(data):
+		return false
+	_loaded_reputation = restored
 	return true
 
 
@@ -893,7 +933,13 @@ func shop_sell(item_id: int) -> int:
 
 ## Morning setup: new counters, a stocked fridge, and an autosave.
 func _begin_morning() -> void:
+	# Sample the rating once, before start_day resets the first guest's gap.
+	# Positive stars increase arrivals, so their time between arrivals shrinks.
+	var rate: float = reputation.arrival_multiplier(REVIEW_TUNING)
+	sim.spawner.min_gap = maxi(1, roundi(float(TUNING.arrival_gap_min) / rate))
+	sim.spawner.max_gap = maxi(sim.spawner.min_gap, roundi(float(TUNING.arrival_gap_max) / rate))
 	sim.start_day()
+	$HUD.set_reputation(reputation.average(), reputation.scores().size())
 	# Loading today's persisted pool must not advance the saved hiring stream.
 	if staff_roster.candidate_day != Clock.sim.day:
 		staff_roster.draw_candidates(Clock.sim.day, GameState.rng(&"hiring"))
@@ -930,6 +976,11 @@ func _charge_closing_costs() -> void:
 func _on_customer_paid(_customer: CustomerAgent, order: Order, amount: int) -> void:
 	Economy.add_cash(amount, Ledger.SALE)
 	dishes_sold_today[order.recipe_id] = dishes_sold_today.get(order.recipe_id, 0) + 1
+
+
+func _on_review_recorded(_row: Dictionary) -> void:
+	# The display may change during service, but the day's arrival gap does not.
+	$HUD.set_reputation(reputation.average(), reputation.scores().size())
 
 
 ## Service is over and every guest's departure is recorded: close the books.

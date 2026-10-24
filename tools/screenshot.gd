@@ -10,6 +10,7 @@ extends SceneTree
 ##   --f3        show the scene's read-only debug overlay
 ##   --menu      show the real menu panel in MORNING (cannot combine with --open)
 ##   --staff     show the real morning Staff panel, paused, with no altered roster
+##   --report    require a closed-day report with at least two real review cards
 ##   --build=green|red  hold a checked buy preview through the production input API
 ## Metadata records actual waiting moods/visible markers and seeds, with no fixture.
 
@@ -34,6 +35,7 @@ var _owner_warmup_ticks: int = 0
 var _f3: bool = false
 var _menu: bool = false
 var _staff: bool = false
+var _report_requested: bool = false
 var _build: String = ""
 var _build_pointer: Vector2 = Vector2.ZERO
 var _selected_agent_id: int = -1
@@ -79,6 +81,8 @@ func _initialize() -> void:
 				_fail_capture("--staff does not accept a value")
 				return
 			_staff = true
+		elif arg == "--report":
+			_report_requested = true
 		elif arg.begins_with("--build"):
 			var requested: String = arg.trim_prefix("--build=")
 			if not ["green", "red"].has(requested):
@@ -109,6 +113,9 @@ func _initialize() -> void:
 	if _staff and (_open or _fast != 0 or not _selection.is_empty() or _assign_owner or _f3 or _menu or _speed != 0):
 		_fail_capture("--staff requires a paused morning without other service/panel options")
 		return
+	if _report_requested and (not _open or _fast <= 0 or _speed != 0 or _menu or _staff or not _build.is_empty()):
+		_fail_capture("--report requires a fast-forwarded, paused-clock service view")
+		return
 	if _shots.is_empty() or _shots.min() < 1 or ((_quarter >= 0 or not _selection.is_empty() or _f3 or _menu or _staff or not _build.is_empty()) and _shots.min() < 4):
 		_fail_capture("capture frames must be positive, and at least 4 for requested view/UI options")
 		return
@@ -123,6 +130,8 @@ func _initialize() -> void:
 	# Preserve capture isolation when the integrated game session supports saves.
 	if "use_saves" in _main:
 		_main.set("use_saves", false)
+	if _report_requested and "new_game_seed_override" in _main:
+		_main.set("new_game_seed_override", 1)
 	root.add_child(_main)
 
 
@@ -369,6 +378,9 @@ func _capture() -> void:
 			or world.now != 0 or not _staff_capture_valid(staff_state)):
 		_fail_capture("requested Staff panel did not show the real paused morning roster and pool")
 		return
+	if _report_requested and not _report_capture_valid(world):
+		_fail_capture("requested report did not show at least two actual reviews after service closed")
+		return
 	var selected_id: int = int(inspection.get("selected_agent_id", -1))
 	var selected: SimAgent = world.agent(selected_id) if world != null else null
 	var selected_live: bool = (_selection == &"guest" and selected is CustomerAgent) or (_selection == &"owner" and selected is OwnerAgent)
@@ -452,6 +464,9 @@ func _capture() -> void:
 		"requested_debug_visible": _f3,
 		"requested_menu_visible": _menu, "menu_visible": menu_visible,
 		"requested_staff_visible": _staff, "staff": staff_state,
+		"requested_report": _report_requested,
+		"report_review_count": (_main.get("shown_report") as DayReport).review_cards.size()
+			if _report_requested else 0,
 		"requested_build": _build, "build": build,
 		"day_phase": int(world.clock.phase) if world != null else null,
 		"selected_agent_id": inspection.get("selected_agent_id"),
@@ -481,6 +496,27 @@ func _capture() -> void:
 	_capture_pending = false
 	if _finish_requested:
 		_finish_capture()
+
+
+## This reads the live report and its native card labels after the frame draw.
+## It does not add review fixtures or force a rating in the captured game.
+func _report_capture_valid(world: SimWorld) -> bool:
+	if world == null or world.clock.phase != SimClock.Phase.CLOSED or not "shown_report" in _main:
+		return false
+	var report: DayReport = _main.get("shown_report") as DayReport
+	var panel: Control = _main.get_node_or_null("Overlay/EveningReport") as Control
+	if report == null or report.review_cards.size() < 2 or panel == null or not panel.is_visible_in_tree():
+		return false
+	var rows: Node = panel.get_node_or_null("%ReviewRows")
+	if rows == null or rows.get_child_count() < 2:
+		return false
+	for index: int in range(mini(report.review_cards.size(), 3)):
+		var card: Dictionary = report.review_cards[index]
+		var native: Label = rows.get_child(index) as Label
+		if native == null or String(card.get("quote", "")).is_empty() \
+				or native.text != '%d stars - "%s"' % [int(card.get("stars", 0)), String(card["quote"])]:
+			return false
+	return true
 
 
 ## Read model records and actual native rows together, after the image draw.

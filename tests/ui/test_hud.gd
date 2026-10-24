@@ -40,6 +40,9 @@ func test_initial_labels_and_shared_theme_before_ready() -> void:
 	assert_eq((_control("Time") as Label).text, "11:00")
 	assert_eq((_control("Phase") as Label).text, "Morning")
 	assert_eq((_control("Cash") as Label).text, "$1,234")
+	assert_eq((_control("Reputation") as Label).text, "3.0★")
+	assert_eq((_control("Reputation") as Label).tooltip_text,
+		"3.0 stars from your last 5 reviews")
 	_hud.call("set_plate_counts", 9, 12, 2, 1)
 	assert_eq((_control("Plates") as Label).text, "Plates 9/12")
 	assert_eq((_control("Plates") as Label).tooltip_text, "Clean: 9 | Dirty: 2 | In use: 1")
@@ -50,6 +53,19 @@ func test_initial_labels_and_shared_theme_before_ready() -> void:
 	_hud.call("set_plate_counts", 9, 12, 2, 1)
 	assert_eq((_control("Plates") as Label).text, "Plates 9/12", "the same native label returns to active counts")
 	assert_eq((_hud.get_node("Top") as Control).theme, load("res://src/ui/theme/main_theme.tres"))
+
+
+func test_reputation_presentation_survives_refresh_and_tracks_window_count() -> void:
+	var cash: Control = _control("Cash")
+	var reputation: Label = _control("Reputation") as Label
+	assert_eq(reputation.get_index(), cash.get_index() + 1)
+	_hud.call("set_reputation", 3.44, 30)
+	assert_eq(reputation.text, "3.4★")
+	assert_eq(reputation.tooltip_text, "3.4 stars from your last 30 reviews")
+	_hud.call("refresh")
+	assert_eq(reputation.text, "3.4★")
+	_hud.call("set_reputation", 4.0, 7)
+	assert_eq(reputation.tooltip_text, "4.0 stars from your last 7 reviews")
 
 
 func test_scene_tree_binding_and_exit_cleanup_do_not_require_ready() -> void:

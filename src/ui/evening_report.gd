@@ -24,6 +24,8 @@ var _dishes: GridContainer
 var _guests: Label
 var _guest_bar: ProgressBar
 var _reasons: GridContainer
+var _review_stats: Label
+var _reputation: Label
 var _reviews: VBoxContainer
 var _nodes_bound: bool = false
 var _report_shown: bool = false
@@ -61,11 +63,22 @@ func show_report(report: DayReport) -> void:
 	if guest_total == 0:
 		_guests.text = "No guests visited today"
 	_fill_reasons(report.leave_reasons)
+	if report.review_cards.is_empty():
+		_review_stats.text = "Today's reviews: none"
+	else:
+		_review_stats.text = "Today's reviews: %.1f stars" % report.today_review_average
+	_reputation.text = "Reputation: %.1f to %.1f stars" % [report.reputation_before, report.reputation_after]
 	_clear(_reviews)
-	for index: int in range(mini(report.reviews.size(), 3)):
-		_add_label(_reviews, '“%s”' % report.reviews[index])
-	if report.reviews.is_empty():
-		_add_label(_reviews, "No reviews yet — tomorrow is a fresh start")
+	if not report.review_cards.is_empty():
+		for index: int in range(mini(report.review_cards.size(), 3)):
+			var card: Dictionary = report.review_cards[index]
+			_add_label(_reviews, '%d stars - "%s"' % [int(card.get("stars", 1)), str(card.get("quote", ""))])
+	elif not report.reviews.is_empty():
+		# Older saved reports have quotes but no rating metadata.
+		for index: int in range(mini(report.reviews.size(), 3)):
+			_add_label(_reviews, '"%s"' % report.reviews[index])
+	else:
+		_add_label(_reviews, "No reviews today")
 	show()
 
 
@@ -80,6 +93,8 @@ func _bind_nodes() -> void:
 	_guests = %Guests
 	_guest_bar = %GuestBar
 	_reasons = %ReasonRows
+	_review_stats = %ReviewStats
+	_reputation = %Reputation
 	_reviews = %ReviewRows
 	var next_day: Button = %NextDay
 	next_day.pressed.connect(_on_next_day_pressed)
