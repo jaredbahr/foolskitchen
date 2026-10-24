@@ -110,9 +110,23 @@ func _initialize() -> void:
 ## Explicit diagnostic mode only. Never invoke registered providers: a suspect
 ## callable could mutate state. Read their live identities and known autoload data.
 func _session_diagnostic(stage: String, method: String, tc: TestCase) -> void:
+	# --script SceneTree entry points resolve autoloads at runtime, as the
+	# capture and balance tools do; their names are not compile-time globals.
+	var save_system: Node = root.get_node("SaveSystem")
+	var game_state: Node = root.get_node("GameState")
+	var clock: Node = root.get_node("Clock")
+	var economy: Node = root.get_node("Economy")
+	var save_dir: String = save_system.get("save_dir")
+	var provider_entries: Dictionary = save_system.get("_providers")
+	var existing_rngs: Dictionary = game_state.get("_rngs")
+	var sim_clock: SimClock = clock.get("sim") as SimClock
+	var attached_world: SimWorld = clock.get("attached_world") as SimWorld
+	var tick_driver: Callable = clock.get("tick_driver")
+	var ledger: Ledger = economy.get("ledger") as Ledger
+	var stock: Stock = economy.get("stock") as Stock
 	var providers: Array[Dictionary] = []
-	for key: String in SaveSystem._providers:
-		var entry: Dictionary = SaveSystem._providers[key]
+	for key: String in provider_entries:
+		var entry: Dictionary = provider_entries[key]
 		var capture: Callable = entry["capture"]
 		var restore: Callable = entry["restore"]
 		providers.append({"key": key, "capture_valid": capture.is_valid(),
@@ -121,25 +135,25 @@ func _session_diagnostic(stage: String, method: String, tc: TestCase) -> void:
 			"restore_method": String(restore.get_method())})
 	var files: Array[Dictionary] = []
 	for suffix: String in ["", ".bak", ".tmp"]:
-		files.append(_diagnostic_file(SaveSystem.save_dir.path_join("test_session.json" + suffix)))
+		files.append(_diagnostic_file(save_dir.path_join("test_session.json" + suffix)))
 	var directory_files: PackedStringArray = []
-	var directory: DirAccess = DirAccess.open(SaveSystem.save_dir)
+	var directory: DirAccess = DirAccess.open(save_dir)
 	if directory != null:
 		directory_files = directory.get_files()
 		directory_files.sort()
 	var rngs: Dictionary = {}
-	for system: StringName in GameState._rngs:
-		var generator: RandomNumberGenerator = GameState._rngs[system]
+	for system: StringName in existing_rngs:
+		var generator: RandomNumberGenerator = existing_rngs[system]
 		rngs[String(system)] = {"seed": str(generator.seed), "state": str(generator.state)}
 	var snapshot: Dictionary = {"stage": stage, "method": method, "pid": OS.get_process_id(),
-		"save_dir": SaveSystem.save_dir, "absolute_save_dir": ProjectSettings.globalize_path(SaveSystem.save_dir),
+		"save_dir": save_dir, "absolute_save_dir": ProjectSettings.globalize_path(save_dir),
 		"directory_files": directory_files, "providers": providers, "files": files,
-		"clock": {"node": Clock.get_instance_id(), "sim": Clock.sim.get_instance_id(),
-			"world": Clock.attached_world.get_instance_id() if Clock.attached_world != null else 0,
-			"driver_valid": Clock.tick_driver.is_valid(), "driver_owner": Clock.tick_driver.get_object_id(),
-			"speed": Clock.speed, "accumulator": Clock._accumulator, "state": Clock.sim.to_dict()},
-		"economy": {"node": Economy.get_instance_id(), "ledger": Economy.ledger.to_dict(), "stock": Economy.stock.to_dict()},
-		"game_state": {"node": GameState.get_instance_id(), "master_seed": str(GameState.master_seed), "rngs": rngs},
+		"clock": {"node": clock.get_instance_id(), "sim": sim_clock.get_instance_id(),
+			"world": attached_world.get_instance_id() if attached_world != null else 0,
+			"driver_valid": tick_driver.is_valid(), "driver_owner": tick_driver.get_object_id(),
+			"speed": clock.get("speed"), "accumulator": clock.get("_accumulator"), "state": sim_clock.to_dict()},
+		"economy": {"node": economy.get_instance_id(), "ledger": ledger.to_dict(), "stock": stock.to_dict()},
+		"game_state": {"node": game_state.get_instance_id(), "master_seed": str(game_state.get("master_seed")), "rngs": rngs},
 		"assertions_so_far": tc._failures.duplicate()}
 	print("SAVE DIAG: %s" % JSON.stringify(snapshot))
 
