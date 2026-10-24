@@ -11,7 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
-- See into the shop with camera-aware cutaway walls (cycle with C), warmer lighting, clear selected speed buttons, and small facing markers on staff and guests. (#PR_NUMBER)
+- See into the shop with camera-aware cutaway walls (cycle with C), warmer lighting, clear selected speed buttons, and small facing markers on staff and guests. (#43)
 - A real day: guests now come in, sit and wait; money moves with every sale and cost; wages ($55) and rent ($40) are charged at closing; the evening report appears with the day's real numbers; "Next day" starts a new morning with the fridge restocked. Guests still inside at closing are sent home and counted in that evening's report. Until the kitchen is in, guests leave hungry. (#40)
 - The game autosaves every morning and picks up where you left off; **F10** starts a new game. Each new game gets its own random guest arrivals, which continue correctly after loading; a save that can't be read safely starts a new game and is kept untouched. (#40)
 - The evening report sits below the top bar instead of covering it. (#40)
