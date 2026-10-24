@@ -94,6 +94,8 @@ func start() -> void:
 		_skip_next_autosave = use_saves and SaveSystem.list_slots().has(save_slot)
 		_new_game()
 	sim.use_rng(GameState.rng(&"customers"))
+	sim.spawner.min_gap = TUNING.arrival_gap_min
+	sim.spawner.max_gap = TUNING.arrival_gap_max
 	_begin_morning()
 
 

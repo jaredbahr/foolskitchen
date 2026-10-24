@@ -13,7 +13,7 @@ func test_starter_data_loads_without_validation_errors() -> void:
 func test_lookups_find_each_kind_and_unknown_ids_return_null() -> void:
 	var db: ContentDB = _starter_db()
 	assert_eq(db.ingredient(&"beef_patty").display_name, "Beef patty")
-	assert_eq(db.recipe(&"burger").standard_price, 9)
+	assert_eq(db.recipe(&"burger").standard_price, 12)
 	assert_eq(db.item(&"prep_counter").station_type, &"prep_counter")
 	assert_null(db.ingredient(&"missing"))
 	assert_null(db.recipe(&"missing"))

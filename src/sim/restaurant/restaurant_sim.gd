@@ -74,7 +74,9 @@ func advance() -> void:
 	spawner.advance(self)
 	for customer: CustomerAgent in customers():
 		if world.clock.phase == SimClock.Phase.CLOSED:
-			customer.leave_reason = &"closing"
+			# Guests who already paid are walking out happy; don't relabel them.
+			if not customer.paid:
+				customer.leave_reason = &"closing"
 		elif customer.state != CustomerAgent.State.LEFT:
 			continue
 		world.remove_agent(customer)

@@ -5,11 +5,11 @@
 [resource]
 script = ExtResource("1_htw2e")
 morning_stock = Dictionary[StringName, int]({
-&"beef_patty": 8,
-&"bread": 12,
-&"bun": 8,
-&"cheese": 6,
-&"lettuce": 8,
-&"soup_stock": 6,
-&"tomato": 12
+&"beef_patty": 10,
+&"bread": 16,
+&"bun": 10,
+&"cheese": 8,
+&"lettuce": 10,
+&"soup_stock": 8,
+&"tomato": 16
 })

@@ -5,6 +5,8 @@ signal next_day_pressed
 
 const LEAVE_LABELS: Dictionary = {
 	&"out_of_stock": "Dish was out of stock",
+	&"kitchen_failed": "The kitchen couldn't make the dish",
+	&"no_menu": "Nothing on the menu",
 	&"closing": "Shop closed",
 	&"waited_too_long": "Waited too long",
 	&"too_expensive": "Too expensive",
