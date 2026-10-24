@@ -143,6 +143,8 @@ docs/
   The ASCII HUD counter shows clean/total, with dirty/in-use in its tooltip.
   Main stages the validated `plates` save section (total only), installs it after
   a successful morning load, and saves at the existing morning boundary.
+  Totals save as integers; loading accepts 1 through 999 and earlier canonical
+  decimal-string totals. This validation range does not change the live ledger.
   Older saved layouts keep their furniture and default plate stock. Without
   any sink, plate limits are off and the HUD says "Plates: buy a sink".
   A present but unreachable sink still enables plate limits and cook waits.

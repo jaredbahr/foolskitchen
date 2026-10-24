@@ -221,7 +221,7 @@ func test_save_contains_only_total_and_restore_starts_all_clean_with_new_history
 	assert_eq(ledger.collect_table(10), 1)
 	assert_false(ledger.recover_order(9))
 	var saved: Dictionary = ledger.to_dict()
-	assert_eq(saved, {"version": 1, "total": "5"})
+	assert_eq(saved, {"version": 1, "total": 5})
 	var restored: PlateLedger = PlateLedger.from_dict(saved)
 	assert_not_null(restored)
 	if restored == null:
@@ -232,25 +232,46 @@ func test_save_contains_only_total_and_restore_starts_all_clean_with_new_history
 	assert_true(restored.take(1, 20))
 	assert_true(restored.take(2, 20))
 	assert_true(restored.take(9, 20))
-	saved["total"] = "999"
+	saved["total"] = 999
 	assert_eq(ledger.total, 5)
 	assert_eq(restored.total, 5)
 	_assert_counts(ledger, 5, 3, 1, 1)
 
 
-func test_json_round_trip_preserves_zero_large_and_maximum_integer_stock() -> void:
-	for quantity: int in [0, 1, 9007199254740993, PlateLedger.MAX_TOTAL]:
+func test_json_round_trip_writes_numeric_stock_and_restores_the_supported_range() -> void:
+	for quantity: int in [1, 12, 999]:
 		var ledger: PlateLedger = PlateLedger.new(quantity)
-		var serialized: String = JSON.stringify(ledger.to_dict())
-		assert_true(serialized.contains('"%d"' % quantity))
+		var saved: Dictionary = ledger.to_dict()
+		assert_eq(saved, {"version": 1, "total": quantity})
+		assert_eq(typeof(saved["total"]), TYPE_INT)
+		var direct: PlateLedger = PlateLedger.from_dict(saved)
+		assert_not_null(direct)
+		if direct != null:
+			_assert_counts(direct, quantity, quantity, 0, 0)
+		var serialized: String = JSON.stringify(saved)
 		var parsed: Dictionary = JSON.parse_string(serialized)
-		assert_eq(typeof(parsed["total"]), TYPE_STRING)
+		assert_eq(typeof(parsed["total"]), TYPE_FLOAT, "Godot parses JSON numbers as floats")
+		assert_eq(parsed["total"], float(quantity))
 		var restored: PlateLedger = PlateLedger.from_dict(parsed)
 		assert_not_null(restored)
 		if restored == null:
 			continue
 		_assert_counts(restored, quantity, quantity, 0, 0)
 		assert_eq(restored.to_dict(), ledger.to_dict())
+
+
+func test_legacy_canonical_string_totals_restore_and_rewrite_as_numbers() -> void:
+	for quantity: int in [1, 12, 999]:
+		var legacy: Dictionary = {"version": 1, "total": str(quantity)}
+		var before: PackedByteArray = var_to_bytes(legacy)
+		var restored: PlateLedger = PlateLedger.from_dict(legacy)
+		assert_not_null(restored)
+		assert_eq(var_to_bytes(legacy), before, "legacy reads leave their input unchanged")
+		if restored == null:
+			continue
+		_assert_counts(restored, quantity, quantity, 0, 0)
+		assert_eq(restored.to_dict(), {"version": 1, "total": quantity})
+		assert_eq(typeof(restored.to_dict()["total"]), TYPE_INT)
 
 
 func test_save_rejects_missing_unknown_and_non_string_keys() -> void:
@@ -278,15 +299,21 @@ func test_save_rejects_wrong_version_types_and_values() -> void:
 	assert_not_null(PlateLedger.from_dict({"version": 1.0, "total": "3"}), "JSON's integral version is accepted")
 
 
-func test_save_rejects_numeric_noncanonical_negative_and_overflowing_totals() -> void:
+func test_save_rejects_invalid_types_noncanonical_strings_and_out_of_range_totals() -> void:
 	var invalid_totals: Array[Variant] = [
-		null, true, false, 0, 1, -1, 1.0, INF, NAN, [], {}, &"3",
-		"", "-1", "-0", "+1", "00", "01", " 1", "1 ", "1\n", "1.0", "1e2", "x",
+		null, true, false, 0, -1, 1000, PlateLedger.MAX_TOTAL, -PlateLedger.MAX_TOTAL - 1, 9007199254740993,
+		0.0, -1.0, 1000.0, 0.5, 1.5, 999.5, INF, -INF, NAN, float(PlateLedger.MAX_TOTAL), 1.0e100,
+		[], {}, &"3",
+		"", "0", "-1", "-0", "+1", "00", "01", " 1", "1 ", "1\n", "1.0", "1e2", "x", "1000", "9999",
 		"9223372036854775808", "9999999999999999999", "18446744073709551615",
 		"100000000000000000000",
 	]
 	for quantity: Variant in invalid_totals:
-		assert_null(PlateLedger.from_dict({"version": 1, "total": quantity}), str(quantity))
+		var section: Dictionary = {"version": 1, "total": quantity}
+		# Byte snapshots compare NAN safely while preserving every input type.
+		var before: PackedByteArray = var_to_bytes(section)
+		assert_null(PlateLedger.from_dict(section), str(quantity))
+		assert_eq(var_to_bytes(section), before, "rejected totals leave their input unchanged")
 
 
 func test_maximum_stock_and_ids_preserve_conservation_through_every_bucket() -> void:
