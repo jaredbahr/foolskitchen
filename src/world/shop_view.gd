@@ -9,6 +9,13 @@ const HEIGHTS: Dictionary[int, float] = {
 	ItemDef.Category.PASS: 1.0, ItemDef.Category.DECOR: 0.6,
 }
 const CUSTOMER_COLORS: Array[Color] = [Color("c8743a"), Color("b89568"), Color("986357")]
+## Reuse a curated placeholder swatch rather than introduce a one-off art colour.
+const DIRT_SWATCH: SwatchDef = preload("res://data/swatches/walnut.tres")
+const CLEANER_SWATCH: SwatchDef = preload("res://data/swatches/sage.tres")
+const DIRT_OUTLINE: Array[Vector2] = [
+	Vector2(-0.20, -0.09), Vector2(-0.13, 0.14), Vector2(0.03, 0.20),
+	Vector2(0.20, 0.04), Vector2(0.12, -0.15),
+]
 
 enum WallMode { UP, CUTAWAY, DOWN }
 
@@ -32,12 +39,16 @@ var world: SimWorld
 var floor_mesh: MeshInstance3D
 var item_nodes: Dictionary[int, MeshInstance3D] = {}
 var agent_nodes: Dictionary[int, MeshInstance3D] = {}
+var dirt_nodes: Dictionary[Vector2i, MeshInstance3D] = {}
 var mood_nodes: Dictionary[int, GuestMoodIndicator] = {}
 var _mood_states: Dictionary[int, int] = {}
 var _mood_bands: Dictionary[int, int] = {}
 var _materials: Dictionary[Color, StandardMaterial3D] = {}
 var _paint_materials: Dictionary[StringName, StandardMaterial3D] = {}
 var _paint_content: ContentDB
+var _cleanliness: CleanlinessState
+var _shared_dirt_mesh: ArrayMesh
+var _shared_dirt_material: StandardMaterial3D
 var _wall_swatch_id: StringName = &""
 var _floor_swatch_id: StringName = &""
 var _floor_base_color: Color = Color("7d5533")
@@ -49,6 +60,7 @@ var _walls: Node3D
 
 ## Replaces a previous world and its signal bindings without modifying either.
 func show_world(value: SimWorld) -> void:
+	var previous_world: SimWorld = world
 	_disconnect_grid()
 	mood_nodes.clear()
 	_mood_states.clear()
@@ -59,9 +71,12 @@ func show_world(value: SimWorld) -> void:
 			child.free()
 	item_nodes.clear()
 	agent_nodes.clear()
+	dirt_nodes.clear()
 	_wall_nodes.clear()
 	floor_mesh = null
 	world = value
+	if previous_world != value:
+		_cleanliness = null
 	if world == null:
 		return
 	floor_mesh = MeshInstance3D.new()
@@ -87,6 +102,13 @@ func show_world(value: SimWorld) -> void:
 	_apply_paint()
 	_connect_grid()
 	_process(0.0)
+
+
+## Main binds day-local dirt after show_world(). A changed world drops the old
+## binding; unchanged spots retain their mesh nodes across rendered frames.
+func bind_cleanliness(value: CleanlinessState) -> void:
+	_cleanliness = value
+	_sync_dirt_spots()
 
 
 func _enter_tree() -> void:
@@ -393,6 +415,7 @@ func _on_cells_changed(cells: Array[Vector2i]) -> void:
 	for id: int in affected:
 		_build_item(world.grid.item(id))
 	_apply_paint()
+	_sync_dirt_spots()
 
 
 func _on_item_removed(item: PlacedItem) -> void:
@@ -402,6 +425,7 @@ func _on_item_removed(item: PlacedItem) -> void:
 func _process(delta: float) -> void:
 	if world == null:
 		return
+	_sync_dirt_spots()
 	var alive: Dictionary[int, bool] = {}
 	for agent: SimAgent in world.agents:
 		alive[agent.id] = true
@@ -450,6 +474,62 @@ func _process(delta: float) -> void:
 			agent_nodes.erase(id)
 
 
+## The pure state has no scene signals. A bounded reconciliation observes its
+## at-most-twelve spots without allocating replacement meshes every frame.
+func _sync_dirt_spots() -> void:
+	var wanted: Dictionary[Vector2i, bool] = {}
+	if world != null and _cleanliness != null:
+		for cell: Vector2i in _cleanliness.spots():
+			if world.grid.terrain(cell) != SimGrid.Terrain.FLOOR or not world.grid.is_walkable(cell):
+				continue
+			wanted[cell] = true
+			if dirt_nodes.has(cell):
+				continue
+			var node: MeshInstance3D = MeshInstance3D.new()
+			node.name = "Dirt_%d_%d" % [cell.x, cell.y]
+			node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			node.mesh = _dirt_mesh()
+			node.material_override = _dirt_material()
+			node.position = GridMath.cell_to_world(cell) + Vector3(0.0, 0.015, 0.0)
+			node.rotation.y = float(posmod(cell.x * 3 + cell.y, 4)) * PI * 0.5
+			node.set_meta("shop_geometry", true)
+			dirt_nodes[cell] = node
+			add_child(node)
+	for cell: Vector2i in dirt_nodes.keys():
+		if wanted.has(cell):
+			continue
+		var node: MeshInstance3D = dirt_nodes[cell]
+		remove_child(node)
+		node.free()
+		dirt_nodes.erase(cell)
+
+
+func _dirt_mesh() -> ArrayMesh:
+	if _shared_dirt_mesh != null:
+		return _shared_dirt_mesh
+	var surface: SurfaceTool = SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for index: int in range(DIRT_OUTLINE.size()):
+		# Godot front faces wind clockwise. Keep the lit top on the front side
+		# so the two-sided material does not flip its UP normals from above.
+		for point: Vector2 in [Vector2.ZERO, DIRT_OUTLINE[(index + 1) % DIRT_OUTLINE.size()], DIRT_OUTLINE[index]]:
+			surface.set_normal(Vector3.UP)
+			surface.add_vertex(Vector3(point.x, 0.0, point.y))
+	_shared_dirt_mesh = surface.commit()
+	return _shared_dirt_mesh
+
+
+func _dirt_material() -> StandardMaterial3D:
+	if _shared_dirt_material == null:
+		_shared_dirt_material = StandardMaterial3D.new()
+		_shared_dirt_material.albedo_color = DIRT_SWATCH.color
+		_shared_dirt_material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
+		_shared_dirt_material.roughness = 1.0
+		_shared_dirt_material.metallic_specular = 0.0
+		_shared_dirt_material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	return _shared_dirt_material
+
+
 func _update_guest_mood(agent: SimAgent, body: MeshInstance3D) -> void:
 	if not agent is CustomerAgent:
 		return
@@ -488,6 +568,7 @@ func _agent_color(agent: SimAgent) -> Color:
 	match agent.role:
 		&"cook": return Color("f3e6cc")
 		&"server": return Color("408b85")
+		&"cleaner": return CLEANER_SWATCH.color
 		&"owner": return Color("c9a346")
 	return CUSTOMER_COLORS[posmod(agent.id, CUSTOMER_COLORS.size())]
 

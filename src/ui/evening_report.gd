@@ -22,6 +22,7 @@ var _income: GridContainer
 var _costs: GridContainer
 var _dishes: GridContainer
 var _guests: Label
+var _cleanliness: Label
 var _guest_bar: ProgressBar
 var _reasons: GridContainer
 var _review_stats: Label
@@ -67,6 +68,9 @@ func show_report(report: DayReport) -> void:
 	_guest_bar.tooltip_text = "Guests served out of all guests"
 	if guest_total == 0:
 		_guests.text = "No guests visited today"
+	_cleanliness.text = "Cleanliness: %s" % report.cleanliness_label \
+		if not report.cleanliness_label.is_empty() else ""
+	_cleanliness.visible = not report.cleanliness_label.is_empty()
 	_fill_reasons(report.leave_reasons)
 	if report.review_cards.is_empty():
 		_review_stats.text = "Today's reviews: none"
@@ -97,6 +101,7 @@ func _bind_nodes() -> void:
 	_costs = %CostRows
 	_dishes = %DishRows
 	_guests = %Guests
+	_cleanliness = %Cleanliness
 	_guest_bar = %GuestBar
 	_reasons = %ReasonRows
 	_review_stats = %ReviewStats

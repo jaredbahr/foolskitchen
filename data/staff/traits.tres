@@ -18,14 +18,20 @@ walk_multiplier = 1.15
 script = ExtResource("2_trait")
 id = &"careful"
 display_name = "Careful"
-description = "Adds 0.05 to the quality of meals they cook."
+description = "Works with care. No special bonus in this role."
+role_descriptions = Dictionary[StringName, String]({
+&"cook": "Adds 0.05 to the quality of meals they cook."
+})
 cook_quality_bonus = 0.05
 
 [sub_resource type="Resource" id="Trait_cheerful"]
 script = ExtResource("2_trait")
 id = &"cheerful"
 display_name = "Cheerful"
-description = "Guests they serve have 10% more patience for food."
+description = "Friendly manner. No special bonus in this role."
+role_descriptions = Dictionary[StringName, String]({
+&"server": "Guests they serve have 10% more patience for food."
+})
 food_patience_multiplier = 1.1
 
 [sub_resource type="Resource" id="Starter_cook"]

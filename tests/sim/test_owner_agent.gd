@@ -328,7 +328,8 @@ func test_factory_has_one_resting_owner_at_authored_spawn_and_preserves_paid_sta
 	assert_eq(_real_sim.world.agents.size(), 3)
 	for agent: SimAgent in _real_sim.world.agents:
 		if agent == owner:
-			assert_eq(owner.priorities, {&"owner": 0, &"any": 0, &"cook": 0, &"server": 0})
+			assert_eq(owner.priorities, {&"owner": 0, &"any": 0, &"cook": 0, &"server": 0,
+				&"cleaner": 0}, "a resting owner cannot take any staff task")
 		else:
 			assert_true(agent.role in [&"cook", &"server"])
 			assert_eq((agent as StaffAgent).priorities[agent.role], 2)

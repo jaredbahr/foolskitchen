@@ -55,7 +55,7 @@ func can_let_go(id: StringName) -> bool:
 	for member: StaffMember in _members:
 		if member.role == _members[index].role:
 			count += 1
-	return count > 1
+	return _members[index].role == &"cleaner" or count > 1
 
 
 func let_go(id: StringName) -> bool:
@@ -94,7 +94,7 @@ func draw_candidates(day: int, random: RandomNumberGenerator) -> bool:
 		var name_index: int = random.randi_range(0, names.size() - 1)
 		member.display_name = names[name_index]
 		names.remove_at(name_index)
-		member.role = &"cook" if random.randi_range(0, 1) == 0 else &"server"
+		member.role = StaffMember.ROLES[random.randi_range(0, StaffMember.ROLES.size() - 1)]
 		member.skill = random.randi_range(1, 5)
 		member.trait_id = catalogue.traits[random.randi_range(0, catalogue.traits.size() - 1)].id
 		member.wage = _tuning.staff_wage(member.role, member.skill)

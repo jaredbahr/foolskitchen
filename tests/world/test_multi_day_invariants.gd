@@ -89,6 +89,15 @@ func _assert_clean_morning(main: Node, day: int) -> void:
 	assert_eq(sim.customers().size(), 0, "day %d: no guests before opening" % day)
 	assert_eq(world.board.active_count(), 0, "day %d: no jobs carried over" % day)
 	assert_eq(sim.kitchen.dirty_tables.size(), 0, "day %d: tables clean" % day)
+	assert_not_null(sim.cleanliness, "day %d: cleanliness is installed" % day)
+	assert_eq(sim.cleanliness.spot_count(), 0, "day %d: floor spots are tidied overnight" % day)
+	assert_eq(sim.clean_tasks.active_task_count(), 0, "day %d: no mop task survives overnight" % day)
+	var diagnostics: DebugOverlay = main.get_node("Overlay/DebugOverlay") as DebugOverlay
+	assert_true(diagnostics.get("_cleanliness") == sim.cleanliness,
+		"day %d: F3 follows this shop's floor state" % day)
+	diagnostics.refresh()
+	assert_true((diagnostics.get_node("Panel/Margin/Scroll/Content/Rates") as Label).text.contains(
+		"Floor spots 0"), "day %d: F3 shows the clean morning" % day)
 	_assert_plate_conservation(sim, day)
 	assert_eq(sim.kitchen.clean_plates, sim.kitchen.plates.total, "day %d: every plate clean overnight" % day)
 	assert_eq(sim.served_today + sim.lost_today, 0, "day %d: counters reset" % day)
@@ -154,9 +163,7 @@ func _assert_closed_books(main: Node, day: int) -> void:
 	# Money: the books add up, and closing costs are charged exactly once.
 	var totals: Dictionary = Economy.ledger.day_totals(day)
 	assert_eq(int(totals.get(Ledger.SALE, 0)), _sales_today, "day %d: every sale is in the books" % day)
-	var wages: int = 0
-	for role: StringName in TUNING.wages:
-		wages += TUNING.wages[role]
+	var wages: int = (main.get("staff_roster") as StaffRoster).total_wages()
 	assert_eq(int(totals.get(Ledger.WAGES, 0)), -wages, "day %d: wages once" % day)
 	assert_eq(int(totals.get(Ledger.RENT, 0)), -TUNING.daily_rent, "day %d: rent once" % day)
 	assert_eq(int(totals.get(Ledger.OTHER, 0)), 0, "day %d: no unexplained money" % day)
@@ -174,6 +181,8 @@ func _assert_closed_books(main: Node, day: int) -> void:
 	assert_eq(shown.day, day)
 	assert_eq(shown.customers_served, sim.served_today)
 	assert_eq(shown.customers_lost, sim.lost_today)
+	assert_eq(shown.cleanliness_label, sim.cleanliness.worst_category_label(),
+		"day %d: the report retains the worst floor condition, not the current spot count" % day)
 	assert_eq(shown.review_cards.size(), sim.reviews_today.size(),
 		"day %d: every review reaches the evening report" % day)
 	assert_eq(shown.reputation_after, reputation.average())

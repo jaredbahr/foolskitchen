@@ -2,6 +2,7 @@ extends TestCase
 ## Source-level scene tests; live layout/readability still needs rendered review.
 
 const SCENE: PackedScene = preload("res://src/ui/debug_overlay.tscn")
+const CLEAN_TUNING: CleanlinessTuning = preload("res://data/balance/cleanliness.tres")
 
 var _overlay: DebugOverlay
 var _world: SimWorld
@@ -65,6 +66,29 @@ func test_busy_world_tasks_are_sorted_together_with_claimant_and_posted_age() ->
 	_world.board.cancel(second)
 	_overlay.refresh()
 	assert_eq(_label("Tasks").text, "No active tasks")
+
+
+func test_floor_spot_count_tracks_dirt_and_clears_on_world_rebind() -> void:
+	var tuning: CleanlinessTuning = CLEAN_TUNING.duplicate() as CleanlinessTuning
+	tuning.seat_departure_chance = 1.0
+	var random: RandomNumberGenerator = RandomNumberGenerator.new()
+	random.seed = 7822
+	var dirt: CleanlinessState = CleanlinessState.new(_world.grid, tuning, random)
+	_overlay.bind_world(_world)
+	_overlay.bind_cleanliness(dirt)
+	_overlay.set_enabled(true)
+	assert_true(_label("Rates").text.contains("Floor spots 0"))
+	assert_true(dirt.try_spawn_at_departed_seat(Vector2i(1, 1)))
+	var rng_state: int = random.state
+	_overlay.refresh()
+	assert_true(_label("Rates").text.contains("Floor spots 1"))
+	assert_eq(random.state, rng_state, "diagnostics consume no dirt RNG")
+	assert_true(dirt.clear_spot(Vector2i(1, 1)))
+	_overlay.refresh()
+	assert_true(_label("Rates").text.contains("Floor spots 0"))
+	_overlay.bind_world(SimWorld.new(SimGrid.new(Vector2i(4, 4))))
+	assert_false(_label("Rates").text.contains("Floor spots"),
+		"a replacement shop cannot display the old shop's spot count")
 
 
 func test_last_fifteen_events_keep_chronological_order() -> void:

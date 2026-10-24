@@ -12,6 +12,7 @@ extends Node3D
 
 const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
 const TUNING: EconomyTuning = preload("res://data/balance/tier1_economy.tres")
+const CLEANLINESS_TUNING: CleanlinessTuning = preload("res://data/balance/cleanliness.tres")
 const REVIEW_TUNING: ReviewTuning = preload("res://data/balance/reviews.tres")
 const REVIEW_QUOTES: ReviewQuotes = preload("res://data/reviews/quotes.tres")
 const PROGRESSION_TUNING: ProgressionTuning = preload("res://data/balance/progression.tres")
@@ -109,6 +110,7 @@ func _bind_world_presentation() -> void:
 	var view: ShopView = $ShopView
 	view.clear_paint_preview()
 	view.show_world(world)
+	view.bind_cleanliness(sim.cleanliness)
 	var painted_layout: ShopLayout = _loaded_layout if _loaded_layout != null else LAYOUT
 	view.set_paint(content, painted_layout.wall_swatch_id, painted_layout.floor_swatch_id)
 	var camera: CameraRig = $CameraRig
@@ -174,6 +176,7 @@ func _bind_world_presentation() -> void:
 		$HUD.connect(&"staff_pressed", toggle_staff)
 	_inspect_panel.bind_world(world)
 	_debug_overlay.bind_world(world)
+	_debug_overlay.bind_cleanliness(sim.cleanliness)
 	refresh_presentation()
 
 
@@ -223,6 +226,14 @@ func start() -> void:
 	world.clock = Clock.sim
 	sim.stock = Economy.stock
 	sim.use_rng(GameState.rng(&"customers"))
+	var cleanliness: CleanlinessState = CleanlinessState.new(
+		world.grid, CLEANLINESS_TUNING, GameState.rng(&"cleanliness"))
+	if not sim.configure_cleanliness(cleanliness, CLEANLINESS_TUNING):
+		push_error("Cannot initialize shop cleanliness")
+		return
+	# The loaded layout can replace both world and view during _load_autosave().
+	($ShopView as ShopView).bind_cleanliness(cleanliness)
+	_debug_overlay.bind_cleanliness(cleanliness)
 	sim.configure_reviews(reputation, REVIEW_TUNING, REVIEW_QUOTES, GameState.rng(&"reviews"))
 	sim.spawner.min_gap = TUNING.arrival_gap_min
 	sim.spawner.max_gap = TUNING.arrival_gap_max
@@ -770,6 +781,8 @@ func build_report(day: int) -> DayReport:
 	for reason: StringName in sim.leave_reasons_today:
 		if reason != &"happy":
 			report.leave_reasons[reason] = sim.leave_reasons_today[reason]
+	if sim.cleanliness != null:
+		report.cleanliness_label = sim.cleanliness.worst_category_label()
 	var star_total: int = 0
 	for row: Dictionary in sim.reviews_today:
 		var stars: int = int(row.get("stars", 0))

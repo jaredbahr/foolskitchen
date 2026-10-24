@@ -76,9 +76,7 @@ func test_full_day_charges_costs_and_shows_report() -> void:
 	var main := _start(false)
 	var cash_at_open := Economy.cash
 	_run_day(main)
-	var wages := 0
-	for role: StringName in TUNING.wages:
-		wages += TUNING.wages[role]
+	var wages: int = (main.get("staff_roster") as StaffRoster).total_wages()
 	var sales: int = int(Economy.ledger.day_totals(Clock.sim.day).get(Ledger.SALE, 0))
 	assert_true(sales > 0, "the real kitchen serves paying guests")
 	assert_eq(Economy.cash, cash_at_open + sales - wages - TUNING.daily_rent, "meal sales, wages and rent reconcile at closing")
@@ -211,7 +209,12 @@ func test_arrivals_use_the_saved_game_state_rng() -> void:
 	var sim: RestaurantSim = first.get("sim")
 	assert_true(sim.rng == GameState.rng(&"customers"), "arrivals use GameState's stream")
 	assert_true(sim.spawner.rng == sim.rng)
+	assert_not_null(sim.cleanliness)
+	assert_true(sim.cleanliness.get("_rng") == GameState.rng(&"cleanliness"),
+		"dirt uses its own saved GameState stream")
+	assert_true((first.get_node("ShopView") as ShopView).get("_cleanliness") == sim.cleanliness)
 	var saved_state: int = GameState.rng(&"customers").state
+	var saved_cleanliness_state: int = GameState.rng(&"cleanliness").state
 	_mains.erase(first)
 	(Engine.get_main_loop() as SceneTree).root.remove_child(first)
 	first.free()
@@ -219,6 +222,13 @@ func test_arrivals_use_the_saved_game_state_rng() -> void:
 	var second := _start(true)
 	var sim2: RestaurantSim = second.get("sim")
 	assert_true(sim2.rng == GameState.rng(&"customers"), "re-bound after load")
+	assert_true(sim2.cleanliness.get("_rng") == GameState.rng(&"cleanliness"),
+		"the loaded restaurant binds its restored dirt stream")
+	assert_true((second.get_node("ShopView") as ShopView).get("_cleanliness") == sim2.cleanliness,
+		"the loaded view binds the replacement restaurant")
+	assert_eq(GameState.rng(&"cleanliness").state, saved_cleanliness_state,
+		"a clean morning loads without drawing from the dirt stream")
+	assert_eq(sim2.cleanliness.spot_count(), 0)
 	# The new morning draws one arrival gap from the restored stream.
 	var expected := RandomNumberGenerator.new()
 	expected.state = saved_state
