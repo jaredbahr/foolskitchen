@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- Change sound, UI size, opening speed, fullscreen and camera edge panning in Settings; your choices are remembered. (#129)
 - Earn owner XP from happy guests, profit and five-star reviews; new levels unlock a tomato melt and a potted plant. (#104)
 - Guests no longer repeat the same comment in one evening report unless all suitable comments have been used. (#103)
 - Guests leave star reviews with little comments on the evening report. Your recent rating appears beside cash and shapes how busy the next day is. (#95)
