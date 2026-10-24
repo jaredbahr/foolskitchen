@@ -36,7 +36,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
-- Diagnostic save tests record 30 separate filtered runs or five overlapping pairs, with live process/save-folder evidence, complete failure logs and checks that the intended tests actually ran. (#61)
+- Save-test diagnostics preserve normal test ordering and record live providers, autoloads and save files before cleanup, with bounded repeated runs and complete failure logs. (#61)
 - Closed-shop furniture editing now has a checked simulation API for moving, rotating, buying and selling; edited layouts are included in morning saves. (#58)
 - A five-day invariant test plays the real game (kitchen, guests, books, closing costs, report, autosave and a reload on day 3) and checks every day that guests are counted once, the books add up, wages and rent are charged once, and each morning starts clean. (#47)
 - `tools/balance_probe.gd` plays whole days headlessly and prints each day's books, with overrides for arrival gaps, prices and seed, for balancing. Guest arrival gaps are now part of the balance data. (#46)
