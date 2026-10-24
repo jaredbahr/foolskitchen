@@ -7,6 +7,8 @@ const PHASE_NAMES: Array[String] = ["Morning", "Open", "Last orders", "Closed"]
 const GAIN_COLOR: Color = Color("286B3B")
 const LOSS_COLOR: Color = Color("A42E2E")
 
+signal menu_pressed()
+
 var _day_label: Label
 var _time_label: Label
 var _phase_label: Label
@@ -17,6 +19,7 @@ var _buttons: Array[Button] = []
 var _cash: int = 0
 var _wall_button: Button
 var _shop_view: ShopView
+var _menu_button: Button
 
 
 func _ready() -> void:
@@ -34,6 +37,8 @@ func refresh() -> void:
 		_deltas = get_node("Deltas") as Control
 		_wall_button = get_node("Top/Row/Walls") as Button
 		_wall_button.pressed.connect(_on_wall_button_pressed)
+		_menu_button = get_node("Top/Row/Menu") as Button
+		_menu_button.pressed.connect(_on_menu_pressed)
 		_cash = Economy.cash
 		for speed: int in SPEEDS:
 			var button: Button = get_node("Top/Row/Speed%d" % speed) as Button
@@ -53,6 +58,8 @@ func refresh() -> void:
 	_context.text = "Open shop" if Clock.sim.phase == SimClock.Phase.MORNING else "Next day"
 	_on_speed_changed(Clock.speed)
 	_refresh_wall_mode()
+	_menu_button.disabled = Clock.sim.phase != SimClock.Phase.MORNING
+	_menu_button.tooltip_text = "Choose today's menu and prices" if not _menu_button.disabled else "Menu changes are available in the morning."
 
 
 ## Binds this presentation control to the containing shop view, idempotently.
@@ -100,6 +107,11 @@ func _on_speed_changed(speed: int) -> void:
 func _on_wall_button_pressed() -> void:
 	if is_instance_valid(_shop_view):
 		_shop_view.cycle_wall_mode()
+
+
+func _on_menu_pressed() -> void:
+	if Clock.sim.phase == SimClock.Phase.MORNING:
+		menu_pressed.emit()
 
 
 func _on_wall_mode_changed(_mode: int) -> void:

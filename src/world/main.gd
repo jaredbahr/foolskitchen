@@ -31,6 +31,9 @@ var dishes_sold_today: Dictionary[StringName, int] = {}
 var shop_editor: ShopEditor
 ## Save-only retries never replay the furniture mutation or its cash movement.
 var last_shop_save_error: Error = OK
+## Cookable dishes/prices belong to this shop, never to shared recipe resources.
+var menu_settings: MenuSettings
+var last_menu_save_error: Error = OK
 ## A failed/unsupported startup slot stays protected until explicit F10 new game.
 var shop_save_blocked: bool:
 	get:
@@ -42,10 +45,12 @@ var _shop_save_blocked: bool = false
 var _startup_load_error: Error = OK
 var _loaded_layout: ShopLayout = null
 var _loaded_checkpoint: Dictionary = {}
+var _loaded_menu_data: Dictionary = {}
 var _report: Control
 var _inspect_panel: InspectPanel
 var _debug_overlay: DebugOverlay
 var _debug_geometry: DebugGeometry
+var _menu_panel: MenuPanel
 
 
 ## Builds the restaurant and the read-only view. Safe before tree readiness.
@@ -65,6 +70,8 @@ func initialize() -> void:
 		sim = null
 		return
 	world = sim.world
+	menu_settings = MenuSettings.new(_cookable_recipes(LAYOUT))
+	_apply_menu(sim, menu_settings)
 	_bind_world_presentation()
 
 
@@ -90,6 +97,14 @@ func _bind_world_presentation() -> void:
 	_inspect_panel = $Overlay/InspectPanel
 	_debug_overlay = $Overlay/DebugOverlay
 	_debug_geometry = $DebugGeometry
+	_menu_panel = $Overlay/MenuPanel
+	_menu_panel.bind_menu(menu_settings)
+	_menu_panel.set_phase(Clock.sim.phase)
+	if not _menu_panel.enable_requested.is_connected(_on_menu_enable_requested):
+		_menu_panel.enable_requested.connect(_on_menu_enable_requested)
+		_menu_panel.price_requested.connect(_on_menu_price_requested)
+	if not $HUD.is_connected(&"menu_pressed", toggle_menu):
+		$HUD.connect(&"menu_pressed", toggle_menu)
 	_inspect_panel.bind_world(world)
 	_debug_overlay.bind_world(world)
 	refresh_presentation()
@@ -125,6 +140,7 @@ func start() -> void:
 		autoload.call(&"register_save_provider")
 	SaveSystem.register("shop", _capture_shop, _restore_shop)
 	SaveSystem.register("shop_session", _capture_shop_session, _restore_shop_session)
+	SaveSystem.register("menu", _capture_menu, _restore_menu)
 	var had_save: bool = use_saves and SaveSystem.list_slots().has(save_slot)
 	var loaded: bool = use_saves and _load_autosave()
 	if not loaded:
@@ -172,11 +188,16 @@ func _install_restaurant(layout: ShopLayout, edited_layout: bool) -> bool:
 	var candidate: RestaurantSim = RestaurantSim.create(layout, content, 1, errors, Economy.stock, true, edited_layout)
 	if not errors.is_empty():
 		return false
+	var choices: MenuSettings = MenuSettings.new(_cookable_recipes(layout))
+	if not choices.is_valid() or (not _loaded_menu_data.is_empty() and not choices.from_dict(_loaded_menu_data)):
+		return false
+	_apply_menu(candidate, choices)
 	if sim != null and sim.customer_paid.is_connected(_on_customer_paid):
 		sim.customer_paid.disconnect(_on_customer_paid)
 	if sim != null and sim.service_closed.is_connected(_on_service_closed):
 		sim.service_closed.disconnect(_on_service_closed)
 	sim = candidate
+	menu_settings = choices
 	world = candidate.world
 	world.clock = Clock.sim
 	sim.stock = Economy.stock
@@ -212,6 +233,7 @@ func _notification(what: int) -> void:
 func _unregister_shop_providers() -> void:
 	SaveSystem.unregister("shop", _capture_shop)
 	SaveSystem.unregister("shop_session", _capture_shop_session)
+	SaveSystem.unregister("menu", _capture_menu)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -224,7 +246,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			if is_inside_tree():
 				get_viewport().set_input_as_handled()
 		elif key.physical_keycode == KEY_ESCAPE:
-			clear_selection()
+			if _menu_panel != null and _menu_panel.visible:
+				_menu_panel.hide()
+			else:
+				clear_selection()
 			if is_inside_tree():
 				get_viewport().set_input_as_handled()
 	var mouse: InputEventMouseButton = event as InputEventMouseButton
@@ -362,6 +387,7 @@ func _new_game() -> void:
 	Economy.reset(TUNING.starting_cash)
 	_loaded_layout = null
 	_loaded_checkpoint.clear()
+	_loaded_menu_data.clear()
 	dishes_sold_today.clear()
 	shown_report = null
 
@@ -372,6 +398,7 @@ func _load_autosave() -> bool:
 		return false
 	_loaded_layout = null
 	_loaded_checkpoint.clear()
+	_loaded_menu_data.clear()
 	_startup_load_error = SaveSystem.load_game(save_slot, _validate_shop_sections)
 	if _startup_load_error != OK:
 		return false
@@ -394,6 +421,127 @@ func _restore_shop(data: Dictionary) -> bool:
 		return false
 	_loaded_layout = layout
 	return true
+
+
+func _capture_menu() -> Dictionary:
+	return menu_settings.to_dict() if menu_settings != null else {}
+
+
+func _restore_menu(data: Dictionary) -> bool:
+	var layout: ShopLayout = _loaded_layout if _loaded_layout != null else LAYOUT
+	var choices: MenuSettings = MenuSettings.new(_cookable_recipes(layout))
+	if not choices.from_dict(data):
+		return false
+	_loaded_menu_data = choices.to_dict()
+	return true
+
+
+## Station definitions decide availability; temporary path/stock problems do not
+## rewrite the player's menu. Tier 1 remains the currently unlocked recipe set.
+func _cookable_recipes(layout: ShopLayout) -> Array[RecipeDef]:
+	var stations: Dictionary[StringName, bool] = {}
+	var fridge: bool = false
+	var pass_counter: bool = false
+	for placement: ShopPlacement in layout.placements:
+		var definition: ItemDef = content.item(placement.item_id)
+		if definition == null:
+			continue
+		if definition.category == ItemDef.Category.STORAGE and definition.station_type == &"fridge" and not definition.work_cells.is_empty():
+			fridge = true
+		elif definition.category == ItemDef.Category.PASS and definition.work_cells.size() >= 2:
+			pass_counter = true
+		elif definition.category == ItemDef.Category.STATION and not definition.work_cells.is_empty():
+			stations[definition.station_type] = true
+	var recipes: Array[RecipeDef] = []
+	if not fridge or not pass_counter:
+		return recipes
+	for definition: RecipeDef in content.recipes():
+		if definition.unlock_tier != 1:
+			continue
+		var cookable: bool = true
+		for step: RecipeStep in definition.steps:
+			if not stations.has(step.station_type):
+				cookable = false
+				break
+		if cookable:
+			recipes.append(definition)
+	return recipes
+
+
+func _apply_menu(restaurant: RestaurantSim, choices: MenuSettings) -> void:
+	restaurant.menu = choices.enabled_recipes()
+	restaurant.prices.clear()
+	restaurant.pricing_tuning = TUNING
+	for definition: RecipeDef in choices.recipes():
+		var price: int = choices.price_of(definition)
+		if price != definition.standard_price:
+			restaurant.prices[definition.id] = price
+
+
+func can_edit_menu() -> bool:
+	return _started and menu_settings != null and menu_settings.is_valid() and Clock.sim.phase == SimClock.Phase.MORNING
+
+
+func menu_set_enabled(recipe_id: StringName, enabled: bool) -> bool:
+	if not can_edit_menu():
+		return false
+	var before: bool = menu_settings.is_enabled(recipe_id)
+	if not menu_settings.set_enabled(recipe_id, enabled):
+		return false
+	_apply_menu(sim, menu_settings)
+	_menu_panel.refresh()
+	if before != menu_settings.is_enabled(recipe_id):
+		save_menu_changes()
+	return true
+
+
+func menu_set_price(recipe_id: StringName, price: int) -> bool:
+	if not can_edit_menu() or menu_settings.recipe(recipe_id) == null:
+		return false
+	var definition: RecipeDef = menu_settings.recipe(recipe_id)
+	var before: int = menu_settings.price_of(definition)
+	menu_settings.set_price(recipe_id, price)
+	_apply_menu(sim, menu_settings)
+	_menu_panel.refresh()
+	if before != menu_settings.price_of(definition):
+		save_menu_changes()
+	return true
+
+
+func save_menu_changes() -> Error:
+	if not can_edit_menu():
+		last_menu_save_error = ERR_BUSY
+		return last_menu_save_error
+	last_menu_save_error = save_shop_changes()
+	return last_menu_save_error
+
+
+func toggle_menu() -> void:
+	if _menu_panel != null:
+		set_menu_visible(not _menu_panel.visible)
+
+
+## Idempotent production path for the HUD and genuine review captures.
+func set_menu_visible(value: bool) -> bool:
+	if _menu_panel == null or (value and not can_edit_menu()):
+		return false
+	_menu_panel.set_phase(Clock.sim.phase)
+	_menu_panel.visible = value
+	return true
+
+
+func is_menu_visible() -> bool:
+	return _menu_panel != null and _menu_panel.visible
+
+
+func _on_menu_enable_requested(recipe_id: StringName, enabled: bool) -> void:
+	menu_set_enabled(recipe_id, enabled)
+	_menu_panel.refresh()
+
+
+func _on_menu_price_requested(recipe_id: StringName, price: int) -> void:
+	menu_set_price(recipe_id, price)
+	_menu_panel.refresh()
 
 
 func _capture_shop_session() -> Dictionary:
@@ -428,12 +576,17 @@ func _validate_shop_sections(sections: Dictionary) -> bool:
 		return false
 	if int(phase) != SimClock.Phase.MORNING and int(phase) != SimClock.Phase.CLOSED:
 		return false
+	var menu_layout: ShopLayout = LAYOUT
 	if sections.has("shop"):
 		if not sections["shop"] is Dictionary:
 			return false
 		var errors: Array[String] = []
-		if ShopEditor.from_dict(sections["shop"], LAYOUT, content, errors) == null:
+		menu_layout = ShopEditor.from_dict(sections["shop"], LAYOUT, content, errors)
+		if menu_layout == null:
 			return false
+	var choices: MenuSettings = MenuSettings.new(_cookable_recipes(menu_layout))
+	if not choices.is_valid() or (sections.has("menu") and not choices.from_dict(sections["menu"])):
+		return false
 	if not sections.has("shop_session"):
 		return int(phase) == SimClock.Phase.MORNING
 	if not sections["shop_session"] is Dictionary:
@@ -609,6 +762,10 @@ func _on_service_closed(day: int) -> void:
 
 
 func _on_day_phase_changed(_day: int, phase: int) -> void:
+	if _menu_panel != null:
+		_menu_panel.set_phase(phase)
+		if phase != SimClock.Phase.MORNING:
+			_menu_panel.hide()
 	if phase == SimClock.Phase.MORNING:
 		_begin_morning()
 

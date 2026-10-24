@@ -12,6 +12,9 @@ signal service_closed(day: int)
 var world: SimWorld
 var orders: OrderBook = OrderBook.new()
 var menu: Array[RecipeDef] = []
+## Per-shop overrides; recipe resources and their standard prices stay unchanged.
+var prices: Dictionary[StringName, int] = {}
+var pricing_tuning: EconomyTuning = EconomyTuning.new()
 ## Ingredient stock shared with the game session. Replacing it also updates
 ## the live kitchen; direct construction retains an empty default inventory.
 var stock: Stock = Stock.new():
@@ -108,6 +111,27 @@ func advance() -> void:
 func use_rng(random: RandomNumberGenerator) -> void:
 	rng = random
 	spawner.rng = random
+
+
+## Missing overrides use the unchanged content price.
+func price_of(recipe: RecipeDef) -> int:
+	if recipe == null:
+		return 0
+	return maxi(0, prices.get(recipe.id, recipe.standard_price))
+
+
+## No chance below/equal to standard; callers must not draw RNG when this is 0.
+func price_walkout_chance(recipe: RecipeDef) -> float:
+	if recipe == null or recipe.standard_price <= 0 or pricing_tuning == null:
+		return 0.0
+	var ratio: float = float(price_of(recipe)) / float(recipe.standard_price)
+	if ratio <= 1.0:
+		return 0.0
+	var sensitivity: float = pricing_tuning.price_sensitivity
+	var maximum: float = pricing_tuning.max_price_walkout
+	if not is_finite(sensitivity) or not is_finite(maximum):
+		return 0.0
+	return clampf((ratio - 1.0) * maxf(sensitivity, 0.0), 0.0, clampf(maximum, 0.0, 1.0))
 
 
 ## Adds a guest using an independent random stream (also useful for scenarios).

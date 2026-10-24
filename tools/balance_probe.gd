@@ -4,7 +4,7 @@ extends SceneTree
 ##   godot --headless --path . --script tools/balance_probe.gd -- --days=5
 ##     [--gap=150,400] [--price=1.0] [--seed=1]
 ## --gap overrides the guest arrival gap (ticks), --price multiplies every
-## recipe price. Changes are in memory only.
+## per-shop price override. Recipe standard prices remain unchanged.
 
 func _initialize() -> void:
 	var days := 5
@@ -33,7 +33,7 @@ func _initialize() -> void:
 		sim.spawner.max_gap = gap.y
 	if price != 1.0:
 		for recipe: RecipeDef in sim.menu:
-			recipe.standard_price = roundi(recipe.standard_price * price)
+			sim.prices[recipe.id] = maxi(0, roundi(recipe.standard_price * price))
 	var clock: Node = root.get_node("Clock")
 	var economy: Node = root.get_node("Economy")
 	var total := 0

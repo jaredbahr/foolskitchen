@@ -16,3 +16,7 @@ extends Resource
 ## Ticks between guest arrivals while open (uniform in [min, max]).
 @export var arrival_gap_min: int = 100
 @export var arrival_gap_max: int = 260
+
+## Over-standard prices may make a guest refuse the dish at order time.
+@export_range(0.0, 10.0, 0.05) var price_sensitivity: float = 1.5
+@export_range(0.0, 1.0, 0.01) var max_price_walkout: float = 0.9

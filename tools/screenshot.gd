@@ -7,6 +7,7 @@ extends SceneTree
 ##   --fast=N    also run N extra sim ticks per frame (via the scene's run_ticks)
 ##   --select=guest  inspect a live guest through the scene's selection API
 ##   --f3        show the scene's read-only debug overlay
+##   --menu      show the real menu panel in MORNING (cannot combine with --open)
 
 const MAX_CAPTURE_WAIT_FRAMES: int = 8
 
@@ -24,6 +25,7 @@ var _open: bool = false
 var _fast: int = 0
 var _select_guest: bool = false
 var _f3: bool = false
+var _menu: bool = false
 var _selected_guest_id: int = -1
 var _capture_pending: bool = false
 var _capture_frame: int = 0
@@ -52,6 +54,11 @@ func _initialize() -> void:
 				_fail_capture("--f3 does not accept a value")
 				return
 			_f3 = true
+		elif arg.begins_with("--menu"):
+			if arg != "--menu":
+				_fail_capture("--menu does not accept a value")
+				return
+			_menu = true
 		elif arg.begins_with("--scene="):
 			_scene_path = arg.trim_prefix("--scene=")
 		elif arg.begins_with("--quarter="):
@@ -64,8 +71,11 @@ func _initialize() -> void:
 			_shots.clear()
 			for f in arg.trim_prefix("--frames=").split(","):
 				_shots.append(int(f))
-	if _shots.is_empty() or _shots.min() < 1 or ((_quarter >= 0 or _select_guest or _f3) and _shots.min() < 4):
-		_fail_capture("capture frames must be positive, and at least 4 for --quarter, --select or --f3")
+	if _menu and (_open or _select_guest):
+		_fail_capture("--menu requires morning and cannot combine with --open or --select=guest")
+		return
+	if _shots.is_empty() or _shots.min() < 1 or ((_quarter >= 0 or _select_guest or _f3 or _menu) and _shots.min() < 4):
+		_fail_capture("capture frames must be positive, and at least 4 for requested view/UI options")
 		return
 	if DirAccess.make_dir_recursive_absolute(_out) != OK:
 		_fail_capture("cannot create output directory")
@@ -103,6 +113,10 @@ func _process(_delta: float) -> bool:
 		_configure_inspection()
 		if _failed:
 			return true
+		if _menu:
+			if not _main.has_method("set_menu_visible") or not _main.has_method("is_menu_visible") or not bool(_main.call("set_menu_visible", true)):
+				_fail_capture("--menu requires the scene's morning menu APIs")
+				return true
 	if _fast > 0 and _frames > 3 and _main.has_method("run_ticks"):
 		_main.call("run_ticks", _fast)
 	if _select_guest and _frames >= 3:
@@ -198,6 +212,10 @@ func _capture() -> void:
 	if _main.has_method("inspection_state"):
 		inspection = _main.call("inspection_state")
 	var world: SimWorld = _capture_world()
+	var menu_visible: Variant = _main.call("is_menu_visible") if _main.has_method("is_menu_visible") else null
+	if _menu and (menu_visible != true or world == null or world.clock.phase != SimClock.Phase.MORNING):
+		_fail_capture("requested menu was not visible in the rendered morning frame")
+		return
 	var selected_id: int = int(inspection.get("selected_agent_id", -1))
 	var selected_live: bool = world != null and world.agent(selected_id) is CustomerAgent
 	if _select_guest:
@@ -247,6 +265,8 @@ func _capture() -> void:
 		"capture_timing": "frame_post_draw",
 		"requested_selection": "guest" if _select_guest else "",
 		"requested_debug_visible": _f3,
+		"requested_menu_visible": _menu, "menu_visible": menu_visible,
+		"day_phase": int(world.clock.phase) if world != null else null,
 		"selected_agent_id": inspection.get("selected_agent_id"),
 		"selected_item_id": inspection.get("selected_item_id"),
 		"selected_role": inspection.get("selected_role"),

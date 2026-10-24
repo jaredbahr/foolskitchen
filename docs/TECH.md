@@ -184,6 +184,39 @@ docs/
   reconcile. `day_totals` continues to return signed net category amounts. The
   session never prunes the active day's detailed entries before its report.
 
+### 2.3d Menu and prices (FK-030)
+- `MenuSettings(cookable_recipes)` owns per-shop enabled dishes and prices. The
+  session injects Tier 1 recipes whose station types are present, with a usable
+  fridge/pass definition. Temporary stock shortages and path warnings do not
+  silently remove a chosen dish. At least one dish remains enabled.
+- `RestaurantSim.prices: Dictionary[StringName, int]` stores overrides;
+  `price_of(recipe)` falls back to the immutable `RecipeDef.standard_price`.
+  Orders capture that price once, so later settings never reprice a ticket.
+- At order time an above-standard price has refusal probability
+  `clamp((price / standard - 1) * price_sensitivity, 0, max_price_walkout)`.
+  The `EconomyTuning` defaults are 1.5 and 0.9. The guest uses its private RNG
+  only when the chance is positive: standard/cheaper menus preserve the existing
+  random stream. Refusal creates no ticket and gives `too_expensive` as a readable
+  departure reason. Balance values are bounded safely; a zero standard avoids
+  division and cannot be marked up through MenuSettings.
+- The HUD Menu button and MenuPanel requests are MORNING-only. Main's
+  `menu_set_enabled`, `menu_set_price` apply accepted model changes to the sim,
+  refresh the request-only panel and autosave once. Whole-dollar prices clamp
+  to ceil(50%) through 200% of standard. Shared recipe resources never change.
+- The scoped `menu` save section contains enabled IDs and every cookable ID's
+  price as a decimal string. The strict model decoder validates all choices
+  before replacing them; session preflight checks against the staged shop layout
+  before provider restores. Missing old-save menu sections use defaults.
+- Restored menu/settings are applied before day initialization. Loaded MORNING
+  does not restock or replay purchases; future reorder settings must retain the
+  same restore-before-new-morning-purchasing ordering. `save_menu_changes()`
+  retries persistence without reapplying choices, and `last_menu_save_error`
+  exposes failure while the existing failed-slot protection remains in force.
+- `tools/balance_probe.gd --price=1.25` now changes only sim price overrides.
+  `tools/screenshot.sh --menu --speed=0 --frames=12` requests the production
+  morning panel, verifies its actual visible state and captures after drawing;
+  no workflow or renderer setting is changed by the option.
+
 ### 2.4 Save system
 - JSON in `user://saves/`, with a `version` field and migration functions per version.
 - Only sim state is saved, never nodes. The world is rebuilt from sim state on load.
