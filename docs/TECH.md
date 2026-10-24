@@ -137,12 +137,54 @@ docs/
 - **Saves:** the slot is "autosave" (F10 deletes it and restarts). Autoloads register save providers through `register_save_provider()`, which `main.start()` also calls, because the test runner never delivers `_ready()`.
 - `run_ticks(n)` fast-forwards for tests and tools.
 
+### 2.3c Furniture edits (FK-031)
+- `ShopEditor(sim, content, books)` is pure `RefCounted` logic. `ShopEditBooks`
+  receives typed method Callables for `can_spend_without_loan` and `add_cash`;
+  checks never change live placements, reservations, books or grid signals.
+- `can_edit()` permits MORNING and CLOSED only. `check_move`/`move`,
+  `check_buy`/`buy`, and `check_sell`/`sell` expose the checked operation.
+  `EditCheck` has `ok`, `why`, and sorted `unreachable` item IDs (0 means the
+  proposed new purchase). Path warnings describe the resulting shop and never
+  block a geometrically valid edit. They use rotated seats/work cells; both
+  kitchen/dining pass sides must be reachable from a street entry.
+- Moves/rotations are free and preserve the `PlacedItem`, ID and order through
+  `SimGrid.relocate_def`. An item with a held work/seat cell refuses relocation:
+  "in use; try next morning". Successful changes emit one complete old/new cell
+  union, without a temporary removal. An identical pose is a no-op.
+- Buying charges the content price once under `Ledger.UPGRADES`, without loans.
+  Selling returns half the price rounded down; -1 means refusal and zero is a
+  successful zero refund. `last_check`/`check_sell` explain refusal. Doors and
+  the last functional fridge, prep counter, stove or pass cannot be sold.
+  Normal grid removal releases reservations and cancels work targeting a sale.
+- `to_dict()` returns version 1 and stable `items` records containing `def_id`,
+  `[x, y]` origin and quarter turns. Static `from_dict(data, template, content,
+  errors)` validates an isolated layout or returns null; it never replaces a
+  live world. Terrain/staff spawns come from the template, with required station
+  and template-door safeguards. Missing old-save `shop` sections use the layout.
+- The session exposes `shop_editor` and plain `shop_move`, `shop_buy`,
+  `shop_sell` wrappers. Edits change the grid/books without saving. The next
+  normal morning autosave persists the latest items, including CLOSED edits.
+- One `shop` provider stores the editor snapshot. Its restore callback decodes
+  an isolated layout and holds it until `load_game` succeeds and the saved
+  phase is MORNING; only then does startup rebuild the restaurant and rebind
+  its presentation, stock, clock and customer RNG. Provider failure follows
+  the existing fresh-game path; SaveSystem is unchanged.
+- `RestaurantSim.create(..., allow_blocked_spawns=false)` forwards the opt-in to
+  ShopBuilder only for a validated edited layout. Solid furniture covering a
+  FLOOR spawn is allowed; wall/outside spawns remain errors. Staff retain the
+  existing blocked-start escape behavior.
+- Loaded mornings retain the normal day setup: one customer-gap draw from the
+  restored RNG, stock top-up, ledger prune and autosave. Missing old-save `shop`
+  sections use the authored layout. Non-MORNING saves remain unsupported.
+
 ### 2.4 Save system
 - JSON in `user://saves/`, with a `version` field and migration functions per version.
 - Only sim state is saved, never nodes. The world is rebuilt from sim state on load.
 - `SaveSystem.register(key, capture, restore)` replaces a unique section provider; capture returns a dictionary and restore returns success.
 - `save_game(slot)` / `load_game(slot)` return errors. Writes use `.tmp`, move the previous final to `.bak`, then publish to an absent final; loads prefer a valid final or recover a valid backup. This is a recoverable transaction, not a filesystem-atomic Windows overwrite or power-loss durability guarantee (Godot 4.7.2's Windows rename removes an existing destination before moving).
 - Missing sections are skipped; `MIGRATIONS` maps each old version to one upgrade step. Clock and GameState register state in `_ready`.
+- Autosaves remain morning-only. If startup cannot load an existing slot, it
+  starts fresh and skips only the next autosave; later morning saves resume.
 - RNG seed/state and the master seed use decimal strings to preserve 64-bit integers through JSON parsing.
 
 ### 2.5 Testing

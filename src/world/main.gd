@@ -25,10 +25,13 @@ var content: ContentDB
 var shown_report: DayReport = null
 ## Dishes sold today (recipe id -> count), for the evening report.
 var dishes_sold_today: Dictionary[StringName, int] = {}
+## Closed-phase edits are persisted by the next normal morning autosave.
+var shop_editor: ShopEditor
 
 var _previous_clock: SimClock = null
 var _started: bool = false
 var _skip_next_autosave: bool = false
+var _loaded_layout: ShopLayout = null
 var _report: Control
 var _inspect_panel: InspectPanel
 var _debug_overlay: DebugOverlay
@@ -52,6 +55,11 @@ func initialize() -> void:
 		sim = null
 		return
 	world = sim.world
+	_bind_world_presentation()
+
+
+## Also runs after startup replaces the layout: no inspector keeps the old world.
+func _bind_world_presentation() -> void:
 	var view: ShopView = $ShopView
 	view.show_world(world)
 	var camera: CameraRig = $CameraRig
@@ -89,8 +97,8 @@ func _process(_delta: float) -> void:
 	refresh_presentation()
 
 
-## Wires the session to the autoloads and opens the first morning (loading the
-## autosave if there is one). Runs once; _ready() calls it, and tests call it
+## Wires the session to the autoloads and opens the first morning.
+## Runs once; _ready() calls it, and tests call it
 ## directly because the test runner never delivers _ready().
 func start() -> void:
 	if _started:
@@ -99,29 +107,41 @@ func start() -> void:
 	if sim == null:
 		return
 	_started = true
+	_previous_clock = Clock.sim
+	# Keep the old world detached while save providers restore the new session.
+	Clock.attach_world(null)
 	for autoload: Node in [Clock, GameState, Economy]:
 		autoload.call(&"register_save_provider")
-	_report.connect(&"next_day_pressed", _on_next_day_pressed)
-	sim.customer_paid.connect(_on_customer_paid)
-	sim.service_closed.connect(_on_service_closed)
-	EventBus.day_phase_changed.connect(_on_day_phase_changed)
-	EventBus.sim_ticked.connect(_on_inspection_tick)
-	_previous_clock = Clock.sim
-	Clock.attach_world(world, sim.advance)
-	sim.stock = Economy.stock
+	SaveSystem.register("shop", _capture_shop, _restore_shop)
 	var loaded: bool = use_saves and _load_autosave()
 	if not loaded:
-		# Don't autosave over a save that exists but failed to load: its
-		# backup may still be recoverable.
 		_skip_next_autosave = use_saves and SaveSystem.list_slots().has(save_slot)
 		_new_game()
+	world.clock = Clock.sim
+	sim.stock = Economy.stock
 	sim.use_rng(GameState.rng(&"customers"))
 	sim.spawner.min_gap = TUNING.arrival_gap_min
 	sim.spawner.max_gap = TUNING.arrival_gap_max
+	shop_editor = ShopEditor.new(sim, content, ShopEditBooks.new(Economy.can_spend_without_loan, Economy.add_cash))
+	_connect_session()
+	Clock.attach_world(world, sim.advance)
 	_begin_morning()
 
 
+func _connect_session() -> void:
+	if not _report.is_connected(&"next_day_pressed", _on_next_day_pressed):
+		_report.connect(&"next_day_pressed", _on_next_day_pressed)
+	sim.customer_paid.connect(_on_customer_paid)
+	sim.service_closed.connect(_on_service_closed)
+	if not EventBus.day_phase_changed.is_connected(_on_day_phase_changed):
+		EventBus.day_phase_changed.connect(_on_day_phase_changed)
+	if not EventBus.sim_ticked.is_connected(_on_inspection_tick):
+		EventBus.sim_ticked.connect(_on_inspection_tick)
+
+
 func _exit_tree() -> void:
+	if sim != null and sim.customer_paid.is_connected(_on_customer_paid):
+		sim.customer_paid.disconnect(_on_customer_paid)
 	if sim != null and sim.service_closed.is_connected(_on_service_closed):
 		sim.service_closed.disconnect(_on_service_closed)
 	if EventBus.day_phase_changed.is_connected(_on_day_phase_changed):
@@ -277,29 +297,63 @@ func _new_game() -> void:
 	Clock.sim = SimClock.new()
 	GameState.new_run(int(Time.get_unix_time_from_system()))
 	Economy.reset(TUNING.starting_cash)
+	_loaded_layout = null
 	sim.stock = Economy.stock
 	world.log_event("New game: $%d to start" % TUNING.starting_cash)
 
 
 func _load_autosave() -> bool:
+	_loaded_layout = null
 	if not SaveSystem.list_slots().has(save_slot):
 		return false
 	if SaveSystem.load_game(save_slot) != OK:
 		world.log_event("Autosave could not be loaded; starting a new game")
 		return false
 	if Clock.sim.phase != SimClock.Phase.MORNING:
-		# Saves are only written in the morning; anything else is not ours.
 		world.log_event("Autosave is not from a morning; starting a new game")
 		return false
-	# Economy replaced its stock on load; the kitchen must use the new one.
-	sim.stock = Economy.stock
+	if _loaded_layout != null:
+		var errors: Array[String] = []
+		var candidate: RestaurantSim = RestaurantSim.create(_loaded_layout, content, 1, errors, Economy.stock, true, true)
+		if not errors.is_empty():
+			return false
+		sim = candidate
+		world = candidate.world
+		_bind_world_presentation()
 	return true
+
+
+func _capture_shop() -> Dictionary:
+	return shop_editor.to_dict() if shop_editor != null else {}
+
+
+## Restore callbacks only stage decoded data. Live replacement waits for OK.
+func _restore_shop(data: Dictionary) -> bool:
+	var errors: Array[String] = []
+	var layout: ShopLayout = ShopEditor.from_dict(data, LAYOUT, content, errors)
+	if layout == null:
+		return false
+	_loaded_layout = layout
+	return true
+
+
+func shop_move(item_id: int, origin: Vector2i, quarter_turns: int) -> bool:
+	return shop_editor != null and shop_editor.move(item_id, origin, quarter_turns)
+
+
+func shop_buy(def_id: StringName, origin: Vector2i, quarter_turns: int = 0) -> bool:
+	return shop_editor != null and shop_editor.buy(def_id, origin, quarter_turns)
+
+
+func shop_sell(item_id: int) -> int:
+	return shop_editor.sell(item_id) if shop_editor != null else -1
 
 
 ## Morning setup: new counters, a stocked fridge, and an autosave.
 func _begin_morning() -> void:
 	sim.start_day()
 	dishes_sold_today.clear()
+	shown_report = null
 	_restock()
 	Economy.ledger.prune_before(Clock.sim.day - Ledger.HISTORY_DAYS)
 	_report.hide()
