@@ -49,7 +49,7 @@ func _init(restaurant: RestaurantSim, random: RandomNumberGenerator) -> void:
 ## Reasons a guest can give for leaving that the player should see as-is.
 ## Any other kitchen failure (an internal reason such as a dropped task or a
 ## missing station) becomes &"kitchen_failed"; the raw reason is in the log.
-const PLAYER_REASONS: Array[StringName] = [&"out_of_stock", &"waited_too_long", &"closing", &"no_table"]
+const PLAYER_REASONS: Array[StringName] = [&"out_of_stock", &"waited_too_long", &"closing", &"no_table", &"too_expensive"]
 
 
 ## Maps an order's cancellation reason to the reason a guest gives the player.
@@ -293,12 +293,18 @@ func _take_order(_server: SimAgent) -> bool:
 	if sim.menu.is_empty():
 		return false
 	var recipe: RecipeDef = sim.menu[rng.randi_range(0, sim.menu.size() - 1)]
+	var price: int = sim.price_of(recipe)
+	var chance: float = sim.price_walkout_chance(recipe)
+	# Standard/cheaper prices preserve the existing guest stream exactly.
+	if chance > 0.0 and rng.randf() < chance:
+		_leave(sim.world, sim, &"too_expensive")
+		return true
 	order = Order.new()
 	order.customer_id = id
 	order.table_item_id = table_item_id
 	order.seat_cell = seat_cell
 	order.recipe_id = recipe.id
-	order.price = recipe.standard_price
+	order.price = price
 	state = State.WAITING_FOOD
 	sim.orders.place(order, sim.world.now)
 	return true

@@ -98,6 +98,12 @@ layout_mode = 2
 focus_mode = 0
 text = "Open shop"
 
+[node name="Menu" type="Button" parent="Top/Row"]
+layout_mode = 2
+focus_mode = 0
+text = "Menu"
+tooltip_text = "Choose today's menu and prices"
+
 [node name="Deltas" type="Control" parent="."]
 layout_mode = 0
 mouse_filter = 2
@@ -107,13 +113,22 @@ theme = ExtResource("2_theme")
 visible = false
 offset_left = 12.0
 offset_top = 104.0
-offset_right = 700.0
-offset_bottom = 200.0
+offset_right = 12.0
+offset_bottom = 104.0
 mouse_filter = 2
 theme = ExtResource("2_theme")
 
-[node name="Text" type="Label" parent="BuildHints"]
+[node name="Scroll" type="ScrollContainer" parent="BuildHints"]
 layout_mode = 2
+clip_contents = true
+mouse_filter = 0
+mouse_force_pass_scroll_events = false
+horizontal_scroll_mode = 0
+vertical_scroll_mode = 1
+
+[node name="Text" type="Label" parent="BuildHints/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
 mouse_filter = 2
-text = "R Rotate  |  Del Sell  |  Esc Cancel / Exit"
+text = "Esc Exit"
 autowrap_mode = 3

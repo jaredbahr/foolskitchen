@@ -1,0 +1,218 @@
+extends TestCase
+## Pure menu choices and save validation; guest/order/sale integration is separate.
+
+var _burger: RecipeDef
+var _cheese: RecipeDef
+var _soup: RecipeDef
+var _menu: MenuSettings
+
+
+func before_each() -> void:
+	_burger = _recipe(&"burger", 12)
+	_cheese = _recipe(&"grilled_cheese", 8)
+	_soup = _recipe(&"tomato_soup", 9)
+	_menu = MenuSettings.new([_soup, _burger, _cheese])
+
+
+func test_defaults_use_every_injected_recipe_and_standard_price_in_lexical_order() -> void:
+	assert_true(_menu.is_valid())
+	assert_eq(_ids(_menu.recipes()), [&"burger", &"grilled_cheese", &"tomato_soup"] as Array[StringName])
+	assert_eq(_ids(_menu.enabled_recipes()), _ids(_menu.recipes()))
+	assert_eq(_menu.enabled_count(), 3)
+	for definition: RecipeDef in [_burger, _cheese, _soup]:
+		assert_true(_menu.is_enabled(definition.id))
+		assert_eq(_menu.recipe(definition.id), definition)
+		assert_eq(_menu.price_of(definition), definition.standard_price)
+	var copy: Array[RecipeDef] = _menu.recipes()
+	copy.clear()
+	copy = _menu.enabled_recipes()
+	copy.reverse()
+	assert_eq(_menu.recipes().size(), 3)
+	assert_eq(_ids(_menu.enabled_recipes()), [&"burger", &"grilled_cheese", &"tomato_soup"] as Array[StringName])
+	assert_null(_menu.recipe(&"missing"))
+	assert_false(_menu.is_enabled(&"missing"))
+	assert_eq(_menu.price_of(null), 0)
+	assert_eq(_menu.price_of(_recipe(&"missing", 7)), 7)
+
+
+func test_at_least_one_dish_stays_enabled_and_unknown_ids_are_refused() -> void:
+	assert_true(_menu.set_enabled(&"burger", false))
+	assert_true(_menu.set_enabled(&"grilled_cheese", false))
+	assert_eq(_ids(_menu.enabled_recipes()), [&"tomato_soup"] as Array[StringName])
+	var before: Dictionary = _menu.to_dict()
+	assert_false(_menu.set_enabled(&"tomato_soup", false))
+	assert_true(_menu.set_enabled(&"burger", false), "already disabled is accepted")
+	assert_false(_menu.set_enabled(&"missing", true))
+	assert_false(_menu.set_price(&"missing", 12))
+	assert_eq(_menu.to_dict(), before)
+	assert_true(_menu.set_enabled(&"burger", true))
+	assert_true(_menu.set_enabled(&"tomato_soup", false))
+	assert_eq(_menu.enabled_count(), 1)
+
+
+func test_whole_dollar_price_requests_clamp_to_ceil_half_and_double() -> void:
+	assert_eq(_menu.minimum_price(&"tomato_soup"), 5)
+	assert_eq(_menu.maximum_price(&"tomato_soup"), 18)
+	assert_true(_menu.set_price(&"tomato_soup", 10))
+	assert_eq(_menu.price_of(_soup), 10)
+	assert_true(_menu.set_price(&"tomato_soup", -MenuSettings.MAX_PRICE - 1))
+	assert_eq(_menu.price_of(_soup), 5)
+	assert_true(_menu.set_price(&"tomato_soup", MenuSettings.MAX_PRICE))
+	assert_eq(_menu.price_of(_soup), 18)
+	assert_eq(_soup.standard_price, 9)
+	assert_eq(_menu.standard_price(&"tomato_soup"), 9)
+	assert_eq(_menu.minimum_price(&"missing"), 0)
+	assert_eq(_menu.maximum_price(&"missing"), 0)
+
+
+func test_zero_and_largest_integer_standard_prices_use_safe_bounds() -> void:
+	var free: RecipeDef = _recipe(&"free", 0)
+	var largest: RecipeDef = _recipe(&"largest", MenuSettings.MAX_PRICE)
+	var half: RecipeDef = _recipe(&"half", MenuSettings.MAX_PRICE >> 1)
+	var menu: MenuSettings = MenuSettings.new([largest, free, half])
+	assert_true(menu.is_valid())
+	assert_eq(menu.minimum_price(&"free"), 0)
+	assert_eq(menu.maximum_price(&"free"), 0)
+	assert_true(menu.set_price(&"free", MenuSettings.MAX_PRICE))
+	assert_eq(menu.price_of(free), 0)
+	assert_eq(menu.minimum_price(&"largest"), 4611686018427387904)
+	assert_eq(menu.maximum_price(&"largest"), MenuSettings.MAX_PRICE)
+	assert_eq(menu.maximum_price(&"half"), MenuSettings.MAX_PRICE - 1)
+	assert_true(menu.set_price(&"largest", 0))
+	assert_eq(menu.price_of(largest), 4611686018427387904)
+	assert_true(menu.set_price(&"largest", MenuSettings.MAX_PRICE))
+	assert_eq(menu.price_of(largest), MenuSettings.MAX_PRICE)
+	assert_eq(largest.standard_price, MenuSettings.MAX_PRICE)
+
+
+func test_save_round_trip_is_canonical_detached_and_preserves_recipes() -> void:
+	assert_true(_menu.set_enabled(&"grilled_cheese", false))
+	assert_true(_menu.set_price(&"burger", 18))
+	assert_true(_menu.set_price(&"tomato_soup", 5))
+	var snapshot: Dictionary = _menu.to_dict()
+	assert_eq(snapshot["enabled"], ["burger", "tomato_soup"] as Array[String])
+	assert_eq(snapshot["prices"], {"burger": "18", "grilled_cheese": "8", "tomato_soup": "5"})
+	var restored: MenuSettings = MenuSettings.new([_cheese, _soup, _burger])
+	assert_true(restored.from_dict(JSON.parse_string(JSON.stringify(snapshot))))
+	assert_eq(restored.to_dict(), snapshot)
+	assert_eq(_ids(restored.enabled_recipes()), [&"burger", &"tomato_soup"] as Array[StringName])
+	snapshot["enabled"].clear()
+	snapshot["prices"]["burger"] = "24"
+	assert_eq(_menu.price_of(_burger), 18)
+	assert_eq(_menu.enabled_count(), 2)
+	assert_eq(restored.price_of(_burger), 18)
+	assert_eq([_burger.standard_price, _cheese.standard_price, _soup.standard_price], [12, 8, 9])
+
+
+func test_json_round_trip_preserves_full_integer_prices_without_float_rounding() -> void:
+	var definition: RecipeDef = _recipe(&"large", MenuSettings.MAX_PRICE)
+	var menu: MenuSettings = MenuSettings.new([definition])
+	var restored: MenuSettings = MenuSettings.new([definition])
+	var serialized: String = JSON.stringify(menu.to_dict())
+	assert_true(serialized.contains('"9223372036854775807"'))
+	assert_true(restored.from_dict(JSON.parse_string(serialized)))
+	assert_eq(restored.price_of(definition), MenuSettings.MAX_PRICE)
+	assert_true(menu.set_price(&"large", menu.minimum_price(&"large")))
+	var discounted: Variant = JSON.parse_string(JSON.stringify(menu.to_dict()))
+	assert_true(restored.from_dict(discounted))
+	assert_eq(restored.price_of(definition), 4611686018427387904)
+
+
+func test_invalid_save_shapes_ids_and_missing_prices_do_not_change_current_choices() -> void:
+	assert_true(_menu.set_enabled(&"burger", false))
+	assert_true(_menu.set_price(&"tomato_soup", 13))
+	var before: Dictionary = _menu.to_dict()
+	var valid_prices: Dictionary = before["prices"].duplicate(true)
+	var invalid: Array[Variant] = [null, [], "menu", {},
+		{"enabled": ["burger"]}, {"prices": valid_prices},
+		{"enabled": ["burger"], "prices": valid_prices, "extra": true},
+		{"enabled": [], "prices": valid_prices},
+		{"enabled": true, "prices": valid_prices},
+		{"enabled": ["burger", "burger"], "prices": valid_prices},
+		{"enabled": ["missing"], "prices": valid_prices},
+		{"enabled": [""], "prices": valid_prices},
+		{"enabled": [12], "prices": valid_prices},
+		{"enabled": ["burger"], "prices": []},
+		{"enabled": ["burger"], "prices": {}},
+		{"enabled": ["burger"], "prices": {"burger": "12", "grilled_cheese": "8"}},
+		{"enabled": ["burger"], "prices": {"missing": "12", "grilled_cheese": "8", "tomato_soup": "9"}},
+		{"enabled": ["burger"], "prices": {&"burger": "12", "grilled_cheese": "8", "tomato_soup": "9"}}]
+	for section: Variant in invalid:
+		assert_false(_menu.from_dict(section), str(section))
+		assert_eq(_menu.to_dict(), before, "failed restores are atomic")
+
+
+func test_invalid_or_out_of_range_prices_are_rejected_without_partial_restore() -> void:
+	assert_true(_menu.set_enabled(&"burger", false))
+	assert_true(_menu.set_price(&"tomato_soup", 13))
+	var before: Dictionary = _menu.to_dict()
+	var invalid_prices: Array[Variant] = [-1, 1, 25, 12.5, INF, NAN, true, null, [], {},
+		"", "-1", "+12", "012", "12.0", " 12", "12 ", "9223372036854775808", "99999999999999999999"]
+	for price: Variant in invalid_prices:
+		# duplicate(true) retains the writer's Dictionary[String, String] type.
+		# JSON-shaped containers must permit malformed Variants to reach validation.
+		var section: Dictionary = JSON.parse_string(JSON.stringify(before))
+		section["enabled"] = ["burger"]
+		section["prices"]["burger"] = price
+		assert_false(_menu.from_dict(section), str(price))
+		assert_eq(_menu.to_dict(), before)
+	var numeric: Dictionary = {"enabled": ["tomato_soup", "burger"],
+		"prices": {"burger": 18.0, "grilled_cheese": 8, "tomato_soup": 9.0}}
+	assert_true(_menu.from_dict(numeric), "precise integral JSON numbers remain readable")
+	assert_eq(_menu.to_dict()["enabled"], ["burger", "tomato_soup"] as Array[String])
+	assert_eq(_menu.price_of(_burger), 18)
+
+
+func test_imprecise_json_numeric_prices_are_rejected_transactionally() -> void:
+	var definition: RecipeDef = _recipe(&"large", MenuSettings.MAX_JSON_INTEGER)
+	var menu: MenuSettings = MenuSettings.new([definition])
+	var before: Dictionary = menu.to_dict()
+	assert_false(menu.from_dict({"enabled": ["large"], "prices": {"large": float(MenuSettings.MAX_JSON_INTEGER + 1)}}))
+	assert_eq(menu.to_dict(), before)
+	var imprecise: Dictionary = JSON.parse_string('{"enabled":["large"],"prices":{"large":9007199254740993}}')
+	assert_eq(typeof(imprecise["prices"]["large"]), TYPE_FLOAT)
+	assert_true(imprecise["prices"]["large"] > MenuSettings.MAX_JSON_INTEGER)
+	assert_false(menu.from_dict(imprecise), "an imprecise JSON number remains outside the safe numeric range")
+	assert_eq(menu.to_dict(), before)
+	# Godot's decimal-float literal parser rounds 9007199254740991.0 down by one.
+	# Convert the exact integer instead, so the fixture actually supplies 2^53 - 1.
+	var exact_numeric: float = float(MenuSettings.MAX_JSON_INTEGER)
+	assert_eq(int(exact_numeric), MenuSettings.MAX_JSON_INTEGER)
+	assert_true(menu.from_dict({"enabled": ["large"], "prices": {"large": exact_numeric}}))
+	assert_eq(menu.price_of(definition), MenuSettings.MAX_JSON_INTEGER)
+	assert_eq(menu.to_dict()["prices"]["large"], "9007199254740991")
+	assert_true(menu.from_dict(JSON.parse_string(JSON.stringify(before))), "canonical decimal strings stay exact through JSON")
+	assert_eq(menu.price_of(definition), MenuSettings.MAX_JSON_INTEGER)
+
+
+func test_invalid_injected_catalogs_fail_without_partial_defaults_or_engine_errors() -> void:
+	var empty_id: RecipeDef = _recipe(&"", 9)
+	var negative: RecipeDef = _recipe(&"negative", -1)
+	var duplicate: RecipeDef = _recipe(&"burger", 10)
+	var invalid_catalogs: Array = [[], [null], [_burger, null], [_burger, empty_id],
+		[_burger, negative], [_burger, duplicate]]
+	for values: Array in invalid_catalogs:
+		var catalog: Array[RecipeDef] = []
+		catalog.assign(values)
+		var menu: MenuSettings = MenuSettings.new(catalog)
+		assert_false(menu.is_valid())
+		assert_eq(menu.enabled_count(), 0)
+		assert_eq(menu.recipes().size(), 0)
+		assert_eq(menu.to_dict(), {})
+		assert_false(menu.set_enabled(&"burger", true))
+		assert_false(menu.from_dict(_menu.to_dict()))
+
+
+func _recipe(id: StringName, standard: int) -> RecipeDef:
+	var definition: RecipeDef = RecipeDef.new()
+	definition.id = id
+	definition.display_name = String(id).capitalize()
+	definition.standard_price = standard
+	return definition
+
+
+func _ids(definitions: Array[RecipeDef]) -> Array[StringName]:
+	var result: Array[StringName] = []
+	for definition: RecipeDef in definitions:
+		result.append(definition.id)
+	return result

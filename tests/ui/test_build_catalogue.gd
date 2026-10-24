@@ -55,14 +55,16 @@ func test_hidden_scene_uses_shared_theme_and_only_panel_consumes_input() -> void
 	var panel: Control = _catalogue.get_node("Panel") as Control
 	assert_eq(panel.mouse_filter, Control.MOUSE_FILTER_STOP)
 	assert_false(panel.mouse_force_pass_scroll_events)
-	assert_eq(panel.anchor_top, 1.0)
-	assert_eq(panel.anchor_bottom, 1.0)
-	assert_eq(panel.offset_bottom, -12.0)
+	assert_eq(panel.anchor_top, 0.0)
+	assert_eq(panel.anchor_right, 0.0, "the panel fits content rather than stretching across the viewport")
+	assert_eq(panel.anchor_bottom, 0.0)
 	var scroll: ScrollContainer = _scroll()
 	assert_eq(scroll.mouse_filter, Control.MOUSE_FILTER_STOP)
 	assert_false(scroll.mouse_force_pass_scroll_events)
-	assert_eq(scroll.vertical_scroll_mode, ScrollContainer.SCROLL_MODE_DISABLED)
-	for path: String in ["Panel/Margin", "Panel/Margin/Rows", "Panel/Margin/Rows/Title", "Panel/Margin/Rows/Scroll/Items"]:
+	assert_eq(scroll.horizontal_scroll_mode, ScrollContainer.SCROLL_MODE_AUTO)
+	assert_eq(scroll.vertical_scroll_mode, ScrollContainer.SCROLL_MODE_AUTO)
+	for path: String in ["Panel/Margin", "Panel/Margin/Rows", "Panel/Margin/Rows/Scroll/Content",
+		"Panel/Margin/Rows/Scroll/Content/Title", "Panel/Margin/Rows/Scroll/Content/Items"]:
 		assert_eq((_catalogue.get_node(path) as Control).mouse_filter, Control.MOUSE_FILTER_IGNORE)
 
 
@@ -75,7 +77,7 @@ func test_content_names_then_ids_sort_and_zero_price_is_buyable() -> void:
 	assert_eq(_catalogue.ordered_ids(), [&"alpha", &"beta", &"zeta"] as Array[StringName])
 	assert_eq(_catalogue.item_buttons.size(), 3)
 	assert_eq(_catalogue.item_buttons[&"beta"].text, "alpha\n$0")
-	var row: HBoxContainer = _scroll().get_node("Items") as HBoxContainer
+	var row: HBoxContainer = _scroll().get_node("Content/Items") as HBoxContainer
 	for index: int in range(_catalogue.ordered_ids().size()):
 		var id: StringName = _catalogue.ordered_ids()[index]
 		var button: Button = _catalogue.item_buttons[id]
@@ -102,12 +104,34 @@ func test_shipped_catalogue_is_derived_from_every_valid_non_door_definition() ->
 		assert_true(_catalogue.item_buttons.has(definition.id))
 		assert_true(_catalogue.item_buttons[definition.id].text.ends_with("$%d" % definition.price))
 	assert_eq(_catalogue.item_buttons.size(), expected_count)
+	_catalogue.set_build_visible(true)
+	await _mount(Vector2(1600.0, 900.0))
+	var panel: PanelContainer = _catalogue.get_node("Panel") as PanelContainer
+	var content: Control = _scroll().get_node("Content") as Control
+	var natural: Vector2 = content.get_combined_minimum_size()
+	var padding: Vector2 = panel.get_theme_stylebox("panel").get_minimum_size()
+	assert_eq(panel.size, natural + padding, "a fitting catalogue uses only its content and compact padding")
+	assert_true(panel.size.x < _host.size.x * 0.8, "no empty strip spans the remaining viewport")
+	assert_true(panel.size.y < 140.0, "the old176px strip is reduced to its actual contents")
+	assert_almost_eq(panel.position.x, 12.0)
+	assert_almost_eq(panel.get_rect().end.y, _host.size.y - 12.0)
+	assert_false(_scroll().get_h_scroll_bar().visible)
+	assert_false(_scroll().get_v_scroll_bar().visible)
 
 
 func test_refresh_preserves_native_buttons_visibility_and_updates_resource_prices() -> void:
 	var definition: ItemDef = _definition(&"fixture", "Chair", 18)
 	_content.definitions = [definition]
 	_catalogue.bind_content(_content)
+	var panel: PanelContainer = _catalogue.get_node("Panel") as PanelContainer
+	var shared_style: StyleBoxFlat = _catalogue.theme.get_stylebox("panel", "PanelContainer") as StyleBoxFlat
+	var compact_style: StyleBoxFlat = panel.get_theme_stylebox("panel") as StyleBoxFlat
+	assert_true(compact_style != shared_style)
+	assert_eq(compact_style.bg_color, shared_style.bg_color, "pre-ready layout retains the shared palette")
+	assert_eq(compact_style.corner_radius_top_left, shared_style.corner_radius_top_left)
+	assert_eq(shared_style.get_content_margin(SIDE_LEFT), 24.0, "shared theme padding is never mutated")
+	assert_eq(compact_style.get_content_margin(SIDE_LEFT), 8.0)
+	assert_eq(compact_style.get_content_margin(SIDE_TOP), 6.0)
 	_catalogue.set_build_visible(true)
 	var button: Button = _catalogue.item_buttons[definition.id]
 	for _iteration: int in range(5):
@@ -152,7 +176,7 @@ func test_null_rebind_removes_old_buttons_and_can_repopulate_before_ready() -> v
 	_catalogue.bind_content(null)
 	assert_false(is_instance_valid(button))
 	assert_true(_catalogue.ordered_ids().is_empty())
-	assert_eq(_scroll().get_node("Items").get_child_count(), 0)
+	assert_eq(_scroll().get_node("Content/Items").get_child_count(), 0)
 	_catalogue.bind_content(_content)
 	assert_eq(_catalogue.item_buttons.size(), 1)
 	assert_false(_catalogue.is_node_ready())
@@ -186,23 +210,32 @@ func test_bottom_strip_stays_bounded_and_long_catalogue_scrolls_at_small_widths(
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	var panel: Control = _catalogue.get_node("Panel") as Control
 	var scroll: ScrollContainer = _scroll()
-	for width: float in [900.0, 640.0]:
-		_host.size = Vector2(width, 640.0)
+	for bounds: Vector2 in [Vector2(900.0, 640.0), Vector2(640.0, 120.0), Vector2(360.0, 100.0)]:
+		_host.size = bounds
 		await tree.process_frame
 		await tree.process_frame
 		assert_eq(_catalogue.size, _host.size)
 		assert_almost_eq(panel.position.x, 12.0)
-		assert_almost_eq(panel.get_rect().end.x, width - 12.0)
-		assert_almost_eq(panel.get_rect().end.y, 628.0)
-		assert_almost_eq(panel.size.y, 176.0, 0.0001, "shared panel/button margins fit within a fixed strip")
-		assert_almost_eq(panel.position.y, 452.0)
+		assert_almost_eq(panel.get_rect().end.x, bounds.x - 12.0)
+		assert_almost_eq(panel.get_rect().end.y, bounds.y - 12.0)
+		assert_true(panel.position.y >= 12.0)
+		assert_true(panel.size.x <= bounds.x - 24.0)
+		assert_true(panel.size.y <= bounds.y - 24.0)
 		var bar: HScrollBar = scroll.get_h_scroll_bar()
 		assert_true(bar.visible)
 		assert_true(bar.max_value > bar.page)
 		scroll.scroll_horizontal = ceili(bar.max_value)
 		await tree.process_frame
 		assert_true(scroll.scroll_horizontal > 0)
-		assert_true((scroll.get_node("Items") as Control).position.x < 0.0)
+		assert_true((scroll.get_node("Content") as Control).position.x < 0.0)
+		if bounds.y <= 120.0:
+			var vertical: VScrollBar = scroll.get_v_scroll_bar()
+			assert_true(vertical.visible, "short viewports scroll all catalogue content vertically")
+			assert_true(vertical.max_value > vertical.page)
+			scroll.scroll_vertical = ceili(vertical.max_value)
+			await tree.process_frame
+			assert_true(scroll.scroll_vertical > 0)
+			assert_true((scroll.get_node("Content") as Control).position.y < 0.0)
 	assert_eq(_catalogue.item_buttons.size(), 30)
 	assert_true(_requests.is_empty())
 

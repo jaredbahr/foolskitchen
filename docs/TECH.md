@@ -22,7 +22,7 @@ project.godot
 src/
   core/        # autoloads: GameState, Clock, Economy, SaveSystem, EventBus
   sim/         # pure simulation logic: customers, staff, tasks, kitchen
-  build/       # build mode, grid, placement validation
+  build/       # pure interaction controller; placement checks live in sim/shop
   ui/          # HUD, menus, panels
   minigames/   # one folder per mini-game, each a self-contained scene
   world/       # restaurant scenes, the camera, agents' visual nodes
@@ -177,53 +177,63 @@ docs/
   restored RNG, stock top-up, ledger prune and autosave. Missing old-save `shop`
   sections use the authored layout. Non-MORNING saves remain unsupported.
 
-### 2.3d Build controls (FK-032)
-- **B** or the HUD Build toggle enters/exits only when `ShopEditor.can_edit()`
-  permits MORNING or CLOSED. Click furniture to hold a preview, move the pointer
-  to snap it to the 0.5 m grid, **R** to rotate in world quarter turns, and click
-  to place. **Delete** sells the selected actual item; **Esc** cancels a preview,
-  then exits on the next press. The catalogue starts buy previews. GUI clicks
-  are consumed by its controls rather than placing furniture underneath.
-- `BuildMode` is a typed `RefCounted` controller. It reads editor checks and
-  commits through injected Main `shop_move`/`shop_buy`/`shop_sell` methods;
-  holding/cancelling a preview never changes placements, reservations or books.
-  Main owns one input route, suspends inspection while building, and reprojects
-  the pointer through the actual camera each frame, including during smoothing.
-  Inactive build mode does not consume service R input or add an owner action.
-- Entering forces the rendered grid without changing the player's G preference;
-  G cannot change that preference while forced. Exit and world/floor replacement
-  restore it. Any phase transition cancels/exits; a cheap per-frame phase guard
-  also catches direct phase changes without running pathfinding each frame.
-- `check_current()` reads existing reachability logic without touching books or
-  the editor's last operation. A valid preview shows `EditCheck.unreachable`
-  (0 denotes a proposed purchase); invalid previews and cancellation retain
-  warnings for actual placements. Successful commits resolve real item IDs.
-  Outlines remain until a later edit fixes reachability, including after exit.
-- CLOSED build mode hides the report; exit rebuilds it from current books without
-  another closing charge or day setup. Accepted sales reuse the HUD's existing
-  single cash-event delta, including a legal $0 refund. Saving remains at the
-  existing morning autosave boundary; building adds no save or day reset.
-- Review captures accept `--build=green|red|warning|catalogue`; for example,
-  `tools/screenshot.sh --build=green --quarter=0 --frames=12 --speed=1` in a
-  fresh MORNING, without open/fast,
-  inspection or F3 flags. Green/red use actual editor-checked buy previews;
-  green shows table seat markers and red shows a station work marker. Warning
-  makes one ordinary checked purchase of unreachable furniture through Main's
-  pointer/input/controller/wrapper path and records its real ID, content price
-  and exact books delta. It is a disclosed build fixture, not a normal shop
-  layout or a fabricated warning. Candidate search is read-only and bounded to
-  36 origins and four world turns; there are no trial placements, RNG/guest
-  changes, direct grid writes, money overrides or saves.
-- Build captures hold the real viewport pointer with native warp/input so normal
-  Main hover updates stay coherent. Post-draw JSON records actual editor checks,
-  model selection/pose, native ghost/marker/outline geometry and projected bounds,
-  actual catalogue/reason controls, grid preference/effective shader state and
-  unchanged clock/RNG plus before/after books. Geometry must be inside the image
-  and clear of the HUD, reason panel and catalogue. All four camera quarters are
-  captured sequentially for each build view, preserving ordinary captures and
-  their strict image hash/error/identity guards. A green capture job establishes
-  those checks; actual PNG review and manual play are still needed for appearance
-  and control feel.
+### 2.3d Menu and prices (FK-030)
+- `MenuSettings(cookable_recipes)` owns per-shop enabled dishes and prices. The
+  session injects Tier 1 recipes whose station types are present, with a usable
+  fridge/pass definition. Temporary stock shortages and path warnings do not
+  silently remove a chosen dish. At least one dish remains enabled.
+- `RestaurantSim.prices: Dictionary[StringName, int]` stores overrides;
+  `price_of(recipe)` falls back to the immutable `RecipeDef.standard_price`.
+  Orders capture that price once, so later settings never reprice a ticket.
+- At order time an above-standard price has refusal probability
+  `clamp((price / standard - 1) * price_sensitivity, 0, max_price_walkout)`.
+  The `EconomyTuning` defaults are 1.5 and 0.9. The guest uses its private RNG
+  only when the chance is positive: standard/cheaper menus preserve the existing
+  random stream. Refusal creates no ticket and gives `too_expensive` as a readable
+  departure reason. Balance values are bounded safely; a zero standard avoids
+  division and cannot be marked up through MenuSettings.
+- The HUD Menu button and MenuPanel requests are MORNING-only. Main's
+  `menu_set_enabled`, `menu_set_price` apply accepted model changes to the sim,
+  then refresh the request-only panel without saving. Whole-dollar prices clamp
+  to ceil(50%) through 200% of standard. Shared recipe resources never change.
+- The `menu` save section contains enabled IDs and every cookable ID's
+  price as a decimal string. The strict model decoder validates all choices
+  in a pure provider against the staged shop layout. Installation waits for
+  normal `load_game` success; missing old-save menu sections use defaults.
+  Provider rejection retains SaveSystem's FAILED/fresh-game behavior, with no
+  semantic backup fallback or all-provider rollback. Only the next startup
+  autosave is skipped after a failed load, as before.
+- Restored menu choices are installed before normal MORNING day setup, stock
+  top-up, ledger prune and autosave. Future reorder settings must also restore
+  before that purchasing boundary. Menu edits change no books, clock or RNG;
+  the next morning's autosave captures the latest choices, just like furniture
+  edits. Changing the menu never writes the current morning's save or bypasses
+  the skipped startup autosave after a failed load.
+- `tools/balance_probe.gd --price=1.25` now changes only sim price overrides.
+  `tools/screenshot.sh --menu --speed=0 --frames=12` requests the production
+  morning panel, verifies its actual visible state and captures after drawing;
+  no workflow or renderer setting is changed by the option.
+
+### 2.3e Build controls (FK-032)
+- `src/build/build_mode.gd` is a typed `RefCounted` interaction controller.
+  It reads `ShopEditor` checks and commits only through Main's shop wrappers.
+- Main owns one input route. B or the HUD toggle enters only in MORNING/CLOSED;
+  active build input takes precedence over ordinary selection and service keys.
+- Pick-up preserves the clicked tile's offset from the item's origin. Hover and
+  each click use the actual Camera3D floor ray, including during camera smoothing.
+- R cycles world quarter turns. Click commits a valid preview; Delete sells only
+  a held MOVE item. Esc cancels a preview, then exits. Hints show available actions.
+- Previews/cancellation never change the grid or books. Placement failures use
+  short sentences from `ShopEditor.placement_reason`; path warnings do not block.
+- Valid checks supply unreachable IDs (0 for a proposed buy); committed warnings
+  use actual IDs and survive invalid proposals, cancellation and exit until fixed.
+- Build forces the rendered grid while retaining the G preference; phase changes,
+  exit and presentation rebinding cancel previews and restore that preference.
+- Build closes Menu and inspection; opening Menu exits build. GUI controls consume
+  their clicks. Content-sized hints/catalogue use bounded scrolling when needed.
+- CLOSED edits hide the report; exit rebuilds it without recharging or day setup.
+- Sale results/books are authoritative; shared HUD feedback retains its same-frame
+  coalescing and zero suppression. Only the existing morning boundary autosaves.
 
 ### 2.4 Save system
 - JSON in `user://saves/`, with a `version` field and migration functions per version.

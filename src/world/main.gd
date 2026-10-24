@@ -28,11 +28,14 @@ var dishes_sold_today: Dictionary[StringName, int] = {}
 ## Closed-phase edits are persisted by the next normal morning autosave.
 var shop_editor: ShopEditor
 var build_mode: BuildMode = BuildMode.new()
+## Cookable dishes/prices belong to this shop, never to shared recipe resources.
+var menu_settings: MenuSettings
 
 var _previous_clock: SimClock = null
 var _started: bool = false
 var _skip_next_autosave: bool = false
 var _loaded_layout: ShopLayout = null
+var _loaded_menu: MenuSettings = null
 var _report: Control
 var _inspect_panel: InspectPanel
 var _debug_overlay: DebugOverlay
@@ -43,6 +46,7 @@ var _build_ready: bool = false
 var _was_build_active: bool = false
 var _build_phase: int = -1
 var _build_ui_phase: int = -1
+var _menu_panel: MenuPanel
 
 
 ## Builds the restaurant and the read-only view. Safe before tree readiness.
@@ -62,6 +66,8 @@ func initialize() -> void:
 		sim = null
 		return
 	world = sim.world
+	menu_settings = MenuSettings.new(_cookable_recipes(LAYOUT))
+	_apply_menu(sim, menu_settings)
 	_bind_world_presentation()
 
 
@@ -102,6 +108,14 @@ func _bind_world_presentation() -> void:
 	if not $HUD.build_toggled.is_connected(_on_build_toggled):
 		$HUD.build_toggled.connect(_on_build_toggled)
 	$HUD.set_build_state(false, false)
+	_menu_panel = $Overlay/MenuPanel
+	_menu_panel.bind_menu(menu_settings)
+	_menu_panel.set_phase(Clock.sim.phase)
+	if not _menu_panel.enable_requested.is_connected(_on_menu_enable_requested):
+		_menu_panel.enable_requested.connect(_on_menu_enable_requested)
+		_menu_panel.price_requested.connect(_on_menu_price_requested)
+	if not $HUD.is_connected(&"menu_pressed", toggle_menu):
+		$HUD.connect(&"menu_pressed", toggle_menu)
 	_inspect_panel.bind_world(world)
 	_debug_overlay.bind_world(world)
 	refresh_presentation()
@@ -139,6 +153,7 @@ func start() -> void:
 	for autoload: Node in [Clock, GameState, Economy]:
 		autoload.call(&"register_save_provider")
 	SaveSystem.register("shop", _capture_shop, _restore_shop)
+	SaveSystem.register("menu", _capture_menu, _restore_menu)
 	var loaded: bool = use_saves and _load_autosave()
 	if not loaded:
 		_skip_next_autosave = use_saves and SaveSystem.list_slots().has(save_slot)
@@ -209,7 +224,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	if key != null and key.pressed and not key.echo:
 		var code: Key = key.physical_keycode if key.physical_keycode != KEY_NONE else key.keycode
 		if code == KEY_ESCAPE:
-			clear_selection()
+			if _menu_panel != null and _menu_panel.visible:
+				_menu_panel.hide()
+			else:
+				clear_selection()
 			_mark_input_handled()
 	var mouse: InputEventMouseButton = event as InputEventMouseButton
 	if mouse != null and mouse.pressed and mouse.button_index == MOUSE_BUTTON_LEFT:
@@ -252,7 +270,7 @@ func route_build_input(event: InputEvent) -> bool:
 				var cell: Variant = build_cell_at_screen_position(mouse.position)
 				var item: PlacedItem = world.grid.item_at(cell)
 				if item != null:
-					build_mode.pick_up(item.id)
+					build_mode.pick_up_at(item.id, cell)
 		return true
 	return false
 
@@ -326,6 +344,7 @@ func _on_build_changed() -> void:
 	($CameraRig as CameraRig).set_grid_forced(active)
 	if active and not _was_build_active:
 		_build_phase = world.clock.phase
+		set_menu_visible(false)
 		clear_selection()
 		_report.hide()
 	elif not active and _was_build_active and _build_ready and world.clock.phase == SimClock.Phase.CLOSED:
@@ -340,7 +359,7 @@ func _update_build_controls() -> void:
 	var active: bool = is_build_active()
 	var available: bool = _build_ready and shop_editor != null and shop_editor.can_edit()
 	var reason: String = build_mode.current_check.why if build_mode.has_ghost() and not build_mode.current_check.ok else ""
-	$HUD.set_build_state(available, active, reason)
+	$HUD.set_build_state(available, active, reason, int(build_mode.state))
 	if _build_catalogue != null:
 		_build_catalogue.set_build_visible(active)
 	_build_ui_phase = world.clock.phase if world != null else -1
@@ -487,12 +506,14 @@ func _new_game() -> void:
 	GameState.new_run(int(Time.get_unix_time_from_system()))
 	Economy.reset(TUNING.starting_cash)
 	_loaded_layout = null
+	_loaded_menu = null
 	sim.stock = Economy.stock
 	world.log_event("New game: $%d to start" % TUNING.starting_cash)
 
 
 func _load_autosave() -> bool:
 	_loaded_layout = null
+	_loaded_menu = null
 	if not SaveSystem.list_slots().has(save_slot):
 		return false
 	if SaveSystem.load_game(save_slot) != OK:
@@ -501,6 +522,10 @@ func _load_autosave() -> bool:
 	if Clock.sim.phase != SimClock.Phase.MORNING:
 		world.log_event("Autosave is not from a morning; starting a new game")
 		return false
+	var layout: ShopLayout = _loaded_layout if _loaded_layout != null else LAYOUT
+	var choices: MenuSettings = _loaded_menu if _loaded_menu != null else MenuSettings.new(_cookable_recipes(layout))
+	if not choices.is_valid():
+		return false
 	if _loaded_layout != null:
 		var errors: Array[String] = []
 		var candidate: RestaurantSim = RestaurantSim.create(_loaded_layout, content, 1, errors, Economy.stock, true, true)
@@ -508,7 +533,9 @@ func _load_autosave() -> bool:
 			return false
 		sim = candidate
 		world = candidate.world
-		_bind_world_presentation()
+	menu_settings = choices
+	_apply_menu(sim, menu_settings)
+	_bind_world_presentation()
 	return true
 
 
@@ -524,6 +551,115 @@ func _restore_shop(data: Dictionary) -> bool:
 		return false
 	_loaded_layout = layout
 	return true
+
+
+func _capture_menu() -> Dictionary:
+	return menu_settings.to_dict() if menu_settings != null else {}
+
+
+func _restore_menu(data: Dictionary) -> bool:
+	var layout: ShopLayout = _loaded_layout if _loaded_layout != null else LAYOUT
+	var choices: MenuSettings = MenuSettings.new(_cookable_recipes(layout))
+	if not choices.from_dict(data):
+		return false
+	_loaded_menu = choices
+	return true
+
+
+## Station definitions decide availability; temporary path/stock problems do not
+## rewrite the player's menu. Tier 1 remains the currently unlocked recipe set.
+func _cookable_recipes(layout: ShopLayout) -> Array[RecipeDef]:
+	var stations: Dictionary[StringName, bool] = {}
+	var fridge: bool = false
+	var pass_counter: bool = false
+	for placement: ShopPlacement in layout.placements:
+		var definition: ItemDef = content.item(placement.item_id)
+		if definition == null:
+			continue
+		if definition.category == ItemDef.Category.STORAGE and definition.station_type == &"fridge" and not definition.work_cells.is_empty():
+			fridge = true
+		elif definition.category == ItemDef.Category.PASS and definition.work_cells.size() >= 2:
+			pass_counter = true
+		elif definition.category == ItemDef.Category.STATION and not definition.work_cells.is_empty():
+			stations[definition.station_type] = true
+	var recipes: Array[RecipeDef] = []
+	if not fridge or not pass_counter:
+		return recipes
+	for definition: RecipeDef in content.recipes():
+		# Phase 3: replace with the unlocked tier.
+		if definition.unlock_tier != 1:
+			continue
+		var cookable: bool = true
+		for step: RecipeStep in definition.steps:
+			if not stations.has(step.station_type):
+				cookable = false
+				break
+		if cookable:
+			recipes.append(definition)
+	return recipes
+
+
+func _apply_menu(restaurant: RestaurantSim, choices: MenuSettings) -> void:
+	restaurant.menu = choices.enabled_recipes()
+	restaurant.prices.clear()
+	restaurant.pricing_tuning = TUNING
+	for definition: RecipeDef in choices.recipes():
+		var price: int = choices.price_of(definition)
+		if price != definition.standard_price:
+			restaurant.prices[definition.id] = price
+
+
+func can_edit_menu() -> bool:
+	return _started and menu_settings != null and menu_settings.is_valid() and Clock.sim.phase == SimClock.Phase.MORNING
+
+
+func menu_set_enabled(recipe_id: StringName, enabled: bool) -> bool:
+	if not can_edit_menu():
+		return false
+	if not menu_settings.set_enabled(recipe_id, enabled):
+		return false
+	_apply_menu(sim, menu_settings)
+	_menu_panel.refresh()
+	return true
+
+
+func menu_set_price(recipe_id: StringName, price: int) -> bool:
+	if not can_edit_menu() or menu_settings.recipe(recipe_id) == null:
+		return false
+	menu_settings.set_price(recipe_id, price)
+	_apply_menu(sim, menu_settings)
+	_menu_panel.refresh()
+	return true
+
+
+func toggle_menu() -> void:
+	if _menu_panel != null:
+		set_menu_visible(not _menu_panel.visible)
+
+
+## Idempotent production path for the HUD and genuine review captures.
+func set_menu_visible(value: bool) -> bool:
+	if _menu_panel == null or (value and not can_edit_menu()):
+		return false
+	if value:
+		build_mode.exit()
+	_menu_panel.set_phase(Clock.sim.phase)
+	_menu_panel.visible = value
+	return true
+
+
+func is_menu_visible() -> bool:
+	return _menu_panel != null and _menu_panel.visible
+
+
+func _on_menu_enable_requested(recipe_id: StringName, enabled: bool) -> void:
+	menu_set_enabled(recipe_id, enabled)
+	_menu_panel.refresh()
+
+
+func _on_menu_price_requested(recipe_id: StringName, price: int) -> void:
+	menu_set_price(recipe_id, price)
+	_menu_panel.refresh()
 
 
 func shop_move(item_id: int, origin: Vector2i, quarter_turns: int) -> bool:
@@ -596,6 +732,10 @@ func _on_day_phase_changed(_day: int, phase: int) -> void:
 	build_mode.exit()
 	if _build_ready:
 		_update_build_controls()
+	if _menu_panel != null:
+		_menu_panel.set_phase(phase)
+		if phase != SimClock.Phase.MORNING:
+			_menu_panel.hide()
 	if phase == SimClock.Phase.MORNING:
 		_begin_morning()
 

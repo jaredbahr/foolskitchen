@@ -19,7 +19,6 @@ var _main: Node3D
 var _viewport: SubViewport
 var _old_save_dir: String
 var _save_dir: String
-var _refunds: Array[int] = []
 
 
 func before_each() -> void:
@@ -41,7 +40,6 @@ func after_each() -> void:
 	Clock.set_speed(0)
 	Economy.reset(0)
 	GameState.new_run(1)
-	_refunds.clear()
 
 
 func test_projected_world_clicks_match_editor_for_four_camera_quarters_and_four_world_turns() -> void:
@@ -110,6 +108,36 @@ func test_stationary_pointer_reprojects_after_camera_smoothing_without_a_mouse_e
 	var direct: Variant = Picker.floor_intersection(_camera().project_ray_origin(pointer), _camera().project_ray_normal(pointer))
 	assert_true(direct is Vector3)
 	assert_eq(_mode().origin, GridMath.world_to_cell(direct))
+	assert_eq(_world().now, 0)
+
+
+func test_projected_far_side_pickup_preserves_grab_offset_at_every_camera_quarter() -> void:
+	await _start()
+	assert_true(_main.call("set_build_active", true))
+	var item: PlacedItem = _world().grid.item(_id(&"fridge"))
+	var original: Vector2i = item.origin
+	var original_turns: int = item.quarter_turns
+	var books: Dictionary = Economy.ledger.to_dict()
+	for quarter: int in range(4):
+		_rig().initial_yaw_degrees = 45.0 + quarter * 90.0
+		_rig().reset_view()
+		var far_cell: Vector2i = original + Vector2i(1, 0)
+		_click(_project(far_cell))
+		assert_eq(_mode().selected_item_id, item.id)
+		assert_eq(_mode().origin, original)
+		assert_eq(_mode().grab_offset, Vector2i(1, 0))
+		_main.call("update_build_pointer", _project(far_cell))
+		assert_eq(_mode().origin, original, "the held furniture stays still under its clicked far tile")
+		var cursor: Vector2i = far_cell + Vector2i(1, 1)
+		_main.call("update_build_pointer", _project(cursor))
+		assert_eq(_mode().origin, original + Vector2i(1, 1))
+		assert_eq(item.origin, original)
+		assert_true(_mode().current_check.ok)
+		_click(_project(cursor))
+		assert_eq(item.origin, original + Vector2i(1, 1))
+		assert_eq(_mode().state, BuildMode.State.IDLE)
+		assert_true(_main.call("shop_move", item.id, original, original_turns))
+	assert_eq(Economy.ledger.to_dict(), books)
 	assert_eq(_world().now, 0)
 
 
@@ -223,6 +251,35 @@ func test_native_catalogue_click_consumes_gui_input_and_starts_one_ghost_without
 	assert_eq(button.mouse_filter, Control.MOUSE_FILTER_STOP)
 
 
+func test_build_hints_match_available_actions_and_fit_content_or_small_viewport_scroll() -> void:
+	await _start()
+	assert_true(_main.call("set_build_active", true))
+	var label: Label = _main.get_node("HUD/BuildHints/Scroll/Text") as Label
+	var panel: PanelContainer = _main.get_node("HUD/BuildHints") as PanelContainer
+	var scroll: ScrollContainer = _main.get_node("HUD/BuildHints/Scroll") as ScrollContainer
+	await _frames(2)
+	assert_eq(label.text, "Esc Exit")
+	assert_true(panel.size.x < 700.0 and panel.size.y < 96.0, "one-line hints follow their content")
+	assert_true(_mode().begin_buy(&"chair", Vector2i(4, 9)))
+	assert_true(label.text.contains("R Rotate"))
+	assert_false(label.text.contains("Del Sell"))
+	assert_true(_mode().pick_up(_id(&"potted_plant")))
+	assert_true(label.text.contains("Del Sell"))
+	_mode().cancel()
+	assert_eq(label.text, "Esc Exit")
+	# Presenter-only long text tests the bounded scroll, without posing sim state.
+	_viewport.size = Vector2i(360, 100)
+	_main.get_node("HUD").call("set_build_state", true, true,
+		"A long placement explanation stays accessible in a small window. ".repeat(20), int(BuildMode.State.BUY))
+	await _frames(4)
+	var rect: Rect2 = panel.get_global_rect()
+	assert_true(rect.position.x >= 12.0 and rect.position.y >= 12.0)
+	assert_true(rect.end.x <= 348.5 and rect.end.y <= 88.5)
+	assert_true(scroll.get_v_scroll_bar().max_value > scroll.get_v_scroll_bar().page)
+	assert_false(label.text.contains("Del Sell"))
+	assert_eq(_world().now, 0)
+
+
 func test_forced_grid_preserves_both_preferences_and_rebinds_the_actual_new_floor() -> void:
 	await _start()
 	for preference: bool in [false, true]:
@@ -264,10 +321,9 @@ func test_forced_grid_preserves_both_preferences_and_rebinds_the_actual_new_floo
 	assert_eq(_rig().grid_material.get_shader_parameter("grid_visible"), false)
 
 
-func test_delete_uses_real_refund_and_shows_exactly_one_delta_including_zero() -> void:
+func test_delete_books_refund_once_and_preserves_upstream_zero_popup_policy() -> void:
 	await _start()
 	assert_true(_main.call("set_build_active", true))
-	_mode().refunded.connect(_record_refund)
 	var deltas: Control = _main.get_node("HUD/Deltas") as Control
 	var count: int = deltas.get_child_count()
 	var entries: int = Economy.ledger.entries_for_day(Clock.sim.day).size()
@@ -279,7 +335,6 @@ func test_delete_uses_real_refund_and_shows_exactly_one_delta_including_zero() -
 	assert_eq(Economy.ledger.entries_for_day(Clock.sim.day).size(), entries + 1)
 	assert_eq(deltas.get_child_count(), count + 1)
 	assert_eq((deltas.get_child(count) as Label).text, "+$7")
-	assert_eq(_refunds, [7] as Array[int])
 	_key(KEY_DELETE)
 	assert_eq(deltas.get_child_count(), count + 1)
 	assert_eq(Economy.ledger.entries_for_day(Clock.sim.day).size(), entries + 1)
@@ -304,14 +359,72 @@ func test_delete_uses_real_refund_and_shows_exactly_one_delta_including_zero() -
 	entries = Economy.ledger.entries_for_day(Clock.sim.day).size()
 	cash = Economy.cash
 	_click(_project(Vector2i(4, 9)))
-	_key(KEY_DELETE)
+	assert_eq(_mode().sell_selected(), 0)
 	assert_eq(Economy.cash, cash)
 	assert_eq(Economy.ledger.entries_for_day(Clock.sim.day).size(), entries + 1)
-	assert_eq(deltas.get_child_count(), count + 1)
-	assert_eq((deltas.get_child(count) as Label).text, "+$0")
-	assert_eq(_refunds, [7, 0] as Array[int])
+	assert_eq(deltas.get_child_count(), count, "upstream HUD ignores zero cash changes while the sale still succeeds")
+	assert_eq(_mode().state, BuildMode.State.IDLE)
+	assert_null(_world().grid.item_at(Vector2i(4, 9)))
 	_key(KEY_DELETE)
-	assert_eq(deltas.get_child_count(), count + 1)
+	assert_eq(deltas.get_child_count(), count)
+	assert_eq(Economy.ledger.entries_for_day(Clock.sim.day).size(), entries + 1)
+
+
+func test_native_menu_and_build_transitions_cancel_ghost_and_preserve_data_and_autosave() -> void:
+	await _start(true)
+	if _rig().grid_visible:
+		_rig().toggle_grid()
+	var menu: MenuPanel = _main.get_node("Overlay/MenuPanel") as MenuPanel
+	var catalogue: BuildCatalogue = _main.get_node("Overlay/BuildCatalogue") as BuildCatalogue
+	var saved_file: String = FileAccess.get_file_as_string(_save_dir.path_join(SLOT + ".json"))
+	var shop: Dictionary = _editor().to_dict()
+	var choices: Dictionary = (_main.get("menu_settings") as MenuSettings).to_dict()
+	var books: Dictionary = Economy.ledger.to_dict()
+	var stock: Dictionary = Economy.stock.to_dict()
+	var clock: Dictionary = Clock.sim.to_dict()
+	var rng_state: int = GameState.rng(&"customers").state
+	assert_true(_main.call("set_menu_visible", true))
+	assert_true(menu.visible)
+	var build_button: Button = _main.get_node("HUD/Top/Row/Build") as Button
+	var build_point: Vector2 = build_button.get_global_rect().get_center()
+	_viewport.push_input(_mouse_event(build_point, true), true)
+	_main.call("_process", 0.0)
+	_main.get_node("HUD").call("refresh")
+	await _frames(1)
+	_viewport.push_input(_mouse_event(build_point, false), true)
+	assert_true(_main.call("is_build_active"))
+	assert_false(menu.visible, "native Build entry closes Menu before world building")
+	assert_true(catalogue.visible)
+	assert_true(_rig().is_grid_forced())
+	assert_true(_main.call("begin_buy_item", &"chair"))
+	_main.call("update_build_pointer", _project(Vector2i(4, 9)))
+	assert_true(_mode().has_ghost())
+	assert_true(_mode().current_check.ok)
+	var menu_button: Button = _main.get_node("HUD/Top/Row/Menu") as Button
+	var menu_point: Vector2 = menu_button.get_global_rect().get_center()
+	_viewport.push_input(_mouse_event(menu_point, true), true)
+	_main.call("_process", 0.0)
+	_main.get_node("HUD").call("refresh")
+	await _frames(1)
+	_viewport.push_input(_mouse_event(menu_point, false), true)
+	assert_true(menu.visible, "native Menu opens after cancelling the held build preview")
+	assert_false(_main.call("is_build_active"))
+	assert_false(_mode().has_ghost())
+	assert_null(_preview().ghost_mesh)
+	assert_false(catalogue.visible)
+	assert_false(build_button.button_pressed)
+	assert_false(_rig().is_grid_forced())
+	assert_false(_rig().grid_visible)
+	assert_eq(_rig().grid_material.get_shader_parameter("grid_visible"), false)
+	assert_eq(_editor().to_dict(), shop)
+	assert_eq((_main.get("menu_settings") as MenuSettings).to_dict(), choices)
+	assert_eq(Economy.ledger.to_dict(), books)
+	assert_eq(Economy.stock.to_dict(), stock)
+	assert_eq(Clock.sim.to_dict(), clock)
+	assert_eq(GameState.rng(&"customers").state, rng_state)
+	assert_eq(FileAccess.get_file_as_string(_save_dir.path_join(SLOT + ".json")), saved_file)
+	_key(KEY_ESCAPE)
+	assert_false(menu.visible)
 
 
 func test_preview_warning_ids_match_proposal_actual_purchase_cancel_exit_and_fix() -> void:
@@ -334,7 +447,7 @@ func test_preview_warning_ids_match_proposal_actual_purchase_cancel_exit_and_fix
 	assert_true(_main.call("set_build_active", true))
 	assert_true(_mode().begin_buy(&"chair", Vector2i(1, 1)))
 	assert_false(_mode().current_check.ok)
-	assert_true((_main.get_node("HUD/BuildHints/Text") as Label).text.contains(_mode().current_check.why))
+	assert_true((_main.get_node("HUD/BuildHints/Scroll/Text") as Label).text.contains(_mode().current_check.why))
 	assert_eq(_preview().displayed_warning_ids(), _mode().committed_warning_ids)
 	_key(KEY_ESCAPE)
 	assert_true(_preview().displayed_warning_ids().has(id))
@@ -443,8 +556,6 @@ func _disable_frame_drivers() -> void:
 func _close_main() -> void:
 	if not is_instance_valid(_main):
 		return
-	if _mode().refunded.is_connected(_record_refund):
-		_mode().refunded.disconnect(_record_refund)
 	if _main.get_parent() != null:
 		_main.get_parent().remove_child(_main)
 	_main.free()
@@ -512,7 +623,3 @@ func _key_event(code: Key) -> InputEventKey:
 
 func _key(code: Key) -> void:
 	_main.call("_unhandled_input", _key_event(code))
-
-
-func _record_refund(amount: int, _origin: Vector2i) -> void:
-	_refunds.append(amount)

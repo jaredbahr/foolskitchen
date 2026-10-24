@@ -153,7 +153,7 @@ func test_valid_and_invalid_tints_are_private_and_reason_matches_editor() -> voi
 	var green: StandardMaterial3D = _preview.ghost_mesh.material_override as StandardMaterial3D
 	assert_true(green != material)
 	assert_true(green.albedo_color.g > green.albedo_color.r)
-	assert_almost_eq(green.albedo_color.a, 0.68)
+	assert_almost_eq(green.albedo_color.a, 0.92)
 	assert_eq(green.transparency, BaseMaterial3D.TRANSPARENCY_ALPHA)
 	assert_eq(_preview.invalid_reason(), "")
 	_mode.update_origin(Vector2i(-1, 0))
@@ -162,6 +162,7 @@ func test_valid_and_invalid_tints_are_private_and_reason_matches_editor() -> voi
 	assert_eq(_preview.invalid_reason(), check.why)
 	var red: StandardMaterial3D = _preview.ghost_mesh.material_override as StandardMaterial3D
 	assert_true(red.albedo_color.r > red.albedo_color.g)
+	assert_almost_eq(red.albedo_color.a, 0.68)
 	assert_true(red != material)
 	assert_eq(material.albedo_color, color)
 	assert_eq(_content.item(&"potted_plant").placeholder_color, color)

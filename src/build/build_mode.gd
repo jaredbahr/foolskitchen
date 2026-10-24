@@ -6,13 +6,13 @@ extends RefCounted
 enum State { INACTIVE, IDLE, MOVE, BUY }
 
 signal changed()
-signal refunded(amount: int, origin: Vector2i)
 
 var state: State = State.INACTIVE
 var selected_item_id: int = -1
 var selected_definition: ItemDef = null
 var origin: Vector2i = Vector2i.ZERO
 var quarter_turns: int = 0
+var grab_offset: Vector2i = Vector2i.ZERO
 var current_check: EditCheck = EditCheck.new()
 var committed_warning_ids: Array[int] = []
 
@@ -95,6 +95,15 @@ func has_ghost() -> bool:
 ## A valid item may still start a red ghost (for example a held reservation).
 ## The return value means selection started, not that placement is allowed.
 func pick_up(item_id: int) -> bool:
+	return _pick_up(item_id, Vector2i.ZERO, false)
+
+
+## Keep the clicked tile under the pointer instead of jumping to the origin.
+func pick_up_at(item_id: int, clicked_cell: Vector2i) -> bool:
+	return _pick_up(item_id, clicked_cell, true)
+
+
+func _pick_up(item_id: int, clicked_cell: Vector2i, keep_offset: bool) -> bool:
 	if not _can_interact():
 		return false
 	var placed: PlacedItem = _grid.item(item_id)
@@ -102,10 +111,15 @@ func pick_up(item_id: int) -> bool:
 		current_check = EditCheck.new(false, "That item is no longer in the shop")
 		changed.emit()
 		return false
+	if keep_offset and not placed.cells.has(clicked_cell):
+		current_check = EditCheck.new(false, "Pick an occupied tile of this item")
+		changed.emit()
+		return false
 	state = State.MOVE
 	selected_item_id = item_id
 	selected_definition = placed.def as ItemDef
 	origin = placed.origin
+	grab_offset = clicked_cell - placed.origin if keep_offset else Vector2i.ZERO
 	quarter_turns = posmod(placed.quarter_turns, 4)
 	_recheck_ghost()
 	changed.emit()
@@ -124,6 +138,7 @@ func begin_buy(def_id: StringName, cell: Vector2i) -> bool:
 	selected_item_id = -1
 	selected_definition = definition
 	origin = cell
+	grab_offset = Vector2i.ZERO
 	quarter_turns = 0
 	_recheck_ghost()
 	changed.emit()
@@ -131,9 +146,12 @@ func begin_buy(def_id: StringName, cell: Vector2i) -> bool:
 
 
 func update_origin(cell: Vector2i) -> void:
-	if not _can_interact() or not has_ghost() or (origin == cell and not _topology_dirty):
+	if not _can_interact() or not has_ghost():
 		return
-	origin = cell
+	var proposal: Vector2i = cell - grab_offset if state == State.MOVE else cell
+	if origin == proposal and not _topology_dirty:
+		return
+	origin = proposal
 	if _topology_dirty:
 		_refresh_committed()
 	_recheck_ghost()
@@ -169,7 +187,7 @@ func commit() -> bool:
 	return accepted
 
 
-## -1 is refusal; zero is a successful sale and emits the refund signal too.
+## -1 is refusal; zero is a successful sale. The session owns cash feedback.
 func sell_selected() -> int:
 	if not _can_interact() or state != State.MOVE:
 		return -1
@@ -177,16 +195,12 @@ func sell_selected() -> int:
 	if not current_check.ok:
 		changed.emit()
 		return -1
-	var placed: PlacedItem = _grid.item(selected_item_id)
-	var sold_origin: Vector2i = placed.origin
 	var previous_check: EditCheck = _editor.last_check
 	_committing = true
 	var answer: Variant = _sell_command.call(selected_item_id)
 	var amount: int = answer if answer is int else -1
 	var accepted: bool = amount >= 0
 	_finish_command(accepted, previous_check, "The sale was refused; try again")
-	if accepted:
-		refunded.emit(amount, sold_origin)
 	return amount if accepted else -1
 
 
@@ -227,7 +241,7 @@ func warning_ids() -> Array[int]:
 func presentation_state() -> Dictionary:
 	return {"state": state, "active": is_active(), "has_ghost": has_ghost(),
 		"item_id": selected_item_id, "definition": selected_definition,
-		"origin": origin, "quarter_turns": quarter_turns,
+		"origin": origin, "quarter_turns": quarter_turns, "grab_offset": grab_offset,
 		"check_ok": current_check.ok, "why": current_check.why,
 		"unreachable": current_check.unreachable.duplicate(),
 		"committed_warning_ids": committed_warning_ids.duplicate(), "warning_ids": warning_ids()}
@@ -273,6 +287,7 @@ func _clear_ghost(next_state: State) -> void:
 	selected_item_id = -1
 	selected_definition = null
 	origin = Vector2i.ZERO
+	grab_offset = Vector2i.ZERO
 	quarter_turns = 0
 	current_check = EditCheck.new(true)
 

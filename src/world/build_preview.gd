@@ -6,6 +6,8 @@ signal reason_changed(reason: String)
 
 const VALID_COLOR: Color = Color("6caa7b")
 const INVALID_COLOR: Color = Color("ce6958")
+const VALID_ALPHA: float = 0.92
+const INVALID_ALPHA: float = 0.68
 const WORK_COLOR: Color = Color("579fa8")
 const SEAT_COLOR: Color = Color("ddbd70")
 const OUTLINE_WIDTH: float = 0.025
@@ -243,7 +245,7 @@ func _build_ghost(definition: ItemDef, origin: Vector2i, turns: int, valid: bool
 	var size: Vector3 = Vector3(definition.footprint.x * GridMath.CELL_SIZE, height,
 		definition.footprint.y * GridMath.CELL_SIZE)
 	var tint: Color = definition.placeholder_color.lerp(VALID_COLOR if valid else INVALID_COLOR, 0.8)
-	tint.a = 0.68
+	tint.a = VALID_ALPHA if valid else INVALID_ALPHA
 	ghost_mesh = _box(size, _material(tint, true))
 	ghost_mesh.name = "Furniture"
 	var footprint: Vector2i = GridMath.rotated_footprint(definition.footprint, turns)

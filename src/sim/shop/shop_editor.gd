@@ -233,12 +233,26 @@ func _check_placement(definition: ItemDef, origin: Vector2i, turns: int, exclude
 		return EditCheck.new(false, "The current shop has invalid placements")
 	var result: SimGrid.PlaceResult = preview.can_place(definition.footprint, origin, turns)
 	if result != SimGrid.PlaceResult.OK:
-		return EditCheck.new(false, "Cannot place item: %s" % SimGrid.PlaceResult.keys()[result])
+		return EditCheck.new(false, placement_reason(result))
 	var placed: PlacedItem = preview.place_def(definition, origin, turns)
 	ids[placed.id] = result_id
 	var check: EditCheck = EditCheck.new(true)
 	check.unreachable = _unreachable(preview, ids)
 	return check
+
+
+## One presentation mapping for every geometric placement result.
+static func placement_reason(result: SimGrid.PlaceResult) -> String:
+	match result:
+		SimGrid.PlaceResult.OK:
+			return ""
+		SimGrid.PlaceResult.OUT_OF_BOUNDS:
+			return "Outside the shop"
+		SimGrid.PlaceResult.NOT_FLOOR:
+			return "Must be placed on the floor"
+		SimGrid.PlaceResult.OVERLAPS:
+			return "Something is in the way"
+	return "Cannot place this item here"
 
 
 func _preview_without(exclude_id: int, ids: Dictionary[int, int]) -> SimGrid:
