@@ -288,7 +288,7 @@ func test_closing_preserves_paid_guest_accounting() -> void:
 	assert_eq(_sim.world.clock.phase, SimClock.Phase.LAST_ORDERS)
 	_sim.advance()
 	assert_eq(_sim.world.clock.phase, SimClock.Phase.CLOSED)
-	assert_eq(_left.get(guest.id, &""), &"closing")
+	assert_eq(_left.get(guest.id, &""), &"happy", "a paid guest walking out at closing is not relabelled")
 	assert_eq(_paid.size(), 1)
 	assert_eq(_sim.served_today, 1)
 	assert_eq(_sim.lost_today, 0)
@@ -440,7 +440,7 @@ func test_three_day_imperfect_kitchen_soak() -> void:
 
 func _create(seed: int) -> RestaurantSim:
 	var errors: Array[String] = []
-	var sim: RestaurantSim = RestaurantSim.create(load(LAYOUT) as ShopLayout, _content, seed, errors)
+	var sim: RestaurantSim = RestaurantSim.create(load(LAYOUT) as ShopLayout, _content, seed, errors, null, false)
 	assert_eq(errors, [] as Array[String])
 	sim.customer_arrived.connect(_on_arrived)
 	sim.customer_paid.connect(_on_paid)
@@ -531,3 +531,10 @@ func _on_delivered(_order: Order) -> void:
 
 func _on_cancelled(_order: Order) -> void:
 	_cancelled += 1
+
+
+func test_internal_kitchen_reasons_become_one_player_reason() -> void:
+	for raw: StringName in [&"dropped_too_often", &"step_failed", &"unreachable", &"missing_station", &"target_gone", &""]:
+		assert_eq(CustomerAgent.player_reason(raw), &"kitchen_failed", String(raw))
+	for kept: StringName in [&"out_of_stock", &"waited_too_long", &"closing", &"no_table"]:
+		assert_eq(CustomerAgent.player_reason(kept), kept)

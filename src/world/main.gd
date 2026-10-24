@@ -32,8 +32,8 @@ var _skip_next_autosave: bool = false
 var _report: Control
 
 
-## Builds the restaurant and the read-only view. Safe before tree readiness and
-## without touching the Clock, Economy or SaveSystem autoloads.
+## Builds the restaurant and the read-only view. Safe before tree readiness.
+## HUD binding reads Clock/Economy; session and save registration wait for start().
 func initialize() -> void:
 	if sim != null:
 		return
@@ -98,6 +98,8 @@ func start() -> void:
 		_skip_next_autosave = use_saves and SaveSystem.list_slots().has(save_slot)
 		_new_game()
 	sim.use_rng(GameState.rng(&"customers"))
+	sim.spawner.min_gap = TUNING.arrival_gap_min
+	sim.spawner.max_gap = TUNING.arrival_gap_max
 	_begin_morning()
 
 

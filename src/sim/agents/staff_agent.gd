@@ -148,6 +148,16 @@ func _run_go_to_item(world: SimWorld, s: TaskStep) -> void:
 		# two workers can never hold each other's stations (deadlock).
 		_release_held(world)
 		var target := world.grid.free_seat_cell(it) if s.use_seat else world.grid.free_work_cell(it)
+		if s.work_cell_index >= 0:
+			if s.work_cell_index >= it.work_cells.size():
+				_drop(world, &"invalid_work_cell")
+				return
+			target = it.work_cells[s.work_cell_index]
+			if not world.grid.is_walkable(target):
+				_drop(world, &"unreachable")
+				return
+			if it.reserved_by(target) != -1:
+				target = SimGrid.NO_CELL
 		if target == SimGrid.NO_CELL:
 			_waiting_for = s.label if not s.label.is_empty() else "a free spot"
 			last_progress_tick = world.now

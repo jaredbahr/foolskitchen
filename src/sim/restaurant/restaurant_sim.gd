@@ -11,21 +11,29 @@ signal service_closed(day: int)
 
 var world: SimWorld
 var orders: OrderBook = OrderBook.new()
-## Ingredient stock the kitchen takes from. The game session points this at
-## Economy.stock; tests can use their own.
-var stock: Stock = Stock.new()
 var menu: Array[RecipeDef] = []
+## Ingredient stock shared with the game session. Replacing it also updates
+## the live kitchen; direct construction retains an empty default inventory.
+var stock: Stock = Stock.new():
+	set(value):
+		stock = value if value != null else Stock.new()
+		if kitchen != null:
+			kitchen.stock = stock
+var kitchen: Kitchen
 var spawner: CustomerSpawner
 var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var served_today: int = 0
 var lost_today: int = 0
 var leave_reasons_today: Dictionary[StringName, int] = {}
+## Where each staff role starts the day (from the layout).
+var staff_spawns: Dictionary[StringName, Vector2i] = {}
 
 var _departed: Dictionary[int, bool] = {}
 
 
 ## Builds the layout, its starting staff, and its tier-one menu.
-static func create(layout: ShopLayout, content: ContentDB, seed: int, errors: Array[String]) -> RestaurantSim:
+static func create(layout: ShopLayout, content: ContentDB, seed: int, errors: Array[String],
+		stock: Stock = null, with_kitchen: bool = true) -> RestaurantSim:
 	var sim: RestaurantSim = RestaurantSim.new()
 	sim.world = ShopBuilder.build(layout, content, errors)
 	sim.rng.seed = seed
@@ -34,12 +42,16 @@ static func create(layout: ShopLayout, content: ContentDB, seed: int, errors: Ar
 		if not layout.staff_spawns.has(role):
 			errors.append("%s: missing %s spawn" % [layout.id, role])
 			continue
+		sim.staff_spawns[role] = layout.staff_spawns[role]
 		var staff: StaffAgent = StaffAgent.new(role)
 		staff.cell = layout.staff_spawns[role]
 		sim.world.add_agent(staff)
 	for recipe: RecipeDef in content.recipes():
 		if recipe.unlock_tier == 1:
 			sim.menu.append(recipe)
+	sim.stock = stock if stock != null else Stock.new()
+	if with_kitchen:
+		sim.kitchen = Kitchen.new(sim, content, sim.stock)
 	sim.start_day()
 	return sim
 
@@ -51,17 +63,35 @@ func start_day() -> void:
 	leave_reasons_today.clear()
 	_departed.clear()
 	orders.prune_finished()
+	if kitchen != null:
+		kitchen.tidy_overnight()
+	_staff_to_posts()
 	spawner.reset()
+
+
+## Each morning staff start at their posts, with nothing in hand.
+func _staff_to_posts() -> void:
+	for agent: SimAgent in world.agents:
+		if staff_spawns.has(agent.role) and agent is StaffAgent:
+			var staff := agent as StaffAgent
+			if staff.task != null:
+				staff.on_removed(world)
+			staff.cell = staff_spawns[agent.role]
+			staff.clear_path()
 
 
 ## One fixed world tick, arrivals, then departed-guest cleanup.
 func advance() -> void:
 	var was_closed: bool = world.clock.phase == SimClock.Phase.CLOSED
 	world.advance()
+	if kitchen != null:
+		kitchen.advance()
 	spawner.advance(self)
 	for customer: CustomerAgent in customers():
 		if world.clock.phase == SimClock.Phase.CLOSED:
-			customer.leave_reason = &"closing"
+			# Guests who already paid are walking out happy; don't relabel them.
+			if not customer.paid:
+				customer.leave_reason = &"closing"
 		elif customer.state != CustomerAgent.State.LEFT:
 			continue
 		world.remove_agent(customer)

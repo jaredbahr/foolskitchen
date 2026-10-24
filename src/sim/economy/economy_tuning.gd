@@ -12,3 +12,7 @@ extends Resource
 ## Each morning the fridge is topped up to this many units per ingredient,
 ## paid at the ingredient's unit cost (a Phase 1 stand-in for the market screen).
 @export var morning_stock: Dictionary[StringName, int] = {}
+
+## Ticks between guest arrivals while open (uniform in [min, max]).
+@export var arrival_gap_min: int = 100
+@export var arrival_gap_max: int = 260

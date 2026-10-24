@@ -77,6 +77,7 @@ docs/
   - `TaskStep`:
     - `go_to_item(item_id, label, seat)` reserves a free work cell (or seat) and walks there.
     - `go_to_cell(cell, label)`.
+    - `go_to_work_cell(item_id, index, label)` is an exact rotated work-cell selector (used for the two pass sides). It retains GO_TO_ITEM reservation, busy wait, removal, repath and timeout handling. `work_cell_index = -1` preserves legacy first-free-cell selection.
     - `work(ticks, label, on_done)`. `on_done(agent) -> bool`; false cancels the task with `step_failed`.
   - `SimAgent` (movement base, which customers will extend): `cell`, `path`, `path_index`, `move_progress` (0–1 toward `next_cell()`, which the world view lerps), `set_destination`, `step_move`, `why()`.
   - `StaffAgent(role, skill)`:
@@ -102,7 +103,7 @@ docs/
     - street entry at (6,11) and (7,11).
 - **Customers and orders (FK-014, `src/sim/restaurant/`):**
   - `RestaurantSim.create(layout, content, seed, errors)` owns `world`, `orders`, the tier-one `menu`, and a seeded `spawner`. It adds a cook and server from the layout spawns.
-  - `start_day()` resets `served_today`, `lost_today`, `leave_reasons_today` and the arrival countdown, clears departure tracking and prunes finished orders; open the world's clock separately. `advance()` runs one world tick, then arrivals and departure cleanup; empty last orders closes the clock. At the CLOSED deadline all remaining guests are removed and recorded that day as `closing`.
+  - `start_day()` resets `served_today`, `lost_today`, `leave_reasons_today` and the arrival countdown, clears departure tracking, prunes finished orders, runs the overnight tidy (`Kitchen.tidy_overnight()`) and puts every staff member back at its layout spawn with no task; open the world's clock separately. `advance()` runs one world tick, then arrivals and departure cleanup; empty last orders closes the clock. At the CLOSED deadline all remaining guests are removed and recorded that day as `closing`.
   - Final closing counters are ready when `advance()` returns; raw clock phase signals can precede its cleanup sweep.
   - Signals: `customer_arrived(customer)`, `customer_paid(customer, order, amount)`, `customer_left(customer, reason)`. Payment is emitted once at the captured recipe price; there is no economy dependency.
   - `CustomerAgent` extends `SimAgent`: `state`, `table_item_id`, `seat_cell`, `order`, `leave_reason`, `paid`, and `why()`. Reachable seats are reserved in placement order and released on leaving or removal. Failed seat paths or a 200-tick seat walk release the reservation and retry within the bounded queue budget. A server takes each order through ordinary `TaskStep`s.
@@ -111,6 +112,14 @@ docs/
   - `CustomerSpawner` draws uniform `min_gap`..`max_gap` (150..400 ticks) only during OPEN; street choice and each guest's private seed come from its injected RNG.
   - `SimGrid.walkable_neighbours(cell)` returns cardinal then diagonal neighbours in fixed order, without corner cutting. The server uses the nearest neighbour of the reserved seat.
   - `tests/sim/test_customers.gd` includes a three-day seeded fake-kitchen soak with random delays and missing deliveries; it prints arrivals, payments and losses by reason.
+- **Kitchen line (FK-015, `src/sim/restaurant/kitchen.gd`):**
+  - `RestaurantSim.create(..., stock = null, with_kitchen = true)` creates the real `Kitchen` by default; omitted stock means an empty `Stock`, never free supplies. `sim.stock` is shared with the kitchen; replacing that public property immediately propagates the new inventory to the live kitchen. Customer-only regression fixtures explicitly pass `null, false` and install their fake kitchen when needed.
+  - Cook tasks fetch ingredients at the fridge, perform the recipe's station steps, and plate at pass `work_cells[0]` (kitchen side). `ingredients_taken` in task payload prevents double consumption after a dropped/restarted task; a shortage cancels the ticket and guest visit with `out_of_stock`.
+  - There is no task-claimed signal. `Kitchen.advance()` examines only its tracked active cook tasks after the world tick, publishing COOKING on the claim tick before `RestaurantSim.advance()` returns. READY is emitted on cook completion.
+  - Priority-3 delivery tasks reserve pass `work_cells[1]` (dining side), explicitly release it on pickup, walk to a reachable seat neighbour, then serve. They do not hold the pass while walking to the guest.
+  - `Order.quality` is `clamp(base_quality * (0.7 + 0.1 * cook_skill) + station_bonuses, 0, 1)` with skill clamped 1..5 (factor 0.8..1.2). Each distinct recipe station contributes its bonus once. `Order.cancellation_reason` is set by the optional reason argument to `OrderBook.set_state` and is preserved by guest departure.
+  - `Kitchen.mark_table_dirty(id)` runs before an occupied seat is released (also on forced/external removal); failed seat walks do not dirty a table. Customers skip `is_table_dirty(id)` tables. A real priority-1 server task reserves a free table seat and works 40 units before removing the dirty hold. Terminal bus failures keep the flag and log a reason;   - CLOSED immediately removes guests, terminalizes their tickets and cancels their cook/deliver tasks. Real bussing may continue while the evening report is open. Each morning `start_day()` runs the overnight tidy (decision on #45): staff clean up after hours, so every dirty table is cleared, any leftover kitchen task is cancelled (`overnight_tidy`) and staff start at their posts. This is a deliberate rule, not a hidden failure: unfinished work never spills into the next day.ions and `Kitchen.is_clean()`. `start_day()` never clears dirty tables to conceal unfinished work.
+  - The current playable `Clock` driver stops at CLOSED and does not yet drive this cleanup interval; future restaurant/world integration must do so. `RestaurantSim.advance()` remains exactly one world tick per call, with no internal drain loop.
 - **Debug overlay (F3):** paths, claimed tasks, agent states and the task board, from Phase 1 onward.
 
 ### 2.3b Game session (FK-024, `src/world/main.gd`)
