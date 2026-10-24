@@ -37,6 +37,7 @@ size_flags_horizontal = 3
 
 [node name="Speed0" type="Button" parent="Top/Row"]
 layout_mode = 2
+theme = ExtResource("2_theme")
 focus_mode = 0
 toggle_mode = true
 button_group = SubResource("Speeds")
@@ -45,6 +46,7 @@ tooltip_text = "Pause (Space)"
 
 [node name="Speed1" type="Button" parent="Top/Row"]
 layout_mode = 2
+theme = ExtResource("2_theme")
 focus_mode = 0
 toggle_mode = true
 button_group = SubResource("Speeds")
@@ -53,6 +55,7 @@ tooltip_text = "1× speed (1)"
 
 [node name="Speed2" type="Button" parent="Top/Row"]
 layout_mode = 2
+theme = ExtResource("2_theme")
 focus_mode = 0
 toggle_mode = true
 button_group = SubResource("Speeds")
@@ -61,6 +64,7 @@ tooltip_text = "2× speed (2)"
 
 [node name="Speed4" type="Button" parent="Top/Row"]
 layout_mode = 2
+theme = ExtResource("2_theme")
 focus_mode = 0
 toggle_mode = true
 button_group = SubResource("Speeds")

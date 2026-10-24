@@ -132,6 +132,7 @@ func test_cash_events_create_separate_signed_colored_deltas() -> void:
 
 
 func test_every_speed_change_has_exactly_one_pressed_button_using_shared_styles() -> void:
+	var shared_theme: Theme = load("res://src/ui/theme/main_theme.tres") as Theme
 	for speed: int in [0, 1, 2, 4, 2, 0]:
 		Clock.set_speed(speed)
 		var pressed: int = 0
@@ -142,12 +143,19 @@ func test_every_speed_change_has_exactly_one_pressed_button_using_shared_styles(
 			assert_eq(button.button_pressed, value == speed)
 			assert_false(button.has_theme_color_override("font_color"))
 			assert_false(button.has_theme_color_override("font_pressed_color"))
-			var normal: StyleBoxFlat = button.get_theme_stylebox("normal") as StyleBoxFlat
-			var active: StyleBoxFlat = button.get_theme_stylebox("pressed") as StyleBoxFlat
+			assert_false(button.has_theme_stylebox_override("normal"))
+			assert_false(button.has_theme_stylebox_override("pressed"))
+			assert_eq(button.theme, shared_theme, "each button uses the same resource, not inline styles")
+			# The runner executes before tree readiness, when Control's inherited
+			# theme cache can still hold constructor defaults. Inspect the actual
+			# assigned Theme resource; entered/rendered controls refresh that cache.
+			var normal: StyleBoxFlat = button.theme.get_stylebox("normal", "Button") as StyleBoxFlat
+			var active: StyleBoxFlat = button.theme.get_stylebox("pressed", "Button") as StyleBoxFlat
 			assert_true(normal != active)
 			assert_eq(normal.border_width_left, 2)
 			assert_true(active.bg_color != normal.bg_color)
-			assert_true(button.get_theme_color("font_pressed_color") != button.get_theme_color("font_color"))
+			assert_true(button.theme.get_color("font_color", "Button").is_equal_approx(Color("3B2A20")))
+			assert_true(button.theme.get_color("font_pressed_color", "Button").is_equal_approx(Color("F3E6CC")))
 		assert_eq(pressed, 1)
 
 
