@@ -40,7 +40,7 @@ func test_tier_one_exact_cutaway_sets_at_every_camera_quarter() -> void:
 		for node: Node in _view.get_node("Walls").get_children():
 			var wall: MeshInstance3D = node as MeshInstance3D
 			var cell: Vector2i = wall.get_meta("wall_cell")
-			var height: float = 0.35 if expected.has(cell) else 2.4
+			var height: float = ShopView.LOWERED_HEIGHT if expected.has(cell) else ArtScale.WALL_HEIGHT
 			assert_almost_eq((wall.mesh as BoxMesh).size.y, height)
 			assert_almost_eq(wall.position.y, height * 0.5)
 		assert_true(expected.has(Vector2i(3, 4)), "kitchen divider lowers in front of kitchen")
@@ -64,7 +64,7 @@ func test_street_entry_cells_alone_do_not_lower_a_wall() -> void:
 	_view.show_world(SimWorld.new(grid))
 	var wall: MeshInstance3D = _view.get_node("Walls").get_child(0) as MeshInstance3D
 	assert_true(_view.lowered_wall_cells().is_empty(), "street entries at both ray distances are not room floor")
-	assert_almost_eq((wall.mesh as BoxMesh).size.y, 2.4)
+	assert_almost_eq((wall.mesh as BoxMesh).size.y, ArtScale.WALL_HEIGHT)
 	assert_not_null(_view.floor_mesh.mesh, "street entries remain rendered")
 	grid.set_terrain(Vector2i(1, 1), SimGrid.Terrain.FLOOR)
 	assert_eq(_view.lowered_wall_cells(), [Vector2i(2, 2)] as Array[Vector2i])
