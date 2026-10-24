@@ -1,5 +1,5 @@
 extends TestCase
-## Startup-only shop checkpoints, failed-save protection and edit-save boundaries.
+## One staged shop provider; existing morning saves and failed-load behavior.
 
 const MAIN: PackedScene = preload("res://src/world/main.tscn")
 const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
@@ -28,20 +28,17 @@ func after_each() -> void:
 	GameState.new_run(1)
 
 
-func test_morning_edits_save_once_and_reload_items_books_and_reduced_stock() -> void:
+func test_morning_items_and_books_round_trip_through_the_shop_provider() -> void:
 	var first: Node = _start()
-	var used: Dictionary[StringName, int] = {&"bun": 1}
-	assert_true(Economy.stock.take_many(used))
+	var original_file: String = FileAccess.get_file_as_string(_path())
 	var price: int = (first.get("content") as ContentDB).item(&"chair").price
 	var before_cash: int = Economy.cash
 	assert_true(first.call("shop_buy", &"chair", Vector2i(4, 9)))
 	assert_eq(Economy.cash, before_cash - price)
-	var backup: Dictionary = _document(true)
-	assert_eq((backup["data"]["shop"]["items"] as Array).size(), 8, "one save after the purchase, not two")
 	assert_true(first.call("shop_move", _id(first, &"potted_plant"), Vector2i(11, 9), 1))
-	backup = _document(true)
-	var old_plant: Dictionary = _saved_item(backup["data"]["shop"], "potted_plant")
-	assert_eq(old_plant["origin"], [12.0, 9.0], "the move produces one new checkpoint")
+	assert_eq(FileAccess.get_file_as_string(_path()), original_file, "edits do not introduce another autosave boundary")
+	assert_eq(SaveSystem.save_game(SLOT), OK)  # An explicit MORNING save.
+	assert_false(_document()["data"].has("shop_session"))
 	var snapshot: Dictionary = (first.get("shop_editor") as ShopEditor).to_dict()
 	var books: Dictionary = Economy.ledger.to_dict()
 	var stock: Dictionary = Economy.stock.to_dict()
@@ -50,25 +47,23 @@ func test_morning_edits_save_once_and_reload_items_books_and_reduced_stock() -> 
 	GameState.new_run(42)
 	var second: Node = _start()
 	assert_eq((second.get("shop_editor") as ShopEditor).to_dict(), snapshot)
-	assert_eq(Economy.ledger.to_dict(), books, "loading does not replay purchases or restock")
+	assert_eq(Economy.ledger.to_dict(), books, "a full saved fridge needs no new purchase")
 	assert_eq(Economy.stock.to_dict(), stock)
-	assert_eq(Economy.stock.count(&"bun"), TUNING.morning_stock[&"bun"] - 1)
 	_assert_bindings(second)
 	var world: SimWorld = second.get("world")
 	var extra: StaffAgent = StaffAgent.new(&"server")
 	world.add_agent(extra)
-	assert_true(second.call("select_agent", extra.id), "inspector binds the installed world, not the initial placeholder")
+	assert_true(second.call("select_agent", extra.id), "inspector binds the restored world")
 
 
 func test_old_morning_save_without_shop_uses_original_layout() -> void:
 	var first: Node = _start()
 	assert_true(first.call("shop_move", _id(first, &"potted_plant"), Vector2i(11, 9), 2))
+	assert_eq(SaveSystem.save_game(SLOT), OK)
 	var document: Dictionary = _document()
 	document["data"].erase("shop")
-	document["data"].erase("shop_session")
 	_write_document(document)
 	_remove_backup()
-	var original_file: String = FileAccess.get_file_as_string(_path())
 	var cash: int = Economy.cash
 	_close(first)
 	var second: Node = _start()
@@ -76,11 +71,11 @@ func test_old_morning_save_without_shop_uses_original_layout() -> void:
 	assert_eq(plant.origin, Vector2i(12, 9))
 	assert_eq(plant.quarter_turns, 0)
 	assert_eq(Economy.cash, cash)
-	assert_eq(FileAccess.get_file_as_string(_path()), original_file, "startup resume does not rewrite the legacy checkpoint")
-	assert_false(second.get("shop_save_blocked"))
+	assert_true(_document()["data"].has("shop"), "normal morning autosave upgrades the old save")
+	_assert_bindings(second)
 
 
-func test_invalid_shop_starts_clean_and_protects_slot_from_later_edit_saves() -> void:
+func test_invalid_shop_starts_fresh_skips_one_save_then_autosaves_next_morning() -> void:
 	var first: Node = _start()
 	var document: Dictionary = _document()
 	document["data"]["clock"]["day"] = 9
@@ -92,79 +87,54 @@ func test_invalid_shop_starts_clean_and_protects_slot_from_later_edit_saves() ->
 	var second: Node = _start()
 	assert_eq(Clock.sim.day, 1)
 	assert_eq(Clock.sim.phase, SimClock.Phase.MORNING)
-	assert_true(second.get("shop_save_blocked"))
 	assert_eq((second.get("world") as SimWorld).grid.item(_id(second, &"potted_plant")).origin, Vector2i(12, 9))
 	assert_eq(Economy.cash, TUNING.starting_cash - _stock_cost(second))
+	assert_eq(FileAccess.get_file_as_string(_path()), broken, "only the first autosave is skipped")
+	assert_true(second.call("shop_buy", &"chair", Vector2i(4, 9)))
+	assert_eq(FileAccess.get_file_as_string(_path()), broken, "editing does not write a save")
 	_assert_bindings(second)
-	assert_true(second.call("shop_buy", &"chair", Vector2i(4, 9)), "an edit stays usable even when its slot is protected")
-	assert_eq(second.get("last_shop_save_error"), ERR_UNAVAILABLE)
-	assert_eq(second.call("save_shop_changes"), ERR_UNAVAILABLE)
-	assert_eq(FileAccess.get_file_as_string(_path()), broken)
-	# The protection survives a later automatic morning save boundary as well.
 	Clock.sim.phase = SimClock.Phase.CLOSED
-	Clock.sim.next_day()
-	assert_true(second.get("shop_save_blocked"))
-	assert_eq(FileAccess.get_file_as_string(_path()), broken)
+	assert_true(Clock.sim.next_day())
+	assert_eq(int(_document()["data"]["clock"]["day"]), 2)
+	assert_eq((_document()["data"]["shop"]["items"] as Array).size(), 9, "later normal autosaves resume")
 
 
-func test_old_closed_save_without_new_checkpoint_remains_unsupported() -> void:
+func test_non_morning_save_is_rejected_without_rebuilding_its_items() -> void:
 	var first: Node = _start()
+	assert_true(first.call("shop_move", _id(first, &"potted_plant"), Vector2i(11, 9), 2))
+	assert_eq(SaveSystem.save_game(SLOT), OK)
 	var document: Dictionary = _document()
 	document["data"]["clock"]["phase"] = SimClock.Phase.CLOSED
-	document["data"].erase("shop_session")
 	_write_document(document)
 	_remove_backup()
 	var broken: String = FileAccess.get_file_as_string(_path())
 	_close(first)
 	var second: Node = _start()
-	assert_true(second.get("shop_save_blocked"))
 	assert_eq(Clock.sim.phase, SimClock.Phase.MORNING)
-	assert_eq(FileAccess.get_file_as_string(_path()), broken)
-
-
-func test_provider_failure_resets_partial_core_state_and_protects_the_slot() -> void:
-	var first: Node = _start()
-	var document: Dictionary = _document()
-	document["data"]["clock"]["day"] = 7
-	document["data"]["shop_session"]["day"] = 7
-	document["data"]["game_state"]["master_seed"] = "123456"
-	document["data"]["economy"] = {"ledger": false, "stock": {}}
-	_write_document(document)
-	_remove_backup()
-	var broken: String = FileAccess.get_file_as_string(_path())
-	_close(first)
-	var second: Node = _start()
-	assert_true(second.get("shop_save_blocked"))
-	assert_eq(Clock.sim.day, 1)
-	assert_ne(GameState.master_seed, 123456)
-	assert_eq(Economy.cash, TUNING.starting_cash - _stock_cost(second))
-	assert_eq(FileAccess.get_file_as_string(_path()), broken)
-	_assert_bindings(second)
-
-
-func test_invalid_shop_primary_recovers_backup_and_later_edit_keeps_that_backup() -> void:
-	var first: Node = _start()
-	assert_true(first.call("shop_move", _id(first, &"potted_plant"), Vector2i(11, 9), 1))
-	var good_backup: String = FileAccess.get_file_as_string(_path() + ".bak")
-	var document: Dictionary = _document()
-	document["data"]["shop"]["items"][0]["def_id"] = "missing_item"
-	_write_document(document)
-	_close(first)
-	var second: Node = _start()
-	assert_false(second.get("shop_save_blocked"))
 	assert_eq((second.get("world") as SimWorld).grid.item(_id(second, &"potted_plant")).origin, Vector2i(12, 9))
-	assert_true(second.call("shop_move", _id(second, &"potted_plant"), Vector2i(10, 9), 2))
-	assert_eq(second.get("last_shop_save_error"), OK)
-	assert_eq(FileAccess.get_file_as_string(_path() + ".bak"), good_backup)
+	assert_eq(FileAccess.get_file_as_string(_path()), broken)
+
+
+func test_restore_callback_only_stages_a_decoded_layout() -> void:
+	var main: Node = _start(false)
+	var editor: ShopEditor = main.get("shop_editor")
+	var before: Dictionary = editor.to_dict()
+	var saved: Dictionary = before.duplicate(true)
+	var plant: Dictionary = _saved_item(saved, "potted_plant")
+	plant["origin"] = [11, 9]
+	var world: SimWorld = main.get("world")
+	assert_true(main.call("_restore_shop", saved))
+	assert_true(main.get("world") == world)
+	assert_eq(editor.to_dict(), before, "provider decoding does not replace or edit the live grid")
 
 
 func test_saved_furniture_on_staff_spawn_loads_and_staff_can_escape() -> void:
 	var first: Node = _start()
 	var spawn: Vector2i = LAYOUT.staff_spawns[&"server"]
 	assert_true(first.call("shop_buy", &"potted_plant", spawn))
+	assert_eq(SaveSystem.save_game(SLOT), OK)
 	_close(first)
 	var second: Node = _start()
-	assert_false(second.get("shop_save_blocked"))
 	var world: SimWorld = second.get("world")
 	assert_false(world.grid.is_walkable(spawn))
 	var server: SimAgent = world.agents[1]
@@ -178,129 +148,42 @@ func test_saved_furniture_on_staff_spawn_loads_and_staff_can_escape() -> void:
 	assert_true(server.has_arrived())
 
 
-func test_closed_edit_restores_report_and_costs_without_replaying_closing() -> void:
+func test_loaded_morning_keeps_the_existing_restock_and_autosave_policy() -> void:
 	var first: Node = _start()
-	_run_day(first)
-	var served: int = (first.get("sim") as RestaurantSim).served_today
-	assert_true(served > 0, "the real kitchen served meals")
-	assert_eq(first.call("shop_sell", _id(first, &"potted_plant")), 7)
-	assert_eq(first.get("last_shop_save_error"), OK)
-	var books: Dictionary = Economy.ledger.to_dict()
-	var cash: int = Economy.cash
-	var rng_state: int = GameState.rng(&"customers").state
-	var report: DayReport = first.get("shown_report")
-	var sold: Dictionary = report.dishes_sold.duplicate()
-	var reasons: Dictionary = report.leave_reasons.duplicate()
-	var lost: int = report.customers_lost
-	_close(first)
-	var second: Node = _start()
-	assert_eq(Clock.sim.phase, SimClock.Phase.CLOSED)
-	assert_eq(Economy.cash, cash)
-	assert_eq(Economy.ledger.to_dict(), books)
-	assert_eq(GameState.rng(&"customers").state, rng_state, "closed resume does not draw a new morning gap")
-	var restored: DayReport = second.get("shown_report")
-	assert_not_null(restored)
-	assert_eq(restored.customers_served, served)
-	assert_eq(restored.customers_lost, lost)
-	assert_eq(restored.dishes_sold, sold)
-	assert_eq(restored.leave_reasons, reasons)
-	assert_true((second.get_node("Overlay/EveningReport") as Control).visible)
-	var sim: RestaurantSim = second.get("sim")
-	assert_eq(sim.customers().size(), 0)
-	assert_eq(sim.world.board.active_count(), 0)
-	assert_true(sim.kitchen.dirty_tables.is_empty())
-	for staff: SimAgent in sim.world.agents:
-		assert_null((staff as StaffAgent).task)
-	_assert_bindings(second)
-	var closed_totals: Dictionary = Economy.ledger.day_totals(Clock.sim.day)
-	assert_eq(closed_totals[Ledger.WAGES], -55)
-	assert_eq(closed_totals[Ledger.RENT], -40)
-	(second.get_node("Overlay/EveningReport") as Control).emit_signal(&"next_day_pressed")
-	assert_eq(Clock.sim.day, 2)
-	assert_eq(Economy.ledger.day_totals(1), closed_totals, "the next morning does not charge the old closing again")
-	assert_false((second.get_node("Overlay/EveningReport") as Control).visible)
-
-
-func test_save_failure_keeps_edit_committed_and_retry_only_saves() -> void:
-	var main: Node = _start()
-	main.set("save_slot", "invalid/slot")
-	var before: int = Economy.cash
-	assert_true(main.call("shop_buy", &"chair", Vector2i(4, 9)))
-	assert_eq(main.get("last_shop_save_error"), ERR_INVALID_PARAMETER)
-	assert_eq(Economy.cash, before - 10)
-	var books: Dictionary = Economy.ledger.to_dict()
-	var shop: Dictionary = (main.get("shop_editor") as ShopEditor).to_dict()
-	main.set("save_slot", SLOT)
-	assert_eq(main.call("save_shop_changes"), OK)
-	assert_eq(Economy.ledger.to_dict(), books)
-	assert_eq((main.get("shop_editor") as ShopEditor).to_dict(), shop)
-	assert_eq((_document()["data"]["shop"]["items"] as Array).size(), 9)
-
-
-func test_mixed_purchase_refund_keeps_gross_report_flows_after_closed_reload() -> void:
-	var first: Node = _start()
-	_run_day(first)
-	var day: int = Clock.sim.day
-	var old_cash: int = Economy.cash
-	var old_income: int = Economy.ledger.day_income(day)
-	var old_costs: int = Economy.ledger.day_costs(day)
-	assert_true(first.call("shop_buy", &"chair", Vector2i(4, 9)))
-	var chair: PlacedItem = (first.get("world") as SimWorld).grid.item_at(Vector2i(4, 9))
-	assert_eq(first.call("shop_sell", chair.id), 5)
-	assert_eq(first.get("last_shop_save_error"), OK)
-	assert_eq(Economy.cash, old_cash - 5)
-	assert_eq(Economy.ledger.day_totals(day)[Ledger.UPGRADES], -5, "signed category totals keep their existing meaning")
-	var report: DayReport = first.get("shown_report")
-	assert_eq(report.income.get(Ledger.UPGRADES, 0), 5)
-	assert_eq(report.costs.get(Ledger.UPGRADES, 0), 10)
-	assert_eq(report.total_income(), old_income + 5)
-	assert_eq(report.total_costs(), old_costs + 10)
-	_assert_report_flows(first)
-	var income: Dictionary = report.income.duplicate()
-	var costs: Dictionary = report.costs.duplicate()
-	var books: Dictionary = Economy.ledger.to_dict()
-	var cash: int = Economy.cash
-	_close(first)
-	var second: Node = _start()
-	assert_eq(Clock.sim.phase, SimClock.Phase.CLOSED)
-	assert_eq(Economy.cash, cash)
-	assert_eq(Economy.ledger.to_dict(), books, "reloading does not replay either flow")
-	var restored: DayReport = second.get("shown_report")
-	assert_eq(restored.income, income)
-	assert_eq(restored.costs, costs)
-	assert_eq(restored.income.get(Ledger.UPGRADES, 0), 5)
-	assert_eq(restored.costs.get(Ledger.UPGRADES, 0), 10)
-	_assert_report_flows(second)
-
-
-func test_checkpoint_validation_is_read_only_and_rejects_inconsistent_totals() -> void:
-	var main: Node = _start()
-	var before: Dictionary = (main.get("shop_editor") as ShopEditor).to_dict()
-	var sections: Dictionary = _document()["data"]
-	sections["clock"]["phase"] = SimClock.Phase.CLOSED
-	sections["shop_session"]["phase"] = SimClock.Phase.CLOSED
-	sections["shop_session"]["served"] = 1
-	sections["shop_session"]["reasons"] = {"happy": 1}
-	assert_false(main.call("_validate_shop_sections", sections), "one served guest needs one sold dish")
-	sections["shop_session"]["dishes"] = {"burger": 1}
-	sections["shop_session"]["day"] = 9
-	assert_false(main.call("_validate_shop_sections", sections), "checkpoint day must match the clock")
-	sections["shop_session"]["day"] = 1
-	sections["shop_session"]["served"] = 1.5
-	assert_false(main.call("_validate_shop_sections", sections), "fractional counters are refused")
-	assert_eq(Clock.sim.phase, SimClock.Phase.MORNING)
-	assert_eq((main.get("shop_editor") as ShopEditor).to_dict(), before)
-
-
-func test_old_main_cleanup_cannot_unregister_a_newer_shop_provider() -> void:
-	var first: Node = _start(false)
-	var second: Node = _start(false)
-	assert_true(second.call("shop_move", _id(second, &"potted_plant"), Vector2i(11, 9), 3))
-	_close(first)
+	var used: Dictionary[StringName, int] = {&"bun": 1}
+	assert_true(Economy.stock.take_many(used))
 	assert_eq(SaveSystem.save_game(SLOT), OK)
-	var plant: Dictionary = _saved_item(_document()["data"]["shop"], "potted_plant")
-	assert_eq(plant["origin"], [11.0, 9.0])
-	assert_eq(plant["quarter_turns"], 3.0)
+	var cash: int = Economy.cash
+	var unit_cost: int = (first.get("content") as ContentDB).ingredient(&"bun").unit_cost
+	_close(first)
+	var second: Node = _start()
+	assert_eq(Economy.stock.count(&"bun"), TUNING.morning_stock[&"bun"])
+	assert_eq(Economy.cash, cash - unit_cost, "loaded morning tops up missing stock as before")
+	var expected: Dictionary = {"ledger": Economy.ledger.to_dict(), "stock": Economy.stock.to_dict()}
+	assert_eq(_document()["data"]["economy"], expected, "the topped-up morning is autosaved")
+	_assert_bindings(second)
+
+
+func test_closed_edits_wait_for_next_morning_autosave() -> void:
+	var first: Node = _start()
+	var morning_file: String = FileAccess.get_file_as_string(_path())
+	_run_day(first)
+	var before_cash: int = Economy.cash
+	var refund: int = (first.get("content") as ContentDB).item(&"potted_plant").price >> 1
+	assert_eq(first.call("shop_sell", _id(first, &"potted_plant")), refund)
+	assert_eq(Economy.cash, before_cash + refund)
+	assert_eq(FileAccess.get_file_as_string(_path()), morning_file)
+	var closed_totals: Dictionary = Economy.ledger.day_totals(1)
+	(first.get_node("Overlay/EveningReport") as Control).emit_signal(&"next_day_pressed")
+	assert_eq(Clock.sim.day, 2)
+	assert_eq(int(_document()["data"]["clock"]["phase"]), int(SimClock.Phase.MORNING))
+	var snapshot: Dictionary = (first.get("shop_editor") as ShopEditor).to_dict()
+	var books: Dictionary = Economy.ledger.to_dict()
+	_close(first)
+	var second: Node = _start()
+	assert_eq((second.get("shop_editor") as ShopEditor).to_dict(), snapshot)
+	assert_eq(Economy.ledger.to_dict(), books)
+	assert_eq(Economy.ledger.day_totals(1), closed_totals, "loading does not repeat closing costs")
 
 
 func _start(with_saves: bool = true) -> Node:
@@ -330,8 +213,8 @@ func _path() -> String:
 	return SAVE_DIR.path_join(SLOT + ".json")
 
 
-func _document(backup: bool = false) -> Dictionary:
-	return JSON.parse_string(FileAccess.get_file_as_string(_path() + (".bak" if backup else "")))
+func _document() -> Dictionary:
+	return JSON.parse_string(FileAccess.get_file_as_string(_path()))
 
 
 func _write_document(document: Dictionary) -> void:
@@ -368,17 +251,6 @@ func _assert_bindings(main: Node) -> void:
 	assert_true(sim.kitchen.stock == Economy.stock)
 	assert_true(sim.rng == GameState.rng(&"customers"))
 	assert_true(sim.spawner.rng == sim.rng)
-
-
-func _assert_report_flows(main: Node) -> void:
-	var report: DayReport = main.get("shown_report")
-	assert_eq(report.total_income(), Economy.ledger.day_income(Clock.sim.day))
-	assert_eq(report.total_costs(), Economy.ledger.day_costs(Clock.sim.day))
-	assert_eq(report.profit(), Economy.ledger.day_profit(Clock.sim.day))
-	var lifetime_changes: int = 0
-	for day: int in range(1, Clock.sim.day + 1):
-		lifetime_changes += Economy.ledger.day_profit(day)
-	assert_eq(Economy.cash, TUNING.starting_cash + lifetime_changes)
 
 
 func _run_day(main: Node) -> void:

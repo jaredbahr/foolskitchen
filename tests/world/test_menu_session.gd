@@ -30,13 +30,11 @@ func after_each() -> void:
 	_paid_recipes.clear()
 
 
-func test_menu_edits_autosave_once_and_restore_without_restock_or_recipe_mutation() -> void:
+func test_menu_edits_autosave_once_and_restore_full_stock_without_recipe_mutation() -> void:
 	var first: Node = _start()
 	var settings: MenuSettings = first.get("menu_settings")
 	assert_eq(settings.recipes().size(), 3)
 	var standard: int = (first.get("content") as ContentDB).recipe(&"burger").standard_price
-	var consumed: Dictionary[StringName, int] = {&"bun": 1}
-	assert_true(Economy.stock.take_many(consumed))
 	assert_true(first.call("menu_set_enabled", &"tomato_soup", false))
 	var backup: Dictionary = _document(true)
 	assert_eq((backup["data"]["menu"]["enabled"] as Array).size(), 3, "one autosave after the change")
@@ -73,7 +71,6 @@ func test_old_save_without_menu_gets_all_cookable_dishes_at_standard_prices() ->
 	for recipe: RecipeDef in settings.recipes():
 		assert_eq(settings.price_of(recipe), recipe.standard_price)
 		assert_eq((second.get("sim") as RestaurantSim).price_of(recipe), recipe.standard_price)
-	assert_false(second.get("shop_save_blocked"))
 
 
 func test_hud_and_real_panel_requests_enforce_morning_last_dish_and_clamps() -> void:
@@ -131,7 +128,7 @@ func test_actual_kitchen_orders_and_sales_use_only_enabled_override() -> void:
 	assert_eq((main.get("content") as ContentDB).recipe(&"burger").standard_price, 12)
 
 
-func test_invalid_menu_is_rejected_before_restore_and_slot_stays_protected() -> void:
+func test_invalid_menu_starts_fresh_skips_next_save_then_menu_edits_can_save() -> void:
 	var first: Node = _start()
 	assert_true(first.call("menu_set_enabled", &"tomato_soup", false))
 	var document: Dictionary = _document()
@@ -142,35 +139,39 @@ func test_invalid_menu_is_rejected_before_restore_and_slot_stays_protected() -> 
 	_close(first)
 	var second: Node = _start()
 	var settings: MenuSettings = second.get("menu_settings")
-	assert_true(second.get("shop_save_blocked"))
+	assert_eq(Clock.sim.day, 1)
 	assert_eq(settings.enabled_count(), 3)
 	assert_eq(settings.price_of((second.get("content") as ContentDB).recipe(&"burger")), 12)
+	assert_eq(FileAccess.get_file_as_string(_path()), broken, "failed startup skips its next morning autosave")
+	var books: Dictionary = Economy.ledger.to_dict()
+	var stock: Dictionary = Economy.stock.to_dict()
 	assert_true(second.call("menu_set_price", &"burger", 15))
-	assert_eq(second.get("last_menu_save_error"), ERR_UNAVAILABLE)
-	assert_eq(FileAccess.get_file_as_string(_path()), broken)
+	assert_eq(second.get("last_menu_save_error"), OK)
+	assert_eq(_document()["data"]["menu"]["prices"]["burger"], "15", "a later user menu edit is a morning save boundary")
+	assert_eq(Economy.ledger.to_dict(), books)
+	assert_eq(Economy.stock.to_dict(), stock)
 
 
-func test_invalid_menu_primary_recovers_choices_from_backup_and_preserves_it() -> void:
+func test_invalid_menu_provider_does_not_fall_back_to_a_semantic_backup() -> void:
 	var first: Node = _start()
 	assert_true(first.call("menu_set_enabled", &"tomato_soup", false))
 	assert_true(first.call("menu_set_price", &"burger", 15))
 	assert_true(first.call("menu_set_price", &"burger", 16))
 	var good_backup: String = FileAccess.get_file_as_string(_path() + ".bak")
 	var saved: Dictionary = _document(true)["data"]["menu"]
-	var books: Dictionary = Economy.ledger.to_dict()
-	var stock: Dictionary = Economy.stock.to_dict()
 	var document: Dictionary = _document()
+	document["data"]["clock"]["day"] = 9
 	document["data"]["menu"]["prices"]["burger"] = "not_a_price"
 	_write_document(document)
+	var broken: String = FileAccess.get_file_as_string(_path())
 	_close(first)
 	var second: Node = _start()
-	assert_false(second.get("shop_save_blocked"))
-	assert_eq((second.get("menu_settings") as MenuSettings).to_dict(), saved)
-	assert_eq((second.get("sim") as RestaurantSim).price_of((second.get("content") as ContentDB).recipe(&"burger")), 15)
-	assert_eq(Economy.ledger.to_dict(), books)
-	assert_eq(Economy.stock.to_dict(), stock)
-	assert_true(second.call("menu_set_price", &"burger", 17))
-	assert_eq(second.get("last_menu_save_error"), OK)
+	var settings: MenuSettings = second.get("menu_settings")
+	assert_eq(Clock.sim.day, 1, "provider failure follows the existing fresh-game path")
+	assert_eq(settings.enabled_count(), 3)
+	assert_eq(settings.price_of((second.get("content") as ContentDB).recipe(&"burger")), 12)
+	assert_ne(settings.to_dict(), saved, "a readable primary with a rejected provider returns FAILED, without semantic fallback")
+	assert_eq(FileAccess.get_file_as_string(_path()), broken)
 	assert_eq(FileAccess.get_file_as_string(_path() + ".bak"), good_backup)
 
 
@@ -178,15 +179,17 @@ func test_menu_then_furniture_edit_reload_keeps_both_committed_sections() -> voi
 	var first: Node = _start()
 	assert_true(first.call("menu_set_enabled", &"tomato_soup", false))
 	assert_true(first.call("menu_set_price", &"burger", 9))
+	var before_buy: String = FileAccess.get_file_as_string(_path())
 	assert_true(first.call("shop_buy", &"chair", Vector2i(4, 9)))
-	assert_eq(first.get("last_shop_save_error"), OK)
+	assert_eq(FileAccess.get_file_as_string(_path()), before_buy, "a shop edit no longer saves itself")
+	assert_eq(Clock.sim.phase, SimClock.Phase.MORNING)
+	assert_eq(SaveSystem.save_game(SLOT), OK)  # An explicit valid MORNING save.
 	var menu: Dictionary = (first.get("menu_settings") as MenuSettings).to_dict()
 	var shop: Dictionary = (first.get("shop_editor") as ShopEditor).to_dict()
 	var books: Dictionary = Economy.ledger.to_dict()
 	var stock: Dictionary = Economy.stock.to_dict()
 	_close(first)
 	var second: Node = _start()
-	assert_false(second.get("shop_save_blocked"))
 	assert_eq((second.get("menu_settings") as MenuSettings).to_dict(), menu)
 	assert_eq((second.get("shop_editor") as ShopEditor).to_dict(), shop)
 	assert_eq(Economy.ledger.to_dict(), books)
@@ -194,13 +197,20 @@ func test_menu_then_furniture_edit_reload_keeps_both_committed_sections() -> voi
 	assert_eq((second.get("sim") as RestaurantSim).price_of((second.get("content") as ContentDB).recipe(&"burger")), 9)
 
 
-func test_menu_provider_cleanup_keeps_the_new_session_owner() -> void:
-	var first: Node = _start(false)
-	var second: Node = _start(false)
-	assert_true(second.call("menu_set_price", &"burger", 15))
-	_close(first)
-	assert_eq(SaveSystem.save_game(SLOT), OK)
-	assert_eq(_document()["data"]["menu"]["prices"]["burger"], "15")
+func test_menu_restore_provider_only_stages_choices_without_touching_the_live_sim() -> void:
+	var main: Node = _start(false)
+	var settings: MenuSettings = main.get("menu_settings")
+	var before: Dictionary = settings.to_dict()
+	var staged: Dictionary = before.duplicate(true)
+	staged["enabled"] = ["burger"]
+	staged["prices"]["burger"] = "15"
+	var sim: RestaurantSim = main.get("sim")
+	var prices: Dictionary[StringName, int] = sim.prices.duplicate()
+	assert_true(main.call("_restore_menu", staged))
+	assert_eq(settings.to_dict(), before)
+	assert_eq(sim.menu.size(), 3)
+	assert_eq(sim.prices, prices)
+	assert_true(main.get("sim") == sim, "live menu installation waits for normal load success")
 
 
 func test_save_failure_keeps_menu_committed_and_retry_does_not_restock() -> void:

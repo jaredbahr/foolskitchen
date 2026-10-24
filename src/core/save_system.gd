@@ -9,20 +9,11 @@ const MIGRATIONS: Dictionary = {0: &"_migrate_0_to_1"}
 
 var save_dir: String = "user://saves/"
 var _providers: Dictionary[String, Dictionary] = {}
-## Exact readable primaries rejected by a caller's pure candidate validator.
-var _rejected_primaries: Dictionary[String, String] = {}
 
 
 ## Adds or replaces a section's capture() -> Dictionary and restore(data) -> bool.
 func register(key: String, capture: Callable, restore: Callable) -> void:
 	_providers[key] = {"capture": capture, "restore": restore}
-
-
-## Removes only the expected owner; old-scene cleanup cannot remove its replacement.
-func unregister(key: String, expected_capture: Callable) -> bool:
-	if not _providers.has(key) or _providers[key]["capture"] != expected_capture:
-		return false
-	return _providers.erase(key)
 
 
 ## Publishes a completed temporary file while preserving a prior recovery copy.
@@ -66,36 +57,42 @@ func save_game(slot: String) -> Error:
 	var rename_error: Error = _rename_file(temporary, destination)
 	if rename_error != OK:
 		DirAccess.remove_absolute(temporary)
-	else:
-		_rejected_primaries.erase(destination)
 	return rename_error
 
 
 ## Prefers the final file, or a valid backup after an interrupted/corrupt save.
 ## Migrates before restoring registered sections; absent sections are skipped.
-## Optional pure validate_sections(sections) -> bool sees a deep copy before any
-## provider runs. Rejection tries the backup. Provider restore failures retain
-## the legacy FAILED result: already applied providers are not rolled back.
-func load_game(slot: String, validate_sections: Callable = Callable()) -> Error:
+func load_game(slot: String) -> Error:
 	if not _valid_slot(slot):
 		return ERR_INVALID_PARAMETER
-	if not validate_sections.is_null() and not validate_sections.is_valid():
-		return ERR_INVALID_PARAMETER
-	var path: String = _slot_path(slot)
-	var result: Dictionary = _read_candidate(path, validate_sections)
-	if result.get("validation_rejected", false):
-		_rejected_primaries[path] = result["fingerprint"]
+	var result: Dictionary = _read_document(_slot_path(slot))
 	var read_error: Error = result["error"]
-	var used_backup: bool = false
-	if read_error == ERR_FILE_NOT_FOUND or read_error == ERR_PARSE_ERROR or result.get("validation_rejected", false):
-		var recovery: Dictionary = _read_candidate(path + ".bak", validate_sections)
+	if read_error == ERR_FILE_NOT_FOUND or read_error == ERR_PARSE_ERROR:
+		var recovery: Dictionary = _read_document(_slot_path(slot) + ".bak")
 		if recovery["error"] != ERR_FILE_NOT_FOUND:
 			result = recovery
 			read_error = recovery["error"]
-			used_backup = true
 	if read_error != OK:
 		return read_error
-	var sections: Dictionary = result["sections"]
+	var document: Dictionary = result["document"]
+	var version: int = int(document["version"])
+	if version > FORMAT_VERSION:
+		return ERR_FILE_UNRECOGNIZED
+	while version < FORMAT_VERSION:
+		if not MIGRATIONS.has(version):
+			return ERR_FILE_UNRECOGNIZED
+		document = call(MIGRATIONS[version], document)
+		if int(document.get("version", -1)) != version + 1:
+			return FAILED
+		version += 1
+	var sections_value: Variant = document.get("data", null)
+	if not sections_value is Dictionary:
+		return ERR_PARSE_ERROR
+	var sections: Dictionary = sections_value
+	# Validate section shapes before any provider mutates its state.
+	for key: String in _providers:
+		if sections.has(key) and not sections[key] is Dictionary:
+			return ERR_PARSE_ERROR
 	for key: String in _providers:
 		if not sections.has(key):
 			continue
@@ -105,9 +102,6 @@ func load_game(slot: String, validate_sections: Callable = Callable()) -> Error:
 		var success: Variant = restore.call(sections[key])
 		if not success is bool or not success:
 			return FAILED
-	if not used_backup:
-		# Only a fully restored primary supersedes an earlier semantic rejection.
-		_rejected_primaries.erase(path)
 	return OK
 
 
@@ -138,7 +132,6 @@ func delete_slot(slot: String) -> Error:
 			var error: Error = DirAccess.remove_absolute(candidate)
 			if error != OK:
 				return error
-	_rejected_primaries.erase(path)
 	return OK
 
 
@@ -148,13 +141,11 @@ func _prepare_replacement(destination: String) -> Error:
 		return OK # A previous interruption may have left the only valid copy in .bak.
 	if FileAccess.file_exists(backup):
 		var current: Dictionary = _read_document(destination)
-		var rejected: bool = _rejected_primaries.has(destination) and _rejected_primaries[destination] == current.get("fingerprint", "")
-		if current["error"] != OK or rejected:
+		if current["error"] != OK:
 			var recovery: Dictionary = _read_document(backup)
 			if recovery["error"] != OK:
-				# Preserve both files if the rejected/damaged final has no readable backup.
-				return current["error"] if current["error"] != OK else ERR_INVALID_DATA
-			# Keep the readable backup and discard only the rejected/damaged final.
+				return current["error"] # Preserve both files if neither is readable.
+			# Keep the valid backup and discard only the damaged final.
 			return DirAccess.remove_absolute(destination)
 		# The readable final remains intact if deleting the old backup fails.
 		var remove_error: Error = DirAccess.remove_absolute(backup)
@@ -166,34 +157,6 @@ func _prepare_replacement(destination: String) -> Error:
 func _rename_file(source: String, destination: String) -> Error:
 	# Isolated for failure-injection tests; callers always use absent destinations.
 	return DirAccess.rename_absolute(source, destination)
-
-
-## Reads and preflights one candidate without applying any provider state.
-func _read_candidate(path: String, validate_sections: Callable) -> Dictionary:
-	var result: Dictionary = _read_document(path)
-	if result["error"] != OK:
-		return result
-	var document: Dictionary = result["document"]
-	var version: int = int(document["version"])
-	while version < FORMAT_VERSION:
-		if not MIGRATIONS.has(version):
-			return {"error": ERR_FILE_UNRECOGNIZED}
-		document = call(MIGRATIONS[version], document)
-		if int(document.get("version", -1)) != version + 1:
-			return {"error": FAILED}
-		version += 1
-	var sections_value: Variant = document.get("data", null)
-	if not sections_value is Dictionary:
-		return {"error": ERR_PARSE_ERROR}
-	var sections: Dictionary = sections_value
-	for key: String in _providers:
-		if sections.has(key) and not sections[key] is Dictionary:
-			return {"error": ERR_PARSE_ERROR}
-	if not validate_sections.is_null():
-		var accepted: Variant = validate_sections.call(sections.duplicate(true))
-		if not accepted is bool or not accepted:
-			return {"error": ERR_INVALID_DATA, "validation_rejected": true, "fingerprint": result["fingerprint"]}
-	return {"error": OK, "sections": sections}
 
 
 func _read_document(path: String) -> Dictionary:
@@ -224,7 +187,7 @@ func _read_document(path: String) -> Dictionary:
 	for key: Variant in sections:
 		if not sections[key] is Dictionary:
 			return {"error": ERR_PARSE_ERROR}
-	return {"error": OK, "document": document, "fingerprint": text.sha256_text()}
+	return {"error": OK, "document": document}
 
 
 func _slot_path(slot: String) -> String:

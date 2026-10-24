@@ -1,5 +1,5 @@
 extends TestCase
-## FK-031: five real session days with seeded, money-neutral morning edits.
+## FK-031: five real session days with seeded moves, purchases and sales.
 ## Keep FK-023's accounting/visit invariants; never replace the kitchen or guests.
 
 const MAIN_SCENE: PackedScene = preload("res://src/world/main.tscn")
@@ -13,6 +13,8 @@ const EDIT_SEED: int = 531905
 const CUSTOMER_SEED: int = 530317
 const MAX_EDIT_CHECKS: int = 512
 const MAX_DAY_BATCHES: int = 30
+const EDITS_PER_MORNING: int = 4
+const DECOR_ID: StringName = &"potted_plant"
 
 var _mains: Array[Node] = []
 var _old_save_dir: String
@@ -30,6 +32,8 @@ var _guest_tickets: Dictionary[int, int] = {}
 var _paid_tickets: Dictionary[int, bool] = {}
 var _departure_reasons: Dictionary[StringName, int] = {}
 var _dishes_paid: Dictionary[StringName, int] = {}
+var _upgrade_delta_today: int = 0
+var _edit_actions_today: int = 0
 
 
 func before_each() -> void:
@@ -56,28 +60,33 @@ func test_five_days_of_seeded_morning_edits_keep_real_session_invariants() -> vo
 	if main == null:
 		return
 	# New-game startup uses wall time. Replace only its random stream before any
-	# visit, then draw/save the normal first gap through the public spawner API.
+	# visit, then draw the normal first gap through the public spawner API.
+	# Subsequent normal morning autosaves capture this deterministic stream.
 	GameState.new_run(CUSTOMER_SEED)
 	var sim: RestaurantSim = main.get("sim")
 	sim.use_rng(GameState.rng(&"customers"))
 	sim.spawner.reset()
-	assert_eq(int(main.call("save_shop_changes")), int(OK))
 	_fixed_items = _fixed_snapshot(sim.world.grid)
 	var total_served: int = 0
-	var accepted_edits: int = 0
+	var edited_mornings: int = 0
+	var total_edit_actions: int = 0
 	for day: int in range(1, DAYS + 1):
 		assert_eq(Clock.sim.day, day)
 		assert_eq(Clock.sim.phase, SimClock.Phase.MORNING)
 		_assert_clean_morning(main, day)
-		if not _edit_morning(main, day):
-			return
-		accepted_edits += 1
-		_assert_clean_morning(main, day)
+		_assert_morning_autosave(main, day)
 		if day == RELOAD_BEFORE_DAY:
-			main = _reload_edited_morning(main)
+			# Yesterday's edited layout reached this normal morning's autosave.
+			# Reload BEFORE today's unsaved furniture edits.
+			main = _reload_morning_autosave(main)
 			if main == null:
 				return
 			_assert_clean_morning(main, day)
+		if not _edit_morning(main, day):
+			return
+		edited_mornings += 1
+		total_edit_actions += _edit_actions_today
+		_assert_clean_morning(main, day)
 		if not _run_day(main, day):
 			return
 		_assert_closed_books(main, day)
@@ -85,9 +94,10 @@ func test_five_days_of_seeded_morning_edits_keep_real_session_invariants() -> vo
 		(main.get_node("Overlay/EveningReport") as Control).emit_signal(&"next_day_pressed")
 		assert_eq(Clock.sim.day, day + 1, "the report advances exactly one day")
 		assert_eq(Clock.sim.phase, SimClock.Phase.MORNING)
-		assert_eq(int(main.get("last_shop_save_error")), int(OK), "next morning autosave succeeds")
 		_assert_clean_morning(main, day + 1)
-	assert_eq(accepted_edits, DAYS, "every morning includes a real accepted move")
+		_assert_morning_autosave(main, day + 1)
+	assert_eq(edited_mornings, DAYS, "every morning includes real accepted edits")
+	assert_eq(total_edit_actions, DAYS * EDITS_PER_MORNING)
 	assert_true(total_served > DAYS * 5, "the edited shop serves real guests (%d in %d days)" % [total_served, DAYS])
 
 
@@ -114,17 +124,30 @@ func _start() -> Node:
 	return main
 
 
-## A shuffled, finite set of nearby moves keeps service comparable to FK-023.
-## Fixed kitchen/door placements are never candidates. Every accepted move
-## changes its origin, has no warning, and preserves all work/seat access.
+## Exercise different furniture and both money directions every morning. The
+## temporary extra plant is sold again so the six-seat service remains useful.
 func _edit_morning(main: Node, day: int) -> bool:
+	_upgrade_delta_today = 0
+	_edit_actions_today = 0
+	for category: ItemDef.Category in [ItemDef.Category.TABLE, ItemDef.Category.DECOR]:
+		if not _move_furniture(main, day, category):
+			return false
+	if not _buy_and_sell_decor(main, day):
+		return false
+	assert_eq(_edit_actions_today, EDITS_PER_MORNING, "two moves, one purchase and one sale each morning")
+	return true
+
+
+## A local seeded shuffle chooses among a finite set of nearby legal moves.
+## Required kitchen/door placements stay fixed; every move changes its origin.
+func _move_furniture(main: Node, day: int, category: ItemDef.Category) -> bool:
 	var editor: ShopEditor = main.get("shop_editor")
 	var world: SimWorld = main.get("world")
 	assert_true(editor.can_edit())
 	var candidates: Array[Dictionary] = []
 	for item: PlacedItem in world.grid.items():
 		var definition: ItemDef = item.def as ItemDef
-		if definition == null or not [ItemDef.Category.TABLE, ItemDef.Category.DECOR].has(definition.category):
+		if definition == null or definition.category != category:
 			continue
 		for y: int in range(-1, 2):
 			for x: int in range(-1, 2):
@@ -138,10 +161,7 @@ func _edit_morning(main: Node, day: int) -> bool:
 		candidates[index] = candidates[other]
 		candidates[other] = temporary
 	var before: Dictionary = editor.to_dict().duplicate(true)
-	var cash_before: int = Economy.cash
-	var ledger_before: Dictionary = Economy.ledger.to_dict().duplicate(true)
-	var clock_before: Dictionary = Clock.sim.to_dict().duplicate(true)
-	var customer_state: int = GameState.rng(&"customers").state
+	var state_before: Dictionary = _edit_state()
 	var checked: int = 0
 	for candidate: Dictionary in candidates:
 		if checked >= MAX_EDIT_CHECKS:
@@ -159,20 +179,141 @@ func _edit_morning(main: Node, day: int) -> bool:
 		assert_true(moved, "day %d: a prechecked legal move succeeds" % day)
 		if not moved:
 			return false
-		assert_eq(int(main.get("last_shop_save_error")), int(OK), "the move wrapper saves successfully")
-		assert_eq(int(main.call("save_shop_changes")), int(OK), "an explicit save retry also succeeds")
 		assert_ne(editor.to_dict(), before, "day %d: the edited snapshot actually changes" % day)
 		assert_true(editor.last_check.unreachable.is_empty())
-		assert_eq(Economy.cash, cash_before, "moves never change cash")
-		assert_eq(Economy.ledger.to_dict(), ledger_before, "moves and saves never book extra transactions")
-		assert_eq(Clock.sim.to_dict(), clock_before, "edits never advance the day")
-		assert_eq(GameState.rng(&"customers").state, customer_state, "edit choices use a separate RNG")
-		assert_eq(_fixed_snapshot(world.grid), _fixed_items, "the kitchen line and doors stay fixed")
-		assert_true(_service_access_ok(world.grid), "all service cells remain reachable after the real move")
+		_assert_book_delta(state_before, 0)
+		_assert_edit_context(main, state_before)
+		_edit_actions_today += 1
 		print("EDIT_SOAK_MOVE day=%d item=%d origin=%s turns=%d checked=%d" % [day, item_id, origin, turns, checked])
 		return true
 	fail("day %d: no warning-free, access-preserving move in %d bounded checks" % [day, checked])
 	return false
+
+
+func _buy_and_sell_decor(main: Node, day: int) -> bool:
+	var editor: ShopEditor = main.get("shop_editor")
+	var world: SimWorld = main.get("world")
+	var content: ContentDB = main.get("content")
+	var definition: ItemDef = content.item(DECOR_ID)
+	assert_not_null(definition)
+	if definition == null:
+		return false
+	var candidates: Array[Vector2i] = []
+	for y: int in range(world.grid.size.y):
+		for x: int in range(world.grid.size.x):
+			candidates.append(Vector2i(x, y))
+	for index: int in range(candidates.size() - 1, 0, -1):
+		var other: int = _edit_rng.randi_range(0, index)
+		var temporary: Vector2i = candidates[index]
+		candidates[index] = candidates[other]
+		candidates[other] = temporary
+	var before_pair: Dictionary = editor.to_dict().duplicate(true)
+	var previous_ids: Dictionary[int, bool] = {}
+	for item: PlacedItem in world.grid.items():
+		previous_ids[item.id] = true
+	var checked: int = 0
+	for origin: Vector2i in candidates:
+		if checked >= MAX_EDIT_CHECKS:
+			break
+		checked += 1
+		var turns: int = _edit_rng.randi_range(0, 3)
+		var check: EditCheck = editor.check_buy(DECOR_ID, origin, turns)
+		if not check.ok or not check.unreachable.is_empty():
+			continue
+		if not _buy_keeps_access(world.grid, definition, origin, turns):
+			continue
+		var before_buy: Dictionary = _edit_state()
+		var bought: bool = main.call("shop_buy", DECOR_ID, origin, turns)
+		assert_true(bought, "day %d: a prechecked purchase succeeds" % day)
+		if not bought:
+			return false
+		_assert_book_delta(before_buy, -definition.price)
+		_assert_edit_context(main, before_buy)
+		_upgrade_delta_today -= definition.price
+		_edit_actions_today += 1
+		var purchased: PlacedItem = null
+		var additions: int = 0
+		for item: PlacedItem in world.grid.items():
+			if not previous_ids.has(item.id):
+				purchased = item
+				additions += 1
+		assert_eq(additions, 1, "a purchase adds exactly one real item")
+		assert_eq(world.grid.items().size(), previous_ids.size() + 1)
+		if additions != 1 or purchased == null:
+			return false
+		assert_eq((purchased.def as ItemDef).id, DECOR_ID)
+		assert_eq(purchased.origin, origin)
+		assert_eq(purchased.quarter_turns, turns)
+		var sell_check: EditCheck = editor.check_sell(purchased.id)
+		assert_true(sell_check.ok, "the added decor can be sold")
+		assert_true(sell_check.unreachable.is_empty())
+		if not sell_check.ok or not sell_check.unreachable.is_empty():
+			return false
+		var before_sell: Dictionary = _edit_state()
+		var expected_refund: int = floori(float(definition.price) / 2.0)
+		var refund: int = main.call("shop_sell", purchased.id)
+		assert_eq(refund, expected_refund, "the sale refunds exactly half the unit price, rounded down")
+		if refund < 0:
+			return false
+		_assert_book_delta(before_sell, expected_refund)
+		_assert_edit_context(main, before_sell)
+		_upgrade_delta_today += expected_refund
+		_edit_actions_today += 1
+		assert_null(world.grid.item(purchased.id))
+		assert_eq(editor.to_dict(), before_pair, "buy/sell preserves every existing placement and its order")
+		print("EDIT_SOAK_TRADE day=%d price=%d refund=%d checked=%d" % [day, definition.price, refund, checked])
+		return true
+	fail("day %d: no legal, affordable, access-preserving decor purchase in %d checks" % [day, checked])
+	return false
+
+
+func _edit_state() -> Dictionary:
+	return {"cash": Economy.cash, "ledger": Economy.ledger.to_dict().duplicate(true),
+		"clock": Clock.sim.to_dict().duplicate(true), "customer_rng": GameState.rng(&"customers").state,
+		"autosave": FileAccess.get_file_as_string(TEST_SAVES.path_join(SLOT + ".json"))}
+
+
+## Check the entire ledger: a move adds nothing, while a buy/sell adds exactly
+## one current-day upgrades entry for its price/refund, retaining all old rows.
+func _assert_book_delta(before: Dictionary, delta: int) -> void:
+	assert_eq(Economy.cash, int(before["cash"]) + delta)
+	var expected: Dictionary = before["ledger"].duplicate(true)
+	if delta == 0:
+		assert_eq(Economy.ledger.to_dict(), expected, "moves never book a transaction")
+		return
+	expected["cash"] = str(int(before["cash"]) + delta)
+	var entries: Array = expected["entries"]
+	var actual: Dictionary = Economy.ledger.to_dict()
+	var actual_entries: Array = actual["entries"]
+	assert_eq(actual_entries.size(), entries.size() + 1, "exactly one transaction per furniture action")
+	if actual_entries.size() != entries.size() + 1:
+		return
+	var added: Dictionary = actual_entries.back()
+	assert_eq(added["day"], str(Clock.sim.day))
+	assert_eq(added["amount"], str(delta))
+	assert_eq(added["category"], String(Ledger.UPGRADES))
+	entries.append(added.duplicate(true))
+	assert_eq(actual, expected, "only the exact furniture transaction changes the books")
+
+
+func _assert_edit_context(main: Node, before: Dictionary) -> void:
+	var world: SimWorld = main.get("world")
+	assert_eq(Clock.sim.to_dict(), before["clock"], "edits never advance the day")
+	assert_eq(GameState.rng(&"customers").state, before["customer_rng"], "edits use a separate RNG")
+	assert_eq(FileAccess.get_file_as_string(TEST_SAVES.path_join(SLOT + ".json")), before["autosave"],
+		"furniture edits wait for the next normal morning autosave")
+	assert_eq(_fixed_snapshot(world.grid), _fixed_items, "the kitchen line and doors stay fixed")
+	assert_true(_service_access_ok(world.grid), "all real work/seat cells and staff posts remain reachable")
+
+
+func _buy_keeps_access(live: SimGrid, definition: ItemDef, origin: Vector2i, turns: int) -> bool:
+	var preview: SimGrid = SimGrid.from_ascii(LAYOUT.rows)
+	for item: PlacedItem in live.items():
+		if preview.place_def(item.def as ItemDef, item.origin, item.quarter_turns) == null:
+			return false
+	if preview.place_def(definition, origin, turns) == null:
+		return false
+	return _service_access_ok(preview)
 
 
 ## This isolated grid only rejects harmful fixture proposals; the actual edit
@@ -221,8 +362,7 @@ func _fixed_snapshot(grid: SimGrid) -> Array[Dictionary]:
 	return placements
 
 
-func _reload_edited_morning(old: Node) -> Node:
-	assert_eq(int(old.call("save_shop_changes")), int(OK))
+func _reload_morning_autosave(old: Node) -> Node:
 	var editor: ShopEditor = old.get("shop_editor")
 	var snapshot: Dictionary = editor.to_dict().duplicate(true)
 	var cash: int = Economy.cash
@@ -245,12 +385,12 @@ func _reload_edited_morning(old: Node) -> Node:
 		return null
 	var restored: ShopEditor = main.get("shop_editor")
 	var sim: RestaurantSim = main.get("sim")
-	assert_eq(Clock.sim.day, day, "reload resumes the edited day-3 morning")
+	assert_eq(Clock.sim.day, day, "reload resumes day 3 before its new edits")
 	assert_eq(Clock.sim.to_dict(), clock, "reload preserves the complete morning clock")
-	assert_eq(restored.to_dict(), snapshot, "every edited placement survives reload in stable order")
+	assert_eq(restored.to_dict(), snapshot, "the previous day's edited layout survives the morning autosave")
 	assert_eq(Economy.cash, cash, "cash survives the scramble and reload")
 	assert_eq(Economy.stock.to_dict(), stock, "all dated stock batches survive reload")
-	assert_eq(Economy.ledger.to_dict(), ledger, "morning resume never replays restock or costs")
+	assert_eq(Economy.ledger.to_dict(), ledger, "morning top-up adds no duplicate cost to already stocked shelves")
 	assert_eq(int(Economy.ledger.day_totals(day).get(Ledger.INGREDIENTS, 0)), ingredients, "restock cost is not repeated")
 	assert_true(sim.stock == Economy.stock)
 	assert_true(sim.kitchen.stock == Economy.stock)
@@ -260,9 +400,37 @@ func _reload_edited_morning(old: Node) -> Node:
 	# MORNING resume performs exactly the same one arrival-gap draw as FK-024.
 	expected.randi_range(maxi(1, sim.spawner.min_gap), maxi(maxi(1, sim.spawner.min_gap), sim.spawner.max_gap))
 	assert_eq(sim.rng.state, expected.state, "customer RNG resumes with exactly one morning gap draw")
-	assert_eq(int(main.get("last_shop_save_error")), int(OK))
 	assert_eq(_fixed_snapshot(sim.world.grid), _fixed_items)
+	_assert_morning_autosave(main, day)
 	return main
+
+
+## Read the real normal autosave; never invoke an extra save from the soak.
+func _assert_morning_autosave(main: Node, day: int) -> void:
+	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(TEST_SAVES.path_join(SLOT + ".json")))
+	assert_true(saved is Dictionary, "the normal morning autosave exists and parses")
+	if not saved is Dictionary:
+		return
+	var sections: Dictionary = saved.get("data", {})
+	var clock: Dictionary = sections.get("clock", {})
+	assert_eq(int(clock.get("day", -1)), day)
+	assert_eq(int(clock.get("phase", -1)), int(SimClock.Phase.MORNING))
+	var editor: ShopEditor = main.get("shop_editor")
+	var expected: Dictionary = editor.to_dict()
+	var shop: Dictionary = sections.get("shop", {})
+	assert_eq(int(shop.get("version", -1)), int(expected["version"]))
+	var stored_items: Array = shop.get("items", [])
+	var current_items: Array = expected["items"]
+	assert_eq(stored_items.size(), current_items.size())
+	for index: int in range(mini(stored_items.size(), current_items.size())):
+		var stored: Dictionary = stored_items[index]
+		var current: Dictionary = current_items[index]
+		assert_eq(String(stored.get("def_id", "")), String(current["def_id"]))
+		var origin: Array = stored.get("origin", [])
+		assert_eq(origin.size(), 2)
+		if origin.size() == 2:
+			assert_eq(Vector2i(int(origin[0]), int(origin[1])), Vector2i(int(current["origin"][0]), int(current["origin"][1])))
+		assert_eq(int(stored.get("quarter_turns", -1)), int(current["quarter_turns"]))
 
 
 func _assert_clean_morning(main: Node, day: int) -> void:
@@ -356,7 +524,7 @@ func _assert_closed_books(main: Node, day: int) -> void:
 		wages += TUNING.wages[role]
 	assert_eq(int(totals.get(Ledger.WAGES, 0)), -wages, "day %d: wages once" % day)
 	assert_eq(int(totals.get(Ledger.RENT, 0)), -TUNING.daily_rent, "day %d: rent once" % day)
-	assert_eq(int(totals.get(Ledger.UPGRADES, 0)), 0, "day %d: the move-only soak has no furniture costs" % day)
+	assert_eq(int(totals.get(Ledger.UPGRADES, 0)), _upgrade_delta_today, "day %d: exact net furniture cost" % day)
 	assert_eq(int(totals.get(Ledger.OTHER, 0)), 0, "day %d: no unexplained money" % day)
 	var since_start: int = 0
 	for previous_day: int in range(1, day + 1):
@@ -381,16 +549,22 @@ func _assert_closed_books(main: Node, day: int) -> void:
 	assert_eq(dishes, sim.served_today, "day %d: one dish per served guest" % day)
 	var income: Dictionary[StringName, int] = {}
 	var costs: Dictionary[StringName, int] = {}
+	var net_income: int = 0
+	var net_costs: int = 0
 	for category: StringName in totals:
 		var amount: int = totals[category]
 		if amount > 0:
 			income[category] = amount
+			net_income += amount
 		elif amount < 0:
 			costs[category] = -amount
+			net_costs -= amount
 	assert_eq(shown.income, income, "all report income agrees with the ledger")
 	assert_eq(shown.costs, costs, "all report costs agree with the ledger")
-	assert_eq(shown.total_income(), Economy.ledger.day_income(day))
-	assert_eq(shown.total_costs(), Economy.ledger.day_costs(day))
+	# Reports intentionally split NET category totals, including purchase/refund
+	# within upgrades; they do not display the ledger's separate gross flows.
+	assert_eq(shown.total_income(), net_income)
+	assert_eq(shown.total_costs(), net_costs)
 	assert_eq(shown.profit(), Economy.ledger.day_profit(day))
 	var unhappy: Dictionary[StringName, int] = _departure_reasons.duplicate()
 	unhappy.erase(&"happy")
@@ -400,8 +574,8 @@ func _assert_closed_books(main: Node, day: int) -> void:
 	main.call("run_ticks", 25)
 	assert_eq(Economy.ledger.to_dict(), ledger_before, "closed ticks cannot charge closing costs again")
 	assert_eq(Economy.cash, cash_before)
-	print("EDIT_SOAK_DAY day=%d arrivals=%d served=%d lost=%d departures=%d profit=%d cash=%d reasons=%s" % [
-		day, _arrivals_today, sim.served_today, sim.lost_today, _left_today,
+	print("EDIT_SOAK_DAY day=%d edits=%d upgrades=%d arrivals=%d served=%d lost=%d departures=%d profit=%d cash=%d reasons=%s" % [
+		day, _edit_actions_today, _upgrade_delta_today, _arrivals_today, sim.served_today, sim.lost_today, _left_today,
 		Economy.ledger.day_profit(day), Economy.cash, sim.leave_reasons_today])
 
 
