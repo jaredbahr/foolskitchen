@@ -1,8 +1,9 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://src/ui/hud.gd" id="1_script"]
 [ext_resource type="Theme" path="res://src/ui/theme/main_theme.tres" id="2_theme"]
 [ext_resource type="Texture2D" path="res://assets/kenney/icons/gear.png" id="3_gear"]
+[ext_resource type="Script" path="res://src/ui/hud_groups.gd" id="4_groups"]
 
 [sub_resource type="ButtonGroup" id="Speeds"]
 
@@ -17,10 +18,9 @@ offset_top = 12.0
 offset_right = -12.0
 theme = ExtResource("2_theme")
 
-[node name="Row" type="HFlowContainer" parent="Top"]
+[node name="Row" type="Container" parent="Top"]
 layout_mode = 2
-theme_override_constants/h_separation = 8
-theme_override_constants/v_separation = 6
+script = ExtResource("4_groups")
 
 [node name="Day" type="Label" parent="Top/Row"]
 layout_mode = 2
@@ -35,6 +35,7 @@ layout_mode = 2
 text = "Morning"
 
 [node name="LeftSpace" type="Control" parent="Top/Row"]
+visible = false
 layout_mode = 2
 size_flags_horizontal = 3
 
@@ -48,6 +49,7 @@ button_group = SubResource("Speeds")
 tooltip_text = "Pause (Space)"
 
 [node name="Pause" type="CenterContainer" parent="Top/Row/Speed0"]
+visible = false
 layout_mode = 0
 anchors_preset = 15
 anchor_right = 1.0
@@ -99,6 +101,7 @@ text = "4×"
 tooltip_text = "4× speed (4)"
 
 [node name="RightSpace" type="Control" parent="Top/Row"]
+visible = false
 layout_mode = 2
 size_flags_horizontal = 3
 
@@ -132,7 +135,7 @@ text = "$0"
 layout_mode = 2
 mouse_filter = 1
 theme_override_font_sizes/font_size = 16
-text = "3.0★"
+text = "3.0"
 tooltip_text = "3.0 stars from your last 5 reviews"
 
 [node name="OwnerProgress" type="VBoxContainer" parent="Top/Row"]

@@ -86,6 +86,8 @@ jobs:
           bash tools/screenshot.sh --out=screens/visual-review/build-red --build=red --quarter=0 --frames=12 --speed=1
           bash tools/screenshot.sh --out=screens/visual-review/settings --settings --speed=0 --frames=12
           bash tools/screenshot.sh --out=screens/visual-review/settings-world --settings-world --speed=0 --frames=90
+          bash tools/screenshot.sh --out=screens/visual-review/hud-1280 --hud-layout --window-size=1280x720 --speed=0 --frames=12,90
+          bash tools/screenshot.sh --out=screens/visual-review/hud-1600 --hud-layout --window-size=1600x900 --speed=0 --frames=12,90
 
       - name: Verify capture identity and image metadata
         shell: bash
@@ -207,6 +209,30 @@ jobs:
                   print(f'mood-waits frame={frame}: observed bands={sorted({row["band"] for row in visible})}, waiting ids={sorted(guests)}, seed={data["master_seed"]}, fixture=none')
               print(f'{name}: actual quarter={expected}, Cutaway, guest={data["selected_agent_id"]}, F3={debug}, tick={data["world_tick"]}, 1600x900, sha256={hashlib.sha256(raw).hexdigest()}')
           print(f'Normal mood capture observed bands across frames: {sorted(observed_bands)}; multiple-band screenshot acceptance still requires image review.')
+
+          # These are image/scale/frame identity checks. Native state and HUD
+          # geometry remain GDScript tests and director image review.
+          def verify_hud_identity(name, size, frame, percent):
+              png = root / name / f'shot_{frame:04d}.png'
+              raw = png.read_bytes()
+              assert raw[:8] == b'\x89PNG\r\n\x1a\n' and len(raw) > 1000, f'{name}: missing/invalid PNG'
+              assert struct.unpack('>II', raw[16:24]) == size, f'{name}: wrong PNG dimensions'
+              data = json.loads(png.with_suffix('.json').read_text())
+              assert data['image_file'] == png.name, f'{name}: metadata names another image'
+              assert data['image_sha256'] == hashlib.sha256(raw).hexdigest(), f'{name}: image/metadata digest mismatch'
+              assert data['scene'] == 'res://src/world/main.tscn' and data['capture_timing'] == 'frame_post_draw', f'{name}: wrong image source'
+              hud = data['hud_layout']
+              assert data['requested_hud_layout'] is True and data['frame'] == hud['frame'] == frame, f'{name}: wrong frame identity'
+              assert (data['width'], data['height']) == size and data['requested_window_size'] == list(size), f'{name}: wrong viewport identity'
+              assert hud['window_size'] == hud['display_size'] == list(size), f'{name}: wrong native window identity'
+              assert data['requested_ui_scale_percent'] == hud['ui_scale_percent'] == hud['selected_ui_scale_percent'] == percent, f'{name}: wrong UI scale identity'
+              assert math.isclose(hud['content_scale_factor'], percent / 100, abs_tol=1e-7), f'{name}: wrong rendered UI scale'
+              print(f'{name}: frame={frame}, scale={percent}%, size={size}, sha256={hashlib.sha256(raw).hexdigest()}')
+
+          verify_hud_identity('hud-1280', (1280, 720), 12, 125)
+          verify_hud_identity('hud-1280', (1280, 720), 90, 150)
+          verify_hud_identity('hud-1600', (1600, 900), 12, 125)
+          verify_hud_identity('hud-1600', (1600, 900), 90, 150)
           PY
 
       - name: Upload actual captures, metadata and logs

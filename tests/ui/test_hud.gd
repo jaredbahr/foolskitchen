@@ -41,7 +41,7 @@ func test_initial_labels_and_shared_theme_before_ready() -> void:
 	assert_eq((_control("Time") as Label).text, "11:00")
 	assert_eq((_control("Phase") as Label).text, "Morning")
 	assert_eq((_control("Cash") as Label).text, "$1,234")
-	assert_eq((_control("Reputation") as Label).text, "3.0★")
+	assert_eq((_control("Reputation") as Label).text, "3.0")
 	assert_eq((_control("Reputation") as Label).tooltip_text,
 		"3.0 stars from your last 5 reviews")
 	assert_eq((_hud.get_node("Top/Row/OwnerProgress/OwnerLevel") as Label).text, "Lv 1")
@@ -63,10 +63,10 @@ func test_reputation_presentation_survives_refresh_and_tracks_window_count() -> 
 	var reputation: Label = _control("Reputation") as Label
 	assert_eq(reputation.get_index(), cash.get_index() + 1)
 	_hud.call("set_reputation", 3.44, 30)
-	assert_eq(reputation.text, "3.4★")
+	assert_eq(reputation.text, "3.4")
 	assert_eq(reputation.tooltip_text, "3.4 stars from your last 30 reviews")
 	_hud.call("refresh")
-	assert_eq(reputation.text, "3.4★")
+	assert_eq(reputation.text, "3.4")
 	_hud.call("set_reputation", 4.0, 7)
 	assert_eq(reputation.tooltip_text, "4.0 stars from your last 7 reviews")
 
@@ -115,11 +115,32 @@ func test_scaled_window_keeps_every_hud_control_readable_and_build_hints_below_h
 	assert_true(window.is_embedded(), "the fixture uses an isolated embedded Window")
 	assert_eq(window.size, Vector2i(1280, 720))
 	_assert_header_layout(window)
-	_assert_single_header_row()
+	_assert_one_row_when_native_content_fits()
 	var top: Control = _hud.get_node("Top") as Control
 	var usual_height: float = top.size.y
-	assert_almost_eq(_hud.call("panel_top"), 112.0)
+	assert_almost_eq(_hud.call("panel_top"), maxf(112.0, top.get_global_rect().end.y + 12.0))
 	_hud.call("set_build_state", true, true, "Keep a clear route to the kitchen and every table.")
+	# At this intermediate width actions wrap, but the middle remains free.
+	window.content_scale_factor = 1600.0 / 1400.0
+	await _layout_frames()
+	assert_almost_eq(window.get_visible_rect().size.x, 1400.0, 0.01)
+	_assert_header_layout(window)
+	_assert_build_hint_layout(window)
+	var finances: Rect2 = _control("Cash").get_global_rect().merge(_control("Plates").get_global_rect())
+	var time_group: Rect2 = _control("Day").get_global_rect().merge(_control("Speed4").get_global_rect())
+	var row: Control = _hud.get_node("Top/Row") as Control
+	assert_almost_eq(finances.get_center().x, row.get_global_rect().get_center().x, 0.5,
+		"finances stay centered when actions wrap and the center has room")
+	assert_true(finances.position.x >= time_group.end.x + 23.5)
+	assert_true(finances.position.y < time_group.end.y, "time and finances still share the first row")
+	assert_true(_control("Walls").global_position.y >= time_group.end.y + 11.5,
+		"the intact action group has wrapped below time and finances")
+	window.content_scale_factor = 1.0
+	# Long status values must keep the same native bounds and group clearance
+	# through every requested physical-size and preference combination.
+	EventBus.cash_changed.emit(123456789, 0, &"layout")
+	_hud.call("set_owner_progress", 123, 99999, 100000)
+	_hud.call("set_plate_counts", 999, 1000, 1, 0)
 	# Match the project virtual base and exercise both requested physical sizes
 	# at 125% and 150%. A 150% preference gives 1066.667 logical pixels here.
 	for physical_size: Vector2i in [Vector2i(1280, 720), Vector2i(1600, 900)]:
@@ -133,9 +154,10 @@ func test_scaled_window_keeps_every_hud_control_readable_and_build_hints_below_h
 			assert_almost_eq(window.get_visible_rect().size.x, 1600.0 / scale_factor, 0.01)
 			assert_almost_eq(window.get_visible_rect().size.y, 900.0 / scale_factor, 0.01)
 			_assert_header_layout(window)
+			_assert_one_row_when_native_content_fits()
 			_assert_build_hint_layout(window)
 			if percent == 150:
-				assert_true(top.size.y > usual_height, "150% wraps controls instead of clipping actions")
+				assert_true(top.size.y >= usual_height, "larger UI preserves native group height instead of squeezing controls")
 	# Also cover a native-size virtual base: the same physical Window now has
 	# only 853.333 logical pixels. Never divide get_visible_rect() a second time.
 	window.size = Vector2i(1280, 720)
@@ -146,14 +168,31 @@ func test_scaled_window_keeps_every_hud_control_readable_and_build_hints_below_h
 	assert_almost_eq(window.get_visible_rect().size.y, 480.0, 0.01)
 	_assert_header_layout(window)
 	_assert_build_hint_layout(window)
+	EventBus.cash_changed.emit(123456789, 0, &"layout")
+	_hud.call("set_owner_progress", 123, 99999, 100000)
+	_hud.call("set_plate_counts", 999, 1000, 1, 0)
+	await _layout_frames()
+	_assert_header_layout(window)
+	_assert_build_hint_layout(window)
+	var settled_height: float = top.size.y
+	await tree.process_frame
+	assert_almost_eq(top.size.y, settled_height, 0.01, "native minimum changes settle without height oscillation")
+	(_control("Context") as Button).hide()
+	await _layout_frames()
+	_assert_header_layout(window, false)
+	(_control("Context") as Button).show()
+	EventBus.cash_changed.emit(1234, 0, &"layout")
+	_hud.call("set_owner_progress", 2, 17, 45)
+	_hud.call("set_plate_counts", 12, 12, 0, 0)
 	window.content_scale_size = Vector2i(1600, 900)
 	window.content_scale_factor = 1.0
 	await _layout_frames()
 	_assert_header_layout(window)
-	_assert_single_header_row()
+	_assert_one_row_when_native_content_fits()
 	assert_almost_eq(top.size.y, usual_height, 0.01, "returning to 100% restores the usual header height")
-	assert_almost_eq((_hud.get_node("BuildHints") as Control).position.y, 104.0)
-	assert_almost_eq(_hud.call("panel_top"), 112.0)
+	assert_almost_eq((_hud.get_node("BuildHints") as Control).position.y,
+		maxf(104.0, top.get_global_rect().end.y + 6.0))
+	assert_almost_eq(_hud.call("panel_top"), maxf(112.0, top.get_global_rect().end.y + 12.0))
 	window.remove_child(_hud)
 	host.free()
 	view.free()
@@ -315,8 +354,8 @@ func test_every_speed_change_has_exactly_one_pressed_button_using_shared_styles(
 			assert_eq(button.button_pressed, value == speed)
 			assert_false(button.has_theme_color_override("font_color"))
 			assert_false(button.has_theme_color_override("font_pressed_color"))
-			assert_false(button.has_theme_stylebox_override("normal"))
-			assert_false(button.has_theme_stylebox_override("pressed"))
+			assert_true(button.has_theme_stylebox_override("normal"), "shared compact padding retains the native styles")
+			assert_true(button.has_theme_stylebox_override("pressed"))
 			assert_eq(button.theme, shared_theme, "each button uses the same resource, not inline styles")
 			# The runner executes before tree readiness, when Control's inherited
 			# theme cache can still hold constructor defaults. Inspect the actual
@@ -350,23 +389,18 @@ func test_wall_button_tracks_c_key_and_rebinding_without_duplicate_cycles() -> v
 	assert_true(button.disabled)
 
 
-func test_pause_uses_mouse_ignoring_shapes_with_shared_theme_foreground() -> void:
+func test_pause_uses_approved_native_icon_with_shared_theme_foreground() -> void:
 	var pause: Button = _control("Speed0") as Button
-	assert_eq(pause.text, "", "pause needs no font glyph or platform fallback")
+	assert_eq(pause.text, "", "the native icon replaces the font-independent pause shapes")
+	assert_eq(pause.icon.resource_path, IconCatalogue.ROOT + "pause.png")
 	assert_eq(pause.tooltip_text, "Pause (Space)")
 	assert_true(pause.custom_minimum_size.x >= 44.0 and pause.custom_minimum_size.y >= 44.0)
-	var icon: Control = pause.get_node("Pause") as Control
-	var bars: HBoxContainer = icon.get_node("Bars") as HBoxContainer
-	assert_eq(icon.mouse_filter, Control.MOUSE_FILTER_IGNORE)
-	assert_eq(bars.mouse_filter, Control.MOUSE_FILTER_IGNORE)
-	assert_eq(bars.get_child_count(), 2)
+	assert_false((pause.get_node("Pause") as Control).visible, "legacy child paths remain harmless and hidden")
 	for speed: int in [0, 1, 2, 4, 0]:
 		Clock.set_speed(speed)
-		var color_name: StringName = &"font_pressed_color" if speed == 0 else &"font_color"
-		for bar: ColorRect in [bars.get_node("Left") as ColorRect, bars.get_node("Right") as ColorRect]:
-			assert_eq(bar.mouse_filter, Control.MOUSE_FILTER_IGNORE)
-			assert_eq(bar.custom_minimum_size, Vector2(4.0, 14.0))
-			assert_eq(bar.color, pause.theme.get_color(color_name, &"Button"))
+		assert_eq(pause.get_theme_color("icon_pressed_color"),
+			pause.theme.get_color("font_pressed_color", &"Button"))
+		assert_eq(pause.get_theme_color("icon_normal_color"), pause.theme.get_color("font_color", &"Button"))
 		assert_eq(pause.button_pressed, speed == 0)
 
 
@@ -380,13 +414,12 @@ func test_native_pause_click_and_physical_space_keep_one_speed_selection() -> vo
 	var pause: Button = _control("Speed0") as Button
 	assert_true(_hud.is_node_ready())
 	assert_eq(pause.focus_mode, Control.FOCUS_NONE)
-	assert_eq(pause.get_theme_stylebox("pressed"), pause.theme.get_stylebox("pressed", &"Button"))
+	assert_eq((pause.get_theme_stylebox("pressed") as StyleBoxFlat).bg_color,
+		(pause.theme.get_stylebox("pressed", &"Button") as StyleBoxFlat).bg_color)
 	var center: Vector2 = pause.get_global_rect().get_center()
-	for name: String in ["Left", "Right"]:
-		var bar: ColorRect = pause.get_node("Pause/Bars/" + name) as ColorRect
-		assert_true(bar.is_visible_in_tree())
-		assert_true(bar.size.x > 0.0 and bar.size.y > 0.0)
-		assert_true(pause.get_global_rect().encloses(bar.get_global_rect()))
+	assert_not_null(pause.icon)
+	assert_false(pause.expand_icon, "fixed-size native icons reserve their own minimum")
+	assert_eq(pause.get_theme_constant("icon_max_width"), 28)
 	EventBus.speed_changed.connect(_record_speed)
 	var motion: InputEventMouseMotion = InputEventMouseMotion.new()
 	motion.position = center
@@ -396,14 +429,13 @@ func test_native_pause_click_and_physical_space_keep_one_speed_selection() -> vo
 	await tree.process_frame
 	await tree.process_frame
 	assert_true(pause.get_draw_mode() == BaseButton.DRAW_PRESSED or pause.get_draw_mode() == BaseButton.DRAW_HOVER_PRESSED)
-	for name: String in ["Left", "Right"]:
-		var bar: ColorRect = pause.get_node("Pause/Bars/" + name) as ColorRect
-		assert_eq(bar.color, pause.theme.get_color(&"font_pressed_color", &"Button"), "held native press uses the pressed foreground before release")
+	assert_eq(pause.get_theme_color("icon_pressed_color"), pause.theme.get_color(&"font_pressed_color", &"Button"),
+		"held native press uses the warm pressed foreground")
 	_hud.call("refresh")
 	assert_true(pause.get_draw_mode() == BaseButton.DRAW_PRESSED or pause.get_draw_mode() == BaseButton.DRAW_HOVER_PRESSED, "refresh preserves the native held press")
 	await tree.process_frame
 	_native_mouse(center, false)
-	assert_eq(_speeds, [0] as Array[int], "shapes do not intercept or duplicate the native button click")
+	assert_eq(_speeds, [0] as Array[int], "the native icon does not intercept or duplicate the button click")
 	assert_true(pause.button_pressed)
 	_native_space(true)
 	_native_space(false)
@@ -415,6 +447,25 @@ func test_native_pause_click_and_physical_space_keep_one_speed_selection() -> vo
 	assert_eq(_speeds, [0, 2, 0] as Array[int])
 	assert_true(pause.button_pressed)
 	assert_false((_control("Speed2") as Button).button_pressed)
+
+
+func test_every_header_button_has_readable_content_and_tooltip() -> void:
+	for name: String in ["Speed0", "Speed1", "Speed2", "Speed4", "Walls", "Build", "Paint",
+			"Context", "Menu", "Staff", "Settings"]:
+		var button: Button = _control(name) as Button
+		assert_true(button.icon != null or not button.text.is_empty(), name + " has readable content")
+		assert_false(button.tooltip_text.is_empty(), name + " explains its action")
+		if button.icon != null:
+			assert_true(button.icon.resource_path.begins_with(IconCatalogue.ROOT))
+			assert_eq(button.get_theme_constant("icon_max_width"), 28)
+	for name: String in ["Speed1", "Speed2", "Speed4", "Build", "Paint", "Context", "Menu", "Staff"]:
+		assert_false((_control(name) as Button).text.is_empty(), name + " keeps its main label")
+	assert_null((_control("Paint") as Button).icon)
+	assert_eq((_control("Reputation").get_node("ThemeIcon") as TextureRect).texture.resource_path,
+		IconCatalogue.ROOT + "star.png")
+	for name: String in ["Day", "Time", "Phase", "Cash", "Reputation", "Plates"]:
+		assert_false((_control(name) as Label).text.is_empty())
+		assert_false(_control(name).tooltip_text.is_empty(), name + " explains the displayed value")
 
 
 func _native_mouse(position: Vector2, down: bool) -> void:
@@ -439,7 +490,7 @@ func _layout_frames() -> void:
 		await tree.process_frame
 
 
-func _assert_header_layout(window: Window) -> void:
+func _assert_header_layout(window: Window, context_visible: bool = true) -> void:
 	var top: Control = _hud.get_node("Top") as Control
 	var row: Control = _hud.get_node("Top/Row") as Control
 	var pixels: Rect2 = Rect2(Vector2.ZERO, Vector2(window.size))
@@ -451,6 +502,9 @@ func _assert_header_layout(window: Window) -> void:
 	for name: String in ["Day", "Time", "Phase", "Speed0", "Speed1", "Speed2", "Speed4",
 			"Walls", "Build", "Paint", "Cash", "Reputation", "OwnerProgress", "Plates", "Context", "Menu", "Staff", "Settings"]:
 		var control: Control = _control(name)
+		if name == "Context" and not context_visible:
+			assert_false(control.is_visible_in_tree(), "the hidden service action releases its layout space")
+			continue
 		assert_true(control.is_visible_in_tree(), name + " remains visible at every scale")
 		_assert_readable_control(control, window)
 		assert_true(top.get_global_rect().grow(0.5).encloses(control.get_global_rect()), name + " stays inside its header")
@@ -460,8 +514,9 @@ func _assert_header_layout(window: Window) -> void:
 			assert_false(rect.intersects(previous), name + " does not cover another HUD control")
 		occupied.append(rect)
 	for path: String in ["OwnerProgress/OwnerLevel", "OwnerProgress/OwnerXPBar",
-			"Speed0/Pause/Bars/Left", "Speed0/Pause/Bars/Right"]:
+			"Reputation/ThemeIcon"]:
 		_assert_readable_control(row.get_node(path) as Control, window)
+	_assert_three_groups()
 
 
 func _assert_readable_control(control: Control, window: Window) -> void:
@@ -476,23 +531,37 @@ func _assert_readable_control(control: Control, window: Window) -> void:
 		str(control.name) + " stays within physical pixel bounds")
 
 
-func _assert_single_header_row() -> void:
-	var row: HFlowContainer = _hud.get_node("Top/Row") as HFlowContainer
-	assert_eq(row.get_line_count(), 1, "100% keeps the native header on one flow line")
+func _assert_one_row_when_native_content_fits() -> void:
+	var row: Container = _hud.get_node("Top/Row") as Container
+	assert_true(row.get_combined_minimum_size().x <= row.size.x + 0.5, "the widest intact group fits")
+	# Measure actual native control minima independently of the container's
+	# packing result. Icons may legitimately require another row even at 100%.
+	var required_width: float = 24.0 * 2.0
+	var visible_count: int = 0
+	for name: String in ["Day", "Time", "Phase", "Speed0", "Speed1", "Speed2", "Speed4", "Cash",
+			"Reputation", "OwnerProgress", "Plates", "Walls", "Build", "Paint", "Context", "Menu", "Staff", "Settings"]:
+		var control: Control = _control(name)
+		if control.visible:
+			required_width += control.get_combined_minimum_size().x
+			visible_count += 1
+	required_width += 6.0 * float(visible_count - 3)
+	if required_width > row.size.x:
+		_assert_three_groups()
+		return
 	var first: Rect2 = _control("Day").get_global_rect()
 	var shared_top: float = first.position.y
 	var shared_bottom: float = first.end.y
 	var previous_end: float = first.position.x
 	# Labels shrink to their text height and center within the native flow line.
 	# Check a shared row band and order rather than requiring equal top edges.
-	for name: String in ["Day", "Time", "Phase", "Speed0", "Speed1", "Speed2", "Speed4", "Walls",
-			"Build", "Paint", "Cash", "Reputation", "OwnerProgress", "Plates", "Context", "Menu", "Staff", "Settings"]:
+	for name: String in ["Day", "Time", "Phase", "Speed0", "Speed1", "Speed2", "Speed4", "Cash",
+			"Reputation", "OwnerProgress", "Plates", "Walls", "Build", "Paint", "Context", "Menu", "Staff", "Settings"]:
 		var rect: Rect2 = _control(name).get_global_rect()
-		assert_true(rect.position.x >= previous_end - 0.01, "100% keeps " + name + " in left-to-right row order")
+		assert_true(rect.position.x >= previous_end - 0.01, "a fitting row keeps " + name + " in left-to-right group order")
 		previous_end = rect.end.x
 		shared_top = maxf(shared_top, rect.position.y)
 		shared_bottom = minf(shared_bottom, rect.end.y)
-	assert_true(shared_bottom > shared_top, "every 100% header control shares a positive vertical row band")
+	assert_true(shared_bottom > shared_top, "every fitting header control shares a positive vertical row band")
 
 
 func _assert_build_hint_layout(window: Window) -> void:
@@ -505,6 +574,46 @@ func _assert_build_hint_layout(window: Window) -> void:
 	assert_false(_drawn_rect(top, window).intersects(_drawn_rect(hints, window)))
 	assert_true(float(_hud.call("panel_top")) >= top.get_global_rect().end.y + 12.0,
 		"morning panels receive clearance below the final header height")
+
+
+func _assert_three_groups() -> void:
+	var groups: Array[Array] = [
+		["Day", "Time", "Phase", "Speed0", "Speed1", "Speed2", "Speed4"],
+		["Cash", "Reputation", "OwnerProgress", "Plates"],
+		["Walls", "Build", "Paint", "Context", "Menu", "Staff", "Settings"],
+	]
+	var bounds: Array[Rect2] = []
+	for names: Array in groups:
+		var union: Rect2 = Rect2()
+		var count: int = 0
+		var previous_end: float = 0.0
+		var shared_top: float = -INF
+		var shared_bottom: float = INF
+		for name: String in names:
+			var control: Control = _control(name)
+			if not control.visible:
+				continue
+			var rect: Rect2 = control.get_global_rect()
+			if count > 0:
+				assert_true(rect.position.x >= previous_end + 5.5, name + " has space inside its group")
+			union = rect if count == 0 else union.merge(rect)
+			previous_end = rect.end.x
+			shared_top = maxf(shared_top, rect.position.y)
+			shared_bottom = minf(shared_bottom, rect.end.y)
+			count += 1
+		assert_true(shared_bottom > shared_top, "an intact group shares one vertical band")
+		bounds.append(union)
+	for index: int in range(1, bounds.size()):
+		var before: Rect2 = bounds[index - 1]
+		var after: Rect2 = bounds[index]
+		var same_row: bool = minf(before.end.y, after.end.y) > maxf(before.position.y, after.position.y)
+		if same_row:
+			assert_true(after.position.x >= before.end.x + 23.5, "adjacent groups have a clear 24px gap")
+		else:
+			assert_true(after.position.y >= before.end.y + 11.5, "wrapped groups have a clear 12px row gap")
+	var row: Control = _hud.get_node("Top/Row") as Control
+	assert_almost_eq(bounds[0].position.x, row.global_position.x, 0.5, "time stays at the left")
+	assert_almost_eq(bounds[2].end.x, row.get_global_rect().end.x, 0.5, "actions stay at the right")
 
 
 func _drawn_rect(control: Control, window: Window) -> Rect2:
