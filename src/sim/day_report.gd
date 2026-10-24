@@ -10,6 +10,12 @@ var customers_served: int = 0
 var customers_lost: int = 0
 var leave_reasons: Dictionary = {}
 var reviews: Array[String] = []
+## Player-facing reviews for this day. Each card has an integer stars (1-5)
+## and a quote; simulation cause ids are deliberately excluded.
+var review_cards: Array[Dictionary] = []
+var today_review_average: float = 0.0
+var reputation_before: float = 3.0
+var reputation_after: float = 3.0
 
 
 ## Returns income across all categories in whole currency units.
@@ -39,6 +45,9 @@ func top_leave_reason() -> StringName:
 
 ## Returns a detached JSON-compatible snapshot using string keys.
 func to_dict() -> Dictionary:
+	var cards: Array[Dictionary] = []
+	for card: Dictionary in review_cards:
+		cards.append(_public_review_card(card))
 	return {
 		"day": day,
 		"income": _string_counts(income),
@@ -48,6 +57,10 @@ func to_dict() -> Dictionary:
 		"customers_lost": customers_lost,
 		"leave_reasons": _string_counts(leave_reasons),
 		"reviews": reviews.duplicate(),
+		"review_cards": cards,
+		"today_review_average": today_review_average,
+		"reputation_before": reputation_before,
+		"reputation_after": reputation_after,
 	}
 
 
@@ -65,7 +78,23 @@ static func from_dict(data: Dictionary) -> DayReport:
 	if saved_reviews is Array:
 		for quote: Variant in saved_reviews:
 			report.reviews.append(str(quote))
+	var saved_cards: Variant = data.get("review_cards", [])
+	if saved_cards is Array:
+		for card: Variant in saved_cards:
+			if card is Dictionary:
+				report.review_cards.append(_public_review_card(card as Dictionary))
+	report.today_review_average = float(data.get("today_review_average", 0.0))
+	report.reputation_before = float(data.get("reputation_before", 3.0))
+	report.reputation_after = float(data.get("reputation_after", 3.0))
 	return report
+
+
+## Copy only display fields, so a sim result cannot leak its cause into a save.
+static func _public_review_card(card: Dictionary) -> Dictionary:
+	return {
+		"stars": clampi(int(card.get("stars", 1)), 1, 5),
+		"quote": str(card.get("quote", "")),
+	}
 
 
 static func _sum(counts: Dictionary) -> int:

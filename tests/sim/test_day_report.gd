@@ -76,6 +76,58 @@ func test_missing_saved_fields_restore_an_empty_report() -> void:
 	assert_eq(report.profit(), 0)
 	assert_true(report.reviews.is_empty())
 	assert_true(report.leave_reasons.is_empty())
+	assert_true(report.review_cards.is_empty())
+	assert_almost_eq(report.reputation_before, 3.0)
+	assert_almost_eq(report.reputation_after, 3.0)
+
+
+func test_review_cards_round_trip_without_sim_cause_ids_or_shared_mutation() -> void:
+	var report: DayReport = DayReport.new()
+	report.review_cards = [{"stars": 4, "quote": "Fast and tasty", "cause": "too_expensive"}]
+	report.today_review_average = 4.0
+	report.reputation_before = 3.0
+	report.reputation_after = 3.2
+	var saved: Dictionary = report.to_dict()
+	var cards: Array = saved["review_cards"]
+	assert_eq(cards.size(), 1)
+	assert_eq(cards[0], {"stars": 4, "quote": "Fast and tasty"})
+	var decoded: Dictionary = JSON.parse_string(JSON.stringify(saved))
+	var restored: DayReport = DayReport.from_dict(decoded)
+	assert_eq(restored.review_cards, cards)
+	assert_almost_eq(restored.today_review_average, 4.0)
+	assert_almost_eq(restored.reputation_before, 3.0)
+	assert_almost_eq(restored.reputation_after, 3.2)
+	cards[0]["quote"] = "Modified snapshot"
+	assert_eq(report.review_cards[0]["quote"], "Fast and tasty")
+	assert_eq(restored.review_cards[0]["quote"], "Fast and tasty")
+
+
+func test_ui_review_summary_and_star_quotes_then_clear() -> void:
+	_screen = REPORT_SCENE.instantiate()
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	tree.root.add_child(_screen)
+	var report: DayReport = DayReport.new()
+	report.review_cards = [
+		{"stars": 5, "quote": "Wonderful soup"},
+		{"stars": 4, "quote": "Nice and cosy"},
+		{"stars": 3, "quote": "Okay lunch"},
+		{"stars": 2, "quote": "Fourth line is hidden"},
+	]
+	report.today_review_average = 3.5
+	report.reputation_before = 3.2
+	report.reputation_after = 3.4
+	_screen.call("show_report", report)
+	assert_eq((_screen.get_node("%ReviewStats") as Label).text, "Today's reviews: 3.5 stars")
+	assert_eq((_screen.get_node("%Reputation") as Label).text, "Reputation: 3.2 to 3.4 stars")
+	var lines: Node = _screen.get_node("%ReviewRows")
+	assert_eq(lines.get_child_count(), 3)
+	assert_eq((lines.get_child(0) as Label).text, '5 stars - "Wonderful soup"')
+	assert_eq((lines.get_child(2) as Label).text, '3 stars - "Okay lunch"')
+	_screen.call("show_report", DayReport.new())
+	assert_eq((_screen.get_node("%ReviewStats") as Label).text, "Today's reviews: none")
+	assert_eq((_screen.get_node("%Reputation") as Label).text, "Reputation: 3.0 to 3.0 stars")
+	assert_eq(lines.get_child_count(), 1)
+	assert_eq((lines.get_child(0) as Label).text, "No reviews today")
 
 
 func test_ui_full_report_then_empty_clears_every_section() -> void:

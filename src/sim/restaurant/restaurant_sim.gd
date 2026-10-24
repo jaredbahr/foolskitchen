@@ -5,6 +5,8 @@ extends RefCounted
 signal customer_arrived(customer: CustomerAgent)
 signal customer_paid(customer: CustomerAgent, order: Order, amount: int)
 signal customer_left(customer: CustomerAgent, reason: StringName)
+## A detached, player-facing row without the scorer's internal cause id.
+signal review_recorded(row: Dictionary)
 ## Emitted once service has closed and every guest's departure is recorded,
 ## so the day's numbers are final. Listen to this, not the clock, for reports.
 signal service_closed(day: int)
@@ -35,6 +37,14 @@ var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var served_today: int = 0
 var lost_today: int = 0
 var leave_reasons_today: Dictionary[StringName, int] = {}
+## Optional review dependencies are injected by the game session. Keeping the
+## stream separate leaves arrivals and individual guest choices unchanged.
+var review_book: ReputationBook = ReputationBook.new()
+var review_tuning: ReviewTuning
+var review_quotes: ReviewQuotes
+var review_rng: RandomNumberGenerator
+var reviews_today: Array[Dictionary] = []
+var reputation_before_day: float = 3.0
 ## Where each staff role starts the day (from the layout).
 var staff_spawns: Dictionary[StringName, Vector2i] = {}
 
@@ -129,6 +139,8 @@ func start_day() -> void:
 	served_today = 0
 	lost_today = 0
 	leave_reasons_today.clear()
+	reviews_today.clear()
+	reputation_before_day = review_book.average()
 	_departed.clear()
 	orders.prune_finished()
 	if kitchen != null:
@@ -175,6 +187,19 @@ func advance() -> void:
 func use_rng(random: RandomNumberGenerator) -> void:
 	rng = random
 	spawner.rng = random
+
+
+## Enables departure reviews with a persistent book and a dedicated named RNG.
+## Invalid or absent dependencies leave the existing visit lifecycle untouched.
+func configure_reviews(book: ReputationBook, tuning: ReviewTuning,
+		quotes: ReviewQuotes, random: RandomNumberGenerator) -> void:
+	if book == null or tuning == null or not tuning.is_valid() \
+			or quotes == null or not quotes.is_valid() or random == null:
+		return
+	review_book = book
+	review_tuning = tuning
+	review_quotes = quotes
+	review_rng = random
 
 
 ## Missing overrides use the unchanged content price.
@@ -239,4 +264,21 @@ func record_departure(customer: CustomerAgent) -> void:
 	if not customer.paid:
 		lost_today += 1
 	world.log_event("Guest #%d left: %s" % [customer.id, reason])
+	if review_book != null and review_tuning != null and review_quotes != null and review_rng != null:
+		var standard_price: int = 0
+		if customer.order != null:
+			for recipe: RecipeDef in menu:
+				if recipe.id == customer.order.recipe_id:
+					standard_price = recipe.standard_price
+					break
+		var visit: ReviewVisit = customer.review_visit(standard_price)
+		# A paid guest removed at the closing cutoff retains their happy report
+		# reason, but the forced departure must not sample a late review.
+		visit.closing = visit.closing or world.clock.phase == SimClock.Phase.CLOSED
+		var result: Dictionary = review_book.record_visit(visit, review_tuning, review_quotes, review_rng)
+		if not result.is_empty():
+			var row: Dictionary = {"stars": result["stars"], "quote": result["quote"],
+				"before": result["before"], "after": result["after"]}
+			reviews_today.append(row)
+			review_recorded.emit(row.duplicate())
 	customer_left.emit(customer, reason)

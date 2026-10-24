@@ -126,6 +126,13 @@ tooltip_text = "Paint walls, floor and furniture (P)"
 layout_mode = 2
 text = "$0"
 
+[node name="Reputation" type="Label" parent="Top/Row"]
+layout_mode = 2
+mouse_filter = 1
+theme_override_font_sizes/font_size = 16
+text = "3.0★"
+tooltip_text = "3.0 stars from your last 5 reviews"
+
 [node name="Plates" type="Label" parent="Top/Row"]
 layout_mode = 2
 mouse_filter = 1

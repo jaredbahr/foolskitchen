@@ -166,6 +166,21 @@ func mood_band() -> int:
 	return MoodBand.ABOUT_TO_LEAVE
 
 
+## Detached review inputs from this visit's actual waits and charged price.
+## The caller supplies the recipe's unchanged standard price and, once the
+## cleanliness system exists, its bounded dirt fraction.
+func review_visit(standard_price: int, dirt_fraction: float = 0.0) -> ReviewVisit:
+	var visit: ReviewVisit = ReviewVisit.new()
+	visit.served = paid
+	visit.closing = leave_reason == &"closing"
+	visit.queue_wait_fraction = float(maxi(0, _queue_wait)) / float(maxi(1, queue_patience))
+	visit.food_wait_fraction = float(maxi(0, _food_wait)) / float(maxi(1, food_patience))
+	if order != null and standard_price > 0:
+		visit.price_ratio = float(order.price) / float(standard_price)
+	visit.dirt_fraction = dirt_fraction
+	return visit
+
+
 func _waiting_why(text: String) -> String:
 	return "%s (%s)" % [text, MOOD_LABELS[mood_band()]]
 
