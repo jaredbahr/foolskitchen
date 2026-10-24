@@ -440,7 +440,7 @@ func test_three_day_imperfect_kitchen_soak() -> void:
 
 func _create(seed: int) -> RestaurantSim:
 	var errors: Array[String] = []
-	var sim: RestaurantSim = RestaurantSim.create(load(LAYOUT) as ShopLayout, _content, seed, errors)
+	var sim: RestaurantSim = RestaurantSim.create(load(LAYOUT) as ShopLayout, _content, seed, errors, null, false)
 	assert_eq(errors, [] as Array[String])
 	sim.customer_arrived.connect(_on_arrived)
 	sim.customer_paid.connect(_on_paid)

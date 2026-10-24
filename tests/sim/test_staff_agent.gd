@@ -239,3 +239,115 @@ func test_any_task_uses_own_role_skill() -> void:
 	var a := StaffAgent.new(&"server", 5)
 	assert_eq(a.skill_for(&"any"), 5)
 	assert_almost_eq(a.work_speed(&"any"), 1.1)
+
+
+## An explicit side follows rotated work cells and releases its reservation on completion.
+func test_exact_work_cell_uses_rotated_side_and_releases_it() -> void:
+	var item: PlacedItem = _selector_pass(1)
+	var cook: StaffAgent = _cook(Vector2i(1, 1))
+	var task: SimTask = SimTask.new(&"cook", &"cook", "Use exact side")
+	task.steps.append(TaskStep.go_to_work_cell(item.id, 1))
+	task.steps.append(TaskStep.work(5))
+	world.board.post(task, world.now)
+	for tick: int in 200:
+		world.advance()
+		assert_eq(item.reserved_by(item.work_cells[0]), -1, "never borrows the opposite side")
+		if task.state == SimTask.State.DONE:
+			break
+	assert_eq(task.state, SimTask.State.DONE)
+	assert_eq(cook.cell, item.work_cells[1])
+	assert_eq(item.reserved_by(item.work_cells[1]), -1)
+
+
+## Consecutive sides of one item release the old hold before waiting for a busy new side.
+func test_exact_work_cell_same_item_busy_side_releases_previous_hold() -> void:
+	var item: PlacedItem = _selector_pass()
+	var cook: StaffAgent = _cook(Vector2i(1, 1))
+	item.reserve(item.work_cells[1], 999)
+	var task: SimTask = SimTask.new(&"cook", &"cook", "Both pass sides")
+	task.steps.append(TaskStep.go_to_work_cell(item.id, 0))
+	task.steps.append(TaskStep.work(5))
+	task.steps.append(TaskStep.go_to_work_cell(item.id, 1))
+	task.steps.append(TaskStep.work(5))
+	world.board.post(task, world.now)
+	_run(120)
+	assert_eq(task.state, SimTask.State.CLAIMED)
+	assert_eq(cook.step_index, 2)
+	assert_eq(item.reserved_by(item.work_cells[0]), -1)
+	assert_eq(item.reserved_by(item.work_cells[1]), 999)
+	item.release(item.work_cells[1], 999)
+	_run(120)
+	assert_eq(task.state, SimTask.State.DONE)
+	assert_eq(cook.cell, item.work_cells[1])
+	assert_eq(item.reserved_by(item.work_cells[1]), -1)
+
+
+## Invalid exact indices fail through ordinary bounded drops rather than choosing another side.
+func test_exact_work_cell_invalid_index_never_falls_back() -> void:
+	var item: PlacedItem = _selector_pass()
+	var cook: StaffAgent = _cook(Vector2i(1, 1))
+	var task: SimTask = SimTask.new(&"cook", &"cook", "Invalid side")
+	task.steps.append(TaskStep.go_to_work_cell(item.id, 99))
+	world.board.post(task, world.now)
+	_run(30)
+	assert_eq(task.state, SimTask.State.CANCELLED)
+	assert_eq(cook.cell, Vector2i(1, 1))
+	for cell: Vector2i in item.work_cells:
+		assert_eq(item.reserved_by(cell), -1)
+
+
+## An unwalkable requested side fails even when the opposite side is available.
+func test_exact_work_cell_unwalkable_side_never_falls_back() -> void:
+	var item: PlacedItem = _selector_pass()
+	world.grid.set_terrain(item.work_cells[1], SimGrid.Terrain.WALL)
+	var cook: StaffAgent = _cook(Vector2i(1, 1))
+	var task: SimTask = SimTask.new(&"cook", &"cook", "Blocked side")
+	task.steps.append(TaskStep.go_to_work_cell(item.id, 1))
+	world.board.post(task, world.now)
+	_run(30)
+	assert_eq(task.state, SimTask.State.CANCELLED)
+	assert_eq(cook.cell, Vector2i(1, 1))
+	assert_eq(item.reserved_by(item.work_cells[0]), -1)
+
+
+## Removing the target cancels exact-cell tasks and clears their held reservation.
+func test_exact_work_cell_target_removal_releases_hold() -> void:
+	var item: PlacedItem = _selector_pass()
+	var cook: StaffAgent = _cook(Vector2i(1, 1))
+	var task: SimTask = SimTask.new(&"cook", &"cook", "Removed pass")
+	task.steps.append(TaskStep.go_to_work_cell(item.id, 1))
+	world.board.post(task, world.now)
+	_run(2)
+	assert_eq(item.reserved_by(item.work_cells[1]), cook.id)
+	world.grid.remove(item.id)
+	_run(2)
+	assert_eq(task.state, SimTask.State.CANCELLED)
+	assert_true(cook.task == null)
+	assert_eq(item.reserved_by(item.work_cells[1]), -1)
+	assert_eq(world.board.active_count(), 0)
+
+
+func _selector_pass(turns: int = 0) -> PlacedItem:
+	world = SimWorld.new(SimGrid.new(Vector2i(10, 10)))
+	return world.grid.place(Vector2i(2, 1), Vector2i(4, 3), turns, true,
+		[Vector2i(0, -1), Vector2i(0, 1)] as Array[Vector2i])
+
+
+## A dropped exact-cell task gives its reservation back when the worker notices.
+func test_exact_work_cell_drop_releases_hold() -> void:
+	var item: PlacedItem = _selector_pass()
+	var cook: StaffAgent = _cook(Vector2i(1, 1))
+	var task: SimTask = SimTask.new(&"cook", &"cook", "Dropped pass work")
+	task.steps.append(TaskStep.go_to_work_cell(item.id, 1))
+	task.steps.append(TaskStep.work(100))
+	world.board.post(task, world.now)
+	for tick: int in 100:
+		world.advance()
+		if cook.task == task and cook.step_index == 1:
+			break
+	assert_eq(item.reserved_by(item.work_cells[1]), cook.id)
+	world.board.drop(task, &"test_retry")
+	_run(1)
+	assert_true(cook.task == null)
+	assert_eq(item.reserved_by(item.work_cells[1]), -1)
+	world.board.cancel(task)

@@ -9,6 +9,13 @@ signal customer_left(customer: CustomerAgent, reason: StringName)
 var world: SimWorld
 var orders: OrderBook = OrderBook.new()
 var menu: Array[RecipeDef] = []
+## Replacing the shared inventory also updates the live kitchen (for session loading).
+var stock: Stock:
+	set(value):
+		stock = value if value != null else Stock.new()
+		if kitchen != null:
+			kitchen.stock = stock
+var kitchen: Kitchen
 var spawner: CustomerSpawner
 var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var served_today: int = 0
@@ -19,7 +26,8 @@ var _departed: Dictionary[int, bool] = {}
 
 
 ## Builds the layout, its starting staff, and its tier-one menu.
-static func create(layout: ShopLayout, content: ContentDB, seed: int, errors: Array[String]) -> RestaurantSim:
+static func create(layout: ShopLayout, content: ContentDB, seed: int, errors: Array[String],
+		stock: Stock = null, with_kitchen: bool = true) -> RestaurantSim:
 	var sim: RestaurantSim = RestaurantSim.new()
 	sim.world = ShopBuilder.build(layout, content, errors)
 	sim.rng.seed = seed
@@ -34,6 +42,9 @@ static func create(layout: ShopLayout, content: ContentDB, seed: int, errors: Ar
 	for recipe: RecipeDef in content.recipes():
 		if recipe.unlock_tier == 1:
 			sim.menu.append(recipe)
+	sim.stock = stock if stock != null else Stock.new()
+	if with_kitchen:
+		sim.kitchen = Kitchen.new(sim, content, sim.stock)
 	sim.start_day()
 	return sim
 
@@ -45,12 +56,16 @@ func start_day() -> void:
 	leave_reasons_today.clear()
 	_departed.clear()
 	orders.prune_finished()
+	if kitchen != null:
+		kitchen.retry_dirty_tables()
 	spawner.reset()
 
 
 ## One fixed world tick, arrivals, then departed-guest cleanup.
 func advance() -> void:
 	world.advance()
+	if kitchen != null:
+		kitchen.advance()
 	spawner.advance(self)
 	for customer: CustomerAgent in customers():
 		if world.clock.phase == SimClock.Phase.CLOSED:

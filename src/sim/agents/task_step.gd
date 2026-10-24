@@ -13,6 +13,8 @@ var kind: Kind = Kind.WORK
 var item_id: int = 0
 ## For GO_TO_ITEM: use a seat cell instead of a work cell.
 var use_seat: bool = false
+## -1 chooses any free work cell; nonnegative selects one exact rotated work cell.
+var work_cell_index: int = -1
 var cell: Vector2i = Vector2i.ZERO
 var ticks: int = 0
 ## Short text for the "why" readout, e.g. "fetching ingredients".
@@ -26,6 +28,13 @@ static func go_to_item(target_item_id: int, step_label: String = "", seat: bool 
 	s.item_id = target_item_id
 	s.use_seat = seat
 	s.label = step_label
+	return s
+
+
+## Uses one exact work cell, retaining ordinary item reservation and removal handling.
+static func go_to_work_cell(target_item_id: int, index: int, step_label: String = "") -> TaskStep:
+	var s: TaskStep = go_to_item(target_item_id, step_label)
+	s.work_cell_index = index
 	return s
 
 
