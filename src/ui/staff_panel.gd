@@ -4,16 +4,24 @@ extends Control
 
 signal hire_requested(id: StringName)
 signal let_go_requested(id: StringName)
+signal raise_accept_requested(id: StringName)
+signal raise_decline_requested(id: StringName)
 signal tray_requested(level: int)
 signal close_requested()
 
 const SHARED_THEME: Theme = preload("res://src/ui/theme/main_theme.tres")
+const GROWTH_RULES: StaffGrowthTuning = preload("res://data/balance/staff_growth.tres")
 const MORNING_HINT: String = "Staff changes are available in the morning."
 
 var _roster: StaffRoster
 var _phase: int = SimClock.Phase.MORNING
 var _snapshot: Dictionary = {}
 var _rows: Dictionary[StringName, Control] = {}
+var _morning_day: int = 0
+var _morning_notices: Array[Dictionary] = []
+var _morning_snapshot: Dictionary = {}
+var _morning_generation: int = 0
+var _offer_rows: Dictionary[StringName, Control] = {}
 var _tray_level: int = 0
 var _tray_prices: PackedInt32Array = PackedInt32Array()
 var _cash: int = 0
@@ -33,6 +41,17 @@ func set_phase(phase: int) -> void:
 	refresh()
 
 
+## Main supplies the current day and already-readable departure notices.
+## No decision or save happens inside this request-only panel.
+func set_morning(day: int, notices: Array[Dictionary]) -> void:
+	_morning_day = maxi(0, day)
+	_morning_notices.clear()
+	for notice: Dictionary in notices:
+		if notice.get("message") is String:
+			_morning_notices.append({"message": String(notice["message"])})
+	refresh()
+
+
 func set_trays(level: int, prices: PackedInt32Array, cash: int) -> void:
 	_tray_level = level
 	_tray_prices = prices
@@ -47,6 +66,12 @@ func refresh() -> void:
 	if snapshot != _snapshot:
 		_rebuild_rows()
 		_snapshot = snapshot
+	var offers: Array[Dictionary] = _roster.morning_raise_offers(_morning_day, _phase)
+	var morning_snapshot: Dictionary = {"offers": offers,
+		"notices": _morning_notices if _phase == SimClock.Phase.MORNING else []}
+	if morning_snapshot != _morning_snapshot:
+		_rebuild_morning_items(offers)
+		_morning_snapshot = morning_snapshot.duplicate(true)
 	var editable: bool = _phase == SimClock.Phase.MORNING
 	(%Status as Label).text = "No hiring fee. Wages are paid at closing. Keep a cook and a server." if editable else MORNING_HINT
 	(%RosterTitle as Label).text = "Your team (%d/%d) - $%d a day" % [_roster.members().size(), StaffRoster.CAPACITY, _roster.total_wages()]
@@ -78,6 +103,10 @@ func refresh() -> void:
 
 func row_for(id: StringName) -> Control:
 	return _rows.get(id) as Control
+
+
+func offer_row_for(id: StringName) -> Control:
+	return _offer_rows.get(id) as Control
 
 
 func _rebuild_rows() -> void:
@@ -128,7 +157,49 @@ func _add_row(parent: VBoxContainer, member: StaffMember, candidate: bool) -> vo
 	detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	detail.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(detail)
+	if not candidate:
+		_add_growth(row, member)
 	_rows[member.id] = row
+
+
+func _add_growth(row: VBoxContainer, member: StaffMember) -> void:
+	var growth: StaffGrowth = member.growth_state()
+	var primary: StringName = StaffMember._primary_skill(member.role)
+	var level: int = growth.skill_level(primary)
+	var needed: int = GROWTH_RULES.needed_for_next_level(level)
+	var earned: int = growth.progress_xp(primary)
+	var line: HBoxContainer = HBoxContainer.new()
+	line.name = "Growth"
+	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(line)
+	var face: Label = Label.new()
+	face.name = "Mood"
+	face.text = _mood_face(growth.mood)
+	face.tooltip_text = _mood_name(growth.mood)
+	face.mouse_filter = Control.MOUSE_FILTER_PASS
+	line.add_child(face)
+	var bar: ProgressBar = ProgressBar.new()
+	bar.name = "XP"
+	bar.custom_minimum_size = Vector2(120.0, 18.0)
+	bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bar.show_percentage = false
+	bar.max_value = float(maxi(1, needed))
+	bar.value = float(earned if needed > 0 else 1)
+	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	line.add_child(bar)
+	var caption: Label = Label.new()
+	caption.name = "XPLabel"
+	caption.text = "XP %d/%d" % [earned, needed] if needed > 0 else "Skill maxed out"
+	caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	line.add_child(caption)
+
+
+static func _mood_face(mood: int) -> String:
+	return ":)" if mood >= 3 else (":|" if mood == 2 else ":(")
+
+
+static func _mood_name(mood: int) -> String:
+	return "Happy" if mood >= 3 else ("Okay" if mood == 2 else "Upset")
 
 
 static func _role_name(staff_role: StringName) -> String:
@@ -137,6 +208,71 @@ static func _role_name(staff_role: StringName) -> String:
 		&"server": return "Server"
 		&"cleaner": return "Cleaner"
 	return "Team member"
+
+
+func _rebuild_morning_items(offers: Array[Dictionary]) -> void:
+	_morning_generation += 1
+	var notice_box: VBoxContainer = %MorningNotices as VBoxContainer
+	var offer_box: VBoxContainer = %RaiseOffers as VBoxContainer
+	for parent: VBoxContainer in [notice_box, offer_box]:
+		for child: Node in parent.get_children():
+			parent.remove_child(child)
+			add_child(child)
+			(child as Control).hide()
+			child.queue_free()
+	_offer_rows.clear()
+	var showing_morning: bool = _phase == SimClock.Phase.MORNING
+	notice_box.visible = showing_morning and not _morning_notices.is_empty()
+	if showing_morning:
+		for notice: Dictionary in _morning_notices:
+			var label: Label = Label.new()
+			label.text = String(notice["message"])
+			label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			notice_box.add_child(label)
+	(%RaiseTitle as Label).visible = not offers.is_empty()
+	offer_box.visible = not offers.is_empty()
+	for offer: Dictionary in offers:
+		var member_id: StringName = StringName(offer["member_id"])
+		var card: VBoxContainer = VBoxContainer.new()
+		card.theme = SHARED_THEME
+		offer_box.add_child(card)
+		var sentence: Label = Label.new()
+		sentence.name = "Message"
+		sentence.text = String(offer["message"])
+		sentence.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		card.add_child(sentence)
+		var actions: HBoxContainer = HBoxContainer.new()
+		actions.name = "Actions"
+		card.add_child(actions)
+		var requires_raise: bool = bool(offer["requires_raise"])
+		for accepting: bool in [true, false]:
+			if not accepting and not requires_raise:
+				continue
+			var button: Button = Button.new()
+			button.name = "Accept" if accepting else "NotNow"
+			button.text = ("Accept" if requires_raise else "Got it") if accepting else "Not now"
+			button.focus_mode = Control.FOCUS_NONE
+			button.pressed.connect(_on_raise_request.bind(member_id, accepting, _morning_generation))
+			actions.add_child(button)
+		_offer_rows[member_id] = card
+
+
+func _on_raise_request(member_id: StringName, accepting: bool, generation: int) -> void:
+	if _phase != SimClock.Phase.MORNING or _roster == null or _morning_day < 1 \
+			or generation != _morning_generation:
+		return
+	var found: bool = false
+	for offer: Dictionary in _roster.morning_raise_offers(_morning_day, _phase):
+		if offer["member_id"] == member_id:
+			found = true
+			break
+	if not found:
+		return
+	if accepting:
+		raise_accept_requested.emit(member_id)
+	else:
+		raise_decline_requested.emit(member_id)
+	refresh()
 
 
 func _on_request(id: StringName, hiring: bool) -> void:
