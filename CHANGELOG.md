@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- Read the time, money and actions in grouped top-bar controls with matching Kenney icons and clearer panel headings. (#132)
 - Staff improve at the jobs they finish and can ask for raises; review their progress and requests each morning. (#130)
 - Change sound, UI size, opening speed, fullscreen and camera edge panning in Settings; your choices are remembered. (#129)
 - The shop floor now gets messy during service. Hire a Cleaner to mop it, and see the day's cleanliness in the closing report. (#105)
