@@ -1,0 +1,89 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://src/ui/debug_overlay.gd" id="1_script"]
+[ext_resource type="Theme" path="res://src/ui/theme/main_theme.tres" id="2_theme"]
+
+[node name="DebugOverlay" type="Control"]
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme = ExtResource("2_theme")
+script = ExtResource("1_script")
+
+[node name="Panel" type="PanelContainer" parent="."]
+layout_mode = 1
+anchor_left = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -482.0
+offset_top = 112.0
+offset_right = -12.0
+offset_bottom = -12.0
+grow_horizontal = 0
+clip_contents = true
+mouse_filter = 0
+mouse_force_pass_scroll_events = false
+
+[node name="Margin" type="MarginContainer" parent="Panel"]
+layout_mode = 2
+mouse_filter = 1
+mouse_force_pass_scroll_events = false
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 10
+
+[node name="Scroll" type="ScrollContainer" parent="Panel/Margin"]
+layout_mode = 2
+clip_contents = true
+mouse_filter = 0
+mouse_force_pass_scroll_events = false
+focus_mode = 2
+horizontal_scroll_mode = 0
+vertical_scroll_mode = 1
+
+[node name="Content" type="VBoxContainer" parent="Panel/Margin/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+theme_override_constants/separation = 6
+
+[node name="Title" type="Label" parent="Panel/Margin/Scroll/Content"]
+layout_mode = 2
+mouse_filter = 2
+text = "Debug (F3)"
+
+[node name="Rates" type="Label" parent="Panel/Margin/Scroll/Content"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_font_sizes/font_size = 16
+text = "FPS 0  |  Sim 0.0 ticks/s"
+
+[node name="TaskTitle" type="Label" parent="Panel/Margin/Scroll/Content"]
+layout_mode = 2
+mouse_filter = 2
+text = "Open and claimed tasks"
+
+[node name="Tasks" type="Label" parent="Panel/Margin/Scroll/Content"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_font_sizes/font_size = 14
+text = "No world attached"
+autowrap_mode = 3
+
+[node name="LogTitle" type="Label" parent="Panel/Margin/Scroll/Content"]
+layout_mode = 2
+mouse_filter = 2
+text = "Recent events (last 15)"
+
+[node name="Log" type="Label" parent="Panel/Margin/Scroll/Content"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_font_sizes/font_size = 14
+text = "No events yet"
+autowrap_mode = 3
