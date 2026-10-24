@@ -1,0 +1,116 @@
+name: Visual review captures
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/visual-review.yml'
+      - 'tools/screenshot.*'
+      - 'src/world/**'
+      - 'src/ui/**'
+      - 'data/layouts/**'
+      - 'project.godot'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  capture:
+    name: Default and four cutaway views
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      LIBGL_ALWAYS_SOFTWARE: 'true'
+      GALLIUM_DRIVER: llvmpipe
+      LP_NUM_THREADS: '1'
+      SCREENSHOT_TIMEOUT_SECONDS: '60'
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check preinstalled capture prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p screens/visual-review
+          for command in xvfb-run Xvfb xauth timeout python3 dpkg-query; do
+            command -v "$command" >/dev/null || { echo "BLOCKED: preinstalled command missing: $command"; exit 2; }
+          done
+          for package in xvfb libgl1-mesa-dri libglx-mesa0; do
+            status="$(dpkg-query -W -f='${Status} ${Version}' "$package" 2>/dev/null)" || { echo "BLOCKED: preinstalled package missing: $package"; exit 2; }
+            [[ "$status" == 'install ok installed '* ]] || { echo "BLOCKED: package is not installed: $package ($status)"; exit 2; }
+            printf '%s %s\n' "$package" "$status" | tee -a screens/visual-review/capture-context.txt
+          done
+          printf 'checkout_commit=%s\nworkflow_sha=%s\nrunner_os=%s\n' "$(git rev-parse HEAD)" "$GITHUB_SHA" "$RUNNER_OS" >> screens/visual-review/capture-context.txt
+
+      - name: Restore Godot cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .tools/
+          key: ${{ runner.os }}-godot-${{ hashFiles('tools/godot_version.txt') }}
+
+      - name: Download official pinned Godot and import
+        shell: bash
+        run: |
+          set -euo pipefail
+          godot="$(bash tools/get_godot.sh)"
+          printf 'GODOT=%s\n' "$godot" >> "$GITHUB_ENV"
+          timeout 120 "$godot" --headless --path . --import 2>&1 | tee screens/visual-review/import.log
+          if grep -E 'SCRIPT ERROR|Parse Error|^[[:space:]]*ERROR:' screens/visual-review/import.log; then
+            echo 'FAIL: engine/script errors during capture import'
+            exit 1
+          fi
+
+      - name: Capture actual default and four cutaway quarters sequentially
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tools/screenshot.sh --out=screens/visual-review/default --frames=60 --speed=1
+          for quarter in 0 1 2 3; do
+            bash tools/screenshot.sh "--out=screens/visual-review/quarter-$quarter" --frames=60 --speed=1 "--quarter=$quarter"
+          done
+
+      - name: Verify capture identity and image metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import math
+          from pathlib import Path
+          import struct
+
+          root = Path('screens/visual-review')
+          for name, requested in [('default', -1)] + [(f'quarter-{q}', q) for q in range(4)]:
+              png = root / name / 'shot_0060.png'
+              raw = png.read_bytes()
+              assert raw[:8] == b'\x89PNG\r\n\x1a\n' and len(raw) > 1000, f'{name}: missing/invalid PNG'
+              assert struct.unpack('>II', raw[16:24]) == (1600, 900), f'{name}: wrong PNG dimensions'
+              data = json.loads(png.with_suffix('.json').read_text())
+              expected = 0 if requested == -1 else requested
+              assert data['requested_quarter'] == requested, f'{name}: wrong requested quarter'
+              assert data['actual_quarter'] == expected, f'{name}: wrong actual quarter'
+              assert math.isclose(data['yaw_degrees'], 45 + 90 * expected, abs_tol=0.01), f'{name}: wrong rendered yaw'
+              assert data['wall_mode'] == 1, f'{name}: not Cutaway'
+              assert data['engine_errors'] == 0, f'{name}: engine/script errors'
+              assert (data['width'], data['height'], data['frame']) == (1600, 900, 60), f'{name}: wrong viewport/frame'
+              assert 'llvmpipe' in data['video_adapter'].lower(), f'{name}: not the requested software Mesa adapter'
+              assert data['lowered_wall_cells'], f'{name}: no lowered walls'
+              print(f'{name}: actual quarter={expected}, Cutaway, 1600x900, sha256={hashlib.sha256(raw).hexdigest()}')
+          PY
+
+      - name: Upload actual captures, metadata and logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: visual-review-${{ github.event.pull_request.number }}-${{ github.run_attempt }}
+          path: screens/visual-review/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
