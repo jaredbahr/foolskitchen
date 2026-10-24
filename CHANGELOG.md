@@ -12,6 +12,7 @@ Each line ends with its PR number.
 
 ### Players
 - Manage your team each morning: hire people with different skills and traits, let staff go, and plan their daily wages. (#74)
+- Shops with a sink use a limited stock of plates; servers collect and wash them, and the kitchen explains when it is waiting for a clean plate. Older shops keep serving freely until they buy a sink. (#75)
 - Held furniture rotates around the grabbed tile, and short placement hints fit without a scrollbar. (#71)
 - The pause icon draws reliably in browser builds, and the camera keeps the shop centred through window resizes until you pan. (#69)
 - Press B to build while the shop is closed: move, rotate, buy or sell furniture, preview its work and seat tiles, and see warnings for unreachable furniture. (#63)

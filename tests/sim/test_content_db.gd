@@ -7,7 +7,7 @@ func test_starter_data_loads_without_validation_errors() -> void:
 	assert_eq(db.load_all().size(), 0)
 	assert_eq(db.ingredients().size(), 7)
 	assert_eq(db.recipes().size(), 3)
-	assert_eq(db.items().size(), 8)
+	assert_eq(db.items().size(), 9)
 
 
 func test_lookups_find_each_kind_and_unknown_ids_return_null() -> void:
@@ -15,6 +15,9 @@ func test_lookups_find_each_kind_and_unknown_ids_return_null() -> void:
 	assert_eq(db.ingredient(&"beef_patty").display_name, "Beef patty")
 	assert_eq(db.recipe(&"burger").standard_price, 12)
 	assert_eq(db.item(&"prep_counter").station_type, &"prep_counter")
+	assert_eq(db.item(&"sink").footprint, Vector2i.ONE)
+	assert_eq(db.item(&"sink").work_cells.size(), 1)
+	assert_eq(db.item(&"sink").price, 40)
 	assert_null(db.ingredient(&"missing"))
 	assert_null(db.recipe(&"missing"))
 	assert_null(db.item(&"missing"))
@@ -33,10 +36,12 @@ func test_lists_are_sorted_and_do_not_expose_index_arrays() -> void:
 	var item_ids: Array[StringName] = []
 	for definition: ItemDef in db.items():
 		item_ids.append(definition.id)
-	assert_eq(item_ids, [&"chair", &"door", &"fridge", &"pass_counter", &"potted_plant", &"prep_counter", &"stove", &"table_2"])
+	assert_eq(item_ids, [
+		&"chair", &"door", &"fridge", &"pass_counter", &"potted_plant", &"prep_counter", &"sink", &"stove", &"table_2",
+	])
 	var copy: Array[ItemDef] = db.items()
 	copy.clear()
-	assert_eq(db.items().size(), 8)
+	assert_eq(db.items().size(), 9)
 
 
 func test_reloading_does_not_duplicate_definitions() -> void:
@@ -44,7 +49,7 @@ func test_reloading_does_not_duplicate_definitions() -> void:
 	assert_eq(db.load_all().size(), 0)
 	assert_eq(db.ingredients().size(), 7)
 	assert_eq(db.recipes().size(), 3)
-	assert_eq(db.items().size(), 8)
+	assert_eq(db.items().size(), 9)
 
 
 func test_recursive_resource_discovery_returns_sorted_original_tres_names() -> void:
@@ -57,7 +62,7 @@ func test_recursive_resource_discovery_returns_sorted_original_tres_names() -> v
 		if path.begins_with("res://data/ingredients/") or path.begins_with("res://data/recipes/") \
 				or path.begins_with("res://data/items/"):
 			content_paths += 1
-	assert_eq(content_paths, 18)
+	assert_eq(content_paths, 19)
 	assert_true(paths.has("res://data/ingredients/bun.tres"))
 	assert_true(paths.has("res://data/recipes/burger.tres"))
 	assert_true(paths.has("res://data/items/table_2.tres"))

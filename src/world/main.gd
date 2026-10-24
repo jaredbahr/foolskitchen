@@ -39,6 +39,7 @@ var _owner_preferences: OwnerModeSettings = OwnerModeSettings.new()
 var _loaded_layout: ShopLayout = null
 var _loaded_menu: MenuSettings = null
 var _loaded_staff: StaffRoster = null
+var _loaded_plates: PlateLedger = null
 var _report: Control
 var _inspect_panel: InspectPanel
 var _debug_overlay: DebugOverlay
@@ -170,6 +171,7 @@ func start() -> void:
 	SaveSystem.register("shop", _capture_shop, _restore_shop)
 	SaveSystem.register("menu", _capture_menu, _restore_menu)
 	SaveSystem.register("staff", _capture_staff, _restore_staff)
+	SaveSystem.register("plates", _capture_plates, _restore_plates)
 	var loaded: bool = use_saves and _load_autosave()
 	if not loaded:
 		_skip_next_autosave = use_saves and SaveSystem.list_slots().has(save_slot)
@@ -191,6 +193,10 @@ func _connect_session() -> void:
 		_report.connect(&"next_day_pressed", _on_next_day_pressed)
 	sim.customer_paid.connect(_on_customer_paid)
 	sim.service_closed.connect(_on_service_closed)
+	if sim.kitchen != null:
+		sim.kitchen.plates_changed.connect(_on_plates_changed)
+		_on_plates_changed(sim.kitchen.clean_plates, sim.kitchen.plates.total,
+			sim.kitchen.dirty_plates, sim.kitchen.in_use_plates)
 	if not EventBus.day_phase_changed.is_connected(_on_day_phase_changed):
 		EventBus.day_phase_changed.connect(_on_day_phase_changed)
 	if not EventBus.sim_ticked.is_connected(_on_inspection_tick):
@@ -213,6 +219,8 @@ func _exit_tree() -> void:
 		_inspect_panel.owner_mode_requested.disconnect(_on_owner_mode_requested)
 	if sim != null and sim.customer_paid.is_connected(_on_customer_paid):
 		sim.customer_paid.disconnect(_on_customer_paid)
+	if sim != null and sim.kitchen != null and sim.kitchen.plates_changed.is_connected(_on_plates_changed):
+		sim.kitchen.plates_changed.disconnect(_on_plates_changed)
 	if sim != null and sim.service_closed.is_connected(_on_service_closed):
 		sim.service_closed.disconnect(_on_service_closed)
 	if EventBus.day_phase_changed.is_connected(_on_day_phase_changed):
@@ -593,6 +601,9 @@ func _new_game() -> void:
 	if not sim.set_staff_roster(staff_roster.members()):
 		push_error("Cannot install the new game's starting staff roster")
 	_staff_panel.bind_roster(staff_roster)
+	_loaded_plates = null
+	if sim.kitchen != null:
+		sim.kitchen.configure_plates(TUNING.starting_plates)
 	sim.stock = Economy.stock
 	world.log_event("New game: $%d to start" % TUNING.starting_cash)
 
@@ -601,6 +612,7 @@ func _load_autosave() -> bool:
 	_loaded_layout = null
 	_loaded_menu = null
 	_loaded_staff = null
+	_loaded_plates = null
 	if not SaveSystem.list_slots().has(save_slot):
 		return false
 	if SaveSystem.load_game(save_slot) != OK:
@@ -626,8 +638,28 @@ func _load_autosave() -> bool:
 	staff_roster = employees
 	menu_settings = choices
 	_apply_menu(sim, menu_settings)
+	if sim.kitchen == null or not sim.kitchen.configure_plates(
+			_loaded_plates.total if _loaded_plates != null else TUNING.starting_plates):
+		return false
 	_bind_world_presentation()
 	return sim.assign_owner(_owner_preferences.current_mode())
+
+
+func _capture_plates() -> Dictionary:
+	return sim.kitchen.plates.to_dict() if sim != null and sim.kitchen != null else {}
+
+
+## Stage only durable stock. Installation waits for complete MORNING success.
+func _restore_plates(data: Dictionary) -> bool:
+	var restored: PlateLedger = PlateLedger.from_dict(data)
+	if restored == null:
+		return false
+	_loaded_plates = restored
+	return true
+
+
+func _on_plates_changed(clean: int, total: int, dirty: int, in_use: int) -> void:
+	$HUD.set_plate_counts(clean, total, dirty, in_use, sim.kitchen.plate_cycle_enabled)
 
 
 func _capture_owner() -> Dictionary:

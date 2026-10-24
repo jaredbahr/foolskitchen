@@ -14,6 +14,9 @@ var kind: StringName = &""
 var role: StringName = &"any"
 ## 0 low .. 3 urgent. Scales the claim score.
 var priority: int = 1
+## At claim time, yield to eligible higher-priority OPEN work of this exact role.
+## This does not preempt claimed work or change the ordinary distance score.
+var defer_to_higher_priority: bool = false
 ## Player-facing description for the "why" readout, e.g. "Cook burger".
 var label: String = ""
 var steps: Array[TaskStep] = []

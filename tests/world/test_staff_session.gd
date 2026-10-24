@@ -17,9 +17,9 @@ func before_each() -> void:
 	SaveSystem.save_dir = _save_dir
 	SaveSystem.delete_slot(SLOT)
 	Clock.set_speed(0)
-	for key: String in ["owner", "shop", "menu", "staff"]:
+	for key: String in ["owner", "shop", "menu", "staff", "plates"]:
 		if SaveSystem._providers.has(key):
-			_old_providers[key] = SaveSystem._providers[key]
+			_old_providers[key] = SaveSystem._providers[key].duplicate()
 
 
 func after_each() -> void:
@@ -32,7 +32,7 @@ func after_each() -> void:
 	DirAccess.remove_absolute(_save_dir)
 	DirAccess.remove_absolute(SaveTestPaths.process_dir(OS.get_process_id()))
 	SaveSystem.save_dir = _old_save_dir
-	for key: String in ["owner", "shop", "menu", "staff"]:
+	for key: String in ["owner", "shop", "menu", "staff", "plates"]:
 		if _old_providers.has(key):
 			var provider: Dictionary = _old_providers[key]
 			SaveSystem.register(key, provider["capture"], provider["restore"])
@@ -134,18 +134,22 @@ func test_firing_selected_employee_removes_paused_mesh_inspection_and_ring() -> 
 func test_next_morning_persists_roster_and_pool_reload_draws_no_hiring_rng() -> void:
 	var first: Node = _start()
 	assert_true(first.call("staff_hire", _roster(first).candidates()[0].id))
+	assert_true((first.get("sim") as RestaurantSim).kitchen.configure_plates(5))
 	Clock.sim.phase = SimClock.Phase.CLOSED
 	assert_true(Clock.sim.next_day())
 	assert_eq(_roster(first).candidates().size(), 3)
 	var saved: Dictionary = _roster(first).to_dict()
 	var rng_state: int = GameState.rng(&"hiring").state
 	assert_eq(_document()["data"]["staff"], JSON.parse_string(JSON.stringify(saved)))
+	assert_eq(_document()["data"]["plates"], {"version": 1.0, "total": "5"})
 	_close(first)
 	var second: Node = _start()
 	assert_eq(Clock.sim.day, 2)
 	assert_eq(_roster(second).to_dict(), saved)
 	assert_eq(GameState.rng(&"hiring").state, rng_state)
 	assert_eq((second.get("world") as SimWorld).agents.size(), 4)
+	assert_eq((second.get("sim") as RestaurantSim).kitchen.plates.total, 5,
+		"the same successful world rebuild installs both staff and plate providers")
 	second.call("_begin_morning")
 	assert_eq(GameState.rng(&"hiring").state, rng_state)
 	assert_eq(_roster(second).to_dict(), saved)

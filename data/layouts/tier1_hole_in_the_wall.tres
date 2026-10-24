@@ -46,12 +46,18 @@ script = ExtResource("1_f5t7v")
 item_id = &"potted_plant"
 origin = Vector2i(12, 9)
 
+[sub_resource type="Resource" id="Resource_sink"]
+script = ExtResource("1_f5t7v")
+item_id = &"sink"
+origin = Vector2i(10, 1)
+quarter_turns = 2
+
 [resource]
 script = ExtResource("2_asj40")
 id = &"tier1_hole_in_the_wall"
 display_name = "Hole-in-the-wall"
 rows = PackedStringArray("##############", "#............#", "#............#", "#............#", "#####...######", "#............#", "#............#", "#............#", "#............#", "#............#", "######..######", "      EE      ")
-placements = Array[ExtResource("1_f5t7v")]([SubResource("Resource_8swi5"), SubResource("Resource_o0wg6"), SubResource("Resource_3vvd5"), SubResource("Resource_aexx1"), SubResource("Resource_rgtxa"), SubResource("Resource_8ifey"), SubResource("Resource_ypch0"), SubResource("Resource_vsuro")])
+placements = Array[ExtResource("1_f5t7v")]([SubResource("Resource_8swi5"), SubResource("Resource_o0wg6"), SubResource("Resource_3vvd5"), SubResource("Resource_aexx1"), SubResource("Resource_rgtxa"), SubResource("Resource_8ifey"), SubResource("Resource_ypch0"), SubResource("Resource_vsuro"), SubResource("Resource_sink")])
 staff_spawns = Dictionary[StringName, Vector2i]({
 &"cook": Vector2i(6, 2),
 &"owner": Vector2i(9, 3),

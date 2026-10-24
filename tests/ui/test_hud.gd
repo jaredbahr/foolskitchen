@@ -40,6 +40,15 @@ func test_initial_labels_and_shared_theme_before_ready() -> void:
 	assert_eq((_control("Time") as Label).text, "11:00")
 	assert_eq((_control("Phase") as Label).text, "Morning")
 	assert_eq((_control("Cash") as Label).text, "$1,234")
+	_hud.call("set_plate_counts", 9, 12, 2, 1)
+	assert_eq((_control("Plates") as Label).text, "Plates 9/12")
+	assert_eq((_control("Plates") as Label).tooltip_text, "Clean: 9 | Dirty: 2 | In use: 1")
+	_hud.call("set_plate_counts", 9, 12, 2, 1, false)
+	assert_eq((_control("Plates") as Label).text, "Plates: buy a sink")
+	assert_eq((_control("Plates") as Label).tooltip_text,
+		"Plate limits are off in this shop. Buy a sink to enable plates and washing.")
+	_hud.call("set_plate_counts", 9, 12, 2, 1)
+	assert_eq((_control("Plates") as Label).text, "Plates 9/12", "the same native label returns to active counts")
 	assert_eq((_hud.get_node("Top") as Control).theme, load("res://src/ui/theme/main_theme.tres"))
 
 

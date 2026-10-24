@@ -15,6 +15,7 @@ var _day_label: Label
 var _time_label: Label
 var _phase_label: Label
 var _cash_label: Label
+var _plate_label: Label
 var _context: Button
 var _deltas: Control
 var _merge_label: Label = null
@@ -101,6 +102,16 @@ func refresh() -> void:
 	_menu_button.tooltip_text = "Choose today's menu and prices" if not _menu_button.disabled else "Menu changes are available in the morning."
 	_staff_button.disabled = Clock.sim.phase != SimClock.Phase.MORNING
 	_staff_button.tooltip_text = "Hire staff and plan today's wages" if not _staff_button.disabled else "Staff changes are available in the morning."
+	_layout_header()
+
+
+## Keep the full Staff + legacy plate message without shrinking native controls.
+func _layout_header() -> void:
+	var width: float = get_viewport().get_visible_rect().size.x if is_inside_tree() else 1600.0
+	var separation: int = 4 if width < 1440.0 else 8
+	var row: HBoxContainer = get_node("Top/Row") as HBoxContainer
+	if row.get_theme_constant("separation") != separation:
+		row.add_theme_constant_override("separation", separation)
 
 
 func _on_staff_pressed() -> void:
@@ -148,6 +159,7 @@ func _refresh_build_controls() -> void:
 
 
 func _layout_build_hints() -> void:
+	_layout_header()
 	if _build_hint_text == null:
 		return
 	var viewport_size: Vector2 = get_viewport().get_visible_rect().size if is_inside_tree() else Vector2(1600.0, 900.0)
@@ -174,6 +186,17 @@ func _layout_build_hints() -> void:
 	_build_hint_scroll.custom_minimum_size = Vector2(width + bar_width, minf(ceilf(text_height), available.y))
 	_build_hints.size = _build_hint_scroll.custom_minimum_size + padding
 	_build_hints.position = Vector2(12.0, top)
+
+
+## Main forwards primitive stock counts; the HUD never owns or changes plates.
+func set_plate_counts(clean: int, total: int, dirty: int, in_use: int, enabled: bool = true) -> void:
+	if _plate_label == null:
+		_plate_label = get_node("Top/Row/Plates") as Label
+	var text: String = "Plates %d/%d" % [clean, total] if enabled else "Plates: buy a sink"
+	if _plate_label.text != text:
+		_plate_label.text = text
+	_plate_label.tooltip_text = "Clean: %d | Dirty: %d | In use: %d" % [clean, dirty, in_use] if enabled \
+		else "Plate limits are off in this shop. Buy a sink to enable plates and washing."
 
 
 func _on_build_pressed() -> void:

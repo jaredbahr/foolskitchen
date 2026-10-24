@@ -118,6 +118,27 @@ func test_guest_why_state_and_correct_patience_budget_refresh() -> void:
 	assert_false(_control("Patience").visible)
 
 
+func test_plate_departure_reason_is_plain_text_in_inspection_and_the_evening_report() -> void:
+	var guest: CustomerAgent = _guest()
+	guest.state = CustomerAgent.State.LEAVING
+	guest.leave_reason = &"no_clean_plates"
+	var before: Array = [guest.state, guest.leave_reason, guest.rng.state, _world.now]
+	_panel.show_agent(guest.id)
+	_panel.refresh()
+	assert_eq(_label("Why").text, "Leaving: no clean plates")
+	assert_false(_label("Why").text.contains("no_clean_plates"))
+	assert_false(_control("Patience").visible)
+	assert_eq([guest.state, guest.leave_reason, guest.rng.state, _world.now], before)
+	var report: Control = load("res://src/ui/evening_report.tscn").instantiate() as Control
+	var day: DayReport = DayReport.new()
+	day.leave_reasons[&"no_clean_plates"] = 2
+	report.call("show_report", day)
+	var rows: GridContainer = report.get_node("%ReasonRows") as GridContainer
+	assert_eq((rows.get_child(0) as Label).text, "No clean plates")
+	assert_eq((rows.get_child(1) as Label).text, "2")
+	report.free()
+
+
 func test_walking_guest_shows_combined_search_budget_without_changing_counters() -> void:
 	var guest: CustomerAgent = _guest()
 	guest.state = CustomerAgent.State.WALKING_TO_SEAT

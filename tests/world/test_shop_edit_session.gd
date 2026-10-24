@@ -98,7 +98,8 @@ func test_invalid_shop_starts_fresh_skips_one_save_then_autosaves_next_morning()
 	Clock.sim.phase = SimClock.Phase.CLOSED
 	assert_true(Clock.sim.next_day())
 	assert_eq(int(_document()["data"]["clock"]["day"]), 2)
-	assert_eq((_document()["data"]["shop"]["items"] as Array).size(), 9, "later normal autosaves resume")
+	assert_eq((_document()["data"]["shop"]["items"] as Array).size(), LAYOUT.placements.size() + 1,
+		"later normal autosaves resume")
 
 
 func test_non_morning_save_is_rejected_without_rebuilding_its_items() -> void:

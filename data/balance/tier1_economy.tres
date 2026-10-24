@@ -5,6 +5,7 @@
 [resource]
 script = ExtResource("1_htw2e")
 staff_wage_curve = PackedFloat32Array(0.7, 0.85, 1.0, 1.2, 1.4)
+starting_plates = 12
 morning_stock = Dictionary[StringName, int]({
 &"beef_patty": 10,
 &"bread": 16,

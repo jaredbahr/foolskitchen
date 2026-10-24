@@ -89,6 +89,8 @@ func _assert_clean_morning(main: Node, day: int) -> void:
 	assert_eq(sim.customers().size(), 0, "day %d: no guests before opening" % day)
 	assert_eq(world.board.active_count(), 0, "day %d: no jobs carried over" % day)
 	assert_eq(sim.kitchen.dirty_tables.size(), 0, "day %d: tables clean" % day)
+	_assert_plate_conservation(sim, day)
+	assert_eq(sim.kitchen.clean_plates, sim.kitchen.plates.total, "day %d: every plate clean overnight" % day)
 	assert_eq(sim.served_today + sim.lost_today, 0, "day %d: counters reset" % day)
 	for agent: SimAgent in world.agents:
 		if agent is StaffAgent:
@@ -112,6 +114,7 @@ func _run_day(main: Node, day: int) -> void:
 	var guard: int = 0
 	while Clock.sim.phase != SimClock.Phase.CLOSED and guard < 30:
 		main.call("run_ticks", 1000)
+		_assert_plate_conservation(main.get("sim") as RestaurantSim, day)
 		guard += 1
 	assert_eq(Clock.sim.phase, SimClock.Phase.CLOSED, "day %d ends" % day)
 	assert_true(report.visible, "day %d: the evening report is shown" % day)
@@ -119,6 +122,7 @@ func _run_day(main: Node, day: int) -> void:
 
 func _assert_closed_books(main: Node, day: int) -> void:
 	var sim: RestaurantSim = main.get("sim")
+	_assert_plate_conservation(sim, day)
 	# Guests: everyone who came in is accounted for, exactly once.
 	assert_eq(sim.customers().size(), 0, "day %d: everyone left at closing" % day)
 	assert_eq(sim.served_today + sim.lost_today, _arrivals_today, "day %d: every guest counted once" % day)
@@ -164,6 +168,12 @@ func _assert_closed_books(main: Node, day: int) -> void:
 	print("INVARIANT_DAY day=%d arrivals=%d served=%d lost=%d profit=%d cash=%d reasons=%s" % [
 		day, _arrivals_today, sim.served_today, sim.lost_today,
 		Economy.ledger.day_profit(day), Economy.cash, sim.leave_reasons_today])
+
+
+func _assert_plate_conservation(sim: RestaurantSim, day: int) -> void:
+	assert_true(sim.kitchen.clean_plates >= 0 and sim.kitchen.dirty_plates >= 0 and sim.kitchen.in_use_plates >= 0)
+	assert_eq(sim.kitchen.clean_plates + sim.kitchen.dirty_plates + sim.kitchen.in_use_plates,
+		sim.kitchen.plates.total, "day %d: clean + dirty + in use equals owned stock" % day)
 
 
 func _free(main: Node) -> void:
