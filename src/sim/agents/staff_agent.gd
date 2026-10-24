@@ -52,7 +52,10 @@ func configure_member(member: StaffMember, definition: StaffTrait) -> void:
 	display_name = member.display_name
 	wage = member.wage
 	trait_id = member.trait_id
-	skills[role] = member.skill
+	# Work speed reads task roles, including a server's fallback mopping. Copy
+	# every earned skill at morning setup without changing task priorities.
+	for staff_role: StringName in StaffMember.ROLES:
+		skills[staff_role] = member.growth_state().skill_level(StaffMember._primary_skill(staff_role))
 	move_speed = move_speed / _walk_multiplier * definition.walk_multiplier
 	_walk_multiplier = definition.walk_multiplier
 	cook_quality_bonus = definition.cook_quality_bonus

@@ -12,9 +12,18 @@ func after_each() -> void:
 
 func test_default_seed_one_serves_a_guest() -> void:
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
-	var row: Dictionary = BalanceProbe.run_case(tree, 1, "default", 1)
+	var row: Dictionary = BalanceProbe.run_case(tree, 1, "default", 1, 3, Vector2i(-1, -1), 1.0, true)
 	assert_false(row.has("error"), str(row.get("error", "")))
 	assert_true(int(row.get("served", 0)) > 0, "the default run serves real guests")
+	var staff_rows: Array = row.get("staff_growth", [])
+	assert_true(staff_rows.size() >= 2, "the same real day includes both starter staff")
+	var completed: int = 0
+	for staff: Dictionary in staff_rows:
+		assert_eq(int(staff["day"]), 1)
+		assert_true(int(staff["level"]) >= 1 and int(staff["level"]) <= 5)
+		assert_true(int(staff["earned"]) >= int(staff["tasks"]))
+		completed += int(staff["tasks"])
+	assert_true(completed > 0, "the trace observes genuine completed service work")
 	assert_true(row.has("owner_xp") and row["owner_xp"] is int)
 	assert_true(int(row["owner_xp"]) >= 0)
 	assert_true(row.has("owner_level") and row["owner_level"] is int)
@@ -82,3 +91,46 @@ func test_same_seed_replays_probe_output_and_consumes_its_review_stream() -> voi
 	assert_false(repeated.has("error"), str(repeated.get("error", "")))
 	assert_eq(JSON.stringify(repeated), JSON.stringify(first))
 	assert_eq(GameState.rng(&"reviews").state, first_review_state)
+
+
+func test_staff_trace_observes_once_only_board_completion_without_awarding_xp() -> void:
+	var roster: StaffRoster = StaffRoster.new()
+	var world: SimWorld = SimWorld.new(SimGrid.from_ascii(PackedStringArray(["..."])))
+	var cook: StaffAgent = StaffAgent.new(&"cook", 3)
+	cook.member_id = &"starter_cook"
+	world.add_agent(cook)
+	var owner: OwnerAgent = OwnerAgent.new()
+	world.add_agent(owner)
+	var trace: BalanceProbe.StaffTrace = BalanceProbe.StaffTrace.new(world)
+	world.board.task_completed.connect(trace.on_task_completed)
+	var done: SimTask = SimTask.new(&"cook", &"cook", "Finished meal")
+	world.board.post(done, 0)
+	assert_true(world.board.claim(done, cook.id, 0))
+	world.board.complete(done)
+	world.board.complete(done)
+	var cancelled: SimTask = SimTask.new(&"cook", &"cook", "Cancelled meal")
+	world.board.post(cancelled, 0)
+	assert_true(world.board.claim(cancelled, cook.id, 0))
+	world.board.cancel(cancelled)
+	world.board.complete(cancelled)
+	var owner_done: SimTask = SimTask.new(&"cook", &"any", "Owner work")
+	world.board.post(owner_done, 0)
+	assert_true(world.board.claim(owner_done, owner.id, 0))
+	world.board.complete(owner_done)
+	world.board.task_completed.disconnect(trace.on_task_completed)
+	var rows: Array[Dictionary] = trace.capture(roster, 1)
+	assert_eq(rows.size(), 2)
+	assert_eq(rows[0]["member"], "Alex")
+	assert_eq(rows[0]["tasks"], 1, "owner, cancellation and repeat completion are excluded")
+	assert_eq(rows[0]["earned"], 2)
+	assert_eq(rows[0]["xp"], 0, "a read-only trace does not credit the roster")
+	assert_eq(roster.members()[0].growth_state().earned_today(&"cooking"), 0)
+	assert_eq(rows[1]["tasks"], 0, "an idle starter remains visible")
+	assert_eq(rows[1]["earned"], 0)
+
+
+func test_staff_trace_flag_is_opt_in_and_rejects_ambiguous_values() -> void:
+	assert_false(BalanceProbe._parse_args(PackedStringArray())["staff_growth"])
+	assert_true(BalanceProbe._parse_args(PackedStringArray(["--staff-growth=true"]))["staff_growth"])
+	assert_false(BalanceProbe._parse_args(PackedStringArray(["--staff-growth", "false"]))["staff_growth"])
+	assert_true(BalanceProbe._parse_args(PackedStringArray(["--staff-growth=maybe"])).has("error"))

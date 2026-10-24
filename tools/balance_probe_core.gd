@@ -7,6 +7,54 @@ const MAX_TICK_BATCHES: int = 30
 const TICKS_PER_BATCH: int = 1000
 
 
+## A read-only manual trace. It stores IDs and counts, never the world/board,
+## and the caller disconnects its method at the end of each bounded day.
+class StaffTrace:
+	extends RefCounted
+	var _members: Dictionary[int, StringName] = {}
+	var _counts: Dictionary[StringName, Dictionary] = {}
+	var _earned: Dictionary[StringName, Dictionary] = {}
+
+	func _init(world: SimWorld) -> void:
+		for agent: SimAgent in world.agents:
+			if agent is StaffAgent and not agent is OwnerAgent:
+				_members[agent.id] = (agent as StaffAgent).member_id
+
+
+	func on_task_completed(task: SimTask) -> void:
+		if task == null or task.state != SimTask.State.DONE or not _members.has(task.claimed_by):
+			return
+		var skill: StringName = StaffRoster.GROWTH_TUNING.skill_for_task(task.kind)
+		var amount: int = StaffRoster.GROWTH_TUNING.xp_for_task(task.kind)
+		if not StaffGrowth.SKILLS.has(skill) or amount <= 0:
+			return
+		var member: StringName = _members[task.claimed_by]
+		var counts: Dictionary = _counts.get(member, {})
+		var earned: Dictionary = _earned.get(member, {})
+		counts[skill] = int(counts.get(skill, 0)) + 1
+		earned[skill] = int(earned.get(skill, 0)) + amount
+		_counts[member] = counts
+		_earned[member] = earned
+
+
+	## Capture after service_closed has applied XP. Zero-task primary skills
+	## remain visible so a missing first level-up is explicit in the table.
+	func capture(roster: StaffRoster, day: int) -> Array[Dictionary]:
+		var rows: Array[Dictionary] = []
+		for member: StaffMember in roster.members():
+			var growth: StaffGrowth = member.growth_state()
+			var counts: Dictionary = _counts.get(member.id, {})
+			var earned: Dictionary = _earned.get(member.id, {})
+			for skill: StringName in StaffGrowth.SKILLS:
+				if skill != StaffMember._primary_skill(member.role) and not counts.has(skill):
+					continue
+				rows.append({"day": day, "member": member.display_name, "skill": String(skill),
+					"tasks": int(counts.get(skill, 0)), "earned": int(earned.get(skill, 0)),
+					"level": growth.skill_level(skill), "xp": growth.progress_xp(skill),
+					"pending": growth.pending_raise_count(), "mood": growth.mood, "wage": member.wage})
+		return rows
+
+
 static func run_cli(tree: SceneTree, args: PackedStringArray) -> int:
 	var options: Dictionary = _parse_args(args)
 	if options.has("error"):
@@ -17,6 +65,11 @@ static func run_cli(tree: SceneTree, args: PackedStringArray) -> int:
 	lines.append("Git SHA: %s" % _git_sha())
 	lines.append("| Set-up | Seed | Arrivals | Served | Lost (top 2 reasons) | Sales | Wages | Rent | Ingredients | Profit | Ending cash | Owner XP | Final level | Level days |")
 	lines.append("|---|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---|")
+	var staff_lines: PackedStringArray = PackedStringArray()
+	if options["staff_growth"]:
+		staff_lines.append("\nStaff growth at service close (raises left pending; no automatic choices):")
+		staff_lines.append("| Set-up | Seed | Day | Member | Job | Completed | Earned XP | Skill | XP left | Pending requests | Mood | Wage |")
+		staff_lines.append("|---|---:|---:|---|---|---:|---:|---:|---:|---:|---:|---:|")
 	var setups: Array[String] = []
 	for name: Variant in options["setups"]:
 		setups.append(String(name))
@@ -27,13 +80,17 @@ static func run_cli(tree: SceneTree, args: PackedStringArray) -> int:
 		var combined: Dictionary = _empty_stats()
 		for seed_value: int in seeds:
 			var row: Dictionary = run_case(tree, seed_value, setup_name, options["days"],
-				options["extra_cook_skill"], options["gap"], options["price"])
+				options["extra_cook_skill"], options["gap"], options["price"], options["staff_growth"])
 			if row.has("error"):
 				printerr("%s, seed %d: %s" % [setup_name, seed_value, row["error"]])
 				return 2
 			lines.append(_format_row(setup_name, str(seed_value), row, 1))
+			if options["staff_growth"]:
+				for staff_row: Dictionary in row["staff_growth"]:
+					staff_lines.append(_format_staff_row(setup_name, seed_value, staff_row))
 			_add_stats(combined, row)
 		lines.append(_format_row(setup_name, "mean", combined, seeds.size()))
+	lines.append_array(staff_lines)
 	print("\n".join(lines))
 	return 0
 
@@ -42,7 +99,7 @@ static func run_cli(tree: SceneTree, args: PackedStringArray) -> int:
 ## invariant test. Returned values are five-day totals except ending cash.
 static func run_case(tree: SceneTree, seed_value: int, setup_name: String, days: int,
 		extra_cook_skill: int = 3, gap: Vector2i = Vector2i(-1, -1),
-		price: float = 1.0) -> Dictionary:
+		price: float = 1.0, trace_staff_growth: bool = false) -> Dictionary:
 	if tree == null or days < 1 or not ProbeSetups.names().has(setup_name):
 		return {"error": "Invalid probe case"}
 	var scene: PackedScene = load("res://src/world/main.tscn") as PackedScene
@@ -75,17 +132,28 @@ static func run_case(tree: SceneTree, seed_value: int, setup_name: String, days:
 		return {"error": "Cannot apply the requested set-up"}
 	sim.start_day()
 	var totals: Dictionary = _empty_stats()
+	if trace_staff_growth:
+		totals["staff_growth"] = []
 	for day_index: int in range(days):
 		if not Clock.sim.start_service():
 			_free_main(main)
 			return {"error": "The shop did not open on day %d" % (day_index + 1)}
+		var staff_trace: StaffTrace = null
+		if trace_staff_growth:
+			staff_trace = StaffTrace.new(sim.world)
+			sim.world.board.task_completed.connect(staff_trace.on_task_completed)
 		var batches: int = 0
 		while Clock.sim.phase != SimClock.Phase.CLOSED and batches < MAX_TICK_BATCHES:
 			main.call("run_ticks", TICKS_PER_BATCH)
 			batches += 1
+		if staff_trace != null:
+			sim.world.board.task_completed.disconnect(staff_trace.on_task_completed)
 		if Clock.sim.phase != SimClock.Phase.CLOSED:
 			_free_main(main)
 			return {"error": "The shop did not close on day %d" % (day_index + 1)}
+		if staff_trace != null:
+			var staff_rows: Array = totals["staff_growth"]
+			staff_rows.append_array(staff_trace.capture(main.get("staff_roster") as StaffRoster, Clock.sim.day))
 		var report: DayReport = main.get("shown_report") as DayReport
 		if report == null:
 			_free_main(main)
@@ -128,6 +196,12 @@ static func _empty_stats() -> Dictionary:
 		"wages": 0, "rent": 0, "ingredients": 0, "profit": 0,
 		"cash": 0, "reasons": {}, "owner_xp": 0, "owner_level": 0,
 		"level_days": {}}
+
+
+static func _format_staff_row(setup_name: String, seed_value: int, row: Dictionary) -> String:
+	return "| %s | %d | %d | %s | %s | %d | %d | %d | %d | %d | %d | %d |" % [
+		setup_name, seed_value, row["day"], row["member"], String(row["skill"]).capitalize(),
+		row["tasks"], row["earned"], row["level"], row["xp"], row["pending"], row["mood"], row["wage"]]
 
 
 static func _add_stats(target: Dictionary, source: Dictionary) -> void:
@@ -191,6 +265,7 @@ static func _parse_args(args: PackedStringArray) -> Dictionary:
 	var options: Dictionary = {
 		"days": 5, "seeds": [1], "setups": ["default"],
 		"gap": Vector2i(-1, -1), "price": 1.0, "extra_cook_skill": 3,
+		"staff_growth": false,
 	}
 	var explicit_setup: bool = false
 	var legacy_extra: bool = false
@@ -206,6 +281,10 @@ static func _parse_args(args: PackedStringArray) -> Dictionary:
 				return {"error": "%s needs a value" % key}
 			value = args[index]
 		match key:
+			"--staff-growth":
+				if value != "true" and value != "false":
+					return {"error": "--staff-growth must be true or false"}
+				options["staff_growth"] = value == "true"
 			"--days":
 				if not value.is_valid_int() or int(value) < 1:
 					return {"error": "--days must be a positive integer"}

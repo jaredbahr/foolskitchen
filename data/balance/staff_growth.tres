@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="StaffGrowthTuning" format=3]
+
+[ext_resource type="Script" path="res://src/sim/staff/staff_growth_tuning.gd" id="1_growth"]
+
+[resource]
+script = ExtResource("1_growth")
+task_skills = Dictionary[StringName, StringName]({
+&"cook": &"cooking",
+&"take_order": &"service",
+&"deliver": &"service",
+&"bus_table": &"service",
+&"wash": &"service",
+&"clean_spot": &"cleaning"
+})
+task_xp = Dictionary[StringName, int]({
+&"cook": 2,
+&"take_order": 1,
+&"deliver": 1,
+&"bus_table": 1,
+&"wash": 1,
+&"clean_spot": 2
+})
+next_level_xp = PackedInt32Array(70, 90, 110, 130)

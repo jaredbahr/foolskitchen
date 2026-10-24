@@ -2,6 +2,7 @@ extends TestCase
 ## Real morning commands/provider/panel; no full-day balance sampling.
 
 const MAIN: PackedScene = preload("res://src/world/main.tscn")
+const TUNING: EconomyTuning = preload("res://data/balance/tier1_economy.tres")
 const SLOT: String = "staff_session"
 
 var _mains: Array[Node] = []
@@ -17,7 +18,7 @@ func before_each() -> void:
 	SaveSystem.save_dir = _save_dir
 	SaveSystem.delete_slot(SLOT)
 	Clock.set_speed(0)
-	for key: String in ["owner", "shop", "menu", "staff", "plates"]:
+	for key: String in ["owner", "shop", "menu", "staff", "plates", "reviews"]:
 		if SaveSystem._providers.has(key):
 			_old_providers[key] = SaveSystem._providers[key].duplicate()
 
@@ -32,7 +33,7 @@ func after_each() -> void:
 	DirAccess.remove_absolute(_save_dir)
 	DirAccess.remove_absolute(SaveTestPaths.process_dir(OS.get_process_id()))
 	SaveSystem.save_dir = _old_save_dir
-	for key: String in ["owner", "shop", "menu", "staff", "plates"]:
+	for key: String in ["owner", "shop", "menu", "staff", "plates", "reviews"]:
 		if _old_providers.has(key):
 			var provider: Dictionary = _old_providers[key]
 			SaveSystem.register(key, provider["capture"], provider["restore"])
@@ -45,6 +46,8 @@ func after_each() -> void:
 
 func test_hire_and_let_go_change_real_agents_and_closing_wages_without_saving() -> void:
 	var main: Node = _start()
+	assert_false((main.get_node("Overlay/StaffPanel") as StaffPanel).is_visible_in_tree(),
+		"an ordinary morning does not open the Staff panel")
 	var sim: RestaurantSim = main.get("sim")
 	var owner: OwnerAgent = sim.owner_agent()
 	assert_true(sim.assign_owner(&"floor"))
@@ -75,6 +78,208 @@ func test_hire_and_let_go_change_real_agents_and_closing_wages_without_saving() 
 	main.call("_charge_closing_costs")
 	assert_eq(Economy.ledger.day_totals(Clock.sim.day).get(Ledger.WAGES), -55)
 	assert_true(sim.owner_agent() == owner)
+
+
+func test_completed_work_closes_growth_then_morning_applies_skill_and_requested_wage() -> void:
+	var main: Node = _start()
+	var sim: RestaurantSim = main.get("sim") as RestaurantSim
+	var cook: StaffAgent = _live_staff(main, &"starter_cook")
+	assert_not_null(cook)
+	if cook == null:
+		return
+	var original_save: String = FileAccess.get_file_as_string(_path())
+	assert_true(Clock.sim.start_service())
+	# The authored skill-3 cooking threshold is 110 XP at 2 XP per task.
+	for _index: int in range(55):
+		var task: SimTask = SimTask.new(&"cook", &"cook", "Completed meal")
+		sim.world.board.post(task, sim.world.now)
+		assert_true(sim.world.board.claim(task, cook.id, sim.world.now))
+		sim.world.board.complete(task)
+	assert_eq(_member(main, &"starter_cook").growth_state().earned_today(&"cooking"), 110)
+	assert_eq(_member(main, &"starter_server").growth_state().earned_today(&"service"), 0)
+	assert_eq(FileAccess.get_file_as_string(_path()), original_save)
+	Clock.sim.phase = SimClock.Phase.CLOSED
+	main.call("_on_service_closed", 1)
+	assert_eq(Economy.ledger.day_totals(1).get(Ledger.WAGES), -55,
+		"the old wage was charged before the earned skill was applied")
+	assert_eq(_member(main, &"starter_cook").skill, 4)
+	assert_eq(cook.skills[&"cook"], 3, "the live shift never changes skill mid-day")
+	assert_eq(cook.wage, 30)
+	assert_eq(FileAccess.get_file_as_string(_path()), original_save)
+	assert_true(Clock.sim.next_day())
+	var next_shift_cook: StaffAgent = _live_staff(main, &"starter_cook")
+	assert_not_null(next_shift_cook)
+	if next_shift_cook == null:
+		return
+	assert_eq(next_shift_cook.skills[&"cook"], 4)
+	assert_eq(next_shift_cook.wage, 30)
+	var panel: StaffPanel = main.get_node("Overlay/StaffPanel") as StaffPanel
+	assert_true(panel.is_visible_in_tree(), "the morning raise opens the Staff panel")
+	var card: Control = panel.offer_row_for(&"starter_cook")
+	assert_not_null(card)
+	if card == null:
+		return
+	assert_true(card.is_visible_in_tree(), "the actual raise card is visible in the scene tree")
+	assert_true((card.get_node("Message") as Label).text.contains("Alex (Cook) got better at cooking"))
+	var saved_before_choice: String = FileAccess.get_file_as_string(_path())
+	(card.get_node("Actions/Accept") as Button).pressed.emit()
+	assert_eq(_member(main, &"starter_cook").wage, TUNING.staff_wage(&"cook", 4))
+	assert_eq(_live_staff(main, &"starter_cook").wage, TUNING.staff_wage(&"cook", 4))
+	assert_eq(Economy.ledger.day_totals(1).get(Ledger.WAGES), -55)
+	assert_eq(FileAccess.get_file_as_string(_path()), saved_before_choice,
+		"accepting a raise never writes a new save point")
+	assert_false(main.call("staff_accept_raise", &"starter_cook"))
+	assert_true(Clock.sim.start_service())
+	assert_false(main.call("staff_accept_raise", &"starter_cook"))
+	Clock.sim.phase = SimClock.Phase.CLOSED
+	assert_true(Clock.sim.next_day())
+	assert_eq(int(_document()["data"]["staff"]["members"][0]["wage"]), TUNING.staff_wage(&"cook", 4),
+		"the accepted wage joins only the next ordinary morning save")
+
+
+func test_cleanup_completed_after_service_close_is_flushed_before_morning_save() -> void:
+	var main: Node = _start()
+	var sim: RestaurantSim = main.get("sim") as RestaurantSim
+	var saved: Dictionary = _roster(main).to_dict()
+	# One genuinely completed bus task will cross the authored skill-3 threshold.
+	saved["members"][1]["growth"]["xp"]["service"] = 109
+	var choices: StaffRoster = StaffRoster.new(TUNING)
+	assert_true(choices.from_dict(saved))
+	assert_true(sim.set_staff_roster(choices.members()))
+	main.set("staff_roster", choices)
+	var panel: StaffPanel = main.get_node("Overlay/StaffPanel") as StaffPanel
+	panel.bind_roster(choices)
+	var credit_connections: int = 0
+	for connection: Dictionary in sim.world.board.get_signal_connection_list(&"task_completed"):
+		var handler: Callable = connection["callable"]
+		if handler.get_object() == main and handler.get_method() == &"_on_staff_task_completed":
+			credit_connections += 1
+	assert_eq(credit_connections, 1, "the live board has one session XP connection")
+	var tables: Array[PlacedItem] = ShopBuilder.items_with_def(sim.world, &"table_2")
+	assert_true(tables.size() >= 2)
+	if tables.size() < 2:
+		return
+	var original_save: String = FileAccess.get_file_as_string(_path())
+	assert_true(Clock.sim.start_service())
+	sim.kitchen.mark_table_dirty(tables[0].id)
+	var cleanup: SimTask = _bus_task_for(sim, tables[0].id)
+	assert_not_null(cleanup)
+	if cleanup == null:
+		return
+	Clock.sim.phase = SimClock.Phase.LAST_ORDERS
+	sim.advance()
+	assert_eq(Clock.sim.phase, SimClock.Phase.CLOSED)
+	assert_true(cleanup.state != SimTask.State.DONE,
+		"the actual service_closed signal precedes completion of cleanup")
+	assert_eq(_member(main, &"starter_server").growth_state().progress_xp(&"service"), 109)
+	assert_eq(_member(main, &"starter_server").growth_state().pending_raise_count(), 0)
+	var closing_books: Dictionary = Economy.ledger.to_dict()
+	# Explicit sim driving exercises the existing cleanup API. Production Clock
+	# and Main.run_ticks still stop at CLOSED; this test changes neither driver.
+	for _index: int in range(500):
+		sim.advance()
+		if cleanup.state == SimTask.State.DONE:
+			break
+	assert_eq(cleanup.state, SimTask.State.DONE)
+	assert_false(sim.kitchen.is_table_dirty(tables[0].id))
+	assert_eq(cleanup.claimed_by, _live_staff(main, &"starter_server").id)
+	sim.world.board.complete(cleanup)
+	assert_eq(_member(main, &"starter_server").growth_state().earned_today(&"service"), 1,
+		"the stable rostered claimant is credited once after closing")
+	assert_eq(_live_staff(main, &"starter_server").skill_for(&"server"), 3)
+	assert_eq(Economy.ledger.to_dict(), closing_books, "cleanup never closes the books twice")
+	assert_eq(FileAccess.get_file_as_string(_path()), original_save)
+	sim.kitchen.mark_table_dirty(tables[1].id)
+	var unfinished: SimTask = _bus_task_for(sim, tables[1].id)
+	assert_not_null(unfinished)
+	if unfinished == null:
+		return
+	assert_true(Clock.sim.next_day())
+	assert_eq(unfinished.state, SimTask.State.CANCELLED,
+		"overnight tidying cancels unfinished work without granting task XP")
+	assert_eq(_member(main, &"starter_server").skill, 4)
+	assert_eq(_member(main, &"starter_server").growth_state().earned_today(&"service"), 0)
+	assert_eq(_member(main, &"starter_server").growth_state().progress_xp(&"service"), 0)
+	assert_eq(_member(main, &"starter_server").growth_state().pending_raise_count(), 1)
+	assert_eq(_live_staff(main, &"starter_server").skill_for(&"server"), 4)
+	var morning_staff: Dictionary = _document()["data"]["staff"]
+	var server_row: Dictionary = morning_staff["members"][1]
+	assert_eq(int(server_row["skill"]), 4)
+	assert_eq(int(server_row["growth"]["xp"]["service"]), 0)
+	assert_eq(server_row["growth"]["raises"].size(), 1)
+	assert_eq(int(server_row["growth"]["raises"][0]["level"]), 4)
+	assert_not_null(panel.offer_row_for(&"starter_server"))
+	_close(main)
+	var restored: Node = _start()
+	assert_eq(_roster(restored).to_dict(), morning_staff)
+	assert_eq(_live_staff(restored, &"starter_server").skill_for(&"server"), 4)
+	restored.call("_begin_morning")
+	assert_eq(_member(restored, &"starter_server").growth_state().pending_raise_count(), 1,
+		"load and repeated morning setup cannot duplicate cleanup XP or its offer")
+	assert_eq(_document()["data"]["staff"], morning_staff)
+
+
+func test_three_rejected_requests_remove_redundant_cook_next_morning_once() -> void:
+	var main: Node = _start()
+	_install_queued_raises(main, true)
+	var panel: StaffPanel = main.get_node("Overlay/StaffPanel") as StaffPanel
+	var original_save: String = FileAccess.get_file_as_string(_path())
+	var departing: StaffAgent = _live_staff(main, &"starter_cook")
+	assert_not_null(departing)
+	if departing == null:
+		return
+	for mood_after: int in [2, 1, 0]:
+		var card: Control = panel.offer_row_for(&"starter_cook")
+		assert_not_null(card)
+		if card == null:
+			return
+		(card.get_node("Actions/NotNow") as Button).pressed.emit()
+		assert_eq(_member(main, &"starter_cook").growth_state().mood, mood_after)
+	assert_null(panel.offer_row_for(&"starter_cook"))
+	assert_eq(FileAccess.get_file_as_string(_path()), original_save)
+	assert_eq(_roster(main).members().size(), 3, "the cook stays until the next morning")
+	Clock.sim.phase = SimClock.Phase.CLOSED
+	assert_true(Clock.sim.next_day())
+	assert_eq(_roster(main).members().size(), 2)
+	assert_null((main.get("world") as SimWorld).agent(departing.id))
+	var notices: VBoxContainer = panel.get_node("Panel/Content/Scroll/List/MorningNotices") as VBoxContainer
+	assert_true(panel.is_visible_in_tree(), "a departure opens the morning Staff panel")
+	assert_true(notices.is_visible_in_tree(), "the departure notice is visible to the player")
+	assert_eq(notices.get_child_count(), 1)
+	if notices.get_child_count() == 0:
+		return
+	assert_true((notices.get_child(0) as Label).is_visible_in_tree())
+	assert_eq((notices.get_child(0) as Label).text,
+		"Alex left after their raise requests were refused.")
+	assert_eq(_document()["data"]["staff"]["members"].size(), 2)
+	main.call("_begin_morning")
+	assert_eq(_roster(main).members().size(), 2)
+	assert_true(notices.visible, "repeating setup keeps the morning notice without another departure")
+	assert_eq(notices.get_child_count(), 1)
+
+
+func test_last_cook_stays_at_mood_one_with_readable_morning_notice() -> void:
+	var main: Node = _start(false)
+	_install_queued_raises(main, false)
+	for _index: int in range(3):
+		assert_true(main.call("staff_decline_raise", &"starter_cook"))
+	assert_eq(_member(main, &"starter_cook").growth_state().mood, 0)
+	Clock.sim.phase = SimClock.Phase.CLOSED
+	assert_true(Clock.sim.next_day())
+	assert_eq(_roster(main).members().size(), 2)
+	assert_not_null(_live_staff(main, &"starter_cook"))
+	assert_eq(_member(main, &"starter_cook").growth_state().mood, 1)
+	var panel: StaffPanel = main.get_node("Overlay/StaffPanel") as StaffPanel
+	var notices: VBoxContainer = panel.get_node("Panel/Content/Scroll/List/MorningNotices") as VBoxContainer
+	assert_true(panel.is_visible_in_tree(), "a protected worker's notice opens the Staff panel")
+	assert_true(notices.is_visible_in_tree())
+	assert_eq(notices.get_child_count(), 1)
+	if notices.get_child_count() == 0:
+		return
+	assert_eq((notices.get_child(0) as Label).text, "Alex stayed to keep the kitchen running.")
+	assert_false((notices.get_child(0) as Label).text.contains("starter_cook"))
+	main.call("_begin_morning")
+	assert_eq(notices.get_child_count(), 1)
 
 
 func test_role_minimums_and_service_phase_reject_requests_and_hide_panel() -> void:
@@ -294,6 +499,55 @@ func _close(main: Node) -> void:
 
 func _roster(main: Node) -> StaffRoster:
 	return main.get("staff_roster") as StaffRoster
+
+
+func _member(main: Node, id: StringName) -> StaffMember:
+	for member: StaffMember in _roster(main).members():
+		if member.id == id:
+			return member
+	return null
+
+
+func _live_staff(main: Node, id: StringName) -> StaffAgent:
+	for agent: SimAgent in (main.get("world") as SimWorld).agents:
+		if agent is StaffAgent and not agent is OwnerAgent \
+				and (agent as StaffAgent).member_id == id:
+			return agent as StaffAgent
+	return null
+
+
+func _bus_task_for(sim: RestaurantSim, table_id: int) -> SimTask:
+	for task: SimTask in sim.world.board.open_tasks():
+		if task.kind == &"bus_table" and int(task.payload.get("table_item_id", 0)) == table_id:
+			return task
+	return null
+
+
+func _install_queued_raises(main: Node, extra_cook: bool) -> void:
+	var saved: Dictionary = _roster(main).to_dict()
+	if extra_cook:
+		var backup: Dictionary = saved["members"][0].duplicate(true)
+		backup["id"] = "backup_cook"
+		backup["name"] = "Robin Backup"
+		saved["members"].append(backup)
+	var cook: Dictionary = saved["members"][0]
+	cook["skill"] = 5
+	cook["wage"] = TUNING.staff_wage(&"cook", 1)
+	cook["growth"]["skills"]["cooking"] = 5
+	cook["growth"]["wage"] = cook["wage"]
+	cook["growth"]["raises"] = [
+		{"skill": "cooking", "level": 2},
+		{"skill": "cooking", "level": 3},
+		{"skill": "cooking", "level": 4},
+		{"skill": "cooking", "level": 5}]
+	var choices: StaffRoster = StaffRoster.new(TUNING)
+	assert_true(choices.from_dict(saved))
+	assert_true((main.get("sim") as RestaurantSim).set_staff_roster(choices.members()))
+	main.set("staff_roster", choices)
+	var panel: StaffPanel = main.get_node("Overlay/StaffPanel") as StaffPanel
+	panel.bind_roster(choices)
+	var notices: Array[Dictionary] = []
+	panel.set_morning(Clock.sim.day, notices)
 
 
 func _path() -> String:

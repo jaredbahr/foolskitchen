@@ -480,6 +480,48 @@ an active edit/panel/selection first, or opens Settings when none is active.
   the existing floor shader's colour parameter. Paint never changes terrain,
   paths, agent decisions, prices, books or random streams.
 
+### 2.3h Staff growth and morning raises (FK-051)
+- Main connects the live board's `task_completed` signal once and passes each
+  finished task to `StaffTaskCredit`. It credits the stable claimant only when
+  that claimant is an employee;
+  failed, dropped and cancelled tasks and the owner earn no staff XP. The task
+  kind maps to cooking, service or cleaning through `data/balance/staff_growth.tres`.
+  The same resource sets XP per completed task and the next-level thresholds.
+- `StaffGrowth` stages XP during service. At closing, Main charges that day's
+  existing wages before `StaffRoster.close_growth_day()` applies staged XP,
+  levels each skill up to 5 and queues one raise for each level gained. Morning
+  setup flushes any newly completed cleanup XP before serializing or replacing
+  the roster; repeating either flush with no new work changes nothing. Direct
+  sim drivers can finish cleanup after `service_closed`; the current Clock and
+  Main tick drivers still stop at CLOSED. No new cleanup ticking is introduced.
+  All earned skills reach live agents next morning, including a server's
+  fallback cleaning skill, with the existing work-speed formula unchanged.
+- At the next morning Main settles due quits, installs the resulting roster and
+  skills, then draws candidates and performs the normal morning autosave. A
+  raise offer is read-only until the player accepts or refuses it. Acceptance
+  applies `EconomyTuning.staff_wage(role, new_level)` from that day, never below
+  the current wage. If pay is already covered, the skill update has one Got it
+  acknowledgement; it cannot be refused or lower mood. Refusing an actual pay
+  increase lowers mood by one. Mood starts at 3 and reaching 0
+  schedules a quit for the following morning. The last cook or server stays at
+  mood 1 to preserve the roster minimum; the last Cleaner remains optional.
+  Neither decision adds a save point.
+- The versioned growth state is nested in each employee's `staff` record:
+  per-skill levels and XP, mood, wage, queued raises and any due quit day. Old
+  six-field staff records restore with zero XP and mood 3. The roster decoder
+  validates the full snapshot before installation. The Staff panel shows the
+  current role's XP and mood, with morning-only raise requests and readable
+  departure notices; it does not mutate the roster or save by itself.
+- The manual 4–6-working-day level-up check uses fixed seeds 1, 7 and 42 with
+  the real Main session and no saves. Run
+  `bash tools/balance_probe.sh --days=6 --seeds=1,7,42 --setup=default --staff-growth=true`.
+  The optional per-member/day trace prints completed-task counts, earned XP,
+  skill and residual XP after close, pending requests, mood and wage. It makes
+  no automatic raise decisions. Compare each starter's first skill-3-to-4 day
+  against the target; the aggregate throughput table alone cannot establish
+  that timing. The actual run and 4–6-day pacing result remain pending. This
+  trace is manual, not a CI job.
+
 ### 2.4 Save system
 - JSON in `user://saves/`, with a `version` field and migration functions per version.
 - Only sim state is saved, never nodes. The world is rebuilt from sim state on load.
