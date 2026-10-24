@@ -7,6 +7,7 @@
 # --settings-world --speed=0 --frames=90 selects 150%, uses keyboard Close and shows the world.
 # --hud-layout --window-size=1280x720|1600x900 --speed=0 --frames=12,90 captures 125%, then 150%.
 # --report --open --fast=100 --speed=0 --frames=60 captures a real closed-day report.
+# --door-queue --open --fast=8 --speed=1 --frames=240 zooms a real queue, or records its absence at the entry.
 # Build previews use the production morning input API without buying or saving.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"

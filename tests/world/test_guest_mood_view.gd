@@ -167,7 +167,7 @@ func test_markers_follow_interpolated_bodies_without_advancing_sim_or_rng() -> v
 	var icon: GuestMoodIndicator = _view.mood_nodes[guest.id]
 	var body: PersonView = _view.agent_nodes[guest.id] as PersonView
 	var head_offset: Vector3 = body.head_anchor_position() + Vector3.UP * \
-		(AgentPresentationController.MOOD_CLEARANCE + (icon.dot.mesh as SphereMesh).radius)
+		0.15
 	var expected: Vector3 = body.transform * head_offset
 	assert_eq(body.transform * icon.position, expected)
 	for _frame: int in range(4):
@@ -207,6 +207,45 @@ func test_capture_evidence_reads_native_bands_independently_and_leaves_sim_uncha
 	assert_eq(evidence["visible_indicators"].size(), 0)
 	assert_eq(_snapshot(guest), before)
 	assert_false(CAPTURE_SCRIPT.mood_evidence(_world, null)["available"])
+
+
+func test_people_capture_evidence_reports_real_queue_and_actual_rig_separately_from_expected_pose() -> void:
+	var guest: CustomerAgent = _guest(CustomerAgent.State.QUEUED)
+	await _show_world()
+	var before: Dictionary = _snapshot(guest)
+	var evidence: Dictionary = CAPTURE_SCRIPT.people_evidence(_world, _view)
+	assert_true(evidence["available"])
+	assert_eq(evidence["fixture"], "none")
+	assert_true(evidence["queue_present"])
+	assert_eq(evidence["queued_ids"], [guest.id])
+	var record: Dictionary = evidence["actors"][0]
+	assert_eq(record["state"], int(CustomerAgent.State.QUEUED))
+	assert_eq(record["clip"], "idle")
+	assert_eq(record["expected_clip"], "idle")
+	assert_false(record["seated"])
+	assert_false(record["seat_member"])
+	assert_true(record["native_person"])
+	assert_false(record["display_separation_blocked"])
+	assert_true(record["bone_up"].has("root"))
+	assert_true(record["bone_up"].has("torso"))
+	assert_almost_eq(record["mood_radius"], 0.108)
+	var person: PersonView = _view.agent_nodes[guest.id] as PersonView
+	# A deliberate view-only test mismatch must be reported, never relabelled
+	# from the expected sim state as if the rendered rig were correct.
+	assert_true(person.set_pose(false, true, false, false, 0.27))
+	record = CAPTURE_SCRIPT.people_evidence(_world, _view)["actors"][0]
+	assert_eq(record["clip"], "sit")
+	assert_eq(record["expected_clip"], "idle")
+	assert_false(record["seated"])
+	assert_almost_eq(record["seat_lift"], 0.27)
+	assert_eq(_snapshot(guest), before)
+	guest.state = CustomerAgent.State.LEAVING
+	_view._process(0.0)
+	evidence = CAPTURE_SCRIPT.people_evidence(_world, _view)
+	assert_false(evidence["queue_present"], "absence at the fixed capture frame is explicit")
+	assert_true(evidence["queued_ids"].is_empty())
+	assert_eq(evidence["actors"][0]["clip"], "idle")
+	assert_false(CAPTURE_SCRIPT.people_evidence(_world, null)["available"])
 
 
 func _show_world() -> void:

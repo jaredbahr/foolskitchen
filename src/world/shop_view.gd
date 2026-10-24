@@ -539,6 +539,7 @@ func _sync_agents() -> void:
 			if frame.facing_direction.length_squared() > 0.000001:
 				node.rotation.y = atan2(-frame.facing_direction.x, -frame.facing_direction.z)
 		node.set_meta("person_ready", ready_person)
+		node.set_meta("display_separation_blocked", frame.separation_blocked)
 		var tray: MeshInstance3D = node.get_node("Tray") as MeshInstance3D
 		tray.visible = frame.show_tray and (ready_person or not frame.look_supported)
 		tray.position = frame.tray_anchor if ready_person else Vector3(0.0, 0.02, -0.48)
@@ -666,8 +667,7 @@ func _update_guest_mood(agent: SimAgent, body: Node3D, frame: AgentPresentationC
 	var indicator: GuestMoodIndicator = mood_nodes[agent.id]
 	# set_band is idempotent; anchor positioning must still follow every frame.
 	indicator.set_band(band)
-	var radius: float = (indicator.dot.mesh as SphereMesh).radius
-	indicator.position = frame.mood_anchor + Vector3.UP * radius if frame.anchors_ready else Vector3.UP * GuestMoodIndicator.HEAD_OFFSET
+	indicator.position = frame.mood_anchor if frame.anchors_ready else Vector3.UP * GuestMoodIndicator.HEAD_OFFSET
 
 
 func _remove_mood_icon(id: int) -> void:

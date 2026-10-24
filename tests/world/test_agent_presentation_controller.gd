@@ -112,6 +112,60 @@ func test_departure_and_lost_or_removed_seat_never_leave_a_sitting_guest() -> vo
 	assert_false(AgentPresentationController.frame_for(customer, _world).seated)
 
 
+func test_every_guest_state_uses_only_idle_walk_or_verified_seated_sit() -> void:
+	var table: PlacedItem = _table()
+	var guest: CustomerAgent = _seated_customer(table)
+	var seated_states: Array[int] = [CustomerAgent.State.ORDERING, CustomerAgent.State.WAITING_FOOD,
+		CustomerAgent.State.EATING, CustomerAgent.State.PAYING]
+	for state: int in range(CustomerAgent.State.LEFT + 1):
+		guest.state = state as CustomerAgent.State
+		guest.cell = guest.seat_cell
+		guest.clear_path()
+		var frame: AgentPresentationController.Frame = AgentPresentationController.frame_for(guest, _world)
+		var seated: bool = seated_states.has(state)
+		assert_eq(frame.seated, seated, "only the four occupied-seat states may sit")
+		assert_eq(frame.clip, &"sit" if seated else &"idle")
+		assert_almost_eq(frame.seat_height, 0.27 if seated else 0.0)
+		# A reservation and target lifecycle state do not prove physical arrival.
+		guest.cell = Vector2i(0, 3)
+		guest.path = [guest.cell, guest.seat_cell]
+		guest.path_index = 1
+		frame = AgentPresentationController.frame_for(guest, _world)
+		assert_eq(frame.clip, &"walk")
+		assert_false(frame.seated)
+		assert_almost_eq(frame.seat_height, 0.0)
+		guest.clear_path()
+		frame = AgentPresentationController.frame_for(guest, _world)
+		assert_eq(frame.clip, &"idle", "a stationary queue or stale target never selects another clip")
+		assert_false(frame.seated)
+		assert_almost_eq(frame.seat_height, 0.0)
+
+
+func test_seated_pose_rejects_nonseat_wrong_claimant_and_unfinished_path() -> void:
+	var table: PlacedItem = _table()
+	var guest: CustomerAgent = _seated_customer(table)
+	var seat: Vector2i = guest.seat_cell
+	# A work cell can be reserved and reached, but is not an authored seat.
+	table.release(seat, guest.id)
+	guest.seat_cell = Vector2i(0, 3)
+	guest.cell = guest.seat_cell
+	table.work_cells.append(guest.seat_cell)
+	assert_true(table.reserve(guest.seat_cell, guest.id))
+	assert_eq(AgentPresentationController.frame_for(guest, _world).clip, &"idle")
+	table.release(guest.seat_cell, guest.id)
+	guest.seat_cell = seat
+	guest.cell = seat
+	assert_true(table.reserve(seat, guest.id + 1))
+	assert_eq(AgentPresentationController.frame_for(guest, _world).clip, &"idle")
+	table.release(seat, guest.id + 1)
+	assert_true(table.reserve(seat, guest.id))
+	guest.path = [seat, Vector2i(0, 3)]
+	guest.path_index = 1
+	assert_eq(AgentPresentationController.frame_for(guest, _world).clip, &"walk")
+	guest.clear_path()
+	assert_eq(AgentPresentationController.frame_for(guest, _world).clip, &"sit")
+
+
 func test_only_started_claimed_work_plays_station_animation_without_calling_waits() -> void:
 	var worker: StaffAgent = _world.add_agent(StaffAgent.new(&"cook")) as StaffAgent
 	var task: SimTask = _claimed_task(worker, &"cook", &"cook")
@@ -213,13 +267,13 @@ func test_display_nudges_are_stable_bounded_and_independent_of_input_order() -> 
 	var a: Dictionary[int, AgentPresentationController.Frame] = AgentPresentationController.frames_for(forward, _world)
 	var b: Dictionary[int, AgentPresentationController.Frame] = AgentPresentationController.frames_for(backward, _world)
 	var again: Dictionary[int, AgentPresentationController.Frame] = AgentPresentationController.frames_for(forward, _world)
-	assert_true(a[first.id].display_offset.length() > 0.0)
+	assert_true(a[second.id].display_offset.length() > 0.0)
 	assert_almost_eq((a[first.id].display_offset - a[second.id].display_offset).length(), 0.45)
 	for id: int in [first.id, second.id]:
 		assert_eq(a[id].display_offset, b[id].display_offset)
 		assert_eq(a[id].display_offset, again[id].display_offset)
 		assert_almost_eq(a[id].display_offset.y, 0.0)
-		assert_true(a[id].display_offset.length() <= AgentPresentationController.MAX_DISPLAY_NUDGE + 0.00001)
+		assert_true(a[id].display_offset.length() <= AgentPresentationController.DISPLAY_NUDGE_STEP)
 	assert_eq(first.cell, second.cell)
 	second.cell = Vector2i(2, 1)
 	a = AgentPresentationController.frames_for(forward, _world)
@@ -242,8 +296,88 @@ func test_moving_and_seated_people_stay_anchored_and_dense_groups_remain_bounded
 	var frames: Dictionary[int, AgentPresentationController.Frame] = AgentPresentationController.frames_for(standers, _world)
 	assert_eq(frames[customer.id].display_offset, Vector3.ZERO)
 	assert_eq(frames[walker.id].display_offset, Vector3.ZERO)
-	for frame: AgentPresentationController.Frame in frames.values():
-		assert_true(frame.display_offset.length() <= AgentPresentationController.MAX_DISPLAY_NUDGE + 0.00001)
+	var reverse: Array[SimAgent] = standers.duplicate()
+	reverse.reverse()
+	var repeated: Dictionary[int, AgentPresentationController.Frame] = AgentPresentationController.frames_for(reverse, _world)
+	for first: SimAgent in standers:
+		var frame: AgentPresentationController.Frame = frames[first.id]
+		assert_eq(frame.display_offset, repeated[first.id].display_offset)
+		assert_true(frame.display_offset.length() <= AgentPresentationController.DISPLAY_NUDGE_STEP * float(2 * standers.size() + 1))
+		assert_almost_eq(frame.display_offset.y, 0.0)
+		if first == walker:
+			continue
+		for second: SimAgent in standers:
+			if first.id >= second.id or second == walker:
+				continue
+			assert_true(_drawn(frames[first.id]).distance_to(_drawn(frames[second.id])) >= 0.45)
+	assert_eq(table.reserved_by(customer.seat_cell), customer.id)
+
+
+func test_standers_avoid_seats_even_when_seated_id_is_later_and_nudges_create_new_neighbors() -> void:
+	var first: StaffAgent = _world.add_agent(StaffAgent.new(&"server")) as StaffAgent
+	var second: SimAgent = _world.add_agent(SimAgent.new())
+	first.cell = Vector2i(1, 2)
+	second.cell = first.cell
+	var table: PlacedItem = _table()
+	var guest: CustomerAgent = _seated_customer(table)
+	assert_eq(guest.cell, Vector2i(1, 3))
+	var agents: Array[SimAgent] = [first, second, guest]
+	var frames: Dictionary[int, AgentPresentationController.Frame] = AgentPresentationController.frames_for(agents, _world)
+	assert_eq(frames[guest.id].display_offset, Vector3.ZERO)
+	assert_eq(_drawn(frames[guest.id]), GridMath.cell_to_world(guest.seat_cell))
+	for agent: SimAgent in [first, second]:
+		assert_true(_drawn(frames[agent.id]).distance_to(_drawn(frames[guest.id])) >= 0.45)
+		assert_true(_world.grid.is_walkable(GridMath.world_to_cell(_drawn(frames[agent.id]))))
+		assert_false(frames[agent.id].separation_blocked)
+	assert_true(_drawn(frames[first.id]).distance_to(_drawn(frames[second.id])) >= 0.45)
+	first.cell = guest.cell
+	second.cell = guest.cell
+	frames = AgentPresentationController.frames_for(agents, _world)
+	assert_eq(frames[guest.id].display_offset, Vector3.ZERO)
+	for agent: SimAgent in [first, second]:
+		assert_true(_drawn(frames[agent.id]).distance_to(_drawn(frames[guest.id])) >= 0.45)
+	assert_eq(first.cell, guest.cell, "separation changes no simulation cell")
+	assert_eq(table.reserved_by(guest.seat_cell), guest.id)
+
+
+func test_infeasible_room_spacing_is_reported_without_jumping_through_a_wall() -> void:
+	_world = SimWorld.new(SimGrid.from_ascii(["#####", "#.#.#", "#####"]))
+	var agents: Array[SimAgent] = []
+	for index: int in range(2):
+		var agent: SimAgent = _world.add_agent(SimAgent.new())
+		agent.cell = Vector2i(1, 1)
+		agents.append(agent)
+	var frames: Dictionary[int, AgentPresentationController.Frame] = AgentPresentationController.frames_for(agents, _world)
+	assert_eq(frames[agents[0].id].display_offset, Vector3.ZERO)
+	assert_eq(frames[agents[1].id].display_offset, Vector3.ZERO)
+	assert_false(frames[agents[0].id].separation_blocked)
+	assert_true(frames[agents[1].id].separation_blocked,
+		"another floor cell beyond a wall cannot justify a display teleport")
+	assert_eq(agents[0].cell, Vector2i(1, 1))
+	assert_eq(agents[1].cell, Vector2i(1, 1))
+	assert_eq(_world.now, 0)
+
+
+func test_infeasible_nudges_do_not_cross_a_solid_table_or_room_edge() -> void:
+	_world = SimWorld.new(SimGrid.from_ascii(["#####", "#...#", "#####"]))
+	var definition: ItemDef = ItemDef.new()
+	definition.id = &"solid_table_test"
+	definition.category = ItemDef.Category.TABLE
+	definition.footprint = Vector2i.ONE
+	var table: PlacedItem = _world.grid.place_def(definition, Vector2i(2, 1))
+	assert_not_null(table)
+	assert_false(_world.grid.is_walkable(Vector2i(2, 1)))
+	var agents: Array[SimAgent] = []
+	for index: int in range(2):
+		var agent: SimAgent = _world.add_agent(SimAgent.new())
+		agent.cell = Vector2i(1, 1)
+		agents.append(agent)
+	var frames: Dictionary[int, AgentPresentationController.Frame] = AgentPresentationController.frames_for(agents, _world)
+	assert_eq(frames[agents[1].id].display_offset, Vector3.ZERO)
+	assert_true(frames[agents[1].id].separation_blocked)
+	assert_eq(_world.grid.item_at(Vector2i(2, 1)), table)
+	assert_true(table._reservations.is_empty())
+	assert_eq(_world.now, 0)
 
 
 func test_sampling_preserves_paths_tasks_reservations_world_and_guest_rng() -> void:
@@ -349,6 +483,10 @@ func _customer() -> CustomerAgent:
 	var random: RandomNumberGenerator = RandomNumberGenerator.new()
 	random.seed = 42
 	return _world.add_agent(CustomerAgent.new(_restaurant, random)) as CustomerAgent
+
+
+func _drawn(frame: AgentPresentationController.Frame) -> Vector3:
+	return frame.floor_position + frame.display_offset
 
 
 func _table() -> PlacedItem:

@@ -5,8 +5,8 @@ extends RefCounted
 
 const NOMINAL_CHAIR_SEAT_HEIGHT: float = 0.27
 const MIN_STANDING_DISTANCE: float = 0.45
-const MAX_DISPLAY_NUDGE: float = MIN_STANDING_DISTANCE * 0.5
-const MOOD_CLEARANCE: float = 0.10
+const DISPLAY_NUDGE_STEP: float = MIN_STANDING_DISTANCE + 0.00001
+const MOOD_CLEARANCE: float = 0.15
 
 class Frame extends RefCounted:
 	var id: int = 0
@@ -14,6 +14,7 @@ class Frame extends RefCounted:
 	var look_supported: bool = false
 	var floor_position: Vector3 = Vector3.ZERO
 	var display_offset: Vector3 = Vector3.ZERO
+	var separation_blocked: bool = false
 	var facing_direction: Vector3 = Vector3.ZERO
 	var moving: bool = false
 	var seated: bool = false
@@ -78,26 +79,66 @@ static func frames_for(agents: Array[SimAgent], world: SimWorld, chair_heights: 
 		frames[agent.id] = frame_for(agent, world, chair_heights.get(agent.id, NOMINAL_CHAIR_SEAT_HEIGHT))
 		ids.append(agent.id)
 	ids.sort()
-	for first_index: int in range(ids.size()):
-		var first: Frame = frames[ids[first_index]]
-		if first.moving or first.seated:
-			continue
-		for second_index: int in range(first_index + 1, ids.size()):
-			var second: Frame = frames[ids[second_index]]
-			if second.moving or second.seated:
-				continue
-			var difference: Vector3 = first.floor_position - second.floor_position
-			var distance: float = difference.length()
-			if distance >= MIN_STANDING_DISTANCE:
-				continue
-			var direction: Vector3 = difference / distance if distance > 0.000001 else _tie_direction(first.id, second.id)
-			var push: Vector3 = direction * ((MIN_STANDING_DISTANCE - distance) * 0.5)
-			first.display_offset += push
-			second.display_offset -= push
+	# Seat positions are immutable blockers, including seats with higher agent IDs.
+	var occupied: Array[Vector3] = []
+	for id: int in ids:
+		if frames[id].seated:
+			occupied.append(frames[id].floor_position)
 	for id: int in ids:
 		var frame: Frame = frames[id]
-		frame.display_offset = frame.display_offset.limit_length(MAX_DISPLAY_NUDGE)
+		if frame.moving or frame.seated:
+			continue
+		var drawn: Vector3 = _separated_position(frame.floor_position, occupied, world.grid)
+		frame.display_offset = drawn - frame.floor_position
+		frame.separation_blocked = not _has_clearance(drawn, occupied) \
+			or not _floor_safe(frame.floor_position, drawn, world.grid)
+		occupied.append(drawn)
 	return frames
+
+
+## Greedy, stable ID order: later people avoid final positions, not raw positions.
+## The 2N+1 ring budget fits N blockers in unobstructed space. Actual floor
+## geometry can make separation infeasible; keep the origin and report it.
+## Do not clamp the result afterwards: that would recreate seat intersections.
+static func _separated_position(origin: Vector3, occupied: Array[Vector3], grid: SimGrid) -> Vector3:
+	if _has_clearance(origin, occupied) and _floor_safe(origin, origin, grid):
+		return origin
+	var directions: Array[Vector3] = [Vector3.RIGHT, Vector3.BACK, Vector3.LEFT, Vector3.FORWARD,
+		Vector3(1, 0, 1).normalized(), Vector3(-1, 0, 1).normalized(),
+		Vector3(-1, 0, -1).normalized(), Vector3(1, 0, -1).normalized()]
+	for ring: int in range(1, 2 * occupied.size() + 2):
+		for direction: Vector3 in directions:
+			var candidate: Vector3 = origin + direction * DISPLAY_NUDGE_STEP * float(ring)
+			if _has_clearance(candidate, occupied) and _floor_safe(origin, candidate, grid):
+				return candidate
+	return origin
+
+
+## Conservative swept footprint, not pathfinding: reject any wall, solid item,
+## outside cell or room edge touched between the real and drawn floor points.
+## Half the separation distance is the display footprint, not a model scale.
+static func _floor_safe(origin: Vector3, candidate: Vector3, grid: SimGrid) -> bool:
+	var radius: float = MIN_STANDING_DISTANCE * 0.5
+	var low: Vector2i = GridMath.world_to_cell(Vector3(minf(origin.x, candidate.x) - radius,
+		0.0, minf(origin.z, candidate.z) - radius))
+	var high: Vector2i = GridMath.world_to_cell(Vector3(maxf(origin.x, candidate.x) + radius,
+		0.0, maxf(origin.z, candidate.z) + radius))
+	if not grid.in_bounds(low) or not grid.in_bounds(high):
+		return false
+	for y: int in range(low.y, high.y + 1):
+		for x: int in range(low.x, high.x + 1):
+			if not grid.is_walkable(Vector2i(x, y)):
+				return false
+	return true
+
+
+static func _has_clearance(candidate: Vector3, occupied: Array[Vector3]) -> bool:
+	for point: Vector3 in occupied:
+		var difference: Vector3 = candidate - point
+		difference.y = 0.0
+		if difference.length_squared() < MIN_STANDING_DISTANCE * MIN_STANDING_DISTANCE:
+			return false
+	return true
 
 
 ## False asks the caller to retain an explicit unsupported-role fallback.
@@ -148,8 +189,3 @@ static func _item_center(item: PlacedItem) -> Vector3:
 	for cell: Vector2i in item.cells:
 		center += GridMath.cell_to_world(cell)
 	return center / float(item.cells.size()) if not item.cells.is_empty() else GridMath.cell_to_world(item.origin)
-
-
-static func _tie_direction(first_id: int, second_id: int) -> Vector3:
-	var directions: Array[Vector3] = [Vector3.RIGHT, Vector3.FORWARD, Vector3.LEFT, Vector3.BACK]
-	return directions[posmod(posmod(first_id, 4) + posmod(second_id, 4), 4)]

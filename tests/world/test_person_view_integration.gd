@@ -98,10 +98,58 @@ func test_native_mood_anchor_moves_when_seating_changes_inside_same_state_and_ba
 	assert_eq(_view.mood_nodes[guest.id], icon)
 	assert_eq(icon.updates, 1, "same state and band reuse the native icon")
 	assert_false(icon.position.is_equal_approx(original_position), "the cached band cannot freeze a moving head anchor")
-	var clearance: float = AgentPresentationController.MOOD_CLEARANCE + (icon.dot.mesh as SphereMesh).radius
+	var clearance: float = 0.15
 	assert_true(icon.position.is_equal_approx(person.head_anchor_position() + Vector3.UP * clearance))
+	assert_almost_eq((icon.dot.mesh as SphereMesh).radius, 0.108)
+	assert_almost_eq((icon.dot.mesh as SphereMesh).height, 0.216)
+	assert_almost_eq(icon.mark.pixel_size, 0.0024)
 	assert_eq(icon.get_parent(), person)
 	assert_eq(guest.rng.state, random_state)
+	assert_eq(table.reserved_by(guest.seat_cell), guest.id)
+
+
+func test_all_imported_guest_rigs_stay_upright_across_timed_partial_clip_transitions() -> void:
+	var guest: CustomerAgent = _guest(CustomerAgent.State.QUEUED)
+	await _enter_view()
+	var person: PersonView = _person(guest.id)
+	person.set_playback_speed(1.0)
+	for look: int in range(PersonPresentation.GUEST_MODELS.size()):
+		assert_true(person.set_look(&"customer", look))
+		assert_eq(person.model_name(), PersonPresentation.GUEST_MODELS[look])
+		assert_eq(person._player.get_animation_list().size(), PersonPresentation.CLIPS.size())
+		# Sample actual imported tracks after time has passed, not only advance(0).
+		for pose: Array in [[true, false], [false, true], [false, false],
+				[true, false], [false, true], [false, false]]:
+			assert_true(person.set_pose(pose[0], pose[1], false, false, 0.27))
+			person.face_direction(Vector3(1.0, 0.0, -1.0))
+			person._player.advance(0.37)
+			_assert_upright(person)
+			person._player.advance(0.61)
+			_assert_upright(person)
+			assert_eq(person.current_clip(), &"sit" if pose[1] else (&"walk" if pose[0] else &"idle"))
+			assert_almost_eq((person.get_node("ModelPivot") as Node3D).position.y, 0.27 if pose[1] else 0.0)
+	assert_eq(guest.state, CustomerAgent.State.QUEUED)
+	assert_eq(_world.now, 0)
+
+
+func test_native_standing_server_clears_a_fixed_seated_guest_and_drawn_picking() -> void:
+	var table: PlacedItem = _table()
+	var guest: CustomerAgent = _guest(CustomerAgent.State.WAITING_FOOD)
+	guest.table_item_id = table.id
+	guest.seat_cell = table.seat_cells[0]
+	guest.cell = guest.seat_cell
+	assert_true(table.reserve(guest.seat_cell, guest.id))
+	var server: StaffAgent = _world.add_agent(StaffAgent.new(&"server")) as StaffAgent
+	server.cell = guest.cell
+	await _enter_view()
+	var positions: Dictionary[int, Vector3] = _view.drawn_agent_positions()
+	assert_eq(positions[guest.id], GridMath.cell_to_world(guest.seat_cell))
+	assert_true(positions[server.id].distance_to(positions[guest.id]) >= 0.45)
+	assert_eq(_person(guest.id).current_clip(), &"sit")
+	assert_eq(_person(server.id).current_clip(), &"idle")
+	assert_eq(Picker.pick_agent(positions[server.id], positions), server.id)
+	assert_eq(Picker.pick_agent(positions[guest.id], positions), guest.id)
+	assert_eq(server.cell, guest.cell)
 	assert_eq(table.reserved_by(guest.seat_cell), guest.id)
 
 
@@ -200,6 +248,20 @@ func _person(id: int) -> PersonView:
 	var person: PersonView = _view.agent_nodes[id] as PersonView
 	assert_not_null(person)
 	return person
+
+
+func _assert_upright(person: PersonView) -> void:
+	assert_true(person._model.global_basis.y.normalized().dot(Vector3.UP) > 0.999)
+	var skeleton: Skeleton3D = person._skeleton
+	for name: String in ["root", "torso"]:
+		var bone: int = skeleton.find_bone(name)
+		assert_true(bone >= 0)
+		if bone < 0:
+			continue
+		var pose: Transform3D = skeleton.global_transform * skeleton.get_bone_global_pose(bone)
+		assert_true(pose.is_finite(), "%s %s has finite imported transforms" % [person.model_name(), name])
+		assert_true(pose.basis.y.normalized().dot(Vector3.UP) > 0.95,
+			"%s %s stays upright in %s" % [person.model_name(), name, person.current_clip()])
 
 
 func _guest(state: CustomerAgent.State) -> CustomerAgent:
