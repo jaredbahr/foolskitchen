@@ -444,6 +444,100 @@ func test_three_day_real_kitchen_customer_soak_accounts_and_drains() -> void:
 	print("KITCHEN_SOAK arrivals=%d served=%d lost=%d reasons=%s" % [_arrived.size(), total_served, total_lost, total_reasons])
 
 
+func test_tray_delivery_serves_two_ready_meals_in_one_nearest_next_trip() -> void:
+	var guests: Array[CustomerAgent] = _two_ready_guests_for_trays()
+	var first: CustomerAgent = guests[0]
+	var second: CustomerAgent = guests[1]
+	var batch: SimTask = _claim_tray_delivery()
+	assert_not_null(batch)
+	if batch == null:
+		return
+	assert_eq(batch.payload["order_ids"].size(), 2)
+	assert_eq(batch.steps.size(), 6, "one pickup and two table stops")
+	var pass_cell: Vector2i = _item(&"pass_counter").work_cells[1]
+	var first_stop: Vector2i = batch.steps[2].cell
+	var second_stop: Vector2i = batch.steps[4].cell
+	assert_true(_sim.world.grid.find_path_to_any(pass_cell, [first_stop] as Array[Vector2i]).size()
+		<= _sim.world.grid.find_path_to_any(pass_cell, [second_stop] as Array[Vector2i]).size(),
+		"the first table is nearest to the pass")
+	for tick: int in range(3000):
+		_sim.advance()
+		_assert_tray_plates()
+		if first.paid and second.paid:
+			break
+	assert_eq(batch.state, SimTask.State.DONE)
+	assert_true(first.paid and second.paid)
+	assert_eq(_paid.size(), 2, "each guest pays once")
+	assert_eq(_paid[first.id], first.order.price)
+	assert_eq(_paid[second.id], second.order.price)
+
+
+func test_guest_leaving_mid_tray_trip_recovers_only_their_plate() -> void:
+	var guests: Array[CustomerAgent] = _two_ready_guests_for_trays()
+	var batch: SimTask = _claim_tray_delivery()
+	assert_not_null(batch)
+	if batch == null:
+		return
+	var cancelled: CustomerAgent = guests[0] if guests[0].order.id == batch.payload["order_ids"][0] else guests[1]
+	var survivor: CustomerAgent = guests[1] if cancelled == guests[0] else guests[0]
+	_sim.orders.set_state(cancelled.order, Order.State.CANCELLED, &"waited_too_long")
+	assert_false(_sim.kitchen.plates.has_order(cancelled.order.id))
+	assert_true(_sim.kitchen.plates.has_order(survivor.order.id))
+	assert_eq(batch.state, SimTask.State.CLAIMED)
+	_assert_tray_plates()
+	for tick: int in range(3000):
+		_sim.advance()
+		_assert_tray_plates()
+		if survivor.paid:
+			break
+	assert_true(survivor.paid, "the other stop remains deliverable")
+	assert_false(cancelled.paid)
+	assert_eq(_paid.size(), 1)
+	assert_eq(batch.state, SimTask.State.DONE)
+
+
+func _two_ready_guests_for_trays() -> Array[CustomerAgent]:
+	_sim.carry_capacity = 2
+	var first: CustomerAgent = _guest()
+	var second: CustomerAgent = _guest()
+	assert_true(_sim.world.clock.start_service())
+	for tick: int in range(1200):
+		_sim.advance()
+		if first.order != null and second.order != null:
+			break
+	assert_not_null(first.order)
+	assert_not_null(second.order)
+	var server: StaffAgent = _staff(&"server")
+	server.priorities[&"server"] = 0
+	server.priorities[&"any"] = 0
+	for tick: int in range(3000):
+		_sim.advance()
+		_assert_tray_plates()
+		if first.order.state == Order.State.READY and second.order.state == Order.State.READY:
+			break
+	assert_eq(first.order.state, Order.State.READY)
+	assert_eq(second.order.state, Order.State.READY)
+	server.priorities[&"server"] = 2
+	server.priorities[&"any"] = 1
+	return [first, second] as Array[CustomerAgent]
+
+
+func _claim_tray_delivery() -> SimTask:
+	var server: StaffAgent = _staff(&"server")
+	for tick: int in range(1200):
+		_sim.advance()
+		_assert_tray_plates()
+		if server.task != null and server.task.kind == &"deliver" \
+				and bool(server.task.payload.get("batch_prepared", false)):
+			return server.task
+	return null
+
+
+func _assert_tray_plates() -> void:
+	var plates: PlateLedger = _sim.kitchen.plates
+	assert_eq(plates.clean + plates.dirty + plates.in_use, plates.total)
+
+
 func _no_arrivals() -> void:
 	_sim.spawner.min_gap = 100000
 	_sim.spawner.max_gap = 100000

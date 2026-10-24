@@ -31,6 +31,8 @@ var build_mode: BuildMode = BuildMode.new()
 ## Cookable dishes/prices belong to this shop, never to shared recipe resources.
 var menu_settings: MenuSettings
 var staff_roster: StaffRoster
+## Zero is one plate; the two purchased levels carry two and four.
+var tray_level: int = 0
 
 var _previous_clock: SimClock = null
 var _started: bool = false
@@ -40,6 +42,7 @@ var _loaded_layout: ShopLayout = null
 var _loaded_menu: MenuSettings = null
 var _loaded_staff: StaffRoster = null
 var _loaded_plates: PlateLedger = null
+var _loaded_tray_level: int = 0
 var _report: Control
 var _inspect_panel: InspectPanel
 var _debug_overlay: DebugOverlay
@@ -125,9 +128,11 @@ func _bind_world_presentation() -> void:
 	_staff_panel = $Overlay/StaffPanel
 	_staff_panel.bind_roster(staff_roster)
 	_staff_panel.set_phase(Clock.sim.phase)
+	_staff_panel.set_trays(tray_level, TUNING.tray_prices, Economy.cash)
 	if not _staff_panel.hire_requested.is_connected(_on_staff_hire_requested):
 		_staff_panel.hire_requested.connect(_on_staff_hire_requested)
 		_staff_panel.let_go_requested.connect(_on_staff_let_go_requested)
+		_staff_panel.tray_requested.connect(_on_tray_requested)
 		_staff_panel.close_requested.connect(_on_staff_close_requested)
 	if not $HUD.is_connected(&"staff_pressed", toggle_staff):
 		$HUD.connect(&"staff_pressed", toggle_staff)
@@ -411,6 +416,8 @@ func _on_build_buy_requested(def_id: StringName) -> void:
 func _on_build_cash_changed(_cash: int, _delta: int, _reason: StringName) -> void:
 	if _build_ready and is_build_active():
 		build_mode.refresh()
+	if _staff_panel != null:
+		_staff_panel.set_trays(tray_level, TUNING.tray_prices, Economy.cash)
 
 
 ## Uses the same floor-plane selection path for real clicks and capture tools.
@@ -597,6 +604,9 @@ func _new_game() -> void:
 	sim.assign_owner(&"rest")
 	_loaded_menu = null
 	_loaded_staff = null
+	_loaded_tray_level = 0
+	tray_level = 0
+	sim.carry_capacity = 1
 	staff_roster = StaffRoster.new(TUNING)
 	if not sim.set_staff_roster(staff_roster.members()):
 		push_error("Cannot install the new game's starting staff roster")
@@ -613,6 +623,7 @@ func _load_autosave() -> bool:
 	_loaded_menu = null
 	_loaded_staff = null
 	_loaded_plates = null
+	_loaded_tray_level = 0
 	if not SaveSystem.list_slots().has(save_slot):
 		return false
 	if SaveSystem.load_game(save_slot) != OK:
@@ -636,6 +647,8 @@ func _load_autosave() -> bool:
 		sim = candidate
 		world = candidate.world
 	staff_roster = employees
+	tray_level = _loaded_tray_level
+	sim.carry_capacity = 1 << tray_level
 	menu_settings = choices
 	_apply_menu(sim, menu_settings)
 	if sim.kitchen == null or not sim.kitchen.configure_plates(
@@ -672,17 +685,47 @@ func _restore_owner(data: Dictionary) -> bool:
 
 
 func _capture_shop() -> Dictionary:
-	return shop_editor.to_dict() if shop_editor != null else {}
+	if shop_editor == null:
+		return {}
+	var snapshot: Dictionary = shop_editor.to_dict()
+	snapshot["tray_level"] = tray_level
+	return snapshot
 
 
 ## Restore callbacks only stage decoded data. Live replacement waits for OK.
 func _restore_shop(data: Dictionary) -> bool:
+	var saved_level: Variant = data.get("tray_level", 0)
+	if (typeof(saved_level) != TYPE_INT and typeof(saved_level) != TYPE_FLOAT) \
+			or not is_finite(float(saved_level)) or floor(float(saved_level)) != float(saved_level) \
+			or saved_level < 0 or saved_level > 2:
+		return false
 	var errors: Array[String] = []
 	var layout: ShopLayout = ShopEditor.from_dict(data, LAYOUT, content, errors)
 	if layout == null:
 		return false
 	_loaded_layout = layout
+	_loaded_tray_level = int(saved_level)
 	return true
+
+
+## A morning purchase joins the next ordinary morning save and ledger entry.
+func tray_buy(level: int) -> bool:
+	if not _started or sim == null or Clock.sim.phase != SimClock.Phase.MORNING \
+			or level != tray_level + 1 or level < 1 or level > 2 \
+			or TUNING.tray_prices.size() < 2:
+		return false
+	var price: int = TUNING.tray_prices[level - 1]
+	if price < 0 or not Economy.can_spend_without_loan(price):
+		return false
+	tray_level = level
+	sim.carry_capacity = 1 << level
+	Economy.add_cash(-price, Ledger.UPGRADES)
+	_staff_panel.set_trays(tray_level, TUNING.tray_prices, Economy.cash)
+	return true
+
+
+func _on_tray_requested(level: int) -> void:
+	tray_buy(level)
 
 
 func _capture_menu() -> Dictionary:
@@ -751,6 +794,7 @@ func set_staff_visible(value: bool) -> bool:
 		set_menu_visible(false)
 		clear_selection()
 	_staff_panel.set_phase(Clock.sim.phase)
+	_staff_panel.set_trays(tray_level, TUNING.tray_prices, Economy.cash)
 	_staff_panel.visible = value
 	return true
 

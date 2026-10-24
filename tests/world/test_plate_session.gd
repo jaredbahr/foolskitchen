@@ -115,6 +115,61 @@ func test_only_total_persists_at_the_next_morning_and_survives_world_rebuild() -
 	assert_eq(Economy.stock.to_dict(), stock)
 
 
+func test_tray_upgrades_require_order_and_morning_then_save_with_shop() -> void:
+	await _start()
+	var original: String = _saved_text()
+	Economy.add_cash(500, Ledger.OTHER)
+	var before: int = Economy.cash
+	assert_false(_main.call("tray_buy", 2), "big trays require the first upgrade")
+	assert_true(_main.call("tray_buy", 1))
+	assert_eq(_sim().carry_capacity, 2)
+	assert_eq(Economy.cash, before - 60)
+	assert_false(_main.call("tray_buy", 1), "each level is bought once")
+	assert_true(_main.call("tray_buy", 2))
+	assert_eq(_sim().carry_capacity, 4)
+	assert_eq(Economy.cash, before - 210)
+	assert_eq(int(Economy.ledger.day_totals(Clock.sim.day).get(Ledger.UPGRADES, 0)), -210)
+	assert_eq(_saved_text(), original, "buying adds no save point")
+	var panel: StaffPanel = _main.get_node("Overlay/StaffPanel") as StaffPanel
+	assert_eq((panel.get_node("Panel/Content/Scroll/List/Carry") as Label).text, "Servers carry 4 plates")
+	assert_eq((panel.get_node("Panel/Content/Scroll/List/BigTraysRow/BigTraysBuy") as Button).text, "Owned")
+	Clock.sim.open_ticks = 2
+	Clock.sim.last_orders_max_ticks = 1
+	assert_true(Clock.sim.start_service())
+	assert_false(_main.call("tray_buy", 1), "upgrades are unavailable during service")
+	_main.call("run_ticks", 10)
+	assert_eq(Clock.sim.phase, SimClock.Phase.CLOSED)
+	(_main.get_node("Overlay/EveningReport") as Control).emit_signal(&"next_day_pressed")
+	var document: Dictionary = JSON.parse_string(_saved_text())
+	assert_eq(document["data"]["shop"]["tray_level"], 2.0)
+	_reload_main()
+	assert_eq(_main.get("tray_level"), 2)
+	assert_eq(_sim().carry_capacity, 4)
+
+
+func test_older_shop_save_without_trays_loads_one_plate_capacity() -> void:
+	await _start()
+	var document: Dictionary = JSON.parse_string(_saved_text())
+	var shop: Dictionary = document["data"]["shop"]
+	shop.erase("tray_level")
+	_write_document(document)
+	_reload_main()
+	assert_eq(_main.get("tray_level"), 0)
+	assert_eq(_sim().carry_capacity, 1)
+
+
+func test_tray_purchase_during_service_fails_with_cash_and_level_unchanged() -> void:
+	await _start(false)
+	Economy.add_cash(500, Ledger.OTHER)
+	assert_true(_main.call("tray_buy", 1))
+	var cash: int = Economy.cash
+	assert_true(Clock.sim.start_service())
+	assert_false(_main.call("tray_buy", 2))
+	assert_eq(_main.get("tray_level"), 1)
+	assert_eq(_sim().carry_capacity, 2)
+	assert_eq(Economy.cash, cash)
+
+
 func test_previous_string_plate_total_loads_and_the_normal_morning_save_writes_a_number() -> void:
 	await _start()
 	var document: Dictionary = JSON.parse_string(_saved_text())

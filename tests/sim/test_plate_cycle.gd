@@ -54,6 +54,30 @@ func test_real_two_plate_service_day_conserves_every_tick_and_finishes_cleanup()
 	_assert_cleanup()
 
 
+func test_five_real_days_with_trays_conserve_plates_every_tick() -> void:
+	_sim.carry_capacity = 4
+	_sim.spawner.min_gap = 160
+	_sim.spawner.max_gap = 250
+	var served: int = 0
+	for day: int in range(5):
+		_sim.start_day()
+		assert_true(_sim.world.clock.start_service())
+		for tick: int in range(6000):
+			_tick()
+			if _sim.world.clock.phase == SimClock.Phase.CLOSED:
+				break
+		assert_eq(_sim.world.clock.phase, SimClock.Phase.CLOSED)
+		for tick: int in range(1200):
+			if _sim.kitchen.is_clean() and _sim.world.board.active_count() == 0:
+				break
+			_tick()
+		_assert_cleanup()
+		served += _sim.served_today
+		if day < 4:
+			assert_true(_sim.world.clock.next_day())
+	assert_true(served > 0)
+
+
 func test_real_blocked_sink_exhaustion_waits_at_pass_then_repaired_sink_serves_order() -> void:
 	var blocked_sink: PlacedItem = _exhaust_one_plate_with_blocked_sink()
 	var guest: CustomerAgent = _guest()

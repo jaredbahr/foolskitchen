@@ -7,6 +7,7 @@ var _panel: StaffPanel
 var _roster: StaffRoster
 var _requests: Array[StringName] = []
 var _close_requests: int = 0
+var _tray_requests: Array[int] = []
 
 
 func before_each() -> void:
@@ -18,7 +19,9 @@ func before_each() -> void:
 	_panel.hire_requested.connect(_record)
 	_panel.let_go_requested.connect(_record)
 	_panel.close_requested.connect(_record_close)
+	_panel.tray_requested.connect(_record_tray)
 	_panel.bind_roster(_roster)
+	_tray_requests.clear()
 
 
 func after_each() -> void:
@@ -43,6 +46,31 @@ func test_staff_rows_show_people_traits_wages_and_role_minimums() -> void:
 	assert_eq(scroll.horizontal_scroll_mode, ScrollContainer.SCROLL_MODE_DISABLED)
 	assert_eq(scroll.mouse_filter, Control.MOUSE_FILTER_STOP)
 	assert_false(scroll.mouse_force_pass_scroll_events)
+
+
+func test_tray_rows_show_price_capacity_owned_state_and_request_only() -> void:
+	_panel.set_trays(0, PackedInt32Array([60, 150]), 200)
+	var first: Button = _panel.get_node("Panel/Content/Scroll/List/TraysRow/TraysBuy") as Button
+	var second: Button = _panel.get_node("Panel/Content/Scroll/List/BigTraysRow/BigTraysBuy") as Button
+	assert_eq((_panel.get_node("Panel/Content/Scroll/List/Carry") as Label).text, "Servers carry 1 plate")
+	assert_true((_panel.get_node("Panel/Content/Scroll/List/TraysRow/TraysLabel") as Label).text.contains("$60"))
+	assert_false(first.disabled)
+	assert_true(second.disabled)
+	first.pressed.emit()
+	assert_eq(_tray_requests, [1] as Array[int])
+	assert_eq(_panel.get("_tray_level"), 0, "the panel only sends a request")
+	_panel.set_trays(1, PackedInt32Array([60, 150]), 140)
+	assert_eq(first.text, "Owned")
+	assert_true(first.disabled)
+	assert_true(second.disabled, "the next price is not affordable")
+	_panel.set_trays(1, PackedInt32Array([60, 150]), 200)
+	assert_false(second.disabled)
+	second.pressed.emit()
+	assert_eq(_tray_requests, [1, 2] as Array[int])
+	_panel.set_phase(SimClock.Phase.OPEN)
+	assert_true(second.disabled)
+	second.pressed.emit()
+	assert_eq(_tray_requests, [1, 2] as Array[int])
 
 
 func test_requests_are_primitive_and_rebinding_or_refresh_preserves_buttons() -> void:
@@ -135,6 +163,10 @@ func _record(id: StringName) -> void:
 
 func _record_close() -> void:
 	_close_requests += 1
+
+
+func _record_tray(level: int) -> void:
+	_tray_requests.append(level)
 
 
 func _luminance(color: Color) -> float:
