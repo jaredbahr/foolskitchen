@@ -639,25 +639,39 @@ func _on_build_cash_changed(_cash: int, _delta: int, _reason: StringName) -> voi
 		_staff_panel.set_trays(tray_level, TUNING.tray_prices, Economy.cash)
 
 
-## Uses the same floor-plane selection path for real clicks and capture tools.
+## Visual item bounds choose the furniture hit; the floor still locates agents
+## and preserves world-position selection for callers without a camera ray.
 func pick_screen_position(screen_position: Vector2) -> void:
 	if is_build_active() or _paint_active:
 		return
 	var camera: Camera3D = $CameraRig/Camera3D
 	if world == null or not camera.is_inside_tree():
 		return
-	var hit: Variant = Picker.floor_intersection(camera.project_ray_origin(screen_position), camera.project_ray_normal(screen_position))
+	var ray_origin: Vector3 = camera.project_ray_origin(screen_position)
+	var ray_direction: Vector3 = camera.project_ray_normal(screen_position)
+	var view: ShopView = $ShopView
+	var preferred_item_id: int = view.item_at_ray(ray_origin, ray_direction)
+	var hit: Variant = Picker.floor_intersection(ray_origin, ray_direction)
 	if hit is Vector3:
-		select_at_world_position(hit)
+		select_at_world_position(hit, preferred_item_id)
 
 
-## Chooses the nearest drawn agent, otherwise the item at the clicked cell.
-func select_at_world_position(world_position: Vector3) -> void:
+## Owner commands precede drawn agents, then the preferred visual item. -1
+## retains the legacy cell fallback; a wall hit must never pick through it.
+func select_at_world_position(world_position: Vector3, preferred_item_id: int = -1) -> void:
 	if world == null or is_build_active() or _paint_active:
 		return
 	# Resolve owner work targets before nearby agents or ordinary item picking.
 	if _selected_owner() != null:
-		var target: Dictionary = OwnerAssignment.resolve(world_position, world.grid)
+		var target: Dictionary = {"mode": &""}
+		if preferred_item_id >= 0:
+			var preferred: PlacedItem = world.grid.item(preferred_item_id)
+			if preferred != null:
+				# Classify the visible item while retaining the hit's pass-side
+				# geometry, rather than a different item under its floor projection.
+				target = OwnerAssignment._for_item(preferred, world_position, -1)
+		elif preferred_item_id == -1:
+			target = OwnerAssignment.resolve(world_position, world.grid)
 		var mode: StringName = target["mode"]
 		if not mode.is_empty() and assign_owner_mode(mode):
 			return
@@ -666,7 +680,8 @@ func select_at_world_position(world_position: Vector3) -> void:
 	if agent_id >= 0:
 		select_agent(agent_id)
 		return
-	var item: PlacedItem = world.grid.item_at(GridMath.world_to_cell(world_position))
+	var item: PlacedItem = world.grid.item(preferred_item_id) if preferred_item_id >= 0 else (
+		world.grid.item_at(GridMath.world_to_cell(world_position)) if preferred_item_id == -1 else null)
 	if item != null:
 		_inspect_panel.show_item(item.id)
 		refresh_presentation()
@@ -765,6 +780,7 @@ func refresh_presentation() -> void:
 	if _debug_overlay.is_enabled():
 		_debug_overlay.refresh()
 	var view: ShopView = $ShopView
+	view.set_selected_item(_inspect_panel.selected_item_id)
 	_debug_geometry.update_geometry(world, view.drawn_agent_positions(), view.drawn_agent_colors(), _inspect_panel.selected_agent_id, _debug_overlay.is_enabled())
 
 

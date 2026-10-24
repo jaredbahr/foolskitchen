@@ -26,6 +26,9 @@ enum Category { DOOR, TABLE, CHAIR, STATION, STORAGE, PASS, DECOR }
 @export var theme_tags: Array[StringName] = []
 ## Warm placeholder palette until the shared model palette is locked in Phase 4.
 @export var placeholder_color: Color = Color(0.65, 0.44, 0.27, 1.0)
+## Optional presentation resource. The sim never instantiates or reads this scene.
+## The world view keeps its box fallback when this is absent.
+@export var view_scene: PackedScene
 ## One body-colour slot; unpainted items keep their authored placeholder colour.
 @export var paintable: bool = true
 @export var paint_slot: StringName = &"body"

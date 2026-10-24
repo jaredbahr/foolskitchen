@@ -1,0 +1,25 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://src/world/prop_view.gd" id="1_view"]
+[ext_resource type="PackedScene" path="res://assets/kenney/furniture/kitchenBar.glb" id="2_model"]
+
+[node name="PassCounter" type="Node3D"]
+script = ExtResource("1_view")
+footprint = Vector2i(2, 1)
+body_material_names = PackedStringArray("wood")
+
+[node name="BarLeft" type="Node3D" parent="."]
+position = Vector3(-0.25, 0, 0)
+
+[node name="Art" type="Node3D" parent="BarLeft"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="BarLeft/Art" instance=ExtResource("2_model")]
+
+[node name="BarRight" type="Node3D" parent="."]
+position = Vector3(0.25, 0, 0)
+
+[node name="Art" type="Node3D" parent="BarRight"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="BarRight/Art" instance=ExtResource("2_model")]
