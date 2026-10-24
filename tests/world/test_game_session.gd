@@ -118,8 +118,8 @@ func test_full_day_charges_costs_and_shows_report() -> void:
 	var totals_after_close: Dictionary = Economy.ledger.day_totals(1).duplicate(true)
 	var shown: DayReport = main.get("shown_report") as DayReport
 	var shown_snapshot: Dictionary = shown.to_dict()
-	var banner: Label = report.get_node("Panel/Scroll/Content/OwnerLevelUp") as Label
-	var unlocks: Label = report.get_node("Panel/Scroll/Content/OwnerUnlocks") as Label
+	var banner: Label = report.get_node("Panel/Scroll/Content/LevelUpCallout/OwnerLevelUp") as Label
+	var unlocks: Label = report.get_node("Panel/Scroll/Content/LevelUpCallout/OwnerUnlocks") as Label
 	var banner_visible: bool = banner.visible
 	var banner_text: String = banner.text
 	var unlocks_visible: bool = unlocks.visible
