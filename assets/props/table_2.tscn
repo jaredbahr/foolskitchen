@@ -1,7 +1,8 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://src/world/prop_view.gd" id="1_view"]
 [ext_resource type="PackedScene" path="res://assets/kenney/furniture/table.glb" id="2_model"]
+[ext_resource type="PackedScene" path="res://assets/kenney/furniture/chairCushion.glb" id="3_chair"]
 
 [node name="Table" type="Node3D"]
 script = ExtResource("1_view")
@@ -14,3 +15,23 @@ body_material_names = PackedStringArray("wood")
 rotation = Vector3(0, 3.141592653589793, 0)
 
 [node name="Model" parent="Table/Art" instance=ExtResource("2_model")]
+
+[node name="ChairLeft" type="Node3D" parent="."]
+position = Vector3(-0.75, 0, 0.25)
+rotation = Vector3(0, -1.2490457723982544, 0)
+metadata/seat_cell = Vector2i(-1, 1)
+
+[node name="Art" type="Node3D" parent="ChairLeft"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="ChairLeft/Art" instance=ExtResource("3_chair")]
+
+[node name="ChairRight" type="Node3D" parent="."]
+position = Vector3(0.75, 0, 0.25)
+rotation = Vector3(0, 1.2490457723982544, 0)
+metadata/seat_cell = Vector2i(2, 1)
+
+[node name="Art" type="Node3D" parent="ChairRight"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="ChairRight/Art" instance=ExtResource("3_chair")]

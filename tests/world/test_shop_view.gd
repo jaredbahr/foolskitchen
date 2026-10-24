@@ -78,6 +78,70 @@ func test_paint_preview_reuses_materials_and_restores_room_colours() -> void:
 	assert_eq(errors, [] as Array[String])
 
 
+func test_table_paint_tints_built_in_chair_frames_and_preserves_cushions() -> void:
+	var content: ContentDB = ContentDB.new()
+	assert_eq(content.load_all(), PackedStringArray())
+	var world: SimWorld = SimWorld.new(SimGrid.new(Vector2i(6, 6)))
+	var table: PlacedItem = world.grid.place_def(content.item(&"table_2"), Vector2i(2, 2))
+	_show(world)
+	var snapshots: Array[Dictionary] = _chair_surfaces(_view.item_nodes[table.id].prop)
+	var body_count: int = 0
+	var cushion_count: int = 0
+	for entry: Dictionary in snapshots:
+		if entry["body"]:
+			body_count += 1
+		else:
+			cushion_count += 1
+	assert_true(body_count > 0 and cushion_count > 0, "real chair frames and cushions must both be tested")
+	table.swatch_id = &"terracotta"
+	_view.set_paint(content, &"", &"")
+	_assert_chair_tint(snapshots, content.swatch(&"terracotta").color)
+	_view.preview_paint(&"item", table.id, &"sage")
+	_assert_chair_tint(snapshots, content.swatch(&"sage").color)
+	assert_eq(table.swatch_id, &"terracotta", "hover only changes presentation")
+	_view.clear_paint_preview()
+	_assert_chair_tint(snapshots, content.swatch(&"terracotta").color)
+	table.swatch_id = &""
+	_view.set_paint(content, &"", &"")
+	for entry: Dictionary in snapshots:
+		var mesh_node: MeshInstance3D = entry["mesh"]
+		assert_eq(mesh_node.get_active_material(entry["index"]), entry["source"], "clearing table paint restores each authored chair surface")
+	assert_eq(world.now, 0)
+
+
+func _chair_surfaces(view: PropView) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	for child: Node in view.get_children():
+		if not child.has_meta(&"seat_cell"):
+			continue
+		var meshes: Array[MeshInstance3D] = []
+		_collect_chair_meshes(child, meshes)
+		for mesh_node: MeshInstance3D in meshes:
+			for index: int in range(mesh_node.mesh.get_surface_count()):
+				var source: BaseMaterial3D = mesh_node.get_active_material(index) as BaseMaterial3D
+				result.append({"mesh": mesh_node, "index": index, "source": source, "body": source.resource_name == "wood"})
+	return result
+
+
+func _collect_chair_meshes(node: Node, result: Array[MeshInstance3D]) -> void:
+	var mesh_node: MeshInstance3D = node as MeshInstance3D
+	if mesh_node != null and mesh_node.mesh != null:
+		result.append(mesh_node)
+	for child: Node in node.get_children():
+		_collect_chair_meshes(child, result)
+
+
+func _assert_chair_tint(surfaces: Array[Dictionary], color: Color) -> void:
+	for entry: Dictionary in surfaces:
+		var mesh_node: MeshInstance3D = entry["mesh"]
+		var active: BaseMaterial3D = mesh_node.get_active_material(entry["index"]) as BaseMaterial3D
+		if entry["body"]:
+			assert_eq(active.albedo_color, color)
+			assert_true(active != entry["source"], "paint keeps a private body material")
+		else:
+			assert_eq(active, entry["source"], "cushions keep their authored material through paint and preview")
+
+
 func test_floor_dirt_decals_reuse_geometry_and_follow_cleanliness_without_changing_grid() -> void:
 	var world: SimWorld = SimWorld.new(SimGrid.new(Vector2i(4, 4)))
 	var tuning: CleanlinessTuning = CLEANLINESS_TUNING.duplicate() as CleanlinessTuning

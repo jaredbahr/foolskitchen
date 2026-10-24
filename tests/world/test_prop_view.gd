@@ -18,7 +18,7 @@ func after_each() -> void:
 	_views.clear()
 
 
-func test_every_authored_item_has_a_floor_aligned_scene_inside_its_footprint() -> void:
+func test_every_authored_item_has_floor_aligned_parts_inside_its_footprint_or_declared_seats() -> void:
 	var content: ContentDB = ContentDB.new()
 	assert_eq(content.load_all(), PackedStringArray())
 	for definition: ItemDef in content.items():
@@ -38,13 +38,84 @@ func test_every_authored_item_has_a_floor_aligned_scene_inside_its_footprint() -
 		var half_depth: float = float(definition.footprint.y) * GridMath.CELL_SIZE * 0.5
 		assert_true(bounds.size.x > 0.0 and bounds.size.y > 0.0 and bounds.size.z > 0.0, String(definition.id))
 		assert_almost_eq(bounds.position.y, 0.0, 0.0001, String(definition.id))
-		assert_almost_eq(bounds.get_center().x, 0.0, 0.0001, String(definition.id))
-		assert_almost_eq(bounds.get_center().z, 0.0, 0.0001, String(definition.id))
-		assert_true(bounds.position.x >= -half_width - 0.05, String(definition.id))
-		assert_true(bounds.end.x <= half_width + 0.05, String(definition.id))
-		assert_true(bounds.position.z >= -half_depth - 0.05, String(definition.id))
-		assert_true(bounds.end.z <= half_depth + 0.05, String(definition.id))
+		var footprint_rect: Rect2 = Rect2(-half_width, -half_depth, half_width * 2.0, half_depth * 2.0)
+		var permitted: Rect2 = footprint_rect
+		var body_bounds: AABB
+		var have_body: bool = false
+		for child: Node in view.get_children():
+			var part: Node3D = child as Node3D
+			if part == null:
+				continue
+			var part_bounds: AABB = part.transform * PropView._children_aabb(part)
+			var allowed: Rect2 = footprint_rect
+			if part.has_meta(&"seat_cell"):
+				var seat: Vector2i = part.get_meta(&"seat_cell")
+				assert_true(definition.seat_cells.has(seat), "%s must declare every chair cell" % definition.id)
+				allowed = Rect2(Vector2(seat) * GridMath.CELL_SIZE - Vector2(half_width, half_depth), Vector2.ONE * GridMath.CELL_SIZE)
+				permitted = permitted.merge(allowed)
+			else:
+				body_bounds = body_bounds.merge(part_bounds) if have_body else part_bounds
+				have_body = true
+			assert_true(allowed.grow(0.05).encloses(_xz_rect(part_bounds)), "%s/%s must fit its own footprint or seat cell" % [definition.id, part.name])
+		assert_true(permitted.grow(0.05).encloses(_xz_rect(bounds)), String(definition.id))
+		assert_true(have_body, String(definition.id))
+		assert_almost_eq(body_bounds.get_center().x, 0.0, 0.0001, String(definition.id))
+		assert_almost_eq(body_bounds.get_center().z, 0.0, 0.0001, String(definition.id))
 		assert_true(view.body_surface_count() > 0, "%s body material names must match imported surfaces" % definition.id)
+
+
+func test_table_chairs_match_declared_seat_centres_facing_and_shared_scale() -> void:
+	var definition: ItemDef = load("res://data/items/table_2.tres") as ItemDef
+	var view: PropView = definition.view_scene.instantiate() as PropView
+	_views.append(view)
+	view.prepare()
+	var found: Dictionary[Vector2i, bool] = {}
+	var half_size: Vector2 = Vector2(definition.footprint) * GridMath.CELL_SIZE * 0.5
+	var combined: AABB = view.get_combined_aabb()
+	for child: Node in view.get_children():
+		var part: Node3D = child as Node3D
+		if part == null or not part.has_meta(&"seat_cell"):
+			continue
+		var seat: Vector2i = part.get_meta(&"seat_cell")
+		assert_true(definition.seat_cells.has(seat))
+		assert_false(found.has(seat), "each declared seat gets one chair")
+		found[seat] = true
+		var centre: Vector2 = (Vector2(seat) + Vector2.ONE * 0.5) * GridMath.CELL_SIZE - half_size
+		assert_eq(part.position, Vector3(centre.x, 0.0, centre.y))
+		var art: Node3D = part.get_node("Art") as Node3D
+		var model: Node3D = art.get_node("Model") as Node3D
+		assert_eq(model.scene_file_path, "res://assets/kenney/furniture/chairCushion.glb")
+		assert_eq(art.scale, Vector3.ONE * ArtScale.FURNITURE_SCALE)
+		assert_almost_eq(art.rotation.y, PI)
+		# Seated guests face the mean of the occupied table cells. Check that
+		# same view convention through the real grid rotation/placement API.
+		for turns: int in range(4):
+			var grid: SimGrid = SimGrid.new(Vector2i(10, 10))
+			var placed: PlacedItem = grid.place_def(definition, Vector2i(4, 4), turns)
+			var table_centre: Vector3 = Vector3.ZERO
+			for cell: Vector2i in placed.cells:
+				table_centre += GridMath.cell_to_world(cell)
+			table_centre /= float(placed.cells.size())
+			var world_seat: Vector2i = placed.origin + GridMath.rotate_cell(seat, definition.footprint, turns)
+			assert_true(placed.seat_cells.has(world_seat))
+			var pose: Transform3D = ItemVisual.placed_transform(definition, placed.origin, turns)
+			var seat_centre: Vector3 = GridMath.cell_to_world(world_seat)
+			assert_true((pose * part.position).distance_to(seat_centre) < 0.0001)
+			var expected_facing: Vector3 = (table_centre - seat_centre).normalized()
+			var actual_facing: Vector3 = (pose.basis * -part.basis.z).normalized()
+			assert_true(actual_facing.dot(expected_facing) > 0.9999, "chair and seated guest face the same table centre at quarter %d" % turns)
+		var chair_bounds: AABB = part.transform * PropView._children_aabb(part)
+		assert_almost_eq(chair_bounds.position.y, 0.0)
+		var seat_rect: Rect2 = Rect2(Vector2(seat) * GridMath.CELL_SIZE - half_size, Vector2.ONE * GridMath.CELL_SIZE)
+		assert_true(seat_rect.grow(0.05).encloses(_xz_rect(chair_bounds)))
+		assert_true(combined.grow(0.0001).encloses(chair_bounds), "picking, outlines and ghosts include the chairs")
+	assert_eq(found.size(), definition.seat_cells.size())
+	for seat: Vector2i in definition.seat_cells:
+		assert_true(found.has(seat))
+
+
+func _xz_rect(bounds: AABB) -> Rect2:
+	return Rect2(Vector2(bounds.position.x, bounds.position.z), Vector2(bounds.size.x, bounds.size.z))
 
 
 func test_food_uses_food_scale_and_rests_on_the_counter_without_tint() -> void:

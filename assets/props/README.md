@@ -25,7 +25,7 @@ material name.
 | Sink | `kitchenSink` | `wood` | Basin, taps, metal, dark wood and other kit surfaces |
 | Prep counter | 2 x `kitchenCabinetDrawer` + Food Kit `cutting-board` | `wood` | Handles, dark wood trim and the entire cutting board |
 | Pass counter | 2 x `kitchenBar` | `wood` | Metal and dark wood trim |
-| Two-seat table | `table` | `wood` | No other material in this model |
+| Two-seat table | `table` + 2 x `chairCushion` | `wood` on table and chair frames | `carpet` chair cushions |
 | Chair | `chairCushion` | `wood` | `carpet` cushion |
 | Potted plant | `pottedPlant` | `wood` | `woodDark` trim and `plant` foliage |
 | Door | `doorwayFront` | `carpetWhite` frame | Door metal and glass |
@@ -34,8 +34,16 @@ Existing `ItemDef.paintable` values are unchanged: the stove, sink and door
 remain unpaintable. Their mappings document the wrapper contract, rather than
 enabling an additional gameplay command. The rectangular `table` is the current
 source choice for the two-seat table: its long side fills the two-cell width
-without enlarging it. The camera-readability choice still needs the director's
-capture review.
+without enlarging it. The director accepted that table and the existing door
+dimensions in [PR #131's review](https://github.com/jaredbahr/foolskitchen/pull/131#issuecomment-6389082368).
+
+The two-seat table includes a `chairCushion` at each authored `seat_cells` entry,
+(-1, 1) and (2, 1). Their direct parts declare `metadata/seat_cell`, sit at those
+cell centres, and turn toward the table centre. Each `Art` child still gets the
+shared furniture scale and the kit's 180-degree facing correction. The table
+body stays inside its footprint; each chair fits its own declared seat cell
+with the same 0.05 tolerance. Combined bounds include both chairs for picking,
+selection and build ghosts. This changes no simulation footprint or seat data.
 
 Source paths and material names were checked against the vendored GLB metadata
 on main `264c305f03fb58954e0f18cccc098a57f01358e8`. Main subsequently advanced to
@@ -68,25 +76,24 @@ Godot import or an in-engine bounds measurement.
 - The capture tool reads `primary_body_material()` for its two paint samples
   and accepts the ItemVisual ghost root. No capture option or workflow is added.
 
-## Remaining integration and verification gates
+## Validation status and remaining chair gates
 
-- Review the combined view/Main/capture source before reconstructing the exact
-  changed-file allowlist over official current main. The parent serialized the
-  narrow Main/capture boundary separately from other feature branches.
-- Run the normal Godot import, collect its actual generated script UIDs and
-  run `bash tools/check.sh` on a branch reconstructed from real current main.
-  The new prop tests are written but have not run; no script UID is fabricated.
-- Verify the actual imported combined bounds, y = 0, part facing, material
-  names and body-only paint. Check the doorway's clear opening against the
-  style lock as well as the outer footprint. The source leaf bounds at the
-  locked scale are about 0.47 wide and 1.08 high; those are not a measured clear
-  opening and may require a director decision on the 0.5 by 1.1 minimum. Never
-  stretch the model to conceal a fit discrepancy.
-- Capture before and after default, cutaway and paint views, with people beside
-  the furniture, for the director's pixel acceptance.
-- Add a player-readable CHANGELOG entry with the actual PR number after world
-  integration. Proposed wording: "Chairs, tables and kitchen equipment now use
-  matching Kenney models, and painted furniture keeps its metal and glass details."
+The director merged current main into PR #131 and committed seven actual Godot
+script UIDs. At `cdcf048fbd563a6a4ac456bc716c69a21fc33829`, the normal cloud check
+parsed 224 scripts and passed 736 tests with no failures. Default, open-shop and
+paint captures were reviewed: the kitchen, shared furniture scale, body paint,
+rectangular table and existing door proportions were accepted. The accepted
+door leaf remains about 0.47 by 1.08, within the director's stated tolerance.
+Those results precede the two built-in chairs added here.
+
+The chair change has source review and focused assertions for declared seat
+centres, all four placement rotations, shared scale, floor alignment, per-seat
+fit, combined bounds and body-only paint/preview restoration. These new chair
+checks have not run. The remaining gates are the normal cloud import and
+`bash tools/check.sh` on the updated PR, followed by the existing open-shop
+capture and the director's review of the actual chairs. No local engine, test
+or render result is claimed for this change.
 
 This checkout is a source preparation branch with local proxy ancestry. Never
-push that ancestry. A source checkpoint is not a complete or review-ready #97 PR.
+push that ancestry; publish only the reviewed changed-file overlay on official
+PR history, preserving the director's main merge and generated UIDs.
