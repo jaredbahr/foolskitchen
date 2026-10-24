@@ -7,16 +7,22 @@ const PHASE_NAMES: Array[String] = ["Morning", "Open", "Last orders", "Closed"]
 const GAIN_COLOR: Color = Color("286B3B")
 const LOSS_COLOR: Color = Color("A42E2E")
 
+signal menu_pressed()
+
 var _day_label: Label
 var _time_label: Label
 var _phase_label: Label
 var _cash_label: Label
 var _context: Button
 var _deltas: Control
+var _merge_label: Label = null
+var _merge_frame: int = -1
+var _merge_amount: int = 0
 var _buttons: Array[Button] = []
 var _cash: int = 0
 var _wall_button: Button
 var _shop_view: ShopView
+var _menu_button: Button
 
 
 func _ready() -> void:
@@ -34,6 +40,8 @@ func refresh() -> void:
 		_deltas = get_node("Deltas") as Control
 		_wall_button = get_node("Top/Row/Walls") as Button
 		_wall_button.pressed.connect(_on_wall_button_pressed)
+		_menu_button = get_node("Top/Row/Menu") as Button
+		_menu_button.pressed.connect(_on_menu_pressed)
 		_cash = Economy.cash
 		for speed: int in SPEEDS:
 			var button: Button = get_node("Top/Row/Speed%d" % speed) as Button
@@ -53,6 +61,8 @@ func refresh() -> void:
 	_context.text = "Open shop" if Clock.sim.phase == SimClock.Phase.MORNING else "Next day"
 	_on_speed_changed(Clock.speed)
 	_refresh_wall_mode()
+	_menu_button.disabled = Clock.sim.phase != SimClock.Phase.MORNING
+	_menu_button.tooltip_text = "Choose today's menu and prices" if not _menu_button.disabled else "Menu changes are available in the morning."
 
 
 ## Binds this presentation control to the containing shop view, idempotently.
@@ -102,6 +112,11 @@ func _on_wall_button_pressed() -> void:
 		_shop_view.cycle_wall_mode()
 
 
+func _on_menu_pressed() -> void:
+	if Clock.sim.phase == SimClock.Phase.MORNING:
+		menu_pressed.emit()
+
+
 func _on_wall_mode_changed(_mode: int) -> void:
 	_refresh_wall_mode()
 
@@ -132,20 +147,51 @@ func _on_context_pressed() -> void:
 func _on_cash_changed(new_cash: int, delta: int, _reason: StringName) -> void:
 	_cash = new_cash
 	_cash_label.text = Fmt.money(new_cash)
+	if delta == 0:
+		return
+	# Several same-sign changes in one frame (the morning restock buys each
+	# ingredient separately) show as one total instead of a stack of labels.
+	var frame: int = Engine.get_process_frames()
+	if is_instance_valid(_merge_label) and _merge_frame == frame and signi(_merge_amount) == signi(delta):
+		_merge_amount += delta
+		_merge_label.text = _delta_text(_merge_amount)
+		return
 	var label: Label = Label.new()
-	label.text = ("−" if delta < 0 else "+") + Fmt.money(absi(delta))
+	label.text = _delta_text(delta)
+	_merge_label = label
+	_merge_frame = frame
+	_merge_amount = delta
 	label.add_theme_color_override("font_color", LOSS_COLOR if delta < 0 else GAIN_COLOR)
 	# A cream outline keeps it readable over the dark room background.
 	label.add_theme_color_override("font_outline_color", Color("F3E6CC"))
 	label.add_theme_constant_override("outline_size", 6)
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_deltas.add_child(label)
-	# Start just under the top bar, below the cash, and drift down, so the
-	# change never covers the cash figure itself.
+	_place_delta(label)
+	_animate_delta(label)
+
+
+func _delta_text(amount: int) -> String:
+	return ("−" if amount < 0 else "+") + Fmt.money(absi(amount))
+
+
+## Start just under the top bar, below the cash, so the change never covers
+## the cash figure itself.
+func _place_delta(label: Label) -> void:
 	var bar_bottom: float = (get_node("Top") as Control).get_global_rect().end.y
 	label.position = Vector2(_cash_label.global_position.x, bar_bottom + 4.0)
-	if is_inside_tree():
-		var tween: Tween = create_tween().set_parallel(true)
-		tween.tween_property(label, "position:y", label.position.y + 24.0, 1.0)
-		tween.tween_property(label, "modulate:a", 0.0, 1.0)
-		tween.chain().tween_callback(label.queue_free)
+
+
+## Waits one frame so the top bar has its real layout (a change can arrive
+## before the first layout pass, e.g. the first morning's stock purchase).
+func _animate_delta(label: Label) -> void:
+	if not is_inside_tree():
+		return
+	await get_tree().process_frame
+	if not is_instance_valid(label) or not is_inside_tree():
+		return
+	_place_delta(label)
+	var tween: Tween = create_tween().set_parallel(true)
+	tween.tween_property(label, "position:y", label.position.y + 24.0, 1.0)
+	tween.tween_property(label, "modulate:a", 0.0, 1.0)
+	tween.chain().tween_callback(label.queue_free)

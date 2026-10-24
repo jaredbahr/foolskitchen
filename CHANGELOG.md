@@ -11,7 +11,9 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
-- Select the owner to help in the kitchen, work the floor, help wherever needed or stand back, using station clicks, inspector buttons or K/F/H/R; assignments save at morning checkpoints. (#64)
+- Select the owner to help in the kitchen, work the floor, help wherever needed or stand back, using station clicks, inspector buttons or K/F/H/R; assignments save with the next morning's autosave. (#64)
+- The morning stock purchase now pops up as one total (for example "−$88") under the cash figure, instead of a pile of overlapping amounts at the left edge of the screen. (#65)
+- Choose each morning's dishes and prices from the Menu button; pricey meals can make guests leave, and the shop remembers your choices. (#62)
 - Waiting guests show coloured mood dots above their heads, with ! or !! when patience runs low; their inspect text explains how they feel. (#59)
 - Click staff, guests or furniture to see what is happening and why; press F3 for remaining paths, task ages, recent events and measured frame/tick rates. (#57)
 - Cash changes now pop up as "+$12" just below the top bar and drift down, instead of floating over the cash figure. (#49)

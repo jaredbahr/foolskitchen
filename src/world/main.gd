@@ -13,9 +13,6 @@ extends Node3D
 const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
 const TUNING: EconomyTuning = preload("res://data/balance/tier1_economy.tres")
 const AUTOSAVE_SLOT: String = "autosave"
-## SaveSystem keeps this pure provider alive after a scene is freed. Replacing
-## the scene replaces both provider callbacks and this lifetime keeper.
-const OWNER_PROVIDER_META: StringName = &"foolskitchen_owner_mode_provider"
 
 ## Save slot used by autosave and the startup load. Tests change it.
 var save_slot: String = AUTOSAVE_SLOT
@@ -30,17 +27,20 @@ var shown_report: DayReport = null
 var dishes_sold_today: Dictionary[StringName, int] = {}
 ## Closed-phase edits are persisted by the next normal morning autosave.
 var shop_editor: ShopEditor
+## Cookable dishes/prices belong to this shop, never to shared recipe resources.
+var menu_settings: MenuSettings
 
 var _previous_clock: SimClock = null
 var _started: bool = false
 var _skip_next_autosave: bool = false
 var _owner_preferences: OwnerModeSettings = OwnerModeSettings.new()
-var _owner_command_save_allowed: bool = true
 var _loaded_layout: ShopLayout = null
+var _loaded_menu: MenuSettings = null
 var _report: Control
 var _inspect_panel: InspectPanel
 var _debug_overlay: DebugOverlay
 var _debug_geometry: DebugGeometry
+var _menu_panel: MenuPanel
 
 
 ## Builds the restaurant and the read-only view. Safe before tree readiness.
@@ -60,6 +60,8 @@ func initialize() -> void:
 		sim = null
 		return
 	world = sim.world
+	menu_settings = MenuSettings.new(_cookable_recipes(LAYOUT))
+	_apply_menu(sim, menu_settings)
 	_bind_world_presentation()
 
 
@@ -85,6 +87,14 @@ func _bind_world_presentation() -> void:
 	_inspect_panel = $Overlay/InspectPanel
 	_debug_overlay = $Overlay/DebugOverlay
 	_debug_geometry = $DebugGeometry
+	_menu_panel = $Overlay/MenuPanel
+	_menu_panel.bind_menu(menu_settings)
+	_menu_panel.set_phase(Clock.sim.phase)
+	if not _menu_panel.enable_requested.is_connected(_on_menu_enable_requested):
+		_menu_panel.enable_requested.connect(_on_menu_enable_requested)
+		_menu_panel.price_requested.connect(_on_menu_price_requested)
+	if not $HUD.is_connected(&"menu_pressed", toggle_menu):
+		$HUD.connect(&"menu_pressed", toggle_menu)
 	_inspect_panel.bind_world(world)
 	_debug_overlay.bind_world(world)
 	refresh_presentation()
@@ -117,9 +127,9 @@ func start() -> void:
 	Clock.attach_world(null)
 	for autoload: Node in [Clock, GameState, Economy]:
 		autoload.call(&"register_save_provider")
-	SaveSystem.set_meta(OWNER_PROVIDER_META, _owner_preferences)
-	SaveSystem.register("owner", _owner_preferences.to_dict, _owner_preferences.restore)
+	SaveSystem.register("owner", _capture_owner, _restore_owner)
 	SaveSystem.register("shop", _capture_shop, _restore_shop)
+	SaveSystem.register("menu", _capture_menu, _restore_menu)
 	var loaded: bool = use_saves and _load_autosave()
 	if not loaded:
 		_skip_next_autosave = use_saves and SaveSystem.list_slots().has(save_slot)
@@ -175,7 +185,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			if is_inside_tree():
 				get_viewport().set_input_as_handled()
 		elif key.physical_keycode == KEY_ESCAPE:
-			clear_selection()
+			if _menu_panel != null and _menu_panel.visible:
+				_menu_panel.hide()
+			else:
+				clear_selection()
 			if is_inside_tree():
 				get_viewport().set_input_as_handled()
 		else:
@@ -237,20 +250,16 @@ func _selected_owner() -> OwnerAgent:
 
 
 ## The sole player command used by keys, inspector buttons and capture tools.
-## OPEN/CLOSED changes are included in the next normal MORNING checkpoint.
+## Changes are included in the next normal MORNING checkpoint.
 func assign_owner_mode(mode: StringName) -> bool:
 	var selected_owner: OwnerAgent = _selected_owner()
 	if selected_owner == null or not OwnerAgent.MODES.has(mode):
 		return false
-	var changed: bool = selected_owner.current_mode() != mode
 	if not sim.assign_owner(mode):
 		return false
 	_owner_preferences.assign_mode(mode)
 	_inspect_panel.show_agent(selected_owner.id)
 	refresh_presentation()
-	if changed and use_saves and _started and _owner_command_save_allowed and Clock.sim.phase == SimClock.Phase.MORNING:
-		if SaveSystem.save_game(save_slot) != OK:
-			world.log_event("Owner assignment could not be saved")
 	return true
 
 
@@ -369,13 +378,14 @@ func _new_game() -> void:
 	_loaded_layout = null
 	_owner_preferences.reset()
 	sim.assign_owner(&"rest")
-	_owner_command_save_allowed = not _skip_next_autosave
+	_loaded_menu = null
 	sim.stock = Economy.stock
 	world.log_event("New game: $%d to start" % TUNING.starting_cash)
 
 
 func _load_autosave() -> bool:
 	_loaded_layout = null
+	_loaded_menu = null
 	if not SaveSystem.list_slots().has(save_slot):
 		return false
 	if SaveSystem.load_game(save_slot) != OK:
@@ -384,6 +394,10 @@ func _load_autosave() -> bool:
 	if Clock.sim.phase != SimClock.Phase.MORNING:
 		world.log_event("Autosave is not from a morning; starting a new game")
 		return false
+	var layout: ShopLayout = _loaded_layout if _loaded_layout != null else LAYOUT
+	var choices: MenuSettings = _loaded_menu if _loaded_menu != null else MenuSettings.new(_cookable_recipes(layout))
+	if not choices.is_valid():
+		return false
 	if _loaded_layout != null:
 		var errors: Array[String] = []
 		var candidate: RestaurantSim = RestaurantSim.create(_loaded_layout, content, 1, errors, Economy.stock, true, true)
@@ -391,8 +405,19 @@ func _load_autosave() -> bool:
 			return false
 		sim = candidate
 		world = candidate.world
-		_bind_world_presentation()
+	menu_settings = choices
+	_apply_menu(sim, menu_settings)
+	_bind_world_presentation()
 	return sim.assign_owner(_owner_preferences.current_mode())
+
+
+func _capture_owner() -> Dictionary:
+	return _owner_preferences.to_dict()
+
+
+## Stage only the mode; apply it after the whole MORNING load succeeds.
+func _restore_owner(data: Dictionary) -> bool:
+	return _owner_preferences.restore(data)
 
 
 func _capture_shop() -> Dictionary:
@@ -407,6 +432,113 @@ func _restore_shop(data: Dictionary) -> bool:
 		return false
 	_loaded_layout = layout
 	return true
+
+
+func _capture_menu() -> Dictionary:
+	return menu_settings.to_dict() if menu_settings != null else {}
+
+
+func _restore_menu(data: Dictionary) -> bool:
+	var layout: ShopLayout = _loaded_layout if _loaded_layout != null else LAYOUT
+	var choices: MenuSettings = MenuSettings.new(_cookable_recipes(layout))
+	if not choices.from_dict(data):
+		return false
+	_loaded_menu = choices
+	return true
+
+
+## Station definitions decide availability; temporary path/stock problems do not
+## rewrite the player's menu. Tier 1 remains the currently unlocked recipe set.
+func _cookable_recipes(layout: ShopLayout) -> Array[RecipeDef]:
+	var stations: Dictionary[StringName, bool] = {}
+	var fridge: bool = false
+	var pass_counter: bool = false
+	for placement: ShopPlacement in layout.placements:
+		var definition: ItemDef = content.item(placement.item_id)
+		if definition == null:
+			continue
+		if definition.category == ItemDef.Category.STORAGE and definition.station_type == &"fridge" and not definition.work_cells.is_empty():
+			fridge = true
+		elif definition.category == ItemDef.Category.PASS and definition.work_cells.size() >= 2:
+			pass_counter = true
+		elif definition.category == ItemDef.Category.STATION and not definition.work_cells.is_empty():
+			stations[definition.station_type] = true
+	var recipes: Array[RecipeDef] = []
+	if not fridge or not pass_counter:
+		return recipes
+	for definition: RecipeDef in content.recipes():
+		# Phase 3: replace with the unlocked tier.
+		if definition.unlock_tier != 1:
+			continue
+		var cookable: bool = true
+		for step: RecipeStep in definition.steps:
+			if not stations.has(step.station_type):
+				cookable = false
+				break
+		if cookable:
+			recipes.append(definition)
+	return recipes
+
+
+func _apply_menu(restaurant: RestaurantSim, choices: MenuSettings) -> void:
+	restaurant.menu = choices.enabled_recipes()
+	restaurant.prices.clear()
+	restaurant.pricing_tuning = TUNING
+	for definition: RecipeDef in choices.recipes():
+		var price: int = choices.price_of(definition)
+		if price != definition.standard_price:
+			restaurant.prices[definition.id] = price
+
+
+func can_edit_menu() -> bool:
+	return _started and menu_settings != null and menu_settings.is_valid() and Clock.sim.phase == SimClock.Phase.MORNING
+
+
+func menu_set_enabled(recipe_id: StringName, enabled: bool) -> bool:
+	if not can_edit_menu():
+		return false
+	if not menu_settings.set_enabled(recipe_id, enabled):
+		return false
+	_apply_menu(sim, menu_settings)
+	_menu_panel.refresh()
+	return true
+
+
+func menu_set_price(recipe_id: StringName, price: int) -> bool:
+	if not can_edit_menu() or menu_settings.recipe(recipe_id) == null:
+		return false
+	menu_settings.set_price(recipe_id, price)
+	_apply_menu(sim, menu_settings)
+	_menu_panel.refresh()
+	return true
+
+
+func toggle_menu() -> void:
+	if _menu_panel != null:
+		set_menu_visible(not _menu_panel.visible)
+
+
+## Idempotent production path for the HUD and genuine review captures.
+func set_menu_visible(value: bool) -> bool:
+	if _menu_panel == null or (value and not can_edit_menu()):
+		return false
+	_menu_panel.set_phase(Clock.sim.phase)
+	_menu_panel.visible = value
+	return true
+
+
+func is_menu_visible() -> bool:
+	return _menu_panel != null and _menu_panel.visible
+
+
+func _on_menu_enable_requested(recipe_id: StringName, enabled: bool) -> void:
+	menu_set_enabled(recipe_id, enabled)
+	_menu_panel.refresh()
+
+
+func _on_menu_price_requested(recipe_id: StringName, price: int) -> void:
+	menu_set_price(recipe_id, price)
+	_menu_panel.refresh()
 
 
 func shop_move(item_id: int, origin: Vector2i, quarter_turns: int) -> bool:
@@ -430,8 +562,7 @@ func _begin_morning() -> void:
 	Economy.ledger.prune_before(Clock.sim.day - Ledger.HISTORY_DAYS)
 	_report.hide()
 	if use_saves and not _skip_next_autosave:
-		if SaveSystem.save_game(save_slot) == OK:
-			_owner_command_save_allowed = true
+		SaveSystem.save_game(save_slot)
 	_skip_next_autosave = false
 	refresh_presentation()
 
@@ -448,8 +579,6 @@ func _restock() -> void:
 
 func _charge_closing_costs() -> void:
 	for role: StringName in TUNING.wages:
-		if role == &"owner":
-			continue
 		for agent: SimAgent in world.agents:
 			if agent.role == role:
 				Economy.add_cash(-TUNING.wages[role], Ledger.WAGES)
@@ -470,6 +599,10 @@ func _on_service_closed(day: int) -> void:
 
 
 func _on_day_phase_changed(_day: int, phase: int) -> void:
+	if _menu_panel != null:
+		_menu_panel.set_phase(phase)
+		if phase != SimClock.Phase.MORNING:
+			_menu_panel.hide()
 	if phase == SimClock.Phase.MORNING:
 		_begin_morning()
 

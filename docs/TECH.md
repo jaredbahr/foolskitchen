@@ -156,15 +156,13 @@ docs/
   command. Other selections retain normal inspection. The inspector preserves
   native button press attempts across frame/tick refreshes and emits primitive
   requests; it never assigns sim work itself.
-- A small `owner` save section stores only the mode through `OwnerModeSettings`.
-  SaveSystem metadata `foolskitchen_owner_mode_provider` keeps this pure provider
-  alive after Main exits; it has no scene/world/agent references. A new Main
-  replaces both callbacks and keeper. This does not change the lifetime of other
-  existing providers. Startup applies the validated mode only after a complete
+- A small `owner` save section stores only the mode through Main's capture and
+  restore methods, with `OwnerModeSettings` validating the plain mode data.
+  Like the shop and menu providers, these callbacks belong to the active Main.
+  Startup applies the validated mode only after a complete
   successful MORNING load; missing old-save data defaults to rest, and failed
   loads reset it with the existing fresh-game/skip-one-autosave behavior.
-  A changed morning assignment saves the normal morning state. Commands during
-  OPEN, LAST_ORDERS or CLOSED wait for the next normal MORNING checkpoint;
+  Assignment commands in every phase wait for the next normal MORNING autosave;
   quitting before that checkpoint loses those assignment changes. No service
   snapshot or additional stock purchase is introduced by a service hotkey.
 - Capture option `--select=owner --assign-owner=kitchen --open` selects the live
@@ -214,6 +212,43 @@ docs/
 - Loaded mornings retain the normal day setup: one customer-gap draw from the
   restored RNG, stock top-up, ledger prune and autosave. Missing old-save `shop`
   sections use the authored layout. Non-MORNING saves remain unsupported.
+
+### 2.3d Menu and prices (FK-030)
+- `MenuSettings(cookable_recipes)` owns per-shop enabled dishes and prices. The
+  session injects Tier 1 recipes whose station types are present, with a usable
+  fridge/pass definition. Temporary stock shortages and path warnings do not
+  silently remove a chosen dish. At least one dish remains enabled.
+- `RestaurantSim.prices: Dictionary[StringName, int]` stores overrides;
+  `price_of(recipe)` falls back to the immutable `RecipeDef.standard_price`.
+  Orders capture that price once, so later settings never reprice a ticket.
+- At order time an above-standard price has refusal probability
+  `clamp((price / standard - 1) * price_sensitivity, 0, max_price_walkout)`.
+  The `EconomyTuning` defaults are 1.5 and 0.9. The guest uses its private RNG
+  only when the chance is positive: standard/cheaper menus preserve the existing
+  random stream. Refusal creates no ticket and gives `too_expensive` as a readable
+  departure reason. Balance values are bounded safely; a zero standard avoids
+  division and cannot be marked up through MenuSettings.
+- The HUD Menu button and MenuPanel requests are MORNING-only. Main's
+  `menu_set_enabled`, `menu_set_price` apply accepted model changes to the sim,
+  then refresh the request-only panel without saving. Whole-dollar prices clamp
+  to ceil(50%) through 200% of standard. Shared recipe resources never change.
+- The `menu` save section contains enabled IDs and every cookable ID's
+  price as a decimal string. The strict model decoder validates all choices
+  in a pure provider against the staged shop layout. Installation waits for
+  normal `load_game` success; missing old-save menu sections use defaults.
+  Provider rejection retains SaveSystem's FAILED/fresh-game behavior, with no
+  semantic backup fallback or all-provider rollback. Only the next startup
+  autosave is skipped after a failed load, as before.
+- Restored menu choices are installed before normal MORNING day setup, stock
+  top-up, ledger prune and autosave. Future reorder settings must also restore
+  before that purchasing boundary. Menu edits change no books, clock or RNG;
+  the next morning's autosave captures the latest choices, just like furniture
+  edits. Changing the menu never writes the current morning's save or bypasses
+  the skipped startup autosave after a failed load.
+- `tools/balance_probe.gd --price=1.25` now changes only sim price overrides.
+  `tools/screenshot.sh --menu --speed=0 --frames=12` requests the production
+  morning panel, verifies its actual visible state and captures after drawing;
+  no workflow or renderer setting is changed by the option.
 
 ### 2.4 Save system
 - JSON in `user://saves/`, with a `version` field and migration functions per version.

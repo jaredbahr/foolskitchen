@@ -1,6 +1,6 @@
 class_name OwnerModeSettings
 extends RefCounted
-## A mode-only save provider: no scene, world or agent references.
+## Mode-only preferences used by Main's save provider; no scene/world/agent refs.
 
 var _mode: StringName = &"rest"
 

@@ -1,4 +1,4 @@
-[gd_scene load_steps=9 format=3 uid="uid://b0fkmain0001"]
+[gd_scene load_steps=10 format=3 uid="uid://b0fkmain0001"]
 
 [ext_resource type="Script" path="res://src/world/main.gd" id="1"]
 [ext_resource type="PackedScene" path="res://src/world/shop_view.tscn" id="2"]
@@ -8,6 +8,7 @@
 [ext_resource type="PackedScene" path="res://src/ui/inspect_panel.tscn" id="6_inspect"]
 [ext_resource type="PackedScene" path="res://src/ui/debug_overlay.tscn" id="7_debug"]
 [ext_resource type="Script" path="res://src/world/debug_geometry.gd" id="8_geometry"]
+[ext_resource type="PackedScene" path="res://src/ui/menu_panel.tscn" id="9_menu"]
 
 [node name="Main" type="Node3D"]
 process_priority = 10
@@ -30,3 +31,5 @@ layer = 10
 [node name="InspectPanel" parent="Overlay" instance=ExtResource("6_inspect")]
 
 [node name="DebugOverlay" parent="Overlay" instance=ExtResource("7_debug")]
+
+[node name="MenuPanel" parent="Overlay" instance=ExtResource("9_menu")]

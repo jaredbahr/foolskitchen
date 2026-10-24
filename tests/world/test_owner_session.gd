@@ -4,14 +4,11 @@ extends TestCase
 const MAIN: PackedScene = preload("res://src/world/main.tscn")
 const TUNING: EconomyTuning = preload("res://data/balance/tier1_economy.tres")
 const SLOT: String = "owner_session"
-const KEEPER: StringName = &"foolskitchen_owner_mode_provider"
 
 var _mains: Array[Node] = []
 var _old_save_dir: String
 var _save_dir: String
 var _old_providers: Dictionary = {}
-var _old_keeper: Variant
-var _had_keeper: bool = false
 
 
 func before_each() -> void:
@@ -19,11 +16,9 @@ func before_each() -> void:
 	_save_dir = "user://test_owner_session_%d/" % OS.get_process_id()
 	SaveSystem.save_dir = _save_dir
 	SaveSystem.delete_slot(SLOT)
-	for key: String in ["owner", "shop"]:
+	for key: String in ["owner", "shop", "menu"]:
 		if SaveSystem._providers.has(key):
 			_old_providers[key] = SaveSystem._providers[key].duplicate()
-	_had_keeper = SaveSystem.has_meta(KEEPER)
-	_old_keeper = SaveSystem.get_meta(KEEPER) if _had_keeper else null
 
 
 func after_each() -> void:
@@ -32,19 +27,13 @@ func after_each() -> void:
 	SaveSystem.delete_slot(SLOT)
 	DirAccess.remove_absolute(_save_dir)
 	SaveSystem.save_dir = _old_save_dir
-	# Restore the former callbacks and keeper together, while both objects are
-	# still held locally. Tests never leave an owner provider with no lifetime.
-	for key: String in ["owner", "shop"]:
+	# Restore the previously registered session providers after this fixture.
+	for key: String in ["owner", "shop", "menu"]:
 		if _old_providers.has(key):
 			var provider: Dictionary = _old_providers[key]
 			SaveSystem.register(key, provider["capture"], provider["restore"])
 		else:
 			SaveSystem._providers.erase(key)
-	if _had_keeper:
-		SaveSystem.set_meta(KEEPER, _old_keeper)
-	elif SaveSystem.has_meta(KEEPER):
-		SaveSystem.remove_meta(KEEPER)
-	_old_keeper = null
 	Clock.set_speed(0)
 	Economy.reset(0)
 	GameState.new_run(1)
@@ -124,40 +113,30 @@ func test_other_selections_keep_ordinary_item_and_agent_inspection() -> void:
 	assert_eq(owner.current_mode(), &"rest")
 
 
-func test_active_main_morning_save_restores_shop_and_owner_together() -> void:
+func test_owner_menu_and_shop_changes_restore_after_next_morning() -> void:
 	var first: Node = _start(true)
+	var morning_file: String = FileAccess.get_file_as_string(_path())
 	assert_true(first.call("shop_move", _item(first, &"potted_plant").id, Vector2i(11, 9), 1))
+	assert_true(first.call("menu_set_enabled", &"tomato_soup", false))
+	assert_true(first.call("menu_set_price", &"burger", 15))
+	var saved_menu: Dictionary = (first.get("menu_settings") as MenuSettings).to_dict()
 	assert_true(first.call("select_agent", _owner(first).id))
 	assert_true(first.call("assign_owner_mode", &"help"))
+	assert_eq(FileAccess.get_file_as_string(_path()), morning_file, "commands leave the current morning checkpoint intact")
+	_run_day(first)
+	assert_true(Clock.sim.next_day())
 	assert_eq(_document()["data"]["owner"], {"mode": "help"})
 	var snapshot: Dictionary = (first.get("shop_editor") as ShopEditor).to_dict()
 	var cash: int = Economy.cash
 	_close(first)
 	var second: Node = _start(true)
+	assert_eq(Clock.sim.day, 2)
 	assert_eq(_owner(second).current_mode(), &"help")
 	assert_eq((second.get("shop_editor") as ShopEditor).to_dict(), snapshot)
+	assert_eq((second.get("menu_settings") as MenuSettings).to_dict(), saved_menu)
+	assert_eq((second.get("sim") as RestaurantSim).price_of((second.get("content") as ContentDB).recipe(&"burger")), 15)
 	assert_eq(Economy.cash, cash)
 	assert_eq(_owner(second).home_cell(), (second.get("sim") as RestaurantSim).staff_spawns[&"owner"])
-
-
-func test_owner_only_provider_outlives_main_and_is_replaced_on_next_start() -> void:
-	var first: Node = _start(true)
-	assert_true(first.call("select_agent", _owner(first).id))
-	assert_true(first.call("assign_owner_mode", &"floor"))
-	var observed: WeakRef = weakref(SaveSystem.get_meta(KEEPER))
-	# The existing unrelated shop provider is Main-owned. Isolate this owner
-	# lifetime test; it does not claim every existing provider survives free().
-	SaveSystem._providers.erase("shop")
-	_close(first)
-	assert_not_null(observed.get_ref(), "SaveSystem metadata owns only pure preferences")
-	var capture: Callable = SaveSystem._providers["owner"]["capture"]
-	assert_true(capture.is_valid())
-	assert_eq(SaveSystem.save_game(SLOT), OK)
-	assert_eq(_document()["data"]["owner"], {"mode": "floor"})
-	capture = Callable()
-	var second: Node = _start(true)
-	assert_eq(_owner(second).current_mode(), &"floor")
-	assert_null(observed.get_ref(), "new provider and keeper replace the old pure object")
 
 
 func test_missing_owner_section_defaults_to_rest() -> void:
@@ -173,7 +152,7 @@ func test_missing_owner_section_defaults_to_rest() -> void:
 	assert_eq(_document()["data"]["owner"], {"mode": "rest"})
 
 
-func test_bad_owner_data_starts_fresh_and_cannot_bypass_skipped_checkpoint() -> void:
+func test_bad_owner_data_starts_fresh_and_commands_leave_failed_slot_untouched() -> void:
 	var first: Node = _start(true)
 	var document: Dictionary = _document()
 	document["data"]["owner"] = {"mode": "invalid"}
@@ -193,10 +172,13 @@ func test_bad_owner_data_starts_fresh_and_cannot_bypass_skipped_checkpoint() -> 
 	assert_eq(_document()["data"]["owner"], {"mode": "help"})
 
 
-func test_service_and_closed_commands_wait_for_next_normal_morning_save() -> void:
+func test_commands_leave_current_checkpoint_intact_then_next_morning_reloads_mode() -> void:
 	var main: Node = _start(true)
 	assert_true(main.call("select_agent", _owner(main).id))
 	var before: String = FileAccess.get_file_as_string(_path())
+	_key(main, KEY_F)
+	assert_eq(_owner(main).current_mode(), &"floor")
+	assert_eq(FileAccess.get_file_as_string(_path()), before)
 	assert_true(Clock.sim.start_service())
 	_key(main, KEY_K)
 	assert_eq(FileAccess.get_file_as_string(_path()), before)
@@ -209,6 +191,10 @@ func test_service_and_closed_commands_wait_for_next_normal_morning_save() -> voi
 	assert_eq(_document()["data"]["owner"], {"mode": "help"})
 	assert_eq(int(_document()["data"]["clock"]["phase"]), int(SimClock.Phase.MORNING))
 	assert_eq(_owner(main).current_mode(), &"help")
+	_close(main)
+	var resumed: Node = _start(true)
+	assert_eq(Clock.sim.day, 2)
+	assert_eq(_owner(resumed).current_mode(), &"help")
 
 
 func test_owner_adds_zero_wages_with_normal_cook_and_server_charges_preserved() -> void:
