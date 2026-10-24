@@ -38,6 +38,17 @@ func _init(restaurant: RestaurantSim, random: RandomNumberGenerator) -> void:
 	rng = random
 
 
+## Reasons a guest can give for leaving that the player should see as-is.
+## Any other kitchen failure (an internal reason such as a dropped task or a
+## missing station) becomes &"kitchen_failed"; the raw reason is in the log.
+const PLAYER_REASONS: Array[StringName] = [&"out_of_stock", &"waited_too_long", &"closing", &"no_table"]
+
+
+## Maps an order's cancellation reason to the reason a guest gives the player.
+static func player_reason(raw: StringName) -> StringName:
+	return raw if PLAYER_REASONS.has(raw) else &"kitchen_failed"
+
+
 ## Advances movement and the visit state, including all timeout backstops.
 func tick(world: SimWorld) -> void:
 	var sim: RestaurantSim = _restaurant.get_ref() as RestaurantSim
@@ -57,7 +68,7 @@ func tick(world: SimWorld) -> void:
 	if state == State.ORDERING or state == State.WAITING_FOOD:
 		# Terminal kitchen results win over the patience deadline on the same tick.
 		if order != null and order.state == Order.State.CANCELLED:
-			_leave(world, sim, order.cancellation_reason if not order.cancellation_reason.is_empty() else &"order_cancelled")
+			_leave(world, sim, player_reason(order.cancellation_reason))
 		elif order != null and order.state == Order.State.DELIVERED:
 			state = State.EATING
 			_eating = 0

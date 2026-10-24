@@ -66,6 +66,20 @@ func mark_table_dirty(table_item_id: int) -> void:
 		_bus_tasks[table_item_id] = task.id
 
 
+## The staff tidy up after hours: every table is clean and no kitchen job
+## carries over into the next morning. Called at the start of each day.
+func tidy_overnight() -> void:
+	var sim: RestaurantSim = _restaurant.get_ref() as RestaurantSim
+	dirty_tables.clear()
+	_bus_tasks.clear()
+	if sim == null:
+		_tasks.clear()
+		return
+	for task: SimTask in _tasks.values():
+		sim.world.board.cancel(task, &"overnight_tidy")
+	_tasks.clear()
+
+
 ## Retries failed bussing only at explicit maintenance boundaries, never a hot loop.
 ## Dirty flags remain until actual server work succeeds; removed tables are forgotten.
 func retry_dirty_tables() -> void:
