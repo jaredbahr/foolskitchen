@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- Guests no longer repeat the same comment in one evening report unless all suitable comments have been used. (#103)
 - Guests leave star reviews with little comments on the evening report. Your recent rating appears beside cash and shapes how busy the next day is. (#95)
 - Pick from twelve cosy paint colours and recolour the whole floor, walls or individual furniture for free, even while the shop is open. Your choices return with the next morning's save. (#94)
 - Buy Trays and Big trays in the morning to let servers carry two or four meals per trip; their new tray is visible while carrying several plates. (#93)

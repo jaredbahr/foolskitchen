@@ -8,6 +8,8 @@ const INITIAL_REVIEWS: int = 5
 const INITIAL_STARS: int = 3
 
 var _scores: Array[int] = []
+## Report wording is day-local. It is deliberately absent from the save format.
+var _quotes_used_today: Dictionary[String, bool] = {}
 
 
 func _init() -> void:
@@ -16,8 +18,13 @@ func _init() -> void:
 
 func reset() -> void:
 	_scores.clear()
+	_quotes_used_today.clear()
 	for _index: int in range(INITIAL_REVIEWS):
 		_scores.append(INITIAL_STARS)
+
+
+func begin_day() -> void:
+	_quotes_used_today.clear()
 
 
 func scores() -> Array[int]:
@@ -53,7 +60,9 @@ func record_visit(visit: ReviewVisit, tuning: ReviewTuning, quotes: ReviewQuotes
 	var before: float = average()
 	var stars: int = score_visit(visit, tuning)
 	var cause: StringName = cause_of(visit, tuning)
-	var quote: String = quotes.pick(cause, random)
+	var quote: String = quotes.pick(cause, random, _quotes_used_today)
+	if not quote.is_empty():
+		_quotes_used_today[quote] = true
 	_scores.append(stars)
 	if _scores.size() > WINDOW:
 		_scores.pop_front()
@@ -123,6 +132,7 @@ func from_dict(value: Variant) -> bool:
 			return false
 		restored.append(int(item))
 	_scores = restored
+	_quotes_used_today.clear()
 	return true
 
 
