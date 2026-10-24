@@ -50,6 +50,8 @@ var _build_ready: bool = false
 var _was_build_active: bool = false
 var _build_phase: int = -1
 var _build_ui_phase: int = -1
+var _paint_active: bool = false
+var _paint_swatch_id: StringName = &"butter"
 var _menu_panel: MenuPanel
 var _staff_panel: StaffPanel
 
@@ -85,8 +87,12 @@ func _bind_world_presentation() -> void:
 	_build_preview.clear()
 	build_mode.bind_session(null, null, null, Callable(), Callable(), Callable())
 	_was_build_active = false
+	_paint_active = false
 	var view: ShopView = $ShopView
+	view.clear_paint_preview()
 	view.show_world(world)
+	var painted_layout: ShopLayout = _loaded_layout if _loaded_layout != null else LAYOUT
+	view.set_paint(content, painted_layout.wall_swatch_id, painted_layout.floor_swatch_id)
 	var camera: CameraRig = $CameraRig
 	camera.set_grid_forced(false)
 	camera.grid_floor = view.floor_mesh
@@ -109,11 +115,18 @@ func _bind_world_presentation() -> void:
 	_build_catalogue = $Overlay/BuildCatalogue
 	_build_catalogue.bind_content(content)
 	_build_catalogue.set_build_visible(false)
+	_build_catalogue.set_paint_visible(false)
+	_paint_swatch_id = _build_catalogue.selected_swatch_id
 	if not _build_catalogue.buy_requested.is_connected(_on_build_buy_requested):
 		_build_catalogue.buy_requested.connect(_on_build_buy_requested)
+	if not _build_catalogue.swatch_requested.is_connected(_on_swatch_requested):
+		_build_catalogue.swatch_requested.connect(_on_swatch_requested)
 	if not $HUD.build_toggled.is_connected(_on_build_toggled):
 		$HUD.build_toggled.connect(_on_build_toggled)
+	if not $HUD.paint_toggled.is_connected(_on_paint_toggled):
+		$HUD.paint_toggled.connect(_on_paint_toggled)
 	$HUD.set_build_state(false, false)
+	$HUD.set_paint_state(false)
 	_menu_panel = $Overlay/MenuPanel
 	_menu_panel.bind_menu(menu_settings)
 	_menu_panel.set_phase(Clock.sim.phase)
@@ -148,6 +161,8 @@ func _process(_delta: float) -> void:
 	if is_build_active() and is_inside_tree():
 		# The pointer may be stationary while Q/E/zoom/pan is still smoothing.
 		update_build_pointer(get_viewport().get_mouse_position())
+	if _paint_active and is_inside_tree():
+		update_paint_pointer(get_viewport().get_mouse_position())
 	# Run after ShopView's interpolation, including while the sim is paused.
 	refresh_presentation()
 
@@ -181,7 +196,8 @@ func start() -> void:
 	sim.use_rng(GameState.rng(&"customers"))
 	sim.spawner.min_gap = TUNING.arrival_gap_min
 	sim.spawner.max_gap = TUNING.arrival_gap_max
-	shop_editor = ShopEditor.new(sim, content, ShopEditBooks.new(Economy.can_spend_without_loan, Economy.add_cash))
+	shop_editor = ShopEditor.new(sim, content, ShopEditBooks.new(Economy.can_spend_without_loan, Economy.add_cash),
+		_loaded_layout if _loaded_layout != null else LAYOUT)
 	_connect_session()
 	Clock.attach_world(world, sim.advance)
 	_begin_morning()
@@ -213,6 +229,7 @@ func _exit_tree() -> void:
 		build_mode.changed.disconnect(_on_build_changed)
 	if _build_preview != null:
 		_build_preview.clear()
+	_paint_active = false
 	build_mode.bind_session(null, null, null, Callable(), Callable(), Callable())
 	($CameraRig as CameraRig).set_grid_forced(false)
 	if _inspect_panel != null and _inspect_panel.owner_mode_requested.is_connected(_on_owner_mode_requested):
@@ -246,7 +263,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			set_debug_visible(not is_debug_visible())
 			_mark_input_handled()
 			return
-	if route_build_input(event):
+	if route_paint_input(event) or route_build_input(event):
 		_mark_input_handled()
 		return
 	if key != null and key.pressed and not key.echo:
@@ -309,6 +326,33 @@ func route_build_input(event: InputEvent) -> bool:
 	return false
 
 
+## Paint has its own input path so service-time recolouring cannot move items.
+func route_paint_input(event: InputEvent) -> bool:
+	var key: InputEventKey = event as InputEventKey
+	if key != null and key.pressed and not key.echo:
+		var code: Key = key.physical_keycode if key.physical_keycode != KEY_NONE else key.keycode
+		if code == KEY_P:
+			return set_paint_active(not _paint_active)
+		if _paint_active and code == KEY_ESCAPE:
+			set_paint_active(false)
+			return true
+		if _paint_active and code == KEY_B:
+			set_paint_active(false)
+	if not _paint_active:
+		return false
+	var motion: InputEventMouseMotion = event as InputEventMouseMotion
+	if motion != null:
+		update_paint_pointer(motion.position)
+		return false
+	var mouse: InputEventMouseButton = event as InputEventMouseButton
+	if mouse != null and mouse.pressed and mouse.button_index == MOUSE_BUTTON_LEFT:
+		var cell: Variant = paint_cell_at_screen_position(mouse.position)
+		if cell is Vector2i:
+			paint_cell(cell)
+		return true
+	return false
+
+
 func _mark_input_handled() -> void:
 	if is_inside_tree():
 		get_viewport().set_input_as_handled()
@@ -318,10 +362,104 @@ func is_build_active() -> bool:
 	return build_mode.is_active()
 
 
+func is_paint_active() -> bool:
+	return _paint_active
+
+
+func set_paint_active(active: bool) -> bool:
+	if not _build_ready or shop_editor == null:
+		return false
+	if active == _paint_active:
+		return true
+	if active:
+		build_mode.exit()
+		set_menu_visible(false)
+		set_staff_visible(false)
+		clear_selection()
+		_report.hide()
+	_paint_active = active
+	if not active:
+		($ShopView as ShopView).clear_paint_preview()
+		if world.clock.phase == SimClock.Phase.CLOSED and shown_report != null:
+			_report.call(&"show_report", build_report(world.clock.day))
+	($CameraRig as CameraRig).set_grid_forced(active or is_build_active())
+	_update_build_controls()
+	return true
+
+
+func _paint_target(cell: Vector2i) -> Dictionary:
+	if world == null:
+		return {}
+	var item: PlacedItem = world.grid.item_at(cell)
+	if item != null and item.def is ItemDef:
+		return {"kind": &"item", "item_id": item.id} if (item.def as ItemDef).paintable else {}
+	match world.grid.terrain(cell):
+		SimGrid.Terrain.WALL:
+			return {"kind": &"wall", "item_id": -1}
+		SimGrid.Terrain.FLOOR, SimGrid.Terrain.ENTRY:
+			return {"kind": &"floor", "item_id": -1}
+	return {}
+
+
+func update_paint_pointer(screen_position: Vector2) -> void:
+	if not _paint_active:
+		return
+	var cell: Variant = paint_cell_at_screen_position(screen_position)
+	preview_paint_cell(cell)
+
+
+func paint_cell_at_screen_position(screen_position: Vector2) -> Variant:
+	var camera: Camera3D = $CameraRig/Camera3D
+	if world == null or not camera.is_inside_tree():
+		return null
+	var ray_origin: Vector3 = camera.project_ray_origin(screen_position)
+	var ray_direction: Vector3 = camera.project_ray_normal(screen_position)
+	var wall: Variant = ($ShopView as ShopView).wall_cell_at_ray(ray_origin, ray_direction)
+	return wall if wall is Vector2i else build_cell_at_screen_position(screen_position)
+
+
+func preview_paint_cell(cell: Variant) -> void:
+	var view: ShopView = $ShopView as ShopView
+	if not _paint_active or not cell is Vector2i:
+		view.clear_paint_preview()
+		return
+	var target: Dictionary = _paint_target(cell)
+	var kind: StringName = target.get("kind", &"")
+	var item_id: int = target.get("item_id", -1)
+	view.preview_paint(kind, item_id, _paint_swatch_id)
+
+
+func paint_cell(cell: Vector2i) -> bool:
+	if not _paint_active or shop_editor == null:
+		return false
+	var target: Dictionary = _paint_target(cell)
+	var kind: StringName = target.get("kind", &"")
+	var accepted: bool = false
+	match kind:
+		&"wall": accepted = shop_editor.paint_wall(_paint_swatch_id)
+		&"floor": accepted = shop_editor.paint_floor(_paint_swatch_id)
+		&"item": accepted = shop_editor.paint_item(target["item_id"], _paint_swatch_id)
+	if accepted:
+		($ShopView as ShopView).set_paint(content, shop_editor.wall_swatch_id, shop_editor.floor_swatch_id)
+	return accepted
+
+
+func _on_paint_toggled() -> void:
+	set_paint_active(not _paint_active)
+
+
+func _on_swatch_requested(id: StringName) -> void:
+	_paint_swatch_id = id
+	if _paint_active and is_inside_tree():
+		update_paint_pointer(get_viewport().get_mouse_position())
+
+
 func set_build_active(active: bool) -> bool:
 	if not _build_ready:
 		return false
 	if active:
+		if _paint_active:
+			set_paint_active(false)
 		return build_mode.enter()
 	build_mode.exit()
 	return true
@@ -358,6 +496,7 @@ func _bind_build_session() -> void:
 	if not build_mode.changed.is_connected(_on_build_changed):
 		build_mode.changed.connect(_on_build_changed)
 	build_mode.bind_session(shop_editor, world, content, shop_move, shop_buy, shop_sell)
+	($ShopView as ShopView).set_paint(content, shop_editor.wall_swatch_id, shop_editor.floor_swatch_id)
 	_build_preview.bind_build_mode(build_mode, $ShopView as ShopView)
 	_build_ready = true
 	_build_ui_phase = -1
@@ -375,7 +514,7 @@ func _guard_build_phase() -> void:
 
 func _on_build_changed() -> void:
 	var active: bool = is_build_active()
-	($CameraRig as CameraRig).set_grid_forced(active)
+	($CameraRig as CameraRig).set_grid_forced(active or _paint_active)
 	if active and not _was_build_active:
 		_build_phase = world.clock.phase
 		set_menu_visible(false)
@@ -395,8 +534,10 @@ func _update_build_controls() -> void:
 	var available: bool = _build_ready and shop_editor != null and shop_editor.can_edit()
 	var reason: String = build_mode.current_check.why if build_mode.has_ghost() and not build_mode.current_check.ok else ""
 	$HUD.set_build_state(available, active, reason, int(build_mode.state))
+	$HUD.set_paint_state(_paint_active)
 	if _build_catalogue != null:
-		_build_catalogue.set_build_visible(active)
+		_build_catalogue.set_paint_visible(_paint_active)
+		_build_catalogue.set_build_visible(active or _paint_active)
 	_build_ui_phase = world.clock.phase if world != null else -1
 
 
@@ -415,7 +556,7 @@ func _on_build_cash_changed(_cash: int, _delta: int, _reason: StringName) -> voi
 
 ## Uses the same floor-plane selection path for real clicks and capture tools.
 func pick_screen_position(screen_position: Vector2) -> void:
-	if is_build_active():
+	if is_build_active() or _paint_active:
 		return
 	var camera: Camera3D = $CameraRig/Camera3D
 	if world == null or not camera.is_inside_tree():
@@ -427,7 +568,7 @@ func pick_screen_position(screen_position: Vector2) -> void:
 
 ## Chooses the nearest drawn agent, otherwise the item at the clicked cell.
 func select_at_world_position(world_position: Vector3) -> void:
-	if world == null or is_build_active():
+	if world == null or is_build_active() or _paint_active:
 		return
 	# Resolve owner work targets before nearby agents or ordinary item picking.
 	if _selected_owner() != null:
@@ -747,6 +888,8 @@ func set_staff_visible(value: bool) -> bool:
 	if _staff_panel == null or (value and not can_edit_staff()):
 		return false
 	if value:
+		if _paint_active:
+			set_paint_active(false)
 		build_mode.exit()
 		set_menu_visible(false)
 		clear_selection()
@@ -849,6 +992,8 @@ func set_menu_visible(value: bool) -> bool:
 	if _menu_panel == null or (value and not can_edit_menu()):
 		return false
 	if value:
+		if _paint_active:
+			set_paint_active(false)
 		build_mode.exit()
 		set_staff_visible(false)
 	_menu_panel.set_phase(Clock.sim.phase)
@@ -937,6 +1082,8 @@ func _on_service_closed(day: int) -> void:
 	_charge_closing_costs()
 	shown_report = build_report(day)
 	_report.call(&"show_report", shown_report)
+	if _paint_active:
+		_report.hide()
 
 
 func _on_day_phase_changed(_day: int, phase: int) -> void:

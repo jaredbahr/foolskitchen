@@ -1,0 +1,7 @@
+[gd_resource type="Resource" script_class="SwatchDef" format=3]
+[ext_resource type="Script" path="res://src/sim/content/swatch_def.gd" id="1"]
+[resource]
+script = ExtResource("1")
+id = &"moss"
+display_name = "Moss"
+color = Color(0.4078431, 0.4941176, 0.3843137, 1)

@@ -1,0 +1,7 @@
+[gd_resource type="Resource" script_class="SwatchDef" format=3]
+[ext_resource type="Script" path="res://src/sim/content/swatch_def.gd" id="1"]
+[resource]
+script = ExtResource("1")
+id = &"butter"
+display_name = "Butter"
+color = Color(0.9019608, 0.7843137, 0.4627451, 1)

@@ -8,6 +8,7 @@ const GAIN_COLOR: Color = Color("286B3B")
 const LOSS_COLOR: Color = Color("A42E2E")
 
 signal build_toggled()
+signal paint_toggled()
 signal menu_pressed()
 signal staff_pressed()
 
@@ -27,6 +28,8 @@ var _cash: int = 0
 var _wall_button: Button
 var _shop_view: ShopView
 var _build_button: Button
+var _paint_button: Button
+var _paint_active: bool = false
 var _build_hints: PanelContainer
 var _build_hint_text: Label
 var _build_hint_scroll: ScrollContainer
@@ -65,6 +68,8 @@ func refresh() -> void:
 		style.set_content_margin(SIDE_BOTTOM, 6.0)
 		_build_hints.add_theme_stylebox_override("panel", style)
 		_build_button.pressed.connect(_on_build_pressed)
+		_paint_button = get_node("Top/Row/Paint") as Button
+		_paint_button.pressed.connect(_on_paint_pressed)
 		_menu_button = get_node("Top/Row/Menu") as Button
 		_menu_button.pressed.connect(_on_menu_pressed)
 		_staff_button = get_node("Top/Row/Staff") as Button
@@ -131,6 +136,14 @@ func set_build_state(available: bool, active: bool, reason: String = "", held_st
 		_refresh_build_controls()
 
 
+func set_paint_state(active: bool) -> void:
+	_paint_active = active
+	if _paint_button == null:
+		refresh()
+	else:
+		_refresh_build_controls()
+
+
 func _refresh_build_controls() -> void:
 	var allowed: bool = _build_available and (
 		Clock.sim.phase == SimClock.Phase.MORNING or Clock.sim.phase == SimClock.Phase.CLOSED)
@@ -138,14 +151,18 @@ func _refresh_build_controls() -> void:
 		_build_button.disabled = not allowed
 	if _build_button.button_pressed != _build_active:
 		_build_button.set_pressed_no_signal(_build_active)
+	if _paint_button.button_pressed != _paint_active:
+		_paint_button.set_pressed_no_signal(_paint_active)
 	var tooltip: String = "Build furniture (B)" if allowed else "Build furniture in the morning or after closing"
 	if _build_button.tooltip_text != tooltip:
 		_build_button.tooltip_text = tooltip
-	var resize_hint: bool = _build_hints.visible != _build_active
+	var resize_hint: bool = _build_hints.visible != (_build_active or _paint_active)
 	if resize_hint:
-		_build_hints.visible = _build_active
+		_build_hints.visible = _build_active or _paint_active
 	var text: String = "Esc Exit"
-	if _build_state == BuildMode.State.MOVE:
+	if _paint_active:
+		text = "Choose a colour, hover to preview, click to paint  |  Esc Exit"
+	elif _build_state == BuildMode.State.MOVE:
 		text = "R Rotate  |  Del Sell  |  Esc Cancel"
 	elif _build_state == BuildMode.State.BUY:
 		text = "R Rotate  |  Esc Cancel"
@@ -202,6 +219,10 @@ func set_plate_counts(clean: int, total: int, dirty: int, in_use: int, enabled: 
 func _on_build_pressed() -> void:
 	if _build_available and (Clock.sim.phase == SimClock.Phase.MORNING or Clock.sim.phase == SimClock.Phase.CLOSED):
 		build_toggled.emit()
+
+
+func _on_paint_pressed() -> void:
+	paint_toggled.emit()
 
 
 ## Binds this presentation control to the containing shop view, idempotently.

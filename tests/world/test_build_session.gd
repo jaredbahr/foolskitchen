@@ -614,6 +614,28 @@ func test_saved_startup_replaces_initial_world_before_final_controller_clock_bin
 	assert_null(_preview().ghost_mesh)
 
 
+func test_paint_during_service_previews_then_commits_without_books_or_immediate_save() -> void:
+	await _start(true)
+	assert_true(Clock.sim.start_service())
+	assert_false(_main.call("set_build_active", true))
+	var plant: PlacedItem = _world().grid.item(_id(&"potted_plant"))
+	var view: ShopView = _main.get_node("ShopView") as ShopView
+	var books: Dictionary = Economy.ledger.to_dict()
+	var saved: String = FileAccess.get_file_as_string(_save_dir.path_join(SLOT + ".json"))
+	assert_true(_main.call("set_paint_active", true))
+	assert_true(_main.call("is_paint_active"))
+	_main.call("preview_paint_cell", plant.cells[0])
+	assert_eq(plant.swatch_id, &"", "hover only changes the view")
+	assert_eq((view.item_nodes[plant.id].material_override as StandardMaterial3D).albedo_color,
+		(_main.get("content") as ContentDB).swatch(&"butter").color)
+	assert_true(_main.call("paint_cell", plant.cells[0]))
+	assert_eq(plant.swatch_id, &"butter")
+	assert_eq(Economy.ledger.to_dict(), books)
+	assert_eq(FileAccess.get_file_as_string(_save_dir.path_join(SLOT + ".json")), saved)
+	assert_true(_main.call("set_paint_active", false))
+	assert_false(_main.call("is_paint_active"))
+
+
 func _start(with_saves: bool = false) -> void:
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	await tree.process_frame  # The custom runner may begin before root entry.
