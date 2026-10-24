@@ -46,7 +46,7 @@ jobs:
           diagnostic_status=1
           if [[ "$import_status" -eq 0 ]] && ! grep -Eq 'SCRIPT ERROR|Parse Error|^[[:space:]]*ERROR:' "$import_log"; then
             # Draft-only diagnosis; restore the normal single check.sh command before ready.
-            bash tools/repeat_game_session.sh --prefix
+            bash tools/repeat_game_session.sh --full
             diagnostic_status=$?
           else
             echo 'PREFIX INCOMPLETE: strict headless import failed; no diagnostic samples ran.'
