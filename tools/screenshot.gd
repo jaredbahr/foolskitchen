@@ -7,6 +7,7 @@ extends SceneTree
 ##   --fast=N    also run N extra sim ticks per frame (via the scene's run_ticks)
 ##   --select=guest  inspect a live guest through the scene's selection API
 ##   --f3        show the scene's read-only debug overlay
+## Metadata records actual waiting moods/visible markers and seeds, with no fixture.
 
 const MAX_CAPTURE_WAIT_FRAMES: int = 8
 
@@ -236,7 +237,21 @@ func _capture() -> void:
 	if image == null or image.is_empty() or image.save_png(path) != OK:
 		_fail_capture("cannot save viewport image: " + path)
 		return
+	var image_hash: String = FileAccess.get_sha256(path)
+	if image_hash.length() != 64:
+		_fail_capture("cannot hash saved viewport image: " + path)
+		return
+	var master_seed: Variant = null
+	var game_state: Node = root.get_node_or_null("GameState")
+	if game_state != null and "master_seed" in game_state:
+		master_seed = str(game_state.get("master_seed"))
+	var restaurant_rng: Dictionary = {}
+	if "sim" in _main:
+		var restaurant: RestaurantSim = _main.get("sim") as RestaurantSim
+		if restaurant != null and restaurant.rng != null:
+			restaurant_rng = {"seed": str(restaurant.rng.seed), "state": str(restaurant.rng.state)}
 	var metadata: Dictionary = {
+		"image_file": path.get_file(), "image_sha256": image_hash,
 		"scene": _scene_path, "frame": _capture_frame, "requested_quarter": _quarter,
 		"actual_quarter": actual_quarter, "yaw_degrees": yaw_degrees,
 		"wall_mode": wall_mode, "lowered_wall_cells": lowered,
@@ -254,6 +269,9 @@ func _capture() -> void:
 		"panel_visible": inspection.get("panel_visible"),
 		"debug_visible": inspection.get("debug_visible"),
 		"world_tick": inspection.get("world_tick", world.now if world != null else null),
+		"capture_parameters": {"open": _open, "fast_ticks_per_frame": _fast, "speed": _speed},
+		"master_seed": master_seed, "restaurant_rng": restaurant_rng,
+		"mood": mood_evidence(world, view, root.get_viewport().get_camera_3d()),
 	}
 	var file: FileAccess = FileAccess.open(path.get_basename() + ".json", FileAccess.WRITE)
 	if file == null:
@@ -271,6 +289,46 @@ func _capture() -> void:
 	_capture_pending = false
 	if _finish_requested:
 		_finish_capture()
+
+
+## Snapshot model values and independently read actual marker nodes. In
+## particular, never derive a marker's reported band from the guest's band.
+static func mood_evidence(world: SimWorld, view: Node, camera: Camera3D = null) -> Dictionary:
+	var waiting: Array[Dictionary] = []
+	var indicators: Array[Dictionary] = []
+	var shop: ShopView = view as ShopView
+	if world == null or shop == null:
+		return {"available": false, "fixture": "none", "waiting_guests": waiting, "visible_indicators": indicators}
+	for agent: SimAgent in world.agents:
+		if agent is CustomerAgent:
+			var guest: CustomerAgent = agent as CustomerAgent
+			if CustomerAgent.MOOD_WAITING_STATES.has(int(guest.state)):
+				waiting.append({"id": guest.id, "state": int(guest.state),
+					"mood": guest.mood(), "band": guest.mood_band(),
+					"queue_wait": guest._queue_wait, "queue_patience": guest.queue_patience,
+					"food_wait": guest._food_wait, "food_patience": guest.food_patience,
+					"rng_seed": str(guest.rng.seed), "rng_state": str(guest.rng.state)})
+	var ids: Array[int] = []
+	ids.assign(shop.mood_nodes.keys())
+	ids.sort()
+	for id: int in ids:
+		var icon: GuestMoodIndicator = shop.mood_nodes[id]
+		if not is_instance_valid(icon) or not icon.is_visible_in_tree() or not icon.dot.is_visible_in_tree():
+			continue
+		var color: Color = (icon.dot.material_override as StandardMaterial3D).albedo_color
+		var screen: Variant = null
+		var in_frustum: Variant = null
+		if camera != null:
+			var projected: Vector2 = camera.unproject_position(icon.global_position)
+			screen = [projected.x, projected.y]
+			in_frustum = camera.is_position_in_frustum(icon.global_position)
+		indicators.append({"id": id, "band": icon.band,
+			"parent_agent_id": icon.get_parent().get_meta("agent_id", -1),
+			"visible_in_tree": icon.is_visible_in_tree(), "dot_visible": icon.dot.is_visible_in_tree(),
+			"mark": icon.mark.text, "mark_visible": icon.mark.is_visible_in_tree(),
+			"color": [color.r, color.g, color.b, color.a],
+			"screen_position": screen, "in_camera_frustum": in_frustum})
+	return {"available": true, "fixture": "none", "waiting_guests": waiting, "visible_indicators": indicators}
 
 
 func _finish_capture() -> void:

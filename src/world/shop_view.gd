@@ -32,6 +32,9 @@ var world: SimWorld
 var floor_mesh: MeshInstance3D
 var item_nodes: Dictionary[int, MeshInstance3D] = {}
 var agent_nodes: Dictionary[int, MeshInstance3D] = {}
+var mood_nodes: Dictionary[int, GuestMoodIndicator] = {}
+var _mood_states: Dictionary[int, int] = {}
+var _mood_bands: Dictionary[int, int] = {}
 var _materials: Dictionary[Color, StandardMaterial3D] = {}
 var _walls: Node3D
 
@@ -39,6 +42,9 @@ var _walls: Node3D
 ## Replaces a previous world and its signal bindings without modifying either.
 func show_world(value: SimWorld) -> void:
 	_disconnect_grid()
+	mood_nodes.clear()
+	_mood_states.clear()
+	_mood_bands.clear()
 	for child: Node in get_children():
 		if child.has_meta("shop_geometry"):
 			remove_child(child)
@@ -289,12 +295,50 @@ func _process(delta: float) -> void:
 		if direction.length_squared() > 0.0001:
 			var yaw: float = atan2(-direction.x, -direction.z)
 			node.rotation.y = lerp_angle(node.rotation.y, yaw, 1.0 - exp(-12.0 * maxf(delta, 0.0)))
+		_update_guest_mood(agent, node)
 	for id: int in agent_nodes.keys():
 		if not alive.has(id):
+			_remove_mood_icon(id)
+			_mood_states.erase(id)
+			_mood_bands.erase(id)
 			var node: MeshInstance3D = agent_nodes[id]
 			remove_child(node)
 			node.free()
 			agent_nodes.erase(id)
+
+
+func _update_guest_mood(agent: SimAgent, body: MeshInstance3D) -> void:
+	if not agent is CustomerAgent:
+		return
+	var guest: CustomerAgent = agent as CustomerAgent
+	var state: int = int(guest.state)
+	var band: int = guest.mood_band()
+	var waiting: bool = CustomerAgent.MOOD_WAITING_STATES.has(state)
+	if _mood_states.get(agent.id, -1) == state and _mood_bands.get(agent.id, -1) == band \
+			and (not waiting or is_instance_valid(mood_nodes.get(agent.id))):
+		return
+	_mood_states[agent.id] = state
+	_mood_bands[agent.id] = band
+	if not waiting:
+		_remove_mood_icon(agent.id)
+		return
+	if not is_instance_valid(mood_nodes.get(agent.id)):
+		var icon: GuestMoodIndicator = GuestMoodIndicator.new()
+		body.add_child(icon)
+		mood_nodes[agent.id] = icon
+	mood_nodes[agent.id].set_band(band)
+
+
+func _remove_mood_icon(id: int) -> void:
+	if not mood_nodes.has(id):
+		return
+	var icon: GuestMoodIndicator = mood_nodes[id]
+	if is_instance_valid(icon):
+		var parent: Node = icon.get_parent()
+		if parent != null:
+			parent.remove_child(icon)
+		icon.free()
+	mood_nodes.erase(id)
 
 
 func _agent_color(agent: SimAgent) -> Color:

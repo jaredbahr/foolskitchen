@@ -5,6 +5,14 @@ extends SimAgent
 enum State { ARRIVING, QUEUED, WALKING_TO_SEAT, ORDERING, WAITING_FOOD,
 	EATING, PAYING, LEAVING, LEFT }
 
+enum MoodBand { HAPPY, WAITING, IMPATIENT, ABOUT_TO_LEAVE }
+
+const MOOD_HAPPY_THRESHOLD: float = 0.6
+const MOOD_WAITING_THRESHOLD: float = 0.35
+const MOOD_IMPATIENT_THRESHOLD: float = 0.15
+const MOOD_WAITING_STATES: Array[int] = [State.QUEUED, State.ORDERING, State.WAITING_FOOD]
+const MOOD_LABELS: Array[String] = ["content", "waiting patiently", "getting impatient", "about to leave"]
+
 ## A seat walk must recover well before the food-wait timeout.
 const SEAT_WALK_LIMIT: int = 200
 
@@ -117,14 +125,14 @@ func why() -> String:
 		State.ARRIVING:
 			return "Arriving: looking for a table"
 		State.QUEUED:
-			return "Waiting by the door for a free table"
+			return _waiting_why("Waiting by the door for a free table")
 		State.WALKING_TO_SEAT:
 			return "Walking to my seat"
 		State.ORDERING:
-			return "Waiting for a server to take my order"
+			return _waiting_why("Waiting for a server to take my order")
 		State.WAITING_FOOD:
-			return "Waiting for food (%s), %ds of patience left" % [order.recipe_id,
-				ceili(float(maxi(0, food_patience - _food_wait)) / SimClock.TICKS_PER_SECOND)]
+			return _waiting_why("Waiting for food (%s), %ds of patience left" % [order.recipe_id,
+				ceili(float(maxi(0, food_patience - _food_wait)) / SimClock.TICKS_PER_SECOND)])
 		State.EATING:
 			return "Enjoying my meal"
 		State.PAYING:
@@ -132,6 +140,40 @@ func why() -> String:
 		State.LEAVING, State.LEFT:
 			return "Leaving: %s" % String(leave_reason).replace("_", " ")
 	return "Visiting the restaurant"
+
+
+## A read-only fraction of the patience relevant to this exact state.
+## Walking has its own recovery limit, but is not a mood waiting state.
+func mood() -> float:
+	match state:
+		State.QUEUED:
+			return _patience_fraction(_queue_wait, queue_patience)
+		State.ORDERING, State.WAITING_FOOD:
+			return _patience_fraction(_food_wait, food_patience)
+	return 1.0
+
+
+func mood_band() -> int:
+	var value: float = mood()
+	if value >= MOOD_HAPPY_THRESHOLD:
+		return MoodBand.HAPPY
+	if value >= MOOD_WAITING_THRESHOLD:
+		return MoodBand.WAITING
+	if value >= MOOD_IMPATIENT_THRESHOLD:
+		return MoodBand.IMPATIENT
+	return MoodBand.ABOUT_TO_LEAVE
+
+
+func _waiting_why(text: String) -> String:
+	return "%s (%s)" % [text, MOOD_LABELS[mood_band()]]
+
+
+static func _patience_fraction(waited: int, budget: int) -> float:
+	if budget <= 0:
+		return 0.0
+	# Clamp before subtraction so even extreme counters cannot overflow.
+	var elapsed: int = clampi(waited, 0, budget)
+	return float(budget - elapsed) / float(budget)
 
 
 ## Removal always releases the seat and withdraws unfinished work and tickets.
