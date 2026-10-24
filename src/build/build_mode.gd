@@ -162,6 +162,11 @@ func update_origin(cell: Vector2i) -> void:
 func rotate() -> bool:
 	if not _can_interact() or not has_ghost():
 		return false
+	if state == State.MOVE:
+		var footprint: Vector2i = GridMath.rotated_footprint(selected_definition.footprint, quarter_turns)
+		var rotated_offset: Vector2i = GridMath.rotate_cell(grab_offset, footprint, 1)
+		origin += grab_offset - rotated_offset
+		grab_offset = rotated_offset
 	quarter_turns = (quarter_turns + 1) % 4
 	_recheck_ghost()
 	changed.emit()

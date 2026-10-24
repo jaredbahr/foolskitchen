@@ -432,6 +432,36 @@ func test_pickup_offset_keeps_the_grabbed_tile_and_clears_on_cancel_or_buy() -> 
 	assert_eq(_snapshot(), before)
 
 
+func test_far_tile_stays_fixed_through_four_rotations_of_a_two_by_one_item() -> void:
+	assert_true(_mode.enter())
+	var item: PlacedItem = _sim.world.grid.item(_id(&"fridge"))
+	assert_eq((item.def as ItemDef).footprint, Vector2i(2, 1))
+	var offsets: Array[Vector2i] = [Vector2i(1, 0), Vector2i(0, 1), Vector2i.ZERO, Vector2i.ZERO]
+	var cursor: Vector2i = Vector2i(10, 8)
+	for initial_turns: int in range(4):
+		assert_true(_editor.move(item.id, item.origin, initial_turns))
+		var before: Dictionary = _snapshot()
+		assert_true(_mode.pick_up_at(item.id, item.origin + offsets[initial_turns]))
+		_mode.update_origin(cursor)
+		for step: int in range(1, 5):
+			assert_true(_mode.rotate())
+			var turns: int = (initial_turns + step) % 4
+			assert_eq(_mode.quarter_turns, turns)
+			assert_eq(_mode.grab_offset, offsets[turns])
+			assert_eq(_mode.origin, cursor - offsets[turns])
+			assert_eq(_mode.origin + _mode.grab_offset, cursor, "rotation preserves the world grabbed tile")
+			_mode.update_origin(cursor)
+			assert_eq(_mode.origin + _mode.grab_offset, cursor, "stationary hover does not undo the pivot")
+			var expected: EditCheck = _editor.check_move(item.id, _mode.origin, turns)
+			assert_eq(_mode.current_check.ok, expected.ok)
+			assert_eq(_mode.current_check.why, expected.why)
+			assert_eq(_snapshot(), before, "rotation previews never move the actual item or book a transaction")
+		assert_eq(_mode.origin, cursor - offsets[initial_turns])
+		_mode.cancel()
+		assert_eq(_snapshot(), before)
+	assert_eq(_move_calls + _buy_calls + _sell_calls, 0)
+
+
 func test_all_place_results_have_player_sentences_used_by_actual_editor_checks() -> void:
 	var reasons: Dictionary[int, String] = {
 		SimGrid.PlaceResult.OK: "",

@@ -146,12 +146,16 @@ func _layout_build_hints() -> void:
 	for line: String in _build_hint_text.text.split("\n"):
 		natural_width = maxf(natural_width, font.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1.0, font_size).x)
 	var width: float = minf(ceilf(natural_width), available.x)
-	var text_size: Vector2 = font.get_multiline_string_size(_build_hint_text.text, HORIZONTAL_ALIGNMENT_LEFT, width, font_size)
-	var bar_width: float = _build_hint_scroll.get_v_scroll_bar().get_combined_minimum_size().x if text_size.y > available.y else 0.0
-	width = minf(width, available.x - bar_width)
-	text_size = font.get_multiline_string_size(_build_hint_text.text, HORIZONTAL_ALIGNMENT_LEFT, width, font_size)
 	_build_hint_text.custom_minimum_size = Vector2(width, 0.0)
-	_build_hint_scroll.custom_minimum_size = Vector2(width + bar_width, minf(ceilf(text_size.y), available.y))
+	_build_hint_text.size.x = width
+	# Native Label metrics include theme line spacing and its final wrapping width.
+	var text_height: float = _build_hint_text.get_minimum_size().y
+	var bar_width: float = _build_hint_scroll.get_v_scroll_bar().get_combined_minimum_size().x if text_height > available.y else 0.0
+	width = minf(width, available.x - bar_width)
+	_build_hint_text.custom_minimum_size = Vector2(width, 0.0)
+	_build_hint_text.size.x = width
+	text_height = _build_hint_text.get_minimum_size().y
+	_build_hint_scroll.custom_minimum_size = Vector2(width + bar_width, minf(ceilf(text_height), available.y))
 	_build_hints.size = _build_hint_scroll.custom_minimum_size + padding
 	_build_hints.position = Vector2(12.0, top)
 
