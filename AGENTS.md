@@ -45,6 +45,14 @@ This file is read by every coding agent (Codex, harness workers, Claude). Read `
 ## Changelog (required)
 - Every PR adds at least one line under `## Unreleased` in `CHANGELOG.md`, in the right group (Players / Content / Under the hood), ending with `(#<PR number>)`. Use plain words a player would understand for player-facing changes. CI fails without it. The `no-changelog` label is for changelog-only fixes and reverts.
 
+## Before you mark a PR ready (the director has limited review time)
+- Read every comment on the issue. A comment from the director (`jaredbahr` account, Claude-signed) overrides the issue body.
+- Check **Depends on**. If a listed PR or issue hasn't merged, don't start. Pick another `worker-ready` issue.
+- Merge the latest `main` into your branch (a merge commit, not a rebase) and run `bash tools/check.sh` again. A PR that only passed on an old base has broken `main` before.
+- Self-review: in a fresh pass, re-read your whole diff against the issue's **Do**, **Don't** and **Done when**, and against code rules 1–11. Fix what you find.
+- Put a short checklist in the PR body: each **Done when** item ticked, with evidence (the test name, probe table or screenshot), plus "Rules 9/10/11: held" or what you changed and why.
+- Mark the PR ready for review. Don't leave it as a draft.
+
 ## Before you finish
 - Run `tools/check.sh` (created in Phase 0). It must pass.
 - Add or update tests for any sim logic you touched.
