@@ -10,22 +10,42 @@ const ROLES: Array[StringName] = [&"cook", &"server", &"cleaner"]
 @export_range(1, 5) var skill: int = 3
 @export var wage: int = 0
 @export var trait_id: StringName = &"steady"
+## Runtime progression is saved inside this member's staff-section row. It is
+## not exported into authored starter resources.
+var growth: StaffGrowth = null
 
 
 func copy() -> StaffMember:
-	return duplicate() as StaffMember
+	var member: StaffMember = StaffMember.new()
+	member.id = id
+	member.display_name = display_name
+	member.role = role
+	member.skill = skill
+	member.wage = wage
+	member.trait_id = trait_id
+	if growth != null:
+		member.growth = growth.copy()
+	return member
+
+
+## Old saves and authored candidates start with zero XP and a neutral mood.
+func growth_state() -> StaffGrowth:
+	if growth == null:
+		growth = StaffGrowth.new(_primary_skill(role), skill, wage)
+	return growth
 
 
 func to_dict() -> Dictionary:
 	return {"id": String(id), "name": display_name, "role": String(role),
-		"skill": skill, "wage": wage, "trait": String(trait_id)}
+		"skill": skill, "wage": wage, "trait": String(trait_id),
+		"growth": growth_state().to_dict()}
 
 
 static func from_dict(data: Variant, catalogue: StaffCatalogue) -> StaffMember:
 	if not data is Dictionary or catalogue == null:
 		return null
 	var row: Dictionary = data
-	if row.size() != 6:
+	if row.size() != 6 and row.size() != 7:
 		return null
 	for key: String in ["id", "name", "role", "trait"]:
 		if not row.get(key) is String or String(row[key]).strip_edges().is_empty():
@@ -41,7 +61,22 @@ static func from_dict(data: Variant, catalogue: StaffCatalogue) -> StaffMember:
 	member.trait_id = StringName(row["trait"])
 	if not ROLES.has(member.role) or catalogue.find_trait(member.trait_id) == null:
 		return null
+	var restored: StaffGrowth = StaffGrowth.new(_primary_skill(member.role), member.skill, member.wage)
+	if row.size() == 7:
+		if not row.has("growth") or not restored.from_dict(row["growth"]) \
+				or restored.skill_level(_primary_skill(member.role)) != member.skill \
+				or restored.wage != member.wage:
+			return null
+	member.growth = restored
 	return member
+
+
+static func _primary_skill(staff_role: StringName) -> StringName:
+	match staff_role:
+		&"cook": return &"cooking"
+		&"server": return &"service"
+		&"cleaner": return &"cleaning"
+	return &""
 
 
 static func _whole_number(value: Variant, minimum: int, maximum: int) -> bool:

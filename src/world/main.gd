@@ -37,6 +37,8 @@ var build_mode: BuildMode = BuildMode.new()
 ## Cookable dishes/prices belong to this shop, never to shared recipe resources.
 var menu_settings: MenuSettings
 var staff_roster: StaffRoster
+var _staff_notice_day: int = 0
+var _staff_notices: Array[Dictionary] = []
 ## Last thirty eligible reviews, including five virtual three-star starters.
 var reputation: ReputationBook = ReputationBook.new()
 var owner_progress: OwnerProgress = OwnerProgress.new(PROGRESSION_TUNING)
@@ -177,6 +179,9 @@ func _bind_world_presentation() -> void:
 		_staff_panel.let_go_requested.connect(_on_staff_let_go_requested)
 		_staff_panel.tray_requested.connect(_on_tray_requested)
 		_staff_panel.close_requested.connect(_on_staff_close_requested)
+	if not _staff_panel.raise_accept_requested.is_connected(_on_staff_raise_accept_requested):
+		_staff_panel.raise_accept_requested.connect(_on_staff_raise_accept_requested)
+		_staff_panel.raise_decline_requested.connect(_on_staff_raise_decline_requested)
 	if not $HUD.is_connected(&"staff_pressed", toggle_staff):
 		$HUD.connect(&"staff_pressed", toggle_staff)
 	_inspect_panel.bind_world(world)
@@ -268,6 +273,8 @@ func _connect_session() -> void:
 	sim.customer_paid.connect(_on_customer_paid)
 	sim.review_recorded.connect(_on_review_recorded)
 	sim.service_closed.connect(_on_service_closed)
+	if not world.board.task_completed.is_connected(_on_staff_task_completed):
+		world.board.task_completed.connect(_on_staff_task_completed)
 	if sim.kitchen != null:
 		sim.kitchen.plates_changed.connect(_on_plates_changed)
 		_on_plates_changed(sim.kitchen.clean_plates, sim.kitchen.plates.total,
@@ -301,6 +308,9 @@ func _exit_tree() -> void:
 		sim.kitchen.plates_changed.disconnect(_on_plates_changed)
 	if sim != null and sim.service_closed.is_connected(_on_service_closed):
 		sim.service_closed.disconnect(_on_service_closed)
+	if world != null and world.board != null \
+			and world.board.task_completed.is_connected(_on_staff_task_completed):
+		world.board.task_completed.disconnect(_on_staff_task_completed)
 	if EventBus.day_phase_changed.is_connected(_on_day_phase_changed):
 		EventBus.day_phase_changed.disconnect(_on_day_phase_changed)
 	if EventBus.sim_ticked.is_connected(_on_inspection_tick):
@@ -864,6 +874,8 @@ func _new_game() -> void:
 	tray_level = 0
 	sim.carry_capacity = 1
 	staff_roster = StaffRoster.new(TUNING)
+	_staff_notice_day = 0
+	_staff_notices.clear()
 	if not sim.set_staff_roster(staff_roster.members()):
 		push_error("Cannot install the new game's starting staff roster")
 	_staff_panel.bind_roster(staff_roster)
@@ -1054,6 +1066,34 @@ func staff_let_go(id: StringName) -> bool:
 	return _change_staff(id, false)
 
 
+## Morning choices never save immediately; accepted wages update live agents
+## before service, while yesterday's closing ledger remains untouched.
+func staff_accept_raise(id: StringName) -> bool:
+	if not can_edit_staff():
+		return false
+	var choices: StaffRoster = StaffRoster.new(TUNING)
+	if not choices.from_dict(staff_roster.to_dict()) \
+			or not choices.accept_raise(id, Clock.sim.phase) \
+			or not sim.set_staff_roster(choices.members()):
+		return false
+	staff_roster = choices
+	_staff_panel.bind_roster(staff_roster)
+	refresh_presentation()
+	return true
+
+
+func staff_decline_raise(id: StringName) -> bool:
+	if not can_edit_staff():
+		return false
+	var choices: StaffRoster = StaffRoster.new(TUNING)
+	if not choices.from_dict(staff_roster.to_dict()) \
+			or not choices.decline_raise(id, Clock.sim.day, Clock.sim.phase):
+		return false
+	staff_roster = choices
+	_staff_panel.bind_roster(staff_roster)
+	return true
+
+
 func _change_staff(id: StringName, hiring: bool) -> bool:
 	if not can_edit_staff():
 		return false
@@ -1104,6 +1144,16 @@ func _on_staff_hire_requested(id: StringName) -> void:
 
 func _on_staff_let_go_requested(id: StringName) -> void:
 	staff_let_go(id)
+	_staff_panel.refresh()
+
+
+func _on_staff_raise_accept_requested(id: StringName) -> void:
+	staff_accept_raise(id)
+	_staff_panel.refresh()
+
+
+func _on_staff_raise_decline_requested(id: StringName) -> void:
+	staff_decline_raise(id)
 	_staff_panel.refresh()
 
 
@@ -1284,6 +1334,27 @@ func shop_sell(item_id: int) -> int:
 
 ## Morning setup: new counters, a stocked fridge, and an autosave.
 func _begin_morning() -> void:
+	# Direct sim drivers may finish cleanup after service_closed. Apply that
+	# newly completed work before the saved-state clone drops transient XP.
+	# An ordinary morning or repeated setup has no staged XP to apply again.
+	staff_roster.close_growth_day()
+	var choices: StaffRoster = StaffRoster.new(TUNING)
+	if not choices.from_dict(staff_roster.to_dict()):
+		push_error("Cannot restore the morning staff roster")
+		return
+	var notices: Array[Dictionary] = choices.process_morning_quits(Clock.sim.day, Clock.sim.phase)
+	# The morning install removes departures and applies skills earned at the
+	# previous close before any staff are sent to their posts.
+	if not sim.set_staff_roster(choices.members()):
+		push_error("Cannot install the morning staff roster")
+		return
+	staff_roster = choices
+	_staff_panel.bind_roster(staff_roster)
+	if _staff_notice_day != Clock.sim.day:
+		_staff_notice_day = Clock.sim.day
+		_staff_notices.assign(notices)
+	elif not notices.is_empty():
+		_staff_notices.assign(notices)
 	# Sample the rating once, before start_day resets the first guest's gap.
 	# Positive stars increase arrivals, so their time between arrivals shrinks.
 	var rate: float = reputation.arrival_multiplier(REVIEW_TUNING)
@@ -1299,6 +1370,7 @@ func _begin_morning() -> void:
 	if staff_roster.candidate_day != Clock.sim.day:
 		staff_roster.draw_candidates(Clock.sim.day, GameState.rng(&"hiring"))
 	_staff_panel.set_phase(Clock.sim.phase)
+	_staff_panel.set_morning(Clock.sim.day, _staff_notices)
 	dishes_sold_today.clear()
 	shown_report = null
 	_restock()
@@ -1308,6 +1380,11 @@ func _begin_morning() -> void:
 		SaveSystem.save_game(save_slot)
 	_skip_next_autosave = false
 	$HUD.set_owner_progress(owner_progress.level, owner_progress.xp_into_level(), owner_progress.xp_in_level())
+	# A new raise or departure must be visible without making the player find
+	# the Staff button. Ordinary mornings still leave the panel closed.
+	if not _staff_notices.is_empty() \
+			or not staff_roster.morning_raise_offers(Clock.sim.day, Clock.sim.phase).is_empty():
+		set_staff_visible(true)
 	refresh_presentation()
 
 
@@ -1334,6 +1411,10 @@ func _on_customer_paid(_customer: CustomerAgent, order: Order, amount: int) -> v
 	dishes_sold_today[order.recipe_id] = dishes_sold_today.get(order.recipe_id, 0) + 1
 
 
+func _on_staff_task_completed(task: SimTask) -> void:
+	StaffTaskCredit.credit_completed(task, world, staff_roster)
+
+
 func _on_review_recorded(_row: Dictionary) -> void:
 	# The display may change during service, but the day's arrival gap does not.
 	$HUD.set_reputation(reputation.average(), reputation.scores().size())
@@ -1345,6 +1426,7 @@ func _on_service_closed(day: int) -> void:
 		return
 	_closed_report_day = day
 	_charge_closing_costs()
+	staff_roster.close_growth_day()
 	shown_report = build_report(day)
 	var five_star_reviews: int = 0
 	for row: Dictionary in sim.reviews_today:
