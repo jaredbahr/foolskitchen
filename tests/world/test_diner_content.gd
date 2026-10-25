@@ -73,7 +73,7 @@ func test_wall_model_wrappers_keep_bounded_geometry_and_chalkboard_uses_theme_te
 		if prop == null:
 			instance.free()
 			continue
-		# Enter the real tree so the native label's _ready binds the shared font.
+		# Exercise the native label and prop through their real scene-tree lifecycle.
 		(Engine.get_main_loop() as SceneTree).root.add_child(instance)
 		prop.prepare()
 		assert_eq(prop.footprint, Vector2i(2, 1), "%s covers its two-cell wall width" % item_id)
