@@ -2,9 +2,11 @@ class_name DayReport
 extends RefCounted
 ## Plain end-of-day results, independent of the ledger, clock and scene tree.
 
-const FINANCING_CATEGORIES: Array[StringName] = [
+const NON_OPERATING_CATEGORIES: Array[StringName] = [
 	Ledger.BANK_LOAN, Ledger.LOAN_INTEREST, Ledger.LOAN_REPAYMENT,
+	Ledger.MILESTONE_BONUS,
 ]
+const MAX_MILESTONE_REWARD: int = 1000000
 
 var day: int = 1
 var income: Dictionary = {}
@@ -30,6 +32,8 @@ var owner_level_before: int = 1
 var owner_level_after: int = 1
 ## Player-facing unlock names, supplied by the caller rather than raw ids.
 var owner_unlocks: Array[String] = []
+## Player-facing goal names and rewards completed on this day; never contains IDs.
+var milestones_reached: Array[Dictionary] = []
 
 
 ## Returns income across all categories in whole currency units.
@@ -69,6 +73,7 @@ func to_dict() -> Dictionary:
 	var cards: Array[Dictionary] = []
 	for card: Dictionary in review_cards:
 		cards.append(_public_review_card(card))
+	var milestones: Array[Dictionary] = public_milestones(milestones_reached)
 	return {
 		"day": day,
 		"income": _string_counts(income),
@@ -88,6 +93,7 @@ func to_dict() -> Dictionary:
 		"owner_level_before": owner_level_before,
 		"owner_level_after": owner_level_after,
 		"owner_unlocks": owner_unlocks.duplicate(),
+		"milestones_reached": milestones,
 	}
 
 
@@ -124,6 +130,7 @@ static func from_dict(data: Dictionary) -> DayReport:
 		for name: Variant in saved_unlocks:
 			if name is String:
 				report.owner_unlocks.append(name)
+	report.milestones_reached = public_milestones(data.get("milestones_reached", []))
 	return report
 
 
@@ -135,14 +142,60 @@ static func _public_review_card(card: Dictionary) -> Dictionary:
 	}
 
 
+## Keep report snapshots player-facing; raw milestone IDs and conditions are not saved here.
+static func public_milestones(value: Variant) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	if not value is Array:
+		return result
+	for item: Variant in value:
+		if not item is Dictionary:
+			continue
+		var row: Dictionary = item
+		var title_value: Variant = row.get("title")
+		if not title_value is String:
+			continue
+		var title: String = str(title_value).strip_edges()
+		var reward_xp: Variant = row.get("reward_xp")
+		var reward_cash: Variant = row.get("reward_cash")
+		if title.is_empty() or not _whole_in_range(reward_xp, 0, MAX_MILESTONE_REWARD) \
+				or not _whole_in_range(reward_cash, 0, MAX_MILESTONE_REWARD):
+			continue
+		result.append({
+			"title": title,
+			"reward_xp": int(reward_xp),
+			"reward_cash": int(reward_cash),
+		})
+	return result
+
+
+## Returns -1 for a malformed optional display field so direct UI callers can omit it.
+static func milestone_xp(value: Variant) -> int:
+	if not _whole_in_range(value, 0, OwnerProgress.MAX_TOTAL_XP):
+		return -1
+	return int(value)
+
+
+static func _whole_in_range(value: Variant, minimum: int, maximum: int) -> bool:
+	if typeof(value) != TYPE_INT and typeof(value) != TYPE_FLOAT:
+		return false
+	var number: float = float(value)
+	return is_finite(number) and number >= minimum and number <= maximum and floorf(number) == number
+
+
 ## Only known numeric display fields survive a report snapshot.
 static func _owner_xp(value: Variant) -> Dictionary:
 	var result: Dictionary = {}
 	if not value is Dictionary:
 		return result
 	var amounts: Dictionary = value
-	for key: String in ["happy_xp", "profit_xp", "review_xp", "total_xp"]:
+	for key: String in ["happy_xp", "profit_xp", "review_xp", "milestone_xp", "total_xp"]:
 		if amounts.has(key):
+			if key == "milestone_xp":
+				var xp: int = milestone_xp(amounts[key])
+				if xp < 0:
+					continue
+				result[key] = xp
+				continue
 			result[key] = maxi(0, int(amounts[key]))
 	return result
 
@@ -157,7 +210,7 @@ static func _sum(counts: Dictionary) -> int:
 static func _operating_sum(counts: Dictionary) -> int:
 	var total: int = 0
 	for key: Variant in counts:
-		if not FINANCING_CATEGORIES.has(StringName(str(key))):
+		if not NON_OPERATING_CATEGORIES.has(StringName(str(key))):
 			total += int(counts[key])
 	return total
 

@@ -241,6 +241,128 @@ func test_repayment_cash_cap_keeps_interest_shortfalls_zero_share_and_principal_
 		assert_eq(account.principal, int(fixture["end_principal"]))
 
 
+func test_pre_bonus_profit_excludes_rewards_but_repayment_uses_actual_bonus_cash() -> void:
+	for fixture: Dictionary in [
+		{"bonus": 500, "rate": 0.05, "interest": 50, "repayment": 15, "cash": 495},
+		{"bonus": 3, "rate": 0.05, "interest": 50, "repayment": 13, "cash": 0},
+		{"bonus": 500, "rate": 0.045, "interest": 45, "repayment": 15, "cash": 500},
+	]:
+		var ledger: Ledger = _boundary_ledger(60, 30)
+		var account: LoanAccount = _boundary_account(1000)
+		var terms: LoanTuning = TERMS.duplicate(true) as LoanTuning
+		terms.daily_interest = float(fixture["rate"])
+		var operating_profit: int = ledger.day_profit(3)
+		var bonus: int = int(fixture["bonus"])
+		ledger.record(3, bonus, Ledger.MILESTONE_BONUS)
+		var result: Dictionary = account.settle_day(ledger, 3, terms, operating_profit)
+		assert_false(result.is_empty())
+		if result.is_empty():
+			continue
+		assert_eq(result["operating_profit"], 30, "a closing reward never enlarges the captured repayment base")
+		assert_eq(result["interest"], int(fixture["interest"]))
+		assert_eq(result["repayment"], int(fixture["repayment"]), "cash after interest includes the real bonus")
+		assert_eq(result["advance"], 0)
+		assert_eq(ledger.cash, int(fixture["cash"]))
+		assert_eq(account.principal, 1000 - int(fixture["repayment"]))
+		assert_eq(ledger.day_totals(3), {Ledger.SALE: 30, Ledger.MILESTONE_BONUS: bonus,
+			Ledger.LOAN_INTEREST: -int(fixture["interest"]), Ledger.LOAN_REPAYMENT: -int(fixture["repayment"])})
+		var books: Dictionary = ledger.to_dict()
+		var saved: Dictionary = account.to_dict()
+		assert_true(account.settle_day(ledger, 3, terms, operating_profit).is_empty())
+		assert_eq(ledger.to_dict(), books, "bonus-funded repayment still settles only once")
+		assert_eq(account.to_dict(), saved)
+
+
+func test_bonus_before_financing_can_cover_a_loss_without_opening_a_loan() -> void:
+	var ledger: Ledger = _boundary_ledger(-30, -30)
+	var account: LoanAccount = _boundary_account(0)
+	var operating_profit: int = ledger.day_profit(3)
+	ledger.record(3, 50, Ledger.MILESTONE_BONUS)
+	var result: Dictionary = account.settle_day(ledger, 3, TERMS, operating_profit)
+	assert_false(result.is_empty())
+	if result.is_empty():
+		return
+	assert_eq(result["operating_profit"], -30)
+	assert_eq(result["interest"], 0)
+	assert_eq(result["repayment"], 0)
+	assert_eq(result["advance"], 0, "a bonus already in cash prevents an avoidable advance")
+	assert_false(result["first_advance"])
+	assert_false(account.has_borrowed)
+	assert_eq(account.principal, 0)
+	assert_eq(ledger.cash, 20)
+	assert_eq(ledger.day_totals(3), {Ledger.RENT: -30, Ledger.MILESTONE_BONUS: 50})
+
+
+func test_null_profit_override_retains_the_original_ledger_profit_behavior() -> void:
+	var ledger: Ledger = _boundary_ledger(60, 30)
+	ledger.record(3, 500, Ledger.MILESTONE_BONUS)
+	var original: Ledger = Ledger.from_dict(ledger.to_dict())
+	var account: LoanAccount = _boundary_account(1000)
+	var original_account: LoanAccount = _boundary_account(1000)
+	var explicit_null: Dictionary = account.settle_day(ledger, 3, TERMS, null)
+	assert_eq(explicit_null, original_account.settle_day(original, 3, TERMS))
+	assert_eq(explicit_null["operating_profit"], 530, "null deliberately preserves legacy callers")
+	assert_eq(explicit_null["repayment"], 265)
+	assert_eq(ledger.to_dict(), original.to_dict())
+	assert_eq(account.to_dict(), original_account.to_dict())
+
+
+func test_malformed_profit_overrides_preserve_books_history_and_allow_same_day_retry() -> void:
+	for invalid: Variant in [true, false, 30.0, -30.0, INF, NAN, "30", "9223372036854775808",
+			[] as Array, {}, Vector2.ZERO, RefCounted.new()]:
+		var ledger: Ledger = _boundary_ledger(60, 30)
+		ledger.record(3, 3, Ledger.MILESTONE_BONUS)
+		var account: LoanAccount = _boundary_account(1000)
+		var books: Dictionary = ledger.to_dict()
+		var saved: Dictionary = account.to_dict()
+		assert_true(account.settle_day(ledger, 3, TERMS, invalid).is_empty())
+		assert_eq(ledger.to_dict(), books, "rejection retains cash, categories and archived gross history")
+		assert_eq(account.to_dict(), saved, "rejection retains principal, borrowing history and the close guard")
+		assert_eq(account.last_settled_day, 2)
+		var retry: Dictionary = account.settle_day(ledger, 3, TERMS, 30)
+		assert_false(retry.is_empty(), "an invalid override cannot consume the closing day")
+		if not retry.is_empty():
+			assert_eq(retry["repayment"], 13)
+			assert_eq(account.last_settled_day, 3)
+
+
+func test_explicit_profit_accepts_zero_and_both_signed_int64_limits() -> void:
+	var terms: LoanTuning = TERMS.duplicate(true) as LoanTuning
+	terms.repay_share = 1.0
+	for profit: int in [0, LoanAccount.MIN_CURRENCY, LoanAccount.MAX_CURRENCY]:
+		var ledger: Ledger = _boundary_ledger(1000)
+		var account: LoanAccount = _boundary_account(100)
+		var result: Dictionary = account.settle_day(ledger, 3, terms, profit)
+		assert_false(result.is_empty(), "every signed int64 is a valid whole-unit profit input")
+		if result.is_empty():
+			continue
+		var repayment: int = 100 if profit > 0 else 0
+		assert_eq(result["operating_profit"], profit)
+		assert_eq(result["interest"], 5)
+		assert_eq(result["repayment"], repayment)
+		assert_eq(result["advance"], 0)
+		assert_eq(ledger.cash, 995 - repayment)
+		assert_eq(account.principal, 100 - repayment)
+
+
+func test_malformed_override_does_not_consume_the_first_advance_notice() -> void:
+	var ledger: Ledger = _boundary_ledger(-30, -30)
+	var account: LoanAccount = _boundary_account(0)
+	var books: Dictionary = ledger.to_dict()
+	var saved: Dictionary = account.to_dict()
+	assert_true(account.settle_day(ledger, 3, TERMS, -30.0).is_empty())
+	assert_eq(ledger.to_dict(), books)
+	assert_eq(account.to_dict(), saved)
+	assert_false(account.has_borrowed)
+	var retry: Dictionary = account.settle_day(ledger, 3, TERMS, -30)
+	assert_false(retry.is_empty())
+	if not retry.is_empty():
+		assert_eq(retry["advance"], 50)
+		assert_true(retry["first_advance"])
+		assert_true(account.has_borrowed)
+		assert_eq(ledger.cash, 20)
+
+
 func test_largest_representable_rounded_advance_succeeds_and_next_shortage_rejects() -> void:
 	var largest_advance: int = LoanAccount.MAX_CURRENCY - LoanAccount.MAX_CURRENCY % TERMS.borrowing_step
 	assert_true(largest_advance < LoanAccount.MAX_CURRENCY,

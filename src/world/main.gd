@@ -18,6 +18,7 @@ const REVIEW_QUOTES: ReviewQuotes = preload("res://data/reviews/quotes.tres")
 const PROGRESSION_TUNING: ProgressionTuning = preload("res://data/balance/progression.tres")
 const VIBE_TUNING: VibeTuning = preload("res://data/balance/vibe.tres")
 const CUSTOMER_TYPES: CustomerTypeCatalogue = preload("res://data/customers/types.tres")
+const MILESTONES: MilestoneSet = preload("res://data/milestones/starter.tres")
 const AUTOSAVE_SLOT: String = "autosave"
 const LOAN_LOCK_REASON: String = "Pay off your bank loan first"
 
@@ -55,6 +56,9 @@ var reputation: ReputationBook = ReputationBook.new()
 var owner_progress: OwnerProgress = OwnerProgress.new(PROGRESSION_TUNING)
 ## Authored arrivals; tests may inject an explicit neutral Regular-only catalogue.
 var customer_type_catalogue: CustomerTypeCatalogue = CUSTOMER_TYPES
+## Durable once-only career state; the catalogue is authored, never saved.
+var milestones: MilestoneTracker = MilestoneTracker.new()
+var milestone_catalogue: MilestoneSet = MILESTONES
 ## Zero is one plate; the two purchased levels carry two and four.
 var tray_level: int = 0
 
@@ -67,12 +71,16 @@ var _loaded_menu: MenuSettings = null
 var _loaded_staff: StaffRoster = null
 var _loaded_plates: PlateLedger = null
 var _loaded_reputation: ReputationBook = null
+var _loaded_milestones: MilestoneTracker = null
 var _loaded_tray_level: int = 0
 var _owner_award_today: Dictionary = {}
 var _owner_unlocks_today: Array[String] = []
 var _owner_award_day: int = 0
 var _closed_report_day: int = 0
 var _loan_notice_day: int = 0
+var _milestones_reached_today: Array[Milestone] = []
+var _milestone_award_day: int = 0
+var _milestone_xp_today: int = 0
 var _report: Control
 var _inspect_panel: InspectPanel
 var _debug_overlay: DebugOverlay
@@ -90,6 +98,9 @@ var _staff_panel: StaffPanel
 var _settings_panel: SettingsPanel
 var _settings_return_to_menu: bool = false
 var _settings_previous_speed: int = 0
+var _goals_panel: GoalsPanel
+var _goals_return_to_menu: bool = false
+var _goals_snapshot: Dictionary = {}
 
 
 ## Builds the restaurant and the read-only view. Safe before tree readiness.
@@ -183,6 +194,12 @@ func _bind_world_presentation() -> void:
 		_menu_panel.enable_requested.connect(_on_menu_enable_requested)
 		_menu_panel.price_requested.connect(_on_menu_price_requested)
 		_menu_panel.settings_requested.connect(_on_menu_settings_requested)
+	if not _menu_panel.goals_requested.is_connected(_on_menu_goals_requested):
+		_menu_panel.goals_requested.connect(_on_menu_goals_requested)
+	_goals_panel = $Overlay/GoalsPanel
+	_dismiss_goals()
+	if not _goals_panel.close_requested.is_connected(_on_goals_close_requested):
+		_goals_panel.close_requested.connect(_on_goals_close_requested)
 	if not $HUD.is_connected(&"menu_pressed", toggle_menu):
 		$HUD.connect(&"menu_pressed", toggle_menu)
 	_settings_panel = $Overlay/SettingsPanel
@@ -215,8 +232,10 @@ func _bind_world_presentation() -> void:
 func _on_header_layout_changed() -> void:
 	var top: float = float($HUD.call("panel_top"))
 	for path: NodePath in [^"Overlay/MenuPanel/Panel", ^"Overlay/StaffPanel/Panel",
-			^"Overlay/EveningReport/Panel", ^"Overlay/DebugOverlay/Panel"]:
+			^"Overlay/EveningReport/Panel", ^"Overlay/DebugOverlay/Panel", ^"Overlay/GoalsPanel/Panel"]:
 		var panel: Control = get_node(path) as Control
+		if path == ^"Overlay/GoalsPanel/Panel":
+			panel.anchor_top = 0.0
 		panel.offset_top = top
 	if _settings_panel != null:
 		_settings_panel.set_panel_top(top)
@@ -261,6 +280,7 @@ func start() -> void:
 	SaveSystem.register("staff", _capture_staff, _restore_staff)
 	SaveSystem.register("plates", _capture_plates, _restore_plates)
 	SaveSystem.register("reviews", _capture_reviews, _restore_reviews)
+	SaveSystem.register("milestones", _capture_milestones, _restore_milestones)
 	var loaded: bool = use_saves and _load_autosave()
 	if not loaded:
 		_skip_next_autosave = use_saves and SaveSystem.list_slots().has(save_slot)
@@ -381,7 +401,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	if key != null and key.pressed and not key.echo:
 		var code: Key = key.physical_keycode if key.physical_keycode != KEY_NONE else key.keycode
 		if code == KEY_ESCAPE:
-			if is_menu_visible():
+			if is_goals_visible():
+				set_goals_visible(false)
+			elif is_menu_visible():
 				set_menu_visible(false)
 			elif _staff_panel != null and _staff_panel.visible:
 				set_staff_visible(false)
@@ -490,6 +512,7 @@ func set_paint_active(active: bool) -> bool:
 		return true
 	if active:
 		build_mode.exit()
+		_dismiss_goals()
 		set_menu_visible(false)
 		set_staff_visible(false)
 		clear_selection()
@@ -639,6 +662,7 @@ func set_build_active(active: bool) -> bool:
 	if not _build_ready:
 		return false
 	if active:
+		_dismiss_goals()
 		if _paint_active:
 			set_paint_active(false)
 		return build_mode.enter()
@@ -698,6 +722,7 @@ func _on_build_changed() -> void:
 	($CameraRig as CameraRig).set_grid_forced(active)
 	if active and not _was_build_active:
 		_build_phase = world.clock.phase
+		_dismiss_goals()
 		set_menu_visible(false)
 		set_staff_visible(false)
 		clear_selection()
@@ -736,6 +761,7 @@ func _on_build_cash_changed(_cash: int, _delta: int, _reason: StringName) -> voi
 		build_mode.refresh()
 	if _staff_panel != null:
 		_staff_panel.set_trays(tray_level, TUNING.tray_prices, Economy.cash, _loan_upgrade_refusal())
+	_refresh_goals()
 
 
 ## Visual item bounds choose the furniture hit; the floor still locates agents
@@ -892,6 +918,7 @@ func _on_inspection_tick(_tick: int) -> void:
 	_inspect_panel.refresh()
 	if _debug_overlay.is_enabled():
 		_debug_overlay.refresh()
+	_refresh_goals()
 
 
 ## Deletes the autosave and restarts the scene from day 1.
@@ -952,6 +979,12 @@ func build_report(day: int) -> DayReport:
 		report.owner_level_before = int(_owner_award_today.get("level_before", owner_progress.level))
 		report.owner_level_after = owner_progress.level
 		report.owner_unlocks = _owner_unlocks_today.duplicate()
+		if _milestone_xp_today > 0:
+			report.owner_xp_breakdown["milestone_xp"] = _milestone_xp_today
+	if _milestone_award_day == day:
+		for goal: Milestone in _milestones_reached_today:
+			report.milestones_reached.append({"title": goal.title,
+				"reward_xp": goal.reward_xp, "reward_cash": goal.reward_cash})
 	return report
 
 
@@ -965,6 +998,12 @@ func _new_game() -> void:
 	_loaded_layout = null
 	_owner_preferences.reset()
 	owner_progress = OwnerProgress.new(PROGRESSION_TUNING)
+	milestones = MilestoneTracker.new()
+	_loaded_milestones = null
+	_milestones_reached_today.clear()
+	_milestone_award_day = 0
+	_milestone_xp_today = 0
+	_dismiss_goals()
 	_owner_award_today.clear()
 	_owner_unlocks_today.clear()
 	_owner_award_day = 0
@@ -997,6 +1036,7 @@ func _load_autosave() -> bool:
 	_loaded_staff = null
 	_loaded_plates = null
 	_loaded_reputation = null
+	_loaded_milestones = null
 	_loaded_tray_level = 0
 	if not SaveSystem.list_slots().has(save_slot):
 		return false
@@ -1008,6 +1048,10 @@ func _load_autosave() -> bool:
 		return false
 	if owner_progress.last_awarded_day >= Clock.sim.day:
 		world.log_event("Autosave owner progress is ahead of this morning; starting a new game")
+		return false
+	var career: MilestoneTracker = _loaded_milestones if _loaded_milestones != null else MilestoneTracker.new()
+	if career.last_evaluated_day >= Clock.sim.day:
+		world.log_event("Autosave career goals are ahead of this morning; starting a new game")
 		return false
 	var layout: ShopLayout = _loaded_layout if _loaded_layout != null else LAYOUT
 	var choices: MenuSettings = _loaded_menu if _loaded_menu != null else MenuSettings.new(_cookable_recipes(layout), owner_progress.level)
@@ -1033,7 +1077,10 @@ func _load_autosave() -> bool:
 			_loaded_plates.total if _loaded_plates != null else TUNING.starting_plates):
 		return false
 	_bind_world_presentation()
-	return sim.assign_owner(_owner_preferences.current_mode())
+	if not sim.assign_owner(_owner_preferences.current_mode()):
+		return false
+	milestones = career
+	return true
 
 
 func _capture_plates() -> Dictionary:
@@ -1059,6 +1106,19 @@ func _restore_reviews(data: Dictionary) -> bool:
 	if not restored.from_dict(data):
 		return false
 	_loaded_reputation = restored
+	return true
+
+
+func _capture_milestones() -> Dictionary:
+	return milestones.to_dict()
+
+
+## Decode into an isolated candidate. Installation waits for full morning success.
+func _restore_milestones(data: Dictionary) -> bool:
+	var candidate: MilestoneTracker = MilestoneTracker.new()
+	if not candidate.from_dict(data):
+		return false
+	_loaded_milestones = candidate
 	return true
 
 
@@ -1184,6 +1244,7 @@ func staff_set_job_priority(id: StringName, job: StringName, value: int) -> bool
 	staff_roster = choices
 	_staff_panel.bind_roster(staff_roster)
 	refresh_presentation()
+	_refresh_goals()
 	return true
 
 
@@ -1255,6 +1316,7 @@ func set_staff_visible(value: bool) -> bool:
 			set_paint_active(false)
 		build_mode.exit()
 		set_menu_visible(false)
+		_dismiss_goals()
 		clear_selection()
 		_report.hide()
 	_staff_panel.set_phase(Clock.sim.phase)
@@ -1380,6 +1442,7 @@ func set_menu_visible(value: bool) -> bool:
 	if _menu_panel == null or (value and not can_edit_menu()):
 		return false
 	if value:
+		_dismiss_goals()
 		if is_settings_visible():
 			_settings_return_to_menu = false
 			if not set_settings_visible(false):
@@ -1397,12 +1460,91 @@ func is_menu_visible() -> bool:
 	return _menu_panel != null and _menu_panel.visible
 
 
+## A view-only panel: opening it neither completes goals nor changes the clock.
+func set_goals_visible(value: bool) -> bool:
+	if _goals_panel == null or (value and (not _started or sim == null)):
+		return false
+	if _goals_panel.visible == value:
+		if value:
+			_refresh_goals(true)
+		return true
+	if value:
+		if is_settings_visible():
+			_settings_return_to_menu = false
+			if not set_settings_visible(false):
+				return false
+		var from_menu: bool = is_menu_visible()
+		if _paint_active:
+			set_paint_active(false)
+		build_mode.exit()
+		set_staff_visible(false)
+		set_menu_visible(false)
+		clear_selection()
+		_report.hide()
+		_goals_return_to_menu = from_menu
+		_goals_panel.show()
+		_refresh_goals(true)
+	else:
+		var return_to_menu: bool = _goals_return_to_menu and can_edit_menu()
+		_dismiss_goals()
+		if return_to_menu:
+			set_menu_visible(true)
+		elif Clock.sim.phase == SimClock.Phase.CLOSED and shown_report != null:
+			_report.call(&"show_report", build_report(Clock.sim.day))
+	return true
+
+
+func is_goals_visible() -> bool:
+	return _goals_panel != null and _goals_panel.visible
+
+
+func _dismiss_goals() -> void:
+	if _goals_panel != null:
+		_goals_panel.hide()
+	_goals_return_to_menu = false
+	_goals_snapshot.clear()
+
+
+func _on_menu_goals_requested() -> void:
+	set_goals_visible(true)
+
+
+func _on_goals_close_requested() -> void:
+	set_goals_visible(false)
+
+
+func _milestone_observation(operating_profit: int) -> MilestoneDay:
+	var observation: MilestoneDay = MilestoneDay.new()
+	observation.day = Clock.sim.day
+	observation.served_today = sim.served_today
+	observation.lost_today = sim.lost_today
+	observation.reputation = reputation.average()
+	observation.operating_profit = operating_profit
+	observation.owner_level = owner_progress.level
+	observation.staff_count = staff_roster.members().size()
+	return observation
+
+
+func _refresh_goals(force: bool = false) -> void:
+	if not is_goals_visible() or sim == null:
+		return
+	var observation: MilestoneDay = _milestone_observation(build_report(Clock.sim.day).operating_profit())
+	var progress: Dictionary[StringName, float] = milestones.progress_values(milestone_catalogue, observation)
+	var completed: Array[StringName] = milestones.completed_ids()
+	var snapshot: Dictionary = {"catalogue": milestone_catalogue.get_instance_id() if milestone_catalogue != null else 0,
+		"completed": completed, "progress": progress, "level": owner_progress.level}
+	if force or snapshot != _goals_snapshot:
+		_goals_panel.set_goals(milestone_catalogue, completed, progress, owner_progress.level)
+		_goals_snapshot = snapshot.duplicate(true)
+
+
 func set_settings_visible(value: bool) -> bool:
 	if _settings_panel == null:
 		return false
 	if _settings_panel.visible == value:
 		return true
 	if value:
+		_dismiss_goals()
 		_settings_return_to_menu = is_menu_visible()
 		_settings_previous_speed = Clock.speed
 		Clock.set_speed(0)
@@ -1491,6 +1633,10 @@ func shop_sell(item_id: int) -> int:
 func _begin_morning() -> void:
 	# The preceding close may unlock a new type; current guests are unaffected.
 	sim.set_customer_level(owner_progress.level)
+	_dismiss_goals()
+	_milestones_reached_today.clear()
+	_milestone_award_day = 0
+	_milestone_xp_today = 0
 	_vibe_experiences.clear()
 	_report.call(&"set_vibe", vibe_result)
 	# Direct sim drivers may finish cleanup after service_closed. Apply that
@@ -1579,6 +1725,7 @@ func _on_staff_task_completed(task: SimTask) -> void:
 func _on_review_recorded(_row: Dictionary) -> void:
 	# The display may change during service, but the day's arrival gap does not.
 	$HUD.set_reputation(reputation.average(), reputation.scores().size())
+	_refresh_goals()
 
 
 ## Service is over and every guest's departure is recorded: close the books.
@@ -1587,13 +1734,9 @@ func _on_service_closed(day: int) -> void:
 		return
 	_closed_report_day = day
 	_charge_closing_costs()
-	# Financing balances the books but never earns or removes owner profit XP.
+	# Capture business profit before milestone cash or financing enters the books.
 	var operating_profit: int = Economy.ledger.day_profit(day)
-	var settlement: Dictionary = Economy.settle_loan_day(day)
-	if settlement.get("first_advance", false):
-		_loan_notice_day = day
 	staff_roster.close_growth_day()
-	shown_report = build_report(day)
 	var five_star_reviews: int = 0
 	for row: Dictionary in sim.reviews_today:
 		if int(row.get("stars", 0)) == 5:
@@ -1603,18 +1746,55 @@ func _on_service_closed(day: int) -> void:
 		int(sim.leave_reasons_today.get(&"happy", 0)), operating_profit, five_star_reviews)
 	if not _owner_award_today.is_empty():
 		_owner_award_day = day
+	# The goal snapshot sees ordinary day XP, but not its own rewards. Stage
+	# every goal/bonus before installing any milestone completion or paying cash.
+	_award_milestones(day, operating_profit)
+	# Earned bonus cash is available to avoid needless borrowing, while the
+	# repayment share still uses the captured pre-bonus business profit.
+	var settlement: Dictionary = Economy.settle_loan_day(day, operating_profit)
+	if settlement.get("first_advance", false):
+		_loan_notice_day = day
+	if _owner_award_day == day:
 		_owner_unlocks_today = _unlocked_at_levels(level_before, owner_progress.level)
 		menu_settings.set_owner_level(owner_progress.level)
 		sim.set_customer_level(owner_progress.level)
 		shop_editor.set_owner_level(owner_progress.level)
 		_build_catalogue.set_owner_level(owner_progress.level)
 		$HUD.set_owner_progress(owner_progress.level, owner_progress.xp_into_level(), owner_progress.xp_in_level())
-		shown_report = build_report(day)
+	shown_report = build_report(day)
 	_report.call(&"show_report", shown_report)
-	if _paint_active or is_staff_visible():
+	if _paint_active or is_staff_visible() or is_goals_visible():
 		_report.hide()
 	if is_staff_visible():
 		_staff_panel.refresh()
+	_refresh_goals()
+
+
+func _award_milestones(day: int, operating_profit: int) -> void:
+	var staged: MilestoneSettlement = MilestoneSettlement.prepare(milestones,
+		milestone_catalogue, _milestone_observation(operating_profit), owner_progress, Economy.cash)
+	if staged == null:
+		world.log_event("Career goal rewards could not be applied today")
+		return
+	# Keep the live progress model stable for existing session consumers. The
+	# detached batch is already validated; refuse installation before any goal
+	# completion or payment if its owner snapshot cannot be applied.
+	if not owner_progress.from_dict(staged.owner_progress.to_dict()):
+		world.log_event("Career goal rewards could not be applied today")
+		return
+	milestones = staged.tracker
+	_milestones_reached_today.assign(staged.reached)
+	_milestone_award_day = day
+	_milestone_xp_today = staged.xp_reward
+	if staged.xp_reward > 0:
+		if _owner_award_today.is_empty():
+			_owner_award_today = {"happy_xp": 0, "profit_xp": 0, "review_xp": 0,
+				"total_xp": 0, "level_before": int(staged.owner_xp_result["level_before"])}
+		_owner_award_today["total_xp"] = int(_owner_award_today["total_xp"]) + staged.xp_reward
+		_owner_award_today["level_after"] = owner_progress.level
+		_owner_award_day = day
+	if staged.cash_reward > 0:
+		Economy.add_cash(staged.cash_reward, Ledger.MILESTONE_BONUS)
 
 
 ## Only authored display names enter the public level-up banner.
@@ -1631,6 +1811,7 @@ func _unlocked_at_levels(previous_level: int, current_level: int) -> Array[Strin
 
 
 func _on_day_phase_changed(_day: int, phase: int) -> void:
+	_dismiss_goals()
 	build_mode.exit()
 	if _build_ready:
 		_update_build_controls()

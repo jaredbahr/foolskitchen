@@ -13,6 +13,7 @@
 [ext_resource type="PackedScene" path="res://src/ui/menu_panel.tscn" id="9_menu"]
 [ext_resource type="PackedScene" path="res://src/ui/staff_panel.tscn" id="11_staff"]
 [ext_resource type="PackedScene" path="res://src/ui/settings_panel.tscn" id="12_settings"]
+[ext_resource type="PackedScene" path="res://src/ui/goals_panel.tscn" id="13_goals"]
 [ext_resource type="PackedScene" path="res://src/world/lighting_rig.tscn" id="13_lighting"]
 
 [node name="Main" type="Node3D"]
@@ -48,3 +49,5 @@ layer = 10
 [node name="StaffPanel" parent="Overlay" instance=ExtResource("11_staff")]
 
 [node name="SettingsPanel" parent="Overlay" instance=ExtResource("12_settings")]
+
+[node name="GoalsPanel" parent="Overlay" instance=ExtResource("13_goals")]

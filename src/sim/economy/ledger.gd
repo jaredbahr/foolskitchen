@@ -11,6 +11,7 @@ const UPGRADES: StringName = &"upgrades"
 const BANK_LOAN: StringName = &"bank_loan"
 const LOAN_INTEREST: StringName = &"loan_interest"
 const LOAN_REPAYMENT: StringName = &"loan_repayment"
+const MILESTONE_BONUS: StringName = &"milestone_bonus"
 const OTHER: StringName = &"other"
 const HISTORY_DAYS: int = 30
 

@@ -87,9 +87,10 @@ func can_buy_upgrade(amount: int) -> bool:
 ## Every bank flow is recorded under its own ledger category. Once all entries
 ## are applied, emit their running balances in transaction order for the HUD;
 ## callbacks that read Economy.cash see the already-settled final balance.
-func settle_loan_day(day: int) -> Dictionary:
+## Optional pre-bonus profit changes only the repayment base, never actual cash.
+func settle_loan_day(day: int, repayment_profit: Variant = null) -> Dictionary:
 	var running_cash: int = cash
-	var result: Dictionary = loan.settle_day(ledger, day, LOAN_TERMS)
+	var result: Dictionary = loan.settle_day(ledger, day, LOAN_TERMS, repayment_profit)
 	for movement: Dictionary in result.get("movements", []):
 		var amount: int = int(movement["amount"])
 		var reason: StringName = movement["category"]

@@ -19,6 +19,7 @@ extends SceneTree
 ##   --paint     show a painted morning shop using the production paint controls
 ##   --door-queue  zoom the existing camera onto a real queue, or its empty entry
 ##   --loan-review --speed=0 --frames=12,90  explicit financial-fixture UI evidence
+##   --milestone-review --speed=0 --frames=12,90  authored goals and close reward evidence
 ##   --catalogue-review=rustic|modern --speed=0 --frames=90,120  furnishing fixture
 ## Ordinary captures record real moods, markers and seeds without a fixture.
 
@@ -50,6 +51,21 @@ const VIBE_UID_SOURCES: Array[String] = [
 	"res://tests/sim/test_vibe_model.gd", "res://src/sim/vibe/vibe_inputs.gd",
 	"res://tests/sim/test_vibe_effects.gd", "res://tests/sim/test_vibe_swatches.gd",
 	"res://src/ui/vibe_meter.gd", "res://tests/ui/test_vibe_meter.gd", "res://tests/world/test_vibe_session.gd",
+]
+const MILESTONE_UID_SOURCES: Array[String] = [
+	"res://src/sim/progression/milestone.gd",
+	"res://src/sim/progression/milestone_day.gd",
+	"res://src/sim/progression/milestone_set.gd",
+	"res://src/sim/progression/milestone_tracker.gd",
+	"res://src/sim/progression/milestone_settlement.gd",
+	"res://src/ui/goals_panel.gd",
+	"res://tests/core/test_milestone_loan_accounting.gd",
+	"res://tests/sim/test_milestone_settlement.gd",
+	"res://tests/sim/test_milestone_tracker.gd",
+	"res://tests/ui/test_goals_panel.gd",
+	"res://tests/world/test_milestone_session.gd",
+	"res://tests/tools/test_milestone_screenshot.gd",
+	"res://tools/screenshot.gd",
 ]
 
 var _frames: int = 0
@@ -84,6 +100,8 @@ var _paint: bool = false
 var _door_queue: bool = false
 var _loan_review: bool = false
 var _loan_fixture: Dictionary = {}
+var _milestone_review: bool = false
+var _milestone_fixture: Dictionary = {}
 var _catalogue_profile: StringName = &""
 var _catalogue_fixture: Dictionary = {}
 var _build_pointer: Vector2 = Vector2.ZERO
@@ -101,6 +119,11 @@ func _initialize() -> void:
 		_fail_capture(loan_options["error"])
 		return
 	_loan_review = loan_options["enabled"]
+	var milestone_options: Dictionary = milestone_review_options(OS.get_cmdline_user_args())
+	if not String(milestone_options["error"]).is_empty():
+		_fail_capture(milestone_options["error"])
+		return
+	_milestone_review = milestone_options["enabled"]
 	var catalogue_options: Dictionary = catalogue_review_options(OS.get_cmdline_user_args())
 	if not String(catalogue_options["error"]).is_empty():
 		_fail_capture(catalogue_options["error"])
@@ -226,7 +249,7 @@ func _initialize() -> void:
 	# Preserve capture isolation when the integrated game session supports saves.
 	if "use_saves" in _main:
 		_main.set("use_saves", false)
-	if _report_requested and "new_game_seed_override" in _main:
+	if (_report_requested or _milestone_review) and "new_game_seed_override" in _main:
 		_main.set("new_game_seed_override", 1)
 	root.add_child(_main)
 
@@ -260,6 +283,454 @@ static func loan_review_options(arguments: PackedStringArray) -> Dictionary:
 	if speeds != 1 or frames != 1 or scenes > 1:
 		result["error"] = "--loan-review requires one --speed=0 and one --frames=12,90"
 	return result
+
+
+## Milestone review has exactly two images and one deterministic Main scene.
+## `--out` may repeat because the shell wrapper supplies it too.
+static func milestone_review_options(arguments: PackedStringArray) -> Dictionary:
+	var result: Dictionary = {"enabled": false, "error": ""}
+	for argument: String in arguments:
+		if argument.begins_with("--milestone-review"):
+			if argument != "--milestone-review" or result["enabled"]:
+				result["error"] = "--milestone-review is a single flag without a value"
+				return result
+			result["enabled"] = true
+	if not result["enabled"]:
+		return result
+	var speeds: int = 0
+	var frames: int = 0
+	var scenes: int = 0
+	for argument: String in arguments:
+		if argument == "--milestone-review" or argument.begins_with("--out="):
+			continue
+		if argument == "--speed=0":
+			speeds += 1
+		elif argument == "--frames=12,90":
+			frames += 1
+		elif argument == "--scene=res://src/world/main.tscn":
+			scenes += 1
+		else:
+			result["error"] = "--milestone-review requires paused Main frames 12,90 without other options"
+			return result
+	if speeds != 1 or frames != 1 or scenes > 1:
+		result["error"] = "--milestone-review requires one --speed=0 and one --frames=12,90"
+	return result
+
+
+## Uses the real Menu -> Goals native controls; the queried UI never awards state.
+static func prepare_milestone_review(main: Node, context_root: Node) -> Dictionary:
+	var fixture: Dictionary = {"kind": "goals_close_data_fixture_not_playthrough_or_balance_proof",
+		"error": "", "requested_service_ticks": 3, "advance_frame": 24}
+	var clock: Node = context_root.get_node_or_null("Clock")
+	var time: SimClock = clock.get("sim") as SimClock if clock != null else null
+	var world: SimWorld = main.get("world") as SimWorld if "world" in main else null
+	var sim: RestaurantSim = main.get("sim") as RestaurantSim if "sim" in main else null
+	var goals: GoalsPanel = main.get_node_or_null("Overlay/GoalsPanel") as GoalsPanel
+	var menu: MenuPanel = main.get_node_or_null("Overlay/MenuPanel") as MenuPanel
+	var catalogue: MilestoneSet = main.get("milestone_catalogue") as MilestoneSet if "milestone_catalogue" in main else null
+	var career: MilestoneTracker = main.get("milestones") as MilestoneTracker if "milestones" in main else null
+	var owner: OwnerProgress = main.get("owner_progress") as OwnerProgress if "owner_progress" in main else null
+	var ledger: Ledger = null
+	var economy: Node = context_root.get_node_or_null("Economy")
+	if economy != null:
+		ledger = economy.get("ledger") as Ledger
+	if time == null or world == null or sim == null or goals == null or menu == null \
+			or catalogue == null or career == null or owner == null or ledger == null \
+			or not catalogue.is_valid() or world.clock != time or time.day != 1 \
+			or time.phase != SimClock.Phase.MORNING or time.tick != 0 or world.now != 0 \
+			or clock.get("speed") != 0 or owner.level != 1 or not career.completed_ids().is_empty() \
+			or sim.served_today != 0 or sim.lost_today != 0 \
+			or not ("use_saves" in main) or main.get("use_saves") != false \
+			or not main.has_method("set_menu_visible") or not main.has_method("is_goals_visible"):
+		fixture["error"] = "milestone review requires fresh paused unsaved Main at day-one morning"
+		return fixture
+	if not main.call("set_menu_visible", true) or not menu.visible:
+		fixture["error"] = "milestone review could not open the native morning Menu"
+		return fixture
+	var goals_button: Button = menu.get_node_or_null("%GoalsButton") as Button
+	if goals_button == null or goals_button.disabled or not goals_button.visible:
+		fixture["error"] = "milestone review could not find the enabled native Menu Goals button"
+		return fixture
+	goals_button.pressed.emit()
+	if not main.call("is_goals_visible") or menu.visible:
+		fixture["error"] = "milestone review did not open Goals through Menu"
+		return fixture
+	var expected: Array[String] = []
+	var goals_data: Array[Dictionary] = []
+	var target_goal: Milestone = null
+	for goal: Milestone in catalogue.milestones:
+		if goal == null or not goal.is_valid():
+			continue
+		goals_data.append(_milestone_definition_record(goal))
+		if target_goal == null and goal.condition == Milestone.Condition.SERVED_TODAY \
+				and is_equal_approx(goal.target, 10.0):
+			target_goal = goal
+		if goal.unlock_level <= owner.level and expected.size() < GoalsPanel.ACTIVE_GOAL_LIMIT:
+			expected.append(String(goal.id))
+	if expected.size() != GoalsPanel.ACTIVE_GOAL_LIMIT or target_goal == null \
+			or target_goal.id != StringName(expected[0]) \
+			or not goals.active_goal_ids().has(StringName(expected[0])):
+		fixture["error"] = "milestone review requires three authored unlocked goals and a served-today target of ten"
+		return fixture
+	fixture.merge({"expected_active_ids": expected, "catalogue": goals_data,
+		"target_goal": _milestone_definition_record(target_goal),
+		"starting_cash": ledger.cash, "starting_xp": owner.total_xp,
+		"starting_day_profit": ledger.day_profit(time.day),
+		"starting_tracker": career.to_dict(), "starting_tick": world.now})
+	return fixture
+
+
+## Seeds only the authored close counter, then runs the real Main service close.
+## This synthetic counter fixture is not a served-guest playthrough or balance proof.
+static func advance_milestone_review(main: Node, context_root: Node, fixture: Dictionary) -> Dictionary:
+	var result: Dictionary = fixture.duplicate(true)
+	var clock: Node = context_root.get_node_or_null("Clock")
+	var time: SimClock = clock.get("sim") as SimClock if clock != null else null
+	var world: SimWorld = main.get("world") as SimWorld if "world" in main else null
+	var sim: RestaurantSim = main.get("sim") as RestaurantSim if "sim" in main else null
+	var menu: MenuPanel = main.get_node_or_null("Overlay/MenuPanel") as MenuPanel
+	var goals: GoalsPanel = main.get_node_or_null("Overlay/GoalsPanel") as GoalsPanel
+	if fixture.get("kind") != "goals_close_data_fixture_not_playthrough_or_balance_proof" \
+			or fixture.get("error") != "" or time == null or world == null or sim == null \
+			or menu == null or goals == null or time.phase != SimClock.Phase.MORNING \
+			or world.now != 0 or clock.get("speed") != 0 or not ("use_saves" in main) \
+			or main.get("use_saves") != false or fixture.get("advance_frame") != 24:
+		result["error"] = "milestone review close fixture requires fresh paused unsaved Main"
+		return result
+	var goal_data: Dictionary = fixture.get("target_goal", {})
+	var catalogue: MilestoneSet = main.get("milestone_catalogue") as MilestoneSet if "milestone_catalogue" in main else null
+	var goal: Milestone = catalogue.by_id(StringName(goal_data.get("id", ""))) if catalogue != null else null
+	if goal == null or String(goal.id) != String(fixture.get("expected_active_ids", [""])[0]) \
+			or goal.condition != Milestone.Condition.SERVED_TODAY \
+			or not is_equal_approx(goal.target, 10.0) or goals.active_goal_ids().is_empty():
+		result["error"] = "milestone close fixture no longer matches the authored served-today goal"
+		return result
+	if goals.visible:
+		var close_button: Button = goals.get_node_or_null("Panel/Content/Header/Close") as Button
+		if close_button == null:
+			result["error"] = "milestone review cannot close the real Goals panel"
+			return result
+		close_button.pressed.emit()
+	if menu.visible and not bool(main.call("set_menu_visible", false)):
+		result["error"] = "milestone review cannot close the Menu before service"
+		return result
+	if goals.visible or menu.visible or sim.customers().size() != 0:
+		result["error"] = "milestone review requires no active customer or blocking panel before its close fixture"
+		return result
+	var before_tick: int = world.now
+	var before_xp: int = (main.get("owner_progress") as OwnerProgress).total_xp
+	var before_completed: Array[StringName] = (main.get("milestones") as MilestoneTracker).completed_ids()
+	var before_cash: int = (context_root.get_node("Economy").get("ledger") as Ledger).cash
+	# Synthetic close-data only: no guest is paid, no shared goal Resource is edited,
+	# and no tracker/reward is assigned. Main settles this through its ordinary close.
+	sim.spawner.min_gap = 100000
+	sim.spawner.max_gap = 100000
+	sim.spawner.reset()
+	sim.served_today = roundi(goal.target)
+	sim.lost_today = 0
+	time.open_ticks = 1
+	time.last_orders_max_ticks = 1
+	if not time.start_service():
+		result["error"] = "milestone review fixture could not start the real short service"
+		return result
+	main.call("run_ticks", 3)
+	var actual_ticks: int = world.now - before_tick
+	result.merge({"fixture_served_counter": sim.served_today,
+		"fixture_lost_counter": sim.lost_today, "actual_ticks": actual_ticks,
+		"close_phase": int(time.phase), "closed_day": time.day,
+		"before_xp": before_xp, "before_cash": before_cash,
+		"before_completed": before_completed, "actual_close_frame": 24,
+		"fixture_disclosure": "Synthetic close-data fixture; this is not a served-guest playthrough or balance proof."})
+	if time.phase != SimClock.Phase.CLOSED or actual_ticks < 1 or actual_ticks > 3:
+		result["error"] = "real short Main service did not close within three simulation ticks"
+	return result
+
+
+static func _milestone_definition_record(goal: Milestone) -> Dictionary:
+	return {"id": String(goal.id), "title": goal.title, "description": goal.description,
+		"condition": goal.condition, "target": goal.target, "reward_xp": goal.reward_xp,
+		"reward_cash": goal.reward_cash, "unlock_level": goal.unlock_level}
+
+
+static func milestone_review_evidence(main: Node, context_root: Node, frame: int) -> Dictionary:
+	var clock: Node = context_root.get_node_or_null("Clock")
+	var economy: Node = context_root.get_node_or_null("Economy")
+	var time: SimClock = clock.get("sim") as SimClock if clock != null else null
+	var world: SimWorld = main.get("world") as SimWorld if "world" in main else null
+	var sim: RestaurantSim = main.get("sim") as RestaurantSim if "sim" in main else null
+	var tracker: MilestoneTracker = main.get("milestones") as MilestoneTracker if "milestones" in main else null
+	var catalogue: MilestoneSet = main.get("milestone_catalogue") as MilestoneSet if "milestone_catalogue" in main else null
+	var owner: OwnerProgress = main.get("owner_progress") as OwnerProgress if "owner_progress" in main else null
+	var ledger: Ledger = economy.get("ledger") as Ledger if economy != null else null
+	var goals: GoalsPanel = main.get_node_or_null("Overlay/GoalsPanel") as GoalsPanel
+	var report_panel: Control = main.get_node_or_null("Overlay/EveningReport") as Control
+	if time == null or world == null or sim == null or tracker == null or catalogue == null or owner == null \
+			or ledger == null or goals == null or report_panel == null:
+		return {"available": false}
+	var completed: Array[String] = []
+	for id: StringName in tracker.completed_ids():
+		completed.append(String(id))
+	var expected: Array[String] = []
+	for goal: Milestone in catalogue.milestones:
+		if goal != null and goal.is_valid() and not tracker.is_completed(goal.id) \
+				and goal.unlock_level <= owner.level and expected.size() < GoalsPanel.ACTIVE_GOAL_LIMIT:
+			expected.append(String(goal.id))
+	var goals_panel: Dictionary = _milestone_goals_panel_evidence(goals)
+	var report: DayReport = main.get("shown_report") as DayReport if "shown_report" in main else null
+	var report_evidence: Dictionary = _milestone_report_evidence(main, report_panel, report, ledger)
+	return {"available": true, "frame": frame, "day": time.day, "phase": int(time.phase),
+		"viewport_size": [int(main.get_viewport().get_visible_rect().size.x), int(main.get_viewport().get_visible_rect().size.y)],
+		"clock_tick": time.tick, "clock_speed": clock.get("speed"), "world_tick": world.now,
+		"served_today": sim.served_today, "lost_today": sim.lost_today,
+		"live_customers": sim.customers().size(),
+		"use_saves": main.get("use_saves") if "use_saves" in main else null,
+		"owner_level": owner.level, "owner_xp": owner.total_xp,
+		"tracker": tracker.to_dict(), "completed_ids": completed,
+		"catalogue": _milestone_catalogue_records(catalogue), "expected_active_ids": expected,
+		"goals_panel": goals_panel, "report": report_evidence,
+		"ledger_cash": ledger.cash, "ledger_day_totals": _milestone_ledger_totals(ledger, time.day),
+		"ledger_day_profit": ledger.day_profit(time.day),
+		"milestone_bonus_entries": _milestone_bonus_entries(ledger, time.day)}
+
+
+static func _milestone_catalogue_records(catalogue: MilestoneSet) -> Array[Dictionary]:
+	var records: Array[Dictionary] = []
+	for goal: Milestone in catalogue.milestones:
+		if goal != null and goal.is_valid():
+			records.append(_milestone_definition_record(goal))
+	return records
+
+
+static func _milestone_goals_panel_evidence(goals: GoalsPanel) -> Dictionary:
+	var panel: Control = goals.get_node_or_null("Panel") as Control
+	var scroll: ScrollContainer = goals.get_node_or_null("Panel/Content/Scroll") as ScrollContainer
+	var active_heading: Label = goals.get_node_or_null("Panel/Content/Scroll/List/ActiveHeading") as Label
+	var rows: VBoxContainer = goals.get_node_or_null("Panel/Content/Scroll/List/ActiveRows") as VBoxContainer
+	if panel == null or scroll == null or active_heading == null or rows == null:
+		return {"available": false}
+	var cards: Array[Dictionary] = []
+	for card_node: Node in rows.get_children():
+		var card: Control = card_node as Control
+		if card == null:
+			return {"available": false}
+		var fields: Dictionary = {}
+		for field: String in ["Title", "Description", "ProgressText", "ProgressBar", "Reward"]:
+			var control: Control = card.get_node_or_null("Body/" + field) as Control
+			fields[field] = _loan_control_evidence(control) if control != null else {"visible": false}
+		cards.append({"name": card.name, "goal_id": String(card.get_meta(&"goal_id", &"")),
+			"completed": bool(card.get_meta(&"completed", false)), "native": _loan_control_evidence(card),
+			"fields": fields})
+	return {"available": true, "visible": goals.is_visible_in_tree(),
+		"menu_visible": (goals.get_parent().get_node("MenuPanel") as Control).visible,
+		"panel": _loan_control_evidence(panel), "scroll": _loan_control_evidence(scroll),
+		"active_heading": {"text": active_heading.text, "visible": active_heading.is_visible_in_tree(),
+			"native": _loan_control_evidence(active_heading)}, "cards": cards,
+		"active_ids": goals.active_goal_ids().map(func(id: StringName) -> String: return String(id)),
+		"completed_ids": goals.completed_goal_ids().map(func(id: StringName) -> String: return String(id)),
+		"scroll_vertical": scroll.scroll_vertical}
+
+
+static func _milestone_report_evidence(_main: Node, panel: Control, report: DayReport, ledger: Ledger) -> Dictionary:
+	var heading: Label = panel.get_node_or_null("Panel/Scroll/Content/MilestoneHeading") as Label
+	var rows: VBoxContainer = panel.get_node_or_null("Panel/Scroll/Content/MilestoneRows") as VBoxContainer
+	var income: GridContainer = panel.get_node_or_null("Panel/Scroll/Content/Finances/Income/IncomeRows") as GridContainer
+	var xp_rows: GridContainer = panel.get_node_or_null("Panel/Scroll/Content/OwnerXPRows") as GridContainer
+	var title_evidence: Dictionary = {"available": false}
+	var reward_evidence: Dictionary = {"available": false}
+	if rows != null and rows.get_child_count() > 0:
+		var row: Control = rows.get_child(0) as Control
+		if row != null and row.get_child_count() >= 2:
+			var title: Label = row.get_child(0) as Label
+			var reward: Label = row.get_child(1) as Label
+			if title != null and reward != null:
+				title_evidence = {"text": title.text, "visible": title.is_visible_in_tree(),
+					"native": _loan_control_evidence(title)}
+				reward_evidence = {"text": reward.text, "visible": reward.is_visible_in_tree(),
+					"native": _loan_control_evidence(reward)}
+	var bonus: Dictionary = {"available": false}
+	if income != null:
+		for index: int in range(0, income.get_child_count() - 1, 2):
+			var label: Label = income.get_child(index) as Label
+			var amount: Label = income.get_child(index + 1) as Label
+			if label != null and amount != null and label.text == "Milestone bonus":
+				bonus = {"title": _loan_control_evidence(label), "amount": _loan_control_evidence(amount)}
+	var xp: Dictionary = {"available": false}
+	if xp_rows != null:
+		for index: int in range(0, xp_rows.get_child_count() - 1, 2):
+			var label: Label = xp_rows.get_child(index) as Label
+			var amount: Label = xp_rows.get_child(index + 1) as Label
+			if label != null and amount != null and label.text == "Career goals":
+				xp = {"title": _loan_control_evidence(label), "amount": _loan_control_evidence(amount)}
+	return {"visible": panel.is_visible_in_tree(), "report_present": report != null,
+		"report_day": report.day if report != null else 0,
+		"report_milestones": report.milestones_reached.duplicate(true) if report != null else [],
+		"milestone_xp": int(report.owner_xp_breakdown.get("milestone_xp", 0)) if report != null else 0,
+		"total_xp": int(report.owner_xp_breakdown.get("total_xp", 0)) if report != null else 0,
+		"heading": {"text": heading.text, "visible": heading.is_visible_in_tree(),
+			"native": _loan_control_evidence(heading)} if heading != null else {"visible": false},
+		"row_count": rows.get_child_count() if rows != null else 0,
+		"row": _loan_control_evidence(rows.get_child(0) as Control) if rows != null and rows.get_child_count() > 0 else {},
+		"title": title_evidence, "reward": reward_evidence,
+		"milestone_bonus": bonus, "career_xp": xp,
+		"ledger_bonus": _milestone_bonus_total(ledger, report.day) if report != null else 0}
+
+
+static func _milestone_ledger_totals(ledger: Ledger, day: int) -> Dictionary:
+	var totals: Dictionary = {}
+	for category: StringName in ledger.day_totals(day):
+		totals[String(category)] = int(ledger.day_totals(day)[category])
+	return totals
+
+
+static func _milestone_bonus_entries(ledger: Ledger, day: int) -> Array[Dictionary]:
+	var entries: Array[Dictionary] = []
+	for entry: Dictionary in ledger.entries_for_day(day):
+		if entry["category"] == Ledger.MILESTONE_BONUS:
+			entries.append({"day": int(entry["day"]), "category": String(entry["category"]), "amount": int(entry["amount"])})
+	return entries
+
+
+static func _milestone_bonus_total(ledger: Ledger, day: int) -> int:
+	return int(ledger.day_totals(day).get(Ledger.MILESTONE_BONUS, 0))
+
+
+static func _milestone_native_rect_valid(control: Dictionary) -> bool:
+	if control.get("visible") != true or control.get("inside_clip") != true:
+		return false
+	var rect: Variant = control.get("rect")
+	if not rect is Array or rect.size() != 4:
+		return false
+	for value: Variant in rect:
+		if not (value is int or value is float) or not is_finite(float(value)):
+			return false
+	return float(rect[2]) > 0.0 and float(rect[3]) > 0.0
+
+
+static func milestone_review_valid(state: Dictionary, frame: int, fixture: Dictionary) -> bool:
+	if fixture.get("kind") != "goals_close_data_fixture_not_playthrough_or_balance_proof" \
+			or fixture.get("error") != "" or state.get("available") != true \
+			or not state.has("goals_panel") or not state["goals_panel"] is Dictionary \
+			or not state.has("report") or not state["report"] is Dictionary \
+			or not state.has("catalogue") or not state["catalogue"] is Array \
+			or not state.has("completed_ids") or not state["completed_ids"] is Array \
+			or not state.has("tracker") or not state["tracker"] is Dictionary \
+			or not state.has("ledger_day_totals") or not state["ledger_day_totals"] is Dictionary \
+			or not state.has("milestone_bonus_entries") or not state["milestone_bonus_entries"] is Array \
+			or state.get("frame") != frame or state.get("clock_speed") != 0 \
+			or state.get("viewport_size") != [SETTINGS_CAPTURE_SIZE.x, SETTINGS_CAPTURE_SIZE.y] \
+			or state.get("use_saves") != false or state.get("owner_level") < 1:
+		return false
+	var expected_catalogue: Array[Dictionary] = fixture.get("catalogue", [])
+	var actual_catalogue: Array[Dictionary] = state.get("catalogue", [])
+	if expected_catalogue.size() != actual_catalogue.size() or expected_catalogue.size() < 3:
+		return false
+	for index: int in range(expected_catalogue.size()):
+		if expected_catalogue[index] != actual_catalogue[index]:
+			return false
+	if frame == 12:
+		var goals: Dictionary = state["goals_panel"]
+		if not goals.has("active_heading") or not goals["active_heading"] is Dictionary \
+				or not goals.has("cards") or not goals["cards"] is Array \
+				or not goals.has("active_ids") or not goals["active_ids"] is Array \
+				or not goals.has("completed_ids") or not goals["completed_ids"] is Array:
+			return false
+		if state["phase"] != SimClock.Phase.MORNING or state["world_tick"] != 0 \
+				or state["day"] != 1 or not state["completed_ids"].is_empty() \
+				or state["tracker"] != fixture.get("starting_tracker") \
+				or state["owner_xp"] != int(fixture.get("starting_xp", -1)) \
+				or state["ledger_cash"] != int(fixture.get("starting_cash", -1)) \
+				or not state["milestone_bonus_entries"].is_empty() \
+				or goals.get("available") != true or goals.get("visible") != true \
+				or goals.get("menu_visible") != false or goals.get("scroll_vertical") != 0 \
+				or goals["active_heading"].get("visible") != true \
+				or goals["active_heading"].get("text") != "Next goals" \
+				or goals["active_ids"] != fixture.get("expected_active_ids") \
+				or goals["completed_ids"].size() != 0 or goals["cards"].size() != 3 \
+				or state["report"].get("visible") != false \
+				or not _milestone_native_rect_valid(goals["panel"]) \
+				or not _milestone_native_rect_valid(goals["scroll"]) \
+				or not _milestone_native_rect_valid(goals["active_heading"]["native"]):
+			return false
+		for index: int in range(3):
+			var card: Dictionary = goals["cards"][index]
+			if card.get("completed") != false or card.get("goal_id") != fixture["expected_active_ids"][index] \
+					or not _milestone_native_rect_valid(card["native"]):
+				return false
+			var definition: Dictionary = {}
+			for row: Dictionary in expected_catalogue:
+				if row.get("id") == card.get("goal_id"):
+					definition = row
+					break
+			if definition.is_empty() or card["fields"]["Title"].get("text") != definition.get("title") \
+					or card["fields"]["Description"].get("text") != definition.get("description") \
+					or card["fields"]["Reward"].get("text") != "Reward: %d XP   Cash: $%d" % [int(definition.get("reward_xp", -1)), int(definition.get("reward_cash", -1))] \
+					or String(card["fields"]["ProgressText"].get("text", "")).is_empty():
+				return false
+			for field: String in ["Title", "Description", "ProgressText", "ProgressBar", "Reward"]:
+				if not _milestone_native_rect_valid(card["fields"][field]):
+					return false
+		return true
+	if frame != 90:
+		return false
+	var goal: Dictionary = fixture.get("target_goal", {})
+	var goals_panel: Dictionary = state["goals_panel"]
+	var report: Dictionary = state["report"]
+	if not report.has("report_milestones") or not report["report_milestones"] is Array \
+			or not report.has("heading") or not report["heading"] is Dictionary \
+			or not report.has("title") or not report["title"] is Dictionary \
+			or not report.has("reward") or not report["reward"] is Dictionary \
+			or not report.has("milestone_bonus") or not report["milestone_bonus"] is Dictionary \
+			or not report.has("career_xp") or not report["career_xp"] is Dictionary:
+		return false
+	if int(fixture.get("actual_close_frame", -1)) != 24 \
+			or int(fixture.get("actual_ticks", 0)) < 1 or int(fixture.get("actual_ticks", 0)) > 3 \
+			or fixture.get("fixture_served_counter") != 10 or fixture.get("fixture_lost_counter") != 0 \
+			or fixture.get("fixture_disclosure") != "Synthetic close-data fixture; this is not a served-guest playthrough or balance proof." \
+			or int(goal.get("condition", -1)) != Milestone.Condition.SERVED_TODAY \
+			or not is_equal_approx(float(goal.get("target", 0.0)), 10.0):
+		return false
+	var expected_reward: Dictionary = {"title": goal.get("title", ""),
+		"reward_xp": goal.get("reward_xp", 0), "reward_cash": goal.get("reward_cash", 0)}
+	var actual_milestone: Dictionary = report["report_milestones"][0] if report["report_milestones"].size() == 1 else {}
+	var earned: int = int(goal.get("reward_cash", -1))
+	var report_total_xp: int = int(report.get("total_xp", -1))
+	if state["phase"] != SimClock.Phase.CLOSED or state["day"] != 1 \
+			or state["clock_tick"] < 1 or state["world_tick"] < 1 \
+			or state["served_today"] != 10 or state["lost_today"] != 0 or state["live_customers"] != 0 \
+			or goals_panel.get("available") != true or goals_panel.get("visible") != false \
+			or goals_panel.get("menu_visible") != false \
+			or report.get("visible") != true or report.get("report_present") != true \
+			or report.get("report_day") != 1 or report.get("heading", {}).get("visible") != true \
+			or report.get("heading", {}).get("text") != "Milestone reached!" \
+			or actual_milestone != expected_reward or report.get("row_count") != 1 \
+			or report.get("title", {}).get("text") != goal.get("title") \
+			or report.get("reward", {}).get("text") != "Reward: +%d XP, %s" % [int(goal.get("reward_xp", 0)), Fmt.money(int(goal.get("reward_cash", 0)))] \
+			or report.get("milestone_xp") != int(goal.get("reward_xp", 0)) \
+			or report_total_xp < int(goal.get("reward_xp", 0)) \
+			or report.get("ledger_bonus") != earned \
+			or int(state["ledger_day_totals"].get(String(Ledger.MILESTONE_BONUS), 0)) != earned \
+			or not state["completed_ids"].has(String(goal.get("id", ""))) \
+			or state["owner_xp"] != int(fixture.get("starting_xp", 0)) + report_total_xp \
+			or report.get("total_xp") < 0 \
+			or state["ledger_cash"] != int(fixture.get("starting_cash", 0)) \
+				+ int(state["ledger_day_profit"]) - int(fixture.get("starting_day_profit", 0)):
+		return false
+	if not _milestone_native_rect_valid(report["heading"]["native"]) \
+			or not _milestone_native_rect_valid(report["row"]) \
+			or not _milestone_native_rect_valid(report["title"]["native"]) \
+			or not _milestone_native_rect_valid(report["reward"]["native"]):
+		return false
+	var bonus: Dictionary = report["milestone_bonus"]
+	var career_xp: Dictionary = report["career_xp"]
+	var bonus_entries: Array[Dictionary] = state.get("milestone_bonus_entries", [])
+	return bonus_entries.size() == 1 and bonus_entries[0].get("amount") == earned \
+		and bonus.get("available") != false and bonus.get("title", {}).get("text") == "Milestone bonus" \
+		and bonus.get("amount", {}).get("text") == Fmt.money(earned) \
+		and _milestone_native_rect_valid(bonus["title"]) and _milestone_native_rect_valid(bonus["amount"]) \
+		and career_xp.get("available") != false and career_xp.get("title", {}).get("text") == "Career goals" \
+		and career_xp.get("amount", {}).get("text") == "+%d XP" % int(goal.get("reward_xp", 0)) \
+		and career_xp.get("title", {}).get("visible") == true \
+		and career_xp.get("amount", {}).get("visible") == true
 
 
 ## Explicit financial fixture, never a playable balance sample. Real commands
@@ -1107,7 +1578,7 @@ static func hud_layout_options(arguments: PackedStringArray) -> Dictionary:
 				result["error"] = "--hud-layout requires --frames=12,90"
 		elif argument.begins_with("--scene") and argument != "--scene=res://src/world/main.tscn":
 			result["error"] = "--hud-layout requires the actual Main scene"
-		for prefix: String in ["--open", "--fast", "--select", "--assign-owner", "--f3", "--menu", "--staff", "--settings", "--report", "--build", "--paint", "--quarter", "--door-queue", "--loan-review", "--catalogue-review"]:
+		for prefix: String in ["--open", "--fast", "--select", "--assign-owner", "--f3", "--menu", "--staff", "--settings", "--report", "--build", "--paint", "--quarter", "--door-queue", "--loan-review", "--catalogue-review", "--milestone-review"]:
 			if argument.begins_with(prefix):
 				result["error"] = "--hud-layout cannot combine with other view or service options"
 	if speed_count != 1 or frames_count != 1:
@@ -1138,6 +1609,11 @@ func _process(_delta: float) -> bool:
 			_loan_fixture = prepare_loan_review(_main, root)
 			if not String(_loan_fixture["error"]).is_empty():
 				_fail_capture(_loan_fixture["error"])
+				return true
+		if _milestone_review:
+			_milestone_fixture = prepare_milestone_review(_main, root)
+			if not String(_milestone_fixture["error"]).is_empty():
+				_fail_capture(String(_milestone_fixture["error"]))
 				return true
 		if not _catalogue_profile.is_empty():
 			_catalogue_fixture = prepare_catalogue_review(_main, root, _catalogue_profile)
@@ -1187,6 +1663,11 @@ func _process(_delta: float) -> bool:
 			_fail_capture("loan review could not enter the real next morning")
 			return true
 		_loan_fixture["next_day_frame"] = _frames
+	if _milestone_review and _frames == 24:
+		_milestone_fixture = advance_milestone_review(_main, root, _milestone_fixture)
+		if not String(_milestone_fixture.get("error", "")).is_empty():
+			_fail_capture(String(_milestone_fixture["error"]))
+			return true
 	if ((_settings_world or _hud_layout) and _frames == 8) or (_hud_layout and _frames == 29):
 		_close_settings_with_keyboard()
 		if _failed:
@@ -1680,6 +2161,10 @@ func _capture() -> void:
 	if _loan_review and not loan_review_valid(loan_state, _capture_frame, _loan_fixture):
 		_fail_capture("loan review did not match its real account, phase and visible native controls")
 		return
+	var milestone_state: Dictionary = milestone_review_evidence(_main, root, _capture_frame) if _milestone_review else {}
+	if _milestone_review and not milestone_review_valid(milestone_state, _capture_frame, _milestone_fixture):
+		_fail_capture("milestone review did not match authored goals, the real close reward, ledger, XP or visible native rows")
+		return
 	var catalogue_state: Dictionary = catalogue_review_evidence(_main, root) if not _catalogue_profile.is_empty() else {}
 	if not _catalogue_profile.is_empty() and not catalogue_review_valid(catalogue_state, _capture_frame, _catalogue_fixture):
 		_fail_capture("catalogue review did not match its fixture, real previews, seating links or bounds: " + JSON.stringify({
@@ -1774,6 +2259,9 @@ func _capture() -> void:
 	if _loan_review and (image == null or image.get_size() != SETTINGS_CAPTURE_SIZE):
 		_fail_capture("loan review image did not match the usual 1600x900 dimensions")
 		return
+	if _milestone_review and (image == null or image.get_size() != SETTINGS_CAPTURE_SIZE):
+		_fail_capture("milestone review image did not match the usual 1600x900 dimensions")
+		return
 	if not _catalogue_profile.is_empty() and (image == null or image.get_size() != SETTINGS_CAPTURE_SIZE):
 		_fail_capture("catalogue review image did not match 1600x900")
 		return
@@ -1855,6 +2343,9 @@ func _capture() -> void:
 	if _loan_review:
 		metadata["loan_review"] = {"fixture": _loan_fixture, "state": loan_state,
 			"generated_uids": generated_uid_evidence()}
+	if _milestone_review:
+		metadata["milestone_review"] = {"fixture": _milestone_fixture, "state": milestone_state,
+			"generated_uids": generated_uid_evidence(MILESTONE_UID_SOURCES)}
 	if not _catalogue_profile.is_empty():
 		metadata["catalogue_review"] = {"fixture": _catalogue_fixture, "state": catalogue_state,
 			"generated_uids": generated_uid_evidence(CATALOGUE_UID_SOURCES)}

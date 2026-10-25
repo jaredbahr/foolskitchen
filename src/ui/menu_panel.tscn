@@ -45,6 +45,14 @@ mouse_filter = 2
 autowrap_mode = 3
 text = "Choose dishes and prices for today."
 
+[node name="GoalsButton" type="Button" parent="Panel/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+theme = ExtResource("2_theme")
+focus_mode = 0
+text = "Career goals"
+tooltip_text = "View career goals"
+
 [node name="Scroll" type="ScrollContainer" parent="Panel/Content"]
 layout_mode = 2
 size_flags_vertical = 3

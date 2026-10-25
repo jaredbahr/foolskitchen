@@ -1,0 +1,100 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://src/ui/goals_panel.gd" id="1_script"]
+[ext_resource type="Theme" path="res://src/ui/theme/main_theme.tres" id="2_theme"]
+
+[node name="GoalsPanel" type="Control"]
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme = ExtResource("2_theme")
+script = ExtResource("1_script")
+
+[node name="Panel" type="PanelContainer" parent="."]
+layout_mode = 1
+anchor_left = 0.18
+anchor_top = 0.08
+anchor_right = 0.82
+anchor_bottom = 0.92
+clip_contents = true
+mouse_filter = 0
+mouse_force_pass_scroll_events = false
+
+[node name="Content" type="VBoxContainer" parent="Panel"]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Header" type="HBoxContainer" parent="Panel/Content"]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Title" type="Label" parent="Panel/Content/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+theme_override_font_sizes/font_size = 26
+text = "Career goals"
+
+[node name="Close" type="Button" parent="Panel/Content/Header"]
+layout_mode = 2
+focus_mode = 0
+mouse_filter = 0
+text = "Close"
+
+[node name="Scroll" type="ScrollContainer" parent="Panel/Content"]
+layout_mode = 2
+size_flags_vertical = 3
+clip_contents = true
+mouse_filter = 0
+mouse_force_pass_scroll_events = false
+focus_mode = 2
+horizontal_scroll_mode = 0
+vertical_scroll_mode = 1
+
+[node name="List" type="VBoxContainer" parent="Panel/Content/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+
+[node name="EmptyState" type="Label" parent="Panel/Content/Scroll/List"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+autowrap_mode = 3
+text = "No goals are available yet."
+
+[node name="ActiveHeading" type="Label" parent="Panel/Content/Scroll/List"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+mouse_filter = 2
+theme_override_font_sizes/font_size = 20
+text = "Next goals"
+
+[node name="ActiveRows" type="VBoxContainer" parent="Panel/Content/Scroll/List"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+theme_override_constants/separation = 8
+
+[node name="CompletedHeading" type="Label" parent="Panel/Content/Scroll/List"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+mouse_filter = 2
+theme_override_font_sizes/font_size = 20
+text = "Completed"
+
+[node name="CompletedRows" type="VBoxContainer" parent="Panel/Content/Scroll/List"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+
+[connection signal="pressed" from="Panel/Content/Header/Close" to="." method="_on_close_pressed"]

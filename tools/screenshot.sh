@@ -9,6 +9,7 @@
 # --report --open --fast=100 --speed=0 --frames=60 captures a real closed-day report.
 # --door-queue --open --fast=8 --speed=1 --frames=240 zooms a real queue, or records its absence at the entry.
 # --loan-review --speed=0 --frames=12,90 captures an explicit loss fixture's bank report, then next-morning Loan HUD.
+# --milestone-review --speed=0 --frames=12,90 captures Goals, then an explicit close-data reward fixture.
 # --catalogue-review=rustic|modern --speed=0 --frames=90,120 captures real previews, then the furnishing fixture.
 # Build previews use the production morning input API without buying or saving.
 set -euo pipefail
@@ -25,7 +26,7 @@ window_size="1600x900"
 window_size_requested=false
 for a in "$@"; do
   [[ "$a" == --out=* ]] && out="${a#--out=}"
-  [[ "$a" == --settings || "$a" == --settings-world || "$a" == --loan-review ]] && settings_capture=true
+  [[ "$a" == --settings || "$a" == --settings-world || "$a" == --loan-review || "$a" == --milestone-review ]] && settings_capture=true
   [[ "$a" == --catalogue-review=* ]] && settings_capture=true
   if [[ "$a" == --hud-layout ]]; then
     hud_layout=true

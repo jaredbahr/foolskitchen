@@ -15,12 +15,17 @@ var has_borrowed: bool = false
 ## Profit is sampled before financing so a bank advance never counts as income
 ## available for repayment. Existing principal pays interest before repayment;
 ## a newly opened advance starts accruing on the following close.
+## A captured pre-bonus profit can exclude closing rewards from the repayment
+## base while the real ledger cash, including those rewards, still caps payment.
+## Null preserves existing callers; explicit values must be whole int64 units.
 @warning_ignore("integer_division")
-func settle_day(ledger: Ledger, day: int, terms: LoanTuning) -> Dictionary:
+func settle_day(ledger: Ledger, day: int, terms: LoanTuning, repayment_profit: Variant = null) -> Dictionary:
 	if ledger == null or terms == null or not terms.is_valid() \
 			or principal < 0 or day < 1 or day <= last_settled_day:
 		return {}
-	var operating_profit: int = ledger.day_profit(day)
+	if typeof(repayment_profit) != TYPE_NIL and typeof(repayment_profit) != TYPE_INT:
+		return {}
+	var operating_profit: int = ledger.day_profit(day) if typeof(repayment_profit) == TYPE_NIL else int(repayment_profit)
 	var interest: int = roundi(float(principal) * terms.daily_interest) if principal > 0 else 0
 	if ledger.cash < MIN_CURRENCY + interest:
 		return {}

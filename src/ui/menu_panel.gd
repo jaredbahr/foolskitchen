@@ -5,6 +5,7 @@ extends Control
 signal enable_requested(recipe_id: StringName, enabled: bool)
 signal price_requested(recipe_id: StringName, price: int)
 signal settings_requested()
+signal goals_requested()
 
 const SHARED_THEME: Theme = preload("res://src/ui/theme/main_theme.tres")
 const STANDARD_COLOR: Color = Color("3b2a20")
@@ -19,6 +20,7 @@ var _status: Label
 var _empty: Label
 var _rows_node: VBoxContainer
 var _settings_button: Button
+var _goals_button: Button
 var _rows: Dictionary[StringName, Dictionary] = {}
 var _needs_rebuild: bool = true
 
@@ -116,13 +118,19 @@ func _bind_nodes() -> void:
 	_empty = %Empty
 	_rows_node = %Rows
 	_settings_button = %SettingsButton
+	_goals_button = %GoalsButton
 	IconStyle.decorate_label(get_node("Panel/Content/Title") as Label, &"menu")
 	IconStyle.configure_button(_settings_button, &"settings", "Settings", "Audio, display and controls", IconCatalogue.PANEL_SIZE)
 	_settings_button.pressed.connect(_on_settings_pressed)
+	_goals_button.pressed.connect(_on_goals_pressed)
 
 
 func _on_settings_pressed() -> void:
 	settings_requested.emit()
+
+
+func _on_goals_pressed() -> void:
+	goals_requested.emit()
 
 
 func _rebuild_rows() -> void:

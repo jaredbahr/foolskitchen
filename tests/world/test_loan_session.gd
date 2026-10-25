@@ -103,13 +103,21 @@ func test_existing_loan_interest_and_repayment_reach_report_but_owner_uses_opera
 	var award: Dictionary = expected_owner.award_day(1, 0, operating_profit)
 	_close_service(main)
 	var report: DayReport = main.get("shown_report") as DayReport
+	var milestone_rewards: Dictionary = _milestone_rewards(report)
+	if int(milestone_rewards["xp"]) > 0:
+		expected_owner.award_bonus(int(milestone_rewards["xp"]))
 	assert_eq(report.costs.get(Ledger.LOAN_INTEREST, 0), expected_interest)
 	assert_eq(report.costs.get(Ledger.LOAN_REPAYMENT, 0), expected_repayment)
 	assert_false(report.income.has(Ledger.BANK_LOAN))
 	assert_eq(Economy.loan.principal, 200 - expected_repayment)
-	assert_eq(report.profit(), operating_profit - expected_interest - expected_repayment)
+	assert_eq(report.operating_profit(), operating_profit, "one-off milestone cash is excluded from shop performance")
+	assert_eq(report.income.get(Ledger.MILESTONE_BONUS, 0), milestone_rewards["cash"])
+	assert_eq(report.profit(), operating_profit - expected_interest - expected_repayment + int(milestone_rewards["cash"]),
+		"cash profit includes the authored award while preserving financing flows")
 	assert_eq(report.profit(), Economy.cash)
-	assert_eq(report.owner_xp_breakdown["profit_xp"], award["profit_xp"], "repayment and interest do not reduce owner profit XP")
+	assert_eq(report.owner_xp_breakdown["profit_xp"], award["profit_xp"],
+		"repayment and interest do not reduce owner profit XP")
+	assert_eq(report.owner_xp_breakdown.get("milestone_xp", 0), milestone_rewards["xp"])
 	assert_eq((main.get("owner_progress") as OwnerProgress).to_dict(), expected_owner.to_dict())
 	var books: Dictionary = Economy.ledger.to_dict()
 	main.call("_on_service_closed", 1)
@@ -120,6 +128,8 @@ func test_solvent_close_with_no_principal_has_no_financing_entries() -> void:
 	var main: Node = await _start(false)
 	_fresh_books(0)
 	Economy.add_cash(_closing_cost(main) + 100, Ledger.SALE)
+	var expected_owner: OwnerProgress = OwnerProgress.new(PROGRESSION)
+	expected_owner.award_day(1, 0, 100)
 	_close_service(main)
 	var totals: Dictionary = Economy.ledger.day_totals(1)
 	assert_false(totals.has(Ledger.BANK_LOAN))
@@ -127,8 +137,16 @@ func test_solvent_close_with_no_principal_has_no_financing_entries() -> void:
 	assert_false(totals.has(Ledger.LOAN_REPAYMENT))
 	assert_eq(Economy.loan.principal, 0)
 	assert_eq(Economy.loan.last_settled_day, 1)
-	assert_eq((main.get("shown_report") as DayReport).profit(), 100)
-	assert_eq(Economy.cash, 100)
+	var report: DayReport = main.get("shown_report") as DayReport
+	var milestone_rewards: Dictionary = _milestone_rewards(report)
+	if int(milestone_rewards["xp"]) > 0:
+		expected_owner.award_bonus(int(milestone_rewards["xp"]))
+	assert_eq(report.income.get(Ledger.MILESTONE_BONUS, 0), milestone_rewards["cash"])
+	assert_eq(report.operating_profit(), 100)
+	assert_eq(report.profit(), 100 + int(milestone_rewards["cash"]))
+	assert_eq(Economy.cash, report.profit())
+	assert_eq(report.owner_xp_breakdown.get("milestone_xp", 0), milestone_rewards["xp"])
+	assert_eq((main.get("owner_progress") as OwnerProgress).to_dict(), expected_owner.to_dict())
 
 
 func test_next_morning_saves_loan_inside_economy_and_reload_preserves_guard_and_books() -> void:
@@ -455,6 +473,14 @@ func _saved_text() -> String:
 
 func _document() -> Dictionary:
 	return JSON.parse_string(_saved_text())
+
+
+func _milestone_rewards(report: DayReport) -> Dictionary:
+	var rewards: Dictionary = {"xp": 0, "cash": 0}
+	for milestone: Dictionary in report.milestones_reached:
+		rewards["xp"] = int(rewards["xp"]) + int(milestone.get("reward_xp", 0))
+		rewards["cash"] = int(rewards["cash"]) + int(milestone.get("reward_cash", 0))
+	return rewards
 
 
 func _write(document: Dictionary) -> void:
