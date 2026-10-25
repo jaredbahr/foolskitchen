@@ -23,10 +23,8 @@ func _run() -> void:
 		return
 	await process_frame
 	var report: Dictionary = await CATALOGUE.run(root, native_bake)
-	var failures: int = (report["errors"] as PackedStringArray).size()
+	var failures: int = int(report.get("failures", (report["errors"] as PackedStringArray).size()))
 	for sample: Dictionary in report["samples"]:
-		if not sample.get("passes", false) or float(sample.get("facing_dot", 0.0)) < 0.9999:
-			failures += 1
 		for key: String in ["head_bounds", "person_bounds", "world_bounds"]:
 			if sample.has(key):
 				var bounds: AABB = sample[key]
@@ -37,7 +35,6 @@ func _run() -> void:
 	for comparison: Dictionary in (report["native_bake_poses"] as Dictionary).values():
 		if not is_finite(float(comparison["max_error"])):
 			comparison["max_error"] = null
-	report["failures"] = failures
 	var output: String = JSON.stringify(report, "\t")
 	if path.is_empty():
 		print(output)
@@ -49,5 +46,5 @@ func _run() -> void:
 			return
 		file.store_string(output + "\n")
 		file.close()
-	print("SEATED HEAD: %d catalogue seats, %d native sit samples, %d failures" % [report["seats"], (report["samples"] as Array).size(), failures])
+	print("SEATED HEAD: %d catalogue seats, %d native sit samples, %d raw failures, %d known kit items, %d unexpected failures" % [report["seats"], (report["samples"] as Array).size(), report.get("raw_failures", 0), (report.get("known_kit_failures", []) as Array).size(), failures])
 	quit(1 if failures > 0 else 0)

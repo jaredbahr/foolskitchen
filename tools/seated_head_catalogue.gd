@@ -5,15 +5,20 @@ extends RefCounted
 
 const VIEW: PackedScene = preload("res://src/world/shop_view.tscn")
 const GEOMETRY: GDScript = preload("res://tools/seated_head_geometry.gd")
+## Director 6404820766: unchanged kit items only. Every listed item must retain
+## at least one measured physical violation; unknown classification is not proof.
+const KNOWN_KIT_FAILURE_IDS: PackedStringArray = ["bench", "chair", "cushioned_bench", "lounge_chair",
+	"modern_chair", "modern_frame_chair", "rounded_chair", "table_2", "wooden_chair"]
 
 
 static func run(parent: Node, native_bake: bool = false) -> Dictionary:
 	var report: Dictionary = {"errors": PackedStringArray(), "samples": [], "seats": 0,
 		"required_clearance": GEOMETRY.REQUIRED_CLEARANCE, "native_bake": native_bake,
-		"native_bake_upload_waits": 0, "native_bake_poses": {}}
+		"native_bake_upload_waits": 0, "native_bake_poses": {}, "known_kit_offset_trials": []}
 	var errors: PackedStringArray = report["errors"]
 	var poses: Dictionary[String, PackedVector3Array] = {}
 	var parity: Dictionary[String, Dictionary] = {}
+	var comparisons: Dictionary = {}
 	var content: ContentDB = ContentDB.new()
 	errors.append_array(content.load_all())
 	if not errors.is_empty():
@@ -24,13 +29,14 @@ static func run(parent: Node, native_bake: bool = false) -> Dictionary:
 			continue
 		report["seats"] += 1
 		for turns: int in range(4):
-			await _sample_item(parent, definition, turns, native_bake, poses, parity, report)
+			await _sample_item(parent, definition, turns, native_bake, poses, parity, comparisons, report)
 	report["native_bake_poses"] = parity
+	_apply_known_failure_policy(report)
 	return report
 
 
 static func _sample_item(parent: Node, definition: ItemDef, turns: int, native_bake: bool,
-		poses: Dictionary[String, PackedVector3Array], parity: Dictionary[String, Dictionary], report: Dictionary) -> void:
+		poses: Dictionary[String, PackedVector3Array], parity: Dictionary[String, Dictionary], comparisons: Dictionary, report: Dictionary) -> void:
 	var errors: PackedStringArray = report["errors"]
 	var world: SimWorld = SimWorld.new(SimGrid.new(Vector2i(12, 12)))
 	var restaurant: RestaurantSim = RestaurantSim.new()
@@ -78,7 +84,7 @@ static func _sample_item(parent: Node, definition: ItemDef, turns: int, native_b
 	if visual == null or visual.prop == null:
 		errors.append("%s: missing native seat wrapper" % definition.id)
 	else:
-		var faces: Dictionary[int, PackedVector3Array] = {}
+		var parts: Dictionary[int, Array] = {}
 		for look: int in range(PersonPresentation.GUEST_MODELS.size()):
 			for guest: CustomerAgent in guests:
 				var person: PersonView = view.agent_nodes.get(guest.id) as PersonView
@@ -110,9 +116,18 @@ static func _sample_item(parent: Node, definition: ItemDef, turns: int, native_b
 						comparison["provenance"] = "MeshInstance3D.bake_mesh_from_current_skeleton_pose; mesh-local model/time comparison"
 						comparison["head_vertices"] = poses[pose_key].size()
 						parity[pose_key] = comparison
-					if not faces.has(guest.id):
-						faces[guest.id] = GEOMETRY.seat_triangles(visual.prop, person)
-					var sample: Dictionary = GEOMETRY.measure(person, visual.prop, false, poses[pose_key], faces[guest.id])
+					if not parts.has(guest.id):
+						parts[guest.id] = GEOMETRY.seat_parts(visual.prop, person)
+					var prepared: Array[Dictionary] = []
+					prepared.assign(parts[guest.id])
+					var sample: Dictionary = GEOMETRY.measure(person, visual.prop, false, poses[pose_key], prepared, comparisons)
+					if KNOWN_KIT_FAILURE_IDS.has(String(definition.id)) and turns == 0 \
+							and person.model_name() == &"character-female-e" and guest == guests[0] and fraction == 0.0:
+						var trial: Dictionary = GEOMETRY.supported_offset_trial(person, visual.prop, prepared, definition.seated_forward_offset)
+						trial["item"] = String(definition.id)
+						trial["model"] = String(person.model_name())
+						trial["seat_cell"] = [guest.cell.x, guest.cell.y]
+						(report["known_kit_offset_trials"] as Array).append(trial)
 					if native_bake:
 						var cached_comparison: Dictionary = parity[pose_key]
 						sample["native_bake_pose_key"] = pose_key
@@ -128,6 +143,7 @@ static func _sample_item(parent: Node, definition: ItemDef, turns: int, native_b
 					sample["model"] = String(person.model_name())
 					sample["sit_time"] = animation.length * fraction
 					sample["seat_height"] = person._seat_height
+					sample["seated_forward_offset"] = definition.seated_forward_offset
 					var zero: Vector2i = GridMath.rotate_cell(Vector2i.ZERO, definition.footprint, turns)
 					var front: Vector2i = GridMath.rotate_cell(Vector2i.UP, definition.footprint, turns) - zero
 					var palm: Vector3 = person.to_global(person.carry_anchor_position())
@@ -141,4 +157,73 @@ static func _sample_item(parent: Node, definition: ItemDef, turns: int, native_b
 					sample["palms_world_y"] = palm.y
 					(report["samples"] as Array).append(sample)
 	view.free()
+	report["errors"] = errors
+
+
+static func physical_violation(sample: Dictionary) -> bool:
+	if not String(sample.get("error", "missing measurement")).is_empty():
+		return false
+	var gap: Variant = sample.get("backrest_clearance")
+	return int(sample.get("head_vertices_inside_count", 0)) > 0 \
+		or int(sample.get("head_seat_surface_crossings", 0)) > 0 \
+		or (gap != null and is_finite(float(gap)) and float(gap) + GEOMETRY.EPSILON < GEOMETRY.REQUIRED_CLEARANCE)
+
+
+static func _apply_known_failure_policy(report: Dictionary) -> void:
+	var findings: Dictionary[String, Dictionary] = {}
+	var eligible: Dictionary[String, Dictionary] = {}
+	var errors: PackedStringArray = report["errors"]
+	for trial: Dictionary in report.get("known_kit_offset_trials", []):
+		var item: String = trial["item"]
+		if KNOWN_KIT_FAILURE_IDS.has(item) and physical_violation(trial) \
+				and trial.get("trial_supported", false) and float(trial.get("trial_forward_offset", 0.0)) == 0.05:
+			eligible[item] = trial
+	for sample: Dictionary in report["samples"]:
+		var item: String = sample["item"]
+		if not KNOWN_KIT_FAILURE_IDS.has(item) or not physical_violation(sample):
+			continue
+		if not findings.has(item):
+			findings[item] = {"item": item, "physical_violation_samples": 0, "inside_vertex_samples": 0,
+				"surface_crossing_samples": 0, "max_vertex_penetration": 0.0,
+				"minimum_identified_backrest_gap": null, "backrest_status": sample["backrest_status"]}
+		var finding: Dictionary = findings[item]
+		finding["physical_violation_samples"] += 1
+		if int(sample["head_vertices_inside_count"]) > 0:
+			finding["inside_vertex_samples"] += 1
+		if int(sample["head_seat_surface_crossings"]) > 0:
+			finding["surface_crossing_samples"] += 1
+		finding["max_vertex_penetration"] = maxf(float(finding["max_vertex_penetration"]), float(sample["max_head_vertex_penetration"]))
+		var gap: Variant = sample["backrest_clearance"]
+		if gap != null and (finding["minimum_identified_backrest_gap"] == null or float(gap) < float(finding["minimum_identified_backrest_gap"])):
+			finding["minimum_identified_backrest_gap"] = gap
+	for item: String in KNOWN_KIT_FAILURE_IDS:
+		if not findings.has(item) or not eligible.has(item):
+			errors.append("known kit failure %s needs a measured physical violation at a supported 0.05 offset; remove or investigate its exception" % item)
+		elif findings.has(item):
+			findings[item]["supported_offset_trial"] = eligible[item]
+	var raw_failures: int = 0
+	var failures: int = 0
+	for sample: Dictionary in report["samples"]:
+		var item: String = sample["item"]
+		var offset: float = float(sample["seated_forward_offset"])
+		var valid: bool = String(sample.get("error", "missing measurement")).is_empty() \
+			and int(sample.get("head_vertices", 0)) > 0 and int(sample.get("head_triangles", 0)) > 0 \
+			and int(sample.get("seat_triangles", 0)) > 0 and float(sample["facing_dot"]) > 0.9999 \
+			and is_finite(offset) and offset >= 0.0 and offset <= 0.05 + GEOMETRY.EPSILON
+		if sample.has("native_bake_max_error"):
+			valid = valid and is_finite(float(sample["native_bake_max_error"])) and float(sample["native_bake_max_error"]) <= 0.00001
+		sample["known_kit_failure"] = KNOWN_KIT_FAILURE_IDS.has(item) and findings.has(item) and eligible.has(item)
+		sample["accepted"] = valid and (sample.get("passes", false) or sample["known_kit_failure"])
+		if not sample.get("passes", false):
+			raw_failures += 1
+		if not sample["accepted"]:
+			failures += 1
+	var ordered: Array[Dictionary] = []
+	for item: String in KNOWN_KIT_FAILURE_IDS:
+		if findings.has(item):
+			ordered.append(findings[item])
+	report["known_kit_failures"] = ordered
+	report["known_kit_failure_allowlist"] = KNOWN_KIT_FAILURE_IDS
+	report["raw_failures"] = raw_failures
+	report["failures"] = failures + errors.size()
 	report["errors"] = errors

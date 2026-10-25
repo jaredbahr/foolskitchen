@@ -8,7 +8,13 @@ extends RefCounted
 const REQUIRED_CLEARANCE: float = 0.02
 const EPSILON: float = 0.000001
 const PROVENANCE: String = "native Mini head-mesh POSITION/JOINTS/WEIGHTS, imported Skin inverse binds, current Skeleton3D global poses, actual node transforms"
-const CLEARANCE_METRIC: String = "minimum Euclidean seat-triangle to conservative posed-head AABB separation"
+const CLEARANCE_METRIC: String = "indexed posed-head mesh to identified backrest surfaces"
+const WITHDRAWN_AABB_METRIC: String = "minimum Euclidean seat-triangle to conservative posed-head AABB separation"
+const BOOTH_BACKREST_NAMES: PackedStringArray = ["Left back cushion", "Right back cushion", "Tall back shell"]
+const BOOTH_CUSHION_NAMES: PackedStringArray = ["Left seat cushion", "Right seat cushion"]
+const BACKLESS_SCENES: PackedStringArray = ["bar_stool", "square_bar_stool", "diner_stool"]
+const KIT_BACKREST_SCENES: PackedStringArray = ["bench", "chair", "cushioned_bench", "lounge_chair",
+	"modern_chair", "modern_frame_chair", "rounded_chair", "table_2", "wooden_chair"]
 
 
 static func head_mesh(person: PersonView) -> MeshInstance3D:
@@ -97,19 +103,16 @@ static func native_bake_error(instance: MeshInstance3D, expected: PackedVector3A
 ## Taking bounds AFTER transforming every posed vertex avoids rotating an AABB
 ## and inflating it. Hair belongs to the real native head-mesh and is included.
 static func measure_person_head(person: PersonView) -> Dictionary:
-	var instance: MeshInstance3D = head_mesh(person)
-	if person == null:
-		return {"error": "native person is unavailable"}
-	var result: Dictionary = skin_vertices(instance, person._skeleton)
-	if not String(result["error"]).is_empty():
-		return result
-	return _head_bounds(person, instance, result["vertices"])
+	var head: Dictionary = prepare_head(person)
+	if not String(head.get("error", "")).is_empty():
+		return head
+	return head["snapshot"]
 
 
 static func _head_bounds(person: PersonView, instance: MeshInstance3D, vertices: PackedVector3Array) -> Dictionary:
 	if vertices.is_empty():
 		return {"error": "native head has no vertices"}
-	var to_person: Transform3D = person.global_transform.affine_inverse() * instance.global_transform
+	var to_person: Transform3D = _between_nodes(instance, person)
 	var local: AABB = AABB(to_person * vertices[0], Vector3.ZERO)
 	var world: AABB = AABB(instance.global_transform * vertices[0], Vector3.ZERO)
 	for vertex: Vector3 in vertices:
@@ -119,55 +122,411 @@ static func _head_bounds(person: PersonView, instance: MeshInstance3D, vertices:
 		"head_vertices": vertices.size(), "provenance": PROVENANCE}
 
 
-## Optional caches contain immutable mesh-local posed vertices and person-local
-## seat triangles from the same fixture; production/capture callers omit them.
+## The all-vertex array is kept intact for native-bake parity. Only referenced
+## INDEX topology supplies collision vertices/triangles and crop bounds.
+static func prepare_head(person: PersonView, cached_vertices: PackedVector3Array = PackedVector3Array()) -> Dictionary:
+	if person == null:
+		return {"error": "native person is unavailable"}
+	var instance: MeshInstance3D = head_mesh(person)
+	if instance == null:
+		return {"error": "native indexed head mesh is unavailable"}
+	var posed: Dictionary = skin_vertices(instance, person._skeleton) if cached_vertices.is_empty() else {"error": "", "vertices": cached_vertices}
+	if not String(posed["error"]).is_empty():
+		return posed
+	var vertices: PackedVector3Array = posed["vertices"]
+	var referenced: PackedVector3Array = []
+	var unique: Dictionary[Vector3, bool] = {}
+	var triangles: PackedVector3Array = []
+	var offset: int = 0
+	var to_person: Transform3D = _between_nodes(instance, person)
+	for surface: int in range(instance.mesh.get_surface_count()):
+		if instance.mesh.surface_get_primitive_type(surface) != Mesh.PRIMITIVE_TRIANGLES:
+			return {"error": "head surface must contain triangles"}
+		var arrays: Array = instance.mesh.surface_get_arrays(surface)
+		var source: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX] if arrays[Mesh.ARRAY_INDEX] != null else PackedInt32Array()
+		if indices.is_empty():
+			for index: int in range(source.size()):
+				indices.append(index)
+		if indices.size() % 3 != 0 or offset + source.size() > vertices.size():
+			return {"error": "head triangle indices do not match the posed vertex array"}
+		for index: int in indices:
+			if index < 0 or index >= source.size():
+				return {"error": "head triangle index is outside its own surface"}
+			var mesh_point: Vector3 = vertices[offset + index]
+			var point: Vector3 = to_person * mesh_point
+			triangles.append(point)
+			if not unique.has(point):
+				unique[point] = true
+				referenced.append(mesh_point)
+		offset += source.size()
+	if offset != vertices.size() or triangles.is_empty():
+		return {"error": "head has no complete indexed triangles"}
+	var points: PackedVector3Array = []
+	for point: Vector3 in unique:
+		points.append(point)
+	return {"error": "", "vertices": points, "triangles": triangles,
+		"triangle_bounds": _triangle_bounds(triangles), "snapshot": _head_bounds(person, instance, referenced)}
+
+
+## Optional caches contain actual immutable posed vertices and prepared parts.
+## Cache hits require equality of the entire geometry payload after hashing;
+## item IDs, nominal poses and AABBs cannot authorize a cached passing result.
 static func measure(person: PersonView, seat: Node3D, native_bake: bool = false,
-		cached_vertices: PackedVector3Array = PackedVector3Array(), cached_triangles: PackedVector3Array = PackedVector3Array()) -> Dictionary:
+		cached_vertices: PackedVector3Array = PackedVector3Array(), cached_parts: Array[Dictionary] = [], comparisons: Dictionary = {}) -> Dictionary:
 	var instance: MeshInstance3D = head_mesh(person)
 	if person == null:
 		return {"error": "native person is unavailable"}
-	var result: Dictionary = skin_vertices(instance, person._skeleton) if cached_vertices.is_empty() else {"error": "", "vertices": cached_vertices}
-	if not String(result["error"]).is_empty():
-		return result
-	var vertices: PackedVector3Array = result["vertices"]
-	if vertices.is_empty():
-		return {"error": "native head has no vertices"}
+	var head: Dictionary = prepare_head(person, cached_vertices)
+	if not String(head["error"]).is_empty():
+		return head
+	var result: Dictionary = {}
 	if native_bake:
-		var comparison: Dictionary = native_bake_error(instance, vertices)
+		var posed: Dictionary = skin_vertices(instance, person._skeleton)
+		if not String(posed["error"]).is_empty():
+			return posed
+		var comparison: Dictionary = native_bake_error(instance, posed["vertices"])
 		result["native_bake_max_error"] = comparison["max_error"]
 		if not String(comparison["error"]).is_empty():
 			result["error"] = comparison["error"]
 			return result
-	var snapshot: Dictionary = _head_bounds(person, instance, vertices)
-	var bounds: AABB = snapshot["person_bounds"]
-	var triangles: PackedVector3Array = seat_triangles(seat, person) if cached_triangles.is_empty() else cached_triangles
-	if triangles.is_empty():
-		return {"error": "seat has no native triangles"}
-	var clearance: Dictionary = measure_triangles(bounds, triangles)
-	result.erase("vertices")
-	result.merge(clearance)
-	result.merge(snapshot)
-	result["head_bounds"] = bounds
-	result["head_vertices"] = vertices.size()
-	result["seat_triangles"] = triangles.size() / 3
+	var parts: Array[Dictionary] = seat_parts(seat, person) if cached_parts.is_empty() else cached_parts
+	if parts.is_empty():
+		return {"error": "seat has no native mesh parts"}
+	var classification: String = _backrest_status(seat, parts)
+	var key: Array = [head["triangles"], classification]
+	for part: Dictionary in parts:
+		key.append([part["path"], part["triangles"], part["is_backrest"]])
+	var digest: int = hash(key)
+	var metrics: Dictionary = {}
+	var bucket: Array = comparisons.get(digest, [])
+	for entry: Dictionary in bucket:
+		if entry["geometry"] == key:
+			metrics = (entry["metrics"] as Dictionary).duplicate(true)
+			break
+	result["geometry_cache_reused"] = not metrics.is_empty()
+	if metrics.is_empty():
+		metrics = measure_surfaces(head["vertices"], head["triangles"], parts, classification)
+		bucket.append({"geometry": key, "metrics": metrics.duplicate(true)})
+		comparisons[digest] = bucket
+	result.merge(metrics)
+	result.merge(head["snapshot"])
+	result.merge(_hip_support(person, parts, seat.scene_file_path.get_file().get_basename()))
+	if result.get("hips_supported") == false:
+		result["passes"] = false
 	return result
 
 
 static func seat_triangles(seat: Node3D, relative_to: Node3D) -> PackedVector3Array:
 	var triangles: PackedVector3Array = []
+	for part: Dictionary in seat_parts(seat, relative_to):
+		triangles.append_array(part["triangles"])
+	return triangles
+
+
+static func seat_parts(seat: Node3D, relative_to: Node3D) -> Array[Dictionary]:
+	var parts: Array[Dictionary] = []
+	var scene: String = seat.scene_file_path.get_file().get_basename()
 	for node: Node in seat.find_children("*", "MeshInstance3D", true, false):
 		var instance: MeshInstance3D = node as MeshInstance3D
 		if instance.mesh == null:
 			continue
-		var transform: Transform3D = relative_to.global_transform.affine_inverse() * instance.global_transform
-		for vertex: Vector3 in instance.mesh.get_faces():
+		var faces: PackedVector3Array = instance.mesh.get_faces()
+		var triangles: PackedVector3Array = []
+		var transform: Transform3D = _between_nodes(instance, relative_to)
+		for vertex: Vector3 in faces:
 			triangles.append(transform * vertex)
-	return triangles
+		if triangles.is_empty() or triangles.size() % 3 != 0:
+			return []
+		var bounds: AABB = AABB(triangles[0], Vector3.ZERO)
+		for point: Vector3 in triangles:
+			bounds = bounds.expand(point)
+		var backrest: bool = scene == "diner_booth" and BOOTH_BACKREST_NAMES.has(String(instance.name))
+		var cushion: bool = (scene == "diner_booth" and BOOTH_CUSHION_NAMES.has(String(instance.name))) \
+			or (scene == "diner_stool" and instance.name == &"Round red cushion")
+		parts.append({"path": String(seat.get_path_to(instance)), "name": String(instance.name),
+			"triangles": triangles, "triangle_bounds": _triangle_bounds(triangles), "bounds": bounds,
+			"is_backrest": backrest, "is_cushion": cushion})
+	return parts
 
 
-## Exact triangle-to-AABB separation, conservative for the real head enclosed
-## by that AABB. This includes nearby seat top/side edges outside the head's
-## X/Y span. A rear-axis ray/gap cannot enforce their 0.02 clearance.
+static func _backrest_status(seat: Node3D, parts: Array[Dictionary]) -> String:
+	var scene: String = seat.scene_file_path.get_file().get_basename()
+	if BACKLESS_SCENES.has(scene):
+		return "backless"
+	if scene == "diner_booth":
+		var found: PackedStringArray = []
+		for part: Dictionary in parts:
+			if part["is_backrest"]:
+				found.append(part["name"])
+		return "named_parts" if found.size() == BOOTH_BACKREST_NAMES.size() else "unclassified"
+	# The nine unchanged kit failures are still measured for physical intrusion.
+	# Their joined mesh does not provide reliable semantic backrest annotations.
+	# Never label the whole joined seat mesh as a measured backrest.
+	return "unclassified_kit" if KIT_BACKREST_SCENES.has(scene) else "unclassified"
+
+
+static func _between_nodes(node: Node3D, target: Node3D) -> Transform3D:
+	var target_chain: Dictionary[Node, Transform3D] = {}
+	var cursor: Node = target
+	var accumulated: Transform3D = Transform3D.IDENTITY
+	while cursor != null:
+		target_chain[cursor] = accumulated
+		if cursor is Node3D:
+			accumulated = (cursor as Node3D).transform * accumulated
+		cursor = cursor.get_parent()
+	cursor = node
+	accumulated = Transform3D.IDENTITY
+	while cursor != null:
+		if target_chain.has(cursor):
+			return target_chain[cursor].affine_inverse() * accumulated
+		if cursor is Node3D:
+			accumulated = (cursor as Node3D).transform * accumulated
+		cursor = cursor.get_parent()
+	return target.global_transform.affine_inverse() * node.global_transform
+
+
+static func _triangle_bounds(triangles: PackedVector3Array) -> Array[AABB]:
+	var bounds: Array[AABB] = []
+	for index: int in range(0, triangles.size(), 3):
+		bounds.append(AABB(triangles[index], Vector3.ZERO).expand(triangles[index + 1]).expand(triangles[index + 2]))
+	return bounds
+
+
+## Actual indexed head geometry; AABBs are candidate pruning only. Surface
+## crossings supplement the Director's vertex-inside rule so a thin seat part
+## cannot pass between head vertices. Non-backrest proximity alone is allowed.
+static func measure_surfaces(vertices: PackedVector3Array, head_triangles: PackedVector3Array,
+		parts: Array[Dictionary], backrest_status: String) -> Dictionary:
+	if vertices.is_empty() or head_triangles.is_empty() or head_triangles.size() % 3 != 0 or parts.is_empty():
+		return {"error": "surface measurement needs referenced head triangles and seat parts", "passes": false}
+	var head_boxes: Array[AABB] = _triangle_bounds(head_triangles)
+	var inside: Dictionary[Vector3, bool] = {}
+	var maximum_depth: float = 0.0
+	var crossing_witnesses: int = 0
+	var intrusion_parts: Array[Dictionary] = []
+	var intrusion_paths: PackedStringArray = []
+	var backrest_paths: PackedStringArray = []
+	var nearest_path: String = ""
+	var backrest_squared: float = INF
+	var seat_triangle_count: int = 0
+	for part: Dictionary in parts:
+		var faces: PackedVector3Array = part["triangles"]
+		if faces.is_empty() or faces.size() % 3 != 0:
+			return {"error": "seat part has no complete triangles", "passes": false}
+		var bounds: AABB = part["bounds"]
+		var boxes: Array[AABB] = part["triangle_bounds"]
+		seat_triangle_count += faces.size() / 3
+		var part_inside: int = 0
+		var part_depth: float = 0.0
+		for vertex: Vector3 in vertices:
+			# Strict AABB interior is necessary for strict solid interior. A
+			# boundary point is not penetration; no positive gap is imposed here.
+			if vertex.x <= bounds.position.x or vertex.x >= bounds.end.x \
+					or vertex.y <= bounds.position.y or vertex.y >= bounds.end.y \
+					or vertex.z <= bounds.position.z or vertex.z >= bounds.end.z:
+				continue
+			var depth: float = _inside_depth(vertex, faces, boxes)
+			if depth > 0.0:
+				inside[vertex] = true
+				part_inside += 1
+				part_depth = maxf(part_depth, depth)
+		maximum_depth = maxf(maximum_depth, part_depth)
+		var crosses: bool = false
+		for head_index: int in range(head_boxes.size()):
+			if _box_distance_squared(head_boxes[head_index], bounds) > 0.0:
+				continue
+			for seat_index: int in range(boxes.size()):
+				if _box_distance_squared(head_boxes[head_index], boxes[seat_index]) > 0.0:
+					continue
+				if _triangles_cross(head_triangles, head_index * 3, faces, seat_index * 3):
+					crosses = true
+					break
+			if crosses:
+				break
+		if crosses:
+			crossing_witnesses += 1
+		if part_inside > 0 or crosses:
+			intrusion_paths.append(part["path"])
+			intrusion_parts.append({"path": part["path"], "head_vertices_inside": part_inside,
+				"max_vertex_penetration": part_depth, "surface_crossing_witness": crosses})
+		if not part["is_backrest"]:
+			continue
+		backrest_paths.append(part["path"])
+		for head_index: int in range(head_boxes.size()):
+			if _box_distance_squared(head_boxes[head_index], bounds) >= backrest_squared:
+				continue
+			for seat_index: int in range(boxes.size()):
+				if _box_distance_squared(head_boxes[head_index], boxes[seat_index]) >= backrest_squared:
+					continue
+				var squared: float = _triangle_distance_squared(head_triangles, head_index * 3, faces, seat_index * 3)
+				if squared < backrest_squared:
+					backrest_squared = squared
+					nearest_path = part["path"]
+	var classified: bool = backrest_status == "backless" or (backrest_status == "named_parts" and not backrest_paths.is_empty())
+	var gap: Variant = sqrt(backrest_squared) if backrest_status == "named_parts" and is_finite(backrest_squared) else null
+	var gap_passes: bool = backrest_status == "backless" or (gap != null and float(gap) + EPSILON >= REQUIRED_CLEARANCE)
+	return {"error": "", "backrest_clearance": gap, "backrest_status": backrest_status,
+		"backrest_parts": backrest_paths, "nearest_backrest_part": nearest_path,
+		"clearance_metric": CLEARANCE_METRIC, "measurement_complete": classified,
+		"head_vertices_inside_count": inside.size(), "max_head_vertex_penetration": maximum_depth,
+		"head_seat_surface_crossings": crossing_witnesses, "intrusion_parts": intrusion_paths, "intrusion_details": intrusion_parts,
+		"head_tested_vertices_unique": vertices.size(), "head_triangles": head_triangles.size() / 3,
+		"seat_triangles": seat_triangle_count,
+		"passes": classified and gap_passes and inside.is_empty() and crossing_witnesses == 0}
+
+
+static func _inside_depth(point: Vector3, triangles: PackedVector3Array, boxes: Array[AABB]) -> float:
+	var angle: float = 0.0
+	for index: int in range(0, triangles.size(), 3):
+		var a: Vector3 = triangles[index] - point
+		var b: Vector3 = triangles[index + 1] - point
+		var c: Vector3 = triangles[index + 2] - point
+		if a.length_squared() == 0.0 or b.length_squared() == 0.0 or c.length_squared() == 0.0:
+			return 0.0
+		if (b - a).cross(c - a).length_squared() == 0.0:
+			continue
+		var denominator: float = a.length() * b.length() * c.length() \
+			+ a.dot(b) * c.length() + b.dot(c) * a.length() + c.dot(a) * b.length()
+		angle += 2.0 * atan2(a.dot(b.cross(c)), denominator)
+	if absf(angle) <= TAU:
+		return 0.0
+	var squared: float = INF
+	for index: int in range(boxes.size()):
+		var box: AABB = boxes[index]
+		var closest: Vector3 = point.clamp(box.position, box.end)
+		if point.distance_squared_to(closest) >= squared:
+			continue
+		squared = minf(squared, _point_triangle_distance_squared(point, triangles[index * 3], triangles[index * 3 + 1], triangles[index * 3 + 2]))
+	return sqrt(squared)
+
+
+static func _triangles_cross(a: PackedVector3Array, ai: int, b: PackedVector3Array, bi: int) -> bool:
+	for edge: int in range(3):
+		if _edge_crosses_face(a[ai + edge], a[ai + (edge + 1) % 3], b[bi], b[bi + 1], b[bi + 2]) \
+				or _edge_crosses_face(b[bi + edge], b[bi + (edge + 1) % 3], a[ai], a[ai + 1], a[ai + 2]):
+			return true
+	return false
+
+
+static func _edge_crosses_face(p: Vector3, q: Vector3, a: Vector3, b: Vector3, c: Vector3) -> bool:
+	var normal: Vector3 = (b - a).cross(c - a)
+	var denominator: float = normal.dot(q - p)
+	if denominator == 0.0:
+		return false
+	var fraction: float = normal.dot(a - p) / denominator
+	if fraction <= 0.0 or fraction >= 1.0:
+		return false
+	return _inside_triangle(p.lerp(q, fraction), a, b, c, normal)
+
+
+static func _inside_triangle(point: Vector3, a: Vector3, b: Vector3, c: Vector3, normal: Vector3) -> bool:
+	return normal.dot((b - a).cross(point - a)) >= 0.0 \
+		and normal.dot((c - b).cross(point - b)) >= 0.0 \
+		and normal.dot((a - c).cross(point - c)) >= 0.0
+
+
+static func _triangle_distance_squared(a: PackedVector3Array, ai: int, b: PackedVector3Array, bi: int) -> float:
+	if _triangles_cross(a, ai, b, bi):
+		return 0.0
+	var squared: float = INF
+	for vertex: int in range(3):
+		squared = minf(squared, _point_triangle_distance_squared(a[ai + vertex], b[bi], b[bi + 1], b[bi + 2]))
+		squared = minf(squared, _point_triangle_distance_squared(b[bi + vertex], a[ai], a[ai + 1], a[ai + 2]))
+		for edge: int in range(3):
+			squared = minf(squared, _segment_distance_squared(a[ai + vertex], a[ai + (vertex + 1) % 3], b[bi + edge], b[bi + (edge + 1) % 3]))
+	return squared
+
+
+static func _hip_support(person: PersonView, parts: Array[Dictionary], scene: String) -> Dictionary:
+	if scene != "diner_booth" and scene != "diner_stool":
+		return {"hips_supported": null, "hip_support_parts": PackedStringArray()}
+	var paths: PackedStringArray = []
+	var positions: Array = []
+	var support_points: Array = []
+	var supported: bool = true
+	for name: String in ["leg-left", "leg-right"]:
+		var bone: int = person._skeleton.find_bone(name)
+		if bone < 0:
+			return {"hips_supported": false, "hip_support_parts": paths}
+		var hip: Vector3 = _between_nodes(person._skeleton, person) * person._skeleton.get_bone_global_pose(bone).origin
+		positions.append([hip.x, hip.y, hip.z])
+		var hit: Dictionary = _downward_support(hip, parts, true)
+		var path: String = hit["path"]
+		if path.is_empty():
+			supported = false
+		else:
+			paths.append(path)
+			var point: Vector3 = hit["point"]
+			support_points.append([point.x, point.y, point.z])
+	return {"hips_supported": supported, "hip_support_parts": paths, "hip_bone_positions": positions, "hip_support_points": support_points}
+
+
+## Nine representative exception-eligibility trials, not extra catalogue rows.
+## This translates immutable actual pose geometry; no person/data/sim mutates.
+## The maximum supported <=0.05 trial must still physically fail for a kit ID
+## to qualify. Support is compared with the same native hip ray's baseline
+## surface height, avoiding a guessed cushion height for joined kit meshes.
+static func supported_offset_trial(person: PersonView, seat: Node3D, parts: Array[Dictionary], current_offset: float) -> Dictionary:
+	var head: Dictionary = prepare_head(person)
+	if not String(head["error"]).is_empty():
+		return head
+	var delta: Vector3 = Vector3.FORWARD * (0.05 - current_offset)
+	var vertices: PackedVector3Array = []
+	var faces: PackedVector3Array = []
+	for point: Vector3 in head["vertices"]:
+		vertices.append(point + delta)
+	for point: Vector3 in head["triangles"]:
+		faces.append(point + delta)
+	var result: Dictionary = measure_surfaces(vertices, faces, parts, _backrest_status(seat, parts))
+	var supported: bool = true
+	var points: Array = []
+	for name: String in ["leg-left", "leg-right"]:
+		var bone: int = person._skeleton.find_bone(name)
+		if bone < 0:
+			supported = false
+			continue
+		var hip: Vector3 = _between_nodes(person._skeleton, person) * person._skeleton.get_bone_global_pose(bone).origin
+		var before: Dictionary = _downward_support(hip, parts, false)
+		var after: Dictionary = _downward_support(hip + delta, parts, false)
+		if String(before["path"]).is_empty() or String(after["path"]).is_empty():
+			supported = false
+			continue
+		var baseline_point: Vector3 = before["point"]
+		var trial_point: Vector3 = after["point"]
+		if absf(baseline_point.y - trial_point.y) > EPSILON:
+			supported = false
+		points.append([trial_point.x, trial_point.y, trial_point.z])
+	result["trial_forward_offset"] = 0.05
+	result["trial_supported"] = supported
+	result["trial_support_points"] = points
+	return result
+
+
+static func _downward_support(hip: Vector3, parts: Array[Dictionary], cushions_only: bool) -> Dictionary:
+	var nearest: float = INF
+	var path: String = ""
+	for part: Dictionary in parts:
+		if cushions_only and not part["is_cushion"]:
+			continue
+		var faces: PackedVector3Array = part["triangles"]
+		for index: int in range(0, faces.size(), 3):
+			var a: Vector3 = faces[index]
+			var b: Vector3 = faces[index + 1]
+			var c: Vector3 = faces[index + 2]
+			var normal: Vector3 = (b - a).cross(c - a)
+			var denominator: float = normal.dot(Vector3.DOWN)
+			if denominator == 0.0:
+				continue
+			var distance: float = normal.dot(a - hip) / denominator
+			if distance >= 0.0 and distance < nearest and _inside_triangle(hip + Vector3.DOWN * distance, a, b, c, normal):
+				nearest = distance
+				path = part["path"]
+	return {"path": path, "point": hip + Vector3.DOWN * nearest if not path.is_empty() else Vector3.ZERO}
+
+
+## WITHDRAWN criterion: retained only to interpret the original receipt/source
+## regressions. Never call this to accept a seat after Director 6404820766.
 static func measure_triangles(head: AABB, triangles: PackedVector3Array) -> Dictionary:
 	if triangles.is_empty() or triangles.size() % 3 != 0 or not head.position.is_finite() or not head.end.is_finite():
 		return {"error": "clearance requires finite head bounds and complete seat triangles", "passes": false}
@@ -212,7 +571,7 @@ static func measure_triangles(head: AABB, triangles: PackedVector3Array) -> Dict
 	var enclosed: bool = absf(solid_angle) > TAU
 	var clearance: float = sqrt(minimum_squared)
 	return {"clearance": clearance, "intersecting_triangles": intersections,
-		"clearance_metric": CLEARANCE_METRIC,
+		"clearance_metric": WITHDRAWN_AABB_METRIC, "withdrawn_criterion": true,
 		"head_center_inside_seat": enclosed,
 		"passes": is_finite(clearance) and intersections == 0 and not enclosed and clearance + EPSILON >= REQUIRED_CLEARANCE}
 
