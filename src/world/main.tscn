@@ -1,4 +1,4 @@
-[gd_scene load_steps=14 format=3 uid="uid://b0fkmain0001"]
+[gd_scene load_steps=15 format=3 uid="uid://b0fkmain0001"]
 
 [ext_resource type="Script" path="res://src/world/main.gd" id="1"]
 [ext_resource type="PackedScene" path="res://src/world/shop_view.tscn" id="2"]
@@ -13,6 +13,7 @@
 [ext_resource type="PackedScene" path="res://src/ui/menu_panel.tscn" id="9_menu"]
 [ext_resource type="PackedScene" path="res://src/ui/staff_panel.tscn" id="11_staff"]
 [ext_resource type="PackedScene" path="res://src/ui/settings_panel.tscn" id="12_settings"]
+[ext_resource type="PackedScene" path="res://src/ui/goals_panel.tscn" id="13_goals"]
 
 [node name="Main" type="Node3D"]
 process_priority = 10
@@ -45,3 +46,5 @@ layer = 10
 [node name="StaffPanel" parent="Overlay" instance=ExtResource("11_staff")]
 
 [node name="SettingsPanel" parent="Overlay" instance=ExtResource("12_settings")]
+
+[node name="GoalsPanel" parent="Overlay" instance=ExtResource("13_goals")]
