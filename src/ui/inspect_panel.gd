@@ -222,7 +222,7 @@ func _show_guest(guest: CustomerAgent) -> void:
 	var state_name: String = "Visiting"
 	if int(guest.state) >= 0 and int(guest.state) < GUEST_STATES.size():
 		state_name = GUEST_STATES[int(guest.state)]
-	_details.text = "State: %s" % state_name
+	_details.text = "Type: %s\nState: %s" % [guest.customer_type_name, state_name]
 	_details.show()
 	match guest.state:
 		CustomerAgent.State.ARRIVING, CustomerAgent.State.QUEUED:

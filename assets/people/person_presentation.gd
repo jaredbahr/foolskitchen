@@ -28,7 +28,7 @@ const HEAD_TOPS: Dictionary[StringName, float] = {
 }
 
 
-static func model_for(role: StringName, guest_id: int = 0) -> StringName:
+static func model_for(role: StringName, guest_id: int = 0, customer_type: StringName = &"regular") -> StringName:
 	match role:
 		&"cook":
 			return COOK_MODEL
@@ -37,16 +37,26 @@ static func model_for(role: StringName, guest_id: int = 0) -> StringName:
 		&"owner":
 			return OWNER_MODEL
 		&"customer", &"guest":
+			# Reuse native, unmodified Mini rigs. Each type has a deterministic
+			# pair; Regular retains its complete existing guest-id mapping.
+			var models: Array[StringName] = GUEST_MODELS
+			match customer_type:
+				&"student":
+					models = [&"character-female-f", &"character-male-f"]
+				&"foodie":
+					models = [&"character-female-c", &"character-male-e"]
+				&"family":
+					models = [&"character-female-e", &"character-male-c"]
 			# Avoid abs(INT64_MIN) and use no RNG, including for negative IDs.
-			var count: int = GUEST_MODELS.size()
+			var count: int = models.size()
 			var index: int = ((guest_id % count) + count) % count
-			return GUEST_MODELS[index]
+			return models[index]
 	# ART_STYLE section 4 does not yet approve a Cleaner model. No substitute look.
 	return &""
 
 
-static func model_path_for(role: StringName, guest_id: int = 0) -> String:
-	var model: StringName = model_for(role, guest_id)
+static func model_path_for(role: StringName, guest_id: int = 0, customer_type: StringName = &"regular") -> String:
+	var model: StringName = model_for(role, guest_id, customer_type)
 	return "" if model == &"" else MODEL_DIRECTORY + String(model) + ".glb"
 
 

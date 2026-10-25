@@ -14,14 +14,16 @@ class PredicateCounter extends RefCounted:
 class SpyPerson extends PersonView:
 	var seen_role: StringName = &""
 	var seen_id: int = 0
+	var seen_type: StringName = &""
 	var seen_pose: Array[bool] = []
 	var seen_seat: float = 0.0
 	var seen_speed: float = -1.0
 
-	func set_look(value: StringName, id: int = 0) -> bool:
+	func set_look(value: StringName, id: int = 0, kind: StringName = &"regular") -> bool:
 		seen_role = value
 		seen_id = id
-		return PersonPresentation.model_for(value, id) != &""
+		seen_type = kind
+		return PersonPresentation.model_for(value, id, kind) != &""
 
 	func set_pose(moving: bool, seated: bool, carrying: bool, working: bool, seat_height: float = 0.0) -> bool:
 		seen_pose = [moving, seated, carrying, working]
@@ -49,6 +51,21 @@ func before_each() -> void:
 func after_each() -> void:
 	_restaurant = null
 	_world = null
+
+
+func test_customer_type_reaches_person_view_without_rng_or_sim_mutation() -> void:
+	var kind: CustomerType = preload("res://data/customers/types.tres").find_type(&"student")
+	var guest: CustomerAgent = _restaurant.add_customer(Vector2i(2, 2), RandomNumberGenerator.new(), kind)
+	var before: int = guest.rng.state
+	var frame: AgentPresentationController.Frame = AgentPresentationController.frame_for(guest, _world)
+	assert_eq(frame.customer_type, &"student")
+	var view: SpyPerson = SpyPerson.new()
+	assert_true(AgentPresentationController.apply(frame, view, 0.0))
+	assert_eq(view.seen_type, &"student")
+	assert_eq(view.seen_id, guest.id)
+	assert_eq(guest.rng.state, before)
+	assert_eq(_world.now, 0)
+	view.free()
 
 
 func test_interpolation_and_facing_read_existing_path_without_advancing() -> void:

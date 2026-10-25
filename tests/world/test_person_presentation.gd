@@ -2,6 +2,25 @@ extends TestCase
 ## Pure mappings only. Import, animation, model fit and pixels need engine checks.
 
 
+func test_type_looks_use_deterministic_native_guest_pairs_and_preserve_regular() -> void:
+	var seen: Dictionary[StringName, bool] = {}
+	for kind: StringName in [&"student", &"foodie", &"family"]:
+		for id: int in [0, 1, -1, -9223372036854775807 - 1, 9223372036854775807]:
+			var model: StringName = PersonPresentation.model_for(&"customer", id, kind)
+			assert_eq(model, PersonPresentation.model_for(&"guest", id, kind))
+			assert_true(PersonPresentation.GUEST_MODELS.has(model))
+			assert_eq(PersonPresentation.model_path_for(&"customer", id, kind), PersonPresentation.MODEL_DIRECTORY + String(model) + ".glb")
+		for id: int in [0, 1]:
+			var model: StringName = PersonPresentation.model_for(&"customer", id, kind)
+			assert_false(seen.has(model), "special types have distinct native model pairs")
+			seen[model] = true
+	for id: int in range(8):
+		assert_eq(PersonPresentation.model_for(&"customer", id, &"regular"), PersonPresentation.GUEST_MODELS[id])
+		assert_eq(PersonPresentation.model_for(&"customer", id, &"unknown"), PersonPresentation.GUEST_MODELS[id])
+	assert_eq(PersonPresentation.model_for(&"cook", 5, &"foodie"), PersonPresentation.COOK_MODEL)
+	assert_eq(seen.size(), 6)
+
+
 func test_fixed_staff_and_owner_looks() -> void:
 	assert_eq(PersonPresentation.model_for(&"cook"), &"character-male-b")
 	assert_true(PersonPresentation.has_chef_hat(&"cook"))

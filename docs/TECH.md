@@ -333,7 +333,9 @@ an active edit/panel/selection first, or opens Settings when none is active.
   `price_of(recipe)` falls back to the immutable `RecipeDef.standard_price`.
   Orders capture that price once, so later settings never reprice a ticket.
 - At order time an above-standard price has refusal probability
-  `clamp((price / standard - 1) * price_sensitivity, 0, max_price_walkout)`.
+  `clamp(max(price / standard - 1, 0) / budget * price_sensitivity, 0, max_price_walkout)`.
+  Every type accepts standard or cheaper prices. Regular's budget multiplier
+  is 1.0, preserving its existing formula.
   The `EconomyTuning` defaults are 1.5 and 0.9. The guest uses its private RNG
   only when the chance is positive: standard/cheaper menus preserve the existing
   random stream. Refusal creates no ticket and gives `too_expensive` as a readable
@@ -498,7 +500,7 @@ an active edit/panel/selection first, or opens Settings when none is active.
   without cleanliness retain zero dirt. An unserved guest gives one star;
   closing departures give no review. The optional raw ambience bonus is also
   retained on arrival, so a later redesign cannot change that guest's term.
-  For a served guest, the score is `clamp(round(5 - penalty + vibe_bonus), 1, 5)`, where the
+  For a served guest, the score is `round(clamp(5 - penalty + vibe_bonus + quality_bonus, 1, 5))`, where the
   penalty is the sum of each input clamped to 0..1 times its authored weight.
   `data/balance/reviews.tres` starts with queue 1.0, food 1.3, overprice 0.8,
   and dirt 0.6. Final ratings of four or five, or visits without a substantial
@@ -507,7 +509,8 @@ an active edit/panel/selection first, or opens Settings when none is active.
   `data/reviews/quotes.tres` holds
   the grouped lines.
 - A separate saved `GameState.rng(&"reviews")` stream draws the 50% chance and
-  quote. Neither reviews nor quotes consume customer, kitchen or hiring draws.
+  quote, with the type's review-chance multiplier applied before the draw.
+  Neither reviews nor quotes consume customer, kitchen or hiring draws.
   The 0.8x-at-one-star to 1.2x-at-five-stars arrival curve is linear in the
   authored resource. Main samples it once before `sim.start_day()` schedules
   the first guest, scaling the base min/max arrival gaps inversely. Reviews
@@ -780,6 +783,30 @@ an active edit/panel/selection first, or opens Settings when none is active.
   morning and never join the saved report. Score, snapshots and presentation
   add no save section, action save, random draw or customer-type selection.
 
+**Customer types (FK-061):** `data/customers/types.tres` authors neutral Regulars,
+Students (budget 0.8 / patience 1.3, level 1), Foodies (1.4 / 0.9, level 3), and
+single-person Families (1.1 / 1.4, level 4). Main installs the detached catalogue
+after owner progression and reviews restore, and refreshes its level each morning.
+The spawner chooses in authored order from unlocked, positive weights interpolated
+by reputation, using the named customers stream. One eligible type consumes no
+selection draw; an unconfigured simulation retains the old Regular arrival path.
+
+A guest captures its authored name, budget and review preferences, and scales
+patience once before cleanliness and Vibe; the server bonus still applies later
+once. Walkouts and the overprice review penalty scale only the positive excess
+`max(charged / standard - 1, 0) / budget`; standard prices are fair for every
+type, and discounted-price quote rules stay unchanged. Reviews add
+`(clamp(Order.quality, 0, 1) - 0.5) * quality_weight`: half-quality is neutral,
+better food helps and worse food hurts. Invalid quality measurements add no
+term, and Regular's zero quality weight is unchanged. Types also multiply review
+probability before clamping it to 0-1. Closing/unserved policies and the separate
+review RNG remain unchanged. Native Mini model pairs distinguish special types
+deterministically; Regular keeps its existing guest-id mapping. The inspection
+panel shows the authored type name. No customer-type save section or action save
+is added. Regular compatibility fixtures retain the pre-type methods from main
+`34f8fde` for seeds 1, 7 and 42; they do not substitute for the required ten-day
+before/after balance probe.
+
 **Career goals (FK-062):** `data/milestones/starter.tres` owns the twelve starter
 goals. The pure `MilestoneTracker` observes closed-day served/lost counts,
 reputation, operating profit, owner level and staff count. It records lifetime
@@ -804,6 +831,7 @@ precede the saved morning. Missing legacy sections start a fresh career tracker;
 malformed data rejects the load without partially installing career state. Career
 state uses the existing next-morning autosave only, including rewards earned at
 the preceding close. New Game resets it. No action or evening save is added.
+
 **Lighting and frontage (FK-055):** Main owns one `lighting_rig.tscn` with a
 warm directional key (main's colour, energy and shadows), low-energy cool fill
 and warm ambient light, so exposure matches the pre-rig shop. A native procedural

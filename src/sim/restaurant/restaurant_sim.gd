@@ -40,6 +40,9 @@ var cleanliness: CleanlinessState = null
 var clean_tasks: CleanTaskController = null
 var spawner: CustomerSpawner
 var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+## Opt-in catalogue. An unconfigured sim retains the exact Regular arrival stream.
+var customer_types: CustomerTypeCatalogue = null
+var customer_level: int = 1
 var served_today: int = 0
 var lost_today: int = 0
 var leave_reasons_today: Dictionary[StringName, int] = {}
@@ -221,6 +224,24 @@ func use_rng(random: RandomNumberGenerator) -> void:
 	spawner.rng = random
 
 
+## Session installs authored content after loading owner progression. Deep-copy
+## resources so authoring changes cannot rewrite the current world's configuration.
+## No random draw or guest is changed by configuration or level updates.
+func configure_customer_types(catalogue: CustomerTypeCatalogue, owner_level: int) -> bool:
+	if catalogue == null or not catalogue.is_valid() or owner_level < 1:
+		return false
+	customer_types = catalogue.duplicate(true) as CustomerTypeCatalogue
+	customer_level = owner_level
+	return true
+
+
+func set_customer_level(owner_level: int) -> bool:
+	if owner_level < 1:
+		return false
+	customer_level = owner_level
+	return true
+
+
 ## Install once for this world; the caller builds state with the named seeded
 ## cleanliness stream. No spot or extra draw exists in legacy sessions.
 func configure_cleanliness(state: CleanlinessState, tuning: CleanlinessTuning) -> bool:
@@ -319,8 +340,9 @@ func price_of(recipe: RecipeDef) -> int:
 
 
 ## No chance below/equal to standard; callers must not draw RNG when this is 0.
-func price_walkout_chance(recipe: RecipeDef) -> float:
-	if recipe == null or recipe.standard_price <= 0 or pricing_tuning == null:
+func price_walkout_chance(recipe: RecipeDef, budget_multiplier: float = 1.0) -> float:
+	if recipe == null or recipe.standard_price <= 0 or pricing_tuning == null \
+			or not is_finite(budget_multiplier) or budget_multiplier <= 0.0:
 		return 0.0
 	var ratio: float = float(price_of(recipe)) / float(recipe.standard_price)
 	if ratio <= 1.0:
@@ -329,12 +351,16 @@ func price_walkout_chance(recipe: RecipeDef) -> float:
 	var maximum: float = pricing_tuning.max_price_walkout
 	if not is_finite(sensitivity) or not is_finite(maximum):
 		return 0.0
-	return clampf((ratio - 1.0) * maxf(sensitivity, 0.0), 0.0, clampf(maximum, 0.0, 1.0))
+	return clampf(((ratio - 1.0) / budget_multiplier) * maxf(sensitivity, 0.0), 0.0, clampf(maximum, 0.0, 1.0))
 
 
 ## Adds a guest using an independent random stream (also useful for scenarios).
-func add_customer(entry: Vector2i, random: RandomNumberGenerator) -> CustomerAgent:
+func add_customer(entry: Vector2i, random: RandomNumberGenerator, kind: CustomerType = null) -> CustomerAgent:
+	if kind != null and not kind.is_valid():
+		return null
 	var customer: CustomerAgent = CustomerAgent.new(self, random)
+	if kind != null:
+		customer.configure_type(kind)
 	customer.cell = entry
 	# Only a real service arrival can dirty the floor or consume its stream.
 	if cleanliness != null and world.clock.phase == SimClock.Phase.OPEN:

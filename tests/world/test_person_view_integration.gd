@@ -25,6 +25,26 @@ func after_each() -> void:
 	Clock.set_speed(_old_speed)
 
 
+func test_native_customer_type_looks_flow_through_existing_shop_bridge() -> void:
+	var catalogue: CustomerTypeCatalogue = preload("res://data/customers/types.tres")
+	var states: Dictionary[int, int] = {}
+	for index: int in catalogue.types.size():
+		var random: RandomNumberGenerator = RandomNumberGenerator.new()
+		random.seed = 1110 + index
+		var guest: CustomerAgent = _restaurant.add_customer(Vector2i(index + 1, 2), random, catalogue.types[index])
+		guest.state = CustomerAgent.State.QUEUED
+		states[guest.id] = random.state
+	await _enter_view()
+	for guest: CustomerAgent in _restaurant.customers():
+		var person: PersonView = _person(guest.id)
+		assert_true(person.get_meta("person_ready"))
+		assert_eq(person.model_name(), PersonPresentation.model_for(&"customer", guest.id, guest.customer_type_id))
+		assert_eq(person.customer_type, guest.customer_type_id)
+		assert_eq(person.current_clip(), &"idle")
+		assert_eq(guest.rng.state, states[guest.id])
+	assert_eq(_world.now, 0)
+
+
 func test_native_roles_use_fixed_looks_hat_and_private_looping_clips() -> void:
 	var cook: StaffAgent = _world.add_agent(StaffAgent.new(&"cook")) as StaffAgent
 	var server: StaffAgent = _world.add_agent(StaffAgent.new(&"server")) as StaffAgent

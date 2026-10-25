@@ -25,6 +25,12 @@ var seat_cell: Vector2i = SimGrid.NO_CELL
 var order: Order = null
 var leave_reason: StringName = &"happy"
 var paid: bool = false
+## Detached preferences captured before arrival. Existing guests never change type.
+var customer_type_id: StringName = &"regular"
+var customer_type_name: String = "Regular"
+var budget_multiplier: float = 1.0
+var quality_weight: float = 0.0
+var review_chance_multiplier: float = 1.0
 ## The floor seen on arrival, before this guest can add their own door spot.
 var arrival_dirt_fraction: float = 0.0
 ## Derived ambience sampled once on a real OPEN arrival, before later edits.
@@ -42,6 +48,7 @@ var _walk_wait: int = 0
 var _eating: int = 0
 var _exit_unreachable: int = 0
 var _ordering_block_logged: bool = false
+var _type_configured: bool = false
 
 
 ## Receives a private random stream; never retains its owning restaurant strongly.
@@ -49,6 +56,30 @@ func _init(restaurant: RestaurantSim, random: RandomNumberGenerator) -> void:
 	role = &"customer"
 	_restaurant = weakref(restaurant)
 	rng = random
+
+
+## Only an uninstalled arrival can receive a profile; failed inputs change nothing.
+func configure_type(kind: CustomerType) -> bool:
+	if kind == null or not kind.is_valid() or _type_configured or id != 0 or state != State.ARRIVING:
+		return false
+	_type_configured = true
+	customer_type_id = kind.id
+	customer_type_name = kind.display_name
+	budget_multiplier = kind.budget_multiplier
+	quality_weight = kind.quality_weight
+	review_chance_multiplier = kind.review_chance_multiplier
+	queue_patience = _type_patience(queue_patience, kind.patience_multiplier)
+	food_patience = _type_patience(food_patience, kind.patience_multiplier)
+	return true
+
+
+static func _type_patience(budget: int, multiplier: float) -> int:
+	if multiplier == 1.0:
+		return budget
+	var scaled: float = float(budget) * multiplier
+	if scaled >= float(9223372036854775807):
+		return 9223372036854775807
+	return maxi(1, roundi(scaled))
 
 
 ## Reasons a guest can give for leaving that the player should see as-is.
@@ -183,6 +214,14 @@ func review_visit(standard_price: int, dirt_fraction: float = 0.0) -> ReviewVisi
 	visit.food_wait_fraction = float(maxi(0, _food_wait)) / float(maxi(1, food_patience))
 	if order != null and standard_price > 0:
 		visit.price_ratio = float(order.price) / float(standard_price)
+		# Every type accepts standard prices. Only the excess is budget-sensitive;
+		# keep discounts and Regular's exact existing ratio/quote policy intact.
+		if visit.price_ratio > 1.0 and budget_multiplier != 1.0:
+			visit.price_ratio = 1.0 + (visit.price_ratio - 1.0) / budget_multiplier
+	if order != null:
+		visit.quality = order.quality
+	visit.quality_weight = quality_weight
+	visit.review_chance_multiplier = review_chance_multiplier
 	visit.dirt_fraction = dirt_fraction
 	visit.vibe_review_bonus = vibe_review_bonus
 	return visit
@@ -324,7 +363,7 @@ func _take_order(server: SimAgent) -> bool:
 		return false
 	var recipe: RecipeDef = sim.menu[rng.randi_range(0, sim.menu.size() - 1)]
 	var price: int = sim.price_of(recipe)
-	var chance: float = sim.price_walkout_chance(recipe)
+	var chance: float = sim.price_walkout_chance(recipe, budget_multiplier)
 	# Standard/cheaper prices preserve the existing guest stream exactly.
 	if chance > 0.0 and rng.randf() < chance:
 		_leave(sim.world, sim, &"too_expensive")
