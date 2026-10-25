@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- Meet Students, Foodies and Families with different budgets and patience; inspect a guest to see their type. (#145)
 - Jobs a role can't do now show a faded dash, so they no longer look like Low; member cards appear before priorities, and XP has more space beside the scrollbar. (#143)
 - Vibe bonuses grow gradually as you decorate; evening reports hide zero scores and describe guests' reactions more carefully. (#142)
 - Decorate to improve your restaurant's vibe, giving waiting guests more patience and a small review bonus; see its theme in Build mode and the evening report. (#140)
