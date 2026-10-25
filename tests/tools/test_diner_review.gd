@@ -92,7 +92,7 @@ func test_comparison_reads_six_real_models_refs_bounds_and_mini_without_mutation
 	assert_true(REVIEW.valid(state, 12, fixture), JSON.stringify(state))
 	assert_eq(_snapshot(), before, "evidence and validation leave clock, RNG, ledger, providers and preferences alone")
 	assert_eq(state["pairs"].size(), 6)
-	for change: String in ["model", "reference", "hash", "dimensions", "triangles", "bounds", "label", "billboard", "mini", "mini_scale", "lights", "clock", "rng"]:
+	for change: String in ["model", "reference", "hash", "dimensions", "triangles", "bounds", "label", "billboard", "mini", "mini_scale", "lights", "clock", "rng", "notice_background", "notice_contrast", "notice_clipped"]:
 		var broken: Dictionary = state.duplicate(true)
 		match change:
 			"model":
@@ -121,6 +121,12 @@ func test_comparison_reads_six_real_models_refs_bounds_and_mini_without_mutation
 				broken["snapshot"]["world_tick"] = 1
 			"rng":
 				broken["snapshot"]["restaurant_rng"][1] = "1"
+			"notice_background":
+				broken["notice"]["background_drawn"] = false
+			"notice_contrast":
+				broken["notice"]["contrast"] = 1.0
+			"notice_clipped":
+				broken["notice"]["visible_lines"] = 1
 		assert_false(REVIEW.valid(broken, 12, fixture), change + " fails closed")
 	assert_false(REVIEW.valid(state, 90, fixture))
 
