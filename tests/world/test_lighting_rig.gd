@@ -31,6 +31,12 @@ func test_scene_instances_do_not_share_mutable_environment_or_sky_resources() ->
 	var second: Node3D = RIG.instantiate() as Node3D
 	var first_env: Environment = (first.get_node("Environment") as WorldEnvironment).environment
 	var second_env: Environment = (second.get_node("Environment") as WorldEnvironment).environment
+	assert_eq(first_env.get_local_scene(), first)
+	assert_eq(second_env.get_local_scene(), second)
+	assert_eq(first_env.sky.get_local_scene(), first)
+	assert_eq(second_env.sky.get_local_scene(), second)
+	assert_eq(first_env.sky.sky_material.get_local_scene(), first)
+	assert_eq(second_env.sky.sky_material.get_local_scene(), second)
 	assert_true(first_env != second_env)
 	assert_true(first_env.sky != second_env.sky)
 	assert_true(first_env.sky.sky_material != second_env.sky.sky_material)

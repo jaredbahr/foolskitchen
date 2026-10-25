@@ -27,6 +27,10 @@ func test_thumbnail_uses_same_light_settings_with_detached_transparent_environme
 		return
 	var world_env: Environment = (playable.get_node("Environment") as WorldEnvironment).environment
 	var preview_env: Environment = (preview.get_node("Environment") as WorldEnvironment).environment
+	assert_eq(preview_env.get_local_scene(), preview,
+		"preview keeps its native scene-local environment instead of discarding it for another copy")
+	assert_eq(preview_env.sky.get_local_scene(), preview)
+	assert_eq(preview_env.sky.sky_material.get_local_scene(), preview)
 	assert_true(world_env != preview_env)
 	assert_true(world_env.sky != preview_env.sky)
 	assert_true(world_env.sky.sky_material != preview_env.sky.sky_material)
@@ -44,6 +48,10 @@ func test_thumbnail_uses_same_light_settings_with_detached_transparent_environme
 		assert_eq(copied.sky_mode, DirectionalLight3D.SKY_MODE_LIGHT_ONLY)
 	preview_env.ambient_light_energy = 0.0
 	assert_true(world_env.ambient_light_energy > 0.0)
+	var preview_sky_material: ProceduralSkyMaterial = preview_env.sky.sky_material as ProceduralSkyMaterial
+	var world_sky_material: ProceduralSkyMaterial = world_env.sky.sky_material as ProceduralSkyMaterial
+	preview_sky_material.energy_multiplier = 0.0
+	assert_true(world_sky_material.energy_multiplier > 0.0, "preview sky changes never mutate playable lighting")
 	preview.free()
 	playable.free()
 

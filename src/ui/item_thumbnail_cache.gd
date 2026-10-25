@@ -8,7 +8,9 @@ signal thumbnail_ready(scene: PackedScene, texture: Texture2D)
 
 const IMAGE_SIZE: Vector2i = Vector2i(96, 96)
 const MAX_DRAW_WAIT_FRAMES: int = 30
-const LIGHTING_SCENE_PATH: String = "res://src/world/lighting_rig.tscn"
+# Keep the source Sky alive with its scene. GLES3 queues newly loaded skies
+# before drawing; discarding a temporary scene/sky can orphan that queued work.
+const LIGHTING_SCENE: PackedScene = preload("res://src/world/lighting_rig.tscn")
 
 var _textures: Dictionary[int, Texture2D] = {}
 var _scenes: Dictionary[int, PackedScene] = {}
@@ -111,10 +113,7 @@ func _ensure_stage() -> bool:
 ## The preview owns a separate World3D and detached rig resources. Its clear
 ## background never changes the playable world's warm sky or shared materials.
 static func create_preview_lighting() -> Node3D:
-	var packed: PackedScene = load(LIGHTING_SCENE_PATH) as PackedScene
-	if packed == null:
-		return null
-	var instance: Node = packed.instantiate()
+	var instance: Node = LIGHTING_SCENE.instantiate()
 	var lighting: Node3D = instance as Node3D
 	if lighting == null:
 		instance.free()
@@ -125,7 +124,12 @@ static func create_preview_lighting() -> Node3D:
 			or not lighting.get_node_or_null("FillLight") is DirectionalLight3D:
 		lighting.free()
 		return null
-	warm.environment = warm.environment.duplicate(true) as Environment
+	# The rig already supplies a native scene-local Environment, Sky and material.
+	# Replacing it with another deep copy discards an invalidated Sky before the
+	# first renderer update. Keep the native copy and refuse any shared template.
+	if warm.environment.get_local_scene() != lighting:
+		lighting.free()
+		return null
 	warm.environment.background_mode = Environment.BG_CLEAR_COLOR
 	return lighting
 
