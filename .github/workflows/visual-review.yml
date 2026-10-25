@@ -81,6 +81,7 @@ jobs:
           bash tools/screenshot.sh --out=screens/visual-review/people-poses --open --fast=8 --frames=60,240 --speed=1
           bash tools/screenshot.sh --out=screens/visual-review/door-queue --door-queue --open --fast=8 --frames=240 --speed=1
           bash tools/screenshot.sh --out=screens/visual-review/loan-review --loan-review --speed=0 --frames=12,90
+          bash tools/screenshot.sh --out=screens/visual-review/milestone-review --milestone-review --speed=0 --frames=12,90
           bash tools/screenshot.sh --out=screens/visual-review/catalogue-rustic --catalogue-review=rustic --speed=0 --frames=90,120
           bash tools/screenshot.sh --out=screens/visual-review/catalogue-modern --catalogue-review=modern --speed=0 --frames=90,120
           bash tools/screenshot.sh --out=screens/visual-review/menu --menu --speed=0 --frames=12
@@ -110,6 +111,7 @@ jobs:
           captures += [('report', -1, False, False, 60)]
           captures += [('inspect-guest', -1, True, False, 60), ('debug-busy', -1, True, True, 60)]
           captures += [('owner-kitchen', -1, False, False, 60)]
+          captures += [('milestone-review', -1, False, False, frame) for frame in (12, 90)]
           captures += [('mood-waits', -1, False, False, frame) for frame in (120, 180, 240, 300)]
           captures += [('menu', -1, False, False, 12)]
           captures += [('staff', -1, False, False, 12)]
@@ -130,6 +132,10 @@ jobs:
               expected = 0 if requested == -1 else requested
               assert data['scene'] == 'res://src/world/main.tscn', f'{name}: wrong captured scene'
               assert data['capture_timing'] == 'frame_post_draw', f'{name}: pixels/state were not captured after draw'
+              if name == 'milestone-review':
+                  review = data.get('milestone_review')
+                  assert isinstance(review, dict) and isinstance(review.get('fixture'), dict) and isinstance(review.get('state'), dict), f'{name}: missing GDScript-validated milestone evidence'
+                  assert review['state'].get('frame') == frame, f'{name}: milestone evidence frame does not match this image'
               assert data['requested_quarter'] == requested, f'{name}: wrong requested quarter'
               assert data['actual_quarter'] == expected, f'{name}: wrong actual quarter'
               assert math.isclose(data['yaw_degrees'], 45 + 90 * expected, abs_tol=0.01), f'{name}: wrong rendered yaw'

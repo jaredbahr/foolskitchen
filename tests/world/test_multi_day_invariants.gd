@@ -170,10 +170,11 @@ func _assert_closed_books(main: Node, day: int) -> void:
 	assert_eq(int(totals.get(Ledger.OTHER, 0)), 0, "day %d: no unexplained money" % day)
 	var known_categories: Array[StringName] = [Ledger.SALE, Ledger.TIP, Ledger.INGREDIENTS,
 		Ledger.WAGES, Ledger.RENT, Ledger.UPGRADES, Ledger.OTHER,
-		Ledger.BANK_LOAN, Ledger.LOAN_INTEREST, Ledger.LOAN_REPAYMENT]
+		Ledger.BANK_LOAN, Ledger.LOAN_INTEREST, Ledger.LOAN_REPAYMENT, Ledger.MILESTONE_BONUS]
 	for category: StringName in totals:
 		assert_true(known_categories.has(category), "day %d: every flow has a known ledger category" % day)
 	assert_true(int(totals.get(Ledger.BANK_LOAN, 0)) >= 0)
+	assert_true(int(totals.get(Ledger.MILESTONE_BONUS, 0)) >= 0)
 	assert_true(int(totals.get(Ledger.LOAN_INTEREST, 0)) <= 0)
 	assert_true(int(totals.get(Ledger.LOAN_REPAYMENT, 0)) <= 0)
 	assert_true(Economy.cash >= 0, "day %d: the bank covers any closing shortfall" % day)
@@ -198,12 +199,23 @@ func _assert_closed_books(main: Node, day: int) -> void:
 		"day %d: every review reaches the evening report" % day)
 	assert_eq(shown.reputation_after, reputation.average())
 	assert_eq(int(shown.income.get(Ledger.SALE, 0)), _sales_today)
+	var milestone_cash: int = 0
+	var milestone_xp: int = 0
+	for milestone: Dictionary in shown.milestones_reached:
+		milestone_cash += int(milestone.get("reward_cash", 0))
+		milestone_xp += int(milestone.get("reward_xp", 0))
+	assert_eq(int(shown.income.get(Ledger.MILESTONE_BONUS, 0)), milestone_cash)
+	assert_eq(int(totals.get(Ledger.MILESTONE_BONUS, 0)), milestone_cash,
+		"day %d: report reward rows account for the milestone ledger total" % day)
+	assert_eq(shown.owner_xp_breakdown.get("milestone_xp", 0), milestone_xp,
+		"day %d: report XP breakdown matches its authored milestone rows" % day)
 	assert_eq(int(shown.income.get(Ledger.BANK_LOAN, 0)), int(totals.get(Ledger.BANK_LOAN, 0)))
 	assert_eq(int(shown.costs.get(Ledger.LOAN_INTEREST, 0)), -int(totals.get(Ledger.LOAN_INTEREST, 0)))
 	assert_eq(int(shown.costs.get(Ledger.LOAN_REPAYMENT, 0)), -int(totals.get(Ledger.LOAN_REPAYMENT, 0)))
 	var operating_profit: int = 0
 	for category: StringName in totals:
-		if category != Ledger.BANK_LOAN and category != Ledger.LOAN_INTEREST and category != Ledger.LOAN_REPAYMENT:
+		if category != Ledger.BANK_LOAN and category != Ledger.LOAN_INTEREST \
+				and category != Ledger.LOAN_REPAYMENT and category != Ledger.MILESTONE_BONUS:
 			operating_profit += int(totals[category])
 	assert_eq(shown.operating_profit(), operating_profit, "the headline excludes every financing movement")
 	assert_eq(shown.profit(), Economy.ledger.day_profit(day), "full financial cash movement still matches the ledger")

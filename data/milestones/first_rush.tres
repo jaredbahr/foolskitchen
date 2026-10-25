@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="Milestone" format=3]
+
+[ext_resource type="Script" path="res://src/sim/progression/milestone.gd" id="1_goal"]
+
+[resource]
+script = ExtResource("1_goal")
+id = &"first_rush"
+title = "First rush"
+description = "Serve ten guests in one day. The aprons have earned a breather."
+condition = 0
+target = 10.0
+reward_xp = 10
+reward_cash = 10
+unlock_level = 1
