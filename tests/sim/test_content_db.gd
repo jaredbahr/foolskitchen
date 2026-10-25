@@ -40,7 +40,8 @@ func test_lists_are_sorted_and_do_not_expose_index_arrays() -> void:
 		item_ids.append(definition.id)
 	assert_eq(item_ids, [
 		&"bar_counter", &"bar_stool", &"bench", &"bookcase_open_low", &"chair", &"cloth_table",
-		&"coat_rack_standing", &"cross_table", &"cushioned_bench", &"door", &"fridge", &"glass_table",
+		&"coat_rack_standing", &"cross_table", &"cushioned_bench", &"diner_booth", &"diner_stool",
+		&"door", &"fridge", &"glass_table",
 		&"lounge_chair", &"modern_chair", &"modern_frame_chair", &"pass_counter", &"plant_small_1",
 		&"plant_small_2", &"plant_small_3", &"potted_plant", &"prep_counter", &"round_table",
 		&"rounded_chair", &"rug_rectangle", &"rug_round", &"rug_square", &"side_table", &"sink",
@@ -69,7 +70,7 @@ func test_recursive_resource_discovery_returns_sorted_original_tres_names() -> v
 		if path.begins_with("res://data/ingredients/") or path.begins_with("res://data/recipes/") \
 				or path.begins_with("res://data/items/"):
 			content_paths += 1
-	assert_eq(content_paths, 45)
+	assert_eq(content_paths, 47)
 	assert_true(paths.has("res://data/ingredients/bun.tres"))
 	assert_true(paths.has("res://data/recipes/burger.tres"))
 	assert_true(paths.has("res://data/items/table_2.tres"))
