@@ -1,0 +1,49 @@
+[gd_scene load_steps=4 format=3]
+
+[sub_resource type="ProceduralSkyMaterial" id="WarmSkyMaterial"]
+sky_top_color = Color(0.3, 0.235, 0.19, 1)
+sky_horizon_color = Color(0.4, 0.31, 0.24, 1)
+sky_curve = 0.3
+ground_bottom_color = Color(0.25, 0.195, 0.155, 1)
+ground_horizon_color = Color(0.4, 0.31, 0.24, 1)
+ground_curve = 0.3
+sun_angle_max = 0.0
+energy_multiplier = 1.0
+resource_local_to_scene = true
+
+[sub_resource type="Sky" id="WarmSky"]
+sky_material = SubResource("WarmSkyMaterial")
+resource_local_to_scene = true
+
+[sub_resource type="Environment" id="WarmEnvironment"]
+background_mode = 2
+background_color = Color(0.25, 0.2, 0.17, 1)
+sky = SubResource("WarmSky")
+ambient_light_source = 2
+ambient_light_color = Color(1, 0.96, 0.9, 1)
+ambient_light_energy = 0.28
+ambient_light_sky_contribution = 0.0
+tonemap_mode = 3
+tonemap_exposure = 0.65
+tonemap_white = 4.0
+resource_local_to_scene = true
+
+[node name="LightingRig" type="Node3D"]
+
+[node name="Environment" type="WorldEnvironment" parent="."]
+environment = SubResource("WarmEnvironment")
+
+[node name="KeyLight" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-55, -35, 0)
+light_color = Color(1, 0.8862745, 0.7215686, 1)
+light_energy = 0.4
+light_specular = 0.2
+sky_mode = 1
+shadow_enabled = true
+
+[node name="FillLight" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-35, 145, 0)
+light_color = Color(0.68, 0.78, 1, 1)
+light_energy = 0.08
+light_specular = 0.1
+sky_mode = 1
