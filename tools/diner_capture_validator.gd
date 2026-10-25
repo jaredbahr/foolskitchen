@@ -142,6 +142,7 @@ static func validate_booth_crop(directory: String, source_metadata: Dictionary, 
 	var expected_height: int = source_rect.size.y * 3
 	if descriptor.get("source_image_file") != "shot_0090.png" \
 			or descriptor.get("source_image_sha256") != FileAccess.get_sha256(source_path) \
+			or descriptor.get("error") != "" \
 			or not _integer_equals(descriptor.get("source_frame"), 90, 90, 90) \
 			or not _integer_equals(descriptor.get("scale"), 3, 3, 3) \
 			or descriptor.get("interpolation") != "nearest" \
@@ -205,8 +206,8 @@ static func _booth_measurement(source_metadata: Dictionary, descriptor: Dictiona
 	var guest_id: Variant = descriptor.get("guest_id")
 	if not _integer_value(guest_id, 1, 2147483647) or guest_id != selected.get("guest_id") \
 			or guest_id != selected_actor.get("id") \
-			or descriptor.get("furnishing_id") != selected_actor.get("furnishing") \
-			or descriptor.get("table_item_id") != selected_actor.get("table"):
+			or not _integer_equals(descriptor.get("furnishing_id"), int(selected_actor.get("furnishing", -1)), 1, 2147483647) \
+			or not _integer_equals(descriptor.get("table_item_id"), int(selected_actor.get("table", -1)), 1, 2147483647):
 		return {"valid": false, "error": "diner-review: seated crop guest identity does not match measured booth guest"}
 	var head_bounds: Rect2 = _screen_rect(selected["head_screen_bounds"])
 	var furnishing_item: Dictionary = _item_by_id(items, int(selected_actor.get("furnishing", -1)))
