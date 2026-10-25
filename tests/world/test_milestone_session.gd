@@ -76,9 +76,12 @@ func test_real_menu_goals_close_and_escape_do_not_award_save_or_advance_rng() ->
 
 func test_close_pays_once_before_loan_but_keeps_pre_bonus_profit_and_report() -> void:
 	var main: Node = await _start(true, _catalogue(6, 500))
+	var live_owner: OwnerProgress = main.get("owner_progress") as OwnerProgress
 	var morning_file: String = _saved_text()
 	_fresh_books(main, 30, 1000, 30)
 	_close_day(main, 1)
+	assert_true(main.get("owner_progress") == live_owner, "bonus settlement preserves the live owner model")
+	assert_eq(live_owner.last_awarded_day, 1)
 	var interest: int = roundi(1000.0 * TERMS.daily_interest)
 	var repayment: int = maxi(1, floori(30.0 * TERMS.repay_share))
 	var expected_cash: int = 30 + 30 + 500 - interest - repayment
@@ -95,6 +98,7 @@ func test_close_pays_once_before_loan_but_keeps_pre_bonus_profit_and_report() ->
 	var ordinary: Dictionary = expected_owner.award_day(1, 0, 30)
 	expected_owner.award_bonus(6)
 	assert_eq((main.get("owner_progress") as OwnerProgress).to_dict(), expected_owner.to_dict())
+	assert_eq(live_owner.to_dict(), expected_owner.to_dict(), "existing readers see ordinary and bonus XP together")
 	assert_eq(report.owner_xp_breakdown["profit_xp"], ordinary["profit_xp"])
 	assert_eq(_saved_text(), morning_file, "closing never writes an extra save")
 	var books: Dictionary = Economy.ledger.to_dict()
@@ -105,6 +109,8 @@ func test_close_pays_once_before_loan_but_keeps_pre_bonus_profit_and_report() ->
 	main.call("build_report", 1)
 	assert_true(main.call("set_goals_visible", true))
 	assert_true(main.call("set_goals_visible", false))
+	assert_true(main.get("owner_progress") == live_owner, "repeated close and presentation keep the same owner model")
+	assert_eq(live_owner.to_dict(), owner)
 	assert_eq(Economy.ledger.to_dict(), books)
 	assert_eq((main.get("owner_progress") as OwnerProgress).to_dict(), owner)
 	assert_eq((main.get("milestones") as MilestoneTracker).to_dict(), career)
@@ -125,20 +131,33 @@ func test_earned_cash_prevents_an_avoidable_advance() -> void:
 func test_completion_persists_only_at_next_morning_and_cannot_pay_after_load() -> void:
 	var catalogue: MilestoneSet = _catalogue()
 	var first: Node = await _start(true, catalogue)
+	var first_owner: OwnerProgress = first.get("owner_progress") as OwnerProgress
 	var morning_file: String = _saved_text()
 	_fresh_books(first, 100, 0, 0)
 	_close_day(first, 1)
+	assert_true(first.get("owner_progress") == first_owner)
+	assert_eq(first_owner.total_xp, 6, "the retained owner receives the actual milestone bonus")
+	assert_eq(first_owner.last_awarded_day, 1)
 	var career: Dictionary = (first.get("milestones") as MilestoneTracker).to_dict()
 	assert_eq(_saved_text(), morning_file)
 	assert_true(Clock.sim.next_day())
+	assert_true(first.get("owner_progress") == first_owner, "next-morning setup preserves the live owner model")
+	assert_eq(first_owner.last_awarded_day, 1)
+	assert_eq(int(_document()["data"]["owner"]["progress"]["total_xp"]), first_owner.total_xp)
+	assert_eq(int(_document()["data"]["owner"]["progress"]["last_awarded_day"]), first_owner.last_awarded_day)
 	assert_eq(int(_document()["data"]["milestones"]["last_evaluated_day"]), 1)
 	assert_eq(_document()["data"]["milestones"]["completed"], ["one_guest"])
 	_close(first)
 	var second: Node = await _start(true, catalogue)
+	var second_owner: OwnerProgress = second.get("owner_progress") as OwnerProgress
 	assert_eq(Clock.sim.day, 2)
+	assert_eq(second_owner.to_dict(), first_owner.to_dict(), "the next session restores the complete awarded owner state")
 	assert_eq((second.get("milestones") as MilestoneTracker).to_dict(), career)
 	_fresh_books(second, 100, 0, 0)
 	_close_day(second, 1)
+	assert_true(second.get("owner_progress") == second_owner, "a close without new rewards also preserves owner identity")
+	assert_eq(second_owner.last_awarded_day, 2, "a retained reader sees the next ordinary day-close guard")
+	assert_eq(second_owner.total_xp, first_owner.total_xp, "an already completed goal adds no further XP")
 	assert_eq(Economy.ledger.day_totals(2).get(Ledger.MILESTONE_BONUS, 0), 0)
 	assert_true((second.get("shown_report") as DayReport).milestones_reached.is_empty())
 	assert_eq((second.get("milestones") as MilestoneTracker).completed_ids(), [&"one_guest"] as Array[StringName])
@@ -217,9 +236,10 @@ func test_bonus_level_unlocks_refresh_without_recursive_same_close_rewards() -> 
 	later.reward_cash = 1
 	catalogue.milestones.append(later)
 	var main: Node = await _start(false, catalogue)
+	var owner: OwnerProgress = main.get("owner_progress") as OwnerProgress
 	_fresh_books(main, 100, 0, 0)
 	_close_day(main, 1)
-	var owner: OwnerProgress = main.get("owner_progress") as OwnerProgress
+	assert_true(main.get("owner_progress") == owner, "a bonus level-up updates the retained owner model")
 	assert_true(owner.level >= 3)
 	var career: MilestoneTracker = main.get("milestones") as MilestoneTracker
 	assert_true(career.is_completed(&"one_guest"))
@@ -232,8 +252,11 @@ func test_bonus_level_unlocks_refresh_without_recursive_same_close_rewards() -> 
 	var hud_level: Label = main.get_node("HUD/Top/Row/OwnerProgress/OwnerLevel") as Label
 	assert_eq(hud_level.text, "Lv %d" % owner.level)
 	assert_true(Clock.sim.next_day())
+	assert_true(main.get("owner_progress") == owner)
 	_fresh_books(main, 100, 0, 0)
 	_close_day(main, 0)
+	assert_true(main.get("owner_progress") == owner, "the next reward batch keeps the same model")
+	assert_eq(owner.last_awarded_day, 2)
 	assert_true((main.get("milestones") as MilestoneTracker).is_completed(&"level_three"))
 	assert_eq(Economy.ledger.day_totals(2).get(Ledger.MILESTONE_BONUS), 1)
 
