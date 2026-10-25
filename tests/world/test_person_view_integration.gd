@@ -232,6 +232,7 @@ func test_native_bench_offsets_follow_rotated_front_without_mutating_sim_or_cont
 	var table_def: ItemDef = load("res://data/items/cloth_table.tres") as ItemDef
 	var content_bench_def: ItemDef = load("res://data/items/cushioned_bench.tres") as ItemDef
 	var content_seats_before: Array[Vector2i] = content_bench_def.seat_cells.duplicate()
+	var content_offset_before: float = content_bench_def.seated_forward_offset
 	var authored_offset: float = 0.1
 	var bench_origins: Array[Vector2i] = [
 		Vector2i(2, 3), Vector2i(5, 1), Vector2i(2, 5), Vector2i(5, 5),
@@ -358,7 +359,7 @@ func test_native_bench_offsets_follow_rotated_front_without_mutating_sim_or_cont
 		assert_eq(tables[turns].quarter_turns, turns)
 		assert_eq(benches[turns].quarter_turns, turns)
 		assert_eq(bench_definitions[turns].seated_forward_offset, 0.2)
-	assert_eq(content_bench_def.seated_forward_offset, 0.0)
+	assert_eq(content_bench_def.seated_forward_offset, content_offset_before)
 	assert_eq(content_bench_def.seat_cells, content_seats_before)
 	assert_true(table_def.seat_cells.is_empty())
 	assert_eq(server.cell, server_cell_before)

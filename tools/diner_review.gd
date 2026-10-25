@@ -447,7 +447,7 @@ static func _expected_seated_position(guest: CustomerAgent, world: SimWorld) -> 
 	if definition == null:
 		return unavailable
 	var offset: float = float(definition.get("seated_forward_offset")) if "seated_forward_offset" in definition else 0.0
-	if not is_finite(offset):
+	if not is_finite(offset) or offset < 0.0:
 		return unavailable
 	var origin: Vector3 = GridMath.cell_to_world(guest.seat_cell)
 	var forward: Vector3 = Vector3.ZERO
@@ -462,7 +462,10 @@ static func _expected_seated_position(guest: CustomerAgent, world: SimWorld) -> 
 			center += GridMath.cell_to_world(cell)
 		center = center / float(table.cells.size()) if not table.cells.is_empty() else GridMath.cell_to_world(table.origin)
 		forward = (center - origin).normalized()
-	return {"available": true, "position": origin + forward * offset, "forward_offset": offset}
+	var position: Vector3 = origin + forward * offset
+	if not position.is_finite():
+		return unavailable
+	return {"available": true, "position": position, "forward_offset": offset}
 
 
 static func _reference(id: String) -> PropView:
