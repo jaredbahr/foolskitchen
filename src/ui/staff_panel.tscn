@@ -84,6 +84,11 @@ unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
 
+[node name="Members" type="VBoxContainer" parent="Panel/Content/Scroll/List"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+
 [node name="Priorities" type="VBoxContainer" parent="Panel/Content/Scroll/List"]
 unique_name_in_owner = true
 layout_mode = 2
@@ -110,16 +115,20 @@ theme_override_constants/h_separation = 6
 theme_override_constants/v_separation = 6
 columns = 6
 
+[node name="MainJobNote" type="Label" parent="Panel/Content/Scroll/List/Priorities"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+focus_mode = 0
+text = "Each role's main job cannot be turned off."
+autowrap_mode = 3
+
 [node name="PriorityAvailability" type="Label" parent="Panel/Content/Scroll/List/Priorities"]
 unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
 autowrap_mode = 3
-
-[node name="Members" type="VBoxContainer" parent="Panel/Content/Scroll/List"]
-unique_name_in_owner = true
-layout_mode = 2
-mouse_filter = 2
 
 [node name="CandidateTitle" type="Label" parent="Panel/Content/Scroll/List"]
 layout_mode = 2

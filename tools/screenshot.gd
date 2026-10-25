@@ -1974,7 +1974,8 @@ static func staff_priority_grid_evidence(panel: StaffPanel, roster: StaffRoster)
 	var scroll: ScrollContainer = panel.get_node_or_null("Panel/Content/Scroll") as ScrollContainer
 	var card: Control = panel.get_node_or_null("Panel") as Control
 	var close: Button = panel.get_node_or_null("%Close") as Button
-	if grid == null or scroll == null or card == null or close == null or roster == null \
+	var note: Label = panel.get_node_or_null("%MainJobNote") as Label
+	if grid == null or scroll == null or card == null or close == null or note == null or roster == null \
 			or not panel.is_inside_tree() or grid.get_child_count() < StaffJobPriorities.JOBS.size() + 1:
 		return {"available": false}
 	var headers: Array[Dictionary] = []
@@ -2006,6 +2007,9 @@ static func staff_priority_grid_evidence(panel: StaffPanel, roster: StaffRoster)
 			var color_name: StringName = &"font_disabled_color" if button.disabled else &"font_color"
 			cells.append({"id": String(member.id), "job": String(job), "text": button.text,
 				"disabled": button.disabled, "tooltip": button.tooltip_text,
+				"style_state": String(style_name), "font_state": String(color_name),
+				"style_override": button.has_theme_stylebox_override(style_name),
+				"font_override": button.has_theme_color_override(color_name),
 				"visible": button.is_visible_in_tree(), "clip_text": button.clip_text,
 				"parent_is_grid": button.get_parent() == grid, "grid_index": button.get_index(),
 				"bounds": _staff_rect_data(_staff_pixel_rect(button)),
@@ -2014,6 +2018,12 @@ static func staff_priority_grid_evidence(panel: StaffPanel, roster: StaffRoster)
 				"background": _staff_rgba(style.bg_color), "border": _staff_rgba(style.border_color)})
 	return {"available": true, "columns": grid.columns, "child_count": grid.get_child_count(),
 		"headers": headers, "names": names, "cells": cells,
+		"main_job_note": {"path": String(panel.get_path_to(note)), "text": note.text,
+			"visible": note.is_visible_in_tree(), "bounds": _staff_rect_data(_staff_pixel_rect(note)),
+			"minimum_bounds": _staff_rect_data(_staff_pixel_rect(note, note.get_combined_minimum_size())),
+			"autowrap_mode": note.autowrap_mode, "size_flags_horizontal": note.size_flags_horizontal,
+			"mouse_filter": note.mouse_filter, "focus_mode": note.focus_mode,
+			"foreground": _staff_rgba(note.get_theme_color("font_color"))},
 		"window_bounds": _staff_rect_data(Rect2(Vector2.ZERO, Vector2(panel.get_window().size))),
 		"panel_bounds": _staff_rect_data(_staff_pixel_rect(card)),
 		"close_bounds": _staff_rect_data(_staff_pixel_rect(close)), "close_visible": close.is_visible_in_tree(),
@@ -2096,6 +2106,19 @@ static func staff_priority_grid_valid(state: Dictionary, members: Array) -> bool
 			or not viewport.grow(0.5).encloses(grid) or minimum.size.x > viewport.size.x + 0.5 \
 			or grid.size.x < minimum.size.x - 0.5 or grid.size.y < minimum.size.y - 0.5:
 		return false
+	var note: Dictionary = state.get("main_job_note", {})
+	var note_bounds: Rect2 = _staff_rect(note, "bounds")
+	var note_minimum: Rect2 = _staff_rect(note, "minimum_bounds")
+	if note.get("path") != "Panel/Content/Scroll/List/Priorities/MainJobNote" \
+			or note.get("text") != "Each role's main job cannot be turned off." or note.get("visible") != true \
+			or note.get("autowrap_mode") != TextServer.AUTOWRAP_WORD_SMART \
+			or note.get("size_flags_horizontal") != Control.SIZE_EXPAND_FILL \
+			or note.get("mouse_filter") != Control.MOUSE_FILTER_IGNORE or note.get("focus_mode") != Control.FOCUS_NONE \
+			or note.get("foreground") != _staff_rgba(StaffPanel.SHARED_THEME.get_color("font_color", "Label")) \
+			or not note_bounds.has_area() or not note_minimum.has_area() \
+			or not viewport.grow(0.5).encloses(note_bounds) or note_bounds.position.y < grid.end.y - 0.5 \
+			or note_bounds.size.x < note_minimum.size.x - 0.5 or note_bounds.size.y < note_minimum.size.y - 0.5:
+		return false
 	var scrollbars: Array = state.get("scrollbars", [])
 	if scrollbars.size() != 2:
 		return false
@@ -2115,11 +2138,14 @@ static func staff_priority_grid_valid(state: Dictionary, members: Array) -> bool
 		var header: Dictionary = headers[index]
 		var bounds: Rect2 = _staff_rect(header, "bounds")
 		if header.get("text") != expected or header.get("visible") != true \
-				or not bounds.has_area() or not viewport.grow(0.5).encloses(bounds):
+				or not bounds.has_area() or not viewport.grow(0.5).encloses(bounds) or not grid.grow(0.5).encloses(bounds):
 			return false
 	var normal: StyleBoxFlat = StaffPanel.SHARED_THEME.get_stylebox("normal", "Button") as StyleBoxFlat
 	var muted: StyleBoxFlat = StaffPanel.SHARED_THEME.get_stylebox("disabled", "Button") as StyleBoxFlat
 	var accent: StyleBoxFlat = StaffPanel.SHARED_THEME.get_stylebox("pressed", "Button") as StyleBoxFlat
+	var panel: StyleBoxFlat = StaffPanel.SHARED_THEME.get_stylebox("panel", "PanelContainer") as StyleBoxFlat
+	if normal == null or muted == null or accent == null or panel == null:
+		return false
 	for index: int in range(members.size()):
 		var member: Dictionary = members[index]
 		var choices: StaffJobPriorities = StaffJobPriorities.new(StringName(member.get("role", "")))
@@ -2128,7 +2154,8 @@ static func staff_priority_grid_valid(state: Dictionary, members: Array) -> bool
 		var name: Dictionary = names[index]
 		var name_bounds: Rect2 = _staff_rect(name, "bounds")
 		if name.get("id") != member.get("id") or not String(name.get("text", "")).contains(member.get("name", "")) \
-				or name.get("visible") != true or not name_bounds.has_area() or not viewport.grow(0.5).encloses(name_bounds):
+				or name.get("visible") != true or not name_bounds.has_area() or not viewport.grow(0.5).encloses(name_bounds) \
+				or not grid.grow(0.5).encloses(name_bounds):
 			return false
 		for job_index: int in range(StaffJobPriorities.JOBS.size()):
 			var job: StringName = StaffJobPriorities.JOBS[job_index]
@@ -2138,10 +2165,15 @@ static func staff_priority_grid_valid(state: Dictionary, members: Array) -> bool
 			var value: int = choices.priority(job)
 			var supported: bool = StaffJobPriorities.supports(choices.role, job)
 			if cell.get("id") != member.get("id") or cell.get("job") != String(job) \
-					or cell.get("text") != StaffJobPriorities.level_label(value) or cell.get("disabled") != (not supported) \
+					or cell.get("text") != (StaffJobPriorities.level_label(value) if supported else "—") \
+					or cell.get("disabled") != (not supported) \
+					or cell.get("style_state") != ("normal" if supported else "disabled") \
+					or cell.get("font_state") != ("font_color" if supported else "font_disabled_color") \
+					or cell.get("style_override") != true or cell.get("font_override") != true \
 					or cell.get("visible") != true or cell.get("clip_text") != false or cell.get("parent_is_grid") != true \
 					or cell.get("grid_index") != (index + 1) * columns + job_index + 1 \
 					or not bounds.has_area() or not cell_minimum.has_area() or not viewport.grow(0.5).encloses(bounds) \
+					or not grid.grow(0.5).encloses(bounds) or not bounds.position.is_equal_approx(cell_minimum.position) \
 					or bounds.size.x < cell_minimum.size.x - 0.5 or bounds.size.y < cell_minimum.size.y - 0.5:
 				return false
 			var tooltip: String = cell.get("tooltip", "")
@@ -2155,7 +2187,11 @@ static func staff_priority_grid_valid(state: Dictionary, members: Array) -> bool
 			var foreground: Color = StaffPanel.SHARED_THEME.get_color("font_color", "Button")
 			var background: Color = normal.bg_color
 			var border: Color = normal.border_color
-			if value == StaffJobPriorities.Level.HIGH:
+			if not supported:
+				foreground = Color(foreground, StaffPanel.LOCKED_TEXT_ALPHA)
+				background = panel.bg_color
+				border = Color(muted.border_color, StaffPanel.LOCKED_BORDER_ALPHA)
+			elif value == StaffJobPriorities.Level.HIGH:
 				border = accent.bg_color
 			elif value == StaffJobPriorities.Level.LOW:
 				background = muted.bg_color
