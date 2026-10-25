@@ -106,10 +106,16 @@ func test_in_bounds_street_entrances_center_native_assets_and_rotate_the_frontag
 		var tangent: Vector3 = Vector3(-normal.y, 0.0, normal.x)
 		var spacing: float = absf((first_bounds.get_center() - second_bounds.get_center()).dot(tangent))
 		assert_almost_eq(spacing, first.get_combined_aabb().size.x)
-		assert_almost_eq(spacing, ArtScale.FURNITURE_SCALE, 0.0001, "floorFull keeps its native one-metre size")
+		assert_almost_eq(spacing, ArtScale.FURNITURE_SCALE * 0.5, 0.0001, "floorHalf keeps its native half-metre width")
+		var paved_width: float = spacing * 2.0
+		assert_true(paved_width <= GridMath.CELL_SIZE * world.grid.entries().size() + 0.1 + 0.0001,
+			"the pavement stays about doorway-width (fit allowance on each side)")
 		for bounds: AABB in [first_bounds, second_bounds]:
 			var street_edge: float = center.dot(Vector3(normal.x, 0.0, normal.y)) + GridMath.CELL_SIZE * 0.5
 			assert_true(_near_face(bounds, normal) >= street_edge, "paving never crosses back over the door edge")
+			assert_true(_near_face(bounds, normal) - street_edge <= RoomDressing.FACE_GAP + 0.0001,
+				"paving touches the doorway edge, leaving no visible gap")
+			assert_almost_eq(bounds.position.y, 0.0, 0.0001, "paving stands on the ground plane")
 			_assert_outside(world.grid, bounds)
 		assert_eq(_world_snapshot(world), before)
 
@@ -129,7 +135,10 @@ func test_pavement_tint_is_private_imported_transforms_survive_and_rebind_releas
 	var paving: PropView = dressing.get_node("StreetPavement0") as PropView
 	assert_eq(paving.body_surface_count(), 1)
 	assert_true(paving.active_body_material() != floor_material)
-	assert_eq(paving.active_body_material().albedo_color, RoomDressing.PAVEMENT_SWATCH.color)
+	assert_eq(paving.active_body_material().albedo_color, RoomDressing.pavement_color())
+	var tint: Color = RoomDressing.pavement_color()
+	assert_true(absf(tint.r - tint.g) < 0.05 and absf(tint.g - tint.b) < 0.05,
+		"the palette mix is a near-neutral grey before the warm key light")
 	assert_eq(floor_material.albedo_color, original_color, "shared kit materials keep their original colour")
 	var lamp: PropView = dressing.get_node("WallLamp0") as PropView
 	var model: Node3D = lamp.get_node("Body/Art/Model") as Node3D

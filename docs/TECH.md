@@ -781,18 +781,23 @@ an active edit/panel/selection first, or opens Settings when none is active.
   add no save section, action save, random draw or customer-type selection.
 
 **Lighting and frontage (FK-055):** Main owns one `lighting_rig.tscn` with a
-warm directional key, low-energy cool fill and warm-grey ambient light. Native
-procedural sky provides a soft gradient. Directional lights illuminate geometry
-only, so the fill does not add a second visible sun. Compatibility settings and
-the existing tone-mapping exposure/white point remain; shadows are disabled until
-Web playability is measured. Environment, sky and sky-material resources are
+warm directional key (main's colour, energy and shadows), low-energy cool fill
+and warm ambient light, so exposure matches the pre-rig shop. A native procedural
+sky gives a soft warm gradient: sky and ground share one horizon colour with wide
+curves, so there is no horizon line or black lower half. Directional lights
+illuminate geometry only, so the fill does not add a second visible sun.
+Compatibility settings and the existing tone-mapping exposure/white point remain;
+only the key light casts shadows (default Compatibility shadow settings, as on
+main before the rig); Web FPS with shadows still needs measuring. Environment, sky and sky-material resources are
 local to each scene instance. Web FPS and appearance require actual validation.
 
 `RoomDressing` reads the actual entrance runs and outward OUTSIDE terrain to
 place native window panes and decorative wall lamps on the street frontage, a
-doormat at the door, and native-size grey pavement beyond the entry edge. It
-preserves imported transforms under the shared ArtScale wrapper. Only pavement's
-named wood surface receives a private curated Charcoal tint; shared kit materials
+doormat at the door, and doorway-width grey pavement (one native `floorHalf`
+per entry cell) touching the entry edge. It preserves imported transforms under
+the shared ArtScale wrapper. Only pavement's named wood surface receives a
+private tint mixed from palette swatches (Charcoal, cooled with Slate blue and
+lifted with Cream, so it reads grey under the warm key); shared kit materials
 are unchanged. Cutaway mode and camera quarters change stable wall attachments'
 visibility without reallocating models. Terrain/world replacement rebuilds and
 releases the old dressing. Dressing adds no lights, simulation cells, collision,

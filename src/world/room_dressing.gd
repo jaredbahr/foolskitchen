@@ -6,8 +6,14 @@ extends Node3D
 const WALL_WINDOW: PackedScene = preload("res://assets/kenney/furniture/wallWindow.glb")
 const WALL_LAMP: PackedScene = preload("res://assets/kenney/furniture/lampWall.glb")
 const DOORMAT: PackedScene = preload("res://assets/kenney/furniture/rugDoormat.glb")
-const PAVEMENT: PackedScene = preload("res://assets/kenney/furniture/floorFull.glb")
+const PAVEMENT: PackedScene = preload("res://assets/kenney/furniture/floorHalf.glb")
 const PAVEMENT_SWATCH: SwatchDef = preload("res://data/swatches/charcoal.tres")
+## The warm key light browns a plain charcoal tint, so the pavement mixes in
+## palette slate (cancels the warm cast) and cream (lifts it off the dark street).
+const PAVEMENT_COOL_SWATCH: SwatchDef = preload("res://data/swatches/slate_blue.tres")
+const PAVEMENT_LIGHT_SWATCH: SwatchDef = preload("res://data/swatches/cream.tres")
+const PAVEMENT_COOL_MIX: float = 0.55
+const PAVEMENT_LIGHT_MIX: float = 0.25
 const FACE_GAP: float = 0.005
 const CARDINALS: Array[Vector2i] = [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]
 
@@ -47,6 +53,12 @@ func rebuild(world: SimWorld, lowered_wall_cells: Array[Vector2i] = []) -> void:
 		_add_entry_dressing(cells, normal, entrance_index)
 		entrance_index += 1
 	set_lowered_walls(lowered_wall_cells)
+
+
+## Palette-only pavement tint: charcoal, cooled by slate and lifted by cream.
+static func pavement_color() -> Color:
+	return PAVEMENT_SWATCH.color.lerp(PAVEMENT_COOL_SWATCH.color, PAVEMENT_COOL_MIX) \
+		.lerp(PAVEMENT_LIGHT_SWATCH.color, PAVEMENT_LIGHT_MIX)
 
 
 func set_lowered_walls(cells: Array[Vector2i]) -> void:
@@ -253,5 +265,5 @@ func _asset(scene: PackedScene, node_name: String, pane_only: bool = false, grey
 	art.add_child(model)
 	view.prepare()
 	if grey:
-		view.set_body_tint(PAVEMENT_SWATCH.color)
+		view.set_body_tint(pavement_color())
 	return view

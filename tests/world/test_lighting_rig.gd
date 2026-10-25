@@ -22,7 +22,13 @@ func test_rig_has_one_environment_warm_key_and_low_cool_fill() -> void:
 	assert_true(fill.light_energy < key.light_energy)
 	assert_eq(key.sky_mode, DirectionalLight3D.SKY_MODE_LIGHT_ONLY)
 	assert_eq(fill.sky_mode, DirectionalLight3D.SKY_MODE_LIGHT_ONLY)
-	assert_false(key.shadow_enabled, "shadows stay off pending web playability evidence")
+	assert_true(key.shadow_enabled, "the key light keeps main's form shadows")
+	assert_false(fill.shadow_enabled, "only the key light casts shadows")
+	var sky: ProceduralSkyMaterial = environment_node.environment.sky.sky_material as ProceduralSkyMaterial
+	assert_eq(sky.sky_horizon_color, sky.ground_horizon_color, "no hard horizon line in the background")
+	for color: Color in [sky.sky_top_color, sky.sky_horizon_color, sky.ground_bottom_color]:
+		assert_true(color.r > color.g and color.g > color.b, "the background gradient stays warm")
+		assert_true(color.get_luminance() > 0.15, "the lower background never falls to black")
 	rig.free()
 
 
