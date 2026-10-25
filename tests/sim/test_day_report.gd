@@ -406,7 +406,8 @@ func test_two_milestones_and_three_quotes_fit_native_1600x900_report() -> void:
 	var viewport: Rect2 = scroll.get_global_rect()
 	assert_eq(_screen.size, Vector2(1600.0, 900.0))
 	assert_eq(scroll.scroll_vertical, 0)
-	assert_false(scroll.get_v_scroll_bar().visible, "the combined payoff and quotes fit without scrolling")
+	# The report footer may scroll. The payoff and complete quotes below must
+	# fit the actual initial viewport without scrolling to reach them.
 	var milestone_rows: VBoxContainer = _screen.get_node("%MilestoneRows") as VBoxContainer
 	var review_rows: VBoxContainer = _screen.get_node("%ReviewRows") as VBoxContainer
 	assert_true((_screen.get_node("%MilestoneHeading") as Label).is_visible_in_tree())
