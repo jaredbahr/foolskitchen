@@ -21,11 +21,13 @@ extends SceneTree
 ##   --loan-review --speed=0 --frames=12,90  explicit financial-fixture UI evidence
 ##   --milestone-review --speed=0 --frames=12,90  authored goals and close reward evidence
 ##   --catalogue-review=rustic|modern --speed=0 --frames=90,120  furnishing fixture
+##   --diner-review --speed=0 --frames=12,90  six native comparisons, then seated diner fixture
 ## Ordinary captures record real moods, markers and seeds without a fixture.
 
 const MAX_CAPTURE_WAIT_FRAMES: int = 8
 const MAX_OWNER_WARMUP_TICKS: int = 900
 const SETTINGS_CAPTURE_SIZE: Vector2i = Vector2i(1600, 900)
+const DINER_REVIEW: Script = preload("res://tools/diner_review.gd")
 const LOAN_TERMS: LoanTuning = preload("res://data/balance/loans.tres")
 const VIBE_TERMS: VibeTuning = preload("res://data/balance/vibe.tres")
 const LOAN_NOTICE: String = "The bank covered your shortfall. It'll take a share of your profits until it's paid back."
@@ -104,6 +106,8 @@ var _milestone_review: bool = false
 var _milestone_fixture: Dictionary = {}
 var _catalogue_profile: StringName = &""
 var _catalogue_fixture: Dictionary = {}
+var _diner_review: bool = false
+var _diner_fixture: Dictionary = {}
 var _build_pointer: Vector2 = Vector2.ZERO
 var _selected_agent_id: int = -1
 var _capture_pending: bool = false
@@ -114,6 +118,11 @@ var _finish_requested: bool = false
 
 func _initialize() -> void:
 	OS.add_logger(_errors)
+	var diner_options: Dictionary = DINER_REVIEW.options(OS.get_cmdline_user_args())
+	if not String(diner_options["error"]).is_empty():
+		_fail_capture(diner_options["error"])
+		return
+	_diner_review = diner_options["enabled"]
 	var loan_options: Dictionary = loan_review_options(OS.get_cmdline_user_args())
 	if not String(loan_options["error"]).is_empty():
 		_fail_capture(loan_options["error"])
@@ -249,7 +258,7 @@ func _initialize() -> void:
 	# Preserve capture isolation when the integrated game session supports saves.
 	if "use_saves" in _main:
 		_main.set("use_saves", false)
-	if (_report_requested or _milestone_review) and "new_game_seed_override" in _main:
+	if (_report_requested or _milestone_review or _diner_review) and "new_game_seed_override" in _main:
 		_main.set("new_game_seed_override", 1)
 	root.add_child(_main)
 
@@ -1605,6 +1614,11 @@ func _process(_delta: float) -> bool:
 		_configure_camera()
 		if _failed:
 			return true
+		if _diner_review:
+			_diner_fixture = DINER_REVIEW.prepare(_main, root)
+			if not String(_diner_fixture.get("error", "")).is_empty():
+				_fail_capture(String(_diner_fixture["error"]))
+				return true
 		if _loan_review:
 			_loan_fixture = prepare_loan_review(_main, root)
 			if not String(_loan_fixture["error"]).is_empty():
@@ -1647,6 +1661,11 @@ func _process(_delta: float) -> bool:
 			_configure_paint()
 			if _failed:
 				return true
+	if _diner_review and _frames == 24:
+		_diner_fixture = DINER_REVIEW.furnish(_main, root, _diner_fixture)
+		if not String(_diner_fixture.get("error", "")).is_empty():
+			_fail_capture(String(_diner_fixture["error"]))
+			return true
 	if not _catalogue_profile.is_empty() and _frames == 96:
 		if not bool(_main.call("set_build_active", false)):
 			_fail_capture("catalogue review could not return to the furnished world")
@@ -2157,6 +2176,10 @@ func _capture() -> void:
 	if _main.has_method("inspection_state"):
 		inspection = _main.call("inspection_state")
 	var world: SimWorld = _capture_world()
+	var diner_state: Dictionary = DINER_REVIEW.evidence(_main, root, _capture_frame) if _diner_review else {}
+	if _diner_review and not DINER_REVIEW.valid(diner_state, _capture_frame, _diner_fixture):
+		_fail_capture("diner review failed actual source, bounds, native actor or seat validation: " + JSON.stringify(diner_state))
+		return
 	var loan_state: Dictionary = loan_review_evidence(_main, root) if _loan_review else {}
 	if _loan_review and not loan_review_valid(loan_state, _capture_frame, _loan_fixture):
 		_fail_capture("loan review did not match its real account, phase and visible native controls")
@@ -2250,6 +2273,9 @@ func _capture() -> void:
 			return
 	var path: String = _out.path_join("shot_%04d.png" % _capture_frame)
 	var image: Image = root.get_viewport().get_texture().get_image()
+	if _diner_review and (image == null or image.get_size() != SETTINGS_CAPTURE_SIZE):
+		_fail_capture("diner review image did not match 1600x900")
+		return
 	if _settings and (image == null or image.get_size() != SETTINGS_CAPTURE_SIZE):
 		_fail_capture("Settings viewport image did not match the usual 1600x900 dimensions")
 		return
@@ -2349,6 +2375,8 @@ func _capture() -> void:
 	if not _catalogue_profile.is_empty():
 		metadata["catalogue_review"] = {"fixture": _catalogue_fixture, "state": catalogue_state,
 			"generated_uids": generated_uid_evidence(CATALOGUE_UID_SOURCES)}
+	if _diner_review:
+		metadata["diner_review"] = {"fixture": _diner_fixture, "state": diner_state}
 	if _staff:
 		metadata["staff_priority_review"] = {"generated_uids": generated_uid_evidence(STAFF_PRIORITY_UID_SOURCES)}
 	var file: FileAccess = FileAccess.open(path.get_basename() + ".json", FileAccess.WRITE)
