@@ -8,3 +8,5 @@ export/
 .DS_Store
 Thumbs.db
 screens/
+# Embedded Blender Python cache
+__pycache__/
