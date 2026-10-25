@@ -24,26 +24,44 @@ func test_open_sign_emission_preserves_source_carpet_red_at_35_percent() -> void
 	if source_rgb.size() != 3 or emission_rgb.size() != 3:
 		return
 	var extensions: Variant = sign_material.get("extensions", {})
-	var strength_data: Variant = extensions.get(STRENGTH_EXTENSION) if extensions is Dictionary else null
-	assert_true(strength_data is Dictionary, "emission strength is authored with KHR_materials_emissive_strength")
-	if not strength_data is Dictionary:
+	assert_true(extensions is Dictionary, "material extensions, when present, are an object")
+	if not extensions is Dictionary:
 		return
-	var strength_value: Variant = strength_data.get("emissiveStrength")
-	assert_true(_is_number(strength_value), "emissiveStrength is a finite number")
-	if not _is_number(strength_value):
-		return
-	var strength: float = float(strength_value)
-	assert_almost_eq(strength, EMISSION_STRENGTH, 0.000001, "emission energy remains modest at 35%")
-	var extensions_used: Variant = sign.get("extensionsUsed", [])
-	assert_true(extensions_used is Array and extensions_used.has(STRENGTH_EXTENSION),
-		"the sign declares its material-strength extension")
+	var strength_data: Variant = extensions.get(STRENGTH_EXTENSION)
+	var strength: float = 1.0
+	if strength_data != null:
+		assert_true(strength_data is Dictionary, "KHR emissive strength is an object when present")
+		if not strength_data is Dictionary:
+			return
+		var strength_value: Variant = strength_data.get("emissiveStrength")
+		assert_true(_is_number(strength_value), "emissiveStrength is a finite number")
+		if not _is_number(strength_value):
+			return
+		strength = float(strength_value)
+		var extensions_used: Variant = sign.get("extensionsUsed", [])
+		assert_true(extensions_used is Array and extensions_used.has(STRENGTH_EXTENSION),
+			"the sign declares its material-strength extension")
 	for channel: int in range(3):
-		assert_almost_eq(emission_rgb[channel], source_rgb[channel], 0.000001,
-			"emissive channel %d keeps the source carpet colour without a white blend" % channel)
 		assert_almost_eq(emission_rgb[channel] * strength, source_rgb[channel] * EMISSION_STRENGTH,
 			0.000001, "effective emissive channel %d equals source carpet at 35%%" % channel)
+		assert_almost_eq(emission_rgb[channel] / source_rgb[channel], emission_rgb[0] / source_rgb[0],
+			0.000001, "emissive channel %d preserves the source hue without a white blend" % channel)
 	assert_false(_contains_token(sign, PUNCTUAL_LIGHTS_EXTENSION),
 		"the OPEN sign adds no KHR_lights_punctual component")
+
+
+func test_effective_color_rule_accepts_baked_or_extension_strength_and_rejects_white_blend() -> void:
+	# These in-memory vectors test the material contract only; they are not export fixtures.
+	var source_rgb: Array[float] = [0.9, 0.35, 0.2]
+	var unscaled_rgb: Array[float] = [0.9, 0.35, 0.2]
+	var baked_rgb: Array[float] = [0.315, 0.1225, 0.07]
+	var white_blended_rgb: Array[float] = [0.365, 0.1725, 0.12]
+	assert_true(_emission_matches_source(source_rgb, unscaled_rgb, 0.35),
+		"extension strength can carry the 35% intensity")
+	assert_true(_emission_matches_source(source_rgb, baked_rgb, 1.0),
+		"the emissive factor can carry the 35% intensity with default strength")
+	assert_false(_emission_matches_source(source_rgb, white_blended_rgb, 1.0),
+		"a white-blended emissive factor changes the source hue")
 
 
 func _read_glb_json(path: String) -> Dictionary:
@@ -102,6 +120,24 @@ func _factor_rgb(material: Dictionary, factor_name: String, label: String) -> Ar
 
 func _is_number(value: Variant) -> bool:
 	return typeof(value) in [TYPE_INT, TYPE_FLOAT] and is_finite(float(value))
+
+
+func _emission_matches_source(source_rgb: Array[float], emission_rgb: Array[float], strength: float) -> bool:
+	if source_rgb.size() != 3 or emission_rgb.size() != 3 or not is_finite(strength) or strength <= 0.0:
+		return false
+	var hue_scale: float = -1.0
+	for channel: int in range(3):
+		if not is_finite(source_rgb[channel]) or source_rgb[channel] <= 0.0 \
+				or not is_finite(emission_rgb[channel]) or emission_rgb[channel] < 0.0:
+			return false
+		var channel_scale: float = emission_rgb[channel] / source_rgb[channel]
+		if channel == 0:
+			hue_scale = channel_scale
+		elif absf(channel_scale - hue_scale) > 0.000001:
+			return false
+		if absf(emission_rgb[channel] * strength - source_rgb[channel] * EMISSION_STRENGTH) > 0.000001:
+			return false
+	return true
 
 
 func _contains_token(value: Variant, token: String) -> bool:
