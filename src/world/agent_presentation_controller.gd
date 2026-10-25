@@ -34,7 +34,8 @@ class Frame extends RefCounted:
 
 
 ## Reuses the sim's next_cell/progress projection; never advances or re-paths.
-static func frame_for(agent: SimAgent, world: SimWorld, chair_seat_height: float = NOMINAL_CHAIR_SEAT_HEIGHT) -> Frame:
+static func frame_for(agent: SimAgent, world: SimWorld, chair_seat_height: float = NOMINAL_CHAIR_SEAT_HEIGHT,
+		seated_forward_offset: float = 0.0, seated_facing: Vector3 = Vector3.ZERO) -> Frame:
 	var frame: Frame = Frame.new()
 	frame.id = agent.id
 	frame.role = agent.role
@@ -54,6 +55,12 @@ static func frame_for(agent: SimAgent, world: SimWorld, chair_seat_height: float
 		if frame.seated:
 			frame.seat_height = maxf(chair_seat_height, 0.0) if is_finite(chair_seat_height) else 0.0
 			frame.facing_direction = _item_center(world.grid.item(customer.table_item_id)) - start
+			var authored: Vector3 = Vector3(seated_facing.x, 0.0, seated_facing.z)
+			if authored.is_finite() and authored.length_squared() > 0.000001:
+				frame.facing_direction = authored
+			if is_finite(seated_forward_offset) and seated_forward_offset >= 0.0:
+				var forward: Vector3 = Vector3(frame.facing_direction.x, 0.0, frame.facing_direction.z).normalized()
+				frame.display_offset = forward * seated_forward_offset
 	if agent is StaffAgent:
 		var staff: StaffAgent = agent as StaffAgent
 		var task: SimTask = _active_task(staff, world)
@@ -75,18 +82,20 @@ static func frame_for(agent: SimAgent, world: SimWorld, chair_seat_height: float
 
 ## Caller may supply actual per-person chair heights after resolving prop nodes.
 ## Order-independent nudges always start from fresh sim positions, never last frame.
-static func frames_for(agents: Array[SimAgent], world: SimWorld, chair_heights: Dictionary[int, float] = {}) -> Dictionary[int, Frame]:
+static func frames_for(agents: Array[SimAgent], world: SimWorld, chair_heights: Dictionary[int, float] = {},
+		seat_facings: Dictionary[int, Vector3] = {}, seat_offsets: Dictionary[int, float] = {}) -> Dictionary[int, Frame]:
 	var frames: Dictionary[int, Frame] = {}
 	var ids: Array[int] = []
 	for agent: SimAgent in agents:
-		frames[agent.id] = frame_for(agent, world, chair_heights.get(agent.id, NOMINAL_CHAIR_SEAT_HEIGHT))
+		frames[agent.id] = frame_for(agent, world, chair_heights.get(agent.id, NOMINAL_CHAIR_SEAT_HEIGHT),
+			seat_offsets.get(agent.id, 0.0), seat_facings.get(agent.id, Vector3.ZERO))
 		ids.append(agent.id)
 	ids.sort()
-	# Seat positions are immutable blockers, including seats with higher agent IDs.
+	# Final authored seated positions are immutable blockers, including higher IDs.
 	var occupied: Array[Vector3] = []
 	for id: int in ids:
 		if frames[id].seated:
-			occupied.append(frames[id].floor_position)
+			occupied.append(frames[id].floor_position + frames[id].display_offset)
 	for id: int in ids:
 		var frame: Frame = frames[id]
 		if frame.moving or frame.seated:
