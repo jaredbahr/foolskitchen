@@ -136,9 +136,17 @@ func test_replaced_catalogue_history_round_trips_after_another_completion() -> v
 		var restored: MilestoneTracker = MilestoneTracker.new()
 		assert_true(restored.from_dict(snapshot), "a replaced catalogue can grow lifetime history past 64")
 		assert_eq(restored.to_dict(), tracker.to_dict())
-		var expected_ids: Array[StringName] = _ids(former.milestones)
+		# The former IDs are zero-padded; their explicit lexical order precedes
+		# new_goal. Never sort expected StringNames with the same pointer trap.
+		var expected_strings: Array[String] = []
+		var expected_ids: Array[StringName] = []
+		for index: int in range(former_count):
+			var former_id: String = "former_%02d" % index
+			expected_strings.append(former_id)
+			expected_ids.append(StringName(former_id))
+		expected_strings.append(String(new_goal.id))
 		expected_ids.append(new_goal.id)
-		expected_ids.sort()
+		assert_eq(restored.to_dict()["completed"], expected_strings)
 		assert_eq(restored.completed_ids(), expected_ids, "removed goals retain their completed IDs")
 		assert_true(restored.evaluate_day(next_day, _single(new_goal)).is_empty(),
 			"replaying the saved close cannot return a second reward")
@@ -151,6 +159,37 @@ func test_replaced_catalogue_history_round_trips_after_another_completion() -> v
 		assert_true(restored.evaluate_day(later_day, reintroduced).is_empty(),
 			"returning a removed goal cannot pay it again on a later day")
 		assert_eq(restored.completed_ids(), expected_ids)
+
+
+func test_completion_snapshot_order_is_lexical_across_insertion_orders_and_json_reload() -> void:
+	var expected: Array[String] = ["Zulu", "alpha", "goal_10", "goal_2", "zeta", "éclair"]
+	var insertion_orders: Array[Array] = [
+		["zeta", "éclair", "alpha", "Zulu", "goal_2", "goal_10"],
+		["goal_10", "goal_2", "Zulu", "alpha", "éclair", "zeta"],
+	]
+	var canonical_json: String = ""
+	for insertion_order: Array in insertion_orders:
+		var input: Dictionary = {"version": 1, "completed": insertion_order.duplicate(),
+			"total_served": 10, "clean_streak": 1, "last_evaluated_day": 2}
+		var before: Dictionary = input.duplicate(true)
+		var tracker: MilestoneTracker = MilestoneTracker.new()
+		assert_true(tracker.from_dict(input))
+		var actual_strings: Array[String] = []
+		for id: StringName in tracker.completed_ids():
+			actual_strings.append(String(id))
+		assert_eq(actual_strings, expected, "case, digit and Unicode ordering use String values")
+		var snapshot: Dictionary = tracker.to_dict()
+		assert_eq(snapshot["completed"], expected)
+		var encoded: String = JSON.stringify(snapshot)
+		var restored: MilestoneTracker = MilestoneTracker.new()
+		assert_true(restored.from_dict(JSON.parse_string(encoded)))
+		assert_eq(restored.to_dict()["completed"], expected)
+		assert_eq(JSON.stringify(restored.to_dict()), encoded)
+		if canonical_json.is_empty():
+			canonical_json = encoded
+		else:
+			assert_eq(encoded, canonical_json, "insertion order cannot change the saved bytes")
+		assert_eq(input, before, "reading and ordering completions never mutates supplied history")
 
 
 func test_late_invalid_history_id_rejects_transactionally_after_former_size_boundary() -> void:

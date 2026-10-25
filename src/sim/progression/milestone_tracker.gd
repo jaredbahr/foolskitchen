@@ -19,10 +19,14 @@ func is_completed(id: StringName) -> bool:
 
 
 func completed_ids() -> Array[StringName]:
-	var ids: Array[StringName] = []
+	# StringName ordering compares intern pointers, so save order must use Strings.
+	var names: Array[String] = []
 	for id: StringName in _completed:
-		ids.append(id)
-	ids.sort()
+		names.append(String(id))
+	names.sort()
+	var ids: Array[StringName] = []
+	for text: String in names:
+		ids.append(StringName(text))
 	return ids
 
 
