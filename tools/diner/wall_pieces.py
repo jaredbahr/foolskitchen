@@ -202,7 +202,7 @@ def _build_open_sign(builder: Builder) -> None:
             (
                 ((centers[3] - width / 2.0, z_bottom), (centers[3] - width / 2.0, z_top)),
                 ((centers[3] + width / 2.0, z_bottom), (centers[3] + width / 2.0, z_top)),
-                ((centers[3] - width / 2.0, z_bottom), (centers[3] + width / 2.0, z_top)),
+                ((centers[3] - width / 2.0, z_top), (centers[3] + width / 2.0, z_bottom)),
             ),
         ),
     )
