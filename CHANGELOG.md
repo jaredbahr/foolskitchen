@@ -11,6 +11,8 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- Place rugs beneath furniture, and Alt-click a covered rug to move or sell it without disturbing the furniture. (#139)
+- Find the Cushioned chair by name; tiny plants leave the catalogue, and a slow preview no longer stops other previews. (#139)
 - Set each staff member's job priorities at any time; changes guide their next task without interrupting current work. (#137)
 - Choose from a wider furniture catalogue with working benches and bar stools, category tabs and real item previews. (#135)
 - The bank covers closing shortfalls with an automatic loan; see repayments and interest, and pay it off before making big purchases. (#134)
