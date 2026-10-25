@@ -11,6 +11,7 @@
 # --loan-review --speed=0 --frames=12,90 captures an explicit loss fixture's bank report, then next-morning Loan HUD.
 # --milestone-review --speed=0 --frames=12,90 captures Goals, then an explicit close-data reward fixture.
 # --catalogue-review=rustic|modern --speed=0 --frames=90,120 captures real previews, then the furnishing fixture.
+# --diner-review --speed=0 --frames=12,90 captures six native comparisons, then real seated diner guests.
 # Build previews use the production morning input API without buying or saving.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -26,7 +27,7 @@ window_size="1600x900"
 window_size_requested=false
 for a in "$@"; do
   [[ "$a" == --out=* ]] && out="${a#--out=}"
-  [[ "$a" == --settings || "$a" == --settings-world || "$a" == --loan-review || "$a" == --milestone-review ]] && settings_capture=true
+  [[ "$a" == --settings || "$a" == --settings-world || "$a" == --loan-review || "$a" == --milestone-review || "$a" == --diner-review ]] && settings_capture=true
   [[ "$a" == --catalogue-review=* ]] && settings_capture=true
   if [[ "$a" == --hud-layout ]]; then
     hud_layout=true
