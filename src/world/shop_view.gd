@@ -40,6 +40,7 @@ var _wall_nodes: Dictionary[Vector2i, MeshInstance3D] = {}
 
 var world: SimWorld
 var floor_mesh: MeshInstance3D
+var room_dressing: RoomDressing
 var item_nodes: Dictionary[int, ItemVisual] = {}
 var agent_nodes: Dictionary[int, Node3D] = {}
 var dirt_nodes: Dictionary[Vector2i, MeshInstance3D] = {}
@@ -80,6 +81,7 @@ func show_world(value: SimWorld) -> void:
 	dirt_nodes.clear()
 	_wall_nodes.clear()
 	floor_mesh = null
+	room_dressing = null
 	selection_outline = null
 	_selected_item_id = -1
 	world = value
@@ -104,6 +106,10 @@ func show_world(value: SimWorld) -> void:
 	_walls.name = "Walls"
 	_walls.set_meta("shop_geometry", true)
 	add_child(_walls)
+	room_dressing = RoomDressing.new()
+	room_dressing.name = "RoomDressing"
+	room_dressing.set_meta("shop_geometry", true)
+	add_child(room_dressing)
 	_build_terrain()
 	for item: PlacedItem in world.grid.items():
 		_build_item(item)
@@ -202,6 +208,8 @@ func _build_terrain() -> void:
 	floor_mesh.mesh = surface.commit() if count > 0 else null
 	_apply_wall_heights()
 	_apply_paint()
+	if room_dressing != null:
+		room_dressing.rebuild(world, lowered_wall_cells())
 
 
 ## One material per swatch is shared by every painted mesh, including previews.
@@ -442,6 +450,8 @@ func _apply_wall_heights() -> void:
 		(wall.mesh as BoxMesh).size.y = height
 		wall.position.y = height * 0.5
 		(wall.get_node("Top") as MeshInstance3D).position.y = height * 0.5 + 0.005
+	if room_dressing != null:
+		room_dressing.set_lowered_walls(lowered_wall_cells())
 
 
 func _unhandled_input(event: InputEvent) -> void:

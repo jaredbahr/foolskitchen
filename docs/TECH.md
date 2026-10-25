@@ -709,7 +709,9 @@ an active edit/panel/selection first, or opens Settings when none is active.
 - The catalogue filters its existing native cards into Seating, Tables, Kitchen
   and Decor, preserving purchase requests, unlock checks and button identity.
   `ItemThumbnailCache` queues unique wrapper scenes into one private 96×96
-  viewport with the authored shop environment and lights. It copies the real
+  viewport with a private instance of `lighting_rig.tscn`. Its detached environment
+  retains the authored lighting and tone mapping with a transparent clear
+  background; it does not alter Main's sky. It copies the real
   frame after drawing, releases the rendered prop and reuses the cached
   texture. A per-item 30-frame limit bounds draw waits; headless tests exercise
   queue and cleanup contracts without claiming rendered thumbnails.
@@ -804,6 +806,31 @@ panel shows the authored type name. No customer-type save section or action save
 is added. Regular compatibility fixtures retain the pre-type methods from main
 `34f8fde` for seeds 1, 7 and 42; they do not substitute for the required ten-day
 before/after balance probe.
+
+**Lighting and frontage (FK-055):** Main owns one `lighting_rig.tscn` with a
+warm directional key (main's colour, energy and shadows), low-energy cool fill
+and warm ambient light, so exposure matches the pre-rig shop. A native procedural
+sky gives a soft warm gradient: sky and ground share one horizon colour with wide
+curves, so there is no horizon line or black lower half. Directional lights
+illuminate geometry only, so the fill does not add a second visible sun.
+Compatibility settings and the existing tone-mapping exposure/white point remain;
+only the key light casts shadows (default Compatibility shadow settings, as on
+main before the rig); Web FPS with shadows still needs measuring. Environment, sky and sky-material resources are
+local to each scene instance. Web FPS and appearance require actual validation.
+
+`RoomDressing` reads the actual entrance runs and outward OUTSIDE terrain to
+place native window panes and decorative wall lamps on the street frontage, a
+doormat at the door, and doorway-width grey pavement (one native `floorHalf`
+per entry cell) touching the entry edge. It preserves imported transforms under
+the shared ArtScale wrapper. Only pavement's named wood surface receives a
+private tint mixed from palette swatches (Charcoal, cooled with Slate blue and
+lifted with Cream, so it reads grey under the warm key); shared kit materials
+are unchanged. Cutaway mode and camera quarters change stable wall attachments'
+visibility without reallocating models. Terrain/world replacement rebuilds and
+releases the old dressing. Dressing adds no lights, simulation cells, collision,
+random draws or saved state; functional lamps remain the separate lamp issue.
+The floor shader adds a subtle multiplicative plank pattern while retaining its
+existing paint colour and camera-controlled build-grid parameters.
 
 ### 2.4 Save system
 - JSON in `user://saves/`, with a `version` field and migration functions per version.

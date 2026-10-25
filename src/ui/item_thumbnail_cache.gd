@@ -8,7 +8,9 @@ signal thumbnail_ready(scene: PackedScene, texture: Texture2D)
 
 const IMAGE_SIZE: Vector2i = Vector2i(96, 96)
 const MAX_DRAW_WAIT_FRAMES: int = 30
-const VIEW_SCENE_PATH: String = "res://src/world/shop_view.tscn"
+# Keep the source Sky alive with its scene. GLES3 queues newly loaded skies
+# before drawing; discarding a temporary scene/sky can orphan that queued work.
+const LIGHTING_SCENE: PackedScene = preload("res://src/world/lighting_rig.tscn")
 
 var _textures: Dictionary[int, Texture2D] = {}
 var _scenes: Dictionary[int, PackedScene] = {}
@@ -86,17 +88,8 @@ func _process(_delta: float) -> void:
 func _ensure_stage() -> bool:
 	if _viewport != null:
 		return true
-	# Reuse the approved scene's actual environment and light nodes. Never
-	# instantiate it in a tree: the shop's gameplay/view bindings do not run.
-	var source_scene: PackedScene = load(VIEW_SCENE_PATH) as PackedScene
-	if source_scene == null:
-		return false
-	var source: Node = source_scene.instantiate()
-	var warm: WorldEnvironment = source.get_node_or_null("Environment") as WorldEnvironment
-	var key: DirectionalLight3D = source.get_node_or_null("KeyLight") as DirectionalLight3D
-	var fill: DirectionalLight3D = source.get_node_or_null("FillLight") as DirectionalLight3D
-	if warm == null or warm.environment == null or key == null or fill == null:
-		source.free()
+	var lighting: Node3D = create_preview_lighting()
+	if lighting == null:
 		return false
 	_viewport = SubViewport.new()
 	_viewport.name = "ThumbnailViewport"
@@ -108,21 +101,37 @@ func _ensure_stage() -> bool:
 	add_child(_viewport)
 	_stage = Node3D.new()
 	_viewport.add_child(_stage)
-	var environment: WorldEnvironment = WorldEnvironment.new()
-	environment.environment = warm.environment.duplicate() as Environment
-	# Transparency is a viewport concern; ambient light and tone mapping stay
-	# exactly as authored in ShopView, without baking its brown background.
-	environment.environment.background_mode = Environment.BG_CLEAR_COLOR
-	_stage.add_child(environment)
-	_stage.add_child(key.duplicate())
-	_stage.add_child(fill.duplicate())
-	source.free()
+	_stage.add_child(lighting)
 	_camera = Camera3D.new()
 	_camera.projection = Camera3D.PROJECTION_ORTHOGONAL
 	_camera.keep_aspect = Camera3D.KEEP_HEIGHT
 	_stage.add_child(_camera)
 	_camera.current = true
 	return true
+
+
+## The preview owns a separate World3D and detached rig resources. Its clear
+## background never changes the playable world's warm sky or shared materials.
+static func create_preview_lighting() -> Node3D:
+	var instance: Node = LIGHTING_SCENE.instantiate()
+	var lighting: Node3D = instance as Node3D
+	if lighting == null:
+		instance.free()
+		return null
+	var warm: WorldEnvironment = lighting.get_node_or_null("Environment") as WorldEnvironment
+	if warm == null or warm.environment == null \
+			or not lighting.get_node_or_null("KeyLight") is DirectionalLight3D \
+			or not lighting.get_node_or_null("FillLight") is DirectionalLight3D:
+		lighting.free()
+		return null
+	# The rig already supplies a native scene-local Environment, Sky and material.
+	# Replacing it with another deep copy discards an invalidated Sky before the
+	# first renderer update. Keep the native copy and refuse any shared template.
+	if warm.environment.get_local_scene() != lighting:
+		lighting.free()
+		return null
+	warm.environment.background_mode = Environment.BG_CLEAR_COLOR
+	return lighting
 
 
 func _start_next() -> void:

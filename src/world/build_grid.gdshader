@@ -20,6 +20,12 @@ void fragment() {
 	vec2 antialias = max(fwidth(world_position.xz), vec2(0.0001));
 	vec2 lines = 1.0 - smoothstep(vec2(line_width), vec2(line_width) + antialias, line_distance);
 	float coverage = grid_visible ? max(lines.x, lines.y) : 0.0;
-	ALBEDO = mix(floor_color.rgb, grid_color.rgb, coverage);
+	// A quiet world-space plank variation remains multiplicative with the
+	// authored floor swatch, so paint keeps control of the underlying colour.
+	float plank_band = mod(floor(world_position.z / 0.5), 2.0);
+	float plank_seam = 1.0 - smoothstep(0.0, 0.012, abs(fract(world_position.z / 0.5) - 0.5));
+	float plank_shade = 1.0 - plank_band * 0.018 - plank_seam * 0.025;
+	vec3 patterned_floor = floor_color.rgb * plank_shade;
+	ALBEDO = mix(patterned_floor, grid_color.rgb, coverage);
 	ROUGHNESS = 0.95;
 }
