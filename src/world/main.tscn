@@ -14,10 +14,13 @@
 [ext_resource type="PackedScene" path="res://src/ui/staff_panel.tscn" id="11_staff"]
 [ext_resource type="PackedScene" path="res://src/ui/settings_panel.tscn" id="12_settings"]
 [ext_resource type="PackedScene" path="res://src/ui/goals_panel.tscn" id="13_goals"]
+[ext_resource type="PackedScene" path="res://src/world/lighting_rig.tscn" id="13_lighting"]
 
 [node name="Main" type="Node3D"]
 process_priority = 10
 script = ExtResource("1")
+
+[node name="LightingRig" parent="." instance=ExtResource("13_lighting")]
 
 [node name="ShopView" parent="." instance=ExtResource("2")]
 
