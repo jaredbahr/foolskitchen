@@ -181,6 +181,22 @@ func test_invalid_footprint_and_negative_prices_are_reported() -> void:
 	assert_true(_has_error(errors, "footprint components must be >= 1"))
 
 
+func test_seated_forward_offset_defaults_to_zero_and_accepts_nonnegative_metres() -> void:
+	var definition: ItemDef = _station()
+	assert_almost_eq(definition.seated_forward_offset, 0.0)
+	assert_eq(ContentDB.validate_definitions([], [], [definition]), PackedStringArray())
+	definition.seated_forward_offset = 0.25
+	assert_eq(ContentDB.validate_definitions([], [], [definition]), PackedStringArray())
+
+
+func test_negative_or_nonfinite_seated_forward_offsets_are_reported() -> void:
+	for offset: float in [-0.01, INF, NAN]:
+		var definition: ItemDef = _station()
+		definition.seated_forward_offset = offset
+		var errors: PackedStringArray = ContentDB.validate_definitions([], [], [definition])
+		assert_true(_has_error(errors, "seated_forward_offset must be finite and >= 0"), str(offset))
+
+
 func test_null_top_level_definitions_and_quality_bounds_are_reported() -> void:
 	var recipe_def: RecipeDef = _recipe()
 	recipe_def.base_quality = 1.1
