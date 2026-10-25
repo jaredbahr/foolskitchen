@@ -10,10 +10,16 @@ def build_furniture(builder: Builder) -> None:
     builder.begin_asset("diner_booth", ["benchCushion", "loungeSofa"])
     builder.box("Wood foot plinth", (.86, .35, .04), (0, 0, .02), "wood", bevel=.005)
     builder.box("Padded bench base", (.90, .40, .16), (0, 0, .12), "cream", bevel=.01)
-    builder.box("Tall back shell", (.90, .08, .46), (0, -.16, .42), "cream", bevel=.01)
+    # Keep the upholstered white shell, but lower and set back its upper edge
+    # below the Mini sit pose's rear hair. The 0.498 m total depth leaves a
+    # little room inside the existing footprint allowance after shared scale.
+    # Export re-centres that depth; diner_booth's supported 0.05 m guest offset
+    # keeps the hips over these unchanged seat cushions. Final fit is measured
+    # against the exported backrest surfaces, never a whole-head bounds box.
+    builder.box("Tall back shell", (.90, .06, .235), (0, -.268, .3075), "cream", bevel=.01)
     for x, side in [(-.2273, "Left"), (.2273, "Right")]:
         builder.box(side + " seat cushion", (.435, .29, .04), (x, .035, .22), "red", bevel=.009)
-        builder.box(side + " back cushion", (.435, .055, .36), (x, -.104, .445), "red", bevel=.012)
+        builder.box(side + " back cushion", (.435, .035, .14), (x, -.2205, .335), "red", bevel=.01)
     builder.export_asset("diner_booth")
 
     # stoolBar's exact top plane is 0.435 m and its greatest width 0.26544 m.

@@ -15,6 +15,8 @@ func test_diner_seats_have_diner_unlocks_and_bench_compatible_seats() -> void:
 	assert_eq(booth.footprint, Vector2i(2, 1))
 	assert_eq(booth.seat_cells, [Vector2i(0, 0), Vector2i(1, 0)])
 	assert_eq(booth.capacity, 2)
+	assert_almost_eq(booth.seated_forward_offset, 0.05, 0.000001,
+		"booth uses only the supported five-centimetre seated adjustment")
 	assert_eq(booth.unlock_level, 3)
 	assert_true(booth.theme_tags.has(&"diner"))
 	assert_eq(stool.category, ItemDef.Category.CHAIR)
@@ -46,12 +48,58 @@ func test_diner_seats_remain_walkable_in_every_existing_rotation() -> void:
 
 
 func test_diner_models_fit_their_cells_and_use_the_named_kit_materials() -> void:
-	_assert_model_contract("diner_booth", Vector2i(2, 1), 0.715, 0.24, [
+	_assert_model_contract("diner_booth", Vector2i(2, 1), 0.4675, 0.24, [
 		"carpet", "wood", "metal", "metalDark", "carpetWhite",
 	])
 	_assert_model_contract("diner_stool", Vector2i.ONE, 0.4785, 0.435, [
 		"carpet", "wood", "metal", "metalDark",
 	])
+
+
+func test_booth_backrest_is_lower_and_set_back_without_shrinking_its_seat_cushions() -> void:
+	var packed: PackedScene = load("res://assets/made/diner/diner_booth.glb") as PackedScene
+	assert_not_null(packed)
+	if packed == null:
+		return
+	var instance: Node = packed.instantiate()
+	var parts: Dictionary[String, AABB] = {}
+	var traversal: Array[Dictionary] = [{"node": instance, "transform": Transform3D.IDENTITY}]
+	while not traversal.is_empty():
+		var current: Dictionary = traversal.pop_back()
+		var node: Node = current["node"] as Node
+		var accumulated: Transform3D = current["transform"]
+		var spatial: Node3D = node as Node3D
+		if spatial != null:
+			accumulated *= spatial.transform
+		var mesh: MeshInstance3D = node as MeshInstance3D
+		if mesh != null and mesh.mesh != null:
+			var part_name: String = String(mesh.name).to_lower().replace(" ", "").replace("_", "")
+			parts[part_name] = accumulated * mesh.get_aabb()
+		for child: Node in node.get_children():
+			traversal.append({"node": child, "transform": accumulated})
+	assert_eq(parts.size(), 7, "booth keeps its original seven upholstered parts")
+	assert_true(parts.has("tallbackshell"))
+	if parts.has("tallbackshell"):
+		var shell: AABB = parts["tallbackshell"]
+		assert_almost_eq(shell.end.y, 0.425, 0.0001, "white shell stays below the rear hair region")
+		assert_almost_eq(shell.position.z, 0.189, 0.0001, "shell is set back after export centring")
+		assert_almost_eq(shell.size.z, 0.06, 0.0001, "shell retains a chunky bevelled thickness")
+	for side: String in ["left", "right"]:
+		var seat_name: String = side + "seatcushion"
+		var back_name: String = side + "backcushion"
+		assert_true(parts.has(seat_name))
+		assert_true(parts.has(back_name))
+		if parts.has(seat_name):
+			var seat: AABB = parts[seat_name]
+			assert_almost_eq(seat.size.x, 0.435, 0.0001)
+			assert_almost_eq(seat.size.z, 0.29, 0.0001)
+			assert_almost_eq(seat.end.y, 0.24, 0.0001, "original cushion height and support area remain")
+		if parts.has(back_name):
+			var back: AABB = parts[back_name]
+			assert_almost_eq(back.end.y, 0.405, 0.0001)
+			assert_almost_eq(back.position.z, 0.154, 0.0001)
+			assert_almost_eq(back.size.z, 0.035, 0.0001, "back cushions retain bevelled padding behind the hair")
+	instance.free()
 
 
 func test_wall_model_wrappers_keep_bounded_geometry_and_chalkboard_uses_theme_text() -> void:
