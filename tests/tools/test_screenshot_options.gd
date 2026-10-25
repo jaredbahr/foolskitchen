@@ -1,5 +1,6 @@
 extends TestCase
-## Pure opt-in option parsing; no SceneTree, window, settings or capture is created.
+## Option/provenance checks plus one private native Staff-grid validation.
+## No screenshot, rendered capture fixture or device preference is created.
 
 const CAPTURE: Script = preload("res://tools/screenshot.gd")
 
@@ -133,6 +134,42 @@ func test_staff_grid_validator_rejects_scrollbar_obscuring_cells_and_native_size
 	wrong = record.duplicate(true)
 	wrong["grid"]["cells"][0]["bounds"] = [NAN, 258.0, 100.0, 32.0]
 	assert_false(CAPTURE.staff_priority_grid_valid(wrong["grid"], wrong["members"]))
+
+
+func test_real_staff_panel_native_grid_evidence_satisfies_capture_validator_without_mutation() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	await tree.process_frame
+	var host: SubViewport = SubViewport.new()
+	host.size = Vector2i(1600, 900)
+	host.gui_embed_subwindows = true
+	host.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	tree.root.add_child(host)
+	var window: Window = Window.new()
+	window.borderless = true
+	window.content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS
+	window.content_scale_aspect = Window.CONTENT_SCALE_ASPECT_EXPAND
+	window.content_scale_size = Vector2i(1600, 900)
+	window.content_scale_factor = 1.0
+	window.size = Vector2i(1600, 900)
+	host.add_child(window)
+	var roster: StaffRoster = StaffRoster.new()
+	var random: RandomNumberGenerator = RandomNumberGenerator.new()
+	random.seed = 72
+	roster.draw_candidates(1, random)
+	var panel: StaffPanel = (load("res://src/ui/staff_panel.tscn") as PackedScene).instantiate() as StaffPanel
+	window.add_child(panel)
+	panel.bind_roster(roster)
+	panel.set_phase(SimClock.Phase.MORNING)
+	panel.set_trays(0, PackedInt32Array([60, 150]), 200)
+	panel.show()
+	for frame: int in range(3):
+		await tree.process_frame
+	var before: Dictionary = roster.to_dict()
+	var evidence: Dictionary = CAPTURE.staff_priority_grid_evidence(panel, roster)
+	assert_true(CAPTURE.staff_priority_grid_valid(evidence, before["members"]),
+		"Real Staff grid failed strict capture validation: " + JSON.stringify({"grid": evidence, "members": before["members"]}))
+	assert_eq(roster.to_dict(), before, "native evidence never changes staff choices, growth or candidates")
+	host.free()
 
 
 ## Pure captured-record unit data, never a scene or a screenshot fixture.
