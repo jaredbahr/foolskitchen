@@ -97,6 +97,8 @@ func test_real_main_fixture_shows_goals_then_uses_real_close_and_read_only_evide
 	assert_eq(fixture.get("error"), "")
 	if not String(fixture.get("error", "")).is_empty():
 		return
+	assert_true(int(fixture["starting_day_profit"]) < 0,
+		"natural morning restock is already reflected in the fixture cash baseline")
 	await _wait_frames(2)
 	var before_goals: Dictionary = _main_snapshot(main)
 	var providers_before_goals: Dictionary = SaveSystem._providers.duplicate()
@@ -132,6 +134,10 @@ func test_real_main_fixture_shows_goals_then_uses_real_close_and_read_only_evide
 	var missing_reward: Dictionary = report_state.duplicate(true)
 	missing_reward["milestone_bonus_entries"][0]["amount"] = 0
 	assert_false(CAPTURE.milestone_review_valid(missing_reward, 90, fixture), "missing ledger reward evidence fails closed")
+	var wrong_cash_baseline: Dictionary = fixture.duplicate(true)
+	wrong_cash_baseline["starting_day_profit"] = 0
+	assert_false(CAPTURE.milestone_review_valid(report_state, 90, wrong_cash_baseline),
+		"cash parity includes the real morning restock already present before the fixture")
 	var sim: RestaurantSim = main.get("sim") as RestaurantSim
 	var tracker: MilestoneTracker = main.get("milestones") as MilestoneTracker
 	var owner: OwnerProgress = main.get("owner_progress") as OwnerProgress

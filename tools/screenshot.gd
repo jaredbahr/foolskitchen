@@ -375,6 +375,7 @@ static func prepare_milestone_review(main: Node, context_root: Node) -> Dictiona
 	fixture.merge({"expected_active_ids": expected, "catalogue": goals_data,
 		"target_goal": _milestone_definition_record(target_goal),
 		"starting_cash": ledger.cash, "starting_xp": owner.total_xp,
+		"starting_day_profit": ledger.day_profit(time.day),
 		"starting_tracker": career.to_dict(), "starting_tick": world.now})
 	return fixture
 
@@ -711,7 +712,8 @@ static func milestone_review_valid(state: Dictionary, frame: int, fixture: Dicti
 			or not state["completed_ids"].has(String(goal.get("id", ""))) \
 			or state["owner_xp"] != int(fixture.get("starting_xp", 0)) + report_total_xp \
 			or report.get("total_xp") < 0 \
-			or state["ledger_cash"] != int(fixture.get("starting_cash", 0)) + int(state["ledger_day_profit"]):
+			or state["ledger_cash"] != int(fixture.get("starting_cash", 0)) \
+				+ int(state["ledger_day_profit"]) - int(fixture.get("starting_day_profit", 0)):
 		return false
 	if not _milestone_native_rect_valid(report["heading"]["native"]) \
 			or not _milestone_native_rect_valid(report["row"]) \
