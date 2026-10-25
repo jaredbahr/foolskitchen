@@ -11,10 +11,12 @@ const PROGRESSION: ProgressionTuning = preload("res://data/balance/progression.t
 var _mains: Array[Node] = []
 var _old_save_dir: String
 var _save_dir: String
+var _old_providers: Dictionary = {}
 
 
 func before_each() -> void:
 	_old_save_dir = SaveSystem.save_dir
+	_old_providers = SaveSystem._providers.duplicate()
 	_save_dir = SaveTestPaths.case_dir(OS.get_process_id(), "milestone_session")
 	SaveSystem.save_dir = _save_dir
 	SaveSystem.delete_slot(SLOT)
@@ -27,6 +29,10 @@ func after_each() -> void:
 	DirAccess.remove_absolute(_save_dir)
 	DirAccess.remove_absolute(SaveTestPaths.process_dir(OS.get_process_id()))
 	SaveSystem.save_dir = _old_save_dir
+	SaveSystem._providers.clear()
+	for key: String in _old_providers:
+		var provider: Dictionary = _old_providers[key]
+		SaveSystem.register(key, provider["capture"], provider["restore"])
 	Clock.set_speed(0)
 	Economy.reset(0)
 	GameState.new_run(1)
