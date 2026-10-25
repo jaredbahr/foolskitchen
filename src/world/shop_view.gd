@@ -522,7 +522,7 @@ func _sync_agents() -> void:
 			var created: Node3D = PERSON_SCENE.instantiate() as PersonView if frame.look_supported else _legacy_person_fallback(agent)
 			if created is PersonView:
 				# _ready runs on add_child; record the real look before rig creation.
-				(created as PersonView).set_look(frame.role, frame.id)
+				(created as PersonView).set_look(frame.role, frame.id, frame.customer_type)
 			created.name = "Agent%d" % agent.id
 			created.set_meta("agent_id", agent.id)
 			created.set_meta("shop_geometry", true)

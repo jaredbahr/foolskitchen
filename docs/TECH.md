@@ -778,6 +778,26 @@ an active edit/panel/selection first, or opens Settings when none is active.
   morning and never join the saved report. Score, snapshots and presentation
   add no save section, action save, random draw or customer-type selection.
 
+**Customer types (FK-061):** `data/customers/types.tres` authors neutral Regulars,
+Students (budget 0.8 / patience 1.3, level 1), Foodies (1.4 / 0.9, level 3), and
+single-person Families (1.1 / 1.4, level 4). Main installs the detached catalogue
+after owner progression and reviews restore, and refreshes its level each morning.
+The spawner chooses in authored order from unlocked, positive weights interpolated
+by reputation, using the named customers stream. One eligible type consumes no
+selection draw; an unconfigured simulation retains the old Regular arrival path.
+
+A guest captures its authored name, budget and review preferences, and scales
+patience once before cleanliness and Vibe; the server bonus still applies later
+once. Walkouts and review fairness use charged / standard price / budget. Reviews
+add clamped `Order.quality` times the type's quality weight, and multiply review
+probability before clamping it to 0-1. Closing/unserved policies and the separate
+review RNG remain unchanged. Native Mini model pairs distinguish special types
+deterministically; Regular keeps its existing guest-id mapping. The inspection
+panel shows the authored type name. No customer-type save section or action save
+is added. Regular compatibility fixtures retain the pre-type methods from main
+`34f8fde` for seeds 1, 7 and 42; they do not substitute for the required ten-day
+before/after balance probe.
+
 ### 2.4 Save system
 - JSON in `user://saves/`, with a `version` field and migration functions per version.
 - Only sim state is saved, never nodes. The world is rebuilt from sim state on load.
