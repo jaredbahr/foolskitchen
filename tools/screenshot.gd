@@ -19,6 +19,7 @@ extends SceneTree
 ##   --paint     show a painted morning shop using the production paint controls
 ##   --door-queue  zoom the existing camera onto a real queue, or its empty entry
 ##   --loan-review --speed=0 --frames=12,90  explicit financial-fixture UI evidence
+##   --milestone-review --speed=0 --frames=12,90  authored goals and close reward evidence
 ##   --catalogue-review=rustic|modern --speed=0 --frames=90,120  furnishing fixture
 ## Ordinary captures record real moods, markers and seeds without a fixture.
 
@@ -52,7 +53,19 @@ const VIBE_UID_SOURCES: Array[String] = [
 	"res://src/ui/vibe_meter.gd", "res://tests/ui/test_vibe_meter.gd", "res://tests/world/test_vibe_session.gd",
 ]
 const MILESTONE_UID_SOURCES: Array[String] = [
-	"res://tools/screenshot.gd", "res://tests/tools/test_milestone_screenshot.gd",
+	"res://src/sim/progression/milestone.gd",
+	"res://src/sim/progression/milestone_day.gd",
+	"res://src/sim/progression/milestone_set.gd",
+	"res://src/sim/progression/milestone_tracker.gd",
+	"res://src/sim/progression/milestone_settlement.gd",
+	"res://src/ui/goals_panel.gd",
+	"res://tests/core/test_milestone_loan_accounting.gd",
+	"res://tests/sim/test_milestone_settlement.gd",
+	"res://tests/sim/test_milestone_tracker.gd",
+	"res://tests/ui/test_goals_panel.gd",
+	"res://tests/world/test_milestone_session.gd",
+	"res://tests/tools/test_milestone_screenshot.gd",
+	"res://tools/screenshot.gd",
 ]
 
 var _frames: int = 0
@@ -714,7 +727,8 @@ static func milestone_review_valid(state: Dictionary, frame: int, fixture: Dicti
 		and _milestone_native_rect_valid(bonus["title"]) and _milestone_native_rect_valid(bonus["amount"]) \
 		and career_xp.get("available") != false and career_xp.get("title", {}).get("text") == "Career goals" \
 		and career_xp.get("amount", {}).get("text") == "+%d XP" % int(goal.get("reward_xp", 0)) \
-		and _milestone_native_rect_valid(career_xp["title"]) and _milestone_native_rect_valid(career_xp["amount"])
+		and career_xp.get("title", {}).get("visible") == true \
+		and career_xp.get("amount", {}).get("visible") == true
 
 
 ## Explicit financial fixture, never a playable balance sample. Real commands

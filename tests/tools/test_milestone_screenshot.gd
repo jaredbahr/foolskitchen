@@ -9,7 +9,10 @@ var _mains: Array[Node] = []
 var _old_save_dir: String
 var _save_dir: String
 var _old_providers: Dictionary = {}
-var _old_preferences_disk_enabled: bool
+var _old_preferences: Dictionary = {}
+var _window: Window
+var _old_window_size: Vector2i
+var _old_content_scale: float
 
 
 func before_each() -> void:
@@ -17,8 +20,17 @@ func before_each() -> void:
 	_old_providers = SaveSystem._providers.duplicate()
 	_save_dir = SaveTestPaths.case_dir(OS.get_process_id(), "milestone_screenshot")
 	SaveSystem.save_dir = _save_dir
-	_old_preferences_disk_enabled = Preferences._disk_enabled
-	Preferences._disk_enabled = false
+	_window = (Engine.get_main_loop() as SceneTree).root
+	_old_preferences.clear()
+	for key: String in ["_file_path", "_disk_enabled", "_pending_volume_save"]:
+		_old_preferences[key] = Preferences.get(key)
+	_old_window_size = _window.size
+	_old_content_scale = _window.content_scale_factor
+	Preferences.set("_file_path", _save_dir.path_join("preferences.cfg"))
+	Preferences.set("_disk_enabled", false)
+	Preferences.set("_pending_volume_save", false)
+	_window.size = Vector2i(1600, 900)
+	_window.content_scale_factor = 1.0
 
 
 func after_each() -> void:
@@ -29,7 +41,11 @@ func after_each() -> void:
 	for key: String in _old_providers:
 		var provider: Dictionary = _old_providers[key]
 		SaveSystem.register(key, provider["capture"], provider["restore"])
-	Preferences._disk_enabled = _old_preferences_disk_enabled
+	for key: String in _old_preferences:
+		Preferences.set(key, _old_preferences[key])
+	if _window.size != _old_window_size:
+		_window.size = _old_window_size
+	_window.content_scale_factor = _old_content_scale
 	Clock.set_speed(0)
 	Economy.reset(0)
 	GameState.new_run(1)
@@ -39,6 +55,7 @@ func after_each() -> void:
 		DirAccess.remove_absolute(_save_dir.path_join(SLOT + ".json.bak"))
 	if FileAccess.file_exists(_save_dir.path_join(SLOT + ".json.tmp")):
 		DirAccess.remove_absolute(_save_dir.path_join(SLOT + ".json.tmp"))
+	assert_false(FileAccess.file_exists(_save_dir.path_join("preferences.cfg")))
 	DirAccess.remove_absolute(_save_dir)
 
 
@@ -80,7 +97,7 @@ func test_real_main_fixture_shows_goals_then_uses_real_close_and_read_only_evide
 	assert_eq(fixture.get("error"), "")
 	if not String(fixture.get("error", "")).is_empty():
 		return
-	await (Engine.get_main_loop() as SceneTree).process_frame
+	await _wait_frames(2)
 	var before_goals: Dictionary = _main_snapshot(main)
 	var providers_before_goals: Dictionary = SaveSystem._providers.duplicate()
 	var goals_state: Dictionary = CAPTURE.milestone_review_evidence(main, (Engine.get_main_loop() as SceneTree).root, 12)
@@ -90,6 +107,7 @@ func test_real_main_fixture_shows_goals_then_uses_real_close_and_read_only_evide
 	assert_eq(SaveSystem.save_dir, _save_dir, "the capture test stays inside its private save path")
 	assert_eq(_preference_snapshot(), preference_snapshot, "capture reads never write local settings")
 	assert_false(Preferences._disk_enabled, "the test uses an isolated no-write settings fixture")
+	assert_false(Preferences._pending_volume_save, "the fixture suspends deferred preference writes")
 	var with_missing_goal: Dictionary = goals_state.duplicate(true)
 	with_missing_goal["goals_panel"]["cards"].remove_at(2)
 	assert_false(CAPTURE.milestone_review_valid(with_missing_goal, 12, fixture), "a missing active goal fails closed")
@@ -104,7 +122,7 @@ func test_real_main_fixture_shows_goals_then_uses_real_close_and_read_only_evide
 	assert_eq(fixture.get("error"), "")
 	if not String(fixture.get("error", "")).is_empty():
 		return
-	await (Engine.get_main_loop() as SceneTree).process_frame
+	await _wait_frames(2)
 	var before_report_query: Dictionary = _main_snapshot(main)
 	var providers_before_report: Dictionary = SaveSystem._providers.duplicate()
 	var report_state: Dictionary = CAPTURE.milestone_review_evidence(main, (Engine.get_main_loop() as SceneTree).root, 90)
@@ -128,14 +146,14 @@ func test_real_main_fixture_shows_goals_then_uses_real_close_and_read_only_evide
 	var uid_before: Array[Dictionary] = _uid_snapshot(CAPTURE.MILESTONE_UID_SOURCES)
 	var uid_evidence: Dictionary = CAPTURE.generated_uid_evidence(CAPTURE.MILESTONE_UID_SOURCES)
 	assert_true(uid_evidence["read_only"])
-	assert_eq(uid_evidence["entries"].size(), 2)
-	assert_eq(uid_evidence["entries"][0]["source"], "res://tools/screenshot.gd")
-	assert_eq(uid_evidence["entries"][1]["source"], "res://tests/tools/test_milestone_screenshot.gd")
+	assert_eq(uid_evidence["entries"].size(), 13)
+	assert_eq(uid_evidence["entries"].map(func(entry: Dictionary) -> String: return entry["source"]),
+		CAPTURE.MILESTONE_UID_SOURCES)
 	assert_eq(_uid_snapshot(CAPTURE.MILESTONE_UID_SOURCES), uid_before, "UID provenance never generates or registers sidecars")
 
 
 func _start_main() -> Node:
-	await (Engine.get_main_loop() as SceneTree).process_frame
+	await _wait_frames(2)
 	var main: Node = MAIN.instantiate()
 	main.set("use_saves", false)
 	main.set("save_slot", SLOT)
@@ -144,7 +162,14 @@ func _start_main() -> Node:
 	(Engine.get_main_loop() as SceneTree).root.add_child(main)
 	main.call("start")
 	Clock.set_speed(0)
+	await _wait_frames(2)
 	return main
+
+
+func _wait_frames(count: int) -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	for _index: int in range(count):
+		await tree.process_frame
 
 
 func _close(main: Node) -> void:
@@ -178,7 +203,8 @@ func _preference_snapshot() -> Dictionary:
 		"effects": Preferences.effects_volume_percent, "scale": Preferences.ui_scale_percent,
 		"speed": Preferences.default_open_speed, "fullscreen": Preferences.fullscreen_enabled,
 		"edge_pan": Preferences.edge_pan_enabled, "path": Preferences._file_path,
-		"disk_enabled": Preferences._disk_enabled}
+		"disk_enabled": Preferences._disk_enabled,
+		"pending_volume_save": Preferences._pending_volume_save}
 
 
 func _uid_snapshot(sources: Array[String]) -> Array[Dictionary]:
