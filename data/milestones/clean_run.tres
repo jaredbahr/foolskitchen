@@ -9,6 +9,6 @@ title = "Nobody left hungry"
 description = "Finish three days in a row without losing a guest."
 condition = 6
 target = 3.0
-reward_xp = 50
+reward_xp = 25
 reward_cash = 30
 unlock_level = 1

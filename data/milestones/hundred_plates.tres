@@ -9,6 +9,6 @@ title = "A hundred plates later"
 description = "Serve one hundred guests across your career. Who is washing up?"
 condition = 3
 target = 100.0
-reward_xp = 45
+reward_xp = 25
 reward_cash = 30
 unlock_level = 2

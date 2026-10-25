@@ -9,6 +9,6 @@ title = "Every chair earns its keep"
 description = "Serve eighteen guests in one day."
 condition = 0
 target = 18.0
-reward_xp = 35
+reward_xp = 18
 reward_cash = 20
 unlock_level = 1

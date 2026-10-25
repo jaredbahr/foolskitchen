@@ -9,6 +9,6 @@ title = "The till needs a nap"
 description = "Make at least $80 operating profit in one day."
 condition = 2
 target = 80.0
-reward_xp = 60
+reward_xp = 30
 reward_cash = 50
 unlock_level = 2

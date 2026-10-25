@@ -9,6 +9,6 @@ title = "First rush"
 description = "Serve ten guests in one day. The aprons have earned a breather."
 condition = 0
 target = 10.0
-reward_xp = 20
+reward_xp = 10
 reward_cash = 10
 unlock_level = 1

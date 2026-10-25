@@ -9,6 +9,6 @@ title = "Rent day relief"
 description = "Make at least $30 operating profit in one day."
 condition = 2
 target = 30.0
-reward_xp = 25
+reward_xp = 12
 reward_cash = 15
 unlock_level = 1

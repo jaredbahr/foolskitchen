@@ -9,6 +9,6 @@ title = "Faces at the door"
 description = "Serve twenty-five guests across your career."
 condition = 3
 target = 25.0
-reward_xp = 25
+reward_xp = 12
 reward_cash = 10
 unlock_level = 1

@@ -108,6 +108,8 @@ func _make_goal_card(goal: Milestone, completed: bool, index: int) -> Control:
 	var body: VBoxContainer = VBoxContainer.new()
 	body.name = "Body"
 	body.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Tighter than the shared 10 px so three active goals fit at 1600x900 / 100%.
+	body.add_theme_constant_override(&"separation", 4)
 	card.add_child(body)
 	var title: Label = _add_label(body, "Title", goal.title)
 	title.add_theme_font_size_override(&"font_size", 20)
@@ -121,6 +123,7 @@ func _make_goal_card(goal: Milestone, completed: bool, index: int) -> Control:
 	bar.max_value = 1.0
 	bar.step = 0.0
 	bar.show_percentage = false
+	bar.custom_minimum_size = Vector2(0.0, 10.0)
 	bar.value = 1.0 if completed else _progress_ratio(goal)
 	bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE

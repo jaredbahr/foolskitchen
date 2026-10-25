@@ -9,6 +9,6 @@ title = "Word gets around"
 description = "Reach a 3.5-star reputation."
 condition = 1
 target = 3.5
-reward_xp = 30
+reward_xp = 15
 reward_cash = 20
 unlock_level = 1

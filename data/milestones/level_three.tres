@@ -9,6 +9,6 @@ title = "A bigger apron"
 description = "Reach owner level 3."
 condition = 4
 target = 3.0
-reward_xp = 40
+reward_xp = 20
 reward_cash = 25
 unlock_level = 2

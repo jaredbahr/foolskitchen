@@ -9,6 +9,6 @@ title = "One more apron"
 description = "Grow the staff roster to three people."
 condition = 5
 target = 3.0
-reward_xp = 20
+reward_xp = 10
 reward_cash = 10
 unlock_level = 1
