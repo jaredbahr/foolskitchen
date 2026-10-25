@@ -1,6 +1,9 @@
 extends TestCase
 ## Diner furniture stays on its real geometry and on the shared seat grid.
 
+const SHARED_THEME: Theme = preload("res://src/ui/theme/main_theme.tres")
+
+
 func test_diner_seats_have_diner_unlocks_and_bench_compatible_seats() -> void:
 	var booth: ItemDef = load("res://data/items/diner_booth.tres") as ItemDef
 	var stool: ItemDef = load("res://data/items/diner_stool.tres") as ItemDef
@@ -49,6 +52,69 @@ func test_diner_models_fit_their_cells_and_use_the_named_kit_materials() -> void
 	_assert_model_contract("diner_stool", Vector2i.ONE, 0.4785, 0.435, [
 		"carpet", "wood", "metal", "metalDark",
 	])
+
+
+func test_wall_model_wrappers_keep_bounded_geometry_and_chalkboard_uses_theme_text() -> void:
+	var cases: Array[Dictionary] = [
+		{"id": "diner_open_sign", "height": 0.41525, "materials": ["metalDark", "metal", "carpet_emissive"]},
+		{"id": "diner_chalkboard", "height": 0.616, "materials": ["metalDark", "wood"]},
+		{"id": "diner_wall_art_a", "height": 0.517, "materials": ["carpetWhite", "wood", "carpet", "metal"]},
+		{"id": "diner_wall_art_b", "height": 0.517, "materials": ["carpetWhite", "wood", "carpet", "metalDark"]},
+	]
+	for entry: Dictionary in cases:
+		var item_id: String = entry["id"]
+		var packed: PackedScene = load("res://assets/props/%s.tscn" % item_id) as PackedScene
+		assert_not_null(packed, "%s staged wall wrapper loads" % item_id)
+		if packed == null:
+			continue
+		var instance: Node = packed.instantiate()
+		var prop: PropView = instance as PropView
+		assert_not_null(prop, "%s wrapper uses PropView" % item_id)
+		if prop == null:
+			instance.free()
+			continue
+		prop.prepare()
+		assert_eq(prop.footprint, Vector2i(2, 1), "%s covers its two-cell wall width" % item_id)
+		var bounds: AABB = prop.get_combined_aabb()
+		assert_true(bounds.size.x > 0.0 and bounds.size.x <= 1.05,
+			"%s width %.3f fits the two-cell allowance" % [item_id, bounds.size.x])
+		assert_true(bounds.size.z > 0.0 and bounds.size.z < 0.25,
+			"%s depth %.3f remains wall-prop thin" % [item_id, bounds.size.z])
+		assert_almost_eq(bounds.size.y, float(entry["height"]), 0.015,
+			"%s retains its imported height under ArtScale" % item_id)
+		assert_true(bounds.position.y >= 0.6 and bounds.end.y <= ArtScale.WALL_HEIGHT,
+			"%s sits inside the existing wall height" % item_id)
+		var meshes: Array[MeshInstance3D] = []
+		_collect_meshes(prop, meshes)
+		var triangles: int = 0
+		var found_materials: Dictionary[String, bool] = {}
+		var lights: Array[Light3D] = []
+		_collect_lights(prop, lights)
+		assert_true(lights.is_empty(), "%s geometry does not add a real light" % item_id)
+		for mesh_instance: MeshInstance3D in meshes:
+			if mesh_instance.mesh == null:
+				continue
+			triangles += int(mesh_instance.mesh.get_faces().size() / 3)
+			for surface_index: int in range(mesh_instance.mesh.get_surface_count()):
+				var material: Material = mesh_instance.mesh.surface_get_material(surface_index)
+				assert_not_null(material, "%s wall surface keeps its source material" % item_id)
+				if material == null:
+					continue
+				var material_name: String = material.resource_name
+				assert_true((entry["materials"] as Array).has(material_name),
+					"%s material '%s' comes from the referenced kit" % [item_id, material_name])
+				found_materials[material_name] = true
+		assert_true(triangles > 0 and triangles < 300,
+			"%s has %d imported triangles below the wall-prop limit" % [item_id, triangles])
+		for material_name: String in entry["materials"]:
+			assert_true(found_materials.has(material_name), "%s uses %s" % [item_id, material_name])
+		if item_id == "diner_chalkboard":
+			var label: Label3D = prop.get_node_or_null("WallMount/MenuText") as Label3D
+			assert_not_null(label, "chalkboard lettering remains native 3D text")
+			if label != null:
+				assert_eq(label.theme, SHARED_THEME)
+				assert_true(label.text.contains("TODAY'S SPECIALS"))
+		instance.free()
 
 
 func _assert_model_contract(item_id: String, footprint: Vector2i, expected_height: float,
@@ -114,3 +180,11 @@ func _collect_meshes(node: Node, meshes: Array[MeshInstance3D]) -> void:
 		meshes.append(mesh_instance)
 	for child: Node in node.get_children():
 		_collect_meshes(child, meshes)
+
+
+func _collect_lights(node: Node, lights: Array[Light3D]) -> void:
+	var light: Light3D = node as Light3D
+	if light != null:
+		lights.append(light)
+	for child: Node in node.get_children():
+		_collect_lights(child, lights)
