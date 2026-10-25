@@ -326,11 +326,19 @@ static func _integer_equals(value: Variant, expected: int, minimum: int, maximum
 
 
 static func image_bytes_width(bytes: PackedByteArray) -> int:
-	return int(bytes.decode_u32(16, true)) if bytes.size() >= 24 else -1
+	return _png_u32_be(bytes, 16) if bytes.size() >= 24 else -1
 
 
 static func image_bytes_height(bytes: PackedByteArray) -> int:
-	return int(bytes.decode_u32(20, true)) if bytes.size() >= 24 else -1
+	return _png_u32_be(bytes, 20) if bytes.size() >= 24 else -1
+
+
+## PNG chunk lengths and dimensions are four-byte unsigned big-endian values.
+static func _png_u32_be(bytes: PackedByteArray, byte_offset: int) -> int:
+	if byte_offset < 0 or byte_offset > bytes.size() - 4:
+		return -1
+	return (int(bytes[byte_offset]) << 24) | (int(bytes[byte_offset + 1]) << 16) \
+		| (int(bytes[byte_offset + 2]) << 8) | int(bytes[byte_offset + 3])
 
 
 static func _invalid(message: String) -> Dictionary:

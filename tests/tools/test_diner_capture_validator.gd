@@ -3,6 +3,7 @@ extends TestCase
 
 const VALIDATOR: Script = preload("res://tools/diner_capture_validator.gd")
 const PROVENANCE: String = "native Mini head-mesh POSITION/JOINTS/WEIGHTS, imported Skin inverse binds, current Skeleton3D global poses, actual node transforms"
+const PNG_SIGNATURE: PackedByteArray = PackedByteArray([137, 80, 78, 71, 13, 10, 26, 10])
 
 var _fixture_directory: String
 
@@ -35,11 +36,26 @@ func test_accepts_both_actual_png_metadata_identity_pairs_in_private_fixture_dir
 
 func test_json_round_trip_numeric_fields_remain_valid_integer_identities() -> void:
 	var metadata: Dictionary = _read_metadata(12)
-	assert_true(typeof(metadata["width"]) in [TYPE_INT, TYPE_FLOAT])
-	assert_true(typeof(metadata["frame"]) in [TYPE_INT, TYPE_FLOAT])
-	assert_true(typeof(metadata["engine_errors"]) in [TYPE_INT, TYPE_FLOAT])
+	metadata["width"] = 1600.0
+	metadata["height"] = 900.0
+	metadata["frame"] = 12.0
+	metadata["engine_errors"] = 0.0
+	metadata["diner_review"]["state"]["frame"] = 12.0
+	_write_metadata(12, metadata)
+	metadata = _read_metadata(12)
+	assert_eq(typeof(metadata["width"]), TYPE_FLOAT)
+	assert_eq(typeof(metadata["frame"]), TYPE_FLOAT)
+	assert_eq(typeof(metadata["engine_errors"]), TYPE_FLOAT)
 	var result: Dictionary = VALIDATOR.validate_capture_pair(_fixture_directory, 12)
 	assert_true(result["valid"], str(result["messages"]))
+
+
+func test_png_dimensions_read_four_byte_big_endian_values_and_reject_short_headers() -> void:
+	var header: PackedByteArray = _png_header(1600, 900)
+	assert_eq(VALIDATOR.image_bytes_width(header), 1600)
+	assert_eq(VALIDATOR.image_bytes_height(header), 900)
+	assert_eq(VALIDATOR.image_bytes_width(header.slice(0, 23)), -1)
+	assert_eq(VALIDATOR.image_bytes_height(header.slice(0, 23)), -1)
 
 
 func test_missing_image_or_metadata_fails_closed() -> void:
@@ -110,6 +126,18 @@ func test_crop_measurement_must_remain_bound_to_the_current_booth_guest() -> voi
 	assert_true(_messages_contain(result["messages"], "not the lowest-screen booth guest"))
 
 
+func test_crop_source_rectangle_rejects_a_negative_origin_after_json_round_trip() -> void:
+	var descriptor: Dictionary = _crop_descriptor()
+	descriptor["source_rect"][0] = -1
+	_write_crop_descriptor(descriptor)
+	var metadata: Dictionary = _read_metadata(90)
+	metadata["diner_review"]["booth_crop"] = descriptor
+	_write_metadata(90, metadata)
+	var result: Dictionary = VALIDATOR.validate_capture_pair(_fixture_directory, 90)
+	assert_false(result["valid"])
+	assert_true(_messages_contain(result["messages"], "invalid source rectangle"))
+
+
 func test_crop_scale_rejects_fractional_boolean_and_out_of_range_values_after_json_round_trip() -> void:
 	var baseline: Dictionary = _crop_descriptor()
 	for invalid_scale: Variant in [3.5, true, 0, 4]:
@@ -169,6 +197,23 @@ func _write_crop(source: Image, measurement: Dictionary) -> Dictionary:
 		"fixture_notice": "Diner review fixture - unsaved; wall pieces are view-only staging, not player wall placement."}
 	_write_crop_descriptor(descriptor)
 	return descriptor
+
+
+func _png_header(width: int, height: int) -> PackedByteArray:
+	var header: PackedByteArray = PackedByteArray()
+	header.resize(24)
+	for index: int in range(PNG_SIGNATURE.size()):
+		header[index] = PNG_SIGNATURE[index]
+	_store_u32_be(header, 16, width)
+	_store_u32_be(header, 20, height)
+	return header
+
+
+func _store_u32_be(bytes: PackedByteArray, byte_offset: int, value: int) -> void:
+	bytes[byte_offset] = (value >> 24) & 0xff
+	bytes[byte_offset + 1] = (value >> 16) & 0xff
+	bytes[byte_offset + 2] = (value >> 8) & 0xff
+	bytes[byte_offset + 3] = value & 0xff
 
 
 func _crop_descriptor() -> Dictionary:
