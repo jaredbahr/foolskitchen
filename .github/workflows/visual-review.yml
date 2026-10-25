@@ -84,6 +84,7 @@ jobs:
           bash tools/screenshot.sh --out=screens/visual-review/milestone-review --milestone-review --speed=0 --frames=12,90
           bash tools/screenshot.sh --out=screens/visual-review/catalogue-rustic --catalogue-review=rustic --speed=0 --frames=90,120
           bash tools/screenshot.sh --out=screens/visual-review/catalogue-modern --catalogue-review=modern --speed=0 --frames=90,120
+          bash tools/screenshot.sh --out=screens/visual-review/diner-review --diner-review --speed=0 --frames=12,90
           bash tools/screenshot.sh --out=screens/visual-review/menu --menu --speed=0 --frames=12
           bash tools/screenshot.sh --out=screens/visual-review/staff --staff --speed=0 --frames=12
           bash tools/screenshot.sh --out=screens/visual-review/report --report --open --fast=100 --speed=0 --frames=60
@@ -244,6 +245,27 @@ jobs:
           verify_hud_identity('hud-1280', (1280, 720), 90, 150)
           verify_hud_identity('hud-1600', (1600, 900), 12, 125)
           verify_hud_identity('hud-1600', (1600, 900), 90, 150)
+
+          # Native Diner state/geometry validation is owned by GDScript. Bind
+          # its two review images to the same source/frame/hash contract here.
+          def verify_diner_identity(frame):
+              png = root / 'diner-review' / f'shot_{frame:04d}.png'
+              raw = png.read_bytes()
+              assert raw[:8] == b'\x89PNG\r\n\x1a\n' and len(raw) > 1000, 'diner-review: missing/invalid PNG'
+              assert struct.unpack('>II', raw[16:24]) == (1600, 900), 'diner-review: wrong PNG dimensions'
+              data = json.loads(png.with_suffix('.json').read_text())
+              assert data['image_file'] == png.name, 'diner-review: metadata names another image'
+              assert data['image_sha256'] == hashlib.sha256(raw).hexdigest(), 'diner-review: image/metadata digest mismatch'
+              assert data['scene'] == 'res://src/world/main.tscn' and data['capture_timing'] == 'frame_post_draw', 'diner-review: wrong image source'
+              assert (data['width'], data['height'], data['frame']) == (1600, 900, frame), 'diner-review: wrong viewport/frame'
+              assert type(data['engine_errors']) is int and data['engine_errors'] == 0, 'diner-review: engine/script errors'
+              assert 'llvmpipe' in data['video_adapter'].lower(), 'diner-review: not the requested software Mesa adapter'
+              review = data.get('diner_review')
+              assert isinstance(review, dict) and isinstance(review.get('state'), dict) and review['state'].get('frame') == frame, 'diner-review: missing GDScript-validated frame identity'
+              print(f'diner-review: frame={frame}, 1600x900, sha256={hashlib.sha256(raw).hexdigest()}')
+
+          verify_diner_identity(12)
+          verify_diner_identity(90)
           PY
 
       - name: Upload actual captures, metadata and logs
