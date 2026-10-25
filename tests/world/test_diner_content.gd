@@ -142,20 +142,31 @@ func test_open_sign_named_glyph_bounds_read_open_from_its_negative_z_front() -> 
 	tree.root.add_child(instance)
 	var centers: Dictionary[String, float] = {"o": 0.0, "p": 0.0, "e": 0.0, "n": 0.0}
 	var counts: Dictionary[String, int] = {"o": 0, "p": 0, "e": 0, "n": 0}
-	for child: Node in instance.get_children():
-		var mesh_instance: MeshInstance3D = child as MeshInstance3D
-		if mesh_instance == null or mesh_instance.mesh == null:
-			continue
-		var node_name: String = String(mesh_instance.name).to_lower()
-		for letter: String in ["o", "p", "e", "n"]:
-			if not node_name.begins_with("open_sign_%s_stroke_" % letter):
-				continue
-			var mesh_bounds: AABB = mesh_instance.transform * mesh_instance.get_aabb()
-			centers[letter] = float(centers[letter]) + mesh_bounds.get_center().x
-			counts[letter] = int(counts[letter]) + 1
-			break
+	var traversal: Array[Dictionary] = [{"node": instance, "transform": Transform3D.IDENTITY}]
+	while not traversal.is_empty():
+		var current: Dictionary = traversal.pop_back()
+		var node: Node = current["node"] as Node
+		var accumulated: Transform3D = current["transform"]
+		var spatial: Node3D = node as Node3D
+		if spatial != null:
+			accumulated *= spatial.transform
+		var mesh_instance: MeshInstance3D = node as MeshInstance3D
+		if mesh_instance != null and mesh_instance.mesh != null:
+			var node_name: String = String(mesh_instance.name).to_lower()
+			node_name = node_name.replace("_", "").replace("-", "").replace(" ", "")
+			for letter: String in ["o", "p", "e", "n"]:
+				if not node_name.begins_with("opensign%sstroke" % letter):
+					continue
+				var mesh_bounds: AABB = accumulated * mesh_instance.get_aabb()
+				centers[letter] = float(centers[letter]) + mesh_bounds.get_center().x
+				counts[letter] = int(counts[letter]) + 1
+				break
+		for child: Node in node.get_children():
+			traversal.append({"node": child, "transform": accumulated})
+	var expected_counts: Dictionary[String, int] = {"o": 4, "p": 4, "e": 4, "n": 3}
 	for letter: String in ["o", "p", "e", "n"]:
-		assert_true(int(counts[letter]) > 0, "OPEN GLB retains named %s stroke geometry" % letter.to_upper())
+		assert_eq(int(counts[letter]), int(expected_counts[letter]),
+			"OPEN GLB retains every named %s stroke mesh" % letter.to_upper())
 		if int(counts[letter]) > 0:
 			centers[letter] = float(centers[letter]) / float(counts[letter])
 	# From the -Z face, screen-right is local -X; therefore O must sit at a
