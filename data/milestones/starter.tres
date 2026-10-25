@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="MilestoneSet" load_steps=15 format=3]
+
+[ext_resource type="Script" path="res://src/sim/progression/milestone_set.gd" id="1_set"]
+[ext_resource type="Script" path="res://src/sim/progression/milestone.gd" id="2_goal"]
+[ext_resource type="Resource" path="res://data/milestones/first_rush.tres" id="m1"]
+[ext_resource type="Resource" path="res://data/milestones/full_tables.tres" id="m2"]
+[ext_resource type="Resource" path="res://data/milestones/first_regulars.tres" id="m3"]
+[ext_resource type="Resource" path="res://data/milestones/hundred_plates.tres" id="m4"]
+[ext_resource type="Resource" path="res://data/milestones/three_hundred_plates.tres" id="m5"]
+[ext_resource type="Resource" path="res://data/milestones/rating_35.tres" id="m6"]
+[ext_resource type="Resource" path="res://data/milestones/rating_40.tres" id="m7"]
+[ext_resource type="Resource" path="res://data/milestones/profitable_lunch.tres" id="m8"]
+[ext_resource type="Resource" path="res://data/milestones/big_takings.tres" id="m9"]
+[ext_resource type="Resource" path="res://data/milestones/team_of_three.tres" id="m10"]
+[ext_resource type="Resource" path="res://data/milestones/level_three.tres" id="m11"]
+[ext_resource type="Resource" path="res://data/milestones/clean_run.tres" id="m12"]
+
+[resource]
+script = ExtResource("1_set")
+milestones = Array[ExtResource("2_goal")]([ExtResource("m1"), ExtResource("m2"), ExtResource("m3"), ExtResource("m4"), ExtResource("m5"), ExtResource("m6"), ExtResource("m7"), ExtResource("m8"), ExtResource("m9"), ExtResource("m10"), ExtResource("m11"), ExtResource("m12")])

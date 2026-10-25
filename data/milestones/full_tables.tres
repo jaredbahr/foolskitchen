@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="Milestone" format=3]
+
+[ext_resource type="Script" path="res://src/sim/progression/milestone.gd" id="1_goal"]
+
+[resource]
+script = ExtResource("1_goal")
+id = &"full_tables"
+title = "Every chair earns its keep"
+description = "Serve eighteen guests in one day."
+condition = 0
+target = 18.0
+reward_xp = 35
+reward_cash = 20
+unlock_level = 1

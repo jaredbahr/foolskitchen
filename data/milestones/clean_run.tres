@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="Milestone" format=3]
+
+[ext_resource type="Script" path="res://src/sim/progression/milestone.gd" id="1_goal"]
+
+[resource]
+script = ExtResource("1_goal")
+id = &"clean_run"
+title = "Nobody left hungry"
+description = "Finish three days in a row without losing a guest."
+condition = 6
+target = 3.0
+reward_xp = 50
+reward_cash = 30
+unlock_level = 1
