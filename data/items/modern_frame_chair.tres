@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="ItemDef" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://src/sim/content/item_def.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://assets/props/modern_frame_chair.tscn" id="2_view"]
+
+[resource]
+script = ExtResource("1_script")
+view_scene = ExtResource("2_view")
+id = &"modern_frame_chair"
+display_name = "Framed modern chair"
+category = 2
+footprint = Vector2i(1, 1)
+solid = false
+work_cells = Array[Vector2i]([])
+seat_cells = Array[Vector2i]([Vector2i(0, 0)])
+station_type = &""
+capacity = 1
+quality_bonus = 0.0
+price = 35
+unlock_level = 4
+charm = 1
+theme_tags = Array[StringName]([&"modern"])
+placeholder_color = Color(0.65, 0.44, 0.27, 1)
+paintable = false

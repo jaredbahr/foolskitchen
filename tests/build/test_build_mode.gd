@@ -198,7 +198,7 @@ func test_successful_move_uses_one_session_wrapper_and_no_booking() -> void:
 func test_purchase_uses_session_wrapper_and_books_exactly_once() -> void:
 	var price: int = _content.item(&"chair").price
 	assert_true(_mode.enter())
-	assert_true(_mode.begin_buy(&"chair", Vector2i(4, 9)))
+	assert_true(_mode.begin_buy(&"chair", Vector2i(2, 8)))
 	assert_true(_mode.commit())
 	assert_eq(_buy_calls, 1)
 	assert_eq(_cash, 1000 - price)
@@ -207,7 +207,7 @@ func test_purchase_uses_session_wrapper_and_books_exactly_once() -> void:
 	assert_false(_mode.commit())
 	assert_eq(_buy_calls, 1)
 	assert_eq(_cell_events, 1)
-	assert_not_null(_sim.world.grid.item_at(Vector2i(4, 9)))
+	assert_not_null(_sim.world.grid.item_at(Vector2i(2, 8)))
 
 
 func test_refused_session_commands_keep_the_ghost_pose_and_actual_reason() -> void:
@@ -337,13 +337,13 @@ func test_current_query_is_read_only_and_does_not_replace_last_operation_check()
 
 func test_topology_and_money_invalidation_refresh_the_existing_ghost() -> void:
 	assert_true(_mode.enter())
-	assert_true(_mode.begin_buy(&"chair", Vector2i(4, 9)))
+	assert_true(_mode.begin_buy(&"chair", Vector2i(2, 8)))
 	assert_true(_mode.current_check.ok)
-	assert_true(_editor.buy(&"chair", Vector2i(4, 9)))
+	assert_true(_editor.buy(&"chair", Vector2i(2, 8)))
 	_mode.refresh()
 	assert_eq(_mode.state, BuildMode.State.BUY)
 	assert_false(_mode.current_check.ok, "a cached preview is rechecked after a topology edit")
-	_mode.update_origin(Vector2i(4, 8))
+	_mode.update_origin(Vector2i(3, 8))
 	assert_true(_mode.current_check.ok)
 	_cash = 0
 	_mode.refresh()
@@ -357,7 +357,7 @@ func test_topology_and_money_invalidation_refresh_the_existing_ghost() -> void:
 
 func test_reentrant_grid_signal_cannot_commit_or_book_a_second_purchase() -> void:
 	assert_true(_mode.enter())
-	assert_true(_mode.begin_buy(&"chair", Vector2i(4, 9)))
+	assert_true(_mode.begin_buy(&"chair", Vector2i(2, 8)))
 	_reenter = true
 	assert_true(_mode.commit())
 	assert_false(_reentry_result)
@@ -476,7 +476,7 @@ func test_all_place_results_have_player_sentences_used_by_actual_editor_checks()
 	assert_eq(_editor.check_buy(&"chair", Vector2i(-1, 0)).why, reasons[SimGrid.PlaceResult.OUT_OF_BOUNDS])
 	assert_eq(_editor.check_buy(&"chair", Vector2i(0, 0)).why, reasons[SimGrid.PlaceResult.NOT_FLOOR])
 	assert_eq(_editor.check_buy(&"chair", Vector2i(1, 1)).why, reasons[SimGrid.PlaceResult.OVERLAPS])
-	assert_eq(_editor.check_buy(&"chair", Vector2i(4, 9)).why, reasons[SimGrid.PlaceResult.OK])
+	assert_eq(_editor.check_buy(&"chair", Vector2i(2, 8)).why, reasons[SimGrid.PlaceResult.OK])
 	assert_eq(_snapshot(), before)
 
 

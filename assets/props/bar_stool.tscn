@@ -1,0 +1,17 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://src/world/prop_view.gd" id="1_view"]
+[ext_resource type="PackedScene" path="res://assets/kenney/furniture/stoolBar.glb" id="2_model"]
+
+[node name="BarStool" type="Node3D"]
+script = ExtResource("1_view")
+footprint = Vector2i(1, 1)
+seat_surface_y = 0.435
+body_material_names = PackedStringArray("wood")
+
+[node name="Part" type="Node3D" parent="."]
+
+[node name="Art" type="Node3D" parent="Part"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="Part/Art" instance=ExtResource("2_model")]

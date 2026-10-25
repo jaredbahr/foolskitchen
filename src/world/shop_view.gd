@@ -505,12 +505,16 @@ func _process(_delta: float) -> void:
 
 
 func _sync_agents() -> void:
-	var frames: Dictionary[int, AgentPresentationController.Frame] = AgentPresentationController.frames_for(world.agents, world)
+	var frames: Dictionary[int, AgentPresentationController.Frame] = AgentPresentationController.frames_for(world.agents, world, _dining_seat_heights())
 	var playback_speed: float = _agent_playback_speed()
 	var alive: Dictionary[int, bool] = {}
 	for agent: SimAgent in world.agents:
 		alive[agent.id] = true
 		var frame: AgentPresentationController.Frame = frames[agent.id]
+		if frame.seated and agent is CustomerAgent:
+			var facing: Vector3 = _dining_seat_facing(agent as CustomerAgent)
+			if facing.length_squared() > 0.000001:
+				frame.facing_direction = facing
 		if agent_nodes.has(agent.id) and (agent_nodes[agent.id] is PersonView) != frame.look_supported:
 			_remove_agent_visual(agent.id)
 		if not agent_nodes.has(agent.id):
@@ -668,6 +672,40 @@ func _update_guest_mood(agent: SimAgent, body: Node3D, frame: AgentPresentationC
 	# set_band is idempotent; anchor positioning must still follow every frame.
 	indicator.set_band(band)
 	indicator.position = frame.mood_anchor if frame.anchors_ready else Vector3.UP * GuestMoodIndicator.HEAD_OFFSET
+
+
+## Standalone seats supply their measured sitting surface. Accepted built-in
+## table chairs and unavailable wrappers retain the presenter's legacy default.
+func _dining_seat_heights() -> Dictionary[int, float]:
+	var heights: Dictionary[int, float] = {}
+	for agent: SimAgent in world.agents:
+		var guest: CustomerAgent = agent as CustomerAgent
+		if guest == null:
+			continue
+		var source_id: int = world.grid.dining_furnishing_id(guest.seat_cell)
+		if source_id == 0 or source_id == guest.table_item_id:
+			continue
+		var visual: ItemVisual = item_nodes.get(source_id) as ItemVisual
+		if visual != null and visual.prop != null:
+			var height: float = visual.prop.seat_surface_height()
+			if height > 0.0:
+				heights[guest.id] = height
+	return heights
+
+
+## A bench's guests face its authored forward surface, rather than turning
+## diagonally toward the centre of a long table. No simulation cell is moved.
+func _dining_seat_facing(guest: CustomerAgent) -> Vector3:
+	var source_id: int = world.grid.dining_furnishing_id(guest.seat_cell)
+	if source_id == 0 or source_id == guest.table_item_id:
+		return Vector3.ZERO
+	var source: PlacedItem = world.grid.item(source_id)
+	var definition: ItemDef = source.def as ItemDef if source != null else null
+	if definition == null or definition.category != ItemDef.Category.CHAIR:
+		return Vector3.ZERO
+	var origin: Vector2i = GridMath.rotate_cell(Vector2i.ZERO, definition.footprint, source.quarter_turns)
+	var forward: Vector2i = GridMath.rotate_cell(Vector2i.UP, definition.footprint, source.quarter_turns) - origin
+	return Vector3(forward.x, 0.0, forward.y)
 
 
 func _remove_mood_icon(id: int) -> void:

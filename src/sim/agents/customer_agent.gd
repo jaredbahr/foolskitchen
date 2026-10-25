@@ -72,7 +72,8 @@ func tick(world: SimWorld) -> void:
 		return
 	if state >= State.WALKING_TO_SEAT and state <= State.PAYING:
 		var table: PlacedItem = world.grid.item(table_item_id)
-		if table == null or table.reserved_by(seat_cell) != id or not world.grid.is_walkable(seat_cell):
+		if table == null or not table.seat_cells.has(seat_cell) \
+				or table.reserved_by(seat_cell) != id or not world.grid.is_walkable(seat_cell):
 			if state == State.WALKING_TO_SEAT:
 				_requeue(world, sim)
 			else:
@@ -208,6 +209,12 @@ func on_removed(world: SimWorld) -> void:
 func _try_seat(world: SimWorld) -> bool:
 	var sim: RestaurantSim = _restaurant.get_ref() as RestaurantSim
 	for table: PlacedItem in world.grid.items():
+		# Definition-backed dining belongs to a physical table/counter. A chair
+		# contributes its valid cells there rather than serving meals on its own.
+		# Untyped synthetic grid fixtures retain their established seat contract.
+		var definition: ItemDef = table.def as ItemDef
+		if definition != null and definition.category != ItemDef.Category.TABLE:
+			continue
 		if sim != null and sim.kitchen != null and sim.kitchen.is_table_dirty(table.id):
 			continue
 		for seat: Vector2i in table.seat_cells:

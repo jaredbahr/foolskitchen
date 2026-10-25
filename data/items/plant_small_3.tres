@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="ItemDef" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://src/sim/content/item_def.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://assets/props/plant_small_3.tscn" id="2_view"]
+
+[resource]
+script = ExtResource("1_script")
+view_scene = ExtResource("2_view")
+id = &"plant_small_3"
+display_name = "Tall plant"
+category = 6
+footprint = Vector2i(1, 1)
+solid = true
+work_cells = Array[Vector2i]([])
+seat_cells = Array[Vector2i]([])
+station_type = &""
+capacity = 1
+quality_bonus = 0.0
+price = 25
+unlock_level = 3
+charm = 1
+theme_tags = Array[StringName]([&"rustic"])

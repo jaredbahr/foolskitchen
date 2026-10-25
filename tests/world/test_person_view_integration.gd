@@ -153,6 +153,61 @@ func test_native_standing_server_clears_a_fixed_seated_guest_and_drawn_picking()
 	assert_eq(table.reserved_by(guest.seat_cell), guest.id)
 
 
+func test_native_bar_stools_use_measured_surfaces_and_authored_facing_for_every_rotation() -> void:
+	var counter_def: ItemDef = load("res://data/items/bar_counter.tres") as ItemDef
+	var stool_def: ItemDef = load("res://data/items/bar_stool.tres") as ItemDef
+	await _enter_view()
+	for turns: int in range(4):
+		var counter: PlacedItem = _world.grid.place_def(counter_def, Vector2i(2, 2), turns)
+		var seat: Vector2i = counter.origin + GridMath.rotate_cell(Vector2i(0, 1), counter_def.footprint, turns)
+		var stool: PlacedItem = _world.grid.place_def(stool_def, seat, turns)
+		var guest: CustomerAgent = _guest(CustomerAgent.State.WAITING_FOOD)
+		guest.table_item_id = counter.id
+		guest.seat_cell = seat
+		guest.cell = seat
+		assert_true(counter.reserve(seat, guest.id))
+		_view._process(0.0)
+		var person: PersonView = _person(guest.id)
+		assert_eq(person.current_clip(), &"sit")
+		assert_almost_eq((person.get_node("ModelPivot") as Node3D).position.y, 0.4785)
+		var zero: Vector2i = GridMath.rotate_cell(Vector2i.ZERO, Vector2i.ONE, turns)
+		var forward: Vector2i = GridMath.rotate_cell(Vector2i.UP, Vector2i.ONE, turns) - zero
+		assert_true((-person.global_basis.z).normalized().dot(Vector3(forward.x, 0.0, forward.y)) > 0.9999)
+		assert_eq(person.position, GridMath.cell_to_world(seat))
+		assert_eq(counter.reserved_by(seat), guest.id)
+		assert_eq(stool.reserved_by(seat), -1)
+		_world.remove_agent(guest)
+		assert_true(_world.grid.remove(stool.id))
+		assert_true(_world.grid.remove(counter.id))
+		_view._process(0.0)
+
+
+func test_native_bench_guests_keep_distinct_cells_and_share_the_authored_seat_surface() -> void:
+	var table_def: ItemDef = load("res://data/items/cloth_table.tres") as ItemDef
+	var bench_def: ItemDef = load("res://data/items/cushioned_bench.tres") as ItemDef
+	var table: PlacedItem = _world.grid.place_def(table_def, Vector2i(2, 2))
+	var bench: PlacedItem = _world.grid.place_def(bench_def, Vector2i(2, 3))
+	var guests: Array[CustomerAgent] = []
+	for seat: Vector2i in table.seat_cells:
+		var guest: CustomerAgent = _guest(CustomerAgent.State.WAITING_FOOD)
+		guest.table_item_id = table.id
+		guest.seat_cell = seat
+		guest.cell = seat
+		assert_true(table.reserve(seat, guest.id))
+		guests.append(guest)
+	assert_eq(guests.size(), 2)
+	await _enter_view()
+	for guest: CustomerAgent in guests:
+		var person: PersonView = _person(guest.id)
+		assert_eq(person.current_clip(), &"sit")
+		assert_almost_eq((person.get_node("ModelPivot") as Node3D).position.y, 0.264)
+		assert_true((-person.global_basis.z).normalized().dot(Vector3.FORWARD) > 0.9999)
+		assert_eq(person.position, GridMath.cell_to_world(guest.seat_cell))
+		assert_eq(_world.grid.dining_furnishing_id(guest.seat_cell), bench.id)
+		assert_eq(table.reserved_by(guest.seat_cell), guest.id)
+	assert_almost_eq(_person(guests[0].id).position.distance_to(_person(guests[1].id).position), GridMath.CELL_SIZE)
+
+
 func test_nudged_drawn_positions_keep_owner_picking_inspection_and_selection_ring() -> void:
 	var owner: OwnerAgent = _world.add_agent(OwnerAgent.new(Vector2i(1, 1))) as OwnerAgent
 	var cook: StaffAgent = _world.add_agent(StaffAgent.new(&"cook")) as StaffAgent

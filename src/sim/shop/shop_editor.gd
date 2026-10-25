@@ -98,6 +98,8 @@ func check_move(item_id: int, origin: Vector2i, quarter_turns: int) -> EditCheck
 	for cell: Vector2i in placed.work_cells + placed.seat_cells:
 		if placed.reserved_by(cell) != -1:
 			return EditCheck.new(false, "This item is in use; try next morning")
+	if _linked_seat_in_use(placed):
+		return EditCheck.new(false, "This item is in use; try next morning")
 	return _check_placement(definition, origin, quarter_turns, item_id, item_id)
 
 
@@ -154,6 +156,8 @@ func check_sell(item_id: int) -> EditCheck:
 	var definition: ItemDef = placed.def as ItemDef
 	if not _valid_definition(definition):
 		return EditCheck.new(false, "That item has no valid definition")
+	if _linked_seat_in_use(placed):
+		return EditCheck.new(false, "This item is in use; try next morning")
 	if definition.category == ItemDef.Category.DOOR:
 		return EditCheck.new(false, "The door cannot be sold")
 	var required: String = _required_key(definition)
@@ -170,6 +174,9 @@ func check_sell(item_id: int) -> EditCheck:
 	var preview: SimGrid = _preview_without(item_id, ids)
 	if preview == null:
 		return EditCheck.new(false, "The current shop has invalid placements")
+	var dining: EditCheck = EditCheck.validate_dining(_sim.world.grid, preview, ids, -1, item_id)
+	if not dining.ok:
+		return dining
 	check.unreachable = _unreachable(preview, ids)
 	return check
 
@@ -297,8 +304,27 @@ func _check_placement(definition: ItemDef, origin: Vector2i, turns: int, exclude
 	var result: SimGrid.PlaceResult = preview.can_place(definition.footprint, origin, turns)
 	if result != SimGrid.PlaceResult.OK:
 		return EditCheck.new(false, placement_reason(result))
-	var placed: PlacedItem = preview.place_def(definition, origin, turns)
-	ids[placed.id] = result_id
+	var proposed_id: int = -1
+	if exclude_id >= 0:
+		# Seat priority follows stable live placement IDs. Appending a moved
+		# early item last would validate a different shop from the real commit.
+		ids.clear()
+		preview = _preview_without(exclude_id, ids, definition, origin, turns)
+		if preview == null:
+			return EditCheck.new(false, "The current shop has invalid placements")
+		for preview_id: int in ids:
+			if ids[preview_id] == result_id:
+				proposed_id = preview_id
+				break
+	else:
+		var placed: PlacedItem = preview.place_def(definition, origin, turns)
+		ids[placed.id] = result_id
+		proposed_id = placed.id
+	if proposed_id < 0:
+		return EditCheck.new(false, "The shop changed; check the placement again")
+	var dining: EditCheck = EditCheck.validate_dining(_sim.world.grid, preview, ids, proposed_id, exclude_id)
+	if not dining.ok:
+		return dining
 	var check: EditCheck = EditCheck.new(true)
 	check.unreachable = _unreachable(preview, ids)
 	return check
@@ -318,7 +344,8 @@ static func placement_reason(result: SimGrid.PlaceResult) -> String:
 	return "Cannot place this item here"
 
 
-func _preview_without(exclude_id: int, ids: Dictionary[int, int]) -> SimGrid:
+func _preview_without(exclude_id: int, ids: Dictionary[int, int], replacement: ItemDef = null,
+		replacement_origin: Vector2i = Vector2i.ZERO, replacement_turns: int = 0) -> SimGrid:
 	var live: SimGrid = _sim.world.grid
 	var preview: SimGrid = SimGrid.new(live.size)
 	for y: int in range(live.size.y):
@@ -326,16 +353,35 @@ func _preview_without(exclude_id: int, ids: Dictionary[int, int]) -> SimGrid:
 			var cell: Vector2i = Vector2i(x, y)
 			preview.set_terrain(cell, live.terrain(cell))
 	for placed: PlacedItem in live.items():
-		if placed.id == exclude_id:
+		var replacing: bool = placed.id == exclude_id
+		if replacing and replacement == null:
 			continue
-		var definition: ItemDef = placed.def as ItemDef
+		var definition: ItemDef = replacement if replacing else placed.def as ItemDef
 		if not _valid_definition(definition):
 			return null
-		var copy: PlacedItem = preview.place_def(definition, placed.origin, placed.quarter_turns)
+		var origin: Vector2i = replacement_origin if replacing else placed.origin
+		var turns: int = replacement_turns if replacing else placed.quarter_turns
+		var copy: PlacedItem = preview.place_def(definition, origin, turns)
 		if copy == null:
 			return null
 		ids[copy.id] = placed.id
 	return preview
+
+
+## A furnishing's customer reservation belongs to its physical table, not to
+## the chair's authored seat cells. Queries never release that reservation.
+func _linked_seat_in_use(placed: PlacedItem) -> bool:
+	var definition: ItemDef = placed.def as ItemDef
+	if definition == null or definition.category != ItemDef.Category.CHAIR:
+		return false
+	var grid: SimGrid = _sim.world.grid
+	for cell: Vector2i in placed.seat_cells:
+		if grid.dining_furnishing_id(cell) != placed.id:
+			continue
+		var table: PlacedItem = grid.item(grid.dining_table_id(cell))
+		if table != null and table.reserved_by(cell) != -1:
+			return true
+	return false
 
 
 static func _unreachable(grid: SimGrid, ids: Dictionary[int, int]) -> Array[int]:

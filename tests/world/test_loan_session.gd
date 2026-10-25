@@ -213,7 +213,7 @@ func test_loan_refuses_large_furniture_and_all_trays_without_mutation_but_allows
 	assert_eq(trays.tooltip_text, LOAN_HINT)
 	var big_trays: Button = panel.get_node("Panel/Content/Scroll/List/BigTraysRow/BigTraysBuy") as Button
 	assert_eq(big_trays.tooltip_text, "Buy Trays first.", "purchase order keeps its existing explanation")
-	assert_true(main.call("shop_buy", &"chair", Vector2i(4, 9)))
+	assert_true(main.call("shop_buy", &"chair", Vector2i(2, 8)))
 	var content: ContentDB = main.get("content") as ContentDB
 	var ingredient_id: StringName = TUNING.morning_stock.keys()[0]
 	var ingredient: IngredientDef = content.ingredient(ingredient_id)

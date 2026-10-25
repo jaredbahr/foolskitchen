@@ -349,7 +349,7 @@ func test_menu_then_furniture_edit_reload_keeps_both_committed_sections() -> voi
 	assert_true(first.call("menu_set_enabled", &"tomato_soup", false))
 	assert_true(first.call("menu_set_price", &"burger", 9))
 	var before_buy: String = FileAccess.get_file_as_string(_path())
-	assert_true(first.call("shop_buy", &"chair", Vector2i(4, 9)))
+	assert_true(first.call("shop_buy", &"chair", Vector2i(2, 8)))
 	assert_eq(FileAccess.get_file_as_string(_path()), before_buy, "a shop edit no longer saves itself")
 	var menu: Dictionary = (first.get("menu_settings") as MenuSettings).to_dict()
 	var shop: Dictionary = (first.get("shop_editor") as ShopEditor).to_dict()

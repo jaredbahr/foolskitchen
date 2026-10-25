@@ -61,3 +61,13 @@ func reserved_by(cell: Vector2i) -> int:
 ## Drops every reservation (called by the grid when the item is removed).
 func clear_reservations() -> void:
 	_reservations.clear()
+
+
+## Grid-owned projection update: retained seats/work cells keep their holds.
+## Removed dining links release only reservations that no longer name a usable
+## cell of this item; definitions and the caller's array stay independent.
+func set_seat_cells(cells: Array[Vector2i]) -> void:
+	seat_cells = cells.duplicate()
+	for cell: Vector2i in _reservations.keys():
+		if not seat_cells.has(cell) and not work_cells.has(cell):
+			_reservations.erase(cell)

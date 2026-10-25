@@ -15,6 +15,9 @@ class BodySurface:
 @export var footprint: Vector2i = Vector2i.ONE
 ## Exact imported material names. All other surfaces keep their kit materials.
 @export var body_material_names: PackedStringArray = []
+## Sitting surface in unscaled source-model metres. Zero leaves the caller's
+## legacy seat-height fallback intact; ArtScale supplies the only scale factor.
+@export_range(0.0, 2.0, 0.001) var seat_surface_y: float = 0.0
 
 var _prepared: bool = false
 var _body_surfaces: Array[BodySurface] = []
@@ -70,6 +73,11 @@ func get_combined_aabb() -> AABB:
 func body_surface_count() -> int:
 	prepare()
 	return _body_surfaces.size()
+
+
+## View-only geometry: this never changes the physical table's sim seat cells.
+func seat_surface_height() -> float:
+	return maxf(0.0, seat_surface_y) * ArtScale.FURNITURE_SCALE
 
 
 ## Actual currently drawn named body surface, independent of imported surface order.

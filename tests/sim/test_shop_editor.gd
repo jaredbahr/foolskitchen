@@ -72,7 +72,7 @@ func test_service_phases_refuse_every_edit_without_side_effects() -> void:
 
 func test_checks_and_invalid_spots_do_not_touch_live_state() -> void:
 	var before: Dictionary = _editor.to_dict()
-	var check: EditCheck = _editor.check_buy(&"chair", Vector2i(4, 9))
+	var check: EditCheck = _editor.check_buy(&"chair", Vector2i(2, 8))
 	assert_true(check.ok)
 	assert_true(_editor.check_move(_id(&"potted_plant"), Vector2i(11, 9), 1).ok)
 	assert_true(_editor.check_sell(_id(&"potted_plant")).ok)
@@ -155,11 +155,11 @@ func test_reserved_relocation_refuses_even_after_closing() -> void:
 
 func test_purchase_books_one_upgrade_and_repeat_invalid_purchase_is_free() -> void:
 	var price: int = _content.item(&"chair").price
-	assert_true(_editor.buy(&"chair", Vector2i(4, 9)))
+	assert_true(_editor.buy(&"chair", Vector2i(2, 8)))
 	assert_eq(_cash, 1000 - price)
 	assert_eq(_entries, [{"amount": -price, "category": Ledger.UPGRADES}] as Array[Dictionary])
 	assert_eq(_changes.size(), 1)
-	assert_false(_editor.buy(&"chair", Vector2i(4, 9)))
+	assert_false(_editor.buy(&"chair", Vector2i(2, 8)))
 	assert_eq(_entries.size(), 1)
 	assert_eq(_changes.size(), 1)
 
@@ -273,7 +273,7 @@ func test_new_unreachable_station_warning_uses_zero_id() -> void:
 
 func test_snapshot_round_trip_stages_layout_and_preserves_stable_order() -> void:
 	assert_true(_editor.move(_id(&"potted_plant"), Vector2i(11, 9), 3))
-	assert_true(_editor.buy(&"chair", Vector2i(4, 9)))
+	assert_true(_editor.buy(&"chair", Vector2i(2, 8)))
 	var original: Dictionary = _editor.to_dict()
 	var data: Dictionary = JSON.parse_string(JSON.stringify(original))
 	var errors: Array[String] = []
@@ -357,7 +357,7 @@ func test_edited_spawn_allowance_preserves_authored_checks_and_escape() -> void:
 
 func test_grid_signal_reentry_cannot_charge_a_second_purchase() -> void:
 	_try_reentry = true
-	assert_true(_editor.buy(&"chair", Vector2i(4, 9)))
+	assert_true(_editor.buy(&"chair", Vector2i(2, 8)))
 	assert_false(_reentry_result)
 	assert_true(_editor.last_check.ok)
 	assert_eq(_entries.size(), 1)
@@ -398,7 +398,7 @@ func test_custom_purchase_refusal_preserves_read_only_checks_and_atomic_rejectio
 	assert_eq(_changes.size(), 0)
 	_cash = 1000
 	_refusal_amount = -1
-	assert_true(_editor.check_buy(&"chair", Vector2i(4, 9)).ok)
+	assert_true(_editor.check_buy(&"chair", Vector2i(2, 8)).ok)
 	assert_eq(_refusal_amount, -1, "an allowed purchase does not request a refusal")
 	assert_eq(_entries.size(), 0)
 
@@ -441,7 +441,7 @@ func _record_cells(cells: Array[Vector2i]) -> void:
 	_changes.append(cells.duplicate())
 	if _try_reentry:
 		_try_reentry = false
-		_reentry_result = _editor.buy(&"chair", Vector2i(5, 9))
+		_reentry_result = _editor.buy(&"chair", Vector2i(3, 8))
 
 
 func _record_removed(_item: PlacedItem) -> void:
