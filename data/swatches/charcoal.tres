@@ -5,3 +5,4 @@ script = ExtResource("1")
 id = &"charcoal"
 display_name = "Charcoal"
 color = Color(0.3843137, 0.3529412, 0.3215686, 1)
+theme_tags = Array[StringName]([&"modern"])

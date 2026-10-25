@@ -486,12 +486,15 @@ an active edit/panel/selection first, or opens Settings when none is active.
   arrival spot. Departure passes that retained fraction to `review_visit`, so
   mopping or later dirt cannot change the floor that guest saw. Legacy visits
   without cleanliness retain zero dirt. An unserved guest gives one star;
-  closing departures give no review.
-  For a served guest, the score is `clamp(round(5 - penalty), 1, 5)`, where the
+  closing departures give no review. The optional raw ambience bonus is also
+  retained on arrival, so a later redesign cannot change that guest's term.
+  For a served guest, the score is `clamp(round(5 - penalty + vibe_bonus), 1, 5)`, where the
   penalty is the sum of each input clamped to 0..1 times its authored weight.
   `data/balance/reviews.tres` starts with queue 1.0, food 1.3, overprice 0.8,
-  and dirt 0.6. The largest weighted penalty chooses the complaint group;
-  otherwise the visit uses a positive quote. `data/reviews/quotes.tres` holds
+  and dirt 0.6. Final ratings of four or five, or visits without a substantial
+  complaint, use the existing positive-quote policy. Otherwise the largest
+  weighted penalty chooses the complaint group with the same stable ties.
+  `data/reviews/quotes.tres` holds
   the grouped lines.
 - A separate saved `GameState.rng(&"reviews")` stream draws the 50% chance and
   quote. Neither reviews nor quotes consume customer, kitchen or hiring draws.
@@ -730,8 +733,29 @@ an active edit/panel/selection first, or opens Settings when none is active.
   this is not a measured five-day profit result. The result exposes a maximum
   1.15 patience multiplier and a 0.4 raw review term, with integer review
   rounding left to the existing review system. Customer-type strength is a
-  hook until FK-061 is integrated. Live session, UI and review wiring are the
-  remaining integration layer; the core adds no save section or action save.
+  hook until FK-061 is integrated.
+- `VibeInputs.capture()` copies the live grid, current paint tags and enabled
+  recipes. Main recomputes after final startup/load installation and accepted
+  layout, paint or menu-selection changes, never on simulation ticks or frame
+  updates. It disconnects the old grid observer before a world replacement.
+  Paint colours and IDs are unchanged; optional swatch theme tags are authored
+  in the existing curated resources.
+- `RestaurantSim.set_vibe()` keeps a detached bounded snapshot. A real OPEN
+  arrival applies its patience multiplier once after cleanliness, then keeps
+  its raw review bonus and theme label even if the player redecorates later.
+  Neutral budgets remain exact and the existing later Cheerful-server bonus
+  is preserved. `CustomerAgent.review_visit()` carries the retained term into
+  the existing review path, before integer rounding/clamping; unserved and
+  closing policies and the existing review/quote random stream remain intact.
+  A bonus that crosses into a positive rating uses the existing positive quote
+  policy, rather than retaining an old complaint from its lower raw rating.
+- A native read-only meter in the Build catalogue shows score and component
+  tooltip. The HUD adds the active theme to its existing reputation tooltip.
+  The evening report uses a transient count of paid guests' captured positive
+  arrival themes for guest wording, with a factual current-score fallback.
+  This avoids attributing a late repaint to earlier guests. Counts reset each
+  morning and never join the saved report. Score, snapshots and presentation
+  add no save section, action save, random draw or customer-type selection.
 
 ### 2.4 Save system
 - JSON in `user://saves/`, with a `version` field and migration functions per version.

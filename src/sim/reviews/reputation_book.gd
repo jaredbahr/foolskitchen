@@ -70,7 +70,9 @@ func record_visit(visit: ReviewVisit, tuning: ReviewTuning, quotes: ReviewQuotes
 		"before": before, "after": average()}
 
 
-## The scoring rule is fixed, with its four penalties authored in reviews.tres.
+## Four penalties remain authored in reviews.tres. The optional raw ambience
+## term is at most 0.4 before rounding; it is not fractional-star storage and
+## crossing a rounding boundary can change the final integer by one star.
 ## Unserved guests always score one star; a closing guest is not scored.
 static func score_visit(visit: ReviewVisit, tuning: ReviewTuning) -> int:
 	if visit == null or visit.closing or tuning == null or not tuning.is_valid():
@@ -81,7 +83,8 @@ static func score_visit(visit: ReviewVisit, tuning: ReviewTuning) -> int:
 		+ _unit(visit.food_wait_fraction) * tuning.food_wait_weight \
 		+ _unit(visit.price_ratio - 1.0) * tuning.overprice_weight \
 		+ _unit(visit.dirt_fraction) * tuning.dirt_weight
-	return clampi(roundi(5.0 - penalty), 1, 5)
+	var vibe_bonus: float = clampf(visit.vibe_review_bonus, 0.0, 0.4) if is_finite(visit.vibe_review_bonus) else 0.0
+	return clampi(roundi(5.0 - penalty + vibe_bonus), 1, 5)
 
 
 ## High ratings and visits without a substantial single complaint get a

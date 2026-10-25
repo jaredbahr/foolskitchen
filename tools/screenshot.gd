@@ -26,6 +26,7 @@ const MAX_CAPTURE_WAIT_FRAMES: int = 8
 const MAX_OWNER_WARMUP_TICKS: int = 900
 const SETTINGS_CAPTURE_SIZE: Vector2i = Vector2i(1600, 900)
 const LOAN_TERMS: LoanTuning = preload("res://data/balance/loans.tres")
+const VIBE_TERMS: VibeTuning = preload("res://data/balance/vibe.tres")
 const LOAN_NOTICE: String = "The bank covered your shortfall. It'll take a share of your profits until it's paid back."
 const GENERATED_UID_SOURCES: Array[String] = [
 	"res://src/sim/economy/loan_account.gd", "res://src/sim/economy/loan_tuning.gd",
@@ -43,6 +44,12 @@ const STAFF_PRIORITY_UID_SOURCES: Array[String] = [
 	"res://src/sim/staff/staff_job_priorities.gd", "res://tests/sim/test_staff_job_priorities.gd",
 	"res://tests/fixtures/frozen_main_staff_picker.gd", "res://tests/world/test_staff_priorities_golden.gd",
 	"res://tests/sim/test_staff_priority_persistence.gd", "res://tests/world/test_staff_priority_session.gd",
+]
+const VIBE_UID_SOURCES: Array[String] = [
+	"res://src/sim/vibe/vibe_model.gd", "res://src/sim/vibe/vibe_tuning.gd",
+	"res://tests/sim/test_vibe_model.gd", "res://src/sim/vibe/vibe_inputs.gd",
+	"res://tests/sim/test_vibe_effects.gd", "res://tests/sim/test_vibe_swatches.gd",
+	"res://src/ui/vibe_meter.gd", "res://tests/ui/test_vibe_meter.gd", "res://tests/world/test_vibe_session.gd",
 ]
 
 var _frames: int = 0
@@ -661,6 +668,8 @@ static func catalogue_review_evidence(main: Node, context_root: Node) -> Diction
 			"error": cache.last_error, "icons_match": icons_match},
 		"expected_cards": expected["cards"], "cards": cards, "onscreen_cards": onscreen, "tabs": tabs, "items": items,
 		"server": _catalogue_server_evidence(world, shop, main.get_node_or_null("CameraRig/Camera3D") as Camera3D),
+		"vibe": catalogue_vibe_evidence(main, world, content, editor, catalogue),
+		"generated_vibe_uids": generated_uid_evidence(VIBE_UID_SOURCES),
 		"dining_failures": dining.failures, "dining_links": links, "edit_ok": check.ok, "unreachable": check.unreachable}
 
 
@@ -672,6 +681,8 @@ static func catalogue_review_valid(state: Dictionary, frame: int, fixture: Dicti
 			or state.get("owner_level") != 6 or state.get("paint_active") != false \
 			or state.get("wall") != String(profile["wall"]) or state.get("floor") != String(profile["floor"]) \
 			or not _catalogue_cards_valid(state) \
+			or not catalogue_vibe_valid(state.get("vibe", {}), frame) \
+			or not catalogue_vibe_uids_valid(state.get("generated_vibe_uids", {})) \
 			or state.get("edit_ok") != true or not (state["unreachable"] as Array).is_empty() \
 			or not (state["dining_failures"] as Dictionary).is_empty() or state["dining_links"].size() != 4:
 		return false
@@ -717,6 +728,164 @@ static func catalogue_review_valid(state: Dictionary, frame: int, fixture: Dicti
 	return cache["supported"] == true and cache["pending"] == 0 and cache["active"] == false \
 		and cache["failed"] == 0 and cache["error"] == "" and cache["icons_match"] == true and cache["cached"] == cache["expected"] \
 		and cache["cached_scenes"] == cache["expected_scenes"]
+
+
+## Re-evaluate the actual layout/menu/paint independently of Main's cached
+## result, then read the already-created native meter without repairing it.
+static func catalogue_vibe_evidence(main: Node, world: SimWorld, content: ContentDB,
+		editor: ShopEditor, catalogue: BuildCatalogue) -> Dictionary:
+	var menu: MenuSettings = main.get("menu_settings") as MenuSettings
+	var meter: VibeMeter = catalogue.get_node_or_null("Panel/Margin/Rows/Scroll/Content/VibeMeter") as VibeMeter
+	var panel: Control = catalogue.get_node_or_null("Panel") as Control
+	var scroll: ScrollContainer = catalogue.get_node_or_null("Panel/Margin/Rows/Scroll") as ScrollContainer
+	if not ("vibe_result" in main) or menu == null or meter == null or panel == null or scroll == null:
+		return {"available": false}
+	var inputs: VibeModel.Inputs = VibeInputs.capture(world.grid, content, menu.enabled_recipes(),
+		editor.wall_swatch_id, editor.floor_swatch_id)
+	var expected: VibeModel.Result = VibeModel.evaluate(inputs, VIBE_TERMS)
+	var actual: VibeModel.Result = main.get("vibe_result") as VibeModel.Result
+	var caption: Label = meter.caption_label
+	var bar: ProgressBar = meter.score_bar
+	var fill: StyleBoxFlat = bar.get_theme_stylebox("fill") as StyleBoxFlat if bar != null else null
+	var background: StyleBoxFlat = bar.get_theme_stylebox("background") as StyleBoxFlat if bar != null else null
+	if caption == null or bar == null or fill == null or background == null:
+		return {"available": false}
+	var view: Dictionary = meter.view_state()
+	var view_caption_rect: Rect2 = view.get("caption_rect", Rect2())
+	var view_bar_rect: Rect2 = view.get("bar_rect", Rect2())
+	var recipes: Array[String] = []
+	for recipe: RecipeDef in menu.enabled_recipes():
+		recipes.append(String(recipe.id))
+	recipes.sort()
+	return {"available": true, "expected": _vibe_result_record(expected), "main": _vibe_result_record(actual),
+		"inputs": {"wall": String(editor.wall_swatch_id), "floor": String(editor.floor_swatch_id),
+			"menu_ids": recipes, "item_count": world.grid.items().size()},
+		"meter": {"visible": meter.is_visible_in_tree(), "caption_visible": caption.is_visible_in_tree(),
+			"bar_visible": bar.is_visible_in_tree(), "caption": caption.text, "value": bar.value,
+			"tooltip": meter.tooltip_text, "caption_tooltip": caption.tooltip_text, "bar_tooltip": bar.tooltip_text,
+			"minimum": bar.min_value, "maximum": bar.max_value, "step": bar.step, "show_percentage": bar.show_percentage,
+			"native_children_match": meter.get_node_or_null("CaptionLabel") == caption and meter.get_node_or_null("ScoreBar") == bar,
+			"mouse_filter": int(meter.mouse_filter), "caption_mouse_filter": int(caption.mouse_filter),
+			"bar_mouse_filter": int(bar.mouse_filter), "shared_theme": meter.theme == VibeMeter.SHARED_THEME,
+			"caption_color": _staff_rgba(caption.get_theme_color("font_color")),
+			"fill_color": _staff_rgba(fill.bg_color), "background_color": _staff_rgba(background.bg_color),
+			"panel_bounds": _staff_rect_data(_staff_pixel_rect(panel)),
+			"window_bounds": _staff_rect_data(meter.get_viewport().get_final_transform() * meter.get_viewport().get_visible_rect()),
+			"scroll_viewport_bounds": _staff_rect_data(_staff_scroll_viewport(scroll)),
+			"bounds": _staff_rect_data(_staff_pixel_rect(meter)),
+			"caption_bounds": _staff_rect_data(_staff_pixel_rect(caption)),
+			"bar_bounds": _staff_rect_data(_staff_pixel_rect(bar)),
+			"caption_minimum_bounds": _staff_rect_data(_staff_pixel_rect(caption, caption.get_combined_minimum_size())),
+			"bar_minimum_bounds": _staff_rect_data(_staff_pixel_rect(bar, bar.get_combined_minimum_size())),
+			"caption_logical_rect": _staff_rect_data(caption.get_global_rect()),
+			"bar_logical_rect": _staff_rect_data(bar.get_global_rect()),
+			"view_state": {"caption": view.get("caption"), "value": view.get("value"), "tooltip": view.get("tooltip"),
+				"caption_rect": _staff_rect_data(view_caption_rect), "bar_rect": _staff_rect_data(view_bar_rect)}}}
+
+
+static func _vibe_result_record(result: VibeModel.Result) -> Dictionary:
+	if result == null:
+		return {}
+	return {"valid": result.valid, "reason": result.reason, "score": result.score,
+		"decor_points": result.decor_points, "variety_points": result.variety_points,
+		"theme_points": result.theme_points, "lamp_points": result.lamp_points, "crowding_penalty": result.crowding_penalty,
+		"active_theme": String(result.active_theme), "theme_label": result.theme_label, "theme_share": result.theme_share,
+		"patience_multiplier": result.patience_multiplier, "raw_review_bonus": result.raw_review_bonus,
+		"arrival_theme_strength": result.arrival_theme_strength, "interior_cells": result.interior_cells,
+		"occupied_normal_cells": result.occupied_normal_cells, "crowding_density": result.crowding_density}
+
+
+static func _vibe_result_finite(result: Dictionary) -> bool:
+	if result.get("valid") != true or result.get("reason") != "":
+		return false
+	if typeof(result.get("active_theme")) != TYPE_STRING or typeof(result.get("theme_label")) != TYPE_STRING \
+			or typeof(result.get("interior_cells")) != TYPE_INT or typeof(result.get("occupied_normal_cells")) != TYPE_INT \
+			or int(result["interior_cells"]) < 0 or int(result["occupied_normal_cells"]) < 0:
+		return false
+	for key: String in ["score", "decor_points", "variety_points", "theme_points", "lamp_points", "crowding_penalty",
+			"theme_share", "patience_multiplier", "raw_review_bonus", "arrival_theme_strength", "crowding_density"]:
+		var value: Variant = result.get(key)
+		if (typeof(value) != TYPE_FLOAT and typeof(value) != TYPE_INT) or not is_finite(float(value)):
+			return false
+	return float(result["score"]) >= 0.0 and float(result["score"]) <= VIBE_TERMS.score_cap
+
+
+## Native content, cached view_state and Main must all agree with the fresh pure
+## evaluation. Hidden frame-120 controls retain values but need not be onscreen.
+static func catalogue_vibe_valid(state: Dictionary, frame: int) -> bool:
+	if frame not in [90, 120]:
+		return false
+	var expected: Dictionary = state.get("expected", {})
+	var actual: Dictionary = state.get("main", {})
+	if state.get("available") != true or not _vibe_result_finite(expected) or not _vibe_result_finite(actual) or actual != expected:
+		return false
+	var meter: Dictionary = state.get("meter", {})
+	var view: Dictionary = meter.get("view_state", {})
+	var caption: String = "Vibe %d / 100" % roundi(float(expected["score"]))
+	var theme: String = String(expected["theme_label"]).strip_edges()
+	if String(expected["active_theme"]).is_empty() or theme.is_empty():
+		theme = "No active theme"
+	var tooltip: String = "Decor %d, Variety %d, Theme: %s +%d, Lamps %d, Crowding %d" % [
+		roundi(float(expected["decor_points"])), roundi(float(expected["variety_points"])), theme,
+		roundi(float(expected["theme_points"])), roundi(float(expected["lamp_points"])), -roundi(float(expected["crowding_penalty"]))]
+	var value: Variant = meter.get("value")
+	var cached_value: Variant = view.get("value")
+	if (typeof(value) != TYPE_FLOAT and typeof(value) != TYPE_INT) or not is_finite(float(value)) \
+			or (typeof(cached_value) != TYPE_FLOAT and typeof(cached_value) != TYPE_INT) or not is_finite(float(cached_value)) \
+			or float(value) != float(expected["score"]) or float(cached_value) != float(expected["score"]) \
+			or meter.get("caption") != caption or view.get("caption") != caption \
+			or meter.get("tooltip") != tooltip or meter.get("caption_tooltip") != tooltip or meter.get("bar_tooltip") != tooltip \
+			or view.get("tooltip") != tooltip or meter.get("minimum") != 0.0 or meter.get("maximum") != 100.0 \
+			or meter.get("step") != 0.0 or meter.get("show_percentage") != false or meter.get("native_children_match") != true \
+			or meter.get("mouse_filter") != Control.MOUSE_FILTER_PASS or meter.get("caption_mouse_filter") != Control.MOUSE_FILTER_IGNORE \
+			or meter.get("bar_mouse_filter") != Control.MOUSE_FILTER_IGNORE or meter.get("shared_theme") != true \
+			or view.get("caption_rect") != meter.get("caption_logical_rect") or view.get("bar_rect") != meter.get("bar_logical_rect"):
+		return false
+	var fill: StyleBoxFlat = VibeMeter.SHARED_THEME.get_stylebox("fill", "ProgressBar") as StyleBoxFlat
+	var background: StyleBoxFlat = VibeMeter.SHARED_THEME.get_stylebox("background", "ProgressBar") as StyleBoxFlat
+	if meter.get("caption_color") != _staff_rgba(VibeMeter.SHARED_THEME.get_color("font_color", "Label")) \
+			or meter.get("fill_color") != _staff_rgba(fill.bg_color) or meter.get("background_color") != _staff_rgba(background.bg_color):
+		return false
+	if frame != 90:
+		return true
+	var panel: Rect2 = _staff_rect(meter, "panel_bounds")
+	var window: Rect2 = _staff_rect(meter, "window_bounds")
+	var viewport: Rect2 = _staff_rect(meter, "scroll_viewport_bounds")
+	var bounds: Rect2 = _staff_rect(meter, "bounds")
+	if meter.get("visible") != true or meter.get("caption_visible") != true or meter.get("bar_visible") != true \
+			or not window.has_area() or not panel.has_area() or not viewport.has_area() or not bounds.has_area() \
+			or not window.grow(0.5).encloses(panel) \
+			or not panel.grow(0.5).encloses(viewport) or not panel.grow(0.5).encloses(bounds) or not viewport.grow(0.5).encloses(bounds):
+		return false
+	for key: String in ["caption", "bar"]:
+		var control: Rect2 = _staff_rect(meter, key + "_bounds")
+		var minimum: Rect2 = _staff_rect(meter, key + "_minimum_bounds")
+		if not control.has_area() or not minimum.has_area() or not bounds.grow(0.5).encloses(control) \
+				or not viewport.grow(0.5).encloses(control) or control.size.x < minimum.size.x - 0.5 or control.size.y < minimum.size.y - 0.5:
+			return false
+	return true
+
+
+## Provenance is read-only and scoped separately from old catalogue/loan/staff
+## records. A complete import must supply all nine real sidecars and cache IDs.
+static func catalogue_vibe_uids_valid(evidence: Dictionary) -> bool:
+	var entries: Array = evidence.get("entries", [])
+	if evidence.get("read_only") != true or evidence.get("complete_match") != true or entries.size() != VIBE_UID_SOURCES.size():
+		return false
+	var seen: Dictionary[String, bool] = {}
+	for index: int in range(VIBE_UID_SOURCES.size()):
+		var row: Dictionary = entries[index]
+		var registered: String = row.get("registered_id", "")
+		var sidecar: String = row.get("sidecar_text", "")
+		if row.get("source") != VIBE_UID_SOURCES[index] or row.get("uid_path") != VIBE_UID_SOURCES[index] + ".uid" \
+				or row.get("source_exists") != true or row.get("sidecar_exists") != true or row.get("sidecar_readable") != true \
+				or row.get("registered_known") != true or row.get("matches_registered") != true or row.get("status") != "match" \
+				or not [OK, ERR_FILE_EOF].has(row.get("read_error")) \
+				or not registered.is_valid_int() or int(registered) < 0 or seen.has(registered) or sidecar.strip_edges().is_empty() \
+				or sidecar.strip_edges() != row.get("registered_text") or row.get("registered_text") != ResourceUID.id_to_text(int(registered)):
+			return false
+		seen[registered] = true
+	return true
 
 
 static func _catalogue_cards_valid(state: Dictionary) -> bool:
@@ -1513,7 +1682,9 @@ func _capture() -> void:
 		return
 	var catalogue_state: Dictionary = catalogue_review_evidence(_main, root) if not _catalogue_profile.is_empty() else {}
 	if not _catalogue_profile.is_empty() and not catalogue_review_valid(catalogue_state, _capture_frame, _catalogue_fixture):
-		_fail_capture("catalogue review did not match its fixture, real previews, seating links or bounds: " + JSON.stringify(catalogue_state.get("cache", {})))
+		_fail_capture("catalogue review did not match its fixture, real previews, seating links or bounds: " + JSON.stringify({
+			"cache": catalogue_state.get("cache", {}), "vibe": catalogue_state.get("vibe", {}),
+			"generated_vibe_uids": catalogue_state.get("generated_vibe_uids", {})}))
 		return
 	var settings_state: Dictionary = _settings_state() if _settings else {}
 	var hud_layout_state: Dictionary = _hud_layout_state() if _hud_layout else {}

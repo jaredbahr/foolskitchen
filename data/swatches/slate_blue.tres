@@ -5,3 +5,4 @@ script = ExtResource("1")
 id = &"slate_blue"
 display_name = "Slate Blue"
 color = Color(0.4352941, 0.5490196, 0.5764706, 1)
+theme_tags = Array[StringName]([&"modern", &"seafood"])

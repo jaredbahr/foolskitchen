@@ -10,3 +10,5 @@ var food_wait_fraction: float = 0.0
 var price_ratio: float = 1.0
 ## Zero until the optional cleanliness system is present.
 var dirt_fraction: float = 0.0
+## Raw additive ambience term sampled on arrival; stars still round to integers.
+var vibe_review_bonus: float = 0.0
