@@ -1,5 +1,5 @@
 extends TestCase
-## Option/provenance checks plus one private native Staff-grid validation.
+## Option/provenance checks plus private native Staff-grid/scroll validation.
 ## No screenshot, rendered capture fixture or device preference is created.
 
 const CAPTURE: Script = preload("res://tools/screenshot.gd")
@@ -134,6 +134,52 @@ func test_staff_grid_validator_rejects_scrollbar_obscuring_cells_and_native_size
 	wrong = record.duplicate(true)
 	wrong["grid"]["cells"][0]["bounds"] = [NAN, 258.0, 100.0, 32.0]
 	assert_false(CAPTURE.staff_priority_grid_valid(wrong["grid"], wrong["members"]))
+
+
+func test_staff_scroll_viewport_resolves_unset_fallback_and_explicit_asymmetric_margins() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	await tree.process_frame
+	var host: SubViewport = SubViewport.new()
+	host.size = Vector2i(400, 300)
+	host.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	tree.root.add_child(host)
+	var scroll: ScrollContainer = ScrollContainer.new()
+	scroll.position = Vector2(30.0, 40.0)
+	scroll.size = Vector2(200.0, 150.0)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	host.add_child(scroll)
+	var empty: StyleBoxEmpty = StyleBoxEmpty.new()
+	assert_almost_eq(empty.get_content_margin(SIDE_LEFT), -1.0)
+	assert_almost_eq(empty.get_content_margin(SIDE_TOP), -1.0)
+	var explicit: StyleBoxEmpty = StyleBoxEmpty.new()
+	explicit.set_content_margin(SIDE_LEFT, 5.0)
+	explicit.set_content_margin(SIDE_TOP, 7.0)
+	explicit.set_content_margin(SIDE_RIGHT, 11.0)
+	explicit.set_content_margin(SIDE_BOTTOM, 13.0)
+	var fallback: StyleBoxFlat = StyleBoxFlat.new()
+	fallback.set_border_width(SIDE_LEFT, 4)
+	fallback.set_border_width(SIDE_TOP, 6)
+	fallback.set_border_width(SIDE_RIGHT, 8)
+	fallback.set_border_width(SIDE_BOTTOM, 10)
+	assert_almost_eq(fallback.get_content_margin(SIDE_LEFT), -1.0)
+	assert_almost_eq(fallback.get_content_margin(SIDE_TOP), -1.0)
+	var cases: Array[Dictionary] = [
+		{"name": "unset empty margins", "style": empty, "offset": Vector2.ZERO, "minimum": Vector2.ZERO},
+		{"name": "explicit asymmetric margins", "style": explicit, "offset": Vector2(5.0, 7.0), "minimum": Vector2(16.0, 20.0)},
+		{"name": "unset margins resolve to flat borders", "style": fallback, "offset": Vector2(4.0, 6.0), "minimum": Vector2(12.0, 16.0)},
+	]
+	for sample: Dictionary in cases:
+		scroll.add_theme_stylebox_override("panel", sample["style"] as StyleBox)
+		for frame: int in range(2):
+			await tree.process_frame
+		assert_false(scroll.get_v_scroll_bar().is_visible_in_tree())
+		assert_false(scroll.get_h_scroll_bar().is_visible_in_tree())
+		var offset: Vector2 = sample["offset"]
+		var minimum: Vector2 = sample["minimum"]
+		var expected: Rect2 = Rect2(Vector2(30.0, 40.0) + offset, Vector2(200.0, 150.0) - minimum)
+		assert_eq(CAPTURE._staff_scroll_viewport(scroll), expected, sample["name"])
+	host.free()
 
 
 func test_real_staff_panel_native_grid_evidence_satisfies_capture_validator_without_mutation() -> void:

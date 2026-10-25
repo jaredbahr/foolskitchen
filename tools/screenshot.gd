@@ -1673,7 +1673,7 @@ static func _staff_pixel_rect(control: Control, extent: Vector2 = Vector2(-1.0, 
 
 static func _staff_scroll_viewport(scroll: ScrollContainer) -> Rect2:
 	var style: StyleBox = scroll.get_theme_stylebox("panel")
-	var content: Rect2 = Rect2(Vector2(style.get_content_margin(SIDE_LEFT), style.get_content_margin(SIDE_TOP)),
+	var content: Rect2 = Rect2(Vector2(style.get_margin(SIDE_LEFT), style.get_margin(SIDE_TOP)),
 		scroll.size - style.get_minimum_size())
 	var clip: Rect2 = scroll.get_viewport().get_final_transform() * scroll.get_global_transform_with_canvas() * content
 	var vertical: VScrollBar = scroll.get_v_scroll_bar()
