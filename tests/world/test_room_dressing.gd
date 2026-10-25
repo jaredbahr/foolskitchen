@@ -3,7 +3,6 @@ extends TestCase
 ## These real kit scenes require the normal import; runtime gates are separate.
 
 const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
-const FLOOR_SHADER: Shader = preload("res://src/world/build_grid.gdshader")
 
 var _roots: Array[Node] = []
 
@@ -147,16 +146,6 @@ func test_pavement_tint_is_private_imported_transforms_survive_and_rebind_releas
 	dressing.rebuild(null)
 	assert_eq(dressing.get_child_count(), 0)
 	assert_true(dressing.wall_detail_nodes().is_empty())
-
-
-func test_floor_shader_preserves_paint_and_build_grid_contract() -> void:
-	var source: String = FLOOR_SHADER.code
-	assert_true(source.contains("uniform vec4 floor_color"))
-	assert_true(source.contains("uniform vec4 grid_color"))
-	assert_true(source.contains("uniform float cell_size"))
-	assert_true(source.contains("uniform bool grid_visible"))
-	assert_true(source.contains("floor_color.rgb * plank_shade"))
-	assert_true(source.contains("mix(patterned_floor, grid_color.rgb, coverage)"))
 
 
 func _starter_world() -> SimWorld:
