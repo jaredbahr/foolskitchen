@@ -10,9 +10,7 @@ var _old_save_dir: String
 var _save_dir: String
 var _old_providers: Dictionary = {}
 var _old_preferences: Dictionary = {}
-var _window: Window
-var _old_window_size: Vector2i
-var _old_content_scale: float
+var _viewport: SubViewport
 
 
 func before_each() -> void:
@@ -20,22 +18,22 @@ func before_each() -> void:
 	_old_providers = SaveSystem._providers.duplicate()
 	_save_dir = SaveTestPaths.case_dir(OS.get_process_id(), "milestone_screenshot")
 	SaveSystem.save_dir = _save_dir
-	_window = (Engine.get_main_loop() as SceneTree).root
 	_old_preferences.clear()
 	for key: String in ["_file_path", "_disk_enabled", "_pending_volume_save"]:
 		_old_preferences[key] = Preferences.get(key)
-	_old_window_size = _window.size
-	_old_content_scale = _window.content_scale_factor
 	Preferences.set("_file_path", _save_dir.path_join("preferences.cfg"))
 	Preferences.set("_disk_enabled", false)
 	Preferences.set("_pending_volume_save", false)
-	_window.size = Vector2i(1600, 900)
-	_window.content_scale_factor = 1.0
 
 
 func after_each() -> void:
 	for main: Node in _mains.duplicate():
 		_close(main)
+	if is_instance_valid(_viewport):
+		if _viewport.is_inside_tree():
+			_viewport.get_parent().remove_child(_viewport)
+		_viewport.free()
+	_viewport = null
 	SaveSystem.save_dir = _old_save_dir
 	SaveSystem._providers.clear()
 	for key: String in _old_providers:
@@ -43,9 +41,6 @@ func after_each() -> void:
 		SaveSystem.register(key, provider["capture"], provider["restore"])
 	for key: String in _old_preferences:
 		Preferences.set(key, _old_preferences[key])
-	if _window.size != _old_window_size:
-		_window.size = _old_window_size
-	_window.content_scale_factor = _old_content_scale
 	Clock.set_speed(0)
 	Economy.reset(0)
 	GameState.new_run(1)
@@ -161,13 +156,18 @@ func test_real_main_fixture_shows_goals_then_uses_real_close_and_read_only_evide
 
 
 func _start_main() -> Node:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	await _wait_frames(2)
+	_viewport = SubViewport.new()
+	_viewport.size = Vector2i(1600, 900)
+	_viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	tree.root.add_child(_viewport)
 	var main: Node = MAIN.instantiate()
 	main.set("use_saves", false)
 	main.set("save_slot", SLOT)
 	main.set("new_game_seed_override", 1)
 	_mains.append(main)
-	(Engine.get_main_loop() as SceneTree).root.add_child(main)
+	_viewport.add_child(main)
 	main.call("start")
 	Clock.set_speed(0)
 	await _wait_frames(2)
