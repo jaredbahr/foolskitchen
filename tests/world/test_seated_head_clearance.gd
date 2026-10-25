@@ -26,7 +26,9 @@ func test_every_catalogue_seat_clears_real_sitting_head_in_all_rotations_and_gue
 		assert_eq(sample["intersecting_triangles"], 0, context + " head bounds intersect seat geometry")
 		assert_false(sample["head_center_inside_seat"], context + " head is enclosed by seat geometry")
 		assert_true(float(sample["clearance"]) + GEOMETRY.EPSILON >= GEOMETRY.REQUIRED_CLEARANCE,
-			context + " rear clearance %.6f must be >=0.02" % sample["clearance"])
+			context + " minimum Euclidean clearance %.6f must be >=0.02" % sample["clearance"])
+		assert_eq(sample["clearance_metric"], GEOMETRY.CLEARANCE_METRIC, context)
+		assert_true(is_finite(float(sample["clearance"])), context + " no seat part may disappear behind an infinite gap")
 	for required: String in ["chair", "wooden_chair", "rounded_chair", "modern_chair", "modern_frame_chair",
 		"bar_stool", "square_bar_stool", "bench", "cushioned_bench", "lounge_chair", "diner_booth", "diner_stool", "table_2"]:
 		assert_true(coverage.has(required), required + " was actually measured")
@@ -37,7 +39,7 @@ func test_triangle_clipping_catches_face_crossing_head_with_all_vertices_outside
 	var crossing: PackedVector3Array = [Vector3(-1, 0, 0.05), Vector3(1, 0, 0.05), Vector3(0, 2, 0.05)]
 	var result: Dictionary = GEOMETRY.measure_triangles(head, crossing)
 	assert_true(int(result["intersecting_triangles"]) > 0)
-	assert_true(float(result["clearance"]) < 0.0)
+	assert_almost_eq(float(result["clearance"]), 0.0, 0.000001)
 	assert_false(result["passes"], "checking only seat vertices misses this clipping face")
 
 
@@ -61,6 +63,46 @@ func test_clearance_threshold_and_enclosed_head_cannot_pass_without_boundary_con
 	assert_eq(enclosed["intersecting_triangles"], 0)
 	assert_true(enclosed["head_center_inside_seat"])
 	assert_false(enclosed["passes"], "a head fully inside a closed seat part is still clipping")
+
+
+func test_near_backrest_top_and_side_edges_outside_head_span_still_require_clearance() -> void:
+	var head: AABB = AABB(Vector3(-0.1, 0.5, -0.1), Vector3(0.2, 0.2, 0.2))
+	var below: PackedVector3Array = [Vector3(-1, 0.495, -1), Vector3(1, 0.495, -1), Vector3(0, 0.495, 1)]
+	var beside: PackedVector3Array = [Vector3(0.105, 0, -1), Vector3(0.105, 2, -1), Vector3(0.105, 1, 1)]
+	for triangle: PackedVector3Array in [below, beside]:
+		var result: Dictionary = GEOMETRY.measure_triangles(head, triangle)
+		assert_eq(result["intersecting_triangles"], 0)
+		assert_almost_eq(float(result["clearance"]), 0.005, 0.000001)
+		assert_false(result["passes"], "a triangle 0.005 below/beside the real head bounds cannot pass")
+
+
+func test_diagonal_edge_distance_uses_closest_edge_interiors_and_not_overlapping_bounds() -> void:
+	var head: AABB = AABB(Vector3(-0.1, 0.5, -0.1), Vector3(0.2, 0.2, 0.2))
+	# The nearest pair is inside the head's vertical Z edge and the triangle's
+	# diagonal edge. Neither triangle vertices nor head corners attain it.
+	for offset: float in [0.01, 0.06]:
+		var sum: float = 0.8 + offset
+		var triangle: PackedVector3Array = [Vector3(-1, sum + 1.0, 0), Vector3(1, sum - 1.0, 0), Vector3(1, 1, 0)]
+		var result: Dictionary = GEOMETRY.measure_triangles(head, triangle)
+		assert_eq(result["intersecting_triangles"], 0)
+		assert_almost_eq(float(result["clearance"]), offset / sqrt(2.0), 0.000001)
+		assert_eq(result["passes"], offset == 0.06, "true diagonal Euclidean gap sets the threshold")
+	var point: Vector3 = Vector3(0.105, 0.495, 0.0)
+	var degenerate: Dictionary = GEOMETRY.measure_triangles(head, PackedVector3Array([point, point, point]))
+	assert_almost_eq(float(degenerate["clearance"]), sqrt(0.005 * 0.005 * 2.0), 0.000001)
+	assert_false(degenerate["passes"], "zero-area triangles remain finite and cannot hide a close seat vertex")
+
+
+func test_short_nonparallel_seat_edges_keep_their_interior_closest_pair() -> void:
+	var head: AABB = AABB(Vector3(-0.1, 0.5, -0.1), Vector3(0.2, 0.2, 0.2))
+	# The actual 0.019799 gap fails, although the triangle vertices are each
+	# over 0.02 away. A fixed determinant epsilon misclassifies these short
+	# bevel edges as parallel and misses the interior closest pair.
+	var short_edge: PackedVector3Array = [Vector3(0.111, 0.717, 0), Vector3(0.117, 0.711, 0), Vector3(0.12, 0.72, 0)]
+	var result: Dictionary = GEOMETRY.measure_triangles(head, short_edge)
+	assert_eq(result["intersecting_triangles"], 0)
+	assert_almost_eq(float(result["clearance"]), 0.028 / sqrt(2.0), 0.000001)
+	assert_false(result["passes"])
 
 
 func test_skinning_resolves_bind_names_and_applies_inverse_bind_before_current_pose() -> void:

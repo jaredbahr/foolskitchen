@@ -32,9 +32,6 @@ func _run() -> void:
 				var bounds: AABB = sample[key]
 				sample[key] = {"min": [bounds.position.x, bounds.position.y, bounds.position.z],
 					"max": [bounds.end.x, bounds.end.y, bounds.end.z]}
-		# JSON has no Infinity; null denotes no backrest geometry at head height.
-		if sample.has("clearance") and is_inf(float(sample["clearance"])):
-			sample["clearance"] = null
 		if sample.has("native_bake_max_error") and not is_finite(float(sample["native_bake_max_error"])):
 			sample["native_bake_max_error"] = null
 	for comparison: Dictionary in (report["native_bake_poses"] as Dictionary).values():

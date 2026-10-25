@@ -28,8 +28,9 @@ The native bake command requires a real rendered Compatibility session (a dummy
 headless renderer cannot supply its skin buffers). Every sample must have an
 empty `error`, `native_bake_max_error <= 0.00001`, no intersecting seat triangles,
 no enclosed head, and `clearance >= 0.02` within 0.000001 numerical tolerance.
-JSON `clearance: null` means no seat/backrest geometry intersects the head's X/Y
-span behind its midpoint. `facing_dot` must exceed 0.9999. Preserve the original
+Every successful measurement has a finite `clearance` and the exact
+`clearance_metric` label from `SeatedHeadGeometry.CLEARANCE_METRIC`.
+`facing_dot` must exceed 0.9999. Preserve the original
 and final report and compare palms' world height and horizontal table distance
 alongside the furnished capture before accepting a forward offset.
 
@@ -55,9 +56,14 @@ through the actual capture camera for the derivative crop. `measure(person,
 furnishing_node)` additionally reports clearance and seat intrusion. Neither API
 moves a person or changes a pose. The bounds include the native head's hair and
 are conservative: a seat triangle entering even an empty corner of the measured
-head bounds fails. Backrest clearance is the rear-axis gap to actual seat
-triangles clipped to that head span, not an asset-name guess or a whole-model
-AABB. Closed-seat enclosure is checked by solid-angle winding.
+head bounds fails. Clearance is the minimum Euclidean separation between every
+actual seat triangle and the conservative posed-head bounds. Nearby backrest
+top and side edges count even when they lie outside the head's X/Y span. The
+distance enumerates vertex/face and edge/edge features; only a true box-distance
+lower bound prunes expensive feature work. Six-plane clipping detects triangle
+intersection, and solid-angle winding detects closed-seat enclosure. Neither
+check is skipped by distance pruning. The catalogue's 1,632 placement samples
+and 24 rendered parity comparisons remain unchanged; runtime cost is unmeasured.
 
 The headless helper performs weighted skinning from the current native Skeleton3D
 global poses, imported Skin bind transforms and head mesh vertex weights. This
