@@ -8,6 +8,7 @@
 # --hud-layout --window-size=1280x720|1600x900 --speed=0 --frames=12,90 captures 125%, then 150%.
 # --report --open --fast=100 --speed=0 --frames=60 captures a real closed-day report.
 # --door-queue --open --fast=8 --speed=1 --frames=240 zooms a real queue, or records its absence at the entry.
+# --loan-review --speed=0 --frames=12,90 captures an explicit loss fixture's bank report, then next-morning Loan HUD.
 # Build previews use the production morning input API without buying or saving.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -23,7 +24,7 @@ window_size="1600x900"
 window_size_requested=false
 for a in "$@"; do
   [[ "$a" == --out=* ]] && out="${a#--out=}"
-  [[ "$a" == --settings || "$a" == --settings-world ]] && settings_capture=true
+  [[ "$a" == --settings || "$a" == --settings-world || "$a" == --loan-review ]] && settings_capture=true
   if [[ "$a" == --hud-layout ]]; then
     hud_layout=true
     settings_capture=true
@@ -41,7 +42,7 @@ if "$window_size_requested" && ! "$hud_layout"; then
   echo "FAIL: --window-size requires --hud-layout"
   exit 1
 fi
-# This capture changes a real preference; keep it out of other capture runs.
+# Keep explicit UI/window captures and preference changes isolated from other runs.
 if "$settings_capture"; then
   settings_data="$(mktemp -d)"
   export XDG_DATA_HOME="$settings_data"

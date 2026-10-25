@@ -18,11 +18,19 @@ extends SceneTree
 ##   --build=green|red  hold a checked buy preview through the production input API
 ##   --paint     show a painted morning shop using the production paint controls
 ##   --door-queue  zoom the existing camera onto a real queue, or its empty entry
-## Metadata records actual waiting moods/visible markers and seeds, with no fixture.
+##   --loan-review --speed=0 --frames=12,90  explicit financial-fixture UI evidence
+## Ordinary captures record real moods, markers and seeds without a fixture.
 
 const MAX_CAPTURE_WAIT_FRAMES: int = 8
 const MAX_OWNER_WARMUP_TICKS: int = 900
 const SETTINGS_CAPTURE_SIZE: Vector2i = Vector2i(1600, 900)
+const LOAN_TERMS: LoanTuning = preload("res://data/balance/loans.tres")
+const LOAN_NOTICE: String = "The bank covered your shortfall. It'll take a share of your profits until it's paid back."
+const GENERATED_UID_SOURCES: Array[String] = [
+	"res://src/sim/economy/loan_account.gd", "res://src/sim/economy/loan_tuning.gd",
+	"res://tests/sim/test_loan_account.gd", "res://tests/world/test_loan_session.gd",
+	"res://tests/tools/test_screenshot_options.gd",
+]
 
 var _frames: int = 0
 var _shots: Array[int] = [120, 400, 900]
@@ -54,6 +62,8 @@ var _report_requested: bool = false
 var _build: String = ""
 var _paint: bool = false
 var _door_queue: bool = false
+var _loan_review: bool = false
+var _loan_fixture: Dictionary = {}
 var _build_pointer: Vector2 = Vector2.ZERO
 var _selected_agent_id: int = -1
 var _capture_pending: bool = false
@@ -64,6 +74,11 @@ var _finish_requested: bool = false
 
 func _initialize() -> void:
 	OS.add_logger(_errors)
+	var loan_options: Dictionary = loan_review_options(OS.get_cmdline_user_args())
+	if not String(loan_options["error"]).is_empty():
+		_fail_capture(loan_options["error"])
+		return
+	_loan_review = loan_options["enabled"]
 	var layout_options: Dictionary = hud_layout_options(OS.get_cmdline_user_args())
 	if not String(layout_options["error"]).is_empty():
 		_fail_capture(layout_options["error"])
@@ -189,7 +204,225 @@ func _initialize() -> void:
 	root.add_child(_main)
 
 
-## Only the opt-in HUD sequence reserves window size and a two-frame schedule.
+## Pure CLI guard; the shell wrapper may supply the same --out twice.
+static func loan_review_options(arguments: PackedStringArray) -> Dictionary:
+	var result: Dictionary = {"enabled": false, "error": ""}
+	for argument: String in arguments:
+		if argument.begins_with("--loan-review"):
+			if argument != "--loan-review" or result["enabled"]:
+				result["error"] = "--loan-review is a single flag without a value"
+				return result
+			result["enabled"] = true
+	if not result["enabled"]:
+		return result
+	var speeds: int = 0
+	var frames: int = 0
+	var scenes: int = 0
+	for argument: String in arguments:
+		if argument == "--loan-review" or argument.begins_with("--out="):
+			continue
+		if argument == "--speed=0":
+			speeds += 1
+		elif argument == "--frames=12,90":
+			frames += 1
+		elif argument == "--scene=res://src/world/main.tscn":
+			scenes += 1
+		else:
+			result["error"] = "--loan-review requires paused Main frames 12,90 without other options"
+			return result
+	if speeds != 1 or frames != 1 or scenes > 1:
+		result["error"] = "--loan-review requires one --speed=0 and one --frames=12,90"
+	return result
+
+
+## Explicit financial fixture, never a playable balance sample. Real commands
+## produce the loan, report and HUD; no account or presentation value is assigned.
+static func prepare_loan_review(main: Node, context_root: Node) -> Dictionary:
+	var result: Dictionary = {"kind": "financial_fixture", "error": "", "requested_ticks": 3}
+	var clock: Node = context_root.get_node_or_null("Clock")
+	var economy: Node = context_root.get_node_or_null("Economy")
+	var world: SimWorld = main.get("world") as SimWorld if "world" in main else null
+	var restaurant: RestaurantSim = main.get("sim") as RestaurantSim if "sim" in main else null
+	var time: SimClock = clock.get("sim") as SimClock if clock != null else null
+	var account: LoanAccount = economy.get("loan") as LoanAccount if economy != null else null
+	var ledger: Ledger = economy.get("ledger") as Ledger if economy != null else null
+	if world == null or restaurant == null or time == null or account == null or ledger == null \
+			or world.clock != time or restaurant.world != world or time.day != 1 \
+			or time.phase != SimClock.Phase.MORNING or clock.get("speed") != 0 \
+			or not ("use_saves" in main) or main.get("use_saves") != false \
+			or not main.has_method("run_ticks") or not economy.has_method("add_cash") \
+			or account.principal != 0 or account.last_settled_day != 0 or account.has_borrowed \
+			or ledger.cash < 0 or ledger.cash > LoanAccount.MAX_CURRENCY - LOAN_TERMS.borrowing_step:
+		result["error"] = "loan review requires a fresh paused, unsaved Main session"
+		return result
+	var before_tick: int = world.now
+	var debit: int = ledger.cash + LOAN_TERMS.borrowing_step
+	result.merge({"debit": -debit, "debit_category": String(Ledger.OTHER), "starting_cash": str(ledger.cash),
+		"service_open_ticks": 1, "service_last_orders_ticks": 1, "arrival_gap": 100000})
+	economy.call("add_cash", -debit, Ledger.OTHER)
+	restaurant.spawner.min_gap = 100000
+	restaurant.spawner.max_gap = 100000
+	restaurant.spawner.reset()
+	time.open_ticks = 1
+	time.last_orders_max_ticks = 1
+	if not time.start_service():
+		result["error"] = "loan fixture could not start the real short service"
+		return result
+	main.call("run_ticks", 3)
+	result.merge({"actual_ticks": world.now - before_tick, "closed_day": time.day,
+		"closed_principal": str(account.principal)})
+	if time.phase != SimClock.Phase.CLOSED or account.principal <= 0:
+		result["error"] = "real short service did not close with a bank advance"
+	return result
+
+
+## Read actual model and native controls; queries never run a command or refresh.
+static func loan_review_evidence(main: Node, context_root: Node) -> Dictionary:
+	var clock: Node = context_root.get_node_or_null("Clock")
+	var economy: Node = context_root.get_node_or_null("Economy")
+	var time: SimClock = clock.get("sim") as SimClock if clock != null else null
+	var account: LoanAccount = economy.get("loan") as LoanAccount if economy != null else null
+	var ledger: Ledger = economy.get("ledger") as Ledger if economy != null else null
+	var panel: Control = main.get_node_or_null("Overlay/EveningReport") as Control
+	var notice: Label = main.get_node_or_null("Overlay/EveningReport/Panel/Scroll/Content/LoanNotice") as Label
+	var headline: Label = main.get_node_or_null("Overlay/EveningReport/Panel/Scroll/Content/Profit") as Label
+	var hud: Label = main.get_node_or_null("HUD/Top/Row/Loan") as Label
+	if time == null or account == null or ledger == null or panel == null or notice == null or headline == null or hud == null:
+		return {"available": false}
+	var report: DayReport = main.get("shown_report") as DayReport
+	var flows: Array[Dictionary] = []
+	for entry: Dictionary in ledger.entries_for_day(account.last_settled_day):
+		if entry["category"] in [Ledger.BANK_LOAN, Ledger.LOAN_INTEREST, Ledger.LOAN_REPAYMENT]:
+			flows.append({"day": entry["day"], "category": String(entry["category"]), "amount": entry["amount"]})
+	var labels: Array[Dictionary] = []
+	for path: String in ["Panel/Scroll/Content/Finances/Income/IncomeRows", "Panel/Scroll/Content/Finances/Costs/CostRows"]:
+		var rows: Node = panel.get_node_or_null(path)
+		if rows == null:
+			return {"available": false}
+		for index: int in range(0, rows.get_child_count() - 1, 2):
+			var title: Label = rows.get_child(index) as Label
+			var amount: Label = rows.get_child(index + 1) as Label
+			if title == null or amount == null:
+				return {"available": false}
+			if title.text in ["Bank loan", "Loan interest", "Loan repayment"]:
+				labels.append({"title": _loan_control_evidence(title), "amount": _loan_control_evidence(amount)})
+	return {"available": true, "day": time.day, "phase": int(time.phase), "clock_tick": time.tick,
+		"clock_speed": clock.get("speed"), "use_saves": main.get("use_saves"),
+		"principal": str(account.principal), "last_settled_day": account.last_settled_day,
+		"has_borrowed": account.has_borrowed, "cash": str(ledger.cash), "bank_flows": flows,
+		"report_present": report != null, "report_day": report.day if report != null else null,
+		"report_first_advance": report.loan_first_advance if report != null else false,
+		"report_bank_advance": report.income.get(Ledger.BANK_LOAN, 0) if report != null else 0,
+		"report_cash_change": report.profit() if report != null else null,
+		"settled_day_cash_change": ledger.day_profit(account.last_settled_day),
+		"report_operating_profit": report.operating_profit() if report != null else null,
+		"operating_headline": _loan_control_evidence(headline),
+		"report": _loan_control_evidence(panel), "notice": _loan_control_evidence(notice),
+		"loan_hud": _loan_control_evidence(hud), "bank_labels": labels}
+
+
+## Provenance only. Read real sidecars and the runtime UID cache; never create,
+## import, register or repair an ID. Missing evidence does not alter UI gates.
+static func generated_uid_evidence() -> Dictionary:
+	var entries: Array[Dictionary] = []
+	var complete_match: bool = true
+	for source: String in GENERATED_UID_SOURCES:
+		var uid_path: String = source + ".uid"
+		var source_exists: bool = FileAccess.file_exists(source)
+		var sidecar_exists: bool = FileAccess.file_exists(uid_path)
+		var sidecar_readable: bool = false
+		var sidecar_text: String = ""
+		var read_error: Error = OK
+		if sidecar_exists:
+			var file: FileAccess = FileAccess.open(uid_path, FileAccess.READ)
+			if file != null:
+				sidecar_text = file.get_as_text()
+				read_error = file.get_error()
+				sidecar_readable = read_error == OK or read_error == ERR_FILE_EOF
+				file.close()
+			else:
+				read_error = FileAccess.get_open_error()
+		var registered_id: int = ResourceLoader.get_resource_uid(source) if source_exists else ResourceUID.INVALID_ID
+		var registered_text: String = ResourceUID.id_to_text(registered_id) if registered_id >= 0 else ""
+		var registered_known: bool = registered_id >= 0 and ResourceUID.has_id(registered_id)
+		var matches: bool = sidecar_readable and not sidecar_text.strip_edges().is_empty() \
+			and registered_id >= 0 and sidecar_text.strip_edges() == registered_text
+		var status: String = "match"
+		if not source_exists:
+			status = "missing_source"
+		elif not sidecar_exists:
+			status = "missing_sidecar"
+		elif not sidecar_readable:
+			status = "unreadable_sidecar"
+		elif sidecar_text.strip_edges().is_empty():
+			status = "empty_sidecar"
+		elif registered_id < 0:
+			status = "unregistered"
+		elif not registered_known:
+			status = "not_cached"
+		elif not matches:
+			status = "mismatch"
+		complete_match = complete_match and status == "match"
+		entries.append({"source": source, "source_exists": source_exists, "uid_path": uid_path,
+			"sidecar_exists": sidecar_exists, "sidecar_readable": sidecar_readable,
+			"sidecar_text": sidecar_text, "read_error": int(read_error),
+			"registered_id": str(registered_id), "registered_text": registered_text,
+			"registered_known": registered_known, "matches_registered": matches, "status": status})
+	return {"read_only": true, "complete_match": complete_match, "entries": entries}
+
+
+static func _loan_control_evidence(control: Control) -> Dictionary:
+	var viewport: Viewport = control.get_viewport()
+	var bounds: Rect2 = viewport.get_final_transform() * control.get_global_transform_with_canvas() * Rect2(Vector2.ZERO, control.size)
+	var clip: Rect2 = Rect2(Vector2.ZERO, Vector2(viewport.get_visible_rect().size))
+	var ancestor: Node = control.get_parent()
+	while ancestor != null:
+		if ancestor is Control and (ancestor as Control).clip_contents:
+			var parent: Control = ancestor as Control
+			clip = clip.intersection(viewport.get_final_transform() * parent.get_global_transform_with_canvas() * Rect2(Vector2.ZERO, parent.size))
+		ancestor = ancestor.get_parent()
+	return {"text": (control as Label).text if control is Label else "", "visible": control.is_visible_in_tree(),
+		"rect": [bounds.position.x, bounds.position.y, bounds.size.x, bounds.size.y],
+		"inside_clip": bounds.has_area() and clip.grow(1.0).encloses(bounds)}
+
+
+static func loan_review_valid(state: Dictionary, frame: int, fixture: Dictionary) -> bool:
+	if fixture.get("kind") != "financial_fixture" or fixture.get("error") != "" \
+			or fixture.get("requested_ticks") != 3 or int(fixture.get("actual_ticks", 0)) not in range(1, 4) \
+			or state.get("available") != true or state.get("clock_speed") != 0 or state.get("use_saves") != false \
+			or int(state.get("principal", "0")) <= 0 or state.get("has_borrowed") != true \
+			or state.get("last_settled_day") != fixture.get("closed_day") \
+			or state.get("principal") != fixture.get("closed_principal"):
+		return false
+	var hud: Dictionary = state["loan_hud"]
+	if hud["visible"] != true or hud["inside_clip"] != true or hud["text"] != "Loan %s" % Fmt.money(int(state["principal"])):
+		return false
+	if frame == 90:
+		return state["day"] == 2 and state["phase"] == SimClock.Phase.MORNING \
+			and state["report_present"] == false and state["report"]["visible"] == false \
+			and state["notice"]["visible"] == false and state["operating_headline"]["visible"] == false
+	if frame != 12 or state["day"] != 1 or state["phase"] != SimClock.Phase.CLOSED \
+			or state["report_present"] != true or state["report_day"] != 1 or state["report_first_advance"] != true \
+			or state["report"]["visible"] != true or state["notice"]["visible"] != true \
+			or state["notice"]["inside_clip"] != true or state["notice"]["text"] != LOAN_NOTICE \
+			or state["report_bank_advance"] != int(state["principal"]) \
+			or state["report_cash_change"] != state["settled_day_cash_change"] \
+			or state["report_cash_change"] != state["report_operating_profit"] + state["report_bank_advance"] \
+			or state["operating_headline"]["visible"] != true or state["operating_headline"]["inside_clip"] != true \
+			or state["operating_headline"]["text"] != "%s operating profit" % Fmt.money(int(state["report_operating_profit"])):
+		return false
+	var bank_flow: bool = false
+	for flow: Dictionary in state["bank_flows"]:
+		bank_flow = bank_flow or (flow["category"] == String(Ledger.BANK_LOAN) and flow["amount"] == state["report_bank_advance"])
+	for row: Dictionary in state["bank_labels"]:
+		if bank_flow and row["title"]["text"] == "Bank loan" and row["title"]["visible"] == true \
+				and row["title"]["inside_clip"] == true and row["amount"]["visible"] == true \
+				and row["amount"]["inside_clip"] == true and row["amount"]["text"] == Fmt.money(int(state["principal"])):
+			return true
+	return false
+
+
+## The HUD sequence reserves its window-size option and two-frame schedule.
 ## Legacy options pass through unchanged and do not instantiate a SceneTree here.
 static func hud_layout_options(arguments: PackedStringArray) -> Dictionary:
 	var result: Dictionary = {"enabled": false, "window_size": Vector2i(1600, 900), "error": ""}
@@ -223,7 +456,7 @@ static func hud_layout_options(arguments: PackedStringArray) -> Dictionary:
 				result["error"] = "--hud-layout requires --frames=12,90"
 		elif argument.begins_with("--scene") and argument != "--scene=res://src/world/main.tscn":
 			result["error"] = "--hud-layout requires the actual Main scene"
-		for prefix: String in ["--open", "--fast", "--select", "--assign-owner", "--f3", "--menu", "--staff", "--settings", "--report", "--build", "--paint", "--quarter", "--door-queue"]:
+		for prefix: String in ["--open", "--fast", "--select", "--assign-owner", "--f3", "--menu", "--staff", "--settings", "--report", "--build", "--paint", "--quarter", "--door-queue", "--loan-review"]:
 			if argument.begins_with(prefix):
 				result["error"] = "--hud-layout cannot combine with other view or service options"
 	if speed_count != 1 or frames_count != 1:
@@ -250,6 +483,11 @@ func _process(_delta: float) -> bool:
 		_configure_camera()
 		if _failed:
 			return true
+		if _loan_review:
+			_loan_fixture = prepare_loan_review(_main, root)
+			if not String(_loan_fixture["error"]).is_empty():
+				_fail_capture(_loan_fixture["error"])
+				return true
 		_configure_inspection()
 		if _failed:
 			return true
@@ -282,6 +520,13 @@ func _process(_delta: float) -> bool:
 		_open_settings_control(true, _hud_layout_scale)
 		if _failed:
 			return true
+	if _loan_review and _frames == 24:
+		var clock: Node = root.get_node_or_null("Clock")
+		var time: SimClock = clock.get("sim") as SimClock if clock != null else null
+		if time == null or not time.next_day():
+			_fail_capture("loan review could not enter the real next morning")
+			return true
+		_loan_fixture["next_day_frame"] = _frames
 	if ((_settings_world or _hud_layout) and _frames == 8) or (_hud_layout and _frames == 29):
 		_close_settings_with_keyboard()
 		if _failed:
@@ -771,6 +1016,10 @@ func _capture() -> void:
 	if _main.has_method("inspection_state"):
 		inspection = _main.call("inspection_state")
 	var world: SimWorld = _capture_world()
+	var loan_state: Dictionary = loan_review_evidence(_main, root) if _loan_review else {}
+	if _loan_review and not loan_review_valid(loan_state, _capture_frame, _loan_fixture):
+		_fail_capture("loan review did not match its real account, phase and visible native controls")
+		return
 	var settings_state: Dictionary = _settings_state() if _settings else {}
 	var hud_layout_state: Dictionary = _hud_layout_state() if _hud_layout else {}
 	if _settings and not _settings_capture_valid(settings_state, world):
@@ -856,6 +1105,9 @@ func _capture() -> void:
 	if _hud_layout and (image == null or image.get_size() != _hud_window_size):
 		_fail_capture("HUD layout viewport image did not match its requested window size")
 		return
+	if _loan_review and (image == null or image.get_size() != SETTINGS_CAPTURE_SIZE):
+		_fail_capture("loan review image did not match the usual 1600x900 dimensions")
+		return
 	var world_render: Dictionary = _settings_world_evidence(image) if _settings_world else {}
 	if image == null or image.is_empty() or image.save_png(path) != OK:
 		_fail_capture("cannot save viewport image: " + path)
@@ -931,6 +1183,9 @@ func _capture() -> void:
 		metadata.merge({"requested_hud_layout": true, "hud_layout": hud_layout_state,
 			"requested_ui_scale_percent": 125 if _capture_frame == 12 else 150,
 			"requested_window_size": [_hud_window_size.x, _hud_window_size.y]})
+	if _loan_review:
+		metadata["loan_review"] = {"fixture": _loan_fixture, "state": loan_state,
+			"generated_uids": generated_uid_evidence()}
 	var file: FileAccess = FileAccess.open(path.get_basename() + ".json", FileAccess.WRITE)
 	if file == null:
 		_fail_capture("cannot write capture metadata")

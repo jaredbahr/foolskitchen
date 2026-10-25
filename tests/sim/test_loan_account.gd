@@ -155,9 +155,9 @@ func test_exact_minimum_cash_rejects_without_consuming_close_or_history() -> voi
 	assert_eq(account.last_settled_day, 3)
 
 
-func test_near_minimum_cash_rejects_interest_repayment_and_exact_minimum_projection() -> void:
-	# Interest alone underflows; then interest fits but repayment underflows;
-	# finally the charges fit exactly but their resulting shortage cannot negate.
+func test_near_minimum_cash_rejects_interest_unrepresentable_advance_and_exact_minimum_projection() -> void:
+	# Interest underflows; then interest fits and repayment is zero but the
+	# required rounded advance is unrepresentable; finally shortage cannot negate.
 	for fixture: Dictionary in [
 		{"cash": LoanAccount.MIN_CURRENCY + 4, "profit": 0},
 		{"cash": LoanAccount.MIN_CURRENCY + 6, "profit": 100},
@@ -167,12 +167,78 @@ func test_near_minimum_cash_rejects_interest_repayment_and_exact_minimum_project
 		_assert_settlement_rejected(ledger, _boundary_account(100))
 
 
-func test_maximum_principal_cannot_extend_and_combined_charges_cannot_overflow() -> void:
+func test_maximum_principal_cannot_extend_without_headroom() -> void:
 	_assert_settlement_rejected(_boundary_ledger(0), _boundary_account(LoanAccount.MAX_CURRENCY))
+
+
+func test_maximum_cash_caps_full_profit_repayment_after_interest_without_overflow() -> void:
 	var all_profit: LoanTuning = TERMS.duplicate(true) as LoanTuning
 	all_profit.repay_share = 1.0
-	_assert_settlement_rejected(_boundary_ledger(LoanAccount.MAX_CURRENCY, LoanAccount.MAX_CURRENCY),
-		_boundary_account(LoanAccount.MAX_CURRENCY), all_profit)
+	var ledger: Ledger = _boundary_ledger(LoanAccount.MAX_CURRENCY, LoanAccount.MAX_CURRENCY)
+	var account: LoanAccount = _boundary_account(LoanAccount.MAX_CURRENCY)
+	var result: Dictionary = account.settle_day(ledger, 3, all_profit)
+	assert_false(result.is_empty())
+	if result.is_empty():
+		return
+	var interest: int = roundi(float(LoanAccount.MAX_CURRENCY) * all_profit.daily_interest)
+	assert_eq(result["interest"], interest)
+	assert_eq(result["repayment"], LoanAccount.MAX_CURRENCY - interest)
+	assert_eq(result["advance"], 0)
+	assert_eq(ledger.cash, 0)
+	assert_eq(account.principal, interest)
+	assert_eq(ledger.day_costs(3), LoanAccount.MAX_CURRENCY)
+	assert_eq(ledger.day_profit(3), 0)
+	assert_eq(account.last_settled_day, 3)
+	assert_true(account.has_borrowed)
+
+
+func test_principal_1000_cash_60_profit_30_repays_available_ten_without_a_new_advance() -> void:
+	var ledger: Ledger = _boundary_ledger(60, 30)
+	var account: LoanAccount = _boundary_account(1000)
+	var result: Dictionary = account.settle_day(ledger, 3, TERMS)
+	assert_false(result.is_empty())
+	if result.is_empty():
+		return
+	assert_eq(result["operating_profit"], 30)
+	assert_eq(result["interest"], 50)
+	assert_eq(result["repayment"], 10)
+	assert_eq(result["advance"], 0)
+	assert_eq(ledger.cash, 0)
+	assert_eq(account.principal, 990)
+	assert_eq(ledger.day_totals(3), {Ledger.SALE: 30,
+		Ledger.LOAN_INTEREST: -50, Ledger.LOAN_REPAYMENT: -10})
+	var saved: Dictionary = ledger.to_dict()
+	assert_true(account.settle_day(ledger, 3, TERMS).is_empty())
+	assert_eq(ledger.to_dict(), saved, "cash-limited repayment still settles only once")
+
+
+func test_repayment_cash_cap_keeps_interest_shortfalls_zero_share_and_principal_cap() -> void:
+	for fixture: Dictionary in [
+		{"principal": 1000, "cash": 50, "profit": 30, "share": 0.5,
+			"interest": 50, "repayment": 0, "advance": 0, "end_cash": 0, "end_principal": 1000},
+		{"principal": 1000, "cash": 20, "profit": 30, "share": 0.5,
+			"interest": 50, "repayment": 0, "advance": 50, "end_cash": 20, "end_principal": 1050},
+		{"principal": 1000, "cash": -30, "profit": -30, "share": 0.5,
+			"interest": 50, "repayment": 0, "advance": 100, "end_cash": 20, "end_principal": 1100},
+		{"principal": 1000, "cash": 60, "profit": 30, "share": 0.0,
+			"interest": 50, "repayment": 0, "advance": 0, "end_cash": 10, "end_principal": 1000},
+		{"principal": 20, "cash": 100, "profit": 100, "share": 0.5,
+			"interest": 1, "repayment": 20, "advance": 0, "end_cash": 79, "end_principal": 0},
+	]:
+		var ledger: Ledger = _boundary_ledger(int(fixture["cash"]), int(fixture["profit"]))
+		var account: LoanAccount = _boundary_account(int(fixture["principal"]))
+		var terms: LoanTuning = TERMS.duplicate(true) as LoanTuning
+		terms.repay_share = float(fixture["share"])
+		var result: Dictionary = account.settle_day(ledger, 3, terms)
+		assert_false(result.is_empty())
+		if result.is_empty():
+			continue
+		assert_eq(result["operating_profit"], int(fixture["profit"]))
+		assert_eq(result["interest"], int(fixture["interest"]))
+		assert_eq(result["repayment"], int(fixture["repayment"]))
+		assert_eq(result["advance"], int(fixture["advance"]))
+		assert_eq(ledger.cash, int(fixture["end_cash"]))
+		assert_eq(account.principal, int(fixture["end_principal"]))
 
 
 func test_largest_representable_rounded_advance_succeeds_and_next_shortage_rejects() -> void:
@@ -225,6 +291,8 @@ func _boundary_ledger(cash: int, profit: int = 0) -> Ledger:
 	original.cash = 0
 	if profit > 0:
 		original.record(3, profit, Ledger.SALE)
+	elif profit < 0:
+		original.record(3, profit, Ledger.RENT)
 	var saved: Dictionary = original.to_dict()
 	saved["cash"] = str(cash)
 	var restored: Ledger = Ledger.from_dict(JSON.parse_string(JSON.stringify(saved)))

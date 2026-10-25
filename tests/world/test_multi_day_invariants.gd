@@ -201,7 +201,12 @@ func _assert_closed_books(main: Node, day: int) -> void:
 	assert_eq(int(shown.income.get(Ledger.BANK_LOAN, 0)), int(totals.get(Ledger.BANK_LOAN, 0)))
 	assert_eq(int(shown.costs.get(Ledger.LOAN_INTEREST, 0)), -int(totals.get(Ledger.LOAN_INTEREST, 0)))
 	assert_eq(int(shown.costs.get(Ledger.LOAN_REPAYMENT, 0)), -int(totals.get(Ledger.LOAN_REPAYMENT, 0)))
-	assert_eq(shown.profit(), Economy.ledger.day_profit(day))
+	var operating_profit: int = 0
+	for category: StringName in totals:
+		if category != Ledger.BANK_LOAN and category != Ledger.LOAN_INTEREST and category != Ledger.LOAN_REPAYMENT:
+			operating_profit += int(totals[category])
+	assert_eq(shown.operating_profit(), operating_profit, "the headline excludes every financing movement")
+	assert_eq(shown.profit(), Economy.ledger.day_profit(day), "full financial cash movement still matches the ledger")
 	var dishes: int = 0
 	for recipe: StringName in shown.dishes_sold:
 		dishes += shown.dishes_sold[recipe]

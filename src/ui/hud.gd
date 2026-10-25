@@ -166,12 +166,17 @@ func set_loan_state(principal: int, repay_share: float, daily_interest: float) -
 
 func _render_loan() -> void:
 	_loan_label.text = "Loan %s" % Fmt.money(_loan_principal)
-	_loan_label.tooltip_text = "The bank takes %d%% of positive daily profit to repay this loan. Interest is %d%% a day. Big furniture purchases and upgrades wait until it's paid back." % [
-		roundi(_loan_repay_share * 100.0), roundi(_loan_daily_interest * 100.0)]
+	_loan_label.tooltip_text = "The bank takes up to %s of positive daily profit to repay this loan. Interest is %s a day. Big furniture purchases and upgrades wait until it's paid back." % [
+		_percentage_text(_loan_repay_share), _percentage_text(_loan_daily_interest)]
 	_loan_label.visible = _loan_principal > 0
 	var row: Container = get_node("Top/Row") as Container
 	row.update_minimum_size()
 	row.queue_sort()
+
+
+func _percentage_text(rate: float) -> String:
+	var percent: float = rate * 100.0
+	return "%d%%" % roundi(percent) if is_equal_approx(percent, roundf(percent)) else "%.1f%%" % percent
 
 
 ## Main supplies XP within the current level and the next-level requirement.

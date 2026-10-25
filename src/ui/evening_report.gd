@@ -56,8 +56,9 @@ func show_report(report: DayReport) -> void:
 	_bind_nodes()
 	_report_shown = true
 	_header.text = "Day %d: Closed" % report.day
-	_profit.text = "%s profit" % _money(report.profit())
-	_profit.add_theme_color_override("font_color", PROFIT_GREEN if report.profit() >= 0 else LOSS_RED)
+	var operating_profit: int = report.operating_profit()
+	_profit.text = "%s operating profit" % _money(operating_profit)
+	_profit.add_theme_color_override("font_color", PROFIT_GREEN if operating_profit >= 0 else LOSS_RED)
 	_fill_money(_income, report.income, "No income today")
 	_fill_money(_costs, report.costs, "No costs today")
 	_loan_notice.text = LOAN_INTRODUCTION if report.loan_first_advance else ""

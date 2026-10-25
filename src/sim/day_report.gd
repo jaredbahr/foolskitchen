@@ -2,6 +2,10 @@ class_name DayReport
 extends RefCounted
 ## Plain end-of-day results, independent of the ledger, clock and scene tree.
 
+const FINANCING_CATEGORIES: Array[StringName] = [
+	Ledger.BANK_LOAN, Ledger.LOAN_INTEREST, Ledger.LOAN_REPAYMENT,
+]
+
 var day: int = 1
 var income: Dictionary = {}
 var costs: Dictionary = {}
@@ -38,9 +42,16 @@ func total_costs() -> int:
 	return _sum(costs)
 
 
-## Returns income minus costs; a loss is negative.
+## Full financial cash movement, including loans, interest and repayments.
+## Kept for existing accounting callers and decoded historical reports.
 func profit() -> int:
 	return total_income() - total_costs()
+
+
+## Shop performance before financing. Borrowing cannot turn a loss into profit,
+## and paying back principal does not make the shop's operations look worse.
+func operating_profit() -> int:
+	return _operating_sum(income) - _operating_sum(costs)
 
 
 ## Returns the most-sold recipe, breaking ties by its alphabetical id.
@@ -140,6 +151,14 @@ static func _sum(counts: Dictionary) -> int:
 	var total: int = 0
 	for value: Variant in counts.values():
 		total += int(value)
+	return total
+
+
+static func _operating_sum(counts: Dictionary) -> int:
+	var total: int = 0
+	for key: Variant in counts:
+		if not FINANCING_CATEGORIES.has(StringName(str(key))):
+			total += int(counts[key])
 	return total
 
 

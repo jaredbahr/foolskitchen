@@ -22,6 +22,9 @@ func settle_day(ledger: Ledger, day: int, terms: LoanTuning) -> Dictionary:
 		return {}
 	var operating_profit: int = ledger.day_profit(day)
 	var interest: int = roundi(float(principal) * terms.daily_interest) if principal > 0 else 0
+	if ledger.cash < MIN_CURRENCY + interest:
+		return {}
+	var cash_after_interest: int = ledger.cash - interest
 	var repayment: int = 0
 	if principal > 0 and operating_profit > 0 and terms.repay_share > 0.0:
 		# The ledger has whole dollars. Floor the share, but collect at least $1
@@ -29,6 +32,9 @@ func settle_day(ledger: Ledger, day: int, terms: LoanTuning) -> Dictionary:
 		# float(INT64_MAX) rounds up to 2^63, which floori cannot represent.
 		repayment = mini(principal, operating_profit) if terms.repay_share == 1.0 else mini(principal,
 			maxi(1, floori(float(operating_profit) * terms.repay_share)))
+		# Repayment only uses cash already available after interest; it cannot
+		# create or enlarge the shortfall covered by an automatic advance.
+		repayment = mini(repayment, maxi(0, cash_after_interest))
 	# Preflight every signed operation before changing the ledger or account.
 	# Even two individually representable charges can overflow when combined.
 	if interest > MAX_CURRENCY - repayment:
