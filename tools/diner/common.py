@@ -25,6 +25,7 @@ MATERIAL_SOURCES = {
     "dark": ("wall.glb", "metalDark"),
     "cream": ("bathroomCabinetDrawer.glb", "carpetWhite"),
 }
+EMISSIVE_STRENGTH = 0.35
 
 
 def sha256(path: Path) -> str:
@@ -183,6 +184,7 @@ class Builder:
         original = next(m for m in doc["materials"] if m["name"] == material_name)
         pbr = original["pbrMetallicRoughness"]
         colour = tuple(pbr["baseColorFactor"])
+        emission: dict[str, Any] | None = None
         material = self.bpy.data.materials.new(material_name + ("_emissive" if emissive else ""))
         material.use_nodes = True
         material.diffuse_color = colour
@@ -192,12 +194,21 @@ class Builder:
         node.inputs["Metallic"].default_value = pbr.get("metallicFactor", 1)
         node.inputs["Roughness"].default_value = pbr.get("roughnessFactor", 1)
         if emissive:
-            node.inputs["Emission Color"].default_value = colour
-            node.inputs["Emission Strength"].default_value = 1.0
+            # Reuse the kit's exact carpet red factor without whitening it.
+            # The reduced strength adds a restrained glow while keeping the
+            # base material and emitted hue unchanged.
+            emission_colour = tuple(pbr["baseColorFactor"])
+            node.inputs["Emission Color"].default_value = emission_colour
+            node.inputs["Emission Strength"].default_value = EMISSIVE_STRENGTH
+            emission = {
+                "color": list(emission_colour),
+                "strength": EMISSIVE_STRENGTH,
+            }
         self.materials[token] = material
         self.material_provenance[token] = {
             "source": path.relative_to(self.repo).as_posix(), "source_sha256": sha256(path),
             "material": material_name, "pbr": pbr, "emissive": emissive,
+            "emission": emission,
         }
         return material
 
