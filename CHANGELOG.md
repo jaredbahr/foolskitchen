@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- Set each staff member's job priorities at any time; changes guide their next task without interrupting current work. (#137)
 - Choose from a wider furniture catalogue with working benches and bar stools, category tabs and real item previews. (#135)
 - The bank covers closing shortfalls with an automatic loan; see repayments and interest, and pay it off before making big purchases. (#134)
 - Cooks, servers, the owner and guests use matching animated Kenney characters, with a chef hat, working and sitting poses, and head-height mood indicators. (#133)
