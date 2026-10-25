@@ -248,7 +248,7 @@ static func _valid_clearance(clearance: Dictionary) -> bool:
 			or float(clearance["seated_head_clearance"]) < 0.02 \
 			or not _integer_equals(clearance.get("intersecting_triangles"), 0, 0, 0) \
 			or clearance.get("head_center_inside_seat") != false \
-			or clearance.get("backrest_at_head_height") != true \
+			or clearance.get("seat_geometry_measured") != true \
 			or not _integer_value(clearance.get("head_vertices"), 1, 1000000) \
 			or clearance.get("measurement_provenance") != SEAT_CLEARANCE_PROVENANCE:
 		return false

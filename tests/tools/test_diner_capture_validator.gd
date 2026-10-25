@@ -163,7 +163,7 @@ func _write_pair(frame: int) -> void:
 			"head_world_bounds": {"min": [0.1, 0.9, 0.2], "max": [0.3, 1.1, 0.4]},
 			"head_screen_bounds": {"x": 100.0, "y": 90.0, "width": 20.0, "height": 26.0},
 			"seated_head_clearance": 0.03, "intersecting_triangles": 0,
-			"head_center_inside_seat": false, "backrest_at_head_height": true, "head_vertices": 24,
+			"head_center_inside_seat": false, "seat_geometry_measured": true, "head_vertices": 24,
 			"measurement_provenance": PROVENANCE}
 		var actor: Dictionary = {"id": 7, "role": "customer", "furnishing_definition": "diner_booth",
 			"furnishing": 20, "table": 30, "linked_table": 30, "reservation": 7,

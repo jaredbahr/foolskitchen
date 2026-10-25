@@ -260,7 +260,7 @@ func test_crop_selection_requires_current_posed_head_and_keeps_backrest_and_tabl
 			"provenance":
 				broken["actors"][0]["seat_clearance"]["measurement_provenance"] = "rest pose estimate"
 			"no_backrest":
-				broken["actors"][0]["seat_clearance"]["backrest_at_head_height"] = false
+				broken["actors"][0]["seat_clearance"]["seat_geometry_measured"] = false
 				broken["actors"][0]["seat_clearance"]["seated_head_clearance"] = null
 		assert_false(String(REVIEW.seated_crop_selection(broken).get("error", "")).is_empty(), change + " fails closed")
 
@@ -274,7 +274,7 @@ func _crop_selection_fixture() -> Dictionary:
 			"seat_clearance": {"guest_id": row["id"], "furnishing_id": row["seat"], "table_item_id": 10,
 				"head_world_bounds": {"min": [0.0, 0.0, 0.0], "max": [0.2, 0.2, 0.2]},
 				"head_screen_bounds": {"x": row["x"], "y": row["y"], "width": 30.0, "height": 40.0},
-				"seated_head_clearance": 0.025, "backrest_at_head_height": true, "intersecting_triangles": 0, "head_center_inside_seat": false,
+				"seated_head_clearance": 0.025, "seat_geometry_measured": true, "intersecting_triangles": 0, "head_center_inside_seat": false,
 				"head_vertices": 8, "measurement_provenance": REVIEW.POSED_HEAD_PROVENANCE}})
 	var items: Array[Dictionary] = []
 	for row: Dictionary in [{"id": 11, "definition": "diner_booth", "rect": [100, 180, 140, 120]},

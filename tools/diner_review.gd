@@ -392,7 +392,7 @@ static func valid(state: Dictionary, frame: int, fixture: Dictionary) -> bool:
 				or not _bounds_valid(actor.get("bounds", {})):
 			return false
 		if measurement.get("guest_id") != actor.get("id") or measurement.get("furnishing_id") != actor.get("furnishing") \
-				or measurement.get("table_item_id") != actor.get("table") or not _seated_measurement_valid(measurement, false) \
+				or measurement.get("table_item_id") != actor.get("table") or not _seated_measurement_valid(measurement) \
 				or not _crop_head_rect_valid(measurement.get("head_screen_bounds", {})):
 			return false
 		if notice_rect.intersects(_rect(actor["bounds"])):
@@ -604,15 +604,14 @@ static func _seat_clearance(person: PersonView, prop: PropView, camera: Camera3D
 		return {"error": "actual posed head is outside the capture viewport"}
 	var rect: Array = screen["rect"]
 	var clearance: float = measured["clearance"]
-	if is_nan(clearance) or clearance == -INF:
+	if not is_finite(clearance):
 		return {"error": "native seat clearance is not a valid distance"}
 	return {"error": "", "guest_id": guest_id, "furnishing_id": furnishing_id,
 		"table_item_id": table_id, "head_world_bounds": {
 			"min": [bounds.position.x, bounds.position.y, bounds.position.z],
 			"max": [bounds.end.x, bounds.end.y, bounds.end.z]},
 		"head_screen_bounds": {"x": rect[0], "y": rect[1], "width": rect[2], "height": rect[3]},
-		"seated_head_clearance": clearance if is_finite(clearance) else null,
-		"backrest_at_head_height": is_finite(clearance),
+		"seated_head_clearance": clearance, "seat_geometry_measured": true,
 		"intersecting_triangles": measured["intersecting_triangles"],
 		"head_center_inside_seat": measured["head_center_inside_seat"],
 		"head_vertices": measured["head_vertices"], "measurement_provenance": measured["provenance"],
@@ -777,7 +776,7 @@ static func seated_crop_selection(state: Dictionary) -> Dictionary:
 				or measurement.get("guest_id") != actor.get("id") \
 				or measurement.get("furnishing_id") != actor.get("furnishing") \
 				or measurement.get("table_item_id") != actor.get("table") \
-				or not _seated_measurement_valid(measurement, true) or not _crop_head_rect_valid(head_data):
+				or not _seated_measurement_valid(measurement) or not _crop_head_rect_valid(head_data):
 			return failure
 		var head: Rect2 = Rect2(float(head_data["x"]), float(head_data["y"]), float(head_data["width"]), float(head_data["height"]))
 		var furnishing: Dictionary = _crop_item(items, int(actor["furnishing"]))
@@ -816,7 +815,7 @@ static func seated_crop_image(source: Image, region: Rect2i) -> Image:
 	return result
 
 
-static func _seated_measurement_valid(measurement: Dictionary, require_backrest: bool) -> bool:
+static func _seated_measurement_valid(measurement: Dictionary) -> bool:
 	var clearance: Variant = measurement.get("seated_head_clearance")
 	var world: Dictionary = measurement.get("head_world_bounds", {})
 	var low: Array = world.get("min", [])
@@ -831,12 +830,8 @@ static func _seated_measurement_valid(measurement: Dictionary, require_backrest:
 		if not (low[axis] is float or low[axis] is int) or not (high[axis] is float or high[axis] is int) \
 				or not is_finite(float(low[axis])) or not is_finite(float(high[axis])) or float(high[axis]) <= float(low[axis]):
 			return false
-	if measurement.get("backrest_at_head_height") == true:
-		return (clearance is float or clearance is int) and is_finite(float(clearance)) and float(clearance) >= 0.02
-	# Root serializes this explicit result only for the helper's positive INF:
-	# no rear triangles at head height. Missing/error/NaN results never use null.
-	return not require_backrest and measurement.get("backrest_at_head_height") == false \
-		and measurement.has("seated_head_clearance") and clearance == null
+	return measurement.get("seat_geometry_measured") == true \
+		and (clearance is float or clearance is int) and is_finite(float(clearance)) and float(clearance) >= 0.02
 
 
 static func _crop_head_rect_valid(data: Dictionary) -> bool:
