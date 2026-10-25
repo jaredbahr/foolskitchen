@@ -97,13 +97,18 @@ static func prepare(main: Node, context_root: Node) -> Dictionary:
 	mini.name = "ScaleMini"
 	mini.set_look(&"owner")
 	stage.add_child(mini)
-	mini.position = Vector3(3.45, 0.0, 2.55)
+	mini.position = Vector3(3.45, 0.0, 3.0)
 	mini.face_direction(Vector3.FORWARD)
 	mini.set_playback_speed(0.0)
-	_label(stage, "ScaleLabel", "MINI CHARACTER\nshared scale", Vector3(3.45, 1.1, 2.55))
+	_label(stage, "ScaleLabel", "MINI CHARACTER\nshared scale", Vector3(4.35, 0.6, 3.0))
 	_notice(main, "Six made pieces beside unchanged Kenney references; native Mini Character for scale.\n" + NOTICE)
 	_comparison_visibility(shop, false)
-	_camera(rig, Vector2(3.45, 2.65), 180.0, 5.5)
+	_camera(rig, Vector2(3.45, 3.1), 180.0, 5.5)
+	var camera: Camera3D = rig.get_node("Camera3D") as Camera3D
+	# The capture camera is fixed. Native text planes face it directly, avoiding
+	# billboard rendering's conservative cubical culling bounds around each label.
+	for label: Label3D in stage.find_children("*Label", "Label3D", true, false):
+		label.global_basis = camera.global_basis
 	result["baseline"] = snapshot(main, context_root)
 	result["lights"] = _lights(main)
 	return result
@@ -194,7 +199,9 @@ static func furnish(main: Node, context_root: Node, fixture: Dictionary) -> Dict
 		prop.position = Vector3([1.0, 2.05, 4.7, 5.8][index - 2], 0.0, 2.75)
 		prop.rotation.y = PI
 		wall_stage.add_child(prop)
-	_camera(main.get_node("CameraRig") as CameraRig, Vector2(3.1, 3.5), 45.0, 5.4)
+	# Aim farther toward the back wall: the entire corner moves down within the
+	# image, clearing both the native HUD and the strict eight-pixel image margin.
+	_camera(main.get_node("CameraRig") as CameraRig, Vector2(2.5, 2.9), 45.0, 5.4)
 	shop._process(0.0)
 	_notice(main, "Furnished diner: six explicit arrivals reached real reserved booth/stool seats.\n" + NOTICE)
 	result.merge({"owner_progress_fixture": owner, "cash_grant": grant, "purchase_total": total,
@@ -324,7 +331,8 @@ static func valid(state: Dictionary, frame: int, fixture: Dictionary) -> bool:
 		var pairs: Array = state.get("pairs", [])
 		var mini: Dictionary = state.get("scale_mini", {})
 		if pairs.size() != IDS.size() or mini.get("visible") != true or mini.get("role") != "owner" \
-				or mini.get("model") != String(PersonPresentation.OWNER_MODEL) or mini.get("scale") != ArtScale.CHARACTER_SCALE \
+				or mini.get("model") != String(PersonPresentation.OWNER_MODEL) \
+				or mini.get("scale") != (Vector3.ONE * ArtScale.CHARACTER_SCALE).x \
 				or mini.get("source") != PersonPresentation.model_path_for(&"owner") or not _bounds_valid(mini.get("bounds", {})):
 			return false
 		var pair_rects: Array[Rect2] = []
@@ -420,7 +428,7 @@ static func _label(parent: Node3D, name: String, text: String, position: Vector3
 	label.font = THEME.default_font if THEME.default_font != null else ThemeDB.fallback_font
 	label.font_size = 32
 	label.pixel_size = 0.003
-	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	label.billboard = BaseMaterial3D.BILLBOARD_DISABLED
 	label.position = position
 	parent.add_child(label)
 
@@ -512,10 +520,9 @@ static func _screen_bounds(bounds: AABB, camera: Camera3D) -> Dictionary:
 static func _label_evidence(label: Label3D, camera: Camera3D) -> Dictionary:
 	if label == null:
 		return {}
-	# Billboard geometry uses the current camera basis, not Label3D's local basis.
-	var transform: Transform3D = Transform3D(camera.global_basis, label.global_position)
 	return {"text": label.text, "visible": label.is_visible_in_tree(),
-		"bounds": _screen_bounds(transform * label.get_aabb(), camera)}
+		"billboard": int(label.billboard), "faces_camera": label.global_basis.is_equal_approx(camera.global_basis),
+		"bounds": _screen_bounds(label.global_transform * label.get_aabb(), camera)}
 
 
 static func _lights(main: Node) -> Array[String]:
@@ -542,7 +549,9 @@ static func _dimensions_match(actual: Array, expected: Array) -> bool:
 
 
 static func _label_valid(label: Dictionary, text: String) -> bool:
-	return label.get("text") == text and label.get("visible") == true and _bounds_valid(label.get("bounds", {}))
+	return label.get("text") == text and label.get("visible") == true \
+		and label.get("billboard") == int(BaseMaterial3D.BILLBOARD_DISABLED) and label.get("faces_camera") == true \
+		and _bounds_valid(label.get("bounds", {}))
 
 
 static func _bounds_valid(bounds: Dictionary) -> bool:
