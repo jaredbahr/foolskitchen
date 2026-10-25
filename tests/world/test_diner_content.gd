@@ -120,7 +120,51 @@ func test_wall_model_wrappers_keep_bounded_geometry_and_chalkboard_uses_theme_te
 				assert_eq(label.font, shared_font, "chalkboard uses the shared theme's actual font resource")
 				assert_eq(label.text.split("\n").size(), 3, "chalkboard menu keeps three real text lines")
 				assert_false(label.text.contains("$"), "decorative text never advertises prices disconnected from Menu")
+				var text_front: Vector3 = label.transform.basis * Vector3.BACK
+				var text_up: Vector3 = label.transform.basis * Vector3.UP
+				assert_almost_eq(text_front.x, 0.0)
+				assert_almost_eq(text_front.y, 0.0)
+				assert_almost_eq(text_front.z, -1.0, 0.0001,
+					"chalkboard text faces the wall wrapper's -Z front")
+				assert_almost_eq(text_up.x, 0.0)
+				assert_almost_eq(text_up.y, 1.0, 0.0001, "chalkboard text remains upright")
+				assert_almost_eq(text_up.z, 0.0)
 		instance.free()
+
+
+func test_open_sign_named_glyph_bounds_read_open_from_its_negative_z_front() -> void:
+	var packed: PackedScene = load("res://assets/made/diner/diner_open_sign.glb") as PackedScene
+	assert_not_null(packed, "real OPEN GLB loads for the front-facing glyph check")
+	if packed == null:
+		return
+	var instance: Node = packed.instantiate()
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	tree.root.add_child(instance)
+	var centers: Dictionary[String, float] = {"o": 0.0, "p": 0.0, "e": 0.0, "n": 0.0}
+	var counts: Dictionary[String, int] = {"o": 0, "p": 0, "e": 0, "n": 0}
+	for child: Node in instance.get_children():
+		var mesh_instance: MeshInstance3D = child as MeshInstance3D
+		if mesh_instance == null or mesh_instance.mesh == null:
+			continue
+		var node_name: String = String(mesh_instance.name).to_lower()
+		for letter: String in ["o", "p", "e", "n"]:
+			if not node_name.begins_with("open_sign_%s_stroke_" % letter):
+				continue
+			var mesh_bounds: AABB = mesh_instance.transform * mesh_instance.get_aabb()
+			centers[letter] = float(centers[letter]) + mesh_bounds.get_center().x
+			counts[letter] = int(counts[letter]) + 1
+			break
+	for letter: String in ["o", "p", "e", "n"]:
+		assert_true(int(counts[letter]) > 0, "OPEN GLB retains named %s stroke geometry" % letter.to_upper())
+		if int(counts[letter]) > 0:
+			centers[letter] = float(centers[letter]) / float(counts[letter])
+	# From the -Z face, screen-right is local -X; therefore O must sit at a
+	# greater local X than N for the physical sign to read left-to-right.
+	assert_true(float(centers["o"]) > float(centers["p"]))
+	assert_true(float(centers["p"]) > float(centers["e"]))
+	assert_true(float(centers["e"]) > float(centers["n"]))
+	tree.root.remove_child(instance)
+	instance.free()
 
 
 func _assert_model_contract(item_id: String, footprint: Vector2i, expected_height: float,
