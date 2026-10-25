@@ -756,10 +756,13 @@ func test_shared_layers_wait_for_normal_morning_save_then_reload_with_poses_pain
 	assert_eq(GameState._capture_save(), rng)
 	var table_id: int = table.id
 	var rug_id: int = rug.id
+	var expected_tray_level: int = int(_main.get("tray_level"))
 	var seats: Array[Vector2i] = table.seat_cells.duplicate()
 	var path: Array[Vector2i] = _world().grid.find_path(_world().grid.entries()[0], seats[0])
 	assert_false(path.is_empty())
 	var shop: Dictionary = _editor().to_dict()
+	var expected_shop_wire: Dictionary = shop.duplicate(true)
+	expected_shop_wire["tray_level"] = expected_tray_level
 	var sim: RestaurantSim = _main.get("sim") as RestaurantSim
 	sim.spawner.min_gap = 100000
 	sim.spawner.max_gap = 100000
@@ -773,7 +776,7 @@ func test_shared_layers_wait_for_normal_morning_save_then_reload_with_poses_pain
 	assert_true(Clock.sim.next_day())
 	assert_eq(Clock.sim.day, 2)
 	var document: Dictionary = JSON.parse_string(_saved_build_text())
-	assert_eq(document["data"]["shop"], JSON.parse_string(JSON.stringify(shop)))
+	assert_eq(document["data"]["shop"], JSON.parse_string(JSON.stringify(expected_shop_wire)))
 	var books: Dictionary = Economy._capture_save()
 	var hiring_rng: int = GameState.rng(&"hiring").state
 	_close_main()
@@ -784,6 +787,7 @@ func test_shared_layers_wait_for_normal_morning_save_then_reload_with_poses_pain
 	_disable_frame_drivers()
 	assert_eq(Clock.sim.day, 2)
 	assert_eq(Clock.sim.phase, SimClock.Phase.MORNING)
+	assert_eq(int(_main.get("tray_level")), expected_tray_level)
 	assert_eq(_editor().to_dict(), shop)
 	assert_eq(Economy._capture_save(), books)
 	assert_eq(GameState.rng(&"hiring").state, hiring_rng)
