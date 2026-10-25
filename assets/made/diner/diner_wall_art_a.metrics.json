@@ -1,0 +1,140 @@
+{
+  "asset": "diner_wall_art_a",
+  "format": "glTF 2 GLB",
+  "metres_per_unit": 1,
+  "up": "+Y",
+  "front": "-Z",
+  "origin": "base centre",
+  "budget_exclusive": 300,
+  "triangles": 100,
+  "aabb_min": [
+    -0.3149999976158142,
+    0.0,
+    -0.03225000886681711
+  ],
+  "aabb_max": [
+    0.3149999976158142,
+    0.4699999950826168,
+    0.03225000202655792
+  ],
+  "dimensions": [
+    0.6299999952316284,
+    0.4699999950826168,
+    0.06450001089337504
+  ],
+  "sha256": "23a4b61dbe967002b46a6289f233afa37ec96cd3d220960a3a112b62fe82869a",
+  "references": [
+    {
+      "path": "assets/kenney/furniture/wallWindow.glb",
+      "triangles": 108,
+      "aabb_min": [
+        0.0,
+        0.0,
+        -0.06955000013113022
+      ],
+      "aabb_max": [
+        1.0,
+        1.2895317077636719,
+        0.01954999938607216
+      ],
+      "dimensions": [
+        1.0,
+        1.2895317077636719,
+        0.08909999951720238
+      ],
+      "sha256": "166a10fddb8a78d942bc2791186913f7015dfee8501d20efd7a7b8f196fc5c3e"
+    },
+    {
+      "path": "assets/kenney/furniture/paneling.glb",
+      "triangles": 40,
+      "aabb_min": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "aabb_max": [
+        0.5,
+        0.594765841960907,
+        0.030000001192092896
+      ],
+      "dimensions": [
+        0.5,
+        0.594765841960907,
+        0.030000001192092896
+      ],
+      "sha256": "69234bb71f54b0241ef6b78c3c7aa8aa855aae745475645f9adec4895296a96c"
+    }
+  ],
+  "materials": {
+    "wood": {
+      "source": "assets/kenney/furniture/benchCushion.glb",
+      "source_sha256": "5186ad938f8b9eff255361fd1fdc48a81f08c318161cde27c93753ab95a2d354",
+      "material": "wood",
+      "pbr": {
+        "baseColorFactor": [
+          0.8962264,
+          0.6015712,
+          0.3931559,
+          1
+        ],
+        "metallicFactor": 0,
+        "roughnessFactor": 1
+      },
+      "emissive": false
+    },
+    "cream": {
+      "source": "assets/kenney/furniture/bathroomCabinetDrawer.glb",
+      "source_sha256": "f32d09c6dab20fe823d238310f75ce81f24e893a91c2078b12efd3f7fe6c6b10",
+      "material": "carpetWhite",
+      "pbr": {
+        "baseColorFactor": [
+          0.972549,
+          1,
+          1,
+          1
+        ],
+        "metallicFactor": 0,
+        "roughnessFactor": 1
+      },
+      "emissive": false
+    },
+    "red": {
+      "source": "assets/kenney/furniture/benchCushion.glb",
+      "source_sha256": "5186ad938f8b9eff255361fd1fdc48a81f08c318161cde27c93753ab95a2d354",
+      "material": "carpet",
+      "pbr": {
+        "baseColorFactor": [
+          0.9433962,
+          0.367175967,
+          0.3426486,
+          1
+        ],
+        "metallicFactor": 0,
+        "roughnessFactor": 1
+      },
+      "emissive": false
+    },
+    "chrome": {
+      "source": "assets/kenney/furniture/lampWall.glb",
+      "source_sha256": "a9679ecd3be05731846f22ade97c37069598ca7a06dd9319f50230e63a1ea83c",
+      "material": "metal",
+      "pbr": {
+        "baseColorFactor": [
+          0.74061054,
+          0.822866738,
+          0.8396226,
+          1
+        ],
+        "metallicFactor": 0,
+        "roughnessFactor": 1
+      },
+      "emissive": false
+    }
+  },
+  "source_sha256": {
+    "tools/diner/build_diner.py": "734137560a4945cb385b4ad960c2d3ae592f71fde0a6bbc588d5f8f5f8920171",
+    "tools/diner/common.py": "f4c0dc2e09e644dcb755f300db4a83f292e2b004e8950165cc05dcda0c8da1b0",
+    "tools/diner/furniture.py": "2827a9b847fa6b1f729d4f22a9dbcecaf3c63e9b4cc0be53ebfbbfa808b1a71d",
+    "tools/diner/wall_pieces.py": "f0140fc4ca2ba0efb165d7bd1ad6f3eee033977c9587840492cb8b8d223e39b2"
+  }
+}

@@ -1,0 +1,108 @@
+{
+  "asset": "diner_stool",
+  "format": "glTF 2 GLB",
+  "metres_per_unit": 1,
+  "up": "+Y",
+  "front": "-Z",
+  "origin": "base centre",
+  "budget_exclusive": 1500,
+  "triangles": 432,
+  "aabb_min": [
+    -0.1327199935913086,
+    0.0,
+    -0.1327199935913086
+  ],
+  "aabb_max": [
+    0.1327199935913086,
+    0.4350000098347664,
+    0.1327199935913086
+  ],
+  "dimensions": [
+    0.2654399871826172,
+    0.4350000098347664,
+    0.2654399871826172
+  ],
+  "sha256": "0cfb9f2d43d146285dc549cca91ce8b00eb62ec660da42bdd536eb616c50821d",
+  "references": [
+    {
+      "path": "assets/kenney/furniture/stoolBar.glb",
+      "triangles": 176,
+      "aabb_min": [
+        0.0,
+        0.0,
+        -0.2298777848482132
+      ],
+      "aabb_max": [
+        0.2654399871826172,
+        0.4350000023841858,
+        0.0
+      ],
+      "dimensions": [
+        0.2654399871826172,
+        0.4350000023841858,
+        0.2298777848482132
+      ],
+      "sha256": "a86167a9f92401a61fec7e509ad089ecc552d0f299743add3aeb919acb24e341"
+    },
+    {
+      "path": "assets/kenney/furniture/lampWall.glb",
+      "triangles": 42,
+      "aabb_min": [
+        -0.11331768751144408,
+        0.0,
+        0.0
+      ],
+      "aabb_max": [
+        0.11331768751144408,
+        0.09279999792575835,
+        0.15033600389957427
+      ],
+      "dimensions": [
+        0.22663537502288816,
+        0.09279999792575835,
+        0.15033600389957427
+      ],
+      "sha256": "a9679ecd3be05731846f22ade97c37069598ca7a06dd9319f50230e63a1ea83c"
+    }
+  ],
+  "materials": {
+    "red": {
+      "source": "assets/kenney/furniture/benchCushion.glb",
+      "source_sha256": "5186ad938f8b9eff255361fd1fdc48a81f08c318161cde27c93753ab95a2d354",
+      "material": "carpet",
+      "pbr": {
+        "baseColorFactor": [
+          0.9433962,
+          0.367175967,
+          0.3426486,
+          1
+        ],
+        "metallicFactor": 0,
+        "roughnessFactor": 1
+      },
+      "emissive": false
+    },
+    "chrome": {
+      "source": "assets/kenney/furniture/lampWall.glb",
+      "source_sha256": "a9679ecd3be05731846f22ade97c37069598ca7a06dd9319f50230e63a1ea83c",
+      "material": "metal",
+      "pbr": {
+        "baseColorFactor": [
+          0.74061054,
+          0.822866738,
+          0.8396226,
+          1
+        ],
+        "metallicFactor": 0,
+        "roughnessFactor": 1
+      },
+      "emissive": false
+    }
+  },
+  "source_sha256": {
+    "tools/diner/build_diner.py": "734137560a4945cb385b4ad960c2d3ae592f71fde0a6bbc588d5f8f5f8920171",
+    "tools/diner/common.py": "f4c0dc2e09e644dcb755f300db4a83f292e2b004e8950165cc05dcda0c8da1b0",
+    "tools/diner/furniture.py": "2827a9b847fa6b1f729d4f22a9dbcecaf3c63e9b4cc0be53ebfbbfa808b1a71d",
+    "tools/diner/wall_pieces.py": "f0140fc4ca2ba0efb165d7bd1ad6f3eee033977c9587840492cb8b8d223e39b2"
+  }
+}
