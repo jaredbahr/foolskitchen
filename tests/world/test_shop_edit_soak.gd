@@ -217,55 +217,61 @@ func _buy_and_sell_furniture(main: Node, day: int) -> bool:
 	for origin: Vector2i in candidates:
 		if checked >= MAX_EDIT_CHECKS:
 			break
-		checked += 1
-		var turns: int = _edit_rng.randi_range(0, 3)
-		var check: EditCheck = editor.check_buy(TEMP_ITEM_ID, origin, turns)
-		if not check.ok or not check.unreachable.is_empty():
-			continue
-		if not _buy_keeps_access(world.grid, definition, origin, turns):
-			continue
-		var before_buy: Dictionary = _edit_state()
-		var bought: bool = main.call("shop_buy", TEMP_ITEM_ID, origin, turns)
-		assert_true(bought, "day %d: a prechecked purchase succeeds" % day)
-		if not bought:
-			return false
-		_assert_book_delta(before_buy, -definition.price)
-		_assert_edit_context(main, before_buy)
-		_upgrade_delta_today -= definition.price
-		_edit_actions_today += 1
-		var purchased: PlacedItem = null
-		var additions: int = 0
-		for item: PlacedItem in world.grid.items():
-			if not previous_ids.has(item.id):
-				purchased = item
-				additions += 1
-		assert_eq(additions, 1, "a purchase adds exactly one real item")
-		assert_eq(world.grid.items().size(), previous_ids.size() + 1)
-		if additions != 1 or purchased == null:
-			return false
-		assert_eq((purchased.def as ItemDef).id, TEMP_ITEM_ID)
-		assert_eq(purchased.origin, origin)
-		assert_eq(purchased.quarter_turns, turns)
-		var sell_check: EditCheck = editor.check_sell(purchased.id)
-		assert_true(sell_check.ok, "the added chair can be sold")
-		assert_true(sell_check.unreachable.is_empty())
-		if not sell_check.ok or not sell_check.unreachable.is_empty():
-			return false
-		var before_sell: Dictionary = _edit_state()
-		var expected_refund: int = floori(float(definition.price) / 2.0)
-		var refund: int = main.call("shop_sell", purchased.id)
-		assert_eq(refund, expected_refund, "the sale refunds exactly half the unit price, rounded down")
-		if refund < 0:
-			return false
-		_assert_book_delta(before_sell, expected_refund)
-		_assert_edit_context(main, before_sell)
-		_upgrade_delta_today += expected_refund
-		_edit_actions_today += 1
-		assert_null(world.grid.item(purchased.id))
-		assert_eq(editor.to_dict(), before_pair, "buy/sell preserves every existing placement and its order")
-		print("EDIT_SOAK_TRADE day=%d price=%d refund=%d checked=%d" % [day, definition.price, refund, checked])
-		return true
-	fail("day %d: no legal, affordable, access-preserving decor purchase in %d checks" % [day, checked])
+		# Facing is now part of a chair's legal pose. Try every orientation at
+		# each seeded origin rather than discarding it after one random facing.
+		var first_turn: int = _edit_rng.randi_range(0, 3)
+		for offset: int in range(4):
+			if checked >= MAX_EDIT_CHECKS:
+				break
+			checked += 1
+			var turns: int = (first_turn + offset) % 4
+			var check: EditCheck = editor.check_buy(TEMP_ITEM_ID, origin, turns)
+			if not check.ok or not check.unreachable.is_empty():
+				continue
+			if not _buy_keeps_access(world.grid, definition, origin, turns):
+				continue
+			var before_buy: Dictionary = _edit_state()
+			var bought: bool = main.call("shop_buy", TEMP_ITEM_ID, origin, turns)
+			assert_true(bought, "day %d: a prechecked purchase succeeds" % day)
+			if not bought:
+				return false
+			_assert_book_delta(before_buy, -definition.price)
+			_assert_edit_context(main, before_buy)
+			_upgrade_delta_today -= definition.price
+			_edit_actions_today += 1
+			var purchased: PlacedItem = null
+			var additions: int = 0
+			for item: PlacedItem in world.grid.items():
+				if not previous_ids.has(item.id):
+					purchased = item
+					additions += 1
+			assert_eq(additions, 1, "a purchase adds exactly one real item")
+			assert_eq(world.grid.items().size(), previous_ids.size() + 1)
+			if additions != 1 or purchased == null:
+				return false
+			assert_eq((purchased.def as ItemDef).id, TEMP_ITEM_ID)
+			assert_eq(purchased.origin, origin)
+			assert_eq(purchased.quarter_turns, turns)
+			var sell_check: EditCheck = editor.check_sell(purchased.id)
+			assert_true(sell_check.ok, "the added chair can be sold")
+			assert_true(sell_check.unreachable.is_empty())
+			if not sell_check.ok or not sell_check.unreachable.is_empty():
+				return false
+			var before_sell: Dictionary = _edit_state()
+			var expected_refund: int = floori(float(definition.price) / 2.0)
+			var refund: int = main.call("shop_sell", purchased.id)
+			assert_eq(refund, expected_refund, "the sale refunds exactly half the unit price, rounded down")
+			if refund < 0:
+				return false
+			_assert_book_delta(before_sell, expected_refund)
+			_assert_edit_context(main, before_sell)
+			_upgrade_delta_today += expected_refund
+			_edit_actions_today += 1
+			assert_null(world.grid.item(purchased.id))
+			assert_eq(editor.to_dict(), before_pair, "buy/sell preserves every existing placement and its order")
+			print("EDIT_SOAK_TRADE day=%d price=%d refund=%d checked=%d" % [day, definition.price, refund, checked])
+			return true
+	fail("day %d: no legal, affordable, access-preserving chair purchase in %d checks" % [day, checked])
 	return false
 
 

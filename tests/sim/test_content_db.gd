@@ -7,7 +7,7 @@ func test_starter_data_loads_without_validation_errors() -> void:
 	assert_eq(db.load_all().size(), 0)
 	assert_eq(db.ingredients().size(), 7)
 	assert_eq(db.recipes().size(), 4)
-	assert_eq(db.items().size(), 9)
+	assert_eq(db.items().size(), 34)
 
 
 func test_lookups_find_each_kind_and_unknown_ids_return_null() -> void:
@@ -39,11 +39,16 @@ func test_lists_are_sorted_and_do_not_expose_index_arrays() -> void:
 	for definition: ItemDef in db.items():
 		item_ids.append(definition.id)
 	assert_eq(item_ids, [
-		&"chair", &"door", &"fridge", &"pass_counter", &"potted_plant", &"prep_counter", &"sink", &"stove", &"table_2",
+		&"bar_counter", &"bar_stool", &"bench", &"bookcase_open_low", &"chair", &"cloth_table",
+		&"coat_rack_standing", &"cross_table", &"cushioned_bench", &"door", &"fridge", &"glass_table",
+		&"lounge_chair", &"modern_chair", &"modern_frame_chair", &"pass_counter", &"plant_small_1",
+		&"plant_small_2", &"plant_small_3", &"potted_plant", &"prep_counter", &"round_table",
+		&"rounded_chair", &"rug_rectangle", &"rug_round", &"rug_square", &"side_table", &"sink",
+		&"speaker", &"square_bar_stool", &"stove", &"table_2", &"television_vintage", &"wooden_chair",
 	])
 	var copy: Array[ItemDef] = db.items()
 	copy.clear()
-	assert_eq(db.items().size(), 9)
+	assert_eq(db.items().size(), 34)
 
 
 func test_reloading_does_not_duplicate_definitions() -> void:
@@ -51,7 +56,7 @@ func test_reloading_does_not_duplicate_definitions() -> void:
 	assert_eq(db.load_all().size(), 0)
 	assert_eq(db.ingredients().size(), 7)
 	assert_eq(db.recipes().size(), 4)
-	assert_eq(db.items().size(), 9)
+	assert_eq(db.items().size(), 34)
 
 
 func test_recursive_resource_discovery_returns_sorted_original_tres_names() -> void:
@@ -64,7 +69,7 @@ func test_recursive_resource_discovery_returns_sorted_original_tres_names() -> v
 		if path.begins_with("res://data/ingredients/") or path.begins_with("res://data/recipes/") \
 				or path.begins_with("res://data/items/"):
 			content_paths += 1
-	assert_eq(content_paths, 20)
+	assert_eq(content_paths, 45)
 	assert_true(paths.has("res://data/ingredients/bun.tres"))
 	assert_true(paths.has("res://data/recipes/burger.tres"))
 	assert_true(paths.has("res://data/items/table_2.tres"))

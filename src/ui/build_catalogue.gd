@@ -201,7 +201,9 @@ func _on_thumbnail_ready(scene: PackedScene, texture: Texture2D) -> void:
 
 func _refresh_swatches() -> void:
 	var row: HBoxContainer = get_node("Panel/Margin/Rows/Scroll/Content/PaintSwatches") as HBoxContainer
-	var definitions: Array[SwatchDef] = _content.swatches() if _content != null else []
+	var definitions: Array[SwatchDef] = []
+	if _content != null:
+		definitions.assign(_content.swatches())
 	var desired: Array[StringName] = []
 	for definition: SwatchDef in definitions:
 		desired.append(definition.id)
@@ -322,9 +324,14 @@ func _fit_panel() -> void:
 	var available: Vector2 = size - Vector2.ONE * EDGE_MARGIN * 2.0 - padding
 	if available.x <= 0.0 or available.y <= 0.0:
 		return
+	# Native containers round their fitted rectangles to pixels. Round the outer
+	# budget down first so a fractional height cap cannot grow past its bound.
+	var panel_budget: Vector2 = Vector2(minf(available.x + padding.x, MAX_PANEL_WIDTH),
+		minf(available.y + padding.y, maxf(96.0, size.y * PANEL_HEIGHT_SHARE))).floor()
+	var limit: Vector2 = panel_budget - padding
+	if limit.x <= 0.0 or limit.y <= 0.0:
+		return
 	_fitting = true
-	var limit: Vector2 = Vector2(minf(available.x, MAX_PANEL_WIDTH - padding.x),
-		minf(available.y, maxf(96.0, size.y * PANEL_HEIGHT_SHARE) - padding.y))
 	var row: GridContainer = content.get_node("Items") as GridContainer
 	var card_width: float = CARD_MINIMUM.x
 	for id: StringName in item_buttons:

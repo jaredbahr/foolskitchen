@@ -304,13 +304,22 @@ func test_native_hud_toggle_survives_refresh_between_mouse_down_and_up() -> void
 func test_native_catalogue_click_consumes_gui_input_and_starts_one_ghost_without_booking() -> void:
 	await _start()
 	assert_true(_main.call("set_build_active", true))
-	assert_true(_mode().begin_buy(&"chair", Vector2i(4, 9)))
+	assert_true(_mode().begin_buy(&"chair", Vector2i(2, 8)))
+	assert_true(_mode().current_check.ok)
 	var catalogue: BuildCatalogue = _main.get_node("Overlay/BuildCatalogue") as BuildCatalogue
 	await _frames(3)
-	var button: Button = catalogue.item_buttons[&"fridge"]
-	var identity: int = button.get_instance_id()
 	var books: Dictionary = Economy.ledger.to_dict()
 	var items: int = _world().grid.items().size()
+	var kitchen: Button = catalogue.category_buttons[&"kitchen"]
+	assert_true(kitchen.is_visible_in_tree())
+	var kitchen_point: Vector2 = kitchen.get_global_rect().get_center()
+	_viewport.push_input(_mouse_event(kitchen_point, true), true)
+	_viewport.push_input(_mouse_event(kitchen_point, false), true)
+	assert_eq(catalogue.selected_category, &"kitchen")
+	await _frames(1)
+	var button: Button = catalogue.item_buttons[&"fridge"]
+	assert_true(button.is_visible_in_tree(), "native clicks target the visible Kitchen card")
+	var identity: int = button.get_instance_id()
 	var point: Vector2 = button.get_global_rect().get_center()
 	assert_true((catalogue.get_node("Panel") as Control).get_global_rect().has_point(point))
 	_viewport.push_input(_mouse_event(point, true), true)
@@ -488,7 +497,7 @@ func test_native_menu_and_build_transitions_cancel_ghost_and_preserve_data_and_a
 	assert_true(catalogue.visible)
 	assert_true(_rig().is_grid_forced())
 	assert_true(_main.call("begin_buy_item", &"chair"))
-	_main.call("update_build_pointer", _project(Vector2i(4, 9)))
+	_main.call("update_build_pointer", _project(Vector2i(2, 8)))
 	assert_true(_mode().has_ghost())
 	assert_true(_mode().current_check.ok)
 	var menu_button: Button = _main.get_node("HUD/Top/Row/Menu") as Button

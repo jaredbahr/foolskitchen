@@ -224,10 +224,11 @@ func test_refused_session_commands_keep_the_ghost_pose_and_actual_reason() -> vo
 	assert_eq(_mode.quarter_turns, 1)
 	assert_eq(_mode.current_check.why, "Session refused move")
 	assert_eq(_snapshot(), before)
-	assert_true(_mode.begin_buy(&"chair", Vector2i(4, 9)))
+	assert_true(_mode.begin_buy(&"chair", Vector2i(2, 8)))
 	assert_false(_mode.commit())
 	assert_eq(_mode.state, BuildMode.State.BUY)
 	assert_eq(_mode.selected_definition.id, &"chair")
+	assert_eq(_mode.origin, Vector2i(2, 8))
 	assert_eq(_mode.current_check.why, "Session refused buy")
 	assert_eq(_snapshot(), before)
 

@@ -250,6 +250,19 @@ func test_null_rebind_removes_old_buttons_and_can_repopulate_before_ready() -> v
 	_catalogue.bind_content(_content)
 	assert_eq(_catalogue.item_buttons.size(), 1)
 	assert_false(_catalogue.is_node_ready())
+	var shipped: ContentDB = ContentDB.new()
+	assert_eq(shipped.load_all(), PackedStringArray())
+	_catalogue.bind_content(shipped)
+	var swatch_count: int = shipped.swatches().size()
+	assert_true(swatch_count > 0)
+	var swatch: Button = _catalogue.swatch_buttons[shipped.swatches()[0].id]
+	_catalogue.bind_content(null)
+	assert_false(is_instance_valid(swatch))
+	assert_true(_catalogue.swatch_buttons.is_empty())
+	assert_eq(_scroll().get_node("Content/PaintSwatches").get_child_count(), 0)
+	_catalogue.bind_content(shipped)
+	assert_eq(_catalogue.swatch_buttons.size(), swatch_count)
+	assert_false(_catalogue.is_node_ready(), "typed clear/rebind also works before native theme readiness")
 
 
 func test_native_mouse_down_refresh_up_requests_once() -> void:
@@ -431,14 +444,21 @@ func test_grid_bounds_at_supported_window_sizes_and_interface_scales() -> void:
 					await tree.process_frame
 				var panel: Control = _catalogue.get_node("Panel") as Control
 				var allowed: Rect2 = _host.get_global_rect().grow(-11.5)
-				assert_true(allowed.encloses(panel.get_global_rect()), "%s at %s/%s" % [category, physical_size, scale_factor])
-				assert_true(panel.size.y <= _host.size.y * BuildCatalogue.PANEL_HEIGHT_SHARE + 0.5)
+				var context: String = "%s at %s/%s panel=%s allowed=%s" % [
+					category, physical_size, scale_factor, panel.get_global_rect(), allowed]
+				assert_true(allowed.encloses(panel.get_global_rect()), context)
+				assert_true(panel.size.y <= _host.size.y * BuildCatalogue.PANEL_HEIGHT_SHARE + 0.5,
+					"%s height=%s cap=%s panel_min=%s scroll_min=%s" % [context, panel.size.y,
+						_host.size.y * BuildCatalogue.PANEL_HEIGHT_SHARE,
+						panel.get_combined_minimum_size(), _scroll().get_combined_minimum_size()])
 				assert_false(_scroll().get_h_scroll_bar().visible, "normal supported sizes need no horizontal scrolling")
 				assert_true((_scroll().get_node("Content/Items") as GridContainer).columns >= 1)
 				for id: StringName in _catalogue.visible_ids():
 					var button: Button = _catalogue.item_buttons[id]
-					assert_true(button.size.x >= button.get_combined_minimum_size().x - 0.5)
-					assert_true(button.size.y >= BuildCatalogue.CARD_MINIMUM.y)
+					assert_true(button.size.x >= button.get_combined_minimum_size().x - 0.5,
+						"%s item=%s size=%s minimum=%s" % [context, id, button.size, button.get_combined_minimum_size()])
+					assert_true(button.size.y >= BuildCatalogue.CARD_MINIMUM.y,
+						"%s item=%s height=%s card_min=%s" % [context, id, button.size.y, BuildCatalogue.CARD_MINIMUM.y])
 					assert_false(button.clip_text)
 					assert_false(button.disabled)
 	window.remove_child(_host)
