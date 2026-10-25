@@ -276,6 +276,117 @@ func test_native_build_input_precedes_selected_owner_keys_and_station_commands()
 	assert_eq(_world().now, 0)
 
 
+func test_native_alt_picks_moves_rotates_and_sells_only_the_covered_rug_at_all_camera_quarters() -> void:
+	await _start(true)
+	var table: PlacedItem = ShopBuilder.items_with_def(_world(), &"table_2")[1]
+	var content: ContentDB = _main.get("content") as ContentDB
+	var rug_def: ItemDef = content.item(&"rug_square")
+	# Explicit purchase-unlock fixture; the gestures do not change progression.
+	_editor().set_owner_level(rug_def.unlock_level)
+	var saved: String = _saved_build_text()
+	assert_true(_main.call("shop_buy", rug_def.id, table.origin, 0))
+	var rug: PlacedItem = _world().grid.item_on_layer(table.origin, ItemDef.PlacementLayer.FLOOR_DECOR)
+	assert_not_null(rug)
+	if rug == null:
+		return
+	assert_eq(rug.cells, table.cells, "the normal furniture fully covers the rug's cells")
+	assert_eq(_saved_build_text(), saved, "buying still waits for the normal morning checkpoint")
+	assert_true(_main.call("set_build_active", true))
+	await _frames(2)
+	var normal: Dictionary = _normal_furniture_state(table)
+	var unchanged: Dictionary = _build_side_effect_state()
+	var view: ShopView = _main.get_node("ShopView") as ShopView
+	var rug_visual: ItemVisual = view.item_nodes[rug.id]
+	var clicked_cell: Vector2i = table.origin + Vector2i.ONE
+	for quarter: int in 4:
+		_rig().initial_yaw_degrees = 45.0 + quarter * 90.0
+		_rig().reset_view()
+		var point: Vector2 = _project(clicked_cell)
+		_assert_world_click_clear_of_gui(point)
+		_native_click(point)
+		assert_eq(_mode().selected_item_id, table.id, "ordinary clicks still prefer normal furniture")
+		_native_key(KEY_ESCAPE)
+		assert_eq(_normal_furniture_state(table), normal)
+		_native_click(point, true)
+		assert_eq(_mode().state, BuildMode.State.MOVE)
+		assert_eq(_mode().selected_item_id, rug.id)
+		assert_eq(_mode().grab_offset, Vector2i.ONE)
+		assert_false(rug_visual.visible)
+		assert_true(view.item_nodes[table.id].visible, "the rug ghost never hides the table or its chairs")
+		_native_key(KEY_R)
+		assert_eq(_mode().quarter_turns, 1)
+		assert_eq(_mode().origin + _mode().grab_offset, clicked_cell)
+		var destination: Vector2i = _mode().origin
+		_native_click(point, true) # Alt on an existing MOVE ghost still commits it.
+		assert_eq(_mode().state, BuildMode.State.IDLE)
+		assert_eq(rug.origin, destination)
+		assert_eq(rug.quarter_turns, 1)
+		assert_eq(_normal_furniture_state(table), normal)
+		assert_eq(_build_side_effect_state(), unchanged)
+		assert_true(_main.call("shop_move", rug.id, table.origin, 0))
+		assert_true(view.item_nodes[rug.id] == rug_visual)
+	var books_before_sale: int = Economy.ledger.entries_for_day(Clock.sim.day).size()
+	var cash_before_sale: int = Economy.cash
+	var point: Vector2 = _project(clicked_cell)
+	_native_click(point, true)
+	assert_eq(_mode().selected_item_id, rug.id)
+	_native_key(KEY_DELETE)
+	assert_eq(_mode().state, BuildMode.State.IDLE)
+	assert_null(_world().grid.item(rug.id))
+	assert_eq(Economy.cash, cash_before_sale + floori(float(rug_def.price) / 2.0))
+	assert_eq(Economy.ledger.entries_for_day(Clock.sim.day).size(), books_before_sale + 1)
+	assert_eq(_normal_furniture_state(table), normal)
+	_native_click(point, true) # The table remains, but there is no floor-layer item.
+	assert_eq(_mode().state, BuildMode.State.IDLE, "an Alt miss cannot fall back to the table")
+	assert_eq((_main.call("inspection_state") as Dictionary)["selected_item_id"], -1)
+	_native_key(KEY_DELETE)
+	assert_eq(Economy.ledger.entries_for_day(Clock.sim.day).size(), books_before_sale + 1)
+	assert_eq(GameState._capture_save(), unchanged["rng"])
+	assert_eq(Clock.sim.to_dict(), unchanged["clock"])
+	assert_eq(_saved_build_text(), saved)
+	assert_eq(_world().now, 0)
+
+
+func test_native_alt_buy_commit_and_gui_clicks_keep_existing_input_ownership() -> void:
+	await _start(true)
+	assert_true(_main.call("set_build_active", true))
+	var content: ContentDB = _main.get("content") as ContentDB
+	var plant_def: ItemDef = content.item(&"potted_plant")
+	_editor().set_owner_level(plant_def.unlock_level) # Explicit purchase-unlock fixture.
+	var origin: Vector2i = Vector2i(4, 9)
+	assert_true(_mode().begin_buy(plant_def.id, origin))
+	assert_true(_mode().current_check.ok)
+	var before: Dictionary = _build_side_effect_state()
+	var cash: int = Economy.cash
+	_assert_world_click_clear_of_gui(_project(origin))
+	_native_click(_project(origin), true)
+	assert_eq(_mode().state, BuildMode.State.IDLE, "Alt does not replace a BUY ghost with a layer pick")
+	assert_eq(_world().grid.item_at(origin).def, plant_def)
+	assert_eq(Economy.cash, cash - plant_def.price)
+	assert_eq(_saved_build_text(), before["saved"])
+	assert_eq(GameState._capture_save(), before["rng"])
+	assert_true(_mode().begin_buy(&"fridge", Vector2i(2, 8)))
+	var catalogue: BuildCatalogue = _main.get_node("Overlay/BuildCatalogue") as BuildCatalogue
+	await _frames(2)
+	before = _build_side_effect_state()
+	var placements: Dictionary = _editor().to_dict()
+	var category: Button = catalogue.category_buttons[&"kitchen"]
+	assert_true(category.is_visible_in_tree())
+	_native_click(category.get_global_rect().get_center(), true)
+	assert_eq(catalogue.selected_category, &"kitchen")
+	assert_eq(_mode().state, BuildMode.State.BUY)
+	assert_eq(_mode().selected_definition.id, &"fridge")
+	assert_eq(_editor().to_dict(), placements, "native GUI input cannot commit the held ghost underneath")
+	assert_eq(_build_side_effect_state(), before)
+	var menu: Button = _main.get_node("HUD/Top/Row/Menu") as Button
+	_native_click(menu.get_global_rect().get_center(), true)
+	assert_true(_main.call("is_menu_visible"))
+	assert_false(_main.call("is_build_active"))
+	assert_false(_mode().has_ghost())
+	assert_eq(_editor().to_dict(), placements)
+	assert_eq(_build_side_effect_state(), before)
+
+
 func test_native_hud_toggle_survives_refresh_between_mouse_down_and_up() -> void:
 	await _start()
 	var button: Button = _main.get_node("HUD/Top/Row/Build") as Button
@@ -344,7 +455,7 @@ func test_build_hints_match_available_actions_and_fit_content_or_small_viewport_
 	var panel: PanelContainer = _main.get_node("HUD/BuildHints") as PanelContainer
 	var scroll: ScrollContainer = _main.get_node("HUD/BuildHints/Scroll") as ScrollContainer
 	await _frames(2)
-	assert_eq(label.text, "Esc Exit")
+	assert_eq(label.text, "Click Pick furniture  |  Alt-click Pick rug  |  Esc Exit")
 	assert_true(panel.size.x < 700.0 and panel.size.y < 96.0, "one-line hints follow their content")
 	assert_true(_mode().begin_buy(&"chair", Vector2i(4, 9)))
 	assert_true(label.text.contains("R Rotate"))
@@ -352,7 +463,7 @@ func test_build_hints_match_available_actions_and_fit_content_or_small_viewport_
 	assert_true(_mode().pick_up(_id(&"potted_plant")))
 	assert_true(label.text.contains("Del Sell"))
 	_mode().cancel()
-	assert_eq(label.text, "Esc Exit")
+	assert_eq(label.text, "Click Pick furniture  |  Alt-click Pick rug  |  Esc Exit")
 	# Reproduce the real two-line red hint through the same proposal as capture.
 	assert_true(_main.call("begin_buy_item", &"fridge"))
 	assert_true(_main.call("update_build_pointer", _project(Vector2i(7, 7))))
@@ -624,6 +735,81 @@ func test_saved_startup_replaces_initial_world_before_final_controller_clock_bin
 	assert_null(_preview().ghost_mesh)
 
 
+func test_shared_layers_wait_for_normal_morning_save_then_reload_with_poses_paint_and_seats() -> void:
+	await _start(true)
+	var saved: String = _saved_build_text()
+	var rng: Dictionary = GameState._capture_save()
+	var content: ContentDB = _main.get("content") as ContentDB
+	var rug_def: ItemDef = content.item(&"rug_square")
+	_editor().set_owner_level(rug_def.unlock_level) # Explicit level-two purchase fixture.
+	var origin: Vector2i = Vector2i(4, 8)
+	assert_true(_main.call("shop_buy", rug_def.id, origin, 1))
+	assert_true(_main.call("shop_buy", &"table_2", origin, 0))
+	var rug: PlacedItem = _world().grid.item_on_layer(origin, ItemDef.PlacementLayer.FLOOR_DECOR)
+	var table: PlacedItem = _world().grid.item_on_layer(origin, ItemDef.PlacementLayer.NORMAL)
+	assert_not_null(rug)
+	assert_not_null(table)
+	if rug == null or table == null:
+		return
+	assert_true(_editor().paint_item(table.id, &"terracotta"))
+	assert_eq(_saved_build_text(), saved, "both purchases and paint leave the current morning file unchanged")
+	assert_eq(GameState._capture_save(), rng)
+	var table_id: int = table.id
+	var rug_id: int = rug.id
+	var expected_tray_level: int = int(_main.get("tray_level"))
+	var seats: Array[Vector2i] = table.seat_cells.duplicate()
+	var path: Array[Vector2i] = _world().grid.find_path(_world().grid.entries()[0], seats[0])
+	assert_false(path.is_empty())
+	var shop: Dictionary = _editor().to_dict()
+	var expected_shop_wire: Dictionary = shop.duplicate(true)
+	expected_shop_wire["tray_level"] = expected_tray_level
+	var sim: RestaurantSim = _main.get("sim") as RestaurantSim
+	sim.spawner.min_gap = 100000
+	sim.spawner.max_gap = 100000
+	sim.spawner.reset()
+	Clock.sim.open_ticks = 1
+	Clock.sim.last_orders_max_ticks = 1
+	assert_true(Clock.sim.start_service())
+	_main.call("run_ticks", 3)
+	assert_eq(Clock.sim.phase, SimClock.Phase.CLOSED)
+	assert_eq(_saved_build_text(), saved, "closing also adds no action save")
+	assert_true(Clock.sim.next_day())
+	assert_eq(Clock.sim.day, 2)
+	var document: Dictionary = JSON.parse_string(_saved_build_text())
+	assert_eq(document["data"]["shop"], JSON.parse_string(JSON.stringify(expected_shop_wire)))
+	var books: Dictionary = Economy._capture_save()
+	var hiring_rng: int = GameState.rng(&"hiring").state
+	_close_main()
+	_main = MAIN.instantiate() as Node3D
+	_main.set("save_slot", SLOT)
+	_viewport.add_child(_main)
+	_main.call("start")
+	_disable_frame_drivers()
+	assert_eq(Clock.sim.day, 2)
+	assert_eq(Clock.sim.phase, SimClock.Phase.MORNING)
+	assert_eq(int(_main.get("tray_level")), expected_tray_level)
+	assert_eq(_editor().to_dict(), shop)
+	assert_eq(Economy._capture_save(), books)
+	assert_eq(GameState.rng(&"hiring").state, hiring_rng)
+	rug = _world().grid.item_on_layer(origin, ItemDef.PlacementLayer.FLOOR_DECOR)
+	table = _world().grid.item_on_layer(origin, ItemDef.PlacementLayer.NORMAL)
+	assert_not_null(rug)
+	assert_not_null(table)
+	if rug == null or table == null:
+		return
+	assert_eq([rug.id, table.id], [rug_id, table_id])
+	assert_eq([rug.quarter_turns, table.quarter_turns], [1, 0])
+	assert_eq(table.swatch_id, &"terracotta")
+	assert_eq(table.seat_cells, seats)
+	for seat: Vector2i in seats:
+		assert_eq(_world().grid.dining_table_id(seat), table.id)
+		assert_eq(_world().grid.dining_furnishing_id(seat), table.id)
+	assert_eq(_world().grid.find_path(_world().grid.entries()[0], seats[0]), path)
+	assert_eq(_world().grid.items_at(origin), [table, rug] as Array[PlacedItem])
+	assert_false(_world().grid.is_walkable(origin), "the normal table still determines blocking")
+	assert_eq((_main.get_node("ShopView") as ShopView).item_nodes.size(), _world().grid.items().size())
+
+
 func test_paint_during_service_previews_then_commits_without_books_or_immediate_save() -> void:
 	await _start(true)
 	assert_true(Clock.sim.start_service())
@@ -694,6 +880,31 @@ func _assert_catalogue_capture_fixture(profile: StringName) -> void:
 	assert_eq(fixture["removed_tables"], 3)
 	assert_eq(fixture["simulation_ticks"], 0)
 	assert_eq((_main.get("owner_progress") as OwnerProgress).level, 6)
+	var content: ContentDB = _main.get("content") as ContentDB
+	var recipe: Dictionary = CAPTURE.catalogue_review_profile(profile)
+	var total: int = 0
+	var purchased: Array[int] = []
+	for row: Dictionary in recipe["items"]:
+		var definition: ItemDef = content.item(row["id"])
+		assert_true(definition.catalogue_visible, "capture purchases must remain available in the catalogue")
+		total += definition.price
+		var item: PlacedItem = _world().grid.item_on_layer(row["origin"], definition.placement_layer)
+		assert_not_null(item)
+		if item != null:
+			assert_eq((item.def as ItemDef).id, definition.id)
+			purchased.append(item.id)
+	assert_eq(fixture["purchase_total"], total, "funding follows authored prices rather than a fixed fixture budget")
+	assert_eq(fixture["purchased_ids"], purchased, "each purchase records its own layer's item")
+	if profile == &"rustic":
+		var rug: PlacedItem = _world().grid.item_on_layer(Vector2i(5, 6), ItemDef.PlacementLayer.FLOOR_DECOR)
+		assert_not_null(rug)
+		if rug != null:
+			assert_eq((rug.def as ItemDef).id, &"rug_rectangle")
+			assert_eq(rug.quarter_turns, 0)
+			assert_false(rug.solid)
+			for cell: Vector2i in [Vector2i(6, 6), Vector2i(7, 6), Vector2i(6, 7), Vector2i(7, 7)]:
+				assert_eq(_world().grid.item_on_layer(cell, ItemDef.PlacementLayer.FLOOR_DECOR), rug)
+				assert_not_null(_world().grid.item_on_layer(cell, ItemDef.PlacementLayer.NORMAL))
 	var shop: ShopView = _main.get_node("ShopView") as ShopView
 	shop._process(0.0) # Existing test driver keeps the world view's frame loop off.
 	await _frames(2)
@@ -703,10 +914,25 @@ func _assert_catalogue_capture_fixture(profile: StringName) -> void:
 	assert_eq(catalogue["dining_links"].size(), 4)
 	assert_true((catalogue["dining_failures"] as Dictionary).is_empty())
 	assert_true(catalogue["catalogue_visible"])
+	_assert_catalogue_cards_match_data(catalogue, content)
 	if DisplayServer.get_name() == "headless":
 		assert_false(catalogue["cache"]["supported"])
 		assert_false(catalogue["cache"]["icons_match"])
 		assert_false(CAPTURE.catalogue_review_valid(catalogue, 90, fixture), "headless state never fabricates rendered previews")
+	# Locked cards and unselected categories still belong to the expected set.
+	var panel: BuildCatalogue = _main.get_node("Overlay/BuildCatalogue") as BuildCatalogue
+	panel.set_owner_level(1)
+	await _frames(2)
+	var locked: Dictionary = CAPTURE.catalogue_review_evidence(_main, tree.root)
+	_assert_catalogue_cards_match_data(locked, content)
+	var saw_locked: bool = false
+	for card: Dictionary in locked["cards"]:
+		if int(card["unlock_level"]) > 1:
+			saw_locked = true
+			assert_true(card["disabled"])
+	assert_true(saw_locked)
+	panel.set_owner_level(6)
+	await _frames(2)
 	assert_true(_main.call("set_build_active", false))
 	await _frames(2)
 	before = _catalogue_capture_snapshot()
@@ -724,14 +950,85 @@ func _assert_catalogue_capture_fixture(profile: StringName) -> void:
 	var wrong: Dictionary = room.duplicate(true)
 	wrong["dining_links"][0]["front_table"] = 0
 	assert_false(CAPTURE.catalogue_review_valid(wrong, 120, fixture))
+	wrong = room.duplicate(true)
+	(wrong["cards"] as Array).pop_back()
+	assert_false(CAPTURE.catalogue_review_valid(wrong, 120, fixture), "missing cards cannot shrink the expected data set")
+	wrong = room.duplicate(true)
+	(wrong["cache"]["expected_scenes"] as Array).pop_back()
+	assert_false(CAPTURE.catalogue_review_valid(wrong, 120, fixture), "expected wrappers are checked against all visible data")
+	wrong = room.duplicate(true)
+	# Locate a purchased record, rather than assuming item order after table sales.
+	for item: Dictionary in wrong["items"]:
+		if purchased.has(item["id"]):
+			item["catalogue_visible"] = false
+			break
+	assert_false(CAPTURE.catalogue_review_valid(wrong, 120, fixture))
+	if profile == &"rustic":
+		assert_eq(room["server"]["cell"], [8, 8])
+		assert_true(room["server"]["native_person"])
+		assert_true(room["server"]["visible"])
+		assert_true(room["server"]["model_visible"])
+		assert_eq(room["server"]["clip"], "idle")
+		assert_eq(room["server"]["model"], room["server"]["expected_model"])
+		wrong = room.duplicate(true)
+		wrong["server"]["visible"] = false
+		assert_false(CAPTURE.catalogue_review_valid(wrong, 120, fixture), "a hidden server cannot prove the person-beside-rug requirement")
+		wrong = room.duplicate(true)
+		wrong["server"]["head"]["in_frustum"] = false
+		assert_false(CAPTURE.catalogue_review_valid(wrong, 120, fixture))
+		wrong = room.duplicate(true)
+		for item: Dictionary in wrong["items"]:
+			if item["definition"] == "rug_rectangle":
+				item["coverage"] = []
+				break
+		assert_false(CAPTURE.catalogue_review_valid(wrong, 120, fixture), "layer coverage must prove the table and both chairs are on the rug")
+		wrong = room.duplicate(true)
+		for item: Dictionary in wrong["items"]:
+			if item["definition"] == "rug_rectangle":
+				for cell: Dictionary in item["coverage"]:
+					if cell["normal"] != 0:
+						cell["normal"] = 0
+						break
+		assert_false(CAPTURE.catalogue_review_valid(wrong, 120, fixture), "normal and floor-decor indexes must agree with the actual furniture")
+
+
+func _assert_catalogue_cards_match_data(state: Dictionary, content: ContentDB) -> void:
+	var wanted: Array[String] = []
+	var wrappers: Array[String] = []
+	for definition: ItemDef in content.items():
+		if not definition.catalogue_visible or definition.id.is_empty() or definition.display_name.strip_edges().is_empty() \
+				or definition.price < 0 or definition.unlock_level < 1 or definition.footprint.x < 1 or definition.footprint.y < 1 \
+				or not definition.placement_layer_valid() or definition.category < ItemDef.Category.TABLE \
+				or definition.category > ItemDef.Category.DECOR:
+			continue
+		wanted.append(String(definition.id))
+		if definition.view_scene != null and not wrappers.has(definition.view_scene.resource_path):
+			wrappers.append(definition.view_scene.resource_path)
+	wanted.sort()
+	wrappers.sort()
+	var actual: Array[String] = []
+	for card: Dictionary in state["cards"]:
+		actual.append(card["id"])
+	actual.sort()
+	assert_eq(actual, wanted, "all valid visible data, including locked and other-category entries, has one real card")
+	assert_eq(state["cache"]["expected_scenes"], wrappers)
+	assert_eq(state["cache"]["expected"], wrappers.size())
+	for hidden: StringName in [&"plant_small_1", &"plant_small_2", &"plant_small_3"]:
+		assert_false(content.item(hidden).catalogue_visible)
+		assert_false(actual.has(String(hidden)))
+	assert_true(actual.has("potted_plant"))
 
 
 func _catalogue_capture_snapshot() -> Dictionary:
 	var catalogue: BuildCatalogue = _main.get_node("Overlay/BuildCatalogue") as BuildCatalogue
 	var sim: RestaurantSim = _main.get("sim") as RestaurantSim
+	var agents: Array[Dictionary] = []
+	for agent: SimAgent in _world().agents:
+		agents.append({"id": agent.id, "cell": agent.cell, "path": agent.path.duplicate(),
+			"path_index": agent.path_index, "move_progress": agent.move_progress})
 	return {"books": Economy.ledger.to_dict(), "shop": _editor().to_dict(), "world_tick": _world().now,
 		"rng": [sim.rng.seed, sim.rng.state], "pending": catalogue._thumbnails.pending_count(),
-		"cached": catalogue._thumbnails.cached_count(), "category": catalogue.selected_category}
+		"cached": catalogue._thumbnails.cached_count(), "category": catalogue.selected_category, "agents": agents}
 
 
 func _start(with_saves: bool = false) -> void:
@@ -814,13 +1111,50 @@ func _click(point: Vector2) -> void:
 	_main.call("_unhandled_input", _mouse_event(point, true))
 
 
-func _mouse_event(point: Vector2, down: bool) -> InputEventMouseButton:
+func _native_click(point: Vector2, alt: bool = false) -> void:
+	_viewport.push_input(_mouse_event(point, true, alt), true)
+	_viewport.push_input(_mouse_event(point, false, alt), true)
+
+
+func _assert_world_click_clear_of_gui(point: Vector2) -> void:
+	assert_true(_viewport.get_visible_rect().has_point(point))
+	assert_false((_main.get_node("HUD/Top") as Control).get_global_rect().has_point(point))
+	assert_false((_main.get_node("HUD/BuildHints") as Control).get_global_rect().has_point(point))
+	assert_false((_main.get_node("Overlay/BuildCatalogue/Panel") as Control).get_global_rect().has_point(point))
+
+
+func _normal_furniture_state(table: PlacedItem) -> Dictionary:
+	var visual: ItemVisual = (_main.get_node("ShopView") as ShopView).item_nodes[table.id]
+	var chairs: Array[int] = []
+	for child: Node in visual.prop.get_children():
+		if child.has_meta(&"seat_cell"):
+			chairs.append(child.get_instance_id())
+	assert_eq(chairs.size(), 2, "retain both native built-in chairs")
+	return {"item": table, "origin": table.origin, "turns": table.quarter_turns,
+		"cells": table.cells.duplicate(), "seats": table.seat_cells.duplicate(),
+		"reservations": table._reservations.duplicate(), "visual": visual.get_instance_id(),
+		"prop": visual.prop.get_instance_id(), "chairs": chairs, "transform": visual.transform,
+		"body": visual.primary_body_material().get_instance_id(), "visible": visual.visible}
+
+
+func _build_side_effect_state() -> Dictionary:
+	return {"cash": Economy.cash, "books": Economy.ledger.to_dict(), "stock": Economy.stock.to_dict(),
+		"clock": Clock.sim.to_dict(), "speed": Clock.speed, "tick": _world().now,
+		"rng": GameState._capture_save(), "saved": _saved_build_text()}
+
+
+func _saved_build_text() -> String:
+	return FileAccess.get_file_as_string(_save_dir.path_join(SLOT + ".json"))
+
+
+func _mouse_event(point: Vector2, down: bool, alt: bool = false) -> InputEventMouseButton:
 	var event: InputEventMouseButton = InputEventMouseButton.new()
 	event.position = point
 	event.global_position = point
 	event.button_index = MOUSE_BUTTON_LEFT
 	event.button_mask = MOUSE_BUTTON_MASK_LEFT if down else 0
 	event.pressed = down
+	event.alt_pressed = alt
 	return event
 
 

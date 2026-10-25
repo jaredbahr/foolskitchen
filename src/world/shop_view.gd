@@ -456,17 +456,19 @@ func _build_item(item: PlacedItem) -> void:
 	var definition: ItemDef = item.def as ItemDef
 	if definition == null or (definition.category == ItemDef.Category.DOOR and definition.view_scene == null):
 		return
-	if item_nodes.has(item.id):
-		_remove_item(item.id)
-	var height: float = HEIGHTS.get(definition.category, 0.6)
-	var node: ItemVisual = ItemVisual.create(definition, height, _material(definition.placeholder_color))
+	var node: ItemVisual = item_nodes.get(item.id) as ItemVisual
+	if node == null:
+		var height: float = HEIGHTS.get(definition.category, 0.6)
+		node = ItemVisual.create(definition, height, _material(definition.placeholder_color))
+		node.name = "Item%d" % item.id
+		node.set_meta("item_id", item.id)
+		node.set_meta("shop_geometry", true)
+		item_nodes[item.id] = node
+		add_child(node)
+	# Relocation retains the item/definition. An edit on either shared layer
+	# updates placement without replacing the surviving wrapper or its paint.
 	node.transform = ItemVisual.placed_transform(definition, item.origin, item.quarter_turns)
 	node.rotation.y = -item.quarter_turns * PI * 0.5
-	node.name = "Item%d" % item.id
-	node.set_meta("item_id", item.id)
-	node.set_meta("shop_geometry", true)
-	item_nodes[item.id] = node
-	add_child(node)
 	_sync_item_selection()
 
 
@@ -483,8 +485,7 @@ func _on_cells_changed(cells: Array[Vector2i]) -> void:
 	_build_terrain()
 	var affected: Dictionary[int, bool] = {}
 	for cell: Vector2i in cells:
-		var item: PlacedItem = world.grid.item_at(cell)
-		if item != null:
+		for item: PlacedItem in world.grid.items_at(cell):
 			affected[item.id] = true
 	for id: int in affected:
 		_build_item(world.grid.item(id))

@@ -9,6 +9,7 @@ view_scene = ExtResource("2_view")
 id = &"rug_round"
 display_name = "Round rug"
 category = 6
+placement_layer = 1
 footprint = Vector2i(2, 2)
 solid = false
 work_cells = Array[Vector2i]([])

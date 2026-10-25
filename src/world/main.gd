@@ -407,9 +407,12 @@ func route_build_input(event: InputEvent) -> bool:
 		if update_build_pointer(mouse.position):
 			if build_mode.has_ghost():
 				build_mode.commit()
-			else:
+			elif build_mode.state == BuildMode.State.IDLE:
 				var cell: Variant = build_cell_at_screen_position(mouse.position)
-				var item: PlacedItem = world.grid.item_at(cell)
+				# Alt explicitly picks the floor layer. A miss cannot accidentally
+				# grab the furniture above it; normal clicks keep their old order.
+				var item: PlacedItem = world.grid.item_on_layer(cell, ItemDef.PlacementLayer.FLOOR_DECOR) \
+					if mouse.alt_pressed else world.grid.item_at(cell)
 				if item != null:
 					build_mode.pick_up_at(item.id, cell)
 		return true
@@ -677,9 +680,13 @@ func select_at_world_position(world_position: Vector3, preferred_item_id: int = 
 		if preferred_item_id >= 0:
 			var preferred: PlacedItem = world.grid.item(preferred_item_id)
 			if preferred != null:
-				# Classify the visible item while retaining the hit's pass-side
-				# geometry, rather than a different item under its floor projection.
-				target = OwnerAssignment._for_item(preferred, world_position, -1)
+				if preferred.placement_layer == ItemDef.PlacementLayer.FLOOR_DECOR:
+					# A visible rug cannot hide an external normal work cell.
+					target = OwnerAssignment.resolve(world_position, world.grid)
+				else:
+					# Classify the visible normal item with its pass-side geometry.
+					# A covered non-target still takes precedence over hidden work.
+					target = OwnerAssignment._for_item(preferred, world_position, -1)
 		elif preferred_item_id == -1:
 			target = OwnerAssignment.resolve(world_position, world.grid)
 		var mode: StringName = target["mode"]
@@ -1523,7 +1530,7 @@ func _unlocked_at_levels(previous_level: int, current_level: int) -> Array[Strin
 		if recipe.unlock_tier == 1 and recipe.unlock_level > previous_level and recipe.unlock_level <= current_level:
 			unlocked.append(recipe.display_name + " recipe")
 	for item: ItemDef in content.items():
-		if item.unlock_level > previous_level and item.unlock_level <= current_level:
+		if item.catalogue_visible and item.unlock_level > previous_level and item.unlock_level <= current_level:
 			unlocked.append(item.display_name)
 	unlocked.sort()
 	return unlocked

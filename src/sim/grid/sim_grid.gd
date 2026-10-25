@@ -12,7 +12,7 @@ extends RefCounted
 enum Terrain { OUTSIDE, FLOOR, WALL, ENTRY }
 
 ## Result of a placement check.
-enum PlaceResult { OK, OUT_OF_BOUNDS, NOT_FLOOR, OVERLAPS }
+enum PlaceResult { OK, OUT_OF_BOUNDS, NOT_FLOOR, OVERLAPS, INVALID_LAYER }
 
 ## Emitted after cells change walkability (place/remove/terrain edits).
 ## Agents whose path crosses one of these cells must re-plan.
@@ -43,6 +43,8 @@ var _astar := AStarGrid2D.new()
 var _items: Dictionary[int, PlacedItem] = {}
 ## cell -> id of the item covering it (solid or not).
 var _cover: Dictionary[Vector2i, int] = {}
+## One passive floor furnishing per cell, independent of ordinary coverage.
+var _floor_cover: Dictionary[Vector2i, int] = {}
 var _next_id: int = 1
 var _entries: Array[Vector2i] = []
 ## Derived dining links. These are rebuilt from definitions, never saved.
@@ -107,7 +109,7 @@ func terrain(cell: Vector2i) -> Terrain:
 func set_terrain(cell: Vector2i, t: Terrain) -> bool:
 	if not in_bounds(cell):
 		return false
-	if _cover.has(cell) and t != Terrain.FLOOR:
+	if (_cover.has(cell) or _floor_cover.has(cell)) and t != Terrain.FLOOR:
 		return false
 	_terrain[cell.y * size.x + cell.x] = t
 	if t == Terrain.ENTRY:
@@ -148,16 +150,27 @@ func walkable_neighbours(cell: Vector2i) -> Array[Vector2i]:
 
 
 ## Checks whether an item could go at origin with the given rotation.
-## Items need FLOOR under every footprint cell and no other item there.
-func can_place(footprint: Vector2i, origin: Vector2i, quarter_turns: int) -> PlaceResult:
+## Items need FLOOR under every footprint cell and no item in the same layer.
+func can_place(footprint: Vector2i, origin: Vector2i, quarter_turns: int,
+		layer: ItemDef.PlacementLayer = ItemDef.PlacementLayer.NORMAL) -> PlaceResult:
+	if layer != ItemDef.PlacementLayer.NORMAL and layer != ItemDef.PlacementLayer.FLOOR_DECOR:
+		return PlaceResult.INVALID_LAYER
+	var cover: Dictionary[Vector2i, int] = _coverage(layer)
 	for cell in _footprint_cells(footprint, origin, quarter_turns):
 		if not in_bounds(cell):
 			return PlaceResult.OUT_OF_BOUNDS
 		if terrain(cell) != Terrain.FLOOR:
 			return PlaceResult.NOT_FLOOR
-		if _cover.has(cell):
+		if cover.has(cell):
 			return PlaceResult.OVERLAPS
 	return PlaceResult.OK
+
+
+## Definition-aware checking must agree with place_def, including floor decor.
+func can_place_def(definition: ItemDef, origin: Vector2i, quarter_turns: int = 0) -> PlaceResult:
+	if definition == null or not definition.placement_layer_valid():
+		return PlaceResult.INVALID_LAYER
+	return can_place(definition.footprint, origin, quarter_turns, definition.placement_layer)
 
 
 ## Places an item. Work and seat cells are given relative to the unrotated
@@ -166,12 +179,19 @@ func can_place(footprint: Vector2i, origin: Vector2i, quarter_turns: int) -> Pla
 func place(footprint: Vector2i, origin: Vector2i, quarter_turns: int, solid: bool,
 		work_cells: Array[Vector2i] = [], seat_cells: Array[Vector2i] = [],
 		def: Resource = null) -> PlacedItem:
-	if can_place(footprint, origin, quarter_turns) != PlaceResult.OK:
+	var definition: ItemDef = def as ItemDef
+	var layer: ItemDef.PlacementLayer = definition.placement_layer if definition != null else ItemDef.PlacementLayer.NORMAL
+	if definition != null and not definition.placement_layer_valid():
+		return null
+	if layer == ItemDef.PlacementLayer.FLOOR_DECOR and (solid or not work_cells.is_empty() or not seat_cells.is_empty()):
+		return null
+	if can_place(footprint, origin, quarter_turns, layer) != PlaceResult.OK:
 		return null
 	var item := PlacedItem.new()
 	item.id = _next_id
 	_next_id += 1
 	item.def = def
+	item.placement_layer = layer
 	item.origin = origin
 	item.quarter_turns = posmod(quarter_turns, 4)
 	item.solid = solid
@@ -181,8 +201,9 @@ func place(footprint: Vector2i, origin: Vector2i, quarter_turns: int, solid: boo
 	for c in seat_cells:
 		item.seat_cells.append(origin + GridMath.rotate_cell(c, footprint, quarter_turns))
 	_items[item.id] = item
+	var cover: Dictionary[Vector2i, int] = _coverage(layer)
 	for cell in item.cells:
-		_cover[cell] = item.id
+		cover[cell] = item.id
 		_refresh_cell(cell)
 	_refresh_dining_seats()
 	cells_changed.emit(item.cells.duplicate())
@@ -192,6 +213,8 @@ func place(footprint: Vector2i, origin: Vector2i, quarter_turns: int, solid: boo
 ## Places an item from its content definition (footprint, solidity, work and
 ## seat cells come from the def). Returns null if it doesn't fit.
 func place_def(def: ItemDef, origin: Vector2i, quarter_turns: int = 0) -> PlacedItem:
+	if can_place_def(def, origin, quarter_turns) != PlaceResult.OK:
+		return null
 	return place(def.footprint, origin, quarter_turns, def.solid, def.work_cells, def.seat_cells, def)
 
 
@@ -204,7 +227,8 @@ func relocate_def(item_id: int, origin: Vector2i, quarter_turns: int) -> bool:
 	if placed == null:
 		return false
 	var definition: ItemDef = placed.def as ItemDef
-	if definition == null or definition.footprint.x < 1 or definition.footprint.y < 1:
+	if definition == null or definition.footprint.x < 1 or definition.footprint.y < 1 \
+			or not definition.placement_layer_valid() or definition.placement_layer != placed.placement_layer:
 		return false
 	for cell: Vector2i in placed.work_cells + placed.seat_cells:
 		if placed.reserved_by(cell) != -1:
@@ -213,17 +237,18 @@ func relocate_def(item_id: int, origin: Vector2i, quarter_turns: int) -> bool:
 		return false
 	var turns: int = posmod(quarter_turns, 4)
 	var new_cells: Array[Vector2i] = _footprint_cells(definition.footprint, origin, turns)
+	var cover: Dictionary[Vector2i, int] = _coverage(placed.placement_layer)
 	for cell: Vector2i in new_cells:
 		if not in_bounds(cell) or terrain(cell) != Terrain.FLOOR:
 			return false
-		var covering: int = _cover.get(cell, 0)
+		var covering: int = cover.get(cell, 0)
 		if covering != 0 and covering != item_id:
 			return false
 	if placed.origin == origin and placed.quarter_turns == turns:
 		return true
 	var changed: Array[Vector2i] = placed.cells.duplicate()
 	for cell: Vector2i in placed.cells:
-		_cover.erase(cell)
+		cover.erase(cell)
 	placed.origin = origin
 	placed.quarter_turns = turns
 	placed.cells = new_cells
@@ -234,7 +259,7 @@ func relocate_def(item_id: int, origin: Vector2i, quarter_turns: int) -> bool:
 	for cell: Vector2i in definition.seat_cells:
 		placed.seat_cells.append(origin + GridMath.rotate_cell(cell, definition.footprint, turns))
 	for cell: Vector2i in new_cells:
-		_cover[cell] = item_id
+		cover[cell] = item_id
 		if not changed.has(cell):
 			changed.append(cell)
 	for cell: Vector2i in changed:
@@ -252,8 +277,9 @@ func remove(item_id: int) -> bool:
 	_items.erase(item_id)
 	item.removed = true
 	item.clear_reservations()
+	var cover: Dictionary[Vector2i, int] = _coverage(item.placement_layer)
 	for cell in item.cells:
-		_cover.erase(cell)
+		cover.erase(cell)
 		_refresh_cell(cell)
 	_refresh_dining_seats()
 	cells_changed.emit(item.cells.duplicate())
@@ -267,8 +293,28 @@ func item(item_id: int) -> PlacedItem:
 
 ## Item covering a cell, or null.
 func item_at(cell: Vector2i) -> PlacedItem:
-	var id: int = _cover.get(cell, 0)
-	return _items.get(id, null)
+	var normal: PlacedItem = item_on_layer(cell, ItemDef.PlacementLayer.NORMAL)
+	return normal if normal != null else item_on_layer(cell, ItemDef.PlacementLayer.FLOOR_DECOR)
+
+
+func item_on_layer(cell: Vector2i, layer: ItemDef.PlacementLayer) -> PlacedItem:
+	if layer != ItemDef.PlacementLayer.NORMAL and layer != ItemDef.PlacementLayer.FLOOR_DECOR:
+		return null
+	return _items.get(_coverage(layer).get(cell, 0), null)
+
+
+## A detached deterministic list for view/picking callers: normal, then floor.
+func items_at(cell: Vector2i) -> Array[PlacedItem]:
+	var result: Array[PlacedItem] = []
+	for layer: ItemDef.PlacementLayer in [ItemDef.PlacementLayer.NORMAL, ItemDef.PlacementLayer.FLOOR_DECOR]:
+		var placed: PlacedItem = item_on_layer(cell, layer)
+		if placed != null:
+			result.append(placed)
+	return result
+
+
+func _coverage(layer: ItemDef.PlacementLayer) -> Dictionary[Vector2i, int]:
+	return _floor_cover if layer == ItemDef.PlacementLayer.FLOOR_DECOR else _cover
 
 
 ## Physical table/counter owning a valid dining seat, or 0 if none.

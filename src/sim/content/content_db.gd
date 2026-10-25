@@ -158,6 +158,8 @@ static func validate_definitions(ingredient_defs: Array[IngredientDef], recipe_d
 			errors.append("item '%s': footprint components must be >= 1" % definition.id)
 		if definition.price < 0:
 			errors.append("item '%s': price must be >= 0" % definition.id)
+		if not definition.placement_layer_valid():
+			errors.append("item '%s': invalid placement layer; floor decor must be non-solid decor without work or seat cells" % definition.id)
 		if definition.paintable and definition.paint_slot != &"body":
 			errors.append("item '%s': only the body paint slot is supported" % definition.id)
 	for index: int in range(recipe_defs.size()):

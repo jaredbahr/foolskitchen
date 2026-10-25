@@ -43,6 +43,44 @@ func test_shipped_prep_counter_and_its_external_work_cell_assign_kitchen() -> vo
 		assert_eq(_snapshot(), before)
 
 
+func test_rug_covered_real_station_work_cell_still_assigns_existing_owner_in_either_order() -> void:
+	var content: ContentDB = ContentDB.new()
+	assert_eq(content.load_all(), PackedStringArray())
+	var station_def: ItemDef = content.item(&"prep_counter")
+	var rug_def: ItemDef = content.item(&"rug_square")
+	assert_eq(rug_def.placement_layer, ItemDef.PlacementLayer.FLOOR_DECOR)
+	for rug_first: bool in [true, false]:
+		for quarter: int in 4:
+			_grid = SimGrid.new(Vector2i(20, 20))
+			var origin: Vector2i = Vector2i(5, 5)
+			var work: Vector2i = origin + GridMath.rotate_cell(station_def.work_cells[0], station_def.footprint, quarter)
+			var first: PlacedItem = _grid.place_def(rug_def if rug_first else station_def, work if rug_first else origin, 0 if rug_first else quarter)
+			assert_not_null(first)
+			var second: PlacedItem = _grid.place_def(station_def if rug_first else rug_def, origin if rug_first else work, quarter if rug_first else 0)
+			assert_not_null(second)
+			if first == null or second == null:
+				return
+			var station: PlacedItem = second if rug_first else first
+			var rug: PlacedItem = first if rug_first else second
+			assert_eq(_grid.item_at(work), rug, "the convenience floor fallback must not swallow external work")
+			assert_null(_grid.item_on_layer(work, ItemDef.PlacementLayer.NORMAL))
+			var before: Array[Dictionary] = _snapshot()
+			var target: Dictionary = OwnerAssignment.resolve(GridMath.cell_to_world(work), _grid)
+			assert_eq(target, {"mode": &"kitchen", "item_id": station.id, "work_cell_index": 0})
+			assert_eq(OwnerAssignment.resolve(GridMath.cell_to_world(station.origin), _grid),
+				{"mode": &"kitchen", "item_id": station.id, "work_cell_index": -1})
+			var sim: RestaurantSim = RestaurantSim.new()
+			sim.world = SimWorld.new(_grid)
+			var owner: OwnerAgent = OwnerAgent.new(Vector2i(1, 1))
+			sim.world.add_agent(owner)
+			assert_eq(owner.current_mode(), &"rest")
+			assert_true(sim.assign_owner(target["mode"]))
+			assert_true(sim.owner_agent() == owner)
+			assert_eq(owner.current_mode(), &"kitchen")
+			assert_eq(_snapshot(), before)
+			assert_eq(sim.world.now, 0)
+
+
 func test_table_footprint_assigns_floor_and_non_targets_return_none() -> void:
 	var table: PlacedItem = _grid.place_def(_definition(&"table", ItemDef.Category.TABLE), Vector2i(3, 4))
 	assert_eq(OwnerAssignment.resolve(GridMath.cell_to_world(table.origin), _grid),

@@ -4,8 +4,26 @@ extends TestCase
 
 class TimeoutCache extends ItemThumbnailCache:
 	## Exercise the timeout branch without creating a viewport or GPU resource.
+	var completed_scenes: Array[PackedScene] = []
+	var successful_texture: Texture2D
+
 	func rendering_supported() -> bool:
 		return true
+
+	func _ensure_stage() -> bool:
+		return true
+
+	## Simulate one later scene completing its draw callback without graphics.
+	func _start_next() -> void:
+		if _queue.is_empty():
+			return
+		_active_scene = _queue.pop_front()
+		var scene: PackedScene = _active_scene
+		successful_texture = GradientTexture2D.new()
+		_textures[scene.get_instance_id()] = successful_texture
+		completed_scenes.append(scene)
+		_cancel_active()
+		thumbnail_ready.emit(scene, successful_texture)
 
 var _cache: ItemThumbnailCache
 
@@ -55,26 +73,39 @@ func test_headless_mount_keeps_queue_without_starting_graphics_and_exit_cancels_
 	assert_false(RenderingServer.frame_post_draw.is_connected(Callable(_cache, "_on_frame_post_draw")))
 
 
-func test_missing_post_draw_cancels_the_active_wrapper_and_remaining_queue_once() -> void:
+func test_missing_post_draw_fails_only_active_item_then_next_scene_completes() -> void:
 	_cache.free()
 	_cache = TimeoutCache.new()
-	var scene: PackedScene = _wrapper()
-	_cache.request(scene)
-	_cache.request(_wrapper())
-	_cache.set("_active_scene", scene)
+	var timeout_cache: TimeoutCache = _cache as TimeoutCache
+	var slow_scene: PackedScene = _wrapper()
+	var later_scene: PackedScene = _wrapper()
+	_cache.request(slow_scene)
+	_cache.request(later_scene)
+	assert_eq(timeout_cache._queue.pop_front(), slow_scene,
+		"starting the slow scene removes it from the pending queue")
+	_cache.set("_active_scene", slow_scene)
 	var active: PropView = PropView.new()
 	var reference: WeakRef = weakref(active)
 	_cache.set("_active", active)
 	_cache.set("_wait_frames", ItemThumbnailCache.MAX_DRAW_WAIT_FRAMES - 1)
 	_cache.call("_process", 0.0)
 	assert_null(reference.get_ref(), "the timed-out wrapper is released")
-	assert_eq(_cache.pending_count(), 0)
+	assert_eq(_cache.pending_count(), 1, "the unrelated queued scene remains available")
 	assert_eq(_cache.cached_count(), 0)
 	assert_true(_cache.last_error.contains("frame budget"))
-	assert_false(_cache.is_processing())
+	assert_false(_cache.get("_render_unavailable"), "one slow scene does not disable rendering")
+	assert_true(_cache.is_processing(), "the remaining queue continues")
 	assert_eq(_cache.get_child_count(), 0, "this timeout fixture creates no graphics stage")
-	assert_null(_cache.request(scene), "failed rendering never becomes a blind retry loop")
+	assert_null(_cache.request(slow_scene), "the slow item cannot become a retry loop")
+	assert_eq(_cache.pending_count(), 1)
+	_cache.call("_process", 0.0)
+	assert_eq(timeout_cache.completed_scenes, [later_scene], "the next item completes after the timeout")
+	assert_eq(_cache.cached_count(), 1)
+	assert_eq(_cache.request(later_scene), timeout_cache.successful_texture,
+		"a successful later thumbnail remains cached")
 	assert_eq(_cache.pending_count(), 0)
+	_cache.call("_process", 0.0)
+	assert_false(_cache.is_processing(), "processing stops when the queue completes")
 
 
 func test_orthographic_frame_encloses_every_corner_of_wide_tall_and_offset_wrappers() -> void:

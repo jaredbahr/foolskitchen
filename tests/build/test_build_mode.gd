@@ -469,6 +469,7 @@ func test_all_place_results_have_player_sentences_used_by_actual_editor_checks()
 		SimGrid.PlaceResult.OUT_OF_BOUNDS: "Outside the shop",
 		SimGrid.PlaceResult.NOT_FLOOR: "Must be placed on the floor",
 		SimGrid.PlaceResult.OVERLAPS: "Something is in the way",
+		SimGrid.PlaceResult.INVALID_LAYER: "This item cannot be placed here",
 	}
 	assert_eq(reasons.size(), SimGrid.PlaceResult.size(), "every placement result has one mapping")
 	for result: int in SimGrid.PlaceResult.values():

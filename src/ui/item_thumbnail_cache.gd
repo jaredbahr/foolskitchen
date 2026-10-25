@@ -66,13 +66,9 @@ func _process(_delta: float) -> void:
 	if _active_scene != null:
 		_wait_frames += 1
 		if _wait_frames >= MAX_DRAW_WAIT_FRAMES:
-			# A missing post-draw signal must not hold a wrapper or await forever.
-			last_error = "Thumbnail rendering did not finish within its frame budget"
-			_render_unavailable = true
-			_cancel_active()
-			_queue.clear()
-			_queued.clear()
-			set_process(false)
+			# A slow wrapper falls back to its text card; later scenes still render.
+			_fail_active("Thumbnail rendering did not finish within its frame budget")
+			set_process(not _queue.is_empty())
 		return
 	if _queue.is_empty():
 		set_process(false)

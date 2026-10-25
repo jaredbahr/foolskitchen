@@ -431,8 +431,7 @@ static func catalogue_review_profile(profile: StringName) -> Dictionary:
 	var items: Array[Dictionary] = [
 		{"id": table, "origin": Vector2i(2, 6)}, {"id": table, "origin": Vector2i(6, 6)},
 		{"id": &"bookcase_open_low" if rustic else &"speaker", "origin": Vector2i(11, 6)},
-		{"id": &"plant_small_3" if rustic else &"plant_small_2", "origin": Vector2i(12, 8)},
-		{"id": &"rug_round" if rustic else &"rug_square", "origin": Vector2i(9, 8)},
+		{"id": &"rug_rectangle" if rustic else &"rug_square", "origin": Vector2i(5, 6) if rustic else Vector2i(9, 8)},
 	]
 	if rustic:
 		items.append({"id": &"bench", "origin": Vector2i(2, 7)})
@@ -488,8 +487,8 @@ static func prepare_catalogue_review(main: Node, context_root: Node, profile: St
 	var total: int = 0
 	for row: Dictionary in recipe["items"]:
 		var definition: ItemDef = content.item(row["id"])
-		if definition == null:
-			result["error"] = "catalogue fixture content is missing"
+		if definition == null or not definition.catalogue_visible:
+			result["error"] = "catalogue fixture requires visible content"
 			return result
 		total += definition.price
 	var cash: int = int(economy.get("cash"))
@@ -501,7 +500,12 @@ static func prepare_catalogue_review(main: Node, context_root: Node, profile: St
 		if not bool(main.call("shop_buy", row["id"], row["origin"], 0)):
 			result["error"] = "catalogue fixture purchase was refused: " + String(row["id"])
 			return result
-		bought.append(world.grid.item_at(row["origin"]).id)
+		var definition: ItemDef = content.item(row["id"])
+		var purchased: PlacedItem = world.grid.item_on_layer(row["origin"], definition.placement_layer)
+		if purchased == null or (purchased.def as ItemDef).id != definition.id:
+			result["error"] = "catalogue fixture purchase is missing from its placement layer"
+			return result
+		bought.append(purchased.id)
 	if not bool(main.call("set_paint_active", true)):
 		result["error"] = "catalogue fixture paint mode was refused"
 		return result
@@ -528,6 +532,27 @@ static func prepare_catalogue_review(main: Node, context_root: Node, profile: St
 	return result
 
 
+## Expected identities come from all valid visible data, including locked cards
+## and other categories, independently of the catalogue's actual button list.
+static func _catalogue_content_expectations(content: ContentDB) -> Dictionary:
+	var cards: Array[Dictionary] = []
+	var wrappers: Array[String] = []
+	for definition: ItemDef in content.items():
+		if definition == null or not definition.catalogue_visible or definition.id.is_empty() \
+				or definition.display_name.strip_edges().is_empty() or definition.price < 0 or definition.unlock_level < 1 \
+				or definition.footprint.x < 1 or definition.footprint.y < 1 or not definition.placement_layer_valid() \
+				or not [ItemDef.Category.TABLE, ItemDef.Category.CHAIR, ItemDef.Category.STATION,
+					ItemDef.Category.STORAGE, ItemDef.Category.PASS, ItemDef.Category.DECOR].has(definition.category):
+			continue
+		var path: String = definition.view_scene.resource_path if definition.view_scene != null else ""
+		cards.append({"id": String(definition.id), "name": definition.display_name, "price": definition.price,
+			"unlock_level": definition.unlock_level, "scene": path})
+		if not path.is_empty() and not wrappers.has(path):
+			wrappers.append(path)
+	wrappers.sort()
+	return {"cards": cards, "wrappers": wrappers}
+
+
 ## Read existing cache entries only: request() would queue missing thumbnails.
 ## Visibility here means native clipping geometry, not an aesthetic verdict.
 static func catalogue_review_evidence(main: Node, context_root: Node) -> Dictionary:
@@ -541,17 +566,23 @@ static func catalogue_review_evidence(main: Node, context_root: Node) -> Diction
 	if world == null or editor == null or content == null or progress == null or catalogue == null or shop == null or clock == null:
 		return {"available": false}
 	var cache: ItemThumbnailCache = catalogue._thumbnails
-	var expected: Dictionary[int, bool] = {}
+	var expected: Dictionary = _catalogue_content_expectations(content)
+	var cached_scenes: Array[String] = []
+	for key: int in cache._textures:
+		var scene: PackedScene = cache._scenes.get(key) as PackedScene
+		cached_scenes.append(scene.resource_path if scene != null else "")
+	cached_scenes.sort()
 	var cards: Array[Dictionary] = []
 	var icons_match: bool = true
 	var onscreen: int = 0
 	for id: StringName in catalogue.ordered_ids():
 		var definition: ItemDef = content.item(id)
+		if definition == null or not catalogue.item_buttons.has(id):
+			return {"available": false}
 		var scene: PackedScene = definition.view_scene
 		var button: Button = catalogue.item_buttons[id]
 		var texture: Texture2D = null
 		if scene != null:
-			expected[scene.get_instance_id()] = true
 			texture = cache._textures.get(scene.get_instance_id()) as Texture2D
 		var matches: bool = texture is ImageTexture and button.icon == texture and texture.get_size() == Vector2(96, 96)
 		icons_match = icons_match and matches
@@ -559,6 +590,7 @@ static func catalogue_review_evidence(main: Node, context_root: Node) -> Diction
 		if control["visible"] and control["inside_clip"]:
 			onscreen += 1
 		cards.append({"id": String(id), "text": button.text, "disabled": button.disabled,
+			"catalogue_visible": definition.catalogue_visible,
 			"category": String(BuildCatalogue.category_for(definition)), "unlock_level": definition.unlock_level,
 			"scene": scene.resource_path if scene != null else "", "native": control,
 			"icon_matches_cache": matches, "icon_width_limit": button.get_theme_constant("icon_max_width"),
@@ -575,11 +607,29 @@ static func catalogue_review_evidence(main: Node, context_root: Node) -> Diction
 		var definition: ItemDef = item.def as ItemDef
 		var visual: ItemVisual = shop.item_nodes.get(item.id) as ItemVisual
 		var prop: PropView = visual.prop if visual != null else null
+		var cells: Array = []
+		for cell: Vector2i in item.cells:
+			cells.append([cell.x, cell.y])
 		var record: Dictionary = {"id": item.id, "definition": String(definition.id),
 			"origin": [item.origin.x, item.origin.y], "turns": item.quarter_turns,
+			"category": int(definition.category), "placement_layer": int(item.placement_layer), "solid": item.solid,
+			"definition_layer": int(definition.placement_layer), "definition_solid": definition.solid,
+			"catalogue_visible": definition.catalogue_visible, "cells": cells,
 			"paint": String(item.swatch_id), "paintable": definition.paintable, "tags": definition.theme_tags,
 			"expected_wrapper": definition.view_scene.resource_path if definition.view_scene != null else "",
 			"wrapper": prop.scene_file_path if prop != null else "", "rendered": prop != null and prop.is_visible_in_tree()}
+		if item.placement_layer == ItemDef.PlacementLayer.FLOOR_DECOR:
+			var coverage: Array[Dictionary] = []
+			var covered: Array[int] = []
+			for cell: Vector2i in item.cells:
+				var normal: PlacedItem = world.grid.item_on_layer(cell, ItemDef.PlacementLayer.NORMAL)
+				var floor_decor: PlacedItem = world.grid.item_on_layer(cell, ItemDef.PlacementLayer.FLOOR_DECOR)
+				coverage.append({"cell": [cell.x, cell.y], "normal": normal.id if normal != null else 0,
+					"floor_decor": floor_decor.id if floor_decor != null else 0, "walkable": world.grid.is_walkable(cell)})
+				if normal != null and not covered.has(normal.id):
+					covered.append(normal.id)
+			covered.sort()
+			record.merge({"coverage": coverage, "covered_normal_ids": covered})
 		if prop != null:
 			var bounds: AABB = prop.global_transform * prop.get_combined_aabb()
 			var footprint: Vector2i = GridMath.rotated_footprint(definition.footprint, item.quarter_turns)
@@ -606,9 +656,11 @@ static func catalogue_review_evidence(main: Node, context_root: Node) -> Diction
 		"catalogue_visible": catalogue.is_visible_in_tree(), "category": String(catalogue.selected_category),
 		"wall": String(editor.wall_swatch_id), "floor": String(editor.floor_swatch_id),
 		"cache": {"supported": cache.rendering_supported(), "pending": cache.pending_count(), "cached": cache.cached_count(),
-			"expected": expected.size(), "active": cache._active_scene != null, "failed": cache._failed.size(),
+			"expected": expected["wrappers"].size(), "expected_scenes": expected["wrappers"], "cached_scenes": cached_scenes,
+			"active": cache._active_scene != null, "failed": cache._failed.size(),
 			"error": cache.last_error, "icons_match": icons_match},
-		"cards": cards, "onscreen_cards": onscreen, "tabs": tabs, "items": items,
+		"expected_cards": expected["cards"], "cards": cards, "onscreen_cards": onscreen, "tabs": tabs, "items": items,
+		"server": _catalogue_server_evidence(world, shop, main.get_node_or_null("CameraRig/Camera3D") as Camera3D),
 		"dining_failures": dining.failures, "dining_links": links, "edit_ok": check.ok, "unreachable": check.unreachable}
 
 
@@ -619,6 +671,7 @@ static func catalogue_review_valid(state: Dictionary, frame: int, fixture: Dicti
 			or state.get("day") != 1 or state.get("phase") != SimClock.Phase.MORNING or state.get("clock_speed") != 0 \
 			or state.get("owner_level") != 6 or state.get("paint_active") != false \
 			or state.get("wall") != String(profile["wall"]) or state.get("floor") != String(profile["floor"]) \
+			or not _catalogue_cards_valid(state) \
 			or state.get("edit_ok") != true or not (state["unreachable"] as Array).is_empty() \
 			or not (state["dining_failures"] as Dictionary).is_empty() or state["dining_links"].size() != 4:
 		return false
@@ -637,14 +690,19 @@ static func catalogue_review_valid(state: Dictionary, frame: int, fixture: Dicti
 		var wanted: Dictionary = profile["items"][index]
 		var origin: Vector2i = wanted["origin"]
 		if item["definition"] != String(wanted["id"]) or item["origin"] != [origin.x, origin.y] or item["turns"] != 0 \
+				or item.get("catalogue_visible") != true or item.get("placement_layer") != item.get("definition_layer") \
+				or item.get("solid") != item.get("definition_solid") \
 				or item["rendered"] != true or item["wrapper"] != item["expected_wrapper"] or item.get("fits_footprint") != true \
 				or absf(float(item.get("floor_y", INF))) > 0.0001 \
 				or item["paint"] != (String(profile["body"]) if item["paintable"] else ""):
 			return false
 	if found != (profile["items"] as Array).size():
 		return false
+	if fixture["profile"] == "rustic" and not _catalogue_rug_context_valid(state, fixture):
+		return false
 	if frame == 120:
-		return state["catalogue_visible"] == false and state["build_active"] == false
+		return state["catalogue_visible"] == false and state["build_active"] == false \
+			and (fixture["profile"] != "rustic" or _catalogue_server_valid(state["server"]))
 	if frame != 90 or state["catalogue_visible"] != true or state["build_active"] != true \
 			or state["category"] != String(profile["category"]) or state["onscreen_cards"] < 1:
 		return false
@@ -657,7 +715,142 @@ static func catalogue_review_valid(state: Dictionary, frame: int, fixture: Dicti
 			return false
 	var cache: Dictionary = state["cache"]
 	return cache["supported"] == true and cache["pending"] == 0 and cache["active"] == false \
-		and cache["failed"] == 0 and cache["error"] == "" and cache["icons_match"] == true and cache["cached"] == cache["expected"]
+		and cache["failed"] == 0 and cache["error"] == "" and cache["icons_match"] == true and cache["cached"] == cache["expected"] \
+		and cache["cached_scenes"] == cache["expected_scenes"]
+
+
+static func _catalogue_cards_valid(state: Dictionary) -> bool:
+	var expected: Dictionary[String, Dictionary] = {}
+	var wrappers: Array[String] = []
+	for definition: Dictionary in state.get("expected_cards", []):
+		var id: String = definition.get("id", "")
+		if id.is_empty() or expected.has(id):
+			return false
+		expected[id] = definition
+		var scene: String = definition.get("scene", "")
+		if not scene.is_empty() and not wrappers.has(scene):
+			wrappers.append(scene)
+	wrappers.sort()
+	var cards: Array = state.get("cards", [])
+	if expected.is_empty() or cards.size() != expected.size():
+		return false
+	var seen: Dictionary[String, bool] = {}
+	for card: Dictionary in cards:
+		var id: String = card.get("id", "")
+		if not expected.has(id) or seen.has(id) or card.get("catalogue_visible") != true:
+			return false
+		seen[id] = true
+		var definition: Dictionary = expected[id]
+		var locked: bool = int(definition["unlock_level"]) > int(state["owner_level"])
+		var text: String = "%s\nLevel %d" % [definition["name"], definition["unlock_level"]] if locked \
+			else "%s\n$%d" % [definition["name"], definition["price"]]
+		if card.get("scene") != definition["scene"] or card.get("text") != text or card.get("disabled") != locked:
+			return false
+	var cache: Dictionary = state.get("cache", {})
+	return cache.get("expected") == wrappers.size() and cache.get("expected_scenes") == wrappers
+
+
+## Verify both captured item footprints and the actual per-cell layer index.
+## The rug owns no blocking; the normal table/chairs retain their own solidity.
+static func _catalogue_rug_context_valid(state: Dictionary, fixture: Dictionary) -> bool:
+	var rug: Dictionary = {}
+	for item: Dictionary in state["items"]:
+		if item["definition"] == "rug_rectangle" and (fixture["purchased_ids"] as Array).has(item["id"]):
+			if not rug.is_empty():
+				return false
+			rug = item
+	if rug.is_empty() or rug.get("placement_layer") != ItemDef.PlacementLayer.FLOOR_DECOR or rug.get("solid") != false:
+		return false
+	var cells: Array = rug.get("cells", [])
+	var coverage: Array = rug.get("coverage", [])
+	if cells.is_empty() or coverage.size() != cells.size():
+		return false
+	var normals: Dictionary[Vector2i, Dictionary] = {}
+	var ids: Array[int] = []
+	var tables: int = 0
+	var chairs: int = 0
+	for item: Dictionary in state["items"]:
+		if item.get("placement_layer") != ItemDef.PlacementLayer.NORMAL:
+			continue
+		var overlaps: bool = false
+		var all_covered: bool = true
+		for cell: Array in item["cells"]:
+			overlaps = overlaps or cells.has(cell)
+			all_covered = all_covered and cells.has(cell)
+		if not overlaps:
+			continue
+		if not all_covered or not (fixture["purchased_ids"] as Array).has(item["id"]):
+			return false
+		if item["category"] == ItemDef.Category.TABLE:
+			tables += 1
+		elif item["category"] == ItemDef.Category.CHAIR:
+			chairs += 1
+		else:
+			return false
+		ids.append(int(item["id"]))
+		for cell: Array in item["cells"]:
+			var key: Vector2i = Vector2i(int(cell[0]), int(cell[1]))
+			if normals.has(key):
+				return false
+			normals[key] = item
+	ids.sort()
+	if tables != 1 or chairs != 2 or rug.get("covered_normal_ids") != ids:
+		return false
+	var seen: Dictionary[Vector2i, bool] = {}
+	for row: Dictionary in coverage:
+		var cell: Array = row["cell"]
+		var key: Vector2i = Vector2i(int(cell[0]), int(cell[1]))
+		if not cells.has(cell) or seen.has(key) or row.get("floor_decor") != rug["id"]:
+			return false
+		seen[key] = true
+		var normal: Dictionary = normals.get(key, {})
+		if row.get("normal") != normal.get("id", 0) or row.get("walkable") != (not bool(normal.get("solid", false))):
+			return false
+	return true
+
+
+## Read the existing server and native rig without moving, animating or warming
+## up the simulation. Visibility/frustum fields still require image review.
+static func _catalogue_server_evidence(world: SimWorld, shop: ShopView, camera: Camera3D) -> Dictionary:
+	for agent: SimAgent in world.agents:
+		if not agent is StaffAgent or agent is OwnerAgent or agent.role != &"server":
+			continue
+		var person: PersonView = shop.agent_nodes.get(agent.id) as PersonView
+		var record: Dictionary = {"available": true, "id": agent.id, "role": String(agent.role),
+			"cell": [agent.cell.x, agent.cell.y], "native_person": person != null,
+			"expected_model": String(PersonPresentation.model_for(agent.role, agent.id))}
+		if person != null:
+			record.merge({"visible": person.is_visible_in_tree(), "native_role": String(person.role),
+				"model": String(person.model_name()), "clip": String(person.current_clip()),
+				"model_visible": person._model != null and person._model.is_visible_in_tree(),
+				"feet": _point_evidence(person.global_position, camera),
+				"head": _point_evidence(person.global_transform * person.head_anchor_position(), camera)})
+		if camera != null:
+			var size: Vector2 = camera.get_viewport().get_visible_rect().size
+			record["viewport_size"] = [size.x, size.y]
+		return record
+	return {"available": false}
+
+
+static func _catalogue_server_valid(server: Dictionary) -> bool:
+	if server.get("available") != true or server.get("native_person") != true \
+			or server.get("visible") != true or server.get("model_visible") != true \
+			or server.get("role") != "server" or server.get("native_role") != "server" or server.get("cell") != [8, 8] \
+			or server.get("clip") != "idle" or String(server.get("model", "")).is_empty() \
+			or server.get("model") != server.get("expected_model"):
+		return false
+	var extent: Array = server.get("viewport_size", [])
+	if extent.size() != 2 or float(extent[0]) <= 0.0 or float(extent[1]) <= 0.0:
+		return false
+	for name: String in ["feet", "head"]:
+		var point: Dictionary = server.get(name, {})
+		var screen: Variant = point.get("screen")
+		if point.get("in_frustum") != true or not screen is Array or screen.size() != 2 \
+				or not is_finite(float(screen[0])) or not is_finite(float(screen[1])) \
+				or float(screen[0]) < 0.0 or float(screen[1]) < 0.0 \
+				or float(screen[0]) >= float(extent[0]) or float(screen[1]) >= float(extent[1]):
+			return false
+	return true
 
 
 static func _loan_control_evidence(control: Control) -> Dictionary:
