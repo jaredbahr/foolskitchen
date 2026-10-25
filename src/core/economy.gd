@@ -1,11 +1,14 @@
 extends Node
 ## Autoload adapter for the pure ledger and ingredient stock models.
-## Money is always whole currency units; purchases cannot borrow in Phase 1.
+## Money is always whole currency units. Automatic loans are settled at close;
+## ordinary purchases never borrow against the next day's income.
 
 const MAX_CURRENCY: int = 9223372036854775807
+const LOAN_TERMS: LoanTuning = preload("res://data/balance/loans.tres")
 
 var ledger: Ledger = Ledger.new()
 var stock: Stock = Stock.new()
+var loan: LoanAccount = LoanAccount.new()
 ## Legacy balance access. Assignments record their difference under OTHER.
 var cash: int:
 	get:
@@ -30,11 +33,12 @@ func reset(starting_cash: int) -> void:
 	ledger = Ledger.new()
 	ledger.cash = starting_cash
 	stock = Stock.new()
+	loan = LoanAccount.new()
 	EventBus.cash_changed.emit(cash, 0, Ledger.OTHER)
 
 
 func _capture_save() -> Dictionary:
-	return {"ledger": ledger.to_dict(), "stock": stock.to_dict()}
+	return {"ledger": ledger.to_dict(), "stock": stock.to_dict(), "loan": loan.to_dict()}
 
 
 func _restore_save(data: Dictionary) -> bool:
@@ -42,8 +46,14 @@ func _restore_save(data: Dictionary) -> bool:
 	var stock_data: Variant = data.get("stock", null)
 	if not ledger_data is Dictionary or not stock_data is Dictionary:
 		return false
+	var restored_loan: LoanAccount = LoanAccount.new()
+	if data.has("loan"):
+		restored_loan = LoanAccount.from_dict(data["loan"])
+		if restored_loan == null:
+			return false
 	ledger = Ledger.from_dict(ledger_data)
 	stock = Stock.from_dict(stock_data)
+	loan = restored_loan
 	EventBus.cash_changed.emit(cash, 0, Ledger.OTHER)
 	return true
 
@@ -54,9 +64,38 @@ func add_cash(amount: int, reason: StringName) -> void:
 	EventBus.cash_changed.emit(cash, amount, reason)
 
 
-## Central Phase 1 policy. Loan behavior will replace this rule in Phase 3.
+## Ingredients and wages remain available while a bank loan is open.
 func can_spend_without_loan(amount: int) -> bool:
 	return amount >= 0 and cash >= amount
+
+
+## Furniture over the authored limit waits for the loan to close.
+## Main will wire this to build commands during UI integration.
+func can_buy_discretionary(amount: int) -> bool:
+	return can_spend_without_loan(amount) \
+		and (loan.principal == 0 or amount <= LOAN_TERMS.large_purchase_limit)
+
+
+## Every upgrade waits for the loan to close, including cheap ones. This is
+## separate from the furniture price limit so tray-like upgrades cannot slip
+## through a $50 threshold check.
+func can_buy_upgrade(amount: int) -> bool:
+	return loan.principal == 0 and can_spend_without_loan(amount)
+
+
+## Main calls this once after wages and rent, before constructing the report.
+## Every bank flow is recorded under its own ledger category. Once all entries
+## are applied, emit their running balances in transaction order for the HUD;
+## callbacks that read Economy.cash see the already-settled final balance.
+func settle_loan_day(day: int) -> Dictionary:
+	var running_cash: int = cash
+	var result: Dictionary = loan.settle_day(ledger, day, LOAN_TERMS)
+	for movement: Dictionary in result.get("movements", []):
+		var amount: int = int(movement["amount"])
+		var reason: StringName = movement["category"]
+		running_cash += amount
+		EventBus.cash_changed.emit(running_cash, amount, reason)
+	return result
 
 
 ## Buys one ingredient batch atomically, or returns false without changes.

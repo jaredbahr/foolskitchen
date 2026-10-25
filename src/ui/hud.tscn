@@ -131,6 +131,12 @@ tooltip_text = "Paint walls, floor and furniture (P)"
 layout_mode = 2
 text = "$0"
 
+[node name="Loan" type="Label" parent="Top/Row"]
+visible = false
+layout_mode = 2
+mouse_filter = 1
+text = "Loan $0"
+
 [node name="Reputation" type="Label" parent="Top/Row"]
 layout_mode = 2
 mouse_filter = 1

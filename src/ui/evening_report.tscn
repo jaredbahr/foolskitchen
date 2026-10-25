@@ -94,6 +94,13 @@ unique_name_in_owner = true
 layout_mode = 2
 columns = 2
 
+[node name="LoanNotice" type="Label" parent="Panel/Scroll/Content"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+size_flags_horizontal = 3
+autowrap_mode = 3
+
 [node name="ReviewHeading" type="Label" parent="Panel/Scroll/Content"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 22

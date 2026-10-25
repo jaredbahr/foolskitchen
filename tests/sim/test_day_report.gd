@@ -267,7 +267,7 @@ func test_ui_full_report_then_empty_clears_every_section() -> void:
 	tree.root.add_child(_screen)
 	_screen.call("show_report", _full_report())
 	assert_eq((_screen.get_node("%Header") as Label).text, "Day 3: Closed")
-	assert_eq((_screen.get_node("%Profit") as Label).text, "$910 profit")
+	assert_eq((_screen.get_node("%Profit") as Label).text, "$910 operating profit")
 	assert_eq((_screen.get_node("%Guests") as Label).text, "12 served  /  4 lost")
 	assert_eq((_screen.get_node("%Cleanliness") as Label).text, "Cleanliness: Grubby")
 	assert_true((_screen.get_node("%Cleanliness") as Label).visible)
@@ -319,7 +319,7 @@ func test_ui_loss_and_next_day_signal_without_clock_integration() -> void:
 	var report: DayReport = DayReport.new()
 	report.costs = {&"rent": 1234}
 	_screen.call("show_report", report)
-	assert_eq((_screen.get_node("%Profit") as Label).text, "-$1,234 profit")
+	assert_eq((_screen.get_node("%Profit") as Label).text, "-$1,234 operating profit")
 	_screen.connect("next_day_pressed", _on_next_day)
 	(_screen.get_node("%NextDay") as Button).pressed.emit()
 	assert_eq(_next_day_count, 1)
@@ -333,10 +333,112 @@ func test_ui_report_before_ready_is_preserved_and_connects_once() -> void:
 	_screen.call("_ready")
 	_screen.call("_ready")
 	assert_eq((_screen.get_node("%Header") as Label).text, "Day 3: Closed")
-	assert_eq((_screen.get_node("%Profit") as Label).text, "$910 profit")
+	assert_eq((_screen.get_node("%Profit") as Label).text, "$910 operating profit")
 	_screen.connect("next_day_pressed", _on_next_day)
 	(_screen.get_node("%NextDay") as Button).pressed.emit()
 	assert_eq(_next_day_count, 1)
+
+
+func test_first_loan_notice_snapshot_is_boolean_and_older_reports_default_hidden() -> void:
+	var report: DayReport = DayReport.new()
+	report.loan_first_advance = true
+	var decoded: Dictionary = JSON.parse_string(JSON.stringify(report.to_dict()))
+	assert_true(DayReport.from_dict(decoded).loan_first_advance)
+	assert_false(DayReport.from_dict({}).loan_first_advance)
+	assert_false(DayReport.from_dict({"loan_first_advance": "true"}).loan_first_advance)
+
+
+func test_native_report_maps_bank_lines_and_wraps_first_notice_then_clears_it() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	await tree.process_frame
+	_host = Control.new()
+	_host.size = Vector2(1600.0, 900.0)
+	tree.root.add_child(_host)
+	_screen = REPORT_SCENE.instantiate()
+	_host.add_child(_screen)
+	var report: DayReport = DayReport.new()
+	report.income = {Ledger.BANK_LOAN: 150}
+	report.costs = {Ledger.LOAN_INTEREST: 5, Ledger.LOAN_REPAYMENT: 50}
+	report.loan_first_advance = true
+	_screen.call("show_report", report)
+	var income: GridContainer = _screen.get_node("%IncomeRows") as GridContainer
+	var costs: GridContainer = _screen.get_node("%CostRows") as GridContainer
+	assert_eq((income.get_child(0) as Label).text, "Bank loan")
+	assert_eq((income.get_child(1) as Label).text, "$150")
+	assert_eq((costs.get_child(0) as Label).text, "Loan interest")
+	assert_eq((costs.get_child(1) as Label).text, "$5")
+	assert_eq((costs.get_child(2) as Label).text, "Loan repayment")
+	assert_eq((costs.get_child(3) as Label).text, "$50")
+	var notice: Label = _screen.get_node("%LoanNotice") as Label
+	assert_eq(report.profit(), 95, "all financing movements remain in the cash result")
+	assert_eq((_screen.get_node("%Profit") as Label).text, "$0 operating profit")
+	assert_eq(notice.text, "The bank covered your shortfall. It'll take a share of your profits until it's paid back.")
+	for bounds: Vector2 in [Vector2(1600.0, 900.0), Vector2(1280.0, 720.0)]:
+		_host.size = bounds
+		await tree.process_frame
+		await tree.process_frame
+		var scroll: ScrollContainer = _screen.get_node("Panel/Scroll") as ScrollContainer
+		var viewport: Rect2 = scroll.get_global_rect()
+		assert_true(notice.is_visible_in_tree())
+		assert_true(viewport.grow(0.5).encloses(notice.get_global_rect()), "the introduction fits the unscrolled report")
+		assert_true(notice.size.y >= notice.get_combined_minimum_size().y - 0.5)
+		assert_true(notice.global_position.y >= costs.get_global_rect().end.y)
+	_screen.call("show_report", DayReport.new())
+	assert_false(notice.visible)
+	assert_eq(notice.text, "")
+	assert_eq((income.get_child(0) as Label).text, "No income today")
+	assert_eq((costs.get_child(0) as Label).text, "No costs today")
+
+
+func test_operating_profit_excludes_all_financing_without_changing_cash_totals() -> void:
+	var report: DayReport = DayReport.new()
+	report.income = {Ledger.SALE: 40, Ledger.BANK_LOAN: 100}
+	report.costs = {Ledger.RENT: 80, Ledger.LOAN_INTEREST: 5, Ledger.LOAN_REPAYMENT: 10}
+	assert_eq(report.total_income(), 140)
+	assert_eq(report.total_costs(), 95)
+	assert_eq(report.profit(), 45, "financial cash movement retains every bank line")
+	assert_eq(report.operating_profit(), -40, "a bank advance cannot turn an operating loss into profit")
+	report.income = {Ledger.SALE: 100}
+	report.costs = {Ledger.RENT: 20, Ledger.LOAN_INTEREST: 5, Ledger.LOAN_REPAYMENT: 90}
+	assert_eq(report.profit(), -15)
+	assert_eq(report.operating_profit(), 80, "interest and repayment cannot lower operating performance")
+
+
+func test_historical_report_decoding_keeps_cash_profit_and_derives_operating_profit() -> void:
+	var saved: Dictionary = {"day": 4, "income": {"sale": 40, "bank_loan": 100},
+		"costs": {"rent": 80, "loan_interest": 5, "loan_repayment": 10}}
+	var report: DayReport = DayReport.from_dict(JSON.parse_string(JSON.stringify(saved)))
+	assert_eq(report.profit(), 45)
+	assert_eq(report.operating_profit(), -40)
+	var restored: DayReport = DayReport.from_dict(JSON.parse_string(JSON.stringify(report.to_dict())))
+	assert_eq(restored.to_dict(), report.to_dict())
+	assert_eq(restored.profit(), 45)
+	assert_eq(restored.operating_profit(), -40)
+	var older: DayReport = DayReport.from_dict({"income": {"sale": 40}, "costs": {"rent": 80}})
+	assert_eq(older.operating_profit(), older.profit(), "older reports without financing keep their result")
+
+
+func test_native_headline_and_color_use_operating_profit_while_bank_rows_remain() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	await tree.process_frame
+	_screen = REPORT_SCENE.instantiate()
+	tree.root.add_child(_screen)
+	var report: DayReport = DayReport.from_dict({"income": {"sale": 40, "bank_loan": 100},
+		"costs": {"rent": 80, "loan_interest": 5, "loan_repayment": 10}})
+	_screen.call("show_report", report)
+	var headline: Label = _screen.get_node("%Profit") as Label
+	assert_eq(report.profit(), 45)
+	assert_eq(headline.text, "-$40 operating profit")
+	assert_eq(headline.get_theme_color("font_color"), Color("a83e35"))
+	assert_eq((_screen.get_node("%IncomeRows").get_child(0) as Label).text, "Bank loan")
+	assert_eq((_screen.get_node("%CostRows").get_child(0) as Label).text, "Loan interest")
+	assert_eq((_screen.get_node("%CostRows").get_child(2) as Label).text, "Loan repayment")
+	report = DayReport.from_dict({"income": {"sale": 100},
+		"costs": {"rent": 20, "loan_interest": 5, "loan_repayment": 90}})
+	_screen.call("show_report", report)
+	assert_eq(report.profit(), -15)
+	assert_eq(headline.text, "$80 operating profit")
+	assert_eq(headline.get_theme_color("font_color"), Color("38764b"))
 
 
 func _full_report() -> DayReport:

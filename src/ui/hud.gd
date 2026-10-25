@@ -18,6 +18,10 @@ var _day_label: Label
 var _time_label: Label
 var _phase_label: Label
 var _cash_label: Label
+var _loan_label: Label
+var _loan_principal: int = 0
+var _loan_repay_share: float = 0.0
+var _loan_daily_interest: float = 0.0
 var _reputation_label: Label
 var _owner_level_label: Label
 var _owner_xp_bar: ProgressBar
@@ -69,6 +73,7 @@ func refresh() -> void:
 		_time_label = get_node("Top/Row/Time") as Label
 		_phase_label = get_node("Top/Row/Phase") as Label
 		_cash_label = get_node("Top/Row/Cash") as Label
+		_loan_label = get_node("Top/Row/Loan") as Label
 		_reputation_label = get_node("Top/Row/Reputation") as Label
 		_owner_level_label = get_node("Top/Row/OwnerProgress/OwnerLevel") as Label
 		_owner_xp_bar = get_node("Top/Row/OwnerProgress/OwnerXPBar") as ProgressBar
@@ -112,6 +117,7 @@ func refresh() -> void:
 	_time_label.text = Fmt.clock(Clock.sim.display_minutes())
 	_phase_label.text = PHASE_NAMES[Clock.sim.phase]
 	_cash_label.text = Fmt.money(_cash)
+	_render_loan()
 	_render_reputation()
 	_render_owner_progress()
 	_context.visible = Clock.sim.phase == SimClock.Phase.MORNING or Clock.sim.phase == SimClock.Phase.CLOSED
@@ -145,6 +151,32 @@ func _render_reputation() -> void:
 	_reputation_label.text = "%.1f" % _reputation_average
 	_reputation_label.tooltip_text = "%.1f stars from your last %d reviews" % [
 		_reputation_average, _reputation_count]
+
+
+## Primitive presentation only; Main owns the loan and its day-close policy.
+func set_loan_state(principal: int, repay_share: float, daily_interest: float) -> void:
+	_loan_principal = maxi(0, principal)
+	_loan_repay_share = clampf(repay_share, 0.0, 1.0)
+	_loan_daily_interest = maxf(0.0, daily_interest)
+	if _loan_label == null:
+		refresh()
+	else:
+		_render_loan()
+
+
+func _render_loan() -> void:
+	_loan_label.text = "Loan %s" % Fmt.money(_loan_principal)
+	_loan_label.tooltip_text = "The bank takes up to %s of positive daily profit to repay this loan. Interest is %s a day. Big furniture purchases and upgrades wait until it's paid back." % [
+		_percentage_text(_loan_repay_share), _percentage_text(_loan_daily_interest)]
+	_loan_label.visible = _loan_principal > 0
+	var row: Container = get_node("Top/Row") as Container
+	row.update_minimum_size()
+	row.queue_sort()
+
+
+func _percentage_text(rate: float) -> String:
+	var percent: float = rate * 100.0
+	return "%d%%" % roundi(percent) if is_equal_approx(percent, roundf(percent)) else "%.1f%%" % percent
 
 
 ## Main supplies XP within the current level and the next-level requirement.
@@ -212,6 +244,17 @@ func _style_header() -> void:
 				IconCatalogue.TOP_BAR_SIZE, button == _settings_button or String(button.name) == "Speed0")
 		IconStyle.compact_button(button)
 	IconStyle.decorate_label(_reputation_label, &"reputation", IconCatalogue.TOP_BAR_SIZE)
+	# Reuse the warm theme's existing cream, ink and accent for the warning chip.
+	var header_theme: Theme = (get_node("Top") as Control).theme
+	var chip: StyleBoxFlat = header_theme.get_stylebox("normal", "Button").duplicate() as StyleBoxFlat
+	var accent: StyleBoxFlat = header_theme.get_stylebox("pressed", "Button") as StyleBoxFlat
+	chip.border_color = accent.bg_color
+	chip.set_border_width_all(1)
+	chip.set_content_margin(SIDE_LEFT, 8.0)
+	chip.set_content_margin(SIDE_RIGHT, 8.0)
+	chip.set_content_margin(SIDE_TOP, 4.0)
+	chip.set_content_margin(SIDE_BOTTOM, 4.0)
+	_loan_label.add_theme_stylebox_override("normal", chip)
 	_day_label.tooltip_text = "Current day"
 	_time_label.tooltip_text = "Shop clock"
 	_phase_label.tooltip_text = "Today's service phase"

@@ -209,6 +209,55 @@ func test_no_loan_policy_and_zero_cost_purchase() -> void:
 	assert_false(_economy.buy_ingredient(&"bun", 1, 1))
 
 
+func test_open_loan_blocks_big_discretionary_spending_but_not_ingredients() -> void:
+	_make_economy()
+	_economy.ledger.cash = 100
+	_economy.loan.principal = 150
+	assert_true(_economy.can_spend_without_loan(80))
+	assert_false(_economy.can_buy_discretionary(51))
+	assert_true(_economy.can_buy_discretionary(50))
+	assert_false(_economy.can_buy_upgrade(1), "even a cheap upgrade waits for repayment")
+	assert_true(_economy.buy_ingredient(&"bun", 2, 10))
+	assert_eq(_economy.cash, 80)
+	assert_eq(_economy.stock.count(&"bun"), 2)
+	assert_false(_economy.can_buy_discretionary(81), "ordinary affordability still applies")
+	_economy.loan.principal = 0
+	assert_true(_economy.can_buy_discretionary(80))
+	assert_true(_economy.can_buy_upgrade(1))
+
+
+func test_loan_settlement_emits_each_ledger_flow_and_restore_is_transactional() -> void:
+	_make_economy()
+	_economy.ledger.cash = 0
+	_economy.loan.principal = 100
+	var day: int = maxi(1, Clock.day)
+	_economy.add_cash(100, Ledger.SALE)
+	_events.clear()
+	var result: Dictionary = _economy.settle_loan_day(day)
+	assert_eq(result["interest"], 5)
+	assert_eq(result["repayment"], 50)
+	assert_eq(_economy.cash, 45)
+	assert_eq(_events.size(), 2)
+	assert_eq(_events[0]["cash"], 95)
+	assert_eq(_events[0]["reason"], Ledger.LOAN_INTEREST)
+	assert_eq(_events[1]["cash"], 45)
+	assert_eq(_events[1]["reason"], Ledger.LOAN_REPAYMENT)
+	var saved: Dictionary = _economy._capture_save()
+	assert_eq(saved["loan"]["principal"], "50")
+	assert_true(_economy._restore_save(JSON.parse_string(JSON.stringify(saved))))
+	assert_eq(_economy.loan.principal, 50)
+	assert_eq(_economy.loan.last_settled_day, day)
+	var before: Dictionary = _economy._capture_save()
+	var invalid: Dictionary = saved.duplicate(true)
+	invalid["loan"]["principal"] = "bad"
+	assert_false(_economy._restore_save(invalid))
+	assert_eq(_economy._capture_save(), before, "a bad loan cannot partially restore the books")
+	var old_save: Dictionary = saved.duplicate(true)
+	old_save.erase("loan")
+	assert_true(_economy._restore_save(old_save))
+	assert_eq(_economy.loan.principal, 0, "older economy saves start without debt")
+
+
 func _make_economy() -> void:
 	_economy = EconomyScript.new()
 	EventBus.cash_changed.connect(_on_cash_changed)

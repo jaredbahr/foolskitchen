@@ -39,6 +39,7 @@ func after_each() -> void:
 
 
 func test_five_days_keep_books_guests_and_shop_consistent() -> void:
+	await (Engine.get_main_loop() as SceneTree).process_frame
 	var main: Node = _start()
 	var total_served: int = 0
 	for day: int in range(1, DAYS + 1):
@@ -167,6 +168,16 @@ func _assert_closed_books(main: Node, day: int) -> void:
 	assert_eq(int(totals.get(Ledger.WAGES, 0)), -wages, "day %d: wages once" % day)
 	assert_eq(int(totals.get(Ledger.RENT, 0)), -TUNING.daily_rent, "day %d: rent once" % day)
 	assert_eq(int(totals.get(Ledger.OTHER, 0)), 0, "day %d: no unexplained money" % day)
+	var known_categories: Array[StringName] = [Ledger.SALE, Ledger.TIP, Ledger.INGREDIENTS,
+		Ledger.WAGES, Ledger.RENT, Ledger.UPGRADES, Ledger.OTHER,
+		Ledger.BANK_LOAN, Ledger.LOAN_INTEREST, Ledger.LOAN_REPAYMENT]
+	for category: StringName in totals:
+		assert_true(known_categories.has(category), "day %d: every flow has a known ledger category" % day)
+	assert_true(int(totals.get(Ledger.BANK_LOAN, 0)) >= 0)
+	assert_true(int(totals.get(Ledger.LOAN_INTEREST, 0)) <= 0)
+	assert_true(int(totals.get(Ledger.LOAN_REPAYMENT, 0)) <= 0)
+	assert_true(Economy.cash >= 0, "day %d: the bank covers any closing shortfall" % day)
+	assert_eq(Economy.loan.last_settled_day, day, "day %d: financing settles at close" % day)
 	var since_start: int = 0
 	for d: int in range(1, day + 1):
 		since_start += Economy.ledger.day_profit(d)
@@ -187,6 +198,15 @@ func _assert_closed_books(main: Node, day: int) -> void:
 		"day %d: every review reaches the evening report" % day)
 	assert_eq(shown.reputation_after, reputation.average())
 	assert_eq(int(shown.income.get(Ledger.SALE, 0)), _sales_today)
+	assert_eq(int(shown.income.get(Ledger.BANK_LOAN, 0)), int(totals.get(Ledger.BANK_LOAN, 0)))
+	assert_eq(int(shown.costs.get(Ledger.LOAN_INTEREST, 0)), -int(totals.get(Ledger.LOAN_INTEREST, 0)))
+	assert_eq(int(shown.costs.get(Ledger.LOAN_REPAYMENT, 0)), -int(totals.get(Ledger.LOAN_REPAYMENT, 0)))
+	var operating_profit: int = 0
+	for category: StringName in totals:
+		if category != Ledger.BANK_LOAN and category != Ledger.LOAN_INTEREST and category != Ledger.LOAN_REPAYMENT:
+			operating_profit += int(totals[category])
+	assert_eq(shown.operating_profit(), operating_profit, "the headline excludes every financing movement")
+	assert_eq(shown.profit(), Economy.ledger.day_profit(day), "full financial cash movement still matches the ledger")
 	var dishes: int = 0
 	for recipe: StringName in shown.dishes_sold:
 		dishes += shown.dishes_sold[recipe]

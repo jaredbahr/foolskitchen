@@ -227,7 +227,7 @@ an active edit/panel/selection first, or opens Settings when none is active.
 - `Clock.attach_world(world, sim.advance)` makes every tick run the restaurant (guests, staff, and the kitchen once it lands).
 - **Day loop:**
   - **MORNING:** `sim.start_day()`, the fridge is topped up to `EconomyTuning.morning_stock` (bought through `Economy.buy_ingredient`), then autosave.
-  - **CLOSED:** wages per staff role and rent are charged through the ledger, then the evening report shows a `DayReport` built from `Ledger.day_totals` and the sim's counters.
+  - **CLOSED:** wages per staff role and rent are charged through the ledger, automatic loans settle, then the evening report shows a `DayReport` built from `Ledger.day_totals` and the sim's counters.
   - **"Next day"** (in the report or the HUD) calls `Clock.sim.next_day()`, which returns to MORNING.
 - Money numbers live in `data/balance/*.tres` (`EconomyTuning`).
 - `customer_paid` records a SALE and counts the dish.
@@ -546,6 +546,53 @@ an active edit/panel/selection first, or opens Settings when none is active.
   to check the cleaning hypothesis with a dedicated cleaner. The required
   25-day comparison is UNRUN; accepting every raise must not leave profit below
   main's before this pacing is accepted. No workflow or CI probe loop is added.
+
+### Automatic bank loans (FK-050)
+- `LoanAccount` settles once per closing day after wages and rent. Existing
+  principal pays daily interest, then positive pre-financing profit repays its
+  authored share (whole dollars, at least $1 when a positive share is due),
+  capped by both principal and nonnegative cash available after interest.
+  Repayment never causes a new advance. An interest shortfall still gets an
+  automatic advance rounded up to the borrowing step; new advances start
+  interest at the following close. `data/balance/loans.tres` keeps the 5% default
+  within the Director's 4–6% range, a 50% repayment share, and $50 step/limit.
+- Bank loan is ledger income; loan interest and repayment are costs. All cash
+  movements appear separately in the evening report. Its headline and colour
+  use `DayReport.operating_profit()`, excluding all three financing categories.
+  The existing `profit()` API still returns the full financial cash movement,
+  as do `total_income()` and `total_costs()` for their respective sides; this
+  preserves ledger-parity callers and historical report decoding. Both metrics
+  derive from the existing income/cost dictionaries without new saved fields.
+  The five-day invariant independently checks the headline's operating result
+  and retains the full financial result's parity with the ledger. Main captures
+  operating profit before financing for owner XP, so advances earn no XP and repayments/interest
+  do not reduce the operating-profit award. The existing close guard and the
+  account's saved `last_settled_day` prevent duplicate settlements.
+- An open loan refuses furniture over the authored limit and every tray
+  upgrade with "Pay off your bank loan first". `ShopEditBooks` accepts an optional
+  read-only refusal callback; old cash-only callers keep their existing text.
+  The Staff panel accepts an optional loan-lock hint without changing phase,
+  ownership or purchase-order hints. Cheap furniture, ingredients and wages
+  keep their existing policies; ordinary purchases never create a loan.
+- Economy's existing save section adds `loan` with decimal-string principal and
+  last settled day plus boolean `has_borrowed`. Missing old loan sections start
+  debt-free. Older loan snapshots without the flag infer prior borrowing from
+  positive principal; an already paid-off old snapshot has no recoverable loan
+  history and can show the introduction again on its next advance. This state
+  persists only at the normal morning autosave; no financial action saves.
+- Main sends primitive loan state to the HUD. A text chip uses the existing warm
+  theme and joins the native financial group, releasing all width when hidden.
+  Its tooltip explains the repayment share and daily interest, using one decimal
+  for fractional percentages such as 4.5% and keeping whole rates such as 5%.
+  A transient DayReport flag shows the friendly introduction on the first advance, remains
+  stable across repeated report builds for that close, and resets next morning.
+  The durable borrowing flag prevents later loans from repeating it.
+- Loan model, actual Main close/save/load, editor refusal, native HUD bounds,
+  report fixtures and the five-day ledger invariant run through the existing
+  `tools/check.sh` suite. The pure ten-day forced-loss fixture checks solvency
+  and accounting; playable balance and rendered loan-state UI are separate
+  review requirements. Int64 charge, shortfall and principal limits reject an
+  unrepresentable settlement before any account or ledger mutation.
 
 ### 2.4 Save system
 - JSON in `user://saves/`, with a `version` field and migration functions per version.

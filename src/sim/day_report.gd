@@ -2,9 +2,15 @@ class_name DayReport
 extends RefCounted
 ## Plain end-of-day results, independent of the ledger, clock and scene tree.
 
+const FINANCING_CATEGORIES: Array[StringName] = [
+	Ledger.BANK_LOAN, Ledger.LOAN_INTEREST, Ledger.LOAN_REPAYMENT,
+]
+
 var day: int = 1
 var income: Dictionary = {}
 var costs: Dictionary = {}
+## Transient first-advance introduction, supplied by the closing session.
+var loan_first_advance: bool = false
 var dishes_sold: Dictionary = {}
 var customers_served: int = 0
 var customers_lost: int = 0
@@ -36,9 +42,16 @@ func total_costs() -> int:
 	return _sum(costs)
 
 
-## Returns income minus costs; a loss is negative.
+## Full financial cash movement, including loans, interest and repayments.
+## Kept for existing accounting callers and decoded historical reports.
 func profit() -> int:
 	return total_income() - total_costs()
+
+
+## Shop performance before financing. Borrowing cannot turn a loss into profit,
+## and paying back principal does not make the shop's operations look worse.
+func operating_profit() -> int:
+	return _operating_sum(income) - _operating_sum(costs)
 
 
 ## Returns the most-sold recipe, breaking ties by its alphabetical id.
@@ -60,6 +73,7 @@ func to_dict() -> Dictionary:
 		"day": day,
 		"income": _string_counts(income),
 		"costs": _string_counts(costs),
+		"loan_first_advance": loan_first_advance,
 		"dishes_sold": _string_counts(dishes_sold),
 		"customers_served": customers_served,
 		"customers_lost": customers_lost,
@@ -83,6 +97,8 @@ static func from_dict(data: Dictionary) -> DayReport:
 	report.day = int(data.get("day", 1))
 	report.income = _name_counts(data.get("income", {}))
 	report.costs = _name_counts(data.get("costs", {}))
+	var saved_loan_notice: Variant = data.get("loan_first_advance", false)
+	report.loan_first_advance = saved_loan_notice is bool and saved_loan_notice
 	report.dishes_sold = _name_counts(data.get("dishes_sold", {}))
 	report.customers_served = int(data.get("customers_served", 0))
 	report.customers_lost = int(data.get("customers_lost", 0))
@@ -135,6 +151,14 @@ static func _sum(counts: Dictionary) -> int:
 	var total: int = 0
 	for value: Variant in counts.values():
 		total += int(value)
+	return total
+
+
+static func _operating_sum(counts: Dictionary) -> int:
+	var total: int = 0
+	for key: Variant in counts:
+		if not FINANCING_CATEGORIES.has(StringName(str(key))):
+			total += int(counts[key])
 	return total
 
 

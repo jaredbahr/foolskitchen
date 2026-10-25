@@ -19,6 +19,8 @@ var _changes: Array[Array] = []
 var _removed: int = 0
 var _try_reentry: bool = false
 var _reentry_result: bool = true
+var _refusal: Variant = "Pay off your bank loan first"
+var _refusal_amount: int = -1
 
 
 func before_each() -> void:
@@ -46,6 +48,8 @@ func after_each() -> void:
 	_removed = 0
 	_try_reentry = false
 	_reentry_result = true
+	_refusal = "Pay off your bank loan first"
+	_refusal_amount = -1
 
 
 func test_service_phases_refuse_every_edit_without_side_effects() -> void:
@@ -374,6 +378,50 @@ func test_second_sink_can_be_sold_but_last_sink_is_preserved() -> void:
 	assert_true(_editor.last_check.why.contains("sink"))
 	assert_eq(_entries.size(), entries)
 	assert_eq(_editor.to_dict(), before)
+
+
+func test_custom_purchase_refusal_preserves_read_only_checks_and_atomic_rejection() -> void:
+	_cash = 0
+	_books = ShopEditBooks.new(_can_spend, _record_cash, _purchase_refusal)
+	_editor = ShopEditor.new(_sim, _content, _books)
+	var snapshot: Dictionary = _editor.to_dict()
+	var check: EditCheck = _editor.check_buy(&"chair", Vector2i(4, 9))
+	assert_false(check.ok)
+	assert_eq(check.why, "Pay off your bank loan first")
+	assert_eq(_refusal_amount, _content.item(&"chair").price)
+	assert_eq(_editor.last_check.why, "", "a proposal does not replace the last transaction")
+	assert_false(_editor.buy(&"chair", Vector2i(4, 9)))
+	assert_eq(_editor.last_check.why, check.why)
+	assert_eq(_editor.to_dict(), snapshot)
+	assert_eq(_cash, 0)
+	assert_eq(_entries.size(), 0)
+	assert_eq(_changes.size(), 0)
+	_cash = 1000
+	_refusal_amount = -1
+	assert_true(_editor.check_buy(&"chair", Vector2i(4, 9)).ok)
+	assert_eq(_refusal_amount, -1, "an allowed purchase does not request a refusal")
+	assert_eq(_entries.size(), 0)
+
+
+func test_optional_purchase_refusal_keeps_legacy_reason_for_missing_empty_or_invalid_answer() -> void:
+	_cash = 0
+	var legacy: String = "Not enough cash; furniture cannot use a loan"
+	assert_eq(_editor.check_buy(&"chair", Vector2i(4, 9)).why, legacy)
+	_books = ShopEditBooks.new(_can_spend, _record_cash, _purchase_refusal)
+	_editor = ShopEditor.new(_sim, _content, _books)
+	for answer: Variant in ["", "  ", 12, null]:
+		_refusal = answer
+		assert_eq(_editor.check_buy(&"chair", Vector2i(4, 9)).why, legacy)
+	_books = ShopEditBooks.new(_can_spend, _record_cash, Callable())
+	_editor = ShopEditor.new(_sim, _content, _books)
+	assert_eq(_editor.check_buy(&"chair", Vector2i(4, 9)).why, legacy)
+	assert_eq(_entries.size(), 0)
+	assert_eq(_changes.size(), 0)
+
+
+func _purchase_refusal(amount: int) -> Variant:
+	_refusal_amount = amount
+	return _refusal
 
 
 func _id(def_id: StringName) -> int:

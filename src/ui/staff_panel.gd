@@ -24,6 +24,7 @@ var _morning_generation: int = 0
 var _offer_rows: Dictionary[StringName, Control] = {}
 var _tray_level: int = 0
 var _tray_prices: PackedInt32Array = PackedInt32Array()
+var _tray_lock_reason: String = ""
 var _cash: int = 0
 
 
@@ -52,10 +53,11 @@ func set_morning(day: int, notices: Array[Dictionary]) -> void:
 	refresh()
 
 
-func set_trays(level: int, prices: PackedInt32Array, cash: int) -> void:
+func set_trays(level: int, prices: PackedInt32Array, cash: int, loan_lock_reason: String = "") -> void:
 	_tray_level = level
 	_tray_prices = prices
 	_cash = cash
+	_tray_lock_reason = loan_lock_reason
 	refresh()
 
 
@@ -87,11 +89,13 @@ func refresh() -> void:
 		var purchase: Button = %TraysBuy if level == 1 else %BigTraysBuy
 		label.text = "%s — $%d" % [title, price] if price >= 0 else "%s — price unavailable" % title
 		purchase.text = "Owned" if _tray_level >= level else "Buy"
-		purchase.disabled = not editable or price < 0 or _tray_level != level - 1 or _cash < price
+		purchase.disabled = not editable or price < 0 or _tray_level != level - 1 or _cash < price \
+			or not _tray_lock_reason.is_empty()
 		purchase.tooltip_text = MORNING_HINT if not editable else ("Owned" if _tray_level >= level else (
 			"Buy Trays first." if level == 2 and _tray_level == 0 else (
+			_tray_lock_reason if not _tray_lock_reason.is_empty() else (
 			"Price unavailable." if price < 0 else (
-			"Not enough cash." if _cash < price else "Servers can carry more plates."))))
+			"Not enough cash." if _cash < price else "Servers can carry more plates.")))))
 	for member: StaffMember in _roster.members():
 		var button: Button = _rows[member.id].get_node("Top/Action") as Button
 		button.disabled = not editable or not _roster.can_let_go(member.id)
@@ -302,5 +306,6 @@ func _on_big_trays_buy_pressed() -> void:
 
 func _request_tray(level: int) -> void:
 	if _phase == SimClock.Phase.MORNING and _tray_level == level - 1 \
-			and _tray_prices.size() >= level and _cash >= _tray_prices[level - 1]:
+			and _tray_prices.size() >= level and _cash >= _tray_prices[level - 1] \
+			and _tray_lock_reason.is_empty():
 		tray_requested.emit(level)

@@ -80,6 +80,7 @@ jobs:
           bash tools/screenshot.sh --out=screens/visual-review/mood-waits --open --fast=8 --frames=120,180,240,300 --speed=1
           bash tools/screenshot.sh --out=screens/visual-review/people-poses --open --fast=8 --frames=60,240 --speed=1
           bash tools/screenshot.sh --out=screens/visual-review/door-queue --door-queue --open --fast=8 --frames=240 --speed=1
+          bash tools/screenshot.sh --out=screens/visual-review/loan-review --loan-review --speed=0 --frames=12,90
           bash tools/screenshot.sh --out=screens/visual-review/menu --menu --speed=0 --frames=12
           bash tools/screenshot.sh --out=screens/visual-review/staff --staff --speed=0 --frames=12
           bash tools/screenshot.sh --out=screens/visual-review/report --report --open --fast=100 --speed=0 --frames=60
