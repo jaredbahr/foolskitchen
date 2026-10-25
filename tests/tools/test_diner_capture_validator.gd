@@ -116,7 +116,7 @@ func test_seated_crop_pixels_must_match_the_exact_nearest_source_derivative() ->
 
 func test_crop_measurement_must_remain_bound_to_the_current_booth_guest() -> void:
 	var descriptor: Dictionary = _crop_descriptor()
-	descriptor["measurement"]["seated_head_clearance"] = 0.04
+	descriptor["measurement"]["backrest_clearance"] = 0.04
 	_write_crop_descriptor(descriptor)
 	var metadata: Dictionary = _read_metadata(90)
 	metadata["diner_review"]["booth_crop"] = descriptor
@@ -152,6 +152,56 @@ func test_crop_scale_rejects_fractional_boolean_and_out_of_range_values_after_js
 		assert_true(_messages_contain(result["messages"], "metadata identity, size or digest mismatch"), str(invalid_scale))
 
 
+func test_surface_and_hip_contract_rejects_intrusion_misclassification_and_an_unselected_stool_failure() -> void:
+	var baseline: Dictionary = _read_metadata(90)
+	for change: String in ["inside", "fractional_count", "boolean_count", "depth", "crossing", "parts", "hips", "missing_ray", "wrong_cushion", "ray_mismatch", "backrest", "gap", "unclassified", "old_metric", "incomplete", "unselected_stool", "stool_backrest"]:
+		var metadata: Dictionary = baseline.duplicate(true)
+		var index: int = 5 if change in ["unselected_stool", "stool_backrest"] else 0
+		var measured: Dictionary = metadata["diner_review"]["state"]["actors"][index]["seat_clearance"]
+		match change:
+			"inside":
+				measured["head_vertices_inside_count"] = 1
+			"fractional_count":
+				measured["head_vertices_inside_count"] = 0.5
+			"boolean_count":
+				measured["head_vertices_inside_count"] = false
+			"depth":
+				measured["max_head_vertex_penetration"] = 0.0001
+			"crossing":
+				measured["head_seat_surface_crossings"] = 1
+			"parts":
+				measured["intrusion_parts"] = ["Model/Tall back shell"]
+			"hips", "unselected_stool":
+				measured["hips_supported"] = false
+			"missing_ray":
+				measured["hip_support_points"].pop_back()
+			"wrong_cushion":
+				measured["hip_support_parts"][0] = "Model/Wood foot plinth"
+			"ray_mismatch":
+				measured["hip_support_points"][0][0] += 0.01
+			"backrest":
+				measured["backrest_parts"] = []
+			"stool_backrest":
+				measured["backrest_status"] = "named_parts"
+				measured["backrest_clearance"] = 0.03
+				measured["backrest_parts"] = ["Model/Tall back shell"]
+			"gap":
+				measured["backrest_clearance"] = 0.019
+			"unclassified":
+				measured["backrest_status"] = "unclassified_kit"
+			"old_metric":
+				measured["clearance_metric"] = "minimum Euclidean seat-triangle to conservative posed-head AABB separation"
+			"incomplete":
+				measured["measurement_complete"] = false
+		if index == 0:
+			metadata["diner_review"]["booth_crop"]["measurement"] = measured.duplicate(true)
+		_write_crop_descriptor(metadata["diner_review"]["booth_crop"])
+		_write_metadata(90, metadata)
+		var result: Dictionary = VALIDATOR.validate_capture_pair(_fixture_directory, 90)
+		assert_false(result["valid"], change)
+		assert_true(_messages_contain(result["messages"], "surface and hip support evidence"), change)
+
+
 func _write_pair(frame: int) -> void:
 	var image: Image = Image.create(1600, 900, false, Image.FORMAT_RGBA8)
 	image.fill(Color.WHITE)
@@ -159,27 +209,46 @@ func _write_pair(frame: int) -> void:
 	assert_eq(image.save_png(png_path), OK)
 	var review: Dictionary = {"state": {"frame": frame}}
 	if frame == 90:
-		var measurement: Dictionary = {"guest_id": 7, "furnishing_id": 20, "table_item_id": 30,
-			"head_world_bounds": {"min": [0.1, 0.9, 0.2], "max": [0.3, 1.1, 0.4]},
-			"head_screen_bounds": {"x": 100.0, "y": 90.0, "width": 20.0, "height": 26.0},
-			"seated_head_clearance": 0.03, "intersecting_triangles": 0,
-			"head_center_inside_seat": false, "seat_geometry_measured": true, "head_vertices": 24,
-			"measurement_provenance": PROVENANCE, "clearance_metric": VALIDATOR.SEAT_CLEARANCE_METRIC}
-		var actor: Dictionary = {"id": 7, "role": "customer", "furnishing_definition": "diner_booth",
-			"furnishing": 20, "table": 30, "linked_table": 30, "reservation": 7,
-			"seated": true, "visible": true, "clip": "sit", "player_clip": "sit",
-			"seat_clearance": measurement}
-		var state: Dictionary = {"frame": 90, "actors": [actor], "items": [
+		# Detached protocol fixtures, not acceptance measurements or rendered art.
+		var actors: Array[Dictionary] = []
+		for index: int in range(6):
+			var booth: bool = index < 4
+			var furnishing: int = 20 + index / 2 if booth else 22 + index - 4
+			var table: int = 30 if booth else 31
+			var measured: Dictionary = _surface_measurement(7 + index, furnishing, table, booth)
+			measured["head_screen_bounds"]["y"] = 90.0 if index == 0 else 50.0 + index
+			actors.append({"id": 7 + index, "role": "customer", "furnishing_definition": "diner_booth" if booth else "diner_stool",
+				"furnishing": furnishing, "table": table, "linked_table": table, "reservation": 7 + index,
+				"seated": true, "visible": true, "clip": "sit", "player_clip": "sit", "seat_clearance": measured})
+		var state: Dictionary = {"frame": 90, "actors": actors, "items": [
 			{"id": 20, "definition": "diner_booth", "prop": {"bounds": {"rect": [80.0, 80.0, 80.0, 120.0]}}},
+			{"id": 21, "definition": "diner_booth", "prop": {"bounds": {"rect": [80.0, 80.0, 80.0, 120.0]}}},
+			{"id": 22, "definition": "diner_stool", "prop": {"bounds": {"rect": [80.0, 80.0, 80.0, 120.0]}}},
+			{"id": 23, "definition": "diner_stool", "prop": {"bounds": {"rect": [80.0, 80.0, 80.0, 120.0]}}},
+			{"id": 31, "definition": "bar_counter", "prop": {"bounds": {"rect": [130.0, 130.0, 100.0, 80.0]}}},
 			{"id": 30, "definition": "table_2", "prop": {"bounds": {"rect": [130.0, 130.0, 100.0, 80.0]}}}]}
 		review["state"] = state
-		var descriptor: Dictionary = _write_crop(image, measurement)
+		var descriptor: Dictionary = _write_crop(image, actors[0]["seat_clearance"])
 		review["booth_crop"] = descriptor
 	_write_metadata(frame, {"image_file": "shot_%04d.png" % frame,
 		"image_sha256": FileAccess.get_sha256(png_path), "scene": "res://src/world/main.tscn",
 		"capture_timing": "frame_post_draw", "width": 1600, "height": 900, "frame": frame,
 		"engine_errors": 0, "video_adapter": "Mesa llvmpipe (LLVM)",
 		"diner_review": review})
+
+
+func _surface_measurement(guest: int, furnishing: int, table: int, booth: bool) -> Dictionary:
+	var cushion: String = "Model/Left seat cushion" if booth else "Model/Round red cushion"
+	return {"guest_id": guest, "furnishing_id": furnishing, "table_item_id": table,
+		"head_world_bounds": {"min": [0.1, 0.9, 0.2], "max": [0.3, 1.1, 0.4]},
+		"head_screen_bounds": {"x": 100.0, "y": 90.0, "width": 20.0, "height": 26.0},
+		"backrest_clearance": 0.03 if booth else null, "backrest_status": "named_parts" if booth else "backless",
+		"backrest_parts": ["Model/Tall back shell"] if booth else [], "measurement_complete": true,
+		"head_vertices_inside_count": 0, "max_head_vertex_penetration": 0.0, "head_seat_surface_crossings": 0,
+		"intrusion_parts": [], "hips_supported": true, "hip_support_parts": [cushion, cushion],
+		"hip_bone_positions": [[-0.1, 0.3, 0.0], [0.1, 0.3, 0.0]],
+		"hip_support_points": [[-0.1, 0.264, 0.0], [0.1, 0.264, 0.0]], "head_vertices": 24,
+		"measurement_provenance": PROVENANCE, "clearance_metric": VALIDATOR.SEAT_CLEARANCE_METRIC}
 
 
 func _write_crop(source: Image, measurement: Dictionary) -> Dictionary:

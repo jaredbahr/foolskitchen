@@ -8,7 +8,7 @@ const PNG_SIGNATURE: PackedByteArray = PackedByteArray([137, 80, 78, 71, 13, 10,
 const EXPECTED_FRAMES: Array[int] = [12, 90]
 const BOOTH_CROP_FILENAME: String = "shot_0090_booth_3x.png"
 const SEAT_CLEARANCE_PROVENANCE: String = "native Mini head-mesh POSITION/JOINTS/WEIGHTS, imported Skin inverse binds, current Skeleton3D global poses, actual node transforms"
-const SEAT_CLEARANCE_METRIC: String = "minimum Euclidean seat-triangle to conservative posed-head AABB separation"
+const SEAT_CLEARANCE_METRIC: String = "indexed posed-head mesh to identified backrest surfaces"
 
 
 func _initialize() -> void:
@@ -173,28 +173,36 @@ static func _booth_measurement(source_metadata: Dictionary, descriptor: Dictiona
 	var actors: Variant = state.get("actors") if state is Dictionary else null
 	var items: Variant = state.get("items") if state is Dictionary else null
 	var measurement: Variant = descriptor.get("measurement")
-	if not actors is Array or not items is Array or not measurement is Dictionary:
+	if not actors is Array or actors.size() != 6 or not items is Array or not measurement is Dictionary:
 		return {"valid": false, "error": "diner-review: seated crop lacks actual booth actor measurement evidence"}
 	var selected: Dictionary = {}
 	var selected_actor: Dictionary = {}
 	var lowest_head_bottom: float = -INF
 	var selected_guest_id: int = 0
+	var booth_count: int = 0
+	var stool_count: int = 0
 	for value: Variant in actors:
-		if not value is Dictionary or value.get("furnishing_definition") != "diner_booth":
-			continue
+		if not value is Dictionary:
+			return {"valid": false, "error": "diner-review: invalid made-seat actor evidence"}
 		var actor: Dictionary = value
+		var definition: String = String(actor.get("furnishing_definition", ""))
 		var clearance: Variant = actor.get("seat_clearance")
-		if not clearance is Dictionary or not _valid_clearance(clearance):
-			return {"valid": false, "error": "diner-review: a booth guest lacks valid posed-head measurement evidence"}
+		if not clearance is Dictionary or not _valid_clearance(clearance, definition):
+			return {"valid": false, "error": "diner-review: a made-seat guest lacks valid posed-head surface and hip support evidence"}
 		var head_bounds: Dictionary = clearance["head_screen_bounds"]
 		var guest_id: int = int(clearance["guest_id"])
+		var furnishing_record: Dictionary = _item_by_id(items, int(actor.get("furnishing", -1)))
 		if actor.get("role") != "customer" or actor.get("seated") != true or actor.get("visible") != true \
 				or actor.get("clip") != "sit" or actor.get("player_clip") != "sit" \
 				or actor.get("reservation") != actor.get("id") or actor.get("linked_table") != actor.get("table") \
 				or clearance.get("guest_id") != actor.get("id") \
 				or clearance.get("furnishing_id") != actor.get("furnishing") \
-				or clearance.get("table_item_id") != actor.get("table"):
+				or clearance.get("table_item_id") != actor.get("table") or furnishing_record.get("definition") != definition:
 			return {"valid": false, "error": "diner-review: booth measurement is not bound to a seated reserved guest"}
+		if definition == "diner_stool":
+			stool_count += 1
+			continue
+		booth_count += 1
 		var head_bottom: float = float(head_bounds["y"]) + float(head_bounds["height"])
 		if head_bottom > lowest_head_bottom or (head_bottom == lowest_head_bottom \
 				and (selected_guest_id == 0 or guest_id < selected_guest_id)):
@@ -202,7 +210,7 @@ static func _booth_measurement(source_metadata: Dictionary, descriptor: Dictiona
 			selected_guest_id = guest_id
 			selected = clearance
 			selected_actor = actor
-	if selected.is_empty() or selected != measurement:
+	if booth_count != 4 or stool_count != 2 or selected.is_empty() or selected != measurement:
 		return {"valid": false, "error": "diner-review: seated crop measurement is not the lowest-screen booth guest"}
 	var guest_id: Variant = descriptor.get("guest_id")
 	if not _integer_value(guest_id, 1, 2147483647) or guest_id != selected.get("guest_id") \
@@ -231,7 +239,7 @@ static func _booth_measurement(source_metadata: Dictionary, descriptor: Dictiona
 	return {"valid": true, "error": ""}
 
 
-static func _valid_clearance(clearance: Dictionary) -> bool:
+static func _valid_clearance(clearance: Dictionary, definition: String) -> bool:
 	var guest_id: Variant = clearance.get("guest_id")
 	var furnishing_id: Variant = clearance.get("furnishing_id")
 	var table_item_id: Variant = clearance.get("table_item_id")
@@ -244,12 +252,12 @@ static func _valid_clearance(clearance: Dictionary) -> bool:
 			or not _integer_value(table_item_id, 1, 2147483647) \
 			or not _finite_vector3(min_bounds) or not _finite_vector3(max_bounds) \
 			or not head_screen is Dictionary or not _screen_values_valid(head_screen) \
-			or typeof(clearance.get("seated_head_clearance")) not in [TYPE_INT, TYPE_FLOAT] \
-			or not is_finite(float(clearance["seated_head_clearance"])) \
-			or float(clearance["seated_head_clearance"]) < 0.02 \
-			or not _integer_equals(clearance.get("intersecting_triangles"), 0, 0, 0) \
-			or clearance.get("head_center_inside_seat") != false \
-			or clearance.get("seat_geometry_measured") != true \
+			or clearance.get("measurement_complete") != true \
+			or not _integer_equals(clearance.get("head_vertices_inside_count"), 0, 0, 0) \
+			or not _integer_equals(clearance.get("head_seat_surface_crossings"), 0, 0, 0) \
+			or not _numeric_zero(clearance.get("max_head_vertex_penetration")) \
+			or not _paths_valid(clearance.get("intrusion_parts"), 0) or clearance.get("hips_supported") != true \
+			or not _hips_valid(clearance, definition) \
 			or not _integer_value(clearance.get("head_vertices"), 1, 1000000) \
 			or clearance.get("measurement_provenance") != SEAT_CLEARANCE_PROVENANCE \
 			or clearance.get("clearance_metric") != SEAT_CLEARANCE_METRIC:
@@ -258,6 +266,56 @@ static func _valid_clearance(clearance: Dictionary) -> bool:
 	var high: Array = max_bounds
 	for axis: int in range(3):
 		if float(high[axis]) <= float(low[axis]):
+			return false
+	var distance: Variant = clearance.get("backrest_clearance")
+	if definition == "diner_booth":
+		return clearance.get("backrest_status") == "named_parts" and _backrest_paths_valid(clearance.get("backrest_parts")) \
+			and typeof(distance) in [TYPE_INT, TYPE_FLOAT] and is_finite(float(distance)) and float(distance) >= 0.02
+	return definition == "diner_stool" and clearance.get("backrest_status") == "backless" \
+		and clearance.has("backrest_clearance") and distance == null and _paths_valid(clearance.get("backrest_parts"), 0)
+
+
+static func _numeric_zero(value: Variant) -> bool:
+	return typeof(value) in [TYPE_INT, TYPE_FLOAT] and is_finite(float(value)) and float(value) == 0.0
+
+
+static func _paths_valid(value: Variant, count: int) -> bool:
+	if not value is Array or (count >= 0 and value.size() != count) or (count < 0 and value.is_empty()):
+		return false
+	for path: Variant in value:
+		if not path is String or String(path).is_empty():
+			return false
+	return true
+
+
+static func _hips_valid(clearance: Dictionary, definition: String) -> bool:
+	var bones: Variant = clearance.get("hip_bone_positions")
+	var hits: Variant = clearance.get("hip_support_points")
+	var parts: Variant = clearance.get("hip_support_parts")
+	if not bones is Array or bones.size() != 2 or not hits is Array or hits.size() != 2 or not _paths_valid(parts, 2):
+		return false
+	for index: int in range(2):
+		if not _finite_vector3(bones[index]) or not _finite_vector3(hits[index]):
+			return false
+		var path: String = String(parts[index]).replace("_", " ").to_lower()
+		if definition == "diner_booth":
+			if not (path.contains("left seat cushion") or path.contains("right seat cushion")):
+				return false
+		elif definition != "diner_stool" or not path.contains("round red cushion"):
+			return false
+		if absf(float(bones[index][0]) - float(hits[index][0])) > 0.0001 \
+				or absf(float(bones[index][2]) - float(hits[index][2])) > 0.0001 \
+				or float(bones[index][1]) < float(hits[index][1]) - 0.0001:
+			return false
+	return true
+
+
+static func _backrest_paths_valid(value: Variant) -> bool:
+	if not _paths_valid(value, -1):
+		return false
+	for entry: Variant in value:
+		var path: String = String(entry).replace("_", " ").to_lower()
+		if not (path.contains("left back cushion") or path.contains("right back cushion") or path.contains("tall back shell")):
 			return false
 	return true
 

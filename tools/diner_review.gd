@@ -15,7 +15,7 @@ const CROP_PADDING: int = 12
 const CROP_FILE: String = "shot_0090_booth_3x.png"
 ## Stable contract supplied by SeatedHeadGeometry; no bind-pose AABB substitute.
 const POSED_HEAD_PROVENANCE: String = "native Mini head-mesh POSITION/JOINTS/WEIGHTS, imported Skin inverse binds, current Skeleton3D global poses, actual node transforms"
-const POSED_CLEARANCE_METRIC: String = HEAD_GEOMETRY.CLEARANCE_METRIC
+const POSED_CLEARANCE_METRIC: String = "indexed posed-head mesh to identified backrest surfaces"
 const IDS: Array[StringName] = [&"diner_booth", &"diner_stool", &"diner_open_sign",
 	&"diner_chalkboard", &"diner_wall_art_a", &"diner_wall_art_b"]
 const NAMES: Array[String] = ["Booth", "Counter stool", "OPEN sign", "Menu board", "Wall art A", "Wall art B"]
@@ -397,7 +397,8 @@ static func valid(state: Dictionary, frame: int, fixture: Dictionary) -> bool:
 				or not _bounds_valid(actor.get("bounds", {})):
 			return false
 		if measurement.get("guest_id") != actor.get("id") or measurement.get("furnishing_id") != actor.get("furnishing") \
-				or measurement.get("table_item_id") != actor.get("table") or not _seated_measurement_valid(measurement) \
+				or measurement.get("table_item_id") != actor.get("table") \
+				or not _seated_measurement_valid(measurement, String(actor.get("furnishing_definition", ""))) \
 				or not _crop_head_rect_valid(measurement.get("head_screen_bounds", {})):
 			return false
 		if notice_rect.intersects(_rect(actor["bounds"])):
@@ -644,17 +645,19 @@ static func _seat_clearance(person: PersonView, prop: PropView, camera: Camera3D
 	if screen.get("inside") != true or screen.get("in_front") != true:
 		return {"error": "actual posed head is outside the capture viewport"}
 	var rect: Array = screen["rect"]
-	var clearance: float = measured["clearance"]
-	if not is_finite(clearance):
-		return {"error": "native seat clearance is not a valid distance"}
 	return {"error": "", "guest_id": guest_id, "furnishing_id": furnishing_id,
 		"table_item_id": table_id, "head_world_bounds": {
 			"min": [bounds.position.x, bounds.position.y, bounds.position.z],
 			"max": [bounds.end.x, bounds.end.y, bounds.end.z]},
 		"head_screen_bounds": {"x": rect[0], "y": rect[1], "width": rect[2], "height": rect[3]},
-		"seated_head_clearance": clearance, "seat_geometry_measured": true,
-		"intersecting_triangles": measured["intersecting_triangles"],
-		"head_center_inside_seat": measured["head_center_inside_seat"],
+		"backrest_clearance": measured["backrest_clearance"], "backrest_status": measured["backrest_status"],
+		"backrest_parts": measured["backrest_parts"], "measurement_complete": measured["measurement_complete"],
+		"head_vertices_inside_count": measured["head_vertices_inside_count"],
+		"max_head_vertex_penetration": measured["max_head_vertex_penetration"],
+		"head_seat_surface_crossings": measured["head_seat_surface_crossings"],
+		"intrusion_parts": measured["intrusion_parts"], "hips_supported": measured["hips_supported"],
+		"hip_support_parts": measured["hip_support_parts"], "hip_bone_positions": measured["hip_bone_positions"],
+		"hip_support_points": measured["hip_support_points"],
 		"head_vertices": measured["head_vertices"], "measurement_provenance": measured["provenance"],
 		"clearance_metric": measured["clearance_metric"],
 		"model": String(person.model_name()), "clip": String(person._player.current_animation),
@@ -818,7 +821,7 @@ static func seated_crop_selection(state: Dictionary) -> Dictionary:
 				or measurement.get("guest_id") != actor.get("id") \
 				or measurement.get("furnishing_id") != actor.get("furnishing") \
 				or measurement.get("table_item_id") != actor.get("table") \
-				or not _seated_measurement_valid(measurement) or not _crop_head_rect_valid(head_data):
+				or not _seated_measurement_valid(measurement, "diner_booth") or not _crop_head_rect_valid(head_data):
 			return failure
 		var head: Rect2 = Rect2(float(head_data["x"]), float(head_data["y"]), float(head_data["width"]), float(head_data["height"]))
 		var furnishing: Dictionary = _crop_item(items, int(actor["furnishing"]))
@@ -857,24 +860,85 @@ static func seated_crop_image(source: Image, region: Rect2i) -> Image:
 	return result
 
 
-static func _seated_measurement_valid(measurement: Dictionary) -> bool:
-	var clearance: Variant = measurement.get("seated_head_clearance")
+static func _seated_measurement_valid(measurement: Dictionary, definition: String) -> bool:
+	var clearance: Variant = measurement.get("backrest_clearance")
 	var world: Dictionary = measurement.get("head_world_bounds", {})
 	var low: Array = world.get("min", [])
 	var high: Array = world.get("max", [])
 	if not String(measurement.get("error", "")).is_empty() \
-			or not _crop_integer(measurement.get("intersecting_triangles")) or measurement.get("intersecting_triangles") != 0 \
-			or measurement.get("head_center_inside_seat") != false or not _crop_integer(measurement.get("head_vertices")) \
+			or measurement.get("measurement_complete") != true \
+			or not _crop_integer(measurement.get("head_vertices_inside_count")) or measurement.get("head_vertices_inside_count") != 0 \
+			or not _crop_integer(measurement.get("head_seat_surface_crossings")) or measurement.get("head_seat_surface_crossings") != 0 \
+			or not _surface_zero(measurement.get("max_head_vertex_penetration")) \
+			or not _surface_paths(measurement.get("intrusion_parts"), 0) or not _crop_integer(measurement.get("head_vertices")) \
 			or int(measurement.get("head_vertices", 0)) <= 0 or measurement.get("measurement_provenance") != POSED_HEAD_PROVENANCE \
 			or measurement.get("clearance_metric") != POSED_CLEARANCE_METRIC \
-			or low.size() != 3 or high.size() != 3:
+			or low.size() != 3 or high.size() != 3 or measurement.get("hips_supported") != true \
+			or not _surface_hips_valid(measurement, definition):
 		return false
 	for axis: int in range(3):
 		if not (low[axis] is float or low[axis] is int) or not (high[axis] is float or high[axis] is int) \
 				or not is_finite(float(low[axis])) or not is_finite(float(high[axis])) or float(high[axis]) <= float(low[axis]):
 			return false
-	return measurement.get("seat_geometry_measured") == true \
-		and (clearance is float or clearance is int) and is_finite(float(clearance)) and float(clearance) >= 0.02
+	if definition == "diner_booth":
+		return measurement.get("backrest_status") == "named_parts" \
+			and _surface_backrests(measurement.get("backrest_parts")) \
+			and (clearance is float or clearance is int) and is_finite(float(clearance)) and float(clearance) >= 0.02
+	return definition == "diner_stool" and measurement.get("backrest_status") == "backless" \
+		and measurement.has("backrest_clearance") and clearance == null and _surface_paths(measurement.get("backrest_parts"), 0)
+
+
+static func _surface_zero(value: Variant) -> bool:
+	return (value is int or value is float) and is_finite(float(value)) and float(value) == 0.0
+
+
+## PackedStringArray is native evidence; JSON readers receive ordinary Arrays.
+static func _surface_paths(value: Variant, count: int) -> bool:
+	if not (value is Array or value is PackedStringArray):
+		return false
+	if (count >= 0 and value.size() != count) or (count < 0 and value.is_empty()):
+		return false
+	for path: Variant in value:
+		if not path is String or String(path).is_empty():
+			return false
+	return true
+
+
+static func _surface_hips_valid(measurement: Dictionary, definition: String) -> bool:
+	var bones: Variant = measurement.get("hip_bone_positions")
+	var hits: Variant = measurement.get("hip_support_points")
+	var parts: Variant = measurement.get("hip_support_parts")
+	if not bones is Array or bones.size() != 2 or not hits is Array or hits.size() != 2 or not _surface_paths(parts, 2):
+		return false
+	for index: int in range(2):
+		if not bones[index] is Array or bones[index].size() != 3 or not hits[index] is Array or hits[index].size() != 3:
+			return false
+		for axis: int in range(3):
+			var bone: Variant = bones[index][axis]
+			var hit: Variant = hits[index][axis]
+			if not (bone is int or bone is float) or not is_finite(float(bone)) \
+					or not (hit is int or hit is float) or not is_finite(float(hit)):
+				return false
+		var path: String = String(parts[index]).replace("_", " ").to_lower()
+		if (definition == "diner_booth" and not (path.contains("left seat cushion") or path.contains("right seat cushion"))) \
+				or (definition == "diner_stool" and not path.contains("round red cushion")) \
+				or definition not in ["diner_booth", "diner_stool"]:
+			return false
+		if absf(float(bones[index][0]) - float(hits[index][0])) > 0.0001 \
+				or absf(float(bones[index][2]) - float(hits[index][2])) > 0.0001 \
+				or float(bones[index][1]) < float(hits[index][1]) - 0.0001:
+			return false
+	return true
+
+
+static func _surface_backrests(value: Variant) -> bool:
+	if not _surface_paths(value, -1):
+		return false
+	for entry: Variant in value:
+		var path: String = String(entry).replace("_", " ").to_lower()
+		if not (path.contains("left back cushion") or path.contains("right back cushion") or path.contains("tall back shell")):
+			return false
+	return true
 
 
 static func _crop_head_rect_valid(data: Dictionary) -> bool:

@@ -208,7 +208,7 @@ func test_furnished_guests_walk_to_reserved_booths_and_stools_and_use_native_sit
 			"dining":
 				broken["dining_failures"][1] = "missing seating"
 			"head_clearance":
-				broken["actors"][0]["seat_clearance"]["seated_head_clearance"] = 0.019
+				broken["actors"][0]["seat_clearance"]["backrest_clearance"] = 0.019
 		assert_false(REVIEW.valid(broken, 90, fixture), change + " fails closed")
 	var content: ContentDB = _main.get("content") as ContentDB
 	for id: StringName in [&"diner_open_sign", &"diner_chalkboard", &"diner_wall_art_a", &"diner_wall_art_b"]:
@@ -267,18 +267,26 @@ func test_crop_selection_requires_current_posed_head_and_keeps_backrest_and_tabl
 	var tied: Dictionary = state.duplicate(true)
 	tied["actors"][1]["seat_clearance"]["head_screen_bounds"]["y"] = 210.0
 	assert_eq(REVIEW.seated_crop_selection(tied).get("guest_id"), 4, "equal bottom-y uses the smallest guest ID")
-	for change: String in ["bind_pose", "small_gap", "intersection", "enclosed", "wrong_guest", "offscreen", "missing_table", "provenance", "metric", "no_backrest"]:
+	for change: String in ["bind_pose", "small_gap", "inside_vertex", "crossing", "depth", "intrusion_part", "unsupported_hips", "wrong_cushion", "wrong_guest", "offscreen", "missing_table", "provenance", "metric", "no_backrest"]:
 		var broken: Dictionary = state.duplicate(true)
 		match change:
 			"bind_pose":
 				broken["actors"][0]["seat_clearance"].erase("head_screen_bounds")
 				broken["actors"][0]["bounds"] = {"rect": [140, 190, 50, 80], "inside": true, "in_front": true}
 			"small_gap":
-				broken["actors"][0]["seat_clearance"]["seated_head_clearance"] = 0.019
-			"intersection":
-				broken["actors"][0]["seat_clearance"]["intersecting_triangles"] = 1
-			"enclosed":
-				broken["actors"][0]["seat_clearance"]["head_center_inside_seat"] = true
+				broken["actors"][0]["seat_clearance"]["backrest_clearance"] = 0.019
+			"inside_vertex":
+				broken["actors"][0]["seat_clearance"]["head_vertices_inside_count"] = 1
+			"crossing":
+				broken["actors"][0]["seat_clearance"]["head_seat_surface_crossings"] = 1
+			"depth":
+				broken["actors"][0]["seat_clearance"]["max_head_vertex_penetration"] = 0.001
+			"intrusion_part":
+				broken["actors"][0]["seat_clearance"]["intrusion_parts"] = ["Model/Tall back shell"]
+			"unsupported_hips":
+				broken["actors"][0]["seat_clearance"]["hips_supported"] = false
+			"wrong_cushion":
+				broken["actors"][0]["seat_clearance"]["hip_support_parts"][0] = "Model/Wood foot plinth"
 			"wrong_guest":
 				broken["actors"][0]["seat_clearance"]["guest_id"] = 4
 			"offscreen":
@@ -288,10 +296,11 @@ func test_crop_selection_requires_current_posed_head_and_keeps_backrest_and_tabl
 			"provenance":
 				broken["actors"][0]["seat_clearance"]["measurement_provenance"] = "rest pose estimate"
 			"metric":
-				broken["actors"][0]["seat_clearance"]["clearance_metric"] = "rear-only gap"
+				broken["actors"][0]["seat_clearance"]["clearance_metric"] = "minimum Euclidean seat-triangle to conservative posed-head AABB separation"
 			"no_backrest":
-				broken["actors"][0]["seat_clearance"]["seat_geometry_measured"] = false
-				broken["actors"][0]["seat_clearance"]["seated_head_clearance"] = null
+				broken["actors"][0]["seat_clearance"]["backrest_status"] = "backless"
+				broken["actors"][0]["seat_clearance"]["backrest_clearance"] = null
+				broken["actors"][0]["seat_clearance"]["backrest_parts"] = []
 		assert_false(String(REVIEW.seated_crop_selection(broken).get("error", "")).is_empty(), change + " fails closed")
 
 
@@ -304,7 +313,12 @@ func _crop_selection_fixture() -> Dictionary:
 			"seat_clearance": {"guest_id": row["id"], "furnishing_id": row["seat"], "table_item_id": 10,
 				"head_world_bounds": {"min": [0.0, 0.0, 0.0], "max": [0.2, 0.2, 0.2]},
 				"head_screen_bounds": {"x": row["x"], "y": row["y"], "width": 30.0, "height": 40.0},
-				"seated_head_clearance": 0.025, "seat_geometry_measured": true, "intersecting_triangles": 0, "head_center_inside_seat": false,
+				"backrest_clearance": 0.025, "backrest_status": "named_parts", "backrest_parts": ["Model/Tall back shell"],
+				"measurement_complete": true, "head_vertices_inside_count": 0, "max_head_vertex_penetration": 0.0,
+				"head_seat_surface_crossings": 0, "intrusion_parts": [], "hips_supported": true,
+				"hip_support_parts": ["Model/Left seat cushion", "Model/Left seat cushion"],
+				"hip_bone_positions": [[-0.1, 0.3, 0.0], [0.1, 0.3, 0.0]],
+				"hip_support_points": [[-0.1, 0.264, 0.0], [0.1, 0.264, 0.0]],
 				"head_vertices": 8, "measurement_provenance": REVIEW.POSED_HEAD_PROVENANCE,
 				"clearance_metric": REVIEW.POSED_CLEARANCE_METRIC}})
 	var items: Array[Dictionary] = []
