@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- Decorate your diner with padded two-seat booths and chrome counter stools. (#147)
 - Track career goals and earn cash and XP for reaching them. (#146)
 - Meet Students, Foodies and Families with different budgets and patience; inspect a guest to see their type. (#145)
 - A soft warm sky, street-side windows, a welcome mat and a little grey pavement outside the door make your restaurant feel more like a place. (#144)
