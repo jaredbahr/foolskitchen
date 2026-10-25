@@ -181,20 +181,21 @@ func test_invalid_footprint_and_negative_prices_are_reported() -> void:
 	assert_true(_has_error(errors, "footprint components must be >= 1"))
 
 
-func test_seated_forward_offset_defaults_to_zero_and_accepts_nonnegative_metres() -> void:
+func test_seated_forward_offset_defaults_to_zero_and_accepts_values_through_the_director_limit() -> void:
 	var definition: ItemDef = _station()
 	assert_almost_eq(definition.seated_forward_offset, 0.0)
 	assert_eq(ContentDB.validate_definitions([], [], [definition]), PackedStringArray())
-	definition.seated_forward_offset = 0.25
-	assert_eq(ContentDB.validate_definitions([], [], [definition]), PackedStringArray())
+	for offset: float in [0.025, ItemDef.MAX_SEATED_FORWARD_OFFSET]:
+		definition.seated_forward_offset = offset
+		assert_eq(ContentDB.validate_definitions([], [], [definition]), PackedStringArray(), str(offset))
 
 
-func test_negative_or_nonfinite_seated_forward_offsets_are_reported() -> void:
-	for offset: float in [-0.01, INF, NAN]:
+func test_out_of_range_or_nonfinite_seated_forward_offsets_are_reported() -> void:
+	for offset: float in [-0.01, ItemDef.MAX_SEATED_FORWARD_OFFSET + 0.000001, INF, NAN]:
 		var definition: ItemDef = _station()
 		definition.seated_forward_offset = offset
 		var errors: PackedStringArray = ContentDB.validate_definitions([], [], [definition])
-		assert_true(_has_error(errors, "seated_forward_offset must be finite and >= 0"), str(offset))
+		assert_true(_has_error(errors, "seated_forward_offset must be finite and between 0 and 0.05 m"), str(offset))
 
 
 func test_null_top_level_definitions_and_quality_bounds_are_reported() -> void:

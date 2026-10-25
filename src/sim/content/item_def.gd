@@ -5,6 +5,9 @@ extends Resource
 enum Category { DOOR, TABLE, CHAIR, STATION, STORAGE, PASS, DECOR }
 enum PlacementLayer { NORMAL, FLOOR_DECOR }
 
+## Director's upper bound in metres; presentation logic must also keep hips supported.
+const MAX_SEATED_FORWARD_OFFSET: float = 0.05
+
 @export var id: StringName = &""
 @export var display_name: String = ""
 @export var category: Category = Category.DECOR
