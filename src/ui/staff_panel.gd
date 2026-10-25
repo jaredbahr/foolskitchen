@@ -211,10 +211,11 @@ func _refresh_priorities() -> void:
 			var supported: bool = StaffJobPriorities.supports(choices.role, job)
 			var value: int = choices.priority(job) if supported else StaffJobPriorities.Level.OFF
 			button.disabled = not supported
-			button.text = StaffJobPriorities.level_label(value)
+			button.text = StaffJobPriorities.level_label(value) if supported else "—"
 			button.tooltip_text = _priority_tooltip(choices, job, has_cleaner)
-			if int(button.get_meta(&"priority_level", -1)) != value:
-				_style_priority(button, value)
+			if int(button.get_meta(&"priority_level", -1)) != value \
+					or bool(button.get_meta(&"priority_supported", false)) != supported:
+				_style_priority(button, value, supported)
 		_priority_buttons[member.id] = buttons
 	var availability: Label = %PriorityAvailability as Label
 	availability.visible = has_server
@@ -230,7 +231,18 @@ func _retire_priority_control(control: Control) -> void:
 	control.queue_free()
 
 
-func _style_priority(button: Button, value: int) -> void:
+func _style_priority(button: Button, value: int, supported: bool) -> void:
+	if not supported:
+		# Unsupported work uses the native disabled theme state. This differs
+		# from a player's selectable Off value, which retains its inverted style.
+		for state: StringName in [&"normal", &"hover", &"pressed", &"hover_pressed", &"disabled"]:
+			button.remove_theme_stylebox_override(state)
+		for color: StringName in [&"font_color", &"font_hover_color", &"font_pressed_color",
+				&"font_hover_pressed_color", &"font_disabled_color"]:
+			button.remove_theme_color_override(color)
+		button.set_meta(&"priority_level", value)
+		button.set_meta(&"priority_supported", false)
+		return
 	var normal: StyleBoxFlat = SHARED_THEME.get_stylebox("normal", "Button") as StyleBoxFlat
 	var accent: StyleBoxFlat = SHARED_THEME.get_stylebox("pressed", "Button") as StyleBoxFlat
 	var muted: StyleBoxFlat = SHARED_THEME.get_stylebox("disabled", "Button") as StyleBoxFlat
@@ -253,6 +265,7 @@ func _style_priority(button: Button, value: int) -> void:
 			&"font_hover_pressed_color", &"font_disabled_color"]:
 		button.add_theme_color_override(color, foreground)
 	button.set_meta(&"priority_level", value)
+	button.set_meta(&"priority_supported", true)
 
 
 static func _job_description(job: StringName) -> String:
@@ -268,7 +281,7 @@ static func _job_description(job: StringName) -> String:
 static func _priority_tooltip(choices: StaffJobPriorities, job: StringName, has_cleaner: bool) -> String:
 	var label: String = StaffJobPriorities.job_label(job)
 	if not StaffJobPriorities.supports(choices.role, job):
-		return "Off. %s is not available for this role." % label
+		return "%s is not available for this role." % label
 	var text: String = "%s: %s. " % [label, StaffJobPriorities.level_label(choices.priority(job))]
 	text += "This role's main job cannot be Off. Cycle High, Normal, Low." \
 		if job == StaffJobPriorities.main_job(choices.role) else "Cycle High, Normal, Low, Off."
@@ -377,6 +390,12 @@ func _add_growth(row: VBoxContainer, member: StaffMember) -> void:
 	caption.text = "XP %d/%d" % [earned, needed] if needed > 0 else "Skill maxed out"
 	caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	line.add_child(caption)
+	var inset: Control = Control.new()
+	inset.name = "XPInset"
+	inset.custom_minimum_size.x = 8.0
+	inset.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	inset.focus_mode = Control.FOCUS_NONE
+	line.add_child(inset)
 
 
 static func _mood_face(mood: int) -> String:

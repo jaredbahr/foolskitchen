@@ -85,6 +85,9 @@ func test_staff_capture_source_retains_paused_morning_guards_and_conditional_rea
 	var query: String = source.get_slice("static func staff_priority_grid_evidence", 1).get_slice("static func _staff_pixel_rect", 0)
 	assert_true(query.contains("panel.priority_button_for(member.id, job)"))
 	assert_true(query.contains("_staff_scroll_viewport(scroll)"))
+	assert_true(query.contains('var style_name: StringName = &"disabled" if button.disabled else &"normal"'))
+	assert_true(query.contains('var color_name: StringName = &"font_disabled_color" if button.disabled else &"font_color"'))
+	assert_true(query.contains('panel.get_node_or_null("%MainJobNote")'))
 	for forbidden: String in ["set_job_priority", "set_priority", ".refresh(", "run_ticks", "start_service", "FileAccess.open", "ResourceUID.add_id"]:
 		assert_false(query.contains(forbidden), "the native evidence query cannot run commands: " + forbidden)
 
@@ -112,6 +115,64 @@ func test_staff_grid_validator_accepts_complete_records_and_rejects_wrong_words_
 	assert_false(CAPTURE.staff_priority_grid_valid(wrong["grid"], wrong["members"]), "headings use human job labels")
 
 
+func test_staff_grid_validator_distinguishes_inherited_locked_dash_from_supported_chosen_off() -> void:
+	var record: Dictionary = _staff_grid_record()
+	var locked: Dictionary = record["grid"]["cells"][1]
+	var chosen_off: Dictionary = record["grid"]["cells"][7]
+	assert_eq(locked["text"], "—")
+	assert_true(locked["disabled"])
+	assert_eq(locked["style_state"], "disabled")
+	assert_eq(locked["font_state"], "font_disabled_color")
+	assert_false(locked["style_override"])
+	assert_false(locked["font_override"])
+	assert_eq(chosen_off["text"], "Off")
+	assert_false(chosen_off["disabled"])
+	assert_true(CAPTURE.staff_priority_grid_valid(record["grid"], record["members"]))
+	for patch: Dictionary in [{"index": 1, "field": "text", "value": "Off"},
+			{"index": 7, "field": "text", "value": "—"},
+			{"index": 7, "field": "disabled", "value": true},
+			{"index": 1, "field": "style_state", "value": "normal"},
+			{"index": 1, "field": "font_state", "value": "font_color"},
+			{"index": 1, "field": "style_override", "value": true},
+			{"index": 1, "field": "font_override", "value": true}]:
+		var wrong: Dictionary = record.duplicate(true)
+		wrong["grid"]["cells"][patch["index"]][patch["field"]] = patch["value"]
+		assert_false(CAPTURE.staff_priority_grid_valid(wrong["grid"], wrong["members"]), str(patch))
+	var wrong: Dictionary = record.duplicate(true)
+	wrong["grid"]["cells"][1]["foreground"] = chosen_off["foreground"].duplicate()
+	wrong["grid"]["cells"][1]["background"] = chosen_off["background"].duplicate()
+	wrong["grid"]["cells"][1]["border"] = chosen_off["border"].duplicate()
+	assert_false(CAPTURE.staff_priority_grid_valid(wrong["grid"], wrong["members"]), "a dash cannot hide stale inverted Off colours")
+	wrong = record.duplicate(true)
+	wrong["grid"]["cells"][1]["foreground"] = [NAN, 0.0, 0.0, 1.0]
+	assert_false(CAPTURE.staff_priority_grid_valid(wrong["grid"], wrong["members"]), "native disabled colours must stay finite and shared")
+	wrong = record.duplicate(true)
+	wrong["members"][0]["role"] = "cleaner"
+	wrong["members"][0]["priorities"] = StaffJobPriorities.new(&"cleaner").to_dict()
+	assert_false(CAPTURE.staff_priority_grid_valid(wrong["grid"], wrong["members"]), "the independently captured role determines locks and words")
+
+
+func test_staff_grid_validator_requires_readable_native_main_job_note_below_grid() -> void:
+	var record: Dictionary = _staff_grid_record()
+	var wrong: Dictionary = record.duplicate(true)
+	wrong["grid"].erase("main_job_note")
+	assert_false(CAPTURE.staff_priority_grid_valid(wrong["grid"], wrong["members"]), "the visible main-job lock explanation is required")
+	for patch: Dictionary in [{"field": "text", "value": "Main job"},
+			{"field": "path", "value": "Panel/MainJobNote"}, {"field": "visible", "value": false},
+			{"field": "bounds", "value": [412.0, 580.0, 752.0, 24.0]},
+			{"field": "bounds", "value": [412.0, 300.0, 752.0, 24.0]},
+			{"field": "bounds", "value": [NAN, 334.0, 752.0, 24.0]},
+			{"field": "minimum_bounds", "value": [412.0, 334.0, 753.0, 24.0]},
+			{"field": "autowrap_mode", "value": TextServer.AUTOWRAP_OFF},
+			{"field": "size_flags_horizontal", "value": Control.SIZE_FILL},
+			{"field": "mouse_filter", "value": Control.MOUSE_FILTER_STOP},
+			{"field": "focus_mode", "value": Control.FOCUS_ALL},
+			{"field": "foreground", "value": [0.0, 0.0, 0.0, 0.0]}]:
+		wrong = record.duplicate(true)
+		wrong["grid"]["main_job_note"][patch["field"]] = patch["value"]
+		assert_false(CAPTURE.staff_priority_grid_valid(wrong["grid"], wrong["members"]), str(patch))
+
+
 func test_staff_grid_validator_rejects_scrollbar_obscuring_cells_and_native_size_clipping() -> void:
 	var record: Dictionary = _staff_grid_record()
 	var wrong: Dictionary = record.duplicate(true)
@@ -134,6 +195,13 @@ func test_staff_grid_validator_rejects_scrollbar_obscuring_cells_and_native_size
 	wrong = record.duplicate(true)
 	wrong["grid"]["cells"][0]["bounds"] = [NAN, 258.0, 100.0, 32.0]
 	assert_false(CAPTURE.staff_priority_grid_valid(wrong["grid"], wrong["members"]))
+	wrong = record.duplicate(true)
+	wrong["grid"]["cells"][0]["bounds"] = [538.0, 400.0, 100.0, 32.0]
+	wrong["grid"]["cells"][0]["minimum_bounds"] = [538.0, 400.0, 100.0, 30.0]
+	assert_false(CAPTURE.staff_priority_grid_valid(wrong["grid"], wrong["members"]), "a cell cannot be outside its native grid while still inside the viewport")
+	wrong = record.duplicate(true)
+	wrong["grid"]["cells"][0]["minimum_bounds"][0] = 700.0
+	assert_false(CAPTURE.staff_priority_grid_valid(wrong["grid"], wrong["members"]), "native size evidence must have the same transformed origin as the cell")
 
 
 func test_staff_scroll_viewport_resolves_unset_fallback_and_explicit_asymmetric_margins() -> void:
@@ -212,6 +280,19 @@ func test_real_staff_panel_native_grid_evidence_satisfies_capture_validator_with
 		await tree.process_frame
 	var before: Dictionary = roster.to_dict()
 	var evidence: Dictionary = CAPTURE.staff_priority_grid_evidence(panel, roster)
+	var locked: Button = panel.priority_button_for(&"starter_cook", &"serving")
+	var locked_evidence: Dictionary = evidence["cells"][1]
+	assert_eq(locked_evidence["text"], "—")
+	assert_eq(locked_evidence["style_state"], "disabled")
+	assert_eq(locked_evidence["font_state"], "font_disabled_color")
+	assert_eq(locked_evidence["background"], CAPTURE._staff_rgba((locked.get_theme_stylebox("disabled") as StyleBoxFlat).bg_color))
+	assert_eq(locked_evidence["foreground"], CAPTURE._staff_rgba(locked.get_theme_color("font_disabled_color")))
+	assert_false(locked_evidence["style_override"])
+	assert_false(locked_evidence["font_override"])
+	var note: Label = panel.get_node("%MainJobNote") as Label
+	assert_eq(evidence["main_job_note"]["path"], String(panel.get_path_to(note)))
+	assert_eq(evidence["main_job_note"]["text"], note.text)
+	assert_eq(evidence["main_job_note"]["bounds"], CAPTURE._staff_rect_data(CAPTURE._staff_pixel_rect(note)))
 	assert_true(CAPTURE.staff_priority_grid_valid(evidence, before["members"]),
 		"Real Staff grid failed strict capture validation: " + JSON.stringify({"grid": evidence, "members": before["members"]}))
 	assert_eq(roster.to_dict(), before, "native evidence never changes staff choices, growth or candidates")
@@ -221,12 +302,22 @@ func test_real_staff_panel_native_grid_evidence_satisfies_capture_validator_with
 ## Pure captured-record unit data, never a scene or a screenshot fixture.
 func _staff_grid_record() -> Dictionary:
 	var members: Array = StaffRoster.new().to_dict()["members"]
+	# Detached record data includes a genuine supported Off choice, alongside
+	# the role-unsupported jobs that always retain Off in saved selection state.
+	members[1]["priorities"]["bussing"] = StaffJobPriorities.Level.OFF
+	var note_foreground: Color = StaffPanel.SHARED_THEME.get_color("font_color", "Label")
 	var grid: Dictionary = {"available": true, "columns": 6, "child_count": 18,
 		"window_bounds": [0.0, 0.0, 1600.0, 900.0], "panel_bounds": [400.0, 112.0, 800.0, 776.0],
 		"close_bounds": [412.0, 840.0, 752.0, 36.0], "close_visible": true,
 		"scroll_bounds": [412.0, 220.0, 768.0, 350.0], "scroll_viewport_bounds": [412.0, 220.0, 752.0, 350.0],
 		"scrollbars": [{"visible": true, "bounds": [1164.0, 220.0, 16.0, 350.0]}, {"visible": false, "bounds": []}],
 		"grid_bounds": [412.0, 220.0, 650.0, 108.0], "grid_minimum_bounds": [412.0, 220.0, 650.0, 108.0],
+		"main_job_note": {"path": "Panel/Content/Scroll/List/Priorities/MainJobNote",
+			"text": "Each role's main job cannot be turned off.", "visible": true,
+			"bounds": [412.0, 334.0, 752.0, 24.0], "minimum_bounds": [412.0, 334.0, 200.0, 24.0],
+			"autowrap_mode": TextServer.AUTOWRAP_WORD_SMART, "size_flags_horizontal": Control.SIZE_EXPAND_FILL,
+			"mouse_filter": Control.MOUSE_FILTER_IGNORE, "focus_mode": Control.FOCUS_NONE,
+			"foreground": [note_foreground.r, note_foreground.g, note_foreground.b, note_foreground.a]},
 		"horizontal_scroll_mode": ScrollContainer.SCROLL_MODE_DISABLED, "headers": [], "names": [], "cells": []}
 	var labels: Array[String] = ["Team member", "Cooking", "Serving", "Bussing", "Washing", "Cleaning"]
 	for column: int in range(labels.size()):
@@ -243,7 +334,7 @@ func _staff_grid_record() -> Dictionary:
 			var supported: bool = StaffJobPriorities.supports(StringName(member["role"]), job)
 			var tooltip: String = "Applies on the next task pick; current work continues."
 			if not supported:
-				tooltip = "Off. This job is not available for this role."
+				tooltip = "This job is not available for this role."
 			elif job == StaffJobPriorities.main_job(StringName(member["role"])):
 				tooltip += " This role's main job cannot be Off."
 			var normal: StyleBoxFlat = StaffPanel.SHARED_THEME.get_stylebox("normal", "Button") as StyleBoxFlat
@@ -252,7 +343,11 @@ func _staff_grid_record() -> Dictionary:
 			var foreground: Color = StaffPanel.SHARED_THEME.get_color("font_color", "Button")
 			var background: Color = normal.bg_color
 			var border: Color = accent.bg_color if value == StaffJobPriorities.Level.HIGH else normal.border_color
-			if value == StaffJobPriorities.Level.LOW:
+			if not supported:
+				foreground = StaffPanel.SHARED_THEME.get_color("font_disabled_color", "Button")
+				background = muted.bg_color
+				border = muted.border_color
+			elif value == StaffJobPriorities.Level.LOW:
 				background = muted.bg_color
 				border = muted.border_color
 			elif value == StaffJobPriorities.Level.OFF:
@@ -260,8 +355,11 @@ func _staff_grid_record() -> Dictionary:
 				border = foreground
 				foreground = StaffPanel.SHARED_THEME.get_color("font_pressed_color", "Button")
 			var bounds: Array[float] = [538.0 + column * 106.0, y, 100.0, 32.0]
-			grid["cells"].append({"id": member["id"], "job": String(job), "text": StaffJobPriorities.level_label(value),
+			grid["cells"].append({"id": member["id"], "job": String(job),
+				"text": StaffJobPriorities.level_label(value) if supported else "—",
 				"disabled": not supported, "tooltip": tooltip, "visible": true, "clip_text": false,
+				"style_state": "normal" if supported else "disabled", "font_state": "font_color" if supported else "font_disabled_color",
+				"style_override": supported, "font_override": supported,
 				"parent_is_grid": true, "grid_index": (row + 1) * 6 + column + 1, "bounds": bounds,
 				"minimum_bounds": [bounds[0], y, 100.0, 30.0],
 				"foreground": [foreground.r, foreground.g, foreground.b, foreground.a],

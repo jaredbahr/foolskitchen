@@ -179,6 +179,14 @@ func test_employee_xp_bar_and_three_mood_faces_follow_saved_growth() -> void:
 		assert_eq(face.tooltip_text, ["Upset", "Okay", "Happy"][mood - 1])
 		assert_eq(face.mouse_filter, Control.MOUSE_FILTER_PASS,
 			"the mood word must be available as a tooltip")
+		var growth: HBoxContainer = row.get_node("Growth") as HBoxContainer
+		assert_eq(growth.get_theme_constant("separation"),
+			StaffPanel.SHARED_THEME.get_constant("separation", "HBoxContainer"),
+			"the XP line keeps the shared HBox spacing")
+		var inset: Control = growth.get_node("XPInset") as Control
+		assert_eq(inset.custom_minimum_size.x, 8.0)
+		assert_eq(inset.mouse_filter, Control.MOUSE_FILTER_IGNORE)
+		assert_eq(inset.focus_mode, Control.FOCUS_NONE)
 		assert_eq((row.get_node("Growth/XPLabel") as Label).text,
 			"XP 44/%d" % StaffPanel.GROWTH_RULES.needed_for_next_level(3))
 		assert_null(_panel.row_for(&"candidate_1_0").get_node_or_null("Growth"),
@@ -364,6 +372,11 @@ func test_disabled_actions_use_the_shared_opaque_readable_theme() -> void:
 
 
 func test_priority_matrix_has_human_labels_role_defaults_and_locked_unsupported_work() -> void:
+	var list: VBoxContainer = _panel.get_node("Panel/Content/Scroll/List") as VBoxContainer
+	assert_true(list.get_node("Members").get_index() < list.get_node("Priorities").get_index(),
+		"team cards and their XP appear before priorities")
+	var lock_note: Label = _panel.get_node("%MainJobNote") as Label
+	assert_true(lock_note.text.contains("main job cannot be turned off"))
 	var grid: GridContainer = _panel.get_node("%PriorityGrid") as GridContainer
 	assert_eq(grid.columns, 6)
 	assert_eq(grid.get_child_count(), 18, "one header and two employee rows; candidates have no job cells")
@@ -376,15 +389,16 @@ func test_priority_matrix_has_human_labels_role_defaults_and_locked_unsupported_
 		for job: StringName in StaffJobPriorities.JOBS:
 			var button: Button = _panel.priority_button_for(member.id, job)
 			assert_not_null(button)
-			assert_eq(button.text, StaffJobPriorities.level_label(choices.priority(job)))
-			assert_eq(button.disabled, not StaffJobPriorities.supports(member.role, job))
+			var supported: bool = StaffJobPriorities.supports(member.role, job)
+			assert_eq(button.text, StaffJobPriorities.level_label(choices.priority(job)) if supported else "—")
+			assert_eq(button.disabled, not supported)
 			assert_eq(button.mouse_filter, Control.MOUSE_FILTER_STOP)
 			assert_false(button.clip_text)
 	assert_eq(_panel.priority_button_for(&"starter_cook", &"cooking").text, "High")
 	assert_eq(_panel.priority_button_for(&"starter_server", &"serving").text, "Normal")
 	assert_eq(_panel.priority_button_for(&"starter_server", &"cleaning").text, "Low")
 	var unsupported: Button = _panel.priority_button_for(&"starter_cook", &"serving")
-	assert_eq(unsupported.text, "Off")
+	assert_eq(unsupported.text, "—")
 	assert_true(unsupported.tooltip_text.contains("not available for this role"))
 	unsupported.pressed.emit()
 	assert_true(_priority_requests.is_empty())
@@ -507,6 +521,8 @@ func test_native_priority_down_growth_refresh_up_keeps_one_cell_and_one_request(
 
 
 func test_priority_words_and_colors_use_readable_shared_theme_states() -> void:
+	assert_true(_roster.set_job_priority(&"starter_server", &"bussing", StaffJobPriorities.Level.OFF))
+	_panel.refresh()
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	await tree.process_frame
 	tree.root.add_child(_panel)
@@ -517,13 +533,22 @@ func test_priority_words_and_colors_use_readable_shared_theme_states() -> void:
 	var high: Button = _panel.priority_button_for(&"starter_cook", &"cooking")
 	var regular: Button = _panel.priority_button_for(&"starter_server", &"serving")
 	var low: Button = _panel.priority_button_for(&"starter_server", &"cleaning")
-	var off: Button = _panel.priority_button_for(&"starter_cook", &"serving")
+	var chosen_off: Button = _panel.priority_button_for(&"starter_server", &"bussing")
+	var locked: Button = _panel.priority_button_for(&"starter_cook", &"serving")
 	assert_eq((high.get_theme_stylebox("normal") as StyleBoxFlat).border_color, accent.bg_color)
 	assert_eq((regular.get_theme_stylebox("normal") as StyleBoxFlat).bg_color, normal.bg_color)
 	assert_eq((low.get_theme_stylebox("normal") as StyleBoxFlat).bg_color, muted.bg_color)
-	assert_eq((off.get_theme_stylebox("disabled") as StyleBoxFlat).bg_color,
+	assert_eq(chosen_off.text, "Off")
+	assert_false(chosen_off.disabled, "supported work set to Off remains a player choice")
+	assert_eq((chosen_off.get_theme_stylebox("disabled") as StyleBoxFlat).bg_color,
 		StaffPanel.SHARED_THEME.get_color("font_color", "Button"))
-	for button: Button in [high, regular, low, off]:
+	assert_eq(locked.text, "—")
+	assert_true(locked.disabled, "unsupported work is locked")
+	assert_eq(locked.get_theme_stylebox("disabled"), muted,
+		"unsupported work uses the native disabled style instead of the chosen-Off style")
+	assert_eq(locked.get_theme_color("font_disabled_color"),
+		StaffPanel.SHARED_THEME.get_color("font_disabled_color", "Button"))
+	for button: Button in [high, regular, low, chosen_off, locked]:
 		var state: StringName = &"disabled" if button.disabled else &"normal"
 		var color_name: StringName = &"font_disabled_color" if button.disabled else &"font_color"
 		var background: Color = (button.get_theme_stylebox(state) as StyleBoxFlat).bg_color
@@ -583,6 +608,13 @@ func test_full_priority_matrix_fits_private_windows_and_scrolls_at_supported_int
 					"%s grid_min=%s" % [context, grid.get_combined_minimum_size()])
 				assert_true(scroll.get_v_scroll_bar().visible, "the full team remains available through bounded scrolling")
 				for member: StaffMember in _roster.members():
+					var xp_label: Label = _panel.row_for(member.id).get_node("Growth/XPLabel") as Label
+					var xp_bounds: Rect2 = xp_label.get_global_rect()
+					var scrollbar_bounds: Rect2 = scroll.get_v_scroll_bar().get_global_rect()
+					assert_true(xp_bounds.position.x >= scroll.get_global_rect().position.x - 0.5, context)
+					var scrollbar_gap: float = scrollbar_bounds.position.x - xp_bounds.end.x
+					assert_true(scrollbar_gap >= 6.0,
+						"XP text keeps a real inset from the scrollbar (%s px): %s" % [scrollbar_gap, context])
 					for job: StringName in StaffJobPriorities.JOBS:
 						var button: Button = _panel.priority_button_for(member.id, job)
 						assert_true(button.size.x >= button.get_combined_minimum_size().x - 0.5, context)

@@ -459,7 +459,11 @@ an active edit/panel/selection first, or opens Settings when none is active.
   save. The existing next-morning staff provider persists the choices.
 - The shared-theme grid keeps native cells stable across refreshes and emits
   typed requests only. Cells show words and colours; main jobs skip Off, and
-  unsupported jobs remain visibly locked Off. Other staffing actions keep
+  unsupported jobs show a noninteractive muted dash using the inherited
+  disabled Button style. A supported job chosen Off retains its distinct
+  inverted style. The main-job lock is explained below the grid, which now
+  follows the member cards. XP rows preserve shared HBox spacing and include
+  a trailing inset before the scrollbar. Other staffing actions keep
   their morning gates even when this panel is open during service. Opening
   Staff at closing hides the evening report; closing Staff rebuilds that
   report without settling the day's books again. The report's full-window
@@ -473,6 +477,11 @@ an active edit/panel/selection first, or opens Settings when none is active.
   the existing `tools/check.sh` suite actually passes; source review is not a
   substitute. The unchanged `--staff --speed=0 --frames=12` capture provides
   morning grid pixels, not service interaction or occupied-seat evidence.
+  Read-only native evidence records the actual disabled style/font state and
+  the lock note's text, flags and bounds. Validation rejects stale Off labels
+  on unavailable jobs, mismatched role/palette/override state, missing notes,
+  viewport clipping and fabricated minimum-size origins; it never edits the
+  roster or moves the scene to make a capture pass.
 
 ### 2.3a Guest reviews and reputation (FK-048)
 - `ReputationBook` holds the newest 30 scores. A new shop starts with five
