@@ -73,6 +73,8 @@ func test_wall_model_wrappers_keep_bounded_geometry_and_chalkboard_uses_theme_te
 		if prop == null:
 			instance.free()
 			continue
+		# Enter the real tree so the native label's _ready binds the shared font.
+		(Engine.get_main_loop() as SceneTree).root.add_child(instance)
 		prop.prepare()
 		assert_eq(prop.footprint, Vector2i(2, 1), "%s covers its two-cell wall width" % item_id)
 		var bounds: AABB = prop.get_combined_aabb()
@@ -117,9 +119,7 @@ func test_wall_model_wrappers_keep_bounded_geometry_and_chalkboard_uses_theme_te
 					shared_font = ThemeDB.fallback_font
 				assert_eq(label.font, shared_font, "chalkboard uses the shared theme's actual font resource")
 				assert_eq(label.text.split("\n").size(), 3, "chalkboard menu keeps three real text lines")
-				assert_true(label.text.contains("TODAY'S SPECIALS"))
-				assert_true(label.text.contains("BURGER $12"))
-				assert_true(label.text.contains("TOMATO SOUP $8"))
+				assert_false(label.text.contains("$"), "decorative text never advertises prices disconnected from Menu")
 		instance.free()
 
 

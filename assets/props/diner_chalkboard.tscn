@@ -18,8 +18,8 @@ position = Vector3(0, 0.62, 0.2225)
 [node name="MenuText" type="Label3D" parent="WallMount"]
 script = ExtResource("3_text")
 position = Vector3(0, 0.31, -0.03)
-text = "TODAY'S SPECIALS\nBURGER $12\nTOMATO SOUP $8"
+text = "DAILY SPECIALS\nASK INSIDE\nMADE FRESH"
 pixel_size = 0.002
-font_size = 48
+font_size = 40
 horizontal_alignment = 1
 vertical_alignment = 1
