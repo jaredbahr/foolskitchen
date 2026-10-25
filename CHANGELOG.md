@@ -67,6 +67,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- Design decision D22: the player decides the restaurant's look, so assets come in several variants rather than one "right" version. (#149)
 - Roadmap: building, decorating and running the restaurant come first; first person and mini-games move to later. (#128)
 - Kenney's free low-poly furniture, food, people and icon kits are now in the project, with an art style guide (`docs/ART_STYLE.md`) that every visual change follows. (#106)
 - Art rule: every model, colour, font and icon must come from one approved style, with no mixing of sources. (#102)

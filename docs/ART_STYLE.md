@@ -75,7 +75,7 @@ Any new building piece (walls, windows, doors, the awning, counters) follows the
 - **Missing icons:** there is no chef-hat or paint-brush icon in the pack. Make them in the Game Icons style (§8), or use text until one exists.
 
 ## 8. Making new items in the Kenney style
-New stoves, cooking gear, decor, building pieces or icons may be made when the kits lack them (Jared). **Designing the space is a core part of the fun** (walls, layouts, tables and chairs, restaurant styles and vibes), so making assets for variety is encouraged. A made item must be indistinguishable in style from the kits:
+New stoves, cooking gear, decor, building pieces or icons may be made when the kits lack them (Jared). **Designing the space is a core part of the fun** (walls, layouts, tables and chairs, restaurant styles and vibes), so making assets for variety is encouraged. **The player decides the look (D22)**: prefer several variants of a piece (other kit material colours, wood vs. painted, plain vs. trimmed) over one "right" version, so every theme can be built more than one way. Reviews check Kenney-style consistency, not taste. A made item must be indistinguishable in style from the kits:
 - **3D:** built in Blender (headless, scripted is fine) from the same kind of shapes as the kit:
   - chunky, slightly bevelled boxes and cylinders, flat-shaded, low poly (under about 1,500 tris for furniture, 300 for small props);
   - coloured only through the kit's own `colormap.png` UVs or the kit's existing material colours. No new textures.
