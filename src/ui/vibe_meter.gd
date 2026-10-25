@@ -4,6 +4,7 @@ extends HBoxContainer
 
 const SHARED_THEME: Theme = preload("res://src/ui/theme/main_theme.tres")
 const BAR_MIN_WIDTH: float = 64.0
+const BAR_HEIGHT: float = 12.0
 const POINT_DISPLAY_LIMIT: float = 999.0
 
 var caption_label: Label
@@ -33,7 +34,8 @@ func _init() -> void:
 	score_bar.name = "ScoreBar"
 	score_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	score_bar.focus_mode = Control.FOCUS_NONE
-	score_bar.custom_minimum_size = Vector2(BAR_MIN_WIDTH, 0.0)
+	score_bar.custom_minimum_size = Vector2(BAR_MIN_WIDTH, BAR_HEIGHT)
+	score_bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	score_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	score_bar.min_value = 0.0
 	score_bar.max_value = 100.0
