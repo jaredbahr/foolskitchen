@@ -233,7 +233,7 @@ func test_native_bench_offsets_follow_rotated_front_without_mutating_sim_or_cont
 	var content_bench_def: ItemDef = load("res://data/items/cushioned_bench.tres") as ItemDef
 	var content_seats_before: Array[Vector2i] = content_bench_def.seat_cells.duplicate()
 	var content_offset_before: float = content_bench_def.seated_forward_offset
-	var authored_offset: float = 0.1
+	var authored_offset: float = 0.02
 	var bench_origins: Array[Vector2i] = [
 		Vector2i(2, 3), Vector2i(5, 1), Vector2i(2, 5), Vector2i(5, 5),
 	]
@@ -332,16 +332,16 @@ func test_native_bench_offsets_follow_rotated_front_without_mutating_sim_or_cont
 		"standing-agent separation uses final seated offset positions as blockers")
 	assert_eq(server.cell, server_cell_before)
 	for turns: int in range(4):
-		bench_definitions[turns].seated_forward_offset = 0.2
+		bench_definitions[turns].seated_forward_offset = 0.04
 	_view._process(0.0)
 	for guest: CustomerAgent in guests:
 		var person: PersonView = _person(guest.id)
 		var forward: Vector3 = expected_forward[guest.id]
 		var icon: GuestMoodIndicator = icons[guest.id]
-		assert_true(person.position.is_equal_approx(drawn_positions_before[guest.id] + forward * 0.1))
+		assert_true(person.position.is_equal_approx(drawn_positions_before[guest.id] + forward * 0.02))
 		assert_true(person.to_global(person.head_anchor_position()).is_equal_approx(
-			head_positions_before[guest.id] + forward * 0.1))
-		assert_true(icon.global_position.is_equal_approx(mood_positions_before[guest.id] + forward * 0.1))
+			head_positions_before[guest.id] + forward * 0.02))
+		assert_true(icon.global_position.is_equal_approx(mood_positions_before[guest.id] + forward * 0.02))
 		assert_true(icon.position.is_equal_approx(person.head_anchor_position() + Vector3.UP * 0.15))
 		assert_eq(_view.mood_nodes[guest.id], icon)
 		assert_eq(icon.updates, 1, "unchanged mood bands keep their icon while its world anchor follows the person")
@@ -358,7 +358,7 @@ func test_native_bench_offsets_follow_rotated_front_without_mutating_sim_or_cont
 		assert_eq(benches[turns].seat_cells, bench_seats_before[turns])
 		assert_eq(tables[turns].quarter_turns, turns)
 		assert_eq(benches[turns].quarter_turns, turns)
-		assert_eq(bench_definitions[turns].seated_forward_offset, 0.2)
+		assert_eq(bench_definitions[turns].seated_forward_offset, 0.04)
 	assert_eq(content_bench_def.seated_forward_offset, content_offset_before)
 	assert_eq(content_bench_def.seat_cells, content_seats_before)
 	assert_true(table_def.seat_cells.is_empty())

@@ -447,7 +447,7 @@ static func _expected_seated_position(guest: CustomerAgent, world: SimWorld) -> 
 	if definition == null:
 		return unavailable
 	var offset: float = float(definition.get("seated_forward_offset")) if "seated_forward_offset" in definition else 0.0
-	if not is_finite(offset) or offset < 0.0:
+	if not is_finite(offset) or offset < 0.0 or offset > ItemDef.MAX_SEATED_FORWARD_OFFSET:
 		return unavailable
 	var origin: Vector3 = GridMath.cell_to_world(guest.seat_cell)
 	var forward: Vector3 = Vector3.ZERO

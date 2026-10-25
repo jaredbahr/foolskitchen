@@ -58,7 +58,8 @@ static func frame_for(agent: SimAgent, world: SimWorld, chair_seat_height: float
 			var authored: Vector3 = Vector3(seated_facing.x, 0.0, seated_facing.z)
 			if authored.is_finite() and authored.length_squared() > 0.000001:
 				frame.facing_direction = authored
-			if is_finite(seated_forward_offset) and seated_forward_offset >= 0.0:
+			if is_finite(seated_forward_offset) and seated_forward_offset >= 0.0 \
+					and seated_forward_offset <= ItemDef.MAX_SEATED_FORWARD_OFFSET:
 				var forward: Vector3 = Vector3(frame.facing_direction.x, 0.0, frame.facing_direction.z).normalized()
 				var displacement: Vector3 = forward * seated_forward_offset
 				if displacement.is_finite():
