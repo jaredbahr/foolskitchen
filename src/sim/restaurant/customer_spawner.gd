@@ -29,10 +29,15 @@ func advance(sim: RestaurantSim) -> void:
 		return
 	var entries: Array[Vector2i] = sim.world.grid.entries()
 	if not entries.is_empty():
-		var entry: Vector2i = entries[rng.randi_range(0, entries.size() - 1)]
-		var customer_rng: RandomNumberGenerator = RandomNumberGenerator.new()
-		customer_rng.seed = rng.randi()
-		sim.add_customer(entry, customer_rng)
+		var kind: CustomerType = null
+		if sim.customer_types != null:
+			kind = CustomerTypePicker.choose(sim.customer_types, sim.customer_level,
+				sim.review_book.average(), rng)
+		if sim.customer_types == null or kind != null:
+			var entry: Vector2i = entries[rng.randi_range(0, entries.size() - 1)]
+			var customer_rng: RandomNumberGenerator = RandomNumberGenerator.new()
+			customer_rng.seed = rng.randi()
+			sim.add_customer(entry, customer_rng, kind)
 	_remaining = _gap()
 
 

@@ -5,6 +5,7 @@ extends Node3D
 
 @export var role: StringName = &"customer"
 @export var guest_id: int = 0
+@export var customer_type: StringName = &"regular"
 
 var _model: Node3D
 var _player: AnimationPlayer
@@ -21,15 +22,16 @@ var _playback_speed: float = 1.0
 func _ready() -> void:
 	_hat = get_node("ChefHat") as Node3D
 	_initialized = true
-	set_look(role, guest_id)
+	set_look(role, guest_id, customer_type)
 
 
 ## False means the role has no approved look or the required source is missing.
 ## Calling before ready records the requested look for normal scene creation.
-func set_look(value: StringName, id: int = 0) -> bool:
+func set_look(value: StringName, id: int = 0, kind: StringName = &"regular") -> bool:
 	role = value
 	guest_id = id
-	var desired_model: StringName = PersonPresentation.model_for(role, guest_id)
+	customer_type = kind
+	var desired_model: StringName = PersonPresentation.model_for(role, guest_id, customer_type)
 	if not _initialized:
 		return desired_model != &""
 	if desired_model == _model_name and _model != null:
@@ -37,7 +39,7 @@ func set_look(value: StringName, id: int = 0) -> bool:
 	_clear_model()
 	if desired_model == &"":
 		return false
-	var path: String = PersonPresentation.model_path_for(role, guest_id)
+	var path: String = PersonPresentation.model_path_for(role, guest_id, customer_type)
 	if not ResourceLoader.exists(path, "PackedScene"):
 		return false
 	var packed: PackedScene = load(path) as PackedScene

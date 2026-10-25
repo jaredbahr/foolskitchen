@@ -56,7 +56,10 @@ func record_visit(visit: ReviewVisit, tuning: ReviewTuning, quotes: ReviewQuotes
 	if visit == null or visit.closing or tuning == null or not tuning.is_valid() \
 			or quotes == null or random == null:
 		return {}
-	if random.randf() >= tuning.review_chance:
+	if not is_finite(visit.review_chance_multiplier) or visit.review_chance_multiplier < 0.0:
+		return {}
+	var chance: float = clampf(tuning.review_chance * visit.review_chance_multiplier, 0.0, 1.0)
+	if random.randf() >= chance:
 		return {}
 	var before: float = average()
 	var stars: int = score_visit(visit, tuning, vibe_tuning)
@@ -88,7 +91,9 @@ static func score_visit(visit: ReviewVisit, tuning: ReviewTuning, vibe_tuning: V
 	var vibe_bonus: float = clampf(visit.vibe_review_bonus, 0.0, maximum) if is_finite(visit.vibe_review_bonus) else 0.0
 	# Keep the physical star domain before integer conversion, even for large
 	# finite authored caps. Ordinary rounding and final-score quote policy agree.
-	return roundi(clampf(5.0 - penalty + vibe_bonus, 1.0, 5.0))
+	var quality_bonus: float = _unit(visit.quality) * visit.quality_weight \
+		if is_finite(visit.quality_weight) and visit.quality_weight >= 0.0 else 0.0
+	return roundi(clampf(5.0 - penalty + vibe_bonus + quality_bonus, 1.0, 5.0))
 
 
 ## High ratings and visits without a substantial single complaint get a

@@ -22,6 +22,22 @@ func after_each() -> void:
 	_panel.free()
 
 
+func test_type_name_is_authored_text_and_inspection_does_not_draw() -> void:
+	var kind: CustomerType = preload("res://data/customers/types.tres").find_type(&"foodie").duplicate() as CustomerType
+	kind.id = &"internal_profile_key"
+	kind.display_name = "Food lover"
+	var random: RandomNumberGenerator = RandomNumberGenerator.new()
+	random.seed = 117
+	var guest: CustomerAgent = _restaurant.add_customer(Vector2i.ONE, random, kind)
+	var before: int = random.state
+	_panel.show_agent(guest.id)
+	_panel.refresh()
+	assert_true(_label("Details").text.contains("Type: Food lover"))
+	assert_false(_label("Details").text.contains("internal_profile_key"))
+	assert_eq(random.state, before)
+	assert_eq(_world.now, 0)
+
+
 func test_scene_is_hidden_themed_and_mouse_safe_before_ready() -> void:
 	assert_false(_panel.is_node_ready())
 	assert_false(_panel.visible)
@@ -98,7 +114,7 @@ func test_guest_why_state_and_correct_patience_budget_refresh() -> void:
 	guest._queue_wait = 20
 	_panel.show_agent(guest.id)
 	assert_eq(_label("Why").text, guest.why())
-	assert_eq(_label("Details").text, "State: Queued")
+	assert_eq(_label("Details").text, "Type: Regular\nState: Queued")
 	assert_eq(_label("Patience/PatienceLabel").text, "Table patience: 3s left")
 	assert_eq(_bar().max_value, 50.0)
 	assert_eq(_bar().value, 30.0)
@@ -107,14 +123,14 @@ func test_guest_why_state_and_correct_patience_budget_refresh() -> void:
 	guest._food_wait = 30
 	_panel.refresh()
 	assert_eq(_label("Why").text, guest.why())
-	assert_eq(_label("Details").text, "State: Waiting for food")
+	assert_eq(_label("Details").text, "Type: Regular\nState: Waiting for food")
 	assert_eq(_label("Patience/PatienceLabel").text, "Food patience: 9s left")
 	assert_eq(_bar().max_value, 120.0)
 	assert_eq(_bar().value, 90.0)
 	guest.state = CustomerAgent.State.EATING
 	_panel.refresh()
 	assert_eq(_label("Why").text, "Enjoying my meal")
-	assert_eq(_label("Details").text, "State: Eating")
+	assert_eq(_label("Details").text, "Type: Regular\nState: Eating")
 	assert_false(_control("Patience").visible)
 
 
@@ -151,7 +167,7 @@ func test_walking_guest_shows_combined_search_budget_without_changing_counters()
 		guest._walk_wait, guest.food_patience, guest._food_wait, _world.now]
 	_panel.show_agent(guest.id)
 	assert_eq(_label("Why").text, guest.why())
-	assert_eq(_label("Details").text, "State: Walking to seat")
+	assert_eq(_label("Details").text, "Type: Regular\nState: Walking to seat")
 	assert_true(_control("Patience").visible)
 	assert_eq(_bar().max_value, 100.0)
 	assert_eq(_bar().value, 50.0)

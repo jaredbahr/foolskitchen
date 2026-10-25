@@ -11,6 +11,7 @@ const MOOD_CLEARANCE: float = 0.15
 class Frame extends RefCounted:
 	var id: int = 0
 	var role: StringName = &""
+	var customer_type: StringName = &"regular"
 	var look_supported: bool = false
 	var floor_position: Vector3 = Vector3.ZERO
 	var display_offset: Vector3 = Vector3.ZERO
@@ -37,7 +38,9 @@ static func frame_for(agent: SimAgent, world: SimWorld, chair_seat_height: float
 	var frame: Frame = Frame.new()
 	frame.id = agent.id
 	frame.role = agent.role
-	frame.look_supported = PersonPresentation.model_for(agent.role, agent.id) != &""
+	if agent is CustomerAgent:
+		frame.customer_type = (agent as CustomerAgent).customer_type_id
+	frame.look_supported = PersonPresentation.model_for(agent.role, agent.id, frame.customer_type) != &""
 	var start: Vector3 = GridMath.cell_to_world(agent.cell)
 	var end: Vector3 = GridMath.cell_to_world(agent.next_cell())
 	frame.floor_position = start.lerp(end, clampf(agent.move_progress, 0.0, 1.0))
@@ -149,9 +152,9 @@ static func apply(frame: Frame, view: PersonView, playback_speed: float) -> bool
 	view.set_playback_speed(playback_speed)
 	frame.anchors_ready = false
 	if not frame.look_supported:
-		view.set_look(frame.role, frame.id)
+		view.set_look(frame.role, frame.id, frame.customer_type)
 		return false
-	if not view.set_look(frame.role, frame.id):
+	if not view.set_look(frame.role, frame.id, frame.customer_type):
 		return false
 	if not view.set_pose(frame.moving, frame.seated, frame.carrying, frame.working, frame.seat_height):
 		return false
