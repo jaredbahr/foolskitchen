@@ -152,7 +152,7 @@ func test_furnished_guests_walk_to_reserved_booths_and_stools_and_use_native_sit
 	assert_eq(state["snapshot"]["run"], fixture["baseline"]["run"])
 	for ticks: int in fixture["guest_ticks"]:
 		assert_true(ticks > 0 and ticks <= REVIEW.WALK_BUDGET)
-	for change: String in ["reservation", "role", "cell", "clip", "player", "lift", "source", "hidden", "furnishing", "link", "walls", "dining"]:
+	for change: String in ["reservation", "role", "cell", "clip", "player", "lift", "source", "hidden", "furnishing", "link", "walls", "dining", "head_clearance"]:
 		var broken: Dictionary = state.duplicate(true)
 		match change:
 			"reservation":
@@ -179,6 +179,8 @@ func test_furnished_guests_walk_to_reserved_booths_and_stools_and_use_native_sit
 				broken["walls"].pop_back()
 			"dining":
 				broken["dining_failures"][1] = "missing seating"
+			"head_clearance":
+				broken["actors"][0]["seat_clearance"]["seated_head_clearance"] = 0.019
 		assert_false(REVIEW.valid(broken, 90, fixture), change + " fails closed")
 	var content: ContentDB = _main.get("content") as ContentDB
 	for id: StringName in [&"diner_open_sign", &"diner_chalkboard", &"diner_wall_art_a", &"diner_wall_art_b"]:
@@ -200,6 +202,87 @@ func test_prepare_refuses_nonfresh_or_saving_main_before_staging_any_nodes() -> 
 	assert_false(String(REVIEW.prepare(_main, _root()).get("error", "")).is_empty())
 	assert_false(_main.has_node(REVIEW.COMPARISON))
 	assert_eq(_snapshot(), before)
+
+
+func test_derivative_crop_preserves_each_source_pixel_in_exact_three_by_three_blocks() -> void:
+	# Tiny colour grids are test inputs, never rendered or published proof art.
+	var source: Image = Image.create(4, 3, false, Image.FORMAT_RGBA8)
+	for y: int in range(3):
+		for x: int in range(4):
+			source.set_pixel(x, y, Color(float(x) / 3.0, float(y) / 2.0, 0.25, 1.0))
+	var before: PackedByteArray = source.get_data().duplicate()
+	var cropped: Image = REVIEW.seated_crop_image(source, Rect2i(1, 1, 2, 2))
+	assert_not_null(cropped)
+	if cropped == null:
+		return
+	assert_eq(cropped.get_size(), Vector2i(6, 6))
+	for y: int in range(6):
+		for x: int in range(6):
+			assert_eq(cropped.get_pixel(x, y), source.get_pixel(1 + x / 3, 1 + y / 3), "exact source pixels, no smoothing or invented gap")
+	assert_eq(source.get_data(), before, "derivation leaves the source image untouched")
+	assert_null(REVIEW.seated_crop_image(source, Rect2i(-1, 0, 2, 2)))
+	assert_null(REVIEW.seated_crop_image(source, Rect2i(3, 2, 2, 2)))
+	assert_null(REVIEW.seated_crop_image(source, Rect2i(1, 1, 0, 2)))
+
+
+func test_crop_selection_requires_current_posed_head_and_keeps_backrest_and_table_context() -> void:
+	# Detached projection inputs test selection only; no synthetic metadata or
+	# image produced here is acceptance evidence for a native scene.
+	var state: Dictionary = _crop_selection_fixture()
+	var before: Dictionary = state.duplicate(true)
+	var selected: Dictionary = REVIEW.seated_crop_selection(state)
+	assert_eq(selected.get("error"), "")
+	assert_eq(selected.get("guest_id"), 9, "greatest head bottom-y chooses the nearest booth guest")
+	assert_eq(selected.get("source_rect"), [88, 148, 214, 164], "full head, backrest and table with twelve source pixels of context")
+	assert_eq(selected.get("measurement"), state["actors"][0]["seat_clearance"])
+	assert_eq(state, before, "selection is a read-only metadata query")
+	var tied: Dictionary = state.duplicate(true)
+	tied["actors"][1]["seat_clearance"]["head_screen_bounds"]["y"] = 210.0
+	assert_eq(REVIEW.seated_crop_selection(tied).get("guest_id"), 4, "equal bottom-y uses the smallest guest ID")
+	for change: String in ["bind_pose", "small_gap", "intersection", "enclosed", "wrong_guest", "offscreen", "missing_table", "provenance", "no_backrest"]:
+		var broken: Dictionary = state.duplicate(true)
+		match change:
+			"bind_pose":
+				broken["actors"][0]["seat_clearance"].erase("head_screen_bounds")
+				broken["actors"][0]["bounds"] = {"rect": [140, 190, 50, 80], "inside": true, "in_front": true}
+			"small_gap":
+				broken["actors"][0]["seat_clearance"]["seated_head_clearance"] = 0.019
+			"intersection":
+				broken["actors"][0]["seat_clearance"]["intersecting_triangles"] = 1
+			"enclosed":
+				broken["actors"][0]["seat_clearance"]["head_center_inside_seat"] = true
+			"wrong_guest":
+				broken["actors"][0]["seat_clearance"]["guest_id"] = 4
+			"offscreen":
+				broken["actors"][0]["seat_clearance"]["head_screen_bounds"]["x"] = -1.0
+			"missing_table":
+				broken["items"].pop_back()
+			"provenance":
+				broken["actors"][0]["seat_clearance"]["measurement_provenance"] = "rest pose estimate"
+			"no_backrest":
+				broken["actors"][0]["seat_clearance"]["backrest_at_head_height"] = false
+				broken["actors"][0]["seat_clearance"]["seated_head_clearance"] = null
+		assert_false(String(REVIEW.seated_crop_selection(broken).get("error", "")).is_empty(), change + " fails closed")
+
+
+func _crop_selection_fixture() -> Dictionary:
+	var actors: Array[Dictionary] = []
+	for row: Dictionary in [{"id": 9, "seat": 11, "x": 150.0, "y": 210.0}, {"id": 4, "seat": 12, "x": 400.0, "y": 120.0}]:
+		actors.append({"id": row["id"], "furnishing": row["seat"], "furnishing_definition": "diner_booth",
+			"table": 10, "linked_table": 10, "role": "customer", "seated": true, "visible": true,
+			"clip": "sit", "player_clip": "sit", "reservation": row["id"],
+			"seat_clearance": {"guest_id": row["id"], "furnishing_id": row["seat"], "table_item_id": 10,
+				"head_world_bounds": {"min": [0.0, 0.0, 0.0], "max": [0.2, 0.2, 0.2]},
+				"head_screen_bounds": {"x": row["x"], "y": row["y"], "width": 30.0, "height": 40.0},
+				"seated_head_clearance": 0.025, "backrest_at_head_height": true, "intersecting_triangles": 0, "head_center_inside_seat": false,
+				"head_vertices": 8, "measurement_provenance": REVIEW.POSED_HEAD_PROVENANCE}})
+	var items: Array[Dictionary] = []
+	for row: Dictionary in [{"id": 11, "definition": "diner_booth", "rect": [100, 180, 140, 120]},
+			{"id": 12, "definition": "diner_booth", "rect": [350, 100, 140, 120]},
+			{"id": 10, "definition": "cross_table", "rect": [130, 160, 160, 60]}]:
+		items.append({"id": row["id"], "definition": row["definition"],
+			"prop": {"bounds": {"rect": row["rect"], "inside": true, "in_front": true}}})
+	return {"actors": actors, "items": items}
 
 
 func _start() -> void:

@@ -9,6 +9,11 @@ const THEME: Theme = preload("res://src/ui/theme/main_theme.tres")
 const PERSON: PackedScene = preload("res://assets/people/person.tscn")
 const SIZE: Vector2i = Vector2i(1600, 900)
 const WALK_BUDGET: int = 160
+const CROP_SCALE: int = 3
+const CROP_PADDING: int = 12
+const CROP_FILE: String = "shot_0090_booth_3x.png"
+## Stable contract supplied by SeatedHeadGeometry; no bind-pose AABB substitute.
+const POSED_HEAD_PROVENANCE: String = "native Mini head-mesh POSITION/JOINTS/WEIGHTS, imported Skin inverse binds, current Skeleton3D global poses, actual node transforms"
 const IDS: Array[StringName] = [&"diner_booth", &"diner_stool", &"diner_open_sign",
 	&"diner_chalkboard", &"diner_wall_art_a", &"diner_wall_art_b"]
 const NAMES: Array[String] = ["Booth", "Counter stool", "OPEN sign", "Menu board", "Wall art A", "Wall art B"]
@@ -371,6 +376,7 @@ static func valid(state: Dictionary, frame: int, fixture: Dictionary) -> bool:
 	var stools: int = 0
 	for actor: Dictionary in actors:
 		var key: String = str(actor.get("seat"))
+		var measurement: Dictionary = actor.get("seat_clearance", {})
 		if actor.get("role") != "customer" or actor.get("state") != int(CustomerAgent.State.ORDERING) \
 				or actor.get("cell") != actor.get("seat") or actor.get("arrived") != true \
 				or actor.get("seat_member") != true or actor.get("walkable") != true or actor.get("seated") != true \
@@ -382,6 +388,10 @@ static func valid(state: Dictionary, frame: int, fixture: Dictionary) -> bool:
 				or float(actor.get("seat_height", 0.0)) <= 0.0 \
 				or not is_equal_approx(float(actor.get("seat_lift", -1.0)), float(actor.get("seat_height", -2.0))) \
 				or not _bounds_valid(actor.get("bounds", {})):
+			return false
+		if measurement.get("guest_id") != actor.get("id") or measurement.get("furnishing_id") != actor.get("furnishing") \
+				or measurement.get("table_item_id") != actor.get("table") or not _seated_measurement_valid(measurement, false) \
+				or not _crop_head_rect_valid(measurement.get("head_screen_bounds", {})):
 			return false
 		if notice_rect.intersects(_rect(actor["bounds"])):
 			return false
@@ -642,3 +652,181 @@ static func _rect(bounds: Dictionary) -> Rect2:
 
 static func _cell(value: Vector2i) -> Array[int]:
 	return [value.x, value.y]
+
+
+## Derivative evidence only: source pixels from the already captured frame 90.
+## The caller supplies trusted output paths after saving the full PNG and building
+## its complete metadata. Metadata never supplies an output path or filename.
+static func write_seated_crop(full_image: Image, source_path: String, metadata: Dictionary, output_dir: String) -> Dictionary:
+	var failure: Dictionary = {"error": "seated crop requires the validated paused frame 90 image"}
+	var review: Dictionary = metadata.get("diner_review", {})
+	var state: Dictionary = review.get("state", {})
+	var fixture: Dictionary = review.get("fixture", {})
+	if full_image == null or full_image.is_empty() or full_image.get_size() != SIZE \
+			or metadata.get("frame") != 90 or metadata.get("image_file") != "shot_0090.png" \
+			or metadata.get("width") != SIZE.x or metadata.get("height") != SIZE.y \
+			or metadata.get("scene") != MAIN_SCENE or metadata.get("capture_timing") != "frame_post_draw" \
+			or metadata.get("engine_errors") != 0 or not valid(state, 90, fixture):
+		return failure
+	var directory: String = _crop_path(output_dir)
+	var source: String = _crop_path(source_path)
+	var screens: String = _crop_path("res://screens")
+	var compared_directory: String = directory.to_lower() if OS.has_feature("windows") else directory
+	var compared_screens: String = screens.to_lower() if OS.has_feature("windows") else screens
+	var compared_parent: String = source.get_base_dir().to_lower() if OS.has_feature("windows") else source.get_base_dir()
+	if not compared_directory.begins_with(compared_screens + "/") and compared_directory != compared_screens:
+		return {"error": "seated crop output must stay inside this project's ignored screens directory"}
+	if compared_parent != compared_directory or source.get_file() != "shot_0090.png" or not FileAccess.file_exists(source):
+		return {"error": "seated crop source must be the saved frame 90 PNG in the explicit output directory"}
+	var source_hash: String = FileAccess.get_sha256(source)
+	if source_hash.length() != 64 or source_hash != metadata.get("image_sha256"):
+		return {"error": "seated crop source PNG does not match the full-frame metadata hash"}
+	var saved_image: Image = Image.load_from_file(source)
+	if saved_image == null or saved_image.is_empty() or saved_image.get_size() != SIZE:
+		return {"error": "seated crop cannot read the saved source PNG"}
+	# Compare decoded pixels in one lossless byte format before deriving anything.
+	var supplied: Image = full_image.duplicate() as Image
+	supplied.convert(Image.FORMAT_RGBA8)
+	saved_image.convert(Image.FORMAT_RGBA8)
+	if supplied.get_data() != saved_image.get_data():
+		return {"error": "seated crop image differs from the saved full-frame pixels"}
+	var selection: Dictionary = seated_crop_selection(state)
+	if not String(selection.get("error", "missing")).is_empty():
+		return selection
+	var values: Array = selection["source_rect"]
+	var region: Rect2i = Rect2i(int(values[0]), int(values[1]), int(values[2]), int(values[3]))
+	var cropped: Image = seated_crop_image(saved_image, region)
+	if cropped == null:
+		return {"error": "seated crop rectangle did not fit its source image"}
+	var output: String = directory.path_join(CROP_FILE)
+	if cropped.save_png(output) != OK:
+		return {"error": "cannot save the exact three-times seated crop"}
+	var crop_hash: String = FileAccess.get_sha256(output)
+	if crop_hash.length() != 64:
+		return {"error": "cannot hash the saved seated crop"}
+	var result: Dictionary = selection.duplicate(true)
+	result.merge({"kind": "source_pixel_derivative", "source_image_file": source.get_file(),
+		"source_image_sha256": source_hash, "source_frame": 90, "scale": CROP_SCALE,
+		"interpolation": "nearest", "image_file": CROP_FILE, "image_sha256": crop_hash,
+		"width": cropped.get_width(), "height": cropped.get_height(),
+		"notice": "Exact 3x nearest-neighbour crop of paused, unsaved frame 90; no new scene or rendered frame.",
+		"fixture_notice": NOTICE})
+	var file: FileAccess = FileAccess.open(output.get_basename() + ".json", FileAccess.WRITE)
+	if file == null:
+		return {"error": "cannot write seated crop provenance"}
+	file.store_string(JSON.stringify(result, "\t"))
+	file.flush()
+	var write_error: Error = file.get_error()
+	file.close()
+	if write_error != OK:
+		return {"error": "cannot save seated crop provenance"}
+	return result
+
+
+## Pure selection from current native measurements. Actor bind-pose bounds are
+## deliberately unused: the head comes from SeatedHeadGeometry's posed vertices.
+static func seated_crop_selection(state: Dictionary) -> Dictionary:
+	var failure: Dictionary = {"error": "seated crop needs a visible booth guest with current posed head clearance"}
+	var candidates: Array = state.get("actors", [])
+	var items: Array = state.get("items", [])
+	var chosen: Dictionary = {}
+	var chosen_bounds: Rect2 = Rect2()
+	var nearest: float = -INF
+	for actor: Dictionary in candidates:
+		if actor.get("furnishing_definition") != "diner_booth":
+			continue
+		var measurement: Dictionary = actor.get("seat_clearance", {})
+		var head_data: Dictionary = measurement.get("head_screen_bounds", {})
+		if actor.get("role") != "customer" or actor.get("seated") != true or actor.get("visible") != true \
+				or actor.get("clip") != "sit" or actor.get("player_clip") != "sit" \
+				or actor.get("reservation") != actor.get("id") or actor.get("linked_table") != actor.get("table") \
+				or measurement.get("guest_id") != actor.get("id") \
+				or measurement.get("furnishing_id") != actor.get("furnishing") \
+				or measurement.get("table_item_id") != actor.get("table") \
+				or not _seated_measurement_valid(measurement, true) or not _crop_head_rect_valid(head_data):
+			return failure
+		var head: Rect2 = Rect2(float(head_data["x"]), float(head_data["y"]), float(head_data["width"]), float(head_data["height"]))
+		var furnishing: Dictionary = _crop_item(items, int(actor["furnishing"]))
+		var table: Dictionary = _crop_item(items, int(actor["table"]))
+		if furnishing.get("definition") != "diner_booth" or not _bounds_valid(furnishing.get("prop", {}).get("bounds", {})) \
+				or not _bounds_valid(table.get("prop", {}).get("bounds", {})):
+			return failure
+		var bounds: Rect2 = head.merge(_rect(furnishing["prop"]["bounds"])).merge(_rect(table["prop"]["bounds"]))
+		# Prefer the nearest head in the existing three-quarter view; stable ID
+		# breaks ties without randomness or a camera/actor presentation change.
+		if head.end.y > nearest or (head.end.y == nearest and int(actor["id"]) < int(chosen.get("id", 2147483647))):
+			nearest = head.end.y
+			chosen = actor
+			chosen_bounds = bounds
+	if chosen.is_empty():
+		return failure
+	var viewport: Rect2 = Rect2(Vector2.ZERO, Vector2(SIZE))
+	if not viewport.encloses(chosen_bounds):
+		return {"error": "seated crop context lies outside the source image"}
+	var padded: Rect2 = chosen_bounds.grow(CROP_PADDING).intersection(viewport)
+	var origin: Vector2i = Vector2i(floori(padded.position.x), floori(padded.position.y))
+	var end: Vector2i = Vector2i(ceili(padded.end.x), ceili(padded.end.y))
+	return {"error": "", "guest_id": int(chosen["id"]), "furnishing_id": int(chosen["furnishing"]),
+		"table_item_id": int(chosen["table"]), "source_rect": [origin.x, origin.y, end.x - origin.x, end.y - origin.y],
+		"measurement": (chosen["seat_clearance"] as Dictionary).duplicate(true)}
+
+
+## Exact source-region sampling only. Tests exercise this with tiny pixel grids;
+## those grids are unit-test fixtures and never acceptance screenshots.
+static func seated_crop_image(source: Image, region: Rect2i) -> Image:
+	if source == null or source.is_empty() or region.size.x <= 0 or region.size.y <= 0 \
+			or not Rect2i(Vector2i.ZERO, source.get_size()).encloses(region):
+		return null
+	var result: Image = source.get_region(region)
+	result.resize(region.size.x * CROP_SCALE, region.size.y * CROP_SCALE, Image.INTERPOLATE_NEAREST)
+	return result
+
+
+static func _seated_measurement_valid(measurement: Dictionary, require_backrest: bool) -> bool:
+	var clearance: Variant = measurement.get("seated_head_clearance")
+	var world: Dictionary = measurement.get("head_world_bounds", {})
+	var low: Array = world.get("min", [])
+	var high: Array = world.get("max", [])
+	if not String(measurement.get("error", "")).is_empty() \
+			or not _crop_integer(measurement.get("intersecting_triangles")) or measurement.get("intersecting_triangles") != 0 \
+			or measurement.get("head_center_inside_seat") != false or not _crop_integer(measurement.get("head_vertices")) \
+			or int(measurement.get("head_vertices", 0)) <= 0 or measurement.get("measurement_provenance") != POSED_HEAD_PROVENANCE \
+			or low.size() != 3 or high.size() != 3:
+		return false
+	for axis: int in range(3):
+		if not (low[axis] is float or low[axis] is int) or not (high[axis] is float or high[axis] is int) \
+				or not is_finite(float(low[axis])) or not is_finite(float(high[axis])) or float(high[axis]) <= float(low[axis]):
+			return false
+	if measurement.get("backrest_at_head_height") == true:
+		return (clearance is float or clearance is int) and is_finite(float(clearance)) and float(clearance) >= 0.02
+	# Root serializes this explicit result only for the helper's positive INF:
+	# no rear triangles at head height. Missing/error/NaN results never use null.
+	return not require_backrest and measurement.get("backrest_at_head_height") == false \
+		and measurement.has("seated_head_clearance") and clearance == null
+
+
+static func _crop_head_rect_valid(data: Dictionary) -> bool:
+	for key: String in ["x", "y", "width", "height"]:
+		var value: Variant = data.get(key)
+		if not (value is float or value is int) or not is_finite(float(value)):
+			return false
+	var bounds: Rect2 = Rect2(float(data["x"]), float(data["y"]), float(data["width"]), float(data["height"]))
+	return bounds.has_area() and Rect2(Vector2.ZERO, Vector2(SIZE)).encloses(bounds)
+
+
+static func _crop_item(items: Array, id: int) -> Dictionary:
+	for item: Dictionary in items:
+		if item.get("id") == id:
+			return item
+	return {}
+
+
+static func _crop_integer(value: Variant) -> bool:
+	return value is int or (value is float and is_finite(value) and value == floor(value))
+
+
+static func _crop_path(path: String) -> String:
+	var normalized: String = path.replace("\\", "/")
+	if not normalized.is_absolute_path():
+		normalized = "res://".path_join(normalized)
+	return ProjectSettings.globalize_path(normalized).replace("\\", "/").simplify_path().trim_suffix("/")
