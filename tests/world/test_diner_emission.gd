@@ -75,9 +75,9 @@ func _read_glb_json(path: String) -> Dictionary:
 		assert_true(false, "GLB has a complete binary header: " + path)
 		return {}
 	assert_eq(bytes.slice(0, 4), PackedByteArray([0x67, 0x6c, 0x54, 0x46]), "GLB magic: " + path)
-	assert_eq(bytes.decode_u32(4, false), 2, "GLB version 2: " + path)
-	assert_eq(bytes.decode_u32(8, false), bytes.size(), "GLB declared length matches file: " + path)
-	var json_length: int = int(bytes.decode_u32(12, false))
+	assert_eq(bytes.decode_u32(4), 2, "GLB version 2: " + path)
+	assert_eq(bytes.decode_u32(8), bytes.size(), "GLB declared length matches file: " + path)
+	var json_length: int = int(bytes.decode_u32(12))
 	assert_eq(bytes.slice(16, 20), PackedByteArray([0x4a, 0x53, 0x4f, 0x4e]), "first GLB chunk is JSON: " + path)
 	if json_length <= 0 or 20 + json_length > bytes.size():
 		assert_true(false, "GLB JSON chunk fits inside the file: " + path)
