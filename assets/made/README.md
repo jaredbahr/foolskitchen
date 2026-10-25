@@ -2,6 +2,9 @@
 
 These assets are made for the named issues and follow `docs/ART_STYLE.md` §8. They do not modify the Kenney source kits.
 
+## #118 pending integration
+These icon entries are carried forward from issue #118; they are not part of PR #147.
+
 | Asset | Issue | Style reference |
 |---|---|---|
 | `icons/chefHat.svg` and `icons/chefHat.png` | #118 | Kenney Game Icons `home.png`, `star.png` and `menuList.png`: one white, rounded silhouette with broad transparent margins. |
