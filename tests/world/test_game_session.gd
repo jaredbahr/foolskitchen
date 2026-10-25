@@ -79,10 +79,20 @@ func test_full_day_charges_costs_and_shows_report() -> void:
 	var wages: int = (main.get("staff_roster") as StaffRoster).total_wages()
 	var sales: int = int(Economy.ledger.day_totals(Clock.sim.day).get(Ledger.SALE, 0))
 	assert_true(sales > 0, "the real kitchen serves paying guests")
-	assert_eq(Economy.cash, cash_at_open + sales - wages - TUNING.daily_rent, "meal sales, wages and rent reconcile at closing")
 	var report: Control = main.get_node("Overlay/EveningReport")
 	assert_true(report.visible, "evening report shown at CLOSED")
 	var day_report: DayReport = main.call("build_report", 1)
+	var milestone_cash: int = 0
+	var milestone_xp: int = 0
+	for milestone: Dictionary in day_report.milestones_reached:
+		milestone_cash += int(milestone.get("reward_cash", 0))
+		milestone_xp += int(milestone.get("reward_xp", 0))
+	assert_eq(day_report.income.get(Ledger.MILESTONE_BONUS, 0), milestone_cash,
+		"authored milestone cash is recorded in the matching ledger category")
+	assert_eq(int(Economy.ledger.day_totals(1).get(Ledger.MILESTONE_BONUS, 0)), milestone_cash)
+	assert_eq(day_report.profit(), Economy.ledger.day_profit(1), "the report includes all cash flows")
+	assert_eq(Economy.cash, cash_at_open + sales - wages - TUNING.daily_rent + milestone_cash,
+		"sales, closing costs and authored goal awards reconcile at closing")
 	assert_eq(day_report.income.get(Ledger.SALE, 0), sales)
 	assert_eq(day_report.costs.get(Ledger.WAGES, 0), wages)
 	assert_eq(day_report.costs.get(Ledger.RENT, 0), TUNING.daily_rent)
@@ -95,13 +105,17 @@ func test_full_day_charges_costs_and_shows_report() -> void:
 		if int(review.get("stars", 0)) == 5:
 			five_star += 1
 	var expected_happy_xp: int = int(sim.leave_reasons_today.get(&"happy", 0)) * PROGRESSION.happy_guest_xp
-	var expected_profit_xp: int = floori(float(maxi(0, day_report.profit())) / float(PROGRESSION.profit_step)) \
+	var expected_profit_xp: int = floori(float(maxi(0, day_report.operating_profit())) / float(PROGRESSION.profit_step)) \
 		* PROGRESSION.profit_step_xp
 	var expected_review_xp: int = five_star * PROGRESSION.five_star_review_xp
-	var expected_total: int = expected_happy_xp + expected_profit_xp + expected_review_xp
-	assert_eq(day_report.owner_xp_breakdown, {"happy_xp": expected_happy_xp,
+	var expected_total: int = expected_happy_xp + expected_profit_xp + expected_review_xp + milestone_xp
+	var expected_breakdown: Dictionary = {"happy_xp": expected_happy_xp,
 		"profit_xp": expected_profit_xp, "review_xp": expected_review_xp,
-		"total_xp": expected_total}, "the real day-close report explains every XP source")
+		"total_xp": expected_total}
+	if milestone_xp > 0:
+		expected_breakdown["milestone_xp"] = milestone_xp
+	assert_eq(day_report.owner_xp_breakdown, expected_breakdown,
+		"the real day-close report explains every XP source and uses operating profit")
 	var progress: OwnerProgress = main.get("owner_progress") as OwnerProgress
 	assert_eq(progress.total_xp, expected_total)
 	assert_eq(progress.last_awarded_day, 1)
