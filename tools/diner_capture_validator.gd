@@ -8,6 +8,7 @@ const PNG_SIGNATURE: PackedByteArray = PackedByteArray([137, 80, 78, 71, 13, 10,
 const EXPECTED_FRAMES: Array[int] = [12, 90]
 const BOOTH_CROP_FILENAME: String = "shot_0090_booth_3x.png"
 const SEAT_CLEARANCE_PROVENANCE: String = "native Mini head-mesh POSITION/JOINTS/WEIGHTS, imported Skin inverse binds, current Skeleton3D global poses, actual node transforms"
+const SEAT_CLEARANCE_METRIC: String = "minimum Euclidean seat-triangle to conservative posed-head AABB separation"
 
 
 func _initialize() -> void:
@@ -250,7 +251,8 @@ static func _valid_clearance(clearance: Dictionary) -> bool:
 			or clearance.get("head_center_inside_seat") != false \
 			or clearance.get("seat_geometry_measured") != true \
 			or not _integer_value(clearance.get("head_vertices"), 1, 1000000) \
-			or clearance.get("measurement_provenance") != SEAT_CLEARANCE_PROVENANCE:
+			or clearance.get("measurement_provenance") != SEAT_CLEARANCE_PROVENANCE \
+			or clearance.get("clearance_metric") != SEAT_CLEARANCE_METRIC:
 		return false
 	var low: Array = min_bounds
 	var high: Array = max_bounds

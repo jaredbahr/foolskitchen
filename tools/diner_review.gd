@@ -15,6 +15,7 @@ const CROP_PADDING: int = 12
 const CROP_FILE: String = "shot_0090_booth_3x.png"
 ## Stable contract supplied by SeatedHeadGeometry; no bind-pose AABB substitute.
 const POSED_HEAD_PROVENANCE: String = "native Mini head-mesh POSITION/JOINTS/WEIGHTS, imported Skin inverse binds, current Skeleton3D global poses, actual node transforms"
+const POSED_CLEARANCE_METRIC: String = HEAD_GEOMETRY.CLEARANCE_METRIC
 const IDS: Array[StringName] = [&"diner_booth", &"diner_stool", &"diner_open_sign",
 	&"diner_chalkboard", &"diner_wall_art_a", &"diner_wall_art_b"]
 const NAMES: Array[String] = ["Booth", "Counter stool", "OPEN sign", "Menu board", "Wall art A", "Wall art B"]
@@ -615,6 +616,7 @@ static func _seat_clearance(person: PersonView, prop: PropView, camera: Camera3D
 		"intersecting_triangles": measured["intersecting_triangles"],
 		"head_center_inside_seat": measured["head_center_inside_seat"],
 		"head_vertices": measured["head_vertices"], "measurement_provenance": measured["provenance"],
+		"clearance_metric": measured["clearance_metric"],
 		"model": String(person.model_name()), "clip": String(person._player.current_animation),
 		"sit_time": person._player.current_animation_position,
 		"character_scale": (person.get_node("ModelPivot") as Node3D).scale.x}
@@ -824,6 +826,7 @@ static func _seated_measurement_valid(measurement: Dictionary) -> bool:
 			or not _crop_integer(measurement.get("intersecting_triangles")) or measurement.get("intersecting_triangles") != 0 \
 			or measurement.get("head_center_inside_seat") != false or not _crop_integer(measurement.get("head_vertices")) \
 			or int(measurement.get("head_vertices", 0)) <= 0 or measurement.get("measurement_provenance") != POSED_HEAD_PROVENANCE \
+			or measurement.get("clearance_metric") != POSED_CLEARANCE_METRIC \
 			or low.size() != 3 or high.size() != 3:
 		return false
 	for axis: int in range(3):
