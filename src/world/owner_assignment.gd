@@ -10,12 +10,15 @@ static func resolve(world_position: Vector3, grid: SimGrid) -> Dictionary:
 	if grid == null:
 		return _none()
 	var cell: Vector2i = GridMath.world_to_cell(world_position)
-	var covered: PlacedItem = grid.item_at(cell)
+	var covered: PlacedItem = grid.item_on_layer(cell, ItemDef.PlacementLayer.NORMAL)
 	if covered != null:
 		return _for_item(covered, world_position, -1)
-	# Work cells can lie outside a footprint, where item_at() returns null.
+	# Floor decor never takes an owner's assignment target. Work cells can
+	# lie outside a normal footprint even when a rug covers that floor cell.
 	# Stable item order breaks ties between overlapping external work cells.
 	for item: PlacedItem in grid.items():
+		if item.placement_layer != ItemDef.PlacementLayer.NORMAL:
+			continue
 		var index: int = item.work_cells.find(cell)
 		if index >= 0:
 			var result: Dictionary = _for_item(item, world_position, index)

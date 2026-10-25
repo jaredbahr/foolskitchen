@@ -11,6 +11,8 @@ extends RefCounted
 var id: int = 0
 ## Whatever describes the item (an ItemDef once FK-011 lands). The grid never reads it.
 var def: Resource = null
+## Captured on placement; moving/removing never changes another layer's item.
+var placement_layer: ItemDef.PlacementLayer = ItemDef.PlacementLayer.NORMAL
 ## Cosmetic body paint; empty means the ItemDef placeholder colour.
 var swatch_id: StringName = &""
 var origin: Vector2i = Vector2i.ZERO

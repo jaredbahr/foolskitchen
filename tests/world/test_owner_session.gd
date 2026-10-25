@@ -114,6 +114,58 @@ func test_other_selections_keep_ordinary_item_and_agent_inspection() -> void:
 	assert_eq(owner.current_mode(), &"rest")
 
 
+func test_visible_rug_preserves_owner_work_dispatch_and_normal_non_target_and_wall_precedence() -> void:
+	await (Engine.get_main_loop() as SceneTree).process_frame
+	var main: Node = _start(true)
+	main.set_process(false)
+	(main.get_node("CameraRig") as CameraRig).set_process(false)
+	var view: ShopView = main.get_node("ShopView") as ShopView
+	view.set_process(false)
+	var owner: OwnerAgent = _owner(main)
+	var world: SimWorld = main.get("world") as SimWorld
+	var editor: ShopEditor = main.get("shop_editor") as ShopEditor
+	var content: ContentDB = main.get("content") as ContentDB
+	var rug_def: ItemDef = content.item(&"rug_square")
+	editor.set_owner_level(rug_def.unlock_level) # Explicit purchase-unlock fixture.
+	var prep: PlacedItem = _item(main, &"prep_counter")
+	var work: Vector2i = prep.work_cells[0]
+	assert_eq(work, Vector2i(5, 2), "use the real rotated station's external work cell")
+	assert_true(main.call("shop_buy", rug_def.id, work, 0))
+	var rug: PlacedItem = world.grid.item_on_layer(work, ItemDef.PlacementLayer.FLOOR_DECOR)
+	assert_not_null(rug)
+	if rug == null:
+		return
+	assert_null(world.grid.item_on_layer(work, ItemDef.PlacementLayer.NORMAL))
+	await (Engine.get_main_loop() as SceneTree).process_frame
+	var camera: Camera3D = main.get_node("CameraRig/Camera3D") as Camera3D
+	var point: Vector3 = GridMath.cell_to_world(work)
+	var screen: Vector2 = camera.unproject_position(point)
+	assert_eq(view.item_at_ray(camera.project_ray_origin(screen), camera.project_ray_normal(screen)), rug.id,
+		"the actual visible item ray must hit the rug before testing its fallback")
+	assert_true(main.call("select_agent", owner.id))
+	var before: Dictionary = _assignment_side_effects()
+	main.call("pick_screen_position", screen)
+	assert_eq(owner.current_mode(), &"kitchen")
+	_assert_selected(main, owner)
+	assert_eq(_assignment_side_effects(), before)
+	# A normal non-target covering that work cell retains the old precedence.
+	assert_true(main.call("assign_owner_mode", &"rest"))
+	assert_true(main.call("shop_buy", &"potted_plant", work, 0))
+	var plant: PlacedItem = world.grid.item_on_layer(work, ItemDef.PlacementLayer.NORMAL)
+	assert_not_null(plant)
+	if plant == null:
+		return
+	before = _assignment_side_effects()
+	main.call("select_at_world_position", point, plant.id)
+	assert_eq(owner.current_mode(), &"rest")
+	assert_eq(_assignment_side_effects(), before)
+	assert_true(main.call("select_agent", owner.id))
+	main.call("select_at_world_position", point, ShopView.OCCLUDED_ITEM)
+	assert_eq(owner.current_mode(), &"rest", "a wall sentinel must not use the rug's work-cell fallback")
+	assert_eq(_assignment_side_effects(), before)
+	assert_eq(world.now, 0)
+
+
 func test_owner_menu_and_shop_changes_restore_after_next_morning() -> void:
 	var first: Node = _start(true)
 	var morning_file: String = FileAccess.get_file_as_string(_path())
@@ -364,6 +416,11 @@ func _run_day(main: Node) -> void:
 
 func _path() -> String:
 	return _save_dir.path_join(SLOT + ".json")
+
+
+func _assignment_side_effects() -> Dictionary:
+	return {"books": Economy._capture_save(), "clock": Clock.sim.to_dict(), "speed": Clock.speed,
+		"rng": GameState._capture_save(), "saved": FileAccess.get_file_as_string(_path())}
 
 
 func _document() -> Dictionary:

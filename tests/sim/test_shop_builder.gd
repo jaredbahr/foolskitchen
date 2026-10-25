@@ -70,3 +70,37 @@ func test_unknown_item_is_reported() -> void:
 	assert_not_null(w, "a world is still returned")
 	assert_eq(errors.size(), 1)
 	assert_true(errors[0].contains("hot_tub"))
+
+
+func test_authored_rug_and_table_build_in_either_placement_order() -> void:
+	for floor_first: bool in [true, false]:
+		var layout: ShopLayout = (load(LAYOUT) as ShopLayout).duplicate(true) as ShopLayout
+		var floor_placement: ShopPlacement = ShopPlacement.new()
+		floor_placement.item_id = &"rug_rectangle"
+		floor_placement.origin = Vector2i(1, 6)
+		if floor_first:
+			layout.placements.push_front(floor_placement)
+		else:
+			layout.placements.append(floor_placement)
+		var errors: Array[String] = []
+		var built: SimWorld = ShopBuilder.build(layout, content, errors)
+		assert_eq(errors, [] as Array[String])
+		var rug: PlacedItem = built.grid.item_on_layer(Vector2i(2, 6), ItemDef.PlacementLayer.FLOOR_DECOR)
+		var table: PlacedItem = built.grid.item_on_layer(Vector2i(2, 6), ItemDef.PlacementLayer.NORMAL)
+		assert_not_null(rug)
+		assert_not_null(table)
+		if rug == null or table == null:
+			continue
+		assert_eq((rug.def as ItemDef).id, &"rug_rectangle")
+		assert_eq((table.def as ItemDef).id, &"table_2")
+		assert_eq(built.grid.item_at(table.origin), table)
+		assert_eq(built.grid.items_at(table.origin), [table, rug] as Array[PlacedItem])
+		assert_eq(table.seat_cells.size(), 2)
+		for seat: Vector2i in table.seat_cells:
+			assert_eq(built.grid.item_on_layer(seat, ItemDef.PlacementLayer.FLOOR_DECOR), rug)
+			assert_eq(built.grid.dining_table_id(seat), table.id)
+			assert_true(built.grid.is_walkable(seat))
+			assert_true(built.grid.is_reachable(built.grid.entries()[0], seat))
+		for role: StringName in layout.staff_spawns:
+			assert_true(built.grid.is_walkable(layout.staff_spawns[role]))
+	assert_eq((load(LAYOUT) as ShopLayout).placements.size(), 9, "the authored template is unchanged")

@@ -341,25 +341,56 @@ func test_table_warning_highlights_match_actual_checked_ids_and_cancelled_propos
 
 func test_removed_item_and_replaced_shop_mesh_leave_no_hidden_or_orphan_nodes() -> void:
 	var id: int = _id(&"potted_plant")
+	var placed: PlacedItem = _sim.world.grid.item(id)
 	assert_true(_mode.enter())
 	assert_true(_mode.pick_up(id))
 	var old_mesh: ItemVisual = _view.item_nodes[id]
+	var old_id: int = old_mesh.get_instance_id()
+	assert_false(old_mesh.visible)
 	assert_true(_editor.move(id, Vector2i(11, 9), 1))
+	assert_true(is_instance_valid(old_mesh), "an ordinary move retains the native ItemVisual")
+	assert_true(_view.item_nodes[id] == old_mesh)
+	assert_true(old_mesh.transform.is_equal_approx(ItemVisual.placed_transform(_content.item(&"potted_plant"), Vector2i(11, 9), 1)))
+	assert_false(old_mesh.visible, "the same native stays hidden while its move ghost is held")
+	assert_eq(_changes, 1)
+	# A public world rebuild genuinely replaces the shop geometry. Rebind the
+	# preview as the session does, after ShopView has reconnected its observer.
+	var old_ghost: ItemVisual = _preview.ghost_mesh
+	_view.show_world(_sim.world)
+	assert_true(_view.world == _sim.world)
+	assert_true(_sim.world.grid.item(id) == placed)
+	assert_eq(placed.origin, Vector2i(11, 9))
+	assert_eq(placed.quarter_turns, 1)
 	assert_false(is_instance_valid(old_mesh))
-	# The controller can notify before ShopView rebuilds. The preview's later
-	# read-only topology observer must hide the replacement without polling.
-	assert_false(_view.item_nodes[id].visible)
+	var replacement: ItemVisual = _view.item_nodes[id]
+	assert_ne(replacement.get_instance_id(), old_id)
+	_preview.bind_build_mode(_mode, _view)
+	assert_false(is_instance_valid(old_ghost))
+	assert_false(replacement.visible, "rebinding hides the genuine replacement without frame polling")
+	assert_not_null(_preview.ghost_mesh)
+	assert_eq(_mode.changed.get_connections().size(), 1)
+	assert_eq(_changes, 1, "view and preview rebinding never mutate grid topology")
 	_mode.cancel()
-	assert_true(_view.item_nodes[id].visible)
+	assert_true(replacement.visible)
+	assert_null(_preview.ghost_mesh)
+	assert_eq(_preview.get_child_count(), 0)
 	assert_true(_mode.pick_up(id))
+	assert_false(replacement.visible)
 	assert_true(_sim.world.grid.remove(id))
+	assert_false(is_instance_valid(replacement))
 	_preview.refresh()
 	_preview.ghost_mesh.free()
 	assert_eq(_preview.visual_state()["ghost"], {}, "freed mesh references are guarded")
 	_preview.clear()
 	assert_false(_view.item_nodes.has(id))
+	assert_null(_view.get_node_or_null(NodePath("Item%d" % id)))
 	assert_eq(_preview.get_child_count(), 0)
 	assert_true(_preview.warning_nodes.is_empty())
+	assert_true(_mode.changed.get_connections().is_empty())
+	assert_false(_sim.world.grid.cells_changed.is_connected(Callable(_preview, "_on_cells_changed")))
+	assert_eq(_changes, 2)
+	assert_eq(_entries.size(), 0)
+	assert_eq(_sim.world.now, 0)
 
 
 func test_free_while_holding_restores_mesh_and_disconnects_even_before_tree_entry() -> void:
