@@ -13,6 +13,8 @@ const ROLES: Array[StringName] = [&"cook", &"server", &"cleaner"]
 ## Runtime progression is saved inside this member's staff-section row. It is
 ## not exported into authored starter resources.
 var growth: StaffGrowth = null
+## Runtime choices join this member's existing staff-section record.
+var _job_priorities: StaffJobPriorities = null
 
 
 func copy() -> StaffMember:
@@ -25,6 +27,8 @@ func copy() -> StaffMember:
 	member.trait_id = trait_id
 	if growth != null:
 		member.growth = growth.copy()
+	if _job_priorities != null:
+		member._job_priorities = _job_priorities.copy()
 	return member
 
 
@@ -35,18 +39,28 @@ func growth_state() -> StaffGrowth:
 	return growth
 
 
+## Authored candidates and older records use the exact current role defaults.
+func priority_state() -> StaffJobPriorities:
+	if _job_priorities == null:
+		_job_priorities = StaffJobPriorities.new(role)
+	return _job_priorities
+
+
 func to_dict() -> Dictionary:
 	return {"id": String(id), "name": display_name, "role": String(role),
 		"skill": skill, "wage": wage, "trait": String(trait_id),
-		"growth": growth_state().to_dict()}
+		"growth": growth_state().to_dict(), "priorities": priority_state().to_dict()}
 
 
 static func from_dict(data: Variant, catalogue: StaffCatalogue) -> StaffMember:
 	if not data is Dictionary or catalogue == null:
 		return null
 	var row: Dictionary = data
-	if row.size() != 6 and row.size() != 7:
+	if row.size() < 6 or row.size() > 8:
 		return null
+	for key: Variant in row:
+		if not ["id", "name", "role", "skill", "wage", "trait", "growth", "priorities"].has(key):
+			return null
 	for key: String in ["id", "name", "role", "trait"]:
 		if not row.get(key) is String or String(row[key]).strip_edges().is_empty():
 			return null
@@ -62,12 +76,16 @@ static func from_dict(data: Variant, catalogue: StaffCatalogue) -> StaffMember:
 	if not ROLES.has(member.role) or catalogue.find_trait(member.trait_id) == null:
 		return null
 	var restored: StaffGrowth = StaffGrowth.new(_primary_skill(member.role), member.skill, member.wage)
-	if row.size() == 7:
-		if not row.has("growth") or not restored.from_dict(row["growth"]) \
+	if row.has("growth"):
+		if not restored.from_dict(row["growth"]) \
 				or restored.skill_level(_primary_skill(member.role)) != member.skill \
 				or restored.wage != member.wage:
 			return null
 	member.growth = restored
+	var choices: StaffJobPriorities = StaffJobPriorities.new(member.role)
+	if row.has("priorities") and not choices.from_dict(row["priorities"]):
+		return null
+	member._job_priorities = choices
 	return member
 
 

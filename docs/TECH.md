@@ -384,8 +384,10 @@ an active edit/panel/selection first, or opens Settings when none is active.
 - Each new candidate pool samples names without replacement from the authored
   list, skipping team names case-insensitively. Same-day saved pools, including
   legacy duplicate names, remain intact and draw no new random values.
-- The HUD Staff button and request-only `StaffPanel` use MORNING commands
-  `staff_hire`/`staff_let_go`. They spend no cash, draw no RNG and never save.
+- The HUD Staff button and request-only `StaffPanel` remain reachable in every
+  day phase for job priorities. Hiring, letting staff go, raises and tray
+  upgrades still use their existing MORNING-only commands. These requests
+  draw no RNG and never save; ordinary tray purchases retain their ledger cost.
   Closing charges each live employee's own wage, excluding the owner.
   Trait descriptions use authored role overrides: only cooks see Careful's
   meal-quality bonus and only servers see Cheerful's food-patience bonus.
@@ -401,6 +403,48 @@ an active edit/panel/selection first, or opens Settings when none is active.
   the genuine Staff panel and native row/model metadata after drawing; the
   existing visual job adds one image. Runtime/balance evidence is separate
   from source review.
+
+#### Staff job priorities (FK-044)
+- `StaffJobPriorities.TASK_JOBS` is the single selection mapping: cook to
+  Cooking; take-order and delivery to Serving; table clearing to Bussing;
+  plate washing to Washing; floor mopping to Cleaning. High, Normal, Low and
+  Off choose work rather than changing its duration, skill or pay. A role's
+  main job cannot be Off; work outside its existing capabilities stays Off.
+- Defaults keep a cook's Cooking and a cleaner's Cleaning High. Servers keep
+  Serving, Bussing and Washing Normal, with Cleaning Low. The existing rule
+  still makes server mopping unavailable while a dedicated cleaner is on the
+  team. The panel explains that conditional availability without discarding
+  the server's saved fallback choice. The owner's task policy is unchanged.
+- Idle employees select the highest available job level, then use the old
+  score and task-ID order within that level. Existing urgency deferral applies
+  within the selected level. Off work is never claimed. Unknown synthetic
+  task kinds preserve the legacy neutral level for existing test/agent APIs.
+- Each staff-section member and candidate row adds a complete `priorities`
+  dictionary. Missing legacy rows receive role defaults. Malformed, unknown
+  or forbidden values reject the whole roster before installation. Roster and
+  member copy APIs detach choices; `StaffRoster.copy()` also retains staged
+  service XP, which is deliberately absent from the morning save format.
+- Main's any-phase `staff_set_job_priority` stages that runtime copy, applies
+  validated choices to the same existing live employee, and installs the
+  staged roster only on success. It never reinstalls staff, interrupts work,
+  resets paths/reservations/skills, settles XP, draws RNG or performs an action
+  save. The existing next-morning staff provider persists the choices.
+- The shared-theme grid keeps native cells stable across refreshes and emits
+  typed requests only. Cells show words and colours; main jobs skip Off, and
+  unsupported jobs remain visibly locked Off. Other staffing actions keep
+  their morning gates even when this panel is open during service. Opening
+  Staff at closing hides the evening report; closing Staff rebuilds that
+  report without settling the day's books again. The report's full-window
+  root lets clicks outside its card reach the HUD; its card controls still
+  consume their own input.
+- Tests cover selection tiers, real in-flight work, strict legacy/JSON roster
+  restore, detached pending XP and next-morning persistence. The golden test
+  compares actual five-day Main sessions for seeds 1, 7 and 42 with the frozen
+  pre-feature picker, retaining reports, books, stock, roster, named RNG and
+  full task-event traces. Those assertions are runtime evidence only after
+  the existing `tools/check.sh` suite actually passes; source review is not a
+  substitute. The unchanged `--staff --speed=0 --frames=12` capture provides
+  morning grid pixels, not service interaction or occupied-seat evidence.
 
 ### 2.3a Guest reviews and reputation (FK-048)
 - `ReputationBook` holds the newest 30 scores. A new shop starts with five

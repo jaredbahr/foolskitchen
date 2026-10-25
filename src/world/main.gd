@@ -139,6 +139,9 @@ func _bind_world_presentation() -> void:
 	if not $HUD.is_connected(&"settings_pressed", _on_hud_settings_requested):
 		$HUD.connect(&"settings_pressed", _on_hud_settings_requested)
 	_report = $Overlay/EveningReport
+	# The full-viewport root must leave the HUD reachable at CLOSED. Its
+	# panel, scroll area and buttons retain their own blocking input filters.
+	_report.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_report.hide()
 	_inspect_panel = $Overlay/InspectPanel
 	_debug_overlay = $Overlay/DebugOverlay
@@ -185,6 +188,8 @@ func _bind_world_presentation() -> void:
 	if not _staff_panel.raise_accept_requested.is_connected(_on_staff_raise_accept_requested):
 		_staff_panel.raise_accept_requested.connect(_on_staff_raise_accept_requested)
 		_staff_panel.raise_decline_requested.connect(_on_staff_raise_decline_requested)
+	if not _staff_panel.job_priority_requested.is_connected(_on_staff_job_priority_requested):
+		_staff_panel.job_priority_requested.connect(_on_staff_job_priority_requested)
 	if not $HUD.is_connected(&"staff_pressed", toggle_staff):
 		$HUD.connect(&"staff_pressed", toggle_staff)
 	_inspect_panel.bind_world(world)
@@ -1061,8 +1066,32 @@ func _restore_staff(data: Dictionary) -> bool:
 	return true
 
 
+func can_view_staff() -> bool:
+	return _started and staff_roster != null and sim != null and world != null \
+		and Clock.sim.phase in [SimClock.Phase.MORNING, SimClock.Phase.OPEN,
+			SimClock.Phase.LAST_ORDERS, SimClock.Phase.CLOSED]
+
+
 func can_edit_staff() -> bool:
-	return _started and staff_roster != null and Clock.sim.phase == SimClock.Phase.MORNING
+	return can_view_staff() and Clock.sim.phase == SimClock.Phase.MORNING
+
+
+## Selection changes apply at the next pick. Install a detached row on the
+## existing employee before committing saved choices; never reinstall staff.
+## The runtime copy also retains XP earned during the current service.
+func staff_set_job_priority(id: StringName, job: StringName, value: int) -> bool:
+	if not can_view_staff():
+		return false
+	var choices: StaffRoster = staff_roster.copy()
+	if choices == null or not choices.set_job_priority(id, job, value):
+		return false
+	var priorities: StaffJobPriorities = choices.job_priorities(id)
+	if priorities == null or not sim.apply_staff_job_priorities(id, priorities):
+		return false
+	staff_roster = choices
+	_staff_panel.bind_roster(staff_roster)
+	refresh_presentation()
+	return true
 
 
 func staff_hire(id: StringName) -> bool:
@@ -1122,7 +1151,7 @@ func toggle_staff() -> void:
 
 
 func set_staff_visible(value: bool) -> bool:
-	if _staff_panel == null or (value and not can_edit_staff()):
+	if _staff_panel == null or (value and not can_view_staff()):
 		return false
 	if value:
 		if is_settings_visible():
@@ -1134,9 +1163,12 @@ func set_staff_visible(value: bool) -> bool:
 		build_mode.exit()
 		set_menu_visible(false)
 		clear_selection()
+		_report.hide()
 	_staff_panel.set_phase(Clock.sim.phase)
 	_staff_panel.set_trays(tray_level, TUNING.tray_prices, Economy.cash, _loan_upgrade_refusal())
 	_staff_panel.visible = value
+	if not value and Clock.sim.phase == SimClock.Phase.CLOSED and shown_report != null:
+		_report.call(&"show_report", build_report(Clock.sim.day))
 	return true
 
 
@@ -1161,6 +1193,11 @@ func _on_staff_raise_accept_requested(id: StringName) -> void:
 
 func _on_staff_raise_decline_requested(id: StringName) -> void:
 	staff_decline_raise(id)
+	_staff_panel.refresh()
+
+
+func _on_staff_job_priority_requested(id: StringName, job: StringName, value: int) -> void:
+	staff_set_job_priority(id, job, value)
 	_staff_panel.refresh()
 
 
@@ -1473,8 +1510,10 @@ func _on_service_closed(day: int) -> void:
 		$HUD.set_owner_progress(owner_progress.level, owner_progress.xp_into_level(), owner_progress.xp_in_level())
 		shown_report = build_report(day)
 	_report.call(&"show_report", shown_report)
-	if _paint_active:
+	if _paint_active or is_staff_visible():
 		_report.hide()
+	if is_staff_visible():
+		_staff_panel.refresh()
 
 
 ## Only authored display names enter the public level-up banner.
@@ -1501,8 +1540,6 @@ func _on_day_phase_changed(_day: int, phase: int) -> void:
 			_settings_return_to_menu = false
 	if _staff_panel != null:
 		_staff_panel.set_phase(phase)
-		if phase != SimClock.Phase.MORNING:
-			_staff_panel.hide()
 	if phase == SimClock.Phase.MORNING:
 		_begin_morning()
 

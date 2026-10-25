@@ -10,6 +10,8 @@ var _close_requests: int = 0
 var _tray_requests: Array[int] = []
 var _raise_accepts: Array[StringName] = []
 var _raise_declines: Array[StringName] = []
+var _priority_requests: Array[Dictionary] = []
+var _native_host: SubViewport
 
 
 func before_each() -> void:
@@ -24,14 +26,19 @@ func before_each() -> void:
 	_panel.tray_requested.connect(_record_tray)
 	_panel.raise_accept_requested.connect(_record_accept)
 	_panel.raise_decline_requested.connect(_record_decline)
+	_panel.job_priority_requested.connect(_record_priority)
 	_panel.bind_roster(_roster)
 	_tray_requests.clear()
 	_raise_accepts.clear()
 	_raise_declines.clear()
+	_priority_requests.clear()
 
 
 func after_each() -> void:
 	_panel.free()
+	if is_instance_valid(_native_host):
+		_native_host.free()
+	_native_host = null
 
 
 func test_staff_rows_show_people_traits_wages_and_role_minimums() -> void:
@@ -60,6 +67,7 @@ func test_optional_cleaner_is_named_and_can_be_hired_then_let_go_by_request() ->
 	var saved: Dictionary = _roster.to_dict()
 	saved["candidates"][0]["role"] = "cleaner"
 	saved["candidates"][0].erase("growth")
+	saved["candidates"][0].erase("priorities")
 	var expected_wage: int = EconomyTuning.new().staff_wage(
 		&"cleaner", int(saved["candidates"][0]["skill"]))
 	saved["candidates"][0]["wage"] = expected_wage
@@ -117,6 +125,7 @@ func test_candidate_trait_text_describes_only_the_bonus_available_to_their_role(
 		var saved: Dictionary = _roster.to_dict()
 		saved["candidates"][0]["role"] = String(example["role"])
 		saved["candidates"][0].erase("growth")
+		saved["candidates"][0].erase("priorities")
 		saved["candidates"][0]["trait"] = String(example["trait"])
 		assert_true(_roster.from_dict(saved))
 		var before: Dictionary = _roster.to_dict()
@@ -352,6 +361,290 @@ func test_disabled_actions_use_the_shared_opaque_readable_theme() -> void:
 	var background_luminance: float = _luminance(disabled.bg_color)
 	var contrast: float = (maxf(text_luminance, background_luminance) + 0.05) / (minf(text_luminance, background_luminance) + 0.05)
 	assert_true(contrast >= 4.5, "disabled Let go text retains readable normal-text contrast")
+
+
+func test_priority_matrix_has_human_labels_role_defaults_and_locked_unsupported_work() -> void:
+	var grid: GridContainer = _panel.get_node("%PriorityGrid") as GridContainer
+	assert_eq(grid.columns, 6)
+	assert_eq(grid.get_child_count(), 18, "one header and two employee rows; candidates have no job cells")
+	assert_eq((grid.get_child(0) as Label).text, "Team member")
+	var labels: Array[String] = ["Cooking", "Serving", "Bussing", "Washing", "Cleaning"]
+	for index: int in range(labels.size()):
+		assert_eq((grid.get_child(index + 1) as Label).text, labels[index])
+	for member: StaffMember in _roster.members():
+		var choices: StaffJobPriorities = _roster.job_priorities(member.id)
+		for job: StringName in StaffJobPriorities.JOBS:
+			var button: Button = _panel.priority_button_for(member.id, job)
+			assert_not_null(button)
+			assert_eq(button.text, StaffJobPriorities.level_label(choices.priority(job)))
+			assert_eq(button.disabled, not StaffJobPriorities.supports(member.role, job))
+			assert_eq(button.mouse_filter, Control.MOUSE_FILTER_STOP)
+			assert_false(button.clip_text)
+	assert_eq(_panel.priority_button_for(&"starter_cook", &"cooking").text, "High")
+	assert_eq(_panel.priority_button_for(&"starter_server", &"serving").text, "Normal")
+	assert_eq(_panel.priority_button_for(&"starter_server", &"cleaning").text, "Low")
+	var unsupported: Button = _panel.priority_button_for(&"starter_cook", &"serving")
+	assert_eq(unsupported.text, "Off")
+	assert_true(unsupported.tooltip_text.contains("not available for this role"))
+	unsupported.pressed.emit()
+	assert_true(_priority_requests.is_empty())
+	assert_null(_panel.priority_button_for(_roster.candidates()[0].id, &"cooking"))
+	assert_true(_panel.priority_button_for(&"starter_cook", &"cooking").tooltip_text.contains("main job cannot be Off"))
+
+
+func test_priority_cycles_are_typed_requests_only_and_main_jobs_skip_off() -> void:
+	_hire_cleaner()
+	var candidate: StaffMember = _roster.candidates()[0]
+	var hire: Button = _panel.row_for(candidate.id).get_node("Top/Action") as Button
+	for member: StaffMember in _roster.members():
+		var job: StringName = StaffJobPriorities.main_job(member.role)
+		assert_true(_roster.set_job_priority(member.id, job, StaffJobPriorities.Level.HIGH))
+		_panel.refresh()
+		_assert_priority_cycle(member.id, job, [StaffJobPriorities.Level.NORMAL,
+			StaffJobPriorities.Level.LOW, StaffJobPriorities.Level.HIGH] as Array[int])
+	assert_true(_roster.set_job_priority(&"starter_server", &"bussing", StaffJobPriorities.Level.HIGH))
+	_panel.refresh()
+	_assert_priority_cycle(&"starter_server", &"bussing", [StaffJobPriorities.Level.NORMAL,
+		StaffJobPriorities.Level.LOW, StaffJobPriorities.Level.OFF, StaffJobPriorities.Level.HIGH] as Array[int])
+	assert_true(_panel.row_for(candidate.id).get_node("Top/Action") == hire,
+		"priority-only controller echoes do not rebuild unrelated hire buttons")
+
+
+func test_priorities_work_in_all_phases_while_hire_raise_and_tray_gates_stay_morning_only() -> void:
+	var saved: Dictionary = _roster.to_dict()
+	saved["members"][0]["skill"] = 4
+	saved["members"][0]["growth"]["skills"]["cooking"] = 4
+	saved["members"][0]["growth"]["raises"] = [{"skill": "cooking", "level": 4}]
+	assert_true(_roster.from_dict(saved))
+	_panel.set_morning(2, [] as Array[Dictionary])
+	_panel.set_trays(0, PackedInt32Array([60, 150]), 200)
+	var candidate: StaffMember = _roster.candidates()[0]
+	var original: Dictionary = _roster.to_dict()
+	var cell: Button = _panel.priority_button_for(&"starter_cook", &"cooking")
+	for phase: int in [SimClock.Phase.MORNING, SimClock.Phase.OPEN,
+			SimClock.Phase.LAST_ORDERS, SimClock.Phase.CLOSED]:
+		_panel.set_phase(phase)
+		assert_true(_panel.priority_button_for(&"starter_cook", &"cooking") == cell)
+		assert_false(cell.disabled, "job choices do not inherit the morning staffing gate")
+		if phase != SimClock.Phase.MORNING:
+			assert_true((_panel.get_node("%Status") as Label).text.contains("Job priorities can change now"))
+		var count: int = _priority_requests.size()
+		cell.pressed.emit()
+		assert_eq(_priority_requests.size(), count + 1)
+		assert_eq(_priority_requests.back(), {"id": &"starter_cook", "job": &"cooking",
+			"value": StaffJobPriorities.Level.NORMAL})
+		assert_eq(_roster.to_dict(), original, "requesting a choice never edits staff or their saved state")
+		assert_eq((_panel.row_for(candidate.id).get_node("Top/Action") as Button).disabled,
+			phase != SimClock.Phase.MORNING)
+		assert_eq((_panel.get_node("%TraysBuy") as Button).disabled, phase != SimClock.Phase.MORNING)
+		assert_eq(_panel.offer_row_for(&"starter_cook") == null, phase != SimClock.Phase.MORNING)
+
+
+func test_server_cleaning_stays_a_configurable_conditional_fallback_and_stale_cells_do_not_request() -> void:
+	var server: Button = _panel.priority_button_for(&"starter_server", &"cleaning")
+	assert_false(server.disabled)
+	assert_true(server.tooltip_text.contains("only when no Cleaner"))
+	var cleaner_id: StringName = _hire_cleaner()
+	_panel.set_phase(SimClock.Phase.OPEN)
+	assert_true(_panel.priority_button_for(&"starter_server", &"cleaning") == server)
+	assert_false(server.disabled, "supported fallback can be prepared for future availability")
+	assert_eq(server.text, "Low")
+	assert_true(server.tooltip_text.contains("setting is inactive"))
+	assert_true((_panel.get_node("%PriorityAvailability") as Label).text.contains("Cleaning settings are inactive"))
+	var cleaner: Button = _panel.priority_button_for(cleaner_id, &"cleaning")
+	assert_false(cleaner.disabled)
+	assert_true(_panel.priority_button_for(cleaner_id, &"washing").disabled)
+	assert_true(_roster.let_go(cleaner_id))
+	_panel.refresh()
+	assert_false(server.tooltip_text.contains("inactive"))
+	cleaner.pressed.emit()
+	assert_true(_priority_requests.is_empty(), "a retired employee's button cannot address another row")
+	var old: Button = server
+	_panel.bind_roster(null)
+	old.pressed.emit()
+	assert_true(_priority_requests.is_empty())
+	assert_null(_panel.priority_button_for(&"starter_server", &"cleaning"))
+	_panel.bind_roster(_roster)
+	assert_true(_panel.priority_button_for(&"starter_server", &"cleaning") != old)
+	old.pressed.emit()
+	assert_true(_priority_requests.is_empty(), "a stale same-ID button is not a current cell")
+
+
+func test_native_priority_down_growth_refresh_up_keeps_one_cell_and_one_request() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	await tree.process_frame
+	_native_host = SubViewport.new()
+	_native_host.size = Vector2i(1600, 900)
+	_native_host.handle_input_locally = true
+	_native_host.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	tree.root.add_child(_native_host)
+	_native_host.add_child(_panel)
+	_panel.show()
+	_panel.set_phase(SimClock.Phase.OPEN)
+	await _priority_frames(3)
+	var cell: Button = _panel.priority_button_for(&"starter_server", &"bussing")
+	var scroll: ScrollContainer = _panel.get_node("Panel/Content/Scroll") as ScrollContainer
+	scroll.ensure_control_visible(cell)
+	await _priority_frames(1)
+	var point: Vector2 = cell.get_global_rect().get_center()
+	_native_host.push_input(_priority_mouse(point, true), true)
+	assert_true(cell.is_pressed())
+	var saved: Dictionary = _roster.to_dict()
+	saved["members"][0]["growth"]["mood"] = 2
+	assert_true(_roster.from_dict(saved))
+	_panel.refresh()
+	_panel.bind_roster(_roster)
+	assert_true(_panel.priority_button_for(&"starter_server", &"bussing") == cell)
+	assert_true(cell.is_pressed(), "growth rows may refresh while the matrix keeps its native press")
+	var before: Dictionary = _roster.to_dict()
+	await _priority_frames(1)
+	assert_true(cell.get_global_rect().has_point(point))
+	_native_host.push_input(_priority_mouse(point, false), true)
+	assert_eq(_priority_requests, [{"id": &"starter_server", "job": &"bussing",
+		"value": StaffJobPriorities.Level.LOW}] as Array[Dictionary])
+	assert_eq(_roster.to_dict(), before)
+	assert_eq(cell.text, "Normal", "the controller must accept and echo a requested choice")
+
+
+func test_priority_words_and_colors_use_readable_shared_theme_states() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	await tree.process_frame
+	tree.root.add_child(_panel)
+	await tree.process_frame
+	var normal: StyleBoxFlat = StaffPanel.SHARED_THEME.get_stylebox("normal", "Button") as StyleBoxFlat
+	var accent: StyleBoxFlat = StaffPanel.SHARED_THEME.get_stylebox("pressed", "Button") as StyleBoxFlat
+	var muted: StyleBoxFlat = StaffPanel.SHARED_THEME.get_stylebox("disabled", "Button") as StyleBoxFlat
+	var high: Button = _panel.priority_button_for(&"starter_cook", &"cooking")
+	var regular: Button = _panel.priority_button_for(&"starter_server", &"serving")
+	var low: Button = _panel.priority_button_for(&"starter_server", &"cleaning")
+	var off: Button = _panel.priority_button_for(&"starter_cook", &"serving")
+	assert_eq((high.get_theme_stylebox("normal") as StyleBoxFlat).border_color, accent.bg_color)
+	assert_eq((regular.get_theme_stylebox("normal") as StyleBoxFlat).bg_color, normal.bg_color)
+	assert_eq((low.get_theme_stylebox("normal") as StyleBoxFlat).bg_color, muted.bg_color)
+	assert_eq((off.get_theme_stylebox("disabled") as StyleBoxFlat).bg_color,
+		StaffPanel.SHARED_THEME.get_color("font_color", "Button"))
+	for button: Button in [high, regular, low, off]:
+		var state: StringName = &"disabled" if button.disabled else &"normal"
+		var color_name: StringName = &"font_disabled_color" if button.disabled else &"font_color"
+		var background: Color = (button.get_theme_stylebox(state) as StyleBoxFlat).bg_color
+		var foreground: Color = button.get_theme_color(color_name)
+		var contrast: float = (maxf(_luminance(foreground), _luminance(background)) + 0.05) \
+			/ (minf(_luminance(foreground), _luminance(background)) + 0.05)
+		assert_true(contrast >= 4.5, "%s retains readable words in its shared-theme colors" % button.text)
+
+
+func test_full_priority_matrix_fits_private_windows_and_scrolls_at_supported_interface_scales() -> void:
+	_hire_cleaner()
+	for candidate: StaffMember in _roster.candidates():
+		assert_true(_roster.hire(candidate.id))
+	var random: RandomNumberGenerator = RandomNumberGenerator.new()
+	random.seed = 73
+	_roster.draw_candidates(2, random)
+	assert_true(_roster.hire(_roster.candidates()[0].id))
+	assert_eq(_roster.members().size(), StaffRoster.CAPACITY)
+	var saved: Dictionary = _roster.to_dict()
+	saved["members"][StaffRoster.CAPACITY - 1]["name"] = "Alexandria Morgan"
+	assert_true(_roster.from_dict(saved))
+	_panel.refresh()
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	await tree.process_frame
+	_native_host = SubViewport.new()
+	_native_host.size = Vector2i(1600, 900)
+	_native_host.gui_embed_subwindows = true
+	_native_host.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	tree.root.add_child(_native_host)
+	var window: Window = Window.new()
+	window.borderless = true
+	window.content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS
+	window.content_scale_aspect = Window.CONTENT_SCALE_ASPECT_EXPAND
+	window.content_scale_size = Vector2i(1600, 900)
+	_native_host.add_child(window)
+	window.add_child(_panel)
+	_panel.show()
+	var panel: Control = _panel.get_node("Panel") as Control
+	var scroll: ScrollContainer = _panel.get_node("Panel/Content/Scroll") as ScrollContainer
+	var grid: GridContainer = _panel.get_node("%PriorityGrid") as GridContainer
+	var close: Button = _panel.get_node("%Close") as Button
+	for physical: Vector2i in [Vector2i(1280, 720), Vector2i(1600, 900)]:
+		window.size = physical
+		for scale: float in [1.25, 1.5]:
+			window.content_scale_factor = scale
+			for phase: int in [SimClock.Phase.MORNING, SimClock.Phase.OPEN,
+					SimClock.Phase.LAST_ORDERS, SimClock.Phase.CLOSED]:
+				_panel.set_phase(phase)
+				await _priority_frames(3)
+				var context: String = "%s at %s/%s panel=%s scroll=%s" % [
+					phase, physical, scale, panel.get_global_rect(), scroll.get_global_rect()]
+				assert_true(window.get_visible_rect().grow(-11.5).encloses(panel.get_global_rect()), context)
+				assert_true(panel.get_global_rect().grow(0.5).encloses(scroll.get_global_rect()), context)
+				assert_true(panel.get_global_rect().grow(0.5).encloses(close.get_global_rect()), context)
+				assert_eq(scroll.horizontal_scroll_mode, ScrollContainer.SCROLL_MODE_DISABLED)
+				assert_true(grid.get_combined_minimum_size().x <= scroll.size.x + 0.5,
+					"%s grid_min=%s" % [context, grid.get_combined_minimum_size()])
+				assert_true(scroll.get_v_scroll_bar().visible, "the full team remains available through bounded scrolling")
+				for member: StaffMember in _roster.members():
+					for job: StringName in StaffJobPriorities.JOBS:
+						var button: Button = _panel.priority_button_for(member.id, job)
+						assert_true(button.size.x >= button.get_combined_minimum_size().x - 0.5, context)
+						assert_true(button.get_global_rect().position.x >= scroll.get_global_rect().position.x - 0.5, context)
+						assert_true(button.get_global_rect().end.x <= scroll.get_global_rect().end.x + 0.5, context)
+				var last: StaffMember = _roster.members().back()
+				var last_cell: Button = _panel.priority_button_for(last.id, &"cleaning")
+				scroll.ensure_control_visible(last_cell)
+				await _priority_frames(1)
+				assert_true(scroll.get_global_rect().grow(0.5).encloses(last_cell.get_global_rect()), context)
+
+
+func _assert_priority_cycle(id: StringName, job: StringName, expected: Array[int]) -> void:
+	_priority_requests.clear()
+	var button: Button = _panel.priority_button_for(id, job)
+	for value: int in expected:
+		var before: Dictionary = _roster.to_dict()
+		var count: int = _priority_requests.size()
+		button.pressed.emit()
+		assert_eq(_priority_requests.size(), count + 1)
+		var request: Dictionary = _priority_requests.back()
+		assert_eq(request, {"id": id, "job": job, "value": value})
+		assert_eq(typeof(request["id"]), TYPE_STRING_NAME)
+		assert_eq(typeof(request["job"]), TYPE_STRING_NAME)
+		assert_eq(typeof(request["value"]), TYPE_INT)
+		assert_eq(_roster.to_dict(), before, "the panel never writes a priority itself")
+		assert_true(_roster.set_job_priority(id, job, value), "fixture controller accepts the request")
+		_panel.refresh()
+		assert_true(_panel.priority_button_for(id, job) == button)
+		assert_eq(button.text, StaffJobPriorities.level_label(value))
+
+
+func _hire_cleaner() -> StringName:
+	var saved: Dictionary = _roster.to_dict()
+	saved["candidates"][0]["role"] = "cleaner"
+	saved["candidates"][0].erase("growth")
+	saved["candidates"][0].erase("priorities")
+	saved["candidates"][0]["wage"] = EconomyTuning.new().staff_wage(&"cleaner", int(saved["candidates"][0]["skill"]))
+	assert_true(_roster.from_dict(saved))
+	var id: StringName = _roster.candidates()[0].id
+	assert_true(_roster.hire(id))
+	_panel.refresh()
+	return id
+
+
+func _priority_frames(count: int) -> void:
+	for frame: int in range(count):
+		await (Engine.get_main_loop() as SceneTree).process_frame
+
+
+func _priority_mouse(point: Vector2, pressed: bool) -> InputEventMouseButton:
+	var event: InputEventMouseButton = InputEventMouseButton.new()
+	event.position = point
+	event.global_position = point
+	event.button_index = MOUSE_BUTTON_LEFT
+	event.pressed = pressed
+	event.button_mask = MOUSE_BUTTON_MASK_LEFT if pressed else 0
+	return event
+
+
+func _record_priority(id: StringName, job: StringName, value: int) -> void:
+	_priority_requests.append({"id": id, "job": job, "value": value})
 
 
 func _record(id: StringName) -> void:

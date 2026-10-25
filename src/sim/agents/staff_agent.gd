@@ -14,6 +14,9 @@ const STUCK_TICKS: int = 30
 var skills: Dictionary[StringName, int] = {}
 ## Priority per role: 0 off, 1 low, 2 normal, 3 high. &"any" covers role-free tasks.
 var priorities: Dictionary[StringName, int] = {}
+## Employee job choices are separate from legacy role eligibility/score.
+## Null keeps the owner's and manually constructed agents' existing policy.
+var _job_priorities: StaffJobPriorities = null
 ## Empty on the owner and legacy manually constructed agents.
 var member_id: StringName = &""
 var wage: int = 0
@@ -52,6 +55,7 @@ func configure_member(member: StaffMember, definition: StaffTrait) -> void:
 	display_name = member.display_name
 	wage = member.wage
 	trait_id = member.trait_id
+	set_job_priorities(member.priority_state())
 	# Work speed reads task roles, including a server's fallback mopping. Copy
 	# every earned skill at morning setup without changing task priorities.
 	for staff_role: StringName in StaffMember.ROLES:
@@ -60,6 +64,21 @@ func configure_member(member: StaffMember, definition: StaffTrait) -> void:
 	_walk_multiplier = definition.walk_multiplier
 	cook_quality_bonus = definition.cook_quality_bonus
 	food_patience_multiplier = definition.food_patience_multiplier
+
+
+## Copy only next-pick choices. Never reset a task, path, reservation or skill.
+func set_job_priorities(choices: StaffJobPriorities) -> bool:
+	if choices == null or choices.role != role:
+		return false
+	var staged: StaffJobPriorities = StaffJobPriorities.new(role)
+	if not staged.from_dict(choices.to_dict()):
+		return false
+	_job_priorities = staged
+	return true
+
+
+func job_priorities() -> StaffJobPriorities:
+	return _job_priorities.copy() if _job_priorities != null else null
 
 
 func movement_multiplier() -> float:
@@ -126,6 +145,7 @@ func _try_claim(world: SimWorld) -> void:
 	var candidates: Array[SimTask] = world.open_tasks_this_tick()
 	var scores: Dictionary[int, float] = {}
 	var highest_priorities: Dictionary[StringName, int] = {}
+	var highest_job_level: int = StaffJobPriorities.Level.OFF
 	var fallback_cleaning: bool = _can_fallback_clean(world)
 	var service_work_open: bool = false
 	# Actor-local eligibility uses the existing score, including role preferences
@@ -138,18 +158,25 @@ func _try_claim(world: SimWorld) -> void:
 		if score > 0.0:
 			if fallback_cleaning and t.role == &"server":
 				service_work_open = true
-			if not highest_priorities.has(t.role) or t.priority > highest_priorities[t.role]:
+			var job_level: int = _job_level(t)
+			if job_level > highest_job_level:
+				highest_job_level = job_level
+				highest_priorities.clear()
+			# Existing task urgency deferral stays within the chosen job tier.
+			if job_level == highest_job_level and (not highest_priorities.has(t.role) or t.priority > highest_priorities[t.role]):
 				highest_priorities[t.role] = t.priority
 	var best: SimTask = null
 	var best_score := 0.0
 	for t: SimTask in candidates:
 		if t.state != SimTask.State.OPEN or world.board.get_task(t.id) != t:
 			continue
+		if _job_level(t) != highest_job_level:
+			continue
 		if t.defer_to_higher_priority and int(highest_priorities.get(t.role, t.priority)) > t.priority:
 			continue
-		# A server (or Floor-mode owner) mops only after all currently eligible
-		# service work is claimed. Distance must never invert this fallback order.
-		if fallback_cleaning and service_work_open and _is_clean_spot(t):
+		# Legacy agents and the Floor-mode owner retain the original mop fallback.
+		# Configured employees instead use the saved job tier above distance.
+		if _job_priorities == null and fallback_cleaning and service_work_open and _is_clean_spot(t):
 			continue
 		var score: float = scores.get(t.id, 0.0)
 		if score > best_score:
@@ -166,6 +193,8 @@ func _try_claim(world: SimWorld) -> void:
 ## 0 means "won't take it". Higher is better: priority x role priority x skill
 ## over distance to the first target.
 func _score(world: SimWorld, t: SimTask) -> float:
+	if _job_level(t) == StaffJobPriorities.Level.OFF:
+		return 0.0
 	var for_role := t.role
 	var role_prio: int = priorities.get(for_role, 0)
 	if _is_clean_spot(t) and role != &"cleaner":
@@ -187,6 +216,15 @@ func _score(world: SimWorld, t: SimTask) -> float:
 		target = t.steps[0].cell
 	var skill := skill_for(for_role)
 	return float((t.priority + 1) * role_prio * skill) / (1.0 + GridMath.octile(cell, target))
+
+
+func _job_level(candidate: SimTask) -> int:
+	if _job_priorities == null:
+		return StaffJobPriorities.Level.NORMAL
+	var job: StringName = StaffJobPriorities.job_for_task(candidate.kind)
+	# Synthetic role-free tasks keep their legacy selection behavior. Every
+	# production kind is named in the one sim mapping, not inferred from roles.
+	return StaffJobPriorities.Level.NORMAL if job.is_empty() else _job_priorities.priority(job)
 
 
 func _is_clean_spot(candidate: SimTask) -> bool:

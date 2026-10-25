@@ -287,7 +287,7 @@ func test_last_cook_never_dips_to_zero_after_refusal_or_next_morning() -> void:
 	assert_eq(notices.get_child_count(), 0)
 
 
-func test_role_minimums_and_service_phase_reject_requests_and_hide_panel() -> void:
+func test_role_minimums_and_service_actions_reject_while_priority_panel_remains_accessible() -> void:
 	var previous_clock: SimClock = Clock.sim
 	var previous_phase: int = previous_clock.phase
 	previous_clock.phase = SimClock.Phase.OPEN
@@ -303,11 +303,13 @@ func test_role_minimums_and_service_phase_reject_requests_and_hide_panel() -> vo
 	var candidate: StaffMember = _roster(main).candidates()[0]
 	var before: Dictionary = _roster(main).to_dict()
 	Clock.sim.start_service()
-	assert_false(main.call("is_staff_visible"))
-	assert_true((main.get_node("HUD/Top/Row/Staff") as Button).disabled)
+	assert_true(main.call("is_staff_visible"))
+	assert_false((main.get_node("HUD/Top/Row/Staff") as Button).disabled)
+	assert_true(main.call("can_view_staff"))
+	assert_false(main.call("can_edit_staff"))
 	assert_false(main.call("staff_hire", candidate.id))
 	assert_false(main.call("staff_let_go", &"starter_cook"))
-	assert_false(main.call("set_staff_visible", true))
+	assert_true(main.call("set_staff_visible", true))
 	assert_eq(_roster(main).to_dict(), before)
 	_close(main)
 	previous_clock.phase = previous_phase
@@ -453,6 +455,8 @@ func test_native_staff_controls_survive_refresh_and_fit_web_and_capture_widths()
 	var panel: StaffPanel = main.get_node("Overlay/StaffPanel") as StaffPanel
 	var candidate: StaffMember = _roster(main).candidates()[0]
 	var hire: Button = panel.row_for(candidate.id).get_node("Top/Action") as Button
+	(panel.get_node("Panel/Content/Scroll") as ScrollContainer).ensure_control_visible(hire)
+	await _frames(1)
 	var identity: int = hire.get_instance_id()
 	point = hire.get_global_rect().get_center()
 	_mouse(point, true)
@@ -482,6 +486,38 @@ func test_native_staff_controls_survive_refresh_and_fit_web_and_capture_widths()
 	assert_eq(Economy.ledger.to_dict(), books)
 	assert_eq(GameState.rng(&"hiring").state, hiring_state)
 	assert_eq((main.get("world") as SimWorld).now, 0)
+	# Reach Staff through genuine native input while the real closing report
+	# is visible. A full-rect report root must not swallow HUD button clicks.
+	var sim: RestaurantSim = main.get("sim") as RestaurantSim
+	sim.spawner.min_gap = 100000
+	sim.spawner.max_gap = 100000
+	sim.spawner.reset()
+	Clock.sim.open_ticks = 1
+	Clock.sim.last_orders_max_ticks = 1
+	assert_true(Clock.sim.start_service())
+	main.call("run_ticks", 3)
+	assert_eq(Clock.sim.phase, SimClock.Phase.CLOSED)
+	var report: Control = main.get_node("Overlay/EveningReport") as Control
+	assert_true(report.visible)
+	books = Economy.ledger.to_dict()
+	await _frames(3)
+	point = button.get_global_rect().get_center()
+	_mouse(point, true)
+	await _frames(1)
+	_mouse(point, false)
+	assert_true(main.call("is_staff_visible"))
+	assert_false(report.visible)
+	assert_false(main.call("can_edit_staff"))
+	assert_true((panel.row_for(candidate.id).get_node("Top/Action") as Button).disabled)
+	assert_false(panel.priority_button_for(candidate.id, StaffJobPriorities.main_job(candidate.role)).disabled)
+	await _frames(3)
+	point = close_button.get_global_rect().get_center()
+	_mouse(point, true)
+	await _frames(1)
+	_mouse(point, false)
+	assert_false(main.call("is_staff_visible"))
+	assert_true(report.visible)
+	assert_eq(Economy.ledger.to_dict(), books, "native report return cannot settle closing twice")
 
 
 func _start(saves: bool = true, host: Node = null) -> Node:

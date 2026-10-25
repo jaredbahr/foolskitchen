@@ -10,6 +10,7 @@ var _old_last_speed: int
 var _old_accumulator: float
 var _speeds: Array[int] = []
 var _settings_requests: int = 0
+var _staff_requests: int = 0
 
 
 func before_each() -> void:
@@ -199,6 +200,36 @@ func test_scaled_window_keeps_every_hud_control_readable_and_build_hints_below_h
 	window.remove_child(_hud)
 	host.free()
 	view.free()
+
+
+func test_staff_entry_requests_work_in_every_phase_without_loosening_menu_or_changing_data() -> void:
+	_hud.connect(&"staff_pressed", _record_staff)
+	var staff: Button = _control("Staff") as Button
+	var identity: int = staff.get_instance_id()
+	var books: Dictionary = Economy.ledger.to_dict()
+	var stock: Dictionary = Economy.stock.to_dict()
+	var debt: Dictionary = Economy.loan.to_dict()
+	for phase: SimClock.Phase in [SimClock.Phase.MORNING, SimClock.Phase.OPEN,
+			SimClock.Phase.LAST_ORDERS, SimClock.Phase.CLOSED]:
+		Clock.sim.phase = phase
+		var clock: Dictionary = Clock.sim.to_dict()
+		_hud.call("refresh")
+		assert_eq(_control("Staff").get_instance_id(), identity)
+		assert_false(staff.disabled, "staff job choices remain reachable during service")
+		assert_eq(staff.icon.resource_path, "res://assets/kenney/icons/singleplayer.png")
+		assert_eq((_control("Menu") as Button).disabled, phase != SimClock.Phase.MORNING)
+		if phase == SimClock.Phase.MORNING:
+			assert_eq(staff.tooltip_text, "Hire staff and plan today's wages")
+		else:
+			assert_true(staff.tooltip_text.contains("Set staff job priorities"))
+			assert_true(staff.tooltip_text.contains("morning"))
+		var count: int = _staff_requests
+		staff.pressed.emit()
+		assert_eq(_staff_requests, count + 1)
+		assert_eq(Clock.sim.to_dict(), clock)
+		assert_eq(Economy.ledger.to_dict(), books)
+		assert_eq(Economy.stock.to_dict(), stock)
+		assert_eq(Economy.loan.to_dict(), debt)
 
 
 func test_settings_gear_uses_approved_icon_and_stays_available_during_service() -> void:
@@ -719,3 +750,7 @@ func _record_speed(speed: int) -> void:
 
 func _record_settings() -> void:
 	_settings_requests += 1
+
+
+func _record_staff() -> void:
+	_staff_requests += 1
