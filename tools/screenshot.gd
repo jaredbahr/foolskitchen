@@ -2143,7 +2143,8 @@ static func staff_priority_grid_valid(state: Dictionary, members: Array) -> bool
 	var normal: StyleBoxFlat = StaffPanel.SHARED_THEME.get_stylebox("normal", "Button") as StyleBoxFlat
 	var muted: StyleBoxFlat = StaffPanel.SHARED_THEME.get_stylebox("disabled", "Button") as StyleBoxFlat
 	var accent: StyleBoxFlat = StaffPanel.SHARED_THEME.get_stylebox("pressed", "Button") as StyleBoxFlat
-	if normal == null or muted == null or accent == null:
+	var panel: StyleBoxFlat = StaffPanel.SHARED_THEME.get_stylebox("panel", "PanelContainer") as StyleBoxFlat
+	if normal == null or muted == null or accent == null or panel == null:
 		return false
 	for index: int in range(members.size()):
 		var member: Dictionary = members[index]
@@ -2168,7 +2169,7 @@ static func staff_priority_grid_valid(state: Dictionary, members: Array) -> bool
 					or cell.get("disabled") != (not supported) \
 					or cell.get("style_state") != ("normal" if supported else "disabled") \
 					or cell.get("font_state") != ("font_color" if supported else "font_disabled_color") \
-					or cell.get("style_override") != supported or cell.get("font_override") != supported \
+					or cell.get("style_override") != true or cell.get("font_override") != true \
 					or cell.get("visible") != true or cell.get("clip_text") != false or cell.get("parent_is_grid") != true \
 					or cell.get("grid_index") != (index + 1) * columns + job_index + 1 \
 					or not bounds.has_area() or not cell_minimum.has_area() or not viewport.grow(0.5).encloses(bounds) \
@@ -2187,9 +2188,9 @@ static func staff_priority_grid_valid(state: Dictionary, members: Array) -> bool
 			var background: Color = normal.bg_color
 			var border: Color = normal.border_color
 			if not supported:
-				foreground = StaffPanel.SHARED_THEME.get_color("font_disabled_color", "Button")
-				background = muted.bg_color
-				border = muted.border_color
+				foreground = Color(foreground, StaffPanel.LOCKED_TEXT_ALPHA)
+				background = panel.bg_color
+				border = Color(muted.border_color, StaffPanel.LOCKED_BORDER_ALPHA)
 			elif value == StaffJobPriorities.Level.HIGH:
 				border = accent.bg_color
 			elif value == StaffJobPriorities.Level.LOW:

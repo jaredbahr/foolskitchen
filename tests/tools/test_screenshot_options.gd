@@ -115,7 +115,7 @@ func test_staff_grid_validator_accepts_complete_records_and_rejects_wrong_words_
 	assert_false(CAPTURE.staff_priority_grid_valid(wrong["grid"], wrong["members"]), "headings use human job labels")
 
 
-func test_staff_grid_validator_distinguishes_inherited_locked_dash_from_supported_chosen_off() -> void:
+func test_staff_grid_validator_distinguishes_faded_locked_dash_from_low_and_chosen_off() -> void:
 	var record: Dictionary = _staff_grid_record()
 	var locked: Dictionary = record["grid"]["cells"][1]
 	var chosen_off: Dictionary = record["grid"]["cells"][7]
@@ -123,8 +123,8 @@ func test_staff_grid_validator_distinguishes_inherited_locked_dash_from_supporte
 	assert_true(locked["disabled"])
 	assert_eq(locked["style_state"], "disabled")
 	assert_eq(locked["font_state"], "font_disabled_color")
-	assert_false(locked["style_override"])
-	assert_false(locked["font_override"])
+	assert_true(locked["style_override"])
+	assert_true(locked["font_override"])
 	assert_eq(chosen_off["text"], "Off")
 	assert_false(chosen_off["disabled"])
 	assert_true(CAPTURE.staff_priority_grid_valid(record["grid"], record["members"]))
@@ -133,8 +133,8 @@ func test_staff_grid_validator_distinguishes_inherited_locked_dash_from_supporte
 			{"index": 7, "field": "disabled", "value": true},
 			{"index": 1, "field": "style_state", "value": "normal"},
 			{"index": 1, "field": "font_state", "value": "font_color"},
-			{"index": 1, "field": "style_override", "value": true},
-			{"index": 1, "field": "font_override", "value": true}]:
+			{"index": 1, "field": "style_override", "value": false},
+			{"index": 1, "field": "font_override", "value": false}]:
 		var wrong: Dictionary = record.duplicate(true)
 		wrong["grid"]["cells"][patch["index"]][patch["field"]] = patch["value"]
 		assert_false(CAPTURE.staff_priority_grid_valid(wrong["grid"], wrong["members"]), str(patch))
@@ -143,6 +143,19 @@ func test_staff_grid_validator_distinguishes_inherited_locked_dash_from_supporte
 	wrong["grid"]["cells"][1]["background"] = chosen_off["background"].duplicate()
 	wrong["grid"]["cells"][1]["border"] = chosen_off["border"].duplicate()
 	assert_false(CAPTURE.staff_priority_grid_valid(wrong["grid"], wrong["members"]), "a dash cannot hide stale inverted Off colours")
+	var low: Dictionary = {}
+	for cell: Dictionary in record["grid"]["cells"]:
+		if cell["text"] == "Low":
+			low = cell
+	assert_false(low.is_empty(), "the fixture includes a Low cell")
+	assert_ne(locked["background"], low["background"], "a locked cell's fill differs from Low")
+	assert_ne(locked["border"], low["border"], "a locked cell's outline differs from Low")
+	assert_ne(locked["foreground"], low["foreground"], "a locked dash is fainter than Low words")
+	wrong = record.duplicate(true)
+	wrong["grid"]["cells"][1]["foreground"] = low["foreground"].duplicate()
+	wrong["grid"]["cells"][1]["background"] = low["background"].duplicate()
+	wrong["grid"]["cells"][1]["border"] = low["border"].duplicate()
+	assert_false(CAPTURE.staff_priority_grid_valid(wrong["grid"], wrong["members"]), "a dash cannot use the Low colours")
 	wrong = record.duplicate(true)
 	wrong["grid"]["cells"][1]["foreground"] = [NAN, 0.0, 0.0, 1.0]
 	assert_false(CAPTURE.staff_priority_grid_valid(wrong["grid"], wrong["members"]), "native disabled colours must stay finite and shared")
@@ -287,8 +300,8 @@ func test_real_staff_panel_native_grid_evidence_satisfies_capture_validator_with
 	assert_eq(locked_evidence["font_state"], "font_disabled_color")
 	assert_eq(locked_evidence["background"], CAPTURE._staff_rgba((locked.get_theme_stylebox("disabled") as StyleBoxFlat).bg_color))
 	assert_eq(locked_evidence["foreground"], CAPTURE._staff_rgba(locked.get_theme_color("font_disabled_color")))
-	assert_false(locked_evidence["style_override"])
-	assert_false(locked_evidence["font_override"])
+	assert_true(locked_evidence["style_override"])
+	assert_true(locked_evidence["font_override"])
 	var note: Label = panel.get_node("%MainJobNote") as Label
 	assert_eq(evidence["main_job_note"]["path"], String(panel.get_path_to(note)))
 	assert_eq(evidence["main_job_note"]["text"], note.text)
@@ -344,9 +357,9 @@ func _staff_grid_record() -> Dictionary:
 			var background: Color = normal.bg_color
 			var border: Color = accent.bg_color if value == StaffJobPriorities.Level.HIGH else normal.border_color
 			if not supported:
-				foreground = StaffPanel.SHARED_THEME.get_color("font_disabled_color", "Button")
-				background = muted.bg_color
-				border = muted.border_color
+				foreground = Color(foreground, StaffPanel.LOCKED_TEXT_ALPHA)
+				background = (StaffPanel.SHARED_THEME.get_stylebox("panel", "PanelContainer") as StyleBoxFlat).bg_color
+				border = Color(muted.border_color, StaffPanel.LOCKED_BORDER_ALPHA)
 			elif value == StaffJobPriorities.Level.LOW:
 				background = muted.bg_color
 				border = muted.border_color
@@ -359,7 +372,7 @@ func _staff_grid_record() -> Dictionary:
 				"text": StaffJobPriorities.level_label(value) if supported else "—",
 				"disabled": not supported, "tooltip": tooltip, "visible": true, "clip_text": false,
 				"style_state": "normal" if supported else "disabled", "font_state": "font_color" if supported else "font_disabled_color",
-				"style_override": supported, "font_override": supported,
+				"style_override": true, "font_override": true,
 				"parent_is_grid": true, "grid_index": (row + 1) * 6 + column + 1, "bounds": bounds,
 				"minimum_bounds": [bounds[0], y, 100.0, 30.0],
 				"foreground": [foreground.r, foreground.g, foreground.b, foreground.a],

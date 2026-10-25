@@ -459,8 +459,9 @@ an active edit/panel/selection first, or opens Settings when none is active.
   save. The existing next-morning staff provider persists the choices.
 - The shared-theme grid keeps native cells stable across refreshes and emits
   typed requests only. Cells show words and colours; main jobs skip Off, and
-  unsupported jobs show a noninteractive muted dash using the inherited
-  disabled Button style. A supported job chosen Off retains its distinct
+  unsupported jobs show a noninteractive faded dash on a flat cell (the
+  panel fill, a faint muted outline, Button text at reduced alpha), unlike
+  Low's muted fill. A supported job chosen Off retains its distinct
   inverted style. The main-job lock is explained below the grid, which now
   follows the member cards. XP rows preserve shared HBox spacing and include
   a trailing inset before the scrollbar. Other staffing actions keep

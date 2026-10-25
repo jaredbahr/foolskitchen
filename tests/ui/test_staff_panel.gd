@@ -180,8 +180,7 @@ func test_employee_xp_bar_and_three_mood_faces_follow_saved_growth() -> void:
 		assert_eq(face.mouse_filter, Control.MOUSE_FILTER_PASS,
 			"the mood word must be available as a tooltip")
 		var growth: HBoxContainer = row.get_node("Growth") as HBoxContainer
-		assert_eq(growth.get_theme_constant("separation"),
-			StaffPanel.SHARED_THEME.get_constant("separation", "HBoxContainer"),
+		assert_false(growth.has_theme_constant_override(&"separation"),
 			"the XP line keeps the shared HBox spacing")
 		var inset: Control = growth.get_node("XPInset") as Control
 		assert_eq(inset.custom_minimum_size.x, 8.0)
@@ -544,11 +543,27 @@ func test_priority_words_and_colors_use_readable_shared_theme_states() -> void:
 		StaffPanel.SHARED_THEME.get_color("font_color", "Button"))
 	assert_eq(locked.text, "—")
 	assert_true(locked.disabled, "unsupported work is locked")
-	assert_eq(locked.get_theme_stylebox("disabled"), muted,
-		"unsupported work uses the native disabled style instead of the chosen-Off style")
-	assert_eq(locked.get_theme_color("font_disabled_color"),
-		StaffPanel.SHARED_THEME.get_color("font_disabled_color", "Button"))
-	for button: Button in [high, regular, low, chosen_off, locked]:
+	var locked_style: StyleBoxFlat = locked.get_theme_stylebox("disabled") as StyleBoxFlat
+	var off_style: StyleBoxFlat = chosen_off.get_theme_stylebox("normal") as StyleBoxFlat
+	var low_style: StyleBoxFlat = low.get_theme_stylebox("normal") as StyleBoxFlat
+	var locked_text: Color = locked.get_theme_color("font_disabled_color")
+	assert_ne(locked_style.bg_color, off_style.bg_color, "a locked dash never looks like a chosen Off")
+	assert_ne(locked_text, chosen_off.get_theme_color("font_color"))
+	assert_ne(locked_style.bg_color, low_style.bg_color, "a locked dash never looks like Low")
+	assert_ne(locked_style.border_color, low_style.border_color)
+	assert_ne(locked_text, low.get_theme_color("font_color"))
+	assert_eq(locked_style.bg_color,
+		(StaffPanel.SHARED_THEME.get_stylebox("panel", "PanelContainer") as StyleBoxFlat).bg_color,
+		"a locked cell uses the panel's own fill")
+	assert_eq(locked_style.border_color, Color(muted.border_color, StaffPanel.LOCKED_BORDER_ALPHA))
+	assert_eq(locked_text, Color(StaffPanel.SHARED_THEME.get_color("font_color", "Button"), StaffPanel.LOCKED_TEXT_ALPHA))
+	# The faded dash marks "not a choice"; it is intentionally below text contrast
+	# but must still be visible on the panel.
+	var dash: Color = locked_style.bg_color.lerp(Color(locked_text, 1.0), locked_text.a)
+	var dash_contrast: float = (maxf(_luminance(dash), _luminance(locked_style.bg_color)) + 0.05) \
+		/ (minf(_luminance(dash), _luminance(locked_style.bg_color)) + 0.05)
+	assert_true(dash_contrast >= 2.0, "the faded dash stays visible (contrast %.2f)" % dash_contrast)
+	for button: Button in [high, regular, low, chosen_off]:
 		var state: StringName = &"disabled" if button.disabled else &"normal"
 		var color_name: StringName = &"font_disabled_color" if button.disabled else &"font_color"
 		var background: Color = (button.get_theme_stylebox(state) as StyleBoxFlat).bg_color
