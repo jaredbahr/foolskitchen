@@ -273,6 +273,8 @@ static func evidence(main: Node, context_root: Node, frame: int) -> Dictionary:
 				prop.seat_surface_height() if prop != null else 0.0)
 			var table: PlacedItem = world.grid.item(guest.table_item_id)
 			var furnishing: PlacedItem = world.grid.item(furnishing_id)
+			var expected: Dictionary = _expected_seated_position(guest, world)
+			var expected_position: Vector3 = expected["position"]
 			actors.append({"id": guest.id, "role": String(guest.role), "state": int(guest.state),
 				"cell": _cell(guest.cell), "seat": _cell(guest.seat_cell), "arrived": guest.has_arrived(),
 				"table": guest.table_item_id, "furnishing": furnishing_id,
@@ -288,7 +290,9 @@ static func evidence(main: Node, context_root: Node, frame: int) -> Dictionary:
 				"player_clip": String(person._player.current_animation) if person != null and person._player != null else "",
 				"seat_height": prop.seat_surface_height() if prop != null else 0.0,
 				"seat_lift": (person.get_node("ModelPivot") as Node3D).position.y if person != null else -1.0,
-				"position_matches": person != null and person.position.is_equal_approx(seated.floor_position),
+				"expected_position": [expected_position.x, expected_position.y, expected_position.z],
+				"forward_offset": expected["forward_offset"],
+				"position_matches": expected["available"] and person != null and person.position.is_equal_approx(expected_position),
 				"visible": person != null and person.is_visible_in_tree(),
 				"seat_clearance": _seat_clearance(person, prop, camera, guest.id, furnishing_id, guest.table_item_id),
 				"bounds": _screen_bounds(person.global_transform * PropView._children_aabb(person), camera) if person != null else {}})
@@ -426,6 +430,39 @@ static func valid(state: Dictionary, frame: int, fixture: Dictionary) -> bool:
 		if notice_rect.intersects(_rect(walls[index]["prop"]["bounds"])):
 			return false
 	return booths == 4 and stools == 2
+
+
+## Independent expectation from arrived sim cells and authored content. Never
+## reads PersonView.position or the production frame's final display offset.
+static func _expected_seated_position(guest: CustomerAgent, world: SimWorld) -> Dictionary:
+	var unavailable: Dictionary = {"available": false, "position": Vector3.ZERO, "forward_offset": 0.0}
+	if guest == null or world == null or not guest.has_arrived() or guest.cell != guest.seat_cell:
+		return unavailable
+	var table: PlacedItem = world.grid.item(guest.table_item_id)
+	var furnishing: PlacedItem = world.grid.item(world.grid.dining_furnishing_id(guest.seat_cell))
+	if table == null:
+		return unavailable
+	var source: PlacedItem = furnishing if furnishing != null else table
+	var definition: ItemDef = source.def as ItemDef
+	if definition == null:
+		return unavailable
+	var offset: float = float(definition.get("seated_forward_offset")) if "seated_forward_offset" in definition else 0.0
+	if not is_finite(offset):
+		return unavailable
+	var origin: Vector3 = GridMath.cell_to_world(guest.seat_cell)
+	var forward: Vector3 = Vector3.ZERO
+	if definition.category == ItemDef.Category.CHAIR:
+		var local_origin: Vector2i = GridMath.rotate_cell(Vector2i.ZERO, definition.footprint, source.quarter_turns)
+		var local_front: Vector2i = GridMath.rotate_cell(Vector2i.UP, definition.footprint, source.quarter_turns)
+		var direction: Vector2i = local_front - local_origin
+		forward = Vector3(direction.x, 0.0, direction.y).normalized()
+	else:
+		var center: Vector3 = Vector3.ZERO
+		for cell: Vector2i in table.cells:
+			center += GridMath.cell_to_world(cell)
+		center = center / float(table.cells.size()) if not table.cells.is_empty() else GridMath.cell_to_world(table.origin)
+		forward = (center - origin).normalized()
+	return {"available": true, "position": origin + forward * offset, "forward_offset": offset}
 
 
 static func _reference(id: String) -> PropView:

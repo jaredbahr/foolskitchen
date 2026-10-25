@@ -150,6 +150,38 @@ func test_furnished_guests_walk_to_reserved_booths_and_stools_and_use_native_sit
 	assert_eq(state["snapshot"]["clock"]["phase"], int(SimClock.Phase.MORNING))
 	assert_eq(state["snapshot"]["restaurant_rng"], fixture["baseline"]["restaurant_rng"])
 	assert_eq(state["snapshot"]["run"], fixture["baseline"]["run"])
+	var world: SimWorld = _main.get("world") as SimWorld
+	var shop: ShopView = _main.get_node("ShopView") as ShopView
+	var offset_field_available: bool = false
+	var nonzero_offset_exercised: bool = false
+	for actor: Dictionary in state["actors"]:
+		var furnishing: PlacedItem = world.grid.item(int(actor["furnishing"]))
+		var definition: ItemDef = furnishing.def as ItemDef
+		var person: PersonView = shop.agent_nodes[int(actor["id"])] as PersonView
+		var guest: CustomerAgent = world.agent(int(actor["id"])) as CustomerAgent
+		var raw_position: Vector3 = GridMath.cell_to_world(guest.seat_cell)
+		if "seated_forward_offset" in definition:
+			offset_field_available = true
+			var offset: float = float(definition.get("seated_forward_offset"))
+			assert_almost_eq(float(actor["forward_offset"]), offset)
+			if not is_zero_approx(offset):
+				nonzero_offset_exercised = true
+				assert_false(person.position.is_equal_approx(raw_position), "authored nonzero offset changes the actual native draw position")
+				assert_almost_eq(person.position.distance_to(raw_position), absf(offset), 0.0001)
+		var values: Array = actor["expected_position"]
+		assert_true(person.position.is_equal_approx(Vector3(float(values[0]), float(values[1]), float(values[2]))))
+	if offset_field_available:
+		assert_true(nonzero_offset_exercised, "integrated furnishing data exercises an authored nonzero offset")
+	# Move an actual native node without altering its arrived sim seat or frame.
+	# Independent evidence must catch this even though its current pose is valid.
+	var altered: PersonView = shop.agent_nodes[int(state["actors"][0]["id"])] as PersonView
+	var saved_position: Vector3 = altered.position
+	altered.position += Vector3(0.01, 0.0, 0.0)
+	var moved: Dictionary = REVIEW.evidence(_main, _root(), 90)
+	assert_false(moved["actors"][0]["position_matches"], "native position mutation cannot redefine the expected position")
+	assert_false(REVIEW.valid(moved, 90, fixture))
+	altered.position = saved_position
+	assert_eq(_snapshot(), before, "position evidence and the restored visual do not mutate simulation state")
 	for ticks: int in fixture["guest_ticks"]:
 		assert_true(ticks > 0 and ticks <= REVIEW.WALK_BUDGET)
 	for change: String in ["reservation", "role", "cell", "clip", "player", "lift", "source", "hidden", "furnishing", "link", "walls", "dining", "head_clearance"]:
