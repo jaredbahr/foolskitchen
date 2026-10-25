@@ -35,6 +35,11 @@ func _run() -> void:
 		# JSON has no Infinity; null denotes no backrest geometry at head height.
 		if sample.has("clearance") and is_inf(float(sample["clearance"])):
 			sample["clearance"] = null
+		if sample.has("native_bake_max_error") and not is_finite(float(sample["native_bake_max_error"])):
+			sample["native_bake_max_error"] = null
+	for comparison: Dictionary in (report["native_bake_poses"] as Dictionary).values():
+		if not is_finite(float(comparison["max_error"])):
+			comparison["max_error"] = null
 	report["failures"] = failures
 	var output: String = JSON.stringify(report, "\t")
 	if path.is_empty():

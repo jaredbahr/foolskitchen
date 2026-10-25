@@ -9,9 +9,11 @@ const GEOMETRY: GDScript = preload("res://tools/seated_head_geometry.gd")
 
 static func run(parent: Node, native_bake: bool = false) -> Dictionary:
 	var report: Dictionary = {"errors": PackedStringArray(), "samples": [], "seats": 0,
-		"required_clearance": GEOMETRY.REQUIRED_CLEARANCE, "native_bake": native_bake}
+		"required_clearance": GEOMETRY.REQUIRED_CLEARANCE, "native_bake": native_bake,
+		"native_bake_upload_waits": 0, "native_bake_poses": {}}
 	var errors: PackedStringArray = report["errors"]
 	var poses: Dictionary[String, PackedVector3Array] = {}
+	var parity: Dictionary[String, Dictionary] = {}
 	var content: ContentDB = ContentDB.new()
 	errors.append_array(content.load_all())
 	if not errors.is_empty():
@@ -22,12 +24,13 @@ static func run(parent: Node, native_bake: bool = false) -> Dictionary:
 			continue
 		report["seats"] += 1
 		for turns: int in range(4):
-			await _sample_item(parent, definition, turns, native_bake, poses, report)
+			await _sample_item(parent, definition, turns, native_bake, poses, parity, report)
+	report["native_bake_poses"] = parity
 	return report
 
 
 static func _sample_item(parent: Node, definition: ItemDef, turns: int, native_bake: bool,
-		poses: Dictionary[String, PackedVector3Array], report: Dictionary) -> void:
+		poses: Dictionary[String, PackedVector3Array], parity: Dictionary[String, Dictionary], report: Dictionary) -> void:
 	var errors: PackedStringArray = report["errors"]
 	var world: SimWorld = SimWorld.new(SimGrid.new(Vector2i(12, 12)))
 	var restaurant: RestaurantSim = RestaurantSim.new()
@@ -87,11 +90,8 @@ static func _sample_item(parent: Node, definition: ItemDef, turns: int, native_b
 				var animation: Animation = person._player.get_animation(&"sit")
 				for fraction: float in [0.0, 0.37, 0.91]:
 					person._player.seek(animation.length * fraction, true)
-					# Bone pose queries calculate dirty transforms synchronously. Native
-					# bake additionally needs the RenderingServer upload for this pose.
+					# Bone pose queries calculate dirty transforms synchronously.
 					person._skeleton.force_update_all_bone_transforms()
-					if native_bake:
-						await parent.get_tree().process_frame
 					var pose_key: String = "%s:%.9f" % [person.model_name(), animation.length * fraction]
 					if not poses.has(pose_key):
 						var posed: Dictionary = GEOMETRY.skin_vertices(GEOMETRY.head_mesh(person), person._skeleton)
@@ -99,9 +99,29 @@ static func _sample_item(parent: Node, definition: ItemDef, turns: int, native_b
 							errors.append(String(posed["error"]))
 							continue
 						poses[pose_key] = posed["vertices"]
+					var reused_parity: bool = parity.has(pose_key)
+					if native_bake and not reused_parity:
+						# Native bake is mesh-local: only this model/time's first
+						# encounter needs a renderer upload and vertex comparison.
+						# All placements still use their real node transforms below.
+						await RenderingServer.frame_post_draw
+						report["native_bake_upload_waits"] += 1
+						var comparison: Dictionary = GEOMETRY.native_bake_error(GEOMETRY.head_mesh(person), poses[pose_key])
+						comparison["provenance"] = "MeshInstance3D.bake_mesh_from_current_skeleton_pose; mesh-local model/time comparison"
+						comparison["head_vertices"] = poses[pose_key].size()
+						parity[pose_key] = comparison
 					if not faces.has(guest.id):
 						faces[guest.id] = GEOMETRY.seat_triangles(visual.prop, person)
-					var sample: Dictionary = GEOMETRY.measure(person, visual.prop, native_bake, poses[pose_key], faces[guest.id])
+					var sample: Dictionary = GEOMETRY.measure(person, visual.prop, false, poses[pose_key], faces[guest.id])
+					if native_bake:
+						var cached_comparison: Dictionary = parity[pose_key]
+						sample["native_bake_pose_key"] = pose_key
+						sample["native_bake_reused"] = reused_parity
+						sample["native_bake_max_error"] = cached_comparison["max_error"]
+						sample["native_bake_provenance"] = cached_comparison["provenance"]
+						if not String(cached_comparison["error"]).is_empty():
+							sample["error"] = cached_comparison["error"]
+							sample["passes"] = false
 					sample["item"] = String(definition.id)
 					sample["turns"] = turns
 					sample["seat_cell"] = [guest.cell.x, guest.cell.y]

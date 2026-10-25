@@ -39,6 +39,14 @@ eight eligible guest rigs, and sit times 0%, 37% and 91% of the imported clip.
 Rig-local posed vertices are cached by look and time; the placement, facing,
 seat height and model transforms come from actual `ShopView`/`PersonView` nodes.
 The test contains coverage assertions, so missing imports or empty samples fail.
+Rendered parity compares the 24 distinct mesh-local model/time poses once each,
+awaiting `RenderingServer.frame_post_draw` only for those 24 first encounters.
+Every placement still receives a clearance measurement. The report records
+`native_bake_upload_waits`, per-pose `native_bake_poses` results, and each sample's
+`native_bake_pose_key`, `native_bake_reused`, error and provenance. A failed pose
+comparison fails every sample that uses it; a non-finite parity error is encoded
+as JSON null with its failure message retained. No runtime parity is implied by
+the presence of this source or by cached mathematical pose calculations.
 
 `SeatedHeadGeometry.measure_person_head(person)` returns `error`, `world_bounds`
 and `person_bounds` (`AABB`), `head_vertices` and `provenance`. The world bounds
