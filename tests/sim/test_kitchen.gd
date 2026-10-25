@@ -325,8 +325,18 @@ func test_synchronous_bus_post_cancellation_keeps_dirty_hold_and_allows_retry() 
 
 func test_layout_repair_retries_failed_bus_without_resetting_dirty_table() -> void:
 	var table: PlacedItem = _item(&"table_2")
-	for seat: Vector2i in table.seat_cells:
+	# Blocking seats replaces the live projection. Keep the authored locations
+	# independently so repair does not index that deliberately empty live list.
+	var blocked_seats: Array[Vector2i] = table.seat_cells.duplicate()
+	assert_eq(blocked_seats.size(), 2)
+	var editor: ShopEditor = ShopEditor.new(_sim, _content, null)
+	assert_false(editor.check_current().unreachable.has(table.id))
+	for seat: Vector2i in blocked_seats:
 		assert_true(_sim.world.grid.set_terrain(seat, SimGrid.Terrain.WALL))
+	assert_true(table.seat_cells.is_empty(), "blocked seats are not usable dining links")
+	var blocked: EditCheck = editor.check_current()
+	assert_true(blocked.ok, "blocked built-ins remain a warning rather than an edit refusal")
+	assert_true(blocked.unreachable.has(table.id), "an empty projection must not clear the table warning")
 	_sim.kitchen.mark_table_dirty(table.id)
 	var failed: SimTask = _find_task(&"bus_table")
 	assert_not_null(failed)
@@ -338,7 +348,11 @@ func test_layout_repair_retries_failed_bus_without_resetting_dirty_table() -> vo
 	assert_eq(_sim.world.board.active_count(), 0, "failed bussing does not hot-loop retries")
 	assert_true(_sim.kitchen.is_table_dirty(table.id), "failure preserves the dirty hold")
 	# Repairing access emits cells_changed, which is an explicit retry boundary.
-	assert_true(_sim.world.grid.set_terrain(table.seat_cells[0], SimGrid.Terrain.FLOOR))
+	assert_true(_sim.world.grid.set_terrain(blocked_seats[0], SimGrid.Terrain.FLOOR))
+	assert_eq(table.seat_cells, [blocked_seats[0]] as Array[Vector2i])
+	var repaired: EditCheck = editor.check_current()
+	assert_true(repaired.ok)
+	assert_false(repaired.unreachable.has(table.id), "one reachable restored seat clears the existing table warning")
 	var retry: SimTask = _find_task(&"bus_table")
 	assert_not_null(retry)
 	if retry == null:

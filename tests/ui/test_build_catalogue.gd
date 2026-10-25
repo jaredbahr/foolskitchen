@@ -104,7 +104,7 @@ func test_content_names_then_ids_sort_and_zero_price_is_buyable() -> void:
 	assert_eq(_catalogue.ordered_ids(), [&"alpha", &"beta", &"zeta"] as Array[StringName])
 	assert_eq(_catalogue.item_buttons.size(), 3)
 	assert_eq(_catalogue.item_buttons[&"beta"].text, "alpha\n$0")
-	var row: HBoxContainer = _scroll().get_node("Content/Items") as HBoxContainer
+	var row: GridContainer = _scroll().get_node("Content/Items") as GridContainer
 	for index: int in range(_catalogue.ordered_ids().size()):
 		var id: StringName = _catalogue.ordered_ids()[index]
 		var button: Button = _catalogue.item_buttons[id]
@@ -138,20 +138,17 @@ func test_shipped_catalogue_is_derived_from_every_valid_non_door_definition() ->
 			assert_false(button.disabled)
 			assert_true(button.text.ends_with("$%d" % definition.price))
 	assert_eq(_catalogue.item_buttons.size(), expected_count)
+	assert_eq(_catalogue.selected_category, &"seating")
 	_catalogue.set_build_visible(true)
 	await _mount(Vector2(1600.0, 900.0))
 	var panel: PanelContainer = _catalogue.get_node("Panel") as PanelContainer
-	var content: Control = _scroll().get_node("Content") as Control
-	var natural: Vector2 = content.get_combined_minimum_size()
-	var padding: Vector2 = panel.get_theme_stylebox("panel").get_minimum_size()
-	assert_eq(panel.size, natural + padding, "a fitting catalogue uses only its content and compact padding")
-	assert_true(panel.size.x < _host.size.x * 0.8, "no empty strip spans the remaining viewport")
-	assert_true(panel.size.y < 140.0, "the old176px strip is reduced to its actual contents")
+	assert_true(panel.size.x <= BuildCatalogue.MAX_PANEL_WIDTH)
+	assert_true(panel.size.y <= _host.size.y * BuildCatalogue.PANEL_HEIGHT_SHARE + 0.5)
+	assert_true(panel.size.x < _host.size.x * 0.8, "the catalogue leaves the world visible beside it")
 	assert_almost_eq(panel.position.x, 12.0)
 	assert_almost_eq(panel.get_rect().end.y, _host.size.y - 12.0)
 	assert_false(_scroll().get_h_scroll_bar().visible)
-	assert_false(_scroll().get_v_scroll_bar().visible)
-
+	assert_eq((_catalogue.get_node("Panel/Margin/Rows/Scroll/Content/Title") as Label).text, "Furniture")
 
 func test_single_item_catalogue_uses_a_compact_strip() -> void:
 	_content.definitions = [_definition(&"fixture", "Chair", 18)]
@@ -253,6 +250,19 @@ func test_null_rebind_removes_old_buttons_and_can_repopulate_before_ready() -> v
 	_catalogue.bind_content(_content)
 	assert_eq(_catalogue.item_buttons.size(), 1)
 	assert_false(_catalogue.is_node_ready())
+	var shipped: ContentDB = ContentDB.new()
+	assert_eq(shipped.load_all(), PackedStringArray())
+	_catalogue.bind_content(shipped)
+	var swatch_count: int = shipped.swatches().size()
+	assert_true(swatch_count > 0)
+	var swatch: Button = _catalogue.swatch_buttons[shipped.swatches()[0].id]
+	_catalogue.bind_content(null)
+	assert_false(is_instance_valid(swatch))
+	assert_true(_catalogue.swatch_buttons.is_empty())
+	assert_eq(_scroll().get_node("Content/PaintSwatches").get_child_count(), 0)
+	_catalogue.bind_content(shipped)
+	assert_eq(_catalogue.swatch_buttons.size(), swatch_count)
+	assert_false(_catalogue.is_node_ready(), "typed clear/rebind also works before native theme readiness")
 
 
 func test_native_mouse_down_refresh_up_requests_once() -> void:
@@ -274,7 +284,7 @@ func test_native_mouse_down_refresh_up_requests_once() -> void:
 	assert_false(button.is_pressed())
 
 
-func test_bottom_strip_stays_bounded_and_long_catalogue_scrolls_at_small_widths() -> void:
+func test_bottom_grid_stays_bounded_and_long_catalogue_scrolls_at_small_widths() -> void:
 	for index: int in range(30):
 		_content.definitions.append(_definition(StringName("item_%02d" % index), "Furniture %02d" % index, index))
 	_catalogue.bind_content(_content)
@@ -289,29 +299,28 @@ func test_bottom_strip_stays_bounded_and_long_catalogue_scrolls_at_small_widths(
 		await tree.process_frame
 		assert_eq(_catalogue.size, _host.size)
 		assert_almost_eq(panel.position.x, 12.0)
-		assert_almost_eq(panel.get_rect().end.x, bounds.x - 12.0)
 		assert_almost_eq(panel.get_rect().end.y, bounds.y - 12.0)
 		assert_true(panel.position.y >= 12.0)
-		assert_true(panel.size.x <= bounds.x - 24.0)
+		assert_true(panel.size.x <= minf(BuildCatalogue.MAX_PANEL_WIDTH, bounds.x - 24.0))
 		assert_true(panel.size.y <= bounds.y - 24.0)
-		var bar: HScrollBar = scroll.get_h_scroll_bar()
-		assert_true(bar.visible)
-		assert_true(bar.max_value > bar.page)
-		scroll.scroll_horizontal = ceili(bar.max_value)
+		assert_true(panel.size.y <= maxf(96.0, bounds.y * BuildCatalogue.PANEL_HEIGHT_SHARE) + 0.5)
+		var vertical: VScrollBar = scroll.get_v_scroll_bar()
+		assert_true(vertical.visible, "a long card grid scrolls vertically inside its bounded panel")
+		assert_true(vertical.max_value > vertical.page)
+		scroll.scroll_vertical = ceili(vertical.max_value)
 		await tree.process_frame
-		assert_true(scroll.scroll_horizontal > 0)
-		assert_true((scroll.get_node("Content") as Control).position.x < 0.0)
-		if bounds.y <= 120.0:
-			var vertical: VScrollBar = scroll.get_v_scroll_bar()
-			assert_true(vertical.visible, "short viewports scroll all catalogue content vertically")
-			assert_true(vertical.max_value > vertical.page)
-			scroll.scroll_vertical = ceili(vertical.max_value)
+		assert_true(scroll.scroll_vertical > 0)
+		assert_true((scroll.get_node("Content") as Control).position.y < 0.0)
+		if bounds.x <= 360.0:
+			var horizontal: HScrollBar = scroll.get_h_scroll_bar()
+			assert_true(horizontal.visible, "tiny windows retain readable category buttons through scrolling")
+			assert_true(horizontal.max_value > horizontal.page)
+			scroll.scroll_horizontal = ceili(horizontal.max_value)
 			await tree.process_frame
-			assert_true(scroll.scroll_vertical > 0)
-			assert_true((scroll.get_node("Content") as Control).position.y < 0.0)
+			assert_true(scroll.scroll_horizontal > 0)
+			assert_true((scroll.get_node("Content") as Control).position.x < 0.0)
 	assert_eq(_catalogue.item_buttons.size(), 30)
 	assert_true(_requests.is_empty())
-
 
 func test_only_bottom_panel_blocks_native_world_clicks() -> void:
 	_content.definitions = [_definition(&"fixture", "Fixture", 10)]
@@ -329,6 +338,131 @@ func test_only_bottom_panel_blocks_native_world_clicks() -> void:
 	_mouse(border, false)
 	assert_eq(probe.clicks, 1, "blank panel padding consumes its click")
 	assert_true(_requests.is_empty())
+
+
+func test_category_filters_keep_all_buttons_and_reject_hidden_paint_and_stale_requests() -> void:
+	_content.definitions = [
+		_definition(&"chair", "Wooden chair", 10, ItemDef.Category.CHAIR),
+		_definition(&"table", "Round table", 55, ItemDef.Category.TABLE),
+		_definition(&"stove", "Cooking stove", 90, ItemDef.Category.STATION),
+		_definition(&"fridge", "Fridge", 80, ItemDef.Category.STORAGE),
+		_definition(&"pass", "Serving counter", 0, ItemDef.Category.PASS),
+		_definition(&"plant", "Small plant", 15, ItemDef.Category.DECOR),
+		_definition(&"door", "Door", 0, ItemDef.Category.DOOR),
+	]
+	_catalogue.bind_content(_content)
+	_catalogue.set_build_visible(true)
+	assert_eq(_catalogue.category_buttons.size(), 4)
+	assert_eq(_catalogue.item_buttons.size(), 6)
+	assert_eq(_catalogue.visible_ids(), [&"chair"] as Array[StringName])
+	var chair: Button = _catalogue.item_buttons[&"chair"]
+	var plant: Button = _catalogue.item_buttons[&"plant"]
+	plant.pressed.emit()
+	assert_true(_requests.is_empty(), "a hidden category cannot request a purchase")
+	_catalogue.category_buttons[&"kitchen"].pressed.emit()
+	assert_eq(_catalogue.visible_ids(), [&"stove", &"fridge", &"pass"] as Array[StringName])
+	assert_eq(_catalogue.category_buttons[&"kitchen"].text, "Kitchen")
+	assert_true(_catalogue.category_buttons[&"kitchen"].button_pressed)
+	assert_false(_catalogue.category_buttons[&"seating"].button_pressed)
+	_catalogue.category_buttons[&"kitchen"].set_pressed_no_signal(false)
+	_catalogue.category_buttons[&"kitchen"].pressed.emit()
+	assert_true(_catalogue.category_buttons[&"kitchen"].button_pressed, "clicking the active filter keeps it selected")
+	assert_true(_catalogue.item_buttons[&"chair"] == chair)
+	chair.pressed.emit()
+	assert_true(_requests.is_empty())
+	_catalogue.set_category(&"decor")
+	assert_eq(_catalogue.visible_ids(), [&"plant"] as Array[StringName])
+	_catalogue.refresh_content()
+	assert_true(_catalogue.item_buttons[&"plant"] == plant)
+	plant.pressed.emit()
+	assert_eq(_requests, [&"plant"] as Array[StringName])
+	_catalogue.set_paint_visible(true)
+	_catalogue._on_buy_pressed(&"plant")
+	assert_eq(_requests.size(), 1, "paint mode cannot buy a hidden item")
+	assert_false((_scroll().get_node("Content/Categories") as Control).visible)
+	_catalogue.set_paint_visible(false)
+	_catalogue.set_category(&"unsupported")
+	assert_eq(_catalogue.selected_category, &"decor")
+	_content.item(&"plant").category = ItemDef.Category.TABLE
+	plant.pressed.emit()
+	assert_eq(_requests.size(), 1, "a stale category is rechecked against current content")
+	_catalogue.set_category(&"seating")
+	assert_true(_catalogue.item_buttons[&"chair"] == chair)
+	assert_true(chair.visible)
+
+
+func test_category_changes_between_native_mouse_down_and_up_never_buy_hidden_items() -> void:
+	_content.definitions = [_definition(&"chair", "Chair", 10, ItemDef.Category.CHAIR),
+		_definition(&"plant", "Plant", 15, ItemDef.Category.DECOR)]
+	_catalogue.bind_content(_content)
+	_catalogue.set_build_visible(true)
+	await _mount(Vector2(900.0, 640.0))
+	var chair: Button = _catalogue.item_buttons[&"chair"]
+	var centre: Vector2 = chair.get_global_rect().get_center()
+	_mouse(centre, true)
+	assert_true(chair.is_pressed())
+	_catalogue.set_category(&"decor")
+	_catalogue.refresh_content()
+	_mouse(centre, false)
+	assert_true(_requests.is_empty(), "a filtered in-flight button cannot buy")
+	assert_true(_catalogue.item_buttons[&"chair"] == chair)
+	_catalogue.set_category(&"seating")
+	assert_false(chair.is_pressed())
+
+
+func test_grid_bounds_at_supported_window_sizes_and_interface_scales() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	await tree.process_frame
+	var viewport: SubViewport = SubViewport.new()
+	viewport.size = Vector2i(1600, 900)
+	viewport.gui_embed_subwindows = true
+	tree.root.add_child(viewport)
+	var window: Window = Window.new()
+	window.borderless = true
+	window.content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS
+	window.content_scale_aspect = Window.CONTENT_SCALE_ASPECT_EXPAND
+	window.content_scale_size = Vector2i(1600, 900)
+	viewport.add_child(window)
+	_host = Control.new()
+	_host.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	window.add_child(_host)
+	_host.add_child(_catalogue)
+	var shipped: ContentDB = ContentDB.new()
+	assert_eq(shipped.load_all(), PackedStringArray())
+	_catalogue.bind_content(shipped)
+	_catalogue.set_owner_level(6)
+	_catalogue.set_build_visible(true)
+	for physical_size: Vector2i in [Vector2i(1280, 720), Vector2i(1600, 900)]:
+		window.size = physical_size
+		for scale_factor: float in [1.25, 1.5]:
+			window.content_scale_factor = scale_factor
+			await tree.process_frame
+			_host.size = window.get_visible_rect().size
+			for category: StringName in BuildCatalogue.CATEGORY_IDS:
+				_catalogue.set_category(category)
+				for frame: int in range(4):
+					await tree.process_frame
+				var panel: Control = _catalogue.get_node("Panel") as Control
+				var allowed: Rect2 = _host.get_global_rect().grow(-11.5)
+				var context: String = "%s at %s/%s panel=%s allowed=%s" % [
+					category, physical_size, scale_factor, panel.get_global_rect(), allowed]
+				assert_true(allowed.encloses(panel.get_global_rect()), context)
+				assert_true(panel.size.y <= _host.size.y * BuildCatalogue.PANEL_HEIGHT_SHARE + 0.5,
+					"%s height=%s cap=%s panel_min=%s scroll_min=%s" % [context, panel.size.y,
+						_host.size.y * BuildCatalogue.PANEL_HEIGHT_SHARE,
+						panel.get_combined_minimum_size(), _scroll().get_combined_minimum_size()])
+				assert_false(_scroll().get_h_scroll_bar().visible, "normal supported sizes need no horizontal scrolling")
+				assert_true((_scroll().get_node("Content/Items") as GridContainer).columns >= 1)
+				for id: StringName in _catalogue.visible_ids():
+					var button: Button = _catalogue.item_buttons[id]
+					assert_true(button.size.x >= button.get_combined_minimum_size().x - 0.5,
+						"%s item=%s size=%s minimum=%s" % [context, id, button.size, button.get_combined_minimum_size()])
+					assert_true(button.size.y >= BuildCatalogue.CARD_MINIMUM.y,
+						"%s item=%s height=%s card_min=%s" % [context, id, button.size.y, BuildCatalogue.CARD_MINIMUM.y])
+					assert_false(button.clip_text)
+					assert_false(button.disabled)
+	window.remove_child(_host)
+	viewport.free()
 
 
 func _mount(size: Vector2) -> void:

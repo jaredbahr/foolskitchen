@@ -45,6 +45,9 @@ var _items: Dictionary[int, PlacedItem] = {}
 var _cover: Dictionary[Vector2i, int] = {}
 var _next_id: int = 1
 var _entries: Array[Vector2i] = []
+## Derived dining links. These are rebuilt from definitions, never saved.
+var _dining_tables: Dictionary[Vector2i, int] = {}
+var _dining_furnishings: Dictionary[Vector2i, int] = {}
 
 
 ## A new grid is all FLOOR (handy for tests); from_ascii() sets real terrain.
@@ -113,6 +116,7 @@ func set_terrain(cell: Vector2i, t: Terrain) -> bool:
 	else:
 		_entries.erase(cell)
 	_refresh_cell(cell)
+	_refresh_dining_seats()
 	cells_changed.emit([cell] as Array[Vector2i])
 	return true
 
@@ -180,6 +184,7 @@ func place(footprint: Vector2i, origin: Vector2i, quarter_turns: int, solid: boo
 	for cell in item.cells:
 		_cover[cell] = item.id
 		_refresh_cell(cell)
+	_refresh_dining_seats()
 	cells_changed.emit(item.cells.duplicate())
 	return item
 
@@ -204,6 +209,8 @@ func relocate_def(item_id: int, origin: Vector2i, quarter_turns: int) -> bool:
 	for cell: Vector2i in placed.work_cells + placed.seat_cells:
 		if placed.reserved_by(cell) != -1:
 			return false
+	if definition.category == ItemDef.Category.CHAIR and _dining_furnishing_reserved(item_id):
+		return false
 	var turns: int = posmod(quarter_turns, 4)
 	var new_cells: Array[Vector2i] = _footprint_cells(definition.footprint, origin, turns)
 	for cell: Vector2i in new_cells:
@@ -232,6 +239,7 @@ func relocate_def(item_id: int, origin: Vector2i, quarter_turns: int) -> bool:
 			changed.append(cell)
 	for cell: Vector2i in changed:
 		_refresh_cell(cell)
+	_refresh_dining_seats()
 	cells_changed.emit(changed)
 	return true
 
@@ -247,6 +255,7 @@ func remove(item_id: int) -> bool:
 	for cell in item.cells:
 		_cover.erase(cell)
 		_refresh_cell(cell)
+	_refresh_dining_seats()
 	cells_changed.emit(item.cells.duplicate())
 	item_removed.emit(item)
 	return true
@@ -260,6 +269,17 @@ func item(item_id: int) -> PlacedItem:
 func item_at(cell: Vector2i) -> PlacedItem:
 	var id: int = _cover.get(cell, 0)
 	return _items.get(id, null)
+
+
+## Physical table/counter owning a valid dining seat, or 0 if none.
+func dining_table_id(seat_cell: Vector2i) -> int:
+	return _dining_tables.get(seat_cell, 0)
+
+
+## Standalone seat furnishing, or the table itself for an authored built-in.
+## Returns 0 when the cell is not part of a valid dining link.
+func dining_furnishing_id(seat_cell: Vector2i) -> int:
+	return _dining_furnishings.get(seat_cell, 0)
 
 
 ## All items, ordered by id (placement order), so iteration is deterministic.
@@ -383,6 +403,33 @@ func _free_cell(it: PlacedItem, cells: Array[Vector2i]) -> Vector2i:
 		if it.reserved_by(c) == -1 and is_walkable(c):
 			return c
 	return NO_CELL
+
+
+## Finish this projection before publishing the existing mutation signals.
+## Generic placements and standalone chairs keep their authored cell lists;
+## only physical tables receive the derived seats and retain their bookings.
+func _refresh_dining_seats() -> void:
+	var plan: DiningSeats.Plan = DiningSeats.derive(self)
+	for table_id: int in plan.table_seats:
+		var table: PlacedItem = item(table_id)
+		table.set_seat_cells(plan.seats_for(table_id))
+	var tables: Dictionary[Vector2i, int] = {}
+	var furnishings: Dictionary[Vector2i, int] = {}
+	for link: DiningSeats.SeatLink in plan.links:
+		tables[link.cell] = link.table_item_id
+		furnishings[link.cell] = link.furnishing_item_id
+	_dining_tables = tables
+	_dining_furnishings = furnishings
+
+
+func _dining_furnishing_reserved(furnishing_id: int) -> bool:
+	for cell: Vector2i in _dining_furnishings:
+		if _dining_furnishings[cell] != furnishing_id:
+			continue
+		var table: PlacedItem = item(_dining_tables[cell])
+		if table != null and table.reserved_by(cell) != -1:
+			return true
+	return false
 
 
 func _footprint_cells(footprint: Vector2i, origin: Vector2i, quarter_turns: int) -> Array[Vector2i]:

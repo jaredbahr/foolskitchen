@@ -50,12 +50,32 @@ theme_override_constants/separation = 6
 [node name="Title" type="Label" parent="Panel/Margin/Rows/Scroll/Content"]
 layout_mode = 2
 mouse_filter = 2
-text = "Furniture   |   Square: work tile   Circle: seat"
+text = "Furniture"
 
-[node name="Items" type="HBoxContainer" parent="Panel/Margin/Rows/Scroll/Content"]
+[node name="Categories" type="HBoxContainer" parent="Panel/Margin/Rows/Scroll/Content"]
 layout_mode = 2
 mouse_filter = 2
-theme_override_constants/separation = 8
+theme_override_constants/separation = 6
+
+[node name="Hint" type="Label" parent="Panel/Margin/Rows/Scroll/Content"]
+layout_mode = 2
+mouse_filter = 2
+text = "Square: work tile   Circle: seat"
+autowrap_mode = 3
+
+[node name="Items" type="GridContainer" parent="Panel/Margin/Rows/Scroll/Content"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/h_separation = 8
+theme_override_constants/v_separation = 8
+columns = 2
+
+[node name="Empty" type="Label" parent="Panel/Margin/Rows/Scroll/Content"]
+visible = false
+layout_mode = 2
+mouse_filter = 2
+text = "No furniture in this category yet"
+autowrap_mode = 3
 
 [node name="PaintSwatches" type="HBoxContainer" parent="Panel/Margin/Rows/Scroll/Content"]
 visible = false

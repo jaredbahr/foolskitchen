@@ -4,6 +4,7 @@ extends TestCase
 
 const MAIN: PackedScene = preload("res://src/world/main.tscn")
 const SLOT: String = "build_session"
+const CAPTURE: GDScript = preload("res://tools/screenshot.gd")
 
 class FreeCatalog extends ContentDB:
 	var free_item: ItemDef = ItemDef.new()
@@ -303,13 +304,22 @@ func test_native_hud_toggle_survives_refresh_between_mouse_down_and_up() -> void
 func test_native_catalogue_click_consumes_gui_input_and_starts_one_ghost_without_booking() -> void:
 	await _start()
 	assert_true(_main.call("set_build_active", true))
-	assert_true(_mode().begin_buy(&"chair", Vector2i(4, 9)))
+	assert_true(_mode().begin_buy(&"chair", Vector2i(2, 8)))
+	assert_true(_mode().current_check.ok)
 	var catalogue: BuildCatalogue = _main.get_node("Overlay/BuildCatalogue") as BuildCatalogue
 	await _frames(3)
-	var button: Button = catalogue.item_buttons[&"fridge"]
-	var identity: int = button.get_instance_id()
 	var books: Dictionary = Economy.ledger.to_dict()
 	var items: int = _world().grid.items().size()
+	var kitchen: Button = catalogue.category_buttons[&"kitchen"]
+	assert_true(kitchen.is_visible_in_tree())
+	var kitchen_point: Vector2 = kitchen.get_global_rect().get_center()
+	_viewport.push_input(_mouse_event(kitchen_point, true), true)
+	_viewport.push_input(_mouse_event(kitchen_point, false), true)
+	assert_eq(catalogue.selected_category, &"kitchen")
+	await _frames(1)
+	var button: Button = catalogue.item_buttons[&"fridge"]
+	assert_true(button.is_visible_in_tree(), "native clicks target the visible Kitchen card")
+	var identity: int = button.get_instance_id()
 	var point: Vector2 = button.get_global_rect().get_center()
 	assert_true((catalogue.get_node("Panel") as Control).get_global_rect().has_point(point))
 	_viewport.push_input(_mouse_event(point, true), true)
@@ -487,7 +497,7 @@ func test_native_menu_and_build_transitions_cancel_ghost_and_preserve_data_and_a
 	assert_true(catalogue.visible)
 	assert_true(_rig().is_grid_forced())
 	assert_true(_main.call("begin_buy_item", &"chair"))
-	_main.call("update_build_pointer", _project(Vector2i(4, 9)))
+	_main.call("update_build_pointer", _project(Vector2i(2, 8)))
 	assert_true(_mode().has_ghost())
 	assert_true(_mode().current_check.ok)
 	var menu_button: Button = _main.get_node("HUD/Top/Row/Menu") as Button
@@ -587,8 +597,8 @@ func test_saved_startup_replaces_initial_world_before_final_controller_clock_bin
 	await _start(true)
 	var morning_file: String = FileAccess.get_file_as_string(_save_dir.path_join(SLOT + ".json"))
 	assert_true(_main.call("set_build_active", true))
-	assert_true(_mode().begin_buy(&"chair", Vector2i(4, 9)))
-	_click(_project(Vector2i(4, 9)))
+	assert_true(_mode().begin_buy(&"chair", Vector2i(2, 8)))
+	_click(_project(Vector2i(2, 8)))
 	assert_eq(FileAccess.get_file_as_string(_save_dir.path_join(SLOT + ".json")), morning_file,
 		"build commits do not introduce another autosave")
 	assert_eq(SaveSystem.save_game(SLOT), OK)  # Existing explicit MORNING save.
@@ -608,7 +618,7 @@ func test_saved_startup_replaces_initial_world_before_final_controller_clock_bin
 	assert_eq(_editor().to_dict(), snapshot)
 	assert_eq(Economy.ledger.to_dict(), books)
 	assert_true(_main.call("set_build_active", true))
-	assert_true(_mode().begin_buy(&"chair", Vector2i(4, 8)))
+	assert_true(_mode().begin_buy(&"chair", Vector2i(3, 8)))
 	assert_true(Clock.sim.start_service())
 	assert_false(_main.call("is_build_active"), "the final restored clock owns cancellation")
 	assert_null(_preview().ghost_mesh)
@@ -665,6 +675,63 @@ func test_paint_screen_pick_uses_visible_item_depth_before_wall_or_floor() -> vo
 		_click(pointer)
 		assert_eq(item.swatch_id, &"butter")
 	assert_eq(_world().now, 0)
+
+
+func test_rustic_capture_fixture_uses_checked_links_paint_and_real_room_nodes() -> void:
+	await _assert_catalogue_capture_fixture(&"rustic")
+
+
+func test_modern_capture_fixture_uses_checked_links_paint_and_real_room_nodes() -> void:
+	await _assert_catalogue_capture_fixture(&"modern")
+
+
+func _assert_catalogue_capture_fixture(profile: StringName) -> void:
+	await _start()
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	var fixture: Dictionary = CAPTURE.prepare_catalogue_review(_main, tree.root, profile)
+	assert_eq(fixture["error"], "")
+	assert_eq(fixture["kind"], "furnishing_fixture")
+	assert_eq(fixture["removed_tables"], 3)
+	assert_eq(fixture["simulation_ticks"], 0)
+	assert_eq((_main.get("owner_progress") as OwnerProgress).level, 6)
+	var shop: ShopView = _main.get_node("ShopView") as ShopView
+	shop._process(0.0) # Existing test driver keeps the world view's frame loop off.
+	await _frames(2)
+	var before: Dictionary = _catalogue_capture_snapshot()
+	var catalogue: Dictionary = CAPTURE.catalogue_review_evidence(_main, tree.root)
+	assert_eq(_catalogue_capture_snapshot(), before, "native evidence never requests a missing thumbnail")
+	assert_eq(catalogue["dining_links"].size(), 4)
+	assert_true((catalogue["dining_failures"] as Dictionary).is_empty())
+	assert_true(catalogue["catalogue_visible"])
+	if DisplayServer.get_name() == "headless":
+		assert_false(catalogue["cache"]["supported"])
+		assert_false(catalogue["cache"]["icons_match"])
+		assert_false(CAPTURE.catalogue_review_valid(catalogue, 90, fixture), "headless state never fabricates rendered previews")
+	assert_true(_main.call("set_build_active", false))
+	await _frames(2)
+	before = _catalogue_capture_snapshot()
+	var room: Dictionary = CAPTURE.catalogue_review_evidence(_main, tree.root)
+	assert_true(CAPTURE.catalogue_review_valid(room, 120, fixture))
+	assert_false(CAPTURE.catalogue_review_valid(room, 90, fixture))
+	assert_eq(_catalogue_capture_snapshot(), before)
+	assert_eq(_world().now, 0)
+	assert_eq(_world().clock.phase, SimClock.Phase.MORNING)
+	assert_eq(Economy.ledger.day_totals(1).get(Ledger.OTHER, 0), fixture["cash_grant"])
+	assert_eq(Economy.ledger.day_totals(1).get(Ledger.UPGRADES, 0), fixture["refund"] - fixture["purchase_total"])
+	assert_false(FileAccess.file_exists(_save_dir.path_join(SLOT + ".json")))
+	# A broken final placement must be reported from the actual world, not a
+	# profile label. Mutating only the detached evidence checks this gate.
+	var wrong: Dictionary = room.duplicate(true)
+	wrong["dining_links"][0]["front_table"] = 0
+	assert_false(CAPTURE.catalogue_review_valid(wrong, 120, fixture))
+
+
+func _catalogue_capture_snapshot() -> Dictionary:
+	var catalogue: BuildCatalogue = _main.get_node("Overlay/BuildCatalogue") as BuildCatalogue
+	var sim: RestaurantSim = _main.get("sim") as RestaurantSim
+	return {"books": Economy.ledger.to_dict(), "shop": _editor().to_dict(), "world_tick": _world().now,
+		"rng": [sim.rng.seed, sim.rng.state], "pending": catalogue._thumbnails.pending_count(),
+		"cached": catalogue._thumbnails.cached_count(), "category": catalogue.selected_category}
 
 
 func _start(with_saves: bool = false) -> void:

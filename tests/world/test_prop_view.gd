@@ -61,7 +61,27 @@ func test_every_authored_item_has_floor_aligned_parts_inside_its_footprint_or_de
 		assert_true(have_body, String(definition.id))
 		assert_almost_eq(body_bounds.get_center().x, 0.0, 0.0001, String(definition.id))
 		assert_almost_eq(body_bounds.get_center().z, 0.0, 0.0001, String(definition.id))
-		assert_true(view.body_surface_count() > 0, "%s body material names must match imported surfaces" % definition.id)
+		if not view.body_material_names.is_empty():
+			assert_true(view.body_surface_count() > 0, "%s body material names must match imported surfaces" % definition.id)
+		else:
+			assert_false(definition.paintable, "%s needs a body surface before paint can be enabled" % definition.id)
+			assert_eq(view.body_surface_count(), 0, "%s keeps all original kit materials" % definition.id)
+
+
+func test_optional_seat_surface_uses_the_shared_scale_and_preserves_unspecified_fallback() -> void:
+	var view: PropView = PropView.new()
+	_views.append(view)
+	assert_eq(view.seat_surface_height(), 0.0)
+	view.seat_surface_y = 0.435
+	assert_almost_eq(view.seat_surface_height(), 0.4785)
+	view.seat_surface_y = 0.22
+	assert_almost_eq(view.seat_surface_height(), 0.242)
+	view.seat_surface_y = 0.0
+	assert_eq(view.seat_surface_height(), 0.0)
+	var legacy: ItemDef = load("res://data/items/table_2.tres") as ItemDef
+	var legacy_view: PropView = legacy.view_scene.instantiate() as PropView
+	_views.append(legacy_view)
+	assert_eq(legacy_view.seat_surface_height(), 0.0, "accepted built-in chairs retain their caller fallback")
 
 
 func test_table_chairs_match_declared_seat_centres_facing_and_shared_scale() -> void:

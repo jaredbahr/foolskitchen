@@ -36,7 +36,7 @@ func test_morning_items_and_books_round_trip_through_the_shop_provider() -> void
 	var original_file: String = FileAccess.get_file_as_string(_path())
 	var price: int = (first.get("content") as ContentDB).item(&"chair").price
 	var before_cash: int = Economy.cash
-	assert_true(first.call("shop_buy", &"chair", Vector2i(4, 9)))
+	assert_true(first.call("shop_buy", &"chair", Vector2i(2, 8)))
 	assert_eq(Economy.cash, before_cash - price)
 	assert_true(first.call("shop_move", _id(first, &"potted_plant"), Vector2i(11, 9), 1))
 	assert_eq(FileAccess.get_file_as_string(_path()), original_file, "edits do not introduce another autosave boundary")
@@ -93,7 +93,7 @@ func test_invalid_shop_starts_fresh_skips_one_save_then_autosaves_next_morning()
 	assert_eq((second.get("world") as SimWorld).grid.item(_id(second, &"potted_plant")).origin, Vector2i(12, 9))
 	assert_eq(Economy.cash, TUNING.starting_cash - _stock_cost(second))
 	assert_eq(FileAccess.get_file_as_string(_path()), broken, "only the first autosave is skipped")
-	assert_true(second.call("shop_buy", &"chair", Vector2i(4, 9)))
+	assert_true(second.call("shop_buy", &"chair", Vector2i(2, 8)))
 	assert_eq(FileAccess.get_file_as_string(_path()), broken, "editing does not write a save")
 	_assert_bindings(second)
 	Clock.sim.phase = SimClock.Phase.CLOSED
@@ -154,14 +154,16 @@ func test_saved_furniture_on_staff_spawn_loads_and_staff_can_escape() -> void:
 	var report: DayReport = first.get("shown_report") as DayReport
 	assert_eq(report.owner_level_before, 1)
 	assert_eq(report.owner_level_after, 2)
-	assert_eq(report.owner_unlocks, ["Potted plant", "Tomato melt recipe"] as Array[String],
-		"the level-up banner lists only the two authored unlocks")
+	assert_eq(report.owner_unlocks, ["Bar stool", "Leafy plant", "Potted plant", "Rectangular rug",
+		"Round table", "Rounded chair", "Side table", "Square rug", "Standing coat rack",
+		"Tomato melt recipe", "Two-seat bench"] as Array[String],
+		"the level-up banner lists every authored level-two unlock")
 	var panel: Control = first.get_node("Overlay/EveningReport") as Control
 	var banner: Label = panel.get_node("Panel/Scroll/Content/LevelUpCallout/OwnerLevelUp") as Label
 	var unlocks: Label = panel.get_node("Panel/Scroll/Content/LevelUpCallout/OwnerUnlocks") as Label
 	assert_true(banner.visible)
 	assert_eq(banner.text, "Level up! Level 2 reached")
-	assert_eq(unlocks.text, "Unlocked: Potted plant, Tomato melt recipe")
+	assert_eq(unlocks.text, "Unlocked: Bar stool, Leafy plant, Potted plant, Rectangular rug, Round table, Rounded chair, Side table, Square rug, Standing coat rack, Tomato melt recipe, Two-seat bench")
 	var xp_rows: GridContainer = panel.get_node("Panel/Scroll/Content/OwnerXPRows") as GridContainer
 	assert_eq(xp_rows.get_child_count(), 8, "the native report shows four labelled XP sources")
 	assert_eq((xp_rows.get_child(7) as Label).text, "+%d XP" % report.owner_xp_breakdown["total_xp"])

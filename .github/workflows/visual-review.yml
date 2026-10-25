@@ -81,6 +81,8 @@ jobs:
           bash tools/screenshot.sh --out=screens/visual-review/people-poses --open --fast=8 --frames=60,240 --speed=1
           bash tools/screenshot.sh --out=screens/visual-review/door-queue --door-queue --open --fast=8 --frames=240 --speed=1
           bash tools/screenshot.sh --out=screens/visual-review/loan-review --loan-review --speed=0 --frames=12,90
+          bash tools/screenshot.sh --out=screens/visual-review/catalogue-rustic --catalogue-review=rustic --speed=0 --frames=90,120
+          bash tools/screenshot.sh --out=screens/visual-review/catalogue-modern --catalogue-review=modern --speed=0 --frames=90,120
           bash tools/screenshot.sh --out=screens/visual-review/menu --menu --speed=0 --frames=12
           bash tools/screenshot.sh --out=screens/visual-review/staff --staff --speed=0 --frames=12
           bash tools/screenshot.sh --out=screens/visual-review/report --report --open --fast=100 --speed=0 --frames=60

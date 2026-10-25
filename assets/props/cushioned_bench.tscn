@@ -1,0 +1,26 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://src/world/prop_view.gd" id="1_view"]
+[ext_resource type="PackedScene" path="res://assets/kenney/furniture/benchCushion.glb" id="2_model"]
+
+[node name="CushionedBench" type="Node3D"]
+script = ExtResource("1_view")
+footprint = Vector2i(2, 1)
+seat_surface_y = 0.24
+body_material_names = PackedStringArray("wood")
+
+[node name="Left" type="Node3D" parent="."]
+position = Vector3(-0.25, 0, 0)
+
+[node name="Art" type="Node3D" parent="Left"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="Left/Art" instance=ExtResource("2_model")]
+
+[node name="Right" type="Node3D" parent="."]
+position = Vector3(0.25, 0, 0)
+
+[node name="Art" type="Node3D" parent="Right"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="Right/Art" instance=ExtResource("2_model")]

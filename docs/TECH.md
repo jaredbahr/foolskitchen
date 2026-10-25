@@ -594,6 +594,48 @@ an active edit/panel/selection first, or opens Settings when none is active.
   review requirements. Int64 charge, shortfall and principal limits reject an
   unrepresentable settlement before any account or ledger mutation.
 
+### Furniture catalogue and dining seats (FK-071)
+- Twenty-five additional item resources use unchanged approved Furniture Kit
+  scenes: nine seats, four tables, a counter assembled from bar pieces and
+  eleven decor items. Prices, levels 1–6, categories and theme tags remain in
+  data. Wood body slots share existing paint; rugs, glass and upholstered parts
+  retain their original materials. Benches assemble two unscaled kit seats,
+  and the counter uses two bar pieces and an end. Central ArtScale is unchanged.
+- `DiningSeats.derive()` stages links from furnishing seat cells to physical
+  tables. Authored built-in table seats have priority; every seat of a new
+  furnishing must be walkable, unique and face an adjacent table/counter
+  footprint. A two-seat bench contributes both links or neither. Item capacity
+  continues to describe work/storage capacity, not a dining-seat limit.
+- Grid placement, movement, removal and terrain changes install the projection
+  before notifications. Retained reservations stay attached to the physical
+  table, while lost links release their bookings. Guests order from the table
+  rather than treating a chair as a food surface; delivery and dirty-table
+  cleanup keep the same physical table ID. Generic non-ItemDef grid fixtures
+  retain their existing seat behavior.
+- `EditCheck.validate_dining()` rejects new or moved seats without a surface,
+  and prevents edits from orphaning previously valid seating. Existing loose
+  chairs in older saves can remain while unrelated items are edited. Blocked
+  built-in seats and unreachable stations retain warning-only path checks.
+  These checks do not enable service-time decor edits; #84's blocking policy
+  remains a separate decision. The merged loan purchase-refusal path is kept.
+- The catalogue filters its existing native cards into Seating, Tables, Kitchen
+  and Decor, preserving purchase requests, unlock checks and button identity.
+  `ItemThumbnailCache` queues unique wrapper scenes into one private 96×96
+  viewport with the authored shop environment and lights. It copies the real
+  frame after drawing, releases the rendered prop and reuses the cached
+  texture. A per-item 30-frame limit bounds draw waits; headless tests exercise
+  queue and cleanup contracts without claiming rendered thumbnails.
+- New seat wrappers expose measured sitting surfaces to PropView. ShopView
+  combines that height with central scale and the placed seat's rotation;
+  built-in table chairs retain their existing path. Measured planes are source
+  geometry evidence, not acceptance of every seated animation or cushion fit.
+  Real-Kitchen fixtures exercise bench and bar-stool orders through cooking,
+  delivery, payment, bussing and washing with conserved plates and the existing
+  4,000-tick test bound. Runtime and visual results belong in the PR evidence.
+- No save section is added. Existing item IDs, positions, turns and swatches
+  use the shop snapshot; dining links are derived again from the restored
+  layout. The sole persistence boundary stays the normal morning autosave.
+
 ### 2.4 Save system
 - JSON in `user://saves/`, with a `version` field and migration functions per version.
 - Only sim state is saved, never nodes. The world is rebuilt from sim state on load.

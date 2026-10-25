@@ -19,6 +19,7 @@ extends SceneTree
 ##   --paint     show a painted morning shop using the production paint controls
 ##   --door-queue  zoom the existing camera onto a real queue, or its empty entry
 ##   --loan-review --speed=0 --frames=12,90  explicit financial-fixture UI evidence
+##   --catalogue-review=rustic|modern --speed=0 --frames=90,120  furnishing fixture
 ## Ordinary captures record real moods, markers and seeds without a fixture.
 
 const MAX_CAPTURE_WAIT_FRAMES: int = 8
@@ -30,6 +31,13 @@ const GENERATED_UID_SOURCES: Array[String] = [
 	"res://src/sim/economy/loan_account.gd", "res://src/sim/economy/loan_tuning.gd",
 	"res://tests/sim/test_loan_account.gd", "res://tests/world/test_loan_session.gd",
 	"res://tests/tools/test_screenshot_options.gd",
+]
+const CATALOGUE_UID_SOURCES: Array[String] = [
+	"res://src/sim/shop/dining_seats.gd", "res://src/ui/item_thumbnail_cache.gd",
+	"res://tests/sim/test_dining_seats.gd", "res://tests/sim/test_dining_grid.gd",
+	"res://tests/sim/test_dining_editor.gd", "res://tests/sim/test_dining_kitchen.gd",
+	"res://tests/world/test_catalogue_decor.gd", "res://tests/world/test_catalogue_seating_props.gd",
+	"res://tests/ui/test_item_thumbnail_cache.gd",
 ]
 
 var _frames: int = 0
@@ -64,6 +72,8 @@ var _paint: bool = false
 var _door_queue: bool = false
 var _loan_review: bool = false
 var _loan_fixture: Dictionary = {}
+var _catalogue_profile: StringName = &""
+var _catalogue_fixture: Dictionary = {}
 var _build_pointer: Vector2 = Vector2.ZERO
 var _selected_agent_id: int = -1
 var _capture_pending: bool = false
@@ -79,6 +89,11 @@ func _initialize() -> void:
 		_fail_capture(loan_options["error"])
 		return
 	_loan_review = loan_options["enabled"]
+	var catalogue_options: Dictionary = catalogue_review_options(OS.get_cmdline_user_args())
+	if not String(catalogue_options["error"]).is_empty():
+		_fail_capture(catalogue_options["error"])
+		return
+	_catalogue_profile = catalogue_options["profile"]
 	var layout_options: Dictionary = hud_layout_options(OS.get_cmdline_user_args())
 	if not String(layout_options["error"]).is_empty():
 		_fail_capture(layout_options["error"])
@@ -323,10 +338,10 @@ static func loan_review_evidence(main: Node, context_root: Node) -> Dictionary:
 
 ## Provenance only. Read real sidecars and the runtime UID cache; never create,
 ## import, register or repair an ID. Missing evidence does not alter UI gates.
-static func generated_uid_evidence() -> Dictionary:
+static func generated_uid_evidence(sources: Array[String] = GENERATED_UID_SOURCES) -> Dictionary:
 	var entries: Array[Dictionary] = []
 	var complete_match: bool = true
-	for source: String in GENERATED_UID_SOURCES:
+	for source: String in sources:
 		var uid_path: String = source + ".uid"
 		var source_exists: bool = FileAccess.file_exists(source)
 		var sidecar_exists: bool = FileAccess.file_exists(uid_path)
@@ -369,6 +384,275 @@ static func generated_uid_evidence() -> Dictionary:
 			"registered_id": str(registered_id), "registered_text": registered_text,
 			"registered_known": registered_known, "matches_registered": matches, "status": status})
 	return {"read_only": true, "complete_match": complete_match, "entries": entries}
+
+
+static func catalogue_review_options(arguments: PackedStringArray) -> Dictionary:
+	var result: Dictionary = {"profile": &"", "error": ""}
+	for argument: String in arguments:
+		if argument.begins_with("--catalogue-review"):
+			if not String(result["profile"]).is_empty() or argument not in ["--catalogue-review=rustic", "--catalogue-review=modern"]:
+				result["error"] = "--catalogue-review requires one rustic or modern profile"
+				return result
+			result["profile"] = StringName(argument.trim_prefix("--catalogue-review="))
+	if String(result["profile"]).is_empty():
+		return result
+	var speeds: int = 0
+	var frames: int = 0
+	var scenes: int = 0
+	for argument: String in arguments:
+		if argument.begins_with("--catalogue-review=") or argument.begins_with("--out="):
+			continue
+		if argument == "--speed=0":
+			speeds += 1
+		elif argument == "--frames=90,120":
+			frames += 1
+		elif argument == "--scene=res://src/world/main.tscn":
+			scenes += 1
+		else:
+			result["error"] = "catalogue review requires paused Main frames 90,120 without other options"
+			return result
+	if speeds != 1 or frames != 1 or scenes > 1:
+		result["error"] = "catalogue review requires one --speed=0 and one --frames=90,120"
+	return result
+
+
+## Positions and styles belong only to this declared visual fixture. Definitions,
+## prices, tags, unlock thresholds, wrapper art and paint come from real content.
+static func catalogue_review_profile(profile: StringName) -> Dictionary:
+	if profile not in [&"rustic", &"modern"]:
+		return {}
+	var rustic: bool = profile == &"rustic"
+	var table: StringName = &"cross_table" if rustic else &"glass_table"
+	var items: Array[Dictionary] = [
+		{"id": table, "origin": Vector2i(2, 6)}, {"id": table, "origin": Vector2i(6, 6)},
+		{"id": &"bookcase_open_low" if rustic else &"speaker", "origin": Vector2i(11, 6)},
+		{"id": &"plant_small_3" if rustic else &"plant_small_2", "origin": Vector2i(12, 8)},
+		{"id": &"rug_round" if rustic else &"rug_square", "origin": Vector2i(9, 8)},
+	]
+	if rustic:
+		items.append({"id": &"bench", "origin": Vector2i(2, 7)})
+	else:
+		items.append({"id": &"modern_frame_chair", "origin": Vector2i(2, 7)})
+		items.append({"id": &"modern_frame_chair", "origin": Vector2i(3, 7)})
+	for cell: Vector2i in [Vector2i(6, 7), Vector2i(7, 7)]:
+		items.append({"id": &"wooden_chair" if rustic else &"modern_chair", "origin": cell})
+	return {"items": items, "category": &"seating" if rustic else &"decor",
+		"wall": &"cream" if rustic else &"slate_blue", "floor": &"honey" if rustic else &"cream",
+		"body": &"walnut" if rustic else &"charcoal"}
+
+
+## Validated memory progress and real ledger funding are explicit fixture inputs,
+## not earned progression or a playable balance result. No save or phase changes.
+static func prepare_catalogue_review(main: Node, context_root: Node, profile: StringName) -> Dictionary:
+	var result: Dictionary = {"kind": "furnishing_fixture", "profile": String(profile), "error": ""}
+	var recipe: Dictionary = catalogue_review_profile(profile)
+	var world: SimWorld = main.get("world") as SimWorld if "world" in main else null
+	var content: ContentDB = main.get("content") as ContentDB if "content" in main else null
+	var progress: OwnerProgress = main.get("owner_progress") as OwnerProgress if "owner_progress" in main else null
+	var editor: ShopEditor = main.get("shop_editor") as ShopEditor if "shop_editor" in main else null
+	var catalogue: BuildCatalogue = main.get_node_or_null("Overlay/BuildCatalogue") as BuildCatalogue
+	var clock: Node = context_root.get_node_or_null("Clock")
+	var economy: Node = context_root.get_node_or_null("Economy")
+	if recipe.is_empty() or world == null or content == null or progress == null or editor == null \
+			or catalogue == null or clock == null or economy == null or main.get("use_saves") != false \
+			or world.clock.phase != SimClock.Phase.MORNING or world.clock.day != 1 or world.now != 0 \
+			or clock.get("speed") != 0 or clock.get("sim") != world.clock:
+		result["error"] = "catalogue review requires fresh paused unsaved Main"
+		return result
+	var snapshot: Dictionary = progress.to_dict()
+	snapshot["total_xp"] = progress.threshold_for(6)
+	snapshot["level"] = 6
+	snapshot["last_awarded_day"] = 0
+	if not progress.from_dict(snapshot):
+		result["error"] = "catalogue progress fixture did not validate"
+		return result
+	editor.set_owner_level(progress.level)
+	catalogue.set_owner_level(progress.level)
+	(main.get("menu_settings") as MenuSettings).set_owner_level(progress.level)
+	main.get_node("HUD").call("set_owner_progress", progress.level, progress.xp_into_level(), progress.xp_in_level())
+	var refund: int = 0
+	var removed: int = 0
+	for item: PlacedItem in world.grid.items():
+		if (item.def as ItemDef).id == &"table_2":
+			var amount: int = int(main.call("shop_sell", item.id))
+			if amount < 0:
+				result["error"] = "starter table sale was refused"
+				return result
+			refund += amount
+			removed += 1
+	var total: int = 0
+	for row: Dictionary in recipe["items"]:
+		var definition: ItemDef = content.item(row["id"])
+		if definition == null:
+			result["error"] = "catalogue fixture content is missing"
+			return result
+		total += definition.price
+	var cash: int = int(economy.get("cash"))
+	var grant: int = maxi(0, total - cash)
+	if grant > 0:
+		economy.call("add_cash", grant, Ledger.OTHER)
+	var bought: Array[int] = []
+	for row: Dictionary in recipe["items"]:
+		if not bool(main.call("shop_buy", row["id"], row["origin"], 0)):
+			result["error"] = "catalogue fixture purchase was refused: " + String(row["id"])
+			return result
+		bought.append(world.grid.item_at(row["origin"]).id)
+	if not bool(main.call("set_paint_active", true)):
+		result["error"] = "catalogue fixture paint mode was refused"
+		return result
+	for target: Dictionary in [{"swatch": recipe["wall"], "cell": Vector2i(0, 6)},
+			{"swatch": recipe["floor"], "cell": Vector2i(1, 9)}]:
+		(catalogue.swatch_buttons[target["swatch"]] as Button).pressed.emit()
+		if not bool(main.call("paint_cell", target["cell"])):
+			result["error"] = "catalogue fixture room paint was refused"
+			return result
+	(catalogue.swatch_buttons[recipe["body"]] as Button).pressed.emit()
+	for id: int in bought:
+		var item: PlacedItem = world.grid.item(id)
+		if (item.def as ItemDef).paintable and not bool(main.call("paint_cell", item.origin)):
+			result["error"] = "catalogue fixture body paint was refused"
+			return result
+	main.call("set_paint_active", false)
+	if not bool(main.call("set_build_active", true)):
+		result["error"] = "catalogue fixture build mode was refused"
+		return result
+	(catalogue.category_buttons[recipe["category"]] as Button).pressed.emit()
+	result.merge({"owner_progress": snapshot, "cash_grant": grant, "grant_category": String(Ledger.OTHER),
+		"refund": refund, "removed_tables": removed, "purchase_total": total, "purchased_ids": bought,
+		"simulation_ticks": 0, "category": String(recipe["category"])})
+	return result
+
+
+## Read existing cache entries only: request() would queue missing thumbnails.
+## Visibility here means native clipping geometry, not an aesthetic verdict.
+static func catalogue_review_evidence(main: Node, context_root: Node) -> Dictionary:
+	var world: SimWorld = main.get("world") as SimWorld
+	var editor: ShopEditor = main.get("shop_editor") as ShopEditor
+	var content: ContentDB = main.get("content") as ContentDB
+	var progress: OwnerProgress = main.get("owner_progress") as OwnerProgress
+	var catalogue: BuildCatalogue = main.get_node_or_null("Overlay/BuildCatalogue") as BuildCatalogue
+	var shop: ShopView = main.get_node_or_null("ShopView") as ShopView
+	var clock: Node = context_root.get_node_or_null("Clock")
+	if world == null or editor == null or content == null or progress == null or catalogue == null or shop == null or clock == null:
+		return {"available": false}
+	var cache: ItemThumbnailCache = catalogue._thumbnails
+	var expected: Dictionary[int, bool] = {}
+	var cards: Array[Dictionary] = []
+	var icons_match: bool = true
+	var onscreen: int = 0
+	for id: StringName in catalogue.ordered_ids():
+		var definition: ItemDef = content.item(id)
+		var scene: PackedScene = definition.view_scene
+		var button: Button = catalogue.item_buttons[id]
+		var texture: Texture2D = null
+		if scene != null:
+			expected[scene.get_instance_id()] = true
+			texture = cache._textures.get(scene.get_instance_id()) as Texture2D
+		var matches: bool = texture is ImageTexture and button.icon == texture and texture.get_size() == Vector2(96, 96)
+		icons_match = icons_match and matches
+		var control: Dictionary = _loan_control_evidence(button)
+		if control["visible"] and control["inside_clip"]:
+			onscreen += 1
+		cards.append({"id": String(id), "text": button.text, "disabled": button.disabled,
+			"category": String(BuildCatalogue.category_for(definition)), "unlock_level": definition.unlock_level,
+			"scene": scene.resource_path if scene != null else "", "native": control,
+			"icon_matches_cache": matches, "icon_width_limit": button.get_theme_constant("icon_max_width"),
+			"texture_id": texture.get_instance_id() if texture != null else null,
+			"icon_id": button.icon.get_instance_id() if button.icon != null else null,
+			"texture_size": [texture.get_width(), texture.get_height()] if texture != null else []})
+	var tabs: Array[Dictionary] = []
+	for id: StringName in BuildCatalogue.CATEGORY_IDS:
+		var button: Button = catalogue.category_buttons[id]
+		tabs.append({"id": String(id), "text": button.text, "pressed": button.button_pressed,
+			"native": _loan_control_evidence(button)})
+	var items: Array[Dictionary] = []
+	for item: PlacedItem in world.grid.items():
+		var definition: ItemDef = item.def as ItemDef
+		var visual: ItemVisual = shop.item_nodes.get(item.id) as ItemVisual
+		var prop: PropView = visual.prop if visual != null else null
+		var record: Dictionary = {"id": item.id, "definition": String(definition.id),
+			"origin": [item.origin.x, item.origin.y], "turns": item.quarter_turns,
+			"paint": String(item.swatch_id), "paintable": definition.paintable, "tags": definition.theme_tags,
+			"expected_wrapper": definition.view_scene.resource_path if definition.view_scene != null else "",
+			"wrapper": prop.scene_file_path if prop != null else "", "rendered": prop != null and prop.is_visible_in_tree()}
+		if prop != null:
+			var bounds: AABB = prop.global_transform * prop.get_combined_aabb()
+			var footprint: Vector2i = GridMath.rotated_footprint(definition.footprint, item.quarter_turns)
+			var allowed: Rect2 = Rect2(Vector2(item.origin) * GridMath.CELL_SIZE, Vector2(footprint) * GridMath.CELL_SIZE).grow(0.05)
+			record.merge({"aabb": [bounds.position.x, bounds.position.y, bounds.position.z, bounds.size.x, bounds.size.y, bounds.size.z],
+				"floor_y": bounds.position.y, "seat_surface_height": prop.seat_surface_height(),
+				"fits_footprint": allowed.encloses(Rect2(Vector2(bounds.position.x, bounds.position.z), Vector2(bounds.size.x, bounds.size.z)))})
+		items.append(record)
+	var dining: DiningSeats.Plan = DiningSeats.derive(world.grid)
+	var links: Array[Dictionary] = []
+	for link: DiningSeats.SeatLink in dining.links:
+		var furnishing: PlacedItem = world.grid.item(link.furnishing_item_id)
+		var definition: ItemDef = furnishing.def as ItemDef
+		var forward: Vector2i = GridMath.rotate_cell(Vector2i.UP, definition.footprint, furnishing.quarter_turns) \
+			- GridMath.rotate_cell(Vector2i.ZERO, definition.footprint, furnishing.quarter_turns)
+		var surface: PlacedItem = world.grid.item_at(link.cell + forward)
+		links.append({"cell": [link.cell.x, link.cell.y], "table": link.table_item_id, "furnishing": link.furnishing_item_id,
+			"built_in": link.built_in, "front_table": surface.id if surface != null else 0,
+			"linked_table": world.grid.dining_table_id(link.cell), "linked_furnishing": world.grid.dining_furnishing_id(link.cell)})
+	var check: EditCheck = editor.check_current()
+	return {"available": true, "use_saves": main.get("use_saves"), "world_tick": world.now,
+		"day": world.clock.day, "phase": int(world.clock.phase), "clock_speed": clock.get("speed"),
+		"owner_level": progress.level, "build_active": main.call("is_build_active"), "paint_active": main.call("is_paint_active"),
+		"catalogue_visible": catalogue.is_visible_in_tree(), "category": String(catalogue.selected_category),
+		"wall": String(editor.wall_swatch_id), "floor": String(editor.floor_swatch_id),
+		"cache": {"supported": cache.rendering_supported(), "pending": cache.pending_count(), "cached": cache.cached_count(),
+			"expected": expected.size(), "active": cache._active_scene != null, "failed": cache._failed.size(),
+			"error": cache.last_error, "icons_match": icons_match},
+		"cards": cards, "onscreen_cards": onscreen, "tabs": tabs, "items": items,
+		"dining_failures": dining.failures, "dining_links": links, "edit_ok": check.ok, "unreachable": check.unreachable}
+
+
+static func catalogue_review_valid(state: Dictionary, frame: int, fixture: Dictionary) -> bool:
+	var profile: Dictionary = catalogue_review_profile(StringName(fixture.get("profile", "")))
+	if profile.is_empty() or fixture.get("error") != "" or fixture.get("kind") != "furnishing_fixture" \
+			or state.get("available") != true or state.get("use_saves") != false or state.get("world_tick") != 0 \
+			or state.get("day") != 1 or state.get("phase") != SimClock.Phase.MORNING or state.get("clock_speed") != 0 \
+			or state.get("owner_level") != 6 or state.get("paint_active") != false \
+			or state.get("wall") != String(profile["wall"]) or state.get("floor") != String(profile["floor"]) \
+			or state.get("edit_ok") != true or not (state["unreachable"] as Array).is_empty() \
+			or not (state["dining_failures"] as Dictionary).is_empty() or state["dining_links"].size() != 4:
+		return false
+	for link: Dictionary in state["dining_links"]:
+		if link["built_in"] or link["table"] == link["furnishing"] or link["front_table"] != link["table"] \
+				or link["linked_table"] != link["table"] or link["linked_furnishing"] != link["furnishing"]:
+			return false
+	var found: int = 0
+	for item: Dictionary in state["items"]:
+		var index: int = (fixture["purchased_ids"] as Array).find(item["id"])
+		if index < 0:
+			continue
+		found += 1
+		if index >= (profile["items"] as Array).size():
+			return false
+		var wanted: Dictionary = profile["items"][index]
+		var origin: Vector2i = wanted["origin"]
+		if item["definition"] != String(wanted["id"]) or item["origin"] != [origin.x, origin.y] or item["turns"] != 0 \
+				or item["rendered"] != true or item["wrapper"] != item["expected_wrapper"] or item.get("fits_footprint") != true \
+				or absf(float(item.get("floor_y", INF))) > 0.0001 \
+				or item["paint"] != (String(profile["body"]) if item["paintable"] else ""):
+			return false
+	if found != (profile["items"] as Array).size():
+		return false
+	if frame == 120:
+		return state["catalogue_visible"] == false and state["build_active"] == false
+	if frame != 90 or state["catalogue_visible"] != true or state["build_active"] != true \
+			or state["category"] != String(profile["category"]) or state["onscreen_cards"] < 1:
+		return false
+	if state["tabs"].size() != BuildCatalogue.CATEGORY_IDS.size():
+		return false
+	for tab: Dictionary in state["tabs"]:
+		var id: StringName = StringName(tab["id"])
+		if tab["text"] != BuildCatalogue.CATEGORY_LABELS.get(id, "") or tab["pressed"] != (id == profile["category"]) \
+				or tab["native"]["visible"] != true or tab["native"]["inside_clip"] != true:
+			return false
+	var cache: Dictionary = state["cache"]
+	return cache["supported"] == true and cache["pending"] == 0 and cache["active"] == false \
+		and cache["failed"] == 0 and cache["error"] == "" and cache["icons_match"] == true and cache["cached"] == cache["expected"]
 
 
 static func _loan_control_evidence(control: Control) -> Dictionary:
@@ -456,7 +740,7 @@ static func hud_layout_options(arguments: PackedStringArray) -> Dictionary:
 				result["error"] = "--hud-layout requires --frames=12,90"
 		elif argument.begins_with("--scene") and argument != "--scene=res://src/world/main.tscn":
 			result["error"] = "--hud-layout requires the actual Main scene"
-		for prefix: String in ["--open", "--fast", "--select", "--assign-owner", "--f3", "--menu", "--staff", "--settings", "--report", "--build", "--paint", "--quarter", "--door-queue", "--loan-review"]:
+		for prefix: String in ["--open", "--fast", "--select", "--assign-owner", "--f3", "--menu", "--staff", "--settings", "--report", "--build", "--paint", "--quarter", "--door-queue", "--loan-review", "--catalogue-review"]:
 			if argument.begins_with(prefix):
 				result["error"] = "--hud-layout cannot combine with other view or service options"
 	if speed_count != 1 or frames_count != 1:
@@ -488,6 +772,11 @@ func _process(_delta: float) -> bool:
 			if not String(_loan_fixture["error"]).is_empty():
 				_fail_capture(_loan_fixture["error"])
 				return true
+		if not _catalogue_profile.is_empty():
+			_catalogue_fixture = prepare_catalogue_review(_main, root, _catalogue_profile)
+			if not String(_catalogue_fixture["error"]).is_empty():
+				_fail_capture(_catalogue_fixture["error"])
+				return true
 		_configure_inspection()
 		if _failed:
 			return true
@@ -515,6 +804,10 @@ func _process(_delta: float) -> bool:
 			_configure_paint()
 			if _failed:
 				return true
+	if not _catalogue_profile.is_empty() and _frames == 96:
+		if not bool(_main.call("set_build_active", false)):
+			_fail_capture("catalogue review could not return to the furnished world")
+			return true
 	if _hud_layout and _frames == 24:
 		_hud_layout_scale = 150
 		_open_settings_control(true, _hud_layout_scale)
@@ -1020,6 +1313,10 @@ func _capture() -> void:
 	if _loan_review and not loan_review_valid(loan_state, _capture_frame, _loan_fixture):
 		_fail_capture("loan review did not match its real account, phase and visible native controls")
 		return
+	var catalogue_state: Dictionary = catalogue_review_evidence(_main, root) if not _catalogue_profile.is_empty() else {}
+	if not _catalogue_profile.is_empty() and not catalogue_review_valid(catalogue_state, _capture_frame, _catalogue_fixture):
+		_fail_capture("catalogue review did not match its fixture, real previews, seating links or bounds: " + JSON.stringify(catalogue_state.get("cache", {})))
+		return
 	var settings_state: Dictionary = _settings_state() if _settings else {}
 	var hud_layout_state: Dictionary = _hud_layout_state() if _hud_layout else {}
 	if _settings and not _settings_capture_valid(settings_state, world):
@@ -1108,6 +1405,9 @@ func _capture() -> void:
 	if _loan_review and (image == null or image.get_size() != SETTINGS_CAPTURE_SIZE):
 		_fail_capture("loan review image did not match the usual 1600x900 dimensions")
 		return
+	if not _catalogue_profile.is_empty() and (image == null or image.get_size() != SETTINGS_CAPTURE_SIZE):
+		_fail_capture("catalogue review image did not match 1600x900")
+		return
 	var world_render: Dictionary = _settings_world_evidence(image) if _settings_world else {}
 	if image == null or image.is_empty() or image.save_png(path) != OK:
 		_fail_capture("cannot save viewport image: " + path)
@@ -1186,6 +1486,9 @@ func _capture() -> void:
 	if _loan_review:
 		metadata["loan_review"] = {"fixture": _loan_fixture, "state": loan_state,
 			"generated_uids": generated_uid_evidence()}
+	if not _catalogue_profile.is_empty():
+		metadata["catalogue_review"] = {"fixture": _catalogue_fixture, "state": catalogue_state,
+			"generated_uids": generated_uid_evidence(CATALOGUE_UID_SOURCES)}
 	var file: FileAccess = FileAccess.open(path.get_basename() + ".json", FileAccess.WRITE)
 	if file == null:
 		_fail_capture("cannot write capture metadata")
