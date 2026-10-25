@@ -92,7 +92,7 @@ func test_comparison_reads_six_real_models_refs_bounds_and_mini_without_mutation
 	assert_true(REVIEW.valid(state, 12, fixture), JSON.stringify(state))
 	assert_eq(_snapshot(), before, "evidence and validation leave clock, RNG, ledger, providers and preferences alone")
 	assert_eq(state["pairs"].size(), 6)
-	for change: String in ["model", "reference", "hash", "dimensions", "triangles", "bounds", "label", "mini", "lights", "clock", "rng"]:
+	for change: String in ["model", "reference", "hash", "dimensions", "triangles", "bounds", "label", "billboard", "mini", "mini_scale", "lights", "clock", "rng"]:
 		var broken: Dictionary = state.duplicate(true)
 		match change:
 			"model":
@@ -109,8 +109,12 @@ func test_comparison_reads_six_real_models_refs_bounds_and_mini_without_mutation
 				broken["pairs"][2]["made"]["bounds"]["inside"] = false
 			"label":
 				broken["pairs"][3]["made_label"]["text"] = ""
+			"billboard":
+				broken["pairs"][3]["made_label"]["billboard"] = int(BaseMaterial3D.BILLBOARD_ENABLED)
 			"mini":
 				broken["scale_mini"]["source"] = "res://mock.glb"
+			"mini_scale":
+				broken["scale_mini"]["scale"] = 1.2
 			"lights":
 				broken["lights"].append("invented light")
 			"clock":
