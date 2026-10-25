@@ -294,7 +294,6 @@ static func evidence(main: Node, context_root: Node, frame: int) -> Dictionary:
 		for index: int in range(2, IDS.size()):
 			var prop: PropView = stage.get_node_or_null(String(IDS[index])) as PropView
 			walls.append({"id": String(IDS[index]), "prop": _prop(prop, camera)})
-	var notice: Label = main.get_node_or_null("DinerReviewNotice/Text") as Label
 	var mini: PersonView = stage.get_node_or_null("ScaleMini") as PersonView if frame == 12 else null
 	var plan: DiningSeats.Plan = DiningSeats.derive(world.grid)
 	return {"available": true, "scene": main.scene_file_path, "use_saves": main.get("use_saves"),
@@ -302,7 +301,7 @@ static func evidence(main: Node, context_root: Node, frame: int) -> Dictionary:
 		"viewport": _cell(Vector2i(camera.get_viewport().get_visible_rect().size)),
 		"assets": assets, "pairs": pairs, "actors": actors, "items": items, "walls": walls,
 		"dining_links": plan.links.size(), "dining_failures": plan.failures,
-		"notice": {"text": notice.text if notice != null else "", "visible": notice != null and notice.is_visible_in_tree()},
+		"notice": _notice_evidence(main),
 		"scale_mini": {"model": String(mini.model_name()) if mini != null else "", "role": String(mini.role) if mini != null else "",
 			"source": mini._model.scene_file_path if mini != null and mini._model != null else "",
 			"scale": (mini.get_node("ModelPivot") as Node3D).scale.x if mini != null else 0.0,
@@ -315,8 +314,9 @@ static func valid(state: Dictionary, frame: int, fixture: Dictionary) -> bool:
 			or state.get("scene") != MAIN_SCENE or state.get("use_saves") != false or state.get("frame") != frame \
 			or state.get("viewport") != [SIZE.x, SIZE.y] or state.get("lights") != fixture.get("lights") \
 			or state.get("snapshot") != fixture.get("baseline" if frame == 12 else "furnished_baseline") \
-			or state.get("notice", {}).get("visible") != true or not String(state["notice"]["text"]).contains(NOTICE):
+			or not _notice_valid(state.get("notice", {})):
 		return false
+	var notice_rect: Rect2 = _rect(state["notice"]["panel_bounds"])
 	var assets: Array = state.get("assets", [])
 	if assets.size() != IDS.size():
 		return false
@@ -335,6 +335,8 @@ static func valid(state: Dictionary, frame: int, fixture: Dictionary) -> bool:
 				or mini.get("scale") != (Vector3.ONE * ArtScale.CHARACTER_SCALE).x \
 				or mini.get("source") != PersonPresentation.model_path_for(&"owner") or not _bounds_valid(mini.get("bounds", {})):
 			return false
+		if notice_rect.intersects(_rect(mini["bounds"])):
+			return false
 		var pair_rects: Array[Rect2] = []
 		for index: int in range(pairs.size()):
 			var pair: Dictionary = pairs[index]
@@ -351,6 +353,8 @@ static func valid(state: Dictionary, frame: int, fixture: Dictionary) -> bool:
 			if left.intersects(right):
 				return false
 			var union: Rect2 = left.merge(right).merge(_rect(pair["made_label"]["bounds"])).merge(_rect(pair["reference_label"]["bounds"]))
+			if notice_rect.intersects(union):
+				return false
 			for previous: Rect2 in pair_rects:
 				if previous.intersects(union):
 					return false
@@ -379,6 +383,8 @@ static func valid(state: Dictionary, frame: int, fixture: Dictionary) -> bool:
 				or not is_equal_approx(float(actor.get("seat_lift", -1.0)), float(actor.get("seat_height", -2.0))) \
 				or not _bounds_valid(actor.get("bounds", {})):
 			return false
+		if notice_rect.intersects(_rect(actor["bounds"])):
+			return false
 		seats[key] = true
 		if actor.get("furnishing_definition") == "diner_booth":
 			booths += 1
@@ -393,6 +399,8 @@ static func valid(state: Dictionary, frame: int, fixture: Dictionary) -> bool:
 				or item["prop"].get("wrapper") != "res://assets/props/%s.tscn" % PURCHASES[index]["id"] \
 				or not _bounds_valid(item["prop"].get("bounds", {})):
 			return false
+		if notice_rect.intersects(_rect(item["prop"]["bounds"])):
+			return false
 		if PURCHASES[index]["id"] in [&"diner_booth", &"diner_stool"]:
 			var asset_index: int = 0 if PURCHASES[index]["id"] == &"diner_booth" else 1
 			if not _prop_valid(item["prop"], assets[asset_index]["path"]) \
@@ -401,6 +409,8 @@ static func valid(state: Dictionary, frame: int, fixture: Dictionary) -> bool:
 	for index: int in range(walls.size()):
 		if walls[index].get("id") != String(IDS[index + 2]) \
 				or not _prop_valid(walls[index].get("prop", {}), assets[index + 2]["path"]):
+			return false
+		if notice_rect.intersects(_rect(walls[index]["prop"]["bounds"])):
 			return false
 	return booths == 4 and stools == 2
 
@@ -440,13 +450,78 @@ static func _notice(main: Node, text: String) -> void:
 		layer.name = "DinerReviewNotice"
 		layer.layer = 20
 		main.add_child(layer)
+		var panel: PanelContainer = PanelContainer.new()
+		panel.name = "Panel"
+		panel.theme = THEME
+		panel.position = Vector2(24, 796)
+		panel.custom_minimum_size = Vector2(1152, 88)
+		panel.size = panel.custom_minimum_size
+		layer.add_child(panel)
 		var label: Label = Label.new()
 		label.name = "Text"
-		label.theme = THEME
-		label.position = Vector2(24, 790)
-		label.add_theme_font_size_override("font_size", 18)
-		layer.add_child(label)
-	(layer.get_node("Text") as Label).text = text
+		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		panel.add_child(label)
+	(layer.get_node("Panel/Text") as Label).text = text
+
+
+## Query native panel/style/text layout, including the actual themed colours.
+## No preference, layout, material or simulation mutation occurs during evidence.
+static func _notice_evidence(main: Node) -> Dictionary:
+	var panel: PanelContainer = main.get_node_or_null("DinerReviewNotice/Panel") as PanelContainer
+	var label: Label = main.get_node_or_null("DinerReviewNotice/Panel/Text") as Label
+	if panel == null or label == null:
+		return {}
+	var style: StyleBoxFlat = panel.get_theme_stylebox("panel") as StyleBoxFlat
+	if style == null:
+		return {}
+	var background: Color = style.bg_color * panel.modulate * panel.self_modulate
+	var foreground: Color = label.get_theme_color("font_color") * panel.modulate * label.modulate * label.self_modulate
+	var light: float = maxf(_luminance(background), _luminance(foreground))
+	var dark: float = minf(_luminance(background), _luminance(foreground))
+	var content: Rect2 = Rect2(Vector2(style.get_margin(SIDE_LEFT), style.get_margin(SIDE_TOP)),
+		panel.size - Vector2(style.get_margin(SIDE_LEFT) + style.get_margin(SIDE_RIGHT),
+		style.get_margin(SIDE_TOP) + style.get_margin(SIDE_BOTTOM)))
+	var transform: Transform2D = panel.get_viewport().get_final_transform() * panel.get_global_transform_with_canvas()
+	content = transform * content
+	var minimum: Vector2 = label.get_minimum_size()
+	return {"text": label.text, "visible": label.is_visible_in_tree(),
+		"panel_bounds": _control_bounds(panel), "text_bounds": _control_bounds(label),
+		"content_bounds": [content.position.x, content.position.y, content.size.x, content.size.y],
+		"shared_panel_style": style == THEME.get_stylebox("panel", "PanelContainer"),
+		"background_drawn": panel.is_visible_in_tree() and style.draw_center,
+		"background_alpha": background.a, "text_alpha": foreground.a,
+		"contrast": (light + 0.05) / (dark + 0.05),
+		"line_count": label.get_line_count(), "visible_lines": label.get_visible_line_count(),
+		"text_fits": label.size.x >= minimum.x and label.size.y >= minimum.y}
+
+
+static func _control_bounds(control: Control) -> Dictionary:
+	var viewport: Viewport = control.get_viewport()
+	var bounds: Rect2 = viewport.get_final_transform() * control.get_global_transform_with_canvas() * Rect2(Vector2.ZERO, control.size)
+	return {"rect": [bounds.position.x, bounds.position.y, bounds.size.x, bounds.size.y],
+		"inside": viewport.get_visible_rect().grow(-8.0).encloses(bounds)}
+
+
+static func _luminance(color: Color) -> float:
+	var linear: Color = color.srgb_to_linear()
+	return 0.2126 * linear.r + 0.7152 * linear.g + 0.0722 * linear.b
+
+
+static func _notice_valid(notice: Dictionary) -> bool:
+	if notice.get("visible") != true or not String(notice.get("text", "")).contains(NOTICE) \
+			or notice.get("shared_panel_style") != true or notice.get("background_drawn") != true \
+			or float(notice.get("background_alpha", 0.0)) < 0.99 or float(notice.get("text_alpha", 0.0)) < 0.99 \
+			or float(notice.get("contrast", 0.0)) < 4.5 or notice.get("text_fits") != true \
+			or int(notice.get("line_count", 0)) < 2 or notice.get("visible_lines") != notice.get("line_count") \
+			or notice.get("panel_bounds", {}).get("inside") != true or notice.get("text_bounds", {}).get("inside") != true:
+		return false
+	var panel: Rect2 = _rect(notice["panel_bounds"])
+	var text: Rect2 = _rect(notice["text_bounds"])
+	var values: Array = notice.get("content_bounds", [])
+	if values.size() != 4:
+		return false
+	var content: Rect2 = Rect2(float(values[0]), float(values[1]), float(values[2]), float(values[3]))
+	return panel.has_area() and text.has_area() and panel.encloses(content) and content.grow(1.0).encloses(text)
 
 
 static func _comparison_visibility(shop: ShopView, visible: bool) -> void:
