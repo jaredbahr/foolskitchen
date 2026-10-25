@@ -27,6 +27,9 @@ var leave_reason: StringName = &"happy"
 var paid: bool = false
 ## The floor seen on arrival, before this guest can add their own door spot.
 var arrival_dirt_fraction: float = 0.0
+## Derived ambience sampled once on a real OPEN arrival, before later edits.
+var vibe_review_bonus: float = 0.0
+var vibe_theme_label: String = ""
 ## Survives morning report resets so stale removal callbacks cannot count twice.
 var departure_recorded: bool = false
 var rng: RandomNumberGenerator
@@ -181,6 +184,7 @@ func review_visit(standard_price: int, dirt_fraction: float = 0.0) -> ReviewVisi
 	if order != null and standard_price > 0:
 		visit.price_ratio = float(order.price) / float(standard_price)
 	visit.dirt_fraction = dirt_fraction
+	visit.vibe_review_bonus = vibe_review_bonus
 	return visit
 
 

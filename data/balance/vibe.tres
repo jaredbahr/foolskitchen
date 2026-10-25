@@ -1,0 +1,44 @@
+[gd_resource type="Resource" script_class="VibeTuning" format=3]
+
+[ext_resource type="Script" path="res://src/sim/vibe/vibe_tuning.gd" id="1_vibe"]
+
+[resource]
+script = ExtResource("1_vibe")
+score_cap = 100.0
+repeat_decay = 0.5
+free_charm = 2.0
+free_variety = 1
+decor_points_per_charm = 6.0
+decor_cap = 60.0
+variety_points_per_kind = 6.0
+variety_cap = 20.0
+lamp_item_ids = Array[StringName]([])
+lamp_points_per_charm = 6.0
+lamp_cap = 10.0
+theme_cap = 15.0
+theme_category_weights = Dictionary[int, float]({
+0: 0.0,
+1: 1.0,
+2: 1.0,
+3: 0.0,
+4: 0.0,
+5: 0.0,
+6: 1.0
+})
+theme_paint_weight = 0.25
+theme_menu_weight = 0.25
+theme_min_share = 0.6
+theme_min_layout_weight = 1.0
+theme_order = Array[StringName]([&"cosy", &"modern", &"rustic", &"diner", &"seafood"])
+theme_labels = Dictionary[StringName, String]({
+&"cosy": "Cosy",
+&"modern": "Modern",
+&"rustic": "Rustic",
+&"diner": "Diner",
+&"seafood": "Seafood"
+})
+no_theme_label = "No theme"
+crowding_start_density = 0.35
+crowding_cap = 10.0
+max_patience_bonus = 0.15
+max_review_bonus = 0.4

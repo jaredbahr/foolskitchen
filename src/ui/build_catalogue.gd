@@ -28,6 +28,8 @@ var _ordered_ids: Array[StringName] = []
 var _layout_ready: bool = false
 var _paint_visible: bool = false
 var _owner_level: int = 1
+## Stable capture path: Panel/Margin/Rows/Scroll/Content/VibeMeter.
+var vibe_meter: VibeMeter
 
 
 func bind_content(content: ContentDB) -> void:
@@ -50,13 +52,21 @@ func set_build_visible(active: bool) -> void:
 
 
 func set_paint_visible(active: bool) -> void:
+	_prepare_layout()
 	_paint_visible = active
 	_refresh_title()
 	(get_node("Panel/Margin/Rows/Scroll/Content/Categories") as Control).visible = not active
 	(get_node("Panel/Margin/Rows/Scroll/Content/Hint") as Control).visible = not active
 	(get_node("Panel/Margin/Rows/Scroll/Content/Items") as Control).visible = not active
+	vibe_meter.visible = not active
 	(get_node("Panel/Margin/Rows/Scroll/Content/PaintSwatches") as Control).visible = active
 	_apply_category()
+	_fit_panel()
+
+
+func set_vibe(result: VibeModel.Result) -> void:
+	_prepare_layout()
+	vibe_meter.set_vibe(result)
 	_fit_panel()
 
 
@@ -290,6 +300,9 @@ func _prepare_layout() -> void:
 	compact.set_content_margin(SIDE_BOTTOM, 6.0)
 	panel.add_theme_stylebox_override("panel", compact)
 	var content: Control = get_node("Panel/Margin/Rows/Scroll/Content") as Control
+	vibe_meter = VibeMeter.new()
+	content.add_child(vibe_meter)
+	content.move_child(vibe_meter, 1)
 	content.minimum_size_changed.connect(_fit_panel)
 	var categories: HBoxContainer = content.get_node("Categories") as HBoxContainer
 	for category: StringName in CATEGORY_IDS:

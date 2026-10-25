@@ -49,6 +49,11 @@ var review_quotes: ReviewQuotes
 var review_rng: RandomNumberGenerator
 var reviews_today: Array[Dictionary] = []
 var reputation_before_day: float = 3.0
+## Detached derived snapshot. Existing guests retain their own arrival effects.
+var vibe_result: VibeModel.Result:
+	get:
+		return _copy_vibe(_vibe_result)
+var _vibe_result: VibeModel.Result = VibeModel.Result.new()
 ## Where each staff role starts the day (from the layout).
 var staff_spawns: Dictionary[StringName, Vector2i] = {}
 
@@ -238,6 +243,67 @@ func configure_reviews(book: ReputationBook, tuning: ReviewTuning,
 	review_rng = random
 
 
+## Recomputed by the session on layout, paint, menu or load changes, never ticks.
+## Invalid inputs install a neutral result; neither this argument nor guests mutate.
+func set_vibe(result: VibeModel.Result) -> void:
+	_vibe_result = _copy_vibe(result)
+
+
+static func _copy_vibe(source: VibeModel.Result) -> VibeModel.Result:
+	var copy: VibeModel.Result = VibeModel.Result.new()
+	if source == null or not source.valid:
+		return copy
+	for value: float in [source.score, source.decor_points, source.variety_points,
+			source.theme_points, source.lamp_points, source.crowding_penalty,
+			source.theme_share, source.patience_multiplier, source.raw_review_bonus,
+			source.arrival_theme_strength, source.crowding_density]:
+		if not is_finite(value) or value < 0.0:
+			return copy
+	for component: float in [source.decor_points, source.variety_points,
+			source.theme_points, source.lamp_points, source.crowding_penalty]:
+		if component > 100.0:
+			return copy
+	if source.score > 100.0 or source.patience_multiplier < 1.0 \
+			or source.patience_multiplier > 1.15 or source.raw_review_bonus > 0.4 \
+			or source.theme_share > 1.0 or source.arrival_theme_strength > 1.0 \
+			or source.crowding_density > 1.0 or source.interior_cells < 0 \
+			or source.occupied_normal_cells < 0 or source.occupied_normal_cells > source.interior_cells \
+			or (not source.active_theme.is_empty() and not VibeTuning.KNOWN_THEMES.has(source.active_theme)):
+		return copy
+	if (source.score == 0.0 and (source.patience_multiplier != 1.0 \
+			or source.raw_review_bonus != 0.0 or source.arrival_theme_strength != 0.0)) \
+			or (source.active_theme.is_empty() and source.arrival_theme_strength != 0.0) \
+			or (not source.active_theme.is_empty() and source.theme_label.strip_edges().is_empty()):
+		return copy
+	copy.valid = true
+	copy.score = source.score
+	copy.decor_points = source.decor_points
+	copy.variety_points = source.variety_points
+	copy.theme_points = source.theme_points
+	copy.lamp_points = source.lamp_points
+	copy.crowding_penalty = source.crowding_penalty
+	copy.active_theme = source.active_theme
+	copy.theme_label = source.theme_label
+	copy.theme_share = source.theme_share
+	copy.patience_multiplier = source.patience_multiplier
+	copy.raw_review_bonus = source.raw_review_bonus
+	copy.arrival_theme_strength = source.arrival_theme_strength
+	copy.interior_cells = source.interior_cells
+	copy.occupied_normal_cells = source.occupied_normal_cells
+	copy.crowding_density = source.crowding_density
+	return copy
+
+
+## Neutral/disabled budgets stay exact. Saturating protects int64 rounding.
+static func _vibe_patience(budget: int, multiplier: float) -> int:
+	if budget <= 0 or not is_finite(multiplier) or multiplier <= 1.0:
+		return budget
+	var scaled: float = float(budget) * minf(multiplier, 1.15)
+	if scaled >= float(9223372036854775807):
+		return 9223372036854775807
+	return roundi(scaled)
+
+
 ## Missing overrides use the unchanged content price.
 func price_of(recipe: RecipeDef) -> int:
 	if recipe == null:
@@ -272,6 +338,12 @@ func add_customer(entry: Vector2i, random: RandomNumberGenerator) -> CustomerAge
 		var spot: Vector2i = cleanliness.try_spawn_on_arrival(entry)
 		if spot != SimGrid.NO_CELL and clean_tasks != null:
 			clean_tasks.sync_spots()
+	if world.clock.phase == SimClock.Phase.OPEN:
+		customer.queue_patience = _vibe_patience(customer.queue_patience, _vibe_result.patience_multiplier)
+		customer.food_patience = _vibe_patience(customer.food_patience, _vibe_result.patience_multiplier)
+		customer.vibe_review_bonus = _vibe_result.raw_review_bonus
+		if _vibe_result.score > 0.0 and not _vibe_result.active_theme.is_empty():
+			customer.vibe_theme_label = _vibe_result.theme_label
 	world.add_agent(customer)
 	world.log_event("Guest #%d arrived" % customer.id)
 	customer_arrived.emit(customer)

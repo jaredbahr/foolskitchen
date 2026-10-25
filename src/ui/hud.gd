@@ -37,6 +37,7 @@ var _buttons: Array[Button] = []
 var _cash: int = 0
 var _reputation_average: float = 3.0
 var _reputation_count: int = 5
+var _vibe_theme: String = ""
 var _owner_level: int = 1
 var _owner_xp_into: int = 0
 var _owner_xp_needed: int = 1
@@ -152,8 +153,17 @@ func set_reputation(average: float, count: int) -> void:
 
 func _render_reputation() -> void:
 	_reputation_label.text = "%.1f" % _reputation_average
-	_reputation_label.tooltip_text = "%.1f stars from your last %d reviews" % [
-		_reputation_average, _reputation_count]
+	var text: String = "%.1f stars from your last %d reviews" % [_reputation_average, _reputation_count]
+	_reputation_label.tooltip_text = text + ("\nTheme: %s" % _vibe_theme if not _vibe_theme.is_empty() else "")
+
+
+## Theme is tooltip-only, so the existing header keeps its native width.
+func set_vibe(result: VibeModel.Result) -> void:
+	_vibe_theme = result.theme_label if result != null and result.valid \
+		and not result.active_theme.is_empty() else "No active theme"
+	if _reputation_label == null:
+		_reputation_label = get_node("Top/Row/Reputation") as Label
+	_render_reputation()
 
 
 ## Primitive presentation only; Main owns the loan and its day-close policy.

@@ -486,12 +486,15 @@ an active edit/panel/selection first, or opens Settings when none is active.
   arrival spot. Departure passes that retained fraction to `review_visit`, so
   mopping or later dirt cannot change the floor that guest saw. Legacy visits
   without cleanliness retain zero dirt. An unserved guest gives one star;
-  closing departures give no review.
-  For a served guest, the score is `clamp(round(5 - penalty), 1, 5)`, where the
+  closing departures give no review. The optional raw ambience bonus is also
+  retained on arrival, so a later redesign cannot change that guest's term.
+  For a served guest, the score is `clamp(round(5 - penalty + vibe_bonus), 1, 5)`, where the
   penalty is the sum of each input clamped to 0..1 times its authored weight.
   `data/balance/reviews.tres` starts with queue 1.0, food 1.3, overprice 0.8,
-  and dirt 0.6. The largest weighted penalty chooses the complaint group;
-  otherwise the visit uses a positive quote. `data/reviews/quotes.tres` holds
+  and dirt 0.6. Final ratings of four or five, or visits without a substantial
+  complaint, use the existing positive-quote policy. Otherwise the largest
+  weighted penalty chooses the complaint group with the same stable ties.
+  `data/reviews/quotes.tres` holds
   the grouped lines.
 - A separate saved `GameState.rng(&"reviews")` stream draws the 50% chance and
   quote. Neither reviews nor quotes consume customer, kitchen or hiring draws.
@@ -707,6 +710,52 @@ an active edit/panel/selection first, or opens Settings when none is active.
 - No save section is added. Existing item IDs, positions, turns and swatches
   use the shop snapshot; dining links are derived again from the restored
   layout. The sole persistence boundary stays the normal morning autosave.
+
+### Restaurant vibe core (FK-072)
+- `VibeModel.evaluate()` reads detached layout, paint and enabled-menu inputs.
+  It never changes the inputs, draws randomness, reads nodes or saves a result.
+  Definition and recipe IDs are aggregated in lexical String order, rather
+  than the pointer ordering of interned StringNames.
+- `data/balance/vibe.tres` authors diminishing repeat charm, variety, component
+  caps, theme and menu weights, crowding and the maximum effects. Only DECOR
+  earns charm and variety; a data-authored lamp-ID list partitions lamp charm
+  without guessing IDs. The lamp list is empty until lamp content is available.
+- Known themes are Cosy, Modern, Rustic, Diner and Seafood. Tagged items, paint
+  and today's enabled recipes contribute weighted votes; menu weight is lower
+  than decor weight, and a menu alone cannot establish a layout theme. The
+  authored theme order resolves active ties. Themes are never auto-built.
+- Crowding counts the union of normal-layer occupied interior FLOOR cells.
+  Floor rugs still contribute charm and tags but do not double-count furniture
+  coverage. Score and component results remain finite and bounded; invalid
+  inputs or authoring return a neutral result and a readable reason.
+- Provisional tuning gives the starter plant's two charm and one decor kind a
+  free allowance. The actual starter's effects should therefore remain zero;
+  this is not a measured five-day profit result. The result exposes a maximum
+  1.15 patience multiplier and a 0.4 raw review term, with integer review
+  rounding left to the existing review system. Customer-type strength is a
+  hook until FK-061 is integrated.
+- `VibeInputs.capture()` copies the live grid, current paint tags and enabled
+  recipes. Main recomputes after final startup/load installation and accepted
+  layout, paint or menu-selection changes, never on simulation ticks or frame
+  updates. It disconnects the old grid observer before a world replacement.
+  Paint colours and IDs are unchanged; optional swatch theme tags are authored
+  in the existing curated resources.
+- `RestaurantSim.set_vibe()` keeps a detached bounded snapshot. A real OPEN
+  arrival applies its patience multiplier once after cleanliness, then keeps
+  its raw review bonus and theme label even if the player redecorates later.
+  Neutral budgets remain exact and the existing later Cheerful-server bonus
+  is preserved. `CustomerAgent.review_visit()` carries the retained term into
+  the existing review path, before integer rounding/clamping; unserved and
+  closing policies and the existing review/quote random stream remain intact.
+  A bonus that crosses into a positive rating uses the existing positive quote
+  policy, rather than retaining an old complaint from its lower raw rating.
+- A native read-only meter in the Build catalogue shows score and component
+  tooltip. The HUD adds the active theme to its existing reputation tooltip.
+  The evening report uses a transient count of paid guests' captured positive
+  arrival themes for guest wording, with a factual current-score fallback.
+  This avoids attributing a late repaint to earlier guests. Counts reset each
+  morning and never join the saved report. Score, snapshots and presentation
+  add no save section, action save, random draw or customer-type selection.
 
 ### 2.4 Save system
 - JSON in `user://saves/`, with a `version` field and migration functions per version.

@@ -16,6 +16,7 @@ const CLEANLINESS_TUNING: CleanlinessTuning = preload("res://data/balance/cleanl
 const REVIEW_TUNING: ReviewTuning = preload("res://data/balance/reviews.tres")
 const REVIEW_QUOTES: ReviewQuotes = preload("res://data/reviews/quotes.tres")
 const PROGRESSION_TUNING: ProgressionTuning = preload("res://data/balance/progression.tres")
+const VIBE_TUNING: VibeTuning = preload("res://data/balance/vibe.tres")
 const AUTOSAVE_SLOT: String = "autosave"
 const LOAN_LOCK_REASON: String = "Pay off your bank loan first"
 
@@ -28,6 +29,14 @@ var new_game_seed_override: int = 0
 var sim: RestaurantSim
 var world: SimWorld
 var content: ContentDB
+## Read-only, detached derived state for native UI and capture callers.
+var vibe_result: VibeModel.Result:
+	get:
+		return sim.vibe_result if sim != null else VibeModel.Result.new()
+signal vibe_changed(result: VibeModel.Result)
+var _vibe_grid: SimGrid
+## Today's paid departures, grouped by their captured arrival theme label.
+var _vibe_experiences: Dictionary[String, int] = {}
 ## The last evening report put on screen (for tests and tools).
 var shown_report: DayReport = null
 ## Dishes sold today (recipe id -> count), for the evening report.
@@ -105,6 +114,7 @@ func initialize() -> void:
 
 ## Also runs after startup replaces the layout: no inspector keeps the old world.
 func _bind_world_presentation() -> void:
+	_disconnect_vibe_grid()
 	# Release the hidden original BEFORE ShopView frees/replaces its meshes.
 	_build_ready = false
 	_build_preview = $BuildPreview
@@ -274,12 +284,15 @@ func start() -> void:
 	Clock.attach_world(world, sim.advance)
 	_begin_morning()
 	_bind_build_session()
+	_bind_vibe_grid()
 
 
 func _connect_session() -> void:
 	if not _report.is_connected(&"next_day_pressed", _on_next_day_pressed):
 		_report.connect(&"next_day_pressed", _on_next_day_pressed)
 	sim.customer_paid.connect(_on_customer_paid)
+	if not sim.customer_left.is_connected(_on_vibe_customer_left):
+		sim.customer_left.connect(_on_vibe_customer_left)
 	sim.review_recorded.connect(_on_review_recorded)
 	sim.service_closed.connect(_on_service_closed)
 	if not world.board.task_completed.is_connected(_on_staff_task_completed):
@@ -299,6 +312,7 @@ func _connect_session() -> void:
 
 
 func _exit_tree() -> void:
+	_disconnect_vibe_grid()
 	_build_ready = false
 	if build_mode.changed.is_connected(_on_build_changed):
 		build_mode.changed.disconnect(_on_build_changed)
@@ -311,6 +325,8 @@ func _exit_tree() -> void:
 		_inspect_panel.owner_mode_requested.disconnect(_on_owner_mode_requested)
 	if sim != null and sim.customer_paid.is_connected(_on_customer_paid):
 		sim.customer_paid.disconnect(_on_customer_paid)
+	if sim != null and sim.customer_left.is_connected(_on_vibe_customer_left):
+		sim.customer_left.disconnect(_on_vibe_customer_left)
 	if sim != null and sim.review_recorded.is_connected(_on_review_recorded):
 		sim.review_recorded.disconnect(_on_review_recorded)
 	if sim != null and sim.kitchen != null and sim.kitchen.plates_changed.is_connected(_on_plates_changed):
@@ -529,6 +545,9 @@ func paint_cell(cell: Vector2i) -> bool:
 		return false
 	var target: Dictionary = _paint_target(cell)
 	var kind: StringName = target.get("kind", &"")
+	var previous: StringName = shop_editor.wall_swatch_id if kind == &"wall" else (
+		shop_editor.floor_swatch_id if kind == &"floor" else (
+			world.grid.item(target["item_id"]).swatch_id if kind == &"item" else &""))
 	var accepted: bool = false
 	match kind:
 		&"wall": accepted = shop_editor.paint_wall(_paint_swatch_id)
@@ -536,7 +555,66 @@ func paint_cell(cell: Vector2i) -> bool:
 		&"item": accepted = shop_editor.paint_item(target["item_id"], _paint_swatch_id)
 	if accepted:
 		($ShopView as ShopView).set_paint(content, shop_editor.wall_swatch_id, shop_editor.floor_swatch_id)
+		if previous != _paint_swatch_id:
+			_recompute_vibe()
 	return accepted
+
+
+## Subscribe only after the final loaded world, menu and editor are installed.
+func _bind_vibe_grid() -> void:
+	_disconnect_vibe_grid()
+	_vibe_grid = world.grid
+	_vibe_grid.cells_changed.connect(_on_vibe_cells_changed)
+	_recompute_vibe()
+
+
+func _disconnect_vibe_grid() -> void:
+	if _vibe_grid != null and _vibe_grid.cells_changed.is_connected(_on_vibe_cells_changed):
+		_vibe_grid.cells_changed.disconnect(_on_vibe_cells_changed)
+	_vibe_grid = null
+
+
+func _on_vibe_cells_changed(_cells: Array[Vector2i]) -> void:
+	_recompute_vibe()
+
+
+func _recompute_vibe() -> void:
+	if sim == null or world == null or shop_editor == null or menu_settings == null:
+		return
+	var inputs: VibeModel.Inputs = VibeInputs.capture(world.grid, content, menu_settings.enabled_recipes(),
+		shop_editor.wall_swatch_id, shop_editor.floor_swatch_id)
+	sim.set_vibe(VibeModel.evaluate(inputs, VIBE_TUNING))
+	var result: VibeModel.Result = vibe_result
+	_build_catalogue.set_vibe(result)
+	$HUD.set_vibe(result)
+	_report.call(&"set_vibe", result, _experienced_vibe_theme())
+	vibe_changed.emit(vibe_result)
+
+
+## The sim emits each departure once. Observe only its captured presentation
+## evidence; review calculation and its random stream remain in RestaurantSim.
+func _on_vibe_customer_left(customer: CustomerAgent, _reason: StringName) -> void:
+	if customer == null or not customer.paid or not is_finite(customer.vibe_review_bonus) \
+			or customer.vibe_review_bonus <= 0.0 \
+			or not VIBE_TUNING.theme_labels.values().has(customer.vibe_theme_label):
+		return
+	var label: String = customer.vibe_theme_label
+	_vibe_experiences[label] = _vibe_experiences.get(label, 0) + 1
+	_report.call(&"set_vibe", vibe_result, _experienced_vibe_theme())
+
+
+func _experienced_vibe_theme() -> String:
+	var labels: Array[String] = []
+	for label: String in _vibe_experiences:
+		labels.append(label)
+	labels.sort()
+	var selected: String = ""
+	var most: int = 0
+	for label: String in labels:
+		if _vibe_experiences[label] > most:
+			selected = label
+			most = _vibe_experiences[label]
+	return selected
 
 
 func _on_paint_toggled() -> void:
@@ -1262,10 +1340,13 @@ func can_edit_menu() -> bool:
 func menu_set_enabled(recipe_id: StringName, enabled: bool) -> bool:
 	if not can_edit_menu():
 		return false
+	var was_enabled: bool = menu_settings.is_enabled(recipe_id)
 	if not menu_settings.set_enabled(recipe_id, enabled):
 		return false
 	_apply_menu(sim, menu_settings)
 	_menu_panel.refresh()
+	if was_enabled != menu_settings.is_enabled(recipe_id):
+		_recompute_vibe()
 	return true
 
 
@@ -1400,6 +1481,8 @@ func shop_sell(item_id: int) -> int:
 
 ## Morning setup: new counters, a stocked fridge, and an autosave.
 func _begin_morning() -> void:
+	_vibe_experiences.clear()
+	_report.call(&"set_vibe", vibe_result)
 	# Direct sim drivers may finish cleanup after service_closed. Apply that
 	# newly completed work before the saved-state clone drops transient XP.
 	# An ordinary morning or repeated setup has no staged XP to apply again.

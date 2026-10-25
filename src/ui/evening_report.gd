@@ -43,6 +43,8 @@ var _owner_xp_rows: GridContainer
 var _owner_unlocks: Label
 var _nodes_bound: bool = false
 var _report_shown: bool = false
+var vibe_summary: Label
+var _vibe_text: String = ""
 
 
 func _ready() -> void:
@@ -100,7 +102,26 @@ func show_report(report: DayReport) -> void:
 	else:
 		_add_label(_reviews, "No reviews today")
 	_fill_owner_progress(report)
+	_render_vibe()
 	show()
+
+
+## Current room presentation is derived, never part of the saved day report.
+## The optional label comes from paid guests' captured arrival effects.
+func set_vibe(result: VibeModel.Result, experienced_theme_label: String = "") -> void:
+	_bind_nodes()
+	_vibe_text = ""
+	if not experienced_theme_label.is_empty():
+		_vibe_text = "Guests loved the %s vibe." % experienced_theme_label.to_lower()
+	elif result != null and result.valid:
+		var theme_name: String = result.theme_label if not result.active_theme.is_empty() else "No active theme"
+		_vibe_text = "Vibe: %s, %d / 100." % [theme_name, roundi(result.score)]
+	_render_vibe()
+
+
+func _render_vibe() -> void:
+	vibe_summary.text = _vibe_text
+	vibe_summary.visible = not _vibe_text.is_empty()
 
 
 func _bind_nodes() -> void:
@@ -124,6 +145,14 @@ func _bind_nodes() -> void:
 	_owner_level_up = %OwnerLevelUp
 	_owner_xp_rows = %OwnerXPRows
 	_owner_unlocks = %OwnerUnlocks
+	var content: VBoxContainer = get_node("Panel/Scroll/Content") as VBoxContainer
+	vibe_summary = Label.new()
+	vibe_summary.name = "VibeSummary"
+	vibe_summary.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	vibe_summary.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	vibe_summary.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	content.add_child(vibe_summary)
+	content.move_child(vibe_summary, (content.get_node("ReviewHeading") as Control).get_index())
 	var next_day: Button = %NextDay
 	IconStyle.decorate_label(_header, &"report")
 	for path: String in ["ReviewHeading", "GuestHeading", "ReasonHeading", "OwnerHeading"]:

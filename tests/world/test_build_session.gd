@@ -863,6 +863,45 @@ func test_paint_screen_pick_uses_visible_item_depth_before_wall_or_floor() -> vo
 	assert_eq(_world().now, 0)
 
 
+func test_catalogue_vibe_uid_scope_is_read_only_exact_and_rejects_missing_or_stale_records() -> void:
+	var sources: Array[String] = ["res://src/sim/vibe/vibe_model.gd", "res://src/sim/vibe/vibe_tuning.gd",
+		"res://tests/sim/test_vibe_model.gd", "res://src/sim/vibe/vibe_inputs.gd",
+		"res://tests/sim/test_vibe_effects.gd", "res://tests/sim/test_vibe_swatches.gd",
+		"res://src/ui/vibe_meter.gd", "res://tests/ui/test_vibe_meter.gd", "res://tests/world/test_vibe_session.gd"]
+	assert_eq(CAPTURE.VIBE_UID_SOURCES, sources)
+	var before: Dictionary = {}
+	for path: String in sources:
+		before[path] = {"exists": FileAccess.file_exists(path + ".uid"),
+			"text": FileAccess.get_file_as_string(path + ".uid") if FileAccess.file_exists(path + ".uid") else "",
+			"id": ResourceLoader.get_resource_uid(path) if FileAccess.file_exists(path) else ResourceUID.INVALID_ID}
+	var evidence: Dictionary = CAPTURE.generated_uid_evidence(CAPTURE.VIBE_UID_SOURCES)
+	assert_true(CAPTURE.catalogue_vibe_uids_valid(evidence), "normal import must provide genuine Vibe UID provenance: " + JSON.stringify(evidence))
+	for index: int in range(sources.size()):
+		var path: String = sources[index]
+		var row: Dictionary = evidence["entries"][index]
+		assert_eq(row["source"], path)
+		assert_eq(row["sidecar_text"], before[path]["text"])
+		assert_eq(row["registered_id"], str(before[path]["id"]))
+		assert_eq(FileAccess.file_exists(path + ".uid"), before[path]["exists"])
+		assert_eq(FileAccess.get_file_as_string(path + ".uid") if FileAccess.file_exists(path + ".uid") else "", before[path]["text"])
+	assert_eq(CAPTURE.generated_uid_evidence()["entries"].size(), 5, "the loan default scope stays intact")
+	assert_eq(CAPTURE.generated_uid_evidence(CAPTURE.CATALOGUE_UID_SOURCES)["entries"].size(), 9)
+	assert_eq(CAPTURE.generated_uid_evidence(CAPTURE.STAFF_PRIORITY_UID_SOURCES)["entries"].size(), 6)
+	assert_false(CAPTURE.catalogue_vibe_uids_valid({}))
+	var wrong: Dictionary = evidence.duplicate(true)
+	(wrong["entries"] as Array).pop_back()
+	assert_false(CAPTURE.catalogue_vibe_uids_valid(wrong))
+	wrong = evidence.duplicate(true)
+	wrong["entries"][0]["sidecar_text"] = ""
+	assert_false(CAPTURE.catalogue_vibe_uids_valid(wrong))
+	wrong = evidence.duplicate(true)
+	wrong["entries"][0]["registered_id"] = evidence["entries"][1]["registered_id"]
+	assert_false(CAPTURE.catalogue_vibe_uids_valid(wrong), "a stale registered ID cannot agree with another sidecar's text")
+	wrong = evidence.duplicate(true)
+	wrong["entries"][0]["matches_registered"] = false
+	assert_false(CAPTURE.catalogue_vibe_uids_valid(wrong))
+
+
 func test_rustic_capture_fixture_uses_checked_links_paint_and_real_room_nodes() -> void:
 	await _assert_catalogue_capture_fixture(&"rustic")
 
@@ -915,6 +954,10 @@ func _assert_catalogue_capture_fixture(profile: StringName) -> void:
 	assert_true((catalogue["dining_failures"] as Dictionary).is_empty())
 	assert_true(catalogue["catalogue_visible"])
 	_assert_catalogue_cards_match_data(catalogue, content)
+	_assert_catalogue_vibe_matches_actual_sources(catalogue, 90)
+	var bad_meter: Dictionary = catalogue["vibe"].duplicate(true)
+	bad_meter["meter"]["caption_bounds"][0] = float(bad_meter["meter"]["panel_bounds"][0]) - 10.0
+	assert_false(CAPTURE.catalogue_vibe_valid(bad_meter, 90), "the native meter cannot be clipped out of its panel or scroll viewport")
 	if DisplayServer.get_name() == "headless":
 		assert_false(catalogue["cache"]["supported"])
 		assert_false(catalogue["cache"]["icons_match"])
@@ -937,6 +980,7 @@ func _assert_catalogue_capture_fixture(profile: StringName) -> void:
 	await _frames(2)
 	before = _catalogue_capture_snapshot()
 	var room: Dictionary = CAPTURE.catalogue_review_evidence(_main, tree.root)
+	_assert_catalogue_vibe_matches_actual_sources(room, 120)
 	assert_true(CAPTURE.catalogue_review_valid(room, 120, fixture))
 	assert_false(CAPTURE.catalogue_review_valid(room, 90, fixture))
 	assert_eq(_catalogue_capture_snapshot(), before)
@@ -948,6 +992,33 @@ func _assert_catalogue_capture_fixture(profile: StringName) -> void:
 	# A broken final placement must be reported from the actual world, not a
 	# profile label. Mutating only the detached evidence checks this gate.
 	var wrong: Dictionary = room.duplicate(true)
+	wrong.erase("vibe")
+	assert_false(CAPTURE.catalogue_review_valid(wrong, 120, fixture), "missing Vibe evidence fails closed")
+	wrong = room.duplicate(true)
+	wrong["vibe"]["main"]["score"] = float(wrong["vibe"]["main"]["score"]) + 0.5
+	assert_false(CAPTURE.catalogue_review_valid(wrong, 120, fixture), "stale Main state must disagree with the actual inputs")
+	wrong = room.duplicate(true)
+	wrong["vibe"]["meter"]["caption"] = "Vibe -"
+	assert_false(CAPTURE.catalogue_review_valid(wrong, 120, fixture), "native label text is read independently of cached view_state")
+	wrong = room.duplicate(true)
+	wrong["vibe"]["meter"]["value"] = NAN
+	assert_false(CAPTURE.catalogue_review_valid(wrong, 120, fixture), "nonfinite native values cannot pass approximate comparisons")
+	wrong = room.duplicate(true)
+	wrong["vibe"]["meter"]["view_state"]["tooltip"] = "Vibe unavailable"
+	assert_false(CAPTURE.catalogue_review_valid(wrong, 120, fixture))
+	wrong = room.duplicate(true)
+	wrong["vibe"]["meter"]["fill_color"] = [0.0, 0.0, 0.0, 0.0]
+	assert_false(CAPTURE.catalogue_review_valid(wrong, 120, fixture), "the meter retains the shared theme")
+	wrong = room.duplicate(true)
+	wrong.erase("generated_vibe_uids")
+	assert_false(CAPTURE.catalogue_review_valid(wrong, 120, fixture))
+	wrong = room.duplicate(true)
+	wrong["generated_vibe_uids"]["entries"][0]["matches_registered"] = false
+	assert_false(CAPTURE.catalogue_review_valid(wrong, 120, fixture))
+	wrong = room.duplicate(true)
+	wrong["vibe"]["meter"]["caption_bounds"] = [0.0, 0.0, 0.0, 0.0]
+	assert_true(CAPTURE.catalogue_review_valid(wrong, 120, fixture), "hidden closed-catalogue controls need not be onscreen")
+	wrong = room.duplicate(true)
 	wrong["dining_links"][0]["front_table"] = 0
 	assert_false(CAPTURE.catalogue_review_valid(wrong, 120, fixture))
 	wrong = room.duplicate(true)
@@ -992,6 +1063,32 @@ func _assert_catalogue_capture_fixture(profile: StringName) -> void:
 		assert_false(CAPTURE.catalogue_review_valid(wrong, 120, fixture), "normal and floor-decor indexes must agree with the actual furniture")
 
 
+func _assert_catalogue_vibe_matches_actual_sources(state: Dictionary, frame: int) -> void:
+	var menu: MenuSettings = _main.get("menu_settings") as MenuSettings
+	var content: ContentDB = _main.get("content") as ContentDB
+	var inputs: VibeModel.Inputs = VibeInputs.capture(_world().grid, content, menu.enabled_recipes(),
+		_editor().wall_swatch_id, _editor().floor_swatch_id)
+	var fresh: VibeModel.Result = VibeModel.evaluate(inputs, CAPTURE.VIBE_TERMS)
+	var vibe: Dictionary = state["vibe"]
+	assert_true(fresh.valid)
+	assert_true(CAPTURE.catalogue_vibe_valid(vibe, frame), "actual meter/Main/pure Vibe mismatch: " + JSON.stringify(vibe))
+	assert_eq(vibe["expected"]["score"], fresh.score)
+	assert_eq(vibe["expected"]["active_theme"], String(fresh.active_theme))
+	assert_eq(vibe["expected"]["theme_label"], fresh.theme_label)
+	assert_eq(vibe["main"], vibe["expected"])
+	assert_eq(vibe["meter"]["caption"], "Vibe %d / 100" % roundi(fresh.score))
+	assert_eq(vibe["meter"]["value"], fresh.score)
+	assert_eq(vibe["inputs"]["wall"], String(_editor().wall_swatch_id))
+	assert_eq(vibe["inputs"]["floor"], String(_editor().floor_swatch_id))
+	var ids: Array[String] = []
+	for recipe: RecipeDef in menu.enabled_recipes():
+		ids.append(String(recipe.id))
+	ids.sort()
+	assert_eq(vibe["inputs"]["menu_ids"], ids)
+	assert_true(CAPTURE.catalogue_vibe_uids_valid(state["generated_vibe_uids"]), JSON.stringify(state["generated_vibe_uids"]))
+	assert_eq(vibe["meter"]["visible"], frame == 90)
+
+
 func _assert_catalogue_cards_match_data(state: Dictionary, content: ContentDB) -> void:
 	var wanted: Array[String] = []
 	var wrappers: Array[String] = []
@@ -1027,6 +1124,8 @@ func _catalogue_capture_snapshot() -> Dictionary:
 		agents.append({"id": agent.id, "cell": agent.cell, "path": agent.path.duplicate(),
 			"path_index": agent.path_index, "move_progress": agent.move_progress})
 	return {"books": Economy.ledger.to_dict(), "shop": _editor().to_dict(), "world_tick": _world().now,
+		"vibe": CAPTURE._vibe_result_record(_main.get("vibe_result") as VibeModel.Result),
+		"menu": (_main.get("menu_settings") as MenuSettings).to_dict(),
 		"rng": [sim.rng.seed, sim.rng.state], "pending": catalogue._thumbnails.pending_count(),
 		"cached": catalogue._thumbnails.cached_count(), "category": catalogue.selected_category, "agents": agents}
 

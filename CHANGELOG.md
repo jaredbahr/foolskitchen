@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- Decorate to improve your restaurant's vibe, giving waiting guests more patience and a small review bonus; see its theme in Build mode and the evening report. (#140)
 - Place rugs beneath furniture, and Alt-click a covered rug to move or sell it without disturbing the furniture. (#139)
 - Find the Cushioned chair by name; tiny plants leave the catalogue, and a slow preview no longer stops other previews. (#139)
 - Set each staff member's job priorities at any time; changes guide their next task without interrupting current work. (#137)
