@@ -333,7 +333,8 @@ an active edit/panel/selection first, or opens Settings when none is active.
   `price_of(recipe)` falls back to the immutable `RecipeDef.standard_price`.
   Orders capture that price once, so later settings never reprice a ticket.
 - At order time an above-standard price has refusal probability
-  `clamp((price / standard - 1) * price_sensitivity, 0, max_price_walkout)`.
+  `clamp((price / standard / budget - 1) * price_sensitivity, 0, max_price_walkout)`.
+  Regular's budget multiplier is 1.0, preserving its existing formula.
   The `EconomyTuning` defaults are 1.5 and 0.9. The guest uses its private RNG
   only when the chance is positive: standard/cheaper menus preserve the existing
   random stream. Refusal creates no ticket and gives `too_expensive` as a readable
@@ -498,7 +499,7 @@ an active edit/panel/selection first, or opens Settings when none is active.
   without cleanliness retain zero dirt. An unserved guest gives one star;
   closing departures give no review. The optional raw ambience bonus is also
   retained on arrival, so a later redesign cannot change that guest's term.
-  For a served guest, the score is `clamp(round(5 - penalty + vibe_bonus), 1, 5)`, where the
+  For a served guest, the score is `round(clamp(5 - penalty + vibe_bonus + quality_bonus, 1, 5))`, where the
   penalty is the sum of each input clamped to 0..1 times its authored weight.
   `data/balance/reviews.tres` starts with queue 1.0, food 1.3, overprice 0.8,
   and dirt 0.6. Final ratings of four or five, or visits without a substantial
@@ -507,7 +508,8 @@ an active edit/panel/selection first, or opens Settings when none is active.
   `data/reviews/quotes.tres` holds
   the grouped lines.
 - A separate saved `GameState.rng(&"reviews")` stream draws the 50% chance and
-  quote. Neither reviews nor quotes consume customer, kitchen or hiring draws.
+  quote, with the type's review-chance multiplier applied before the draw.
+  Neither reviews nor quotes consume customer, kitchen or hiring draws.
   The 0.8x-at-one-star to 1.2x-at-five-stars arrival curve is linear in the
   authored resource. Main samples it once before `sim.start_day()` schedules
   the first guest, scaling the base min/max arrival gaps inversely. Reviews
