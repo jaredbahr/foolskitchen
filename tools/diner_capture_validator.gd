@@ -55,7 +55,7 @@ static func validate_capture_pair(directory: String, frame: int) -> Dictionary:
 	if image_bytes.size() <= 1000 or image_bytes.size() < 24 or image_bytes.slice(0, 8) != PNG_SIGNATURE:
 		messages.append("diner-review: missing or corrupt PNG %s" % filename)
 		return {"valid": false, "messages": messages}
-	if image_bytes.decode_u32(16, true) != 1600 or image_bytes.decode_u32(20, true) != 900:
+	if image_bytes_width(image_bytes) != 1600 or image_bytes_height(image_bytes) != 900:
 		messages.append("diner-review: wrong PNG dimensions in %s" % filename)
 		return {"valid": false, "messages": messages}
 	var metadata_file: FileAccess = FileAccess.open(metadata_path, FileAccess.READ)
