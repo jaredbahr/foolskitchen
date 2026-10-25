@@ -228,6 +228,143 @@ func test_native_bench_guests_keep_distinct_cells_and_share_the_authored_seat_su
 	assert_almost_eq(_person(guests[0].id).position.distance_to(_person(guests[1].id).position), GridMath.CELL_SIZE)
 
 
+func test_native_bench_offsets_follow_rotated_front_without_mutating_sim_or_content() -> void:
+	var table_def: ItemDef = load("res://data/items/cloth_table.tres") as ItemDef
+	var content_bench_def: ItemDef = load("res://data/items/cushioned_bench.tres") as ItemDef
+	var content_seats_before: Array[Vector2i] = content_bench_def.seat_cells.duplicate()
+	var authored_offset: float = 0.1
+	var bench_origins: Array[Vector2i] = [
+		Vector2i(2, 3), Vector2i(5, 1), Vector2i(2, 5), Vector2i(5, 5),
+	]
+	var tables: Array[PlacedItem] = []
+	var benches: Array[PlacedItem] = []
+	var bench_definitions: Array[ItemDef] = []
+	var guests: Array[CustomerAgent] = []
+	var expected_forward: Dictionary[int, Vector3] = {}
+	var expected_bench_id: Dictionary[int, int] = {}
+	var expected_table_id: Dictionary[int, int] = {}
+	var expected_seat_cell: Dictionary[int, Vector2i] = {}
+	var random_states: Dictionary[int, int] = {}
+	var table_cells_before: Array[Array] = []
+	var table_seats_before: Array[Array] = []
+	var bench_cells_before: Array[Array] = []
+	var bench_seats_before: Array[Array] = []
+	for turns: int in range(4):
+		var bench_def: ItemDef = content_bench_def.duplicate(true) as ItemDef
+		bench_def.seated_forward_offset = authored_offset
+		bench_definitions.append(bench_def)
+		var rotated_zero: Vector2i = GridMath.rotate_cell(Vector2i.ZERO, bench_def.footprint, turns)
+		var rotated_front: Vector2i = GridMath.rotate_cell(Vector2i.UP, bench_def.footprint, turns)
+		var front_cell: Vector2i = rotated_front - rotated_zero
+		var forward: Vector3 = Vector3(front_cell.x, 0.0, front_cell.y).normalized()
+		assert_almost_eq(absf(forward.x) + absf(forward.z), 1.0,
+			0.0001, "the authored bench front stays on one grid axis")
+		var bench_origin: Vector2i = bench_origins[turns]
+		var table: PlacedItem = _world.grid.place_def(table_def, bench_origin + front_cell, turns)
+		var bench: PlacedItem = _world.grid.place_def(bench_def, bench_origin, turns)
+		assert_not_null(table)
+		assert_not_null(bench)
+		tables.append(table)
+		benches.append(bench)
+		table_cells_before.append(table.cells.duplicate())
+		table_seats_before.append(table.seat_cells.duplicate())
+		bench_cells_before.append(bench.cells.duplicate())
+		bench_seats_before.append(bench.seat_cells.duplicate())
+		assert_eq(table.quarter_turns, turns)
+		assert_eq(bench.quarter_turns, turns)
+		assert_eq(bench.def, bench_def)
+		assert_almost_eq(bench_def.seated_forward_offset, authored_offset)
+		assert_eq(bench.seat_cells.size(), 2)
+		for seat: Vector2i in bench.seat_cells:
+			assert_true(table.seat_cells.has(seat))
+			assert_eq(_world.grid.dining_furnishing_id(seat), bench.id)
+			var guest: CustomerAgent = _guest(CustomerAgent.State.WAITING_FOOD)
+			guest.table_item_id = table.id
+			guest.seat_cell = seat
+			guest.cell = seat
+			assert_true(table.reserve(seat, guest.id))
+			guests.append(guest)
+			expected_forward[guest.id] = forward
+			expected_bench_id[guest.id] = bench.id
+			expected_table_id[guest.id] = table.id
+			expected_seat_cell[guest.id] = seat
+			random_states[guest.id] = guest.rng.state
+	var blocker_guest: CustomerAgent = guests[2]
+	var server: StaffAgent = _world.add_agent(StaffAgent.new(&"server")) as StaffAgent
+	server.cell = blocker_guest.seat_cell
+	var server_cell_before: Vector2i = server.cell
+	await _enter_view()
+	_view._process(0.0)
+	var icons: Dictionary[int, GuestMoodIndicator] = {}
+	var drawn_positions_before: Dictionary[int, Vector3] = _view.drawn_agent_positions()
+	var head_positions_before: Dictionary[int, Vector3] = {}
+	var mood_positions_before: Dictionary[int, Vector3] = {}
+	for turns: int in range(4):
+		var first_guest: CustomerAgent = guests[turns * 2]
+		var second_guest: CustomerAgent = guests[turns * 2 + 1]
+		var first_person: PersonView = _person(first_guest.id)
+		var second_person: PersonView = _person(second_guest.id)
+		var forward: Vector3 = expected_forward[first_guest.id]
+		assert_true(forward.is_equal_approx(expected_forward[second_guest.id]))
+		assert_almost_eq(absf(forward.x) + absf(forward.z), 1.0,
+			0.0001, "both bench seats use the rotated cardinal front, not the table-centre diagonal")
+		for guest: CustomerAgent in [first_guest, second_guest]:
+			var person: PersonView = _person(guest.id)
+			var expected_position: Vector3 = GridMath.cell_to_world(guest.seat_cell) + forward * authored_offset
+			assert_eq(person.current_clip(), &"sit")
+			assert_true(person.position.is_equal_approx(expected_position),
+				"ShopView draws each guest along the duplicated definition's rotated front")
+			assert_true((-person.global_basis.z).normalized().dot(forward) > 0.9999)
+			assert_true(person.get_meta("person_ready"))
+			assert_eq(guest.cell, guest.seat_cell)
+			assert_eq(_world.grid.item(guest.table_item_id).reserved_by(guest.seat_cell), guest.id)
+			assert_eq(_world.grid.dining_furnishing_id(guest.seat_cell), benches[turns].id)
+			var icon: GuestMoodIndicator = _view.mood_nodes[guest.id] as GuestMoodIndicator
+			icons[guest.id] = icon
+			assert_true(icon.position.is_equal_approx(person.head_anchor_position() + Vector3.UP * 0.15))
+			assert_true(icon.global_position.is_equal_approx(person.to_global(icon.position)))
+			head_positions_before[guest.id] = person.to_global(person.head_anchor_position())
+			mood_positions_before[guest.id] = icon.global_position
+		assert_almost_eq(first_person.position.distance_to(second_person.position), GridMath.CELL_SIZE)
+	assert_true(drawn_positions_before[server.id].distance_to(drawn_positions_before[blocker_guest.id])
+		>= AgentPresentationController.MIN_STANDING_DISTANCE,
+		"standing-agent separation uses final seated offset positions as blockers")
+	assert_eq(server.cell, server_cell_before)
+	for turns: int in range(4):
+		bench_definitions[turns].seated_forward_offset = 0.2
+	_view._process(0.0)
+	for guest: CustomerAgent in guests:
+		var person: PersonView = _person(guest.id)
+		var forward: Vector3 = expected_forward[guest.id]
+		var icon: GuestMoodIndicator = icons[guest.id]
+		assert_true(person.position.is_equal_approx(drawn_positions_before[guest.id] + forward * 0.1))
+		assert_true(person.to_global(person.head_anchor_position()).is_equal_approx(
+			head_positions_before[guest.id] + forward * 0.1))
+		assert_true(icon.global_position.is_equal_approx(mood_positions_before[guest.id] + forward * 0.1))
+		assert_true(icon.position.is_equal_approx(person.head_anchor_position() + Vector3.UP * 0.15))
+		assert_eq(_view.mood_nodes[guest.id], icon)
+		assert_eq(icon.updates, 1, "unchanged mood bands keep their icon while its world anchor follows the person")
+		assert_eq(guest.rng.state, random_states[guest.id])
+		assert_eq(guest.cell, expected_seat_cell[guest.id])
+		assert_eq(guest.seat_cell, expected_seat_cell[guest.id])
+		assert_eq(guest.table_item_id, expected_table_id[guest.id])
+		assert_eq(_world.grid.item(guest.table_item_id).reserved_by(guest.seat_cell), guest.id)
+		assert_eq(_world.grid.dining_furnishing_id(guest.seat_cell), expected_bench_id[guest.id])
+	for turns: int in range(4):
+		assert_eq(tables[turns].cells, table_cells_before[turns])
+		assert_eq(tables[turns].seat_cells, table_seats_before[turns])
+		assert_eq(benches[turns].cells, bench_cells_before[turns])
+		assert_eq(benches[turns].seat_cells, bench_seats_before[turns])
+		assert_eq(tables[turns].quarter_turns, turns)
+		assert_eq(benches[turns].quarter_turns, turns)
+		assert_eq(bench_definitions[turns].seated_forward_offset, 0.2)
+	assert_eq(content_bench_def.seated_forward_offset, 0.0)
+	assert_eq(content_bench_def.seat_cells, content_seats_before)
+	assert_true(table_def.seat_cells.is_empty())
+	assert_eq(server.cell, server_cell_before)
+	assert_eq(_world.now, 0)
+
+
 func test_nudged_drawn_positions_keep_owner_picking_inspection_and_selection_ring() -> void:
 	var owner: OwnerAgent = _world.add_agent(OwnerAgent.new(Vector2i(1, 1))) as OwnerAgent
 	var cook: StaffAgent = _world.add_agent(StaffAgent.new(&"cook")) as StaffAgent
