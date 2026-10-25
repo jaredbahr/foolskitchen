@@ -708,6 +708,31 @@ an active edit/panel/selection first, or opens Settings when none is active.
   use the shop snapshot; dining links are derived again from the restored
   layout. The sole persistence boundary stays the normal morning autosave.
 
+### Restaurant vibe core (FK-072)
+- `VibeModel.evaluate()` reads detached layout, paint and enabled-menu inputs.
+  It never changes the inputs, draws randomness, reads nodes or saves a result.
+  Definition and recipe IDs are aggregated in lexical String order, rather
+  than the pointer ordering of interned StringNames.
+- `data/balance/vibe.tres` authors diminishing repeat charm, variety, component
+  caps, theme and menu weights, crowding and the maximum effects. Only DECOR
+  earns charm and variety; a data-authored lamp-ID list partitions lamp charm
+  without guessing IDs. The lamp list is empty until lamp content is available.
+- Known themes are Cosy, Modern, Rustic, Diner and Seafood. Tagged items, paint
+  and today's enabled recipes contribute weighted votes; menu weight is lower
+  than decor weight, and a menu alone cannot establish a layout theme. The
+  authored theme order resolves active ties. Themes are never auto-built.
+- Crowding counts the union of normal-layer occupied interior FLOOR cells.
+  Floor rugs still contribute charm and tags but do not double-count furniture
+  coverage. Score and component results remain finite and bounded; invalid
+  inputs or authoring return a neutral result and a readable reason.
+- Provisional tuning gives the starter plant's two charm and one decor kind a
+  free allowance. The actual starter's effects should therefore remain zero;
+  this is not a measured five-day profit result. The result exposes a maximum
+  1.15 patience multiplier and a 0.4 raw review term, with integer review
+  rounding left to the existing review system. Customer-type strength is a
+  hook until FK-061 is integrated. Live session, UI and review wiring are the
+  remaining integration layer; the core adds no save section or action save.
+
 ### 2.4 Save system
 - JSON in `user://saves/`, with a `version` field and migration functions per version.
 - Only sim state is saved, never nodes. The world is rebuilt from sim state on load.
