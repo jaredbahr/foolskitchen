@@ -17,6 +17,7 @@ const REVIEW_TUNING: ReviewTuning = preload("res://data/balance/reviews.tres")
 const REVIEW_QUOTES: ReviewQuotes = preload("res://data/reviews/quotes.tres")
 const PROGRESSION_TUNING: ProgressionTuning = preload("res://data/balance/progression.tres")
 const VIBE_TUNING: VibeTuning = preload("res://data/balance/vibe.tres")
+const CUSTOMER_TYPES: CustomerTypeCatalogue = preload("res://data/customers/types.tres")
 const AUTOSAVE_SLOT: String = "autosave"
 const LOAN_LOCK_REASON: String = "Pay off your bank loan first"
 
@@ -52,6 +53,8 @@ var _staff_notices: Array[Dictionary] = []
 ## Last thirty eligible reviews, including five virtual three-star starters.
 var reputation: ReputationBook = ReputationBook.new()
 var owner_progress: OwnerProgress = OwnerProgress.new(PROGRESSION_TUNING)
+## Authored arrivals; tests may inject an explicit neutral Regular-only catalogue.
+var customer_type_catalogue: CustomerTypeCatalogue = CUSTOMER_TYPES
 ## Zero is one plate; the two purchased levels carry two and four.
 var tray_level: int = 0
 
@@ -274,6 +277,11 @@ func start() -> void:
 	($ShopView as ShopView).bind_cleanliness(cleanliness)
 	_debug_overlay.bind_cleanliness(cleanliness)
 	sim.configure_reviews(reputation, REVIEW_TUNING, REVIEW_QUOTES, GameState.rng(&"reviews"))
+	# Configure only after the complete restore/new-game decision, using its
+	# real reputation and owner level. This consumes no customer RNG draw.
+	if not sim.configure_customer_types(customer_type_catalogue, owner_progress.level):
+		push_error("Cannot initialize customer preferences")
+		return
 	sim.spawner.min_gap = TUNING.arrival_gap_min
 	sim.spawner.max_gap = TUNING.arrival_gap_max
 	shop_editor = ShopEditor.new(sim, content, ShopEditBooks.new(Economy.can_buy_discretionary,
@@ -1481,6 +1489,8 @@ func shop_sell(item_id: int) -> int:
 
 ## Morning setup: new counters, a stocked fridge, and an autosave.
 func _begin_morning() -> void:
+	# The preceding close may unlock a new type; current guests are unaffected.
+	sim.set_customer_level(owner_progress.level)
 	_vibe_experiences.clear()
 	_report.call(&"set_vibe", vibe_result)
 	# Direct sim drivers may finish cleanup after service_closed. Apply that
@@ -1595,6 +1605,7 @@ func _on_service_closed(day: int) -> void:
 		_owner_award_day = day
 		_owner_unlocks_today = _unlocked_at_levels(level_before, owner_progress.level)
 		menu_settings.set_owner_level(owner_progress.level)
+		sim.set_customer_level(owner_progress.level)
 		shop_editor.set_owner_level(owner_progress.level)
 		_build_catalogue.set_owner_level(owner_progress.level)
 		$HUD.set_owner_progress(owner_progress.level, owner_progress.xp_into_level(), owner_progress.xp_in_level())
