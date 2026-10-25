@@ -1765,8 +1765,13 @@ func _award_milestones(day: int, operating_profit: int) -> void:
 	if staged == null:
 		world.log_event("Career goal rewards could not be applied today")
 		return
+	# Keep the live progress model stable for existing session consumers. The
+	# detached batch is already validated; refuse installation before any goal
+	# completion or payment if its owner snapshot cannot be applied.
+	if not owner_progress.from_dict(staged.owner_progress.to_dict()):
+		world.log_event("Career goal rewards could not be applied today")
+		return
 	milestones = staged.tracker
-	owner_progress = staged.owner_progress
 	_milestones_reached_today.assign(staged.reached)
 	_milestone_award_day = day
 	_milestone_xp_today = staged.xp_reward

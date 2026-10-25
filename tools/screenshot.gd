@@ -1578,7 +1578,7 @@ static func hud_layout_options(arguments: PackedStringArray) -> Dictionary:
 				result["error"] = "--hud-layout requires --frames=12,90"
 		elif argument.begins_with("--scene") and argument != "--scene=res://src/world/main.tscn":
 			result["error"] = "--hud-layout requires the actual Main scene"
-		for prefix: String in ["--open", "--fast", "--select", "--assign-owner", "--f3", "--menu", "--staff", "--settings", "--report", "--build", "--paint", "--quarter", "--door-queue", "--loan-review", "--catalogue-review"]:
+		for prefix: String in ["--open", "--fast", "--select", "--assign-owner", "--f3", "--menu", "--staff", "--settings", "--report", "--build", "--paint", "--quarter", "--door-queue", "--loan-review", "--catalogue-review", "--milestone-review"]:
 			if argument.begins_with(prefix):
 				result["error"] = "--hud-layout cannot combine with other view or service options"
 	if speed_count != 1 or frames_count != 1:

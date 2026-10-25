@@ -103,7 +103,8 @@ func test_real_main_fixture_shows_goals_then_uses_real_close_and_read_only_evide
 	var before_goals: Dictionary = _main_snapshot(main)
 	var providers_before_goals: Dictionary = SaveSystem._providers.duplicate()
 	var goals_state: Dictionary = CAPTURE.milestone_review_evidence(main, (Engine.get_main_loop() as SceneTree).root, 12)
-	assert_true(CAPTURE.milestone_review_valid(goals_state, 12, fixture))
+	assert_true(CAPTURE.milestone_review_valid(goals_state, 12, fixture),
+		"the actual initial Goals view satisfies capture bounds: " + JSON.stringify(goals_state["goals_panel"]))
 	assert_eq(_main_snapshot(main), before_goals, "native evidence and validation never change Main or its ledgers")
 	assert_eq(SaveSystem._providers, providers_before_goals, "read-only evidence leaves provider registration alone")
 	assert_eq(SaveSystem.save_dir, _save_dir, "the capture test stays inside its private save path")
@@ -128,7 +129,8 @@ func test_real_main_fixture_shows_goals_then_uses_real_close_and_read_only_evide
 	var before_report_query: Dictionary = _main_snapshot(main)
 	var providers_before_report: Dictionary = SaveSystem._providers.duplicate()
 	var report_state: Dictionary = CAPTURE.milestone_review_evidence(main, (Engine.get_main_loop() as SceneTree).root, 90)
-	assert_true(CAPTURE.milestone_review_valid(report_state, 90, fixture))
+	assert_true(CAPTURE.milestone_review_valid(report_state, 90, fixture),
+		"the actual closed-day milestone payoff satisfies capture bounds: " + JSON.stringify(report_state["report"]))
 	assert_eq(_main_snapshot(main), before_report_query, "report evidence and validation remain query-only")
 	assert_eq(SaveSystem._providers, providers_before_report)
 	var missing_reward: Dictionary = report_state.duplicate(true)
