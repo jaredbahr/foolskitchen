@@ -200,7 +200,7 @@ func test_open_sign_named_glyph_bounds_read_open_from_its_negative_z_front() -> 
 			native_xy_covariance += (vertex.x - mean_x) * (vertex.y - mean_y)
 		native_xy_covariance /= float(n_diagonal_vertices.size())
 		# The GLB faces -Z: screen X is -native X, while screen up is native Y.
-		# A Latin N diagonal rises from screen-left to screen-right, so its
+		# A Latin N diagonal falls from screen-left to screen-right, so its
 		# screen-space covariance is negative and its native X/Y covariance positive.
 		assert_true(native_xy_covariance > 0.000001,
 			"N diagonal vertices slope correctly from the -Z front")
