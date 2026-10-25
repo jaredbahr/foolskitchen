@@ -7,6 +7,7 @@ const MAIN_SCENE: String = "res://src/world/main.tscn"
 const MANIFEST: String = "res://assets/made/diner/diner_manifest.json"
 const THEME: Theme = preload("res://src/ui/theme/main_theme.tres")
 const PERSON: PackedScene = preload("res://assets/people/person.tscn")
+const HEAD_GEOMETRY: GDScript = preload("res://tools/seated_head_geometry.gd")
 const SIZE: Vector2i = Vector2i(1600, 900)
 const WALK_BUDGET: int = 160
 const CROP_SCALE: int = 3
@@ -288,6 +289,7 @@ static func evidence(main: Node, context_root: Node, frame: int) -> Dictionary:
 				"seat_lift": (person.get_node("ModelPivot") as Node3D).position.y if person != null else -1.0,
 				"position_matches": person != null and person.position.is_equal_approx(seated.floor_position),
 				"visible": person != null and person.is_visible_in_tree(),
+				"seat_clearance": _seat_clearance(person, prop, camera, guest.id, furnishing_id, guest.table_item_id),
 				"bounds": _screen_bounds(person.global_transform * PropView._children_aabb(person), camera) if person != null else {}})
 		for row: Dictionary in PURCHASES:
 			var item: PlacedItem = world.grid.item_at(row["cell"])
@@ -585,6 +587,38 @@ static func _triangles(node: Node) -> int:
 	for child: Node in node.get_children():
 		count += _triangles(child)
 	return count
+
+
+## Read the current native sit pose without moving or fitting the actor. The
+## screen rectangle is derived from actual posed head vertices, not rest bounds.
+static func _seat_clearance(person: PersonView, prop: PropView, camera: Camera3D,
+		guest_id: int, furnishing_id: int, table_id: int) -> Dictionary:
+	if person == null or prop == null or camera == null:
+		return {"error": "native seated person, furnishing or camera is unavailable"}
+	var measured: Dictionary = HEAD_GEOMETRY.measure(person, prop)
+	if not String(measured.get("error", "missing native measurement")).is_empty():
+		return {"error": measured.get("error", "missing native measurement")}
+	var bounds: AABB = measured["world_bounds"]
+	var screen: Dictionary = _screen_bounds(bounds, camera)
+	if screen.get("inside") != true or screen.get("in_front") != true:
+		return {"error": "actual posed head is outside the capture viewport"}
+	var rect: Array = screen["rect"]
+	var clearance: float = measured["clearance"]
+	if is_nan(clearance) or clearance == -INF:
+		return {"error": "native seat clearance is not a valid distance"}
+	return {"error": "", "guest_id": guest_id, "furnishing_id": furnishing_id,
+		"table_item_id": table_id, "head_world_bounds": {
+			"min": [bounds.position.x, bounds.position.y, bounds.position.z],
+			"max": [bounds.end.x, bounds.end.y, bounds.end.z]},
+		"head_screen_bounds": {"x": rect[0], "y": rect[1], "width": rect[2], "height": rect[3]},
+		"seated_head_clearance": clearance if is_finite(clearance) else null,
+		"backrest_at_head_height": is_finite(clearance),
+		"intersecting_triangles": measured["intersecting_triangles"],
+		"head_center_inside_seat": measured["head_center_inside_seat"],
+		"head_vertices": measured["head_vertices"], "measurement_provenance": measured["provenance"],
+		"model": String(person.model_name()), "clip": String(person._player.current_animation),
+		"sit_time": person._player.current_animation_position,
+		"character_scale": (person.get_node("ModelPivot") as Node3D).scale.x}
 
 
 static func _screen_bounds(bounds: AABB, camera: Camera3D) -> Dictionary:

@@ -2377,6 +2377,12 @@ func _capture() -> void:
 			"generated_uids": generated_uid_evidence(CATALOGUE_UID_SOURCES)}
 	if _diner_review:
 		metadata["diner_review"] = {"fixture": _diner_fixture, "state": diner_state}
+		if _capture_frame == 90:
+			var crop: Dictionary = DINER_REVIEW.write_seated_crop(image, path, metadata, _out)
+			if not String(crop.get("error", "missing crop result")).is_empty():
+				_fail_capture(String(crop.get("error", "missing crop result")))
+				return
+			metadata["diner_review"]["booth_crop"] = crop
 	if _staff:
 		metadata["staff_priority_review"] = {"generated_uids": generated_uid_evidence(STAFF_PRIORITY_UID_SOURCES)}
 	var file: FileAccess = FileAccess.open(path.get_basename() + ".json", FileAccess.WRITE)
