@@ -724,15 +724,23 @@ an active edit/panel/selection first, or opens Settings when none is active.
   and today's enabled recipes contribute weighted votes; menu weight is lower
   than decor weight, and a menu alone cannot establish a layout theme. The
   authored theme order resolves active ties. Themes are never auto-built.
+  Theme points ramp with excess charm after the starter allowance, reaching
+  their full value at the data-authored `theme_full_charm` (currently 4).
+  Matching starter furniture does not give one extra plant the full bonus.
 - Crowding counts the union of normal-layer occupied interior FLOOR cells.
   Floor rugs still contribute charm and tags but do not double-count furniture
   coverage. Score and component results remain finite and bounded; invalid
   inputs or authoring return a neutral result and a readable reason.
 - Provisional tuning gives the starter plant's two charm and one decor kind a
   free allowance. The actual starter's effects should therefore remain zero;
-  this is not a measured five-day profit result. The result exposes a maximum
-  1.15 patience multiplier and a 0.4 raw review term, with integer review
-  rounding left to the existing review system. Customer-type strength is a
+  this is not a measured five-day profit result. The current authored caps give
+  a maximum 1.15 patience multiplier and a 0.4 raw review term. Both consumers
+  read those limits from `vibe.tres`, rather than imposing a second adjustable
+  ceiling. Tuning must remain finite and nonnegative; the theme ramp threshold
+  must be positive. Review scores are bounded to their physical 1–5 range
+  before integer rounding, including for a large finite authored bonus.
+  Consumer tests use detached tuning resources, never mutate the shared asset.
+  Customer-type strength is a
   hook until FK-061 is integrated.
 - `VibeInputs.capture()` copies the live grid, current paint tags and enabled
   recipes. Main recomputes after final startup/load installation and accepted
@@ -752,7 +760,10 @@ an active edit/panel/selection first, or opens Settings when none is active.
 - A native read-only meter in the Build catalogue shows score and component
   tooltip. The HUD adds the active theme to its existing reputation tooltip.
   The evening report uses a transient count of paid guests' captured positive
-  arrival themes for guest wording, with a factual current-score fallback.
+  arrival themes for the softer wording “Guests noticed the … vibe”, rather
+  than implying that every paid guest liked the visit. A factual current-score
+  fallback is shown only when that score rounds above zero. A captured arrival
+  theme can still be reported after a later edit makes the room neutral.
   This avoids attributing a late repaint to earlier guests. Counts reset each
   morning and never join the saved report. Score, snapshots and presentation
   add no save section, action save, random draw or customer-type selection.

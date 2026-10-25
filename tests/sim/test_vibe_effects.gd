@@ -143,6 +143,111 @@ func test_actual_starter_capture_keeps_arrival_budgets_and_effects_neutral() -> 
 	assert_eq(guest_rng.state, guest_state)
 
 
+func test_actual_starter_plus_one_potted_plant_gets_a_small_ramped_theme_bonus() -> void:
+	var sim: RestaurantSim = _restaurant()
+	var starter: VibeModel.Result = VibeModel.evaluate(VibeInputs.capture(sim.world.grid, _content, sim.menu), VIBE)
+	assert_true(starter.valid)
+	assert_eq(starter.score, 0.0)
+	var plant: ItemDef = _content.item(&"potted_plant")
+	assert_not_null(sim.world.grid.place_def(plant, Vector2i(12, 8)))
+	var decorated: VibeModel.Result = VibeModel.evaluate(VibeInputs.capture(sim.world.grid, _content, sim.menu), VIBE)
+	assert_true(decorated.valid)
+	assert_eq(decorated.active_theme, &"diner")
+	assert_eq(decorated.theme_share, 1.0)
+	assert_true(decorated.theme_points > 0.0 and decorated.theme_points < 5.0)
+	assert_almost_eq(decorated.theme_points, 3.75, 0.000001,
+		"the second plant's one effective excess charm reaches only one quarter of the theme cap")
+
+
+func test_private_authored_caps_bound_copied_arrivals_and_real_recorded_reviews() -> void:
+	var original_patience: float = VIBE.max_patience_bonus
+	var original_review: float = VIBE.max_review_bonus
+	var tuning: VibeTuning = VIBE.duplicate(true) as VibeTuning
+	tuning.max_patience_bonus = 0.05
+	tuning.max_review_bonus = 0.1
+	assert_true(tuning.is_valid())
+	assert_eq(RestaurantSim.VIBE_TUNING, VIBE)
+	assert_eq(ReputationBook.VIBE_TUNING, VIBE)
+	_assert_neutral_snapshot(RestaurantSim._copy_vibe(_full_vibe(), tuning))
+	var source: VibeModel.Result = _full_vibe()
+	source.patience_multiplier = 1.0 + tuning.max_patience_bonus
+	source.raw_review_bonus = tuning.max_review_bonus
+	var copied: VibeModel.Result = RestaurantSim._copy_vibe(source, tuning)
+	assert_true(copied.valid)
+	assert_eq(RestaurantSim._vibe_patience(300, 2.0, tuning), 315)
+	var sim: RestaurantSim = _restaurant()
+	sim.set_vibe(copied)
+	assert_true(sim.world.clock.start_service())
+	var guest: CustomerAgent = _guest(sim, 141001)
+	assert_eq(guest.queue_patience, 315)
+	assert_eq(guest.food_patience, 1260)
+	assert_eq(guest.vibe_review_bonus, tuning.max_review_bonus)
+	var visit: ReviewVisit = ReviewVisit.new()
+	visit.served = true
+	visit.queue_wait_fraction = 0.7
+	visit.vibe_review_bonus = original_review
+	var certain: ReviewTuning = REVIEWS.duplicate(true) as ReviewTuning
+	certain.review_chance = 1.0
+	var normal_rng: RandomNumberGenerator = _random(141002)
+	var limited_rng: RandomNumberGenerator = _random(141002)
+	var normal: Dictionary = ReputationBook.new().record_visit(visit, certain, QUOTES, normal_rng)
+	var limited: Dictionary = ReputationBook.new().record_visit(visit, certain, QUOTES, limited_rng, tuning)
+	assert_eq(normal["stars"], 5)
+	assert_eq(limited["stars"], 4, "the private authored review cap changes the actual rounded record")
+	assert_eq(limited["cause"], normal["cause"], "both final scores keep the positive-quote policy")
+	assert_eq(limited["quote"], normal["quote"])
+	assert_eq(limited_rng.state, normal_rng.state, "the resource seam introduces no review or quote draw")
+	assert_eq(VIBE.max_patience_bonus, original_patience)
+	assert_eq(VIBE.max_review_bonus, original_review)
+
+
+func test_private_large_finite_caps_saturate_before_integer_conversion_and_zero_caps_stay_exact() -> void:
+	var tuning: VibeTuning = VIBE.duplicate(true) as VibeTuning
+	tuning.max_patience_bonus = 1.0e308
+	tuning.max_review_bonus = 1.0e308
+	assert_true(tuning.is_valid(), "the resource, not a duplicate .15/.4 validator ceiling, authors the effect caps")
+	var source: VibeModel.Result = _full_vibe()
+	source.patience_multiplier = tuning.max_patience_bonus
+	source.raw_review_bonus = tuning.max_review_bonus
+	var copied: VibeModel.Result = RestaurantSim._copy_vibe(source, tuning)
+	assert_true(copied.valid)
+	assert_true(is_finite(copied.patience_multiplier))
+	assert_true(is_finite(copied.raw_review_bonus))
+	assert_eq(RestaurantSim._vibe_patience(300, copied.patience_multiplier, tuning), 9223372036854775807)
+	assert_eq(RestaurantSim._vibe_patience(9223372036854775807, 2.0, tuning), 9223372036854775807)
+	var visit: ReviewVisit = ReviewVisit.new()
+	visit.served = true
+	visit.queue_wait_fraction = 0.7
+	visit.vibe_review_bonus = tuning.max_review_bonus
+	assert_eq(ReputationBook.score_visit(visit, REVIEWS, tuning), 5, "clamp the physical star domain before roundi")
+	assert_eq(ReputationBook.cause_of(visit, REVIEWS, tuning), &"lovely_place")
+	tuning.max_patience_bonus = 0.0
+	tuning.max_review_bonus = 0.0
+	assert_true(tuning.is_valid())
+	assert_eq(RestaurantSim._vibe_patience(9223372036854775806, 2.0, tuning), 9223372036854775806,
+		"a disabled cap never round-trips a neutral int64 budget through a float")
+	assert_eq(ReputationBook.score_visit(visit, REVIEWS, tuning), 4)
+
+
+func test_invalid_private_caps_keep_consumers_neutral_without_shared_resource_edits() -> void:
+	var original_patience: float = VIBE.max_patience_bonus
+	var original_review: float = VIBE.max_review_bonus
+	var visit: ReviewVisit = ReviewVisit.new()
+	visit.served = true
+	visit.queue_wait_fraction = 0.7
+	visit.vibe_review_bonus = original_review
+	for key: StringName in [&"max_patience_bonus", &"max_review_bonus"]:
+		for bad: float in [-1.0, NAN, INF]:
+			var tuning: VibeTuning = VIBE.duplicate(true) as VibeTuning
+			tuning.set(key, bad)
+			assert_false(tuning.is_valid())
+			_assert_neutral_snapshot(RestaurantSim._copy_vibe(_full_vibe(), tuning))
+			assert_eq(RestaurantSim._vibe_patience(300, 1.15, tuning), 300)
+			assert_eq(ReputationBook.score_visit(visit, REVIEWS, tuning), 4)
+	assert_eq(VIBE.max_patience_bonus, original_patience)
+	assert_eq(VIBE.max_review_bonus, original_review)
+
+
 func test_arrival_snapshots_are_detached_and_later_edits_only_affect_new_guests() -> void:
 	var sim: RestaurantSim = _restaurant()
 	var source: VibeModel.Result = _full_vibe()

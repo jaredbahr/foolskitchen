@@ -16,6 +16,7 @@ lamp_item_ids = Array[StringName]([])
 lamp_points_per_charm = 6.0
 lamp_cap = 10.0
 theme_cap = 15.0
+theme_full_charm = 4.0
 theme_category_weights = Dictionary[int, float]({
 0: 0.0,
 1: 1.0,

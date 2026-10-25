@@ -249,9 +249,10 @@ static func _choose_theme(result: Result, themes: _Themes, tuning: VibeTuning, e
 		return
 	result.active_theme = best_theme
 	result.theme_label = tuning.theme_labels[best_theme]
-	## A starter plant plus starter diner tags must not grant free effects.
+	## The starter allowance stays neutral; additional decor ramps the bonus
+	## instead of granting a full theme cap as soon as one extra copy is placed.
 	if excess_charm > 0.0:
-		result.theme_points = share * tuning.theme_cap
+		result.theme_points = share * tuning.theme_cap * minf(1.0, excess_charm / tuning.theme_full_charm)
 
 
 static func _invalid(reason: String) -> Result:

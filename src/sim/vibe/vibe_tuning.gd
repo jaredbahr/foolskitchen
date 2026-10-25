@@ -21,6 +21,8 @@ const KNOWN_THEMES: Array[StringName] = [&"cosy", &"modern", &"rustic", &"diner"
 @export var lamp_points_per_charm: float = 6.0
 @export var lamp_cap: float = 10.0
 @export var theme_cap: float = 15.0
+## Excess effective charm beyond the free allowance needed for full theme points.
+@export var theme_full_charm: float = 4.0
 ## Utility equipment's existing diner tags must not outweigh the room's style.
 @export var theme_category_weights: Dictionary[int, float] = {
 	ItemDef.Category.DOOR: 0.0,
@@ -53,19 +55,18 @@ const KNOWN_THEMES: Array[StringName] = [&"cosy", &"modern", &"rustic", &"diner"
 func is_valid() -> bool:
 	for value: float in [score_cap, repeat_decay, free_charm, decor_points_per_charm,
 			decor_cap, variety_points_per_kind, variety_cap, lamp_points_per_charm,
-			lamp_cap, theme_cap, theme_paint_weight, theme_menu_weight, theme_min_share,
+			lamp_cap, theme_cap, theme_full_charm, theme_paint_weight, theme_menu_weight, theme_min_share,
 			theme_min_layout_weight, crowding_start_density, crowding_cap,
 			max_patience_bonus, max_review_bonus]:
 		if not is_finite(value) or value < 0.0:
 			return false
-	if score_cap <= 0.0 or score_cap > 100.0 or repeat_decay >= 1.0 or free_variety < 0:
+	if score_cap <= 0.0 or score_cap > 100.0 or repeat_decay >= 1.0 or free_variety < 0 or theme_full_charm <= 0.0:
 		return false
 	for cap: float in [decor_cap, variety_cap, lamp_cap, theme_cap, crowding_cap]:
 		if cap > score_cap:
 			return false
 	if theme_min_share <= 0.5 or theme_min_share > 1.0 or theme_min_layout_weight <= 0.0 \
-			or crowding_start_density >= 1.0 or max_patience_bonus > 0.15 \
-			or max_review_bonus > 0.4 or no_theme_label.strip_edges().is_empty():
+			or crowding_start_density >= 1.0 or no_theme_label.strip_edges().is_empty():
 		return false
 	if theme_order.size() != KNOWN_THEMES.size() or theme_labels.size() != KNOWN_THEMES.size():
 		return false

@@ -54,6 +54,55 @@ func test_distinct_decor_earns_variety_more_than_repeating_one_kind() -> void:
 	assert_true(varied.score > repeated.score)
 
 
+func test_theme_points_ramp_with_private_authored_threshold_then_saturate() -> void:
+	var original: float = TUNING.theme_full_charm
+	var tuning: VibeTuning = TUNING.duplicate(true) as VibeTuning
+	tuning.theme_full_charm = 8.0
+	assert_true(tuning.is_valid())
+	var quarter: VibeModel.Result = VibeModel.evaluate(_inputs([
+		_item(&"ramp", tuning.free_charm + 2.0, [&"cosy"], [Vector2i(1, 1)]),
+	]), tuning)
+	var half: VibeModel.Result = VibeModel.evaluate(_inputs([
+		_item(&"ramp", tuning.free_charm + 4.0, [&"cosy"], [Vector2i(1, 1)]),
+	]), tuning)
+	var full: VibeModel.Result = VibeModel.evaluate(_inputs([
+		_item(&"ramp", tuning.free_charm + 8.0, [&"cosy"], [Vector2i(1, 1)]),
+	]), tuning)
+	var beyond: VibeModel.Result = VibeModel.evaluate(_inputs([
+		_item(&"ramp", tuning.free_charm + 12.0, [&"cosy"], [Vector2i(1, 1)]),
+	]), tuning)
+	for result: VibeModel.Result in [quarter, half, full, beyond]:
+		assert_true(result.valid)
+		assert_eq(result.active_theme, &"cosy")
+		assert_eq(result.theme_share, 1.0)
+	assert_almost_eq(quarter.theme_points, tuning.theme_cap * 0.25)
+	assert_almost_eq(half.theme_points, tuning.theme_cap * 0.5)
+	assert_almost_eq(full.theme_points, tuning.theme_cap)
+	assert_almost_eq(beyond.theme_points, tuning.theme_cap)
+	assert_eq(TUNING.theme_full_charm, original, "private tuning does not rewrite the shared resource")
+
+
+func test_sufficiently_decorated_coherent_room_reaches_the_authored_theme_cap() -> void:
+	var charm: float = (TUNING.free_charm + TUNING.theme_full_charm) / 2.0
+	var result: VibeModel.Result = _evaluate([
+		_item(&"coherent_one", charm, [&"diner"], [Vector2i(1, 1)]),
+		_item(&"coherent_two", charm, [&"diner"], [Vector2i(2, 1)]),
+	])
+	assert_true(result.valid)
+	assert_eq(result.active_theme, &"diner")
+	assert_eq(result.theme_share, 1.0)
+	assert_almost_eq(result.theme_points, TUNING.theme_cap)
+
+
+func test_theme_full_charm_rejects_nonpositive_and_nonfinite_thresholds() -> void:
+	var inputs: VibeModel.Inputs = _inputs([_item(&"valid_charm", 3.0, [&"cosy"], [Vector2i(1, 1)])])
+	for threshold: float in [0.0, -1.0, NAN, INF, -INF]:
+		var tuning: VibeTuning = TUNING.duplicate(true) as VibeTuning
+		tuning.theme_full_charm = threshold
+		assert_false(tuning.is_valid())
+		_assert_invalid_neutral(inputs, tuning)
+
+
 func test_seafood_theme_detection_is_order_independent_and_ties_are_stable() -> void:
 	var majority: Array[VibeModel.Item] = [
 		_item(&"seafood_one", 3.0, [&"seafood"], [Vector2i(1, 1)]),
