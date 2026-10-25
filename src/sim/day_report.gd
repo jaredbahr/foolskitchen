@@ -6,6 +6,7 @@ const NON_OPERATING_CATEGORIES: Array[StringName] = [
 	Ledger.BANK_LOAN, Ledger.LOAN_INTEREST, Ledger.LOAN_REPAYMENT,
 	Ledger.MILESTONE_BONUS,
 ]
+const MAX_MILESTONE_REWARD: int = 1000000
 
 var day: int = 1
 var income: Dictionary = {}
@@ -72,11 +73,7 @@ func to_dict() -> Dictionary:
 	var cards: Array[Dictionary] = []
 	for card: Dictionary in review_cards:
 		cards.append(_public_review_card(card))
-	var milestones: Array[Dictionary] = []
-	for milestone: Dictionary in milestones_reached:
-		var public_row: Dictionary = _public_milestone_row(milestone)
-		if not public_row.is_empty():
-			milestones.append(public_row)
+	var milestones: Array[Dictionary] = public_milestones(milestones_reached)
 	return {
 		"day": day,
 		"income": _string_counts(income),
@@ -133,13 +130,7 @@ static func from_dict(data: Dictionary) -> DayReport:
 		for name: Variant in saved_unlocks:
 			if name is String:
 				report.owner_unlocks.append(name)
-	var saved_milestones: Variant = data.get("milestones_reached", [])
-	if saved_milestones is Array:
-		for milestone: Variant in saved_milestones:
-			if milestone is Dictionary:
-				var public_row: Dictionary = _public_milestone_row(milestone as Dictionary)
-				if not public_row.is_empty():
-					report.milestones_reached.append(public_row)
+	report.milestones_reached = public_milestones(data.get("milestones_reached", []))
 	return report
 
 
@@ -152,15 +143,43 @@ static func _public_review_card(card: Dictionary) -> Dictionary:
 
 
 ## Keep report snapshots player-facing; raw milestone IDs and conditions are not saved here.
-static func _public_milestone_row(row: Dictionary) -> Dictionary:
-	var title: String = str(row.get("title", "")).strip_edges()
-	if title.is_empty():
-		return {}
-	return {
-		"title": title,
-		"reward_xp": maxi(0, int(row.get("reward_xp", 0))),
-		"reward_cash": maxi(0, int(row.get("reward_cash", 0))),
-	}
+static func public_milestones(value: Variant) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	if not value is Array:
+		return result
+	for item: Variant in value:
+		if not item is Dictionary:
+			continue
+		var row: Dictionary = item
+		var title_value: Variant = row.get("title")
+		if not title_value is String:
+			continue
+		var title: String = str(title_value).strip_edges()
+		var reward_xp: Variant = row.get("reward_xp")
+		var reward_cash: Variant = row.get("reward_cash")
+		if title.is_empty() or not _whole_in_range(reward_xp, 0, MAX_MILESTONE_REWARD) \
+				or not _whole_in_range(reward_cash, 0, MAX_MILESTONE_REWARD):
+			continue
+		result.append({
+			"title": title,
+			"reward_xp": int(reward_xp),
+			"reward_cash": int(reward_cash),
+		})
+	return result
+
+
+## Returns -1 for a malformed optional display field so direct UI callers can omit it.
+static func milestone_xp(value: Variant) -> int:
+	if not _whole_in_range(value, 0, OwnerProgress.MAX_TOTAL_XP):
+		return -1
+	return int(value)
+
+
+static func _whole_in_range(value: Variant, minimum: int, maximum: int) -> bool:
+	if typeof(value) != TYPE_INT and typeof(value) != TYPE_FLOAT:
+		return false
+	var number: float = float(value)
+	return is_finite(number) and number >= minimum and number <= maximum and floorf(number) == number
 
 
 ## Only known numeric display fields survive a report snapshot.
@@ -171,6 +190,12 @@ static func _owner_xp(value: Variant) -> Dictionary:
 	var amounts: Dictionary = value
 	for key: String in ["happy_xp", "profit_xp", "review_xp", "milestone_xp", "total_xp"]:
 		if amounts.has(key):
+			if key == "milestone_xp":
+				var xp: int = milestone_xp(amounts[key])
+				if xp < 0:
+					continue
+				result[key] = xp
+				continue
 			result[key] = maxi(0, int(amounts[key]))
 	return result
 

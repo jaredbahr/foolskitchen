@@ -68,7 +68,7 @@ func show_report(report: DayReport) -> void:
 	_fill_money(_costs, report.costs, "No costs today")
 	_loan_notice.text = LOAN_INTRODUCTION if report.loan_first_advance else ""
 	_loan_notice.visible = report.loan_first_advance
-	_fill_milestones(report.milestones_reached)
+	_fill_milestones(DayReport.public_milestones(report.milestones_reached))
 	_clear(_dishes)
 	var best: StringName = report.best_dish()
 	for id: String in _sorted_ids(report.dishes_sold):
@@ -182,7 +182,7 @@ func _fill_owner_progress(report: DayReport) -> void:
 		_add_row(_owner_xp_rows, "Happy guests", "+%d XP" % int(report.owner_xp_breakdown.get("happy_xp", 0)))
 		_add_row(_owner_xp_rows, "Profit", "+%d XP" % int(report.owner_xp_breakdown.get("profit_xp", 0)))
 		_add_row(_owner_xp_rows, "Five-star reviews", "+%d XP" % int(report.owner_xp_breakdown.get("review_xp", 0)))
-		var milestone_xp: int = maxi(0, int(report.owner_xp_breakdown.get("milestone_xp", 0)))
+		var milestone_xp: int = DayReport.milestone_xp(report.owner_xp_breakdown.get("milestone_xp", -1))
 		if milestone_xp > 0:
 			_add_row(_owner_xp_rows, "Career goals", "+%d XP" % milestone_xp)
 		_add_row(_owner_xp_rows, "Total", "+%d XP" % int(report.owner_xp_breakdown.get("total_xp", 0)))

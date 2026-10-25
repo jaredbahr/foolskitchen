@@ -140,7 +140,15 @@ func test_milestone_rows_round_trip_only_player_facing_fields() -> void:
 		{"title": "Full house, no panic", "reward_xp": 25, "reward_cash": 40,
 			"id": "first_rush", "condition": "served_today"},
 		{"title": "Word gets around", "reward_xp": 30, "reward_cash": 20},
-		{"title": "  ", "reward_xp": 999, "reward_cash": 999},
+		{"title": "  ", "reward_xp": 25, "reward_cash": 40},
+		{"title": "Negative", "reward_xp": -1, "reward_cash": 1},
+		{"title": "Fractional", "reward_xp": 1.5, "reward_cash": 1},
+		{"title": "Too large", "reward_xp": 1000001, "reward_cash": 1},
+		{"title": "NaN", "reward_xp": NAN, "reward_cash": 1},
+		{"title": "Infinite", "reward_xp": 1, "reward_cash": INF},
+		{"title": "Boolean", "reward_xp": true, "reward_cash": 1},
+		{"title": "Dictionary", "reward_xp": {}, "reward_cash": 1},
+		{"title": 42, "reward_xp": 1, "reward_cash": 1},
 	] as Array[Dictionary]
 	var snapshot: Dictionary = report.to_dict()
 	assert_eq(snapshot["milestones_reached"], [
@@ -152,6 +160,19 @@ func test_milestone_rows_round_trip_only_player_facing_fields() -> void:
 	snapshot["milestones_reached"][0]["title"] = "Changed snapshot"
 	assert_eq(restored.milestones_reached[0]["title"], "Full house, no panic")
 	assert_true(DayReport.from_dict({}).milestones_reached.is_empty())
+	assert_eq(report.milestones_reached.size(), 11, "sanitizing output never edits supplied report rows")
+
+
+func test_optional_milestone_xp_rejects_malformed_values_without_casting() -> void:
+	for value: Variant in [NAN, INF, -1, 1.5, 1000000001, true, {}, "25"]:
+		var report: DayReport = DayReport.from_dict({"owner_xp_breakdown": {"milestone_xp": value}})
+		assert_false(report.owner_xp_breakdown.has("milestone_xp"),
+			"invalid milestone XP is omitted: %s" % [value])
+	assert_eq(DayReport.from_dict({"owner_xp_breakdown": {"milestone_xp": 0}})
+		.owner_xp_breakdown["milestone_xp"], 0)
+	assert_eq(DayReport.from_dict({"owner_xp_breakdown":
+		{"milestone_xp": OwnerProgress.MAX_TOTAL_XP}}).owner_xp_breakdown["milestone_xp"],
+		OwnerProgress.MAX_TOTAL_XP)
 
 
 func test_milestone_bonus_stays_in_cash_but_not_operating_profit() -> void:
@@ -230,7 +251,7 @@ func test_ui_optional_milestone_xp_and_award_rows_render_then_clear() -> void:
 	var report: DayReport = DayReport.new()
 	report.income = {Ledger.MILESTONE_BONUS: 40}
 	report.owner_xp_breakdown = {"happy_xp": 1, "profit_xp": 2, "review_xp": 3,
-		"milestone_xp": 25, "total_xp": 31}
+		"milestone_xp": 55, "total_xp": 61}
 	report.milestones_reached = [
 		{"title": "First busy evening", "reward_xp": 25, "reward_cash": 40},
 		{"title": "Regulars return", "reward_xp": 30, "reward_cash": 0},
@@ -245,13 +266,14 @@ func test_ui_optional_milestone_xp_and_award_rows_render_then_clear() -> void:
 	assert_eq((rows.get_child(0).get_child(0) as Label).text, "First busy evening")
 	assert_eq((rows.get_child(0).get_child(1) as Label).text, "Reward: +25 XP, $40")
 	assert_eq((rows.get_child(1).get_child(0) as Label).text, "Regulars return")
+	assert_eq((rows.get_child(1).get_child(1) as Label).text, "Reward: +30 XP, $0")
 	assert_eq((income.get_child(0) as Label).text, "Milestone bonus")
 	assert_eq((income.get_child(1) as Label).text, "$40")
 	var xp_rows: GridContainer = _screen.get_node("%OwnerXPRows") as GridContainer
 	assert_eq((xp_rows.get_child(6) as Label).text, "Career goals")
-	assert_eq((xp_rows.get_child(7) as Label).text, "+25 XP")
+	assert_eq((xp_rows.get_child(7) as Label).text, "+55 XP")
 	assert_eq((xp_rows.get_child(8) as Label).text, "Total")
-	assert_eq((xp_rows.get_child(9) as Label).text, "+31 XP")
+	assert_eq((xp_rows.get_child(9) as Label).text, "+61 XP")
 	_screen.call("show_report", report)
 	assert_eq(rows.get_child_count(), 2, "reopening a report replaces rows instead of duplicating them")
 	var empty: DayReport = DayReport.new()
@@ -265,6 +287,26 @@ func test_ui_optional_milestone_xp_and_award_rows_render_then_clear() -> void:
 	assert_eq((xp_rows.get_child(6) as Label).text, "Total")
 	assert_eq((xp_rows.get_child(7) as Label).text, "+6 XP")
 	assert_eq((income.get_child(0) as Label).text, "No income today")
+
+
+func test_ui_report_skips_malformed_milestones_and_milestone_xp() -> void:
+	_screen = REPORT_SCENE.instantiate()
+	(Engine.get_main_loop() as SceneTree).root.add_child(_screen)
+	var report: DayReport = DayReport.new()
+	report.milestones_reached = [
+		{"title": "Bad cash", "reward_xp": 5, "reward_cash": NAN},
+		{"title": "Valid", "reward_xp": 5, "reward_cash": 5},
+	] as Array[Dictionary]
+	report.owner_xp_breakdown = {"happy_xp": 1, "milestone_xp": {"unexpected": true}, "total_xp": 1}
+	_screen.call("show_report", report)
+	var rows: VBoxContainer = _screen.get_node("%MilestoneRows") as VBoxContainer
+	assert_eq(rows.get_child_count(), 1)
+	assert_eq((rows.get_child(0).get_child(0) as Label).text, "Valid")
+	assert_eq(DayReport.public_milestones(report.milestones_reached).size(), 1)
+	assert_false(report.to_dict()["owner_xp_breakdown"].has("milestone_xp"))
+	var xp_rows: GridContainer = _screen.get_node("%OwnerXPRows") as GridContainer
+	for child: Node in xp_rows.get_children():
+		assert_false(child is Label and (child as Label).text == "Career goals")
 
 
 func test_first_three_review_quotes_fit_without_scrolling_at_both_capture_sizes() -> void:
@@ -336,6 +378,57 @@ func test_first_three_review_quotes_fit_without_scrolling_at_both_capture_sizes(
 				and rect.position.y >= viewport.position.y - 1.0
 				and rect.end.y <= viewport.end.y + 1.0,
 				"review %d fits the unscrolled %dx%d report" % [index, int(bounds.x), int(bounds.y)])
+
+
+func test_two_milestones_and_three_quotes_fit_native_1600x900_report() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	await tree.process_frame
+	_host = Control.new()
+	_host.size = Vector2(1600.0, 900.0)
+	tree.root.add_child(_host)
+	_screen = REPORT_SCENE.instantiate()
+	_host.add_child(_screen)
+	var report: DayReport = DayReport.new()
+	report.milestones_reached = [
+		{"title": "A full dining room and a very good evening", "reward_xp": 25, "reward_cash": 40},
+		{"title": "Regulars came back for seconds", "reward_xp": 30, "reward_cash": 20},
+	] as Array[Dictionary]
+	report.review_cards = [
+		{"stars": 5, "quote": "Warm room, good food, happy me."},
+		{"stars": 4, "quote": "I aged a little waiting for lunch. Worth a bite, though."},
+		{"stars": 3, "quote": "A little mop magic would help this place."},
+	]
+	report.today_review_average = 4.0
+	_screen.call("show_report", report)
+	await tree.process_frame
+	await tree.process_frame
+	var scroll: ScrollContainer = _screen.get_node("Panel/Scroll") as ScrollContainer
+	var viewport: Rect2 = scroll.get_global_rect()
+	assert_eq(_screen.size, Vector2(1600.0, 900.0))
+	assert_eq(scroll.scroll_vertical, 0)
+	assert_false(scroll.get_v_scroll_bar().visible, "the combined payoff and quotes fit without scrolling")
+	var milestone_rows: VBoxContainer = _screen.get_node("%MilestoneRows") as VBoxContainer
+	var review_rows: VBoxContainer = _screen.get_node("%ReviewRows") as VBoxContainer
+	assert_true((_screen.get_node("%MilestoneHeading") as Label).is_visible_in_tree())
+	assert_eq(milestone_rows.get_child_count(), 2)
+	assert_eq(review_rows.get_child_count(), 3)
+	for index: int in range(2):
+		var row: HBoxContainer = milestone_rows.get_child(index) as HBoxContainer
+		assert_eq((row.get_child(0) as Label).text, report.milestones_reached[index]["title"])
+		assert_eq((row.get_child(1) as Label).text,
+			"Reward: +%d XP, $%d" % [report.milestones_reached[index]["reward_xp"],
+				report.milestones_reached[index]["reward_cash"]])
+		for label: Label in [row.get_child(0) as Label, row.get_child(1) as Label]:
+			var rect: Rect2 = label.get_global_rect()
+			assert_true(rect.size.x > 0.0 and rect.size.y > 0.0)
+			assert_true(viewport.grow(0.5).encloses(rect), "both milestone labels fit the actual report viewport")
+	for index: int in range(3):
+		var card: Dictionary = report.review_cards[index]
+		var quote: Label = review_rows.get_child(index) as Label
+		assert_eq(quote.text, '%d stars - "%s"' % [card["stars"], card["quote"]])
+		assert_true(quote.is_visible_in_tree())
+		assert_true(viewport.grow(0.5).encloses(quote.get_global_rect()),
+			"all three complete review quotes remain visible with both milestone rows")
 
 
 func test_ui_full_report_then_empty_clears_every_section() -> void:
