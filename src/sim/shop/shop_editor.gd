@@ -223,7 +223,7 @@ static func from_dict(data: Dictionary, template_layout: ShopLayout, content: Co
 		return null
 	var preview: SimGrid = SimGrid.from_ascii(template_layout.rows)
 	var rows: Array = data["items"]
-	if rows.size() > preview.size.x * preview.size.y:
+	if rows.size() > preview.size.x * preview.size.y * ItemDef.PlacementLayer.size():
 		errors.append("Too many shop items")
 		return null
 	var layout: ShopLayout = ShopLayout.new()
@@ -301,7 +301,7 @@ func _check_placement(definition: ItemDef, origin: Vector2i, turns: int, exclude
 	var preview: SimGrid = _preview_without(exclude_id, ids)
 	if preview == null:
 		return EditCheck.new(false, "The current shop has invalid placements")
-	var result: SimGrid.PlaceResult = preview.can_place(definition.footprint, origin, turns)
+	var result: SimGrid.PlaceResult = preview.can_place_def(definition, origin, turns)
 	if result != SimGrid.PlaceResult.OK:
 		return EditCheck.new(false, placement_reason(result))
 	var proposed_id: int = -1
@@ -341,6 +341,8 @@ static func placement_reason(result: SimGrid.PlaceResult) -> String:
 			return "Must be placed on the floor"
 		SimGrid.PlaceResult.OVERLAPS:
 			return "Something is in the way"
+		SimGrid.PlaceResult.INVALID_LAYER:
+			return "This item cannot be placed here"
 	return "Cannot place this item here"
 
 
@@ -416,7 +418,8 @@ static func _any_reachable(grid: SimGrid, cells: Array[Vector2i]) -> bool:
 
 static func _valid_definition(definition: ItemDef) -> bool:
 	return definition != null and not definition.id.is_empty() and definition.price >= 0 \
-		and definition.unlock_level >= 1 and definition.footprint.x > 0 and definition.footprint.y > 0
+		and definition.unlock_level >= 1 and definition.footprint.x > 0 and definition.footprint.y > 0 \
+		and definition.placement_layer_valid()
 
 
 static func _required_key(definition: ItemDef) -> String:

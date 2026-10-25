@@ -122,9 +122,11 @@ func test_shipped_catalogue_is_derived_from_every_valid_non_door_definition() ->
 	var shipped: ContentDB = ContentDB.new()
 	assert_eq(shipped.load_all(), PackedStringArray())
 	_catalogue.bind_content(shipped)
+	assert_eq(shipped.item(&"chair").id, &"chair", "the saved item identifier stays stable")
+	assert_eq(shipped.item(&"chair").display_name, "Cushioned chair")
 	var expected_count: int = 0
 	for definition: ItemDef in shipped.items():
-		if definition.category == ItemDef.Category.DOOR:
+		if definition.category == ItemDef.Category.DOOR or not definition.catalogue_visible:
 			assert_false(_catalogue.item_buttons.has(definition.id))
 			continue
 		expected_count += 1
@@ -137,6 +139,22 @@ func test_shipped_catalogue_is_derived_from_every_valid_non_door_definition() ->
 		else:
 			assert_false(button.disabled)
 			assert_true(button.text.ends_with("$%d" % definition.price))
+	for id: StringName in [&"plant_small_1", &"plant_small_2", &"plant_small_3"]:
+		var hidden: ItemDef = shipped.item(id)
+		assert_not_null(hidden, "hidden floor plants remain valid content for existing placements")
+		if hidden == null:
+			continue
+		assert_false(hidden.catalogue_visible)
+		assert_false(_catalogue.item_buttons.has(id))
+		assert_not_null(hidden.view_scene)
+		if hidden.view_scene != null:
+			var thumbnails: ItemThumbnailCache = _catalogue.get("_thumbnails") as ItemThumbnailCache
+			var requested_scenes: Dictionary = thumbnails.get("_scenes")
+			assert_false(requested_scenes.has(hidden.view_scene.get_instance_id()),
+				"a hidden floor plant never queues a thumbnail")
+	var potted_plant: ItemDef = shipped.item(&"potted_plant")
+	assert_true(potted_plant.catalogue_visible, "the larger unlockable plant stays in the catalogue")
+	assert_true(_catalogue.item_buttons.has(&"potted_plant"))
 	assert_eq(_catalogue.item_buttons.size(), expected_count)
 	assert_eq(_catalogue.selected_category, &"seating")
 	_catalogue.set_build_visible(true)
@@ -149,6 +167,24 @@ func test_shipped_catalogue_is_derived_from_every_valid_non_door_definition() ->
 	assert_almost_eq(panel.get_rect().end.y, _host.size.y - 12.0)
 	assert_false(_scroll().get_h_scroll_bar().visible)
 	assert_eq((_catalogue.get_node("Panel/Margin/Rows/Scroll/Content/Title") as Label).text, "Furniture")
+
+
+func test_hidden_definition_stays_in_content_without_a_card_thumbnail_or_purchase() -> void:
+	var definition: ItemDef = _definition(&"retired_floor_plant", "Retired floor plant", 15)
+	definition.catalogue_visible = false
+	definition.view_scene = PackedScene.new()
+	_content.definitions = [definition]
+	_catalogue.bind_content(_content)
+
+	assert_true(_content.item(definition.id) == definition,
+		"catalogue visibility does not remove saved-item content")
+	assert_false(_catalogue.item_buttons.has(definition.id))
+	assert_true(_catalogue.ordered_ids().is_empty())
+	var thumbnails: ItemThumbnailCache = _catalogue.get("_thumbnails") as ItemThumbnailCache
+	assert_eq(thumbnails.pending_count(), 0, "hidden definitions never request a preview")
+	_catalogue.set_build_visible(true)
+	_catalogue._on_buy_pressed(definition.id)
+	assert_true(_requests.is_empty(), "a hidden definition cannot be bought from a stale request")
 
 func test_single_item_catalogue_uses_a_compact_strip() -> void:
 	_content.definitions = [_definition(&"fixture", "Chair", 18)]

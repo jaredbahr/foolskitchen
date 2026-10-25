@@ -154,16 +154,16 @@ func test_saved_furniture_on_staff_spawn_loads_and_staff_can_escape() -> void:
 	var report: DayReport = first.get("shown_report") as DayReport
 	assert_eq(report.owner_level_before, 1)
 	assert_eq(report.owner_level_after, 2)
-	assert_eq(report.owner_unlocks, ["Bar stool", "Leafy plant", "Potted plant", "Rectangular rug",
+	assert_eq(report.owner_unlocks, ["Bar stool", "Potted plant", "Rectangular rug",
 		"Round table", "Rounded chair", "Side table", "Square rug", "Standing coat rack",
 		"Tomato melt recipe", "Two-seat bench"] as Array[String],
-		"the level-up banner lists every authored level-two unlock")
+		"the level-up banner lists every available level-two unlock")
 	var panel: Control = first.get_node("Overlay/EveningReport") as Control
 	var banner: Label = panel.get_node("Panel/Scroll/Content/LevelUpCallout/OwnerLevelUp") as Label
 	var unlocks: Label = panel.get_node("Panel/Scroll/Content/LevelUpCallout/OwnerUnlocks") as Label
 	assert_true(banner.visible)
 	assert_eq(banner.text, "Level up! Level 2 reached")
-	assert_eq(unlocks.text, "Unlocked: Bar stool, Leafy plant, Potted plant, Rectangular rug, Round table, Rounded chair, Side table, Square rug, Standing coat rack, Tomato melt recipe, Two-seat bench")
+	assert_eq(unlocks.text, "Unlocked: Bar stool, Potted plant, Rectangular rug, Round table, Rounded chair, Side table, Square rug, Standing coat rack, Tomato melt recipe, Two-seat bench")
 	var xp_rows: GridContainer = panel.get_node("Panel/Scroll/Content/OwnerXPRows") as GridContainer
 	assert_eq(xp_rows.get_child_count(), 8, "the native report shows four labelled XP sources")
 	assert_eq((xp_rows.get_child(7) as Label).text, "+%d XP" % report.owner_xp_breakdown["total_xp"])
@@ -196,6 +196,26 @@ func test_saved_furniture_on_staff_spawn_loads_and_staff_can_escape() -> void:
 			break
 		assert_ne(server.step_move(world), SimAgent.MoveResult.BLOCKED)
 	assert_true(server.has_arrived())
+
+
+func test_level_three_announcements_skip_hidden_tall_plant_and_keep_visible_unlocks() -> void:
+	var main: Node = _start()
+	var content: ContentDB = main.get("content") as ContentDB
+	var hidden: ItemDef = content.item(&"plant_small_3")
+	var visible: ItemDef = content.item(&"cushioned_bench")
+	assert_eq(hidden.unlock_level, 3)
+	assert_false(hidden.catalogue_visible)
+	assert_eq(visible.unlock_level, 3)
+	assert_true(visible.catalogue_visible)
+	var saved: String = FileAccess.get_file_as_string(_path())
+	var books: Dictionary = Economy._capture_save()
+	var rng: Dictionary = GameState._capture_save()
+	var unlocked: Array[String] = main.call("_unlocked_at_levels", 2, 3)
+	assert_false(unlocked.has(hidden.display_name))
+	assert_true(unlocked.has(visible.display_name))
+	assert_eq(FileAccess.get_file_as_string(_path()), saved)
+	assert_eq(Economy._capture_save(), books)
+	assert_eq(GameState._capture_save(), rng)
 
 
 func test_loaded_morning_keeps_the_existing_restock_and_autosave_policy() -> void:

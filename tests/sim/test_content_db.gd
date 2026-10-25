@@ -258,6 +258,53 @@ func test_all_item_seats_are_walkable_and_reachable_in_every_rotation() -> void:
 	assert_true(seats_checked > 0, "content includes seats to check")
 
 
+func test_rugs_use_passive_floor_layer_and_existing_furniture_keeps_normal_layer() -> void:
+	var db: ContentDB = _starter_db()
+	for id: StringName in [&"rug_rectangle", &"rug_round", &"rug_square"]:
+		var definition: ItemDef = db.item(id)
+		assert_eq(definition.placement_layer, ItemDef.PlacementLayer.FLOOR_DECOR)
+		assert_true(definition.placement_layer_valid())
+		assert_false(definition.solid)
+		assert_true(definition.work_cells.is_empty())
+		assert_true(definition.seat_cells.is_empty())
+		assert_true(definition.catalogue_visible)
+	for id: StringName in [&"table_2", &"chair", &"fridge", &"prep_counter", &"door"]:
+		assert_eq(db.item(id).placement_layer, ItemDef.PlacementLayer.NORMAL)
+	assert_true(ItemDef.new().catalogue_visible, "existing content remains listed unless explicitly hidden")
+
+
+func test_invalid_floor_layer_definitions_are_reported_without_changing_resources() -> void:
+	var definition: ItemDef = ItemDef.new()
+	definition.id = &"test_floor_decor"
+	definition.category = ItemDef.Category.DECOR
+	definition.placement_layer = ItemDef.PlacementLayer.FLOOR_DECOR
+	definition.solid = false
+	assert_eq(ContentDB.validate_definitions([], [], [definition]), PackedStringArray())
+	var invalid: Array[ItemDef] = []
+	var solid: ItemDef = definition.duplicate(true) as ItemDef
+	solid.solid = true
+	invalid.append(solid)
+	var table: ItemDef = definition.duplicate(true) as ItemDef
+	table.category = ItemDef.Category.TABLE
+	invalid.append(table)
+	var worker: ItemDef = definition.duplicate(true) as ItemDef
+	worker.work_cells = [Vector2i.UP]
+	invalid.append(worker)
+	var seat: ItemDef = definition.duplicate(true) as ItemDef
+	seat.seat_cells = [Vector2i.ZERO]
+	invalid.append(seat)
+	var unknown: ItemDef = definition.duplicate(true) as ItemDef
+	unknown.set("placement_layer", 99)
+	invalid.append(unknown)
+	for bad: ItemDef in invalid:
+		assert_false(bad.placement_layer_valid())
+		var errors: PackedStringArray = ContentDB.validate_definitions([], [], [bad])
+		assert_true(_has_error(errors, "invalid placement layer"))
+	assert_true(definition.placement_layer_valid())
+	assert_eq(definition.placement_layer, ItemDef.PlacementLayer.FLOOR_DECOR)
+	assert_false(definition.solid)
+
+
 func _starter_db() -> ContentDB:
 	var db: ContentDB = ContentDB.new()
 	assert_eq(db.load_all().size(), 0)

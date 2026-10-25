@@ -111,6 +111,34 @@ an active edit/panel/selection first, or opens Settings when none is active.
   - A `ShopLayout` (`data/layouts/*.tres`) holds ASCII terrain rows, `placements` (`ShopPlacement`: item id, origin, quarter turns) and `staff_spawns` (role → cell).
   - `ShopBuilder.build(layout, content, errors) -> SimWorld`, and `ShopBuilder.items_with_def(world, id)`.
   - `SimGrid.place_def(item_def, origin, turns)` places an item from its definition.
+  - `ItemDef.PlacementLayer` defaults to NORMAL; the three rugs use FLOOR_DECOR.
+    Each cell permits one item per layer. Floor decor must be non-solid DECOR
+    without work or seat cells. It owns no walkability or guest reservation.
+    Definition-aware `can_place_def` and commits enforce the same restrictions.
+  - `item_at(cell)` returns normal furniture first, then floor decor;
+    `item_on_layer` selects one explicitly, and `items_at` returns a detached
+    normal-first list. `PlacedItem` retains its layer so moving or removing a
+    rug changes only floor coverage, never the furniture object above it.
+    The world view discovers both layers after cell changes and retains each
+    existing native visual. Owner station dispatch uses NORMAL coverage so a
+    rug cannot intercept an external station work cell.
+    In idle build mode, Alt-click selects the floor layer explicitly, including
+    a rug fully covered by furniture. A floor-layer miss consumes that build
+    click; plain picking and an active buy/move ghost keep their existing rules.
+  - The existing version-1 shop rows already store definition, pose and paint.
+    Layer comes from the definition; both placement orders restore through
+    `place_def` without a new field, migration, provider or save point. The
+    snapshot item-count ceiling accounts for both layers. Morning/closed edit
+    gates and warning-only path policy remain unchanged; this adds no service
+    decor exception from the separate lamp issue.
+  - `catalogue_visible` defaults true. Small plants keep their IDs, scenes and
+    saved placements but opt out of catalogue cards and thumbnail requests;
+    hidden items are also excluded from new level-up announcements. The larger
+    Potted plant stays available. The old `chair` ID is retained
+    with the clearer display name Cushioned chair. A 30-frame thumbnail
+    timeout fails only that scene, preserving later queued previews and the
+    failed-item guard against blind retries; global renderer/stage failures
+    keep their existing separate handling.
   - The Tier 1 hole-in-the-wall is `data/layouts/tier1_hole_in_the_wall.tres`:
     - kitchen at the top (fridge, prep counter and stove facing down, with a kitchen door at x=7);
     - the pass at (5,4), worked from both sides;

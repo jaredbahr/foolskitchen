@@ -365,7 +365,7 @@ func _on_buy_pressed(id: StringName) -> void:
 		buy_requested.emit(id)
 
 static func _buyable(definition: ItemDef) -> bool:
-	return definition != null and not definition.id.is_empty() \
+	return definition != null and definition.catalogue_visible and not definition.id.is_empty() \
 		and not definition.display_name.strip_edges().is_empty() and not category_for(definition).is_empty() \
 		and definition.price >= 0 and definition.unlock_level >= 1 \
 		and definition.footprint.x > 0 and definition.footprint.y > 0

@@ -419,6 +419,178 @@ func test_optional_purchase_refusal_keeps_legacy_reason_for_missing_empty_or_inv
 	assert_eq(_changes.size(), 0)
 
 
+func test_rug_buy_move_and_sell_preserve_the_occupied_table_and_book_once() -> void:
+	_editor.set_owner_level(6)
+	var grid: SimGrid = _sim.world.grid
+	var table: PlacedItem = grid.item(_id(&"table_2"))
+	var table_origin: Vector2i = table.origin
+	var seats: Array[Vector2i] = table.seat_cells.duplicate()
+	var seat: Vector2i = seats[0]
+	assert_true(table.reserve(seat, 77))
+	var before: Dictionary = _editor.to_dict()
+	assert_true(_editor.check_buy(&"rug_rectangle", Vector2i(1, 6)).ok)
+	assert_eq(_editor.to_dict(), before)
+	assert_eq(_changes.size(), 0)
+	assert_eq(_entries.size(), 0)
+	assert_true(_editor.buy(&"rug_rectangle", Vector2i(1, 6)))
+	var rug: PlacedItem = grid.item_on_layer(table.origin, ItemDef.PlacementLayer.FLOOR_DECOR)
+	assert_not_null(rug)
+	if rug == null:
+		return
+	var price: int = _content.item(&"rug_rectangle").price
+	assert_eq(_cash, 1000 - price)
+	assert_eq(_entries, [{"amount": -price, "category": Ledger.UPGRADES}] as Array[Dictionary])
+	assert_true(_editor.move(rug.id, Vector2i(1, 8), 0))
+	assert_true(_editor.move(rug.id, Vector2i(1, 6), 0))
+	assert_true(grid.item(rug.id) == rug)
+	assert_true(grid.item(table.id) == table)
+	assert_eq(table.origin, table_origin)
+	assert_eq(table.seat_cells, seats)
+	assert_eq(table.reserved_by(seat), 77)
+	assert_eq(grid.dining_table_id(seat), table.id)
+	assert_eq(_entries.size(), 1, "moving floor decor never books a purchase")
+	var refund: int = floori(float(price) * 0.5)
+	assert_eq(_editor.sell(rug.id), refund)
+	assert_eq(_cash, 1000 - price + refund)
+	assert_eq(_entries.size(), 2)
+	assert_eq(_removed, 1)
+	assert_eq(_changes.size(), 4)
+	assert_true(rug.removed)
+	assert_false(table.removed)
+	assert_eq(grid.item_at(table_origin), table)
+	assert_null(grid.item_on_layer(table_origin, ItemDef.PlacementLayer.FLOOR_DECOR))
+	assert_eq(table.reserved_by(seat), 77)
+	assert_true(grid.is_walkable(seat))
+	assert_false(grid.is_walkable(table.origin))
+
+
+func test_floor_overlap_and_terrain_refusals_leave_books_grid_and_signals_unchanged() -> void:
+	_editor.set_owner_level(6)
+	assert_true(_editor.buy(&"rug_rectangle", Vector2i(1, 6)))
+	assert_true(_editor.buy(&"rug_round", Vector2i(9, 7)))
+	var rug: PlacedItem = _sim.world.grid.item_on_layer(Vector2i(1, 6), ItemDef.PlacementLayer.FLOOR_DECOR)
+	var before: Dictionary = _editor.to_dict()
+	var cash: int = _cash
+	var entries: int = _entries.size()
+	var changes: int = _changes.size()
+	assert_false(_editor.check_buy(&"rug_round", Vector2i(1, 6)).ok)
+	assert_false(_editor.buy(&"rug_round", Vector2i(1, 6)))
+	assert_false(_editor.check_move(rug.id, Vector2i(9, 7), 0).ok)
+	assert_false(_editor.move(rug.id, Vector2i(9, 7), 0))
+	assert_false(_editor.buy(&"rug_rectangle", Vector2i(13, 9)))
+	assert_false(_editor.buy(&"rug_round", Vector2i(0, 6)))
+	assert_eq(_editor.to_dict(), before)
+	assert_eq(_cash, cash)
+	assert_eq(_entries.size(), entries)
+	assert_eq(_changes.size(), changes)
+	assert_eq(_removed, 0)
+	assert_eq(_sim.world.now, 0)
+
+
+func test_floor_layer_does_not_change_the_service_edit_policy() -> void:
+	assert_true(_editor.buy(&"rug_round", Vector2i(1, 6)))
+	var rug: PlacedItem = _sim.world.grid.item_on_layer(Vector2i(1, 6), ItemDef.PlacementLayer.FLOOR_DECOR)
+	var before: Dictionary = _editor.to_dict()
+	var cash: int = _cash
+	var entries: int = _entries.size()
+	var changes: int = _changes.size()
+	for phase: SimClock.Phase in [SimClock.Phase.OPEN, SimClock.Phase.LAST_ORDERS]:
+		_sim.world.clock.phase = phase
+		assert_false(_editor.check_move(rug.id, Vector2i(4, 8), 0).ok)
+		assert_false(_editor.move(rug.id, Vector2i(4, 8), 0))
+		assert_false(_editor.buy(&"rug_round", Vector2i(4, 8)))
+		assert_eq(_editor.sell(rug.id), -1)
+		assert_eq(_editor.to_dict(), before)
+		assert_eq(_cash, cash)
+		assert_eq(_entries.size(), entries)
+		assert_eq(_changes.size(), changes)
+		assert_eq(_removed, 0)
+
+
+func test_version_one_rug_and_table_round_trip_in_either_wire_order() -> void:
+	_editor.set_owner_level(6)
+	assert_true(_editor.buy(&"rug_rectangle", Vector2i(1, 6)))
+	var original: Dictionary = _editor.to_dict()
+	assert_eq(original["version"], 1)
+	for reverse_order: bool in [false, true]:
+		var expected: Dictionary = original.duplicate(true)
+		if reverse_order:
+			(expected["items"] as Array).reverse()
+		var document: Dictionary = JSON.parse_string(JSON.stringify(expected))
+		var errors: Array[String] = []
+		var layout: ShopLayout = ShopEditor.from_dict(document, LAYOUT, _content, errors)
+		assert_not_null(layout)
+		assert_eq(errors, [] as Array[String])
+		if layout == null:
+			continue
+		var restored: RestaurantSim = RestaurantSim.new()
+		restored.world = ShopBuilder.build(layout, _content, errors, true)
+		assert_eq(errors, [] as Array[String])
+		var copy: ShopEditor = ShopEditor.new(restored, _content, _books, layout)
+		assert_eq(copy.to_dict(), expected, "wire order is retained rather than sorting gameplay items by layer")
+		var table: PlacedItem = restored.world.grid.item_on_layer(Vector2i(2, 6), ItemDef.PlacementLayer.NORMAL)
+		var rug: PlacedItem = restored.world.grid.item_on_layer(Vector2i(2, 6), ItemDef.PlacementLayer.FLOOR_DECOR)
+		assert_not_null(table)
+		assert_not_null(rug)
+		if table == null or rug == null:
+			continue
+		assert_eq((table.def as ItemDef).id, &"table_2")
+		assert_eq((rug.def as ItemDef).id, &"rug_rectangle")
+		assert_eq(restored.world.grid.item_at(Vector2i(2, 6)), table)
+		for seat: Vector2i in table.seat_cells:
+			assert_true(restored.world.grid.is_walkable(seat))
+			assert_eq(restored.world.grid.dining_table_id(seat), table.id)
+			assert_eq(restored.world.grid.item_on_layer(seat, ItemDef.PlacementLayer.FLOOR_DECOR), rug)
+	assert_eq(_editor.to_dict(), original)
+	assert_eq(_entries.size(), 1, "decoding never replays the rug purchase")
+	assert_eq(_changes.size(), 1)
+
+
+func test_snapshot_item_cap_accepts_two_layers_but_rejects_same_layer_duplicates() -> void:
+	var normal: ItemDef = ItemDef.new()
+	normal.id = &"tiny_normal"
+	normal.category = ItemDef.Category.DECOR
+	normal.solid = false
+	var floor_def: ItemDef = normal.duplicate(true) as ItemDef
+	floor_def.id = &"tiny_floor"
+	floor_def.placement_layer = ItemDef.PlacementLayer.FLOOR_DECOR
+	_content.extra[normal.id] = normal
+	_content.extra[floor_def.id] = floor_def
+	var template: ShopLayout = ShopLayout.new()
+	template.id = &"two_layers"
+	template.rows = PackedStringArray(["."])
+	var rows: Array[Dictionary] = [
+		{"def_id": "tiny_normal", "origin": [0, 0], "quarter_turns": 0, "swatch_id": ""},
+		{"def_id": "tiny_floor", "origin": [0, 0], "quarter_turns": 0, "swatch_id": ""},
+	]
+	var before: Dictionary = _editor.to_dict()
+	for reverse_order: bool in [false, true]:
+		var ordered: Array[Dictionary] = rows.duplicate(true)
+		if reverse_order:
+			ordered.reverse()
+		var errors: Array[String] = []
+		var layout: ShopLayout = ShopEditor.from_dict({"version": 1, "items": ordered}, template, _content, errors)
+		assert_not_null(layout)
+		assert_eq(errors, [] as Array[String])
+		if layout == null:
+			continue
+		var restored: SimWorld = ShopBuilder.build(layout, _content, errors)
+		assert_eq(errors, [] as Array[String])
+		assert_eq(restored.grid.items_at(Vector2i.ZERO).size(), 2)
+		assert_true(restored.grid.is_walkable(Vector2i.ZERO))
+	var errors: Array[String] = []
+	var duplicate: Array[Dictionary] = [rows[0], rows[0]]
+	assert_null(ShopEditor.from_dict({"version": 1, "items": duplicate}, template, _content, errors))
+	assert_false(errors.is_empty())
+	errors.clear()
+	assert_null(ShopEditor.from_dict({"version": 1, "items": [rows[0], rows[1], rows[1]]}, template, _content, errors))
+	assert_true(errors.has("Too many shop items"))
+	assert_eq(_editor.to_dict(), before)
+	assert_eq(_entries.size(), 0)
+	assert_eq(_changes.size(), 0)
+	assert_eq(template.placements.size(), 0)
+
+
 func _purchase_refusal(amount: int) -> Variant:
 	_refusal_amount = amount
 	return _refusal

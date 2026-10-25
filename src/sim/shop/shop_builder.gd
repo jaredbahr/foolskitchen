@@ -18,7 +18,7 @@ static func build(layout: ShopLayout, content: ContentDB, errors: Array[String],
 		var placed: PlacedItem = grid.place_def(def, p.origin, p.quarter_turns)
 		if placed == null:
 			errors.append("%s: %s doesn't fit at %s (turns %d): %s" % [layout.id, p.item_id, p.origin,
-					p.quarter_turns, SimGrid.PlaceResult.keys()[grid.can_place(def.footprint, p.origin, p.quarter_turns)]])
+					p.quarter_turns, SimGrid.PlaceResult.keys()[grid.can_place_def(def, p.origin, p.quarter_turns)]])
 		else:
 			placed.swatch_id = p.swatch_id if def.paintable and content.swatch(p.swatch_id) != null else &""
 	for r: StringName in layout.staff_spawns:

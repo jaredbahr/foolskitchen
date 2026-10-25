@@ -300,7 +300,7 @@ func _refresh_build_controls() -> void:
 	var resize_hint: bool = _build_hints.visible != (_build_active or _paint_active)
 	if resize_hint:
 		_build_hints.visible = _build_active or _paint_active
-	var text: String = "Esc Exit"
+	var text: String = "Click Pick furniture  |  Alt-click Pick rug  |  Esc Exit"
 	if _paint_active:
 		text = "Choose a colour, hover to preview, click to paint  |  Esc Exit"
 	elif _build_state == BuildMode.State.MOVE:

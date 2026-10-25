@@ -4,6 +4,19 @@ extends TestCase
 const VIEW: PackedScene = preload("res://src/world/shop_view.tscn")
 const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
 const CLEANLINESS_TUNING: CleanlinessTuning = preload("res://data/balance/cleanliness.tres")
+
+class ViewBooks extends RefCounted:
+	var cash: int = 1000
+	var entries: Array[Dictionary] = []
+
+	func can_spend(amount: int) -> bool:
+		return amount >= 0 and cash >= amount
+
+	func record(amount: int, category: StringName) -> void:
+		cash += amount
+		entries.append({"amount": amount, "category": category})
+
+
 var _view: ShopView
 
 
@@ -277,6 +290,107 @@ func test_placement_removal_and_rebinding_disconnect_old_grid() -> void:
 	assert_false(first.grid.cells_changed.is_connected(callback))
 	first.grid.place_def(definition, Vector2i(2, 2))
 	assert_eq(_view.item_nodes.size(), 0)
+
+
+func test_rug_then_table_discovers_both_shared_layers_and_preserves_native_visuals() -> void:
+	await _assert_shared_layer_visuals(true)
+
+
+func test_table_then_fully_covered_rug_discovers_both_layers_and_preserves_native_visuals() -> void:
+	await _assert_shared_layer_visuals(false)
+
+
+func _assert_shared_layer_visuals(rug_first: bool) -> void:
+	await (Engine.get_main_loop() as SceneTree).process_frame
+	var content: ContentDB = ContentDB.new()
+	assert_eq(content.load_all(), PackedStringArray())
+	var rug_def: ItemDef = content.item(&"rug_square")
+	var table_def: ItemDef = content.item(&"table_2")
+	assert_eq(rug_def.placement_layer, ItemDef.PlacementLayer.FLOOR_DECOR)
+	assert_eq(rug_def.footprint, table_def.footprint, "the rug must be fully hidden from single-layer discovery")
+	var world: SimWorld = SimWorld.new(SimGrid.new(Vector2i(10, 10)))
+	var cook: StaffAgent = StaffAgent.new(&"cook")
+	cook.cell = Vector2i(8, 8)
+	world.add_agent(cook)
+	var sim: RestaurantSim = RestaurantSim.new()
+	sim.world = world
+	var wallet: ViewBooks = ViewBooks.new()
+	var books: ShopEditBooks = ShopEditBooks.new(wallet.can_spend, wallet.record)
+	var editor: ShopEditor = ShopEditor.new(sim, content, books)
+	editor.set_owner_level(rug_def.unlock_level)
+	_show(world)
+	_view.set_paint(content, &"sage", &"walnut")
+	var actor: Node3D = _view.agent_nodes[cook.id]
+	var origin: Vector2i = Vector2i(2, 2)
+	var first_def: ItemDef = rug_def if rug_first else table_def
+	assert_true(editor.buy(first_def.id, origin), editor.last_check.why)
+	var first: PlacedItem = world.grid.item_on_layer(origin, first_def.placement_layer)
+	assert_not_null(first)
+	if first == null:
+		return
+	var first_visual: ItemVisual = _view.item_nodes[first.id]
+	var second_def: ItemDef = table_def if rug_first else rug_def
+	assert_true(editor.buy(second_def.id, origin), editor.last_check.why)
+	var second: PlacedItem = world.grid.item_on_layer(origin, second_def.placement_layer)
+	assert_not_null(second)
+	if second == null:
+		return
+	var rug: PlacedItem = first if rug_first else second
+	var table: PlacedItem = second if rug_first else first
+	assert_eq(world.grid.items_at(origin), [table, rug] as Array[PlacedItem])
+	assert_eq(_view.item_nodes.size(), 2)
+	assert_true(_view.item_nodes[first.id] == first_visual)
+	var rug_visual: ItemVisual = _view.item_nodes[rug.id]
+	var table_visual: ItemVisual = _view.item_nodes[table.id]
+	assert_not_null(rug_visual.prop, "the real approved rug wrapper is drawn")
+	assert_not_null(table_visual.prop, "the real approved table/chairs wrapper is drawn")
+	assert_true(editor.paint_item(table.id, &"terracotta"))
+	_view.set_paint(content, &"sage", &"walnut")
+	_view.set_selected_item(table.id)
+	var table_native: Dictionary = _native_item_identity(table_visual)
+	var rug_native: Dictionary = _native_item_identity(rug_visual)
+	var table_transform: Transform3D = table_visual.transform
+	var outline: BoundsOutline = _view.selection_outline
+	assert_eq(_view.item_at_ray(table_transform.origin + Vector3.UP * 4.0, Vector3.DOWN), table.id)
+	assert_true(editor.move(rug.id, Vector2i(1, 2), 0), editor.last_check.why)
+	assert_true(editor.move(rug.id, Vector2i(1, 2), 1), editor.last_check.why)
+	assert_true(world.grid.item(table.id) == table)
+	assert_true(_view.item_nodes[table.id] == table_visual)
+	assert_eq(_native_item_identity(table_visual), table_native)
+	assert_eq(table_visual.transform, table_transform)
+	assert_true(_view.item_nodes[rug.id] == rug_visual)
+	assert_eq(_native_item_identity(rug_visual), rug_native)
+	assert_true(rug_visual.transform.is_equal_approx(ItemVisual.placed_transform(rug_def, rug.origin, rug.quarter_turns)))
+	var refund: int = editor.sell(rug.id)
+	assert_true(refund >= 0, editor.last_check.why)
+	assert_false(_view.item_nodes.has(rug.id))
+	assert_false(is_instance_valid(rug_visual))
+	assert_true(world.grid.item(table.id) == table)
+	assert_true(_view.item_nodes[table.id] == table_visual)
+	assert_eq(_native_item_identity(table_visual), table_native)
+	assert_eq(table_visual.transform, table_transform)
+	assert_true(_view.selection_outline == outline and outline.visible)
+	assert_eq(outline.get_meta("item_id"), table.id)
+	assert_true(editor.move(table.id, Vector2i(5, 4), 1), editor.last_check.why)
+	assert_true(_view.item_nodes[table.id] == table_visual)
+	assert_eq(_native_item_identity(table_visual), table_native)
+	assert_true(table_visual.transform.is_equal_approx(ItemVisual.placed_transform(table_def, table.origin, table.quarter_turns)))
+	assert_eq(outline.transform, table_visual.transform)
+	_view._process(0.1)
+	assert_true(_view.agent_nodes[cook.id] == actor)
+	assert_eq(cook.cell, Vector2i(8, 8))
+	assert_eq(wallet.cash, 1000 - table_def.price - rug_def.price + refund)
+	assert_eq(wallet.entries.size(), 3, "two buys and one sale; visual updates and moves add no charges")
+	assert_eq(world.now, 0, "view edits cannot advance the simulation")
+
+
+func _native_item_identity(visual: ItemVisual) -> Dictionary:
+	var meshes: Array[int] = []
+	for mesh: MeshInstance3D in visual.rendered_meshes():
+		meshes.append(mesh.get_instance_id())
+	var material: BaseMaterial3D = visual.primary_body_material()
+	return {"root": visual.get_instance_id(), "prop": visual.prop.get_instance_id(),
+		"meshes": meshes, "body_material": material.get_instance_id() if material != null else 0}
 
 
 func test_agents_interpolate_and_reconcile_without_writing_sim() -> void:

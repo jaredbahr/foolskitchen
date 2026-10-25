@@ -4,6 +4,34 @@ extends TestCase
 const NONE := Vector2i(-1, -1)
 
 
+class FloorChangeProbe:
+	extends RefCounted
+	var records: Array[Dictionary] = []
+	var _grid_ref: WeakRef
+	var _table_id: int
+	var _origin: Vector2i
+	var _seat: Vector2i
+
+
+	func _init(grid: SimGrid, table: PlacedItem) -> void:
+		_grid_ref = weakref(grid)
+		_table_id = table.id
+		_origin = table.origin
+		_seat = table.seat_cells[0]
+
+
+	func changed(_cells: Array[Vector2i]) -> void:
+		var grid: SimGrid = _grid_ref.get_ref() as SimGrid
+		var normal: PlacedItem = grid.item_on_layer(_origin, ItemDef.PlacementLayer.NORMAL)
+		var floor_item: PlacedItem = grid.item_on_layer(_origin, ItemDef.PlacementLayer.FLOOR_DECOR)
+		var table: PlacedItem = grid.item(_table_id)
+		records.append({"normal": normal.id if normal != null else 0,
+			"floor": floor_item.id if floor_item != null else 0,
+			"seat_table": grid.dining_table_id(_seat),
+			"holder": table.reserved_by(_seat) if table != null else -1,
+			"walkable": grid.is_walkable(_seat)})
+
+
 func _room() -> SimGrid:
 	# 8x6 room, door gap at the bottom, street entry below it.
 	return SimGrid.from_ascii(PackedStringArray([
@@ -260,3 +288,180 @@ func test_walkable_neighbours_order_and_corner_rules() -> void:
 	assert_eq(grid.walkable_neighbours(Vector2i(1, 1)), [Vector2i(2, 1), Vector2i(1, 2),
 		Vector2i(0, 1), Vector2i(2, 2), Vector2i(0, 2)] as Array[Vector2i])
 	assert_eq(grid.walkable_neighbours(Vector2i.ZERO), [Vector2i(0, 1)] as Array[Vector2i])
+
+
+func test_floor_layer_shares_normal_footprints_in_both_orders_and_all_rotations() -> void:
+	for floor_first: bool in [true, false]:
+		for turns: int in range(4):
+			var grid: SimGrid = SimGrid.new(Vector2i(8, 8))
+			var floor_def: ItemDef = _floor_definition(Vector2i(4, 4))
+			var table_def: ItemDef = _floor_test_table()
+			var rug: PlacedItem = null
+			var table: PlacedItem = null
+			if floor_first:
+				rug = grid.place_def(floor_def, Vector2i(1, 1), turns)
+				table = grid.place_def(table_def, Vector2i(2, 2), turns)
+			else:
+				table = grid.place_def(table_def, Vector2i(2, 2), turns)
+				rug = grid.place_def(floor_def, Vector2i(1, 1), turns)
+			assert_not_null(rug)
+			assert_not_null(table)
+			if rug == null or table == null:
+				continue
+			var seat: Vector2i = table.origin + GridMath.rotate_cell(Vector2i(0, 1), table_def.footprint, turns)
+			assert_eq(table.seat_cells, [seat] as Array[Vector2i])
+			assert_eq(grid.dining_table_id(seat), table.id)
+			assert_true(table.reserve(seat, 42))
+			assert_true(grid.is_walkable(seat))
+			assert_false(grid.find_path(Vector2i.ZERO, seat).is_empty())
+			assert_false(grid.is_walkable(table.origin), "the normal solid table still blocks its footprint")
+			assert_eq(grid.item_at(table.origin), table)
+			assert_eq(grid.item_on_layer(table.origin, ItemDef.PlacementLayer.FLOOR_DECOR), rug)
+			assert_eq(grid.items_at(table.origin), [table, rug] as Array[PlacedItem])
+			var copies: Array[PlacedItem] = grid.items_at(table.origin)
+			copies.clear()
+			assert_eq(grid.items_at(table.origin).size(), 2)
+			assert_eq(table.reserved_by(seat), 42)
+			assert_eq(rug.placement_layer, ItemDef.PlacementLayer.FLOOR_DECOR)
+
+
+func test_floor_layer_keeps_terrain_and_same_layer_overlap_rules() -> void:
+	var grid: SimGrid = _room()
+	var floor_def: ItemDef = _floor_definition(Vector2i(2, 2))
+	assert_eq(grid.can_place_def(floor_def, Vector2i(0, 1)), SimGrid.PlaceResult.NOT_FLOOR)
+	assert_eq(grid.can_place_def(floor_def, Vector2i(8, 6)), SimGrid.PlaceResult.OUT_OF_BOUNDS)
+	assert_eq(grid.can_place_def(floor_def, Vector2i(3, 5)), SimGrid.PlaceResult.NOT_FLOOR)
+	var rug: PlacedItem = grid.place_def(floor_def, Vector2i(2, 2))
+	assert_not_null(rug)
+	assert_eq(grid.can_place_def(floor_def, Vector2i(2, 2)), SimGrid.PlaceResult.OVERLAPS)
+	assert_null(grid.place_def(floor_def, Vector2i(3, 3)))
+	assert_false(grid.set_terrain(Vector2i(2, 2), SimGrid.Terrain.WALL))
+	assert_true(grid.is_walkable(Vector2i(2, 2)))
+	assert_eq(grid.item_at(Vector2i(2, 2)), rug, "a lone floor item remains available to legacy picking")
+	assert_null(grid.item_on_layer(Vector2i(2, 2), ItemDef.PlacementLayer.NORMAL))
+	var normal: PlacedItem = grid.place(Vector2i.ONE, Vector2i(2, 2), 0, false)
+	assert_not_null(normal)
+	assert_eq(grid.can_place(Vector2i.ONE, Vector2i(2, 2), 0), SimGrid.PlaceResult.OVERLAPS)
+	assert_true(grid.is_walkable(Vector2i(2, 2)), "two non-solid layers never block people")
+	assert_null(grid.place(Vector2i.ONE, Vector2i(2, 2), 0, false))
+	assert_null(grid.place_def(floor_def, Vector2i(2, 2)))
+
+
+func test_floor_relocation_and_removal_preserve_table_chair_and_live_reservation() -> void:
+	var grid: SimGrid = SimGrid.new(Vector2i(10, 10))
+	var table: PlacedItem = grid.place_def(_floor_test_table(), Vector2i(2, 2))
+	var chair_def: ItemDef = ItemDef.new()
+	chair_def.id = &"floor_test_chair"
+	chair_def.category = ItemDef.Category.CHAIR
+	chair_def.solid = false
+	chair_def.seat_cells = [Vector2i.ZERO]
+	var chair: PlacedItem = grid.place_def(chair_def, Vector2i(3, 3))
+	# The second seat faces the other half of the same physical table.
+	var occupied: Vector2i = chair.origin
+	assert_eq(grid.dining_furnishing_id(occupied), chair.id)
+	assert_true(table.reserve(occupied, 77))
+	var table_seats: Array[Vector2i] = table.seat_cells.duplicate()
+	var rug: PlacedItem = grid.place_def(_floor_definition(Vector2i(4, 4)), Vector2i(1, 1))
+	var rug_id: int = rug.id
+	var table_origin: Vector2i = table.origin
+	var changed: Array[Array] = []
+	grid.cells_changed.connect(func(cells: Array[Vector2i]) -> void: changed.append(cells.duplicate()))
+	assert_true(grid.relocate_def(rug_id, Vector2i(5, 5), 1))
+	assert_eq(changed.size(), 1)
+	assert_true(grid.item(rug_id) == rug)
+	assert_eq(grid.item_on_layer(occupied, ItemDef.PlacementLayer.NORMAL), chair)
+	assert_null(grid.item_on_layer(occupied, ItemDef.PlacementLayer.FLOOR_DECOR))
+	assert_true(grid.item(table.id) == table)
+	assert_eq(table.origin, table_origin)
+	assert_eq(table.seat_cells, table_seats)
+	assert_eq(table.reserved_by(occupied), 77)
+	assert_eq(grid.dining_table_id(occupied), table.id)
+	assert_eq(grid.dining_furnishing_id(occupied), chair.id)
+	assert_true(grid.remove(rug_id))
+	assert_eq(changed.size(), 2)
+	assert_eq(table.reserved_by(occupied), 77)
+	assert_eq(grid.item_at(occupied), chair)
+	assert_false(grid.relocate_def(chair.id, Vector2i(4, 4), 0), "the original occupied-chair guard still applies")
+
+
+func test_normal_move_and_remove_leave_the_floor_item_in_place() -> void:
+	var grid: SimGrid = SimGrid.new(Vector2i(8, 8))
+	var rug: PlacedItem = grid.place_def(_floor_definition(Vector2i(4, 4)), Vector2i(1, 1))
+	var table: PlacedItem = grid.place_def(_floor_test_table(), Vector2i(2, 2))
+	assert_true(grid.relocate_def(table.id, Vector2i(3, 3), 1))
+	assert_eq(grid.item_at(Vector2i(2, 2)), rug)
+	assert_true(grid.is_walkable(Vector2i(2, 2)))
+	assert_eq(grid.item_on_layer(Vector2i(3, 3), ItemDef.PlacementLayer.FLOOR_DECOR), rug)
+	assert_false(grid.is_walkable(Vector2i(3, 3)))
+	assert_true(grid.remove(table.id))
+	assert_true(grid.item(rug.id) == rug)
+	assert_eq(grid.item_at(Vector2i(3, 3)), rug)
+	assert_true(grid.is_walkable(Vector2i(3, 3)))
+	assert_eq(rug.origin, Vector2i(1, 1))
+
+
+func test_failed_floor_move_is_atomic_and_does_not_clear_other_layer() -> void:
+	var grid: SimGrid = SimGrid.new(Vector2i(8, 8))
+	var definition: ItemDef = _floor_definition(Vector2i(2, 2))
+	var rug: PlacedItem = grid.place_def(definition, Vector2i(1, 1))
+	var other: PlacedItem = grid.place_def(definition, Vector2i(5, 5))
+	var normal: PlacedItem = grid.place(Vector2i.ONE, Vector2i(5, 5), 0, true)
+	var changed: Array[Array] = []
+	grid.cells_changed.connect(func(cells: Array[Vector2i]) -> void: changed.append(cells.duplicate()))
+	assert_false(grid.relocate_def(rug.id, Vector2i(5, 5), 1))
+	assert_false(grid.relocate_def(rug.id, Vector2i(7, 7), 0))
+	assert_eq(changed.size(), 0)
+	assert_eq(rug.origin, Vector2i(1, 1))
+	assert_eq(grid.item_on_layer(Vector2i(1, 1), ItemDef.PlacementLayer.FLOOR_DECOR), rug)
+	assert_eq(grid.items_at(Vector2i(5, 5)), [normal, other] as Array[PlacedItem])
+	assert_false(grid.is_walkable(Vector2i(5, 5)))
+
+
+func test_invalid_floor_definition_is_rejected_without_any_placement() -> void:
+	var grid: SimGrid = SimGrid.new(Vector2i(4, 4))
+	var definition: ItemDef = _floor_definition(Vector2i.ONE)
+	definition.solid = true
+	assert_eq(grid.can_place_def(definition, Vector2i.ONE), SimGrid.PlaceResult.INVALID_LAYER)
+	assert_null(grid.place_def(definition, Vector2i.ONE))
+	definition.solid = false
+	assert_null(grid.place(Vector2i.ONE, Vector2i.ONE, 0, true, [], [], definition),
+		"generic callers cannot smuggle a solid item into the floor layer")
+	assert_eq(grid.items().size(), 0)
+	assert_true(grid.is_walkable(Vector2i.ONE))
+
+
+func test_floor_notifications_observe_complete_coverage_and_preserved_dining_holds() -> void:
+	var grid: SimGrid = SimGrid.new(Vector2i(10, 10))
+	var table: PlacedItem = grid.place_def(_floor_test_table(), Vector2i(2, 2))
+	assert_true(table.reserve(table.seat_cells[0], 91))
+	var probe: FloorChangeProbe = FloorChangeProbe.new(grid, table)
+	grid.cells_changed.connect(probe.changed)
+	var rug: PlacedItem = grid.place_def(_floor_definition(Vector2i(4, 4)), Vector2i(1, 1))
+	assert_eq(probe.records, [{"normal": table.id, "floor": rug.id,
+		"seat_table": table.id, "holder": 91, "walkable": true}] as Array[Dictionary])
+	assert_true(grid.relocate_def(rug.id, Vector2i(5, 5), 1))
+	assert_true(grid.remove(rug.id))
+	assert_eq(probe.records.size(), 3, "one coherent notification per accepted floor edit")
+	for index: int in [1, 2]:
+		assert_eq(probe.records[index], {"normal": table.id, "floor": 0,
+			"seat_table": table.id, "holder": 91, "walkable": true})
+	grid.cells_changed.disconnect(probe.changed)
+
+
+func _floor_definition(footprint: Vector2i) -> ItemDef:
+	var definition: ItemDef = ItemDef.new()
+	definition.id = &"floor_test_rug"
+	definition.category = ItemDef.Category.DECOR
+	definition.placement_layer = ItemDef.PlacementLayer.FLOOR_DECOR
+	definition.footprint = footprint
+	definition.solid = false
+	return definition
+
+
+func _floor_test_table() -> ItemDef:
+	var definition: ItemDef = ItemDef.new()
+	definition.id = &"floor_test_table"
+	definition.category = ItemDef.Category.TABLE
+	definition.footprint = Vector2i(2, 1)
+	definition.seat_cells = [Vector2i(0, 1)]
+	return definition
