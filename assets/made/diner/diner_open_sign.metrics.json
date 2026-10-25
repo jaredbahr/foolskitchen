@@ -22,7 +22,7 @@
     0.37749998550862074,
     0.13100000098347664
   ],
-  "sha256": "8b8d87daea7b0073754158d465850113e932811a0b64b9fb07194c321c6dc699",
+  "sha256": "48eb0d3e652d512b3a34e2c6e8601b405cdb55686a74cfcc7d944dd8b1f3790e",
   "references": [
     {
       "path": "assets/kenney/furniture/lampWall.glb",
@@ -119,6 +119,6 @@
     "tools/diner/build_diner.py": "734137560a4945cb385b4ad960c2d3ae592f71fde0a6bbc588d5f8f5f8920171",
     "tools/diner/common.py": "f4c0dc2e09e644dcb755f300db4a83f292e2b004e8950165cc05dcda0c8da1b0",
     "tools/diner/furniture.py": "2827a9b847fa6b1f729d4f22a9dbcecaf3c63e9b4cc0be53ebfbbfa808b1a71d",
-    "tools/diner/wall_pieces.py": "f0140fc4ca2ba0efb165d7bd1ad6f3eee033977c9587840492cb8b8d223e39b2"
+    "tools/diner/wall_pieces.py": "a6efaf41f63bf33a31f511200a122a5b01ebb815b8fb9ba40d2bbe5e63ba8da9"
   }
 }

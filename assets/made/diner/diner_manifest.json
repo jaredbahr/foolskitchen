@@ -25,7 +25,7 @@
         0.6499999910593033,
         0.4000000059604645
       ],
-      "sha256": "fa66638ea9fe1334b8b0e3b0c1386450a218faaa6c1e05af87be357ccfc8c144",
+      "sha256": "a4420d089a1c1ba3d3008a47112fd3de1fe08d65acca1d07a12b89d5489c16c4",
       "references": [
         {
           "path": "assets/kenney/furniture/benchCushion.glb",
@@ -122,7 +122,7 @@
         "tools/diner/build_diner.py": "734137560a4945cb385b4ad960c2d3ae592f71fde0a6bbc588d5f8f5f8920171",
         "tools/diner/common.py": "f4c0dc2e09e644dcb755f300db4a83f292e2b004e8950165cc05dcda0c8da1b0",
         "tools/diner/furniture.py": "2827a9b847fa6b1f729d4f22a9dbcecaf3c63e9b4cc0be53ebfbbfa808b1a71d",
-        "tools/diner/wall_pieces.py": "f0140fc4ca2ba0efb165d7bd1ad6f3eee033977c9587840492cb8b8d223e39b2"
+        "tools/diner/wall_pieces.py": "a6efaf41f63bf33a31f511200a122a5b01ebb815b8fb9ba40d2bbe5e63ba8da9"
       }
     },
     {
@@ -149,7 +149,7 @@
         0.4350000098347664,
         0.2654399871826172
       ],
-      "sha256": "0cfb9f2d43d146285dc549cca91ce8b00eb62ec660da42bdd536eb616c50821d",
+      "sha256": "0218d0eb6498d07b025ece3fdbfb4f75c65067c433291156c155652481a86b68",
       "references": [
         {
           "path": "assets/kenney/furniture/stoolBar.glb",
@@ -230,7 +230,7 @@
         "tools/diner/build_diner.py": "734137560a4945cb385b4ad960c2d3ae592f71fde0a6bbc588d5f8f5f8920171",
         "tools/diner/common.py": "f4c0dc2e09e644dcb755f300db4a83f292e2b004e8950165cc05dcda0c8da1b0",
         "tools/diner/furniture.py": "2827a9b847fa6b1f729d4f22a9dbcecaf3c63e9b4cc0be53ebfbbfa808b1a71d",
-        "tools/diner/wall_pieces.py": "f0140fc4ca2ba0efb165d7bd1ad6f3eee033977c9587840492cb8b8d223e39b2"
+        "tools/diner/wall_pieces.py": "a6efaf41f63bf33a31f511200a122a5b01ebb815b8fb9ba40d2bbe5e63ba8da9"
       }
     },
     {
@@ -257,7 +257,7 @@
         0.37749998550862074,
         0.13100000098347664
       ],
-      "sha256": "8b8d87daea7b0073754158d465850113e932811a0b64b9fb07194c321c6dc699",
+      "sha256": "48eb0d3e652d512b3a34e2c6e8601b405cdb55686a74cfcc7d944dd8b1f3790e",
       "references": [
         {
           "path": "assets/kenney/furniture/lampWall.glb",
@@ -354,7 +354,7 @@
         "tools/diner/build_diner.py": "734137560a4945cb385b4ad960c2d3ae592f71fde0a6bbc588d5f8f5f8920171",
         "tools/diner/common.py": "f4c0dc2e09e644dcb755f300db4a83f292e2b004e8950165cc05dcda0c8da1b0",
         "tools/diner/furniture.py": "2827a9b847fa6b1f729d4f22a9dbcecaf3c63e9b4cc0be53ebfbbfa808b1a71d",
-        "tools/diner/wall_pieces.py": "f0140fc4ca2ba0efb165d7bd1ad6f3eee033977c9587840492cb8b8d223e39b2"
+        "tools/diner/wall_pieces.py": "a6efaf41f63bf33a31f511200a122a5b01ebb815b8fb9ba40d2bbe5e63ba8da9"
       }
     },
     {
@@ -462,7 +462,7 @@
         "tools/diner/build_diner.py": "734137560a4945cb385b4ad960c2d3ae592f71fde0a6bbc588d5f8f5f8920171",
         "tools/diner/common.py": "f4c0dc2e09e644dcb755f300db4a83f292e2b004e8950165cc05dcda0c8da1b0",
         "tools/diner/furniture.py": "2827a9b847fa6b1f729d4f22a9dbcecaf3c63e9b4cc0be53ebfbbfa808b1a71d",
-        "tools/diner/wall_pieces.py": "f0140fc4ca2ba0efb165d7bd1ad6f3eee033977c9587840492cb8b8d223e39b2"
+        "tools/diner/wall_pieces.py": "a6efaf41f63bf33a31f511200a122a5b01ebb815b8fb9ba40d2bbe5e63ba8da9"
       }
     },
     {
@@ -602,7 +602,7 @@
         "tools/diner/build_diner.py": "734137560a4945cb385b4ad960c2d3ae592f71fde0a6bbc588d5f8f5f8920171",
         "tools/diner/common.py": "f4c0dc2e09e644dcb755f300db4a83f292e2b004e8950165cc05dcda0c8da1b0",
         "tools/diner/furniture.py": "2827a9b847fa6b1f729d4f22a9dbcecaf3c63e9b4cc0be53ebfbbfa808b1a71d",
-        "tools/diner/wall_pieces.py": "f0140fc4ca2ba0efb165d7bd1ad6f3eee033977c9587840492cb8b8d223e39b2"
+        "tools/diner/wall_pieces.py": "a6efaf41f63bf33a31f511200a122a5b01ebb815b8fb9ba40d2bbe5e63ba8da9"
       }
     },
     {
@@ -742,7 +742,7 @@
         "tools/diner/build_diner.py": "734137560a4945cb385b4ad960c2d3ae592f71fde0a6bbc588d5f8f5f8920171",
         "tools/diner/common.py": "f4c0dc2e09e644dcb755f300db4a83f292e2b004e8950165cc05dcda0c8da1b0",
         "tools/diner/furniture.py": "2827a9b847fa6b1f729d4f22a9dbcecaf3c63e9b4cc0be53ebfbbfa808b1a71d",
-        "tools/diner/wall_pieces.py": "f0140fc4ca2ba0efb165d7bd1ad6f3eee033977c9587840492cb8b8d223e39b2"
+        "tools/diner/wall_pieces.py": "a6efaf41f63bf33a31f511200a122a5b01ebb815b8fb9ba40d2bbe5e63ba8da9"
       }
     }
   ]
