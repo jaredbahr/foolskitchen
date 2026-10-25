@@ -341,7 +341,8 @@ func test_seated_offsets_ignore_invalid_distances_and_unverified_seated_states()
 		assert_true(seated.seated)
 		assert_eq(seated.display_offset, Vector3.FORWARD * 0.125)
 		assert_eq(seated.clip, &"sit")
-	for distance: float in [-0.01, NAN, INF, -INF]:
+	# A finite 64-bit parameter can still overflow the native Vector3 real_t.
+	for distance: float in [-0.01, NAN, INF, -INF, 1.0e100]:
 		var invalid: AgentPresentationController.Frame = AgentPresentationController.frame_for(guest, _world, 0.31, distance, Vector3.FORWARD)
 		assert_true(invalid.seated)
 		assert_eq(invalid.display_offset, Vector3.ZERO, "invalid offsets never create a non-finite or backward position")
