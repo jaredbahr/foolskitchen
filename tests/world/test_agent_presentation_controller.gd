@@ -293,8 +293,8 @@ func test_zero_seated_offset_preserves_legacy_projection_and_table_facing() -> v
 	assert_eq(_drawn(legacy[guest.id]), original.floor_position)
 	assert_eq(_drawn(empty_options[guest.id]), _drawn(legacy[guest.id]))
 	# This is an API fixture distance, not an authored content-tuning value.
-	var shifted: AgentPresentationController.Frame = AgentPresentationController.frame_for(guest, _world, 0.31, 0.125)
-	var expected_offset: Vector3 = Vector3(3.0, 0.0, -1.0).normalized() * 0.125
+	var shifted: AgentPresentationController.Frame = AgentPresentationController.frame_for(guest, _world, 0.31, 0.04)
+	var expected_offset: Vector3 = Vector3(3.0, 0.0, -1.0).normalized() * 0.04
 	assert_true(shifted.display_offset.is_equal_approx(expected_offset))
 	assert_eq(shifted.floor_position, original.floor_position)
 	assert_eq(shifted.facing_direction, original.facing_direction)
@@ -310,24 +310,24 @@ func test_authored_seated_facing_offsets_follow_all_four_rotations_in_world_metr
 	var guest: CustomerAgent = _seated_customer(_table())
 	var directions: Array[Vector3] = [Vector3.FORWARD, Vector3.RIGHT, Vector3.BACK, Vector3.LEFT]
 	var heights: Dictionary[int, float] = {guest.id: 0.31}
-	var offsets: Dictionary[int, float] = {guest.id: 0.125}
+	var offsets: Dictionary[int, float] = {guest.id: 0.04}
 	for turns: int in range(4):
 		var facing: Vector3 = directions[turns] * 3.0 + Vector3.UP * 7.0
 		var facings: Dictionary[int, Vector3] = {guest.id: facing}
-		var single: AgentPresentationController.Frame = AgentPresentationController.frame_for(guest, _world, 0.31, 0.125, facing)
+		var single: AgentPresentationController.Frame = AgentPresentationController.frame_for(guest, _world, 0.31, 0.04, facing)
 		var batch: AgentPresentationController.Frame = AgentPresentationController.frames_for(_world.agents, _world, heights, facings, offsets)[guest.id]
 		for frame: AgentPresentationController.Frame in [single, batch]:
 			assert_true(frame.seated)
 			assert_eq(frame.floor_position, GridMath.cell_to_world(guest.seat_cell))
 			assert_eq(frame.facing_direction, directions[turns] * 3.0, "authored chair front wins over the table diagonal")
-			assert_true(frame.display_offset.is_equal_approx(directions[turns] * 0.125))
-			assert_almost_eq(frame.display_offset.length(), 0.125, 0.000001, "offset is metres, independent of facing magnitude or art scale")
+			assert_true(frame.display_offset.is_equal_approx(directions[turns] * 0.04))
+			assert_almost_eq(frame.display_offset.length(), 0.04, 0.000001, "offset is metres, independent of facing magnitude or art scale")
 			assert_eq(frame.display_offset.y, 0.0)
 			assert_almost_eq(frame.seat_height, 0.31)
 		var view: SpyPerson = SpyPerson.new()
 		assert_true(AgentPresentationController.apply(batch, view, 0.0))
 		assert_true((-view.basis.z).normalized().dot(directions[turns]) > 0.9999)
-		assert_true(view.position.is_equal_approx(GridMath.cell_to_world(guest.seat_cell) + directions[turns] * 0.125))
+		assert_true(view.position.is_equal_approx(GridMath.cell_to_world(guest.seat_cell) + directions[turns] * 0.04))
 		view.free()
 
 
@@ -337,12 +337,15 @@ func test_seated_offsets_ignore_invalid_distances_and_unverified_seated_states()
 	for state: CustomerAgent.State in [CustomerAgent.State.ORDERING, CustomerAgent.State.WAITING_FOOD,
 		CustomerAgent.State.EATING, CustomerAgent.State.PAYING]:
 		guest.state = state
-		var seated: AgentPresentationController.Frame = AgentPresentationController.frame_for(guest, _world, 0.31, 0.125, Vector3.FORWARD)
+		var seated: AgentPresentationController.Frame = AgentPresentationController.frame_for(guest, _world, 0.31, 0.04, Vector3.FORWARD)
 		assert_true(seated.seated)
-		assert_eq(seated.display_offset, Vector3.FORWARD * 0.125)
+		assert_eq(seated.display_offset, Vector3.FORWARD * 0.04)
 		assert_eq(seated.clip, &"sit")
+	var at_limit: AgentPresentationController.Frame = AgentPresentationController.frame_for(guest, _world, 0.31, 0.05, Vector3.FORWARD)
+	assert_true(at_limit.seated)
+	assert_eq(at_limit.display_offset, Vector3.FORWARD * 0.05, "the Director's exact cap remains supported")
 	# A finite 64-bit parameter can still overflow the native Vector3 real_t.
-	for distance: float in [-0.01, NAN, INF, -INF, 1.0e100]:
+	for distance: float in [-0.01, NAN, INF, -INF, 1.0e100, 0.050001, 0.125]:
 		var invalid: AgentPresentationController.Frame = AgentPresentationController.frame_for(guest, _world, 0.31, distance, Vector3.FORWARD)
 		assert_true(invalid.seated)
 		assert_eq(invalid.display_offset, Vector3.ZERO, "invalid offsets never create a non-finite or backward position")
@@ -350,37 +353,37 @@ func test_seated_offsets_ignore_invalid_distances_and_unverified_seated_states()
 	for state: CustomerAgent.State in [CustomerAgent.State.ARRIVING, CustomerAgent.State.QUEUED,
 		CustomerAgent.State.WALKING_TO_SEAT, CustomerAgent.State.LEAVING, CustomerAgent.State.LEFT]:
 		guest.state = state
-		var standing: AgentPresentationController.Frame = AgentPresentationController.frame_for(guest, _world, 0.31, 0.125, Vector3.FORWARD)
+		var standing: AgentPresentationController.Frame = AgentPresentationController.frame_for(guest, _world, 0.31, 0.04, Vector3.FORWARD)
 		assert_false(standing.seated)
 		assert_eq(standing.display_offset, Vector3.ZERO)
 	guest.state = CustomerAgent.State.WAITING_FOOD
 	guest.path = [guest.cell, guest.cell + Vector2i.UP]
 	guest.path_index = 1
 	guest.move_progress = 0.5
-	var walking: AgentPresentationController.Frame = AgentPresentationController.frame_for(guest, _world, 0.31, 0.125, Vector3.FORWARD)
+	var walking: AgentPresentationController.Frame = AgentPresentationController.frame_for(guest, _world, 0.31, 0.04, Vector3.FORWARD)
 	assert_true(walking.moving)
 	assert_false(walking.seated)
 	assert_eq(walking.display_offset, Vector3.ZERO)
 	guest.clear_path()
 	table.release(guest.seat_cell, guest.id)
-	var unreserved: AgentPresentationController.Frame = AgentPresentationController.frame_for(guest, _world, 0.31, 0.125, Vector3.FORWARD)
+	var unreserved: AgentPresentationController.Frame = AgentPresentationController.frame_for(guest, _world, 0.31, 0.04, Vector3.FORWARD)
 	assert_false(unreserved.seated)
 	assert_eq(unreserved.display_offset, Vector3.ZERO)
 	var other: SimAgent = _world.add_agent(SimAgent.new())
 	assert_true(table.reserve(guest.seat_cell, other.id))
-	var wrong_claimant: AgentPresentationController.Frame = AgentPresentationController.frame_for(guest, _world, 0.31, 0.125, Vector3.FORWARD)
+	var wrong_claimant: AgentPresentationController.Frame = AgentPresentationController.frame_for(guest, _world, 0.31, 0.04, Vector3.FORWARD)
 	assert_false(wrong_claimant.seated)
 	assert_eq(wrong_claimant.display_offset, Vector3.ZERO)
 	var worker: StaffAgent = _world.add_agent(StaffAgent.new(&"server")) as StaffAgent
 	worker.cell = guest.cell
-	assert_eq(AgentPresentationController.frame_for(worker, _world, 0.31, 0.125, Vector3.FORWARD).display_offset, Vector3.ZERO)
+	assert_eq(AgentPresentationController.frame_for(worker, _world, 0.31, 0.04, Vector3.FORWARD).display_offset, Vector3.ZERO)
 
 
 func test_invalid_or_vertical_authored_facing_uses_the_unchanged_table_direction() -> void:
 	var guest: CustomerAgent = _seated_customer(_table())
-	var expected: Vector3 = Vector3(3.0, 0.0, -1.0).normalized() * 0.125
+	var expected: Vector3 = Vector3(3.0, 0.0, -1.0).normalized() * 0.04
 	for facing: Vector3 in [Vector3(NAN, 0.0, 1.0), Vector3(1.0, 0.0, INF), Vector3.UP, Vector3.ZERO]:
-		var frame: AgentPresentationController.Frame = AgentPresentationController.frame_for(guest, _world, 0.31, 0.125, facing)
+		var frame: AgentPresentationController.Frame = AgentPresentationController.frame_for(guest, _world, 0.31, 0.04, facing)
 		assert_true(frame.seated)
 		assert_eq(frame.facing_direction, Vector3(0.75, 0.0, -0.25))
 		assert_true(frame.display_offset.is_finite())
@@ -390,13 +393,13 @@ func test_invalid_or_vertical_authored_facing_uses_the_unchanged_table_direction
 func test_final_shifted_seat_blocks_earlier_standers_without_drift_or_sim_mutation() -> void:
 	var first: StaffAgent = _world.add_agent(StaffAgent.new(&"server")) as StaffAgent
 	var second: SimAgent = _world.add_agent(SimAgent.new())
-	first.cell = Vector2i(1, 2)
-	second.cell = first.cell
+	var table: PlacedItem = _table()
+	var guest: CustomerAgent = _seated_customer(table)
+	first.cell = guest.seat_cell
+	second.cell = guest.seat_cell
 	first.path = [first.cell]
 	first.path_index = 1
 	first.move_progress = 0.25
-	var table: PlacedItem = _table()
-	var guest: CustomerAgent = _seated_customer(table)
 	guest._queue_wait = 11
 	guest._food_wait = 17
 	assert_true(guest.id > first.id and guest.id > second.id, "the seated blocker is installed before earlier standing IDs")
@@ -409,22 +412,24 @@ func test_final_shifted_seat_blocks_earlier_standers_without_drift_or_sim_mutati
 	var before_clock: Dictionary = _world.clock.to_dict()
 	var before_log: PackedStringArray = _world.event_log.duplicate()
 	var heights: Dictionary[int, float] = {guest.id: 0.31}
-	var facings: Dictionary[int, Vector3] = {guest.id: Vector3.FORWARD}
-	var offsets: Dictionary[int, float] = {guest.id: 0.125}
+	var facings: Dictionary[int, Vector3] = {guest.id: Vector3.BACK}
+	var offsets: Dictionary[int, float] = {guest.id: 0.04}
 	var before_heights: Dictionary = heights.duplicate()
 	var before_facings: Dictionary = facings.duplicate()
 	var before_offsets: Dictionary = offsets.duplicate()
-	var anchor: Vector3 = GridMath.cell_to_world(guest.seat_cell) + Vector3.FORWARD * 0.125
-	assert_true(GridMath.cell_to_world(first.cell).distance_to(GridMath.cell_to_world(guest.seat_cell)) >= AgentPresentationController.MIN_STANDING_DISTANCE)
-	assert_true(GridMath.cell_to_world(first.cell).distance_to(anchor) < AgentPresentationController.MIN_STANDING_DISTANCE,
-		"using the old seat position would miss this standing overlap")
+	var anchor: Vector3 = GridMath.cell_to_world(guest.seat_cell) + Vector3.BACK * 0.04
+	var raw_seat_blockers: Array[Vector3] = [GridMath.cell_to_world(guest.seat_cell)]
+	var old_candidate: Vector3 = AgentPresentationController._separated_position(
+		GridMath.cell_to_world(first.cell), raw_seat_blockers, _world.grid)
+	assert_true(old_candidate.distance_to(anchor) < AgentPresentationController.MIN_STANDING_DISTANCE,
+		"the raw-seat-only blocker picks a nudge that overlaps the supported shifted seat")
 	var ordered: Array[SimAgent] = [first, second, guest]
 	var reversed: Array[SimAgent] = [guest, second, first]
 	var a: Dictionary[int, AgentPresentationController.Frame] = AgentPresentationController.frames_for(ordered, _world, heights, facings, offsets)
 	var b: Dictionary[int, AgentPresentationController.Frame] = AgentPresentationController.frames_for(reversed, _world, heights, facings, offsets)
 	var repeated: Dictionary[int, AgentPresentationController.Frame] = AgentPresentationController.frames_for(ordered, _world, heights, facings, offsets)
 	assert_true(_drawn(a[guest.id]).is_equal_approx(anchor))
-	assert_eq(a[guest.id].display_offset, Vector3.FORWARD * 0.125, "generic separation never moves a seated guest off its authored anchor")
+	assert_eq(a[guest.id].display_offset, Vector3.BACK * 0.04, "generic separation never moves a seated guest off its authored anchor")
 	assert_false(a[guest.id].separation_blocked)
 	for actor: SimAgent in ordered:
 		assert_eq(a[actor.id].floor_position, b[actor.id].floor_position)
@@ -436,7 +441,7 @@ func test_final_shifted_seat_blocks_earlier_standers_without_drift_or_sim_mutati
 		assert_true(_world.grid.is_walkable(GridMath.world_to_cell(_drawn(a[actor.id]))))
 		assert_false(a[actor.id].separation_blocked)
 	assert_true(_drawn(a[first.id]).distance_to(_drawn(a[second.id])) >= AgentPresentationController.MIN_STANDING_DISTANCE)
-	assert_eq(first.cell, Vector2i(1, 2))
+	assert_eq(first.cell, guest.seat_cell)
 	assert_eq(second.cell, first.cell)
 	assert_eq(guest.cell, guest.seat_cell)
 	assert_eq(guest.state, CustomerAgent.State.WAITING_FOOD)
