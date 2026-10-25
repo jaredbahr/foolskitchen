@@ -7,6 +7,7 @@ baked lettering texture. Chalkboard lettering is intentionally left to the game.
 
 from __future__ import annotations
 
+import math
 from typing import Sequence
 
 from common import Builder
@@ -74,7 +75,8 @@ def _stroke_mesh(
         (end[0] + normal_x, y_front, end[1] + normal_z),
         (start[0] + normal_x, y_front, start[1] + normal_z),
     ]
-    builder.custommesh(name, vertices, list(_BOX_FACES), material_token)
+    # The X/Z profile extruded along Y has opposite handedness to _box_mesh.
+    builder.custommesh(name, vertices, [tuple(reversed(face)) for face in _BOX_FACES], material_token)
 
 
 def _frame(
@@ -263,7 +265,7 @@ def _build_wall_art_a(builder: Builder) -> None:
         location=(0.0, 0.047, center_z + 0.035),
         material_token="red",
         vertices=8,
-        rotation=(90.0, 0.0, 0.0),
+        rotation=(math.pi / 2.0, 0.0, 0.0),
     )
     _box_mesh(
         builder,

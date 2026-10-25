@@ -176,7 +176,8 @@ func _assert_model_contract(item_id: String, footprint: Vector2i, expected_heigh
 	assert_true(triangles > 0 and triangles <= 1500,
 		"%s has %d imported triangles within the furniture budget" % [item_id, triangles])
 	assert_true(found_materials.has("carpet"), "%s has its cushion surface" % item_id)
-	assert_true(found_materials.has("wood"), "%s keeps its wood frame" % item_id)
+	var frame_material: String = "wood" if item_id == "diner_booth" else "metal"
+	assert_true(found_materials.has(frame_material), "%s keeps its authored frame material" % item_id)
 	instance.free()
 
 
