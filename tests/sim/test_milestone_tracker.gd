@@ -178,6 +178,91 @@ func test_active_catalogue_still_rejects_more_than_sixty_four_goals() -> void:
 	assert_false(_historical_catalogue(65).is_valid())
 
 
+func test_progress_projection_returns_raw_units_for_every_condition_without_mutation() -> void:
+	var catalogue: MilestoneSet = _condition_catalogue()
+	var tracker: MilestoneTracker = MilestoneTracker.new()
+	assert_true(tracker.from_dict({"version": 1, "completed": ["former_goal"],
+		"total_served": 10, "clean_streak": 2, "last_evaluated_day": 2}))
+	var observation: MilestoneDay = _day(3)
+	observation.served_today = 4
+	observation.reputation = 3.5
+	observation.operating_profit = -20
+	observation.owner_level = 3
+	observation.staff_count = 4
+	var before: Dictionary = tracker.to_dict()
+	var values: Dictionary[StringName, float] = tracker.progress_values(catalogue, observation)
+	var expected: Array[float] = [4.0, 3.5, -20.0, 14.0, 3.0, 4.0, 3.0]
+	assert_eq(values.size(), expected.size())
+	for kind: int in range(expected.size()):
+		var id: StringName = StringName("condition_%d" % kind)
+		assert_true(is_finite(values[id]))
+		assert_eq(values[id], expected[kind])
+	assert_eq(tracker.to_dict(), before)
+	assert_eq(observation.served_today, 4)
+	assert_eq(observation.owner_level, 3)
+	assert_eq(catalogue.milestones[0].target, 1.0)
+
+
+func test_progress_projection_uses_recorded_closed_day_then_projects_consecutive_gap_and_loss() -> void:
+	var catalogue: MilestoneSet = _condition_catalogue()
+	var tracker: MilestoneTracker = MilestoneTracker.new()
+	var first: MilestoneDay = _day(1)
+	first.served_today = 5
+	tracker.evaluate_day(first, catalogue)
+	var recorded: Dictionary = tracker.to_dict()
+	var closed: Dictionary[StringName, float] = tracker.progress_values(catalogue, first)
+	assert_eq(closed[&"condition_3"], 5.0, "the closed day is not added to the career total twice")
+	assert_eq(closed[&"condition_6"], 1.0, "a displayed close cannot extend its clean streak")
+	var second: MilestoneDay = _day(2)
+	second.served_today = 3
+	var projected: Dictionary[StringName, float] = tracker.progress_values(catalogue, second)
+	assert_eq(projected[&"condition_3"], 8.0)
+	assert_eq(projected[&"condition_6"], 2.0)
+	assert_eq(tracker.to_dict(), recorded)
+	tracker.evaluate_day(second, catalogue)
+	assert_eq(tracker.progress_values(catalogue, second), projected)
+	var before: Dictionary = tracker.to_dict()
+	var gap: MilestoneDay = _day(4)
+	gap.served_today = 1
+	var after_gap: Dictionary[StringName, float] = tracker.progress_values(catalogue, gap)
+	assert_eq(after_gap[&"condition_3"], 9.0)
+	assert_eq(after_gap[&"condition_6"], 1.0)
+	var loss: MilestoneDay = _day(3)
+	loss.served_today = 1
+	loss.lost_today = 1
+	assert_eq(tracker.progress_values(catalogue, loss)[&"condition_6"], 0.0)
+	assert_eq(tracker.progress_values(catalogue, first), {} as Dictionary[StringName, float])
+	assert_eq(tracker.to_dict(), before, "display projections never install future or stale observations")
+
+
+func test_progress_projection_rejects_invalid_or_overflowing_inputs_without_counting_a_closed_day_twice() -> void:
+	var tracker: MilestoneTracker = MilestoneTracker.new()
+	assert_true(tracker.from_dict({"version": 1, "completed": [],
+		"total_served": MilestoneTracker.MAX_TOTAL_SERVED, "clean_streak": 1, "last_evaluated_day": 1}))
+	var catalogue: MilestoneSet = _condition_catalogue()
+	var before: Dictionary = tracker.to_dict()
+	var closed: MilestoneDay = _day(1)
+	closed.served_today = 1
+	assert_eq(tracker.progress_values(catalogue, closed)[&"condition_3"], float(MilestoneTracker.MAX_TOTAL_SERVED))
+	var overflow: MilestoneDay = _day(2)
+	overflow.served_today = 1
+	assert_true(tracker.progress_values(catalogue, overflow).is_empty())
+	assert_true(tracker.progress_values(_single(_goal(Milestone.Condition.OWNER_LEVEL, 1.0)), overflow).is_empty(),
+		"a different visible condition cannot hide cumulative counter overflow")
+	var valid: MilestoneDay = _day(2)
+	assert_eq(tracker.progress_values(catalogue, valid)[&"condition_3"], float(MilestoneTracker.MAX_TOTAL_SERVED))
+	assert_true(tracker.progress_values(null, valid).is_empty())
+	assert_true(tracker.progress_values(MilestoneSet.new(), valid).is_empty())
+	assert_true(tracker.progress_values(catalogue, null).is_empty())
+	valid.reputation = INF
+	assert_true(tracker.progress_values(catalogue, valid).is_empty())
+	assert_eq(tracker.to_dict(), before)
+	tracker.total_served = -1
+	var malformed: Dictionary = tracker.to_dict()
+	assert_true(tracker.progress_values(catalogue, closed).is_empty())
+	assert_eq(tracker.to_dict(), malformed)
+
+
 func test_malformed_snapshot_or_catalogue_never_partially_changes_progress() -> void:
 	var tracker: MilestoneTracker = MilestoneTracker.new()
 	var goal: Milestone = _goal(Milestone.Condition.SERVED_TODAY, 1.0)
@@ -199,6 +284,15 @@ func test_malformed_snapshot_or_catalogue_never_partially_changes_progress() -> 
 	with_removed["completed"] = ["former_goal"]
 	assert_true(tracker.from_dict(with_removed))
 	assert_true(tracker.is_completed(&"former_goal"))
+
+
+func _condition_catalogue() -> MilestoneSet:
+	var catalogue: MilestoneSet = MilestoneSet.new()
+	for kind: int in range(Milestone.Condition.CLEAN_STREAK + 1):
+		var goal: Milestone = _goal(kind, 1.0)
+		goal.id = StringName("condition_%d" % kind)
+		catalogue.milestones.append(goal)
+	return catalogue
 
 
 func _historical_catalogue(count: int) -> MilestoneSet:

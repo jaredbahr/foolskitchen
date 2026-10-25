@@ -107,3 +107,62 @@ func test_present_save_section_decodes_strictly_and_transactionally() -> void:
 	for value: Variant in malformed:
 		assert_false(restored.from_dict(value))
 		assert_eq(restored.to_dict(), saved)
+
+
+func test_bonus_crosses_authored_thresholds_without_consuming_the_daily_guard() -> void:
+	var progress: OwnerProgress = OwnerProgress.new(TUNING)
+	var initial_xp: int = progress.threshold_for(2) - 1
+	assert_true(progress.from_dict({"version": 1, "total_xp": initial_xp,
+		"level": 1, "last_awarded_day": 4}))
+	var amount: int = progress.threshold_for(3) - initial_xp
+	var gained: Dictionary = progress.award_bonus(amount)
+	assert_eq(gained["bonus_xp"], amount)
+	assert_eq(gained["total_xp"], amount)
+	assert_eq(gained["level_before"], 1)
+	assert_eq(gained["level_after"], 3)
+	assert_eq(gained["levels_gained"], [2, 3] as Array[int])
+	assert_eq(progress.total_xp, progress.threshold_for(3))
+	assert_eq(progress.last_awarded_day, 4)
+	assert_eq(progress.award_day(4, 10, 100), {}, "bonus XP cannot reopen a settled day")
+	assert_eq(progress.award_day(5, 0, 0)["total_xp"], 0)
+	assert_eq(progress.last_awarded_day, 5)
+
+
+func test_bonus_zero_exact_capacity_and_rejected_amounts_are_atomic() -> void:
+	var progress: OwnerProgress = OwnerProgress.new(TUNING)
+	var maximum: int = OwnerProgress.MAX_TOTAL_XP
+	assert_true(progress.from_dict({"version": 1, "total_xp": maximum - 1,
+		"level": progress.level_at(maximum - 1), "last_awarded_day": 7}))
+	assert_eq(progress.award_bonus(1)["total_xp"], 1)
+	assert_eq(progress.total_xp, maximum)
+	var before: Dictionary = progress.to_dict()
+	var zero: Dictionary = progress.award_bonus(0)
+	assert_eq(zero["bonus_xp"], 0)
+	assert_eq(zero["total_xp"], 0)
+	assert_eq(zero["levels_gained"], [] as Array[int])
+	assert_eq(progress.to_dict(), before, "zero is valid even at the XP cap")
+	for amount: int in [-1, 1, maximum + 1, 9223372036854775807, -9223372036854775807 - 1]:
+		assert_eq(progress.award_bonus(amount), {})
+		assert_eq(progress.to_dict(), before, "refusal never changes XP, level or the daily guard")
+	var fresh: OwnerProgress = OwnerProgress.new(TUNING)
+	assert_eq(fresh.award_bonus(maximum)["total_xp"], maximum)
+	assert_eq(fresh.total_xp, maximum)
+	assert_eq(fresh.last_awarded_day, 0)
+
+
+func test_bonus_rejects_invalid_configuration_and_existing_state_without_repairing_it() -> void:
+	var missing: OwnerProgress = OwnerProgress.new(null)
+	var before: Dictionary = missing.to_dict()
+	assert_eq(missing.award_bonus(1), {})
+	assert_eq(missing.to_dict(), before)
+	var private_tuning: ProgressionTuning = TUNING.duplicate(true) as ProgressionTuning
+	private_tuning.level_exponent = NAN
+	var invalid: OwnerProgress = OwnerProgress.new(private_tuning)
+	before = invalid.to_dict()
+	assert_eq(invalid.award_bonus(1), {})
+	assert_eq(invalid.to_dict(), before)
+	var progress: OwnerProgress = OwnerProgress.new(TUNING)
+	progress.level = 2
+	before = progress.to_dict()
+	assert_eq(progress.award_bonus(1), {})
+	assert_eq(progress.to_dict(), before)

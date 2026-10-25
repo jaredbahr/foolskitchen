@@ -84,6 +84,23 @@ func award_day(day: int, happy_guests: int, profit: int, five_star_reviews: int 
 		"levels_gained": gained_levels}
 
 
+## Explicit non-daily XP, prepared by the milestone transaction after ordinary
+## day XP. Zero is valid; neither success nor refusal changes the daily guard.
+func award_bonus(amount: int) -> Dictionary:
+	if tuning == null or not tuning.is_valid() or amount < 0 or amount > MAX_TOTAL_XP \
+			or total_xp < 0 or total_xp > MAX_TOTAL_XP or amount > MAX_TOTAL_XP - total_xp \
+			or level != level_at(total_xp) or last_awarded_day < 0 or last_awarded_day > MAX_TOTAL_XP:
+		return {}
+	var previous_level: int = level
+	total_xp += amount
+	level = level_at(total_xp)
+	var gained_levels: Array[int] = []
+	for reached: int in range(previous_level + 1, level + 1):
+		gained_levels.append(reached)
+	return {"bonus_xp": amount, "total_xp": amount, "level_before": previous_level,
+		"level_after": level, "levels_gained": gained_levels}
+
+
 func to_dict() -> Dictionary:
 	return {"version": SAVE_VERSION, "total_xp": total_xp, "level": level,
 		"last_awarded_day": last_awarded_day}

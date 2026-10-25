@@ -31,18 +31,13 @@ func completed_ids() -> Array[StringName]:
 func evaluate_day(observation: MilestoneDay, catalogue: MilestoneSet) -> Array[Milestone]:
 	var reached: Array[Milestone] = []
 	if observation == null or not observation.is_valid() or catalogue == null \
-			or not catalogue.is_valid() or observation.day <= last_evaluated_day \
-			or total_served > MAX_TOTAL_SERVED - observation.served_today:
+			or not catalogue.is_valid() or observation.day <= last_evaluated_day:
 		return reached
-	var next_total: int = total_served + observation.served_today
-	var next_streak: int = 0
-	if observation.lost_today == 0:
-		if last_evaluated_day == 0 or observation.day == last_evaluated_day + 1:
-			next_streak = clean_streak + 1
-		else:
-			next_streak = 1
-		if next_streak > MAX_DAYS:
-			return reached
+	var counts: Dictionary[StringName, int] = _project_counts(observation)
+	if counts.is_empty():
+		return reached
+	var next_total: int = counts[&"total_served"]
+	var next_streak: int = counts[&"clean_streak"]
 	for goal: Milestone in catalogue.milestones:
 		if _completed.has(goal.id) or goal.unlock_level > observation.owner_level:
 			continue
@@ -56,24 +51,62 @@ func evaluate_day(observation: MilestoneDay, catalogue: MilestoneSet) -> Array[M
 	return reached
 
 
+## Raw condition units for the request-only Goals panel. A closed day's total
+## and streak are already recorded; displaying them must not count it twice.
+func progress_values(catalogue: MilestoneSet, observation: MilestoneDay) -> Dictionary[StringName, float]:
+	var values: Dictionary[StringName, float] = {}
+	if catalogue == null or not catalogue.is_valid():
+		return values
+	var counts: Dictionary[StringName, int] = _project_counts(observation)
+	if counts.is_empty():
+		return values
+	for goal: Milestone in catalogue.milestones:
+		values[goal.id] = _condition_value(goal, observation, counts[&"total_served"], counts[&"clean_streak"])
+	return values
+
+
+func _project_counts(observation: MilestoneDay) -> Dictionary[StringName, int]:
+	if observation == null or not observation.is_valid() or observation.day < last_evaluated_day \
+			or total_served < 0 or total_served > MAX_TOTAL_SERVED \
+			or clean_streak < 0 or clean_streak > MAX_DAYS \
+			or last_evaluated_day < 0 or last_evaluated_day > MAX_DAYS or clean_streak > last_evaluated_day:
+		return {}
+	if observation.day == last_evaluated_day:
+		return {&"total_served": total_served, &"clean_streak": clean_streak}
+	if total_served > MAX_TOTAL_SERVED - observation.served_today:
+		return {}
+	var next_total: int = total_served + observation.served_today
+	var next_streak: int = 0
+	if observation.lost_today == 0:
+		next_streak = clean_streak + 1 if last_evaluated_day == 0 or observation.day == last_evaluated_day + 1 else 1
+		if next_streak > MAX_DAYS:
+			return {}
+	return {&"total_served": next_total, &"clean_streak": next_streak}
+
+
 static func _meets(goal: Milestone, observation: MilestoneDay,
 		cumulative_served: int, consecutive_clean_days: int) -> bool:
+	return _condition_value(goal, observation, cumulative_served, consecutive_clean_days) >= goal.target
+
+
+static func _condition_value(goal: Milestone, observation: MilestoneDay,
+		cumulative_served: int, consecutive_clean_days: int) -> float:
 	match goal.condition:
 		Milestone.Condition.SERVED_TODAY:
-			return float(observation.served_today) >= goal.target
+			return float(observation.served_today)
 		Milestone.Condition.REPUTATION:
-			return observation.reputation >= goal.target
+			return observation.reputation
 		Milestone.Condition.PROFIT_TODAY:
-			return float(observation.operating_profit) >= goal.target
+			return float(observation.operating_profit)
 		Milestone.Condition.TOTAL_SERVED:
-			return float(cumulative_served) >= goal.target
+			return float(cumulative_served)
 		Milestone.Condition.OWNER_LEVEL:
-			return float(observation.owner_level) >= goal.target
+			return float(observation.owner_level)
 		Milestone.Condition.STAFF_COUNT:
-			return float(observation.staff_count) >= goal.target
+			return float(observation.staff_count)
 		Milestone.Condition.CLEAN_STREAK:
-			return float(consecutive_clean_days) >= goal.target
-	return false
+			return float(consecutive_clean_days)
+	return 0.0
 
 
 func to_dict() -> Dictionary:
