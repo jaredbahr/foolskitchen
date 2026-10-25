@@ -60,7 +60,9 @@ static func frame_for(agent: SimAgent, world: SimWorld, chair_seat_height: float
 				frame.facing_direction = authored
 			if is_finite(seated_forward_offset) and seated_forward_offset >= 0.0:
 				var forward: Vector3 = Vector3(frame.facing_direction.x, 0.0, frame.facing_direction.z).normalized()
-				frame.display_offset = forward * seated_forward_offset
+				var displacement: Vector3 = forward * seated_forward_offset
+				if displacement.is_finite():
+					frame.display_offset = displacement
 	if agent is StaffAgent:
 		var staff: StaffAgent = agent as StaffAgent
 		var task: SimTask = _active_task(staff, world)
