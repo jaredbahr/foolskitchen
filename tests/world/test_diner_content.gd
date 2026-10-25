@@ -142,6 +142,8 @@ func test_open_sign_named_glyph_bounds_read_open_from_its_negative_z_front() -> 
 	tree.root.add_child(instance)
 	var centers: Dictionary[String, float] = {"o": 0.0, "p": 0.0, "e": 0.0, "n": 0.0}
 	var counts: Dictionary[String, int] = {"o": 0, "p": 0, "e": 0, "n": 0}
+	var n_diagonal_mesh_count: int = 0
+	var n_diagonal_vertices: PackedVector3Array = PackedVector3Array()
 	var traversal: Array[Dictionary] = [{"node": instance, "transform": Transform3D.IDENTITY}]
 	while not traversal.is_empty():
 		var current: Dictionary = traversal.pop_back()
@@ -154,6 +156,15 @@ func test_open_sign_named_glyph_bounds_read_open_from_its_negative_z_front() -> 
 		if mesh_instance != null and mesh_instance.mesh != null:
 			var node_name: String = String(mesh_instance.name).to_lower()
 			node_name = node_name.replace("_", "").replace("-", "").replace(" ", "")
+			if node_name.begins_with("opensignnstroke2"):
+				n_diagonal_mesh_count += 1
+				for surface_index: int in range(mesh_instance.mesh.get_surface_count()):
+					var arrays: Array = mesh_instance.mesh.surface_get_arrays(surface_index)
+					if arrays.size() <= Mesh.ARRAY_VERTEX:
+						continue
+					var surface_vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+					for vertex: Vector3 in surface_vertices:
+						n_diagonal_vertices.append(accumulated * vertex)
 			for letter: String in ["o", "p", "e", "n"]:
 				if not node_name.begins_with("opensign%sstroke" % letter):
 					continue
@@ -174,6 +185,25 @@ func test_open_sign_named_glyph_bounds_read_open_from_its_negative_z_front() -> 
 	assert_true(float(centers["o"]) > float(centers["p"]))
 	assert_true(float(centers["p"]) > float(centers["e"]))
 	assert_true(float(centers["e"]) > float(centers["n"]))
+	assert_eq(n_diagonal_mesh_count, 1, "the named N diagonal is one real mesh")
+	assert_true(n_diagonal_vertices.size() >= 6, "the N diagonal exposes actual surface vertices")
+	if n_diagonal_vertices.size() >= 6:
+		var mean_x: float = 0.0
+		var mean_y: float = 0.0
+		for vertex: Vector3 in n_diagonal_vertices:
+			mean_x += vertex.x
+			mean_y += vertex.y
+		mean_x /= float(n_diagonal_vertices.size())
+		mean_y /= float(n_diagonal_vertices.size())
+		var native_xy_covariance: float = 0.0
+		for vertex: Vector3 in n_diagonal_vertices:
+			native_xy_covariance += (vertex.x - mean_x) * (vertex.y - mean_y)
+		native_xy_covariance /= float(n_diagonal_vertices.size())
+		# The GLB faces -Z: screen X is -native X, while screen up is native Y.
+		# A Latin N diagonal rises from screen-left to screen-right, so its
+		# screen-space covariance is negative and its native X/Y covariance positive.
+		assert_true(native_xy_covariance > 0.000001,
+			"N diagonal vertices slope correctly from the -Z front")
 	tree.root.remove_child(instance)
 	instance.free()
 
