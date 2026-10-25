@@ -1,6 +1,7 @@
 class_name StaffRoster
 extends RefCounted
-## Morning choices only. No world, books, RNG ownership or saving side effects.
+## Saved staffing choices. Hiring is morning-only; job priorities are immediate.
+## No world, books, RNG ownership or saving side effects.
 
 const CAPACITY: int = 6
 const CANDIDATE_COUNT: int = 3
@@ -27,12 +28,36 @@ func _init(tuning: EconomyTuning = null, definitions: StaffCatalogue = CATALOGUE
 		member.growth = StaffGrowth.new(StaffMember._primary_skill(member.role), member.skill, member.wage)
 
 
+## Runtime command staging preserves today's unflushed XP. The morning save
+## format deliberately omits that transient state, so to_dict/from_dict is not
+## a runtime clone. Share the same authored policies, detach every person.
+func copy() -> StaffRoster:
+	var result: StaffRoster = StaffRoster.new(_tuning, catalogue, _growth_tuning)
+	result.candidate_day = candidate_day
+	result._members = _copies(_members)
+	result._candidates = _copies(_candidates)
+	return result
+
+
 func members() -> Array[StaffMember]:
 	return _copies(_members)
 
 
 func candidates() -> Array[StaffMember]:
 	return _copies(_candidates)
+
+
+## Changes selection at the next pick, in any phase. The session also copies
+## these choices onto the existing live employee without reinstalling staff.
+func set_job_priority(member_id: StringName, job: StringName, value: int) -> bool:
+	var index: int = _find(_members, member_id)
+	return index >= 0 and _members[index].priority_state().set_priority(job, value)
+
+
+## Detached command input for the live agent; a caller cannot edit the roster.
+func job_priorities(member_id: StringName) -> StaffJobPriorities:
+	var index: int = _find(_members, member_id)
+	return _members[index].priority_state().copy() if index >= 0 else null
 
 
 func total_wages() -> int:

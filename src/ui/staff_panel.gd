@@ -1,6 +1,6 @@
 class_name StaffPanel
 extends Control
-## A request-only morning roster. Main owns people, wages and the save boundary.
+## Request-only staff, growth and job choices. Main owns people, tasks and saves.
 
 signal hire_requested(id: StringName)
 signal let_go_requested(id: StringName)
@@ -8,10 +8,13 @@ signal raise_accept_requested(id: StringName)
 signal raise_decline_requested(id: StringName)
 signal tray_requested(level: int)
 signal close_requested()
+signal job_priority_requested(id: StringName, job: StringName, value: int)
 
 const SHARED_THEME: Theme = preload("res://src/ui/theme/main_theme.tres")
 const GROWTH_RULES: StaffGrowthTuning = preload("res://data/balance/staff_growth.tres")
 const MORNING_HINT: String = "Staff changes are available in the morning."
+const PRIORITY_CYCLE: Array[int] = [StaffJobPriorities.Level.HIGH, StaffJobPriorities.Level.NORMAL,
+	StaffJobPriorities.Level.LOW, StaffJobPriorities.Level.OFF]
 
 var _roster: StaffRoster
 var _phase: int = SimClock.Phase.MORNING
@@ -26,6 +29,9 @@ var _tray_level: int = 0
 var _tray_prices: PackedInt32Array = PackedInt32Array()
 var _tray_lock_reason: String = ""
 var _cash: int = 0
+var _priority_headers_ready: bool = false
+var _priority_names: Dictionary[StringName, Label] = {}
+var _priority_buttons: Dictionary[StringName, Dictionary] = {}
 
 
 func _ready() -> void:
@@ -65,9 +71,15 @@ func refresh() -> void:
 	IconStyle.decorate_label($Panel/Content/Title, &"staff")
 	IconStyle.decorate_label(%RosterTitle, &"staff")
 	IconStyle.decorate_label($Panel/Content/Scroll/List/CandidateTitle, &"staff")
+	_refresh_priorities()
 	if _roster == null:
 		return
 	var snapshot: Dictionary = _roster.to_dict()
+	# Job cells update in place. Their new saved field is not part of the
+	# existing hire/growth cards and must not replace those buttons either.
+	for section: String in ["members", "candidates"]:
+		for member: Dictionary in snapshot.get(section, []):
+			member.erase("priorities")
 	if snapshot != _snapshot:
 		_rebuild_rows()
 		_snapshot = snapshot
@@ -78,7 +90,8 @@ func refresh() -> void:
 		_rebuild_morning_items(offers)
 		_morning_snapshot = morning_snapshot.duplicate(true)
 	var editable: bool = _phase == SimClock.Phase.MORNING
-	(%Status as Label).text = "No hiring fee. Wages are paid at closing. Keep a cook and a server." if editable else MORNING_HINT
+	(%Status as Label).text = "No hiring fee. Wages are paid at closing. Keep a cook and a server." if editable \
+		else "Hiring, letting staff go, raises and upgrades are available in the morning. Job priorities can change now."
 	(%RosterTitle as Label).text = "Your team (%d/%d) - $%d a day" % [_roster.members().size(), StaffRoster.CAPACITY, _roster.total_wages()]
 	(%Empty as Label).visible = _roster.candidates().is_empty()
 	(%Carry as Label).text = "Servers carry %d plate%s" % [1 << _tray_level, "" if _tray_level == 0 else "s"]
@@ -114,6 +127,171 @@ func row_for(id: StringName) -> Control:
 
 func offer_row_for(id: StringName) -> Control:
 	return _offer_rows.get(id) as Control
+
+
+func priority_button_for(id: StringName, job: StringName) -> Button:
+	var buttons: Dictionary = _priority_buttons.get(id, {})
+	return buttons.get(job) as Button
+
+
+## These cells are independent of growth/candidate cards: a roster refresh must
+## retain an unchanged native button between mouse-down and mouse-up.
+func _refresh_priorities() -> void:
+	var section: VBoxContainer = %Priorities as VBoxContainer
+	var grid: GridContainer = %PriorityGrid as GridContainer
+	if not _priority_headers_ready:
+		grid.columns = StaffJobPriorities.JOBS.size() + 1
+		var heading: Label = Label.new()
+		heading.text = "Team member"
+		heading.custom_minimum_size.x = 120.0
+		heading.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		heading.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		grid.add_child(heading)
+		for job: StringName in StaffJobPriorities.JOBS:
+			var label: Label = Label.new()
+			label.text = StaffJobPriorities.job_label(job)
+			label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			label.mouse_filter = Control.MOUSE_FILTER_PASS
+			label.tooltip_text = _job_description(job)
+			grid.add_child(label)
+		_priority_headers_ready = true
+	var members: Array[StaffMember] = []
+	if _roster != null:
+		members.assign(_roster.members())
+	var wanted: Array[StringName] = []
+	var has_cleaner: bool = false
+	var has_server: bool = false
+	for member: StaffMember in members:
+		wanted.append(member.id)
+		has_cleaner = has_cleaner or member.role == &"cleaner"
+		has_server = has_server or member.role == &"server"
+	for id: StringName in _priority_buttons.keys():
+		if wanted.has(id):
+			continue
+		_retire_priority_control(_priority_names[id])
+		var buttons: Dictionary = _priority_buttons[id]
+		for job: StringName in buttons:
+			_retire_priority_control(buttons[job] as Control)
+		_priority_names.erase(id)
+		_priority_buttons.erase(id)
+	section.visible = not members.is_empty()
+	var index: int = grid.columns
+	for member: StaffMember in members:
+		var choices: StaffJobPriorities = _roster.job_priorities(member.id)
+		if choices == null:
+			continue
+		var name_label: Label = _priority_names.get(member.id) as Label
+		if name_label == null:
+			name_label = Label.new()
+			name_label.custom_minimum_size.x = 120.0
+			name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			name_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			grid.add_child(name_label)
+			_priority_names[member.id] = name_label
+		name_label.text = "%s (%s)" % [member.display_name, _role_name(member.role)]
+		if name_label.get_index() != index:
+			grid.move_child(name_label, index)
+		index += 1
+		var buttons: Dictionary = _priority_buttons.get(member.id, {})
+		for job: StringName in StaffJobPriorities.JOBS:
+			var button: Button = buttons.get(job) as Button
+			if button == null:
+				button = Button.new()
+				button.theme = SHARED_THEME
+				button.custom_minimum_size = Vector2(100.0, 0.0)
+				button.focus_mode = Control.FOCUS_NONE
+				button.mouse_filter = Control.MOUSE_FILTER_STOP
+				button.pressed.connect(_on_priority_request.bind(member.id, job, button))
+				grid.add_child(button)
+				buttons[job] = button
+			if button.get_index() != index:
+				grid.move_child(button, index)
+			index += 1
+			var supported: bool = StaffJobPriorities.supports(choices.role, job)
+			var value: int = choices.priority(job) if supported else StaffJobPriorities.Level.OFF
+			button.disabled = not supported
+			button.text = StaffJobPriorities.level_label(value)
+			button.tooltip_text = _priority_tooltip(choices, job, has_cleaner)
+			if int(button.get_meta(&"priority_level", -1)) != value:
+				_style_priority(button, value)
+		_priority_buttons[member.id] = buttons
+	var availability: Label = %PriorityAvailability as Label
+	availability.visible = has_server
+	availability.text = "A Cleaner is on the team, so servers' Cleaning settings are inactive. They apply when no Cleaner is on the team." \
+		if has_cleaner else "Servers clean floors only when no Cleaner is on the team."
+
+
+func _retire_priority_control(control: Control) -> void:
+	control.get_parent().remove_child(control)
+	add_child(control)
+	control.hide()
+	control.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	control.queue_free()
+
+
+func _style_priority(button: Button, value: int) -> void:
+	var normal: StyleBoxFlat = SHARED_THEME.get_stylebox("normal", "Button") as StyleBoxFlat
+	var accent: StyleBoxFlat = SHARED_THEME.get_stylebox("pressed", "Button") as StyleBoxFlat
+	var muted: StyleBoxFlat = SHARED_THEME.get_stylebox("disabled", "Button") as StyleBoxFlat
+	var style: StyleBoxFlat = normal.duplicate() as StyleBoxFlat
+	var foreground: Color = SHARED_THEME.get_color("font_color", "Button")
+	match value:
+		StaffJobPriorities.Level.HIGH:
+			style.border_color = accent.bg_color
+			style.set_border_width_all(3)
+		StaffJobPriorities.Level.LOW:
+			style.bg_color = muted.bg_color
+			style.border_color = muted.border_color
+		StaffJobPriorities.Level.OFF:
+			style.bg_color = foreground
+			style.border_color = foreground
+			foreground = SHARED_THEME.get_color("font_pressed_color", "Button")
+	for state: StringName in [&"normal", &"hover", &"pressed", &"hover_pressed", &"disabled"]:
+		button.add_theme_stylebox_override(state, style)
+	for color: StringName in [&"font_color", &"font_hover_color", &"font_pressed_color",
+			&"font_hover_pressed_color", &"font_disabled_color"]:
+		button.add_theme_color_override(color, foreground)
+	button.set_meta(&"priority_level", value)
+
+
+static func _job_description(job: StringName) -> String:
+	match job:
+		&"cooking": return "Cooking meals"
+		&"serving": return "Taking orders and delivering meals"
+		&"bussing": return "Clearing tables"
+		&"washing": return "Washing plates"
+		&"cleaning": return "Mopping floor spots"
+	return "Job priority"
+
+
+static func _priority_tooltip(choices: StaffJobPriorities, job: StringName, has_cleaner: bool) -> String:
+	var label: String = StaffJobPriorities.job_label(job)
+	if not StaffJobPriorities.supports(choices.role, job):
+		return "Off. %s is not available for this role." % label
+	var text: String = "%s: %s. " % [label, StaffJobPriorities.level_label(choices.priority(job))]
+	text += "This role's main job cannot be Off. Cycle High, Normal, Low." \
+		if job == StaffJobPriorities.main_job(choices.role) else "Cycle High, Normal, Low, Off."
+	if choices.role == &"server" and job == &"cleaning":
+		text += " A Cleaner is on the team, so this setting is inactive." if has_cleaner else " Servers clean only when no Cleaner is on the team."
+	text += " Applies on the next task pick; current work continues."
+	return text
+
+
+func _on_priority_request(id: StringName, job: StringName, source: Button) -> void:
+	if _roster == null or not is_instance_valid(source) \
+			or priority_button_for(id, job) != source or source.disabled:
+		return
+	var choices: StaffJobPriorities = _roster.job_priorities(id)
+	if choices == null or not StaffJobPriorities.supports(choices.role, job):
+		return
+	var start: int = PRIORITY_CYCLE.find(choices.priority(job))
+	for offset: int in range(1, PRIORITY_CYCLE.size() + 1):
+		var value: int = PRIORITY_CYCLE[(start + offset) % PRIORITY_CYCLE.size()]
+		if choices.can_set(job, value):
+			job_priority_requested.emit(id, job, value)
+			refresh()
+			return
 
 
 func _rebuild_rows() -> void:

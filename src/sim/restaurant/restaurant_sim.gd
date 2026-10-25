@@ -124,6 +124,19 @@ func set_staff_roster(people: Array[StaffMember], catalogue: StaffCatalogue = St
 	return true
 
 
+## Any-phase selection update for an existing employee. The roster owns the
+## saved state; this only copies next-pick choices onto the same live agent.
+func apply_staff_job_priorities(member_id: StringName, choices: StaffJobPriorities) -> bool:
+	if world == null or member_id.is_empty():
+		return false
+	for agent: SimAgent in world.agents:
+		if agent is StaffAgent and not agent is OwnerAgent:
+			var employee: StaffAgent = agent as StaffAgent
+			if employee.member_id == member_id:
+				return employee.set_job_priorities(choices)
+	return false
+
+
 ## The factory's one live owner, or null for a manually constructed world.
 func owner_agent() -> OwnerAgent:
 	if world != null:

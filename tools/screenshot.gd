@@ -39,6 +39,11 @@ const CATALOGUE_UID_SOURCES: Array[String] = [
 	"res://tests/world/test_catalogue_decor.gd", "res://tests/world/test_catalogue_seating_props.gd",
 	"res://tests/ui/test_item_thumbnail_cache.gd",
 ]
+const STAFF_PRIORITY_UID_SOURCES: Array[String] = [
+	"res://src/sim/staff/staff_job_priorities.gd", "res://tests/sim/test_staff_job_priorities.gd",
+	"res://tests/fixtures/frozen_main_staff_picker.gd", "res://tests/world/test_staff_priorities_golden.gd",
+	"res://tests/sim/test_staff_priority_persistence.gd", "res://tests/world/test_staff_priority_session.gd",
+]
 
 var _frames: int = 0
 var _shots: Array[int] = [120, 400, 900]
@@ -1489,6 +1494,8 @@ func _capture() -> void:
 	if not _catalogue_profile.is_empty():
 		metadata["catalogue_review"] = {"fixture": _catalogue_fixture, "state": catalogue_state,
 			"generated_uids": generated_uid_evidence(CATALOGUE_UID_SOURCES)}
+	if _staff:
+		metadata["staff_priority_review"] = {"generated_uids": generated_uid_evidence(STAFF_PRIORITY_UID_SOURCES)}
 	var file: FileAccess = FileAccess.open(path.get_basename() + ".json", FileAccess.WRITE)
 	if file == null:
 		_fail_capture("cannot write capture metadata")
@@ -1558,8 +1565,11 @@ func _staff_state() -> Dictionary:
 		rows.append({"id": String(member.id), "name_and_wage": (row.get_node("Top/Name") as Label).text,
 			"trait": (row.get_node("Trait") as Label).text, "action": button.text,
 			"disabled": button.disabled, "visible_in_tree": row.is_visible_in_tree()})
-	return {"visible": panel.is_visible_in_tree(), "roster": roster.to_dict(), "rows": rows,
+	var state: Dictionary = {"visible": panel.is_visible_in_tree(), "roster": roster.to_dict(), "rows": rows,
 		"member_count": members.size(), "candidate_count": candidates.size()}
+	if _staff:
+		state["priority_grid"] = staff_priority_grid_evidence(panel, roster)
+	return state
 
 
 ## Semantic state checks belong beside the captured native reads, not in CI.
@@ -1590,6 +1600,209 @@ func _staff_capture_valid(state: Dictionary) -> bool:
 				or row.get("action") != action or definition == null \
 				or not String(row.get("trait", "")).begins_with(definition.display_name + ":"):
 			return false
+	return staff_priority_grid_valid(state.get("priority_grid", {}), members)
+
+
+## Read the real cells after drawing. This does not refresh the panel, change a
+## choice, advance time or install a roster; missing integration fails closed.
+static func staff_priority_grid_evidence(panel: StaffPanel, roster: StaffRoster) -> Dictionary:
+	var grid: GridContainer = panel.get_node_or_null("%PriorityGrid") as GridContainer
+	var scroll: ScrollContainer = panel.get_node_or_null("Panel/Content/Scroll") as ScrollContainer
+	var card: Control = panel.get_node_or_null("Panel") as Control
+	var close: Button = panel.get_node_or_null("%Close") as Button
+	if grid == null or scroll == null or card == null or close == null or roster == null \
+			or not panel.is_inside_tree() or grid.get_child_count() < StaffJobPriorities.JOBS.size() + 1:
+		return {"available": false}
+	var headers: Array[Dictionary] = []
+	for index: int in range(StaffJobPriorities.JOBS.size() + 1):
+		var label: Label = grid.get_child(index) as Label
+		if label == null:
+			return {"available": false}
+		headers.append({"text": label.text, "visible": label.is_visible_in_tree(),
+			"bounds": _staff_rect_data(_staff_pixel_rect(label))})
+	var names: Array[Dictionary] = []
+	var cells: Array[Dictionary] = []
+	for member: StaffMember in roster.members():
+		var row_index: int = (names.size() + 1) * (StaffJobPriorities.JOBS.size() + 1)
+		if row_index >= grid.get_child_count():
+			return {"available": false}
+		var label: Label = grid.get_child(row_index) as Label
+		if label == null:
+			return {"available": false}
+		names.append({"id": String(member.id), "text": label.text,
+			"visible": label.is_visible_in_tree(), "bounds": _staff_rect_data(_staff_pixel_rect(label))})
+		for job: StringName in StaffJobPriorities.JOBS:
+			var button: Button = panel.priority_button_for(member.id, job)
+			if button == null:
+				return {"available": false}
+			var style_name: StringName = &"disabled" if button.disabled else &"normal"
+			var style: StyleBoxFlat = button.get_theme_stylebox(style_name) as StyleBoxFlat
+			if style == null:
+				return {"available": false}
+			var color_name: StringName = &"font_disabled_color" if button.disabled else &"font_color"
+			cells.append({"id": String(member.id), "job": String(job), "text": button.text,
+				"disabled": button.disabled, "tooltip": button.tooltip_text,
+				"visible": button.is_visible_in_tree(), "clip_text": button.clip_text,
+				"parent_is_grid": button.get_parent() == grid, "grid_index": button.get_index(),
+				"bounds": _staff_rect_data(_staff_pixel_rect(button)),
+				"minimum_bounds": _staff_rect_data(_staff_pixel_rect(button, button.get_combined_minimum_size())),
+				"foreground": _staff_rgba(button.get_theme_color(color_name)),
+				"background": _staff_rgba(style.bg_color), "border": _staff_rgba(style.border_color)})
+	return {"available": true, "columns": grid.columns, "child_count": grid.get_child_count(),
+		"headers": headers, "names": names, "cells": cells,
+		"window_bounds": _staff_rect_data(Rect2(Vector2.ZERO, Vector2(panel.get_window().size))),
+		"panel_bounds": _staff_rect_data(_staff_pixel_rect(card)),
+		"close_bounds": _staff_rect_data(_staff_pixel_rect(close)), "close_visible": close.is_visible_in_tree(),
+		"grid_bounds": _staff_rect_data(_staff_pixel_rect(grid)),
+		"grid_minimum_bounds": _staff_rect_data(_staff_pixel_rect(grid, grid.get_combined_minimum_size())),
+		"scroll_bounds": _staff_rect_data(_staff_pixel_rect(scroll)),
+		"scroll_viewport_bounds": _staff_rect_data(_staff_scroll_viewport(scroll)),
+		"scrollbars": [{"visible": scroll.get_v_scroll_bar().is_visible_in_tree(),
+			"bounds": _staff_rect_data(_staff_pixel_rect(scroll.get_v_scroll_bar()))},
+			{"visible": scroll.get_h_scroll_bar().is_visible_in_tree(),
+			"bounds": _staff_rect_data(_staff_pixel_rect(scroll.get_h_scroll_bar()))}],
+		"horizontal_scroll_mode": scroll.horizontal_scroll_mode}
+
+
+## One pixel coordinate space, including the window's content scale. Use the
+## native scrollbar positions rather than treating the outer Scroll as content.
+static func _staff_pixel_rect(control: Control, extent: Vector2 = Vector2(-1.0, -1.0)) -> Rect2:
+	var size: Vector2 = control.size if extent.x < 0.0 else extent
+	return control.get_viewport().get_final_transform() * control.get_global_transform_with_canvas() * Rect2(Vector2.ZERO, size)
+
+
+static func _staff_scroll_viewport(scroll: ScrollContainer) -> Rect2:
+	var style: StyleBox = scroll.get_theme_stylebox("panel")
+	var content: Rect2 = Rect2(Vector2(style.get_margin(SIDE_LEFT), style.get_margin(SIDE_TOP)),
+		scroll.size - style.get_minimum_size())
+	var clip: Rect2 = scroll.get_viewport().get_final_transform() * scroll.get_global_transform_with_canvas() * content
+	var vertical: VScrollBar = scroll.get_v_scroll_bar()
+	if vertical.is_visible_in_tree():
+		var bar: Rect2 = _staff_pixel_rect(vertical)
+		if bar.get_center().x < clip.get_center().x:
+			var right: float = clip.end.x
+			clip.position.x = maxf(clip.position.x, bar.end.x)
+			clip.end.x = right
+		else:
+			clip.end.x = minf(clip.end.x, bar.position.x)
+	var horizontal: HScrollBar = scroll.get_h_scroll_bar()
+	if horizontal.is_visible_in_tree():
+		clip.end.y = minf(clip.end.y, _staff_pixel_rect(horizontal).position.y)
+	return clip
+
+
+static func _staff_rect_data(rect: Rect2) -> Array[float]:
+	return [rect.position.x, rect.position.y, rect.size.x, rect.size.y]
+
+
+static func _staff_rect(record: Dictionary, key: String) -> Rect2:
+	var value: Variant = record.get(key)
+	if not value is Array or value.size() != 4:
+		return Rect2()
+	for number: Variant in value:
+		if (typeof(number) != TYPE_FLOAT and typeof(number) != TYPE_INT) or not is_finite(float(number)):
+			return Rect2()
+	return Rect2(float(value[0]), float(value[1]), float(value[2]), float(value[3]))
+
+
+static func _staff_rgba(color: Color) -> Array[float]:
+	return [color.r, color.g, color.b, color.a]
+
+
+## Validate captured native reads against the independently captured roster.
+## This is only a paused-morning screenshot check, not service-picking evidence.
+static func staff_priority_grid_valid(state: Dictionary, members: Array) -> bool:
+	var columns: int = StaffJobPriorities.JOBS.size() + 1
+	if state.get("available") != true or state.get("columns") != columns \
+			or state.get("child_count") != columns * (members.size() + 1) \
+			or state.get("horizontal_scroll_mode") != ScrollContainer.SCROLL_MODE_DISABLED:
+		return false
+	var window: Rect2 = _staff_rect(state, "window_bounds")
+	var card: Rect2 = _staff_rect(state, "panel_bounds")
+	var scroll: Rect2 = _staff_rect(state, "scroll_bounds")
+	var viewport: Rect2 = _staff_rect(state, "scroll_viewport_bounds")
+	var grid: Rect2 = _staff_rect(state, "grid_bounds")
+	var minimum: Rect2 = _staff_rect(state, "grid_minimum_bounds")
+	var close: Rect2 = _staff_rect(state, "close_bounds")
+	if not window.has_area() or not card.has_area() or not scroll.has_area() or not viewport.has_area() \
+			or not grid.has_area() or not minimum.has_area() or not close.has_area() \
+			or not window.grow(0.5).encloses(card) or not card.grow(0.5).encloses(scroll) \
+			or not scroll.grow(0.5).encloses(viewport) \
+			or not card.grow(0.5).encloses(close) or state.get("close_visible") != true \
+			or not viewport.grow(0.5).encloses(grid) or minimum.size.x > viewport.size.x + 0.5 \
+			or grid.size.x < minimum.size.x - 0.5 or grid.size.y < minimum.size.y - 0.5:
+		return false
+	var scrollbars: Array = state.get("scrollbars", [])
+	if scrollbars.size() != 2:
+		return false
+	for scrollbar: Dictionary in scrollbars:
+		if scrollbar.get("visible") == true:
+			var bounds: Rect2 = _staff_rect(scrollbar, "bounds")
+			if not bounds.has_area() or viewport.intersection(bounds).has_area():
+				return false
+	var headers: Array = state.get("headers", [])
+	var names: Array = state.get("names", [])
+	var cells: Array = state.get("cells", [])
+	if headers.size() != columns or names.size() != members.size() \
+			or cells.size() != members.size() * StaffJobPriorities.JOBS.size():
+		return false
+	for index: int in range(columns):
+		var expected: String = "Team member" if index == 0 else StaffJobPriorities.job_label(StaffJobPriorities.JOBS[index - 1])
+		var header: Dictionary = headers[index]
+		var bounds: Rect2 = _staff_rect(header, "bounds")
+		if header.get("text") != expected or header.get("visible") != true \
+				or not bounds.has_area() or not viewport.grow(0.5).encloses(bounds):
+			return false
+	var normal: StyleBoxFlat = StaffPanel.SHARED_THEME.get_stylebox("normal", "Button") as StyleBoxFlat
+	var muted: StyleBoxFlat = StaffPanel.SHARED_THEME.get_stylebox("disabled", "Button") as StyleBoxFlat
+	var accent: StyleBoxFlat = StaffPanel.SHARED_THEME.get_stylebox("pressed", "Button") as StyleBoxFlat
+	for index: int in range(members.size()):
+		var member: Dictionary = members[index]
+		var choices: StaffJobPriorities = StaffJobPriorities.new(StringName(member.get("role", "")))
+		if not choices.from_dict(member.get("priorities")):
+			return false
+		var name: Dictionary = names[index]
+		var name_bounds: Rect2 = _staff_rect(name, "bounds")
+		if name.get("id") != member.get("id") or not String(name.get("text", "")).contains(member.get("name", "")) \
+				or name.get("visible") != true or not name_bounds.has_area() or not viewport.grow(0.5).encloses(name_bounds):
+			return false
+		for job_index: int in range(StaffJobPriorities.JOBS.size()):
+			var job: StringName = StaffJobPriorities.JOBS[job_index]
+			var cell: Dictionary = cells[index * StaffJobPriorities.JOBS.size() + job_index]
+			var bounds: Rect2 = _staff_rect(cell, "bounds")
+			var cell_minimum: Rect2 = _staff_rect(cell, "minimum_bounds")
+			var value: int = choices.priority(job)
+			var supported: bool = StaffJobPriorities.supports(choices.role, job)
+			if cell.get("id") != member.get("id") or cell.get("job") != String(job) \
+					or cell.get("text") != StaffJobPriorities.level_label(value) or cell.get("disabled") != (not supported) \
+					or cell.get("visible") != true or cell.get("clip_text") != false or cell.get("parent_is_grid") != true \
+					or cell.get("grid_index") != (index + 1) * columns + job_index + 1 \
+					or not bounds.has_area() or not cell_minimum.has_area() or not viewport.grow(0.5).encloses(bounds) \
+					or bounds.size.x < cell_minimum.size.x - 0.5 or bounds.size.y < cell_minimum.size.y - 0.5:
+				return false
+			var tooltip: String = cell.get("tooltip", "")
+			if not supported and (value != StaffJobPriorities.Level.OFF or not tooltip.contains("not available for this role")):
+				return false
+			if job == StaffJobPriorities.main_job(choices.role) and (choices.can_set(job, StaffJobPriorities.Level.OFF) \
+					or not tooltip.contains("main job cannot be Off")):
+				return false
+			if supported and not tooltip.contains("next task pick; current work continues"):
+				return false
+			var foreground: Color = StaffPanel.SHARED_THEME.get_color("font_color", "Button")
+			var background: Color = normal.bg_color
+			var border: Color = normal.border_color
+			if value == StaffJobPriorities.Level.HIGH:
+				border = accent.bg_color
+			elif value == StaffJobPriorities.Level.LOW:
+				background = muted.bg_color
+				border = muted.border_color
+			elif value == StaffJobPriorities.Level.OFF:
+				background = foreground
+				border = foreground
+				foreground = StaffPanel.SHARED_THEME.get_color("font_pressed_color", "Button")
+			if cell.get("foreground") != _staff_rgba(foreground) or cell.get("background") != _staff_rgba(background) \
+					or cell.get("border") != _staff_rgba(border):
+				return false
 	return true
 
 

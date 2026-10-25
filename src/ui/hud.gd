@@ -4,6 +4,8 @@ extends CanvasLayer
 
 const SPEEDS: Array[int] = [0, 1, 2, 4]
 const PHASE_NAMES: Array[String] = ["Morning", "Open", "Last orders", "Closed"]
+const STAFF_PHASES: Array[int] = [SimClock.Phase.MORNING, SimClock.Phase.OPEN,
+	SimClock.Phase.LAST_ORDERS, SimClock.Phase.CLOSED]
 const GAIN_COLOR: Color = Color("286B3B")
 const LOSS_COLOR: Color = Color("A42E2E")
 
@@ -133,8 +135,9 @@ func refresh() -> void:
 	_refresh_build_controls()
 	_menu_button.disabled = Clock.sim.phase != SimClock.Phase.MORNING
 	_menu_button.tooltip_text = "Choose today's menu and prices" if not _menu_button.disabled else "Menu changes are available in the morning."
-	_staff_button.disabled = Clock.sim.phase != SimClock.Phase.MORNING
-	_staff_button.tooltip_text = "Hire staff and plan today's wages" if not _staff_button.disabled else "Staff changes are available in the morning."
+	_staff_button.disabled = not STAFF_PHASES.has(Clock.sim.phase)
+	_staff_button.tooltip_text = "Hire staff and plan today's wages" if Clock.sim.phase == SimClock.Phase.MORNING \
+		else "Set staff job priorities. Hiring and upgrades are available in the morning."
 	_layout_header()
 
 
@@ -222,7 +225,7 @@ func _on_header_resized() -> void:
 
 
 func _on_staff_pressed() -> void:
-	if Clock.sim.phase == SimClock.Phase.MORNING:
+	if STAFF_PHASES.has(Clock.sim.phase):
 		staff_pressed.emit()
 
 
