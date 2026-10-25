@@ -107,13 +107,14 @@ func show_report(report: DayReport) -> void:
 
 
 ## Current room presentation is derived, never part of the saved day report.
-## The optional label comes from paid guests' captured arrival effects.
+## The optional label comes from paid guests' captured arrival effects, not
+## a rating or an endorsement of the visit as a whole.
 func set_vibe(result: VibeModel.Result, experienced_theme_label: String = "") -> void:
 	_bind_nodes()
 	_vibe_text = ""
 	if not experienced_theme_label.is_empty():
-		_vibe_text = "Guests loved the %s vibe." % experienced_theme_label.to_lower()
-	elif result != null and result.valid:
+		_vibe_text = "Guests noticed the %s vibe." % experienced_theme_label.to_lower()
+	elif result != null and result.valid and is_finite(result.score) and roundi(result.score) > 0:
 		var theme_name: String = result.theme_label if not result.active_theme.is_empty() else "No active theme"
 		_vibe_text = "Vibe: %s, %d / 100." % [theme_name, roundi(result.score)]
 	_render_vibe()

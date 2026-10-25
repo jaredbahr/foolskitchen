@@ -266,26 +266,68 @@ func test_departure_signal_fixture_attributes_arrival_theme_not_later_repaint_an
 	var sim: RestaurantSim = main.get("sim") as RestaurantSim
 	assert_true(sim.customer_left.is_connected(Callable(main, "_on_vibe_customer_left")))
 	var line: Label = main.get_node("Overlay/EveningReport/Panel/Scroll/Content/VibeSummary") as Label
-	assert_true(line.text.begins_with("Vibe:"), "no paid departures cannot claim guests loved the room")
+	assert_eq(line.text, "", "a neutral room with no experienced bonus has no nightly vibe line")
+	assert_false(line.visible)
 	var before: Dictionary = _side_effects()
 	# These controlled departure notifications test Main's UI-only callback.
 	# Pure sim tests separately prove real once-only departure/review emission.
 	_departure_fixture(sim, false, 0.3, "Cosy")
 	_departure_fixture(sim, true, NAN, "Cosy")
 	_departure_fixture(sim, true, 0.3, "unapproved")
-	assert_true(line.text.begins_with("Vibe:"))
+	assert_eq(line.text, "")
+	assert_false(line.visible)
 	_departure_fixture(sim, true, 0.3, "Modern")
 	_departure_fixture(sim, true, 0.3, "Cosy")
-	assert_eq(line.text, "Guests loved the cosy vibe.", "equal counts use lexical human-label order")
+	assert_eq(line.text, "Guests noticed the cosy vibe.", "equal counts use lexical human-label order")
 	assert_eq(_side_effects(), before)
 	assert_eq(_notifications, 0, "observing departures never evaluates the room again")
 	_decorate_modern(main)
 	assert_eq((main.get("vibe_result") as VibeModel.Result).active_theme, &"modern")
-	assert_eq(line.text, "Guests loved the cosy vibe.", "later paint cannot replace arrival evidence")
+	assert_eq(line.text, "Guests noticed the cosy vibe.", "later paint cannot replace arrival evidence")
 	_close_service(main)
-	assert_eq(line.text, "Guests loved the cosy vibe.")
+	assert_eq(line.text, "Guests noticed the cosy vibe.")
 	assert_true(Clock.sim.next_day())
 	assert_true(line.text.begins_with("Vibe: Modern"))
+
+
+func test_report_hides_rounded_zero_and_notices_experienced_theme_without_claiming_a_good_review() -> void:
+	var main: Node = await _start()
+	var report: Control = main.get_node("Overlay/EveningReport") as Control
+	var line: Label = report.get_node("Panel/Scroll/Content/VibeSummary") as Label
+	var before: Dictionary = _side_effects()
+	var result: VibeModel.Result = VibeModel.Result.new()
+	result.valid = true
+	result.active_theme = &"diner"
+	result.theme_label = "Diner"
+	# Presentation inputs are explicit fixtures. This is not a played visit,
+	# balance run or a claim that a low-star guest liked the restaurant.
+	var day: DayReport = DayReport.new()
+	day.review_cards.append({"stars": 1, "quote": "The wait was long."})
+	day.today_review_average = 1.0
+	for score: float in [0.0, 0.49]:
+		result.score = score
+		report.call("set_vibe", result)
+		report.call("show_report", day)
+		assert_eq(line.text, "")
+		assert_false(line.visible, "a score displayed as zero adds no nightly line")
+	result.score = 0.5
+	report.call("set_vibe", result)
+	assert_eq(line.text, "Vibe: Diner, 1 / 100.")
+	assert_true(line.visible)
+	result.score = 0.0
+	report.call("set_vibe", result, "Cosy")
+	report.call("show_report", day)
+	assert_eq(line.text, "Guests noticed the cosy vibe.")
+	assert_true(line.visible, "arrival experience remains factual after the room becomes neutral")
+	assert_false(line.text.contains("loved"))
+	report.call("set_vibe", result)
+	assert_eq(line.text, "")
+	assert_false(line.visible, "a later neutral report clears the experienced-theme text")
+	result.score = NAN
+	report.call("set_vibe", result)
+	assert_eq(line.text, "")
+	assert_false(line.visible, "non-finite presentation inputs do not reach integer rounding")
+	assert_eq(_side_effects(), before, "report presentation changes no save, ledger, clock or RNG state")
 
 
 func _start() -> Node:

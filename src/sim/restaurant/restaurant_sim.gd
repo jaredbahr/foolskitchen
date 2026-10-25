@@ -2,6 +2,8 @@ class_name RestaurantSim
 extends RefCounted
 ## Owns one service's guests and tickets, independently of rendering or economy.
 
+const VIBE_TUNING: VibeTuning = preload("res://data/balance/vibe.tres")
+
 signal customer_arrived(customer: CustomerAgent)
 signal customer_paid(customer: CustomerAgent, order: Order, amount: int)
 signal customer_left(customer: CustomerAgent, reason: StringName)
@@ -249,9 +251,9 @@ func set_vibe(result: VibeModel.Result) -> void:
 	_vibe_result = _copy_vibe(result)
 
 
-static func _copy_vibe(source: VibeModel.Result) -> VibeModel.Result:
+static func _copy_vibe(source: VibeModel.Result, tuning: VibeTuning = VIBE_TUNING) -> VibeModel.Result:
 	var copy: VibeModel.Result = VibeModel.Result.new()
-	if source == null or not source.valid:
+	if source == null or not source.valid or tuning == null or not tuning.is_valid():
 		return copy
 	for value: float in [source.score, source.decor_points, source.variety_points,
 			source.theme_points, source.lamp_points, source.crowding_penalty,
@@ -263,8 +265,8 @@ static func _copy_vibe(source: VibeModel.Result) -> VibeModel.Result:
 			source.theme_points, source.lamp_points, source.crowding_penalty]:
 		if component > 100.0:
 			return copy
-	if source.score > 100.0 or source.patience_multiplier < 1.0 \
-			or source.patience_multiplier > 1.15 or source.raw_review_bonus > 0.4 \
+	if source.score > tuning.score_cap or source.patience_multiplier < 1.0 \
+			or source.patience_multiplier > 1.0 + tuning.max_patience_bonus or source.raw_review_bonus > tuning.max_review_bonus \
 			or source.theme_share > 1.0 or source.arrival_theme_strength > 1.0 \
 			or source.crowding_density > 1.0 or source.interior_cells < 0 \
 			or source.occupied_normal_cells < 0 or source.occupied_normal_cells > source.interior_cells \
@@ -295,10 +297,15 @@ static func _copy_vibe(source: VibeModel.Result) -> VibeModel.Result:
 
 
 ## Neutral/disabled budgets stay exact. Saturating protects int64 rounding.
-static func _vibe_patience(budget: int, multiplier: float) -> int:
+static func _vibe_patience(budget: int, multiplier: float, tuning: VibeTuning = VIBE_TUNING) -> int:
 	if budget <= 0 or not is_finite(multiplier) or multiplier <= 1.0:
 		return budget
-	var scaled: float = float(budget) * minf(multiplier, 1.15)
+	if tuning == null or not tuning.is_valid():
+		return budget
+	var maximum: float = 1.0 + tuning.max_patience_bonus
+	if maximum <= 1.0:
+		return budget
+	var scaled: float = float(budget) * minf(multiplier, maximum)
 	if scaled >= float(9223372036854775807):
 		return 9223372036854775807
 	return roundi(scaled)

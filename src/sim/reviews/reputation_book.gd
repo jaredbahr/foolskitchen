@@ -6,6 +6,7 @@ extends RefCounted
 const WINDOW: int = 30
 const INITIAL_REVIEWS: int = 5
 const INITIAL_STARS: int = 3
+const VIBE_TUNING: VibeTuning = preload("res://data/balance/vibe.tres")
 
 var _scores: Array[int] = []
 ## Report wording is day-local. It is deliberately absent from the save format.
@@ -51,15 +52,15 @@ func arrival_multiplier(tuning: ReviewTuning) -> float:
 ## Otherwise one draw decides whether this guest reviews, then quote selection
 ## uses the same injected, seeded stream. Returns a detached report row.
 func record_visit(visit: ReviewVisit, tuning: ReviewTuning, quotes: ReviewQuotes,
-		random: RandomNumberGenerator) -> Dictionary:
+		random: RandomNumberGenerator, vibe_tuning: VibeTuning = VIBE_TUNING) -> Dictionary:
 	if visit == null or visit.closing or tuning == null or not tuning.is_valid() \
 			or quotes == null or random == null:
 		return {}
 	if random.randf() >= tuning.review_chance:
 		return {}
 	var before: float = average()
-	var stars: int = score_visit(visit, tuning)
-	var cause: StringName = cause_of(visit, tuning)
+	var stars: int = score_visit(visit, tuning, vibe_tuning)
+	var cause: StringName = cause_of(visit, tuning, vibe_tuning)
 	var quote: String = quotes.pick(cause, random, _quotes_used_today)
 	if not quote.is_empty():
 		_quotes_used_today[quote] = true
@@ -71,10 +72,10 @@ func record_visit(visit: ReviewVisit, tuning: ReviewTuning, quotes: ReviewQuotes
 
 
 ## Four penalties remain authored in reviews.tres. The optional raw ambience
-## term is at most 0.4 before rounding; it is not fractional-star storage and
-## crossing a rounding boundary can change the final integer by one star.
+## term is bounded by vibe.tres before rounding; it is not fractional-star storage.
+## The final rating remains in the physical one-to-five-star range.
 ## Unserved guests always score one star; a closing guest is not scored.
-static func score_visit(visit: ReviewVisit, tuning: ReviewTuning) -> int:
+static func score_visit(visit: ReviewVisit, tuning: ReviewTuning, vibe_tuning: VibeTuning = VIBE_TUNING) -> int:
 	if visit == null or visit.closing or tuning == null or not tuning.is_valid():
 		return 0
 	if not visit.served:
@@ -83,13 +84,16 @@ static func score_visit(visit: ReviewVisit, tuning: ReviewTuning) -> int:
 		+ _unit(visit.food_wait_fraction) * tuning.food_wait_weight \
 		+ _unit(visit.price_ratio - 1.0) * tuning.overprice_weight \
 		+ _unit(visit.dirt_fraction) * tuning.dirt_weight
-	var vibe_bonus: float = clampf(visit.vibe_review_bonus, 0.0, 0.4) if is_finite(visit.vibe_review_bonus) else 0.0
-	return clampi(roundi(5.0 - penalty + vibe_bonus), 1, 5)
+	var maximum: float = vibe_tuning.max_review_bonus if vibe_tuning != null and vibe_tuning.is_valid() else 0.0
+	var vibe_bonus: float = clampf(visit.vibe_review_bonus, 0.0, maximum) if is_finite(visit.vibe_review_bonus) else 0.0
+	# Keep the physical star domain before integer conversion, even for large
+	# finite authored caps. Ordinary rounding and final-score quote policy agree.
+	return roundi(clampf(5.0 - penalty + vibe_bonus, 1.0, 5.0))
 
 
 ## High ratings and visits without a substantial single complaint get a
 ## positive quote. For lower ratings, stable ties keep this explicit order.
-static func cause_of(visit: ReviewVisit, tuning: ReviewTuning) -> StringName:
+static func cause_of(visit: ReviewVisit, tuning: ReviewTuning, vibe_tuning: VibeTuning = VIBE_TUNING) -> StringName:
 	if visit == null or visit.closing or tuning == null or not tuning.is_valid():
 		return &""
 	if not visit.served:
@@ -107,7 +111,7 @@ static func cause_of(visit: ReviewVisit, tuning: ReviewTuning) -> StringName:
 		if penalties[index] > largest:
 			largest = penalties[index]
 			best = index
-	if score_visit(visit, tuning) >= 4 or largest < tuning.positive_penalty_threshold:
+	if score_visit(visit, tuning, vibe_tuning) >= 4 or largest < tuning.positive_penalty_threshold:
 		return &"great_value" if is_finite(visit.price_ratio) and visit.price_ratio < 0.9 else &"lovely_place"
 	if best >= 0:
 		return causes[best]
