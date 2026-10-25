@@ -8,6 +8,7 @@ const MONEY_LABELS: Dictionary = {
 	Ledger.BANK_LOAN: "Bank loan",
 	Ledger.LOAN_INTEREST: "Loan interest",
 	Ledger.LOAN_REPAYMENT: "Loan repayment",
+	Ledger.MILESTONE_BONUS: "Milestone bonus",
 }
 
 const LEAVE_LABELS: Dictionary = {
@@ -41,6 +42,8 @@ var _owner_callout: HBoxContainer
 var _owner_level_up: Label
 var _owner_xp_rows: GridContainer
 var _owner_unlocks: Label
+var _milestone_heading: Label
+var _milestone_rows: VBoxContainer
 var _nodes_bound: bool = false
 var _report_shown: bool = false
 var vibe_summary: Label
@@ -65,6 +68,7 @@ func show_report(report: DayReport) -> void:
 	_fill_money(_costs, report.costs, "No costs today")
 	_loan_notice.text = LOAN_INTRODUCTION if report.loan_first_advance else ""
 	_loan_notice.visible = report.loan_first_advance
+	_fill_milestones(report.milestones_reached)
 	_clear(_dishes)
 	var best: StringName = report.best_dish()
 	for id: String in _sorted_ids(report.dishes_sold):
@@ -146,6 +150,8 @@ func _bind_nodes() -> void:
 	_owner_level_up = %OwnerLevelUp
 	_owner_xp_rows = %OwnerXPRows
 	_owner_unlocks = %OwnerUnlocks
+	_milestone_heading = %MilestoneHeading
+	_milestone_rows = %MilestoneRows
 	var content: VBoxContainer = get_node("Panel/Scroll/Content") as VBoxContainer
 	vibe_summary = Label.new()
 	vibe_summary.name = "VibeSummary"
@@ -176,6 +182,9 @@ func _fill_owner_progress(report: DayReport) -> void:
 		_add_row(_owner_xp_rows, "Happy guests", "+%d XP" % int(report.owner_xp_breakdown.get("happy_xp", 0)))
 		_add_row(_owner_xp_rows, "Profit", "+%d XP" % int(report.owner_xp_breakdown.get("profit_xp", 0)))
 		_add_row(_owner_xp_rows, "Five-star reviews", "+%d XP" % int(report.owner_xp_breakdown.get("review_xp", 0)))
+		var milestone_xp: int = maxi(0, int(report.owner_xp_breakdown.get("milestone_xp", 0)))
+		if milestone_xp > 0:
+			_add_row(_owner_xp_rows, "Career goals", "+%d XP" % milestone_xp)
 		_add_row(_owner_xp_rows, "Total", "+%d XP" % int(report.owner_xp_breakdown.get("total_xp", 0)))
 	_owner_unlocks.visible = not report.owner_unlocks.is_empty()
 	if _owner_unlocks.visible:
@@ -188,6 +197,28 @@ func _fill_owner_progress(report: DayReport) -> void:
 	else:
 		_owner_unlocks.text = ""
 	_owner_callout.visible = _owner_level_up.visible or _owner_unlocks.visible
+
+
+func _fill_milestones(milestones: Array[Dictionary]) -> void:
+	_clear(_milestone_rows)
+	var shown: int = 0
+	for milestone: Dictionary in milestones:
+		var title: String = str(milestone.get("title", "")).strip_edges()
+		if title.is_empty():
+			continue
+		var row: HBoxContainer = HBoxContainer.new()
+		row.name = "Milestone%d" % shown
+		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var name_label: Label = _add_label(row, title)
+		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var reward_xp: int = maxi(0, int(milestone.get("reward_xp", 0)))
+		var reward_cash: int = maxi(0, int(milestone.get("reward_cash", 0)))
+		var reward_label: Label = _add_label(row, "Reward: +%d XP, %s" % [reward_xp, _money(reward_cash)])
+		reward_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		_milestone_rows.add_child(row)
+		shown += 1
+	_milestone_heading.visible = shown > 0
+	_milestone_rows.visible = shown > 0
 
 
 func _fill_money(rows: GridContainer, amounts: Dictionary, empty_text: String) -> void:
