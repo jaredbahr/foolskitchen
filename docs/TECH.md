@@ -778,6 +778,31 @@ an active edit/panel/selection first, or opens Settings when none is active.
   morning and never join the saved report. Score, snapshots and presentation
   add no save section, action save, random draw or customer-type selection.
 
+**Career goals (FK-062):** `data/milestones/starter.tres` owns the twelve starter
+goals. The pure `MilestoneTracker` observes closed-day served/lost counts,
+reputation, operating profit, owner level and staff count. It records lifetime
+served guests and the consecutive no-loss streak, and returns each goal once.
+`MilestoneSettlement` prepares detached tracker/owner copies and validates the
+whole cash/XP reward batch before Main installs it. Reward XP does not recursively
+complete another goal in the same batch. Completion IDs use lexical String
+ordering; well-formed historical IDs remain completed even after content removal.
+
+Main captures operating profit after closing costs, awards ordinary owner XP,
+then applies career rewards before loan settlement. `Milestone bonus` is a
+separate ledger income category. Its cash can prevent an unnecessary advance;
+the loan repayment share and ordinary profit XP still use pre-bonus operating
+profit. The evening report lists reached goals near the top and includes their
+XP in its breakdown. Opening the read-only Goals panel from Menu never pays a
+reward or changes clock/RNG state; it shows the next three unlocked goals and
+known completed goals with progress in their original condition units.
+
+The registered `milestones` save section is staged during decoding and installed
+only after the complete morning restore succeeds. Its last evaluated day must
+precede the saved morning. Missing legacy sections start a fresh career tracker;
+malformed data rejects the load without partially installing career state. Career
+state uses the existing next-morning autosave only, including rewards earned at
+the preceding close. New Game resets it. No action or evening save is added.
+
 ### 2.4 Save system
 - JSON in `user://saves/`, with a `version` field and migration functions per version.
 - Only sim state is saved, never nodes. The world is rebuilt from sim state on load.
