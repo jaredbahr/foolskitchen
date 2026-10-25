@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" path="res://src/world/prop_view.gd" id="1_view"]
 [ext_resource type="PackedScene" path="res://assets/made/diner/diner_chalkboard.glb" id="2_model"]
-[ext_resource type="Theme" path="res://src/ui/theme/main_theme.tres" id="3_theme"]
+[ext_resource type="Script" path="res://assets/props/diner_chalkboard.gd" id="3_text"]
 
 [node name="DinerChalkboard" type="Node3D"]
 script = ExtResource("1_view")
@@ -16,10 +16,10 @@ position = Vector3(0, 0.62, 0.2225)
 [node name="Model" parent="WallMount/Art" instance=ExtResource("2_model")]
 
 [node name="MenuText" type="Label3D" parent="WallMount"]
+script = ExtResource("3_text")
 position = Vector3(0, 0.31, -0.03)
 text = "TODAY'S SPECIALS\nBURGER $12\nTOMATO SOUP $8"
 pixel_size = 0.002
 font_size = 48
-theme = ExtResource("3_theme")
 horizontal_alignment = 1
 vertical_alignment = 1

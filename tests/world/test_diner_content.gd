@@ -112,8 +112,14 @@ func test_wall_model_wrappers_keep_bounded_geometry_and_chalkboard_uses_theme_te
 			var label: Label3D = prop.get_node_or_null("WallMount/MenuText") as Label3D
 			assert_not_null(label, "chalkboard lettering remains native 3D text")
 			if label != null:
-				assert_eq(label.theme, SHARED_THEME)
+				var shared_font: Font = SHARED_THEME.default_font
+				if shared_font == null:
+					shared_font = ThemeDB.fallback_font
+				assert_eq(label.font, shared_font, "chalkboard uses the shared theme's actual font resource")
+				assert_eq(label.text.split("\n").size(), 3, "chalkboard menu keeps three real text lines")
 				assert_true(label.text.contains("TODAY'S SPECIALS"))
+				assert_true(label.text.contains("BURGER $12"))
+				assert_true(label.text.contains("TOMATO SOUP $8"))
 		instance.free()
 
 
