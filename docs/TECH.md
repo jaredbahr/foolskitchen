@@ -333,8 +333,9 @@ an active edit/panel/selection first, or opens Settings when none is active.
   `price_of(recipe)` falls back to the immutable `RecipeDef.standard_price`.
   Orders capture that price once, so later settings never reprice a ticket.
 - At order time an above-standard price has refusal probability
-  `clamp((price / standard / budget - 1) * price_sensitivity, 0, max_price_walkout)`.
-  Regular's budget multiplier is 1.0, preserving its existing formula.
+  `clamp(max(price / standard - 1, 0) / budget * price_sensitivity, 0, max_price_walkout)`.
+  Every type accepts standard or cheaper prices. Regular's budget multiplier
+  is 1.0, preserving its existing formula.
   The `EconomyTuning` defaults are 1.5 and 0.9. The guest uses its private RNG
   only when the chance is positive: standard/cheaper menus preserve the existing
   random stream. Refusal creates no ticket and gives `too_expensive` as a readable
@@ -790,8 +791,12 @@ selection draw; an unconfigured simulation retains the old Regular arrival path.
 
 A guest captures its authored name, budget and review preferences, and scales
 patience once before cleanliness and Vibe; the server bonus still applies later
-once. Walkouts and review fairness use charged / standard price / budget. Reviews
-add clamped `Order.quality` times the type's quality weight, and multiply review
+once. Walkouts and the overprice review penalty scale only the positive excess
+`max(charged / standard - 1, 0) / budget`; standard prices are fair for every
+type, and discounted-price quote rules stay unchanged. Reviews add
+`(clamp(Order.quality, 0, 1) - 0.5) * quality_weight`: half-quality is neutral,
+better food helps and worse food hurts. Invalid quality measurements add no
+term, and Regular's zero quality weight is unchanged. Types also multiply review
 probability before clamping it to 0-1. Closing/unserved policies and the separate
 review RNG remain unchanged. Native Mini model pairs distinguish special types
 deterministically; Regular keeps its existing guest-id mapping. The inspection

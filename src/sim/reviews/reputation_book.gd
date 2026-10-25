@@ -91,8 +91,11 @@ static func score_visit(visit: ReviewVisit, tuning: ReviewTuning, vibe_tuning: V
 	var vibe_bonus: float = clampf(visit.vibe_review_bonus, 0.0, maximum) if is_finite(visit.vibe_review_bonus) else 0.0
 	# Keep the physical star domain before integer conversion, even for large
 	# finite authored caps. Ordinary rounding and final-score quote policy agree.
-	var quality_bonus: float = _unit(visit.quality) * visit.quality_weight \
-		if is_finite(visit.quality_weight) and visit.quality_weight >= 0.0 else 0.0
+	# Half-quality is neutral; bad food can hurt quality-sensitive guests too.
+	# Invalid measurements stay neutral; Regular's zero weight is exact.
+	var quality_bonus: float = 0.0
+	if is_finite(visit.quality) and is_finite(visit.quality_weight) and visit.quality_weight > 0.0:
+		quality_bonus = (clampf(visit.quality, 0.0, 1.0) - 0.5) * visit.quality_weight
 	return roundi(clampf(5.0 - penalty + vibe_bonus + quality_bonus, 1.0, 5.0))
 
 

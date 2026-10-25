@@ -213,7 +213,11 @@ func review_visit(standard_price: int, dirt_fraction: float = 0.0) -> ReviewVisi
 	visit.queue_wait_fraction = float(maxi(0, _queue_wait)) / float(maxi(1, queue_patience))
 	visit.food_wait_fraction = float(maxi(0, _food_wait)) / float(maxi(1, food_patience))
 	if order != null and standard_price > 0:
-		visit.price_ratio = float(order.price) / float(standard_price) / budget_multiplier
+		visit.price_ratio = float(order.price) / float(standard_price)
+		# Every type accepts standard prices. Only the excess is budget-sensitive;
+		# keep discounts and Regular's exact existing ratio/quote policy intact.
+		if visit.price_ratio > 1.0 and budget_multiplier != 1.0:
+			visit.price_ratio = 1.0 + (visit.price_ratio - 1.0) / budget_multiplier
 	if order != null:
 		visit.quality = order.quality
 	visit.quality_weight = quality_weight

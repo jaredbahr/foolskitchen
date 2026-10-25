@@ -1,5 +1,5 @@
 extends TestCase
-## Prepared source tests. No runtime or balance-probe result is claimed here.
+## Customer preferences, actual visit effects and pre-type Regular compatibility.
 
 const TYPES: CustomerTypeCatalogue = preload("res://data/customers/types.tres")
 const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
@@ -33,39 +33,82 @@ func test_each_type_captures_multipliers_and_actual_cooked_quality() -> void:
 		guest.order.quality = 0.85
 		guest.paid = true
 		var visit: ReviewVisit = guest.review_visit(1000)
-		assert_almost_eq(visit.price_ratio, 1.2 / kind.budget_multiplier)
+		assert_almost_eq(visit.price_ratio, 1.0 + 0.2 / kind.budget_multiplier)
 		assert_eq(visit.quality, 0.85)
 		assert_eq(visit.quality_weight, kind.quality_weight)
 		assert_eq(visit.review_chance_multiplier, kind.review_chance_multiplier)
 		assert_false(guest.configure_type(TYPES.find_type(&"student")), "live guests cannot change type")
 
 
-func test_budget_changes_actual_order_walkout_and_draw_policy() -> void:
+func test_standard_and_cheaper_prices_never_refuse_or_penalize_any_type() -> void:
 	var sim: RestaurantSim = _sim(61)
 	var recipe: RecipeDef = sim.menu[0]
 	sim.menu = [recipe]
-	sim.pricing_tuning.price_sensitivity = 4.0
+	var review_tuning: ReviewTuning = TUNING.duplicate() as ReviewTuning
+	review_tuning.overprice_weight = 4.0
+	for price: int in [recipe.standard_price, roundi(recipe.standard_price * 0.75)]:
+		sim.prices[recipe.id] = price
+		for index: int in TYPES.types.size():
+			var kind: CustomerType = TYPES.types[index]
+			var random: RandomNumberGenerator = _random(620 + index)
+			var oracle: RandomNumberGenerator = _random(620 + index)
+			oracle.randi_range(0, 0)  # Only the recipe choice, never a refusal draw.
+			var guest: CustomerAgent = sim.add_customer(sim.world.grid.entries()[0], random, kind)
+			guest.state = CustomerAgent.State.ORDERING
+			assert_eq(sim.price_walkout_chance(recipe, kind.budget_multiplier), 0.0)
+			assert_true(guest._take_order(SimAgent.new()))
+			assert_not_null(guest.order, "%s accepts a standard or cheaper dish" % kind.display_name)
+			assert_eq(random.state, oracle.state, "no early walkout draw at an acceptable price")
+			if guest.order == null:
+				continue
+			guest.paid = true
+			guest.order.quality = 0.5
+			var visit: ReviewVisit = guest.review_visit(recipe.standard_price)
+			assert_eq(visit.price_ratio, float(price) / float(recipe.standard_price))
+			assert_eq(ReputationBook.score_visit(visit, review_tuning), 5,
+				"a standard-price Student receives no overprice penalty")
+			if price < recipe.standard_price:
+				assert_eq(ReputationBook.cause_of(visit, review_tuning), &"great_value")
+
+
+func test_budget_scales_only_above_standard_walkouts_and_review_penalties() -> void:
+	var sim: RestaurantSim = _sim(67)
+	var recipe: RecipeDef = sim.menu[0]
+	sim.menu = [recipe]
+	sim.prices[recipe.id] = roundi(recipe.standard_price * 1.5)
+	sim.pricing_tuning.price_sensitivity = 1.0
 	sim.pricing_tuning.max_price_walkout = 1.0
-	# The standard price is 25% over a Student's budget, so this walkout is certain.
-	var student_rng: RandomNumberGenerator = _random(62)
+	var excess: float = float(sim.price_of(recipe)) / float(recipe.standard_price) - 1.0
+	var review_tuning: ReviewTuning = TUNING.duplicate() as ReviewTuning
+	review_tuning.overprice_weight = 4.0
+	for kind: CustomerType in TYPES.types:
+		var expected_excess: float = excess / kind.budget_multiplier
+		assert_almost_eq(sim.price_walkout_chance(recipe, kind.budget_multiplier), expected_excess)
+		var guest: CustomerAgent = sim.add_customer(sim.world.grid.entries()[0], _random(68), kind)
+		guest.paid = true
+		guest.order = Order.new()
+		guest.order.price = sim.price_of(recipe)
+		guest.order.quality = 0.5
+		var visit: ReviewVisit = guest.review_visit(recipe.standard_price)
+		assert_almost_eq(visit.price_ratio - 1.0, expected_excess)
+		var expected_stars: int = roundi(clampf(5.0 - minf(expected_excess, 1.0) * 4.0, 1.0, 5.0))
+		assert_eq(ReputationBook.score_visit(visit, review_tuning), expected_stars)
+	var regular_chance: float = sim.price_walkout_chance(recipe, 1.0)
+	assert_true(sim.price_walkout_chance(recipe, 0.8) > regular_chance, "Students react sooner to a markup")
+	assert_true(sim.price_walkout_chance(recipe, 1.4) < regular_chance, "Foodies tolerate more of the same markup")
+	# A sufficiently steep markup refusal consumes exactly the private chance draw.
+	sim.pricing_tuning.price_sensitivity = 4.0
+	var student_rng: RandomNumberGenerator = _random(69)
+	var oracle: RandomNumberGenerator = _random(69)
+	oracle.randi_range(0, 0)
+	oracle.randf()
 	var student: CustomerAgent = sim.add_customer(sim.world.grid.entries()[0], student_rng, TYPES.find_type(&"student"))
 	student.state = CustomerAgent.State.ORDERING
 	assert_eq(sim.price_walkout_chance(recipe, student.budget_multiplier), 1.0)
 	assert_true(student._take_order(SimAgent.new()))
 	assert_null(student.order)
 	assert_eq(student.leave_reason, &"too_expensive")
-	# A Foodie accepts a 1.3x price without a walkout draw; only menu selection draws.
-	sim.prices[recipe.id] = roundi(recipe.standard_price * 1.3)
-	var foodie_rng: RandomNumberGenerator = _random(63)
-	var oracle: RandomNumberGenerator = _random(63)
-	oracle.randi_range(0, 0)
-	var foodie: CustomerAgent = sim.add_customer(sim.world.grid.entries()[0], foodie_rng, TYPES.find_type(&"foodie"))
-	foodie.state = CustomerAgent.State.ORDERING
-	assert_eq(sim.price_walkout_chance(recipe, foodie.budget_multiplier), 0.0)
-	assert_true(foodie._take_order(SimAgent.new()))
-	assert_not_null(foodie.order)
-	assert_eq(foodie_rng.state, oracle.state)
-	assert_eq(foodie.food_patience, 1080)
+	assert_eq(student_rng.state, oracle.state)
 
 
 func test_type_patience_stacks_once_with_cleanliness_vibe_and_server() -> void:
@@ -103,7 +146,7 @@ func test_type_patience_stacks_once_with_cleanliness_vibe_and_server() -> void:
 	guest.state = CustomerAgent.State.ORDERING
 	var server: StaffAgent = StaffAgent.new(&"server")
 	server.food_patience_multiplier = 1.2
-	# Avoid a random Student price refusal while checking the later server bonus.
+	# A free menu keeps this patience check independent of pricing choices.
 	for recipe: RecipeDef in sim.menu:
 		sim.prices[recipe.id] = 0
 	assert_true(guest._take_order(server))
@@ -134,6 +177,35 @@ func test_quality_term_is_real_bounded_and_keeps_unserved_policy() -> void:
 	assert_eq(ReputationBook.score_visit(good, TUNING), 5)
 	good.quality = NAN
 	assert_eq(ReputationBook.score_visit(good, TUNING), ReputationBook.score_visit(poor, TUNING))
+
+
+func test_foodie_quality_moves_reviews_both_directions_from_neutral() -> void:
+	var sim: RestaurantSim = _sim(73)
+	var foodie: CustomerAgent = sim.add_customer(sim.world.grid.entries()[0], _random(74), TYPES.find_type(&"foodie"))
+	foodie.paid = true
+	foodie.order = Order.new()
+	var tuning: ReviewTuning = TUNING.duplicate() as ReviewTuning
+	tuning.food_wait_weight = 1.0
+	foodie._food_wait = roundi(foodie.food_patience * 0.5)
+	foodie.order.quality = 0.5
+	var neutral: ReviewVisit = foodie.review_visit(0)
+	assert_eq(ReputationBook.score_visit(neutral, tuning), 5)
+	foodie.order.quality = 0.0
+	assert_eq(ReputationBook.score_visit(foodie.review_visit(0), tuning), 4,
+		"bad cooked quality lowers a Foodie's otherwise five-star review")
+	foodie._food_wait = roundi(foodie.food_patience * 0.6)
+	foodie.order.quality = 0.5
+	assert_eq(ReputationBook.score_visit(foodie.review_visit(0), tuning), 4)
+	foodie.order.quality = 1.0
+	assert_eq(ReputationBook.score_visit(foodie.review_visit(0), tuning), 5,
+		"good cooked quality improves a Foodie's otherwise four-star review")
+	var regular: ReviewVisit = ReviewVisit.new()
+	regular.served = true
+	regular.food_wait_fraction = 0.5
+	for quality: float in [0.0, 0.5, 1.0, NAN]:
+		regular.quality = quality
+		assert_eq(ReputationBook.score_visit(regular, tuning), 5,
+			"Regular's zero quality weight never changes the existing rating")
 
 
 func test_review_chance_modifier_uses_only_the_dedicated_review_rng() -> void:
