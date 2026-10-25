@@ -208,11 +208,16 @@ def _build_open_sign(builder: Builder) -> None:
     )
     for letter, strokes in letters:
         for stroke_index, (start, end) in enumerate(strokes):
+            # The declared front is -Z, where screen-right maps to world -X.
+            # Mirror only the glyph layout across X so O reads at screen-left;
+            # the sign housing, front face, proportions, and stroke winding stay put.
+            front_start = (-start[0], start[1])
+            front_end = (-end[0], end[1])
             _stroke_mesh(
                 builder,
                 f"open_sign_{letter.lower()}_stroke_{stroke_index}",
-                start,
-                end,
+                front_start,
+                front_end,
                 stroke,
                 0.024,
                 0.034,
