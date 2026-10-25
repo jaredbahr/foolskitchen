@@ -22,7 +22,7 @@
     0.37749998550862074,
     0.13100000098347664
   ],
-  "sha256": "782d1635c9ed41c5b5cb4239bf99cea8e0481dac768edc8ceb0b29f234f09495",
+  "sha256": "49bf34cb5f0d8a5cea0830e68509760163f0952ed63a0a6122e453cb3ee75af6",
   "references": [
     {
       "path": "assets/kenney/furniture/lampWall.glb",
@@ -80,7 +80,8 @@
         "metallicFactor": 0,
         "roughnessFactor": 1
       },
-      "emissive": false
+      "emissive": false,
+      "emission": null
     },
     "dark": {
       "source": "assets/kenney/furniture/wall.glb",
@@ -96,7 +97,8 @@
         "metallicFactor": 0,
         "roughnessFactor": 1
       },
-      "emissive": false
+      "emissive": false,
+      "emission": null
     },
     "emissive_red": {
       "source": "assets/kenney/furniture/benchCushion.glb",
@@ -112,13 +114,22 @@
         "metallicFactor": 0,
         "roughnessFactor": 1
       },
-      "emissive": true
+      "emissive": true,
+      "emission": {
+        "color": [
+          0.9433962,
+          0.367175967,
+          0.3426486,
+          1
+        ],
+        "strength": 0.35
+      }
     }
   },
   "source_sha256": {
     "tools/diner/build_diner.py": "734137560a4945cb385b4ad960c2d3ae592f71fde0a6bbc588d5f8f5f8920171",
-    "tools/diner/common.py": "f4c0dc2e09e644dcb755f300db4a83f292e2b004e8950165cc05dcda0c8da1b0",
-    "tools/diner/furniture.py": "2827a9b847fa6b1f729d4f22a9dbcecaf3c63e9b4cc0be53ebfbbfa808b1a71d",
+    "tools/diner/common.py": "a546adc4f746acb5b1041b7942b411dba78150f371c829e4831d14f5e8e612d3",
+    "tools/diner/furniture.py": "fe048198aef8f59657137983de56069b45431db9f1d0c27260eb59b3753bd589",
     "tools/diner/wall_pieces.py": "6b1899913b9a9d58fba235a8ec968bc467f9cf726cb241bb09f40ba6f5606c01"
   }
 }

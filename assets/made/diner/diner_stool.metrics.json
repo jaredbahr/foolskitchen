@@ -22,7 +22,7 @@
     0.4350000098347664,
     0.2654399871826172
   ],
-  "sha256": "0218d0eb6498d07b025ece3fdbfb4f75c65067c433291156c155652481a86b68",
+  "sha256": "5e287ab8c9332afbbccbbbf849644f3de40bb16d64b2268199d8fbcae62d5d2a",
   "references": [
     {
       "path": "assets/kenney/furniture/stoolBar.glb",
@@ -80,7 +80,8 @@
         "metallicFactor": 0,
         "roughnessFactor": 1
       },
-      "emissive": false
+      "emissive": false,
+      "emission": null
     },
     "chrome": {
       "source": "assets/kenney/furniture/lampWall.glb",
@@ -96,13 +97,14 @@
         "metallicFactor": 0,
         "roughnessFactor": 1
       },
-      "emissive": false
+      "emissive": false,
+      "emission": null
     }
   },
   "source_sha256": {
     "tools/diner/build_diner.py": "734137560a4945cb385b4ad960c2d3ae592f71fde0a6bbc588d5f8f5f8920171",
-    "tools/diner/common.py": "f4c0dc2e09e644dcb755f300db4a83f292e2b004e8950165cc05dcda0c8da1b0",
-    "tools/diner/furniture.py": "2827a9b847fa6b1f729d4f22a9dbcecaf3c63e9b4cc0be53ebfbbfa808b1a71d",
+    "tools/diner/common.py": "a546adc4f746acb5b1041b7942b411dba78150f371c829e4831d14f5e8e612d3",
+    "tools/diner/furniture.py": "fe048198aef8f59657137983de56069b45431db9f1d0c27260eb59b3753bd589",
     "tools/diner/wall_pieces.py": "6b1899913b9a9d58fba235a8ec968bc467f9cf726cb241bb09f40ba6f5606c01"
   }
 }
