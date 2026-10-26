@@ -61,6 +61,6 @@ After bounded Blender regeneration and import, the existing actual-surface
 catalogue acceptance must still measure all 1,632 cases, including all 288 made
 seat cases, without new exceptions or changed offset/clearance limits. Retain
 the native 24-pose vertex-parity check and the two real review frames plus their
-3× seated crop. Move the reversed review-fixture booth origin from `(2, 5)` to
-`(2, 4)` so its front seats stay in row 5 facing the table in row 6; its new rear
-row occupies row 4. The first booth remains at `(2, 7)`, facing forward.
+3× seated crop. Row 4 of the tier-1 layout is wall at x=2..3, so the review
+fixture moves down one row: table at `(2, 7)`, the forward booth at `(2, 8)` and
+the reversed booth at `(2, 5)` (turn 2); both front seat rows face the table.

@@ -18,6 +18,9 @@ class BodySurface:
 ## Sitting surface in unscaled source-model metres. Zero leaves the caller's
 ## legacy seat-height fallback intact; ArtScale supplies the only scale factor.
 @export_range(0.0, 2.0, 0.001) var seat_surface_y: float = 0.0
+## Declared XZ centre of the body inside the footprint. Zero means centred (the
+## rule for most items); a booth whose back row is blocking-only sets its offset.
+@export var body_center_offset: Vector2 = Vector2.ZERO
 
 var _prepared: bool = false
 var _body_surfaces: Array[BodySurface] = []
