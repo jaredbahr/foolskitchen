@@ -439,8 +439,10 @@ static func _triangle_distance_squared(a: PackedVector3Array, ai: int, b: Packed
 
 
 static func _hip_support(person: PersonView, parts: Array[Dictionary], scene: String) -> Dictionary:
+	var result: Dictionary = {"hips_supported": null, "hip_support_parts": PackedStringArray(),
+		"hip_bone_positions": [], "hip_support_points": []}
 	if scene != "diner_booth" and scene != "diner_stool":
-		return {"hips_supported": null, "hip_support_parts": PackedStringArray()}
+		return result
 	var paths: PackedStringArray = []
 	var positions: Array = []
 	var support_points: Array = []
@@ -448,7 +450,8 @@ static func _hip_support(person: PersonView, parts: Array[Dictionary], scene: St
 	for name: String in ["leg-left", "leg-right"]:
 		var bone: int = person._skeleton.find_bone(name)
 		if bone < 0:
-			return {"hips_supported": false, "hip_support_parts": paths}
+			supported = false
+			continue
 		var hip: Vector3 = _between_nodes(person._skeleton, person) * person._skeleton.get_bone_global_pose(bone).origin
 		positions.append([hip.x, hip.y, hip.z])
 		var hit: Dictionary = _downward_support(hip, parts, true)
@@ -459,7 +462,11 @@ static func _hip_support(person: PersonView, parts: Array[Dictionary], scene: St
 			paths.append(path)
 			var point: Vector3 = hit["point"]
 			support_points.append([point.x, point.y, point.z])
-	return {"hips_supported": supported, "hip_support_parts": paths, "hip_bone_positions": positions, "hip_support_points": support_points}
+	result["hips_supported"] = supported
+	result["hip_support_parts"] = paths
+	result["hip_bone_positions"] = positions
+	result["hip_support_points"] = support_points
+	return result
 
 
 ## Nine representative exception-eligibility trials, not extra catalogue rows.

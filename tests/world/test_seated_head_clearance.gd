@@ -125,6 +125,22 @@ func _policy_sample(id: String) -> Dictionary:
 		"backrest_clearance": null, "backrest_status": "unclassified", "facing_dot": 1.0, "seated_forward_offset": 0.0}
 
 
+func test_missing_leg_bone_returns_complete_unsupported_hip_schema() -> void:
+	var person: PersonView = PersonView.new()
+	var skeleton: Skeleton3D = Skeleton3D.new()
+	skeleton.add_bone("leg-left")
+	person.add_child(skeleton)
+	person._skeleton = skeleton
+	var result: Dictionary = GEOMETRY._hip_support(person, [], "diner_booth")
+	assert_false(result["hips_supported"], "one missing leg must fail support closed")
+	assert_eq((result["hip_bone_positions"] as Array).size(), 1, "available leg position remains useful diagnostic data")
+	assert_eq((result["hip_support_points"] as Array).size(), 0, "no cushion was supplied to support the remaining leg")
+	assert_eq((result["hip_support_parts"] as PackedStringArray).size(), 0)
+	for key: String in ["hips_supported", "hip_support_parts", "hip_bone_positions", "hip_support_points"]:
+		assert_true(result.has(key), "serializer contract always provides " + key)
+	person.free()
+
+
 func _box_faces(center: Vector3, size: Vector3) -> PackedVector3Array:
 	var box: BoxMesh = BoxMesh.new()
 	box.size = size
