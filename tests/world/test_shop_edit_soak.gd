@@ -496,13 +496,10 @@ func _run_day(main: Node, day: int) -> bool:
 	_dishes_paid.clear()
 	var report: Control = main.get_node("Overlay/EveningReport")
 	assert_false(report.visible, "day %d: no report before opening" % day)
-	var morning_ui: Dictionary = {
-		"phase": int(Clock.sim.phase),
-		"staff_visible": bool(main.call("is_staff_visible")),
-		"raise_offers": (main.get("staff_roster") as StaffRoster).morning_raise_offers(
-			Clock.sim.day, Clock.sim.phase),
-		"notices": main.get("_staff_notices").duplicate(true),
-	}
+	# A morning raise or staff notice opens the Staff panel, which keeps the
+	# evening report hidden until it closes. Dismiss it as a player would.
+	if bool(main.call("is_staff_visible")):
+		assert_true(main.call("set_staff_visible", false), "day %d: the morning Staff notice closes" % day)
 	var opened: bool = Clock.sim.start_service()
 	assert_true(opened, "day %d: the real shop opens" % day)
 	if not opened:
@@ -512,17 +509,6 @@ func _run_day(main: Node, day: int) -> bool:
 		main.call("run_ticks", 1000)
 		guard += 1
 	assert_eq(Clock.sim.phase, SimClock.Phase.CLOSED, "day %d ends within the tick guard" % day)
-	if not report.visible:
-		var shown: DayReport = main.get("shown_report") as DayReport
-		print("EDIT_SOAK_REPORT_STATE %s" % JSON.stringify({
-			"day": day, "phase": int(Clock.sim.phase), "morning_ui": morning_ui,
-			"staff_visible": bool(main.call("is_staff_visible")),
-			"goals_visible": bool(main.call("is_goals_visible")),
-			"paint_active": bool(main.get("_paint_active")),
-			"report_visible": report.visible, "report_day": shown.day if shown != null else -1,
-			"closed_report_day": int(main.get("_closed_report_day")),
-			"customers_remaining": (main.get("sim") as RestaurantSim).customers().size(),
-		}))
 	assert_true(report.visible, "day %d: the evening report is shown" % day)
 	return Clock.sim.phase == SimClock.Phase.CLOSED
 

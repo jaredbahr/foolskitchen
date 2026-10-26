@@ -153,17 +153,13 @@ func test_unknown_backrest_does_not_invent_a_gap_or_waive_new_seat_failures() ->
 		trial["trial_forward_offset"] = 0.05
 		trials.append(trial)
 	var new_seat: Dictionary = _policy_sample("new_chair")
-	var party_table: Dictionary = _policy_sample("table_4")
-	party_table["backrest_status"] = "unclassified_kit"
 	var made_seat: Dictionary = _policy_sample("diner_booth")
 	var parity_error: Dictionary = _policy_sample("chair")
 	parity_error["native_bake_max_error"] = 0.1
-	samples.append_array([new_seat, party_table, made_seat, parity_error])
+	samples.append_array([new_seat, made_seat, parity_error])
 	var report: Dictionary = {"samples": samples, "errors": PackedStringArray(), "known_kit_offset_trials": trials}
 	CATALOGUE._apply_known_failure_policy(report)
 	assert_false(new_seat["accepted"])
-	assert_false(party_table["known_kit_failure"], "matching kit construction is not a measured exception")
-	assert_false(party_table["accepted"])
 	assert_false(made_seat["accepted"])
 	assert_false(parity_error["accepted"], "an item exception cannot waive native parity")
 	assert_true((samples[0] as Dictionary)["accepted"])

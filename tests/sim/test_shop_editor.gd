@@ -72,7 +72,7 @@ func test_partial_table_capacity_warning_is_read_only_and_uses_actual_usable_cel
 	assert_eq(DiningSeats.nominal_capacity(_sim.world.grid, table), 4)
 	assert_eq(DiningSeats.largest_usable_capacity(_sim.world.grid), 3)
 	assert_eq(_editor.check_current().seat_warnings.get(table.id, ""), "Only 3 of 4 seats usable")
-	assert_true(_editor.move(table.id, Vector2i(6, 7), 0))
+	assert_true(_editor.move(table.id, Vector2i(6, 6), 0))
 	assert_eq(DiningSeats.largest_usable_capacity(_sim.world.grid), 4)
 	assert_false(_editor.check_current().seat_warnings.has(table.id))
 

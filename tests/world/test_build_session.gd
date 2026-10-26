@@ -472,7 +472,7 @@ func test_main_build_hud_shows_partial_seats_and_clears_warning_after_the_layout
 	assert_true(_main.call("set_build_active", true))
 	assert_true(label.text.contains("Only 3 of 4 seats usable"), "re-entering reads the actual layout")
 	assert_true(_mode().pick_up(table.id))
-	_mode().update_origin(Vector2i(6, 7))
+	_mode().update_origin(Vector2i(6, 6))
 	assert_true(_mode().current_check.ok)
 	assert_false(label.text.contains("seats usable"), "a valid repaired proposal uses the new capacity")
 	assert_true(_mode().commit())

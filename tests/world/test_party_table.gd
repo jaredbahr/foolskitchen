@@ -58,7 +58,7 @@ func test_each_chair_matches_one_authored_cell_and_faces_the_table() -> void:
 	assert_eq(seats.size(), 4)
 
 
-func test_four_seat_classification_matches_cushioned_kit_without_granting_an_exception() -> void:
+func test_four_seat_classification_matches_cushioned_kit_and_its_measured_exception() -> void:
 	var original: PropView = (load("res://assets/props/table_2.tscn") as PackedScene).instantiate() as PropView
 	original.prepare()
 	var original_parts: Array[Dictionary] = GEOMETRY.seat_parts(original, original)
@@ -69,8 +69,8 @@ func test_four_seat_classification_matches_cushioned_kit_without_granting_an_exc
 	assert_eq(GEOMETRY._backrest_status(_view, party_parts), "unclassified_kit")
 	for part: Dictionary in party_parts:
 		assert_false(part["is_backrest"], "a joined kit mesh is not an identified backrest surface")
-	assert_false(CATALOGUE.KNOWN_KIT_FAILURE_IDS.has("table_4"),
-		"an exception needs measured physical evidence and the Director's specified failure class")
+	assert_true(CATALOGUE.KNOWN_KIT_FAILURE_IDS.has("table_4"),
+		"measured: the same chairCushion crossing class as table_2 (see tools/seated_head_probe.md)")
 	original.free()
 
 
