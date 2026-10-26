@@ -87,6 +87,18 @@ func test_metadata_digest_frame_and_identity_mismatches_fail_closed() -> void:
 	assert_true(_messages_contain(result["messages"], "frame identity"))
 
 
+func test_comparison_frame_accepts_valid_decoded_rgb_png_with_matching_digest() -> void:
+	var image: Image = Image.create(1600, 900, false, Image.FORMAT_RGB8)
+	image.fill(Color.WHITE)
+	var png_path: String = _fixture_directory.path_join("shot_0012.png")
+	assert_eq(image.save_png(png_path), OK)
+	var metadata: Dictionary = _read_metadata(12)
+	metadata["image_sha256"] = FileAccess.get_sha256(png_path)
+	_write_metadata(12, metadata)
+	var result: Dictionary = VALIDATOR.validate_capture_pair(_fixture_directory, 12)
+	assert_true(result["valid"], "decoding must preserve the existing RGB-to-RGBA normalization contract")
+
+
 func test_non_diner_capture_pair_is_rejected() -> void:
 	var metadata: Dictionary = _read_metadata(90)
 	metadata.erase("diner_review")

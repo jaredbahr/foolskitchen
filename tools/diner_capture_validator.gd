@@ -59,6 +59,11 @@ static func validate_capture_pair(directory: String, frame: int) -> Dictionary:
 	if image_bytes_width(image_bytes) != 1600 or image_bytes_height(image_bytes) != 900:
 		messages.append("diner-review: wrong PNG dimensions in %s" % filename)
 		return {"valid": false, "messages": messages}
+	var decoded: Image = Image.new()
+	if decoded.load_png_from_buffer(image_bytes) != OK or decoded.is_empty() \
+			or decoded.get_size() != Vector2i(1600, 900):
+		messages.append("diner-review: image could not be decoded at its native size %s" % filename)
+		return {"valid": false, "messages": messages}
 	var metadata_file: FileAccess = FileAccess.open(metadata_path, FileAccess.READ)
 	if metadata_file == null:
 		messages.append("diner-review: could not read metadata for %s" % filename)
