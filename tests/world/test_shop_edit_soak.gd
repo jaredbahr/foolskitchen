@@ -61,12 +61,22 @@ func test_five_days_of_seeded_morning_edits_keep_real_session_invariants() -> vo
 	var main: Node = _start()
 	if main == null:
 		return
-	# New-game startup uses wall time. Replace only its random stream before any
-	# visit, then draw the normal first gap through the public spawner API.
-	# Subsequent normal morning autosaves capture this deterministic stream.
+	# New-game startup uses wall time. new_run replaces the named RNG objects,
+	# so rebind every retained live consumer before any visit. The normal morning
+	# autosaves must capture the same review/dirt streams the sim actually uses.
 	GameState.new_run(CUSTOMER_SEED)
 	var sim: RestaurantSim = main.get("sim")
 	sim.use_rng(GameState.rng(&"customers"))
+	var reviews: RandomNumberGenerator = GameState.rng(&"reviews")
+	var dirt: RandomNumberGenerator = GameState.rng(&"cleanliness")
+	var review_state: int = reviews.state
+	var dirt_state: int = dirt.state
+	sim.configure_reviews(sim.review_book, sim.review_tuning, sim.review_quotes, reviews)
+	assert_true(sim.cleanliness.use_rng(dirt), "the unvisited morning can rebind its dirt stream")
+	assert_eq(sim.review_rng, reviews, "the live reviewer uses the fixture's named RNG object")
+	assert_eq(sim.cleanliness._rng, dirt, "the live floor uses the fixture's named RNG object")
+	assert_eq(sim.review_rng.state, review_state, "review rebinding draws nothing")
+	assert_eq(sim.cleanliness._rng.state, dirt_state, "dirt rebinding draws nothing")
 	sim.spawner.reset()
 	_fixed_items = _fixed_snapshot(sim.world.grid)
 	var total_served: int = 0
@@ -465,6 +475,8 @@ func _assert_clean_morning(main: Node, day: int) -> void:
 	assert_true(sim.stock == Economy.stock, "day %d: the kitchen uses the books' stock" % day)
 	assert_true(sim.kitchen.stock == Economy.stock)
 	assert_true(sim.rng == GameState.rng(&"customers"))
+	assert_eq(sim.review_rng, GameState.rng(&"reviews"), "day %d: reviews retain the saved named stream" % day)
+	assert_eq(sim.cleanliness._rng, GameState.rng(&"cleanliness"), "day %d: floor dirt retains the saved named stream" % day)
 	assert_true(_service_access_ok(world.grid))
 	assert_eq(_fixed_snapshot(world.grid), _fixed_items)
 
