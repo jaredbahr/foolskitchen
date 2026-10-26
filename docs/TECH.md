@@ -785,7 +785,7 @@ an active edit/panel/selection first, or opens Settings when none is active.
 
 **Customer types (FK-061):** `data/customers/types.tres` authors neutral Regulars,
 Students (budget 0.8 / patience 1.3, level 1), Foodies (1.4 / 0.9, level 3), and
-single-person Families (1.1 / 1.4, level 4). Main installs the detached catalogue
+Families (1.1 / 1.4, level 4). Main installs the detached catalogue
 after owner progression and reviews restore, and refreshes its level each morning.
 The spawner chooses in authored order from unlocked, positive weights interpolated
 by reputation, using the named customers stream. One eligible type consumes no
@@ -806,6 +806,26 @@ panel shows the authored type name. No customer-type save section or action save
 is added. Regular compatibility fixtures retain the pre-type methods from main
 `34f8fde` for seeds 1, 7 and 42; they do not substitute for the required ten-day
 before/after balance probe.
+
+**Group seating (FK-066):** the same catalogue authors Family parties of 2-4
+and Regular, Student and Foodie parties of 1-2. Fixed-size ranges consume no
+new random draw. The spawner draws one ranged party size and a private seed
+for each member from the existing customers stream. It installs and links
+every member before publishing any arrival; singleton installation retains
+the old draw and signal order. `Party` stores member IDs rather than strong
+agent references. `PartySeating` searches one table with enough reachable
+free seats, matches all members before reserving, and rolls back every hold
+and path on failure. No member orders until everyone reaches their own seat.
+The shared table/walk budget is bounded by the least patient member. A table
+or food timeout ends each remaining unpaid visit once, while a previously
+paid member retains its successful outcome. Orders, payments and reviews
+remain per person; no review formula or patience tuning changes.
+The four-seat table combines unchanged Kenney tables and chairs inside a 2x3
+footprint at the existing furniture scale. The inspector adds "Party of N".
+All party state is transient, with no save section or action save. Singleton
+regressions freeze only the old integration boundaries from exact main
+`1f9804e` and compare complete tick/RNG snapshots for seeds 1, 7 and 42; these
+written regressions are not a substitute for the required ten-day comparison.
 
 **Career goals (FK-062):** `data/milestones/starter.tres` owns the twelve starter
 goals. The pure `MilestoneTracker` observes closed-day served/lost counts,
