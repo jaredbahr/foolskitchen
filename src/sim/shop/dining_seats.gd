@@ -35,7 +35,11 @@ static func usable_cells(grid: SimGrid, table: PlacedItem, from_cell: Vector2i =
 	var definition: ItemDef = table.def as ItemDef
 	if table.removed or definition != null and definition.category != ItemDef.Category.TABLE:
 		return usable
-	var starts: Array[Vector2i] = grid.entries() if from_cell == SimGrid.NO_CELL else [from_cell] as Array[Vector2i]
+	var starts: Array[Vector2i] = []
+	if from_cell == SimGrid.NO_CELL:
+		starts.assign(grid.entries())
+	else:
+		starts.append(from_cell)
 	for seat: Vector2i in table.seat_cells:
 		if usable.has(seat) or not grid.is_walkable(seat):
 			continue
