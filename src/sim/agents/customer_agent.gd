@@ -25,6 +25,8 @@ var seat_cell: Vector2i = SimGrid.NO_CELL
 var order: Order = null
 var leave_reason: StringName = &"happy"
 var paid: bool = false
+## A multi-guest visit shares only its bounded table search, never its order.
+var party: Party = null
 ## Detached preferences captured before arrival. Existing guests never change type.
 var customer_type_id: StringName = &"regular"
 var customer_type_name: String = "Regular"
@@ -104,12 +106,17 @@ func tick(world: SimWorld) -> void:
 	# RestaurantSim removes remaining guests on this same CLOSED tick.
 	if world.clock.phase == SimClock.Phase.CLOSED:
 		return
+	if party != null and party.size() > 1 and state <= State.QUEUED:
+		PartySeating.advance_queue(party, world, sim)
+		return
 	if state >= State.WALKING_TO_SEAT and state <= State.PAYING:
 		var table: PlacedItem = world.grid.item(table_item_id)
 		if table == null or not table.seat_cells.has(seat_cell) \
 				or table.reserved_by(seat_cell) != id or not world.grid.is_walkable(seat_cell):
 			if state == State.WALKING_TO_SEAT:
 				_requeue(world, sim)
+				if party != null and party.size() > 1:
+					return
 			else:
 				_leave(world, sim, &"no_table")
 	if state == State.ORDERING or state == State.WAITING_FOOD:
@@ -242,6 +249,8 @@ static func _patience_fraction(waited: int, budget: int) -> float:
 ## Removal always releases the seat and withdraws unfinished work and tickets.
 func on_removed(world: SimWorld) -> void:
 	var sim: RestaurantSim = _restaurant.get_ref() as RestaurantSim
+	if party != null and party.size() > 1 and not party.seated:
+		PartySeating.leave_waiting(party, world, sim, leave_reason if leave_reason != &"happy" else &"no_table")
 	_cancel_work(world, sim)
 	_release_seat(world)
 	state = State.LEFT
@@ -287,11 +296,17 @@ func _walk_to_seat(world: SimWorld, sim: RestaurantSim) -> void:
 		if not set_destination(world.grid, seat_cell):
 			_requeue(world, sim)
 	elif result == MoveResult.ARRIVED and cell == seat_cell:
+		if party != null and party.size() > 1:
+			PartySeating.finish_seating(party, world, sim)
+			return
 		state = State.ORDERING
 		_post_order_task(world, sim)
 
 
 func _requeue(world: SimWorld, sim: RestaurantSim) -> void:
+	if party != null and party.size() > 1 and not party.seated:
+		PartySeating.requeue(party, world, sim)
+		return
 	_release_seat(world, false)
 	table_item_id = 0
 	seat_cell = SimGrid.NO_CELL
@@ -384,6 +399,12 @@ func _take_order(server: SimAgent) -> bool:
 
 func _leave(world: SimWorld, sim: RestaurantSim, reason: StringName) -> void:
 	if state >= State.LEAVING:
+		return
+	if party != null and party.size() > 1 and reason == &"waited_too_long" and not party.departing:
+		PartySeating.leave_together(party, world, sim, reason)
+		return
+	if party != null and party.size() > 1 and not party.seated and not party.departing:
+		PartySeating.leave_waiting(party, world, sim, reason)
 		return
 	leave_reason = reason
 	_cancel_work(world, sim)

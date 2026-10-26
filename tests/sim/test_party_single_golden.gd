@@ -25,6 +25,11 @@ func test_party_size_one_matches_exact_main_seed_42() -> void:
 func _compare(seed_value: int) -> void:
 	var reference: RestaurantSim = _sim(seed_value, true)
 	var current: RestaurantSim = _sim(seed_value, false)
+	assert_true(current.has_method("add_party"), "golden requires the production party integration hooks")
+	if not current.has_method("add_party"):
+		return
+	assert_ne(current.spawner.get_script(), reference.spawner.get_script(),
+		"the production spawner must be compared with the frozen exact-main spawner")
 	assert_eq(_snapshot(current), _snapshot(reference), "initial exact-main state")
 	for tick: int in 4501:
 		reference.advance()

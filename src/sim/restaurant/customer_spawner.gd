@@ -18,7 +18,7 @@ func reset() -> void:
 	_remaining = _gap()
 
 
-## Creates at most one guest, and never outside OPEN or without a street entry.
+## Creates at most one party, and never outside OPEN or without a street entry.
 func advance(sim: RestaurantSim) -> void:
 	if sim.world.clock.phase != SimClock.Phase.OPEN:
 		return
@@ -35,9 +35,18 @@ func advance(sim: RestaurantSim) -> void:
 				sim.review_book.average(), rng)
 		if sim.customer_types == null or kind != null:
 			var entry: Vector2i = entries[rng.randi_range(0, entries.size() - 1)]
-			var customer_rng: RandomNumberGenerator = RandomNumberGenerator.new()
-			customer_rng.seed = rng.randi()
-			sim.add_customer(entry, customer_rng, kind)
+			var count: int = kind.draw_party_size(rng) if kind != null else 1
+			if count == 1:
+				var customer_rng: RandomNumberGenerator = RandomNumberGenerator.new()
+				customer_rng.seed = rng.randi()
+				sim.add_customer(entry, customer_rng, kind)
+			else:
+				var randoms: Array[RandomNumberGenerator] = []
+				for index: int in count:
+					var customer_rng: RandomNumberGenerator = RandomNumberGenerator.new()
+					customer_rng.seed = rng.randi()
+					randoms.append(customer_rng)
+				sim.add_party(entry, randoms, kind)
 	_remaining = _gap()
 
 

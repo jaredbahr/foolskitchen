@@ -5,6 +5,14 @@ const TYPES: CustomerTypeCatalogue = preload("res://data/customers/types.tres")
 const TABLE: ItemDef = preload("res://data/items/table_4.tres")
 
 
+class RefusingGuest extends CustomerAgent:
+	func _init(sim: RestaurantSim, random: RandomNumberGenerator) -> void:
+		super(sim, random)
+
+	func set_destination(_grid: SimGrid, _goal: Vector2i) -> bool:
+		return false
+
+
 func test_authored_ranges_and_fixed_singletons_keep_the_random_stream() -> void:
 	assert_true(TYPES.is_valid())
 	for kind: CustomerType in TYPES.types:
@@ -87,6 +95,24 @@ func test_matching_backtracks_instead_of_stranding_the_last_member() -> void:
 	var seats: Array[Vector2i] = []
 	assert_true(PartySeating._match(choices, 0, seats))
 	assert_eq(seats, [right, left] as Array[Vector2i])
+
+
+func test_route_commit_failure_rolls_back_all_reservations_and_paths() -> void:
+	var sim: RestaurantSim = _sim()
+	var table: PlacedItem = sim.world.grid.place_def(TABLE, Vector2i(4, 5))
+	var first: CustomerAgent = sim.add_customer(Vector2i.ZERO, _rng(1))
+	var refusing: CustomerAgent = RefusingGuest.new(sim, _rng(2))
+	sim.world.add_agent(refusing)
+	var last: CustomerAgent = sim.add_customer(Vector2i.ZERO, _rng(3))
+	var party: Party = Party.new([first.id, refusing.id, last.id] as Array[int])
+	assert_false(PartySeating.try_seat(party, sim.world))
+	assert_eq(party.table_item_id, 0)
+	for guest: CustomerAgent in [first, refusing, last]:
+		assert_eq(guest.table_item_id, 0)
+		assert_true(guest.path.is_empty())
+		assert_eq(guest.state, CustomerAgent.State.ARRIVING)
+	for seat: Vector2i in table.seat_cells:
+		assert_eq(table.reserved_by(seat), -1)
 
 
 func test_timeout_leaves_every_member_and_counts_each_reason_once() -> void:

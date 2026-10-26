@@ -178,10 +178,19 @@ static func leave_waiting(party: Party, world: SimWorld, sim: RestaurantSim,
 		reason: StringName = &"no_table") -> void:
 	if party == null or party.seated or party.departing:
 		return
+	leave_together(party, world, sim, reason)
+
+
+## A food timeout also ends the remaining unpaid visits. Already paid members
+## keep their successful outcome, including when they are still walking out.
+static func leave_together(party: Party, world: SimWorld, sim: RestaurantSim,
+		reason: StringName) -> void:
+	if party == null or party.departing:
+		return
 	party.departing = true
 	for member_id: int in party.member_ids:
 		var guest: CustomerAgent = world.agent(member_id) as CustomerAgent
-		if guest != null:
+		if guest != null and not guest.paid:
 			guest._leave(world, sim, reason)
 
 
