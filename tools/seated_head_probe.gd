@@ -6,8 +6,11 @@ extends SceneTree
 
 const CATALOGUE: GDScript = preload("res://tools/seated_head_catalogue.gd")
 
+var _errors: ErrorCounter = ErrorCounter.new()
+
 
 func _initialize() -> void:
+	OS.add_logger(_errors)
 	_run.call_deferred()
 
 
@@ -19,11 +22,14 @@ func _run() -> void:
 			path = argument.trim_prefix("--out=")
 	if native_bake and DisplayServer.get_name() == "headless":
 		print("Native bake needs a rendered Compatibility session; omit --headless.")
-		quit(2)
+		_finish(2)
 		return
 	await process_frame
 	var report: Dictionary = await CATALOGUE.run(root, native_bake)
 	var failures: int = int(report.get("failures", (report["errors"] as PackedStringArray).size()))
+	report["engine_errors"] = _errors.count()
+	failures += int(report["engine_errors"])
+	report["failures"] = failures
 	for sample: Dictionary in report["samples"]:
 		for key: String in ["head_bounds", "person_bounds", "world_bounds"]:
 			if sample.has(key):
@@ -42,9 +48,17 @@ func _run() -> void:
 		var file: FileAccess = FileAccess.open(path, FileAccess.WRITE)
 		if file == null:
 			print("Could not write probe report: " + path)
-			quit(2)
+			_finish(2)
 			return
 		file.store_string(output + "\n")
 		file.close()
 	print("SEATED HEAD: %d catalogue seats, %d native sit samples, %d raw failures, %d known kit items, %d unexpected failures" % [report["seats"], (report["samples"] as Array).size(), report.get("raw_failures", 0), (report.get("known_kit_failures", []) as Array).size(), failures])
-	quit(1 if failures > 0 else 0)
+	_finish(1 if failures > 0 else 0)
+
+
+func _finish(code: int) -> void:
+	OS.remove_logger(_errors)
+	var engine_errors: int = _errors.count()
+	if engine_errors > 0:
+		print("SEATED HEAD: %d engine/script error(s)" % engine_errors)
+	quit(1 if code == 0 and engine_errors > 0 else code)

@@ -13,6 +13,8 @@ func test_every_catalogue_seat_is_measured_and_only_explicit_kit_failures_are_al
 	await tree.process_frame
 	var report: Dictionary = await CATALOGUE.run(tree.root)
 	assert_eq(report["errors"], PackedStringArray())
+	assert_true(report["coverage_complete"], "every expected case was measured exactly once without an error")
+	assert_eq(report["expected_samples"], (report["samples"] as Array).size())
 	assert_true(int(report["seats"]) >= 13, "includes standalone seats and every built-in table seat")
 	assert_true((report["samples"] as Array).size() >= 1632)
 	assert_eq(report["failures"], 0)
@@ -49,6 +51,53 @@ func test_every_catalogue_seat_is_measured_and_only_explicit_kit_failures_are_al
 		assert_true(coverage.has(required), required + " was actually measured")
 	for finding: Dictionary in report["known_kit_failures"]:
 		assert_true(int(finding["physical_violation_samples"]) > 0, String(finding["item"]))
+
+
+func test_catalogue_coverage_rejects_a_missing_case_instead_of_accepting_retained_rows() -> void:
+	var fixture: Dictionary = _coverage_fixture()
+	var report: Dictionary = fixture["report"]
+	CATALOGUE._validate_case_coverage(report, fixture["expected"])
+	assert_true(report["coverage_complete"], "the detached complete pair is valid")
+	assert_eq(report["errors"], PackedStringArray())
+	(report["samples"] as Array).pop_back()
+	CATALOGUE._validate_case_coverage(report, fixture["expected"])
+	assert_false(report["coverage_complete"])
+	assert_eq(report["expected_samples"], 2)
+	assert_eq((report["errors"] as PackedStringArray).size(), 1)
+
+
+func test_catalogue_coverage_rejects_duplicate_identity_even_when_total_count_matches() -> void:
+	var fixture: Dictionary = _coverage_fixture()
+	var report: Dictionary = fixture["report"]
+	report["samples"][1] = (report["samples"][0] as Dictionary).duplicate(true)
+	CATALOGUE._validate_case_coverage(report, fixture["expected"])
+	assert_false(report["coverage_complete"])
+	assert_eq((report["samples"] as Array).size(), report["expected_samples"])
+	assert_eq((report["errors"] as PackedStringArray).size(), 2, "one duplicate and one missing time slot")
+
+
+func test_catalogue_coverage_rejects_an_errored_or_wrong_time_case() -> void:
+	for change: String in ["error", "time"]:
+		var fixture: Dictionary = _coverage_fixture()
+		var report: Dictionary = fixture["report"]
+		var sample: Dictionary = report["samples"][0]
+		if change == "error":
+			sample["error"] = "native head measurement aborted"
+		else:
+			sample["sit_time"] = 0.37
+		CATALOGUE._validate_case_coverage(report, fixture["expected"])
+		assert_false(report["coverage_complete"], change)
+		assert_true(not (report["errors"] as PackedStringArray).is_empty(), change)
+
+
+func _coverage_fixture() -> Dictionary:
+	var samples: Array[Dictionary] = []
+	var expected: Dictionary[String, bool] = {}
+	for fraction: float in [0.0, 0.37]:
+		samples.append({"item": "chair", "turns": 0, "seat_cell": [4, 4], "model": "character-female-a",
+			"sit_fraction": fraction, "sit_duration": 1.0, "sit_time": fraction, "error": ""})
+		expected[CATALOGUE._case_key("chair", 0, Vector2i(4, 4), "character-female-a", fraction)] = true
+	return {"expected": expected, "report": {"samples": samples, "errors": PackedStringArray()}}
 
 
 func test_actual_head_surfaces_do_not_fill_empty_aabb_corners() -> void:

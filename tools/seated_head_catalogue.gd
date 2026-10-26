@@ -5,6 +5,7 @@ extends RefCounted
 
 const VIEW: PackedScene = preload("res://src/world/shop_view.tscn")
 const GEOMETRY: GDScript = preload("res://tools/seated_head_geometry.gd")
+const SIT_FRACTIONS: Array[float] = [0.0, 0.37, 0.91]
 ## Director 6404820766: unchanged kit items only. Every listed item must retain
 ## at least one measured physical violation; unknown classification is not proof.
 const KNOWN_KIT_FAILURE_IDS: PackedStringArray = ["bench", "chair", "cushioned_bench", "lounge_chair",
@@ -19,6 +20,7 @@ static func run(parent: Node, native_bake: bool = false) -> Dictionary:
 	var poses: Dictionary[String, PackedVector3Array] = {}
 	var parity: Dictionary[String, Dictionary] = {}
 	var comparisons: Dictionary = {}
+	var expected: Dictionary[String, bool] = {}
 	var content: ContentDB = ContentDB.new()
 	errors.append_array(content.load_all())
 	if not errors.is_empty():
@@ -29,10 +31,63 @@ static func run(parent: Node, native_bake: bool = false) -> Dictionary:
 			continue
 		report["seats"] += 1
 		for turns: int in range(4):
+			_expect_item_cases(expected, definition, turns)
 			await _sample_item(parent, definition, turns, native_bake, poses, parity, comparisons, report)
 	report["native_bake_poses"] = parity
+	_validate_case_coverage(report, expected)
 	_apply_known_failure_policy(report)
 	return report
+
+
+static func _expect_item_cases(expected: Dictionary[String, bool], definition: ItemDef, turns: int) -> void:
+	for authored: Vector2i in definition.seat_cells:
+		var cell: Vector2i = Vector2i(4, 4) + GridMath.rotate_cell(authored, definition.footprint, turns)
+		for model: StringName in PersonPresentation.GUEST_MODELS:
+			for fraction: float in SIT_FRACTIONS:
+				expected[_case_key(String(definition.id), turns, cell, String(model), fraction)] = true
+
+
+static func _case_key(item: String, turns: int, cell: Vector2i, model: String, fraction: float) -> String:
+	return "%s turns=%d cell=%d,%d model=%s sit_fraction=%.9f" % [item, turns, cell.x, cell.y, model, fraction]
+
+
+## Count identities independently of returned rows: an aborted item sampler or
+## a duplicate row cannot turn an incomplete diagnostic into a passing report.
+static func _validate_case_coverage(report: Dictionary, expected: Dictionary[String, bool]) -> void:
+	var errors: PackedStringArray = report["errors"]
+	var counts: Dictionary[String, int] = {}
+	var complete: bool = not expected.is_empty()
+	for sample: Dictionary in report["samples"]:
+		var cell: Variant = sample.get("seat_cell")
+		var fraction: Variant = sample.get("sit_fraction")
+		var duration: Variant = sample.get("sit_duration")
+		var time: Variant = sample.get("sit_time")
+		if not sample.get("item") is String or not sample.get("model") is String \
+				or not sample.get("turns") is int or not cell is Array or cell.size() != 2 \
+				or not cell[0] is int or not cell[1] is int \
+				or not fraction is float or not SIT_FRACTIONS.has(fraction) \
+				or not duration is float or not is_finite(duration) or duration <= 0.0 \
+				or not time is float or not is_finite(time) or time != duration * fraction:
+			errors.append("catalogue sample has an invalid definition/cell/rotation/model/sit-time identity")
+			complete = false
+			continue
+		var key: String = _case_key(sample["item"], sample["turns"], Vector2i(cell[0], cell[1]), sample["model"], fraction)
+		counts[key] = counts.get(key, 0) + 1
+		if not expected.has(key):
+			errors.append("unexpected catalogue case: " + key)
+			complete = false
+		if not String(sample.get("error", "missing measurement")).is_empty():
+			errors.append("catalogue case measurement failed: " + key)
+			complete = false
+	for key: String in expected:
+		if counts.get(key, 0) != 1:
+			errors.append("catalogue case needs exactly one sample, found %d: %s" % [counts.get(key, 0), key])
+			complete = false
+	if expected.is_empty():
+		errors.append("catalogue has no expected seated cases")
+	report["expected_samples"] = expected.size()
+	report["coverage_complete"] = complete
+	report["errors"] = errors
 
 
 static func _sample_item(parent: Node, definition: ItemDef, turns: int, native_bake: bool,
@@ -94,7 +149,7 @@ static func _sample_item(parent: Node, definition: ItemDef, turns: int, native_b
 				# Stop automatic advancement, then seek the actual imported sit clip.
 				person._player.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
 				var animation: Animation = person._player.get_animation(&"sit")
-				for fraction: float in [0.0, 0.37, 0.91]:
+				for fraction: float in SIT_FRACTIONS:
 					person._player.seek(animation.length * fraction, true)
 					# Bone pose queries calculate dirty transforms synchronously.
 					person._skeleton.force_update_all_bone_transforms()
@@ -142,6 +197,8 @@ static func _sample_item(parent: Node, definition: ItemDef, turns: int, native_b
 					sample["seat_cell"] = [guest.cell.x, guest.cell.y]
 					sample["model"] = String(person.model_name())
 					sample["sit_time"] = animation.length * fraction
+					sample["sit_fraction"] = fraction
+					sample["sit_duration"] = animation.length
 					sample["seat_height"] = person._seat_height
 					sample["seated_forward_offset"] = definition.seated_forward_offset
 					var zero: Vector2i = GridMath.rotate_cell(Vector2i.ZERO, definition.footprint, turns)
