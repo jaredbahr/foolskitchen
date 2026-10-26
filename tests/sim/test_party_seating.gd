@@ -201,6 +201,87 @@ func test_four_seat_table_places_with_all_seats_reachable_in_every_rotation() ->
 			assert_false(grid.walkable_neighbours(seat).is_empty())
 
 
+func test_waiting_pair_keeps_future_seats_free_of_later_singleton_churn() -> void:
+	var sim: RestaurantSim = _sim()
+	var tables: Array[PlacedItem] = []
+	for origin: Vector2i in [Vector2i(2, 3), Vector2i(7, 3)]:
+		var table: PlacedItem = sim.world.grid.place(Vector2i.ONE, origin, 0, true,
+			[], [Vector2i(-1, 0), Vector2i(1, 0)] as Array[Vector2i])
+		tables.append(table)
+		assert_true(table.reserve(table.seat_cells[0], 900 + table.id))
+	var head: Party = _live_party(sim, 2)
+	PartySeating.advance_queue(head, sim.world, sim)
+	for tick: int in 5:
+		var later: CustomerAgent = sim.add_customer(Vector2i.ZERO, _rng(100 + tick))
+		assert_false(later._try_seat(sim.world), "later singles cannot keep splitting every table")
+		for table: PlacedItem in tables:
+			assert_eq(table.reserved_by(table.seat_cells[1]), -1)
+		# A free seat remains free across repeated later arrivals.
+		sim.world.now += 1
+		PartySeating.advance_queue(head, sim.world, sim)
+	var later_party: Party = _live_party(sim, 2)
+	assert_true(tables[0].release(tables[0].seat_cells[0], 900 + tables[0].id))
+	assert_false(PartySeating.try_seat(later_party, sim.world), "arrival priority also applies to later parties")
+	assert_true(PartySeating.try_seat(head, sim.world))
+	assert_eq(head.table_item_id, tables[0].id, "stable table order breaks the tie")
+	for guest: CustomerAgent in PartySeating.members(head, sim.world):
+		assert_eq(tables[0].reserved_by(guest.seat_cell), guest.id)
+
+
+func test_backfill_uses_a_small_table_but_keeps_the_head_partys_large_table() -> void:
+	var sim: RestaurantSim = _sim()
+	var large: PlacedItem = sim.world.grid.place_def(TABLE, Vector2i(4, 5))
+	assert_true(large.reserve(large.seat_cells[0], 900))
+	assert_true(large.reserve(large.seat_cells[1], 901))
+	var small: PlacedItem = sim.world.grid.place(Vector2i.ONE, Vector2i(9, 3), 0, true,
+		[], [Vector2i(1, 0)] as Array[Vector2i])
+	var head: Party = _live_party(sim, 3)
+	PartySeating.advance_queue(head, sim.world, sim)
+	var later: CustomerAgent = sim.add_customer(Vector2i.ZERO, _rng(100))
+	assert_true(later._try_seat(sim.world))
+	assert_eq(later.table_item_id, small.id, "a table the head can never use may backfill")
+	assert_true(large.release(large.seat_cells[0], 900))
+	assert_true(PartySeating.try_seat(head, sim.world))
+	assert_eq(head.table_item_id, large.id)
+
+
+func test_backfill_can_use_a_table_unreachable_to_the_head_party() -> void:
+	var sim: RestaurantSim = _sim()
+	for y: int in 12:
+		sim.world.grid.set_terrain(Vector2i(6, y), SimGrid.Terrain.WALL)
+	var head: Party = _live_party(sim, 2)
+	PartySeating.advance_queue(head, sim.world, sim)
+	var remote: PlacedItem = sim.world.grid.place(Vector2i.ONE, Vector2i(9, 4), 0, true,
+		[], [Vector2i(-1, 0), Vector2i(1, 0)] as Array[Vector2i])
+	var later: CustomerAgent = sim.add_customer(Vector2i(8, 1), _rng(100))
+	assert_true(later._try_seat(sim.world))
+	assert_eq(later.table_item_id, remote.id)
+	assert_eq(head.table_item_id, 0)
+
+
+func test_removed_and_replaced_table_does_not_leave_a_stale_queue_hold() -> void:
+	var sim: RestaurantSim = _sim()
+	var head: Party = _live_party(sim, 3)
+	PartySeating.advance_queue(head, sim.world, sim)
+	var removed: PlacedItem = sim.world.grid.place_def(TABLE, Vector2i(4, 5))
+	assert_true(sim.world.grid.remove(removed.id))
+	var small: PlacedItem = sim.world.grid.place(Vector2i.ONE, Vector2i(9, 3), 0, true,
+		[], [Vector2i(1, 0)] as Array[Vector2i])
+	var later: CustomerAgent = sim.add_customer(Vector2i.ZERO, _rng(100))
+	assert_true(later._try_seat(sim.world))
+	assert_eq(later.table_item_id, small.id)
+	var replacement: PlacedItem = sim.world.grid.place_def(TABLE, Vector2i(4, 5))
+	assert_true(PartySeating.try_seat(head, sim.world))
+	assert_eq(head.table_item_id, replacement.id)
+
+
+func _live_party(sim: RestaurantSim, count: int) -> Party:
+	var randoms: Array[RandomNumberGenerator] = []
+	for index: int in count:
+		randoms.append(_rng(10 + index))
+	return sim.add_party(Vector2i.ZERO, randoms)
+
+
 func _sim() -> RestaurantSim:
 	var sim: RestaurantSim = RestaurantSim.new()
 	sim.world = SimWorld.new(SimGrid.new(Vector2i(12, 12)), SimClock.new())

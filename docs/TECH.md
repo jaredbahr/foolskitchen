@@ -809,23 +809,45 @@ before/after balance probe.
 
 **Group seating (FK-066):** the same catalogue authors Family parties of 2-4
 and Regular, Student and Foodie parties of 1-2. Fixed-size ranges consume no
-new random draw. The spawner draws one ranged party size and a private seed
-for each member from the existing customers stream. It installs and links
+new random draw. The spawner draws one ranged party size, then clamps it to
+the largest currently usable table reachable from the chosen street entry.
+Capacity counts clear, unique, reachable seats, including linked furnishings;
+temporary bookings and dirt do not shrink the layout's capacity. A layout
+with no usable table publishes no configured arrival. The customers stream
+still draws a private seed for every originally drawn member, discarding the
+extra streams after the clamp, so the next arrival's draws do not shift.
+It installs and links
 every member before publishing any arrival; singleton installation retains
 the old draw and signal order. `Party` stores member IDs rather than strong
 agent references. `PartySeating` searches one table with enough reachable
 free seats, matches all members before reserving, and rolls back every hold
-and path on failure. No member orders until everyone reaches their own seat.
+and path on failure. Arrival IDs give waiting parties first choice: later
+guests and parties leave clear seats at any table that could seat an earlier
+waiting party after current reservations clear. Smaller tables or tables the
+earlier party cannot reach may backfill. The decision reads current geometry
+each time and adds no saved reservations or random draws.
+No member orders until everyone reaches their own seat.
 The shared table/walk budget is bounded by the least patient member. A table
-or food timeout ends each remaining unpaid visit once, while a previously
-paid member retains its successful outcome. Orders, payments and reviews
+timeout ends every waiting visit once. On a food timeout only members still
+waiting for food leave; eating, paying and already-delivered members keep
+their seats and finish individually, even before their next state tick.
+Previously paid members also retain their successful outcome. Orders, payments and reviews
 remain per person; no review formula or patience tuning changes.
+Build checks report partial table capacity with plain text such as "Only 3 of
+4 seats usable". Preview and committed outlines use the same detached warning
+data; Main forwards that text to the HUD, with invalid-action reasons taking
+precedence. Warnings permit placement and clear when the layout is repaired.
 The four-seat table combines unchanged Kenney tables and chairs inside a 2x3
 footprint at the existing furniture scale. The inspector adds "Party of N".
 All party state is transient, with no save section or action save. Singleton
 regressions freeze only the old integration boundaries from exact main
 `1f9804e` and compare complete tick/RNG snapshots for seeds 1, 7 and 42; these
-written regressions are not a substitute for the required ten-day comparison.
+written regressions are not a substitute for the required balance comparisons:
+`bash tools/balance_probe.sh --days=5 --seeds=1,2,3,4,5 --setup=default` and
+`bash tools/balance_probe.sh --days=10 --seeds=1,7,42 --setup=default` on exact
+main and feature heads. The Director's acceptance bar is a five-day mean profit
+at most $15 below main and no-table losses at most 1.5 times main's. These are
+manual checks using the existing probe; no CI loop or job is added.
 
 **Career goals (FK-062):** `data/milestones/starter.tres` owns the twelve starter
 goals. The pure `MilestoneTracker` observes closed-day served/lost counts,

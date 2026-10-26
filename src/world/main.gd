@@ -738,7 +738,7 @@ func _on_build_changed() -> void:
 func _update_build_controls() -> void:
 	var active: bool = is_build_active()
 	var available: bool = _build_ready and shop_editor != null and shop_editor.can_edit()
-	var reason: String = build_mode.current_check.why if build_mode.has_ghost() and not build_mode.current_check.ok else ""
+	var reason: String = build_mode.feedback_text()
 	$HUD.set_build_state(available, active, reason, int(build_mode.state))
 	$HUD.set_paint_state(_paint_active)
 	if _build_catalogue != null:

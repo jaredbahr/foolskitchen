@@ -159,6 +159,7 @@ func refresh() -> void:
 		_set_reason(reason)
 		return
 	var snapshot: Dictionary = _controller.presentation_state()
+	reason = snapshot.get("feedback", "")
 	if is_inside_tree() and _shop_view.is_inside_tree():
 		global_transform = _shop_view.global_transform
 	else:

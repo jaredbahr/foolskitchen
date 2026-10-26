@@ -15,6 +15,7 @@ var quarter_turns: int = 0
 var grab_offset: Vector2i = Vector2i.ZERO
 var current_check: EditCheck = EditCheck.new()
 var committed_warning_ids: Array[int] = []
+var committed_seat_warnings: Dictionary[int, String] = {}
 
 var _editor: ShopEditor
 var _world: SimWorld
@@ -47,6 +48,7 @@ func bind_session(editor: ShopEditor, world: SimWorld, content: ContentDB,
 	_sell_command = sell_command
 	_clear_ghost(State.INACTIVE)
 	committed_warning_ids.clear()
+	committed_seat_warnings.clear()
 	_topology_dirty = false
 	if _grid != null:
 		_grid.cells_changed.connect(_on_cells_changed)
@@ -238,7 +240,30 @@ func refresh() -> void:
 
 ## Invalid proposals never erase warnings belonging to actual furniture.
 func warning_ids() -> Array[int]:
-	return current_check.unreachable.duplicate() if has_ghost() and current_check.ok else committed_warning_ids.duplicate()
+	var ids: Array[int] = current_check.unreachable.duplicate() \
+		if has_ghost() and current_check.ok else committed_warning_ids.duplicate()
+	for item_id: int in seat_warnings():
+		if not ids.has(item_id):
+			ids.append(item_id)
+	ids.sort()
+	return ids
+
+
+func seat_warnings() -> Dictionary[int, String]:
+	return current_check.seat_warnings.duplicate() \
+		if has_ghost() and current_check.ok else committed_seat_warnings.duplicate()
+
+
+## Invalid actions take precedence; permitted layouts may still lose seats.
+func feedback_text() -> String:
+	if has_ghost() and not current_check.ok:
+		return current_check.why
+	var warnings: Dictionary[int, String] = seat_warnings()
+	var messages: PackedStringArray = []
+	for item_id: int in warning_ids():
+		if warnings.has(item_id) and not messages.has(warnings[item_id]):
+			messages.append(warnings[item_id])
+	return "\n".join(messages)
 
 
 ## Arrays are detached. The shared ItemDef is read-only content for rendering.
@@ -249,6 +274,8 @@ func presentation_state() -> Dictionary:
 		"origin": origin, "quarter_turns": quarter_turns, "grab_offset": grab_offset,
 		"check_ok": current_check.ok, "why": current_check.why,
 		"unreachable": current_check.unreachable.duplicate(),
+		"seat_warnings": seat_warnings(),
+		"feedback": feedback_text(),
 		"committed_warning_ids": committed_warning_ids.duplicate(), "warning_ids": warning_ids()}
 
 
@@ -284,6 +311,7 @@ func _refresh_committed() -> void:
 	var check: EditCheck = _editor.check_current()
 	if check.ok:
 		committed_warning_ids = check.unreachable.duplicate()
+		committed_seat_warnings = check.seat_warnings.duplicate()
 	_topology_dirty = false
 
 

@@ -52,6 +52,31 @@ func after_each() -> void:
 	_refusal_amount = -1
 
 
+func test_partial_table_capacity_warning_is_read_only_and_uses_actual_usable_cells() -> void:
+	assert_true(_sim.world.grid.remove(_sim.world.grid.item_at(Vector2i(6, 6)).id))
+	var before: Dictionary = _editor.to_dict()
+	var cash_before: int = _cash
+	var rng_before: int = _sim.rng.state
+	var changes_before: int = _changes.size()
+	var check: EditCheck = _editor.check_buy(&"table_4", Vector2i(6, 5))
+	assert_true(check.ok)
+	assert_eq(check.seat_warnings.get(0, ""), "Only 3 of 4 seats usable")
+	assert_false(check.unreachable.has(0))
+	assert_eq(_editor.to_dict(), before)
+	assert_eq(_cash, cash_before)
+	assert_eq(_sim.rng.state, rng_before)
+	assert_eq(_changes.size(), changes_before)
+	assert_true(_editor.buy(&"table_4", Vector2i(6, 5)))
+	var table: PlacedItem = _sim.world.grid.item_at(Vector2i(6, 5))
+	assert_eq(table.seat_cells.size(), 3)
+	assert_eq(DiningSeats.nominal_capacity(_sim.world.grid, table), 4)
+	assert_eq(DiningSeats.largest_usable_capacity(_sim.world.grid), 3)
+	assert_eq(_editor.check_current().seat_warnings.get(table.id, ""), "Only 3 of 4 seats usable")
+	assert_true(_editor.move(table.id, Vector2i(6, 7), 0))
+	assert_eq(DiningSeats.largest_usable_capacity(_sim.world.grid), 4)
+	assert_false(_editor.check_current().seat_warnings.has(table.id))
+
+
 func test_service_phases_refuse_every_edit_without_side_effects() -> void:
 	var before: Dictionary = _editor.to_dict()
 	for phase: SimClock.Phase in [SimClock.Phase.OPEN, SimClock.Phase.LAST_ORDERS]:

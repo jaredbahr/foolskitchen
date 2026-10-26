@@ -35,17 +35,20 @@ func advance(sim: RestaurantSim) -> void:
 				sim.review_book.average(), rng)
 		if sim.customer_types == null or kind != null:
 			var entry: Vector2i = entries[rng.randi_range(0, entries.size() - 1)]
-			var count: int = kind.draw_party_size(rng) if kind != null else 1
-			if count == 1:
+			var drawn_count: int = kind.draw_party_size(rng) if kind != null else 1
+			var count: int = mini(drawn_count, DiningSeats.largest_usable_capacity(sim.world.grid, entry)) \
+				if kind != null else drawn_count
+			# Retain every private-seed draw, including clamped-away members. Layout
+			# edits must not shift the next arrival's type, gap or private streams.
+			var randoms: Array[RandomNumberGenerator] = []
+			for index: int in drawn_count:
 				var customer_rng: RandomNumberGenerator = RandomNumberGenerator.new()
 				customer_rng.seed = rng.randi()
-				sim.add_customer(entry, customer_rng, kind)
-			else:
-				var randoms: Array[RandomNumberGenerator] = []
-				for index: int in count:
-					var customer_rng: RandomNumberGenerator = RandomNumberGenerator.new()
-					customer_rng.seed = rng.randi()
+				if index < count:
 					randoms.append(customer_rng)
+			if count == 1:
+				sim.add_customer(entry, randoms[0], kind)
+			elif count > 1:
 				sim.add_party(entry, randoms, kind)
 	_remaining = _gap()
 

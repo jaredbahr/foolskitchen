@@ -269,6 +269,8 @@ func _try_seat(world: SimWorld) -> bool:
 			continue
 		if sim != null and sim.kitchen != null and sim.kitchen.is_table_dirty(table.id):
 			continue
+		if PartySeating.held_for_earlier_party(table, id, world):
+			continue
 		for seat: Vector2i in table.seat_cells:
 			if table.reserved_by(seat) != -1 or not world.grid.is_walkable(seat):
 				continue

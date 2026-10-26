@@ -34,6 +34,8 @@ static func try_seat(party: Party, world: SimWorld, kitchen: Kitchen = null) -> 
 			continue
 		if kitchen != null and kitchen.is_table_dirty(table.id):
 			continue
+		if held_for_earlier_party(table, guests[0].id, world):
+			continue
 		var available: Array[Vector2i] = []
 		for seat: Vector2i in table.seat_cells:
 			if table.reserved_by(seat) == -1 and world.grid.is_walkable(seat) and not available.has(seat):
@@ -78,6 +80,39 @@ static func try_seat(party: Party, world: SimWorld, kitchen: Kitchen = null) -> 
 			guest._ordering_block_logged = false
 			guest.state = CustomerAgent.State.WALKING_TO_SEAT
 		return true
+	return false
+
+
+## A waiting party keeps priority at every table that could fit it once the
+## current diners leave. Smaller/unreachable tables remain available to backfill.
+## IDs are arrival order; reading paths and holds consumes no random draws.
+static func held_for_earlier_party(table: PlacedItem, arrival_id: int, world: SimWorld) -> bool:
+	var seen: Array[Party] = []
+	for agent: SimAgent in world.agents:
+		if agent.id >= arrival_id:
+			break
+		var guest: CustomerAgent = agent as CustomerAgent
+		if guest == null or guest.state > CustomerAgent.State.QUEUED or guest.party == null:
+			continue
+		var earlier: Party = guest.party
+		if earlier.size() <= 1 or earlier.departing or earlier.seated or earlier.table_item_id != 0 \
+				or seen.has(earlier):
+			continue
+		seen.append(earlier)
+		var waiting: Array[CustomerAgent] = members(earlier, world)
+		if waiting.is_empty():
+			continue
+		var choices: Array[Array] = []
+		for member: CustomerAgent in waiting:
+			var reachable: Array[Vector2i] = []
+			for seat: Vector2i in table.seat_cells:
+				if world.grid.is_walkable(seat) and world.grid.is_reachable(member.cell, seat) \
+						and not reachable.has(seat):
+					reachable.append(seat)
+			choices.append(reachable)
+		var seats: Array[Vector2i] = []
+		if _match(choices, 0, seats):
+			return true
 	return false
 
 
@@ -181,8 +216,8 @@ static func leave_waiting(party: Party, world: SimWorld, sim: RestaurantSim,
 	leave_together(party, world, sim, reason)
 
 
-## A food timeout also ends the remaining unpaid visits. Already paid members
-## keep their successful outcome, including when they are still walking out.
+## A food timeout ends only visits still waiting for their food. Delivered
+## tickets count as fed even before that member's next tick changes its state.
 static func leave_together(party: Party, world: SimWorld, sim: RestaurantSim,
 		reason: StringName) -> void:
 	if party == null or party.departing:
@@ -190,8 +225,14 @@ static func leave_together(party: Party, world: SimWorld, sim: RestaurantSim,
 	party.departing = true
 	for member_id: int in party.member_ids:
 		var guest: CustomerAgent = world.agent(member_id) as CustomerAgent
-		if guest != null and not guest.paid:
-			guest._leave(world, sim, reason)
+		if guest == null or guest.paid:
+			continue
+		if reason == &"waited_too_long":
+			if guest.state != CustomerAgent.State.ORDERING and guest.state != CustomerAgent.State.WAITING_FOOD:
+				continue
+			if guest.order != null and guest.order.state == Order.State.DELIVERED:
+				continue
+		guest._leave(world, sim, reason)
 
 
 static func _budget(guests: Array[CustomerAgent]) -> int:

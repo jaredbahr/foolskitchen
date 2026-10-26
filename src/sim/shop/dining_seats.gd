@@ -28,6 +28,45 @@ class Plan extends RefCounted:
 		return failures.get(furnishing_item_id, "")
 
 
+## Actual dining capacity ignores temporary bookings and dirt, but requires a
+## clear seat reachable from the street. Never substitute ItemDef.capacity.
+static func usable_cells(grid: SimGrid, table: PlacedItem, from_cell: Vector2i = SimGrid.NO_CELL) -> Array[Vector2i]:
+	var usable: Array[Vector2i] = []
+	var definition: ItemDef = table.def as ItemDef
+	if table.removed or definition != null and definition.category != ItemDef.Category.TABLE:
+		return usable
+	var starts: Array[Vector2i] = grid.entries() if from_cell == SimGrid.NO_CELL else [from_cell] as Array[Vector2i]
+	for seat: Vector2i in table.seat_cells:
+		if usable.has(seat) or not grid.is_walkable(seat):
+			continue
+		for entry: Vector2i in starts:
+			if grid.is_walkable(entry) and grid.is_reachable(entry, seat):
+				usable.append(seat)
+				break
+	return usable
+
+
+static func largest_usable_capacity(grid: SimGrid, from_cell: Vector2i = SimGrid.NO_CELL) -> int:
+	var largest: int = 0
+	for table: PlacedItem in grid.items():
+		largest = maxi(largest, usable_cells(grid, table, from_cell).size())
+	return largest
+
+
+## Built-ins retain their authored nominal count even when the projection has
+## removed blocked cells. Valid separate furnishings add their linked seats.
+static func nominal_capacity(grid: SimGrid, table: PlacedItem) -> int:
+	var definition: ItemDef = table.def as ItemDef
+	if definition == null:
+		return table.seat_cells.size()
+	var count: int = definition.seat_cells.size()
+	for seat: Vector2i in table.seat_cells:
+		var furnishing_id: int = grid.dining_furnishing_id(seat)
+		if furnishing_id > 0 and furnishing_id != table.id:
+			count += 1
+	return count
+
+
 ## Always reconstructs from definitions, even when a previous plan has already
 ## been applied to PlacedItem.seat_cells. No grid/definition/reservation mutates.
 static func derive(grid: SimGrid) -> Plan:

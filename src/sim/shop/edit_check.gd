@@ -6,6 +6,8 @@ extends RefCounted
 var ok: bool = false
 var why: String = ""
 var unreachable: Array[int] = []
+## Partial capacity is still a permitted placement, with a readable warning.
+var seat_warnings: Dictionary[int, String] = {}
 
 
 func _init(allowed: bool = false, reason: String = "") -> void:
