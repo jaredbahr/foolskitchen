@@ -22,7 +22,7 @@
     0.4350000098347664,
     0.2654399871826172
   ],
-  "sha256": "0cfb9f2d43d146285dc549cca91ce8b00eb62ec660da42bdd536eb616c50821d",
+  "sha256": "2c543669f179c5637b568d46d4f2379d327d61abd48860c7756d8b3e5e7ee40f",
   "references": [
     {
       "path": "assets/kenney/furniture/stoolBar.glb",
@@ -116,7 +116,7 @@
   "source_sha256": {
     "tools/diner/build_diner.py": "734137560a4945cb385b4ad960c2d3ae592f71fde0a6bbc588d5f8f5f8920171",
     "tools/diner/common.py": "cf112e55b9ca73aef33d6bb65f98d576ec730755314a93822c352a9d339a6879",
-    "tools/diner/furniture.py": "fe048198aef8f59657137983de56069b45431db9f1d0c27260eb59b3753bd589",
+    "tools/diner/furniture.py": "b2071f642c8fce9464f4b2678b0831fea0a696e2cd330e5a9f0f505939ee1c27",
     "tools/diner/wall_pieces.py": "6b1899913b9a9d58fba235a8ec968bc467f9cf726cb241bb09f40ba6f5606c01"
   }
 }

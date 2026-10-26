@@ -14,7 +14,7 @@ material provenance and source hashes are in each `.metrics.json` and in
 
 | Piece | Nearest unchanged kit references | Triangles | Native dimensions |
 |---|---|---:|---|
-| Booth | `benchCushion`, `loungeSofa` | 308 | 0.900 × 0.425 × 0.498 |
+| Booth | `benchCushion`, `loungeSofa` | 308 | 0.900 × 0.650 × 0.642 |
 | Counter stool | `stoolBar`, `lampWall` | 432 | 0.26544 × 0.435 × 0.26544 |
 | OPEN sign | `lampWall`, `wall` | 216 | 0.860 × 0.3775 × 0.131 |
 | Chalkboard | `wallWindow`, `paneling` | 60 | 0.700 × 0.560 × 0.050 |
