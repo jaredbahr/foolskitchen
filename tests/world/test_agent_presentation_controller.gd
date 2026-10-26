@@ -274,6 +274,197 @@ func test_owner_reassignment_suppresses_stale_task_but_rest_can_walk_home() -> v
 	assert_eq(AgentPresentationController.frame_for(owner, _world).clip, &"walk")
 
 
+func test_zero_seated_offset_preserves_legacy_projection_and_table_facing() -> void:
+	var table: PlacedItem = _table()
+	var guest: CustomerAgent = _seated_customer(table)
+	var original: AgentPresentationController.Frame = AgentPresentationController.frame_for(guest, _world, 0.31)
+	var explicit_zero: AgentPresentationController.Frame = AgentPresentationController.frame_for(guest, _world, 0.31, 0.0)
+	assert_true(original.seated)
+	assert_eq(original.floor_position, GridMath.cell_to_world(guest.seat_cell))
+	assert_eq(original.display_offset, Vector3.ZERO)
+	assert_eq(original.facing_direction, Vector3(0.75, 0.0, -0.25), "built-in table facing remains diagonal")
+	assert_eq(explicit_zero.floor_position, original.floor_position)
+	assert_eq(explicit_zero.display_offset, original.display_offset)
+	assert_eq(explicit_zero.facing_direction, original.facing_direction)
+	assert_eq(explicit_zero.clip, original.clip)
+	assert_eq(explicit_zero.seat_height, original.seat_height)
+	var legacy: Dictionary[int, AgentPresentationController.Frame] = AgentPresentationController.frames_for(_world.agents, _world)
+	var empty_options: Dictionary[int, AgentPresentationController.Frame] = AgentPresentationController.frames_for(_world.agents, _world, {}, {}, {})
+	assert_eq(_drawn(legacy[guest.id]), original.floor_position)
+	assert_eq(_drawn(empty_options[guest.id]), _drawn(legacy[guest.id]))
+	# This is an API fixture distance, not an authored content-tuning value.
+	var shifted: AgentPresentationController.Frame = AgentPresentationController.frame_for(guest, _world, 0.31, 0.04)
+	var expected_offset: Vector3 = Vector3(3.0, 0.0, -1.0).normalized() * 0.04
+	assert_true(shifted.display_offset.is_equal_approx(expected_offset))
+	assert_eq(shifted.floor_position, original.floor_position)
+	assert_eq(shifted.facing_direction, original.facing_direction)
+	var view: SpyPerson = SpyPerson.new()
+	assert_true(AgentPresentationController.apply(shifted, view, 0.0))
+	assert_true(view.position.is_equal_approx(original.floor_position + expected_offset))
+	assert_eq(view.seen_pose, [false, true, false, false])
+	assert_almost_eq(view.seen_seat, 0.31)
+	view.free()
+
+
+func test_authored_seated_facing_offsets_follow_all_four_rotations_in_world_metres() -> void:
+	var guest: CustomerAgent = _seated_customer(_table())
+	var directions: Array[Vector3] = [Vector3.FORWARD, Vector3.RIGHT, Vector3.BACK, Vector3.LEFT]
+	var heights: Dictionary[int, float] = {guest.id: 0.31}
+	var offsets: Dictionary[int, float] = {guest.id: 0.04}
+	for turns: int in range(4):
+		var facing: Vector3 = directions[turns] * 3.0 + Vector3.UP * 7.0
+		var facings: Dictionary[int, Vector3] = {guest.id: facing}
+		var single: AgentPresentationController.Frame = AgentPresentationController.frame_for(guest, _world, 0.31, 0.04, facing)
+		var batch: AgentPresentationController.Frame = AgentPresentationController.frames_for(_world.agents, _world, heights, facings, offsets)[guest.id]
+		for frame: AgentPresentationController.Frame in [single, batch]:
+			assert_true(frame.seated)
+			assert_eq(frame.floor_position, GridMath.cell_to_world(guest.seat_cell))
+			assert_eq(frame.facing_direction, directions[turns] * 3.0, "authored chair front wins over the table diagonal")
+			assert_true(frame.display_offset.is_equal_approx(directions[turns] * 0.04))
+			assert_almost_eq(frame.display_offset.length(), 0.04, 0.000001, "offset is metres, independent of facing magnitude or art scale")
+			assert_eq(frame.display_offset.y, 0.0)
+			assert_almost_eq(frame.seat_height, 0.31)
+		var view: SpyPerson = SpyPerson.new()
+		assert_true(AgentPresentationController.apply(batch, view, 0.0))
+		assert_true((-view.basis.z).normalized().dot(directions[turns]) > 0.9999)
+		assert_true(view.position.is_equal_approx(GridMath.cell_to_world(guest.seat_cell) + directions[turns] * 0.04))
+		view.free()
+
+
+func test_seated_offsets_ignore_invalid_distances_and_unverified_seated_states() -> void:
+	var table: PlacedItem = _table()
+	var guest: CustomerAgent = _seated_customer(table)
+	for state: CustomerAgent.State in [CustomerAgent.State.ORDERING, CustomerAgent.State.WAITING_FOOD,
+		CustomerAgent.State.EATING, CustomerAgent.State.PAYING]:
+		guest.state = state
+		var seated: AgentPresentationController.Frame = AgentPresentationController.frame_for(guest, _world, 0.31, 0.04, Vector3.FORWARD)
+		assert_true(seated.seated)
+		assert_eq(seated.display_offset, Vector3.FORWARD * 0.04)
+		assert_eq(seated.clip, &"sit")
+	var at_limit: AgentPresentationController.Frame = AgentPresentationController.frame_for(guest, _world, 0.31, 0.05, Vector3.FORWARD)
+	assert_true(at_limit.seated)
+	assert_eq(at_limit.display_offset, Vector3.FORWARD * 0.05, "the Director's exact cap remains supported")
+	# A finite 64-bit parameter can still overflow the native Vector3 real_t.
+	for distance: float in [-0.01, NAN, INF, -INF, 1.0e100, 0.050001, 0.125]:
+		var invalid: AgentPresentationController.Frame = AgentPresentationController.frame_for(guest, _world, 0.31, distance, Vector3.FORWARD)
+		assert_true(invalid.seated)
+		assert_eq(invalid.display_offset, Vector3.ZERO, "invalid offsets never create a non-finite or backward position")
+		assert_eq(invalid.clip, &"sit")
+	for state: CustomerAgent.State in [CustomerAgent.State.ARRIVING, CustomerAgent.State.QUEUED,
+		CustomerAgent.State.WALKING_TO_SEAT, CustomerAgent.State.LEAVING, CustomerAgent.State.LEFT]:
+		guest.state = state
+		var standing: AgentPresentationController.Frame = AgentPresentationController.frame_for(guest, _world, 0.31, 0.04, Vector3.FORWARD)
+		assert_false(standing.seated)
+		assert_eq(standing.display_offset, Vector3.ZERO)
+	guest.state = CustomerAgent.State.WAITING_FOOD
+	guest.path = [guest.cell, guest.cell + Vector2i.UP]
+	guest.path_index = 1
+	guest.move_progress = 0.5
+	var walking: AgentPresentationController.Frame = AgentPresentationController.frame_for(guest, _world, 0.31, 0.04, Vector3.FORWARD)
+	assert_true(walking.moving)
+	assert_false(walking.seated)
+	assert_eq(walking.display_offset, Vector3.ZERO)
+	guest.clear_path()
+	table.release(guest.seat_cell, guest.id)
+	var unreserved: AgentPresentationController.Frame = AgentPresentationController.frame_for(guest, _world, 0.31, 0.04, Vector3.FORWARD)
+	assert_false(unreserved.seated)
+	assert_eq(unreserved.display_offset, Vector3.ZERO)
+	var other: SimAgent = _world.add_agent(SimAgent.new())
+	assert_true(table.reserve(guest.seat_cell, other.id))
+	var wrong_claimant: AgentPresentationController.Frame = AgentPresentationController.frame_for(guest, _world, 0.31, 0.04, Vector3.FORWARD)
+	assert_false(wrong_claimant.seated)
+	assert_eq(wrong_claimant.display_offset, Vector3.ZERO)
+	var worker: StaffAgent = _world.add_agent(StaffAgent.new(&"server")) as StaffAgent
+	worker.cell = guest.cell
+	assert_eq(AgentPresentationController.frame_for(worker, _world, 0.31, 0.04, Vector3.FORWARD).display_offset, Vector3.ZERO)
+
+
+func test_invalid_or_vertical_authored_facing_uses_the_unchanged_table_direction() -> void:
+	var guest: CustomerAgent = _seated_customer(_table())
+	var expected: Vector3 = Vector3(3.0, 0.0, -1.0).normalized() * 0.04
+	for facing: Vector3 in [Vector3(NAN, 0.0, 1.0), Vector3(1.0, 0.0, INF), Vector3.UP, Vector3.ZERO]:
+		var frame: AgentPresentationController.Frame = AgentPresentationController.frame_for(guest, _world, 0.31, 0.04, facing)
+		assert_true(frame.seated)
+		assert_eq(frame.facing_direction, Vector3(0.75, 0.0, -0.25))
+		assert_true(frame.display_offset.is_finite())
+		assert_true(frame.display_offset.is_equal_approx(expected))
+
+
+func test_final_shifted_seat_blocks_earlier_standers_without_drift_or_sim_mutation() -> void:
+	var first: StaffAgent = _world.add_agent(StaffAgent.new(&"server")) as StaffAgent
+	var second: SimAgent = _world.add_agent(SimAgent.new())
+	var table: PlacedItem = _table()
+	var guest: CustomerAgent = _seated_customer(table)
+	first.cell = guest.seat_cell
+	second.cell = guest.seat_cell
+	first.path = [first.cell]
+	first.path_index = 1
+	first.move_progress = 0.25
+	guest._queue_wait = 11
+	guest._food_wait = 17
+	assert_true(guest.id > first.id and guest.id > second.id, "the seated blocker is installed before earlier standing IDs")
+	var task: SimTask = _claimed_task(first, &"deliver", &"server")
+	task.payload["carried_count"] = 2
+	var before_payload: Dictionary = task.payload.duplicate(true)
+	var before_path: Array[Vector2i] = first.path.duplicate()
+	var before_reservations: Dictionary = table._reservations.duplicate()
+	var before_rng: int = guest.rng.state
+	var before_clock: Dictionary = _world.clock.to_dict()
+	var before_log: PackedStringArray = _world.event_log.duplicate()
+	var heights: Dictionary[int, float] = {guest.id: 0.31}
+	var facings: Dictionary[int, Vector3] = {guest.id: Vector3.BACK}
+	var offsets: Dictionary[int, float] = {guest.id: 0.04}
+	var before_heights: Dictionary = heights.duplicate()
+	var before_facings: Dictionary = facings.duplicate()
+	var before_offsets: Dictionary = offsets.duplicate()
+	var anchor: Vector3 = GridMath.cell_to_world(guest.seat_cell) + Vector3.BACK * 0.04
+	var raw_seat_blockers: Array[Vector3] = [GridMath.cell_to_world(guest.seat_cell)]
+	var old_candidate: Vector3 = AgentPresentationController._separated_position(
+		GridMath.cell_to_world(first.cell), raw_seat_blockers, _world.grid)
+	assert_true(old_candidate.distance_to(anchor) < AgentPresentationController.MIN_STANDING_DISTANCE,
+		"the raw-seat-only blocker picks a nudge that overlaps the supported shifted seat")
+	var ordered: Array[SimAgent] = [first, second, guest]
+	var reversed: Array[SimAgent] = [guest, second, first]
+	var a: Dictionary[int, AgentPresentationController.Frame] = AgentPresentationController.frames_for(ordered, _world, heights, facings, offsets)
+	var b: Dictionary[int, AgentPresentationController.Frame] = AgentPresentationController.frames_for(reversed, _world, heights, facings, offsets)
+	var repeated: Dictionary[int, AgentPresentationController.Frame] = AgentPresentationController.frames_for(ordered, _world, heights, facings, offsets)
+	assert_true(_drawn(a[guest.id]).is_equal_approx(anchor))
+	assert_eq(a[guest.id].display_offset, Vector3.BACK * 0.04, "generic separation never moves a seated guest off its authored anchor")
+	assert_false(a[guest.id].separation_blocked)
+	for actor: SimAgent in ordered:
+		assert_eq(a[actor.id].floor_position, b[actor.id].floor_position)
+		assert_eq(a[actor.id].display_offset, b[actor.id].display_offset)
+		assert_eq(a[actor.id].display_offset, repeated[actor.id].display_offset)
+		if actor == guest:
+			continue
+		assert_true(_drawn(a[actor.id]).distance_to(anchor) >= AgentPresentationController.MIN_STANDING_DISTANCE)
+		assert_true(_world.grid.is_walkable(GridMath.world_to_cell(_drawn(a[actor.id]))))
+		assert_false(a[actor.id].separation_blocked)
+	assert_true(_drawn(a[first.id]).distance_to(_drawn(a[second.id])) >= AgentPresentationController.MIN_STANDING_DISTANCE)
+	assert_eq(first.cell, guest.seat_cell)
+	assert_eq(second.cell, first.cell)
+	assert_eq(guest.cell, guest.seat_cell)
+	assert_eq(guest.state, CustomerAgent.State.WAITING_FOOD)
+	assert_eq(guest._queue_wait, 11)
+	assert_eq(guest._food_wait, 17)
+	assert_eq(first.path, before_path)
+	assert_eq(first.path_index, 1)
+	assert_eq(first.move_progress, 0.25)
+	assert_eq(first.task, task)
+	assert_eq(_world.board.get_task(task.id), task)
+	assert_eq(task.state, SimTask.State.CLAIMED)
+	assert_eq(task.claimed_by, first.id)
+	assert_eq(task.payload, before_payload)
+	assert_eq(table._reservations, before_reservations)
+	assert_eq(guest.rng.state, before_rng)
+	assert_eq(_world.clock.to_dict(), before_clock)
+	assert_eq(_world.event_log, before_log)
+	assert_eq(_world.now, 0)
+	assert_eq(heights, before_heights)
+	assert_eq(facings, before_facings)
+	assert_eq(offsets, before_offsets)
+
+
 func test_display_nudges_are_stable_bounded_and_independent_of_input_order() -> void:
 	var first: SimAgent = _world.add_agent(SimAgent.new())
 	var second: SimAgent = _world.add_agent(SimAgent.new())

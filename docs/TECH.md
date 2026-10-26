@@ -722,6 +722,18 @@ an active edit/panel/selection first, or opens Settings when none is active.
   Real-Kitchen fixtures exercise bench and bar-stool orders through cooking,
   delivery, payment, bussing and washing with conserved plates and the existing
   4,000-tick test bound. Runtime and visual results belong in the PR evidence.
+- `ItemDef.seated_forward_offset` is a view-only displacement in world metres,
+  finite and between 0 and 0.05, defaulting to zero. Presentation applies it
+  along the authored seat facing before standing-person separation; simulation
+  cells, reservations, random streams and save data do not move with it.
+  The seated-head probe uses indexed, skinned Mini head surfaces at the shared
+  scale: no head vertex may be inside any seat part, and an identified backrest
+  must clear the head surface by at least 0.02 m. Made seats also require both
+  hips to project onto their named cushion surfaces. Whole-head boxes are for
+  framing only. The Director permits explicitly named kit failures after a
+  supported trial offset of at most 0.05 m; each remains a measured failure in
+  the report, while new or made-seat failures still fail acceptance. See
+  `tools/seated_head_probe.md` for the bounded catalogue and native-pose checks.
 - No save section is added. Existing item IDs, positions, turns and swatches
   use the shop snapshot; dining links are derived again from the restored
   layout. The sole persistence boundary stays the normal morning autosave.

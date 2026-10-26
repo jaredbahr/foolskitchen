@@ -12,6 +12,7 @@ Each line ends with its PR number.
 
 ### Players
 - Seat guest parties together in arrival order, size them to the shop's usable seats, and flag blocked seats in Build; members with food finish their meals if others leave. Add a four-seat table for larger groups. (#152)
+- Decorate your diner with padded two-seat booths and chrome counter stools. (#147)
 - Track career goals and earn cash and XP for reaching them. (#146)
 - Meet Students, Foodies and Families with different budgets and patience; inspect a guest to see their type. (#145)
 - A soft warm sky, street-side windows, a welcome mat and a little grey pavement outside the door make your restaurant feel more like a place. (#144)

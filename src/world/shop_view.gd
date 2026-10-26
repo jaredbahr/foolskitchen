@@ -516,16 +516,13 @@ func _process(_delta: float) -> void:
 
 
 func _sync_agents() -> void:
-	var frames: Dictionary[int, AgentPresentationController.Frame] = AgentPresentationController.frames_for(world.agents, world, _dining_seat_heights())
+	var frames: Dictionary[int, AgentPresentationController.Frame] = AgentPresentationController.frames_for(
+		world.agents, world, _dining_seat_heights(), _dining_seat_facings(), _dining_seat_offsets())
 	var playback_speed: float = _agent_playback_speed()
 	var alive: Dictionary[int, bool] = {}
 	for agent: SimAgent in world.agents:
 		alive[agent.id] = true
 		var frame: AgentPresentationController.Frame = frames[agent.id]
-		if frame.seated and agent is CustomerAgent:
-			var facing: Vector3 = _dining_seat_facing(agent as CustomerAgent)
-			if facing.length_squared() > 0.000001:
-				frame.facing_direction = facing
 		if agent_nodes.has(agent.id) and (agent_nodes[agent.id] is PersonView) != frame.look_supported:
 			_remove_agent_visual(agent.id)
 		if not agent_nodes.has(agent.id):
@@ -706,6 +703,29 @@ func _dining_seat_heights() -> Dictionary[int, float]:
 
 ## A bench's guests face its authored forward surface, rather than turning
 ## diagonally toward the centre of a long table. No simulation cell is moved.
+func _dining_seat_facings() -> Dictionary[int, Vector3]:
+	var facings: Dictionary[int, Vector3] = {}
+	for agent: SimAgent in world.agents:
+		var guest: CustomerAgent = agent as CustomerAgent
+		if guest != null:
+			facings[guest.id] = _dining_seat_facing(guest)
+	return facings
+
+
+## Content offsets affect only the drawn seated pose, never cells or reservations.
+func _dining_seat_offsets() -> Dictionary[int, float]:
+	var offsets: Dictionary[int, float] = {}
+	for agent: SimAgent in world.agents:
+		var guest: CustomerAgent = agent as CustomerAgent
+		if guest == null:
+			continue
+		var source: PlacedItem = world.grid.item(world.grid.dining_furnishing_id(guest.seat_cell))
+		var definition: ItemDef = source.def as ItemDef if source != null else null
+		if definition != null:
+			offsets[guest.id] = definition.seated_forward_offset
+	return offsets
+
+
 func _dining_seat_facing(guest: CustomerAgent) -> Vector3:
 	var source_id: int = world.grid.dining_furnishing_id(guest.seat_cell)
 	if source_id == 0 or source_id == guest.table_item_id:

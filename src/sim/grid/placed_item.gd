@@ -9,7 +9,7 @@ extends RefCounted
 
 ## Unique id within its grid (never reused).
 var id: int = 0
-## Whatever describes the item (an ItemDef once FK-011 lands). The grid never reads it.
+## Content definition used to rebuild derived geometry on placement or move.
 var def: Resource = null
 ## Captured on placement; moving/removing never changes another layer's item.
 var placement_layer: ItemDef.PlacementLayer = ItemDef.PlacementLayer.NORMAL
@@ -19,6 +19,8 @@ var origin: Vector2i = Vector2i.ZERO
 var quarter_turns: int = 0
 var solid: bool = true
 var cells: Array[Vector2i] = []
+## Captured absolute cells, rotated with the footprint on placement or move.
+var blocking_cells: Array[Vector2i] = []
 var work_cells: Array[Vector2i] = []
 var seat_cells: Array[Vector2i] = []
 ## Set when the item is removed from its grid; a removed item can't be reserved.
