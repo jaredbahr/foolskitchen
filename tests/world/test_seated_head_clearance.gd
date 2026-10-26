@@ -180,7 +180,8 @@ func test_missing_leg_bone_returns_complete_unsupported_hip_schema() -> void:
 	skeleton.add_bone("leg-left")
 	person.add_child(skeleton)
 	person._skeleton = skeleton
-	var result: Dictionary = GEOMETRY._hip_support(person, [], "diner_booth")
+	var no_parts: Array[Dictionary] = []
+	var result: Dictionary = GEOMETRY._hip_support(person, no_parts, "diner_booth")
 	assert_false(result["hips_supported"], "one missing leg must fail support closed")
 	assert_eq((result["hip_bone_positions"] as Array).size(), 1, "available leg position remains useful diagnostic data")
 	assert_eq((result["hip_support_points"] as Array).size(), 0, "no cushion was supplied to support the remaining leg")
@@ -254,13 +255,14 @@ func test_exact_geometry_cache_reuses_identical_data_and_invalidates_relative_mu
 	tree.root.add_child(seat)
 	assert_true(person.set_pose(false, true, false, false, seat.seat_surface_height()))
 	var comparisons: Dictionary = {}
-	var first: Dictionary = GEOMETRY.measure(person, seat, false, PackedVector3Array(), [], comparisons)
-	var same: Dictionary = GEOMETRY.measure(person, seat, false, PackedVector3Array(), [], comparisons)
+	var no_parts: Array[Dictionary] = []
+	var first: Dictionary = GEOMETRY.measure(person, seat, false, PackedVector3Array(), no_parts, comparisons)
+	var same: Dictionary = GEOMETRY.measure(person, seat, false, PackedVector3Array(), no_parts, comparisons)
 	assert_eq(first["error"], "")
 	assert_false(first["geometry_cache_reused"])
 	assert_true(same["geometry_cache_reused"])
 	person.position.z -= 0.01
-	var changed: Dictionary = GEOMETRY.measure(person, seat, false, PackedVector3Array(), [], comparisons)
+	var changed: Dictionary = GEOMETRY.measure(person, seat, false, PackedVector3Array(), no_parts, comparisons)
 	assert_eq(changed["error"], "")
 	assert_false(changed["geometry_cache_reused"], "actual relative geometry, not an item ID, owns the cache key")
 	person.free()
