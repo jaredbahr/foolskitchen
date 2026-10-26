@@ -850,7 +850,10 @@ Build checks report partial table capacity with plain text such as "Only 3 of
 data; Main forwards that text to the HUD, with invalid-action reasons taking
 precedence. Warnings permit placement and clear when the layout is repaired.
 The four-seat table combines unchanged Kenney tables and chairs inside a 2x3
-footprint at the existing furniture scale. The inspector adds "Party of N".
+footprint at the existing furniture scale. Each chair faces the same table
+centre as its seated guest. The clearance probe classifies its joined
+chairCushion meshes like the existing cushioned kit seats; classification
+does not grant an exception or establish a measured fit. The inspector adds "Party of N".
 All party state is transient, with no save section or action save. Singleton
 regressions freeze only the old integration boundaries from exact main
 `1f9804e` and compare complete tick/RNG snapshots for seeds 1, 7 and 42; these
