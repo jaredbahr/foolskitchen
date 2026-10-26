@@ -14,6 +14,7 @@ The SVG files are the editable sources; the 100 × 100 PNG files are their raste
 
 ## Diner booth (#147)
 The white booth pairs the Kenney Furniture Kit `benchCushion` seat cushion and `loungeSofa` backrest proportions.
+The Director-approved tall variant occupies two by two grid cells: two front seats and a blocking rear backrest row. Its seat height and supported guest offset stay unchanged; final posed-head clearance is checked against the exported geometry.
 
 ## Diner counter stool (#147)
 The red stool is based on `stoolBar` proportions, with `lampWall` as the metal pedestal reference.
