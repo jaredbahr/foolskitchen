@@ -4,7 +4,7 @@ extends SceneTree
 const CAPTURE_DIRECTORY: String = "res://screens/visual-review/diner-review"
 const MAIN_SCENE: String = "res://src/world/main.tscn"
 const CAPTURE_TIMING: String = "frame_post_draw"
-const PNG_SIGNATURE: PackedByteArray = PackedByteArray([137, 80, 78, 71, 13, 10, 26, 10])
+const PNG_SIGNATURE: Array[int] = [137, 80, 78, 71, 13, 10, 26, 10]
 const EXPECTED_FRAMES: Array[int] = [12, 90]
 const BOOTH_CROP_FILENAME: String = "shot_0090_booth_3x.png"
 const SEAT_CLEARANCE_PROVENANCE: String = "native Mini head-mesh POSITION/JOINTS/WEIGHTS, imported Skin inverse binds, current Skeleton3D global poses, actual node transforms"
@@ -53,7 +53,7 @@ static func validate_capture_pair(directory: String, frame: int) -> Dictionary:
 		return {"valid": false, "messages": messages}
 	var image_bytes: PackedByteArray = png.get_buffer(png.get_length())
 	png.close()
-	if image_bytes.size() <= 1000 or image_bytes.size() < 24 or image_bytes.slice(0, 8) != PNG_SIGNATURE:
+	if image_bytes.size() <= 1000 or image_bytes.size() < 24 or image_bytes.slice(0, 8) != PackedByteArray(PNG_SIGNATURE):
 		messages.append("diner-review: missing or corrupt PNG %s" % filename)
 		return {"valid": false, "messages": messages}
 	if image_bytes_width(image_bytes) != 1600 or image_bytes_height(image_bytes) != 900:

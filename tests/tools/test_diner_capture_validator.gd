@@ -3,7 +3,7 @@ extends TestCase
 
 const VALIDATOR: Script = preload("res://tools/diner_capture_validator.gd")
 const PROVENANCE: String = "native Mini head-mesh POSITION/JOINTS/WEIGHTS, imported Skin inverse binds, current Skeleton3D global poses, actual node transforms"
-const PNG_SIGNATURE: PackedByteArray = PackedByteArray([137, 80, 78, 71, 13, 10, 26, 10])
+const PNG_SIGNATURE: Array[int] = [137, 80, 78, 71, 13, 10, 26, 10]
 
 var _fixture_directory: String
 
