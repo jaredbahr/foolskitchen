@@ -19,7 +19,7 @@ The white booth pairs the Kenney Furniture Kit `benchCushion` seat cushion and `
 The red stool is based on `stoolBar` proportions, with `lampWall` as the metal pedestal reference.
 
 ## Diner OPEN sign (#147)
-The wall sign pairs the `lampWall` mounting shape with the Furniture Kit `wall` panel proportions.
+The wall sign pairs the `lampWall` mounting shape with the Furniture Kit `wall` panel proportions. Its tube strokes use the approved dedicated neon red: linear albedo (0.70, 0.015, 0.02) and linear emission (0.35, 0.0075, 0.01). The housing and brackets retain their Furniture Kit colours; the sign adds no light component.
 
 ## Diner chalkboard (#147)
 The blank board and wood frame use `wallWindow` and `paneling` as the nearest wall-frame references; game text is added in the scene.

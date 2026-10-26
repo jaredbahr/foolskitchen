@@ -25,7 +25,8 @@ MATERIAL_SOURCES = {
     "dark": ("wall.glb", "metalDark"),
     "cream": ("bathroomCabinetDrawer.glb", "carpetWhite"),
 }
-EMISSIVE_STRENGTH = 0.35
+NEON_RED_ALBEDO = (0.70, 0.015, 0.02)
+NEON_RED_EMISSION = (0.35, 0.0075, 0.01)
 
 
 def sha256(path: Path) -> str:
@@ -183,7 +184,9 @@ class Builder:
         doc, _ = read_glb(path)
         original = next(m for m in doc["materials"] if m["name"] == material_name)
         pbr = original["pbrMetallicRoughness"]
-        colour = tuple(pbr["baseColorFactor"])
+        colour = NEON_RED_ALBEDO if emissive else tuple(pbr["baseColorFactor"])
+        if emissive and base != "red":
+            raise ValueError("The approved neon emission contract applies only to emissive red")
         emission: dict[str, Any] | None = None
         material = self.bpy.data.materials.new(material_name + ("_emissive" if emissive else ""))
         material.use_nodes = True
@@ -194,15 +197,14 @@ class Builder:
         node.inputs["Metallic"].default_value = pbr.get("metallicFactor", 1)
         node.inputs["Roughness"].default_value = pbr.get("roughnessFactor", 1)
         if emissive:
-            # Reuse the kit's exact carpet red factor without whitening it.
-            # The reduced strength adds a restrained glow while keeping the
-            # base material and emitted hue unchanged.
-            emission_colour = tuple(pbr["baseColorFactor"])
+            # Keep a deeper albedo under the dedicated linear neon emission so
+            # the square tube faces retain their two-tone shading.
+            emission_colour = NEON_RED_EMISSION
             node.inputs["Emission Color"].default_value = emission_colour
-            node.inputs["Emission Strength"].default_value = EMISSIVE_STRENGTH
+            node.inputs["Emission Strength"].default_value = 1.0
             emission = {
                 "color": list(emission_colour),
-                "strength": EMISSIVE_STRENGTH,
+                "strength": 1.0,
             }
         self.materials[token] = material
         self.material_provenance[token] = {
