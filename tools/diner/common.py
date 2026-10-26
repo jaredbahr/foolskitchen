@@ -184,7 +184,7 @@ class Builder:
         doc, _ = read_glb(path)
         original = next(m for m in doc["materials"] if m["name"] == material_name)
         pbr = original["pbrMetallicRoughness"]
-        colour = NEON_RED_ALBEDO if emissive else tuple(pbr["baseColorFactor"])
+        colour = (*NEON_RED_ALBEDO, 1.0) if emissive else tuple(pbr["baseColorFactor"])
         if emissive and base != "red":
             raise ValueError("The approved neon emission contract applies only to emissive red")
         emission: dict[str, Any] | None = None
@@ -199,17 +199,18 @@ class Builder:
         if emissive:
             # Keep a deeper albedo under the dedicated linear neon emission so
             # the square tube faces retain their two-tone shading.
-            emission_colour = NEON_RED_EMISSION
+            emission_colour = (*NEON_RED_EMISSION, 1.0)
             node.inputs["Emission Color"].default_value = emission_colour
             node.inputs["Emission Strength"].default_value = 1.0
             emission = {
-                "color": list(emission_colour),
+                "color": list(NEON_RED_EMISSION),
                 "strength": 1.0,
             }
         self.materials[token] = material
         self.material_provenance[token] = {
             "source": path.relative_to(self.repo).as_posix(), "source_sha256": sha256(path),
-            "material": material_name, "pbr": pbr, "emissive": emissive,
+            "material": material_name, "source_pbr": pbr,
+            "material_albedo": list(colour), "emissive": emissive,
             "emission": emission,
         }
         return material
