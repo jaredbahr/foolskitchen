@@ -24,9 +24,9 @@ const COMPARISON: String = "DinerComparison"
 const WALLS: String = "DinerWallStaging"
 const NOTICE: String = "Diner review fixture - unsaved; wall pieces are view-only staging, not player wall placement."
 const PURCHASES: Array[Dictionary] = [
-	{"id": &"cross_table", "cell": Vector2i(2, 6), "turns": 0},
-	{"id": &"diner_booth", "cell": Vector2i(2, 7), "turns": 0},
-	{"id": &"diner_booth", "cell": Vector2i(2, 4), "turns": 2},
+	{"id": &"cross_table", "cell": Vector2i(2, 7), "turns": 0},
+	{"id": &"diner_booth", "cell": Vector2i(2, 8), "turns": 0},
+	{"id": &"diner_booth", "cell": Vector2i(2, 5), "turns": 2},
 	{"id": &"bar_counter", "cell": Vector2i(6, 6), "turns": 0},
 	{"id": &"diner_stool", "cell": Vector2i(6, 7), "turns": 0},
 	{"id": &"diner_stool", "cell": Vector2i(7, 7), "turns": 0},
