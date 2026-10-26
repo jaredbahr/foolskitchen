@@ -130,7 +130,7 @@ static func validate_booth_crop(directory: String, source_metadata: Dictionary, 
 	var crop_parsed: Variant = JSON.parse_string(crop_json_text)
 	if not crop_parsed is Dictionary or crop_parsed != descriptor:
 		return _invalid("diner-review: seated crop JSON does not match frame-90 crop metadata")
-	if crop_bytes.size() < 24 or crop_bytes.slice(0, 8) != PNG_SIGNATURE:
+	if crop_bytes.size() < 24 or crop_bytes.slice(0, 8) != PackedByteArray(PNG_SIGNATURE):
 		return _invalid("diner-review: missing or corrupt seated booth crop PNG")
 	var rect_result: Dictionary = _crop_rect(descriptor.get("source_rect"))
 	if not bool(rect_result["valid"]):
