@@ -17,7 +17,7 @@ func test_four_authored_types_are_valid_and_regular_is_neutral() -> void:
 	assert_eq(regular.quality_weight, 0.0)
 	assert_eq(regular.review_chance_multiplier, 1.0)
 	assert_eq(regular.party_size_min, 1)
-	assert_eq(regular.party_size_max, 1)
+	assert_eq(regular.party_size_max, 2)
 	assert_eq(regular.unlock_level, 1)
 	assert_eq(regular.weight_for_stars(1.0), regular.weight_for_stars(5.0))
 	assert_null(TYPES.find_type(&"not_authored"))
@@ -44,8 +44,8 @@ func test_profiles_and_reputation_weights_match_the_data_contract() -> void:
 	assert_eq(family.budget_multiplier, 1.1)
 	assert_eq(family.patience_multiplier, 1.4)
 	assert_eq(family.review_chance_multiplier, 1.1)
-	assert_eq(family.party_size_min, 1)
-	assert_eq(family.party_size_max, 1)
+	assert_eq(family.party_size_min, 2)
+	assert_eq(family.party_size_max, 4)
 	assert_eq(family.unlock_level, 4)
 	assert_true(foodie.weight_for_stars(5.0) > foodie.weight_for_stars(1.0))
 	assert_eq(foodie.weight_for_stars(3.0), 13.5)
@@ -110,7 +110,7 @@ func test_invalid_types_and_missing_rng_cannot_be_selected() -> void:
 	var wrong_party: CustomerType = CustomerType.new()
 	wrong_party.id = &"group"
 	wrong_party.display_name = "Group"
-	wrong_party.party_size_max = 2
+	wrong_party.party_size_max = 5
 	invalid.types.append(wrong_party)
 	assert_false(invalid.is_valid())
 	assert_null(CustomerTypePicker.choose(invalid, 1, 3.0, rng))

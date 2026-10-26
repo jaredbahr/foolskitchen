@@ -19,8 +19,7 @@ extends Resource
 func is_valid() -> bool:
 	if id.is_empty() or display_name.strip_edges().is_empty() or unlock_level < 1:
 		return false
-	# Group visits are a later feature. A malformed resource must not spawn one.
-	if party_size_min != 1 or party_size_max != 1:
+	if party_size_min < 1 or party_size_max < party_size_min or party_size_max > 4:
 		return false
 	for value: float in [budget_multiplier, patience_multiplier,
 			review_chance_multiplier]:
@@ -31,6 +30,16 @@ func is_valid() -> bool:
 		if not is_finite(value) or value < 0.0:
 			return false
 	return true
+
+
+## Fixed sizes consume no draw, preserving the single-guest arrival stream.
+## The spawner supplies its existing seeded customers stream for a range.
+func draw_party_size(random: RandomNumberGenerator) -> int:
+	if not is_valid() or random == null:
+		return 0
+	if party_size_min == party_size_max:
+		return party_size_min
+	return random.randi_range(party_size_min, party_size_max)
 
 
 ## Reputation below one star uses the one-star weight; above five uses five.
