@@ -84,6 +84,7 @@ jobs:
           bash tools/screenshot.sh --out=screens/visual-review/milestone-review --milestone-review --speed=0 --frames=12,90
           bash tools/screenshot.sh --out=screens/visual-review/catalogue-rustic --catalogue-review=rustic --speed=0 --frames=90,120
           bash tools/screenshot.sh --out=screens/visual-review/catalogue-modern --catalogue-review=modern --speed=0 --frames=90,120
+          bash tools/screenshot.sh --out=screens/visual-review/diner-review --diner-review --speed=0 --frames=12,90
           bash tools/screenshot.sh --out=screens/visual-review/menu --menu --speed=0 --frames=12
           bash tools/screenshot.sh --out=screens/visual-review/staff --staff --speed=0 --frames=12
           bash tools/screenshot.sh --out=screens/visual-review/report --report --open --fast=100 --speed=0 --frames=60
@@ -244,7 +245,9 @@ jobs:
           verify_hud_identity('hud-1280', (1280, 720), 90, 150)
           verify_hud_identity('hud-1600', (1600, 900), 12, 125)
           verify_hud_identity('hud-1600', (1600, 900), 90, 150)
+
           PY
+          timeout 60 "$GODOT" --headless --path . --script tools/diner_capture_validator.gd
 
       - name: Upload actual captures, metadata and logs
         if: always()

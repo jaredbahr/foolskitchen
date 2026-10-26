@@ -59,8 +59,10 @@ func test_every_authored_item_has_floor_aligned_parts_inside_its_footprint_or_de
 			assert_true(allowed.grow(0.05).encloses(_xz_rect(part_bounds)), "%s/%s must fit its own footprint or seat cell" % [definition.id, part.name])
 		assert_true(permitted.grow(0.05).encloses(_xz_rect(bounds)), String(definition.id))
 		assert_true(have_body, String(definition.id))
-		assert_almost_eq(body_bounds.get_center().x, 0.0, 0.0001, String(definition.id))
-		assert_almost_eq(body_bounds.get_center().z, 0.0, 0.0001, String(definition.id))
+		# Bodies are centred unless the wrapper declares an offset inside its footprint.
+		assert_true(absf(view.body_center_offset.x) <= half_width and absf(view.body_center_offset.y) <= half_depth, "%s body offset must stay inside its footprint" % definition.id)
+		assert_almost_eq(body_bounds.get_center().x, view.body_center_offset.x, 0.001, String(definition.id))
+		assert_almost_eq(body_bounds.get_center().z, view.body_center_offset.y, 0.001, String(definition.id))
 		if not view.body_material_names.is_empty():
 			assert_true(view.body_surface_count() > 0, "%s body material names must match imported surfaces" % definition.id)
 		else:

@@ -24,7 +24,8 @@ static func build(layout: ShopLayout, content: ContentDB, errors: Array[String],
 	for r: StringName in layout.staff_spawns:
 		var spawn: Vector2i = layout.staff_spawns[r]
 		var covering: PlacedItem = grid.item_at(spawn)
-		var furniture_blocked: bool = grid.terrain(spawn) == SimGrid.Terrain.FLOOR and covering != null and covering.solid
+		var furniture_blocked: bool = grid.terrain(spawn) == SimGrid.Terrain.FLOOR and covering != null \
+			and (covering.solid or covering.blocking_cells.has(spawn))
 		if not grid.is_walkable(spawn) and not (allow_blocked_spawns and furniture_blocked):
 			errors.append("%s: spawn for %s at %s is not walkable" % [layout.id, r, layout.staff_spawns[r]])
 	return SimWorld.new(grid)

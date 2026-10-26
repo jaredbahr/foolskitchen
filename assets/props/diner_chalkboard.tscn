@@ -1,0 +1,26 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://src/world/prop_view.gd" id="1_view"]
+[ext_resource type="PackedScene" path="res://assets/made/diner/diner_chalkboard.glb" id="2_model"]
+[ext_resource type="Script" path="res://assets/props/diner_chalkboard.gd" id="3_text"]
+
+[node name="DinerChalkboard" type="Node3D"]
+script = ExtResource("1_view")
+footprint = Vector2i(2, 1)
+
+[node name="WallMount" type="Node3D" parent="."]
+position = Vector3(0, 0.62, 0.2225)
+
+[node name="Art" type="Node3D" parent="WallMount"]
+
+[node name="Model" parent="WallMount/Art" instance=ExtResource("2_model")]
+
+[node name="MenuText" type="Label3D" parent="WallMount"]
+script = ExtResource("3_text")
+position = Vector3(0, 0.31, -0.03)
+rotation = Vector3(0, 3.141592653589793, 0)
+text = "DAILY SPECIALS\nASK INSIDE\nMADE FRESH"
+pixel_size = 0.002
+font_size = 40
+horizontal_alignment = 1
+vertical_alignment = 1
