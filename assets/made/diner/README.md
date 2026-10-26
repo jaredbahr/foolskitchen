@@ -25,9 +25,8 @@ The revised white booth has a lower, thinner backrest and a 0.05 m authored
 seated offset. Its cushions retain their original sitting height. The bounded
 Blender export and genuine Godot import of this revision passed, followed by
 six diner content tests and two emitted-material tests on source `f6f1a1f`.
-These eight tests do not establish posed-head clearance or rendered seating
-fit. The new surface-to-surface catalogue measurement, support tests, close
-crop and final full check remain unrun while the user demo is open.
+Those tests establish asset properties, separately from the posed-surface
+checks below.
 
 The booth and stool have item
 definitions. Four wall wrappers are explicitly staged for review and are not
@@ -36,23 +35,29 @@ The OPEN sign uses the source carpet-red colour with emission strength 0.35,
 not a white colour blend or a real light. Chalkboard text is
 native `Label3D` using the existing theme's font or its normal fallback.
 
-Before the seating revision, on source/model head
-`ecc21ac5546cd1f3970250c1a41317d9ca068503`, the unchanged
+On source/test head `3d3958b5e277aae0e85016ef57ee1744c1b888d3`, the unchanged
 `bash tools/check.sh` passed using installed Git Bash and Windows Godot 4.7.2:
-367 files parsed and 1,098 tests passed, with zero failures. The five asset
-tests and four review-fixture tests are included in that full suite. Linux CI
-and Web/browser validation are separate gates.
+374 files parsed and 1,141 tests passed, with zero failures or shutdown errors.
+Linux CI and Web/browser validation are separate gates, recorded in the PR.
 
-Two earlier 1600x900 Main-scene images were independently inspected: all six
-made pieces beside unchanged kit references with a Mini Character for scale,
-and a furnished corner whose six guests walked into real reserved booth/stool
-seats and used native sitting poses. The complete OPEN word, menu text and
-fixture disclosure are readable. These paused, unsaved review fixtures do not
-prove natural service or player wall placement.
+The actual-surface catalogue run covered 1,632 unique cases, with complete
+coverage, zero measurement/engine errors and zero unexpected failures. All
+288 made-seat cases pass: the booth's minimum identified backrest gap is
+0.021208 m, both hips project onto named cushions, and no head vertex is inside
+a seat part. Nine unchanged kit definitions retain named, measured exceptions
+under the Director's review rule. Their 1,152 raw failing rows comprise 1,008
+physical-violation rows and 144 unclassified-only rows; they are not fixed by
+this PR. See `tools/seated_head_probe.md` and the PR evidence for the distinction.
+
+Two new 1600x900 Main-scene Windows/NVIDIA captures and an exact nearest-pixel
+3x booth crop were generated on the same source/test head, with zero engine
+errors. They show the six made pieces beside unchanged kit references and a
+furnished corner with six actual reserved booth/stool seats. These paused,
+unsaved review fixtures do not prove natural service or player wall placement.
 
 The Director accepted the original style and deferred the four wall ItemDefs
-to issue 148. The revised lower-back booth still needs actual posed-surface
-results and a reviewed 3x crop; the earlier images do not validate its new
-silhouette. The shared `assets/made/README.md` includes the six diner entries
+to issue 148. The revised lower-back booth and final rendered sign colour
+remain subject to Director visual review; source material colours alone do
+not establish appearance. The shared `assets/made/README.md` includes the six diner entries
 and preserves issue 118's pending icon entries for later integration. The
 partial asset delivery in PR #147 does not complete issue 123.
