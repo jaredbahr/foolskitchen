@@ -45,6 +45,7 @@ Any new building piece (walls, windows, doors, the awning, counters) follows the
 - Keep each kit's own materials and its shared `colormap.png`. No per-model textures, no new materials on kit models, and no vertex-colour edits.
 - **Paint (#94):** the swatch tints only the model's main body surface (for example a table top and legs, a chair frame). Pick the surface by its material name in the item's wrapper scene. Chrome, glass, food and faces are never painted.
 - Placeholder colours and new UI colours come from the existing palette (`main_theme.tres`, the swatch list). No one-off hex values.
+- **Exception, glowing parts (Jared, 2026-10-26):** neon tubes, sign letters and lamp glow may use a dedicated emissive colour when no kit colour reads correctly (the kit's only red is a salmon). Define each one once as a named constant in the asset's build script, never inline. Non-glowing surfaces still use kit colours.
 
 ## 4. People
 - Every person is a Mini Character. **Roles:**
