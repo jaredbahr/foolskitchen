@@ -22,7 +22,7 @@
     0.4350000098347664,
     0.2654399871826172
   ],
-  "sha256": "5e287ab8c9332afbbccbbbf849644f3de40bb16d64b2268199d8fbcae62d5d2a",
+  "sha256": "0cfb9f2d43d146285dc549cca91ce8b00eb62ec660da42bdd536eb616c50821d",
   "references": [
     {
       "path": "assets/kenney/furniture/stoolBar.glb",
@@ -70,7 +70,7 @@
       "source": "assets/kenney/furniture/benchCushion.glb",
       "source_sha256": "5186ad938f8b9eff255361fd1fdc48a81f08c318161cde27c93753ab95a2d354",
       "material": "carpet",
-      "pbr": {
+      "source_pbr": {
         "baseColorFactor": [
           0.9433962,
           0.367175967,
@@ -80,6 +80,12 @@
         "metallicFactor": 0,
         "roughnessFactor": 1
       },
+      "material_albedo": [
+        0.9433962,
+        0.367175967,
+        0.3426486,
+        1
+      ],
       "emissive": false,
       "emission": null
     },
@@ -87,7 +93,7 @@
       "source": "assets/kenney/furniture/lampWall.glb",
       "source_sha256": "a9679ecd3be05731846f22ade97c37069598ca7a06dd9319f50230e63a1ea83c",
       "material": "metal",
-      "pbr": {
+      "source_pbr": {
         "baseColorFactor": [
           0.74061054,
           0.822866738,
@@ -97,13 +103,19 @@
         "metallicFactor": 0,
         "roughnessFactor": 1
       },
+      "material_albedo": [
+        0.74061054,
+        0.822866738,
+        0.8396226,
+        1
+      ],
       "emissive": false,
       "emission": null
     }
   },
   "source_sha256": {
     "tools/diner/build_diner.py": "734137560a4945cb385b4ad960c2d3ae592f71fde0a6bbc588d5f8f5f8920171",
-    "tools/diner/common.py": "a546adc4f746acb5b1041b7942b411dba78150f371c829e4831d14f5e8e612d3",
+    "tools/diner/common.py": "cf112e55b9ca73aef33d6bb65f98d576ec730755314a93822c352a9d339a6879",
     "tools/diner/furniture.py": "fe048198aef8f59657137983de56069b45431db9f1d0c27260eb59b3753bd589",
     "tools/diner/wall_pieces.py": "6b1899913b9a9d58fba235a8ec968bc467f9cf726cb241bb09f40ba6f5606c01"
   }

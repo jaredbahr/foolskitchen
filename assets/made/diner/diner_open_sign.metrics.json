@@ -22,7 +22,7 @@
     0.37749998550862074,
     0.13100000098347664
   ],
-  "sha256": "49bf34cb5f0d8a5cea0830e68509760163f0952ed63a0a6122e453cb3ee75af6",
+  "sha256": "16cf2923fa14c9e81f085d7f88bdba599ad5814343e52483735479de0ce11843",
   "references": [
     {
       "path": "assets/kenney/furniture/lampWall.glb",
@@ -70,7 +70,7 @@
       "source": "assets/kenney/furniture/lampWall.glb",
       "source_sha256": "a9679ecd3be05731846f22ade97c37069598ca7a06dd9319f50230e63a1ea83c",
       "material": "metal",
-      "pbr": {
+      "source_pbr": {
         "baseColorFactor": [
           0.74061054,
           0.822866738,
@@ -80,6 +80,12 @@
         "metallicFactor": 0,
         "roughnessFactor": 1
       },
+      "material_albedo": [
+        0.74061054,
+        0.822866738,
+        0.8396226,
+        1
+      ],
       "emissive": false,
       "emission": null
     },
@@ -87,7 +93,7 @@
       "source": "assets/kenney/furniture/wall.glb",
       "source_sha256": "69273d5d623bddfce41d12d4e5eeb5621ea04f1edcbd8f35c00a60c2fd3258b7",
       "material": "metalDark",
-      "pbr": {
+      "source_pbr": {
         "baseColorFactor": [
           0.305882365,
           0.3882353,
@@ -97,6 +103,12 @@
         "metallicFactor": 0,
         "roughnessFactor": 1
       },
+      "material_albedo": [
+        0.305882365,
+        0.3882353,
+        0.3882353,
+        1
+      ],
       "emissive": false,
       "emission": null
     },
@@ -104,7 +116,7 @@
       "source": "assets/kenney/furniture/benchCushion.glb",
       "source_sha256": "5186ad938f8b9eff255361fd1fdc48a81f08c318161cde27c93753ab95a2d354",
       "material": "carpet",
-      "pbr": {
+      "source_pbr": {
         "baseColorFactor": [
           0.9433962,
           0.367175967,
@@ -114,21 +126,26 @@
         "metallicFactor": 0,
         "roughnessFactor": 1
       },
+      "material_albedo": [
+        0.7,
+        0.015,
+        0.02,
+        1.0
+      ],
       "emissive": true,
       "emission": {
         "color": [
-          0.9433962,
-          0.367175967,
-          0.3426486,
-          1
+          0.35,
+          0.0075,
+          0.01
         ],
-        "strength": 0.35
+        "strength": 1.0
       }
     }
   },
   "source_sha256": {
     "tools/diner/build_diner.py": "734137560a4945cb385b4ad960c2d3ae592f71fde0a6bbc588d5f8f5f8920171",
-    "tools/diner/common.py": "a546adc4f746acb5b1041b7942b411dba78150f371c829e4831d14f5e8e612d3",
+    "tools/diner/common.py": "cf112e55b9ca73aef33d6bb65f98d576ec730755314a93822c352a9d339a6879",
     "tools/diner/furniture.py": "fe048198aef8f59657137983de56069b45431db9f1d0c27260eb59b3753bd589",
     "tools/diner/wall_pieces.py": "6b1899913b9a9d58fba235a8ec968bc467f9cf726cb241bb09f40ba6f5606c01"
   }
