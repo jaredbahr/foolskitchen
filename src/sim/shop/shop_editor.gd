@@ -343,6 +343,8 @@ static func placement_reason(result: SimGrid.PlaceResult) -> String:
 			return "Something is in the way"
 		SimGrid.PlaceResult.INVALID_LAYER:
 			return "This item cannot be placed here"
+		SimGrid.PlaceResult.INVALID_CELLS:
+			return "This item has invalid floor space"
 	return "Cannot place this item here"
 
 
@@ -419,7 +421,7 @@ static func _any_reachable(grid: SimGrid, cells: Array[Vector2i]) -> bool:
 static func _valid_definition(definition: ItemDef) -> bool:
 	return definition != null and not definition.id.is_empty() and definition.price >= 0 \
 		and definition.unlock_level >= 1 and definition.footprint.x > 0 and definition.footprint.y > 0 \
-		and definition.placement_layer_valid()
+		and definition.placement_layer_valid() and definition.blocking_cells_valid()
 
 
 static func _required_key(definition: ItemDef) -> String:

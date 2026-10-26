@@ -12,9 +12,13 @@ func test_diner_seats_have_diner_unlocks_and_bench_compatible_seats() -> void:
 	if booth == null or stool == null:
 		return
 	assert_eq(booth.category, ItemDef.Category.CHAIR)
-	assert_eq(booth.footprint, Vector2i(2, 1))
+	assert_eq(booth.footprint, Vector2i(2, 2))
 	assert_eq(booth.seat_cells, [Vector2i(0, 0), Vector2i(1, 0)])
+	assert_eq(booth.blocking_cells, [Vector2i(0, 1), Vector2i(1, 1)])
+	assert_false(booth.solid, "only the explicitly authored rear row blocks")
+	assert_true(booth.work_cells.is_empty())
 	assert_eq(booth.capacity, 2)
+	assert_eq(booth.price, 105, "the bigger tall booth costs a little more")
 	assert_almost_eq(booth.seated_forward_offset, 0.05, 0.000001,
 		"booth uses only the supported five-centimetre seated adjustment")
 	assert_eq(booth.unlock_level, 3)
@@ -45,10 +49,16 @@ func test_diner_seats_remain_walkable_in_every_existing_rotation() -> void:
 			assert_eq(placed.seat_cells.size(), definition.seat_cells.size())
 			for seat: Vector2i in placed.seat_cells:
 				assert_true(grid.is_walkable(seat), "%s seat stays walkable" % definition.id)
+			if definition.id == &"diner_booth":
+				for authored: Vector2i in [Vector2i(0, 1), Vector2i(1, 1)]:
+					var rear: Vector2i = Vector2i(2, 2) + GridMath.rotate_cell(authored, Vector2i(2, 2), turns)
+					assert_false(grid.is_walkable(rear), "the rotated rear backrest row blocks movement")
+					assert_false(placed.seat_cells.has(rear))
+					assert_false(placed.work_cells.has(rear))
 
 
 func test_diner_models_fit_their_cells_and_use_the_named_kit_materials() -> void:
-	_assert_model_contract("diner_booth", Vector2i(2, 1), 0.4675, 0.24, [
+	_assert_model_contract("diner_booth", Vector2i(2, 2), 0.715, 0.24, [
 		"carpet", "wood", "metal", "metalDark", "carpetWhite",
 	])
 	_assert_model_contract("diner_stool", Vector2i.ONE, 0.4785, 0.435, [
@@ -56,7 +66,7 @@ func test_diner_models_fit_their_cells_and_use_the_named_kit_materials() -> void
 	])
 
 
-func test_booth_backrest_is_lower_and_set_back_without_shrinking_its_seat_cushions() -> void:
+func test_booth_restores_its_tall_back_and_connects_deeper_cushions_to_the_setback() -> void:
 	var packed: PackedScene = load("res://assets/made/diner/diner_booth.glb") as PackedScene
 	assert_not_null(packed)
 	if packed == null:
@@ -81,9 +91,16 @@ func test_booth_backrest_is_lower_and_set_back_without_shrinking_its_seat_cushio
 	assert_true(parts.has("tallbackshell"))
 	if parts.has("tallbackshell"):
 		var shell: AABB = parts["tallbackshell"]
-		assert_almost_eq(shell.end.y, 0.425, 0.0001, "white shell stays below the rear hair region")
-		assert_almost_eq(shell.position.z, 0.189, 0.0001, "shell is set back after export centring")
+		assert_almost_eq(shell.end.y, 0.65, 0.0001, "white shell restores the original tall silhouette")
+		assert_almost_eq(shell.position.y, 0.19, 0.0001)
+		assert_almost_eq(shell.position.z, 0.261, 0.0001, "shell is set back after export centring")
 		assert_almost_eq(shell.size.z, 0.06, 0.0001, "shell retains a chunky bevelled thickness")
+	assert_true(parts.has("paddedbenchbase"))
+	if parts.has("paddedbenchbase"):
+		var base: AABB = parts["paddedbenchbase"]
+		assert_almost_eq(base.position.z, -0.321, 0.0001)
+		assert_almost_eq(base.end.z, 0.321, 0.0001, "base reaches and supports the setback shell")
+		assert_almost_eq(base.end.y, 0.20, 0.0001)
 	for side: String in ["left", "right"]:
 		var seat_name: String = side + "seatcushion"
 		var back_name: String = side + "backcushion"
@@ -92,14 +109,54 @@ func test_booth_backrest_is_lower_and_set_back_without_shrinking_its_seat_cushio
 		if parts.has(seat_name):
 			var seat: AABB = parts[seat_name]
 			assert_almost_eq(seat.size.x, 0.435, 0.0001)
-			assert_almost_eq(seat.size.z, 0.29, 0.0001)
-			assert_almost_eq(seat.end.y, 0.24, 0.0001, "original cushion height and support area remain")
+			assert_almost_eq(seat.size.z, 0.527, 0.0001)
+			assert_almost_eq(seat.position.z, -0.301, 0.0001, "seat front stays aligned with the front row")
+			assert_almost_eq(seat.end.z, 0.226, 0.0001, "deeper seat reaches the padded back")
+			assert_almost_eq(seat.end.y, 0.24, 0.0001, "original cushion height remains")
 		if parts.has(back_name):
 			var back: AABB = parts[back_name]
-			assert_almost_eq(back.end.y, 0.405, 0.0001)
-			assert_almost_eq(back.position.z, 0.154, 0.0001)
+			assert_almost_eq(back.end.y, 0.625, 0.0001)
+			assert_almost_eq(back.position.z, 0.226, 0.0001)
 			assert_almost_eq(back.size.z, 0.035, 0.0001, "back cushions retain bevelled padding behind the hair")
 	instance.free()
+
+
+func test_booth_wrapper_aligns_the_authored_front_row_independently_of_seat_height_getters() -> void:
+	var packed: PackedScene = load("res://assets/props/diner_booth.tscn") as PackedScene
+	assert_not_null(packed)
+	if packed == null:
+		return
+	var prop: PropView = packed.instantiate() as PropView
+	prop.prepare()
+	assert_eq(prop.footprint, Vector2i(2, 2))
+	assert_almost_eq((prop.get_node("Seat") as Node3D).position.z, -0.1708, 0.000001)
+	var bounds: AABB = prop.get_combined_aabb()
+	assert_almost_eq(bounds.position.z, -0.5239, 0.0001, "seat row stays at z=-0.25 within the new footprint")
+	assert_almost_eq(bounds.end.z, 0.1823, 0.0001, "the tall back occupies the rear row")
+	assert_almost_eq(bounds.end.y, 0.715, 0.0001)
+	# Literal expected row centres are independent of production placement getters.
+	var rows: Array[Array] = [
+		[Vector3(-0.25, 0, -0.25), Vector3(0.25, 0, -0.25)],
+		[Vector3(0.25, 0, -0.25), Vector3(0.25, 0, 0.25)],
+		[Vector3(0.25, 0, 0.25), Vector3(-0.25, 0, 0.25)],
+		[Vector3(-0.25, 0, 0.25), Vector3(-0.25, 0, -0.25)],
+	]
+	for turns: int in range(4):
+		var rotation: Basis = Basis(Vector3.UP, -float(turns) * PI * 0.5)
+		var rotated: AABB = Transform3D(rotation, Vector3.ZERO) * bounds
+		assert_true(Rect2(-0.55, -0.55, 1.10, 1.10).encloses(Rect2(
+			Vector2(rotated.position.x, rotated.position.z), Vector2(rotated.size.x, rotated.size.z))),
+			"the new footprint retains its per-side five-centimetre allowance in every rotation")
+		for index: int in range(2):
+			var authored: Vector2i = GridMath.rotate_cell(Vector2i(index, 0), Vector2i(2, 2), turns)
+			var centre: Vector3 = GridMath.cell_to_world(authored) - Vector3(0.5, 0, 0.5)
+			var expected: Vector3 = rows[turns][index]
+			assert_true(centre.distance_to(expected) < 0.000001)
+			var back_front: Vector3 = rotation * Vector3(float(index) * 0.5 - 0.25, 0.5, 0.0778)
+			var behind: Vector3 = rotation * Vector3.BACK
+			assert_almost_eq((back_front - centre).dot(behind), 0.3278, 0.0001,
+				"the padded front is set back from each actual front-row seat")
+	prop.free()
 
 
 func test_wall_model_wrappers_keep_bounded_geometry_and_chalkboard_uses_theme_text() -> void:

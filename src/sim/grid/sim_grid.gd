@@ -4,15 +4,15 @@ extends RefCounted
 ## items, and pathfinding between cells. Pure logic, no nodes (docs/TECH.md 2.3).
 ##
 ## Paths: 8-directional, no corner cutting, agents do not block each other.
-## A cell is walkable when its terrain is FLOOR or ENTRY and no solid item
-## covers it. find_path() returns the cells from start to goal inclusive, or
+## A cell is walkable when its terrain is FLOOR or ENTRY and no whole-item or
+## explicit cell blocking covers it. find_path() includes start and goal, or
 ## an empty array when there is no path.
 
 ## What a cell is before any furniture goes on it.
 enum Terrain { OUTSIDE, FLOOR, WALL, ENTRY }
 
 ## Result of a placement check.
-enum PlaceResult { OK, OUT_OF_BOUNDS, NOT_FLOOR, OVERLAPS, INVALID_LAYER }
+enum PlaceResult { OK, OUT_OF_BOUNDS, NOT_FLOOR, OVERLAPS, INVALID_LAYER, INVALID_CELLS }
 
 ## Emitted after cells change walkability (place/remove/terrain edits).
 ## Agents whose path crosses one of these cells must re-plan.
@@ -170,18 +170,22 @@ func can_place(footprint: Vector2i, origin: Vector2i, quarter_turns: int,
 func can_place_def(definition: ItemDef, origin: Vector2i, quarter_turns: int = 0) -> PlaceResult:
 	if definition == null or not definition.placement_layer_valid():
 		return PlaceResult.INVALID_LAYER
+	if not definition.blocking_cells_valid():
+		return PlaceResult.INVALID_CELLS
 	return can_place(definition.footprint, origin, quarter_turns, definition.placement_layer)
 
 
 ## Places an item. Work and seat cells are given relative to the unrotated
 ## footprint (see GridMath.rotate_cell). Returns the PlacedItem, or null if
-## can_place() is not OK. `def` is stored as-is for callers (an ItemDef).
+## can_place() is not OK. An optional ItemDef also supplies explicit blocking
+## cells, validated against both its authored and these actual placement values.
 func place(footprint: Vector2i, origin: Vector2i, quarter_turns: int, solid: bool,
 		work_cells: Array[Vector2i] = [], seat_cells: Array[Vector2i] = [],
 		def: Resource = null) -> PlacedItem:
 	var definition: ItemDef = def as ItemDef
 	var layer: ItemDef.PlacementLayer = definition.placement_layer if definition != null else ItemDef.PlacementLayer.NORMAL
-	if definition != null and not definition.placement_layer_valid():
+	if definition != null and (not definition.placement_layer_valid() or not definition.blocking_cells_valid() \
+			or not definition.blocking_cells_fit(footprint, work_cells, seat_cells)):
 		return null
 	if layer == ItemDef.PlacementLayer.FLOOR_DECOR and (solid or not work_cells.is_empty() or not seat_cells.is_empty()):
 		return null
@@ -196,6 +200,9 @@ func place(footprint: Vector2i, origin: Vector2i, quarter_turns: int, solid: boo
 	item.quarter_turns = posmod(quarter_turns, 4)
 	item.solid = solid
 	item.cells = _footprint_cells(footprint, origin, quarter_turns)
+	if definition != null:
+		for cell: Vector2i in definition.blocking_cells:
+			item.blocking_cells.append(origin + GridMath.rotate_cell(cell, footprint, quarter_turns))
 	for c in work_cells:
 		item.work_cells.append(origin + GridMath.rotate_cell(c, footprint, quarter_turns))
 	for c in seat_cells:
@@ -228,7 +235,8 @@ func relocate_def(item_id: int, origin: Vector2i, quarter_turns: int) -> bool:
 		return false
 	var definition: ItemDef = placed.def as ItemDef
 	if definition == null or definition.footprint.x < 1 or definition.footprint.y < 1 \
-			or not definition.placement_layer_valid() or definition.placement_layer != placed.placement_layer:
+			or not definition.placement_layer_valid() or not definition.blocking_cells_valid() \
+			or definition.placement_layer != placed.placement_layer:
 		return false
 	for cell: Vector2i in placed.work_cells + placed.seat_cells:
 		if placed.reserved_by(cell) != -1:
@@ -252,8 +260,11 @@ func relocate_def(item_id: int, origin: Vector2i, quarter_turns: int) -> bool:
 	placed.origin = origin
 	placed.quarter_turns = turns
 	placed.cells = new_cells
+	placed.blocking_cells.clear()
 	placed.work_cells.clear()
 	placed.seat_cells.clear()
+	for cell: Vector2i in definition.blocking_cells:
+		placed.blocking_cells.append(origin + GridMath.rotate_cell(cell, definition.footprint, turns))
 	for cell: Vector2i in definition.work_cells:
 		placed.work_cells.append(origin + GridMath.rotate_cell(cell, definition.footprint, turns))
 	for cell: Vector2i in definition.seat_cells:
@@ -491,6 +502,6 @@ func _refresh_cell(cell: Vector2i) -> void:
 	var t := terrain(cell)
 	var blocked := t == Terrain.WALL or t == Terrain.OUTSIDE
 	var id: int = _cover.get(cell, 0)
-	if id != 0 and _items[id].solid:
+	if id != 0 and (_items[id].solid or _items[id].blocking_cells.has(cell)):
 		blocked = true
 	_astar.set_point_solid(cell, blocked)

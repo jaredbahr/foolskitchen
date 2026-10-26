@@ -5,11 +5,12 @@
 
 [node name="DinerBooth" type="Node3D"]
 script = ExtResource("1_view")
-footprint = Vector2i(2, 1)
+footprint = Vector2i(2, 2)
 seat_surface_y = 0.24
 body_material_names = PackedStringArray("carpet")
 
 [node name="Seat" type="Node3D" parent="."]
+position = Vector3(0, 0, -0.1708)
 
 [node name="Art" type="Node3D" parent="Seat"]
 
