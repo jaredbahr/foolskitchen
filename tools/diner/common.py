@@ -1,4 +1,4 @@
-"""Issue #123: bounded Blender construction using unchanged Kenney colours.
+"""Issue #123: Kenney colours plus the named, approved glowing-part exception.
 
 Author in metres, Blender Z-up/front +Y. glTF exports Y-up/front -Z.
 No art scale belongs here: wrappers use the project's single ArtScale value.
