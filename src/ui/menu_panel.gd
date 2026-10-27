@@ -536,6 +536,10 @@ func select_recipe(id: StringName) -> bool:
 	_selected_recipe = id
 	if _tree_items.has(id):
 		_recipe_tree.set_block_signals(true)
+		var ancestor: TreeItem = _tree_items[id].get_parent()
+		while ancestor != null:
+			ancestor.collapsed = false
+			ancestor = ancestor.get_parent()
 		_tree_items[id].select(0)
 		_recipe_tree.set_block_signals(false)
 	_refresh_selection()

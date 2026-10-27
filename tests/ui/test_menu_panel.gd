@@ -467,15 +467,22 @@ func test_tree_level_refresh_preserves_nodes_selection_and_player_choices() -> v
 	var child: RecipeDef = _recipe(&"child", "Second dish", 14)
 	child.unlock_from = &"burger"
 	child.unlock_level = 2
-	var settings: MenuSettings = MenuSettings.new([_burger, child])
+	var other: RecipeDef = _recipe(&"other", "Another root", 10)
+	var neighbour: RecipeDef = _recipe(&"neighbour", "Another child", 12)
+	neighbour.unlock_from = other.id
+	neighbour.unlock_level = 2
+	var settings: MenuSettings = MenuSettings.new([_burger, child, other, neighbour])
 	_panel.bind_menu(settings)
-	assert_true(_panel.select_recipe(child.id))
-	var node: TreeItem = _panel.tree_item_for(child.id)
 	var parent: TreeItem = _panel.tree_item_for(_burger.id)
 	parent.collapsed = true
+	assert_true(_panel.select_recipe(child.id))
+	assert_false(parent.collapsed, "selecting a child reveals its branch")
+	var node: TreeItem = _panel.tree_item_for(child.id)
+	var other_branch: TreeItem = _panel.tree_item_for(other.id)
+	other_branch.collapsed = true
 	assert_true(settings.set_owner_level(2))
 	assert_eq(_panel.tree_item_for(child.id), node)
-	assert_true(parent.collapsed)
+	assert_true(other_branch.collapsed, "an unrelated branch remains folded")
 	assert_eq(_panel.get("_selected_recipe"), child.id)
 	assert_true(node.get_text(1).contains("Learned"))
 	assert_false(settings.is_enabled(child.id), "learning never adds a dish automatically")
@@ -484,12 +491,22 @@ func test_tree_level_refresh_preserves_nodes_selection_and_player_choices() -> v
 
 
 func test_tree_and_detail_use_shared_warm_styles_and_removal_request() -> void:
+	var scene: SceneTree = Engine.get_main_loop() as SceneTree
+	var viewport: SubViewport = SubViewport.new()
+	viewport.size = Vector2i(853, 720)
+	scene.root.add_child(viewport)
+	viewport.add_child(_panel)
+	await scene.process_frame
+	await scene.process_frame
 	var tree: Tree = _panel.get("_recipe_tree") as Tree
 	assert_eq(tree.theme, MenuPanel.SHARED_THEME)
-	assert_eq(tree.get_theme_color("font_color"), MenuPanel.STANDARD_COLOR)
+	assert_true(tree.get_theme_color("font_color").is_equal_approx(MenuPanel.STANDARD_COLOR))
+	assert_eq(tree.get_theme_color("font_color"), MenuPanel.SHARED_THEME.get_color("font_color", "Label"))
 	assert_eq(tree.get_theme_stylebox("panel"), MenuPanel.SHARED_THEME.get_stylebox("normal", "LineEdit"))
 	assert_eq(_button(&"burger", "Top/Enabled").text, "Remove from menu")
 	var before: Dictionary = _menu.to_dict()
 	_button(&"burger", "Top/Enabled").toggled.emit(false)
 	assert_eq(_enable_requests, [{"id": &"burger", "enabled": false}] as Array[Dictionary])
 	assert_eq(_menu.to_dict(), before)
+	viewport.remove_child(_panel)
+	viewport.free()
