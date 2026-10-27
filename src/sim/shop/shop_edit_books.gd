@@ -30,8 +30,13 @@ func can_spend_without_loan(amount: int) -> bool:
 	return answer is bool and answer
 
 
-func add_cash(amount: int, category: StringName) -> void:
-	_record.call(amount, category)
+## A note (for example ShopEditHistory.UNDO_NOTE) is passed only to record
+## callbacks that take a third argument; two-argument fakes keep working.
+func add_cash(amount: int, category: StringName, note: String = "") -> void:
+	if not note.is_empty() and _record.get_argument_count() >= 3:
+		_record.call(amount, category, note)
+	else:
+		_record.call(amount, category)
 
 
 ## Legacy cash-only callers keep their existing explanation.

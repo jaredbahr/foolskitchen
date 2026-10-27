@@ -8,6 +8,7 @@ script = ExtResource("1_script")
 view_scene = ExtResource("2_view")
 id = &"stove"
 display_name = "Stove"
+catalogue_room = &"kitchen"
 category = 3
 footprint = Vector2i(2, 1)
 solid = true

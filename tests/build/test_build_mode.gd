@@ -26,9 +26,9 @@ class CountingEditor extends ShopEditor:
 		move_queries += 1
 		return super.check_move(item_id, cell, turns)
 
-	func check_buy(def_id: StringName, cell: Vector2i, turns: int = 0) -> EditCheck:
+	func check_buy(def_id: StringName, cell: Vector2i, turns: int = 0, exact: ShopEditor.Exact = null) -> EditCheck:
 		buy_queries += 1
-		return super.check_buy(def_id, cell, turns)
+		return super.check_buy(def_id, cell, turns, exact)
 
 var _content: Catalog
 var _sim: RestaurantSim

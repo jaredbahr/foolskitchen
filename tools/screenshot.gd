@@ -976,7 +976,7 @@ static func catalogue_review_profile(profile: StringName) -> Dictionary:
 		items.append({"id": &"modern_frame_chair", "origin": Vector2i(3, 7)})
 	for cell: Vector2i in [Vector2i(6, 7), Vector2i(7, 7)]:
 		items.append({"id": &"wooden_chair" if rustic else &"modern_chair", "origin": cell})
-	return {"items": items, "category": &"seating" if rustic else &"decor",
+	return {"items": items, "category": &"dining" if rustic else &"decor",
 		"wall": &"cream" if rustic else &"slate_blue", "floor": &"honey" if rustic else &"cream",
 		"body": &"walnut" if rustic else &"charcoal"}
 
@@ -1082,7 +1082,7 @@ static func _catalogue_content_expectations(content: ContentDB) -> Dictionary:
 			continue
 		var path: String = definition.view_scene.resource_path if definition.view_scene != null else ""
 		cards.append({"id": String(definition.id), "name": definition.display_name, "price": definition.price,
-			"unlock_level": definition.unlock_level, "scene": path})
+			"unlock_level": definition.unlock_level, "scene": path, "room": String(definition.buy_room())})
 		if not path.is_empty() and not wrappers.has(path):
 			wrappers.append(path)
 	# The Walls tab (FK-070) previews its Kenney pieces in the same cache.
@@ -1151,7 +1151,7 @@ static func catalogue_review_evidence(main: Node, context_root: Node) -> Diction
 	for id: StringName in BuildCatalogue.CATEGORY_IDS:
 		var button: Button = catalogue.category_buttons[id]
 		tabs.append({"id": String(id), "text": button.text, "pressed": button.button_pressed,
-			"native": _loan_control_evidence(button)})
+			"shown": button.visible, "native": _loan_control_evidence(button)})
 	var items: Array[Dictionary] = []
 	for item: PlacedItem in world.grid.items():
 		var definition: ItemDef = item.def as ItemDef
@@ -1262,10 +1262,19 @@ static func catalogue_review_valid(state: Dictionary, frame: int, fixture: Dicti
 		return false
 	if state["tabs"].size() != BuildCatalogue.CATEGORY_IDS.size():
 		return false
+	# Buy mode (FK-085) shows one tab per room that holds an item; the Build
+	# tabs belong to the other side and stay hidden.
+	var rooms: Array[String] = []
+	for card: Dictionary in state.get("expected_cards", []):
+		if not rooms.has(String(card.get("room", ""))):
+			rooms.append(String(card.get("room", "")))
 	for tab: Dictionary in state["tabs"]:
 		var id: StringName = StringName(tab["id"])
+		var expected_shown: bool = rooms.has(String(id))
 		if tab["text"] != BuildCatalogue.CATEGORY_LABELS.get(id, "") or tab["pressed"] != (id == profile["category"]) \
-				or tab["native"]["visible"] != true or tab["native"]["inside_clip"] != true:
+				or tab.get("shown") != expected_shown:
+			return false
+		if expected_shown and (tab["native"]["visible"] != true or tab["native"]["inside_clip"] != true):
 			return false
 	var cache: Dictionary = state["cache"]
 	return cache["supported"] == true and cache["pending"] == 0 and cache["active"] == false \
@@ -1278,7 +1287,7 @@ static func catalogue_review_valid(state: Dictionary, frame: int, fixture: Dicti
 static func catalogue_vibe_evidence(main: Node, world: SimWorld, content: ContentDB,
 		editor: ShopEditor, catalogue: BuildCatalogue) -> Dictionary:
 	var menu: MenuSettings = main.get("menu_settings") as MenuSettings
-	var meter: VibeMeter = catalogue.get_node_or_null("Panel/Margin/Rows/Scroll/Content/VibeMeter") as VibeMeter
+	var meter: VibeMeter = catalogue.get_node_or_null("Panel/Margin/Rows/Scroll/Content/Categories/Readout/VibeMeter") as VibeMeter
 	var panel: Control = catalogue.get_node_or_null("Panel") as Control
 	var scroll: ScrollContainer = catalogue.get_node_or_null("Panel/Margin/Rows/Scroll") as ScrollContainer
 	if not ("vibe_result" in main) or menu == null or meter == null or panel == null or scroll == null:
@@ -1457,8 +1466,8 @@ static func _catalogue_cards_valid(state: Dictionary) -> bool:
 		seen[id] = true
 		var definition: Dictionary = expected[id]
 		var locked: bool = int(definition["unlock_level"]) > int(state["owner_level"])
-		var text: String = "%s\nLevel %d" % [definition["name"], definition["unlock_level"]] if locked \
-			else "%s\n$%d" % [definition["name"], definition["price"]]
+		# FK-085 tiles show the price (or unlock level) under the picture.
+		var text: String = "Level %d" % definition["unlock_level"] if locked else Fmt.money(int(definition["price"]))
 		if card.get("scene") != definition["scene"] or card.get("text") != text or card.get("disabled") != locked:
 			return false
 	var cache: Dictionary = state.get("cache", {})

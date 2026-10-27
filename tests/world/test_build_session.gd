@@ -455,7 +455,7 @@ func test_build_hints_match_available_actions_and_fit_content_or_small_viewport_
 	var panel: PanelContainer = _main.get_node("HUD/BuildHints") as PanelContainer
 	var scroll: ScrollContainer = _main.get_node("HUD/BuildHints/Scroll") as ScrollContainer
 	await _frames(2)
-	assert_eq(label.text, "Click Pick furniture  |  Alt-click Pick rug  |  Esc Exit")
+	assert_eq(label.text, "Click Pick up  |  Alt-click Pick up rug  |  Ctrl+Z Undo  Ctrl+Y Redo  |  Esc Exit")
 	assert_true(panel.size.x < 700.0 and panel.size.y < 96.0, "one-line hints follow their content")
 	assert_true(_mode().begin_buy(&"chair", Vector2i(4, 9)))
 	assert_true(label.text.contains("R Rotate"))
@@ -463,14 +463,14 @@ func test_build_hints_match_available_actions_and_fit_content_or_small_viewport_
 	assert_true(_mode().pick_up(_id(&"potted_plant")))
 	assert_true(label.text.contains("Del Sell"))
 	_mode().cancel()
-	assert_eq(label.text, "Click Pick furniture  |  Alt-click Pick rug  |  Esc Exit")
+	assert_eq(label.text, "Click Pick up  |  Alt-click Pick up rug  |  Ctrl+Z Undo  Ctrl+Y Redo  |  Esc Exit")
 	# Reproduce the real two-line red hint through the same proposal as capture.
 	assert_true(_main.call("begin_buy_item", &"fridge"))
 	assert_true(_main.call("update_build_pointer", _project(Vector2i(7, 7))))
 	_key(KEY_R)
 	assert_false(_mode().current_check.ok)
 	await _frames(3)
-	assert_eq(label.text, "R Rotate  |  Esc Cancel\nSomething is in the way")
+	assert_eq(label.text, "Click Place  |  , . or R Rotate  |  Esc or Right-click Cancel\nSomething is in the way")
 	assert_eq(label.get_line_count(), 2)
 	_assert_hint_content_fits(label, scroll)
 	# Presenter-only long text tests the bounded scroll, without posing sim state.

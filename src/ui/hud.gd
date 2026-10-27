@@ -8,6 +8,8 @@ const STAFF_PHASES: Array[int] = [SimClock.Phase.MORNING, SimClock.Phase.OPEN,
 	SimClock.Phase.LAST_ORDERS, SimClock.Phase.CLOSED]
 const GAIN_COLOR: Color = Color("286B3B")
 const LOSS_COLOR: Color = Color("A42E2E")
+## The Build/Buy key strip keeps one line for every hint at 1600 px (FK-085).
+const HINT_MAX_WIDTH: float = 760.0
 
 signal build_toggled()
 signal paint_toggled()
@@ -55,6 +57,7 @@ var _build_available: bool = false
 var _build_active: bool = false
 var _build_reason: String = ""
 var _build_state: int = BuildMode.State.IDLE
+var _build_tool: int = BuildMode.Tool.HAND
 var _menu_button: Button
 var _staff_button: Button
 var _stock_button: Button
@@ -332,11 +335,13 @@ func _style_header() -> void:
 
 
 ## State changes only: a refresh between native down/up preserves the button.
-func set_build_state(available: bool, active: bool, reason: String = "", held_state: int = BuildMode.State.IDLE) -> void:
+func set_build_state(available: bool, active: bool, reason: String = "", held_state: int = BuildMode.State.IDLE,
+		tool: int = BuildMode.Tool.HAND) -> void:
 	_build_available = available
 	_build_active = active
 	_build_reason = reason
 	_build_state = held_state
+	_build_tool = tool
 	if _build_button == null:
 		refresh()
 	else:
@@ -360,23 +365,13 @@ func _refresh_build_controls() -> void:
 		_build_button.set_pressed_no_signal(_build_active)
 	if _paint_button.button_pressed != _paint_active:
 		_paint_button.set_pressed_no_signal(_paint_active)
-	var tooltip: String = "Build furniture (B)" if allowed else "Build furniture in the morning or after closing"
+	var tooltip: String = "Build and Buy (B)" if allowed else "Build and Buy in the morning or after closing"
 	if _build_button.tooltip_text != tooltip:
 		_build_button.tooltip_text = tooltip
 	var resize_hint: bool = _build_hints.visible != (_build_active or _paint_active)
 	if resize_hint:
 		_build_hints.visible = _build_active or _paint_active
-	var text: String = "Click Pick furniture  |  Alt-click Pick rug  |  Esc Exit"
-	if _paint_active:
-		text = "Choose a colour, hover to preview, click to paint  |  Esc Exit"
-	elif _build_state == BuildMode.State.MOVE:
-		text = "R Rotate  |  Del Sell  |  Esc Cancel"
-	elif _build_state == BuildMode.State.BUY:
-		text = "R Rotate  |  Esc Cancel"
-	elif _build_state == BuildMode.State.WALLS:
-		text = "Drag along grid lines to build  |  Click a wall to change it  |  Del Remove  |  Esc Cancel"
-	elif _build_state == BuildMode.State.FLOOR:
-		text = "Drag onto the lot to add floor  |  Shift-drag Remove added floor  |  Esc Cancel"
+	var text: String = build_hint(_paint_active, _build_state, _build_tool)
 	if not _build_reason.is_empty():
 		text += "\n" + _build_reason
 	if _build_hint_text.text != text:
@@ -384,6 +379,27 @@ func _refresh_build_controls() -> void:
 		resize_hint = true
 	if resize_hint:
 		_layout_build_hints()
+
+
+## The key strip for Build/Buy (FK-085): what the mouse and keys do now.
+static func build_hint(painting: bool, state: int, tool: int) -> String:
+	if painting:
+		return "Click to paint  |  Ctrl+Z Undo  Ctrl+Y Redo  |  Esc Back"
+	match state:
+		BuildMode.State.MOVE:
+			return "Click Place  |  , . or R Rotate  |  Del Sell  |  Esc or Right-click Cancel"
+		BuildMode.State.BUY:
+			return "Click Place  |  , . or R Rotate  |  Esc or Right-click Cancel"
+		BuildMode.State.WALLS:
+			return "Drag along grid lines to build  |  Click a wall to change it  |  Del Remove  |  Esc Cancel"
+		BuildMode.State.FLOOR:
+			return "Drag onto the lot to add floor  |  Shift-drag Remove added floor  |  Esc Cancel"
+	match tool:
+		BuildMode.Tool.EYEDROPPER:
+			return "Eyedropper: click an item to place another  |  Ctrl+Z Undo  Ctrl+Y Redo  |  Esc Hand"
+		BuildMode.Tool.SELL:
+			return "Sell: click (or Del) to sell what you point at  |  Ctrl+Z Undo  Ctrl+Y Redo  |  Esc Hand"
+	return "Click Pick up  |  Alt-click Pick up rug  |  Ctrl+Z Undo  Ctrl+Y Redo  |  Esc Exit"
 
 
 func _layout_build_hints() -> void:
@@ -394,7 +410,7 @@ func _layout_build_hints() -> void:
 	var padding: Vector2 = _build_hints.get_theme_stylebox("panel").get_minimum_size()
 	var header_bottom: float = (get_node("Top") as Control).get_global_rect().end.y
 	var top: float = minf(maxf(104.0, header_bottom + 6.0), maxf(12.0, viewport_size.y - 64.0))
-	var available: Vector2 = Vector2(minf(520.0, viewport_size.x - 24.0), viewport_size.y - top - 12.0) - padding
+	var available: Vector2 = Vector2(minf(HINT_MAX_WIDTH, viewport_size.x - 24.0), viewport_size.y - top - 12.0) - padding
 	if available.x <= 0.0 or available.y <= 0.0:
 		return
 	var font: Font = _build_hint_text.get_theme_font("font")
