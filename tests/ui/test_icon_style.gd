@@ -109,8 +109,8 @@ func test_existing_panel_heading_paths_gain_one_icon_and_paint_keeps_text() -> v
 	var menu: MenuPanel = load("res://src/ui/menu_panel.tscn").instantiate() as MenuPanel
 	menu.refresh()
 	menu.refresh()
-	_assert_heading(menu.get_node("Panel/Content/Title") as Label, "menuList.png")
-	var settings: Button = menu.get_node("Panel/Content/SettingsButton") as Button
+	_assert_heading(menu.get_node("Panel/Content/Header/Title") as Label, "menuList.png")
+	var settings: Button = menu.get_node("Panel/Content/Header/SettingsButton") as Button
 	assert_eq(settings.text, "Settings")
 	assert_eq(settings.icon.resource_path, IconCatalogue.ROOT + "gear.png")
 	assert_eq(settings.get_theme_constant("icon_max_width"), 24)

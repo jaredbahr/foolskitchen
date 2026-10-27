@@ -20,6 +20,7 @@ duration_ticks = 60
 [resource]
 script = ExtResource("1_recipe")
 id = &"tomato_melt"
+unlock_from = &"burger"
 section = 1
 display_name = "Tomato melt"
 ingredients = Array[ExtResource("2_ingredient")]([ExtResource("ingredient_bread"), ExtResource("ingredient_bread"), ExtResource("ingredient_cheese"), ExtResource("ingredient_tomato")])

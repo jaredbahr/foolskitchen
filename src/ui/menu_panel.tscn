@@ -20,9 +20,9 @@ layout_mode = 1
 anchor_left = 0.5
 anchor_right = 0.5
 anchor_bottom = 1.0
-offset_left = -360.0
+offset_left = -470.0
 offset_top = 112.0
-offset_right = 360.0
+offset_right = 470.0
 offset_bottom = -12.0
 clip_contents = true
 mouse_filter = 0
@@ -32,11 +32,34 @@ mouse_force_pass_scroll_events = false
 layout_mode = 2
 mouse_filter = 2
 
-[node name="Title" type="Label" parent="Panel/Content"]
+[node name="Header" type="HBoxContainer" parent="Panel/Content"]
 layout_mode = 2
+mouse_filter = 2
+
+[node name="Title" type="Label" parent="Panel/Content/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
 mouse_filter = 2
 theme_override_font_sizes/font_size = 26
 text = "Menu and prices"
+
+[node name="GoalsButton" type="Button" parent="Panel/Content/Header"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 4
+theme = ExtResource("2_theme")
+focus_mode = 0
+text = "Career goals"
+tooltip_text = "View career goals"
+
+[node name="SettingsButton" type="Button" parent="Panel/Content/Header"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 4
+theme = ExtResource("2_theme")
+focus_mode = 0
+text = "Settings"
+tooltip_text = "Audio, display and controls"
 
 [node name="Status" type="Label" parent="Panel/Content"]
 unique_name_in_owner = true
@@ -45,17 +68,42 @@ mouse_filter = 2
 autowrap_mode = 3
 text = "Choose dishes and prices for today."
 
-[node name="GoalsButton" type="Button" parent="Panel/Content"]
+[node name="Identity" type="VBoxContainer" parent="Panel/Content"]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="NameRow" type="HBoxContainer" parent="Panel/Content/Identity"]
+layout_mode = 2
+
+[node name="RestaurantName" type="LineEdit" parent="Panel/Content/Identity/NameRow"]
 unique_name_in_owner = true
 layout_mode = 2
-theme = ExtResource("2_theme")
-focus_mode = 0
-text = "Career goals"
-tooltip_text = "View career goals"
+size_flags_horizontal = 3
+placeholder_text = "Restaurant name"
+max_length = 24
 
-[node name="Scroll" type="ScrollContainer" parent="Panel/Content"]
+[node name="ApplyName" type="Button" parent="Panel/Content/Identity/NameRow"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Apply name"
+
+[node name="NameFeedback" type="Label" parent="Panel/Content/Identity"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+mouse_filter = 2
+autowrap_mode = 3
+
+[node name="Body" type="HBoxContainer" parent="Panel/Content"]
 layout_mode = 2
 size_flags_vertical = 3
+mouse_filter = 2
+theme_override_constants/separation = 20
+
+[node name="Scroll" type="ScrollContainer" parent="Panel/Content/Body"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 1.15
 clip_contents = true
 mouse_filter = 0
 mouse_force_pass_scroll_events = false
@@ -63,54 +111,58 @@ focus_mode = 2
 horizontal_scroll_mode = 0
 vertical_scroll_mode = 1
 
-[node name="List" type="VBoxContainer" parent="Panel/Content/Scroll"]
+[node name="Pad" type="MarginContainer" parent="Panel/Content/Body/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+theme_override_constants/margin_left = 0
+theme_override_constants/margin_top = 0
+theme_override_constants/margin_right = 14
+theme_override_constants/margin_bottom = 0
+
+[node name="List" type="VBoxContainer" parent="Panel/Content/Body/Scroll/Pad"]
 layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 2
 
-[node name="NameRow" type="HBoxContainer" parent="Panel/Content/Scroll/List"]
-layout_mode = 2
-
-[node name="RestaurantName" type="LineEdit" parent="Panel/Content/Scroll/List/NameRow"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-placeholder_text = "Restaurant name"
-max_length = 24
-
-[node name="ApplyName" type="Button" parent="Panel/Content/Scroll/List/NameRow"]
-unique_name_in_owner = true
-layout_mode = 2
-text = "Apply name"
-
-[node name="NameFeedback" type="Label" parent="Panel/Content/Scroll/List"]
-unique_name_in_owner = true
-visible = false
-layout_mode = 2
-mouse_filter = 2
-autowrap_mode = 3
-
-[node name="MenuCount" type="Label" parent="Panel/Content/Scroll/List"]
+[node name="MenuCount" type="Label" parent="Panel/Content/Body/Scroll/Pad/List"]
 unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
 text = "0 / 6 dishes on the menu"
-[node name="Empty" type="Label" parent="Panel/Content/Scroll/List"]
+
+[node name="Empty" type="Label" parent="Panel/Content/Body/Scroll/Pad/List"]
 unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
 autowrap_mode = 3
 text = "No cookable dishes are available."
 
-[node name="Rows" type="VBoxContainer" parent="Panel/Content/Scroll/List"]
+[node name="DetailScroll" type="ScrollContainer" parent="Panel/Content/Body"]
+layout_mode = 2
+size_flags_horizontal = 3
+clip_contents = true
+mouse_filter = 0
+mouse_force_pass_scroll_events = false
+focus_mode = 2
+horizontal_scroll_mode = 0
+vertical_scroll_mode = 1
+
+[node name="Pad" type="MarginContainer" parent="Panel/Content/Body/DetailScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+theme_override_constants/margin_left = 0
+theme_override_constants/margin_top = 0
+theme_override_constants/margin_right = 14
+theme_override_constants/margin_bottom = 0
+
+[node name="Detail" type="VBoxContainer" parent="Panel/Content/Body/DetailScroll/Pad"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+
+[node name="Rows" type="VBoxContainer" parent="Panel/Content/Body/DetailScroll/Pad/Detail"]
 unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
-
-[node name="SettingsButton" type="Button" parent="Panel/Content"]
-unique_name_in_owner = true
-layout_mode = 2
-theme = ExtResource("2_theme")
-focus_mode = 0
-text = "Settings"
-tooltip_text = "Audio, display and controls"

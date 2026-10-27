@@ -1912,7 +1912,7 @@ func _open_settings_control(from_gear: bool, percent: int) -> void:
 			or not _main.has_method("is_settings_visible"):
 		_fail_capture("Settings capture requires Main's production panel APIs")
 		return
-	var button_path: NodePath = ^"HUD/Top/Row/Settings" if from_gear else ^"Overlay/MenuPanel/Panel/Content/SettingsButton"
+	var button_path: NodePath = ^"HUD/Top/Row/Settings" if from_gear else ^"Overlay/MenuPanel/Panel/Content/Header/SettingsButton"
 	if not from_gear and (not bool(_main.call("set_menu_visible", true)) or not bool(_main.call("is_menu_visible"))):
 		_fail_capture("--settings requires Main's production morning Menu")
 		return
