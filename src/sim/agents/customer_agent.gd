@@ -209,7 +209,7 @@ func why() -> String:
 		State.EATING:
 			return "Enjoying my drink" if is_drinks_visit() else "Enjoying my meal"
 		State.PAYING:
-			return "Paying for my meal"
+			return "Paying for my drink" if is_drinks_visit() else "Paying for my meal"
 		State.LEAVING, State.LEFT:
 			return "Leaving: %s" % String(leave_reason).replace("_", " ")
 	return "Visiting the restaurant"

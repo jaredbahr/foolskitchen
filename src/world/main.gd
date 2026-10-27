@@ -1648,6 +1648,10 @@ func _refresh_menu_catalogue() -> void:
 	if _menu_panel != null:
 		_menu_panel.refresh()
 	_recompute_vibe()
+	# A machine bought in the morning gets its supplies the way the morning
+	# order would have bought them; at closing, the next morning order does.
+	if Clock.sim.phase == SimClock.Phase.MORNING and _started:
+		_restock()
 	_refresh_stock_panel()
 
 

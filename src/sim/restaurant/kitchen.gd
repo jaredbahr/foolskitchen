@@ -218,7 +218,7 @@ func _post_pour(order: Order, recipe: RecipeDef, sim: RestaurantSim) -> void:
 	var steps: Array[TaskStep] = []
 	var first_cell: Vector2i = SimGrid.NO_CELL
 	for step: RecipeStep in recipe.steps:
-		var station: PlacedItem = _station(sim.world, step.station_type, ItemDef.Category.STATION)
+		var station: PlacedItem = _free_station(sim.world, step.station_type)
 		if station == null or station.work_cells.is_empty():
 			_cancel(order, &"missing_station")
 			return
@@ -692,6 +692,21 @@ func _station(world: SimWorld, station_type: StringName, category: ItemDef.Categ
 		if definition != null and definition.station_type == station_type and definition.category == category:
 			return item
 	return null
+
+
+## With two coffee machines, a new drink goes to one nobody is working at.
+## Falls back to the first of its type, which then waits as before.
+func _free_station(world: SimWorld, station_type: StringName) -> PlacedItem:
+	var first: PlacedItem = null
+	for item: PlacedItem in world.grid.items():
+		var definition: ItemDef = item.def as ItemDef
+		if definition == null or definition.station_type != station_type or definition.category != ItemDef.Category.STATION:
+			continue
+		if first == null:
+			first = item
+		if world.grid.free_work_cell(item) != SimGrid.NO_CELL:
+			return item
+	return first
 
 
 func _pass(world: SimWorld) -> PlacedItem:

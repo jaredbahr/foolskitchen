@@ -63,6 +63,7 @@ Any new building piece (walls, windows, doors, the awning, counters) follows the
   - **Burger:** `burger-cheese` (or `burger`)
   - **Tomato soup:** `bowl-soup`
   - **Grilled cheese and Tomato melt:** `sandwich`
+  - **Croissant:** `croissant`. Drinks, when shown: **Coffee** `cup-coffee`, **Tea** `cup-tea`, **Soft drink** `soda-glass`, **Beer** `glass`, **Glass of wine** `glass-wine` (FK-083)
 - Every served dish sits on `plate` (or `plate-dinner`).
 - A dirty plate is `plate` plus a small smear piece from the same kit, or `plate` alone tinted darker. No new models.
 

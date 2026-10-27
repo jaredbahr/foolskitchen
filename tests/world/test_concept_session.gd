@@ -109,6 +109,8 @@ func test_opening_hours_are_a_morning_choice_saved_at_the_next_morning_and_paid_
 	assert_eq(Clock.sim.display_close_minute, 15 * 60 + 30, "the panel asks the session")
 	assert_true(main.call("set_opening_hours", 7 * 60, 15 * 60))
 	assert_true(main.call("set_menu_visible", false))
+	assert_true(main.call("shop_buy", &"coffee_machine", Vector2i(12, 5), 2))
+	assert_true(main.call("menu_set_enabled", &"tea", false))
 	assert_true(Clock.sim.start_service())
 	assert_false(main.call("set_opening_hours", 8 * 60, 15 * 60), "mornings only")
 	var guard: int = 0
@@ -124,6 +126,9 @@ func test_opening_hours_are_a_morning_choice_saved_at_the_next_morning_and_paid_
 	assert_eq(Clock.sim.day, 2)
 	assert_eq([Clock.sim.display_open_minute, Clock.sim.display_close_minute], [7 * 60, 15 * 60],
 		"the clock section kept the hours")
+	var settings: MenuSettings = reloaded.get("menu_settings") as MenuSettings
+	assert_true(settings.is_enabled(&"coffee") and not settings.is_enabled(&"tea"),
+		"the machine's drinks and their choices reload with the shop")
 	assert_true(reloaded.call("set_opening_hours", 11 * 60, 21 * 60), "back to the default")
 
 
