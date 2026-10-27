@@ -41,7 +41,13 @@ The Tier 1 hole-in-the-wall: 1 door, 3 two-seat tables, 1 fridge, 1 prep counter
 - [ ] Paint and colour slots on walls, floors and furniture from palette swatches (Sims-style)
 - [ ] Lighting decor (lamps, then chandeliers at Tier 3)
 - [x] Menu screen: choose dishes, set prices against the standard price
-- [ ] Shops: ingredient market and furniture catalogue (done), stock panel and auto-reorder (#54)
+- [x] Shops: ingredient market and furniture catalogue, stock panel and auto-reorder (#54)
+- [x] Walls, doorways and windows (#120)
+- [ ] Floor expansion to the back and sides (#153)
+- [ ] Sims-style Build and Buy modes: categories, theme filters, undo, eyedropper (#160, D23)
+- [ ] Concepts: coffee shop and bar, drinks, counter seating, opening hours (#158, D23)
+- [ ] Menu designer: name, sections, unlock tree, menu boards (#161, D23)
+- [ ] Restrooms as built rooms (#115)
 - [x] Hiring pool, traits, wages
 - [ ] The priority matrix
 - [x] Plate cycle (sink, dirty plates)
