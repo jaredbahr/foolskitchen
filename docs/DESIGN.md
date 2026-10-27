@@ -44,7 +44,7 @@ Morning (closed): plan menu and prices, buy stock, hire, rebuild
 - **Restroom need is family-friendly:** an unmet need means an unhappy guest who leaves early. There is no mess on the floor.
 
 **Staff**
-- **Roles:** Cook, Server, Cleaner (Tier 1 to 2). Then Host, Dishwasher and Bartender (Tier 3 to 4), and Manager (Tier 6, runs other locations).
+- **Roles:** Cook, Server, Cleaner (Tier 1 to 2). Then Host, Dishwasher and Bartender (Tier 3 to 4), and Manager (Tier 3, runs a site while you're away; D24).
 - **Stats:** skill per role (cooking, service, cleaning) from 1 to 5, speed, wage, and mood.
 - **Traits** (one or two each, shown at hire): for example Fast, Clumsy, Charming, Tidy, Lazy.
 - **Growth:** staff earn XP in the role they work and level up their skill. Better staff ask for raises.
@@ -104,7 +104,7 @@ Morning (closed): plan menu and prices, buy stock, hire, rebuild
 
 - **Owning vs renting:** buying costs more up front, removes rent, and allows structural upgrades and a second floor.
 - **Moving up:** you can keep an old property or sell it.
-- **Second location (the friend's request):** unlocks at Tier 3. You can keep your previous shop running as a second site. Switch between sites at any time. The one you're not at runs in the simplified background sim, and both feed the same bank account. Tier 6 grows this into a chain with managers.
+- **Second location (the friend's request):** unlocks at Tier 3 and needs a hired Manager for the site you leave (D24, #164). Buy a new lot (size, street, rent and guest mix differ) and design it from a bare shell. Switch between sites in the morning. The one you're not at runs in the simplified background sim, and both feed the same bank account. Tier 6 grows this into a chain with managers.
 - **No running out of things to do:** the late game has no end state. A chain to grow, rotating weekly challenges, a collection of every recipe, item and theme, and sandbox mode.
 
 ### 4.6 Mini-games (start with 3)
@@ -141,6 +141,8 @@ Multiplayer, a story or campaign, scenario mode (career milestones replace it), 
 | D20 | Art set | All Kenney (CC0): Furniture Kit, Food Kit, Mini Characters, Game Icons. Rules in `docs/ART_STYLE.md` | 2026-10-24 |
 | D21 | Focus | Building, designing and themes plus the self-running management sim come first and get polished. First person (D12) and mini-games are deferred; if added, mini-games are short moments for emergencies or clean-ups. Themes are designed by the player, never auto-built | 2026-10-24 |
 | D22 | Player-led look | The player decides how the restaurant looks. We offer many assets and variants (colours, materials, styles of the same piece) so there are several ways to design any space; no single "correct" look. Reviews judge Kenney-style consistency (D19), not taste | 2026-10-25 |
+| D23 | Restaurant designer | The game is a restaurant designer with a management sim underneath, in a Sims-like design language (Build and Buy modes, browsable catalogue, forgiving tools). The player builds the space (walls, windows, interior rooms, restrooms, floor, paint, decor, later entertainment) and chooses the concept (diner, coffee shop, bar or a mix) through what they build and serve, never a picker. The menu and theming are part of the design fun | 2026-10-27 |
+| D24 | More sites and managers | A second site unlocks at Tier 3, and you need a hired Manager to leave a site (the Manager role moves from Tier 6 to Tier 3). Away sites run a seeded summary sim: their own recent results scaled by manager skill, never more than playing in person. New lots differ in size, street, rent and guest mix, and start as a bare shell (#164) | 2026-10-27 |
 | D11 | Platform | Both: a web build (play from a link) and a Windows download, from the same Godot project | 2026-10-23 |
 | D6 | Starting property | A rented hole-in-the-wall shop with 2 to 3 tables (not an outdoor food cart: indoor is simpler to simulate and to build) | 2026-10-23 |
 | D7 | Mode structure | Career mode only at first. A sandbox comes in Phase 5. No scenario mode. | 2026-10-23 |

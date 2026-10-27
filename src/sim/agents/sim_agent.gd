@@ -24,7 +24,7 @@ var needs_repath: bool = false
 ## Last world tick this agent moved a cell or did a unit of work.
 var last_progress_tick: int = 0
 
-var _goal: Vector2i = Vector2i(-1, -1)
+var _goal: Vector2i = SimGrid.NO_CELL
 
 
 ## Runs one sim tick. Subclasses override.
@@ -75,7 +75,7 @@ func step_move(world: SimWorld) -> MoveResult:
 	if has_arrived():
 		return MoveResult.ARRIVED
 	var next := path[path_index]
-	if not world.grid.is_walkable(next):
+	if not world.grid.is_walkable(next) or not world.grid.step_open(cell, next):
 		return MoveResult.BLOCKED
 	var d := next - cell
 	var step_len := GridMath.DIAGONAL_COST if d.x != 0 and d.y != 0 else 1.0
@@ -113,7 +113,7 @@ func _step_move_scaled(world: SimWorld, multiplier: float) -> MoveResult:
 	var budget: float = multiplier
 	while budget > 0.0 and not has_arrived():
 		var next: Vector2i = path[path_index]
-		if not world.grid.is_walkable(next):
+		if not world.grid.is_walkable(next) or not world.grid.step_open(cell, next):
 			return MoveResult.BLOCKED
 		var delta: Vector2i = next - cell
 		var length: float = GridMath.DIAGONAL_COST if delta.x != 0 and delta.y != 0 else 1.0
@@ -145,8 +145,11 @@ func clear_path() -> void:
 	needs_repath = false
 
 
-## True if any of `cells` lies on the part of the path not yet walked.
+## True if any of `cells` lies on the part of the path not yet walked,
+## including the cell being left: a wall edit beside it can close the next step.
 func path_crosses(cells: Array[Vector2i]) -> bool:
+	if not has_arrived() and cells.has(cell):
+		return true
 	for i in range(path_index, path.size()):
 		if cells.has(path[i]):
 			return true

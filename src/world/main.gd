@@ -4,13 +4,17 @@ extends Node3D
 ## each new morning.
 ##
 ## Day loop:
-##   MORNING  -> fridge topped up, "Open shop" (HUD) starts service
+##   MORNING  -> expired stock thrown out, auto-reorder tops the fridge up,
+##               "Open shop" (HUD) starts service
 ##   OPEN / LAST_ORDERS -> RestaurantSim runs (guests, staff, kitchen)
 ##   CLOSED   -> wages and rent charged, evening report shown
 ##   "Next day" -> MORNING of the next day, autosave
 ## F10 starts a new game (deletes the autosave).
 
 const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
+## Camera fit (FK-080): this zoom frames this many cells; bigger shops zoom out.
+const SHOP_ZOOM: float = 12.0
+const SHOP_FRAME_CELLS: Vector2 = Vector2(14.0, 12.0)
 const TUNING: EconomyTuning = preload("res://data/balance/tier1_economy.tres")
 const CLEANLINESS_TUNING: CleanlinessTuning = preload("res://data/balance/cleanliness.tres")
 const REVIEW_TUNING: ReviewTuning = preload("res://data/balance/reviews.tres")
@@ -61,6 +65,10 @@ var milestones: MilestoneTracker = MilestoneTracker.new()
 var milestone_catalogue: MilestoneSet = MILESTONES
 ## Zero is one plate; the two purchased levels carry two and four.
 var tray_level: int = 0
+## Per-ingredient morning auto-reorder choices, saved in the "reorder" section.
+var reorder_settings: ReorderSettings = ReorderSettings.new(TUNING)
+## Auto-order premium. Tests that are not about reorder pricing may set 0.
+var auto_reorder_premium: float = TUNING.auto_reorder_premium
 
 var _previous_clock: SimClock = null
 var _started: bool = false
@@ -73,6 +81,11 @@ var _loaded_plates: PlateLedger = null
 var _loaded_reputation: ReputationBook = null
 var _loaded_milestones: MilestoneTracker = null
 var _loaded_tray_level: int = 0
+var _loaded_reorder: ReorderSettings = null
+## This morning's automatic order and expiry, for the Stock panel notes.
+var _morning_order: Dictionary = {}
+var _expired_this_morning: Dictionary = {}
+var _sold_out_shown: int = -1
 var _owner_award_today: Dictionary = {}
 var _owner_unlocks_today: Array[String] = []
 var _owner_award_day: int = 0
@@ -101,6 +114,7 @@ var _settings_previous_speed: int = 0
 var _goals_panel: GoalsPanel
 var _goals_return_to_menu: bool = false
 var _goals_snapshot: Dictionary = {}
+var _stock_panel: StockPanel
 
 
 ## Builds the restaurant and the read-only view. Safe before tree readiness.
@@ -145,13 +159,7 @@ func _bind_world_presentation() -> void:
 	var camera: CameraRig = $CameraRig
 	camera.set_grid_forced(false)
 	camera.grid_floor = view.floor_mesh
-	var shop_half: Vector2 = Vector2(world.grid.size) * GridMath.CELL_SIZE * 0.5
-	camera.initial_focus = shop_half
-	# Pan around the shop itself, with a 2 m margin on every side.
-	camera.pan_center = shop_half
-	camera.pan_limits = shop_half + Vector2(2.0, 2.0)
-	camera.initial_zoom = 12.0
-	camera.reset_view()
+	_frame_shop(true)
 	if not camera.yaw_snapped.is_connected(view.set_camera_quarter):
 		camera.yaw_snapped.connect(view.set_camera_quarter)
 	view.set_camera_quarter(camera.camera_quarter())
@@ -178,6 +186,10 @@ func _bind_world_presentation() -> void:
 	_paint_swatch_id = _build_catalogue.selected_swatch_id
 	if not _build_catalogue.buy_requested.is_connected(_on_build_buy_requested):
 		_build_catalogue.buy_requested.connect(_on_build_buy_requested)
+	if not _build_catalogue.wall_tool_requested.is_connected(_on_wall_tool_requested):
+		_build_catalogue.wall_tool_requested.connect(_on_wall_tool_requested)
+	if not _build_catalogue.floor_tool_requested.is_connected(_on_floor_tool_requested):
+		_build_catalogue.floor_tool_requested.connect(_on_floor_tool_requested)
 	if not _build_catalogue.swatch_requested.is_connected(_on_swatch_requested):
 		_build_catalogue.swatch_requested.connect(_on_swatch_requested)
 	if not $HUD.build_toggled.is_connected(_on_build_toggled):
@@ -222,6 +234,15 @@ func _bind_world_presentation() -> void:
 		_staff_panel.job_priority_requested.connect(_on_staff_job_priority_requested)
 	if not $HUD.is_connected(&"staff_pressed", toggle_staff):
 		$HUD.connect(&"staff_pressed", toggle_staff)
+	_stock_panel = $Overlay/StockPanel
+	if not _stock_panel.buy_requested.is_connected(_on_stock_buy_requested):
+		_stock_panel.buy_requested.connect(_on_stock_buy_requested)
+		_stock_panel.auto_requested.connect(_on_stock_auto_requested)
+		_stock_panel.target_requested.connect(_on_stock_target_requested)
+		_stock_panel.close_requested.connect(_on_stock_close_requested)
+	if not $HUD.is_connected(&"stock_pressed", toggle_stock):
+		$HUD.connect(&"stock_pressed", toggle_stock)
+	_refresh_stock_panel()
 	_inspect_panel.bind_world(world)
 	_debug_overlay.bind_world(world)
 	_debug_overlay.bind_cleanliness(sim.cleanliness)
@@ -229,9 +250,25 @@ func _bind_world_presentation() -> void:
 	refresh_presentation()
 
 
+## Centres the camera on the whole building and zooms so it fits (FK-080).
+## The starting shell keeps exactly its old framing: zoom 12 for 14 x 12 cells.
+## `reset` restores the default view; otherwise the view glides to the new fit.
+func _frame_shop(reset: bool) -> void:
+	var camera: CameraRig = $CameraRig
+	var area: Rect2i = Rect2i()
+	for cell: Vector2i in world.grid.cells():
+		if world.grid.terrain(cell) != SimGrid.Terrain.OUTSIDE:
+			area = Rect2i(cell, Vector2i.ONE) if area.size == Vector2i.ZERO else area.merge(Rect2i(cell, Vector2i.ONE))
+	var low: Vector2 = Vector2(area.position) * GridMath.CELL_SIZE
+	var half: Vector2 = Vector2(area.size) * GridMath.CELL_SIZE * 0.5
+	var zoom: float = SHOP_ZOOM * maxf(1.0, maxf(float(area.size.x) / SHOP_FRAME_CELLS.x, float(area.size.y) / SHOP_FRAME_CELLS.y))
+	# Pan around the shop itself, with a 2 m margin on every side.
+	camera.frame_area(low + half, half + Vector2(2.0, 2.0), zoom, reset)
+
+
 func _on_header_layout_changed() -> void:
 	var top: float = float($HUD.call("panel_top"))
-	for path: NodePath in [^"Overlay/MenuPanel/Panel", ^"Overlay/StaffPanel/Panel",
+	for path: NodePath in [^"Overlay/MenuPanel/Panel", ^"Overlay/StaffPanel/Panel", ^"Overlay/StockPanel/Panel",
 			^"Overlay/EveningReport/Panel", ^"Overlay/DebugOverlay/Panel", ^"Overlay/GoalsPanel/Panel"]:
 		var panel: Control = get_node(path) as Control
 		if path == ^"Overlay/GoalsPanel/Panel":
@@ -250,6 +287,10 @@ func _process(_delta: float) -> void:
 		return
 	_debug_overlay.sample_rates(float(Time.get_ticks_usec()) / 1000000.0, Engine.get_frames_per_second())
 	_guard_build_phase()
+	if build_mode.wall_dragging and not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+		# A release over a panel never reaches _unhandled_input (the GUI consumes
+		# it); end that wall drag instead of leaving it stuck to the pointer.
+		build_mode.cancel()
 	if is_build_active() and is_inside_tree():
 		# The pointer may be stationary while Q/E/zoom/pan is still smoothing.
 		update_build_pointer(get_viewport().get_mouse_position())
@@ -281,6 +322,7 @@ func start() -> void:
 	SaveSystem.register("plates", _capture_plates, _restore_plates)
 	SaveSystem.register("reviews", _capture_reviews, _restore_reviews)
 	SaveSystem.register("milestones", _capture_milestones, _restore_milestones)
+	SaveSystem.register("reorder", _capture_reorder, _restore_reorder)
 	var loaded: bool = use_saves and _load_autosave()
 	if not loaded:
 		_skip_next_autosave = use_saves and SaveSystem.list_slots().has(save_slot)
@@ -407,6 +449,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				set_menu_visible(false)
 			elif _staff_panel != null and _staff_panel.visible:
 				set_staff_visible(false)
+			elif is_stock_visible():
+				set_stock_visible(false)
 			elif _inspect_panel.selected_agent_id >= 0 or _inspect_panel.selected_item_id >= 0:
 				clear_selection()
 			else:
@@ -437,7 +481,10 @@ func route_build_input(event: InputEvent) -> bool:
 					build_mode.rotate()
 					return true
 				KEY_DELETE:
-					build_mode.sell_selected()
+					if build_mode.state == BuildMode.State.WALLS:
+						build_mode.wall_remove_hovered()
+					else:
+						build_mode.sell_selected()
 					return true
 				KEY_ESCAPE:
 					build_mode.cancel()
@@ -446,9 +493,25 @@ func route_build_input(event: InputEvent) -> bool:
 		return false
 	var motion: InputEventMouseMotion = event as InputEventMouseMotion
 	if motion != null:
-		update_build_pointer(motion.position)
+		update_build_pointer(motion.position, motion.shift_pressed)
 		return false  # Camera drag/edge tracking still receives motion.
 	var mouse: InputEventMouseButton = event as InputEventMouseButton
+	if mouse != null and mouse.button_index == MOUSE_BUTTON_LEFT and build_mode.state == BuildMode.State.WALLS:
+		var point: Variant = build_point_at_screen_position(mouse.position)
+		if point is Vector2:
+			if mouse.pressed:
+				build_mode.wall_press(point)
+			else:
+				build_mode.wall_release(point)
+		return true
+	if mouse != null and mouse.button_index == MOUSE_BUTTON_LEFT and build_mode.state == BuildMode.State.FLOOR:
+		var floor_cell: Variant = build_cell_at_screen_position(mouse.position)
+		if floor_cell is Vector2i:
+			if mouse.pressed:
+				build_mode.floor_press(floor_cell, mouse.shift_pressed)
+			else:
+				build_mode.floor_release(floor_cell)
+		return true
 	if mouse != null and mouse.pressed and mouse.button_index == MOUSE_BUTTON_LEFT:
 		if update_build_pointer(mouse.position):
 			if build_mode.has_ghost():
@@ -515,6 +578,7 @@ func set_paint_active(active: bool) -> bool:
 		_dismiss_goals()
 		set_menu_visible(false)
 		set_staff_visible(false)
+		set_stock_visible(false)
 		clear_selection()
 		_report.hide()
 	_paint_active = active
@@ -679,15 +743,54 @@ func build_cell_at_screen_position(screen_position: Vector2) -> Variant:
 	return GridMath.world_to_cell(hit) if hit is Vector3 else null
 
 
-func update_build_pointer(screen_position: Vector2) -> bool:
+## The floor-plane point in shop metres (x, z), for the Walls tool's grid lines.
+func build_point_at_screen_position(screen_position: Vector2) -> Variant:
+	var camera: Camera3D = $CameraRig/Camera3D
+	if world == null or not camera.is_inside_tree():
+		return null
+	var hit: Variant = Picker.floor_intersection(camera.project_ray_origin(screen_position), camera.project_ray_normal(screen_position))
+	return Vector2((hit as Vector3).x, (hit as Vector3).z) if hit is Vector3 else null
+
+
+## Walls tool (FK-070): new edges get `kind`; see BuildMode.begin_walls.
+func begin_wall_tool(kind: SimGrid.Segment) -> bool:
 	if not is_build_active():
 		return false
+	var started: bool = build_mode.begin_walls(kind)
+	if started and is_inside_tree():
+		update_build_pointer(get_viewport().get_mouse_position())
+	return started
+
+
+func update_build_pointer(screen_position: Vector2, shift: bool = false) -> bool:
+	if not is_build_active():
+		return false
+	if build_mode.state == BuildMode.State.FLOOR:
+		var floor_cell: Variant = build_cell_at_screen_position(screen_position)
+		if floor_cell is Vector2i:
+			build_mode.floor_pointer(floor_cell, shift)
+		return floor_cell is Vector2i
+	if build_mode.state == BuildMode.State.WALLS:
+		var point: Variant = build_point_at_screen_position(screen_position)
+		if point is Vector2:
+			build_mode.wall_pointer(point)
+		return point is Vector2
 	var cell: Variant = build_cell_at_screen_position(screen_position)
 	if not cell is Vector2i:
 		return false
 	if build_mode.has_ghost():
 		build_mode.update_origin(cell)
 	return true
+
+
+## Floor tool (FK-080): drag to buy lot floor, Shift-drag to remove bought floor.
+func begin_floor_tool() -> bool:
+	if not is_build_active():
+		return false
+	var started: bool = build_mode.begin_floor()
+	if started and is_inside_tree():
+		update_build_pointer(get_viewport().get_mouse_position())
+	return started
 
 
 func begin_buy_item(def_id: StringName) -> bool:
@@ -700,9 +803,12 @@ func begin_buy_item(def_id: StringName) -> bool:
 func _bind_build_session() -> void:
 	if not build_mode.changed.is_connected(_on_build_changed):
 		build_mode.changed.connect(_on_build_changed)
-	build_mode.bind_session(shop_editor, world, content, shop_move, shop_buy, shop_sell)
+	build_mode.bind_session(shop_editor, world, content, shop_move, shop_buy, shop_sell, shop_walls, shop_floor)
 	($ShopView as ShopView).set_paint(content, shop_editor.wall_swatch_id, shop_editor.floor_swatch_id)
 	_build_preview.bind_build_mode(build_mode, $ShopView as ShopView)
+	var lot: ShopFootprint = shop_editor.footprint()
+	if _build_catalogue != null:
+		_build_catalogue.set_floor_price(lot.cell_price if lot != null and lot.has_lot() else 0)
 	_build_ready = true
 	_build_ui_phase = -1
 	_on_build_changed()
@@ -725,6 +831,7 @@ func _on_build_changed() -> void:
 		_dismiss_goals()
 		set_menu_visible(false)
 		set_staff_visible(false)
+		set_stock_visible(false)
 		clear_selection()
 		_report.hide()
 	elif not active and _was_build_active and _build_ready and world.clock.phase == SimClock.Phase.CLOSED:
@@ -739,6 +846,15 @@ func _update_build_controls() -> void:
 	var active: bool = is_build_active()
 	var available: bool = _build_ready and shop_editor != null and shop_editor.can_edit()
 	var reason: String = build_mode.feedback_text()
+	var summary: String = ""
+	if build_mode.state == BuildMode.State.WALLS:
+		summary = build_mode.wall_summary()
+	elif build_mode.state == BuildMode.State.FLOOR:
+		summary = build_mode.floor_summary()
+	if not summary.is_empty():
+		# An invalid wall or floor check already put its reason in the summary.
+		reason = summary if reason.is_empty() or not build_mode.current_check.ok else summary + "
+" + reason
 	$HUD.set_build_state(available, active, reason, int(build_mode.state))
 	$HUD.set_paint_state(_paint_active)
 	if _build_catalogue != null:
@@ -755,12 +871,22 @@ func _on_build_buy_requested(def_id: StringName) -> void:
 	begin_buy_item(def_id)
 
 
+func _on_wall_tool_requested(kind: int) -> void:
+	begin_wall_tool(kind as SimGrid.Segment)
+
+
+func _on_floor_tool_requested() -> void:
+	begin_floor_tool()
+
+
 func _on_build_cash_changed(_cash: int, _delta: int, _reason: StringName) -> void:
 	_refresh_loan_hud()
 	if _build_ready and is_build_active():
 		build_mode.refresh()
 	if _staff_panel != null:
 		_staff_panel.set_trays(tray_level, TUNING.tray_prices, Economy.cash, _loan_upgrade_refusal())
+	if is_stock_visible():
+		_refresh_stock_panel()
 	_refresh_goals()
 
 
@@ -915,6 +1041,7 @@ func refresh_presentation() -> void:
 
 func _on_inspection_tick(_tick: int) -> void:
 	# Text follows every tick; geometry follows the drawn agents once per frame.
+	_refresh_sold_out_hud()
 	_inspect_panel.refresh()
 	if _debug_overlay.is_enabled():
 		_debug_overlay.refresh()
@@ -981,6 +1108,9 @@ func build_report(day: int) -> DayReport:
 		report.owner_unlocks = _owner_unlocks_today.duplicate()
 		if _milestone_xp_today > 0:
 			report.owner_xp_breakdown["milestone_xp"] = _milestone_xp_today
+	report.low_stock = StockAlerts.sell_out_lines(sim.stock_outs_today, content)
+	report.low_stock.append_array(StockAlerts.forecast_lines(StockAlerts.forecast(Economy.stock,
+		reorder_settings, _shelf_lives(), day + 1, _unit_costs(), Economy.cash, auto_reorder_premium), content))
 	if _milestone_award_day == day:
 		for goal: Milestone in _milestones_reached_today:
 			report.milestones_reached.append({"title": goal.title,
@@ -1016,6 +1146,8 @@ func _new_game() -> void:
 	reputation = ReputationBook.new()
 	_loaded_tray_level = 0
 	tray_level = 0
+	_loaded_reorder = null
+	reorder_settings = ReorderSettings.new(TUNING)
 	sim.carry_capacity = 1
 	staff_roster = StaffRoster.new(TUNING)
 	_staff_notice_day = 0
@@ -1038,6 +1170,7 @@ func _load_autosave() -> bool:
 	_loaded_reputation = null
 	_loaded_milestones = null
 	_loaded_tray_level = 0
+	_loaded_reorder = null
 	if not SaveSystem.list_slots().has(save_slot):
 		return false
 	if SaveSystem.load_game(save_slot) != OK:
@@ -1080,6 +1213,8 @@ func _load_autosave() -> bool:
 	if not sim.assign_owner(_owner_preferences.current_mode()):
 		return false
 	milestones = career
+	# Saves from before the Stock panel have no section: today's defaults.
+	reorder_settings = _loaded_reorder if _loaded_reorder != null else ReorderSettings.new(TUNING)
 	return true
 
 
@@ -1119,6 +1254,19 @@ func _restore_milestones(data: Dictionary) -> bool:
 	if not candidate.from_dict(data):
 		return false
 	_loaded_milestones = candidate
+	return true
+
+
+func _capture_reorder() -> Dictionary:
+	return reorder_settings.to_dict()
+
+
+## Stage like the other sections; installed only after a complete morning load.
+func _restore_reorder(data: Dictionary) -> bool:
+	var candidate: ReorderSettings = ReorderSettings.new(TUNING)
+	if not candidate.from_dict(data):
+		return false
+	_loaded_reorder = candidate
 	return true
 
 
@@ -1316,6 +1464,7 @@ func set_staff_visible(value: bool) -> bool:
 			set_paint_active(false)
 		build_mode.exit()
 		set_menu_visible(false)
+		set_stock_visible(false)
 		_dismiss_goals()
 		clear_selection()
 		_report.hide()
@@ -1451,6 +1600,7 @@ func set_menu_visible(value: bool) -> bool:
 			set_paint_active(false)
 		build_mode.exit()
 		set_staff_visible(false)
+		set_stock_visible(false)
 	_menu_panel.set_phase(Clock.sim.phase)
 	_menu_panel.visible = value
 	return true
@@ -1479,6 +1629,7 @@ func set_goals_visible(value: bool) -> bool:
 		build_mode.exit()
 		set_staff_visible(false)
 		set_menu_visible(false)
+		set_stock_visible(false)
 		clear_selection()
 		_report.hide()
 		_goals_return_to_menu = from_menu
@@ -1550,6 +1701,7 @@ func set_settings_visible(value: bool) -> bool:
 		Clock.set_speed(0)
 		set_menu_visible(false)
 		set_staff_visible(false)
+		set_stock_visible(false)
 		if _paint_active:
 			set_paint_active(false)
 		build_mode.exit()
@@ -1602,6 +1754,25 @@ func shop_move(item_id: int, origin: Vector2i, quarter_turns: int) -> bool:
 
 func shop_buy(def_id: StringName, origin: Vector2i, quarter_turns: int = 0) -> bool:
 	var accepted: bool = shop_editor != null and shop_editor.buy(def_id, origin, quarter_turns)
+	if _build_ready:
+		build_mode.refresh()
+	return accepted
+
+
+## Wall segment changes (FK-070), checked and booked by ShopEditor.
+func shop_walls(changes: Dictionary[Vector3i, int]) -> bool:
+	var accepted: bool = shop_editor != null and shop_editor.apply_segments(changes)
+	if _build_ready:
+		build_mode.refresh()
+	return accepted
+
+
+## Floor expansion (FK-080), checked and booked by ShopEditor. The camera
+## then glides to fit the new outline; nothing is saved until next morning.
+func shop_floor(cells: Array[Vector2i], adding: bool) -> bool:
+	var accepted: bool = shop_editor != null and shop_editor.apply_floor(cells, adding)
+	if accepted:
+		_frame_shop(false)
 	if _build_ready:
 		build_mode.refresh()
 	return accepted
@@ -1679,6 +1850,9 @@ func _begin_morning() -> void:
 	_staff_panel.set_morning(Clock.sim.day, _staff_notices)
 	dishes_sold_today.clear()
 	shown_report = null
+	_sold_out_shown = -1
+	_refresh_sold_out_hud()
+	_expire_stock()
 	_restock()
 	Economy.ledger.prune_before(Clock.sim.day - Ledger.HISTORY_DAYS)
 	_report.hide()
@@ -1692,17 +1866,195 @@ func _begin_morning() -> void:
 	if not _staff_notices.is_empty() \
 			or not staff_roster.morning_raise_offers(Clock.sim.day, Clock.sim.phase).is_empty():
 		set_staff_visible(true)
+	_refresh_stock_panel()
 	refresh_presentation()
 
 
+func _shelf_lives() -> Dictionary:
+	var lives: Dictionary = {}
+	for ingredient: IngredientDef in content.ingredients():
+		lives[ingredient.id] = ingredient.shelf_life_days
+	return lives
+
+
+func _unit_costs() -> Dictionary:
+	var costs: Dictionary = {}
+	for ingredient: IngredientDef in content.ingredients():
+		costs[ingredient.id] = ingredient.unit_cost
+	return costs
+
+
+## Ingredients past their shelf life go before the fridge is topped up. A
+## reloaded morning finds nothing more to remove, so this never repeats.
+func _expire_stock() -> void:
+	_expired_this_morning = Economy.stock.expire(Clock.sim.day, _shelf_lives())
+	for id: StringName in _expired_this_morning:
+		world.log_event("Threw out %d %s past its shelf life" % [_expired_this_morning[id], id])
+
+
+## The morning auto-order: enabled ingredients are topped up to their targets
+## in one order priced at list total plus the premium. Short cash buys what
+## fits in the fixed order and logs the rest; it never borrows.
 func _restock() -> void:
-	for id: StringName in TUNING.morning_stock:
-		var ingredient := content.ingredient(id)
+	var order: Dictionary = reorder_settings.plan(Economy.stock, _unit_costs(), Economy.cash, auto_reorder_premium)
+	var lines: Array[Dictionary] = []
+	lines.assign(order["lines"])
+	_morning_order = {"short": order["short"]}
+	if not lines.is_empty() and not Economy.buy_auto_order(lines, int(order["cost"])):
+		world.log_event("The morning auto-order could not be paid")
+	var short: Dictionary = order["short"]
+	for id: StringName in short:
+		world.log_event("Couldn't afford %d %s this morning" % [short[id], id])
+
+
+func can_edit_stock() -> bool:
+	return _started and sim != null and reorder_settings != null and Clock.sim.phase == SimClock.Phase.MORNING
+
+
+## A manual morning buy at list price. It joins the next morning autosave.
+func stock_buy(id: StringName, qty: int) -> bool:
+	if not can_edit_stock() or not reorder_settings.has(id) or (qty != 1 and qty != 5):
+		return false
+	var ingredient: IngredientDef = content.ingredient(id)
+	if ingredient == null or not Economy.buy_ingredient(id, qty, ingredient.unit_cost):
+		return false
+	_refresh_stock_panel()
+	return true
+
+
+func stock_set_auto(id: StringName, enabled: bool) -> bool:
+	if not can_edit_stock() or not reorder_settings.set_enabled(id, enabled):
+		return false
+	_refresh_stock_panel()
+	return true
+
+
+func stock_set_target(id: StringName, target: int) -> bool:
+	if not can_edit_stock() or not reorder_settings.set_target(id, target):
+		return false
+	_refresh_stock_panel()
+	return true
+
+
+func toggle_stock() -> void:
+	set_stock_visible(not is_stock_visible())
+
+
+## Idempotent production path for the HUD and real captures. MORNING only.
+func set_stock_visible(value: bool) -> bool:
+	if _stock_panel == null or (value and not can_edit_stock()):
+		return false
+	if value and not _stock_panel.visible:
+		_dismiss_goals()
+		if is_settings_visible():
+			_settings_return_to_menu = false
+			if not set_settings_visible(false):
+				return false
+		if _paint_active:
+			set_paint_active(false)
+		build_mode.exit()
+		set_menu_visible(false)
+		set_staff_visible(false)
+		clear_selection()
+		_report.hide()
+	_stock_panel.visible = value
+	if value:
+		_refresh_stock_panel()
+	return true
+
+
+func is_stock_visible() -> bool:
+	return _stock_panel != null and _stock_panel.visible
+
+
+## Rows hold display names only; the panel never sees a raw id as text.
+func stock_rows() -> Array[Dictionary]:
+	var rows: Array[Dictionary] = []
+	if content == null or reorder_settings == null:
+		return rows
+	var expiring: Dictionary = Economy.stock.expiring_on(Clock.sim.day + 1, _shelf_lives())
+	for id: StringName in reorder_settings.ids():
+		var ingredient: IngredientDef = content.ingredient(id)
 		if ingredient == null:
 			continue
-		var missing: int = TUNING.morning_stock[id] - Economy.stock.count(id)
-		if missing > 0 and not Economy.buy_ingredient(id, missing, ingredient.unit_cost):
-			world.log_event("Couldn't afford %d %s this morning" % [missing, id])
+		rows.append({"id": id, "name": ingredient.display_name, "count": Economy.stock.count(id),
+			"expiring": int(expiring.get(id, 0)), "unit_cost": ingredient.unit_cost,
+			"enabled": reorder_settings.is_enabled(id), "target": reorder_settings.target(id),
+			"max_target": ReorderSettings.MAX_TARGET})
+	return rows
+
+
+## Player sentences about this morning's automatic order and expiry.
+func stock_notes() -> Array[String]:
+	var notes: Array[String] = []
+	# Read back from today's ledger, so a reloaded morning still shows it.
+	var list_total: int = 0
+	var premium: int = 0
+	for entry: Dictionary in Economy.ledger.entries_for_day(Clock.sim.day):
+		if entry["category"] != Ledger.INGREDIENTS:
+			continue
+		var note: String = String(entry["note"])
+		if note == Economy.AUTO_PREMIUM_NOTE:
+			premium -= int(entry["amount"])
+		elif note.begins_with(Economy.AUTO_LINE_PREFIX):
+			list_total -= int(entry["amount"])
+	if list_total + premium > 0:
+		notes.append(("This morning's auto-order cost %s (%s at list price + %s premium)." % [
+			Fmt.money(list_total + premium), Fmt.money(list_total), Fmt.money(premium)]) if premium > 0
+			else "This morning's auto-order cost %s." % Fmt.money(list_total))
+	var short: Dictionary = _morning_order.get("short", {})
+	var missed: Array[String] = []
+	for id: StringName in short:
+		missed.append("%d %s" % [int(short[id]), _ingredient_name(id)])
+	if not missed.is_empty():
+		notes.append("Not enough cash to auto-order %s." % StockAlerts.join_names(missed))
+	var thrown: Array[String] = []
+	for id: StringName in _expired_this_morning:
+		thrown.append("%d %s" % [int(_expired_this_morning[id]), _ingredient_name(id)])
+	if not thrown.is_empty():
+		notes.append("Thrown out this morning (too old): %s." % StockAlerts.join_names(thrown))
+	return notes
+
+
+func _ingredient_name(id: StringName) -> String:
+	var ingredient: IngredientDef = content.ingredient(id) if content != null else null
+	return ingredient.display_name if ingredient != null else "ingredient"
+
+
+func _refresh_stock_panel() -> void:
+	if _stock_panel == null or Clock.sim == null:
+		return
+	_stock_panel.set_stock(stock_rows(), Economy.cash, can_edit_stock(), stock_notes(), auto_reorder_premium)
+
+
+func _refresh_sold_out_hud() -> void:
+	if sim == null or sim.sold_out_today.size() == _sold_out_shown:
+		return
+	_sold_out_shown = sim.sold_out_today.size()
+	var names: Array[String] = []
+	for recipe: RecipeDef in sim.menu:
+		if recipe != null and sim.is_sold_out(recipe.id):
+			names.append(recipe.display_name)
+	$HUD.set_sold_out(names)
+
+
+func _on_stock_buy_requested(id: StringName, qty: int) -> void:
+	stock_buy(id, qty)
+	_refresh_stock_panel()
+
+
+func _on_stock_auto_requested(id: StringName, enabled: bool) -> void:
+	stock_set_auto(id, enabled)
+	_refresh_stock_panel()
+
+
+func _on_stock_target_requested(id: StringName, target: int) -> void:
+	stock_set_target(id, target)
+	_refresh_stock_panel()
+
+
+func _on_stock_close_requested() -> void:
+	set_stock_visible(false)
 
 
 func _charge_closing_costs() -> void:
@@ -1822,6 +2174,8 @@ func _on_day_phase_changed(_day: int, phase: int) -> void:
 			_settings_return_to_menu = false
 	if _staff_panel != null:
 		_staff_panel.set_phase(phase)
+	if phase != SimClock.Phase.MORNING:
+		set_stock_visible(false)
 	if phase == SimClock.Phase.MORNING:
 		_begin_morning()
 

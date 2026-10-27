@@ -1,7 +1,7 @@
 extends TestCase
 ## FK-012: grid conventions, placement, reservations and pathfinding.
 
-const NONE := Vector2i(-1, -1)
+const NONE := SimGrid.NO_CELL
 
 
 class FloorChangeProbe:

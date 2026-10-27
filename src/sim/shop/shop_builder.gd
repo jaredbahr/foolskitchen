@@ -10,6 +10,15 @@ extends RefCounted
 ## blocked-start escape. Authored layouts retain strict spawn checks by default.
 static func build(layout: ShopLayout, content: ContentDB, errors: Array[String], allow_blocked_spawns: bool = false) -> SimWorld:
 	var grid := SimGrid.from_ascii(layout.rows)
+	if not layout.floor_cells.is_empty():
+		# Bought floor (FK-080) goes down before items, which may stand on it.
+		var footprint: ShopFootprint = ShopFootprint.from_layout(layout)
+		var bought: Dictionary[Vector2i, bool] = ShopFootprint.to_set(layout.floor_cells)
+		var problem: String = footprint.problem(bought)
+		if problem.is_empty():
+			footprint.apply(grid, bought)
+		else:
+			errors.append("%s: bought floor: %s" % [layout.id, problem])
 	for p in layout.placements:
 		var def := content.item(p.item_id)
 		if def == null:
@@ -21,6 +30,15 @@ static func build(layout: ShopLayout, content: ContentDB, errors: Array[String],
 					p.quarter_turns, SimGrid.PlaceResult.keys()[grid.can_place_def(def, p.origin, p.quarter_turns)]])
 		else:
 			placed.swatch_id = p.swatch_id if def.paintable and content.swatch(p.swatch_id) != null else &""
+	var segments: Dictionary[Vector3i, int] = {}
+	for edge: Vector3i in layout.wall_segments:
+		var kind: WallKindDef = content.wall_kind(layout.wall_segments[edge])
+		var problem: String = "unknown wall kind" if kind == null else WallRules.edge_problem(grid, edge, kind.segment as SimGrid.Segment)
+		if problem.is_empty():
+			segments[edge] = kind.segment
+		else:
+			errors.append("%s: wall at %s: %s" % [layout.id, edge, problem])
+	grid.set_segments(segments)
 	for r: StringName in layout.staff_spawns:
 		var spawn: Vector2i = layout.staff_spawns[r]
 		var covering: PlacedItem = grid.item_at(spawn)

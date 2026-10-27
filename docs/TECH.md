@@ -254,7 +254,7 @@ an active edit/panel/selection first, or opens Settings when none is active.
 - `main.tscn` is the game session for one shop. It builds a `RestaurantSim` from the layout and content, and points `sim.stock` at `Economy.stock`.
 - `Clock.attach_world(world, sim.advance)` makes every tick run the restaurant (guests, staff, and the kitchen once it lands).
 - **Day loop:**
-  - **MORNING:** `sim.start_day()`, the fridge is topped up to `EconomyTuning.morning_stock` (bought through `Economy.buy_ingredient`), then autosave.
+  - **MORNING:** `sim.start_day()`, expired batches are removed (`Stock.expire`), the morning auto-order tops the fridge up (see 2.3i), then autosave.
   - **CLOSED:** wages per staff role and rent are charged through the ledger, automatic loans settle, then the evening report shows a `DayReport` built from `Ledger.day_totals` and the sim's counters.
   - **"Next day"** (in the report or the HUD) calls `Clock.sim.next_day()`, which returns to MORNING.
 - Money numbers live in `data/balance/*.tres` (`EconomyTuning`).
@@ -303,7 +303,7 @@ an active edit/panel/selection first, or opens Settings when none is active.
   successful zero refund. `last_check`/`check_sell` explain refusal. Doors and
   the last functional fridge, prep counter, stove or pass cannot be sold.
   Normal grid removal releases reservations and cancels work targeting a sale.
-- `to_dict()` returns version 1 and stable `items` records containing `def_id`,
+- `to_dict()` returns version 2 (FK-070 added `walls`) and stable `items` records containing `def_id`,
   `[x, y]` origin and quarter turns. Static `from_dict(data, template, content,
   errors)` validates an isolated layout or returns null; it never replaces a
   live world. Terrain/staff spawns come from the template, with required station
@@ -738,6 +738,152 @@ an active edit/panel/selection first, or opens Settings when none is active.
   use the shop snapshot; dining links are derived again from the restored
   layout. The sole persistence boundary stays the normal morning autosave.
 
+### Walls, doorways and windows (FK-070)
+- **Edge data.** `SimGrid` stores segments on cell edges, never cells. An edge
+  key is `Vector3i(x, y, axis)`: `EDGE_WEST` (0) is the grid line on the west
+  side of cell (x, y), `EDGE_NORTH` (1) the line on its north side. Helpers:
+  `edge_between(a, b)`, `edge_cells`, `edge_vertices`, `edge_from_vertices`,
+  `edges_at_vertex`, `cell_edges`. `set_segment(edge, Segment)` (NONE removes)
+  emits `cells_changed` with both cells; `set_segments(changes)` applies a
+  batch with one signal and one dining refresh (a dragged run rebuilds
+  observers once); `segment_edges()` is sorted; `step_open(a, b)` answers one
+  step. Agents also check `step_open` when stepping, a wall edit beside the
+  cell an agent is leaving triggers a re-plan, and a buried agent's escape
+  never jumps a wall next to it.
+  `Segment`: WALL and WINDOW block a step across the edge, DOORWAY does not;
+  any segment blocks a diagonal step past its end (no corner cutting past a
+  post). Keys are grid-line positions, so they do not care whether a line is
+  inside the room or on the outer shell.
+- **Pathing.** `EdgeAStar` is an `AStarGrid2D` subclass whose `_compute_cost`
+  prices a blocked step at 1e9; `SimGrid` rejects any path that still crosses
+  one. It is used only while a path-relevant segment exists (FLOOR/ENTRY on
+  both sides), so a shop without interior walls keeps the plain engine search
+  and its exact paths (the balance probe is unchanged). `walkable_neighbours`,
+  reachability and dining links respect edges. Furniture may not straddle a
+  segment or have a wall/window between it and its own work cell
+  (`PlaceResult.WALL_IN_WAY`, "A wall is in the way"). Tables may stand flush
+  against a wall: a built-in seat across it is dropped (`DiningSeats.WALLED_OFF`),
+  as against the shell. A chair across a wall from its table does not link,
+  and a wall between a linked chair and its table is refused.
+- **Rules (`WallRules`, one place for every refusal sentence).** Interior
+  edges (FLOOR both sides) take wall, doorway or window. An outer face (FLOOR,
+  then a shell WALL cell with the street, outside or grid border beyond) takes
+  a window only, and each side keeps at least one solid face. The street door
+  (floor cells beside ENTRY, and door items) is never touched. Both are
+  derived from terrain on every check, not stored.
+- **Edits.** `ShopEditor.check_segments(changes)` / `apply_segments(changes)`
+  take edge -> Segment and are MORNING/CLOSED only. A change refuses when it
+  cuts through furniture, blocks a work spot, unlinks a chair, or cuts off the
+  door, the sink, a kitchen station, a seat, or a staff post (and, in the
+  morning, a staff member where they stand) from the street. Cut-off is
+  checked twice: walls only (furniture ignored), so furniture blocking a
+  doorway today can never hide a permanent seal; then with furniture, where
+  only newly cut-off things refuse (furniture-made blocks stay warnings). Each
+  changed edge sells the old segment at the furniture rate (half) and buys the
+  new one, both under `Ledger.UPGRADES`. Prices live in `data/walls/*.tres`
+  (`WallKindDef`: Wall $10, Doorway $15, Window $20 per edge). `run_changes`
+  skips edges that already hold a segment; `next_segment` is the click cycle
+  (wall -> doorway -> window -> wall; outer face solid <-> window).
+- **Save.** The `shop` snapshot is version 2 with `walls: [{edge: [x, y, axis],
+  kind}]`; version 1 loads with no walls. `from_dict` validates every saved
+  edge with `WallRules` after the items, then `ShopLayout.wall_segments` (edge
+  -> kind id) is rebuilt by `ShopBuilder`.
+- **Build mode.** The catalogue's Walls tab picks the kind; `BuildMode.State.WALLS`
+  turns a drag along grid lines into a run (longer axis wins) with a green/red
+  ghost per edge and the cost in the build hint; a click without a run applies
+  the click cycle; Delete removes the hovered segment; Esc ends a drag, then the
+  tool, then build mode. Commits go through Main's `shop_walls` wrapper.
+- **View.** `WallSegmentView` (under `ShopView`) rebuilds from the grid on
+  `cells_changed`, wall mode or camera quarter. Interior segments are painted
+  slabs (room wall paint, 1.4 high, 0.06 thick) running vertex to vertex, so a
+  doorway is the full 0.5 edge wide under a 1.15 head; slab ends reach half a
+  thickness past a vertex where segments meet at an angle. Windows frame the
+  native Kenney `wallWindow` pane. An outer window cuts the shell cell: its box
+  drops to the sill, jambs and head surround the pane, which sits at the room
+  face; `RoomDressing` keeps its street pane/lamp slots but skips that cell.
+  Cutaway and Down lower every interior segment; a lowered doorway keeps a
+  post stub at each end and a floor threshold, and a lowered window shows a
+  Slate blue glass strip instead of the dark cap, so cycling reads there too.
+- **Floor expansion (FK-080)** builds on this: grid lines keep their keys,
+  so an outer-face window becomes an interior window when the shell cell
+  behind it turns into floor (see the next section).
+- Captures: `tools/screenshot.sh --walls=place` (a dragged run with ghost and
+  cost) and `--walls=room` (a built room; add `--quarter=0` for Cutaway).
+
+### Floor expansion (FK-080)
+- **Lot (data).** `ShopLayout.lot_west`, `lot_east`, `lot_north` say how many
+  cells the outer walls may move out past the starting shell; the street
+  (south) side never moves, so the door, sidewalk and street dressing stay
+  put. `floor_cell_price` is the price per new floor cell ($15). Tier 1: 2 west,
+  2 east, 4 north (about 4 cells wider, 4 deeper). `ShopFootprint` reads it:
+  `building` is the starting shell rect, `lot` that rect grown by the margins;
+  new floor may go strictly inside the lot (its edge is kept for the wall) and
+  outside `building`.
+- **Footprint.** Only the bought floor cells are stored
+  (`ShopLayout.floor_cells`, `ShopEditor.bought_floor()`). `ShopFootprint.
+  terrain_for(bought)` derives every cell: authored floor and interior walls
+  never change; bought cells are FLOOR; an authored shell cell with floor on two
+  opposite sides opens into FLOOR (repeated, so the inner corner of an L opens).
+  Only floor counts: authored interior walls never open, and a shell cell that
+  carries one on (the kitchen divider's ends (0, 4) and (13, 4)) stays a wall;
+  the player can add a doorway;
+  a lot cell touching the floor (8 directions) becomes the new shell WALL; other
+  lot cells are OUTSIDE, except a notch that walls cut off from the world
+  beyond, which fills in as WALL (never bought, never refused). Cells outside
+  the lot never change. `problem()` refuses
+  cells outside the lot, floor that does not join the authored floor through
+  floor (or, when removing, would split it) and enclosed gaps.
+- **No auto walls (Jared).** The old outer wall opens up: no WALL segments are
+  placed on the old outline. Players add interior walls with the Walls tool.
+- **No shifting.** `SimGrid` has an `origin` and `bounds`; `grow_to(rect)`
+  extends the grid (new cells OUTSIDE, AStar regions updated, solidity rebuilt)
+  so lot cells north or west have negative coordinates. Cells, items, edge
+  keys, staff posts and saves keep their coordinates. `SimGrid.NO_CELL` is
+  far outside any lot. Iterate cells with `grid.cells()`, never `0..size`. The
+  grid grows on the first purchase (or load) only, so a shop that never
+  expands keeps its exact grid and the balance probe is unchanged.
+- **Edits.** `ShopEditor.check_floor(cells, adding)` / `apply_floor` are
+  MORNING/CLOSED only. Adding takes the unbuilt lot cells of the rectangle
+  (starting building, bought cells and the lot's wall ring are skipped; a cell
+  beyond the lot refuses), and every new floor cell must then be walkable from
+  the street through the walls as built (an outer window that turned interior
+  can seal a pocket: "New floor must join the shop"). Removing may not cut off
+  bought floor that is reachable now. Removing takes only bought cells: furniture on any cell that would
+  stop being floor refuses ("Clear the furniture off that floor first"), then a
+  lost seat, work spot or door uses the wall cut-off sentences, then the usual
+  walls/dining/cut-off checks run on a preview (people standing there count).
+  Wall segments that would no longer fit (for example an outer window now
+  facing the wing's new wall) are taken down and refunded at the furniture
+  rate. Floor costs `floor_cell_price` per cell, refunds half, under
+  `Ledger.UPGRADES`. The terrain change is one `set_terrains` batch (one
+  `cells_changed`), applied before any segment is taken down so a refusal
+  changes nothing; dirt spots on cells that stop being floor are cleared.
+- **Save.** The `shop` snapshot is version 3 with `floor: [[x, y], ...]`
+  (sorted). Versions 1 and 2 load as the starting shell. `from_dict` validates
+  the floor with the template's lot before items and walls, which may stand on
+  it; `ShopBuilder` applies `layout.floor_cells` before placing items.
+- **Build mode.** The Walls tab has a Floor card (`BuildCatalogue.
+  floor_tool_requested`, hidden without a lot). `BuildMode.State.FLOOR`: drag
+  a rectangle to add floor, Shift-drag to remove bought floor, Esc ends a drag
+  then the tool. The hint shows the tile count and cost or refund, or the
+  refusal. `BuildPreview` draws flat green (add), gold (remove) or red tiles,
+  and in every Build mode state a pale cream fill on the unbuilt cells where
+  floor may go, with a cream line around that area (`ShopFootprint.
+  floor_area()`, the lot inside its wall ring). A check costs about 15 ms, so
+  BuildMode memoises floor checks per rectangle until the next refresh,
+  topology change or commit. Commits go through Main's `shop_floor` wrapper,
+  which then calls `_frame_shop()`: the camera centres on all non-outside cells
+  and zooms out to fit (`CameraRig.frame_area`, a glide). The starting shell
+  keeps its old framing exactly (zoom 12 for 14 x 12 cells).
+- **View.** `ShopView` and `RoomDressing` rebuild from terrain, so new walls,
+  floor paint, cutaway and the street frontage follow automatically.
+- Tests: `tests/sim/test_floor_expansion.gd`; the five-day soak
+  `tests/world/test_expanded_shop_invariants.gd` reruns the multi-day
+  invariants in an L-shaped shop expanded on day 1 (with a reload).
+  Probe: `--setup expanded_tables` (wings both sides, two extra table_2s, built
+  free). Captures: `tools/screenshot.sh --expand=drag --speed=0 --frames=90`
+  and `--expand=shop --open --fast=10 --speed=1 --frames=150 [--quarter=0]`.
+
 ### Restaurant vibe core (FK-072)
 - `VibeModel.evaluate()` reads detached layout, paint and enabled-menu inputs.
   It never changes the inputs, draws randomness, reads nodes or saves a result.
@@ -913,6 +1059,50 @@ releases the old dressing. Dressing adds no lights, simulation cells, collision,
 random draws or saved state; functional lamps remain the separate lamp issue.
 The floor shader adds a subtle multiplicative plank pattern while retaining its
 existing paint colour and camera-controlled build-grid parameters.
+
+### 2.3i Stock panel, auto-reorder and sold-out dishes (FK-033, #54)
+- `ReorderSettings` (`src/sim/economy/reorder_settings.gd`) holds `{enabled, target}`
+  per ingredient. Defaults are enabled with `EconomyTuning.morning_stock` targets,
+  whose key order is the fixed buying order. It is saved in the `reorder` section
+  (`{"version": 1, "ingredients": {id: {enabled, target}}}`) at the morning autosave
+  only; restore stages a candidate installed after a complete morning load. A save
+  without the section uses the defaults; unknown ids are ignored.
+- **Morning order:** `ReorderSettings.plan(stock, unit_costs, cash, premium)` tops
+  enabled ingredients up to target. The premium applies once to the order total:
+  `auto_cost = ceil(list_total * (1 + auto_reorder_premium))` (tier 1: 0.05), in integer basis
+  points (at 0.10, 10 x $1 = $11). With short cash each ingredient in the fixed order gets as
+  many units as still fit, the partial order priced as its own total; the rest is
+  logged and nothing is borrowed. `Economy.buy_auto_order` records each line at list
+  price plus one `auto_reorder_premium` ingredients entry. Main's
+  `auto_reorder_premium` mirrors the tuning (tests not about pricing may set 0).
+- **Expiry:** `_begin_morning()` calls `Stock.expire(day, shelf lives)` before the
+  order; `Stock.expiring_on(day)` previews it. "Expire tomorrow" means removed at the
+  next morning. Reloading the same morning removes nothing more.
+- **Stock panel** (`src/ui/stock_panel.gd`, HUD basket button): MORNING only, request
+  signals to Main (`stock_buy` +1/+5 at list price, `stock_set_auto`,
+  `stock_set_target`). Rows carry display names only; notes report this morning's
+  order (read back from the day's ledger: lines noted `auto_reorder:<id>` plus the
+  `auto_reorder_premium` entry, so a reloaded morning still shows it), cash
+  shortfalls (re-planned on reload) and thrown-out stock (not kept: after a reload
+  of the same morning that note is gone, since nothing is thrown out twice).
+  The first load of a save from before expiry removes everything already past its
+  shelf life once.
+- **Sold out:** during OPEN/LAST_ORDERS `RestaurantSim.refresh_sold_out()` (each tick
+  and before every order) latches a menu dish for the rest of the day once the
+  fridge itself cannot cover it (stock only falls during service). `available_menu()`
+  also holds back, without latching, dishes whose last portions are promised to
+  accepted tickets (`Kitchen.committed_ingredients()`, cook not yet at the fridge);
+  a cancelled ticket returns them. `stock_outs_today` records
+  `{ingredient, minute, dishes}`, the minute continuing past closing time during
+  last orders (`service_minute()`). Guests draw once over `available_menu()`
+  (unchanged stream while nothing is sold out; the same single draw over the shorter
+  list afterwards) and leave with `out_of_stock` only when it is empty. A ticket
+  cancelled at the fridge still cancels as before. The HUD shows a "Sold out" chip
+  during service.
+- **Report:** `DayReport.low_stock` holds `StockAlerts` sentences: each ingredient
+  that sold dishes out (with the time), then tomorrow's forecast (tonight's expiry,
+  then the order planned with tonight's cash): expiring units, ingredients the order
+  will not cover (switched off or short of cash) and the order's cost.
 
 ### 2.4 Save system
 - JSON in `user://saves/`, with a `version` field and migration functions per version.

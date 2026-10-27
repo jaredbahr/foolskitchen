@@ -13,6 +13,7 @@ signal build_toggled()
 signal paint_toggled()
 signal menu_pressed()
 signal staff_pressed()
+signal stock_pressed()
 signal settings_pressed()
 signal header_layout_changed()
 
@@ -56,6 +57,9 @@ var _build_reason: String = ""
 var _build_state: int = BuildMode.State.IDLE
 var _menu_button: Button
 var _staff_button: Button
+var _stock_button: Button
+var _sold_out_label: Label
+var _sold_out_names: Array[String] = []
 var _settings_button: Button
 var _header_bottom: float = -1.0
 var _preferences: SettingsPreferences
@@ -101,10 +105,14 @@ func refresh() -> void:
 		_menu_button.pressed.connect(_on_menu_pressed)
 		_staff_button = get_node("Top/Row/Staff") as Button
 		_staff_button.pressed.connect(_on_staff_pressed)
+		_stock_button = get_node("Top/Row/Stock") as Button
+		_stock_button.pressed.connect(_on_stock_pressed)
+		_sold_out_label = get_node("Top/Row/SoldOut") as Label
 		_settings_button = get_node("Top/Row/Settings") as Button
 		_settings_button.pressed.connect(_on_settings_pressed)
 		_style_header()
 		(get_node("Top") as Control).resized.connect(_on_header_resized)
+		(get_node("Top/Row") as Control).minimum_size_changed.connect(_fit_header_height)
 		_cash = Economy.cash
 		for speed: int in SPEEDS:
 			var button: Button = get_node("Top/Row/Speed%d" % speed) as Button
@@ -123,6 +131,9 @@ func refresh() -> void:
 	_render_loan()
 	_render_reputation()
 	_render_owner_progress()
+	if _sold_out_label.visible != (not _sold_out_names.is_empty() and (Clock.sim.phase == SimClock.Phase.OPEN
+			or Clock.sim.phase == SimClock.Phase.LAST_ORDERS)):
+		_render_sold_out()
 	_context.visible = Clock.sim.phase == SimClock.Phase.MORNING or Clock.sim.phase == SimClock.Phase.CLOSED
 	_context.text = "Open shop" if Clock.sim.phase == SimClock.Phase.MORNING else "Next day"
 	_context.tooltip_text = "Open for today's service" if Clock.sim.phase == SimClock.Phase.MORNING else "Begin the next morning"
@@ -136,6 +147,9 @@ func refresh() -> void:
 	_refresh_build_controls()
 	_menu_button.disabled = Clock.sim.phase != SimClock.Phase.MORNING
 	_menu_button.tooltip_text = "Choose today's menu and prices" if not _menu_button.disabled else "Menu changes are available in the morning."
+	_stock_button.disabled = Clock.sim.phase != SimClock.Phase.MORNING
+	_stock_button.tooltip_text = "Check the fridge, buy ingredients and set auto-reorder" if not _stock_button.disabled \
+		else "Stock is bought in the morning."
 	_staff_button.disabled = not STAFF_PHASES.has(Clock.sim.phase)
 	_staff_button.tooltip_text = "Hire staff and plan today's wages" if Clock.sim.phase == SimClock.Phase.MORNING \
 		else "Set staff job priorities. Hiring and upgrades are available in the morning."
@@ -224,6 +238,19 @@ func panel_top() -> float:
 	return maxf(112.0, (get_node("Top") as Control).get_global_rect().end.y + 12.0)
 
 
+## Controls grow to a larger minimum but never shrink back on their own. When
+## the groups need fewer rows (a wider window, a hidden chip) the header
+## returns to its native height instead of keeping an empty band.
+func _fit_header_height() -> void:
+	if not is_node_ready():
+		return
+	var top: Control = get_node("Top") as Control
+	var minimum: float = top.get_combined_minimum_size().y
+	if top.size.y > minimum + 0.5:
+		# Offsets, not size: the header is stretched between horizontal anchors.
+		top.offset_bottom = top.offset_top + minimum
+
+
 func _on_header_resized() -> void:
 	if not is_inside_tree():
 		return
@@ -239,6 +266,33 @@ func _on_staff_pressed() -> void:
 		staff_pressed.emit()
 
 
+func _on_stock_pressed() -> void:
+	if Clock.sim.phase == SimClock.Phase.MORNING:
+		stock_pressed.emit()
+
+
+## Main lists today's sold-out dishes by display name; empty hides the tag.
+func set_sold_out(names: Array[String]) -> void:
+	_sold_out_names = names.duplicate()
+	if _sold_out_label == null:
+		refresh()
+	_render_sold_out()
+
+
+func _render_sold_out() -> void:
+	var count: int = _sold_out_names.size()
+	# A short count keeps the service header on one row; the tooltip names them.
+	_sold_out_label.text = "%d sold out" % count
+	_sold_out_label.tooltip_text = "Sold out for the rest of today:\n" + "\n".join(_sold_out_names) \
+		+ "\nBuy more in the Stock panel tomorrow morning."
+	# A service-time tag: the evening report and the next morning explain it.
+	_sold_out_label.visible = count > 0 and (Clock.sim.phase == SimClock.Phase.OPEN
+		or Clock.sim.phase == SimClock.Phase.LAST_ORDERS)
+	var row: Container = get_node("Top/Row") as Container
+	row.update_minimum_size()
+	row.queue_sort()
+
+
 func _on_settings_pressed() -> void:
 	settings_pressed.emit()
 
@@ -246,15 +300,16 @@ func _on_settings_pressed() -> void:
 func _style_header() -> void:
 	var roles: Dictionary[String, StringName] = {"Speed0": &"pause", "Speed1": &"speed_1",
 		"Speed2": &"speed_2", "Speed4": &"speed_4", "Build": &"build", "Menu": &"menu",
-		"Staff": &"staff", "Context": &"open_shop", "Settings": &"settings"}
+		"Staff": &"staff", "Context": &"open_shop", "Settings": &"settings", "Stock": &"stock"}
 	for child: Node in (get_node("Top/Row") as Container).get_children():
 		var button: Button = child as Button
 		if button == null:
 			continue
 		if roles.has(String(button.name)):
 			var label: String = "Pause" if button == get_node("Top/Row/Speed0") else ("Settings" if button == _settings_button else button.text)
+			# Stock is icon-only so the whole header still fits one row at 1600 px.
 			IconStyle.configure_button(button, roles[String(button.name)], label, button.tooltip_text,
-				IconCatalogue.TOP_BAR_SIZE, button == _settings_button or String(button.name) == "Speed0")
+				IconCatalogue.TOP_BAR_SIZE, button == _settings_button or String(button.name) in ["Speed0", "Stock"])
 		IconStyle.compact_button(button)
 	IconStyle.decorate_label(_reputation_label, &"reputation", IconCatalogue.TOP_BAR_SIZE)
 	# Reuse the warm theme's existing cream, ink and accent for the warning chip.
@@ -268,6 +323,7 @@ func _style_header() -> void:
 	chip.set_content_margin(SIDE_TOP, 4.0)
 	chip.set_content_margin(SIDE_BOTTOM, 4.0)
 	_loan_label.add_theme_stylebox_override("normal", chip)
+	_sold_out_label.add_theme_stylebox_override("normal", chip)
 	_day_label.tooltip_text = "Current day"
 	_time_label.tooltip_text = "Shop clock"
 	_phase_label.tooltip_text = "Today's service phase"
@@ -317,6 +373,10 @@ func _refresh_build_controls() -> void:
 		text = "R Rotate  |  Del Sell  |  Esc Cancel"
 	elif _build_state == BuildMode.State.BUY:
 		text = "R Rotate  |  Esc Cancel"
+	elif _build_state == BuildMode.State.WALLS:
+		text = "Drag along grid lines to build  |  Click a wall to change it  |  Del Remove  |  Esc Cancel"
+	elif _build_state == BuildMode.State.FLOOR:
+		text = "Drag onto the lot to add floor  |  Shift-drag Remove added floor  |  Esc Cancel"
 	if not _build_reason.is_empty():
 		text += "\n" + _build_reason
 	if _build_hint_text.text != text:

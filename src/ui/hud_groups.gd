@@ -7,8 +7,8 @@ const GROUP_GAP: float = 24.0
 const ROW_GAP: float = 12.0
 const GROUPS: Array[Array] = [
 	["Day", "Time", "Phase", "Speed0", "Speed1", "Speed2", "Speed4"],
-	["Cash", "Loan", "Reputation", "OwnerProgress", "Plates"],
-	["Walls", "Build", "Paint", "Context", "Menu", "Staff", "Settings"],
+	["Cash", "Loan", "Reputation", "OwnerProgress", "Plates", "SoldOut"],
+	["Walls", "Build", "Paint", "Context", "Menu", "Stock", "Staff", "Settings"],
 ]
 
 

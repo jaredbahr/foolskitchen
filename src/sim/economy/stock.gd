@@ -73,6 +73,22 @@ func take_many(needs: Dictionary) -> bool:
 	return true
 
 
+## Units that expire(today) would remove, without changing any batch.
+func expiring_on(today: int, shelf_life_days: Dictionary) -> Dictionary:
+	var expiring: Dictionary = {}
+	for id: StringName in _batches:
+		if not shelf_life_days.has(id) and not shelf_life_days.has(String(id)):
+			continue
+		var lifetime: int = int(shelf_life_days.get(id, shelf_life_days.get(String(id), 0)))
+		var qty: int = 0
+		for batch: Dictionary in _batches[id]:
+			if today - int(batch["bought_day"]) >= lifetime:
+				qty += int(batch["qty"])
+		if qty > 0:
+			expiring[id] = qty
+	return expiring
+
+
 ## Removes batches at bought_day + shelf life; unspecified ids never expire.
 func expire(today: int, shelf_life_days: Dictionary) -> Dictionary:
 	var expired: Dictionary = {}

@@ -11,11 +11,9 @@ static func capture(grid: SimGrid, content: ContentDB, menu: Array[RecipeDef],
 	if grid == null or content == null:
 		return null
 	var inputs: VibeModel.Inputs = VibeModel.Inputs.new()
-	for y: int in range(grid.size.y):
-		for x: int in range(grid.size.x):
-			var cell: Vector2i = Vector2i(x, y)
-			if grid.terrain(cell) == SimGrid.Terrain.FLOOR:
-				inputs.floor_cells.append(cell)
+	for cell: Vector2i in grid.cells():
+		if grid.terrain(cell) == SimGrid.Terrain.FLOOR:
+			inputs.floor_cells.append(cell)
 	for placed: PlacedItem in grid.items():
 		var definition: ItemDef = placed.def as ItemDef
 		if placed.removed or definition == null or definition.id.is_empty() \

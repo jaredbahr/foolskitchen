@@ -378,7 +378,14 @@ func _take_order(server: SimAgent) -> bool:
 		return false
 	if sim.menu.is_empty():
 		return false
-	var recipe: RecipeDef = sim.menu[rng.randi_range(0, sim.menu.size() - 1)]
+	# Guests choose among dishes still in stock. While nothing is sold out this
+	# is the same single draw over the same list, so the guest stream is
+	# unchanged; afterwards the same draw covers the shorter list.
+	var choices: Array[RecipeDef] = sim.available_menu()
+	if choices.is_empty():
+		_leave(sim.world, sim, &"out_of_stock")
+		return true
+	var recipe: RecipeDef = choices[rng.randi_range(0, choices.size() - 1)]
 	var price: int = sim.price_of(recipe)
 	var chance: float = sim.price_walkout_chance(recipe, budget_multiplier)
 	# Standard/cheaper prices preserve the existing guest stream exactly.

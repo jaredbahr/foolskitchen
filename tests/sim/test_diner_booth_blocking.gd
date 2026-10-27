@@ -234,7 +234,7 @@ func test_snapshot_rebuilds_rear_blocks_from_definition_without_new_save_fields(
 	assert_not_null(sim.world.grid.place_def(booth, Vector2i(2, 2), 3))
 	var editor: ShopEditor = ShopEditor.new(sim, content, ShopEditBooks.new(_can_spend, _record_cash))
 	var snapshot: Dictionary = editor.to_dict()
-	assert_eq(snapshot["version"], 1)
+	assert_eq(snapshot["version"], ShopEditor.SNAPSHOT_VERSION)
 	assert_false((snapshot["items"][0] as Dictionary).has("blocking_cells"), "blocking is content-derived")
 	var template: ShopLayout = ShopLayout.new()
 	template.rows = PackedStringArray(["......", "......", "......", "......", "......", "......"])

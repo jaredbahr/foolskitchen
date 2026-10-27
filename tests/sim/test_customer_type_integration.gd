@@ -345,9 +345,11 @@ func _sim(seed: int, legacy: bool = false) -> RestaurantSim:
 		sim.staff_spawns = original.staff_spawns
 		sim.rng = original.rng
 		sim.spawner = MAIN.MainSpawner.new(sim.rng)
-	if seed != 42:
-		for ingredient: IngredientDef in content.ingredients():
-			sim.stock.add(ingredient.id, 100, 1)
+	# Seed 42 once ran with an empty fridge. Since #54 an empty fridge sells
+	# every dish out before a guest orders, a deliberate change outside this
+	# pre-type oracle, so every seed now cooks from a stocked fridge.
+	for ingredient: IngredientDef in content.ingredients():
+		sim.stock.add(ingredient.id, 100, 1)
 	sim.kitchen = Kitchen.new(sim, content, sim.stock)
 	var book: ReputationBook = MAIN.MainBook.new() if legacy else ReputationBook.new()
 	sim.configure_reviews(book, TUNING, QUOTES, _random(seed + 9000))

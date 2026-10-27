@@ -7,12 +7,29 @@ extends RefCounted
 ## A cell is walkable when its terrain is FLOOR or ENTRY and no whole-item or
 ## explicit cell blocking covers it. find_path() includes start and goal, or
 ## an empty array when there is no path.
+##
+## Wall segments (FK-070) live on cell EDGES, not cells. An edge key is
+## Vector3i(x, y, axis): EDGE_WEST is the grid line on the west side of cell
+## (x, y) (between x-1 and x), EDGE_NORTH the line on its north side. Keys are
+## grid-line positions, independent of whether the line is inside the room or
+## on the outer shell, so they survive terrain changes such as a floor
+## expansion: a window on an outer face becomes an interior window when the
+## wall cell behind it turns into floor.
+##
+## Bounds (FK-080): the grid covers `bounds`, which starts at `origin`. An
+## authored layout starts at (0, 0); a floor expansion may grow the grid north
+## or west with grow_to(), so cells can have negative coordinates. Nothing is
+## ever shifted: cells, items, edges and saves keep their coordinates.
 
 ## What a cell is before any furniture goes on it.
 enum Terrain { OUTSIDE, FLOOR, WALL, ENTRY }
 
 ## Result of a placement check.
-enum PlaceResult { OK, OUT_OF_BOUNDS, NOT_FLOOR, OVERLAPS, INVALID_LAYER, INVALID_CELLS }
+enum PlaceResult { OK, OUT_OF_BOUNDS, NOT_FLOOR, OVERLAPS, INVALID_LAYER, INVALID_CELLS, WALL_IN_WAY }
+
+## What stands on a cell edge. WALL and WINDOW block movement across the edge;
+## DOORWAY is open. Any segment blocks diagonal steps past its end posts.
+enum Segment { NONE, WALL, DOORWAY, WINDOW }
 
 ## Emitted after cells change walkability (place/remove/terrain edits).
 ## Agents whose path crosses one of these cells must re-plan.
@@ -23,7 +40,11 @@ signal cells_changed(cells: Array[Vector2i])
 ## drop or re-plan their task.
 signal item_removed(item: PlacedItem)
 
-const NO_CELL := Vector2i(-1, -1)
+## Far outside any lot: lot cells may have negative coordinates (FK-080).
+const NO_CELL := Vector2i(-1000000, -1000000)
+const NO_EDGE := Vector3i(-1, -1, -1)
+const EDGE_WEST: int = 0
+const EDGE_NORTH: int = 1
 
 ## How many nearby open cells a buried agent tries before giving up.
 const ESCAPE_CANDIDATES: int = 16
@@ -36,10 +57,28 @@ var size: Vector2i:
 	get:
 		return _size
 
+## First cell of the grid (top-left). Read-only.
+var origin: Vector2i:
+	get:
+		return _origin
+
+## Every cell of the grid. Read-only.
+var bounds: Rect2i:
+	get:
+		return Rect2i(_origin, _size)
+
 var _size: Vector2i = Vector2i.ZERO
+var _origin: Vector2i = Vector2i.ZERO
 
 var _terrain: PackedByteArray = PackedByteArray()
 var _astar := AStarGrid2D.new()
+## Segment kind per edge key (Segment values, NONE never stored).
+var _segments: Dictionary[Vector3i, int] = {}
+## Path-relevant edges (both cells inside the walkable shell). Shared by
+## reference with _edge_astar, so they are cleared, never reassigned.
+var _edge_blocking: Dictionary[Vector3i, bool] = {}
+var _edge_occupied: Dictionary[Vector3i, bool] = {}
+var _edge_astar: EdgeAStar = EdgeAStar.new(_edge_blocking, _edge_occupied)
 var _items: Dictionary[int, PlacedItem] = {}
 ## cell -> id of the item covering it (solid or not).
 var _cover: Dictionary[Vector2i, int] = {}
@@ -53,16 +92,18 @@ var _dining_furnishings: Dictionary[Vector2i, int] = {}
 
 
 ## A new grid is all FLOOR (handy for tests); from_ascii() sets real terrain.
-func _init(grid_size: Vector2i = Vector2i(1, 1)) -> void:
+func _init(grid_size: Vector2i = Vector2i(1, 1), grid_origin: Vector2i = Vector2i.ZERO) -> void:
 	_size = Vector2i(maxi(grid_size.x, 1), maxi(grid_size.y, 1))
+	_origin = grid_origin
 	_terrain.resize(_size.x * _size.y)
 	_terrain.fill(Terrain.FLOOR)
-	_astar.region = Rect2i(Vector2i.ZERO, _size)
-	_astar.cell_size = Vector2.ONE
-	_astar.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
-	_astar.default_compute_heuristic = AStarGrid2D.HEURISTIC_OCTILE
-	_astar.default_estimate_heuristic = AStarGrid2D.HEURISTIC_OCTILE
-	_astar.update()
+	for astar: AStarGrid2D in [_astar, _edge_astar]:
+		astar.region = Rect2i(_origin, _size)
+		astar.cell_size = Vector2.ONE
+		astar.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
+		astar.default_compute_heuristic = AStarGrid2D.HEURISTIC_OCTILE
+		astar.default_estimate_heuristic = AStarGrid2D.HEURISTIC_OCTILE
+		astar.update()
 
 
 ## Builds a grid from rows of characters: '.' floor, '#' wall, ' ' or '~'
@@ -94,13 +135,99 @@ static func from_ascii(rows: PackedStringArray) -> SimGrid:
 
 
 func in_bounds(cell: Vector2i) -> bool:
-	return cell.x >= 0 and cell.y >= 0 and cell.x < size.x and cell.y < size.y
+	return cell.x >= _origin.x and cell.y >= _origin.y and cell.x < _origin.x + _size.x and cell.y < _origin.y + _size.y
+
+
+## Every cell in row-major order (north to south, west to east).
+func cells() -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	for y: int in range(_origin.y, _origin.y + _size.y):
+		for x: int in range(_origin.x, _origin.x + _size.x):
+			out.append(Vector2i(x, y))
+	return out
 
 
 func terrain(cell: Vector2i) -> Terrain:
 	if not in_bounds(cell):
 		return Terrain.OUTSIDE
-	return _terrain[cell.y * size.x + cell.x] as Terrain
+	return _terrain[_index(cell)] as Terrain
+
+
+func _index(cell: Vector2i) -> int:
+	return (cell.y - _origin.y) * _size.x + (cell.x - _origin.x)
+
+
+## Grows the grid to also cover `rect` (FK-080). New cells are OUTSIDE; every
+## existing cell, item, segment and coordinate is kept. Emits nothing: no
+## walkability changes. Returns false for an empty rect.
+func grow_to(rect: Rect2i) -> bool:
+	if rect.size.x <= 0 or rect.size.y <= 0:
+		return false
+	var grown: Rect2i = bounds.merge(rect)
+	if grown == bounds:
+		return true
+	var old_bounds: Rect2i = bounds
+	var old_terrain: PackedByteArray = _terrain
+	_origin = grown.position
+	_size = grown.size
+	_terrain = PackedByteArray()
+	_terrain.resize(_size.x * _size.y)
+	_terrain.fill(Terrain.OUTSIDE)
+	for y: int in range(old_bounds.position.y, old_bounds.end.y):
+		for x: int in range(old_bounds.position.x, old_bounds.end.x):
+			var old_index: int = (y - old_bounds.position.y) * old_bounds.size.x + (x - old_bounds.position.x)
+			_terrain[_index(Vector2i(x, y))] = old_terrain[old_index]
+	for astar: AStarGrid2D in [_astar, _edge_astar]:
+		astar.region = grown
+		astar.update()
+	# update() resets every point, so solidity is rebuilt from terrain and items.
+	for cell: Vector2i in cells():
+		_refresh_cell(cell)
+	return true
+
+
+## A new grid with the same bounds and terrain, without items or segments.
+func terrain_copy() -> SimGrid:
+	var copy: SimGrid = SimGrid.new(_size, _origin)
+	var changes: Dictionary[Vector2i, int] = {}
+	for cell: Vector2i in cells():
+		changes[cell] = terrain(cell)
+	copy.set_terrains(changes)
+	return copy
+
+
+## Changes many cells' terrain at once (cell -> Terrain) with one dining
+## refresh and one cells_changed (FK-080 floor edits). Nothing changes, and
+## false is returned, when any cell is out of bounds or an item would be left
+## on a cell that stops being FLOOR.
+func set_terrains(changes: Dictionary[Vector2i, int]) -> bool:
+	for cell: Vector2i in changes:
+		var t: int = changes[cell]
+		if not in_bounds(cell) or t < Terrain.OUTSIDE or t > Terrain.ENTRY:
+			return false
+		if (_cover.has(cell) or _floor_cover.has(cell)) and t != Terrain.FLOOR:
+			return false
+	var touched: Array[Vector2i] = []
+	for cell: Vector2i in changes:
+		if terrain(cell) == changes[cell]:
+			continue
+		_terrain[_index(cell)] = changes[cell]
+		if changes[cell] == Terrain.ENTRY:
+			if not _entries.has(cell):
+				_entries.append(cell)
+		else:
+			_entries.erase(cell)
+		touched.append(cell)
+	if touched.is_empty():
+		return true
+	touched.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return a.y < b.y or (a.y == b.y and a.x < b.x))
+	for cell: Vector2i in touched:
+		_refresh_cell(cell)
+		for edge: Vector3i in cell_edges(cell):
+			_refresh_edge(edge)
+	_refresh_dining_seats()
+	cells_changed.emit(touched)
+	return true
 
 
 ## Changes a cell's terrain. Returns false (and changes nothing) for
@@ -111,13 +238,15 @@ func set_terrain(cell: Vector2i, t: Terrain) -> bool:
 		return false
 	if (_cover.has(cell) or _floor_cover.has(cell)) and t != Terrain.FLOOR:
 		return false
-	_terrain[cell.y * size.x + cell.x] = t
+	_terrain[_index(cell)] = t
 	if t == Terrain.ENTRY:
 		if not _entries.has(cell):
 			_entries.append(cell)
 	else:
 		_entries.erase(cell)
 	_refresh_cell(cell)
+	for edge: Vector3i in cell_edges(cell):
+		_refresh_edge(edge)
 	_refresh_dining_seats()
 	cells_changed.emit([cell] as Array[Vector2i])
 	return true
@@ -145,6 +274,8 @@ func walkable_neighbours(cell: Vector2i) -> Array[Vector2i]:
 		if direction.x != 0 and direction.y != 0:
 			if not is_walkable(cell + Vector2i(direction.x, 0)) or not is_walkable(cell + Vector2i(0, direction.y)):
 				continue
+		if not _edge_occupied.is_empty() and not _edge_astar.step_open(cell, neighbour):
+			continue
 		out.append(neighbour)
 	return out
 
@@ -156,13 +287,16 @@ func can_place(footprint: Vector2i, origin: Vector2i, quarter_turns: int,
 	if layer != ItemDef.PlacementLayer.NORMAL and layer != ItemDef.PlacementLayer.FLOOR_DECOR:
 		return PlaceResult.INVALID_LAYER
 	var cover: Dictionary[Vector2i, int] = _coverage(layer)
-	for cell in _footprint_cells(footprint, origin, quarter_turns):
+	var cells: Array[Vector2i] = _footprint_cells(footprint, origin, quarter_turns)
+	for cell in cells:
 		if not in_bounds(cell):
 			return PlaceResult.OUT_OF_BOUNDS
 		if terrain(cell) != Terrain.FLOOR:
 			return PlaceResult.NOT_FLOOR
 		if cover.has(cell):
 			return PlaceResult.OVERLAPS
+	if _segment_inside(cells):
+		return PlaceResult.WALL_IN_WAY
 	return PlaceResult.OK
 
 
@@ -172,7 +306,10 @@ func can_place_def(definition: ItemDef, origin: Vector2i, quarter_turns: int = 0
 		return PlaceResult.INVALID_LAYER
 	if not definition.blocking_cells_valid():
 		return PlaceResult.INVALID_CELLS
-	return can_place(definition.footprint, origin, quarter_turns, definition.placement_layer)
+	var result: PlaceResult = can_place(definition.footprint, origin, quarter_turns, definition.placement_layer)
+	if result == PlaceResult.OK and _access_walled_off(definition, origin, quarter_turns):
+		return PlaceResult.WALL_IN_WAY
+	return result
 
 
 ## Places an item. Work and seat cells are given relative to the unrotated
@@ -252,6 +389,8 @@ func relocate_def(item_id: int, origin: Vector2i, quarter_turns: int) -> bool:
 		var covering: int = cover.get(cell, 0)
 		if covering != 0 and covering != item_id:
 			return false
+	if _segment_inside(new_cells) or _access_walled_off(definition, origin, turns):
+		return false
 	if placed.origin == origin and placed.quarter_turns == turns:
 		return true
 	var changed: Array[Vector2i] = placed.cells.duplicate()
@@ -360,13 +499,18 @@ func find_path(start: Vector2i, goal: Vector2i) -> Array[Vector2i]:
 	if start == goal:
 		return [start]
 	if is_walkable(start):
-		return _astar.get_id_path(start, goal)
+		return _solve(start, goal)
 	for exit in _walkable_rings(start, ESCAPE_CANDIDATES):
+		# The escape jump itself may not cross a wall next to the buried cell.
+		# Longer jumps (deeply buried) are not edge-checked: they already pass
+		# through solid furniture, and walls are closed-phase edits only.
+		if not step_open(start, exit):
+			continue
 		var rest: Array[Vector2i] = []
 		if exit == goal:
 			rest.append(exit)
 		else:
-			rest = _astar.get_id_path(exit, goal)
+			rest = _solve(exit, goal)
 		if rest.is_empty():
 			continue
 		var path: Array[Vector2i] = [start]
@@ -505,3 +649,213 @@ func _refresh_cell(cell: Vector2i) -> void:
 	if id != 0 and (_items[id].solid or _items[id].blocking_cells.has(cell)):
 		blocked = true
 	_astar.set_point_solid(cell, blocked)
+	_edge_astar.set_point_solid(cell, blocked)
+
+
+## The plain engine search while no interior segment exists, so a shop without
+## walls keeps exactly the paths (and tie-breaks) it had before FK-070.
+func _solve(start: Vector2i, goal: Vector2i) -> Array[Vector2i]:
+	if _edge_occupied.is_empty():
+		return _astar.get_id_path(start, goal)
+	var path: Array[Vector2i] = _edge_astar.get_id_path(start, goal)
+	for index: int in range(1, path.size()):
+		if not _edge_astar.step_open(path[index - 1], path[index]):
+			return []
+	return path
+
+
+# --- Wall segments (FK-070) -------------------------------------------------
+
+## Edge between two orthogonally adjacent cells, or NO_EDGE.
+static func edge_between(a: Vector2i, b: Vector2i) -> Vector3i:
+	var delta: Vector2i = b - a
+	if delta == Vector2i(1, 0):
+		return Vector3i(b.x, b.y, EDGE_WEST)
+	if delta == Vector2i(-1, 0):
+		return Vector3i(a.x, a.y, EDGE_WEST)
+	if delta == Vector2i(0, 1):
+		return Vector3i(b.x, b.y, EDGE_NORTH)
+	if delta == Vector2i(0, -1):
+		return Vector3i(a.x, a.y, EDGE_NORTH)
+	return NO_EDGE
+
+
+## The two cells an edge separates: [west or north cell, east or south cell].
+static func edge_cells(edge: Vector3i) -> Array[Vector2i]:
+	var cell: Vector2i = Vector2i(edge.x, edge.y)
+	var before: Vector2i = cell - (Vector2i(1, 0) if edge.z == EDGE_WEST else Vector2i(0, 1))
+	return [before, cell]
+
+
+## Grid-line end points. Vertex (x, y) is the north-west corner of cell (x, y).
+static func edge_vertices(edge: Vector3i) -> Array[Vector2i]:
+	var start: Vector2i = Vector2i(edge.x, edge.y)
+	return [start, start + (Vector2i(0, 1) if edge.z == EDGE_WEST else Vector2i(1, 0))]
+
+
+## Edge joining two neighbouring grid vertices, or NO_EDGE.
+static func edge_from_vertices(a: Vector2i, b: Vector2i) -> Vector3i:
+	var low: Vector2i = a.min(b)
+	var delta: Vector2i = (b - a).abs()
+	if delta == Vector2i(0, 1):
+		return Vector3i(low.x, low.y, EDGE_WEST)
+	if delta == Vector2i(1, 0):
+		return Vector3i(low.x, low.y, EDGE_NORTH)
+	return NO_EDGE
+
+
+## The (up to) four edges meeting at a grid vertex.
+static func edges_at_vertex(vertex: Vector2i) -> Array[Vector3i]:
+	return [Vector3i(vertex.x, vertex.y - 1, EDGE_WEST), Vector3i(vertex.x, vertex.y, EDGE_WEST),
+		Vector3i(vertex.x - 1, vertex.y, EDGE_NORTH), Vector3i(vertex.x, vertex.y, EDGE_NORTH)]
+
+
+## A cell's four sides: west, north, east, south.
+static func cell_edges(cell: Vector2i) -> Array[Vector3i]:
+	return [Vector3i(cell.x, cell.y, EDGE_WEST), Vector3i(cell.x, cell.y, EDGE_NORTH),
+		Vector3i(cell.x + 1, cell.y, EDGE_WEST), Vector3i(cell.x, cell.y + 1, EDGE_NORTH)]
+
+
+## An edge key is usable when it separates two in-bounds cells.
+func edge_in_bounds(edge: Vector3i) -> bool:
+	if edge.z != EDGE_WEST and edge.z != EDGE_NORTH:
+		return false
+	var cells: Array[Vector2i] = edge_cells(edge)
+	return in_bounds(cells[0]) and in_bounds(cells[1])
+
+
+## True unless a segment blocks this step (orthogonal across a wall/window, or
+## diagonal past any segment's end). Non-adjacent steps are always open.
+func step_open(from_cell: Vector2i, to_cell: Vector2i) -> bool:
+	return _edge_occupied.is_empty() or _edge_astar.step_open(from_cell, to_cell)
+
+
+func segment(edge: Vector3i) -> Segment:
+	return _segments.get(edge, Segment.NONE) as Segment
+
+
+## Places, changes or (with NONE) removes a segment. Rules about where walls
+## may stand belong to WallRules; this only refuses malformed edges. Emits
+## cells_changed with both cells when the edge changes.
+func set_segment(edge: Vector3i, kind: Segment) -> bool:
+	if not edge_in_bounds(edge) or kind < Segment.NONE or kind > Segment.WINDOW:
+		return false
+	if segment(edge) == kind:
+		return true
+	if kind == Segment.NONE:
+		_segments.erase(edge)
+	else:
+		_segments[edge] = kind
+	_refresh_edge(edge)
+	_refresh_dining_seats()
+	cells_changed.emit(edge_cells(edge))
+	return true
+
+
+## Applies several segment changes (edge -> Segment) with one cells_changed
+## and one dining refresh, so a dragged run rebuilds observers once. Nothing
+## changes when any edge is malformed.
+func set_segments(changes: Dictionary[Vector3i, int]) -> bool:
+	for edge: Vector3i in changes:
+		var kind: int = changes[edge]
+		if not edge_in_bounds(edge) or kind < Segment.NONE or kind > Segment.WINDOW:
+			return false
+	var touched: Array[Vector2i] = []
+	for edge: Vector3i in changes:
+		if segment(edge) == changes[edge]:
+			continue
+		if changes[edge] == Segment.NONE:
+			_segments.erase(edge)
+		else:
+			_segments[edge] = changes[edge]
+		_refresh_edge(edge)
+		for cell: Vector2i in edge_cells(edge):
+			if not touched.has(cell):
+				touched.append(cell)
+	if touched.is_empty():
+		return true
+	_refresh_dining_seats()
+	cells_changed.emit(touched)
+	return true
+
+
+## Every edge holding a segment, sorted (axis, then row, then column).
+func segment_edges() -> Array[Vector3i]:
+	var edges: Array[Vector3i] = []
+	edges.assign(_segments.keys())
+	edges.sort_custom(func(a: Vector3i, b: Vector3i) -> bool:
+		return a.z < b.z or (a.z == b.z and (a.y < b.y or (a.y == b.y and a.x < b.x))))
+	return edges
+
+
+func has_segments() -> bool:
+	return not _segments.is_empty()
+
+
+## True when a wall or window stands between two orthogonally adjacent cells.
+func edge_blocked(a: Vector2i, b: Vector2i) -> bool:
+	var kind: Segment = segment(edge_between(a, b))
+	return kind == Segment.WALL or kind == Segment.WINDOW
+
+
+## Only edges with walkable-shell terrain on both sides take part in pathing,
+## so outer-face windows leave paths untouched until the shell moves.
+func _refresh_edge(edge: Vector3i) -> void:
+	var kind: Segment = segment(edge)
+	var inside: bool = false
+	if kind != Segment.NONE and edge_in_bounds(edge):
+		inside = true
+		for cell: Vector2i in edge_cells(edge):
+			var t: Terrain = terrain(cell)
+			if t != Terrain.FLOOR and t != Terrain.ENTRY:
+				inside = false
+	if inside:
+		_edge_occupied[edge] = true
+		if kind == Segment.WALL or kind == Segment.WINDOW:
+			_edge_blocking[edge] = true
+		else:
+			_edge_blocking.erase(edge)
+	else:
+		_edge_occupied.erase(edge)
+		_edge_blocking.erase(edge)
+
+
+## Any segment on an edge between two cells of one footprint.
+func _segment_inside(cells: Array[Vector2i]) -> bool:
+	if _segments.is_empty():
+		return false
+	for cell: Vector2i in cells:
+		for step: Vector2i in [Vector2i(1, 0), Vector2i(0, 1)]:
+			if cells.has(cell + step) and _segments.has(edge_between(cell, cell + step)):
+				return true
+	return false
+
+
+## A wall or window between an item and one of its own work cells.
+func _access_walled_off(definition: ItemDef, origin: Vector2i, quarter_turns: int) -> bool:
+	if _segments.is_empty() or definition == null:
+		return false
+	var cells: Array[Vector2i] = _footprint_cells(definition.footprint, origin, quarter_turns)
+	var access: Array[Vector2i] = []
+	# Work cells only: a table's seat across a wall is dropped by DiningSeats.
+	for authored: Vector2i in definition.work_cells:
+		access.append(origin + GridMath.rotate_cell(authored, definition.footprint, quarter_turns))
+	return access_walled_off(cells, access)
+
+
+## True when some access cell touches the footprint only across walls/windows.
+func access_walled_off(cells: Array[Vector2i], access: Array[Vector2i]) -> bool:
+	if _segments.is_empty():
+		return false
+	for spot: Vector2i in access:
+		var touching: int = 0
+		var blocked: int = 0
+		for cell: Vector2i in cells:
+			if edge_between(cell, spot) == NO_EDGE:
+				continue
+			touching += 1
+			if edge_blocked(cell, spot):
+				blocked += 1
+		if touching > 0 and blocked == touching:
+			return true
+	return false

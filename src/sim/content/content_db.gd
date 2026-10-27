@@ -7,6 +7,7 @@ var _ingredients: Dictionary[StringName, IngredientDef] = {}
 var _recipes: Dictionary[StringName, RecipeDef] = {}
 var _items: Dictionary[StringName, ItemDef] = {}
 var _swatches: Dictionary[StringName, SwatchDef] = {}
+var _walls: Dictionary[StringName, WallKindDef] = {}
 
 
 ## On failure the database is empty, so an earlier load cannot hide bad data.
@@ -15,6 +16,7 @@ func load_all(root: String = "res://data") -> PackedStringArray:
 	_recipes.clear()
 	_items.clear()
 	_swatches.clear()
+	_walls.clear()
 	var errors: PackedStringArray = []
 	var ingredient_defs: Array[IngredientDef] = []
 	var recipe_defs: Array[RecipeDef] = []
@@ -44,8 +46,16 @@ func load_all(root: String = "res://data") -> PackedStringArray:
 			swatch_defs.append(resource as SwatchDef)
 		else:
 			errors.append("%s: expected SwatchDef" % path)
+	var wall_defs: Array[WallKindDef] = []
+	for path: String in _resource_paths(root.path_join("walls"), errors):
+		var resource: Resource = ResourceLoader.load(path)
+		if resource is WallKindDef:
+			wall_defs.append(resource as WallKindDef)
+		else:
+			errors.append("%s: expected WallKindDef" % path)
 	errors.append_array(validate_definitions(ingredient_defs, recipe_defs, item_defs))
 	errors.append_array(validate_swatches(swatch_defs))
+	errors.append_array(validate_wall_kinds(wall_defs))
 	if not errors.is_empty():
 		return errors
 	for definition: IngredientDef in ingredient_defs:
@@ -56,6 +66,8 @@ func load_all(root: String = "res://data") -> PackedStringArray:
 		_items[definition.id] = definition
 	for definition: SwatchDef in swatch_defs:
 		_swatches[definition.id] = definition
+	for definition: WallKindDef in wall_defs:
+		_walls[definition.id] = definition
 	return errors
 
 
@@ -73,6 +85,51 @@ func item(id: StringName) -> ItemDef:
 
 func swatch(id: StringName) -> SwatchDef:
 	return _swatches.get(id) as SwatchDef
+
+
+func wall_kind(id: StringName) -> WallKindDef:
+	return _walls.get(id) as WallKindDef
+
+
+## The definition for a SimGrid.Segment value, or null.
+func wall_kind_for(segment: int) -> WallKindDef:
+	for definition: WallKindDef in _walls.values():
+		if definition.segment == segment:
+			return definition
+	return null
+
+
+## Catalogue order (then ID); a new array each call.
+func wall_kinds() -> Array[WallKindDef]:
+	var result: Array[WallKindDef] = []
+	result.assign(_walls.values())
+	result.sort_custom(func(a: WallKindDef, b: WallKindDef) -> bool:
+		return a.order < b.order or (a.order == b.order and String(a.id) < String(b.id)))
+	return result
+
+
+## Exactly one definition per segment type, each with a name and a price.
+static func validate_wall_kinds(definitions: Array[WallKindDef]) -> PackedStringArray:
+	var errors: PackedStringArray = []
+	var ids: Dictionary[StringName, bool] = {}
+	var segments: Dictionary[int, bool] = {}
+	for index: int in range(definitions.size()):
+		var definition: WallKindDef = definitions[index]
+		if definition == null:
+			errors.append("wall[%d] is null" % index)
+			continue
+		_check_id(definition.id, "wall", ids, errors)
+		if definition.display_name.strip_edges().is_empty():
+			errors.append("wall '%s': display_name is empty" % definition.id)
+		if definition.price < 0:
+			errors.append("wall '%s': price must be >= 0" % definition.id)
+		if definition.segment < SimGrid.Segment.WALL or definition.segment > SimGrid.Segment.WINDOW:
+			errors.append("wall '%s': segment must be wall, doorway or window" % definition.id)
+		elif segments.has(definition.segment):
+			errors.append("wall '%s': another wall definition has the same segment" % definition.id)
+		else:
+			segments[definition.segment] = true
+	return errors
 
 
 func swatches() -> Array[SwatchDef]:

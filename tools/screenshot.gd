@@ -10,6 +10,10 @@ extends SceneTree
 ##   --f3        show the scene's read-only debug overlay
 ##   --menu      show the real menu panel in MORNING (cannot combine with --open)
 ##   --staff     show the real morning Staff panel, paused, with no altered roster
+##   --stock     show the real morning Stock panel, paused. With --open, start a
+##               sold-out fixture (no soup stock, its auto-reorder off) and show
+##               the HUD Sold out tag; add --report to scroll the closed-day
+##               report to its Low stock section instead
 ##   --settings  open Main -> Menu -> Settings at the usual 1600x900 / 100%
 ##   --settings-world  use the gear, select 150%, keyboard Close, show the world
 ##   --hud-layout --window-size=1280x720|1600x900 --speed=0 --frames=12,90
@@ -17,6 +21,13 @@ extends SceneTree
 ##   --report    require a closed-day report with at least two real review cards
 ##   --build=green|red  hold a checked buy preview through the production input API
 ##   --paint     show a painted morning shop using the production paint controls
+##   --walls=place|room  FK-070 walls: a dragged run with its ghost and cost, or a
+##             built room (interior wall, doorway, windows inside and out). Room
+##             is Walls Up unless --quarter selects the cutaway; add --open --fast=N for guests.
+##   --expand=drag|shop  FK-080 floor expansion: a dragged floor rectangle on the
+##             lot with ghost, cost and lot outline, or the finished L-shaped shop
+##             with tables in the new floor (Walls Up unless --quarter selects the
+##             cutaway; add --open --fast=N for seated guests).
 ##   --door-queue  zoom the existing camera onto a real queue, or its empty entry
 ##   --loan-review --speed=0 --frames=12,90  explicit financial-fixture UI evidence
 ##   --milestone-review --speed=0 --frames=12,90  authored goals and close reward evidence
@@ -88,6 +99,7 @@ var _owner_warmup_ticks: int = 0
 var _f3: bool = false
 var _menu: bool = false
 var _staff: bool = false
+var _stock: bool = false
 var _settings: bool = false
 var _settings_from_menu: bool = false
 var _settings_world: bool = false
@@ -99,6 +111,8 @@ var _hud_layout_scale: int = 125
 var _report_requested: bool = false
 var _build: String = ""
 var _paint: bool = false
+var _walls: String = ""
+var _expand: String = ""
 var _door_queue: bool = false
 var _loan_review: bool = false
 var _loan_fixture: Dictionary = {}
@@ -173,6 +187,11 @@ func _initialize() -> void:
 				_fail_capture("--menu does not accept a value")
 				return
 			_menu = true
+		elif arg.begins_with("--stock"):
+			if arg != "--stock":
+				_fail_capture("--stock does not accept a value")
+				return
+			_stock = true
 		elif arg.begins_with("--staff"):
 			if arg != "--staff":
 				_fail_capture("--staff does not accept a value")
@@ -195,6 +214,18 @@ func _initialize() -> void:
 			_build = requested
 		elif arg == "--paint":
 			_paint = true
+		elif arg.begins_with("--walls"):
+			var requested_walls: String = arg.trim_prefix("--walls=")
+			if not ["place", "room"].has(requested_walls):
+				_fail_capture("--walls supports place or room")
+				return
+			_walls = requested_walls
+		elif arg.begins_with("--expand"):
+			var requested_expand: String = arg.trim_prefix("--expand=")
+			if not ["drag", "shop"].has(requested_expand):
+				_fail_capture("--expand supports drag or shop")
+				return
+			_expand = requested_expand
 		elif arg.begins_with("--door-queue"):
 			if arg != "--door-queue":
 				_fail_capture("--door-queue does not accept a value")
@@ -226,11 +257,29 @@ func _initialize() -> void:
 	if _paint and (_open or _fast != 0 or not _selection.is_empty() or _assign_owner or _f3 or _menu or _staff or not _build.is_empty() or _speed != 0):
 		_fail_capture("--paint requires a paused morning without other view/service flags")
 		return
+	if not _walls.is_empty() and (_scene_path != "res://src/world/main.tscn" or not _build.is_empty() or _paint \
+			or _menu or _staff or _settings or not _selection.is_empty() or _f3 or _report_requested \
+			or (_walls == "place" and (_open or _fast != 0 or _quarter >= 0))):
+		_fail_capture("--walls requires Main without other panels; place also needs a fresh morning")
+		return
+	if not _expand.is_empty() and (_scene_path != "res://src/world/main.tscn" or not _build.is_empty() or _paint \
+			or not _walls.is_empty() or _menu or _staff or _settings or not _selection.is_empty() or _f3 \
+			or _report_requested or (_expand == "drag" and (_open or _fast != 0 or _quarter >= 0))):
+		_fail_capture("--expand requires Main without other panels; drag also needs a fresh morning")
+		return
 	if _menu and (_open or not _selection.is_empty()):
 		_fail_capture("--menu requires morning and cannot combine with --open or --select")
 		return
 	if _staff and (_open or _fast != 0 or not _selection.is_empty() or _assign_owner or _f3 or _menu or _speed != 0):
 		_fail_capture("--staff requires a paused morning without other service/panel options")
+		return
+	if _stock and not _open and (_fast != 0 or not _selection.is_empty() or _assign_owner \
+			or _f3 or _menu or _staff or _speed != 0 or not _build.is_empty() or _paint):
+		_fail_capture("--stock requires a paused morning without other service/panel options, or --open")
+		return
+	if _stock and _open and (not _selection.is_empty() or _assign_owner or _f3 or _menu or _staff \
+			or not _build.is_empty() or _paint):
+		_fail_capture("--stock --open cannot combine with other view or panel options")
 		return
 	if _report_requested and (not _open or _fast <= 0 or _speed != 0 or _menu or _staff or not _build.is_empty()):
 		_fail_capture("--report requires a fast-forwarded, paused-clock service view")
@@ -241,7 +290,7 @@ func _initialize() -> void:
 			or _speed != 0 or _shots.size() != 1):
 		_fail_capture("--settings requires one paused Main capture without other view/service flags")
 		return
-	if _shots.is_empty() or _shots.min() < 1 or ((_quarter >= 0 or not _selection.is_empty() or _f3 or _menu or _staff or _settings or not _build.is_empty() or _paint or _door_queue) and _shots.min() < 4):
+	if _shots.is_empty() or _shots.min() < 1 or ((_quarter >= 0 or not _selection.is_empty() or _f3 or _menu or _staff or _settings or not _build.is_empty() or _paint or _door_queue or not _walls.is_empty() or not _expand.is_empty()) and _shots.min() < 4):
 		_fail_capture("capture frames must be positive, and at least 4 for requested view/UI options")
 		return
 	if _settings_world and _shots.min() < 90:
@@ -258,7 +307,7 @@ func _initialize() -> void:
 	# Preserve capture isolation when the integrated game session supports saves.
 	if "use_saves" in _main:
 		_main.set("use_saves", false)
-	if (_report_requested or _milestone_review or _diner_review) and "new_game_seed_override" in _main:
+	if (_report_requested or _milestone_review or _diner_review or _expand == "shop") and "new_game_seed_override" in _main:
 		_main.set("new_game_seed_override", 1)
 	root.add_child(_main)
 
@@ -1036,8 +1085,22 @@ static func _catalogue_content_expectations(content: ContentDB) -> Dictionary:
 			"unlock_level": definition.unlock_level, "scene": path})
 		if not path.is_empty() and not wrappers.has(path):
 			wrappers.append(path)
+	# The Walls tab (FK-070) previews its Kenney pieces in the same cache.
+	var wall_scenes: Array[String] = []
+	for wall: WallKindDef in content.wall_kinds():
+		var wall_path: String = wall.thumbnail_scene.resource_path if wall.thumbnail_scene != null else ""
+		if not wall_path.is_empty() and not wall_scenes.has(wall_path):
+			wall_scenes.append(wall_path)
+			if not wrappers.has(wall_path):
+				wrappers.append(wall_path)
+	# The Floor card (FK-080) previews its Kenney tile in the same cache.
+	var floor_path: String = BuildCatalogue.FLOOR_THUMBNAIL.resource_path
+	if not wall_scenes.has(floor_path):
+		wall_scenes.append(floor_path)
+	if not wrappers.has(floor_path):
+		wrappers.append(floor_path)
 	wrappers.sort()
-	return {"cards": cards, "wrappers": wrappers}
+	return {"cards": cards, "wrappers": wrappers, "wall_scenes": wall_scenes}
 
 
 ## Read existing cache entries only: request() would queue missing thumbnails.
@@ -1146,7 +1209,7 @@ static func catalogue_review_evidence(main: Node, context_root: Node) -> Diction
 			"expected": expected["wrappers"].size(), "expected_scenes": expected["wrappers"], "cached_scenes": cached_scenes,
 			"active": cache._active_scene != null, "failed": cache._failed.size(),
 			"error": cache.last_error, "icons_match": icons_match},
-		"expected_cards": expected["cards"], "cards": cards, "onscreen_cards": onscreen, "tabs": tabs, "items": items,
+		"expected_cards": expected["cards"], "expected_wall_scenes": expected["wall_scenes"], "cards": cards, "onscreen_cards": onscreen, "tabs": tabs, "items": items,
 		"server": _catalogue_server_evidence(world, shop, main.get_node_or_null("CameraRig/Camera3D") as Camera3D),
 		"vibe": catalogue_vibe_evidence(main, world, content, editor, catalogue),
 		"generated_vibe_uids": generated_uid_evidence(VIBE_UID_SOURCES),
@@ -1379,6 +1442,9 @@ static func _catalogue_cards_valid(state: Dictionary) -> bool:
 		var scene: String = definition.get("scene", "")
 		if not scene.is_empty() and not wrappers.has(scene):
 			wrappers.append(scene)
+	for scene: Variant in state.get("expected_wall_scenes", []):
+		if not wrappers.has(String(scene)):
+			wrappers.append(String(scene))
 	wrappers.sort()
 	var cards: Array = state.get("cards", [])
 	if expected.is_empty() or cards.size() != expected.size():
@@ -1587,7 +1653,7 @@ static func hud_layout_options(arguments: PackedStringArray) -> Dictionary:
 				result["error"] = "--hud-layout requires --frames=12,90"
 		elif argument.begins_with("--scene") and argument != "--scene=res://src/world/main.tscn":
 			result["error"] = "--hud-layout requires the actual Main scene"
-		for prefix: String in ["--open", "--fast", "--select", "--assign-owner", "--f3", "--menu", "--staff", "--settings", "--report", "--build", "--paint", "--quarter", "--door-queue", "--loan-review", "--catalogue-review", "--milestone-review"]:
+		for prefix: String in ["--open", "--fast", "--select", "--assign-owner", "--f3", "--menu", "--staff", "--stock", "--settings", "--report", "--build", "--paint", "--quarter", "--door-queue", "--loan-review", "--catalogue-review", "--milestone-review"]:
 			if argument.begins_with(prefix):
 				result["error"] = "--hud-layout cannot combine with other view or service options"
 	if speed_count != 1 or frames_count != 1:
@@ -1605,13 +1671,43 @@ func _process(_delta: float) -> bool:
 			_fail_capture("viewport did not finish drawing the pending capture")
 		return _finished
 	_frames += 1
+	if _frames == 2 and _stock and _open:
+		# Explicit morning fixture: today's soup stock is gone and its
+		# auto-reorder is off, so the real service sells Tomato soup out.
+		var stock: Stock = root.get_node("Economy").get("stock") as Stock
+		if stock == null or not bool(_main.call("stock_set_auto", &"soup_stock", false)) \
+				or not stock.take(&"soup_stock", stock.count(&"soup_stock")):
+			_fail_capture("--stock --report could not prepare its sold-out fixture")
+			return true
 	if _frames == 3:
 		# Autoloads aren't compile-time identifiers in a --script main loop.
 		var clock: Node = root.get_node("Clock")
+		if not _walls.is_empty():
+			# Walls are a closed-phase edit, so build them before any --open service.
+			_configure_walls()
+			if _failed:
+				return true
+		if not _expand.is_empty():
+			# Floor is a closed-phase edit too: build it before any --open service.
+			_configure_expand()
+			if _failed:
+				return true
 		if _open:
 			(clock.get("sim") as SimClock).start_service()
 		clock.call("set_speed", _speed)
 		_configure_camera()
+		if _walls == "room" and _quarter < 0:
+			(_main.get_node("ShopView") as ShopView).set_wall_mode(ShopView.WallMode.UP)
+		if _walls == "place":
+			_begin_wall_drag()
+			if _failed:
+				return true
+		if _expand == "shop" and _quarter < 0:
+			(_main.get_node("ShopView") as ShopView).set_wall_mode(ShopView.WallMode.UP)
+		if _expand == "drag":
+			_begin_floor_drag()
+			if _failed:
+				return true
 		if _failed:
 			return true
 		if _diner_review:
@@ -1645,6 +1741,10 @@ func _process(_delta: float) -> bool:
 			if not _main.has_method("set_staff_visible") or not bool(_main.call("set_staff_visible", true)):
 				_fail_capture("--staff requires the scene's morning staff API")
 				return true
+		if _stock and not _open:
+			if not _main.has_method("set_stock_visible") or not bool(_main.call("set_stock_visible", true)):
+				_fail_capture("--stock requires the scene's morning stock API")
+				return true
 		if _settings:
 			_configure_settings()
 			if _failed:
@@ -1661,6 +1761,8 @@ func _process(_delta: float) -> bool:
 			_configure_paint()
 			if _failed:
 				return true
+	if _stock and _report_requested:
+		_scroll_report_to_low_stock()
 	if _diner_review and _frames == 24:
 		_diner_fixture = DINER_REVIEW.furnish(_main, root, _diner_fixture)
 		if not String(_diner_fixture.get("error", "")).is_empty():
@@ -1698,7 +1800,7 @@ func _process(_delta: float) -> bool:
 		if _settings_keyboard["settings_closed"] != true or _settings_keyboard["menu_visible"] != false:
 			_fail_capture("native Close acceptance did not return from Settings to the world")
 			return true
-	if not _build.is_empty() and _frames >= 3:
+	if (not _build.is_empty() or _walls == "place" or _expand == "drag") and _frames >= 3:
 		_hold_build_pointer()
 	if _fast > 0 and _frames > 3 and _main.has_method("run_ticks"):
 		_main.call("run_ticks", _fast)
@@ -1961,27 +2063,25 @@ func _settings_world_evidence(image: Image) -> Dictionary:
 	var candidates: int = 0
 	var coloured: int = 0
 	var witnesses: Array[Dictionary] = []
-	for y: int in range(view.world.grid.size.y):
-		for x: int in range(view.world.grid.size.x):
-			var cell: Vector2i = Vector2i(x, y)
-			if view.world.grid.terrain(cell) != SimGrid.Terrain.FLOOR:
-				continue
-			var point: Vector3 = GridMath.cell_to_world(cell)
-			var pixel: Vector2 = root.get_final_transform() * camera.unproject_position(point)
-			var at: Vector2i = Vector2i(pixel.round())
-			if not camera.is_position_in_frustum(point) or header.has_point(pixel) \
-					or at.x < 1 or at.y < 1 or at.x >= image.get_width() - 1 or at.y >= image.get_height() - 1:
-				continue
-			candidates += 1
-			var average: Color = Color(0.0, 0.0, 0.0, 0.0)
-			for dy: int in range(-1, 2):
-				for dx: int in range(-1, 2):
-					average += image.get_pixel(at.x + dx, at.y + dy) / 9.0
-			var difference: float = absf(average.r - clear.r) + absf(average.g - clear.g) + absf(average.b - clear.b)
-			if difference > 0.08 and average.r + average.g + average.b > 0.12:
-				coloured += 1
-				if witnesses.size() < 12:
-					witnesses.append({"cell": [x, y], "pixel": [at.x, at.y], "rgb": [average.r, average.g, average.b]})
+	for cell: Vector2i in view.world.grid.cells():
+		if view.world.grid.terrain(cell) != SimGrid.Terrain.FLOOR:
+			continue
+		var point: Vector3 = GridMath.cell_to_world(cell)
+		var pixel: Vector2 = root.get_final_transform() * camera.unproject_position(point)
+		var at: Vector2i = Vector2i(pixel.round())
+		if not camera.is_position_in_frustum(point) or header.has_point(pixel) \
+				or at.x < 1 or at.y < 1 or at.x >= image.get_width() - 1 or at.y >= image.get_height() - 1:
+			continue
+		candidates += 1
+		var average: Color = Color(0.0, 0.0, 0.0, 0.0)
+		for dy: int in range(-1, 2):
+			for dx: int in range(-1, 2):
+				average += image.get_pixel(at.x + dx, at.y + dy) / 9.0
+		var difference: float = absf(average.r - clear.r) + absf(average.g - clear.g) + absf(average.b - clear.b)
+		if difference > 0.08 and average.r + average.g + average.b > 0.12:
+			coloured += 1
+			if witnesses.size() < 12:
+				witnesses.append({"cell": [cell.x, cell.y], "pixel": [at.x, at.y], "rgb": [average.r, average.g, average.b]})
 	var visible_floor: bool = view.floor_mesh.is_visible_in_tree()
 	return {"verified": draws > 0 and visible_floor and view.item_nodes.size() > 0 and candidates >= 16 and coloured >= 12,
 		"draw_calls_3d": draws, "visible_floor": visible_floor, "native_item_count": view.item_nodes.size(),
@@ -2081,6 +2181,180 @@ func _configure_build() -> void:
 	_main.call("update_build_pointer", _build_pointer)
 
 
+## FK-070 room: an interior wall across the west dining room with a window and
+## a doorway, a short return wall (T junction), and two windows in the west shell.
+static func walls_fixture() -> Dictionary[Vector3i, int]:
+	var changes: Dictionary[Vector3i, int] = {}
+	for y: int in range(5, 10):
+		changes[Vector3i(5, y, SimGrid.EDGE_WEST)] = SimGrid.Segment.WALL
+	changes[Vector3i(5, 6, SimGrid.EDGE_WEST)] = SimGrid.Segment.WINDOW
+	changes[Vector3i(5, 8, SimGrid.EDGE_WEST)] = SimGrid.Segment.DOORWAY
+	changes[Vector3i(3, 9, SimGrid.EDGE_NORTH)] = SimGrid.Segment.WALL
+	changes[Vector3i(4, 9, SimGrid.EDGE_NORTH)] = SimGrid.Segment.WALL
+	changes[Vector3i(1, 6, SimGrid.EDGE_WEST)] = SimGrid.Segment.WINDOW
+	changes[Vector3i(1, 7, SimGrid.EDGE_WEST)] = SimGrid.Segment.WINDOW
+	return changes
+
+
+## The room is built through Main's production wrapper; the camera frames it.
+func _configure_walls() -> void:
+	var world: SimWorld = _capture_world()
+	var rig: CameraRig = _main.get_node_or_null("CameraRig") as CameraRig
+	if world == null or rig == null or world.clock.phase != SimClock.Phase.MORNING or not _main.has_method("shop_walls"):
+		_fail_capture("--walls requires the production morning wall APIs")
+		return
+	if _walls == "room" and not bool(_main.call("shop_walls", walls_fixture())):
+		_fail_capture("the walls fixture was refused: " + (_main.get("shop_editor") as ShopEditor).last_check.why)
+		return
+	rig.initial_focus = Vector2(2.6, 3.6) if _walls == "room" else Vector2(4.4, 3.7)
+	rig.initial_zoom = rig.minimum_zoom
+
+
+## Press on one grid vertex and hold the pointer on another, through Main's input route.
+func _begin_wall_drag() -> void:
+	var camera: Camera3D = _main.get_node_or_null("CameraRig/Camera3D") as Camera3D
+	var catalogue: BuildCatalogue = _main.get_node_or_null("Overlay/BuildCatalogue") as BuildCatalogue
+	if camera == null or catalogue == null or not bool(_main.call("set_build_active", true)):
+		_fail_capture("scene refused build entry for the walls preview")
+		return
+	catalogue.set_category(BuildCatalogue.WALLS)
+	if not bool(_main.call("begin_wall_tool", SimGrid.Segment.WALL)):
+		_fail_capture("scene refused the Walls tool")
+		return
+	var start: Vector2 = camera.unproject_position(Vector3(4.5, 0.0, 2.5))
+	_build_pointer = camera.unproject_position(Vector3(4.5, 0.0, 4.5))
+	root.warp_mouse(start)
+	var press: InputEventMouseButton = InputEventMouseButton.new()
+	press.button_index = MOUSE_BUTTON_LEFT
+	press.pressed = true
+	press.position = start
+	press.global_position = start
+	# Through Input, so the held button is real state (Main ends drags whose
+	# button is up) and the press takes the production _unhandled_input route.
+	Input.parse_input_event(press)
+	Input.flush_buffered_events()
+	_hold_build_pointer()
+	_main.call("update_build_pointer", _build_pointer)
+
+
+func _walls_capture_valid() -> bool:
+	var world: SimWorld = _capture_world()
+	var mode: BuildMode = _main.get("build_mode") as BuildMode
+	var preview: BuildPreview = _main.get_node_or_null("BuildPreview") as BuildPreview
+	if world == null or mode == null or preview == null:
+		return false
+	if _walls == "place":
+		return mode.state == BuildMode.State.WALLS and mode.wall_dragging and mode.current_check.ok \
+			and mode.current_check.changes.size() == 4 and preview.wall_ghosts.size() == 4 \
+			and not world.grid.has_segments()
+	var fixture: Dictionary[Vector3i, int] = walls_fixture()
+	for edge: Vector3i in fixture:
+		if world.grid.segment(edge) != fixture[edge]:
+			return false
+	return world.grid.segment_edges().size() == fixture.size()
+
+
+## FK-080 shop: an L of new floor (an east wing beside the dining room and a
+## back room behind the kitchen's east end), with tables in the new floor.
+static func expand_fixture() -> Array[Rect2i]:
+	return [Rect2i(14, 0, 1, 10), Rect2i(6, -3, 9, 3)]
+
+
+## Table origins (x, y) and quarter turns (z).
+static func expand_tables() -> Array[Vector3i]:
+	return [Vector3i(8, -3, 0), Vector3i(12, -3, 0), Vector3i(13, 6, 1)]
+
+
+## The floor is bought through Main's production wrapper. The fixture's floor
+## costs more than a new game's cash, so the capture first grants the gap,
+## and guests arrive faster so the new tables fill.
+func _configure_expand() -> void:
+	var world: SimWorld = _capture_world()
+	var rig: CameraRig = _main.get_node_or_null("CameraRig") as CameraRig
+	if world == null or rig == null or world.clock.phase != SimClock.Phase.MORNING or not _main.has_method("shop_floor"):
+		_fail_capture("--expand requires the production morning floor APIs")
+		return
+	var economy: Node = root.get_node("Economy")
+	economy.call("add_cash", 1200, Ledger.OTHER)
+	if _expand == "drag":
+		# Show the whole lot: its centre, a little further out than the shop fit.
+		rig.initial_focus = Vector2(3.5, 1.75)
+		rig.initial_zoom = 16.0
+		return
+	for rect: Rect2i in expand_fixture():
+		var cells: Array[Vector2i] = []
+		for y: int in range(rect.position.y, rect.end.y):
+			for x: int in range(rect.position.x, rect.end.x):
+				cells.append(Vector2i(x, y))
+		if not bool(_main.call("shop_floor", cells, true)):
+			_fail_capture("the floor fixture was refused: " + (_main.get("shop_editor") as ShopEditor).last_check.why)
+			return
+	# A busy evening so the new tables fill: the three old tables would
+	# otherwise take every guest of a quiet morning.
+	var sim: RestaurantSim = _main.get("sim") as RestaurantSim
+	sim.spawner.min_gap = 25
+	sim.spawner.max_gap = 45
+	for table: Vector3i in expand_tables():
+		if not bool(_main.call("shop_buy", &"table_2", Vector2i(table.x, table.y), table.z)):
+			_fail_capture("a fixture table was refused: " + (_main.get("shop_editor") as ShopEditor).last_check.why)
+			return
+
+
+## Press on a lot cell behind the kitchen and hold the pointer on another,
+## dragging a 8 x 3 back room, through Main's input route.
+func _begin_floor_drag() -> void:
+	var camera: Camera3D = _main.get_node_or_null("CameraRig/Camera3D") as Camera3D
+	var catalogue: BuildCatalogue = _main.get_node_or_null("Overlay/BuildCatalogue") as BuildCatalogue
+	if camera == null or catalogue == null or not bool(_main.call("set_build_active", true)):
+		_fail_capture("scene refused build entry for the floor preview")
+		return
+	catalogue.set_category(BuildCatalogue.WALLS)
+	if not bool(_main.call("begin_floor_tool")):
+		_fail_capture("scene refused the Floor tool")
+		return
+	var start: Vector2 = camera.unproject_position(GridMath.cell_to_world(Vector2i(1, -1)))
+	_build_pointer = camera.unproject_position(GridMath.cell_to_world(Vector2i(8, -3)))
+	root.warp_mouse(start)
+	var press: InputEventMouseButton = InputEventMouseButton.new()
+	press.button_index = MOUSE_BUTTON_LEFT
+	press.pressed = true
+	press.position = start
+	press.global_position = start
+	Input.parse_input_event(press)
+	Input.flush_buffered_events()
+	_hold_build_pointer()
+	_main.call("update_build_pointer", _build_pointer)
+
+
+func _expand_capture_valid() -> bool:
+	var world: SimWorld = _capture_world()
+	var mode: BuildMode = _main.get("build_mode") as BuildMode
+	var preview: BuildPreview = _main.get_node_or_null("BuildPreview") as BuildPreview
+	if world == null or mode == null or preview == null:
+		return false
+	if _expand == "drag":
+		print("EXPAND_DRAG cells=%d cost=%d hint=%s" % [mode.current_check.floor_cells.size(),
+			mode.current_check.cost, mode.floor_summary()])
+		return mode.state == BuildMode.State.FLOOR and mode.floor_dragging and mode.current_check.ok \
+			and mode.current_check.floor_cells.size() == 24 and preview.floor_ghost_cells.size() == 24 \
+			and is_instance_valid(preview.lot_outline) \
+			and world.grid.terrain(Vector2i(1, -1)) != SimGrid.Terrain.FLOOR
+	for cell: Vector2i in [Vector2i(14, -3), Vector2i(13, 5), Vector2i(14, 9)]:
+		if world.grid.terrain(cell) != SimGrid.Terrain.FLOOR:
+			return false
+	var seated: int = 0
+	for agent: SimAgent in world.agents:
+		var guest: CustomerAgent = agent as CustomerAgent
+		if guest != null and guest.cell == guest.seat_cell and (guest.cell.x >= 13 or guest.cell.y < 1):
+			seated += 1
+	var seats: Array[String] = []
+	for agent: SimAgent in world.agents:
+		if agent is CustomerAgent:
+			seats.append("%s@%s" % [(agent as CustomerAgent).seat_cell, agent.cell])
+	print("EXPAND_SHOP seated_in_new_floor=%d guests=%s" % [seated, ", ".join(seats)])
+	return not _open or seated > 0
+
+
 func _hold_build_pointer() -> void:
 	root.warp_mouse(_build_pointer)
 	var motion: InputEventMouseMotion = InputEventMouseMotion.new()
@@ -2166,6 +2440,23 @@ func _queue_capture() -> void:
 	RenderingServer.frame_post_draw.connect(_capture, CONNECT_ONE_SHOT)
 
 
+## Brings the closed-day report's Low stock heading to the top of its scroll.
+func _scroll_report_to_low_stock() -> void:
+	var scroll: ScrollContainer = _main.get_node_or_null("Overlay/EveningReport/Panel/Scroll") as ScrollContainer
+	var heading: Control = _main.get_node_or_null("Overlay/EveningReport/Panel/Scroll/Content/LowStockHeading") as Control
+	if scroll != null and heading != null and scroll.is_visible_in_tree():
+		scroll.scroll_vertical = int(heading.position.y)
+
+
+func _low_stock_visible(world: SimWorld) -> bool:
+	var scroll: ScrollContainer = _main.get_node_or_null("Overlay/EveningReport/Panel/Scroll") as ScrollContainer
+	var heading: Control = _main.get_node_or_null("Overlay/EveningReport/Panel/Scroll/Content/LowStockHeading") as Control
+	var report: DayReport = _main.get("shown_report") as DayReport
+	return world != null and world.clock.phase == SimClock.Phase.CLOSED and report != null \
+		and scroll != null and heading != null and scroll.is_visible_in_tree() \
+		and scroll.get_global_rect().encloses(heading.get_global_rect())
+
+
 func _capture() -> void:
 	if _finished or _failed or not _capture_pending:
 		return
@@ -2208,6 +2499,12 @@ func _capture() -> void:
 			or build.get("ghost_valid") != (_build == "green") or build.get("origin") != build.get("pointer_cell")):
 		_fail_capture("requested build preview was not present in the rendered frame")
 		return
+	if not _walls.is_empty() and not _walls_capture_valid():
+		_fail_capture("requested walls view did not match the rendered shop")
+		return
+	if not _expand.is_empty() and not _expand_capture_valid():
+		_fail_capture("requested floor expansion view did not match the rendered shop")
+		return
 	var menu_visible: Variant = _main.call("is_menu_visible") if _main.has_method("is_menu_visible") else null
 	if _menu and (menu_visible != true or world == null or world.clock.phase != SimClock.Phase.MORNING):
 		_fail_capture("requested menu was not visible in the rendered morning frame")
@@ -2217,8 +2514,21 @@ func _capture() -> void:
 			or world.now != 0 or not _staff_capture_valid(staff_state)):
 		_fail_capture("requested Staff panel did not show the real paused morning roster and pool")
 		return
-	if _report_requested and not _report_capture_valid(world):
+	if _report_requested and not _stock and not _report_capture_valid(world):
 		_fail_capture("requested report did not show visible native reviews after service closed")
+		return
+	var stock_visible: Variant = _main.call("is_stock_visible") if _main.has_method("is_stock_visible") else null
+	if _stock and not _open and (stock_visible != true or world == null \
+			or world.clock.phase != SimClock.Phase.MORNING or world.now != 0):
+		_fail_capture("requested Stock panel was not visible in the paused morning frame")
+		return
+	if _stock and _report_requested and not _low_stock_visible(world):
+		_fail_capture("requested report did not show its Low stock section after service closed")
+		return
+	var sold_out_tag: Label = _main.get_node_or_null("HUD/Top/Row/SoldOut") as Label
+	if _stock and _open and not _report_requested and (world == null or world.clock.phase == SimClock.Phase.CLOSED \
+			or sold_out_tag == null or not sold_out_tag.is_visible_in_tree()):
+		_fail_capture("requested service view did not show the HUD Sold out tag")
 		return
 	var paint: Dictionary = _paint_state() if _paint else {}
 	if _paint and (paint.get("active") != true or paint.get("catalogue_visible") != true \
@@ -2335,6 +2645,10 @@ func _capture() -> void:
 		"requested_debug_visible": _f3,
 		"requested_menu_visible": _menu, "menu_visible": menu_visible,
 		"requested_staff_visible": _staff, "staff": staff_state,
+		"requested_stock": _stock, "stock_visible": stock_visible,
+		"sold_out_tag": sold_out_tag.text if sold_out_tag != null and sold_out_tag.is_visible_in_tree() else "",
+		"low_stock": (_main.get("shown_report") as DayReport).low_stock
+			if _stock and _report_requested and _main.get("shown_report") != null else [],
 		"requested_report": _report_requested,
 		"report_review_count": (_main.get("shown_report") as DayReport).review_cards.size()
 			if _report_requested else 0,

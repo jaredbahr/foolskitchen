@@ -50,7 +50,8 @@ func _morning_stock_cost(main: Node) -> int:
 	var total := 0
 	for id: StringName in TUNING.morning_stock:
 		total += TUNING.morning_stock[id] * content.ingredient(id).unit_cost
-	return total
+	# The morning auto-order pays its premium once on the order total (#54).
+	return ReorderSettings.auto_cost(total, TUNING.auto_reorder_premium)
 
 
 func _run_day(main: Node) -> void:

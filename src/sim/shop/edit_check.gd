@@ -8,6 +8,15 @@ var why: String = ""
 var unreachable: Array[int] = []
 ## Partial capacity is still a permitted placement, with a readable warning.
 var seat_warnings: Dictionary[int, String] = {}
+## Wall edits (FK-070): what a valid change would charge and refund.
+var cost: int = 0
+var refund: int = 0
+## Segments a valid wall change would actually alter (edge -> new segment).
+var changes: Dictionary[Vector3i, int] = {}
+## Floor edits (FK-080): the cells a valid change would buy or remove. Wall
+## segments it would take down (they no longer fit) are in `changes` as NONE.
+var floor_cells: Array[Vector2i] = []
+var floor_adding: bool = true
 
 
 func _init(allowed: bool = false, reason: String = "") -> void:

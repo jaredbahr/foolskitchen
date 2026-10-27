@@ -12,6 +12,9 @@ Each line ends with its PR number.
 
 ### Players
 - Seat guest parties together in arrival order, size them to the shop's usable seats, and flag blocked seats in Build; members with food finish their meals if others leave. Add a four-seat table for larger groups. (#152)
+- Grow your restaurant: the new Floor tool in Build mode lets you drag extra floor onto your lot behind and beside the shop for $15 a tile. The outside walls move out to wrap the new shape (L-shapes too) and the old wall opens up; Shift-drag removes added floor for a half refund. (#175)
+- Check the fridge in the new morning Stock panel: buy ingredients at list price, and choose what auto-reorder tops up each morning (for a 5% premium). Dishes that run out are marked sold out, so guests order something else instead of leaving, and the evening report says what ran out and when. Old ingredients now go off after their shelf life; the first time an older save is loaded, anything already past it is thrown out once. (#156)
+- Build walls, doorways and windows in Build mode: drag along the grid lines to split the room, click a wall to turn it into a doorway or window, and open windows in the outside walls too. (#157)
 - Decorate your diner with padded two-seat booths and chrome counter stools. (#147)
 - Track career goals and earn cash and XP for reaching them. (#146)
 - Meet Students, Foodies and Families with different budgets and patience; inspect a guest to see their type. (#145)
@@ -69,6 +72,9 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- The roadmap now has an idea backlog (regulars, patio, makeover jobs, staff drama, more sites and more) so liked ideas aren't lost. (#174)
+- Design decision D24: a second restaurant unlocks at Tier 3 once you hire a manager to run the first, and shops you're away from keep earning based on the manager's skill. (#165)
+- Design decision D23: Fool's Kitchen is a restaurant designer in a Sims-like design language, where the player chooses the concept by what they build and serve; the roadmap lists the designer work. (#163)
 - Art style: glowing parts such as neon signs may use their own emissive colour, defined once per asset. (#151)
 - Design decision D22: the player decides the restaurant's look, so assets come in several variants rather than one "right" version. (#149)
 - Roadmap: building, decorating and running the restaurant come first; first person and mini-games move to later. (#128)

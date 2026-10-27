@@ -191,3 +191,19 @@ func test_json_round_trip_preserves_maximum_quantity() -> void:
 	assert_eq(restored.count(&"bun"), Stock.MAX_QUANTITY - 1)
 	assert_eq(stock.count(&"bun"), Stock.MAX_QUANTITY)
 	assert_eq(restored.expire(day + 2, {&"bun": 2}), {&"bun": Stock.MAX_QUANTITY - 1})
+
+
+## Read-only expiry preview uses the same boundary as expire().
+func test_expiring_on_previews_expire_without_changing_batches() -> void:
+	var stock: Stock = Stock.new()
+	stock.add(&"bun", 2, 1)
+	stock.add(&"bun", 3, 2)
+	stock.add(&"cheese", 4, 1)
+	var lives: Dictionary = {&"bun": 2, &"cheese": 5}
+	var before: Dictionary = stock.to_dict()
+	assert_eq(stock.expiring_on(2, lives), {})
+	assert_eq(stock.expiring_on(3, lives), {&"bun": 2})
+	assert_eq(stock.expiring_on(4, lives), {&"bun": 5})
+	assert_eq(stock.to_dict(), before)
+	var preview: Dictionary = Stock.from_dict(before).expiring_on(3, lives)
+	assert_eq(stock.expire(3, lives), preview, "expire removes exactly what was previewed")

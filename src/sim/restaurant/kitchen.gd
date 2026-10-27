@@ -229,6 +229,28 @@ func _take_ingredients(agent: SimAgent) -> bool:
 	return true
 
 
+## Ingredients promised to accepted tickets whose cook has not yet fetched
+## them, so a dish is sold out before a guest can order what cannot be cooked.
+func committed_ingredients() -> Dictionary[StringName, int]:
+	var committed: Dictionary[StringName, int] = {}
+	var sim: RestaurantSim = _restaurant.get_ref() as RestaurantSim
+	if sim == null:
+		return committed
+	for task: SimTask in _tasks.values():
+		if task.kind != &"cook" or bool(task.payload.get("ingredients_taken", false)):
+			continue
+		var order: Order = sim.orders.get_order(int(task.payload["order_id"]))
+		if order == null or (order.state != Order.State.PLACED and order.state != Order.State.COOKING):
+			continue
+		var recipe: RecipeDef = _content.recipe(order.recipe_id)
+		if recipe == null:
+			continue
+		for ingredient: IngredientDef in recipe.ingredients:
+			if ingredient != null:
+				committed[ingredient.id] = committed.get(ingredient.id, 0) + 1
+	return committed
+
+
 func _take_clean_plate(agent: SimAgent) -> bool:
 	var staff: StaffAgent = agent as StaffAgent
 	var sim: RestaurantSim = _restaurant.get_ref() as RestaurantSim

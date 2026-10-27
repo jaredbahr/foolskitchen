@@ -38,6 +38,14 @@ func rebuild(world: SimWorld, lowered_wall_cells: Array[Vector2i] = []) -> void:
 		for cell: Vector2i in _frontage_cells(_world.grid, cells, normal):
 			if attached.has(cell):
 				continue
+			if _player_window(_world.grid, cell, normal):
+				# A player's window (FK-070) takes this slot; later slots keep their place.
+				attached[cell] = true
+				if windows < 2:
+					windows += 1
+				elif lamps < 2:
+					lamps += 1
+				continue
 			var detail: PropView = null
 			if windows < 2:
 				detail = _asset(WALL_WINDOW, "StreetWindow%d" % windows, true)
@@ -136,15 +144,13 @@ func _frontage_cells(grid: SimGrid, entries: Array[Vector2i], normal: Vector2i) 
 	var candidates: Array[Vector2i] = []
 	for depth: int in [0, 1]:
 		var plane: int = _axis_value(entries[0] - normal * depth, normal)
-		for y: int in range(grid.size.y):
-			for x: int in range(grid.size.x):
-				var cell: Vector2i = Vector2i(x, y)
-				if _axis_value(cell, normal) != plane or grid.terrain(cell) != SimGrid.Terrain.WALL:
-					continue
-				var outside: SimGrid.Terrain = grid.terrain(cell + normal)
-				if grid.terrain(cell - normal) == SimGrid.Terrain.FLOOR \
-						and (outside == SimGrid.Terrain.OUTSIDE or outside == SimGrid.Terrain.ENTRY):
-					candidates.append(cell)
+		for cell: Vector2i in grid.cells():
+			if _axis_value(cell, normal) != plane or grid.terrain(cell) != SimGrid.Terrain.WALL:
+				continue
+			var outside: SimGrid.Terrain = grid.terrain(cell + normal)
+			if grid.terrain(cell - normal) == SimGrid.Terrain.FLOOR \
+					and (outside == SimGrid.Terrain.OUTSIDE or outside == SimGrid.Terrain.ENTRY):
+				candidates.append(cell)
 		if not candidates.is_empty():
 			break
 	var ordered: Array[Vector2i] = []
@@ -159,6 +165,11 @@ func _frontage_cells(grid: SimGrid, entries: Array[Vector2i], normal: Vector2i) 
 		ordered.append(candidates[nearest_index])
 		candidates.remove_at(nearest_index)
 	return ordered
+
+
+## The player has opened a real window in this shell cell's room-side face.
+func _player_window(grid: SimGrid, cell: Vector2i, normal: Vector2i) -> bool:
+	return grid.segment(SimGrid.edge_between(cell, cell - normal)) == SimGrid.Segment.WINDOW
 
 
 func _axis_value(cell: Vector2i, normal: Vector2i) -> int:
@@ -226,9 +237,14 @@ func _only_outside(grid: SimGrid, bounds: AABB) -> bool:
 	return true
 
 
+func _asset(scene: PackedScene, node_name: String, pane_only: bool = false, grey: bool = false) -> PropView:
+	return make_asset(scene, node_name, pane_only, grey)
+
+
 ## PropView adds the shared scale above the untouched imported node transforms
 ## and measures/centres the actual native mesh hierarchy before placement.
-func _asset(scene: PackedScene, node_name: String, pane_only: bool = false, grey: bool = false) -> PropView:
+## Shared with WallSegmentView, whose player windows use the same native pane.
+static func make_asset(scene: PackedScene, node_name: String, pane_only: bool = false, grey: bool = false) -> PropView:
 	var model: Node3D = scene.instantiate() as Node3D
 	if model == null:
 		return null

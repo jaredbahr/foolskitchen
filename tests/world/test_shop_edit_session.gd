@@ -228,7 +228,8 @@ func test_loaded_morning_keeps_the_existing_restock_and_autosave_policy() -> voi
 	_close(first)
 	var second: Node = _start()
 	assert_eq(Economy.stock.count(&"bun"), TUNING.morning_stock[&"bun"])
-	assert_eq(Economy.cash, cash - unit_cost, "loaded morning tops up missing stock as before")
+	assert_eq(Economy.cash, cash - ReorderSettings.auto_cost(unit_cost, TUNING.auto_reorder_premium),
+		"loaded morning tops up missing stock as before, as one auto-order with its premium")
 	var expected_loan: Dictionary = {"version": 1, "principal": "0",
 		"last_settled_day": "0", "has_borrowed": false}
 	assert_eq(Economy.loan.to_dict(), expected_loan, "a debt-free morning does not create or settle a loan")
@@ -315,7 +316,8 @@ func _stock_cost(main: Node) -> int:
 	var total: int = 0
 	for id: StringName in TUNING.morning_stock:
 		total += TUNING.morning_stock[id] * content.ingredient(id).unit_cost
-	return total
+	# The morning auto-order pays its premium once on the order total (#54).
+	return ReorderSettings.auto_cost(total, TUNING.auto_reorder_premium)
 
 
 func _assert_bindings(main: Node) -> void:

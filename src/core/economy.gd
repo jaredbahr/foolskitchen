@@ -5,6 +5,9 @@ extends Node
 
 const MAX_CURRENCY: int = 9223372036854775807
 const LOAN_TERMS: LoanTuning = preload("res://data/balance/loans.tres")
+## Ledger notes that mark the morning auto-order's lines and its premium.
+const AUTO_LINE_PREFIX: String = "auto_reorder:"
+const AUTO_PREMIUM_NOTE: String = "auto_reorder_premium"
 
 var ledger: Ledger = Ledger.new()
 var stock: Stock = Stock.new()
@@ -114,4 +117,38 @@ func buy_ingredient(id: StringName, qty: int, unit_cost: int) -> bool:
 	stock.add(id, qty, Clock.day)
 	ledger.record(Clock.day, -price, Ledger.INGREDIENTS, String(id))
 	EventBus.cash_changed.emit(cash, -price, Ledger.INGREDIENTS)
+	return true
+
+
+## Buys a planned morning auto-order atomically, or returns false without
+## changes. Each line is recorded at list price; the order's premium (the
+## planned cost above its list total) is one extra ingredients entry.
+## Lines: [{id: StringName, qty: int, unit_cost: int}]. Never borrows.
+@warning_ignore("integer_division")
+func buy_auto_order(lines: Array[Dictionary], cost: int) -> bool:
+	var list_total: int = 0
+	var added: Dictionary[StringName, int] = {}
+	for line: Dictionary in lines:
+		var id: StringName = line.get("id", &"")
+		var qty: int = int(line.get("qty", 0))
+		var unit_cost: int = int(line.get("unit_cost", -1))
+		if id.is_empty() or qty <= 0 or unit_cost < 0:
+			return false
+		if unit_cost > 0 and qty > (MAX_CURRENCY - list_total) / unit_cost:
+			return false
+		if qty > Stock.MAX_QUANTITY - stock.count(id) - added.get(id, 0):
+			return false
+		added[id] = added.get(id, 0) + qty
+		list_total += qty * unit_cost
+	if lines.is_empty() or cost < list_total or not can_spend_without_loan(cost):
+		return false
+	for line: Dictionary in lines:
+		var id: StringName = line["id"]
+		var price: int = int(line["qty"]) * int(line["unit_cost"])
+		stock.add(id, int(line["qty"]), Clock.day)
+		ledger.record(Clock.day, -price, Ledger.INGREDIENTS, AUTO_LINE_PREFIX + String(id))
+		EventBus.cash_changed.emit(cash, -price, Ledger.INGREDIENTS)
+	if cost > list_total:
+		ledger.record(Clock.day, list_total - cost, Ledger.INGREDIENTS, AUTO_PREMIUM_NOTE)
+		EventBus.cash_changed.emit(cash, list_total - cost, Ledger.INGREDIENTS)
 	return true

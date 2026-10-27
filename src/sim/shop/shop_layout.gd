@@ -13,3 +13,15 @@ extends Resource
 @export var floor_swatch_id: StringName = &""
 ## Starting cell per staff role (&"cook", &"server", &"cleaner", &"owner").
 @export var staff_spawns: Dictionary[StringName, Vector2i] = {}
+## Wall segments (FK-070): edge key (SimGrid edge) -> WallKindDef id.
+@export var wall_segments: Dictionary[Vector3i, StringName] = {}
+## Lot (FK-080): how many cells the outer walls may move out past the starting
+## shell on each side. The street (south) side never moves.
+@export var lot_west: int = 0
+@export var lot_east: int = 0
+@export var lot_north: int = 0
+## Price of one new floor cell. Removing bought floor refunds half, like furniture.
+@export var floor_cell_price: int = 0
+## Floor cells the player has bought (FK-080), in grid coordinates. The outer
+## walls are derived from these by ShopFootprint; empty is the starting shell.
+@export var floor_cells: Array[Vector2i] = []
