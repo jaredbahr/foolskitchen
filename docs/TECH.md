@@ -929,8 +929,14 @@ an active edit/panel/selection first, or opens Settings when none is active.
   replaces list prices and the half-price sell rate with that amount in one
   `Ledger.UPGRADES` line carrying the note (`ShopEditBooks.add_cash(...,
   note)`, `Economy.add_cash(..., note)`). So undoing a buy refunds 100% and a
-  day's upgrades net to zero. Exact (undo/redo) buys skip only the unlock-level
-  check: the shop already had that item. A refused undo/redo leaves both stacks
+  day's upgrades net to zero. An undo or redo restores a layout the shop
+  already accepted, so with `Exact` the checks that only forbid losing
+  something are skipped: seat, work-spot, door and floor reachability, seat
+  links and the unlock level (the restored layout may already have had an
+  unusable seat, and refusing would block the whole stack). Placement
+  geometry, minimum equipment, items in use, people who would be shut in,
+  furniture on removed floor, cash and closed-only still apply; moves pass
+  `Exact` too (no money). A refused undo/redo leaves both stacks
   as they were and sets `last_refusal`; Main shows "Can't undo: ..." in the
   key strip. A new edit clears redo; paint during service is not recorded.
   Main clears the history on every phase change (opening, and the next

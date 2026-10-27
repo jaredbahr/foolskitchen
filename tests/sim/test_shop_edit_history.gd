@@ -275,3 +275,28 @@ func test_undo_sell_restores_starter_furniture_above_the_owner_level() -> void:
 	assert_not_null(_sim.world.grid.item_at(cell))
 	assert_eq(_ledger.cash, START_CASH)
 	assert_false(_editor.check_buy(&"potted_plant", Vector2i(4, 9)).ok, "a new purchase still needs the level")
+
+
+## Review M1: undo restores a layout the shop already accepted, even when that
+## layout had a seat nobody could reach. The table's seat at (0, 5) sat in the
+## old west wall; the new floor there made it usable, and undoing the floor must
+## not be refused forever with "That would cut off a seat".
+func test_undo_back_to_an_accepted_layout_with_an_unusable_seat() -> void:
+	var grid: SimGrid = _sim.world.grid
+	var table: PlacedItem = grid.item(5)
+	assert_not_null(table)
+	assert_true(_history.move(table.id, Vector2i(1, 5), 2), _editor.last_check.why)
+	assert_eq(grid.terrain(Vector2i(0, 5)), SimGrid.Terrain.WALL)
+	var before_floor: int = _ledger.cash
+	assert_true(_history.apply_floor(_rect(-1, 4, 1, 3), true), _editor.last_check.why)
+	assert_eq(grid.terrain(Vector2i(0, 5)), SimGrid.Terrain.FLOOR)
+	assert_true(_history.undo(), _history.last_refusal)
+	assert_eq(grid.terrain(Vector2i(0, 5)), SimGrid.Terrain.WALL)
+	assert_eq(_ledger.cash, before_floor)
+	assert_true(_history.undo(), _history.last_refusal)
+	assert_eq(_history.undo_count(), 0)
+	assert_eq(_ledger.cash, START_CASH)
+	# A fresh removal is still checked as before.
+	assert_true(_history.redo(), _history.last_refusal)
+	assert_true(_history.redo(), _history.last_refusal)
+	assert_eq(_editor.check_floor(_rect(-1, 4, 1, 3), false).why, WallRules.CUT_SEAT)

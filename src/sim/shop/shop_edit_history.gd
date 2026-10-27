@@ -48,6 +48,8 @@ var _grid: SimGrid
 var _undo: Array[Entry] = []
 var _redo: Array[Entry] = []
 var _refs: Dictionary[int, ItemRef] = {}
+## Which way the running step goes, for the refusal wording.
+var _undoing: bool = true
 
 
 func _init(editor: ShopEditor = null, grid: SimGrid = null) -> void:
@@ -238,6 +240,8 @@ func redo() -> bool:
 
 
 func _invert(entry: Entry) -> bool:
+	_undoing = true
+	_editor.last_check = EditCheck.new(true)
 	var exact: ShopEditor.Exact = ShopEditor.Exact.new(-entry.cash, UNDO_NOTE)
 	match entry.kind:
 		Kind.BUY:
@@ -245,7 +249,7 @@ func _invert(entry: Entry) -> bool:
 		Kind.SELL:
 			return _restore(entry, exact)
 		Kind.MOVE:
-			return _check(_editor.move(entry.item.id, entry.origin, entry.turns))
+			return _check(_editor.move(entry.item.id, entry.origin, entry.turns, exact))
 		Kind.WALLS:
 			return _check(_editor.apply_segments(entry.segments_before, exact))
 		Kind.FLOOR:
@@ -257,6 +261,8 @@ func _invert(entry: Entry) -> bool:
 
 
 func _reapply(entry: Entry) -> bool:
+	_undoing = false
+	_editor.last_check = EditCheck.new(true)
 	var exact: ShopEditor.Exact = ShopEditor.Exact.new(entry.cash, REDO_NOTE)
 	match entry.kind:
 		Kind.BUY:
@@ -264,7 +270,7 @@ func _reapply(entry: Entry) -> bool:
 		Kind.SELL:
 			return _remove(entry, exact)
 		Kind.MOVE:
-			return _check(_editor.move(entry.item.id, entry.to_origin, entry.to_turns))
+			return _check(_editor.move(entry.item.id, entry.to_origin, entry.to_turns, exact))
 		Kind.WALLS:
 			return _check(_editor.apply_segments(entry.segments_after, exact))
 		Kind.FLOOR:
@@ -299,7 +305,8 @@ func _restore(entry: Entry, exact: ShopEditor.Exact) -> bool:
 func _check(accepted: bool) -> bool:
 	if not accepted:
 		var why: String = _editor.last_check.why if _editor.last_check != null and not _editor.last_check.ok else ""
-		last_refusal = why if not why.is_empty() else "That can't be undone right now"
+		last_refusal = why if not why.is_empty() else (
+			"That can't be undone right now" if _undoing else "That can't be redone right now")
 	return accepted
 
 

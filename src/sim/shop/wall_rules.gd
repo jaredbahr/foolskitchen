@@ -154,10 +154,13 @@ static func reachable(grid: SimGrid) -> Dictionary[Vector2i, bool]:
 ## furniture can be moved or sold later and the seal would remain. Then with
 ## furniture: a change may not newly cut off something reachable right now;
 ## things furniture already blocks stay furniture warnings.
-static func cut_off_problem(before: SimGrid, after: SimGrid, people: Array[Vector2i]) -> String:
-	var problem: String = _cut_off(after, reachable(walls_only(before)), reachable(walls_only(after)), people)
+## `people_only` (undo/redo, FK-085) checks only the people: a restored layout
+## was already accepted, unusable seats or stations included.
+static func cut_off_problem(before: SimGrid, after: SimGrid, people: Array[Vector2i],
+		people_only: bool = false) -> String:
+	var problem: String = _cut_off(after, reachable(walls_only(before)), reachable(walls_only(after)), people, people_only)
 	if problem.is_empty():
-		problem = _cut_off(after, reachable(before), reachable(after), people)
+		problem = _cut_off(after, reachable(before), reachable(after), people, people_only)
 	return problem
 
 
@@ -172,7 +175,12 @@ static func walls_only(grid: SimGrid) -> SimGrid:
 
 
 static func _cut_off(after: SimGrid, was: Dictionary[Vector2i, bool], now: Dictionary[Vector2i, bool],
-		people: Array[Vector2i]) -> String:
+		people: Array[Vector2i], people_only: bool = false) -> String:
+	if people_only:
+		for cell: Vector2i in people:
+			if _lost([cell] as Array[Vector2i], was, now):
+				return CUT_PERSON
+		return ""
 	var door: Array[Vector2i] = []
 	door.assign(door_cells(after).keys())
 	if _lost(door, was, now):

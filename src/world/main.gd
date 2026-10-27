@@ -1894,6 +1894,10 @@ func _step_history(undoing: bool) -> bool:
 			if not label.is_empty() else edit_history.last_refusal
 	if _build_ready:
 		build_mode.refresh()
+		# The hovered item may be gone or back under a new id: look again.
+		build_mode.hover_item(-1)
+		if is_build_active() and is_inside_tree():
+			update_build_pointer(get_viewport().get_mouse_position())
 	_update_build_controls()
 	return accepted
 
