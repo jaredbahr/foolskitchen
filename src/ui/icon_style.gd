@@ -59,12 +59,13 @@ static func heading_icon(role: StringName, heading: Control) -> TextureRect:
 
 
 ## Compact padding keeps the shared palette and native 46px touch height.
+## 5px sides keep the whole top bar, Stock included, on one row at 1600px.
 static func compact_button(button: Button) -> void:
 	button.custom_minimum_size.y = maxf(button.custom_minimum_size.y, 46.0)
 	for state: StringName in [&"normal", &"hover", &"pressed", &"hover_pressed", &"disabled"]:
 		var style: StyleBox = _palette(button).get_stylebox(state, "Button").duplicate() as StyleBox
-		style.set_content_margin(SIDE_LEFT, 6.0)
-		style.set_content_margin(SIDE_RIGHT, 6.0)
+		style.set_content_margin(SIDE_LEFT, 5.0)
+		style.set_content_margin(SIDE_RIGHT, 5.0)
 		style.set_content_margin(SIDE_TOP, 9.0)
 		style.set_content_margin(SIDE_BOTTOM, 9.0)
 		button.add_theme_stylebox_override(state, style)

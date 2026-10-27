@@ -4,7 +4,8 @@ extends Node3D
 ## each new morning.
 ##
 ## Day loop:
-##   MORNING  -> fridge topped up, "Open shop" (HUD) starts service
+##   MORNING  -> expired stock thrown out, auto-reorder tops the fridge up,
+##               "Open shop" (HUD) starts service
 ##   OPEN / LAST_ORDERS -> RestaurantSim runs (guests, staff, kitchen)
 ##   CLOSED   -> wages and rent charged, evening report shown
 ##   "Next day" -> MORNING of the next day, autosave
@@ -61,6 +62,10 @@ var milestones: MilestoneTracker = MilestoneTracker.new()
 var milestone_catalogue: MilestoneSet = MILESTONES
 ## Zero is one plate; the two purchased levels carry two and four.
 var tray_level: int = 0
+## Per-ingredient morning auto-reorder choices, saved in the "reorder" section.
+var reorder_settings: ReorderSettings = ReorderSettings.new(TUNING)
+## Auto-order premium. Tests that are not about reorder pricing may set 0.
+var auto_reorder_premium: float = TUNING.auto_reorder_premium
 
 var _previous_clock: SimClock = null
 var _started: bool = false
@@ -73,6 +78,11 @@ var _loaded_plates: PlateLedger = null
 var _loaded_reputation: ReputationBook = null
 var _loaded_milestones: MilestoneTracker = null
 var _loaded_tray_level: int = 0
+var _loaded_reorder: ReorderSettings = null
+## This morning's automatic order and expiry, for the Stock panel notes.
+var _morning_order: Dictionary = {}
+var _expired_this_morning: Dictionary = {}
+var _sold_out_shown: int = -1
 var _owner_award_today: Dictionary = {}
 var _owner_unlocks_today: Array[String] = []
 var _owner_award_day: int = 0
@@ -101,6 +111,7 @@ var _settings_previous_speed: int = 0
 var _goals_panel: GoalsPanel
 var _goals_return_to_menu: bool = false
 var _goals_snapshot: Dictionary = {}
+var _stock_panel: StockPanel
 
 
 ## Builds the restaurant and the read-only view. Safe before tree readiness.
@@ -222,6 +233,15 @@ func _bind_world_presentation() -> void:
 		_staff_panel.job_priority_requested.connect(_on_staff_job_priority_requested)
 	if not $HUD.is_connected(&"staff_pressed", toggle_staff):
 		$HUD.connect(&"staff_pressed", toggle_staff)
+	_stock_panel = $Overlay/StockPanel
+	if not _stock_panel.buy_requested.is_connected(_on_stock_buy_requested):
+		_stock_panel.buy_requested.connect(_on_stock_buy_requested)
+		_stock_panel.auto_requested.connect(_on_stock_auto_requested)
+		_stock_panel.target_requested.connect(_on_stock_target_requested)
+		_stock_panel.close_requested.connect(_on_stock_close_requested)
+	if not $HUD.is_connected(&"stock_pressed", toggle_stock):
+		$HUD.connect(&"stock_pressed", toggle_stock)
+	_refresh_stock_panel()
 	_inspect_panel.bind_world(world)
 	_debug_overlay.bind_world(world)
 	_debug_overlay.bind_cleanliness(sim.cleanliness)
@@ -231,7 +251,7 @@ func _bind_world_presentation() -> void:
 
 func _on_header_layout_changed() -> void:
 	var top: float = float($HUD.call("panel_top"))
-	for path: NodePath in [^"Overlay/MenuPanel/Panel", ^"Overlay/StaffPanel/Panel",
+	for path: NodePath in [^"Overlay/MenuPanel/Panel", ^"Overlay/StaffPanel/Panel", ^"Overlay/StockPanel/Panel",
 			^"Overlay/EveningReport/Panel", ^"Overlay/DebugOverlay/Panel", ^"Overlay/GoalsPanel/Panel"]:
 		var panel: Control = get_node(path) as Control
 		if path == ^"Overlay/GoalsPanel/Panel":
@@ -281,6 +301,7 @@ func start() -> void:
 	SaveSystem.register("plates", _capture_plates, _restore_plates)
 	SaveSystem.register("reviews", _capture_reviews, _restore_reviews)
 	SaveSystem.register("milestones", _capture_milestones, _restore_milestones)
+	SaveSystem.register("reorder", _capture_reorder, _restore_reorder)
 	var loaded: bool = use_saves and _load_autosave()
 	if not loaded:
 		_skip_next_autosave = use_saves and SaveSystem.list_slots().has(save_slot)
@@ -407,6 +428,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				set_menu_visible(false)
 			elif _staff_panel != null and _staff_panel.visible:
 				set_staff_visible(false)
+			elif is_stock_visible():
+				set_stock_visible(false)
 			elif _inspect_panel.selected_agent_id >= 0 or _inspect_panel.selected_item_id >= 0:
 				clear_selection()
 			else:
@@ -515,6 +538,7 @@ func set_paint_active(active: bool) -> bool:
 		_dismiss_goals()
 		set_menu_visible(false)
 		set_staff_visible(false)
+		set_stock_visible(false)
 		clear_selection()
 		_report.hide()
 	_paint_active = active
@@ -725,6 +749,7 @@ func _on_build_changed() -> void:
 		_dismiss_goals()
 		set_menu_visible(false)
 		set_staff_visible(false)
+		set_stock_visible(false)
 		clear_selection()
 		_report.hide()
 	elif not active and _was_build_active and _build_ready and world.clock.phase == SimClock.Phase.CLOSED:
@@ -761,6 +786,8 @@ func _on_build_cash_changed(_cash: int, _delta: int, _reason: StringName) -> voi
 		build_mode.refresh()
 	if _staff_panel != null:
 		_staff_panel.set_trays(tray_level, TUNING.tray_prices, Economy.cash, _loan_upgrade_refusal())
+	if is_stock_visible():
+		_refresh_stock_panel()
 	_refresh_goals()
 
 
@@ -915,6 +942,7 @@ func refresh_presentation() -> void:
 
 func _on_inspection_tick(_tick: int) -> void:
 	# Text follows every tick; geometry follows the drawn agents once per frame.
+	_refresh_sold_out_hud()
 	_inspect_panel.refresh()
 	if _debug_overlay.is_enabled():
 		_debug_overlay.refresh()
@@ -981,6 +1009,9 @@ func build_report(day: int) -> DayReport:
 		report.owner_unlocks = _owner_unlocks_today.duplicate()
 		if _milestone_xp_today > 0:
 			report.owner_xp_breakdown["milestone_xp"] = _milestone_xp_today
+	report.low_stock = StockAlerts.sell_out_lines(sim.stock_outs_today, content)
+	report.low_stock.append_array(StockAlerts.forecast_lines(StockAlerts.forecast(Economy.stock,
+		reorder_settings, _shelf_lives(), day + 1, _unit_costs(), Economy.cash, auto_reorder_premium), content))
 	if _milestone_award_day == day:
 		for goal: Milestone in _milestones_reached_today:
 			report.milestones_reached.append({"title": goal.title,
@@ -1016,6 +1047,8 @@ func _new_game() -> void:
 	reputation = ReputationBook.new()
 	_loaded_tray_level = 0
 	tray_level = 0
+	_loaded_reorder = null
+	reorder_settings = ReorderSettings.new(TUNING)
 	sim.carry_capacity = 1
 	staff_roster = StaffRoster.new(TUNING)
 	_staff_notice_day = 0
@@ -1038,6 +1071,7 @@ func _load_autosave() -> bool:
 	_loaded_reputation = null
 	_loaded_milestones = null
 	_loaded_tray_level = 0
+	_loaded_reorder = null
 	if not SaveSystem.list_slots().has(save_slot):
 		return false
 	if SaveSystem.load_game(save_slot) != OK:
@@ -1080,6 +1114,8 @@ func _load_autosave() -> bool:
 	if not sim.assign_owner(_owner_preferences.current_mode()):
 		return false
 	milestones = career
+	# Saves from before the Stock panel have no section: today's defaults.
+	reorder_settings = _loaded_reorder if _loaded_reorder != null else ReorderSettings.new(TUNING)
 	return true
 
 
@@ -1119,6 +1155,19 @@ func _restore_milestones(data: Dictionary) -> bool:
 	if not candidate.from_dict(data):
 		return false
 	_loaded_milestones = candidate
+	return true
+
+
+func _capture_reorder() -> Dictionary:
+	return reorder_settings.to_dict()
+
+
+## Stage like the other sections; installed only after a complete morning load.
+func _restore_reorder(data: Dictionary) -> bool:
+	var candidate: ReorderSettings = ReorderSettings.new(TUNING)
+	if not candidate.from_dict(data):
+		return false
+	_loaded_reorder = candidate
 	return true
 
 
@@ -1316,6 +1365,7 @@ func set_staff_visible(value: bool) -> bool:
 			set_paint_active(false)
 		build_mode.exit()
 		set_menu_visible(false)
+		set_stock_visible(false)
 		_dismiss_goals()
 		clear_selection()
 		_report.hide()
@@ -1451,6 +1501,7 @@ func set_menu_visible(value: bool) -> bool:
 			set_paint_active(false)
 		build_mode.exit()
 		set_staff_visible(false)
+		set_stock_visible(false)
 	_menu_panel.set_phase(Clock.sim.phase)
 	_menu_panel.visible = value
 	return true
@@ -1479,6 +1530,7 @@ func set_goals_visible(value: bool) -> bool:
 		build_mode.exit()
 		set_staff_visible(false)
 		set_menu_visible(false)
+		set_stock_visible(false)
 		clear_selection()
 		_report.hide()
 		_goals_return_to_menu = from_menu
@@ -1550,6 +1602,7 @@ func set_settings_visible(value: bool) -> bool:
 		Clock.set_speed(0)
 		set_menu_visible(false)
 		set_staff_visible(false)
+		set_stock_visible(false)
 		if _paint_active:
 			set_paint_active(false)
 		build_mode.exit()
@@ -1679,6 +1732,9 @@ func _begin_morning() -> void:
 	_staff_panel.set_morning(Clock.sim.day, _staff_notices)
 	dishes_sold_today.clear()
 	shown_report = null
+	_sold_out_shown = -1
+	_refresh_sold_out_hud()
+	_expire_stock()
 	_restock()
 	Economy.ledger.prune_before(Clock.sim.day - Ledger.HISTORY_DAYS)
 	_report.hide()
@@ -1692,17 +1748,195 @@ func _begin_morning() -> void:
 	if not _staff_notices.is_empty() \
 			or not staff_roster.morning_raise_offers(Clock.sim.day, Clock.sim.phase).is_empty():
 		set_staff_visible(true)
+	_refresh_stock_panel()
 	refresh_presentation()
 
 
+func _shelf_lives() -> Dictionary:
+	var lives: Dictionary = {}
+	for ingredient: IngredientDef in content.ingredients():
+		lives[ingredient.id] = ingredient.shelf_life_days
+	return lives
+
+
+func _unit_costs() -> Dictionary:
+	var costs: Dictionary = {}
+	for ingredient: IngredientDef in content.ingredients():
+		costs[ingredient.id] = ingredient.unit_cost
+	return costs
+
+
+## Ingredients past their shelf life go before the fridge is topped up. A
+## reloaded morning finds nothing more to remove, so this never repeats.
+func _expire_stock() -> void:
+	_expired_this_morning = Economy.stock.expire(Clock.sim.day, _shelf_lives())
+	for id: StringName in _expired_this_morning:
+		world.log_event("Threw out %d %s past its shelf life" % [_expired_this_morning[id], id])
+
+
+## The morning auto-order: enabled ingredients are topped up to their targets
+## in one order priced at list total plus the premium. Short cash buys what
+## fits in the fixed order and logs the rest; it never borrows.
 func _restock() -> void:
-	for id: StringName in TUNING.morning_stock:
-		var ingredient := content.ingredient(id)
+	var order: Dictionary = reorder_settings.plan(Economy.stock, _unit_costs(), Economy.cash, auto_reorder_premium)
+	var lines: Array[Dictionary] = []
+	lines.assign(order["lines"])
+	_morning_order = {"short": order["short"]}
+	if not lines.is_empty() and not Economy.buy_auto_order(lines, int(order["cost"])):
+		world.log_event("The morning auto-order could not be paid")
+	var short: Dictionary = order["short"]
+	for id: StringName in short:
+		world.log_event("Couldn't afford %d %s this morning" % [short[id], id])
+
+
+func can_edit_stock() -> bool:
+	return _started and sim != null and reorder_settings != null and Clock.sim.phase == SimClock.Phase.MORNING
+
+
+## A manual morning buy at list price. It joins the next morning autosave.
+func stock_buy(id: StringName, qty: int) -> bool:
+	if not can_edit_stock() or not reorder_settings.has(id) or (qty != 1 and qty != 5):
+		return false
+	var ingredient: IngredientDef = content.ingredient(id)
+	if ingredient == null or not Economy.buy_ingredient(id, qty, ingredient.unit_cost):
+		return false
+	_refresh_stock_panel()
+	return true
+
+
+func stock_set_auto(id: StringName, enabled: bool) -> bool:
+	if not can_edit_stock() or not reorder_settings.set_enabled(id, enabled):
+		return false
+	_refresh_stock_panel()
+	return true
+
+
+func stock_set_target(id: StringName, target: int) -> bool:
+	if not can_edit_stock() or not reorder_settings.set_target(id, target):
+		return false
+	_refresh_stock_panel()
+	return true
+
+
+func toggle_stock() -> void:
+	set_stock_visible(not is_stock_visible())
+
+
+## Idempotent production path for the HUD and real captures. MORNING only.
+func set_stock_visible(value: bool) -> bool:
+	if _stock_panel == null or (value and not can_edit_stock()):
+		return false
+	if value and not _stock_panel.visible:
+		_dismiss_goals()
+		if is_settings_visible():
+			_settings_return_to_menu = false
+			if not set_settings_visible(false):
+				return false
+		if _paint_active:
+			set_paint_active(false)
+		build_mode.exit()
+		set_menu_visible(false)
+		set_staff_visible(false)
+		clear_selection()
+		_report.hide()
+	_stock_panel.visible = value
+	if value:
+		_refresh_stock_panel()
+	return true
+
+
+func is_stock_visible() -> bool:
+	return _stock_panel != null and _stock_panel.visible
+
+
+## Rows hold display names only; the panel never sees a raw id as text.
+func stock_rows() -> Array[Dictionary]:
+	var rows: Array[Dictionary] = []
+	if content == null or reorder_settings == null:
+		return rows
+	var expiring: Dictionary = Economy.stock.expiring_on(Clock.sim.day + 1, _shelf_lives())
+	for id: StringName in reorder_settings.ids():
+		var ingredient: IngredientDef = content.ingredient(id)
 		if ingredient == null:
 			continue
-		var missing: int = TUNING.morning_stock[id] - Economy.stock.count(id)
-		if missing > 0 and not Economy.buy_ingredient(id, missing, ingredient.unit_cost):
-			world.log_event("Couldn't afford %d %s this morning" % [missing, id])
+		rows.append({"id": id, "name": ingredient.display_name, "count": Economy.stock.count(id),
+			"expiring": int(expiring.get(id, 0)), "unit_cost": ingredient.unit_cost,
+			"enabled": reorder_settings.is_enabled(id), "target": reorder_settings.target(id),
+			"max_target": ReorderSettings.MAX_TARGET})
+	return rows
+
+
+## Player sentences about this morning's automatic order and expiry.
+func stock_notes() -> Array[String]:
+	var notes: Array[String] = []
+	# Read back from today's ledger, so a reloaded morning still shows it.
+	var list_total: int = 0
+	var premium: int = 0
+	for entry: Dictionary in Economy.ledger.entries_for_day(Clock.sim.day):
+		if entry["category"] != Ledger.INGREDIENTS:
+			continue
+		var note: String = String(entry["note"])
+		if note == Economy.AUTO_PREMIUM_NOTE:
+			premium -= int(entry["amount"])
+		elif note.begins_with(Economy.AUTO_LINE_PREFIX):
+			list_total -= int(entry["amount"])
+	if list_total + premium > 0:
+		notes.append(("This morning's auto-order cost %s (%s at list price + %s premium)." % [
+			Fmt.money(list_total + premium), Fmt.money(list_total), Fmt.money(premium)]) if premium > 0
+			else "This morning's auto-order cost %s." % Fmt.money(list_total))
+	var short: Dictionary = _morning_order.get("short", {})
+	var missed: Array[String] = []
+	for id: StringName in short:
+		missed.append("%d %s" % [int(short[id]), _ingredient_name(id)])
+	if not missed.is_empty():
+		notes.append("Not enough cash to auto-order %s." % StockAlerts.join_names(missed))
+	var thrown: Array[String] = []
+	for id: StringName in _expired_this_morning:
+		thrown.append("%d %s" % [int(_expired_this_morning[id]), _ingredient_name(id)])
+	if not thrown.is_empty():
+		notes.append("Thrown out this morning (too old): %s." % StockAlerts.join_names(thrown))
+	return notes
+
+
+func _ingredient_name(id: StringName) -> String:
+	var ingredient: IngredientDef = content.ingredient(id) if content != null else null
+	return ingredient.display_name if ingredient != null else "ingredient"
+
+
+func _refresh_stock_panel() -> void:
+	if _stock_panel == null or Clock.sim == null:
+		return
+	_stock_panel.set_stock(stock_rows(), Economy.cash, can_edit_stock(), stock_notes(), auto_reorder_premium)
+
+
+func _refresh_sold_out_hud() -> void:
+	if sim == null or sim.sold_out_today.size() == _sold_out_shown:
+		return
+	_sold_out_shown = sim.sold_out_today.size()
+	var names: Array[String] = []
+	for recipe: RecipeDef in sim.menu:
+		if recipe != null and sim.is_sold_out(recipe.id):
+			names.append(recipe.display_name)
+	$HUD.set_sold_out(names)
+
+
+func _on_stock_buy_requested(id: StringName, qty: int) -> void:
+	stock_buy(id, qty)
+	_refresh_stock_panel()
+
+
+func _on_stock_auto_requested(id: StringName, enabled: bool) -> void:
+	stock_set_auto(id, enabled)
+	_refresh_stock_panel()
+
+
+func _on_stock_target_requested(id: StringName, target: int) -> void:
+	stock_set_target(id, target)
+	_refresh_stock_panel()
+
+
+func _on_stock_close_requested() -> void:
+	set_stock_visible(false)
 
 
 func _charge_closing_costs() -> void:
@@ -1822,6 +2056,8 @@ func _on_day_phase_changed(_day: int, phase: int) -> void:
 			_settings_return_to_menu = false
 	if _staff_panel != null:
 		_staff_panel.set_phase(phase)
+	if phase != SimClock.Phase.MORNING:
+		set_stock_visible(false)
 	if phase == SimClock.Phase.MORNING:
 		_begin_morning()
 
