@@ -140,8 +140,7 @@ static func _finish(main: Node, open_minute: int, close_minute: int, menu_on: Ar
 			used[ingredient.id] = true
 	for row: Dictionary in main.call("stock_rows"):
 		var id: StringName = row["id"]
-		var wanted: bool = used.has(id) or menu_on.has(&"wine") and id == &"wine"
-		if not wanted and not main.call("stock_set_auto", id, false):
+		if not used.has(id) and not main.call("stock_set_auto", id, false):
 			return false
 	main.call("_restock")
 	return true

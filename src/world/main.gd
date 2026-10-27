@@ -1655,11 +1655,12 @@ func _refresh_menu_catalogue() -> void:
 	_refresh_stock_panel()
 
 
-## Only ingredients that today's possible dishes use are ordered and listed.
+## Station-only ingredients (coffee beans, beer...) are ordered and listed
+## only while a dish on the menu uses them; everyday ones always are.
 func _reorder() -> ReorderSettings:
 	var used: Array[StringName] = []
 	if menu_settings != null and menu_settings.is_valid():
-		for recipe: RecipeDef in menu_settings.recipes():
+		for recipe: RecipeDef in menu_settings.enabled_recipes():
 			for ingredient: IngredientDef in recipe.ingredients:
 				if ingredient != null and not used.has(ingredient.id):
 					used.append(ingredient.id)
@@ -1705,6 +1706,15 @@ func drink_station_hints() -> Array[String]:
 	return hints
 
 
+func _uses_station_stock(recipe: RecipeDef) -> bool:
+	if recipe == null:
+		return false
+	for ingredient: IngredientDef in recipe.ingredients:
+		if ingredient != null and TUNING.station_stock.has(ingredient.id):
+			return true
+	return false
+
+
 ## Morning only. Hours join the clock, so the next morning autosave keeps them.
 func set_opening_hours(open_minute: int, close_minute: int) -> bool:
 	if not _started or Clock.sim.phase != SimClock.Phase.MORNING \
@@ -1745,6 +1755,11 @@ func menu_set_enabled(recipe_id: StringName, enabled: bool) -> bool:
 	_menu_panel.refresh()
 	if was_enabled != menu_settings.is_enabled(recipe_id):
 		_recompute_vibe()
+		# A drink switched on this morning gets its supplies like the morning
+		# order would (nothing to buy for everyday dishes already stocked).
+		if menu_settings.is_enabled(recipe_id) and _uses_station_stock(menu_settings.recipe(recipe_id)):
+			_restock()
+		_refresh_stock_panel()
 	return true
 
 

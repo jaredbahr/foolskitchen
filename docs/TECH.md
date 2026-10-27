@@ -1153,7 +1153,8 @@ existing paint colour and camera-controlled build-grid parameters.
   default menu; Main's menu catalogue is what the live stations can make
   (`_cookable_live`, refreshed after every accepted edit, undo and redo via
   `MenuSettings.set_catalogue`: kept dishes keep their choices, new ones join
-  switched on, removed ones leave). A morning purchase restocks at once.
+  drinks switched on and dishes off, removed ones leave). A morning purchase
+  restocks at once.
 - **Pour task.** `Kitchen._on_order_placed` sends a drink to `_post_pour`: a
   priority-3 `pour` task for the server role (job Serving, service XP): walk to
   a free station of the type, take the ingredient, make it, set quality from
@@ -1187,8 +1188,9 @@ existing paint colour and camera-controlled build-grid parameters.
   then Food, then Drinks with named hints for missing stations.
 - **Stock.** `EconomyTuning.station_stock` holds default targets for
   station-only ingredients. `ReorderSettings` lists and orders them only
-  while a dish the shop can make uses them (`set_in_use`), and saves their
-  rows only when changed, so default orders and saves are unchanged.
+  while a dish on the menu uses them (`set_in_use`; switching one on in the
+  morning tops it up at once), and saves their rows only when changed, so
+  default orders and saves are unchanged.
 - **Default play is unchanged**: `tests/world/test_default_play_golden.gd`
   replays two seeded production days against values recorded on main 6f6495d,
   and the default probe rows match main exactly. Probe set-ups `coffee_shop`

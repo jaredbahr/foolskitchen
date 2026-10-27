@@ -75,12 +75,18 @@ func test_a_coffee_machine_puts_coffee_tea_and_pastries_on_the_menu_until_it_is_
 	assert_true(main.call("set_menu_visible", false))
 	assert_true(main.call("shop_buy", &"coffee_machine", Vector2i(12, 5), 2))
 	var settings: MenuSettings = main.get("menu_settings") as MenuSettings
-	for id: StringName in [&"coffee", &"tea", &"croissant"]:
+	for id: StringName in [&"coffee", &"tea"]:
 		assert_true(settings.is_enabled(id), "%s joins the menu, switched on" % id)
+	assert_true(settings.recipe(&"croissant") != null and not settings.is_enabled(&"croissant"),
+		"a new dish is listed but waits for the player")
 	var sim: RestaurantSim = main.get("sim") as RestaurantSim
 	assert_true(sim.menu.has((main.get("content") as ContentDB).recipe(&"coffee")), "today's service offers it")
 	assert_eq(sim.visit_kinds(), [RecipeDef.FOOD, RecipeDef.COFFEE] as Array[StringName])
-	assert_true(_stock_ids(main).has(&"coffee_beans") and _stock_ids(main).has(&"pastry"))
+	assert_true(_stock_ids(main).has(&"coffee_beans"), "coffee is on, so its beans are ordered")
+	assert_true(Economy.stock.count(&"coffee_beans") > 0, "a morning purchase is stocked at once")
+	assert_false(_stock_ids(main).has(&"pastry"), "the croissant is off, so no pastries yet")
+	assert_true(main.call("menu_set_enabled", &"croissant", true))
+	assert_true(_stock_ids(main).has(&"pastry") and Economy.stock.count(&"pastry") > 0)
 	assert_false(_stock_ids(main).has(&"beer"))
 	assert_true(main.call("set_menu_visible", true))
 	assert_eq(panel.drinks_section().get_child_count(), 2, "Coffee and Tea under Drinks")

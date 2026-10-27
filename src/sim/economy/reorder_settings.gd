@@ -52,8 +52,8 @@ func ids() -> Array[StringName]:
 	return out
 
 
-## The ingredients today's possible dishes use; station-only ones outside it
-## are neither listed nor ordered. Their choices are kept.
+## The ingredients today's menu uses; station-only ones outside it are
+## neither listed nor ordered. Their choices are kept.
 func set_in_use(ingredient_ids: Array[StringName]) -> void:
 	_in_use.clear()
 	for id: StringName in ingredient_ids:

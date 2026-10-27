@@ -128,7 +128,8 @@ func set_enabled(id: StringName, enabled: bool) -> bool:
 
 ## The shop's stations changed (FK-083): a coffee machine bought or a drinks
 ## shelf sold. Dishes still cookable keep their choices and prices; newly
-## cookable dishes join at their standard price, switched on when unlocked;
+## cookable dishes join at their standard price, drinks switched on when
+## unlocked and food switched off (a croissant waits for the player);
 ## dishes no longer cookable leave. At least one dish stays on. Returns
 ## whether the catalogue changed. An invalid list changes nothing.
 func set_catalogue(cookable_recipes: Array[RecipeDef]) -> bool:
@@ -153,7 +154,8 @@ func set_catalogue(cookable_recipes: Array[RecipeDef]) -> bool:
 				enabled[id] = true
 		else:
 			prices[id] = definition.standard_price
-			if definition.unlock_level <= _owner_level:
+			# New drinks go on at once; a new dish waits for the player.
+			if definition.unlock_level <= _owner_level and definition.is_drink():
 				enabled[id] = true
 	if enabled.is_empty():
 		for definition: RecipeDef in next._recipes:
