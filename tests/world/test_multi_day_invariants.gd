@@ -48,11 +48,23 @@ func test_five_days_keep_books_guests_and_shop_consistent() -> void:
 		assert_eq(Clock.sim.day, day)
 		assert_eq(Clock.sim.phase, SimClock.Phase.MORNING)
 		_assert_clean_morning(main, day)
+		_shop_morning(main, day)
 		_run_day(main, day)
 		_assert_closed_books(main, day)
 		total_served += (main.get("sim") as RestaurantSim).served_today
 		(main.get_node("Overlay/EveningReport") as Control).emit_signal(&"next_day_pressed")
 	assert_true(total_served > DAYS * 5, "the shop serves real guests every day (%d in %d days)" % [total_served, DAYS])
+	_after_days(main)
+
+
+## Hooks for variants of this soak (tests/world/test_expanded_shop_invariants.gd):
+## called each morning after the clean-morning checks, and after the last day.
+func _shop_morning(_main: Node, _day: int) -> void:
+	pass
+
+
+func _after_days(_main: Node) -> void:
+	pass
 
 
 func _start() -> Node:

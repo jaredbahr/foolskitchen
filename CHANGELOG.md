@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- Grow your restaurant: the new Floor tool in Build mode lets you drag extra floor onto your lot behind and beside the shop for $15 a tile. The outside walls move out to wrap the new shape (L-shapes too) and the old wall opens up; Shift-drag removes added floor for a half refund. (#158)
 - Build walls, doorways and windows in Build mode: drag along the grid lines to split the room, click a wall to turn it into a doorway or window, and open windows in the outside walls too. (#157)
 - Decorate your diner with padded two-seat booths and chrome counter stools. (#147)
 - Track career goals and earn cash and XP for reaching them. (#146)

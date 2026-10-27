@@ -804,15 +804,73 @@ an active edit/panel/selection first, or opens Settings when none is active.
   Cutaway and Down lower every interior segment; a lowered doorway keeps a
   post stub at each end and a floor threshold, and a lowered window shows a
   Slate blue glass strip instead of the dark cap, so cycling reads there too.
-- **Floor expansion (#153) plugs in here.** Grow or shift the grid, translate
-  every edge key by the same cell offset, then turn the old shell cells into
-  FLOOR with `set_terrain`. Edges re-derive their class: an outer-face window
-  becomes an interior window automatically, and pathing picks it up because
-  `set_terrain` refreshes the edges around each cell. To keep the old outline
-  as a wall the player can remove or open, set WALL on the edges along the
-  old shell line (the shell itself was cells, so it has no segments to move).
+- **Floor expansion (FK-080)** builds on this: grid lines keep their keys,
+  so an outer-face window becomes an interior window when the shell cell
+  behind it turns into floor (see the next section).
 - Captures: `tools/screenshot.sh --walls=place` (a dragged run with ghost and
   cost) and `--walls=room` (a built room; add `--quarter=0` for Cutaway).
+
+### Floor expansion (FK-080)
+- **Lot (data).** `ShopLayout.lot_west`, `lot_east`, `lot_north` say how many
+  cells the outer walls may move out past the starting shell; the street
+  (south) side never moves, so the door, sidewalk and street dressing stay
+  put. `floor_cell_price` is the price per new floor cell ($15). Tier 1: 2 west,
+  2 east, 4 north (about 4 cells wider, 4 deeper). `ShopFootprint` reads it:
+  `building` is the starting shell rect, `lot` that rect grown by the margins;
+  new floor may go strictly inside the lot (its edge is kept for the wall) and
+  outside `building`.
+- **Footprint.** Only the bought floor cells are stored
+  (`ShopLayout.floor_cells`, `ShopEditor.bought_floor()`). `ShopFootprint.
+  terrain_for(bought)` derives every cell: authored floor and interior walls
+  never change; bought cells are FLOOR; an authored shell cell with floor on two
+  opposite sides opens into FLOOR (repeated, so the inner corner of an L opens);
+  a lot cell touching the floor (8 directions) becomes the new shell WALL; other
+  lot cells are OUTSIDE. Cells outside the lot never change. `problem()` refuses
+  cells outside the lot, floor that does not join the shop (or, when removing,
+  would split it) and enclosed gaps.
+- **No auto walls (Jared).** The old outer wall opens up: no WALL segments are
+  placed on the old outline. Players add interior walls with the Walls tool.
+- **No shifting.** `SimGrid` has an `origin` and `bounds`; `grow_to(rect)`
+  extends the grid (new cells OUTSIDE, AStar regions updated, solidity rebuilt)
+  so lot cells north or west have negative coordinates. Cells, items, edge
+  keys, staff posts and saves keep their coordinates. `SimGrid.NO_CELL` is
+  far outside any lot. Iterate cells with `grid.cells()`, never `0..size`. The
+  grid grows on the first purchase (or load) only, so a shop that never
+  expands keeps its exact grid and the balance probe is unchanged.
+- **Edits.** `ShopEditor.check_floor(cells, adding)` / `apply_floor` are
+  MORNING/CLOSED only. Adding takes the unbuilt lot cells of the rectangle
+  (starting building and bought cells are skipped; a cell beyond the lot
+  refuses). Removing takes only bought cells: furniture on any cell that would
+  stop being floor refuses ("Clear the furniture off that floor first"), then a
+  lost seat, work spot or door uses the wall cut-off sentences, then the usual
+  walls/dining/cut-off checks run on a preview (people standing there count).
+  Wall segments that would no longer fit (for example an outer window now
+  facing the wing's new wall) are taken down and refunded at the furniture
+  rate. Floor costs `floor_cell_price` per cell, refunds half, under
+  `Ledger.UPGRADES`. The terrain change is one `set_terrains` batch (one
+  `cells_changed`); dirt spots on cells that stop being floor are cleared.
+- **Save.** The `shop` snapshot is version 3 with `floor: [[x, y], ...]`
+  (sorted). Versions 1 and 2 load as the starting shell. `from_dict` validates
+  the floor with the template's lot before items and walls, which may stand on
+  it; `ShopBuilder` applies `layout.floor_cells` before placing items.
+- **Build mode.** The Walls tab has a Floor card (`BuildCatalogue.
+  floor_tool_requested`, hidden without a lot). `BuildMode.State.FLOOR`: drag
+  a rectangle to add floor, Shift-drag to remove bought floor, Esc ends a drag
+  then the tool. The hint shows the tile count and cost or refund, or the
+  refusal. `BuildPreview` draws flat green (add), gold (remove) or red tiles,
+  and in every Build mode state a pale cream fill on unbuilt lot cells with a
+  cream line around the lot. Commits go through Main's `shop_floor` wrapper,
+  which then calls `_frame_shop()`: the camera centres on all non-outside cells
+  and zooms out to fit (`CameraRig.frame_area`, a glide). The starting shell
+  keeps its old framing exactly (zoom 12 for 14 x 12 cells).
+- **View.** `ShopView` and `RoomDressing` rebuild from terrain, so new walls,
+  floor paint, cutaway and the street frontage follow automatically.
+- Tests: `tests/sim/test_floor_expansion.gd`; the five-day soak
+  `tests/world/test_expanded_shop_invariants.gd` reruns the multi-day
+  invariants in an L-shaped shop expanded on day 1 (with a reload).
+  Probe: `--setup expanded_tables` (wings both sides, two extra table_2s, built
+  free). Captures: `tools/screenshot.sh --expand=drag --speed=0 --frames=90`
+  and `--expand=shop --open --fast=10 --speed=1 --frames=150 [--quarter=0]`.
 
 ### Restaurant vibe core (FK-072)
 - `VibeModel.evaluate()` reads detached layout, paint and enabled-menu inputs.
