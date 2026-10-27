@@ -4,7 +4,8 @@ extends RefCounted
 ## own every commit. Previews never change the grid, reservations or books.
 
 ## WALLS is the Walls tool (FK-070): drag along grid lines, click a segment.
-enum State { INACTIVE, IDLE, MOVE, BUY, WALLS }
+## FLOOR is the Floor tool (FK-080): drag a rectangle of lot cells.
+enum State { INACTIVE, IDLE, MOVE, BUY, WALLS, FLOOR }
 
 signal changed()
 
@@ -24,6 +25,11 @@ var wall_drag_start: Vector2i = Vector2i.ZERO
 var wall_drag_end: Vector2i = Vector2i.ZERO
 ## The proposal the current check describes (edge -> new segment).
 var wall_changes: Dictionary[Vector3i, int] = {}
+## Floor tool: the hovered cell, the dragged rectangle and whether it removes.
+var floor_hover: Vector2i = SimGrid.NO_CELL
+var floor_dragging: bool = false
+var floor_drag_start: Vector2i = Vector2i.ZERO
+var floor_removing: bool = false
 
 var _editor: ShopEditor
 var _world: SimWorld
@@ -35,6 +41,7 @@ var _move_command: Callable
 var _buy_command: Callable
 var _sell_command: Callable
 var _walls_command: Callable
+var _floor_command: Callable
 var _committing: bool = false
 var _topology_dirty: bool = false
 
@@ -43,7 +50,7 @@ var _topology_dirty: bool = false
 ## its clock was replaced. Old signal sources are detached before new ones bind.
 func bind_session(editor: ShopEditor, world: SimWorld, content: ContentDB,
 		move_command: Callable, buy_command: Callable, sell_command: Callable,
-		walls_command: Callable = Callable()) -> void:
+		walls_command: Callable = Callable(), floor_command: Callable = Callable()) -> void:
 	if _committing:
 		return
 	_disconnect_sources()
@@ -57,6 +64,7 @@ func bind_session(editor: ShopEditor, world: SimWorld, content: ContentDB,
 	_buy_command = buy_command
 	_sell_command = sell_command
 	_walls_command = walls_command
+	_floor_command = floor_command
 	_clear_ghost(State.INACTIVE)
 	committed_warning_ids.clear()
 	_topology_dirty = false
@@ -229,7 +237,11 @@ func cancel() -> void:
 		wall_dragging = false
 		_recheck_walls()
 		changed.emit()
-	elif has_ghost() or state == State.WALLS:
+	elif state == State.FLOOR and floor_dragging:
+		floor_dragging = false
+		_recheck_floor()
+		changed.emit()
+	elif has_ghost() or state == State.WALLS or state == State.FLOOR:
 		_clear_ghost(State.IDLE)
 		changed.emit()
 	else:
@@ -250,13 +262,15 @@ func refresh() -> void:
 		_recheck_ghost()
 	elif state == State.WALLS:
 		_recheck_walls()
+	elif state == State.FLOOR:
+		_recheck_floor()
 	if before != presentation_state():
 		changed.emit()
 
 
 ## Invalid proposals never erase warnings belonging to actual furniture.
 func warning_ids() -> Array[int]:
-	return current_check.unreachable.duplicate() if (has_ghost() or state == State.WALLS) and current_check.ok \
+	return current_check.unreachable.duplicate() if (has_ghost() or state == State.WALLS or state == State.FLOOR) and current_check.ok \
 		else committed_warning_ids.duplicate()
 
 
@@ -271,7 +285,9 @@ func presentation_state() -> Dictionary:
 		"committed_warning_ids": committed_warning_ids.duplicate(), "warning_ids": warning_ids(),
 		"wall_kind": int(wall_kind), "wall_changes": wall_changes.duplicate(),
 		"wall_hover_edge": wall_hover_edge, "wall_dragging": wall_dragging,
-		"wall_cost": current_check.cost, "wall_refund": current_check.refund}
+		"wall_cost": current_check.cost, "wall_refund": current_check.refund,
+		"floor_cells": floor_proposal(), "floor_removing": floor_removing,
+		"floor_dragging": floor_dragging, "lot": lot_rect(), "lot_open": lot_open_cells()}
 
 
 func _available() -> bool:
@@ -320,6 +336,9 @@ func _clear_ghost(next_state: State) -> void:
 	wall_hover_edge = SimGrid.NO_EDGE
 	wall_dragging = false
 	wall_changes.clear()
+	floor_hover = SimGrid.NO_CELL
+	floor_dragging = false
+	floor_removing = false
 
 
 func _finish_command(accepted: bool, previous_check: EditCheck, fallback_reason: String) -> void:
@@ -500,6 +519,149 @@ func _commit_walls() -> bool:
 		_recheck_walls()
 	changed.emit()
 	return accepted
+
+
+# --- Floor tool (FK-080) ------------------------------------------------------
+
+## Enters the Floor tool from idle or a held ghost. Only shops with a lot can grow.
+func begin_floor() -> bool:
+	if not _can_interact() or not _floor_command.is_valid() or _editor.footprint() == null \
+			or not _editor.footprint().has_lot():
+		return false
+	_clear_ghost(State.FLOOR)
+	_recheck_floor()
+	changed.emit()
+	return true
+
+
+## Pointer over a floor cell. `removing` (Shift) previews taking floor away.
+func floor_pointer(cell: Vector2i, removing: bool = false) -> void:
+	if state != State.FLOOR or not _can_interact():
+		return
+	if cell == floor_hover and (floor_dragging or removing == floor_removing) and not _topology_dirty:
+		return
+	floor_hover = cell
+	if not floor_dragging:
+		floor_removing = removing
+	if _topology_dirty:
+		_refresh_committed()
+	_recheck_floor()
+	changed.emit()
+
+
+func floor_press(cell: Vector2i, removing: bool = false) -> bool:
+	if state != State.FLOOR or not _can_interact():
+		return false
+	floor_dragging = true
+	floor_removing = removing
+	floor_drag_start = cell
+	floor_hover = cell
+	_recheck_floor()
+	changed.emit()
+	return true
+
+
+## Ends a drag: buys (or removes) the floor in the dragged rectangle.
+func floor_release(cell: Vector2i) -> bool:
+	if state != State.FLOOR or not floor_dragging or not _can_interact():
+		return false
+	floor_hover = cell
+	_recheck_floor()
+	floor_dragging = false
+	if not current_check.ok or current_check.floor_cells.is_empty():
+		changed.emit()
+		return false
+	var previous_check: EditCheck = _editor.last_check
+	var proposal: Array[Vector2i] = current_check.floor_cells.duplicate()
+	_committing = true
+	var answer: Variant = _floor_command.call(proposal, not floor_removing)
+	var accepted: bool = answer is bool and answer
+	_refresh_committed()
+	if not accepted:
+		var result: EditCheck = _editor.last_check
+		current_check = result if result != previous_check and not result.ok \
+			else EditCheck.new(false, "The change was refused; try again")
+	_committing = false
+	if _clock.phase != _phase or not _editor.can_edit():
+		_phase = _clock.phase
+		_clear_ghost(State.INACTIVE)
+	elif accepted:
+		_recheck_floor()
+	changed.emit()
+	return accepted
+
+
+## Cells of the dragged rectangle (or the hovered cell), row-major.
+func floor_rect() -> Rect2i:
+	if floor_hover == SimGrid.NO_CELL:
+		return Rect2i()
+	var start: Vector2i = floor_drag_start if floor_dragging else floor_hover
+	var low: Vector2i = start.min(floor_hover)
+	return Rect2i(low, (start.max(floor_hover) - low) + Vector2i.ONE)
+
+
+## The cells a valid check would change, else every cell of the rectangle.
+func floor_proposal() -> Array[Vector2i]:
+	if state != State.FLOOR:
+		return []
+	if current_check.ok and not current_check.floor_cells.is_empty():
+		return current_check.floor_cells.duplicate()
+	return [] as Array[Vector2i] if current_check.why.is_empty() else _rect_cells(floor_rect())
+
+
+## The lot rectangle in grid cells, empty without a lot.
+func lot_rect() -> Rect2i:
+	if _editor == null or _editor.footprint() == null or not _editor.footprint().has_lot():
+		return Rect2i()
+	return _editor.footprint().lot
+
+
+## Unbuilt lot cells (no floor or wall yet), for the pale lot outline.
+func lot_open_cells() -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	if not is_active() or _grid == null or lot_rect() == Rect2i():
+		return out
+	for cell: Vector2i in _editor.footprint().lot_cells(lot_rect()):
+		if _grid.terrain(cell) == SimGrid.Terrain.OUTSIDE:
+			out.append(cell)
+	return out
+
+
+## One player sentence: what the floor proposal costs, or why it can't.
+func floor_summary() -> String:
+	if state != State.FLOOR:
+		return ""
+	if not current_check.ok:
+		return current_check.why
+	var count: int = current_check.floor_cells.size()
+	var text: String = "%s %d floor tile%s" % ["Remove" if not current_check.floor_adding else "Add",
+		count, "" if count == 1 else "s"]
+	if current_check.cost > 0:
+		text += "  $%d" % current_check.cost
+	if current_check.refund > 0:
+		text += "  (refund $%d)" % current_check.refund
+	return text
+
+
+func _recheck_floor() -> void:
+	if state != State.FLOOR or _editor == null:
+		return
+	var cells: Array[Vector2i] = _rect_cells(floor_rect())
+	# Plain hover over the building or the street proposes nothing; a drag may
+	# start inside the shop and run out onto the lot.
+	if cells.is_empty() or (not floor_dragging and _editor.footprint() != null
+			and not _editor.footprint().can_hold(floor_hover)):
+		current_check = EditCheck.new(false, "")
+		return
+	current_check = _editor.check_floor(cells, not floor_removing)
+
+
+static func _rect_cells(rect: Rect2i) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	for y: int in range(rect.position.y, rect.end.y):
+		for x: int in range(rect.position.x, rect.end.x):
+			out.append(Vector2i(x, y))
+	return out
 
 
 func _on_cells_changed(_cells: Array[Vector2i]) -> void:

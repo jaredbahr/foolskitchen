@@ -59,6 +59,8 @@ var _dragging: bool = false
 var _pointer_inside: bool = false
 var _pointer_position_valid: bool = false
 var _has_panned: bool = false
+## Where frame_area() glides the focus to; cleared on arrival or a player pan.
+var _focus_glide: Variant = null
 var _view_viewport: Viewport
 var _preferences: SettingsPreferences
 
@@ -117,6 +119,7 @@ func reset_view() -> void:
 	_target_zoom = _zoom
 	_has_panned = false
 	_pointer_position_valid = false
+	_focus_glide = null
 	position = Vector3(initial_focus.x, 0.0, initial_focus.y)
 	_clamp_focus()
 	rotation.y = _yaw
@@ -153,10 +156,33 @@ func step_view(delta: float, pan_input: Vector2) -> void:
 	var movement: Vector3 = offset * pan_speed * delta
 	var previous_focus: Vector3 = position
 	position += movement
+	if _focus_glide is Vector3 and movement.is_zero_approx():
+		position = position.lerp(_focus_glide as Vector3, 1.0 - exp(-zoom_response * delta))
+		if position.distance_to(_focus_glide as Vector3) < 0.01:
+			position = _focus_glide as Vector3
+			_focus_glide = null
+	else:
+		_focus_glide = null
 	_clamp_focus()
 	if not movement.is_zero_approx() and not position.is_equal_approx(previous_focus):
 		_has_panned = true
 	_apply_camera()
+
+
+## Frames an area of the floor (FK-080): its centre, pan limits and fitting
+## zoom become the defaults. `reset` re-applies the default view at once;
+## otherwise focus and zoom glide there, keeping the player's rotation.
+func frame_area(center: Vector2, limits: Vector2, zoom: float, reset: bool) -> void:
+	initial_focus = center
+	pan_center = center
+	pan_limits = limits
+	initial_zoom = zoom
+	if reset:
+		_focus_glide = null
+		reset_view()
+		return
+	_target_zoom = _clamp_zoom(zoom)
+	_focus_glide = Vector3(center.x, 0.0, center.y)
 
 
 func rotate_quarter(turns: int) -> void:
@@ -186,6 +212,7 @@ func pan_by_drag(relative: Vector2, viewport_height: float) -> void:
 	var offset: Vector3 = Vector3(-relative.x, 0.0, -relative.y / sin(pitch)) * metres_per_pixel
 	var movement: Vector3 = Basis(Vector3.UP, _yaw) * offset
 	var previous_focus: Vector3 = position
+	_focus_glide = null
 	position += movement
 	_clamp_focus()
 	if not movement.is_zero_approx() and not position.is_equal_approx(previous_focus):

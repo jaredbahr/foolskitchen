@@ -194,26 +194,24 @@ func _build_terrain() -> void:
 	var surface: SurfaceTool = SurfaceTool.new()
 	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var count: int = 0
-	for y: int in range(world.grid.size.y):
-		for x: int in range(world.grid.size.x):
-			var cell: Vector2i = Vector2i(x, y)
-			var terrain: SimGrid.Terrain = world.grid.terrain(cell)
-			if terrain == SimGrid.Terrain.WALL:
-				var wall: MeshInstance3D = _box(Vector3(0.5, WALL_HEIGHT, 0.5), wall_color)
-				wall.position = GridMath.cell_to_world(cell)
-				wall.set_meta("wall_cell", cell)
-				var top: MeshInstance3D = _box(Vector3(0.5, 0.02, 0.5), wall_top_color)
-				top.name = "Top"
-				wall.add_child(top)
-				_wall_nodes[cell] = wall
-				_walls.add_child(wall)
-			elif terrain == SimGrid.Terrain.FLOOR or terrain == SimGrid.Terrain.ENTRY:
-				var corner: Vector3 = Vector3(x * GridMath.CELL_SIZE, 0.0, y * GridMath.CELL_SIZE)
-				var corners: Array[Vector3] = [corner, corner + Vector3(0.5, 0, 0), corner + Vector3(0.5, 0, 0.5), corner + Vector3(0, 0, 0.5)]
-				for index: int in [0, 1, 2, 0, 2, 3]:
-					surface.set_normal(Vector3.UP)
-					surface.add_vertex(corners[index])
-				count += 1
+	for cell: Vector2i in world.grid.cells():
+		var terrain: SimGrid.Terrain = world.grid.terrain(cell)
+		if terrain == SimGrid.Terrain.WALL:
+			var wall: MeshInstance3D = _box(Vector3(0.5, WALL_HEIGHT, 0.5), wall_color)
+			wall.position = GridMath.cell_to_world(cell)
+			wall.set_meta("wall_cell", cell)
+			var top: MeshInstance3D = _box(Vector3(0.5, 0.02, 0.5), wall_top_color)
+			top.name = "Top"
+			wall.add_child(top)
+			_wall_nodes[cell] = wall
+			_walls.add_child(wall)
+		elif terrain == SimGrid.Terrain.FLOOR or terrain == SimGrid.Terrain.ENTRY:
+			var corner: Vector3 = Vector3(cell.x * GridMath.CELL_SIZE, 0.0, cell.y * GridMath.CELL_SIZE)
+			var corners: Array[Vector3] = [corner, corner + Vector3(0.5, 0, 0), corner + Vector3(0.5, 0, 0.5), corner + Vector3(0, 0, 0.5)]
+			for index: int in [0, 1, 2, 0, 2, 3]:
+				surface.set_normal(Vector3.UP)
+				surface.add_vertex(corners[index])
+			count += 1
 	floor_mesh.mesh = surface.commit() if count > 0 else null
 	_shell_windows = WallSegmentView.shell_window_cells(world.grid)
 	_apply_wall_heights()
@@ -436,11 +434,9 @@ func lowered_wall_cells() -> Array[Vector2i]:
 	var cells: Array[Vector2i] = []
 	if world == null:
 		return cells
-	for y: int in range(world.grid.size.y):
-		for x: int in range(world.grid.size.x):
-			var cell: Vector2i = Vector2i(x, y)
-			if _wall_nodes.has(cell) and _wall_is_lowered(cell):
-				cells.append(cell)
+	for cell: Vector2i in world.grid.cells():
+		if _wall_nodes.has(cell) and _wall_is_lowered(cell):
+			cells.append(cell)
 	return cells
 
 

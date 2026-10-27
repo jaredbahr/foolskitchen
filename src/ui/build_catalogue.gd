@@ -6,6 +6,8 @@ signal buy_requested(def_id: StringName)
 signal swatch_requested(swatch_id: StringName)
 ## Walls tool (FK-070): the SimGrid.Segment new edges should get.
 signal wall_tool_requested(segment: int)
+## Floor tool (FK-080): buy floor on the lot.
+signal floor_tool_requested()
 
 const EDGE_MARGIN: float = 12.0
 const MAX_PANEL_WIDTH: float = 760.0
@@ -18,12 +20,16 @@ const CATEGORY_LABELS: Dictionary = {
 	&"seating": "Seating", &"tables": "Tables", &"kitchen": "Kitchen", &"decor": "Decor", &"walls": "Walls",
 }
 const WALLS: StringName = &"walls"
-const WALLS_HINT: String = "Drag along the grid lines to build. Click a wall to switch it between wall, doorway and window."
+const WALLS_HINT: String = "Drag along the grid lines to build. Click a wall to switch it between wall, doorway and window. Floor: drag onto the lot to grow the shop."
+const FLOOR_THUMBNAIL: PackedScene = preload("res://assets/props/floor_tile.tscn")
 const FURNITURE_HINT: String = "Square: work tile   Circle: seat"
 
 var item_buttons: Dictionary[StringName, Button] = {}
 ## Walls tab cards by WallKindDef id.
 var wall_buttons: Dictionary[StringName, Button] = {}
+## Walls tab Floor card (FK-080); hidden while the shop has no lot to grow into.
+var floor_button: Button
+var _floor_price: int = 0
 var swatch_buttons: Dictionary[StringName, Button] = {}
 var category_buttons: Dictionary[StringName, Button] = {}
 var selected_category: StringName = &""
@@ -167,6 +173,8 @@ func refresh_content() -> void:
 			if not selected_category.is_empty():
 				break
 	_refresh_wall_cards()
+	if _floor_price > 0:
+		_refresh_floor_card()
 	_apply_category()
 	# Queue the current category first so visible previews arrive first. Every
 	# remaining wrapper is still prepared once at startup in the same cache.
@@ -215,6 +223,46 @@ func _refresh_wall_cards() -> void:
 		_size_card(button)
 
 
+## Main passes the lot's price per floor tile; 0 means there is no lot.
+func set_floor_price(price: int) -> void:
+	if price == _floor_price:
+		return
+	_floor_price = maxi(price, 0)
+	_refresh_floor_card()
+	_apply_category()
+	_fit_panel()
+
+
+func _refresh_floor_card() -> void:
+	if _thumbnails == null:
+		return
+	var row: GridContainer = get_node("Panel/Margin/Rows/Scroll/Content/Items") as GridContainer
+	if floor_button == null:
+		floor_button = Button.new()
+		floor_button.name = "Floor"
+		floor_button.focus_mode = Control.FOCUS_NONE
+		floor_button.mouse_filter = Control.MOUSE_FILTER_STOP
+		floor_button.theme = theme
+		floor_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		floor_button.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
+		floor_button.add_theme_constant_override("icon_max_width", THUMBNAIL_WIDTH)
+		floor_button.add_theme_constant_override("h_separation", 10)
+		floor_button.pressed.connect(_on_floor_pressed)
+		row.add_child(floor_button)
+	row.move_child(floor_button, row.get_child_count() - 1)
+	floor_button.text = "Floor\n$%d a tile" % _floor_price
+	floor_button.tooltip_text = "Drag onto your lot to add floor for $%d a tile; Shift-drag removes added floor" % _floor_price
+	floor_button.icon = _thumbnails.request(FLOOR_THUMBNAIL)
+	_size_card(floor_button)
+
+
+func _on_floor_pressed() -> void:
+	if not visible or _paint_visible or selected_category != WALLS or _floor_price <= 0 \
+			or (is_inside_tree() and not is_visible_in_tree()):
+		return
+	floor_tool_requested.emit()
+
+
 func _on_wall_pressed(id: StringName) -> void:
 	if not visible or _paint_visible or _content == null or selected_category != WALLS \
 			or (is_inside_tree() and not is_visible_in_tree()):
@@ -248,6 +296,8 @@ func _apply_category() -> void:
 		item_buttons[id].visible = not _paint_visible and category_for(definition) == selected_category
 	for id: StringName in wall_buttons:
 		wall_buttons[id].visible = not _paint_visible and selected_category == WALLS
+	if floor_button != null:
+		floor_button.visible = not _paint_visible and selected_category == WALLS and _floor_price > 0
 	var hint: Label = get_node("Panel/Margin/Rows/Scroll/Content/Hint") as Label
 	hint.text = WALLS_HINT if selected_category == WALLS else FURNITURE_HINT
 	_refresh_title()
@@ -263,6 +313,8 @@ func _on_category_pressed(category: StringName) -> void:
 func _on_thumbnail_ready(scene: PackedScene, texture: Texture2D) -> void:
 	if _content == null:
 		return
+	if floor_button != null and scene == FLOOR_THUMBNAIL:
+		floor_button.icon = texture
 	for id: StringName in item_buttons:
 		var definition: ItemDef = _content.item(id)
 		if definition != null and definition.view_scene == scene:
@@ -416,6 +468,8 @@ func _fit_panel() -> void:
 	for id: StringName in wall_buttons:
 		if wall_buttons[id].visible:
 			card_width = maxf(card_width, wall_buttons[id].get_combined_minimum_size().x)
+	if floor_button != null and floor_button.visible:
+		card_width = maxf(card_width, floor_button.get_combined_minimum_size().x)
 	var columns: int = clampi(floori((limit.x + CARD_GAP) / (card_width + CARD_GAP)), 1, 3)
 	if row.columns != columns:
 		row.columns = columns

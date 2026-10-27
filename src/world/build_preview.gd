@@ -13,6 +13,13 @@ const SEAT_COLOR: Color = Color("ddbd70")
 const WALL_GHOST_ALPHA: float = 0.55
 ## A little thicker than the built slab so the ghost reads over an existing one.
 const WALL_GHOST_DEPTH: float = 0.12
+## Floor tool (FK-080): proposed tiles, and the pale unbuilt lot (palette cream).
+const LOT_SWATCH: SwatchDef = preload("res://data/swatches/cream.tres")
+const LOT_FILL_ALPHA: float = 0.22
+const LOT_EDGE_ALPHA: float = 0.75
+const LOT_EDGE_WIDTH: float = 0.05
+const FLOOR_GHOST_ALPHA: float = 0.6
+const FLOOR_GHOST_INSET: float = 0.03
 
 var ghost_mesh: ItemVisual
 var work_markers: Array[MeshInstance3D] = []
@@ -20,6 +27,12 @@ var seat_markers: Array[MeshInstance3D] = []
 var warning_nodes: Dictionary[int, Node3D] = {}
 ## Walls tool ghosts (FK-070), one per proposed edge change.
 var wall_ghosts: Array[MeshInstance3D] = []
+## Floor tool ghost (one merged mesh) and the cells it covers.
+var floor_ghost: MeshInstance3D
+var floor_ghost_cells: Array[Vector2i] = []
+## The lot outline and fill, shown in every Build mode state.
+var lot_outline: Node3D
+var _lot_root: Node3D
 var _controller: BuildMode
 var _shop_view: ShopView
 var _grid: SimGrid
@@ -189,6 +202,16 @@ func refresh() -> void:
 		_build_wall_ghosts(changes, valid)
 		if not valid:
 			reason = snapshot.get("why", "")
+	elif snapshot.get("active", false) and snapshot.get("state", -1) == BuildMode.State.FLOOR:
+		var floor_cells: Array[Vector2i] = []
+		floor_cells.assign(snapshot.get("floor_cells", []))
+		_build_floor_ghost(floor_cells, valid, snapshot.get("floor_removing", false))
+		if not valid:
+			reason = snapshot.get("why", "")
+	if snapshot.get("active", false):
+		var open_cells: Array[Vector2i] = []
+		open_cells.assign(snapshot.get("lot_open", []))
+		_build_lot(snapshot.get("lot", Rect2i()), open_cells)
 	var warning_ids: Array[int] = []
 	warning_ids.assign(snapshot.get("warning_ids", []))
 	for id: int in warning_ids:
@@ -262,6 +285,12 @@ func _clear_geometry() -> void:
 	_ghost_root = null
 	ghost_mesh = null
 	wall_ghosts.clear()
+	floor_ghost = null
+	floor_ghost_cells.clear()
+	if is_instance_valid(_lot_root):
+		_free_node(_lot_root)
+	_lot_root = null
+	lot_outline = null
 	work_markers.clear()
 	seat_markers.clear()
 	for node: Node3D in warning_nodes.values():
@@ -337,6 +366,79 @@ func _build_wall_ghosts(changes: Dictionary, valid: bool) -> void:
 		ghost.set_meta("valid", valid)
 		wall_ghosts.append(ghost)
 		_ghost_root.add_child(ghost)
+
+
+## Flat translucent tiles on each proposed cell: green to add, gold to
+## remove, red when the change is not allowed.
+func _build_floor_ghost(cells: Array[Vector2i], valid: bool, removing: bool) -> void:
+	if cells.is_empty():
+		return
+	_ghost_root = Node3D.new()
+	_ghost_root.name = "FloorGhost"
+	add_child(_ghost_root)
+	var tint: Color = (SEAT_COLOR if removing else VALID_COLOR) if valid else INVALID_COLOR
+	tint.a = FLOOR_GHOST_ALPHA
+	floor_ghost = MeshInstance3D.new()
+	floor_ghost.name = "Tiles"
+	floor_ghost.mesh = _tile_mesh(cells, 0.03, FLOOR_GHOST_INSET)
+	floor_ghost.material_override = _material(tint, true)
+	floor_ghost.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	floor_ghost.set_meta("valid", valid)
+	floor_ghost.set_meta("removing", removing)
+	floor_ghost_cells = cells.duplicate()
+	_ghost_root.add_child(floor_ghost)
+
+
+## The lot (FK-080): a pale fill on unbuilt cells and a pale line around it.
+func _build_lot(lot: Rect2i, open_cells: Array[Vector2i]) -> void:
+	if lot.size.x <= 0 or lot.size.y <= 0:
+		return
+	_lot_root = Node3D.new()
+	_lot_root.name = "Lot"
+	add_child(_lot_root)
+	if not open_cells.is_empty():
+		var fill: MeshInstance3D = MeshInstance3D.new()
+		fill.name = "Fill"
+		fill.mesh = _tile_mesh(open_cells, 0.004, 0.0)
+		var fill_color: Color = LOT_SWATCH.color
+		fill_color.a = LOT_FILL_ALPHA
+		fill.material_override = _material(fill_color, true)
+		fill.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_lot_root.add_child(fill)
+	var edge_color: Color = LOT_SWATCH.color
+	edge_color.a = LOT_EDGE_ALPHA
+	var material: StandardMaterial3D = _material(edge_color, true)
+	lot_outline = Node3D.new()
+	lot_outline.name = "Outline"
+	lot_outline.set_meta("lot", lot)
+	_lot_root.add_child(lot_outline)
+	var low: Vector2 = Vector2(lot.position) * GridMath.CELL_SIZE
+	var high: Vector2 = Vector2(lot.end) * GridMath.CELL_SIZE
+	var mid: Vector2 = (low + high) * 0.5
+	var span: Vector2 = high - low
+	var height: float = 0.012
+	for z: float in [low.y, high.y]:
+		var rail: MeshInstance3D = _box(Vector3(span.x + LOT_EDGE_WIDTH, height, LOT_EDGE_WIDTH), material)
+		rail.position = Vector3(mid.x, height * 0.5 + 0.004, z)
+		lot_outline.add_child(rail)
+	for x: float in [low.x, high.x]:
+		var rail: MeshInstance3D = _box(Vector3(LOT_EDGE_WIDTH, height, span.y + LOT_EDGE_WIDTH), material)
+		rail.position = Vector3(x, height * 0.5 + 0.004, mid.y)
+		lot_outline.add_child(rail)
+
+
+## One upward-facing quad per cell at `height`, inset from the cell edges.
+static func _tile_mesh(cells: Array[Vector2i], height: float, inset: float) -> ArrayMesh:
+	var surface: SurfaceTool = SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for cell: Vector2i in cells:
+		var low: Vector3 = Vector3(cell.x * GridMath.CELL_SIZE + inset, height, cell.y * GridMath.CELL_SIZE + inset)
+		var size: float = GridMath.CELL_SIZE - inset * 2.0
+		var corners: Array[Vector3] = [low, low + Vector3(size, 0, 0), low + Vector3(size, 0, size), low + Vector3(0, 0, size)]
+		for index: int in [0, 1, 2, 0, 2, 3]:
+			surface.set_normal(Vector3.UP)
+			surface.add_vertex(corners[index])
+	return surface.commit()
 
 
 func _build_warning(id: int, definition: ItemDef, origin: Vector2i, turns: int) -> void:

@@ -11,6 +11,9 @@ extends Node3D
 ## F10 starts a new game (deletes the autosave).
 
 const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
+## Camera fit (FK-080): this zoom frames this many cells; bigger shops zoom out.
+const SHOP_ZOOM: float = 12.0
+const SHOP_FRAME_CELLS: Vector2 = Vector2(14.0, 12.0)
 const TUNING: EconomyTuning = preload("res://data/balance/tier1_economy.tres")
 const CLEANLINESS_TUNING: CleanlinessTuning = preload("res://data/balance/cleanliness.tres")
 const REVIEW_TUNING: ReviewTuning = preload("res://data/balance/reviews.tres")
@@ -145,13 +148,7 @@ func _bind_world_presentation() -> void:
 	var camera: CameraRig = $CameraRig
 	camera.set_grid_forced(false)
 	camera.grid_floor = view.floor_mesh
-	var shop_half: Vector2 = Vector2(world.grid.size) * GridMath.CELL_SIZE * 0.5
-	camera.initial_focus = shop_half
-	# Pan around the shop itself, with a 2 m margin on every side.
-	camera.pan_center = shop_half
-	camera.pan_limits = shop_half + Vector2(2.0, 2.0)
-	camera.initial_zoom = 12.0
-	camera.reset_view()
+	_frame_shop(true)
 	if not camera.yaw_snapped.is_connected(view.set_camera_quarter):
 		camera.yaw_snapped.connect(view.set_camera_quarter)
 	view.set_camera_quarter(camera.camera_quarter())
@@ -180,6 +177,8 @@ func _bind_world_presentation() -> void:
 		_build_catalogue.buy_requested.connect(_on_build_buy_requested)
 	if not _build_catalogue.wall_tool_requested.is_connected(_on_wall_tool_requested):
 		_build_catalogue.wall_tool_requested.connect(_on_wall_tool_requested)
+	if not _build_catalogue.floor_tool_requested.is_connected(_on_floor_tool_requested):
+		_build_catalogue.floor_tool_requested.connect(_on_floor_tool_requested)
 	if not _build_catalogue.swatch_requested.is_connected(_on_swatch_requested):
 		_build_catalogue.swatch_requested.connect(_on_swatch_requested)
 	if not $HUD.build_toggled.is_connected(_on_build_toggled):
@@ -229,6 +228,22 @@ func _bind_world_presentation() -> void:
 	_debug_overlay.bind_cleanliness(sim.cleanliness)
 	_on_header_layout_changed()
 	refresh_presentation()
+
+
+## Centres the camera on the whole building and zooms so it fits (FK-080).
+## The starting shell keeps exactly its old framing: zoom 12 for 14 x 12 cells.
+## `reset` restores the default view; otherwise the view glides to the new fit.
+func _frame_shop(reset: bool) -> void:
+	var camera: CameraRig = $CameraRig
+	var area: Rect2i = Rect2i()
+	for cell: Vector2i in world.grid.cells():
+		if world.grid.terrain(cell) != SimGrid.Terrain.OUTSIDE:
+			area = Rect2i(cell, Vector2i.ONE) if area.size == Vector2i.ZERO else area.merge(Rect2i(cell, Vector2i.ONE))
+	var low: Vector2 = Vector2(area.position) * GridMath.CELL_SIZE
+	var half: Vector2 = Vector2(area.size) * GridMath.CELL_SIZE * 0.5
+	var zoom: float = SHOP_ZOOM * maxf(1.0, maxf(float(area.size.x) / SHOP_FRAME_CELLS.x, float(area.size.y) / SHOP_FRAME_CELLS.y))
+	# Pan around the shop itself, with a 2 m margin on every side.
+	camera.frame_area(low + half, half + Vector2(2.0, 2.0), zoom, reset)
 
 
 func _on_header_layout_changed() -> void:
@@ -455,7 +470,7 @@ func route_build_input(event: InputEvent) -> bool:
 		return false
 	var motion: InputEventMouseMotion = event as InputEventMouseMotion
 	if motion != null:
-		update_build_pointer(motion.position)
+		update_build_pointer(motion.position, motion.shift_pressed)
 		return false  # Camera drag/edge tracking still receives motion.
 	var mouse: InputEventMouseButton = event as InputEventMouseButton
 	if mouse != null and mouse.button_index == MOUSE_BUTTON_LEFT and build_mode.state == BuildMode.State.WALLS:
@@ -465,6 +480,14 @@ func route_build_input(event: InputEvent) -> bool:
 				build_mode.wall_press(point)
 			else:
 				build_mode.wall_release(point)
+		return true
+	if mouse != null and mouse.button_index == MOUSE_BUTTON_LEFT and build_mode.state == BuildMode.State.FLOOR:
+		var floor_cell: Variant = build_cell_at_screen_position(mouse.position)
+		if floor_cell is Vector2i:
+			if mouse.pressed:
+				build_mode.floor_press(floor_cell, mouse.shift_pressed)
+			else:
+				build_mode.floor_release(floor_cell)
 		return true
 	if mouse != null and mouse.pressed and mouse.button_index == MOUSE_BUTTON_LEFT:
 		if update_build_pointer(mouse.position):
@@ -715,9 +738,14 @@ func begin_wall_tool(kind: SimGrid.Segment) -> bool:
 	return started
 
 
-func update_build_pointer(screen_position: Vector2) -> bool:
+func update_build_pointer(screen_position: Vector2, shift: bool = false) -> bool:
 	if not is_build_active():
 		return false
+	if build_mode.state == BuildMode.State.FLOOR:
+		var floor_cell: Variant = build_cell_at_screen_position(screen_position)
+		if floor_cell is Vector2i:
+			build_mode.floor_pointer(floor_cell, shift)
+		return floor_cell is Vector2i
 	if build_mode.state == BuildMode.State.WALLS:
 		var point: Variant = build_point_at_screen_position(screen_position)
 		if point is Vector2:
@@ -731,6 +759,16 @@ func update_build_pointer(screen_position: Vector2) -> bool:
 	return true
 
 
+## Floor tool (FK-080): drag to buy lot floor, Shift-drag to remove bought floor.
+func begin_floor_tool() -> bool:
+	if not is_build_active():
+		return false
+	var started: bool = build_mode.begin_floor()
+	if started and is_inside_tree():
+		update_build_pointer(get_viewport().get_mouse_position())
+	return started
+
+
 func begin_buy_item(def_id: StringName) -> bool:
 	if not is_build_active():
 		return false
@@ -741,9 +779,12 @@ func begin_buy_item(def_id: StringName) -> bool:
 func _bind_build_session() -> void:
 	if not build_mode.changed.is_connected(_on_build_changed):
 		build_mode.changed.connect(_on_build_changed)
-	build_mode.bind_session(shop_editor, world, content, shop_move, shop_buy, shop_sell, shop_walls)
+	build_mode.bind_session(shop_editor, world, content, shop_move, shop_buy, shop_sell, shop_walls, shop_floor)
 	($ShopView as ShopView).set_paint(content, shop_editor.wall_swatch_id, shop_editor.floor_swatch_id)
 	_build_preview.bind_build_mode(build_mode, $ShopView as ShopView)
+	var lot: ShopFootprint = shop_editor.footprint()
+	if _build_catalogue != null:
+		_build_catalogue.set_floor_price(lot.cell_price if lot != null and lot.has_lot() else 0)
 	_build_ready = true
 	_build_ui_phase = -1
 	_on_build_changed()
@@ -782,6 +823,8 @@ func _update_build_controls() -> void:
 	var reason: String = build_mode.current_check.why if build_mode.has_ghost() and not build_mode.current_check.ok else ""
 	if build_mode.state == BuildMode.State.WALLS:
 		reason = build_mode.wall_summary()
+	elif build_mode.state == BuildMode.State.FLOOR:
+		reason = build_mode.floor_summary()
 	$HUD.set_build_state(available, active, reason, int(build_mode.state))
 	$HUD.set_paint_state(_paint_active)
 	if _build_catalogue != null:
@@ -800,6 +843,10 @@ func _on_build_buy_requested(def_id: StringName) -> void:
 
 func _on_wall_tool_requested(kind: int) -> void:
 	begin_wall_tool(kind as SimGrid.Segment)
+
+
+func _on_floor_tool_requested() -> void:
+	begin_floor_tool()
 
 
 func _on_build_cash_changed(_cash: int, _delta: int, _reason: StringName) -> void:
@@ -1657,6 +1704,17 @@ func shop_buy(def_id: StringName, origin: Vector2i, quarter_turns: int = 0) -> b
 ## Wall segment changes (FK-070), checked and booked by ShopEditor.
 func shop_walls(changes: Dictionary[Vector3i, int]) -> bool:
 	var accepted: bool = shop_editor != null and shop_editor.apply_segments(changes)
+	if _build_ready:
+		build_mode.refresh()
+	return accepted
+
+
+## Floor expansion (FK-080), checked and booked by ShopEditor. The camera
+## then glides to fit the new outline; nothing is saved until next morning.
+func shop_floor(cells: Array[Vector2i], adding: bool) -> bool:
+	var accepted: bool = shop_editor != null and shop_editor.apply_floor(cells, adding)
+	if accepted:
+		_frame_shop(false)
 	if _build_ready:
 		build_mode.refresh()
 	return accepted
