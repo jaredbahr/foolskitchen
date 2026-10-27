@@ -112,6 +112,16 @@ func test_throwing_out_stock_frees_its_space_without_a_refund() -> void:
 	(panel.row_for(&"tomato")["cart+1"] as Button).pressed.emit()
 	assert_eq(throw.text, "Throw out", "another action takes the question back")
 	throw.pressed.emit()
+	panel.call("_on_target_step", &"soup_stock", 1)
+	assert_eq(throw.text, "Throw out", "changing a target takes the question back too")
+	throw.pressed.emit()
+	panel.call("_on_auto_toggled", false, &"soup_stock")
+	assert_eq(throw.text, "Throw out", "so does the auto-reorder toggle")
+	throw.pressed.emit()
+	panel.call("_on_clear_pressed")
+	assert_eq(throw.text, "Throw out", "and Clear cart")
+	assert_eq(Economy.stock.count(&"soup_stock"), 8, "nothing was thrown out without asking again")
+	throw.pressed.emit()
 	throw.pressed.emit()
 	assert_eq(Economy.stock.count(&"soup_stock"), 0, "the second click throws it all out")
 	assert_eq(Economy.cash, cash, "no refund")
@@ -120,6 +130,20 @@ func test_throwing_out_stock_frees_its_space_without_a_refund() -> void:
 	assert_true(throw.disabled, "nothing left to throw out")
 	assert_eq((main.call("storage_space") as StorageSpace).in_stock(StorageSpace.DRY), 42)
 	assert_eq(main.call("stock_throw_out", &"soup_stock"), -1)
+
+
+func test_closing_the_stock_panel_after_service_returns_to_the_evening_report() -> void:
+	var main: Node = _start(false)
+	assert_true(Clock.sim.start_service())
+	_run_to_close(main)
+	var report_view: Control = main.get_node("Overlay/EveningReport") as Control
+	assert_true(report_view.visible, "the evening report shows at close")
+	assert_true(main.call("set_stock_visible", true))
+	assert_false(report_view.visible, "the Stock panel covers the report")
+	assert_true(main.call("stock_cart_set", &"tomato", 2))
+	assert_true(main.call("stock_place_order"))
+	assert_true(main.call("set_stock_visible", false))
+	assert_true(report_view.visible, "closing Stock brings the report back")
 
 
 func test_the_auto_reorder_buys_up_to_the_free_space_and_says_what_did_not_fit() -> void:

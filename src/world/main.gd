@@ -96,7 +96,7 @@ var _loaded_milestones: MilestoneTracker = null
 var _loaded_tray_level: int = 0
 var _loaded_reorder: ReorderSettings = null
 var _loaded_deliveries: DeliveryBook = null
-## Today's last daytime delivery ({lines, opening, minute}), for the Stock notes.
+## Today's last daytime delivery ({lines, minute}), for the Stock notes.
 var _last_delivery: Dictionary = {}
 var _storage_fill_key: String = ""
 ## Stock thrown out by hand today (id -> units), for the Stock notes.
@@ -2363,8 +2363,7 @@ func _deliver_due(morning_setup: bool = false) -> bool:
 		return false
 	Economy.receive(lines)
 	if not morning_setup:
-		_last_delivery = {"lines": lines, "opening": Clock.sim.phase == SimClock.Phase.OPEN and Clock.sim.phase_tick == 0,
-			"minute": Clock.sim.display_minutes()}
+		_last_delivery = {"lines": lines, "minute": Clock.sim.display_minutes()}
 	if sim != null and sim.restock_sold_out() > 0:
 		_refresh_sold_out_hud()
 	var parts: Array[String] = []
@@ -2466,7 +2465,8 @@ func stock_place_order() -> bool:
 	return true
 
 
-## Cancels everything on order (standing orders too) for a full refund.
+## Cancels every hand order still on its way for a full refund (standing
+## orders arrive at once in the morning, so they never wait to be cancelled).
 ## Returns the refund, or -1 when nothing is on order.
 func stock_cancel_orders() -> int:
 	if not can_edit_stock() or deliveries.is_empty():
@@ -2551,6 +2551,9 @@ func set_stock_visible(value: bool) -> bool:
 	_stock_panel.visible = value
 	if value:
 		_refresh_stock_panel()
+	elif Clock.sim.phase == SimClock.Phase.CLOSED and shown_report != null:
+		# Back to the evening report, rebuilt so closed-phase orders show.
+		_report.call(&"show_report", build_report(Clock.sim.day))
 	return true
 
 
@@ -2681,8 +2684,8 @@ func stock_notes() -> Array[String]:
 		var brought: Array[String] = []
 		for line: Dictionary in _last_delivery["lines"]:
 			brought.append("%d %s" % [int(line["qty"]), _ingredient_name(line["id"])])
-		notes.append("The %s delivery brought %s." % ["opening" if _last_delivery["opening"]
-			else Fmt.clock(int(_last_delivery["minute"])), StockAlerts.join_names(brought)])
+		notes.append("The %s delivery brought %s." % [Fmt.clock(int(_last_delivery["minute"])),
+			StockAlerts.join_names(brought)])
 	var short: Dictionary = _morning_order.get("short", {})
 	var missed: Array[String] = []
 	for id: StringName in short:
@@ -2944,7 +2947,7 @@ func _on_day_phase_changed(_day: int, phase: int) -> void:
 		_begin_morning()
 	elif phase == SimClock.Phase.OPEN:
 		_restock_station_supplies()
-		# The opening delivery: morning orders and the station top-up.
+		# Morning orders arrive at once; this only lands overdue orders from older saves.
 		_deliver_due()
 	else:
 		# A delivery slot never falls after opening hours; anything overdue lands now.

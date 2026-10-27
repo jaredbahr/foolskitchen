@@ -416,16 +416,19 @@ func _on_order_pressed() -> void:
 
 
 func _on_clear_pressed() -> void:
+	_armed_throw = &""
 	if bool(_view.get("editable", false)):
 		clear_requested.emit()
 
 
 func _on_cancel_pressed() -> void:
+	_armed_throw = &""
 	if bool(_view.get("editable", false)):
 		cancel_requested.emit()
 
 
 func _on_auto_toggled(enabled: bool, id: StringName) -> void:
+	_armed_throw = &""
 	if bool(_view.get("editable", false)) and bool(_row_data(id).get("enabled", false)) != enabled:
 		auto_requested.emit(id, enabled)
 	# Restore committed state even when the session rejects the request.
@@ -433,6 +436,7 @@ func _on_auto_toggled(enabled: bool, id: StringName) -> void:
 
 
 func _on_target_step(id: StringName, direction: int) -> void:
+	_armed_throw = &""
 	var data: Dictionary = _row_data(id)
 	if not bool(_view.get("editable", false)) or data.is_empty() or (direction != -1 and direction != 1):
 		return
