@@ -18,6 +18,14 @@ const LOCKED_COLOR: Color = Color("766b60")
 const SECTION_FONT_SIZE: int = 22
 const MORNING_HINT: String = "Menu changes are available in the morning."
 
+var _catalogue: Array[RecipeDef] = []
+var _details: Dictionary[StringName, Dictionary] = {}
+var _selected_recipe: StringName = &""
+var _recipe_tree: Tree
+var _tree_items: Dictionary[StringName, TreeItem] = {}
+var _detail_heading: Label
+var _quality_label: Label
+var _requirements_box: VBoxContainer
 var _name_edit: LineEdit
 var _name_apply: Button
 var _name_feedback: Label
@@ -54,6 +62,9 @@ func bind_menu(model: MenuSettings) -> void:
 		if _menu != null and _menu.owner_level_changed.is_connected(_on_owner_level_changed):
 			_menu.owner_level_changed.disconnect(_on_owner_level_changed)
 		_menu = model
+		_catalogue.clear()
+		_details.clear()
+		_selected_recipe = &""
 		_name_dirty = false
 		if _name_feedback != null:
 			_name_feedback.text = ""
@@ -84,11 +95,12 @@ func refresh() -> void:
 	_refresh_drinks_section()
 	if _menu == null or not _menu.is_valid():
 		_menu_count.text = ""
+		_refresh_selection()
 		return
 	if not _name_dirty and _name_edit.text != _menu.restaurant_name():
 		_name_edit.text = _menu.restaurant_name()
 	_menu_count.text = "%d / %d dishes on the menu" % [_menu.enabled_count(), _menu.menu_limit()]
-	for definition: RecipeDef in _menu.recipes():
+	for definition: RecipeDef in _display_recipes():
 		var row: Dictionary = _rows[definition.id]
 		var title: Label = row["title"]
 		var unlock: Label = row["unlock"]
@@ -98,6 +110,7 @@ func refresh() -> void:
 		var amount: Label = row["amount"]
 		var standard_label: Label = row["standard"]
 		var ratio_label: Label = row["ratio"]
+		var available: bool = _menu.recipe(definition.id) != null
 		var locked: bool = definition.unlock_level > _menu.owner_level()
 		var unlock_hint: String = "Unlocks at level %d" % definition.unlock_level
 		var enabled: bool = _menu.is_enabled(definition.id)
@@ -105,7 +118,7 @@ func refresh() -> void:
 		var at_limit: bool = not enabled and _menu.enabled_count() >= _menu.menu_limit()
 		var limit_hint: String = "Your menu is full. Take a dish off before adding another."
 		var price: int = _menu.price_of(definition)
-		var standard: int = _menu.standard_price(definition.id)
+		var standard: int = definition.standard_price
 		var minimum: int = _menu.minimum_price(definition.id)
 		var maximum: int = _menu.maximum_price(definition.id)
 		unlock.visible = locked
@@ -116,11 +129,11 @@ func refresh() -> void:
 			else:
 				label.remove_theme_color_override("font_color")
 		toggle.set_pressed_no_signal(enabled)
-		toggle.text = "Locked" if locked else ("On menu" if enabled else "Off menu")
-		toggle.disabled = locked or not editable or last_enabled or at_limit
+		toggle.text = "Locked" if locked else ("Remove from menu" if enabled else "Add to menu")
+		toggle.disabled = locked or not available or not editable or last_enabled or at_limit
 		toggle.tooltip_text = unlock_hint if locked else (MORNING_HINT if not editable else ("Keep at least one dish on the menu." if last_enabled else (limit_hint if at_limit else "Offer this dish today.")))
-		minus.disabled = locked or not editable or price <= minimum
-		plus.disabled = locked or not editable or price >= maximum
+		minus.disabled = locked or not available or not editable or price <= minimum
+		plus.disabled = locked or not available or not editable or price >= maximum
 		minus.tooltip_text = unlock_hint if locked else (MORNING_HINT if not editable else "Minimum price: $%d" % minimum)
 		plus.tooltip_text = unlock_hint if locked else (MORNING_HINT if not editable else "Maximum price: $%d" % maximum)
 		amount.text = "$%d" % price
@@ -133,15 +146,20 @@ func refresh() -> void:
 			ratio_label.text = "%.0f%% of suggested" % (ratio * 100.0)
 			var color: Color = LOWER_COLOR if price < standard else (HIGHER_COLOR if price > standard else STANDARD_COLOR)
 			ratio_label.add_theme_color_override("font_color", color)
+		if not available and not locked:
+			for button: Button in [toggle, minus, plus]:
+				button.tooltip_text = _equipment_reason(definition.id)
 		if locked:
 			ratio_label.add_theme_color_override("font_color", LOCKED_COLOR)
+	_refresh_tree_state()
+	_refresh_selection()
 
 
 ## A station bought or sold changes which dishes the menu lists (FK-083).
 func _catalogue_changed() -> bool:
 	if _menu == null or not _menu.is_valid():
 		return false
-	var recipes: Array[RecipeDef] = _menu.recipes()
+	var recipes: Array[RecipeDef] = _display_recipes()
 	if recipes.size() != _rows.size():
 		return true
 	for definition: RecipeDef in recipes:
@@ -223,7 +241,7 @@ func _on_hours_step(direction: Vector2i) -> void:
 func _refresh_drinks_section() -> void:
 	if _drink_rows == null:
 		return
-	_drinks_title.visible = _drink_rows.get_child_count() > 0 or not _drink_hints.is_empty()
+	_drinks_title.visible = not _drink_hints.is_empty()
 	_hints_box.visible = not _drink_hints.is_empty()
 
 
@@ -264,6 +282,7 @@ func _bind_nodes() -> void:
 	_goals_button = %GoalsButton
 	IconStyle.decorate_label(get_node("Panel/Content/Title") as Label, &"menu")
 	_build_sections()
+	_build_recipe_tree()
 	IconStyle.configure_button(_settings_button, &"settings", "Settings", "Audio, display and controls", IconCatalogue.PANEL_SIZE)
 	_settings_button.pressed.connect(_on_settings_pressed)
 	_goals_button.pressed.connect(_on_goals_pressed)
@@ -336,11 +355,13 @@ func _rebuild_rows() -> void:
 			container.remove_child(child)
 			child.free()
 	_rows.clear()
+	_recipe_tree.clear()
+	_tree_items.clear()
 	_needs_rebuild = false
 	if _menu == null or not _menu.is_valid():
 		return
 	var index: int = 0
-	var grouped: Array[RecipeDef] = _menu.recipes()
+	var grouped: Array[RecipeDef] = _display_recipes()
 	grouped.sort_custom(_section_before)
 	var previous_section: int = -1
 	for definition: RecipeDef in grouped:
@@ -386,6 +407,14 @@ func _rebuild_rows() -> void:
 			"toggle": toggle, "minus": minus,
 			"plus": plus, "amount": amount, "standard": standard, "ratio": ratio}
 		index += 1
+	_rebuild_recipe_tree()
+	if not _rows.has(_selected_recipe):
+		var definitions: Array[RecipeDef] = _display_recipes()
+		_selected_recipe = definitions[0].id if not definitions.is_empty() else &""
+	if _tree_items.has(_selected_recipe):
+		_recipe_tree.set_block_signals(true)
+		_tree_items[_selected_recipe].select(0)
+		_recipe_tree.set_block_signals(false)
 
 
 func _add_line(parent: Node, title: String) -> HBoxContainer:
@@ -487,3 +516,180 @@ func _on_name_apply_pressed() -> void:
 		_name_dirty = false
 		if _name_edit.text != canonical:
 			_name_edit.text = canonical
+
+
+## All definitions are visible in the tree; MenuSettings remains the authority
+## for which ones the shop can offer and for every accepted price/toggle.
+func set_recipe_details(definitions: Array[RecipeDef], details: Dictionary[StringName, Dictionary]) -> void:
+	_catalogue = definitions.duplicate()
+	_details = details.duplicate(true)
+	refresh()
+
+
+func _display_recipes() -> Array[RecipeDef]:
+	return _catalogue.duplicate() if not _catalogue.is_empty() else (_menu.recipes() if _menu != null else [] as Array[RecipeDef])
+
+
+func select_recipe(id: StringName) -> bool:
+	if not _rows.has(id):
+		return false
+	_selected_recipe = id
+	if _tree_items.has(id):
+		_recipe_tree.set_block_signals(true)
+		_tree_items[id].select(0)
+		_recipe_tree.set_block_signals(false)
+	_refresh_selection()
+	return true
+
+
+func tree_item_for(id: StringName) -> TreeItem:
+	return _tree_items.get(id) as TreeItem
+
+
+func _on_recipe_selected() -> void:
+	var selected: TreeItem = _recipe_tree.get_selected()
+	if selected != null and selected.get_metadata(0) != null:
+		select_recipe(StringName(selected.get_metadata(0)))
+
+
+func _build_recipe_tree() -> void:
+	var list: VBoxContainer = _rows_node.get_parent() as VBoxContainer
+	_recipe_tree = Tree.new()
+	_recipe_tree.name = "RecipeTree"
+	_recipe_tree.theme = SHARED_THEME
+	_recipe_tree.custom_minimum_size = Vector2(0, 220)
+	_recipe_tree.columns = 2
+	_recipe_tree.column_titles_visible = true
+	_recipe_tree.set_column_title(0, "Dish unlock tree")
+	_recipe_tree.set_column_title(1, "Owner level / equipment")
+	_recipe_tree.set_column_expand_ratio(0, 1)
+	_recipe_tree.set_column_expand_ratio(1, 2)
+	_recipe_tree.hide_root = true
+	_recipe_tree.scroll_horizontal_enabled = false
+	_recipe_tree.mouse_force_pass_scroll_events = false
+	_recipe_tree.item_selected.connect(_on_recipe_selected)
+	list.add_child(_recipe_tree)
+	list.move_child(_recipe_tree, _rows_node.get_index())
+	var note: Label = _add_label(list, "UnlockNote", "Select a dish for details. Recipes are learned at the owner level shown.")
+	list.move_child(note, _rows_node.get_index())
+	_detail_heading = _add_label(list, "DishDetail", "Dish detail")
+	_detail_heading.add_theme_font_size_override("font_size", SECTION_FONT_SIZE)
+	list.move_child(_detail_heading, _rows_node.get_index())
+	_quality_label = _add_label(list, "DishQuality", "")
+	list.move_child(_quality_label, _rows_node.get_index())
+	_requirements_box = VBoxContainer.new()
+	_requirements_box.name = "Requirements"
+	_requirements_box.theme = SHARED_THEME
+	_requirements_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	list.add_child(_requirements_box)
+	# Both food and drink controls are the selected dish's detail pane.
+	list.move_child(_drink_rows, _rows_node.get_index() + 1)
+	list.move_child(_requirements_box, _drink_rows.get_index() + 1)
+	# Keep the tree and dish decision ahead of the existing hours controls.
+	list.move_child(_hours_box, list.get_child_count() - 1)
+
+
+func _rebuild_recipe_tree() -> void:
+	_recipe_tree.clear()
+	_tree_items.clear()
+	var root: TreeItem = _recipe_tree.create_item()
+	var sections: Dictionary[int, TreeItem] = {}
+	var remaining: Array[RecipeDef] = _display_recipes()
+	remaining.sort_custom(_section_before)
+	while not remaining.is_empty():
+		var advanced: bool = false
+		for recipe: RecipeDef in remaining.duplicate():
+			var parent: TreeItem = _tree_items.get(recipe.unlock_from) as TreeItem
+			if not recipe.unlock_from.is_empty() and parent == null:
+				continue
+			if parent == null:
+				var section: int = recipe.menu_section()
+				if not sections.has(section):
+					var heading: TreeItem = _recipe_tree.create_item(root)
+					heading.set_text(0, RecipeDef.section_name(section))
+					heading.set_selectable(0, false)
+					heading.set_selectable(1, false)
+					sections[section] = heading
+				parent = sections[section]
+			_add_recipe_node(recipe, parent)
+			remaining.erase(recipe)
+			advanced = true
+		if not advanced:
+			# Production data is validated. In-memory view fixtures still fail
+			# safely rather than looping on a missing or cyclic parent.
+			for recipe: RecipeDef in remaining:
+				_add_recipe_node(recipe, root)
+			break
+
+
+func _add_recipe_node(recipe: RecipeDef, parent: TreeItem) -> void:
+	var node: TreeItem = _recipe_tree.create_item(parent)
+	node.set_text(0, recipe.display_name)
+	node.set_metadata(0, recipe.id)
+	node.custom_minimum_height = 30
+	_tree_items[recipe.id] = node
+
+
+func _refresh_tree_state() -> void:
+	if _menu == null or not _menu.is_valid():
+		return
+	for recipe: RecipeDef in _display_recipes():
+		var node: TreeItem = _tree_items.get(recipe.id) as TreeItem
+		if node == null:
+			continue
+		var locked: bool = recipe.unlock_level > _menu.owner_level()
+		var status: String = "Owner level %d" % recipe.unlock_level
+		if _menu.recipe(recipe.id) == null:
+			status += " - " + _equipment_reason(recipe.id)
+		else:
+			status += " - " + ("Locked" if locked else ("On menu" if _menu.is_enabled(recipe.id) else "Learned"))
+		node.set_text(1, status)
+		node.set_tooltip_text(1, status)
+		node.set_custom_color(0, LOCKED_COLOR if locked else STANDARD_COLOR)
+		node.set_custom_color(1, HIGHER_COLOR if locked or _menu.recipe(recipe.id) == null else STANDARD_COLOR)
+
+
+func _equipment_reason(id: StringName) -> String:
+	var details: Dictionary = _details.get(id, {})
+	for row: Dictionary in details.get("equipment", []):
+		if not bool(row.get("met", false)):
+			return row.get("text", "Equipment needed")
+	return "Equipment needed"
+
+
+func _refresh_selection() -> void:
+	var chosen: RecipeDef = null
+	for recipe: RecipeDef in _display_recipes():
+		if recipe.id == _selected_recipe:
+			chosen = recipe
+	for id: StringName in _rows:
+		(_rows[id]["root"] as Control).visible = id == _selected_recipe
+		(_rows[id]["title"] as Label).visible = false # The detail heading names the dish.
+	for child: Node in _rows_node.get_children():
+		if child is Label:
+			(child as Label).visible = false # Section headings now live in the tree.
+	_detail_heading.visible = chosen != null
+	_quality_label.visible = chosen != null
+	_requirements_box.visible = chosen != null
+	for child: Node in _requirements_box.get_children():
+		_requirements_box.remove_child(child)
+		child.free()
+	if chosen == null:
+		return
+	_detail_heading.text = "%s - %s" % [chosen.display_name, RecipeDef.section_name(chosen.menu_section())]
+	var details: Dictionary = _details.get(chosen.id, {})
+	var quality: float = float(details.get("quality", chosen.base_quality))
+	_quality_label.text = "Quality: %d / 5 stars\n%s" % [RecipeDef.quality_stars(quality),
+		details.get("quality_source", "Recipe base quality; no served-dish sample")]
+	if details.has("reviews"):
+		_quality_label.text += "\n" + String(details["reviews"])
+	for group: String in ["equipment", "ingredients", "other"]:
+		var heading: Label = _add_label(_requirements_box, group.capitalize(), group.capitalize())
+		heading.add_theme_font_size_override("font_size", 20)
+		var requirements: Array = details.get(group, [])
+		if requirements.is_empty():
+			_add_label(_requirements_box, group + "Empty", "No additional requirements" if group == "other" else "Information unavailable")
+		for index: int in requirements.size():
+			var row: Dictionary = requirements[index]
+			var label: Label = _add_label(_requirements_box, "%s%d" % [group, index], String(row.get("text", "")))
+			label.add_theme_color_override("font_color", STANDARD_COLOR if bool(row.get("met", false)) else HIGHER_COLOR)

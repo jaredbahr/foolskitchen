@@ -379,3 +379,40 @@ func _has_error(errors: PackedStringArray, fragment: String) -> bool:
 		if error.contains(fragment):
 			return true
 	return false
+
+
+func test_unlock_links_load_as_owner_level_branches_without_changing_prices() -> void:
+	var db: ContentDB = _starter_db()
+	assert_eq(db.recipe(&"tomato_melt").unlock_from, &"burger")
+	assert_eq(db.recipe(&"tea").unlock_from, &"coffee")
+	assert_eq(db.recipe(&"wine").unlock_from, &"beer")
+	assert_eq(RecipeDef.validate_unlocks(db.recipes()), PackedStringArray())
+	assert_eq(db.recipe(&"burger").standard_price, 12)
+	assert_eq(db.recipe(&"tomato_melt").unlock_level, 2)
+
+
+func test_unlock_graph_rejects_unknown_parents_later_parents_and_cycles() -> void:
+	var first: RecipeDef = _recipe()
+	first.id = &"first"
+	var second: RecipeDef = _recipe()
+	second.id = &"second"
+	first.unlock_from = &"missing"
+	assert_true(_has_error(RecipeDef.validate_unlocks([first, second]), "unknown unlock prerequisite"))
+	first.unlock_from = &"second"
+	second.unlock_level = 2
+	assert_true(_has_error(RecipeDef.validate_unlocks([first, second]), "must unlock no later"))
+	second.unlock_level = 1
+	second.unlock_from = &"first"
+	assert_true(_has_error(RecipeDef.validate_unlocks([first, second]), "contain a cycle"))
+	first.unlock_from = &"first"
+	assert_true(_has_error(RecipeDef.validate_unlocks([first]), "contain a cycle"))
+	first.unlock_from = &""
+	assert_eq(RecipeDef.validate_unlocks([first, second]), PackedStringArray())
+	assert_eq(first.unlock_level, 1, "validation never rewrites level data")
+
+
+func test_quality_star_projection_is_bounded_without_replacing_quality() -> void:
+	for row: Array in [[-1.0, 1], [0.0, 1], [0.2, 1], [0.4, 2], [0.6, 3], [0.8, 4], [1.0, 5], [2.0, 5]]:
+		assert_eq(RecipeDef.quality_stars(row[0]), row[1])
+	assert_eq(RecipeDef.quality_stars(NAN), 1)
+	assert_eq(RecipeDef.quality_stars(INF), 1)

@@ -544,3 +544,74 @@ func _write_document(document: Dictionary) -> void:
 func _remove_backup() -> void:
 	if FileAccess.file_exists(_path() + ".bak"):
 		DirAccess.remove_absolute(_path() + ".bak")
+
+
+func test_tree_browsing_missing_and_locked_dishes_draws_no_rng_and_changes_no_save_or_books() -> void:
+	var main: Node = _start()
+	var morning: String = FileAccess.get_file_as_string(_path())
+	var books: Dictionary = Economy.ledger.to_dict()
+	var stock: Dictionary = Economy.stock.to_dict()
+	var clock: Dictionary = Clock.sim.to_dict()
+	var random: Dictionary = GameState.call("_capture_save")
+	var settings: MenuSettings = main.get("menu_settings") as MenuSettings
+	var menu: Dictionary = settings.to_dict()
+	assert_true(main.call("set_menu_visible", true))
+	var panel: MenuPanel = main.get_node("Overlay/MenuPanel") as MenuPanel
+	assert_not_null(panel.tree_item_for(&"coffee"), "missing equipment does not hide a recipe's node")
+	assert_true(panel.select_recipe(&"coffee"))
+	assert_true((panel.row_for(&"coffee").get_node("Top/Enabled") as Button).disabled)
+	assert_true(panel.select_recipe(&"tomato_melt"))
+	assert_true(panel.tree_item_for(&"tomato_melt").get_text(1).contains("Locked"))
+	assert_eq(settings.to_dict(), menu)
+	assert_eq(FileAccess.get_file_as_string(_path()), morning)
+	assert_eq(Economy.ledger.to_dict(), books)
+	assert_eq(Economy.stock.to_dict(), stock)
+	assert_eq(Clock.sim.to_dict(), clock)
+	assert_eq(GameState.call("_capture_save"), random)
+
+
+func test_detail_requirements_aggregate_real_stock_and_use_reachable_station_names() -> void:
+	var main: Node = _start(false)
+	var details: Dictionary[StringName, Dictionary] = main.call("menu_recipe_details")
+	var ingredients: Array = details[&"grilled_cheese"]["ingredients"]
+	assert_true(ingredients.has({"text": "Bread: 16 in stock / 2 needed", "met": true}))
+	assert_true(details[&"coffee"]["equipment"].has({"text": "Needs a coffee machine", "met": false}))
+	assert_true(Economy.stock.take(&"bread", 16))
+	details = main.call("menu_recipe_details")
+	assert_true(details[&"grilled_cheese"]["ingredients"].has({"text": "Bread: 0 in stock / 2 needed", "met": false}))
+	Economy.add_cash(1000, Ledger.SALE)
+	assert_true(main.call("shop_buy", &"coffee_machine", Vector2i(12, 5), 2))
+	details = main.call("menu_recipe_details")
+	assert_true(details[&"coffee"]["equipment"].has({"text": "Coffee machine ready", "met": true}))
+	assert_eq(Economy.stock.count(&"coffee_beans"), 0, "inspecting and buying equipment never restocks")
+
+
+func test_last_service_quality_is_a_read_only_morning_sample_not_a_fake_dish_review() -> void:
+	var main: Node = _start(false)
+	assert_true(main.call("menu_set_enabled", &"grilled_cheese", false))
+	assert_true(main.call("menu_set_enabled", &"tomato_soup", false))
+	assert_true(Clock.sim.start_service())
+	for guard: int in range(30):
+		if Clock.sim.phase == SimClock.Phase.CLOSED:
+			break
+		main.call("run_ticks", 1000)
+	assert_eq(Clock.sim.phase, SimClock.Phase.CLOSED)
+	var sim: RestaurantSim = main.get("sim") as RestaurantSim
+	var count: int = 0
+	var total: float = 0.0
+	for order: Order in sim.orders.orders_in_state(Order.State.DELIVERED):
+		if order.recipe_id == &"burger":
+			count += 1
+			total += order.quality
+	assert_true(count > 0)
+	var details: Dictionary[StringName, Dictionary] = main.call("menu_recipe_details")
+	assert_almost_eq(details[&"burger"]["quality"], total / float(count))
+	assert_eq(details[&"burger"]["quality_source"], "%d served dishes on day 1" % count)
+	assert_true(Clock.sim.next_day())
+	assert_true(main.call("set_menu_visible", true))
+	var panel: MenuPanel = main.get_node("Overlay/MenuPanel") as MenuPanel
+	assert_true(panel.select_recipe(&"burger"))
+	assert_true((panel.get("_quality_label") as Label).text.contains("served dishes on day 1"))
+	assert_true((panel.get("_quality_label") as Label).text.contains("Shop reviews:"))
+	details = main.call("menu_recipe_details")
+	assert_true(String(details[&"coffee"]["quality_source"]).contains("Recipe base quality"))

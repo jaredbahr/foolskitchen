@@ -68,7 +68,8 @@ func test_a_coffee_machine_puts_coffee_tea_and_pastries_on_the_menu_until_it_is_
 		assert_eq(Economy.stock.count(id), 0, "%s is not bought for a shop that cannot use it" % id)
 	var panel: MenuPanel = main.get_node("Overlay/MenuPanel") as MenuPanel
 	assert_true(main.call("set_menu_visible", true))
-	assert_eq(panel.drinks_section().get_child_count(), 0)
+	assert_not_null(panel.tree_item_for(&"coffee"), "the tree reveals unavailable recipes")
+	assert_true((panel.row_for(&"coffee").get_node("Top/Enabled") as Button).disabled, "no machine, no coffee choice")
 	var hints: Array[String] = main.call("drink_station_hints")
 	assert_eq(hints, ["Coffee and tea: buy a coffee machine.", "Beer: buy a drinks shelf.",
 		"Soft drink: buy a drinks fridge."] as Array[String], "named items, never ids")
@@ -89,7 +90,9 @@ func test_a_coffee_machine_puts_coffee_tea_and_pastries_on_the_menu_until_it_is_
 	assert_true(_stock_ids(main).has(&"pastry"))
 	assert_false(_stock_ids(main).has(&"beer"))
 	assert_true(main.call("set_menu_visible", true))
-	assert_eq(panel.drinks_section().get_child_count(), 2, "Coffee and Tea under Drinks")
+	assert_true(panel.select_recipe(&"coffee"))
+	assert_true(panel.drinks_section().is_ancestor_of(panel.row_for(&"coffee")))
+	assert_false((panel.row_for(&"coffee").get_node("Top/Enabled") as Button).disabled, "the machine enables the selected drink")
 	assert_not_null(panel.row_for(&"croissant"), "the pastry is listed under Food")
 	assert_false(panel.drinks_section().is_ancestor_of(panel.row_for(&"croissant")))
 	assert_true(main.call("set_menu_visible", false))

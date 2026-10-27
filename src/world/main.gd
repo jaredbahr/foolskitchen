@@ -116,6 +116,7 @@ var _paint_from_build: bool = false
 ## The last undo/redo refusal or result, shown in the hint strip until the
 ## next edit, tool change or mode change.
 var _edit_notice: String = ""
+var _menu_quality: Dictionary[StringName, Dictionary] = {}
 var _menu_panel: MenuPanel
 var _staff_panel: StaffPanel
 var _settings_panel: SettingsPanel
@@ -1680,7 +1681,7 @@ func _refresh_menu_catalogue() -> void:
 		return
 	_apply_menu(sim, menu_settings)
 	if _menu_panel != null:
-		_menu_panel.refresh()
+		_refresh_menu_details()
 	_recompute_vibe()
 	_refresh_stock_panel()
 
@@ -1703,15 +1704,9 @@ func drink_station_hints() -> Array[String]:
 	var hints: Array[String] = []
 	if content == null or world == null:
 		return hints
-	var present: Dictionary[StringName, bool] = {}
-	var walled_in: Dictionary[StringName, bool] = {}
-	for placed: PlacedItem in world.grid.items():
-		var definition: ItemDef = placed.def as ItemDef
-		if definition != null and definition.category == ItemDef.Category.STATION:
-			if _station_reachable(placed):
-				present[definition.station_type] = true
-			else:
-				walled_in[definition.station_type] = true
+	var station_state: Dictionary = _menu_station_state()
+	var present: Dictionary[StringName, bool] = station_state["reachable"]
+	var walled_in: Dictionary[StringName, bool] = station_state["installed"]
 	var needs: Dictionary[StringName, Array] = {}
 	var order: Array[StringName] = []
 	var drinks: Array[RecipeDef] = []
@@ -1787,7 +1782,7 @@ func menu_set_enabled(recipe_id: StringName, enabled: bool) -> bool:
 	if not menu_settings.set_enabled(recipe_id, enabled):
 		return false
 	_apply_menu(sim, menu_settings)
-	_menu_panel.refresh()
+	_refresh_menu_details()
 	if was_enabled != menu_settings.is_enabled(recipe_id):
 		_recompute_vibe()
 		_refresh_stock_panel()
@@ -1800,7 +1795,7 @@ func menu_set_restaurant_name(value: String) -> bool:
 		return false
 	$HUD.set_restaurant_name(menu_settings.restaurant_name())
 	($ShopView as ShopView).set_restaurant_name(menu_settings.restaurant_name())
-	_menu_panel.refresh()
+	_refresh_menu_details()
 	return true
 
 
@@ -1813,7 +1808,7 @@ func menu_set_price(recipe_id: StringName, price: int) -> bool:
 		return false
 	menu_settings.set_price(recipe_id, price)
 	_apply_menu(sim, menu_settings)
-	_menu_panel.refresh()
+	_refresh_menu_details()
 	return true
 
 
@@ -1840,6 +1835,7 @@ func set_menu_visible(value: bool) -> bool:
 		build_mode.exit()
 		set_staff_visible(false)
 		set_stock_visible(false)
+		_refresh_menu_details()
 		_menu_panel.set_drink_hints(drink_station_hints())
 		_menu_panel.set_hours(Clock.sim.display_open_minute, Clock.sim.display_close_minute, HOURS_TUNING)
 	_menu_panel.set_phase(Clock.sim.phase)
@@ -1979,12 +1975,12 @@ func _on_settings_close_requested() -> void:
 func _on_menu_enable_requested(recipe_id: StringName, enabled: bool) -> void:
 	menu_set_enabled(recipe_id, enabled)
 	_menu_panel.set_drink_hints(drink_station_hints())
-	_menu_panel.refresh()
+	_refresh_menu_details()
 
 
 func _on_menu_price_requested(recipe_id: StringName, price: int) -> void:
 	menu_set_price(recipe_id, price)
-	_menu_panel.refresh()
+	_refresh_menu_details()
 
 
 func shop_move(item_id: int, origin: Vector2i, quarter_turns: int) -> bool:
@@ -2434,6 +2430,7 @@ func _on_service_closed(day: int) -> void:
 	if day != Clock.sim.day or _closed_report_day == day:
 		return
 	_closed_report_day = day
+	_remember_menu_quality()
 	_charge_closing_costs()
 	# Capture business profit before milestone cash or financing enters the books.
 	var operating_profit: int = Economy.ledger.day_profit(day)
@@ -2540,3 +2537,90 @@ func _on_day_phase_changed(_day: int, phase: int) -> void:
 
 func _on_next_day_pressed() -> void:
 	Clock.sim.next_day()
+
+
+## Read-only presentation snapshot: all dishes, even those missing equipment.
+## Stock uses the same ledger as #156; no buy, save or random draw happens here.
+func menu_recipe_details() -> Dictionary[StringName, Dictionary]:
+	var rows: Dictionary[StringName, Dictionary] = {}
+	if content == null or world == null or menu_settings == null:
+		return rows
+	var station_state: Dictionary = _menu_station_state()
+	var present: Dictionary[StringName, bool] = station_state["reachable"]
+	var installed: Dictionary[StringName, bool] = station_state["installed"]
+	for recipe: RecipeDef in content.recipes():
+		var equipment: Array[Dictionary] = []
+		var required: Dictionary[StringName, bool] = {}
+		for step: RecipeStep in recipe.steps:
+			if required.has(step.station_type):
+				continue
+			required[step.station_type] = true
+			var station_name: String = CatalogueText.STATION_NAMES.get(step.station_type, "Equipment")
+			var ready: bool = present.has(step.station_type)
+			var reason: String = "%s ready" % station_name
+			if not ready:
+				if installed.has(step.station_type):
+					reason = "Staff can't reach the %s" % station_name.to_lower()
+				else:
+					reason = ("Needs an %s" if step.station_type == &"oven" else "Needs a %s") % station_name.to_lower()
+			equipment.append({"text": reason, "met": ready})
+		var amounts: Dictionary[StringName, int] = {}
+		for ingredient: IngredientDef in recipe.ingredients:
+			amounts[ingredient.id] = amounts.get(ingredient.id, 0) + 1
+		var ingredients: Array[Dictionary] = []
+		for id: StringName in amounts:
+			var ingredient: IngredientDef = content.ingredient(id)
+			var count: int = Economy.stock.count(id)
+			ingredients.append({"text": "%s: %d in stock / %d needed" % [ingredient.display_name, count, amounts[id]],
+				"met": count >= amounts[id]})
+		var other: Array[Dictionary] = []
+		other.append({"text": "Owner level %d (you are level %d)" % [recipe.unlock_level, menu_settings.owner_level()],
+			"met": menu_settings.owner_level() >= recipe.unlock_level})
+		if not recipe.unlock_from.is_empty():
+			var parent: RecipeDef = content.recipe(recipe.unlock_from)
+			if parent != null:
+				other.append({"text": "Learn %s at owner level %d" % [parent.display_name, parent.unlock_level],
+					"met": menu_settings.owner_level() >= parent.unlock_level})
+		var room: bool = menu_settings.is_enabled(recipe.id) or menu_settings.enabled_count() < menu_settings.menu_limit()
+		other.append({"text": "Menu space: %d / %d dishes" % [menu_settings.enabled_count(), menu_settings.menu_limit()], "met": room})
+		var quality: Dictionary = _menu_quality.get(recipe.id, {})
+		rows[recipe.id] = {"equipment": equipment, "ingredients": ingredients, "other": other,
+			"quality": quality.get("quality", recipe.base_quality),
+			"quality_source": "%d served dishes on day %d" % [quality.get("count", 0), quality.get("day", 0)]
+				if not quality.is_empty() else "Recipe base quality; no served-dish sample",
+			"reviews": "Shop reviews: %.1f / 5 (%d ratings)" % [reputation.average(), reputation.scores().size()]}
+	return rows
+
+
+func _refresh_menu_details() -> void:
+	if _menu_panel != null and content != null:
+		_menu_panel.set_recipe_details(content.recipes(), menu_recipe_details())
+
+
+## Keep the last service's measured dish quality for the morning view. This
+## transient display cache is not game state and is never written to a save.
+func _remember_menu_quality() -> void:
+	var samples: Dictionary[StringName, Dictionary] = {}
+	for order: Order in sim.orders.orders_in_state(Order.State.DELIVERED):
+		var row: Dictionary = samples.get(order.recipe_id, {"total": 0.0, "count": 0})
+		row["total"] += order.quality
+		row["count"] += 1
+		samples[order.recipe_id] = row
+	_menu_quality.clear()
+	for id: StringName in samples:
+		var row: Dictionary = samples[id]
+		_menu_quality[id] = {"quality": float(row["total"]) / float(row["count"]),
+			"count": row["count"], "day": Clock.sim.day}
+
+
+## The same reachable station facts feed #183 hints and dish requirements.
+func _menu_station_state() -> Dictionary:
+	var present: Dictionary[StringName, bool] = {}
+	var installed: Dictionary[StringName, bool] = {}
+	for placed: PlacedItem in world.grid.items():
+		var definition: ItemDef = placed.def as ItemDef
+		if definition != null and not placed.removed and definition.category == ItemDef.Category.STATION:
+			installed[definition.station_type] = true
+			if _station_reachable(placed):
+				present[definition.station_type] = true
+	return {"reachable": present, "installed": installed}

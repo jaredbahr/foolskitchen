@@ -258,6 +258,7 @@ static func validate_definitions(ingredient_defs: Array[IngredientDef], recipe_d
 				errors.append("recipe '%s': step[%d] duration_ticks must be > 0" % [definition.id, step_index])
 			if step.station_type.is_empty() or not stations.has(step.station_type):
 				errors.append("recipe '%s': step[%d] has unknown station '%s'" % [definition.id, step_index, step.station_type])
+	errors.append_array(RecipeDef.validate_unlocks(recipe_defs))
 	return errors
 
 

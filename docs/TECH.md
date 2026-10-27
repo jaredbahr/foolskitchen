@@ -339,8 +339,24 @@ an active edit/panel/selection first, or opens Settings when none is active.
 - The menu snapshot is now `{version: 1, name, enabled, prices}`. The strict
   decoder also accepts the old two-key `{enabled, prices}` shape with the default
   name. All name/menu changes remain memory-only until the normal next-morning
-  autosave. The unlock tree/detail pane, menu boards and menu bonuses are later
-  slices of #161.
+  autosave. The #161(b) tree links recipes through `RecipeDef.unlock_from`. The
+  existing owner-level gate is the unlock cost: learning is automatic by level,
+  and content validation rejects unknown/cyclic links and later-level parents.
+  It adds no points, selected-dish state or unlock flags to the save.
+- The request-only Menu tree displays every definition, including missing
+  equipment, while `MenuSettings` still owns the cookable catalogue, prices,
+  toggles and size limit. Selecting a tree node shows one dish's details.
+  Requirements reuse #183's reachable-station scan and #156's actual stock,
+  aggregating repeated ingredient units. Missing equipment does not become
+  a purchasable dish, and a short stock is a red preparation warning rather
+  than a new menu rule (opening's normal top-up still supplies the menu).
+- Quality stars project the last service's delivered `Order.quality` samples;
+  a transient Main cache survives the next morning's ticket pruning. It is
+  not saved: a fresh load or an unsampled dish explicitly shows recipe base
+  quality instead. The separate review line is labelled shop-wide, because
+  current reviews do not retain dish IDs. No review scoring or quote/RNG logic
+  is changed; the paired default probe remains an acceptance gate. Menu boards
+  and menu bonuses remain later slices.
 - `MenuSettings(cookable_recipes)` owns per-shop enabled dishes and prices. The
   session injects Tier 1 recipes whose station types are present, with a usable
   fridge/pass definition. Temporary stock shortages and path warnings do not

@@ -409,9 +409,87 @@ func test_all_five_sections_use_readable_headings_in_menu_order() -> void:
 		recipes.append(dish)
 	_panel.bind_menu(MenuSettings.new(recipes))
 	var headings: Array[String] = []
-	for child: Node in _panel.get_node("Panel/Content/Scroll/List/Rows").get_children():
-		if child is Label:
-			headings.append((child as Label).text)
+	var tree: Tree = _panel.get("_recipe_tree") as Tree
+	for section: TreeItem in tree.get_root().get_children():
+		headings.append(section.get_text(0))
 	assert_eq(headings, ["Starters", "Mains", "Sides", "Drinks", "Desserts"] as Array[String])
 	for dish: RecipeDef in recipes:
 		assert_not_null(_panel.row_for(dish.id), "grouping retains each interactive dish row")
+
+
+func test_tree_links_and_selection_show_only_one_detail_without_menu_mutation() -> void:
+	var child: RecipeDef = _recipe(&"child", "Second dish", 14)
+	child.unlock_level = 2
+	child.unlock_from = &"burger"
+	_panel.bind_menu(MenuSettings.new([_burger, child]))
+	var before: Dictionary = (_panel.get("_menu") as MenuSettings).to_dict()
+	var node: TreeItem = _panel.tree_item_for(&"child")
+	assert_eq(node.get_parent(), _panel.tree_item_for(&"burger"))
+	assert_true(node.get_text(1).contains("Owner level 2"))
+	assert_true(node.get_text(1).contains("Locked"))
+	assert_true(_panel.select_recipe(&"child"))
+	assert_true(_panel.row_for(&"child").visible)
+	assert_false(_panel.row_for(&"burger").visible)
+	assert_eq((_panel.get("_detail_heading") as Label).text, "Second dish - Mains")
+	assert_eq((_panel.get("_menu") as MenuSettings).to_dict(), before)
+	assert_true(_enable_requests.is_empty() and _price_requests.is_empty())
+	assert_false(_panel.select_recipe(&"missing"))
+	assert_true(_panel.row_for(&"child").visible)
+
+
+func test_missing_equipment_detail_is_inspectable_but_cannot_enable_or_reprice() -> void:
+	var missing: RecipeDef = _recipe(&"missing_machine", "Coffee special", 6)
+	missing.order_type = RecipeDef.COFFEE
+	missing.section = RecipeDef.Section.DRINKS
+	var details: Dictionary[StringName, Dictionary] = {&"missing_machine": {
+		"quality": 0.8, "quality_source": "2 served dishes on day 1", "reviews": "Shop reviews: 3.5 / 5 (6 ratings)",
+		"equipment": [{"text": "Needs a coffee machine", "met": false}],
+		"ingredients": [{"text": "Coffee beans: 0 in stock / 1 needed", "met": false}],
+		"other": [{"text": "Owner level 1", "met": true}]}}
+	_panel.set_recipe_details([_burger, missing], details)
+	assert_true(_panel.select_recipe(missing.id))
+	for path: String in ["Top/Enabled", "Price/Minus", "Price/Plus"]:
+		assert_true(_button(missing.id, path).disabled)
+		assert_eq(_button(missing.id, path).tooltip_text, "Needs a coffee machine")
+	assert_eq(_label(missing.id, "Reference/Standard").text, "Suggested $6")
+	assert_true((_panel.get("_quality_label") as Label).text.contains("Quality: 4 / 5 stars"))
+	var slots: VBoxContainer = _panel.get("_requirements_box") as VBoxContainer
+	assert_eq((slots.get_node("equipment0") as Label).get_theme_color("font_color"), MenuPanel.HIGHER_COLOR)
+	assert_eq((slots.get_node("ingredients0") as Label).get_theme_color("font_color"), MenuPanel.HIGHER_COLOR)
+	assert_eq((slots.get_node("other0") as Label).get_theme_color("font_color"), MenuPanel.STANDARD_COLOR)
+	_panel._on_enable_toggled(true, missing.id)
+	_panel._on_price_step(missing.id, 1)
+	assert_true(_enable_requests.is_empty() and _price_requests.is_empty())
+	assert_eq(_menu.enabled_count(), 3)
+
+
+func test_tree_level_refresh_preserves_nodes_selection_and_player_choices() -> void:
+	var child: RecipeDef = _recipe(&"child", "Second dish", 14)
+	child.unlock_from = &"burger"
+	child.unlock_level = 2
+	var settings: MenuSettings = MenuSettings.new([_burger, child])
+	_panel.bind_menu(settings)
+	assert_true(_panel.select_recipe(child.id))
+	var node: TreeItem = _panel.tree_item_for(child.id)
+	var parent: TreeItem = _panel.tree_item_for(_burger.id)
+	parent.collapsed = true
+	assert_true(settings.set_owner_level(2))
+	assert_eq(_panel.tree_item_for(child.id), node)
+	assert_true(parent.collapsed)
+	assert_eq(_panel.get("_selected_recipe"), child.id)
+	assert_true(node.get_text(1).contains("Learned"))
+	assert_false(settings.is_enabled(child.id), "learning never adds a dish automatically")
+	assert_false(_button(child.id, "Top/Enabled").disabled)
+	assert_true(_enable_requests.is_empty())
+
+
+func test_tree_and_detail_use_shared_warm_styles_and_removal_request() -> void:
+	var tree: Tree = _panel.get("_recipe_tree") as Tree
+	assert_eq(tree.theme, MenuPanel.SHARED_THEME)
+	assert_eq(tree.get_theme_color("font_color"), MenuPanel.STANDARD_COLOR)
+	assert_eq(tree.get_theme_stylebox("panel"), MenuPanel.SHARED_THEME.get_stylebox("normal", "LineEdit"))
+	assert_eq(_button(&"burger", "Top/Enabled").text, "Remove from menu")
+	var before: Dictionary = _menu.to_dict()
+	_button(&"burger", "Top/Enabled").toggled.emit(false)
+	assert_eq(_enable_requests, [{"id": &"burger", "enabled": false}] as Array[Dictionary])
+	assert_eq(_menu.to_dict(), before)
