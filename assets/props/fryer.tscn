@@ -1,8 +1,10 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://src/world/prop_view.gd" id="1_view"]
 [ext_resource type="PackedScene" path="res://assets/kenney/furniture/kitchenStoveElectric.glb" id="2_model"]
 [ext_resource type="PackedScene" path="res://assets/kenney/furniture/kitchenCabinet.glb" id="3_model"]
+[ext_resource type="PackedScene" path="res://assets/kenney/food/frying-pan.glb" id="4_pan"]
+[ext_resource type="PackedScene" path="res://assets/kenney/food/fries.glb" id="5_fries"]
 
 [node name="Fryer" type="Node3D"]
 script = ExtResource("1_view")
@@ -24,3 +26,43 @@ position = Vector3(0.25, 0, 0)
 rotation = Vector3(0, 3.141592653589793, 0)
 
 [node name="Model" parent="Cabinet/Art" instance=ExtResource("3_model")]
+
+[node name="Pan" type="Node3D" parent="."]
+position = Vector3(-0.25, 0, 0)
+metadata/art_group = &"food"
+metadata/support = NodePath("../ElectricStove")
+
+[node name="Art" type="Node3D" parent="Pan"]
+rotation = Vector3(0, -0.5235987755982988, 0)
+
+[node name="Model" parent="Pan/Art" instance=ExtResource("4_pan")]
+
+[node name="FriesLeft" type="Node3D" parent="."]
+position = Vector3(0.19, 0, -0.06)
+metadata/art_group = &"food"
+metadata/support = NodePath("../Cabinet")
+
+[node name="Art" type="Node3D" parent="FriesLeft"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="FriesLeft/Art" instance=ExtResource("5_fries")]
+
+[node name="FriesRight" type="Node3D" parent="."]
+position = Vector3(0.29, 0, -0.06)
+metadata/art_group = &"food"
+metadata/support = NodePath("../Cabinet")
+
+[node name="Art" type="Node3D" parent="FriesRight"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="FriesRight/Art" instance=ExtResource("5_fries")]
+
+[node name="FriesFront" type="Node3D" parent="."]
+position = Vector3(0.24, 0, 0.03)
+metadata/art_group = &"food"
+metadata/support = NodePath("../Cabinet")
+
+[node name="Art" type="Node3D" parent="FriesFront"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="FriesFront/Art" instance=ExtResource("5_fries")]
