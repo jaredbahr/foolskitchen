@@ -44,14 +44,16 @@ func test_new_game_auto_order_buys_the_old_amounts_with_one_premium() -> void:
 	_start(false)
 	for id: StringName in TUNING.morning_stock:
 		assert_eq(Economy.stock.count(id), TUNING.morning_stock[id], "%s topped up as before" % id)
-	assert_eq(Economy.cash, TUNING.starting_cash - 97, "$88 at list price plus a $9 premium")
+	var cost: int = ReorderSettings.auto_cost(88, TUNING.auto_reorder_premium)
+	assert_true(cost > 88, "the default order pays a premium")
+	assert_eq(Economy.cash, TUNING.starting_cash - cost, "$88 at list price plus one premium")
 	var entries: Array[Dictionary] = _ingredient_entries(1)
 	assert_eq(entries.size(), TUNING.morning_stock.size() + 1)
 	var premiums: int = 0
 	for entry: Dictionary in entries:
 		if entry["note"] == "auto_reorder_premium":
 			premiums += 1
-			assert_eq(entry["amount"], -9)
+			assert_eq(entry["amount"], 88 - cost)
 	assert_eq(premiums, 1, "the premium is charged once per order")
 
 
@@ -91,13 +93,15 @@ func test_disabled_and_short_cash_mornings() -> void:
 	assert_eq(Economy.stock.count(&"tomato"), 0, "a disabled ingredient is not bought")
 	assert_eq(Economy.stock.count(&"bread"), 20, "a raised target is bought")
 	var notes: Array[String] = main.call("stock_notes")
-	assert_eq(notes, ["This morning's auto-order cost $5 ($4 at list price + $1 premium)."] as Array[String])
+	assert_eq(notes, [_order_note(4)] as Array[String])
 	for id: StringName in TUNING.morning_stock:
 		Economy.stock.take(id, Economy.stock.count(id))
-	Economy.cash = 12
+	# $11 buys five $2 patties plus a $1 premium at 5% or 10%, and nothing more.
+	Economy.cash = 11
 	_next_morning()
 	assert_true(Economy.cash >= 0, "the auto-order never borrows")
-	assert_eq(Economy.stock.count(&"beef_patty"), 5, "$10 of patties plus a $1 premium fit in $12")
+	assert_eq(Economy.stock.count(&"beef_patty"), 5, "$10 of patties plus a $1 premium fit in $11")
+	assert_eq(Economy.cash, 11 - ReorderSettings.auto_cost(10, TUNING.auto_reorder_premium))
 	assert_eq(Economy.stock.count(&"bread"), 0)
 	notes = main.call("stock_notes")
 	assert_true(notes[1].begins_with("Not enough cash to auto-order 5 Beef patty, 20 Bread"), notes[1])
@@ -144,7 +148,7 @@ func test_expired_stock_is_thrown_out_and_replaced() -> void:
 	assert_eq(Economy.stock.count(&"beef_patty"), 10)
 	var notes: Array[String] = main.call("stock_notes")
 	assert_true(notes.has("Thrown out this morning (too old): 10 Beef patty."), str(notes))
-	assert_true(notes[0].begins_with("This morning's auto-order cost $22"), notes[0])
+	assert_eq(notes[0], _order_note(20))
 
 
 ## A dish that runs out is tagged on the HUD and named in the report with
@@ -163,7 +167,8 @@ func test_sold_out_dish_reaches_hud_and_report() -> void:
 	assert_true(sim.is_sold_out(&"tomato_soup"))
 	var tag: Label = main.get_node("HUD/Top/Row/SoldOut") as Label
 	assert_true(tag.visible)
-	assert_eq(tag.text, "Sold out: Tomato soup")
+	assert_eq(tag.text, "1 sold out")
+	assert_true(tag.tooltip_text.contains("Tomato soup"), tag.tooltip_text)
 	var guard: int = 0
 	while Clock.sim.phase != SimClock.Phase.CLOSED and guard < 30:
 		main.call("run_ticks", 1000)
@@ -181,6 +186,11 @@ func test_sold_out_dish_reaches_hud_and_report() -> void:
 	assert_eq((rows.get_child(0) as Label).text, report.low_stock[0])
 	(main.get_node("Overlay/EveningReport") as Control).emit_signal(&"next_day_pressed")
 	assert_false(tag.visible, "a new morning clears the tag")
+
+
+func _order_note(list_total: int) -> String:
+	var cost: int = ReorderSettings.auto_cost(list_total, TUNING.auto_reorder_premium)
+	return "This morning's auto-order cost $%d ($%d at list price + $%d premium)." % [cost, list_total, cost - list_total]
 
 
 func _next_morning() -> void:

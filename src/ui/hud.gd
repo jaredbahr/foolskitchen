@@ -278,7 +278,8 @@ func set_sold_out(names: Array[String]) -> void:
 
 func _render_sold_out() -> void:
 	var count: int = _sold_out_names.size()
-	_sold_out_label.text = "Sold out: %s" % _sold_out_names[0] if count == 1 else "Sold out: %d dishes" % count
+	# A short count keeps the service header on one row; the tooltip names them.
+	_sold_out_label.text = "%d sold out" % count
 	_sold_out_label.tooltip_text = "Sold out for the rest of today:\n" + "\n".join(_sold_out_names) \
 		+ "\nBuy more in the Stock panel tomorrow morning."
 	# A service-time tag: the evening report and the next morning explain it.

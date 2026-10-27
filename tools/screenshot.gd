@@ -10,8 +10,10 @@ extends SceneTree
 ##   --f3        show the scene's read-only debug overlay
 ##   --menu      show the real menu panel in MORNING (cannot combine with --open)
 ##   --staff     show the real morning Staff panel, paused, with no altered roster
-##   --stock     show the real morning Stock panel, paused; with --report, scroll
-##               the closed-day report to its Low stock section instead
+##   --stock     show the real morning Stock panel, paused. With --open, start a
+##               sold-out fixture (no soup stock, its auto-reorder off) and show
+##               the HUD Sold out tag; add --report to scroll the closed-day
+##               report to its Low stock section instead
 ##   --settings  open Main -> Menu -> Settings at the usual 1600x900 / 100%
 ##   --settings-world  use the gear, select 150%, keyboard Close, show the world
 ##   --hud-layout --window-size=1280x720|1600x900 --speed=0 --frames=12,90
@@ -240,9 +242,13 @@ func _initialize() -> void:
 	if _staff and (_open or _fast != 0 or not _selection.is_empty() or _assign_owner or _f3 or _menu or _speed != 0):
 		_fail_capture("--staff requires a paused morning without other service/panel options")
 		return
-	if _stock and not _report_requested and (_open or _fast != 0 or not _selection.is_empty() or _assign_owner \
+	if _stock and not _open and (_fast != 0 or not _selection.is_empty() or _assign_owner \
 			or _f3 or _menu or _staff or _speed != 0 or not _build.is_empty() or _paint):
-		_fail_capture("--stock requires a paused morning without other service/panel options, or --report")
+		_fail_capture("--stock requires a paused morning without other service/panel options, or --open")
+		return
+	if _stock and _open and (not _selection.is_empty() or _assign_owner or _f3 or _menu or _staff \
+			or not _build.is_empty() or _paint):
+		_fail_capture("--stock --open cannot combine with other view or panel options")
 		return
 	if _report_requested and (not _open or _fast <= 0 or _speed != 0 or _menu or _staff or not _build.is_empty()):
 		_fail_capture("--report requires a fast-forwarded, paused-clock service view")
@@ -1617,7 +1623,7 @@ func _process(_delta: float) -> bool:
 			_fail_capture("viewport did not finish drawing the pending capture")
 		return _finished
 	_frames += 1
-	if _frames == 2 and _stock and _report_requested:
+	if _frames == 2 and _stock and _open:
 		# Explicit morning fixture: today's soup stock is gone and its
 		# auto-reorder is off, so the real service sells Tomato soup out.
 		var stock: Stock = root.get_node("Economy").get("stock") as Stock
@@ -1665,7 +1671,7 @@ func _process(_delta: float) -> bool:
 			if not _main.has_method("set_staff_visible") or not bool(_main.call("set_staff_visible", true)):
 				_fail_capture("--staff requires the scene's morning staff API")
 				return true
-		if _stock and not _report_requested:
+		if _stock and not _open:
 			if not _main.has_method("set_stock_visible") or not bool(_main.call("set_stock_visible", true)):
 				_fail_capture("--stock requires the scene's morning stock API")
 				return true
@@ -2264,12 +2270,17 @@ func _capture() -> void:
 		_fail_capture("requested report did not show visible native reviews after service closed")
 		return
 	var stock_visible: Variant = _main.call("is_stock_visible") if _main.has_method("is_stock_visible") else null
-	if _stock and not _report_requested and (stock_visible != true or world == null \
+	if _stock and not _open and (stock_visible != true or world == null \
 			or world.clock.phase != SimClock.Phase.MORNING or world.now != 0):
 		_fail_capture("requested Stock panel was not visible in the paused morning frame")
 		return
 	if _stock and _report_requested and not _low_stock_visible(world):
 		_fail_capture("requested report did not show its Low stock section after service closed")
+		return
+	var sold_out_tag: Label = _main.get_node_or_null("HUD/Top/Row/SoldOut") as Label
+	if _stock and _open and not _report_requested and (world == null or world.clock.phase == SimClock.Phase.CLOSED \
+			or sold_out_tag == null or not sold_out_tag.is_visible_in_tree()):
+		_fail_capture("requested service view did not show the HUD Sold out tag")
 		return
 	var paint: Dictionary = _paint_state() if _paint else {}
 	if _paint and (paint.get("active") != true or paint.get("catalogue_visible") != true \
@@ -2387,6 +2398,7 @@ func _capture() -> void:
 		"requested_menu_visible": _menu, "menu_visible": menu_visible,
 		"requested_staff_visible": _staff, "staff": staff_state,
 		"requested_stock": _stock, "stock_visible": stock_visible,
+		"sold_out_tag": sold_out_tag.text if sold_out_tag != null and sold_out_tag.is_visible_in_tree() else "",
 		"low_stock": (_main.get("shown_report") as DayReport).low_stock
 			if _stock and _report_requested and _main.get("shown_report") != null else [],
 		"requested_report": _report_requested,

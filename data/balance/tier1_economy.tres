@@ -21,4 +21,4 @@ morning_stock = Dictionary[StringName, int]({
 &"soup_stock": 8,
 &"tomato": 16
 })
-auto_reorder_premium = 0.1
+auto_reorder_premium = 0.05

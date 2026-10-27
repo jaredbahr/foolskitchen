@@ -878,8 +878,8 @@ existing paint colour and camera-controlled build-grid parameters.
   without the section uses the defaults; unknown ids are ignored.
 - **Morning order:** `ReorderSettings.plan(stock, unit_costs, cash, premium)` tops
   enabled ingredients up to target. The premium applies once to the order total:
-  `auto_cost = ceil(list_total * (1 + auto_reorder_premium))`, in integer basis
-  points (10 x $1 = $11). With short cash each ingredient in the fixed order gets as
+  `auto_cost = ceil(list_total * (1 + auto_reorder_premium))` (tier 1: 0.05), in integer basis
+  points (at 0.10, 10 x $1 = $11). With short cash each ingredient in the fixed order gets as
   many units as still fit, the partial order priced as its own total; the rest is
   logged and nothing is borrowed. `Economy.buy_auto_order` records each line at list
   price plus one `auto_reorder_premium` ingredients entry. Main's

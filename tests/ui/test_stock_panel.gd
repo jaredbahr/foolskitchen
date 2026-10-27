@@ -38,7 +38,7 @@ func test_rows_show_names_counts_and_send_requests() -> void:
 	_panel.buy_requested.connect(_on_buy)
 	_panel.auto_requested.connect(_on_auto)
 	_panel.target_requested.connect(_on_target)
-	_panel.set_stock(_rows(), 3, true, ["This morning's auto-order cost $97 ($88 at list price + $9 premium)."] as Array[String])
+	_panel.set_stock(_rows(), 3, true, ["This morning's auto-order cost $93 ($88 at list price + $5 premium)."] as Array[String])
 	var beef: Dictionary = _panel.row_for(&"beef_patty")
 	assert_eq((beef["name"] as Label).text, "Beef patty")
 	assert_eq((beef["count"] as Label).text, "10 in the fridge")
@@ -76,7 +76,7 @@ func test_panel_fits_the_usual_window_and_150_percent_scale() -> void:
 	window.content_scale_size = Vector2i(1600, 900)
 	_host.add_child(window)
 	window.add_child(_panel)
-	_panel.set_stock(_rows(), 300, true, ["This morning's auto-order cost $97 ($88 at list price + $9 premium).",
+	_panel.set_stock(_rows(), 300, true, ["This morning's auto-order cost $93 ($88 at list price + $5 premium).",
 		"Not enough cash to auto-order 5 Beef patty, 20 Bread and 10 Burger bun."] as Array[String])
 	_panel.show()
 	for scale: float in [1.0, 1.5]:

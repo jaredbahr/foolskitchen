@@ -38,7 +38,8 @@ func test_defaults_reproduce_the_old_restock_amounts() -> void:
 	for id: StringName in TUNING.morning_stock:
 		assert_eq(int(bought.get(id, 0)), TUNING.morning_stock[id], "%s matches the old top-up" % id)
 	assert_eq(plan["list_total"], 88)
-	assert_eq(plan["cost"], 97, "the premium is ~10% of the whole order")
+	assert_eq(plan["cost"], ReorderSettings.auto_cost(88, TUNING.auto_reorder_premium),
+		"the tuned premium applies once to the whole order")
 	assert_true((plan["short"] as Dictionary).is_empty())
 	# A part-stocked fridge only tops up what is missing.
 	var stock: Stock = Stock.new()

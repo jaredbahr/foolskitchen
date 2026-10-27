@@ -21,7 +21,7 @@ extends Resource
 ## Extra charge on each morning's automatic order, applied once to the order's
 ## list-price total and rounded up: ceil(list_total * (1 + premium)).
 ## Buying by hand in the Stock panel is always at list price.
-@export_range(0.0, 1.0, 0.01) var auto_reorder_premium: float = 0.10
+@export_range(0.0, 1.0, 0.01) var auto_reorder_premium: float = 0.05
 
 ## Ticks between guest arrivals while open (uniform in [min, max]).
 @export var arrival_gap_min: int = 100
