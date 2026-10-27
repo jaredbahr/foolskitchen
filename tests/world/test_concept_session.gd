@@ -70,7 +70,7 @@ func test_a_coffee_machine_puts_coffee_tea_and_pastries_on_the_menu_until_it_is_
 	assert_true(main.call("set_menu_visible", true))
 	assert_eq(panel.drinks_section().get_child_count(), 0)
 	var hints: Array[String] = main.call("drink_station_hints")
-	assert_eq(hints, ["Coffee and tea: buy a coffee machine.", "Beer: buy a drinks shelf.",
+	assert_eq(hints, ["Coffee, tea and croissant: buy a coffee machine.", "Beer: buy a drinks shelf.",
 		"Soft drink: buy a drinks fridge."] as Array[String], "named items, never ids")
 	assert_true(main.call("set_menu_visible", false))
 	assert_true(main.call("shop_buy", &"coffee_machine", Vector2i(12, 5), 2))
@@ -315,8 +315,8 @@ func test_fryer_and_oven_enable_only_their_food_and_show_named_reasons() -> void
 	assert_false(_menu_ids(main).has(&"fries"))
 	assert_false(_menu_ids(main).has(&"savoury_pie"))
 	var hints: Array[String] = main.call("food_station_hints")
-	assert_true(hints.has("Fries: Needs a fryer."), str(hints))
-	assert_true(hints.has("Savoury pie: Needs an oven."), str(hints))
+	assert_true(hints.has("Fries: buy a fryer."), str(hints))
+	assert_true(hints.has("Savoury pie: buy an oven."), str(hints))
 	assert_true(main.call("shop_buy", &"fryer", Vector2i(9, 3), 0))
 	assert_true(_menu_ids(main).has(&"fries"))
 	assert_false(_menu_ids(main).has(&"savoury_pie"), "a fryer does not bake")
@@ -329,8 +329,8 @@ func test_fryer_and_oven_enable_only_their_food_and_show_named_reasons() -> void
 	assert_true(_menu_ids(main).has(&"savoury_pie"))
 	assert_false(settings.is_enabled(&"savoury_pie"))
 	hints = main.call("food_station_hints")
-	assert_false(hints.has("Fries: Needs a fryer."))
-	assert_false(hints.has("Savoury pie: Needs an oven."))
+	assert_false(hints.has("Fries: buy a fryer."))
+	assert_false(hints.has("Savoury pie: buy an oven."))
 	assert_true(main.call("menu_set_enabled", &"savoury_pie", true))
 	assert_eq(settings.enabled_count(), 5)
 	assert_true(Clock.sim.start_service())
@@ -374,8 +374,8 @@ func test_food_equipment_hints_are_shown_outside_the_drinks_section() -> void:
 	var shown: Array[String] = []
 	for child: Node in box.get_children():
 		shown.append((child as Label).text)
-	assert_true(shown.has("Fries: Needs a fryer."), str(shown))
-	assert_true(shown.has("Savoury pie: Needs an oven."), str(shown))
+	assert_true(shown.has("Fries: buy a fryer."), str(shown))
+	assert_true(shown.has("Savoury pie: buy an oven."), str(shown))
 	assert_false(panel.drinks_section().is_ancestor_of(box))
 	assert_true(box.get_index() < panel.drinks_section().get_index())
 
@@ -397,3 +397,44 @@ func test_fryer_coffee_probe_builds_a_reachable_explicit_level_two_menu() -> voi
 	assert_eq(Economy.stock.count(&"potato"), 0, "opening, not setup, orders supplies")
 	assert_eq((main.get("sim") as RestaurantSim).world.now, 0)
 	assert_eq(GameState.call("_capture_save"), before, "the layout and explicit XP draw no randomness")
+
+
+func test_level_one_starter_menu_hints_name_each_missing_station_once() -> void:
+	var main: Node = _start(false)
+	assert_eq((main.get("owner_progress") as OwnerProgress).level, 1)
+	var drinks: Array[String] = main.call("drink_station_hints")
+	assert_eq(drinks, ["Coffee, tea and croissant: buy a coffee machine.", "Beer: buy a drinks shelf.",
+		"Soft drink: buy a drinks fridge."] as Array[String], "the croissant joins the coffee machine line")
+	var food: Array[String] = main.call("food_station_hints")
+	assert_eq(food, [] as Array[String], "no food line repeats a station the Drinks hints name")
+	assert_true(main.call("set_menu_visible", true))
+	var panel: MenuPanel = main.get_node("Overlay/MenuPanel") as MenuPanel
+	assert_false((panel.get("_food_hints_box") as VBoxContainer).visible)
+	assert_eq(panel.get("_drink_hints"), drinks)
+
+
+func test_a_missing_prep_counter_is_named_after_the_prep_counter_not_a_later_cabinet() -> void:
+	var main: Node = _start(false)
+	var sim: RestaurantSim = main.get("sim") as RestaurantSim
+	for placed: PlacedItem in sim.world.grid.items():
+		if (placed.def as ItemDef).id == &"prep_counter":
+			assert_true(sim.world.grid.remove(placed.id))
+	assert_eq(main.call("_station_item_name", &"prep_counter"), "Prep counter")
+	assert_eq(main.call("_station_item_name", &"coffee"), "Coffee machine", "no item id matches, so the earliest unlock")
+	var food: Array[String] = main.call("food_station_hints")
+	assert_eq(food, ["Burger, grilled cheese and tomato soup: buy a prep counter."] as Array[String])
+
+
+func test_food_hints_are_kept_by_the_panel_across_a_menu_refresh() -> void:
+	var main: Node = _start(false)
+	var progress: OwnerProgress = main.get("owner_progress") as OwnerProgress
+	progress.award_bonus(progress.threshold_for(3))
+	assert_true(main.call("set_menu_visible", true))
+	var panel: MenuPanel = main.get_node("Overlay/MenuPanel") as MenuPanel
+	var expected: Array[String] = main.call("food_station_hints")
+	assert_eq(expected, ["Fries: buy a fryer.", "Savoury pie: buy an oven."] as Array[String])
+	panel.refresh()
+	assert_eq(panel.get("_food_hints"), expected)
+	var box: VBoxContainer = panel.get("_food_hints_box") as VBoxContainer
+	assert_eq(box.get_child_count(), 2)
+	assert_true(box.visible)

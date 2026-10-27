@@ -8,4 +8,4 @@ id = &"dough"
 display_name = "Dough"
 unit_cost = 1
 shelf_life_days = 3
-storage = 0
+storage = 1
