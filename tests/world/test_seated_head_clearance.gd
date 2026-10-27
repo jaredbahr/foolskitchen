@@ -47,7 +47,7 @@ func test_every_catalogue_seat_is_measured_and_only_explicit_kit_failures_are_al
 			assert_true(sample["hips_supported"], context)
 			assert_eq((sample["hip_support_points"] as Array).size(), 2, context)
 	for required: String in ["chair", "wooden_chair", "rounded_chair", "modern_chair", "modern_frame_chair",
-		"bar_stool", "square_bar_stool", "bench", "cushioned_bench", "lounge_chair", "diner_booth", "diner_stool", "table_2"]:
+		"bar_stool", "square_bar_stool", "bench", "cushioned_bench", "lounge_chair", "diner_booth", "diner_stool", "table_2", "table_4"]:
 		assert_true(coverage.has(required), required + " was actually measured")
 	for finding: Dictionary in report["known_kit_failures"]:
 		assert_true(int(finding["physical_violation_samples"]) > 0, String(finding["item"]))

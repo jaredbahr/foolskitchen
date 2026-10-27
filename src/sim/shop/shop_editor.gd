@@ -89,7 +89,7 @@ func check_current() -> EditCheck:
 	if preview == null:
 		return EditCheck.new(false, "The current shop has invalid placements")
 	var check: EditCheck = EditCheck.new(true)
-	check.unreachable = _unreachable(preview, ids)
+	_fill_warnings(check, preview, ids)
 	return check
 
 
@@ -185,7 +185,7 @@ func check_sell(item_id: int) -> EditCheck:
 	var dining: EditCheck = EditCheck.validate_dining(_sim.world.grid, preview, ids, -1, item_id)
 	if not dining.ok:
 		return dining
-	check.unreachable = _unreachable(preview, ids)
+	_fill_warnings(check, preview, ids)
 	return check
 
 
@@ -445,7 +445,7 @@ func check_segments(changes: Dictionary[Vector3i, int]) -> EditCheck:
 	check.cost = cost
 	check.refund = refund
 	check.changes = effective
-	check.unreachable = _unreachable(preview, ids)
+	_fill_warnings(check, preview, ids)
 	return check
 
 
@@ -586,7 +586,7 @@ func check_floor(cells: Array[Vector2i], adding: bool) -> EditCheck:
 	check.changes = removals
 	check.floor_cells = ShopFootprint.sorted(effective)
 	check.floor_adding = adding
-	check.unreachable = _unreachable(preview, ids)
+	_fill_warnings(check, preview, ids)
 	return check
 
 
@@ -700,7 +700,7 @@ func _check_placement(definition: ItemDef, origin: Vector2i, turns: int, exclude
 	if not dining.ok:
 		return dining
 	var check: EditCheck = EditCheck.new(true)
-	check.unreachable = _unreachable(preview, ids)
+	_fill_warnings(check, preview, ids)
 	return check
 
 
@@ -762,6 +762,18 @@ func _linked_seat_in_use(placed: PlacedItem) -> bool:
 		if table != null and table.reserved_by(cell) != -1:
 			return true
 	return false
+
+
+static func _fill_warnings(check: EditCheck, grid: SimGrid, ids: Dictionary[int, int]) -> void:
+	check.unreachable = _unreachable(grid, ids)
+	for table: PlacedItem in grid.items():
+		var definition: ItemDef = table.def as ItemDef
+		if definition.category != ItemDef.Category.TABLE:
+			continue
+		var nominal: int = DiningSeats.nominal_capacity(grid, table)
+		var usable: int = DiningSeats.usable_cells(grid, table).size()
+		if usable < nominal:
+			check.seat_warnings[ids[table.id]] = "Only %d of %d seats usable" % [usable, nominal]
 
 
 static func _unreachable(grid: SimGrid, ids: Dictionary[int, int]) -> Array[int]:

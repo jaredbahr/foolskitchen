@@ -10,6 +10,11 @@ extends Resource
 @export var quality_weight: float = 0.0
 @export var party_size_min: int = 1
 @export var party_size_max: int = 1
+## Below this owner level the type always arrives alone and draws exactly what
+## a single guest draws, so play below the unlock matches single-guest main.
+@export var party_unlock_level: int = 1
+## Short player-facing tip for the level-up report when groups start visiting.
+@export var party_tip: String = ""
 @export var review_chance_multiplier: float = 1.0
 @export var unlock_level: int = 1
 @export var weight_at_one_star: float = 0.0
@@ -19,8 +24,9 @@ extends Resource
 func is_valid() -> bool:
 	if id.is_empty() or display_name.strip_edges().is_empty() or unlock_level < 1:
 		return false
-	# Group visits are a later feature. A malformed resource must not spawn one.
-	if party_size_min != 1 or party_size_max != 1:
+	if party_size_min < 1 or party_size_max < party_size_min or party_size_max > 4:
+		return false
+	if party_unlock_level < 1:
 		return false
 	for value: float in [budget_multiplier, patience_multiplier,
 			review_chance_multiplier]:
@@ -31,6 +37,28 @@ func is_valid() -> bool:
 		if not is_finite(value) or value < 0.0:
 			return false
 	return true
+
+
+## Fixed sizes consume no draw, preserving the single-guest arrival stream.
+## The spawner supplies its existing seeded customers stream for a range.
+func draw_party_size(random: RandomNumberGenerator) -> int:
+	if not is_valid() or random == null:
+		return 0
+	if party_size_min == party_size_max:
+		return party_size_min
+	return random.randi_range(party_size_min, party_size_max)
+
+
+## A locked type is a single guest and consumes no size draw.
+func draw_party_size_at(random: RandomNumberGenerator, owner_level: int) -> int:
+	if not is_valid() or random == null:
+		return 0
+	return draw_party_size(random) if owner_level >= party_unlock_level else 1
+
+
+## The owner level at which this type first arrives as a group (0 if never).
+func group_level() -> int:
+	return maxi(unlock_level, party_unlock_level) if party_size_max > 1 else 0
 
 
 ## Reputation below one star uses the one-star weight; above five uses five.

@@ -32,6 +32,8 @@ var owner_level_before: int = 1
 var owner_level_after: int = 1
 ## Player-facing unlock names, supplied by the caller rather than raw ids.
 var owner_unlocks: Array[String] = []
+## Player-facing tips for what this level-up changed (authored data text).
+var owner_tips: Array[String] = []
 ## Player-facing goal names and rewards completed on this day; never contains IDs.
 var milestones_reached: Array[Dictionary] = []
 ## Player-facing "Low stock" sentences (StockAlerts): what ran out today and
@@ -96,6 +98,7 @@ func to_dict() -> Dictionary:
 		"owner_level_before": owner_level_before,
 		"owner_level_after": owner_level_after,
 		"owner_unlocks": owner_unlocks.duplicate(),
+		"owner_tips": owner_tips.duplicate(),
 		"milestones_reached": milestones,
 		"low_stock": low_stock.duplicate(),
 	}
@@ -134,6 +137,11 @@ static func from_dict(data: Dictionary) -> DayReport:
 		for name: Variant in saved_unlocks:
 			if name is String:
 				report.owner_unlocks.append(name)
+	var saved_tips: Variant = data.get("owner_tips", [])
+	if saved_tips is Array:
+		for tip: Variant in saved_tips:
+			if tip is String:
+				report.owner_tips.append(tip)
 	report.milestones_reached = public_milestones(data.get("milestones_reached", []))
 	var saved_low_stock: Variant = data.get("low_stock", [])
 	if saved_low_stock is Array:

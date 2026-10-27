@@ -17,7 +17,7 @@ func test_four_authored_types_are_valid_and_regular_is_neutral() -> void:
 	assert_eq(regular.quality_weight, 0.0)
 	assert_eq(regular.review_chance_multiplier, 1.0)
 	assert_eq(regular.party_size_min, 1)
-	assert_eq(regular.party_size_max, 1)
+	assert_eq(regular.party_size_max, 2)
 	assert_eq(regular.unlock_level, 1)
 	assert_eq(regular.weight_for_stars(1.0), regular.weight_for_stars(5.0))
 	assert_null(TYPES.find_type(&"not_authored"))
@@ -44,8 +44,8 @@ func test_profiles_and_reputation_weights_match_the_data_contract() -> void:
 	assert_eq(family.budget_multiplier, 1.1)
 	assert_eq(family.patience_multiplier, 1.4)
 	assert_eq(family.review_chance_multiplier, 1.1)
-	assert_eq(family.party_size_min, 1)
-	assert_eq(family.party_size_max, 1)
+	assert_eq(family.party_size_min, 2)
+	assert_eq(family.party_size_max, 4)
 	assert_eq(family.unlock_level, 4)
 	assert_true(foodie.weight_for_stars(5.0) > foodie.weight_for_stars(1.0))
 	assert_eq(foodie.weight_for_stars(3.0), 13.5)
@@ -110,7 +110,7 @@ func test_invalid_types_and_missing_rng_cannot_be_selected() -> void:
 	var wrong_party: CustomerType = CustomerType.new()
 	wrong_party.id = &"group"
 	wrong_party.display_name = "Group"
-	wrong_party.party_size_max = 2
+	wrong_party.party_size_max = 5
 	invalid.types.append(wrong_party)
 	assert_false(invalid.is_valid())
 	assert_null(CustomerTypePicker.choose(invalid, 1, 3.0, rng))
@@ -214,3 +214,39 @@ func _weighted_type(id: StringName, one_star: float, five_stars: float,
 	kind.weight_at_five_stars = five_stars
 	kind.unlock_level = unlock_level
 	return kind
+
+
+func test_pairs_unlock_at_level_five_and_families_keep_their_own_unlock() -> void:
+	for id: StringName in [&"regular", &"student", &"foodie"]:
+		var kind: CustomerType = TYPES.find_type(id)
+		assert_eq(kind.party_unlock_level, 5, String(id) + " comes in pairs from owner level 5")
+		assert_eq(kind.group_level(), 5)
+		var locked: RandomNumberGenerator = RandomNumberGenerator.new()
+		locked.seed = 77
+		var before: int = locked.state
+		assert_eq(kind.draw_party_size_at(locked, 4), 1)
+		assert_eq(locked.state, before, "a locked pair consumes no size draw")
+		var open: RandomNumberGenerator = RandomNumberGenerator.new()
+		open.seed = 77
+		var oracle: RandomNumberGenerator = RandomNumberGenerator.new()
+		oracle.seed = 77
+		assert_eq(kind.draw_party_size_at(open, 5), oracle.randi_range(1, 2))
+		assert_eq(open.state, oracle.state)
+	var family: CustomerType = TYPES.find_type(&"family")
+	assert_eq(family.party_unlock_level, 1, "families are groups whenever they visit")
+	assert_eq(family.group_level(), family.unlock_level)
+	var draw: RandomNumberGenerator = RandomNumberGenerator.new()
+	draw.seed = 5
+	assert_true(family.draw_party_size_at(draw, family.unlock_level) >= 2)
+	var locked: CustomerType = TYPES.find_type(&"regular").duplicate() as CustomerType
+	locked.party_unlock_level = 0
+	assert_false(locked.is_valid())
+
+
+func test_group_tip_is_reported_once_when_pairs_start_visiting() -> void:
+	var tip: String = "Groups of two now visit: bigger tables, more floor and more staff help."
+	assert_eq(TYPES.level_up_tips(1, 4), [] as Array[String])
+	assert_eq(TYPES.level_up_tips(4, 5), [tip] as Array[String], "one tip, not one per type")
+	assert_eq(TYPES.level_up_tips(5, 6), [] as Array[String], "already shown at level 5")
+	assert_eq(TYPES.level_up_tips(5, 5), [] as Array[String])
+	assert_eq(TYPES.level_up_tips(3, 7), [tip] as Array[String], "a multi-level jump still shows it once")

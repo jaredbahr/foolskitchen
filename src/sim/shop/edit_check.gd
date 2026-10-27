@@ -6,6 +6,8 @@ extends RefCounted
 var ok: bool = false
 var why: String = ""
 var unreachable: Array[int] = []
+## Partial capacity is still a permitted placement, with a readable warning.
+var seat_warnings: Dictionary[int, String] = {}
 ## Wall edits (FK-070): what a valid change would charge and refund.
 var cost: int = 0
 var refund: int = 0

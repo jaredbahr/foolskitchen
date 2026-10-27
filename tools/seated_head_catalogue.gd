@@ -9,7 +9,7 @@ const SIT_FRACTIONS: Array[float] = [0.0, 0.37, 0.91]
 ## Director 6404820766: unchanged kit items only. Every listed item must retain
 ## at least one measured physical violation; unknown classification is not proof.
 const KNOWN_KIT_FAILURE_IDS: PackedStringArray = ["bench", "chair", "cushioned_bench", "lounge_chair",
-	"modern_chair", "modern_frame_chair", "rounded_chair", "table_2", "wooden_chair"]
+	"modern_chair", "modern_frame_chair", "rounded_chair", "table_2", "table_4", "wooden_chair"]
 
 
 static func run(parent: Node, native_bake: bool = false) -> Dictionary:
