@@ -2,6 +2,12 @@ class_name RecipeDef
 extends Resource
 ## Data for one menu dish; no preparation or economy behavior lives here.
 
+const FOOD: StringName = &"food"
+const COFFEE: StringName = &"coffee"
+const DRINKS: StringName = &"drinks"
+## Visit kinds in their fixed order (also the arrival draw order).
+const ORDER_TYPES: Array[StringName] = [FOOD, COFFEE, DRINKS]
+
 @export var id: StringName = &""
 @export var display_name: String = ""
 ## One unit per entry; repeated references represent multiple units.
@@ -14,6 +20,16 @@ extends Resource
 @export var unlock_tier: int = 1
 @export var unlock_level: int = 1
 @export var theme_tags: Array[StringName] = []
+## What kind of visit orders this (FK-083): a meal, a hot drink, or a cold or
+## alcoholic drink. Drinks are listed under Drinks on the menu, are made by
+## front-of-house staff at their station and carried straight to the guest.
+@export var order_type: StringName = FOOD
+## A dish coffee guests may add to their drink (the croissant; FK-083).
+@export var with_drinks: bool = false
+
+
+func is_drink() -> bool:
+	return order_type != FOOD
 
 
 func ingredient_cost() -> int:

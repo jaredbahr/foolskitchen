@@ -19,7 +19,10 @@ const GROUP_LABELS: Dictionary[StringName, String] = {
 const STATION_TEXT: Dictionary[StringName, String] = {
 	&"stove": "Cooks hot dishes", &"prep_counter": "Prepares ingredients for dishes",
 	&"sink": "Washes dirty plates",
-	&"fryer": "Fries dishes", &"oven": "Bakes dishes", &"coffee": "Brews coffee",
+	&"fryer": "Fries dishes", &"oven": "Bakes dishes",
+	&"coffee": "Makes coffee and tea, and warms pastries",
+	&"drinks_fridge": "Keeps soft drinks cold",
+	&"drinks_shelf": "Holds the beer and wine",
 }
 
 
@@ -48,6 +51,8 @@ static func does(definition: ItemDef) -> String:
 		ItemDef.Category.CHAIR:
 			return "Seats %d" % maxi(definition.seat_cells.size(), 1)
 		ItemDef.Category.TABLE:
+			if definition.serve_across:
+				return "Bar counter: stools facing it are seats, served from behind"
 			if not definition.seat_cells.is_empty():
 				return "Table with seats for %d" % definition.seat_cells.size()
 			return "Table for %d" % definition.capacity

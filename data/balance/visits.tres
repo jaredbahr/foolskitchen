@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="VisitTuning" format=3]
+
+[ext_resource type="Script" path="res://src/sim/restaurant/visit_tuning.gd" id="1_visits"]
+
+[resource]
+script = ExtResource("1_visits")
+hourly_weights = Dictionary[StringName, PackedFloat32Array]({
+&"food": PackedFloat32Array(0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.3, 0.4, 0.5, 0.6, 0.8, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.8, 0.6, 0.4),
+&"coffee": PackedFloat32Array(0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.8, 1.4, 1.6, 1.4, 1.0, 0.5, 0.35, 0.3, 0.3, 0.3, 0.25, 0.15, 0.1, 0.05, 0.05, 0.05, 0.05, 0.05),
+&"drinks": PackedFloat32Array(0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.1, 0.15, 0.15, 0.15, 0.2, 0.3, 0.5, 0.6, 0.7, 0.8, 0.9, 0.9, 0.8)
+})
+drink_visit_ticks = 110
+min_arrival_rate = 0.25

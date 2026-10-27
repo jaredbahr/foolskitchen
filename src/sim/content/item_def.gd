@@ -34,6 +34,9 @@ const MAX_SEATED_FORWARD_OFFSET: float = 0.05
 @export var seat_cells: Array[Vector2i] = []
 ## Optional presentation-only guest offset in world metres toward the authored seat front.
 @export var seated_forward_offset: float = 0.0
+## A counter served from the far side (FK-083): staff take orders and hand
+## food and drinks across it to a guest on a facing stool.
+@export var serve_across: bool = false
 ## Kitchen/storage role; category distinguishes a cooking station from storage.
 @export var station_type: StringName = &""
 ## Concurrent jobs or storage slots, depending on category.

@@ -53,7 +53,7 @@ func after_each() -> void:
 
 
 func test_kitchen_equipment_unlocks_and_buy_move_sell_keep_exact_books() -> void:
-	var ids: Array[StringName] = [&"fryer", &"coffee_machine", &"oven", &"prep_cabinet", &"corner_cabinet"]
+	var ids: Array[StringName] = [&"fryer", &"oven", &"prep_cabinet", &"corner_cabinet"]
 	var before: Dictionary = _editor.to_dict()
 	var menu_before: Array[RecipeDef] = _sim.menu.duplicate()
 	var rng_before: int = _sim.rng.state

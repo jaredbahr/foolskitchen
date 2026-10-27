@@ -3,7 +3,7 @@ extends TestCase
 ## card, and the Build side. Uses the shipped content where words matter.
 
 const SCENE: PackedScene = preload("res://src/ui/build_catalogue.tscn")
-const KITCHEN_ADDITIONS: Array[StringName] = [&"fryer", &"coffee_machine", &"oven", &"prep_cabinet", &"corner_cabinet"]
+const KITCHEN_ADDITIONS: Array[StringName] = [&"fryer", &"oven", &"prep_cabinet", &"corner_cabinet"]
 
 var _catalogue: BuildCatalogue
 var _content: ContentDB
@@ -116,7 +116,7 @@ func test_new_kitchen_items_are_visible_in_their_room_and_function_subgroups() -
 		assert_eq(_catalogue.visible_ids().has(id), id != &"corner_cabinet")
 	_catalogue.set_group(&"accents")
 	assert_true(_catalogue.visible_ids().has(&"corner_cabinet"))
-	for id: StringName in [&"fryer", &"coffee_machine", &"oven", &"prep_cabinet"]:
+	for id: StringName in [&"fryer", &"oven", &"prep_cabinet"]:
 		assert_false(_catalogue.visible_ids().has(id))
 	_catalogue.set_category(&"decor")
 	for id: StringName in KITCHEN_ADDITIONS:
@@ -128,7 +128,7 @@ func test_kitchen_unlocks_show_levels_then_authored_prices_and_only_request_unlo
 	for index: int in KITCHEN_ADDITIONS.size():
 		var id: StringName = KITCHEN_ADDITIONS[index]
 		var definition: ItemDef = _content.item(id)
-		assert_eq(definition.unlock_level, index + 2)
+		assert_eq(definition.unlock_level, [2, 4, 5, 6][index])
 		var tile: Button = _catalogue.item_buttons[id]
 		_catalogue.set_owner_level(definition.unlock_level - 1)
 		assert_true(_catalogue.visible_ids().has(id), "locked equipment remains discoverable")
@@ -147,10 +147,9 @@ func test_kitchen_unlocks_show_levels_then_authored_prices_and_only_request_unlo
 
 func test_kitchen_hover_cards_use_authored_names_and_plain_station_descriptions() -> void:
 	var descriptions: Dictionary[StringName, String] = {
-		&"fryer": "Fries dishes", &"coffee_machine": "Brews coffee", &"oven": "Bakes dishes",
+		&"fryer": "Fries dishes", &"oven": "Bakes dishes",
 		&"prep_cabinet": "Prepares ingredients for dishes", &"corner_cabinet": "Decoration",
 	}
-	assert_eq(_content.item(&"coffee_machine").station_type, &"coffee", "coffee is the shared station role")
 	for id: StringName in KITCHEN_ADDITIONS:
 		var definition: ItemDef = _content.item(id)
 		var lines: Array[String] = _catalogue.hover_card_lines(id)
@@ -166,8 +165,8 @@ func test_theme_filters_show_items_with_any_chosen_theme() -> void:
 	var labels: Array[String] = []
 	for tag: StringName in _catalogue.theme_buttons:
 		labels.append(_catalogue.theme_buttons[tag].text)
-	assert_eq(labels, ["Cosy", "Modern", "Rustic", "Diner", "Seafood"] as Array[String],
-		"the vibe's own themes and words; no invented Café or Bar tags")
+	assert_eq(labels, ["Cosy", "Modern", "Rustic", "Diner", "Seafood", "Café", "Bar"] as Array[String],
+		"the vibe's own themes and words, including Café and Bar (FK-083)")
 	_catalogue.theme_buttons[&"modern"].pressed.emit()
 	var modern: Array[StringName] = _catalogue.visible_ids()
 	assert_false(modern.is_empty())
@@ -222,7 +221,7 @@ func test_hover_card_text() -> void:
 	assert_eq(_catalogue.hover_card_lines(&"cushioned_bench"),
 		["Cushioned two-seat bench", "$50", "Seats 2", "Themes: Cosy"] as Array[String])
 	assert_eq(_catalogue.hover_card_lines(&"television_vintage"),
-		["Vintage television", "$150", "Decoration", "Charm +3", "Themes: Diner"] as Array[String])
+		["Vintage television", "$150", "Decoration", "Charm +3", "Themes: Diner, Bar"] as Array[String])
 	assert_eq(_catalogue.hover_card_lines(&"rug_round"),
 		["Round rug", "$30", "Rug: tables and chairs can stand on it", "Charm +1", "Themes: Cosy, Rustic"] as Array[String])
 	assert_eq(_catalogue.hover_card_lines(&"stove"),
@@ -230,7 +229,7 @@ func test_hover_card_text() -> void:
 	assert_eq(_catalogue.hover_card_lines(&"fridge")[2], "Stores 20 ingredients")
 	assert_eq(_catalogue.hover_card_lines(&"round_table")[2], "Table for 2")
 	assert_eq(_catalogue.hover_card_lines(&"table_2")[2], "Table with seats for 2")
-	assert_eq(_catalogue.hover_card_lines(&"bar_counter")[3], "Themes: Modern, Diner", "vibe theme order")
+	assert_eq(_catalogue.hover_card_lines(&"bar_counter")[3], "Themes: Modern, Diner, Bar", "vibe theme order")
 	_catalogue.set_owner_level(1)
 	assert_eq(_catalogue.hover_card_lines(&"glass_table")[1], "$120  (unlocks at level 6)")
 	assert_eq(_catalogue.hover_card_lines(&"no_such_item"), [] as Array[String])

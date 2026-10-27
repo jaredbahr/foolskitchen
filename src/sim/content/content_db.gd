@@ -224,6 +224,8 @@ static func validate_definitions(ingredient_defs: Array[IngredientDef], recipe_d
 			errors.append("item '%s': blocking cells must be unique, inside the footprint, and separate from work and seat cells" % definition.id)
 		if not definition.catalogue_room.is_empty() and not ItemDef.CATALOGUE_ROOMS.has(definition.catalogue_room):
 			errors.append("item '%s': unknown catalogue room '%s'" % [definition.id, definition.catalogue_room])
+		if definition.serve_across and definition.category != ItemDef.Category.TABLE:
+			errors.append("item '%s': only a table or counter can be served across" % definition.id)
 		if definition.paintable and definition.paint_slot != &"body":
 			errors.append("item '%s': only the body paint slot is supported" % definition.id)
 	for index: int in range(recipe_defs.size()):
@@ -236,6 +238,8 @@ static func validate_definitions(ingredient_defs: Array[IngredientDef], recipe_d
 			errors.append("recipe '%s': standard_price must be >= 0" % definition.id)
 		if definition.base_quality < 0.0 or definition.base_quality > 1.0:
 			errors.append("recipe '%s': base_quality must be between 0 and 1" % definition.id)
+		if not RecipeDef.ORDER_TYPES.has(definition.order_type):
+			errors.append("recipe '%s': unknown order type '%s'" % [definition.id, definition.order_type])
 		for ingredient_index: int in range(definition.ingredients.size()):
 			if definition.ingredients[ingredient_index] == null:
 				errors.append("recipe '%s': ingredient[%d] is null" % [definition.id, ingredient_index])

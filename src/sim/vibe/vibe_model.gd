@@ -110,7 +110,8 @@ static func evaluate(inputs: Inputs, tuning: VibeTuning) -> Result:
 			else:
 				decor_charm += charm
 			varieties += 1
-		if not _add_tags(themes, group.tags, tuning.theme_category_weights[group.category], group.count, true) \
+		var weight: float = tuning.theme_item_weights.get(item_id, tuning.theme_category_weights[group.category])
+		if not _add_tags(themes, group.tags, weight, group.count, true) \
 				or not _add_item_paint(themes, group, tuning):
 			return _invalid("The vibe amounts are too large")
 	var total_charm: float = decor_charm + lamp_charm

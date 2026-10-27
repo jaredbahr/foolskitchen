@@ -2,11 +2,11 @@ extends TestCase
 ## New kit wrappers and resource contracts. Import, pixels and balance remain
 ## separate validation stages; fixture checks do not author scale exceptions.
 
-const IDS: Array[StringName] = [&"fryer", &"coffee_machine", &"oven", &"prep_cabinet", &"corner_cabinet"]
-const STATION_TYPES: Array[StringName] = [&"fryer", &"coffee", &"oven", &"prep_counter", &""]
+const IDS: Array[StringName] = [&"fryer", &"oven", &"prep_cabinet", &"corner_cabinet"]
+const LEVELS: Array[int] = [2, 4, 5, 6]
+const STATION_TYPES: Array[StringName] = [&"fryer", &"oven", &"prep_counter", &""]
 const MODELS: Dictionary = {
 	&"fryer": {"ElectricStove": "kitchenStoveElectric", "Cabinet": "kitchenCabinet"},
-	&"coffee_machine": {"Counter": "kitchenCabinet", "Machine": "kitchenCoffeeMachine"},
 	&"oven": {"Stove": "kitchenStove", "DrawerCabinet": "kitchenCabinetDrawer"},
 	&"prep_cabinet": {"Cabinet": "kitchenCabinetDrawer"},
 	&"corner_cabinet": {"Cabinet": "kitchenCabinetCornerInner"},
@@ -26,7 +26,7 @@ func test_new_kitchen_definitions_spread_unlocks_and_keep_station_and_layout_rol
 	for index: int in IDS.size():
 		var definition: ItemDef = _definition(IDS[index])
 		assert_eq(definition.id, IDS[index])
-		assert_eq(definition.unlock_level, index + 2)
+		assert_eq(definition.unlock_level, LEVELS[index])
 		assert_eq(definition.station_type, STATION_TYPES[index])
 		assert_true(definition.price > 0, "new equipment has an authored purchase price")
 		assert_eq(definition.quality_bonus, 0.0, "content adds no dish-quality calculation")
@@ -83,19 +83,6 @@ func test_expansion_wrappers_use_only_declared_kit_parts_and_the_shared_uniform_
 			assert_almost_eq(absf(art.rotation.y), PI)
 			assert_false(part.has_meta(&"art_group"), "the appliance and its counter both use Furniture Kit scale")
 		assert_true(view.body_surface_count() > 0, "only existing wood surfaces may receive cabinet paint")
-
-
-func test_coffee_machine_rests_on_its_counter_using_support_metadata() -> void:
-	var definition: ItemDef = _definition(&"coffee_machine")
-	var view: PropView = definition.view_scene.instantiate() as PropView
-	_views.append(view)
-	view.prepare()
-	var counter: Node3D = view.get_node("Counter") as Node3D
-	var machine: Node3D = view.get_node("Machine") as Node3D
-	assert_eq(machine.get_meta(&"support"), NodePath("../Counter"))
-	assert_true(machine.position.y > 0.0, "the coffee machine is supported above floor level")
-	assert_almost_eq(machine.position.y, counter.position.y + PropView._children_aabb(counter).end.y)
-	assert_almost_eq(PropView._children_aabb(machine).position.y, 0.0)
 
 
 func test_new_kitchen_content_is_not_placed_in_the_default_shop() -> void:

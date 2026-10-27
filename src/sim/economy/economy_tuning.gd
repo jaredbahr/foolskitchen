@@ -18,6 +18,10 @@ extends Resource
 ## Default auto-reorder target per ingredient. Its key order is also the fixed
 ## order a short-cash morning order follows.
 @export var morning_stock: Dictionary[StringName, int] = {}
+## Default targets for ingredients only some shops use (FK-083): coffee beans
+## need a coffee machine, beer a drinks shelf. They are ordered (after the
+## morning_stock ones) only while a dish the shop's stations can make uses them.
+@export var station_stock: Dictionary[StringName, int] = {}
 ## Extra charge on each morning's automatic order, applied once to the order's
 ## list-price total and rounded up: ceil(list_total * (1 + premium)).
 ## Buying by hand in the Stock panel is always at list price.
