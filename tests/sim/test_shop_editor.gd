@@ -511,7 +511,7 @@ func test_version_one_rug_and_table_round_trip_in_either_wire_order() -> void:
 	_editor.set_owner_level(6)
 	assert_true(_editor.buy(&"rug_rectangle", Vector2i(1, 6)))
 	var original: Dictionary = _editor.to_dict()
-	assert_eq(original["version"], 1)
+	assert_eq(original["version"], ShopEditor.SNAPSHOT_VERSION)
 	for reverse_order: bool in [false, true]:
 		var expected: Dictionary = original.duplicate(true)
 		if reverse_order:

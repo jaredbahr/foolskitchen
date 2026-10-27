@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="WallKindDef" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://src/sim/content/wall_kind_def.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://assets/kenney/furniture/wallWindow.glb" id="2_thumb"]
+
+[resource]
+script = ExtResource("1_script")
+id = &"window"
+display_name = "Window"
+segment = 3
+price = 20
+order = 3
+thumbnail_scene = ExtResource("2_thumb")

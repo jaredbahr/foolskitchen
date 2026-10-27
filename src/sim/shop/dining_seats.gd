@@ -5,6 +5,9 @@ extends RefCounted
 ## and maintaining reservations belongs to the caller's atomic grid update.
 ## ItemDef.capacity describes jobs/storage and is not a dining-seat limit.
 
+## A wall or window between a seat and its table (FK-070).
+const WALLED_OFF: String = "A wall stands between this seat and its table"
+
 class SeatLink extends RefCounted:
 	var table_item_id: int = 0
 	var furnishing_item_id: int = 0
@@ -46,6 +49,8 @@ static func derive(grid: SimGrid) -> Plan:
 		for authored: Vector2i in definition.seat_cells:
 			var cell: Vector2i = _absolute_cell(table, definition, authored)
 			var failure: String = _cell_failure(grid, cell, claimed)
+			if failure.is_empty() and grid.access_walled_off(table.cells, [cell] as Array[Vector2i]):
+				failure = WALLED_OFF
 			if not failure.is_empty():
 				_record_failure(plan, table.id, failure)
 				continue
@@ -70,6 +75,9 @@ static func derive(grid: SimGrid) -> Plan:
 			if table == null or table.removed or surface == null \
 					or surface.category != ItemDef.Category.TABLE or not plan.table_seats.has(table.id):
 				failure = "Place every seat facing a table or counter"
+				break
+			if grid.edge_blocked(cell, front):
+				failure = WALLED_OFF
 				break
 			var link: SeatLink = _link(table.id, furnishing.id, cell, false)
 			pending.append(link)

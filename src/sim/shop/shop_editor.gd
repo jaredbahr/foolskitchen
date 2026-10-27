@@ -3,7 +3,9 @@ extends RefCounted
 ## Closed-phase furniture editing. Checks use an isolated grid; books and live
 ## grid signals change only when a mutation succeeds. No autoloads or nodes.
 
-const SNAPSHOT_VERSION: int = 1
+## Version 2 adds wall segments (FK-070); version-1 shops have none.
+const SNAPSHOT_VERSION: int = 2
+const WALLS_CLOSED: String = "Walls can only be changed in the morning or after closing"
 
 var last_check: EditCheck = EditCheck.new()
 ## Cosmetic whole-room paint. Empty IDs use the ShopView defaults.
@@ -207,7 +209,12 @@ func to_dict() -> Dictionary:
 		placements.append({"def_id": String(definition.id),
 			"origin": [placed.origin.x, placed.origin.y], "quarter_turns": placed.quarter_turns,
 			"swatch_id": String(placed.swatch_id)})
-	return {"version": SNAPSHOT_VERSION, "items": placements,
+	var segments: Array[Dictionary] = []
+	for edge: Vector3i in _sim.world.grid.segment_edges():
+		var kind: WallKindDef = _content.wall_kind_for(_sim.world.grid.segment(edge)) if _content != null else null
+		if kind != null:
+			segments.append({"edge": [edge.x, edge.y, edge.z], "kind": String(kind.id)})
+	return {"version": SNAPSHOT_VERSION, "items": placements, "walls": segments,
 		"wall_swatch_id": String(wall_swatch_id), "floor_swatch_id": String(floor_swatch_id)}
 
 
@@ -218,8 +225,11 @@ static func from_dict(data: Dictionary, template_layout: ShopLayout, content: Co
 	if template_layout == null or content == null:
 		errors.append("Shop snapshot needs a layout and content")
 		return null
-	if not _integer_in(data.get("version"), SNAPSHOT_VERSION, SNAPSHOT_VERSION) or not data.get("items") is Array:
+	if not _integer_in(data.get("version"), 1, SNAPSHOT_VERSION) or not data.get("items") is Array:
 		errors.append("Invalid shop snapshot version or items")
+		return null
+	if int(data["version"]) >= 2 and not data.get("walls") is Array:
+		errors.append("Invalid shop walls")
 		return null
 	var preview: SimGrid = SimGrid.from_ascii(template_layout.rows)
 	var rows: Array = data["items"]
@@ -277,6 +287,34 @@ static func from_dict(data: Dictionary, template_layout: ShopLayout, content: Co
 		if int(counts.get(key, 0)) < minimums[key]:
 			errors.append("Saved shop must keep %s" % key)
 			return null
+	var walls: Array = data.get("walls", [])
+	if walls.size() > preview.size.x * preview.size.y * 2:
+		errors.append("Too many shop walls")
+		return null
+	for value: Variant in walls:
+		var row: Dictionary = value if value is Dictionary else {}
+		var edge_value: Variant = row.get("edge")
+		var kind_value: Variant = row.get("kind")
+		if not edge_value is Array or (edge_value as Array).size() != 3 \
+				or not (kind_value is String or kind_value is StringName):
+			errors.append("Invalid shop wall")
+			return null
+		var parts: Array = edge_value
+		if not _integer_in(parts[0], 0, preview.size.x) or not _integer_in(parts[1], 0, preview.size.y) \
+				or not _integer_in(parts[2], SimGrid.EDGE_WEST, SimGrid.EDGE_NORTH):
+			errors.append("Invalid shop wall")
+			return null
+		var edge: Vector3i = Vector3i(int(parts[0]), int(parts[1]), int(parts[2]))
+		var kind: WallKindDef = content.wall_kind(StringName(kind_value))
+		if kind == null or layout.wall_segments.has(edge) \
+				or not WallRules.edge_problem(preview, edge, kind.segment as SimGrid.Segment).is_empty():
+			errors.append("Saved wall does not fit the layout")
+			return null
+		preview.set_segment(edge, kind.segment as SimGrid.Segment)
+		layout.wall_segments[edge] = kind.id
+	if not WallRules.layout_problem(preview).is_empty():
+		errors.append("Saved walls block the shop")
+		return null
 	return layout
 
 
@@ -286,6 +324,130 @@ static func _saved_swatch(value: Variant, content: ContentDB) -> StringName:
 		return &""
 	var id: StringName = StringName(value)
 	return id if content.swatch(id) != null else &""
+
+
+# --- Wall segments (FK-070) ----------------------------------------------
+
+## The changes for a dragged run: each edge without a segment gets `kind`.
+## Edges that already hold any segment are kept as they are and cost nothing.
+func run_changes(edges: Array[Vector3i], kind: SimGrid.Segment) -> Dictionary[Vector3i, int]:
+	var changes: Dictionary[Vector3i, int] = {}
+	if _sim == null or _sim.world == null:
+		return changes
+	for edge: Vector3i in edges:
+		if _sim.world.grid.segment(edge) == SimGrid.Segment.NONE:
+			changes[edge] = kind
+	return changes
+
+
+## What one click on an edge does: interior segments cycle wall -> doorway ->
+## window -> wall; an outer face toggles between solid and window. An empty
+## interior edge gets `empty_kind`. Returns NONE for "remove".
+func next_segment(edge: Vector3i, empty_kind: SimGrid.Segment) -> SimGrid.Segment:
+	if _sim == null or _sim.world == null:
+		return SimGrid.Segment.NONE
+	var grid: SimGrid = _sim.world.grid
+	var current: SimGrid.Segment = grid.segment(edge)
+	if WallRules.outer_side(grid, edge) != Vector2i.ZERO:
+		return SimGrid.Segment.NONE if current == SimGrid.Segment.WINDOW else SimGrid.Segment.WINDOW
+	match current:
+		SimGrid.Segment.NONE:
+			return empty_kind
+		SimGrid.Segment.WALL:
+			return SimGrid.Segment.DOORWAY
+		SimGrid.Segment.DOORWAY:
+			return SimGrid.Segment.WINDOW
+	return SimGrid.Segment.WALL
+
+
+## Read-only check of a set of segment changes (edge -> new segment, NONE
+## removes). Each changed edge is a sale of the old segment at the furniture
+## refund rate plus a purchase of the new one.
+func check_segments(changes: Dictionary[Vector3i, int]) -> EditCheck:
+	if not can_edit():
+		return EditCheck.new(false, WALLS_CLOSED)
+	if _content == null:
+		return EditCheck.new(false, "The shop content is unavailable")
+	var live: SimGrid = _sim.world.grid
+	var effective: Dictionary[Vector3i, int] = {}
+	for edge: Vector3i in changes:
+		if live.segment(edge) != changes[edge]:
+			effective[edge] = changes[edge]
+	if effective.is_empty():
+		return EditCheck.new(false, "Nothing to change here")
+	var cost: int = 0
+	var refund: int = 0
+	var ids: Dictionary[int, int] = {}
+	var preview: SimGrid = _preview_without(-1, ids)
+	if preview == null:
+		return EditCheck.new(false, "The current shop has invalid placements")
+	for edge: Vector3i in _sorted_edges(effective):
+		var kind: SimGrid.Segment = effective[edge] as SimGrid.Segment
+		var problem: String = WallRules.edge_problem(live, edge, kind)
+		if not problem.is_empty():
+			return EditCheck.new(false, problem)
+		var new_def: WallKindDef = _content.wall_kind_for(kind)
+		var old_def: WallKindDef = _content.wall_kind_for(live.segment(edge))
+		if kind != SimGrid.Segment.NONE and new_def == null:
+			return EditCheck.new(false, "Unknown wall type")
+		cost += new_def.price if new_def != null else 0
+		refund += floori(old_def.price / 2.0) if old_def != null else 0
+		preview.set_segment(edge, kind)
+	var problem: String = WallRules.layout_problem(preview)
+	if problem.is_empty():
+		var dining: EditCheck = EditCheck.validate_dining(live, preview, ids, -1, -1)
+		problem = "" if dining.ok else dining.why
+	if problem.is_empty():
+		problem = WallRules.cut_off_problem(live, preview, _people_cells())
+	if not problem.is_empty():
+		return EditCheck.new(false, problem)
+	if _books == null or not _books.is_ready():
+		return EditCheck.new(false, "The shop books are unavailable")
+	if cost > refund and not _books.can_spend_without_loan(cost - refund):
+		return EditCheck.new(false, _books.purchase_refusal_reason(cost - refund))
+	var check: EditCheck = EditCheck.new(true)
+	check.cost = cost
+	check.refund = refund
+	check.changes = effective
+	check.unreachable = _unreachable(preview, ids)
+	return check
+
+
+## Applies a checked change; books record the refund, then the purchase.
+func apply_segments(changes: Dictionary[Vector3i, int]) -> bool:
+	var check: EditCheck = check_segments(changes)
+	last_check = check
+	if not check.ok:
+		return false
+	_applying = true
+	var grid: SimGrid = _sim.world.grid
+	for edge: Vector3i in _sorted_edges(check.changes):
+		grid.set_segment(edge, check.changes[edge] as SimGrid.Segment)
+	if check.refund > 0:
+		_books.add_cash(check.refund, Ledger.UPGRADES)
+	if check.cost > 0:
+		_books.add_cash(-check.cost, Ledger.UPGRADES)
+	_applying = false
+	return true
+
+
+## Staff where they stand plus every staff start cell: none may be shut in.
+func _people_cells() -> Array[Vector2i]:
+	var cells: Array[Vector2i] = []
+	for agent: SimAgent in _sim.world.agents:
+		if not agent is CustomerAgent:
+			cells.append(agent.cell)
+	for role: StringName in _sim.staff_spawns:
+		cells.append(_sim.staff_spawns[role])
+	return cells
+
+
+static func _sorted_edges(changes: Dictionary[Vector3i, int]) -> Array[Vector3i]:
+	var edges: Array[Vector3i] = []
+	edges.assign(changes.keys())
+	edges.sort_custom(func(a: Vector3i, b: Vector3i) -> bool:
+		return a.z < b.z or (a.z == b.z and (a.y < b.y or (a.y == b.y and a.x < b.x))))
+	return edges
 
 
 func _edit_check() -> EditCheck:
@@ -345,6 +507,8 @@ static func placement_reason(result: SimGrid.PlaceResult) -> String:
 			return "This item cannot be placed here"
 		SimGrid.PlaceResult.INVALID_CELLS:
 			return "This item has invalid floor space"
+		SimGrid.PlaceResult.WALL_IN_WAY:
+			return "A wall is in the way"
 	return "Cannot place this item here"
 
 
@@ -356,6 +520,8 @@ func _preview_without(exclude_id: int, ids: Dictionary[int, int], replacement: I
 		for x: int in range(live.size.x):
 			var cell: Vector2i = Vector2i(x, y)
 			preview.set_terrain(cell, live.terrain(cell))
+	for edge: Vector3i in live.segment_edges():
+		preview.set_segment(edge, live.segment(edge))
 	for placed: PlacedItem in live.items():
 		var replacing: bool = placed.id == exclude_id
 		if replacing and replacement == null:

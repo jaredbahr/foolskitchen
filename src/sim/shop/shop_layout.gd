@@ -13,3 +13,5 @@ extends Resource
 @export var floor_swatch_id: StringName = &""
 ## Starting cell per staff role (&"cook", &"server", &"cleaner", &"owner").
 @export var staff_spawns: Dictionary[StringName, Vector2i] = {}
+## Wall segments (FK-070): edge key (SimGrid edge) -> WallKindDef id.
+@export var wall_segments: Dictionary[Vector3i, StringName] = {}
