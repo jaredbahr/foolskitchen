@@ -823,11 +823,14 @@ an active edit/panel/selection first, or opens Settings when none is active.
   (`ShopLayout.floor_cells`, `ShopEditor.bought_floor()`). `ShopFootprint.
   terrain_for(bought)` derives every cell: authored floor and interior walls
   never change; bought cells are FLOOR; an authored shell cell with floor on two
-  opposite sides opens into FLOOR (repeated, so the inner corner of an L opens);
+  opposite sides opens into FLOOR (repeated, so the inner corner of an L opens).
+  Only floor counts: authored interior walls never open, and a shell cell that
+  carries one on (the kitchen divider's ends (0, 4) and (13, 4)) stays a wall;
+  the player can add a doorway;
   a lot cell touching the floor (8 directions) becomes the new shell WALL; other
   lot cells are OUTSIDE. Cells outside the lot never change. `problem()` refuses
-  cells outside the lot, floor that does not join the shop (or, when removing,
-  would split it) and enclosed gaps.
+  cells outside the lot, floor that does not join the authored floor through
+  floor (or, when removing, would split it) and enclosed gaps.
 - **No auto walls (Jared).** The old outer wall opens up: no WALL segments are
   placed on the old outline. Players add interior walls with the Walls tool.
 - **No shifting.** `SimGrid` has an `origin` and `bounds`; `grow_to(rect)`
@@ -839,8 +842,11 @@ an active edit/panel/selection first, or opens Settings when none is active.
   expands keeps its exact grid and the balance probe is unchanged.
 - **Edits.** `ShopEditor.check_floor(cells, adding)` / `apply_floor` are
   MORNING/CLOSED only. Adding takes the unbuilt lot cells of the rectangle
-  (starting building and bought cells are skipped; a cell beyond the lot
-  refuses). Removing takes only bought cells: furniture on any cell that would
+  (starting building, bought cells and the lot's wall ring are skipped; a cell
+  beyond the lot refuses), and every new floor cell must then be walkable from
+  the street through the walls as built (an outer window that turned interior
+  can seal a pocket: "New floor must join the shop"). Removing may not cut off
+  bought floor that is reachable now. Removing takes only bought cells: furniture on any cell that would
   stop being floor refuses ("Clear the furniture off that floor first"), then a
   lost seat, work spot or door uses the wall cut-off sentences, then the usual
   walls/dining/cut-off checks run on a preview (people standing there count).
@@ -848,7 +854,8 @@ an active edit/panel/selection first, or opens Settings when none is active.
   facing the wing's new wall) are taken down and refunded at the furniture
   rate. Floor costs `floor_cell_price` per cell, refunds half, under
   `Ledger.UPGRADES`. The terrain change is one `set_terrains` batch (one
-  `cells_changed`); dirt spots on cells that stop being floor are cleared.
+  `cells_changed`), applied before any segment is taken down so a refusal
+  changes nothing; dirt spots on cells that stop being floor are cleared.
 - **Save.** The `shop` snapshot is version 3 with `floor: [[x, y], ...]`
   (sorted). Versions 1 and 2 load as the starting shell. `from_dict` validates
   the floor with the template's lot before items and walls, which may stand on
@@ -858,8 +865,11 @@ an active edit/panel/selection first, or opens Settings when none is active.
   a rectangle to add floor, Shift-drag to remove bought floor, Esc ends a drag
   then the tool. The hint shows the tile count and cost or refund, or the
   refusal. `BuildPreview` draws flat green (add), gold (remove) or red tiles,
-  and in every Build mode state a pale cream fill on unbuilt lot cells with a
-  cream line around the lot. Commits go through Main's `shop_floor` wrapper,
+  and in every Build mode state a pale cream fill on the unbuilt cells where
+  floor may go, with a cream line around that area (`ShopFootprint.
+  floor_area()`, the lot inside its wall ring). A check costs about 15 ms, so
+  BuildMode memoises floor checks per rectangle until the next refresh,
+  topology change or commit. Commits go through Main's `shop_floor` wrapper,
   which then calls `_frame_shop()`: the camera centres on all non-outside cells
   and zooms out to fit (`CameraRig.frame_area`, a glide). The starting shell
   keeps its old framing exactly (zoom 12 for 14 x 12 cells).

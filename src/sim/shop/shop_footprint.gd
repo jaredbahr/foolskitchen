@@ -7,7 +7,8 @@ extends RefCounted
 ##
 ## Derivation, all in fixed grid coordinates (nothing is ever shifted):
 ## - Interior: the authored FLOOR cells and authored interior walls (the
-##   kitchen divider). They never change.
+##   kitchen divider). They never change, and interior walls never open:
+##   only floor counts for joining and opening up (a doorway is the player's).
 ## - Bought cells become FLOOR.
 ## - An authored shell cell with floor on two opposite sides (north and south,
 ##   or west and east) opens into FLOOR. This repeats, so the inner corner of
@@ -42,8 +43,11 @@ var building: Rect2i
 var cell_price: int = 0
 
 var _base: SimGrid
+## Authored floor and interior walls: terrain that never changes.
 var _interior: Dictionary[Vector2i, bool] = {}
-## Authored shell cells, row-major.
+## Authored FLOOR cells only: what new floor joins and what opens the shell.
+var _floor: Dictionary[Vector2i, bool] = {}
+## Authored shell cells that may open, row-major (not a divider's end).
 var _shell: Array[Vector2i] = []
 
 
@@ -57,10 +61,23 @@ static func from_layout(layout: ShopLayout) -> ShopFootprint:
 			continue
 		footprint.building = Rect2i(cell, Vector2i.ONE) if first else footprint.building.merge(Rect2i(cell, Vector2i.ONE))
 		first = false
+		if t == SimGrid.Terrain.FLOOR:
+			footprint._floor[cell] = true
 		if t == SimGrid.Terrain.FLOOR or not footprint._touches_outside(cell):
 			footprint._interior[cell] = true
 		else:
 			footprint._shell.append(cell)
+	# A shell cell carrying on an interior wall (the divider's end) stays a wall.
+	var kept: Array[Vector2i] = []
+	for cell: Vector2i in footprint._shell:
+		var carries: bool = false
+		for side: Vector2i in _SIDES:
+			var near: Vector2i = cell + side
+			if footprint._interior.has(near) and not footprint._floor.has(near):
+				carries = true
+		if not carries:
+			kept.append(cell)
+	footprint._shell = kept
 	footprint.lot = footprint.building
 	if layout != null and not first:
 		var west: int = maxi(layout.lot_west, 0)
@@ -79,6 +96,12 @@ func has_lot() -> bool:
 ## for the wall) and not part of the starting building.
 func can_hold(cell: Vector2i) -> bool:
 	return lot.grow(-1).has_point(cell) and not building.has_point(cell)
+
+
+## Where new floor may go: the lot without its outer ring (kept for walls).
+## Drawn as the lot outline in Build mode.
+func floor_area() -> Rect2i:
+	return lot.grow(-1)
 
 
 ## The grid area a built-out shop needs: the authored grid plus the lot.
@@ -127,7 +150,7 @@ func problem(bought: Dictionary[Vector2i, bool], adding: bool = true) -> String:
 	# Joined: every bought cell is reachable from the starting room.
 	var seen: Dictionary[Vector2i, bool] = {}
 	var frontier: Array[Vector2i] = []
-	for cell: Vector2i in _interior:
+	for cell: Vector2i in _floor:
 		seen[cell] = true
 		frontier.append(cell)
 	while not frontier.is_empty():
@@ -143,6 +166,9 @@ func problem(bought: Dictionary[Vector2i, bool], adding: bool = true) -> String:
 		if not seen.has(cell):
 			return NOT_JOINED if adding else SPLITS
 	# No gaps: every cell outside the floor connects to the world beyond.
+	# Authored interior walls are neither floor nor gap.
+	for cell: Vector2i in _interior:
+		inside[cell] = true
 	var area: Rect2i = grid_bounds().grow(1)
 	var open: Dictionary[Vector2i, bool] = {}
 	frontier.clear()
@@ -165,7 +191,8 @@ func problem(bought: Dictionary[Vector2i, bool], adding: bool = true) -> String:
 	for y: int in range(area.position.y, area.end.y):
 		for x: int in range(area.position.x, area.end.x):
 			var cell: Vector2i = Vector2i(x, y)
-			if not inside.has(cell) and not open.has(cell):
+			# Authored walls left standing (a divider's end) are walls, not gaps.
+			if not inside.has(cell) and not open.has(cell) and not building.has_point(cell):
 				return LEAVES_GAP
 	return ""
 
@@ -198,9 +225,9 @@ static func sorted(cells: Dictionary[Vector2i, bool]) -> Array[Vector2i]:
 	return out
 
 
-## Interior, bought and opened shell cells.
+## Authored floor, bought and opened shell cells (not interior walls).
 func _inside(bought: Dictionary[Vector2i, bool]) -> Dictionary[Vector2i, bool]:
-	var inside: Dictionary[Vector2i, bool] = _interior.duplicate()
+	var inside: Dictionary[Vector2i, bool] = _floor.duplicate()
 	for cell: Vector2i in bought:
 		inside[cell] = true
 	if bought.is_empty():

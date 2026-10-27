@@ -483,8 +483,8 @@ func is_bought(cell: Vector2i) -> bool:
 
 
 ## Read-only check of buying (`adding`) or removing the floor in `cells`.
-## Adding uses every unbuilt lot cell; cells of the starting building or
-## already bought are skipped, any cell beyond the lot refuses. Removing uses
+## Adding uses every unbuilt lot cell; cells of the starting building, already
+## bought or on the lot's wall ring are skipped, any cell beyond the lot refuses. Removing uses
 ## only bought cells. Wall segments that would no longer fit are taken down
 ## and refunded at the furniture rate; floor refunds half its price too.
 func check_floor(cells: Array[Vector2i], adding: bool) -> EditCheck:
@@ -495,16 +495,22 @@ func check_floor(cells: Array[Vector2i], adding: bool) -> EditCheck:
 	if _content == null:
 		return EditCheck.new(false, "The shop content is unavailable")
 	var effective: Dictionary[Vector2i, bool] = {}
+	var on_ring: bool = false
 	for cell: Vector2i in cells:
 		if adding:
 			if _footprint.building.has_point(cell) or _bought.has(cell):
 				continue
-			if not _footprint.can_hold(cell):
+			if not _footprint.lot.has_point(cell):
 				return EditCheck.new(false, ShopFootprint.OUTSIDE_LOT)
-			effective[cell] = true
+			if _footprint.can_hold(cell):
+				effective[cell] = true
+			else:
+				on_ring = true
 		elif _bought.has(cell):
 			effective[cell] = true
 	if effective.is_empty():
+		if adding and on_ring:
+			return EditCheck.new(false, ShopFootprint.OUTSIDE_LOT)
 		return EditCheck.new(false, ShopFootprint.ALREADY_BUILT if adding else ShopFootprint.ONLY_BOUGHT)
 	var next: Dictionary[Vector2i, bool] = _bought.duplicate()
 	for cell: Vector2i in effective:
@@ -545,6 +551,20 @@ func check_floor(cells: Array[Vector2i], adding: bool) -> EditCheck:
 		var old_def: WallKindDef = _content.wall_kind_for(kind)
 		refund += floori(old_def.price / 2.0) if old_def != null else 0
 	preview.set_segments(removals)
+	# New floor must be walkable from the street through the walls as built:
+	# an outer window that turned interior can seal a pocket.
+	# Removing must not seal bought floor that people can walk to now.
+	var reach: Dictionary[Vector2i, bool] = WallRules.reachable(WallRules.walls_only(preview))
+	if adding:
+		for cell: Vector2i in target:
+			if target[cell] == SimGrid.Terrain.FLOOR and live.terrain(cell) != SimGrid.Terrain.FLOOR \
+					and not reach.has(cell):
+				return EditCheck.new(false, ShopFootprint.NOT_JOINED)
+	else:
+		var was: Dictionary[Vector2i, bool] = WallRules.reachable(WallRules.walls_only(live))
+		for cell: Vector2i in next:
+			if was.has(cell) and not reach.has(cell):
+				return EditCheck.new(false, ShopFootprint.SPLITS)
 	problem = WallRules.layout_problem(preview)
 	if problem.is_empty():
 		var dining: EditCheck = EditCheck.validate_dining(live, preview, ids, -1, -1)
@@ -585,10 +605,11 @@ func apply_floor(cells: Array[Vector2i], adding: bool) -> bool:
 			next.erase(cell)
 	var grid: SimGrid = _sim.world.grid
 	_applying = true
-	if not check.changes.is_empty():
-		grid.set_segments(check.changes)
+	# Terrain first: if it is refused nothing has changed (segments included).
 	var applied: bool = _footprint.apply(grid, next)
 	if applied:
+		if not check.changes.is_empty():
+			grid.set_segments(check.changes)
 		_bought = next
 		if _sim.cleanliness != null:
 			for spot: Vector2i in _sim.cleanliness.spots():

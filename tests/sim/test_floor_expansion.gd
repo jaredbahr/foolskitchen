@@ -95,8 +95,13 @@ func test_the_west_side_grows_into_negative_cells() -> void:
 
 func test_refuses_floor_that_does_not_join_or_leaves_the_lot() -> void:
 	assert_eq(_editor.check_floor(_rect(3, -3, 2, 1), true).why, ShopFootprint.NOT_JOINED)
-	assert_eq(_editor.check_floor(_rect(14, 5, 2, 3), true).why, ShopFootprint.OUTSIDE_LOT)
-	assert_eq(_editor.check_floor(_rect(3, -4, 2, 2), true).why, ShopFootprint.OUTSIDE_LOT)
+	assert_eq(_editor.check_floor(_rect(14, 5, 3, 3), true).why, ShopFootprint.OUTSIDE_LOT, "x 16 is beyond the lot")
+	assert_eq(_editor.check_floor(_rect(3, -5, 1, 1), true).why, ShopFootprint.OUTSIDE_LOT)
+	assert_eq(_editor.check_floor(_rect(15, 5, 1, 3), true).why, ShopFootprint.OUTSIDE_LOT, "the wall ring only")
+	# A drag over the wall ring keeps its lot cells: the ring is skipped.
+	var ring: EditCheck = _editor.check_floor(_rect(14, 5, 2, 6), true)
+	assert_true(ring.ok, ring.why)
+	assert_eq(ring.floor_cells, _rect(14, 5, 1, 5))
 	assert_eq(_editor.check_floor(_rect(5, 11, 1, 1), true).why, ShopFootprint.OUTSIDE_LOT, "not into the street")
 	assert_eq(_editor.check_floor(_rect(5, 5, 2, 2), true).why, ShopFootprint.ALREADY_BUILT)
 	# Only diagonal contact with the room through a shell corner is not joined.
@@ -106,16 +111,42 @@ func test_refuses_floor_that_does_not_join_or_leaves_the_lot() -> void:
 	assert_eq(bare.check_floor(_rect(14, 5, 1, 1), true).why, ShopFootprint.NO_LOT)
 
 
+## The divider's end cells (0, 4) and (13, 4) never open, so floor bought
+## beside them alone would be a sealed pocket.
+func test_floor_beside_the_kitchen_divider_alone_is_refused() -> void:
+	assert_eq(_editor.check_floor(_rect(-1, 4, 1, 1), true).why, ShopFootprint.NOT_JOINED)
+	assert_eq(_editor.check_floor(_rect(14, 4, 1, 1), true).why, ShopFootprint.NOT_JOINED)
+	assert_true(_editor.apply_floor(_rect(-1, 3, 1, 2), true), _editor.last_check.why)
+	assert_eq(_sim.world.grid.terrain(Vector2i(0, 4)), SimGrid.Terrain.WALL)
+	assert_eq(_sim.world.grid.find_path(Vector2i(6, 11), Vector2i(-1, 4)).back(), Vector2i(-1, 4))
+	assert_eq(_editor.check_floor(_rect(-1, 3, 1, 1), false).why, ShopFootprint.SPLITS,
+		"removing the joining cell would seal (-1, 4)")
+	assert_true(_editor.check_floor(_rect(-1, 4, 1, 1), false).ok)
+
+
+## A west outer window turns into an interior window when the wall behind it
+## opens. Floor bought behind it alone would be sealed off by that window.
+func test_floor_sealed_by_an_old_outer_window_is_refused() -> void:
+	var window: Vector3i = Vector3i(1, 2, SimGrid.EDGE_WEST)
+	assert_true(_editor.apply_segments({window: SimGrid.Segment.WINDOW} as Dictionary[Vector3i, int]), _editor.last_check.why)
+	_cash = 1000
+	assert_eq(_editor.check_floor(_rect(-1, 2, 1, 1), true).why, ShopFootprint.NOT_JOINED)
+	assert_false(_editor.apply_floor(_rect(-1, 2, 1, 1), true))
+	assert_eq(_cash, 1000)
+	assert_eq(_sim.world.grid.terrain(Vector2i(0, 2)), SimGrid.Terrain.WALL)
+	assert_true(_editor.check_floor(_rect(-1, 2, 1, 2), true).ok, "with a neighbour it joins round the window")
+
+
 func test_an_l_shaped_building_opens_its_inner_corner() -> void:
 	var grid: SimGrid = _sim.world.grid
 	_cash = 5000
 	assert_true(_editor.apply_floor(_rect(14, 0, 1, 10), true), _editor.last_check.why)
 	assert_eq(grid.terrain(Vector2i(13, 0)), SimGrid.Terrain.WALL, "the corner waits for floor beside it")
 	assert_true(_editor.apply_floor(_rect(1, -3, 14, 3), true), _editor.last_check.why)
-	# (13, 4) ends the kitchen divider: with floor east of it, it opens too.
-	for cell: Vector2i in [Vector2i(13, 0), Vector2i(13, 5), Vector2i(13, 4), Vector2i(6, 0), Vector2i(14, -3)]:
+	for cell: Vector2i in [Vector2i(13, 0), Vector2i(13, 5), Vector2i(6, 0), Vector2i(14, -3)]:
 		assert_eq(grid.terrain(cell), SimGrid.Terrain.FLOOR, "%s" % cell)
-	for cell: Vector2i in [Vector2i(0, 0), Vector2i(0, -2), Vector2i(0, -4), Vector2i(15, -4), Vector2i(15, 4), Vector2i(12, 4)]:
+	# (13, 4) ends the kitchen divider: authored interior walls never open.
+	for cell: Vector2i in [Vector2i(0, 0), Vector2i(0, -2), Vector2i(0, -4), Vector2i(15, -4), Vector2i(15, 4), Vector2i(12, 4), Vector2i(13, 4)]:
 		assert_eq(grid.terrain(cell), SimGrid.Terrain.WALL, "%s" % cell)
 	assert_false(grid.find_path(Vector2i(7, 11), Vector2i(1, -3)).is_empty())
 	assert_eq(_cash, 5000 - (10 + 42) * 15)

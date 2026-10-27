@@ -30,6 +30,9 @@ var floor_hover: Vector2i = SimGrid.NO_CELL
 var floor_dragging: bool = false
 var floor_drag_start: Vector2i = Vector2i.ZERO
 var floor_removing: bool = false
+## Floor checks by [rect, removing] for the current topology/books (a check
+## costs ~15 ms); cleared by refresh(), topology signals and commits.
+var _floor_checks: Dictionary = {}
 
 var _editor: ShopEditor
 var _world: SimWorld
@@ -255,6 +258,7 @@ func refresh() -> void:
 		_topology_dirty = true
 		return
 	var before: Dictionary = presentation_state()
+	_floor_checks.clear()
 	if is_active() and not _can_interact():
 		return
 	_refresh_committed()
@@ -327,6 +331,7 @@ func _refresh_committed() -> void:
 
 func _clear_ghost(next_state: State) -> void:
 	state = next_state
+	_floor_checks.clear()
 	selected_item_id = -1
 	selected_definition = null
 	origin = Vector2i.ZERO
@@ -573,6 +578,7 @@ func floor_release(cell: Vector2i) -> bool:
 		return false
 	var previous_check: EditCheck = _editor.last_check
 	var proposal: Array[Vector2i] = current_check.floor_cells.duplicate()
+	_floor_checks.clear()
 	_committing = true
 	var answer: Variant = _floor_command.call(proposal, not floor_removing)
 	var accepted: bool = answer is bool and answer
@@ -609,11 +615,11 @@ func floor_proposal() -> Array[Vector2i]:
 	return [] as Array[Vector2i] if current_check.why.is_empty() else _rect_cells(floor_rect())
 
 
-## The lot rectangle in grid cells, empty without a lot.
+## Where floor may be bought (the lot inside its wall ring), empty without a lot.
 func lot_rect() -> Rect2i:
 	if _editor == null or _editor.footprint() == null or not _editor.footprint().has_lot():
 		return Rect2i()
-	return _editor.footprint().lot
+	return _editor.footprint().floor_area()
 
 
 ## Unbuilt lot cells (no floor or wall yet), for the pale lot outline.
@@ -622,7 +628,7 @@ func lot_open_cells() -> Array[Vector2i]:
 	if not is_active() or _grid == null or lot_rect() == Rect2i():
 		return out
 	for cell: Vector2i in _editor.footprint().lot_cells(lot_rect()):
-		if _grid.terrain(cell) == SimGrid.Terrain.OUTSIDE:
+		if _editor.footprint().can_hold(cell) and _grid.terrain(cell) == SimGrid.Terrain.OUTSIDE:
 			out.append(cell)
 	return out
 
@@ -653,7 +659,10 @@ func _recheck_floor() -> void:
 			and not _editor.footprint().can_hold(floor_hover)):
 		current_check = EditCheck.new(false, "")
 		return
-	current_check = _editor.check_floor(cells, not floor_removing)
+	var key: Array = [floor_rect(), floor_removing]
+	if not _floor_checks.has(key):
+		_floor_checks[key] = _editor.check_floor(cells, not floor_removing)
+	current_check = _floor_checks[key]
 
 
 static func _rect_cells(rect: Rect2i) -> Array[Vector2i]:
@@ -666,6 +675,7 @@ static func _rect_cells(rect: Rect2i) -> Array[Vector2i]:
 
 func _on_cells_changed(_cells: Array[Vector2i]) -> void:
 	_topology_dirty = true
+	_floor_checks.clear()
 	if not _committing:
 		refresh()
 
