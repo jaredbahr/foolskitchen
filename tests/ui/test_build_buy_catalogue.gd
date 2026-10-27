@@ -125,10 +125,12 @@ func test_new_kitchen_items_are_visible_in_their_room_and_function_subgroups() -
 
 func test_kitchen_unlocks_show_levels_then_authored_prices_and_only_request_unlocked_buys() -> void:
 	_catalogue.set_category(&"kitchen")
-	for index: int in KITCHEN_ADDITIONS.size():
-		var id: StringName = KITCHEN_ADDITIONS[index]
+	var levels: Dictionary[StringName, int] = {
+		&"fryer": 2, &"corner_cabinet": 2, &"oven": 3, &"prep_cabinet": 4,
+	}
+	for id: StringName in KITCHEN_ADDITIONS:
 		var definition: ItemDef = _content.item(id)
-		assert_eq(definition.unlock_level, [2, 4, 5, 6][index])
+		assert_eq(definition.unlock_level, levels[id], String(id))
 		var tile: Button = _catalogue.item_buttons[id]
 		_catalogue.set_owner_level(definition.unlock_level - 1)
 		assert_true(_catalogue.visible_ids().has(id), "locked equipment remains discoverable")

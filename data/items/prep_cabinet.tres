@@ -17,6 +17,6 @@ station_type = &"prep_counter"
 capacity = 1
 quality_bonus = 0.0
 price = 85
-unlock_level = 5
+unlock_level = 4
 charm = 0
 theme_tags = Array[StringName]([&"diner"])

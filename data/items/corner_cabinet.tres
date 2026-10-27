@@ -16,6 +16,5 @@ station_type = &""
 capacity = 0
 quality_bonus = 0.0
 price = 45
-unlock_level = 6
+unlock_level = 2
 charm = 0
-theme_tags = Array[StringName]([&"diner"])
