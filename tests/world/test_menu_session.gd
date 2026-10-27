@@ -56,7 +56,7 @@ func test_name_request_saves_only_next_morning_and_restores_hud_sign_and_menu() 
 	assert_false(first.call("menu_set_restaurant_name", "Bad\nname"))
 	assert_eq((first.call("build_report", Clock.sim.day) as DayReport).restaurant_name, "Mama's Diner")
 	_next_morning()
-	assert_eq(_document()["data"]["menu"]["version"], MenuSettings.SNAPSHOT_VERSION)
+	assert_eq(_document()["data"]["menu"]["version"], float(MenuSettings.SNAPSHOT_VERSION))
 	assert_eq(_document()["data"]["menu"]["name"], "Mama's Diner")
 	var saved_choices: Dictionary = (first.get("menu_settings") as MenuSettings).to_dict()
 	_close(first)
@@ -107,7 +107,7 @@ func test_menu_edits_wait_for_next_morning_then_reload_without_recipe_mutation()
 	assert_eq(GameState.rng(&"customers").state, before_rng)
 	var saved: Dictionary = settings.to_dict()
 	_next_morning()
-	assert_eq(_document()["data"]["menu"], saved)
+	assert_eq(_document()["data"]["menu"], _json_menu(saved))
 	var books: Dictionary = Economy.ledger.to_dict()
 	var stock: Dictionary = Economy.stock.to_dict()
 	_close(first)
@@ -367,7 +367,7 @@ func test_invalid_menu_slot_is_untouched_by_edits_until_next_morning() -> void:
 	assert_eq(GameState.rng(&"customers").state, rng_state)
 	_next_morning()
 	assert_eq(int(_document()["data"]["clock"]["day"]), 2)
-	assert_eq(_document()["data"]["menu"], settings.to_dict(), "normal later morning autosaves resume")
+	assert_eq(_document()["data"]["menu"], _json_menu(settings.to_dict()), "normal later morning autosaves resume")
 
 
 func test_invalid_menu_provider_does_not_fall_back_to_a_semantic_backup() -> void:
@@ -405,7 +405,7 @@ func test_menu_then_furniture_edit_reload_keeps_both_committed_sections() -> voi
 	var menu: Dictionary = (first.get("menu_settings") as MenuSettings).to_dict()
 	var shop: Dictionary = (first.get("shop_editor") as ShopEditor).to_dict()
 	_next_morning()
-	assert_eq(_document()["data"]["menu"], menu)
+	assert_eq(_document()["data"]["menu"], _json_menu(menu))
 	var books: Dictionary = Economy.ledger.to_dict()
 	var stock: Dictionary = Economy.stock.to_dict()
 	_close(first)
@@ -458,7 +458,7 @@ func test_panel_edits_do_not_save_restock_or_draw_rng_before_next_morning() -> v
 	assert_eq(Clock.sim.to_dict(), clock)
 	assert_eq(GameState.rng(&"customers").state, rng_state)
 	_next_morning()
-	assert_eq(_document()["data"]["menu"], saved)
+	assert_eq(_document()["data"]["menu"], _json_menu(saved))
 	assert_eq(Economy.stock.count(&"bun"), full_count, "ordinary morning setup still performs the stock top-up")
 
 
@@ -528,6 +528,11 @@ func _path() -> String:
 
 func _document(backup: bool = false) -> Dictionary:
 	return JSON.parse_string(FileAccess.get_file_as_string(_path() + (".bak" if backup else "")))
+
+
+## Match the JSON representation on disk; typed model comparisons stay separate.
+func _json_menu(snapshot: Dictionary) -> Dictionary:
+	return JSON.parse_string(JSON.stringify(snapshot))
 
 
 func _write_document(document: Dictionary) -> void:

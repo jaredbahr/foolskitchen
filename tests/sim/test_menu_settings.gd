@@ -276,7 +276,7 @@ func test_restaurant_identity_is_canonical_and_invalid_edits_preserve_choices() 
 	assert_eq(MenuSettings.normalized_restaurant_name("  Café, Soup & Co.  "), _menu.restaurant_name())
 	assert_true(_menu.set_restaurant_name("x".repeat(24)))
 	var before: Dictionary = _menu.to_dict()
-	var invalid: Array[String] = ["", "   ", "x".repeat(25), "A\nB", " A\t", "\rA", "A" + String.chr(0),
+	var invalid: Array[String] = ["", "   ", "x".repeat(25), "A\nB", " A\t", "\rA", "A" + String.chr(1), "A" + String.chr(31),
 		"A" + String.chr(127), "A" + String.chr(133), "A" + String.chr(159)]
 	for value: String in invalid:
 		assert_eq(MenuSettings.normalized_restaurant_name(value), "")
