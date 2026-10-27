@@ -1,10 +1,14 @@
 extends Container
 ## Keep the public direct-child paths while laying out three intact HUD groups.
 ## Native minimum sizes decide wrapping; neither text nor touch targets shrink.
+## The restaurant name is a one-line title above the groups. It spans the row
+## and ellipsizes, so a long name never widens the header or wraps a group.
 
 const CONTROL_GAP: float = 6.0
 const GROUP_GAP: float = 24.0
 const ROW_GAP: float = 12.0
+const TITLE: String = "RestaurantName"
+const TITLE_GAP: float = 2.0
 const GROUPS: Array[Array] = [
 	["Day", "Time", "Phase", "Speed0", "Speed1", "Speed2", "Speed4"],
 	["Cash", "Loan", "Reputation", "OwnerProgress", "Plates", "SoldOut"],
@@ -23,7 +27,7 @@ func _get_minimum_size() -> Vector2:
 		if height > 0.0:
 			height += ROW_GAP
 		height += _row_height(row, measures)
-	return Vector2(minimum_width, height)
+	return Vector2(minimum_width, height + _title_band())
 
 
 func _notification(what: int) -> void:
@@ -80,7 +84,10 @@ func _row_height(row: PackedInt32Array, measures: Array[Vector2]) -> float:
 func _layout_groups() -> void:
 	var measures: Array[Vector2] = _group_sizes()
 	var rows: Array[PackedInt32Array] = _rows(measures, size.x)
-	var y: float = 0.0
+	var title: Control = _title()
+	if title != null:
+		fit_child_in_rect(title, Rect2(0.0, 0.0, size.x, title.get_combined_minimum_size().y))
+	var y: float = _title_band()
 	for row: PackedInt32Array in rows:
 		var height: float = _row_height(row, measures)
 		var starts: Dictionary[int, float] = {}
@@ -102,3 +109,13 @@ func _layout_groups() -> void:
 				fit_child_in_rect(child, Rect2(Vector2(x, y + (height - minimum.y) * 0.5), minimum))
 				x += minimum.x + CONTROL_GAP
 		y += height + ROW_GAP
+
+
+func _title() -> Control:
+	var title: Control = get_node_or_null(TITLE) as Control
+	return title if title != null and title.visible else null
+
+
+func _title_band() -> float:
+	var title: Control = _title()
+	return title.get_combined_minimum_size().y + TITLE_GAP if title != null else 0.0

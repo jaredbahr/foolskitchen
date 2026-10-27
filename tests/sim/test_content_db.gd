@@ -326,6 +326,30 @@ func test_invalid_floor_layer_definitions_are_reported_without_changing_resource
 	assert_false(definition.solid)
 
 
+func test_recipe_menu_sections_validate_without_changing_shared_content() -> void:
+	var definition: RecipeDef = _recipe()
+	assert_eq(ContentDB.validate_definitions([], [definition], [_station()]), PackedStringArray())
+	for section: int in RecipeDef.Section.values():
+		definition.set("section", section)
+		var section_errors: PackedStringArray = ContentDB.validate_definitions([], [definition], [_station()])
+		if section == RecipeDef.Section.DRINKS:
+			assert_true(_has_error(section_errors, "only drinks, belong in the Drinks section"), "food is never listed under Drinks")
+		else:
+			assert_eq(section_errors, PackedStringArray())
+	var drink: RecipeDef = definition.duplicate(true) as RecipeDef
+	drink.order_type = RecipeDef.COFFEE
+	assert_true(_has_error(ContentDB.validate_definitions([], [drink], [_station()]), "belong in the Drinks section"))
+	drink.section = RecipeDef.Section.DRINKS
+	assert_eq(drink.menu_section(), RecipeDef.Section.DRINKS)
+	var invalid: RecipeDef = definition.duplicate(true) as RecipeDef
+	invalid.set("section", 99)
+	var errors: PackedStringArray = ContentDB.validate_definitions([], [invalid], [_station()])
+	assert_eq(errors.size(), 1)
+	assert_true(_has_error(errors, "unknown menu section"))
+	assert_eq(definition.section, RecipeDef.Section.DESSERTS)
+	assert_eq(_starter_db().recipe(&"tomato_soup").section, RecipeDef.Section.STARTERS)
+
+
 func _starter_db() -> ContentDB:
 	var db: ContentDB = ContentDB.new()
 	assert_eq(db.load_all().size(), 0)

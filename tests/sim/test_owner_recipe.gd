@@ -23,7 +23,12 @@ func test_tomato_melt_loads_from_real_content_and_waits_for_owner_level_two() ->
 		station_types.append(step.station_type)
 	assert_eq(station_types, [&"prep_counter", &"stove"] as Array[StringName])
 	assert_eq(recipe.total_ticks(), 85)
-	var menu: MenuSettings = MenuSettings.new(content.recipes())
+	# The food menu alone: drinks (FK-083) would fill the level-1 dish limit.
+	var food: Array[RecipeDef] = []
+	for definition: RecipeDef in content.recipes():
+		if not definition.is_drink():
+			food.append(definition)
+	var menu: MenuSettings = MenuSettings.new(food)
 	assert_true(menu.is_valid())
 	assert_eq(menu.recipe(&"tomato_melt"), recipe)
 	assert_false(menu.is_enabled(&"tomato_melt"))

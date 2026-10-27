@@ -262,8 +262,10 @@ func test_invalid_injected_catalogs_fail_without_partial_defaults_or_engine_erro
 	invalid_level.unlock_level = 0
 	var locked_only: RecipeDef = _recipe(&"locked_only", 10)
 	locked_only.unlock_level = 2
+	var invalid_section: RecipeDef = _recipe(&"invalid_section", 10)
+	invalid_section.set("section", 99)
 	var invalid_catalogs: Array = [[], [null], [_burger, null], [_burger, empty_id],
-		[_burger, negative], [_burger, duplicate], [_burger, invalid_level], [locked_only]]
+		[_burger, negative], [_burger, duplicate], [_burger, invalid_level], [locked_only], [_burger, invalid_section]]
 	for values: Array in invalid_catalogs:
 		var catalog: Array[RecipeDef] = []
 		catalog.assign(values)
@@ -275,6 +277,195 @@ func test_invalid_injected_catalogs_fail_without_partial_defaults_or_engine_erro
 		assert_false(menu.set_enabled(&"burger", true))
 		assert_false(menu.from_dict(_menu.to_dict()))
 	assert_false(MenuSettings.new([_burger], 0).is_valid())
+
+
+func test_restaurant_identity_is_canonical_and_invalid_edits_preserve_choices() -> void:
+	assert_eq(_menu.restaurant_name(), "Fool's Kitchen")
+	assert_eq(_menu.menu_limit(), 6)
+	assert_true(_menu.set_restaurant_name("  Café, Soup & Co.  "))
+	assert_eq(_menu.restaurant_name(), "Café, Soup & Co.")
+	assert_eq(MenuSettings.normalized_restaurant_name("  Café, Soup & Co.  "), _menu.restaurant_name())
+	assert_true(_menu.set_restaurant_name("x".repeat(24)))
+	var before: Dictionary = _menu.to_dict()
+	var invalid: Array[String] = ["", "   ", "x".repeat(25), "A\nB", " A\t", "\rA", "A" + String.chr(1), "A" + String.chr(31),
+		"A" + String.chr(127), "A" + String.chr(133), "A" + String.chr(159)]
+	for value: String in invalid:
+		assert_eq(MenuSettings.normalized_restaurant_name(value), "")
+		assert_false(_menu.set_restaurant_name(value))
+		assert_eq(_menu.to_dict(), before, "invalid name edits do not alter menu choices")
+	assert_true(_menu.set_restaurant_name("Hell's Kitchen"), "names have no profanity filter")
+	assert_eq(_burger.standard_price, 12)
+
+
+func test_identity_round_trips_with_choices_and_legacy_saves_use_default_name() -> void:
+	assert_true(_menu.set_restaurant_name("The Little Diner"))
+	assert_true(_menu.set_enabled(&"grilled_cheese", false))
+	assert_true(_menu.set_price(&"burger", 17))
+	var snapshot: Dictionary = _menu.to_dict()
+	assert_eq(snapshot["version"], 1)
+	assert_eq(snapshot["name"], "The Little Diner")
+	var restored: MenuSettings = MenuSettings.new([_burger, _cheese, _soup])
+	assert_true(restored.from_dict(JSON.parse_string(JSON.stringify(snapshot))))
+	assert_eq(restored.to_dict(), snapshot)
+	var legacy: Dictionary = {"enabled": snapshot["enabled"], "prices": snapshot["prices"]}
+	assert_true(restored.from_dict(JSON.parse_string(JSON.stringify(legacy))))
+	assert_eq(restored.restaurant_name(), MenuSettings.DEFAULT_NAME)
+	assert_eq(restored.enabled_recipes(), _menu.enabled_recipes())
+	assert_eq(restored.price_of(_burger), 17)
+	assert_eq(_menu.restaurant_name(), "The Little Diner", "restoring another model does not rename this one")
+
+
+func test_invalid_identity_save_versions_shapes_and_prices_restore_nothing() -> void:
+	assert_true(_menu.set_restaurant_name("Local Favourite"))
+	assert_true(_menu.set_enabled(&"burger", false))
+	var before: Dictionary = _menu.to_dict()
+	var invalid: Array[Dictionary] = []
+	for version: Variant in [0, 2, 1.5, true, "1", null]:
+		var section: Dictionary = JSON.parse_string(JSON.stringify(before))
+		section["version"] = version
+		invalid.append(section)
+	for name_value: Variant in ["", "   ", "Long".repeat(7), "Name\n", 12, null, []]:
+		var section: Dictionary = JSON.parse_string(JSON.stringify(before))
+		section["name"] = name_value
+		invalid.append(section)
+	var missing_name: Dictionary = before.duplicate(true)
+	missing_name.erase("name")
+	invalid.append(missing_name)
+	var extra: Dictionary = before.duplicate(true)
+	extra["extra"] = true
+	invalid.append(extra)
+	var unversioned_name: Dictionary = before.duplicate(true)
+	unversioned_name.erase("version")
+	invalid.append(unversioned_name)
+	var bad_price: Dictionary = JSON.parse_string(JSON.stringify(before))
+	bad_price["name"] = "Would Replace Name"
+	bad_price["enabled"] = ["burger"]
+	bad_price["prices"]["burger"] = "999"
+	invalid.append(bad_price)
+	for section: Dictionary in invalid:
+		assert_false(_menu.from_dict(section))
+		assert_eq(_menu.to_dict(), before, "name, dishes and prices are one transaction")
+
+
+func test_menu_limit_bounds_initial_choices_selection_and_owner_downgrade() -> void:
+	var catalog: Array[RecipeDef] = _large_catalog()
+	catalog.reverse()
+	var menu: MenuSettings = MenuSettings.new(catalog)
+	assert_true(menu.is_valid())
+	assert_eq(menu.enabled_count(), 6)
+	assert_eq(_ids(menu.enabled_recipes()), [&"dish_0", &"dish_1", &"dish_2", &"dish_3", &"dish_4", &"dish_5"] as Array[StringName])
+	var before: Dictionary = menu.to_dict()
+	assert_false(menu.set_enabled(&"dish_6", true))
+	assert_eq(menu.to_dict(), before)
+	assert_true(menu.set_enabled(&"dish_0", true), "an already enabled dish is valid even at the limit")
+	assert_true(menu.set_enabled(&"dish_0", false))
+	assert_true(menu.set_enabled(&"dish_6", true))
+	assert_true(menu.set_owner_level(3))
+	assert_eq(menu.menu_limit(), 7)
+	assert_eq(menu.enabled_count(), 6, "level-ups never silently add dishes")
+	assert_true(menu.set_enabled(&"dish_7", true))
+	before = menu.to_dict()
+	assert_false(menu.set_owner_level(2), "downgrades cannot leave an oversized menu")
+	assert_eq(menu.owner_level(), 3)
+	assert_eq(menu.to_dict(), before)
+	assert_true(menu.set_enabled(&"dish_7", false))
+	assert_true(menu.set_owner_level(2))
+	assert_eq(menu.menu_limit(), 6)
+
+
+func test_oversized_menu_survives_every_morning_save_round_trip() -> void:
+	var catalog: Array[RecipeDef] = _large_catalog()
+	var expanded: MenuSettings = MenuSettings.new(catalog, 5)
+	assert_eq(expanded.enabled_count(), 8)
+	assert_true(expanded.set_restaurant_name("Eight Courses"))
+	var oversized: Dictionary = expanded.to_dict()
+	# A versioned save over the level-1 limit still loads: losing the game is
+	# worse than an oversized menu, which only blocks additions.
+	var small: MenuSettings = MenuSettings.new(catalog)
+	assert_eq(small.menu_limit(), 6)
+	assert_true(small.from_dict(JSON.parse_string(JSON.stringify(oversized))))
+	assert_eq(small.to_dict(), oversized)
+	# Legacy load, then the next morning's v1 save, then a fresh load.
+	var legacy: Dictionary = {"enabled": oversized["enabled"], "prices": oversized["prices"]}
+	var day_one: MenuSettings = MenuSettings.new(catalog)
+	assert_true(day_one.from_dict(JSON.parse_string(JSON.stringify(legacy))))
+	var resaved: Dictionary = JSON.parse_string(JSON.stringify(day_one.to_dict()))
+	assert_eq(int(resaved["version"]), 1)
+	var day_two: MenuSettings = MenuSettings.new(catalog)
+	assert_true(day_two.from_dict(resaved), "the next morning's save must load")
+	assert_eq(day_two.enabled_count(), 8)
+
+
+func test_unversioned_oversized_menu_loads_and_blocks_additions_until_under_limit() -> void:
+	var catalog: Array[RecipeDef] = _large_catalog()
+	var expanded: MenuSettings = MenuSettings.new(catalog, 5)
+	assert_eq(expanded.enabled_count(), 8)
+	var oversized: Dictionary = expanded.to_dict()
+	var menu: MenuSettings = MenuSettings.new(catalog)
+	assert_eq(menu.menu_limit(), 6)
+	# A pre-limit save (no version) with 8 dishes on at level 1 keeps them all.
+	var legacy: Dictionary = {"enabled": oversized["enabled"], "prices": oversized["prices"]}
+	assert_true(menu.from_dict(JSON.parse_string(JSON.stringify(legacy))))
+	assert_eq(menu.enabled_count(), 8)
+	assert_eq(menu.restaurant_name(), MenuSettings.DEFAULT_NAME)
+	var off: StringName = menu.enabled_recipes()[0].id
+	assert_true(menu.set_enabled(off, false))
+	assert_false(menu.set_enabled(off, true), "an oversized menu takes no new dish")
+	for index: int in range(2):
+		assert_true(menu.set_enabled(menu.enabled_recipes()[0].id, false))
+	assert_eq(menu.enabled_count(), 5)
+	assert_true(menu.set_enabled(off, true), "under the limit again, dishes can be added")
+
+
+func test_level_up_with_an_oversized_legacy_menu_unlocks_new_recipes() -> void:
+	var catalog: Array[RecipeDef] = _large_catalog()
+	var later: RecipeDef = _recipe(&"late_dish", 12)
+	later.unlock_level = 2
+	catalog.append(later)
+	var menu: MenuSettings = MenuSettings.new(catalog)
+	var enabled: Array[String] = []
+	var prices: Dictionary = {}
+	for definition: RecipeDef in catalog:
+		prices[String(definition.id)] = str(definition.standard_price)
+		if definition.unlock_level == 1:
+			enabled.append(String(definition.id))
+	assert_true(menu.from_dict({"enabled": enabled, "prices": prices}))
+	assert_eq(menu.enabled_count(), 8)
+	assert_true(menu.set_owner_level(2), "a level-up is never refused by an oversized menu")
+	assert_eq(menu.owner_level(), 2)
+	assert_false(menu.set_owner_level(1), "a downgrade still respects the smaller limit")
+	assert_eq(menu.owner_level(), 2)
+	for index: int in range(3):
+		assert_true(menu.set_enabled(menu.enabled_recipes()[0].id, false))
+	assert_true(menu.set_enabled(&"late_dish", true), "the newly unlocked dish can join once there is room")
+
+func test_menu_tuning_is_injected_detached_and_invalid_tuning_has_no_choices() -> void:
+	var tuning: MenuTuning = MenuTuning.new()
+	tuning.base_dishes = 2
+	tuning.levels_per_extra_dish = 3
+	tuning.max_dishes = 4
+	var menu: MenuSettings = MenuSettings.new([_burger, _cheese, _soup], 1, tuning)
+	assert_eq(menu.enabled_count(), 2)
+	assert_eq(menu.menu_limit(), 2)
+	tuning.base_dishes = 4
+	assert_eq(menu.menu_limit(), 2, "external edits cannot change the live model's limit")
+	assert_true(menu.set_owner_level(4))
+	assert_eq(menu.menu_limit(), 3)
+	assert_true(menu.set_enabled(&"tomato_soup", true))
+	tuning.levels_per_extra_dish = 0
+	var invalid: MenuSettings = MenuSettings.new([_burger], 1, tuning)
+	assert_false(invalid.is_valid())
+	assert_eq(invalid.enabled_count(), 0)
+	assert_eq(invalid.menu_limit(), 0)
+	assert_false(invalid.set_restaurant_name("Invalid"))
+	assert_eq(invalid.to_dict(), {})
+
+
+func _large_catalog() -> Array[RecipeDef]:
+	var result: Array[RecipeDef] = []
+	for index: int in 8:
+		result.append(_recipe(StringName("dish_%d" % index), 10))
+	return result
 
 
 func _recipe(id: StringName, standard: int) -> RecipeDef:
@@ -290,3 +481,29 @@ func _ids(definitions: Array[RecipeDef]) -> Array[StringName]:
 	for definition: RecipeDef in definitions:
 		result.append(definition.id)
 	return result
+
+
+func test_new_drinks_join_only_while_the_menu_has_room() -> void:
+	var food: Array[RecipeDef] = []
+	for index: int in range(5):
+		food.append(_recipe(StringName("dish_%d" % index), 10))
+	var menu: MenuSettings = MenuSettings.new(food)
+	assert_eq(menu.enabled_count(), 5)
+	assert_eq(menu.menu_limit(), 6)
+	var with_drinks: Array[RecipeDef] = food.duplicate()
+	for id: StringName in [&"drink_a", &"drink_b"]:
+		var drink: RecipeDef = _recipe(id, 3)
+		drink.order_type = RecipeDef.COFFEE
+		drink.section = RecipeDef.Section.DRINKS
+		with_drinks.append(drink)
+	assert_true(menu.set_catalogue(with_drinks))
+	assert_eq(menu.enabled_count(), 6, "the first new drink fills the last free place")
+	assert_true(menu.is_enabled(&"drink_a"))
+	assert_false(menu.is_enabled(&"drink_b"), "a full menu leaves the next drink off")
+	assert_eq(_ids(menu.crowded_out_drinks()), [&"drink_b"] as Array[StringName], "the panel can name the waiting drink")
+	assert_true(menu.set_enabled(&"dish_0", false))
+	assert_true(menu.set_enabled(&"drink_b", true))
+	assert_true(menu.crowded_out_drinks().is_empty(), "a drink switched on is no longer waiting")
+	assert_true(menu.set_enabled(&"drink_b", false))
+	assert_true(menu.set_catalogue(food))
+	assert_true(menu.crowded_out_drinks().is_empty(), "a drink whose station left is not listed")

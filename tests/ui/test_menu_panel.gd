@@ -3,6 +3,7 @@ extends TestCase
 
 const PANEL: PackedScene = preload("res://src/ui/menu_panel.tscn")
 
+var _name_requests: Array[String] = []
 var _panel: MenuPanel
 var _menu: MenuSettings
 var _burger: RecipeDef
@@ -13,12 +14,14 @@ var _goals_requests: int = 0
 
 
 func before_each() -> void:
+	_name_requests.clear()
 	_settings_requests = 0
 	_goals_requests = 0
 	_burger = _recipe(&"burger", "Burger", 12)
 	_menu = MenuSettings.new([_recipe(&"tomato_soup", "Tomato soup", 9), _burger,
 		_recipe(&"grilled_cheese", "Grilled cheese", 8)])
 	_panel = PANEL.instantiate() as MenuPanel
+	_panel.restaurant_name_requested.connect(_record_name)
 	_panel.enable_requested.connect(_record_enable)
 	_panel.price_requested.connect(_record_price)
 	_panel.settings_requested.connect(_record_settings)
@@ -50,13 +53,13 @@ func test_rows_defaults_shared_styles_and_mouse_scope_work_before_ready() -> voi
 	assert_eq(scroll.mouse_filter, Control.MOUSE_FILTER_STOP)
 	assert_false(scroll.mouse_force_pass_scroll_events)
 	var rows: Node = _panel.get_node("Panel/Content/Scroll/List/Rows")
-	assert_eq(rows.get_child_count(), 3)
-	assert_eq((rows.get_child(0).get_node("Top/Name") as Label).text, "Burger")
-	assert_eq((rows.get_child(1).get_node("Top/Name") as Label).text, "Grilled cheese")
-	assert_eq((rows.get_child(2).get_node("Top/Name") as Label).text, "Tomato soup")
+	assert_eq(rows.get_child_count(), 4)
+	assert_eq((rows.get_child(1).get_node("Top/Name") as Label).text, "Burger")
+	assert_eq((rows.get_child(2).get_node("Top/Name") as Label).text, "Grilled cheese")
+	assert_eq((rows.get_child(3).get_node("Top/Name") as Label).text, "Tomato soup")
 	assert_eq(_label(&"burger", "Price/Amount").text, "$12")
-	assert_eq(_label(&"burger", "Reference/Standard").text, "Standard $12")
-	assert_eq(_label(&"burger", "Reference/Ratio").text, "100% of standard")
+	assert_eq(_label(&"burger", "Reference/Standard").text, "Suggested $12")
+	assert_eq(_label(&"burger", "Reference/Ratio").text, "100% of suggested")
 	assert_eq(_label(&"burger", "Reference/Ratio").get_theme_color("font_color"), MenuPanel.STANDARD_COLOR)
 	for path: String in ["Top/Enabled", "Price/Minus", "Price/Plus"]:
 		var button: Button = _button(&"burger", path)
@@ -205,7 +208,7 @@ func test_bounds_and_ratio_hints_follow_accepted_model_prices() -> void:
 	assert_true(_menu.set_price(&"burger", 0))
 	_panel.refresh()
 	assert_eq(_label(&"burger", "Price/Amount").text, "$6")
-	assert_eq(_label(&"burger", "Reference/Ratio").text, "50% of standard")
+	assert_eq(_label(&"burger", "Reference/Ratio").text, "50% of suggested")
 	assert_eq(_label(&"burger", "Reference/Ratio").get_theme_color("font_color"), MenuPanel.LOWER_COLOR)
 	assert_true(_button(&"burger", "Price/Minus").disabled)
 	_panel._on_price_step(&"burger", -1)
@@ -213,7 +216,7 @@ func test_bounds_and_ratio_hints_follow_accepted_model_prices() -> void:
 	assert_true(_menu.set_price(&"burger", 999))
 	_panel.refresh()
 	assert_eq(_label(&"burger", "Price/Amount").text, "$24")
-	assert_eq(_label(&"burger", "Reference/Ratio").text, "200% of standard")
+	assert_eq(_label(&"burger", "Reference/Ratio").text, "200% of suggested")
 	assert_eq(_label(&"burger", "Reference/Ratio").get_theme_color("font_color"), MenuPanel.HIGHER_COLOR)
 	assert_true(_button(&"burger", "Price/Plus").disabled)
 	_panel._on_price_step(&"burger", 1)
@@ -221,7 +224,7 @@ func test_bounds_and_ratio_hints_follow_accepted_model_prices() -> void:
 	assert_true(_menu.set_price(&"burger", 12))
 	_panel.refresh()
 	assert_eq(_label(&"burger", "Reference/Ratio").get_theme_color("font_color"), MenuPanel.STANDARD_COLOR)
-	assert_eq(_label(&"burger", "Reference/Standard").text, "Standard $12")
+	assert_eq(_label(&"burger", "Reference/Standard").text, "Suggested $12")
 	assert_eq(_burger.standard_price, 12)
 
 
@@ -253,7 +256,7 @@ func test_integer_limits_are_guarded_before_price_step_arithmetic() -> void:
 	_panel._on_price_step(&"free", 1)
 	_panel._on_price_step(&"free", -1)
 	assert_eq(_price_requests.size(), 0)
-	assert_eq(_label(&"free", "Reference/Ratio").text, "Free at standard price")
+	assert_eq(_label(&"free", "Reference/Ratio").text, "Free at suggested price")
 
 
 func test_refresh_is_idempotent_and_rebinding_replaces_rows_without_requests() -> void:
@@ -267,7 +270,7 @@ func test_refresh_is_idempotent_and_rebinding_replaces_rows_without_requests() -
 	assert_null(_panel.row_for(&"burger"))
 	assert_not_null(_panel.row_for(&"rice"))
 	assert_true(_button(&"rice", "Top/Enabled").disabled)
-	assert_eq(_label(&"rice", "Reference/Standard").text, "Standard $5")
+	assert_eq(_label(&"rice", "Reference/Standard").text, "Suggested $5")
 	_panel.bind_menu(null)
 	_panel.refresh()
 	assert_null(_panel.row_for(&"rice"))
@@ -307,3 +310,108 @@ func _record_settings() -> void:
 
 func _record_goals() -> void:
 	_goals_requests += 1
+
+
+func _record_name(value: String) -> void:
+	_name_requests.append(value)
+
+
+func test_name_requests_validate_without_mutating_model_and_preserve_edit_draft() -> void:
+	var edit: LineEdit = _panel.get_node("%RestaurantName") as LineEdit
+	var apply: Button = _panel.get_node("%ApplyName") as Button
+	assert_eq(edit.text, MenuSettings.DEFAULT_NAME)
+	assert_eq(edit.max_length, MenuSettings.MAX_NAME_LENGTH)
+	edit.text = "  Copper Cafe  "
+	edit.text_changed.emit(edit.text)
+	edit.caret_column = 5
+	_panel.refresh()
+	assert_eq(edit.text, "  Copper Cafe  ")
+	assert_eq(edit.caret_column, 5, "routine refresh must not move the editing caret")
+	apply.pressed.emit()
+	edit.text_submitted.emit(edit.text)
+	assert_eq(_name_requests, ["Copper Cafe", "Copper Cafe"] as Array[String])
+	assert_eq(_menu.restaurant_name(), MenuSettings.DEFAULT_NAME, "the session owns acceptance")
+	edit.text = "   "
+	edit.text_changed.emit(edit.text)
+	apply.pressed.emit()
+	assert_eq(_name_requests.size(), 2)
+	assert_true((_panel.get_node("%NameFeedback") as Label).visible)
+	assert_true((_panel.get_node("%NameFeedback") as Label).text.contains("1"))
+	edit.text = "Copper Cafe"
+	edit.text_changed.emit(edit.text)
+	_panel.set_phase(SimClock.Phase.OPEN)
+	assert_false(edit.editable)
+	assert_true(apply.disabled)
+	_panel._on_name_apply_pressed()
+	assert_eq(_name_requests.size(), 2, "direct handlers also honor the morning gate")
+	_panel.set_phase(SimClock.Phase.MORNING)
+	assert_eq(edit.text, "Copper Cafe", "closing and reopening edits retains the draft")
+
+
+func test_sections_order_dishes_and_full_menu_can_be_reduced_before_adding() -> void:
+	var recipes: Array[RecipeDef] = []
+	for index: int in 7:
+		var recipe: RecipeDef = _recipe(StringName("dish%d" % index), "Dish %d" % index, 6)
+		recipe.section = RecipeDef.Section.DRINKS if index == 0 else RecipeDef.Section.MAINS
+		recipes.append(recipe)
+	var menu: MenuSettings = MenuSettings.new(recipes)
+	_panel.bind_menu(menu)
+	var rows: Node = _panel.get_node("Panel/Content/Scroll/List/Rows")
+	assert_eq((rows.get_child(0) as Label).text, "Mains")
+	assert_eq((rows.get_child(7) as Label).text, "Drinks")
+	assert_eq(_panel.row_for(&"dish0").get_index(), 8, "dish IDs do not override section order")
+	var disabled: StringName = &""
+	for recipe: RecipeDef in recipes:
+		if not menu.is_enabled(recipe.id):
+			disabled = recipe.id
+	assert_ne(disabled, &"")
+	assert_true(_button(disabled, "Top/Enabled").disabled)
+	assert_true(_button(disabled, "Top/Enabled").tooltip_text.contains("menu is full"))
+	assert_eq((_panel.get_node("%MenuCount") as Label).text, "6 / 6 dishes on the menu")
+	_panel._on_enable_toggled(true, disabled)
+	assert_true(_enable_requests.is_empty())
+	assert_true(menu.set_enabled(menu.enabled_recipes()[0].id, false))
+	_panel.refresh()
+	assert_false(_button(disabled, "Top/Enabled").disabled)
+	_button(disabled, "Top/Enabled").toggled.emit(true)
+	assert_eq(_enable_requests.size(), 1)
+	assert_false(menu.is_enabled(disabled), "request waits for session acceptance")
+
+
+func test_identity_and_section_controls_fit_short_and_wide_viewports() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	var viewport: SubViewport = SubViewport.new()
+	tree.root.add_child(viewport)
+	viewport.add_child(_panel)
+	_panel.show()
+	for dimensions: Vector2i in [Vector2i(853, 480), Vector2i(1600, 900)]:
+		viewport.size = dimensions
+		for frame: int in 3:
+			await tree.process_frame
+		var bounds: Rect2 = (_panel.get_node("Panel") as Control).get_global_rect()
+		var edit: LineEdit = _panel.get_node("%RestaurantName") as LineEdit
+		var apply: Button = _panel.get_node("%ApplyName") as Button
+		assert_true(bounds.encloses(edit.get_global_rect()))
+		assert_true(bounds.encloses(apply.get_global_rect()))
+		assert_true(edit.size.x > 100.0)
+		assert_true(apply.global_position.x >= edit.get_global_rect().end.x)
+		var scroll: Control = _panel.get_node("Panel/Content/Scroll") as Control
+		assert_true(scroll.size.y > 40.0, "new content must leave a usable scroll viewport")
+	viewport.remove_child(_panel)
+	viewport.free()
+
+func test_all_five_sections_use_readable_headings_in_menu_order() -> void:
+	var recipes: Array[RecipeDef] = []
+	for section: int in [RecipeDef.Section.DESSERTS, RecipeDef.Section.DRINKS,
+		RecipeDef.Section.SIDES, RecipeDef.Section.MAINS, RecipeDef.Section.STARTERS]:
+		var dish: RecipeDef = _recipe(StringName("section%d" % section), "Example dish", 6)
+		dish.section = section as RecipeDef.Section
+		recipes.append(dish)
+	_panel.bind_menu(MenuSettings.new(recipes))
+	var headings: Array[String] = []
+	for child: Node in _panel.get_node("Panel/Content/Scroll/List/Rows").get_children():
+		if child is Label:
+			headings.append((child as Label).text)
+	assert_eq(headings, ["Starters", "Mains", "Sides", "Drinks", "Desserts"] as Array[String])
+	for dish: RecipeDef in recipes:
+		assert_not_null(_panel.row_for(dish.id), "grouping retains each interactive dish row")

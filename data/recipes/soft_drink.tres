@@ -21,4 +21,5 @@ standard_price = 3
 unlock_tier = 1
 unlock_level = 1
 theme_tags = Array[StringName]([])
+section = 3
 order_type = &"drinks"
