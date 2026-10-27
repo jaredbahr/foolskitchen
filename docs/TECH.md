@@ -828,7 +828,9 @@ an active edit/panel/selection first, or opens Settings when none is active.
   carries one on (the kitchen divider's ends (0, 4) and (13, 4)) stays a wall;
   the player can add a doorway;
   a lot cell touching the floor (8 directions) becomes the new shell WALL; other
-  lot cells are OUTSIDE. Cells outside the lot never change. `problem()` refuses
+  lot cells are OUTSIDE, except a notch that walls cut off from the world
+  beyond, which fills in as WALL (never bought, never refused). Cells outside
+  the lot never change. `problem()` refuses
   cells outside the lot, floor that does not join the authored floor through
   floor (or, when removing, would split it) and enclosed gaps.
 - **No auto walls (Jared).** The old outer wall opens up: no WALL segments are

@@ -17,7 +17,8 @@ extends RefCounted
 ##   Walls tool. Wall segments keep their edge keys, so an outer window on an
 ##   opened face becomes an interior window.
 ## - A lot cell touching the floor (8 directions) becomes the new shell WALL;
-##   any other lot cell is OUTSIDE.
+##   any other lot cell is OUTSIDE, unless walls enclose it (a notch): then it
+##   fills in as WALL, so no void is left inside the wall mass.
 ## - Cells outside the lot (the street, the sidewalk, the door) never change,
 ##   because the lot never grows towards the street.
 
@@ -135,7 +136,35 @@ func terrain_for(bought: Dictionary[Vector2i, bool]) -> Dictionary[Vector2i, int
 				result[cell] = SimGrid.Terrain.WALL if _touches(cell, inside) else SimGrid.Terrain.OUTSIDE
 			else:
 				result[cell] = _base.terrain(cell)
+	_fill_enclosed(result, area)
 	return result
+
+
+## A lot cell left OUTSIDE but cut off from the world beyond by walls (a notch
+## between wall runs) joins the wall mass: it becomes WALL, never a void.
+func _fill_enclosed(result: Dictionary[Vector2i, int], area: Rect2i) -> void:
+	var around: Rect2i = area.grow(1)
+	var open: Dictionary[Vector2i, bool] = {}
+	var frontier: Array[Vector2i] = []
+	for y: int in range(around.position.y, around.end.y):
+		for x: int in range(around.position.x, around.end.x):
+			var cell: Vector2i = Vector2i(x, y)
+			if not area.has_point(cell):
+				open[cell] = true
+				frontier.append(cell)
+	while not frontier.is_empty():
+		var next: Array[Vector2i] = []
+		for cell: Vector2i in frontier:
+			for side: Vector2i in _SIDES:
+				var near: Vector2i = cell + side
+				if area.has_point(near) and not open.has(near) and result[near] == SimGrid.Terrain.OUTSIDE:
+					open[near] = true
+					next.append(near)
+		frontier = next
+	for cell: Vector2i in result:
+		if result[cell] == SimGrid.Terrain.OUTSIDE and not open.has(cell) \
+				and lot.has_point(cell) and not building.has_point(cell):
+			result[cell] = SimGrid.Terrain.WALL
 
 
 ## Why this set of bought cells is not a valid floor plan, or "".

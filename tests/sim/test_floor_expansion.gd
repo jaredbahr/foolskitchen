@@ -137,6 +137,69 @@ func test_floor_sealed_by_an_old_outer_window_is_refused() -> void:
 	assert_true(_editor.check_floor(_rect(-1, 2, 1, 2), true).ok, "with a neighbour it joins round the window")
 
 
+## Fuzz seed 5: a two-cell notch at (4..5, -1) between wall runs used to stay
+## OUTSIDE, a void inside the walls. It now fills in as wall; nothing bought.
+func test_a_notch_between_walls_fills_in_as_wall() -> void:
+	_cash = 5000
+	var grid: SimGrid = _sim.world.grid
+	for rect: Array[Vector2i] in [_rect(1, -2, 2, 2), _rect(1, -3, 5, 1), _rect(7, -3, 2, 3)]:
+		assert_true(_editor.apply_floor(rect, true), _editor.last_check.why)
+	for cell: Vector2i in [Vector2i(4, -1), Vector2i(5, -1)]:
+		assert_eq(grid.terrain(cell), SimGrid.Terrain.WALL, "%s fills in" % cell)
+		assert_false(_editor.is_bought(cell))
+	assert_eq(_editor.bought_floor().size(), 4 + 5 + 6)
+	assert_eq(_cash, 5000 - 15 * 15, "only bought cells are paid for")
+	assert_eq(_enclosed_outside(grid), [] as Array[Vector2i])
+	# Selling the floor back opens the notch to the outside again.
+	assert_true(_editor.apply_floor(_rect(7, -3, 2, 3), false), _editor.last_check.why)
+	assert_eq(_enclosed_outside(grid), [] as Array[Vector2i])
+	assert_eq(grid.terrain(Vector2i(5, -1)), SimGrid.Terrain.OUTSIDE)
+
+
+## Random add/remove drags never leave an OUTSIDE cell enclosed by walls.
+func test_random_floor_edits_never_leave_enclosed_voids() -> void:
+	_cash = 1000000
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	var grid: SimGrid = _sim.world.grid
+	for seed_value: int in [5, 11]:
+		rng.seed = seed_value
+		for op: int in range(150):
+			var rect: Array[Vector2i] = _rect(rng.randi_range(-2, 15), rng.randi_range(-4, 10),
+				rng.randi_range(1, 4), rng.randi_range(1, 4))
+			_editor.apply_floor(rect, rng.randf() < 0.65)
+			var enclosed: Array[Vector2i] = _enclosed_outside(grid)
+			if not enclosed.is_empty():
+				fail("seed %d op %d leaves %s enclosed" % [seed_value, op, enclosed])
+				return
+
+
+## OUTSIDE cells that cannot reach beyond the grid through OUTSIDE cells.
+func _enclosed_outside(grid: SimGrid) -> Array[Vector2i]:
+	var area: Rect2i = grid.bounds
+	var open: Dictionary[Vector2i, bool] = {}
+	var frontier: Array[Vector2i] = []
+	for cell: Vector2i in grid.cells():
+		var edge: bool = cell.x == area.position.x or cell.y == area.position.y \
+			or cell.x == area.end.x - 1 or cell.y == area.end.y - 1
+		if edge and grid.terrain(cell) == SimGrid.Terrain.OUTSIDE:
+			open[cell] = true
+			frontier.append(cell)
+	while not frontier.is_empty():
+		var next: Array[Vector2i] = []
+		for cell: Vector2i in frontier:
+			for side: Vector2i in [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]:
+				var near: Vector2i = cell + side
+				if grid.in_bounds(near) and not open.has(near) and grid.terrain(near) == SimGrid.Terrain.OUTSIDE:
+					open[near] = true
+					next.append(near)
+		frontier = next
+	var out: Array[Vector2i] = []
+	for cell: Vector2i in grid.cells():
+		if grid.terrain(cell) == SimGrid.Terrain.OUTSIDE and not open.has(cell):
+			out.append(cell)
+	return out
+
+
 func test_an_l_shaped_building_opens_its_inner_corner() -> void:
 	var grid: SimGrid = _sim.world.grid
 	_cash = 5000
