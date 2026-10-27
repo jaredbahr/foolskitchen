@@ -88,6 +88,7 @@ var _expired_this_morning: Dictionary = {}
 var _sold_out_shown: int = -1
 var _owner_award_today: Dictionary = {}
 var _owner_unlocks_today: Array[String] = []
+var _owner_tips_today: Array[String] = []
 var _owner_award_day: int = 0
 var _closed_report_day: int = 0
 var _loan_notice_day: int = 0
@@ -1106,6 +1107,7 @@ func build_report(day: int) -> DayReport:
 		report.owner_level_before = int(_owner_award_today.get("level_before", owner_progress.level))
 		report.owner_level_after = owner_progress.level
 		report.owner_unlocks = _owner_unlocks_today.duplicate()
+		report.owner_tips = _owner_tips_today.duplicate()
 		if _milestone_xp_today > 0:
 			report.owner_xp_breakdown["milestone_xp"] = _milestone_xp_today
 	report.low_stock = StockAlerts.sell_out_lines(sim.stock_outs_today, content)
@@ -1136,6 +1138,7 @@ func _new_game() -> void:
 	_dismiss_goals()
 	_owner_award_today.clear()
 	_owner_unlocks_today.clear()
+	_owner_tips_today.clear()
 	_owner_award_day = 0
 	_closed_report_day = 0
 	_loan_notice_day = 0
@@ -1840,6 +1843,7 @@ func _begin_morning() -> void:
 	$HUD.set_reputation(reputation.average(), reputation.scores().size())
 	_owner_award_today.clear()
 	_owner_unlocks_today.clear()
+	_owner_tips_today.clear()
 	_owner_award_day = 0
 	_closed_report_day = 0
 	_loan_notice_day = 0
@@ -2108,6 +2112,8 @@ func _on_service_closed(day: int) -> void:
 		_loan_notice_day = day
 	if _owner_award_day == day:
 		_owner_unlocks_today = _unlocked_at_levels(level_before, owner_progress.level)
+		_owner_tips_today = customer_type_catalogue.level_up_tips(level_before, owner_progress.level) \
+			if customer_type_catalogue != null else [] as Array[String]
 		menu_settings.set_owner_level(owner_progress.level)
 		sim.set_customer_level(owner_progress.level)
 		shop_editor.set_owner_level(owner_progress.level)

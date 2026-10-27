@@ -54,6 +54,7 @@ func after_each() -> void:
 
 func test_partial_table_capacity_warning_is_read_only_and_uses_actual_usable_cells() -> void:
 	assert_true(_sim.world.grid.remove(_sim.world.grid.item_at(Vector2i(6, 6)).id))
+	_editor.set_owner_level(2)  # the four-seat table unlocks at level 2
 	var before: Dictionary = _editor.to_dict()
 	var cash_before: int = _cash
 	var rng_before: int = _sim.rng.state

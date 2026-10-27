@@ -28,6 +28,7 @@ func advance(sim: RestaurantSim) -> void:
 	if _remaining > 0:
 		return
 	var entries: Array[Vector2i] = sim.world.grid.entries()
+	var arrived: int = 1
 	if not entries.is_empty():
 		var kind: CustomerType = null
 		if sim.customer_types != null:
@@ -36,8 +37,11 @@ func advance(sim: RestaurantSim) -> void:
 		if sim.customer_types == null or kind != null:
 			var entry: Vector2i = entries[rng.randi_range(0, entries.size() - 1)]
 			var drawn_count: int = kind.draw_party_size(rng) if kind != null else 1
-			var count: int = mini(drawn_count, DiningSeats.largest_usable_capacity(sim.world.grid, entry)) \
-				if kind != null else drawn_count
+			var count: int = drawn_count
+			if kind != null:
+				# Clamp after every draw: the owner level, then the usable layout.
+				count = mini(kind.party_size_at(drawn_count, sim.customer_level),
+					DiningSeats.largest_usable_capacity(sim.world.grid, entry))
 			# Retain every private-seed draw, including clamped-away members. Layout
 			# edits must not shift the next arrival's type, gap or private streams.
 			var randoms: Array[RandomNumberGenerator] = []
@@ -50,7 +54,10 @@ func advance(sim: RestaurantSim) -> void:
 				sim.add_customer(entry, randoms[0], kind)
 			elif count > 1:
 				sim.add_party(entry, randoms, kind)
-	_remaining = _gap()
+			arrived = count
+	# Headcount-neutral: a party of N waits N drawn gaps (one draw, scaled), so
+	# groups bring the same guests per hour as singles did.
+	_remaining = _gap() * maxi(1, arrived)
 
 
 func _gap() -> int:

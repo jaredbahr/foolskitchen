@@ -86,3 +86,8 @@ func test_native_table_pieces_fit_the_authored_footprint_without_stretching() ->
 		assert_true(bounds.end.x <= half_x + 0.05)
 		assert_true(bounds.position.z >= -half_z - 0.05)
 		assert_true(bounds.end.z <= half_z + 0.05)
+
+
+func test_four_seat_table_unlocks_at_owner_level_two() -> void:
+	assert_eq(TABLE.unlock_level, 2, "players can prepare before pairs arrive at level 3")
+	assert_true(TABLE.catalogue_visible)

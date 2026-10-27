@@ -11,7 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
-- Seat guest parties together in arrival order, size them to the shop's usable seats, and flag blocked seats in Build; members with food finish their meals if others leave. Add a four-seat table for larger groups. (#152)
+- Guests now visit in groups: from owner level 3 Regulars, Students and Foodies may come in pairs, and Families always arrive together. Groups are seated together in arrival order and sized to the seats your shop can actually use, and Build flags tables with blocked seats. Members who already have their food finish their meals if the others leave. A four-seat table unlocks at level 2, and the level 3 report tells you when pairs start visiting. (#152)
 - Grow your restaurant: the new Floor tool in Build mode lets you drag extra floor onto your lot behind and beside the shop for $15 a tile. The outside walls move out to wrap the new shape (L-shapes too) and the old wall opens up; Shift-drag removes added floor for a half refund. (#175)
 - Check the fridge in the new morning Stock panel: buy ingredients at list price, and choose what auto-reorder tops up each morning (for a 5% premium). Dishes that run out are marked sold out, so guests order something else instead of leaving, and the evening report says what ran out and when. Old ingredients now go off after their shelf life; the first time an older save is loaded, anything already past it is thrown out once. (#156)
 - Build walls, doorways and windows in Build mode: drag along the grid lines to split the room, click a wall to turn it into a doorway or window, and open windows in the outside walls too. (#157)

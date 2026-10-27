@@ -66,10 +66,13 @@ func test_default_main_spawns_authored_mix_on_exact_named_customers_stream() -> 
 		var kind: CustomerType = CustomerTypePicker.choose(TYPES, 1, sim.review_book.average(), oracle)
 		var entries: Array[Vector2i] = sim.world.grid.entries()
 		var entry: Vector2i = entries[oracle.randi_range(0, entries.size() - 1)]
-		var count: int = kind.draw_party_size(oracle)
+		var drawn: int = kind.draw_party_size(oracle)
 		var private_seeds: Array[int] = []
-		for member: int in count:
+		for member: int in drawn:
 			private_seeds.append(oracle.randi())
+		# Level 1 is below every pair's party unlock: the draw stays, the pair does not.
+		var count: int = kind.party_size_at(drawn, 1)
+		assert_eq(count, 1)
 		oracle.randi_range(1, 1)
 		main.call("run_ticks", 1)
 		var arrivals: Array[CustomerAgent] = []

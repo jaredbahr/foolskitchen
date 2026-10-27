@@ -194,16 +194,12 @@ func _fill_owner_progress(report: DayReport) -> void:
 		if milestone_xp > 0:
 			_add_row(_owner_xp_rows, "Career goals", "+%d XP" % milestone_xp)
 		_add_row(_owner_xp_rows, "Total", "+%d XP" % int(report.owner_xp_breakdown.get("total_xp", 0)))
-	_owner_unlocks.visible = not report.owner_unlocks.is_empty()
-	if _owner_unlocks.visible:
-		var names: String = ""
-		for name: String in report.owner_unlocks:
-			if not names.is_empty():
-				names += ", "
-			names += name
-		_owner_unlocks.text = "Unlocked: %s" % names
-	else:
-		_owner_unlocks.text = ""
+	_owner_unlocks.visible = not report.owner_unlocks.is_empty() or not report.owner_tips.is_empty()
+	var lines: PackedStringArray = []
+	if not report.owner_unlocks.is_empty():
+		lines.append("Unlocked: %s" % ", ".join(PackedStringArray(report.owner_unlocks)))
+	lines.append_array(PackedStringArray(report.owner_tips))
+	_owner_unlocks.text = "\n".join(lines)
 	_owner_callout.visible = _owner_level_up.visible or _owner_unlocks.visible
 
 

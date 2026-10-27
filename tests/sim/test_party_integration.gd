@@ -412,6 +412,89 @@ func test_real_kitchen_party_gets_three_individual_orders_payments_and_reviews()
 		sim.kitchen.plates.clean + sim.kitchen.plates.dirty + sim.kitchen.plates.in_use)
 
 
+func test_pairs_arrive_alone_below_their_party_level_with_an_unchanged_draw_schedule() -> void:
+	var catalogue: CustomerTypeCatalogue = CustomerTypeCatalogue.new()
+	catalogue.types = [TYPES.find_type(&"regular")]
+	assert_eq(catalogue.types[0].party_unlock_level, 3)
+	for seed_value: int in [3, 11, 23, 57]:
+		var states: Array[int] = []
+		var sizes: Array[int] = []
+		for level: int in [1, 2, 3, 4]:
+			var sim: RestaurantSim = _empty_service(seed_value)
+			assert_not_null(sim.world.grid.place_def(TABLE, Vector2i(4, 5)))
+			assert_true(sim.configure_customer_types(catalogue, level))
+			var oracle: RandomNumberGenerator = _rng(seed_value)
+			oracle.state = sim.rng.state
+			CustomerTypePicker.choose(catalogue, level, sim.review_book.average(), oracle)
+			oracle.randi_range(0, 0)
+			var drawn: int = catalogue.types[0].draw_party_size(oracle)
+			for member: int in drawn:
+				oracle.randi()
+			oracle.randi_range(100000, 100000)
+			sim.spawner._remaining = 1
+			sim.spawner.advance(sim)
+			var expected: int = drawn if level >= 3 else 1
+			assert_eq(sim.customers().size(), expected, "level %d, drawn %d" % [level, drawn])
+			if expected == 1:
+				assert_null(sim.customers()[0].party, "a locked pair arrives as a plain single guest")
+			else:
+				assert_eq(sim.customers()[0].party.size(), expected)
+			assert_eq(sim.rng.state, oracle.state, "the unlock clamps after every draw")
+			states.append(sim.rng.state)
+			sizes.append(drawn)
+		for index: int in states.size():
+			assert_eq(states[index], states[0], "the owner level never shifts the arrival stream")
+			assert_eq(sizes[index], sizes[0])
+
+
+func test_a_party_of_n_waits_n_arrival_gaps_from_one_gap_draw() -> void:
+	for size: int in [1, 2, 3, 4]:
+		var sim: RestaurantSim = _empty_service(31)
+		sim.spawner.min_gap = 150
+		sim.spawner.max_gap = 400
+		assert_not_null(sim.world.grid.place_def(TABLE, Vector2i(4, 5)))
+		var catalogue: CustomerTypeCatalogue = CustomerTypeCatalogue.new()
+		var family: CustomerType = TYPES.find_type(&"family").duplicate() as CustomerType
+		family.party_size_min = size
+		family.party_size_max = size
+		catalogue.types = [family]
+		assert_true(sim.configure_customer_types(catalogue, 4))
+		var oracle: RandomNumberGenerator = _rng(31)
+		oracle.state = sim.rng.state
+		CustomerTypePicker.choose(catalogue, 4, sim.review_book.average(), oracle)
+		oracle.randi_range(0, 0)
+		for member: int in size:
+			oracle.randi()
+		var gap: int = oracle.randi_range(150, 400)
+		sim.spawner._remaining = 1
+		sim.spawner.advance(sim)
+		assert_eq(sim.customers().size(), size)
+		assert_eq(sim.spawner._remaining, gap * size, "headcount-neutral: N guests wait N gaps")
+		assert_eq(sim.rng.state, oracle.state, "the scaled gap adds no draw")
+	# A clamped party waits only for the guests who actually arrived.
+	var clamped: RestaurantSim = _empty_service(32)
+	clamped.spawner.min_gap = 150
+	clamped.spawner.max_gap = 400
+	assert_not_null(clamped.world.grid.place_def(preload("res://data/items/table_2.tres"), Vector2i(4, 5)))
+	var families: CustomerTypeCatalogue = CustomerTypeCatalogue.new()
+	var four: CustomerType = TYPES.find_type(&"family").duplicate() as CustomerType
+	four.party_size_min = 4
+	four.party_size_max = 4
+	families.types = [four]
+	assert_true(clamped.configure_customer_types(families, 4))
+	var replay: RandomNumberGenerator = _rng(32)
+	replay.state = clamped.rng.state
+	CustomerTypePicker.choose(families, 4, clamped.review_book.average(), replay)
+	replay.randi_range(0, 0)
+	for member: int in 4:
+		replay.randi()
+	var drawn_gap: int = replay.randi_range(150, 400)
+	clamped.spawner._remaining = 1
+	clamped.spawner.advance(clamped)
+	assert_eq(clamped.customers().size(), 2)
+	assert_eq(clamped.spawner._remaining, drawn_gap * 2)
+
+
 func _empty_service(seed_value: int) -> RestaurantSim:
 	var sim: RestaurantSim = RestaurantSim.new()
 	var grid: SimGrid = SimGrid.new(Vector2i(12, 12))

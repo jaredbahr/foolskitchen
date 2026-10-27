@@ -5,6 +5,7 @@ extends TestCase
 const MAIN: PackedScene = preload("res://src/world/main.tscn")
 const SLOT: String = "build_session"
 const CAPTURE: GDScript = preload("res://tools/screenshot.gd")
+const TABLE_4: ItemDef = preload("res://data/items/table_4.tres")
 
 class FreeCatalog extends ContentDB:
 	var free_item: ItemDef = ItemDef.new()
@@ -452,6 +453,7 @@ func test_main_build_hud_shows_partial_seats_and_clears_warning_after_the_layout
 	await _start()
 	var center: PlacedItem = _world().grid.item_at(Vector2i(6, 6))
 	assert_true(int(_main.call("shop_sell", center.id)) >= 0)
+	_editor().set_owner_level(TABLE_4.unlock_level)  # Explicit purchase-unlock fixture.
 	assert_true(_main.call("set_build_active", true))
 	var label: Label = _main.get_node("HUD/BuildHints/Scroll/Text") as Label
 	assert_true(_mode().begin_buy(&"table_4", Vector2i(6, 5)))

@@ -214,3 +214,29 @@ func _weighted_type(id: StringName, one_star: float, five_stars: float,
 	kind.weight_at_five_stars = five_stars
 	kind.unlock_level = unlock_level
 	return kind
+
+
+func test_pairs_unlock_at_level_three_and_families_keep_their_own_unlock() -> void:
+	for id: StringName in [&"regular", &"student", &"foodie"]:
+		var kind: CustomerType = TYPES.find_type(id)
+		assert_eq(kind.party_unlock_level, 3, String(id) + " comes in pairs from owner level 3")
+		assert_eq(kind.party_size_at(2, 2), 1)
+		assert_eq(kind.party_size_at(2, 3), 2)
+		assert_eq(kind.party_size_at(1, 2), 1)
+		assert_eq(kind.group_level(), 3)
+	var family: CustomerType = TYPES.find_type(&"family")
+	assert_eq(family.party_unlock_level, 1, "families are groups whenever they visit")
+	assert_eq(family.group_level(), family.unlock_level)
+	assert_eq(family.party_size_at(4, family.unlock_level), 4)
+	var locked: CustomerType = TYPES.find_type(&"regular").duplicate() as CustomerType
+	locked.party_unlock_level = 0
+	assert_false(locked.is_valid())
+
+
+func test_group_tip_is_reported_once_when_pairs_start_visiting() -> void:
+	var tip: String = "Groups of two now visit; four-seat tables help."
+	assert_eq(TYPES.level_up_tips(1, 2), [] as Array[String])
+	assert_eq(TYPES.level_up_tips(2, 3), [tip] as Array[String], "one tip, not one per type")
+	assert_eq(TYPES.level_up_tips(3, 4), [] as Array[String], "already shown at level 3")
+	assert_eq(TYPES.level_up_tips(3, 3), [] as Array[String])
+	assert_eq(TYPES.level_up_tips(1, 5), [tip] as Array[String], "a multi-level jump still shows it once")

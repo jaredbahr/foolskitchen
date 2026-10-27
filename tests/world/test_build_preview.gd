@@ -343,6 +343,7 @@ func test_table_warning_highlights_match_actual_checked_ids_and_cancelled_propos
 func test_partial_four_seat_capacity_warns_in_preview_and_after_commit_until_fixed() -> void:
 	var grid: SimGrid = _sim.world.grid
 	assert_true(grid.remove(grid.item_at(Vector2i(6, 6)).id))
+	_editor.set_owner_level(2)  # the four-seat table unlocks at level 2
 	assert_true(_mode.enter())
 	assert_true(_mode.begin_buy(&"table_4", Vector2i(6, 5)))
 	assert_true(_mode.current_check.ok, "losing a seat warns without blocking the purchase")
