@@ -152,6 +152,9 @@ static func run_case(tree: SceneTree, seed_value: int, setup_name: String, days:
 	if observe_staff:
 		totals["staff_growth"] = []
 	for day_index: int in range(days):
+		if day_index > 0 and not ProbeSetups.morning(setup_name, main):
+			_free_main(main)
+			return {"error": "The set-up's morning failed on day %d" % (day_index + 1)}
 		if auto_accept_raises:
 			var choices: Dictionary = _accept_morning_raises(main)
 			if choices.has("error"):

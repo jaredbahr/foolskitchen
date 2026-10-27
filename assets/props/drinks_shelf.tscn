@@ -1,0 +1,86 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://src/world/prop_view.gd" id="1_view"]
+[ext_resource type="PackedScene" path="res://assets/kenney/furniture/bookcaseOpenLow.glb" id="2_shelf"]
+[ext_resource type="PackedScene" path="res://assets/kenney/food/wine-red.glb" id="3_red"]
+[ext_resource type="PackedScene" path="res://assets/kenney/food/wine-white.glb" id="4_white"]
+[ext_resource type="PackedScene" path="res://assets/kenney/food/soda-bottle.glb" id="5_soda"]
+
+[node name="DrinksShelf" type="Node3D"]
+script = ExtResource("1_view")
+footprint = Vector2i(1, 1)
+body_material_names = PackedStringArray("wood")
+
+[node name="Shelf" type="Node3D" parent="."]
+
+[node name="Art" type="Node3D" parent="Shelf"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="Shelf/Art" instance=ExtResource("2_shelf")]
+
+[node name="TopWineRed1" type="Node3D" parent="."]
+position = Vector3(-0.15, 0, 0.02)
+metadata/art_group = &"food"
+metadata/support = NodePath("../Shelf")
+
+[node name="Art" type="Node3D" parent="TopWineRed1"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="TopWineRed1/Art" instance=ExtResource("3_red")]
+
+[node name="TopWineWhite2" type="Node3D" parent="."]
+position = Vector3(-0.05, 0, 0.02)
+metadata/art_group = &"food"
+metadata/support = NodePath("../Shelf")
+
+[node name="Art" type="Node3D" parent="TopWineWhite2"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="TopWineWhite2/Art" instance=ExtResource("4_white")]
+
+[node name="TopSoda3" type="Node3D" parent="."]
+position = Vector3(0.05, 0, 0.02)
+metadata/art_group = &"food"
+metadata/support = NodePath("../Shelf")
+
+[node name="Art" type="Node3D" parent="TopSoda3"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="TopSoda3/Art" instance=ExtResource("5_soda")]
+
+[node name="TopWineRed4" type="Node3D" parent="."]
+position = Vector3(0.15, 0, 0.02)
+metadata/art_group = &"food"
+metadata/support = NodePath("../Shelf")
+
+[node name="Art" type="Node3D" parent="TopWineRed4"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="TopWineRed4/Art" instance=ExtResource("3_red")]
+
+[node name="ShelfWineWhite1" type="Node3D" parent="."]
+position = Vector3(-0.11, 0.143, 0)
+metadata/art_group = &"food"
+
+[node name="Art" type="Node3D" parent="ShelfWineWhite1"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="ShelfWineWhite1/Art" instance=ExtResource("4_white")]
+
+[node name="ShelfSoda2" type="Node3D" parent="."]
+position = Vector3(0.0, 0.143, 0)
+metadata/art_group = &"food"
+
+[node name="Art" type="Node3D" parent="ShelfSoda2"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="ShelfSoda2/Art" instance=ExtResource("5_soda")]
+
+[node name="ShelfWineWhite3" type="Node3D" parent="."]
+position = Vector3(0.11, 0.143, 0)
+metadata/art_group = &"food"
+
+[node name="Art" type="Node3D" parent="ShelfWineWhite3"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="ShelfWineWhite3/Art" instance=ExtResource("4_white")]

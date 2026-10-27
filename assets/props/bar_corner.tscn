@@ -1,0 +1,27 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://src/world/prop_view.gd" id="1_view"]
+[ext_resource type="PackedScene" path="res://assets/kenney/furniture/kitchenBar.glb" id="2_bar"]
+
+[node name="BarCorner" type="Node3D"]
+script = ExtResource("1_view")
+footprint = Vector2i(1, 1)
+body_center_offset = Vector2(0.0085, 0)
+body_material_names = PackedStringArray("wood")
+
+[node name="BarFront" type="Node3D" parent="."]
+position = Vector3(0.0035, 0, -0.1345)
+
+[node name="Art" type="Node3D" parent="BarFront"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="BarFront/Art" instance=ExtResource("2_bar")]
+
+[node name="BarSide" type="Node3D" parent="."]
+position = Vector3(0.1345, 0, 0.0135)
+rotation = Vector3(0, -1.5707963267948966, 0)
+
+[node name="Art" type="Node3D" parent="BarSide"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="BarSide/Art" instance=ExtResource("2_bar")]

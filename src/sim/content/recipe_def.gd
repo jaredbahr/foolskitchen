@@ -3,6 +3,11 @@ extends Resource
 ## Data for one menu dish; no preparation or economy behavior lives here.
 
 enum Section { STARTERS, MAINS, SIDES, DRINKS, DESSERTS }
+const FOOD: StringName = &"food"
+const COFFEE: StringName = &"coffee"
+const DRINKS: StringName = &"drinks"
+## Visit kinds in their fixed order (also the arrival draw order).
+const ORDER_TYPES: Array[StringName] = [FOOD, COFFEE, DRINKS]
 
 @export var id: StringName = &""
 @export var display_name: String = ""
@@ -17,6 +22,22 @@ enum Section { STARTERS, MAINS, SIDES, DRINKS, DESSERTS }
 @export var unlock_tier: int = 1
 @export var unlock_level: int = 1
 @export var theme_tags: Array[StringName] = []
+## What kind of visit orders this (FK-083): a meal, a hot drink, or a cold or
+## alcoholic drink. Drinks are listed under Drinks on the menu, are made by
+## front-of-house staff at their station and carried straight to the guest.
+@export var order_type: StringName = FOOD
+## A dish coffee guests may add to their drink (the croissant; FK-083).
+@export var with_drinks: bool = false
+
+
+func is_drink() -> bool:
+	return order_type != FOOD
+
+
+## The menu heading this recipe is listed under: every drink (FK-083) is in
+## Drinks whatever its authored section; food keeps its own section.
+func menu_section() -> int:
+	return Section.DRINKS if is_drink() else section
 
 
 static func section_name(value: int) -> String:

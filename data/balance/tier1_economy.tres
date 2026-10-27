@@ -21,4 +21,12 @@ morning_stock = Dictionary[StringName, int]({
 &"soup_stock": 8,
 &"tomato": 16
 })
+station_stock = Dictionary[StringName, int]({
+&"coffee_beans": 30,
+&"tea": 12,
+&"soda": 16,
+&"beer": 20,
+&"wine": 12,
+&"pastry": 12
+})
 auto_reorder_premium = 0.05

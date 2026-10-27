@@ -20,5 +20,5 @@ quality_bonus = 0.0
 price = 25
 unlock_level = 3
 charm = 1
-theme_tags = Array[StringName]([&"rustic"])
+theme_tags = Array[StringName]([&"rustic", &"bar"])
 placeholder_color = Color(0.65, 0.44, 0.27, 1)

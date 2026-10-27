@@ -148,7 +148,7 @@ func test_active_multitag_ties_follow_the_authored_theme_order() -> void:
 		"item and tag order cannot change the authored tie winner")
 
 	var seafood_first: VibeTuning = TUNING.duplicate(true) as VibeTuning
-	seafood_first.theme_order = [&"seafood", &"cosy", &"modern", &"rustic", &"diner"]
+	seafood_first.theme_order = [&"seafood", &"cosy", &"modern", &"rustic", &"diner", &"cafe", &"bar"]
 	assert_true(seafood_first.is_valid())
 	var data_ordered: VibeModel.Result = VibeModel.evaluate(_inputs(tied_items), seafood_first)
 	assert_true(data_ordered.valid)

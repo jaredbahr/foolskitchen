@@ -13,6 +13,12 @@ var _order: Array[StringName] = []
 var _defaults: Dictionary[StringName, int] = {}
 var _enabled: Dictionary[StringName, bool] = {}
 var _target: Dictionary[StringName, int] = {}
+## Station-only ingredients (EconomyTuning.station_stock) are listed and
+## ordered only while in use (FK-083): a shop without a coffee machine never
+## auto-buys coffee beans. Not saved: the session derives it from the dishes
+## its stations can make. Everyday ingredients are always in use.
+var _station_only: Dictionary[StringName, bool] = {}
+var _in_use: Dictionary[StringName, bool] = {}
 
 
 ## Defaults: every tuned ingredient is enabled with its morning_stock target,
@@ -26,11 +32,32 @@ func _init(tuning: EconomyTuning = null) -> void:
 		_defaults[id] = amount
 		_enabled[id] = true
 		_target[id] = amount
+	for id: StringName in tuning.station_stock:
+		if _defaults.has(id):
+			continue
+		var amount: int = clampi(int(tuning.station_stock[id]), 0, MAX_TARGET)
+		_order.append(id)
+		_defaults[id] = amount
+		_enabled[id] = true
+		_target[id] = amount
+		_station_only[id] = true
 
 
-## Ingredient ids in the fixed buying order.
+## Ingredient ids in the fixed buying order, limited to those in use.
 func ids() -> Array[StringName]:
-	return _order.duplicate()
+	var out: Array[StringName] = []
+	for id: StringName in _order:
+		if not _station_only.has(id) or _in_use.has(id):
+			out.append(id)
+	return out
+
+
+## The ingredients today's menu uses; station-only ones outside it are
+## neither listed nor ordered. Their choices are kept.
+func set_in_use(ingredient_ids: Array[StringName]) -> void:
+	_in_use.clear()
+	for id: StringName in ingredient_ids:
+		_in_use[id] = true
 
 
 func has(id: StringName) -> bool:
@@ -70,6 +97,8 @@ func copy() -> ReorderSettings:
 	other._defaults = _defaults.duplicate()
 	other._enabled = _enabled.duplicate()
 	other._target = _target.duplicate()
+	other._in_use = _in_use.duplicate()
+	other._station_only = _station_only.duplicate()
 	return other
 
 
@@ -77,6 +106,9 @@ func copy() -> ReorderSettings:
 func to_dict() -> Dictionary:
 	var rows: Dictionary = {}
 	for id: StringName in _order:
+		# Untouched station-only rows stay out of the save, as before them.
+		if _station_only.has(id) and is_enabled(id) and target(id) == default_target(id):
+			continue
 		rows[String(id)] = {"enabled": is_enabled(id), "target": target(id)}
 	return {"version": VERSION, "ingredients": rows}
 
@@ -130,12 +162,16 @@ static func auto_cost(list_total: int, premium: float) -> int:
 ## are taken in the fixed order and each gets as many units as still fit, the
 ## partial order being priced as its own total. Never plans to borrow.
 ## Returns {lines: [{id, qty, unit_cost}], list_total, cost, short: {id: qty}}.
-func plan(stock: Stock, unit_costs: Dictionary, cash: int, premium: float) -> Dictionary:
+## `station_only` plans only the station-only ingredients in use (FK-083).
+func plan(stock: Stock, unit_costs: Dictionary, cash: int, premium: float,
+		station_only: bool = false) -> Dictionary:
 	var lines: Array[Dictionary] = []
 	var short: Dictionary[StringName, int] = {}
 	var list_total: int = 0
 	var budget: int = maxi(cash, 0)
-	for id: StringName in _order:
+	for id: StringName in ids():
+		if station_only and not _station_only.has(id):
+			continue
 		if not is_enabled(id) or not unit_costs.has(id):
 			continue
 		var missing: int = target(id) - stock.count(id)

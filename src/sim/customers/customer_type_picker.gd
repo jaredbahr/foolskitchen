@@ -4,8 +4,11 @@ extends RefCounted
 ## spawner; this class never creates or seeds another random stream.
 
 
+## `theme` and `strength` are the room's active vibe theme and its arrival
+## strength (FK-083). Types that like it weigh more; others are unchanged.
 static func choose(catalogue: CustomerTypeCatalogue, owner_level: int,
-		stars: float, rng: RandomNumberGenerator) -> CustomerType:
+		stars: float, rng: RandomNumberGenerator, theme: StringName = &"",
+		strength: float = 0.0) -> CustomerType:
 	if catalogue == null or rng == null or owner_level < 1 \
 			or not catalogue.is_valid() or not is_finite(stars):
 		return null
@@ -16,6 +19,9 @@ static func choose(catalogue: CustomerTypeCatalogue, owner_level: int,
 		if kind.unlock_level > owner_level:
 			continue
 		var weight: float = kind.weight_for_stars(stars)
+		var liking: float = kind.theme_multiplier(theme, strength)
+		if liking != 1.0:
+			weight *= liking
 		if weight <= 0.0:
 			continue
 		available.append(kind)

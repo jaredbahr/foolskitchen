@@ -3,7 +3,7 @@ extends Resource
 ## Authored restaurant ambience weights. The model never changes this resource.
 ## Values in data/balance/vibe.tres are provisional until the balance probe runs.
 
-const KNOWN_THEMES: Array[StringName] = [&"cosy", &"modern", &"rustic", &"diner", &"seafood"]
+const KNOWN_THEMES: Array[StringName] = [&"cosy", &"modern", &"rustic", &"diner", &"seafood", &"cafe", &"bar"]
 
 @export var score_cap: float = 100.0
 ## Copy N contributes charm * repeat_decay^(N - 1).
@@ -33,16 +33,20 @@ const KNOWN_THEMES: Array[StringName] = [&"cosy", &"modern", &"rustic", &"diner"
 	ItemDef.Category.PASS: 0.0,
 	ItemDef.Category.DECOR: 1.0,
 }
+## Per-item overrides of the category weight (FK-083): a coffee machine or a
+## drinks shelf is equipment, yet it says "café" or "bar" more than a stove
+## says "diner". Items not listed keep their category's weight.
+@export var theme_item_weights: Dictionary[StringName, float] = {}
 @export var theme_paint_weight: float = 0.25
 @export var theme_menu_weight: float = 0.25
 @export var theme_min_share: float = 0.6
 ## A menu alone cannot establish a restaurant theme.
 @export var theme_min_layout_weight: float = 1.0
 ## Explicit tie order, independent of placement, dictionary or menu order.
-@export var theme_order: Array[StringName] = [&"cosy", &"modern", &"rustic", &"diner", &"seafood"]
+@export var theme_order: Array[StringName] = [&"cosy", &"modern", &"rustic", &"diner", &"seafood", &"cafe", &"bar"]
 @export var theme_labels: Dictionary[StringName, String] = {
 	&"cosy": "Cosy", &"modern": "Modern", &"rustic": "Rustic",
-	&"diner": "Diner", &"seafood": "Seafood",
+	&"diner": "Diner", &"seafood": "Seafood", &"cafe": "Café", &"bar": "Bar",
 }
 @export var no_theme_label: String = "No theme"
 @export var crowding_start_density: float = 0.35
@@ -87,6 +91,10 @@ func is_valid() -> bool:
 			smallest_weight = minf(smallest_weight, weight)
 	if not is_finite(smallest_weight) or theme_menu_weight >= smallest_weight:
 		return false
+	for item_id: StringName in theme_item_weights:
+		var item_weight: float = theme_item_weights[item_id]
+		if String(item_id).strip_edges().is_empty() or not is_finite(item_weight) or item_weight < 0.0:
+			return false
 	var seen_lamps: Dictionary[StringName, bool] = {}
 	for item_id: StringName in lamp_item_ids:
 		if String(item_id).strip_edges().is_empty() or seen_lamps.has(item_id):

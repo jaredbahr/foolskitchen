@@ -29,6 +29,12 @@ material name.
 | Chair | `chairCushion` | `wood` | `carpet` cushion |
 | Potted plant | `pottedPlant` | `wood` | `woodDark` trim and `plant` foliage |
 | Door | `doorwayFront` | `carpetWhite` frame | Door metal and glass |
+| Bar section (FK-083) | `kitchenBar`, flush to the guest (-Z) edge | `wood` | Metal and dark wood |
+| Bar end, left/right | `kitchenBar` + `kitchenBarEnd` (0.035 over the inner edge, onto the neighbour's identical bar) | `wood` | Metal and dark wood |
+| Bar corner | 2 x `kitchenBar` at right angles (guest sides -Z and +X), overlapping in the corner | `wood` | Metal and dark wood |
+| Coffee machine | `kitchenCabinet` + `kitchenCoffeeMachine` on top | `wood` | The whole machine |
+| Drinks fridge | `kitchenFridgeSmall` | none (unpaintable) | All |
+| Drinks shelf | `bookcaseOpenLow` + Food Kit `wine-red`, `wine-white`, `soda-bottle` | `wood` | Every bottle |
 
 Existing `ItemDef.paintable` values are unchanged: the stove, sink and door
 remain unpaintable. Their mappings document the wrapper contract, rather than

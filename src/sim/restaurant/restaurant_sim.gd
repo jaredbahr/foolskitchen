@@ -3,6 +3,7 @@ extends RefCounted
 ## Owns one service's guests and tickets, independently of rendering or economy.
 
 const VIBE_TUNING: VibeTuning = preload("res://data/balance/vibe.tres")
+const VISIT_TUNING: VisitTuning = preload("res://data/balance/visits.tres")
 
 signal customer_arrived(customer: CustomerAgent)
 signal customer_paid(customer: CustomerAgent, order: Order, amount: int)
@@ -19,6 +20,8 @@ var menu: Array[RecipeDef] = []
 ## Per-shop overrides; recipe resources and their standard prices stay unchanged.
 var prices: Dictionary[StringName, int] = {}
 var pricing_tuning: EconomyTuning = EconomyTuning.new()
+## Who visits when, and how long a drinks-only visit lasts (FK-083).
+var visit_tuning: VisitTuning = VISIT_TUNING
 ## Shop-wide server capacity. Morning upgrades select one of these three values.
 var carry_capacity: int:
 	get:
@@ -94,13 +97,33 @@ static func create(layout: ShopLayout, content: ContentDB, seed: int, errors: Ar
 		owner.cell = sim.staff_spawns[&"owner"]
 		sim.world.add_agent(owner)
 	for recipe: RecipeDef in content.recipes():
-		if recipe.unlock_tier == 1 and recipe.unlock_level <= 1:
+		# Drinks join only through the session's menu, once their station
+		# stands; a dish needing a station type no item provides (a croissant
+		# warmed at the coffee machine) waits for it the same way (FK-083).
+		if recipe.unlock_tier == 1 and recipe.unlock_level <= 1 and not recipe.is_drink() \
+				and not _needs_absent_station(recipe, sim.world):
 			sim.menu.append(recipe)
 	sim.stock = stock if stock != null else Stock.new()
 	if with_kitchen:
 		sim.kitchen = Kitchen.new(sim, content, sim.stock)
 	sim.start_day()
 	return sim
+
+
+## A recipe step at a station type this world has never placed. Worlds built
+## without any stations (customer-only fixtures) keep their full default menu.
+static func _needs_absent_station(recipe: RecipeDef, built: SimWorld) -> bool:
+	var stations: Dictionary[StringName, bool] = {}
+	for placed: PlacedItem in built.grid.items():
+		var definition: ItemDef = placed.def as ItemDef
+		if definition != null and definition.category == ItemDef.Category.STATION:
+			stations[definition.station_type] = true
+	if stations.is_empty():
+		return false
+	for step: RecipeStep in recipe.steps:
+		if step != null and not stations.has(step.station_type):
+			return true
+	return false
 
 
 ## Morning-only staffing changes retain existing people and the exact owner.
@@ -186,7 +209,7 @@ func start_day() -> void:
 	elif cleanliness != null:
 		cleanliness.tidy_overnight()
 	_staff_to_posts()
-	spawner.reset()
+	spawner.reset(arrival_rate())
 
 
 ## Each morning staff start at their posts, with nothing in hand.
@@ -375,6 +398,79 @@ func available_menu() -> Array[RecipeDef]:
 	return available
 
 
+## Today's available dishes of one order type, in menu order (FK-083).
+func available_of(order_type: StringName, available: Array[RecipeDef] = []) -> Array[RecipeDef]:
+	var source: Array[RecipeDef] = available if not available.is_empty() else available_menu()
+	var out: Array[RecipeDef] = []
+	for recipe: RecipeDef in source:
+		if recipe.order_type == order_type:
+			out.append(recipe)
+	return out
+
+
+## Today's available drinks of any kind, in menu order.
+func available_drinks() -> Array[RecipeDef]:
+	var out: Array[RecipeDef] = []
+	for recipe: RecipeDef in available_menu():
+		if recipe.is_drink():
+			out.append(recipe)
+	return out
+
+
+## The visit kinds a guest can come for right now, in RecipeDef.ORDER_TYPES
+## order. A menu with nothing available still offers food, so that guest
+## leaves "out of stock" exactly as before.
+## It reads today's menu and sold-out marks without refreshing them.
+func visit_kinds() -> Array[StringName]:
+	var kinds: Array[StringName] = []
+	for kind: StringName in RecipeDef.ORDER_TYPES:
+		for recipe: RecipeDef in menu:
+			if recipe != null and recipe.order_type == kind and not sold_out_today.has(recipe.id):
+				kinds.append(kind)
+				break
+	if kinds.is_empty():
+		kinds.append(RecipeDef.FOOD)
+	return kinds
+
+
+## Arrivals relative to the default rate at the current shop minute: exactly
+## 1.0 for a food-only menu at a full-weight hour (all default opening hours).
+func arrival_rate() -> float:
+	if visit_tuning == null or not visit_tuning.is_valid() or world == null:
+		return 1.0
+	return visit_tuning.arrival_rate(visit_kinds(), world.clock.display_minutes())
+
+
+## Where staff stand to take an order or hand over a meal or drink at a seat.
+## A stool facing a serve-across counter is served from the far side when
+## that cell is clear and connected; otherwise from the seat's neighbours.
+func service_cells(table_item_id: int, seat_cell: Vector2i) -> Array[Vector2i]:
+	var across: Vector2i = across_cell(table_item_id, seat_cell)
+	if across != SimGrid.NO_CELL:
+		return [across] as Array[Vector2i]
+	return world.grid.walkable_neighbours(seat_cell)
+
+
+## The cell behind a serve-across counter, opposite this seat, or NO_CELL.
+func across_cell(table_item_id: int, seat_cell: Vector2i) -> Vector2i:
+	var table: PlacedItem = world.grid.item(table_item_id)
+	var definition: ItemDef = table.def as ItemDef if table != null else null
+	if definition == null or not definition.serve_across or seat_cell == SimGrid.NO_CELL:
+		return SimGrid.NO_CELL
+	for direction: Vector2i in [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]:
+		var front: Vector2i = seat_cell + direction
+		if not table.cells.has(front):
+			continue
+		var behind: Vector2i = front + direction
+		# A stool on the far side is another guest's seat, not the bartender's spot.
+		if table.cells.has(behind) or table.seat_cells.has(behind):
+			continue
+		if world.grid.in_bounds(behind) and world.grid.is_walkable(behind) \
+				and not world.grid.edge_blocked(front, behind) and world.grid.is_reachable(seat_cell, behind):
+			return behind
+	return SimGrid.NO_CELL
+
+
 func _in_service() -> bool:
 	return kitchen != null and stock != null and world != null \
 		and (world.clock.phase == SimClock.Phase.OPEN or world.clock.phase == SimClock.Phase.LAST_ORDERS)
@@ -446,14 +542,24 @@ func add_customer(entry: Vector2i, random: RandomNumberGenerator, kind: Customer
 	return _install_customer(entry, random, kind)
 
 
+## A guest who came for `visit` (RecipeDef.FOOD, COFFEE or DRINKS; FK-083).
+## A food visit is exactly add_customer.
+func add_visitor(entry: Vector2i, random: RandomNumberGenerator, kind: CustomerType,
+		visit: StringName) -> CustomerAgent:
+	if visit == RecipeDef.FOOD:
+		return add_customer(entry, random, kind)
+	return _install_customer(entry, random, kind, true, visit)
+
+
 ## Party installation defers publication until every member has a shared visit.
 func _install_customer(entry: Vector2i, random: RandomNumberGenerator,
-		kind: CustomerType = null, publish: bool = true) -> CustomerAgent:
+		kind: CustomerType = null, publish: bool = true, visit: StringName = RecipeDef.FOOD) -> CustomerAgent:
 	if kind != null and not kind.is_valid():
 		return null
 	var customer: CustomerAgent = CustomerAgent.new(self, random)
 	if kind != null:
 		customer.configure_type(kind)
+	customer.set_visit_kind(visit, visit_tuning)
 	customer.cell = entry
 	# Only a real service arrival can dirty the floor or consume its stream.
 	if cleanliness != null and world.clock.phase == SimClock.Phase.OPEN:
@@ -483,7 +589,8 @@ func _publish_customer_arrival(customer: CustomerAgent) -> void:
 
 ## Members are installed in the same arrival tick and retain private RNGs.
 ## Singletons keep add_customer's exact path, including its signal order.
-func add_party(entry: Vector2i, randoms: Array[RandomNumberGenerator], kind: CustomerType = null) -> Party:
+func add_party(entry: Vector2i, randoms: Array[RandomNumberGenerator], kind: CustomerType = null,
+		visit: StringName = RecipeDef.FOOD) -> Party:
 	if randoms.is_empty() or randoms.size() > 4 or (kind != null and not kind.is_valid()):
 		return null
 	for random: RandomNumberGenerator in randoms:
@@ -492,15 +599,15 @@ func add_party(entry: Vector2i, randoms: Array[RandomNumberGenerator], kind: Cus
 	var ids: Array[int] = []
 	var guests: Array[CustomerAgent] = []
 	for random: RandomNumberGenerator in randoms:
-		var guest: CustomerAgent = _install_customer(entry, random, kind, false)
+		var guest: CustomerAgent = _install_customer(entry, random, kind, false, visit)
 		ids.append(guest.id)
 		guests.append(guest)
-	var visit: Party = Party.new(ids)
+	var group: Party = Party.new(ids)
 	for guest: CustomerAgent in guests:
-		guest.party = visit
+		guest.party = group
 	for guest: CustomerAgent in guests:
 		_publish_customer_arrival(guest)
-	return visit
+	return group
 
 
 ## Current guests in stable agent-id order.
@@ -519,6 +626,10 @@ func pay(customer: CustomerAgent, order: Order) -> void:
 	customer.paid = true
 	served_today += 1
 	customer_paid.emit(customer, order, order.price)
+	# A drink ordered with the meal is paid with it, once it reached the table.
+	var drink: Order = customer.extra_order
+	if drink != null and drink != order and drink.state == Order.State.DELIVERED:
+		customer_paid.emit(customer, drink, drink.price)
 
 
 ## Accounts for a departure once, including direct world removal and repeated cleanup.

@@ -176,6 +176,18 @@ func test_json_round_trip_preserves_full_integer_prices_without_float_rounding()
 	assert_eq(restored.price_of(definition), 4611686018427387904)
 
 
+## FK-083: a dish the save has no price for (a drink whose station staff
+## could not reach, so it was off the live menu) loads off at its standard
+## price instead of rejecting the whole save.
+func test_a_disabled_dish_missing_from_the_save_loads_off_at_its_standard_price() -> void:
+	var section: Dictionary = {"enabled": ["burger"], "prices": {"burger": "12", "grilled_cheese": "8"}}
+	assert_true(_menu.from_dict(section))
+	assert_false(_menu.is_enabled(&"tomato_soup"))
+	assert_eq(_menu.price_of(_menu.recipe(&"tomato_soup")), _menu.standard_price(&"tomato_soup"))
+	assert_false(_menu.from_dict({"enabled": ["burger", "tomato_soup"], "prices": {"burger": "12"}}),
+		"an enabled dish still needs its saved price")
+
+
 func test_invalid_save_shapes_ids_and_missing_prices_do_not_change_current_choices() -> void:
 	assert_true(_menu.set_enabled(&"burger", false))
 	assert_true(_menu.set_price(&"tomato_soup", 13))
@@ -192,7 +204,6 @@ func test_invalid_save_shapes_ids_and_missing_prices_do_not_change_current_choic
 		{"enabled": [12], "prices": valid_prices},
 		{"enabled": ["burger"], "prices": []},
 		{"enabled": ["burger"], "prices": {}},
-		{"enabled": ["burger"], "prices": {"burger": "12", "grilled_cheese": "8"}},
 		{"enabled": ["burger"], "prices": {"missing": "12", "grilled_cheese": "8", "tomato_soup": "9"}},
 		{"enabled": ["burger"], "prices": {&"burger": "12", "grilled_cheese": "8", "tomato_soup": "9"}}]
 	for section: Variant in invalid:
@@ -422,3 +433,22 @@ func _ids(definitions: Array[RecipeDef]) -> Array[StringName]:
 	for definition: RecipeDef in definitions:
 		result.append(definition.id)
 	return result
+
+
+func test_new_drinks_join_only_while_the_menu_has_room() -> void:
+	var food: Array[RecipeDef] = []
+	for index: int in range(5):
+		food.append(_recipe(StringName("dish_%d" % index), 10))
+	var menu: MenuSettings = MenuSettings.new(food)
+	assert_eq(menu.enabled_count(), 5)
+	assert_eq(menu.menu_limit(), 6)
+	var with_drinks: Array[RecipeDef] = food.duplicate()
+	for id: StringName in [&"drink_a", &"drink_b"]:
+		var drink: RecipeDef = _recipe(id, 3)
+		drink.order_type = RecipeDef.COFFEE
+		drink.section = RecipeDef.Section.DRINKS
+		with_drinks.append(drink)
+	assert_true(menu.set_catalogue(with_drinks))
+	assert_eq(menu.enabled_count(), 6, "the first new drink fills the last free place")
+	assert_true(menu.is_enabled(&"drink_a"))
+	assert_false(menu.is_enabled(&"drink_b"), "a full menu leaves the next drink off")

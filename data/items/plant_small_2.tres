@@ -20,4 +20,4 @@ quality_bonus = 0.0
 price = 20
 unlock_level = 2
 charm = 1
-theme_tags = Array[StringName]([&"modern"])
+theme_tags = Array[StringName]([&"modern", &"cafe"])

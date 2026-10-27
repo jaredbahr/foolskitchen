@@ -19,4 +19,4 @@ quality_bonus = 0.0
 price = 150
 unlock_level = 6
 charm = 3
-theme_tags = Array[StringName]([&"diner"])
+theme_tags = Array[StringName]([&"diner", &"bar"])
