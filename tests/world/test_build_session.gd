@@ -1101,6 +1101,10 @@ func _assert_catalogue_cards_match_data(state: Dictionary, content: ContentDB) -
 		wanted.append(String(definition.id))
 		if definition.view_scene != null and not wrappers.has(definition.view_scene.resource_path):
 			wrappers.append(definition.view_scene.resource_path)
+	# The Walls tab's Kenney piece previews share the same thumbnail cache.
+	for wall: WallKindDef in content.wall_kinds():
+		if wall.thumbnail_scene != null and not wrappers.has(wall.thumbnail_scene.resource_path):
+			wrappers.append(wall.thumbnail_scene.resource_path)
 	wanted.sort()
 	wrappers.sort()
 	var actual: Array[String] = []

@@ -1069,8 +1069,16 @@ static func _catalogue_content_expectations(content: ContentDB) -> Dictionary:
 			"unlock_level": definition.unlock_level, "scene": path})
 		if not path.is_empty() and not wrappers.has(path):
 			wrappers.append(path)
+	# The Walls tab (FK-070) previews its Kenney pieces in the same cache.
+	var wall_scenes: Array[String] = []
+	for wall: WallKindDef in content.wall_kinds():
+		var wall_path: String = wall.thumbnail_scene.resource_path if wall.thumbnail_scene != null else ""
+		if not wall_path.is_empty() and not wall_scenes.has(wall_path):
+			wall_scenes.append(wall_path)
+			if not wrappers.has(wall_path):
+				wrappers.append(wall_path)
 	wrappers.sort()
-	return {"cards": cards, "wrappers": wrappers}
+	return {"cards": cards, "wrappers": wrappers, "wall_scenes": wall_scenes}
 
 
 ## Read existing cache entries only: request() would queue missing thumbnails.
@@ -1179,7 +1187,7 @@ static func catalogue_review_evidence(main: Node, context_root: Node) -> Diction
 			"expected": expected["wrappers"].size(), "expected_scenes": expected["wrappers"], "cached_scenes": cached_scenes,
 			"active": cache._active_scene != null, "failed": cache._failed.size(),
 			"error": cache.last_error, "icons_match": icons_match},
-		"expected_cards": expected["cards"], "cards": cards, "onscreen_cards": onscreen, "tabs": tabs, "items": items,
+		"expected_cards": expected["cards"], "expected_wall_scenes": expected["wall_scenes"], "cards": cards, "onscreen_cards": onscreen, "tabs": tabs, "items": items,
 		"server": _catalogue_server_evidence(world, shop, main.get_node_or_null("CameraRig/Camera3D") as Camera3D),
 		"vibe": catalogue_vibe_evidence(main, world, content, editor, catalogue),
 		"generated_vibe_uids": generated_uid_evidence(VIBE_UID_SOURCES),
@@ -1412,6 +1420,9 @@ static func _catalogue_cards_valid(state: Dictionary) -> bool:
 		var scene: String = definition.get("scene", "")
 		if not scene.is_empty() and not wrappers.has(scene):
 			wrappers.append(scene)
+	for scene: Variant in state.get("expected_wall_scenes", []):
+		if not wrappers.has(String(scene)):
+			wrappers.append(String(scene))
 	wrappers.sort()
 	var cards: Array = state.get("cards", [])
 	if expected.is_empty() or cards.size() != expected.size():
