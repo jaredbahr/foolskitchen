@@ -402,6 +402,25 @@ func test_back_door_refuses_street_frontage_and_service_edits() -> void:
 	assert_eq(_cash, 1000)
 
 
+func test_person_walks_through_back_door_before_it_can_be_removed() -> void:
+	var world: SimWorld = _sim.world
+	var edge: Vector3i = _edge(13, 6, 0)
+	assert_true(_editor.apply_segments({edge: SimGrid.Segment.DOORWAY} as Dictionary[Vector3i, int]))
+	var person: SimAgent = SimAgent.new()
+	person.cell = Vector2i(13, 6)
+	world.add_agent(person)
+	assert_eq(_editor.check_segments({edge: SimGrid.Segment.NONE} as Dictionary[Vector3i, int]).why,
+		WallRules.CUT_PERSON, "cannot restore solid shell around someone")
+	assert_true(person.set_destination(world.grid, Vector2i(12, 6)))
+	for tick: int in 60:
+		if person.cell == Vector2i(12, 6):
+			break
+		person.step_move(world)
+	assert_eq(person.cell, Vector2i(12, 6), "actual movement crosses the shell edge")
+	assert_true(_editor.apply_segments({edge: SimGrid.Segment.NONE} as Dictionary[Vector3i, int]))
+	assert_false(world.grid.is_walkable(Vector2i(13, 6)))
+
+
 func test_delivery_falls_back_when_back_door_receiving_cell_is_blocked() -> void:
 	var grid: SimGrid = _sim.world.grid
 	assert_eq(WallRules.delivery_cell(grid), grid.entries()[0])
