@@ -77,6 +77,19 @@ The Tier 1 hole-in-the-wall: 1 door, 3 two-seat tables, 1 fridge, 1 prep counter
 - [ ] A UI art pass
 - [ ] Web build published for family and friends
 
+## Idea backlog (Jared liked these, 2026-10-27; scheduled after the designer core)
+Each is a `phase-later` issue. Pick from here when Phase 2's designer work is solid.
+- [ ] More sites run by managers (#164, D24)
+- [ ] Named regulars who remember your place (#166): the director's first pick
+- [ ] Street front and patio, with curb appeal and weather (#168)
+- [ ] Makeover jobs, renovating to a brief as career side jobs, needing a D7 amendment (#167)
+- [ ] Staff relationships and drama (#169)
+- [ ] Design extras: collection sets, lighting moods, staff room, blueprint codes (#170)
+- [ ] Food depth: signature dish, seasons and market, supplier choice (#171)
+- [ ] Visitors: disguised critic, health inspector, group bookings (#172)
+- [ ] Neighbourhood: rival, parody review and delivery apps, a changing area (#173)
+- [ ] Entertainment: jukebox, stage, games, weekly theme nights (#159)
+
 ## Later (D21): first person and mini-games
 - [ ] First-person walk mode as the owner (D12)
 - [ ] Mini-games, mainly for emergencies and clean-ups (a short first-person moment), maybe station games later
