@@ -229,7 +229,7 @@ static func _fryer_coffee(main: Node) -> bool:
 	var editor: ShopEditor = _free_editor(main)
 	if editor == null or not editor.buy(&"fryer", Vector2i(9, 3), 0) \
 			or not editor.buy(&"coffee_machine", Vector2i(12, 3), 0) \
-			or not editor.last_check.unreachable.is_empty():
+			or not _storage_shelves(editor) or not editor.last_check.unreachable.is_empty():
 		return false
 	return _finish(main, 11 * 60, 21 * 60, [&"burger", &"grilled_cheese", &"fries", &"coffee"],
 		[&"tea", &"tomato_soup"])

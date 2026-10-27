@@ -70,7 +70,9 @@ func test_starter_storage_holds_the_starter_order_with_headroom() -> void:
 	assert_eq(dry, 50, "bread, buns, soup stock and tomatoes on the shelves")
 	assert_true(fridge < space.capacity(StorageSpace.FRIDGE) and dry < space.capacity(StorageSpace.DRY))
 	for id: StringName in TUNING.station_stock:
-		assert_eq(int(_content.ingredient(id).storage), StorageSpace.DRY, "%s is a dry (shelf) ingredient" % id)
+		# Raw dough (FK-081 savoury pie) keeps cold; every other station supply is dry.
+		var expected: int = StorageSpace.FRIDGE if id == &"dough" else StorageSpace.DRY
+		assert_eq(int(_content.ingredient(id).storage), expected, "%s storage kind" % id)
 
 
 func test_capacity_is_per_kind_and_items_of_a_kind_add_up() -> void:

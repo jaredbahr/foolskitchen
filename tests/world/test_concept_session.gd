@@ -337,6 +337,8 @@ func test_fryer_and_oven_enable_only_their_food_and_show_named_reasons() -> void
 	assert_false(hints.has("Savoury pie: buy an oven."))
 	assert_true(main.call("menu_set_enabled", &"savoury_pie", true))
 	assert_eq(settings.enabled_count(), 5)
+	# FK-087: the starter pantry is small; the supplies need a storage shelf.
+	assert_true(main.call("shop_buy", &"storage_shelf", Vector2i(12, 1), 2))
 	assert_true(Clock.sim.start_service())
 	assert_eq(Economy.stock.count(&"potato"), TUNING.station_stock[&"potato"])
 	assert_eq(Economy.stock.count(&"oil"), TUNING.station_stock[&"oil"])
