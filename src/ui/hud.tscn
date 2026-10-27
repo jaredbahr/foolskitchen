@@ -166,6 +166,12 @@ max_value = 1.0
 show_percentage = false
 tooltip_text = "Owner level 1: 0 / 1 XP to next level"
 
+[node name="SoldOut" type="Label" parent="Top/Row"]
+visible = false
+layout_mode = 2
+mouse_filter = 1
+text = "Sold out"
+
 [node name="Plates" type="Label" parent="Top/Row"]
 layout_mode = 2
 mouse_filter = 1
@@ -187,6 +193,13 @@ layout_mode = 2
 focus_mode = 0
 text = "Staff"
 tooltip_text = "Hire staff and plan today's wages"
+
+[node name="Stock" type="Button" parent="Top/Row"]
+custom_minimum_size = Vector2(46, 46)
+layout_mode = 2
+focus_mode = 0
+text = "Stock"
+tooltip_text = "Check the fridge, buy ingredients and set auto-reorder"
 
 [node name="Settings" type="Button" parent="Top/Row"]
 custom_minimum_size = Vector2(46, 46)

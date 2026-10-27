@@ -81,10 +81,17 @@ func test_real_staff_cook_pass_deliver_eat_pay_and_bus() -> void:
 
 
 func test_out_of_stock_cancels_ticket_and_guest_with_same_reason() -> void:
-	# Removing just one required ingredient also proves take_many remains atomic.
-	assert_true(_sim.stock.take(&"beef_patty", 100))
 	var guest: CustomerAgent = _guest()
 	_sim.world.clock.start_service()
+	# An accepted ticket whose stock vanishes before the cook fetches it is
+	# still cancelled at the fridge. Removing just one required ingredient also
+	# proves take_many remains atomic.
+	for tick: int in range(3000):
+		_sim.advance()
+		if guest.order != null:
+			break
+	assert_not_null(guest.order)
+	assert_true(_sim.stock.take(&"beef_patty", 100))
 	_run(3000)
 	assert_not_null(guest.order)
 	if guest.order == null:
@@ -118,12 +125,11 @@ func test_default_create_has_real_kitchen_but_no_hidden_ingredients() -> void:
 	var guest: CustomerAgent = _guest()
 	_sim.world.clock.start_service()
 	_run(3000)
-	assert_not_null(guest.order)
-	if guest.order == null:
-		return
-	assert_eq(guest.order.state, Order.State.CANCELLED)
-	assert_eq(guest.order.cancellation_reason, &"out_of_stock")
+	# With an empty fridge every dish is sold out, so the guest leaves when
+	# asked for an order instead of placing a ticket the kitchen cannot cook.
+	assert_null(guest.order)
 	assert_eq(_left.get(guest.id, &""), &"out_of_stock")
+	assert_true(_sim.is_sold_out(&"burger"))
 	assert_eq(_sim.served_today, 0)
 	assert_eq(_sim.lost_today, 1)
 	for ingredient: IngredientDef in _content.ingredients():

@@ -10,6 +10,10 @@ extends SceneTree
 ##   --f3        show the scene's read-only debug overlay
 ##   --menu      show the real menu panel in MORNING (cannot combine with --open)
 ##   --staff     show the real morning Staff panel, paused, with no altered roster
+##   --stock     show the real morning Stock panel, paused. With --open, start a
+##               sold-out fixture (no soup stock, its auto-reorder off) and show
+##               the HUD Sold out tag; add --report to scroll the closed-day
+##               report to its Low stock section instead
 ##   --settings  open Main -> Menu -> Settings at the usual 1600x900 / 100%
 ##   --settings-world  use the gear, select 150%, keyboard Close, show the world
 ##   --hud-layout --window-size=1280x720|1600x900 --speed=0 --frames=12,90
@@ -91,6 +95,7 @@ var _owner_warmup_ticks: int = 0
 var _f3: bool = false
 var _menu: bool = false
 var _staff: bool = false
+var _stock: bool = false
 var _settings: bool = false
 var _settings_from_menu: bool = false
 var _settings_world: bool = false
@@ -177,6 +182,11 @@ func _initialize() -> void:
 				_fail_capture("--menu does not accept a value")
 				return
 			_menu = true
+		elif arg.begins_with("--stock"):
+			if arg != "--stock":
+				_fail_capture("--stock does not accept a value")
+				return
+			_stock = true
 		elif arg.begins_with("--staff"):
 			if arg != "--staff":
 				_fail_capture("--staff does not accept a value")
@@ -246,6 +256,14 @@ func _initialize() -> void:
 		return
 	if _staff and (_open or _fast != 0 or not _selection.is_empty() or _assign_owner or _f3 or _menu or _speed != 0):
 		_fail_capture("--staff requires a paused morning without other service/panel options")
+		return
+	if _stock and not _open and (_fast != 0 or not _selection.is_empty() or _assign_owner \
+			or _f3 or _menu or _staff or _speed != 0 or not _build.is_empty() or _paint):
+		_fail_capture("--stock requires a paused morning without other service/panel options, or --open")
+		return
+	if _stock and _open and (not _selection.is_empty() or _assign_owner or _f3 or _menu or _staff \
+			or not _build.is_empty() or _paint):
+		_fail_capture("--stock --open cannot combine with other view or panel options")
 		return
 	if _report_requested and (not _open or _fast <= 0 or _speed != 0 or _menu or _staff or not _build.is_empty()):
 		_fail_capture("--report requires a fast-forwarded, paused-clock service view")
@@ -1602,7 +1620,7 @@ static func hud_layout_options(arguments: PackedStringArray) -> Dictionary:
 				result["error"] = "--hud-layout requires --frames=12,90"
 		elif argument.begins_with("--scene") and argument != "--scene=res://src/world/main.tscn":
 			result["error"] = "--hud-layout requires the actual Main scene"
-		for prefix: String in ["--open", "--fast", "--select", "--assign-owner", "--f3", "--menu", "--staff", "--settings", "--report", "--build", "--paint", "--quarter", "--door-queue", "--loan-review", "--catalogue-review", "--milestone-review"]:
+		for prefix: String in ["--open", "--fast", "--select", "--assign-owner", "--f3", "--menu", "--staff", "--stock", "--settings", "--report", "--build", "--paint", "--quarter", "--door-queue", "--loan-review", "--catalogue-review", "--milestone-review"]:
 			if argument.begins_with(prefix):
 				result["error"] = "--hud-layout cannot combine with other view or service options"
 	if speed_count != 1 or frames_count != 1:
@@ -1620,6 +1638,14 @@ func _process(_delta: float) -> bool:
 			_fail_capture("viewport did not finish drawing the pending capture")
 		return _finished
 	_frames += 1
+	if _frames == 2 and _stock and _open:
+		# Explicit morning fixture: today's soup stock is gone and its
+		# auto-reorder is off, so the real service sells Tomato soup out.
+		var stock: Stock = root.get_node("Economy").get("stock") as Stock
+		if stock == null or not bool(_main.call("stock_set_auto", &"soup_stock", false)) \
+				or not stock.take(&"soup_stock", stock.count(&"soup_stock")):
+			_fail_capture("--stock --report could not prepare its sold-out fixture")
+			return true
 	if _frames == 3:
 		# Autoloads aren't compile-time identifiers in a --script main loop.
 		var clock: Node = root.get_node("Clock")
@@ -1671,6 +1697,10 @@ func _process(_delta: float) -> bool:
 			if not _main.has_method("set_staff_visible") or not bool(_main.call("set_staff_visible", true)):
 				_fail_capture("--staff requires the scene's morning staff API")
 				return true
+		if _stock and not _open:
+			if not _main.has_method("set_stock_visible") or not bool(_main.call("set_stock_visible", true)):
+				_fail_capture("--stock requires the scene's morning stock API")
+				return true
 		if _settings:
 			_configure_settings()
 			if _failed:
@@ -1687,6 +1717,8 @@ func _process(_delta: float) -> bool:
 			_configure_paint()
 			if _failed:
 				return true
+	if _stock and _report_requested:
+		_scroll_report_to_low_stock()
 	if _diner_review and _frames == 24:
 		_diner_fixture = DINER_REVIEW.furnish(_main, root, _diner_fixture)
 		if not String(_diner_fixture.get("error", "")).is_empty():
@@ -2265,6 +2297,23 @@ func _queue_capture() -> void:
 	RenderingServer.frame_post_draw.connect(_capture, CONNECT_ONE_SHOT)
 
 
+## Brings the closed-day report's Low stock heading to the top of its scroll.
+func _scroll_report_to_low_stock() -> void:
+	var scroll: ScrollContainer = _main.get_node_or_null("Overlay/EveningReport/Panel/Scroll") as ScrollContainer
+	var heading: Control = _main.get_node_or_null("Overlay/EveningReport/Panel/Scroll/Content/LowStockHeading") as Control
+	if scroll != null and heading != null and scroll.is_visible_in_tree():
+		scroll.scroll_vertical = int(heading.position.y)
+
+
+func _low_stock_visible(world: SimWorld) -> bool:
+	var scroll: ScrollContainer = _main.get_node_or_null("Overlay/EveningReport/Panel/Scroll") as ScrollContainer
+	var heading: Control = _main.get_node_or_null("Overlay/EveningReport/Panel/Scroll/Content/LowStockHeading") as Control
+	var report: DayReport = _main.get("shown_report") as DayReport
+	return world != null and world.clock.phase == SimClock.Phase.CLOSED and report != null \
+		and scroll != null and heading != null and scroll.is_visible_in_tree() \
+		and scroll.get_global_rect().encloses(heading.get_global_rect())
+
+
 func _capture() -> void:
 	if _finished or _failed or not _capture_pending:
 		return
@@ -2319,8 +2368,21 @@ func _capture() -> void:
 			or world.now != 0 or not _staff_capture_valid(staff_state)):
 		_fail_capture("requested Staff panel did not show the real paused morning roster and pool")
 		return
-	if _report_requested and not _report_capture_valid(world):
+	if _report_requested and not _stock and not _report_capture_valid(world):
 		_fail_capture("requested report did not show visible native reviews after service closed")
+		return
+	var stock_visible: Variant = _main.call("is_stock_visible") if _main.has_method("is_stock_visible") else null
+	if _stock and not _open and (stock_visible != true or world == null \
+			or world.clock.phase != SimClock.Phase.MORNING or world.now != 0):
+		_fail_capture("requested Stock panel was not visible in the paused morning frame")
+		return
+	if _stock and _report_requested and not _low_stock_visible(world):
+		_fail_capture("requested report did not show its Low stock section after service closed")
+		return
+	var sold_out_tag: Label = _main.get_node_or_null("HUD/Top/Row/SoldOut") as Label
+	if _stock and _open and not _report_requested and (world == null or world.clock.phase == SimClock.Phase.CLOSED \
+			or sold_out_tag == null or not sold_out_tag.is_visible_in_tree()):
+		_fail_capture("requested service view did not show the HUD Sold out tag")
 		return
 	var paint: Dictionary = _paint_state() if _paint else {}
 	if _paint and (paint.get("active") != true or paint.get("catalogue_visible") != true \
@@ -2437,6 +2499,10 @@ func _capture() -> void:
 		"requested_debug_visible": _f3,
 		"requested_menu_visible": _menu, "menu_visible": menu_visible,
 		"requested_staff_visible": _staff, "staff": staff_state,
+		"requested_stock": _stock, "stock_visible": stock_visible,
+		"sold_out_tag": sold_out_tag.text if sold_out_tag != null and sold_out_tag.is_visible_in_tree() else "",
+		"low_stock": (_main.get("shown_report") as DayReport).low_stock
+			if _stock and _report_requested and _main.get("shown_report") != null else [],
 		"requested_report": _report_requested,
 		"report_review_count": (_main.get("shown_report") as DayReport).review_cards.size()
 			if _report_requested else 0,

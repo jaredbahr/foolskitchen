@@ -254,7 +254,7 @@ an active edit/panel/selection first, or opens Settings when none is active.
 - `main.tscn` is the game session for one shop. It builds a `RestaurantSim` from the layout and content, and points `sim.stock` at `Economy.stock`.
 - `Clock.attach_world(world, sim.advance)` makes every tick run the restaurant (guests, staff, and the kitchen once it lands).
 - **Day loop:**
-  - **MORNING:** `sim.start_day()`, the fridge is topped up to `EconomyTuning.morning_stock` (bought through `Economy.buy_ingredient`), then autosave.
+  - **MORNING:** `sim.start_day()`, expired batches are removed (`Stock.expire`), the morning auto-order tops the fridge up (see 2.3i), then autosave.
   - **CLOSED:** wages per staff role and rent are charged through the ledger, automatic loans settle, then the evening report shows a `DayReport` built from `Ledger.day_totals` and the sim's counters.
   - **"Next day"** (in the report or the HUD) calls `Clock.sim.next_day()`, which returns to MORNING.
 - Money numbers live in `data/balance/*.tres` (`EconomyTuning`).
@@ -944,6 +944,50 @@ releases the old dressing. Dressing adds no lights, simulation cells, collision,
 random draws or saved state; functional lamps remain the separate lamp issue.
 The floor shader adds a subtle multiplicative plank pattern while retaining its
 existing paint colour and camera-controlled build-grid parameters.
+
+### 2.3i Stock panel, auto-reorder and sold-out dishes (FK-033, #54)
+- `ReorderSettings` (`src/sim/economy/reorder_settings.gd`) holds `{enabled, target}`
+  per ingredient. Defaults are enabled with `EconomyTuning.morning_stock` targets,
+  whose key order is the fixed buying order. It is saved in the `reorder` section
+  (`{"version": 1, "ingredients": {id: {enabled, target}}}`) at the morning autosave
+  only; restore stages a candidate installed after a complete morning load. A save
+  without the section uses the defaults; unknown ids are ignored.
+- **Morning order:** `ReorderSettings.plan(stock, unit_costs, cash, premium)` tops
+  enabled ingredients up to target. The premium applies once to the order total:
+  `auto_cost = ceil(list_total * (1 + auto_reorder_premium))` (tier 1: 0.05), in integer basis
+  points (at 0.10, 10 x $1 = $11). With short cash each ingredient in the fixed order gets as
+  many units as still fit, the partial order priced as its own total; the rest is
+  logged and nothing is borrowed. `Economy.buy_auto_order` records each line at list
+  price plus one `auto_reorder_premium` ingredients entry. Main's
+  `auto_reorder_premium` mirrors the tuning (tests not about pricing may set 0).
+- **Expiry:** `_begin_morning()` calls `Stock.expire(day, shelf lives)` before the
+  order; `Stock.expiring_on(day)` previews it. "Expire tomorrow" means removed at the
+  next morning. Reloading the same morning removes nothing more.
+- **Stock panel** (`src/ui/stock_panel.gd`, HUD basket button): MORNING only, request
+  signals to Main (`stock_buy` +1/+5 at list price, `stock_set_auto`,
+  `stock_set_target`). Rows carry display names only; notes report this morning's
+  order (read back from the day's ledger: lines noted `auto_reorder:<id>` plus the
+  `auto_reorder_premium` entry, so a reloaded morning still shows it), cash
+  shortfalls (re-planned on reload) and thrown-out stock (not kept: after a reload
+  of the same morning that note is gone, since nothing is thrown out twice).
+  The first load of a save from before expiry removes everything already past its
+  shelf life once.
+- **Sold out:** during OPEN/LAST_ORDERS `RestaurantSim.refresh_sold_out()` (each tick
+  and before every order) latches a menu dish for the rest of the day once the
+  fridge itself cannot cover it (stock only falls during service). `available_menu()`
+  also holds back, without latching, dishes whose last portions are promised to
+  accepted tickets (`Kitchen.committed_ingredients()`, cook not yet at the fridge);
+  a cancelled ticket returns them. `stock_outs_today` records
+  `{ingredient, minute, dishes}`, the minute continuing past closing time during
+  last orders (`service_minute()`). Guests draw once over `available_menu()`
+  (unchanged stream while nothing is sold out; the same single draw over the shorter
+  list afterwards) and leave with `out_of_stock` only when it is empty. A ticket
+  cancelled at the fridge still cancels as before. The HUD shows a "Sold out" chip
+  during service.
+- **Report:** `DayReport.low_stock` holds `StockAlerts` sentences: each ingredient
+  that sold dishes out (with the time), then tomorrow's forecast (tonight's expiry,
+  then the order planned with tonight's cash): expiring units, ingredients the order
+  will not cover (switched off or short of cash) and the order's cost.
 
 ### 2.4 Save system
 - JSON in `user://saves/`, with a `version` field and migration functions per version.

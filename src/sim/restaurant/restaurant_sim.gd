@@ -63,6 +63,11 @@ var _vibe_result: VibeModel.Result = VibeModel.Result.new()
 var staff_spawns: Dictionary[StringName, Vector2i] = {}
 
 var _departed: Dictionary[int, bool] = {}
+## Dishes that ran out during today's service; they stay sold out until morning.
+var sold_out_today: Dictionary[StringName, bool] = {}
+## Ingredients that sold dishes out today, in the order it happened:
+## {ingredient: StringName, minute: int (display clock), dishes: Array[StringName]}.
+var stock_outs_today: Array[Dictionary] = []
 
 
 ## Builds the layout, its starting staff, and its tier-one menu.
@@ -168,6 +173,8 @@ func start_day() -> void:
 	lost_today = 0
 	leave_reasons_today.clear()
 	reviews_today.clear()
+	sold_out_today.clear()
+	stock_outs_today.clear()
 	reputation_before_day = review_book.average()
 	review_book.begin_day()
 	_departed.clear()
@@ -201,6 +208,7 @@ func advance() -> void:
 	world.advance()
 	if kitchen != null:
 		kitchen.advance()
+	refresh_sold_out()
 	spawner.advance(self)
 	for customer: CustomerAgent in customers():
 		if world.clock.phase == SimClock.Phase.CLOSED:
@@ -330,6 +338,85 @@ static func _vibe_patience(budget: int, multiplier: float, tuning: VibeTuning = 
 	if scaled >= float(9223372036854775807):
 		return 9223372036854775807
 	return roundi(scaled)
+
+
+## Latches every menu dish the fridge itself can no longer cover. Stock only
+## falls during service, so this lasts for the day. Only a real kitchen's
+## service changes it: morning buying can still refill the fridge.
+func refresh_sold_out() -> void:
+	if not _in_service():
+		return
+	for recipe: RecipeDef in menu:
+		if recipe == null or sold_out_today.has(recipe.id):
+			continue
+		var short: StringName = _short_ingredient(recipe, {})
+		if not short.is_empty():
+			_mark_sold_out(recipe.id, short)
+
+
+func is_sold_out(recipe_id: StringName) -> bool:
+	return sold_out_today.has(recipe_id)
+
+
+## Today's menu without dishes that cannot be cooked for a new guest: the
+## sold-out ones, and for now those whose last portions are promised to
+## accepted tickets. A promised portion returns if its ticket is cancelled
+## before the cook fetches it, so that dish is only held back, not sold out.
+func available_menu() -> Array[RecipeDef]:
+	refresh_sold_out()
+	var committed: Dictionary[StringName, int] = {}
+	if _in_service():
+		committed = kitchen.committed_ingredients()
+	var available: Array[RecipeDef] = []
+	for recipe: RecipeDef in menu:
+		if recipe != null and not sold_out_today.has(recipe.id) \
+				and (committed.is_empty() or _short_ingredient(recipe, committed).is_empty()):
+			available.append(recipe)
+	return available
+
+
+func _in_service() -> bool:
+	return kitchen != null and stock != null and world != null \
+		and (world.clock.phase == SimClock.Phase.OPEN or world.clock.phase == SimClock.Phase.LAST_ORDERS)
+
+
+## The first ingredient, in recipe order, that stock less `reserved` lacks.
+func _short_ingredient(recipe: RecipeDef, reserved: Dictionary[StringName, int]) -> StringName:
+	var needs: Dictionary[StringName, int] = {}
+	var order: Array[StringName] = []
+	for ingredient: IngredientDef in recipe.ingredients:
+		if ingredient == null:
+			continue
+		if not needs.has(ingredient.id):
+			order.append(ingredient.id)
+		needs[ingredient.id] = needs.get(ingredient.id, 0) + 1
+	for id: StringName in order:
+		if stock.count(id) - reserved.get(id, 0) < needs[id]:
+			return id
+	return &""
+
+
+## The shop clock as a minute of the day, continuing past closing time while
+## last orders run (the HUD clock stops at closing).
+func service_minute() -> int:
+	var clock: SimClock = world.clock
+	if clock.phase != SimClock.Phase.LAST_ORDERS:
+		return clock.display_minutes()
+	var span: int = clock.display_close_minute - clock.display_open_minute
+	return clock.display_close_minute + floori(float(clock.phase_tick) * float(span) / float(maxi(clock.open_ticks, 1)))
+
+
+func _mark_sold_out(recipe_id: StringName, ingredient_id: StringName) -> void:
+	sold_out_today[recipe_id] = true
+	for event: Dictionary in stock_outs_today:
+		if event["ingredient"] == ingredient_id:
+			(event["dishes"] as Array[StringName]).append(recipe_id)
+			world.log_event("%s sold out" % recipe_id)
+			return
+	var dishes: Array[StringName] = [recipe_id]
+	stock_outs_today.append({"ingredient": ingredient_id,
+		"minute": service_minute(), "dishes": dishes})
+	world.log_event("%s ran out: %s sold out" % [ingredient_id, recipe_id])
 
 
 ## Missing overrides use the unchanged content price.

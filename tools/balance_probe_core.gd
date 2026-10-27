@@ -65,8 +65,8 @@ static func run_cli(tree: SceneTree, args: PackedStringArray) -> int:
 	var lines: PackedStringArray = PackedStringArray()
 	lines.append("Godot: %s" % str(Engine.get_version_info().get("string", "unknown")))
 	lines.append("Git SHA: %s" % _git_sha())
-	lines.append("| Set-up | Seed | Arrivals | Served | Lost (top 2 reasons) | Sales | Wages | Rent | Ingredients | Profit | Ending cash | Owner XP | Final level | Level days |")
-	lines.append("|---|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---|")
+	lines.append("| Set-up | Seed | Arrivals | Served | Lost (top 2 reasons) | Sales | Wages | Rent | Ingredients | Profit | Ending cash | Owner XP | Final level | Level days | Out of stock |")
+	lines.append("|---|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|")
 	var staff_lines: PackedStringArray = PackedStringArray()
 	var summary_lines: PackedStringArray = PackedStringArray()
 	var observe_staff: bool = options["staff_growth"] or options["auto_accept_raises"]
@@ -317,14 +317,15 @@ static func _add_stats(target: Dictionary, source: Dictionary) -> void:
 
 static func _format_row(setup_name: String, seed_label: String, stats: Dictionary,
 		divisor: int) -> String:
-	return "| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |" % [
+	return "| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |" % [
 		setup_name, seed_label, _number(int(stats["arrivals"]), divisor),
 		_number(int(stats["served"]), divisor), _lost_text(stats, divisor),
 		_number(int(stats["sales"]), divisor), _number(int(stats["wages"]), divisor),
 		_number(int(stats["rent"]), divisor), _number(int(stats["ingredients"]), divisor),
 		_number(int(stats["profit"]), divisor), _number(int(stats["cash"]), divisor),
 		_number(int(stats["owner_xp"]), divisor), _number(int(stats["owner_level"]), divisor),
-		_level_days_text(stats) if divisor == 1 else "see seeds"]
+		_level_days_text(stats) if divisor == 1 else "see seeds",
+		_number(int((stats["reasons"] as Dictionary).get(&"out_of_stock", 0)), divisor)]
 
 
 static func _level_days_text(stats: Dictionary) -> String:

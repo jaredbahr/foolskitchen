@@ -485,7 +485,7 @@ func test_native_pause_click_and_physical_space_keep_one_speed_selection() -> vo
 
 func test_every_header_button_has_readable_content_and_tooltip() -> void:
 	for name: String in ["Speed0", "Speed1", "Speed2", "Speed4", "Walls", "Build", "Paint",
-			"Context", "Menu", "Staff", "Settings"]:
+			"Context", "Menu", "Stock", "Staff", "Settings"]:
 		var button: Button = _control(name) as Button
 		assert_true(button.icon != null or not button.text.is_empty(), name + " has readable content")
 		assert_false(button.tooltip_text.is_empty(), name + " explains its action")
@@ -620,7 +620,7 @@ func _assert_header_layout(window: Window, context_visible: bool = true) -> void
 		"the native gear minimum uses the 28px icon instead of its 100px source texture")
 	var occupied: Array[Rect2] = []
 	for name: String in ["Day", "Time", "Phase", "Speed0", "Speed1", "Speed2", "Speed4",
-			"Walls", "Build", "Paint", "Cash", "Reputation", "OwnerProgress", "Plates", "Context", "Menu", "Staff", "Settings"]:
+			"Walls", "Build", "Paint", "Cash", "Reputation", "OwnerProgress", "Plates", "Context", "Menu", "Stock", "Staff", "Settings"]:
 		var control: Control = _control(name)
 		if name == "Context" and not context_visible:
 			assert_false(control.is_visible_in_tree(), "the hidden service action releases its layout space")
@@ -659,7 +659,7 @@ func _assert_one_row_when_native_content_fits() -> void:
 	var required_width: float = 24.0 * 2.0
 	var visible_count: int = 0
 	for name: String in ["Day", "Time", "Phase", "Speed0", "Speed1", "Speed2", "Speed4", "Cash",
-			"Reputation", "OwnerProgress", "Plates", "Walls", "Build", "Paint", "Context", "Menu", "Staff", "Settings"]:
+			"Reputation", "OwnerProgress", "Plates", "Walls", "Build", "Paint", "Context", "Menu", "Stock", "Staff", "Settings"]:
 		var control: Control = _control(name)
 		if control.visible:
 			required_width += control.get_combined_minimum_size().x
@@ -675,7 +675,7 @@ func _assert_one_row_when_native_content_fits() -> void:
 	# Labels shrink to their text height and center within the native flow line.
 	# Check a shared row band and order rather than requiring equal top edges.
 	for name: String in ["Day", "Time", "Phase", "Speed0", "Speed1", "Speed2", "Speed4", "Cash",
-			"Reputation", "OwnerProgress", "Plates", "Walls", "Build", "Paint", "Context", "Menu", "Staff", "Settings"]:
+			"Reputation", "OwnerProgress", "Plates", "Walls", "Build", "Paint", "Context", "Menu", "Stock", "Staff", "Settings"]:
 		var rect: Rect2 = _control(name).get_global_rect()
 		assert_true(rect.position.x >= previous_end - 0.01, "a fitting row keeps " + name + " in left-to-right group order")
 		previous_end = rect.end.x
@@ -699,8 +699,8 @@ func _assert_build_hint_layout(window: Window) -> void:
 func _assert_three_groups() -> void:
 	var groups: Array[Array] = [
 		["Day", "Time", "Phase", "Speed0", "Speed1", "Speed2", "Speed4"],
-		["Cash", "Loan", "Reputation", "OwnerProgress", "Plates"],
-		["Walls", "Build", "Paint", "Context", "Menu", "Staff", "Settings"],
+		["Cash", "Loan", "Reputation", "OwnerProgress", "Plates", "SoldOut"],
+		["Walls", "Build", "Paint", "Context", "Menu", "Stock", "Staff", "Settings"],
 	]
 	var bounds: Array[Rect2] = []
 	for names: Array in groups:
