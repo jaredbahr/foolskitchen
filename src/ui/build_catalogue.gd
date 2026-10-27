@@ -339,6 +339,8 @@ func _refresh_wall_cards() -> void:
 		row.move_child(button, row.get_child_count() - 1)
 		button.text = "%s\n%s" % [definition.display_name, Fmt.money(definition.price)]
 		button.tooltip_text = "Build %s for %s each" % [definition.display_name.to_lower(), Fmt.money(definition.price)]
+		if definition.segment == SimGrid.Segment.DOORWAY:
+			button.tooltip_text += ". On a back or side outside wall, this makes a back door"
 		button.icon = _thumbnails.request(definition.thumbnail_scene)
 
 

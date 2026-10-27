@@ -469,8 +469,10 @@ func _wall_is_lowered(cell: Vector2i) -> bool:
 
 func _apply_wall_heights() -> void:
 	var sill: float = segment_view.window_span().x if segment_view != null else WALL_HEIGHT
+	var doors: Dictionary[Vector2i, Vector2i] = WallSegmentView.shell_door_cells(world.grid) if world != null else {}
 	for cell: Vector2i in _wall_nodes:
 		var wall: MeshInstance3D = _wall_nodes[cell]
+		wall.visible = not doors.has(cell)
 		var lowered: bool = _wall_is_lowered(cell)
 		var height: float = LOWERED_HEIGHT if lowered else WALL_HEIGHT
 		# A raised shell window keeps only its sill in the cell box; the

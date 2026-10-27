@@ -6,15 +6,17 @@ extends RefCounted
 ## Edges come in two kinds, both computed from terrain each time, never stored:
 ## - interior: FLOOR on both sides. Wall, doorway or window.
 ## - outer face: FLOOR on one side, a shell WALL cell on the other with the
-##   street/outside (or the grid border) beyond it. Window only; "removing"
+##   street/outside (or the grid border) beyond it. Window or back doorway; "removing"
 ##   it restores the solid shell. Its side is the direction from the floor
-##   into the wall. At least one face per side stays solid.
+##   into the wall. Back doors exclude the street-facing side. At least one
+##   face per side stays solid.
 ## Because this is derived from terrain, an expansion that turns shell cells
 ## into floor turns their faces' windows into interior windows automatically.
 
 const NOT_INSIDE: String = "Walls must stand inside the shop"
 const DOOR_FIXED: String = "The street door stays as it is"
-const OUTER_WINDOW_ONLY: String = "Only windows fit in an outside wall"
+const OUTER_WINDOW_ONLY: String = "Choose a window or a back door for an outside wall"
+const BACK_OR_SIDE: String = "Back doors go on the back or side of the shop"
 const THROUGH_FURNITURE: String = "A wall can't cut through furniture"
 const BLOCKS_ACCESS: String = "That would block a work spot"
 const KEEP_SOLID_SIDE: String = "Keep some solid wall on every side"
@@ -71,6 +73,39 @@ static func door_cells(grid: SimGrid) -> Dictionary[Vector2i, bool]:
 	return cells
 
 
+## A delivery entrance must face away from the street frontage. Derived from
+## entry terrain, so rotated layouts and floor expansions keep their identity.
+static func back_door_side(grid: SimGrid, edge: Vector3i) -> Vector2i:
+	var side: Vector2i = outer_side(grid, edge)
+	if side == Vector2i.ZERO:
+		return Vector2i.ZERO
+	for entry: Vector2i in grid.entries():
+		if grid.terrain(entry - side) == SimGrid.Terrain.FLOOR:
+			return Vector2i.ZERO
+	return side
+
+
+## Receiving cell inside a reachable back door, or the existing street entry.
+## No RNG, new customer spawn points or stock mutation. A target lets carrying
+## choose an entrance from which its storage can actually be reached.
+static func delivery_cell(grid: SimGrid, target: Vector2i = SimGrid.NO_CELL) -> Vector2i:
+	var reach: Dictionary[Vector2i, bool] = reachable(grid)
+	for edge: Vector3i in grid.segment_edges():
+		if grid.segment(edge) != SimGrid.Segment.DOORWAY:
+			continue
+		var side: Vector2i = back_door_side(grid, edge)
+		if side == Vector2i.ZERO:
+			continue
+		for cell: Vector2i in SimGrid.edge_cells(edge):
+			if grid.terrain(cell) == SimGrid.Terrain.FLOOR and reach.has(cell) \
+					and (target == SimGrid.NO_CELL or not grid.find_path(cell, target).is_empty()):
+				return cell
+	for entry: Vector2i in grid.entries():
+		if grid.is_walkable(entry) and (target == SimGrid.NO_CELL or not grid.find_path(entry, target).is_empty()):
+			return entry
+	return SimGrid.NO_CELL
+
+
 ## Why `kind` cannot stand on `edge` (geometry only), or "" when it can.
 static func edge_problem(grid: SimGrid, edge: Vector3i, kind: SimGrid.Segment) -> String:
 	if not grid.edge_in_bounds(edge):
@@ -89,6 +124,8 @@ static func edge_problem(grid: SimGrid, edge: Vector3i, kind: SimGrid.Segment) -
 				return THROUGH_FURNITURE
 		return ""
 	if outer_side(grid, edge) != Vector2i.ZERO:
+		if kind == SimGrid.Segment.DOORWAY:
+			return "" if back_door_side(grid, edge) != Vector2i.ZERO else BACK_OR_SIDE
 		return "" if kind == SimGrid.Segment.WINDOW else OUTER_WINDOW_ONLY
 	return NOT_INSIDE
 
@@ -106,7 +143,7 @@ static func layout_problem(grid: SimGrid) -> String:
 			if side == Vector2i.ZERO:
 				continue
 			faces[side] = faces.get(side, 0) + 1
-			if grid.segment(edge) == SimGrid.Segment.WINDOW:
+			if grid.segment(edge) in [SimGrid.Segment.WINDOW, SimGrid.Segment.DOORWAY]:
 				windows[side] = windows.get(side, 0) + 1
 	for side: Vector2i in windows:
 		if windows[side] >= faces[side]:

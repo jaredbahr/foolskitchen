@@ -1,6 +1,18 @@
 # Fool's Kitchen: Technical Plan
 
 ## 1. Engine
+
+**Visible delivery foundation (FK-099, #187):** Build's Doorway tool can put
+a back door on an outer face at the back or side, using the existing saved
+doorway segment kind and price. It opens that shell cell without changing
+terrain or customer entry cells. Removing it restores the wall; floor edits
+derive its new role again. `WallRules.delivery_cell(grid, target)` returns a
+reachable inside receiving cell, with stable segment-order choice and a
+street-entry fallback. It returns `NO_CELL` when neither route reaches the
+target. This is the entrance foundation only: accepted instant morning orders,
+daytime delivery scheduling, paid pending orders, stock and capacities remain
+unchanged. Delivery people, crates and staff carrying are the remaining #187
+integration, and must be tested through actual queued tasks and execution.
 - **Godot 4.7.2 stable** (pinned 2026-10-23). It's recorded here, in `AGENTS.md` and in `tools/godot_version.txt`. Don't upgrade mid-phase. Upgrades are their own issue.
 - **Language:** GDScript with static typing everywhere (`var x: int`, typed function signatures). No C#: it keeps one toolchain and avoids the .NET export setup.
 - **Renderer:** Compatibility (OpenGL). Godot's web export only supports this renderer. It runs on older family laptops, and low-poly flat shading doesn't need Forward+ effects. It can be switched to Forward+ later for a Steam build, but lighting and shaders would need a retune.

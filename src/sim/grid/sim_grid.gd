@@ -223,6 +223,8 @@ func set_terrains(changes: Dictionary[Vector2i, int]) -> bool:
 	touched.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return a.y < b.y or (a.y == b.y and a.x < b.x))
 	for cell: Vector2i in touched:
 		_refresh_cell(cell)
+	_refresh_shell_doors(touched)
+	for cell: Vector2i in touched:
 		for edge: Vector3i in cell_edges(cell):
 			_refresh_edge(edge)
 	_refresh_dining_seats()
@@ -245,10 +247,13 @@ func set_terrain(cell: Vector2i, t: Terrain) -> bool:
 	else:
 		_entries.erase(cell)
 	_refresh_cell(cell)
-	for edge: Vector3i in cell_edges(cell):
-		_refresh_edge(edge)
+	var touched: Array[Vector2i] = [cell]
+	_refresh_shell_doors(touched)
+	for changed: Vector2i in touched:
+		for edge: Vector3i in cell_edges(changed):
+			_refresh_edge(edge)
 	_refresh_dining_seats()
-	cells_changed.emit([cell] as Array[Vector2i])
+	cells_changed.emit(touched)
 	return true
 
 
@@ -644,12 +649,36 @@ func _footprint_cells(footprint: Vector2i, origin: Vector2i, quarter_turns: int)
 
 func _refresh_cell(cell: Vector2i) -> void:
 	var t := terrain(cell)
-	var blocked := t == Terrain.WALL or t == Terrain.OUTSIDE
+	var blocked := (t == Terrain.WALL and not _shell_door(cell)) or t == Terrain.OUTSIDE
 	var id: int = _cover.get(cell, 0)
 	if id != 0 and (_items[id].solid or _items[id].blocking_cells.has(cell)):
 		blocked = true
 	_astar.set_point_solid(cell, blocked)
 	_edge_astar.set_point_solid(cell, blocked)
+
+
+## A doorway opens its shell cell without turning it into purchasable floor
+## or a customer entry. Its removal restores the wall from saved terrain.
+func _shell_door(cell: Vector2i) -> bool:
+	if terrain(cell) != Terrain.WALL:
+		return false
+	for edge: Vector3i in cell_edges(cell):
+		if segment(edge) == Segment.DOORWAY and WallRules.back_door_side(self, edge) != Vector2i.ZERO:
+			return true
+	return false
+
+
+## Terrain edits can turn an exterior door into an interior doorway (or close
+## its approach). Refresh derived wall solidity as well as edited floor cells.
+func _refresh_shell_doors(touched: Array[Vector2i]) -> void:
+	for edge: Vector3i in segment_edges():
+		if segment(edge) != Segment.DOORWAY:
+			continue
+		for cell: Vector2i in edge_cells(edge):
+			var was: bool = is_walkable(cell)
+			_refresh_cell(cell)
+			if was != is_walkable(cell) and not touched.has(cell):
+				touched.append(cell)
 
 
 ## The plain engine search while no interior segment exists, so a shop without
@@ -738,18 +767,7 @@ func segment(edge: Vector3i) -> Segment:
 ## may stand belong to WallRules; this only refuses malformed edges. Emits
 ## cells_changed with both cells when the edge changes.
 func set_segment(edge: Vector3i, kind: Segment) -> bool:
-	if not edge_in_bounds(edge) or kind < Segment.NONE or kind > Segment.WINDOW:
-		return false
-	if segment(edge) == kind:
-		return true
-	if kind == Segment.NONE:
-		_segments.erase(edge)
-	else:
-		_segments[edge] = kind
-	_refresh_edge(edge)
-	_refresh_dining_seats()
-	cells_changed.emit(edge_cells(edge))
-	return true
+	return set_segments({edge: kind} as Dictionary[Vector3i, int])
 
 
 ## Applies several segment changes (edge -> Segment) with one cells_changed
@@ -774,6 +792,11 @@ func set_segments(changes: Dictionary[Vector3i, int]) -> bool:
 				touched.append(cell)
 	if touched.is_empty():
 		return true
+	for cell: Vector2i in touched:
+		_refresh_cell(cell)
+	for cell: Vector2i in touched:
+		for edge: Vector3i in cell_edges(cell):
+			_refresh_edge(edge)
 	_refresh_dining_seats()
 	cells_changed.emit(touched)
 	return true
@@ -807,7 +830,7 @@ func _refresh_edge(edge: Vector3i) -> void:
 		inside = true
 		for cell: Vector2i in edge_cells(edge):
 			var t: Terrain = terrain(cell)
-			if t != Terrain.FLOOR and t != Terrain.ENTRY:
+			if t != Terrain.FLOOR and t != Terrain.ENTRY and not _shell_door(cell):
 				inside = false
 	if inside:
 		_edge_occupied[edge] = true

@@ -373,6 +373,77 @@ func test_outer_windows_follow_the_shell_rules() -> void:
 
 # --- Saves -------------------------------------------------------------------
 
+func test_back_door_opens_shell_without_changing_customer_entries() -> void:
+	var grid: SimGrid = _sim.world.grid
+	var east: Vector3i = _edge(13, 6, 0)
+	var entries: Array[Vector2i] = grid.entries()
+	assert_false(grid.is_walkable(Vector2i(13, 6)))
+	assert_eq(_editor.next_segment(east, SimGrid.Segment.DOORWAY), SimGrid.Segment.DOORWAY)
+	assert_true(_editor.apply_segments({east: SimGrid.Segment.DOORWAY} as Dictionary[Vector3i, int]), _editor.last_check.why)
+	assert_eq(_cash, 985, "same data-defined doorway price")
+	assert_true(grid.is_walkable(Vector2i(13, 6)))
+	assert_false(grid.find_path(Vector2i(13, 6), Vector2i(8, 8)).is_empty())
+	assert_eq(grid.entries(), entries, "guests continue to use the street")
+	assert_eq(WallRules.delivery_cell(grid, Vector2i(8, 8)), Vector2i(12, 6))
+	assert_eq(_editor.next_segment(east, SimGrid.Segment.DOORWAY), SimGrid.Segment.NONE)
+	assert_true(_editor.apply_segments({east: SimGrid.Segment.NONE} as Dictionary[Vector3i, int]))
+	assert_false(grid.is_walkable(Vector2i(13, 6)), "removing the door restores its solid shell")
+	assert_eq(WallRules.delivery_cell(grid), entries[0])
+
+
+func test_back_door_refuses_street_frontage_and_service_edits() -> void:
+	var front: Vector3i = _edge(5, 10, 1)
+	assert_eq(_editor.check_segments({front: SimGrid.Segment.DOORWAY} as Dictionary[Vector3i, int]).why,
+		WallRules.BACK_OR_SIDE)
+	_sim.world.clock.phase = SimClock.Phase.OPEN
+	assert_eq(_editor.check_segments({_edge(13, 6, 0): SimGrid.Segment.DOORWAY} as Dictionary[Vector3i, int]).why,
+		ShopEditor.WALLS_CLOSED)
+	assert_false(_sim.world.grid.has_segments())
+	assert_eq(_cash, 1000)
+
+
+func test_delivery_falls_back_when_back_door_receiving_cell_is_blocked() -> void:
+	var grid: SimGrid = _sim.world.grid
+	assert_eq(WallRules.delivery_cell(grid), grid.entries()[0])
+	assert_true(_editor.apply_segments({_edge(13, 6, 0): SimGrid.Segment.DOORWAY} as Dictionary[Vector3i, int]))
+	assert_eq(WallRules.delivery_cell(grid), Vector2i(12, 6))
+	var blocker: PlacedItem = grid.place(Vector2i.ONE, Vector2i(12, 6), 0, true)
+	assert_not_null(blocker)
+	assert_eq(WallRules.delivery_cell(grid), grid.entries()[0], "blocked drop spots do not strand deliveries")
+	assert_true(grid.remove(blocker.id))
+	assert_eq(WallRules.delivery_cell(grid), Vector2i(12, 6))
+	assert_eq(WallRules.delivery_cell(grid, Vector2i(1, 0)), SimGrid.NO_CELL, "no reachable receiving route")
+
+
+func test_back_door_refreshes_when_expansion_moves_the_shell() -> void:
+	var grid: SimGrid = _sim.world.grid
+	var east: Vector3i = _edge(13, 6, 0)
+	assert_true(_editor.apply_segments({east: SimGrid.Segment.DOORWAY} as Dictionary[Vector3i, int]))
+	assert_true(grid.set_terrain(Vector2i(13, 6), SimGrid.Terrain.FLOOR))
+	assert_true(WallRules.is_interior(grid, east))
+	assert_eq(WallRules.delivery_cell(grid), grid.entries()[0], "an interior doorway is no longer a receiving entrance")
+	assert_true(grid.is_walkable(Vector2i(13, 6)))
+	assert_true(grid.set_terrain(Vector2i(13, 6), SimGrid.Terrain.WALL))
+	assert_eq(WallRules.delivery_cell(grid), Vector2i(12, 6))
+	# Losing the exterior approach makes the retained edge ineligible too.
+	grid.grow_to(Rect2i(Vector2i.ZERO, Vector2i(15, 12)))
+	assert_true(grid.set_terrain(Vector2i(14, 6), SimGrid.Terrain.WALL))
+	assert_false(grid.is_walkable(Vector2i(13, 6)))
+	assert_eq(WallRules.delivery_cell(grid), grid.entries()[0])
+
+
+func test_back_door_snapshot_round_trip_keeps_receiving_route() -> void:
+	assert_true(_editor.apply_segments({_edge(13, 6, 0): SimGrid.Segment.DOORWAY} as Dictionary[Vector3i, int]))
+	var snapshot: Dictionary = JSON.parse_string(JSON.stringify(_editor.to_dict()))
+	var errors: Array[String] = []
+	var layout: ShopLayout = ShopEditor.from_dict(snapshot, LAYOUT, _content, errors)
+	assert_eq(errors, [] as Array[String])
+	assert_not_null(layout)
+	var rebuilt: RestaurantSim = RestaurantSim.create(layout, _content, 1, errors, null, true, true)
+	assert_eq(errors, [] as Array[String])
+	assert_eq(WallRules.delivery_cell(rebuilt.world.grid), Vector2i(12, 6))
+	assert_false(rebuilt.world.grid.find_path(Vector2i(13, 6), Vector2i(8, 8)).is_empty())
+
 func test_snapshot_round_trip_keeps_segments() -> void:
 	var changes: Dictionary[Vector3i, int] = {_edge(13, 6, 0): SimGrid.Segment.WINDOW}
 	for y: int in range(5, 10):
