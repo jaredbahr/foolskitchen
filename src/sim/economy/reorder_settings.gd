@@ -52,6 +52,12 @@ func ids() -> Array[StringName]:
 	return out
 
 
+## Every ingredient with settings, in the fixed buying order, in use or not
+## (the Stock panel lists unused ones greyed out, FK-087).
+func all_ids() -> Array[StringName]:
+	return _order.duplicate()
+
+
 ## The ingredients today's menu uses; station-only ones outside it are
 ## neither listed nor ordered. Their choices are kept.
 func set_in_use(ingredient_ids: Array[StringName]) -> void:
@@ -161,33 +167,45 @@ static func auto_cost(list_total: int, premium: float) -> int:
 ## ingredient is topped up to its target; when cash runs short, ingredients
 ## are taken in the fixed order and each gets as many units as still fit, the
 ## partial order being priced as its own total. Never plans to borrow.
-## Returns {lines: [{id, qty, unit_cost}], list_total, cost, short: {id: qty}}.
+## Returns {lines: [{id, qty, unit_cost}], list_total, cost, short: {id: qty},
+## unfit: {id: qty}}.
 ## `station_only` plans only the station-only ingredients in use (FK-083).
+## `space` (FK-087) counts units already on order towards the target and buys
+## no more than the free storage of each kind; what does not fit is `unfit`
+## (taken in the same fixed order). Without it, space is unlimited.
 func plan(stock: Stock, unit_costs: Dictionary, cash: int, premium: float,
-		station_only: bool = false) -> Dictionary:
+		station_only: bool = false, space: StorageSpace = null) -> Dictionary:
 	var lines: Array[Dictionary] = []
 	var short: Dictionary[StringName, int] = {}
+	var unfit: Dictionary[StringName, int] = {}
 	var list_total: int = 0
 	var budget: int = maxi(cash, 0)
+	var room: StorageSpace = space.copy() if space != null else null
 	for id: StringName in ids():
 		if station_only and not _station_only.has(id):
 			continue
 		if not is_enabled(id) or not unit_costs.has(id):
 			continue
-		var missing: int = target(id) - stock.count(id)
+		var on_order: int = room.pending_of(id) if room != null else 0
+		var missing: int = target(id) - stock.count(id) - on_order
 		if missing <= 0:
 			continue
+		var fitting: int = mini(missing, room.free_units(room.kind_of(id))) if room != null else missing
+		if fitting < missing:
+			unfit[id] = missing - fitting
 		var unit_cost: int = maxi(0, int(unit_costs[id]))
-		var qty: int = missing
+		var qty: int = fitting
 		while qty > 0 and auto_cost(list_total + qty * unit_cost, premium) > budget:
 			qty -= 1
 		if qty > 0:
 			lines.append({"id": id, "qty": qty, "unit_cost": unit_cost})
 			list_total += qty * unit_cost
-		if qty < missing:
-			short[id] = missing - qty
+			if room != null:
+				room.reserve(id, qty)
+		if qty < fitting:
+			short[id] = fitting - qty
 	return {"lines": lines, "list_total": list_total,
-		"cost": auto_cost(list_total, premium), "short": short}
+		"cost": auto_cost(list_total, premium), "short": short, "unfit": unfit}
 
 
 static func _is_whole(value: Variant) -> bool:

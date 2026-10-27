@@ -7,19 +7,28 @@ extends RefCounted
 ## Tomorrow morning as it will happen: tonight's expiry, then the auto-order
 ## planned with today's closing cash (nothing changes cash overnight).
 ## Rows list ingredients below target after expiry, or expiring:
-## {id, usable, target, expiring, enabled, buys, short}, in the fixed order.
+## {id, usable, target, expiring, enabled, buys, short, unfit}, in the fixed order.
+## FK-087: with `capacity` (kind -> units) the order is limited to the free
+## storage space; `incoming` (id -> units) is what the morning delivery
+## brings besides the auto-order (orders placed after today's last delivery).
 static func forecast(stock: Stock, settings: ReorderSettings, shelf_life_days: Dictionary,
-		tomorrow: int, unit_costs: Dictionary, cash: int, premium: float) -> Dictionary:
+		tomorrow: int, unit_costs: Dictionary, cash: int, premium: float,
+		capacity: Dictionary[int, int] = {}, kinds: Dictionary[StringName, int] = {},
+		incoming: Dictionary[StringName, int] = {}) -> Dictionary:
 	var rows: Array[Dictionary] = []
 	if stock == null or settings == null:
 		return {"rows": rows, "order_cost": 0}
 	var after: Stock = Stock.from_dict(stock.to_dict())
 	var expiring: Dictionary = after.expire(tomorrow, shelf_life_days)
-	var plan: Dictionary = settings.plan(after, unit_costs, cash, premium)
+	for id: StringName in incoming:
+		after.add(id, int(incoming[id]), tomorrow)
+	var space: StorageSpace = StorageSpace.new(capacity, after, {}, kinds) if not capacity.is_empty() else null
+	var plan: Dictionary = settings.plan(after, unit_costs, cash, premium, false, space)
 	var buys: Dictionary = {}
 	for line: Dictionary in plan["lines"]:
 		buys[line["id"]] = int(line["qty"])
 	var short: Dictionary = plan["short"]
+	var unfit: Dictionary = plan.get("unfit", {})
 	for id: StringName in settings.ids():
 		var going: int = int(expiring.get(id, 0))
 		var usable: int = after.count(id)
@@ -27,7 +36,8 @@ static func forecast(stock: Stock, settings: ReorderSettings, shelf_life_days: D
 		if usable < target or going > 0:
 			rows.append({"id": id, "usable": usable, "target": target, "expiring": going,
 				"enabled": settings.is_enabled(id), "buys": int(buys.get(id, 0)),
-				"short": int(short.get(id, 0))})
+				"short": int(short.get(id, 0)), "unfit": int(unfit.get(id, 0)),
+				"kind": space.kind_of(id) if space != null else StorageSpace.DRY})
 	return {"rows": rows, "order_cost": int(plan["cost"])}
 
 
@@ -48,7 +58,7 @@ static func sell_out_lines(events: Array[Dictionary], content: ContentDB) -> Arr
 
 
 ## Only what needs the player: expiring units, ingredients the auto-order
-## will not cover (switched off, or not enough cash), then one line with
+## will not cover (switched off, no storage space, or not enough cash), then one line with
 ## tomorrow's order cost. Plain top-ups to target are part of that order.
 ## "Tomato: 3 expire tomorrow, 2 left, target 16. Auto-reorder is off."
 static func forecast_lines(forecast_data: Dictionary, content: ContentDB) -> Array[String]:
@@ -59,8 +69,9 @@ static func forecast_lines(forecast_data: Dictionary, content: ContentDB) -> Arr
 		var target: int = int(row.get("target", 0))
 		var enabled: bool = bool(row.get("enabled", false))
 		var short: int = int(row.get("short", 0))
+		var unfit: int = int(row.get("unfit", 0))
 		var low: bool = usable < target
-		if going <= 0 and not (low and (not enabled or short > 0)):
+		if going <= 0 and not (low and (not enabled or short > 0 or unfit > 0)):
 			continue
 		var parts: Array[String] = []
 		if going > 0:
@@ -70,6 +81,8 @@ static func forecast_lines(forecast_data: Dictionary, content: ContentDB) -> Arr
 		var text: String = "%s: %s." % [_ingredient_name(row.get("id", &""), content), ", ".join(parts)]
 		if low and not enabled:
 			text += " Auto-reorder is off."
+		elif unfit > 0:
+			text += " %s to reorder %d." % [StorageSpace.refusal(int(row.get("kind", StorageSpace.DRY))), unfit]
 		elif short > 0:
 			text += " Not enough cash to reorder %d." % short
 		elif going > 0:

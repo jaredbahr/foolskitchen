@@ -53,10 +53,12 @@ func _menu_ids(main: Node) -> Array[StringName]:
 	return ids
 
 
+## Ingredients the Stock panel lists as in use (others are greyed out, FK-087).
 func _stock_ids(main: Node) -> Array[StringName]:
 	var ids: Array[StringName] = []
 	for row: Dictionary in main.call("stock_rows"):
-		ids.append(row["id"])
+		if row["in_use"]:
+			ids.append(row["id"])
 	return ids
 
 
@@ -122,11 +124,13 @@ func test_undo_and_redo_of_a_coffee_machine_return_money_exactly_and_keep_menu_c
 	assert_eq(settings.price_of(settings.recipe(&"coffee")), 6, "the price came back")
 	assert_false(settings.is_enabled(&"tea"), "tea stays off")
 	assert_true(settings.is_enabled(&"croissant"), "the croissant stays on")
+	# The pantry is nearly full of the morning's food: a shelf holds the new supplies (FK-087).
+	assert_true(main.call("shop_buy", &"storage_shelf", Vector2i(12, 1), 2))
 	assert_true(main.call("set_build_active", false))
 	assert_eq(Economy.stock.count(&"coffee_beans"), 0)
 	assert_true(Clock.sim.start_service())
-	assert_true(Economy.stock.count(&"coffee_beans") > 0 and Economy.stock.count(&"pastry") > 0,
-		"opening tops up the new supplies")
+	assert_eq(Economy.stock.count(&"coffee_beans"), TUNING.station_stock[&"coffee_beans"], "opening tops up the new supplies")
+	assert_eq(Economy.stock.count(&"pastry"), TUNING.station_stock[&"pastry"])
 	assert_eq(Economy.stock.count(&"tea"), 0, "tea is off, so none is bought")
 
 
@@ -334,6 +338,8 @@ func test_fryer_and_oven_enable_only_their_food_and_show_named_reasons() -> void
 	assert_true(_equipment(main, &"savoury_pie").has({"text": "Oven ready", "met": true}))
 	assert_true(main.call("menu_set_enabled", &"savoury_pie", true))
 	assert_eq(settings.enabled_count(), 5)
+	# FK-087: the starter pantry is small; the supplies need a storage shelf.
+	assert_true(main.call("shop_buy", &"storage_shelf", Vector2i(12, 1), 2))
 	assert_true(Clock.sim.start_service())
 	assert_eq(Economy.stock.count(&"potato"), TUNING.station_stock[&"potato"])
 	assert_eq(Economy.stock.count(&"oil"), TUNING.station_stock[&"oil"])

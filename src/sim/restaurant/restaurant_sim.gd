@@ -66,7 +66,8 @@ var _vibe_result: VibeModel.Result = VibeModel.Result.new()
 var staff_spawns: Dictionary[StringName, Vector2i] = {}
 
 var _departed: Dictionary[int, bool] = {}
-## Dishes that ran out during today's service; they stay sold out until morning.
+## Dishes that ran out during today's service; they stay sold out until a
+## delivery covers them again or the next morning.
 var sold_out_today: Dictionary[StringName, bool] = {}
 ## Ingredients that sold dishes out today, in the order it happened:
 ## {ingredient: StringName, minute: int (display clock), dishes: Array[StringName]}.
@@ -363,9 +364,9 @@ static func _vibe_patience(budget: int, multiplier: float, tuning: VibeTuning = 
 	return roundi(scaled)
 
 
-## Latches every menu dish the fridge itself can no longer cover. Stock only
-## falls during service, so this lasts for the day. Only a real kitchen's
-## service changes it: morning buying can still refill the fridge.
+## Latches every menu dish the fridge itself can no longer cover. It stays
+## sold out until a delivery during service covers it again
+## (restock_sold_out, FK-087) or the next morning.
 func refresh_sold_out() -> void:
 	if not _in_service():
 		return
@@ -375,6 +376,18 @@ func refresh_sold_out() -> void:
 		var short: StringName = _short_ingredient(recipe, {})
 		if not short.is_empty():
 			_mark_sold_out(recipe.id, short)
+
+
+## A delivery during service (FK-087) brings dishes back: those the stock
+## can cover again leave today's sold-out list. Returns how many came back.
+func restock_sold_out() -> int:
+	var back: Array[StringName] = []
+	for recipe: RecipeDef in menu:
+		if recipe != null and sold_out_today.has(recipe.id) and _short_ingredient(recipe, {}).is_empty():
+			back.append(recipe.id)
+	for id: StringName in back:
+		sold_out_today.erase(id)
+	return back.size()
 
 
 func is_sold_out(recipe_id: StringName) -> bool:

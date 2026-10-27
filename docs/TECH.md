@@ -254,7 +254,7 @@ an active edit/panel/selection first, or opens Settings when none is active.
 - `main.tscn` is the game session for one shop. It builds a `RestaurantSim` from the layout and content, and points `sim.stock` at `Economy.stock`.
 - `Clock.attach_world(world, sim.advance)` makes every tick run the restaurant (guests, staff, and the kitchen once it lands).
 - **Day loop:**
-  - **MORNING:** `sim.start_day()`, expired batches are removed (`Stock.expire`), the morning auto-order tops the fridge up (see 2.3i), then autosave.
+  - **MORNING:** `sim.start_day()`, expired batches are removed (`Stock.expire`), the morning delivery brings the auto-order (the standing order) and any evening orders (see 2.3i and 2.3j), then autosave.
   - **CLOSED:** wages per staff role and rent are charged through the ledger, automatic loans settle, then the evening report shows a `DayReport` built from `Ledger.day_totals` and the sim's counters.
   - **"Next day"** (in the report or the HUD) calls `Clock.sim.next_day()`, which returns to MORNING.
 - Money numbers live in `data/balance/*.tres` (`EconomyTuning`).
@@ -1269,9 +1269,9 @@ existing paint colour and camera-controlled build-grid parameters.
 - **Expiry:** `_begin_morning()` calls `Stock.expire(day, shelf lives)` before the
   order; `Stock.expiring_on(day)` previews it. "Expire tomorrow" means removed at the
   next morning. Reloading the same morning removes nothing more.
-- **Stock panel** (`src/ui/stock_panel.gd`, HUD basket button): MORNING only, request
-  signals to Main (`stock_buy` +1/+5 at list price, `stock_set_auto`,
-  `stock_set_target`). Rows carry display names only; notes report this morning's
+- **Stock panel** (`src/ui/stock_panel.gd`, HUD basket button): since FK-087 an order
+  cart open in every phase (2.3j), request signals to Main (`stock_set_auto`,
+  `stock_set_target`, and the cart requests). Rows carry display names only; notes report this morning's
   order (read back from the day's ledger: lines noted `auto_reorder:<id>` plus the
   `auto_reorder_premium` entry, so a reloaded morning still shows it), cash
   shortfalls (re-planned on reload) and thrown-out stock (not kept: after a reload
@@ -1294,6 +1294,119 @@ existing paint colour and camera-controlled build-grid parameters.
   that sold dishes out (with the time), then tomorrow's forecast (tonight's expiry,
   then the order planned with tonight's cash): expiring units, ingredients the order
   will not cover (switched off or short of cash) and the order's cost.
+
+### 2.3j Storage and deliveries (FK-087, #162)
+- **Storage kinds (data).** `IngredientDef.storage` is `FRIDGE`, `FREEZER` or `SHELF`
+  (dry). Fridge: beef patty, cheese, lettuce; everything else (bread, buns, soup
+  stock, tomatoes and #183's station-only coffee beans, tea, soft drinks, beer,
+  wine, pastries) is dry. `ItemDef.storage_kind` + `storage_units` say how much an
+  item holds (`capacity` stays the station job count). The fridge holds 40 fridge
+  units; the new **Storage shelf** (`storage_shelf`, Kitchen tab, $60, level 1,
+  Kenney `bookcaseOpen` with Food Kit barrels, loaves, a carton, bags and a can
+  plus two Furniture Kit `cardboardBoxClosed` on top) holds 40 dry units.
+  `ShopLayout.pantry_units` is built-in dry storage: the starter shop's back-room
+  pantry has 60 (the starter order is 28 fridge and 50 dry units).
+- **Capacity contract (director, #154).** `StorageSpace` (src/sim/economy, pure) sums
+  units per kind across every ingredient of that kind; items of one kind add up
+  (`capacities(grid, pantry, exclude_id)`). Used space is stock on hand **plus
+  orders not yet delivered**, so a delivery always fits when it arrives
+  (`committed`, `free_units`, `first_overflow`). A hand order that would overfill
+  a kind is refused ("Not enough fridge space" / "freezer" / "dry storage"; only
+  the added ingredient's own kind is checked, so a cart in another kind never
+  blocks it); the
+  auto-reorder (`ReorderSettings.plan(..., space)`) buys up to the free space in
+  the fixed order and returns `unfit`, which the Stock notes, the log and the
+  evening forecast report ("Not enough fridge space to reorder 8."); the panel
+  opens itself on a morning when something did not fit. Selling storage the stock
+  still needs is refused in Build ("Move stock out first: the fridge stock would
+  not fit without it"): `ShopEditor.storage_need` (a Callable Main sets) is checked
+  in `check_sell`, which undo and redo also use, so an overflowing undo is refused
+  like any other. Old saves over capacity keep every unit; new orders of that kind
+  are blocked until it is back under, and the notes say so.
+- **Throw out (Jared).** Each Stock row has a two-click Throw out button (the
+  first click shows "Click again", any other panel action or closing the
+  panel takes it back). `Main.stock_throw_out(id)` removes all of that stock
+  with no refund. Like stock that goes off at expiry it moves no money, so it
+  adds no ledger line; the log and a Stock note ("Thrown out today (no
+  refund): 8 Soup stock.") record it. This is how a shop changing concept, or
+  an old over-full save, makes room.
+- **Deliveries.** `DeliveryBook` (src/sim/economy, pure) holds paid orders not yet
+  delivered: `{due: Vector2i(day, tick), lines, cost, standing}`. **Orders placed
+  in the MORNING arrive at once** (Jared), as #156's buys did: the standing order
+  and hand orders are paid and stocked immediately and never wait in the book.
+  During service an order arrives with the next daytime delivery, every
+  `EconomyTuning.delivery_interval_minutes` (180) of opening hours
+  (`slot_ticks`, scaled to the clock's service length: 14:00, 17:00, 20:00 on the
+  default day). After the last one, in LAST_ORDERS or once closed, it comes with
+  the next morning's delivery (`MORNING`, tick -1), unloaded in `_begin_morning`
+  before the standing order and the save. There is no separate opening
+  delivery; #183's top-up of drink supplies at opening is still bought and
+  stocked at opening. Main also delivers on `EventBus.sim_ticked` while OPEN and
+  on phase changes (anything overdue, e.g. a tick 0 order in an older save).
+  Arrivals are stocked dated the arrival day; `RestaurantSim.restock_sold_out()`
+  brings back dishes the delivery covers, and the Stock notes say what the
+  last daytime delivery brought.
+- **Next delivery bar.** `Main.delivery_countdown()`: in the morning "Morning
+  orders arrive at once. Next delivery at 14:00" (bar full); during service
+  "Next delivery at 14:00" with the wait's fraction; afterwards "Next delivery:
+  tomorrow morning".
+- **Cart.** The cart (`Main.stock_cart`) is not saved. A cart left from the day
+  before is cut to the free space after the morning delivery, in panel order,
+  and a note says by how much. Refusals are shown, never silent: storage,
+  cash, more than 64 ingredients in one order, or 256 orders on the way; +/+5
+  stop at 99 of one ingredient with that reason as the tooltip.
+- **Paying and refunds.** Orders are paid when placed: `Economy.pay_order(lines,
+  cost, standing)` records ledger lines without stock (hand orders at list price
+  under the ingredient's note; standing orders with the `auto_reorder:` notes and
+  one premium line), `Economy.receive(lines)` stocks a delivery and
+  `buy_auto_order` is now pay + receive. Cancel refunds everything on order,
+  premium included, as one `order_refund` ingredients line
+  (`Main.stock_cancel_orders`).
+- **Standing order.** The morning auto-reorder arrives at once
+  (`Economy.buy_auto_order`), so with default settings it is exactly #156's
+  order (same ledger lines and stock); targets count units already on order.
+  Since standing orders never wait, only hand orders can be cancelled, and
+  those are always charged and refunded on the same day (an order still on its
+  way at closing arrives first thing next morning, before the player can act).
+- **Saving (rule 9).** Pending orders are the `deliveries` save section, written by
+  the morning autosave only; a save without it has nothing on order. Because the
+  morning delivery is unloaded before that save, the book is normally empty
+  there; a saved order (an older or hand-edited save) is delivered by the
+  loaded morning. **An order placed after the morning save is lost on reload
+  together with its payment**, like everything else since that save (the
+  ledger is in the same save): money and goods go back together.
+- **Order cart (UI).** `StockPanel.set_view(view)`: groups Fridge / Freezer / Dry
+  (freezer only when the shop has freezer space or ingredients) with
+  `in stock / capacity units` (plus on order and in the cart) and a fill bar;
+  rows with −/+/+5 cart steppers (`cart_requested`), disabled with "Not enough …
+  space" when a step would not fit; one label with the count, what is on order,
+  expiry and "Not on today's menu"; Throw out (`throw_requested`); the running
+  total, Clear cart, Place order
+  (disabled with the refusal as its tooltip), what is on order with Cancel order,
+  and the Next delivery bar (see above). Ingredients nothing
+  on today's menu uses are listed after the used ones in their group, faded,
+  "Not on today's menu", still orderable. The HUD Stock button works in every
+  phase; the panel closes for the evening report. Reorder settings change in any
+  phase and are saved at the next morning.
+- **Spoilage.** Freezer ingredients keep at least `freezer_shelf_life_days` (30);
+  fridge and dry keep their own `shelf_life_days`. No freezer item or frozen
+  ingredient exists yet: both are left to #154(b) (frozen fries and a Kenney
+  `kitchenFridgeLarge` freezer). The Freezer group appears once either exists.
+- **Visible stock.** `ShopView.set_storage_fill(kind -> 0..1)` from Main (stock on
+  hand / capacity per kind, refreshed with the presentation when it changes):
+  a storage item's parts tagged `metadata/stock_slot` show the first
+  `ceil(fill * slots)` (at least one while any stock is left), view only and
+  deterministic. All dry shelves show the shared dry fill, pantry included.
+- **Probe.** The default probe is identical to main. `coffee_shop` and `bar` now
+  build two storage shelves (`ProbeSetups._storage_shelves`), as a player would:
+  without them a concept's supplies do not fit beside the morning's food. Their
+  rows are identical to main. `_finish` switches auto-reorder off only for the
+  ingredients auto-reorder lists (`_reorder().ids()`), not the greyed rows.
+- **Not built here:** the visible delivery person, back door and staff carrying
+  crates (a follow-up issue).
+- Tests: `tests/sim/test_storage_space.gd`, `tests/sim/test_delivery_book.gd`,
+  `tests/world/test_delivery_session.gd`, `tests/ui/test_stock_panel.gd`,
+  `tests/world/test_stock_session.gd`.
 
 ### 2.4 Save system
 - JSON in `user://saves/`, with a `version` field and migration functions per version.

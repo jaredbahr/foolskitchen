@@ -24,11 +24,17 @@ const STATION_TEXT: Dictionary[StringName, String] = {
 	&"drinks_fridge": "Keeps soft drinks cold",
 	&"drinks_shelf": "Holds the beer and wine",
 }
+## What each storage kind holds (FK-087), for "Holds 30 units of dry goods".
+const STORAGE_WORDS: Dictionary[int, String] = {
+	IngredientDef.Storage.FRIDGE: "fridge food", IngredientDef.Storage.FREEZER: "frozen food",
+	IngredientDef.Storage.SHELF: "dry goods",
+}
 ## What a station type is called on screen (the inspector's "Station:" line).
 const STATION_NAMES: Dictionary[StringName, String] = {
 	&"stove": "Stove", &"prep_counter": "Prep counter", &"sink": "Sink", &"fridge": "Fridge",
 	&"fryer": "Fryer", &"oven": "Oven", &"coffee": "Coffee machine",
 	&"drinks_fridge": "Drinks fridge", &"drinks_shelf": "Drinks shelf",
+	&"storage_shelf": "Storage shelf",
 }
 
 
@@ -72,7 +78,9 @@ static func does(definition: ItemDef) -> String:
 		ItemDef.Category.STATION:
 			return STATION_TEXT.get(definition.station_type, "Kitchen station")
 		ItemDef.Category.STORAGE:
-			return "Stores %d ingredients" % definition.capacity
+			if definition.storage_units <= 0:
+				return "Stores ingredients"
+			return "Holds %d units of %s" % [definition.storage_units, STORAGE_WORDS.get(int(definition.storage_kind), "dry goods")]
 		ItemDef.Category.PASS:
 			return "Hands finished plates to the servers"
 		ItemDef.Category.DOOR:
