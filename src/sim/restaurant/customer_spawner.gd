@@ -36,12 +36,13 @@ func advance(sim: RestaurantSim) -> void:
 				sim.review_book.average(), rng)
 		if sim.customer_types == null or kind != null:
 			var entry: Vector2i = entries[rng.randi_range(0, entries.size() - 1)]
-			var drawn_count: int = kind.draw_party_size(rng) if kind != null else 1
+			# A type whose groups are still locked draws exactly what a single
+			# guest draws: no size draw and one private seed.
+			var drawn_count: int = kind.draw_party_size_at(rng, sim.customer_level) if kind != null else 1
 			var count: int = drawn_count
-			if kind != null:
-				# Clamp after every draw: the owner level, then the usable layout.
-				count = mini(kind.party_size_at(drawn_count, sim.customer_level),
-					DiningSeats.largest_usable_capacity(sim.world.grid, entry))
+			if drawn_count > 1:
+				# Parties clamp after every draw to the largest usable table.
+				count = mini(drawn_count, DiningSeats.largest_usable_capacity(sim.world.grid, entry))
 			# Retain every private-seed draw, including clamped-away members. Layout
 			# edits must not shift the next arrival's type, gap or private streams.
 			var randoms: Array[RandomNumberGenerator] = []

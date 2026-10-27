@@ -22,9 +22,23 @@ func test_party_size_one_matches_exact_main_seed_42() -> void:
 	_compare(42)
 
 
-func _compare(seed_value: int) -> void:
-	var reference: RestaurantSim = _sim(seed_value, true)
-	var current: RestaurantSim = _sim(seed_value, false)
+## The authored catalogue below the pairs' party unlock (level 5) and before
+## Families (level 4) must equal exact single-guest main, draw for draw.
+func test_authored_types_below_party_unlock_match_exact_main_seed_1() -> void:
+	_compare(1, true)
+
+
+func test_authored_types_below_party_unlock_match_exact_main_seed_7() -> void:
+	_compare(7, true)
+
+
+func test_authored_types_below_party_unlock_match_exact_main_seed_42() -> void:
+	_compare(42, true)
+
+
+func _compare(seed_value: int, authored: bool = false) -> void:
+	var reference: RestaurantSim = _sim(seed_value, true, authored)
+	var current: RestaurantSim = _sim(seed_value, false, authored)
 	assert_true(current.has_method("add_party"), "golden requires the production party integration hooks")
 	if not current.has_method("add_party"):
 		return
@@ -49,7 +63,7 @@ func _compare(seed_value: int) -> void:
 		current.kitchen.plates.clean + current.kitchen.plates.dirty + current.kitchen.plates.in_use)
 
 
-func _sim(seed_value: int, frozen: bool) -> RestaurantSim:
+func _sim(seed_value: int, frozen: bool, authored: bool = false) -> RestaurantSim:
 	var content: ContentDB = ContentDB.new()
 	assert_eq(content.load_all(), PackedStringArray())
 	var errors: Array[String] = []
@@ -64,10 +78,17 @@ func _sim(seed_value: int, frozen: bool) -> RestaurantSim:
 		sim.rng = original.rng
 		sim.spawner = MAIN.MainSpawner.new(sim.rng)
 	var singles: CustomerTypeCatalogue = TYPES.duplicate(true) as CustomerTypeCatalogue
-	for kind: CustomerType in singles.types:
-		kind.party_size_min = 1
-		kind.party_size_max = 1
-	assert_true(sim.configure_customer_types(singles, 4))
+	var level: int = 4
+	if authored:
+		# Level 3: every authored pair is locked and Families are not unlocked yet.
+		level = 3
+		for kind: CustomerType in singles.types:
+			assert_true(kind.party_unlock_level > level or kind.unlock_level > level or kind.party_size_max == 1)
+	else:
+		for kind: CustomerType in singles.types:
+			kind.party_size_min = 1
+			kind.party_size_max = 1
+	assert_true(sim.configure_customer_types(singles, level))
 	if seed_value != 42:
 		for ingredient: IngredientDef in content.ingredients():
 			sim.stock.add(ingredient.id, 100, 1)

@@ -216,27 +216,37 @@ func _weighted_type(id: StringName, one_star: float, five_stars: float,
 	return kind
 
 
-func test_pairs_unlock_at_level_three_and_families_keep_their_own_unlock() -> void:
+func test_pairs_unlock_at_level_five_and_families_keep_their_own_unlock() -> void:
 	for id: StringName in [&"regular", &"student", &"foodie"]:
 		var kind: CustomerType = TYPES.find_type(id)
-		assert_eq(kind.party_unlock_level, 3, String(id) + " comes in pairs from owner level 3")
-		assert_eq(kind.party_size_at(2, 2), 1)
-		assert_eq(kind.party_size_at(2, 3), 2)
-		assert_eq(kind.party_size_at(1, 2), 1)
-		assert_eq(kind.group_level(), 3)
+		assert_eq(kind.party_unlock_level, 5, String(id) + " comes in pairs from owner level 5")
+		assert_eq(kind.group_level(), 5)
+		var locked: RandomNumberGenerator = RandomNumberGenerator.new()
+		locked.seed = 77
+		var before: int = locked.state
+		assert_eq(kind.draw_party_size_at(locked, 4), 1)
+		assert_eq(locked.state, before, "a locked pair consumes no size draw")
+		var open: RandomNumberGenerator = RandomNumberGenerator.new()
+		open.seed = 77
+		var oracle: RandomNumberGenerator = RandomNumberGenerator.new()
+		oracle.seed = 77
+		assert_eq(kind.draw_party_size_at(open, 5), oracle.randi_range(1, 2))
+		assert_eq(open.state, oracle.state)
 	var family: CustomerType = TYPES.find_type(&"family")
 	assert_eq(family.party_unlock_level, 1, "families are groups whenever they visit")
 	assert_eq(family.group_level(), family.unlock_level)
-	assert_eq(family.party_size_at(4, family.unlock_level), 4)
+	var draw: RandomNumberGenerator = RandomNumberGenerator.new()
+	draw.seed = 5
+	assert_true(family.draw_party_size_at(draw, family.unlock_level) >= 2)
 	var locked: CustomerType = TYPES.find_type(&"regular").duplicate() as CustomerType
 	locked.party_unlock_level = 0
 	assert_false(locked.is_valid())
 
 
 func test_group_tip_is_reported_once_when_pairs_start_visiting() -> void:
-	var tip: String = "Groups of two now visit; four-seat tables help."
-	assert_eq(TYPES.level_up_tips(1, 2), [] as Array[String])
-	assert_eq(TYPES.level_up_tips(2, 3), [tip] as Array[String], "one tip, not one per type")
-	assert_eq(TYPES.level_up_tips(3, 4), [] as Array[String], "already shown at level 3")
-	assert_eq(TYPES.level_up_tips(3, 3), [] as Array[String])
-	assert_eq(TYPES.level_up_tips(1, 5), [tip] as Array[String], "a multi-level jump still shows it once")
+	var tip: String = "Groups of two now visit: bigger tables, more floor and more staff help."
+	assert_eq(TYPES.level_up_tips(1, 4), [] as Array[String])
+	assert_eq(TYPES.level_up_tips(4, 5), [tip] as Array[String], "one tip, not one per type")
+	assert_eq(TYPES.level_up_tips(5, 6), [] as Array[String], "already shown at level 5")
+	assert_eq(TYPES.level_up_tips(5, 5), [] as Array[String])
+	assert_eq(TYPES.level_up_tips(3, 7), [tip] as Array[String], "a multi-level jump still shows it once")

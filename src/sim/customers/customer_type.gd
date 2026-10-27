@@ -10,8 +10,8 @@ extends Resource
 @export var quality_weight: float = 0.0
 @export var party_size_min: int = 1
 @export var party_size_max: int = 1
-## Below this owner level the type always arrives alone. The size is still
-## drawn first, so the unlock never adds or removes a draw from the stream.
+## Below this owner level the type always arrives alone and draws exactly what
+## a single guest draws, so play below the unlock matches single-guest main.
 @export var party_unlock_level: int = 1
 ## Short player-facing tip for the level-up report when groups start visiting.
 @export var party_tip: String = ""
@@ -49,9 +49,11 @@ func draw_party_size(random: RandomNumberGenerator) -> int:
 	return random.randi_range(party_size_min, party_size_max)
 
 
-## Applied after draw_party_size: a locked group shrinks to its first member.
-func party_size_at(drawn: int, owner_level: int) -> int:
-	return drawn if owner_level >= party_unlock_level else mini(drawn, 1)
+## A locked type is a single guest and consumes no size draw.
+func draw_party_size_at(random: RandomNumberGenerator, owner_level: int) -> int:
+	if not is_valid() or random == null:
+		return 0
+	return draw_party_size(random) if owner_level >= party_unlock_level else 1
 
 
 ## The owner level at which this type first arrives as a group (0 if never).

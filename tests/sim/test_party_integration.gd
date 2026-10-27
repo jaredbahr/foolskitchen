@@ -412,14 +412,12 @@ func test_real_kitchen_party_gets_three_individual_orders_payments_and_reviews()
 		sim.kitchen.plates.clean + sim.kitchen.plates.dirty + sim.kitchen.plates.in_use)
 
 
-func test_pairs_arrive_alone_below_their_party_level_with_an_unchanged_draw_schedule() -> void:
+func test_pairs_arrive_alone_below_their_party_level_with_single_guest_draws() -> void:
 	var catalogue: CustomerTypeCatalogue = CustomerTypeCatalogue.new()
 	catalogue.types = [TYPES.find_type(&"regular")]
-	assert_eq(catalogue.types[0].party_unlock_level, 3)
+	assert_eq(catalogue.types[0].party_unlock_level, 5)
 	for seed_value: int in [3, 11, 23, 57]:
-		var states: Array[int] = []
-		var sizes: Array[int] = []
-		for level: int in [1, 2, 3, 4]:
+		for level: int in [1, 4, 5, 6]:
 			var sim: RestaurantSim = _empty_service(seed_value)
 			assert_not_null(sim.world.grid.place_def(TABLE, Vector2i(4, 5)))
 			assert_true(sim.configure_customer_types(catalogue, level))
@@ -427,24 +425,19 @@ func test_pairs_arrive_alone_below_their_party_level_with_an_unchanged_draw_sche
 			oracle.state = sim.rng.state
 			CustomerTypePicker.choose(catalogue, level, sim.review_book.average(), oracle)
 			oracle.randi_range(0, 0)
-			var drawn: int = catalogue.types[0].draw_party_size(oracle)
+			# Locked: exactly main's single guest (one private seed, then the gap).
+			var drawn: int = oracle.randi_range(1, 2) if level >= 5 else 1
 			for member: int in drawn:
 				oracle.randi()
 			oracle.randi_range(100000, 100000)
 			sim.spawner._remaining = 1
 			sim.spawner.advance(sim)
-			var expected: int = drawn if level >= 3 else 1
-			assert_eq(sim.customers().size(), expected, "level %d, drawn %d" % [level, drawn])
-			if expected == 1:
-				assert_null(sim.customers()[0].party, "a locked pair arrives as a plain single guest")
+			assert_eq(sim.customers().size(), drawn, "level %d, drawn %d" % [level, drawn])
+			if drawn == 1:
+				assert_null(sim.customers()[0].party, "a single guest has no party")
 			else:
-				assert_eq(sim.customers()[0].party.size(), expected)
-			assert_eq(sim.rng.state, oracle.state, "the unlock clamps after every draw")
-			states.append(sim.rng.state)
-			sizes.append(drawn)
-		for index: int in states.size():
-			assert_eq(states[index], states[0], "the owner level never shifts the arrival stream")
-			assert_eq(sizes[index], sizes[0])
+				assert_eq(sim.customers()[0].party.size(), drawn)
+			assert_eq(sim.rng.state, oracle.state, "level %d draw schedule" % level)
 
 
 func test_a_party_of_n_waits_n_arrival_gaps_from_one_gap_draw() -> void:
