@@ -277,3 +277,19 @@ func test_a_save_with_hours_outside_the_limits_keeps_the_game_with_default_hours
 
 func _save_path() -> String:
 	return SaveSystem.save_dir.path_join(SLOT + ".json")
+
+
+func test_a_drink_left_off_a_full_menu_says_how_to_add_it() -> void:
+	var main: Node = _start(false)
+	var editor: ShopEditor = ProbeSetups._free_editor(main)
+	assert_true(ProbeSetups._clear_east_table(main, editor))
+	assert_true(editor.buy(&"coffee_machine", Vector2i(12, 5), 2))
+	assert_true(editor.buy(&"drinks_shelf", Vector2i(10, 5), 2) and editor.buy(&"drinks_fridge", Vector2i(11, 5), 2))
+	main.call("_refresh_menu_catalogue")
+	var settings: MenuSettings = main.get("menu_settings") as MenuSettings
+	assert_eq(settings.enabled_count(), settings.menu_limit(), "drinks fill the level-1 menu")
+	var waiting: Array[RecipeDef] = settings.crowded_out_drinks()
+	assert_eq(waiting.size(), 1, str(waiting))
+	var hints: Array[String] = main.call("drink_station_hints")
+	var notice: String = "%s is ready to serve; make room on the menu to add it." % waiting[0].display_name
+	assert_true(hints.has(notice), str(hints))

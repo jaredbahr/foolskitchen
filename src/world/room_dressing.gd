@@ -28,20 +28,17 @@ const SIGN_FRAME_SWATCH: SwatchDef = preload("res://data/swatches/walnut.tres")
 const SIGN_MAX_CELLS: int = 4
 const SIGN_SIDE_MARGIN: float = 0.05
 const SIGN_BOTTOM: float = 0.025
-const SIGN_FRAME_HEIGHT: float = 0.31
-const SIGN_FRAME_WIDTH: float = 0.03
+const SIGN_FRAME_HEIGHT: float = 0.29
+const SIGN_FRAME_WIDTH: float = 0.025
 const SIGN_FRAME_DEPTH: float = 0.05
 const SIGN_BOARD_DEPTH: float = 0.035
 const SIGN_TEXT_PADDING: float = 0.05
-## Letters: about 0.15 m caps at full size (legible at the default zoom), and
+## Letters: 0.13 m caps at full size (legible at the default zoom), and
 ## never below MIN; a name too wide even at MIN is cut with an ellipsis.
-const SIGN_CAP_HEIGHT: float = 0.15
+const SIGN_CAP_HEIGHT: float = 0.13
 const SIGN_MIN_CAP_HEIGHT: float = 0.11
 ## Cap height / em of the UI font (Open Sans: 1462 / 2048 units).
 const SIGN_CAP_RATIO: float = 0.714
-## Label3D centres the whole line box, which leaves the capitals high on the
-## board under the top rail; drop them this share of an em (measured in captures).
-const SIGN_TEXT_DROP: float = 0.21
 const ELLIPSIS: String = "\u2026"
 
 var _world: SimWorld
@@ -310,7 +307,6 @@ func _add_name_sign(entries: Array[Vector2i], normal: Vector2i, index: int) -> v
 	text.double_sided = false
 	text.no_depth_test = false
 	text.position = Vector3(0.0, 0.0, SIGN_BOARD_DEPTH + FACE_GAP)
-	text.offset = Vector2(0.0, -SIGN_TEXT_DROP * float(SIGN_FONT_SIZE))
 	text.set_meta(&"name_width", board_size.x - SIGN_TEXT_PADDING * 2.0)
 	root.add_child(text)
 	_fit_name(text)

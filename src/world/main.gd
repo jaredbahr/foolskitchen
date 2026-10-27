@@ -1741,6 +1741,9 @@ func drink_station_hints() -> Array[String]:
 			names.append(dish if index == 0 else dish.to_lower())
 		var advice: String = "staff can't reach the %s" if walled_in.has(station) else "buy a %s"
 		hints.append("%s: %s." % [StockAlerts.join_names(names), advice % item_name.to_lower()])
+	if menu_settings != null:
+		for drink: RecipeDef in menu_settings.crowded_out_drinks():
+			hints.append("%s is ready to serve; make room on the menu to add it." % drink.display_name)
 	return hints
 
 

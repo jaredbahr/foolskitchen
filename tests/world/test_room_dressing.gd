@@ -46,9 +46,15 @@ func test_name_board_hangs_on_solid_wall_beside_the_starter_door() -> void:
 	for cell: Vector2i in cells:
 		assert_eq(world.grid.terrain(cell), SimGrid.Terrain.WALL, "the board is mounted on a wall cell, never the doorway")
 	_assert_board_on_wall(board, text, cells, Vector2i.DOWN)
-	# Readable at the default zoom: roughly 0.15 m capital letters in the UI ink on cream.
+	# Readable at the default zoom: 0.13 m capital letters in the UI ink on cream.
 	assert_almost_eq(_cap_height(text), RoomDressing.SIGN_CAP_HEIGHT, 0.0001)
-	assert_true(_cap_height(text) >= 0.14 and _cap_height(text) <= 0.2)
+	assert_true(_cap_height(text) >= 0.125 and _cap_height(text) <= 0.2)
+	# The board stays clear of the street window and lamp panes above it.
+	var board_top: float = board.position.y + RoomDressing.SIGN_FRAME_HEIGHT * 0.5
+	for detail: Node3D in dressing.wall_detail_nodes():
+		if cells.has(detail.get_meta(&"wall_cell")):
+			var bounds: AABB = detail.transform * (detail.get_meta(&"native_bounds") as AABB)
+			assert_true(board_top <= bounds.position.y - 0.01, "%s starts above the name board" % detail.name)
 	assert_eq(text.text, MenuSettings.DEFAULT_NAME)
 	assert_eq(text.modulate, RoomDressing.SIGN_THEME.get_color("font_color", "Label"))
 	var board_color: Color = ((board.get_node("Board") as MeshInstance3D).mesh.surface_get_material(0) as StandardMaterial3D).albedo_color
@@ -362,8 +368,15 @@ func _assert_board_on_wall(board: Node3D, text: Label3D, cells: Array[Vector2i],
 	var board_size: Vector2 = board.get_meta(&"board_size")
 	var width: float = text.font.get_string_size(text.text, HORIZONTAL_ALIGNMENT_LEFT, -1, text.font_size).x * text.pixel_size
 	assert_true(width <= board_size.x - RoomDressing.SIGN_TEXT_PADDING * 2.0 + 0.0001, "the name fits its board")
-	var line: float = (text.font.get_ascent(text.font_size) + text.font.get_descent(text.font_size)) * text.pixel_size
-	assert_true(line <= board_size.y + 0.05, "the letters keep to the board's height")
+	# Label3D centres the line box; the capitals then sit in the board's middle
+	# and descenders still end on the board.
+	var ascent: float = text.font.get_ascent(text.font_size) * text.pixel_size
+	var descent: float = text.font.get_descent(text.font_size) * text.pixel_size
+	var baseline: float = text.position.y + text.offset.y * text.pixel_size - (ascent - descent) * 0.5
+	var cap_centre: float = baseline + _cap_height(text) * 0.5
+	assert_almost_eq(cap_centre, 0.0, 0.01, "capitals are centred on the board")
+	assert_true(baseline - descent * 0.75 >= -board_size.y * 0.5, "descenders stay on the board")
+	assert_true(baseline + _cap_height(text) <= board_size.y * 0.5, "capitals stay on the board")
 
 
 func _cap_height(text: Label3D) -> float:

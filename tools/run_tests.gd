@@ -26,6 +26,9 @@ func _initialize() -> void:
 		return
 	var passed := 0
 	var failed := 0
+	# Let the scene root enter the tree before any test, so no test passes or
+	# fails depending on which file happened to await a frame first.
+	await process_frame
 	for path in files:
 		if not filter.is_empty() and not path.contains(filter):
 			continue

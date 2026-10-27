@@ -384,12 +384,53 @@ func test_menu_limit_rejects_oversized_current_and_legacy_restores_atomically() 
 	var oversized: Dictionary = expanded.to_dict()
 	assert_false(small.from_dict(JSON.parse_string(JSON.stringify(oversized))))
 	assert_eq(small.to_dict(), before)
-	assert_false(small.from_dict({"enabled": oversized["enabled"], "prices": oversized["prices"]}))
-	assert_eq(small.to_dict(), before)
 	assert_true(small.set_owner_level(5))
 	assert_true(small.from_dict(JSON.parse_string(JSON.stringify(oversized))))
 	assert_eq(small.to_dict(), oversized)
 
+
+func test_unversioned_oversized_menu_loads_and_blocks_additions_until_under_limit() -> void:
+	var catalog: Array[RecipeDef] = _large_catalog()
+	var expanded: MenuSettings = MenuSettings.new(catalog, 5)
+	assert_eq(expanded.enabled_count(), 8)
+	var oversized: Dictionary = expanded.to_dict()
+	var menu: MenuSettings = MenuSettings.new(catalog)
+	assert_eq(menu.menu_limit(), 6)
+	# A pre-limit save (no version) with 8 dishes on at level 1 keeps them all.
+	var legacy: Dictionary = {"enabled": oversized["enabled"], "prices": oversized["prices"]}
+	assert_true(menu.from_dict(JSON.parse_string(JSON.stringify(legacy))))
+	assert_eq(menu.enabled_count(), 8)
+	assert_eq(menu.restaurant_name(), MenuSettings.DEFAULT_NAME)
+	var off: StringName = menu.enabled_recipes()[0].id
+	assert_true(menu.set_enabled(off, false))
+	assert_false(menu.set_enabled(off, true), "an oversized menu takes no new dish")
+	for index: int in range(2):
+		assert_true(menu.set_enabled(menu.enabled_recipes()[0].id, false))
+	assert_eq(menu.enabled_count(), 5)
+	assert_true(menu.set_enabled(off, true), "under the limit again, dishes can be added")
+
+
+func test_level_up_with_an_oversized_legacy_menu_unlocks_new_recipes() -> void:
+	var catalog: Array[RecipeDef] = _large_catalog()
+	var later: RecipeDef = _recipe(&"late_dish", 12)
+	later.unlock_level = 2
+	catalog.append(later)
+	var menu: MenuSettings = MenuSettings.new(catalog)
+	var enabled: Array[String] = []
+	var prices: Dictionary = {}
+	for definition: RecipeDef in catalog:
+		prices[String(definition.id)] = str(definition.standard_price)
+		if definition.unlock_level == 1:
+			enabled.append(String(definition.id))
+	assert_true(menu.from_dict({"enabled": enabled, "prices": prices}))
+	assert_eq(menu.enabled_count(), 8)
+	assert_true(menu.set_owner_level(2), "a level-up is never refused by an oversized menu")
+	assert_eq(menu.owner_level(), 2)
+	assert_false(menu.set_owner_level(1), "a downgrade still respects the smaller limit")
+	assert_eq(menu.owner_level(), 2)
+	for index: int in range(3):
+		assert_true(menu.set_enabled(menu.enabled_recipes()[0].id, false))
+	assert_true(menu.set_enabled(&"late_dish", true), "the newly unlocked dish can join once there is room")
 
 func test_menu_tuning_is_injected_detached_and_invalid_tuning_has_no_choices() -> void:
 	var tuning: MenuTuning = MenuTuning.new()
@@ -452,3 +493,10 @@ func test_new_drinks_join_only_while_the_menu_has_room() -> void:
 	assert_eq(menu.enabled_count(), 6, "the first new drink fills the last free place")
 	assert_true(menu.is_enabled(&"drink_a"))
 	assert_false(menu.is_enabled(&"drink_b"), "a full menu leaves the next drink off")
+	assert_eq(_ids(menu.crowded_out_drinks()), [&"drink_b"] as Array[StringName], "the panel can name the waiting drink")
+	assert_true(menu.set_enabled(&"dish_0", false))
+	assert_true(menu.set_enabled(&"drink_b", true))
+	assert_true(menu.crowded_out_drinks().is_empty(), "a drink switched on is no longer waiting")
+	assert_true(menu.set_enabled(&"drink_b", false))
+	assert_true(menu.set_catalogue(food))
+	assert_true(menu.crowded_out_drinks().is_empty(), "a drink whose station left is not listed")

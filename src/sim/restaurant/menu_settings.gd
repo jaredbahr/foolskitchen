@@ -27,6 +27,9 @@ var _stash: Dictionary[StringName, Dictionary] = {}
 ## A dish switched on only because every enabled dish left the menu; it goes
 ## off again when stashed dishes come back (exact undo of a drinks-only menu).
 var _fallback_id: StringName = &""
+## Drinks a station change would have switched on but the full menu left off,
+## in catalogue order; the menu panel names them. Not saved.
+var _crowded_out: Array[StringName] = []
 
 
 func _init(cookable_recipes: Array[RecipeDef] = [], owner_level: int = 1, tuning: MenuTuning = null) -> void:
@@ -84,10 +87,13 @@ func menu_limit() -> int:
 	return _tuning.limit_for_level(_owner_level) if _valid else 0
 
 
-## A level-up makes recipes selectable without changing today's chosen menu.
-## A downgrade cannot leave a recipe enabled above the new level.
+## A level-up makes recipes selectable without changing today's chosen menu,
+## even when an older save left the menu above its dish limit. A downgrade
+## cannot leave a recipe enabled above the new level or the new limit.
 func set_owner_level(value: int) -> bool:
-	if not _valid or value < 1 or _enabled.size() > _tuning.limit_for_level(value):
+	if not _valid or value < 1:
+		return false
+	if value < _owner_level and _enabled.size() > _tuning.limit_for_level(value):
 		return false
 	for id: StringName in _enabled:
 		if _by_id[id].unlock_level > value:
@@ -183,6 +189,7 @@ func set_catalogue(cookable_recipes: Array[RecipeDef]) -> bool:
 	# Kept dishes count first; restored and new drinks join only while the
 	# menu has room under the owner's dish limit (#181).
 	var limit: int = menu_limit()
+	var crowded: Array[StringName] = []
 	for definition: RecipeDef in next._recipes:
 		if _by_id.has(definition.id) and _enabled.has(definition.id):
 			enabled[definition.id] = true
@@ -193,15 +200,21 @@ func set_catalogue(cookable_recipes: Array[RecipeDef]) -> bool:
 		elif _stash.has(id):
 			var kept: Dictionary = _stash[id]
 			prices[id] = clampi(int(kept["price"]), next.minimum_price(id), next.maximum_price(id))
-			if bool(kept["enabled"]) and definition.unlock_level <= _owner_level and enabled.size() < limit:
-				enabled[id] = true
-				restored_on = true
+			if bool(kept["enabled"]) and definition.unlock_level <= _owner_level:
+				if enabled.size() < limit:
+					enabled[id] = true
+					restored_on = true
+				elif definition.is_drink():
+					crowded.append(id)
 			_stash.erase(id)
 		else:
 			prices[id] = definition.standard_price
 			# New drinks go on at once; a new dish waits for the player.
-			if definition.unlock_level <= _owner_level and definition.is_drink() and enabled.size() < limit:
-				enabled[id] = true
+			if definition.unlock_level <= _owner_level and definition.is_drink():
+				if enabled.size() < limit:
+					enabled[id] = true
+				else:
+					crowded.append(id)
 	if restored_on and not _fallback_id.is_empty() and enabled.has(_fallback_id) and enabled.size() > 1:
 		enabled.erase(_fallback_id)
 		_fallback_id = &""
@@ -220,13 +233,32 @@ func set_catalogue(cookable_recipes: Array[RecipeDef]) -> bool:
 	_standards = next._standards
 	_enabled = enabled
 	_prices = prices
+	var still_waiting: Array[StringName] = []
+	for id: StringName in _crowded_out:
+		if _by_id.has(id) and not _enabled.has(id):
+			still_waiting.append(id)
+	for id: StringName in crowded:
+		if not _enabled.has(id) and not still_waiting.has(id):
+			still_waiting.append(id)
+	_crowded_out = still_waiting
 	return true
+
+
+## New drinks a full menu left off (see set_catalogue), still off and still
+## on the catalogue, so the panel can say why they are not being served.
+func crowded_out_drinks() -> Array[RecipeDef]:
+	var result: Array[RecipeDef] = []
+	for id: StringName in _crowded_out:
+		if _by_id.has(id) and not _enabled.has(id):
+			result.append(_by_id[id])
+	return result
 
 
 ## Session-only memory ends with the edit history (each phase change).
 func clear_stash() -> void:
 	_stash.clear()
 	_fallback_id = &""
+	_crowded_out.clear()
 
 
 ## Known dishes accept a whole-dollar request and clamp it to their bounds.
@@ -280,7 +312,11 @@ func from_dict(data: Variant) -> bool:
 		return false
 	var enabled_data: Array = section["enabled"]
 	var price_data: Dictionary = section["prices"]
-	if enabled_data.is_empty() or enabled_data.size() > menu_limit() or price_data.size() > _recipes.size():
+	# A save from before the dish limit (no version) keeps an oversized menu:
+	# FK-083 drinks could switch on 7-8 items at level 1. set_enabled adds
+	# nothing more until the player is back under the limit.
+	if enabled_data.is_empty() or (not legacy and enabled_data.size() > menu_limit()) \
+			or price_data.size() > _recipes.size():
 		return false
 	var next_enabled: Dictionary[StringName, bool] = {}
 	for value: Variant in enabled_data:
