@@ -6,7 +6,7 @@ extends RefCounted
 
 static func names() -> Array[String]:
 	return ["default", "extra_cook", "extra_server", "owner_kitchen", "owner_floor",
-		"trays_2", "trays_4", "extra_cleaner", "expanded_tables", "coffee_shop", "bar"]
+		"trays_2", "trays_4", "extra_cleaner", "expanded_tables", "coffee_shop", "bar", "fryer_coffee"]
 
 
 static func apply(name: String, main: Node, extra_cook_skill: int = 3) -> bool:
@@ -38,6 +38,8 @@ static func apply(name: String, main: Node, extra_cook_skill: int = 3) -> bool:
 			return _coffee_shop(main)
 		"bar":
 			return _bar(main)
+		"fryer_coffee":
+			return _fryer_coffee(main)
 	return false
 
 
@@ -47,6 +49,8 @@ static func morning(name: String, main: Node) -> bool:
 	match name:
 		"coffee_shop":
 			return _enable(main, [&"coffee", &"tea", &"croissant"])
+		"fryer_coffee":
+			return _enable(main, [&"burger", &"grilled_cheese", &"fries", &"coffee"])
 		"bar":
 			return _enable(main, [&"beer", &"wine", &"soft_drink", &"burger", &"grilled_cheese"])
 	return true
@@ -208,3 +212,24 @@ static func _expand_with_tables(main: Node) -> bool:
 			return false
 	return editor.buy(&"table_2", Vector2i(13, 6), 1) and editor.buy(&"table_2", Vector2i(-1, 6), 1)
 
+
+
+## FK-081: an explicitly level-two diner with a fryer and coffee machine.
+## Like the existing concept probes, equipment is free; stock is bought by
+## the production opening top-up at its normal price. Default is untouched.
+static func _fryer_coffee(main: Node) -> bool:
+	var progress: OwnerProgress = main.get("owner_progress") as OwnerProgress
+	var settings: MenuSettings = main.get("menu_settings") as MenuSettings
+	var sim: RestaurantSim = main.get("sim") as RestaurantSim
+	if progress == null or settings == null or sim == null:
+		return false
+	if progress.award_bonus(maxi(0, progress.threshold_for(2) - progress.total_xp)).is_empty() \
+			or not settings.set_owner_level(progress.level) or not sim.set_customer_level(progress.level):
+		return false
+	var editor: ShopEditor = _free_editor(main)
+	if editor == null or not editor.buy(&"fryer", Vector2i(9, 3), 0) \
+			or not editor.buy(&"coffee_machine", Vector2i(12, 3), 0) \
+			or not editor.last_check.unreachable.is_empty():
+		return false
+	return _finish(main, 11 * 60, 21 * 60, [&"burger", &"grilled_cheese", &"fries", &"coffee"],
+		[&"tea", &"tomato_soup"])

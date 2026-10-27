@@ -27,7 +27,10 @@ station_stock = Dictionary[StringName, int]({
 &"soda": 16,
 &"beer": 20,
 &"wine": 12,
-&"pastry": 12
+&"pastry": 12,
+&"potato": 12,
+&"oil": 12,
+&"dough": 12
 })
 auto_reorder_premium = 0.05
 delivery_interval_minutes = 180
