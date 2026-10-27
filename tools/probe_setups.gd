@@ -55,7 +55,8 @@ static func morning(name: String, main: Node) -> bool:
 ## FK-083 coffee shop: open 07:00-15:00 serving coffee, tea and croissants.
 ## Two coffee machines behind a four-stool café counter, the two starter
 ## tables, a round table with two rounded chairs, and café plants and a side
-## table (the room reads as a Café). Built free of charge (like
+## table (the room reads as a Café), and two storage shelves for the
+## supplies (FK-087). Built free of charge (like
 ## expanded_tables, so level-two pieces too), stocked at the normal price.
 static func _coffee_shop(main: Node) -> bool:
 	var editor: ShopEditor = _free_editor(main)
@@ -67,14 +68,16 @@ static func _coffee_shop(main: Node) -> bool:
 			[&"side_table", Vector2i(11, 5), 2], [&"plant_small_2", Vector2i(12, 5), 0]]:
 		if not editor.buy(placement[0], placement[1], placement[2]):
 			return false
-	if not _counter_with_stools(editor, 9, 12) or not editor.last_check.unreachable.is_empty():
+	if not _counter_with_stools(editor, 9, 12) or not _storage_shelves(editor) \
+			or not editor.last_check.unreachable.is_empty():
 		return false
 	return _finish(main, 7 * 60, 15 * 60, [&"coffee", &"tea", &"croissant"],
 		[&"burger", &"grilled_cheese", &"tomato_soup"])
 
 
 ## FK-083 bar: open 16:00-24:00 with beer, wine and soft drinks from a drinks
-## shelf and fridge behind a four-stool bar, plus burgers and grilled cheese.
+## shelf and fridge behind a four-stool bar, plus burgers and grilled cheese,
+## and two storage shelves (FK-087).
 static func _bar(main: Node) -> bool:
 	var editor: ShopEditor = _free_editor(main)
 	if editor == null or not _clear_east_table(main, editor):
@@ -83,7 +86,8 @@ static func _bar(main: Node) -> bool:
 			[&"table_2", Vector2i(2, 8), 0]]:
 		if not editor.buy(placement[0], placement[1], placement[2]):
 			return false
-	if not _counter_with_stools(editor, 9, 12) or not editor.last_check.unreachable.is_empty():
+	if not _counter_with_stools(editor, 9, 12) or not _storage_shelves(editor) \
+			or not editor.last_check.unreachable.is_empty():
 		return false
 	return _finish(main, 16 * 60, 24 * 60, [&"beer", &"wine", &"soft_drink", &"burger", &"grilled_cheese"],
 		[&"tomato_soup"])
@@ -112,6 +116,13 @@ static func _clear_east_table(main: Node, editor: ShopEditor) -> bool:
 			if editor.sell(placed.id) < 0:
 				return false
 	return true
+
+
+## FK-087: a concept's supplies need storage beyond the starter pantry, as a
+## player building one would add: two storage shelves in the kitchen's
+## north-east corner, beside the sink.
+static func _storage_shelves(editor: ShopEditor) -> bool:
+	return editor.buy(&"storage_shelf", Vector2i(11, 1), 2) and editor.buy(&"storage_shelf", Vector2i(12, 1), 2)
 
 
 ## A counter along row 7 from x0 to x1 (guests to the south on stools at row

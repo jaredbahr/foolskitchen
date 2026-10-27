@@ -8,6 +8,8 @@ const LOAN_TERMS: LoanTuning = preload("res://data/balance/loans.tres")
 ## Ledger notes that mark the morning auto-order's lines and its premium.
 const AUTO_LINE_PREFIX: String = "auto_reorder:"
 const AUTO_PREMIUM_NOTE: String = "auto_reorder_premium"
+## Ledger note of a cancelled order's refund (FK-087).
+const ORDER_REFUND_NOTE: String = "order_refund"
 
 var ledger: Ledger = Ledger.new()
 var stock: Stock = Stock.new()
@@ -125,8 +127,20 @@ func buy_ingredient(id: StringName, qty: int, unit_cost: int) -> bool:
 ## changes. Each line is recorded at list price; the order's premium (the
 ## planned cost above its list total) is one extra ingredients entry.
 ## Lines: [{id: StringName, qty: int, unit_cost: int}]. Never borrows.
-@warning_ignore("integer_division")
 func buy_auto_order(lines: Array[Dictionary], cost: int) -> bool:
+	if not pay_order(lines, cost, true):
+		return false
+	receive(lines)
+	return true
+
+
+## Pays for an order without stocking it (FK-087: it arrives with a later
+## delivery). Atomic: returns false without changes. A standing order (the
+## auto-reorder) records its lines as auto-order lines plus the premium
+## entry; a hand order records each line at list price under its ingredient.
+## `cost` may exceed the list total only for a standing order. Never borrows.
+@warning_ignore("integer_division")
+func pay_order(lines: Array[Dictionary], cost: int, standing: bool) -> bool:
 	var list_total: int = 0
 	var added: Dictionary[StringName, int] = {}
 	for line: Dictionary in lines:
@@ -141,15 +155,30 @@ func buy_auto_order(lines: Array[Dictionary], cost: int) -> bool:
 			return false
 		added[id] = added.get(id, 0) + qty
 		list_total += qty * unit_cost
-	if lines.is_empty() or cost < list_total or not can_spend_without_loan(cost):
+	if lines.is_empty() or cost < list_total or (not standing and cost != list_total) \
+			or not can_spend_without_loan(cost):
 		return false
 	for line: Dictionary in lines:
 		var id: StringName = line["id"]
 		var price: int = int(line["qty"]) * int(line["unit_cost"])
-		stock.add(id, int(line["qty"]), Clock.day)
-		ledger.record(Clock.day, -price, Ledger.INGREDIENTS, AUTO_LINE_PREFIX + String(id))
+		ledger.record(Clock.day, -price, Ledger.INGREDIENTS, (AUTO_LINE_PREFIX + String(id)) if standing else String(id))
 		EventBus.cash_changed.emit(cash, -price, Ledger.INGREDIENTS)
 	if cost > list_total:
 		ledger.record(Clock.day, list_total - cost, Ledger.INGREDIENTS, AUTO_PREMIUM_NOTE)
 		EventBus.cash_changed.emit(cash, list_total - cost, Ledger.INGREDIENTS)
 	return true
+
+
+## A delivery arrives: its lines join the stock, dated today (shelf life
+## counts from the delivery). Lines: [{id, qty}].
+func receive(lines: Array[Dictionary]) -> void:
+	for line: Dictionary in lines:
+		stock.add(StringName(line.get("id", &"")), int(line.get("qty", 0)), Clock.day)
+
+
+## A cancelled order's full refund, as one ingredients entry.
+func refund_order(amount: int) -> void:
+	if amount <= 0:
+		return
+	ledger.record(Clock.day, amount, Ledger.INGREDIENTS, ORDER_REFUND_NOTE)
+	EventBus.cash_changed.emit(cash, amount, Ledger.INGREDIENTS)

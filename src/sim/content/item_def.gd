@@ -39,8 +39,12 @@ const MAX_SEATED_FORWARD_OFFSET: float = 0.05
 @export var serve_across: bool = false
 ## Kitchen/storage role; category distinguishes a cooking station from storage.
 @export var station_type: StringName = &""
-## Concurrent jobs or storage slots, depending on category.
+## Concurrent jobs at a station (storage space is storage_units).
 @export var capacity: int = 1
+## Ingredient storage this item adds (FK-087): units of one storage kind,
+## shared by every ingredient of that kind. Capacities of one kind add up.
+@export var storage_kind: IngredientDef.Storage = IngredientDef.Storage.SHELF
+@export var storage_units: int = 0
 @export var quality_bonus: float = 0.0
 @export var price: int = 0
 ## Owner level required for new purchases. Existing placed items remain valid.

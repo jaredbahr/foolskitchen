@@ -30,3 +30,6 @@ station_stock = Dictionary[StringName, int]({
 &"pastry": 12
 })
 auto_reorder_premium = 0.05
+morning_delivery = true
+delivery_interval_minutes = 180
+freezer_shelf_life_days = 30

@@ -377,6 +377,18 @@ func refresh_sold_out() -> void:
 			_mark_sold_out(recipe.id, short)
 
 
+## A delivery during service (FK-087) brings dishes back: those the stock
+## can cover again leave today's sold-out list. Returns how many came back.
+func restock_sold_out() -> int:
+	var back: Array[StringName] = []
+	for recipe: RecipeDef in menu:
+		if recipe != null and sold_out_today.has(recipe.id) and _short_ingredient(recipe, {}).is_empty():
+			back.append(recipe.id)
+	for id: StringName in back:
+		sold_out_today.erase(id)
+	return back.size()
+
+
 func is_sold_out(recipe_id: StringName) -> bool:
 	return sold_out_today.has(recipe_id)
 

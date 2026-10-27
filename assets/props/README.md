@@ -35,6 +35,7 @@ material name.
 | Coffee machine | `kitchenCabinet` + `kitchenCoffeeMachine` on top | `wood` | The whole machine |
 | Drinks fridge | `kitchenFridgeSmall` | none (unpaintable) | All |
 | Drinks shelf | `bookcaseOpenLow` + Food Kit `wine-red`, `wine-white`, `soda-bottle` | `wood` | Every bottle |
+| Storage shelf (FK-087) | `bookcaseOpen` + Food Kit `barrel`, `loaf`, `carton`, `bag`, `can` on its shelves and 2 x Furniture Kit `cardboardBoxClosed` on top; parts tagged `metadata/stock_slot` 0-10 show in proportion to how full dry storage is | `wood` | Every crate, box and food piece |
 
 Existing `ItemDef.paintable` values are unchanged: the stove, sink and door
 remain unpaintable. Their mappings document the wrapper contract, rather than

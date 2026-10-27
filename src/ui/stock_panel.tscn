@@ -45,6 +45,27 @@ mouse_filter = 2
 autowrap_mode = 3
 text = "Buy ingredients for today."
 
+[node name="Delivery" type="HBoxContainer" parent="Panel/Content"]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="DeliveryLabel" type="Label" parent="Panel/Content/Delivery"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(250, 0)
+layout_mode = 2
+mouse_filter = 2
+autowrap_mode = 3
+text = "Next delivery"
+
+[node name="DeliveryBar" type="ProgressBar" parent="Panel/Content/Delivery"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 18)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+mouse_filter = 2
+show_percentage = false
+
 [node name="Scroll" type="ScrollContainer" parent="Panel/Content"]
 layout_mode = 2
 size_flags_vertical = 3
@@ -72,10 +93,58 @@ unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
 
-[node name="Close" type="Button" parent="Panel/Content"]
+[node name="Cart" type="HBoxContainer" parent="Panel/Content"]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="CartTotal" type="Label" parent="Panel/Content/Cart"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(200, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+autowrap_mode = 3
+text = "Order total: $0"
+
+[node name="Clear" type="Button" parent="Panel/Content/Cart"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(110, 0)
 layout_mode = 2
-size_flags_horizontal = 8
+focus_mode = 0
+text = "Clear cart"
+
+[node name="Order" type="Button" parent="Panel/Content/Cart"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(130, 0)
+layout_mode = 2
+focus_mode = 0
+text = "Place order"
+
+[node name="Footer" type="HBoxContainer" parent="Panel/Content"]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Pending" type="Label" parent="Panel/Content/Footer"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(200, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+autowrap_mode = 3
+text = "Nothing on order."
+
+[node name="Cancel" type="Button" parent="Panel/Content/Footer"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(130, 0)
+layout_mode = 2
+size_flags_vertical = 0
+focus_mode = 0
+text = "Cancel order"
+
+[node name="Close" type="Button" parent="Panel/Content/Footer"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(110, 0)
+layout_mode = 2
+size_flags_vertical = 0
 focus_mode = 0
 text = "Close"

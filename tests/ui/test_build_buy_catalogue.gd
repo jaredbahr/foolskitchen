@@ -239,7 +239,8 @@ func test_hover_card_text() -> void:
 		["Round rug", "$30", "Rug: tables and chairs can stand on it", "Charm +1", "Themes: Cosy, Rustic"] as Array[String])
 	assert_eq(_catalogue.hover_card_lines(&"stove"),
 		["Stove", "$100", "Cooks hot dishes", "Themes: Diner"] as Array[String])
-	assert_eq(_catalogue.hover_card_lines(&"fridge")[2], "Stores 20 ingredients")
+	assert_eq(_catalogue.hover_card_lines(&"fridge")[2], "Holds 40 units of fridge food")
+	assert_eq(_catalogue.hover_card_lines(&"storage_shelf")[2], "Holds 40 units of dry goods")
 	assert_eq(_catalogue.hover_card_lines(&"round_table")[2], "Table for 2")
 	assert_eq(_catalogue.hover_card_lines(&"table_2")[2], "Table with seats for 2")
 	assert_eq(_catalogue.hover_card_lines(&"bar_counter")[3], "Themes: Modern, Diner, Bar", "vibe theme order")

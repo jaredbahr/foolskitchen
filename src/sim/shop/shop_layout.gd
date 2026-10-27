@@ -25,3 +25,6 @@ extends Resource
 ## Floor cells the player has bought (FK-080), in grid coordinates. The outer
 ## walls are derived from these by ShopFootprint; empty is the starting shell.
 @export var floor_cells: Array[Vector2i] = []
+## Built-in dry storage (FK-087): the back-room pantry the shop comes with,
+## in units of dry (shelf) ingredients. Placed storage shelves add to it.
+@export var pantry_units: int = 0

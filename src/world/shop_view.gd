@@ -67,6 +67,9 @@ var _shell_windows: Dictionary[Vector2i, Vector2i] = {}
 var selection_outline: BoundsOutline
 var _selected_item_id: int = -1
 var _selection_bounds: AABB
+## How full each storage kind is, 0..1 (FK-087). Shelves show their stock
+## crates in proportion. View only; Main sends it when stock changes.
+var _storage_fill: Dictionary[int, float] = {}
 
 
 ## Replaces a previous world and its signal bindings without modifying either.
@@ -513,7 +516,48 @@ func _build_item(item: PlacedItem) -> void:
 	# updates placement without replacing the surviving wrapper or its paint.
 	node.transform = ItemVisual.placed_transform(definition, item.origin, item.quarter_turns)
 	node.rotation.y = -item.quarter_turns * PI * 0.5
+	_apply_stock_slots(node, definition)
 	_sync_item_selection()
+
+
+## Fill per storage kind (IngredientDef.Storage -> 0..1).
+func set_storage_fill(fill: Dictionary[int, float]) -> void:
+	_storage_fill = fill.duplicate()
+	if world == null:
+		return
+	for id: int in item_nodes:
+		var placed: PlacedItem = world.grid.item(id)
+		if placed != null:
+			_apply_stock_slots(item_nodes[id], placed.def as ItemDef)
+
+
+## A storage item's parts marked `metadata/stock_slot` (0, 1, ...) are its
+## crates: the first round(fill * slots) show, the rest hide. Deterministic.
+func _apply_stock_slots(node: ItemVisual, definition: ItemDef) -> void:
+	if node == null or definition == null or definition.storage_units <= 0:
+		return
+	var slots: Array[Node3D] = []
+	_collect_stock_slots(node, slots)
+	if slots.is_empty():
+		return
+	var fill: float = clampf(float(_storage_fill.get(int(definition.storage_kind), 0.0)), 0.0, 1.0)
+	var shown: int = stock_slots_shown(fill, slots.size())
+	for slot: Node3D in slots:
+		slot.visible = int(slot.get_meta(&"stock_slot")) < shown
+
+
+## Any stock at all shows at least one crate; a full store shows them all.
+static func stock_slots_shown(fill: float, slots: int) -> int:
+	if fill <= 0.0 or slots <= 0:
+		return 0
+	return clampi(ceili(fill * float(slots) - 0.0001), 1, slots)
+
+
+static func _collect_stock_slots(node: Node, out: Array[Node3D]) -> void:
+	for child: Node in node.get_children():
+		if child is Node3D and child.has_meta(&"stock_slot"):
+			out.append(child as Node3D)
+		_collect_stock_slots(child, out)
 
 
 func _remove_item(id: int) -> void:

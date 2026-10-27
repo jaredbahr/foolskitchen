@@ -4,8 +4,8 @@ extends Node3D
 ## each new morning.
 ##
 ## Day loop:
-##   MORNING  -> expired stock thrown out, auto-reorder tops the fridge up,
-##               "Open shop" (HUD) starts service
+##   MORNING  -> expired stock thrown out, the morning delivery brings the
+##               auto-reorder (the standing order), "Open shop" (HUD) starts service
 ##   OPEN / LAST_ORDERS -> RestaurantSim runs (guests, staff, kitchen)
 ##   CLOSED   -> wages and rent charged, evening report shown
 ##   "Next day" -> MORNING of the next day, autosave
@@ -73,6 +73,15 @@ var tray_level: int = 0
 var reorder_settings: ReorderSettings = ReorderSettings.new(TUNING)
 ## Auto-order premium. Tests that are not about reorder pricing may set 0.
 var auto_reorder_premium: float = TUNING.auto_reorder_premium
+## Paid ingredient orders waiting for a delivery (FK-087), saved in the
+## "deliveries" section at the morning autosave only. An order placed after
+## that save is lost on reload together with its payment and everything else
+## since the save: the game goes back to the morning, money and goods both.
+var deliveries: DeliveryBook = DeliveryBook.new()
+## Delivery schedule; tests may use another tuning resource.
+var delivery_tuning: EconomyTuning = TUNING
+## The Stock panel's order cart (ingredient id -> units), not yet ordered.
+var stock_cart: Dictionary[StringName, int] = {}
 
 var _previous_clock: SimClock = null
 var _started: bool = false
@@ -86,6 +95,10 @@ var _loaded_reputation: ReputationBook = null
 var _loaded_milestones: MilestoneTracker = null
 var _loaded_tray_level: int = 0
 var _loaded_reorder: ReorderSettings = null
+var _loaded_deliveries: DeliveryBook = null
+## The last delivery today ({lines, minute}), for the Stock panel notes.
+var _last_delivery: Dictionary = {}
+var _storage_fill_key: String = ""
 ## This morning's automatic order and expiry, for the Stock panel notes.
 var _morning_order: Dictionary = {}
 var _expired_this_morning: Dictionary = {}
@@ -257,8 +270,11 @@ func _bind_world_presentation() -> void:
 	if not $HUD.is_connected(&"staff_pressed", toggle_staff):
 		$HUD.connect(&"staff_pressed", toggle_staff)
 	_stock_panel = $Overlay/StockPanel
-	if not _stock_panel.buy_requested.is_connected(_on_stock_buy_requested):
-		_stock_panel.buy_requested.connect(_on_stock_buy_requested)
+	if not _stock_panel.cart_requested.is_connected(_on_stock_cart_requested):
+		_stock_panel.cart_requested.connect(_on_stock_cart_requested)
+		_stock_panel.order_requested.connect(_on_stock_order_requested)
+		_stock_panel.clear_requested.connect(_on_stock_clear_requested)
+		_stock_panel.cancel_requested.connect(_on_stock_cancel_requested)
 		_stock_panel.auto_requested.connect(_on_stock_auto_requested)
 		_stock_panel.target_requested.connect(_on_stock_target_requested)
 		_stock_panel.close_requested.connect(_on_stock_close_requested)
@@ -345,6 +361,7 @@ func start() -> void:
 	SaveSystem.register("reviews", _capture_reviews, _restore_reviews)
 	SaveSystem.register("milestones", _capture_milestones, _restore_milestones)
 	SaveSystem.register("reorder", _capture_reorder, _restore_reorder)
+	SaveSystem.register("deliveries", _capture_deliveries, _restore_deliveries)
 	var loaded: bool = use_saves and _load_autosave()
 	if not loaded:
 		_skip_next_autosave = use_saves and SaveSystem.list_slots().has(save_slot)
@@ -372,6 +389,7 @@ func start() -> void:
 		Economy.add_cash, _furniture_purchase_refusal),
 		_loaded_layout if _loaded_layout != null else LAYOUT)
 	shop_editor.set_owner_level(owner_progress.level)
+	shop_editor.storage_need = _storage_need
 	_connect_session()
 	Clock.attach_world(world, sim.advance)
 	_begin_morning()
@@ -397,6 +415,8 @@ func _connect_session() -> void:
 		EventBus.day_phase_changed.connect(_on_day_phase_changed)
 	if not EventBus.sim_ticked.is_connected(_on_inspection_tick):
 		EventBus.sim_ticked.connect(_on_inspection_tick)
+	if not EventBus.sim_ticked.is_connected(_on_delivery_tick):
+		EventBus.sim_ticked.connect(_on_delivery_tick)
 	if not EventBus.cash_changed.is_connected(_on_build_cash_changed):
 		EventBus.cash_changed.connect(_on_build_cash_changed)
 	if not _inspect_panel.owner_mode_requested.is_connected(_on_owner_mode_requested):
@@ -432,6 +452,8 @@ func _exit_tree() -> void:
 		EventBus.day_phase_changed.disconnect(_on_day_phase_changed)
 	if EventBus.sim_ticked.is_connected(_on_inspection_tick):
 		EventBus.sim_ticked.disconnect(_on_inspection_tick)
+	if EventBus.sim_ticked.is_connected(_on_delivery_tick):
+		EventBus.sim_ticked.disconnect(_on_delivery_tick)
 	if EventBus.cash_changed.is_connected(_on_build_cash_changed):
 		EventBus.cash_changed.disconnect(_on_build_cash_changed)
 	if world != null and Clock.attached_world == world:
@@ -1115,6 +1137,7 @@ func refresh_presentation() -> void:
 		_debug_overlay.refresh()
 	var view: ShopView = $ShopView
 	view.set_selected_item(_inspect_panel.selected_item_id)
+	_refresh_storage_view()
 	_debug_geometry.update_geometry(world, view.drawn_agent_positions(), view.drawn_agent_colors(), _inspect_panel.selected_agent_id, _debug_overlay.is_enabled())
 
 
@@ -1190,8 +1213,11 @@ func build_report(day: int) -> DayReport:
 		if _milestone_xp_today > 0:
 			report.owner_xp_breakdown["milestone_xp"] = _milestone_xp_today
 	report.low_stock = StockAlerts.sell_out_lines(sim.stock_outs_today, content)
+	var incoming: Dictionary[StringName, int] = deliveries.pending_by_id() if delivery_tuning.morning_delivery \
+		else {} as Dictionary[StringName, int]
 	report.low_stock.append_array(StockAlerts.forecast_lines(StockAlerts.forecast(Economy.stock,
-		_reorder(), _shelf_lives(), day + 1, _unit_costs(), Economy.cash, auto_reorder_premium), content))
+		_reorder(), _shelf_lives(), day + 1, _unit_costs(), Economy.cash, auto_reorder_premium,
+		_storage_capacity(), StorageSpace.kinds_of(content), incoming), content))
 	if _milestone_award_day == day:
 		for goal: Milestone in _milestones_reached_today:
 			report.milestones_reached.append({"title": goal.title,
@@ -1230,6 +1256,10 @@ func _new_game() -> void:
 	tray_level = 0
 	_loaded_reorder = null
 	reorder_settings = ReorderSettings.new(TUNING)
+	_loaded_deliveries = null
+	deliveries = DeliveryBook.new()
+	stock_cart.clear()
+	_last_delivery.clear()
 	sim.carry_capacity = 1
 	staff_roster = StaffRoster.new(TUNING)
 	_staff_notice_day = 0
@@ -1253,6 +1283,7 @@ func _load_autosave() -> bool:
 	_loaded_milestones = null
 	_loaded_tray_level = 0
 	_loaded_reorder = null
+	_loaded_deliveries = null
 	if not SaveSystem.list_slots().has(save_slot):
 		return false
 	if SaveSystem.load_game(save_slot) != OK:
@@ -1305,6 +1336,10 @@ func _load_autosave() -> bool:
 	milestones = career
 	# Saves from before the Stock panel have no section: today's defaults.
 	reorder_settings = _loaded_reorder if _loaded_reorder != null else ReorderSettings.new(TUNING)
+	# Saves from before deliveries have nothing on order.
+	deliveries = _loaded_deliveries if _loaded_deliveries != null else DeliveryBook.new()
+	stock_cart.clear()
+	_last_delivery.clear()
 	return true
 
 
@@ -1357,6 +1392,19 @@ func _restore_reorder(data: Dictionary) -> bool:
 	if not candidate.from_dict(data):
 		return false
 	_loaded_reorder = candidate
+	return true
+
+
+func _capture_deliveries() -> Dictionary:
+	return deliveries.to_dict()
+
+
+## Staged like the reorder section; installed after a complete morning load.
+func _restore_deliveries(data: Dictionary) -> bool:
+	var candidate: DeliveryBook = DeliveryBook.new()
+	if not candidate.from_dict(data):
+		return false
+	_loaded_deliveries = candidate
 	return true
 
 
@@ -2192,6 +2240,9 @@ func _begin_morning() -> void:
 	_skip_next_autosave = false
 	_refresh_loan_hud()
 	$HUD.set_owner_progress(owner_progress.level, owner_progress.xp_into_level(), owner_progress.xp_in_level())
+	# The morning report of an auto-order that did not fit is the Stock panel.
+	if not (_morning_order.get("unfit", {}) as Dictionary).is_empty():
+		set_stock_visible(true)
 	# A new raise or departure must be visible without making the player find
 	# the Staff button. Ordinary mornings still leave the panel closed.
 	if not _staff_notices.is_empty() \
@@ -2205,6 +2256,9 @@ func _shelf_lives() -> Dictionary:
 	var lives: Dictionary = {}
 	for ingredient: IngredientDef in content.ingredients():
 		lives[ingredient.id] = ingredient.shelf_life_days
+		# The freezer keeps food much longer (FK-087).
+		if ingredient.storage == IngredientDef.Storage.FREEZER:
+			lives[ingredient.id] = maxi(ingredient.shelf_life_days, TUNING.freezer_shelf_life_days)
 	return lives
 
 
@@ -2223,34 +2277,182 @@ func _expire_stock() -> void:
 		world.log_event("Threw out %d %s past its shelf life" % [_expired_this_morning[id], id])
 
 
-## The morning auto-order: enabled ingredients are topped up to their targets
-## in one order priced at list total plus the premium. Short cash buys what
-## fits in the fixed order and logs the rest; it never borrows.
+## Storage units per kind: the layout's pantry plus placed storage (FK-087).
+func _storage_capacity() -> Dictionary[int, int]:
+	var pantry: int = shop_editor.pantry_units if shop_editor != null else LAYOUT.pantry_units
+	return StorageSpace.capacities(world.grid if world != null else null, pantry)
+
+
+## What the shop's storage holds and has on order, right now.
+func storage_space() -> StorageSpace:
+	return StorageSpace.new(_storage_capacity(), Economy.stock, deliveries.pending_by_id(),
+		StorageSpace.kinds_of(content))
+
+
+## Units each kind must keep room for; Build refuses to sell storage below it.
+func _storage_need() -> Dictionary:
+	var space: StorageSpace = storage_space()
+	var need: Dictionary = {}
+	for kind: int in StorageSpace.KINDS:
+		need[kind] = space.committed(kind)
+	return need
+
+
+## The morning delivery (FK-087): orders placed after yesterday's last
+## delivery, then the standing order. The standing order is the auto-reorder:
+## enabled ingredients are topped up to their targets (counting what is
+## already on order) in one order priced at list total plus the premium. It
+## buys no more than the free storage space, and with short cash what fits
+## in the fixed order; it never borrows. It arrives at once, like before.
 func _restock() -> void:
-	var order: Dictionary = _reorder().plan(Economy.stock, _unit_costs(), Economy.cash, auto_reorder_premium)
-	var lines: Array[Dictionary] = []
-	lines.assign(order["lines"])
-	_morning_order = {"short": order["short"]}
-	if not lines.is_empty() and not Economy.buy_auto_order(lines, int(order["cost"])):
-		world.log_event("The morning auto-order could not be paid")
+	_deliver_due(true)
+	var order: Dictionary = _reorder().plan(Economy.stock, _unit_costs(), Economy.cash,
+		auto_reorder_premium, false, storage_space())
+	_morning_order = {"short": order["short"], "unfit": order["unfit"]}
+	_place_standing(order, Vector2i(Clock.sim.day, DeliveryBook.MORNING if delivery_tuning.morning_delivery else 0),
+		"The morning auto-order could not be paid")
+	_deliver_due(true)
 	var short: Dictionary = order["short"]
 	for id: StringName in short:
 		world.log_event("Couldn't afford %d %s this morning" % [short[id], id])
+	var unfit: Dictionary = order["unfit"]
+	for id: StringName in unfit:
+		world.log_event("No storage space for %d %s this morning" % [unfit[id], id])
 
 
-func can_edit_stock() -> bool:
-	return _started and sim != null and reorder_settings != null and Clock.sim.phase == SimClock.Phase.MORNING
+func _place_standing(order: Dictionary, due: Vector2i, failure: String) -> void:
+	var lines: Array[Dictionary] = []
+	lines.assign(order["lines"])
+	if lines.is_empty():
+		return
+	if not Economy.pay_order(lines, int(order["cost"]), true):
+		world.log_event(failure)
+	elif not deliveries.place(lines, int(order["cost"]), true, due):
+		# Never keep money for goods that will not come.
+		Economy.refund_order(int(order["cost"]))
+		world.log_event(failure)
 
 
-## A manual morning buy at list price. It joins the next morning autosave.
-func stock_buy(id: StringName, qty: int) -> bool:
-	if not can_edit_stock() or not reorder_settings.has(id) or (qty != 1 and qty != 5):
+## Unloads every order due now into the stock. Dishes that sold out come
+## back once the delivery covers them. `morning_setup` only for the morning.
+func _deliver_due(morning_setup: bool = false) -> bool:
+	if deliveries.is_empty() or Clock.sim == null:
 		return false
-	var ingredient: IngredientDef = content.ingredient(id)
-	if ingredient == null or not Economy.buy_ingredient(id, qty, ingredient.unit_cost):
+	var lines: Array[Dictionary] = deliveries.take_due(Clock.sim, morning_setup)
+	if lines.is_empty():
 		return false
+	Economy.receive(lines)
+	_last_delivery = {"lines": lines, "phase": Clock.sim.phase, "minute": Clock.sim.display_minutes()}
+	if sim != null and sim.restock_sold_out() > 0:
+		_refresh_sold_out_hud()
+	var parts: Array[String] = []
+	for line: Dictionary in lines:
+		parts.append("%d %s" % [int(line["qty"]), line["id"]])
+	world.log_event("Delivery arrived: %s" % ", ".join(parts))
 	_refresh_stock_panel()
 	return true
+
+
+func _on_delivery_tick(_tick: int) -> void:
+	if Clock.sim == null or Clock.sim.phase != SimClock.Phase.OPEN:
+		return
+	if not deliveries.is_empty():
+		var due: Vector2i = deliveries.earliest_due()
+		if due.x < Clock.sim.day or (due.x == Clock.sim.day and due.y >= 0 and due.y <= Clock.sim.phase_tick):
+			_deliver_due()
+	# The countdown bar follows the clock while the panel is open.
+	if is_stock_visible() and Clock.sim.phase_tick % maxi(1, HOURS_TUNING.ticks_per_minute) == 0:
+		_refresh_stock_panel()
+
+
+## The panel opens in every phase; orders are paid now and delivered later.
+func can_edit_stock() -> bool:
+	return _started and sim != null and reorder_settings != null
+
+
+## Sets one cart amount (0..99 units). Refused when it would not fit in
+## storage. Nothing is paid until the order is placed.
+func stock_cart_set(id: StringName, qty: int) -> bool:
+	if not can_edit_stock() or content.ingredient(id) == null or qty < 0 or qty > ReorderSettings.MAX_TARGET:
+		return false
+	var trial: Dictionary[StringName, int] = stock_cart.duplicate()
+	if qty == 0:
+		trial.erase(id)
+	else:
+		trial[id] = qty
+	if qty > int(stock_cart.get(id, 0)) and storage_space().first_overflow(trial) >= 0:
+		return false
+	stock_cart = trial
+	_refresh_stock_panel()
+	return true
+
+
+func stock_cart_total() -> int:
+	var total: int = 0
+	for id: StringName in stock_cart:
+		var ingredient: IngredientDef = content.ingredient(id)
+		if ingredient != null:
+			total += ingredient.unit_cost * int(stock_cart[id])
+	return total
+
+
+## Why the cart cannot be ordered now, as a player sentence, or "".
+func stock_cart_refusal() -> String:
+	if stock_cart.is_empty():
+		return "Choose some ingredients first"
+	var kind: int = storage_space().first_overflow(stock_cart)
+	if kind >= 0:
+		return StorageSpace.refusal(kind)
+	if not Economy.can_spend_without_loan(stock_cart_total()):
+		return "Not enough cash"
+	return ""
+
+
+## Pays for the cart at list price and puts it on the next delivery.
+func stock_place_order() -> bool:
+	if not can_edit_stock() or not stock_cart_refusal().is_empty():
+		return false
+	var lines: Array[Dictionary] = []
+	for id: StringName in _cart_order():
+		var ingredient: IngredientDef = content.ingredient(id)
+		lines.append({"id": id, "qty": int(stock_cart[id]), "unit_cost": ingredient.unit_cost})
+	var cost: int = stock_cart_total()
+	if not Economy.pay_order(lines, cost, false):
+		return false
+	if not deliveries.place(lines, cost, false, DeliveryBook.next_due(Clock.sim, delivery_tuning)):
+		Economy.refund_order(cost)
+		return false
+	stock_cart.clear()
+	_refresh_stock_panel()
+	return true
+
+
+## Cancels everything on order (standing orders too) for a full refund.
+## Returns the refund, or -1 when nothing is on order.
+func stock_cancel_orders() -> int:
+	if not can_edit_stock() or deliveries.is_empty():
+		return -1
+	var refund: int = deliveries.cancel_all()
+	Economy.refund_order(refund)
+	_refresh_stock_panel()
+	return refund
+
+
+func stock_clear_cart() -> void:
+	stock_cart.clear()
+	_refresh_stock_panel()
+
+
+## Cart ids in the panel's order (fridge, freezer, dry; fixed order inside).
+func _cart_order() -> Array[StringName]:
+	var out: Array[StringName] = []
+	for row: Dictionary in stock_rows():
+		if stock_cart.has(row["id"]):
+			out.append(row["id"])
+	for id: StringName in stock_cart:
+		if not out.has(id):
+			out.append(id)
+	return out
 
 
 func stock_set_auto(id: StringName, enabled: bool) -> bool:
@@ -2271,7 +2473,7 @@ func toggle_stock() -> void:
 	set_stock_visible(not is_stock_visible())
 
 
-## Idempotent production path for the HUD and real captures. MORNING only.
+## Idempotent production path for the HUD and real captures, in any phase.
 func set_stock_visible(value: bool) -> bool:
 	if _stock_panel == null or (value and not can_edit_stock()):
 		return false
@@ -2298,21 +2500,95 @@ func is_stock_visible() -> bool:
 	return _stock_panel != null and _stock_panel.visible
 
 
+## Ingredients a dish on today's menu uses.
+func _menu_ingredients() -> Dictionary[StringName, bool]:
+	var used: Dictionary[StringName, bool] = {}
+	if menu_settings != null and menu_settings.is_valid():
+		for recipe: RecipeDef in menu_settings.enabled_recipes():
+			for ingredient: IngredientDef in recipe.ingredients:
+				if ingredient != null:
+					used[ingredient.id] = true
+	return used
+
+
 ## Rows hold display names only; the panel never sees a raw id as text.
+## Grouped by storage kind (fridge, freezer, dry); inside a group the
+## ingredients today's menu uses come first, in the fixed buying order.
+## Ingredients nothing on the menu uses are listed too (in_use false).
 func stock_rows() -> Array[Dictionary]:
 	var rows: Array[Dictionary] = []
 	if content == null or reorder_settings == null:
 		return rows
+	_reorder()
 	var expiring: Dictionary = Economy.stock.expiring_on(Clock.sim.day + 1, _shelf_lives())
-	for id: StringName in _reorder().ids():
-		var ingredient: IngredientDef = content.ingredient(id)
-		if ingredient == null:
-			continue
-		rows.append({"id": id, "name": ingredient.display_name, "count": Economy.stock.count(id),
-			"expiring": int(expiring.get(id, 0)), "unit_cost": ingredient.unit_cost,
-			"enabled": reorder_settings.is_enabled(id), "target": reorder_settings.target(id),
-			"max_target": ReorderSettings.MAX_TARGET})
+	var used: Dictionary[StringName, bool] = _menu_ingredients()
+	var pending: Dictionary[StringName, int] = deliveries.pending_by_id()
+	for kind: int in StorageSpace.KINDS:
+		for in_use: bool in [true, false]:
+			for id: StringName in reorder_settings.all_ids():
+				var ingredient: IngredientDef = content.ingredient(id)
+				if ingredient == null or int(ingredient.storage) != kind or used.has(id) != in_use:
+					continue
+				rows.append({"id": id, "name": ingredient.display_name, "count": Economy.stock.count(id),
+					"expiring": int(expiring.get(id, 0)), "unit_cost": ingredient.unit_cost,
+					"enabled": reorder_settings.is_enabled(id), "target": reorder_settings.target(id),
+					"max_target": ReorderSettings.MAX_TARGET, "kind": kind, "in_use": in_use,
+					"cart": int(stock_cart.get(id, 0)), "on_order": int(pending.get(id, 0))})
 	return rows
+
+
+## One entry per storage kind the shop has room for or stocks:
+## {kind, label, in_stock, on_order, capacity, cart}.
+func stock_groups() -> Array[Dictionary]:
+	var space: StorageSpace = storage_space()
+	var cart: Dictionary[int, int] = {}
+	for id: StringName in stock_cart:
+		var kind: int = space.kind_of(id)
+		cart[kind] = int(cart.get(kind, 0)) + int(stock_cart[id])
+	var listed: Dictionary[int, bool] = {}
+	for row: Dictionary in stock_rows():
+		listed[int(row["kind"])] = true
+	var groups: Array[Dictionary] = []
+	for kind: int in StorageSpace.KINDS:
+		if space.capacity(kind) <= 0 and not listed.has(kind) and space.committed(kind) <= 0:
+			continue
+		groups.append({"kind": kind, "label": StorageSpace.label(kind), "in_stock": space.in_stock(kind),
+			"on_order": space.on_order(kind), "capacity": space.capacity(kind), "cart": int(cart.get(kind, 0))})
+	return groups
+
+
+## The Next delivery bar: {text, fraction}.
+func delivery_countdown() -> Dictionary:
+	var info: Dictionary = DeliveryBook.countdown(Clock.sim, delivery_tuning)
+	var text: String = "Next delivery: tomorrow morning"
+	match info["when"]:
+		&"open":
+			text = "Next delivery: when you open at %s" % Fmt.clock(int(info["minute"]))
+		&"today":
+			text = "Next delivery at %s" % Fmt.clock(int(info["minute"]))
+	if info["when"] == &"tomorrow" and not delivery_tuning.morning_delivery:
+		text = "Next delivery: when you open tomorrow"
+	return {"text": text, "fraction": float(info["fraction"])}
+
+
+## What is on order, as one player sentence, or "".
+func stock_pending_text() -> String:
+	if deliveries.is_empty():
+		return ""
+	var parts: Array[String] = []
+	var pending: Dictionary[StringName, int] = deliveries.pending_by_id()
+	for id: StringName in pending:
+		parts.append("%d %s" % [pending[id], _ingredient_name(id)])
+	return "On order (paid %s): %s. %s." % [Fmt.money(deliveries.paid_total()), StockAlerts.join_names(parts),
+		_due_text(deliveries.earliest_due())]
+
+
+func _due_text(due: Vector2i) -> String:
+	if due.x > Clock.sim.day or (due.x == Clock.sim.day and due.y == DeliveryBook.MORNING):
+		return "It arrives tomorrow morning" if due.y == DeliveryBook.MORNING else "It arrives when you open tomorrow"
+	if due.y == 0 and Clock.sim.phase == SimClock.Phase.MORNING:
+		return "It arrives when you open"
+	return "It arrives at %s" % Fmt.clock(DeliveryBook.minute_of(Clock.sim, due.y))
 
 
 ## Player sentences about this morning's automatic order and expiry.
@@ -2333,6 +2609,17 @@ func stock_notes() -> Array[String]:
 		notes.append(("This morning's auto-order cost %s (%s at list price + %s premium)." % [
 			Fmt.money(list_total + premium), Fmt.money(list_total), Fmt.money(premium)]) if premium > 0
 			else "This morning's auto-order cost %s." % Fmt.money(list_total))
+	var space: StorageSpace = storage_space()
+	for when: String in ["unfit", "opening_unfit"]:
+		var unfit: Dictionary = _morning_order.get(when, {})
+		for kind: int in StorageSpace.KINDS:
+			var names: Array[String] = []
+			for id: StringName in unfit:
+				if space.kind_of(id) == kind:
+					names.append("%d %s" % [int(unfit[id]), _ingredient_name(id)])
+			if not names.is_empty():
+				notes.append("%s for %s %s." % [StorageSpace.refusal(kind), StockAlerts.join_names(names),
+					"this morning" if when == "unfit" else "at opening"])
 	var short: Dictionary = _morning_order.get("short", {})
 	var missed: Array[String] = []
 	for id: StringName in short:
@@ -2344,6 +2631,10 @@ func stock_notes() -> Array[String]:
 		thrown.append("%d %s" % [int(_expired_this_morning[id]), _ingredient_name(id)])
 	if not thrown.is_empty():
 		notes.append("Thrown out this morning (too old): %s." % StockAlerts.join_names(thrown))
+	for kind: int in StorageSpace.KINDS:
+		if space.is_over(kind):
+			notes.append("The %s is over its space: nothing more of it can be ordered until some is used." % (
+				"dry storage" if kind == StorageSpace.DRY else StorageSpace.label(kind).to_lower()))
 	return notes
 
 
@@ -2353,9 +2644,30 @@ func _ingredient_name(id: StringName) -> String:
 
 
 func _refresh_stock_panel() -> void:
-	if _stock_panel == null or Clock.sim == null:
+	if _stock_panel == null or Clock.sim == null or content == null or world == null:
 		return
-	_stock_panel.set_stock(stock_rows(), Economy.cash, can_edit_stock(), stock_notes(), auto_reorder_premium)
+	_stock_panel.set_view({"rows": stock_rows(), "groups": stock_groups(), "cash": Economy.cash,
+		"editable": can_edit_stock(), "notes": stock_notes(), "premium": auto_reorder_premium,
+		"cart_total": stock_cart_total(), "cart_refusal": stock_cart_refusal(),
+		"pending": stock_pending_text(), "refund": deliveries.paid_total(),
+		"delivery": delivery_countdown()})
+
+
+## Shelves show crates in proportion to how full their kind is (view only).
+func _refresh_storage_view() -> void:
+	if world == null or content == null or shop_editor == null:
+		return
+	var space: StorageSpace = storage_space()
+	var fill: Dictionary[int, float] = {}
+	var key: String = ""
+	for kind: int in StorageSpace.KINDS:
+		fill[kind] = space.fill(kind)
+		key += "%d:%d/%d;" % [kind, space.in_stock(kind), space.capacity(kind)]
+	key += str(world.grid.items().size())
+	if key == _storage_fill_key:
+		return
+	_storage_fill_key = key
+	($ShopView as ShopView).set_storage_fill(fill)
 
 
 func _refresh_sold_out_hud() -> void:
@@ -2369,8 +2681,22 @@ func _refresh_sold_out_hud() -> void:
 	$HUD.set_sold_out(names)
 
 
-func _on_stock_buy_requested(id: StringName, qty: int) -> void:
-	stock_buy(id, qty)
+func _on_stock_cart_requested(id: StringName, qty: int) -> void:
+	stock_cart_set(id, qty)
+	_refresh_stock_panel()
+
+
+func _on_stock_order_requested() -> void:
+	stock_place_order()
+	_refresh_stock_panel()
+
+
+func _on_stock_clear_requested() -> void:
+	stock_clear_cart()
+
+
+func _on_stock_cancel_requested() -> void:
+	stock_cancel_orders()
 	_refresh_stock_panel()
 
 
@@ -2390,19 +2716,21 @@ func _on_stock_close_requested() -> void:
 
 ## At opening, every station-only ingredient a dish on today's menu uses is
 ## topped up to its target, like the morning order (so supplies for a coffee
-## machine bought this morning arrive before service). Edits and undo never
-## buy stock, so undo stays exact. Nothing station-only is in use on a
-## default menu, so default play buys nothing here.
+## machine bought this morning arrive before service), within the free
+## storage space. Edits and undo never buy stock, so undo stays exact.
+## Nothing station-only is in use on a default menu, so default play buys
+## nothing here. It comes with the opening delivery, as do morning orders.
 func _restock_station_supplies() -> void:
 	var order: Dictionary = _reorder().plan(Economy.stock, _unit_costs(), Economy.cash,
-		auto_reorder_premium, true)
-	var lines: Array[Dictionary] = []
-	lines.assign(order["lines"])
-	if not lines.is_empty() and not Economy.buy_auto_order(lines, int(order["cost"])):
-		world.log_event("The opening top-up could not be paid")
+		auto_reorder_premium, true, storage_space())
+	_place_standing(order, Vector2i(Clock.sim.day, 0), "The opening top-up could not be paid")
 	var short: Dictionary = order["short"]
 	for id: StringName in short:
 		world.log_event("Couldn't afford %d %s at opening" % [short[id], id])
+	var unfit: Dictionary = order["unfit"]
+	_morning_order["opening_unfit"] = unfit
+	for id: StringName in unfit:
+		world.log_event("No storage space for %d %s at opening" % [unfit[id], id])
 
 
 func _charge_closing_costs() -> void:
@@ -2530,12 +2858,19 @@ func _on_day_phase_changed(_day: int, phase: int) -> void:
 			_settings_return_to_menu = false
 	if _staff_panel != null:
 		_staff_panel.set_phase(phase)
-	if phase != SimClock.Phase.MORNING:
+	# The evening report takes the screen at closing; Stock stays open otherwise.
+	if phase == SimClock.Phase.CLOSED:
 		set_stock_visible(false)
 	if phase == SimClock.Phase.MORNING:
 		_begin_morning()
 	elif phase == SimClock.Phase.OPEN:
 		_restock_station_supplies()
+		# The opening delivery: morning orders and the station top-up.
+		_deliver_due()
+	else:
+		# A delivery slot never falls after opening hours; anything overdue lands now.
+		_deliver_due()
+	_refresh_stock_panel()
 
 
 func _on_next_day_pressed() -> void:
