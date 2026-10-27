@@ -103,7 +103,7 @@ func test_content_names_then_ids_sort_and_zero_price_is_buyable() -> void:
 	_catalogue.bind_content(_content)
 	assert_eq(_catalogue.ordered_ids(), [&"alpha", &"beta", &"zeta"] as Array[StringName])
 	assert_eq(_catalogue.item_buttons.size(), 3)
-	assert_eq(_catalogue.item_buttons[&"beta"].text, "alpha\n$0")
+	assert_eq(_catalogue.item_buttons[&"beta"].text, "$0", "a tile shows its price; the hover card names it")
 	var row: GridContainer = _scroll().get_node("Content/Items") as GridContainer
 	for index: int in range(_catalogue.ordered_ids().size()):
 		var id: StringName = _catalogue.ordered_ids()[index]
@@ -156,7 +156,7 @@ func test_shipped_catalogue_is_derived_from_every_valid_non_door_definition() ->
 	assert_true(potted_plant.catalogue_visible, "the larger unlockable plant stays in the catalogue")
 	assert_true(_catalogue.item_buttons.has(&"potted_plant"))
 	assert_eq(_catalogue.item_buttons.size(), expected_count)
-	assert_eq(_catalogue.selected_category, &"seating")
+	assert_eq(_catalogue.selected_category, &"dining")
 	_catalogue.set_build_visible(true)
 	await _mount(Vector2(1600.0, 900.0))
 	var panel: PanelContainer = _catalogue.get_node("Panel") as PanelContainer
@@ -166,7 +166,8 @@ func test_shipped_catalogue_is_derived_from_every_valid_non_door_definition() ->
 	assert_almost_eq(panel.position.x, 12.0)
 	assert_almost_eq(panel.get_rect().end.y, _host.size.y - 12.0)
 	assert_false(_scroll().get_h_scroll_bar().visible)
-	assert_eq((_catalogue.get_node("Panel/Margin/Rows/Scroll/Content/Title") as Label).text, "Furniture")
+	assert_false((_catalogue.get_node("Panel/Margin/Rows/Scroll/Content/Title") as Label).visible,
+		"outside Paint the Build/Buy and room tabs name the page")
 
 
 func test_hidden_definition_stays_in_content_without_a_card_thumbnail_or_purchase() -> void:
@@ -225,7 +226,7 @@ func test_refresh_preserves_native_buttons_visibility_and_updates_resource_price
 	definition.price = 0
 	_catalogue.refresh_content()
 	assert_true(_catalogue.item_buttons[definition.id] == button)
-	assert_eq(button.text, "Chair\n$0")
+	assert_eq(button.text, "$0")
 	assert_eq(_requests.size(), 0)
 
 
@@ -257,7 +258,7 @@ func test_locked_item_stays_visible_but_never_requests_until_owner_level_advance
 	_catalogue.set_build_visible(true)
 	var button: Button = _catalogue.item_buttons[&"plant"]
 	assert_true(button.disabled)
-	assert_eq(button.text, "Potted plant\nLevel 2")
+	assert_eq(button.text, "Level 2")
 	assert_eq(button.tooltip_text, "Unlocks at level 2")
 	button.pressed.emit()
 	_catalogue._on_buy_pressed(&"plant")
@@ -265,7 +266,7 @@ func test_locked_item_stays_visible_but_never_requests_until_owner_level_advance
 	_catalogue.set_owner_level(2)
 	assert_true(_catalogue.item_buttons[&"plant"] == button)
 	assert_false(button.disabled)
-	assert_eq(button.text, "Potted plant\n$15")
+	assert_eq(button.text, "$15")
 	button.pressed.emit()
 	assert_eq(_requests, [&"plant"] as Array[StringName])
 	_catalogue.set_owner_level(1)
@@ -378,19 +379,22 @@ func test_only_bottom_panel_blocks_native_world_clicks() -> void:
 
 func test_category_filters_keep_all_buttons_and_reject_hidden_paint_and_stale_requests() -> void:
 	_content.definitions = [
-		_definition(&"chair", "Wooden chair", 10, ItemDef.Category.CHAIR),
-		_definition(&"table", "Round table", 55, ItemDef.Category.TABLE),
-		_definition(&"stove", "Cooking stove", 90, ItemDef.Category.STATION),
-		_definition(&"fridge", "Fridge", 80, ItemDef.Category.STORAGE),
-		_definition(&"pass", "Serving counter", 0, ItemDef.Category.PASS),
+		_definition(&"chair", "Wooden chair", 10, ItemDef.Category.CHAIR, &"dining"),
+		_definition(&"table", "Round table", 55, ItemDef.Category.TABLE, &"dining"),
+		_definition(&"stove", "Cooking stove", 90, ItemDef.Category.STATION, &"kitchen"),
+		_definition(&"fridge", "Fridge", 80, ItemDef.Category.STORAGE, &"kitchen"),
+		_definition(&"pass", "Serving counter", 0, ItemDef.Category.PASS, &"kitchen"),
 		_definition(&"plant", "Small plant", 15, ItemDef.Category.DECOR),
 		_definition(&"door", "Door", 0, ItemDef.Category.DOOR),
 	]
 	_catalogue.bind_content(_content)
 	_catalogue.set_build_visible(true)
-	assert_eq(_catalogue.category_buttons.size(), 5)
+	assert_eq(_catalogue.category_buttons.size(), BuildCatalogue.CATEGORY_IDS.size())
 	assert_eq(_catalogue.item_buttons.size(), 6)
-	assert_eq(_catalogue.visible_ids(), [&"chair"] as Array[StringName])
+	assert_eq(_catalogue.visible_ids(), [&"table", &"chair"] as Array[StringName])
+	assert_true(_catalogue.category_buttons[&"dining"].visible)
+	assert_false(_catalogue.category_buttons[&"lighting"].visible, "a room without items has no tab")
+	assert_false(_catalogue.category_buttons[&"walls"].visible, "Build tabs belong to the Build side")
 	var chair: Button = _catalogue.item_buttons[&"chair"]
 	var plant: Button = _catalogue.item_buttons[&"plant"]
 	plant.pressed.emit()
@@ -399,7 +403,7 @@ func test_category_filters_keep_all_buttons_and_reject_hidden_paint_and_stale_re
 	assert_eq(_catalogue.visible_ids(), [&"stove", &"fridge", &"pass"] as Array[StringName])
 	assert_eq(_catalogue.category_buttons[&"kitchen"].text, "Kitchen")
 	assert_true(_catalogue.category_buttons[&"kitchen"].button_pressed)
-	assert_false(_catalogue.category_buttons[&"seating"].button_pressed)
+	assert_false(_catalogue.category_buttons[&"dining"].button_pressed)
 	_catalogue.category_buttons[&"kitchen"].set_pressed_no_signal(false)
 	_catalogue.category_buttons[&"kitchen"].pressed.emit()
 	assert_true(_catalogue.category_buttons[&"kitchen"].button_pressed, "clicking the active filter keeps it selected")
@@ -407,7 +411,7 @@ func test_category_filters_keep_all_buttons_and_reject_hidden_paint_and_stale_re
 	chair.pressed.emit()
 	assert_true(_requests.is_empty())
 	_catalogue.set_category(&"decor")
-	assert_eq(_catalogue.visible_ids(), [&"plant"] as Array[StringName])
+	assert_eq(_catalogue.visible_ids(), [&"plant"] as Array[StringName], "an item without a room is decor")
 	_catalogue.refresh_content()
 	assert_true(_catalogue.item_buttons[&"plant"] == plant)
 	plant.pressed.emit()
@@ -415,24 +419,27 @@ func test_category_filters_keep_all_buttons_and_reject_hidden_paint_and_stale_re
 	_catalogue.set_paint_visible(true)
 	_catalogue._on_buy_pressed(&"plant")
 	assert_eq(_requests.size(), 1, "paint mode cannot buy a hidden item")
-	assert_false((_scroll().get_node("Content/Categories") as Control).visible)
+	assert_true(_catalogue.category_buttons[&"paint"].button_pressed)
+	assert_false(_catalogue.category_buttons[&"decor"].visible)
 	_catalogue.set_paint_visible(false)
+	_catalogue.set_mode(BuildCatalogue.BUY)
 	_catalogue.set_category(&"unsupported")
 	assert_eq(_catalogue.selected_category, &"decor")
-	_content.item(&"plant").category = ItemDef.Category.TABLE
+	_content.item(&"plant").catalogue_room = &"dining"
 	plant.pressed.emit()
 	assert_eq(_requests.size(), 1, "a stale category is rechecked against current content")
-	_catalogue.set_category(&"seating")
+	_catalogue.set_category(&"dining")
 	assert_true(_catalogue.item_buttons[&"chair"] == chair)
 	assert_true(chair.visible)
 
 
 func test_category_changes_between_native_mouse_down_and_up_never_buy_hidden_items() -> void:
-	_content.definitions = [_definition(&"chair", "Chair", 10, ItemDef.Category.CHAIR),
+	_content.definitions = [_definition(&"chair", "Chair", 10, ItemDef.Category.CHAIR, &"dining"),
 		_definition(&"plant", "Plant", 15, ItemDef.Category.DECOR)]
 	_catalogue.bind_content(_content)
 	_catalogue.set_build_visible(true)
 	await _mount(Vector2(900.0, 640.0))
+	_catalogue.set_category(&"dining")
 	var chair: Button = _catalogue.item_buttons[&"chair"]
 	var centre: Vector2 = chair.get_global_rect().get_center()
 	_mouse(centre, true)
@@ -442,7 +449,7 @@ func test_category_changes_between_native_mouse_down_and_up_never_buy_hidden_ite
 	_mouse(centre, false)
 	assert_true(_requests.is_empty(), "a filtered in-flight button cannot buy")
 	assert_true(_catalogue.item_buttons[&"chair"] == chair)
-	_catalogue.set_category(&"seating")
+	_catalogue.set_category(&"dining")
 	assert_false(chair.is_pressed())
 
 
@@ -475,6 +482,8 @@ func test_grid_bounds_at_supported_window_sizes_and_interface_scales() -> void:
 			await tree.process_frame
 			_host.size = window.get_visible_rect().size
 			for category: StringName in BuildCatalogue.CATEGORY_IDS:
+				if category == BuildCatalogue.PAINT:
+					continue
 				_catalogue.set_category(category)
 				for frame: int in range(4):
 					await tree.process_frame
@@ -537,10 +546,12 @@ func _record_swatch_request(id: StringName) -> void:
 	_swatch_requests.append(id)
 
 
-static func _definition(id: StringName, label: String, price: int, category: ItemDef.Category = ItemDef.Category.DECOR) -> ItemDef:
+static func _definition(id: StringName, label: String, price: int, category: ItemDef.Category = ItemDef.Category.DECOR,
+		room: StringName = &"") -> ItemDef:
 	var definition: ItemDef = ItemDef.new()
 	definition.id = id
 	definition.display_name = label
 	definition.price = price
 	definition.category = category
+	definition.catalogue_room = room
 	return definition

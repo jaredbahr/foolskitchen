@@ -135,6 +135,7 @@ func test_owner_progress_report_round_trip_detaches_breakdown_and_unlock_names()
 	report.owner_xp_breakdown = {"happy_xp": 8, "profit_xp": 5, "review_xp": 3,
 		"milestone_xp": 4, "total_xp": 20, "internal_cause": 99}
 	report.owner_unlocks = ["Tomato melt", "Potted plant"]
+	report.owner_tips = ["Groups of two now visit."]
 	var snapshot: Dictionary = report.to_dict()
 	assert_false(snapshot["owner_xp_breakdown"].has("internal_cause"))
 	var decoded: Dictionary = JSON.parse_string(JSON.stringify(snapshot))
@@ -147,6 +148,8 @@ func test_owner_progress_report_round_trip_detaches_breakdown_and_unlock_names()
 	assert_eq(restored.owner_xp_breakdown["happy_xp"], 8)
 	assert_eq(report.owner_unlocks[0], "Tomato melt")
 	assert_eq(restored.owner_unlocks[0], "Tomato melt")
+	snapshot["owner_tips"][0] = "Changed"
+	assert_eq(restored.owner_tips, ["Groups of two now visit."] as Array[String])
 
 
 func test_milestone_rows_round_trip_only_player_facing_fields() -> void:
@@ -251,6 +254,14 @@ func test_ui_owner_xp_breakdown_level_up_and_unlocks_preserve_review_cards() -> 
 	assert_eq((rows.get_child(7) as Label).text, "+16 XP")
 	assert_eq((_screen.get_node("%OwnerUnlocks") as Label).text, "Unlocked: Tomato melt, Potted plant")
 	assert_eq((_screen.get_node("%ReviewRows").get_child(0) as Label).text, '5 stars - "Lovely meal"')
+	report.owner_tips = ["Groups of two now visit; four-seat tables help."]
+	_screen.call("show_report", report)
+	assert_eq((_screen.get_node("%OwnerUnlocks") as Label).text,
+		"Unlocked: Tomato melt, Potted plant\nGroups of two now visit; four-seat tables help.")
+	report.owner_unlocks = []
+	_screen.call("show_report", report)
+	assert_true((_screen.get_node("%OwnerUnlocks") as Label).visible, "a tip alone still shows")
+	assert_eq((_screen.get_node("%OwnerUnlocks") as Label).text, "Groups of two now visit; four-seat tables help.")
 	_screen.call("show_report", DayReport.new())
 	assert_eq((_screen.get_node("%OwnerLevel") as Label).text, "Owner level 1")
 	assert_false((_screen.get_node("%OwnerLevelUp") as Label).visible)

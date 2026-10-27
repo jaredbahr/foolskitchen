@@ -61,9 +61,10 @@ func _restore_save(data: Dictionary) -> bool:
 	return true
 
 
-## Adds (or, with a negative amount, removes) cash and announces it.
-func add_cash(amount: int, reason: StringName) -> void:
-	ledger.record(Clock.day, amount, reason)
+## Adds (or, with a negative amount, removes) cash and announces it. The
+## optional note marks special lines, such as shop-edit undo and redo (FK-085).
+func add_cash(amount: int, reason: StringName, note: String = "") -> void:
+	ledger.record(Clock.day, amount, reason, note)
 	EventBus.cash_changed.emit(cash, amount, reason)
 
 

@@ -257,7 +257,7 @@ func test_configuration_is_detached_rejects_invalid_and_does_not_draw() -> void:
 	assert_eq(sim.customer_level, 4)
 	var count: int = sim.world.agents.size()
 	var bad_kind: CustomerType = TYPES.types[0].duplicate() as CustomerType
-	bad_kind.party_size_max = 2
+	bad_kind.party_size_max = 5
 	assert_null(sim.add_customer(sim.world.grid.entries()[0], _random(92), bad_kind))
 	assert_eq(sim.world.agents.size(), count)
 	assert_eq(sim.rng.state, before)
@@ -301,7 +301,10 @@ func _assert_regular_golden(seed: int) -> void:
 	var legacy: RestaurantSim = _sim(seed, true)
 	var typed: RestaurantSim = _sim(seed)
 	var regular: CustomerTypeCatalogue = CustomerTypeCatalogue.new()
-	regular.types = [TYPES.find_type(&"regular")]
+	var single: CustomerType = TYPES.find_type(&"regular").duplicate() as CustomerType
+	single.party_size_min = 1
+	single.party_size_max = 1
+	regular.types = [single]
 	assert_true(typed.configure_customer_types(regular, 4))
 	for sim: RestaurantSim in [legacy, typed]:
 		sim.spawner.min_gap = 90

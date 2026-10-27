@@ -223,6 +223,8 @@ func _show_guest(guest: CustomerAgent) -> void:
 	if int(guest.state) >= 0 and int(guest.state) < GUEST_STATES.size():
 		state_name = GUEST_STATES[int(guest.state)]
 	_details.text = "Type: %s\nState: %s" % [guest.customer_type_name, state_name]
+	if guest.party != null and guest.party.size() > 1:
+		_details.text += "\n%s" % guest.party.label()
 	_details.show()
 	match guest.state:
 		CustomerAgent.State.ARRIVING, CustomerAgent.State.QUEUED:

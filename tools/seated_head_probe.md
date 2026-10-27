@@ -17,8 +17,9 @@ godot --rendering-method gl_compatibility --path . --script tools/seated_head_pr
 godot --headless --path . --script tools/run_tests.gd -- --filter=seated_head_clearance
 ```
 
-The catalogue still covers 13 definitions, 17 authored seat cells, four rotations,
-eight guest looks and three imported sit times: 1,632 rows. Rendered parity still
+The catalogue covers 14 definitions, 21 authored seat cells, four rotations,
+eight guest looks and three imported sit times: 2,016 rows (1,632 before
+`table_4` added one definition and four seat cells). Rendered parity still
 compares all 24 distinct model/time poses, with 24 first-pose upload waits. The
 native comparison uses every native vertex; collision/crop geometry uses each
 surface's actual indices, with a nonindexed fallback. An unused position cannot
@@ -76,8 +77,9 @@ cannot reuse a passing result. Runtime performance of this new oracle is unrun.
 ## Explicit unchanged-kit findings
 
 The Director permitted item-ID exceptions for kit seats that still fail mesh
-measurements. All nine were observed with actual head/seat surface crossings in
-the bounded read-only source audit (at least one of the eight native looks):
+measurements. The first nine were observed with actual head/seat surface crossings
+in the bounded read-only source audit (at least one of the eight native looks);
+`table_4` was measured at runtime for PR #152:
 
 | Item ID | Actual physical finding at the unchanged original pose |
 |---|---|
@@ -89,6 +91,7 @@ the bounded read-only source audit (at least one of the eight native looks):
 | modern_frame_chair | Indexed head triangles cross chairModernFrameCushion |
 | rounded_chair | Indexed head triangles cross chairRounded |
 | table_2 | Indexed head triangles cross the guest's own ChairLeft chairCushion in the audited first seat |
+| table_4 | All 384 of its rows show a single crossing with the guest's own chairCushion and 0 head vertices inside: the same class as table_2 |
 | wooden_chair | Indexed head triangles cross chair |
 
 This table records physical crossing evidence, not invented penetration depths.
@@ -119,7 +122,7 @@ References: [native bake documentation](https://docs.godotengine.org/en/stable/c
 ## Supported-offset exception eligibility
 
 Each allowlisted kit ID also gets one explicit `character-female-e`, turn-zero,
-first-seat, sit-time-zero eligibility trial at 0.05 m. These nine records live in
+first-seat, sit-time-zero eligibility trial at 0.05 m. These records (one per ID) live in
 `known_kit_offset_trials`; they do not add catalogue rows, change definitions,
 move scene nodes, advance animation, or add native bake waits. Actual pose
 triangles are translated by the difference from the authored offset. Both real

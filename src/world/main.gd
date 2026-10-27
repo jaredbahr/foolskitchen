@@ -49,6 +49,9 @@ var shown_report: DayReport = null
 var dishes_sold_today: Dictionary[StringName, int] = {}
 ## Closed-phase edits are persisted by the next normal morning autosave.
 var shop_editor: ShopEditor
+## Undo/redo of this morning's (or evening's) edits (FK-085). Cleared at every
+## phase change, so it never reaches across opening or into the save.
+var edit_history: ShopEditHistory = ShopEditHistory.new()
 var build_mode: BuildMode = BuildMode.new()
 ## Cookable dishes/prices belong to this shop, never to shared recipe resources.
 var menu_settings: MenuSettings
@@ -88,6 +91,7 @@ var _expired_this_morning: Dictionary = {}
 var _sold_out_shown: int = -1
 var _owner_award_today: Dictionary = {}
 var _owner_unlocks_today: Array[String] = []
+var _owner_tips_today: Array[String] = []
 var _owner_award_day: int = 0
 var _closed_report_day: int = 0
 var _loan_notice_day: int = 0
@@ -106,6 +110,11 @@ var _build_phase: int = -1
 var _build_ui_phase: int = -1
 var _paint_active: bool = false
 var _paint_swatch_id: StringName = &"butter"
+## Paint was opened from Build mode's Paint tab: Esc goes back to Build.
+var _paint_from_build: bool = false
+## The last undo/redo refusal or result, shown in the hint strip until the
+## next edit, tool change or mode change.
+var _edit_notice: String = ""
 var _menu_panel: MenuPanel
 var _staff_panel: StaffPanel
 var _settings_panel: SettingsPanel
@@ -192,6 +201,12 @@ func _bind_world_presentation() -> void:
 		_build_catalogue.floor_tool_requested.connect(_on_floor_tool_requested)
 	if not _build_catalogue.swatch_requested.is_connected(_on_swatch_requested):
 		_build_catalogue.swatch_requested.connect(_on_swatch_requested)
+	if not _build_catalogue.mode_requested.is_connected(_on_catalogue_mode_requested):
+		_build_catalogue.mode_requested.connect(_on_catalogue_mode_requested)
+		_build_catalogue.paint_requested.connect(_on_catalogue_paint_requested)
+		_build_catalogue.tool_requested.connect(_on_catalogue_tool_requested)
+		_build_catalogue.undo_requested.connect(undo_edit)
+		_build_catalogue.redo_requested.connect(redo_edit)
 	if not $HUD.build_toggled.is_connected(_on_build_toggled):
 		$HUD.build_toggled.connect(_on_build_toggled)
 	if not $HUD.paint_toggled.is_connected(_on_paint_toggled):
@@ -478,13 +493,20 @@ func route_build_input(event: InputEvent) -> bool:
 		if code == KEY_B:
 			return set_build_active(not is_build_active())
 		if is_build_active():
+			if _undo_key(key):
+				return true
 			match code:
-				KEY_R:
-					build_mode.rotate()
+				KEY_R, KEY_PERIOD:
+					build_mode.rotate(1)
+					return true
+				KEY_COMMA:
+					build_mode.rotate(-1)
 					return true
 				KEY_DELETE:
 					if build_mode.state == BuildMode.State.WALLS:
 						build_mode.wall_remove_hovered()
+					elif build_mode.state == BuildMode.State.IDLE and build_mode.tool == BuildMode.Tool.SELL:
+						build_mode.sell_hovered()
 					else:
 						build_mode.sell_selected()
 					return true
@@ -498,6 +520,9 @@ func route_build_input(event: InputEvent) -> bool:
 		update_build_pointer(motion.position, motion.shift_pressed)
 		return false  # Camera drag/edge tracking still receives motion.
 	var mouse: InputEventMouseButton = event as InputEventMouseButton
+	if mouse != null and mouse.pressed and mouse.button_index == MOUSE_BUTTON_RIGHT:
+		# Right-click drops the ghost (or a drag); it never leaves the mode.
+		return build_mode.cancel_ghost()
 	if mouse != null and mouse.button_index == MOUSE_BUTTON_LEFT and build_mode.state == BuildMode.State.WALLS:
 		var point: Variant = build_point_at_screen_position(mouse.position)
 		if point is Vector2:
@@ -525,7 +550,29 @@ func route_build_input(event: InputEvent) -> bool:
 				var item: PlacedItem = world.grid.item_on_layer(cell, ItemDef.PlacementLayer.FLOOR_DECOR) \
 					if mouse.alt_pressed else world.grid.item_at(cell)
 				if item != null:
-					build_mode.pick_up_at(item.id, cell)
+					match build_mode.tool:
+						BuildMode.Tool.EYEDROPPER:
+							if build_mode.eyedrop(item.id, cell):
+								_set_catalogue_room_for(item)
+						BuildMode.Tool.SELL:
+							build_mode.hover_item(item.id)
+							build_mode.sell_hovered()
+						_:
+							build_mode.pick_up_at(item.id, cell)
+		return true
+	return false
+
+
+## Ctrl+Z undoes, Ctrl+Y or Ctrl+Shift+Z redoes (Cmd on macOS).
+func _undo_key(key: InputEventKey) -> bool:
+	if not key.is_command_or_control_pressed():
+		return false
+	var code: Key = key.physical_keycode if key.physical_keycode != KEY_NONE else key.keycode
+	if code == KEY_Z and not key.shift_pressed:
+		undo_edit()
+		return true
+	if code == KEY_Y or (code == KEY_Z and key.shift_pressed):
+		redo_edit()
 		return true
 	return false
 
@@ -537,8 +584,15 @@ func route_paint_input(event: InputEvent) -> bool:
 		var code: Key = key.physical_keycode if key.physical_keycode != KEY_NONE else key.keycode
 		if code == KEY_P:
 			return set_paint_active(not _paint_active)
+		if _paint_active and _undo_key(key):
+			return true
 		if _paint_active and code == KEY_ESCAPE:
+			# One level back: to Build mode when Paint was opened from there.
+			var back_to_build: bool = _paint_from_build
 			set_paint_active(false)
+			if back_to_build:
+				set_build_active(true)
+				_build_catalogue.set_mode(BuildCatalogue.BUILD)
 			return true
 		if _paint_active and code == KEY_B:
 			set_paint_active(false)
@@ -585,6 +639,7 @@ func set_paint_active(active: bool) -> bool:
 		_report.hide()
 	_paint_active = active
 	if not active:
+		_paint_from_build = false
 		($ShopView as ShopView).clear_paint_preview()
 		if world.clock.phase == SimClock.Phase.CLOSED and shown_report != null:
 			_report.call(&"show_report", build_report(world.clock.day))
@@ -645,12 +700,10 @@ func paint_cell(cell: Vector2i) -> bool:
 	var previous: StringName = shop_editor.wall_swatch_id if kind == &"wall" else (
 		shop_editor.floor_swatch_id if kind == &"floor" else (
 			world.grid.item(target["item_id"]).swatch_id if kind == &"item" else &""))
-	var accepted: bool = false
-	match kind:
-		&"wall": accepted = shop_editor.paint_wall(_paint_swatch_id)
-		&"floor": accepted = shop_editor.paint_floor(_paint_swatch_id)
-		&"item": accepted = shop_editor.paint_item(target["item_id"], _paint_swatch_id)
+	var accepted: bool = not kind.is_empty() and edit_history.paint(kind, _paint_swatch_id, target.get("item_id", -1))
 	if accepted:
+		_edit_notice = ""
+		_update_build_controls()
 		($ShopView as ShopView).set_paint(content, shop_editor.wall_swatch_id, shop_editor.floor_swatch_id)
 		if previous != _paint_swatch_id:
 			_recompute_vibe()
@@ -779,9 +832,13 @@ func update_build_pointer(screen_position: Vector2, shift: bool = false) -> bool
 		return point is Vector2
 	var cell: Variant = build_cell_at_screen_position(screen_position)
 	if not cell is Vector2i:
+		build_mode.hover_item(-1)
 		return false
 	if build_mode.has_ghost():
 		build_mode.update_origin(cell)
+	elif build_mode.state == BuildMode.State.IDLE:
+		var hovered: PlacedItem = world.grid.item_at(cell)
+		build_mode.hover_item(hovered.id if hovered != null else -1)
 	return true
 
 
@@ -805,6 +862,7 @@ func begin_buy_item(def_id: StringName) -> bool:
 func _bind_build_session() -> void:
 	if not build_mode.changed.is_connected(_on_build_changed):
 		build_mode.changed.connect(_on_build_changed)
+	edit_history = ShopEditHistory.new(shop_editor, world.grid)
 	build_mode.bind_session(shop_editor, world, content, shop_move, shop_buy, shop_sell, shop_walls, shop_floor)
 	($ShopView as ShopView).set_paint(content, shop_editor.wall_swatch_id, shop_editor.floor_swatch_id)
 	_build_preview.bind_build_mode(build_mode, $ShopView as ShopView)
@@ -836,7 +894,9 @@ func _on_build_changed() -> void:
 		set_stock_visible(false)
 		clear_selection()
 		_report.hide()
-	elif not active and _was_build_active and _build_ready and world.clock.phase == SimClock.Phase.CLOSED:
+	elif not active and _was_build_active:
+		_edit_notice = ""
+	if not active and _was_build_active and _build_ready and world.clock.phase == SimClock.Phase.CLOSED:
 		# Rebuild from current books; do not run closing charges or day setup.
 		shown_report = build_report(world.clock.day)
 		_report.call(&"show_report", shown_report)
@@ -847,15 +907,32 @@ func _on_build_changed() -> void:
 func _update_build_controls() -> void:
 	var active: bool = is_build_active()
 	var available: bool = _build_ready and shop_editor != null and shop_editor.can_edit()
-	var reason: String = build_mode.current_check.why if build_mode.has_ghost() and not build_mode.current_check.ok else ""
+	var reason: String = build_mode.feedback_text()
+	var summary: String = ""
 	if build_mode.state == BuildMode.State.WALLS:
-		reason = build_mode.wall_summary()
+		summary = build_mode.wall_summary()
 	elif build_mode.state == BuildMode.State.FLOOR:
-		reason = build_mode.floor_summary()
-	$HUD.set_build_state(available, active, reason, int(build_mode.state))
+		summary = build_mode.floor_summary()
+	elif build_mode.state == BuildMode.State.IDLE:
+		# The sell/eyedropper hover text, or why an idle tool click was refused.
+		summary = build_mode.hover_summary()
+		if summary.is_empty() and not build_mode.current_check.ok:
+			summary = build_mode.current_check.why
+	if not summary.is_empty():
+		# An invalid wall or floor check already put its reason in the summary.
+		reason = summary if reason.is_empty() or not build_mode.current_check.ok else summary + "\n" + reason
+	if build_mode.has_ghost() and reason.is_empty():
+		# The ghost's markers: a square for each work tile, a circle per seat.
+		reason = BuildCatalogue.FURNITURE_HINT
+	if not _edit_notice.is_empty():
+		reason = _edit_notice if reason.is_empty() else _edit_notice + "\n" + reason
+	$HUD.set_build_state(available, active, reason, int(build_mode.state), int(build_mode.tool))
 	$HUD.set_paint_state(_paint_active)
 	if _build_catalogue != null:
 		_build_catalogue.set_paint_visible(_paint_active)
+		var editable: bool = available
+		_build_catalogue.set_tool_state(int(build_mode.tool), edit_history.can_undo(), edit_history.can_redo(),
+			edit_history.undo_label(), edit_history.redo_label(), editable)
 		_build_catalogue.set_build_visible(active or _paint_active)
 	_build_ui_phase = world.clock.phase if world != null else -1
 
@@ -1104,6 +1181,7 @@ func build_report(day: int) -> DayReport:
 		report.owner_level_before = int(_owner_award_today.get("level_before", owner_progress.level))
 		report.owner_level_after = owner_progress.level
 		report.owner_unlocks = _owner_unlocks_today.duplicate()
+		report.owner_tips = _owner_tips_today.duplicate()
 		if _milestone_xp_today > 0:
 			report.owner_xp_breakdown["milestone_xp"] = _milestone_xp_today
 	report.low_stock = StockAlerts.sell_out_lines(sim.stock_outs_today, content)
@@ -1134,6 +1212,7 @@ func _new_game() -> void:
 	_dismiss_goals()
 	_owner_award_today.clear()
 	_owner_unlocks_today.clear()
+	_owner_tips_today.clear()
 	_owner_award_day = 0
 	_closed_report_day = 0
 	_loan_notice_day = 0
@@ -1760,14 +1839,19 @@ func _on_menu_price_requested(recipe_id: StringName, price: int) -> void:
 
 
 func shop_move(item_id: int, origin: Vector2i, quarter_turns: int) -> bool:
-	var accepted: bool = shop_editor != null and shop_editor.move(item_id, origin, quarter_turns)
+	var accepted: bool = shop_editor != null and edit_history.move(item_id, origin, quarter_turns)
+	_after_edit(accepted)
 	if _build_ready:
 		build_mode.refresh()
 	return accepted
 
 
-func shop_buy(def_id: StringName, origin: Vector2i, quarter_turns: int = 0) -> bool:
-	var accepted: bool = shop_editor != null and shop_editor.buy(def_id, origin, quarter_turns)
+## A colour (the eyedropper's copy) is applied as a free repaint with the buy.
+func shop_buy(def_id: StringName, origin: Vector2i, quarter_turns: int = 0, swatch_id: StringName = &"") -> bool:
+	var accepted: bool = shop_editor != null and edit_history.buy(def_id, origin, quarter_turns, swatch_id)
+	if accepted and not swatch_id.is_empty():
+		($ShopView as ShopView).set_paint(content, shop_editor.wall_swatch_id, shop_editor.floor_swatch_id)
+	_after_edit(accepted)
 	if _build_ready:
 		build_mode.refresh()
 	return accepted
@@ -1775,7 +1859,8 @@ func shop_buy(def_id: StringName, origin: Vector2i, quarter_turns: int = 0) -> b
 
 ## Wall segment changes (FK-070), checked and booked by ShopEditor.
 func shop_walls(changes: Dictionary[Vector3i, int]) -> bool:
-	var accepted: bool = shop_editor != null and shop_editor.apply_segments(changes)
+	var accepted: bool = shop_editor != null and edit_history.apply_segments(changes)
+	_after_edit(accepted)
 	if _build_ready:
 		build_mode.refresh()
 	return accepted
@@ -1784,12 +1869,91 @@ func shop_walls(changes: Dictionary[Vector3i, int]) -> bool:
 ## Floor expansion (FK-080), checked and booked by ShopEditor. The camera
 ## then glides to fit the new outline; nothing is saved until next morning.
 func shop_floor(cells: Array[Vector2i], adding: bool) -> bool:
-	var accepted: bool = shop_editor != null and shop_editor.apply_floor(cells, adding)
+	var accepted: bool = shop_editor != null and edit_history.apply_floor(cells, adding)
+	_after_edit(accepted)
 	if accepted:
 		_frame_shop(false)
 	if _build_ready:
 		build_mode.refresh()
 	return accepted
+
+
+## A new edit replaces any old undo notice.
+func _after_edit(accepted: bool) -> void:
+	if accepted:
+		_edit_notice = ""
+
+
+## Undoes the newest edit of this session (Ctrl+Z or the Undo button). A held
+## ghost is dropped first. A refusal is shown and the history is kept.
+func undo_edit() -> bool:
+	return _step_history(true)
+
+
+func redo_edit() -> bool:
+	return _step_history(false)
+
+
+func _step_history(undoing: bool) -> bool:
+	if not _build_ready or shop_editor == null or (not is_build_active() and not _paint_active):
+		return false
+	if is_build_active():
+		build_mode.cancel_ghost()
+	var label: String = edit_history.undo_label() if undoing else edit_history.redo_label()
+	var floor_before: int = shop_editor.bought_floor().size()
+	var accepted: bool = edit_history.undo() if undoing else edit_history.redo()
+	if accepted:
+		_edit_notice = ("Undid " if undoing else "Redid ") + label
+		($ShopView as ShopView).set_paint(content, shop_editor.wall_swatch_id, shop_editor.floor_swatch_id)
+		_recompute_vibe()
+		if shop_editor.bought_floor().size() != floor_before:
+			_frame_shop(false)
+	else:
+		_edit_notice = ("Can't undo: " if undoing else "Can't redo: ") + edit_history.last_refusal \
+			if not label.is_empty() else edit_history.last_refusal
+	if _build_ready:
+		build_mode.refresh()
+		# The hovered item may be gone or back under a new id: look again.
+		build_mode.hover_item(-1)
+		if is_build_active() and is_inside_tree():
+			update_build_pointer(get_viewport().get_mouse_position())
+	_update_build_controls()
+	return accepted
+
+
+func _on_catalogue_mode_requested(mode: StringName) -> void:
+	if _paint_active:
+		set_paint_active(false)
+	if not is_build_active():
+		set_build_active(true)
+	if not is_build_active():
+		return
+	# Switching side drops a held piece or tool that belongs to the other side.
+	var buying: bool = mode == BuildCatalogue.BUY
+	var state: BuildMode.State = build_mode.state
+	if (buying and (state == BuildMode.State.WALLS or state == BuildMode.State.FLOOR)) \
+			or (not buying and (state == BuildMode.State.BUY or state == BuildMode.State.MOVE)):
+		build_mode.cancel_ghost()
+	_build_catalogue.set_mode(mode)
+
+
+func _on_catalogue_paint_requested() -> void:
+	var from_build: bool = is_build_active()
+	if set_paint_active(true):
+		_paint_from_build = from_build
+
+
+func _on_catalogue_tool_requested(tool: int) -> void:
+	if is_build_active():
+		_edit_notice = ""
+		build_mode.set_tool(tool as BuildMode.Tool)
+
+
+## The eyedropper opens the copied item's room in Buy mode.
+func _set_catalogue_room_for(item: PlacedItem) -> void:
+	var definition: ItemDef = item.def as ItemDef if item != null else null
+	if _build_catalogue != null and definition != null:
+		_build_catalogue.set_category(BuildCatalogue.category_for(definition))
 
 
 func _furniture_purchase_refusal(amount: int) -> String:
@@ -1808,7 +1972,8 @@ func _refresh_loan_hud() -> void:
 
 
 func shop_sell(item_id: int) -> int:
-	var refund: int = shop_editor.sell(item_id) if shop_editor != null else -1
+	var refund: int = edit_history.sell(item_id) if shop_editor != null else -1
+	_after_edit(refund >= 0)
 	if _build_ready:
 		build_mode.refresh()
 	return refund
@@ -1854,6 +2019,7 @@ func _begin_morning() -> void:
 	$HUD.set_reputation(reputation.average(), reputation.scores().size())
 	_owner_award_today.clear()
 	_owner_unlocks_today.clear()
+	_owner_tips_today.clear()
 	_owner_award_day = 0
 	_closed_report_day = 0
 	_loan_notice_day = 0
@@ -2122,6 +2288,8 @@ func _on_service_closed(day: int) -> void:
 		_loan_notice_day = day
 	if _owner_award_day == day:
 		_owner_unlocks_today = _unlocked_at_levels(level_before, owner_progress.level)
+		_owner_tips_today = customer_type_catalogue.level_up_tips(level_before, owner_progress.level) \
+			if customer_type_catalogue != null else [] as Array[String]
 		menu_settings.set_owner_level(owner_progress.level)
 		sim.set_customer_level(owner_progress.level)
 		shop_editor.set_owner_level(owner_progress.level)
@@ -2178,6 +2346,9 @@ func _unlocked_at_levels(previous_level: int, current_level: int) -> Array[Strin
 
 func _on_day_phase_changed(_day: int, phase: int) -> void:
 	_dismiss_goals()
+	# Undo never reaches back across opening (or into a new morning).
+	edit_history.clear()
+	_edit_notice = ""
 	build_mode.exit()
 	if _build_ready:
 		_update_build_controls()

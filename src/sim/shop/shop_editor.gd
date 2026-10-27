@@ -9,6 +9,10 @@ const SNAPSHOT_VERSION: int = 3
 const WALLS_CLOSED: String = "Walls can only be changed in the morning or after closing"
 
 var last_check: EditCheck = EditCheck.new()
+## The signed cash change of the last successful edit (negative = spent), and
+## the id a successful buy gave its item. Undo history reads both (FK-085).
+var last_cash_change: int = 0
+var last_item_id: int = -1
 ## Cosmetic whole-room paint. Empty IDs use the ShopView defaults.
 var wall_swatch_id: StringName = &""
 var floor_swatch_id: StringName = &""
@@ -20,6 +24,23 @@ var _owner_level: int = 1
 ## The lot and the bought floor (FK-080). Null without a layout.
 var _footprint: ShopFootprint
 var _bought: Dictionary[Vector2i, bool] = {}
+
+
+## Undo and redo (FK-085). The edit moves `amount` cash (signed, negative
+## charges) in one ledger line marked with `note`, instead of list prices and
+## the half-price refund rate. It also restores a layout the shop already
+## accepted, so the checks that only forbid LOSING something (seat, work-spot,
+## door and floor reachability, seat links, the unlock level) are skipped:
+## the restored layout may already have had an unusable seat. Everything else
+## still applies: placement geometry, minimum equipment, items in use, people
+## who would be shut in, furniture on removed floor, cash and closed-only.
+class Exact extends RefCounted:
+	var amount: int = 0
+	var note: String = ""
+
+	func _init(cash_change: int = 0, ledger_note: String = "") -> void:
+		amount = cash_change
+		note = ledger_note
 
 
 func _init(sim: RestaurantSim, content: ContentDB, books: ShopEditBooks, layout: ShopLayout = null) -> void:
@@ -89,11 +110,11 @@ func check_current() -> EditCheck:
 	if preview == null:
 		return EditCheck.new(false, "The current shop has invalid placements")
 	var check: EditCheck = EditCheck.new(true)
-	check.unreachable = _unreachable(preview, ids)
+	_fill_warnings(check, preview, ids)
 	return check
 
 
-func check_move(item_id: int, origin: Vector2i, quarter_turns: int) -> EditCheck:
+func check_move(item_id: int, origin: Vector2i, quarter_turns: int, exact: Exact = null) -> EditCheck:
 	var check: EditCheck = _edit_check()
 	if not check.ok:
 		return check
@@ -108,39 +129,44 @@ func check_move(item_id: int, origin: Vector2i, quarter_turns: int) -> EditCheck
 			return EditCheck.new(false, "This item is in use; try next morning")
 	if _linked_seat_in_use(placed):
 		return EditCheck.new(false, "This item is in use; try next morning")
-	return _check_placement(definition, origin, quarter_turns, item_id, item_id)
+	return _check_placement(definition, origin, quarter_turns, item_id, item_id, exact != null)
 
 
-func move(item_id: int, origin: Vector2i, quarter_turns: int) -> bool:
-	var check: EditCheck = check_move(item_id, origin, quarter_turns)
+## `exact` marks an undo/redo (no money moves; see Exact).
+func move(item_id: int, origin: Vector2i, quarter_turns: int, exact: Exact = null) -> bool:
+	var check: EditCheck = check_move(item_id, origin, quarter_turns, exact)
 	last_check = check
 	if not check.ok:
 		return false
 	_applying = true
 	var moved: bool = _sim.world.grid.relocate_def(item_id, origin, quarter_turns)
+	if moved:
+		last_cash_change = 0
 	_applying = false
 	last_check = check if moved else EditCheck.new(false, "The shop changed; check the move again")
 	return moved
 
 
-func check_buy(def_id: StringName, origin: Vector2i, quarter_turns: int = 0) -> EditCheck:
+func check_buy(def_id: StringName, origin: Vector2i, quarter_turns: int = 0, exact: Exact = null) -> EditCheck:
 	var check: EditCheck = _edit_check()
 	if not check.ok:
 		return check
 	var definition: ItemDef = _content.item(def_id)
 	if not _valid_definition(definition):
 		return EditCheck.new(false, "Unknown or invalid item definition")
-	if definition.unlock_level > _owner_level:
+	# Undo/redo put back an item the shop already had; only new buys need the level.
+	if exact == null and definition.unlock_level > _owner_level:
 		return EditCheck.new(false, "Unlocks at level %d" % definition.unlock_level)
 	if _books == null or not _books.is_ready():
 		return EditCheck.new(false, "The shop books are unavailable")
-	if not _books.can_spend_without_loan(definition.price):
-		return EditCheck.new(false, _books.purchase_refusal_reason(definition.price))
-	return _check_placement(definition, origin, quarter_turns, -1, 0)
+	var charge: int = definition.price if exact == null else -exact.amount
+	if (exact == null or charge > 0) and not _books.can_spend_without_loan(charge):
+		return EditCheck.new(false, _books.purchase_refusal_reason(charge))
+	return _check_placement(definition, origin, quarter_turns, -1, 0, exact != null)
 
 
-func buy(def_id: StringName, origin: Vector2i, quarter_turns: int = 0) -> bool:
-	var check: EditCheck = check_buy(def_id, origin, quarter_turns)
+func buy(def_id: StringName, origin: Vector2i, quarter_turns: int = 0, exact: Exact = null) -> bool:
+	var check: EditCheck = check_buy(def_id, origin, quarter_turns, exact)
 	last_check = check
 	if not check.ok:
 		return false
@@ -148,13 +174,14 @@ func buy(def_id: StringName, origin: Vector2i, quarter_turns: int = 0) -> bool:
 	_applying = true
 	var placed: PlacedItem = _sim.world.grid.place_def(definition, origin, quarter_turns)
 	if placed != null:
-		_books.add_cash(-definition.price, Ledger.UPGRADES)
+		last_item_id = placed.id
+		_record_item(-definition.price if exact == null else exact.amount, exact)
 	_applying = false
 	last_check = check if placed != null else EditCheck.new(false, "The shop changed; check the purchase again")
 	return placed != null
 
 
-func check_sell(item_id: int) -> EditCheck:
+func check_sell(item_id: int, exact: Exact = null) -> EditCheck:
 	var check: EditCheck = _edit_check()
 	if not check.ok:
 		return check
@@ -182,26 +209,29 @@ func check_sell(item_id: int) -> EditCheck:
 	var preview: SimGrid = _preview_without(item_id, ids)
 	if preview == null:
 		return EditCheck.new(false, "The current shop has invalid placements")
-	var dining: EditCheck = EditCheck.validate_dining(_sim.world.grid, preview, ids, -1, item_id)
+	var dining: EditCheck = EditCheck.new(true) if exact != null \
+		else EditCheck.validate_dining(_sim.world.grid, preview, ids, -1, item_id)
 	if not dining.ok:
 		return dining
-	check.unreachable = _unreachable(preview, ids)
+	_fill_warnings(check, preview, ids)
 	return check
 
 
 ## -1 is refusal (see last_check/check_sell); zero is a successful free refund.
-@warning_ignore("integer_division")
-func sell(item_id: int) -> int:
-	var check: EditCheck = check_sell(item_id)
+func sell(item_id: int, exact: Exact = null) -> int:
+	var check: EditCheck = check_sell(item_id, exact)
 	last_check = check
 	if not check.ok:
 		return -1
 	var definition: ItemDef = _sim.world.grid.item(item_id).def as ItemDef
-	var refund: int = definition.price / 2
+	var refund: int = sale_refund(definition) if exact == null else exact.amount
+	if refund < 0 and not _books.can_spend_without_loan(-refund):
+		last_check = EditCheck.new(false, _books.purchase_refusal_reason(-refund))
+		return -1
 	_applying = true
 	var removed: bool = _sim.world.grid.remove(item_id)
 	if removed:
-		_books.add_cash(refund, Ledger.UPGRADES)
+		_record_item(refund, exact)
 	_applying = false
 	last_check = check if removed else EditCheck.new(false, "The shop changed; check the sale again")
 	return refund if removed else -1
@@ -399,7 +429,7 @@ func next_segment(edge: Vector3i, empty_kind: SimGrid.Segment) -> SimGrid.Segmen
 ## Read-only check of a set of segment changes (edge -> new segment, NONE
 ## removes). Each changed edge is a sale of the old segment at the furniture
 ## refund rate plus a purchase of the new one.
-func check_segments(changes: Dictionary[Vector3i, int]) -> EditCheck:
+func check_segments(changes: Dictionary[Vector3i, int], exact: Exact = null) -> EditCheck:
 	if not can_edit():
 		return EditCheck.new(false, WALLS_CLOSED)
 	if _content == null:
@@ -428,13 +458,16 @@ func check_segments(changes: Dictionary[Vector3i, int]) -> EditCheck:
 			return EditCheck.new(false, "Unknown wall type")
 		cost += new_def.price if new_def != null else 0
 		refund += floori(old_def.price / 2.0) if old_def != null else 0
+	if exact != null:
+		cost = maxi(-exact.amount, 0)
+		refund = maxi(exact.amount, 0)
 	preview.set_segments(effective)
 	var problem: String = WallRules.layout_problem(preview)
-	if problem.is_empty():
+	if problem.is_empty() and exact == null:
 		var dining: EditCheck = EditCheck.validate_dining(live, preview, ids, -1, -1)
 		problem = "" if dining.ok else dining.why
 	if problem.is_empty():
-		problem = WallRules.cut_off_problem(live, preview, _people_cells())
+		problem = WallRules.cut_off_problem(live, preview, _people_cells(), exact != null)
 	if not problem.is_empty():
 		return EditCheck.new(false, problem)
 	if _books == null or not _books.is_ready():
@@ -445,23 +478,20 @@ func check_segments(changes: Dictionary[Vector3i, int]) -> EditCheck:
 	check.cost = cost
 	check.refund = refund
 	check.changes = effective
-	check.unreachable = _unreachable(preview, ids)
+	_fill_warnings(check, preview, ids)
 	return check
 
 
 ## Applies a checked change; books record the refund, then the purchase.
-func apply_segments(changes: Dictionary[Vector3i, int]) -> bool:
-	var check: EditCheck = check_segments(changes)
+func apply_segments(changes: Dictionary[Vector3i, int], exact: Exact = null) -> bool:
+	var check: EditCheck = check_segments(changes, exact)
 	last_check = check
 	if not check.ok:
 		return false
 	_applying = true
 	# One batch: observers (view, agents, vibe) see a dragged run as one change.
 	_sim.world.grid.set_segments(check.changes)
-	if check.refund > 0:
-		_books.add_cash(check.refund, Ledger.UPGRADES)
-	if check.cost > 0:
-		_books.add_cash(-check.cost, Ledger.UPGRADES)
+	_record(check.refund, check.cost, exact)
 	_applying = false
 	return true
 
@@ -487,7 +517,11 @@ func is_bought(cell: Vector2i) -> bool:
 ## bought or on the lot's wall ring are skipped, any cell beyond the lot refuses. Removing uses
 ## only bought cells. Wall segments that would no longer fit are taken down
 ## and refunded at the furniture rate; floor refunds half its price too.
-func check_floor(cells: Array[Vector2i], adding: bool) -> EditCheck:
+##
+## Undo (FK-085) passes `restore`: segments (edge -> segment) the edit being
+## undone took down, put back in the same change, and exact money.
+func check_floor(cells: Array[Vector2i], adding: bool, exact: Exact = null,
+		restore: Dictionary[Vector3i, int] = {}) -> EditCheck:
 	if not can_edit():
 		return EditCheck.new(false, ShopFootprint.FLOOR_CLOSED)
 	if _footprint == null or not _footprint.has_lot():
@@ -532,7 +566,7 @@ func check_floor(cells: Array[Vector2i], adding: bool) -> EditCheck:
 				return EditCheck.new(false, ShopFootprint.HAS_FURNITURE)
 			losing.append(cell)
 	for cell: Vector2i in losing:
-		var lost: String = _lost_spot(live, cell)
+		var lost: String = _lost_spot(live, cell) if exact == null else ""
 		if not lost.is_empty():
 			return EditCheck.new(false, lost)
 	var ids: Dictionary[int, int] = {}
@@ -551,11 +585,19 @@ func check_floor(cells: Array[Vector2i], adding: bool) -> EditCheck:
 		var old_def: WallKindDef = _content.wall_kind_for(kind)
 		refund += floori(old_def.price / 2.0) if old_def != null else 0
 	preview.set_segments(removals)
+	for edge: Vector3i in _sorted_edges(restore):
+		var restored: String = WallRules.edge_problem(preview, edge, restore[edge] as SimGrid.Segment)
+		if not restored.is_empty():
+			return EditCheck.new(false, restored)
+		preview.set_segment(edge, restore[edge] as SimGrid.Segment)
+		removals[edge] = restore[edge]
 	# New floor must be walkable from the street through the walls as built:
 	# an outer window that turned interior can seal a pocket.
 	# Removing must not seal bought floor that people can walk to now.
 	var reach: Dictionary[Vector2i, bool] = WallRules.reachable(WallRules.walls_only(preview))
-	if adding:
+	if exact != null:
+		pass  # A restored floor plan was already accepted as joined.
+	elif adding:
 		for cell: Vector2i in target:
 			if target[cell] == SimGrid.Terrain.FLOOR and live.terrain(cell) != SimGrid.Terrain.FLOOR \
 					and not reach.has(cell):
@@ -566,16 +608,19 @@ func check_floor(cells: Array[Vector2i], adding: bool) -> EditCheck:
 			if was.has(cell) and not reach.has(cell):
 				return EditCheck.new(false, ShopFootprint.SPLITS)
 	problem = WallRules.layout_problem(preview)
-	if problem.is_empty():
+	if problem.is_empty() and exact == null:
 		var dining: EditCheck = EditCheck.validate_dining(live, preview, ids, -1, -1)
 		problem = "" if dining.ok else dining.why
 	if problem.is_empty():
-		problem = WallRules.cut_off_problem(live, preview, _people_cells())
+		problem = WallRules.cut_off_problem(live, preview, _people_cells(), exact != null)
 	if not problem.is_empty():
 		return EditCheck.new(false, problem)
 	var cost: int = effective.size() * _footprint.cell_price if adding else 0
 	if not adding:
 		refund += effective.size() * floori(_footprint.cell_price / 2.0)
+	if exact != null:
+		cost = maxi(-exact.amount, 0)
+		refund = maxi(exact.amount, 0)
 	if _books == null or not _books.is_ready():
 		return EditCheck.new(false, "The shop books are unavailable")
 	if cost > refund and not _books.can_spend_without_loan(cost - refund):
@@ -586,14 +631,15 @@ func check_floor(cells: Array[Vector2i], adding: bool) -> EditCheck:
 	check.changes = removals
 	check.floor_cells = ShopFootprint.sorted(effective)
 	check.floor_adding = adding
-	check.unreachable = _unreachable(preview, ids)
+	_fill_warnings(check, preview, ids)
 	return check
 
 
 ## Applies a checked floor change: segments that no longer fit come down, the
 ## grid grows if needed and the floor plan is set with one cells_changed.
-func apply_floor(cells: Array[Vector2i], adding: bool) -> bool:
-	var check: EditCheck = check_floor(cells, adding)
+func apply_floor(cells: Array[Vector2i], adding: bool, exact: Exact = null,
+		restore: Dictionary[Vector3i, int] = {}) -> bool:
+	var check: EditCheck = check_floor(cells, adding, exact, restore)
 	last_check = check
 	if not check.ok:
 		return false
@@ -615,14 +661,47 @@ func apply_floor(cells: Array[Vector2i], adding: bool) -> bool:
 			for spot: Vector2i in _sim.cleanliness.spots():
 				if grid.terrain(spot) != SimGrid.Terrain.FLOOR:
 					_sim.cleanliness.clear_spot(spot)
-		if check.refund > 0:
-			_books.add_cash(check.refund, Ledger.UPGRADES)
-		if check.cost > 0:
-			_books.add_cash(-check.cost, Ledger.UPGRADES)
+		_record(check.refund, check.cost, exact)
 	_applying = false
 	if not applied:
 		last_check = EditCheck.new(false, "The shop changed; check the floor again")
 	return applied
+
+
+## What selling a piece of furniture refunds: half its price, rounded down.
+@warning_ignore("integer_division")
+static func sale_refund(definition: ItemDef) -> int:
+	return definition.price / 2 if definition != null else 0
+
+
+## Books a successful edit: list-price edits record the refund, then the cost
+## (unchanged since FK-031); exact edits record one noted line.
+func _record(refund: int, cost: int, exact: Exact) -> void:
+	if exact != null:
+		if exact.amount != 0:
+			_books.add_cash(exact.amount, Ledger.UPGRADES, exact.note)
+		last_cash_change = exact.amount
+		return
+	if refund > 0:
+		_books.add_cash(refund, Ledger.UPGRADES)
+	if cost > 0:
+		_books.add_cash(-cost, Ledger.UPGRADES)
+	last_cash_change = refund - cost
+
+
+## Furniture books one line even at a zero price (unchanged since FK-031).
+func _record_item(amount: int, exact: Exact) -> void:
+	_books.add_cash(amount, Ledger.UPGRADES, exact.note if exact != null else "")
+	last_cash_change = amount
+
+
+## Every wall segment of the live shop (edge -> segment), for undo history.
+func segments() -> Dictionary[Vector3i, int]:
+	var out: Dictionary[Vector3i, int] = {}
+	if _sim != null and _sim.world != null:
+		for edge: Vector3i in _sim.world.grid.segment_edges():
+			out[edge] = _sim.world.grid.segment(edge)
+	return out
 
 
 ## The sentence for a work spot or seat that would lose its floor cell, or "".
@@ -670,7 +749,8 @@ func _edit_check() -> EditCheck:
 	return EditCheck.new(true)
 
 
-func _check_placement(definition: ItemDef, origin: Vector2i, turns: int, exclude_id: int, result_id: int) -> EditCheck:
+func _check_placement(definition: ItemDef, origin: Vector2i, turns: int, exclude_id: int, result_id: int,
+		restoring: bool = false) -> EditCheck:
 	var ids: Dictionary[int, int] = {}
 	var preview: SimGrid = _preview_without(exclude_id, ids)
 	if preview == null:
@@ -696,11 +776,12 @@ func _check_placement(definition: ItemDef, origin: Vector2i, turns: int, exclude
 		proposed_id = placed.id
 	if proposed_id < 0:
 		return EditCheck.new(false, "The shop changed; check the placement again")
-	var dining: EditCheck = EditCheck.validate_dining(_sim.world.grid, preview, ids, proposed_id, exclude_id)
+	var dining: EditCheck = EditCheck.new(true) if restoring \
+		else EditCheck.validate_dining(_sim.world.grid, preview, ids, proposed_id, exclude_id)
 	if not dining.ok:
 		return dining
 	var check: EditCheck = EditCheck.new(true)
-	check.unreachable = _unreachable(preview, ids)
+	_fill_warnings(check, preview, ids)
 	return check
 
 
@@ -762,6 +843,18 @@ func _linked_seat_in_use(placed: PlacedItem) -> bool:
 		if table != null and table.reserved_by(cell) != -1:
 			return true
 	return false
+
+
+static func _fill_warnings(check: EditCheck, grid: SimGrid, ids: Dictionary[int, int]) -> void:
+	check.unreachable = _unreachable(grid, ids)
+	for table: PlacedItem in grid.items():
+		var definition: ItemDef = table.def as ItemDef
+		if definition.category != ItemDef.Category.TABLE:
+			continue
+		var nominal: int = DiningSeats.nominal_capacity(grid, table)
+		var usable: int = DiningSeats.usable_cells(grid, table).size()
+		if usable < nominal:
+			check.seat_warnings[ids[table.id]] = "Only %d of %d seats usable" % [usable, nominal]
 
 
 static func _unreachable(grid: SimGrid, ids: Dictionary[int, int]) -> Array[int]:

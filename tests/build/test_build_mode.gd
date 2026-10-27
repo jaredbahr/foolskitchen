@@ -22,13 +22,13 @@ class CountingEditor extends ShopEditor:
 		current_queries += 1
 		return super.check_current()
 
-	func check_move(item_id: int, cell: Vector2i, turns: int) -> EditCheck:
+	func check_move(item_id: int, cell: Vector2i, turns: int, exact: ShopEditor.Exact = null) -> EditCheck:
 		move_queries += 1
-		return super.check_move(item_id, cell, turns)
+		return super.check_move(item_id, cell, turns, exact)
 
-	func check_buy(def_id: StringName, cell: Vector2i, turns: int = 0) -> EditCheck:
+	func check_buy(def_id: StringName, cell: Vector2i, turns: int = 0, exact: ShopEditor.Exact = null) -> EditCheck:
 		buy_queries += 1
-		return super.check_buy(def_id, cell, turns)
+		return super.check_buy(def_id, cell, turns, exact)
 
 var _content: Catalog
 var _sim: RestaurantSim
