@@ -3,6 +3,7 @@ extends TestCase
 ## card, and the Build side. Uses the shipped content where words matter.
 
 const SCENE: PackedScene = preload("res://src/ui/build_catalogue.tscn")
+const KITCHEN_ADDITIONS: Array[StringName] = [&"fryer", &"oven", &"prep_cabinet", &"corner_cabinet"]
 
 var _catalogue: BuildCatalogue
 var _content: ContentDB
@@ -10,6 +11,7 @@ var _modes: Array[StringName] = []
 var _paint_requests: int = 0
 var _tools: Array[int] = []
 var _undos: int = 0
+var _kitchen_buy_requests: Array[StringName] = []
 
 
 func before_each() -> void:
@@ -23,6 +25,8 @@ func before_each() -> void:
 	_paint_requests = 0
 	_tools.clear()
 	_undos = 0
+	_kitchen_buy_requests.clear()
+	_catalogue.buy_requested.connect(_on_kitchen_buy)
 	_catalogue.mode_requested.connect(_on_mode)
 	_catalogue.paint_requested.connect(_on_paint)
 	_catalogue.tool_requested.connect(_on_tool)
@@ -95,8 +99,78 @@ func test_dining_sub_tabs_split_seating_and_tables() -> void:
 	_catalogue.group_buttons[&"all"].pressed.emit()
 	assert_eq(_catalogue.visible_ids(), all)
 	_catalogue.set_category(&"kitchen")
-	assert_false(_catalogue.group_buttons[&"equipment"].visible, "one group needs no sub-tabs")
+	assert_true(_catalogue.group_buttons[&"equipment"].visible)
+	assert_true(_catalogue.group_buttons[&"accents"].visible, "the corner cabinet adds a kitchen layout group")
 	assert_eq(_catalogue.selected_group, BuildCatalogue.ALL_GROUPS, "a new room starts on All")
+
+
+func test_new_kitchen_items_are_visible_in_their_room_and_function_subgroups() -> void:
+	_catalogue.set_category(&"kitchen")
+	for id: StringName in KITCHEN_ADDITIONS:
+		var definition: ItemDef = _content.item(id)
+		assert_not_null(definition)
+		assert_eq(definition.catalogue_room, &"kitchen")
+		assert_true(_catalogue.visible_ids().has(id), "%s is discoverable in Kitchen" % definition.display_name)
+	_catalogue.set_group(&"equipment")
+	for id: StringName in KITCHEN_ADDITIONS:
+		assert_eq(_catalogue.visible_ids().has(id), id != &"corner_cabinet")
+	_catalogue.set_group(&"accents")
+	assert_true(_catalogue.visible_ids().has(&"corner_cabinet"))
+	for id: StringName in [&"fryer", &"oven", &"prep_cabinet"]:
+		assert_false(_catalogue.visible_ids().has(id))
+	_catalogue.set_category(&"decor")
+	for id: StringName in KITCHEN_ADDITIONS:
+		assert_false(_catalogue.visible_ids().has(id), "Kitchen items do not fall back to Decor")
+
+
+func test_kitchen_unlocks_show_levels_then_authored_prices_and_only_request_unlocked_buys() -> void:
+	_catalogue.set_category(&"kitchen")
+	var levels: Dictionary[StringName, int] = {
+		&"fryer": 2, &"corner_cabinet": 2, &"oven": 3, &"prep_cabinet": 4,
+	}
+	for id: StringName in KITCHEN_ADDITIONS:
+		var definition: ItemDef = _content.item(id)
+		assert_eq(definition.unlock_level, levels[id], String(id))
+		var tile: Button = _catalogue.item_buttons[id]
+		_catalogue.set_owner_level(definition.unlock_level - 1)
+		assert_true(_catalogue.visible_ids().has(id), "locked equipment remains discoverable")
+		assert_true(tile.disabled)
+		assert_eq(tile.text, "Level %d" % definition.unlock_level)
+		_kitchen_buy_requests.clear()
+		tile.pressed.emit()
+		assert_true(_kitchen_buy_requests.is_empty(), "a direct signal cannot bypass the level gate")
+		_catalogue.set_owner_level(definition.unlock_level)
+		assert_false(tile.disabled)
+		assert_eq(tile.text, Fmt.money(definition.price))
+		assert_eq(_catalogue.hover_card_lines(id)[1], Fmt.money(definition.price))
+		tile.pressed.emit()
+		assert_eq(_kitchen_buy_requests, [id] as Array[StringName])
+
+
+func test_every_shipped_station_type_has_a_player_name() -> void:
+	for definition: ItemDef in _content.items():
+		if definition.station_type.is_empty():
+			continue
+		assert_true(CatalogueText.STATION_NAMES.has(definition.station_type), String(definition.station_type))
+		assert_false(CatalogueText.station_name(definition).contains("_"))
+	assert_eq(CatalogueText.station_name(_content.item(&"prep_cabinet")), "Prep counter")
+	assert_eq(CatalogueText.station_name(_content.item(&"fryer")), "Fryer")
+	assert_eq(CatalogueText.station_name(_content.item(&"corner_cabinet")), "None")
+
+
+func test_kitchen_hover_cards_use_authored_names_and_plain_station_descriptions() -> void:
+	var descriptions: Dictionary[StringName, String] = {
+		&"fryer": "Fries dishes", &"oven": "Bakes dishes",
+		&"prep_cabinet": "Prepares ingredients for dishes", &"corner_cabinet": "Decoration",
+	}
+	for id: StringName in KITCHEN_ADDITIONS:
+		var definition: ItemDef = _content.item(id)
+		var lines: Array[String] = _catalogue.hover_card_lines(id)
+		assert_eq(lines[0], definition.display_name)
+		assert_eq(lines[1], Fmt.money(definition.price))
+		assert_eq(lines[2], descriptions[id])
+		for line: String in lines:
+			assert_false(line.contains("_"), "the card uses player words, not internal identifiers")
 
 
 func test_theme_filters_show_items_with_any_chosen_theme() -> void:
@@ -273,3 +347,7 @@ func _on_tool(tool: int) -> void:
 
 func _on_undo() -> void:
 	_undos += 1
+
+
+func _on_kitchen_buy(id: StringName) -> void:
+	_kitchen_buy_requests.append(id)

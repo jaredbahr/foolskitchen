@@ -52,6 +52,50 @@ func after_each() -> void:
 	_refusal_amount = -1
 
 
+func test_kitchen_equipment_unlocks_and_buy_move_sell_keep_exact_books() -> void:
+	var ids: Array[StringName] = [&"fryer", &"oven", &"prep_cabinet", &"corner_cabinet"]
+	var before: Dictionary = _editor.to_dict()
+	var menu_before: Array[RecipeDef] = _sim.menu.duplicate()
+	var rng_before: int = _sim.rng.state
+	for id: StringName in ids:
+		var definition: ItemDef = _content.item(id)
+		assert_eq(_editor.check_buy(id, Vector2i(10, 3)).why, "Unlocks at level %d" % definition.unlock_level)
+		assert_false(_editor.buy(id, Vector2i(10, 3)))
+	assert_eq(_editor.to_dict(), before)
+	assert_eq(_cash, 1000)
+	assert_true(_entries.is_empty())
+	_editor.set_owner_level(6)
+	for id: StringName in ids:
+		var definition: ItemDef = _content.item(id)
+		var cash_before: int = _cash
+		var entries_before: int = _entries.size()
+		assert_true(_editor.check_buy(id, Vector2i(10, 3)).ok, String(id))
+		assert_true(_editor.buy(id, Vector2i(10, 3)), String(id))
+		var placed: PlacedItem = _sim.world.grid.item_at(Vector2i(10, 3))
+		assert_not_null(placed)
+		assert_true(placed.def == definition)
+		assert_eq(_cash, cash_before - definition.price)
+		assert_eq(_entries.size(), entries_before + 1)
+		assert_true(_editor.move(placed.id, Vector2i(2, 9), 0), String(id))
+		assert_true(_sim.world.grid.item(placed.id) == placed)
+		assert_eq(placed.origin, Vector2i(2, 9))
+		assert_eq(_cash, cash_before - definition.price, "moving equipment is free")
+		assert_eq(_entries.size(), entries_before + 1)
+		var refund: int = definition.price >> 1
+		assert_eq(_editor.sell(placed.id), refund)
+		assert_null(_sim.world.grid.item(placed.id))
+		assert_eq(_cash, cash_before - definition.price + refund)
+		assert_eq(_entries.slice(entries_before), [
+			{"amount": -definition.price, "category": Ledger.UPGRADES},
+			{"amount": refund, "category": Ledger.UPGRADES},
+		] as Array[Dictionary])
+		assert_eq(_editor.sell(placed.id), -1, "selling twice cannot pay twice")
+		assert_eq(_cash, cash_before - definition.price + refund)
+	assert_eq(_sim.menu, menu_before, "equipment furniture adds no recipes or menu choices")
+	assert_eq(_sim.rng.state, rng_before)
+	assert_eq(_sim.world.now, 0)
+
+
 func test_partial_table_capacity_warning_is_read_only_and_uses_actual_usable_cells() -> void:
 	assert_true(_sim.world.grid.remove(_sim.world.grid.item_at(Vector2i(6, 6)).id))
 	_editor.set_owner_level(2)  # the four-seat table unlocks at level 2
