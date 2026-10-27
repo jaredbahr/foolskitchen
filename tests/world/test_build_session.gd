@@ -493,6 +493,9 @@ func test_floor_tool_hint_keeps_the_partial_seat_warning_beside_its_summary() ->
 	assert_true(_mode().commit())
 	var label: Label = _main.get_node("HUD/BuildHints/Scroll/Text") as Label
 	assert_true(_mode().begin_floor())
+	# Before any lot hover the Floor check is (false, ""): the warning must still show.
+	assert_false(_mode().current_check.ok)
+	assert_true(label.text.contains("Only 3 of 4 seats usable"), "an empty floor check keeps the seat warning")
 	_mode().floor_pointer(Vector2i(14, 6))
 	assert_true(_mode().current_check.ok, _mode().current_check.why)
 	assert_true(label.text.contains(_mode().floor_summary()), "the floor tool's own summary")

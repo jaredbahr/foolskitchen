@@ -983,7 +983,7 @@ draws a private seed for every originally drawn member, discarding the extra
 streams after the clamp, so the next arrival's draws do not shift. The next
 arrival gap is one gap draw multiplied by the number of guests who arrived,
 so groups keep guests per hour unchanged. The level-up report shows the
-type's short `party_tip` once, on the day groups start visiting.
+type's short `party_tip` once, in the evening report of the day the owner reaches the unlock level; groups arrive from the next day.
 It installs and links
 every member before publishing any arrival; singleton installation retains
 the old draw and signal order. `Party` stores member IDs rather than strong
