@@ -10,11 +10,16 @@ const VALID_ALPHA: float = 0.92
 const INVALID_ALPHA: float = 0.68
 const WORK_COLOR: Color = Color("579fa8")
 const SEAT_COLOR: Color = Color("ddbd70")
+const WALL_GHOST_ALPHA: float = 0.55
+## A little thicker than the built slab so the ghost reads over an existing one.
+const WALL_GHOST_DEPTH: float = 0.12
 
 var ghost_mesh: ItemVisual
 var work_markers: Array[MeshInstance3D] = []
 var seat_markers: Array[MeshInstance3D] = []
 var warning_nodes: Dictionary[int, Node3D] = {}
+## Walls tool ghosts (FK-070), one per proposed edge change.
+var wall_ghosts: Array[MeshInstance3D] = []
 var _controller: BuildMode
 var _shop_view: ShopView
 var _grid: SimGrid
@@ -179,6 +184,11 @@ func refresh() -> void:
 				_shop_view.refresh_item_selection()
 		if not valid:
 			reason = snapshot.get("why", "")
+	elif snapshot.get("active", false) and snapshot.get("state", -1) == BuildMode.State.WALLS:
+		var changes: Dictionary = snapshot.get("wall_changes", {})
+		_build_wall_ghosts(changes, valid)
+		if not valid:
+			reason = snapshot.get("why", "")
 	var warning_ids: Array[int] = []
 	warning_ids.assign(snapshot.get("warning_ids", []))
 	for id: int in warning_ids:
@@ -251,6 +261,7 @@ func _clear_geometry() -> void:
 		_free_node(_ghost_root)
 	_ghost_root = null
 	ghost_mesh = null
+	wall_ghosts.clear()
 	work_markers.clear()
 	seat_markers.clear()
 	for node: Node3D in warning_nodes.values():
@@ -297,6 +308,35 @@ func _build_ghost(definition: ItemDef, origin: Vector2i, turns: int, valid: bool
 		marker.name = "Seat%d" % seat_markers.size()
 		seat_markers.append(marker)
 		_ghost_root.add_child(marker)
+
+
+## Translucent slabs on each proposed edge: full height for a new or changed
+## segment, low for a removal; green when the change is allowed, red if not.
+func _build_wall_ghosts(changes: Dictionary, valid: bool) -> void:
+	if changes.is_empty():
+		return
+	_ghost_root = Node3D.new()
+	_ghost_root.name = "WallGhost"
+	add_child(_ghost_root)
+	var tint: Color = VALID_COLOR if valid else INVALID_COLOR
+	tint.a = WALL_GHOST_ALPHA
+	var material: StandardMaterial3D = _material(tint, true)
+	for key: Variant in changes:
+		var edge: Vector3i = key
+		var removing: bool = int(changes[key]) == SimGrid.Segment.NONE
+		var height: float = ShopView.LOWERED_HEIGHT if removing else ArtScale.WALL_HEIGHT
+		var ends: Array[Vector2i] = SimGrid.edge_vertices(edge)
+		var mid: Vector2 = (Vector2(ends[0]) + Vector2(ends[1])) * 0.5 * GridMath.CELL_SIZE
+		var length: float = GridMath.CELL_SIZE
+		var depth: float = WALL_GHOST_DEPTH
+		var size: Vector3 = Vector3(depth, height, length) if edge.z == SimGrid.EDGE_WEST else Vector3(length, height, depth)
+		var ghost: MeshInstance3D = _box(size, material)
+		ghost.name = "Edge_%d_%d_%d" % [edge.x, edge.y, edge.z]
+		ghost.position = Vector3(mid.x, height * 0.5 + 0.002, mid.y)
+		ghost.set_meta("edge", edge)
+		ghost.set_meta("valid", valid)
+		wall_ghosts.append(ghost)
+		_ghost_root.add_child(ghost)
 
 
 func _build_warning(id: int, definition: ItemDef, origin: Vector2i, turns: int) -> void:

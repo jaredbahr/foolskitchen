@@ -3,7 +3,8 @@ extends RefCounted
 ## Interaction state only. ShopEditor owns validation; injected session methods
 ## own every commit. Previews never change the grid, reservations or books.
 
-enum State { INACTIVE, IDLE, MOVE, BUY }
+## WALLS is the Walls tool (FK-070): drag along grid lines, click a segment.
+enum State { INACTIVE, IDLE, MOVE, BUY, WALLS }
 
 signal changed()
 
@@ -15,6 +16,14 @@ var quarter_turns: int = 0
 var grab_offset: Vector2i = Vector2i.ZERO
 var current_check: EditCheck = EditCheck.new()
 var committed_warning_ids: Array[int] = []
+## Walls tool: the kind new edges get, the hovered edge and the dragged run.
+var wall_kind: SimGrid.Segment = SimGrid.Segment.WALL
+var wall_hover_edge: Vector3i = SimGrid.NO_EDGE
+var wall_dragging: bool = false
+var wall_drag_start: Vector2i = Vector2i.ZERO
+var wall_drag_end: Vector2i = Vector2i.ZERO
+## The proposal the current check describes (edge -> new segment).
+var wall_changes: Dictionary[Vector3i, int] = {}
 
 var _editor: ShopEditor
 var _world: SimWorld
@@ -25,6 +34,7 @@ var _phase: int = -1
 var _move_command: Callable
 var _buy_command: Callable
 var _sell_command: Callable
+var _walls_command: Callable
 var _committing: bool = false
 var _topology_dirty: bool = false
 
@@ -32,7 +42,8 @@ var _topology_dirty: bool = false
 ## Rebinding cancels the old interaction, even when the world is unchanged but
 ## its clock was replaced. Old signal sources are detached before new ones bind.
 func bind_session(editor: ShopEditor, world: SimWorld, content: ContentDB,
-		move_command: Callable, buy_command: Callable, sell_command: Callable) -> void:
+		move_command: Callable, buy_command: Callable, sell_command: Callable,
+		walls_command: Callable = Callable()) -> void:
 	if _committing:
 		return
 	_disconnect_sources()
@@ -45,6 +56,7 @@ func bind_session(editor: ShopEditor, world: SimWorld, content: ContentDB,
 	_move_command = move_command
 	_buy_command = buy_command
 	_sell_command = sell_command
+	_walls_command = walls_command
 	_clear_ghost(State.INACTIVE)
 	committed_warning_ids.clear()
 	_topology_dirty = false
@@ -209,11 +221,15 @@ func sell_selected() -> int:
 	return amount if accepted else -1
 
 
-## Esc cancels one ghost; a second Esc leaves the mode.
+## Esc cancels one ghost (or a wall drag, then the Walls tool); a further Esc leaves the mode.
 func cancel() -> void:
 	if _committing or not _can_interact():
 		return
-	if has_ghost():
+	if state == State.WALLS and wall_dragging:
+		wall_dragging = false
+		_recheck_walls()
+		changed.emit()
+	elif has_ghost() or state == State.WALLS:
 		_clear_ghost(State.IDLE)
 		changed.emit()
 	else:
@@ -232,13 +248,16 @@ func refresh() -> void:
 	_refresh_committed()
 	if has_ghost():
 		_recheck_ghost()
+	elif state == State.WALLS:
+		_recheck_walls()
 	if before != presentation_state():
 		changed.emit()
 
 
 ## Invalid proposals never erase warnings belonging to actual furniture.
 func warning_ids() -> Array[int]:
-	return current_check.unreachable.duplicate() if has_ghost() and current_check.ok else committed_warning_ids.duplicate()
+	return current_check.unreachable.duplicate() if (has_ghost() or state == State.WALLS) and current_check.ok \
+		else committed_warning_ids.duplicate()
 
 
 ## Arrays are detached. The shared ItemDef is read-only content for rendering.
@@ -249,7 +268,10 @@ func presentation_state() -> Dictionary:
 		"origin": origin, "quarter_turns": quarter_turns, "grab_offset": grab_offset,
 		"check_ok": current_check.ok, "why": current_check.why,
 		"unreachable": current_check.unreachable.duplicate(),
-		"committed_warning_ids": committed_warning_ids.duplicate(), "warning_ids": warning_ids()}
+		"committed_warning_ids": committed_warning_ids.duplicate(), "warning_ids": warning_ids(),
+		"wall_kind": int(wall_kind), "wall_changes": wall_changes.duplicate(),
+		"wall_hover_edge": wall_hover_edge, "wall_dragging": wall_dragging,
+		"wall_cost": current_check.cost, "wall_refund": current_check.refund}
 
 
 func _available() -> bool:
@@ -295,6 +317,9 @@ func _clear_ghost(next_state: State) -> void:
 	grab_offset = Vector2i.ZERO
 	quarter_turns = 0
 	current_check = EditCheck.new(true)
+	wall_hover_edge = SimGrid.NO_EDGE
+	wall_dragging = false
+	wall_changes.clear()
 
 
 func _finish_command(accepted: bool, previous_check: EditCheck, fallback_reason: String) -> void:
@@ -311,6 +336,170 @@ func _finish_command(accepted: bool, previous_check: EditCheck, fallback_reason:
 		_clear_ghost(State.INACTIVE)
 	_committing = false
 	changed.emit()
+
+
+# --- Walls tool (FK-070) ------------------------------------------------------
+
+## Enters the Walls tool from idle or a held ghost; new edges get `kind`.
+func begin_walls(kind: SimGrid.Segment) -> bool:
+	if not _can_interact() or not _walls_command.is_valid() or kind == SimGrid.Segment.NONE:
+		return false
+	_clear_ghost(State.WALLS)
+	wall_kind = kind
+	_recheck_walls()
+	changed.emit()
+	return true
+
+
+## Pointer on the floor plane, in shop metres (x, z). Hover picks the nearest
+## grid edge; a drag follows the nearest grid vertex.
+func wall_pointer(point: Vector2) -> void:
+	if state != State.WALLS or not _can_interact():
+		return
+	var edge: Vector3i = nearest_edge(point)
+	var vertex: Vector2i = nearest_vertex(point)
+	if edge == wall_hover_edge and (not wall_dragging or vertex == wall_drag_end) and not _topology_dirty:
+		return
+	wall_hover_edge = edge
+	if wall_dragging:
+		wall_drag_end = vertex
+	if _topology_dirty:
+		_refresh_committed()
+	_recheck_walls()
+	changed.emit()
+
+
+func wall_press(point: Vector2) -> bool:
+	if state != State.WALLS or not _can_interact():
+		return false
+	wall_dragging = true
+	wall_drag_start = nearest_vertex(point)
+	wall_drag_end = wall_drag_start
+	wall_hover_edge = nearest_edge(point)
+	_recheck_walls()
+	changed.emit()
+	return true
+
+
+## Ends a drag: a run builds the dragged line; a click without a run changes
+## the clicked edge (empty -> chosen kind, wall -> doorway -> window -> wall,
+## outer face solid <-> window). Returns true when the shop changed.
+func wall_release(point: Vector2) -> bool:
+	if state != State.WALLS or not wall_dragging or not _can_interact():
+		return false
+	wall_drag_end = nearest_vertex(point)
+	if wall_drag_end == wall_drag_start:
+		wall_hover_edge = nearest_edge(point)
+	_recheck_walls()
+	wall_dragging = false
+	return _commit_walls()
+
+
+## Delete removes the hovered segment (refunded like furniture).
+func wall_remove_hovered() -> bool:
+	if state != State.WALLS or wall_dragging or not _can_interact() or _grid == null \
+			or _grid.segment(wall_hover_edge) == SimGrid.Segment.NONE:
+		return false
+	wall_changes = {wall_hover_edge: SimGrid.Segment.NONE} as Dictionary[Vector3i, int]
+	current_check = _editor.check_segments(wall_changes)
+	return _commit_walls()
+
+
+## One player sentence for the HUD: what the proposal costs, or why it can't.
+func wall_summary() -> String:
+	if state != State.WALLS:
+		return ""
+	if not current_check.ok:
+		return current_check.why
+	var added: int = 0
+	var removed: int = 0
+	var last: int = SimGrid.Segment.NONE
+	for edge: Vector3i in current_check.changes:
+		last = current_check.changes[edge]
+		if last == SimGrid.Segment.NONE:
+			removed += 1
+		else:
+			added += 1
+	var text: String = ""
+	var definition: WallKindDef = _content.wall_kind_for(last) if _content != null else null
+	if removed > 0 and added == 0:
+		text = "Remove"
+	elif added == 1 and definition != null:
+		text = definition.display_name
+	elif definition != null:
+		text = "%d %ss" % [added, definition.display_name.to_lower()]
+	if current_check.cost > 0:
+		text += "  $%d" % current_check.cost
+	if current_check.refund > 0:
+		text += "  (refund $%d)" % current_check.refund
+	return text.strip_edges()
+
+
+static func nearest_vertex(point: Vector2) -> Vector2i:
+	return Vector2i(roundi(point.x / GridMath.CELL_SIZE), roundi(point.y / GridMath.CELL_SIZE))
+
+
+static func nearest_edge(point: Vector2) -> Vector3i:
+	var u: float = point.x / GridMath.CELL_SIZE
+	var v: float = point.y / GridMath.CELL_SIZE
+	if absf(u - roundf(u)) <= absf(v - roundf(v)):
+		return Vector3i(roundi(u), floori(v), SimGrid.EDGE_WEST)
+	return Vector3i(floori(u), roundi(v), SimGrid.EDGE_NORTH)
+
+
+## Edges of a straight run between two vertices, along the longer axis.
+static func run_edges(start: Vector2i, end: Vector2i) -> Array[Vector3i]:
+	var edges: Array[Vector3i] = []
+	var delta: Vector2i = end - start
+	if absi(delta.x) >= absi(delta.y):
+		for x: int in range(mini(start.x, end.x), maxi(start.x, end.x)):
+			edges.append(Vector3i(x, start.y, SimGrid.EDGE_NORTH))
+	else:
+		for y: int in range(mini(start.y, end.y), maxi(start.y, end.y)):
+			edges.append(Vector3i(start.x, y, SimGrid.EDGE_WEST))
+	return edges
+
+
+func _recheck_walls() -> void:
+	if state != State.WALLS or _editor == null:
+		return
+	wall_changes.clear()
+	if wall_dragging and wall_drag_end != wall_drag_start:
+		var run: Array[Vector3i] = run_edges(wall_drag_start, wall_drag_end)
+		wall_changes = _editor.run_changes(run, wall_kind)
+		if wall_changes.is_empty():
+			current_check = EditCheck.new(false, "These walls are already built")
+			return
+	elif _grid != null and _grid.edge_in_bounds(wall_hover_edge):
+		wall_changes[wall_hover_edge] = _editor.next_segment(wall_hover_edge, wall_kind)
+	if wall_changes.is_empty():
+		current_check = EditCheck.new(false, WallRules.NOT_INSIDE)
+		return
+	current_check = _editor.check_segments(wall_changes)
+
+
+func _commit_walls() -> bool:
+	if not current_check.ok or wall_changes.is_empty():
+		changed.emit()
+		return false
+	var previous_check: EditCheck = _editor.last_check
+	var proposal: Dictionary[Vector3i, int] = wall_changes.duplicate()
+	_committing = true
+	var answer: Variant = _walls_command.call(proposal)
+	var accepted: bool = answer is bool and answer
+	_refresh_committed()
+	if not accepted:
+		var result: EditCheck = _editor.last_check
+		current_check = result if result != previous_check and not result.ok \
+			else EditCheck.new(false, "The change was refused; try again")
+	_committing = false
+	if _clock.phase != _phase or not _editor.can_edit():
+		_phase = _clock.phase
+		_clear_ghost(State.INACTIVE)
+	elif accepted:
+		_recheck_walls()
+	changed.emit()
+	return accepted
 
 
 func _on_cells_changed(_cells: Array[Vector2i]) -> void:

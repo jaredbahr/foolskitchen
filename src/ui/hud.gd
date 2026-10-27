@@ -317,6 +317,8 @@ func _refresh_build_controls() -> void:
 		text = "R Rotate  |  Del Sell  |  Esc Cancel"
 	elif _build_state == BuildMode.State.BUY:
 		text = "R Rotate  |  Esc Cancel"
+	elif _build_state == BuildMode.State.WALLS:
+		text = "Drag along grid lines to build  |  Click a wall to change it  |  Del Remove  |  Esc Cancel"
 	if not _build_reason.is_empty():
 		text += "\n" + _build_reason
 	if _build_hint_text.text != text:

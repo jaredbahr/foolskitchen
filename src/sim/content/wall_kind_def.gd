@@ -11,5 +11,5 @@ extends Resource
 @export var price: int = 0
 ## Catalogue order, lowest first.
 @export var order: int = 0
-## Kenney piece shown on the catalogue card (presentation only).
+## PropView wrapper of the Kenney piece shown on the catalogue card (presentation only).
 @export var thumbnail_scene: PackedScene
