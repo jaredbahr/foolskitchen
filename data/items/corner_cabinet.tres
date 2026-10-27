@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ItemDef" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://src/sim/content/item_def.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://assets/props/corner_cabinet.tscn" id="2_view"]
+
+[resource]
+script = ExtResource("1_script")
+view_scene = ExtResource("2_view")
+id = &"corner_cabinet"
+display_name = "Corner cabinet"
+catalogue_room = &"kitchen"
+category = 6
+footprint = Vector2i(1, 1)
+solid = true
+station_type = &""
+capacity = 0
+quality_bonus = 0.0
+price = 45
+unlock_level = 6
+charm = 0
+theme_tags = Array[StringName]([&"diner"])

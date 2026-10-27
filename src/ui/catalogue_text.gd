@@ -19,6 +19,7 @@ const GROUP_LABELS: Dictionary[StringName, String] = {
 const STATION_TEXT: Dictionary[StringName, String] = {
 	&"stove": "Cooks hot dishes", &"prep_counter": "Prepares ingredients for dishes",
 	&"sink": "Washes dirty plates",
+	&"fryer": "Fries dishes", &"oven": "Bakes dishes", &"coffee": "Brews coffee",
 }
 
 
