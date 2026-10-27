@@ -9,6 +9,9 @@ const TUNING: EconomyTuning = preload("res://data/balance/tier1_economy.tres")
 const SLOT: String = "test_invariants"
 const DAYS: int = 5
 const RELOAD_BEFORE_DAY: int = 3
+## A fixed new-game seed. Without it Main seeds a new game from the wall
+## clock, so every run played different guests and results varied run to run.
+const NEW_GAME_SEED: int = 23
 
 var _mains: Array[Node] = []
 var _old_save_dir: String
@@ -71,6 +74,7 @@ func _start() -> Node:
 	var main: Node = MainScene.instantiate()
 	main.set("use_saves", true)
 	main.set("save_slot", SLOT)
+	main.set("new_game_seed_override", NEW_GAME_SEED)
 	_mains.append(main)
 	(Engine.get_main_loop() as SceneTree).root.add_child(main)
 	main.call("start")  # the test runner never delivers _ready()

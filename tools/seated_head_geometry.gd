@@ -14,7 +14,7 @@ const BOOTH_BACKREST_NAMES: PackedStringArray = ["Left back cushion", "Right bac
 const BOOTH_CUSHION_NAMES: PackedStringArray = ["Left seat cushion", "Right seat cushion"]
 const BACKLESS_SCENES: PackedStringArray = ["bar_stool", "square_bar_stool", "diner_stool"]
 const KIT_BACKREST_SCENES: PackedStringArray = ["bench", "chair", "cushioned_bench", "lounge_chair",
-	"modern_chair", "modern_frame_chair", "rounded_chair", "table_2", "wooden_chair"]
+	"modern_chair", "modern_frame_chair", "rounded_chair", "table_2", "table_4", "wooden_chair"]
 
 
 static func head_mesh(person: PersonView) -> MeshInstance3D:
@@ -260,7 +260,8 @@ static func _backrest_status(seat: Node3D, parts: Array[Dictionary]) -> String:
 			if part["is_backrest"]:
 				found.append(part["name"])
 		return "named_parts" if found.size() == BOOTH_BACKREST_NAMES.size() else "unclassified"
-	# The nine unchanged kit failures are still measured for physical intrusion.
+	# Joined kit seats, including table_4's chairCushion pieces, are still
+	# measured for physical intrusion. Classification grants no policy exception.
 	# Their joined mesh does not provide reliable semantic backrest annotations.
 	# Never label the whole joined seat mesh as a measured backrest.
 	return "unclassified_kit" if KIT_BACKREST_SCENES.has(scene) else "unclassified"

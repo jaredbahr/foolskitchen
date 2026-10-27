@@ -66,17 +66,32 @@ func test_default_main_spawns_authored_mix_on_exact_named_customers_stream() -> 
 		var kind: CustomerType = CustomerTypePicker.choose(TYPES, 1, sim.review_book.average(), oracle)
 		var entries: Array[Vector2i] = sim.world.grid.entries()
 		var entry: Vector2i = entries[oracle.randi_range(0, entries.size() - 1)]
-		var private_seed: int = oracle.randi()
+		# Independent oracle: below its party unlock a type draws no size (main's
+		# single guest); at or above it, one ranged size draw.
+		var count: int = 1 if 1 < kind.party_unlock_level \
+			else oracle.randi_range(kind.party_size_min, kind.party_size_max)
+		assert_eq(count, 1, "level 1 is below every pair's party unlock")
+		var private_seeds: Array[int] = []
+		for member: int in count:
+			private_seeds.append(oracle.randi())
 		oracle.randi_range(1, 1)
 		main.call("run_ticks", 1)
-		var guest: CustomerAgent = sim.customers().back()
-		assert_eq(guest.customer_type_id, kind.id)
-		assert_eq(guest.customer_type_name, kind.display_name)
-		assert_eq(guest.cell, entry)
-		assert_eq(guest.rng.seed, private_seed)
+		var arrivals: Array[CustomerAgent] = []
+		var guests: Array[CustomerAgent] = sim.customers()
+		arrivals.assign(guests.slice(guests.size() - count))
+		assert_eq(arrivals.size(), count)
+		for member: int in count:
+			var guest: CustomerAgent = arrivals[member]
+			assert_eq(guest.customer_type_id, kind.id)
+			assert_eq(guest.customer_type_name, kind.display_name)
+			assert_eq(guest.cell, entry)
+			assert_eq(guest.rng.seed, private_seeds[member])
+			if count > 1:
+				assert_eq(guest.party, arrivals[0].party)
+				assert_eq(guest.party.size(), count)
 		assert_eq(sim.rng.state, oracle.state)
-		assert_true([&"regular", &"student"].has(guest.customer_type_id))
-		seen[guest.customer_type_id] = true
+		assert_true([&"regular", &"student"].has(kind.id))
+		seen[kind.id] = true
 	assert_eq(seen.size(), 2, "actual Main arrivals include Students as well as Regulars")
 	assert_false(FileAccess.file_exists(_path()), "non-saving test sessions remain isolated")
 
@@ -111,7 +126,10 @@ func test_morning_refresh_and_reload_use_restored_owner_level() -> void:
 
 func test_main_explicit_regular_catalogue_retains_legacy_arrival_draw_order() -> void:
 	var regular: CustomerTypeCatalogue = CustomerTypeCatalogue.new()
-	regular.types = [TYPES.find_type(&"regular")]
+	var single: CustomerType = TYPES.find_type(&"regular").duplicate() as CustomerType
+	single.party_size_min = 1
+	single.party_size_max = 1
+	regular.types = [single]
 	var main: Node = await _start(false, regular)
 	var sim: RestaurantSim = main.get("sim") as RestaurantSim
 	assert_eq(sim.customer_types.types.size(), 1)

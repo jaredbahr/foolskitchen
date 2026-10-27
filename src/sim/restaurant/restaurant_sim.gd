@@ -443,6 +443,12 @@ func price_walkout_chance(recipe: RecipeDef, budget_multiplier: float = 1.0) -> 
 
 ## Adds a guest using an independent random stream (also useful for scenarios).
 func add_customer(entry: Vector2i, random: RandomNumberGenerator, kind: CustomerType = null) -> CustomerAgent:
+	return _install_customer(entry, random, kind)
+
+
+## Party installation defers publication until every member has a shared visit.
+func _install_customer(entry: Vector2i, random: RandomNumberGenerator,
+		kind: CustomerType = null, publish: bool = true) -> CustomerAgent:
 	if kind != null and not kind.is_valid():
 		return null
 	var customer: CustomerAgent = CustomerAgent.new(self, random)
@@ -465,9 +471,36 @@ func add_customer(entry: Vector2i, random: RandomNumberGenerator, kind: Customer
 		if _vibe_result.score > 0.0 and not _vibe_result.active_theme.is_empty():
 			customer.vibe_theme_label = _vibe_result.theme_label
 	world.add_agent(customer)
+	if publish:
+		_publish_customer_arrival(customer)
+	return customer
+
+
+func _publish_customer_arrival(customer: CustomerAgent) -> void:
 	world.log_event("Guest #%d arrived" % customer.id)
 	customer_arrived.emit(customer)
-	return customer
+
+
+## Members are installed in the same arrival tick and retain private RNGs.
+## Singletons keep add_customer's exact path, including its signal order.
+func add_party(entry: Vector2i, randoms: Array[RandomNumberGenerator], kind: CustomerType = null) -> Party:
+	if randoms.is_empty() or randoms.size() > 4 or (kind != null and not kind.is_valid()):
+		return null
+	for random: RandomNumberGenerator in randoms:
+		if random == null:
+			return null
+	var ids: Array[int] = []
+	var guests: Array[CustomerAgent] = []
+	for random: RandomNumberGenerator in randoms:
+		var guest: CustomerAgent = _install_customer(entry, random, kind, false)
+		ids.append(guest.id)
+		guests.append(guest)
+	var visit: Party = Party.new(ids)
+	for guest: CustomerAgent in guests:
+		guest.party = visit
+	for guest: CustomerAgent in guests:
+		_publish_customer_arrival(guest)
+	return visit
 
 
 ## Current guests in stable agent-id order.

@@ -18,7 +18,7 @@ func reset() -> void:
 	_remaining = _gap()
 
 
-## Creates at most one guest, and never outside OPEN or without a street entry.
+## Creates at most one party, and never outside OPEN or without a street entry.
 func advance(sim: RestaurantSim) -> void:
 	if sim.world.clock.phase != SimClock.Phase.OPEN:
 		return
@@ -28,6 +28,7 @@ func advance(sim: RestaurantSim) -> void:
 	if _remaining > 0:
 		return
 	var entries: Array[Vector2i] = sim.world.grid.entries()
+	var arrived: int = 1
 	if not entries.is_empty():
 		var kind: CustomerType = null
 		if sim.customer_types != null:
@@ -35,10 +36,31 @@ func advance(sim: RestaurantSim) -> void:
 				sim.review_book.average(), rng)
 		if sim.customer_types == null or kind != null:
 			var entry: Vector2i = entries[rng.randi_range(0, entries.size() - 1)]
-			var customer_rng: RandomNumberGenerator = RandomNumberGenerator.new()
-			customer_rng.seed = rng.randi()
-			sim.add_customer(entry, customer_rng, kind)
-	_remaining = _gap()
+			# A type whose groups are still locked draws exactly what a single
+			# guest draws: no size draw and one private seed.
+			var drawn_count: int = kind.draw_party_size_at(rng, sim.customer_level) if kind != null else 1
+			var count: int = drawn_count
+			if drawn_count > 1:
+				# Parties clamp after every draw to the largest usable table, but
+				# never below one: with no usable table a single guest still
+				# arrives and is counted as "no table", as any single would be.
+				count = maxi(1, mini(drawn_count, DiningSeats.largest_usable_capacity(sim.world.grid, entry)))
+			# Retain every private-seed draw, including clamped-away members. Layout
+			# edits must not shift the next arrival's type, gap or private streams.
+			var randoms: Array[RandomNumberGenerator] = []
+			for index: int in drawn_count:
+				var customer_rng: RandomNumberGenerator = RandomNumberGenerator.new()
+				customer_rng.seed = rng.randi()
+				if index < count:
+					randoms.append(customer_rng)
+			if count == 1:
+				sim.add_customer(entry, randoms[0], kind)
+			elif count > 1:
+				sim.add_party(entry, randoms, kind)
+			arrived = count
+	# Headcount-neutral: a party of N waits N drawn gaps (one draw, scaled), so
+	# groups bring the same guests per hour as singles did.
+	_remaining = _gap() * maxi(1, arrived)
 
 
 func _gap() -> int:

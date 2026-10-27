@@ -335,8 +335,44 @@ func test_table_warning_highlights_match_actual_checked_ids_and_cancelled_propos
 		assert_eq(material.albedo_color, BuildPreview.INVALID_COLOR)
 		assert_true(material.no_depth_test)
 	_mode.cancel()
-	assert_eq(_preview.displayed_warning_ids(), _editor.check_current().unreachable)
-	assert_false(_preview.warning_nodes.has(table_id), "cancel never pretends an uncommitted blocker exists")
+	assert_eq(_preview.displayed_warning_ids(), _mode.warning_ids())
+	assert_true(_preview.warning_nodes.has(table_id), "the committed first blocker still leaves only one usable seat")
+	assert_eq(_preview.invalid_reason(), "Only 1 of 2 seats usable")
+
+
+func test_partial_four_seat_capacity_warns_in_preview_and_after_commit_until_fixed() -> void:
+	var grid: SimGrid = _sim.world.grid
+	assert_true(grid.remove(grid.item_at(Vector2i(6, 6)).id))
+	_editor.set_owner_level(2)  # the four-seat table unlocks at level 2
+	assert_true(_mode.enter())
+	assert_true(_mode.begin_buy(&"table_4", Vector2i(6, 5)))
+	assert_true(_mode.current_check.ok, "losing a seat warns without blocking the purchase")
+	assert_false(_mode.current_check.unreachable.has(0), "the other three seats remain reachable")
+	assert_eq(_mode.current_check.seat_warnings.get(0, ""), "Only 3 of 4 seats usable")
+	assert_eq(_preview.invalid_reason(), "Only 3 of 4 seats usable")
+	assert_true(_preview.warning_nodes.has(0))
+	assert_true(_mode.commit())
+	var table: PlacedItem = grid.item_at(Vector2i(6, 5))
+	assert_eq(DiningSeats.usable_cells(grid, table).size(), 3)
+	assert_eq(_mode.seat_warnings().get(table.id, ""), "Only 3 of 4 seats usable")
+	assert_true(_preview.warning_nodes.has(table.id))
+	var detached: Dictionary = _mode.presentation_state()
+	detached["seat_warnings"].clear()
+	assert_true(_mode.seat_warnings().has(table.id), "presentation warnings are detached")
+	assert_true(_mode.pick_up(table.id))
+	_mode.update_origin(Vector2i(-1, 0))
+	assert_false(_mode.current_check.ok)
+	assert_true(_preview.warning_nodes.has(table.id), "invalid ghosts preserve the real warning")
+	_mode.cancel()
+	assert_eq(_preview.invalid_reason(), "Only 3 of 4 seats usable")
+	assert_true(_mode.pick_up(table.id))
+	_mode.update_origin(Vector2i(6, 6))
+	assert_true(_mode.current_check.ok)
+	assert_false(_mode.seat_warnings().has(table.id))
+	assert_eq(_preview.invalid_reason(), "")
+	assert_true(_mode.commit())
+	assert_eq(DiningSeats.usable_cells(grid, table).size(), 4)
+	assert_false(_preview.warning_nodes.has(table.id))
 
 
 func test_removed_item_and_replaced_shop_mesh_leave_no_hidden_or_orphan_nodes() -> void:
