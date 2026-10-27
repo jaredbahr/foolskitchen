@@ -72,6 +72,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- The five-day soak tests now start their new game from a fixed seed instead of the clock, so they play the same guests on every run and stop failing at random. (#176)
 - The roadmap now has an idea backlog (regulars, patio, makeover jobs, staff drama, more sites and more) so liked ideas aren't lost. (#174)
 - Design decision D24: a second restaurant unlocks at Tier 3 once you hire a manager to run the first, and shops you're away from keep earning based on the manager's skill. (#165)
 - Design decision D23: Fool's Kitchen is a restaurant designer in a Sims-like design language, where the player chooses the concept by what they build and serve; the roadmap lists the designer work. (#163)
