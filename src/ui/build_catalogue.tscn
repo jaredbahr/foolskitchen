@@ -67,12 +67,6 @@ layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 4
 
-[node name="Hint" type="Label" parent="Panel/Margin/Rows/Scroll/Content"]
-layout_mode = 2
-mouse_filter = 2
-text = "Square: work tile   Circle: seat"
-autowrap_mode = 3
-
 [node name="Items" type="GridContainer" parent="Panel/Margin/Rows/Scroll/Content"]
 layout_mode = 2
 mouse_filter = 2

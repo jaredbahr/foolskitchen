@@ -913,6 +913,9 @@ func _update_build_controls() -> void:
 		reason = build_mode.hover_summary()
 		if reason.is_empty() and not build_mode.current_check.ok:
 			reason = build_mode.current_check.why
+	if build_mode.has_ghost() and reason.is_empty():
+		# The ghost's markers: a square for each work tile, a circle per seat.
+		reason = BuildCatalogue.FURNITURE_HINT
 	if not _edit_notice.is_empty():
 		reason = _edit_notice if reason.is_empty() else _edit_notice + "\n" + reason
 	$HUD.set_build_state(available, active, reason, int(build_mode.state), int(build_mode.tool))

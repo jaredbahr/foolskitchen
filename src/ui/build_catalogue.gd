@@ -26,6 +26,7 @@ const CARD_MINIMUM: Vector2 = Vector2(96.0, 104.0)
 const THUMBNAIL_WIDTH: int = 64
 const CARD_GAP: float = 8.0
 const MAX_COLUMNS: int = 12
+const MIN_COLUMNS: int = 6
 const BUY: StringName = &"buy"
 const BUILD: StringName = &"build"
 const BUY_CATEGORIES: Array[StringName] = [&"dining", &"kitchen", &"bar_cafe", &"decor", &"lighting", &"restroom"]
@@ -49,9 +50,8 @@ const TOOL_TIPS: Array[String] = [
 	"Eyedropper: click a placed item to place another one like it",
 	"Sell: click a placed item to sell it (Del sells what you point at)",
 ]
-const WALLS_HINT: String = "Drag along the grid lines to build. Click a wall to switch it between wall, doorway and window."
-const FLOOR_HINT: String = "Drag onto the lot to grow the shop; Shift-drag removes added floor."
 const FLOOR_THUMBNAIL: PackedScene = preload("res://assets/props/floor_tile.tscn")
+## The ghost's marker legend; Main shows it in the HUD key strip while a piece is held.
 const FURNITURE_HINT: String = "Square: work tile   Circle: seat"
 const CHIP_FONT_SIZE: int = 15
 
@@ -67,6 +67,8 @@ var tool_buttons: Array[Button] = []
 var group_buttons: Dictionary[StringName, Button] = {}
 var theme_buttons: Dictionary[StringName, Button] = {}
 var sort_button: Button
+## The divider before the tools, hidden with them in Paint.
+var _tool_divider: Control
 var undo_button: Button
 var redo_button: Button
 var selected_category: StringName = &""
@@ -157,6 +159,7 @@ func set_tool_state(tool: int, can_undo: bool, can_redo: bool, undo_text: String
 		redo_text: String = "", editable: bool = true) -> void:
 	_prepare_layout()
 	_tool = tool
+	var editable_changed: bool = _editable != editable
 	_editable = editable
 	for index: int in range(tool_buttons.size()):
 		tool_buttons[index].set_pressed_no_signal(index == tool)
@@ -164,7 +167,10 @@ func set_tool_state(tool: int, can_undo: bool, can_redo: bool, undo_text: String
 	redo_button.disabled = not can_redo
 	undo_button.tooltip_text = ("Undo %s (Ctrl+Z)" % undo_text) if can_undo and not undo_text.is_empty() else "Undo (Ctrl+Z)"
 	redo_button.tooltip_text = ("Redo %s (Ctrl+Y)" % redo_text) if can_redo and not redo_text.is_empty() else "Redo (Ctrl+Y)"
-	_apply_category()
+	# Main calls this on every pointer change; only the open/closed switch
+	# changes which tabs work.
+	if editable_changed:
+		_apply_category()
 
 
 func set_vibe(result: VibeModel.Result) -> void:
@@ -393,6 +399,7 @@ func _tile(node_name: String) -> Button:
 	button.add_theme_constant_override("h_separation", 2)
 	button.add_theme_font_size_override("font_size", 16)
 	button.custom_minimum_size = CARD_MINIMUM
+	_tighten(button, 6.0, 6.0)
 	return button
 
 
@@ -408,6 +415,7 @@ func _apply_category() -> void:
 		mode_buttons[key].disabled = not _editable
 	for button: Button in tool_buttons:
 		button.visible = not _paint_visible
+	_tool_divider.visible = not _paint_visible
 	for id: StringName in item_buttons:
 		var definition: ItemDef = _content.item(id) if _content != null else null
 		item_buttons[id].visible = buying and _passes_filters(definition)
@@ -433,9 +441,6 @@ func _apply_category() -> void:
 	(_content_node().get_node("Filters") as Control).visible = buying
 	(_content_node().get_node("Items") as Control).visible = not _paint_visible
 	(_content_node().get_node("PaintSwatches") as Control).visible = _paint_visible
-	var hint: Label = _content_node().get_node("Hint") as Label
-	hint.visible = not _paint_visible
-	hint.text = FURNITURE_HINT if mode == BUY else (FLOOR_HINT if selected_category == FLOOR else WALLS_HINT)
 	_refresh_title()
 	var empty: Label = _content_node().get_node("Empty") as Label
 	empty.visible = buying and visible_ids().is_empty()
@@ -621,19 +626,26 @@ func _show_hover_card(id: StringName) -> void:
 	_place_hover_card()
 
 
-## Above the hovered tile, inside the window; over the world, never the panel.
+## Beside the panel, level with the hovered tile, over the world. A window
+## too narrow for that puts it above the panel instead; never over the panel.
 func _place_hover_card() -> void:
 	var card: PanelContainer = get_node("HoverCard") as PanelContainer
 	if not card.visible or not item_buttons.has(hover_id):
 		return
+	var origin: Vector2 = get_global_rect().position
 	var tile: Rect2 = item_buttons[hover_id].get_global_rect()
+	tile.position -= origin
 	var panel: Rect2 = (get_node("Panel") as Control).get_global_rect()
-	var local_tile: Vector2 = tile.position - get_global_rect().position
-	var local_panel_top: float = panel.position.y - get_global_rect().position.y
+	panel.position -= origin
 	var card_size: Vector2 = card.get_combined_minimum_size()
-	var x: float = clampf(local_tile.x, EDGE_MARGIN, maxf(EDGE_MARGIN, size.x - EDGE_MARGIN - card_size.x))
-	var y: float = maxf(EDGE_MARGIN, local_panel_top - CARD_GAP - card_size.y)
-	card.position = Vector2(x, y)
+	var position: Vector2
+	if panel.end.x + CARD_GAP + card_size.x <= size.x - EDGE_MARGIN:
+		position = Vector2(panel.end.x + CARD_GAP, clampf(tile.end.y - card_size.y,
+			EDGE_MARGIN, maxf(EDGE_MARGIN, size.y - EDGE_MARGIN - card_size.y)))
+	else:
+		position = Vector2(clampf(tile.position.x, EDGE_MARGIN, maxf(EDGE_MARGIN, size.x - EDGE_MARGIN - card_size.x)),
+			maxf(EDGE_MARGIN, panel.position.y - CARD_GAP - card_size.y))
+	card.position = position
 	card.size = card_size
 
 
@@ -760,7 +772,8 @@ func _prepare_layout() -> void:
 		button.pressed.connect(_on_mode_pressed.bind(side))
 		mode_buttons[side] = button
 		bar.add_child(button)
-	bar.add_child(_divider())
+	_tool_divider = _divider()
+	bar.add_child(_tool_divider)
 	for index: int in range(TOOL_LABELS.size()):
 		var button: Button = _chip("Tool_%s" % TOOL_LABELS[index], TOOL_LABELS[index], 16)
 		button.tooltip_text = TOOL_TIPS[index]
@@ -787,6 +800,7 @@ func _prepare_layout() -> void:
 		button.focus_mode = Control.FOCUS_ALL
 		button.mouse_filter = Control.MOUSE_FILTER_STOP
 		button.pressed.connect(_on_category_pressed.bind(category))
+		_tighten(button, 12.0, 5.0)
 		category_buttons[category] = button
 		categories.add_child(button)
 	IconStyle.configure_button(category_buttons[PAINT], &"paint", "Paint", "Paint walls, floor and furniture (P)")
@@ -837,15 +851,20 @@ func _chip(node_name: String, label: String, font_size: int = CHIP_FONT_SIZE, to
 	button.focus_mode = Control.FOCUS_NONE
 	button.mouse_filter = Control.MOUSE_FILTER_STOP
 	button.add_theme_font_size_override("font_size", font_size)
+	_tighten(button, 8.0, 4.0)
+	return button
+
+
+## Shared theme styles with tighter padding (the palette and borders stay).
+func _tighten(button: Button, side: float, top: float) -> void:
 	for state: StringName in [&"normal", &"hover", &"pressed", &"hover_pressed", &"disabled"]:
 		var style: StyleBox = theme.get_stylebox(state, "Button").duplicate() as StyleBox if theme != null \
 			else button.get_theme_stylebox(state).duplicate() as StyleBox
-		style.set_content_margin(SIDE_LEFT, 8.0)
-		style.set_content_margin(SIDE_RIGHT, 8.0)
-		style.set_content_margin(SIDE_TOP, 4.0)
-		style.set_content_margin(SIDE_BOTTOM, 4.0)
+		style.set_content_margin(SIDE_LEFT, side)
+		style.set_content_margin(SIDE_RIGHT, side)
+		style.set_content_margin(SIDE_TOP, top)
+		style.set_content_margin(SIDE_BOTTOM, top)
 		button.add_theme_stylebox_override(state, style)
-	return button
 
 
 func _divider() -> VSeparator:
@@ -890,18 +909,15 @@ func _fit_panel() -> void:
 	for button: Button in _visible_cards():
 		card_width = maxf(card_width, button.get_combined_minimum_size().x)
 	var bar_width: float = scroll.get_v_scroll_bar().get_combined_minimum_size().x
-	# The tiles use the panel's whole width (leaving room for a scroll bar),
-	# but never fewer columns than fit beside the tab rows.
+	# The tiles fill the width of the tab rows (at least MIN_COLUMNS tiles), so
+	# the panel stays narrow enough to leave the shop in view; more tiles scroll.
 	var rows_width: float = 0.0
 	for child: Node in content.get_children():
 		if child != row and child is Control and (child as Control).visible:
 			rows_width = maxf(rows_width, (child as Control).get_combined_minimum_size().x)
-	var grid_width: float = maxf(limit.x - bar_width, minf(rows_width, limit.x))
+	var wanted: float = maxf(rows_width, MIN_COLUMNS * (card_width + CARD_GAP) - CARD_GAP)
+	var grid_width: float = minf(wanted, limit.x - bar_width)
 	var columns: int = clampi(floori((grid_width + CARD_GAP) / (card_width + CARD_GAP)), 1, MAX_COLUMNS)
-	var cards: int = _visible_cards().size()
-	if cards > 0:
-		columns = mini(columns, maxi(cards, floori((rows_width + CARD_GAP) / (card_width + CARD_GAP))))
-	columns = maxi(columns, 1)
 	if row.columns != columns:
 		row.columns = columns
 	var natural: Vector2 = content.get_combined_minimum_size()
