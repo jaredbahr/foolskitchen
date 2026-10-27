@@ -390,7 +390,7 @@ func test_invalid_menu_provider_does_not_fall_back_to_a_semantic_backup() -> voi
 	assert_eq(Clock.sim.day, 1, "provider failure follows the existing fresh-game path")
 	assert_eq(settings.enabled_count(), 3)
 	assert_eq(settings.price_of((second.get("content") as ContentDB).recipe(&"burger")), 12)
-	assert_ne(settings.to_dict(), saved, "a readable primary with a rejected provider returns FAILED, without semantic fallback")
+	assert_ne(_json_menu(settings.to_dict()), saved, "a readable primary with a rejected provider returns FAILED, without semantic fallback")
 	assert_eq(FileAccess.get_file_as_string(_path()), broken)
 	assert_eq(FileAccess.get_file_as_string(_path() + ".bak"), good_backup)
 
