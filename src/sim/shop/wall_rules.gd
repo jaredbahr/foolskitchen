@@ -100,15 +100,14 @@ static func layout_problem(grid: SimGrid) -> String:
 			return BLOCKS_ACCESS
 	var faces: Dictionary[Vector2i, int] = {}
 	var windows: Dictionary[Vector2i, int] = {}
-	for y: int in range(grid.size.y):
-		for x: int in range(grid.size.x):
-			for edge: Vector3i in [Vector3i(x, y, SimGrid.EDGE_WEST), Vector3i(x, y, SimGrid.EDGE_NORTH)]:
-				var side: Vector2i = outer_side(grid, edge)
-				if side == Vector2i.ZERO:
-					continue
-				faces[side] = faces.get(side, 0) + 1
-				if grid.segment(edge) == SimGrid.Segment.WINDOW:
-					windows[side] = windows.get(side, 0) + 1
+	for cell: Vector2i in grid.cells():
+		for edge: Vector3i in [Vector3i(cell.x, cell.y, SimGrid.EDGE_WEST), Vector3i(cell.x, cell.y, SimGrid.EDGE_NORTH)]:
+			var side: Vector2i = outer_side(grid, edge)
+			if side == Vector2i.ZERO:
+				continue
+			faces[side] = faces.get(side, 0) + 1
+			if grid.segment(edge) == SimGrid.Segment.WINDOW:
+				windows[side] = windows.get(side, 0) + 1
 	for side: Vector2i in windows:
 		if windows[side] >= faces[side]:
 			return KEEP_SOLID_SIDE
@@ -164,11 +163,7 @@ static func cut_off_problem(before: SimGrid, after: SimGrid, people: Array[Vecto
 
 ## Terrain and segments of `grid`, with no furniture.
 static func walls_only(grid: SimGrid) -> SimGrid:
-	var copy: SimGrid = SimGrid.new(grid.size)
-	for y: int in range(grid.size.y):
-		for x: int in range(grid.size.x):
-			var cell: Vector2i = Vector2i(x, y)
-			copy.set_terrain(cell, grid.terrain(cell))
+	var copy: SimGrid = grid.terrain_copy()
 	var segments: Dictionary[Vector3i, int] = {}
 	for edge: Vector3i in grid.segment_edges():
 		segments[edge] = grid.segment(edge)

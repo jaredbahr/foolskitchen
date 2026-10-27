@@ -4,7 +4,8 @@ extends RefCounted
 ## grid signals change only when a mutation succeeds. No autoloads or nodes.
 
 ## Version 2 adds wall segments (FK-070); version-1 shops have none.
-const SNAPSHOT_VERSION: int = 2
+## Version 3 adds the bought floor (FK-080); older shops are the starting shell.
+const SNAPSHOT_VERSION: int = 3
 const WALLS_CLOSED: String = "Walls can only be changed in the morning or after closing"
 
 var last_check: EditCheck = EditCheck.new()
@@ -16,6 +17,9 @@ var _content: ContentDB
 var _books: ShopEditBooks
 var _applying: bool = false
 var _owner_level: int = 1
+## The lot and the bought floor (FK-080). Null without a layout.
+var _footprint: ShopFootprint
+var _bought: Dictionary[Vector2i, bool] = {}
 
 
 func _init(sim: RestaurantSim, content: ContentDB, books: ShopEditBooks, layout: ShopLayout = null) -> void:
@@ -25,6 +29,8 @@ func _init(sim: RestaurantSim, content: ContentDB, books: ShopEditBooks, layout:
 	if layout != null:
 		wall_swatch_id = _known_swatch(layout.wall_swatch_id)
 		floor_swatch_id = _known_swatch(layout.floor_swatch_id)
+		_footprint = ShopFootprint.from_layout(layout)
+		_bought = ShopFootprint.to_set(layout.floor_cells)
 
 
 ## Main injects the restored owner level before accepting a new purchase.
@@ -214,7 +220,10 @@ func to_dict() -> Dictionary:
 		var kind: WallKindDef = _content.wall_kind_for(_sim.world.grid.segment(edge)) if _content != null else null
 		if kind != null:
 			segments.append({"edge": [edge.x, edge.y, edge.z], "kind": String(kind.id)})
-	return {"version": SNAPSHOT_VERSION, "items": placements, "walls": segments,
+	var floor: Array[Array] = []
+	for cell: Vector2i in ShopFootprint.sorted(_bought):
+		floor.append([cell.x, cell.y])
+	return {"version": SNAPSHOT_VERSION, "items": placements, "walls": segments, "floor": floor,
 		"wall_swatch_id": String(wall_swatch_id), "floor_swatch_id": String(floor_swatch_id)}
 
 
@@ -231,7 +240,26 @@ static func from_dict(data: Dictionary, template_layout: ShopLayout, content: Co
 	if (int(data["version"]) >= 2 or data.has("walls")) and not data.get("walls") is Array:
 		errors.append("Invalid shop walls")
 		return null
+	if (int(data["version"]) >= 3 or data.has("floor")) and not data.get("floor") is Array:
+		errors.append("Invalid shop floor")
+		return null
 	var preview: SimGrid = SimGrid.from_ascii(template_layout.rows)
+	var footprint: ShopFootprint = ShopFootprint.from_layout(template_layout)
+	var bought: Dictionary[Vector2i, bool] = {}
+	var floor_rows: Array = data.get("floor", [])
+	if floor_rows.size() > footprint.lot.get_area():
+		errors.append("Too much shop floor")
+		return null
+	for value: Variant in floor_rows:
+		var pair: Array = value if value is Array else []
+		if pair.size() != 2 or not _integer_in(pair[0], -100000, 100000) or not _integer_in(pair[1], -100000, 100000) \
+				or bought.has(Vector2i(int(pair[0]), int(pair[1]))):
+			errors.append("Invalid shop floor")
+			return null
+		bought[Vector2i(int(pair[0]), int(pair[1]))] = true
+	if not footprint.problem(bought).is_empty() or not footprint.apply(preview, bought):
+		errors.append("Saved floor does not fit the lot")
+		return null
 	var rows: Array = data["items"]
 	if rows.size() > preview.size.x * preview.size.y * ItemDef.PlacementLayer.size():
 		errors.append("Too many shop items")
@@ -241,6 +269,11 @@ static func from_dict(data: Dictionary, template_layout: ShopLayout, content: Co
 	layout.display_name = template_layout.display_name
 	layout.rows = template_layout.rows.duplicate()
 	layout.staff_spawns = template_layout.staff_spawns.duplicate()
+	layout.lot_west = template_layout.lot_west
+	layout.lot_east = template_layout.lot_east
+	layout.lot_north = template_layout.lot_north
+	layout.floor_cell_price = template_layout.floor_cell_price
+	layout.floor_cells = ShopFootprint.sorted(bought)
 	layout.wall_swatch_id = _saved_swatch(data.get("wall_swatch_id", ""), content)
 	layout.floor_swatch_id = _saved_swatch(data.get("floor_swatch_id", ""), content)
 	for value: Variant in rows:
@@ -254,7 +287,9 @@ static func from_dict(data: Dictionary, template_layout: ShopLayout, content: Co
 		if not (def_id is String or def_id is StringName) or not origin is Array:
 			errors.append("Invalid item id or origin")
 			return null
-		if origin.size() != 2 or not _integer_in(origin[0], 0, preview.size.x - 1) or not _integer_in(origin[1], 0, preview.size.y - 1) or not _integer_in(turns, 0, 3):
+		var area: Rect2i = preview.bounds
+		if origin.size() != 2 or not _integer_in(origin[0], area.position.x, area.end.x - 1) \
+				or not _integer_in(origin[1], area.position.y, area.end.y - 1) or not _integer_in(turns, 0, 3):
 			errors.append("Invalid origin or quarter turns")
 			return null
 		var definition: ItemDef = content.item(StringName(def_id))
@@ -300,7 +335,8 @@ static func from_dict(data: Dictionary, template_layout: ShopLayout, content: Co
 			errors.append("Invalid shop wall")
 			return null
 		var parts: Array = edge_value
-		if not _integer_in(parts[0], 0, preview.size.x) or not _integer_in(parts[1], 0, preview.size.y) \
+		if not _integer_in(parts[0], preview.origin.x, preview.bounds.end.x) \
+				or not _integer_in(parts[1], preview.origin.y, preview.bounds.end.y) \
 				or not _integer_in(parts[2], SimGrid.EDGE_WEST, SimGrid.EDGE_NORTH):
 			errors.append("Invalid shop wall")
 			return null
@@ -430,6 +466,159 @@ func apply_segments(changes: Dictionary[Vector3i, int]) -> bool:
 	return true
 
 
+# --- Floor expansion (FK-080) ------------------------------------------------
+
+## The lot and floor plan, or null when this shop has no layout.
+func footprint() -> ShopFootprint:
+	return _footprint
+
+
+## Bought floor cells, row-major.
+func bought_floor() -> Array[Vector2i]:
+	return ShopFootprint.sorted(_bought)
+
+
+func is_bought(cell: Vector2i) -> bool:
+	return _bought.has(cell)
+
+
+## Read-only check of buying (`adding`) or removing the floor in `cells`.
+## Adding uses every unbuilt lot cell; cells of the starting building or
+## already bought are skipped, any cell beyond the lot refuses. Removing uses
+## only bought cells. Wall segments that would no longer fit are taken down
+## and refunded at the furniture rate; floor refunds half its price too.
+func check_floor(cells: Array[Vector2i], adding: bool) -> EditCheck:
+	if not can_edit():
+		return EditCheck.new(false, ShopFootprint.FLOOR_CLOSED)
+	if _footprint == null or not _footprint.has_lot():
+		return EditCheck.new(false, ShopFootprint.NO_LOT)
+	if _content == null:
+		return EditCheck.new(false, "The shop content is unavailable")
+	var effective: Dictionary[Vector2i, bool] = {}
+	for cell: Vector2i in cells:
+		if adding:
+			if _footprint.building.has_point(cell) or _bought.has(cell):
+				continue
+			if not _footprint.can_hold(cell):
+				return EditCheck.new(false, ShopFootprint.OUTSIDE_LOT)
+			effective[cell] = true
+		elif _bought.has(cell):
+			effective[cell] = true
+	if effective.is_empty():
+		return EditCheck.new(false, ShopFootprint.ALREADY_BUILT if adding else ShopFootprint.ONLY_BOUGHT)
+	var next: Dictionary[Vector2i, bool] = _bought.duplicate()
+	for cell: Vector2i in effective:
+		if adding:
+			next[cell] = true
+		else:
+			next.erase(cell)
+	var problem: String = _footprint.problem(next, adding)
+	if not problem.is_empty():
+		return EditCheck.new(false, problem)
+	var live: SimGrid = _sim.world.grid
+	var target: Dictionary[Vector2i, int] = _footprint.terrain_for(next)
+	# Anything that needs a floor cell that would stop being floor: furniture
+	# standing on it first, then a seat or work spot beside furniture.
+	var losing: Array[Vector2i] = []
+	for cell: Vector2i in target:
+		if target[cell] != SimGrid.Terrain.FLOOR and live.terrain(cell) == SimGrid.Terrain.FLOOR:
+			if not live.items_at(cell).is_empty():
+				return EditCheck.new(false, ShopFootprint.HAS_FURNITURE)
+			losing.append(cell)
+	for cell: Vector2i in losing:
+		var lost: String = _lost_spot(live, cell)
+		if not lost.is_empty():
+			return EditCheck.new(false, lost)
+	var ids: Dictionary[int, int] = {}
+	var preview: SimGrid = _preview_without(-1, ids)
+	if preview == null:
+		return EditCheck.new(false, "The current shop has invalid placements")
+	if not _footprint.apply(preview, next):
+		return EditCheck.new(false, ShopFootprint.HAS_FURNITURE)
+	var refund: int = 0
+	var removals: Dictionary[Vector3i, int] = {}
+	for edge: Vector3i in preview.segment_edges():
+		var kind: SimGrid.Segment = preview.segment(edge)
+		if WallRules.edge_problem(preview, edge, kind).is_empty():
+			continue
+		removals[edge] = SimGrid.Segment.NONE
+		var old_def: WallKindDef = _content.wall_kind_for(kind)
+		refund += floori(old_def.price / 2.0) if old_def != null else 0
+	preview.set_segments(removals)
+	problem = WallRules.layout_problem(preview)
+	if problem.is_empty():
+		var dining: EditCheck = EditCheck.validate_dining(live, preview, ids, -1, -1)
+		problem = "" if dining.ok else dining.why
+	if problem.is_empty():
+		problem = WallRules.cut_off_problem(live, preview, _people_cells())
+	if not problem.is_empty():
+		return EditCheck.new(false, problem)
+	var cost: int = effective.size() * _footprint.cell_price if adding else 0
+	if not adding:
+		refund += effective.size() * floori(_footprint.cell_price / 2.0)
+	if _books == null or not _books.is_ready():
+		return EditCheck.new(false, "The shop books are unavailable")
+	if cost > refund and not _books.can_spend_without_loan(cost - refund):
+		return EditCheck.new(false, _books.purchase_refusal_reason(cost - refund))
+	var check: EditCheck = EditCheck.new(true)
+	check.cost = cost
+	check.refund = refund
+	check.changes = removals
+	check.floor_cells = ShopFootprint.sorted(effective)
+	check.floor_adding = adding
+	check.unreachable = _unreachable(preview, ids)
+	return check
+
+
+## Applies a checked floor change: segments that no longer fit come down, the
+## grid grows if needed and the floor plan is set with one cells_changed.
+func apply_floor(cells: Array[Vector2i], adding: bool) -> bool:
+	var check: EditCheck = check_floor(cells, adding)
+	last_check = check
+	if not check.ok:
+		return false
+	var next: Dictionary[Vector2i, bool] = _bought.duplicate()
+	for cell: Vector2i in check.floor_cells:
+		if adding:
+			next[cell] = true
+		else:
+			next.erase(cell)
+	var grid: SimGrid = _sim.world.grid
+	_applying = true
+	if not check.changes.is_empty():
+		grid.set_segments(check.changes)
+	var applied: bool = _footprint.apply(grid, next)
+	if applied:
+		_bought = next
+		if _sim.cleanliness != null:
+			for spot: Vector2i in _sim.cleanliness.spots():
+				if grid.terrain(spot) != SimGrid.Terrain.FLOOR:
+					_sim.cleanliness.clear_spot(spot)
+		if check.refund > 0:
+			_books.add_cash(check.refund, Ledger.UPGRADES)
+		if check.cost > 0:
+			_books.add_cash(-check.cost, Ledger.UPGRADES)
+	_applying = false
+	if not applied:
+		last_check = EditCheck.new(false, "The shop changed; check the floor again")
+	return applied
+
+
+## The sentence for a work spot or seat that would lose its floor cell, or "".
+static func _lost_spot(grid: SimGrid, cell: Vector2i) -> String:
+	if WallRules.door_cells(grid).has(cell):
+		return WallRules.CUT_DOOR
+	for placed: PlacedItem in grid.items():
+		var definition: ItemDef = placed.def as ItemDef
+		if definition == null:
+			continue
+		if placed.seat_cells.has(cell):
+			return WallRules.CUT_SEAT
+		if placed.work_cells.has(cell):
+			return WallRules.CUT_SINK if definition.station_type == &"sink" else WallRules.CUT_STATION
+	return ""
+
+
 ## Staff start (post) cells, where everyone stands each morning, may never be
 ## shut in. In the morning staff are about to work from where they stand, so
 ## their current cells count too; after closing they will be reset to posts.
@@ -517,11 +706,7 @@ static func placement_reason(result: SimGrid.PlaceResult) -> String:
 func _preview_without(exclude_id: int, ids: Dictionary[int, int], replacement: ItemDef = null,
 		replacement_origin: Vector2i = Vector2i.ZERO, replacement_turns: int = 0) -> SimGrid:
 	var live: SimGrid = _sim.world.grid
-	var preview: SimGrid = SimGrid.new(live.size)
-	for y: int in range(live.size.y):
-		for x: int in range(live.size.x):
-			var cell: Vector2i = Vector2i(x, y)
-			preview.set_terrain(cell, live.terrain(cell))
+	var preview: SimGrid = live.terrain_copy()
 	var segments: Dictionary[Vector3i, int] = {}
 	for edge: Vector3i in live.segment_edges():
 		segments[edge] = live.segment(edge)
