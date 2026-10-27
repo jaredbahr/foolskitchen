@@ -780,3 +780,44 @@ func _on_left(guest: CustomerAgent, reason: StringName) -> void:
 	assert_false(_left.has(guest.id), "one departure per guest")
 	assert_false(String(reason).is_empty())
 	_left[guest.id] = reason
+
+
+func test_real_fries_are_prepped_fried_delivered_paid_and_consumed_once() -> void:
+	_serve_appliance_recipe(&"fries", &"fryer")
+
+
+func test_real_pie_is_prepped_baked_delivered_paid_and_consumed_once() -> void:
+	_serve_appliance_recipe(&"savoury_pie", &"oven")
+
+
+func _serve_appliance_recipe(recipe_id: StringName, station_id: StringName) -> void:
+	var station: PlacedItem = _sim.world.grid.place_def(_content.item(station_id), Vector2i(9, 3))
+	assert_not_null(station)
+	if station == null:
+		return
+	_sim.menu = [_content.recipe(recipe_id)] as Array[RecipeDef]
+	var guest: CustomerAgent = _guest()
+	guest.food_patience = 5000
+	var cook: StaffAgent = _staff(&"cook")
+	var worked: bool = false
+	assert_true(_sim.world.clock.start_service())
+	for tick: int in range(4000):
+		_sim.advance()
+		if cook.task != null and cook.task.kind == &"cook" and cook.step_index > 0 \
+				and cook.step_index < cook.task.steps.size() \
+				and cook.task.steps[cook.step_index].kind == TaskStep.Kind.WORK:
+			var previous: TaskStep = cook.task.steps[cook.step_index - 1]
+			if previous.kind == TaskStep.Kind.GO_TO_ITEM and previous.item_id == station.id:
+				worked = true
+		if guest.state == CustomerAgent.State.LEFT and _sim.world.board.active_count() == 0:
+			break
+	assert_true(worked, "real cook works at the required appliance")
+	assert_not_null(guest.order)
+	if guest.order != null:
+		assert_eq(guest.order.recipe_id, recipe_id)
+		assert_eq(guest.order.state, Order.State.DELIVERED)
+		assert_eq(_paid.get(guest.id, -1), guest.order.price)
+	assert_eq(_left.get(guest.id, &""), &"happy")
+	for ingredient: IngredientDef in _content.recipe(recipe_id).ingredients:
+		assert_eq(_sim.stock.count(ingredient.id), 99, "one unit consumed per ingredient")
+	_assert_drained()

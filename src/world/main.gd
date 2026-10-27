@@ -1698,8 +1698,20 @@ func _reorder() -> ReorderSettings:
 	return reorder_settings
 
 
-## The Drinks section explains what each missing drink needs, by name.
+## The Drinks section explains what each missing drink needs, by name. Food
+## waiting on the same station joins that line ("Coffee, tea and croissant: ...").
 func drink_station_hints() -> Array[String]:
+	return _station_hints(true)
+
+
+## Food-only equipment reasons, one per station no drink needs ("Fries: buy a fryer.").
+func food_station_hints() -> Array[String]:
+	return _station_hints(false)
+
+
+## One sentence per missing or walled-in station, naming every tier-1 dish at
+## the owner's level that waits on it; only_drinks picks the stations drinks need.
+func _station_hints(only_drinks: bool) -> Array[String]:
 	var hints: Array[String] = []
 	if content == null or world == null:
 		return hints
@@ -1714,13 +1726,16 @@ func drink_station_hints() -> Array[String]:
 				walled_in[definition.station_type] = true
 	var needs: Dictionary[StringName, Array] = {}
 	var order: Array[StringName] = []
-	var drinks: Array[RecipeDef] = []
-	for kind: StringName in RecipeDef.ORDER_TYPES:
-		for recipe: RecipeDef in content.recipes():
-			if recipe.order_type == kind and recipe.is_drink() and recipe.unlock_tier == 1 \
-					and recipe.unlock_level <= owner_progress.level:
-				drinks.append(recipe)
-	for recipe: RecipeDef in drinks:
+	var drink_stations: Dictionary[StringName, bool] = {}
+	# Drinks first, so a shared station's line names them before the food.
+	var waiting: Array[RecipeDef] = []
+	for drinks_pass: bool in [true, false]:
+		for kind: StringName in RecipeDef.ORDER_TYPES:
+			for recipe: RecipeDef in content.recipes():
+				if recipe.order_type == kind and recipe.is_drink() == drinks_pass and recipe.unlock_tier == 1 \
+						and recipe.unlock_level <= owner_progress.level:
+					waiting.append(recipe)
+	for recipe: RecipeDef in waiting:
 		for step: RecipeStep in recipe.steps:
 			if present.has(step.station_type):
 				continue
@@ -1728,23 +1743,38 @@ func drink_station_hints() -> Array[String]:
 				needs[step.station_type] = []
 				order.append(step.station_type)
 			(needs[step.station_type] as Array).append(recipe.display_name)
+			if recipe.is_drink():
+				drink_stations[step.station_type] = true
 			break
 	for station: StringName in order:
-		var item_name: String = ""
-		for definition: ItemDef in content.items():
-			if definition.category == ItemDef.Category.STATION and definition.station_type == station:
-				item_name = definition.display_name
-				break
+		if drink_stations.has(station) != only_drinks:
+			continue
+		var item_name: String = _station_item_name(station).to_lower()
 		var names: Array[String] = []
 		for index: int in range(needs[station].size()):
 			var dish: String = needs[station][index]
 			names.append(dish if index == 0 else dish.to_lower())
-		var advice: String = "staff can't reach the %s" if walled_in.has(station) else "buy a %s"
-		hints.append("%s: %s." % [StockAlerts.join_names(names), advice % item_name.to_lower()])
-	if menu_settings != null:
+		var advice: String = "staff can't reach the %s" % item_name if walled_in.has(station) \
+				else "buy %s %s" % ["an" if not item_name.is_empty() and "aeiou".contains(item_name.left(1)) else "a", item_name]
+		hints.append("%s: %s." % [StockAlerts.join_names(names), advice])
+	if only_drinks and menu_settings != null:
 		for drink: RecipeDef in menu_settings.crowded_out_drinks():
 			hints.append("%s is ready to serve; make room on the menu to add it." % drink.display_name)
 	return hints
+
+
+## The item a hint names for a station: the one whose id is the station type
+## (the prep counter, not the level-4 prep cabinet), else the earliest unlock.
+func _station_item_name(station: StringName) -> String:
+	var exact: ItemDef = content.item(station)
+	if exact != null and exact.category == ItemDef.Category.STATION and exact.station_type == station:
+		return exact.display_name
+	var best: ItemDef = null
+	for definition: ItemDef in content.items():
+		if definition.category == ItemDef.Category.STATION and definition.station_type == station \
+				and (best == null or definition.unlock_level < best.unlock_level):
+			best = definition
+	return best.display_name if best != null else ""
 
 
 ## Morning only. Hours join the clock, so the next morning autosave keeps them.
@@ -1841,6 +1871,7 @@ func set_menu_visible(value: bool) -> bool:
 		set_staff_visible(false)
 		set_stock_visible(false)
 		_menu_panel.set_drink_hints(drink_station_hints())
+		_menu_panel.set_food_hints(food_station_hints())
 		_menu_panel.set_hours(Clock.sim.display_open_minute, Clock.sim.display_close_minute, HOURS_TUNING)
 	_menu_panel.set_phase(Clock.sim.phase)
 	_menu_panel.visible = value
@@ -1979,6 +2010,7 @@ func _on_settings_close_requested() -> void:
 func _on_menu_enable_requested(recipe_id: StringName, enabled: bool) -> void:
 	menu_set_enabled(recipe_id, enabled)
 	_menu_panel.set_drink_hints(drink_station_hints())
+	_menu_panel.set_food_hints(food_station_hints())
 	_menu_panel.refresh()
 
 

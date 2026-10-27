@@ -36,8 +36,10 @@ var _needs_rebuild: bool = true
 ## section block below (FK-083).
 var _drinks_title: Label
 var _drink_rows: VBoxContainer
+var _food_hints_box: VBoxContainer
 var _hints_box: VBoxContainer
 var _drink_hints: Array[String] = []
+var _food_hints: Array[String] = []
 var _hours_box: VBoxContainer
 var _hours_controls: Dictionary[String, Control] = {}
 var _open_minute: int = 11 * 60
@@ -156,6 +158,23 @@ func set_drink_hints(hints: Array[String]) -> void:
 	_bind_nodes()
 	_rebuild_hints()
 	_refresh_drinks_section()
+
+
+## Food equipment reasons share the existing named station hints, outside Drinks.
+func set_food_hints(hints: Array[String]) -> void:
+	_food_hints = hints.duplicate()
+	_bind_nodes()
+	_rebuild_food_hints()
+
+
+func _rebuild_food_hints() -> void:
+	for child: Node in _food_hints_box.get_children():
+		_food_hints_box.remove_child(child)
+		child.free()
+	for hint: String in _food_hints:
+		var label: Label = _add_label(_food_hints_box, "Hint%d" % _food_hints_box.get_child_count(), hint)
+		label.add_theme_color_override("font_color", LOCKED_COLOR)
+	_food_hints_box.visible = not _food_hints.is_empty()
 
 
 func set_hours(open_minute: int, close_minute: int, tuning: OpeningHoursTuning) -> void:
@@ -301,6 +320,11 @@ func _build_sections() -> void:
 	_add_separator(_hours_box)
 	# Food rows carry their own section headings (Starters, Mains...); every
 	# drink is in the Drinks section, whose heading leads the drinks block.
+	_food_hints_box = VBoxContainer.new()
+	_food_hints_box.name = "FoodHints"
+	_food_hints_box.theme = SHARED_THEME
+	_food_hints_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	list.add_child(_food_hints_box)
 	_drinks_title = _add_label(list, "DrinksTitle", RecipeDef.section_name(RecipeDef.Section.DRINKS))
 	_drinks_title.add_theme_font_size_override("font_size", SECTION_FONT_SIZE)
 	_drink_rows = VBoxContainer.new()
