@@ -111,13 +111,51 @@ func test_accepted_tickets_hold_their_ingredients() -> void:
 	_sim.menu = [_content.recipe(&"burger"), _content.recipe(&"grilled_cheese")] as Array[RecipeDef]
 	var second: CustomerAgent = _ordering_guest(12)
 	assert_true(second._take_order(SimAgent.new()))
-	assert_true(_sim.is_sold_out(&"burger"), "the last burger is promised to the first guest")
-	assert_eq(second.order.recipe_id, &"grilled_cheese")
+	assert_eq(second.order.recipe_id, &"grilled_cheese", "the last burger is promised to the first guest")
+	assert_false(_sim.is_sold_out(&"burger"), "a promised portion is held back, not sold out")
+	assert_true(_sim.stock_outs_today.is_empty())
 	_sim.menu = [_content.recipe(&"burger")] as Array[RecipeDef]
 	var third: CustomerAgent = _ordering_guest(13)
 	assert_true(third._take_order(SimAgent.new()))
 	assert_null(third.order)
 	assert_eq(third.leave_reason, &"out_of_stock", "nothing this guest would order is left")
+
+
+## A promised portion comes back when its ticket is cancelled before the cook
+## fetches it, so the dish is never reported as run out.
+func test_cancelled_ticket_returns_its_portion() -> void:
+	var stock: Stock = Stock.new()
+	stock.add(&"tomato", 2, 1)
+	stock.add(&"soup_stock", 5, 1)
+	_start(stock, [&"tomato_soup"] as Array[StringName])
+	assert_true(_sim.world.clock.start_service())
+	_sim.advance()
+	var first: CustomerAgent = _ordering_guest(21)
+	assert_true(first._take_order(SimAgent.new()))
+	assert_eq(first.order.recipe_id, &"tomato_soup")
+	assert_true(_sim.available_menu().is_empty(), "the only portion is promised")
+	first._leave(_sim.world, _sim, &"waited_too_long")
+	assert_eq(first.order.state, Order.State.CANCELLED)
+	_sim.advance()
+	assert_false(_sim.is_sold_out(&"tomato_soup"))
+	assert_true(_sim.stock_outs_today.is_empty(), "nothing ran out")
+	var second: CustomerAgent = _ordering_guest(22)
+	assert_true(second._take_order(SimAgent.new()))
+	assert_not_null(second.order, "two tomatoes are still in the fridge")
+	assert_ne(second.leave_reason, &"out_of_stock")
+
+
+## A stock-out during last orders keeps the real time, past closing.
+func test_last_orders_stock_out_uses_the_running_clock() -> void:
+	_start(_full_stock({&"soup_stock": 0}), [&"tomato_soup", &"burger"] as Array[StringName])
+	var clock: SimClock = _sim.world.clock
+	assert_true(clock.start_service())
+	assert_eq(clock.open_ticks, 3600, "ten shop hours over 3600 ticks")
+	clock.phase = SimClock.Phase.LAST_ORDERS
+	clock.phase_tick = 360  # A tenth of the day: one more hour.
+	_sim.refresh_sold_out()
+	assert_eq(_sim.stock_outs_today[0]["minute"], clock.display_close_minute + 60)
+	assert_eq(StockAlerts.clock_text(int(_sim.stock_outs_today[0]["minute"])), "22:00")
 
 
 ## While nothing is sold out the guest makes the same single draw over the

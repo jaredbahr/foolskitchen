@@ -119,6 +119,8 @@ func test_settings_survive_the_morning_autosave_and_old_saves_use_defaults() -> 
 	assert_false(restored.is_enabled(&"cheese"))
 	assert_eq(restored.target(&"bun"), 14)
 	assert_eq(Economy.stock.count(&"bun"), 14)
+	assert_true((second.call("stock_notes") as Array[String]).has(_order_note(4)),
+		"a reloaded morning still shows its order, read back from the ledger")
 	# A save from before the Stock panel has no reorder section.
 	var document: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(_path()))
 	document["data"].erase("reorder")
@@ -144,11 +146,12 @@ func test_expired_stock_is_thrown_out_and_replaced() -> void:
 	rows = main.call("stock_rows")
 	beef = rows.filter(func(row: Dictionary) -> bool: return row["id"] == &"beef_patty")[0]
 	assert_eq(beef["expiring"], 10, "day-one patties must be used today")
+	main.set("auto_reorder_premium", 0.0)
 	_next_morning()
 	assert_eq(Economy.stock.count(&"beef_patty"), 10)
 	var notes: Array[String] = main.call("stock_notes")
 	assert_true(notes.has("Thrown out this morning (too old): 10 Beef patty."), str(notes))
-	assert_eq(notes[0], _order_note(20))
+	assert_eq(notes[0], "This morning's auto-order cost $20.", "no premium part without a premium")
 
 
 ## A dish that runs out is tagged on the HUD and named in the report with

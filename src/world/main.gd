@@ -1781,13 +1781,9 @@ func _restock() -> void:
 	var order: Dictionary = reorder_settings.plan(Economy.stock, _unit_costs(), Economy.cash, auto_reorder_premium)
 	var lines: Array[Dictionary] = []
 	lines.assign(order["lines"])
-	_morning_order = {"list_total": 0, "cost": 0, "short": order["short"]}
-	if not lines.is_empty():
-		if Economy.buy_auto_order(lines, int(order["cost"])):
-			_morning_order["list_total"] = int(order["list_total"])
-			_morning_order["cost"] = int(order["cost"])
-		else:
-			world.log_event("The morning auto-order could not be paid")
+	_morning_order = {"short": order["short"]}
+	if not lines.is_empty() and not Economy.buy_auto_order(lines, int(order["cost"])):
+		world.log_event("The morning auto-order could not be paid")
 	var short: Dictionary = order["short"]
 	for id: StringName in short:
 		world.log_event("Couldn't afford %d %s this morning" % [short[id], id])
@@ -1873,11 +1869,21 @@ func stock_rows() -> Array[Dictionary]:
 ## Player sentences about this morning's automatic order and expiry.
 func stock_notes() -> Array[String]:
 	var notes: Array[String] = []
-	var cost: int = int(_morning_order.get("cost", 0))
-	var list_total: int = int(_morning_order.get("list_total", 0))
-	if cost > 0:
-		notes.append("This morning's auto-order cost %s (%s at list price + %s premium)." % [
-			Fmt.money(cost), Fmt.money(list_total), Fmt.money(cost - list_total)])
+	# Read back from today's ledger, so a reloaded morning still shows it.
+	var list_total: int = 0
+	var premium: int = 0
+	for entry: Dictionary in Economy.ledger.entries_for_day(Clock.sim.day):
+		if entry["category"] != Ledger.INGREDIENTS:
+			continue
+		var note: String = String(entry["note"])
+		if note == Economy.AUTO_PREMIUM_NOTE:
+			premium -= int(entry["amount"])
+		elif note.begins_with(Economy.AUTO_LINE_PREFIX):
+			list_total -= int(entry["amount"])
+	if list_total + premium > 0:
+		notes.append(("This morning's auto-order cost %s (%s at list price + %s premium)." % [
+			Fmt.money(list_total + premium), Fmt.money(list_total), Fmt.money(premium)]) if premium > 0
+			else "This morning's auto-order cost %s." % Fmt.money(list_total))
 	var short: Dictionary = _morning_order.get("short", {})
 	var missed: Array[String] = []
 	for id: StringName in short:

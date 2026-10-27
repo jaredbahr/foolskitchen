@@ -890,19 +890,27 @@ existing paint colour and camera-controlled build-grid parameters.
 - **Stock panel** (`src/ui/stock_panel.gd`, HUD basket button): MORNING only, request
   signals to Main (`stock_buy` +1/+5 at list price, `stock_set_auto`,
   `stock_set_target`). Rows carry display names only; notes report this morning's
-  order, cash shortfalls and thrown-out stock.
+  order (read back from the day's ledger: lines noted `auto_reorder:<id>` plus the
+  `auto_reorder_premium` entry, so a reloaded morning still shows it), cash
+  shortfalls (re-planned on reload) and thrown-out stock (not kept: after a reload
+  of the same morning that note is gone, since nothing is thrown out twice).
+  The first load of a save from before expiry removes everything already past its
+  shelf life once.
 - **Sold out:** during OPEN/LAST_ORDERS `RestaurantSim.refresh_sold_out()` (each tick
-  and before every order) latches a menu dish for the rest of the day once
-  `stock - Kitchen.committed_ingredients()` cannot cover it; committed ingredients
-  belong to accepted tickets whose cook has not fetched yet. `stock_outs_today`
-  records `{ingredient, minute, dishes}`. Guests draw once over `available_menu()`
+  and before every order) latches a menu dish for the rest of the day once the
+  fridge itself cannot cover it (stock only falls during service). `available_menu()`
+  also holds back, without latching, dishes whose last portions are promised to
+  accepted tickets (`Kitchen.committed_ingredients()`, cook not yet at the fridge);
+  a cancelled ticket returns them. `stock_outs_today` records
+  `{ingredient, minute, dishes}`, the minute continuing past closing time during
+  last orders (`service_minute()`). Guests draw once over `available_menu()`
   (unchanged stream while nothing is sold out; the same single draw over the shorter
   list afterwards) and leave with `out_of_stock` only when it is empty. A ticket
   cancelled at the fridge still cancels as before. The HUD shows a "Sold out" chip
   during service.
 - **Report:** `DayReport.low_stock` holds `StockAlerts` sentences: each ingredient
   that sold dishes out (with the time), then tomorrow's forecast (tonight's expiry,
-  then the order planned with closing cash): expiring units, ingredients the order
+  then the order planned with tonight's cash): expiring units, ingredients the order
   will not cover (switched off or short of cash) and the order's cost.
 
 ### 2.4 Save system

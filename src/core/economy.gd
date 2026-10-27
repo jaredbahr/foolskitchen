@@ -5,6 +5,9 @@ extends Node
 
 const MAX_CURRENCY: int = 9223372036854775807
 const LOAN_TERMS: LoanTuning = preload("res://data/balance/loans.tres")
+## Ledger notes that mark the morning auto-order's lines and its premium.
+const AUTO_LINE_PREFIX: String = "auto_reorder:"
+const AUTO_PREMIUM_NOTE: String = "auto_reorder_premium"
 
 var ledger: Ledger = Ledger.new()
 var stock: Stock = Stock.new()
@@ -143,9 +146,9 @@ func buy_auto_order(lines: Array[Dictionary], cost: int) -> bool:
 		var id: StringName = line["id"]
 		var price: int = int(line["qty"]) * int(line["unit_cost"])
 		stock.add(id, int(line["qty"]), Clock.day)
-		ledger.record(Clock.day, -price, Ledger.INGREDIENTS, String(id))
+		ledger.record(Clock.day, -price, Ledger.INGREDIENTS, AUTO_LINE_PREFIX + String(id))
 		EventBus.cash_changed.emit(cash, -price, Ledger.INGREDIENTS)
 	if cost > list_total:
-		ledger.record(Clock.day, list_total - cost, Ledger.INGREDIENTS, "auto_reorder_premium")
+		ledger.record(Clock.day, list_total - cost, Ledger.INGREDIENTS, AUTO_PREMIUM_NOTE)
 		EventBus.cash_changed.emit(cash, list_total - cost, Ledger.INGREDIENTS)
 	return true

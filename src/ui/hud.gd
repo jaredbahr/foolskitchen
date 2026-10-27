@@ -242,10 +242,13 @@ func panel_top() -> float:
 ## the groups need fewer rows (a wider window, a hidden chip) the header
 ## returns to its native height instead of keeping an empty band.
 func _fit_header_height() -> void:
+	if not is_node_ready():
+		return
 	var top: Control = get_node("Top") as Control
 	var minimum: float = top.get_combined_minimum_size().y
 	if top.size.y > minimum + 0.5:
-		top.size = Vector2(top.size.x, minimum)
+		# Offsets, not size: the header is stretched between horizontal anchors.
+		top.offset_bottom = top.offset_top + minimum
 
 
 func _on_header_resized() -> void:

@@ -77,7 +77,7 @@ static func forecast_lines(forecast_data: Dictionary, content: ContentDB) -> Arr
 		lines.append(text)
 	var cost: int = int(forecast_data.get("order_cost", 0))
 	if cost > 0:
-		lines.append("Tomorrow morning's auto-order will cost $%d." % cost)
+		lines.append("With tonight's cash, tomorrow morning's auto-order will cost $%d." % cost)
 	return lines
 
 

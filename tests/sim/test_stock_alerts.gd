@@ -78,7 +78,7 @@ func test_forecast_lines_list_only_what_needs_the_player() -> void:
 		"Tomato: 3 expire tomorrow, 2 left, target 16. Auto-reorder is off.",
 		"Cheese: 2 expire tomorrow. Auto-reorder replaces them.",
 		"Lettuce: 1 left, target 10. Not enough cash to reorder 5.",
-		"Tomorrow morning's auto-order will cost $31.",
+		"With tonight's cash, tomorrow morning's auto-order will cost $31.",
 	] as Array[String], "a plain top-up (bread) is only part of the order cost")
 	assert_true(StockAlerts.forecast_lines({"rows": [], "order_cost": 0}, _content).is_empty())
 
