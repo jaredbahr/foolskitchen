@@ -9,6 +9,8 @@ const NON_OPERATING_CATEGORIES: Array[StringName] = [
 const MAX_MILESTONE_REWARD: int = 1000000
 
 var day: int = 1
+## Snapshot of the name used for this service day and its review heading.
+var restaurant_name: String = MenuSettings.DEFAULT_NAME
 var income: Dictionary = {}
 var costs: Dictionary = {}
 ## Transient first-advance introduction, supplied by the closing session.
@@ -81,6 +83,7 @@ func to_dict() -> Dictionary:
 	var milestones: Array[Dictionary] = public_milestones(milestones_reached)
 	return {
 		"day": day,
+		"restaurant_name": restaurant_name,
 		"income": _string_counts(income),
 		"costs": _string_counts(costs),
 		"loan_first_advance": loan_first_advance,
@@ -108,6 +111,11 @@ func to_dict() -> Dictionary:
 static func from_dict(data: Dictionary) -> DayReport:
 	var report: DayReport = DayReport.new()
 	report.day = int(data.get("day", 1))
+	var saved_name: Variant = data.get("restaurant_name", MenuSettings.DEFAULT_NAME)
+	if saved_name is String:
+		var normalized: String = MenuSettings.normalized_restaurant_name(saved_name)
+		if not normalized.is_empty():
+			report.restaurant_name = normalized
 	report.income = _name_counts(data.get("income", {}))
 	report.costs = _name_counts(data.get("costs", {}))
 	var saved_loan_notice: Variant = data.get("loan_first_advance", false)

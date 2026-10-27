@@ -20,6 +20,7 @@ duration_ticks = 80
 [resource]
 script = ExtResource("1_recipe")
 id = &"burger"
+section = 1
 display_name = "Burger"
 ingredients = Array[ExtResource("2_ingredient")]([ExtResource("ingredient_bun"), ExtResource("ingredient_beef_patty"), ExtResource("ingredient_lettuce")])
 steps = Array[ExtResource("3_step")]([SubResource("Step_prep"), SubResource("Step_cook")])

@@ -2,6 +2,7 @@ class_name RecipeDef
 extends Resource
 ## Data for one menu dish; no preparation or economy behavior lives here.
 
+enum Section { STARTERS, MAINS, SIDES, DRINKS, DESSERTS }
 const FOOD: StringName = &"food"
 const COFFEE: StringName = &"coffee"
 const DRINKS: StringName = &"drinks"
@@ -10,6 +11,7 @@ const ORDER_TYPES: Array[StringName] = [FOOD, COFFEE, DRINKS]
 
 @export var id: StringName = &""
 @export var display_name: String = ""
+@export var section: Section = Section.MAINS
 ## One unit per entry; repeated references represent multiple units.
 @export var ingredients: Array[IngredientDef] = []
 ## Operations are performed in array order.
@@ -30,6 +32,27 @@ const ORDER_TYPES: Array[StringName] = [FOOD, COFFEE, DRINKS]
 
 func is_drink() -> bool:
 	return order_type != FOOD
+
+
+## The menu heading this recipe is listed under: every drink (FK-083) is in
+## Drinks whatever its authored section; food keeps its own section.
+func menu_section() -> int:
+	return Section.DRINKS if is_drink() else section
+
+
+static func section_name(value: int) -> String:
+	match value:
+		Section.STARTERS:
+			return "Starters"
+		Section.MAINS:
+			return "Mains"
+		Section.SIDES:
+			return "Sides"
+		Section.DRINKS:
+			return "Drinks"
+		Section.DESSERTS:
+			return "Desserts"
+	return ""
 
 
 func ingredient_cost() -> int:

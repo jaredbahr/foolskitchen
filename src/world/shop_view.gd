@@ -41,6 +41,7 @@ var _wall_nodes: Dictionary[Vector2i, MeshInstance3D] = {}
 var world: SimWorld
 var floor_mesh: MeshInstance3D
 var room_dressing: RoomDressing
+var _restaurant_name: String = MenuSettings.DEFAULT_NAME
 var item_nodes: Dictionary[int, ItemVisual] = {}
 var agent_nodes: Dictionary[int, Node3D] = {}
 var dirt_nodes: Dictionary[Vector2i, MeshInstance3D] = {}
@@ -117,6 +118,7 @@ func show_world(value: SimWorld) -> void:
 	add_child(segment_view)
 	room_dressing = RoomDressing.new()
 	room_dressing.name = "RoomDressing"
+	room_dressing.set_restaurant_name(_restaurant_name)
 	room_dressing.set_meta("shop_geometry", true)
 	add_child(room_dressing)
 	_build_terrain()
@@ -218,6 +220,17 @@ func _build_terrain() -> void:
 	_apply_paint()
 	if room_dressing != null:
 		room_dressing.rebuild(world, lowered_wall_cells())
+
+
+## View-only name survives terrain rebuilds, moves and loading another layout.
+func set_restaurant_name(value: String) -> bool:
+	var normalized: String = MenuSettings.normalized_restaurant_name(value)
+	if normalized.is_empty():
+		return false
+	_restaurant_name = normalized
+	if room_dressing != null:
+		room_dressing.set_restaurant_name(normalized)
+	return true
 
 
 ## One material per swatch is shared by every painted mesh, including previews.

@@ -68,6 +68,33 @@ layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 2
 
+[node name="NameRow" type="HBoxContainer" parent="Panel/Content/Scroll/List"]
+layout_mode = 2
+
+[node name="RestaurantName" type="LineEdit" parent="Panel/Content/Scroll/List/NameRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "Restaurant name"
+max_length = 24
+
+[node name="ApplyName" type="Button" parent="Panel/Content/Scroll/List/NameRow"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Apply name"
+
+[node name="NameFeedback" type="Label" parent="Panel/Content/Scroll/List"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+mouse_filter = 2
+autowrap_mode = 3
+
+[node name="MenuCount" type="Label" parent="Panel/Content/Scroll/List"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+text = "0 / 6 dishes on the menu"
 [node name="Empty" type="Label" parent="Panel/Content/Scroll/List"]
 unique_name_in_owner = true
 layout_mode = 2

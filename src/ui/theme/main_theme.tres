@@ -1,4 +1,4 @@
-[gd_resource type="Theme" load_steps=7 format=3]
+[gd_resource type="Theme" load_steps=9 format=3]
 
 [sub_resource type="StyleBoxFlat" id="Panel_cream"]
 content_margin_left = 24.0
@@ -65,6 +65,38 @@ corner_radius_bottom_left = 6
 [sub_resource type="StyleBoxFlat" id="Bar_fill"]
 bg_color = Color(0.7843137, 0.454902, 0.227451, 1)
 
+[sub_resource type="StyleBoxFlat" id="LineEdit_field"]
+content_margin_left = 12.0
+content_margin_top = 8.0
+content_margin_right = 12.0
+content_margin_bottom = 8.0
+bg_color = Color(0.9529412, 0.9019608, 0.8, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.4705882, 0.3882353, 0.3137255, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[sub_resource type="StyleBoxFlat" id="LineEdit_focus"]
+content_margin_left = 12.0
+content_margin_top = 8.0
+content_margin_right = 12.0
+content_margin_bottom = 8.0
+draw_center = false
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.7843137, 0.454902, 0.227451, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
 [resource]
 default_font_size = 18
 Label/colors/font_color = Color(0.2313726, 0.1647059, 0.1254902, 1)
@@ -86,3 +118,12 @@ VBoxContainer/constants/separation = 10
 HBoxContainer/constants/separation = 24
 GridContainer/constants/h_separation = 24
 GridContainer/constants/v_separation = 5
+LineEdit/colors/font_color = Color(0.2313726, 0.1647059, 0.1254902, 1)
+LineEdit/colors/font_placeholder_color = Color(0.4705882, 0.3882353, 0.3137255, 1)
+LineEdit/colors/caret_color = Color(0.2313726, 0.1647059, 0.1254902, 1)
+LineEdit/colors/selection_color = Color(0.7843137, 0.454902, 0.227451, 0.35)
+LineEdit/colors/font_selected_color = Color(0.2313726, 0.1647059, 0.1254902, 1)
+LineEdit/colors/clear_button_color = Color(0.2313726, 0.1647059, 0.1254902, 1)
+LineEdit/styles/normal = SubResource("LineEdit_field")
+LineEdit/styles/focus = SubResource("LineEdit_focus")
+LineEdit/styles/read_only = SubResource("LineEdit_field")
