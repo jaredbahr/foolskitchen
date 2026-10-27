@@ -70,7 +70,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
-- Design decision D23: Fool's Kitchen is a restaurant designer in a Sims-like design language, where the player chooses the concept by what they build and serve; the roadmap lists the designer work. (#PR)
+- Design decision D23: Fool's Kitchen is a restaurant designer in a Sims-like design language, where the player chooses the concept by what they build and serve; the roadmap lists the designer work. (#163)
 - Art style: glowing parts such as neon signs may use their own emissive colour, defined once per asset. (#151)
 - Design decision D22: the player decides the restaurant's look, so assets come in several variants rather than one "right" version. (#149)
 - Roadmap: building, decorating and running the restaurant come first; first person and mini-games move to later. (#128)
