@@ -1,0 +1,9 @@
+[gd_resource type="Resource" script_class="MenuTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/sim/content/menu_tuning.gd" id="1_script"]
+
+[resource]
+script = ExtResource("1_script")
+base_dishes = 6
+levels_per_extra_dish = 2
+max_dishes = 12

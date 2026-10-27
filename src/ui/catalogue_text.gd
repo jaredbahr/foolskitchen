@@ -19,10 +19,24 @@ const GROUP_LABELS: Dictionary[StringName, String] = {
 const STATION_TEXT: Dictionary[StringName, String] = {
 	&"stove": "Cooks hot dishes", &"prep_counter": "Prepares ingredients for dishes",
 	&"sink": "Washes dirty plates",
+	&"fryer": "Fries dishes", &"oven": "Bakes dishes",
 	&"coffee": "Makes coffee and tea, and warms pastries",
 	&"drinks_fridge": "Keeps soft drinks cold",
 	&"drinks_shelf": "Holds the beer and wine",
 }
+## What a station type is called on screen (the inspector's "Station:" line).
+const STATION_NAMES: Dictionary[StringName, String] = {
+	&"stove": "Stove", &"prep_counter": "Prep counter", &"sink": "Sink", &"fridge": "Fridge",
+	&"fryer": "Fryer", &"oven": "Oven", &"coffee": "Coffee machine",
+	&"drinks_fridge": "Drinks fridge", &"drinks_shelf": "Drinks shelf",
+}
+
+
+## A station type's player name; an unlisted type falls back to the item's own name.
+static func station_name(definition: ItemDef) -> String:
+	if definition == null or definition.station_type.is_empty():
+		return "None"
+	return STATION_NAMES.get(definition.station_type, definition.display_name)
 
 
 static func room_label(room: StringName) -> String:

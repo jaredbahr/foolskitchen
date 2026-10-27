@@ -2,6 +2,7 @@ class_name MenuPanel
 extends Control
 ## Request-only view. The session accepts changes, refreshes and saves them.
 
+signal restaurant_name_requested(restaurant_name: String)
 signal enable_requested(recipe_id: StringName, enabled: bool)
 signal price_requested(recipe_id: StringName, price: int)
 signal settings_requested()
@@ -14,8 +15,14 @@ const STANDARD_COLOR: Color = Color("3b2a20")
 const LOWER_COLOR: Color = Color("38764b")
 const HIGHER_COLOR: Color = Color("a83e35")
 const LOCKED_COLOR: Color = Color("766b60")
+const SECTION_FONT_SIZE: int = 22
 const MORNING_HINT: String = "Menu changes are available in the morning."
 
+var _name_edit: LineEdit
+var _name_apply: Button
+var _name_feedback: Label
+var _menu_count: Label
+var _name_dirty: bool = false
 var _menu: MenuSettings
 var _phase: int = SimClock.Phase.MORNING
 var _status: Label
@@ -25,12 +32,14 @@ var _settings_button: Button
 var _goals_button: Button
 var _rows: Dictionary[StringName, Dictionary] = {}
 var _needs_rebuild: bool = true
-## Food rows stay in Rows; drinks get their own section below (FK-083).
-var _food_title: Label
+## Food rows stay in Rows under their section headings; drinks get the Drinks
+## section block below (FK-083).
 var _drinks_title: Label
 var _drink_rows: VBoxContainer
+var _food_hints_box: VBoxContainer
 var _hints_box: VBoxContainer
 var _drink_hints: Array[String] = []
+var _food_hints: Array[String] = []
 var _hours_box: VBoxContainer
 var _hours_controls: Dictionary[String, Control] = {}
 var _open_minute: int = 11 * 60
@@ -47,6 +56,10 @@ func bind_menu(model: MenuSettings) -> void:
 		if _menu != null and _menu.owner_level_changed.is_connected(_on_owner_level_changed):
 			_menu.owner_level_changed.disconnect(_on_owner_level_changed)
 		_menu = model
+		_name_dirty = false
+		if _name_feedback != null:
+			_name_feedback.text = ""
+			_name_feedback.visible = false
 		_needs_rebuild = true
 		if _menu != null:
 			_menu.owner_level_changed.connect(_on_owner_level_changed)
@@ -65,10 +78,18 @@ func refresh() -> void:
 	var editable: bool = _phase == SimClock.Phase.MORNING
 	_status.text = "Choose dishes, drinks, prices and opening hours for today." if editable else MORNING_HINT
 	_empty.visible = _rows.is_empty()
+	_name_edit.editable = editable and _menu != null and _menu.is_valid()
+	_name_apply.disabled = not _name_edit.editable
+	_name_edit.tooltip_text = "Name your restaurant (up to 24 characters)." if editable else MORNING_HINT
+	_name_apply.tooltip_text = "Use this restaurant name." if editable else MORNING_HINT
 	_refresh_hours(editable)
 	_refresh_drinks_section()
 	if _menu == null or not _menu.is_valid():
+		_menu_count.text = ""
 		return
+	if not _name_dirty and _name_edit.text != _menu.restaurant_name():
+		_name_edit.text = _menu.restaurant_name()
+	_menu_count.text = "%d / %d dishes on the menu" % [_menu.enabled_count(), _menu.menu_limit()]
 	for definition: RecipeDef in _menu.recipes():
 		var row: Dictionary = _rows[definition.id]
 		var title: Label = row["title"]
@@ -83,6 +104,8 @@ func refresh() -> void:
 		var unlock_hint: String = "Unlocks at level %d" % definition.unlock_level
 		var enabled: bool = _menu.is_enabled(definition.id)
 		var last_enabled: bool = enabled and _menu.enabled_count() == 1
+		var at_limit: bool = not enabled and _menu.enabled_count() >= _menu.menu_limit()
+		var limit_hint: String = "Your menu is full. Take a dish off before adding another."
 		var price: int = _menu.price_of(definition)
 		var standard: int = _menu.standard_price(definition.id)
 		var minimum: int = _menu.minimum_price(definition.id)
@@ -96,20 +119,20 @@ func refresh() -> void:
 				label.remove_theme_color_override("font_color")
 		toggle.set_pressed_no_signal(enabled)
 		toggle.text = "Locked" if locked else ("On menu" if enabled else "Off menu")
-		toggle.disabled = locked or not editable or last_enabled
-		toggle.tooltip_text = unlock_hint if locked else (MORNING_HINT if not editable else ("Keep at least one dish on the menu." if last_enabled else "Offer this dish today."))
+		toggle.disabled = locked or not editable or last_enabled or at_limit
+		toggle.tooltip_text = unlock_hint if locked else (MORNING_HINT if not editable else ("Keep at least one dish on the menu." if last_enabled else (limit_hint if at_limit else "Offer this dish today.")))
 		minus.disabled = locked or not editable or price <= minimum
 		plus.disabled = locked or not editable or price >= maximum
 		minus.tooltip_text = unlock_hint if locked else (MORNING_HINT if not editable else "Minimum price: $%d" % minimum)
 		plus.tooltip_text = unlock_hint if locked else (MORNING_HINT if not editable else "Maximum price: $%d" % maximum)
 		amount.text = "$%d" % price
-		standard_label.text = "Standard $%d" % standard
+		standard_label.text = "Suggested $%d" % standard
 		if standard == 0:
-			ratio_label.text = "Free at standard price"
+			ratio_label.text = "Free at suggested price"
 			ratio_label.add_theme_color_override("font_color", STANDARD_COLOR)
 		else:
 			var ratio: float = float(price) / float(standard)
-			ratio_label.text = "%.0f%% of standard" % (ratio * 100.0)
+			ratio_label.text = "%.0f%% of suggested" % (ratio * 100.0)
 			var color: Color = LOWER_COLOR if price < standard else (HIGHER_COLOR if price > standard else STANDARD_COLOR)
 			ratio_label.add_theme_color_override("font_color", color)
 		if locked:
@@ -135,6 +158,23 @@ func set_drink_hints(hints: Array[String]) -> void:
 	_bind_nodes()
 	_rebuild_hints()
 	_refresh_drinks_section()
+
+
+## Food equipment reasons share the existing named station hints, outside Drinks.
+func set_food_hints(hints: Array[String]) -> void:
+	_food_hints = hints.duplicate()
+	_bind_nodes()
+	_rebuild_food_hints()
+
+
+func _rebuild_food_hints() -> void:
+	for child: Node in _food_hints_box.get_children():
+		_food_hints_box.remove_child(child)
+		child.free()
+	for hint: String in _food_hints:
+		var label: Label = _add_label(_food_hints_box, "Hint%d" % _food_hints_box.get_child_count(), hint)
+		label.add_theme_color_override("font_color", LOCKED_COLOR)
+	_food_hints_box.visible = not _food_hints.is_empty()
 
 
 func set_hours(open_minute: int, close_minute: int, tuning: OpeningHoursTuning) -> void:
@@ -231,6 +271,14 @@ func _bind_nodes() -> void:
 	_status = %Status
 	_empty = %Empty
 	_rows_node = %Rows
+	_name_edit = %RestaurantName
+	_name_apply = %ApplyName
+	_name_feedback = %NameFeedback
+	_menu_count = %MenuCount
+	_name_edit.max_length = MenuSettings.MAX_NAME_LENGTH
+	_name_edit.text_changed.connect(_on_name_changed)
+	_name_edit.text_submitted.connect(_on_name_submitted)
+	_name_apply.pressed.connect(_on_name_apply_pressed)
 	_settings_button = %SettingsButton
 	_goals_button = %GoalsButton
 	IconStyle.decorate_label(get_node("Panel/Content/Title") as Label, &"menu")
@@ -248,7 +296,8 @@ func _build_sections() -> void:
 	_hours_box.theme = SHARED_THEME
 	_hours_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	list.add_child(_hours_box)
-	list.move_child(_hours_box, 0)
+	# Under the restaurant name (#181), above the dish count and sections.
+	list.move_child(_hours_box, _name_feedback.get_index() + 1)
 	var heading: Label = _add_label(_hours_box, "Title", "Opening hours")
 	heading.add_theme_font_size_override("font_size", 20)
 	for side: String in ["open", "close"]:
@@ -269,11 +318,15 @@ func _build_sections() -> void:
 	note.add_theme_color_override("font_color", LOCKED_COLOR)
 	_hours_controls["note"] = note
 	_add_separator(_hours_box)
-	_food_title = _add_label(list, "FoodTitle", "Food")
-	_food_title.add_theme_font_size_override("font_size", 20)
-	list.move_child(_food_title, _rows_node.get_index())
-	_drinks_title = _add_label(list, "DrinksTitle", "Drinks")
-	_drinks_title.add_theme_font_size_override("font_size", 20)
+	# Food rows carry their own section headings (Starters, Mains...); every
+	# drink is in the Drinks section, whose heading leads the drinks block.
+	_food_hints_box = VBoxContainer.new()
+	_food_hints_box.name = "FoodHints"
+	_food_hints_box.theme = SHARED_THEME
+	_food_hints_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	list.add_child(_food_hints_box)
+	_drinks_title = _add_label(list, "DrinksTitle", RecipeDef.section_name(RecipeDef.Section.DRINKS))
+	_drinks_title.add_theme_font_size_override("font_size", SECTION_FONT_SIZE)
 	_drink_rows = VBoxContainer.new()
 	_drink_rows.name = "DrinkRows"
 	_drink_rows.theme = SHARED_THEME
@@ -311,7 +364,16 @@ func _rebuild_rows() -> void:
 	if _menu == null or not _menu.is_valid():
 		return
 	var index: int = 0
-	for definition: RecipeDef in _menu.recipes():
+	var grouped: Array[RecipeDef] = _menu.recipes()
+	grouped.sort_custom(_section_before)
+	var previous_section: int = -1
+	for definition: RecipeDef in grouped:
+		var section: int = definition.menu_section()
+		if section != previous_section and not definition.is_drink():
+			var heading: Label = _add_label(_rows_node, "Section%d" % section, RecipeDef.section_name(section))
+			heading.add_theme_font_size_override("font_size", SECTION_FONT_SIZE)
+			heading.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		previous_section = section
 		var row: VBoxContainer = VBoxContainer.new()
 		row.name = "Recipe%d" % index
 		row.theme = SHARED_THEME
@@ -389,7 +451,7 @@ func _on_enable_toggled(enabled: bool, recipe_id: StringName) -> void:
 		refresh()
 		return
 	var current: bool = _menu.is_enabled(recipe_id)
-	if enabled != current and (enabled or _menu.enabled_count() > 1):
+	if enabled != current and ((enabled and _menu.enabled_count() < _menu.menu_limit()) or (not enabled and _menu.enabled_count() > 1)):
 		enable_requested.emit(recipe_id, enabled)
 	# Restore committed state even when the session rejects or ignores a request.
 	refresh()
@@ -413,3 +475,39 @@ func _on_price_step(recipe_id: StringName, direction: int) -> void:
 		price -= 1
 	price_requested.emit(recipe_id, price)
 	refresh()
+
+
+static func _section_before(first: RecipeDef, second: RecipeDef) -> bool:
+	if first.menu_section() != second.menu_section():
+		return first.menu_section() < second.menu_section()
+	return String(first.id) < String(second.id)
+
+
+func _on_name_changed(_text: String) -> void:
+	_name_dirty = true
+	_name_feedback.text = ""
+	_name_feedback.visible = false
+
+
+func _on_name_submitted(_text: String) -> void:
+	_on_name_apply_pressed()
+
+
+func _on_name_apply_pressed() -> void:
+	if _phase != SimClock.Phase.MORNING or _menu == null or not _menu.is_valid():
+		_name_feedback.text = MORNING_HINT
+		_name_feedback.visible = true
+		return
+	var canonical: String = MenuSettings.normalized_restaurant_name(_name_edit.text)
+	if canonical.is_empty():
+		_name_feedback.text = "Use 1–24 characters without line breaks or control characters."
+		_name_feedback.visible = true
+		return
+	_name_feedback.text = ""
+	_name_feedback.visible = false
+	restaurant_name_requested.emit(canonical)
+	# The session may accept synchronously. Ignored requests retain the draft.
+	if _menu.restaurant_name() == canonical:
+		_name_dirty = false
+		if _name_edit.text != canonical:
+			_name_edit.text = canonical

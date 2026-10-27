@@ -5,9 +5,9 @@ extends TestCase
 func test_starter_data_loads_without_validation_errors() -> void:
 	var db: ContentDB = ContentDB.new()
 	assert_eq(db.load_all().size(), 0)
-	assert_eq(db.ingredients().size(), 13)
-	assert_eq(db.recipes().size(), 10)
-	assert_eq(db.items().size(), 44)
+	assert_eq(db.ingredients().size(), 16)
+	assert_eq(db.recipes().size(), 12)
+	assert_eq(db.items().size(), 48)
 
 
 func test_lookups_find_each_kind_and_unknown_ids_return_null() -> void:
@@ -30,12 +30,12 @@ func test_lists_are_sorted_and_do_not_expose_index_arrays() -> void:
 	var ingredient_ids: Array[StringName] = []
 	for definition: IngredientDef in db.ingredients():
 		ingredient_ids.append(definition.id)
-	assert_eq(ingredient_ids, [&"beef_patty", &"beer", &"bread", &"bun", &"cheese", &"coffee_beans",
-		&"lettuce", &"pastry", &"soda", &"soup_stock", &"tea", &"tomato", &"wine"])
+	assert_eq(ingredient_ids, [&"beef_patty", &"beer", &"bread", &"bun", &"cheese", &"coffee_beans", &"dough",
+		&"lettuce", &"oil", &"pastry", &"potato", &"soda", &"soup_stock", &"tea", &"tomato", &"wine"])
 	var recipe_ids: Array[StringName] = []
 	for definition: RecipeDef in db.recipes():
 		recipe_ids.append(definition.id)
-	assert_eq(recipe_ids, [&"beer", &"burger", &"coffee", &"croissant", &"grilled_cheese", &"soft_drink",
+	assert_eq(recipe_ids, [&"beer", &"burger", &"coffee", &"croissant", &"fries", &"grilled_cheese", &"savoury_pie", &"soft_drink",
 		&"tea", &"tomato_melt", &"tomato_soup", &"wine"])
 	var item_ids: Array[StringName] = []
 	for definition: ItemDef in db.items():
@@ -43,24 +43,24 @@ func test_lists_are_sorted_and_do_not_expose_index_arrays() -> void:
 	assert_eq(item_ids, [
 		&"bar_corner", &"bar_counter", &"bar_end_left", &"bar_end_right", &"bar_section",
 		&"bar_stool", &"bench", &"bookcase_open_low", &"chair", &"cloth_table",
-		&"coat_rack_standing", &"coffee_machine", &"cross_table", &"cushioned_bench", &"diner_booth", &"diner_stool",
-		&"door", &"drinks_fridge", &"drinks_shelf", &"fridge", &"glass_table",
-		&"lounge_chair", &"modern_chair", &"modern_frame_chair", &"pass_counter", &"plant_small_1",
-		&"plant_small_2", &"plant_small_3", &"potted_plant", &"prep_counter", &"round_table",
+		&"coat_rack_standing", &"coffee_machine", &"corner_cabinet", &"cross_table", &"cushioned_bench", &"diner_booth", &"diner_stool",
+		&"door", &"drinks_fridge", &"drinks_shelf", &"fridge", &"fryer", &"glass_table",
+		&"lounge_chair", &"modern_chair", &"modern_frame_chair", &"oven", &"pass_counter", &"plant_small_1",
+		&"plant_small_2", &"plant_small_3", &"potted_plant", &"prep_cabinet", &"prep_counter", &"round_table",
 		&"rounded_chair", &"rug_rectangle", &"rug_round", &"rug_square", &"side_table", &"sink",
 		&"speaker", &"square_bar_stool", &"stove", &"table_2", &"table_4", &"television_vintage", &"wooden_chair",
 	])
 	var copy: Array[ItemDef] = db.items()
 	copy.clear()
-	assert_eq(db.items().size(), 44)
+	assert_eq(db.items().size(), 48)
 
 
 func test_reloading_does_not_duplicate_definitions() -> void:
 	var db: ContentDB = _starter_db()
 	assert_eq(db.load_all().size(), 0)
-	assert_eq(db.ingredients().size(), 13)
-	assert_eq(db.recipes().size(), 10)
-	assert_eq(db.items().size(), 44)
+	assert_eq(db.ingredients().size(), 16)
+	assert_eq(db.recipes().size(), 12)
+	assert_eq(db.items().size(), 48)
 
 
 func test_recursive_resource_discovery_returns_sorted_original_tres_names() -> void:
@@ -73,7 +73,7 @@ func test_recursive_resource_discovery_returns_sorted_original_tres_names() -> v
 		if path.begins_with("res://data/ingredients/") or path.begins_with("res://data/recipes/") \
 				or path.begins_with("res://data/items/"):
 			content_paths += 1
-	assert_eq(content_paths, 67)
+	assert_eq(content_paths, 76)
 	assert_true(paths.has("res://data/ingredients/bun.tres"))
 	assert_true(paths.has("res://data/recipes/burger.tres"))
 	assert_true(paths.has("res://data/items/table_2.tres"))
@@ -326,6 +326,30 @@ func test_invalid_floor_layer_definitions_are_reported_without_changing_resource
 	assert_false(definition.solid)
 
 
+func test_recipe_menu_sections_validate_without_changing_shared_content() -> void:
+	var definition: RecipeDef = _recipe()
+	assert_eq(ContentDB.validate_definitions([], [definition], [_station()]), PackedStringArray())
+	for section: int in RecipeDef.Section.values():
+		definition.set("section", section)
+		var section_errors: PackedStringArray = ContentDB.validate_definitions([], [definition], [_station()])
+		if section == RecipeDef.Section.DRINKS:
+			assert_true(_has_error(section_errors, "only drinks, belong in the Drinks section"), "food is never listed under Drinks")
+		else:
+			assert_eq(section_errors, PackedStringArray())
+	var drink: RecipeDef = definition.duplicate(true) as RecipeDef
+	drink.order_type = RecipeDef.COFFEE
+	assert_true(_has_error(ContentDB.validate_definitions([], [drink], [_station()]), "belong in the Drinks section"))
+	drink.section = RecipeDef.Section.DRINKS
+	assert_eq(drink.menu_section(), RecipeDef.Section.DRINKS)
+	var invalid: RecipeDef = definition.duplicate(true) as RecipeDef
+	invalid.set("section", 99)
+	var errors: PackedStringArray = ContentDB.validate_definitions([], [invalid], [_station()])
+	assert_eq(errors.size(), 1)
+	assert_true(_has_error(errors, "unknown menu section"))
+	assert_eq(definition.section, RecipeDef.Section.DESSERTS)
+	assert_eq(_starter_db().recipe(&"tomato_soup").section, RecipeDef.Section.STARTERS)
+
+
 func _starter_db() -> ContentDB:
 	var db: ContentDB = ContentDB.new()
 	assert_eq(db.load_all().size(), 0)
@@ -355,3 +379,21 @@ func _has_error(errors: PackedStringArray, fragment: String) -> bool:
 		if error.contains(fragment):
 			return true
 	return false
+
+
+func test_fryer_and_oven_recipes_have_data_owned_prices_levels_sections_and_steps() -> void:
+	var db: ContentDB = _starter_db()
+	for row: Array in [[&"fries", &"fryer", 7, 2, RecipeDef.Section.SIDES, 70, 2],
+			[&"savoury_pie", &"oven", 13, 3, RecipeDef.Section.MAINS, 130, 4]]:
+		var recipe: RecipeDef = db.recipe(row[0])
+		assert_eq(recipe.standard_price, row[2])
+		assert_eq(recipe.unlock_level, row[3])
+		assert_eq(recipe.unlock_tier, 1)
+		assert_eq(recipe.menu_section(), row[4])
+		assert_eq(recipe.steps.size(), 2)
+		assert_eq(recipe.steps[0].station_type, &"prep_counter")
+		assert_eq(recipe.steps[1].station_type, row[1])
+		assert_eq(recipe.total_ticks(), row[5])
+		assert_eq(recipe.ingredient_cost(), row[6])
+		assert_eq(recipe.theme_tags, [&"diner"] as Array[StringName])
+		assert_false(recipe.is_drink())

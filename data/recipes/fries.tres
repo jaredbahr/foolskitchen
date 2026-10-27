@@ -1,0 +1,30 @@
+[gd_resource type="Resource" script_class="RecipeDef" load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://src/sim/content/recipe_def.gd" id="1_recipe"]
+[ext_resource type="Script" path="res://src/sim/content/ingredient_def.gd" id="2_ingredient"]
+[ext_resource type="Script" path="res://src/sim/content/recipe_step.gd" id="3_step"]
+[ext_resource type="Resource" path="res://data/ingredients/potato.tres" id="ingredient_potato"]
+[ext_resource type="Resource" path="res://data/ingredients/oil.tres" id="ingredient_oil"]
+
+[sub_resource type="Resource" id="Step_prep"]
+script = ExtResource("3_step")
+station_type = &"prep_counter"
+duration_ticks = 20
+
+[sub_resource type="Resource" id="Step_cook"]
+script = ExtResource("3_step")
+station_type = &"fryer"
+duration_ticks = 50
+
+[resource]
+script = ExtResource("1_recipe")
+id = &"fries"
+display_name = "Fries"
+section = 2
+ingredients = Array[ExtResource("2_ingredient")]([ExtResource("ingredient_potato"), ExtResource("ingredient_oil")])
+steps = Array[ExtResource("3_step")]([SubResource("Step_prep"), SubResource("Step_cook")])
+base_quality = 0.6
+standard_price = 7
+unlock_tier = 1
+unlock_level = 2
+theme_tags = Array[StringName]([&"diner"])

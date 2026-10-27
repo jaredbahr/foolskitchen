@@ -10,6 +10,9 @@ const GAIN_COLOR: Color = Color("286B3B")
 const LOSS_COLOR: Color = Color("A42E2E")
 ## The Build/Buy key strip keeps one line for every hint at 1600 px (FK-085).
 const HINT_MAX_WIDTH: float = 760.0
+## Header panel margins once the restaurant name title sits above the controls.
+const HEADER_MARGIN_TOP: float = 8.0
+const HEADER_MARGIN_BOTTOM: float = 14.0
 
 signal build_toggled()
 signal paint_toggled()
@@ -19,6 +22,7 @@ signal stock_pressed()
 signal settings_pressed()
 signal header_layout_changed()
 
+var _restaurant_name: String = MenuSettings.DEFAULT_NAME
 var _day_label: Label
 var _time_label: Label
 var _phase_label: Label
@@ -78,6 +82,7 @@ func _ready() -> void:
 
 ## Idempotently binds controls and events, then renders current simulation state.
 func refresh() -> void:
+	_render_restaurant_name()
 	if _day_label == null:
 		_day_label = get_node("Top/Row/Day") as Label
 		_time_label = get_node("Top/Row/Time") as Label
@@ -317,6 +322,11 @@ func _style_header() -> void:
 	IconStyle.decorate_label(_reputation_label, &"reputation", IconCatalogue.TOP_BAR_SIZE)
 	# Reuse the warm theme's existing cream, ink and accent for the warning chip.
 	var header_theme: Theme = (get_node("Top") as Control).theme
+	# The name title sits in the panel's top margin, so the header grows only a little.
+	var header_panel: StyleBox = header_theme.get_stylebox("panel", "PanelContainer").duplicate() as StyleBox
+	header_panel.set_content_margin(SIDE_TOP, HEADER_MARGIN_TOP)
+	header_panel.set_content_margin(SIDE_BOTTOM, HEADER_MARGIN_BOTTOM)
+	(get_node("Top") as Control).add_theme_stylebox_override("panel", header_panel)
 	var chip: StyleBoxFlat = header_theme.get_stylebox("normal", "Button").duplicate() as StyleBoxFlat
 	var accent: StyleBoxFlat = header_theme.get_stylebox("pressed", "Button") as StyleBoxFlat
 	chip.border_color = accent.bg_color
@@ -586,3 +596,15 @@ func _animate_delta(label: Label) -> void:
 	tween.tween_property(label, "position:y", label.position.y + 24.0, 1.0)
 	tween.tween_property(label, "modulate:a", 0.0, 1.0)
 	tween.chain().tween_callback(label.queue_free)
+
+
+func set_restaurant_name(value: String) -> void:
+	var canonical: String = MenuSettings.normalized_restaurant_name(value)
+	_restaurant_name = canonical if not canonical.is_empty() else MenuSettings.DEFAULT_NAME
+	_render_restaurant_name()
+
+
+func _render_restaurant_name() -> void:
+	var label: Label = get_node("Top/Row/RestaurantName") as Label
+	label.text = _restaurant_name
+	label.tooltip_text = _restaurant_name

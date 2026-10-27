@@ -13,6 +13,96 @@ func after_each() -> void:
 	_roots.clear()
 
 
+func test_name_sign_rename_and_rebuild_preserve_world_and_native_attachments() -> void:
+	var world: SimWorld = _starter_world()
+	var before: Dictionary = _world_snapshot(world)
+	var dressing: RoomDressing = _dressing(world)
+	assert_eq(dressing.name_sign_nodes().size(), 1)
+	var sign: Label3D = dressing.name_sign_nodes()[0]
+	var identity: int = sign.get_instance_id()
+	var native_ids: Array[int] = _child_ids(dressing)
+	assert_true(dressing.set_restaurant_name("Mama's Diner"))
+	assert_eq(sign.text, "Mama's Diner")
+	assert_eq(sign.get_instance_id(), identity)
+	assert_eq(_child_ids(dressing), native_ids, "renaming allocates no replacement geometry")
+	assert_false(dressing.set_restaurant_name("Bad\nname"))
+	assert_eq(sign.text, "Mama's Diner")
+	assert_eq(_world_snapshot(world), before)
+	dressing.rebuild(world)
+	assert_eq(dressing.name_sign_nodes().size(), 1)
+	assert_eq(dressing.name_sign_nodes()[0].text, "Mama's Diner")
+	dressing.rebuild(null)
+	assert_true(dressing.name_sign_nodes().is_empty())
+
+
+func test_name_board_hangs_on_solid_wall_beside_the_starter_door() -> void:
+	var world: SimWorld = _starter_world()
+	var dressing: RoomDressing = _dressing(world)
+	var text: Label3D = dressing.name_sign_nodes()[0]
+	var board: Node3D = text.get_parent() as Node3D
+	var cells: Array[Vector2i] = board.get_meta(&"wall_cells")
+	# The starter doorway gap is (6, 10)-(7, 10); the board takes the wall run to its street-left.
+	assert_eq(cells, [Vector2i(5, 10), Vector2i(4, 10), Vector2i(3, 10), Vector2i(2, 10)] as Array[Vector2i])
+	for cell: Vector2i in cells:
+		assert_eq(world.grid.terrain(cell), SimGrid.Terrain.WALL, "the board is mounted on a wall cell, never the doorway")
+	_assert_board_on_wall(board, text, cells, Vector2i.DOWN)
+	# Readable at the default zoom: 0.13 m capital letters in the UI ink on cream.
+	assert_almost_eq(_cap_height(text), RoomDressing.SIGN_CAP_HEIGHT, 0.0001)
+	assert_true(_cap_height(text) >= 0.125 and _cap_height(text) <= 0.2)
+	# The board stays clear of the street window and lamp panes above it.
+	var board_top: float = board.position.y + RoomDressing.SIGN_FRAME_HEIGHT * 0.5
+	for detail: Node3D in dressing.wall_detail_nodes():
+		if cells.has(detail.get_meta(&"wall_cell")):
+			var bounds: AABB = detail.transform * (detail.get_meta(&"native_bounds") as AABB)
+			assert_true(board_top <= bounds.position.y - 0.01, "%s starts above the name board" % detail.name)
+	assert_eq(text.text, MenuSettings.DEFAULT_NAME)
+	assert_eq(text.modulate, RoomDressing.SIGN_THEME.get_color("font_color", "Label"))
+	var board_color: Color = ((board.get_node("Board") as MeshInstance3D).mesh.surface_get_material(0) as StandardMaterial3D).albedo_color
+	assert_eq(board_color, RoomDressing.SIGN_BOARD_SWATCH.color)
+
+
+func test_name_board_stays_visible_on_the_cutaway_stub() -> void:
+	var world: SimWorld = _starter_world()
+	var dressing: RoomDressing = _dressing(world)
+	var text: Label3D = dressing.name_sign_nodes()[0]
+	var board: Node3D = text.get_parent() as Node3D
+	var cells: Array[Vector2i] = board.get_meta(&"wall_cells")
+	# Its whole frame sits below the lowered wall top, so the stub still carries it.
+	assert_true(board.position.y + RoomDressing.SIGN_FRAME_HEIGHT * 0.5 <= ShopView.LOWERED_HEIGHT - 0.01)
+	assert_true(board.position.y - RoomDressing.SIGN_FRAME_HEIGHT * 0.5 >= 0.0)
+	for lowered: Array[Vector2i] in [[cells[0]] as Array[Vector2i], cells, [] as Array[Vector2i]]:
+		dressing.set_lowered_walls(lowered)
+		assert_true(board.is_visible_in_tree() and text.is_visible_in_tree(), "the name board stays visible in Cutaway and Walls Down")
+
+
+func test_long_name_board_faces_each_frontage_and_fits_its_board() -> void:
+	var normals: Array[Vector2i] = [Vector2i.DOWN, Vector2i.LEFT, Vector2i.UP, Vector2i.RIGHT]
+	for quarter: int in 4:
+		var world: SimWorld = _rotated_world(quarter)
+		var dressing: RoomDressing = _dressing(world)
+		assert_true(dressing.set_restaurant_name("W".repeat(24)))
+		assert_eq(dressing.name_sign_nodes().size(), 1)
+		var text: Label3D = dressing.name_sign_nodes()[0]
+		var board: Node3D = text.get_parent() as Node3D
+		var normal: Vector2i = normals[quarter]
+		assert_true(board.basis.z.dot(Vector3(normal.x, 0.0, normal.y)) > 0.9999)
+		var cells: Array[Vector2i] = board.get_meta(&"wall_cells")
+		assert_eq(cells.size(), 2, "the embedded doorway leaves two solid frontage cells per side")
+		for cell: Vector2i in cells:
+			assert_eq(world.grid.terrain(cell), SimGrid.Terrain.WALL)
+			assert_false(world.grid.entries().has(cell))
+		_assert_board_on_wall(board, text, cells, normal)
+		# Too wide even at the smallest letters: cut with an ellipsis.
+		assert_almost_eq(_cap_height(text), RoomDressing.SIGN_MIN_CAP_HEIGHT, 0.0001)
+		assert_true(text.text.ends_with(RoomDressing.ELLIPSIS))
+		assert_true(text.text.begins_with("WWW"))
+		assert_eq(text.get_meta(&"full_name"), "W".repeat(24))
+		assert_true(dressing.set_restaurant_name("Cafe"))
+		assert_eq(text.text, "Cafe", "a short name is never cut")
+		assert_almost_eq(_cap_height(text), RoomDressing.SIGN_CAP_HEIGHT, 0.0001)
+		_assert_board_on_wall(board, text, cells, normal)
+
+
 func test_starter_frontage_uses_two_native_panes_and_two_lamps_on_the_entry_wall() -> void:
 	var world: SimWorld = _starter_world()
 	var before: Dictionary = _world_snapshot(world)
@@ -255,3 +345,39 @@ func _world_snapshot(world: SimWorld) -> Dictionary:
 	return {"now": world.now, "clock": world.clock.to_dict(), "terrain": terrain,
 		"items": items, "agents": agents, "open_tasks": world.board.open_tasks().size(),
 		"claimed_tasks": world.board.claimed_tasks().size()}
+
+
+## The frame lies flat on the outer wall face and within the wall run; the
+## letters (including their left/right bearing) stay inside the cream board.
+func _assert_board_on_wall(board: Node3D, text: Label3D, cells: Array[Vector2i], normal: Vector2i) -> void:
+	var outward: Vector3 = Vector3(normal.x, 0.0, normal.y)
+	var tangent: Vector3 = Vector3(-normal.y, 0.0, normal.x)
+	var face: float = GridMath.cell_to_world(cells[0]).dot(outward) + GridMath.CELL_SIZE * 0.5
+	assert_almost_eq(board.position.dot(outward), face + RoomDressing.FACE_GAP, 0.0001, "the board's back rests on the wall face")
+	var low: float = INF
+	var high: float = -INF
+	for cell: Vector2i in cells:
+		var along: float = GridMath.cell_to_world(cell).dot(tangent)
+		low = minf(low, along - GridMath.CELL_SIZE * 0.5)
+		high = maxf(high, along + GridMath.CELL_SIZE * 0.5)
+	var frame: Vector2 = board.get_meta(&"frame_size")
+	assert_almost_eq(((board.get_node("Frame/Top") as MeshInstance3D).mesh as BoxMesh).size.x, frame.x)
+	var centre: float = board.position.dot(tangent)
+	assert_true(centre - frame.x * 0.5 >= low - 0.0001 and centre + frame.x * 0.5 <= high + 0.0001,
+		"the frame never reaches over the doorway gap")
+	var board_size: Vector2 = board.get_meta(&"board_size")
+	var width: float = text.font.get_string_size(text.text, HORIZONTAL_ALIGNMENT_LEFT, -1, text.font_size).x * text.pixel_size
+	assert_true(width <= board_size.x - RoomDressing.SIGN_TEXT_PADDING * 2.0 + 0.0001, "the name fits its board")
+	# Label3D centres the line box; the capitals then sit in the board's middle
+	# and descenders still end on the board.
+	var ascent: float = text.font.get_ascent(text.font_size) * text.pixel_size
+	var descent: float = text.font.get_descent(text.font_size) * text.pixel_size
+	var baseline: float = text.position.y + text.offset.y * text.pixel_size - (ascent - descent) * 0.5
+	var cap_centre: float = baseline + _cap_height(text) * 0.5
+	assert_almost_eq(cap_centre, 0.0, 0.01, "capitals are centred on the board")
+	assert_true(baseline - descent * 0.75 >= -board_size.y * 0.5, "descenders stay on the board")
+	assert_true(baseline + _cap_height(text) <= board_size.y * 0.5, "capitals stay on the board")
+
+
+func _cap_height(text: Label3D) -> float:
+	return float(text.font_size) * text.pixel_size * RoomDressing.SIGN_CAP_RATIO
