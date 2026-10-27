@@ -149,8 +149,9 @@ static func _finish(main: Node, open_minute: int, close_minute: int, menu_on: Ar
 	for recipe: RecipeDef in (main.get("menu_settings") as MenuSettings).enabled_recipes():
 		for ingredient: IngredientDef in recipe.ingredients:
 			used[ingredient.id] = true
-	for row: Dictionary in main.call("stock_rows"):
-		var id: StringName = row["id"]
+	# Only the ingredients auto-reorder lists (the Stock panel also shows
+	# unused station-only ones, greyed out, FK-087; they are never auto-bought).
+	for id: StringName in (main.call("_reorder") as ReorderSettings).ids():
 		if not used.has(id) and not main.call("stock_set_auto", id, false):
 			return false
 	return true

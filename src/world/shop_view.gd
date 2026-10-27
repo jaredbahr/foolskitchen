@@ -532,7 +532,8 @@ func set_storage_fill(fill: Dictionary[int, float]) -> void:
 
 
 ## A storage item's parts marked `metadata/stock_slot` (0, 1, ...) are its
-## crates: the first round(fill * slots) show, the rest hide. Deterministic.
+## crates: the first ceil(fill * slots) show (stock_slots_shown), the rest
+## hide. Deterministic.
 func _apply_stock_slots(node: ItemVisual, definition: ItemDef) -> void:
 	if node == null or definition == null or definition.storage_units <= 0:
 		return

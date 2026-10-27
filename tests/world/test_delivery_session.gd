@@ -55,10 +55,11 @@ func test_a_hand_order_that_does_not_fit_is_refused() -> void:
 	var main: Node = _start(false)
 	assert_true(main.call("stock_cart_set", &"cheese", 12), "28 + 12 fills the 40-unit fridge")
 	assert_false(main.call("stock_cart_set", &"lettuce", 1), "one more does not fit")
+	assert_true(main.call("stock_cart_set", &"bread", 10), "a full fridge cart never blocks dry goods")
 	assert_eq(main.call("stock_cart_refusal"), "")
 	assert_true(main.call("stock_place_order"))
-	assert_false(main.call("stock_cart_set", &"beef_patty", 1), "what is on order takes its space")
-	Economy.stock.add(&"lettuce", 1, Clock.sim.day)
+	assert_eq(Economy.stock.count(&"cheese"), 20, "morning orders arrive at once")
+	assert_false(main.call("stock_cart_set", &"beef_patty", 1), "the fridge is full")
 	var cart: Dictionary[StringName, int] = main.get("stock_cart")
 	cart[&"beef_patty"] = 1
 	assert_eq(main.call("stock_cart_refusal"), "Not enough fridge space")
@@ -66,9 +67,9 @@ func test_a_hand_order_that_does_not_fit_is_refused() -> void:
 	assert_false(main.call("stock_place_order"))
 	assert_eq(Economy.cash, cash, "a refused order costs nothing")
 	main.call("stock_clear_cart")
-	assert_true(main.call("stock_cart_set", &"bread", 10), "the dry shelves have their own space")
-	assert_false(main.call("stock_cart_set", &"bread", 11))
+	assert_false(main.call("stock_cart_set", &"bread", 1), "the pantry is full too: 50 + 10")
 	main.call("stock_clear_cart")
+	Economy.stock.take(&"bread", 10)
 	Economy.cash = 3
 	assert_true(main.call("stock_cart_set", &"tomato", 4))
 	assert_eq(main.call("stock_cart_refusal"), "Not enough cash")
@@ -78,6 +79,47 @@ func test_a_hand_order_that_does_not_fit_is_refused() -> void:
 	assert_eq((panel.get_node("%Order") as Button).tooltip_text, "Not enough cash")
 	assert_true((panel.row_for(&"lettuce")["cart+1"] as Button).disabled)
 	assert_eq((panel.row_for(&"lettuce")["cart+1"] as Button).tooltip_text, "Not enough fridge space")
+	assert_true(main.call("stock_cart_set", &"tomato", 6))
+	assert_true(main.call("stock_cart_set", &"tomato", 99) == false, "dry space caps it before 99")
+
+
+## A cart left over from yesterday is cut to what fits after the morning
+## delivery, and the Stock notes say so.
+func test_a_leftover_cart_is_cut_to_fit_in_the_morning() -> void:
+	var main: Node = _start(false)
+	assert_true(Clock.sim.start_service())
+	assert_true(Economy.stock.take(&"cheese", 8))
+	assert_true(main.call("stock_cart_set", &"cheese", 20), "room while the cheese is used up")
+	Clock.sim.phase = SimClock.Phase.CLOSED
+	assert_true(Clock.sim.next_day())
+	# The morning order brought 8 cheese back: 28 in a 40-unit fridge.
+	assert_eq((main.get("stock_cart") as Dictionary)[&"cheese"], 12)
+	assert_true((main.call("stock_notes") as Array[String]).has(
+		"Your cart no longer fit your storage and was cut by 8 Cheese."), str(main.call("stock_notes")))
+
+
+func test_throwing_out_stock_frees_its_space_without_a_refund() -> void:
+	var main: Node = _start(false)
+	var cash: int = Economy.cash
+	var entries: int = Economy.ledger.entries_for_day(Clock.sim.day).size()
+	assert_true(main.call("set_stock_visible", true))
+	var panel: StockPanel = main.get_node("Overlay/StockPanel") as StockPanel
+	var throw: Button = panel.row_for(&"soup_stock")["throw"]
+	assert_eq(throw.text, "Throw out")
+	throw.pressed.emit()
+	assert_eq(Economy.stock.count(&"soup_stock"), 8, "the first click only asks")
+	assert_eq(throw.text, "Click again")
+	(panel.row_for(&"tomato")["cart+1"] as Button).pressed.emit()
+	assert_eq(throw.text, "Throw out", "another action takes the question back")
+	throw.pressed.emit()
+	throw.pressed.emit()
+	assert_eq(Economy.stock.count(&"soup_stock"), 0, "the second click throws it all out")
+	assert_eq(Economy.cash, cash, "no refund")
+	assert_eq(Economy.ledger.entries_for_day(Clock.sim.day).size(), entries, "nothing is paid or refunded")
+	assert_true((main.call("stock_notes") as Array[String]).has("Thrown out today (no refund): 8 Soup stock."))
+	assert_true(throw.disabled, "nothing left to throw out")
+	assert_eq((main.call("storage_space") as StorageSpace).in_stock(StorageSpace.DRY), 42)
+	assert_eq(main.call("stock_throw_out", &"soup_stock"), -1)
 
 
 func test_the_auto_reorder_buys_up_to_the_free_space_and_says_what_did_not_fit() -> void:
@@ -140,6 +182,7 @@ func test_deliveries_arrive_on_the_schedule_and_bring_sold_out_dishes_back() -> 
 
 func test_cancelling_before_delivery_refunds_in_full() -> void:
 	var main: Node = _start(false)
+	assert_true(Clock.sim.start_service())
 	var cash: int = Economy.cash
 	assert_true(main.call("stock_cart_set", &"tomato", 5))
 	assert_true(main.call("stock_cart_set", &"beef_patty", 2))
@@ -152,8 +195,9 @@ func test_cancelling_before_delivery_refunds_in_full() -> void:
 	assert_eq(last["note"], Economy.ORDER_REFUND_NOTE)
 	assert_eq(last["category"], Ledger.INGREDIENTS)
 	assert_eq(main.call("stock_cancel_orders"), -1, "nothing left to cancel")
-	assert_true(Clock.sim.start_service())
-	assert_eq(Economy.stock.count(&"tomato"), 16, "a cancelled order never arrives")
+	var tomatoes: int = Economy.stock.count(&"tomato")
+	main.call("run_ticks", 1100)
+	assert_true(Economy.stock.count(&"tomato") <= tomatoes, "a cancelled order never arrives")
 
 
 func test_build_refuses_to_sell_storage_the_stock_needs_and_undo_obeys() -> void:
@@ -162,37 +206,66 @@ func test_build_refuses_to_sell_storage_the_stock_needs_and_undo_obeys() -> void
 	assert_true(main.call("set_build_active", true))
 	assert_true(main.call("shop_buy", &"storage_shelf", Vector2i(12, 1), 2))
 	assert_true(main.call("stock_cart_set", &"bread", 30))
-	assert_true(main.call("stock_place_order"), "80 dry units on hand and on order fit 100")
+	assert_true(main.call("stock_place_order"), "80 dry units fit 100")
 	assert_false(main.call("undo_edit"), "taking the shelf away would leave 80 in 60")
 	assert_eq(main.get("_edit_notice"), "Can't undo: Move stock out first: the dry stock would not fit without it")
 	var shelf: PlacedItem = (main.get("world") as SimWorld).grid.item_at(Vector2i(12, 1))
 	assert_eq(main.call("shop_sell", shelf.id), -1)
 	assert_eq((main.get("shop_editor") as ShopEditor).last_check.why,
 		"Move stock out first: the dry stock would not fit without it")
-	assert_true(main.call("stock_cancel_orders") > 0)
-	assert_true(main.call("undo_edit"), "with the order cancelled the shelf can go")
+	assert_eq(main.call("stock_throw_out", &"bread"), 46)
+	assert_true(main.call("undo_edit"), "with the bread thrown out the shelf can go")
 
 
-## Rule 9: pending orders are written only by the morning autosave. With no
-## morning delivery in the schedule, the standing order waits in that save.
-func test_pending_orders_ride_the_morning_save() -> void:
-	var tuning: EconomyTuning = TUNING.duplicate() as EconomyTuning
-	tuning.morning_delivery = false
-	var first: Node = _start(true, tuning)
-	var book: DeliveryBook = first.get("deliveries")
-	assert_eq(book.size(), 1, "the standing order waits for the opening delivery")
-	assert_eq(Economy.stock.count(&"bread"), 0)
-	var saved: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(_path()))
-	assert_eq((saved["data"]["deliveries"]["orders"] as Array).size(), 1)
-	var cash: int = Economy.cash
-	_close(first)
-	Economy.reset(12345)
-	var second: Node = _start(true, tuning)
-	assert_eq(Economy.cash, cash, "the reload paid nothing twice")
-	assert_eq((second.get("deliveries") as DeliveryBook).pending_by_id(), book.pending_by_id())
+## An order on its way (service) needs its space too.
+func test_orders_on_the_way_hold_their_storage() -> void:
+	var main: Node = _start(false)
 	assert_true(Clock.sim.start_service())
-	assert_eq(Economy.stock.count(&"bread"), TUNING.morning_stock[&"bread"], "it arrives at opening")
-	assert_true((second.get("deliveries") as DeliveryBook).is_empty())
+	assert_true(main.call("stock_cart_set", &"cheese", 12))
+	assert_true(main.call("stock_place_order"))
+	assert_eq(Economy.stock.count(&"cheese"), 8, "it comes at 14:00")
+	assert_false(main.call("stock_cart_set", &"lettuce", 1), "what is on order takes its space")
+
+
+## Rule 9: pending orders ride the morning autosave only. With the morning
+## delivery unloaded before that save the book is normally empty there; a
+## saved order (here written into the save) is delivered by the loaded morning.
+func test_a_saved_pending_order_arrives_with_the_loaded_morning() -> void:
+	var first: Node = _start(true)
+	var saved: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(_path()))
+	assert_true((saved["data"]["deliveries"]["orders"] as Array).is_empty(), "nothing waits at the morning save")
+	_close(first)
+	saved["data"]["deliveries"] = {"version": 1, "orders": [{"day": 1, "tick": -1, "cost": 4, "standing": false,
+		"lines": [{"id": "tomato", "qty": 4, "unit_cost": 1}]}]}
+	_write(saved)
+	Economy.reset(12345)
+	var second: Node = _start(true)
+	assert_true((second.get("deliveries") as DeliveryBook).is_empty(), "the loaded morning delivery brought it")
+	assert_eq(Economy.stock.count(&"tomato"), TUNING.morning_stock[&"tomato"] + 4)
+	# An order still on its way at closing: the report's forecast counts it (M1).
+	assert_true(Clock.sim.start_service())
+	_run_to_close(second)
+	assert_true(second.call("stock_cart_set", &"tomato", 2))
+	assert_true(second.call("stock_place_order"))
+	var report: DayReport = second.call("build_report", Clock.sim.day)
+	assert_not_null(report)
+	assert_eq((second.get("deliveries") as DeliveryBook).pending_by_id(), {&"tomato": 2})
+
+
+func _run_to_close(main: Node) -> void:
+	var guard: int = 0
+	while Clock.sim.phase != SimClock.Phase.CLOSED and guard < 30:
+		main.call("run_ticks", 1000)
+		guard += 1
+	assert_eq(Clock.sim.phase, SimClock.Phase.CLOSED)
+
+
+func _write(document: Dictionary) -> void:
+	var file: FileAccess = FileAccess.open(_path(), FileAccess.WRITE)
+	file.store_string(JSON.stringify(document))
+	file.close()
+	if FileAccess.file_exists(_path() + ".bak"):
+		DirAccess.remove_absolute(_path() + ".bak")
 
 
 ## An order placed after the morning save is lost on reload together with its
@@ -208,7 +281,7 @@ func test_an_order_after_the_morning_save_goes_back_with_its_payment() -> void:
 	var second: Node = _start(true)
 	assert_eq(Economy.cash, saved_cash, "the payment is not kept")
 	assert_true((second.get("deliveries") as DeliveryBook).is_empty(), "and nothing is on order")
-	assert_eq(Economy.stock.count(&"tomato"), TUNING.morning_stock[&"tomato"])
+	assert_eq(Economy.stock.count(&"tomato"), TUNING.morning_stock[&"tomato"], "and neither are the goods")
 
 
 func test_legacy_saves_load_with_nothing_on_order_and_keep_over_full_stock() -> void:

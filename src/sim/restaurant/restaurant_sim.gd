@@ -66,7 +66,8 @@ var _vibe_result: VibeModel.Result = VibeModel.Result.new()
 var staff_spawns: Dictionary[StringName, Vector2i] = {}
 
 var _departed: Dictionary[int, bool] = {}
-## Dishes that ran out during today's service; they stay sold out until morning.
+## Dishes that ran out during today's service; they stay sold out until a
+## delivery covers them again or the next morning.
 var sold_out_today: Dictionary[StringName, bool] = {}
 ## Ingredients that sold dishes out today, in the order it happened:
 ## {ingredient: StringName, minute: int (display clock), dishes: Array[StringName]}.
@@ -363,9 +364,9 @@ static func _vibe_patience(budget: int, multiplier: float, tuning: VibeTuning = 
 	return roundi(scaled)
 
 
-## Latches every menu dish the fridge itself can no longer cover. Stock only
-## falls during service, so this lasts for the day. Only a real kitchen's
-## service changes it: morning buying can still refill the fridge.
+## Latches every menu dish the fridge itself can no longer cover. It stays
+## sold out until a delivery during service covers it again
+## (restock_sold_out, FK-087) or the next morning.
 func refresh_sold_out() -> void:
 	if not _in_service():
 		return

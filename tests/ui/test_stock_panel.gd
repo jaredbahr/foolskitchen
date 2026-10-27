@@ -65,8 +65,7 @@ func test_rows_show_groups_cart_and_send_requests() -> void:
 	assert_true((dry["root"] as Node).is_ancestor_of(_panel.row_for(&"bread")["root"]), "bread on the dry shelves")
 	var beef: Dictionary = _panel.row_for(&"beef_patty")
 	assert_eq((beef["name"] as Label).text, "Beef patty")
-	assert_eq((beef["count"] as Label).text, "10 in stock")
-	assert_eq((beef["expiry"] as Label).text, "3 expire tomorrow")
+	assert_eq((beef["count"] as Label).text, "10 in stock. 3 expire tomorrow")
 	assert_eq((beef["price"] as Label).text, "$2 each")
 	assert_false((beef["cart+1"] as Button).disabled, "one more fits the fridge")
 	assert_true((beef["cart+5"] as Button).disabled, "five more do not")
@@ -75,7 +74,7 @@ func test_rows_show_groups_cart_and_send_requests() -> void:
 	assert_eq((_panel.row_for(&"bread")["count"] as Label).text, "10 in stock, 4 on order")
 	var beer: Dictionary = _panel.row_for(&"beer")
 	assert_true((beer["root"] as Control).modulate.a < 1.0, "an ingredient nothing on the menu uses is greyed out")
-	assert_eq((beer["expiry"] as Label).text, "Not on today's menu")
+	assert_eq((beer["count"] as Label).text, "10 in stock. Not on today's menu")
 	assert_false((beer["cart+1"] as Button).disabled, "but it can still be ordered")
 	assert_eq((_panel.row_for(&"tomato")["root"] as Control).modulate.a, 1.0)
 	var cheese: Dictionary = _panel.row_for(&"cheese")
@@ -126,6 +125,9 @@ func test_panel_fits_the_usual_window_and_150_percent_scale() -> void:
 	_panel.set_view(_view(300, true, ["This morning's auto-order cost $93 ($88 at list price + $5 premium).",
 		"Not enough cash to auto-order 5 Beef patty, 20 Bread and 10 Burger bun."] as Array[String]))
 	_panel.show()
+	# An armed Throw out ("Click again") must not widen the panel either.
+	(_panel.row_for(&"beef_patty")["throw"] as Button).pressed.emit()
+	assert_eq((_panel.row_for(&"beef_patty")["throw"] as Button).text, "Click again")
 	for scale: float in [1.0, 1.5]:
 		window.content_scale_factor = scale
 		for frame: int in range(4):
@@ -142,7 +144,7 @@ func test_panel_fits_the_usual_window_and_150_percent_scale() -> void:
 		assert_true(scroll.size.y > 100.0, "rows keep a scrolling area at %d%%" % roundi(scale * 100))
 		for data: Dictionary in _rows():
 			var row: Dictionary = _panel.row_for(data["id"])
-			for key: String in ["name", "count", "price", "cart-1", "cart", "cart+1", "cart+5", "expiry", "auto", "minus", "target", "plus"]:
+			for key: String in ["name", "count", "price", "cart-1", "cart", "cart+1", "cart+5", "throw", "auto", "minus", "target", "plus"]:
 				var control: Control = row[key]
 				assert_true(control.size.x >= control.get_combined_minimum_size().x - 0.5,
 					"%s %s keeps its full content" % [data["id"], key])

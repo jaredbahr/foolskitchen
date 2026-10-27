@@ -11,6 +11,8 @@ signal cart_requested(ingredient_id: StringName, qty: int)
 signal order_requested()
 signal clear_requested()
 signal cancel_requested()
+## Sent on the second click of a row's Throw out button (the first arms it).
+signal throw_requested(ingredient_id: StringName)
 signal auto_requested(ingredient_id: StringName, enabled: bool)
 signal target_requested(ingredient_id: StringName, target: int)
 signal close_requested()
@@ -40,10 +42,18 @@ var _data: Array[Dictionary] = []
 var _group_data: Array[Dictionary] = []
 var _view: Dictionary = {}
 var _layout_key: String = ""
+## The row whose Throw out button asks "Sure?" (its first click), or empty.
+var _armed_throw: StringName = &""
 
 
 func _ready() -> void:
 	refresh()
+
+
+func _notification(what: int) -> void:
+	# A Throw out asked for on an earlier visit never carries over.
+	if what == NOTIFICATION_VISIBILITY_CHANGED:
+		_armed_throw = &""
 
 
 ## View: {rows, groups, cash, editable, notes, premium, cart_total,
@@ -75,8 +85,8 @@ func refresh() -> void:
 	var editable: bool = bool(_view.get("editable", false))
 	var premium: float = float(_view.get("premium", 0.0))
 	var premium_text: String = "a %d%% premium" % roundi(premium * 100.0) if premium > 0.0 else "list price"
-	_status.text = ("Order any time: you pay now and the goods come with the next delivery. "
-		+ "Auto-reorder tops each ingredient up to its target with the morning delivery, at %s." % premium_text)
+	_status.text = ("Order any time and pay now: morning orders arrive at once, later ones with the next delivery. "
+		+ "Auto-reorder tops each ingredient up to its target every morning, at %s." % premium_text)
 	var delivery: Dictionary = _view.get("delivery", {})
 	_delivery_label.text = str(delivery.get("text", "Next delivery: tomorrow morning"))
 	_delivery_bar.value = clampf(float(delivery.get("fraction", 0.0)), 0.0, 1.0) * 100.0
@@ -115,7 +125,7 @@ func refresh() -> void:
 	var cash: int = int(_view.get("cash", 0))
 	_cart_total.text = "Order total: %s (cash %s)" % [Fmt.money(total), Fmt.money(cash)]
 	_order.disabled = not editable or not refusal.is_empty()
-	_order.tooltip_text = refusal if not refusal.is_empty() else "Pay %s now; it comes with the next delivery" % Fmt.money(total)
+	_order.tooltip_text = refusal if not refusal.is_empty() else "Pay %s now" % Fmt.money(total)
 	_clear.disabled = not editable or _cart_units() <= 0
 	_clear.tooltip_text = "Empty the cart"
 	var pending: String = str(_view.get("pending", ""))
@@ -139,14 +149,20 @@ func _refresh_row(row: Dictionary, data: Dictionary, editable: bool, free: int) 
 	var on_order: int = int(data.get("on_order", 0))
 	(row["root"] as Control).modulate.a = 1.0 if in_use else UNUSED_ALPHA
 	(row["name"] as Label).text = display
+	# One label holds the count, what is on order, expiry and menu use.
 	var count_text: String = "%d in stock" % count
 	if on_order > 0:
 		count_text += ", %d on order" % on_order
-	(row["count"] as Label).text = count_text
-	var expiry: Label = row["expiry"]
-	expiry.text = "%d expire tomorrow" % expiring if expiring > 0 \
-		else ("0 expire tomorrow" if in_use else "Not on today's menu")
-	expiry.add_theme_color_override("font_color", WARNING_COLOR if expiring > 0 else MUTED_COLOR)
+	if expiring > 0:
+		count_text += ". %d expire tomorrow" % expiring
+	if not in_use:
+		count_text += ". Not on today's menu"
+	var count_label: Label = row["count"]
+	count_label.text = count_text
+	if expiring > 0:
+		count_label.add_theme_color_override("font_color", WARNING_COLOR)
+	else:
+		count_label.remove_theme_color_override("font_color")
 	(row["price"] as Label).text = "$%d each" % unit_cost
 	(row["cart"] as Label).text = str(cart)
 	for step: int in CART_STEPS:
@@ -157,14 +173,29 @@ func _refresh_row(row: Dictionary, data: Dictionary, editable: bool, free: int) 
 			button.tooltip_text = "Order fewer"
 		else:
 			var fits: bool = step <= free
-			button.disabled = not editable or after > MAX_CART or not fits
-			button.tooltip_text = ("Not enough %s space" % _space_word(int(data.get("kind", 0)))) if not fits \
-				else "Add %d %s for $%d" % [step, display, unit_cost * step]
+			var capped: bool = after > MAX_CART
+			button.disabled = not editable or capped or not fits
+			if capped:
+				button.tooltip_text = "At most %d of one ingredient in one order" % MAX_CART
+			elif not fits:
+				button.tooltip_text = "Not enough %s space" % _space_word(int(data.get("kind", 0)))
+			else:
+				button.tooltip_text = "Add %d %s for $%d" % [step, display, unit_cost * step]
+	var throw: Button = row["throw"]
+	var armed: bool = _armed_throw == StringName(data.get("id", &""))
+	if count <= 0 and armed:
+		_armed_throw = &""
+		armed = false
+	throw.disabled = not editable or count <= 0
+	throw.text = "Click again" if armed else "Throw out"
+	throw.tooltip_text = "Nothing to throw out" if count <= 0 else (
+		"Click again to throw away all %d %s. There is no refund." % [count, display] if armed
+		else "Throw away all %d %s, with no refund (asks first)" % [count, display])
 	var toggle: Button = row["auto"]
 	toggle.set_pressed_no_signal(enabled)
 	toggle.text = "Auto-reorder on" if enabled else "Auto-reorder off"
 	toggle.disabled = not editable
-	toggle.tooltip_text = "Each morning, top up to the target with the morning delivery." if enabled \
+	toggle.tooltip_text = "Each morning, top up to the target." if enabled \
 		else "Not bought automatically. Order it here by hand."
 	(row["target"] as Label).text = str(target)
 	var target_label: Label = row["target_label"]
@@ -286,11 +317,14 @@ func _build_row(parent: Node, id: StringName, index: int) -> Dictionary:
 		more.pressed.connect(_on_cart_step.bind(id, step))
 		parts["cart%+d" % step] = more
 	var detail: HBoxContainer = _add_line(row, "Reorder")
-	var expiry: Label = _add_label(detail, "Expiry")
-	# Wraps rather than widening the panel at large UI scales.
-	expiry.custom_minimum_size.x = 120.0
-	expiry.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	expiry.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var throw: Button = _add_button(detail, "Throw", "Throw out")
+	throw.pressed.connect(_on_throw_pressed.bind(id))
+	throw.custom_minimum_size.x = 150.0
+	var spacer: Control = Control.new()
+	spacer.name = "Spacer"
+	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	detail.add_child(spacer)
 	var auto: Button = _add_button(detail, "Auto", "Auto-reorder on")
 	auto.toggle_mode = true
 	auto.toggled.connect(_on_auto_toggled.bind(id))
@@ -307,7 +341,7 @@ func _build_row(parent: Node, id: StringName, index: int) -> Dictionary:
 	separator.theme = SHARED_THEME
 	separator.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(separator)
-	parts.merge({"expiry": expiry, "auto": auto, "target_label": target_label,
+	parts.merge({"throw": throw, "auto": auto, "target_label": target_label,
 		"minus": minus, "target": target, "plus": plus})
 	return parts
 
@@ -352,6 +386,7 @@ func _row_data(id: StringName) -> Dictionary:
 
 
 func _on_cart_step(id: StringName, step: int) -> void:
+	_armed_throw = &""
 	var data: Dictionary = _row_data(id)
 	if not bool(_view.get("editable", false)) or data.is_empty():
 		return
@@ -361,7 +396,21 @@ func _on_cart_step(id: StringName, step: int) -> void:
 	refresh()
 
 
+## Two clicks: the first arms the row's button ("Click again"), the second
+## sends the request. Any other action in the panel disarms it.
+func _on_throw_pressed(id: StringName) -> void:
+	if not bool(_view.get("editable", false)) or int(_row_data(id).get("count", 0)) <= 0:
+		return
+	if _armed_throw == id:
+		_armed_throw = &""
+		throw_requested.emit(id)
+	else:
+		_armed_throw = id
+	refresh()
+
+
 func _on_order_pressed() -> void:
+	_armed_throw = &""
 	if bool(_view.get("editable", false)):
 		order_requested.emit()
 
@@ -395,4 +444,5 @@ func _on_target_step(id: StringName, direction: int) -> void:
 
 
 func _on_close_pressed() -> void:
+	_armed_throw = &""
 	close_requested.emit()

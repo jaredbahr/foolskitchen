@@ -51,7 +51,7 @@ mouse_filter = 2
 
 [node name="DeliveryLabel" type="Label" parent="Panel/Content/Delivery"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(360, 0)
+custom_minimum_size = Vector2(470, 0)
 layout_mode = 2
 mouse_filter = 2
 autowrap_mode = 3

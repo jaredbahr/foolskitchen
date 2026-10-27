@@ -18,7 +18,6 @@ func _lines(id: StringName, qty: int, unit_cost: int = 1) -> Array[Dictionary]:
 
 
 func test_the_schedule_comes_from_data_and_scales_with_the_day() -> void:
-	assert_true(TUNING.morning_delivery)
 	assert_eq(TUNING.delivery_interval_minutes, 180)
 	var clock: SimClock = _clock(SimClock.Phase.OPEN)
 	# 11:00 to 21:00 in 3600 ticks: deliveries at 14:00, 17:00 and 20:00.
@@ -32,7 +31,8 @@ func test_the_schedule_comes_from_data_and_scales_with_the_day() -> void:
 
 
 func test_an_order_comes_with_the_first_delivery_after_it_is_placed() -> void:
-	assert_eq(DeliveryBook.next_due(_clock(SimClock.Phase.MORNING), TUNING), Vector2i(3, 0), "morning orders: at opening")
+	assert_eq(DeliveryBook.next_due(_clock(SimClock.Phase.MORNING), TUNING), Vector2i(3, DeliveryBook.MORNING),
+		"morning orders: today's morning delivery, at once")
 	assert_eq(DeliveryBook.next_due(_clock(SimClock.Phase.OPEN, 0), TUNING), Vector2i(3, 1080))
 	assert_eq(DeliveryBook.next_due(_clock(SimClock.Phase.OPEN, 1079), TUNING), Vector2i(3, 1080))
 	assert_eq(DeliveryBook.next_due(_clock(SimClock.Phase.OPEN, 1080), TUNING), Vector2i(3, 2160), "just missed it")
@@ -40,9 +40,6 @@ func test_an_order_comes_with_the_first_delivery_after_it_is_placed() -> void:
 		"after the last delivery: tomorrow morning")
 	assert_eq(DeliveryBook.next_due(_clock(SimClock.Phase.LAST_ORDERS), TUNING), Vector2i(4, DeliveryBook.MORNING))
 	assert_eq(DeliveryBook.next_due(_clock(SimClock.Phase.CLOSED), TUNING), Vector2i(4, DeliveryBook.MORNING))
-	var no_morning: EconomyTuning = TUNING.duplicate() as EconomyTuning
-	no_morning.morning_delivery = false
-	assert_eq(DeliveryBook.next_due(_clock(SimClock.Phase.CLOSED), no_morning), Vector2i(4, 0), "then at opening")
 
 
 func test_orders_arrive_only_when_due() -> void:
@@ -76,8 +73,8 @@ func test_cancelling_refunds_everything_paid() -> void:
 
 func test_the_countdown_bar() -> void:
 	var morning: Dictionary = DeliveryBook.countdown(_clock(SimClock.Phase.MORNING), TUNING)
-	assert_eq(morning["when"], &"open")
-	assert_eq(morning["minute"], 11 * 60)
+	assert_eq(morning["when"], &"now", "morning orders arrive at once")
+	assert_eq(morning["minute"], 14 * 60, "the first daytime delivery")
 	var early: Dictionary = DeliveryBook.countdown(_clock(SimClock.Phase.OPEN, 270), TUNING)
 	assert_eq(early["when"], &"today")
 	assert_eq(early["minute"], 14 * 60)

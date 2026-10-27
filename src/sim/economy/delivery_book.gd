@@ -3,14 +3,15 @@ extends RefCounted
 ## Ingredient orders that are paid for and not yet delivered (FK-087), and
 ## the delivery schedule. Pure data: the session charges, refunds and stocks.
 ##
-## Schedule (EconomyTuning): a delivery first thing in the morning (it
-## carries the auto-reorder, the standing order), one when the shop opens
-## (orders placed in the morning), then one every delivery_interval_minutes
-## of opening hours. An order arrives at the first delivery after it is
-## placed; orders after the last daytime delivery arrive next morning.
+## Schedule (EconomyTuning): morning orders (the auto-reorder, the standing
+## order, and hand orders) arrive at once and never wait here. During service
+## a delivery comes every delivery_interval_minutes of opening hours; an
+## order arrives with the first one after it is placed, and orders after the
+## last one (or once closed) with the next morning's delivery, which is
+## unloaded before the morning save.
 ##
-## A due time is Vector2i(day, tick): tick MORNING is the morning delivery,
-## 0 is opening, and a positive tick is that many service ticks after opening.
+## A due time is Vector2i(day, tick): tick MORNING is the morning delivery
+## and a positive tick is that many service ticks after opening.
 
 const VERSION: int = 1
 const MORNING: int = -1
@@ -44,11 +45,12 @@ static func slot_ticks(clock: SimClock, tuning: EconomyTuning) -> Array[int]:
 ## The delivery an order placed now would come with.
 static func next_due(clock: SimClock, tuning: EconomyTuning) -> Vector2i:
 	if clock == null:
-		return Vector2i(1, 0)
-	var tomorrow: Vector2i = Vector2i(clock.day + 1, MORNING if tuning == null or tuning.morning_delivery else 0)
+		return Vector2i(1, MORNING)
+	var tomorrow: Vector2i = Vector2i(clock.day + 1, MORNING)
 	match clock.phase:
 		SimClock.Phase.MORNING:
-			return Vector2i(clock.day, 0)
+			# Morning orders arrive at once: today's morning delivery.
+			return Vector2i(clock.day, MORNING)
 		SimClock.Phase.OPEN:
 			for tick: int in slot_ticks(clock, tuning):
 				if tick > clock.phase_tick:
@@ -65,15 +67,17 @@ static func minute_of(clock: SimClock, tick: int) -> int:
 	return clock.display_open_minute + tick * minutes / clock.open_ticks
 
 
-## The Next delivery bar: {when: &"open" | &"today" | &"tomorrow", minute,
-## fraction}. `fraction` is how far the wait since the previous delivery has
-## run (1.0 once nothing more comes today).
+## The Next delivery bar: {when: &"now" | &"today" | &"tomorrow", minute,
+## fraction}. In the morning orders arrive at once (`now`, with the first
+## daytime delivery's minute, or -1). `fraction` is how far the wait since the
+## previous delivery has run (1.0 when orders arrive now or tomorrow).
 static func countdown(clock: SimClock, tuning: EconomyTuning) -> Dictionary:
 	var due: Vector2i = next_due(clock, tuning)
 	if clock == null:
-		return {"when": &"open", "minute": 0, "fraction": 0.0}
+		return {"when": &"now", "minute": -1, "fraction": 1.0}
 	if clock.phase == SimClock.Phase.MORNING:
-		return {"when": &"open", "minute": clock.display_open_minute, "fraction": 0.0}
+		var slots: Array[int] = slot_ticks(clock, tuning)
+		return {"when": &"now", "minute": minute_of(clock, slots[0]) if not slots.is_empty() else -1, "fraction": 1.0}
 	if due.x == clock.day and due.y > 0:
 		var previous: int = 0
 		for tick: int in slot_ticks(clock, tuning):
