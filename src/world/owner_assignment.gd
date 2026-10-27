@@ -45,7 +45,7 @@ static func _for_item(item: PlacedItem, world_position: Vector3, work_index: int
 		return _target(&"kitchen" if side == 0 else &"floor", item.id, side)
 	if definition.category == ItemDef.Category.STORAGE and definition.station_type == &"fridge":
 		return _target(&"kitchen", item.id, work_index)
-	if definition.category == ItemDef.Category.STATION and definition.station_type in [&"prep_counter", &"stove"]:
+	if definition.category == ItemDef.Category.STATION and definition.station_type in [&"prep_counter", &"stove", &"fryer", &"oven"]:
 		return _target(&"kitchen", item.id, work_index)
 	return _none()
 

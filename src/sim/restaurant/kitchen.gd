@@ -195,7 +195,7 @@ func _on_order_placed(order: Order) -> void:
 	task.steps.append(TaskStep.work(20, "taking ingredients", _take_ingredients))
 	var stations: Array[int] = []
 	for step: RecipeStep in recipe.steps:
-		var station: PlacedItem = _station(sim.world, step.station_type, ItemDef.Category.STATION)
+		var station: PlacedItem = _free_station(sim.world, step.station_type)
 		if station == null:
 			_cancel(order, &"missing_station")
 			return
@@ -697,9 +697,9 @@ func _station(world: SimWorld, station_type: StringName, category: ItemDef.Categ
 	return null
 
 
-## With two coffee machines, a new drink goes to one nobody is working at.
-## Stations staff cannot reach from the street are skipped; with several
-## reachable but busy, the first reachable one is used and its pour waits.
+## New cook and drink tickets prefer a reachable station nobody is working at.
+## With several reachable but busy, the first reachable station is retained;
+## ordinary task reservation waits still apply.
 func _free_station(world: SimWorld, station_type: StringName) -> PlacedItem:
 	var first: PlacedItem = null
 	var entries: Array[Vector2i] = world.grid.entries()

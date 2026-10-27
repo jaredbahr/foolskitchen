@@ -43,6 +43,45 @@ func test_shipped_prep_counter_and_its_external_work_cell_assign_kitchen() -> vo
 		assert_eq(_snapshot(), before)
 
 
+func test_fryer_and_oven_rotations_assign_the_same_owner_to_kitchen_without_advancing_world() -> void:
+	for station_type: StringName in [&"fryer", &"oven"]:
+		for quarter: int in 4:
+			_grid = SimGrid.new(Vector2i(20, 20))
+			var definition: ItemDef = _definition(station_type, ItemDef.Category.STATION, station_type)
+			var item: PlacedItem = _grid.place_def(definition, Vector2i(5, 5), quarter)
+			assert_not_null(item)
+			var before: Array[Dictionary] = _snapshot()
+			var footprint: Dictionary = OwnerAssignment.resolve(GridMath.cell_to_world(item.origin), _grid)
+			assert_eq(footprint, {"mode": &"kitchen", "item_id": item.id, "work_cell_index": -1})
+			assert_null(_grid.item_at(item.work_cells[0]), "the standing cell lies outside the appliance")
+			var work: Dictionary = OwnerAssignment.resolve(GridMath.cell_to_world(item.work_cells[0]), _grid)
+			assert_eq(work, {"mode": &"kitchen", "item_id": item.id, "work_cell_index": 0})
+			var sim: RestaurantSim = RestaurantSim.new()
+			sim.world = SimWorld.new(_grid)
+			var owner: OwnerAgent = OwnerAgent.new(Vector2i(1, 1))
+			sim.world.add_agent(owner)
+			assert_eq(owner.current_mode(), &"rest")
+			assert_true(sim.assign_owner(work["mode"]))
+			assert_true(sim.owner_agent() == owner, "classification changes the existing owner's mode")
+			assert_eq(owner.current_mode(), &"kitchen")
+			assert_eq(_snapshot(), before)
+			assert_eq(sim.world.now, 0)
+
+
+func test_drink_station_types_and_sink_still_do_not_assign_from_footprints_or_work_cells() -> void:
+	# Detached role fixtures also guard against classifying every STATION as kitchen.
+	for station_type: StringName in [&"coffee", &"drinks_fridge", &"drinks_shelf", &"sink"]:
+		for quarter: int in 4:
+			_grid = SimGrid.new(Vector2i(20, 20))
+			var item: PlacedItem = _grid.place_def(_definition(station_type,
+				ItemDef.Category.STATION, station_type), Vector2i(5, 5), quarter)
+			assert_not_null(item)
+			var before: Array[Dictionary] = _snapshot()
+			_assert_none(OwnerAssignment.resolve(GridMath.cell_to_world(item.origin), _grid))
+			_assert_none(OwnerAssignment.resolve(GridMath.cell_to_world(item.work_cells[0]), _grid))
+			assert_eq(_snapshot(), before)
+
+
 func test_rug_covered_real_station_work_cell_still_assigns_existing_owner_in_either_order() -> void:
 	var content: ContentDB = ContentDB.new()
 	assert_eq(content.load_all(), PackedStringArray())
