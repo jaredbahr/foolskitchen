@@ -389,6 +389,8 @@ func test_identity_and_section_controls_fit_short_and_wide_viewports() -> void:
 		for frame: int in 3:
 			await tree.process_frame
 		var bounds: Rect2 = (_panel.get_node("Panel") as Control).get_global_rect()
+		assert_true(Rect2(Vector2.ZERO, Vector2(dimensions)).encloses(bounds), "the panel stays on screen")
+		assert_true(bounds.size.x <= MenuPanel.PANEL_MAX_WIDTH)
 		var edit: LineEdit = _panel.get_node("%RestaurantName") as LineEdit
 		var apply: Button = _panel.get_node("%ApplyName") as Button
 		assert_true(bounds.encloses(edit.get_global_rect()))
@@ -429,7 +431,7 @@ func test_tree_links_and_selection_show_only_one_detail_without_menu_mutation() 
 	var node: TreeItem = _panel.tree_item_for(&"child")
 	assert_eq(node.get_parent(), _panel.tree_item_for(&"burger"))
 	assert_eq(node.get_text(1), "Lv 2")
-	assert_true(node.get_tooltip_text(1).contains("Owner level 2"))
+	assert_eq(node.get_tooltip_text(1), "Unlocks at owner level 2.")
 	assert_true(_panel.select_recipe(&"child"))
 	assert_true(_panel.row_for(&"child").visible)
 	assert_false(_panel.row_for(&"burger").visible)
@@ -564,3 +566,37 @@ func test_tree_sizes_to_its_rows_without_trapping_the_wheel() -> void:
 	assert_true(scroll.is_ancestor_of(tree))
 	assert_false((_panel.get_node("Panel/Content/Body/DetailScroll") as Node).is_ancestor_of(tree))
 	assert_true((_panel.get_node("Panel/Content/Body/DetailScroll") as Node).is_ancestor_of(_panel.row_for(&"burger")))
+
+
+func test_the_mouse_wheel_over_the_tree_scrolls_its_column() -> void:
+	var recipes: Array[RecipeDef] = []
+	for index: int in 14:
+		recipes.append(_recipe(StringName("dish%02d" % index), "Dish %d" % index, 6))
+	_panel.bind_menu(MenuSettings.new(recipes))
+	var scene: SceneTree = Engine.get_main_loop() as SceneTree
+	var viewport: SubViewport = SubViewport.new()
+	viewport.size = Vector2i(1067, 600)
+	viewport.gui_disable_input = false
+	scene.root.add_child(viewport)
+	viewport.add_child(_panel)
+	_panel.show()
+	for frame: int in 3:
+		await scene.process_frame
+	var scroll: ScrollContainer = _panel.get_node("Panel/Content/Body/Scroll") as ScrollContainer
+	var tree: Tree = _panel.get("_recipe_tree") as Tree
+	assert_true(scroll.get_v_scroll_bar().max_value > scroll.size.y, "the column has more rows than fit")
+	var visible: Rect2 = tree.get_global_rect().intersection(scroll.get_global_rect())
+	var wheel: InputEventMouseButton = InputEventMouseButton.new()
+	wheel.button_index = MOUSE_BUTTON_WHEEL_DOWN
+	wheel.pressed = true
+	wheel.factor = 1.0
+	wheel.position = visible.get_center()
+	wheel.global_position = wheel.position
+	viewport.push_input(wheel)
+	var release: InputEventMouseButton = wheel.duplicate() as InputEventMouseButton
+	release.pressed = false
+	viewport.push_input(release)
+	await scene.process_frame
+	assert_true(scroll.scroll_vertical > 0, "the tree passes the wheel to the column")
+	viewport.remove_child(_panel)
+	viewport.free()

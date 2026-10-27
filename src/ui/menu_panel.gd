@@ -345,7 +345,7 @@ func _build_sections() -> void:
 	identity.move_child(note, _name_feedback.get_index())
 	_hours_controls["note"] = note
 	_add_separator(identity)
-	_drinks_title = _add_label(list, "DrinksTitle", "Drinks to set up")
+	_drinks_title = _add_label(list, "DrinksTitle", "Drinks")
 	_drinks_title.add_theme_font_size_override("font_size", 20)
 	_hints_box = VBoxContainer.new()
 	_hints_box.name = "DrinkHints"
@@ -662,16 +662,29 @@ func _refresh_tree_state() -> void:
 		if node == null:
 			continue
 		var locked: bool = recipe.unlock_level > _menu.owner_level()
-		var missing: bool = _menu.recipe(recipe.id) == null
-		var status: String = "On menu" if _menu.is_enabled(recipe.id) else "Off menu"
-		if missing:
-			status = _equipment_reason(recipe.id)
+		# Off the catalogue, or listed but with equipment staff can't use
+		# (a walled-in fridge): either way the tree shows the red reason.
+		var missing: bool = _menu.recipe(recipe.id) == null or _equipment_unmet(recipe.id)
+		var state: String = _equipment_reason(recipe.id) if missing \
+				else ("On menu" if _menu.is_enabled(recipe.id) else "Off menu")
+		# The column is narrow: "Can't reach the fryer"; the tooltip names staff.
+		var status: String = state.replace("Staff can't reach", "Can't reach")
+		var tooltip: String = state + "."
 		if locked:
 			status = "Lv %d" % recipe.unlock_level + (", " + status.to_lower() if missing else "")
+			tooltip = "Unlocks at owner level %d." % recipe.unlock_level + (" " + state + "." if missing else "")
 		node.set_text(1, status)
-		node.set_tooltip_text(1, "Owner level %d. %s." % [recipe.unlock_level, status])
+		node.set_tooltip_text(1, tooltip)
 		node.set_custom_color(0, LOCKED_COLOR if locked else STANDARD_COLOR)
 		node.set_custom_color(1, HIGHER_COLOR if missing else (LOCKED_COLOR if locked or not _menu.is_enabled(recipe.id) else LOWER_COLOR))
+
+
+func _equipment_unmet(id: StringName) -> bool:
+	var details: Dictionary = _details.get(id, {})
+	for row: Dictionary in details.get("equipment", []):
+		if not bool(row.get("met", false)):
+			return true
+	return false
 
 
 func _equipment_reason(id: StringName) -> String:

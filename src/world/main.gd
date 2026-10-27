@@ -1666,29 +1666,18 @@ func _cookable_recipes(layout: ShopLayout) -> Array[RecipeDef]:
 
 
 ## The dishes the live shop's stations can make right now (FK-083).
-## A drink station staff cannot reach (a bar walled in on every side) does
-## not count, so its drinks never go on sale only to be cancelled.
+## A station staff cannot reach (a bar or a fryer walled in on every side)
+## does not count, so its dishes never go on sale only to be cancelled.
 func _cookable_live() -> Array[RecipeDef]:
 	var definitions: Array[ItemDef] = []
-	var drink_stations: Dictionary[StringName, bool] = _drink_station_types()
 	for placed: PlacedItem in world.grid.items():
 		var definition: ItemDef = placed.def as ItemDef
 		if definition == null or placed.removed:
 			continue
-		if definition.category == ItemDef.Category.STATION and drink_stations.has(definition.station_type) \
-				and not _station_reachable(placed):
+		if definition.category == ItemDef.Category.STATION and not _station_reachable(placed):
 			continue
 		definitions.append(definition)
 	return _cookable_from(definitions)
-
-
-func _drink_station_types() -> Dictionary[StringName, bool]:
-	var types: Dictionary[StringName, bool] = {}
-	for recipe: RecipeDef in content.recipes():
-		if recipe.is_drink():
-			for step: RecipeStep in recipe.steps:
-				types[step.station_type] = true
-	return types
 
 
 func _station_reachable(placed: PlacedItem) -> bool:

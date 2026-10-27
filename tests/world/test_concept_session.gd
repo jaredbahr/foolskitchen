@@ -474,3 +474,34 @@ func test_food_equipment_reasons_survive_a_menu_refresh() -> void:
 	panel.refresh()
 	assert_eq(panel.tree_item_for(&"fries").get_text(1), "Buy a fryer")
 	assert_eq(panel.tree_item_for(&"savoury_pie").get_text(1), "Buy an oven")
+
+
+func test_a_walled_in_fryer_or_fridge_shows_red_in_the_tree_and_fries_leave_the_menu() -> void:
+	var main: Node = _start(false)
+	var settings: MenuSettings = main.get("menu_settings") as MenuSettings
+	assert_true(settings.set_owner_level(2))
+	(main.get("shop_editor") as ShopEditor).set_owner_level(2)
+	Economy.add_cash(1000, Ledger.SALE)
+	assert_true(main.call("shop_buy", &"fryer", Vector2i(9, 3), 0))
+	assert_true(_menu_ids(main).has(&"fries"))
+	var sim: RestaurantSim = main.get("sim") as RestaurantSim
+	var fryer: PlacedItem = sim.world.grid.item_at(Vector2i(9, 3))
+	for cell: Vector2i in fryer.work_cells:
+		assert_not_null(sim.world.grid.place(Vector2i.ONE, cell, 0, true), "a crate blocks the fryer")
+	main.call("_refresh_menu_catalogue")
+	assert_false(_menu_ids(main).has(&"fries"), "service never takes orders staff can't cook")
+	assert_true(main.call("set_menu_visible", true))
+	var panel: MenuPanel = main.get_node("Overlay/MenuPanel") as MenuPanel
+	assert_eq(panel.tree_item_for(&"fries").get_text(1), "Can't reach the fryer")
+	assert_eq(panel.tree_item_for(&"fries").get_custom_color(1), MenuPanel.HIGHER_COLOR)
+	assert_eq(panel.tree_item_for(&"fries").get_tooltip_text(1), "Staff can't reach the fryer.")
+	assert_true(main.call("set_menu_visible", false))
+	for placed: PlacedItem in sim.world.grid.items():
+		var definition: ItemDef = placed.def as ItemDef
+		if definition != null and definition.station_type == &"fridge":
+			for cell: Vector2i in placed.work_cells:
+				if sim.world.grid.is_walkable(cell):
+					assert_not_null(sim.world.grid.place(Vector2i.ONE, cell, 0, true))
+	assert_true(main.call("set_menu_visible", true))
+	assert_eq(panel.tree_item_for(&"burger").get_text(1), "Can't reach the fridge")
+	assert_eq(panel.tree_item_for(&"burger").get_custom_color(1), MenuPanel.HIGHER_COLOR)
