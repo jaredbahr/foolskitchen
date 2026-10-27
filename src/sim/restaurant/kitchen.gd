@@ -697,32 +697,61 @@ func _station(world: SimWorld, station_type: StringName, category: ItemDef.Categ
 	return null
 
 
-## New cook and drink tickets prefer a reachable station nobody is working at.
-## With several reachable but busy, the first reachable station is retained;
-## ordinary task reservation waits still apply.
+## New cook and drink tickets go to the reachable station of the type with
+## the most spare room: its reachable work cells, less the cells already booked
+## and the kitchen tickets still on their way to it. A ticket binds to its
+## station when posted but books it only when the worker walks there, so
+## counting queued tickets keeps a burst of orders from piling onto the first
+## station while a second one idles. Ties go to grid order (no RNG); with every
+## station full, the ticket waits at the first one through ordinary bookings.
 func _free_station(world: SimWorld, station_type: StringName) -> PlacedItem:
-	var first: PlacedItem = null
+	var best: PlacedItem = null
+	var best_spare: int = 0
 	var entries: Array[Vector2i] = world.grid.entries()
 	for item: PlacedItem in world.grid.items():
 		var definition: ItemDef = item.def as ItemDef
 		if definition == null or definition.station_type != station_type or definition.category != ItemDef.Category.STATION:
 			continue
-		var free: bool = false
-		var reachable: bool = false
+		var reachable: int = 0
+		var bookers: Array[int] = []
 		for cell: Vector2i in item.work_cells:
 			if not world.grid.is_walkable(cell) or world.grid.find_path_to_any(cell, entries).is_empty():
 				continue
-			reachable = true
-			if item.reserved_by(cell) == -1:
-				free = true
-				break
-		if not reachable:
+			reachable += 1
+			var booker: int = item.reserved_by(cell)
+			if booker != -1:
+				bookers.append(booker)
+		if reachable == 0:
 			continue
-		if free:
-			return item
-		if first == null:
-			first = item
-	return first
+		var spare: int = reachable - bookers.size() - _queued_visits(world, item.id, bookers)
+		if best == null or spare > best_spare:
+			best = item
+			best_spare = spare
+	return best
+
+
+## Kitchen tickets (cooks and pours) that still have to walk to `item_id`,
+## leaving out workers whose booking there is already counted.
+func _queued_visits(world: SimWorld, item_id: int, bookers: Array[int]) -> int:
+	var count: int = 0
+	for task: SimTask in _tasks.values():
+		if not task.payload.has("station_ids") or not (task.payload["station_ids"] as Array).has(item_id):
+			continue
+		if task.state != SimTask.State.OPEN and task.state != SimTask.State.CLAIMED:
+			continue
+		var from: int = 0
+		if task.state == SimTask.State.CLAIMED:
+			if bookers.has(task.claimed_by):
+				continue
+			var worker: StaffAgent = world.agent(task.claimed_by) as StaffAgent
+			if worker != null and worker.task == task:
+				from = worker.step_index
+		for index: int in range(from, task.steps.size()):
+			var step: TaskStep = task.steps[index]
+			if step.kind == TaskStep.Kind.GO_TO_ITEM and step.item_id == item_id:
+				count += 1
+				break
+	return count
 
 
 func _pass(world: SimWorld) -> PlacedItem:

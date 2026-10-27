@@ -43,6 +43,35 @@ func test_shipped_prep_counter_and_its_external_work_cell_assign_kitchen() -> vo
 		assert_eq(_snapshot(), before)
 
 
+func test_shipped_fryer_oven_and_prep_cabinet_assign_kitchen_and_coffee_machine_does_not() -> void:
+	var content: ContentDB = ContentDB.new()
+	assert_eq(content.load_all(), PackedStringArray())
+	for id: StringName in [&"fryer", &"oven", &"prep_cabinet", &"coffee_machine"]:
+		var definition: ItemDef = content.item(id)
+		assert_not_null(definition, "shipped %s" % id)
+		if definition == null:
+			continue
+		assert_eq(definition.category, ItemDef.Category.STATION)
+		for quarter: int in 4:
+			_grid = SimGrid.new(Vector2i(20, 20))
+			var item: PlacedItem = _grid.place_def(definition, Vector2i(8, 8), quarter)
+			assert_not_null(item)
+			if item == null or item.work_cells.is_empty():
+				continue
+			var before: Array[Dictionary] = _snapshot()
+			var footprint: Dictionary = OwnerAssignment.resolve(GridMath.cell_to_world(item.origin), _grid)
+			var work: Dictionary = OwnerAssignment.resolve(GridMath.cell_to_world(item.work_cells[0]), _grid)
+			if id == &"coffee_machine":
+				# Drinks are floor work; croissants there still go to any cook.
+				_assert_none(footprint)
+				_assert_none(work)
+			else:
+				assert_eq(footprint, {"mode": &"kitchen", "item_id": item.id, "work_cell_index": -1})
+				assert_null(_grid.item_at(item.work_cells[0]))
+				assert_eq(work, {"mode": &"kitchen", "item_id": item.id, "work_cell_index": 0})
+			assert_eq(_snapshot(), before)
+
+
 func test_fryer_and_oven_rotations_assign_the_same_owner_to_kitchen_without_advancing_world() -> void:
 	for station_type: StringName in [&"fryer", &"oven"]:
 		for quarter: int in 4:

@@ -265,6 +265,90 @@ func _complete_station_choice_service(guest: CustomerAgent, worker: StaffAgent, 
 		assert_eq(_sim.stock.count(ingredient.id), 99)
 
 
+func test_queued_party_tickets_with_two_real_cooks_use_both_prep_counters() -> void:
+	# Nobody books a station until they walk to it (after the fridge), so a
+	# ticket posted while the first still waits in the queue must see it queued
+	# for the original counter. The cooks are held off (as if busy elsewhere)
+	# until both of the party's tickets are up, then both cook at once.
+	var original: PlacedItem = _item(&"prep_counter")
+	var alternative: PlacedItem = _sim.world.grid.place_def(_content.item(&"prep_counter"), Vector2i(3, 3))
+	assert_not_null(alternative)
+	if alternative == null:
+		return
+	var first_cook: StaffAgent = _staff(&"cook")
+	var second_cook: StaffAgent = StaffAgent.new(&"cook", 3)
+	second_cook.cell = first_cook.cell
+	_sim.world.add_agent(second_cook)
+	var held: Dictionary[int, Dictionary] = {}
+	for cook: StaffAgent in [first_cook, second_cook]:
+		held[cook.id] = cook.priorities.duplicate()
+		cook.priorities[&"cook"] = 0
+		cook.priorities[&"any"] = 0
+	# A party of two orders together: the realistic burst.
+	var randoms: Array[RandomNumberGenerator] = []
+	for seed: int in [42, 43]:
+		var random: RandomNumberGenerator = RandomNumberGenerator.new()
+		random.seed = seed
+		randoms.append(random)
+	var party: Party = _sim.add_party(_sim.world.grid.entries()[0], randoms)
+	assert_not_null(party)
+	if party == null:
+		return
+	var guests: Array[CustomerAgent] = []
+	for guest: CustomerAgent in _sim.customers():
+		guest.eat_ticks = 3
+		guest.food_patience = 5000
+		guests.append(guest)
+	assert_eq(guests.size(), 2)
+	assert_true(_sim.world.clock.start_service())
+	var tickets: Array[SimTask] = []
+	var worked: Dictionary[int, Dictionary] = {}
+	for tick: int in 4000:
+		_sim.advance()
+		var open: Array[SimTask] = _sim.world.board.open_tasks()
+		open.append_array(_sim.world.board.claimed_tasks())
+		for task: SimTask in open:
+			if task.kind == &"cook" and not tickets.has(task):
+				tickets.append(task)
+				if tickets.size() == 2:
+					for cook: StaffAgent in [first_cook, second_cook]:
+						cook.priorities.assign(held[cook.id])
+		for cook: StaffAgent in [first_cook, second_cook]:
+			if cook.task == null or cook.task.kind != &"cook" or cook.step_index == 0 \
+					or cook.step_index >= cook.task.steps.size():
+				continue
+			var previous: TaskStep = cook.task.steps[cook.step_index - 1]
+			if cook.task.steps[cook.step_index].kind == TaskStep.Kind.WORK \
+					and previous.kind == TaskStep.Kind.GO_TO_ITEM \
+					and (previous.item_id == original.id or previous.item_id == alternative.id):
+				var station: PlacedItem = _sim.world.grid.item(previous.item_id)
+				assert_true(station.work_cells.has(cook.cell), "prep work happens at the bound counter")
+				if not worked.has(station.id):
+					worked[station.id] = {}
+				worked[station.id][cook.id] = true
+		if guests[0].state == CustomerAgent.State.LEFT and guests[1].state == CustomerAgent.State.LEFT \
+				and _sim.world.board.active_count() == 0:
+			break
+	assert_eq(tickets.size(), 2, "both guests' tickets were posted")
+	if tickets.size() != 2:
+		return
+	var bound: Array[int] = []
+	for task: SimTask in tickets:
+		for id: int in task.payload["station_ids"]:
+			if id == original.id or id == alternative.id:
+				bound.append(id)
+	assert_eq(bound.size(), 2, "each ticket binds one prep counter")
+	assert_true(bound.has(original.id) and bound.has(alternative.id), "queued tickets bind different counters")
+	assert_true(worked.has(original.id), "the original counter is worked")
+	assert_true(worked.has(alternative.id), "the second counter is worked")
+	for guest: CustomerAgent in guests:
+		assert_not_null(guest.order)
+		if guest.order != null:
+			assert_eq(guest.order.state, Order.State.DELIVERED)
+		assert_eq(_left.get(guest.id, &""), &"happy")
+	_assert_drained()
+
+
 func test_out_of_stock_cancels_ticket_and_guest_with_same_reason() -> void:
 	var guest: CustomerAgent = _guest()
 	_sim.world.clock.start_service()
