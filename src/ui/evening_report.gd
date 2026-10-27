@@ -34,6 +34,7 @@ var _guests: Label
 var _cleanliness: Label
 var _guest_bar: ProgressBar
 var _reasons: GridContainer
+var _low_stock: VBoxContainer
 var _review_stats: Label
 var _reputation: Label
 var _reviews: VBoxContainer
@@ -89,6 +90,11 @@ func show_report(report: DayReport) -> void:
 		if not report.cleanliness_label.is_empty() else ""
 	_cleanliness.visible = not report.cleanliness_label.is_empty()
 	_fill_reasons(report.leave_reasons)
+	_clear(_low_stock)
+	for line: String in report.low_stock:
+		_add_label(_low_stock, line)
+	if report.low_stock.is_empty():
+		_add_label(_low_stock, "Nothing ran out, and the fridge is ready for tomorrow")
 	if report.review_cards.is_empty():
 		_review_stats.text = "Today's reviews: none"
 	else:
@@ -142,6 +148,7 @@ func _bind_nodes() -> void:
 	_cleanliness = %Cleanliness
 	_guest_bar = %GuestBar
 	_reasons = %ReasonRows
+	_low_stock = %LowStockRows
 	_review_stats = %ReviewStats
 	_reputation = %Reputation
 	_reviews = %ReviewRows
@@ -162,9 +169,10 @@ func _bind_nodes() -> void:
 	content.move_child(vibe_summary, (content.get_node("ReviewHeading") as Control).get_index())
 	var next_day: Button = %NextDay
 	IconStyle.decorate_label(_header, &"report")
-	for path: String in ["ReviewHeading", "GuestHeading", "ReasonHeading", "OwnerHeading"]:
+	for path: String in ["ReviewHeading", "GuestHeading", "ReasonHeading", "LowStockHeading", "OwnerHeading"]:
 		IconStyle.decorate_label(get_node("Panel/Scroll/Content/" + path) as Label,
-			&"reputation" if path == "ReviewHeading" else (&"staff" if path == "GuestHeading" else &"report"))
+			&"reputation" if path == "ReviewHeading" else (&"staff" if path == "GuestHeading"
+				else (&"stock" if path == "LowStockHeading" else &"report")))
 	IconStyle.configure_button(next_day, &"next_day", "Next day", "Begin the next morning", IconCatalogue.PANEL_SIZE)
 	next_day.pressed.connect(_on_next_day_pressed)
 	_nodes_bound = true

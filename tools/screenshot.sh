@@ -3,6 +3,7 @@
 # saves PNGs to screens/ (git-ignored). Needs xvfb and Mesa (software OpenGL).
 # Usage: bash tools/screenshot.sh [--out=dir] [--frames=120,400,900] [--speed=4] [--scene=res://...] [--quarter=0..3] [--open] [--fast=N] [--select=guest|owner] [--assign-owner=kitchen] [--f3] [--menu] [--settings] [--report] [--build=green|red] [--paint]
 # --staff --speed=0 shows the production Staff panel without changing its roster.
+# --stock --speed=0 --frames=12 shows the morning Stock panel; --stock --report --open --fast=100 --speed=0 --frames=60 shows the report's Low stock section.
 # --settings --speed=0 --frames=12 shows Settings at the usual 1600x900 / 100%.
 # --settings-world --speed=0 --frames=90 selects 150%, uses keyboard Close and shows the world.
 # --hud-layout --window-size=1280x720|1600x900 --speed=0 --frames=12,90 captures 125%, then 150%.
