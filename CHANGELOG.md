@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- Check the fridge in the new morning Stock panel: buy ingredients at list price, and choose what auto-reorder tops up each morning (for a 10% premium). Dishes that run out are marked sold out, so guests order something else instead of leaving, and the evening report says what ran out and when. Old ingredients now go off after their shelf life. (#156)
 - Decorate your diner with padded two-seat booths and chrome counter stools. (#147)
 - Track career goals and earn cash and XP for reaching them. (#146)
 - Meet Students, Foodies and Families with different budgets and patience; inspect a guest to see their type. (#145)
