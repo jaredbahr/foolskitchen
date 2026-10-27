@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- Extra prep counters, stoves and other stations now add real kitchen capacity: cooks spread orders across stations of the same type instead of queuing at the first one. Assign the owner to a fryer or oven to help in the kitchen. (#184)
 - Cook fries at a fryer or savoury pies in an oven; the menu explains missing equipment. (#185)
 - New kitchen pieces in Buy mode: a fryer and a corner cabinet at level 2, an oven at level 3 and a one-cell prep cabinet at level 4. Fryer and oven dishes come later. (#182)
 - Name your restaurant and see it on the HUD, reports and street sign. Organise dishes into menu sections, with a menu size that grows as you level up. (#181)
