@@ -12,6 +12,7 @@ Each line ends with its PR number.
 
 ### Players
 - Browse recipe unlock branches and select a dish to see its quality, price, equipment and ingredient stock. (#186)
+- Cook fries at a fryer or savoury pies in an oven; the menu explains missing equipment. (#185)
 - New kitchen pieces in Buy mode: a fryer and a corner cabinet at level 2, an oven at level 3 and a one-cell prep cabinet at level 4. Fryer and oven dishes come later. (#182)
 - Name your restaurant and see it on the HUD, reports and street sign. Organise dishes into menu sections, with a menu size that grows as you level up. (#181)
 - Run a coffee shop, a bar or a mix: buy a coffee machine for coffee, tea and croissants, a drinks fridge for soft drinks, or a drinks shelf for beer and wine, and they join a new Drinks section on the menu. Build a bar from sections, ends and corners in the Bar & Café tab; every stool facing it is a seat, served from behind the counter. Some guests now drop in just for a quick drink (coffee drinkers sometimes add a croissant), and diners may add a drink to their meal. Set your opening hours in the morning Menu (coffee drinkers come early, evening drinkers late; staff are paid for the hours you open), and decorate for the new Café and Bar themes, which Students and Regulars like. (#183)
