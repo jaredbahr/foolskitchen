@@ -293,3 +293,12 @@ func test_a_drink_left_off_a_full_menu_says_how_to_add_it() -> void:
 	var hints: Array[String] = main.call("drink_station_hints")
 	var notice: String = "%s is ready to serve; make room on the menu to add it." % waiting[0].display_name
 	assert_true(hints.has(notice), str(hints))
+	# Making room and switching it on from the panel clears the notice at once.
+	var panel: Node = main.get("_menu_panel")
+	panel.call("set_drink_hints", hints)
+	var other: StringName = settings.enabled_recipes()[0].id
+	main.call("_on_menu_enable_requested", other, false)
+	main.call("_on_menu_enable_requested", waiting[0].id, true)
+	assert_true(settings.is_enabled(waiting[0].id))
+	var shown: Array = panel.get("_drink_hints")
+	assert_false(shown.has(notice), str(shown))

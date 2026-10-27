@@ -373,20 +373,27 @@ func test_menu_limit_bounds_initial_choices_selection_and_owner_downgrade() -> v
 	assert_eq(menu.menu_limit(), 6)
 
 
-func test_menu_limit_rejects_oversized_current_and_legacy_restores_atomically() -> void:
+func test_oversized_menu_survives_every_morning_save_round_trip() -> void:
 	var catalog: Array[RecipeDef] = _large_catalog()
 	var expanded: MenuSettings = MenuSettings.new(catalog, 5)
 	assert_eq(expanded.enabled_count(), 8)
 	assert_true(expanded.set_restaurant_name("Eight Courses"))
-	var small: MenuSettings = MenuSettings.new(catalog)
-	assert_true(small.set_restaurant_name("Small Menu"))
-	var before: Dictionary = small.to_dict()
 	var oversized: Dictionary = expanded.to_dict()
-	assert_false(small.from_dict(JSON.parse_string(JSON.stringify(oversized))))
-	assert_eq(small.to_dict(), before)
-	assert_true(small.set_owner_level(5))
+	# A versioned save over the level-1 limit still loads: losing the game is
+	# worse than an oversized menu, which only blocks additions.
+	var small: MenuSettings = MenuSettings.new(catalog)
+	assert_eq(small.menu_limit(), 6)
 	assert_true(small.from_dict(JSON.parse_string(JSON.stringify(oversized))))
 	assert_eq(small.to_dict(), oversized)
+	# Legacy load, then the next morning's v1 save, then a fresh load.
+	var legacy: Dictionary = {"enabled": oversized["enabled"], "prices": oversized["prices"]}
+	var day_one: MenuSettings = MenuSettings.new(catalog)
+	assert_true(day_one.from_dict(JSON.parse_string(JSON.stringify(legacy))))
+	var resaved: Dictionary = JSON.parse_string(JSON.stringify(day_one.to_dict()))
+	assert_eq(int(resaved["version"]), 1)
+	var day_two: MenuSettings = MenuSettings.new(catalog)
+	assert_true(day_two.from_dict(resaved), "the next morning's save must load")
+	assert_eq(day_two.enabled_count(), 8)
 
 
 func test_unversioned_oversized_menu_loads_and_blocks_additions_until_under_limit() -> void:

@@ -1978,6 +1978,7 @@ func _on_settings_close_requested() -> void:
 
 func _on_menu_enable_requested(recipe_id: StringName, enabled: bool) -> void:
 	menu_set_enabled(recipe_id, enabled)
+	_menu_panel.set_drink_hints(drink_station_hints())
 	_menu_panel.refresh()
 
 

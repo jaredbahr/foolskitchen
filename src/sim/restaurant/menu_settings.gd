@@ -312,11 +312,11 @@ func from_dict(data: Variant) -> bool:
 		return false
 	var enabled_data: Array = section["enabled"]
 	var price_data: Dictionary = section["prices"]
-	# A save from before the dish limit (no version) keeps an oversized menu:
-	# FK-083 drinks could switch on 7-8 items at level 1. set_enabled adds
-	# nothing more until the player is back under the limit.
-	if enabled_data.is_empty() or (not legacy and enabled_data.size() > menu_limit()) \
-			or price_data.size() > _recipes.size():
+	# An oversized menu loads as saved, whatever the version: FK-083 drinks
+	# could switch on 7-8 items at level 1 before the limit existed, and the
+	# next morning's save rewrites that menu as version 1. The limit only gates
+	# additions: set_enabled adds nothing until the player is under it again.
+	if enabled_data.is_empty() or price_data.size() > _recipes.size():
 		return false
 	var next_enabled: Dictionary[StringName, bool] = {}
 	for value: Variant in enabled_data:
