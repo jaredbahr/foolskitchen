@@ -18,31 +18,69 @@ rotation = Vector3(0, 3.141592653589793, 0)
 
 [node name="Model" parent="Shelf/Art" instance=ExtResource("2_shelf")]
 
-[node name="WineRed" type="Node3D" parent="."]
-position = Vector3(-0.13, 0, 0)
+[node name="TopWineRed1" type="Node3D" parent="."]
+position = Vector3(-0.15, 0, 0.02)
 metadata/art_group = &"food"
 metadata/support = NodePath("../Shelf")
 
-[node name="Art" type="Node3D" parent="WineRed"]
+[node name="Art" type="Node3D" parent="TopWineRed1"]
 rotation = Vector3(0, 3.141592653589793, 0)
 
-[node name="Model" parent="WineRed/Art" instance=ExtResource("3_red")]
+[node name="Model" parent="TopWineRed1/Art" instance=ExtResource("3_red")]
 
-[node name="WineWhite" type="Node3D" parent="."]
+[node name="TopWineWhite2" type="Node3D" parent="."]
+position = Vector3(-0.05, 0, 0.02)
 metadata/art_group = &"food"
 metadata/support = NodePath("../Shelf")
 
-[node name="Art" type="Node3D" parent="WineWhite"]
+[node name="Art" type="Node3D" parent="TopWineWhite2"]
 rotation = Vector3(0, 3.141592653589793, 0)
 
-[node name="Model" parent="WineWhite/Art" instance=ExtResource("4_white")]
+[node name="Model" parent="TopWineWhite2/Art" instance=ExtResource("4_white")]
 
-[node name="Soda" type="Node3D" parent="."]
-position = Vector3(0.13, 0, 0)
+[node name="TopSoda3" type="Node3D" parent="."]
+position = Vector3(0.05, 0, 0.02)
 metadata/art_group = &"food"
 metadata/support = NodePath("../Shelf")
 
-[node name="Art" type="Node3D" parent="Soda"]
+[node name="Art" type="Node3D" parent="TopSoda3"]
 rotation = Vector3(0, 3.141592653589793, 0)
 
-[node name="Model" parent="Soda/Art" instance=ExtResource("5_soda")]
+[node name="Model" parent="TopSoda3/Art" instance=ExtResource("5_soda")]
+
+[node name="TopWineRed4" type="Node3D" parent="."]
+position = Vector3(0.15, 0, 0.02)
+metadata/art_group = &"food"
+metadata/support = NodePath("../Shelf")
+
+[node name="Art" type="Node3D" parent="TopWineRed4"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="TopWineRed4/Art" instance=ExtResource("3_red")]
+
+[node name="ShelfWineWhite1" type="Node3D" parent="."]
+position = Vector3(-0.11, 0.143, 0)
+metadata/art_group = &"food"
+
+[node name="Art" type="Node3D" parent="ShelfWineWhite1"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="ShelfWineWhite1/Art" instance=ExtResource("4_white")]
+
+[node name="ShelfSoda2" type="Node3D" parent="."]
+position = Vector3(0.0, 0.143, 0)
+metadata/art_group = &"food"
+
+[node name="Art" type="Node3D" parent="ShelfSoda2"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="ShelfSoda2/Art" instance=ExtResource("5_soda")]
+
+[node name="ShelfWineWhite3" type="Node3D" parent="."]
+position = Vector3(0.11, 0.143, 0)
+metadata/art_group = &"food"
+
+[node name="Art" type="Node3D" parent="ShelfWineWhite3"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="ShelfWineWhite3/Art" instance=ExtResource("4_white")]

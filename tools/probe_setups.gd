@@ -53,17 +53,21 @@ static func morning(name: String, main: Node) -> bool:
 
 
 ## FK-083 coffee shop: open 07:00-15:00 serving coffee, tea and croissants.
-## Two coffee machines behind a four-stool café counter, plus three tables.
-## Built free of charge (like expanded_tables), stocked at the normal price.
+## Two coffee machines behind a four-stool café counter, the two starter
+## tables, a round table with two rounded chairs, and café plants and a side
+## table (the room reads as a Café). Built free of charge (like
+## expanded_tables, so level-two pieces too), stocked at the normal price.
 static func _coffee_shop(main: Node) -> bool:
 	var editor: ShopEditor = _free_editor(main)
 	if editor == null or not _clear_east_table(main, editor):
 		return false
 	for placement: Array in [[&"coffee_machine", Vector2i(9, 5), 2], [&"coffee_machine", Vector2i(10, 5), 2],
-			[&"table_2", Vector2i(2, 8), 0]]:
+			[&"round_table", Vector2i(2, 8), 0], [&"rounded_chair", Vector2i(1, 8), 1],
+			[&"rounded_chair", Vector2i(4, 9), 3], [&"plant_small_2", Vector2i(12, 9), 0],
+			[&"side_table", Vector2i(11, 5), 2], [&"plant_small_2", Vector2i(12, 5), 0]]:
 		if not editor.buy(placement[0], placement[1], placement[2]):
 			return false
-	if not _counter_with_stools(editor, 9, 12):
+	if not _counter_with_stools(editor, 9, 12) or not editor.last_check.unreachable.is_empty():
 		return false
 	return _finish(main, 7 * 60, 15 * 60, [&"coffee", &"tea", &"croissant"],
 		[&"burger", &"grilled_cheese", &"tomato_soup"])
@@ -79,7 +83,7 @@ static func _bar(main: Node) -> bool:
 			[&"table_2", Vector2i(2, 8), 0]]:
 		if not editor.buy(placement[0], placement[1], placement[2]):
 			return false
-	if not _counter_with_stools(editor, 9, 12):
+	if not _counter_with_stools(editor, 9, 12) or not editor.last_check.unreachable.is_empty():
 		return false
 	return _finish(main, 16 * 60, 24 * 60, [&"beer", &"wine", &"soft_drink", &"burger", &"grilled_cheese"],
 		[&"tomato_soup"])
@@ -93,7 +97,9 @@ static func _free_editor(main: Node) -> ShopEditor:
 		return null
 	var books: ShopEditBooks = ShopEditBooks.new(func(_amount: int) -> bool: return true,
 		func(_amount: int, _category: StringName) -> void: pass)
-	return ShopEditor.new(sim, content, books, layout)
+	var editor: ShopEditor = ShopEditor.new(sim, content, books, layout)
+	editor.set_owner_level(2)
+	return editor
 
 
 ## The east two-seat table and the plant make room for the counter.
@@ -138,8 +144,6 @@ static func _finish(main: Node, open_minute: int, close_minute: int, menu_on: Ar
 		if not wanted and not main.call("stock_set_auto", id, false):
 			return false
 	main.call("_restock")
-	if OS.get_environment("FK_OWNER_FLOOR") == "1":
-		(main.get("sim") as RestaurantSim).assign_owner(&"floor")
 	return true
 
 

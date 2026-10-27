@@ -1675,9 +1675,12 @@ func drink_station_hints() -> Array[String]:
 			present[definition.station_type] = true
 	var needs: Dictionary[StringName, Array] = {}
 	var order: Array[StringName] = []
-	for recipe: RecipeDef in content.recipes():
-		if not recipe.is_drink() or recipe.unlock_tier != 1:
-			continue
+	var drinks: Array[RecipeDef] = []
+	for kind: StringName in RecipeDef.ORDER_TYPES:
+		for recipe: RecipeDef in content.recipes():
+			if recipe.order_type == kind and recipe.is_drink() and recipe.unlock_tier == 1:
+				drinks.append(recipe)
+	for recipe: RecipeDef in drinks:
 		for step: RecipeStep in recipe.steps:
 			if present.has(step.station_type):
 				continue
@@ -1705,6 +1708,7 @@ func set_opening_hours(open_minute: int, close_minute: int) -> bool:
 		return false
 	if _menu_panel != null:
 		_menu_panel.set_hours(Clock.sim.display_open_minute, Clock.sim.display_close_minute, HOURS_TUNING)
+	$HUD.refresh()
 	refresh_presentation()
 	return true
 

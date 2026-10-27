@@ -6,13 +6,13 @@ const CASES: Array[Dictionary] = [
 	{"id": &"rug_rectangle", "name": "Rectangular rug", "asset": "rugRectangle", "price": 45, "unlock": 2, "charm": 2, "tags": [&"cosy"], "footprint": Vector2i(4, 2), "solid": false, "paintable": false},
 	{"id": &"rug_square", "name": "Square rug", "asset": "rugSquare", "price": 40, "unlock": 2, "charm": 2, "tags": [&"modern"], "footprint": Vector2i(2, 2), "solid": false, "paintable": false},
 	{"id": &"plant_small_1", "name": "Small plant", "asset": "plantSmall1", "price": 15, "unlock": 1, "charm": 1, "tags": [&"cosy"], "footprint": Vector2i(1, 1), "solid": true, "paintable": true},
-	{"id": &"plant_small_2", "name": "Leafy plant", "asset": "plantSmall2", "price": 20, "unlock": 2, "charm": 1, "tags": [&"modern"], "footprint": Vector2i(1, 1), "solid": true, "paintable": true},
+	{"id": &"plant_small_2", "name": "Leafy plant", "asset": "plantSmall2", "price": 20, "unlock": 2, "charm": 1, "tags": [&"modern", &"cafe"], "footprint": Vector2i(1, 1), "solid": true, "paintable": true},
 	{"id": &"plant_small_3", "name": "Tall plant", "asset": "plantSmall3", "price": 25, "unlock": 3, "charm": 1, "tags": [&"rustic"], "footprint": Vector2i(1, 1), "solid": true, "paintable": true},
 	{"id": &"bookcase_open_low", "name": "Low open bookcase", "asset": "bookcaseOpenLow", "price": 65, "unlock": 3, "charm": 2, "tags": [&"cosy", &"rustic"], "footprint": Vector2i(1, 1), "solid": true, "paintable": true},
 	{"id": &"coat_rack_standing", "name": "Standing coat rack", "asset": "coatRackStanding", "price": 25, "unlock": 2, "charm": 1, "tags": [&"diner"], "footprint": Vector2i(1, 1), "solid": true, "paintable": true},
 	{"id": &"speaker", "name": "Speaker", "asset": "speaker", "price": 75, "unlock": 4, "charm": 2, "tags": [&"modern", &"bar"], "footprint": Vector2i(1, 1), "solid": true, "paintable": true},
 	{"id": &"television_vintage", "name": "Vintage television", "asset": "televisionVintage", "price": 150, "unlock": 6, "charm": 3, "tags": [&"diner", &"bar"], "footprint": Vector2i(1, 1), "solid": true, "paintable": true},
-	{"id": &"side_table", "name": "Side table", "asset": "sideTable", "price": 35, "unlock": 2, "charm": 1, "tags": [&"rustic"], "footprint": Vector2i(1, 1), "solid": true, "paintable": true},
+	{"id": &"side_table", "name": "Side table", "asset": "sideTable", "price": 35, "unlock": 2, "charm": 1, "tags": [&"rustic", &"cafe"], "footprint": Vector2i(1, 1), "solid": true, "paintable": true},
 ]
 
 var _views: Array[PropView] = []
