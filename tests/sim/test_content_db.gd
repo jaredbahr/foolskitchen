@@ -386,6 +386,8 @@ func test_unlock_links_load_as_owner_level_branches_without_changing_prices() ->
 	assert_eq(db.recipe(&"tomato_melt").unlock_from, &"burger")
 	assert_eq(db.recipe(&"tea").unlock_from, &"coffee")
 	assert_eq(db.recipe(&"wine").unlock_from, &"beer")
+	assert_eq(db.recipe(&"fries").unlock_from, &"burger")
+	assert_eq(db.recipe(&"savoury_pie").unlock_from, &"tomato_soup")
 	assert_eq(RecipeDef.validate_unlocks(db.recipes()), PackedStringArray())
 	assert_eq(db.recipe(&"burger").standard_price, 12)
 	assert_eq(db.recipe(&"tomato_melt").unlock_level, 2)

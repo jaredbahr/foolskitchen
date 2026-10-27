@@ -180,7 +180,7 @@ func test_menu_settings_entry_opens_and_returns_without_changing_dishes() -> voi
 	var before: Dictionary = (main.get("menu_settings") as MenuSettings).to_dict()
 	menu_button.pressed.emit()
 	assert_true(menu.visible)
-	(menu.get_node("Panel/Content/SettingsButton") as Button).pressed.emit()
+	(menu.get_node("%SettingsButton") as Button).pressed.emit()
 	assert_false(menu.visible)
 	assert_true(settings.visible)
 	assert_eq(settings.theme, preload("res://src/ui/theme/main_theme.tres"))
@@ -201,7 +201,7 @@ func test_settings_modal_blocks_outside_clicks_from_the_hud_menu() -> void:
 	var menu: MenuPanel = main.get_node("Overlay/MenuPanel") as MenuPanel
 	var settings: SettingsPanel = main.get_node("Overlay/SettingsPanel") as SettingsPanel
 	menu_button.pressed.emit()
-	(menu.get_node("Panel/Content/SettingsButton") as Button).pressed.emit()
+	(menu.get_node("%SettingsButton") as Button).pressed.emit()
 	await tree.process_frame
 	await tree.process_frame
 	assert_eq(settings.mouse_filter, Control.MOUSE_FILTER_STOP)
@@ -561,7 +561,7 @@ func test_tree_browsing_missing_and_locked_dishes_draws_no_rng_and_changes_no_sa
 	assert_true(panel.select_recipe(&"coffee"))
 	assert_true((panel.row_for(&"coffee").get_node("Top/Enabled") as Button).disabled)
 	assert_true(panel.select_recipe(&"tomato_melt"))
-	assert_true(panel.tree_item_for(&"tomato_melt").get_text(1).contains("Locked"))
+	assert_eq(panel.tree_item_for(&"tomato_melt").get_text(1), "Lv 2")
 	assert_eq(settings.to_dict(), menu)
 	assert_eq(FileAccess.get_file_as_string(_path()), morning)
 	assert_eq(Economy.ledger.to_dict(), books)
@@ -575,7 +575,7 @@ func test_detail_requirements_aggregate_real_stock_and_use_reachable_station_nam
 	var details: Dictionary[StringName, Dictionary] = main.call("menu_recipe_details")
 	var ingredients: Array = details[&"grilled_cheese"]["ingredients"]
 	assert_true(ingredients.has({"text": "Bread: 16 in stock / 2 needed", "met": true}))
-	assert_true(details[&"coffee"]["equipment"].has({"text": "Needs a coffee machine", "met": false}))
+	assert_true(details[&"coffee"]["equipment"].has({"text": "Buy a coffee machine", "met": false}))
 	assert_true(Economy.stock.take(&"bread", 16))
 	details = main.call("menu_recipe_details")
 	assert_true(details[&"grilled_cheese"]["ingredients"].has({"text": "Bread: 0 in stock / 2 needed", "met": false}))

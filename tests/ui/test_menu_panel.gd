@@ -41,7 +41,7 @@ func test_rows_defaults_shared_styles_and_mouse_scope_work_before_ready() -> voi
 	assert_eq(_panel.anchor_right, 1.0)
 	assert_eq(_panel.anchor_bottom, 1.0)
 	var panel: Control = _panel.get_node("Panel") as Control
-	var scroll: ScrollContainer = _panel.get_node("Panel/Content/Scroll") as ScrollContainer
+	var scroll: ScrollContainer = _panel.get_node("Panel/Content/Body/Scroll") as ScrollContainer
 	assert_eq(panel.mouse_filter, Control.MOUSE_FILTER_STOP)
 	assert_false(panel.mouse_force_pass_scroll_events)
 	assert_true(panel.clip_contents)
@@ -52,7 +52,7 @@ func test_rows_defaults_shared_styles_and_mouse_scope_work_before_ready() -> voi
 	assert_eq(scroll.horizontal_scroll_mode, ScrollContainer.SCROLL_MODE_DISABLED)
 	assert_eq(scroll.mouse_filter, Control.MOUSE_FILTER_STOP)
 	assert_false(scroll.mouse_force_pass_scroll_events)
-	var rows: Node = _panel.get_node("Panel/Content/Scroll/List/Rows")
+	var rows: Node = _panel.get_node("%Rows")
 	assert_eq(rows.get_child_count(), 4)
 	assert_eq((rows.get_child(1).get_node("Top/Name") as Label).text, "Burger")
 	assert_eq((rows.get_child(2).get_node("Top/Name") as Label).text, "Grilled cheese")
@@ -79,7 +79,7 @@ func test_rows_defaults_shared_styles_and_mouse_scope_work_before_ready() -> voi
 
 func test_secondary_settings_button_requests_panel_without_editing_dishes() -> void:
 	var before: Dictionary = _menu.to_dict()
-	var button: Button = _panel.get_node("Panel/Content/SettingsButton") as Button
+	var button: Button = _panel.get_node("%SettingsButton") as Button
 	assert_eq(button.text, "Settings")
 	assert_eq(button.theme, MenuPanel.SHARED_THEME)
 	button.pressed.emit()
@@ -274,7 +274,7 @@ func test_refresh_is_idempotent_and_rebinding_replaces_rows_without_requests() -
 	_panel.bind_menu(null)
 	_panel.refresh()
 	assert_null(_panel.row_for(&"rice"))
-	assert_true((_panel.get_node("Panel/Content/Scroll/List/Empty") as Label).visible)
+	assert_true((_panel.get_node("%Empty") as Label).visible)
 	assert_eq(_enable_requests.size(), 0)
 	assert_eq(_price_requests.size(), 0)
 	assert_false(_panel.visible)
@@ -356,7 +356,7 @@ func test_sections_order_dishes_and_full_menu_can_be_reduced_before_adding() -> 
 		recipes.append(recipe)
 	var menu: MenuSettings = MenuSettings.new(recipes)
 	_panel.bind_menu(menu)
-	var rows: Node = _panel.get_node("Panel/Content/Scroll/List/Rows")
+	var rows: Node = _panel.get_node("%Rows")
 	assert_eq((rows.get_child(0) as Label).text, "Mains")
 	assert_eq((rows.get_child(7) as Label).text, "Drinks")
 	assert_eq(_panel.row_for(&"dish0").get_index(), 8, "dish IDs do not override section order")
@@ -395,8 +395,11 @@ func test_identity_and_section_controls_fit_short_and_wide_viewports() -> void:
 		assert_true(bounds.encloses(apply.get_global_rect()))
 		assert_true(edit.size.x > 100.0)
 		assert_true(apply.global_position.x >= edit.get_global_rect().end.x)
-		var scroll: Control = _panel.get_node("Panel/Content/Scroll") as Control
+		var scroll: Control = _panel.get_node("Panel/Content/Body/Scroll") as Control
 		assert_true(scroll.size.y > 40.0, "new content must leave a usable scroll viewport")
+		var detail: Control = _panel.get_node("Panel/Content/Body/DetailScroll") as Control
+		assert_true(detail.global_position.x >= scroll.get_global_rect().end.x, "the dish detail sits beside the tree")
+		assert_true(bounds.encloses(detail.get_global_rect()))
 	viewport.remove_child(_panel)
 	viewport.free()
 
@@ -425,8 +428,8 @@ func test_tree_links_and_selection_show_only_one_detail_without_menu_mutation() 
 	var before: Dictionary = (_panel.get("_menu") as MenuSettings).to_dict()
 	var node: TreeItem = _panel.tree_item_for(&"child")
 	assert_eq(node.get_parent(), _panel.tree_item_for(&"burger"))
-	assert_true(node.get_text(1).contains("Owner level 2"))
-	assert_true(node.get_text(1).contains("Locked"))
+	assert_eq(node.get_text(1), "Lv 2")
+	assert_true(node.get_tooltip_text(1).contains("Owner level 2"))
 	assert_true(_panel.select_recipe(&"child"))
 	assert_true(_panel.row_for(&"child").visible)
 	assert_false(_panel.row_for(&"burger").visible)
@@ -443,19 +446,21 @@ func test_missing_equipment_detail_is_inspectable_but_cannot_enable_or_reprice()
 	missing.section = RecipeDef.Section.DRINKS
 	var details: Dictionary[StringName, Dictionary] = {&"missing_machine": {
 		"quality": 0.8, "quality_source": "2 served dishes on day 1", "reviews": "Shop reviews: 3.5 / 5 (6 ratings)",
-		"equipment": [{"text": "Needs a coffee machine", "met": false}],
+		"equipment": [{"text": "Buy a coffee machine", "met": false}],
 		"ingredients": [{"text": "Coffee beans: 0 in stock / 1 needed", "met": false}],
 		"other": [{"text": "Owner level 1", "met": true}]}}
 	_panel.set_recipe_details([_burger, missing], details)
 	assert_true(_panel.select_recipe(missing.id))
 	for path: String in ["Top/Enabled", "Price/Minus", "Price/Plus"]:
 		assert_true(_button(missing.id, path).disabled)
-		assert_eq(_button(missing.id, path).tooltip_text, "Needs a coffee machine")
+		assert_eq(_button(missing.id, path).tooltip_text, "Buy a coffee machine")
+	assert_eq(_panel.tree_item_for(missing.id).get_text(1), "Buy a coffee machine")
 	assert_eq(_label(missing.id, "Reference/Standard").text, "Suggested $6")
 	assert_true((_panel.get("_quality_label") as Label).text.contains("Quality: 4 / 5 stars"))
 	var slots: VBoxContainer = _panel.get("_requirements_box") as VBoxContainer
 	assert_eq((slots.get_node("equipment0") as Label).get_theme_color("font_color"), MenuPanel.HIGHER_COLOR)
-	assert_eq((slots.get_node("ingredients0") as Label).get_theme_color("font_color"), MenuPanel.HIGHER_COLOR)
+	assert_eq((slots.get_node("ingredients0") as Label).get_theme_color("font_color"), MenuPanel.LOCKED_COLOR,
+		"ingredients wait, greyed out, until the equipment is in")
 	assert_eq((slots.get_node("other0") as Label).get_theme_color("font_color"), MenuPanel.STANDARD_COLOR)
 	_panel._on_enable_toggled(true, missing.id)
 	_panel._on_price_step(missing.id, 1)
@@ -484,7 +489,7 @@ func test_tree_level_refresh_preserves_nodes_selection_and_player_choices() -> v
 	assert_eq(_panel.tree_item_for(child.id), node)
 	assert_true(other_branch.collapsed, "an unrelated branch remains folded")
 	assert_eq(_panel.get("_selected_recipe"), child.id)
-	assert_true(node.get_text(1).contains("Learned"))
+	assert_eq(node.get_text(1), "Off menu")
 	assert_false(settings.is_enabled(child.id), "learning never adds a dish automatically")
 	assert_false(_button(child.id, "Top/Enabled").disabled)
 	assert_true(_enable_requests.is_empty())
@@ -510,3 +515,52 @@ func test_tree_and_detail_use_shared_warm_styles_and_removal_request() -> void:
 	assert_eq(_menu.to_dict(), before)
 	viewport.remove_child(_panel)
 	viewport.free()
+
+
+func test_ingredient_slots_turn_red_only_once_the_equipment_is_in() -> void:
+	var details: Dictionary[StringName, Dictionary] = {&"burger": {
+		"equipment": [{"text": "Stove ready", "met": true}],
+		"ingredients": [{"text": "Beef: 0 in stock / 1 needed", "met": false},
+			{"text": "Bread: 4 in stock / 2 needed", "met": true}],
+		"other": []}}
+	_panel.set_recipe_details(_menu.recipes(), details)
+	assert_true(_panel.select_recipe(&"burger"))
+	var slots: VBoxContainer = _panel.get("_requirements_box") as VBoxContainer
+	assert_eq((slots.get_node("ingredients0") as Label).get_theme_color("font_color"), MenuPanel.HIGHER_COLOR)
+	assert_eq((slots.get_node("ingredients1") as Label).get_theme_color("font_color"), MenuPanel.STANDARD_COLOR)
+
+
+func test_a_stashed_drink_shows_the_price_it_will_come_back_at() -> void:
+	var coffee: RecipeDef = _recipe(&"coffee", "Coffee", 5)
+	coffee.order_type = RecipeDef.COFFEE
+	coffee.section = RecipeDef.Section.DRINKS
+	var menu: MenuSettings = MenuSettings.new([_burger, coffee])
+	assert_true(menu.set_price(&"coffee", 7))
+	assert_true(menu.set_catalogue([_burger] as Array[RecipeDef]), "the coffee machine was sold")
+	assert_null(menu.recipe(&"coffee"))
+	assert_eq(menu.shown_price(coffee), 7)
+	assert_eq(menu.price_of(coffee), 5, "pricing for service is unchanged")
+	_panel.bind_menu(menu)
+	_panel.set_recipe_details([_burger, coffee], {} as Dictionary[StringName, Dictionary])
+	assert_eq(_label(&"coffee", "Price/Amount").text, "$7")
+	assert_eq(_label(&"coffee", "Reference/Ratio").text, "140% of suggested")
+	assert_true(menu.set_catalogue([_burger, coffee] as Array[RecipeDef]), "the machine came back")
+	assert_eq(menu.price_of(menu.recipe(&"coffee")), 7)
+
+
+func test_tree_sizes_to_its_rows_without_trapping_the_wheel() -> void:
+	var tree: Tree = _panel.get("_recipe_tree") as Tree
+	assert_false(tree.scroll_vertical_enabled, "no nested scroll inside the column")
+	assert_true(tree.mouse_force_pass_scroll_events, "the wheel reaches the column's scroll")
+	assert_false(tree.column_titles_visible)
+	var rows: int = 0
+	var item: TreeItem = tree.get_root().get_next_in_tree()
+	while item != null:
+		rows += 1
+		item = item.get_next_visible()
+	assert_eq(rows, 4, "one section heading and three dishes")
+	assert_true(tree.get_combined_minimum_size().y >= 4 * 30.0, "every row has room")
+	var scroll: ScrollContainer = _panel.get_node("Panel/Content/Body/Scroll") as ScrollContainer
+	assert_true(scroll.is_ancestor_of(tree))
+	assert_false((_panel.get_node("Panel/Content/Body/DetailScroll") as Node).is_ancestor_of(tree))
+	assert_true((_panel.get_node("Panel/Content/Body/DetailScroll") as Node).is_ancestor_of(_panel.row_for(&"burger")))

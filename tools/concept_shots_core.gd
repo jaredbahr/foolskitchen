@@ -42,7 +42,7 @@ func run(scene_tree: SceneTree) -> void:
 		main.call("set_menu_visible", true)
 		await _frames(20)
 		await _save("%s_menu_top.png" % setup)
-		var scroll: ScrollContainer = main.get_node("Overlay/MenuPanel/Panel/Content/Scroll") as ScrollContainer
+		var scroll: ScrollContainer = main.get_node("Overlay/MenuPanel/Panel/Content/Body/Scroll") as ScrollContainer
 		scroll.scroll_vertical = 100000
 		await _frames(10)
 		await _save("%s_menu_drinks.png" % setup)

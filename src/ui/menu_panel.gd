@@ -17,6 +17,9 @@ const HIGHER_COLOR: Color = Color("a83e35")
 const LOCKED_COLOR: Color = Color("766b60")
 const SECTION_FONT_SIZE: int = 22
 const MORNING_HINT: String = "Menu changes are available in the morning."
+## Widest panel; narrower windows (or a large UI scale) keep a margin each side.
+const PANEL_MAX_WIDTH: float = 1000.0
+const PANEL_SIDE_MARGIN: float = 12.0
 
 var _catalogue: Array[RecipeDef] = []
 var _details: Dictionary[StringName, Dictionary] = {}
@@ -36,19 +39,21 @@ var _phase: int = SimClock.Phase.MORNING
 var _status: Label
 var _empty: Label
 var _rows_node: VBoxContainer
+## The name and hours sit above two columns. Left: the unlock tree and the
+## Drinks hints. Right: the selected dish's detail, always beside the tree.
+var _list: VBoxContainer
+var _detail: VBoxContainer
 var _settings_button: Button
 var _goals_button: Button
 var _rows: Dictionary[StringName, Dictionary] = {}
 var _needs_rebuild: bool = true
-## Food rows stay in Rows under their section headings; drinks get the Drinks
-## section block below (FK-083).
+## Food rows stay in Rows; drink rows are in DrinkRows (FK-083). Both sit in
+## the detail column and only the selected dish's row shows.
 var _drinks_title: Label
 var _drink_rows: VBoxContainer
-var _food_hints_box: VBoxContainer
 var _hints_box: VBoxContainer
 var _drink_hints: Array[String] = []
-var _food_hints: Array[String] = []
-var _hours_box: VBoxContainer
+var _hours_box: HBoxContainer
 var _hours_controls: Dictionary[String, Control] = {}
 var _open_minute: int = 11 * 60
 var _close_minute: int = 21 * 60
@@ -57,6 +62,22 @@ var _hours_tuning: OpeningHoursTuning = null
 
 func _ready() -> void:
 	refresh()
+	_fit_width()
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_RESIZED:
+		_fit_width()
+
+
+## Up to PANEL_MAX_WIDTH wide, centred, never past the screen edges.
+func _fit_width() -> void:
+	var panel: Control = get_node_or_null("Panel") as Control
+	if panel == null:
+		return
+	var half: float = minf(PANEL_MAX_WIDTH, maxf(size.x - 2.0 * PANEL_SIDE_MARGIN, 0.0)) / 2.0
+	panel.offset_left = -half
+	panel.offset_right = half
 
 
 func bind_menu(model: MenuSettings) -> void:
@@ -87,7 +108,9 @@ func refresh() -> void:
 	if _needs_rebuild or _catalogue_changed():
 		_rebuild_rows()
 	var editable: bool = _phase == SimClock.Phase.MORNING
-	_status.text = "Choose dishes, drinks, prices and opening hours for today." if editable else MORNING_HINT
+	# Only outside the morning: the controls themselves say what to choose.
+	_status.text = MORNING_HINT
+	_status.visible = not editable
 	_empty.visible = _rows.is_empty()
 	_name_edit.editable = editable and _menu != null and _menu.is_valid()
 	_name_apply.disabled = not _name_edit.editable
@@ -119,7 +142,7 @@ func refresh() -> void:
 		var last_enabled: bool = enabled and _menu.enabled_count() == 1
 		var at_limit: bool = not enabled and _menu.enabled_count() >= _menu.menu_limit()
 		var limit_hint: String = "Your menu is full. Take a dish off before adding another."
-		var price: int = _menu.price_of(definition)
+		var price: int = _menu.shown_price(definition)
 		var standard: int = definition.standard_price
 		var minimum: int = _menu.minimum_price(definition.id)
 		var maximum: int = _menu.maximum_price(definition.id)
@@ -176,23 +199,6 @@ func set_drink_hints(hints: Array[String]) -> void:
 	_bind_nodes()
 	_rebuild_hints()
 	_refresh_drinks_section()
-
-
-## Food equipment reasons share the existing named station hints, outside Drinks.
-func set_food_hints(hints: Array[String]) -> void:
-	_food_hints = hints.duplicate()
-	_bind_nodes()
-	_rebuild_food_hints()
-
-
-func _rebuild_food_hints() -> void:
-	for child: Node in _food_hints_box.get_children():
-		_food_hints_box.remove_child(child)
-		child.free()
-	for hint: String in _food_hints:
-		var label: Label = _add_label(_food_hints_box, "Hint%d" % _food_hints_box.get_child_count(), hint)
-		label.add_theme_color_override("font_color", LOCKED_COLOR)
-	_food_hints_box.visible = not _food_hints.is_empty()
 
 
 func set_hours(open_minute: int, close_minute: int, tuning: OpeningHoursTuning) -> void:
@@ -289,6 +295,8 @@ func _bind_nodes() -> void:
 	_status = %Status
 	_empty = %Empty
 	_rows_node = %Rows
+	_list = get_node("Panel/Content/Body/Scroll/Pad/List") as VBoxContainer
+	_detail = get_node("Panel/Content/Body/DetailScroll/Pad/Detail") as VBoxContainer
 	_name_edit = %RestaurantName
 	_name_apply = %ApplyName
 	_name_feedback = %NameFeedback
@@ -299,7 +307,7 @@ func _bind_nodes() -> void:
 	_name_apply.pressed.connect(_on_name_apply_pressed)
 	_settings_button = %SettingsButton
 	_goals_button = %GoalsButton
-	IconStyle.decorate_label(get_node("Panel/Content/Title") as Label, &"menu")
+	IconStyle.decorate_label(get_node("Panel/Content/Header/Title") as Label, &"menu")
 	_build_sections()
 	_build_recipe_tree()
 	IconStyle.configure_button(_settings_button, &"settings", "Settings", "Audio, display and controls", IconCatalogue.PANEL_SIZE)
@@ -307,55 +315,49 @@ func _bind_nodes() -> void:
 	_goals_button.pressed.connect(_on_goals_pressed)
 
 
-## Opening hours above the dishes; Food and Drinks titles around the rows.
+## Opening hours with the restaurant name (#181), above both columns, and the
+## wage note under them; the Drinks hints close the left column under their
+## own heading, apart from the dish detail.
 func _build_sections() -> void:
-	var list: VBoxContainer = _rows_node.get_parent() as VBoxContainer
-	_hours_box = VBoxContainer.new()
-	_hours_box.name = "Hours"
-	_hours_box.theme = SHARED_THEME
-	_hours_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	list.add_child(_hours_box)
-	# Under the restaurant name (#181), above the dish count and sections.
-	list.move_child(_hours_box, _name_feedback.get_index() + 1)
-	var heading: Label = _add_label(_hours_box, "Title", "Opening hours")
-	heading.add_theme_font_size_override("font_size", 20)
+	var list: VBoxContainer = _list
+	var identity: VBoxContainer = _name_feedback.get_parent() as VBoxContainer
+	# Name [Apply name]   [−] Opens 11:00 [+]  [−] Closes 21:00 [+]
+	_hours_box = _add_line(_name_edit.get_parent(), "Hours")
+	_hours_box.add_theme_constant_override("separation", 4)
 	for side: String in ["open", "close"]:
-		var line: HBoxContainer = _add_line(_hours_box, side.capitalize())
-		var minus: Button = _add_button(line, "Minus", "−")
-		var label: Label = _add_label(line, "Time", "")
-		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var minus: Button = _add_button(_hours_box, side.capitalize() + "Minus", "−")
+		minus.custom_minimum_size.x = 40.0
+		var label: Label = _add_label(_hours_box, side.capitalize() + "Time", "")
+		label.autowrap_mode = TextServer.AUTOWRAP_OFF
+		label.custom_minimum_size.x = 118.0
 		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		var plus: Button = _add_button(line, "Plus", "+")
+		var plus: Button = _add_button(_hours_box, side.capitalize() + "Plus", "+")
+		plus.custom_minimum_size.x = 40.0
 		var direction: Vector2i = Vector2i(1, 0) if side == "open" else Vector2i(0, 1)
 		minus.pressed.connect(_on_hours_step.bind(-direction))
 		plus.pressed.connect(_on_hours_step.bind(direction))
 		_hours_controls[side] = label
 		_hours_controls[side + "_minus"] = minus
 		_hours_controls[side + "_plus"] = plus
-	var note: Label = _add_label(_hours_box, "Note",
+	var note: Label = _add_label(identity, "HoursNote",
 		"Staff are paid for the hours you open. Coffee drinkers come early; evening drinkers come late.")
 	note.add_theme_color_override("font_color", LOCKED_COLOR)
+	identity.move_child(note, _name_feedback.get_index())
 	_hours_controls["note"] = note
-	_add_separator(_hours_box)
-	# Food rows carry their own section headings (Starters, Mains...); every
-	# drink is in the Drinks section, whose heading leads the drinks block.
-	_food_hints_box = VBoxContainer.new()
-	_food_hints_box.name = "FoodHints"
-	_food_hints_box.theme = SHARED_THEME
-	_food_hints_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	list.add_child(_food_hints_box)
-	_drinks_title = _add_label(list, "DrinksTitle", RecipeDef.section_name(RecipeDef.Section.DRINKS))
-	_drinks_title.add_theme_font_size_override("font_size", SECTION_FONT_SIZE)
-	_drink_rows = VBoxContainer.new()
-	_drink_rows.name = "DrinkRows"
-	_drink_rows.theme = SHARED_THEME
-	_drink_rows.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	list.add_child(_drink_rows)
+	_add_separator(identity)
+	_drinks_title = _add_label(list, "DrinksTitle", "Drinks to set up")
+	_drinks_title.add_theme_font_size_override("font_size", 20)
 	_hints_box = VBoxContainer.new()
 	_hints_box.name = "DrinkHints"
 	_hints_box.theme = SHARED_THEME
 	_hints_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	list.add_child(_hints_box)
+	_drink_rows = VBoxContainer.new()
+	_drink_rows.name = "DrinkRows"
+	_drink_rows.theme = SHARED_THEME
+	_drink_rows.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_detail.add_child(_drink_rows)
+	_detail.move_child(_drink_rows, _rows_node.get_index() + 1)
 
 
 func _add_separator(parent: Node) -> void:
@@ -581,40 +583,34 @@ func _on_recipe_selected() -> void:
 
 
 func _build_recipe_tree() -> void:
-	var list: VBoxContainer = _rows_node.get_parent() as VBoxContainer
 	_recipe_tree = Tree.new()
 	_recipe_tree.name = "RecipeTree"
 	_recipe_tree.theme = SHARED_THEME
-	_recipe_tree.custom_minimum_size = Vector2(0, 220)
 	_recipe_tree.columns = 2
-	_recipe_tree.column_titles_visible = true
-	_recipe_tree.set_column_title(0, "Dish unlock tree")
-	_recipe_tree.set_column_title(1, "Owner level / equipment")
-	_recipe_tree.set_column_expand_ratio(0, 1)
-	_recipe_tree.set_column_expand_ratio(1, 2)
+	_recipe_tree.column_titles_visible = false
+	_recipe_tree.set_column_expand_ratio(0, 4)
+	_recipe_tree.set_column_expand_ratio(1, 5)
+	_recipe_tree.set_column_clip_content(1, true)
 	_recipe_tree.hide_root = true
+	_recipe_tree.select_mode = Tree.SELECT_ROW
+	_recipe_tree.tooltip_text = "Dishes unlock as the owner levels up. Select one to see its detail."
+	# Sized to its rows inside the column's scroll: no nested scroll, and the
+	# wheel passes through to the column.
 	_recipe_tree.scroll_horizontal_enabled = false
-	_recipe_tree.mouse_force_pass_scroll_events = false
+	_recipe_tree.scroll_vertical_enabled = false
 	_recipe_tree.item_selected.connect(_on_recipe_selected)
-	list.add_child(_recipe_tree)
-	list.move_child(_recipe_tree, _rows_node.get_index())
-	var note: Label = _add_label(list, "UnlockNote", "Select a dish for details. Recipes are learned at the owner level shown.")
-	list.move_child(note, _rows_node.get_index())
-	_detail_heading = _add_label(list, "DishDetail", "Dish detail")
+	_list.add_child(_recipe_tree)
+	_list.move_child(_recipe_tree, _empty.get_index() + 1)
+	_detail_heading = _add_label(_detail, "DishDetail", "Dish detail")
 	_detail_heading.add_theme_font_size_override("font_size", SECTION_FONT_SIZE)
-	list.move_child(_detail_heading, _rows_node.get_index())
-	_quality_label = _add_label(list, "DishQuality", "")
-	list.move_child(_quality_label, _rows_node.get_index())
+	_detail.move_child(_detail_heading, 0)
+	_quality_label = _add_label(_detail, "DishQuality", "")
+	_detail.move_child(_quality_label, 1)
 	_requirements_box = VBoxContainer.new()
 	_requirements_box.name = "Requirements"
 	_requirements_box.theme = SHARED_THEME
 	_requirements_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	list.add_child(_requirements_box)
-	# Both food and drink controls are the selected dish's detail pane.
-	list.move_child(_drink_rows, _rows_node.get_index() + 1)
-	list.move_child(_requirements_box, _drink_rows.get_index() + 1)
-	# Keep the tree and dish decision ahead of the existing hours controls.
-	list.move_child(_hours_box, list.get_child_count() - 1)
+	_detail.add_child(_requirements_box)
 
 
 func _rebuild_recipe_tree() -> void:
@@ -666,15 +662,16 @@ func _refresh_tree_state() -> void:
 		if node == null:
 			continue
 		var locked: bool = recipe.unlock_level > _menu.owner_level()
-		var status: String = "Owner level %d" % recipe.unlock_level
-		if _menu.recipe(recipe.id) == null:
-			status += " - " + _equipment_reason(recipe.id)
-		else:
-			status += " - " + ("Locked" if locked else ("On menu" if _menu.is_enabled(recipe.id) else "Learned"))
+		var missing: bool = _menu.recipe(recipe.id) == null
+		var status: String = "On menu" if _menu.is_enabled(recipe.id) else "Off menu"
+		if missing:
+			status = _equipment_reason(recipe.id)
+		if locked:
+			status = "Lv %d" % recipe.unlock_level + (", " + status.to_lower() if missing else "")
 		node.set_text(1, status)
-		node.set_tooltip_text(1, status)
+		node.set_tooltip_text(1, "Owner level %d. %s." % [recipe.unlock_level, status])
 		node.set_custom_color(0, LOCKED_COLOR if locked else STANDARD_COLOR)
-		node.set_custom_color(1, HIGHER_COLOR if locked or _menu.recipe(recipe.id) == null else STANDARD_COLOR)
+		node.set_custom_color(1, HIGHER_COLOR if missing else (LOCKED_COLOR if locked or not _menu.is_enabled(recipe.id) else LOWER_COLOR))
 
 
 func _equipment_reason(id: StringName) -> String:
@@ -711,6 +708,11 @@ func _refresh_selection() -> void:
 		details.get("quality_source", "Recipe base quality; no served-dish sample")]
 	if details.has("reviews"):
 		_quality_label.text += "\n" + String(details["reviews"])
+	# Until its equipment is in, a dish's ingredients are not the problem:
+	# they read greyed out rather than red.
+	var equipment_met: bool = true
+	for row: Dictionary in details.get("equipment", []):
+		equipment_met = equipment_met and bool(row.get("met", false))
 	for group: String in ["equipment", "ingredients", "other"]:
 		var heading: Label = _add_label(_requirements_box, group.capitalize(), group.capitalize())
 		heading.add_theme_font_size_override("font_size", 20)
@@ -720,4 +722,7 @@ func _refresh_selection() -> void:
 		for index: int in requirements.size():
 			var row: Dictionary = requirements[index]
 			var label: Label = _add_label(_requirements_box, "%s%d" % [group, index], String(row.get("text", "")))
-			label.add_theme_color_override("font_color", STANDARD_COLOR if bool(row.get("met", false)) else HIGHER_COLOR)
+			var color: Color = STANDARD_COLOR if bool(row.get("met", false)) else HIGHER_COLOR
+			if group == "ingredients" and not equipment_met:
+				color = LOCKED_COLOR
+			label.add_theme_color_override("font_color", color)
