@@ -15,6 +15,11 @@ extends RefCounted
 ## on the outer shell, so they survive terrain changes such as a floor
 ## expansion: a window on an outer face becomes an interior window when the
 ## wall cell behind it turns into floor.
+##
+## Bounds (FK-080): the grid covers `bounds`, which starts at `origin`. An
+## authored layout starts at (0, 0); a floor expansion may grow the grid north
+## or west with grow_to(), so cells can have negative coordinates. Nothing is
+## ever shifted: cells, items, edges and saves keep their coordinates.
 
 ## What a cell is before any furniture goes on it.
 enum Terrain { OUTSIDE, FLOOR, WALL, ENTRY }
@@ -35,7 +40,8 @@ signal cells_changed(cells: Array[Vector2i])
 ## drop or re-plan their task.
 signal item_removed(item: PlacedItem)
 
-const NO_CELL := Vector2i(-1, -1)
+## Far outside any lot: lot cells may have negative coordinates (FK-080).
+const NO_CELL := Vector2i(-1000000, -1000000)
 const NO_EDGE := Vector3i(-1, -1, -1)
 const EDGE_WEST: int = 0
 const EDGE_NORTH: int = 1
@@ -51,7 +57,18 @@ var size: Vector2i:
 	get:
 		return _size
 
+## First cell of the grid (top-left). Read-only.
+var origin: Vector2i:
+	get:
+		return _origin
+
+## Every cell of the grid. Read-only.
+var bounds: Rect2i:
+	get:
+		return Rect2i(_origin, _size)
+
 var _size: Vector2i = Vector2i.ZERO
+var _origin: Vector2i = Vector2i.ZERO
 
 var _terrain: PackedByteArray = PackedByteArray()
 var _astar := AStarGrid2D.new()
@@ -75,12 +92,13 @@ var _dining_furnishings: Dictionary[Vector2i, int] = {}
 
 
 ## A new grid is all FLOOR (handy for tests); from_ascii() sets real terrain.
-func _init(grid_size: Vector2i = Vector2i(1, 1)) -> void:
+func _init(grid_size: Vector2i = Vector2i(1, 1), grid_origin: Vector2i = Vector2i.ZERO) -> void:
 	_size = Vector2i(maxi(grid_size.x, 1), maxi(grid_size.y, 1))
+	_origin = grid_origin
 	_terrain.resize(_size.x * _size.y)
 	_terrain.fill(Terrain.FLOOR)
 	for astar: AStarGrid2D in [_astar, _edge_astar]:
-		astar.region = Rect2i(Vector2i.ZERO, _size)
+		astar.region = Rect2i(_origin, _size)
 		astar.cell_size = Vector2.ONE
 		astar.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
 		astar.default_compute_heuristic = AStarGrid2D.HEURISTIC_OCTILE
@@ -117,13 +135,99 @@ static func from_ascii(rows: PackedStringArray) -> SimGrid:
 
 
 func in_bounds(cell: Vector2i) -> bool:
-	return cell.x >= 0 and cell.y >= 0 and cell.x < size.x and cell.y < size.y
+	return cell.x >= _origin.x and cell.y >= _origin.y and cell.x < _origin.x + _size.x and cell.y < _origin.y + _size.y
+
+
+## Every cell in row-major order (north to south, west to east).
+func cells() -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	for y: int in range(_origin.y, _origin.y + _size.y):
+		for x: int in range(_origin.x, _origin.x + _size.x):
+			out.append(Vector2i(x, y))
+	return out
 
 
 func terrain(cell: Vector2i) -> Terrain:
 	if not in_bounds(cell):
 		return Terrain.OUTSIDE
-	return _terrain[cell.y * size.x + cell.x] as Terrain
+	return _terrain[_index(cell)] as Terrain
+
+
+func _index(cell: Vector2i) -> int:
+	return (cell.y - _origin.y) * _size.x + (cell.x - _origin.x)
+
+
+## Grows the grid to also cover `rect` (FK-080). New cells are OUTSIDE; every
+## existing cell, item, segment and coordinate is kept. Emits nothing: no
+## walkability changes. Returns false for an empty rect.
+func grow_to(rect: Rect2i) -> bool:
+	if rect.size.x <= 0 or rect.size.y <= 0:
+		return false
+	var grown: Rect2i = bounds.merge(rect)
+	if grown == bounds:
+		return true
+	var old_bounds: Rect2i = bounds
+	var old_terrain: PackedByteArray = _terrain
+	_origin = grown.position
+	_size = grown.size
+	_terrain = PackedByteArray()
+	_terrain.resize(_size.x * _size.y)
+	_terrain.fill(Terrain.OUTSIDE)
+	for y: int in range(old_bounds.position.y, old_bounds.end.y):
+		for x: int in range(old_bounds.position.x, old_bounds.end.x):
+			var old_index: int = (y - old_bounds.position.y) * old_bounds.size.x + (x - old_bounds.position.x)
+			_terrain[_index(Vector2i(x, y))] = old_terrain[old_index]
+	for astar: AStarGrid2D in [_astar, _edge_astar]:
+		astar.region = grown
+		astar.update()
+	# update() resets every point, so solidity is rebuilt from terrain and items.
+	for cell: Vector2i in cells():
+		_refresh_cell(cell)
+	return true
+
+
+## A new grid with the same bounds and terrain, without items or segments.
+func terrain_copy() -> SimGrid:
+	var copy: SimGrid = SimGrid.new(_size, _origin)
+	var changes: Dictionary[Vector2i, int] = {}
+	for cell: Vector2i in cells():
+		changes[cell] = terrain(cell)
+	copy.set_terrains(changes)
+	return copy
+
+
+## Changes many cells' terrain at once (cell -> Terrain) with one dining
+## refresh and one cells_changed (FK-080 floor edits). Nothing changes, and
+## false is returned, when any cell is out of bounds or an item would be left
+## on a cell that stops being FLOOR.
+func set_terrains(changes: Dictionary[Vector2i, int]) -> bool:
+	for cell: Vector2i in changes:
+		var t: int = changes[cell]
+		if not in_bounds(cell) or t < Terrain.OUTSIDE or t > Terrain.ENTRY:
+			return false
+		if (_cover.has(cell) or _floor_cover.has(cell)) and t != Terrain.FLOOR:
+			return false
+	var touched: Array[Vector2i] = []
+	for cell: Vector2i in changes:
+		if terrain(cell) == changes[cell]:
+			continue
+		_terrain[_index(cell)] = changes[cell]
+		if changes[cell] == Terrain.ENTRY:
+			if not _entries.has(cell):
+				_entries.append(cell)
+		else:
+			_entries.erase(cell)
+		touched.append(cell)
+	if touched.is_empty():
+		return true
+	touched.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return a.y < b.y or (a.y == b.y and a.x < b.x))
+	for cell: Vector2i in touched:
+		_refresh_cell(cell)
+		for edge: Vector3i in cell_edges(cell):
+			_refresh_edge(edge)
+	_refresh_dining_seats()
+	cells_changed.emit(touched)
+	return true
 
 
 ## Changes a cell's terrain. Returns false (and changes nothing) for
@@ -134,7 +238,7 @@ func set_terrain(cell: Vector2i, t: Terrain) -> bool:
 		return false
 	if (_cover.has(cell) or _floor_cover.has(cell)) and t != Terrain.FLOOR:
 		return false
-	_terrain[cell.y * size.x + cell.x] = t
+	_terrain[_index(cell)] = t
 	if t == Terrain.ENTRY:
 		if not _entries.has(cell):
 			_entries.append(cell)

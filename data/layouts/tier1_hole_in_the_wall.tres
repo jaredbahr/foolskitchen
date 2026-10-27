@@ -64,3 +64,7 @@ staff_spawns = Dictionary[StringName, Vector2i]({
 &"server": Vector2i(8, 8),
 &"cleaner": Vector2i(9, 8)
 })
+lot_west = 2
+lot_east = 2
+lot_north = 4
+floor_cell_price = 15

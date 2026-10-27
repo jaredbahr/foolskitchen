@@ -144,15 +144,13 @@ func _frontage_cells(grid: SimGrid, entries: Array[Vector2i], normal: Vector2i) 
 	var candidates: Array[Vector2i] = []
 	for depth: int in [0, 1]:
 		var plane: int = _axis_value(entries[0] - normal * depth, normal)
-		for y: int in range(grid.size.y):
-			for x: int in range(grid.size.x):
-				var cell: Vector2i = Vector2i(x, y)
-				if _axis_value(cell, normal) != plane or grid.terrain(cell) != SimGrid.Terrain.WALL:
-					continue
-				var outside: SimGrid.Terrain = grid.terrain(cell + normal)
-				if grid.terrain(cell - normal) == SimGrid.Terrain.FLOOR \
-						and (outside == SimGrid.Terrain.OUTSIDE or outside == SimGrid.Terrain.ENTRY):
-					candidates.append(cell)
+		for cell: Vector2i in grid.cells():
+			if _axis_value(cell, normal) != plane or grid.terrain(cell) != SimGrid.Terrain.WALL:
+				continue
+			var outside: SimGrid.Terrain = grid.terrain(cell + normal)
+			if grid.terrain(cell - normal) == SimGrid.Terrain.FLOOR \
+					and (outside == SimGrid.Terrain.OUTSIDE or outside == SimGrid.Terrain.ENTRY):
+				candidates.append(cell)
 		if not candidates.is_empty():
 			break
 	var ordered: Array[Vector2i] = []

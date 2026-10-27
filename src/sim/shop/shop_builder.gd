@@ -10,6 +10,15 @@ extends RefCounted
 ## blocked-start escape. Authored layouts retain strict spawn checks by default.
 static func build(layout: ShopLayout, content: ContentDB, errors: Array[String], allow_blocked_spawns: bool = false) -> SimWorld:
 	var grid := SimGrid.from_ascii(layout.rows)
+	if not layout.floor_cells.is_empty():
+		# Bought floor (FK-080) goes down before items, which may stand on it.
+		var footprint: ShopFootprint = ShopFootprint.from_layout(layout)
+		var bought: Dictionary[Vector2i, bool] = ShopFootprint.to_set(layout.floor_cells)
+		var problem: String = footprint.problem(bought)
+		if problem.is_empty():
+			footprint.apply(grid, bought)
+		else:
+			errors.append("%s: bought floor: %s" % [layout.id, problem])
 	for p in layout.placements:
 		var def := content.item(p.item_id)
 		if def == null:

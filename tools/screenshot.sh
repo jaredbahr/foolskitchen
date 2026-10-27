@@ -14,6 +14,7 @@
 # --catalogue-review=rustic|modern --speed=0 --frames=90,120 captures real previews, then the furnishing fixture.
 # --diner-review --speed=0 --frames=12,90 captures six native comparisons, then real seated diner guests.
 # --walls=place --speed=0 --frames=12 holds a dragged wall run (ghost + cost); --walls=room --open --fast=10 --speed=1 --frames=150 [--quarter=0] shows a built room, Walls Up or Cutaway.
+# --expand=drag --speed=0 --frames=12 holds a dragged floor rectangle on the lot (ghost + cost + lot outline); --expand=shop --open --fast=10 --speed=1 --frames=150 [--quarter=0] shows the finished L-shaped shop.
 # Build previews use the production morning input API without buying or saving.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"

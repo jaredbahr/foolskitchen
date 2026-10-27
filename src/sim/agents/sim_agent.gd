@@ -24,7 +24,7 @@ var needs_repath: bool = false
 ## Last world tick this agent moved a cell or did a unit of work.
 var last_progress_tick: int = 0
 
-var _goal: Vector2i = Vector2i(-1, -1)
+var _goal: Vector2i = SimGrid.NO_CELL
 
 
 ## Runs one sim tick. Subclasses override.
