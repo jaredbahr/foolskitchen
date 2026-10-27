@@ -15,6 +15,12 @@ var _standards: Dictionary[StringName, int] = {}
 var _enabled: Dictionary[StringName, bool] = {}
 var _prices: Dictionary[StringName, int] = {}
 var _owner_level: int = 1
+## Choices of dishes whose station left (sold, or undone), restored if they
+## come back the same session: {id: {"enabled": bool, "price": int}}. Not saved.
+var _stash: Dictionary[StringName, Dictionary] = {}
+## A dish switched on only because every enabled dish left the menu; it goes
+## off again when stashed dishes come back (exact undo of a drinks-only menu).
+var _fallback_id: StringName = &""
 
 
 func _init(cookable_recipes: Array[RecipeDef] = [], owner_level: int = 1) -> void:
@@ -126,6 +132,72 @@ func set_enabled(id: StringName, enabled: bool) -> bool:
 	return true
 
 
+## The shop's stations changed (FK-083): a coffee machine bought or a drinks
+## shelf sold. Dishes still cookable keep their choices and prices; newly
+## cookable dishes join at their standard price, drinks switched on when
+## unlocked and food switched off (a croissant waits for the player);
+## dishes no longer cookable leave. At least one dish stays on. Returns
+## whether the catalogue changed. An invalid list changes nothing.
+func set_catalogue(cookable_recipes: Array[RecipeDef]) -> bool:
+	if not _valid or cookable_recipes.is_empty():
+		return false
+	var next: MenuSettings = MenuSettings.new(cookable_recipes, _owner_level)
+	if not next.is_valid():
+		return false
+	var same: bool = next._recipes.size() == _recipes.size()
+	if same:
+		for index: int in range(_recipes.size()):
+			same = same and next._recipes[index] == _recipes[index]
+	if same:
+		return false
+	var enabled: Dictionary[StringName, bool] = {}
+	var prices: Dictionary[StringName, int] = {}
+	var restored_on: bool = false
+	for definition: RecipeDef in next._recipes:
+		var id: StringName = definition.id
+		if _by_id.has(id):
+			prices[id] = clampi(_prices[id], next.minimum_price(id), next.maximum_price(id))
+			if _enabled.has(id):
+				enabled[id] = true
+		elif _stash.has(id):
+			var kept: Dictionary = _stash[id]
+			prices[id] = clampi(int(kept["price"]), next.minimum_price(id), next.maximum_price(id))
+			if bool(kept["enabled"]) and definition.unlock_level <= _owner_level:
+				enabled[id] = true
+				restored_on = true
+			_stash.erase(id)
+		else:
+			prices[id] = definition.standard_price
+			# New drinks go on at once; a new dish waits for the player.
+			if definition.unlock_level <= _owner_level and definition.is_drink():
+				enabled[id] = true
+	if restored_on and not _fallback_id.is_empty() and enabled.has(_fallback_id) and enabled.size() > 1:
+		enabled.erase(_fallback_id)
+		_fallback_id = &""
+	if enabled.is_empty():
+		for definition: RecipeDef in next._recipes:
+			if definition.unlock_level <= _owner_level:
+				enabled[definition.id] = true
+				if not _enabled.has(definition.id):
+					_fallback_id = definition.id
+				break
+	for definition: RecipeDef in _recipes:
+		if not next._by_id.has(definition.id):
+			_stash[definition.id] = {"enabled": _enabled.has(definition.id), "price": _prices[definition.id]}
+	_recipes = next._recipes
+	_by_id = next._by_id
+	_standards = next._standards
+	_enabled = enabled
+	_prices = prices
+	return true
+
+
+## Session-only memory ends with the edit history (each phase change).
+func clear_stash() -> void:
+	_stash.clear()
+	_fallback_id = &""
+
+
 ## Known dishes accept a whole-dollar request and clamp it to their bounds.
 func set_price(id: StringName, price: int) -> bool:
 	if not _by_id.has(id) or _by_id[id].unlock_level > _owner_level:
@@ -185,13 +257,15 @@ func from_dict(data: Variant) -> bool:
 		if price < minimum_price(id) or price > maximum_price(id):
 			return false
 		next_prices[id] = price
-	# An older save cannot know a newly authored level-locked dish. Give only
-	# that disabled dish its standard price; all prior level-one entries and
-	# every enabled dish still require an explicit, valid saved price.
+	# A save cannot know a dish it never listed (newly authored, or a drink
+	# left off because staff could not reach its station). It loads off at its
+	# standard price; every enabled dish still needs an explicit saved price.
 	for definition: RecipeDef in _recipes:
 		if next_prices.has(definition.id):
 			continue
-		if definition.unlock_level <= 1 or next_enabled.has(definition.id):
+		# A dish the save has no price for (a new recipe, or a drink whose
+		# station staff could not reach) loads off at its standard price.
+		if next_enabled.has(definition.id):
 			return false
 		next_prices[definition.id] = definition.standard_price
 	_enabled = next_enabled

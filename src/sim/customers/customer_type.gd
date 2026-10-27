@@ -19,6 +19,19 @@ extends Resource
 @export var unlock_level: int = 1
 @export var weight_at_one_star: float = 0.0
 @export var weight_at_five_stars: float = 0.0
+## Chance that a guest who came to eat also orders a drink, once drinks are
+## on today's menu and their station stands (FK-083). Never drawn otherwise.
+@export_range(0.0, 1.0, 0.01) var drink_add_chance: float = 0.0
+## Chance that a coffee-only guest adds a pastry (a dish served with drinks)
+## while one is on the menu. Never drawn otherwise.
+@export_range(0.0, 1.0, 0.01) var pastry_add_chance: float = 0.0
+## Multiplies the time-of-day weight of each drinks-only visit kind
+## (RecipeDef.COFFEE, RecipeDef.DRINKS). Missing kinds count 1.0.
+@export var visit_weights: Dictionary[StringName, float] = {}
+## Vibe themes this type is drawn to: while one of them is the room's theme,
+## the type's arrival weight grows by up to liked_theme_bonus (FK-083).
+@export var liked_themes: Array[StringName] = []
+@export var liked_theme_bonus: float = 0.0
 
 
 func is_valid() -> bool:
@@ -33,10 +46,31 @@ func is_valid() -> bool:
 		if not is_finite(value) or value <= 0.0:
 			return false
 	for value: float in [quality_weight, weight_at_one_star,
-			weight_at_five_stars]:
+			weight_at_five_stars, liked_theme_bonus]:
 		if not is_finite(value) or value < 0.0:
 			return false
+	for chance: float in [drink_add_chance, pastry_add_chance]:
+		if not is_finite(chance) or chance < 0.0 or chance > 1.0:
+			return false
+	for kind: StringName in visit_weights:
+		var weight: float = visit_weights[kind]
+		if not RecipeDef.ORDER_TYPES.has(kind) or not is_finite(weight) or weight < 0.0:
+			return false
 	return true
+
+
+## The multiplier for a visit kind; food and unlisted kinds stay neutral.
+func visit_weight(kind: StringName) -> float:
+	return visit_weights.get(kind, 1.0)
+
+
+## Arrival-weight multiplier for the room's theme. Exactly 1.0 unless the
+## active theme is liked, so ordinary arrivals keep their exact weights.
+func theme_multiplier(theme: StringName, strength: float) -> float:
+	if theme.is_empty() or not liked_themes.has(theme) or liked_theme_bonus <= 0.0 \
+			or not is_finite(strength) or strength <= 0.0:
+		return 1.0
+	return 1.0 + liked_theme_bonus * clampf(strength, 0.0, 1.0)
 
 
 ## Fixed sizes consume no draw, preserving the single-guest arrival stream.

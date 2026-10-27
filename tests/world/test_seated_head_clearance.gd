@@ -53,6 +53,100 @@ func test_every_catalogue_seat_is_measured_and_only_explicit_kit_failures_are_al
 		assert_true(int(finding["physical_violation_samples"]) > 0, String(finding["item"]))
 
 
+## FK-083: every stool facing a serve-across counter piece is a seat, and the
+## seated head must clear the counter itself (no head vertex inside any counter
+## part, no head surface crossing one). Every counter, every rotation, every
+## guest side, every guest model and sit time; each stool type at one rotation.
+func test_heads_clear_the_counter_top_from_every_facing_stool() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	await tree.process_frame
+	var content: ContentDB = ContentDB.new()
+	assert_eq(content.load_all(), PackedStringArray())
+	var counters: Array[ItemDef] = []
+	for definition: ItemDef in content.items():
+		if definition.serve_across:
+			counters.append(definition)
+	assert_eq(counters.size(), 5, "the long counter plus section, both ends and the corner")
+	var measured: int = 0
+	var stools: Array[StringName] = [&"bar_stool", &"square_bar_stool", &"diner_stool"]
+	for counter: ItemDef in counters:
+		for turns: int in range(4):
+			for stool_id: StringName in stools:
+				if stool_id != &"bar_stool" and turns != 0:
+					continue
+				measured += await _measure_counter_heads(tree.root, counter, content.item(stool_id), turns)
+	assert_true(measured >= 5 * 4 * 3 * PersonPresentation.GUEST_MODELS.size(), "every case was measured (%d)" % measured)
+
+
+## Guest sides in unrotated cells: in front (-y) of every piece; the corner
+## also on its +x side; the long counter on both long sides.
+func _guest_sides(counter: ItemDef) -> Array[Vector2i]:
+	if counter.id == &"bar_corner":
+		return [Vector2i(0, -1), Vector2i(1, 0)] as Array[Vector2i]
+	if counter.footprint == Vector2i(2, 1):
+		return [Vector2i(0, -1), Vector2i(1, -1), Vector2i(0, 1), Vector2i(1, 1)] as Array[Vector2i]
+	return [Vector2i(0, -1)] as Array[Vector2i]
+
+
+func _measure_counter_heads(parent: Node, counter: ItemDef, stool: ItemDef, turns: int) -> int:
+	var world: SimWorld = SimWorld.new(SimGrid.new(Vector2i(12, 12)))
+	var restaurant: RestaurantSim = RestaurantSim.new()
+	restaurant.world = world
+	var origin: Vector2i = Vector2i(4, 4)
+	var placed: PlacedItem = world.grid.place_def(counter, origin, turns)
+	assert_not_null(placed, "%s turns %d" % [counter.id, turns])
+	if placed == null:
+		return 0
+	var guests: Array[CustomerAgent] = []
+	for side: Vector2i in _guest_sides(counter):
+		var cell: Vector2i = origin + GridMath.rotate_cell(side, counter.footprint, turns)
+		var front: Vector2i = Vector2i.ZERO
+		for direction: Vector2i in [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]:
+			if placed.cells.has(cell + direction):
+				front = direction
+		var stool_turns: int = 0
+		while GridMath.rotate_cell(Vector2i.UP, Vector2i.ONE, stool_turns) != front:
+			stool_turns += 1
+		assert_not_null(world.grid.place_def(stool, cell, stool_turns), "%s stool at %s" % [counter.id, cell])
+		assert_true(placed.seat_cells.has(cell), "%s turns %d: the facing stool is a seat" % [counter.id, turns])
+		var guest: CustomerAgent = world.add_agent(CustomerAgent.new(restaurant, RandomNumberGenerator.new())) as CustomerAgent
+		guest.state = CustomerAgent.State.WAITING_FOOD
+		guest.table_item_id = placed.id
+		guest.cell = cell
+		guest.seat_cell = cell
+		assert_true(placed.reserve(cell, guest.id))
+		guests.append(guest)
+	var view: ShopView = load("res://src/world/shop_view.tscn").instantiate() as ShopView
+	parent.add_child(view)
+	view.set_process(false)
+	view.show_world(world)
+	var visual: ItemVisual = view.item_nodes.get(placed.id) as ItemVisual
+	assert_true(visual != null and visual.prop != null, "%s has its native wrapper" % counter.id)
+	var count: int = 0
+	if visual != null and visual.prop != null:
+		for look: int in range(PersonPresentation.GUEST_MODELS.size()):
+			for guest: CustomerAgent in guests:
+				var person: PersonView = view.agent_nodes.get(guest.id) as PersonView
+				assert_true(person != null and person.set_look(&"customer", look) and person.current_clip() == &"sit")
+				if person == null:
+					continue
+				person._player.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
+				var animation: Animation = person._player.get_animation(&"sit")
+				var parts: Array[Dictionary] = GEOMETRY.seat_parts(visual.prop, person)
+				for fraction: float in CATALOGUE.SIT_FRACTIONS:
+					person._player.seek(animation.length * fraction, true)
+					person._skeleton.force_update_all_bone_transforms()
+					var head: Dictionary = GEOMETRY.prepare_head(person)
+					var result: Dictionary = GEOMETRY.measure_surfaces(head["vertices"], head["triangles"], parts, "backless")
+					var context: String = "%s turns=%d %s %s t=%.2f" % [counter.id, turns, stool.id, person.model_name(), fraction]
+					assert_eq(result["error"], "", context)
+					assert_eq(result["head_vertices_inside_count"], 0, context + ": head inside the counter")
+					assert_eq(result["head_seat_surface_crossings"], 0, context + ": head crosses the counter")
+					count += 1
+	view.free()
+	return count
+
+
 func test_catalogue_coverage_rejects_a_missing_case_instead_of_accepting_retained_rows() -> void:
 	var fixture: Dictionary = _coverage_fixture()
 	var report: Dictionary = fixture["report"]

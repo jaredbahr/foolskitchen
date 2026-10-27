@@ -20,5 +20,5 @@ quality_bonus = 0.0
 price = 18
 unlock_level = 2
 charm = 1
-theme_tags = Array[StringName]([&"cosy"])
+theme_tags = Array[StringName]([&"cosy", &"cafe"])
 placeholder_color = Color(0.65, 0.44, 0.27, 1)

@@ -1136,6 +1136,89 @@ random draws or saved state; functional lamps remain the separate lamp issue.
 The floor shader adds a subtle multiplicative plank pattern while retaining its
 existing paint colour and camera-controlled build-grid parameters.
 
+### Concepts: drinks, Café and Bar, opening hours (FK-083)
+- **No picker.** The concept is what the shop builds and serves. `VibeTuning`
+  knows Café and Bar (`KNOWN_THEMES`, order and labels in `vibe.tres`);
+  `theme_item_weights` lets named equipment vote though its category weighs 0
+  (coffee machine, drinks fridge, drinks shelf). Fitting items and dishes are
+  tagged in data. `CustomerType.liked_themes`/`liked_theme_bonus` (Students:
+  Café, Regulars: Bar) multiply the picker weight by `1 + bonus * strength`
+  only while that theme is active; otherwise the weight is untouched.
+- **Drinks.** `RecipeDef.order_type` is `food`, `coffee` or `drinks`
+  (`is_drink()`). Each drink has one step at its station: `coffee`
+  (Coffee machine, Kenney cabinet + `kitchenCoffeeMachine`), `drinks_fridge`
+  (`kitchenFridgeSmall`), `drinks_shelf` (`bookcaseOpenLow` + Food Kit bottles).
+  The croissant is food warmed at the coffee machine. `RestaurantSim.create`
+  leaves drinks, and dishes needing a station type the world lacks, off its
+  default menu; Main's menu catalogue is what the live stations can make
+  (`_cookable_live`, refreshed after every accepted edit, undo and redo via
+  `MenuSettings.set_catalogue`: kept dishes keep their choices, new ones join
+  drinks switched on and dishes off, removed ones leave and their choices are
+  stashed until the next phase change, so an undo/redo brings back price and
+  toggle; a dish switched on only because nothing else was left goes off
+  again when they return). A loaded morning applies the same live catalogue,
+  and a save missing a disabled dish's price loads it off at standard. A
+  drink station staff cannot reach from the street (a bar closed on all
+  sides) does not count, and pours skip it for a reachable one; the Drinks
+  hints then say "staff can't reach the drinks shelf". Edits never buy stock, so undo stays exact: station-only
+  supplies for today's menu are topped up when the shop opens
+  (`_restock_station_supplies`), and by the next morning order after that.
+- **Pour task.** `Kitchen._on_order_placed` sends a drink to `_post_pour`: a
+  priority-3 `pour` task for the server role (job Serving, service XP): walk to
+  a free station of the type, take the ingredient, make it, set quality from
+  server skill and station bonus (READY; the station hold is released here,
+  before the walk), carry it to the guest and hand it over (DELIVERED). No
+  kitchen fridge, pass or plate. No station: the ticket cancels
+  `missing_station`. Step labels use item names ("walking to the drinks shelf").
+- **Counters.** `ItemDef.serve_across` marks bar pieces (`bar_section`,
+  `bar_end_left/right`, `bar_corner`, and the long `bar_counter`). They are
+  1x1 TABLEs; any stool facing one links as its seat (`DiningSeats`).
+  `RestaurantSim.across_cell` is the clear, connected cell behind the counter
+  opposite a seat; `service_cells` returns it, else the seat's neighbours.
+  Order taking, food delivery, drinks and `_serve_order` all use it, so
+  ordinary tables behave exactly as before.
+- **Visits.** `VisitTuning` (`data/balance/visits.tres`) holds 24 hourly
+  weights per order type. `RestaurantSim.visit_kinds()` lists the kinds on
+  today's menu (not sold out); with one kind the spawner draws nothing. With
+  several, `CustomerSpawner.choose_visit` makes one draw on the customers
+  stream weighted by hour x `CustomerType.visit_weights`. Gaps scale by the
+  summed weight (`scaled_gap`; exactly the drawn gap at 1.0, which food has
+  for every default hour). A drinks-only guest orders only that kind, tries
+  serve-across counters first, stays `drink_visit_ticks` and leaves no dirty
+  table. A meal guest draws `drink_add_chance` (per type) only when a drink is
+  available, then one pick; the drink is a second `Order` (`drink_order`),
+  paid with the meal if it arrived, cancelled otherwise, never a reason to leave.
+  A coffee-only guest likewise draws `pastry_add_chance` only when a
+  `RecipeDef.with_drinks` dish (the croissant) is available; that pastry is
+  cooked and plated as usual, the guest starts their coffee once it arrives
+  (if patience runs out first, the pastry is cancelled and the coffee is
+  still drunk and paid), and the seat is then cleared like a meal's. Both extras use `extra_order`.
+- **Parties at counters.** Party seating still looks for one table with
+  enough reachable seats. A 1x1 counter piece seats one stool, so groups
+  take tables (or the long two-cell bar counter); drinks-only parties do too.
+  Counters are mainly for singles, which is most drinks-only traffic.
+- **Opening hours.** `OpeningHours` + `data/balance/hours.tres` (06:00 to
+  24:00, 4 to 13 hours, 30-minute steps, 6 ticks a minute). Morning only, the
+  hours set the clock's display minutes and `open_ticks`, so they ride in the
+  existing `clock` section of the morning save; a load with hours outside the
+  limits keeps the game and resets only the hours to the default day (logged).
+  Wages are paid by the hour (`wage_for_day`; the default day is exactly the
+  old daily wage), and the Staff panel shows wages for today's hours. A
+  midnight close reads "24:00". The Menu panel shows the hours,
+  then Food, then Drinks with named hints for missing stations.
+- **Stock.** `EconomyTuning.station_stock` holds default targets for
+  station-only ingredients. `ReorderSettings` lists and orders them only
+  while a dish on the menu uses them (`set_in_use`; switching one on in the
+  morning tops it up at once), and saves their rows only when changed, so
+  default orders and saves are unchanged.
+- **Default play is unchanged**: `tests/world/test_default_play_golden.gd`
+  replays two seeded production days against values recorded on main 6f6495d,
+  and the default probe rows match main exactly. Probe set-ups `coffee_shop`
+  and `bar` build, stock and staff a concept (`ProbeSetups.morning` switches
+  on newly unlocked drinks). Tests: `tests/sim/test_concepts.gd`,
+  `tests/world/test_concept_session.gd`, counter head clearance in
+  `tests/world/test_seated_head_clearance.gd`.
+
 ### 2.3i Stock panel, auto-reorder and sold-out dishes (FK-033, #54)
 - `ReorderSettings` (`src/sim/economy/reorder_settings.gd`) holds `{enabled, target}`
   per ingredient. Defaults are enabled with `EconomyTuning.morning_stock` targets,

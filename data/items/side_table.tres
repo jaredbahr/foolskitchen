@@ -19,4 +19,4 @@ quality_bonus = 0.0
 price = 35
 unlock_level = 2
 charm = 1
-theme_tags = Array[StringName]([&"rustic"])
+theme_tags = Array[StringName]([&"rustic", &"cafe"])

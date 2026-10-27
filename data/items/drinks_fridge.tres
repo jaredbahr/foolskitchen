@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="ItemDef" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://src/sim/content/item_def.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://assets/props/drinks_fridge.tscn" id="2_view"]
+
+[resource]
+script = ExtResource("1_script")
+view_scene = ExtResource("2_view")
+id = &"drinks_fridge"
+display_name = "Drinks fridge"
+catalogue_room = &"bar_cafe"
+category = 3
+footprint = Vector2i(1, 1)
+solid = true
+work_cells = Array[Vector2i]([Vector2i(0, -1)])
+seat_cells = Array[Vector2i]([])
+station_type = &"drinks_fridge"
+capacity = 1
+quality_bonus = 0.0
+price = 90
+unlock_level = 1
+charm = 0
+theme_tags = Array[StringName]([&"bar"])
+placeholder_color = Color(0.83, 0.79, 0.67, 1)
+paintable = false

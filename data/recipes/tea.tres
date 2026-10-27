@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="RecipeDef" load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://src/sim/content/recipe_def.gd" id="1_recipe"]
+[ext_resource type="Script" path="res://src/sim/content/ingredient_def.gd" id="2_ingredient"]
+[ext_resource type="Script" path="res://src/sim/content/recipe_step.gd" id="3_step"]
+[ext_resource type="Resource" path="res://data/ingredients/tea.tres" id="ingredient_tea"]
+
+[sub_resource type="Resource" id="Step_make"]
+script = ExtResource("3_step")
+station_type = &"coffee"
+duration_ticks = 10
+
+[resource]
+script = ExtResource("1_recipe")
+id = &"tea"
+display_name = "Tea"
+ingredients = Array[ExtResource("2_ingredient")]([ExtResource("ingredient_tea")])
+steps = Array[ExtResource("3_step")]([SubResource("Step_make")])
+base_quality = 0.55
+standard_price = 4
+unlock_tier = 1
+unlock_level = 1
+theme_tags = Array[StringName]([&"cafe"])
+order_type = &"coffee"

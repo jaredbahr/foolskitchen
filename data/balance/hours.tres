@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="OpeningHoursTuning" format=3]
+
+[ext_resource type="Script" path="res://src/sim/restaurant/opening_hours_tuning.gd" id="1_hours"]
+
+[resource]
+script = ExtResource("1_hours")
+default_open_minute = 660
+default_close_minute = 1260
+earliest_open_minute = 360
+latest_close_minute = 1440
+min_open_minutes = 240
+max_open_minutes = 780
+step_minutes = 30
+ticks_per_minute = 6
