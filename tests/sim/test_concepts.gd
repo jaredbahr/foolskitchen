@@ -249,6 +249,34 @@ func test_a_coffee_guest_may_add_a_pastry_and_has_it_with_the_coffee() -> void:
 	assert_true(_sim.kitchen.is_clean(), "the plate came back and the seat was cleared")
 
 
+func test_a_slow_pastry_is_dropped_and_the_coffee_still_paid() -> void:
+	_build(_bar_layout())
+	_sim.menu = [_content.recipe(&"coffee"), _content.recipe(&"croissant")] as Array[RecipeDef]
+	var kind: CustomerType = CustomerType.new()
+	kind.id = &"peckish"
+	kind.display_name = "Peckish"
+	kind.pastry_add_chance = 1.0
+	var random: RandomNumberGenerator = RandomNumberGenerator.new()
+	random.seed = 12
+	var guest: CustomerAgent = _sim.add_visitor(_sim.world.grid.entries()[0], random, kind, RecipeDef.COFFEE)
+	guest.food_patience = 5000
+	assert_true(_sim.world.clock.start_service())
+	var squeezed: bool = false
+	for tick: int in range(MAX_TICKS):
+		_sim.advance()
+		if not squeezed and guest.order != null and guest.order.state == Order.State.DELIVERED \
+				and guest.extra_order != null and guest.extra_order.state != Order.State.DELIVERED:
+			guest.food_patience = 1
+			squeezed = true
+		if _sim.customers().is_empty() and _sim.world.board.active_count() == 0:
+			break
+	assert_true(squeezed, "the coffee arrived before the croissant")
+	assert_eq(_left.get(guest.id), &"happy", "the guest stayed for the coffee")
+	assert_eq(guest.extra_order.state, Order.State.CANCELLED)
+	assert_eq(_paid, [&"coffee"] as Array[StringName])
+	assert_eq(_sim.kitchen.in_use_plates, 0)
+
+
 func test_no_pastry_on_the_menu_means_no_pastry_draw() -> void:
 	_build(_bar_layout())
 	_sim.menu = [_content.recipe(&"coffee"), _content.recipe(&"burger")] as Array[RecipeDef]

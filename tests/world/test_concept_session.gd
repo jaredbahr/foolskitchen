@@ -149,6 +149,78 @@ func test_drinks_behind_a_closed_bar_stay_off_the_menu_with_a_reason() -> void:
 	assert_true(hints.has("Soft drink: staff can't reach the drinks fridge."), str(hints))
 
 
+func _wall_in_drinks(main: Node) -> void:
+	for placed: PlacedItem in (main.get("sim") as RestaurantSim).world.grid.items():
+		var definition: ItemDef = placed.def as ItemDef
+		if (definition.id == &"table_2" and placed.origin == Vector2i(10, 6)) \
+				or (definition.id == &"potted_plant" and placed.origin == Vector2i(12, 9)):
+			assert_true(int(main.call("shop_sell", placed.id)) >= 0)
+	assert_true(main.call("shop_buy", &"drinks_shelf", Vector2i(10, 5), 2))
+	assert_true(main.call("shop_buy", &"drinks_fridge", Vector2i(11, 5), 2))
+	for x: int in range(9, 13):
+		assert_true(main.call("shop_buy", &"bar_section", Vector2i(x, 7), 2))
+	for y: int in [5, 6]:
+		assert_true(main.call("shop_buy", &"bar_section", Vector2i(9, y), 1))
+
+
+func test_a_walled_in_bar_saves_and_reloads_without_losing_the_game() -> void:
+	var main: Node = _start(true)
+	Economy.add_cash(2000, Ledger.SALE)
+	_wall_in_drinks(main)
+	assert_false(_menu_ids(main).has(&"beer"), "staff can't reach the shelf")
+	assert_true(Clock.sim.start_service())
+	var guard: int = 0
+	while Clock.sim.phase != SimClock.Phase.CLOSED and guard < 20:
+		main.call("run_ticks", 1000)
+		guard += 1
+	assert_true(Clock.sim.next_day())
+	var reloaded: Node = _start(true)
+	assert_eq(Clock.sim.day, 2, "the morning save loads")
+	assert_false(_menu_ids(reloaded).has(&"beer"), "still off: the shelf is still walled in")
+	var shelves: int = 0
+	for placed: PlacedItem in (reloaded.get("sim") as RestaurantSim).world.grid.items():
+		shelves += 1 if (placed.def as ItemDef).id == &"drinks_shelf" else 0
+	assert_eq(shelves, 1, "the bar came back with the shop")
+
+
+func test_a_reachable_second_drinks_shelf_serves_while_the_first_is_walled_in() -> void:
+	var main: Node = _start(false)
+	Economy.add_cash(2000, Ledger.SALE)
+	_wall_in_drinks(main)
+	assert_true(main.call("shop_buy", &"drinks_shelf", Vector2i(1, 9), 0))
+	assert_true(_menu_ids(main).has(&"beer"))
+	var sim: RestaurantSim = main.get("sim") as RestaurantSim
+	sim.menu = [(main.get("content") as ContentDB).recipe(&"beer")] as Array[RecipeDef]
+	var cancelled: Array[StringName] = []
+	sim.orders.order_cancelled.connect(func(o: Order) -> void: cancelled.append(o.cancellation_reason))
+	var random: RandomNumberGenerator = RandomNumberGenerator.new()
+	random.seed = 3
+	var guest: CustomerAgent = sim.add_visitor(sim.world.grid.entries()[0], random, null, RecipeDef.DRINKS)
+	guest.food_patience = 5000
+	assert_true(Clock.sim.start_service())
+	for tick: int in range(3000):
+		main.call("run_ticks", 1)
+		if guest.paid:
+			break
+	assert_true(guest.paid, "the beer came from the shelf staff can reach")
+	assert_eq(cancelled, [] as Array[StringName])
+
+
+func test_undo_redo_of_a_drinks_only_menu_is_exact() -> void:
+	var main: Node = _start(false)
+	Economy.add_cash(1000, Ledger.SALE)
+	assert_true(main.call("set_build_active", true))
+	assert_true(main.call("shop_buy", &"coffee_machine", Vector2i(12, 5), 2))
+	for id: StringName in [&"burger", &"grilled_cheese", &"tomato_soup", &"tea"]:
+		assert_true(main.call("menu_set_enabled", id, false))
+	var settings: MenuSettings = main.get("menu_settings") as MenuSettings
+	var before: Dictionary = settings.to_dict()
+	assert_true(main.call("undo_edit"))
+	assert_eq(settings.enabled_count(), 1, "one dish stands in while the machine is gone")
+	assert_true(main.call("redo_edit"))
+	assert_eq(settings.to_dict(), before, "the stand-in goes off again")
+
+
 func test_opening_hours_are_a_morning_choice_saved_at_the_next_morning_and_paid_by_the_hour() -> void:
 	var main: Node = _start(true)
 	var morning_file: String = FileAccess.get_file_as_string(_save_path())

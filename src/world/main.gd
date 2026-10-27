@@ -1288,6 +1288,10 @@ func _load_autosave() -> bool:
 	tray_level = _loaded_tray_level
 	sim.carry_capacity = 1 << tray_level
 	menu_settings = choices
+	# The saved layout lists every station; drinks at a station staff cannot
+	# reach stay off the live menu (and out of the next save), as in play.
+	menu_settings.set_catalogue(_cookable_live())
+	menu_settings.clear_stash()
 	_apply_menu(sim, menu_settings)
 	if sim.kitchen == null or not sim.kitchen.configure_plates(
 			_loaded_plates.total if _loaded_plates != null else TUNING.starting_plates):
@@ -2361,9 +2365,10 @@ func _on_stock_close_requested() -> void:
 	set_stock_visible(false)
 
 
-## At opening, station-only supplies for drinks put on the menu this morning
-## (a coffee machine bought today) are topped up like the morning order. Edits
-## and undo never buy stock, so undo stays exact. Nothing is in use on a
+## At opening, every station-only ingredient a dish on today's menu uses is
+## topped up to its target, like the morning order (so supplies for a coffee
+## machine bought this morning arrive before service). Edits and undo never
+## buy stock, so undo stays exact. Nothing station-only is in use on a
 ## default menu, so default play buys nothing here.
 func _restock_station_supplies() -> void:
 	var order: Dictionary = _reorder().plan(Economy.stock, _unit_costs(), Economy.cash,
@@ -2489,6 +2494,8 @@ func _on_day_phase_changed(_day: int, phase: int) -> void:
 	_dismiss_goals()
 	# Undo never reaches back across opening (or into a new morning).
 	edit_history.clear()
+	if menu_settings != null:
+		menu_settings.clear_stash()
 	_edit_notice = ""
 	build_mode.exit()
 	if _build_ready:

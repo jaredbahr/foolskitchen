@@ -1154,10 +1154,13 @@ existing paint colour and camera-controlled build-grid parameters.
   (`_cookable_live`, refreshed after every accepted edit, undo and redo via
   `MenuSettings.set_catalogue`: kept dishes keep their choices, new ones join
   drinks switched on and dishes off, removed ones leave and their choices are
-  stashed for the session, so an undo/redo brings back price and toggle). A
+  stashed until the next phase change, so an undo/redo brings back price and
+  toggle; a dish switched on only because nothing else was left goes off
+  again when they return). A loaded morning applies the same live catalogue,
+  and a save missing a disabled dish's price loads it off at standard. A
   drink station staff cannot reach from the street (a bar closed on all
-  sides) does not count; the Drinks hints then say "staff can't reach the
-  drinks shelf". Edits never buy stock, so undo stays exact: station-only
+  sides) does not count, and pours skip it for a reachable one; the Drinks
+  hints then say "staff can't reach the drinks shelf". Edits never buy stock, so undo stays exact: station-only
   supplies for today's menu are topped up when the shop opens
   (`_restock_station_supplies`), and by the next morning order after that.
 - **Pour task.** `Kitchen._on_order_placed` sends a drink to `_post_pour`: a
@@ -1187,8 +1190,9 @@ existing paint colour and camera-controlled build-grid parameters.
   paid with the meal if it arrived, cancelled otherwise, never a reason to leave.
   A coffee-only guest likewise draws `pastry_add_chance` only when a
   `RecipeDef.with_drinks` dish (the croissant) is available; that pastry is
-  cooked and plated as usual, the guest starts their coffee once it arrives,
-  and the seat is then cleared like a meal's. Both extras use `extra_order`.
+  cooked and plated as usual, the guest starts their coffee once it arrives
+  (if patience runs out first, the pastry is cancelled and the coffee is
+  still drunk and paid), and the seat is then cleared like a meal's. Both extras use `extra_order`.
 - **Parties at counters.** Party seating still looks for one table with
   enough reachable seats. A 1x1 counter piece seats one stool, so groups
   take tables (or the long two-cell bar counter); drinks-only parties do too.

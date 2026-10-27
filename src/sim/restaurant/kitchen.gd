@@ -698,17 +698,30 @@ func _station(world: SimWorld, station_type: StringName, category: ItemDef.Categ
 
 
 ## With two coffee machines, a new drink goes to one nobody is working at.
-## Falls back to the first of its type, which then waits as before.
+## Stations staff cannot reach from the street are skipped; with several
+## reachable but busy, the first reachable one is used and its pour waits.
 func _free_station(world: SimWorld, station_type: StringName) -> PlacedItem:
 	var first: PlacedItem = null
+	var entries: Array[Vector2i] = world.grid.entries()
 	for item: PlacedItem in world.grid.items():
 		var definition: ItemDef = item.def as ItemDef
 		if definition == null or definition.station_type != station_type or definition.category != ItemDef.Category.STATION:
 			continue
+		var free: bool = false
+		var reachable: bool = false
+		for cell: Vector2i in item.work_cells:
+			if not world.grid.is_walkable(cell) or world.grid.find_path_to_any(cell, entries).is_empty():
+				continue
+			reachable = true
+			if item.reserved_by(cell) == -1:
+				free = true
+				break
+		if not reachable:
+			continue
+		if free:
+			return item
 		if first == null:
 			first = item
-		if world.grid.free_work_cell(item) != SimGrid.NO_CELL:
-			return item
 	return first
 
 

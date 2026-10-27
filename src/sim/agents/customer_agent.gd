@@ -157,7 +157,13 @@ func tick(world: SimWorld) -> void:
 		else:
 			_food_wait += 1
 			if _food_wait >= food_patience:
-				_leave(world, sim, &"waited_too_long")
+				if order != null and order.state == Order.State.DELIVERED and _waiting_for_side():
+					# The coffee is here; a slow croissant is dropped, not the guest.
+					sim.orders.set_state(extra_order, Order.State.CANCELLED, &"waited_too_long")
+					state = State.EATING
+					_eating = 0
+				else:
+					_leave(world, sim, &"waited_too_long")
 	match state:
 		State.ARRIVING:
 			if not _try_seat(world):
