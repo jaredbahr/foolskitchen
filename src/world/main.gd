@@ -1700,6 +1700,14 @@ func _reorder() -> ReorderSettings:
 
 ## The Drinks section explains what each missing drink needs, by name.
 func drink_station_hints() -> Array[String]:
+	return _station_hints(true)
+
+
+func food_station_hints() -> Array[String]:
+	return _station_hints(false)
+
+
+func _station_hints(only_drinks: bool) -> Array[String]:
 	var hints: Array[String] = []
 	if content == null or world == null:
 		return hints
@@ -1717,7 +1725,7 @@ func drink_station_hints() -> Array[String]:
 	var drinks: Array[RecipeDef] = []
 	for kind: StringName in RecipeDef.ORDER_TYPES:
 		for recipe: RecipeDef in content.recipes():
-			if recipe.order_type == kind and recipe.is_drink() and recipe.unlock_tier == 1 \
+			if recipe.order_type == kind and recipe.is_drink() == only_drinks and recipe.unlock_tier == 1 \
 					and recipe.unlock_level <= owner_progress.level:
 				drinks.append(recipe)
 	for recipe: RecipeDef in drinks:
@@ -1739,9 +1747,11 @@ func drink_station_hints() -> Array[String]:
 		for index: int in range(needs[station].size()):
 			var dish: String = needs[station][index]
 			names.append(dish if index == 0 else dish.to_lower())
-		var advice: String = "staff can't reach the %s" if walled_in.has(station) else "buy a %s"
+		var advice: String = "buy a %s" if only_drinks else ("Needs an %s" if station == &"oven" else "Needs a %s")
+		if walled_in.has(station):
+			advice = "staff can't reach the %s"
 		hints.append("%s: %s." % [StockAlerts.join_names(names), advice % item_name.to_lower()])
-	if menu_settings != null:
+	if only_drinks and menu_settings != null:
 		for drink: RecipeDef in menu_settings.crowded_out_drinks():
 			hints.append("%s is ready to serve; make room on the menu to add it." % drink.display_name)
 	return hints
@@ -1841,6 +1851,7 @@ func set_menu_visible(value: bool) -> bool:
 		set_staff_visible(false)
 		set_stock_visible(false)
 		_menu_panel.set_drink_hints(drink_station_hints())
+		_menu_panel.set_food_hints(food_station_hints())
 		_menu_panel.set_hours(Clock.sim.display_open_minute, Clock.sim.display_close_minute, HOURS_TUNING)
 	_menu_panel.set_phase(Clock.sim.phase)
 	_menu_panel.visible = value
@@ -1979,6 +1990,7 @@ func _on_settings_close_requested() -> void:
 func _on_menu_enable_requested(recipe_id: StringName, enabled: bool) -> void:
 	menu_set_enabled(recipe_id, enabled)
 	_menu_panel.set_drink_hints(drink_station_hints())
+	_menu_panel.set_food_hints(food_station_hints())
 	_menu_panel.refresh()
 
 

@@ -302,3 +302,98 @@ func test_a_drink_left_off_a_full_menu_says_how_to_add_it() -> void:
 	assert_true(settings.is_enabled(waiting[0].id))
 	var shown: Array = panel.get("_drink_hints")
 	assert_false(shown.has(notice), str(shown))
+
+
+func test_fryer_and_oven_enable_only_their_food_and_show_named_reasons() -> void:
+	var main: Node = _start(false)
+	var progress: OwnerProgress = main.get("owner_progress") as OwnerProgress
+	assert_false(progress.award_bonus(progress.threshold_for(3)).is_empty())
+	var settings: MenuSettings = main.get("menu_settings") as MenuSettings
+	assert_true(settings.set_owner_level(3))
+	(main.get("shop_editor") as ShopEditor).set_owner_level(3)
+	Economy.add_cash(1000, Ledger.SALE)
+	assert_false(_menu_ids(main).has(&"fries"))
+	assert_false(_menu_ids(main).has(&"savoury_pie"))
+	var hints: Array[String] = main.call("food_station_hints")
+	assert_true(hints.has("Fries: Needs a fryer."), str(hints))
+	assert_true(hints.has("Savoury pie: Needs an oven."), str(hints))
+	assert_true(main.call("shop_buy", &"fryer", Vector2i(9, 3), 0))
+	assert_true(_menu_ids(main).has(&"fries"))
+	assert_false(_menu_ids(main).has(&"savoury_pie"), "a fryer does not bake")
+	assert_false(settings.is_enabled(&"fries"), "new food waits for the player")
+	assert_false(_stock_ids(main).has(&"potato"))
+	assert_true(main.call("menu_set_enabled", &"fries", true))
+	assert_true(_stock_ids(main).has(&"potato") and _stock_ids(main).has(&"oil"))
+	assert_eq(Economy.stock.count(&"potato"), 0, "editing never buys supplies")
+	assert_true(main.call("shop_buy", &"oven", Vector2i(11, 3), 0))
+	assert_true(_menu_ids(main).has(&"savoury_pie"))
+	assert_false(settings.is_enabled(&"savoury_pie"))
+	hints = main.call("food_station_hints")
+	assert_false(hints.has("Fries: Needs a fryer."))
+	assert_false(hints.has("Savoury pie: Needs an oven."))
+	assert_true(main.call("menu_set_enabled", &"savoury_pie", true))
+	assert_eq(settings.enabled_count(), 5)
+	assert_true(Clock.sim.start_service())
+	assert_eq(Economy.stock.count(&"potato"), TUNING.station_stock[&"potato"])
+	assert_eq(Economy.stock.count(&"oil"), TUNING.station_stock[&"oil"])
+	assert_eq(Economy.stock.count(&"dough"), TUNING.station_stock[&"dough"])
+
+
+func test_new_food_keeps_level_gates_sections_and_choices_when_appliance_returns() -> void:
+	var main: Node = _start(false)
+	var editor: ShopEditor = ProbeSetups._free_editor(main)
+	assert_true(editor.buy(&"fryer", Vector2i(9, 3), 0))
+	main.call("_refresh_menu_catalogue")
+	var settings: MenuSettings = main.get("menu_settings") as MenuSettings
+	assert_eq(settings.recipe(&"fries").menu_section(), RecipeDef.Section.SIDES)
+	assert_false(main.call("menu_set_enabled", &"fries", true), "level one remains locked")
+	assert_eq(settings.menu_limit(), 6)
+	assert_true(settings.set_owner_level(2))
+	assert_true(main.call("menu_set_enabled", &"fries", true))
+	assert_true(main.call("menu_set_price", &"fries", 9))
+	var sim: RestaurantSim = main.get("sim") as RestaurantSim
+	var fryer: PlacedItem = sim.world.grid.item_at(Vector2i(9, 3))
+	assert_true(sim.world.grid.remove(fryer.id))
+	main.call("_refresh_menu_catalogue")
+	assert_false(_menu_ids(main).has(&"fries"))
+	assert_false(_stock_ids(main).has(&"potato"))
+	assert_not_null(sim.world.grid.place_def((main.get("content") as ContentDB).item(&"fryer"), Vector2i(9, 3)))
+	main.call("_refresh_menu_catalogue")
+	assert_true(settings.is_enabled(&"fries"))
+	assert_eq(settings.price_of(settings.recipe(&"fries")), 9)
+
+
+func test_food_equipment_hints_are_shown_outside_the_drinks_section() -> void:
+	var main: Node = _start(false)
+	var progress: OwnerProgress = main.get("owner_progress") as OwnerProgress
+	progress.award_bonus(progress.threshold_for(3))
+	assert_true(main.call("set_menu_visible", true))
+	var panel: MenuPanel = main.get_node("Overlay/MenuPanel") as MenuPanel
+	var box: VBoxContainer = panel.get("_food_hints_box") as VBoxContainer
+	assert_true(box.visible)
+	var shown: Array[String] = []
+	for child: Node in box.get_children():
+		shown.append((child as Label).text)
+	assert_true(shown.has("Fries: Needs a fryer."), str(shown))
+	assert_true(shown.has("Savoury pie: Needs an oven."), str(shown))
+	assert_false(panel.drinks_section().is_ancestor_of(box))
+	assert_true(box.get_index() < panel.drinks_section().get_index())
+
+
+func test_fryer_coffee_probe_builds_a_reachable_explicit_level_two_menu() -> void:
+	var main: Node = _start(false)
+	var before: Dictionary = GameState.call("_capture_save")
+	assert_true(ProbeSetups.apply("fryer_coffee", main))
+	var settings: MenuSettings = main.get("menu_settings") as MenuSettings
+	assert_eq(settings.owner_level(), 2)
+	for id: StringName in [&"burger", &"grilled_cheese", &"fries", &"coffee"]:
+		assert_true(settings.is_enabled(id), str(id))
+	assert_false(settings.is_enabled(&"tea"))
+	assert_false(settings.is_enabled(&"tomato_soup"))
+	assert_eq(settings.enabled_count(), 4)
+	assert_false(_menu_ids(main).has(&"savoury_pie"), "no oven in this scenario")
+	assert_true(_stock_ids(main).has(&"potato"))
+	assert_true(_stock_ids(main).has(&"coffee_beans"))
+	assert_eq(Economy.stock.count(&"potato"), 0, "opening, not setup, orders supplies")
+	assert_eq((main.get("sim") as RestaurantSim).world.now, 0)
+	assert_eq(GameState.call("_capture_save"), before, "the layout and explicit XP draw no randomness")
