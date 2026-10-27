@@ -250,6 +250,7 @@ func _apply_category() -> void:
 		wall_buttons[id].visible = not _paint_visible and selected_category == WALLS
 	var hint: Label = get_node("Panel/Margin/Rows/Scroll/Content/Hint") as Label
 	hint.text = WALLS_HINT if selected_category == WALLS else FURNITURE_HINT
+	_refresh_title()
 	var empty: Label = get_node("Panel/Margin/Rows/Scroll/Content/Empty") as Label
 	empty.visible = not _paint_visible and visible_ids().is_empty() and selected_category != WALLS
 
@@ -331,7 +332,7 @@ func _refresh_swatch_styles() -> void:
 func _refresh_title() -> void:
 	var title: Label = get_node("Panel/Margin/Rows/Scroll/Content/Title") as Label
 	if not _paint_visible:
-		title.text = "Furniture"
+		title.text = "Walls" if selected_category == WALLS else "Furniture"
 		IconStyle.decorate_label(title, &"catalogue")
 		return
 	IconStyle.decorate_label(title, &"paint")

@@ -303,7 +303,7 @@ an active edit/panel/selection first, or opens Settings when none is active.
   successful zero refund. `last_check`/`check_sell` explain refusal. Doors and
   the last functional fridge, prep counter, stove or pass cannot be sold.
   Normal grid removal releases reservations and cancels work targeting a sale.
-- `to_dict()` returns version 1 and stable `items` records containing `def_id`,
+- `to_dict()` returns version 2 (FK-070 added `walls`) and stable `items` records containing `def_id`,
   `[x, y]` origin and quarter turns. Static `from_dict(data, template, content,
   errors)` validates an isolated layout or returns null; it never replaces a
   live world. Terrain/staff spawns come from the template, with required station
@@ -737,6 +737,70 @@ an active edit/panel/selection first, or opens Settings when none is active.
 - No save section is added. Existing item IDs, positions, turns and swatches
   use the shop snapshot; dining links are derived again from the restored
   layout. The sole persistence boundary stays the normal morning autosave.
+
+### Walls, doorways and windows (FK-070)
+- **Edge data.** `SimGrid` stores segments on cell edges, never cells. An edge
+  key is `Vector3i(x, y, axis)`: `EDGE_WEST` (0) is the grid line on the west
+  side of cell (x, y), `EDGE_NORTH` (1) the line on its north side. Helpers:
+  `edge_between(a, b)`, `edge_cells`, `edge_vertices`, `edge_from_vertices`,
+  `edges_at_vertex`, `cell_edges`. `set_segment(edge, Segment)` (NONE removes)
+  emits `cells_changed` with both cells; `segment_edges()` is sorted.
+  `Segment`: WALL and WINDOW block a step across the edge, DOORWAY does not;
+  any segment blocks a diagonal step past its end (no corner cutting past a
+  post). Keys are grid-line positions, so they do not care whether a line is
+  inside the room or on the outer shell.
+- **Pathing.** `EdgeAStar` is an `AStarGrid2D` subclass whose `_compute_cost`
+  prices a blocked step at 1e9; `SimGrid` rejects any path that still crosses
+  one. It is used only while a path-relevant segment exists (FLOOR/ENTRY on
+  both sides), so a shop without interior walls keeps the plain engine search
+  and its exact paths (the balance probe is unchanged). `walkable_neighbours`,
+  reachability and dining links respect edges. Furniture may not straddle a
+  segment or have a wall/window between it and its own work or seat cell
+  (`PlaceResult.WALL_IN_WAY`, "A wall is in the way"); a chair across a wall
+  from its table does not link.
+- **Rules (`WallRules`, one place for every refusal sentence).** Interior
+  edges (FLOOR both sides) take wall, doorway or window. An outer face (FLOOR,
+  then a shell WALL cell with the street, outside or grid border beyond) takes
+  a window only, and each side keeps at least one solid face. The street door
+  (floor cells beside ENTRY, and door items) is never touched. Both are
+  derived from terrain on every check, not stored.
+- **Edits.** `ShopEditor.check_segments(changes)` / `apply_segments(changes)`
+  take edge -> Segment and are MORNING/CLOSED only. A change refuses when it
+  cuts through furniture, blocks a seat or work spot, unlinks a chair, or
+  newly cuts off the door, the sink, a kitchen station, a seat, or a staff
+  member/spawn from the street (already-unreachable things never block). Each
+  changed edge sells the old segment at the furniture rate (half) and buys the
+  new one, both under `Ledger.UPGRADES`. Prices live in `data/walls/*.tres`
+  (`WallKindDef`: Wall $10, Doorway $15, Window $20 per edge). `run_changes`
+  skips edges that already hold a segment; `next_segment` is the click cycle
+  (wall -> doorway -> window -> wall; outer face solid <-> window).
+- **Save.** The `shop` snapshot is version 2 with `walls: [{edge: [x, y, axis],
+  kind}]`; version 1 loads with no walls. `from_dict` validates every saved
+  edge with `WallRules` after the items, then `ShopLayout.wall_segments` (edge
+  -> kind id) is rebuilt by `ShopBuilder`.
+- **Build mode.** The catalogue's Walls tab picks the kind; `BuildMode.State.WALLS`
+  turns a drag along grid lines into a run (longer axis wins) with a green/red
+  ghost per edge and the cost in the build hint; a click without a run applies
+  the click cycle; Delete removes the hovered segment; Esc ends a drag, then the
+  tool, then build mode. Commits go through Main's `shop_walls` wrapper.
+- **View.** `WallSegmentView` (under `ShopView`) rebuilds from the grid on
+  `cells_changed`, wall mode or camera quarter. Interior segments are painted
+  slabs (room wall paint, 1.4 high, 0.06 thick) running vertex to vertex, so a
+  doorway is the full 0.5 edge wide under a 1.15 head; slab ends reach half a
+  thickness past a vertex where segments meet at an angle. Windows frame the
+  native Kenney `wallWindow` pane. An outer window cuts the shell cell: its box
+  drops to the sill, jambs and head surround the pane, which sits at the room
+  face; `RoomDressing` keeps its street pane/lamp slots but skips that cell.
+  Cutaway and Down lower every interior segment (doorway heads disappear).
+- **Floor expansion (#153) plugs in here.** Grow or shift the grid, translate
+  every edge key by the same cell offset, then turn the old shell cells into
+  FLOOR with `set_terrain`. Edges re-derive their class: an outer-face window
+  becomes an interior window automatically, and pathing picks it up because
+  `set_terrain` refreshes the edges around each cell. To keep the old outline
+  as a wall the player can remove or open, set WALL on the edges along the
+  old shell line (the shell itself was cells, so it has no segments to move).
+- Captures: `tools/screenshot.sh --walls=place` (a dragged run with ghost and
+  cost) and `--walls=room` (a built room; add `--quarter=0` for Cutaway).
 
 ### Restaurant vibe core (FK-072)
 - `VibeModel.evaluate()` reads detached layout, paint and enabled-menu inputs.

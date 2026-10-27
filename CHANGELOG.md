@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- Build walls, doorways and windows in Build mode: drag along the grid lines to split the room, click a wall to turn it into a doorway or window, and open windows in the outside walls too. (#157)
 - Decorate your diner with padded two-seat booths and chrome counter stools. (#147)
 - Track career goals and earn cash and XP for reaching them. (#146)
 - Meet Students, Foodies and Families with different budgets and patience; inspect a guest to see their type. (#145)

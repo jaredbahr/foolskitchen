@@ -2,6 +2,7 @@ extends TestCase
 ## FK-070 Walls tool: interaction state only, committed through a Main-like wrapper.
 
 const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
+const CAPTURE: Script = preload("res://tools/screenshot.gd")
 
 var _content: ContentDB
 var _sim: RestaurantSim
@@ -129,6 +130,13 @@ func test_walls_need_the_session_command() -> void:
 	assert_true(_mode.enter())
 	assert_false(_mode.begin_walls(SimGrid.Segment.WALL))
 	assert_eq(_mode.state, BuildMode.State.IDLE)
+
+
+func test_review_capture_fixture_is_an_accepted_edit() -> void:
+	var fixture: Dictionary[Vector3i, int] = CAPTURE.walls_fixture()
+	var check: EditCheck = _editor.check_segments(fixture)
+	assert_true(check.ok, check.why)
+	assert_eq(check.changes.size(), fixture.size())
 
 
 func _vertex(x: int, y: int) -> Vector2:

@@ -14,7 +14,8 @@ extends Node3D
 ## Outer-face windows cut the same opening through the shell cell; ShopView
 ## lowers that cell's own box to the sill and keeps its top cap at full height.
 
-const THICKNESS: float = 0.08
+## About Kenney's own wall panel (0.05) at the furniture scale.
+const THICKNESS: float = 0.06
 ## Doorway head height: above ART_STYLE's 1.1 minimum and Kenney's 1.08 opening.
 const DOOR_HEIGHT: float = 1.15
 const CAP_HEIGHT: float = 0.02

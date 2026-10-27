@@ -17,6 +17,9 @@ extends SceneTree
 ##   --report    require a closed-day report with at least two real review cards
 ##   --build=green|red  hold a checked buy preview through the production input API
 ##   --paint     show a painted morning shop using the production paint controls
+##   --walls=place|room  FK-070 walls: a dragged run with its ghost and cost, or a
+##             built room (interior wall, doorway, windows inside and out). Room
+##             is Walls Up unless --quarter selects the cutaway; add --open --fast=N for guests.
 ##   --door-queue  zoom the existing camera onto a real queue, or its empty entry
 ##   --loan-review --speed=0 --frames=12,90  explicit financial-fixture UI evidence
 ##   --milestone-review --speed=0 --frames=12,90  authored goals and close reward evidence
@@ -99,6 +102,7 @@ var _hud_layout_scale: int = 125
 var _report_requested: bool = false
 var _build: String = ""
 var _paint: bool = false
+var _walls: String = ""
 var _door_queue: bool = false
 var _loan_review: bool = false
 var _loan_fixture: Dictionary = {}
@@ -195,6 +199,12 @@ func _initialize() -> void:
 			_build = requested
 		elif arg == "--paint":
 			_paint = true
+		elif arg.begins_with("--walls"):
+			var requested_walls: String = arg.trim_prefix("--walls=")
+			if not ["place", "room"].has(requested_walls):
+				_fail_capture("--walls supports place or room")
+				return
+			_walls = requested_walls
 		elif arg.begins_with("--door-queue"):
 			if arg != "--door-queue":
 				_fail_capture("--door-queue does not accept a value")
@@ -226,6 +236,11 @@ func _initialize() -> void:
 	if _paint and (_open or _fast != 0 or not _selection.is_empty() or _assign_owner or _f3 or _menu or _staff or not _build.is_empty() or _speed != 0):
 		_fail_capture("--paint requires a paused morning without other view/service flags")
 		return
+	if not _walls.is_empty() and (_scene_path != "res://src/world/main.tscn" or not _build.is_empty() or _paint \
+			or _menu or _staff or _settings or not _selection.is_empty() or _f3 or _report_requested \
+			or (_walls == "place" and (_open or _fast != 0 or _quarter >= 0))):
+		_fail_capture("--walls requires Main without other panels; place also needs a fresh morning")
+		return
 	if _menu and (_open or not _selection.is_empty()):
 		_fail_capture("--menu requires morning and cannot combine with --open or --select")
 		return
@@ -241,7 +256,7 @@ func _initialize() -> void:
 			or _speed != 0 or _shots.size() != 1):
 		_fail_capture("--settings requires one paused Main capture without other view/service flags")
 		return
-	if _shots.is_empty() or _shots.min() < 1 or ((_quarter >= 0 or not _selection.is_empty() or _f3 or _menu or _staff or _settings or not _build.is_empty() or _paint or _door_queue) and _shots.min() < 4):
+	if _shots.is_empty() or _shots.min() < 1 or ((_quarter >= 0 or not _selection.is_empty() or _f3 or _menu or _staff or _settings or not _build.is_empty() or _paint or _door_queue or not _walls.is_empty()) and _shots.min() < 4):
 		_fail_capture("capture frames must be positive, and at least 4 for requested view/UI options")
 		return
 	if _settings_world and _shots.min() < 90:
@@ -1608,10 +1623,21 @@ func _process(_delta: float) -> bool:
 	if _frames == 3:
 		# Autoloads aren't compile-time identifiers in a --script main loop.
 		var clock: Node = root.get_node("Clock")
+		if not _walls.is_empty():
+			# Walls are a closed-phase edit, so build them before any --open service.
+			_configure_walls()
+			if _failed:
+				return true
 		if _open:
 			(clock.get("sim") as SimClock).start_service()
 		clock.call("set_speed", _speed)
 		_configure_camera()
+		if _walls == "room" and _quarter < 0:
+			(_main.get_node("ShopView") as ShopView).set_wall_mode(ShopView.WallMode.UP)
+		if _walls == "place":
+			_begin_wall_drag()
+			if _failed:
+				return true
 		if _failed:
 			return true
 		if _diner_review:
@@ -1698,7 +1724,7 @@ func _process(_delta: float) -> bool:
 		if _settings_keyboard["settings_closed"] != true or _settings_keyboard["menu_visible"] != false:
 			_fail_capture("native Close acceptance did not return from Settings to the world")
 			return true
-	if not _build.is_empty() and _frames >= 3:
+	if (not _build.is_empty() or _walls == "place") and _frames >= 3:
 		_hold_build_pointer()
 	if _fast > 0 and _frames > 3 and _main.has_method("run_ticks"):
 		_main.call("run_ticks", _fast)
@@ -2081,6 +2107,76 @@ func _configure_build() -> void:
 	_main.call("update_build_pointer", _build_pointer)
 
 
+## FK-070 room: an interior wall across the west dining room with a window and
+## a doorway, a short return wall (T junction), and two windows in the west shell.
+static func walls_fixture() -> Dictionary[Vector3i, int]:
+	var changes: Dictionary[Vector3i, int] = {}
+	for y: int in range(5, 10):
+		changes[Vector3i(5, y, SimGrid.EDGE_WEST)] = SimGrid.Segment.WALL
+	changes[Vector3i(5, 6, SimGrid.EDGE_WEST)] = SimGrid.Segment.WINDOW
+	changes[Vector3i(5, 8, SimGrid.EDGE_WEST)] = SimGrid.Segment.DOORWAY
+	changes[Vector3i(3, 9, SimGrid.EDGE_NORTH)] = SimGrid.Segment.WALL
+	changes[Vector3i(4, 9, SimGrid.EDGE_NORTH)] = SimGrid.Segment.WALL
+	changes[Vector3i(1, 6, SimGrid.EDGE_WEST)] = SimGrid.Segment.WINDOW
+	changes[Vector3i(1, 7, SimGrid.EDGE_WEST)] = SimGrid.Segment.WINDOW
+	return changes
+
+
+## The room is built through Main's production wrapper; the camera frames it.
+func _configure_walls() -> void:
+	var world: SimWorld = _capture_world()
+	var rig: CameraRig = _main.get_node_or_null("CameraRig") as CameraRig
+	if world == null or rig == null or world.clock.phase != SimClock.Phase.MORNING or not _main.has_method("shop_walls"):
+		_fail_capture("--walls requires the production morning wall APIs")
+		return
+	if _walls == "room" and not bool(_main.call("shop_walls", walls_fixture())):
+		_fail_capture("the walls fixture was refused: " + (_main.get("shop_editor") as ShopEditor).last_check.why)
+		return
+	rig.initial_focus = Vector2(2.6, 3.6) if _walls == "room" else Vector2(4.4, 3.7)
+	rig.initial_zoom = rig.minimum_zoom
+
+
+## Press on one grid vertex and hold the pointer on another, through Main's input route.
+func _begin_wall_drag() -> void:
+	var camera: Camera3D = _main.get_node_or_null("CameraRig/Camera3D") as Camera3D
+	var catalogue: BuildCatalogue = _main.get_node_or_null("Overlay/BuildCatalogue") as BuildCatalogue
+	if camera == null or catalogue == null or not bool(_main.call("set_build_active", true)):
+		_fail_capture("scene refused build entry for the walls preview")
+		return
+	catalogue.set_category(BuildCatalogue.WALLS)
+	if not bool(_main.call("begin_wall_tool", SimGrid.Segment.WALL)):
+		_fail_capture("scene refused the Walls tool")
+		return
+	var start: Vector2 = camera.unproject_position(Vector3(4.5, 0.0, 2.5))
+	_build_pointer = camera.unproject_position(Vector3(4.5, 0.0, 4.5))
+	root.warp_mouse(start)
+	var press: InputEventMouseButton = InputEventMouseButton.new()
+	press.button_index = MOUSE_BUTTON_LEFT
+	press.pressed = true
+	press.position = start
+	press.global_position = start
+	_main.call("route_build_input", press)
+	_hold_build_pointer()
+	_main.call("update_build_pointer", _build_pointer)
+
+
+func _walls_capture_valid() -> bool:
+	var world: SimWorld = _capture_world()
+	var mode: BuildMode = _main.get("build_mode") as BuildMode
+	var preview: BuildPreview = _main.get_node_or_null("BuildPreview") as BuildPreview
+	if world == null or mode == null or preview == null:
+		return false
+	if _walls == "place":
+		return mode.state == BuildMode.State.WALLS and mode.wall_dragging and mode.current_check.ok \
+			and mode.current_check.changes.size() == 4 and preview.wall_ghosts.size() == 4 \
+			and not world.grid.has_segments()
+	var fixture: Dictionary[Vector3i, int] = walls_fixture()
+	for edge: Vector3i in fixture:
+		if world.grid.segment(edge) != fixture[edge]:
+			return false
+	return world.grid.segment_edges().size() == fixture.size()
+
+
 func _hold_build_pointer() -> void:
 	root.warp_mouse(_build_pointer)
 	var motion: InputEventMouseMotion = InputEventMouseMotion.new()
@@ -2207,6 +2303,9 @@ func _capture() -> void:
 			or build.get("ghost_visible") != true or build.get("ok") != (_build == "green") \
 			or build.get("ghost_valid") != (_build == "green") or build.get("origin") != build.get("pointer_cell")):
 		_fail_capture("requested build preview was not present in the rendered frame")
+		return
+	if not _walls.is_empty() and not _walls_capture_valid():
+		_fail_capture("requested walls view did not match the rendered shop")
 		return
 	var menu_visible: Variant = _main.call("is_menu_visible") if _main.has_method("is_menu_visible") else null
 	if _menu and (menu_visible != true or world == null or world.clock.phase != SimClock.Phase.MORNING):
