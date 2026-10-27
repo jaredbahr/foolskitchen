@@ -59,7 +59,8 @@ static func morning(name: String, main: Node) -> bool:
 ## FK-083 coffee shop: open 07:00-15:00 serving coffee, tea and croissants.
 ## Two coffee machines behind a four-stool café counter, the two starter
 ## tables, a round table with two rounded chairs, and café plants and a side
-## table (the room reads as a Café). Built free of charge (like
+## table (the room reads as a Café), and two storage shelves for the
+## supplies (FK-087). Built free of charge (like
 ## expanded_tables, so level-two pieces too), stocked at the normal price.
 static func _coffee_shop(main: Node) -> bool:
 	var editor: ShopEditor = _free_editor(main)
@@ -71,14 +72,16 @@ static func _coffee_shop(main: Node) -> bool:
 			[&"side_table", Vector2i(11, 5), 2], [&"plant_small_2", Vector2i(12, 5), 0]]:
 		if not editor.buy(placement[0], placement[1], placement[2]):
 			return false
-	if not _counter_with_stools(editor, 9, 12) or not editor.last_check.unreachable.is_empty():
+	if not _counter_with_stools(editor, 9, 12) or not _storage_shelves(editor) \
+			or not editor.last_check.unreachable.is_empty():
 		return false
 	return _finish(main, 7 * 60, 15 * 60, [&"coffee", &"tea", &"croissant"],
 		[&"burger", &"grilled_cheese", &"tomato_soup"])
 
 
 ## FK-083 bar: open 16:00-24:00 with beer, wine and soft drinks from a drinks
-## shelf and fridge behind a four-stool bar, plus burgers and grilled cheese.
+## shelf and fridge behind a four-stool bar, plus burgers and grilled cheese,
+## and two storage shelves (FK-087).
 static func _bar(main: Node) -> bool:
 	var editor: ShopEditor = _free_editor(main)
 	if editor == null or not _clear_east_table(main, editor):
@@ -87,7 +90,8 @@ static func _bar(main: Node) -> bool:
 			[&"table_2", Vector2i(2, 8), 0]]:
 		if not editor.buy(placement[0], placement[1], placement[2]):
 			return false
-	if not _counter_with_stools(editor, 9, 12) or not editor.last_check.unreachable.is_empty():
+	if not _counter_with_stools(editor, 9, 12) or not _storage_shelves(editor) \
+			or not editor.last_check.unreachable.is_empty():
 		return false
 	return _finish(main, 16 * 60, 24 * 60, [&"beer", &"wine", &"soft_drink", &"burger", &"grilled_cheese"],
 		[&"tomato_soup"])
@@ -118,6 +122,13 @@ static func _clear_east_table(main: Node, editor: ShopEditor) -> bool:
 	return true
 
 
+## FK-087: a concept's supplies need storage beyond the starter pantry, as a
+## player building one would add: two storage shelves in the kitchen's
+## north-east corner, beside the sink.
+static func _storage_shelves(editor: ShopEditor) -> bool:
+	return editor.buy(&"storage_shelf", Vector2i(11, 1), 2) and editor.buy(&"storage_shelf", Vector2i(12, 1), 2)
+
+
 ## A counter along row 7 from x0 to x1 (guests to the south on stools at row
 ## 8, staff behind it on row 6): an end piece at the open west end.
 static func _counter_with_stools(editor: ShopEditor, x0: int, x1: int) -> bool:
@@ -142,8 +153,9 @@ static func _finish(main: Node, open_minute: int, close_minute: int, menu_on: Ar
 	for recipe: RecipeDef in (main.get("menu_settings") as MenuSettings).enabled_recipes():
 		for ingredient: IngredientDef in recipe.ingredients:
 			used[ingredient.id] = true
-	for row: Dictionary in main.call("stock_rows"):
-		var id: StringName = row["id"]
+	# Only the ingredients auto-reorder lists (the Stock panel also shows
+	# unused station-only ones, greyed out, FK-087; they are never auto-bought).
+	for id: StringName in (main.call("_reorder") as ReorderSettings).ids():
 		if not used.has(id) and not main.call("stock_set_auto", id, false):
 			return false
 	return true
@@ -217,7 +229,7 @@ static func _fryer_coffee(main: Node) -> bool:
 	var editor: ShopEditor = _free_editor(main)
 	if editor == null or not editor.buy(&"fryer", Vector2i(9, 3), 0) \
 			or not editor.buy(&"coffee_machine", Vector2i(12, 3), 0) \
-			or not editor.last_check.unreachable.is_empty():
+			or not _storage_shelves(editor) or not editor.last_check.unreachable.is_empty():
 		return false
 	return _finish(main, 11 * 60, 21 * 60, [&"burger", &"grilled_cheese", &"fries", &"coffee"],
 		[&"tea", &"tomato_soup"])

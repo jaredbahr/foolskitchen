@@ -24,6 +24,12 @@ var _owner_level: int = 1
 ## The lot and the bought floor (FK-080). Null without a layout.
 var _footprint: ShopFootprint
 var _bought: Dictionary[Vector2i, bool] = {}
+## Built-in dry storage from the layout (FK-087).
+var pantry_units: int = 0
+## Optional () -> Dictionary[int, int]: ingredient units each storage kind
+## must hold (stock plus orders). Selling storage that would leave less room
+## than that is refused, also on undo and redo. Unset: no storage check.
+var storage_need: Callable = Callable()
 
 
 ## Undo and redo (FK-085). The edit moves `amount` cash (signed, negative
@@ -52,6 +58,7 @@ func _init(sim: RestaurantSim, content: ContentDB, books: ShopEditBooks, layout:
 		floor_swatch_id = _known_swatch(layout.floor_swatch_id)
 		_footprint = ShopFootprint.from_layout(layout)
 		_bought = ShopFootprint.to_set(layout.floor_cells)
+		pantry_units = maxi(0, layout.pantry_units)
 
 
 ## Main injects the restored owner level before accepting a new purchase.
@@ -203,6 +210,9 @@ func check_sell(item_id: int, exact: Exact = null) -> EditCheck:
 				count += 1
 		if count <= 1:
 			return EditCheck.new(false, "Keep at least one %s" % required)
+	var storage: String = _storage_refusal(placed)
+	if not storage.is_empty():
+		return EditCheck.new(false, storage)
 	if _books == null or not _books.is_ready():
 		return EditCheck.new(false, "The shop books are unavailable")
 	var ids: Dictionary[int, int] = {}
@@ -235,6 +245,23 @@ func sell(item_id: int, exact: Exact = null) -> int:
 	_applying = false
 	last_check = check if removed else EditCheck.new(false, "The shop changed; check the sale again")
 	return refund if removed else -1
+
+
+## Stock never vanishes with a sold shelf or fridge (FK-087): the rest of the
+## space of that kind must still hold the stock and the orders. This applies
+## to undo and redo too, like any other refused edit.
+func _storage_refusal(placed: PlacedItem) -> String:
+	var definition: ItemDef = placed.def as ItemDef
+	if definition == null or definition.storage_units <= 0 or not storage_need.is_valid():
+		return ""
+	var need: Variant = storage_need.call()
+	if not need is Dictionary:
+		return ""
+	var kind: int = int(definition.storage_kind)
+	var left: Dictionary[int, int] = StorageSpace.capacities(_sim.world.grid, pantry_units, placed.id)
+	if int((need as Dictionary).get(kind, 0)) > int(left.get(kind, 0)):
+		return StorageSpace.removal_refusal(kind)
+	return ""
 
 
 ## Stable placement order, independent nested values, and no runtime references.
@@ -303,6 +330,7 @@ static func from_dict(data: Dictionary, template_layout: ShopLayout, content: Co
 	layout.lot_east = template_layout.lot_east
 	layout.lot_north = template_layout.lot_north
 	layout.floor_cell_price = template_layout.floor_cell_price
+	layout.pantry_units = template_layout.pantry_units
 	layout.floor_cells = ShopFootprint.sorted(bought)
 	layout.wall_swatch_id = _saved_swatch(data.get("wall_swatch_id", ""), content)
 	layout.floor_swatch_id = _saved_swatch(data.get("floor_swatch_id", ""), content)

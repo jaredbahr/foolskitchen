@@ -5,7 +5,9 @@
 #   3. unit tests (tools/run_tests.gd)
 # Any "SCRIPT ERROR", "Parse Error" or "ERROR:" line in the output fails the check, so code
 # paths exercised by tests must not push_error() on purpose (test the return value instead).
-# Each step has a 5-minute timeout so a hung script fails instead of blocking CI.
+# Each step has a timeout so a hung script fails instead of blocking CI: 5
+# minutes for import and parse, 10 for the tests (the suite passed 5 minutes on
+# a loaded 4-core box in Oct 2026; the CI job itself stops at 15).
 # Godot binary: $GODOT, else .tools/ (from tools/get_godot.sh), else `godot` on PATH.
 set -uo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -35,7 +37,7 @@ code=$?
 if [[ $code -ne 0 ]] || has_errors "$log"; then cat "$log"; echo "FAIL: parse"; fail=1; else tail -1 "$log"; fi
 
 echo "== tests"
-timeout 300 "$GODOT" --headless --path . --script tools/run_tests.gd >"$log" 2>&1
+timeout 600 "$GODOT" --headless --path . --script tools/run_tests.gd >"$log" 2>&1
 code=$?
 cat "$log"
 if [[ $code -ne 0 ]] || has_errors "$log"; then echo "FAIL: tests"; fail=1; fi

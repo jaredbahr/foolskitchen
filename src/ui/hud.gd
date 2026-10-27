@@ -155,9 +155,8 @@ func refresh() -> void:
 	_refresh_build_controls()
 	_menu_button.disabled = Clock.sim.phase != SimClock.Phase.MORNING
 	_menu_button.tooltip_text = "Choose today's menu and prices" if not _menu_button.disabled else "Menu changes are available in the morning."
-	_stock_button.disabled = Clock.sim.phase != SimClock.Phase.MORNING
-	_stock_button.tooltip_text = "Check the fridge, buy ingredients and set auto-reorder" if not _stock_button.disabled \
-		else "Stock is bought in the morning."
+	_stock_button.disabled = false
+	_stock_button.tooltip_text = "Check your storage, order ingredients and set auto-reorder"
 	_staff_button.disabled = not STAFF_PHASES.has(Clock.sim.phase)
 	_staff_button.tooltip_text = "Hire staff and plan today's wages" if Clock.sim.phase == SimClock.Phase.MORNING \
 		else "Set staff job priorities. Hiring and upgrades are available in the morning."
@@ -274,9 +273,9 @@ func _on_staff_pressed() -> void:
 		staff_pressed.emit()
 
 
+## Ordering works in every phase (FK-087): orders come with the next delivery.
 func _on_stock_pressed() -> void:
-	if Clock.sim.phase == SimClock.Phase.MORNING:
-		stock_pressed.emit()
+	stock_pressed.emit()
 
 
 ## Main lists today's sold-out dishes by display name; empty hides the tag.

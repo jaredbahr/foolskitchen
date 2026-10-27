@@ -57,8 +57,10 @@ func test_new_game_auto_order_buys_the_old_amounts_with_one_premium() -> void:
 	assert_eq(premiums, 1, "the premium is charged once per order")
 
 
-## Manual buys are list price, MORNING only, through the real panel.
-func test_manual_buys_are_list_price_and_morning_only() -> void:
+## Hand orders (FK-087) go through the real panel's cart at list price, in
+## any phase. In the morning they arrive at once, as #156's buys did; during
+## service they come with the next delivery.
+func test_cart_orders_are_list_price_and_morning_orders_arrive_at_once() -> void:
 	var main: Node = _start(false)
 	var button: Button = main.get_node("HUD/Top/Row/Stock") as Button
 	var panel: StockPanel = main.get_node("Overlay/StockPanel") as StockPanel
@@ -67,20 +69,26 @@ func test_manual_buys_are_list_price_and_morning_only() -> void:
 	assert_true(panel.visible)
 	var cash: int = Economy.cash
 	var row: Dictionary = panel.row_for(&"tomato")
-	(row["buy5"] as Button).pressed.emit()
-	assert_eq(Economy.stock.count(&"tomato"), TUNING.morning_stock[&"tomato"] + 5)
-	assert_eq(Economy.cash, cash - 5, "five $1 tomatoes cost $5: no premium")
-	(row["buy1"] as Button).pressed.emit()
-	assert_eq(Economy.cash, cash - 6)
-	assert_eq((row["count"] as Label).text, "22 in the fridge")
-	assert_false(main.call("stock_buy", &"tomato", 3), "only the +1 and +5 buttons exist")
+	(row["cart+5"] as Button).pressed.emit()
+	(row["cart+1"] as Button).pressed.emit()
+	assert_eq((row["cart"] as Label).text, "6")
+	assert_eq(Economy.cash, cash, "the cart is not paid for yet")
+	assert_eq((panel.get_node("%CartTotal") as Label).text, "Order total: $6 (cash %s)" % Fmt.money(cash))
+	assert_eq((panel.get_node("%DeliveryLabel") as Label).text, "Morning orders arrive at once. Next delivery at 14:00")
+	(panel.get_node("%Order") as Button).pressed.emit()
+	assert_eq(Economy.cash, cash - 6, "six $1 tomatoes cost $6: no premium")
+	assert_eq(Economy.stock.count(&"tomato"), TUNING.morning_stock[&"tomato"] + 6, "a morning order arrives at once")
+	assert_eq((row["count"] as Label).text, "22 in stock")
+	assert_true((main.get("deliveries") as DeliveryBook).is_empty())
 	assert_true(Clock.sim.start_service())
-	assert_false(panel.visible, "opening the shop closes the panel")
-	assert_true(button.disabled)
-	assert_false(main.call("set_stock_visible", true))
-	assert_false(main.call("stock_buy", &"tomato", 1))
-	assert_false(main.call("stock_set_auto", &"tomato", false))
-	assert_eq(Economy.cash, cash - 6)
+	assert_true(panel.visible, "the panel stays open during service")
+	assert_false(button.disabled, "orders can be placed in any phase")
+	assert_true(main.call("stock_cart_set", &"bun", 3))
+	assert_true(main.call("stock_place_order"))
+	assert_eq(Economy.cash, cash - 9)
+	assert_eq(Economy.stock.count(&"bun"), TUNING.morning_stock[&"bun"], "during service it waits for the delivery")
+	assert_eq((panel.get_node("%DeliveryLabel") as Label).text, "Next delivery at 14:00")
+	assert_true(main.call("stock_set_auto", &"tomato", false), "reorder settings change in any phase")
 
 
 ## Short cash never borrows; it buys in the fixed order.

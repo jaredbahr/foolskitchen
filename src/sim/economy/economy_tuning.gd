@@ -27,6 +27,16 @@ extends Resource
 ## Buying by hand in the Stock panel is always at list price.
 @export_range(0.0, 1.0, 0.01) var auto_reorder_premium: float = 0.05
 
+## Deliveries (FK-087). Orders placed in the morning (the auto-reorder and
+## hand orders) arrive at once, as before deliveries. Orders placed during
+## service arrive with the next delivery, one every delivery_interval_minutes
+## of opening hours; after the last one, and once closed, with the next
+## morning's. Zero means no daytime deliveries.
+@export_range(0, 1440, 30) var delivery_interval_minutes: int = 180
+## Freezer ingredients keep at least this many days (fridge and dry
+## ingredients use their own shelf_life_days).
+@export var freezer_shelf_life_days: int = 30
+
 ## Ticks between guest arrivals while open (uniform in [min, max]).
 @export var arrival_gap_min: int = 100
 @export var arrival_gap_max: int = 260

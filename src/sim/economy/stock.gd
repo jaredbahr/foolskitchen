@@ -29,6 +29,13 @@ func count(id: StringName) -> int:
 	return total
 
 
+## Ingredient ids with stock on hand.
+func ids() -> Array[StringName]:
+	var out: Array[StringName] = []
+	out.assign(_batches.keys())
+	return out
+
+
 ## Reports whether a nonnegative quantity can be taken; zero needs no stock.
 func has(id: StringName, qty: int) -> bool:
 	return qty >= 0 and count(id) >= qty

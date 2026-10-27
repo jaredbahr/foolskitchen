@@ -1,0 +1,132 @@
+[gd_scene load_steps=9 format=3]
+
+[ext_resource type="Script" path="res://src/world/prop_view.gd" id="1_view"]
+[ext_resource type="PackedScene" path="res://assets/kenney/furniture/bookcaseOpen.glb" id="2_shelf"]
+[ext_resource type="PackedScene" path="res://assets/kenney/food/barrel.glb" id="3_barrel"]
+[ext_resource type="PackedScene" path="res://assets/kenney/food/loaf.glb" id="4_loaf"]
+[ext_resource type="PackedScene" path="res://assets/kenney/food/carton.glb" id="5_carton"]
+[ext_resource type="PackedScene" path="res://assets/kenney/food/bag.glb" id="6_bag"]
+[ext_resource type="PackedScene" path="res://assets/kenney/food/can.glb" id="7_can"]
+[ext_resource type="PackedScene" path="res://assets/kenney/furniture/cardboardBoxClosed.glb" id="8_cardboardBoxClosed"]
+
+[node name="StorageShelf" type="Node3D"]
+script = ExtResource("1_view")
+footprint = Vector2i(1, 1)
+body_material_names = PackedStringArray("wood")
+
+[node name="Shelf" type="Node3D" parent="."]
+
+[node name="Art" type="Node3D" parent="Shelf"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="Shelf/Art" instance=ExtResource("2_shelf")]
+
+[node name="Stock0Barrel1" type="Node3D" parent="."]
+position = Vector3(-0.095, 0.143, 0.0)
+metadata/art_group = &"food"
+metadata/stock_slot = 0
+
+[node name="Art" type="Node3D" parent="Stock0Barrel1"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="Stock0Barrel1/Art" instance=ExtResource("3_barrel")]
+
+[node name="Stock1Barrel2" type="Node3D" parent="."]
+position = Vector3(0.095, 0.143, 0.0)
+metadata/art_group = &"food"
+metadata/stock_slot = 1
+
+[node name="Art" type="Node3D" parent="Stock1Barrel2"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="Stock1Barrel2/Art" instance=ExtResource("3_barrel")]
+
+[node name="Stock2Loaf1" type="Node3D" parent="."]
+position = Vector3(-0.12, 0.407, 0.0)
+metadata/art_group = &"food"
+metadata/stock_slot = 2
+
+[node name="Art" type="Node3D" parent="Stock2Loaf1"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="Stock2Loaf1/Art" instance=ExtResource("4_loaf")]
+
+[node name="Stock3Loaf2" type="Node3D" parent="."]
+position = Vector3(0.02, 0.407, 0.0)
+metadata/art_group = &"food"
+metadata/stock_slot = 3
+
+[node name="Art" type="Node3D" parent="Stock3Loaf2"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="Stock3Loaf2/Art" instance=ExtResource("4_loaf")]
+
+[node name="Stock4Carton" type="Node3D" parent="."]
+position = Vector3(0.14, 0.407, 0.0)
+metadata/art_group = &"food"
+metadata/stock_slot = 4
+
+[node name="Art" type="Node3D" parent="Stock4Carton"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="Stock4Carton/Art" instance=ExtResource("5_carton")]
+
+[node name="Stock5Bag1" type="Node3D" parent="."]
+position = Vector3(-0.15, 0.671, 0.0)
+metadata/art_group = &"food"
+metadata/stock_slot = 5
+
+[node name="Art" type="Node3D" parent="Stock5Bag1"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="Stock5Bag1/Art" instance=ExtResource("6_bag")]
+
+[node name="Stock6Bag2" type="Node3D" parent="."]
+position = Vector3(-0.09, 0.671, 0.0)
+metadata/art_group = &"food"
+metadata/stock_slot = 6
+
+[node name="Art" type="Node3D" parent="Stock6Bag2"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="Stock6Bag2/Art" instance=ExtResource("6_bag")]
+
+[node name="Stock7Bag3" type="Node3D" parent="."]
+position = Vector3(-0.03, 0.671, 0.0)
+metadata/art_group = &"food"
+metadata/stock_slot = 7
+
+[node name="Art" type="Node3D" parent="Stock7Bag3"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="Stock7Bag3/Art" instance=ExtResource("6_bag")]
+
+[node name="Stock8Can" type="Node3D" parent="."]
+position = Vector3(0.11, 0.671, 0.0)
+metadata/art_group = &"food"
+metadata/stock_slot = 8
+
+[node name="Art" type="Node3D" parent="Stock8Can"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="Stock8Can/Art" instance=ExtResource("7_can")]
+
+[node name="Stock9Box" type="Node3D" parent="."]
+position = Vector3(-0.118, 0.0, 0.0)
+metadata/stock_slot = 9
+metadata/support = NodePath("../Shelf")
+
+[node name="Art" type="Node3D" parent="Stock9Box"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="Stock9Box/Art" instance=ExtResource("8_cardboardBoxClosed")]
+
+[node name="Stock10Box" type="Node3D" parent="."]
+position = Vector3(0.118, 0.0, 0.0)
+metadata/stock_slot = 10
+metadata/support = NodePath("../Shelf")
+
+[node name="Art" type="Node3D" parent="Stock10Box"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="Stock10Box/Art" instance=ExtResource("8_cardboardBoxClosed")]
