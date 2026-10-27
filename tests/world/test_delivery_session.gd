@@ -119,6 +119,7 @@ func test_deliveries_arrive_on_the_schedule_and_bring_sold_out_dishes_back() -> 
 	assert_eq(Clock.sim.phase_tick, 1080)
 	assert_eq(Economy.stock.count(&"soup_stock"), 6, "the 14:00 delivery")
 	assert_false(sim.is_sold_out(&"tomato_soup"), "the soup is back on")
+	assert_true((main.call("stock_notes") as Array[String]).has("The 14:00 delivery brought 6 Soup stock."))
 	assert_true((main.get("deliveries") as DeliveryBook).is_empty())
 	# After the last delivery (20:00) an order waits for the morning.
 	main.call("run_ticks", 3240 - Clock.sim.phase_tick + 10)

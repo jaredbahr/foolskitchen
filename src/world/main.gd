@@ -96,7 +96,7 @@ var _loaded_milestones: MilestoneTracker = null
 var _loaded_tray_level: int = 0
 var _loaded_reorder: ReorderSettings = null
 var _loaded_deliveries: DeliveryBook = null
-## The last delivery today ({lines, minute}), for the Stock panel notes.
+## Today's last daytime delivery ({lines, opening, minute}), for the Stock notes.
 var _last_delivery: Dictionary = {}
 var _storage_fill_key: String = ""
 ## This morning's automatic order and expiry, for the Stock panel notes.
@@ -2305,6 +2305,7 @@ func _storage_need() -> Dictionary:
 ## buys no more than the free storage space, and with short cash what fits
 ## in the fixed order; it never borrows. It arrives at once, like before.
 func _restock() -> void:
+	_last_delivery.clear()
 	_deliver_due(true)
 	var order: Dictionary = _reorder().plan(Economy.stock, _unit_costs(), Economy.cash,
 		auto_reorder_premium, false, storage_space())
@@ -2342,7 +2343,9 @@ func _deliver_due(morning_setup: bool = false) -> bool:
 	if lines.is_empty():
 		return false
 	Economy.receive(lines)
-	_last_delivery = {"lines": lines, "phase": Clock.sim.phase, "minute": Clock.sim.display_minutes()}
+	if not morning_setup:
+		_last_delivery = {"lines": lines, "opening": Clock.sim.phase == SimClock.Phase.OPEN and Clock.sim.phase_tick == 0,
+			"minute": Clock.sim.display_minutes()}
 	if sim != null and sim.restock_sold_out() > 0:
 		_refresh_sold_out_hud()
 	var parts: Array[String] = []
@@ -2620,6 +2623,12 @@ func stock_notes() -> Array[String]:
 			if not names.is_empty():
 				notes.append("%s for %s %s." % [StorageSpace.refusal(kind), StockAlerts.join_names(names),
 					"this morning" if when == "unfit" else "at opening"])
+	if not _last_delivery.is_empty():
+		var brought: Array[String] = []
+		for line: Dictionary in _last_delivery["lines"]:
+			brought.append("%d %s" % [int(line["qty"]), _ingredient_name(line["id"])])
+		notes.append("The %s delivery brought %s." % ["opening" if _last_delivery["opening"]
+			else Fmt.clock(int(_last_delivery["minute"])), StockAlerts.join_names(brought)])
 	var short: Dictionary = _morning_order.get("short", {})
 	var missed: Array[String] = []
 	for id: StringName in short:
