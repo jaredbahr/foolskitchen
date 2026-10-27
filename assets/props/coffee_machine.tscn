@@ -1,0 +1,26 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://src/world/prop_view.gd" id="1_view"]
+[ext_resource type="PackedScene" path="res://assets/kenney/furniture/kitchenCabinet.glb" id="2_cabinet"]
+[ext_resource type="PackedScene" path="res://assets/kenney/furniture/kitchenCoffeeMachine.glb" id="3_machine"]
+
+[node name="CoffeeMachine" type="Node3D"]
+script = ExtResource("1_view")
+footprint = Vector2i(1, 1)
+body_material_names = PackedStringArray("wood")
+
+[node name="Cabinet" type="Node3D" parent="."]
+
+[node name="Art" type="Node3D" parent="Cabinet"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="Cabinet/Art" instance=ExtResource("2_cabinet")]
+
+[node name="Machine" type="Node3D" parent="."]
+position = Vector3(0, 0, -0.04)
+metadata/support = NodePath("../Cabinet")
+
+[node name="Art" type="Node3D" parent="Machine"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="Machine/Art" instance=ExtResource("3_machine")]

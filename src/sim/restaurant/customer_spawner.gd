@@ -13,9 +13,18 @@ func _init(random: RandomNumberGenerator) -> void:
 	rng = random
 
 
-## Starts a fresh service with a newly drawn first arrival gap.
-func reset() -> void:
-	_remaining = _gap()
+## Starts a fresh service with a newly drawn first arrival gap, scaled by the
+## opening arrival rate (FK-083; exactly the drawn gap at 1.0).
+func reset(rate: float = 1.0) -> void:
+	_remaining = scaled_gap(_gap(), rate)
+
+
+## A drawn gap at an arrival rate. Rate 1.0 returns it unchanged, so default
+## play keeps its exact gaps; busier hours shorten it, quiet ones stretch it.
+static func scaled_gap(gap: int, rate: float) -> int:
+	if rate == 1.0 or not is_finite(rate) or rate <= 0.0:
+		return gap
+	return maxi(1, roundi(float(gap) / rate))
 
 
 ## Creates at most one party, and never outside OPEN or without a street entry.
@@ -31,10 +40,13 @@ func advance(sim: RestaurantSim) -> void:
 	var arrived: int = 1
 	if not entries.is_empty():
 		var kind: CustomerType = null
+		var vibe: VibeModel.Result = sim.vibe_result
 		if sim.customer_types != null:
 			kind = CustomerTypePicker.choose(sim.customer_types, sim.customer_level,
-				sim.review_book.average(), rng)
+				sim.review_book.average(), rng, vibe.active_theme, vibe.arrival_theme_strength)
 		if sim.customer_types == null or kind != null:
+			# Food-only menus have one kind and draw nothing here (FK-083).
+			var visit: StringName = choose_visit(sim.visit_kinds(), kind, sim, rng)
 			var entry: Vector2i = entries[rng.randi_range(0, entries.size() - 1)]
 			# A type whose groups are still locked draws exactly what a single
 			# guest draws: no size draw and one private seed.
@@ -54,13 +66,38 @@ func advance(sim: RestaurantSim) -> void:
 				if index < count:
 					randoms.append(customer_rng)
 			if count == 1:
-				sim.add_customer(entry, randoms[0], kind)
+				sim.add_visitor(entry, randoms[0], kind, visit)
 			elif count > 1:
-				sim.add_party(entry, randoms, kind)
+				sim.add_party(entry, randoms, kind, visit)
 			arrived = count
 	# Headcount-neutral: a party of N waits N drawn gaps (one draw, scaled), so
 	# groups bring the same guests per hour as singles did.
-	_remaining = _gap() * maxi(1, arrived)
+	_remaining = scaled_gap(_gap(), sim.arrival_rate()) * maxi(1, arrived)
+
+
+## What an arriving guest came for. One available kind draws nothing; with
+## several, one draw weighs each kind's hourly weight by the type's liking.
+static func choose_visit(kinds: Array[StringName], kind: CustomerType, sim: RestaurantSim,
+		random: RandomNumberGenerator) -> StringName:
+	if kinds.size() <= 1:
+		return kinds[0] if not kinds.is_empty() else RecipeDef.FOOD
+	var minute: int = sim.world.clock.display_minutes()
+	var weights: Array[float] = []
+	var total: float = 0.0
+	for visit: StringName in kinds:
+		var weight: float = sim.visit_tuning.weight(visit, minute) if sim.visit_tuning != null else 0.0
+		if kind != null:
+			weight *= kind.visit_weight(visit)
+		weights.append(maxf(weight, 0.0))
+		total += maxf(weight, 0.0)
+	if total <= 0.0 or not is_finite(total):
+		return kinds[0]
+	var ticket: float = random.randf() * total
+	for index: int in kinds.size():
+		ticket -= weights[index]
+		if ticket < 0.0:
+			return kinds[index]
+	return kinds.back()
 
 
 func _gap() -> int:

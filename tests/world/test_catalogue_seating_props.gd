@@ -3,15 +3,15 @@ extends TestCase
 
 const CASES: Array[Dictionary] = [
 	{"id": &"wooden_chair", "name": "Wooden chair", "asset": "chair", "category": ItemDef.Category.CHAIR, "price": 10, "unlock": 1, "charm": 0, "tags": [&"rustic", &"diner"], "footprint": Vector2i(1, 1), "solid": false, "capacity": 1, "seats": [Vector2i(0, 0)], "materials": ["wood"]},
-	{"id": &"rounded_chair", "name": "Rounded chair", "asset": "chairRounded", "category": ItemDef.Category.CHAIR, "price": 18, "unlock": 2, "charm": 1, "tags": [&"cosy"], "footprint": Vector2i(1, 1), "solid": false, "capacity": 1, "seats": [Vector2i(0, 0)], "materials": ["wood"]},
+	{"id": &"rounded_chair", "name": "Rounded chair", "asset": "chairRounded", "category": ItemDef.Category.CHAIR, "price": 18, "unlock": 2, "charm": 1, "tags": [&"cosy", &"cafe"], "footprint": Vector2i(1, 1), "solid": false, "capacity": 1, "seats": [Vector2i(0, 0)], "materials": ["wood"]},
 	{"id": &"modern_chair", "name": "Cushioned modern chair", "asset": "chairModernCushion", "category": ItemDef.Category.CHAIR, "price": 30, "unlock": 3, "charm": 1, "tags": [&"modern"], "footprint": Vector2i(1, 1), "solid": false, "capacity": 1, "seats": [Vector2i(0, 0)], "materials": []},
 	{"id": &"modern_frame_chair", "name": "Framed modern chair", "asset": "chairModernFrameCushion", "category": ItemDef.Category.CHAIR, "price": 35, "unlock": 4, "charm": 1, "tags": [&"modern"], "footprint": Vector2i(1, 1), "solid": false, "capacity": 1, "seats": [Vector2i(0, 0)], "materials": []},
-	{"id": &"bar_stool", "name": "Bar stool", "asset": "stoolBar", "category": ItemDef.Category.CHAIR, "price": 20, "unlock": 2, "charm": 0, "tags": [&"diner"], "footprint": Vector2i(1, 1), "solid": false, "capacity": 1, "seats": [Vector2i(0, 0)], "materials": ["wood"]},
-	{"id": &"square_bar_stool", "name": "Square bar stool", "asset": "stoolBarSquare", "category": ItemDef.Category.CHAIR, "price": 25, "unlock": 3, "charm": 1, "tags": [&"rustic"], "footprint": Vector2i(1, 1), "solid": false, "capacity": 1, "seats": [Vector2i(0, 0)], "materials": ["wood"]},
+	{"id": &"bar_stool", "name": "Bar stool", "asset": "stoolBar", "category": ItemDef.Category.CHAIR, "price": 20, "unlock": 2, "charm": 0, "tags": [&"diner", &"bar"], "footprint": Vector2i(1, 1), "solid": false, "capacity": 1, "seats": [Vector2i(0, 0)], "materials": ["wood"]},
+	{"id": &"square_bar_stool", "name": "Square bar stool", "asset": "stoolBarSquare", "category": ItemDef.Category.CHAIR, "price": 25, "unlock": 3, "charm": 1, "tags": [&"rustic", &"bar"], "footprint": Vector2i(1, 1), "solid": false, "capacity": 1, "seats": [Vector2i(0, 0)], "materials": ["wood"]},
 	{"id": &"bench", "name": "Two-seat bench", "asset": "bench", "category": ItemDef.Category.CHAIR, "price": 35, "unlock": 2, "charm": 1, "tags": [&"rustic", &"cosy"], "footprint": Vector2i(2, 1), "solid": false, "capacity": 2, "seats": [Vector2i(0, 0), Vector2i(1, 0)], "materials": ["wood"], "bench": true},
 	{"id": &"cushioned_bench", "name": "Cushioned two-seat bench", "asset": "benchCushion", "category": ItemDef.Category.CHAIR, "price": 50, "unlock": 3, "charm": 2, "tags": [&"cosy"], "footprint": Vector2i(2, 1), "solid": false, "capacity": 2, "seats": [Vector2i(0, 0), Vector2i(1, 0)], "materials": ["wood"], "bench": true},
 	{"id": &"lounge_chair", "name": "Lounge chair", "asset": "loungeChair", "category": ItemDef.Category.CHAIR, "price": 80, "unlock": 5, "charm": 2, "tags": [&"cosy", &"modern"], "footprint": Vector2i(1, 1), "solid": false, "capacity": 1, "seats": [Vector2i(0, 0)], "materials": ["wood"]},
-	{"id": &"round_table", "name": "Round table", "asset": "tableRound", "category": ItemDef.Category.TABLE, "price": 55, "unlock": 2, "charm": 1, "tags": [&"cosy"], "footprint": Vector2i(2, 2), "solid": true, "capacity": 2, "seats": [], "materials": ["wood"]},
+	{"id": &"round_table", "name": "Round table", "asset": "tableRound", "category": ItemDef.Category.TABLE, "price": 55, "unlock": 2, "charm": 1, "tags": [&"cosy", &"cafe"], "footprint": Vector2i(2, 2), "solid": true, "capacity": 2, "seats": [], "materials": ["wood"]},
 	{"id": &"cloth_table", "name": "Tablecloth dining table", "asset": "tableCloth", "category": ItemDef.Category.TABLE, "price": 80, "unlock": 3, "charm": 2, "tags": [&"cosy"], "footprint": Vector2i(2, 1), "solid": true, "capacity": 2, "seats": [], "materials": ["wood"]},
 	{"id": &"cross_table", "name": "Cross-legged table", "asset": "tableCross", "category": ItemDef.Category.TABLE, "price": 70, "unlock": 4, "charm": 1, "tags": [&"rustic"], "footprint": Vector2i(2, 1), "solid": true, "capacity": 2, "seats": [], "materials": ["wood"]},
 	{"id": &"glass_table", "name": "Glass dining table", "asset": "tableGlass", "category": ItemDef.Category.TABLE, "price": 120, "unlock": 6, "charm": 2, "tags": [&"modern"], "footprint": Vector2i(2, 1), "solid": true, "capacity": 2, "seats": [], "materials": []},
@@ -137,7 +137,8 @@ func test_bar_counter_keeps_kit_parts_and_supports_two_independent_stools_at_eve
 	assert_true(counter_def.seat_cells.is_empty(), "only placed facing stools supply seats")
 	assert_eq(counter_def.unlock_level, 4)
 	assert_true(counter_def.price > 0)
-	assert_eq(counter_def.theme_tags, [&"diner", &"modern"] as Array[StringName])
+	assert_eq(counter_def.theme_tags, [&"bar", &"modern"] as Array[StringName])
+	assert_true(counter_def.serve_across, "guests at the counter are served across it (FK-083)")
 	var view: PropView = counter_def.view_scene.instantiate() as PropView
 	_views.append(view)
 	view.prepare()

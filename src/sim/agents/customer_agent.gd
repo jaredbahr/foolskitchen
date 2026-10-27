@@ -23,6 +23,13 @@ var eat_ticks: int = 300
 var table_item_id: int = 0
 var seat_cell: Vector2i = SimGrid.NO_CELL
 var order: Order = null
+## What this guest came for (FK-083): a meal (RecipeDef.FOOD), or a drink only
+## (COFFEE or DRINKS). A drinks-only guest orders from that part of the menu,
+## prefers a counter seat and stays a shorter time.
+var visit_kind: StringName = RecipeDef.FOOD
+## A drink ordered with a meal. It is paid with the meal once it has arrived;
+## losing it never sends the guest home.
+var drink_order: Order = null
 var leave_reason: StringName = &"happy"
 var paid: bool = false
 ## A multi-guest visit shares only its bounded table search, never its order.
@@ -33,6 +40,8 @@ var customer_type_name: String = "Regular"
 var budget_multiplier: float = 1.0
 var quality_weight: float = 0.0
 var review_chance_multiplier: float = 1.0
+## Chance of adding a drink to a meal (from the type; 0 for an untyped guest).
+var drink_add_chance: float = 0.0
 ## The floor seen on arrival, before this guest can add their own door spot.
 var arrival_dirt_fraction: float = 0.0
 ## Derived ambience sampled once on a real OPEN arrival, before later edits.
@@ -68,11 +77,26 @@ func configure_type(kind: CustomerType) -> bool:
 	customer_type_id = kind.id
 	customer_type_name = kind.display_name
 	budget_multiplier = kind.budget_multiplier
+	drink_add_chance = kind.drink_add_chance
 	quality_weight = kind.quality_weight
 	review_chance_multiplier = kind.review_chance_multiplier
 	queue_patience = _type_patience(queue_patience, kind.patience_multiplier)
 	food_patience = _type_patience(food_patience, kind.patience_multiplier)
 	return true
+
+
+## Only an uninstalled arrival is set up; a food visit changes nothing.
+func set_visit_kind(kind: StringName, tuning: VisitTuning = null) -> bool:
+	if id != 0 or state != State.ARRIVING or not RecipeDef.ORDER_TYPES.has(kind):
+		return false
+	visit_kind = kind
+	if kind != RecipeDef.FOOD and tuning != null and tuning.drink_visit_ticks > 0:
+		eat_ticks = tuning.drink_visit_ticks
+	return true
+
+
+func is_drinks_visit() -> bool:
+	return visit_kind != RecipeDef.FOOD
 
 
 static func _type_patience(budget: int, multiplier: float) -> int:
@@ -177,10 +201,13 @@ func why() -> String:
 		State.ORDERING:
 			return _waiting_why("Waiting for a server to take my order")
 		State.WAITING_FOOD:
+			if is_drinks_visit():
+				return _waiting_why("Waiting for my drink, %ds of patience left" % [
+					ceili(float(maxi(0, food_patience - _food_wait)) / SimClock.TICKS_PER_SECOND)])
 			return _waiting_why("Waiting for food (%s), %ds of patience left" % [order.recipe_id,
 				ceili(float(maxi(0, food_patience - _food_wait)) / SimClock.TICKS_PER_SECOND)])
 		State.EATING:
-			return "Enjoying my meal"
+			return "Enjoying my drink" if is_drinks_visit() else "Enjoying my meal"
 		State.PAYING:
 			return "Paying for my meal"
 		State.LEAVING, State.LEFT:
@@ -260,7 +287,7 @@ func on_removed(world: SimWorld) -> void:
 
 func _try_seat(world: SimWorld) -> bool:
 	var sim: RestaurantSim = _restaurant.get_ref() as RestaurantSim
-	for table: PlacedItem in world.grid.items():
+	for table: PlacedItem in _seat_order(world):
 		# Definition-backed dining belongs to a physical table/counter. A chair
 		# contributes its valid cells there rather than serving meals on its own.
 		# Untyped synthetic grid fixtures retain their established seat contract.
@@ -286,6 +313,24 @@ func _try_seat(world: SimWorld) -> bool:
 			state = State.WALKING_TO_SEAT
 			return true
 	return false
+
+
+## Meal guests look in placement order, as always. A drinks-only guest tries
+## the serve-across counters first, then any other table.
+func _seat_order(world: SimWorld) -> Array[PlacedItem]:
+	var items: Array[PlacedItem] = world.grid.items()
+	if not is_drinks_visit():
+		return items
+	var counters: Array[PlacedItem] = []
+	var others: Array[PlacedItem] = []
+	for item: PlacedItem in items:
+		var definition: ItemDef = item.def as ItemDef
+		if definition != null and definition.serve_across:
+			counters.append(item)
+		else:
+			others.append(item)
+	counters.append_array(others)
+	return counters
 
 
 func _walk_to_seat(world: SimWorld, sim: RestaurantSim) -> void:
@@ -345,9 +390,12 @@ func _post_order_task(world: SimWorld, sim: RestaurantSim) -> void:
 	if sim.menu.is_empty():
 		_leave(world, sim, &"no_menu")
 		return
-	var neighbours: Array[Vector2i] = world.grid.walkable_neighbours(seat_cell)
+	# At a serve-across counter the server stands on the far side (FK-083).
+	var target: Vector2i = sim.across_cell(table_item_id, seat_cell)
+	var neighbours: Array[Vector2i] = []
+	if target == SimGrid.NO_CELL:
+		neighbours = world.grid.walkable_neighbours(seat_cell)
 	# Closest to the seat; fixed neighbour order breaks distance ties.
-	var target: Vector2i = SimGrid.NO_CELL
 	var distance: float = INF
 	for neighbour: Vector2i in neighbours:
 		var candidate: float = GridMath.octile(seat_cell, neighbour)
@@ -381,7 +429,10 @@ func _take_order(server: SimAgent) -> bool:
 	# Guests choose among dishes still in stock. While nothing is sold out this
 	# is the same single draw over the same list, so the guest stream is
 	# unchanged; afterwards the same draw covers the shorter list.
-	var choices: Array[RecipeDef] = sim.available_menu()
+	# A guest chooses within what they came for: meals, or one kind of drink.
+	# A food-only menu gives exactly the old list (FK-083).
+	var available: Array[RecipeDef] = sim.available_menu()
+	var choices: Array[RecipeDef] = sim.available_of(visit_kind, available) if not available.is_empty() else available
 	if choices.is_empty():
 		_leave(sim.world, sim, &"out_of_stock")
 		return true
@@ -392,18 +443,45 @@ func _take_order(server: SimAgent) -> bool:
 	if chance > 0.0 and rng.randf() < chance:
 		_leave(sim.world, sim, &"too_expensive")
 		return true
-	order = Order.new()
-	order.customer_id = id
-	order.table_item_id = table_item_id
-	order.seat_cell = seat_cell
-	order.recipe_id = recipe.id
-	order.price = price
+	order = _new_order(recipe, price)
 	# Apply once, after the ticket replay guard, while food patience still matters.
 	if server is StaffAgent:
 		food_patience = roundi(food_patience * (server as StaffAgent).food_patience_multiplier)
 	state = State.WAITING_FOOD
 	sim.orders.place(order, sim.world.now)
+	if not is_drinks_visit():
+		_maybe_add_drink(sim, available)
 	return true
+
+
+## A meal guest may add a drink: one chance draw, only while a drink is on
+## the menu and available, then one pick. Food-only menus draw nothing.
+func _maybe_add_drink(sim: RestaurantSim, available: Array[RecipeDef]) -> void:
+	if drink_add_chance <= 0.0:
+		return
+	var drinks: Array[RecipeDef] = []
+	for recipe: RecipeDef in available:
+		if recipe.is_drink():
+			drinks.append(recipe)
+	if drinks.is_empty() or rng.randf() >= drink_add_chance:
+		return
+	var drink: RecipeDef = drinks[rng.randi_range(0, drinks.size() - 1)]
+	# An overpriced drink is simply skipped; the meal stands.
+	var chance: float = sim.price_walkout_chance(drink, budget_multiplier)
+	if chance > 0.0 and rng.randf() < chance:
+		return
+	drink_order = _new_order(drink, sim.price_of(drink))
+	sim.orders.place(drink_order, sim.world.now)
+
+
+func _new_order(recipe: RecipeDef, price: int) -> Order:
+	var ticket: Order = Order.new()
+	ticket.customer_id = id
+	ticket.table_item_id = table_item_id
+	ticket.seat_cell = seat_cell
+	ticket.recipe_id = recipe.id
+	ticket.price = price
+	return ticket
 
 
 func _leave(world: SimWorld, sim: RestaurantSim, reason: StringName) -> void:
@@ -428,6 +506,8 @@ func _cancel_work(world: SimWorld, sim: RestaurantSim) -> void:
 		_task = null
 	if sim != null and order != null:
 		sim.orders.set_state(order, Order.State.CANCELLED, leave_reason if leave_reason != &"happy" else &"customer_left")
+	if sim != null and drink_order != null:
+		sim.orders.set_state(drink_order, Order.State.CANCELLED, &"customer_left")
 
 
 func _release_seat(world: SimWorld, dirty: bool = true) -> void:

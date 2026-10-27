@@ -70,7 +70,7 @@ func advance() -> void:
 	if sim == null:
 		return
 	for task: SimTask in _tasks.values():
-		if task.kind != &"cook" or task.state != SimTask.State.CLAIMED:
+		if (task.kind != &"cook" and task.kind != &"pour") or task.state != SimTask.State.CLAIMED:
 			continue
 		var order: Order = sim.orders.get_order(int(task.payload["order_id"]))
 		if order != null and order.state == Order.State.PLACED:
@@ -179,6 +179,9 @@ func _on_order_placed(order: Order) -> void:
 	if sim == null:
 		return
 	var recipe: RecipeDef = _content.recipe(order.recipe_id)
+	if recipe != null and recipe.is_drink():
+		_post_pour(order, recipe, sim)
+		return
 	var fridge: PlacedItem = _station(sim.world, &"fridge", ItemDef.Category.STORAGE)
 	var pass_item: PlacedItem = _pass(sim.world)
 	if recipe == null or fridge == null or pass_item == null:
@@ -205,6 +208,68 @@ func _on_order_placed(order: Order) -> void:
 	task.steps.append(TaskStep.wait_until(_take_clean_plate, "a clean plate"))
 	task.steps.append(TaskStep.work(10, "plating dish"))
 	_post(task, sim)
+
+
+## A drink (FK-083) is made front of house: a server (or the owner on the
+## floor) takes it from its station and carries it straight to the guest,
+## across the counter at a bar seat. No kitchen fridge, pass or plate.
+func _post_pour(order: Order, recipe: RecipeDef, sim: RestaurantSim) -> void:
+	var stations: Array[int] = []
+	var steps: Array[TaskStep] = []
+	var first_cell: Vector2i = SimGrid.NO_CELL
+	for step: RecipeStep in recipe.steps:
+		var station: PlacedItem = _station(sim.world, step.station_type, ItemDef.Category.STATION)
+		if station == null or station.work_cells.is_empty():
+			_cancel(order, &"missing_station")
+			return
+		if first_cell == SimGrid.NO_CELL:
+			first_cell = station.work_cells[0]
+		if not stations.has(station.id):
+			stations.append(station.id)
+		steps.append(TaskStep.go_to_item(station.id, "walking to %s" % step.station_type))
+		if steps.size() == 1:
+			steps.append(TaskStep.work(10, "taking the drink", _take_ingredients))
+		steps.append(TaskStep.work(step.duration_ticks, String(step.station_type)))
+	if steps.is_empty():
+		_cancel(order, &"missing_station")
+		return
+	var route: Array[Vector2i] = sim.world.grid.find_path_to_any(first_cell,
+		sim.service_cells(order.table_item_id, order.seat_cell))
+	if route.is_empty():
+		_cancel(order, &"unreachable")
+		return
+	var task: SimTask = SimTask.new(&"pour", &"server", "Pour %s" % recipe.display_name)
+	task.priority = 3
+	task.timeout_ticks = maxi(600, recipe.total_ticks() * 2 + 400)
+	task.payload = {"kitchen": true, "order_id": order.id, "ingredients_taken": false,
+		"station_ids": stations}
+	task.steps.assign(steps)
+	task.steps.append(TaskStep.work(1, "drink ready", _drink_ready))
+	task.steps.append(TaskStep.go_to_cell(route.back(), "carrying a drink to the guest"))
+	task.steps.append(TaskStep.work(10, "serving the drink", _serve_order.bind(order.id)))
+	_post(task, sim)
+
+
+## Settles the drink's quality from the server's skill and its stations.
+func _drink_ready(agent: SimAgent) -> bool:
+	var staff: StaffAgent = agent as StaffAgent
+	var sim: RestaurantSim = _restaurant.get_ref() as RestaurantSim
+	if staff == null or staff.task == null or sim == null:
+		return false
+	var order: Order = sim.orders.get_order(int(staff.task.payload["order_id"]))
+	if order == null or order.state == Order.State.CANCELLED:
+		return false
+	if order.state == Order.State.READY:
+		return true
+	var recipe: RecipeDef = _content.recipe(order.recipe_id)
+	var quality: float = recipe.base_quality * (0.7 + 0.1 * clampi(staff.skill_for(&"server"), 1, 5))
+	for station_id: int in staff.task.payload["station_ids"]:
+		var station: PlacedItem = sim.world.grid.item(station_id)
+		if station != null:
+			quality += (station.def as ItemDef).quality_bonus
+	order.quality = clampf(quality, 0.0, 1.0)
+	sim.orders.set_state(order, Order.State.READY)
+	return true
 
 
 func _take_ingredients(agent: SimAgent) -> bool:
@@ -237,7 +302,7 @@ func committed_ingredients() -> Dictionary[StringName, int]:
 	if sim == null:
 		return committed
 	for task: SimTask in _tasks.values():
-		if task.kind != &"cook" or bool(task.payload.get("ingredients_taken", false)):
+		if (task.kind != &"cook" and task.kind != &"pour") or bool(task.payload.get("ingredients_taken", false)):
 			continue
 		var order: Order = sim.orders.get_order(int(task.payload["order_id"]))
 		if order == null or (order.state != Order.State.PLACED and order.state != Order.State.COOKING):
@@ -288,12 +353,15 @@ func _on_order_ready(order: Order) -> void:
 	var sim: RestaurantSim = _restaurant.get_ref() as RestaurantSim
 	if sim == null:
 		return
+	var made: RecipeDef = _content.recipe(order.recipe_id)
+	if made != null and made.is_drink():
+		return  # The pour task that made it carries it on.
 	var pass_item: PlacedItem = _pass(sim.world)
 	if pass_item == null:
 		_cancel(order, &"missing_station")
 		return
 	var route: Array[Vector2i] = sim.world.grid.find_path_to_any(pass_item.work_cells[1],
-		sim.world.grid.walkable_neighbours(order.seat_cell))
+		sim.service_cells(order.table_item_id, order.seat_cell))
 	if route.is_empty():
 		_cancel(order, &"unreachable")
 		return
@@ -354,7 +422,7 @@ func _prepare_delivery(task: SimTask, sim: RestaurantSim, pass_cell: Vector2i) -
 		if next == null:
 			break
 		var path: Array[Vector2i] = sim.world.grid.find_path_to_any(route_from,
-			sim.world.grid.walkable_neighbours(next.seat_cell))
+			sim.service_cells(next.table_item_id, next.seat_cell))
 		route_from = path.back()
 		route_order.append(next)
 		route_cells.append(route_from)
@@ -389,7 +457,7 @@ func _nearest_order(sim: RestaurantSim, from_cell: Vector2i, orders: Array[Order
 	var best_length: int = 2147483647
 	for order: Order in orders:
 		var path: Array[Vector2i] = sim.world.grid.find_path_to_any(from_cell,
-			sim.world.grid.walkable_neighbours(order.seat_cell))
+			sim.service_cells(order.table_item_id, order.seat_cell))
 		if not path.is_empty() and (path.size() < best_length or
 				(path.size() == best_length and (best == null or order.id < best.id))):
 			best = order
@@ -417,7 +485,7 @@ func _serve_order(agent: SimAgent, order_id: int) -> bool:
 	if order == null or order.state != Order.State.READY:
 		return true  # A departing guest only loses their own meal and plate.
 	if sim.world.grid.item(order.table_item_id) == null \
-			or not sim.world.grid.walkable_neighbours(order.seat_cell).has(staff.cell):
+			or not sim.service_cells(order.table_item_id, order.seat_cell).has(staff.cell):
 		_cancel(order, &"target_gone")
 		return true
 	sim.orders.set_state(order, Order.State.DELIVERED)
@@ -468,6 +536,8 @@ func _on_task_completed(task: SimTask) -> void:
 	if task.kind == &"wash":
 		_wash_task = 0
 		return
+	if task.kind == &"pour":
+		return  # Its last step handed the drink over.
 	var order: Order = sim.orders.get_order(int(task.payload["order_id"]))
 	if order == null or order.state == Order.State.CANCELLED:
 		return

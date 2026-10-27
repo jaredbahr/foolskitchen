@@ -1,0 +1,48 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://src/world/prop_view.gd" id="1_view"]
+[ext_resource type="PackedScene" path="res://assets/kenney/furniture/bookcaseOpenLow.glb" id="2_shelf"]
+[ext_resource type="PackedScene" path="res://assets/kenney/food/wine-red.glb" id="3_red"]
+[ext_resource type="PackedScene" path="res://assets/kenney/food/wine-white.glb" id="4_white"]
+[ext_resource type="PackedScene" path="res://assets/kenney/food/soda-bottle.glb" id="5_soda"]
+
+[node name="DrinksShelf" type="Node3D"]
+script = ExtResource("1_view")
+footprint = Vector2i(1, 1)
+body_material_names = PackedStringArray("wood")
+
+[node name="Shelf" type="Node3D" parent="."]
+
+[node name="Art" type="Node3D" parent="Shelf"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="Shelf/Art" instance=ExtResource("2_shelf")]
+
+[node name="WineRed" type="Node3D" parent="."]
+position = Vector3(-0.13, 0, 0)
+metadata/art_group = &"food"
+metadata/support = NodePath("../Shelf")
+
+[node name="Art" type="Node3D" parent="WineRed"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="WineRed/Art" instance=ExtResource("3_red")]
+
+[node name="WineWhite" type="Node3D" parent="."]
+metadata/art_group = &"food"
+metadata/support = NodePath("../Shelf")
+
+[node name="Art" type="Node3D" parent="WineWhite"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="WineWhite/Art" instance=ExtResource("4_white")]
+
+[node name="Soda" type="Node3D" parent="."]
+position = Vector3(0.13, 0, 0)
+metadata/art_group = &"food"
+metadata/support = NodePath("../Shelf")
+
+[node name="Art" type="Node3D" parent="Soda"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="Soda/Art" instance=ExtResource("5_soda")]

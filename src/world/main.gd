@@ -23,6 +23,7 @@ const PROGRESSION_TUNING: ProgressionTuning = preload("res://data/balance/progre
 const VIBE_TUNING: VibeTuning = preload("res://data/balance/vibe.tres")
 const CUSTOMER_TYPES: CustomerTypeCatalogue = preload("res://data/customers/types.tres")
 const MILESTONES: MilestoneSet = preload("res://data/milestones/starter.tres")
+const HOURS_TUNING: OpeningHoursTuning = preload("res://data/balance/hours.tres")
 const AUTOSAVE_SLOT: String = "autosave"
 const LOAN_LOCK_REASON: String = "Pay off your bank loan first"
 
@@ -223,6 +224,9 @@ func _bind_world_presentation() -> void:
 		_menu_panel.settings_requested.connect(_on_menu_settings_requested)
 	if not _menu_panel.goals_requested.is_connected(_on_menu_goals_requested):
 		_menu_panel.goals_requested.connect(_on_menu_goals_requested)
+	if not _menu_panel.hours_requested.is_connected(_on_hours_requested):
+		_menu_panel.hours_requested.connect(_on_hours_requested)
+	_menu_panel.set_hours(Clock.sim.display_open_minute, Clock.sim.display_close_minute, HOURS_TUNING)
 	_goals_panel = $Overlay/GoalsPanel
 	_dismiss_goals()
 	if not _goals_panel.close_requested.is_connected(_on_goals_close_requested):
@@ -1183,7 +1187,7 @@ func build_report(day: int) -> DayReport:
 			report.owner_xp_breakdown["milestone_xp"] = _milestone_xp_today
 	report.low_stock = StockAlerts.sell_out_lines(sim.stock_outs_today, content)
 	report.low_stock.append_array(StockAlerts.forecast_lines(StockAlerts.forecast(Economy.stock,
-		reorder_settings, _shelf_lives(), day + 1, _unit_costs(), Economy.cash, auto_reorder_premium), content))
+		_reorder(), _shelf_lives(), day + 1, _unit_costs(), Economy.cash, auto_reorder_premium), content))
 	if _milestone_award_day == day:
 		for goal: Milestone in _milestones_reached_today:
 			report.milestones_reached.append({"title": goal.title,
@@ -1252,6 +1256,9 @@ func _load_autosave() -> bool:
 		return false
 	if Clock.sim.phase != SimClock.Phase.MORNING:
 		world.log_event("Autosave is not from a morning; starting a new game")
+		return false
+	if not OpeningHours.clock_valid(Clock.sim, HOURS_TUNING):
+		world.log_event("Autosave opening hours are outside the limits; starting a new game")
 		return false
 	if owner_progress.last_awarded_day >= Clock.sim.day:
 		world.log_event("Autosave owner progress is ahead of this morning; starting a new game")
@@ -1586,13 +1593,29 @@ func _on_staff_close_requested() -> void:
 ## Station definitions decide availability; temporary path/stock problems do not
 ## rewrite the player's menu. Tier 1 remains the currently unlocked recipe set.
 func _cookable_recipes(layout: ShopLayout) -> Array[RecipeDef]:
+	var definitions: Array[ItemDef] = []
+	for placement: ShopPlacement in layout.placements:
+		var definition: ItemDef = content.item(placement.item_id)
+		if definition != null:
+			definitions.append(definition)
+	return _cookable_from(definitions)
+
+
+## The dishes the live shop's stations can make right now (FK-083).
+func _cookable_live() -> Array[RecipeDef]:
+	var definitions: Array[ItemDef] = []
+	for placed: PlacedItem in world.grid.items():
+		var definition: ItemDef = placed.def as ItemDef
+		if definition != null and not placed.removed:
+			definitions.append(definition)
+	return _cookable_from(definitions)
+
+
+func _cookable_from(definitions: Array[ItemDef]) -> Array[RecipeDef]:
 	var stations: Dictionary[StringName, bool] = {}
 	var fridge: bool = false
 	var pass_counter: bool = false
-	for placement: ShopPlacement in layout.placements:
-		var definition: ItemDef = content.item(placement.item_id)
-		if definition == null:
-			continue
+	for definition: ItemDef in definitions:
 		if definition.category == ItemDef.Category.STORAGE and definition.station_type == &"fridge" and not definition.work_cells.is_empty():
 			fridge = true
 		elif definition.category == ItemDef.Category.PASS and definition.work_cells.size() >= 2:
@@ -1614,6 +1637,80 @@ func _cookable_recipes(layout: ShopLayout) -> Array[RecipeDef]:
 		if cookable:
 			recipes.append(definition)
 	return recipes
+
+
+## After a station is bought, sold or undone, the menu offers what the shop
+## can now make: buying a coffee machine puts Coffee and Tea on the menu.
+func _refresh_menu_catalogue() -> void:
+	if menu_settings == null or world == null or not menu_settings.set_catalogue(_cookable_live()):
+		return
+	_apply_menu(sim, menu_settings)
+	if _menu_panel != null:
+		_menu_panel.refresh()
+	_recompute_vibe()
+	_refresh_stock_panel()
+
+
+## Only ingredients that today's possible dishes use are ordered and listed.
+func _reorder() -> ReorderSettings:
+	var used: Array[StringName] = []
+	if menu_settings != null and menu_settings.is_valid():
+		for recipe: RecipeDef in menu_settings.recipes():
+			for ingredient: IngredientDef in recipe.ingredients:
+				if ingredient != null and not used.has(ingredient.id):
+					used.append(ingredient.id)
+	reorder_settings.set_in_use(used)
+	return reorder_settings
+
+
+## The Drinks section explains what each missing drink needs, by name.
+func drink_station_hints() -> Array[String]:
+	var hints: Array[String] = []
+	if content == null or world == null:
+		return hints
+	var present: Dictionary[StringName, bool] = {}
+	for placed: PlacedItem in world.grid.items():
+		var definition: ItemDef = placed.def as ItemDef
+		if definition != null and definition.category == ItemDef.Category.STATION:
+			present[definition.station_type] = true
+	var needs: Dictionary[StringName, Array] = {}
+	var order: Array[StringName] = []
+	for recipe: RecipeDef in content.recipes():
+		if not recipe.is_drink() or recipe.unlock_tier != 1:
+			continue
+		for step: RecipeStep in recipe.steps:
+			if present.has(step.station_type):
+				continue
+			if not needs.has(step.station_type):
+				needs[step.station_type] = []
+				order.append(step.station_type)
+			(needs[step.station_type] as Array).append(recipe.display_name)
+			break
+	for station: StringName in order:
+		var item_name: String = ""
+		for definition: ItemDef in content.items():
+			if definition.category == ItemDef.Category.STATION and definition.station_type == station:
+				item_name = definition.display_name
+				break
+		var names: Array[String] = []
+		names.assign(needs[station])
+		hints.append("%s: buy a %s." % [StockAlerts.join_names(names), item_name.to_lower()])
+	return hints
+
+
+## Morning only. Hours join the clock, so the next morning autosave keeps them.
+func set_opening_hours(open_minute: int, close_minute: int) -> bool:
+	if not _started or Clock.sim.phase != SimClock.Phase.MORNING \
+			or not OpeningHours.apply(Clock.sim, open_minute, close_minute, HOURS_TUNING):
+		return false
+	if _menu_panel != null:
+		_menu_panel.set_hours(Clock.sim.display_open_minute, Clock.sim.display_close_minute, HOURS_TUNING)
+	refresh_presentation()
+	return true
+
+
+func _on_hours_requested(open_minute: int, close_minute: int) -> void:
+	set_opening_hours(open_minute, close_minute)
 
 
 func _apply_menu(restaurant: RestaurantSim, choices: MenuSettings) -> void:
@@ -1675,6 +1772,8 @@ func set_menu_visible(value: bool) -> bool:
 		build_mode.exit()
 		set_staff_visible(false)
 		set_stock_visible(false)
+		_menu_panel.set_drink_hints(drink_station_hints())
+		_menu_panel.set_hours(Clock.sim.display_open_minute, Clock.sim.display_close_minute, HOURS_TUNING)
 	_menu_panel.set_phase(Clock.sim.phase)
 	_menu_panel.visible = value
 	return true
@@ -1863,6 +1962,7 @@ func shop_floor(cells: Array[Vector2i], adding: bool) -> bool:
 func _after_edit(accepted: bool) -> void:
 	if accepted:
 		_edit_notice = ""
+		_refresh_menu_catalogue()
 
 
 ## Undoes the newest edit of this session (Ctrl+Z or the Undo button). A held
@@ -1886,6 +1986,7 @@ func _step_history(undoing: bool) -> bool:
 	if accepted:
 		_edit_notice = ("Undid " if undoing else "Redid ") + label
 		($ShopView as ShopView).set_paint(content, shop_editor.wall_swatch_id, shop_editor.floor_swatch_id)
+		_refresh_menu_catalogue()
 		_recompute_vibe()
 		if shop_editor.bought_floor().size() != floor_before:
 			_frame_shop(false)
@@ -2057,7 +2158,7 @@ func _expire_stock() -> void:
 ## in one order priced at list total plus the premium. Short cash buys what
 ## fits in the fixed order and logs the rest; it never borrows.
 func _restock() -> void:
-	var order: Dictionary = reorder_settings.plan(Economy.stock, _unit_costs(), Economy.cash, auto_reorder_premium)
+	var order: Dictionary = _reorder().plan(Economy.stock, _unit_costs(), Economy.cash, auto_reorder_premium)
 	var lines: Array[Dictionary] = []
 	lines.assign(order["lines"])
 	_morning_order = {"short": order["short"]}
@@ -2134,7 +2235,7 @@ func stock_rows() -> Array[Dictionary]:
 	if content == null or reorder_settings == null:
 		return rows
 	var expiring: Dictionary = Economy.stock.expiring_on(Clock.sim.day + 1, _shelf_lives())
-	for id: StringName in reorder_settings.ids():
+	for id: StringName in _reorder().ids():
 		var ingredient: IngredientDef = content.ingredient(id)
 		if ingredient == null:
 			continue
@@ -2221,7 +2322,8 @@ func _on_stock_close_requested() -> void:
 func _charge_closing_costs() -> void:
 	for agent: SimAgent in world.agents:
 		if agent is StaffAgent and not agent is OwnerAgent:
-			Economy.add_cash(-(agent as StaffAgent).wage, Ledger.WAGES)
+			# Paid by the hour: the default day keeps the exact daily wage.
+			Economy.add_cash(-OpeningHours.wage_for_day((agent as StaffAgent).wage, Clock.sim, HOURS_TUNING), Ledger.WAGES)
 	if TUNING.daily_rent > 0:
 		Economy.add_cash(-TUNING.daily_rent, Ledger.RENT)
 

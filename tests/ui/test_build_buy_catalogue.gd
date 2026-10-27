@@ -104,8 +104,8 @@ func test_theme_filters_show_items_with_any_chosen_theme() -> void:
 	var labels: Array[String] = []
 	for tag: StringName in _catalogue.theme_buttons:
 		labels.append(_catalogue.theme_buttons[tag].text)
-	assert_eq(labels, ["Cosy", "Modern", "Rustic", "Diner", "Seafood"] as Array[String],
-		"the vibe's own themes and words; no invented Café or Bar tags")
+	assert_eq(labels, ["Cosy", "Modern", "Rustic", "Diner", "Seafood", "Café", "Bar"] as Array[String],
+		"the vibe's own themes and words, including Café and Bar (FK-083)")
 	_catalogue.theme_buttons[&"modern"].pressed.emit()
 	var modern: Array[StringName] = _catalogue.visible_ids()
 	assert_false(modern.is_empty())
@@ -160,7 +160,7 @@ func test_hover_card_text() -> void:
 	assert_eq(_catalogue.hover_card_lines(&"cushioned_bench"),
 		["Cushioned two-seat bench", "$50", "Seats 2", "Themes: Cosy"] as Array[String])
 	assert_eq(_catalogue.hover_card_lines(&"television_vintage"),
-		["Vintage television", "$150", "Decoration", "Charm +3", "Themes: Diner"] as Array[String])
+		["Vintage television", "$150", "Decoration", "Charm +3", "Themes: Diner, Bar"] as Array[String])
 	assert_eq(_catalogue.hover_card_lines(&"rug_round"),
 		["Round rug", "$30", "Rug: tables and chairs can stand on it", "Charm +1", "Themes: Cosy, Rustic"] as Array[String])
 	assert_eq(_catalogue.hover_card_lines(&"stove"),
@@ -168,7 +168,7 @@ func test_hover_card_text() -> void:
 	assert_eq(_catalogue.hover_card_lines(&"fridge")[2], "Stores 20 ingredients")
 	assert_eq(_catalogue.hover_card_lines(&"round_table")[2], "Table for 2")
 	assert_eq(_catalogue.hover_card_lines(&"table_2")[2], "Table with seats for 2")
-	assert_eq(_catalogue.hover_card_lines(&"bar_counter")[3], "Themes: Modern, Diner", "vibe theme order")
+	assert_eq(_catalogue.hover_card_lines(&"bar_counter")[3], "Themes: Modern, Bar", "vibe theme order")
 	_catalogue.set_owner_level(1)
 	assert_eq(_catalogue.hover_card_lines(&"glass_table")[1], "$120  (unlocks at level 6)")
 	assert_eq(_catalogue.hover_card_lines(&"no_such_item"), [] as Array[String])

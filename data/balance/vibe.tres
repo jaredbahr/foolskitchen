@@ -26,17 +26,24 @@ theme_category_weights = Dictionary[int, float]({
 5: 0.0,
 6: 1.0
 })
+theme_item_weights = Dictionary[StringName, float]({
+&"coffee_machine": 1.0,
+&"drinks_fridge": 1.0,
+&"drinks_shelf": 1.0
+})
 theme_paint_weight = 0.25
 theme_menu_weight = 0.25
 theme_min_share = 0.6
 theme_min_layout_weight = 1.0
-theme_order = Array[StringName]([&"cosy", &"modern", &"rustic", &"diner", &"seafood"])
+theme_order = Array[StringName]([&"cosy", &"modern", &"rustic", &"diner", &"seafood", &"cafe", &"bar"])
 theme_labels = Dictionary[StringName, String]({
 &"cosy": "Cosy",
 &"modern": "Modern",
 &"rustic": "Rustic",
 &"diner": "Diner",
-&"seafood": "Seafood"
+&"seafood": "Seafood",
+&"cafe": "Café",
+&"bar": "Bar"
 })
 no_theme_label = "No theme"
 crowding_start_density = 0.35

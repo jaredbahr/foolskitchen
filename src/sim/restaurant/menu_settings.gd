@@ -126,6 +126,48 @@ func set_enabled(id: StringName, enabled: bool) -> bool:
 	return true
 
 
+## The shop's stations changed (FK-083): a coffee machine bought or a drinks
+## shelf sold. Dishes still cookable keep their choices and prices; newly
+## cookable dishes join at their standard price, switched on when unlocked;
+## dishes no longer cookable leave. At least one dish stays on. Returns
+## whether the catalogue changed. An invalid list changes nothing.
+func set_catalogue(cookable_recipes: Array[RecipeDef]) -> bool:
+	if not _valid or cookable_recipes.is_empty():
+		return false
+	var next: MenuSettings = MenuSettings.new(cookable_recipes, _owner_level)
+	if not next.is_valid():
+		return false
+	var same: bool = next._recipes.size() == _recipes.size()
+	if same:
+		for index: int in range(_recipes.size()):
+			same = same and next._recipes[index] == _recipes[index]
+	if same:
+		return false
+	var enabled: Dictionary[StringName, bool] = {}
+	var prices: Dictionary[StringName, int] = {}
+	for definition: RecipeDef in next._recipes:
+		var id: StringName = definition.id
+		if _by_id.has(id):
+			prices[id] = clampi(_prices[id], next.minimum_price(id), next.maximum_price(id))
+			if _enabled.has(id):
+				enabled[id] = true
+		else:
+			prices[id] = definition.standard_price
+			if definition.unlock_level <= _owner_level:
+				enabled[id] = true
+	if enabled.is_empty():
+		for definition: RecipeDef in next._recipes:
+			if definition.unlock_level <= _owner_level:
+				enabled[definition.id] = true
+				break
+	_recipes = next._recipes
+	_by_id = next._by_id
+	_standards = next._standards
+	_enabled = enabled
+	_prices = prices
+	return true
+
+
 ## Known dishes accept a whole-dollar request and clamp it to their bounds.
 func set_price(id: StringName, price: int) -> bool:
 	if not _by_id.has(id) or _by_id[id].unlock_level > _owner_level:
