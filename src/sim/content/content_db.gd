@@ -222,6 +222,8 @@ static func validate_definitions(ingredient_defs: Array[IngredientDef], recipe_d
 			errors.append("item '%s': invalid placement layer; floor decor must be non-solid decor without blocking, work or seat cells" % definition.id)
 		if not definition.blocking_cells_valid():
 			errors.append("item '%s': blocking cells must be unique, inside the footprint, and separate from work and seat cells" % definition.id)
+		if not definition.catalogue_room.is_empty() and not ItemDef.CATALOGUE_ROOMS.has(definition.catalogue_room):
+			errors.append("item '%s': unknown catalogue room '%s'" % [definition.id, definition.catalogue_room])
 		if definition.paintable and definition.paint_slot != &"body":
 			errors.append("item '%s': only the body paint slot is supported" % definition.id)
 	for index: int in range(recipe_defs.size()):

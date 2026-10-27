@@ -6,6 +6,10 @@ extends RefCounted
 ## WALLS is the Walls tool (FK-070): drag along grid lines, click a segment.
 ## FLOOR is the Floor tool (FK-080): drag a rectangle of lot cells.
 enum State { INACTIVE, IDLE, MOVE, BUY, WALLS, FLOOR }
+## What a click on placed furniture does while IDLE (FK-085, Sims-style):
+## HAND picks it up to move or rotate, EYEDROPPER starts buying another of
+## it (in its colour), SELL sells it straight away.
+enum Tool { HAND, EYEDROPPER, SELL }
 
 signal changed()
 
@@ -16,6 +20,12 @@ var origin: Vector2i = Vector2i.ZERO
 var quarter_turns: int = 0
 var grab_offset: Vector2i = Vector2i.ZERO
 var current_check: EditCheck = EditCheck.new()
+var tool: Tool = Tool.HAND
+## The placed item under the pointer while IDLE (-1 for none), for the sell
+## and eyedropper tools' hover highlight and refund text.
+var hover_item_id: int = -1
+## Colour the eyedropper copied; a buy commits it as a free repaint.
+var buy_swatch_id: StringName = &""
 var committed_warning_ids: Array[int] = []
 var committed_seat_warnings: Dictionary[int, String] = {}
 ## Walls tool: the kind new edges get, the hovered edge and the dragged run.
@@ -96,6 +106,7 @@ func enter() -> bool:
 	if is_active():
 		return true
 	_phase = _clock.phase
+	tool = Tool.HAND
 	_clear_ghost(State.IDLE)
 	_refresh_committed()
 	changed.emit()
@@ -162,6 +173,7 @@ func begin_buy(def_id: StringName, cell: Vector2i) -> bool:
 	state = State.BUY
 	selected_item_id = -1
 	selected_definition = definition
+	buy_swatch_id = &""
 	origin = cell
 	grab_offset = Vector2i.ZERO
 	quarter_turns = 0
@@ -183,16 +195,18 @@ func update_origin(cell: Vector2i) -> void:
 	changed.emit()
 
 
-## World quarter turns deliberately have no camera-quarter input.
-func rotate() -> bool:
+## World quarter turns deliberately have no camera-quarter input. `steps` is
+## +1 (R or `.`, clockwise) or -1 (`,`, the other way).
+func rotate(steps: int = 1) -> bool:
 	if not _can_interact() or not has_ghost():
 		return false
+	var turn: int = posmod(steps, 4)
 	if state == State.MOVE:
 		var footprint: Vector2i = GridMath.rotated_footprint(selected_definition.footprint, quarter_turns)
-		var rotated_offset: Vector2i = GridMath.rotate_cell(grab_offset, footprint, 1)
+		var rotated_offset: Vector2i = GridMath.rotate_cell(grab_offset, footprint, turn)
 		origin += grab_offset - rotated_offset
 		grab_offset = rotated_offset
-	quarter_turns = (quarter_turns + 1) % 4
+	quarter_turns = (quarter_turns + turn) % 4
 	_recheck_ghost()
 	changed.emit()
 	return true
@@ -210,6 +224,8 @@ func commit() -> bool:
 	var answer: Variant
 	if state == State.MOVE:
 		answer = _move_command.call(selected_item_id, origin, quarter_turns)
+	elif not buy_swatch_id.is_empty():
+		answer = _buy_command.call(selected_definition.id, origin, quarter_turns, buy_swatch_id)
 	else:
 		answer = _buy_command.call(selected_definition.id, origin, quarter_turns)
 	var accepted: bool = answer is bool and answer
@@ -234,10 +250,24 @@ func sell_selected() -> int:
 	return amount if accepted else -1
 
 
-## Esc cancels one ghost (or a wall drag, then the Walls tool); a further Esc leaves the mode.
+## Esc backs out one level: a ghost or drag, then the Walls/Floor tool or the
+## eyedropper/sell tool (back to the hand), and then the mode itself.
 func cancel() -> void:
 	if _committing or not _can_interact():
 		return
+	if cancel_ghost():
+		return
+	if state == State.IDLE and tool != Tool.HAND:
+		set_tool(Tool.HAND)
+	else:
+		exit()
+
+
+## Right-click: drops a held ghost or a drag (and a Walls/Floor tool) but never
+## leaves the mode. Returns whether anything was cancelled.
+func cancel_ghost() -> bool:
+	if _committing or not _can_interact():
+		return false
 	if state == State.WALLS and wall_dragging:
 		wall_dragging = false
 		_recheck_walls()
@@ -250,7 +280,97 @@ func cancel() -> void:
 		_clear_ghost(State.IDLE)
 		changed.emit()
 	else:
-		exit()
+		return false
+	return true
+
+
+func set_tool(next: Tool) -> void:
+	if tool == next and state == State.IDLE:
+		return
+	if is_active() and state != State.IDLE and _can_interact():
+		_clear_ghost(State.IDLE)
+	tool = next
+	if is_active():
+		_recheck_hover()
+	changed.emit()
+
+
+## The placed item under the pointer while IDLE (-1 for none).
+func hover_item(item_id: int) -> void:
+	var next: int = item_id if state == State.IDLE and _grid != null and _grid.item(item_id) != null else -1
+	if next == hover_item_id:
+		return
+	hover_item_id = next
+	_recheck_hover()
+	changed.emit()
+
+
+## Sells the hovered item (the sell tool, or Del while idle). -1 is refusal.
+func sell_hovered() -> int:
+	if not _can_interact() or state != State.IDLE or hover_item_id < 0:
+		return -1
+	current_check = _editor.check_sell(hover_item_id)
+	if not current_check.ok:
+		changed.emit()
+		return -1
+	var previous_check: EditCheck = _editor.last_check
+	_committing = true
+	var answer: Variant = _sell_command.call(hover_item_id)
+	var amount: int = answer if answer is int else -1
+	var accepted: bool = amount >= 0
+	_finish_command(accepted, previous_check, "The sale was refused; try again")
+	if not accepted and current_check.ok:
+		current_check = EditCheck.new(false, "The sale was refused; try again")
+	return amount if accepted else -1
+
+
+## The eyedropper: start buying another of a placed item, in its colour.
+## Items that are not in the catalogue (the door) are refused with a reason.
+func eyedrop(item_id: int, cell: Vector2i) -> bool:
+	if not _can_interact():
+		return false
+	var placed: PlacedItem = _grid.item(item_id)
+	var definition: ItemDef = placed.def as ItemDef if placed != null else null
+	if definition == null:
+		return false
+	if not definition.catalogue_visible or definition.category == ItemDef.Category.DOOR:
+		current_check = EditCheck.new(false, "%s isn't sold in the catalogue" % definition.display_name)
+		changed.emit()
+		return false
+	if not begin_buy(definition.id, cell):
+		return false
+	quarter_turns = posmod(placed.quarter_turns, 4)
+	buy_swatch_id = placed.swatch_id if definition.paintable else &""
+	_recheck_ghost()
+	changed.emit()
+	return true
+
+
+## One player sentence for the hovered item under the sell or eyedropper tool.
+func hover_summary() -> String:
+	if state != State.IDLE or hover_item_id < 0 or _grid == null:
+		return ""
+	var placed: PlacedItem = _grid.item(hover_item_id)
+	var definition: ItemDef = placed.def as ItemDef if placed != null else null
+	if definition == null:
+		return ""
+	match tool:
+		Tool.SELL:
+			return "Sell %s for %s" % [definition.display_name, Fmt.money(ShopEditor.sale_refund(definition))] \
+				if current_check.ok else current_check.why
+		Tool.EYEDROPPER:
+			return "Place another %s" % definition.display_name if definition.catalogue_visible \
+				and definition.category != ItemDef.Category.DOOR else "%s isn't sold in the catalogue" % definition.display_name
+	return ""
+
+
+func _recheck_hover() -> void:
+	if state != State.IDLE:
+		return
+	if tool == Tool.SELL and hover_item_id >= 0 and _editor != null:
+		current_check = _editor.check_sell(hover_item_id)
+	else:
+		current_check = EditCheck.new(true)
 
 
 ## Explicit invalidation for money/session changes, not a render-frame query.
@@ -270,6 +390,8 @@ func refresh() -> void:
 		_recheck_walls()
 	elif state == State.FLOOR:
 		_recheck_floor()
+	elif state == State.IDLE:
+		_recheck_hover()
 	if before != presentation_state():
 		changed.emit()
 
@@ -322,7 +444,8 @@ func presentation_state() -> Dictionary:
 		"wall_hover_edge": wall_hover_edge, "wall_dragging": wall_dragging,
 		"wall_cost": current_check.cost, "wall_refund": current_check.refund,
 		"floor_cells": floor_proposal(), "floor_removing": floor_removing,
-		"floor_dragging": floor_dragging, "lot": lot_rect(), "lot_open": lot_open_cells()}
+		"floor_dragging": floor_dragging, "lot": lot_rect(), "lot_open": lot_open_cells(),
+		"tool": int(tool), "hover_item_id": hover_item_id}
 
 
 func _available() -> bool:
@@ -370,6 +493,8 @@ func _clear_ghost(next_state: State) -> void:
 	grab_offset = Vector2i.ZERO
 	quarter_turns = 0
 	current_check = EditCheck.new(true)
+	hover_item_id = -1
+	buy_swatch_id = &""
 	wall_hover_edge = SimGrid.NO_EDGE
 	wall_dragging = false
 	wall_changes.clear()

@@ -207,7 +207,7 @@ func test_native_meter_hud_and_report_fit_scaled_windows_without_changing_header
 	assert_true(main.call("set_build_active", true))
 	var catalogue: BuildCatalogue = main.get_node("Overlay/BuildCatalogue") as BuildCatalogue
 	var meter: VibeMeter = catalogue.vibe_meter
-	assert_eq(catalogue.get_node("Panel/Margin/Rows/Scroll/Content/VibeMeter"), meter)
+	assert_eq(catalogue.get_node("Panel/Margin/Rows/Scroll/Content/Categories/Readout/VibeMeter"), meter)
 	var reputation: Label = main.get_node("HUD/Top/Row/Reputation") as Label
 	var width: float = reputation.get_combined_minimum_size().x
 	for _refresh: int in 3:
@@ -252,7 +252,7 @@ func test_native_meter_hud_and_report_fit_scaled_windows_without_changing_header
 	assert_eq(meter.get_node("CaptionLabel").get("mouse_filter"), Control.MOUSE_FILTER_IGNORE)
 	assert_eq(meter.get_node("ScoreBar").get("mouse_filter"), Control.MOUSE_FILTER_IGNORE)
 	assert_true(main.call("set_paint_active", true))
-	assert_false(meter.visible)
+	assert_true(meter.visible, "the room readout stays while painting (FK-085)")
 	assert_true(main.call("set_paint_active", false))
 	assert_true(main.call("set_build_active", true))
 	assert_true(meter.visible)

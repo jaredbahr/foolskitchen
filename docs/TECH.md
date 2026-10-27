@@ -862,8 +862,8 @@ an active edit/panel/selection first, or opens Settings when none is active.
   (sorted). Versions 1 and 2 load as the starting shell. `from_dict` validates
   the floor with the template's lot before items and walls, which may stand on
   it; `ShopBuilder` applies `layout.floor_cells` before placing items.
-- **Build mode.** The Walls tab has a Floor card (`BuildCatalogue.
-  floor_tool_requested`, hidden without a lot). `BuildMode.State.FLOOR`: drag
+- **Build mode.** Build's Floor tab (FK-085) has a Floor card (`BuildCatalogue.
+  floor_tool_requested`; the tab is hidden without a lot). `BuildMode.State.FLOOR`: drag
   a rectangle to add floor, Shift-drag to remove bought floor, Esc ends a drag
   then the tool. The hint shows the tile count and cost or refund, or the
   refusal. `BuildPreview` draws flat green (add), gold (remove) or red tiles,
@@ -883,6 +883,72 @@ an active edit/panel/selection first, or opens Settings when none is active.
   Probe: `--setup expanded_tables` (wings both sides, two extra table_2s, built
   free). Captures: `tools/screenshot.sh --expand=drag --speed=0 --frames=90`
   and `--expand=shop --open --fast=10 --speed=1 --frames=150 [--quarter=0]`.
+
+### Build and Buy modes and the edit history (FK-085)
+- **Two sides, one panel.** `BuildCatalogue` has Build/Buy tabs (`mode`),
+  category tabs, tool buttons (Hand, Eyedropper, Sell) and Undo/Redo, and the
+  room readout (the `VibeMeter` plus a theme label, path
+  `Panel/Margin/Rows/Scroll/Content/Categories/Readout/VibeMeter`). Build has
+  Walls, Floor (only with a lot) and Paint; Paint asks Main for the existing
+  paint mode (`paint_requested`), and Esc in paint opened from Build returns to
+  Build. Buy tabs are rooms: `ItemDef.catalogue_room` (data, one of
+  `ItemDef.CATALOGUE_ROOMS`; empty or unknown means Decor, content validation
+  names unknown ones). A room tab shows only once it holds an item, so Lighting
+  and Restroom appear when such items exist. Sub-tabs are groups derived from
+  the item's function (`CatalogueText.group_for`: seating, tables, equipment,
+  accents, rugs) and show when a room has two or more. Theme filters come from
+  `VibeTuning.theme_order`/`theme_labels` (any chosen theme matches); the sort
+  cycles name, cheapest, priciest (ties keep name order) and only reorders the
+  existing tile buttons. Tiles show the picture and the price (or the unlock
+  level); `CatalogueText` holds every sentence the catalogue shows about an
+  item (hover card lines, "Seats 2", "Cooks hot dishes", charm only for decor,
+  which is all the vibe counts). The hover card sits beside the panel, never
+  over it.
+- **Tools.** `BuildMode.tool` (`Tool.HAND`, `EYEDROPPER`, `SELL`) decides what
+  a click on placed furniture does while IDLE; `hover_item()` tracks the item
+  under the pointer and `hover_summary()` gives the refund or eyedropper text
+  for the HUD strip, while `BuildPreview` tints its tiles. The eyedropper
+  starts a buy of the same definition, turn and colour (`buy_swatch_id`,
+  applied as a free repaint in the same history entry); items outside the
+  catalogue (the door) are refused with a sentence. Del sells the held item,
+  or with the Sell tool the hovered one. `,`/`.` rotate (R still works);
+  right-click is `BuildMode.cancel_ghost()` (drops a ghost or drag, never the
+  mode); Esc is `cancel()`: ghost or drag, then the tool, then the mode.
+- **Command history.** `ShopEditHistory` (src/sim/shop, pure) wraps every
+  shop edit: Main's `shop_buy`, `shop_move`, `shop_sell`, `shop_walls`,
+  `shop_floor` and `paint_cell` call it instead of `ShopEditor`. Each entry
+  records how to invert itself with the same editor calls, so undo and redo
+  pass the normal edit checks (path, dining, cut-off, cash, phase): buy <->
+  sell, move <-> move back, wall changes <-> the old segments, floor add <->
+  remove (putting back any segments the edit took down via
+  `check_floor(..., restore)`), paint <-> the old colour. Items get new grid
+  ids when they come back, so entries share an `ItemRef` that is updated.
+  Money is exact: the entry stores the signed cash the edit moved
+  (`ShopEditor.last_cash_change`) and the inverse passes
+  `ShopEditor.Exact(-cash, "undo")` (redo: `Exact(cash, "redo")`), which
+  replaces list prices and the half-price sell rate with that amount in one
+  `Ledger.UPGRADES` line carrying the note (`ShopEditBooks.add_cash(...,
+  note)`, `Economy.add_cash(..., note)`). So undoing a buy refunds 100% and a
+  day's upgrades net to zero. An undo or redo restores a layout the shop
+  already accepted, so with `Exact` the checks that only forbid losing
+  something are skipped: seat, work-spot, door and floor reachability, seat
+  links and the unlock level (the restored layout may already have had an
+  unusable seat, and refusing would block the whole stack). Placement
+  geometry, minimum equipment, items in use, people who would be shut in,
+  furniture on removed floor, cash and closed-only still apply; moves pass
+  `Exact` too (no money). A refused undo/redo leaves both stacks
+  as they were and sets `last_refusal`; Main shows "Can't undo: ..." in the
+  key strip. A new edit clears redo; paint during service is not recorded.
+  Main clears the history on every phase change (opening, and the next
+  morning), so it never crosses opening or the morning save; it is never
+  saved. Keys: Ctrl+Z, Ctrl+Y or Ctrl+Shift+Z (Cmd on macOS), in Build and
+  Paint.
+- Tests: `tests/sim/test_shop_edit_history.gd` (every edit kind, exact ledger
+  round trips, refused undo kept), `tests/ui/test_build_buy_catalogue.gd`
+  (rooms for every item, filters, sort, hover card text, Build side),
+  `tests/world/test_build_buy_session.gd` (keys, buttons, eyedropper, sell
+  tool, history clearing on open). Captures: the catalogue review
+  (`--catalogue-review=rustic|modern`) shows Buy mode.
 
 ### Restaurant vibe core (FK-072)
 - `VibeModel.evaluate()` reads detached layout, paint and enabled-menu inputs.

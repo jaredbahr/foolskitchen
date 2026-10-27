@@ -10,7 +10,7 @@ const ROOT: String = "res://assets/kenney/icons/"
 const ICON_ROLES: Array[StringName] = [
 	&"pause", &"speed_1", &"speed_2", &"speed_4", &"build", &"menu", &"staff",
 	&"reputation", &"open_shop", &"next_day", &"catalogue", &"report", &"settings",
-	&"stock",
+	&"stock", &"sell",
 ]
 
 
@@ -41,6 +41,8 @@ static func path_for(role: StringName) -> String:
 			return ROOT + "gear.png"
 		&"stock":
 			return ROOT + "shoppingBasket.png"
+		&"sell":
+			return ROOT + "trashcan.png"
 	return ""
 
 

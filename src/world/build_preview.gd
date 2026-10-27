@@ -30,6 +30,8 @@ var wall_ghosts: Array[MeshInstance3D] = []
 ## Floor tool ghost (one merged mesh) and the cells it covers.
 var floor_ghost: MeshInstance3D
 var floor_ghost_cells: Array[Vector2i] = []
+## FK-085: the tiles under the item the hand, eyedropper or sell tool points at.
+var hover_mesh: MeshInstance3D
 ## The lot outline and fill, shown in every Build mode state.
 var lot_outline: Node3D
 var _lot_root: Node3D
@@ -209,6 +211,10 @@ func refresh() -> void:
 		_build_floor_ghost(floor_cells, valid, snapshot.get("floor_removing", false))
 		if not valid:
 			reason = snapshot.get("why", "")
+	elif snapshot.get("active", false) and snapshot.get("state", -1) == BuildMode.State.IDLE:
+		_build_hover(snapshot.get("hover_item_id", -1), snapshot.get("tool", BuildMode.Tool.HAND), valid)
+		if not valid:
+			reason = snapshot.get("why", "")
 	if snapshot.get("active", false):
 		var open_cells: Array[Vector2i] = []
 		open_cells.assign(snapshot.get("lot_open", []))
@@ -288,6 +294,7 @@ func _clear_geometry() -> void:
 	wall_ghosts.clear()
 	floor_ghost = null
 	floor_ghost_cells.clear()
+	hover_mesh = null
 	if is_instance_valid(_lot_root):
 		_free_node(_lot_root)
 	_lot_root = null
@@ -388,6 +395,32 @@ func _build_floor_ghost(cells: Array[Vector2i], valid: bool, removing: bool) -> 
 	floor_ghost.set_meta("removing", removing)
 	floor_ghost_cells = cells.duplicate()
 	_ghost_root.add_child(floor_ghost)
+
+
+## Tiles under the pointed-at item: red for Sell (or a refused sale), green for
+## the eyedropper, the warm seat colour for the hand.
+func _build_hover(item_id: int, tool: int, valid: bool) -> void:
+	if item_id < 0 or _shop_view.world == null:
+		return
+	var item: PlacedItem = _shop_view.world.grid.item(item_id)
+	if item == null or item.cells.is_empty():
+		return
+	_ghost_root = Node3D.new()
+	_ghost_root.name = "Hover"
+	add_child(_ghost_root)
+	var tint: Color = SEAT_COLOR
+	if tool == BuildMode.Tool.SELL or not valid:
+		tint = INVALID_COLOR
+	elif tool == BuildMode.Tool.EYEDROPPER:
+		tint = VALID_COLOR
+	tint.a = FLOOR_GHOST_ALPHA
+	hover_mesh = MeshInstance3D.new()
+	hover_mesh.name = "Tiles"
+	hover_mesh.mesh = _tile_mesh(item.cells, 0.035, FLOOR_GHOST_INSET)
+	hover_mesh.material_override = _material(tint, true)
+	hover_mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	hover_mesh.set_meta("item_id", item_id)
+	_ghost_root.add_child(hover_mesh)
 
 
 ## The lot (FK-080): a pale fill on unbuilt cells and a pale line around it.

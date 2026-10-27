@@ -8,6 +8,7 @@ script = ExtResource("1_script")
 view_scene = ExtResource("2_view")
 id = &"cloth_table"
 display_name = "Tablecloth dining table"
+catalogue_room = &"dining"
 category = 1
 footprint = Vector2i(2, 1)
 solid = true

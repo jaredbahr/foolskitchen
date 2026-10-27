@@ -5,6 +5,11 @@ extends Resource
 enum Category { DOOR, TABLE, CHAIR, STATION, STORAGE, PASS, DECOR }
 enum PlacementLayer { NORMAL, FLOOR_DECOR }
 
+## Buy mode groups furniture by room or function (FK-085). An item without
+## one (or with an unknown one) is shown under Decor.
+const CATALOGUE_ROOMS: Array[StringName] = [&"dining", &"kitchen", &"bar_cafe", &"decor", &"lighting", &"restroom"]
+const DEFAULT_ROOM: StringName = &"decor"
+
 ## Director's upper bound in metres; presentation logic must also keep hips supported.
 const MAX_SEATED_FORWARD_OFFSET: float = 0.05
 
@@ -15,6 +20,8 @@ const MAX_SEATED_FORWARD_OFFSET: float = 0.05
 @export var placement_layer: PlacementLayer = PlacementLayer.NORMAL
 ## Hidden entries remain valid content so existing saved placements still load.
 @export var catalogue_visible: bool = true
+## Buy mode room (one of CATALOGUE_ROOMS); empty means Decor.
+@export var catalogue_room: StringName = &""
 ## Width and depth of the unrotated occupied rectangle, in cells.
 @export var footprint: Vector2i = Vector2i.ONE
 @export var solid: bool = true
@@ -45,6 +52,11 @@ const MAX_SEATED_FORWARD_OFFSET: float = 0.05
 ## One body-colour slot; unpainted items keep their authored placeholder colour.
 @export var paintable: bool = true
 @export var paint_slot: StringName = &"body"
+
+
+## The Buy mode room this item is listed under.
+func buy_room() -> StringName:
+	return catalogue_room if CATALOGUE_ROOMS.has(catalogue_room) else DEFAULT_ROOM
 
 
 ## Only passive, non-blocking decor may occupy the floor layer. Interaction
