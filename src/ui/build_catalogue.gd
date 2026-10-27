@@ -4,6 +4,8 @@ extends Control
 
 signal buy_requested(def_id: StringName)
 signal swatch_requested(swatch_id: StringName)
+## Walls tool (FK-070): the SimGrid.Segment new edges should get.
+signal wall_tool_requested(segment: int)
 
 const EDGE_MARGIN: float = 12.0
 const MAX_PANEL_WIDTH: float = 760.0
@@ -11,12 +13,17 @@ const PANEL_HEIGHT_SHARE: float = 0.42
 const CARD_MINIMUM: Vector2 = Vector2(144.0, 80.0)
 const THUMBNAIL_WIDTH: int = 56
 const CARD_GAP: float = 8.0
-const CATEGORY_IDS: Array[StringName] = [&"seating", &"tables", &"kitchen", &"decor"]
+const CATEGORY_IDS: Array[StringName] = [&"seating", &"tables", &"kitchen", &"decor", &"walls"]
 const CATEGORY_LABELS: Dictionary = {
-	&"seating": "Seating", &"tables": "Tables", &"kitchen": "Kitchen", &"decor": "Decor",
+	&"seating": "Seating", &"tables": "Tables", &"kitchen": "Kitchen", &"decor": "Decor", &"walls": "Walls",
 }
+const WALLS: StringName = &"walls"
+const WALLS_HINT: String = "Drag along the grid lines to build. Click a wall to switch it between wall, doorway and window."
+const FURNITURE_HINT: String = "Square: work tile   Circle: seat"
 
 var item_buttons: Dictionary[StringName, Button] = {}
+## Walls tab cards by WallKindDef id.
+var wall_buttons: Dictionary[StringName, Button] = {}
 var swatch_buttons: Dictionary[StringName, Button] = {}
 var category_buttons: Dictionary[StringName, Button] = {}
 var selected_category: StringName = &""
@@ -159,6 +166,7 @@ func refresh_content() -> void:
 					break
 			if not selected_category.is_empty():
 				break
+	_refresh_wall_cards()
 	_apply_category()
 	# Queue the current category first so visible previews arrive first. Every
 	# remaining wrapper is still prepared once at startup in the same cache.
@@ -168,6 +176,52 @@ func refresh_content() -> void:
 				item_buttons[definition.id].icon = _thumbnails.request(definition.view_scene)
 	_refresh_swatches()
 	_fit_panel()
+
+
+## One card per wall kind, after the furniture cards in the same grid.
+func _refresh_wall_cards() -> void:
+	var row: GridContainer = get_node("Panel/Margin/Rows/Scroll/Content/Items") as GridContainer
+	var definitions: Array[WallKindDef] = []
+	if _content != null:
+		definitions = _content.wall_kinds()
+	var desired: Array[StringName] = []
+	for definition: WallKindDef in definitions:
+		desired.append(definition.id)
+	for id: StringName in wall_buttons.keys():
+		if not desired.has(id):
+			var old_button: Button = wall_buttons[id]
+			row.remove_child(old_button)
+			old_button.free()
+			wall_buttons.erase(id)
+	for definition: WallKindDef in definitions:
+		var button: Button = wall_buttons.get(definition.id) as Button
+		if button == null:
+			button = Button.new()
+			button.name = "Wall_%s" % definition.id
+			button.focus_mode = Control.FOCUS_NONE
+			button.mouse_filter = Control.MOUSE_FILTER_STOP
+			button.theme = theme
+			button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+			button.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
+			button.add_theme_constant_override("icon_max_width", THUMBNAIL_WIDTH)
+			button.add_theme_constant_override("h_separation", 10)
+			button.pressed.connect(_on_wall_pressed.bind(definition.id))
+			wall_buttons[definition.id] = button
+			row.add_child(button)
+		row.move_child(button, row.get_child_count() - 1)
+		button.text = "%s\n$%d" % [definition.display_name, definition.price]
+		button.tooltip_text = "Build %s for $%d each" % [definition.display_name.to_lower(), definition.price]
+		button.icon = _thumbnails.request(definition.thumbnail_scene)
+		_size_card(button)
+
+
+func _on_wall_pressed(id: StringName) -> void:
+	if not visible or _paint_visible or _content == null or selected_category != WALLS \
+			or (is_inside_tree() and not is_visible_in_tree()):
+		return
+	var definition: WallKindDef = _content.wall_kind(id)
+	if definition != null and wall_buttons.has(id) and wall_buttons[id].visible:
+		wall_tool_requested.emit(definition.segment)
 
 
 func _size_card(button: Button) -> void:
@@ -192,8 +246,13 @@ func _apply_category() -> void:
 	for id: StringName in item_buttons:
 		var definition: ItemDef = _content.item(id) if _content != null else null
 		item_buttons[id].visible = not _paint_visible and category_for(definition) == selected_category
+	for id: StringName in wall_buttons:
+		wall_buttons[id].visible = not _paint_visible and selected_category == WALLS
+	var hint: Label = get_node("Panel/Margin/Rows/Scroll/Content/Hint") as Label
+	hint.text = WALLS_HINT if selected_category == WALLS else FURNITURE_HINT
+	_refresh_title()
 	var empty: Label = get_node("Panel/Margin/Rows/Scroll/Content/Empty") as Label
-	empty.visible = not _paint_visible and visible_ids().is_empty()
+	empty.visible = not _paint_visible and visible_ids().is_empty() and selected_category != WALLS
 
 
 func _on_category_pressed(category: StringName) -> void:
@@ -208,6 +267,10 @@ func _on_thumbnail_ready(scene: PackedScene, texture: Texture2D) -> void:
 		var definition: ItemDef = _content.item(id)
 		if definition != null and definition.view_scene == scene:
 			item_buttons[id].icon = texture
+	for id: StringName in wall_buttons:
+		var wall: WallKindDef = _content.wall_kind(id)
+		if wall != null and wall.thumbnail_scene == scene:
+			wall_buttons[id].icon = texture
 
 func _refresh_swatches() -> void:
 	var row: HBoxContainer = get_node("Panel/Margin/Rows/Scroll/Content/PaintSwatches") as HBoxContainer
@@ -269,7 +332,7 @@ func _refresh_swatch_styles() -> void:
 func _refresh_title() -> void:
 	var title: Label = get_node("Panel/Margin/Rows/Scroll/Content/Title") as Label
 	if not _paint_visible:
-		title.text = "Furniture"
+		title.text = "Walls" if selected_category == WALLS else "Furniture"
 		IconStyle.decorate_label(title, &"catalogue")
 		return
 	IconStyle.decorate_label(title, &"paint")
@@ -350,6 +413,9 @@ func _fit_panel() -> void:
 	for id: StringName in item_buttons:
 		if item_buttons[id].visible:
 			card_width = maxf(card_width, item_buttons[id].get_combined_minimum_size().x)
+	for id: StringName in wall_buttons:
+		if wall_buttons[id].visible:
+			card_width = maxf(card_width, wall_buttons[id].get_combined_minimum_size().x)
 	var columns: int = clampi(floori((limit.x + CARD_GAP) / (card_width + CARD_GAP)), 1, 3)
 	if row.columns != columns:
 		row.columns = columns

@@ -189,6 +189,8 @@ func _bind_world_presentation() -> void:
 	_paint_swatch_id = _build_catalogue.selected_swatch_id
 	if not _build_catalogue.buy_requested.is_connected(_on_build_buy_requested):
 		_build_catalogue.buy_requested.connect(_on_build_buy_requested)
+	if not _build_catalogue.wall_tool_requested.is_connected(_on_wall_tool_requested):
+		_build_catalogue.wall_tool_requested.connect(_on_wall_tool_requested)
 	if not _build_catalogue.swatch_requested.is_connected(_on_swatch_requested):
 		_build_catalogue.swatch_requested.connect(_on_swatch_requested)
 	if not $HUD.build_toggled.is_connected(_on_build_toggled):
@@ -270,6 +272,10 @@ func _process(_delta: float) -> void:
 		return
 	_debug_overlay.sample_rates(float(Time.get_ticks_usec()) / 1000000.0, Engine.get_frames_per_second())
 	_guard_build_phase()
+	if build_mode.wall_dragging and not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+		# A release over a panel never reaches _unhandled_input (the GUI consumes
+		# it); end that wall drag instead of leaving it stuck to the pointer.
+		build_mode.cancel()
 	if is_build_active() and is_inside_tree():
 		# The pointer may be stationary while Q/E/zoom/pan is still smoothing.
 		update_build_pointer(get_viewport().get_mouse_position())
@@ -460,7 +466,10 @@ func route_build_input(event: InputEvent) -> bool:
 					build_mode.rotate()
 					return true
 				KEY_DELETE:
-					build_mode.sell_selected()
+					if build_mode.state == BuildMode.State.WALLS:
+						build_mode.wall_remove_hovered()
+					else:
+						build_mode.sell_selected()
 					return true
 				KEY_ESCAPE:
 					build_mode.cancel()
@@ -472,6 +481,14 @@ func route_build_input(event: InputEvent) -> bool:
 		update_build_pointer(motion.position)
 		return false  # Camera drag/edge tracking still receives motion.
 	var mouse: InputEventMouseButton = event as InputEventMouseButton
+	if mouse != null and mouse.button_index == MOUSE_BUTTON_LEFT and build_mode.state == BuildMode.State.WALLS:
+		var point: Variant = build_point_at_screen_position(mouse.position)
+		if point is Vector2:
+			if mouse.pressed:
+				build_mode.wall_press(point)
+			else:
+				build_mode.wall_release(point)
+		return true
 	if mouse != null and mouse.pressed and mouse.button_index == MOUSE_BUTTON_LEFT:
 		if update_build_pointer(mouse.position):
 			if build_mode.has_ghost():
@@ -703,9 +720,33 @@ func build_cell_at_screen_position(screen_position: Vector2) -> Variant:
 	return GridMath.world_to_cell(hit) if hit is Vector3 else null
 
 
+## The floor-plane point in shop metres (x, z), for the Walls tool's grid lines.
+func build_point_at_screen_position(screen_position: Vector2) -> Variant:
+	var camera: Camera3D = $CameraRig/Camera3D
+	if world == null or not camera.is_inside_tree():
+		return null
+	var hit: Variant = Picker.floor_intersection(camera.project_ray_origin(screen_position), camera.project_ray_normal(screen_position))
+	return Vector2((hit as Vector3).x, (hit as Vector3).z) if hit is Vector3 else null
+
+
+## Walls tool (FK-070): new edges get `kind`; see BuildMode.begin_walls.
+func begin_wall_tool(kind: SimGrid.Segment) -> bool:
+	if not is_build_active():
+		return false
+	var started: bool = build_mode.begin_walls(kind)
+	if started and is_inside_tree():
+		update_build_pointer(get_viewport().get_mouse_position())
+	return started
+
+
 func update_build_pointer(screen_position: Vector2) -> bool:
 	if not is_build_active():
 		return false
+	if build_mode.state == BuildMode.State.WALLS:
+		var point: Variant = build_point_at_screen_position(screen_position)
+		if point is Vector2:
+			build_mode.wall_pointer(point)
+		return point is Vector2
 	var cell: Variant = build_cell_at_screen_position(screen_position)
 	if not cell is Vector2i:
 		return false
@@ -724,7 +765,7 @@ func begin_buy_item(def_id: StringName) -> bool:
 func _bind_build_session() -> void:
 	if not build_mode.changed.is_connected(_on_build_changed):
 		build_mode.changed.connect(_on_build_changed)
-	build_mode.bind_session(shop_editor, world, content, shop_move, shop_buy, shop_sell)
+	build_mode.bind_session(shop_editor, world, content, shop_move, shop_buy, shop_sell, shop_walls)
 	($ShopView as ShopView).set_paint(content, shop_editor.wall_swatch_id, shop_editor.floor_swatch_id)
 	_build_preview.bind_build_mode(build_mode, $ShopView as ShopView)
 	_build_ready = true
@@ -764,6 +805,8 @@ func _update_build_controls() -> void:
 	var active: bool = is_build_active()
 	var available: bool = _build_ready and shop_editor != null and shop_editor.can_edit()
 	var reason: String = build_mode.current_check.why if build_mode.has_ghost() and not build_mode.current_check.ok else ""
+	if build_mode.state == BuildMode.State.WALLS:
+		reason = build_mode.wall_summary()
 	$HUD.set_build_state(available, active, reason, int(build_mode.state))
 	$HUD.set_paint_state(_paint_active)
 	if _build_catalogue != null:
@@ -778,6 +821,10 @@ func _on_build_toggled() -> void:
 
 func _on_build_buy_requested(def_id: StringName) -> void:
 	begin_buy_item(def_id)
+
+
+func _on_wall_tool_requested(kind: int) -> void:
+	begin_wall_tool(kind as SimGrid.Segment)
 
 
 func _on_build_cash_changed(_cash: int, _delta: int, _reason: StringName) -> void:
@@ -1655,6 +1702,14 @@ func shop_move(item_id: int, origin: Vector2i, quarter_turns: int) -> bool:
 
 func shop_buy(def_id: StringName, origin: Vector2i, quarter_turns: int = 0) -> bool:
 	var accepted: bool = shop_editor != null and shop_editor.buy(def_id, origin, quarter_turns)
+	if _build_ready:
+		build_mode.refresh()
+	return accepted
+
+
+## Wall segment changes (FK-070), checked and booked by ShopEditor.
+func shop_walls(changes: Dictionary[Vector3i, int]) -> bool:
+	var accepted: bool = shop_editor != null and shop_editor.apply_segments(changes)
 	if _build_ready:
 		build_mode.refresh()
 	return accepted

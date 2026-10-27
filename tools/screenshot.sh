@@ -13,6 +13,7 @@
 # --milestone-review --speed=0 --frames=12,90 captures Goals, then an explicit close-data reward fixture.
 # --catalogue-review=rustic|modern --speed=0 --frames=90,120 captures real previews, then the furnishing fixture.
 # --diner-review --speed=0 --frames=12,90 captures six native comparisons, then real seated diner guests.
+# --walls=place --speed=0 --frames=12 holds a dragged wall run (ghost + cost); --walls=room --open --fast=10 --speed=1 --frames=150 [--quarter=0] shows a built room, Walls Up or Cutaway.
 # Build previews use the production morning input API without buying or saving.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"

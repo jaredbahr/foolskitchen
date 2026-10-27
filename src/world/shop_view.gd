@@ -60,6 +60,9 @@ var _preview_kind: StringName = &""
 var _preview_item_id: int = -1
 var _preview_swatch_id: StringName = &""
 var _walls: Node3D
+## Player-built wall segments (FK-070) and the shell cells holding their windows.
+var segment_view: WallSegmentView
+var _shell_windows: Dictionary[Vector2i, Vector2i] = {}
 var selection_outline: BoundsOutline
 var _selected_item_id: int = -1
 var _selection_bounds: AABB
@@ -80,8 +83,10 @@ func show_world(value: SimWorld) -> void:
 	agent_nodes.clear()
 	dirt_nodes.clear()
 	_wall_nodes.clear()
+	_shell_windows.clear()
 	floor_mesh = null
 	room_dressing = null
+	segment_view = null
 	selection_outline = null
 	_selected_item_id = -1
 	world = value
@@ -106,6 +111,10 @@ func show_world(value: SimWorld) -> void:
 	_walls.name = "Walls"
 	_walls.set_meta("shop_geometry", true)
 	add_child(_walls)
+	segment_view = WallSegmentView.new()
+	segment_view.name = "WallSegments"
+	segment_view.set_meta("shop_geometry", true)
+	add_child(segment_view)
 	room_dressing = RoomDressing.new()
 	room_dressing.name = "RoomDressing"
 	room_dressing.set_meta("shop_geometry", true)
@@ -206,6 +215,7 @@ func _build_terrain() -> void:
 					surface.add_vertex(corners[index])
 				count += 1
 	floor_mesh.mesh = surface.commit() if count > 0 else null
+	_shell_windows = WallSegmentView.shell_window_cells(world.grid)
 	_apply_wall_heights()
 	_apply_paint()
 	if room_dressing != null:
@@ -382,6 +392,8 @@ func _apply_paint() -> void:
 	var wall_id: StringName = _preview_swatch_id if _preview_kind == &"wall" else _wall_swatch_id
 	for wall: MeshInstance3D in _wall_nodes.values():
 		wall.material_override = _paint_material(wall_id, wall_color)
+	if segment_view != null:
+		segment_view.set_materials(_paint_material(wall_id, wall_color), _material(wall_top_color))
 	var floor_id: StringName = _preview_swatch_id if _preview_kind == &"floor" else _floor_swatch_id
 	var floor_shader: ShaderMaterial = floor_mesh.material_override as ShaderMaterial
 	if floor_shader != null:
@@ -444,14 +456,27 @@ func _wall_is_lowered(cell: Vector2i) -> bool:
 
 
 func _apply_wall_heights() -> void:
+	var sill: float = segment_view.window_span().x if segment_view != null else WALL_HEIGHT
 	for cell: Vector2i in _wall_nodes:
 		var wall: MeshInstance3D = _wall_nodes[cell]
-		var height: float = LOWERED_HEIGHT if _wall_is_lowered(cell) else WALL_HEIGHT
-		(wall.mesh as BoxMesh).size.y = height
-		wall.position.y = height * 0.5
-		(wall.get_node("Top") as MeshInstance3D).position.y = height * 0.5 + 0.005
+		var lowered: bool = _wall_is_lowered(cell)
+		var height: float = LOWERED_HEIGHT if lowered else WALL_HEIGHT
+		# A raised shell window keeps only its sill in the cell box; the
+		# segment view adds jambs, head and pane, and the cap stays on top.
+		var body: float = sill if _shell_windows.has(cell) and not lowered else height
+		(wall.mesh as BoxMesh).size.y = body
+		wall.position.y = body * 0.5
+		(wall.get_node("Top") as MeshInstance3D).position.y = height - body * 0.5 + 0.005
+	if segment_view != null and world != null:
+		segment_view.set_materials(_current_wall_material(), _material(wall_top_color))
+		segment_view.rebuild(world.grid, wall_mode != WallMode.UP, lowered_wall_cells())
 	if room_dressing != null:
 		room_dressing.set_lowered_walls(lowered_wall_cells())
+
+
+func _current_wall_material() -> Material:
+	var wall_id: StringName = _preview_swatch_id if _preview_kind == &"wall" else _wall_swatch_id
+	return _paint_material(wall_id, wall_color)
 
 
 func _unhandled_input(event: InputEvent) -> void:

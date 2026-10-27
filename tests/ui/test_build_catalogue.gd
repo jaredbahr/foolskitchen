@@ -388,7 +388,7 @@ func test_category_filters_keep_all_buttons_and_reject_hidden_paint_and_stale_re
 	]
 	_catalogue.bind_content(_content)
 	_catalogue.set_build_visible(true)
-	assert_eq(_catalogue.category_buttons.size(), 4)
+	assert_eq(_catalogue.category_buttons.size(), 5)
 	assert_eq(_catalogue.item_buttons.size(), 6)
 	assert_eq(_catalogue.visible_ids(), [&"chair"] as Array[StringName])
 	var chair: Button = _catalogue.item_buttons[&"chair"]

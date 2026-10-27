@@ -6,6 +6,11 @@ extends RefCounted
 var ok: bool = false
 var why: String = ""
 var unreachable: Array[int] = []
+## Wall edits (FK-070): what a valid change would charge and refund.
+var cost: int = 0
+var refund: int = 0
+## Segments a valid wall change would actually alter (edge -> new segment).
+var changes: Dictionary[Vector3i, int] = {}
 
 
 func _init(allowed: bool = false, reason: String = "") -> void:
