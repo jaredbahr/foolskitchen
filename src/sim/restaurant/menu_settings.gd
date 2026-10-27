@@ -136,6 +136,14 @@ func price_of(definition: RecipeDef) -> int:
 	return _prices.get(definition.id, maxi(definition.standard_price, 0))
 
 
+## The price the menu panel shows: a dish whose station left this session
+## shows the price it will come back at, not the standard one.
+func shown_price(definition: RecipeDef) -> int:
+	if definition != null and not _prices.has(definition.id) and _stash.has(definition.id):
+		return int(_stash[definition.id]["price"])
+	return price_of(definition)
+
+
 func standard_price(id: StringName) -> int:
 	return _standards.get(id, 0)
 

@@ -134,6 +134,7 @@ var _paint_from_build: bool = false
 ## The last undo/redo refusal or result, shown in the hint strip until the
 ## next edit, tool change or mode change.
 var _edit_notice: String = ""
+var _menu_quality: Dictionary[StringName, Dictionary] = {}
 var _menu_panel: MenuPanel
 var _staff_panel: StaffPanel
 var _settings_panel: SettingsPanel
@@ -1665,29 +1666,18 @@ func _cookable_recipes(layout: ShopLayout) -> Array[RecipeDef]:
 
 
 ## The dishes the live shop's stations can make right now (FK-083).
-## A drink station staff cannot reach (a bar walled in on every side) does
-## not count, so its drinks never go on sale only to be cancelled.
+## A station staff cannot reach (a bar or a fryer walled in on every side)
+## does not count, so its dishes never go on sale only to be cancelled.
 func _cookable_live() -> Array[RecipeDef]:
 	var definitions: Array[ItemDef] = []
-	var drink_stations: Dictionary[StringName, bool] = _drink_station_types()
 	for placed: PlacedItem in world.grid.items():
 		var definition: ItemDef = placed.def as ItemDef
 		if definition == null or placed.removed:
 			continue
-		if definition.category == ItemDef.Category.STATION and drink_stations.has(definition.station_type) \
-				and not _station_reachable(placed):
+		if definition.category == ItemDef.Category.STATION and not _station_reachable(placed):
 			continue
 		definitions.append(definition)
 	return _cookable_from(definitions)
-
-
-func _drink_station_types() -> Dictionary[StringName, bool]:
-	var types: Dictionary[StringName, bool] = {}
-	for recipe: RecipeDef in content.recipes():
-		if recipe.is_drink():
-			for step: RecipeStep in recipe.steps:
-				types[step.station_type] = true
-	return types
 
 
 func _station_reachable(placed: PlacedItem) -> bool:
@@ -1733,7 +1723,7 @@ func _refresh_menu_catalogue() -> void:
 		return
 	_apply_menu(sim, menu_settings)
 	if _menu_panel != null:
-		_menu_panel.refresh()
+		_refresh_menu_details()
 	_recompute_vibe()
 	_refresh_stock_panel()
 
@@ -1751,32 +1741,16 @@ func _reorder() -> ReorderSettings:
 	return reorder_settings
 
 
-## The Drinks section explains what each missing drink needs, by name. Food
+## The Drinks hints explain what each missing drink needs, by name. Food
 ## waiting on the same station joins that line ("Coffee, tea and croissant: ...").
+## Food-only equipment is shown in the unlock tree and the dish's Equipment slot.
 func drink_station_hints() -> Array[String]:
-	return _station_hints(true)
-
-
-## Food-only equipment reasons, one per station no drink needs ("Fries: buy a fryer.").
-func food_station_hints() -> Array[String]:
-	return _station_hints(false)
-
-
-## One sentence per missing or walled-in station, naming every tier-1 dish at
-## the owner's level that waits on it; only_drinks picks the stations drinks need.
-func _station_hints(only_drinks: bool) -> Array[String]:
 	var hints: Array[String] = []
 	if content == null or world == null:
 		return hints
-	var present: Dictionary[StringName, bool] = {}
-	var walled_in: Dictionary[StringName, bool] = {}
-	for placed: PlacedItem in world.grid.items():
-		var definition: ItemDef = placed.def as ItemDef
-		if definition != null and definition.category == ItemDef.Category.STATION:
-			if _station_reachable(placed):
-				present[definition.station_type] = true
-			else:
-				walled_in[definition.station_type] = true
+	var station_state: Dictionary = _menu_station_state()
+	var present: Dictionary[StringName, bool] = station_state["reachable"]
+	var walled_in: Dictionary[StringName, bool] = station_state["installed"]
 	var needs: Dictionary[StringName, Array] = {}
 	var order: Array[StringName] = []
 	var drink_stations: Dictionary[StringName, bool] = {}
@@ -1800,20 +1774,27 @@ func _station_hints(only_drinks: bool) -> Array[String]:
 				drink_stations[step.station_type] = true
 			break
 	for station: StringName in order:
-		if drink_stations.has(station) != only_drinks:
+		if not drink_stations.has(station):
 			continue
-		var item_name: String = _station_item_name(station).to_lower()
 		var names: Array[String] = []
 		for index: int in range(needs[station].size()):
 			var dish: String = needs[station][index]
 			names.append(dish if index == 0 else dish.to_lower())
-		var advice: String = "staff can't reach the %s" % item_name if walled_in.has(station) \
-				else "buy %s %s" % ["an" if not item_name.is_empty() and "aeiou".contains(item_name.left(1)) else "a", item_name]
-		hints.append("%s: %s." % [StockAlerts.join_names(names), advice])
-	if only_drinks and menu_settings != null:
+		hints.append("%s: %s." % [StockAlerts.join_names(names),
+			_equipment_advice(_station_item_name(station), walled_in.has(station))])
+	if menu_settings != null:
 		for drink: RecipeDef in menu_settings.crowded_out_drinks():
 			hints.append("%s is ready to serve; make room on the menu to add it." % drink.display_name)
 	return hints
+
+
+## One wording for every missing-equipment reason (Drinks hints, tree and
+## Equipment slots): "buy a fryer", "buy an oven", "staff can't reach the fryer".
+static func _equipment_advice(item_name: String, walled_in: bool) -> String:
+	var lower: String = item_name.to_lower()
+	if walled_in:
+		return "staff can't reach the %s" % lower
+	return "buy %s %s" % ["an" if not lower.is_empty() and "aeiou".contains(lower.left(1)) else "a", lower]
 
 
 ## The item a hint names for a station: the one whose id is the station type
@@ -1827,7 +1808,7 @@ func _station_item_name(station: StringName) -> String:
 		if definition.category == ItemDef.Category.STATION and definition.station_type == station \
 				and (best == null or definition.unlock_level < best.unlock_level):
 			best = definition
-	return best.display_name if best != null else ""
+	return best.display_name if best != null else String(CatalogueText.STATION_NAMES.get(station, "Equipment"))
 
 
 ## Morning only. Hours join the clock, so the next morning autosave keeps them.
@@ -1870,7 +1851,7 @@ func menu_set_enabled(recipe_id: StringName, enabled: bool) -> bool:
 	if not menu_settings.set_enabled(recipe_id, enabled):
 		return false
 	_apply_menu(sim, menu_settings)
-	_menu_panel.refresh()
+	_refresh_menu_details()
 	if was_enabled != menu_settings.is_enabled(recipe_id):
 		_recompute_vibe()
 		_refresh_stock_panel()
@@ -1883,7 +1864,7 @@ func menu_set_restaurant_name(value: String) -> bool:
 		return false
 	$HUD.set_restaurant_name(menu_settings.restaurant_name())
 	($ShopView as ShopView).set_restaurant_name(menu_settings.restaurant_name())
-	_menu_panel.refresh()
+	_refresh_menu_details()
 	return true
 
 
@@ -1896,7 +1877,7 @@ func menu_set_price(recipe_id: StringName, price: int) -> bool:
 		return false
 	menu_settings.set_price(recipe_id, price)
 	_apply_menu(sim, menu_settings)
-	_menu_panel.refresh()
+	_refresh_menu_details()
 	return true
 
 
@@ -1923,8 +1904,8 @@ func set_menu_visible(value: bool) -> bool:
 		build_mode.exit()
 		set_staff_visible(false)
 		set_stock_visible(false)
+		_refresh_menu_details()
 		_menu_panel.set_drink_hints(drink_station_hints())
-		_menu_panel.set_food_hints(food_station_hints())
 		_menu_panel.set_hours(Clock.sim.display_open_minute, Clock.sim.display_close_minute, HOURS_TUNING)
 	_menu_panel.set_phase(Clock.sim.phase)
 	_menu_panel.visible = value
@@ -2061,15 +2042,13 @@ func _on_settings_close_requested() -> void:
 
 
 func _on_menu_enable_requested(recipe_id: StringName, enabled: bool) -> void:
+	# menu_set_enabled refreshes the dish details once when it accepts.
 	menu_set_enabled(recipe_id, enabled)
 	_menu_panel.set_drink_hints(drink_station_hints())
-	_menu_panel.set_food_hints(food_station_hints())
-	_menu_panel.refresh()
 
 
 func _on_menu_price_requested(recipe_id: StringName, price: int) -> void:
 	menu_set_price(recipe_id, price)
-	_menu_panel.refresh()
 
 
 func shop_move(item_id: int, origin: Vector2i, quarter_turns: int) -> bool:
@@ -2876,6 +2855,7 @@ func _on_service_closed(day: int) -> void:
 	if day != Clock.sim.day or _closed_report_day == day:
 		return
 	_closed_report_day = day
+	_remember_menu_quality()
 	_charge_closing_costs()
 	# Capture business profit before milestone cash or financing enters the books.
 	var operating_profit: int = Economy.ledger.day_profit(day)
@@ -2989,3 +2969,120 @@ func _on_day_phase_changed(_day: int, phase: int) -> void:
 
 func _on_next_day_pressed() -> void:
 	Clock.sim.next_day()
+
+
+## Read-only presentation snapshot: all dishes, even those missing equipment.
+## Stock uses the same ledger as #156; no buy, save or random draw happens here.
+func menu_recipe_details() -> Dictionary[StringName, Dictionary]:
+	var rows: Dictionary[StringName, Dictionary] = {}
+	if content == null or world == null or menu_settings == null:
+		return rows
+	var station_state: Dictionary = _menu_station_state()
+	var present: Dictionary[StringName, bool] = station_state["reachable"]
+	var installed: Dictionary[StringName, bool] = station_state["installed"]
+	var support: Array[Dictionary] = station_state["support"]
+	for recipe: RecipeDef in content.recipes():
+		var equipment: Array[Dictionary] = []
+		var required: Dictionary[StringName, bool] = {}
+		for step: RecipeStep in recipe.steps:
+			if required.has(step.station_type):
+				continue
+			required[step.station_type] = true
+			equipment.append(_equipment_slot(_station_item_name(step.station_type),
+				present.has(step.station_type), installed.has(step.station_type)))
+		# Every dish also needs a fridge and a pass; they are listed only when missing or walled in.
+		equipment.append_array(support)
+		var amounts: Dictionary[StringName, int] = {}
+		for ingredient: IngredientDef in recipe.ingredients:
+			amounts[ingredient.id] = amounts.get(ingredient.id, 0) + 1
+		var ingredients: Array[Dictionary] = []
+		for id: StringName in amounts:
+			var ingredient: IngredientDef = content.ingredient(id)
+			var count: int = Economy.stock.count(id)
+			ingredients.append({"text": "%s: %d in stock / %d needed" % [ingredient.display_name, count, amounts[id]],
+				"met": count >= amounts[id]})
+		var other: Array[Dictionary] = []
+		other.append({"text": "Owner level %d (you are level %d)" % [recipe.unlock_level, menu_settings.owner_level()],
+			"met": menu_settings.owner_level() >= recipe.unlock_level})
+		if not recipe.unlock_from.is_empty():
+			var parent: RecipeDef = content.recipe(recipe.unlock_from)
+			if parent != null:
+				other.append({"text": "Learn %s at owner level %d" % [parent.display_name, parent.unlock_level],
+					"met": menu_settings.owner_level() >= parent.unlock_level})
+		var room: bool = menu_settings.is_enabled(recipe.id) or menu_settings.enabled_count() < menu_settings.menu_limit()
+		other.append({"text": "Menu space: %d / %d dishes" % [menu_settings.enabled_count(), menu_settings.menu_limit()], "met": room})
+		var quality: Dictionary = _menu_quality.get(recipe.id, {})
+		rows[recipe.id] = {"equipment": equipment, "ingredients": ingredients, "other": other,
+			"quality": quality.get("quality", recipe.base_quality),
+			"quality_source": "%d served dishes on day %d" % [quality.get("count", 0), quality.get("day", 0)]
+				if not quality.is_empty() else "Recipe base quality; no served-dish sample",
+			"reviews": "Shop reviews: %.1f / 5 (%d ratings)" % [reputation.average(), reputation.scores().size()]}
+	return rows
+
+
+func _refresh_menu_details() -> void:
+	if _menu_panel != null and content != null:
+		_menu_panel.set_recipe_details(content.recipes(), menu_recipe_details())
+
+
+## Keep the last service's measured dish quality for the morning view. This
+## transient display cache is not game state and is never written to a save.
+func _remember_menu_quality() -> void:
+	var samples: Dictionary[StringName, Dictionary] = {}
+	for order: Order in sim.orders.orders_in_state(Order.State.DELIVERED):
+		var row: Dictionary = samples.get(order.recipe_id, {"total": 0.0, "count": 0})
+		row["total"] += order.quality
+		row["count"] += 1
+		samples[order.recipe_id] = row
+	_menu_quality.clear()
+	for id: StringName in samples:
+		var row: Dictionary = samples[id]
+		_menu_quality[id] = {"quality": float(row["total"]) / float(row["count"]),
+			"count": row["count"], "day": Clock.sim.day}
+
+
+## The same reachable station facts feed #183 hints and dish requirements.
+func _menu_station_state() -> Dictionary:
+	var present: Dictionary[StringName, bool] = {}
+	var installed: Dictionary[StringName, bool] = {}
+	# The fridge and pass every dish needs (see _cookable_from): 0 missing, 1 walled in, 2 ready.
+	var fridge: int = 0
+	var pass_counter: int = 0
+	for placed: PlacedItem in world.grid.items():
+		var definition: ItemDef = placed.def as ItemDef
+		if definition == null or placed.removed:
+			continue
+		if definition.category == ItemDef.Category.STATION:
+			installed[definition.station_type] = true
+			if _station_reachable(placed):
+				present[definition.station_type] = true
+		elif definition.category == ItemDef.Category.STORAGE and definition.station_type == &"fridge" \
+				and not definition.work_cells.is_empty():
+			fridge = maxi(fridge, 2 if _station_reachable(placed) else 1)
+		elif definition.category == ItemDef.Category.PASS and definition.work_cells.size() >= 2:
+			pass_counter = maxi(pass_counter, 2 if _station_reachable(placed) else 1)
+	var support: Array[Dictionary] = []
+	for row: Array in [[&"fridge", fridge], [&"pass", pass_counter]]:
+		if int(row[1]) < 2:
+			support.append(_equipment_slot(_support_item_name(row[0]), false, int(row[1]) == 1))
+	return {"reachable": present, "installed": installed, "support": support}
+
+
+## An Equipment slot for the dish detail: "Fryer ready", "Buy a fryer" or
+## "Staff can't reach the fryer" (the Drinks hints use the same words).
+static func _equipment_slot(item_name: String, ready: bool, walled_in: bool) -> Dictionary:
+	if ready:
+		return {"text": "%s ready" % item_name, "met": true}
+	var advice: String = _equipment_advice(item_name, walled_in)
+	return {"text": advice.left(1).to_upper() + advice.substr(1), "met": false}
+
+
+## The fridge or pass item's own name, from data (the earliest unlock).
+func _support_item_name(kind: StringName) -> String:
+	var best: ItemDef = null
+	for definition: ItemDef in content.items():
+		var matches: bool = definition.category == ItemDef.Category.PASS if kind == &"pass" \
+				else (definition.category == ItemDef.Category.STORAGE and definition.station_type == &"fridge")
+		if matches and (best == null or definition.unlock_level < best.unlock_level):
+			best = definition
+	return best.display_name if best != null else String(kind).capitalize()

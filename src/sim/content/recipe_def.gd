@@ -21,6 +21,9 @@ const ORDER_TYPES: Array[StringName] = [FOOD, COFFEE, DRINKS]
 @export var standard_price: int = 0
 @export var unlock_tier: int = 1
 @export var unlock_level: int = 1
+## Owner-level route: this earlier dish leads to this node in the menu tree.
+## Empty means a root. Levels are authoritative; no recipe-point save state.
+@export var unlock_from: StringName = &""
 @export var theme_tags: Array[StringName] = []
 ## What kind of visit orders this (FK-083): a meal, a hot drink, or a cold or
 ## alcoholic drink. Drinks are listed under Drinks on the menu, are made by
@@ -69,3 +72,36 @@ func total_ticks() -> int:
 		if step != null:
 			total += step.duration_ticks
 	return total
+
+
+## Owner-level unlock links form a forest. A parent is learned automatically
+## at its authored level, so adding links cannot change existing menu choices.
+static func validate_unlocks(recipes: Array[RecipeDef]) -> PackedStringArray:
+	var errors: PackedStringArray = []
+	var by_id: Dictionary[StringName, RecipeDef] = {}
+	for recipe: RecipeDef in recipes:
+		if recipe != null:
+			by_id[recipe.id] = recipe
+	for recipe: RecipeDef in recipes:
+		if recipe == null or recipe.unlock_from.is_empty():
+			continue
+		var parent: RecipeDef = by_id.get(recipe.unlock_from) as RecipeDef
+		if parent == null:
+			errors.append("recipe '%s': unknown unlock prerequisite '%s'" % [recipe.id, recipe.unlock_from])
+			continue
+		if parent.unlock_level > recipe.unlock_level or parent.unlock_tier > recipe.unlock_tier:
+			errors.append("recipe '%s': prerequisite must unlock no later than the dish" % recipe.id)
+		var seen: Dictionary[StringName, bool] = {recipe.id: true}
+		var cursor: RecipeDef = parent
+		while cursor != null:
+			if seen.has(cursor.id):
+				errors.append("recipe '%s': unlock prerequisites contain a cycle" % recipe.id)
+				break
+			seen[cursor.id] = true
+			cursor = by_id.get(cursor.unlock_from) as RecipeDef
+	return errors
+
+
+## Display projection only. Never replaces the sim's quality or review score.
+static func quality_stars(quality: float) -> int:
+	return clampi(roundi(clampf(quality, 0.0, 1.0) * 5.0), 1, 5) if is_finite(quality) else 1
