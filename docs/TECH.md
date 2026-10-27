@@ -744,7 +744,12 @@ an active edit/panel/selection first, or opens Settings when none is active.
   side of cell (x, y), `EDGE_NORTH` (1) the line on its north side. Helpers:
   `edge_between(a, b)`, `edge_cells`, `edge_vertices`, `edge_from_vertices`,
   `edges_at_vertex`, `cell_edges`. `set_segment(edge, Segment)` (NONE removes)
-  emits `cells_changed` with both cells; `segment_edges()` is sorted.
+  emits `cells_changed` with both cells; `set_segments(changes)` applies a
+  batch with one signal and one dining refresh (a dragged run rebuilds
+  observers once); `segment_edges()` is sorted; `step_open(a, b)` answers one
+  step. Agents also check `step_open` when stepping, a wall edit beside the
+  cell an agent is leaving triggers a re-plan, and a buried agent's escape
+  never jumps a wall next to it.
   `Segment`: WALL and WINDOW block a step across the edge, DOORWAY does not;
   any segment blocks a diagonal step past its end (no corner cutting past a
   post). Keys are grid-line positions, so they do not care whether a line is
@@ -755,9 +760,11 @@ an active edit/panel/selection first, or opens Settings when none is active.
   both sides), so a shop without interior walls keeps the plain engine search
   and its exact paths (the balance probe is unchanged). `walkable_neighbours`,
   reachability and dining links respect edges. Furniture may not straddle a
-  segment or have a wall/window between it and its own work or seat cell
-  (`PlaceResult.WALL_IN_WAY`, "A wall is in the way"); a chair across a wall
-  from its table does not link.
+  segment or have a wall/window between it and its own work cell
+  (`PlaceResult.WALL_IN_WAY`, "A wall is in the way"). Tables may stand flush
+  against a wall: a built-in seat across it is dropped (`DiningSeats.WALLED_OFF`),
+  as against the shell. A chair across a wall from its table does not link,
+  and a wall between a linked chair and its table is refused.
 - **Rules (`WallRules`, one place for every refusal sentence).** Interior
   edges (FLOOR both sides) take wall, doorway or window. An outer face (FLOOR,
   then a shell WALL cell with the street, outside or grid border beyond) takes
@@ -766,9 +773,12 @@ an active edit/panel/selection first, or opens Settings when none is active.
   derived from terrain on every check, not stored.
 - **Edits.** `ShopEditor.check_segments(changes)` / `apply_segments(changes)`
   take edge -> Segment and are MORNING/CLOSED only. A change refuses when it
-  cuts through furniture, blocks a seat or work spot, unlinks a chair, or
-  newly cuts off the door, the sink, a kitchen station, a seat, or a staff
-  member/spawn from the street (already-unreachable things never block). Each
+  cuts through furniture, blocks a work spot, unlinks a chair, or cuts off the
+  door, the sink, a kitchen station, a seat, or a staff post (and, in the
+  morning, a staff member where they stand) from the street. Cut-off is
+  checked twice: walls only (furniture ignored), so furniture blocking a
+  doorway today can never hide a permanent seal; then with furniture, where
+  only newly cut-off things refuse (furniture-made blocks stay warnings). Each
   changed edge sells the old segment at the furniture rate (half) and buys the
   new one, both under `Ledger.UPGRADES`. Prices live in `data/walls/*.tres`
   (`WallKindDef`: Wall $10, Doorway $15, Window $20 per edge). `run_changes`
@@ -791,7 +801,9 @@ an active edit/panel/selection first, or opens Settings when none is active.
   native Kenney `wallWindow` pane. An outer window cuts the shell cell: its box
   drops to the sill, jambs and head surround the pane, which sits at the room
   face; `RoomDressing` keeps its street pane/lamp slots but skips that cell.
-  Cutaway and Down lower every interior segment (doorway heads disappear).
+  Cutaway and Down lower every interior segment; a lowered doorway keeps a
+  post stub at each end and a floor threshold, and a lowered window shows a
+  Slate blue glass strip instead of the dark cap, so cycling reads there too.
 - **Floor expansion (#153) plugs in here.** Grow or shift the grid, translate
   every edge key by the same cell offset, then turn the old shell cells into
   FLOOR with `set_terrain`. Edges re-derive their class: an outer-face window

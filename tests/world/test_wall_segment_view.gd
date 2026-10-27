@@ -63,6 +63,27 @@ func test_corners_close_and_cutaway_lowers_interior_walls() -> void:
 	assert_true(vertical.end.y > ArtScale.WALL_HEIGHT)
 
 
+func test_cutaway_still_shows_doorways_and_windows() -> void:
+	var grid: SimGrid = _world.grid
+	var run: Dictionary[Vector3i, int] = {Vector3i(9, 5, 0): SimGrid.Segment.WALL,
+		Vector3i(9, 6, 0): SimGrid.Segment.WINDOW, Vector3i(9, 7, 0): SimGrid.Segment.DOORWAY}
+	grid.set_segments(run)
+	_view.set_wall_mode(ShopView.WallMode.CUTAWAY)
+	var doorway: Node3D = _view.segment_view.get_node("Segment_9_7_0") as Node3D
+	assert_not_null(doorway.get_node_or_null("Threshold"), "a lowered doorway keeps a threshold")
+	var posts: int = 0
+	for child: Node in doorway.get_children():
+		# Caps and the threshold are thin strips; posts stand to the lowered height.
+		if child is MeshInstance3D and ((child as MeshInstance3D).mesh as BoxMesh).size.y > 0.1:
+			posts += 1
+	assert_eq(posts, 2, "and a post stub at each end")
+	var window: Node3D = _view.segment_view.get_node("Segment_9_6_0") as Node3D
+	var glass: MeshInstance3D = window.get_node_or_null("Glass") as MeshInstance3D
+	assert_not_null(glass, "a lowered window shows a glass strip, not the wall cap")
+	assert_eq((glass.material_override as StandardMaterial3D).albedo_color, WallSegmentView.GLASS_SWATCH.color)
+	assert_null(window.get_node_or_null("Top"))
+
+
 func test_shell_window_opens_the_cell_and_replaces_street_dressing() -> void:
 	var grid: SimGrid = _world.grid
 	# The south frontage next to the street door carries dressing on (5, 10).

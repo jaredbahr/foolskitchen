@@ -397,6 +397,11 @@ func find_path(start: Vector2i, goal: Vector2i) -> Array[Vector2i]:
 	if is_walkable(start):
 		return _solve(start, goal)
 	for exit in _walkable_rings(start, ESCAPE_CANDIDATES):
+		# The escape jump itself may not cross a wall next to the buried cell.
+		# Longer jumps (deeply buried) are not edge-checked: they already pass
+		# through solid furniture, and walls are closed-phase edits only.
+		if not step_open(start, exit):
+			continue
 		var rest: Array[Vector2i] = []
 		if exit == goal:
 			rest.append(exit)
@@ -615,6 +620,12 @@ func edge_in_bounds(edge: Vector3i) -> bool:
 	return in_bounds(cells[0]) and in_bounds(cells[1])
 
 
+## True unless a segment blocks this step (orthogonal across a wall/window, or
+## diagonal past any segment's end). Non-adjacent steps are always open.
+func step_open(from_cell: Vector2i, to_cell: Vector2i) -> bool:
+	return _edge_occupied.is_empty() or _edge_astar.step_open(from_cell, to_cell)
+
+
 func segment(edge: Vector3i) -> Segment:
 	return _segments.get(edge, Segment.NONE) as Segment
 
@@ -634,6 +645,33 @@ func set_segment(edge: Vector3i, kind: Segment) -> bool:
 	_refresh_edge(edge)
 	_refresh_dining_seats()
 	cells_changed.emit(edge_cells(edge))
+	return true
+
+
+## Applies several segment changes (edge -> Segment) with one cells_changed
+## and one dining refresh, so a dragged run rebuilds observers once. Nothing
+## changes when any edge is malformed.
+func set_segments(changes: Dictionary[Vector3i, int]) -> bool:
+	for edge: Vector3i in changes:
+		var kind: int = changes[edge]
+		if not edge_in_bounds(edge) or kind < Segment.NONE or kind > Segment.WINDOW:
+			return false
+	var touched: Array[Vector2i] = []
+	for edge: Vector3i in changes:
+		if segment(edge) == changes[edge]:
+			continue
+		if changes[edge] == Segment.NONE:
+			_segments.erase(edge)
+		else:
+			_segments[edge] = changes[edge]
+		_refresh_edge(edge)
+		for cell: Vector2i in edge_cells(edge):
+			if not touched.has(cell):
+				touched.append(cell)
+	if touched.is_empty():
+		return true
+	_refresh_dining_seats()
+	cells_changed.emit(touched)
 	return true
 
 
@@ -689,13 +727,14 @@ func _segment_inside(cells: Array[Vector2i]) -> bool:
 	return false
 
 
-## A wall or window between an item and one of its own work or seat cells.
+## A wall or window between an item and one of its own work cells.
 func _access_walled_off(definition: ItemDef, origin: Vector2i, quarter_turns: int) -> bool:
 	if _segments.is_empty() or definition == null:
 		return false
 	var cells: Array[Vector2i] = _footprint_cells(definition.footprint, origin, quarter_turns)
 	var access: Array[Vector2i] = []
-	for authored: Vector2i in definition.work_cells + definition.seat_cells:
+	# Work cells only: a table's seat across a wall is dropped by DiningSeats.
+	for authored: Vector2i in definition.work_cells:
 		access.append(origin + GridMath.rotate_cell(authored, definition.footprint, quarter_turns))
 	return access_walled_off(cells, access)
 

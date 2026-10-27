@@ -228,7 +228,7 @@ static func from_dict(data: Dictionary, template_layout: ShopLayout, content: Co
 	if not _integer_in(data.get("version"), 1, SNAPSHOT_VERSION) or not data.get("items") is Array:
 		errors.append("Invalid shop snapshot version or items")
 		return null
-	if int(data["version"]) >= 2 and not data.get("walls") is Array:
+	if (int(data["version"]) >= 2 or data.has("walls")) and not data.get("walls") is Array:
 		errors.append("Invalid shop walls")
 		return null
 	var preview: SimGrid = SimGrid.from_ascii(template_layout.rows)
@@ -392,7 +392,7 @@ func check_segments(changes: Dictionary[Vector3i, int]) -> EditCheck:
 			return EditCheck.new(false, "Unknown wall type")
 		cost += new_def.price if new_def != null else 0
 		refund += floori(old_def.price / 2.0) if old_def != null else 0
-		preview.set_segment(edge, kind)
+	preview.set_segments(effective)
 	var problem: String = WallRules.layout_problem(preview)
 	if problem.is_empty():
 		var dining: EditCheck = EditCheck.validate_dining(live, preview, ids, -1, -1)
@@ -420,9 +420,8 @@ func apply_segments(changes: Dictionary[Vector3i, int]) -> bool:
 	if not check.ok:
 		return false
 	_applying = true
-	var grid: SimGrid = _sim.world.grid
-	for edge: Vector3i in _sorted_edges(check.changes):
-		grid.set_segment(edge, check.changes[edge] as SimGrid.Segment)
+	# One batch: observers (view, agents, vibe) see a dragged run as one change.
+	_sim.world.grid.set_segments(check.changes)
 	if check.refund > 0:
 		_books.add_cash(check.refund, Ledger.UPGRADES)
 	if check.cost > 0:
@@ -431,12 +430,15 @@ func apply_segments(changes: Dictionary[Vector3i, int]) -> bool:
 	return true
 
 
-## Staff where they stand plus every staff start cell: none may be shut in.
+## Staff start (post) cells, where everyone stands each morning, may never be
+## shut in. In the morning staff are about to work from where they stand, so
+## their current cells count too; after closing they will be reset to posts.
 func _people_cells() -> Array[Vector2i]:
 	var cells: Array[Vector2i] = []
-	for agent: SimAgent in _sim.world.agents:
-		if not agent is CustomerAgent:
-			cells.append(agent.cell)
+	if _sim.world.clock.phase == SimClock.Phase.MORNING:
+		for agent: SimAgent in _sim.world.agents:
+			if not agent is CustomerAgent:
+				cells.append(agent.cell)
 	for role: StringName in _sim.staff_spawns:
 		cells.append(_sim.staff_spawns[role])
 	return cells
@@ -520,8 +522,10 @@ func _preview_without(exclude_id: int, ids: Dictionary[int, int], replacement: I
 		for x: int in range(live.size.x):
 			var cell: Vector2i = Vector2i(x, y)
 			preview.set_terrain(cell, live.terrain(cell))
+	var segments: Dictionary[Vector3i, int] = {}
 	for edge: Vector3i in live.segment_edges():
-		preview.set_segment(edge, live.segment(edge))
+		segments[edge] = live.segment(edge)
+	preview.set_segments(segments)
 	for placed: PlacedItem in live.items():
 		var replacing: bool = placed.id == exclude_id
 		if replacing and replacement == null:

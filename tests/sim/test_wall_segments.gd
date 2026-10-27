@@ -92,6 +92,48 @@ func test_signal_reports_both_cells_and_change_only() -> void:
 	grid.cells_changed.disconnect(record)
 
 
+func test_a_run_changes_the_grid_with_one_signal() -> void:
+	var grid: SimGrid = _sim.world.grid
+	var seen: Array = []
+	var record: Callable = func(cells: Array[Vector2i]) -> void: seen.append(cells)
+	grid.cells_changed.connect(record)
+	var run: Dictionary[Vector3i, int] = {}
+	for y: int in range(5, 9):
+		run[_edge(9, y, 0)] = SimGrid.Segment.WALL
+	assert_true(_editor.apply_segments(run))
+	assert_eq(seen.size(), 1, "one rebuild for a whole dragged run")
+	assert_eq((seen[0] as Array).size(), 8)
+	grid.cells_changed.disconnect(record)
+
+
+func test_walkers_never_step_through_a_new_wall() -> void:
+	var grid: SimGrid = SimGrid.from_ascii(PackedStringArray(["....", "....", "...."]))
+	var world: SimWorld = SimWorld.new(grid)
+	var walker: SimAgent = SimAgent.new()
+	walker.cell = Vector2i(0, 0)
+	world.add_agent(walker)
+	assert_true(walker.set_destination(grid, Vector2i(1, 1)))
+	assert_eq(walker.path[1], Vector2i(1, 1), "a diagonal first step")
+	walker.move_progress = 0.5
+	# A wall end appears beside the cell being left.
+	grid.set_segment(Vector3i(1, 0, SimGrid.EDGE_WEST), SimGrid.Segment.WALL)
+	assert_true(walker.needs_repath, "the cell being left counts as on the path")
+	assert_eq(walker.step_move(world), SimAgent.MoveResult.BLOCKED)
+	assert_false(grid.step_open(Vector2i(0, 0), Vector2i(1, 1)))
+
+
+func test_buried_escape_does_not_jump_a_wall() -> void:
+	var grid: SimGrid = SimGrid.from_ascii(PackedStringArray(["...", "...", "..."]))
+	grid.place(Vector2i.ONE, Vector2i(0, 1), 0, true)
+	for y: int in 3:
+		grid.set_segment(Vector3i(1, y, SimGrid.EDGE_WEST), SimGrid.Segment.WALL)
+	grid.set_segment(Vector3i(0, 1, SimGrid.EDGE_NORTH), SimGrid.Segment.WALL)
+	# Buried at (0, 1): (0, 0) is behind a wall, (0, 2) is open.
+	var path: Array[Vector2i] = grid.find_path(Vector2i(0, 1), Vector2i(0, 2))
+	assert_eq(path, [Vector2i(0, 1), Vector2i(0, 2)] as Array[Vector2i])
+	assert_true(grid.find_path(Vector2i(0, 1), Vector2i(0, 0)).is_empty())
+
+
 func test_furniture_cannot_straddle_a_segment_or_face_a_wall() -> void:
 	var grid: SimGrid = SimGrid.from_ascii(PackedStringArray(["......", "......", "......"]))
 	grid.set_segment(Vector3i(2, 1, SimGrid.EDGE_WEST), SimGrid.Segment.DOORWAY)
@@ -235,8 +277,6 @@ func test_walls_cannot_cut_furniture_or_door_or_leave_the_floor() -> void:
 	assert_eq(problem.call(_edge(3, 6, 0), SimGrid.Segment.DOORWAY), WallRules.THROUGH_FURNITURE)
 	# Between the stove (7..8, 1) and its work cell (8, 2) below it.
 	assert_eq(problem.call(_edge(8, 2, 1), SimGrid.Segment.WALL), WallRules.BLOCKS_ACCESS)
-	# Between a table and its built-in seat.
-	assert_eq(problem.call(_edge(2, 7, 0), SimGrid.Segment.WALL), WallRules.BLOCKS_ACCESS)
 	# The street door opening and its threshold stay fixed.
 	assert_eq(problem.call(_edge(7, 10, 0), SimGrid.Segment.WALL), WallRules.DOOR_FIXED)
 	assert_eq(problem.call(_edge(6, 10, 1), SimGrid.Segment.WALL), WallRules.DOOR_FIXED)
@@ -245,6 +285,48 @@ func test_walls_cannot_cut_furniture_or_door_or_leave_the_floor() -> void:
 	assert_eq(problem.call(_edge(1, 11, 0), SimGrid.Segment.WALL), WallRules.NOT_INSIDE)
 	# Removing nothing.
 	assert_eq(problem.call(_edge(9, 6, 0), SimGrid.Segment.NONE), "Nothing to change here")
+
+
+## Regression (review): furniture blocking a doorway must not let a later wall
+## edit seal the room for good once that furniture is sold.
+func test_temporary_furniture_cannot_hide_a_permanent_seal() -> void:
+	var room: Dictionary[Vector3i, int] = {}
+	for y: int in range(5, 10):
+		room[_edge(9, y, 0)] = SimGrid.Segment.WALL
+	room[_edge(9, 9, 0)] = SimGrid.Segment.DOORWAY
+	assert_true(_editor.apply_segments(room), _editor.last_check.why)
+	_editor.set_owner_level(6)
+	assert_true(_editor.buy(&"potted_plant", Vector2i(9, 9)), _editor.last_check.why)
+	assert_false(_editor.last_check.unreachable.is_empty(), "the plant only warns")
+	var close: Dictionary[Vector3i, int] = {_edge(9, 9, 0): SimGrid.Segment.WALL}
+	var check: EditCheck = _editor.check_segments(close)
+	assert_false(check.ok, "walls-only, the corner table would be sealed in")
+	assert_eq(check.why, WallRules.CUT_SEAT)
+	assert_false(_editor.apply_segments(close))
+	assert_eq(_sim.world.grid.segment(_edge(9, 9, 0)), SimGrid.Segment.DOORWAY)
+
+
+## The cosy corner: a table may stand flush against an interior wall, like
+## against the shell. Its seat across the wall is dropped; open seats remain.
+func test_tables_sit_flush_against_interior_walls() -> void:
+	var grid: SimGrid = _sim.world.grid
+	var east: PlacedItem = ShopBuilder.items_with_def(_sim.world, &"table_2")[2]
+	assert_eq(east.seat_cells, [Vector2i(9, 7), Vector2i(12, 7)] as Array[Vector2i])
+	var flush: Dictionary[Vector3i, int] = {_edge(10, 6, 0): SimGrid.Segment.WALL,
+		_edge(10, 7, 0): SimGrid.Segment.WALL}
+	var check: EditCheck = _editor.check_segments(flush)
+	assert_true(check.ok, check.why)
+	assert_true(_editor.apply_segments(flush))
+	assert_eq(east.seat_cells, [Vector2i(12, 7)] as Array[Vector2i], "the walled seat is dropped")
+	# A new table can be bought into the corner too, and chairs tucked around it.
+	var corner: Dictionary[Vector3i, int] = {_edge(5, 8, 0): SimGrid.Segment.WALL,
+		_edge(5, 9, 0): SimGrid.Segment.WALL}
+	assert_true(_editor.apply_segments(corner), _editor.last_check.why)
+	assert_true(_editor.buy(&"table_2", Vector2i(5, 8)), _editor.last_check.why)
+	var tucked: PlacedItem = grid.item_at(Vector2i(5, 8))
+	assert_eq(tucked.seat_cells, [Vector2i(7, 9)] as Array[Vector2i])
+	assert_true(_editor.buy(&"chair", Vector2i(10, 5), 2), _editor.last_check.why)
+	assert_true(east.seat_cells.has(Vector2i(10, 5)), "a chair on an open side links")
 
 
 func test_seat_cannot_be_walled_from_its_table() -> void:
@@ -339,6 +421,10 @@ func test_bad_saved_walls_are_rejected() -> void:
 		var errors: Array[String] = []
 		assert_null(ShopEditor.from_dict(data, LAYOUT, _content, errors), str(walls))
 		assert_false(errors.is_empty())
+	var legacy: Dictionary = base.duplicate(true)
+	legacy["version"] = 1
+	legacy["walls"] = "bad"
+	assert_null(ShopEditor.from_dict(legacy, LAYOUT, _content, [] as Array[String]), "bad walls fail cleanly in any version")
 	var missing: Dictionary = base.duplicate(true)
 	missing.erase("walls")
 	assert_null(ShopEditor.from_dict(missing, LAYOUT, _content, [] as Array[String]), "version 2 needs walls")

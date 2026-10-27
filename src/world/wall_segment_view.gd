@@ -22,9 +22,16 @@ const CAP_HEIGHT: float = 0.02
 ## Shell panes sit this far inside the room-side face (as RoomDressing's FACE_GAP).
 const SHELL_PANE_GAP: float = 0.005
 const WINDOW_SCENE: PackedScene = preload("res://assets/kenney/furniture/wallWindow.glb")
+## Lowered (cutaway) windows show a glass-blue strip instead of the dark cap,
+## so cycling wall -> window reads in the default view. Palette swatch only.
+const GLASS_SWATCH: SwatchDef = preload("res://data/swatches/slate_blue.tres")
+## Lowered doorways keep a post stub at each end and a floor threshold strip.
+const LOWERED_POST: float = 0.06
+const THRESHOLD_HEIGHT: float = 0.012
 
 var _wall_material: Material
 var _top_material: Material
+var _glass_material: StandardMaterial3D
 var _painted: Array[MeshInstance3D] = []
 var _panes: Array[PropView] = []
 var _pane_bounds: AABB = AABB()
@@ -129,14 +136,27 @@ func _build_interior(edge: Vector3i, kind: SimGrid.Segment, interior: Dictionary
 			_slab(root, x0, x1, 0.0, height, THICKNESS)
 			_cap(root, x0, x1, height, THICKNESS)
 		SimGrid.Segment.DOORWAY:
-			if not lowered:
+			if lowered:
+				# Post stubs at both ends plus a threshold: the opening still reads.
+				_slab(root, x0, x0 + LOWERED_POST + start_extra, 0.0, low, THICKNESS)
+				_cap(root, x0, x0 + LOWERED_POST + start_extra, low, THICKNESS)
+				_slab(root, x1 - LOWERED_POST - end_extra, x1, 0.0, low, THICKNESS)
+				_cap(root, x1 - LOWERED_POST - end_extra, x1, low, THICKNESS)
+				var threshold: MeshInstance3D = _box(Vector3(x1 - x0, THRESHOLD_HEIGHT, THICKNESS), _top_material)
+				threshold.name = "Threshold"
+				threshold.position = Vector3((x0 + x1) * 0.5, THRESHOLD_HEIGHT * 0.5, 0.0)
+				root.add_child(threshold)
+			else:
 				_slab(root, x0, x1, DOOR_HEIGHT, full, THICKNESS)
 				_cap(root, x0, x1, full, THICKNESS)
 		SimGrid.Segment.WINDOW:
 			if lowered:
 				var height: float = minf(low, span.x)
 				_slab(root, x0, x1, 0.0, height, THICKNESS)
-				_cap(root, x0, x1, height, THICKNESS)
+				var glass: MeshInstance3D = _box(Vector3(x1 - x0, CAP_HEIGHT, THICKNESS), _glass())
+				glass.name = "Glass"
+				glass.position = Vector3((x0 + x1) * 0.5, height + 0.005, 0.0)
+				root.add_child(glass)
 			else:
 				var opening: float = _native_pane_bounds().size.x * 0.5
 				_slab(root, x0, x1, 0.0, span.x, THICKNESS)
@@ -205,6 +225,14 @@ func _pane(root: Node3D, span: Vector2) -> PropView:
 	_panes.append(pane)
 	root.add_child(pane)
 	return pane
+
+
+func _glass() -> StandardMaterial3D:
+	if _glass_material == null:
+		_glass_material = StandardMaterial3D.new()
+		_glass_material.albedo_color = GLASS_SWATCH.color
+		_glass_material.roughness = 0.3
+	return _glass_material
 
 
 func _box(size: Vector3, material: Material) -> MeshInstance3D:

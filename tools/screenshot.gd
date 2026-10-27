@@ -2155,7 +2155,10 @@ func _begin_wall_drag() -> void:
 	press.pressed = true
 	press.position = start
 	press.global_position = start
-	_main.call("route_build_input", press)
+	# Through Input, so the held button is real state (Main ends drags whose
+	# button is up) and the press takes the production _unhandled_input route.
+	Input.parse_input_event(press)
+	Input.flush_buffered_events()
 	_hold_build_pointer()
 	_main.call("update_build_pointer", _build_pointer)
 

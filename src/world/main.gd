@@ -252,6 +252,10 @@ func _process(_delta: float) -> void:
 		return
 	_debug_overlay.sample_rates(float(Time.get_ticks_usec()) / 1000000.0, Engine.get_frames_per_second())
 	_guard_build_phase()
+	if build_mode.wall_dragging and not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+		# A release over a panel never reaches _unhandled_input (the GUI consumes
+		# it); end that wall drag instead of leaving it stuck to the pointer.
+		build_mode.cancel()
 	if is_build_active() and is_inside_tree():
 		# The pointer may be stationary while Q/E/zoom/pan is still smoothing.
 		update_build_pointer(get_viewport().get_mouse_position())

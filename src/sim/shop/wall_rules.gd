@@ -16,7 +16,7 @@ const NOT_INSIDE: String = "Walls must stand inside the shop"
 const DOOR_FIXED: String = "The street door stays as it is"
 const OUTER_WINDOW_ONLY: String = "Only windows fit in an outside wall"
 const THROUGH_FURNITURE: String = "A wall can't cut through furniture"
-const BLOCKS_ACCESS: String = "That would block a seat or work spot"
+const BLOCKS_ACCESS: String = "That would block a work spot"
 const KEEP_SOLID_SIDE: String = "Keep some solid wall on every side"
 const NOTHING_HERE: String = "There is no wall here"
 const CUT_DOOR: String = "That would cut off the door"
@@ -115,13 +115,16 @@ static func layout_problem(grid: SimGrid) -> String:
 	return ""
 
 
-## A wall or window between an item and one of its authored work/seat cells.
+## A wall or window between an item and one of its authored work cells.
+## Seats are not refused here: a table's built-in seat across a wall is simply
+## dropped (DiningSeats.WALLED_OFF), and a chair's link to its table is checked
+## by EditCheck.validate_dining, so tables can stand flush against a wall.
 static func item_walled_off(grid: SimGrid, placed: PlacedItem) -> bool:
 	var definition: ItemDef = placed.def as ItemDef
 	if definition == null or not grid.has_segments():
 		return false
 	var access: Array[Vector2i] = []
-	for authored: Vector2i in definition.work_cells + definition.seat_cells:
+	for authored: Vector2i in definition.work_cells:
 		access.append(placed.origin + GridMath.rotate_cell(authored, definition.footprint, placed.quarter_turns))
 	return grid.access_walled_off(placed.cells, access)
 
@@ -145,12 +148,36 @@ static func reachable(grid: SimGrid) -> Dictionary[Vector2i, bool]:
 	return seen
 
 
-## The first thing a change would newly cut off from the street, or "".
+## The first thing a change would cut off from the street, or "".
 ## `after` has the same items in the same order as `before` (an edit preview).
-## Something already unreachable before the change never blocks it.
+## Two passes. Walls only (furniture ignored): a wall edit may never seal a
+## target in, even when furniture happens to block it today, because that
+## furniture can be moved or sold later and the seal would remain. Then with
+## furniture: a change may not newly cut off something reachable right now;
+## things furniture already blocks stay furniture warnings.
 static func cut_off_problem(before: SimGrid, after: SimGrid, people: Array[Vector2i]) -> String:
-	var was: Dictionary[Vector2i, bool] = reachable(before)
-	var now: Dictionary[Vector2i, bool] = reachable(after)
+	var problem: String = _cut_off(after, reachable(walls_only(before)), reachable(walls_only(after)), people)
+	if problem.is_empty():
+		problem = _cut_off(after, reachable(before), reachable(after), people)
+	return problem
+
+
+## Terrain and segments of `grid`, with no furniture.
+static func walls_only(grid: SimGrid) -> SimGrid:
+	var copy: SimGrid = SimGrid.new(grid.size)
+	for y: int in range(grid.size.y):
+		for x: int in range(grid.size.x):
+			var cell: Vector2i = Vector2i(x, y)
+			copy.set_terrain(cell, grid.terrain(cell))
+	var segments: Dictionary[Vector3i, int] = {}
+	for edge: Vector3i in grid.segment_edges():
+		segments[edge] = grid.segment(edge)
+	copy.set_segments(segments)
+	return copy
+
+
+static func _cut_off(after: SimGrid, was: Dictionary[Vector2i, bool], now: Dictionary[Vector2i, bool],
+		people: Array[Vector2i]) -> String:
 	var door: Array[Vector2i] = []
 	door.assign(door_cells(after).keys())
 	if _lost(door, was, now):
