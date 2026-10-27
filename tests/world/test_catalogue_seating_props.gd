@@ -137,7 +137,7 @@ func test_bar_counter_keeps_kit_parts_and_supports_two_independent_stools_at_eve
 	assert_true(counter_def.seat_cells.is_empty(), "only placed facing stools supply seats")
 	assert_eq(counter_def.unlock_level, 4)
 	assert_true(counter_def.price > 0)
-	assert_eq(counter_def.theme_tags, [&"bar", &"modern"] as Array[StringName])
+	assert_eq(counter_def.theme_tags, [&"diner", &"modern", &"bar"] as Array[StringName])
 	assert_true(counter_def.serve_across, "guests at the counter are served across it (FK-083)")
 	var view: PropView = counter_def.view_scene.instantiate() as PropView
 	_views.append(view)

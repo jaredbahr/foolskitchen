@@ -24,6 +24,8 @@ const ORDER_TYPES: Array[StringName] = [FOOD, COFFEE, DRINKS]
 ## alcoholic drink. Drinks are listed under Drinks on the menu, are made by
 ## front-of-house staff at their station and carried straight to the guest.
 @export var order_type: StringName = FOOD
+## A dish coffee guests may add to their drink (the croissant; FK-083).
+@export var with_drinks: bool = false
 
 
 func is_drink() -> bool:

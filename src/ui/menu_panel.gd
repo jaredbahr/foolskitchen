@@ -159,8 +159,8 @@ func drinks_section() -> VBoxContainer:
 func _refresh_hours(editable: bool) -> void:
 	if _hours_box == null:
 		return
-	(_hours_controls["open"] as Label).text = "Opens %s" % Fmt.clock(_open_minute)
-	(_hours_controls["close"] as Label).text = "Closes %s" % Fmt.clock(_close_minute)
+	(_hours_controls["open"] as Label).text = "Opens %s" % _clock_text(_open_minute)
+	(_hours_controls["close"] as Label).text = "Closes %s" % _clock_text(_close_minute)
 	var steps: Dictionary[String, Vector2i] = {
 		"open_minus": Vector2i(-1, 0), "open_plus": Vector2i(1, 0),
 		"close_minus": Vector2i(0, -1), "close_plus": Vector2i(0, 1)}
@@ -172,6 +172,11 @@ func _refresh_hours(editable: bool) -> void:
 		button.tooltip_text = MORNING_HINT if not editable else ("" if allowed else _hours_limit_text())
 
 
+## Midnight as a closing time reads 24:00, not 00:00.
+static func _clock_text(minute: int) -> String:
+	return "24:00" if minute == 24 * 60 else Fmt.clock(minute)
+
+
 func _hours_step(direction: Vector2i) -> Vector2i:
 	var step: int = _hours_tuning.step_minutes if _hours_tuning != null else 30
 	return Vector2i(_open_minute + direction.x * step, _close_minute + direction.y * step)
@@ -180,8 +185,8 @@ func _hours_step(direction: Vector2i) -> Vector2i:
 func _hours_limit_text() -> String:
 	if _hours_tuning == null:
 		return ""
-	return "Open between %s and %s, for %s to %s hours." % [Fmt.clock(_hours_tuning.earliest_open_minute),
-		Fmt.clock(_hours_tuning.latest_close_minute), str(floori(_hours_tuning.min_open_minutes / 60.0)),
+	return "Open between %s and %s, for %s to %s hours." % [_clock_text(_hours_tuning.earliest_open_minute),
+		_clock_text(_hours_tuning.latest_close_minute), str(floori(_hours_tuning.min_open_minutes / 60.0)),
 		str(floori(_hours_tuning.max_open_minutes / 60.0))]
 
 

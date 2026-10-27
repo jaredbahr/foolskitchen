@@ -240,6 +240,7 @@ func _bind_world_presentation() -> void:
 	_staff_panel = $Overlay/StaffPanel
 	_staff_panel.bind_roster(staff_roster)
 	_staff_panel.set_phase(Clock.sim.phase)
+	_staff_panel.set_wage_factor(OpeningHours.wage_factor(Clock.sim, HOURS_TUNING))
 	_staff_panel.set_trays(tray_level, TUNING.tray_prices, Economy.cash, _loan_upgrade_refusal())
 	if not _staff_panel.hire_requested.is_connected(_on_staff_hire_requested):
 		_staff_panel.hire_requested.connect(_on_staff_hire_requested)
@@ -1258,8 +1259,9 @@ func _load_autosave() -> bool:
 		world.log_event("Autosave is not from a morning; starting a new game")
 		return false
 	if not OpeningHours.clock_valid(Clock.sim, HOURS_TUNING):
-		world.log_event("Autosave opening hours are outside the limits; starting a new game")
-		return false
+		# Keep the game; only the hours go back to the default day.
+		OpeningHours.apply(Clock.sim, HOURS_TUNING.default_open_minute, HOURS_TUNING.default_close_minute, HOURS_TUNING)
+		world.log_event("Saved opening hours were outside the limits; reset to the default hours")
 	if owner_progress.last_awarded_day >= Clock.sim.day:
 		world.log_event("Autosave owner progress is ahead of this morning; starting a new game")
 		return false
@@ -1550,6 +1552,7 @@ func set_staff_visible(value: bool) -> bool:
 		clear_selection()
 		_report.hide()
 	_staff_panel.set_phase(Clock.sim.phase)
+	_staff_panel.set_wage_factor(OpeningHours.wage_factor(Clock.sim, HOURS_TUNING))
 	_staff_panel.set_trays(tray_level, TUNING.tray_prices, Economy.cash, _loan_upgrade_refusal())
 	_staff_panel.visible = value
 	if not value and Clock.sim.phase == SimClock.Phase.CLOSED and shown_report != null:
@@ -1602,13 +1605,37 @@ func _cookable_recipes(layout: ShopLayout) -> Array[RecipeDef]:
 
 
 ## The dishes the live shop's stations can make right now (FK-083).
+## A drink station staff cannot reach (a bar walled in on every side) does
+## not count, so its drinks never go on sale only to be cancelled.
 func _cookable_live() -> Array[RecipeDef]:
 	var definitions: Array[ItemDef] = []
+	var drink_stations: Dictionary[StringName, bool] = _drink_station_types()
 	for placed: PlacedItem in world.grid.items():
 		var definition: ItemDef = placed.def as ItemDef
-		if definition != null and not placed.removed:
-			definitions.append(definition)
+		if definition == null or placed.removed:
+			continue
+		if definition.category == ItemDef.Category.STATION and drink_stations.has(definition.station_type) \
+				and not _station_reachable(placed):
+			continue
+		definitions.append(definition)
 	return _cookable_from(definitions)
+
+
+func _drink_station_types() -> Dictionary[StringName, bool]:
+	var types: Dictionary[StringName, bool] = {}
+	for recipe: RecipeDef in content.recipes():
+		if recipe.is_drink():
+			for step: RecipeStep in recipe.steps:
+				types[step.station_type] = true
+	return types
+
+
+func _station_reachable(placed: PlacedItem) -> bool:
+	var entries: Array[Vector2i] = world.grid.entries()
+	for cell: Vector2i in placed.work_cells:
+		if world.grid.is_walkable(cell) and not world.grid.find_path_to_any(cell, entries).is_empty():
+			return true
+	return false
 
 
 func _cookable_from(definitions: Array[ItemDef]) -> Array[RecipeDef]:
@@ -1648,10 +1675,6 @@ func _refresh_menu_catalogue() -> void:
 	if _menu_panel != null:
 		_menu_panel.refresh()
 	_recompute_vibe()
-	# A machine bought in the morning gets its supplies the way the morning
-	# order would have bought them; at closing, the next morning order does.
-	if Clock.sim.phase == SimClock.Phase.MORNING and _started:
-		_restock()
 	_refresh_stock_panel()
 
 
@@ -1674,16 +1697,21 @@ func drink_station_hints() -> Array[String]:
 	if content == null or world == null:
 		return hints
 	var present: Dictionary[StringName, bool] = {}
+	var walled_in: Dictionary[StringName, bool] = {}
 	for placed: PlacedItem in world.grid.items():
 		var definition: ItemDef = placed.def as ItemDef
 		if definition != null and definition.category == ItemDef.Category.STATION:
-			present[definition.station_type] = true
+			if _station_reachable(placed):
+				present[definition.station_type] = true
+			else:
+				walled_in[definition.station_type] = true
 	var needs: Dictionary[StringName, Array] = {}
 	var order: Array[StringName] = []
 	var drinks: Array[RecipeDef] = []
 	for kind: StringName in RecipeDef.ORDER_TYPES:
 		for recipe: RecipeDef in content.recipes():
-			if recipe.order_type == kind and recipe.is_drink() and recipe.unlock_tier == 1:
+			if recipe.order_type == kind and recipe.is_drink() and recipe.unlock_tier == 1 \
+					and recipe.unlock_level <= owner_progress.level:
 				drinks.append(recipe)
 	for recipe: RecipeDef in drinks:
 		for step: RecipeStep in recipe.steps:
@@ -1701,18 +1729,12 @@ func drink_station_hints() -> Array[String]:
 				item_name = definition.display_name
 				break
 		var names: Array[String] = []
-		names.assign(needs[station])
-		hints.append("%s: buy a %s." % [StockAlerts.join_names(names), item_name.to_lower()])
+		for index: int in range(needs[station].size()):
+			var dish: String = needs[station][index]
+			names.append(dish if index == 0 else dish.to_lower())
+		var advice: String = "staff can't reach the %s" if walled_in.has(station) else "buy a %s"
+		hints.append("%s: %s." % [StockAlerts.join_names(names), advice % item_name.to_lower()])
 	return hints
-
-
-func _uses_station_stock(recipe: RecipeDef) -> bool:
-	if recipe == null:
-		return false
-	for ingredient: IngredientDef in recipe.ingredients:
-		if ingredient != null and TUNING.station_stock.has(ingredient.id):
-			return true
-	return false
 
 
 ## Morning only. Hours join the clock, so the next morning autosave keeps them.
@@ -1723,6 +1745,7 @@ func set_opening_hours(open_minute: int, close_minute: int) -> bool:
 	if _menu_panel != null:
 		_menu_panel.set_hours(Clock.sim.display_open_minute, Clock.sim.display_close_minute, HOURS_TUNING)
 	$HUD.refresh()
+	_staff_panel.set_wage_factor(OpeningHours.wage_factor(Clock.sim, HOURS_TUNING))
 	refresh_presentation()
 	return true
 
@@ -1755,10 +1778,6 @@ func menu_set_enabled(recipe_id: StringName, enabled: bool) -> bool:
 	_menu_panel.refresh()
 	if was_enabled != menu_settings.is_enabled(recipe_id):
 		_recompute_vibe()
-		# A drink switched on this morning gets its supplies like the morning
-		# order would (nothing to buy for everyday dishes already stocked).
-		if menu_settings.is_enabled(recipe_id) and _uses_station_stock(menu_settings.recipe(recipe_id)):
-			_restock()
 		_refresh_stock_panel()
 	return true
 
@@ -2342,6 +2361,22 @@ func _on_stock_close_requested() -> void:
 	set_stock_visible(false)
 
 
+## At opening, station-only supplies for drinks put on the menu this morning
+## (a coffee machine bought today) are topped up like the morning order. Edits
+## and undo never buy stock, so undo stays exact. Nothing is in use on a
+## default menu, so default play buys nothing here.
+func _restock_station_supplies() -> void:
+	var order: Dictionary = _reorder().plan(Economy.stock, _unit_costs(), Economy.cash,
+		auto_reorder_premium, true)
+	var lines: Array[Dictionary] = []
+	lines.assign(order["lines"])
+	if not lines.is_empty() and not Economy.buy_auto_order(lines, int(order["cost"])):
+		world.log_event("The opening top-up could not be paid")
+	var short: Dictionary = order["short"]
+	for id: StringName in short:
+		world.log_event("Couldn't afford %d %s at opening" % [short[id], id])
+
+
 func _charge_closing_costs() -> void:
 	for agent: SimAgent in world.agents:
 		if agent is StaffAgent and not agent is OwnerAgent:
@@ -2469,6 +2504,8 @@ func _on_day_phase_changed(_day: int, phase: int) -> void:
 		set_stock_visible(false)
 	if phase == SimClock.Phase.MORNING:
 		_begin_morning()
+	elif phase == SimClock.Phase.OPEN:
+		_restock_station_supplies()
 
 
 func _on_next_day_pressed() -> void:

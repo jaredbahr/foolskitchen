@@ -133,7 +133,7 @@ static func _finish(main: Node, open_minute: int, close_minute: int, menu_on: Ar
 		if not main.call("menu_set_enabled", id, false):
 			return false
 	# As a player would in the Stock panel: stop auto-buying what the menu no
-	# longer uses, then top up the new ingredients (the morning order ran).
+	# longer uses. The new drinks' supplies are bought at opening.
 	var used: Dictionary[StringName, bool] = {}
 	for recipe: RecipeDef in (main.get("menu_settings") as MenuSettings).enabled_recipes():
 		for ingredient: IngredientDef in recipe.ingredients:
@@ -142,7 +142,6 @@ static func _finish(main: Node, open_minute: int, close_minute: int, menu_on: Ar
 		var id: StringName = row["id"]
 		if not used.has(id) and not main.call("stock_set_auto", id, false):
 			return false
-	main.call("_restock")
 	return true
 
 

@@ -627,7 +627,7 @@ func pay(customer: CustomerAgent, order: Order) -> void:
 	served_today += 1
 	customer_paid.emit(customer, order, order.price)
 	# A drink ordered with the meal is paid with it, once it reached the table.
-	var drink: Order = customer.drink_order
+	var drink: Order = customer.extra_order
 	if drink != null and drink != order and drink.state == Order.State.DELIVERED:
 		customer_paid.emit(customer, drink, drink.price)
 

@@ -70,7 +70,7 @@ func test_a_coffee_machine_puts_coffee_tea_and_pastries_on_the_menu_until_it_is_
 	assert_true(main.call("set_menu_visible", true))
 	assert_eq(panel.drinks_section().get_child_count(), 0)
 	var hints: Array[String] = main.call("drink_station_hints")
-	assert_eq(hints, ["Coffee and Tea: buy a coffee machine.", "Beer and Glass of wine: buy a drinks shelf.",
+	assert_eq(hints, ["Coffee and tea: buy a coffee machine.", "Beer: buy a drinks shelf.",
 		"Soft drink: buy a drinks fridge."] as Array[String], "named items, never ids")
 	assert_true(main.call("set_menu_visible", false))
 	assert_true(main.call("shop_buy", &"coffee_machine", Vector2i(12, 5), 2))
@@ -83,10 +83,10 @@ func test_a_coffee_machine_puts_coffee_tea_and_pastries_on_the_menu_until_it_is_
 	assert_true(sim.menu.has((main.get("content") as ContentDB).recipe(&"coffee")), "today's service offers it")
 	assert_eq(sim.visit_kinds(), [RecipeDef.FOOD, RecipeDef.COFFEE] as Array[StringName])
 	assert_true(_stock_ids(main).has(&"coffee_beans"), "coffee is on, so its beans are ordered")
-	assert_true(Economy.stock.count(&"coffee_beans") > 0, "a morning purchase is stocked at once")
+	assert_eq(Economy.stock.count(&"coffee_beans"), 0, "editing buys no stock; opening does")
 	assert_false(_stock_ids(main).has(&"pastry"), "the croissant is off, so no pastries yet")
 	assert_true(main.call("menu_set_enabled", &"croissant", true))
-	assert_true(_stock_ids(main).has(&"pastry") and Economy.stock.count(&"pastry") > 0)
+	assert_true(_stock_ids(main).has(&"pastry"))
 	assert_false(_stock_ids(main).has(&"beer"))
 	assert_true(main.call("set_menu_visible", true))
 	assert_eq(panel.drinks_section().get_child_count(), 2, "Coffee and Tea under Drinks")
@@ -98,6 +98,55 @@ func test_a_coffee_machine_puts_coffee_tea_and_pastries_on_the_menu_until_it_is_
 	assert_false(_menu_ids(main).has(&"coffee"), "selling the machine takes coffee off")
 	assert_false(_stock_ids(main).has(&"coffee_beans"))
 	assert_true(settings.is_valid() and settings.enabled_count() >= 1)
+
+
+func test_undo_and_redo_of_a_coffee_machine_return_money_exactly_and_keep_menu_choices() -> void:
+	var main: Node = _start(false)
+	Economy.add_cash(1000, Ledger.SALE)
+	assert_true(main.call("set_build_active", true))
+	var cash: int = Economy.cash
+	assert_true(main.call("shop_buy", &"coffee_machine", Vector2i(12, 5), 2))
+	assert_eq(Economy.cash, cash - 120, "only the machine is paid for; supplies wait for opening")
+	assert_true(main.call("menu_set_price", &"coffee", 6))
+	assert_true(main.call("menu_set_enabled", &"tea", false))
+	assert_true(main.call("menu_set_enabled", &"croissant", true))
+	assert_true(main.call("undo_edit"))
+	assert_eq(Economy.cash, cash, "undo refunds exactly")
+	assert_false(_menu_ids(main).has(&"coffee"))
+	assert_true(main.call("redo_edit"))
+	assert_eq(Economy.cash, cash - 120)
+	var settings: MenuSettings = main.get("menu_settings") as MenuSettings
+	assert_eq(settings.price_of(settings.recipe(&"coffee")), 6, "the price came back")
+	assert_false(settings.is_enabled(&"tea"), "tea stays off")
+	assert_true(settings.is_enabled(&"croissant"), "the croissant stays on")
+	assert_true(main.call("set_build_active", false))
+	assert_eq(Economy.stock.count(&"coffee_beans"), 0)
+	assert_true(Clock.sim.start_service())
+	assert_true(Economy.stock.count(&"coffee_beans") > 0 and Economy.stock.count(&"pastry") > 0,
+		"opening tops up the new supplies")
+	assert_eq(Economy.stock.count(&"tea"), 0, "tea is off, so none is bought")
+
+
+func test_drinks_behind_a_closed_bar_stay_off_the_menu_with_a_reason() -> void:
+	var main: Node = _start(false)
+	var sim: RestaurantSim = main.get("sim") as RestaurantSim
+	var editor: ShopEditor = ProbeSetups._free_editor(main)
+	assert_true(ProbeSetups._clear_east_table(main, editor))
+	assert_true(editor.buy(&"drinks_shelf", Vector2i(10, 5), 2) and editor.buy(&"drinks_fridge", Vector2i(11, 5), 2))
+	for x: int in range(9, 13):
+		assert_true(editor.buy(&"bar_section", Vector2i(x, 7), 2) and editor.buy(&"bar_stool", Vector2i(x, 8), 0))
+	main.call("_refresh_menu_catalogue")
+	assert_true(_menu_ids(main).has(&"beer"), "an open-ended bar serves beer")
+	for y: int in [5, 6]:
+		assert_true(editor.buy(&"bar_section", Vector2i(9, y), 1))
+	assert_false(editor.last_check.unreachable.is_empty(), "build warns about the shut-in shelf")
+	main.call("_refresh_menu_catalogue")
+	assert_false(_menu_ids(main).has(&"beer"), "staff can't reach the shelf")
+	assert_false(_menu_ids(main).has(&"soft_drink"))
+	assert_false(sim.visit_kinds().has(RecipeDef.DRINKS))
+	var hints: Array[String] = main.call("drink_station_hints")
+	assert_true(hints.has("Beer: staff can't reach the drinks shelf."), str(hints))
+	assert_true(hints.has("Soft drink: staff can't reach the drinks fridge."), str(hints))
 
 
 func test_opening_hours_are_a_morning_choice_saved_at_the_next_morning_and_paid_by_the_hour() -> void:
@@ -138,13 +187,20 @@ func test_opening_hours_are_a_morning_choice_saved_at_the_next_morning_and_paid_
 	assert_true(reloaded.call("set_opening_hours", 11 * 60, 21 * 60), "back to the default")
 
 
-func test_a_save_with_hours_outside_the_limits_starts_fresh() -> void:
-	_start(true)
+func test_a_save_with_hours_outside_the_limits_keeps_the_game_with_default_hours() -> void:
+	var first: Node = _start(true)
+	assert_true(Clock.sim.start_service())
+	var guard: int = 0
+	while Clock.sim.phase != SimClock.Phase.CLOSED and guard < 20:
+		first.call("run_ticks", 1000)
+		guard += 1
+	assert_true(Clock.sim.next_day())
 	Clock.sim.display_open_minute = 2 * 60
 	assert_eq(SaveSystem.save_game(SLOT), OK)
 	_start(true)
-	assert_eq(Clock.sim.day, 1)
-	assert_eq([Clock.sim.display_open_minute, Clock.sim.display_close_minute], [11 * 60, 21 * 60])
+	assert_eq(Clock.sim.day, 2, "the save still loads")
+	assert_eq([Clock.sim.display_open_minute, Clock.sim.display_close_minute, Clock.sim.open_ticks],
+		[11 * 60, 21 * 60, 3600], "the hours snap back to the default day")
 
 
 func _save_path() -> String:

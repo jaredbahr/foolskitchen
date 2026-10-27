@@ -20,5 +20,5 @@ quality_bonus = 0.0
 price = 110
 unlock_level = 4
 charm = 2
-theme_tags = Array[StringName]([&"bar", &"modern"])
+theme_tags = Array[StringName]([&"diner", &"modern", &"bar"])
 serve_across = true

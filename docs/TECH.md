@@ -1153,14 +1153,20 @@ existing paint colour and camera-controlled build-grid parameters.
   default menu; Main's menu catalogue is what the live stations can make
   (`_cookable_live`, refreshed after every accepted edit, undo and redo via
   `MenuSettings.set_catalogue`: kept dishes keep their choices, new ones join
-  drinks switched on and dishes off, removed ones leave). A morning purchase
-  restocks at once.
+  drinks switched on and dishes off, removed ones leave and their choices are
+  stashed for the session, so an undo/redo brings back price and toggle). A
+  drink station staff cannot reach from the street (a bar closed on all
+  sides) does not count; the Drinks hints then say "staff can't reach the
+  drinks shelf". Edits never buy stock, so undo stays exact: station-only
+  supplies for today's menu are topped up when the shop opens
+  (`_restock_station_supplies`), and by the next morning order after that.
 - **Pour task.** `Kitchen._on_order_placed` sends a drink to `_post_pour`: a
   priority-3 `pour` task for the server role (job Serving, service XP): walk to
   a free station of the type, take the ingredient, make it, set quality from
-  server skill and station bonus (READY), carry it to the guest and hand it
-  over (DELIVERED). No kitchen fridge, pass or plate. No station: the ticket
-  cancels `missing_station`.
+  server skill and station bonus (READY; the station hold is released here,
+  before the walk), carry it to the guest and hand it over (DELIVERED). No
+  kitchen fridge, pass or plate. No station: the ticket cancels
+  `missing_station`. Step labels use item names ("walking to the drinks shelf").
 - **Counters.** `ItemDef.serve_across` marks bar pieces (`bar_section`,
   `bar_end_left/right`, `bar_corner`, and the long `bar_counter`). They are
   1x1 TABLEs; any stool facing one links as its seat (`DiningSeats`).
@@ -1179,12 +1185,22 @@ existing paint colour and camera-controlled build-grid parameters.
   table. A meal guest draws `drink_add_chance` (per type) only when a drink is
   available, then one pick; the drink is a second `Order` (`drink_order`),
   paid with the meal if it arrived, cancelled otherwise, never a reason to leave.
+  A coffee-only guest likewise draws `pastry_add_chance` only when a
+  `RecipeDef.with_drinks` dish (the croissant) is available; that pastry is
+  cooked and plated as usual, the guest starts their coffee once it arrives,
+  and the seat is then cleared like a meal's. Both extras use `extra_order`.
+- **Parties at counters.** Party seating still looks for one table with
+  enough reachable seats. A 1x1 counter piece seats one stool, so groups
+  take tables (or the long two-cell bar counter); drinks-only parties do too.
+  Counters are mainly for singles, which is most drinks-only traffic.
 - **Opening hours.** `OpeningHours` + `data/balance/hours.tres` (06:00 to
   24:00, 4 to 13 hours, 30-minute steps, 6 ticks a minute). Morning only, the
   hours set the clock's display minutes and `open_ticks`, so they ride in the
   existing `clock` section of the morning save; a load with hours outside the
-  limits starts fresh. Wages are paid by the hour (`wage_for_day`; the
-  default day is exactly the old daily wage). The Menu panel shows the hours,
+  limits keeps the game and resets only the hours to the default day (logged).
+  Wages are paid by the hour (`wage_for_day`; the default day is exactly the
+  old daily wage), and the Staff panel shows wages for today's hours. A
+  midnight close reads "24:00". The Menu panel shows the hours,
   then Food, then Drinks with named hints for missing stations.
 - **Stock.** `EconomyTuning.station_stock` holds default targets for
   station-only ingredients. `ReorderSettings` lists and orders them only

@@ -226,10 +226,11 @@ func _post_pour(order: Order, recipe: RecipeDef, sim: RestaurantSim) -> void:
 			first_cell = station.work_cells[0]
 		if not stations.has(station.id):
 			stations.append(station.id)
-		steps.append(TaskStep.go_to_item(station.id, "walking to %s" % step.station_type))
+		var station_name: String = (station.def as ItemDef).display_name.to_lower()
+		steps.append(TaskStep.go_to_item(station.id, "walking to the %s" % station_name))
 		if steps.size() == 1:
 			steps.append(TaskStep.work(10, "taking the drink", _take_ingredients))
-		steps.append(TaskStep.work(step.duration_ticks, String(step.station_type)))
+		steps.append(TaskStep.work(step.duration_ticks, "making %s" % recipe.display_name.to_lower()))
 	if steps.is_empty():
 		_cancel(order, &"missing_station")
 		return
@@ -259,6 +260,8 @@ func _drink_ready(agent: SimAgent) -> bool:
 	var order: Order = sim.orders.get_order(int(staff.task.payload["order_id"]))
 	if order == null or order.state == Order.State.CANCELLED:
 		return false
+	# The drink is in hand: free the station for the next one before the walk.
+	staff._release_held(sim.world)
 	if order.state == Order.State.READY:
 		return true
 	var recipe: RecipeDef = _content.recipe(order.recipe_id)

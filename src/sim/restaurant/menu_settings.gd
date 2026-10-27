@@ -15,6 +15,9 @@ var _standards: Dictionary[StringName, int] = {}
 var _enabled: Dictionary[StringName, bool] = {}
 var _prices: Dictionary[StringName, int] = {}
 var _owner_level: int = 1
+## Choices of dishes whose station left (sold, or undone), restored if they
+## come back the same session: {id: {"enabled": bool, "price": int}}. Not saved.
+var _stash: Dictionary[StringName, Dictionary] = {}
 
 
 func _init(cookable_recipes: Array[RecipeDef] = [], owner_level: int = 1) -> void:
@@ -152,6 +155,12 @@ func set_catalogue(cookable_recipes: Array[RecipeDef]) -> bool:
 			prices[id] = clampi(_prices[id], next.minimum_price(id), next.maximum_price(id))
 			if _enabled.has(id):
 				enabled[id] = true
+		elif _stash.has(id):
+			var kept: Dictionary = _stash[id]
+			prices[id] = clampi(int(kept["price"]), next.minimum_price(id), next.maximum_price(id))
+			if bool(kept["enabled"]) and definition.unlock_level <= _owner_level:
+				enabled[id] = true
+			_stash.erase(id)
 		else:
 			prices[id] = definition.standard_price
 			# New drinks go on at once; a new dish waits for the player.
@@ -162,6 +171,9 @@ func set_catalogue(cookable_recipes: Array[RecipeDef]) -> bool:
 			if definition.unlock_level <= _owner_level:
 				enabled[definition.id] = true
 				break
+	for definition: RecipeDef in _recipes:
+		if not next._by_id.has(definition.id):
+			_stash[definition.id] = {"enabled": _enabled.has(definition.id), "price": _prices[definition.id]}
 	_recipes = next._recipes
 	_by_id = next._by_id
 	_standards = next._standards

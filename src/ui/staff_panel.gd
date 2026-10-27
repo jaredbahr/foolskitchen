@@ -22,6 +22,9 @@ const LOCKED_TEXT_ALPHA: float = 0.45
 var _roster: StaffRoster
 var _phase: int = SimClock.Phase.MORNING
 var _snapshot: Dictionary = {}
+## Today's opening hours against the default day (FK-083): wages shown are
+## what staff are paid for today's hours. Exactly 1.0 for the default day.
+var _wage_factor: float = 1.0
 var _rows: Dictionary[StringName, Control] = {}
 var _morning_day: int = 0
 var _morning_notices: Array[Dictionary] = []
@@ -70,6 +73,18 @@ func set_trays(level: int, prices: PackedInt32Array, cash: int, loan_lock_reason
 	refresh()
 
 
+func set_wage_factor(factor: float) -> void:
+	if not is_finite(factor) or factor <= 0.0 or factor == _wage_factor:
+		return
+	_wage_factor = factor
+	_snapshot = {}
+	refresh()
+
+
+func _day_wage(wage: int) -> int:
+	return wage if _wage_factor == 1.0 else roundi(float(wage) * _wage_factor)
+
+
 func refresh() -> void:
 	IconStyle.decorate_label($Panel/Content/Title, &"staff")
 	IconStyle.decorate_label(%RosterTitle, &"staff")
@@ -95,7 +110,7 @@ func refresh() -> void:
 	var editable: bool = _phase == SimClock.Phase.MORNING
 	(%Status as Label).text = "No hiring fee. Wages are paid at closing. Keep a cook and a server." if editable \
 		else "Hiring, letting staff go, raises and upgrades are available in the morning. Job priorities can change now."
-	(%RosterTitle as Label).text = "Your team (%d/%d) - $%d a day" % [_roster.members().size(), StaffRoster.CAPACITY, _roster.total_wages()]
+	(%RosterTitle as Label).text = "Your team (%d/%d) - $%d a day" % [_roster.members().size(), StaffRoster.CAPACITY, _team_day_wages()]
 	(%Empty as Label).visible = _roster.candidates().is_empty()
 	(%Carry as Label).text = "Servers carry %d plate%s" % [1 << _tray_level, "" if _tray_level == 0 else "s"]
 	for level: int in [1, 2]:
@@ -122,6 +137,13 @@ func refresh() -> void:
 		button.tooltip_text = MORNING_HINT if not editable else ("Tier 1 has room for six staff." if button.disabled else (
 			"Cleaners mop floor spots. No hiring fee; wages are paid at closing."
 			if member.role == &"cleaner" else "Hire for no upfront cost; pay their wage at closing."))
+
+
+func _team_day_wages() -> int:
+	var total: int = 0
+	for member: StaffMember in _roster.members():
+		total += _day_wage(member.wage)
+	return total
 
 
 func row_for(id: StringName) -> Control:
@@ -357,7 +379,7 @@ func _add_row(parent: VBoxContainer, member: StaffMember, candidate: bool) -> vo
 	var title: Label = Label.new()
 	title.name = "Name"
 	title.text = "%s - %s, skill %d - $%d/day" % [
-		member.display_name, _role_name(member.role), member.skill, member.wage]
+		member.display_name, _role_name(member.role), member.skill, _day_wage(member.wage)]
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	title.mouse_filter = Control.MOUSE_FILTER_IGNORE

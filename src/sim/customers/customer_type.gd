@@ -22,6 +22,9 @@ extends Resource
 ## Chance that a guest who came to eat also orders a drink, once drinks are
 ## on today's menu and their station stands (FK-083). Never drawn otherwise.
 @export_range(0.0, 1.0, 0.01) var drink_add_chance: float = 0.0
+## Chance that a coffee-only guest adds a pastry (a dish served with drinks)
+## while one is on the menu. Never drawn otherwise.
+@export_range(0.0, 1.0, 0.01) var pastry_add_chance: float = 0.0
 ## Multiplies the time-of-day weight of each drinks-only visit kind
 ## (RecipeDef.COFFEE, RecipeDef.DRINKS). Missing kinds count 1.0.
 @export var visit_weights: Dictionary[StringName, float] = {}
@@ -46,8 +49,9 @@ func is_valid() -> bool:
 			weight_at_five_stars, liked_theme_bonus]:
 		if not is_finite(value) or value < 0.0:
 			return false
-	if not is_finite(drink_add_chance) or drink_add_chance < 0.0 or drink_add_chance > 1.0:
-		return false
+	for chance: float in [drink_add_chance, pastry_add_chance]:
+		if not is_finite(chance) or chance < 0.0 or chance > 1.0:
+			return false
 	for kind: StringName in visit_weights:
 		var weight: float = visit_weights[kind]
 		if not RecipeDef.ORDER_TYPES.has(kind) or not is_finite(weight) or weight < 0.0:

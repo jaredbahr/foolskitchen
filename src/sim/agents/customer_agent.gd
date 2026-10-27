@@ -27,9 +27,10 @@ var order: Order = null
 ## (COFFEE or DRINKS). A drinks-only guest orders from that part of the menu,
 ## prefers a counter seat and stays a shorter time.
 var visit_kind: StringName = RecipeDef.FOOD
-## A drink ordered with a meal. It is paid with the meal once it has arrived;
-## losing it never sends the guest home.
-var drink_order: Order = null
+## Something ordered on the side: a drink with a meal, or a pastry with a
+## coffee. It is paid with the main order once it has arrived; losing it
+## never sends the guest home.
+var extra_order: Order = null
 var leave_reason: StringName = &"happy"
 var paid: bool = false
 ## A multi-guest visit shares only its bounded table search, never its order.
@@ -42,6 +43,8 @@ var quality_weight: float = 0.0
 var review_chance_multiplier: float = 1.0
 ## Chance of adding a drink to a meal (from the type; 0 for an untyped guest).
 var drink_add_chance: float = 0.0
+## Chance a coffee-only guest adds a pastry (from the type).
+var pastry_add_chance: float = 0.0
 ## The floor seen on arrival, before this guest can add their own door spot.
 var arrival_dirt_fraction: float = 0.0
 ## Derived ambience sampled once on a real OPEN arrival, before later edits.
@@ -78,6 +81,7 @@ func configure_type(kind: CustomerType) -> bool:
 	customer_type_name = kind.display_name
 	budget_multiplier = kind.budget_multiplier
 	drink_add_chance = kind.drink_add_chance
+	pastry_add_chance = kind.pastry_add_chance
 	quality_weight = kind.quality_weight
 	review_chance_multiplier = kind.review_chance_multiplier
 	queue_patience = _type_patience(queue_patience, kind.patience_multiplier)
@@ -147,7 +151,7 @@ func tick(world: SimWorld) -> void:
 		# Terminal kitchen results win over the patience deadline on the same tick.
 		if order != null and order.state == Order.State.CANCELLED:
 			_leave(world, sim, player_reason(order.cancellation_reason))
-		elif order != null and order.state == Order.State.DELIVERED:
+		elif order != null and order.state == Order.State.DELIVERED and not _waiting_for_side():
 			state = State.EATING
 			_eating = 0
 		else:
@@ -451,6 +455,8 @@ func _take_order(server: SimAgent) -> bool:
 	sim.orders.place(order, sim.world.now)
 	if not is_drinks_visit():
 		_maybe_add_drink(sim, available)
+	elif visit_kind == RecipeDef.COFFEE:
+		_maybe_add_pastry(sim, available)
 	return true
 
 
@@ -470,8 +476,27 @@ func _maybe_add_drink(sim: RestaurantSim, available: Array[RecipeDef]) -> void:
 	var chance: float = sim.price_walkout_chance(drink, budget_multiplier)
 	if chance > 0.0 and rng.randf() < chance:
 		return
-	drink_order = _new_order(drink, sim.price_of(drink))
-	sim.orders.place(drink_order, sim.world.now)
+	extra_order = _new_order(drink, sim.price_of(drink))
+	sim.orders.place(extra_order, sim.world.now)
+
+
+## A coffee guest may add a pastry: one chance draw, only while a dish served
+## with drinks (the croissant) is on the menu and available, then one pick.
+func _maybe_add_pastry(sim: RestaurantSim, available: Array[RecipeDef]) -> void:
+	if pastry_add_chance <= 0.0:
+		return
+	var pastries: Array[RecipeDef] = []
+	for recipe: RecipeDef in available:
+		if recipe.with_drinks and not recipe.is_drink():
+			pastries.append(recipe)
+	if pastries.is_empty() or rng.randf() >= pastry_add_chance:
+		return
+	var pastry: RecipeDef = pastries[rng.randi_range(0, pastries.size() - 1)]
+	var chance: float = sim.price_walkout_chance(pastry, budget_multiplier)
+	if chance > 0.0 and rng.randf() < chance:
+		return
+	extra_order = _new_order(pastry, sim.price_of(pastry))
+	sim.orders.place(extra_order, sim.world.now)
 
 
 func _new_order(recipe: RecipeDef, price: int) -> Order:
@@ -506,8 +531,8 @@ func _cancel_work(world: SimWorld, sim: RestaurantSim) -> void:
 		_task = null
 	if sim != null and order != null:
 		sim.orders.set_state(order, Order.State.CANCELLED, leave_reason if leave_reason != &"happy" else &"customer_left")
-	if sim != null and drink_order != null:
-		sim.orders.set_state(drink_order, Order.State.CANCELLED, &"customer_left")
+	if sim != null and extra_order != null:
+		sim.orders.set_state(extra_order, Order.State.CANCELLED, &"customer_left")
 
 
 func _release_seat(world: SimWorld, dirty: bool = true) -> void:
@@ -516,9 +541,30 @@ func _release_seat(world: SimWorld, dirty: bool = true) -> void:
 		var sim: RestaurantSim = _restaurant.get_ref() as RestaurantSim
 		# A drinks-only visit leaves no plates to clear: staff take the cup
 		# back with them, so the seat is free at once (FK-083).
-		if dirty and cell == seat_cell and sim != null and sim.kitchen != null and not is_drinks_visit():
-			sim.kitchen.mark_table_dirty(table.id, order.id if order != null else 0)
+		var plated_extra: bool = extra_order != null and _plated(sim, extra_order)
+		if dirty and cell == seat_cell and sim != null and sim.kitchen != null and (not is_drinks_visit() or plated_extra):
+			sim.kitchen.mark_table_dirty(table.id, order.id if order != null and not is_drinks_visit() else 0)
+			if plated_extra:
+				sim.kitchen.mark_table_dirty(table.id, extra_order.id)
 		table.release(seat_cell, id)
+
+
+## A coffee guest who added a pastry has it with the coffee: they start once
+## both have arrived (or the pastry was cancelled). A meal never waits for
+## its drink.
+func _waiting_for_side() -> bool:
+	return is_drinks_visit() and extra_order != null \
+		and extra_order.state != Order.State.DELIVERED and extra_order.state != Order.State.CANCELLED
+
+
+## A side dish came from the kitchen on a plate (a croissant), not a drink.
+static func _plated(sim: RestaurantSim, ticket: Order) -> bool:
+	if sim == null or ticket == null:
+		return false
+	for recipe: RecipeDef in sim.menu:
+		if recipe.id == ticket.recipe_id:
+			return not recipe.is_drink()
+	return false
 
 
 func _walk_to_exit(world: SimWorld) -> void:

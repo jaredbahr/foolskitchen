@@ -162,12 +162,16 @@ static func auto_cost(list_total: int, premium: float) -> int:
 ## are taken in the fixed order and each gets as many units as still fit, the
 ## partial order being priced as its own total. Never plans to borrow.
 ## Returns {lines: [{id, qty, unit_cost}], list_total, cost, short: {id: qty}}.
-func plan(stock: Stock, unit_costs: Dictionary, cash: int, premium: float) -> Dictionary:
+## `station_only` plans only the station-only ingredients in use (FK-083).
+func plan(stock: Stock, unit_costs: Dictionary, cash: int, premium: float,
+		station_only: bool = false) -> Dictionary:
 	var lines: Array[Dictionary] = []
 	var short: Dictionary[StringName, int] = {}
 	var list_total: int = 0
 	var budget: int = maxi(cash, 0)
 	for id: StringName in ids():
+		if station_only and not _station_only.has(id):
+			continue
 		if not is_enabled(id) or not unit_costs.has(id):
 			continue
 		var missing: int = target(id) - stock.count(id)

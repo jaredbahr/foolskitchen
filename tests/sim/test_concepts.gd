@@ -186,11 +186,86 @@ func test_a_meal_guest_may_add_a_drink_and_pays_for_both() -> void:
 	_run_until_gone()
 	assert_eq(_left.get(guest.id), &"happy")
 	assert_eq(guest.order.recipe_id, &"grilled_cheese", "a meal guest orders food")
-	assert_not_null(guest.drink_order)
-	assert_eq(guest.drink_order.recipe_id, &"beer")
-	assert_eq(guest.drink_order.state, Order.State.DELIVERED)
+	assert_not_null(guest.extra_order)
+	assert_eq(guest.extra_order.recipe_id, &"beer")
+	assert_eq(guest.extra_order.state, Order.State.DELIVERED)
 	assert_eq(_paid, [&"grilled_cheese", &"beer"] as Array[StringName], "the drink is paid with the meal")
 	assert_eq(_sim.served_today, 1, "still one guest served")
+
+
+func test_a_pour_frees_its_station_before_carrying_the_drink() -> void:
+	_build(_bar_layout())
+	_sim.menu = [_content.recipe(&"beer")] as Array[RecipeDef]
+	for index: int in range(2):
+		_guest(RecipeDef.DRINKS, 300 + index)
+	assert_true(_sim.world.clock.start_service())
+	var carrying: int = 0
+	var held: int = 0
+	for tick: int in range(MAX_TICKS):
+		_sim.advance()
+		for agent: SimAgent in _sim.world.agents:
+			var staff: StaffAgent = agent as StaffAgent
+			if staff == null or staff.task == null or staff.task.kind != &"pour" \
+					or staff.task.steps[staff.step_index].kind != TaskStep.Kind.GO_TO_CELL:
+				continue
+			carrying += 1
+			for id: int in staff.task.payload["station_ids"]:
+				var station: PlacedItem = _sim.world.grid.item(id)
+				for cell: Vector2i in station.work_cells:
+					if station.reserved_by(cell) == staff.id:
+						held += 1
+		if _sim.customers().is_empty() and _sim.world.board.active_count() == 0:
+			break
+	assert_true(carrying > 0, "drinks were carried")
+	assert_eq(held, 0, "nobody holds the shelf while walking to a guest")
+	assert_eq(_sim.served_today, 2)
+
+
+func test_a_coffee_guest_may_add_a_pastry_and_has_it_with_the_coffee() -> void:
+	_build(_bar_layout())
+	_sim.menu = [_content.recipe(&"coffee"), _content.recipe(&"croissant")] as Array[RecipeDef]
+	var kind: CustomerType = CustomerType.new()
+	kind.id = &"peckish"
+	kind.display_name = "Peckish"
+	kind.pastry_add_chance = 1.0
+	var random: RandomNumberGenerator = RandomNumberGenerator.new()
+	random.seed = 12
+	var guest: CustomerAgent = _sim.add_visitor(_sim.world.grid.entries()[0], random, kind, RecipeDef.COFFEE)
+	guest.food_patience = 5000
+	assert_true(_sim.world.clock.start_service())
+	var ate_before_pastry: bool = false
+	for tick: int in range(MAX_TICKS):
+		_sim.advance()
+		if guest.state == CustomerAgent.State.EATING and guest.extra_order != null \
+				and guest.extra_order.state != Order.State.DELIVERED:
+			ate_before_pastry = true
+		if _sim.customers().is_empty() and _sim.world.board.active_count() == 0:
+			break
+	assert_eq(guest.order.recipe_id, &"coffee")
+	assert_not_null(guest.extra_order)
+	assert_eq(guest.extra_order.recipe_id, &"croissant")
+	assert_false(ate_before_pastry, "the coffee waits for its croissant")
+	assert_eq(_paid, [&"coffee", &"croissant"] as Array[StringName])
+	assert_true(_sim.kitchen.is_clean(), "the plate came back and the seat was cleared")
+
+
+func test_no_pastry_on_the_menu_means_no_pastry_draw() -> void:
+	_build(_bar_layout())
+	_sim.menu = [_content.recipe(&"coffee"), _content.recipe(&"burger")] as Array[RecipeDef]
+	var kind: CustomerType = CustomerType.new()
+	kind.id = &"peckish"
+	kind.display_name = "Peckish"
+	kind.pastry_add_chance = 1.0
+	var random: RandomNumberGenerator = RandomNumberGenerator.new()
+	random.seed = 5
+	var guest: CustomerAgent = _sim.add_visitor(_sim.world.grid.entries()[0], random, kind, RecipeDef.COFFEE)
+	guest.state = CustomerAgent.State.ORDERING
+	var expected: RandomNumberGenerator = RandomNumberGenerator.new()
+	expected.seed = 5
+	expected.randi_range(0, 0)
+	assert_true(guest._take_order(null))
+	assert_null(guest.extra_order, "a burger is not a pastry")
+	assert_eq(random.state, expected.state, "one drink draw only")
 
 
 func test_no_drink_on_the_menu_means_no_extra_draw_for_a_meal_guest() -> void:
@@ -208,7 +283,7 @@ func test_no_drink_on_the_menu_means_no_extra_draw_for_a_meal_guest() -> void:
 	expected.seed = 5
 	expected.randi_range(0, _sim.available_menu().size() - 1)
 	assert_true(guest._take_order(null))
-	assert_null(guest.drink_order)
+	assert_null(guest.extra_order)
 	assert_eq(plain.state, expected.state, "one dish draw only (from %d)" % before)
 
 
