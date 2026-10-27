@@ -1105,6 +1105,9 @@ func _assert_catalogue_cards_match_data(state: Dictionary, content: ContentDB) -
 	for wall: WallKindDef in content.wall_kinds():
 		if wall.thumbnail_scene != null and not wrappers.has(wall.thumbnail_scene.resource_path):
 			wrappers.append(wall.thumbnail_scene.resource_path)
+	# So does the Floor card (FK-080).
+	if not wrappers.has(BuildCatalogue.FLOOR_THUMBNAIL.resource_path):
+		wrappers.append(BuildCatalogue.FLOOR_THUMBNAIL.resource_path)
 	wanted.sort()
 	wrappers.sort()
 	var actual: Array[String] = []

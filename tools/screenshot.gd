@@ -1093,6 +1093,12 @@ static func _catalogue_content_expectations(content: ContentDB) -> Dictionary:
 			wall_scenes.append(wall_path)
 			if not wrappers.has(wall_path):
 				wrappers.append(wall_path)
+	# The Floor card (FK-080) previews its Kenney tile in the same cache.
+	var floor_path: String = BuildCatalogue.FLOOR_THUMBNAIL.resource_path
+	if not wall_scenes.has(floor_path):
+		wall_scenes.append(floor_path)
+	if not wrappers.has(floor_path):
+		wrappers.append(floor_path)
 	wrappers.sort()
 	return {"cards": cards, "wrappers": wrappers, "wall_scenes": wall_scenes}
 
