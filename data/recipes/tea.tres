@@ -8,7 +8,7 @@
 [sub_resource type="Resource" id="Step_make"]
 script = ExtResource("3_step")
 station_type = &"coffee"
-duration_ticks = 30
+duration_ticks = 15
 
 [resource]
 script = ExtResource("1_recipe")
@@ -17,7 +17,7 @@ display_name = "Tea"
 ingredients = Array[ExtResource("2_ingredient")]([ExtResource("ingredient_tea")])
 steps = Array[ExtResource("3_step")]([SubResource("Step_make")])
 base_quality = 0.55
-standard_price = 3
+standard_price = 4
 unlock_tier = 1
 unlock_level = 1
 theme_tags = Array[StringName]([&"cafe"])

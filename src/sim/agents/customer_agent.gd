@@ -514,7 +514,9 @@ func _release_seat(world: SimWorld, dirty: bool = true) -> void:
 	var table: PlacedItem = world.grid.item(table_item_id)
 	if table != null and table.reserved_by(seat_cell) == id:
 		var sim: RestaurantSim = _restaurant.get_ref() as RestaurantSim
-		if dirty and cell == seat_cell and sim != null and sim.kitchen != null:
+		# A drinks-only visit leaves no plates to clear: staff take the cup
+		# back with them, so the seat is free at once (FK-083).
+		if dirty and cell == seat_cell and sim != null and sim.kitchen != null and not is_drinks_visit():
 			sim.kitchen.mark_table_dirty(table.id, order.id if order != null else 0)
 		table.release(seat_cell, id)
 

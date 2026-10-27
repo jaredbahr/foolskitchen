@@ -154,8 +154,7 @@ func test_saved_furniture_on_staff_spawn_loads_and_staff_can_escape() -> void:
 	var report: DayReport = first.get("shown_report") as DayReport
 	assert_eq(report.owner_level_before, 1)
 	assert_eq(report.owner_level_after, 2)
-	assert_eq(report.owner_unlocks, ["Bar corner", "Bar end (left)", "Bar end (right)", "Bar section",
-		"Bar stool", "Beer recipe", "Croissant recipe", "Drinks shelf", "Four-seat table", "Potted plant",
+	assert_eq(report.owner_unlocks, ["Four-seat table", "Glass of wine recipe", "Potted plant",
 		"Rectangular rug", "Round table", "Rounded chair", "Side table", "Square rug", "Standing coat rack",
 		"Tomato melt recipe", "Two-seat bench"] as Array[String],
 		"the level-up banner lists every available level-two unlock")
@@ -164,7 +163,7 @@ func test_saved_furniture_on_staff_spawn_loads_and_staff_can_escape() -> void:
 	var unlocks: Label = panel.get_node("Panel/Scroll/Content/LevelUpCallout/OwnerUnlocks") as Label
 	assert_true(banner.visible)
 	assert_eq(banner.text, "Level up! Level 2 reached")
-	assert_eq(unlocks.text, "Unlocked: Bar corner, Bar end (left), Bar end (right), Bar section, Bar stool, Beer recipe, Croissant recipe, Drinks shelf, Four-seat table, Potted plant, Rectangular rug, Round table, Rounded chair, Side table, Square rug, Standing coat rack, Tomato melt recipe, Two-seat bench")
+	assert_eq(unlocks.text, "Unlocked: Four-seat table, Glass of wine recipe, Potted plant, Rectangular rug, Round table, Rounded chair, Side table, Square rug, Standing coat rack, Tomato melt recipe, Two-seat bench")
 	var xp_rows: GridContainer = panel.get_node("Panel/Scroll/Content/OwnerXPRows") as GridContainer
 	assert_eq(xp_rows.get_child_count(), 8, "the native report shows four labelled XP sources")
 	assert_eq((xp_rows.get_child(7) as Label).text, "+%d XP" % report.owner_xp_breakdown["total_xp"])

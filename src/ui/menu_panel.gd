@@ -60,7 +60,7 @@ func set_phase(phase: int) -> void:
 
 func refresh() -> void:
 	_bind_nodes()
-	if _needs_rebuild:
+	if _needs_rebuild or _catalogue_changed():
 		_rebuild_rows()
 	var editable: bool = _phase == SimClock.Phase.MORNING
 	_status.text = "Choose dishes, drinks, prices and opening hours for today." if editable else MORNING_HINT
@@ -114,6 +114,19 @@ func refresh() -> void:
 			ratio_label.add_theme_color_override("font_color", color)
 		if locked:
 			ratio_label.add_theme_color_override("font_color", LOCKED_COLOR)
+
+
+## A station bought or sold changes which dishes the menu lists (FK-083).
+func _catalogue_changed() -> bool:
+	if _menu == null or not _menu.is_valid():
+		return false
+	var recipes: Array[RecipeDef] = _menu.recipes()
+	if recipes.size() != _rows.size():
+		return true
+	for definition: RecipeDef in recipes:
+		if not _rows.has(definition.id):
+			return true
+	return false
 
 
 ## Station hints for drinks the shop cannot make yet, as player sentences.

@@ -97,14 +97,33 @@ static func create(layout: ShopLayout, content: ContentDB, seed: int, errors: Ar
 		owner.cell = sim.staff_spawns[&"owner"]
 		sim.world.add_agent(owner)
 	for recipe: RecipeDef in content.recipes():
-		# Drinks join only through the session's menu, once their station stands.
-		if recipe.unlock_tier == 1 and recipe.unlock_level <= 1 and not recipe.is_drink():
+		# Drinks join only through the session's menu, once their station
+		# stands; a dish needing a station type no item provides (a croissant
+		# warmed at the coffee machine) waits for it the same way (FK-083).
+		if recipe.unlock_tier == 1 and recipe.unlock_level <= 1 and not recipe.is_drink() \
+				and not _needs_absent_station(recipe, sim.world):
 			sim.menu.append(recipe)
 	sim.stock = stock if stock != null else Stock.new()
 	if with_kitchen:
 		sim.kitchen = Kitchen.new(sim, content, sim.stock)
 	sim.start_day()
 	return sim
+
+
+## A recipe step at a station type this world has never placed. Worlds built
+## without any stations (customer-only fixtures) keep their full default menu.
+static func _needs_absent_station(recipe: RecipeDef, built: SimWorld) -> bool:
+	var stations: Dictionary[StringName, bool] = {}
+	for placed: PlacedItem in built.grid.items():
+		var definition: ItemDef = placed.def as ItemDef
+		if definition != null and definition.category == ItemDef.Category.STATION:
+			stations[definition.station_type] = true
+	if stations.is_empty():
+		return false
+	for step: RecipeStep in recipe.steps:
+		if step != null and not stations.has(step.station_type):
+			return true
+	return false
 
 
 ## Morning-only staffing changes retain existing people and the exact owner.
