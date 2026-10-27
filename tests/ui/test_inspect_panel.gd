@@ -234,7 +234,7 @@ func test_item_name_station_and_named_or_missing_reservation_holders() -> void:
 	assert_eq(_panel.selected_agent_id, -1)
 	assert_eq(_panel.selected_item_id, item.id)
 	assert_eq(_label("Title").text, "Prep counter #%d" % item.id)
-	assert_eq(_label("Details").text, "Station: prep counter")
+	assert_eq(_label("Details").text, "Station: Prep counter")
 	var text: String = _label("Reservations").text
 	assert_true(text.contains("Work (3, 2): Ada (Cook #%d)" % staff.id))
 	assert_true(text.contains("Work (4, 3): Free"))

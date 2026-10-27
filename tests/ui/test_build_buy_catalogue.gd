@@ -147,6 +147,17 @@ func test_kitchen_unlocks_show_levels_then_authored_prices_and_only_request_unlo
 		assert_eq(_kitchen_buy_requests, [id] as Array[StringName])
 
 
+func test_every_shipped_station_type_has_a_player_name() -> void:
+	for definition: ItemDef in _content.items():
+		if definition.station_type.is_empty():
+			continue
+		assert_true(CatalogueText.STATION_NAMES.has(definition.station_type), String(definition.station_type))
+		assert_false(CatalogueText.station_name(definition).contains("_"))
+	assert_eq(CatalogueText.station_name(_content.item(&"prep_cabinet")), "Prep counter")
+	assert_eq(CatalogueText.station_name(_content.item(&"fryer")), "Fryer")
+	assert_eq(CatalogueText.station_name(_content.item(&"corner_cabinet")), "None")
+
+
 func test_kitchen_hover_cards_use_authored_names_and_plain_station_descriptions() -> void:
 	var descriptions: Dictionary[StringName, String] = {
 		&"fryer": "Fries dishes", &"oven": "Bakes dishes",

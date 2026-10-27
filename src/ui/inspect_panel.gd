@@ -252,8 +252,7 @@ func _show_item(item: PlacedItem) -> void:
 	var station_name: String = "None"
 	if definition != null:
 		item_name = definition.display_name if not definition.display_name.is_empty() else String(definition.id).capitalize()
-		if not definition.station_type.is_empty():
-			station_name = String(definition.station_type).replace("_", " ")
+		station_name = CatalogueText.station_name(definition)
 	_title.text = "%s #%d" % [item_name, item.id]
 	_details.text = "Station: %s" % station_name
 	_details.show()
