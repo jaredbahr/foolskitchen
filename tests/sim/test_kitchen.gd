@@ -80,6 +80,275 @@ func test_real_staff_cook_pass_deliver_eat_pay_and_bus() -> void:
 	_assert_drained()
 
 
+func test_cook_uses_free_prep_counter_instead_of_waiting_for_busy_first_counter() -> void:
+	var original: PlacedItem = _item(&"prep_counter")
+	var alternative: PlacedItem = _sim.world.grid.place_def(_content.item(&"prep_counter"), Vector2i(3, 3))
+	assert_not_null(alternative)
+	if alternative == null:
+		return
+	assert_true(original.reserve(original.work_cells[0], 900))
+	var guest: CustomerAgent = _start_station_choice_service()
+	if guest.order == null:
+		return
+	_assert_selected_cook_station(alternative.id, original.id)
+	_complete_station_choice_service(guest, _staff(&"cook"), [alternative.id] as Array[int])
+	assert_eq(original.reserved_by(original.work_cells[0]), 900, "the other worker's booking is untouched")
+	original.release(original.work_cells[0], 900)
+	_assert_drained()
+
+
+func test_cook_uses_free_stove_instead_of_waiting_for_busy_first_stove() -> void:
+	var original: PlacedItem = _item(&"stove")
+	var alternative: PlacedItem = _sim.world.grid.place_def(_content.item(&"stove"), Vector2i(10, 3))
+	assert_not_null(alternative)
+	if alternative == null:
+		return
+	assert_true(original.reserve(original.work_cells[0], 900))
+	var guest: CustomerAgent = _start_station_choice_service()
+	if guest.order == null:
+		return
+	_assert_selected_cook_station(alternative.id, original.id)
+	_complete_station_choice_service(guest, _staff(&"cook"), [alternative.id] as Array[int])
+	assert_eq(original.reserved_by(original.work_cells[0]), 900)
+	original.release(original.work_cells[0], 900)
+	_assert_drained()
+
+
+func test_cook_skips_unreachable_first_prep_and_stove_for_reachable_alternatives() -> void:
+	var prep: PlacedItem = _item(&"prep_counter")
+	var stove: PlacedItem = _item(&"stove")
+	# Keep the left kitchen aisle open when the original prep work cell closes.
+	var next_prep: PlacedItem = _sim.world.grid.place_def(_content.item(&"prep_counter"), Vector2i(1, 3))
+	var next_stove: PlacedItem = _sim.world.grid.place_def(_content.item(&"stove"), Vector2i(10, 3))
+	assert_not_null(next_prep)
+	assert_not_null(next_stove)
+	if next_prep == null or next_stove == null:
+		return
+	for original: PlacedItem in [prep, stove]:
+		for cell: Vector2i in original.work_cells:
+			assert_true(_sim.world.grid.set_terrain(cell, SimGrid.Terrain.WALL))
+	var entry: Vector2i = _sim.world.grid.entries()[0]
+	for reachable: PlacedItem in [next_prep, next_stove, _item(&"fridge")]:
+		assert_true(_sim.world.grid.is_reachable(entry, reachable.work_cells[0]), "the alternate line and fridge remain reachable")
+	var guest: CustomerAgent = _start_station_choice_service()
+	if guest.order == null:
+		return
+	_assert_selected_cook_station(next_prep.id, prep.id)
+	_assert_selected_cook_station(next_stove.id, stove.id)
+	_complete_station_choice_service(guest, _staff(&"cook"), [next_prep.id, next_stove.id] as Array[int])
+	_assert_drained()
+
+
+func test_all_busy_prep_counters_keep_first_fallback_and_wait_without_stealing_bookings() -> void:
+	var original: PlacedItem = _item(&"prep_counter")
+	var alternative: PlacedItem = _sim.world.grid.place_def(_content.item(&"prep_counter"), Vector2i(3, 3))
+	assert_not_null(alternative)
+	if alternative == null:
+		return
+	assert_true(original.reserve(original.work_cells[0], 900))
+	assert_true(alternative.reserve(alternative.work_cells[0], 901))
+	var guest: CustomerAgent = _start_station_choice_service()
+	if guest.order == null:
+		return
+	var task: SimTask = _assert_selected_cook_station(original.id, alternative.id)
+	if task == null:
+		return
+	var cook: StaffAgent = _staff(&"cook")
+	var waiting_at_prep: bool = false
+	for tick: int in 500:
+		_sim.advance()
+		if cook.task == task and cook.step_index < task.steps.size():
+			var step: TaskStep = task.steps[cook.step_index]
+			if step.kind == TaskStep.Kind.GO_TO_ITEM and step.item_id == original.id:
+				waiting_at_prep = true
+				break
+	assert_true(waiting_at_prep, "the cook reaches the booked prep step")
+	var waiting_step: int = cook.step_index
+	_run(20)
+	assert_true(cook.task == task, "a temporary booking waits on the same cook task")
+	assert_eq(cook.step_index, waiting_step)
+	assert_eq(task.state, SimTask.State.CLAIMED)
+	assert_eq(task.claimed_by, cook.id)
+	assert_true(cook.why().contains("waiting"))
+	assert_eq(task.drops, 0)
+	assert_ne(guest.order.state, Order.State.CANCELLED)
+	assert_false(guest.paid)
+	assert_eq(original.reserved_by(original.work_cells[0]), 900)
+	assert_eq(alternative.reserved_by(alternative.work_cells[0]), 901)
+	original.release(original.work_cells[0], 900)
+	_complete_station_choice_service(guest, cook, [original.id] as Array[int])
+	assert_eq(alternative.reserved_by(alternative.work_cells[0]), 901)
+	alternative.release(alternative.work_cells[0], 901)
+	_assert_drained()
+
+
+func test_owner_assigned_to_kitchen_works_at_the_selected_free_prep_counter() -> void:
+	var original: PlacedItem = _item(&"prep_counter")
+	var alternative: PlacedItem = _sim.world.grid.place_def(_content.item(&"prep_counter"), Vector2i(3, 3))
+	assert_not_null(alternative)
+	if alternative == null:
+		return
+	assert_true(original.reserve(original.work_cells[0], 900))
+	# Keep the real factory staff; this ticket's cooking is the assigned owner's.
+	var paid_cook: StaffAgent = _staff(&"cook")
+	paid_cook.priorities[&"cook"] = 0
+	paid_cook.priorities[&"any"] = 0
+	assert_true(_sim.assign_owner(&"kitchen"))
+	var owner: OwnerAgent = _sim.owner_agent()
+	assert_not_null(owner)
+	if owner == null:
+		return
+	var guest: CustomerAgent = _start_station_choice_service()
+	if guest.order == null:
+		return
+	_assert_selected_cook_station(alternative.id, original.id)
+	_complete_station_choice_service(guest, owner, [alternative.id] as Array[int])
+	assert_eq(owner.current_mode(), &"kitchen")
+	assert_eq(original.reserved_by(original.work_cells[0]), 900)
+	original.release(original.work_cells[0], 900)
+	_assert_drained()
+
+
+func _start_station_choice_service() -> CustomerAgent:
+	var guest: CustomerAgent = _guest()
+	assert_true(_sim.world.clock.start_service())
+	for tick: int in 1200:
+		_sim.advance()
+		if guest.order != null:
+			break
+	assert_not_null(guest.order)
+	return guest
+
+
+func _assert_selected_cook_station(selected_id: int, excluded_id: int) -> SimTask:
+	var task: SimTask = _find_task(&"cook")
+	assert_not_null(task)
+	if task == null:
+		return null
+	var station_ids: Array[int] = task.payload["station_ids"]
+	assert_true(station_ids.has(selected_id))
+	assert_false(station_ids.has(excluded_id))
+	var selected_steps: int = 0
+	for step: TaskStep in task.steps:
+		if step.kind == TaskStep.Kind.GO_TO_ITEM:
+			assert_ne(step.item_id, excluded_id)
+			if step.item_id == selected_id:
+				selected_steps += 1
+	assert_eq(selected_steps, 1, "the real cook route visits the selected station once")
+	return task
+
+
+func _complete_station_choice_service(guest: CustomerAgent, worker: StaffAgent, selected_ids: Array[int]) -> void:
+	var visited: Dictionary[int, bool] = {}
+	for tick: int in 4000:
+		_sim.advance()
+		if worker.task != null and worker.task.kind == &"cook" and worker.step_index > 0 \
+				and worker.step_index < worker.task.steps.size():
+			var step: TaskStep = worker.task.steps[worker.step_index]
+			var previous: TaskStep = worker.task.steps[worker.step_index - 1]
+			if step.kind == TaskStep.Kind.WORK and previous.kind == TaskStep.Kind.GO_TO_ITEM \
+					and selected_ids.has(previous.item_id):
+				var station: PlacedItem = _sim.world.grid.item(previous.item_id)
+				assert_true(station.work_cells.has(worker.cell), "cooking occurs at the selected equipment")
+				assert_eq(station.reserved_by(worker.cell), worker.id)
+				assert_eq(worker.task.claimed_by, worker.id)
+				visited[station.id] = true
+		if guest.state == CustomerAgent.State.LEFT and _sim.world.board.active_count() == 0:
+			break
+	for id: int in selected_ids:
+		assert_true(visited.has(id), "real staff work must occur at station %d" % id)
+	assert_eq(guest.order.state, Order.State.DELIVERED)
+	assert_true(guest.paid)
+	assert_eq(_paid.get(guest.id, -1), guest.order.price)
+	assert_eq(_left.get(guest.id, &""), &"happy")
+	for ingredient: IngredientDef in _content.recipe(&"burger").ingredients:
+		assert_eq(_sim.stock.count(ingredient.id), 99)
+
+
+func test_queued_party_tickets_with_two_real_cooks_use_both_prep_counters() -> void:
+	# Nobody books a station until they walk to it (after the fridge), so a
+	# ticket posted while the first still waits in the queue must see it queued
+	# for the original counter. The cooks are held off (as if busy elsewhere)
+	# until both of the party's tickets are up, then both cook at once.
+	var original: PlacedItem = _item(&"prep_counter")
+	var alternative: PlacedItem = _sim.world.grid.place_def(_content.item(&"prep_counter"), Vector2i(3, 3))
+	assert_not_null(alternative)
+	if alternative == null:
+		return
+	var first_cook: StaffAgent = _staff(&"cook")
+	var second_cook: StaffAgent = StaffAgent.new(&"cook", 3)
+	second_cook.cell = first_cook.cell
+	_sim.world.add_agent(second_cook)
+	var held: Dictionary[int, Dictionary] = {}
+	for cook: StaffAgent in [first_cook, second_cook]:
+		held[cook.id] = cook.priorities.duplicate()
+		cook.priorities[&"cook"] = 0
+		cook.priorities[&"any"] = 0
+	# A party of two orders together: the realistic burst.
+	var randoms: Array[RandomNumberGenerator] = []
+	for seed: int in [42, 43]:
+		var random: RandomNumberGenerator = RandomNumberGenerator.new()
+		random.seed = seed
+		randoms.append(random)
+	var party: Party = _sim.add_party(_sim.world.grid.entries()[0], randoms)
+	assert_not_null(party)
+	if party == null:
+		return
+	var guests: Array[CustomerAgent] = []
+	for guest: CustomerAgent in _sim.customers():
+		guest.eat_ticks = 3
+		guest.food_patience = 5000
+		guests.append(guest)
+	assert_eq(guests.size(), 2)
+	assert_true(_sim.world.clock.start_service())
+	var tickets: Array[SimTask] = []
+	var worked: Dictionary[int, Dictionary] = {}
+	for tick: int in 4000:
+		_sim.advance()
+		var open: Array[SimTask] = _sim.world.board.open_tasks()
+		open.append_array(_sim.world.board.claimed_tasks())
+		for task: SimTask in open:
+			if task.kind == &"cook" and not tickets.has(task):
+				tickets.append(task)
+				if tickets.size() == 2:
+					for cook: StaffAgent in [first_cook, second_cook]:
+						cook.priorities.assign(held[cook.id])
+		for cook: StaffAgent in [first_cook, second_cook]:
+			if cook.task == null or cook.task.kind != &"cook" or cook.step_index == 0 \
+					or cook.step_index >= cook.task.steps.size():
+				continue
+			var previous: TaskStep = cook.task.steps[cook.step_index - 1]
+			if cook.task.steps[cook.step_index].kind == TaskStep.Kind.WORK \
+					and previous.kind == TaskStep.Kind.GO_TO_ITEM \
+					and (previous.item_id == original.id or previous.item_id == alternative.id):
+				var station: PlacedItem = _sim.world.grid.item(previous.item_id)
+				assert_true(station.work_cells.has(cook.cell), "prep work happens at the bound counter")
+				if not worked.has(station.id):
+					worked[station.id] = {}
+				worked[station.id][cook.id] = true
+		if guests[0].state == CustomerAgent.State.LEFT and guests[1].state == CustomerAgent.State.LEFT \
+				and _sim.world.board.active_count() == 0:
+			break
+	assert_eq(tickets.size(), 2, "both guests' tickets were posted")
+	if tickets.size() != 2:
+		return
+	var bound: Array[int] = []
+	for task: SimTask in tickets:
+		for id: int in task.payload["station_ids"]:
+			if id == original.id or id == alternative.id:
+				bound.append(id)
+	assert_eq(bound.size(), 2, "each ticket binds one prep counter")
+	assert_true(bound.has(original.id) and bound.has(alternative.id), "queued tickets bind different counters")
+	assert_true(worked.has(original.id), "the original counter is worked")
+	assert_true(worked.has(alternative.id), "the second counter is worked")
+	for guest: CustomerAgent in guests:
+		assert_not_null(guest.order)
+		if guest.order != null:
+			assert_eq(guest.order.state, Order.State.DELIVERED)
+		assert_eq(_left.get(guest.id, &""), &"happy")
+	_assert_drained()
+
+
 func test_out_of_stock_cancels_ticket_and_guest_with_same_reason() -> void:
 	var guest: CustomerAgent = _guest()
 	_sim.world.clock.start_service()
