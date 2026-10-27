@@ -17,6 +17,7 @@ signal stock_pressed()
 signal settings_pressed()
 signal header_layout_changed()
 
+var _restaurant_name: String = MenuSettings.DEFAULT_NAME
 var _day_label: Label
 var _time_label: Label
 var _phase_label: Label
@@ -75,6 +76,7 @@ func _ready() -> void:
 
 ## Idempotently binds controls and events, then renders current simulation state.
 func refresh() -> void:
+	_render_restaurant_name()
 	if _day_label == null:
 		_day_label = get_node("Top/Row/Day") as Label
 		_time_label = get_node("Top/Row/Time") as Label
@@ -570,3 +572,15 @@ func _animate_delta(label: Label) -> void:
 	tween.tween_property(label, "position:y", label.position.y + 24.0, 1.0)
 	tween.tween_property(label, "modulate:a", 0.0, 1.0)
 	tween.chain().tween_callback(label.queue_free)
+
+
+func set_restaurant_name(value: String) -> void:
+	var canonical: String = MenuSettings.normalized_restaurant_name(value)
+	_restaurant_name = canonical if not canonical.is_empty() else MenuSettings.DEFAULT_NAME
+	_render_restaurant_name()
+
+
+func _render_restaurant_name() -> void:
+	var label: Label = get_node("RestaurantName") as Label
+	label.text = _restaurant_name
+	label.tooltip_text = _restaurant_name

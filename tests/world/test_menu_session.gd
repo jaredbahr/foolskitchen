@@ -35,6 +35,57 @@ func after_each() -> void:
 	_paid_recipes.clear()
 
 
+func test_name_request_saves_only_next_morning_and_restores_hud_sign_and_menu() -> void:
+	var first: Node = _start()
+	var morning_file: String = FileAccess.get_file_as_string(_path())
+	var books: Dictionary = Economy.ledger.to_dict()
+	var stock: Dictionary = Economy.stock.to_dict()
+	var clock: Dictionary = Clock.sim.to_dict()
+	var customer_rng: int = GameState.rng(&"customers").state
+	var review_rng: int = GameState.rng(&"reviews").state
+	var panel: MenuPanel = first.get_node("Overlay/MenuPanel") as MenuPanel
+	panel.restaurant_name_requested.emit("  Mama's Diner  ")
+	assert_eq((first.get("menu_settings") as MenuSettings).restaurant_name(), "Mama's Diner")
+	assert_eq((first.get_node("ShopView") as ShopView).room_dressing.name_sign_nodes()[0].text, "Mama's Diner")
+	assert_eq(FileAccess.get_file_as_string(_path()), morning_file)
+	assert_eq(Economy.ledger.to_dict(), books)
+	assert_eq(Economy.stock.to_dict(), stock)
+	assert_eq(Clock.sim.to_dict(), clock)
+	assert_eq(GameState.rng(&"customers").state, customer_rng)
+	assert_eq(GameState.rng(&"reviews").state, review_rng)
+	assert_false(first.call("menu_set_restaurant_name", "Bad\nname"))
+	assert_eq((first.call("build_report", Clock.sim.day) as DayReport).restaurant_name, "Mama's Diner")
+	_next_morning()
+	assert_eq(_document()["data"]["menu"]["version"], MenuSettings.SNAPSHOT_VERSION)
+	assert_eq(_document()["data"]["menu"]["name"], "Mama's Diner")
+	var saved_choices: Dictionary = (first.get("menu_settings") as MenuSettings).to_dict()
+	_close(first)
+	var second: Node = _start()
+	assert_eq((second.get("menu_settings") as MenuSettings).to_dict(), saved_choices)
+	assert_eq((second.get_node("ShopView") as ShopView).room_dressing.name_sign_nodes()[0].text, "Mama's Diner")
+	assert_true(Clock.sim.start_service())
+	assert_false(second.call("menu_set_restaurant_name", "Too late"))
+	assert_eq((second.get("menu_settings") as MenuSettings).restaurant_name(), "Mama's Diner")
+
+
+func test_legacy_menu_section_loads_current_choices_with_default_name() -> void:
+	var first: Node = _start()
+	assert_true(first.call("menu_set_enabled", &"tomato_soup", false))
+	_next_morning()
+	var document: Dictionary = _document()
+	document["data"]["menu"].erase("version")
+	document["data"]["menu"].erase("name")
+	_write_document(document)
+	_remove_backup()
+	_close(first)
+	var second: Node = _start()
+	var choices: MenuSettings = second.get("menu_settings") as MenuSettings
+	assert_eq(choices.restaurant_name(), MenuSettings.DEFAULT_NAME)
+	assert_false(choices.is_enabled(&"tomato_soup"))
+	assert_true(choices.is_enabled(&"burger"))
+	assert_true(choices.is_enabled(&"grilled_cheese"))
+
+
 func test_menu_edits_wait_for_next_morning_then_reload_without_recipe_mutation() -> void:
 	var first: Node = _start()
 	var settings: MenuSettings = first.get("menu_settings")

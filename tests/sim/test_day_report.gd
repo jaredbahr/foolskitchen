@@ -18,6 +18,21 @@ func after_each() -> void:
 		_screen = null
 
 
+func test_restaurant_name_survives_json_with_review_context_and_legacy_defaults() -> void:
+	var report: DayReport = _full_report()
+	report.restaurant_name = "Mama's Diner"
+	report.review_cards = [{"stars": 5, "quote": "Lovely soup"}] as Array[Dictionary]
+	var restored: DayReport = DayReport.from_dict(JSON.parse_string(JSON.stringify(report.to_dict())))
+	assert_eq(restored.restaurant_name, "Mama's Diner")
+	assert_eq(restored.review_cards, report.review_cards)
+	var legacy: Dictionary = report.to_dict()
+	legacy.erase("restaurant_name")
+	assert_eq(DayReport.from_dict(legacy).restaurant_name, MenuSettings.DEFAULT_NAME)
+	for invalid: Variant in [17, "Bad\nname", "x".repeat(25), ""]:
+		legacy["restaurant_name"] = invalid
+		assert_eq(DayReport.from_dict(legacy).restaurant_name, MenuSettings.DEFAULT_NAME)
+
+
 func test_totals_and_positive_or_negative_profit() -> void:
 	var report: DayReport = _full_report()
 	assert_eq(report.total_income(), 1250)

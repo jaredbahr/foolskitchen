@@ -57,6 +57,7 @@ func test_new_game_starts_at_three_stars_with_five_virtual_reviews() -> void:
 
 func test_departure_updates_report_but_not_the_current_morning_save() -> void:
 	var main: Node = _start(true)
+	assert_true(main.call("menu_set_restaurant_name", "Harbour Kitchen"))
 	var sim: RestaurantSim = main.get("sim") as RestaurantSim
 	var book: ReputationBook = main.get("reputation") as ReputationBook
 	var morning_file: String = FileAccess.get_file_as_string(_path())
@@ -71,6 +72,8 @@ func test_departure_updates_report_but_not_the_current_morning_save() -> void:
 	assert_eq(row["before"], 3.0)
 	assert_eq(row["after"], book.average())
 	var report: DayReport = main.call("build_report", Clock.sim.day) as DayReport
+	assert_eq(report.restaurant_name, "Harbour Kitchen")
+	assert_eq(DayReport.from_dict(report.to_dict()).restaurant_name, "Harbour Kitchen")
 	assert_eq(report.review_cards.size(), 1)
 	assert_eq(report.review_cards[0]["stars"], 1)
 	assert_eq(report.review_cards[0]["quote"], row["quote"])

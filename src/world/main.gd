@@ -206,6 +206,8 @@ func _bind_world_presentation() -> void:
 		_menu_panel.enable_requested.connect(_on_menu_enable_requested)
 		_menu_panel.price_requested.connect(_on_menu_price_requested)
 		_menu_panel.settings_requested.connect(_on_menu_settings_requested)
+	if not _menu_panel.restaurant_name_requested.is_connected(_on_restaurant_name_requested):
+		_menu_panel.restaurant_name_requested.connect(_on_restaurant_name_requested)
 	if not _menu_panel.goals_requested.is_connected(_on_menu_goals_requested):
 		_menu_panel.goals_requested.connect(_on_menu_goals_requested)
 	_goals_panel = $Overlay/GoalsPanel
@@ -1064,6 +1066,7 @@ func run_ticks(ticks: int) -> void:
 func build_report(day: int) -> DayReport:
 	var report := DayReport.new()
 	report.day = day
+	report.restaurant_name = menu_settings.restaurant_name() if menu_settings != null else MenuSettings.DEFAULT_NAME
 	report.loan_first_advance = _loan_notice_day == day
 	var totals: Dictionary = Economy.ledger.day_totals(day)
 	for category: StringName in totals:
@@ -1539,6 +1542,8 @@ func _cookable_recipes(layout: ShopLayout) -> Array[RecipeDef]:
 
 func _apply_menu(restaurant: RestaurantSim, choices: MenuSettings) -> void:
 	restaurant.menu = choices.enabled_recipes()
+	$HUD.set_restaurant_name(choices.restaurant_name())
+	($ShopView as ShopView).set_restaurant_name(choices.restaurant_name())
 	restaurant.prices.clear()
 	restaurant.pricing_tuning = TUNING
 	for definition: RecipeDef in choices.recipes():
@@ -1562,6 +1567,20 @@ func menu_set_enabled(recipe_id: StringName, enabled: bool) -> bool:
 	if was_enabled != menu_settings.is_enabled(recipe_id):
 		_recompute_vibe()
 	return true
+
+
+## A morning choice joins the existing menu section at the next morning save.
+func menu_set_restaurant_name(value: String) -> bool:
+	if not can_edit_menu() or not menu_settings.set_restaurant_name(value):
+		return false
+	$HUD.set_restaurant_name(menu_settings.restaurant_name())
+	($ShopView as ShopView).set_restaurant_name(menu_settings.restaurant_name())
+	_menu_panel.refresh()
+	return true
+
+
+func _on_restaurant_name_requested(value: String) -> void:
+	menu_set_restaurant_name(value)
 
 
 func menu_set_price(recipe_id: StringName, price: int) -> bool:

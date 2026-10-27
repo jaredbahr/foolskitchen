@@ -13,6 +13,48 @@ func after_each() -> void:
 	_roots.clear()
 
 
+func test_name_sign_rename_and_rebuild_preserve_world_and_native_attachments() -> void:
+	var world: SimWorld = _starter_world()
+	var before: Dictionary = _world_snapshot(world)
+	var dressing: RoomDressing = _dressing(world)
+	assert_eq(dressing.name_sign_nodes().size(), 1)
+	var sign: Label3D = dressing.name_sign_nodes()[0]
+	var identity: int = sign.get_instance_id()
+	var native_ids: Array[int] = _child_ids(dressing)
+	assert_true(dressing.set_restaurant_name("Mama's Diner"))
+	assert_eq(sign.text, "Mama's Diner")
+	assert_eq(sign.get_instance_id(), identity)
+	assert_eq(_child_ids(dressing), native_ids, "renaming allocates no replacement geometry")
+	assert_false(dressing.set_restaurant_name("Bad\nname"))
+	assert_eq(sign.text, "Mama's Diner")
+	assert_eq(_world_snapshot(world), before)
+	dressing.rebuild(world)
+	assert_eq(dressing.name_sign_nodes().size(), 1)
+	assert_eq(dressing.name_sign_nodes()[0].text, "Mama's Diner")
+	dressing.rebuild(null)
+	assert_true(dressing.name_sign_nodes().is_empty())
+
+
+func test_long_name_sign_faces_each_frontage_and_follows_cutaway() -> void:
+	var normals: Array[Vector2i] = [Vector2i.DOWN, Vector2i.LEFT, Vector2i.UP, Vector2i.RIGHT]
+	for quarter: int in 4:
+		var world: SimWorld = _rotated_world(quarter)
+		var dressing: RoomDressing = _dressing(world)
+		assert_true(dressing.set_restaurant_name("W".repeat(24)))
+		assert_eq(dressing.name_sign_nodes().size(), 1)
+		var sign: Label3D = dressing.name_sign_nodes()[0]
+		var normal: Vector2i = normals[quarter]
+		assert_true(sign.basis.z.dot(Vector3(normal.x, 0.0, normal.y)) > 0.9999)
+		var width: float = sign.font.get_string_size(sign.text, HORIZONTAL_ALIGNMENT_LEFT, -1, sign.font_size).x * sign.pixel_size
+		assert_true(width <= float(world.grid.entries().size() + 1) * GridMath.CELL_SIZE + 0.0001)
+		assert_true(sign.pixel_size > 0.0 and sign.pixel_size <= ArtScale.STREET_SIGN_PIXEL_SIZE)
+		var support: Vector2i = sign.get_meta(&"wall_cell")
+		dressing.set_lowered_walls([support] as Array[Vector2i])
+		assert_false(sign.visible)
+		dressing.set_lowered_walls([] as Array[Vector2i])
+		assert_true(sign.visible)
+
+
 func test_starter_frontage_uses_two_native_panes_and_two_lamps_on_the_entry_wall() -> void:
 	var world: SimWorld = _starter_world()
 	var before: Dictionary = _world_snapshot(world)

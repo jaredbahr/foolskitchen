@@ -143,6 +143,7 @@ func test_scaled_window_keeps_every_hud_control_readable_and_build_hints_below_h
 	# Long status values must keep the same native bounds and group clearance
 	# through every requested physical-size and preference combination.
 	EventBus.cash_changed.emit(123456789, 0, &"layout")
+	_hud.call("set_restaurant_name", "WWWWWWWWWWWWWWWWWWWWWWWW")
 	_hud.call("set_owner_progress", 123, 99999, 100000)
 	_hud.call("set_plate_counts", 999, 1000, 1, 0)
 	# Match the project virtual base and exercise both requested physical sizes
@@ -173,6 +174,7 @@ func test_scaled_window_keeps_every_hud_control_readable_and_build_hints_below_h
 	_assert_header_layout(window)
 	_assert_build_hint_layout(window)
 	EventBus.cash_changed.emit(123456789, 0, &"layout")
+	_hud.call("set_restaurant_name", "WWWWWWWWWWWWWWWWWWWWWWWW")
 	_hud.call("set_owner_progress", 123, 99999, 100000)
 	_hud.call("set_plate_counts", 999, 1000, 1, 0)
 	await _layout_frames()
@@ -611,6 +613,10 @@ func _layout_frames() -> void:
 
 
 func _assert_header_layout(window: Window, context_visible: bool = true) -> void:
+	var restaurant_name: Label = _hud.get_node("RestaurantName") as Label
+	_assert_readable_control(restaurant_name, window)
+	assert_true(Rect2(Vector2.ZERO, Vector2(window.size)).grow(0.5).encloses(_drawn_rect(restaurant_name, window)))
+	assert_true(restaurant_name.get_global_rect().end.y <= (_hud.get_node("Top") as Control).global_position.y, "the restaurant title stays above the controls")
 	var top: Control = _hud.get_node("Top") as Control
 	var row: Control = _hud.get_node("Top/Row") as Control
 	var pixels: Rect2 = Rect2(Vector2.ZERO, Vector2(window.size))
@@ -754,3 +760,14 @@ func _record_settings() -> void:
 
 func _record_staff() -> void:
 	_staff_requests += 1
+
+
+func test_restaurant_name_can_be_set_before_ready_and_survives_refresh() -> void:
+	_hud.call("set_restaurant_name", "  Copper Cafe  ")
+	var label: Label = _hud.get_node("RestaurantName") as Label
+	assert_eq(label.text, "Copper Cafe")
+	_hud.call("refresh")
+	assert_eq(label.text, "Copper Cafe")
+	assert_eq(label.tooltip_text, "Copper Cafe")
+	_hud.call("set_restaurant_name", "   ")
+	assert_eq(label.text, MenuSettings.DEFAULT_NAME)

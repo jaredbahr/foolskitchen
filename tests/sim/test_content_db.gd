@@ -323,6 +323,21 @@ func test_invalid_floor_layer_definitions_are_reported_without_changing_resource
 	assert_false(definition.solid)
 
 
+func test_recipe_menu_sections_validate_without_changing_shared_content() -> void:
+	var definition: RecipeDef = _recipe()
+	assert_eq(ContentDB.validate_definitions([], [definition], [_station()]), PackedStringArray())
+	for section: int in RecipeDef.Section.values():
+		definition.set("section", section)
+		assert_eq(ContentDB.validate_definitions([], [definition], [_station()]), PackedStringArray())
+	var invalid: RecipeDef = definition.duplicate(true) as RecipeDef
+	invalid.set("section", 99)
+	var errors: PackedStringArray = ContentDB.validate_definitions([], [invalid], [_station()])
+	assert_eq(errors.size(), 1)
+	assert_true(_has_error(errors, "unknown menu section"))
+	assert_eq(definition.section, RecipeDef.Section.DESSERTS)
+	assert_eq(_starter_db().recipe(&"tomato_soup").section, RecipeDef.Section.STARTERS)
+
+
 func _starter_db() -> ContentDB:
 	var db: ContentDB = ContentDB.new()
 	assert_eq(db.load_all().size(), 0)

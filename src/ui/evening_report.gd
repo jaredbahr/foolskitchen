@@ -24,6 +24,7 @@ const LEAVE_LABELS: Dictionary = {
 const PROFIT_GREEN: Color = Color("38764b")
 const LOSS_RED: Color = Color("a83e35")
 
+var _restaurant_name: Label
 var _header: Label
 var _profit: Label
 var _income: GridContainer
@@ -61,6 +62,8 @@ func _ready() -> void:
 func show_report(report: DayReport) -> void:
 	_bind_nodes()
 	_report_shown = true
+	_restaurant_name.text = report.restaurant_name
+	(get_node("Panel/Scroll/Content/ReviewHeading") as Label).text = "Reviews of %s" % report.restaurant_name
 	_header.text = "Day %d: Closed" % report.day
 	var operating_profit: int = report.operating_profit()
 	_profit.text = "%s operating profit" % _money(operating_profit)
@@ -138,6 +141,7 @@ func _render_vibe() -> void:
 func _bind_nodes() -> void:
 	if _nodes_bound:
 		return
+	_restaurant_name = %RestaurantName
 	_header = %Header
 	_profit = %Profit
 	_income = %IncomeRows

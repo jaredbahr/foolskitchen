@@ -7,6 +7,10 @@ signal owner_level_changed(level: int)
 const MAX_PRICE: int = 9223372036854775807
 const MAX_JSON_INTEGER: int = 9007199254740991
 const MAX_PRICE_DIV_TEN: int = 922337203685477580
+const DEFAULT_NAME: String = "Fool's Kitchen"
+const MAX_NAME_LENGTH: int = 24
+const SNAPSHOT_VERSION: int = 1
+const DEFAULT_TUNING: MenuTuning = preload("res://data/balance/menu.tres")
 
 var _valid: bool = false
 var _recipes: Array[RecipeDef] = []
@@ -15,16 +19,23 @@ var _standards: Dictionary[StringName, int] = {}
 var _enabled: Dictionary[StringName, bool] = {}
 var _prices: Dictionary[StringName, int] = {}
 var _owner_level: int = 1
+var _restaurant_name: String = DEFAULT_NAME
+var _tuning: MenuTuning
 
 
-func _init(cookable_recipes: Array[RecipeDef] = [], owner_level: int = 1) -> void:
+func _init(cookable_recipes: Array[RecipeDef] = [], owner_level: int = 1, tuning: MenuTuning = null) -> void:
 	if cookable_recipes.is_empty() or owner_level < 1:
 		return
+	var source_tuning: MenuTuning = tuning if tuning != null else DEFAULT_TUNING
+	if not source_tuning.is_valid():
+		return
+	_tuning = source_tuning.duplicate() as MenuTuning
 	var seen: Dictionary[StringName, bool] = {}
 	var available: int = 0
 	for definition: RecipeDef in cookable_recipes:
 		if definition == null or String(definition.id).strip_edges().is_empty() \
-				or seen.has(definition.id) or definition.standard_price < 0 or definition.unlock_level < 1:
+				or seen.has(definition.id) or definition.standard_price < 0 or definition.unlock_level < 1 \
+				or not RecipeDef.Section.values().has(definition.section):
 			return
 		seen[definition.id] = true
 		if definition.unlock_level <= owner_level:
@@ -37,7 +48,7 @@ func _init(cookable_recipes: Array[RecipeDef] = [], owner_level: int = 1) -> voi
 	for definition: RecipeDef in _recipes:
 		_by_id[definition.id] = definition
 		_standards[definition.id] = definition.standard_price
-		if definition.unlock_level <= _owner_level:
+		if definition.unlock_level <= _owner_level and _enabled.size() < _tuning.limit_for_level(_owner_level):
 			_enabled[definition.id] = true
 		_prices[definition.id] = definition.standard_price
 	_valid = true
@@ -51,10 +62,26 @@ func owner_level() -> int:
 	return _owner_level
 
 
+func restaurant_name() -> String:
+	return _restaurant_name
+
+
+func set_restaurant_name(value: String) -> bool:
+	var next_name: String = normalized_restaurant_name(value)
+	if not _valid or next_name.is_empty():
+		return false
+	_restaurant_name = next_name
+	return true
+
+
+func menu_limit() -> int:
+	return _tuning.limit_for_level(_owner_level) if _valid else 0
+
+
 ## A level-up makes recipes selectable without changing today's chosen menu.
 ## A downgrade cannot leave a recipe enabled above the new level.
 func set_owner_level(value: int) -> bool:
-	if not _valid or value < 1:
+	if not _valid or value < 1 or _enabled.size() > _tuning.limit_for_level(value):
 		return false
 	for id: StringName in _enabled:
 		if _by_id[id].unlock_level > value:
@@ -116,7 +143,7 @@ func set_enabled(id: StringName, enabled: bool) -> bool:
 	if not _by_id.has(id):
 		return false
 	if enabled:
-		if _by_id[id].unlock_level > _owner_level:
+		if _by_id[id].unlock_level > _owner_level or (not _enabled.has(id) and _enabled.size() >= menu_limit()):
 			return false
 		_enabled[id] = true
 	elif _enabled.has(id):
@@ -145,7 +172,7 @@ func to_dict() -> Dictionary:
 		if _enabled.has(definition.id):
 			enabled.append(id)
 		prices[id] = str(_prices[definition.id])
-	return {"enabled": enabled, "prices": prices}
+	return {"version": SNAPSHOT_VERSION, "name": _restaurant_name, "enabled": enabled, "prices": prices}
 
 
 ## Validate the entire save section before replacing either set of choices.
@@ -154,16 +181,30 @@ func from_dict(data: Variant) -> bool:
 	if not _valid or typeof(data) != TYPE_DICTIONARY:
 		return false
 	var section: Dictionary = data
-	if section.size() != 2 or not section.has("enabled") or not section.has("prices"):
+	var legacy: bool = not section.has("version")
+	if section.size() != (2 if legacy else 4) or not section.has("enabled") or not section.has("prices"):
 		return false
+	var allowed_keys: Array[String] = ["enabled", "prices"]
+	if not legacy:
+		allowed_keys.append_array(["version", "name"])
 	for key: Variant in section:
-		if typeof(key) != TYPE_STRING or (key != "enabled" and key != "prices"):
+		if typeof(key) != TYPE_STRING or not allowed_keys.has(key):
+			return false
+	var next_name: String = DEFAULT_NAME
+	if not legacy:
+		var version: Variant = section["version"]
+		if (typeof(version) != TYPE_INT and typeof(version) != TYPE_FLOAT) or version != SNAPSHOT_VERSION \
+				or not section.has("name") or typeof(section["name"]) != TYPE_STRING:
+			return false
+		var saved_name: String = section["name"]
+		next_name = normalized_restaurant_name(saved_name)
+		if next_name.is_empty():
 			return false
 	if typeof(section["enabled"]) != TYPE_ARRAY or typeof(section["prices"]) != TYPE_DICTIONARY:
 		return false
 	var enabled_data: Array = section["enabled"]
 	var price_data: Dictionary = section["prices"]
-	if enabled_data.is_empty() or price_data.size() > _recipes.size():
+	if enabled_data.is_empty() or enabled_data.size() > menu_limit() or price_data.size() > _recipes.size():
 		return false
 	var next_enabled: Dictionary[StringName, bool] = {}
 	for value: Variant in enabled_data:
@@ -196,7 +237,20 @@ func from_dict(data: Variant) -> bool:
 		next_prices[definition.id] = definition.standard_price
 	_enabled = next_enabled
 	_prices = next_prices
+	_restaurant_name = next_name
 	return true
+
+
+## Shared with request-only presentation and restored session data.
+static func normalized_restaurant_name(value: String) -> String:
+	var trimmed: String = value.strip_edges()
+	if trimmed.is_empty() or trimmed.length() > MAX_NAME_LENGTH:
+		return ""
+	for index: int in value.length():
+		var code: int = value.unicode_at(index)
+		if code < 32 or (code >= 127 and code <= 159):
+			return ""
+	return trimmed
 
 
 static func _decode_price(value: Variant) -> int:

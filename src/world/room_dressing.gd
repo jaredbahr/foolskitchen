@@ -16,10 +16,14 @@ const PAVEMENT_COOL_MIX: float = 0.55
 const PAVEMENT_LIGHT_MIX: float = 0.25
 const FACE_GAP: float = 0.005
 const CARDINALS: Array[Vector2i] = [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]
+const SIGN_THEME: Theme = preload("res://src/ui/theme/main_theme.tres")
+const SIGN_FONT_SIZE: int = 48
 
 var _world: SimWorld
 var _lowered_walls: Array[Vector2i] = []
 var _wall_details: Array[Node3D] = []
+var _name_signs: Array[Label3D] = []
+var _restaurant_name: String = MenuSettings.DEFAULT_NAME
 
 
 func rebuild(world: SimWorld, lowered_wall_cells: Array[Vector2i] = []) -> void:
@@ -76,6 +80,25 @@ func set_lowered_walls(cells: Array[Vector2i]) -> void:
 	for detail: Node3D in _wall_details:
 		var cell: Vector2i = detail.get_meta(&"wall_cell")
 		detail.visible = not _lowered_walls.has(cell)
+	for sign: Label3D in _name_signs:
+		var cell: Vector2i = sign.get_meta(&"wall_cell")
+		sign.visible = not _lowered_walls.has(cell)
+
+
+func set_restaurant_name(value: String) -> bool:
+	var normalized: String = MenuSettings.normalized_restaurant_name(value)
+	if normalized.is_empty():
+		return false
+	if normalized == _restaurant_name:
+		return true
+	_restaurant_name = normalized
+	for sign: Label3D in _name_signs:
+		_fit_name(sign)
+	return true
+
+
+func name_sign_nodes() -> Array[Label3D]:
+	return _name_signs.duplicate()
 
 
 ## Detached node list for native presentation checks; attachment identity stays
@@ -98,6 +121,7 @@ func _release_tints() -> void:
 func _clear_dressing() -> void:
 	_release_tints()
 	_wall_details.clear()
+	_name_signs.clear()
 	for child: Node in get_children():
 		remove_child(child)
 		child.free()
@@ -205,6 +229,7 @@ func _add_entry_dressing(entries: Array[Vector2i], normal: Vector2i, entrance_in
 	center /= float(entries.size())
 	var outward: Vector3 = Vector3(normal.x, 0.0, normal.y)
 	var tangent: Vector3 = Vector3(-normal.y, 0.0, normal.x)
+	_add_name_sign(entries, normal, entrance_index, center)
 	var doormat: PropView = _asset(DOORMAT, "EntryDoormat" if entrance_index == 0 else "EntryDoormat%d" % entrance_index)
 	if doormat != null:
 		doormat.rotation.y = atan2(-outward.x, -outward.z)
@@ -225,6 +250,40 @@ func _add_entry_dressing(entries: Array[Vector2i], normal: Vector2i, entrance_in
 			paving.free()
 			continue
 		add_child(paving)
+
+
+## Plain native text above the doorway, using the game's existing UI font.
+## It is view-only; it adds no item, collision, theme score or saved geometry.
+func _add_name_sign(entries: Array[Vector2i], normal: Vector2i, index: int, center: Vector3) -> void:
+	var frontage: Array[Vector2i] = _frontage_cells(_world.grid, entries, normal)
+	if frontage.is_empty():
+		return
+	var sign: Label3D = Label3D.new()
+	sign.name = "RestaurantNameSign%d" % index
+	sign.font = SIGN_THEME.default_font if SIGN_THEME.default_font != null else ThemeDB.fallback_font
+	sign.font_size = SIGN_FONT_SIZE
+	sign.modulate = SIGN_THEME.get_color("font_color", "Label")
+	sign.outline_size = 0
+	sign.no_depth_test = false
+	sign.set_meta(&"wall_cell", frontage[0])
+	sign.set_meta(&"wall_normal", normal)
+	sign.set_meta(&"name_width", float(entries.size() + 1) * GridMath.CELL_SIZE)
+	var outward: Vector3 = Vector3(normal.x, 0.0, normal.y)
+	var wall_center: Vector3 = GridMath.cell_to_world(frontage[0])
+	# Label3D's text face is +Z; native props have their own -Z convention.
+	sign.rotation.y = atan2(outward.x, outward.z)
+	sign.position = center + outward * ((wall_center - center).dot(outward) + GridMath.CELL_SIZE * 0.5 + FACE_GAP)
+	sign.position.y = ArtScale.WALL_HEIGHT * 0.90
+	_fit_name(sign)
+	add_child(sign)
+	_name_signs.append(sign)
+
+
+func _fit_name(sign: Label3D) -> void:
+	sign.text = _restaurant_name
+	var width: float = sign.font.get_string_size(sign.text, HORIZONTAL_ALIGNMENT_LEFT, -1, sign.font_size).x
+	var available: float = sign.get_meta(&"name_width")
+	sign.pixel_size = minf(ArtScale.STREET_SIGN_PIXEL_SIZE, available / maxf(1.0, width))
 
 
 func _only_outside(grid: SimGrid, bounds: AABB) -> bool:

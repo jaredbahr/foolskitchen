@@ -325,6 +325,22 @@ an active edit/panel/selection first, or opens Settings when none is active.
   sections use the authored layout. Non-MORNING saves remain unsupported.
 
 ### 2.3d Menu and prices (FK-030)
+- **Menu identity (FK-086a):** `MenuSettings` owns a trimmed 1–24 character
+  restaurant name. The morning request updates the HUD and view-only entrance
+  sign; `DayReport` snapshots it for the report and its review heading. Reviews'
+  stars, quote selection and RNG are unchanged. Terrain/world rebuilds retain the
+  sign name; text uses the existing UI font and follows its supporting wall's
+  cutaway visibility. No item, collision or Vibe input is added by the sign.
+- Recipes author a `RecipeDef.Section` (Starters, Mains, Sides, Drinks, Desserts).
+  The panel groups its rows by section; simulation recipe order remains lexical.
+  `data/balance/menu.tres` gives six menu slots initially, one more every two
+  owner levels, capped at twelve. Enabling or restoring too many dishes fails
+  atomically, while raising the level never changes the player's chosen dishes.
+- The menu snapshot is now `{version: 1, name, enabled, prices}`. The strict
+  decoder also accepts the old two-key `{enabled, prices}` shape with the default
+  name. All name/menu changes remain memory-only until the normal next-morning
+  autosave. The unlock tree/detail pane, menu boards and menu bonuses are later
+  slices of #161.
 - `MenuSettings(cookable_recipes)` owns per-shop enabled dishes and prices. The
   session injects Tier 1 recipes whose station types are present, with a usable
   fridge/pass definition. Temporary stock shortages and path warnings do not

@@ -230,6 +230,8 @@ static func validate_definitions(ingredient_defs: Array[IngredientDef], recipe_d
 			errors.append("recipe[%d] is null" % index)
 			continue
 		_check_id(definition.id, "recipe", recipe_ids, errors)
+		if not RecipeDef.Section.values().has(definition.section):
+			errors.append("recipe '%s': unknown menu section" % definition.id)
 		if definition.standard_price < 0:
 			errors.append("recipe '%s': standard_price must be >= 0" % definition.id)
 		if definition.base_quality < 0.0 or definition.base_quality > 1.0:
