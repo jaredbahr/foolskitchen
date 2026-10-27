@@ -66,9 +66,11 @@ func test_default_main_spawns_authored_mix_on_exact_named_customers_stream() -> 
 		var kind: CustomerType = CustomerTypePicker.choose(TYPES, 1, sim.review_book.average(), oracle)
 		var entries: Array[Vector2i] = sim.world.grid.entries()
 		var entry: Vector2i = entries[oracle.randi_range(0, entries.size() - 1)]
-		# Level 1 is below every pair's party unlock: exactly main's single-guest draws.
-		var count: int = kind.draw_party_size_at(oracle, 1)
-		assert_eq(count, 1)
+		# Independent oracle: below its party unlock a type draws no size (main's
+		# single guest); at or above it, one ranged size draw.
+		var count: int = 1 if 1 < kind.party_unlock_level \
+			else oracle.randi_range(kind.party_size_min, kind.party_size_max)
+		assert_eq(count, 1, "level 1 is below every pair's party unlock")
 		var private_seeds: Array[int] = []
 		for member: int in count:
 			private_seeds.append(oracle.randi())

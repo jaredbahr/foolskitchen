@@ -297,7 +297,7 @@ func seat_warnings() -> Dictionary[int, String]:
 
 ## Invalid actions take precedence; permitted layouts may still lose seats.
 func feedback_text() -> String:
-	if _proposal_active() and not current_check.ok:
+	if _proposal_active() and not current_check.ok and not current_check.why.is_empty():
 		return current_check.why
 	var warnings: Dictionary[int, String] = seat_warnings()
 	var messages: PackedStringArray = []

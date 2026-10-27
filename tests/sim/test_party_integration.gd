@@ -90,7 +90,7 @@ func test_default_shop_clamps_families_after_the_draw_without_shifting_the_arriv
 			assert_eq(sim.rng.state, oracle.state, "raw member seeds and next gap retain their draws")
 
 
-func test_spawner_uses_partial_current_capacity_and_never_spawns_without_a_usable_table() -> void:
+func test_spawner_uses_partial_current_capacity_and_sends_one_guest_without_a_usable_table() -> void:
 	var sim: RestaurantSim = _empty_service(41)
 	var catalogue: CustomerTypeCatalogue = CustomerTypeCatalogue.new()
 	var family: CustomerType = TYPES.find_type(&"family").duplicate() as CustomerType
@@ -121,8 +121,57 @@ func test_spawner_uses_partial_current_capacity_and_never_spawns_without_a_usabl
 	oracle.randi_range(100000, 100000)
 	sim.spawner._remaining = 1
 	sim.spawner.advance(sim)
-	assert_eq(sim.customers().size(), 3, "zero capacity publishes no unseatable arrival")
-	assert_eq(sim.rng.state, oracle.state, "even a suppressed party retains the complete draw schedule")
+	assert_eq(sim.customers().size(), 4, "zero capacity still sends one guest, who is counted")
+	assert_null(sim.customers()[3].party, "a party clamped to one arrives as a single guest")
+	assert_eq(sim.rng.state, oracle.state, "a clamped party retains the complete draw schedule")
+
+
+func test_open_pair_with_no_usable_table_arrives_as_one_guest_lost_to_no_table() -> void:
+	var sim: RestaurantSim = _empty_service(51)
+	var catalogue: CustomerTypeCatalogue = CustomerTypeCatalogue.new()
+	var regular: CustomerType = TYPES.find_type(&"regular").duplicate() as CustomerType
+	regular.party_size_min = 2
+	catalogue.types = [regular]
+	assert_true(sim.configure_customer_types(catalogue, regular.party_unlock_level))
+	assert_eq(DiningSeats.largest_usable_capacity(sim.world.grid), 0)
+	var oracle: RandomNumberGenerator = _rng(51)
+	oracle.state = sim.rng.state
+	CustomerTypePicker.choose(catalogue, regular.party_unlock_level, sim.review_book.average(), oracle)
+	oracle.randi_range(0, 0)
+	var first_seed: int = oracle.randi()
+	oracle.randi()
+	oracle.randi_range(100000, 100000)
+	sim.spawner._remaining = 1
+	sim.spawner.advance(sim)
+	assert_eq(sim.rng.state, oracle.state, "both member seeds are drawn before the clamp")
+	assert_eq(sim.customers().size(), 1)
+	var guest: CustomerAgent = sim.customers()[0]
+	assert_null(guest.party)
+	assert_eq(guest.rng.seed, first_seed)
+	assert_eq(sim.spawner._remaining, 100000, "one arrival waits one gap")
+	_run_until_empty(sim, guest.queue_patience + 200)
+	assert_eq(sim.lost_today, 1)
+	assert_eq(sim.leave_reasons_today.get(&"no_table", 0), 1, "the lost guest is counted")
+
+
+func test_locked_single_still_arrives_with_no_usable_table() -> void:
+	var sim: RestaurantSim = _empty_service(52)
+	var catalogue: CustomerTypeCatalogue = CustomerTypeCatalogue.new()
+	catalogue.types = [TYPES.find_type(&"regular")]
+	assert_true(sim.configure_customer_types(catalogue, 1))
+	assert_eq(DiningSeats.largest_usable_capacity(sim.world.grid), 0)
+	sim.spawner._remaining = 1
+	sim.spawner.advance(sim)
+	assert_eq(sim.customers().size(), 1, "a single guest arrives as on main")
+	_run_until_empty(sim, sim.customers()[0].queue_patience + 200)
+	assert_eq(sim.leave_reasons_today.get(&"no_table", 0), 1)
+
+
+func _run_until_empty(sim: RestaurantSim, limit: int) -> void:
+	for tick: int in limit:
+		sim.advance()
+		if sim.customers().is_empty():
+			return
 
 
 func test_usable_capacity_requires_a_path_from_the_arriving_street_entry() -> void:

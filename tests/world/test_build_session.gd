@@ -483,6 +483,24 @@ func test_main_build_hud_shows_partial_seats_and_clears_warning_after_the_layout
 	assert_false(FileAccess.file_exists(_save_dir.path_join(SLOT + ".json")), "the source fixture disables game saves")
 
 
+func test_floor_tool_hint_keeps_the_partial_seat_warning_beside_its_summary() -> void:
+	await _start()
+	var center: PlacedItem = _world().grid.item_at(Vector2i(6, 6))
+	assert_true(int(_main.call("shop_sell", center.id)) >= 0)
+	_editor().set_owner_level(TABLE_4.unlock_level)  # Explicit purchase-unlock fixture.
+	assert_true(_main.call("set_build_active", true))
+	assert_true(_mode().begin_buy(&"table_4", Vector2i(6, 5)))
+	assert_true(_mode().commit())
+	var label: Label = _main.get_node("HUD/BuildHints/Scroll/Text") as Label
+	assert_true(_mode().begin_floor())
+	_mode().floor_pointer(Vector2i(14, 6))
+	assert_true(_mode().current_check.ok, _mode().current_check.why)
+	assert_true(label.text.contains(_mode().floor_summary()), "the floor tool's own summary")
+	assert_true(_mode().floor_summary().begins_with("Add 1 floor tile"))
+	assert_true(label.text.contains("Only 3 of 4 seats usable"), "the blocked seat stays visible")
+	assert_eq(_world().now, 0, "Build feedback does not advance service")
+
+
 func test_build_hints_match_available_actions_and_fit_content_or_small_viewport_scroll() -> void:
 	await _start()
 	assert_true(_main.call("set_build_active", true))

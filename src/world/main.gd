@@ -854,8 +854,7 @@ func _update_build_controls() -> void:
 		summary = build_mode.floor_summary()
 	if not summary.is_empty():
 		# An invalid wall or floor check already put its reason in the summary.
-		reason = summary if reason.is_empty() or not build_mode.current_check.ok else summary + "
-" + reason
+		reason = summary if reason.is_empty() or not build_mode.current_check.ok else summary + "\n" + reason
 	$HUD.set_build_state(available, active, reason, int(build_mode.state))
 	$HUD.set_paint_state(_paint_active)
 	if _build_catalogue != null:

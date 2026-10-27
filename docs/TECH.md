@@ -966,14 +966,24 @@ is added. Regular compatibility fixtures retain the pre-type methods from main
 before/after balance probe.
 
 **Group seating (FK-066):** the same catalogue authors Family parties of 2-4
-and Regular, Student and Foodie parties of 1-2. Fixed-size ranges consume no
-new random draw. The spawner draws one ranged party size, then clamps it to
-the largest currently usable table reachable from the chosen street entry.
-Capacity counts clear, unique, reachable seats, including linked furnishings;
-temporary bookings and dirt do not shrink the layout's capacity. A layout
-with no usable table publishes no configured arrival. The customers stream
-still draws a private seed for every originally drawn member, discarding the
-extra streams after the clamp, so the next arrival's draws do not shift.
+and Regular, Student and Foodie parties of 1-2. Each type's
+`party_unlock_level` (data) sets the owner level from which it may arrive as
+a group: 5 for Regular, Student and Foodie, 1 for Family (whose own unlock is
+level 4). Below it the type is a single guest that draws exactly what main's
+single guest draws: no size draw and one private seed, so play before any
+group type unlocks matches single-guest main draw for draw (golden-tested).
+Fixed-size ranges consume no size draw either. An unlocked type draws one
+ranged party size, then clamps it to the largest currently usable table
+reachable from the chosen street entry, but never below one. Capacity counts
+clear, unique, reachable seats, including linked furnishings; temporary
+bookings and dirt do not shrink the layout's capacity. Single guests always
+arrive; with no usable table a clamped party becomes one guest who waits and
+leaves as "no table", so the loss is counted. The customers stream still
+draws a private seed for every originally drawn member, discarding the extra
+streams after the clamp, so the next arrival's draws do not shift. The next
+arrival gap is one gap draw multiplied by the number of guests who arrived,
+so groups keep guests per hour unchanged. The level-up report shows the
+type's short `party_tip` once, on the day groups start visiting.
 It installs and links
 every member before publishing any arrival; singleton installation retains
 the old draw and signal order. `Party` stores member IDs rather than strong
