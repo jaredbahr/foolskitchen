@@ -10,29 +10,24 @@
 [node name="HUD" type="CanvasLayer"]
 script = ExtResource("1_script")
 
-[node name="RestaurantName" type="Label" parent="."]
-anchors_preset = 10
-anchor_right = 1.0
-offset_left = 24.0
-offset_top = 10.0
-offset_right = -24.0
-offset_bottom = 40.0
-mouse_filter = 2
-theme = ExtResource("2_theme")
-theme_override_font_sizes/font_size = 20
-text = "Fool's Kitchen"
-text_overrun_behavior = 3
 [node name="Top" type="PanelContainer" parent="."]
 anchors_preset = 10
 anchor_right = 1.0
 offset_left = 12.0
-offset_top = 44.0
+offset_top = 12.0
 offset_right = -12.0
 theme = ExtResource("2_theme")
 
 [node name="Row" type="Container" parent="Top"]
 layout_mode = 2
 script = ExtResource("4_groups")
+
+[node name="RestaurantName" type="Label" parent="Top/Row"]
+layout_mode = 2
+mouse_filter = 1
+theme_override_font_sizes/font_size = 16
+text = "Fool's Kitchen"
+text_overrun_behavior = 3
 
 [node name="Day" type="Label" parent="Top/Row"]
 layout_mode = 2

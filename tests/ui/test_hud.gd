@@ -613,12 +613,9 @@ func _layout_frames() -> void:
 
 
 func _assert_header_layout(window: Window, context_visible: bool = true) -> void:
-	var restaurant_name: Label = _hud.get_node("RestaurantName") as Label
-	_assert_readable_control(restaurant_name, window)
-	assert_true(Rect2(Vector2.ZERO, Vector2(window.size)).grow(0.5).encloses(_drawn_rect(restaurant_name, window)))
-	assert_true(restaurant_name.get_global_rect().end.y <= (_hud.get_node("Top") as Control).global_position.y, "the restaurant title stays above the controls")
 	var top: Control = _hud.get_node("Top") as Control
 	var row: Control = _hud.get_node("Top/Row") as Control
+	_assert_restaurant_title(window)
 	var pixels: Rect2 = Rect2(Vector2.ZERO, Vector2(window.size))
 	assert_true(pixels.grow(0.5).encloses(_drawn_rect(top, window)), "the whole header stays inside the physical Window")
 	var gear: Button = _control("Settings") as Button
@@ -764,10 +761,86 @@ func _record_staff() -> void:
 
 func test_restaurant_name_can_be_set_before_ready_and_survives_refresh() -> void:
 	_hud.call("set_restaurant_name", "  Copper Cafe  ")
-	var label: Label = _hud.get_node("RestaurantName") as Label
+	var label: Label = _hud.get_node("Top/Row/RestaurantName") as Label
 	assert_eq(label.text, "Copper Cafe")
 	_hud.call("refresh")
 	assert_eq(label.text, "Copper Cafe")
 	assert_eq(label.tooltip_text, "Copper Cafe")
 	_hud.call("set_restaurant_name", "   ")
 	assert_eq(label.text, MenuSettings.DEFAULT_NAME)
+
+
+## The name title is the first line inside the cream header: inside the panel and
+## row, above every control, and either fully drawn or cut with an ellipsis.
+func _assert_restaurant_title(window: Window) -> void:
+	var title: Label = _control("RestaurantName") as Label
+	var top: Control = _hud.get_node("Top") as Control
+	var row: Control = _hud.get_node("Top/Row") as Control
+	assert_true(title.is_visible_in_tree())
+	_assert_readable_control(title, window)
+	var rect: Rect2 = title.get_global_rect()
+	assert_true(top.get_global_rect().grow(0.5).encloses(rect), "the restaurant title sits inside the header panel")
+	assert_true(row.get_global_rect().grow(0.5).encloses(rect), "the restaurant title never widens the header row")
+	for child: Node in row.get_children():
+		var control: Control = child as Control
+		if control != null and control != title and control.visible:
+			assert_true(control.get_global_rect().position.y >= rect.end.y - 0.01, "the title stays above " + String(control.name))
+	var font: Font = title.get_theme_font("font")
+	var width: float = font.get_string_size(title.text, HORIZONTAL_ALIGNMENT_LEFT, -1, title.get_theme_font_size("font_size")).x
+	if width > title.size.x:
+		assert_eq(title.text_overrun_behavior, TextServer.OVERRUN_TRIM_ELLIPSIS, "a long name is cut with an ellipsis")
+
+
+func test_restaurant_title_contrasts_with_its_header_panel() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	tree.root.add_child(_hud)
+	await tree.process_frame
+	var title: Label = _control("RestaurantName") as Label
+	var top: PanelContainer = _hud.get_node("Top") as PanelContainer
+	assert_true(title.get_parent().get_parent() == top, "the title is drawn on the header panel")
+	var panel: StyleBoxFlat = top.get_theme_stylebox("panel") as StyleBoxFlat
+	assert_not_null(panel)
+	var ratio: float = _contrast(title.get_theme_color("font_color"), panel.bg_color)
+	assert_true(ratio >= 4.5, "title text contrast %.2f is at least 4.5" % ratio)
+	assert_eq(title.text_overrun_behavior, TextServer.OVERRUN_TRIM_ELLIPSIS, "a long name never overflows the header")
+	assert_eq(top.offset_top, 12.0, "the header keeps its usual top offset")
+	tree.root.remove_child(_hud)
+
+
+func test_restaurant_title_fits_header_at_1280_by_720_and_150_percent() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	var host: SubViewport = SubViewport.new()
+	host.size = Vector2i(1600, 900)
+	host.gui_embed_subwindows = true
+	tree.root.add_child(host)
+	var window: Window = Window.new()
+	window.borderless = true
+	window.size = Vector2i(1280, 720)
+	window.content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS
+	window.content_scale_aspect = Window.CONTENT_SCALE_ASPECT_EXPAND
+	window.content_scale_size = Vector2i(1600, 900)
+	window.content_scale_factor = 1.5
+	host.add_child(window)
+	window.add_child(_hud)
+	var title: Label = _control("RestaurantName") as Label
+	var top: Control = _hud.get_node("Top") as Control
+	for value: String in [MenuSettings.DEFAULT_NAME, "Mama's Diner", "W".repeat(24)]:
+		_hud.call("set_restaurant_name", value)
+		await _layout_frames()
+		assert_eq(title.text, value)
+		_assert_header_layout(window)
+		assert_almost_eq(top.get_global_rect().position.y, 12.0, 0.01)
+		assert_true(_drawn_rect(title, window).end.x <= float(window.size.x) + 0.5, value + " stays on screen")
+	window.remove_child(_hud)
+	host.free()
+
+
+static func _contrast(a: Color, b: Color) -> float:
+	var la: float = _luminance(a)
+	var lb: float = _luminance(b)
+	return (maxf(la, lb) + 0.05) / (minf(la, lb) + 0.05)
+
+
+static func _luminance(color: Color) -> float:
+	var linear: Color = color.srgb_to_linear()
+	return 0.2126 * linear.r + 0.7152 * linear.g + 0.0722 * linear.b
