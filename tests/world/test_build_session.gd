@@ -1123,7 +1123,7 @@ func _assert_catalogue_vibe_matches_actual_sources(state: Dictionary, frame: int
 	var menu: MenuSettings = _main.get("menu_settings") as MenuSettings
 	var content: ContentDB = _main.get("content") as ContentDB
 	var inputs: VibeModel.Inputs = VibeInputs.capture(_world().grid, content, menu.enabled_recipes(),
-		_editor().wall_swatch_id, _editor().floor_swatch_id)
+		_editor().wall_swatch_id, _editor().floor_vibe_swatch())
 	var fresh: VibeModel.Result = VibeModel.evaluate(inputs, CAPTURE.VIBE_TERMS)
 	var vibe: Dictionary = state["vibe"]
 	assert_true(fresh.valid)
@@ -1135,7 +1135,7 @@ func _assert_catalogue_vibe_matches_actual_sources(state: Dictionary, frame: int
 	assert_eq(vibe["meter"]["caption"], "Vibe %d / 100" % roundi(fresh.score))
 	assert_eq(vibe["meter"]["value"], fresh.score)
 	assert_eq(vibe["inputs"]["wall"], String(_editor().wall_swatch_id))
-	assert_eq(vibe["inputs"]["floor"], String(_editor().floor_swatch_id))
+	assert_eq(vibe["inputs"]["floor"], String(_editor().floor_vibe_swatch()))
 	var ids: Array[String] = []
 	for recipe: RecipeDef in menu.enabled_recipes():
 		ids.append(String(recipe.id))

@@ -2,7 +2,16 @@ class_name ShopView
 extends Node3D
 ## Read-only restaurant view. Simulation ownership stays with the caller.
 
-const GRID_SHADER: Shader = preload("res://src/world/build_grid.gdshader")
+const GRID_SHADER: Shader = preload("res://src/world/floor_finish.gdshader")
+## Floor types (D25): colour indices in the finish map. 0 is the shop's own
+## floor paint (the floor_color uniform), 1 the authored brown, then swatches.
+const FINISH_SHOP_COLOUR: int = 0
+const FINISH_AUTHORED_COLOUR: int = 1
+const FINISH_FIRST_SWATCH: int = 2
+## The shader's palette uniform size (floor_finish.gdshader PALETTE_SIZE).
+const FINISH_PALETTE_SIZE: int = 32
+## Threshold mask bits: the neighbour west, north, east or south differs.
+const FINISH_EDGES: Array[Vector2i] = [Vector2i.LEFT, Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN]
 const PERSON_SCENE: PackedScene = preload("res://assets/people/person.tscn")
 ## Delivery crates (FK-099): the Furniture Kit's closed cardboard box.
 const CRATE_SCENE: PackedScene = preload("res://assets/kenney/furniture/cardboardBoxClosed.glb")
@@ -76,6 +85,14 @@ var _floor_base_color: Color = Color("7d5533")
 var _preview_kind: StringName = &""
 var _preview_item_id: int = -1
 var _preview_swatch_id: StringName = &""
+## Floor types (D25): the editor's looks, a preview overlay (cell -> Finish)
+## and the per-cell data texture the floor shader reads.
+var _floors: FloorFinishes
+var _floor_preview: Dictionary[Vector2i, FloorFinishes.Finish] = {}
+var finish_image: Image
+var finish_texture: ImageTexture
+var _finish_origin: Vector2i = Vector2i.ZERO
+var _swatch_index: Dictionary[StringName, int] = {}
 var _walls: Node3D
 ## Player-built wall segments (FK-070) and the shell cells holding their windows.
 var segment_view: WallSegmentView
@@ -110,6 +127,7 @@ func show_world(value: SimWorld) -> void:
 	crate_nodes.clear()
 	_wall_nodes.clear()
 	_shell_windows.clear()
+	_floor_preview.clear()
 	floor_mesh = null
 	room_dressing = null
 	segment_view = null
@@ -256,6 +274,7 @@ func _build_terrain() -> void:
 				surface.add_vertex(corners[index])
 			count += 1
 	floor_mesh.mesh = surface.commit() if count > 0 else null
+	_rebuild_finish_map()
 	_shell_windows = WallSegmentView.shell_window_cells(world.grid)
 	_apply_wall_heights()
 	_apply_paint()
@@ -285,6 +304,159 @@ func set_paint(content: ContentDB, wall_id: StringName, floor_id: StringName) ->
 	_wall_swatch_id = wall_id
 	_floor_swatch_id = floor_id
 	_apply_paint()
+	_apply_finish_palette()
+	_rebuild_finish_map()
+
+
+# --- Floor types (D25) ---------------------------------------------------------
+
+## Main binds the editor's floor looks after show_world(); the floor redraws
+## when they change. Null shows every cell as the legacy planks.
+func bind_floor_finishes(value: FloorFinishes) -> void:
+	if _floors != null and _floors.changed.is_connected(_on_floor_finishes_changed):
+		_floors.changed.disconnect(_on_floor_finishes_changed)
+	_floors = value
+	_floor_preview.clear()
+	if _floors != null:
+		_floors.changed.connect(_on_floor_finishes_changed)
+	_rebuild_finish_map()
+
+
+## Shows proposed looks (cell -> Finish) over the floor until cleared: the
+## Floors tool's drag and the paint hover. Nothing is changed.
+func preview_floor_finishes(changes: Dictionary[Vector2i, FloorFinishes.Finish]) -> void:
+	if changes.size() == _floor_preview.size():
+		var same: bool = true
+		for cell: Vector2i in changes:
+			if not _floor_preview.has(cell) or not _floor_preview[cell].same(changes[cell]):
+				same = false
+				break
+		if same:
+			return
+	_floor_preview = changes.duplicate()
+	_rebuild_finish_map()
+
+
+func clear_floor_preview() -> void:
+	if not _floor_preview.is_empty():
+		_floor_preview.clear()
+		_rebuild_finish_map()
+
+
+func floor_preview_cells() -> Array[Vector2i]:
+	var cells: Array[Vector2i] = []
+	cells.assign(_floor_preview.keys())
+	return cells
+
+
+## The look drawn at `cell`: the preview, else the editor's, else the default.
+func drawn_finish(cell: Vector2i) -> FloorFinishes.Finish:
+	if _floor_preview.has(cell):
+		return _floor_preview[cell]
+	if _floors != null:
+		return _floors.finish(cell)
+	return FloorFinishes.Finish.new(FloorStyleDef.DEFAULT_ID, _floor_swatch_id, &"")
+
+
+## The texel (r pattern, g colour, b accent, a threshold mask) of one cell.
+func finish_texel(cell: Vector2i) -> Color:
+	if finish_image == null or world == null:
+		return Color(0, 0, 0, 0)
+	var at: Vector2i = cell - _finish_origin
+	if at.x < 0 or at.y < 0 or at.x >= finish_image.get_width() or at.y >= finish_image.get_height():
+		return Color(0, 0, 0, 0)
+	return finish_image.get_pixelv(at)
+
+
+func finish_origin() -> Vector2i:
+	return _finish_origin
+
+
+func _on_floor_finishes_changed(_cells: Array[Vector2i]) -> void:
+	_rebuild_finish_map()
+
+
+## The shader palette: the authored brown, then every swatch in content order.
+func _apply_finish_palette() -> void:
+	_swatch_index.clear()
+	var colours: PackedColorArray = PackedColorArray()
+	colours.resize(FINISH_PALETTE_SIZE)
+	colours.fill(_floor_base_color)
+	colours[FINISH_AUTHORED_COLOUR] = _floor_base_color
+	if _paint_content != null:
+		var index: int = FINISH_FIRST_SWATCH
+		for swatch: SwatchDef in _paint_content.swatches():
+			if index >= FINISH_PALETTE_SIZE:
+				push_warning("Floor palette is full; %s draws as the shop colour" % swatch.id)
+				break
+			colours[index] = swatch.color
+			_swatch_index[swatch.id] = index
+			index += 1
+	var shader: ShaderMaterial = floor_mesh.material_override as ShaderMaterial if floor_mesh != null else null
+	if shader != null:
+		shader.set_shader_parameter("palette", colours)
+
+
+## One texel per grid cell. Floor cells take their look; the street entry and
+## a back door's threshold tile copy the floor inside them, so the doorway
+## reads as the room's floor; other cells stay zero (never drawn).
+func _rebuild_finish_map() -> void:
+	if world == null or floor_mesh == null:
+		return
+	var grid: SimGrid = world.grid
+	var size: Vector2i = Vector2i(maxi(grid.size.x, 1), maxi(grid.size.y, 1))
+	if finish_image == null or finish_image.get_size() != size:
+		finish_image = Image.create(size.x, size.y, false, Image.FORMAT_RGBA8)
+	finish_image.fill(Color(0, 0, 0, 0))
+	_finish_origin = grid.origin
+	var drawn: Dictionary[Vector2i, FloorFinishes.Finish] = {}
+	for cell: Vector2i in grid.cells():
+		if grid.terrain(cell) == SimGrid.Terrain.FLOOR:
+			drawn[cell] = drawn_finish(cell)
+	var thresholds: Array[Vector2i] = []
+	for cell: Vector2i in grid.cells():
+		if grid.terrain(cell) == SimGrid.Terrain.ENTRY:
+			thresholds.append(cell)
+	for cell: Vector2i in WallSegmentView.shell_door_cells(grid):
+		thresholds.append(cell)
+	for cell: Vector2i in thresholds:
+		for step: Vector2i in FloorFinishes.STEPS:
+			if drawn.has(cell + step) and grid.terrain(cell + step) == SimGrid.Terrain.FLOOR:
+				drawn[cell] = drawn[cell + step]
+				break
+	var styles: Dictionary[StringName, int] = {}
+	for cell: Vector2i in drawn:
+		var look: FloorFinishes.Finish = drawn[cell]
+		if not styles.has(look.style):
+			var style: FloorStyleDef = _paint_content.floor_style(look.style) if _paint_content != null else null
+			styles[look.style] = int(style.pattern) if style != null else 0
+		var mask: int = 0
+		for bit: int in range(FINISH_EDGES.size()):
+			var other: Vector2i = cell + FINISH_EDGES[bit]
+			if drawn.has(other) and drawn[other].style != look.style:
+				mask |= 1 << bit
+		var at: Vector2i = cell - _finish_origin
+		finish_image.set_pixel(at.x, at.y, Color8(styles[look.style], _finish_colour(look.swatch, true),
+			_finish_colour(look.accent, false), mask))
+	if finish_texture == null or Vector2i(finish_texture.get_size()) != size:
+		finish_texture = ImageTexture.create_from_image(finish_image)
+	else:
+		finish_texture.update(finish_image)
+	var shader: ShaderMaterial = floor_mesh.material_override as ShaderMaterial
+	if shader != null:
+		shader.set_shader_parameter("finish_map", finish_texture)
+		shader.set_shader_parameter("map_origin", _finish_origin)
+		shader.set_shader_parameter("map_size", size)
+
+
+## A colour's palette index: the shop's own colour is 0 (main only), the
+## authored brown 1, swatches from 2. An empty accent is 0 (a darker shade).
+func _finish_colour(swatch_id: StringName, main: bool) -> int:
+	if main and swatch_id == _floor_swatch_id:
+		return FINISH_SHOP_COLOUR
+	if swatch_id.is_empty():
+		return FINISH_AUTHORED_COLOUR if main else 0
+	return int(_swatch_index.get(swatch_id, FINISH_SHOP_COLOUR if main else 0))
 
 
 func preview_paint(kind: StringName, item_id: int, swatch_id: StringName) -> void:
@@ -298,6 +470,12 @@ func preview_paint(kind: StringName, item_id: int, swatch_id: StringName) -> voi
 
 func clear_paint_preview() -> void:
 	preview_paint(&"", -1, &"")
+	clear_floor_preview()
+
+
+## The authored floor brown (the floor material's own colour).
+func floor_base_color() -> Color:
+	return _floor_base_color
 
 
 ## Resolve the nearest visible shop mesh before using the floor plane. An item

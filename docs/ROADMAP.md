@@ -49,7 +49,8 @@ The Tier 1 hole-in-the-wall: 1 door, 3 two-seat tables, 1 fridge, 1 prep counter
 - [ ] Menu designer: name, sections, unlock tree, menu boards (#161, D23)
 - [x] Rooms and restrooms as built rooms (#115, #192)
 - [x] Back door foundation (#191); real swinging door and one per shop with visible deliveries (#187, D25)
-- [ ] Floor types and patterns painted per cell or per room: tile, wood, checker and more (Sims-style, D25)
+- [x] Floor types and patterns painted per cell or per room: wide and narrow planks, herringbone, small tiles, checker (Sims-style, D25, #TBD)
+- [ ] More floor types: hex tile, terracotta, terrazzo, concrete, carpet (data + a shader branch each, D25)
 - [x] Hiring pool, traits, wages
 - [ ] The priority matrix
 - [x] Plate cycle (sink, dirty plates)
