@@ -31,13 +31,17 @@ const BACK_DOOR_SCENE: PackedScene = preload("res://assets/kenney/furniture/door
 ## outside wall like a propped-open service door, clear of the path and of
 ## anyone on it (the Mini Characters' heads are as wide as the door).
 const DOOR_OPEN_DEGREES: float = 178.0
-## Past square the hinge moves out to the wall's outer face, so the open leaf
-## lies on the face instead of inside the wall: its centre this far from the
-## wall's centre line (half the 0.5 m wall plus the leaf's handle).
+## While the leaf turns to square its hinge moves out to the wall's outer
+## face, so past square the leaf swings round outside the wall and lies on the
+## face: its centre this far from the wall's centre line (half the 0.5 m wall
+## plus the leaf's handle).
 const DOOR_FLAT_OUT: float = 0.315
-## As it opens the leaf slides this far onto its hinge-side jamb (metres), so
+## Past square the leaf slides this far onto its hinge-side jamb (metres), so
 ## an open leaf is clear of the opening.
 const DOOR_OPEN_SLIDE: float = 0.08
+## Share of DOOR_OPEN_SLIDE the hinge steps away from its jamb while turning
+## to square (0.16 = 13 mm), so the slab's corner clears the jamb.
+const DOOR_TURN_CLEARANCE: float = 0.16
 ## The back path (FK-099): one square of the street's pavement per cell with a
 ## thin joint between them, laid flush (a sliver thick, so no side face shows
 ## against the dark beyond the lot).
@@ -52,6 +56,9 @@ const PATH_SHADES: Array[float] = [0.0, 0.07, -0.06, 0.03, -0.03]
 const PATH_SOLID_CELLS: int = 4
 const PATH_FADE_CELLS: int = WallRules.ALLEY_REACH - PATH_SOLID_CELLS
 const ALLEY_LANES: int = 2
+## A side wall's alley fades out over this many cells past the shop's front,
+## towards the street, rather than stopping square at the front line.
+const PATH_STREET_FADE_CELLS: int = 3
 ## The fade's end: walnut darkened towards charcoal, close to the dark ground
 ## the lighting rig shows beyond the lot. Palette swatches only.
 const PATH_FAR_SWATCH: SwatchDef = preload("res://data/swatches/walnut.tres")
@@ -211,7 +218,8 @@ func _build_shell_door(grid: SimGrid, cell: Vector2i, side: Vector2i, lowered: b
 ## floorHalf, palette tint) cut to one stone per cell, flush with the floor.
 ## The alley is solid across the lot and PATH_SOLID_CELLS past it, then
 ## fades into the ground over PATH_FADE_CELLS (out of sight at the usual
-## zoom); a side wall's alley stops square at the shop's front, at the street.
+## zoom); a side wall's alley is solid to the shop's front and fades out over
+## PATH_STREET_FADE_CELLS towards the street.
 func _build_back_path(door: Vector2i, alley: Dictionary, side: Vector2i) -> void:
 	if alley.is_empty():
 		return
@@ -236,6 +244,15 @@ func _build_back_path(door: Vector2i, alley: Dictionary, side: Vector2i) -> void
 		var cell: Vector2i = junction + axis * (t - along)
 		for lane: int in ALLEY_LANES:
 			_add_stone(cell + side * lane, fade, door)
+	# A side wall's alley runs solid to the shop's front, then fades out over
+	# PATH_STREET_FADE_CELLS towards the street instead of stopping square.
+	if street == axis or street == -axis:
+		var end: int = int(alley["last"]) if street == axis else int(alley["first"])
+		for step: int in range(1, PATH_STREET_FADE_CELLS + 1):
+			var fade: float = float(step) / float(PATH_STREET_FADE_CELLS + 1)
+			var cell: Vector2i = junction + axis * (end + street.x * axis.x * step + street.y * axis.y * step - along)
+			for lane: int in ALLEY_LANES:
+				_add_stone(cell + side * lane, fade, door)
 
 
 ## One paving stone on `cell`: the street's pavement, flush, a joint round
@@ -291,9 +308,16 @@ func set_door_open(cell: Vector2i, amount: float) -> void:
 	var leaf: Node3D = _leaves[cell]["leaf"] as Node3D
 	var open: float = clampf(amount, 0.0, 1.0)
 	var degrees: float = DOOR_OPEN_DEGREES * open
-	var out: float = clampf((degrees - 90.0) / (DOOR_OPEN_DEGREES - 90.0), 0.0, 1.0)
+	# Up to square the leaf turns inside the opening while its hinge moves out
+	# to the wall's outer face; only then does it swing on round towards the
+	# wall, and slide onto the jamb, so no part of it ever passes into the wall.
+	var out: float = clampf(degrees / 90.0, 0.0, 1.0)
+	var slide: float = clampf((degrees - 90.0) / (DOOR_OPEN_DEGREES - 90.0), 0.0, 1.0)
+	# Mid-turn the slab's hinge-side corner would graze the jamb: the hinge
+	# steps that far off it (a few millimetres) and back by square.
+	slide -= DOOR_TURN_CLEARANCE * sin(PI * out)
 	leaf.rotation.y = float(_leaves[cell]["sign"]) * deg_to_rad(degrees)
-	leaf.position = (_leaves[cell]["base"] as Vector3) + (_leaves[cell]["slide"] as Vector3) * open \
+	leaf.position = (_leaves[cell]["base"] as Vector3) + (_leaves[cell]["slide"] as Vector3) * slide \
 		+ (_leaves[cell]["out"] as Vector3) * out
 
 
