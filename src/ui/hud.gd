@@ -10,7 +10,7 @@ const GAIN_COLOR: Color = Color("286B3B")
 const LOSS_COLOR: Color = Color("A42E2E")
 ## Advice, not an error (the restock budget line, FK-096): a dark amber that
 ## stays readable on the cream panel and never reads as the red of a loss.
-const ADVICE_COLOR: Color = Color("8F5C00")
+const ADVICE_COLOR: Color = Color("7F5100")
 ## The Build/Buy key strip keeps one line for every hint at 1600 px (FK-085).
 const HINT_MAX_WIDTH: float = 760.0
 ## Header panel margins once the restaurant name title sits above the controls.
