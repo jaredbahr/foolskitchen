@@ -100,6 +100,21 @@ func test_refused_run_shows_the_reason_and_changes_nothing() -> void:
 	assert_eq(_cash, 1000)
 
 
+func test_doorway_tool_builds_and_removes_a_back_door() -> void:
+	assert_true(_mode.enter())
+	assert_true(_mode.begin_walls(SimGrid.Segment.DOORWAY))
+	var point: Vector2 = Vector2(13 * 0.5, 6.5 * 0.5)
+	assert_true(_mode.wall_press(point))
+	assert_true(_mode.wall_release(point), _mode.current_check.why)
+	assert_eq(WallRules.delivery_cell(_sim.world.grid), Vector2i(12, 6))
+	assert_eq(_wall_calls, 1)
+	assert_eq(_cash, 985)
+	assert_true(_mode.wall_press(point))
+	assert_true(_mode.wall_release(point))
+	assert_eq(_wall_calls, 2)
+	assert_false(_sim.world.grid.is_walkable(Vector2i(13, 6)))
+
+
 func test_escape_cancels_the_drag_then_the_tool_then_build_mode() -> void:
 	assert_true(_mode.enter())
 	assert_true(_mode.begin_walls(SimGrid.Segment.DOORWAY))

@@ -836,6 +836,30 @@ an active edit/panel/selection first, or opens Settings when none is active.
   Cutaway and Down lower every interior segment; a lowered doorway keeps a
   post stub at each end and a floor threshold, and a lowered window shows a
   Slate blue glass strip instead of the dark cap, so cycling reads there too.
+- **Back doors (FK-099, #187).** The Doorway tool can put a back door on an
+  outer face at the back or side (`WallRules.back_door_side`: not the street
+  side, inferred from the entry cells), using the saved doorway segment kind
+  and price. It opens that shell cell for staff and deliveries without
+  changing terrain or customer entry cells: `SimGrid.is_back_door(cell)`. The
+  cell is never guest-walkable: solid on the guest layer, refused by
+  `is_guest_walkable`, `guest_step_ok` and `find_guest_path`, and any back
+  door turns the guest layer on (`has_guest_limits()`), staff rooms or not, so
+  `RoomRules.guest_reachable` agrees, and no seat may stand in it
+  (`DiningSeats`). A door whose cell has only its own floor cell as a walkable
+  neighbour does not count as an interior segment, so such a shop keeps the
+  engine's plain paths (`_solve`); removing a door that is an item's work spot
+  is refused as a blocked work spot. Removing the door restores the wall;
+  floor edits derive its role again (bought floor behind it makes it an
+  interior doorway, selling the floor makes it a back door again).
+  `WallRules.delivery_cell(grid, target)` returns a reachable inside receiving
+  cell, with stable segment-order choice and a street-entry fallback, or
+  `NO_CELL` when neither route reaches the target. The view hides the shell
+  box, draws the Kenney `doorwayOpen` frame (posts only when lowered) and a
+  floor tile in the floor material. This is the entrance foundation only:
+  accepted instant morning orders, daytime delivery scheduling, paid pending
+  orders, stock and capacities are unchanged. Delivery people, crates and
+  staff carrying are the remaining #187 integration, and must be tested
+  through actual queued tasks and execution.
 - **Floor expansion (FK-080)** builds on this: grid lines keep their keys,
   so an outer-face window becomes an interior window when the shell cell
   behind it turns into floor (see the next section).
