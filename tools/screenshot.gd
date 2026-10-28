@@ -348,7 +348,7 @@ func _initialize() -> void:
 	if "use_saves" in _main:
 		_main.set("use_saves", false)
 	if (_report_requested or _milestone_review or _diner_review or _expand == "shop" or not _rooms.is_empty() \
-			or _floors_review) \
+			or _floors_review or _assign_owner) \
 			and "new_game_seed_override" in _main:
 		_main.set("new_game_seed_override", 1)
 	root.add_child(_main)
