@@ -47,7 +47,7 @@ static func usable_cells(grid: SimGrid, table: PlacedItem, from_cell: Vector2i =
 		if usable.has(seat) or not grid.is_walkable(seat):
 			continue
 		for entry: Vector2i in starts:
-			if grid.is_walkable(entry) and grid.is_reachable(entry, seat):
+			if grid.is_walkable(entry) and grid.is_guest_reachable(entry, seat):
 				usable.append(seat)
 				break
 	return usable

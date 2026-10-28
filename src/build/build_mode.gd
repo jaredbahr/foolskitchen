@@ -5,7 +5,8 @@ extends RefCounted
 
 ## WALLS is the Walls tool (FK-070): drag along grid lines, click a segment.
 ## FLOOR is the Floor tool (FK-080): drag a rectangle of lot cells.
-enum State { INACTIVE, IDLE, MOVE, BUY, WALLS, FLOOR }
+## ROOMS is the Rooms tool (FK-101): drag a rectangle to paint a room type.
+enum State { INACTIVE, IDLE, MOVE, BUY, WALLS, FLOOR, ROOMS }
 ## What a click on placed furniture does while IDLE (FK-085, Sims-style):
 ## HAND picks it up to move or rotate, EYEDROPPER starts buying another of
 ## it (in its colour), SELL sells it straight away.
@@ -41,6 +42,11 @@ var floor_hover: Vector2i = SimGrid.NO_CELL
 var floor_dragging: bool = false
 var floor_drag_start: Vector2i = Vector2i.ZERO
 var floor_removing: bool = false
+## Rooms tool: the room being painted (SimGrid.Room), the hovered cell and the drag.
+var room_kind: int = SimGrid.Room.DINING
+var room_hover: Vector2i = SimGrid.NO_CELL
+var room_dragging: bool = false
+var room_drag_start: Vector2i = Vector2i.ZERO
 ## Floor checks by [rect, removing] for the current topology/books (a check
 ## costs ~15 ms); cleared by refresh(), topology signals and commits.
 var _floor_checks: Dictionary = {}
@@ -56,6 +62,7 @@ var _buy_command: Callable
 var _sell_command: Callable
 var _walls_command: Callable
 var _floor_command: Callable
+var _rooms_command: Callable
 var _committing: bool = false
 var _topology_dirty: bool = false
 
@@ -64,7 +71,8 @@ var _topology_dirty: bool = false
 ## its clock was replaced. Old signal sources are detached before new ones bind.
 func bind_session(editor: ShopEditor, world: SimWorld, content: ContentDB,
 		move_command: Callable, buy_command: Callable, sell_command: Callable,
-		walls_command: Callable = Callable(), floor_command: Callable = Callable()) -> void:
+		walls_command: Callable = Callable(), floor_command: Callable = Callable(),
+		rooms_command: Callable = Callable()) -> void:
 	if _committing:
 		return
 	_disconnect_sources()
@@ -79,6 +87,7 @@ func bind_session(editor: ShopEditor, world: SimWorld, content: ContentDB,
 	_sell_command = sell_command
 	_walls_command = walls_command
 	_floor_command = floor_command
+	_rooms_command = rooms_command
 	_clear_ghost(State.INACTIVE)
 	committed_warning_ids.clear()
 	committed_seat_warnings.clear()
@@ -276,7 +285,11 @@ func cancel_ghost() -> bool:
 		floor_dragging = false
 		_recheck_floor()
 		changed.emit()
-	elif has_ghost() or state == State.WALLS or state == State.FLOOR:
+	elif state == State.ROOMS and room_dragging:
+		room_dragging = false
+		_recheck_rooms()
+		changed.emit()
+	elif has_ghost() or state == State.WALLS or state == State.FLOOR or state == State.ROOMS:
 		_clear_ghost(State.IDLE)
 		changed.emit()
 	else:
@@ -390,6 +403,8 @@ func refresh() -> void:
 		_recheck_walls()
 	elif state == State.FLOOR:
 		_recheck_floor()
+	elif state == State.ROOMS:
+		_recheck_rooms()
 	elif state == State.IDLE:
 		_recheck_hover()
 	if before != presentation_state():
@@ -409,7 +424,7 @@ func warning_ids() -> Array[int]:
 
 ## A ghost, wall run or floor drag is being checked against the live shop.
 func _proposal_active() -> bool:
-	return has_ghost() or state == State.WALLS or state == State.FLOOR
+	return has_ghost() or state == State.WALLS or state == State.FLOOR or state == State.ROOMS
 
 
 func seat_warnings() -> Dictionary[int, String]:
@@ -445,7 +460,8 @@ func presentation_state() -> Dictionary:
 		"wall_cost": current_check.cost, "wall_refund": current_check.refund,
 		"floor_cells": floor_proposal(), "floor_removing": floor_removing,
 		"floor_dragging": floor_dragging, "lot": lot_rect(), "lot_open": lot_open_cells(),
-		"tool": int(tool), "hover_item_id": hover_item_id}
+		"tool": int(tool), "hover_item_id": hover_item_id,
+		"room_kind": room_kind, "room_cells": room_proposal(), "room_dragging": room_dragging}
 
 
 func _available() -> bool:
@@ -501,6 +517,8 @@ func _clear_ghost(next_state: State) -> void:
 	floor_hover = SimGrid.NO_CELL
 	floor_dragging = false
 	floor_removing = false
+	room_hover = SimGrid.NO_CELL
+	room_dragging = false
 
 
 func _finish_command(accepted: bool, previous_check: EditCheck, fallback_reason: String) -> void:
@@ -828,6 +846,120 @@ static func _rect_cells(rect: Rect2i) -> Array[Vector2i]:
 		for x: int in range(rect.position.x, rect.end.x):
 			out.append(Vector2i(x, y))
 	return out
+
+
+# --- Rooms tool (FK-101) -------------------------------------------------------
+
+## Enters the Rooms tool: a drag paints `kind` (SimGrid.Room) onto floor cells.
+func begin_rooms(kind: int) -> bool:
+	if not _can_interact() or not _rooms_command.is_valid() \
+			or kind < SimGrid.Room.DINING or kind > SimGrid.Room.STORAGE:
+		return false
+	_clear_ghost(State.ROOMS)
+	room_kind = kind
+	_recheck_rooms()
+	changed.emit()
+	return true
+
+
+func rooms_pointer(cell: Vector2i) -> void:
+	if state != State.ROOMS or not _can_interact():
+		return
+	if cell == room_hover and not _topology_dirty:
+		return
+	room_hover = cell
+	if _topology_dirty:
+		_refresh_committed()
+	_recheck_rooms()
+	changed.emit()
+
+
+func rooms_press(cell: Vector2i) -> bool:
+	if state != State.ROOMS or not _can_interact():
+		return false
+	room_dragging = true
+	room_drag_start = cell
+	room_hover = cell
+	_recheck_rooms()
+	changed.emit()
+	return true
+
+
+## Ends a drag: paints the room onto the dragged rectangle's floor.
+func rooms_release(cell: Vector2i) -> bool:
+	if state != State.ROOMS or not room_dragging or not _can_interact():
+		return false
+	room_hover = cell
+	_recheck_rooms()
+	room_dragging = false
+	if not current_check.ok or current_check.rooms.is_empty():
+		changed.emit()
+		return false
+	var previous_check: EditCheck = _editor.last_check
+	var proposal: Dictionary[Vector2i, int] = current_check.rooms.duplicate()
+	_committing = true
+	var answer: Variant = _rooms_command.call(proposal)
+	var accepted: bool = answer is bool and answer
+	_refresh_committed()
+	if not accepted:
+		var result: EditCheck = _editor.last_check
+		current_check = result if result != previous_check and not result.ok \
+			else EditCheck.new(false, "The change was refused; try again")
+	_committing = false
+	if _clock.phase != _phase or not _editor.can_edit():
+		_phase = _clock.phase
+		_clear_ghost(State.INACTIVE)
+	elif accepted:
+		_recheck_rooms()
+	changed.emit()
+	return accepted
+
+
+## The dragged rectangle (or the hovered cell).
+func room_rect() -> Rect2i:
+	if room_hover == SimGrid.NO_CELL:
+		return Rect2i()
+	var start: Vector2i = room_drag_start if room_dragging else room_hover
+	var low: Vector2i = start.min(room_hover)
+	return Rect2i(low, (start.max(room_hover) - low) + Vector2i.ONE)
+
+
+## The floor cells of the rectangle, row-major (what a paint would cover).
+func room_proposal() -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	if state != State.ROOMS or _grid == null:
+		return out
+	for cell: Vector2i in _rect_cells(room_rect()):
+		if _grid.terrain(cell) == SimGrid.Terrain.FLOOR:
+			out.append(cell)
+	return out
+
+
+## One player sentence: what the drag paints, or why it can't.
+func rooms_summary() -> String:
+	if state != State.ROOMS:
+		return ""
+	var name: String = RoomRules.label(room_kind)
+	if not current_check.ok and not current_check.why.is_empty():
+		return current_check.why
+	var count: int = current_check.rooms.size()
+	if count == 0:
+		return "Drag over the floor to paint it as %s" % name
+	return "Paint %d tile%s as %s (free)" % [count, "" if count == 1 else "s", name]
+
+
+func _recheck_rooms() -> void:
+	if state != State.ROOMS or _editor == null:
+		return
+	var cells: Array[Vector2i] = room_proposal()
+	# Nothing proposed (off the floor, or hovering a tile that is already this
+	# room): an empty refusal keeps the shop's own warnings showing.
+	if cells.is_empty():
+		current_check = EditCheck.new(false, "")
+		return
+	current_check = _editor.check_rooms(_editor.room_changes(cells, room_kind))
+	if not room_dragging and not current_check.ok and current_check.why == RoomRules.ALREADY:
+		current_check = EditCheck.new(false, "")
 
 
 func _on_cells_changed(_cells: Array[Vector2i]) -> void:

@@ -9,6 +9,10 @@ var _grid: SimGrid
 var _tuning: CleanlinessTuning
 var _rng: RandomNumberGenerator
 var _spots: Dictionary[Vector2i, bool] = {}
+## Restroom upkeep (FK-101): toilets used since the last tidy. Kept apart from
+## floor dirt: never counted in the dirt fraction, patience, reviews, the day's
+## worst band or the floor spot cap, and never drawn.
+var _restroom_spots: Dictionary[Vector2i, bool] = {}
 var _worst_today: int = 0
 
 
@@ -59,13 +63,38 @@ func try_spawn_on_arrival(entry: Vector2i) -> Vector2i:
 	return chosen
 
 
+## A restroom use (FK-101) leaves its toilet needing a tidy on the use cell,
+## without a random draw. False when the cell can't take one or already has.
+func add_use_spot(cell: Vector2i) -> bool:
+	if not _configured() or _restroom_spots.has(cell) or _grid.terrain(cell) != SimGrid.Terrain.FLOOR \
+			or not _grid.is_walkable(cell):
+		return false
+	_restroom_spots[cell] = true
+	return true
+
+
+func has_restroom_spot(cell: Vector2i) -> bool:
+	return _restroom_spots.has(cell)
+
+
+## Restroom tidy jobs, row-major.
+func restroom_spots() -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+	result.assign(_restroom_spots.keys())
+	result.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+		return a.y < b.y or (a.y == b.y and a.x < b.x))
+	return result
+
+
 ## Cleaning removes only the requested spot. It cannot erase the day's worst.
 func clear_spot(cell: Vector2i) -> bool:
-	return _spots.erase(cell)
+	var restroom: bool = _restroom_spots.erase(cell)
+	return _spots.erase(cell) or restroom
 
 
+## A floor spot or a restroom tidy job on this cell.
 func has_spot(cell: Vector2i) -> bool:
-	return _spots.has(cell)
+	return _spots.has(cell) or _restroom_spots.has(cell)
 
 
 func spot_count() -> int:
@@ -122,6 +151,7 @@ func worst_category_label() -> String:
 ## End-of-day report reads worst before the next morning resets it.
 func tidy_overnight() -> void:
 	_spots.clear()
+	_restroom_spots.clear()
 	_worst_today = 0
 
 

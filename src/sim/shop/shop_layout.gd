@@ -25,6 +25,38 @@ extends Resource
 ## Floor cells the player has bought (FK-080), in grid coordinates. The outer
 ## walls are derived from these by ShopFootprint; empty is the starting shell.
 @export var floor_cells: Array[Vector2i] = []
+## Rooms (FK-101), authored like `rows`, one character per cell: 'K' kitchen,
+## 'R' restroom, 'S' storage; anything else (or a missing row) is Dining.
+## Only floor cells take a room.
+@export var room_rows: PackedStringArray = []
+## Saved rooms (cell -> SimGrid.Room, Dining cells left out). Used instead of
+## room_rows when rooms_explicit is set (a loaded save).
+@export var room_cells: Dictionary[Vector2i, int] = {}
+@export var rooms_explicit: bool = false
+## Set on an older save whose kitchen could not be inferred (a seat was in
+## or behind it): the morning asks the player to mark their kitchen.
+var rooms_unmarked: bool = false
 ## Built-in dry storage (FK-087): the back-room pantry the shop comes with,
 ## in units of dry (shelf) ingredients. Placed storage shelves add to it.
 @export var pantry_units: int = 0
+
+
+## The authored rooms from room_rows (cell -> SimGrid.Room, Dining left out).
+func authored_rooms() -> Dictionary[Vector2i, int]:
+	var out: Dictionary[Vector2i, int] = {}
+	for y: int in room_rows.size():
+		var row: String = room_rows[y]
+		for x: int in row.length():
+			match row[x]:
+				"K":
+					out[Vector2i(x, y)] = SimGrid.Room.KITCHEN
+				"R":
+					out[Vector2i(x, y)] = SimGrid.Room.RESTROOM
+				"S":
+					out[Vector2i(x, y)] = SimGrid.Room.STORAGE
+	return out
+
+
+## The rooms this layout builds with: the saved ones, else the authored ones.
+func room_map() -> Dictionary[Vector2i, int]:
+	return room_cells.duplicate() if rooms_explicit else authored_rooms()

@@ -44,11 +44,17 @@ func set_destination(grid: SimGrid, goal: Vector2i) -> bool:
 	var old_next := next_cell()
 	_goal = goal
 	needs_repath = false
-	path = grid.find_path(cell, goal)
+	path = plan_path(grid, cell, goal)
 	path_index = 1
 	if path.size() < 2 or path[1] != old_next:
 		move_progress = 0.0
 	return not path.is_empty()
+
+
+## The route this agent would walk. Guests override it to stay out of
+## staff-only rooms (FK-101); staff path everywhere.
+func plan_path(grid: SimGrid, from_cell: Vector2i, to_cell: Vector2i) -> Array[Vector2i]:
+	return grid.find_path(from_cell, to_cell)
 
 
 ## Re-plans to the current goal (after the layout changed).

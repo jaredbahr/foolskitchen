@@ -96,7 +96,14 @@ static func score_visit(visit: ReviewVisit, tuning: ReviewTuning, vibe_tuning: V
 	var quality_bonus: float = 0.0
 	if is_finite(visit.quality) and is_finite(visit.quality_weight) and visit.quality_weight > 0.0:
 		quality_bonus = (clampf(visit.quality, 0.0, 1.0) - 0.5) * visit.quality_weight
-	return roundi(clampf(5.0 - penalty + vibe_bonus + quality_bonus, 1.0, 5.0))
+	# Restrooms (FK-101): both terms are exactly zero in a shop that has none
+	# and is below the seat threshold.
+	var restroom: float = _bounded(visit.restroom_bonus, 1.0) - _bounded(visit.restroom_penalty, 4.0)
+	return roundi(clampf(5.0 - penalty + vibe_bonus + quality_bonus + restroom, 1.0, 5.0))
+
+
+static func _bounded(value: float, maximum: float) -> float:
+	return clampf(value, 0.0, maximum) if is_finite(value) else 0.0
 
 
 ## High ratings and visits without a substantial single complaint get a
@@ -106,12 +113,13 @@ static func cause_of(visit: ReviewVisit, tuning: ReviewTuning, vibe_tuning: Vibe
 		return &""
 	if not visit.served:
 		return &"never_served"
-	var causes: Array[StringName] = [&"slow_seating", &"slow_food", &"too_pricey", &"dirty_floor"]
+	var causes: Array[StringName] = [&"slow_seating", &"slow_food", &"too_pricey", &"dirty_floor", &"no_restroom"]
 	var penalties: Array[float] = [
 		_unit(visit.queue_wait_fraction) * tuning.queue_wait_weight,
 		_unit(visit.food_wait_fraction) * tuning.food_wait_weight,
 		_unit(visit.price_ratio - 1.0) * tuning.overprice_weight,
 		_unit(visit.dirt_fraction) * tuning.dirt_weight,
+		_bounded(visit.restroom_penalty, 4.0),
 	]
 	var best: int = -1
 	var largest: float = 0.0
@@ -119,6 +127,10 @@ static func cause_of(visit: ReviewVisit, tuning: ReviewTuning, vibe_tuning: Vibe
 		if penalties[index] > largest:
 			largest = penalties[index]
 			best = index
+	# A guest who needed a restroom and couldn't use one says so when that was
+	# their biggest complaint, even on a good day (FK-101). Zero otherwise.
+	if best == causes.size() - 1:
+		return &"restroom_busy" if visit.restroom_was_busy else &"no_restroom"
 	if score_visit(visit, tuning, vibe_tuning) >= 4 or largest < tuning.positive_penalty_threshold:
 		return &"great_value" if is_finite(visit.price_ratio) and visit.price_ratio < 0.9 else &"lovely_place"
 	if best >= 0:
