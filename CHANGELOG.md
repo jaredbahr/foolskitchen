@@ -80,7 +80,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
-- Seat-fit review tools identify the actual backrest polygons in joined kit furniture and verify their source and native geometry. Existing clipping exceptions remain visible. (#0)
+- Seat-fit review tools identify the actual backrest polygons in joined kit furniture and verify their source and native geometry. Existing clipping exceptions remain visible. (#193)
 - The five-day soak tests now start their new game from a fixed seed instead of the clock, so they play the same guests on every run and stop failing at random. (#176)
 - The roadmap now has an idea backlog (regulars, patio, makeover jobs, staff drama, more sites and more) so liked ideas aren't lost. (#174)
 - Design decision D24: a second restaurant unlocks at Tier 3 once you hire a manager to run the first, and shops you're away from keep earning based on the manager's skill. (#165)
