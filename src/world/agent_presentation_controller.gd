@@ -31,6 +31,7 @@ class Frame extends RefCounted:
 	## Delivery crates in hand (0 = none); the view stacks this many boxes.
 	var crate_count: int = 0
 	var seat_height: float = 0.0
+	var seated_lean_degrees: float = 0.0
 	var show_tray: bool = false
 	var mood_visible: bool = false
 	var mood_band: int = -1
@@ -46,7 +47,8 @@ class Frame extends RefCounted:
 
 ## Reuses the sim's next_cell/progress projection; never advances or re-paths.
 static func frame_for(agent: SimAgent, world: SimWorld, chair_seat_height: float = NOMINAL_CHAIR_SEAT_HEIGHT,
-		seated_forward_offset: float = 0.0, seated_facing: Vector3 = Vector3.ZERO) -> Frame:
+		seated_forward_offset: float = 0.0, seated_facing: Vector3 = Vector3.ZERO,
+		seated_lean_degrees: float = 0.0) -> Frame:
 	var frame: Frame = Frame.new()
 	frame.id = agent.id
 	frame.role = agent.role
@@ -66,6 +68,9 @@ static func frame_for(agent: SimAgent, world: SimWorld, chair_seat_height: float
 		frame.seated = _is_seated(customer, world)
 		if frame.seated:
 			frame.seat_height = maxf(chair_seat_height, 0.0) if is_finite(chair_seat_height) else 0.0
+			if is_finite(seated_lean_degrees) and seated_lean_degrees >= 0.0 \
+					and seated_lean_degrees <= ItemDef.MAX_SEATED_LEAN_DEGREES:
+				frame.seated_lean_degrees = seated_lean_degrees
 			frame.facing_direction = _item_center(world.grid.item(customer.table_item_id)) - start
 			var authored: Vector3 = Vector3(seated_facing.x, 0.0, seated_facing.z)
 			if authored.is_finite() and authored.length_squared() > 0.000001:
@@ -112,12 +117,13 @@ static func frame_for(agent: SimAgent, world: SimWorld, chair_seat_height: float
 ## Caller may supply actual per-person chair heights after resolving prop nodes.
 ## Order-independent nudges always start from fresh sim positions, never last frame.
 static func frames_for(agents: Array[SimAgent], world: SimWorld, chair_heights: Dictionary[int, float] = {},
-		seat_facings: Dictionary[int, Vector3] = {}, seat_offsets: Dictionary[int, float] = {}) -> Dictionary[int, Frame]:
+		seat_facings: Dictionary[int, Vector3] = {}, seat_offsets: Dictionary[int, float] = {},
+		seat_leans: Dictionary[int, float] = {}) -> Dictionary[int, Frame]:
 	var frames: Dictionary[int, Frame] = {}
 	var ids: Array[int] = []
 	for agent: SimAgent in agents:
 		frames[agent.id] = frame_for(agent, world, chair_heights.get(agent.id, NOMINAL_CHAIR_SEAT_HEIGHT),
-			seat_offsets.get(agent.id, 0.0), seat_facings.get(agent.id, Vector3.ZERO))
+			seat_offsets.get(agent.id, 0.0), seat_facings.get(agent.id, Vector3.ZERO), seat_leans.get(agent.id, 0.0))
 		ids.append(agent.id)
 	ids.sort()
 	# Final authored seated positions are immutable blockers, including higher IDs.
@@ -195,7 +201,7 @@ static func apply(frame: Frame, view: PersonView, playback_speed: float) -> bool
 	if not view.set_look(frame.role, frame.id, frame.customer_type):
 		return false
 	if not view.set_pose(frame.moving, frame.seated, frame.carrying, frame.working, frame.seat_height,
-			frame.bending):
+			frame.seated_lean_degrees, frame.bending):
 		return false
 	frame.head_anchor = view.head_anchor_position()
 	frame.mood_anchor = frame.head_anchor + Vector3.UP * MOOD_CLEARANCE

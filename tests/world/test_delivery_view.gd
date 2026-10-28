@@ -77,6 +77,15 @@ func test_the_back_door_is_a_kenney_door_with_a_path_outside() -> void:
 	assert_almost_eq(rad_to_deg(absf(leaf.rotation.y)), WallSegmentView.DOOR_OPEN_DEGREES, 0.01)
 	var open: Vector3 = leaf.global_transform * Vector3(0.4, 0.5, 0.0)
 	assert_true(open.x < shut.x - 0.2, "it swings into the shop (west, away from the east door)")
+	# Open, the leaf lies against its jamb: nothing of it in the 0.5 m opening.
+	var leaf_bounds: AABB = leaf.global_transform * (leaf as MeshInstance3D).get_aabb()
+	var center_z: float = GridMath.cell_to_world(DOOR).z
+	var half: float = GridMath.CELL_SIZE * 0.5
+	assert_true(leaf_bounds.position.z >= center_z + half - 0.001 or leaf_bounds.end.z <= center_z - half + 0.001,
+		"clear of the opening: %s" % leaf_bounds)
+	_view.segment_view.set_door_open(DOOR, 0.0)
+	assert_true((leaf.global_transform * Vector3(0.4, 0.5, 0.0)).is_equal_approx(shut), "shuts exactly where it was")
+	_view.segment_view.set_door_open(DOOR, 1.0)
 	_view.segment_view.set_door_open(DOOR, 0.0)
 	var tiles: Array[PropView] = _view.segment_view.path_tiles()
 	assert_eq(tiles.size(), 2, "pavement over the four approach cells")

@@ -201,6 +201,22 @@ func test_out_of_range_or_nonfinite_seated_forward_offsets_are_reported() -> voi
 		assert_true(_has_error(errors, "seated_forward_offset must be finite and between 0 and 0.05 m"), str(offset))
 
 
+func test_seated_lean_defaults_to_imported_pose_and_accepts_bounded_articulation() -> void:
+	var definition: ItemDef = _station()
+	assert_almost_eq(definition.seated_lean_degrees, 0.0)
+	for angle: float in [0.0, 7.5, ItemDef.MAX_SEATED_LEAN_DEGREES]:
+		definition.seated_lean_degrees = angle
+		assert_eq(ContentDB.validate_definitions([], [], [definition]), PackedStringArray())
+
+
+func test_seated_lean_rejects_nonfinite_backward_and_excessive_articulation() -> void:
+	for angle: float in [-0.01, ItemDef.MAX_SEATED_LEAN_DEGREES + 0.000001, INF, -INF, NAN]:
+		var definition: ItemDef = _station()
+		definition.seated_lean_degrees = angle
+		var errors: PackedStringArray = ContentDB.validate_definitions([], [], [definition])
+		assert_true(_has_error(errors, "seated_lean_degrees must be finite and between 0 and 35 degrees"))
+
+
 func test_null_top_level_definitions_and_quality_bounds_are_reported() -> void:
 	var recipe_def: RecipeDef = _recipe()
 	recipe_def.base_quality = 1.1

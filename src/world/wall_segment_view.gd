@@ -26,8 +26,11 @@ const WINDOW_SCENE: PackedScene = preload("res://assets/kenney/furniture/wallWin
 ## swings into the shop as the delivery person (or staff) pass; ShopView sets
 ## how far from where people are (set_door_open), view only.
 const BACK_DOOR_SCENE: PackedScene = preload("res://assets/kenney/furniture/doorway.glb")
-## How far a fully open leaf turns (degrees): flat against the jamb.
-const DOOR_OPEN_DEGREES: float = 92.0
+## How far a fully open leaf turns (degrees): square to the wall.
+const DOOR_OPEN_DEGREES: float = 90.0
+## As it opens the leaf slides this far onto its hinge-side jamb (metres), so
+## an open leaf is clear of the opening and nobody passing ever touches it.
+const DOOR_OPEN_SLIDE: float = 0.08
 ## Lowered (cutaway) windows show a glass-blue strip instead of the dark cap,
 ## so cycling wall -> window reads in the default view. Palette swatch only.
 const GLASS_SWATCH: SwatchDef = preload("res://data/swatches/slate_blue.tres")
@@ -44,7 +47,8 @@ var _glass_material: StandardMaterial3D
 var _painted: Array[MeshInstance3D] = []
 var _panes: Array[PropView] = []
 var _pane_bounds: AABB = AABB()
-## Back-door leaves by shell cell: {leaf: Node3D, sign: float} (sign turns it inward).
+## Back-door leaves by shell cell: {leaf, sign (turns it inward), base
+## (shut position), slide (fully open offset, in the leaf's parent space)}.
 var _leaves: Dictionary[Vector2i, Dictionary] = {}
 ## Pavement of the paths outside back doors (their tints are released on clear).
 var _paths: Array[PropView] = []
@@ -158,7 +162,8 @@ func _build_shell_door(cell: Vector2i, side: Vector2i, lowered: bool) -> void:
 		var leaf: Node3D = door.find_child("door", true, false) as Node3D
 		if leaf != null:
 			leaf.set_meta(&"door_cell", cell)
-			_leaves[cell] = {"leaf": leaf, "sign": _inward_sign(root, leaf, side)}
+			_leaves[cell] = {"leaf": leaf, "sign": _inward_sign(root, leaf, side), "base": leaf.position,
+				"slide": _hinge_slide(root, leaf)}
 
 
 ## The path a delivery walks up to a back door (FK-099): the street's own
@@ -212,7 +217,9 @@ func set_door_open(cell: Vector2i, amount: float) -> void:
 	if not _leaves.has(cell):
 		return
 	var leaf: Node3D = _leaves[cell]["leaf"] as Node3D
-	leaf.rotation.y = float(_leaves[cell]["sign"]) * deg_to_rad(DOOR_OPEN_DEGREES) * clampf(amount, 0.0, 1.0)
+	var open: float = clampf(amount, 0.0, 1.0)
+	leaf.rotation.y = float(_leaves[cell]["sign"]) * deg_to_rad(DOOR_OPEN_DEGREES) * open
+	leaf.position = (_leaves[cell]["base"] as Vector3) + (_leaves[cell]["slide"] as Vector3) * open
 
 
 ## +1 or -1: the turn of the leaf about its hinge that moves its free edge into
@@ -228,6 +235,17 @@ static func _inward_sign(root: Node3D, leaf: Node3D, side: Vector2i) -> float:
 	var shut_edge: Vector3 = _to_ancestor(leaf, root) * Vector3(0.4, 0.0, 0.0)
 	leaf.rotation.y = saved
 	return 1.0 if (open_edge - shut_edge).dot(local_inward) > 0.0 else -1.0
+
+
+## DOOR_OPEN_SLIDE along the wall toward the leaf's hinge, in the leaf's
+## parent space (the kit model sits under a scaled, turned Art node).
+static func _hinge_slide(root: Node3D, leaf: Node3D) -> Vector3:
+	var parent: Node3D = leaf.get_parent() as Node3D
+	var to_root: Transform3D = _to_ancestor(parent, root)
+	var hinge: Vector3 = to_root * leaf.position
+	# Local +X runs along the wall; the hinge is on the side its x points to.
+	var along: Vector3 = Vector3(signf(hinge.x), 0.0, 0.0) * DOOR_OPEN_SLIDE
+	return to_root.basis.inverse() * along
 
 
 static func _to_ancestor(node: Node3D, ancestor: Node3D) -> Transform3D:

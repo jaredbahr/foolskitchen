@@ -91,3 +91,10 @@ func test_pose_priority_keeps_seats_and_carried_meals_readable() -> void:
 		assert_false(String(clip).contains("wheelchair"))
 		assert_false(String(clip).contains("attack"))
 		assert_ne(clip, &"die")
+
+
+func test_seated_lean_validation_uses_the_shared_finite_presentation_limit() -> void:
+	for degrees: float in [0.0, 7.5, ItemDef.MAX_SEATED_LEAN_DEGREES] as Array[float]:
+		assert_true(PersonPresentation.seated_lean_valid(degrees))
+	for degrees: float in [-0.001, ItemDef.MAX_SEATED_LEAN_DEGREES + 0.001, NAN, INF, -INF] as Array[float]:
+		assert_false(PersonPresentation.seated_lean_valid(degrees))

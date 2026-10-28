@@ -12,7 +12,8 @@ const CRATE_SPREAD: float = 0.12
 const CRATES_PER_STACK: int = 3
 ## A back door is open while someone going through is within this distance
 ## of it (fully open within DOOR_OPEN_NEAR), all view only.
-const DOOR_OPEN_FAR: float = 1.25
+## The ramp is 1.25 m, about one second of walking at 1x.
+const DOOR_OPEN_FAR: float = 1.75
 const DOOR_OPEN_NEAR: float = 0.5
 const HEIGHTS: Dictionary[int, float] = {
 	ItemDef.Category.TABLE: 0.75, ItemDef.Category.CHAIR: 0.45,
@@ -624,7 +625,7 @@ func _process(_delta: float) -> void:
 
 func _sync_agents() -> void:
 	var frames: Dictionary[int, AgentPresentationController.Frame] = AgentPresentationController.frames_for(
-		world.agents, world, _dining_seat_heights(), _dining_seat_facings(), _dining_seat_offsets())
+		world.agents, world, _dining_seat_heights(), _dining_seat_facings(), _dining_seat_offsets(), _dining_seat_leans())
 	var playback_speed: float = _agent_playback_speed()
 	var alive: Dictionary[int, bool] = {}
 	for agent: SimAgent in world.agents:
@@ -945,6 +946,20 @@ func _dining_seat_offsets() -> Dictionary[int, float]:
 		if definition != null:
 			offsets[guest.id] = definition.seated_forward_offset
 	return offsets
+
+
+## Resolve the same physical furnishing used for seat height and forward offset.
+func _dining_seat_leans() -> Dictionary[int, float]:
+	var leans: Dictionary[int, float] = {}
+	for agent: SimAgent in world.agents:
+		var guest: CustomerAgent = agent as CustomerAgent
+		if guest == null:
+			continue
+		var source: PlacedItem = world.grid.item(world.grid.dining_furnishing_id(guest.seat_cell))
+		var definition: ItemDef = source.def as ItemDef if source != null else null
+		if definition != null:
+			leans[guest.id] = definition.seated_lean_degrees
+	return leans
 
 
 func _dining_seat_facing(guest: CustomerAgent) -> Vector3:

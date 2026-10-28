@@ -3,11 +3,12 @@ extends RefCounted
 ## Read-only native ShopView fixture. Production code chooses seat position,
 ## height and facing; this harness never compensates for clipping itself.
 
-const VIEW: PackedScene = preload("res://src/world/shop_view.tscn")
 const GEOMETRY: GDScript = preload("res://tools/seated_head_geometry.gd")
 const SIT_FRACTIONS: Array[float] = [0.0, 0.37, 0.91]
-## Director 6404820766: unchanged kit items only. Every listed item must retain
+## Director 6404820766: kit failures only. Every listed item must retain
 ## at least one measured physical violation; unknown classification is not proof.
+## Director 6460103763: Jared accepts chair's remaining overlap with a small
+## 10–15 degree lean. It still needs measured geometry, never a skipped sample.
 const KNOWN_KIT_FAILURE_IDS: PackedStringArray = ["bench", "chair", "cushioned_bench", "lounge_chair",
 	"modern_chair", "modern_frame_chair", "rounded_chair", "table_2", "table_4", "wooden_chair"]
 
@@ -49,6 +50,12 @@ static func _expect_item_cases(expected: Dictionary[String, bool], definition: I
 
 static func _case_key(item: String, turns: int, cell: Vector2i, model: String, fraction: float) -> String:
 	return "%s turns=%d cell=%d,%d model=%s sit_fraction=%.9f" % [item, turns, cell.x, cell.y, model, fraction]
+
+
+## Cached skinning and native parity must describe the same articulated pose.
+## Variant bytes retain float identity instead of rounding authored leans.
+static func _pose_key(model: StringName, time: float, lean_degrees: float) -> String:
+	return String(model) + ":" + var_to_bytes([time, lean_degrees]).hex_encode()
 
 
 ## Count identities independently of returned rows: an aborted item sampler or
@@ -131,7 +138,9 @@ static func _sample_item(parent: Node, definition: ItemDef, turns: int, native_b
 		if not tables[index].reserve(cell, guest.id):
 			errors.append("%s rotation %d: table did not project/reserve the native seat" % [definition.id, turns])
 		guests.append(guest)
-	var view: ShopView = VIEW.instantiate() as ShopView
+	# Load after autoload initialization; entry-script scene preloads retained
+	# the scene/script resource graph at diagnostic shutdown on current main.
+	var view: ShopView = (load("res://src/world/shop_view.tscn") as PackedScene).instantiate() as ShopView
 	parent.add_child(view)
 	view.set_process(false)
 	view.show_world(world)
@@ -153,7 +162,8 @@ static func _sample_item(parent: Node, definition: ItemDef, turns: int, native_b
 					person._player.seek(animation.length * fraction, true)
 					# Bone pose queries calculate dirty transforms synchronously.
 					person._skeleton.force_update_all_bone_transforms()
-					var pose_key: String = "%s:%.9f" % [person.model_name(), animation.length * fraction]
+					var pose_key: String = _pose_key(person.model_name(), animation.length * fraction,
+						person.current_seated_lean_degrees())
 					if not poses.has(pose_key):
 						var posed: Dictionary = GEOMETRY.skin_vertices(GEOMETRY.head_mesh(person), person._skeleton)
 						if not String(posed["error"]).is_empty():
@@ -201,6 +211,7 @@ static func _sample_item(parent: Node, definition: ItemDef, turns: int, native_b
 					sample["sit_duration"] = animation.length
 					sample["seat_height"] = person._seat_height
 					sample["seated_forward_offset"] = definition.seated_forward_offset
+					sample["seated_lean_degrees"] = person.current_seated_lean_degrees()
 					var zero: Vector2i = GridMath.rotate_cell(Vector2i.ZERO, definition.footprint, turns)
 					var front: Vector2i = GridMath.rotate_cell(Vector2i.UP, definition.footprint, turns) - zero
 					var palm: Vector3 = person.to_global(person.carry_anchor_position())

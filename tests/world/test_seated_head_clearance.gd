@@ -20,12 +20,18 @@ func test_every_catalogue_seat_is_measured_and_only_explicit_kit_failures_are_al
 	assert_eq(report["failures"], 0)
 	assert_eq((report["known_kit_failures"] as Array).size(), CATALOGUE.KNOWN_KIT_FAILURE_IDS.size())
 	var coverage: Dictionary[String, bool] = {}
+	var authored_chair_cases: int = 0
+	assert_true(CATALOGUE.KNOWN_KIT_FAILURE_IDS.has("chair"), "Director 6460103763 accepts measured remaining overlap with a small lean")
 	for sample: Dictionary in report["samples"]:
 		var context: String = "%s %s turns=%d cell=%s sit_t=%.5f" % [sample["item"], sample["model"], sample["turns"], sample["seat_cell"], sample["sit_time"]]
 		assert_eq(sample.get("error", "missing result"), "", context)
 		if not String(sample.get("error", "missing result")).is_empty():
 			continue
 		coverage[String(sample["item"])] = true
+		if sample["item"] == "chair":
+			authored_chair_cases += 1
+			assert_true(sample["known_kit_failure"], context)
+			assert_true(float(sample["seated_lean_degrees"]) >= 10.0 and float(sample["seated_lean_degrees"]) <= 15.0, context)
 		assert_true(int(sample["head_vertices"]) > 0, context)
 		assert_true(int(sample["seat_triangles"]) > 0, context)
 		assert_true(float(sample["facing_dot"]) > 0.9999, context + " faces its table")
@@ -46,11 +52,22 @@ func test_every_catalogue_seat_is_measured_and_only_explicit_kit_failures_are_al
 		if sample["item"] in ["diner_booth", "diner_stool"]:
 			assert_true(sample["hips_supported"], context)
 			assert_eq((sample["hip_support_points"] as Array).size(), 2, context)
+	assert_eq(authored_chair_cases, 96, "all eight looks, three sit times and four rotations are still measured")
 	for required: String in ["chair", "wooden_chair", "rounded_chair", "modern_chair", "modern_frame_chair",
 		"bar_stool", "square_bar_stool", "bench", "cushioned_bench", "lounge_chair", "diner_booth", "diner_stool", "table_2", "table_4"]:
 		assert_true(coverage.has(required), required + " was actually measured")
 	for finding: Dictionary in report["known_kit_failures"]:
 		assert_true(int(finding["physical_violation_samples"]) > 0, String(finding["item"]))
+
+
+func test_cached_head_vertices_and_native_parity_distinguish_seat_pose_variants() -> void:
+	var neutral: String = CATALOGUE._pose_key(&"character-female-e", 0.37, 0.0)
+	assert_eq(neutral, CATALOGUE._pose_key(&"character-female-e", 0.37, 0.0))
+	assert_ne(neutral, CATALOGUE._pose_key(&"character-female-e", 0.37, 10.0))
+	assert_ne(neutral, CATALOGUE._pose_key(&"character-female-e", 0.91, 0.0))
+	assert_ne(neutral, CATALOGUE._pose_key(&"character-female-a", 0.37, 0.0))
+	assert_ne(CATALOGUE._pose_key(&"character-female-e", 0.37, 10.0),
+		CATALOGUE._pose_key(&"character-female-e", 0.37, 10.000001))
 
 
 ## FK-083: every stool facing a serve-across counter piece is a seat, and the
@@ -229,6 +246,59 @@ func test_only_backrest_requires_point_zero_two_but_every_part_forbids_penetrati
 	assert_eq(result["head_vertices_inside_count"], 8)
 	assert_true(float(result["max_head_vertex_penetration"]) > 0.89)
 	assert_false(result["passes"])
+
+
+func test_audited_backrest_regions_keep_complete_joined_mesh_intrusion_checks() -> void:
+	var head: PackedVector3Array = _box_faces(Vector3(0, 0.6, 0), Vector3.ONE * 0.2)
+	var back: PackedVector3Array = _box_faces(Vector3(0, 0.6, 0.35), Vector3(0.8, 0.8, 0.1))
+	var arm: PackedVector3Array = _box_faces(Vector3(0, 0.49, 0), Vector3(0.4, 0.01, 0.4))
+	var joined: PackedVector3Array = back.duplicate()
+	joined.append_array(arm)
+	var part: Dictionary = _part("joined_kit_mesh", joined, true)
+	part["backrest_triangles"] = back
+	part["backrest_bounds"] = AABB(Vector3(-0.4, 0.2, 0.3), Vector3(0.8, 0.8, 0.1))
+	part["backrest_triangle_bounds"] = GEOMETRY._triangle_bounds(back)
+	var result: Dictionary = GEOMETRY.measure_surfaces(_unique_points(head), head, [part] as Array[Dictionary], "named_parts")
+	assert_true(result["passes"], "the nearby arm does not acquire a backrest-only clearance rule")
+	assert_almost_eq(float(result["backrest_clearance"]), 0.2, 0.000001)
+	assert_eq(result["seat_triangles"], joined.size() / 3, "every full-mesh triangle is still counted")
+	var crossing: PackedVector3Array = _box_faces(Vector3(0, 0.6, 0), Vector3(0.8, 0.8, 0.01))
+	joined = back.duplicate()
+	joined.append_array(crossing)
+	part = _part("joined_kit_mesh", joined, true)
+	part["backrest_triangles"] = back
+	part["backrest_bounds"] = AABB(Vector3(-0.4, 0.2, 0.3), Vector3(0.8, 0.8, 0.1))
+	part["backrest_triangle_bounds"] = GEOMETRY._triangle_bounds(back)
+	result = GEOMETRY.measure_surfaces(_unique_points(head), head, [part] as Array[Dictionary], "named_parts")
+	assert_false(result["passes"], "a non-backrest crossing cannot be omitted by the semantic selection")
+	assert_true(int(result["head_seat_surface_crossings"]) > 0)
+	assert_almost_eq(float(result["backrest_clearance"]), 0.2, 0.000001)
+
+
+func test_kit_backrest_classification_requires_every_expected_audited_mesh() -> void:
+	var chair: Node3D = preload("res://assets/props/chair.tscn").instantiate() as Node3D
+	var region: Dictionary = {"is_backrest": true, "backrest_identity": "audited-source-and-polygons"}
+	assert_eq(GEOMETRY._backrest_status(chair, [region] as Array[Dictionary]), "named_parts")
+	assert_eq(GEOMETRY._backrest_status(chair, [] as Array[Dictionary]), "unclassified_kit")
+	assert_eq(GEOMETRY._backrest_status(chair, [region, region] as Array[Dictionary]), "unclassified_kit")
+	region["backrest_identity"] = ""
+	assert_eq(GEOMETRY._backrest_status(chair, [region] as Array[Dictionary]), "unclassified_kit")
+	chair.free()
+
+
+func test_multi_seat_backrest_selection_keeps_the_guests_native_chair_and_all_other_meshes() -> void:
+	var own: Dictionary = {"backrest_identity": "own", "backrest_origin": Vector3(0, 0.3, 0.02), "is_backrest": true}
+	var opposite: Dictionary = {"backrest_identity": "other", "backrest_origin": Vector3(0, 0.3, 1.0), "is_backrest": true}
+	var table: Dictionary = {"path": "table", "is_backrest": false}
+	var parts: Array[Dictionary] = [own, opposite, table]
+	GEOMETRY._select_guest_backrest(parts)
+	assert_true(own["is_backrest"])
+	assert_false(opposite["is_backrest"])
+	assert_eq(parts.size(), 3, "semantic selection never removes other collision meshes")
+	opposite["backrest_origin"] = Vector3(0, 0.3, -0.02)
+	GEOMETRY._select_guest_backrest(parts)
+	assert_true(own["is_backrest"])
+	assert_true(opposite["is_backrest"], "exactly tied surfaces are retained conservatively")
 
 
 func test_unknown_backrest_does_not_invent_a_gap_or_waive_new_seat_failures() -> void:

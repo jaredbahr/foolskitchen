@@ -760,6 +760,22 @@ an active edit/panel/selection first, or opens Settings when none is active.
   finite and between 0 and 0.05, defaulting to zero. Presentation applies it
   along the authored seat facing before standing-person separation; simulation
   cells, reservations, random streams and save data do not move with it.
+  `ItemDef.seated_lean_degrees` separately authors a forward torso pose, finite
+  and between 0 and 35 degrees; zero preserves the imported sit pose. The
+  presenter's physical furnishing supplies it only after verified seat arrival.
+  PersonView keys a private duplicate of the sit clip at the native torso joint,
+  leaving root translation, sibling leg joints, shared models and scale alone.
+  Changing it re-seeks the same animation time, including while paused. Other
+  clips retain their source keys. Head-skinning and native-bake parity caches
+  include the applied lean as well as model and animation time. This mechanism
+  does not establish a seat's physical fit: authored tuning still requires the
+  full surface run, supported hips and actual rendered review.
+  Jared accepts some cushioned-chair backrest overlap with a small 10–15 degree
+  lean. Real-table review additionally seats guests opposite each other at
+  cross, glass, cloth and round tables: no head may enter or cross any table
+  mesh, and the exact head-to-head separation is reported for visual review.
+  A backrest exception never excuses table intrusion. Review images and JSON
+  remain external to shipped resources.
   The seated-head probe uses indexed, skinned Mini head surfaces at the shared
   scale: no head vertex may be inside any seat part, and an identified backrest
   must clear the head surface by at least 0.02 m. Made seats also require both
@@ -876,9 +892,11 @@ an active edit/panel/selection first, or opens Settings when none is active.
   material, plus the path outside: the street's pavement tiles (Kenney
   `floorHalf`, palette tint) laid flat, tops at floor level, over the approach.
   The leaf swings into the shop (`WallSegmentView.set_door_open`, up to
-  `DOOR_OPEN_DEGREES` = 92, the turn's sign read from the leaf's own
-  transforms) while someone going through is within 1.25 m (fully open
-  within 0.5 m, smoothstep between): the delivery person always, staff only
+  `DOOR_OPEN_DEGREES` = 90, the turn's sign read from the leaf's own
+  transforms), sliding `DOOR_OPEN_SLIDE` (0.08 m) onto its hinge-side jamb as
+  it opens so an open leaf stays clear of the opening, while someone going
+  through is within 1.75 m (fully open within 0.5 m, smoothstep between:
+  about a second of walking at 1x): the delivery person always, staff only
   when their path leads through the door, guests never
   (`ShopView._sync_back_doors`, a pure function of where people are drawn;
   no sim effect). Delivery people, crates and carrying: 2.3j.
