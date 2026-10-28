@@ -246,9 +246,22 @@ mouse_force_pass_scroll_events = false
 horizontal_scroll_mode = 0
 vertical_scroll_mode = 1
 
-[node name="Text" type="Label" parent="BuildHints/Scroll"]
+[node name="Lines" type="VBoxContainer" parent="BuildHints/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+theme_override_constants/separation = 0
+
+[node name="Text" type="Label" parent="BuildHints/Scroll/Lines"]
 layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 2
 text = "Esc Exit"
+autowrap_mode = 3
+
+[node name="Warning" type="Label" parent="BuildHints/Scroll/Lines"]
+visible = false
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
 autowrap_mode = 3

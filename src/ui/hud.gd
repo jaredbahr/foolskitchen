@@ -8,6 +8,9 @@ const STAFF_PHASES: Array[int] = [SimClock.Phase.MORNING, SimClock.Phase.OPEN,
 	SimClock.Phase.LAST_ORDERS, SimClock.Phase.CLOSED]
 const GAIN_COLOR: Color = Color("286B3B")
 const LOSS_COLOR: Color = Color("A42E2E")
+## Advice, not an error (the restock budget line, FK-096): a dark amber that
+## stays readable on the cream panel and never reads as the red of a loss.
+const ADVICE_COLOR: Color = Color("7F5100")
 ## The Build/Buy key strip keeps one line for every hint at 1600 px (FK-085).
 const HINT_MAX_WIDTH: float = 760.0
 ## Header panel margins once the restaurant name title sits above the controls.
@@ -55,11 +58,14 @@ var _paint_button: Button
 var _paint_active: bool = false
 var _build_hints: PanelContainer
 var _build_hint_text: Label
+var _build_warning_text: Label
+var _build_hint_lines: VBoxContainer
 var _build_hint_scroll: ScrollContainer
 var _hint_viewport: Viewport
 var _build_available: bool = false
 var _build_active: bool = false
 var _build_reason: String = ""
+var _build_warning: String = ""
 var _build_state: int = BuildMode.State.IDLE
 var _build_tool: int = BuildMode.Tool.HAND
 var _menu_button: Button
@@ -99,7 +105,10 @@ func refresh() -> void:
 		_build_button = get_node("Top/Row/Build") as Button
 		_build_hints = get_node("BuildHints") as PanelContainer
 		_build_hint_scroll = get_node("BuildHints/Scroll") as ScrollContainer
-		_build_hint_text = get_node("BuildHints/Scroll/Text") as Label
+		_build_hint_lines = get_node("BuildHints/Scroll/Lines") as VBoxContainer
+		_build_hint_text = get_node("BuildHints/Scroll/Lines/Text") as Label
+		_build_warning_text = get_node("BuildHints/Scroll/Lines/Warning") as Label
+		_build_warning_text.add_theme_color_override("font_color", ADVICE_COLOR)
 		var style: StyleBox = _build_hints.theme.get_stylebox("panel", "PanelContainer").duplicate() as StyleBox
 		style.set_content_margin(SIDE_LEFT, 10.0)
 		style.set_content_margin(SIDE_RIGHT, 10.0)
@@ -358,11 +367,14 @@ func _style_header() -> void:
 
 
 ## State changes only: a refresh between native down/up preserves the button.
+## `warning` is advice shown on its own amber line under the reason (the
+## restock budget, FK-096); it never stands in for a refusal.
 func set_build_state(available: bool, active: bool, reason: String = "", held_state: int = BuildMode.State.IDLE,
-		tool: int = BuildMode.Tool.HAND) -> void:
+		tool: int = BuildMode.Tool.HAND, warning: String = "") -> void:
 	_build_available = available
 	_build_active = active
 	_build_reason = reason
+	_build_warning = warning
 	_build_state = held_state
 	_build_tool = tool
 	if _build_button == null:
@@ -399,6 +411,10 @@ func _refresh_build_controls() -> void:
 		text += "\n" + _build_reason
 	if _build_hint_text.text != text:
 		_build_hint_text.text = text
+		resize_hint = true
+	if _build_warning_text.text != _build_warning:
+		_build_warning_text.text = _build_warning
+		_build_warning_text.visible = not _build_warning.is_empty()
 		resize_hint = true
 	if resize_hint:
 		_layout_build_hints()
@@ -443,21 +459,39 @@ func _layout_build_hints() -> void:
 	var font: Font = _build_hint_text.get_theme_font("font")
 	var font_size: int = _build_hint_text.get_theme_font_size("font_size")
 	var natural_width: float = 0.0
-	for line: String in _build_hint_text.text.split("\n"):
+	var lines: PackedStringArray = _build_hint_text.text.split("\n")
+	if _build_warning_text.visible:
+		lines.append_array(_build_warning_text.text.split("\n"))
+	for line: String in lines:
 		natural_width = maxf(natural_width, font.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1.0, font_size).x)
 	var width: float = minf(ceilf(natural_width), available.x)
-	_build_hint_text.custom_minimum_size = Vector2(width, 0.0)
-	_build_hint_text.size.x = width
+	_set_hint_width(width)
 	# Native Label metrics include theme line spacing and its final wrapping width.
-	var text_height: float = _build_hint_text.get_minimum_size().y
+	var text_height: float = _hint_height()
 	var bar_width: float = _build_hint_scroll.get_v_scroll_bar().get_combined_minimum_size().x if text_height > available.y else 0.0
 	width = minf(width, available.x - bar_width)
-	_build_hint_text.custom_minimum_size = Vector2(width, 0.0)
-	_build_hint_text.size.x = width
-	text_height = _build_hint_text.get_minimum_size().y
+	_set_hint_width(width)
+	text_height = _hint_height()
 	_build_hint_scroll.custom_minimum_size = Vector2(width + bar_width, minf(ceilf(text_height), available.y))
 	_build_hints.size = _build_hint_scroll.custom_minimum_size + padding
 	_build_hints.position = Vector2(12.0, top)
+
+
+## Both lines' native Label heights at their current wrapping width (the
+## container's cached minimum lags a width change, a Label's own does not).
+func _hint_height() -> float:
+	var height: float = _build_hint_text.get_minimum_size().y
+	if _build_warning_text.visible:
+		height += _build_warning_text.get_minimum_size().y
+	return height
+
+
+## The key strip and its advice line wrap at the same width.
+func _set_hint_width(width: float) -> void:
+	for label: Label in [_build_hint_text, _build_warning_text]:
+		label.custom_minimum_size = Vector2(width, 0.0)
+		label.size.x = width
+	_build_hint_lines.size.x = width
 
 
 ## Main forwards primitive stock counts; the HUD never owns or changes plates.
