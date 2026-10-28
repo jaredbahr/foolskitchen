@@ -16,7 +16,7 @@ const DRAG_END: Vector2i = Vector2i(11, 6)
 const AREAS: Array[Array] = [
 	[&"small_tile", &"cream", &"", Vector2i(3, 2), Vector2i(-1, -1)],
 	[&"narrow_planks", &"honey", &"", Vector2i(1, 5), Vector2i(12, 7)],
-	[&"herringbone", &"walnut", &"", Vector2i(1, 8), Vector2i(4, 9)],
+	[&"herringbone", &"honey", &"walnut", Vector2i(1, 8), Vector2i(4, 9)],
 	[&"checker", &"cream", &"charcoal", Vector2i(5, 8), Vector2i(12, 10)],
 ]
 ## Cells and the floor pattern each must draw with once the fixture is laid.

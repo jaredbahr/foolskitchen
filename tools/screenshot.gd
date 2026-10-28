@@ -1087,8 +1087,15 @@ static func prepare_catalogue_review(main: Node, context_root: Node, profile: St
 	if not bool(main.call("set_paint_active", true)):
 		result["error"] = "catalogue fixture paint mode was refused"
 		return result
-	for target: Dictionary in [{"swatch": recipe["wall"], "cell": Vector2i(0, 6)},
-			{"swatch": recipe["floor"], "cell": Vector2i(1, 9)}]:
+	var targets: Array[Dictionary] = [{"swatch": recipe["wall"], "cell": Vector2i(0, 6)},
+			{"swatch": recipe["floor"], "cell": Vector2i(1, 9)}]
+	# A floor paint click stops at its room (D25), so the kitchen floor takes
+	# the recipe colour with its own click, as the whole-floor paint once did.
+	for cell: Vector2i in editor.floor_room_cells(Vector2i(6, 4)):
+		if world.grid.item_at(cell) == null:
+			targets.append({"swatch": recipe["floor"], "cell": cell})
+			break
+	for target: Dictionary in targets:
 		(catalogue.swatch_buttons[target["swatch"]] as Button).pressed.emit()
 		if not bool(main.call("paint_cell", target["cell"])):
 			result["error"] = "catalogue fixture room paint was refused"

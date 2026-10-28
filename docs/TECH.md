@@ -46,6 +46,8 @@ and save on release, after 0.5 seconds without another step, or when Settings
 closes. This is the issue's narrow exception to `AGENTS.md` rule 9; game state
 still uses only the existing morning `SaveSystem` autosave. Missing or invalid
 preference files restore the whole default set without touching a game save.
+Build's grid choice (`build_grid`, D25 follow-up) is optional in the file, so
+an older file without it still loads (grid on).
 The test and parse runners disable the default preference file before autoload
 reads; settings tests use explicit private `user://` fixtures on every platform.
 The HUD gear opens Settings during any day phase and pauses the clock. Closing
@@ -408,8 +410,12 @@ an active edit/panel/selection first, or opens Settings when none is active.
   short sentences from `ShopEditor.placement_reason`; path warnings do not block.
 - Valid checks supply unreachable IDs (0 for a proposed buy); committed warnings
   use actual IDs and survive invalid proposals, cancellation and exit until fixed.
-- Build forces the rendered grid while retaining the G preference; phase changes,
-  exit and presentation rebinding cancel previews and restore that preference.
+- Build shows its own grid choice (`CameraRig.build_grid_visible`, on by
+  default) while retaining the G preference used elsewhere; phase changes, exit
+  and presentation rebinding cancel previews and restore that preference. In
+  Build, G or the Build bar's Grid button (`BuildCatalogue.grid_requested`)
+  flips Build's grid and remembers it per viewer in `Preferences.build_grid`
+  (never in the shop save); Paint hides the button and keeps the G choice.
 - Build closes Menu and inspection; opening Menu exits build. GUI controls consume
   their clicks. Content-sized hints/catalogue use bounded scrolling when needed.
 - CLOSED edits hide the report; exit rebuilds it without recharging or day setup.
@@ -593,7 +599,7 @@ an active edit/panel/selection first, or opens Settings when none is active.
   and buying starts with an empty ID and the authored placeholder colour.
 - `ShopEditor` owns whole-room wall and floor IDs plus per-item paint commands.
   Paint is free and phase-independent. Since D25 a floor click in Paint
-  recolours the connected floor of one look (Shift: the room) instead of the
+  recolours the connected floor of one look within its room (Shift: the room) instead of the
   whole floor; the whole-floor ID is the default colour (see Floor types). Version-1 `shop` snapshots add optional
   swatch IDs; missing, unknown or malformed IDs restore the authored defaults.
   The existing morning autosave writes the section; no action saves immediately.
@@ -1195,7 +1201,8 @@ an active edit/panel/selection first, or opens Settings when none is active.
   prices of 0 or more, known patterns and colours, and exactly one free
   `planks` (pattern 0, level 1, the shop's own colour). This PR ships Wide
   planks (free), Narrow planks ($1) and Herringbone ($3) as the starter set,
-  Small tiles ($2, level 2) and Checker tiles ($2, level 3). Looks only: no
+  Small tiles ($2, level 2) and Checker tiles ($2, level 3). Herringbone
+  starts honey with walnut seams (the oak parquet look, Jared). Looks only: no
   sim effect.
 - **Looks per cell.** `FloorFinishes` (`src/sim/shop/floor_finishes.gd`),
   owned by `ShopEditor.floors`, never by `SimGrid`: cell -> `Finish`
@@ -1205,7 +1212,9 @@ an active edit/panel/selection first, or opens Settings when none is active.
   new floor is the default; `apply_floor` drops the looks of cells that stop
   being floor. `room_cells` floods FLOOR cells of the same `SimGrid.Room` and
   stops at any wall segment (doorways and windows too); `area_cells` floods
-  the connected same look. The legacy whole-floor `paint_floor` still sets
+  the connected same look within that same room, so it is never larger than
+  `room_cells` (Jared: a paint click stops at
+  room edges, so it never runs through the open pass into the kitchen). The legacy whole-floor `paint_floor` still sets
   the default colour (`set_default_swatch`).
 - **Edits.** `ShopEditor.lay_changes(cells, style, swatch, accent)` and
   `recolour_changes(cells, swatch)` build proposals on floor cells only;
@@ -1230,8 +1239,9 @@ an active edit/panel/selection first, or opens Settings when none is active.
   and the tab, Esc cancels, and the hint line says "Lay 24 tiles of Narrow
   planks: $24 (refund $12)", "Recolour 24 tiles (free)" or the refusal.
   Commits go through Main's `shop_flooring`. Paint mode no longer paints the
-  whole floor: a floor click recolours the connected same look and Shift the
-  whole room (`Main._floor_paint_changes`), at any phase, with the same
+  whole floor: a floor click recolours the connected same look inside its
+  room (it stops at room edges, open passes included) and Shift the whole
+  room (`Main._floor_paint_changes`), at any phase, with the same
   ShopView preview on hover. The level-up banner lists newly unlocked floors
   ("Small tiles floor").
 - **Rendering.** One floor mesh and one `ShaderMaterial` with
@@ -1254,7 +1264,9 @@ an active edit/panel/selection first, or opens Settings when none is active.
   `BuildPreview`, and the paint hover). Adding a floor look = a `Pattern`
   value, a branch in the shader (and `FloorThumbnail`), and a data file.
 - **Save and vibe.** The `shop` snapshot is version 5 with `floor_style_id`
-  (the default type) and `floors: [[x, y, style, swatch, accent], ...]`
+  (the default type; only `planks` is accepted, any other value loads as
+  the planks so an edited save cannot make every cell a priced, refundable
+  type) and `floors: [[x, y, style, swatch, accent], ...]`
   (stored cells, row-major); no new SaveSystem section. Versions 1-4 load as
   all default. Decoding forgives (looks only): an unknown type or a cell
   that is no longer floor falls back to the default, an unknown colour to the

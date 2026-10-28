@@ -420,7 +420,7 @@ static func build_hint(painting: bool, state: int, tool: int) -> String:
 		BuildMode.State.ROOMS:
 			return "Drag over the floor to paint the room  |  Ctrl+Z Undo  Ctrl+Y Redo  |  Esc Cancel"
 		BuildMode.State.FLOORS:
-			return "Drag to lay  |  Shift-click Fill room  |  Alt-click Copy a floor  |  Esc Cancel"
+			return "Drag to lay  |  Shift-click Fill room  |  Alt-click Copy a floor  |  Ctrl+Z Undo  Ctrl+Y Redo  |  Esc Cancel"
 	match tool:
 		BuildMode.Tool.EYEDROPPER:
 			return "Eyedropper: click an item to place another  |  Ctrl+Z Undo  Ctrl+Y Redo  |  Esc Hand"

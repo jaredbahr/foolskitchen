@@ -21,6 +21,8 @@ signal paint_requested()
 signal tool_requested(tool: int)
 signal undo_requested()
 signal redo_requested()
+## The Build bar's Grid button: show or hide Build's floor grid (like G).
+signal grid_requested()
 
 const EDGE_MARGIN: float = 12.0
 const MAX_PANEL_WIDTH: float = 980.0
@@ -69,6 +71,9 @@ const TOOL_TIPS: Array[String] = [
 	"Eyedropper: click a placed item to place another one like it",
 	"Sell: click a placed item to sell it (Del sells what you point at)",
 ]
+const FLOOR_PICTURE_LIMIT: int = 64
+const GRID_LABEL: String = "Grid"
+const GRID_TIP: String = "Show or hide the floor grid while building (G)"
 const FLOOR_THUMBNAIL: PackedScene = preload("res://assets/props/floor_tile.tscn")
 ## The ghost's marker legend; Main shows it in the HUD key strip while a piece is held.
 const FURNITURE_HINT: String = "Square: work tile   Circle: seat"
@@ -90,6 +95,8 @@ var selected_floor_style: StringName = FloorStyleDef.DEFAULT_ID
 var selected_floor_swatch: StringName = &""
 var selected_floor_accent: StringName = &""
 var _floor_base: Color = ORIGINAL_FLOOR
+## Drawn card pictures by look (see _floor_picture), cleared when full.
+var _floor_pictures: Dictionary[String, ImageTexture] = {}
 ## Main turns the Rooms tab on once a shop is bound (like the Floor tab's price).
 var _rooms_enabled: bool = false
 var swatch_buttons: Dictionary[StringName, Button] = {}
@@ -103,6 +110,9 @@ var sort_button: Button
 var _tool_divider: Control
 var undo_button: Button
 var redo_button: Button
+## Pressed while Build's grid shows; hidden in Paint, which keeps the G choice.
+var grid_button: Button
+var _grid_divider: Control
 var selected_category: StringName = &""
 var selected_group: StringName = ALL_GROUPS
 var mode: StringName = BUY
@@ -480,14 +490,28 @@ func _refresh_floor_styles() -> void:
 				definition.display_name.to_lower(), price.to_lower()]
 		var selected: bool = definition.id == selected_floor_style
 		button.set_pressed_no_signal(selected)
-		button.icon = _floor_picture(definition, selected_floor_swatch if selected else definition.default_swatch,
+		var picture: ImageTexture = _floor_picture(definition,
+			selected_floor_swatch if selected else definition.default_swatch,
 			selected_floor_accent if selected else definition.default_accent)
+		if button.icon != picture:
+			button.icon = picture
 	_refresh_floor_colours()
 
 
+## Card pictures are drawn once per look (pattern and colours); a chip click
+## then only swaps the selected card's picture.
 func _floor_picture(definition: FloorStyleDef, swatch_id: StringName, accent_id: StringName) -> ImageTexture:
 	var main: Color = _swatch_colour(swatch_id, _floor_base)
-	return FloorThumbnail.texture(int(definition.pattern), main, _swatch_colour(accent_id, main), accent_id.is_empty())
+	var accent: Color = _swatch_colour(accent_id, main)
+	var key: String = "%d|%s|%s|%s" % [int(definition.pattern), main.to_html(), accent.to_html(), accent_id.is_empty()]
+	var cached: ImageTexture = _floor_pictures.get(key) as ImageTexture
+	if cached != null:
+		return cached
+	if _floor_pictures.size() >= FLOOR_PICTURE_LIMIT:
+		_floor_pictures.clear()
+	cached = FloorThumbnail.texture(int(definition.pattern), main, accent, accent_id.is_empty())
+	_floor_pictures[key] = cached
+	return cached
 
 
 func _swatch_colour(swatch_id: StringName, fallback: Color) -> Color:
@@ -641,6 +665,8 @@ func _apply_category() -> void:
 	for button: Button in tool_buttons:
 		button.visible = not _paint_visible
 	_tool_divider.visible = not _paint_visible
+	grid_button.visible = not _paint_visible
+	_grid_divider.visible = not _paint_visible
 	for id: StringName in item_buttons:
 		var definition: ItemDef = _content.item(id) if _content != null else null
 		item_buttons[id].visible = buying and _passes_filters(definition)
@@ -824,6 +850,20 @@ func _on_undo_pressed() -> void:
 func _on_redo_pressed() -> void:
 	if visible:
 		redo_requested.emit()
+
+
+## The button shows what the floor shows; Main reports it after every change.
+func set_grid_shown(shown: bool) -> void:
+	_prepare_layout()
+	if grid_button.button_pressed != shown:
+		grid_button.set_pressed_no_signal(shown)
+
+
+func _on_grid_pressed() -> void:
+	if visible:
+		grid_requested.emit()
+	else:
+		grid_button.set_pressed_no_signal(not grid_button.button_pressed)
 
 
 func _on_thumbnail_ready(scene: PackedScene, texture: Texture2D) -> void:
@@ -1023,6 +1063,13 @@ func _prepare_layout() -> void:
 	bar.add_child(_divider())
 	bar.add_child(undo_button)
 	bar.add_child(redo_button)
+	_grid_divider = _divider()
+	bar.add_child(_grid_divider)
+	grid_button = _chip("Grid", GRID_LABEL, 16)
+	grid_button.tooltip_text = GRID_TIP
+	grid_button.button_pressed = true
+	grid_button.pressed.connect(_on_grid_pressed)
+	bar.add_child(grid_button)
 	var categories: HBoxContainer = content.get_node("Categories") as HBoxContainer
 	for category: StringName in CATEGORY_IDS:
 		var button: Button = Button.new()

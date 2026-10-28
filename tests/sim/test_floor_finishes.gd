@@ -125,6 +125,13 @@ func test_fill_room_stops_at_walls_doorways_and_other_rooms() -> void:
 	var dining: Array[Vector2i] = _editor.floor_room_cells(Vector2i(3, 6))
 	assert_eq(dining.size(), 12 * 5 + 2)
 	assert_eq(_editor.floor_room_cells(Vector2i(0, 0)), [] as Array[Vector2i], "a wall is no room")
+	# A paint click's area stops at room edges: the starter shop's open pass
+	# joins the dining room and the kitchen, both the default planks.
+	var area: Array[Vector2i] = _editor.floor_area_cells(Vector2i(3, 6))
+	assert_eq(area, dining, "the same look ends where the room ends")
+	for cell: Vector2i in kitchen:
+		assert_false(area.has(cell), "a dining click never reaches the kitchen")
+	assert_eq(_editor.floor_area_cells(Vector2i(3, 2)), kitchen)
 	# An interior wall with a doorway across the dining room splits it in two.
 	var grid: SimGrid = _sim.world.grid
 	var wall: Dictionary[Vector3i, int] = {}
@@ -138,6 +145,11 @@ func test_fill_room_stops_at_walls_doorways_and_other_rooms() -> void:
 	assert_true(_editor.apply_flooring(_editor.lay_changes(_rect(10, 6, 2, 2), &"herringbone", &"walnut")))
 	assert_eq(_editor.floor_area_cells(Vector2i(11, 7)), _rect(10, 6, 2, 2))
 	assert_eq(_editor.floor_area_cells(Vector2i(12, 9)).size(), 4 * 5 - 4)
+	# A click never reaches further than Shift (its room) does.
+	for cell: Vector2i in [Vector2i(3, 6), Vector2i(10, 6), Vector2i(11, 7), Vector2i(12, 9), Vector2i(3, 2), Vector2i(6, 4)]:
+		var room: Array[Vector2i] = _editor.floor_room_cells(cell)
+		for inside: Vector2i in _editor.floor_area_cells(cell):
+			assert_true(room.has(inside), "%s: the click area sits inside the Shift room" % cell)
 
 
 func test_removed_floor_forgets_its_look_and_undo_brings_it_back() -> void:
@@ -217,6 +229,27 @@ func test_older_snapshots_are_all_default_planks() -> void:
 	var restored: RestaurantSim = RestaurantSim.create(layout, _content, 1, errors, null, false, true)
 	var copy: ShopEditor = ShopEditor.new(restored, _content, ShopEditBooks.new(_can_spend, _record), layout)
 	assert_eq(copy.floors.count(), 0)
+
+
+func test_a_saved_default_other_than_wide_planks_is_ignored() -> void:
+	# A hand-edited save cannot make every cell free herringbone (which would
+	# refund money when wide planks are laid over it).
+	var snapshot: Dictionary = _editor.to_dict()
+	snapshot["floor_style_id"] = "herringbone"
+	var errors: Array[String] = []
+	var layout: ShopLayout = ShopEditor.from_dict(snapshot, LAYOUT, _content, errors)
+	assert_eq(errors, [] as Array[String])
+	assert_eq(layout.floor_style_id, FloorStyleDef.DEFAULT_ID)
+	var restored: RestaurantSim = RestaurantSim.create(layout, _content, 1, errors, null, false, true)
+	var copy: ShopEditor = ShopEditor.new(restored, _content, ShopEditBooks.new(_can_spend, _record), layout)
+	assert_eq(copy.floors.finish(Vector2i(3, 6)).style, FloorStyleDef.DEFAULT_ID)
+	var check: EditCheck = copy.check_flooring(copy.lay_changes(_rect(2, 6, 2, 2), &"narrow_planks", &"honey"))
+	assert_eq([check.cost, check.refund], [4, 0], "nothing to refund over the free planks")
+	# A layout carrying another default is read as the planks too.
+	layout.floor_style_id = &"herringbone"
+	restored = RestaurantSim.create(layout, _content, 1, errors, null, false, true)
+	copy = ShopEditor.new(restored, _content, ShopEditBooks.new(_can_spend, _record), layout)
+	assert_eq(copy.floors.default_style, FloorStyleDef.DEFAULT_ID)
 
 
 func test_saved_looks_decode_forgivingly() -> void:

@@ -489,11 +489,11 @@ static func from_dict(data: Dictionary, template_layout: ShopLayout, content: Co
 ## planks, an unknown colour to the floor type's own colour, and a malformed
 ## row is skipped. Versions 1 to 4 had none (every cell the default).
 static func _decode_floors(data: Dictionary, preview: SimGrid, content: ContentDB, layout: ShopLayout) -> void:
+	# The shop's default floor is always the free wide planks: a saved
+	# "floor_style_id" naming anything else (a hand-edited save) is ignored, so
+	# it can never make every cell a priced type that refunds when replaced.
 	layout.floor_style_id = FloorStyleDef.DEFAULT_ID
 	layout.floor_finishes = {}
-	var style_value: Variant = data.get("floor_style_id", "")
-	if (style_value is String or style_value is StringName) and content.floor_style(StringName(style_value)) != null:
-		layout.floor_style_id = StringName(style_value)
 	var saved: Variant = data.get("floors", [])
 	if not saved is Array:
 		return
@@ -525,7 +525,7 @@ static func _floor_colour(value: Variant, fallback: StringName, content: Content
 ## The layout's floor types onto this shop's floor (forgiving, like decoding).
 func _load_floors(layout: ShopLayout) -> void:
 	var style_id: StringName = layout.floor_style_id
-	if _content == null or _content.floor_style(style_id) == null:
+	if _content == null or style_id != FloorStyleDef.DEFAULT_ID or _content.floor_style(style_id) == null:
 		style_id = FloorStyleDef.DEFAULT_ID
 	floors = FloorFinishes.new(style_id, floor_swatch_id)
 	if _content == null or _sim == null or _sim.world == null:

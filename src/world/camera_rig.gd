@@ -5,6 +5,8 @@ extends Node3D
 
 ## Emitted once when the rotation target changes, before visual smoothing.
 signal yaw_snapped(quarter: int)
+## Emitted when the floor grid appears or disappears (G, Build, the Grid button).
+signal grid_shown_changed(shown: bool)
 
 @export_group("View")
 @export var use_orthographic: bool = true
@@ -48,8 +50,13 @@ var grid_material: ShaderMaterial:
 			return null
 		return grid_floor.material_override as ShaderMaterial
 
+## The G preference outside Build (this session only).
 var grid_visible: bool = true
+## Build's own grid choice (on by default), remembered per viewer in
+## Preferences (`build_grid`); G or the Build bar's Grid button flips it.
+var build_grid_visible: bool = true
 var _grid_forced: bool = false
+var _shown_grid: bool = true
 var _camera: Camera3D
 var _yaw: float = 0.0
 var _target_yaw: float = 0.0
@@ -87,6 +94,7 @@ func _ready() -> void:
 	_preferences = get_node_or_null("/root/Preferences") as SettingsPreferences
 	if _preferences != null:
 		edge_pan_enabled = _preferences.edge_pan_enabled
+		build_grid_visible = _preferences.build_grid_enabled
 		_preferences.changed.connect(_on_preference_changed)
 	reset_view()
 
@@ -94,6 +102,9 @@ func _ready() -> void:
 func _on_preference_changed(key: StringName) -> void:
 	if key == &"edge_pan" and _preferences != null:
 		edge_pan_enabled = _preferences.edge_pan_enabled
+	elif key == &"build_grid" and _preferences != null and build_grid_visible != _preferences.build_grid_enabled:
+		build_grid_visible = _preferences.build_grid_enabled
+		_apply_grid()
 
 
 func _notification(what: int) -> void:
@@ -256,15 +267,22 @@ func edge_pan_direction(mouse: Vector2, viewport_rect: Rect2) -> Vector2:
 	return direction.limit_length(1.0)
 
 
+## G: in Build it flips Build's grid (and remembers it per viewer), elsewhere
+## the session's G preference. Returns whether the grid now shows.
 func toggle_grid() -> bool:
-	if not _grid_forced:
+	if _grid_forced:
+		build_grid_visible = not build_grid_visible
+		if _preferences != null:
+			_preferences.set_build_grid_enabled(build_grid_visible)
+	else:
 		grid_visible = not grid_visible
 	_apply_grid()
-	return grid_visible
+	return effective_grid_visible()
 
 
-## Build mode temporarily forces the rendered grid without changing the G
-## preference. Replacing the floor or resetting the camera preserves both.
+## Build mode shows Build's grid choice (on unless the player hid it) without
+## changing the G preference used elsewhere. Replacing the floor or resetting
+## the camera preserves both.
 func set_grid_forced(value: bool) -> void:
 	if _grid_forced == value:
 		return
@@ -277,7 +295,7 @@ func is_grid_forced() -> bool:
 
 
 func effective_grid_visible() -> bool:
-	return grid_visible or _grid_forced
+	return build_grid_visible if _grid_forced else grid_visible
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -338,3 +356,6 @@ func _apply_grid() -> void:
 	var material: ShaderMaterial = grid_material
 	if material != null:
 		material.set_shader_parameter("grid_visible", effective_grid_visible())
+	if _shown_grid != effective_grid_visible():
+		_shown_grid = effective_grid_visible()
+		grid_shown_changed.emit(_shown_grid)

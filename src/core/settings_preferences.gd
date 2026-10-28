@@ -14,6 +14,8 @@ const MISSING: String = "__missing_preference__"
 const INTEGER_KEYS: Array[String] = ["version", "master_volume", "music_volume",
 	"effects_volume", "ui_scale", "default_open_speed"]
 const BOOL_KEYS: Array[String] = ["fullscreen", "edge_pan"]
+## Later additions: a file without them still loads, with their defaults.
+const OPTIONAL_BOOL_KEYS: Array[String] = ["build_grid"]
 
 var master_volume_percent: int = 100
 var music_volume_percent: int = 100
@@ -22,6 +24,8 @@ var ui_scale_percent: int = 100
 var default_open_speed: int = 1
 var fullscreen_enabled: bool = false
 var edge_pan_enabled: bool = true
+## Whether Build shows the placement grid (G or the Build bar's Grid button).
+var build_grid_enabled: bool = true
 
 var _file_path: String = DEFAULT_PATH
 var _disk_enabled: bool = true
@@ -58,12 +62,13 @@ func load_from_disk() -> bool:
 	var speed: Variant = config.get_value(SECTION, "default_open_speed", MISSING)
 	var fullscreen: Variant = config.get_value(SECTION, "fullscreen", MISSING)
 	var edge_pan: Variant = config.get_value(SECTION, "edge_pan", MISSING)
+	var build_grid: Variant = config.get_value(SECTION, "build_grid", true)
 	if not version is int or version != VERSION \
 			or not _valid_volume(master) or not _valid_volume(music) \
 			or not _valid_volume(effects) or not scale is int \
 			or not UI_SCALES.has(scale) or not speed is int \
 			or not OPEN_SPEEDS.has(speed) or not fullscreen is bool \
-			or not edge_pan is bool:
+			or not edge_pan is bool or not build_grid is bool:
 		return false
 	master_volume_percent = master
 	music_volume_percent = music
@@ -72,11 +77,12 @@ func load_from_disk() -> bool:
 	default_open_speed = speed
 	fullscreen_enabled = fullscreen
 	edge_pan_enabled = edge_pan
+	build_grid_enabled = build_grid
 	return true
 
 
 ## ConfigFile logs a parser error for broken section tags or values. Reject
-## anything outside our eight simple authored fields before asking it to load,
+## anything outside our simple authored fields before asking it to load,
 ## so a damaged preferences file quietly falls back to defaults.
 func _has_safe_config_syntax() -> bool:
 	var file: FileAccess = FileAccess.open(_file_path, FileAccess.READ)
@@ -105,13 +111,16 @@ func _has_safe_config_syntax() -> bool:
 		if INTEGER_KEYS.has(key):
 			if not value.is_valid_int():
 				return false
-		elif BOOL_KEYS.has(key):
+		elif BOOL_KEYS.has(key) or OPTIONAL_BOOL_KEYS.has(key):
 			if value != "true" and value != "false":
 				return false
 		else:
 			return false
 		keys_seen[key] = true
-	return section_seen and keys_seen.size() == INTEGER_KEYS.size() + BOOL_KEYS.size()
+	for key: String in INTEGER_KEYS + BOOL_KEYS:
+		if not keys_seen.has(key):
+			return false
+	return section_seen
 
 
 func save_to_disk() -> bool:
@@ -126,6 +135,7 @@ func save_to_disk() -> bool:
 	config.set_value(SECTION, "default_open_speed", default_open_speed)
 	config.set_value(SECTION, "fullscreen", fullscreen_enabled)
 	config.set_value(SECTION, "edge_pan", edge_pan_enabled)
+	config.set_value(SECTION, "build_grid", build_grid_enabled)
 	var saved: bool = config.save(_file_path) == OK
 	if saved:
 		_pending_volume_save = false
@@ -251,6 +261,17 @@ func set_edge_pan_enabled(value: bool) -> bool:
 	return true
 
 
+## A view convenience: the choice holds for this session even when the file
+## cannot be written; the return value says whether it was saved.
+func set_build_grid_enabled(value: bool) -> bool:
+	if build_grid_enabled == value:
+		return true
+	build_grid_enabled = value
+	var saved: bool = save_to_disk()
+	changed.emit(&"build_grid")
+	return saved
+
+
 ## Audio buses are authored in default_bus_layout.tres. A missing bus on an
 ## older project is ignored rather than causing an engine error.
 func apply_audio() -> void:
@@ -293,3 +314,4 @@ func _reset_defaults() -> void:
 	default_open_speed = 1
 	fullscreen_enabled = false
 	edge_pan_enabled = true
+	build_grid_enabled = true

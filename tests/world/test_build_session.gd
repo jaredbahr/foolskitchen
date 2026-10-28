@@ -53,6 +53,7 @@ func after_each() -> void:
 	Clock.set_speed(0)
 	Economy.reset(0)
 	GameState.new_run(1)
+	Preferences.build_grid_enabled = true
 
 
 func test_projected_world_clicks_match_editor_for_four_camera_quarters_and_four_world_turns() -> void:
@@ -557,7 +558,12 @@ func test_forced_grid_preserves_both_preferences_and_rebinds_the_actual_new_floo
 		assert_true(_rig().effective_grid_visible())
 		assert_eq(_rig().grid_material.get_shader_parameter("grid_visible"), true)
 		_rig()._unhandled_input(_key_event(KEY_G))
-		assert_eq(_rig().grid_visible, preference, "G cannot overwrite the saved preference while forced")
+		assert_eq(_rig().grid_visible, preference, "G in Build leaves the G preference used elsewhere")
+		assert_false(_rig().effective_grid_visible(), "G in Build hides Build's grid")
+		assert_false(Preferences.build_grid_enabled)
+		_rig()._unhandled_input(_key_event(KEY_G))
+		assert_true(_rig().effective_grid_visible())
+		assert_true(Preferences.build_grid_enabled)
 		_key(KEY_ESCAPE)
 		assert_eq(_rig().grid_material.get_shader_parameter("grid_visible"), preference)
 	if _rig().grid_visible:
@@ -886,6 +892,48 @@ func test_paint_during_service_previews_then_commits_without_books_or_immediate_
 	assert_eq(FileAccess.get_file_as_string(_save_dir.path_join(SLOT + ".json")), saved)
 	assert_true(_main.call("set_paint_active", false))
 	assert_false(_main.call("is_paint_active"))
+
+
+func test_build_grid_toggles_with_g_or_the_grid_button_and_is_remembered() -> void:
+	await _start()
+	var catalogue: BuildCatalogue = _main.get_node("Overlay/BuildCatalogue") as BuildCatalogue
+	assert_true(Preferences.build_grid_enabled, "Build shows the grid by default")
+	if _rig().grid_visible:
+		_rig().toggle_grid()
+	assert_true(_main.call("set_build_active", true))
+	assert_true(_rig().effective_grid_visible(), "on in Build even with G off elsewhere")
+	assert_true(catalogue.grid_button.visible)
+	assert_true(catalogue.grid_button.button_pressed)
+	assert_eq(catalogue.grid_button.text, "Grid")
+	assert_eq(catalogue.grid_button.tooltip_text, BuildCatalogue.GRID_TIP)
+	catalogue.grid_button.pressed.emit()
+	assert_false(_rig().effective_grid_visible())
+	assert_eq(_rig().grid_material.get_shader_parameter("grid_visible"), false)
+	assert_false(catalogue.grid_button.button_pressed)
+	assert_false(Preferences.build_grid_enabled, "remembered for this player, not in the shop save")
+	assert_false(_rig().grid_visible, "the G choice outside Build is untouched")
+	# Leaving and coming back keeps the choice; G shows it again and the button follows.
+	_key(KEY_ESCAPE)
+	assert_false(_main.call("is_build_active"))
+	assert_true(_main.call("set_build_active", true))
+	assert_false(_rig().effective_grid_visible(), "Build remembers the hidden grid")
+	_rig()._unhandled_input(_key_event(KEY_G))
+	assert_true(_rig().effective_grid_visible())
+	assert_eq(_rig().grid_material.get_shader_parameter("grid_visible"), true)
+	assert_true(catalogue.grid_button.button_pressed)
+	assert_true(Preferences.build_grid_enabled)
+	# A fresh camera (a new session) reads the remembered choice.
+	Preferences.build_grid_enabled = false
+	var rig: CameraRig = CameraRig.new()
+	_main.add_child(rig)
+	assert_false(rig.build_grid_visible)
+	rig.queue_free()
+	Preferences.build_grid_enabled = true
+	# Paint keeps the G choice and hides the button.
+	_key(KEY_ESCAPE)
+	assert_true(_main.call("set_paint_active", true))
+	assert_false(catalogue.grid_button.visible)
+	assert_true(_main.call("set_paint_active", false))
 
 
 func test_paint_preserves_grid_preference_without_forcing_it() -> void:

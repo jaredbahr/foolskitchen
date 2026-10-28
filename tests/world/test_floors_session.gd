@@ -44,7 +44,8 @@ func test_floors_tool_lays_fills_copies_cancels_and_undoes() -> void:
 	assert_eq(_mode().state, BuildMode.State.IDLE, "a locked card starts nothing")
 	catalogue.floor_style_buttons[&"herringbone"].pressed.emit()
 	assert_eq(_mode().state, BuildMode.State.FLOORS)
-	assert_eq([_mode().floor_style, _mode().floor_swatch], [&"herringbone", &"walnut"])
+	assert_eq([_mode().floor_style, _mode().floor_swatch, _mode().floor_accent], [&"herringbone", &"honey", &"walnut"],
+		"herringbone starts as honey oak parquet with walnut seams")
 	# Hover previews on the floor itself, nothing changes yet.
 	var cash: int = Economy.cash
 	_pointer(Vector2i(2, 6))
@@ -59,20 +60,20 @@ func test_floors_tool_lays_fills_copies_cancels_and_undoes() -> void:
 	assert_eq(Economy.cash, cash - 12)
 	assert_eq(_editor().floors.finish(Vector2i(3, 7)).style, &"herringbone")
 	# A colour chip changes what the running tool lays; Shift-click fills the room.
-	catalogue.floor_colour_buttons[&"honey"].pressed.emit()
-	assert_eq(_mode().floor_swatch, &"honey")
+	catalogue.floor_colour_buttons[&"walnut"].pressed.emit()
+	assert_eq(_mode().floor_swatch, &"walnut")
 	var kitchen: Array[Vector2i] = _editor().floor_room_cells(Vector2i(3, 2))
 	_press(Vector2i(3, 2), true)
 	_release(Vector2i(3, 2))
 	assert_eq(_editor().floors.finish(Vector2i(12, 3)).style, &"herringbone")
-	assert_eq(_editor().floors.finish(Vector2i(12, 3)).swatch, &"honey")
+	assert_eq(_editor().floors.finish(Vector2i(12, 3)).swatch, &"walnut")
 	assert_eq(Economy.cash, cash - 12 - 3 * kitchen.size())
-	assert_eq(_editor().floors.finish(Vector2i(3, 6)).swatch, &"walnut", "the dining room is another room")
+	assert_eq(_editor().floors.finish(Vector2i(3, 6)).swatch, &"honey", "the dining room is another room")
 	# Alt-click copies a floor's look into the tool and the tab.
 	catalogue.floor_style_buttons[&"narrow_planks"].pressed.emit()
 	_main.call("_unhandled_input", _mouse_event(_project(Vector2i(2, 6)), true, false, true))
-	assert_eq([_mode().floor_style, _mode().floor_swatch], [&"herringbone", &"walnut"])
-	assert_eq([catalogue.selected_floor_style, catalogue.selected_floor_swatch], [&"herringbone", &"walnut"])
+	assert_eq([_mode().floor_style, _mode().floor_swatch], [&"herringbone", &"honey"])
+	assert_eq([catalogue.selected_floor_style, catalogue.selected_floor_swatch], [&"herringbone", &"honey"])
 	assert_true(catalogue.floor_style_buttons[&"herringbone"].button_pressed)
 	# Esc backs out of the tool (and its floor preview), then out of Build.
 	_pointer(Vector2i(8, 8))
@@ -115,6 +116,65 @@ func test_paint_recolours_the_connected_floor_or_the_room_while_open() -> void:
 	assert_eq(Economy.cash, cash, "recolouring is free")
 	assert_eq(_editor().floor_vibe_swatch(), &"sage")
 	assert_true(_main.call("set_paint_active", false))
+
+
+func test_paint_click_in_the_dining_room_leaves_the_kitchen_alone() -> void:
+	await _start()
+	assert_true(_main.call("set_paint_active", true))
+	_main.set("_paint_swatch_id", &"sage")
+	var dining: Array[Vector2i] = _editor().floor_room_cells(Vector2i(9, 8))
+	var kitchen: Array[Vector2i] = _editor().floor_room_cells(Vector2i(3, 2))
+	assert_false(kitchen.is_empty())
+	_main.call("preview_paint_cell", Vector2i(9, 8))
+	assert_eq((_main.get_node("ShopView") as ShopView).floor_preview_cells().size(), dining.size(),
+		"hover shows the dining room only")
+	assert_true(_main.call("paint_cell", Vector2i(9, 8)))
+	for cell: Vector2i in dining:
+		assert_eq(_editor().floors.finish(cell).swatch, &"sage")
+	for cell: Vector2i in kitchen:
+		assert_eq(_editor().floors.finish(cell).swatch, _editor().floor_swatch_id, "the open pass is a room edge")
+	assert_eq(_editor().floors.count(), dining.size())
+	assert_true(_main.call("set_paint_active", false))
+
+
+func test_shift_alone_switches_the_room_preview_without_a_mouse_move() -> void:
+	await _start()
+	Economy.add_cash(500, Ledger.OTHER)
+	var view: ShopView = _main.get_node("ShopView") as ShopView
+	var dining: Array[Vector2i] = _editor().floor_room_cells(Vector2i(2, 8))
+	assert_true(_main.call("set_build_active", true))
+	assert_true(_main.call("shop_flooring", _editor().lay_changes(_rect(2, 8, 2, 2), &"herringbone", &"honey")))
+	var catalogue: BuildCatalogue = _main.get_node("Overlay/BuildCatalogue") as BuildCatalogue
+	_main.call("_on_catalogue_mode_requested", BuildCatalogue.BUILD)
+	catalogue.set_category(BuildCatalogue.FLOORS)
+	catalogue.floor_style_buttons[&"narrow_planks"].pressed.emit()
+	_pointer(Vector2i(5, 6))
+	assert_eq(view.floor_preview_cells().size(), 1)
+	_main.call("_unhandled_input", _shift_event(true))
+	assert_eq(view.floor_preview_cells().size(), dining.size(), "Shift shows the room fill at once")
+	_main.call("_unhandled_input", _shift_event(false))
+	assert_eq(view.floor_preview_cells().size(), 1)
+	_key(KEY_ESCAPE)
+	assert_true(_main.call("set_build_active", false))
+	# Paint: a click's patch, Shift the room, both without moving.
+	assert_true(_main.call("set_paint_active", true))
+	_main.set("_paint_swatch_id", &"sage")
+	_main.call("update_paint_pointer", _project(Vector2i(3, 9)))
+	assert_eq(view.floor_preview_cells().size(), 4)
+	_main.call("_unhandled_input", _shift_event(true))
+	assert_eq(view.floor_preview_cells().size(), dining.size())
+	_main.call("_unhandled_input", _shift_event(false))
+	assert_eq(view.floor_preview_cells().size(), 4)
+	assert_true(_main.call("set_paint_active", false))
+
+
+func _shift_event(down: bool) -> InputEventKey:
+	var event: InputEventKey = InputEventKey.new()
+	event.physical_keycode = KEY_SHIFT
+	event.keycode = KEY_SHIFT
+	event.pressed = down
+	event.shift_pressed = down
+	return event
 
 
 func _start() -> void:

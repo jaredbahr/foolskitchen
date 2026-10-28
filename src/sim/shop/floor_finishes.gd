@@ -40,16 +40,23 @@ class Finish extends RefCounted:
 var default_style: StringName = FloorStyleDef.DEFAULT_ID
 ## The shop's own floor colour (ShopEditor.floor_swatch_id); empty = authored brown.
 var default_swatch: StringName = &""
+## Bumped on every `changed`, so callers can cache derived areas against it.
+var revision: int = 0
 var _cells: Dictionary[Vector2i, Finish] = {}
+## One shared default look, so reading a default cell allocates nothing.
+var _default: Finish
 
 
 func _init(style_id: StringName = FloorStyleDef.DEFAULT_ID, swatch_id: StringName = &"") -> void:
 	default_style = style_id
 	default_swatch = swatch_id
+	_default = Finish.new(default_style, default_swatch, &"")
 
 
+## The shared default look (never mutate it; it is replaced when the default
+## colour changes).
 func default_finish() -> Finish:
-	return Finish.new(default_style, default_swatch, &"")
+	return _default
 
 
 ## The cell's look: stored, else the default (any cell, floor or not).
@@ -97,6 +104,7 @@ func set_finishes(changes: Dictionary[Vector2i, Finish]) -> Array[Vector2i]:
 		touched.append(cell)
 	if not touched.is_empty():
 		touched.sort_custom(_row_major)
+		revision += 1
 		changed.emit(touched)
 	return touched
 
@@ -109,6 +117,7 @@ func drop(dropped: Array[Vector2i]) -> Array[Vector2i]:
 			touched.append(cell)
 	if not touched.is_empty():
 		touched.sort_custom(_row_major)
+		revision += 1
 		changed.emit(touched)
 	return touched
 
@@ -119,10 +128,12 @@ func set_default_swatch(swatch_id: StringName) -> void:
 	if swatch_id == default_swatch:
 		return
 	default_swatch = swatch_id
+	_default = Finish.new(default_style, default_swatch, &"")
 	var base: Finish = default_finish()
 	for cell: Vector2i in _cells.keys():
 		if _cells[cell].same(base):
 			_cells.erase(cell)
+	revision += 1
 	changed.emit([] as Array[Vector2i])
 
 
@@ -145,13 +156,16 @@ static func room_cells(grid: SimGrid, cell: Vector2i) -> Array[Vector2i]:
 	return _flood(grid, cell, func(next: Vector2i) -> bool: return grid.room(next) == room)
 
 
-## The connected area of `cell`'s look: orthogonal steps over floor with the
-## same look that cross no wall segment. Row-major; empty off the floor.
+## The connected area of `cell`'s look inside its room: orthogonal steps over
+## floor with the same look and the same SimGrid.Room that cross no wall
+## segment, so a paint click stops at room edges (an open pass into the
+## kitchen too). Row-major; empty off the floor.
 func area_cells(grid: SimGrid, cell: Vector2i) -> Array[Vector2i]:
 	if grid == null or grid.terrain(cell) != SimGrid.Terrain.FLOOR:
 		return []
 	var look: Finish = finish(cell)
-	return _flood(grid, cell, func(next: Vector2i) -> bool: return finish(next).same(look))
+	var room: int = grid.room(cell)
+	return _flood(grid, cell, func(next: Vector2i) -> bool: return grid.room(next) == room and finish(next).same(look))
 
 
 static func _flood(grid: SimGrid, start: Vector2i, keep: Callable) -> Array[Vector2i]:

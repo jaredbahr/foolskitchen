@@ -409,7 +409,7 @@ func refresh() -> void:
 	if _committing:
 		_topology_dirty = true
 		return
-	var before: Dictionary = presentation_state()
+	var before: Dictionary = _comparable_state()
 	_floor_checks.clear()
 	if is_active() and not _can_interact():
 		return
@@ -426,7 +426,7 @@ func refresh() -> void:
 		_recheck_floors()
 	elif state == State.IDLE:
 		_recheck_hover()
-	if before != presentation_state():
+	if before != _comparable_state():
 		changed.emit()
 
 
@@ -484,6 +484,19 @@ func presentation_state() -> Dictionary:
 		"floor_style": floor_style, "floor_swatch": floor_swatch, "floor_accent": floor_accent,
 		"floors_cells": floors_proposal(), "floors_dragging": floors_dragging, "floors_room": floors_room,
 		"floors_finishes": current_check.finishes.duplicate() if state == State.FLOORS and current_check.ok else {}}
+
+
+## presentation_state() with the floor looks by value (cell ->
+## "style/swatch/accent"): a re-check builds new Finish objects, which must not
+## count as a change.
+func _comparable_state() -> Dictionary:
+	var snapshot: Dictionary = presentation_state()
+	var values: Dictionary = {}
+	var finishes: Dictionary = snapshot["floors_finishes"]
+	for cell: Variant in finishes:
+		values[cell] = str(finishes[cell])
+	snapshot["floors_finishes"] = values
+	return snapshot
 
 
 func _available() -> bool:
