@@ -407,7 +407,7 @@ func _refresh_build_controls() -> void:
 ## The key strip for Build/Buy (FK-085): what the mouse and keys do now.
 static func build_hint(painting: bool, state: int, tool: int) -> String:
 	if painting:
-		return "Click to paint  |  Shift-click a floor or wall: whole room  |  Ctrl+Z Undo  Ctrl+Y Redo  |  Esc Back"
+		return "Click to paint  |  Shift-click: whole room  |  Ctrl+Z Undo  Ctrl+Y Redo  |  Esc Back"
 	match state:
 		BuildMode.State.MOVE:
 			return "Click Place  |  , . or R Rotate  |  Del Sell  |  Esc or Right-click Cancel"

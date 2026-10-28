@@ -30,6 +30,8 @@ const WALL_UP_FRAME: int = 20
 const DRAG_START: Vector3i = Vector3i(1, 5, 0)
 const DRAG_END: Vector3i = Vector3i(3, 5, 0)
 const HANG_FRAME: int = 40
+## Hand-run: from DOWN_FRAME the tool is put away and the walls are Down.
+const DOWN_FRAME: int = 60
 const HANG_FACE: Vector3i = Vector3i(8, 1, 0)
 
 
@@ -108,6 +110,14 @@ static func begin_hang(main: Node, root: Window) -> Dictionary:
 	root.warp_mouse(pointer)
 	main.call("update_build_pointer", pointer)
 	return {"error": "", "pointer": pointer}
+
+
+## Walls Down with nothing held: the stubs keep their finishes, hung items hide.
+static func walls_down(main: Node) -> Dictionary:
+	var view: ShopView = main.get_node_or_null("ShopView") as ShopView
+	(main.get("build_mode") as BuildMode).cancel_ghost()
+	view.set_wall_mode(ShopView.WallMode.DOWN)
+	return {"error": ""}
 
 
 ## A point on a face's wall, 0.7 m up, in world space.

@@ -1327,7 +1327,8 @@ an active edit/panel/selection first, or opens Settings when none is active.
   Commits go through Main's `shop_wall_finishes`. **Paint** on a wall face hit
   before any furniture recolours the connected run of that look inside its
   room (`wall_area_faces`), Shift the room; the outside of the shell (no face)
-  still calls the legacy whole-shop `paint_wall`.
+  still calls the legacy whole-shop `paint_wall`; a click on hung decor paints
+  nothing (wall items take no paint yet).
 - **Wall decor.** A wall item is an `ItemDef` on `PlacementLayer.WALL`
   (DECOR or RESTROOM, not solid, no work/seat/blocking cells, footprint
   `(width 1..4, 1)`); `SimGrid` refuses that layer (`INVALID_LAYER`), so it
@@ -1393,7 +1394,8 @@ an active edit/panel/selection first, or opens Settings when none is active.
   (`tools/walls_review.gd`, `[--quarter=N]` for frame 12): finishes on shell
   and interior walls and four hung items in Cutaway, then Walls Up with
   Build > Wall finish holding a striped wallpaper drag; a hand-run frame after
-  40 holds a chalk menu board from Buy > Decor > Wall decor.
+  40 holds a chalk menu board from Buy > Decor > Wall decor, and one after 60
+  shows Walls Down (finished stubs, hung items hidden).
 
 ### Restaurant vibe core (FK-072)
 - `VibeModel.evaluate()` reads detached layout, paint and enabled-menu inputs.

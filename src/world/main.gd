@@ -745,6 +745,8 @@ func route_paint_input(event: InputEvent) -> bool:
 		if face != WallFaces.NO_FACE:
 			paint_face(face, mouse.shift_pressed)
 			return true
+		if wall_item_at_screen_position(mouse.position) != WallFaces.NO_FACE:
+			return true  # Wall decor takes no paint (yet); never the wall behind it.
 		var cell: Variant = paint_cell_at_screen_position(mouse.position)
 		if cell is Vector2i:
 			paint_cell(cell, mouse.shift_pressed)
@@ -854,11 +856,15 @@ func update_paint_pointer(screen_position: Vector2, whole_room: bool = false) ->
 		var view: ShopView = $ShopView as ShopView
 		view.preview_paint(&"", -1, &"")
 		view.clear_floor_preview()
-		var key: Array = [face, whole_room, _paint_swatch_id, world.grid.version, shop_editor.walls.revision]
+		var key: Array = [face, whole_room, _paint_swatch_id, world.grid.get_instance_id(), world.grid.version,
+			shop_editor.walls.get_instance_id(), shop_editor.walls.revision]
 		if key != _wall_paint_key:
 			_wall_paint_key = key
 			_wall_paint_changes_cache = _wall_paint_changes(face, whole_room)
 		view.preview_wall_finishes(_wall_paint_changes_cache)
+		return
+	if wall_item_at_screen_position(screen_position) != WallFaces.NO_FACE:
+		($ShopView as ShopView).clear_paint_preview()
 		return
 	var cell: Variant = paint_cell_at_screen_position(screen_position)
 	preview_paint_cell(cell, whole_room)

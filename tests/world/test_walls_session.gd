@@ -207,6 +207,30 @@ func test_paint_recolours_the_run_of_wall_or_the_room_while_open() -> void:
 	assert_true(_main.call("set_paint_active", false))
 
 
+func test_a_paint_click_on_wall_decor_paints_nothing() -> void:
+	await _start()
+	Economy.add_cash(500, Ledger.OTHER)
+	assert_true(_main.call("set_build_active", true))
+	assert_true(_main.call("shop_hang", &"menu_board", _face(1, 8, WEST)))
+	assert_true(_main.call("set_build_active", false))
+	assert_true(_main.call("set_paint_active", true))
+	_main.set("_paint_swatch_id", &"sage")
+	var point: Vector2 = _face_point(_face(1, 8, WEST))
+	assert_eq(_main.call("wall_item_at_screen_position", point), _face(1, 8, WEST))
+	assert_eq(_main.call("paint_face_at_screen_position", point), WallFaces.NO_FACE, "the board covers the wall")
+	_main.call("update_paint_pointer", point)
+	assert_eq(_view().wall_finish_view.preview_faces().size(), 0)
+	var click: InputEventMouseButton = InputEventMouseButton.new()
+	click.position = point
+	click.global_position = point
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+	assert_true(_main.call("route_paint_input", click))
+	assert_eq(_editor().wall_swatch_id, &"", "never the whole building behind it")
+	assert_eq(_editor().walls.count(), 0)
+	assert_true(_main.call("set_paint_active", false))
+
+
 func _start() -> void:
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	await tree.process_frame

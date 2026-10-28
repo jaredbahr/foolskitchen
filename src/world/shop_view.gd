@@ -441,12 +441,14 @@ func wall_face_at_ray(ray_origin: Vector3, ray_direction: Vector3, floor_fallbac
 	return best
 
 
-## The hung wall item under a ray before any wall or the floor, or NO_FACE.
+## The hung wall item under a ray before any furniture, or NO_FACE.
 func wall_item_at_ray(ray_origin: Vector3, ray_direction: Vector3) -> Vector3i:
 	if wall_finish_view == null:
 		return WallFaces.NO_FACE
 	var hit: Dictionary = wall_finish_view.item_hit(ray_origin, ray_direction)
-	return hit.get("anchor", WallFaces.NO_FACE)
+	if hit.is_empty() or nearest_item_distance(ray_origin, ray_direction) < float(hit["distance"]):
+		return WallFaces.NO_FACE
+	return hit["anchor"]
 
 
 func _face_hit(face: Vector3i, point: Vector3, distance: float) -> Dictionary:

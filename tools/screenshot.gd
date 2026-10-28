@@ -1879,13 +1879,15 @@ func _process(_delta: float) -> bool:
 			_fail_capture(String(wall_drag["error"]))
 			return true
 		_build_pointer = wall_drag["pointer"]
+	if _walls_review and _frames == WALLS_REVIEW.DOWN_FRAME:
+		WALLS_REVIEW.walls_down(_main)
 	if _walls_review and _frames == WALLS_REVIEW.HANG_FRAME:
 		var hang: Dictionary = WALLS_REVIEW.begin_hang(_main, root)
 		if not String(hang.get("error", "")).is_empty():
 			_fail_capture(String(hang["error"]))
 			return true
 		_build_pointer = hang["pointer"]
-	if _walls_review and _frames > WALLS_REVIEW.WALL_UP_FRAME:
+	if _walls_review and _frames > WALLS_REVIEW.WALL_UP_FRAME and _frames < WALLS_REVIEW.DOWN_FRAME:
 		_hold_build_pointer()
 	if _diner_review and _frames == 24:
 		_diner_fixture = DINER_REVIEW.furnish(_main, root, _diner_fixture)
@@ -2560,6 +2562,8 @@ func _walls_review_valid(state: Dictionary) -> bool:
 	print("WALLS_REVIEW frame=%d %s" % [_capture_frame, JSON.stringify(state)])
 	if _capture_frame < WALLS_REVIEW.WALL_UP_FRAME:
 		return int(state.get("state", -1)) == BuildMode.State.INACTIVE and int(state.get("preview_faces", -1)) == 0
+	if _capture_frame >= WALLS_REVIEW.DOWN_FRAME:
+		return int(state.get("wall_mode", -1)) == ShopView.WallMode.DOWN and int(state.get("hung_shown", -1)) == 0
 	if _capture_frame >= WALLS_REVIEW.HANG_FRAME:
 		return int(state.get("state", -1)) == BuildMode.State.HANG
 	return int(state.get("state", -1)) == BuildMode.State.WALL_FINISH and state.get("dragging") == true \
