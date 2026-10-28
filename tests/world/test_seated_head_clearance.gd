@@ -2,13 +2,14 @@ extends TestCase
 ## Director 6404820766: actual head/backrest surfaces >=0.02, no penetration
 ## into any seat part, supported hips and <=0.05 offset. Kit exceptions are
 ## explicit item IDs with measured physical violations, never skipped geometry.
+## Jared 2026-10-28: lowered-backrest derived kit seats, no lean, no exceptions.
 
 const GEOMETRY: GDScript = preload("res://tools/seated_head_geometry.gd")
 const CATALOGUE: GDScript = preload("res://tools/seated_head_catalogue.gd")
 const PERSON: PackedScene = preload("res://assets/people/person.tscn")
 
 
-func test_every_catalogue_seat_is_measured_and_only_explicit_kit_failures_are_allowed() -> void:
+func test_every_catalogue_seat_is_measured_and_clears_heads_without_exceptions() -> void:
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	await tree.process_frame
 	var report: Dictionary = await CATALOGUE.run(tree.root)
@@ -21,7 +22,7 @@ func test_every_catalogue_seat_is_measured_and_only_explicit_kit_failures_are_al
 	assert_eq((report["known_kit_failures"] as Array).size(), CATALOGUE.KNOWN_KIT_FAILURE_IDS.size())
 	var coverage: Dictionary[String, bool] = {}
 	var authored_chair_cases: int = 0
-	assert_true(CATALOGUE.KNOWN_KIT_FAILURE_IDS.has("chair"), "Director 6460103763 accepts measured remaining overlap with a small lean")
+	assert_true(CATALOGUE.KNOWN_KIT_FAILURE_IDS.is_empty(), "every kit seat now clears seated heads (derived lowered backrests)")
 	for sample: Dictionary in report["samples"]:
 		var context: String = "%s %s turns=%d cell=%s sit_t=%.5f" % [sample["item"], sample["model"], sample["turns"], sample["seat_cell"], sample["sit_time"]]
 		assert_eq(sample.get("error", "missing result"), "", context)
@@ -30,8 +31,8 @@ func test_every_catalogue_seat_is_measured_and_only_explicit_kit_failures_are_al
 		coverage[String(sample["item"])] = true
 		if sample["item"] == "chair":
 			authored_chair_cases += 1
-			assert_true(sample["known_kit_failure"], context)
-			assert_true(float(sample["seated_lean_degrees"]) >= 10.0 and float(sample["seated_lean_degrees"]) <= 15.0, context)
+		assert_eq(float(sample["seated_lean_degrees"]), 0.0, context + " sits without a lean (Jared 2026-10-28)")
+		assert_false(sample["known_kit_failure"], context)
 		assert_true(int(sample["head_vertices"]) > 0, context)
 		assert_true(int(sample["seat_triangles"]) > 0, context)
 		assert_true(float(sample["facing_dot"]) > 0.9999, context + " faces its table")
@@ -44,6 +45,7 @@ func test_every_catalogue_seat_is_measured_and_only_explicit_kit_failures_are_al
 		assert_true(sample["passes"], context)
 		assert_eq(sample["head_vertices_inside_count"], 0, context)
 		assert_eq(sample["head_seat_surface_crossings"], 0, context)
+		assert_eq(sample["seat_vertices_inside_head_count"], 0, context + " no seat corner inside the head")
 		if sample["backrest_status"] == "backless":
 			assert_null(sample["backrest_clearance"], context)
 		else:
@@ -308,9 +310,11 @@ func test_unknown_backrest_does_not_invent_a_gap_or_waive_new_seat_failures() ->
 	assert_null(result["backrest_clearance"])
 	assert_false(result["measurement_complete"])
 	assert_false(result["passes"])
+	# The shipped allowlist is empty; exercise the retained policy with a synthetic one.
+	var allowlist: PackedStringArray = ["kit_seat_a", "kit_seat_b"]
 	var samples: Array = []
 	var trials: Array = []
-	for id: String in CATALOGUE.KNOWN_KIT_FAILURE_IDS:
+	for id: String in allowlist:
 		samples.append(_policy_sample(id))
 		var trial: Dictionary = _policy_sample(id)
 		trial["trial_supported"] = true
@@ -318,18 +322,36 @@ func test_unknown_backrest_does_not_invent_a_gap_or_waive_new_seat_failures() ->
 		trials.append(trial)
 	var new_seat: Dictionary = _policy_sample("new_chair")
 	var made_seat: Dictionary = _policy_sample("diner_booth")
-	var parity_error: Dictionary = _policy_sample("chair")
+	var parity_error: Dictionary = _policy_sample("kit_seat_b")
 	parity_error["native_bake_max_error"] = 0.1
 	samples.append_array([new_seat, made_seat, parity_error])
 	var report: Dictionary = {"samples": samples, "errors": PackedStringArray(), "known_kit_offset_trials": trials}
-	CATALOGUE._apply_known_failure_policy(report)
+	CATALOGUE._apply_known_failure_policy(report, allowlist)
 	assert_false(new_seat["accepted"])
 	assert_false(made_seat["accepted"])
 	assert_false(parity_error["accepted"], "an item exception cannot waive native parity")
 	assert_true((samples[0] as Dictionary)["accepted"])
 	var missing: Dictionary = {"samples": [], "errors": PackedStringArray()}
-	CATALOGUE._apply_known_failure_policy(missing)
-	assert_eq((missing["errors"] as PackedStringArray).size(), CATALOGUE.KNOWN_KIT_FAILURE_IDS.size(), "each allowlisted ID needs physical evidence")
+	CATALOGUE._apply_known_failure_policy(missing, allowlist)
+	assert_eq((missing["errors"] as PackedStringArray).size(), allowlist.size(), "each allowlisted ID needs physical evidence")
+
+
+func test_seat_corner_inside_the_head_fails_even_without_head_vertices_inside_or_crossings() -> void:
+	# The head->seat checks alone miss a backrest corner wholly inside the head.
+	var head: PackedVector3Array = _box_faces(Vector3(0, 0.6, 0), Vector3.ONE * 0.3)
+	var corner: PackedVector3Array = _box_faces(Vector3(0, 0.6, 0), Vector3.ONE * 0.05)
+	var result: Dictionary = GEOMETRY.measure_surfaces(_unique_points(head), head,
+		[_part("backrest_corner", corner, false)] as Array[Dictionary], "backless")
+	assert_eq(result["head_vertices_inside_count"], 0)
+	assert_eq(result["head_seat_surface_crossings"], 0)
+	assert_eq(result["seat_vertices_inside_head_count"], 8, "every corner of the seat part is inside the head")
+	assert_true(float(result["max_seat_vertex_head_depth"]) > 0.1)
+	assert_false(result["passes"])
+	assert_true(CATALOGUE.physical_violation(result), "the reverse count is a physical violation")
+	var apart: Dictionary = GEOMETRY.measure_surfaces(_unique_points(head), head,
+		[_part("seat", _box_faces(Vector3(0, 0.1, 0), Vector3.ONE * 0.1), false)] as Array[Dictionary], "backless")
+	assert_eq(apart["seat_vertices_inside_head_count"], 0)
+	assert_true(apart["passes"])
 
 
 func _policy_sample(id: String) -> Dictionary:

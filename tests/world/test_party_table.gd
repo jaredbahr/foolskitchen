@@ -28,7 +28,7 @@ func test_four_seat_wrapper_uses_only_unchanged_approved_native_models() -> void
 		var model: Node3D = art.get_node("Model") as Node3D
 		assert_eq(art.scale, Vector3.ONE * ArtScale.FURNITURE_SCALE)
 		if part.has_meta(&"seat_cell"):
-			assert_eq(model.scene_file_path, "res://assets/kenney/furniture/chairCushion.glb")
+			assert_eq(model.scene_file_path, "res://assets/props/seats/derived/chairCushion_low_back.glb")
 			chairs += 1
 		else:
 			assert_eq(model.scene_file_path, "res://assets/kenney/furniture/table.glb")
@@ -82,8 +82,8 @@ func test_four_seat_classification_matches_cushioned_kit_and_its_measured_except
 			selected_chairs += 1
 	assert_eq(classified_chairs, 4, "all four actual chair sources must match their audit")
 	assert_true(selected_chairs > 0, "the nearest chair backrest is identified")
-	assert_true(CATALOGUE.KNOWN_KIT_FAILURE_IDS.has("table_4"),
-		"measured: the same chairCushion crossing class as table_2 (see tools/seated_head_probe.md)")
+	assert_false(CATALOGUE.KNOWN_KIT_FAILURE_IDS.has("table_4"),
+		"the lowered-backrest chairs clear seated heads (see tools/seated_head_probe.md)")
 	original.free()
 
 

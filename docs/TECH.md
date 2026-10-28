@@ -768,19 +768,22 @@ an active edit/panel/selection first, or opens Settings when none is active.
   include the applied lean as well as model and animation time. This mechanism
   does not establish a seat's physical fit: authored tuning still requires the
   full surface run, supported hips and actual rendered review.
-  Jared accepts some cushioned-chair backrest overlap with a small 10–15 degree
-  lean. Real-table review additionally seats guests opposite each other at
+  No shipped seat uses a lean (Jared, 2026-10-28: leaning "looks pretty
+  rough"); the kit seats instead use lowered-backrest meshes derived by
+  `tools/derive_seat_backrests.py` (see `docs/ART_STYLE.md` §2). Real-table review additionally seats guests opposite each other at
   cross, glass, cloth and round tables: no head may enter or cross any table
   mesh, and the exact head-to-head separation is reported for visual review.
   A backrest exception never excuses table intrusion. Review images and JSON
   remain external to shipped resources.
   The seated-head probe uses indexed, skinned Mini head surfaces at the shared
   scale: no head vertex may be inside any seat part, and an identified backrest
-  must clear the head surface by at least 0.02 m. Made seats also require both
+  must clear the head surface by at least 0.02 m. No seat vertex may be inside
+  the closed head surface either (the reverse check catches a thin backrest
+  corner wholly inside the head). Made seats also require both
   hips to project onto their named cushion surfaces. Whole-head boxes are for
-  framing only. The Director permits explicitly named kit failures after a
-  supported trial offset of at most 0.05 m; each remains a measured failure in
-  the report, while new or made-seat failures still fail acceptance. See
+  framing only. The policy for explicitly named kit failures (after a supported
+  trial offset of at most 0.05 m) remains, but its list is empty: every
+  catalogue seat must pass. See
   `tools/seated_head_probe.md` for the bounded catalogue and native-pose checks.
 - No save section is added. Existing item IDs, positions, turns and swatches
   use the shop snapshot; dining links are derived again from the restored

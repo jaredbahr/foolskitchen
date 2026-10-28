@@ -8,7 +8,7 @@ const SOURCE_SHA: String = "0123456789abcdef0123456789abcdef0123456789abcdef0123
 func test_all_eight_reviewed_sources_match_their_actual_imported_mesh_inventory() -> void:
 	var manifest: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(CLASSIFIER.MANIFEST_PATH))
 	var sources: Dictionary = manifest["sources"]
-	assert_eq(sources.size(), 8, "every reviewed kit source is exercised")
+	assert_eq(sources.size(), 16, "every reviewed kit source and its derived lowered-backrest seat is exercised")
 	for path: String in sources:
 		var scene: PackedScene = load(path) as PackedScene
 		assert_not_null(scene, path)

@@ -11,7 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
-- Guests lean forward a little in the cushioned chair, reducing the overlap with its backrest while keeping their heads above the table. (#193)
+- Seated guests no longer have their heads poking through chair and bench backrests: every chair, bench, the lounge chair and the chairs of the two- and four-seat tables now have a lower back, so guests sit upright without clipping. (#TBD)
 - Build a back door in a back or side wall with the Doorway tool; removing it closes the wall again. Guests always come and go by the front door. (#191)
 - Paint rooms in Build mode's new Rooms tab: Dining, Kitchen, Restroom and Storage (free, in the morning or after closing, with undo). Your kitchen is staff-only: guests never walk through the kitchen or storage, so a back dining room needs its own way round, and Build tells you when a seat or toilet would leave guests stuck ("Guests don't sit in the kitchen", "Guests can't reach this without walking through the kitchen"). Build a restroom in any shop: put a toilet (and a wash basin) from Buy mode's new Restroom tab in a Restroom room. Guests are a bit happier with one; once you seat about 12 or more they start expecting one, and a guest who can't use one loses some patience and says so in their review. Their meal waits for them while they're away. (#192)
 - The Menu shows your dishes as an unlock tree (fries grow from the burger, savoury pie from the soup), with the selected dish's detail beside it: quality, price, what equipment it still needs (in red, such as "Buy a fryer" or "Staff can't reach the fryer") and ingredient stock. A dish whose station staff can't reach now leaves the menu, as drinks already did; undo the edit that morning to get it back as it was, or switch it on again once staff can reach it. (#186)
@@ -83,6 +83,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- `tools/derive_seat_backrests.py` makes the lowered-backrest seat models from the untouched Kenney files; the seated-head check now also catches a seat corner inside a head, and no seat is exempt from it any more. (#TBD)
 - Seat-fit review tools identify the actual backrest polygons in joined kit furniture and verify their source and native geometry. Existing clipping exceptions remain visible. (#193)
 - The five-day soak tests now start their new game from a fixed seed instead of the clock, so they play the same guests on every run and stop failing at random. (#176)
 - The roadmap now has an idea backlog (regulars, patio, makeover jobs, staff drama, more sites and more) so liked ideas aren't lost. (#174)

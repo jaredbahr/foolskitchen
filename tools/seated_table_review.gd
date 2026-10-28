@@ -1,7 +1,8 @@
 extends SceneTree
 ## Manual real-table sweep. Generated JSON and PNGs stay outside the repo.
 ## --out=<fresh-directory> [--native-bake] [--capture] [--quick] [--authored] [--capture-only]
-## --capture-only is a fast two-image baseline/authored cross-table comparison.
+## --capture-only is a fast cross-table capture of the unleaned baseline and, when
+## the chair authors a lean, the leaned pose (one image per distinct lean).
 ## The broad all-table/rotation/look/time trial sweep is the default (--sweep).
 ## Trial sweeps report rejected poses without treating a rejected trial as an
 ## engine failure. --authored requires the actual chair to clear every table.
@@ -54,7 +55,8 @@ func _run() -> void:
 			quit(1)
 			return
 		leans = [content.item(&"chair").seated_lean_degrees]
-		if capture_only:
+		# The baseline is the unleaned sit; add it only when the chair leans.
+		if capture_only and leans[0] != 0.0:
 			leans.push_front(0.0)
 	var turns: Array[int] = [0, 1, 2, 3]
 	var looks: Array[int] = []
@@ -86,7 +88,7 @@ func _run() -> void:
 	if authored or capture_only:
 		valid = valid and int(report["failures"]) == 0 and int(report["opposite_head_regressions"]) == 0
 	if capture_only:
-		valid = valid and (report["captures"] as Array).size() == 2
+		valid = valid and (report["captures"] as Array).size() == leans.size()
 	print("REAL TABLE REVIEW: ", "PASS" if valid else "FAIL", "; pairs=", (report["pairs"] as Array).size(),
 		"; head/table violations=", report["failures"], "; errors=", report["errors"])
 	quit(0 if valid else 1)

@@ -42,6 +42,11 @@ facing, the 0.05 offset limit, or an unknown/new/made item ID.
 - `clearance_metric`: `indexed posed-head mesh to identified backrest surfaces`.
 - `head_vertices_inside_count`: unique referenced head positions inside solids;
   `max_head_vertex_penetration`: greatest such vertex's nearest-boundary depth.
+- `seat_vertices_inside_head_count`: unique seat-part positions inside the
+  closed posed head (solid-angle test, the reverse of the count above);
+  `max_seat_vertex_head_depth`: the deepest one. A thin backrest corner can sit
+  wholly inside the head with no head vertex inside the seat and no crossing
+  found, so this count is part of `passes` and of a physical violation.
 - `head_seat_surface_crossings`: number of seat parts with an actual proper
   crossing witness (a lower bound, not the total number of triangle pairs).
 - `intrusion_parts`: path strings; `intrusion_details`: each part's inside count,
@@ -102,32 +107,39 @@ person-local geometry payload. An item ID, nominal pose or rounded AABB alone
 cannot reuse a passing result. The complete native catalogue and renderer-parity results are recorded in the PR;
 physical kit exceptions remain separately reported.
 
-## Cushioned chair correction
+## Lowered-backrest seats (no exceptions)
 
-Director review rejected the earlier 33-degree pose: it cleared the backrest
-but pushed heads into real tables. Jared chose a small 10–15 degree lean and
-accepted the remaining chair backrest overlap (comment6460103763). `chair`
-therefore remains an explicit measured exception; this does not complete #155.
+Jared, 2026-10-28: guests are not leaned forward ("looks pretty rough"); the kit
+seats get lowered backrests instead. `tools/derive_seat_backrests.py` writes
+`assets/props/seats/derived/<kit name>_low_back.glb` from the unchanged kit GLB:
+every height above the seat top is multiplied by a squash factor (the lounge
+chair's arms come down with its back, because they share edges). Nodes,
+materials, UVs, index order and faces stay the kit's, so each derived file has a
+schema-2 manifest entry with its own hash and inventory and the kit entry's
+backrest face selection. Rounding to 0.1 mm keeps derived heights off the
+engine's 0.0001 face-snap half steps. The cushioned chair's earlier 10° lean
+(PR #193) is removed; the lean mechanism itself remains for future use.
 
-The private sit clip rotates only the native torso joint. Root/hip/leg transforms,
-character proportions, shared scale, source assets, simulation cells and random
-streams stay unchanged. Pose/parity cache keys include the actual lean. Native
-parity must still meet the unchanged 1e-5 bound for every measured pose.
+Squash factors were the largest that keep at least 2 mm margin over the 0.02 m
+backrest rule for all eight looks, three sit times and four rotations:
 
-`seated_table_clearance.gd` uses production ShopView seating at real cross,
-glass, cloth and round tables, with a guest opposite. It measures every table
-mesh for head vertices inside and surface crossings, and reports exact posed
-head-surface separation across the table. Backrest overlap is a separate
-finding and cannot excuse a table intrusion. Tables and both guests stay
-visible in native review images. Generated images and JSON remain outside
-the shipped repository; the visual-review artifact carries the images.
+| Kit source | Seats | Seat top | Squash | Backrest top (source → derived) | Minimum gap |
+|---|---|---|---|---|---|
+| chair | wooden_chair | 0.24 | 0.52 | 0.47 → 0.360 | 26.0 mm |
+| chairCushion | chair, table_2, table_4 | 0.24 | 0.58 | 0.46 → 0.368 | 23.2 mm |
+| chairRounded | rounded_chair | 0.22 | 0.52 | 0.455 → 0.342 | 23.2 mm |
+| chairModernCushion | modern_chair | 0.24 | 0.55 | 0.46 → 0.361 | 24.5 mm |
+| chairModernFrameCushion | modern_frame_chair | 0.24 | 0.55 | 0.46 → 0.361 | 24.5 mm |
+| loungeChair (arms too) | lounge_chair | 0.23 | 0.52 | 0.46 → 0.350 (arms 0.37 → 0.303) | 26.0 mm |
+| bench | bench | 0.24 | 0.52 | 0.47 → 0.360 | 26.0 mm |
+| benchCushion | cushioned_bench | 0.24 | 0.55 | 0.46 → 0.361 | 24.5 mm |
 
-```sh
-godot --headless --path . --script tools/seated_table_review.gd -- --sweep --out=/fresh/table-sweep
-godot --rendering-method gl_compatibility --path . --script tools/seated_table_review.gd -- --capture-only --out=/fresh/table-review
-```
+Source units; the game scale is ×1.1. With them, all 2,016 catalogue rows pass
+with no head vertex inside a seat, no crossing and no seat vertex inside a head,
+and `KNOWN_KIT_FAILURE_IDS` is empty. The real-table sweep still reports no
+head/table violation.
 
-## Explicit unchanged-kit findings
+## History: unchanged-kit findings (before the lowered backrests)
 
 The Director permitted item-ID exceptions for kit seats that still fail mesh
 measurements. The first nine were observed with actual head/seat surface crossings

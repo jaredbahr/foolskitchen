@@ -9,10 +9,9 @@ func test_authored_cushioned_chair_heads_clear_four_real_tables_with_an_opposite
 	var content: ContentDB = ContentDB.new()
 	assert_eq(content.load_all(), PackedStringArray())
 	assert_almost_eq(content.item(&"chair").seated_forward_offset, 0.0,
-		0.000001, "the accepted small lean keeps the native chair translation")
-	assert_true(content.item(&"chair").seated_lean_degrees >= 10.0 \
-		and content.item(&"chair").seated_lean_degrees <= 15.0,
-		"Jared accepted a small 10–15 degree chair lean")
+		0.000001, "the chair keeps the native seat translation")
+	assert_almost_eq(content.item(&"chair").seated_lean_degrees, 0.0, 0.000001,
+		"Jared 2026-10-28: no lean; the derived chair's lowered backrest clears heads instead")
 	var leans: Array[float] = [content.item(&"chair").seated_lean_degrees]
 	var turns: Array[int] = [0]
 	var looks: Array[int] = [PersonPresentation.GUEST_MODELS.find(&"character-male-c"),
@@ -25,7 +24,7 @@ func test_authored_cushioned_chair_heads_clear_four_real_tables_with_an_opposite
 	assert_eq((report["samples"] as Array).size(), 16)
 	assert_eq(report["failures"], 0, "no head enters or crosses any real table mesh")
 	assert_eq(report["opposite_head_regressions"], 0,
-		"the measured small lean must not regress toward the rejected near-collision")
+		"the unleaned chair must not regress toward the rejected near-collision")
 	for sample: Dictionary in report["samples"]:
 		var context: String = "%s %s side=%d" % [sample["table"], sample["model"], sample["side"]]
 		assert_true(sample["table_visible"], context)

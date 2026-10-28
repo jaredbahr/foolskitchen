@@ -39,6 +39,8 @@ One grid cell is 0.5 units. Uniform scale only: never stretch or squash a model 
 - **Table tops:** about 0.36 high; a seated guest's arms rest on the table.
 - **Chair seats:** about 0.27 high, matching the `sit` pose raised onto the seat.
 
+**Seats with lowered backrests (Jared, 2026-10-28).** Mini Characters have big heads, and a seated guest's head sat inside the kit chairs' backrests. Guests are not leaned forward ("looks pretty rough"); instead every kit seat a guest sits in uses a derived copy with a lower backrest, in `assets/props/seats/derived/`. `tools/derive_seat_backrests.py` makes them from the unchanged kit files: it squashes only the heights above the seat top (to 52–58% of the kit's backrest height; the lounge chair's arms come down with its back), so the seat, legs, plan shape, materials and UVs stay the kit's and each seat still reads as the same piece. This is the one approved exception to "uniform scale only". A new seat must clear seated heads on its own (`tools/seated_head_probe.gd`, no exceptions); if a kit seat needs a lower back, add it to the tool's table rather than editing any file by hand.
+
 Any new building piece (walls, windows, doors, the awning, counters) follows these numbers. Every visual PR shows at least one capture with people standing beside the furniture, so the fit can be checked.
 
 ## 3. Colour and materials

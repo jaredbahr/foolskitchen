@@ -17,7 +17,20 @@ const CASES: Array[Dictionary] = [
 	{"id": &"glass_table", "name": "Glass dining table", "asset": "tableGlass", "category": ItemDef.Category.TABLE, "price": 120, "unlock": 6, "charm": 2, "tags": [&"modern"], "footprint": Vector2i(2, 1), "solid": true, "capacity": 2, "seats": [], "materials": []},
 ]
 
-## Horizontal seat surfaces measured from the unchanged approved GLB triangles.
+## Kit seats whose wrappers use a lowered-backrest mesh derived by
+## tools/derive_seat_backrests.py (Jared 2026-10-28); the kit file is unchanged.
+const DERIVED_BACKREST_ASSETS: PackedStringArray = ["chair", "chairCushion", "chairRounded",
+	"chairModernCushion", "chairModernFrameCushion", "loungeChair", "bench", "benchCushion"]
+
+
+static func _model_path(asset: String) -> String:
+	if DERIVED_BACKREST_ASSETS.has(asset):
+		return "res://assets/props/seats/derived/%s_low_back.glb" % asset
+	return "res://assets/kenney/furniture/%s.glb" % asset
+
+
+## Horizontal seat surfaces measured from the approved GLB triangles (derived
+## lowered-backrest seats keep every vertex at or below the kit seat top).
 ## Lounge seating is the broad low carpet plane; final fit still needs pixels.
 const SEAT_SURFACE_Y: Dictionary[StringName, float] = {
 	&"wooden_chair": 0.24, &"rounded_chair": 0.22,
@@ -75,7 +88,7 @@ func test_seating_and_table_catalogue_matches_the_approved_entries() -> void:
 			assert_false(part.has_meta(&"seat_cell"), "%s keeps seat cells in its definition only" % item_id)
 			var art: Node3D = part.get_node("Art") as Node3D
 			var model: Node3D = art.get_node("Model") as Node3D
-			assert_eq(model.scene_file_path, "res://assets/kenney/furniture/%s.glb" % entry["asset"])
+			assert_eq(model.scene_file_path, _model_path(entry["asset"]))
 			assert_almost_eq(art.rotation.y, PI)
 			assert_eq(art.scale, Vector3.ONE * ArtScale.FURNITURE_SCALE)
 		assert_eq(parts.size(), 2 if entry.has("bench") else 1, String(item_id))
@@ -122,7 +135,7 @@ func test_bench_wrappers_use_two_unchanged_centered_kit_models() -> void:
 			assert_false(part.has_meta(&"seat_cell"), "bench seats are authored in ItemDef")
 			var model: Node3D = part.get_node("Art/Model") as Node3D
 			var expected_asset: String = "bench" if item_id == &"bench" else "benchCushion"
-			assert_eq(model.scene_file_path, "res://assets/kenney/furniture/%s.glb" % expected_asset)
+			assert_eq(model.scene_file_path, _model_path(expected_asset))
 			var part_bounds: AABB = part.transform * PropView._children_aabb(part)
 			assert_almost_eq(part_bounds.get_center().x, expected_x, 0.0001, String(item_id))
 			assert_almost_eq(part_bounds.get_center().z, 0.0, 0.0001, String(item_id))
