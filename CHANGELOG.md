@@ -88,7 +88,7 @@ Each line ends with its PR number.
 ### Under the hood
 - `tools/delivery_shots.gd` captures a visible delivery (door swing, crates, carrying) for review by hand; it is not part of CI. (#195)
 - `tools/derive_seat_backrests.py` makes the lowered-backrest seat models from the untouched Kenney files; the seated-head check now also catches a seat corner inside a head, and no seat is exempt from it any more. (#199)
-- Seat-fit review tools identify the actual backrest polygons in joined kit furniture and verify their source and native geometry. Existing clipping exceptions remain visible. (#193)
+- Seat-fit review tools identify the actual backrest polygons in joined kit furniture and verify their source and native geometry. (#193)
 - The five-day soak tests now start their new game from a fixed seed instead of the clock, so they play the same guests on every run and stop failing at random. (#176)
 - The roadmap now has an idea backlog (regulars, patio, makeover jobs, staff drama, more sites and more) so liked ideas aren't lost. (#174)
 - Design decision D24: a second restaurant unlocks at Tier 3 once you hire a manager to run the first, and shops you're away from keep earning based on the manager's skill. (#165)

@@ -108,6 +108,8 @@ def derive(source_bytes, seat_top, squash, arms_move, backrest_faces):
     document, binary = split_glb(source_bytes)
     selected = set(backrest_faces)
     face = 0
+    # Primitives can share one position list: move each stored vertex once.
+    moved = set()
     for mesh in document["meshes"]:
         for primitive in mesh["primitives"]:
             require(primitive.get("mode", 4) == 4 and "indices" in primitive, "expected indexed triangles")
@@ -123,6 +125,9 @@ def derive(source_bytes, seat_top, squash, arms_move, backrest_faces):
                 above.update(i for i, y in zip(corners, heights) if y > limit)
                 face += 1
             for index in sorted(above):
+                if slots[index] in moved:
+                    continue
+                moved.add(slots[index])
                 x, y, z = struct.unpack_from("<3f", binary, slots[index])
                 # Round to 0.1 mm so no derived height lands on a half step of the
                 # engine's 0.0001 face snap (see tools/seated_head_backrests.gd).
