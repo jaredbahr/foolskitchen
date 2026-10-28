@@ -94,6 +94,10 @@ var _edge_astar: EdgeAStar = EdgeAStar.new(_edge_blocking, _edge_occupied)
 ## on _guest_astar, where staff-only cells are solid too; it shares the edges.
 var _rooms: Dictionary[Vector2i, int] = {}
 var _staff_cells: int = 0
+## Back-door shell cells (FK-099): walkable for staff and deliveries, never
+## for guests. Kept by _refresh_cell, so it follows every terrain, segment and
+## grow change that can open or close one.
+var _door_cells: Dictionary[Vector2i, bool] = {}
 var _guest_astar: EdgeAStar = EdgeAStar.new(_edge_blocking, _edge_occupied)
 var _items: Dictionary[int, PlacedItem] = {}
 ## cell -> id of the item covering it (solid or not).
@@ -243,6 +247,8 @@ func set_terrains(changes: Dictionary[Vector2i, int]) -> bool:
 	touched.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return a.y < b.y or (a.y == b.y and a.x < b.x))
 	for cell: Vector2i in touched:
 		_refresh_cell(cell)
+	_refresh_shell_doors(touched)
+	for cell: Vector2i in touched:
 		for edge: Vector3i in cell_edges(cell):
 			_refresh_edge(edge)
 	_refresh_dining_seats()
@@ -268,11 +274,14 @@ func set_terrain(cell: Vector2i, t: Terrain) -> bool:
 	else:
 		_entries.erase(cell)
 	_refresh_cell(cell)
-	for edge: Vector3i in cell_edges(cell):
-		_refresh_edge(edge)
+	var touched: Array[Vector2i] = [cell]
+	_refresh_shell_doors(touched)
+	for changed: Vector2i in touched:
+		for edge: Vector3i in cell_edges(changed):
+			_refresh_edge(edge)
 	_refresh_dining_seats()
 	_version += 1
-	cells_changed.emit([cell] as Array[Vector2i])
+	cells_changed.emit(touched)
 	return true
 
 
@@ -671,17 +680,74 @@ func _footprint_cells(footprint: Vector2i, origin: Vector2i, quarter_turns: int)
 
 func _refresh_cell(cell: Vector2i) -> void:
 	var t := terrain(cell)
-	var blocked := t == Terrain.WALL or t == Terrain.OUTSIDE
+	var door: bool = _shell_door(cell)
+	if door:
+		_door_cells[cell] = true
+	else:
+		_door_cells.erase(cell)
+	var blocked := (t == Terrain.WALL and not door) or t == Terrain.OUTSIDE
 	var id: int = _cover.get(cell, 0)
 	if id != 0 and (_items[id].solid or _items[id].blocking_cells.has(cell)):
 		blocked = true
 	_astar.set_point_solid(cell, blocked)
 	_edge_astar.set_point_solid(cell, blocked)
-	_guest_astar.set_point_solid(cell, blocked or is_staff_only(cell))
+	_guest_astar.set_point_solid(cell, blocked or _guest_barred(cell))
+
+
+## A doorway opens its shell cell without turning it into purchasable floor
+## or a customer entry. Its removal restores the wall from saved terrain.
+func _shell_door(cell: Vector2i) -> bool:
+	if terrain(cell) != Terrain.WALL:
+		return false
+	for edge: Vector3i in cell_edges(cell):
+		if segment(edge) == Segment.DOORWAY and WallRules.back_door_side(self, edge) != Vector2i.ZERO:
+			return true
+	return false
+
+
+## Terrain edits can turn an exterior door into an interior doorway (or close
+## its approach). Refresh derived wall solidity as well as edited floor cells.
+func _refresh_shell_doors(touched: Array[Vector2i]) -> void:
+	for edge: Vector3i in segment_edges():
+		if segment(edge) != Segment.DOORWAY:
+			continue
+		for cell: Vector2i in edge_cells(edge):
+			var was: bool = is_walkable(cell)
+			_refresh_cell(cell)
+			if was != is_walkable(cell) and not touched.has(cell):
+				touched.append(cell)
+	_refresh_door_edges()
+
+
+## Doorway edges depend on the terrain round their cells (_dead_end_door), so
+## any terrain or segment change re-derives them all. Segments are few.
+func _refresh_door_edges() -> void:
+	for edge: Vector3i in segment_edges():
+		if segment(edge) == Segment.DOORWAY:
+			_refresh_edge(edge)
+
+
+## A back-door shell cell whose only walkable neighbour is the floor cell it
+## opens onto. Every other neighbour is solid, so the engine search already
+## refuses each diagonal past the doorway's posts: its edge needs no edge
+## search, and a shop whose only wall work is such a door keeps the fast,
+## plain paths. (Two doors side by side, or a notch with floor beside the
+## door, still go through the edge search.)
+func _dead_end_door(cell: Vector2i) -> bool:
+	if not _shell_door(cell):
+		return false
+	var open: int = 0
+	for step: Vector2i in [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]:
+		var next: Vector2i = cell + step
+		var t: Terrain = terrain(next)
+		if t == Terrain.FLOOR or t == Terrain.ENTRY or _shell_door(next):
+			open += 1
+	return open == 1
 
 
 ## The plain engine search while no interior segment exists, so a shop without
-## walls keeps exactly the paths (and tie-breaks) it had before FK-070.
+## walls keeps exactly the paths (and tie-breaks) it had before FK-070. A
+## dead-end back door is not an interior segment (_dead_end_door).
 func _solve(start: Vector2i, goal: Vector2i) -> Array[Vector2i]:
 	if _edge_occupied.is_empty():
 		return _astar.get_id_path(start, goal)
@@ -766,19 +832,7 @@ func segment(edge: Vector3i) -> Segment:
 ## may stand belong to WallRules; this only refuses malformed edges. Emits
 ## cells_changed with both cells when the edge changes.
 func set_segment(edge: Vector3i, kind: Segment) -> bool:
-	if not edge_in_bounds(edge) or kind < Segment.NONE or kind > Segment.WINDOW:
-		return false
-	if segment(edge) == kind:
-		return true
-	if kind == Segment.NONE:
-		_segments.erase(edge)
-	else:
-		_segments[edge] = kind
-	_refresh_edge(edge)
-	_refresh_dining_seats()
-	_version += 1
-	cells_changed.emit(edge_cells(edge))
-	return true
+	return set_segments({edge: kind} as Dictionary[Vector3i, int])
 
 
 ## Applies several segment changes (edge -> Segment) with one cells_changed
@@ -803,6 +857,12 @@ func set_segments(changes: Dictionary[Vector3i, int]) -> bool:
 				touched.append(cell)
 	if touched.is_empty():
 		return true
+	for cell: Vector2i in touched:
+		_refresh_cell(cell)
+	for cell: Vector2i in touched:
+		for edge: Vector3i in cell_edges(cell):
+			_refresh_edge(edge)
+	_refresh_door_edges()
 	_refresh_dining_seats()
 	_version += 1
 	cells_changed.emit(touched)
@@ -837,7 +897,9 @@ func _refresh_edge(edge: Vector3i) -> void:
 		inside = true
 		for cell: Vector2i in edge_cells(edge):
 			var t: Terrain = terrain(cell)
-			if t != Terrain.FLOOR and t != Terrain.ENTRY:
+			if t != Terrain.FLOOR and t != Terrain.ENTRY and not _shell_door(cell):
+				inside = false
+			elif kind == Segment.DOORWAY and _dead_end_door(cell):
 				inside = false
 	if inside:
 		_edge_occupied[edge] = true
@@ -907,9 +969,26 @@ func is_staff_only(cell: Vector2i) -> bool:
 	return _staff_cells > 0 and room_staff_only(_rooms.get(cell, Room.DINING))
 
 
-## True while any cell is staff-only, so guests need their own path layer.
+## True while any cell is staff-only.
 func has_staff_rooms() -> bool:
 	return _staff_cells > 0
+
+
+## True when the cell is an open back door in the shell (FK-099): staff and
+## deliveries walk through it, guests never do.
+func is_back_door(cell: Vector2i) -> bool:
+	return _door_cells.has(cell)
+
+
+## True while guests need their own path layer: a staff-only room or a back
+## door exists. Without either, guest paths are exactly the plain paths.
+func has_guest_limits() -> bool:
+	return _staff_cells > 0 or not _door_cells.is_empty()
+
+
+## A cell guests never enter, though staff may: staff-only rooms, back doors.
+func _guest_barred(cell: Vector2i) -> bool:
+	return is_staff_only(cell) or _door_cells.has(cell)
 
 
 ## True while any cell has a room other than Dining.
@@ -958,9 +1037,9 @@ func _drop_room(cell: Vector2i) -> void:
 	_rooms.erase(cell)
 
 
-## A cell a guest may stand on: walkable and not staff-only.
+## A cell a guest may stand on: walkable, not staff-only and not a back door.
 func is_guest_walkable(cell: Vector2i) -> bool:
-	return is_walkable(cell) and not is_staff_only(cell)
+	return is_walkable(cell) and not _guest_barred(cell)
 
 
 ## Guest-walkable neighbours, in walkable_neighbours() order. A diagonal step
@@ -978,36 +1057,36 @@ func guest_neighbours(cell: Vector2i) -> Array[Vector2i]:
 ## into a non-staff cell, and for a diagonal past two non-staff cells.
 ## Walkability and walls are checked separately.
 func guest_step_ok(from_cell: Vector2i, to_cell: Vector2i) -> bool:
-	if is_staff_only(to_cell):
+	if _guest_barred(to_cell):
 		return false
 	var delta: Vector2i = to_cell - from_cell
 	if absi(delta.x) == 1 and absi(delta.y) == 1:
-		return not is_staff_only(from_cell + Vector2i(delta.x, 0)) \
-			and not is_staff_only(from_cell + Vector2i(0, delta.y))
+		return not _guest_barred(from_cell + Vector2i(delta.x, 0)) \
+			and not _guest_barred(from_cell + Vector2i(0, delta.y))
 	return true
 
 
-## find_path() for guests: never through a Kitchen or Storage cell, nor
-## diagonally past one. The plain path is tried first and kept when it stays
-## clear of the staff rooms, so a shop whose guests never went near the kitchen
-## keeps its exact paths; otherwise the guest layer (staff cells solid) finds
+## find_path() for guests: never through a Kitchen or Storage cell or a back
+## door, nor diagonally past one. The plain path is tried first and kept when
+## it stays clear of those cells, so a shop whose guests never went near the
+## kitchen keeps its exact paths; otherwise the guest layer (those cells solid) finds
 ## the shortest guest route. A guest buried by furniture escapes to a guest
 ## cell first. Only a guest already standing in a staff cell (an edit can do
 ## that), or one with no guest way out, falls back to the plain path, so
 ## nobody is ever trapped.
 func find_guest_path(start: Vector2i, goal: Vector2i) -> Array[Vector2i]:
-	if _staff_cells == 0:
+	if not has_guest_limits():
 		return find_path(start, goal)
-	if not in_bounds(start) or not is_walkable(goal) or is_staff_only(goal):
+	if not in_bounds(start) or not is_walkable(goal) or _guest_barred(goal):
 		return []
 	if start == goal:
 		return [start]
-	if is_staff_only(start):
+	if _guest_barred(start):
 		return find_path(start, goal)
 	if is_walkable(start):
 		return _guest_route(start, goal)
 	for exit: Vector2i in _walkable_rings(start, ESCAPE_CANDIDATES):
-		if is_staff_only(exit) or not step_open(start, exit):
+		if _guest_barred(exit) or not step_open(start, exit):
 			continue
 		var rest: Array[Vector2i] = [exit] if exit == goal else _guest_route(exit, goal)
 		if rest.is_empty():
@@ -1042,7 +1121,7 @@ func is_guest_reachable(start: Vector2i, goal: Vector2i) -> bool:
 
 ## find_path_to_any() for guests (ties go to the earlier goal).
 func find_guest_path_to_any(start: Vector2i, goals: Array[Vector2i]) -> Array[Vector2i]:
-	if _staff_cells == 0:
+	if not has_guest_limits():
 		return find_path_to_any(start, goals)
 	var best: Array[Vector2i] = []
 	var best_cost: float = INF
