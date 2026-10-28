@@ -396,9 +396,9 @@ func set_rooms_enabled(enabled: bool) -> void:
 	_fit_panel()
 
 
-## One card per room type: the floor tile picture in the room's tint.
+## One card per room type, with a swatch of the room's floor tint.
 func _refresh_room_cards() -> void:
-	if _thumbnails == null or not _rooms_enabled:
+	if not _rooms_enabled:
 		return
 	var row: GridContainer = _items()
 	if room_buttons.is_empty():
@@ -407,14 +407,20 @@ func _refresh_room_cards() -> void:
 			button.pressed.connect(_on_room_pressed.bind(kind))
 			button.text = "%s\nFree" % RoomRules.label(kind)
 			button.tooltip_text = ROOM_TIPS[kind]
-			button.add_theme_color_override("icon_normal_color", BuildPreview.ROOM_SWATCHES[kind].color)
-			button.add_theme_color_override("icon_hover_color", BuildPreview.ROOM_SWATCHES[kind].color.lightened(0.1))
-			button.add_theme_color_override("icon_pressed_color", BuildPreview.ROOM_SWATCHES[kind].color)
+			button.icon = _room_swatch(BuildPreview.ROOM_SWATCHES[kind].color)
 			row.add_child(button)
 			room_buttons.append(button)
 	for button: Button in room_buttons:
 		row.move_child(button, row.get_child_count() - 1)
-		button.icon = _thumbnails.request(FLOOR_THUMBNAIL)
+
+
+## A flat swatch in the room's palette colour with a darker edge of the same
+## colour, like the Paint tab's colour chips.
+static func _room_swatch(color: Color) -> ImageTexture:
+	var image: Image = Image.create(THUMBNAIL_WIDTH, 44, false, Image.FORMAT_RGBA8)
+	image.fill(color.darkened(0.35))
+	image.fill_rect(Rect2i(3, 3, THUMBNAIL_WIDTH - 6, 38), color)
+	return ImageTexture.create_from_image(image)
 
 
 func _on_room_pressed(kind: int) -> void:
@@ -655,9 +661,6 @@ func _on_thumbnail_ready(scene: PackedScene, texture: Texture2D) -> void:
 		return
 	if floor_button != null and scene == FLOOR_THUMBNAIL:
 		floor_button.icon = texture
-	if scene == FLOOR_THUMBNAIL:
-		for button: Button in room_buttons:
-			button.icon = texture
 	for id: StringName in item_buttons:
 		var definition: ItemDef = _content.item(id)
 		if definition != null and definition.view_scene == scene:

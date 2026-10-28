@@ -25,10 +25,13 @@ const FLOOR_GHOST_INSET: float = 0.03
 const ROOM_SWATCHES: Array[SwatchDef] = [preload("res://data/swatches/butter.tres"),
 	preload("res://data/swatches/slate_blue.tres"), preload("res://data/swatches/sage.tres"),
 	preload("res://data/swatches/clay.tres")]
-const ROOM_TINT_ALPHA: float = 0.32
-const ROOM_GHOST_ALPHA: float = 0.7
+const ROOM_TINT_ALPHA: float = 0.38
+const ROOM_GHOST_ALPHA: float = 0.75
 const ROOM_LABEL_THEME: Theme = preload("res://src/ui/theme/main_theme.tres")
-const ROOM_LABEL_SIZE: int = 40
+const ROOM_LABEL_SIZE: int = 64
+## The label colours of the guests' mood marks: cream on dark brown.
+const ROOM_LABEL_COLOR: Color = Color("f3e6cc")
+const ROOM_LABEL_OUTLINE: Color = Color("3b2a20")
 
 var ghost_mesh: ItemVisual
 var work_markers: Array[MeshInstance3D] = []
@@ -444,7 +447,7 @@ func _build_rooms(proposal: Array[Vector2i], kind: int, valid: bool, why: String
 		tint.a = ROOM_TINT_ALPHA
 		var mesh: MeshInstance3D = MeshInstance3D.new()
 		mesh.name = "Tint%d" % room
-		mesh.mesh = _tile_mesh(cells, 0.008, 0.0)
+		mesh.mesh = _tile_mesh(cells, 0.02, 0.0)
 		mesh.material_override = _material(tint, true)
 		mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		mesh.set_meta("room", room)
@@ -456,10 +459,12 @@ func _build_rooms(proposal: Array[Vector2i], kind: int, valid: bool, why: String
 		label.text = RoomRules.label(grid.room(area[0]))
 		label.font = ROOM_LABEL_THEME.default_font if ROOM_LABEL_THEME.default_font != null else ThemeDB.fallback_font
 		label.font_size = ROOM_LABEL_SIZE
-		label.pixel_size = 0.004
-		label.modulate = ROOM_LABEL_THEME.get_color("font_color", "Label")
-		label.outline_modulate = Color(ROOM_SWATCHES[grid.room(area[0])].color.darkened(0.6), 0.9)
-		label.outline_size = 10
+		label.pixel_size = 0.005
+		label.modulate = ROOM_LABEL_COLOR
+		label.outline_modulate = ROOM_LABEL_OUTLINE
+		label.outline_size = 14
+		label.render_priority = 2
+		label.outline_render_priority = 1
 		label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 		label.no_depth_test = true
 		label.position = GridMath.cell_to_world(_label_cell(area)) + Vector3(0.0, 0.05, 0.0)

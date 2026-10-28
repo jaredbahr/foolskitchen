@@ -1731,7 +1731,7 @@ func _process(_delta: float) -> bool:
 			(clock.get("sim") as SimClock).start_service()
 		clock.call("set_speed", _speed)
 		_configure_camera()
-		if not _rooms.is_empty():
+		if not _rooms.is_empty() and _quarter < 0:
 			(_main.get_node("ShopView") as ShopView).set_wall_mode(ShopView.WallMode.UP)
 		if _rooms == "tool" or _rooms == "refused":
 			_begin_rooms_view()
@@ -2433,7 +2433,7 @@ func _begin_rooms_view() -> void:
 			return
 		_build_pointer = camera.unproject_position(GridMath.cell_to_world(Vector2i(14, 9)))
 	else:
-		_build_pointer = camera.unproject_position(GridMath.cell_to_world(Vector2i(8, 2)))
+		_build_pointer = camera.unproject_position(GridMath.cell_to_world(Vector2i(3, 2)))
 		_hold_build_pointer()
 		if not bool(_main.call("begin_buy_item", &"table_2")):
 			_fail_capture("scene refused the kitchen seat preview")
@@ -2443,12 +2443,12 @@ func _begin_rooms_view() -> void:
 
 
 ## Freeze the clock on the first guest walking to the restroom once they are
-## past the kitchen's east side, so the later frames show the walk.
+## round the kitchen and into the back room, so the later frames show it.
 func _pause_on_restroom_walk() -> void:
 	var world: SimWorld = _capture_world()
 	for agent: SimAgent in world.agents:
 		var guest: CustomerAgent = agent as CustomerAgent
-		if guest != null and guest.restroom == CustomerAgent.Restroom.WALKING and guest.cell.x >= 13 and guest.cell.y <= 2:
+		if guest != null and guest.restroom == CustomerAgent.Restroom.WALKING and guest.cell.x >= 11 and guest.cell.y <= -1:
 			_fast = 0
 			root.get_node("Clock").call("set_speed", 0)
 			_rooms_paused = true
