@@ -7,6 +7,9 @@ const COOK_MODEL: StringName = &"character-male-b"
 # The male-d torso uses the kit's dark charcoal palette column.
 const SERVER_MODEL: StringName = &"character-male-d"
 const OWNER_MODEL: StringName = &"character-male-a"
+# The delivery person (FK-099): the one kit model no other role uses. ART_STYLE
+# lists female-b for cooks too, but cooks use male-b; it never wears the hat.
+const COURIER_MODEL: StringName = &"character-female-b"
 # Both b models are reserved for cooks; owner and server looks stay distinct.
 const GUEST_MODELS: Array[StringName] = [
 	&"character-female-a", &"character-female-c", &"character-female-d",
@@ -14,15 +17,20 @@ const GUEST_MODELS: Array[StringName] = [
 	&"character-male-e", &"character-male-f",
 ]
 const CLIPS: Array[StringName] = [
-	&"idle", &"walk", &"sit", &"holding-both", &"interact-right",
+	&"idle", &"walk", &"sit", &"holding-both", &"interact-right", &"pick-up",
 ]
+## Built from the kit's own clips, not imported: `walk` with the arms of
+## `holding-both`, so a person carrying something walks instead of gliding.
+const CARRY_WALK: StringName = &"carry-walk"
+## Played once (bending to a crate), then held; every other clip loops.
+const ONE_SHOT_CLIPS: Array[StringName] = [&"pick-up"]
 # Rest-pose head mesh maxima read from the vendored GLB POSITION accessors.
 # These are source measurements, before the single shared character scale.
 const HEAD_TOPS: Dictionary[StringName, float] = {
 	&"character-male-a": 0.671325, &"character-male-b": 0.661325,
 	&"character-male-c": 0.792791, &"character-male-d": 0.721762,
 	&"character-male-e": 0.675967, &"character-male-f": 0.671325,
-	&"character-female-a": 0.775528, &"character-female-c": 0.775528,
+	&"character-female-a": 0.775528, &"character-female-b": 0.723353, &"character-female-c": 0.775528,
 	&"character-female-d": 0.775528, &"character-female-e": 0.716475,
 	&"character-female-f": 0.671325,
 }
@@ -36,6 +44,8 @@ static func model_for(role: StringName, guest_id: int = 0, customer_type: String
 			return SERVER_MODEL
 		&"owner":
 			return OWNER_MODEL
+		&"courier":
+			return COURIER_MODEL
 		&"customer", &"guest":
 			# Reuse native, unmodified Mini rigs. Each type has a deterministic
 			# pair; Regular retains its complete existing guest-id mapping.
@@ -68,14 +78,17 @@ static func source_head_top(model: StringName) -> float:
 	return HEAD_TOPS.get(model, 0.0)
 
 
-## Seat arrival wins, then carrying holds both hands, then walking, then work.
+## Seat arrival wins, then carrying holds both hands (walking legs under them
+## while moving), then bending to pick something up, then walking, then work.
 ## Callers derive these flags from actual state, not task labels or future goals.
-## This single-clip selection does not layer walk legs beneath a carrying pose.
-static func clip_for_state(moving: bool, seated: bool, carrying: bool, working: bool) -> StringName:
+static func clip_for_state(moving: bool, seated: bool, carrying: bool, working: bool,
+		bending: bool = false) -> StringName:
 	if seated:
 		return &"sit"
 	if carrying:
-		return &"holding-both"
+		return CARRY_WALK if moving else &"holding-both"
+	if bending and not moving:
+		return &"pick-up"
 	if moving:
 		return &"walk"
 	if working:

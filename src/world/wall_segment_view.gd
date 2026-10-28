@@ -22,7 +22,12 @@ const CAP_HEIGHT: float = 0.02
 ## Shell panes sit this far inside the room-side face (as RoomDressing's FACE_GAP).
 const SHELL_PANE_GAP: float = 0.005
 const WINDOW_SCENE: PackedScene = preload("res://assets/kenney/furniture/wallWindow.glb")
-const BACK_DOOR_SCENE: PackedScene = preload("res://assets/kenney/furniture/doorwayOpen.glb")
+## The kit's doorway with its own door leaf (D25: a real back door). The leaf
+## swings into the shop as the delivery person (or staff) pass; ShopView sets
+## how far from where people are (set_door_open), view only.
+const BACK_DOOR_SCENE: PackedScene = preload("res://assets/kenney/furniture/doorway.glb")
+## How far a fully open leaf turns (degrees): flat against the jamb.
+const DOOR_OPEN_DEGREES: float = 92.0
 ## Lowered (cutaway) windows show a glass-blue strip instead of the dark cap,
 ## so cycling wall -> window reads in the default view. Palette swatch only.
 const GLASS_SWATCH: SwatchDef = preload("res://data/swatches/slate_blue.tres")
@@ -39,6 +44,10 @@ var _glass_material: StandardMaterial3D
 var _painted: Array[MeshInstance3D] = []
 var _panes: Array[PropView] = []
 var _pane_bounds: AABB = AABB()
+## Back-door leaves by shell cell: {leaf: Node3D, sign: float} (sign turns it inward).
+var _leaves: Dictionary[Vector2i, Dictionary] = {}
+## Pavement of the paths outside back doors (their tints are released on clear).
+var _paths: Array[PropView] = []
 
 
 func _notification(what: int) -> void:
@@ -64,6 +73,11 @@ func set_materials(wall_material: Material, top_material: Material, floor_materi
 func clear() -> void:
 	_painted.clear()
 	_panes.clear()
+	_leaves.clear()
+	for tile: PropView in _paths:
+		if is_instance_valid(tile):
+			tile.clear_body_tint()
+	_paths.clear()
 	for child: Node in get_children():
 		remove_child(child)
 		child.free()
@@ -95,6 +109,7 @@ func rebuild(grid: SimGrid, interior_lowered: bool, lowered_cells: Array[Vector2
 	var doors: Dictionary[Vector2i, Vector2i] = shell_door_cells(grid)
 	for cell: Vector2i in doors:
 		_build_shell_door(cell, doors[cell], lowered_cells.has(cell))
+		_build_back_path(cell, doors[cell], WallRules.back_door_approach(grid, cell, doors[cell]).size())
 
 
 static func shell_door_cells(grid: SimGrid) -> Dictionary[Vector2i, Vector2i]:
@@ -140,6 +155,89 @@ func _build_shell_door(cell: Vector2i, side: Vector2i, lowered: bool) -> void:
 		var bounds: AABB = door.get_combined_aabb()
 		door.position = Vector3(-bounds.get_center().x, -bounds.position.y, -bounds.get_center().z)
 		root.add_child(door)
+		var leaf: Node3D = door.find_child("door", true, false) as Node3D
+		if leaf != null:
+			leaf.set_meta(&"door_cell", cell)
+			_leaves[cell] = {"leaf": leaf, "sign": _inward_sign(root, leaf, side)}
+
+
+## The path a delivery walks up to a back door (FK-099): the street's own
+## pavement tiles (Kenney floorHalf, palette tint) laid flat from the door's
+## outer face over the `cells` cells the approach covers, their tops at floor
+## level. Never longer than the approach where a building stops it.
+func _build_back_path(cell: Vector2i, side: Vector2i, cells: int) -> void:
+	if cells <= 0:
+		return
+	var probe: PropView = RoomDressing.make_asset(RoomDressing.PAVEMENT, "Measure", false, true)
+	if probe == null:
+		return
+	var bounds: AABB = probe.get_combined_aabb()
+	probe.clear_body_tint()
+	probe.free()
+	var length: float = float(cells) * GridMath.CELL_SIZE
+	var count: int = ceili(length / bounds.size.z) if cells >= WallRules.APPROACH_CELLS \
+		else floori(length / bounds.size.z)
+	var outward: Vector3 = Vector3(side.x, 0.0, side.y)
+	var face: Vector3 = GridMath.cell_to_world(cell) + outward * GridMath.CELL_SIZE * 0.5
+	for index: int in count:
+		var tile: PropView = RoomDressing.make_asset(RoomDressing.PAVEMENT, "BackPath_%d_%d_%d" % [cell.x, cell.y, index],
+			false, true)
+		if tile == null:
+			continue
+		tile.rotation.y = atan2(-outward.x, -outward.z)
+		tile.position = face + outward * bounds.size.z * (float(index) + 0.5)
+		tile.position.y = -bounds.end.y + 0.001
+		tile.set_meta(&"door_cell", cell)
+		_paths.append(tile)
+		add_child(tile)
+
+
+func path_tiles() -> Array[PropView]:
+	return _paths.duplicate()
+
+
+## Back-door shell cells whose leaf is drawn (walls up), in grid order.
+func door_cells() -> Array[Vector2i]:
+	var cells: Array[Vector2i] = _leaves.keys()
+	cells.sort()
+	return cells
+
+
+func door_leaf(cell: Vector2i) -> Node3D:
+	return _leaves[cell]["leaf"] as Node3D if _leaves.has(cell) else null
+
+
+## 0 shut .. 1 flat open, into the shop. View only.
+func set_door_open(cell: Vector2i, amount: float) -> void:
+	if not _leaves.has(cell):
+		return
+	var leaf: Node3D = _leaves[cell]["leaf"] as Node3D
+	leaf.rotation.y = float(_leaves[cell]["sign"]) * deg_to_rad(DOOR_OPEN_DEGREES) * clampf(amount, 0.0, 1.0)
+
+
+## +1 or -1: the turn of the leaf about its hinge that moves its free edge into
+## the shop (away from `side`, the outward direction). Read from the leaf's
+## actual transforms below the door root, so the kit's own facing is kept.
+static func _inward_sign(root: Node3D, leaf: Node3D, side: Vector2i) -> float:
+	var inward: Vector3 = -Vector3(side.x, 0.0, side.y)
+	var local_inward: Vector3 = root.transform.basis.inverse() * inward
+	var saved: float = leaf.rotation.y
+	leaf.rotation.y = PI * 0.5
+	var open_edge: Vector3 = _to_ancestor(leaf, root) * Vector3(0.4, 0.0, 0.0)
+	leaf.rotation.y = 0.0
+	var shut_edge: Vector3 = _to_ancestor(leaf, root) * Vector3(0.4, 0.0, 0.0)
+	leaf.rotation.y = saved
+	return 1.0 if (open_edge - shut_edge).dot(local_inward) > 0.0 else -1.0
+
+
+static func _to_ancestor(node: Node3D, ancestor: Node3D) -> Transform3D:
+	var xf: Transform3D = Transform3D.IDENTITY
+	var cursor: Node = node
+	while cursor != null and cursor != ancestor:
+		if cursor is Node3D:
+			xf = (cursor as Node3D).transform * xf
+		cursor = cursor.get_parent()
+	return xf
 
 
 ## Shell cells whose own box ShopView must cut down to the sill.

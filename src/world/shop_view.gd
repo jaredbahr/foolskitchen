@@ -4,6 +4,16 @@ extends Node3D
 
 const GRID_SHADER: Shader = preload("res://src/world/build_grid.gdshader")
 const PERSON_SCENE: PackedScene = preload("res://assets/people/person.tscn")
+## Delivery crates (FK-099): the Furniture Kit's closed cardboard box.
+const CRATE_SCENE: PackedScene = preload("res://assets/kenney/furniture/cardboardBoxClosed.glb")
+## Crates on a cell sit this far from its centre, away from the door they
+## came through, in stacks of up to CRATES_PER_STACK.
+const CRATE_SPREAD: float = 0.12
+const CRATES_PER_STACK: int = 3
+## A back door is open while someone going through is within this distance
+## of it (fully open within DOOR_OPEN_NEAR), all view only.
+const DOOR_OPEN_FAR: float = 1.25
+const DOOR_OPEN_NEAR: float = 0.5
 const HEIGHTS: Dictionary[int, float] = {
 	ItemDef.Category.TABLE: 0.75, ItemDef.Category.CHAIR: 0.45,
 	ItemDef.Category.STATION: 0.9, ItemDef.Category.STORAGE: 0.9,
@@ -70,6 +80,10 @@ var _selection_bounds: AABB
 ## How full each storage kind is, 0..1 (FK-087). Shelves show their stock
 ## crates in proportion. View only; Main sends it when stock changes.
 var _storage_fill: Dictionary[int, float] = {}
+var _crate_height: float = 0.0
+## Visible deliveries (FK-099): crates waiting on the floor, by crate id.
+var _dock: DeliveryDock
+var crate_nodes: Dictionary[int, Node3D] = {}
 
 
 ## Replaces a previous world and its signal bindings without modifying either.
@@ -86,6 +100,7 @@ func show_world(value: SimWorld) -> void:
 	item_nodes.clear()
 	agent_nodes.clear()
 	dirt_nodes.clear()
+	crate_nodes.clear()
 	_wall_nodes.clear()
 	_shell_windows.clear()
 	floor_mesh = null
@@ -130,6 +145,13 @@ func show_world(value: SimWorld) -> void:
 	_apply_paint()
 	_connect_grid()
 	_process(0.0)
+
+
+## Main binds the delivery dock after show_world(): crates on the floor and
+## in hands, and the back door swinging, all read from it and the agents.
+func bind_dock(value: DeliveryDock) -> void:
+	_dock = value
+	_sync_crates()
 
 
 ## Main binds day-local dirt after show_world(). A changed world drops the old
@@ -596,6 +618,8 @@ func _process(_delta: float) -> void:
 	_sync_dirt_spots()
 	_sync_item_selection()
 	_sync_agents()
+	_sync_crates()
+	_sync_back_doors()
 
 
 func _sync_agents() -> void:
@@ -639,10 +663,123 @@ func _sync_agents() -> void:
 		var tray: MeshInstance3D = node.get_node("Tray") as MeshInstance3D
 		tray.visible = frame.show_tray and (ready_person or not frame.look_supported)
 		tray.position = frame.tray_anchor if ready_person else Vector3(0.0, 0.02, -0.48)
+		_show_held_crates(node, frame, ready_person)
 		_update_guest_mood(agent, node, frame)
 	for id: int in agent_nodes.keys():
 		if not alive.has(id):
 			_remove_agent_visual(id)
+
+
+## Crates in a person's hands: boxes stacked between the palms (made on first
+## use, so ordinary guests never instance them).
+func _show_held_crates(node: Node3D, frame: AgentPresentationController.Frame, ready_person: bool) -> void:
+	var held: Node3D = node.get_node_or_null("Crates") as Node3D
+	if frame.crate_count <= 0:
+		if held != null:
+			held.visible = false
+		return
+	if held == null:
+		held = Node3D.new()
+		held.name = "Crates"
+		for index: int in AgentPresentationController.MAX_CRATES_IN_HAND:
+			var box: PropView = RoomDressing.make_asset(CRATE_SCENE, "Crate%d" % index)
+			if box != null:
+				box.position.y = crate_height() * index
+				held.add_child(box)
+		node.add_child(held)
+	held.visible = true
+	for index: int in held.get_child_count():
+		(held.get_child(index) as Node3D).visible = index < frame.crate_count
+	# The box's base sits a little below the palms, held in front of the body.
+	var anchor: Vector3 = frame.tray_anchor if ready_person else Vector3(0.0, 0.35, -0.3)
+	held.position = anchor + Vector3(0.0, -crate_height() * 0.45, 0.0)
+
+
+## Height of one crate at the furniture scale.
+func crate_height() -> float:
+	if _crate_height <= 0.0:
+		var probe: PropView = RoomDressing.make_asset(CRATE_SCENE, "Measure")
+		if probe != null:
+			_crate_height = probe.get_combined_aabb().size.y
+			probe.free()
+	return _crate_height
+
+
+## Crates waiting on the floor, spread on their cell and kept to the side away
+## from a door or street entry next to it (clear of a swinging leaf).
+func _sync_crates() -> void:
+	var wanted: Dictionary[int, bool] = {}
+	if world != null and _dock != null:
+		for crate: Dictionary in _dock.crates():
+			if int(crate["state"]) != DeliveryDock.CrateState.WAITING:
+				continue
+			var id: int = int(crate["id"])
+			wanted[id] = true
+			if not crate_nodes.has(id):
+				var box: PropView = RoomDressing.make_asset(CRATE_SCENE, "DeliveryCrate%d" % id)
+				if box == null:
+					continue
+				box.set_meta("shop_geometry", true)
+				box.set_meta(&"crate_id", id)
+				add_child(box)
+				crate_nodes[id] = box
+			crate_nodes[id].position = crate_position(crate["cell"], int(crate["slot"]))
+	for id: int in crate_nodes.keys():
+		if not wanted.has(id):
+			var node: Node3D = crate_nodes[id]
+			crate_nodes.erase(id)
+			remove_child(node)
+			node.free()
+
+
+## Where crate `slot` stands on `cell`: up to three stacked in the middle of
+## the cell's far half from the door they came through (clear of neighbouring
+## furniture and of the door's leaf, which only sweeps the near half's edge);
+## more make a second stack in the near half.
+func crate_position(cell: Vector2i, slot: int) -> Vector3:
+	var away: Vector2i = Vector2i.ZERO
+	if world != null:
+		for step: Vector2i in [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]:
+			if world.grid.is_back_door(cell + step) or world.grid.entries().has(cell + step):
+				away = -step
+				break
+	@warning_ignore("integer_division")
+	var stack: int = mini(slot / CRATES_PER_STACK, 1)
+	var layer: int = slot - stack * CRATES_PER_STACK
+	var offset: Vector2 = Vector2(away) * CRATE_SPREAD * (1.0 if stack == 0 else -1.0)
+	return GridMath.cell_to_world(cell) + Vector3(offset.x, crate_height() * layer, offset.y)
+
+
+## Each back-door leaf opens as someone going through comes near: the delivery
+## person always, staff only when their way leads through the door. Pure
+## function of where people are drawn, so it swings and closes with them.
+func _sync_back_doors() -> void:
+	if segment_view == null or world == null:
+		return
+	for cell: Vector2i in segment_view.door_cells():
+		var center: Vector3 = GridMath.cell_to_world(cell)
+		var amount: float = 0.0
+		for agent: SimAgent in world.agents:
+			if agent is CustomerAgent or not agent_nodes.has(agent.id) or not _goes_through(agent, cell):
+				continue
+			var drawn: Vector3 = agent_nodes[agent.id].position
+			var distance: float = Vector2(drawn.x - center.x, drawn.z - center.z).length()
+			amount = maxf(amount, door_open_amount(distance))
+		segment_view.set_door_open(cell, amount)
+
+
+static func door_open_amount(distance: float) -> float:
+	var t: float = clampf((DOOR_OPEN_FAR - distance) / (DOOR_OPEN_FAR - DOOR_OPEN_NEAR), 0.0, 1.0)
+	return t * t * (3.0 - 2.0 * t)
+
+
+static func _goes_through(agent: SimAgent, door: Vector2i) -> bool:
+	if agent is CourierAgent or agent.cell == door:
+		return true
+	for index: int in range(maxi(agent.path_index - 1, 0), agent.path.size()):
+		if agent.path[index] == door:
+			return true
+	return false
 
 
 func _agent_playback_speed() -> float:

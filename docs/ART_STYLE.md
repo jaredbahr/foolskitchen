@@ -53,8 +53,10 @@ Any new building piece (walls, windows, doors, the awning, counters) follows the
   - **Server:** the kit model with a dark top (choose one and keep it).
   - **Owner:** one fixed model (D14).
   - **Guests:** the remaining models, chosen deterministically from the guest id.
+  - **Delivery driver (FK-099):** `character-female-b`, the one model no other role uses (cooks use `character-male-b`), with no hat.
 - **Clips (kit names; the same for every model):**
   - `idle`, `walk`, `sit` (raise the body onto the chair seat), `holding-both` (carrying a plate or tray), `interact-right` (working a station), `pick-up`.
+  - `carry-walk` is not a new clip: the game builds it from the kit's `walk` with the arms of `holding-both`, so someone carrying walks instead of gliding.
   - Don't use the combat, die or wheelchair clips. Wheelchairs and aids may be added later for guest variety, as a director decision.
 - People face their walking direction. When people stand closer than 0.45 apart, the view nudges them apart (display only).
 

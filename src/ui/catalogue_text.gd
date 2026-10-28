@@ -39,7 +39,7 @@ const STATION_NAMES: Dictionary[StringName, String] = {
 	&"stove": "Stove", &"prep_counter": "Prep counter", &"sink": "Sink", &"fridge": "Fridge",
 	&"fryer": "Fryer", &"oven": "Oven", &"coffee": "Coffee machine",
 	&"drinks_fridge": "Drinks fridge", &"drinks_shelf": "Drinks shelf",
-	&"storage_shelf": "Storage shelf", &"toilet": "Toilet", &"wash_basin": "Wash basin",
+	&"storage_shelf": "Storage shelf", &"freezer": "Freezer", &"toilet": "Toilet", &"wash_basin": "Wash basin",
 }
 
 

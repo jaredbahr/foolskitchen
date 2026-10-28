@@ -186,6 +186,7 @@ func _bind_world_presentation() -> void:
 	view.clear_paint_preview()
 	view.show_world(world)
 	view.bind_cleanliness(sim.cleanliness)
+	view.bind_dock(sim.dock)
 	var painted_layout: ShopLayout = _loaded_layout if _loaded_layout != null else LAYOUT
 	view.set_paint(content, painted_layout.wall_swatch_id, painted_layout.floor_swatch_id)
 	var camera: CameraRig = $CameraRig
@@ -431,6 +432,8 @@ func _connect_session() -> void:
 		EventBus.sim_ticked.connect(_on_inspection_tick)
 	if not EventBus.sim_ticked.is_connected(_on_delivery_tick):
 		EventBus.sim_ticked.connect(_on_delivery_tick)
+	if sim.dock != null and not sim.dock.stored.is_connected(_on_dock_stored):
+		sim.dock.stored.connect(_on_dock_stored)
 	if not EventBus.cash_changed.is_connected(_on_build_cash_changed):
 		EventBus.cash_changed.connect(_on_build_cash_changed)
 	if not _inspect_panel.owner_mode_requested.is_connected(_on_owner_mode_requested):
@@ -468,6 +471,8 @@ func _exit_tree() -> void:
 		EventBus.sim_ticked.disconnect(_on_inspection_tick)
 	if EventBus.sim_ticked.is_connected(_on_delivery_tick):
 		EventBus.sim_ticked.disconnect(_on_delivery_tick)
+	if sim != null and sim.dock != null and sim.dock.stored.is_connected(_on_dock_stored):
+		sim.dock.stored.disconnect(_on_dock_stored)
 	if EventBus.cash_changed.is_connected(_on_build_cash_changed):
 		EventBus.cash_changed.disconnect(_on_build_cash_changed)
 	if world != null and Clock.attached_world == world:
@@ -2355,7 +2360,7 @@ func _storage_capacity() -> Dictionary[int, int]:
 
 ## What the shop's storage holds and has on order, right now.
 func storage_space() -> StorageSpace:
-	return StorageSpace.new(_storage_capacity(), Economy.stock, deliveries.pending_by_id(),
+	return StorageSpace.new(_storage_capacity(), Economy.stock, _on_the_way(),
 		StorageSpace.kinds_of(content))
 
 
@@ -2426,10 +2431,15 @@ func _deliver_due(morning_setup: bool = false) -> bool:
 	var lines: Array[Dictionary] = deliveries.take_due(Clock.sim, morning_setup)
 	if lines.is_empty():
 		return false
-	Economy.receive(lines)
+	# During service a delivery person brings it in through the back door and
+	# staff put the crates away (FK-099): goods become stock as they are put
+	# away. Morning orders, and anything landing once closed, arrive at once.
+	var visible: bool = not morning_setup and sim != null and sim.dock != null and sim.dock.arrive(lines)
+	if not visible:
+		Economy.receive(lines)
 	if not morning_setup:
 		_last_delivery = {"lines": lines, "minute": Clock.sim.display_minutes()}
-	if sim != null and sim.restock_sold_out() > 0:
+	if not visible and sim != null and sim.restock_sold_out() > 0:
 		_refresh_sold_out_hud()
 	var parts: Array[String] = []
 	for line: Dictionary in lines:
@@ -2437,6 +2447,24 @@ func _deliver_due(morning_setup: bool = false) -> bool:
 	world.log_event("Delivery arrived: %s" % ", ".join(parts))
 	_refresh_stock_panel()
 	return true
+
+
+## Goods a delivery person brought were put away (or stored at closing).
+func _on_dock_stored(_lines: Array[Dictionary]) -> void:
+	_refresh_sold_out_hud()
+	_refresh_stock_panel()
+	_refresh_storage_view()
+
+
+## Paid and not in stock yet: orders on their way plus crates waiting to be
+## put away. Both hold their storage space.
+func _on_the_way() -> Dictionary[StringName, int]:
+	var out: Dictionary[StringName, int] = deliveries.pending_by_id()
+	if sim != null and sim.dock != null:
+		var waiting: Dictionary[StringName, int] = sim.dock.pending_by_id()
+		for id: StringName in waiting:
+			out[id] = int(out.get(id, 0)) + waiting[id]
+	return out
 
 
 func _on_delivery_tick(_tick: int) -> void:
@@ -2648,8 +2676,12 @@ func stock_rows() -> Array[Dictionary]:
 	_reorder()
 	var expiring: Dictionary = Economy.stock.expiring_on(Clock.sim.day + 1, _shelf_lives())
 	var used: Dictionary[StringName, bool] = _menu_ingredients()
-	var pending: Dictionary[StringName, int] = deliveries.pending_by_id()
+	var pending: Dictionary[StringName, int] = _on_the_way()
+	var space: StorageSpace = storage_space()
 	for kind: int in StorageSpace.KINDS:
+		# The freezer is listed once the shop has one (or anything frozen).
+		if kind == StorageSpace.FREEZER and space.capacity(kind) <= 0 and space.committed(kind) <= 0:
+			continue
 		for in_use: bool in [true, false]:
 			for id: StringName in reorder_settings.all_ids():
 				var ingredient: IngredientDef = content.ingredient(id)
@@ -2751,6 +2783,13 @@ func stock_notes() -> Array[String]:
 			brought.append("%d %s" % [int(line["qty"]), _ingredient_name(line["id"])])
 		notes.append("The %s delivery brought %s." % [Fmt.clock(int(_last_delivery["minute"])),
 			StockAlerts.join_names(brought)])
+	if sim != null and sim.dock != null:
+		var waiting: Dictionary[StringName, int] = sim.dock.pending_by_id()
+		var crates: Array[String] = []
+		for id: StringName in waiting:
+			crates.append("%d %s" % [waiting[id], _ingredient_name(id)])
+		if not crates.is_empty():
+			notes.append("Still to be put away: %s." % StockAlerts.join_names(crates))
 	var short: Dictionary = _morning_order.get("short", {})
 	var missed: Array[String] = []
 	for id: StringName in short:

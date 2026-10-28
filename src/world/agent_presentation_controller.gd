@@ -7,6 +7,11 @@ const NOMINAL_CHAIR_SEAT_HEIGHT: float = 0.27
 const MIN_STANDING_DISTANCE: float = 0.45
 const DISPLAY_NUDGE_STEP: float = MIN_STANDING_DISTANCE + 0.00001
 const MOOD_CLEARANCE: float = 0.15
+## The delivery person carries at most this many crates stacked (FK-099).
+const MAX_CRATES_IN_HAND: int = 2
+## DeliveryDock's put-away steps: walk, pick up, carry, put away.
+const PICK_UP_STEP: int = 1
+const PUT_AWAY_WALK_STEP: int = 2
 
 class Frame extends RefCounted:
 	var id: int = 0
@@ -21,6 +26,10 @@ class Frame extends RefCounted:
 	var seated: bool = false
 	var carrying: bool = false
 	var working: bool = false
+	## Bending to set down or pick up a crate (FK-099).
+	var bending: bool = false
+	## Delivery crates in hand (0 = none); the view stacks this many boxes.
+	var crate_count: int = 0
 	var seat_height: float = 0.0
 	var show_tray: bool = false
 	var mood_visible: bool = false
@@ -67,6 +76,11 @@ static func frame_for(agent: SimAgent, world: SimWorld, chair_seat_height: float
 				var displacement: Vector3 = forward * seated_forward_offset
 				if displacement.is_finite():
 					frame.display_offset = displacement
+	if agent is CourierAgent:
+		var courier: CourierAgent = agent as CourierAgent
+		frame.carrying = courier.carrying and courier.crate_count > 0
+		frame.crate_count = mini(courier.crate_count, MAX_CRATES_IN_HAND) if frame.carrying else 0
+		frame.bending = courier.unloading() and not frame.moving
 	if agent is StaffAgent:
 		var staff: StaffAgent = agent as StaffAgent
 		var task: SimTask = _active_task(staff, world)
@@ -78,11 +92,20 @@ static func frame_for(agent: SimAgent, world: SimWorld, chair_seat_height: float
 				and staff.step_index < task.steps.size() \
 				and task.steps[staff.step_index].kind == TaskStep.Kind.WORK \
 				and staff._step_started and staff.work_left > 0.0 and staff._waiting_for.is_empty()
+			if task.kind == DeliveryDock.TASK_KIND:
+				# A crate is in hand from the pick-up until the put-away work starts.
+				frame.carrying = bool(task.payload.get("carrying", false)) and staff.step_index <= PUT_AWAY_WALK_STEP
+				frame.crate_count = 1 if frame.carrying else 0
+				frame.bending = frame.working and staff.step_index == PICK_UP_STEP
+				var store: PlacedItem = world.grid.item(int(task.payload.get("item", 0)))
+				if frame.working and staff.step_index > PUT_AWAY_WALK_STEP and store != null:
+					frame.facing_direction = _item_center(store) - start
 			var held: PlacedItem = world.grid.item(staff._held_item_id)
 			if frame.working and held != null and staff._held_cell == staff.cell \
 					and held.reserved_by(staff._held_cell) == staff.id:
 				frame.facing_direction = _item_center(held) - start
-	frame.clip = PersonPresentation.clip_for_state(frame.moving, frame.seated, frame.carrying, frame.working)
+	frame.clip = PersonPresentation.clip_for_state(frame.moving, frame.seated, frame.carrying, frame.working,
+		frame.bending)
 	return frame
 
 
@@ -171,7 +194,8 @@ static func apply(frame: Frame, view: PersonView, playback_speed: float) -> bool
 		return false
 	if not view.set_look(frame.role, frame.id, frame.customer_type):
 		return false
-	if not view.set_pose(frame.moving, frame.seated, frame.carrying, frame.working, frame.seat_height):
+	if not view.set_pose(frame.moving, frame.seated, frame.carrying, frame.working, frame.seat_height,
+			frame.bending):
 		return false
 	frame.head_anchor = view.head_anchor_position()
 	frame.mood_anchor = frame.head_anchor + Vector3.UP * MOOD_CLEARANCE

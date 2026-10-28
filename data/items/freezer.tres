@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="ItemDef" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://src/sim/content/item_def.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://assets/props/freezer.tscn" id="2_view"]
+
+[resource]
+script = ExtResource("1_script")
+view_scene = ExtResource("2_view")
+id = &"freezer"
+display_name = "Freezer"
+catalogue_room = &"kitchen"
+category = 4
+footprint = Vector2i(1, 1)
+solid = true
+work_cells = Array[Vector2i]([Vector2i(0, -1)])
+seat_cells = Array[Vector2i]([])
+station_type = &"freezer"
+capacity = 1
+storage_kind = 2
+storage_units = 40
+quality_bonus = 0.0
+price = 90
+unlock_level = 2
+charm = 0
+theme_tags = Array[StringName]([])
+placeholder_color = Color(0.83, 0.79, 0.67, 1)

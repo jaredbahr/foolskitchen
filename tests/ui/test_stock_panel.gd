@@ -30,7 +30,8 @@ func _rows() -> Array[Dictionary]:
 	for kind: int in StorageSpace.KINDS:
 		for id: StringName in TUNING.morning_stock.keys() + [&"beer"]:
 			var ingredient: IngredientDef = content.ingredient(id)
-			if int(ingredient.storage) != kind:
+			# The shop in this fixture has no freezer, so Main lists no freezer rows.
+			if int(ingredient.storage) != kind or kind == StorageSpace.FREEZER:
 				continue
 			rows.append({"id": id, "name": ingredient.display_name, "count": 10, "expiring": 3 if id == &"beef_patty" else 0,
 				"unit_cost": ingredient.unit_cost, "enabled": id != &"cheese", "target": TUNING.morning_stock.get(id, 20),

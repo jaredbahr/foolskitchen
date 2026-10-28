@@ -6,12 +6,13 @@ const CLEANING: CleanlinessTuning = preload("res://data/balance/cleanliness.tres
 
 
 func test_one_mapping_covers_every_production_task_kind() -> void:
-	assert_eq(StaffJobPriorities.TASK_JOBS.size(), 7)
-	for kind: StringName in [&"cook", &"take_order", &"deliver", &"bus_table", &"wash", &"clean_spot", &"pour"]:
+	assert_eq(StaffJobPriorities.TASK_JOBS.size(), 8)
+	for kind: StringName in [&"cook", &"take_order", &"deliver", &"bus_table", &"wash", &"clean_spot", &"pour", &"put_away"]:
 		assert_true(StaffJobPriorities.JOBS.has(StaffJobPriorities.job_for_task(kind)))
 	assert_eq(StaffJobPriorities.job_for_task(&"take_order"), &"serving")
 	assert_eq(StaffJobPriorities.job_for_task(&"deliver"), &"serving")
 	assert_eq(StaffJobPriorities.job_for_task(&"pour"), &"serving", "pouring drinks is serving (FK-083)")
+	assert_eq(StaffJobPriorities.job_for_task(&"put_away"), &"cleaning", "putting deliveries away is cleaning (FK-099)")
 	assert_eq(StaffJobPriorities.job_for_task(&"unknown"), &"")
 
 

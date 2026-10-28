@@ -48,7 +48,8 @@ func test_new_game_auto_order_buys_the_old_amounts_with_one_premium() -> void:
 	assert_true(cost > 88, "the default order pays a premium")
 	assert_eq(Economy.cash, TUNING.starting_cash - cost, "$88 at list price plus one premium")
 	var entries: Array[Dictionary] = _ingredient_entries(1)
-	assert_eq(entries.size(), TUNING.morning_stock.size() + 1)
+	# Every tuned ingredient with a target (frozen fries' is 0), plus the premium.
+	assert_eq(entries.size(), TUNING.morning_stock.size() - 1 + 1)
 	var premiums: int = 0
 	for entry: Dictionary in entries:
 		if entry["note"] == "auto_reorder_premium":

@@ -201,6 +201,10 @@ func _score(world: SimWorld, t: SimTask) -> float:
 		if not _can_fallback_clean(world):
 			return 0.0
 		role_prio = 1
+	# Putting deliveries away (FK-099): with a cleaner on the team it is theirs
+	# (Cleaning), as mopping is; otherwise servers do it as Serving.
+	if t.kind == DeliveryDock.TASK_KIND and role != &"cleaner" and _team_has_cleaner(world):
+		return 0.0
 	if for_role != &"any" and for_role != role and role_prio == 0:
 		return 0.0
 	if role_prio == 0:
@@ -221,7 +225,7 @@ func _score(world: SimWorld, t: SimTask) -> float:
 func _job_level(candidate: SimTask) -> int:
 	if _job_priorities == null:
 		return StaffJobPriorities.Level.NORMAL
-	var job: StringName = StaffJobPriorities.job_for_task(candidate.kind)
+	var job: StringName = StaffJobPriorities.job_for_task(candidate.kind, role)
 	# Synthetic role-free tasks keep their legacy selection behavior. Every
 	# production kind is named in the one sim mapping, not inferred from roles.
 	return StaffJobPriorities.Level.NORMAL if job.is_empty() else _job_priorities.priority(job)
@@ -236,10 +240,14 @@ func _can_fallback_clean(world: SimWorld) -> bool:
 	if not (role == &"server" and int(priorities.get(&"server", 0)) > 0) \
 			and not (role == &"owner" and int(priorities.get(&"cleaner", 0)) > 0):
 		return false
+	return not _team_has_cleaner(world)
+
+
+func _team_has_cleaner(world: SimWorld) -> bool:
 	for agent: SimAgent in world.agents:
 		if agent is StaffAgent and agent.role == &"cleaner":
-			return false
-	return true
+			return true
+	return false
 
 
 func _run_step(world: SimWorld) -> void:

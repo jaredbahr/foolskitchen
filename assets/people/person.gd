@@ -76,8 +76,9 @@ func set_look(value: StringName, id: int = 0, kind: StringName = &"regular") -> 
 
 ## The caller passes the actual chair seat's world height after seat arrival.
 ## It also positions the person at the chair and supplies that chair's facing.
-func set_pose(moving: bool, seated: bool, carrying: bool, working: bool, seat_height: float = 0.0) -> bool:
-	_requested_clip = PersonPresentation.clip_for_state(moving, seated, carrying, working)
+func set_pose(moving: bool, seated: bool, carrying: bool, working: bool, seat_height: float = 0.0,
+		bending: bool = false) -> bool:
+	_requested_clip = PersonPresentation.clip_for_state(moving, seated, carrying, working, bending)
 	_seat_height = maxf(seat_height, 0.0) if seated else 0.0
 	var pivot: Node3D = get_node_or_null("ModelPivot") as Node3D
 	if pivot != null:
@@ -152,12 +153,42 @@ func _prepare_clips() -> bool:
 		if source == null:
 			return false
 		var animation: Animation = source.duplicate(true) as Animation
-		animation.loop_mode = Animation.LOOP_LINEAR
+		animation.loop_mode = Animation.LOOP_NONE if PersonPresentation.ONE_SHOT_CLIPS.has(clip) \
+			else Animation.LOOP_LINEAR
 		library.add_animation(clip, animation)
+	var carry_walk: Animation = _carry_walk(library.get_animation(&"walk"), library.get_animation(&"holding-both"))
+	if carry_walk == null:
+		return false
+	library.add_animation(PersonPresentation.CARRY_WALK, carry_walk)
 	for name: StringName in _player.get_animation_library_list():
 		_player.remove_animation_library(name)
 	_player.add_animation_library(&"", library)
 	return true
+
+
+## `walk` with both arm tracks taken from `holding-both` (a held pose), so the
+## legs and body keep walking under arms that carry. Same rig, same bones.
+static func _carry_walk(walk: Animation, holding: Animation) -> Animation:
+	if walk == null or holding == null:
+		return null
+	var animation: Animation = walk.duplicate(true) as Animation
+	for index: int in range(animation.get_track_count() - 1, -1, -1):
+		if _is_arm_track(animation, index):
+			animation.remove_track(index)
+	var copied: int = 0
+	for index: int in holding.get_track_count():
+		if _is_arm_track(holding, index):
+			holding.copy_track(index, animation)
+			copied += 1
+	if copied == 0:
+		return null
+	animation.loop_mode = Animation.LOOP_LINEAR
+	return animation
+
+
+static func _is_arm_track(animation: Animation, index: int) -> bool:
+	var bone: String = String(animation.track_get_path(index)).get_slice(":", 1)
+	return bone == "arm-left" or bone == "arm-right"
 
 
 func _source_clip(clip: StringName) -> Animation:

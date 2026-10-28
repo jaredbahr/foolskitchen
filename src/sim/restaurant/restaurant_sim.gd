@@ -37,7 +37,13 @@ var stock: Stock = Stock.new():
 		stock = value if value != null else Stock.new()
 		if kitchen != null:
 			kitchen.stock = stock
+		if dock != null:
+			dock.stock = stock
 var kitchen: Kitchen
+## Visible daytime deliveries (FK-099): the delivery person, crates and the
+## staff work of putting them away. Idle (and invisible) until Main hands it a
+## delivery due during service.
+var dock: DeliveryDock
 ## Optional day-local dirt and its board poster. Main supplies the separate
 ## named cleanliness RNG when constructing the state; legacy sims stay inert.
 var cleanliness: CleanlinessState = null
@@ -115,6 +121,8 @@ static func create(layout: ShopLayout, content: ContentDB, seed: int, errors: Ar
 	sim.stock = stock if stock != null else Stock.new()
 	if with_kitchen:
 		sim.kitchen = Kitchen.new(sim, content, sim.stock)
+	sim.dock = DeliveryDock.new(sim.world, sim.stock, StorageSpace.kinds_of(content))
+	sim.dock.stored.connect(sim._on_dock_stored)
 	sim.start_day()
 	return sim
 
@@ -210,6 +218,9 @@ func start_day() -> void:
 	reputation_before_day = review_book.average()
 	review_book.begin_day()
 	_departed.clear()
+	# Nothing stays in transit overnight: a delivery still waiting is stored.
+	if dock != null:
+		dock.store_all()
 	orders.prune_finished()
 	if kitchen != null:
 		kitchen.tidy_overnight()
@@ -240,6 +251,8 @@ func advance() -> void:
 	world.advance()
 	if kitchen != null:
 		kitchen.advance()
+	if dock != null:
+		dock.advance()
 	refresh_sold_out()
 	spawner.advance(self)
 	for customer: CustomerAgent in customers():
@@ -254,6 +267,9 @@ func advance() -> void:
 	if world.clock.phase == SimClock.Phase.LAST_ORDERS and customers().is_empty():
 		world.clock.notify_restaurant_empty()
 	if not was_closed and world.clock.phase == SimClock.Phase.CLOSED:
+		# Anything not put away by closing is stored, before the day's books.
+		if dock != null:
+			dock.store_all()
 		service_closed.emit(world.clock.day)
 
 
@@ -396,6 +412,12 @@ func restock_sold_out() -> int:
 	for id: StringName in back:
 		sold_out_today.erase(id)
 	return back.size()
+
+
+## Goods put away (or stored at closing) can bring sold-out dishes back.
+func _on_dock_stored(_lines: Array[Dictionary]) -> void:
+	if _in_service():
+		restock_sold_out()
 
 
 func is_sold_out(recipe_id: StringName) -> bool:

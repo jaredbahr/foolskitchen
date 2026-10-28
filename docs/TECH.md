@@ -469,7 +469,9 @@ an active edit/panel/selection first, or opens Settings when none is active.
 #### Staff job priorities (FK-044)
 - `StaffJobPriorities.TASK_JOBS` is the single selection mapping: cook to
   Cooking; take-order and delivery to Serving; table clearing to Bussing;
-  plate washing to Washing; floor mopping to Cleaning. High, Normal, Low and
+  plate washing to Washing; floor mopping to Cleaning; putting a delivery
+  away (FK-099) to Cleaning, with one role exception in `ROLE_TASK_JOBS`: a
+  server does it as Serving (`job_for_task(kind, role)`). High, Normal, Low and
   Off choose work rather than changing its duration, skill or pay. A role's
   main job cannot be Off; work outside its existing capabilities stays Off.
 - Defaults keep a cook's Cooking and a cleaner's Cleaning High. Servers keep
@@ -853,13 +855,33 @@ an active edit/panel/selection first, or opens Settings when none is active.
   interior doorway, selling the floor makes it a back door again).
   `WallRules.delivery_cell(grid, target)` returns a reachable inside receiving
   cell, with stable segment-order choice and a street-entry fallback, or
-  `NO_CELL` when neither route reaches the target. The view hides the shell
-  box, draws the Kenney `doorwayOpen` frame (posts only when lowered) and a
-  floor tile in the floor material. This is the entrance foundation only:
-  accepted instant morning orders, daytime delivery scheduling, paid pending
-  orders, stock and capacities are unchanged. Delivery people, crates and
-  staff carrying are the remaining #187 integration, and must be tested
-  through actual queued tasks and execution.
+  `NO_CELL` when neither route reaches the target;
+  `WallRules.delivery_route(grid, target)` adds where the delivery person
+  steps on (`door`: the shell cell, or the street entry), the receiving cell
+  (`drop`: for the street, the floor cell inside the street door), `out` and
+  the `approach` cells: a back door's path, `back_door_approach` (up to
+  `APPROACH_CELLS` = 4 cells straight out, stopping before anything but open
+  ground, so it never crosses a wing or the street); none at the street,
+  where the delivery person appears at the entry as guests do.
+  **One back door per shop (D25).** `WallRules.back_door_problem(before,
+  after)` refuses an edit that adds a back door to a shop that has one
+  (`ONE_BACK_DOOR`, "The shop already has a back door: remove it first to
+  move it"), in `check_segments` and in `check_floor` (selling floor can turn
+  an interior doorway back into a back door). Only adding is refused: an
+  older save with several loads and keeps them all, every other edit still
+  works, removing one is fine, and deliveries use the first in segment order.
+  Undo and redo (`Exact`) restore accepted layouts as they were.
+  **The view** hides the shell box and draws the Kenney `doorway` frame with
+  its own `door` leaf (posts only when lowered) and a floor tile in the floor
+  material, plus the path outside: the street's pavement tiles (Kenney
+  `floorHalf`, palette tint) laid flat, tops at floor level, over the approach.
+  The leaf swings into the shop (`WallSegmentView.set_door_open`, up to
+  `DOOR_OPEN_DEGREES` = 92, the turn's sign read from the leaf's own
+  transforms) while someone going through is within 1.25 m (fully open
+  within 0.5 m, smoothstep between): the delivery person always, staff only
+  when their path leads through the door, guests never
+  (`ShopView._sync_back_doors`, a pure function of where people are drawn;
+  no sim effect). Delivery people, crates and carrying: 2.3j.
 - **Floor expansion (FK-080)** builds on this: grid lines keep their keys,
   so an outer-face window becomes an interior window when the shell cell
   behind it turns into floor (see the next section).
@@ -1480,9 +1502,11 @@ existing paint colour and camera-controlled build-grid parameters.
   delivery; #183's top-up of drink supplies at opening is still bought and
   stocked at opening. Main also delivers on `EventBus.sim_ticked` while OPEN and
   on phase changes (anything overdue, e.g. a tick 0 order in an older save).
-  Arrivals are stocked dated the arrival day; `RestaurantSim.restock_sold_out()`
-  brings back dishes the delivery covers, and the Stock notes say what the
-  last daytime delivery brought.
+  A delivery due during service (OPEN or LAST_ORDERS) is visible (FK-099,
+  below): its goods become stock as staff put them away. Anything that lands
+  in the morning or once closed is stocked at once, dated the arrival day;
+  `RestaurantSim.restock_sold_out()` brings back dishes the goods cover, and
+  the Stock notes say what the last daytime delivery brought.
 - **Next delivery bar.** `Main.delivery_countdown()`: in the morning "Morning
   orders arrive at once. Next delivery at 14:00" (bar full); during service
   "Next delivery at 14:00" with the wait's fraction; afterwards "Next delivery:
@@ -1526,9 +1550,15 @@ existing paint colour and camera-controlled build-grid parameters.
   phase; the panel closes for the evening report. Reorder settings change in any
   phase and are saved at the next morning.
 - **Spoilage.** Freezer ingredients keep at least `freezer_shelf_life_days` (30);
-  fridge and dry keep their own `shelf_life_days`. No freezer item or frozen
-  ingredient exists yet: both are left to #154(b) (frozen fries and a Kenney
-  `kitchenFridgeLarge` freezer). The Freezer group appears once either exists.
+  fridge and dry keep their own `shelf_life_days`.
+- **Freezer (FK-099).** The **Freezer** (`freezer`, Kitchen tab, $90, level 2,
+  Kenney `kitchenFridgeLarge` on one cell) holds 40 freezer units; **Frozen
+  fries** (`frozen_fries`, $1, keeps 30 days) are a freezer ingredient listed
+  in `morning_stock` with a target of 0, so the auto-order never buys them
+  until the player raises it. No dish uses them yet (Fries still use
+  potatoes). The Stock panel lists the freezer's rows only while the shop has
+  freezer room or anything frozen (`Main.stock_rows`), so the Freezer group
+  appears once a freezer is bought.
 - **Visible stock.** `ShopView.set_storage_fill(kind -> 0..1)` from Main (stock on
   hand / capacity per kind, refreshed with the presentation when it changes):
   a storage item's parts tagged `metadata/stock_slot` show the first
@@ -1539,9 +1569,68 @@ existing paint colour and camera-controlled build-grid parameters.
   without them a concept's supplies do not fit beside the morning's food. Their
   rows are identical to main. `_finish` switches auto-reorder off only for the
   ingredients auto-reorder lists (`_reorder().ids()`), not the greyed rows.
-- **Not built here:** the visible delivery person, back door and staff carrying
-  crates (a follow-up issue).
+- **Visible deliveries (FK-099, #187).** `DeliveryDock` (src/sim/restaurant,
+  pure, owned by `RestaurantSim.dock`) takes a delivery due during service
+  (`arrive(lines)`; false, and Main stocks at once, when the shop is not open
+  or no route reaches storage). A `CourierAgent` (role `courier`, a world agent
+  that holds no task, reservation or random stream) walks the
+  `WallRules.delivery_route` from off the lot through the back door (street
+  door fallback), sets one crate per storage kind present (fridge, freezer,
+  dry, in that order) down on the receiving cell over `UNLOAD_TICKS` (12) and
+  walks back out; the dock removes it when gone. Off-lot cells are not on the
+  grid, so it walks its planned cells without path finding. Guests never share
+  the back door: they plan on the guest layer, where its cell is solid.
+  - **Carrying.** Each crate is one `put_away` task (role `any`, priority 1,
+    timeout 600): walk to the crate, pick it up (8 work), walk to the nearest
+    reachable storage of its kind (else any storage: the starter shop's
+    pantry is built in, behind the kitchen; else none, and it waits) and put
+    it away (20 work), when its goods become stock (`Stock.add`, dated today)
+    and `stored(lines)` fires; `RestaurantSim` then brings sold-out dishes
+    back and Main refreshes the HUD and Stock panel. The carry walks to the
+    storage's work cell without reserving it, so a cook at the same fridge
+    never waits. A dropped task sets the crate down where its carrier stood
+    and starts again from there; a failed one (storage sold on the way, say)
+    puts it down and posts again, up to `MAX_TRIES` (3), then waits for a
+    layout change. `on_done` steps check the crate's state, so a restarted
+    task never stocks twice.
+  - **Who carries (job priority).** With a cleaner on the team it is the
+    cleaner's (job Cleaning, their main job); otherwise servers do it as
+    Serving (`StaffJobPriorities.ROLE_TASK_JOBS`: front-of-house work, so a
+    mid-day order is put away during service rather than left to a Low
+    fallback a busy server never reaches). Cooks (Cleaning is Off for them)
+    and the owner (no `any` priority) never carry.
+  - **Never lose goods.** Paid when ordered; while waiting the goods count as
+    on order in `StorageSpace` (`Main._on_the_way()`), so their space stays
+    reserved, Build refuses to sell storage they need, and the Stock rows
+    show them on order with a note, "Still to be put away: 6 Soup stock.".
+    `store_all()` stocks everything not yet put away (crates on the floor, in
+    hands or still on the way), withdraws the carrying tasks and ends the
+    visit: `RestaurantSim.advance` calls it on the tick service closes (before
+    `service_closed`, so the books and forecast see the stock) and
+    `start_day()` calls it each morning, so nothing is in transit at the
+    morning save (rule 9; nothing new is saved). Morning orders still arrive
+    at once, and with no order placed during service the dock does nothing:
+    no agent, task or event (`test_no_orders_change_nothing`), so the
+    balance probe is unchanged.
+  - **View.** `ShopView.bind_dock`: waiting crates are Kenney
+    `cardboardBoxClosed` on the receiving cell, stacked three high in the
+    half away from the door they came through (clear of furniture beside it
+    and of the door's leaf); carried crates are drawn between the palms
+    (`Frame.crate_count`: up to two stacked for the delivery person, one for
+    staff, from the pick-up until the put-away work starts). The delivery
+    person is `character-female-b`, the one kit model no other role uses.
+    People carrying while walking play `carry-walk` (`PersonView` builds it
+    from the kit's `walk` with the arms of `holding-both`, so legs walk under
+    carrying arms; servers' trays use it too), and bend with the kit's
+    `pick-up` (played once) to set a crate down or pick it up.
+  - Tests: `tests/sim/test_delivery_dock.gd` (back-door and street routes,
+    stock on carry, closing and morning safety nets, job priority, guests
+    never in the back door with deliveries coming and going, no change
+    without orders, one back door), `tests/world/test_delivery_view.gd`,
+    `tests/world/test_delivery_session.gd`. Captures (by hand):
+    `tools/delivery_shots.gd -- <out> [north|east] [up|cutaway]`.
 - Tests: `tests/sim/test_storage_space.gd`, `tests/sim/test_delivery_book.gd`,
+  `tests/sim/test_delivery_dock.gd`,
   `tests/world/test_delivery_session.gd`, `tests/ui/test_stock_panel.gd`,
   `tests/world/test_stock_session.gd`.
 

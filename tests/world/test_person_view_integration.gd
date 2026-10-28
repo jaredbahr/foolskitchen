@@ -67,7 +67,9 @@ func test_native_roles_use_fixed_looks_hat_and_private_looping_clips() -> void:
 		assert_eq((person.get_node("ModelPivot") as Node3D).scale, Vector3.ONE * ArtScale.CHARACTER_SCALE)
 		for clip: StringName in PersonPresentation.CLIPS:
 			assert_true(person._player.has_animation(clip))
-			assert_eq(person._player.get_animation(clip).loop_mode, Animation.LOOP_LINEAR)
+			assert_eq(person._player.get_animation(clip).loop_mode,
+				Animation.LOOP_NONE if PersonPresentation.ONE_SHOT_CLIPS.has(clip) else Animation.LOOP_LINEAR)
+		assert_eq(person._player.get_animation(PersonPresentation.CARRY_WALK).loop_mode, Animation.LOOP_LINEAR)
 	assert_ne(_person(cook.id)._player.get_animation(&"walk"), _person(server.id)._player.get_animation(&"walk"))
 	assert_eq(_world.now, 0)
 
@@ -136,7 +138,7 @@ func test_all_imported_guest_rigs_stay_upright_across_timed_partial_clip_transit
 	for look: int in range(PersonPresentation.GUEST_MODELS.size()):
 		assert_true(person.set_look(&"customer", look))
 		assert_eq(person.model_name(), PersonPresentation.GUEST_MODELS[look])
-		assert_eq(person._player.get_animation_list().size(), PersonPresentation.CLIPS.size())
+		assert_eq(person._player.get_animation_list().size(), PersonPresentation.CLIPS.size() + 1, "plus carry-walk")
 		# Sample actual imported tracks after time has passed, not only advance(0).
 		for pose: Array in [[true, false], [false, true], [false, false],
 				[true, false], [false, true], [false, false]]:

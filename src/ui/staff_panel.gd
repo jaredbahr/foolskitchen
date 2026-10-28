@@ -315,10 +315,10 @@ static func locked_priority_foreground() -> Color:
 static func _job_description(job: StringName) -> String:
 	match job:
 		&"cooking": return "Cooking meals"
-		&"serving": return "Taking orders and delivering meals"
+		&"serving": return "Taking orders, delivering meals and putting deliveries away"
 		&"bussing": return "Clearing tables"
 		&"washing": return "Washing plates"
-		&"cleaning": return "Mopping floor spots"
+		&"cleaning": return "Mopping floor spots; a Cleaner also puts deliveries away"
 	return "Job priority"
 
 
