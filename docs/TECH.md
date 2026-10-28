@@ -1403,6 +1403,17 @@ existing paint colour and camera-controlled build-grid parameters.
   list afterwards) and leave with `out_of_stock` only when it is empty. A ticket
   cancelled at the fridge still cancels as before. The HUD shows a "Sold out" chip
   during service.
+- **Build restock advice (FK-096):** a valid Buy, wall or floor preview may
+  append a cash-left/restock estimate sentence to the existing HUD hint. It
+  never changes `EditCheck.ok`, prices, refunds, purchase permission, stock,
+  paid orders, RNG or saving. Morning advice reserves a conservative refill
+  of enabled targets after service (limited by current storage and excluding
+  prepaid incoming units); at closing the existing `StockAlerts.forecast`
+  supplies the next morning's full order cost after expiry and incoming stock.
+  Both reuse the ordinary order planner/premium. This is a budget allowance,
+  not a forecast of future sales or operating losses. Invalid actions keep
+  their original refusal, and free edits/sales add no advice. Cash changes
+  refresh the hint even when placement validity stays unchanged.
 - **Report:** `DayReport.low_stock` holds `StockAlerts` sentences: each ingredient
   that sold dishes out (with the time), then tomorrow's forecast (tonight's expiry,
   then the order planned with tonight's cash): expiring units, ingredients the order
