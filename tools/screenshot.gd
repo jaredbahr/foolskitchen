@@ -2196,6 +2196,8 @@ func _configure_paint() -> void:
 	var samples: Array[Dictionary] = [
 		{"swatch": &"sage", "cell": Vector2i(0, 5)},
 		{"swatch": &"honey", "cell": Vector2i(8, 8)},
+		# A floor click stays in its room (D25), so the kitchen takes its own.
+		{"swatch": &"honey", "cell": Vector2i(3, 2)},
 		{"swatch": &"terracotta", "cell": Vector2i(2, 6)},
 		{"swatch": &"sage", "cell": Vector2i(12, 9)},
 	]
@@ -2232,9 +2234,9 @@ func _paint_state() -> Dictionary:
 		"grid_visible": rig.effective_grid_visible(), "wall": String(editor.wall_swatch_id),
 		"floor": String(editor.floors.finish(Vector2i(8, 8)).swatch), "table": String(tables[0].swatch_id),
 		"plant": String(plants[0].swatch_id),
-		# D25: a floor click recolours the connected floor of one look in the
-		# finish map; the starter kitchen joins the dining room through the
-		# pass openings, so the whole starter floor turns honey as before.
+		# D25: a floor click recolours its own room's floor in the finish map;
+		# the capture clicks the dining room and the kitchen, so the whole
+		# starter floor turns honey as before.
 		"rendered": (wall.material_override as StandardMaterial3D).albedo_color == content.swatch(&"sage").color \
 			and floor_shader.get_shader_parameter("finish_map") == view.finish_texture \
 			and view.finish_texel(Vector2i(8, 8)).g8 == ShopView.FINISH_FIRST_SWATCH + content.swatches().find(content.swatch(&"honey")) \
