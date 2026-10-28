@@ -104,27 +104,27 @@ physical kit exceptions remain separately reported.
 
 ## Cushioned chair correction
 
-The cushioned `chair` now authors a 33-degree forward torso pose and the
-supported 0.05 m offset. It is removed from the exception list: all 96 native
-look/time/rotation cases must pass the unchanged physical rules. The worst
-measured gap is 0.0219833 m; the previous pose had 96 physical failures.
-The other nine exceptions remain and this does not complete #155.
+Director review rejected the earlier 33-degree pose: it cleared the backrest
+but pushed heads into real tables. Jared chose a small 10–15 degree lean and
+accepted the remaining chair backrest overlap (comment6460103763). `chair`
+therefore remains an explicit measured exception; this does not complete #155.
 
 The private sit clip rotates only the native torso joint. Root/hip/leg transforms,
 character proportions, shared scale, source assets, simulation cells and random
 streams stay unchanged. Pose/parity cache keys include the actual lean. Native
-parity covers 24 neutral and 24 leaned model/time poses; the largest measured
-vertex error is 1.49e-8 m, below the unchanged 1e-5 bound.
+parity must still meet the unchanged 1e-5 bound for every measured pose.
 
-The manual `chair_pose_review.gd` creates a real ShopView chair/reservation
-fixture, compares the original and authored pose using the unchanged geometry
-oracle and native bake, and records native close crops plus a standing reference.
-It hides only the reservation-only table's unauthored placeholder box in the
-crop, never any chair or character geometry. Its support trial retains both hip
-rays at the original seat surface height after the authored offset.
+`seated_table_clearance.gd` uses production ShopView seating at real cross,
+glass, cloth and round tables, with a guest opposite. It measures every table
+mesh for head vertices inside and surface crossings, and reports exact posed
+head-surface separation across the table. Backrest overlap is a separate
+finding and cannot excuse a table intrusion. Tables and both guests stay
+visible in native review images. Generated images and JSON remain outside
+the shipped repository; the visual-review artifact carries the images.
 
 ```sh
-godot --rendering-method gl_compatibility --path . --script tools/chair_pose_review.gd -- --out=/fresh/chair-review
+godot --headless --path . --script tools/seated_table_review.gd -- --sweep --out=/fresh/table-sweep
+godot --rendering-method gl_compatibility --path . --script tools/seated_table_review.gd -- --capture-only --out=/fresh/table-review
 ```
 
 ## Explicit unchanged-kit findings
@@ -137,7 +137,7 @@ in the bounded read-only source audit (at least one of the eight native looks);
 | Item ID | Actual physical finding at the unchanged original pose |
 |---|---|
 | bench | Indexed head triangles cross a bench mesh |
-| chair (historical baseline, now fixed) | Previously crossed chairCushion; all 96 corrected cases now pass without an exception |
+| chair | Crosses chairCushion; Jared accepts the measured remainder with a small lean, subject to real-table safety |
 | cushioned_bench | Two looks cross benchCushion; six other looks had a 0.003575 surface gap, which alone is not proof of a backrest-rule violation |
 | lounge_chair | Indexed head triangles cross loungeChair |
 | modern_chair | Indexed head triangles cross chairModernCushion |

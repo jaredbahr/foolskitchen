@@ -260,6 +260,38 @@ func test_seated_lean_live_changes_model_changes_and_clear_preserve_private_clip
 	imported.free()
 
 
+func test_missing_private_sit_clip_refuses_seating_without_breaking_other_pose_transitions() -> void:
+	var guest: CustomerAgent = _guest(CustomerAgent.State.QUEUED)
+	await _enter_view()
+	var person: PersonView = _person(guest.id)
+	person.set_playback_speed(0.0)
+	assert_true(person.set_pose(false, true, false, false, 0.27, 12.5))
+	assert_eq(person.current_clip(), &"sit")
+	assert_true(person.set_pose(false, false, false, false))
+	assert_eq(person.current_clip(), &"idle")
+	var library: AnimationLibrary = person._player.get_animation_library(&"")
+	library.remove_animation(&"sit")
+	assert_false(person._player.has_animation(&"sit"))
+	# Remove only the inactive clip: deleting active native playback is not a
+	# supported runtime event. The public pose API must handle an absent sit
+	# clip; the runner fails this test on any engine/script error.
+	assert_false(person.set_pose(false, true, false, false, 0.27, 15.0))
+	assert_true(person.set_pose(false, false, false, false))
+	assert_eq(person.current_clip(), &"idle")
+	assert_almost_eq(person.current_seated_lean_degrees(), 0.0)
+	assert_false(person.set_pose(false, true, false, false, 0.27, 10.0))
+	assert_true(person.set_pose(true, false, false, false))
+	assert_eq(person.current_clip(), &"walk")
+	assert_true(person.set_pose(false, false, true, false))
+	assert_eq(person.current_clip(), &"holding-both")
+	assert_true(person.set_pose(false, false, false, true))
+	assert_eq(person.current_clip(), &"interact-right")
+	assert_true(person.set_pose(false, false, false, false))
+	assert_eq(person.current_clip(), &"idle")
+	assert_almost_eq((person.get_node("ModelPivot") as Node3D).position.y, 0.0)
+	assert_eq(_world.now, 0)
+
+
 func test_shop_view_resolves_detached_seat_lean_and_clears_it_on_departure_without_sim_mutation() -> void:
 	var table: PlacedItem = _table()
 	var definition: ItemDef = (table.def as ItemDef).duplicate(true) as ItemDef

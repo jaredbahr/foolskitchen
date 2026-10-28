@@ -768,6 +768,12 @@ an active edit/panel/selection first, or opens Settings when none is active.
   include the applied lean as well as model and animation time. This mechanism
   does not establish a seat's physical fit: authored tuning still requires the
   full surface run, supported hips and actual rendered review.
+  Jared accepts some cushioned-chair backrest overlap with a small 10–15 degree
+  lean. Real-table review additionally seats guests opposite each other at
+  cross, glass, cloth and round tables: no head may enter or cross any table
+  mesh, and the exact head-to-head separation is reported for visual review.
+  A backrest exception never excuses table intrusion. Review images and JSON
+  remain external to shipped resources.
   The seated-head probe uses indexed, skinned Mini head surfaces at the shared
   scale: no head vertex may be inside any seat part, and an identified backrest
   must clear the head surface by at least 0.02 m. Made seats also require both

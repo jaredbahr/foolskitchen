@@ -97,7 +97,7 @@ func set_pose(moving: bool, seated: bool, carrying: bool, working: bool, seat_he
 		pivot.position.y = _seat_height
 	if lean_changed and _player != null:
 		_update_seated_lean()
-		if _clip == &"sit":
+		if _clip == &"sit" and _player.has_animation(&"sit"):
 			# Re-evaluate the private track without restarting a paused/live pose.
 			_player.seek(_player.current_animation_position, true)
 	return _play_requested_clip()
@@ -211,6 +211,8 @@ func _prepare_seated_lean(animation: Animation) -> bool:
 
 
 func _update_seated_lean() -> void:
+	if _player == null or not _player.has_animation(&"sit"):
+		return
 	var animation: Animation = _player.get_animation(&"sit")
 	var lean: Quaternion = Quaternion(Vector3.RIGHT, deg_to_rad(_seated_lean_degrees))
 	for key: int in _sit_base_rotations.size():

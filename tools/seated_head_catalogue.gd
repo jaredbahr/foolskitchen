@@ -5,9 +5,11 @@ extends RefCounted
 
 const GEOMETRY: GDScript = preload("res://tools/seated_head_geometry.gd")
 const SIT_FRACTIONS: Array[float] = [0.0, 0.37, 0.91]
-## Director 6404820766: unchanged kit items only. Every listed item must retain
+## Director 6404820766: kit failures only. Every listed item must retain
 ## at least one measured physical violation; unknown classification is not proof.
-const KNOWN_KIT_FAILURE_IDS: PackedStringArray = ["bench", "cushioned_bench", "lounge_chair",
+## Director 6460103763: Jared accepts chair's remaining overlap with a small
+## 10–15 degree lean. It still needs measured geometry, never a skipped sample.
+const KNOWN_KIT_FAILURE_IDS: PackedStringArray = ["bench", "chair", "cushioned_bench", "lounge_chair",
 	"modern_chair", "modern_frame_chair", "rounded_chair", "table_2", "table_4", "wooden_chair"]
 
 
