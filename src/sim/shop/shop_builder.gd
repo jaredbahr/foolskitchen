@@ -39,6 +39,15 @@ static func build(layout: ShopLayout, content: ContentDB, errors: Array[String],
 		else:
 			errors.append("%s: wall at %s: %s" % [layout.id, edge, problem])
 	grid.set_segments(segments)
+	# Rooms (FK-101) only go on floor cells.
+	var rooms: Dictionary[Vector2i, int] = {}
+	var wanted: Dictionary[Vector2i, int] = layout.room_map()
+	for cell: Vector2i in wanted:
+		if grid.terrain(cell) == SimGrid.Terrain.FLOOR:
+			rooms[cell] = wanted[cell]
+		else:
+			errors.append("%s: room at %s is not on the floor" % [layout.id, cell])
+	grid.set_rooms(rooms)
 	for r: StringName in layout.staff_spawns:
 		var spawn: Vector2i = layout.staff_spawns[r]
 		var covering: PlacedItem = grid.item_at(spawn)

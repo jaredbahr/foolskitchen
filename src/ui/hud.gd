@@ -403,6 +403,8 @@ static func build_hint(painting: bool, state: int, tool: int) -> String:
 			return "Drag along grid lines to build  |  Click a wall to change it  |  Del Remove  |  Esc Cancel"
 		BuildMode.State.FLOOR:
 			return "Drag onto the lot to add floor  |  Shift-drag Remove added floor  |  Esc Cancel"
+		BuildMode.State.ROOMS:
+			return "Drag over the floor to paint the room  |  Ctrl+Z Undo  Ctrl+Y Redo  |  Esc Cancel"
 	match tool:
 		BuildMode.Tool.EYEDROPPER:
 			return "Eyedropper: click an item to place another  |  Ctrl+Z Undo  Ctrl+Y Redo  |  Esc Hand"

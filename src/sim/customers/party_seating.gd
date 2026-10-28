@@ -46,7 +46,7 @@ static func try_seat(party: Party, world: SimWorld, kitchen: Kitchen = null) -> 
 		for guest: CustomerAgent in guests:
 			var reachable: Array[Vector2i] = []
 			for seat: Vector2i in available:
-				if world.grid.is_reachable(guest.cell, seat):
+				if world.grid.is_guest_reachable(guest.cell, seat):
 					reachable.append(seat)
 			choices.append(reachable)
 		var seats: Array[Vector2i] = []
@@ -106,7 +106,7 @@ static func held_for_earlier_party(table: PlacedItem, arrival_id: int, world: Si
 		for member: CustomerAgent in waiting:
 			var reachable: Array[Vector2i] = []
 			for seat: Vector2i in table.seat_cells:
-				if world.grid.is_walkable(seat) and world.grid.is_reachable(member.cell, seat) \
+				if world.grid.is_walkable(seat) and world.grid.is_guest_reachable(member.cell, seat) \
 						and not reachable.has(seat):
 					reachable.append(seat)
 			choices.append(reachable)

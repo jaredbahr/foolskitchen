@@ -59,6 +59,15 @@ func try_spawn_on_arrival(entry: Vector2i) -> Vector2i:
 	return chosen
 
 
+## A restroom use (FK-101) leaves its toilet needing a tidy: a spot on the
+## use cell, without a random draw. False when the cell can't take one.
+func add_use_spot(cell: Vector2i) -> bool:
+	if not _can_place(cell):
+		return false
+	_place(cell)
+	return true
+
+
 ## Cleaning removes only the requested spot. It cannot erase the day's worst.
 func clear_spot(cell: Vector2i) -> bool:
 	return _spots.erase(cell)

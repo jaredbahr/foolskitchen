@@ -17,6 +17,8 @@ var changes: Dictionary[Vector3i, int] = {}
 ## segments it would take down (they no longer fit) are in `changes` as NONE.
 var floor_cells: Array[Vector2i] = []
 var floor_adding: bool = true
+## Room painting (FK-101): the cells a valid change would repaint (cell -> Room).
+var rooms: Dictionary[Vector2i, int] = {}
 
 
 func _init(allowed: bool = false, reason: String = "") -> void:

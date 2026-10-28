@@ -27,6 +27,10 @@ enum Terrain { OUTSIDE, FLOOR, WALL, ENTRY }
 ## Result of a placement check.
 enum PlaceResult { OK, OUT_OF_BOUNDS, NOT_FLOOR, OVERLAPS, INVALID_LAYER, INVALID_CELLS, WALL_IN_WAY }
 
+## What a floor cell is used for (FK-101). Dining is the default and is never
+## stored. Kitchen and Storage are staff-only: guests never walk through them.
+enum Room { DINING, KITCHEN, RESTROOM, STORAGE }
+
 ## What stands on a cell edge. WALL and WINDOW block movement across the edge;
 ## DOORWAY is open. Any segment blocks diagonal steps past its end posts.
 enum Segment { NONE, WALL, DOORWAY, WINDOW }
@@ -79,6 +83,11 @@ var _segments: Dictionary[Vector3i, int] = {}
 var _edge_blocking: Dictionary[Vector3i, bool] = {}
 var _edge_occupied: Dictionary[Vector3i, bool] = {}
 var _edge_astar: EdgeAStar = EdgeAStar.new(_edge_blocking, _edge_occupied)
+## Rooms (FK-101): FLOOR cell -> Room, Dining cells never stored. Guests plan
+## on _guest_astar, where staff-only cells are solid too; it shares the edges.
+var _rooms: Dictionary[Vector2i, int] = {}
+var _staff_cells: int = 0
+var _guest_astar: EdgeAStar = EdgeAStar.new(_edge_blocking, _edge_occupied)
 var _items: Dictionary[int, PlacedItem] = {}
 ## cell -> id of the item covering it (solid or not).
 var _cover: Dictionary[Vector2i, int] = {}
@@ -97,7 +106,7 @@ func _init(grid_size: Vector2i = Vector2i(1, 1), grid_origin: Vector2i = Vector2
 	_origin = grid_origin
 	_terrain.resize(_size.x * _size.y)
 	_terrain.fill(Terrain.FLOOR)
-	for astar: AStarGrid2D in [_astar, _edge_astar]:
+	for astar: AStarGrid2D in [_astar, _edge_astar, _guest_astar]:
 		astar.region = Rect2i(_origin, _size)
 		astar.cell_size = Vector2.ONE
 		astar.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
@@ -177,7 +186,7 @@ func grow_to(rect: Rect2i) -> bool:
 		for x: int in range(old_bounds.position.x, old_bounds.end.x):
 			var old_index: int = (y - old_bounds.position.y) * old_bounds.size.x + (x - old_bounds.position.x)
 			_terrain[_index(Vector2i(x, y))] = old_terrain[old_index]
-	for astar: AStarGrid2D in [_astar, _edge_astar]:
+	for astar: AStarGrid2D in [_astar, _edge_astar, _guest_astar]:
 		astar.region = grown
 		astar.update()
 	# update() resets every point, so solidity is rebuilt from terrain and items.
@@ -186,13 +195,14 @@ func grow_to(rect: Rect2i) -> bool:
 	return true
 
 
-## A new grid with the same bounds and terrain, without items or segments.
+## A new grid with the same bounds, terrain and rooms, without items or segments.
 func terrain_copy() -> SimGrid:
 	var copy: SimGrid = SimGrid.new(_size, _origin)
 	var changes: Dictionary[Vector2i, int] = {}
 	for cell: Vector2i in cells():
 		changes[cell] = terrain(cell)
 	copy.set_terrains(changes)
+	copy.set_rooms(_rooms)
 	return copy
 
 
@@ -212,6 +222,8 @@ func set_terrains(changes: Dictionary[Vector2i, int]) -> bool:
 		if terrain(cell) == changes[cell]:
 			continue
 		_terrain[_index(cell)] = changes[cell]
+		if changes[cell] != Terrain.FLOOR:
+			_drop_room(cell)
 		if changes[cell] == Terrain.ENTRY:
 			if not _entries.has(cell):
 				_entries.append(cell)
@@ -239,6 +251,8 @@ func set_terrain(cell: Vector2i, t: Terrain) -> bool:
 	if (_cover.has(cell) or _floor_cover.has(cell)) and t != Terrain.FLOOR:
 		return false
 	_terrain[_index(cell)] = t
+	if t != Terrain.FLOOR:
+		_drop_room(cell)
 	if t == Terrain.ENTRY:
 		if not _entries.has(cell):
 			_entries.append(cell)
@@ -650,6 +664,7 @@ func _refresh_cell(cell: Vector2i) -> void:
 		blocked = true
 	_astar.set_point_solid(cell, blocked)
 	_edge_astar.set_point_solid(cell, blocked)
+	_guest_astar.set_point_solid(cell, blocked or is_staff_only(cell))
 
 
 ## The plain engine search while no interior segment exists, so a shop without
@@ -859,3 +874,127 @@ func access_walled_off(cells: Array[Vector2i], access: Array[Vector2i]) -> bool:
 		if touching > 0 and blocked == touching:
 			return true
 	return false
+
+
+# --- Rooms and the guest path layer (FK-101) ----------------------------------
+
+## Kitchen and Storage are staff-only rooms.
+static func room_staff_only(kind: int) -> bool:
+	return kind == Room.KITCHEN or kind == Room.STORAGE
+
+
+## The room a cell belongs to (Dining unless painted otherwise).
+func room(cell: Vector2i) -> Room:
+	return _rooms.get(cell, Room.DINING) as Room
+
+
+func is_staff_only(cell: Vector2i) -> bool:
+	return _staff_cells > 0 and room_staff_only(_rooms.get(cell, Room.DINING))
+
+
+## True while any cell is staff-only, so guests need their own path layer.
+func has_staff_rooms() -> bool:
+	return _staff_cells > 0
+
+
+## Every painted (non-Dining) cell -> Room. Detached.
+func rooms() -> Dictionary[Vector2i, int]:
+	return _rooms.duplicate()
+
+
+## Paints rooms (cell -> Room; DINING clears). Only FLOOR cells take a room;
+## nothing changes, and false is returned, for any other cell or a bad kind.
+## Emits cells_changed with the cells that changed (guest walkability).
+func set_rooms(changes: Dictionary[Vector2i, int]) -> bool:
+	for cell: Vector2i in changes:
+		var kind: int = changes[cell]
+		if kind < Room.DINING or kind > Room.STORAGE or (kind != Room.DINING and terrain(cell) != Terrain.FLOOR):
+			return false
+	var touched: Array[Vector2i] = []
+	for cell: Vector2i in changes:
+		if room(cell) == changes[cell]:
+			continue
+		_drop_room(cell)
+		if changes[cell] != Room.DINING:
+			_rooms[cell] = changes[cell]
+			if room_staff_only(changes[cell]):
+				_staff_cells += 1
+		touched.append(cell)
+	if touched.is_empty():
+		return true
+	touched.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return a.y < b.y or (a.y == b.y and a.x < b.x))
+	for cell: Vector2i in touched:
+		_refresh_cell(cell)
+	cells_changed.emit(touched)
+	return true
+
+
+func _drop_room(cell: Vector2i) -> void:
+	if not _rooms.has(cell):
+		return
+	if room_staff_only(_rooms[cell]):
+		_staff_cells -= 1
+	_rooms.erase(cell)
+
+
+## A cell a guest may stand on: walkable and not staff-only.
+func is_guest_walkable(cell: Vector2i) -> bool:
+	return is_walkable(cell) and not is_staff_only(cell)
+
+
+## Guest-walkable neighbours, in walkable_neighbours() order.
+func guest_neighbours(cell: Vector2i) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	for neighbour: Vector2i in walkable_neighbours(cell):
+		if not is_staff_only(neighbour):
+			out.append(neighbour)
+	return out
+
+
+## find_path() for guests: never through a Kitchen or Storage cell. The plain
+## path is tried first and kept when it stays out of staff rooms, so a shop
+## whose guests never went near the kitchen keeps its exact paths; otherwise
+## the guest layer (staff cells solid) finds the shortest guest route. A guest
+## standing in a staff cell (it can only happen through an edit) walks out on
+## the plain path, so nobody is ever trapped.
+func find_guest_path(start: Vector2i, goal: Vector2i) -> Array[Vector2i]:
+	var path: Array[Vector2i] = find_path(start, goal)
+	if _staff_cells == 0 or path.is_empty():
+		return path
+	if is_staff_only(goal):
+		return []
+	var clear: bool = true
+	for index: int in range(1, path.size()):
+		if is_staff_only(path[index]):
+			clear = false
+			break
+	if clear or is_staff_only(start) or not is_walkable(start):
+		return path
+	var route: Array[Vector2i] = _guest_astar.get_id_path(start, goal)
+	for index: int in range(1, route.size()):
+		if not _guest_astar.step_open(route[index - 1], route[index]):
+			return []
+	return route
+
+
+func is_guest_reachable(start: Vector2i, goal: Vector2i) -> bool:
+	return not find_guest_path(start, goal).is_empty()
+
+
+## find_path_to_any() for guests (ties go to the earlier goal).
+func find_guest_path_to_any(start: Vector2i, goals: Array[Vector2i]) -> Array[Vector2i]:
+	if _staff_cells == 0:
+		return find_path_to_any(start, goals)
+	var best: Array[Vector2i] = []
+	var best_cost: float = INF
+	for goal: Vector2i in goals:
+		if GridMath.octile(start, goal) > best_cost:
+			continue
+		var path: Array[Vector2i] = find_guest_path(start, goal)
+		if path.is_empty():
+			continue
+		var cost: float = GridMath.path_cost(path)
+		if cost < best_cost:
+			best = path
+			best_cost = cost
+	return best

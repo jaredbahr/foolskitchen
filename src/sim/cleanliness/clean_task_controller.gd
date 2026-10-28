@@ -40,11 +40,14 @@ func sync_spots() -> void:
 	for cell: Vector2i in dirt.spots():
 		if _tasks.has(cell) or _suspended.has(cell) or not _eligible(world, cell):
 			continue
-		var task: SimTask = SimTask.new(&"clean_spot", &"cleaner", "Mop up a floor spot")
+		# A restroom spot (FK-101) is a quick tidy-up, never called mess.
+		var restroom: bool = world.grid.room(cell) == SimGrid.Room.RESTROOM
+		var task: SimTask = SimTask.new(&"clean_spot", &"cleaner",
+			"Tidy the restroom" if restroom else "Mop up a floor spot")
 		task.priority = 0
 		task.defer_to_higher_priority = true
-		task.steps.append(TaskStep.go_to_cell(cell, "walking to floor spot"))
-		task.steps.append(TaskStep.work(_tuning.clean_work_ticks, "mopping floor"))
+		task.steps.append(TaskStep.go_to_cell(cell, "walking to the restroom" if restroom else "walking to floor spot"))
+		task.steps.append(TaskStep.work(_tuning.clean_work_ticks, "tidying the restroom" if restroom else "mopping floor"))
 		world.board.post(task, world.now)
 		_tasks[cell] = task
 		_cells_by_id[task.id] = cell

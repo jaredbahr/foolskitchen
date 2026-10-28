@@ -219,6 +219,8 @@ func _bind_world_presentation() -> void:
 		_build_catalogue.wall_tool_requested.connect(_on_wall_tool_requested)
 	if not _build_catalogue.floor_tool_requested.is_connected(_on_floor_tool_requested):
 		_build_catalogue.floor_tool_requested.connect(_on_floor_tool_requested)
+	if not _build_catalogue.rooms_tool_requested.is_connected(_on_rooms_tool_requested):
+		_build_catalogue.rooms_tool_requested.connect(_on_rooms_tool_requested)
 	if not _build_catalogue.swatch_requested.is_connected(_on_swatch_requested):
 		_build_catalogue.swatch_requested.connect(_on_swatch_requested)
 	if not _build_catalogue.mode_requested.is_connected(_on_catalogue_mode_requested):
@@ -573,6 +575,14 @@ func route_build_input(event: InputEvent) -> bool:
 			else:
 				build_mode.floor_release(floor_cell)
 		return true
+	if mouse != null and mouse.button_index == MOUSE_BUTTON_LEFT and build_mode.state == BuildMode.State.ROOMS:
+		var room_cell: Variant = build_cell_at_screen_position(mouse.position)
+		if room_cell is Vector2i:
+			if mouse.pressed:
+				build_mode.rooms_press(room_cell)
+			else:
+				build_mode.rooms_release(room_cell)
+		return true
 	if mouse != null and mouse.pressed and mouse.button_index == MOUSE_BUTTON_LEFT:
 		if update_build_pointer(mouse.position):
 			if build_mode.has_ghost():
@@ -859,6 +869,11 @@ func update_build_pointer(screen_position: Vector2, shift: bool = false) -> bool
 		if floor_cell is Vector2i:
 			build_mode.floor_pointer(floor_cell, shift)
 		return floor_cell is Vector2i
+	if build_mode.state == BuildMode.State.ROOMS:
+		var room_cell: Variant = build_cell_at_screen_position(screen_position)
+		if room_cell is Vector2i:
+			build_mode.rooms_pointer(room_cell)
+		return room_cell is Vector2i
 	if build_mode.state == BuildMode.State.WALLS:
 		var point: Variant = build_point_at_screen_position(screen_position)
 		if point is Vector2:
@@ -886,6 +901,16 @@ func begin_floor_tool() -> bool:
 	return started
 
 
+## Rooms tool (FK-101): drag to paint `kind` (SimGrid.Room) onto the floor.
+func begin_rooms_tool(kind: int) -> bool:
+	if not is_build_active():
+		return false
+	var started: bool = build_mode.begin_rooms(kind)
+	if started and is_inside_tree():
+		update_build_pointer(get_viewport().get_mouse_position())
+	return started
+
+
 func begin_buy_item(def_id: StringName) -> bool:
 	if not is_build_active():
 		return false
@@ -897,12 +922,14 @@ func _bind_build_session() -> void:
 	if not build_mode.changed.is_connected(_on_build_changed):
 		build_mode.changed.connect(_on_build_changed)
 	edit_history = ShopEditHistory.new(shop_editor, world.grid)
-	build_mode.bind_session(shop_editor, world, content, shop_move, shop_buy, shop_sell, shop_walls, shop_floor)
+	build_mode.bind_session(shop_editor, world, content, shop_move, shop_buy, shop_sell, shop_walls, shop_floor,
+		shop_rooms)
 	($ShopView as ShopView).set_paint(content, shop_editor.wall_swatch_id, shop_editor.floor_swatch_id)
 	_build_preview.bind_build_mode(build_mode, $ShopView as ShopView)
 	var lot: ShopFootprint = shop_editor.footprint()
 	if _build_catalogue != null:
 		_build_catalogue.set_floor_price(lot.cell_price if lot != null and lot.has_lot() else 0)
+		_build_catalogue.set_rooms_enabled(true)
 	_build_ready = true
 	_build_ui_phase = -1
 	_on_build_changed()
@@ -947,6 +974,8 @@ func _update_build_controls() -> void:
 		summary = build_mode.wall_summary()
 	elif build_mode.state == BuildMode.State.FLOOR:
 		summary = build_mode.floor_summary()
+	elif build_mode.state == BuildMode.State.ROOMS:
+		summary = build_mode.rooms_summary()
 	elif build_mode.state == BuildMode.State.IDLE:
 		# The sell/eyedropper hover text, or why an idle tool click was refused.
 		summary = build_mode.hover_summary()
@@ -985,6 +1014,10 @@ func _on_wall_tool_requested(kind: int) -> void:
 
 func _on_floor_tool_requested() -> void:
 	begin_floor_tool()
+
+
+func _on_rooms_tool_requested(kind: int) -> void:
+	begin_rooms_tool(kind)
 
 
 func _on_build_cash_changed(_cash: int, _delta: int, _reason: StringName) -> void:
@@ -2091,6 +2124,15 @@ func shop_floor(cells: Array[Vector2i], adding: bool) -> bool:
 	return accepted
 
 
+## Room painting (FK-101): free, checked by ShopEditor, undoable.
+func shop_rooms(changes: Dictionary[Vector2i, int]) -> bool:
+	var accepted: bool = shop_editor != null and edit_history.apply_rooms(changes)
+	_after_edit(accepted)
+	if _build_ready:
+		build_mode.refresh()
+	return accepted
+
+
 ## A new edit replaces any old undo notice.
 func _after_edit(accepted: bool) -> void:
 	if accepted:
@@ -2146,7 +2188,7 @@ func _on_catalogue_mode_requested(mode: StringName) -> void:
 	# Switching side drops a held piece or tool that belongs to the other side.
 	var buying: bool = mode == BuildCatalogue.BUY
 	var state: BuildMode.State = build_mode.state
-	if (buying and (state == BuildMode.State.WALLS or state == BuildMode.State.FLOOR)) \
+	if (buying and (state == BuildMode.State.WALLS or state == BuildMode.State.FLOOR or state == BuildMode.State.ROOMS)) \
 			or (not buying and (state == BuildMode.State.BUY or state == BuildMode.State.MOVE)):
 		build_mode.cancel_ghost()
 	_build_catalogue.set_mode(mode)

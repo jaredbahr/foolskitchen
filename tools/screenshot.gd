@@ -28,6 +28,12 @@ extends SceneTree
 ##             lot with ghost, cost and lot outline, or the finished L-shaped shop
 ##             with tables in the new floor (Walls Up unless --quarter selects the
 ##             cutaway; add --open --fast=N for seated guests).
+##   --rooms=tool|refused|restroom  FK-101 rooms on the expanded shop (a back room
+##             behind the kitchen, reached round it by an east wing, with a
+##             restroom in the back room): the Rooms tool's tints and labels, a
+##             refused seat in the kitchen with its sentence, or (with --open
+##             --fast=N --speed=1) a guest walking round the kitchen to the
+##             restroom; the clock pauses on the first such guest.
 ##   --door-queue  zoom the existing camera onto a real queue, or its empty entry
 ##   --loan-review --speed=0 --frames=12,90  explicit financial-fixture UI evidence
 ##   --milestone-review --speed=0 --frames=12,90  authored goals and close reward evidence
@@ -113,6 +119,8 @@ var _build: String = ""
 var _paint: bool = false
 var _walls: String = ""
 var _expand: String = ""
+var _rooms: String = ""
+var _rooms_paused: bool = false
 var _door_queue: bool = false
 var _loan_review: bool = false
 var _loan_fixture: Dictionary = {}
@@ -226,6 +234,12 @@ func _initialize() -> void:
 				_fail_capture("--expand supports drag or shop")
 				return
 			_expand = requested_expand
+		elif arg.begins_with("--rooms"):
+			var requested_rooms: String = arg.trim_prefix("--rooms=")
+			if not ["tool", "refused", "restroom"].has(requested_rooms):
+				_fail_capture("--rooms supports tool, refused or restroom")
+				return
+			_rooms = requested_rooms
 		elif arg.begins_with("--door-queue"):
 			if arg != "--door-queue":
 				_fail_capture("--door-queue does not accept a value")
@@ -267,6 +281,12 @@ func _initialize() -> void:
 			or _report_requested or (_expand == "drag" and (_open or _fast != 0 or _quarter >= 0))):
 		_fail_capture("--expand requires Main without other panels; drag also needs a fresh morning")
 		return
+	if not _rooms.is_empty() and (_scene_path != "res://src/world/main.tscn" or not _build.is_empty() or _paint \
+			or not _walls.is_empty() or not _expand.is_empty() or _menu or _staff or _settings \
+			or not _selection.is_empty() or _f3 or _report_requested \
+			or (_rooms != "restroom" and (_open or _fast != 0)) or (_rooms == "restroom" and not _open)):
+		_fail_capture("--rooms requires Main without other panels; tool and refused need a fresh morning, restroom --open")
+		return
 	if _menu and (_open or not _selection.is_empty()):
 		_fail_capture("--menu requires morning and cannot combine with --open or --select")
 		return
@@ -290,7 +310,7 @@ func _initialize() -> void:
 			or _speed != 0 or _shots.size() != 1):
 		_fail_capture("--settings requires one paused Main capture without other view/service flags")
 		return
-	if _shots.is_empty() or _shots.min() < 1 or ((_quarter >= 0 or not _selection.is_empty() or _f3 or _menu or _staff or _settings or not _build.is_empty() or _paint or _door_queue or not _walls.is_empty() or not _expand.is_empty()) and _shots.min() < 4):
+	if _shots.is_empty() or _shots.min() < 1 or ((_quarter >= 0 or not _selection.is_empty() or _f3 or _menu or _staff or _settings or not _build.is_empty() or _paint or _door_queue or not _walls.is_empty() or not _expand.is_empty() or not _rooms.is_empty()) and _shots.min() < 4):
 		_fail_capture("capture frames must be positive, and at least 4 for requested view/UI options")
 		return
 	if _settings_world and _shots.min() < 90:
@@ -307,7 +327,8 @@ func _initialize() -> void:
 	# Preserve capture isolation when the integrated game session supports saves.
 	if "use_saves" in _main:
 		_main.set("use_saves", false)
-	if (_report_requested or _milestone_review or _diner_review or _expand == "shop") and "new_game_seed_override" in _main:
+	if (_report_requested or _milestone_review or _diner_review or _expand == "shop" or not _rooms.is_empty()) \
+			and "new_game_seed_override" in _main:
 		_main.set("new_game_seed_override", 1)
 	root.add_child(_main)
 
@@ -1078,7 +1099,7 @@ static func _catalogue_content_expectations(content: ContentDB) -> Dictionary:
 				or definition.display_name.strip_edges().is_empty() or definition.price < 0 or definition.unlock_level < 1 \
 				or definition.footprint.x < 1 or definition.footprint.y < 1 or not definition.placement_layer_valid() \
 				or not [ItemDef.Category.TABLE, ItemDef.Category.CHAIR, ItemDef.Category.STATION,
-					ItemDef.Category.STORAGE, ItemDef.Category.PASS, ItemDef.Category.DECOR].has(definition.category):
+					ItemDef.Category.STORAGE, ItemDef.Category.PASS, ItemDef.Category.DECOR, ItemDef.Category.RESTROOM].has(definition.category):
 			continue
 		var path: String = definition.view_scene.resource_path if definition.view_scene != null else ""
 		cards.append({"id": String(definition.id), "name": definition.display_name, "price": definition.price,
@@ -1701,10 +1722,21 @@ func _process(_delta: float) -> bool:
 			_configure_expand()
 			if _failed:
 				return true
+		if not _rooms.is_empty():
+			# Rooms, floor and the restroom are closed-phase edits too.
+			_configure_rooms()
+			if _failed:
+				return true
 		if _open:
 			(clock.get("sim") as SimClock).start_service()
 		clock.call("set_speed", _speed)
 		_configure_camera()
+		if not _rooms.is_empty():
+			(_main.get_node("ShopView") as ShopView).set_wall_mode(ShopView.WallMode.UP)
+		if _rooms == "tool" or _rooms == "refused":
+			_begin_rooms_view()
+			if _failed:
+				return true
 		if _walls == "room" and _quarter < 0:
 			(_main.get_node("ShopView") as ShopView).set_wall_mode(ShopView.WallMode.UP)
 		if _walls == "place":
@@ -1809,8 +1841,11 @@ func _process(_delta: float) -> bool:
 		if _settings_keyboard["settings_closed"] != true or _settings_keyboard["menu_visible"] != false:
 			_fail_capture("native Close acceptance did not return from Settings to the world")
 			return true
-	if (not _build.is_empty() or _walls == "place" or _expand == "drag") and _frames >= 3:
+	if (not _build.is_empty() or _walls == "place" or _expand == "drag" or _rooms == "tool" or _rooms == "refused") \
+			and _frames >= 3:
 		_hold_build_pointer()
+	if _rooms == "restroom" and _frames > 3 and not _rooms_paused:
+		_pause_on_restroom_walk()
 	if _fast > 0 and _frames > 3 and _main.has_method("run_ticks"):
 		_main.call("run_ticks", _fast)
 	if not _selection.is_empty() and _frames >= 3:
@@ -2309,6 +2344,148 @@ func _configure_expand() -> void:
 			return
 
 
+## FK-101: the expansion fixture's floor (back room plus east wing), its
+## tables, and a restroom in the back room's west end behind a wall with a
+## doorway: a toilet and a wash basin. All through Main's production wrappers.
+static func rooms_restroom_cells() -> Array[Vector2i]:
+	var cells: Array[Vector2i] = []
+	for y: int in range(-3, 0):
+		for x: int in range(6, 8):
+			cells.append(Vector2i(x, y))
+	return cells
+
+
+## A wall wrapping the kitchen (the opened old back wall row stays kitchen
+## side, the east wing is the guests' way round) and the restroom's wall with
+## a doorway.
+static func rooms_walls() -> Dictionary[Vector3i, int]:
+	var walls: Dictionary[Vector3i, int] = {Vector3i(8, -3, SimGrid.EDGE_WEST): SimGrid.Segment.WALL,
+		Vector3i(8, -2, SimGrid.EDGE_WEST): SimGrid.Segment.WALL,
+		Vector3i(8, -1, SimGrid.EDGE_WEST): SimGrid.Segment.DOORWAY}
+	for x: int in range(6, 13):
+		walls[Vector3i(x, 0, SimGrid.EDGE_NORTH)] = SimGrid.Segment.WALL
+	for y: int in range(0, 4):
+		walls[Vector3i(13, y, SimGrid.EDGE_WEST)] = SimGrid.Segment.WALL
+	return walls
+
+
+static func rooms_kitchen_cells() -> Array[Vector2i]:
+	var cells: Array[Vector2i] = []
+	for x: int in range(6, 13):
+		cells.append(Vector2i(x, 0))
+	return cells
+
+
+func _configure_rooms() -> void:
+	var world: SimWorld = _capture_world()
+	var editor: ShopEditor = _main.get("shop_editor") as ShopEditor
+	if world == null or editor == null or world.clock.phase != SimClock.Phase.MORNING or not _main.has_method("shop_rooms"):
+		_fail_capture("--rooms requires the production morning room APIs")
+		return
+	root.get_node("Economy").call("add_cash", 2000, Ledger.OTHER)
+	for rect: Rect2i in expand_fixture():
+		var cells: Array[Vector2i] = []
+		for y: int in range(rect.position.y, rect.end.y):
+			for x: int in range(rect.position.x, rect.end.x):
+				cells.append(Vector2i(x, y))
+		if not bool(_main.call("shop_floor", cells, true)):
+			_fail_capture("the floor fixture was refused: " + editor.last_check.why)
+			return
+	var steps: Array = [["shop_rooms", editor.room_changes(rooms_kitchen_cells(), SimGrid.Room.KITCHEN)],
+		["shop_walls", rooms_walls()],
+		["shop_rooms", editor.room_changes(rooms_restroom_cells(), SimGrid.Room.RESTROOM)],
+		["shop_buy", &"toilet", Vector2i(6, -3), 2], ["shop_buy", &"bathroom_sink", Vector2i(7, -3), 2],
+		["shop_buy", &"table_2", Vector2i(10, -3), 0], ["shop_buy", &"table_2", Vector2i(13, 6), 1]]
+	for step: Array in steps:
+		var accepted: Variant = _main.callv(step[0], step.slice(1))
+		if not (accepted is bool and accepted):
+			_fail_capture("a rooms fixture step was refused (%s): %s" % [step[0], editor.last_check.why])
+			return
+	var sim: RestaurantSim = _main.get("sim") as RestaurantSim
+	if not sim.has_restroom():
+		_fail_capture("the rooms fixture has no restroom")
+		return
+	if _rooms == "restroom":
+		# A busy service, and every guest needs the restroom, so one is seen
+		# walking there soon: a capture fixture only, never game data.
+		sim.spawner.min_gap = 25
+		sim.spawner.max_gap = 45
+		sim.customer_arrived.connect(_on_rooms_guest_arrived)
+
+
+func _on_rooms_guest_arrived(guest: CustomerAgent) -> void:
+	guest.restroom_chance = 1.0
+
+
+## The Rooms tool (Dining hovered over the back room), or a held table in the
+## kitchen that the edit checks refuse.
+func _begin_rooms_view() -> void:
+	var camera: Camera3D = _main.get_node_or_null("CameraRig/Camera3D") as Camera3D
+	var catalogue: BuildCatalogue = _main.get_node_or_null("Overlay/BuildCatalogue") as BuildCatalogue
+	if camera == null or catalogue == null or not bool(_main.call("set_build_active", true)):
+		_fail_capture("scene refused build entry for the rooms view")
+		return
+	if _rooms == "tool":
+		_main.call("_on_catalogue_mode_requested", BuildCatalogue.BUILD)
+		catalogue.set_category(BuildCatalogue.ROOMS)
+		if not bool(_main.call("begin_rooms_tool", SimGrid.Room.RESTROOM)):
+			_fail_capture("scene refused the Rooms tool")
+			return
+		_build_pointer = camera.unproject_position(GridMath.cell_to_world(Vector2i(14, 9)))
+	else:
+		_build_pointer = camera.unproject_position(GridMath.cell_to_world(Vector2i(8, 2)))
+		_hold_build_pointer()
+		if not bool(_main.call("begin_buy_item", &"table_2")):
+			_fail_capture("scene refused the kitchen seat preview")
+			return
+	_hold_build_pointer()
+	_main.call("update_build_pointer", _build_pointer)
+
+
+## Freeze the clock on the first guest walking to the restroom once they are
+## past the kitchen's east side, so the later frames show the walk.
+func _pause_on_restroom_walk() -> void:
+	var world: SimWorld = _capture_world()
+	for agent: SimAgent in world.agents:
+		var guest: CustomerAgent = agent as CustomerAgent
+		if guest != null and guest.restroom == CustomerAgent.Restroom.WALKING and guest.cell.x >= 13 and guest.cell.y <= 2:
+			_fast = 0
+			root.get_node("Clock").call("set_speed", 0)
+			_rooms_paused = true
+			print("ROOMS_RESTROOM_WALK guest=%d cell=%s" % [guest.id, guest.cell])
+			return
+
+
+func _rooms_capture_valid() -> bool:
+	var world: SimWorld = _capture_world()
+	var mode: BuildMode = _main.get("build_mode") as BuildMode
+	var preview: BuildPreview = _main.get_node_or_null("BuildPreview") as BuildPreview
+	if world == null or mode == null or preview == null:
+		return false
+	match _rooms:
+		"tool":
+			var labels: Array[String] = []
+			for label: Label3D in preview.room_labels:
+				labels.append(label.text)
+			print("ROOMS_TOOL tints=%s labels=%s hint=%s" % [preview.room_tints.keys(), labels, mode.rooms_summary()])
+			return mode.state == BuildMode.State.ROOMS and preview.room_tints.has(SimGrid.Room.KITCHEN) \
+				and preview.room_tints.has(SimGrid.Room.DINING) and preview.room_tints.has(SimGrid.Room.RESTROOM) \
+				and labels.has("Kitchen") and labels.has("Restroom")
+		"refused":
+			print("ROOMS_REFUSED why=%s" % mode.current_check.why)
+			return mode.state == BuildMode.State.BUY and not mode.current_check.ok \
+				and mode.current_check.why == RoomRules.SEAT_IN_KITCHEN
+	for agent: SimAgent in world.agents:
+		var guest: CustomerAgent = agent as CustomerAgent
+		if guest != null and guest.restroom == CustomerAgent.Restroom.WALKING:
+			for cell: Vector2i in guest.path:
+				if world.grid.is_staff_only(cell):
+					return false
+			print("ROOMS_RESTROOM guest=%d cell=%s path=%s" % [guest.id, guest.cell, guest.path])
+			return true
+	return false
+
+
 ## Press on a lot cell behind the kitchen and hold the pointer on another,
 ## dragging a 8 x 3 back room, through Main's input route.
 func _begin_floor_drag() -> void:
@@ -2513,6 +2690,9 @@ func _capture() -> void:
 		return
 	if not _expand.is_empty() and not _expand_capture_valid():
 		_fail_capture("requested floor expansion view did not match the rendered shop")
+		return
+	if not _rooms.is_empty() and not _rooms_capture_valid():
+		_fail_capture("requested rooms view did not match the rendered shop")
 		return
 	var menu_visible: Variant = _main.call("is_menu_visible") if _main.has_method("is_menu_visible") else null
 	if _menu and (menu_visible != true or world == null or world.clock.phase != SimClock.Phase.MORNING):
