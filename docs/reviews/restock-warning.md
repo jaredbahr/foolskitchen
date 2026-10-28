@@ -13,8 +13,11 @@ a wing and table, and reloads before day 3. Baseline: accepted main
 Only seed 41 starved: day 5 had $71 before a $75 full reorder, a $4 shortage,
 leaving four tomatoes unbought. The other 49 seeds had no cash shortage. All 50
 completed, with zero engine errors and zero non-restock invariant failures.
-The original tomato assertion for seed 41 remains recorded in
-`restock-seed-survey.json`; no test assertion was removed or weakened.
+The original tomato assertion for seed 41 remains recorded in the retained
+local survey evidence; no test assertion was removed or weakened. The complete
+survey JSON has SHA-256
+`60d5e8343340a28431d84eabd4cb44e5601737d201cefc6b1042aaa438418d63`.
+Generated JSON and images stay outside the shipped repository.
 
 ## Integrated validation
 

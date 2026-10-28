@@ -11,7 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
-- Build previews warn when spending would leave less cash than the estimated restock budget. You can still choose to buy. (#0)
+- Build previews warn when spending would leave less cash than the estimated restock budget. You can still choose to buy. (#194)
 - Build a back door in a back or side wall with the Doorway tool; removing it closes the wall again. Guests always come and go by the front door. (#191)
 - Paint rooms in Build mode's new Rooms tab: Dining, Kitchen, Restroom and Storage (free, in the morning or after closing, with undo). Your kitchen is staff-only: guests never walk through the kitchen or storage, so a back dining room needs its own way round, and Build tells you when a seat or toilet would leave guests stuck ("Guests don't sit in the kitchen", "Guests can't reach this without walking through the kitchen"). Build a restroom in any shop: put a toilet (and a wash basin) from Buy mode's new Restroom tab in a Restroom room. Guests are a bit happier with one; once you seat about 12 or more they start expecting one, and a guest who can't use one loses some patience and says so in their review. Their meal waits for them while they're away. (#192)
 - The Menu shows your dishes as an unlock tree (fries grow from the burger, savoury pie from the soup), with the selected dish's detail beside it: quality, price, what equipment it still needs (in red, such as "Buy a fryer" or "Staff can't reach the fryer") and ingredient stock. A dish whose station staff can't reach now leaves the menu, as drinks already did; undo the edit that morning to get it back as it was, or switch it on again once staff can reach it. (#186)
