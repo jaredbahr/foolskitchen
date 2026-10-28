@@ -83,8 +83,8 @@ The Tier 1 hole-in-the-wall: 1 door, 3 two-seat tables, 1 fridge, 1 prep counter
 ## Idea backlog (Jared liked these, 2026-10-27; scheduled after the designer core)
 Each is a `phase-later` issue. Pick from here when Phase 2's designer work is solid.
 - [ ] More sites run by managers (#164, D24)
-- [ ] Named regulars who remember your place (#166): the director's first pick
-- [ ] Street front and patio, with curb appeal and weather (#168)
+- [ ] Named regulars who remember your place (#166): first after the designer core (Jared, D26)
+- [ ] Street front and patio, with curb appeal and weather (#168): second (D26); needs a simple overworld (road and neighbourhood around the lot) and outdoor waiting seats when the weather allows
 - [ ] Makeover jobs, renovating to a brief as career side jobs, needing a D7 amendment (#167)
 - [ ] Staff relationships and drama (#169)
 - [ ] Design extras: collection sets, lighting moods, staff room, blueprint codes (#170)
