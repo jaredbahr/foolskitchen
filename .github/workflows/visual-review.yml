@@ -108,6 +108,16 @@ jobs:
             exit 1
           fi
 
+      - name: Capture the advisory restock warning
+        shell: bash
+        run: |
+          set -euo pipefail
+          export XDG_DATA_HOME="$(mktemp -d)"
+          timeout 60 xvfb-run -a -s '-screen 0 1600x900x24' "$GODOT" --path . --rendering-method gl_compatibility --audio-driver Dummy --script tools/restock_warning_shot.gd -- --out=screens/visual-review/restock-warning 2>&1 | tee screens/visual-review/restock-warning.log
+          if grep -E 'SCRIPT ERROR|Parse Error|^[[:space:]]*ERROR:' screens/visual-review/restock-warning.log; then
+            exit 1
+          fi
+
       - name: Verify capture identity and image metadata
         shell: bash
         run: |

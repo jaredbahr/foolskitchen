@@ -254,7 +254,7 @@ func _preview() -> BuildPreview:
 
 
 func _hint() -> String:
-	return (_main.get_node("HUD/BuildHints/Scroll/Text") as Label).text
+	return (_main.get_node("HUD/BuildHints/Scroll/Lines/Text") as Label).text
 
 
 func _id(def_id: StringName) -> int:

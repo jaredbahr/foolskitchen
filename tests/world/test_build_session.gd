@@ -456,7 +456,7 @@ func test_main_build_hud_shows_partial_seats_and_clears_warning_after_the_layout
 	assert_true(int(_main.call("shop_sell", center.id)) >= 0)
 	_editor().set_owner_level(TABLE_4.unlock_level)  # Explicit purchase-unlock fixture.
 	assert_true(_main.call("set_build_active", true))
-	var label: Label = _main.get_node("HUD/BuildHints/Scroll/Text") as Label
+	var label: Label = _main.get_node("HUD/BuildHints/Scroll/Lines/Text") as Label
 	assert_true(_mode().begin_buy(&"table_4", Vector2i(6, 5)))
 	assert_true(_mode().current_check.ok)
 	assert_true(label.text.contains("Only 3 of 4 seats usable"), "the production Main binding reaches the native HUD")
@@ -492,7 +492,7 @@ func test_floor_tool_hint_keeps_the_partial_seat_warning_beside_its_summary() ->
 	assert_true(_main.call("set_build_active", true))
 	assert_true(_mode().begin_buy(&"table_4", Vector2i(6, 5)))
 	assert_true(_mode().commit())
-	var label: Label = _main.get_node("HUD/BuildHints/Scroll/Text") as Label
+	var label: Label = _main.get_node("HUD/BuildHints/Scroll/Lines/Text") as Label
 	assert_true(_mode().begin_floor())
 	# Before any lot hover the Floor check is (false, ""): the warning must still show.
 	assert_false(_mode().current_check.ok)
@@ -508,7 +508,7 @@ func test_floor_tool_hint_keeps_the_partial_seat_warning_beside_its_summary() ->
 func test_build_hints_match_available_actions_and_fit_content_or_small_viewport_scroll() -> void:
 	await _start()
 	assert_true(_main.call("set_build_active", true))
-	var label: Label = _main.get_node("HUD/BuildHints/Scroll/Text") as Label
+	var label: Label = _main.get_node("HUD/BuildHints/Scroll/Lines/Text") as Label
 	var panel: PanelContainer = _main.get_node("HUD/BuildHints") as PanelContainer
 	var scroll: ScrollContainer = _main.get_node("HUD/BuildHints/Scroll") as ScrollContainer
 	await _frames(2)
@@ -720,7 +720,7 @@ func test_preview_warning_ids_match_proposal_actual_purchase_cancel_exit_and_fix
 	assert_true(_main.call("set_build_active", true))
 	assert_true(_mode().begin_buy(&"chair", Vector2i(1, 1)))
 	assert_false(_mode().current_check.ok)
-	assert_true((_main.get_node("HUD/BuildHints/Scroll/Text") as Label).text.contains(_mode().current_check.why))
+	assert_true((_main.get_node("HUD/BuildHints/Scroll/Lines/Text") as Label).text.contains(_mode().current_check.why))
 	assert_eq(_preview().displayed_warning_ids(), _mode().committed_warning_ids)
 	_key(KEY_ESCAPE)
 	assert_true(_preview().displayed_warning_ids().has(id))

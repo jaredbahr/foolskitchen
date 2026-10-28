@@ -1299,7 +1299,9 @@ func _update_build_controls() -> void:
 		reason = BuildCatalogue.FURNITURE_HINT
 	if not _edit_notice.is_empty():
 		reason = _edit_notice if reason.is_empty() else _edit_notice + "\n" + reason
-	$HUD.set_build_state(available, active, reason, int(build_mode.state), int(build_mode.tool))
+	# The restock advice gets its own amber line under the cost (FK-096).
+	$HUD.set_build_state(available, active, reason, int(build_mode.state), int(build_mode.tool),
+		build_restock_warning())
 	$HUD.set_paint_state(_paint_active)
 	if _build_catalogue != null:
 		_build_catalogue.set_paint_visible(_paint_active)
@@ -1325,6 +1327,40 @@ func _sync_wall_build_preview() -> void:
 			build_mode.current_check.ok, build_mode.hang_moving)
 	else:
 		view.wall_finish_view.hide_ghost()
+
+## The preview remains buyable. A morning budget conservatively allows for
+## refilling enabled targets after service; at closing the existing expiry /
+## paid-delivery forecast gives the next morning's actual full-order estimate.
+func build_restock_estimate() -> int:
+	if world == null or content == null:
+		return 0
+	var kinds: Dictionary[StringName, int] = StorageSpace.kinds_of(content)
+	# Paid, not stocked: the same source the real morning order plans with.
+	var pending: Dictionary[StringName, int] = _on_the_way()
+	if world.clock.phase == SimClock.Phase.CLOSED:
+		return int(StockAlerts.forecast(Economy.stock, _reorder(), _shelf_lives(),
+			world.clock.day + 1, _unit_costs(), 2147483647, auto_reorder_premium,
+			_storage_capacity(), kinds, pending)["order_cost"])
+	var empty: Stock = Stock.new()
+	var space: StorageSpace = StorageSpace.new(_storage_capacity(), empty, pending, kinds)
+	return int(_reorder().plan(empty, _unit_costs(), 2147483647,
+		auto_reorder_premium, false, space)["cost"])
+
+
+func build_restock_warning() -> String:
+	if not is_build_active() or not build_mode.current_check.ok:
+		return ""
+	var cost: int = 0
+	if build_mode.state == BuildMode.State.BUY and build_mode.selected_definition != null:
+		cost = build_mode.selected_definition.price
+	elif build_mode.state in [BuildMode.State.WALLS, BuildMode.State.FLOOR, BuildMode.State.FLOORS,
+			BuildMode.State.WALL_FINISH, BuildMode.State.HANG]:
+		# D26: a wall finish drag's price less its refund; a new wall item's
+		# price (moving one costs nothing).
+		cost = maxi(0, build_mode.current_check.cost - build_mode.current_check.refund)
+	if cost <= 0:
+		return ""
+	return RestockBudgetWarning.text(Economy.cash, cost, build_restock_estimate())
 
 
 func _on_build_toggled() -> void:
@@ -1371,6 +1407,7 @@ func _on_build_cash_changed(_cash: int, _delta: int, _reason: StringName) -> voi
 	_refresh_loan_hud()
 	if _build_ready and is_build_active():
 		build_mode.refresh()
+		_update_build_controls()
 	if _staff_panel != null:
 		_staff_panel.set_trays(tray_level, TUNING.tray_prices, Economy.cash, _loan_upgrade_refusal())
 	if is_stock_visible():
