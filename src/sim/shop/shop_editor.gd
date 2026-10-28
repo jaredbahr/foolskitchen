@@ -496,7 +496,7 @@ func run_changes(edges: Array[Vector3i], kind: SimGrid.Segment) -> Dictionary[Ve
 
 
 ## What one click on an edge does: interior segments cycle wall -> doorway ->
-## window -> wall; an outer face toggles between solid and window. An empty
+## window -> wall; an outer face toggles the selected window or back doorway. An empty
 ## interior edge gets `empty_kind`. Returns NONE for "remove".
 func next_segment(edge: Vector3i, empty_kind: SimGrid.Segment) -> SimGrid.Segment:
 	if _sim == null or _sim.world == null:
@@ -504,6 +504,8 @@ func next_segment(edge: Vector3i, empty_kind: SimGrid.Segment) -> SimGrid.Segmen
 	var grid: SimGrid = _sim.world.grid
 	var current: SimGrid.Segment = grid.segment(edge)
 	if WallRules.outer_side(grid, edge) != Vector2i.ZERO:
+		if empty_kind == SimGrid.Segment.DOORWAY:
+			return SimGrid.Segment.NONE if current == SimGrid.Segment.DOORWAY else SimGrid.Segment.DOORWAY
 		return SimGrid.Segment.NONE if current == SimGrid.Segment.WINDOW else SimGrid.Segment.WINDOW
 	match current:
 		SimGrid.Segment.NONE:
@@ -551,7 +553,9 @@ func check_segments(changes: Dictionary[Vector3i, int], exact: Exact = null) -> 
 		cost = maxi(-exact.amount, 0)
 		refund = maxi(exact.amount, 0)
 	preview.set_segments(effective)
-	var problem: String = WallRules.layout_problem(preview)
+	var problem: String = WallRules.closed_door_problem(live, preview)
+	if problem.is_empty():
+		problem = WallRules.layout_problem(preview)
 	if problem.is_empty() and exact == null:
 		var dining: EditCheck = EditCheck.validate_dining(live, preview, ids, -1, -1)
 		problem = "" if dining.ok else dining.why

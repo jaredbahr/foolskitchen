@@ -106,6 +106,32 @@ func test_shell_window_opens_the_cell_and_replaces_street_dressing() -> void:
 	assert_eq(after.size(), detail_count - 1, "the other frontage details keep their places")
 
 
+func test_back_door_replaces_shell_and_restores_it_when_removed() -> void:
+	var grid: SimGrid = _world.grid
+	var edge: Vector3i = Vector3i(13, 6, SimGrid.EDGE_WEST)
+	grid.set_segment(edge, SimGrid.Segment.DOORWAY)
+	var door: Node3D = _view.segment_view.get_node_or_null("BackDoor_13_6") as Node3D
+	assert_not_null(door)
+	assert_not_null(door.get_node_or_null("KenneyDoor"), "existing kit frame at the shared scale")
+	var tile: MeshInstance3D = door.get_node_or_null("Floor") as MeshInstance3D
+	assert_not_null(tile, "the opened shell cell has a floor threshold")
+	assert_eq(tile.material_override, _view.floor_mesh.material_override, "same floor material")
+	assert_almost_eq(tile.global_position.y, 0.0, 0.0001)
+	var box: MeshInstance3D = _view.get_node("Walls").get_children().filter(
+		func(node: Node) -> bool: return node.get_meta("wall_cell", SimGrid.NO_CELL) == Vector2i(13, 6))[0]
+	assert_false(box.visible, "no solid shell box inside the opening")
+	_view.set_wall_mode(ShopView.WallMode.DOWN)
+	door = _view.segment_view.get_node("BackDoor_13_6") as Node3D
+	assert_null(door.get_node_or_null("KenneyDoor"), "cutaway keeps low posts without a floating frame")
+	assert_not_null(door.get_node_or_null("Floor"), "cutaway keeps the threshold")
+	assert_true(_bounds(door).end.y <= ShopView.LOWERED_HEIGHT + 0.001)
+	grid.set_segment(edge, SimGrid.Segment.NONE)
+	box = _view.get_node("Walls").get_children().filter(
+		func(node: Node) -> bool: return node.get_meta("wall_cell", SimGrid.NO_CELL) == Vector2i(13, 6))[0]
+	assert_true(box.visible)
+	assert_null(_view.segment_view.get_node_or_null("BackDoor_13_6"))
+
+
 func _bounds(root: Node3D) -> AABB:
 	var result: AABB = AABB()
 	var first: bool = true
