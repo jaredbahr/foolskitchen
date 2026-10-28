@@ -98,7 +98,8 @@ func test_pose_priority_keeps_seats_and_carried_meals_readable() -> void:
 	assert_eq(PersonPresentation.clip_for_state(false, false, true, true), &"holding-both")
 	assert_eq(PersonPresentation.clip_for_state(true, false, false, true), &"walk")
 	assert_eq(PersonPresentation.clip_for_state(false, false, false, true, true), &"pick-up", "bending to a crate")
-	assert_eq(PersonPresentation.clip_for_state(false, false, true, false, true), &"holding-both")
+	assert_eq(PersonPresentation.clip_for_state(false, false, true, false, true), &"pick-up",
+		"a crate stays in the hands through the bend")
 	assert_eq(PersonPresentation.clip_for_state(true, false, false, false, true), &"walk", "never bends while walking")
 	assert_eq(PersonPresentation.CLIPS.size(), 6)
 	for clip: StringName in PersonPresentation.CLIPS:

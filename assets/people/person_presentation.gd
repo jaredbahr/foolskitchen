@@ -107,17 +107,18 @@ static func seated_lean_valid(degrees: float) -> bool:
 	return is_finite(degrees) and degrees >= 0.0 and degrees <= ItemDef.MAX_SEATED_LEAN_DEGREES
 
 
-## Seat arrival wins, then carrying holds both hands (walking legs under them
-## while moving), then bending to pick something up, then walking, then work.
+## Seat arrival wins, then bending to set down or pick up (a crate stays in
+## the hands through the bend), then carrying holds both hands (walking legs
+## under them while moving), then walking, then work.
 ## Callers derive these flags from actual state, not task labels or future goals.
 static func clip_for_state(moving: bool, seated: bool, carrying: bool, working: bool,
 		bending: bool = false) -> StringName:
 	if seated:
 		return &"sit"
-	if carrying:
-		return CARRY_WALK if moving else &"holding-both"
 	if bending and not moving:
 		return &"pick-up"
+	if carrying:
+		return CARRY_WALK if moving else &"holding-both"
 	if moving:
 		return &"walk"
 	if working:

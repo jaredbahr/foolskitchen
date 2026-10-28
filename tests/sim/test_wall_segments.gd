@@ -561,7 +561,7 @@ func test_a_dead_end_back_door_keeps_the_fast_plain_paths() -> void:
 	# A second door beside it (an older save: Build allows one since D25)
 	# makes the pair a real edge case again.
 	assert_eq(_editor.check_segments({_edge(13, 7, 0): SimGrid.Segment.DOORWAY} as Dictionary[Vector3i, int]).why,
-		WallRules.ONE_BACK_DOOR)
+		WallRules.BACK_DOOR_WIDTH)
 	assert_true(grid.set_segment(_edge(13, 7, 0), SimGrid.Segment.DOORWAY))
 	assert_false(grid._edge_occupied.is_empty(), "side-by-side doors use the edge search")
 	assert_false(grid.walkable_neighbours(Vector2i(12, 6)).has(Vector2i(13, 7)), "no diagonal past the shared post")

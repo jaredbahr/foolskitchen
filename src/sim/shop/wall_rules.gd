@@ -27,6 +27,7 @@ const CUT_STATION: String = "That would cut off a kitchen station"
 const CUT_SEAT: String = "That would cut off a seat"
 const CUT_PERSON: String = "That would shut someone in"
 const ONE_BACK_DOOR: String = "The shop already has a back door: remove it first to move it"
+const BACK_DOOR_WIDTH: String = "A back door is one cell wide"
 
 
 static func is_interior(grid: SimGrid, edge: Vector3i) -> bool:
@@ -113,8 +114,9 @@ static func delivery_cell(grid: SimGrid, target: Vector2i = SimGrid.NO_CELL) -> 
 	return SimGrid.NO_CELL
 
 
-## Off-lot cells a delivery walks up a back door's path (the view paves them).
-const APPROACH_CELLS: int = 4
+## Cells a delivery walks beyond the lot's edge before a back door's path
+## reaches the lot, so the delivery person comes and goes out of sight.
+const OFF_LOT_CELLS: int = 26
 
 
 ## How a visible delivery comes in (FK-099, #187): {door, drop, out, approach}.
@@ -148,35 +150,73 @@ static func delivery_route(grid: SimGrid, target: Vector2i = SimGrid.NO_CELL) ->
 
 
 ## The path outside a back door (shell cell `door`, facing `side`), far to
-## near: up to APPROACH_CELLS cells straight out, stopping before anything but
-## open ground (unbought lot or beyond the grid), so it never crosses a wing
-## of the shop or the street.
+## near: straight out across the open lot to its edge, then OFF_LOT_CELLS
+## beyond it (off the grid). It stops before anything but open ground, so it
+## never crosses a wing of the shop or the street; stopped like that it does
+## not go on past the lot.
 static func back_door_approach(grid: SimGrid, door: Vector2i, side: Vector2i) -> Array[Vector2i]:
 	var cells: Array[Vector2i] = []
-	for step: int in range(1, APPROACH_CELLS + 1):
-		var cell: Vector2i = door + side * step
-		if grid.in_bounds(cell) and grid.terrain(cell) != SimGrid.Terrain.OUTSIDE:
-			break
+	if side == Vector2i.ZERO:
+		return cells
+	var cell: Vector2i = door + side
+	while grid.in_bounds(cell):
+		if grid.terrain(cell) != SimGrid.Terrain.OUTSIDE:
+			return cells
 		cells.push_front(cell)
+		cell += side
+	for step: int in OFF_LOT_CELLS:
+		cells.push_front(cell)
+		cell += side
 	return cells
+
+
+## Approach cells still on the lot (on the grid): the view paves those and the
+## rest fades away into the distance.
+static func lot_cells_of(grid: SimGrid, approach: Array[Vector2i]) -> int:
+	var count: int = 0
+	for cell: Vector2i in approach:
+		if grid.in_bounds(cell):
+			count += 1
+	return count
 
 
 ## Back doors on the grid (FK-099): DOORWAY segments on an outer back or side
 ## face. D25 allows one per shop; older saves with more keep them all.
 static func back_door_count(grid: SimGrid) -> int:
-	var count: int = 0
-	for edge: Vector3i in grid.segment_edges():
-		if grid.segment(edge) == SimGrid.Segment.DOORWAY and back_door_side(grid, edge) != Vector2i.ZERO:
-			count += 1
-	return count
+	return _back_door_cells(grid).size()
 
 
-## ONE_BACK_DOOR when an edit (`before` -> `after`) adds a back door to a shop
-## that already has one (D25), else "". Only adding is refused, so an older
-## save with two keeps both and every other edit still works.
+## When an edit (`before` -> `after`) adds a back door: BACK_DOOR_WIDTH when
+## it would sit beside another back door on the same face (one wider door), else
+## ONE_BACK_DOOR when the shop already has one (D25), else "". Only adding is
+## refused, so an older save with two keeps both and every other edit works.
 static func back_door_problem(before: SimGrid, after: SimGrid) -> String:
-	var now: int = back_door_count(after)
-	return ONE_BACK_DOOR if now > 1 and now > back_door_count(before) else ""
+	var doors: Dictionary[Vector2i, Vector2i] = _back_door_cells(after)
+	var had: int = back_door_count(before)
+	if doors.size() <= 1 or doors.size() <= had:
+		return ""
+	for cell: Vector2i in doors:
+		var side: Vector2i = doors[cell]
+		var along: Vector2i = Vector2i(side.y, side.x)
+		for near: Vector2i in [cell + along, cell - along]:
+			if doors.get(near, Vector2i.ZERO) == side:
+				return BACK_DOOR_WIDTH
+	return ONE_BACK_DOOR
+
+
+## Shell cell -> outward side of each back door's DOORWAY segment.
+static func _back_door_cells(grid: SimGrid) -> Dictionary[Vector2i, Vector2i]:
+	var cells: Dictionary[Vector2i, Vector2i] = {}
+	for edge: Vector3i in grid.segment_edges():
+		if grid.segment(edge) != SimGrid.Segment.DOORWAY:
+			continue
+		var side: Vector2i = back_door_side(grid, edge)
+		if side == Vector2i.ZERO:
+			continue
+		for cell: Vector2i in SimGrid.edge_cells(edge):
+			if grid.terrain(cell) == SimGrid.Terrain.WALL:
+				cells[cell] = side
+	return cells
 
 
 ## Why `kind` cannot stand on `edge` (geometry only), or "" when it can.

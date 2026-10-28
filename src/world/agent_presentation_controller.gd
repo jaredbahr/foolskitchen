@@ -7,11 +7,23 @@ const NOMINAL_CHAIR_SEAT_HEIGHT: float = 0.27
 const MIN_STANDING_DISTANCE: float = 0.45
 const DISPLAY_NUDGE_STEP: float = MIN_STANDING_DISTANCE + 0.00001
 const MOOD_CLEARANCE: float = 0.15
-## The delivery person carries at most this many crates stacked (FK-099).
-const MAX_CRATES_IN_HAND: int = 2
-## DeliveryDock's put-away steps: walk, pick up, carry, put away.
-const PICK_UP_STEP: int = 1
-const PUT_AWAY_WALK_STEP: int = 2
+## Crates drawn in someone's hands (FK-099): one, its top just under the chin
+## (a stack would hide the face of these big-headed figures).
+const MAX_CRATES_IN_HAND: int = 1
+## Where a person stands from the crate stack they set down or pick up: the
+## reach of the kit's `pick-up` bend at its lowest point (0.267 m). Only a
+## crate on the floor is bent to; one on top of another is reached for
+## standing (arms out, as in `holding-both`), from a step further back so the
+## big head stays clear of the stack.
+const CRATE_REACH: float = 0.27
+const CRATE_REACH_HIGH: float = 0.33
+## A stack on the receiving cell of a door sits this far towards the door
+## (straddling the threshold), so the delivery person sets it down from the
+## doorway's centre and staff pick it up from the cell's centre. Anywhere
+## else (a crate set down mid-carry) it sits CRATE_INSET off the cell's
+## centre, the carrier standing on the other side, both inside the cell.
+const DOOR_STACK_INSET: float = 0.5 - CRATE_REACH
+const CRATE_INSET: float = 0.12
 
 class Frame extends RefCounted:
 	var id: int = 0
@@ -30,6 +42,13 @@ class Frame extends RefCounted:
 	var bending: bool = false
 	## Delivery crates in hand (0 = none); the view stacks this many boxes.
 	var crate_count: int = 0
+	## The stack layer the crate in hand leaves or joins while bending: the
+	## view never lets it sink below that layer (into the stack or the floor).
+	var crate_layer: int = 0
+	## Reaching a crate onto (or off) a stack without bending: 0 in the palms ..
+	## 1 at its place on the stack (crate_spot, world, at crate_layer).
+	var crate_slide: float = 0.0
+	var crate_spot: Vector3 = Vector3.ZERO
 	var seat_height: float = 0.0
 	var seated_lean_degrees: float = 0.0
 	var show_tray: bool = false
@@ -85,7 +104,7 @@ static func frame_for(agent: SimAgent, world: SimWorld, chair_seat_height: float
 		var courier: CourierAgent = agent as CourierAgent
 		frame.carrying = courier.carrying and courier.crate_count > 0
 		frame.crate_count = mini(courier.crate_count, MAX_CRATES_IN_HAND) if frame.carrying else 0
-		frame.bending = courier.unloading() and not frame.moving
+		_courier_frame(frame, courier, world)
 	if agent is StaffAgent:
 		var staff: StaffAgent = agent as StaffAgent
 		var task: SimTask = _active_task(staff, world)
@@ -98,12 +117,9 @@ static func frame_for(agent: SimAgent, world: SimWorld, chair_seat_height: float
 				and task.steps[staff.step_index].kind == TaskStep.Kind.WORK \
 				and staff._step_started and staff.work_left > 0.0 and staff._waiting_for.is_empty()
 			if task.kind == DeliveryDock.TASK_KIND:
-				# A crate is in hand from the pick-up until the put-away work starts.
-				frame.carrying = bool(task.payload.get("carrying", false)) and staff.step_index <= PUT_AWAY_WALK_STEP
-				frame.crate_count = 1 if frame.carrying else 0
-				frame.bending = frame.working and staff.step_index == PICK_UP_STEP
+				_put_away_frame(frame, staff, task, world)
 				var store: PlacedItem = world.grid.item(int(task.payload.get("item", 0)))
-				if frame.working and staff.step_index > PUT_AWAY_WALK_STEP and store != null:
+				if frame.working and staff.step_index >= DeliveryDock.STEP_PUT_IN and store != null:
 					frame.facing_direction = _item_center(store) - start
 			var held: PlacedItem = world.grid.item(staff._held_item_id)
 			if frame.working and held != null and staff._held_cell == staff.cell \
@@ -219,6 +235,102 @@ static func _is_seated(customer: CustomerAgent, world: SimWorld) -> bool:
 	var table: PlacedItem = world.grid.item(customer.table_item_id)
 	return table != null and not table.removed and table.seat_cells.has(customer.seat_cell) \
 		and table.reserved_by(customer.seat_cell) == customer.id and world.grid.is_walkable(customer.seat_cell)
+
+
+## The delivery person (FK-099): one crate in hand, set down from the doorway
+## (bending to the floor, or reaching it onto a crate already there from a
+## step back) at CourierAgent.DROP_TICK, facing the stack.
+static func _courier_frame(frame: Frame, courier: CourierAgent, world: SimWorld) -> void:
+	frame.carrying = courier.carrying and courier.crate_count > 0
+	frame.crate_count = mini(courier.crate_count, MAX_CRATES_IN_HAND) if frame.carrying else 0
+	if courier.route.is_empty() or world == null:
+		return
+	var door: Vector2i = courier.route.back()
+	var spot: Vector3 = crate_spot(world.grid, courier.drop_cell())
+	var layer: int = courier.drop_layer
+	var toward: Vector3 = spot - GridMath.cell_to_world(door)
+	toward.y = 0.0
+	var back: Vector3 = -toward.normalized() * (reach_for(layer) - CRATE_REACH) \
+		if toward.length_squared() > 0.000001 else Vector3.ZERO
+	var progress: float = clampf(courier.move_progress, 0.0, 1.0)
+	if courier.unloading():
+		frame.floor_position += back
+		frame.facing_direction = toward
+		frame.bending = layer == 0
+		frame.crate_layer = layer
+		frame.crate_spot = spot
+		if layer > 0 and frame.carrying:
+			frame.crate_slide = courier.unload_progress()
+	elif courier.state == CourierAgent.State.ARRIVING and courier.next_cell() == door and courier.cell != door:
+		frame.floor_position += back * progress
+	elif courier.state == CourierAgent.State.LEAVING and courier.cell == door and frame.moving:
+		frame.floor_position += back * (1.0 - progress)
+
+
+## How far from a stack someone stands to set down or lift its `layer`.
+static func reach_for(layer: int) -> float:
+	return CRATE_REACH if layer <= 0 else CRATE_REACH_HIGH
+
+
+## Carrying a delivery crate (FK-099): in hand from the moment it is lifted
+## (the bottom of the pick-up bend for a crate on the floor) until it goes
+## into the storage. The carrier stands beside the stack, at reach, never in
+## it: the last step in walks to that spot, and the first step out from it.
+static func _put_away_frame(frame: Frame, staff: StaffAgent, task: SimTask, world: SimWorld) -> void:
+	var holding: bool = bool(task.payload.get("carrying", false))
+	frame.carrying = holding
+	frame.crate_count = 1 if holding else 0
+	if task.steps.is_empty() or task.steps[0].kind != TaskStep.Kind.GO_TO_CELL:
+		return
+	var crate_cell: Vector2i = task.steps[0].cell
+	var layer: int = int(task.payload.get("layer", 0))
+	var spot: Vector3 = crate_spot(world.grid, crate_cell)
+	var offset: Vector3 = picker_spot(world.grid, crate_cell, layer) - GridMath.cell_to_world(crate_cell)
+	var step: int = staff.step_index
+	var progress: float = clampf(staff.move_progress, 0.0, 1.0)
+	if staff.cell == crate_cell and step <= DeliveryDock.STEP_LIFT and not frame.moving:
+		frame.floor_position += offset
+		frame.facing_direction = spot - frame.floor_position
+		frame.crate_layer = layer
+		frame.crate_spot = spot
+		frame.working = true
+		if layer == 0:
+			frame.bending = true
+		else:
+			# Arms out to the crate on top, then drawn in to carry it.
+			frame.carrying = true
+			if holding and step == DeliveryDock.STEP_LIFT:
+				frame.crate_slide = clampf(staff.work_left / float(DeliveryDock.LIFT_TICKS), 0.0, 1.0) \
+					if staff._step_started else 1.0
+			elif holding:
+				frame.crate_slide = 1.0
+	elif step == DeliveryDock.STEP_WALK and staff.next_cell() == crate_cell:
+		frame.floor_position += offset * progress
+	elif step == DeliveryDock.STEP_CARRY and staff.cell == crate_cell and frame.moving:
+		frame.floor_position += offset * (1.0 - progress)
+
+
+## Where crates stand on `cell` (world, floor level): towards the door or
+## street entry the cell opens onto, else north of its centre.
+static func crate_spot(grid: SimGrid, cell: Vector2i) -> Vector3:
+	var axis: Vector2i = Vector2i.UP
+	var inset: float = CRATE_INSET
+	if grid != null:
+		for step: Vector2i in [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]:
+			if (grid.is_back_door(cell + step) or grid.entries().has(cell + step)) \
+					and grid.step_open(cell, cell + step):
+				axis = step
+				inset = DOOR_STACK_INSET
+				break
+	return GridMath.cell_to_world(cell) + Vector3(axis.x, 0.0, axis.y) * inset
+
+
+## Where someone lifting `layer` off the stack on `cell` stands (world).
+static func picker_spot(grid: SimGrid, cell: Vector2i, layer: int = 0) -> Vector3:
+	var center: Vector3 = GridMath.cell_to_world(cell)
+	var spot: Vector3 = crate_spot(grid, cell)
+	var toward: Vector3 = (spot - center).normalized()
+	return spot - toward * reach_for(layer)
 
 
 static func _active_task(staff: StaffAgent, world: SimWorld) -> SimTask:

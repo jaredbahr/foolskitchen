@@ -1,8 +1,9 @@
 class_name CourierAgent
 extends SimAgent
-## The delivery person (FK-099, #187). Walks a fixed route from off the lot to
-## the receiving cell (through the back door, or the street door when the shop
-## has none), sets the crates down, then walks the same way back and is gone.
+## The delivery person (FK-099, #187). Walks a fixed route from well beyond the
+## lot (out of sight) up to the door (the back door, or the street door when the
+## shop has none), stops in the doorway, sets the crates down on the receiving
+## cell just inside, then walks the same way back and is gone.
 ## The route is planned once by DeliveryDock: off-lot cells are not on the
 ## grid, so this agent walks its cells without path finding or walkability
 ## checks (it never enters the shop beyond the receiving cell). It holds no
@@ -12,35 +13,51 @@ extends SimAgent
 
 enum State { ARRIVING, UNLOADING, LEAVING, GONE }
 
-## Ticks spent setting the crates down at the receiving cell.
-const UNLOAD_TICKS: int = 12
+## Ticks spent setting the crates down from the doorway: one bend (the kit's
+## `pick-up` clip, 0.33 s, i.e. about 3.3 ticks at any speed) and a moment.
+const UNLOAD_TICKS: int = 4
+## The tick of the bend's lowest point (0.2 s in): the crates leave her hands
+## for the floor then, not on arrival.
+const DROP_TICK: int = 2
 
 var state: State = State.ARRIVING
 ## True while the crates are in this person's hands.
 var carrying: bool = true
 ## How many crates this delivery brings (the view stacks them).
 var crate_count: int = 0
-## Set once the crates are on the floor; the dock turns them into put-away work.
+## Set once the crate in her hands is on the floor (the bend's lowest point);
+## the dock turns it into put-away work.
 var dropped: bool = false
-## Off-lot start .. door .. receiving cell.
+## Set once she has stepped away from the stack: the rest of the delivery
+## is down too (on top of the first, where her head no longer is).
+var all_dropped: bool = false
+## Off-lot start .. door (where she stands to unload).
 var route: Array[Vector2i] = []
+## The receiving cell the crates go down on, just inside the door.
+var drop: Vector2i = SimGrid.NO_CELL
+## The stack layer her crates go down on (the dock keeps it current; the view
+## lowers them that far).
+var drop_layer: int = 0
 
 var _unload_left: int = 0
 
 
-func _init(cells: Array[Vector2i] = [], crates: int = 0) -> void:
+func _init(cells: Array[Vector2i] = [], crates: int = 0, receiving: Vector2i = SimGrid.NO_CELL) -> void:
 	role = &"courier"
 	display_name = "Delivery driver"
 	route = cells.duplicate()
 	crate_count = crates
+	drop = receiving
 	if not route.is_empty():
 		cell = route[0]
 		path = route.duplicate()
 		path_index = 1
 
 
-## The receiving cell (the route's last cell).
+## The receiving cell (the route's last cell when none was given).
 func drop_cell() -> Vector2i:
+	if drop != SimGrid.NO_CELL:
+		return drop
 	return route.back() if not route.is_empty() else cell
 
 
@@ -50,11 +67,12 @@ func tick(world: SimWorld) -> void:
 			if _walk(world):
 				state = State.UNLOADING
 				_unload_left = UNLOAD_TICKS
-				carrying = false
-				dropped = true
 		State.UNLOADING:
 			_unload_left -= 1
 			last_progress_tick = world.now
+			if UNLOAD_TICKS - _unload_left >= DROP_TICK and carrying:
+				carrying = false
+				dropped = true
 			if _unload_left <= 0:
 				state = State.LEAVING
 				path = route.duplicate()
@@ -64,6 +82,7 @@ func tick(world: SimWorld) -> void:
 		State.LEAVING:
 			if _walk(world):
 				state = State.GONE
+			all_dropped = true
 
 
 func why() -> String:
@@ -78,6 +97,13 @@ func why() -> String:
 ## True while setting the crates down (the view bends down to them).
 func unloading() -> bool:
 	return state == State.UNLOADING
+
+
+## 0..1 through setting the crate down: 1 at the bend's lowest point.
+func unload_progress() -> float:
+	if state != State.UNLOADING:
+		return 0.0
+	return clampf(float(UNLOAD_TICKS - _unload_left) / float(DROP_TICK), 0.0, 1.0)
 
 
 ## Walks the planned cells at the neutral pace (four ticks a straight cell).

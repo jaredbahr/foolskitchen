@@ -28,6 +28,9 @@ var _walk_multiplier: float = 1.0
 var task: SimTask = null
 var step_index: int = 0
 var work_left: float = 0.0
+var _cleaner_checked_tick: int = -1
+var _cleaner_checked_agents: int = -1
+var _cleaner_on_team: bool = false
 
 var _step_started: bool = false
 var _held_item_id: int = 0
@@ -165,18 +168,26 @@ func _try_claim(world: SimWorld) -> void:
 			# Existing task urgency deferral stays within the chosen job tier.
 			if job_level == highest_job_level and (not highest_priorities.has(t.role) or t.priority > highest_priorities[t.role]):
 				highest_priorities[t.role] = t.priority
+	# Guest work this server would take now (FK-099): a server carries
+	# deliveries only while no guest is waiting on them (washing up is not
+	# guest work), so putting goods away never takes them from a guest.
+	var guest_work_open: bool = false
+	if role == &"server":
+		for t: SimTask in candidates:
+			if t.role == &"server" and t.kind != &"wash" and float(scores.get(t.id, 0.0)) > 0.0 \
+					and _eligible(t, highest_job_level, highest_priorities):
+				guest_work_open = true
+				break
 	var best: SimTask = null
 	var best_score := 0.0
 	for t: SimTask in candidates:
-		if t.state != SimTask.State.OPEN or world.board.get_task(t.id) != t:
-			continue
-		if _job_level(t) != highest_job_level:
-			continue
-		if t.defer_to_higher_priority and int(highest_priorities.get(t.role, t.priority)) > t.priority:
+		if world.board.get_task(t.id) != t or not _eligible(t, highest_job_level, highest_priorities):
 			continue
 		# Legacy agents and the Floor-mode owner retain the original mop fallback.
 		# Configured employees instead use the saved job tier above distance.
 		if _job_priorities == null and fallback_cleaning and service_work_open and _is_clean_spot(t):
+			continue
+		if role == &"server" and guest_work_open and t.kind == DeliveryDock.TASK_KIND:
 			continue
 		var score: float = scores.get(t.id, 0.0)
 		if score > best_score:
@@ -188,6 +199,15 @@ func _try_claim(world: SimWorld) -> void:
 		_step_started = false
 		_repaths = 0
 		last_progress_tick = world.now
+
+
+## Still open, in the chosen job tier and not deferred to a more urgent task.
+func _eligible(t: SimTask, job_level: int, highest_priorities: Dictionary[StringName, int]) -> bool:
+	if t.state != SimTask.State.OPEN:
+		return false
+	if _job_level(t) != job_level:
+		return false
+	return not (t.defer_to_higher_priority and int(highest_priorities.get(t.role, t.priority)) > t.priority)
 
 
 ## 0 means "won't take it". Higher is better: priority x role priority x skill
@@ -243,11 +263,25 @@ func _can_fallback_clean(world: SimWorld) -> bool:
 	return not _team_has_cleaner(world)
 
 
+## Asked for every candidate task, so it is worked out once per tick.
 func _team_has_cleaner(world: SimWorld) -> bool:
+	if _cleaner_checked_tick == world.now and _cleaner_checked_agents == world.agents.size():
+		return _cleaner_on_team
+	_cleaner_checked_tick = world.now
+	_cleaner_checked_agents = world.agents.size()
+	_cleaner_on_team = false
 	for agent: SimAgent in world.agents:
 		if agent is StaffAgent and agent.role == &"cleaner":
-			return true
-	return false
+			_cleaner_on_team = true
+			break
+	return _cleaner_on_team
+
+
+## Stops at once when the task held was withdrawn (DeliveryDock at closing),
+## instead of on the next tick.
+func let_go_if_withdrawn(world: SimWorld) -> void:
+	if task != null and (task.state != SimTask.State.CLAIMED or task.claimed_by != id):
+		_let_go(world)
 
 
 func _run_step(world: SimWorld) -> void:

@@ -163,6 +163,16 @@ func test_expired_stock_is_thrown_out_and_replaced() -> void:
 	assert_eq(notes[0], "This morning's auto-order cost $20.", "no premium part without a premium")
 
 
+func test_rows_say_when_no_dish_uses_an_ingredient_yet() -> void:
+	var main: Node = _start(false)
+	var rows: Array[Dictionary] = main.call("stock_rows")
+	for row: Dictionary in rows:
+		assert_false(bool(row["no_dish"]), "%s is in a dish" % row["name"])
+	var in_dishes: Dictionary[StringName, bool] = main.call("_dish_ingredients")
+	assert_true(in_dishes.has(&"potato"))
+	assert_false(in_dishes.has(&"frozen_fries"), "frozen fries: no dish uses them yet")
+
+
 ## A dish that runs out is tagged on the HUD and named in the report with
 ## its ingredient and time; guests order the dishes that are left.
 func test_sold_out_dish_reaches_hud_and_report() -> void:

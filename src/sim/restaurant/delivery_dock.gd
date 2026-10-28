@@ -31,8 +31,21 @@ signal stored(lines: Array[Dictionary])
 enum CrateState { ON_THE_WAY, WAITING, CARRIED }
 
 const TASK_KIND: StringName = &"put_away"
-const PICK_UP_TICKS: int = 8
+## Picking a crate up is one bend (the kit's `pick-up` clip, 0.33 s): it is in
+## the hands from the bend's lowest point (PICK_UP_TICKS in), then the carrier
+## straightens up (LIFT_TICKS).
+const PICK_UP_TICKS: int = 2
+const LIFT_TICKS: int = 2
+## At the storage the crate goes in after PUT_IN_TICKS (when its goods become
+## stock), then the shelves are filled for the rest of PUT_AWAY_TICKS.
+const PUT_IN_TICKS: int = 4
 const PUT_AWAY_TICKS: int = 20
+## The put-away task's steps, in order (the view reads where a carrier is).
+const STEP_WALK: int = 0
+const STEP_PICK_UP: int = 1
+const STEP_LIFT: int = 2
+const STEP_CARRY: int = 3
+const STEP_PUT_IN: int = 4
 ## Failed carries per crate before it waits for a layout change.
 const MAX_TRIES: int = 3
 ## Kinds in crate order: fridge, freezer, dry.
@@ -52,7 +65,8 @@ class Crate extends RefCounted:
 	var tries: int = 0
 	## Grid version of the last give-up; a layout change retries.
 	var gave_up_version: int = -1
-	## Place in the stack on its cell (the view spreads them out).
+	## Layer in the one stack on its cell (0 on the floor); a stack never has
+	## a gap, so every crate rests on the floor or on another crate.
 	var slot: int = 0
 
 
@@ -101,9 +115,9 @@ func arrive(lines: Array[Dictionary]) -> bool:
 	var cells: Array[Vector2i] = []
 	cells.assign(route["approach"])
 	cells.append(door)
-	if route["drop"] != door:
-		cells.append(route["drop"])
-	var courier: CourierAgent = CourierAgent.new(cells, by_kind.size())
+	# She stops in the doorway and sets the crates down just inside it.
+	var courier: CourierAgent = CourierAgent.new(cells, by_kind.size(), route["drop"])
+	courier.drop_layer = _next_slot(courier.drop_cell())
 	world.add_agent(courier)
 	_couriers.append(courier)
 	for kind: int in KINDS:
@@ -128,12 +142,24 @@ func advance() -> void:
 	if world == null:
 		return
 	for courier: CourierAgent in _couriers.duplicate():
+		if not courier.dropped:
+			courier.drop_layer = _next_slot(courier.drop_cell())
 		if courier.dropped:
+			# The crate in her hands at the bottom of her bend, the others
+			# once she has stepped away (her head clear of the stack).
+			var placed: bool = false
 			for crate: Crate in _crates:
-				if crate.state == CrateState.ON_THE_WAY and crate.courier_id == courier.id:
-					crate.cell = courier.drop_cell()
-					crate.slot = _next_slot(crate.cell)
-					crate.state = CrateState.WAITING
+				if crate.courier_id == courier.id and crate.state != CrateState.ON_THE_WAY:
+					placed = true
+			for crate: Crate in _crates:
+				if crate.state != CrateState.ON_THE_WAY or crate.courier_id != courier.id:
+					continue
+				if placed and not courier.all_dropped:
+					break
+				crate.cell = courier.drop_cell()
+				crate.slot = _next_slot(crate.cell)
+				crate.state = CrateState.WAITING
+				placed = true
 		if courier.state == CourierAgent.State.GONE:
 			world.remove_agent(courier)
 			_couriers.erase(courier)
@@ -142,7 +168,11 @@ func advance() -> void:
 			var carrier: SimAgent = world.agent(crate.carrier_id)
 			if carrier != null:
 				crate.cell = carrier.cell
-		elif crate.state == CrateState.WAITING and crate.task == null:
+		elif crate.state == CrateState.WAITING and crate.task != null \
+				and not bool(crate.task.payload.get("carrying", false)):
+			# The layer whoever comes for it will lift: the top of its stack.
+			crate.task.payload["layer"] = _next_slot(crate.cell) - 1
+		if crate.state == CrateState.WAITING and crate.task == null:
 			if crate.tries >= MAX_TRIES and crate.gave_up_version == world.grid.version:
 				continue
 			if crate.tries >= MAX_TRIES:
@@ -161,7 +191,11 @@ func store_all() -> Array[Dictionary]:
 			var task: SimTask = crate.task
 			crate.task = null
 			task.payload["carrying"] = false
+			var holder: StaffAgent = world.agent(task.claimed_by) as StaffAgent \
+				if task.state == SimTask.State.CLAIMED else null
 			world.board.cancel(task, &"stored_at_closing")
+			if holder != null:
+				holder.let_go_if_withdrawn(world)
 		lines.append_array(crate.lines)
 	for courier: CourierAgent in _couriers:
 		if world != null and world.agents.has(courier):
@@ -220,13 +254,15 @@ func _post(world: SimWorld, crate: Crate) -> void:
 	var task: SimTask = SimTask.new(TASK_KIND, &"any", "Put a delivery away")
 	# As urgent as washing: a mid-day order is usually restocking something.
 	task.priority = 1
-	task.payload = {"crate": crate.id, "carrying": false, "item": placed.id}
+	task.payload = {"crate": crate.id, "carrying": false, "item": placed.id, "layer": _next_slot(crate.cell) - 1}
 	task.steps.append(TaskStep.go_to_cell(crate.cell, "walking to the delivery"))
 	task.steps.append(TaskStep.work(PICK_UP_TICKS, "picking up a crate", _on_picked_up))
+	task.steps.append(TaskStep.work(LIFT_TICKS, "picking up a crate"))
 	# To the storage's work spot without reserving it: a cook fetching from the
 	# same fridge never waits for a crate (agents don't block each other).
 	task.steps.append(TaskStep.go_to_cell(target["cell"], "carrying it to the %s" % place))
-	task.steps.append(TaskStep.work(PUT_AWAY_TICKS, "putting it away", _on_put_away))
+	task.steps.append(TaskStep.work(PUT_IN_TICKS, "putting it away", _on_put_away))
+	task.steps.append(TaskStep.work(PUT_AWAY_TICKS - PUT_IN_TICKS, "putting it away"))
 	crate.task = task
 	world.board.post(task, world.now)
 
@@ -273,14 +309,12 @@ func _any_storage_cell(world: SimWorld) -> Vector2i:
 	return SimGrid.NO_CELL
 
 
+## The top of the stack on `cell` (0 when none waits there).
 func _next_slot(cell: Vector2i) -> int:
-	var taken: Dictionary[int, bool] = {}
+	var slot: int = 0
 	for crate: Crate in _crates:
 		if crate.state == CrateState.WAITING and crate.cell == cell:
-			taken[crate.slot] = true
-	var slot: int = 0
-	while taken.has(slot):
-		slot += 1
+			slot = maxi(slot, crate.slot + 1)
 	return slot
 
 
@@ -301,10 +335,21 @@ func _on_picked_up(agent: SimAgent) -> bool:
 	var crate: Crate = _crate_for_task(staff.task if staff != null else null)
 	if crate == null or crate.state != CrateState.WAITING:
 		return false
+	# Crates look alike: the one lifted is the top of the stack, so the crate
+	# that was on top takes this one's place and nothing is left in mid-air.
+	var top: Crate = crate
+	for other: Crate in _crates:
+		if other.state == CrateState.WAITING and other.cell == crate.cell and other.slot > top.slot:
+			top = other
+	var layer: int = top.slot
+	top.slot = crate.slot
+	crate.slot = layer
 	crate.state = CrateState.CARRIED
 	crate.carrier_id = agent.id
 	crate.cell = agent.cell
 	staff.task.payload["carrying"] = true
+	# The layer it was lifted from (the view raises the hand-off to it).
+	staff.task.payload["layer"] = layer
 	return true
 
 

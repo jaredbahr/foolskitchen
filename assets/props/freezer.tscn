@@ -1,12 +1,15 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://src/world/prop_view.gd" id="1_view"]
 [ext_resource type="PackedScene" path="res://assets/kenney/furniture/kitchenFridgeLarge.glb" id="2_model"]
+[ext_resource type="Resource" path="res://data/swatches/slate_blue.tres" id="3_tint"]
 
 [node name="Freezer" type="Node3D"]
 script = ExtResource("1_view")
 footprint = Vector2i(1, 1)
 body_material_names = PackedStringArray("metalLight")
+rest_tint = ExtResource("3_tint")
+rest_tint_mix = 0.45
 
 [node name="Freezer" type="Node3D" parent="."]
 

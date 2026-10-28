@@ -875,26 +875,29 @@ an active edit/panel/selection first, or opens Settings when none is active.
   `WallRules.delivery_route(grid, target)` adds where the delivery person
   steps on (`door`: the shell cell, or the street entry), the receiving cell
   (`drop`: for the street, the floor cell inside the street door), `out` and
-  the `approach` cells: a back door's path, `back_door_approach` (up to
-  `APPROACH_CELLS` = 4 cells straight out, stopping before anything but open
-  ground, so it never crosses a wing or the street); none at the street,
+  the `approach` cells: a back door's path, `back_door_approach` (straight out
+  across the open lot, then `OFF_LOT_CELLS` = 26 beyond it, stopping before
+  anything but open ground, so it never crosses a wing or the street); none at the street,
   where the delivery person appears at the entry as guests do.
   **One back door per shop (D25).** `WallRules.back_door_problem(before,
   after)` refuses an edit that adds a back door to a shop that has one
   (`ONE_BACK_DOOR`, "The shop already has a back door: remove it first to
-  move it"), in `check_segments` and in `check_floor` (selling floor can turn
+  move it"), or one more than a cell wide (two doorways side by side on one
+  face: `BACK_DOOR_WIDTH`, "A back door is one cell wide"), in `check_segments` and in `check_floor` (selling floor can turn
   an interior doorway back into a back door). Only adding is refused: an
   older save with several loads and keeps them all, every other edit still
   works, removing one is fine, and deliveries use the first in segment order.
   Undo and redo (`Exact`) restore accepted layouts as they were.
   **The view** hides the shell box and draws the Kenney `doorway` frame with
   its own `door` leaf (posts only when lowered) and a floor tile in the floor
-  material, plus the path outside: the street's pavement tiles (Kenney
-  `floorHalf`, palette tint) laid flat, tops at floor level, over the approach.
-  The leaf swings into the shop (`WallSegmentView.set_door_open`, up to
-  `DOOR_OPEN_DEGREES` = 90, the turn's sign read from the leaf's own
-  transforms), sliding `DOOR_OPEN_SLIDE` (0.08 m) onto its hinge-side jamb as
-  it opens so an open leaf stays clear of the opening, while someone going
+  material, plus the path outside: the street's pavement (Kenney `floorHalf`,
+  palette tint) cut to one stone per approach cell, flush, fading out (2.3j).
+  The leaf swings out, onto the path where nothing is ever placed, like a
+  service door (`WallSegmentView.set_door_open`, up to `DOOR_OPEN_DEGREES` =
+  90, the turn's sign read from the leaf's own transforms; the door is turned
+  round to hinge on the side with open ground beside the path), sliding
+  `DOOR_OPEN_SLIDE` (0.11 m) onto its hinge-side jamb as it opens so an open
+  leaf stays clear of the opening and the path, while someone going
   through is within 1.75 m (fully open within 0.5 m, smoothstep between:
   about a second of walking at 1x): the delivery person always, staff only
   when their path leads through the door, guests never
@@ -1592,31 +1595,49 @@ existing paint colour and camera-controlled build-grid parameters.
   (`arrive(lines)`; false, and Main stocks at once, when the shop is not open
   or no route reaches storage). A `CourierAgent` (role `courier`, a world agent
   that holds no task, reservation or random stream) walks the
-  `WallRules.delivery_route` from off the lot through the back door (street
-  door fallback), sets one crate per storage kind present (fridge, freezer,
-  dry, in that order) down on the receiving cell over `UNLOAD_TICKS` (12) and
-  walks back out; the dock removes it when gone. Off-lot cells are not on the
-  grid, so it walks its planned cells without path finding. Guests never share
-  the back door: they plan on the guest layer, where its cell is solid.
+  `WallRules.delivery_route` up the back door's path (street door fallback,
+  where she appears at the entry as guests do) and stops in the doorway. The
+  path (`back_door_approach`) runs straight out across the open lot and
+  `OFF_LOT_CELLS` (26) beyond it, so at the default zoom she comes and goes
+  out of sight in every camera quarter (`tools/audit`-style check: her first
+  visible route cell is at least 6 cells in). She brings one crate per storage
+  kind present (fridge, freezer, dry, in that order) and sets them down on the
+  receiving cell just inside over `UNLOAD_TICKS` (4): the crate in her hands
+  at `DROP_TICK` (2, the lowest point of the kit's 0.33 s `pick-up` bend),
+  the rest on top of it once she has stepped away (`all_dropped`, her head
+  clear of the stack). Then she walks back out; the dock removes her when
+  gone. Off-lot cells are not on the grid, so she walks her planned cells
+  without path finding. Guests never share the back door: they plan on the
+  guest layer, where its cell is solid.
   - **Carrying.** Each crate is one `put_away` task (role `any`, priority 1,
-    timeout 600): walk to the crate, pick it up (8 work), walk to the nearest
+    timeout 600; steps `STEP_WALK` .. `STEP_PUT_IN` and the fill): walk to the
+    crate, pick it up (`PICK_UP_TICKS` 2: it is in the hands at the bend's
+    lowest point, then `LIFT_TICKS` 2 to straighten up), walk to the nearest
     reachable storage of its kind (else any storage: the starter shop's
     pantry is built in, behind the kitchen; else none, and it waits) and put
-    it away (20 work), when its goods become stock (`Stock.add`, dated today)
-    and `stored(lines)` fires; `RestaurantSim` then brings sold-out dishes
+    it in (`PUT_IN_TICKS` 4), when its goods become stock (`Stock.add`, dated
+    today) and `stored(lines)` fires, then fill the shelves (16 more, 20 in
+    all as before); `RestaurantSim` then brings sold-out dishes
     back and Main refreshes the HUD and Stock panel. The carry walks to the
     storage's work cell without reserving it, so a cook at the same fridge
     never waits. A dropped task sets the crate down where its carrier stood
     and starts again from there; a failed one (storage sold on the way, say)
     puts it down and posts again, up to `MAX_TRIES` (3), then waits for a
     layout change. `on_done` steps check the crate's state, so a restarted
-    task never stocks twice.
+    task never stocks twice. Crates on a cell are one stack with no gaps
+    (`slot` is the layer): whoever lifts one takes the top (the crate on top
+    swaps places with the one whose task it is; crates look alike), so none
+    is ever left in mid-air. The dock keeps `payload["layer"]` (the layer the
+    carrier will lift) and `CourierAgent.drop_layer` current for the view.
   - **Who carries (job priority).** With a cleaner on the team it is the
     cleaner's (job Cleaning, their main job); otherwise servers do it as
-    Serving (`StaffJobPriorities.ROLE_TASK_JOBS`: front-of-house work, so a
-    mid-day order is put away during service rather than left to a Low
-    fallback a busy server never reaches). Cooks (Cleaning is Off for them)
-    and the owner (no `any` priority) never carry.
+    Serving (`StaffJobPriorities.ROLE_TASK_JOBS`), but only while no guest
+    work they would take now is open (`StaffAgent._try_claim`: any eligible
+    server task except washing up), so putting goods away never costs
+    service; what is still waiting at closing is stored. Cooks (Cleaning is
+    Off for them) and the owner (no `any` priority) never carry. Closing
+    withdraws the carrying tasks and frees their carriers on that tick
+    (`StaffAgent.let_go_if_withdrawn`).
   - **Never lose goods.** Paid when ordered; while waiting the goods count as
     on order in `StorageSpace` (`Main._on_the_way()`), so their space stays
     reserved, Build refuses to sell storage they need, and the Stock rows
@@ -1631,16 +1652,31 @@ existing paint colour and camera-controlled build-grid parameters.
     no agent, task or event (`test_no_orders_change_nothing`), so the
     balance probe is unchanged.
   - **View.** `ShopView.bind_dock`: waiting crates are Kenney
-    `cardboardBoxClosed` on the receiving cell, stacked three high in the
-    half away from the door they came through (clear of furniture beside it
-    and of the door's leaf); carried crates are drawn between the palms
-    (`Frame.crate_count`: up to two stacked for the delivery person, one for
-    staff, from the pick-up until the put-away work starts). The delivery
-    person is `character-female-b`, the one kit model no other role uses.
-    People carrying while walking play `carry-walk` (`PersonView` builds it
-    from the kit's `walk` with the arms of `holding-both`, so legs walk under
-    carrying arms; servers' trays use it too), and bend with the kit's
-    `pick-up` (played once) to set a crate down or pick it up.
+    `cardboardBoxClosed` at `CRATE_SCALE` (0.65), one stack per cell at
+    `AgentPresentationController.crate_spot`: on a door's receiving cell
+    `DOOR_STACK_INSET` towards the door (straddling the threshold), elsewhere
+    `CRATE_INSET` off the centre. People never stand in it: the delivery
+    person sets it down from the doorway and staff stand `reach_for(layer)`
+    from it on the cell (`picker_spot`; the last step in walks there, the
+    first step out walks from it): `CRATE_REACH` (0.27, the reach of the
+    `pick-up` bend's lowest point) to bend to a crate on the floor,
+    `CRATE_REACH_HIGH` (0.33) to reach one on top of another standing
+    (`holding-both`, the crate sliding between palms and stack,
+    `Frame.crate_slide`). A crate in hand (`Frame.crate_count`, one at a time
+    for everyone) hangs `CRATE_GRIP` of its height below the palms (top under
+    the chin), follows them through the bend without sinking below its layer,
+    eases down from a high layer, and changes between hands and floor at the
+    bend's lowest point; it goes into the storage at the put-in moment. The
+    delivery person is `character-female-b` in her uniform. People carrying
+    while walking play `carry-walk` (`PersonView` builds it from the kit's
+    `walk` with the arms of `holding-both`, so legs walk under carrying arms;
+    servers' trays use it too). The back door's leaf swings out onto the path
+    (`WallSegmentView`, hinged on the side with open ground beside it, slid
+    `DOOR_OPEN_SLIDE` onto its jamb, clear of the path and of anyone on it);
+    the path is the street pavement cut to one stone per cell with a joint,
+    a sliver thick (flush, no side face), its stones varying in shade, solid
+    across the lot (at least `PATH_SOLID_CELLS`) and then fading into the
+    ground over `PATH_FADE_CELLS`.
   - Tests: `tests/sim/test_delivery_dock.gd` (back-door and street routes,
     stock on carry, closing and morning safety nets, job priority, guests
     never in the back door with deliveries coming and going, no change

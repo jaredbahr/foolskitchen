@@ -21,6 +21,12 @@ class BodySurface:
 ## Declared XZ centre of the body inside the footprint. Zero means centred (the
 ## rule for most items); a booth whose back row is blocking-only sets its offset.
 @export var body_center_offset: Vector2 = Vector2.ZERO
+## An unpainted tint for the body surfaces, to tell apart items built from one
+## kit model (the freezer's cool metal beside the fridge's). A palette swatch
+## mixed into the kit colour by `rest_tint_mix`; paint still replaces it and
+## clearing paint brings it back.
+@export var rest_tint: SwatchDef
+@export_range(0.0, 1.0, 0.01) var rest_tint_mix: float = 0.0
 
 var _prepared: bool = false
 var _body_surfaces: Array[BodySurface] = []
@@ -55,6 +61,7 @@ func prepare() -> void:
 		art.position = Vector3(-bounds.get_center().x, -bounds.position.y, -bounds.get_center().z)
 		if not is_food:
 			_collect_body_surfaces(art)
+	_apply_rest_tint()
 	# Supported pieces are placed only after every floor piece has been centred.
 	for child: Node in get_children():
 		var part: Node3D = child as Node3D
@@ -107,6 +114,19 @@ func clear_body_tint() -> void:
 	prepare()
 	for body: BodySurface in _body_surfaces:
 		body.mesh.set_surface_override_material(body.index, body.original_override)
+	_apply_rest_tint()
+
+
+func _apply_rest_tint() -> void:
+	if rest_tint == null or rest_tint_mix <= 0.0:
+		return
+	var mix: Color = Color.WHITE.lerp(rest_tint.color, rest_tint_mix)
+	for body: BodySurface in _body_surfaces:
+		if body.tinted == null:
+			body.tinted = body.source.duplicate() as BaseMaterial3D
+		var color: Color = body.source.albedo_color * mix
+		body.tinted.albedo_color = Color(color.r, color.g, color.b, body.source.albedo_color.a)
+		body.mesh.set_surface_override_material(body.index, body.tinted)
 
 
 func _collect_body_surfaces(node: Node) -> void:

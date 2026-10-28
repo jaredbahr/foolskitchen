@@ -64,13 +64,13 @@ Morning (closed): plan menu and prices, buy stock, hire, rebuild
 - **Quality** = recipe base, then cook skill, then equipment tier, then ingredient freshness. Each factor is shown in the dish tooltip so you can see why quality is what it is.
 - **Pricing:** the player sets a price per dish, shown against the "standard" price. Guests weigh price against quality and their type's budget.
 - **Stock:** ingredients have shelf life. There's a stock panel, a low-stock alert, and optional automatic reordering at a small premium.
-- **Deliveries (D25):** morning orders arrive at once. An order placed during service comes with the next daytime delivery, which you can watch: a delivery driver walks the crates in through the back door (the front door if there is none) and sets them down inside, and the cleaner (or a server, without a cleaner) carries each crate to the fridge, freezer or shelf. Goods count as stock once put away; anything still waiting at closing is stored, so nothing is ever lost.
+- **Deliveries (D25):** morning orders arrive at once. An order placed during service comes with the next daytime delivery, which you can watch: a delivery driver walks the crates in through the back door (the front door if there is none) and sets them down inside, and the cleaner (or a server, without a cleaner, whenever no guest is waiting on them) carries each crate to the fridge, freezer or shelf. Goods count as stock once put away; anything still waiting at closing is stored, so nothing is ever lost.
 - **Carry capacity:** one plate by default. Trays (an upgrade) allow 2, then 4. This fixes TasteMaker's "one plate per trip" tedium.
 - **Recipe discovery (later):** combine ingredients in a mini-game to unlock variants.
 
 ### 4.3 Build mode
 - **Grid:** 0.5 m. Walls, floors, doors, windows, tables, chairs, stations, storage, decor.
-- **Doors (D25):** the street door is the only guest door. A shop may have one back door, on a back or side wall, for staff and deliveries; its door swings open as people pass.
+- **Doors (D25):** the street door is the only guest door. A shop may have one back door, one cell wide, on a back or side wall, for staff and deliveries; like a service door it swings out, onto its path, as people pass.
 - **Footprints show working tiles** (where a worker stands), so layouts are readable before you place them.
 - **Live path check:** unreachable tables or stations are highlighted as you build. It warns but doesn't block.
 - **Blueprints:** save a group of items (for example a 4-seat table cluster or a fry station) and stamp it again. This answers TasteMaker's "space management" pain.

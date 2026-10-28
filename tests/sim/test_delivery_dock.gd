@@ -97,28 +97,37 @@ func test_a_delivery_comes_from_off_the_lot_through_the_back_door() -> void:
 	assert_eq(route["door"], DOOR)
 	assert_eq(route["drop"], DROP)
 	assert_eq(route["out"], Vector2i(1, 0))
-	assert_eq(route["approach"], [Vector2i(17, 6), Vector2i(16, 6), Vector2i(15, 6), Vector2i(14, 6)] as Array[Vector2i],
-		"up the back door's path, far to near")
+	# The grid ends at the shop's east wall here (no lot bought), so the path
+	# runs OFF_LOT_CELLS straight on beyond it.
+	assert_false(_sim.world.grid.in_bounds(DOOR + Vector2i.RIGHT))
+	var approach: Array[Vector2i] = []
+	for x: int in range(DOOR.x + WallRules.OFF_LOT_CELLS, DOOR.x, -1):
+		approach.append(Vector2i(x, 6))
+	assert_eq(route["approach"], approach, "up the back door's path, far to near, from out of sight")
+	assert_eq(WallRules.lot_cells_of(_sim.world.grid, approach), 0)
 	assert_true(_sim.dock.arrive(_lines(4, 6)))
 	assert_eq(_stock.count(&"cheese"), 8, "nothing is stock on arrival")
 	var courier: CourierAgent = _courier()
 	assert_not_null(courier, "a delivery person walks in")
-	assert_eq(courier.route.front(), DOOR + Vector2i(WallRules.APPROACH_CELLS, 0), "from off the lot")
-	assert_eq(courier.route.slice(-2), [DOOR, DROP] as Array[Vector2i])
+	assert_eq(courier.route.front(), DOOR + Vector2i(WallRules.OFF_LOT_CELLS, 0), "from well beyond the lot")
+	assert_eq(courier.route.back(), DOOR, "she stops in the doorway")
+	assert_eq(courier.drop_cell(), DROP, "and sets the crates down just inside")
 	assert_false(_sim.world.grid.in_bounds(courier.cell), "starts beyond the lot")
 	var seen: Dictionary[Vector2i, bool] = {}
-	for tick: int in 400:
+	var crates: Array[Dictionary] = []
+	for tick: int in 600:
 		seen[courier.cell] = true
+		if crates.is_empty() and _dropped():
+			crates = _sim.dock.crates()
 		if _sim.dock.couriers().is_empty():
 			break
 		_sim.advance()
 	assert_true(_sim.dock.couriers().is_empty(), "and leaves again")
 	assert_false(_sim.world.agents.has(courier), "gone from the world")
 	for cell: Vector2i in seen:
-		assert_true(cell == DOOR or cell == DROP or (cell.y == DOOR.y and cell.x > DOOR.x),
-			"only the approach, the door and the receiving cell: %s" % cell)
-	assert_true(seen.has(DROP))
-	var crates: Array[Dictionary] = _sim.dock.crates()
+		assert_true(cell == DOOR or (cell.y == DOOR.y and cell.x > DOOR.x),
+			"only the approach and the door: %s" % cell)
+	assert_true(seen.has(DOOR))
 	assert_eq(crates.size(), 2, "one crate per storage kind: fridge and dry")
 	assert_eq(crates[0]["kind"], StorageSpace.FRIDGE)
 	assert_eq(crates[1]["kind"], StorageSpace.DRY)
@@ -138,7 +147,8 @@ func test_without_a_back_door_the_delivery_uses_the_street_door() -> void:
 	assert_eq(route["out"], Vector2i.DOWN)
 	assert_true((route["approach"] as Array).is_empty(), "appears at the street entry, as guests do")
 	assert_true(_sim.dock.arrive(_lines(4, 0)))
-	assert_eq(_courier().route, [entry, entry + Vector2i.UP] as Array[Vector2i])
+	assert_eq(_courier().route, [entry] as Array[Vector2i], "she stands in the street door")
+	assert_eq(_courier().drop_cell(), entry + Vector2i.UP)
 	assert_true(_run_until(_dropped) >= 0)
 	assert_eq(_sim.dock.crates()[0]["cell"], entry + Vector2i.UP)
 
@@ -147,6 +157,10 @@ func test_a_back_door_path_stops_at_the_shop() -> void:
 	# A wing bought beside the path: the path stops before it.
 	var grid: SimGrid = _sim.world.grid
 	grid.grow_to(Rect2i(Vector2i.ZERO, Vector2i(18, 12)))
+	var open: Array[Vector2i] = WallRules.back_door_approach(grid, DOOR, Vector2i.RIGHT)
+	assert_eq(open.size(), 4 + WallRules.OFF_LOT_CELLS, "across the open lot to its edge, then on out of sight")
+	assert_eq(WallRules.lot_cells_of(grid, open), 4)
+	assert_eq(open.back(), Vector2i(14, 6))
 	assert_true(grid.set_terrain(Vector2i(16, 6), SimGrid.Terrain.WALL))
 	assert_eq(WallRules.back_door_approach(grid, DOOR, Vector2i.RIGHT),
 		[Vector2i(15, 6), Vector2i(14, 6)] as Array[Vector2i])
@@ -200,8 +214,9 @@ func test_crates_become_stock_only_when_put_away() -> void:
 	var fridge: PlacedItem = ShopBuilder.items_with_def(_sim.world, &"fridge")[0]
 	assert_eq(tasks[0].payload["item"], fridge.id, "the fridge crate goes to the fridge")
 	assert_eq(tasks[1].payload["item"], fridge.id, "no shelf yet: dry goods go in by the built-in pantry")
-	assert_eq(tasks[0].steps[2].kind, TaskStep.Kind.GO_TO_CELL, "never reserves the fridge a cook needs")
-	assert_true(fridge.work_cells.has(tasks[0].steps[2].cell))
+	assert_eq(tasks[0].steps[DeliveryDock.STEP_CARRY].kind, TaskStep.Kind.GO_TO_CELL,
+		"never reserves the fridge a cook needs")
+	assert_true(fridge.work_cells.has(tasks[0].steps[DeliveryDock.STEP_CARRY].cell))
 	var carried: bool = false
 	for tick: int in 3000:
 		if _sim.dock.is_idle():
@@ -223,8 +238,10 @@ func test_crates_become_stock_only_when_put_away() -> void:
 	assert_eq(_stock.count(&"bread"), 16)
 	assert_eq(stored.size(), 2)
 	assert_true(_sim.dock.pending_by_id().is_empty())
-	for task: SimTask in tasks:
-		assert_eq(task.state, SimTask.State.DONE)
+	# Stock once the crate goes in; filling the shelves finishes the job.
+	assert_true(_run_until(func() -> bool: return tasks.all(
+		func(task: SimTask) -> bool: return task.state == SimTask.State.DONE),
+		DeliveryDock.PUT_AWAY_TICKS * 2) >= 0)
 
 
 func test_dry_crates_go_to_a_storage_shelf_and_frozen_ones_to_the_freezer() -> void:
@@ -284,6 +301,76 @@ func test_storage_sold_while_a_crate_is_carried_over_keeps_the_goods() -> void:
 	assert_eq(_stock.count(&"cheese"), 8)
 	_sim.dock.store_all()
 	assert_eq(_stock.count(&"cheese"), 12)
+
+
+func test_she_sets_the_crates_down_at_the_bottom_of_her_bend() -> void:
+	_back_door()
+	_open_quiet()
+	assert_true(_sim.dock.arrive(_lines(4, 6)))
+	var courier: CourierAgent = _courier()
+	assert_true(_run_until(func() -> bool: return courier.unloading()) >= 0)
+	assert_true(courier.carrying, "still in her hands as she starts to bend")
+	assert_false(courier.dropped)
+	for tick: int in CourierAgent.DROP_TICK:
+		_sim.advance()
+	assert_false(courier.carrying, "on the floor at the bend's lowest point")
+	var states: Array[int] = []
+	for crate: Dictionary in _sim.dock.crates():
+		states.append(int(crate["state"]))
+	assert_eq(states, [DeliveryDock.CrateState.WAITING, DeliveryDock.CrateState.ON_THE_WAY] as Array[int],
+		"the one in her hands first")
+	for tick: int in CourierAgent.UNLOAD_TICKS - CourierAgent.DROP_TICK:
+		_sim.advance()
+	assert_false(_dropped(), "not while she stands over the stack")
+	_sim.advance()
+	assert_eq(courier.state, CourierAgent.State.LEAVING)
+	assert_true(_dropped(), "the rest once she has stepped away, clear of the stack")
+	assert_eq(courier.cell, DOOR, "set down from the doorway, not from among them")
+
+
+func test_the_top_crate_is_lifted_first_so_none_is_left_in_mid_air() -> void:
+	_back_door()
+	_open_quiet()
+	var lines: Array[Dictionary] = _lines(4, 6)
+	lines.append({"id": &"frozen_fries", "qty": 4})
+	assert_true(_sim.dock.arrive(lines))
+	assert_true(_run_until(_dropped) >= 0)
+	var slots: Array[int] = []
+	for crate: Dictionary in _sim.dock.crates():
+		slots.append(int(crate["slot"]))
+	slots.sort()
+	assert_eq(slots, [0, 1, 2] as Array[int], "one stack, three high")
+	var lifted: int = 0
+	for tick: int in 3000:
+		if _sim.dock.is_idle():
+			break
+		var before: int = 0
+		for crate: Dictionary in _sim.dock.crates():
+			if int(crate["state"]) == DeliveryDock.CrateState.WAITING:
+				before += 1
+		_sim.advance()
+		var layers: Dictionary[Vector2i, Array] = {}
+		var waiting: int = 0
+		for crate: Dictionary in _sim.dock.crates():
+			if int(crate["state"]) != DeliveryDock.CrateState.WAITING:
+				continue
+			waiting += 1
+			if not layers.has(crate["cell"]):
+				layers[crate["cell"]] = []
+			layers[crate["cell"]].append(int(crate["slot"]))
+		for cell: Vector2i in layers:
+			var found: Array = layers[cell]
+			found.sort()
+			assert_eq(found, range(found.size()), "tick %d: every crate rests on the floor or another" % tick)
+		if waiting < before:
+			lifted += 1
+			for crate: Dictionary in _sim.dock.crates():
+				if int(crate["state"]) == DeliveryDock.CrateState.CARRIED:
+					var task: SimTask = _sim.dock.task_for_crate(int(crate["id"]))
+					if task != null and task.payload.has("layer"):
+						assert_eq(int(task.payload["layer"]), waiting, "the top one was lifted")
+	assert_true(lifted >= 2)
+	assert_true(_sim.dock.is_idle())
 
 
 # --- Safety nets -------------------------------------------------------------------
@@ -391,6 +478,41 @@ func test_servers_put_deliveries_away_as_serving_and_the_cleaner_as_cleaning() -
 	assert_not_null(owner)
 
 
+func test_servers_carry_only_while_no_guest_is_waiting_on_them() -> void:
+	_back_door()
+	_open_quiet()
+	var server: StaffAgent = _staff(&"server")
+	assert_true(_sim.dock.arrive(_lines(4, 0)))
+	assert_true(_run_until(_dropped) >= 0)
+	var put_away: SimTask = _sim.dock.task_for_crate(int(_sim.dock.crates()[0]["id"]))
+	assert_eq(put_away.state, SimTask.State.OPEN)
+	assert_null(server.task)
+	# Guest work for servers, far off and less urgent: the crate would score higher.
+	var guest: SimTask = SimTask.new(&"take_order", &"server", "Take an order")
+	guest.steps.append(TaskStep.go_to_cell(Vector2i(1, 9), "walking"))
+	_sim.world.board.post(guest, _sim.world.now)
+	_sim.advance()
+	assert_eq(server.task, guest, "service first: no crate while a guest waits")
+	assert_eq(put_away.state, SimTask.State.OPEN)
+	_sim.world.board.cancel(guest, &"test")
+	for tick: int in 3:
+		_sim.advance()
+	assert_eq(server.task, put_away, "idle again: now the server carries it")
+
+
+func test_closing_frees_whoever_was_carrying_at_once() -> void:
+	_back_door()
+	_open_quiet()
+	assert_true(_sim.dock.arrive(_lines(4, 0)))
+	assert_true(_run_until(func() -> bool: return _sim.dock.crates().any(
+		func(crate: Dictionary) -> bool: return int(crate["state"]) == DeliveryDock.CrateState.CARRIED)) >= 0)
+	var carrier: StaffAgent = _sim.world.agent(int(_sim.dock.crates()[0]["carrier_id"])) as StaffAgent
+	assert_not_null(carrier.task)
+	_sim.world.clock.phase = SimClock.Phase.LAST_ORDERS
+	assert_true(_run_until(func() -> bool: return _sim.world.clock.phase == SimClock.Phase.CLOSED, 50) >= 0)
+	assert_null(carrier.task, "let go on the closing tick, not the next one")
+
+
 func _staff(role: StringName) -> StaffAgent:
 	for agent: SimAgent in _sim.world.agents:
 		if agent is StaffAgent and not agent is OwnerAgent and agent.role == role:
@@ -474,6 +596,20 @@ func test_build_refuses_a_second_back_door_but_older_shops_keep_theirs() -> void
 	assert_true(editor.apply_segments({second: SimGrid.Segment.NONE} as Dictionary[Vector3i, int]),
 		"removing one is fine")
 	assert_eq(WallRules.back_door_count(loaded.world.grid), 1)
+
+
+func test_a_back_door_is_one_cell_wide() -> void:
+	var wide: Dictionary[Vector3i, int] = {
+		SimGrid.edge_between(DROP, DOOR): SimGrid.Segment.DOORWAY,
+		SimGrid.edge_between(Vector2i(12, 7), Vector2i(13, 7)): SimGrid.Segment.DOORWAY,
+	}
+	var check: EditCheck = _editor.check_segments(wide)
+	assert_false(check.ok)
+	assert_eq(check.why, WallRules.BACK_DOOR_WIDTH, "not 'already has one' on a shop with none")
+	_back_door()
+	assert_eq(_editor.check_segments({SimGrid.edge_between(Vector2i(12, 7), Vector2i(13, 7)):
+		SimGrid.Segment.DOORWAY} as Dictionary[Vector3i, int]).why, WallRules.BACK_DOOR_WIDTH,
+		"widening the one there is")
 
 
 func test_selling_floor_cannot_bring_back_a_second_back_door() -> void:

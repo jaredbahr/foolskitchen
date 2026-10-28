@@ -6,10 +6,15 @@ const GRID_SHADER: Shader = preload("res://src/world/build_grid.gdshader")
 const PERSON_SCENE: PackedScene = preload("res://assets/people/person.tscn")
 ## Delivery crates (FK-099): the Furniture Kit's closed cardboard box.
 const CRATE_SCENE: PackedScene = preload("res://assets/kenney/furniture/cardboardBoxClosed.glb")
-## Crates on a cell sit this far from its centre, away from the door they
-## came through, in stacks of up to CRATES_PER_STACK.
-const CRATE_SPREAD: float = 0.12
-const CRATES_PER_STACK: int = 3
+## Delivery crates are the kit box at this share of the furniture scale: a
+## parcel a person carries with its top under the chin, and two stacked stay
+## below a standing person's chin too (the Mini Characters' heads are big).
+const CRATE_SCALE: float = 0.65
+## A crate in hand hangs this share of its height below the palms (FK-099).
+const CRATE_GRIP: float = 0.6
+## A crate in hand lowered from a stack's upper layer to the carrying height
+## eases down at this speed (m/s) instead of dropping.
+const CRATE_LOWER_SPEED: float = 0.8
 ## A back door is open while someone going through is within this distance
 ## of it (fully open within DOOR_OPEN_NEAR), all view only.
 ## The ramp is 1.25 m, about one second of walking at 1x.
@@ -671,29 +676,40 @@ func _sync_agents() -> void:
 			_remove_agent_visual(id)
 
 
-## Crates in a person's hands: boxes stacked between the palms (made on first
-## use, so ordinary guests never instance them).
+## A crate in a person's hands, between the palms (made on first use, so
+## ordinary guests never instance it). It follows the palms through the
+## pick-up bend but never sinks below the stack layer it leaves or joins, and
+## eases down to the carrying height from a high layer.
 func _show_held_crates(node: Node3D, frame: AgentPresentationController.Frame, ready_person: bool) -> void:
 	var held: Node3D = node.get_node_or_null("Crates") as Node3D
 	if frame.crate_count <= 0:
 		if held != null:
 			held.visible = false
 		return
+	var was_visible: bool = held != null and held.visible
 	if held == null:
 		held = Node3D.new()
 		held.name = "Crates"
 		for index: int in AgentPresentationController.MAX_CRATES_IN_HAND:
 			var box: PropView = RoomDressing.make_asset(CRATE_SCENE, "Crate%d" % index)
 			if box != null:
+				box.scale = Vector3.ONE * CRATE_SCALE
 				box.position.y = crate_height() * index
 				held.add_child(box)
 		node.add_child(held)
 	held.visible = true
 	for index: int in held.get_child_count():
 		(held.get_child(index) as Node3D).visible = index < frame.crate_count
-	# The box's base sits a little below the palms, held in front of the body.
 	var anchor: Vector3 = frame.tray_anchor if ready_person else Vector3(0.0, 0.35, -0.3)
-	held.position = anchor + Vector3(0.0, -crate_height() * 0.45, 0.0)
+	var lowest: float = crate_height() * float(frame.crate_layer) if frame.bending else 0.0
+	var target: Vector3 = anchor + Vector3(0.0, -crate_height() * CRATE_GRIP, 0.0)
+	target.y = maxf(target.y, lowest)
+	if frame.crate_slide > 0.0:
+		var place: Vector3 = frame.crate_spot + Vector3(0.0, crate_height() * float(frame.crate_layer), 0.0)
+		target = target.lerp(node.global_transform.affine_inverse() * (global_transform * place), frame.crate_slide)
+	elif was_visible and not frame.bending and target.y < held.position.y:
+		target.y = maxf(target.y, held.position.y - CRATE_LOWER_SPEED * get_process_delta_time())
+	held.position = target
 
 
 ## Height of one crate at the furniture scale.
@@ -701,7 +717,7 @@ func crate_height() -> float:
 	if _crate_height <= 0.0:
 		var probe: PropView = RoomDressing.make_asset(CRATE_SCENE, "Measure")
 		if probe != null:
-			_crate_height = probe.get_combined_aabb().size.y
+			_crate_height = probe.get_combined_aabb().size.y * CRATE_SCALE
 			probe.free()
 	return _crate_height
 
@@ -720,6 +736,7 @@ func _sync_crates() -> void:
 				var box: PropView = RoomDressing.make_asset(CRATE_SCENE, "DeliveryCrate%d" % id)
 				if box == null:
 					continue
+				box.scale = Vector3.ONE * CRATE_SCALE
 				box.set_meta("shop_geometry", true)
 				box.set_meta(&"crate_id", id)
 				add_child(box)
@@ -733,22 +750,13 @@ func _sync_crates() -> void:
 			node.free()
 
 
-## Where crate `slot` stands on `cell`: up to three stacked in the middle of
-## the cell's far half from the door they came through (clear of neighbouring
-## furniture and of the door's leaf, which only sweeps the near half's edge);
-## more make a second stack in the near half.
+## Where crate `slot` stands on `cell`: one stack, `slot` crates up, on the
+## spot AgentPresentationController.crate_spot picks (towards the door it
+## came through, where the delivery person can set it down from the doorway
+## and staff pick it up from the cell, neither standing in it).
 func crate_position(cell: Vector2i, slot: int) -> Vector3:
-	var away: Vector2i = Vector2i.ZERO
-	if world != null:
-		for step: Vector2i in [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]:
-			if world.grid.is_back_door(cell + step) or world.grid.entries().has(cell + step):
-				away = -step
-				break
-	@warning_ignore("integer_division")
-	var stack: int = mini(slot / CRATES_PER_STACK, 1)
-	var layer: int = slot - stack * CRATES_PER_STACK
-	var offset: Vector2 = Vector2(away) * CRATE_SPREAD * (1.0 if stack == 0 else -1.0)
-	return GridMath.cell_to_world(cell) + Vector3(offset.x, crate_height() * layer, offset.y)
+	return AgentPresentationController.crate_spot(world.grid if world != null else null, cell) \
+		+ Vector3(0.0, crate_height() * float(slot), 0.0)
 
 
 ## Each back-door leaf opens as someone going through comes near: the delivery

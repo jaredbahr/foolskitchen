@@ -76,27 +76,38 @@ func test_the_back_door_is_a_kenney_door_with_a_path_outside() -> void:
 	_view.segment_view.set_door_open(DOOR, 1.0)
 	assert_almost_eq(rad_to_deg(absf(leaf.rotation.y)), WallSegmentView.DOOR_OPEN_DEGREES, 0.01)
 	var open: Vector3 = leaf.global_transform * Vector3(0.4, 0.5, 0.0)
-	assert_true(open.x < shut.x - 0.2, "it swings into the shop (west, away from the east door)")
+	assert_true(open.x > shut.x + 0.2, "it swings out, onto the path (east, like a service door)")
 	# Open, the leaf lies against its jamb: nothing of it in the 0.5 m opening.
 	var leaf_bounds: AABB = leaf.global_transform * (leaf as MeshInstance3D).get_aabb()
 	var center_z: float = GridMath.cell_to_world(DOOR).z
 	var half: float = GridMath.CELL_SIZE * 0.5
 	assert_true(leaf_bounds.position.z >= center_z + half - 0.001 or leaf_bounds.end.z <= center_z - half + 0.001,
 		"clear of the opening: %s" % leaf_bounds)
+	var tiles: Array[PropView] = _view.segment_view.path_tiles()
+	for tile: PropView in tiles:
+		var path_bounds: AABB = tile.global_transform * tile.get_combined_aabb()
+		assert_true(leaf_bounds.position.z >= path_bounds.end.z or leaf_bounds.end.z <= path_bounds.position.z,
+			"beside the path, not over it")
 	_view.segment_view.set_door_open(DOOR, 0.0)
 	assert_true((leaf.global_transform * Vector3(0.4, 0.5, 0.0)).is_equal_approx(shut), "shuts exactly where it was")
 	_view.segment_view.set_door_open(DOOR, 1.0)
 	_view.segment_view.set_door_open(DOOR, 0.0)
-	var tiles: Array[PropView] = _view.segment_view.path_tiles()
-	assert_eq(tiles.size(), 2, "pavement over the four approach cells")
+	# No lot bought east of the shop: the path fades out beyond the door.
+	assert_eq(tiles.size(), WallSegmentView.PATH_SOLID_CELLS + WallSegmentView.PATH_FADE_CELLS,
+		"one stone per approach cell, then it fades out")
+	var tints: Dictionary[Color, bool] = {}
 	for tile: PropView in tiles:
 		var bounds: AABB = tile.global_transform * tile.get_combined_aabb()
 		assert_almost_eq(bounds.end.y, 0.001, 0.002, "level with the floor, so feet never sink")
+		assert_true(bounds.size.y < 0.02, "flush: no side face to show")
+		assert_true(bounds.size.x < GridMath.CELL_SIZE, "a joint between stones")
 		assert_true(bounds.position.x > 13.5 * GridMath.CELL_SIZE - 0.01, "all outside the shell")
 		assert_true(absf(bounds.get_center().z - GridMath.cell_to_world(DOOR).z) < 0.01, "in line with the door")
+		tints[tile.active_body_material().albedo_color] = true
+	assert_true(tints.size() > 3, "the stones vary")
 	_view.set_wall_mode(ShopView.WallMode.DOWN)
 	assert_null(_view.segment_view.door_leaf(DOOR), "lowered walls show posts, no floating leaf")
-	assert_eq(_view.segment_view.path_tiles().size(), 2, "the path stays")
+	assert_eq(_view.segment_view.path_tiles().size(), tiles.size(), "the path stays")
 
 
 func test_the_door_swings_open_for_the_delivery_and_shuts_after() -> void:
@@ -108,25 +119,41 @@ func test_the_door_swings_open_for_the_delivery_and_shuts_after() -> void:
 	assert_eq(_leaf_angle(), 0.0, "far up the path: shut")
 	var opened: bool = false
 	var held: bool = false
-	for tick: int in 40:
+	var bent: bool = false
+	for tick: int in WallRules.OFF_LOT_CELLS * 4 + 12:
 		_tick()
 		var person: Node3D = _view.agent_nodes[courier.id]
 		var crates: Node3D = person.get_node_or_null("Crates") as Node3D
 		if courier.state == CourierAgent.State.ARRIVING:
-			held = held or (crates != null and crates.visible and crates.get_child(1).visible)
+			held = held or (crates != null and crates.visible and crates.get_child_count() == 1)
 		if courier.cell == DOOR:
 			opened = true
 			assert_almost_eq(rad_to_deg(_leaf_angle()), WallSegmentView.DOOR_OPEN_DEGREES, 0.01, "open as they pass")
 		if courier.state == CourierAgent.State.UNLOADING:
-			assert_false(crates.visible, "set down")
+			bent = true
+			assert_eq(crates.visible, courier.carrying, "in her hands until the bottom of the bend")
 			assert_eq((person as PersonView).current_clip(), &"pick-up")
+			assert_true(person.position.is_equal_approx(GridMath.cell_to_world(DOOR)), "in the doorway")
+		if courier.state == CourierAgent.State.LEAVING:
+			break
 	assert_true(opened)
-	assert_true(held, "two crates in hand on the way in")
-	assert_eq(_view.crate_nodes.size(), 2, "both crates on the floor")
+	assert_true(bent)
+	assert_true(held, "one crate in hand on the way in (a stack would hide her face)")
+	assert_eq(_view.crate_nodes.size(), 1, "the one from her hands, while she stands over it")
+	_tick()
+	assert_eq(_view.crate_nodes.size(), 2, "both crates on the floor once she steps away")
+	var spot: Vector3 = AgentPresentationController.crate_spot(_sim.world.grid, DROP)
+	var layers: Array[float] = []
 	for id: int in _view.crate_nodes:
 		var node: Node3D = _view.crate_nodes[id]
-		assert_true(node.position.x < GridMath.cell_to_world(DROP).x, "on the far side from the door")
-	for tick: int in 120:
+		assert_almost_eq(node.position.x, spot.x, 0.001, "one stack")
+		assert_almost_eq(node.position.x - GridMath.cell_to_world(DOOR).x, -AgentPresentationController.CRATE_REACH,
+			0.001, "in front of her, at arm's reach")
+		layers.append(node.position.y)
+	layers.sort()
+	assert_almost_eq(layers[0], 0.0, 0.001, "on the floor")
+	assert_almost_eq(layers[1], _view.crate_height(), 0.001, "and on top of it")
+	for tick: int in WallRules.OFF_LOT_CELLS * 4 + 40:
 		_tick()
 		if not _sim.world.agents.has(courier):
 			break
@@ -145,19 +172,35 @@ func test_a_carried_crate_shows_in_hand_and_guests_never_open_the_door() -> void
 	_sim.world.remove_agent(guest)
 	assert_true(_sim.dock.arrive([{"id": &"cheese", "qty": 4}] as Array[Dictionary]))
 	var carrier_id: int = -1
+	var beside: bool = false
 	for tick: int in 600:
 		_tick()
+		for agent: SimAgent in _sim.world.agents:
+			var staff: StaffAgent = agent as StaffAgent
+			if staff == null or staff.task == null or staff.task.kind != DeliveryDock.TASK_KIND \
+					or staff.step_index != DeliveryDock.STEP_PICK_UP or staff.cell != DROP:
+				continue
+			beside = true
+			var drawn: Vector3 = _view.agent_nodes[staff.id].position
+			assert_true(drawn.is_equal_approx(AgentPresentationController.picker_spot(_sim.world.grid, DROP)),
+				"beside the stack, not in it")
+			var spot: Vector3 = AgentPresentationController.crate_spot(_sim.world.grid, DROP)
+			assert_almost_eq(Vector2(drawn.x - spot.x, drawn.z - spot.z).length(), AgentPresentationController.CRATE_REACH,
+				0.001)
+			assert_eq((_view.agent_nodes[staff.id] as PersonView).current_clip(), &"pick-up")
 		for crate: Dictionary in _sim.dock.crates():
 			if int(crate["state"]) == DeliveryDock.CrateState.CARRIED:
 				carrier_id = int(crate["carrier_id"])
 		if carrier_id >= 0:
 			break
+	assert_true(beside)
 	assert_true(carrier_id >= 0)
-	_tick(2)
+	_tick(DeliveryDock.LIFT_TICKS + 2)
 	var person: PersonView = _view.agent_nodes[carrier_id] as PersonView
 	var crates: Node3D = person.get_node("Crates") as Node3D
 	assert_true(crates.visible)
-	assert_true(crates.get_child(0).visible and not crates.get_child(1).visible, "one crate each trip")
+	assert_eq(crates.get_child_count(), 1, "one crate each trip")
+	assert_true(crates.get_child(0).visible)
 	assert_eq(person.current_clip(), PersonPresentation.CARRY_WALK, "walking legs under carrying arms")
 	assert_eq(_view.crate_nodes.size(), 0, "no longer on the floor")
 	for tick: int in 600:
@@ -166,3 +209,14 @@ func test_a_carried_crate_shows_in_hand_and_guests_never_open_the_door() -> void
 			break
 	assert_true(_sim.dock.is_idle())
 	assert_false(crates.visible, "put away")
+
+
+func test_the_freezer_reads_cooler_than_the_fridge_and_keeps_it_after_paint() -> void:
+	var freezer: PropView = (load("res://assets/props/freezer.tscn") as PackedScene).instantiate() as PropView
+	var kit: Color = freezer.active_body_material().albedo_color
+	assert_true(kit.b > kit.r, "a cool metal: %s" % kit)
+	freezer.set_body_tint(Color(0.9, 0.5, 0.3))
+	assert_eq(freezer.active_body_material().albedo_color, Color(0.9, 0.5, 0.3), "paint replaces it")
+	freezer.clear_body_tint()
+	assert_eq(freezer.active_body_material().albedo_color, kit, "and clearing paint brings it back")
+	freezer.free()

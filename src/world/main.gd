@@ -2665,6 +2665,16 @@ func _menu_ingredients() -> Dictionary[StringName, bool]:
 	return used
 
 
+## Ingredients some dish or drink in the game uses (frozen fries: none yet).
+func _dish_ingredients() -> Dictionary[StringName, bool]:
+	var used: Dictionary[StringName, bool] = {}
+	for recipe: RecipeDef in content.recipes():
+		for ingredient: IngredientDef in recipe.ingredients:
+			if ingredient != null:
+				used[ingredient.id] = true
+	return used
+
+
 ## Rows hold display names only; the panel never sees a raw id as text.
 ## Grouped by storage kind (fridge, freezer, dry); inside a group the
 ## ingredients today's menu uses come first, in the fixed buying order.
@@ -2676,6 +2686,7 @@ func stock_rows() -> Array[Dictionary]:
 	_reorder()
 	var expiring: Dictionary = Economy.stock.expiring_on(Clock.sim.day + 1, _shelf_lives())
 	var used: Dictionary[StringName, bool] = _menu_ingredients()
+	var in_dishes: Dictionary[StringName, bool] = _dish_ingredients()
 	var pending: Dictionary[StringName, int] = _on_the_way()
 	var space: StorageSpace = storage_space()
 	for kind: int in StorageSpace.KINDS:
@@ -2691,7 +2702,8 @@ func stock_rows() -> Array[Dictionary]:
 					"expiring": int(expiring.get(id, 0)), "unit_cost": ingredient.unit_cost,
 					"enabled": reorder_settings.is_enabled(id), "target": reorder_settings.target(id),
 					"max_target": ReorderSettings.MAX_TARGET, "kind": kind, "in_use": in_use,
-					"cart": int(stock_cart.get(id, 0)), "on_order": int(pending.get(id, 0))})
+					"cart": int(stock_cart.get(id, 0)), "on_order": int(pending.get(id, 0)),
+					"no_dish": not in_dishes.has(id)})
 	return rows
 
 
