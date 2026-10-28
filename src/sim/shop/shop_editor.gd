@@ -619,6 +619,9 @@ func check_rooms(changes: Dictionary[Vector2i, int], exact: Exact = null) -> Edi
 		if live.room(cell) != kind:
 			effective[cell] = kind
 	if effective.is_empty():
+		# Undo/redo of a paint that is already in place has nothing to do.
+		if exact != null and floor_seen:
+			return EditCheck.new(true)
 		return EditCheck.new(false, RoomRules.ALREADY if floor_seen else RoomRules.NOT_FLOOR)
 	var ids: Dictionary[int, int] = {}
 	var preview: SimGrid = _preview_without(-1, ids)

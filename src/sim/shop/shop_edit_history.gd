@@ -38,7 +38,10 @@ class Entry extends RefCounted:
 	var floor_cells: Array[Vector2i] = []
 	var floor_adding: bool = true
 	## Rooms before and after (cell -> Room), changed cells only (FK-101). A
-	## floor removal keeps the rooms it wiped here, to paint back on undo.
+	## floor removal keeps the room of every cell it took (Dining included) in
+	## rooms_before, painted back on undo over the back-wall rule; a floor add
+	## keeps the rooms it painted (the back-wall rule) in rooms_after, painted
+	## again on redo, so both restore the shop exactly.
 	var rooms_before: Dictionary[Vector2i, int] = {}
 	var rooms_after: Dictionary[Vector2i, int] = {}
 	## &"wall", &"floor" or &"item"; colours before and after.
@@ -173,8 +176,14 @@ func apply_floor(cells: Array[Vector2i], adding: bool) -> bool:
 	var before: Dictionary[Vector3i, int] = _editor.segments()
 	var bought_before: Array[Vector2i] = _editor.bought_floor()
 	var rooms_before: Dictionary[Vector2i, int] = _editor.rooms()
+	var floor_before: Dictionary[Vector2i, bool] = {}
+	if _grid != null:
+		for cell: Vector2i in _grid.cells():
+			if _grid.terrain(cell) == SimGrid.Terrain.FLOOR:
+				floor_before[cell] = true
 	if not _editor.apply_floor(cells, adding):
 		return false
+	var painted: Dictionary[Vector2i, int] = _editor.last_check.rooms.duplicate()
 	# Only the cells that really changed, so redo and undo touch nothing else.
 	var after: Array[Vector2i] = _editor.bought_floor()
 	var changed: Array[Vector2i] = []
@@ -185,10 +194,10 @@ func apply_floor(cells: Array[Vector2i], adding: bool) -> bool:
 	entry.kind = Kind.FLOOR
 	entry.floor_cells = changed
 	entry.floor_adding = adding
-	var rooms_after: Dictionary[Vector2i, int] = _editor.rooms()
-	for cell: Vector2i in rooms_before:
-		if not rooms_after.has(cell):
-			entry.rooms_before[cell] = rooms_before[cell]
+	for cell: Vector2i in floor_before:
+		if _grid.terrain(cell) != SimGrid.Terrain.FLOOR:
+			entry.rooms_before[cell] = rooms_before.get(cell, SimGrid.Room.DINING)
+	entry.rooms_after = painted
 	_diff_segments(before, _editor.segments(), entry)
 	entry.cash = _editor.last_cash_change
 	entry.label = "add floor" if adding else "remove floor"
@@ -280,7 +289,8 @@ func _invert(entry: Entry) -> bool:
 			if not _check(_editor.apply_floor(entry.floor_cells, not entry.floor_adding, exact,
 					_put_back(entry.segments_before))):
 				return false
-			# Rooms the removal wiped come back with the floor (free, no check).
+			# The cells a removal took come back with their exact rooms (free, no
+			# check), over whatever the back-wall rule painted on re-adding.
 			if not entry.rooms_before.is_empty():
 				_editor.apply_rooms(entry.rooms_before, ShopEditor.Exact.new(0, UNDO_NOTE))
 			return true
@@ -305,8 +315,13 @@ func _reapply(entry: Entry) -> bool:
 		Kind.WALLS:
 			return _check(_editor.apply_segments(entry.segments_after, exact))
 		Kind.FLOOR:
-			# The same cells take down the same segments as the first time.
-			return _check(_editor.apply_floor(entry.floor_cells, entry.floor_adding, exact))
+			# The same cells take down the same segments as the first time, and
+			# an add paints the same rooms it painted then.
+			if not _check(_editor.apply_floor(entry.floor_cells, entry.floor_adding, exact)):
+				return false
+			if not entry.rooms_after.is_empty():
+				_editor.apply_rooms(entry.rooms_after, ShopEditor.Exact.new(0, REDO_NOTE))
+			return true
 		Kind.PAINT:
 			return _check(_paint(entry.paint_target, entry.paint_after, entry.item.id if entry.item != null else -1))
 		Kind.ROOMS:

@@ -265,6 +265,58 @@ func test_opened_back_wall_beside_the_kitchen_is_kitchen() -> void:
 	assert_eq(grid.room(Vector2i(13, 2)), SimGrid.Room.KITCHEN)
 
 
+func test_floor_undo_and_redo_restore_rooms_exactly() -> void:
+	var grid: SimGrid = _sim.world.grid
+	var cell: Vector2i = Vector2i(13, 2)
+	assert_true(_history.apply_floor(_rect(14, 0, 1, 10), true), _editor.last_check.why)
+	assert_eq(grid.room(cell), SimGrid.Room.KITCHEN, "the back-wall rule")
+	assert_true(_history.apply_rooms(_rooms([cell], SimGrid.Room.DINING)), _editor.last_check.why)
+	assert_true(_history.apply_floor(_rect(14, 0, 1, 10), false), _editor.last_check.why)
+	assert_eq(grid.terrain(cell), SimGrid.Terrain.WALL)
+	# Undo the removal: the repainted Dining comes back, not the rule's Kitchen.
+	assert_true(_history.undo(), _history.last_refusal)
+	assert_eq(grid.room(cell), SimGrid.Room.DINING)
+	assert_true(_history.redo(), _history.last_refusal)
+	assert_eq(grid.terrain(cell), SimGrid.Terrain.WALL)
+	assert_true(_history.undo(), _history.last_refusal)
+	assert_eq(grid.room(cell), SimGrid.Room.DINING)
+	# Further back: the repaint, then the add, then redo both exactly.
+	assert_true(_history.undo(), _history.last_refusal)
+	assert_eq(grid.room(cell), SimGrid.Room.KITCHEN)
+	assert_true(_history.undo(), _history.last_refusal)
+	assert_eq(grid.terrain(cell), SimGrid.Terrain.WALL)
+	assert_true(_history.redo(), _history.last_refusal)
+	assert_eq(grid.room(cell), SimGrid.Room.KITCHEN)
+	assert_true(_history.redo(), _history.last_refusal)
+	assert_eq(grid.room(cell), SimGrid.Room.DINING)
+
+
+func test_a_long_edit_chain_undoes_all_the_way() -> void:
+	var grid: SimGrid = _sim.world.grid
+	var start: Dictionary[Vector2i, int] = grid.rooms()
+	var back: Array[Vector2i] = _rect(1, -3, 12, 3)
+	var opened: Array[Vector2i] = [Vector2i(6, 0), Vector2i(7, 0)]
+	assert_true(_history.apply_floor(back, true), _editor.last_check.why)
+	assert_true(_history.apply_rooms(_rooms(opened, SimGrid.Room.DINING)), _editor.last_check.why)
+	assert_true(_history.apply_floor(back, false), _editor.last_check.why)
+	assert_true(_history.apply_floor(back, true), _editor.last_check.why)
+	assert_eq(grid.room(opened[0]), SimGrid.Room.KITCHEN, "a fresh add follows the back-wall rule")
+	assert_true(_history.apply_rooms(_rooms(opened, SimGrid.Room.STORAGE)), _editor.last_check.why)
+	assert_true(_history.apply_floor(_rect(14, 0, 1, 10), true), _editor.last_check.why)
+	assert_true(_history.apply_rooms(_rooms([Vector2i(13, 2)], SimGrid.Room.DINING)), _editor.last_check.why)
+	assert_true(_history.apply_floor(_rect(14, 0, 1, 10), false), _editor.last_check.why)
+	var steps: int = _history.undo_count()
+	assert_eq(steps, 8)
+	for step: int in steps:
+		assert_true(_history.undo(), "undo %d: %s" % [step, _history.last_refusal])
+	assert_eq(grid.rooms(), start, "back to the starter rooms")
+	for step: int in steps:
+		assert_true(_history.redo(), "redo %d: %s" % [step, _history.last_refusal])
+	assert_eq(grid.room(Vector2i(13, 2)), SimGrid.Room.DINING)
+	assert_eq(grid.terrain(Vector2i(13, 2)), SimGrid.Terrain.WALL)
+	assert_eq(grid.room(opened[0]), SimGrid.Room.STORAGE)
+
+
 func test_guests_never_cut_a_kitchen_corner() -> void:
 	var grid: SimGrid = _sim.world.grid
 	# A checkerboard pinch: two kitchen cells touching only at a corner.
