@@ -8,7 +8,7 @@ const GEOMETRY: GDScript = preload("res://tools/seated_head_geometry.gd")
 const SIT_FRACTIONS: Array[float] = [0.0, 0.37, 0.91]
 ## Director 6404820766: unchanged kit items only. Every listed item must retain
 ## at least one measured physical violation; unknown classification is not proof.
-const KNOWN_KIT_FAILURE_IDS: PackedStringArray = ["bench", "chair", "cushioned_bench", "lounge_chair",
+const KNOWN_KIT_FAILURE_IDS: PackedStringArray = ["bench", "cushioned_bench", "lounge_chair",
 	"modern_chair", "modern_frame_chair", "rounded_chair", "table_2", "table_4", "wooden_chair"]
 
 
@@ -49,6 +49,12 @@ static func _expect_item_cases(expected: Dictionary[String, bool], definition: I
 
 static func _case_key(item: String, turns: int, cell: Vector2i, model: String, fraction: float) -> String:
 	return "%s turns=%d cell=%d,%d model=%s sit_fraction=%.9f" % [item, turns, cell.x, cell.y, model, fraction]
+
+
+## Cached skinning and native parity must describe the same articulated pose.
+## Variant bytes retain float identity instead of rounding authored leans.
+static func _pose_key(model: StringName, time: float, lean_degrees: float) -> String:
+	return String(model) + ":" + var_to_bytes([time, lean_degrees]).hex_encode()
 
 
 ## Count identities independently of returned rows: an aborted item sampler or
@@ -153,7 +159,8 @@ static func _sample_item(parent: Node, definition: ItemDef, turns: int, native_b
 					person._player.seek(animation.length * fraction, true)
 					# Bone pose queries calculate dirty transforms synchronously.
 					person._skeleton.force_update_all_bone_transforms()
-					var pose_key: String = "%s:%.9f" % [person.model_name(), animation.length * fraction]
+					var pose_key: String = _pose_key(person.model_name(), animation.length * fraction,
+						person.current_seated_lean_degrees())
 					if not poses.has(pose_key):
 						var posed: Dictionary = GEOMETRY.skin_vertices(GEOMETRY.head_mesh(person), person._skeleton)
 						if not String(posed["error"]).is_empty():
@@ -201,6 +208,7 @@ static func _sample_item(parent: Node, definition: ItemDef, turns: int, native_b
 					sample["sit_duration"] = animation.length
 					sample["seat_height"] = person._seat_height
 					sample["seated_forward_offset"] = definition.seated_forward_offset
+					sample["seated_lean_degrees"] = person.current_seated_lean_degrees()
 					var zero: Vector2i = GridMath.rotate_cell(Vector2i.ZERO, definition.footprint, turns)
 					var front: Vector2i = GridMath.rotate_cell(Vector2i.UP, definition.footprint, turns) - zero
 					var palm: Vector3 = person.to_global(person.carry_anchor_position())

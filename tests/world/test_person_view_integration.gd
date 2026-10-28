@@ -152,6 +152,180 @@ func test_all_imported_guest_rigs_stay_upright_across_timed_partial_clip_transit
 	assert_eq(_world.now, 0)
 
 
+func test_native_seated_lean_articulates_all_guest_torsos_without_moving_hips_or_scaling() -> void:
+	var guest: CustomerAgent = _guest(CustomerAgent.State.QUEUED)
+	await _enter_view()
+	var person: PersonView = _person(guest.id)
+	# A fixture angle exercises the mechanism; it is not authored seat tuning.
+	var fixture_degrees: float = 12.5
+	for look: int in PersonPresentation.GUEST_MODELS.size():
+		assert_true(person.set_look(&"customer", look))
+		person._player.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
+		person.set_playback_speed(0.0)
+		assert_true(person.set_pose(false, true, false, false, 0.27, 0.0))
+		var animation: Animation = person._player.get_animation(&"sit")
+		var neutral: Array[Dictionary] = []
+		for fraction: float in [0.0, 0.25, 0.75, 0.99] as Array[float]:
+			person._player.seek(animation.length * fraction, true)
+			person._skeleton.force_update_all_bone_transforms()
+			neutral.append(_seated_joint_snapshot(person))
+		assert_true(person.set_pose(false, true, false, false, 0.27, fixture_degrees))
+		assert_almost_eq(person.current_seated_lean_degrees(), fixture_degrees)
+		for index: int in neutral.size():
+			person._player.seek(animation.length * ([0.0, 0.25, 0.75, 0.99] as Array[float])[index], true)
+			person._skeleton.force_update_all_bone_transforms()
+			var leaned: Dictionary = _seated_joint_snapshot(person)
+			var before: Dictionary = neutral[index]
+			assert_eq(leaned["leg-left"], before["leg-left"], "left hip/leg transform stays native")
+			assert_eq(leaned["leg-right"], before["leg-right"], "right hip/leg transform stays native")
+			var torso: Transform3D = leaned["torso"]
+			var original_torso: Transform3D = before["torso"]
+			var head: Transform3D = leaned["head"]
+			var original_head: Transform3D = before["head"]
+			assert_true(torso.origin.is_equal_approx(original_torso.origin), "lean pivots at the torso joint")
+			assert_false(torso.basis.is_equal_approx(original_torso.basis))
+			assert_true(head.basis.get_scale().is_equal_approx(original_head.basis.get_scale()))
+			assert_almost_eq(head.origin.distance_to(torso.origin), original_head.origin.distance_to(original_torso.origin))
+			assert_true(person._skeleton_point_to_person(head.origin).z < person._skeleton_point_to_person(original_head.origin).z,
+				"source +X articulation moves the head toward person-local -Z")
+		assert_eq((person.get_node("ModelPivot") as Node3D).scale, Vector3.ONE * ArtScale.CHARACTER_SCALE)
+	assert_eq(_world.now, 0)
+
+
+func test_seated_lean_live_changes_model_changes_and_clear_preserve_private_clips_and_paused_time() -> void:
+	var first_guest: CustomerAgent = _guest(CustomerAgent.State.QUEUED)
+	var second_guest: CustomerAgent = _guest(CustomerAgent.State.QUEUED)
+	await _enter_view()
+	var first: PersonView = _person(first_guest.id)
+	var second: PersonView = _person(second_guest.id)
+	var imported_scene: PackedScene = load(PersonPresentation.model_path_for(&"customer", 0)) as PackedScene
+	var imported: Node = imported_scene.instantiate()
+	var imported_players: Array[Node] = imported.find_children("*", "AnimationPlayer", true, false)
+	assert_eq(imported_players.size(), 1)
+	var imported_player: AnimationPlayer = imported_players[0] as AnimationPlayer
+	var source_sit: Animation = null
+	for name: StringName in imported_player.get_animation_list():
+		if String(name).get_file() == "sit":
+			source_sit = imported_player.get_animation(name)
+	assert_not_null(source_sit)
+	if source_sit == null:
+		imported.free()
+		return
+	var source_keys: Array = _animation_key_snapshot(source_sit)
+	assert_true(first.set_look(&"customer", 0))
+	assert_true(second.set_look(&"customer", 0))
+	first._player.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
+	second._player.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
+	first.set_playback_speed(0.0)
+	second.set_playback_speed(0.0)
+	assert_true(first.set_pose(false, true, false, false, 0.27, 0.0))
+	assert_true(second.set_pose(false, true, false, false, 0.27, 0.0))
+	var untouched: Dictionary = {}
+	for clip: StringName in PersonPresentation.CLIPS:
+		if clip != &"sit":
+			untouched[clip] = _animation_key_snapshot(first._player.get_animation(clip))
+	var second_sit: Array = _animation_key_snapshot(second._player.get_animation(&"sit"))
+	var animation: Animation = first._player.get_animation(&"sit")
+	var time: float = animation.length * 0.5
+	first._player.seek(time, true)
+	assert_true(first.set_pose(false, true, false, false, 0.27, 7.5))
+	assert_almost_eq(first._player.current_animation_position, time)
+	assert_almost_eq(first._player.speed_scale, 0.0)
+	assert_true(first.set_pose(false, true, false, false, 0.27, ItemDef.MAX_SEATED_LEAN_DEGREES))
+	assert_almost_eq(first._player.current_animation_position, time)
+	assert_almost_eq(first.current_seated_lean_degrees(), ItemDef.MAX_SEATED_LEAN_DEGREES)
+	assert_eq(_animation_key_snapshot(second._player.get_animation(&"sit")), second_sit)
+	assert_eq(_animation_key_snapshot(source_sit), source_keys, "the imported shared sit resource remains unchanged")
+	assert_almost_eq(second.current_seated_lean_degrees(), 0.0)
+	for clip: StringName in untouched:
+		assert_eq(_animation_key_snapshot(first._player.get_animation(clip)), untouched[clip])
+	assert_true(first.set_look(&"customer", 1))
+	assert_eq(first.current_clip(), &"sit")
+	assert_almost_eq(first.current_seated_lean_degrees(), ItemDef.MAX_SEATED_LEAN_DEGREES)
+	assert_almost_eq(first._player.speed_scale, 0.0)
+	assert_almost_eq(first._player.current_animation_position, time, 0.0001, "a paused model change keeps seated time")
+	var torso: int = first._skeleton.find_bone("torso")
+	assert_false(first._skeleton.get_bone_pose_rotation(torso).is_equal_approx(
+		first._skeleton.get_bone_rest(torso).basis.get_rotation_quaternion()))
+	assert_true(first.set_pose(false, false, false, false, 0.27, 7.5))
+	assert_eq(first.current_clip(), &"idle")
+	assert_almost_eq(first.current_seated_lean_degrees(), 0.0)
+	assert_true(first._skeleton.get_bone_pose_rotation(torso).is_equal_approx(
+		first._skeleton.get_bone_rest(torso).basis.get_rotation_quaternion()))
+	assert_true(first.set_pose(false, true, false, false, 0.27))
+	assert_almost_eq(first.current_seated_lean_degrees(), 0.0, 0.0001, "omitting the new optional parameter restores native sit")
+	assert_true(first._skeleton.get_bone_pose_rotation(torso).is_equal_approx(
+		first._skeleton.get_bone_rest(torso).basis.get_rotation_quaternion()))
+	assert_eq(_animation_key_snapshot(source_sit), source_keys)
+	imported.free()
+
+
+func test_shop_view_resolves_detached_seat_lean_and_clears_it_on_departure_without_sim_mutation() -> void:
+	var table: PlacedItem = _table()
+	var definition: ItemDef = (table.def as ItemDef).duplicate(true) as ItemDef
+	definition.seated_lean_degrees = 7.5
+	table.def = definition
+	var guest: CustomerAgent = _guest(CustomerAgent.State.WAITING_FOOD)
+	guest.table_item_id = table.id
+	guest.seat_cell = table.seat_cells[0]
+	guest.cell = guest.seat_cell
+	assert_true(table.reserve(guest.seat_cell, guest.id))
+	var cell: Vector2i = guest.cell
+	var rng_state: int = guest.rng.state
+	await _enter_view()
+	var person: PersonView = _person(guest.id)
+	assert_eq(_world.grid.dining_furnishing_id(guest.seat_cell), table.id)
+	assert_eq(person.current_clip(), &"sit")
+	assert_almost_eq(person.current_seated_lean_degrees(), 7.5)
+	assert_eq(guest.cell, cell)
+	assert_eq(guest.rng.state, rng_state)
+	assert_eq(_world.now, 0)
+	guest.state = CustomerAgent.State.LEAVING
+	_view._process(0.0)
+	assert_almost_eq(person.current_seated_lean_degrees(), 0.0)
+	assert_ne(person.current_clip(), &"sit")
+	assert_eq(guest.cell, cell)
+	assert_eq(guest.rng.state, rng_state)
+	assert_eq(_world.now, 0)
+	assert_eq(table.reserved_by(guest.seat_cell), guest.id, "presentation never changes reservations")
+	assert_almost_eq(definition.seated_lean_degrees, 7.5, 0.0001, "standing reset does not rewrite the detached seat definition")
+
+
+func test_invalid_seated_lean_requests_do_not_change_the_live_pose() -> void:
+	var guest: CustomerAgent = _guest(CustomerAgent.State.QUEUED)
+	await _enter_view()
+	var person: PersonView = _person(guest.id)
+	person._player.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
+	assert_true(person.set_pose(false, true, false, false, 0.27, 7.5))
+	person._player.seek(person._player.get_animation(&"sit").length * 0.5, true)
+	var before: Dictionary = _seated_joint_snapshot(person)
+	var time: float = person._player.current_animation_position
+	for degrees: float in [-0.001, ItemDef.MAX_SEATED_LEAN_DEGREES + 0.001, NAN, INF, -INF] as Array[float]:
+		assert_false(person.set_pose(true, false, true, true, 99.0, degrees))
+		assert_eq(person.current_clip(), &"sit")
+		assert_almost_eq(person.current_seated_lean_degrees(), 7.5)
+		assert_almost_eq(person._player.current_animation_position, time)
+		assert_eq(_seated_joint_snapshot(person), before)
+		assert_almost_eq((person.get_node("ModelPivot") as Node3D).position.y, 0.27)
+
+
+func _seated_joint_snapshot(person: PersonView) -> Dictionary:
+	var result: Dictionary = {}
+	for name: String in ["leg-left", "leg-right", "torso", "head"] as Array[String]:
+		result[name] = person._skeleton.get_bone_global_pose(person._skeleton.find_bone(name))
+	return result
+
+
+func _animation_key_snapshot(animation: Animation) -> Array:
+	var result: Array = []
+	for track: int in animation.get_track_count():
+		var keys: Array = []
+		for key: int in animation.track_get_key_count(track):
+			keys.append([animation.track_get_key_time(track, key), animation.track_get_key_value(track, key)])
+		result.append([animation.track_get_type(track), animation.track_get_path(track), keys])
+	return result
+
+
 func test_native_standing_server_clears_a_fixed_seated_guest_and_drawn_picking() -> void:
 	var table: PlacedItem = _table()
 	var guest: CustomerAgent = _guest(CustomerAgent.State.WAITING_FOOD)

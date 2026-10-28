@@ -20,12 +20,18 @@ func test_every_catalogue_seat_is_measured_and_only_explicit_kit_failures_are_al
 	assert_eq(report["failures"], 0)
 	assert_eq((report["known_kit_failures"] as Array).size(), CATALOGUE.KNOWN_KIT_FAILURE_IDS.size())
 	var coverage: Dictionary[String, bool] = {}
+	var fixed_chair_cases: int = 0
+	assert_false(CATALOGUE.KNOWN_KIT_FAILURE_IDS.has("chair"), "the fixed chair cannot retain an exception")
 	for sample: Dictionary in report["samples"]:
 		var context: String = "%s %s turns=%d cell=%s sit_t=%.5f" % [sample["item"], sample["model"], sample["turns"], sample["seat_cell"], sample["sit_time"]]
 		assert_eq(sample.get("error", "missing result"), "", context)
 		if not String(sample.get("error", "missing result")).is_empty():
 			continue
 		coverage[String(sample["item"])] = true
+		if sample["item"] == "chair":
+			fixed_chair_cases += 1
+			assert_false(sample["known_kit_failure"], context)
+			assert_true(sample["passes"], context)
 		assert_true(int(sample["head_vertices"]) > 0, context)
 		assert_true(int(sample["seat_triangles"]) > 0, context)
 		assert_true(float(sample["facing_dot"]) > 0.9999, context + " faces its table")
@@ -46,11 +52,22 @@ func test_every_catalogue_seat_is_measured_and_only_explicit_kit_failures_are_al
 		if sample["item"] in ["diner_booth", "diner_stool"]:
 			assert_true(sample["hips_supported"], context)
 			assert_eq((sample["hip_support_points"] as Array).size(), 2, context)
+	assert_eq(fixed_chair_cases, 96, "all eight looks, three sit times and four rotations pass without exception")
 	for required: String in ["chair", "wooden_chair", "rounded_chair", "modern_chair", "modern_frame_chair",
 		"bar_stool", "square_bar_stool", "bench", "cushioned_bench", "lounge_chair", "diner_booth", "diner_stool", "table_2", "table_4"]:
 		assert_true(coverage.has(required), required + " was actually measured")
 	for finding: Dictionary in report["known_kit_failures"]:
 		assert_true(int(finding["physical_violation_samples"]) > 0, String(finding["item"]))
+
+
+func test_cached_head_vertices_and_native_parity_distinguish_seat_pose_variants() -> void:
+	var neutral: String = CATALOGUE._pose_key(&"character-female-e", 0.37, 0.0)
+	assert_eq(neutral, CATALOGUE._pose_key(&"character-female-e", 0.37, 0.0))
+	assert_ne(neutral, CATALOGUE._pose_key(&"character-female-e", 0.37, 10.0))
+	assert_ne(neutral, CATALOGUE._pose_key(&"character-female-e", 0.91, 0.0))
+	assert_ne(neutral, CATALOGUE._pose_key(&"character-female-a", 0.37, 0.0))
+	assert_ne(CATALOGUE._pose_key(&"character-female-e", 0.37, 10.0),
+		CATALOGUE._pose_key(&"character-female-e", 0.37, 10.000001))
 
 
 ## FK-083: every stool facing a serve-across counter piece is a seat, and the

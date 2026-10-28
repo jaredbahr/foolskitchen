@@ -102,6 +102,31 @@ person-local geometry payload. An item ID, nominal pose or rounded AABB alone
 cannot reuse a passing result. The complete native catalogue and renderer-parity results are recorded in the PR;
 physical kit exceptions remain separately reported.
 
+## Cushioned chair correction
+
+The cushioned `chair` now authors a 33-degree forward torso pose and the
+supported 0.05 m offset. It is removed from the exception list: all 96 native
+look/time/rotation cases must pass the unchanged physical rules. The worst
+measured gap is 0.0219833 m; the previous pose had 96 physical failures.
+The other nine exceptions remain and this does not complete #155.
+
+The private sit clip rotates only the native torso joint. Root/hip/leg transforms,
+character proportions, shared scale, source assets, simulation cells and random
+streams stay unchanged. Pose/parity cache keys include the actual lean. Native
+parity covers 24 neutral and 24 leaned model/time poses; the largest measured
+vertex error is 1.49e-8 m, below the unchanged 1e-5 bound.
+
+The manual `chair_pose_review.gd` creates a real ShopView chair/reservation
+fixture, compares the original and authored pose using the unchanged geometry
+oracle and native bake, and records native close crops plus a standing reference.
+It hides only the reservation-only table's unauthored placeholder box in the
+crop, never any chair or character geometry. Its support trial retains both hip
+rays at the original seat surface height after the authored offset.
+
+```sh
+godot --rendering-method gl_compatibility --path . --script tools/chair_pose_review.gd -- --out=/fresh/chair-review
+```
+
 ## Explicit unchanged-kit findings
 
 The Director permitted item-ID exceptions for kit seats that still fail mesh
@@ -112,7 +137,7 @@ in the bounded read-only source audit (at least one of the eight native looks);
 | Item ID | Actual physical finding at the unchanged original pose |
 |---|---|
 | bench | Indexed head triangles cross a bench mesh |
-| chair | Indexed head triangles cross chairCushion |
+| chair (historical baseline, now fixed) | Previously crossed chairCushion; all 96 corrected cases now pass without an exception |
 | cushioned_bench | Two looks cross benchCushion; six other looks had a 0.003575 surface gap, which alone is not proof of a backrest-rule violation |
 | lounge_chair | Indexed head triangles cross loungeChair |
 | modern_chair | Indexed head triangles cross chairModernCushion |

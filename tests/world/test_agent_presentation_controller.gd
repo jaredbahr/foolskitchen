@@ -17,6 +17,7 @@ class SpyPerson extends PersonView:
 	var seen_type: StringName = &""
 	var seen_pose: Array[bool] = []
 	var seen_seat: float = 0.0
+	var seen_lean: float = 0.0
 	var seen_speed: float = -1.0
 
 	func set_look(value: StringName, id: int = 0, kind: StringName = &"regular") -> bool:
@@ -25,9 +26,11 @@ class SpyPerson extends PersonView:
 		seen_type = kind
 		return PersonPresentation.model_for(value, id, kind) != &""
 
-	func set_pose(moving: bool, seated: bool, carrying: bool, working: bool, seat_height: float = 0.0) -> bool:
+	func set_pose(moving: bool, seated: bool, carrying: bool, working: bool, seat_height: float = 0.0,
+			seated_lean_degrees: float = 0.0) -> bool:
 		seen_pose = [moving, seated, carrying, working]
 		seen_seat = seat_height
+		seen_lean = seated_lean_degrees
 		return true
 
 	func set_playback_speed(value: float) -> void:
@@ -303,6 +306,32 @@ func test_zero_seated_offset_preserves_legacy_projection_and_table_facing() -> v
 	assert_true(view.position.is_equal_approx(original.floor_position + expected_offset))
 	assert_eq(view.seen_pose, [false, true, false, false])
 	assert_almost_eq(view.seen_seat, 0.31)
+	view.free()
+
+
+func test_authored_lean_reaches_only_verified_seated_views_without_moving_the_agent() -> void:
+	var guest: CustomerAgent = _seated_customer(_table())
+	var before_cell: Vector2i = guest.cell
+	var before_random: int = guest.rng.state
+	var leans: Dictionary[int, float] = {guest.id: 12.0}
+	var frames: Dictionary[int, AgentPresentationController.Frame] = AgentPresentationController.frames_for(
+		[guest] as Array[SimAgent], _world, {}, {}, {}, leans)
+	var view: SpyPerson = SpyPerson.new()
+	assert_true(AgentPresentationController.apply(frames[guest.id], view, 0.0))
+	assert_almost_eq(view.seen_lean, 12.0)
+	assert_eq(view.position, frames[guest.id].floor_position)
+	assert_eq(guest.cell, before_cell)
+	assert_eq(guest.rng.state, before_random)
+	guest.state = CustomerAgent.State.LEAVING
+	var standing: AgentPresentationController.Frame = AgentPresentationController.frame_for(
+		guest, _world, 0.31, 0.0, Vector3.ZERO, 12.0)
+	assert_true(AgentPresentationController.apply(standing, view, 0.0))
+	assert_almost_eq(view.seen_lean, 0.0)
+	for invalid: float in [-1.0, ItemDef.MAX_SEATED_LEAN_DEGREES + 1.0, INF, NAN]:
+		guest.state = CustomerAgent.State.WAITING_FOOD
+		var rejected: AgentPresentationController.Frame = AgentPresentationController.frame_for(
+			guest, _world, 0.31, 0.0, Vector3.ZERO, invalid)
+		assert_almost_eq(rejected.seated_lean_degrees, 0.0)
 	view.free()
 
 
