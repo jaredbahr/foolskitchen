@@ -329,6 +329,13 @@ func _play_requested_clip() -> bool:
 		return false
 	if _clip == _requested_clip:
 		return true
+	# Between carrying and bending to set down or pick up (FK-099), the arms
+	# ease across instead of jumping (a crate in hand follows them).
+	if PersonPresentation.CARRY_BLEND_CLIPS.has(_clip) and PersonPresentation.CARRY_BLEND_CLIPS.has(_requested_clip):
+		_player.play(_requested_clip, PersonPresentation.CARRY_BLEND_SECONDS)
+		_player.advance(0.0)
+		_clip = _requested_clip
+		return true
 	_player.stop()
 	# Holding and sitting only key part of the skeleton; clear the previous pose.
 	_skeleton.reset_bone_poses()

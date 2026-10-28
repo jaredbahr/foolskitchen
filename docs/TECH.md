@@ -894,10 +894,12 @@ an active edit/panel/selection first, or opens Settings when none is active.
   palette tint) cut to one stone per approach cell, flush, fading out (2.3j).
   The leaf swings out, onto the path where nothing is ever placed, like a
   service door (`WallSegmentView.set_door_open`, up to `DOOR_OPEN_DEGREES` =
-  90, the turn's sign read from the leaf's own transforms; the door is turned
-  round to hinge on the side with open ground beside the path), sliding
-  `DOOR_OPEN_SLIDE` (0.11 m) onto its hinge-side jamb as it opens so an open
-  leaf stays clear of the opening and the path, while someone going
+  110, a little past square, the turn's sign read from the leaf's own
+  transforms; the door is turned round to hinge on the side with open ground
+  beside the path), sliding `DOOR_OPEN_SLIDE` (0.08 m) onto its hinge-side
+  jamb as it opens. Open, the visible leaf is 0.38 m from the path's centre
+  line: clear of the path (0.24) and 0.1 m clear of a passing head (the Mini
+  Characters' heads are about as wide as the door), while someone going
   through is within 1.75 m (fully open within 0.5 m, smoothstep between:
   about a second of walking at 1x): the delivery person always, staff only
   when their path leads through the door, guests never
@@ -1670,7 +1672,9 @@ existing paint colour and camera-controlled build-grid parameters.
     delivery person is `character-female-b` in her uniform. People carrying
     while walking play `carry-walk` (`PersonView` builds it from the kit's
     `walk` with the arms of `holding-both`, so legs walk under carrying arms;
-    servers' trays use it too). The back door's leaf swings out onto the path
+    servers' trays use it too); switching among `pick-up`, `holding-both`
+    and `carry-walk` blends over 0.12 s so arms (and the crate) never jump.
+    The back door's leaf swings out onto the path
     (`WallSegmentView`, hinged on the side with open ground beside it, slid
     `DOOR_OPEN_SLIDE` onto its jamb, clear of the path and of anyone on it);
     the path is the street pavement cut to one stone per cell with a joint,

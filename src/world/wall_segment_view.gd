@@ -27,12 +27,14 @@ const WINDOW_SCENE: PackedScene = preload("res://assets/kenney/furniture/wallWin
 ## is ever placed, as the delivery person (or staff) pass; ShopView sets how
 ## far from where people are (set_door_open), view only.
 const BACK_DOOR_SCENE: PackedScene = preload("res://assets/kenney/furniture/doorway.glb")
-## How far a fully open leaf turns (degrees): square to the wall.
-const DOOR_OPEN_DEGREES: float = 90.0
+## How far a fully open leaf turns (degrees): a little past square, leaning
+## back towards the wall, so the open leaf stays 0.1 m clear of the delivery
+## person's head (the Mini Characters' heads are as wide as the door) and of
+## the path.
+const DOOR_OPEN_DEGREES: float = 110.0
 ## As it opens the leaf slides this far onto its hinge-side jamb (metres), so
-## an open leaf is clear of the opening and of the path, and nobody passing
-## ever touches it.
-const DOOR_OPEN_SLIDE: float = 0.11
+## an open leaf is clear of the opening.
+const DOOR_OPEN_SLIDE: float = 0.08
 ## The back path (FK-099): one square of the street's pavement per cell with a
 ## thin joint between them, laid flush (a sliver thick, so no side face shows
 ## against the dark beyond the lot).

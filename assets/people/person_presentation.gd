@@ -27,6 +27,10 @@ const CLIPS: Array[StringName] = [
 const CARRY_WALK: StringName = &"carry-walk"
 ## Played once (bending to a crate), then held; every other clip loops.
 const ONE_SHOT_CLIPS: Array[StringName] = [&"pick-up"]
+## Switching among these blends over CARRY_BLEND_SECONDS (the arms of
+## `holding-both` and the `pick-up` bend's start differ by 0.2 m).
+const CARRY_BLEND_CLIPS: Array[StringName] = [&"pick-up", &"holding-both", CARRY_WALK]
+const CARRY_BLEND_SECONDS: float = 0.12
 # Rest-pose head mesh maxima read from the vendored GLB POSITION accessors.
 # These are source measurements, before the single shared character scale.
 const HEAD_TOPS: Dictionary[StringName, float] = {

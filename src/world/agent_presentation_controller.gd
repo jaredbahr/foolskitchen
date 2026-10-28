@@ -288,7 +288,11 @@ static func _put_away_frame(frame: Frame, staff: StaffAgent, task: SimTask, worl
 	var offset: Vector3 = picker_spot(world.grid, crate_cell, layer) - GridMath.cell_to_world(crate_cell)
 	var step: int = staff.step_index
 	var progress: float = clampf(staff.move_progress, 0.0, 1.0)
-	if staff.cell == crate_cell and step <= DeliveryDock.STEP_LIFT and not frame.moving:
+	if staff.cell == crate_cell and step == DeliveryDock.STEP_CARRY and not frame.moving:
+		# Lifted, about to walk off: still beside the stack.
+		frame.floor_position += offset
+		frame.facing_direction = spot - frame.floor_position
+	elif staff.cell == crate_cell and step <= DeliveryDock.STEP_LIFT and not frame.moving:
 		frame.floor_position += offset
 		frame.facing_direction = spot - frame.floor_position
 		frame.crate_layer = layer
