@@ -656,6 +656,45 @@ func test_playback_matches_clock_speed_and_cleaner_remains_an_explicit_fallback(
 	assert_eq(_world.now, 0)
 
 
+func test_courier_wears_a_cap_and_a_private_uniform_copy_of_the_colormap() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	await tree.process_frame
+	var scene: PackedScene = preload("res://assets/people/person.tscn")
+	var courier: PersonView = scene.instantiate() as PersonView
+	courier.role = &"courier"
+	var cook: PersonView = scene.instantiate() as PersonView
+	cook.role = &"cook"
+	tree.root.add_child(courier)
+	tree.root.add_child(cook)
+	assert_eq(courier.model_name(), PersonPresentation.COURIER_MODEL)
+	assert_true(courier._cap.visible)
+	assert_eq(courier._cap.get_parent().name, &"CourierCapAttachment")
+	assert_false(courier._hat.visible)
+	assert_false(cook._cap.visible, "only the delivery person wears the cap")
+	var crown: StandardMaterial3D = (courier._cap.get_node("Crown") as MeshInstance3D).mesh.surface_get_material(0)
+	assert_true(crown.albedo_color.is_equal_approx(PersonPresentation.COURIER_BROWN), "cap matches the shirt")
+	var peak: StandardMaterial3D = (courier._cap.get_node("Peak") as MeshInstance3D).mesh.surface_get_material(0)
+	assert_true(peak.albedo_color.is_equal_approx(PersonPresentation.COURIER_AMBER))
+	for node: Node in courier._model.find_children("*", "MeshInstance3D", true, false):
+		var mesh_instance: MeshInstance3D = node as MeshInstance3D
+		if courier._cap.is_ancestor_of(mesh_instance):
+			continue
+		var material: StandardMaterial3D = mesh_instance.get_surface_override_material(0) as StandardMaterial3D
+		assert_not_null(material)
+		var image: Image = material.albedo_texture.get_image()
+		assert_true(image.get_pixel(496, 256).is_equal_approx(PersonPresentation.COURIER_BROWN))
+		assert_true(image.get_pixel(176, 256).is_equal_approx(PersonPresentation.COURIER_AMBER))
+		# Outside the repainted blocks (skin at 496,400) the kit texture is unchanged.
+		var source: Image = (mesh_instance.mesh.surface_get_material(0) as StandardMaterial3D).albedo_texture.get_image()
+		assert_eq(image.get_pixel(496, 400), source.get_pixel(496, 400))
+		assert_eq(source.get_pixel(496, 256), Color8(168, 120, 232), "the shared colormap itself is untouched")
+	for node: Node in cook._model.find_children("*", "MeshInstance3D", true, false):
+		if not cook._hat.is_ancestor_of(node) and not cook._cap.is_ancestor_of(node):
+			assert_null((node as MeshInstance3D).get_surface_override_material(0))
+	courier.free()
+	cook.free()
+
+
 func _enter_view() -> void:
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	await tree.process_frame

@@ -69,6 +69,20 @@ func test_models_are_restricted_to_vendored_mini_characters() -> void:
 		assert_true(PersonPresentation.source_head_top(PersonPresentation.model_for(&"customer", id)) > 0.0)
 
 
+func test_only_the_courier_wears_the_delivery_uniform() -> void:
+	assert_true(PersonPresentation.has_courier_cap(&"courier"))
+	assert_false(PersonPresentation.has_chef_hat(&"courier"))
+	var recolors: Array[Dictionary] = PersonPresentation.uniform_recolors(&"courier")
+	assert_eq(recolors.size(), 2)
+	for recolor: Dictionary in recolors:
+		var rect: Rect2i = recolor["rect"]
+		assert_true(Rect2i(0, 0, 512, 512).encloses(rect), "blocks stay inside the kit colormap")
+	for role: StringName in [&"cook", &"server", &"owner", &"customer", &"guest", &"cleaner"]:
+		assert_false(PersonPresentation.has_courier_cap(role))
+		assert_eq(PersonPresentation.uniform_recolors(role).size(), 0)
+	assert_ne(PersonPresentation.COURIER_BROWN, PersonPresentation.COURIER_AMBER)
+
+
 func test_agent_state_flags_choose_required_kit_clips() -> void:
 	assert_eq(PersonPresentation.clip_for_state(false, false, false, false), &"idle")
 	assert_eq(PersonPresentation.clip_for_state(true, false, false, false), &"walk")

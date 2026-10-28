@@ -10,6 +10,9 @@ const OWNER_MODEL: StringName = &"character-male-a"
 # The delivery person (FK-099): the one kit model no other role uses. ART_STYLE
 # lists female-b for cooks too, but cooks use male-b; it never wears the hat.
 const COURIER_MODEL: StringName = &"character-female-b"
+# Delivery uniform colours (ART_STYLE section 4): no other role wears either.
+const COURIER_BROWN: Color = Color("9a6a3e")
+const COURIER_AMBER: Color = Color("d98e2b")
 # Both b models are reserved for cooks; owner and server looks stay distinct.
 const GUEST_MODELS: Array[StringName] = [
 	&"character-female-a", &"character-female-c", &"character-female-d",
@@ -72,6 +75,26 @@ static func model_path_for(role: StringName, guest_id: int = 0, customer_type: S
 
 static func has_chef_hat(role: StringName) -> bool:
 	return role == &"cook"
+
+
+## The delivery person's uniform (FK-099): a parcel-brown cap with an amber
+## peak, and the shared colormap's shirt ramps repainted for her alone.
+static func has_courier_cap(role: StringName) -> bool:
+	return role == &"courier"
+
+
+## Colormap blocks to repaint, as {rect, color}: the female-b clothes (purple
+## ramp) becomes parcel brown and her sleeves and collar (yellow ramp) amber.
+## Each pixel keeps its shade relative to the block's top row, so the kit's
+## baked gradient survives. Only a copy is painted; other roles see the
+## vendored texture.
+static func uniform_recolors(role: StringName) -> Array[Dictionary]:
+	if role != &"courier":
+		return []
+	return [
+		{"rect": Rect2i(480, 256, 32, 128), "color": COURIER_BROWN},
+		{"rect": Rect2i(160, 256, 32, 128), "color": COURIER_AMBER},
+	]
 
 
 static func source_head_top(model: StringName) -> float:
