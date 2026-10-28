@@ -168,16 +168,6 @@ func _try_claim(world: SimWorld) -> void:
 			# Existing task urgency deferral stays within the chosen job tier.
 			if job_level == highest_job_level and (not highest_priorities.has(t.role) or t.priority > highest_priorities[t.role]):
 				highest_priorities[t.role] = t.priority
-	# Guest work this server would take now (FK-099): a server carries
-	# deliveries only while no guest is waiting on them (washing up is not
-	# guest work), so putting goods away never takes them from a guest.
-	var guest_work_open: bool = false
-	if role == &"server":
-		for t: SimTask in candidates:
-			if t.role == &"server" and t.kind != &"wash" and float(scores.get(t.id, 0.0)) > 0.0 \
-					and _eligible(t, highest_job_level, highest_priorities):
-				guest_work_open = true
-				break
 	var best: SimTask = null
 	var best_score := 0.0
 	for t: SimTask in candidates:
@@ -186,8 +176,6 @@ func _try_claim(world: SimWorld) -> void:
 		# Legacy agents and the Floor-mode owner retain the original mop fallback.
 		# Configured employees instead use the saved job tier above distance.
 		if _job_priorities == null and fallback_cleaning and service_work_open and _is_clean_spot(t):
-			continue
-		if role == &"server" and guest_work_open and t.kind == DeliveryDock.TASK_KIND:
 			continue
 		var score: float = scores.get(t.id, 0.0)
 		if score > best_score:

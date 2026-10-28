@@ -478,28 +478,6 @@ func test_servers_put_deliveries_away_as_serving_and_the_cleaner_as_cleaning() -
 	assert_not_null(owner)
 
 
-func test_servers_carry_only_while_no_guest_is_waiting_on_them() -> void:
-	_back_door()
-	_open_quiet()
-	var server: StaffAgent = _staff(&"server")
-	assert_true(_sim.dock.arrive(_lines(4, 0)))
-	assert_true(_run_until(_dropped) >= 0)
-	var put_away: SimTask = _sim.dock.task_for_crate(int(_sim.dock.crates()[0]["id"]))
-	assert_eq(put_away.state, SimTask.State.OPEN)
-	assert_null(server.task)
-	# Guest work for servers, far off and less urgent: the crate would score higher.
-	var guest: SimTask = SimTask.new(&"take_order", &"server", "Take an order")
-	guest.steps.append(TaskStep.go_to_cell(Vector2i(1, 9), "walking"))
-	_sim.world.board.post(guest, _sim.world.now)
-	_sim.advance()
-	assert_eq(server.task, guest, "service first: no crate while a guest waits")
-	assert_eq(put_away.state, SimTask.State.OPEN)
-	_sim.world.board.cancel(guest, &"test")
-	for tick: int in 3:
-		_sim.advance()
-	assert_eq(server.task, put_away, "idle again: now the server carries it")
-
-
 func test_closing_frees_whoever_was_carrying_at_once() -> void:
 	_back_door()
 	_open_quiet()

@@ -1633,11 +1633,17 @@ existing paint colour and camera-controlled build-grid parameters.
     carrier will lift) and `CourierAgent.drop_layer` current for the view.
   - **Who carries (job priority).** With a cleaner on the team it is the
     cleaner's (job Cleaning, their main job); otherwise servers do it as
-    Serving (`StaffJobPriorities.ROLE_TASK_JOBS`), but only while no guest
-    work they would take now is open (`StaffAgent._try_claim`: any eligible
-    server task except washing up), so putting goods away never costs
-    service; what is still waiting at closing is stored. Cooks (Cleaning is
-    Off for them) and the owner (no `any` priority) never carry. Closing
+    Serving (`StaffJobPriorities.ROLE_TASK_JOBS`: front-of-house work, so a
+    mid-day order is put away during service rather than left to a Low
+    fallback a busy server never reaches); what is still waiting at closing
+    is stored. Cooks (Cleaning is Off for them) and the owner (no `any`
+    priority) never carry. **Service cost (director, #195):** a shop taking
+    several mid-day orders with no cleaner pays a visible cost, as servers
+    leave guests to carry crates and goods reach the shelves later (probe,
+    4 orders a day, 5 seeds x 5 days: 329 served against 361 when goods
+    arrived at once); hiring a cleaner removes it (347 against 353; with one
+    order a day 436, identical). Making servers wait for idle moments was
+    tried and cost more (313): goods sat longer and dishes ran out. Closing
     withdraws the carrying tasks and frees their carriers on that tick
     (`StaffAgent.let_go_if_withdrawn`).
   - **Never lose goods.** Paid when ordered; while waiting the goods count as
