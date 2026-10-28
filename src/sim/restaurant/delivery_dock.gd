@@ -75,6 +75,9 @@ class Crate extends RefCounted:
 
 ## Ingredient stock the goods go into (the session's shared stock).
 var stock: Stock
+## The shop's lot (ShopFootprint.lot; Main sets it): the back alley runs
+## along its outer edge. Empty: along the building's.
+var lot: Rect2i = Rect2i()
 var _world_ref: WeakRef
 var _kinds: Dictionary[StringName, int] = {}
 var _crates: Array[Crate] = []
@@ -99,7 +102,7 @@ func arrive(lines: Array[Dictionary]) -> bool:
 	if world == null or stock == null or lines.is_empty() \
 			or world.clock.phase not in [SimClock.Phase.OPEN, SimClock.Phase.LAST_ORDERS]:
 		return false
-	var route: Dictionary = WallRules.delivery_route(world.grid, _any_storage_cell(world))
+	var route: Dictionary = WallRules.delivery_route(world.grid, _any_storage_cell(world), lot)
 	if route.is_empty():
 		return false
 	var by_kind: Dictionary[int, Array] = {}

@@ -97,19 +97,18 @@ func test_a_delivery_comes_from_off_the_lot_through_the_back_door() -> void:
 	assert_eq(route["door"], DOOR)
 	assert_eq(route["drop"], DROP)
 	assert_eq(route["out"], Vector2i(1, 0))
-	# The grid ends at the shop's east wall here (no lot bought), so the path
-	# runs OFF_LOT_CELLS straight on beyond it.
-	assert_false(_sim.world.grid.in_bounds(DOOR + Vector2i.RIGHT))
+	# No lot given: the alley runs along the building's east edge, from the
+	# back (north, away from the street) down to the door.
 	var approach: Array[Vector2i] = []
-	for x: int in range(DOOR.x + WallRules.OFF_LOT_CELLS, DOOR.x, -1):
-		approach.append(Vector2i(x, 6))
-	assert_eq(route["approach"], approach, "up the back door's path, far to near, from out of sight")
-	assert_eq(WallRules.lot_cells_of(_sim.world.grid, approach), 0)
+	for y: int in range(-WallRules.ALLEY_REACH, 7):
+		approach.append(Vector2i(15, y))
+	approach.append(Vector2i(14, 6))
+	assert_eq(route["approach"], approach, "along the back alley's outer lane from out of sight, far to near")
 	assert_true(_sim.dock.arrive(_lines(4, 6)))
 	assert_eq(_stock.count(&"cheese"), 8, "nothing is stock on arrival")
 	var courier: CourierAgent = _courier()
 	assert_not_null(courier, "a delivery person walks in")
-	assert_eq(courier.route.front(), DOOR + Vector2i(WallRules.OFF_LOT_CELLS, 0), "from well beyond the lot")
+	assert_eq(courier.route.front(), Vector2i(15, -WallRules.ALLEY_REACH), "from well beyond the lot")
 	assert_eq(courier.route.back(), DOOR, "she stops in the doorway")
 	assert_eq(courier.drop_cell(), DROP, "and sets the crates down just inside")
 	assert_false(_sim.world.grid.in_bounds(courier.cell), "starts beyond the lot")
@@ -125,8 +124,7 @@ func test_a_delivery_comes_from_off_the_lot_through_the_back_door() -> void:
 	assert_true(_sim.dock.couriers().is_empty(), "and leaves again")
 	assert_false(_sim.world.agents.has(courier), "gone from the world")
 	for cell: Vector2i in seen:
-		assert_true(cell == DOOR or (cell.y == DOOR.y and cell.x > DOOR.x),
-			"only the approach and the door: %s" % cell)
+		assert_true(cell == DOOR or approach.has(cell), "only the approach and the door: %s" % cell)
 	assert_true(seen.has(DOOR))
 	assert_eq(crates.size(), 2, "one crate per storage kind: fridge and dry")
 	assert_eq(crates[0]["kind"], StorageSpace.FRIDGE)
@@ -153,17 +151,46 @@ func test_without_a_back_door_the_delivery_uses_the_street_door() -> void:
 	assert_eq(_sim.dock.crates()[0]["cell"], entry + Vector2i.UP)
 
 
-func test_a_back_door_path_stops_at_the_shop() -> void:
-	# A wing bought beside the path: the path stops before it.
+func test_a_back_door_path_crosses_the_lot_to_the_alley_unless_a_wing_is_in_the_way() -> void:
 	var grid: SimGrid = _sim.world.grid
 	grid.grow_to(Rect2i(Vector2i.ZERO, Vector2i(18, 12)))
-	var open: Array[Vector2i] = WallRules.back_door_approach(grid, DOOR, Vector2i.RIGHT)
-	assert_eq(open.size(), 4 + WallRules.OFF_LOT_CELLS, "across the open lot to its edge, then on out of sight")
-	assert_eq(WallRules.lot_cells_of(grid, open), 4)
-	assert_eq(open.back(), Vector2i(14, 6))
+	var lot: Rect2i = Rect2i(Vector2i.ZERO, Vector2i(17, 12))
+	var alley: Dictionary = WallRules.back_alley(grid, DOOR, Vector2i.RIGHT, lot)
+	assert_eq(alley["path"], [Vector2i(14, 6), Vector2i(15, 6), Vector2i(16, 6)] as Array[Vector2i],
+		"straight out across the lot")
+	assert_eq(alley["junction"], Vector2i(17, 6), "to the alley just outside the lot")
+	assert_eq(alley["axis"], Vector2i(0, 1), "which runs along the wall")
+	assert_eq(alley["last"], 11, "and stops at the shop's front, at the street")
+	var open: Array[Vector2i] = WallRules.back_door_approach(grid, DOOR, Vector2i.RIGHT, lot)
+	assert_eq(open.front(), Vector2i(18, -WallRules.ALLEY_REACH), "coming from the back")
+	assert_eq(open.slice(-5), [Vector2i(18, 6), Vector2i(17, 6), Vector2i(16, 6), Vector2i(15, 6), Vector2i(14, 6)] as Array[Vector2i],
+		"then turning up the path to the door")
 	assert_true(grid.set_terrain(Vector2i(16, 6), SimGrid.Terrain.WALL))
-	assert_eq(WallRules.back_door_approach(grid, DOOR, Vector2i.RIGHT),
-		[Vector2i(15, 6), Vector2i(14, 6)] as Array[Vector2i])
+	assert_true(WallRules.back_door_approach(grid, DOOR, Vector2i.RIGHT, lot).is_empty(), "a wing in the way: no path")
+
+
+func test_the_alley_never_crosses_the_shop_the_street_or_bought_floor() -> void:
+	var footprint: ShopFootprint = ShopFootprint.from_layout(LAYOUT)
+	var lot: Rect2i = footprint.lot
+	var grid: SimGrid = _sim.world.grid
+	var street: Vector2i = WallRules.street_side(grid)
+	assert_eq(street, Vector2i.DOWN)
+	# Back wall, and both side walls.
+	for door_and_side: Array in [[Vector2i(9, 0), Vector2i.UP], [DOOR, Vector2i.RIGHT], [Vector2i(0, 6), Vector2i.LEFT]]:
+		var alley: Dictionary = WallRules.back_alley(grid, door_and_side[0], door_and_side[1], lot)
+		assert_false(alley.is_empty(), str(door_and_side))
+		var axis: Vector2i = alley["axis"]
+		var junction: Vector2i = alley["junction"]
+		var along: int = junction.x * axis.x + junction.y * axis.y
+		for t: int in range(int(alley["first"]), int(alley["last"]) + 1):
+			var cell: Vector2i = junction + axis * (t - along)
+			assert_false(lot.has_point(cell), "%s: alley cell %s outside the lot" % [door_and_side, cell])
+			assert_true(not grid.in_bounds(cell) or grid.terrain(cell) == SimGrid.Terrain.OUTSIDE)
+			var toward_street: int = cell.x * street.x + cell.y * street.y
+			var front: int = (lot.end.x - 1) * street.x if street.x != 0 else (lot.end.y - 1) * street.y
+			assert_true(toward_street <= front, "%s: never past the shop's front into the street" % [cell])
+		for cell: Vector2i in alley["path"]:
+			assert_true(not grid.in_bounds(cell) or grid.terrain(cell) == SimGrid.Terrain.OUTSIDE, "path over open lot")
 
 
 func test_a_back_door_that_cannot_reach_storage_is_not_used() -> void:

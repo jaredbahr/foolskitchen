@@ -46,11 +46,12 @@ const PATH_THICKNESS: float = 0.008
 ## Paving lightness steps (towards cream / charcoal), picked per tile from its
 ## cell, so the path reads as laid stones, not one slab.
 const PATH_SHADES: Array[float] = [0.0, 0.07, -0.06, 0.03, -0.03]
-## The path is solid across the lot (at least PATH_SOLID_CELLS, about a
-## lot's depth, where no lot is bought), then fades into the ground colour over
-## PATH_FADE_CELLS and stops (out of sight at the usual zoom by then).
+## The back alley is solid across the lot and PATH_SOLID_CELLS past it, then
+## fades into the ground colour over PATH_FADE_CELLS and stops (the delivery
+## person fades in and out at its ends). It is ALLEY_LANES cells wide.
 const PATH_SOLID_CELLS: int = 4
-const PATH_FADE_CELLS: int = 20
+const PATH_FADE_CELLS: int = WallRules.ALLEY_REACH - PATH_SOLID_CELLS
+const ALLEY_LANES: int = 2
 ## The fade's end: walnut darkened towards charcoal, close to the dark ground
 ## the lighting rig shows beyond the lot. Palette swatches only.
 const PATH_FAR_SWATCH: SwatchDef = preload("res://data/swatches/walnut.tres")
@@ -75,6 +76,11 @@ var _pane_bounds: AABB = AABB()
 var _leaves: Dictionary[Vector2i, Dictionary] = {}
 ## Pavement of the paths outside back doors (their tints are released on clear).
 var _paths: Array[PropView] = []
+## The shop's lot (ShopView.set_lot from Main): the back alley runs along its
+## outer edge. Empty: along the building's.
+var lot: Rect2i = Rect2i()
+var _grid: SimGrid
+var _stone_bounds: AABB = AABB()
 
 
 func _notification(what: int) -> void:
@@ -114,6 +120,7 @@ func clear() -> void:
 ## the shell cells ShopView currently draws lowered (their windows hide).
 func rebuild(grid: SimGrid, interior_lowered: bool, lowered_cells: Array[Vector2i]) -> void:
 	clear()
+	_grid = grid
 	if grid == null:
 		return
 	var span: Vector2 = window_span()
@@ -135,9 +142,9 @@ func rebuild(grid: SimGrid, interior_lowered: bool, lowered_cells: Array[Vector2
 			_build_shell_window(wall_cell, side, span)
 	var doors: Dictionary[Vector2i, Vector2i] = shell_door_cells(grid)
 	for cell: Vector2i in doors:
-		_build_shell_door(grid, cell, doors[cell], lowered_cells.has(cell))
-		var approach: Array[Vector2i] = WallRules.back_door_approach(grid, cell, doors[cell])
-		_build_back_path(cell, doors[cell], approach.size(), WallRules.lot_cells_of(grid, approach))
+		var alley: Dictionary = WallRules.back_alley(grid, cell, doors[cell], lot)
+		_build_shell_door(grid, cell, doors[cell], lowered_cells.has(cell), alley.get("from", Vector2i.ZERO))
+		_build_back_path(cell, alley, doors[cell])
 
 
 static func shell_door_cells(grid: SimGrid) -> Dictionary[Vector2i, Vector2i]:
@@ -156,7 +163,8 @@ static func shell_door_cells(grid: SimGrid) -> Dictionary[Vector2i, Vector2i]:
 	return cells
 
 
-func _build_shell_door(grid: SimGrid, cell: Vector2i, side: Vector2i, lowered: bool) -> void:
+func _build_shell_door(grid: SimGrid, cell: Vector2i, side: Vector2i, lowered: bool,
+		approach_from: Vector2i = Vector2i.ZERO) -> void:
 	var root: Node3D = Node3D.new()
 	root.name = "BackDoor_%d_%d" % [cell.x, cell.y]
 	root.position = GridMath.cell_to_world(cell)
@@ -186,54 +194,79 @@ func _build_shell_door(grid: SimGrid, cell: Vector2i, side: Vector2i, lowered: b
 		var leaf: Node3D = door.find_child("door", true, false) as Node3D
 		if leaf != null:
 			# Hinged on the side where the open leaf has open ground beside the
-			# path (a wing of the shop round an inner corner would cut it).
+			# path (a wing of the shop round an inner corner would cut it), and
+			# else on the side away from where deliveries come along the alley.
 			var hinge: Vector2i = _hinge_side(root, leaf)
-			if not _open_ground(grid, cell + side + hinge) and _open_ground(grid, cell + side - hinge):
+			var blocked: bool = not _open_ground(grid, cell + side + hinge)
+			if (blocked or hinge == approach_from) and _open_ground(grid, cell + side - hinge):
 				root.rotation.y += PI
 			leaf.set_meta(&"door_cell", cell)
 			_leaves[cell] = {"leaf": leaf, "sign": _outward_sign(root, leaf, side), "base": leaf.position,
 				"slide": _hinge_slide(root, leaf), "out": _flat_out(root, leaf, side)}
 
 
-## The path a delivery walks up to a back door (FK-099): the street's own
-## pavement (Kenney floorHalf, palette tint) cut to one square per cell, flush
-## with the floor, from the door's outer face over the `cells` approach cells:
-## across the lot (`lot_cells`) to its edge, then fading into the ground beyond
-## it. Never longer than the approach where a building stops it.
-func _build_back_path(cell: Vector2i, side: Vector2i, cells: int, lot_cells: int) -> void:
-	if cells <= 0:
+## The paving behind a back door (FK-099): a short path from the door out to
+## the back alley (WallRules.back_alley), and the alley itself, two cells
+## wide along the lot's outer edge, both of the street's pavement (Kenney
+## floorHalf, palette tint) cut to one stone per cell, flush with the floor.
+## The alley is solid across the lot and PATH_SOLID_CELLS past it, then
+## fades into the ground over PATH_FADE_CELLS (out of sight at the usual
+## zoom); a side wall's alley stops square at the shop's front, at the street.
+func _build_back_path(door: Vector2i, alley: Dictionary, side: Vector2i) -> void:
+	if alley.is_empty():
 		return
-	var probe: PropView = RoomDressing.make_asset(RoomDressing.PAVEMENT, "Measure", false, true)
-	if probe == null:
-		return
-	var bounds: AABB = probe.get_combined_aabb()
-	probe.clear_body_tint()
-	probe.free()
-	var outward: Vector3 = Vector3(side.x, 0.0, side.y)
-	var face: Vector3 = GridMath.cell_to_world(cell) + outward * GridMath.CELL_SIZE * 0.5
-	var square: float = GridMath.CELL_SIZE - PATH_JOINT
-	var base: Color = RoomDressing.pavement_color()
-	var solid: int = maxi(lot_cells, PATH_SOLID_CELLS)
-	for index: int in mini(cells, solid + PATH_FADE_CELLS):
-		var tile: PropView = RoomDressing.make_asset(RoomDressing.PAVEMENT, "BackPath_%d_%d_%d" % [cell.x, cell.y, index],
-			false, true)
-		if tile == null:
+	var path: Array[Vector2i] = alley["path"]
+	for cell: Vector2i in path:
+		_add_stone(cell, 0.0, door)
+	var junction: Vector2i = alley["junction"]
+	var axis: Vector2i = alley["axis"]
+	var along: int = junction.x * axis.x + junction.y * axis.y
+	var span_low: int = int(alley["first"]) + WallRules.ALLEY_REACH
+	var span_high: int = int(alley["last"]) - WallRules.ALLEY_REACH
+	var street: Vector2i = WallRules.street_side(_grid) if _grid != null else Vector2i.DOWN
+	if street == axis:
+		span_high = int(alley["last"])
+	elif street == -axis:
+		span_low = int(alley["first"])
+	for t: int in range(int(alley["first"]), int(alley["last"]) + 1):
+		var outside: int = maxi(span_low - t, t - span_high) - PATH_SOLID_CELLS
+		if outside > PATH_FADE_CELLS:
 			continue
-		var stone: Vector2i = cell + side * (index + 1)
-		var shade: float = PATH_SHADES[posmod(stone.x * 7 + stone.y * 13, PATH_SHADES.size())]
-		var color: Color = base.lerp(RoomDressing.PAVEMENT_LIGHT_SWATCH.color, shade) if shade >= 0.0 \
-			else base.lerp(RoomDressing.PAVEMENT_SWATCH.color, -shade)
-		var beyond: int = index - solid
-		if beyond >= 0:
-			color = color.lerp(PATH_FAR_SWATCH.color.lerp(RoomDressing.PAVEMENT_SWATCH.color, 0.3).darkened(0.35), float(beyond + 1) / float(PATH_FADE_CELLS + 1))
-		tile.set_body_tint(color)
-		tile.rotation.y = atan2(-outward.x, -outward.z)
-		tile.scale = Vector3(square / bounds.size.x, PATH_THICKNESS / bounds.size.y, square / bounds.size.z)
-		tile.position = face + outward * GridMath.CELL_SIZE * (float(index) + 0.5)
-		tile.position.y = -PATH_THICKNESS + 0.001
-		tile.set_meta(&"door_cell", cell)
-		_paths.append(tile)
-		add_child(tile)
+		var fade: float = float(maxi(outside, 0)) / float(PATH_FADE_CELLS + 1)
+		var cell: Vector2i = junction + axis * (t - along)
+		for lane: int in ALLEY_LANES:
+			_add_stone(cell + side * lane, fade, door)
+
+
+## One paving stone on `cell`: the street's pavement, flush, a joint round
+## it, its shade picked from the cell, `fade` (0..1) of the way into the dark
+## ground beyond the lot.
+func _add_stone(cell: Vector2i, fade: float, door: Vector2i) -> void:
+	if _stone_bounds == AABB():
+		var probe: PropView = RoomDressing.make_asset(RoomDressing.PAVEMENT, "Measure", false, true)
+		if probe == null:
+			return
+		_stone_bounds = probe.get_combined_aabb()
+		probe.clear_body_tint()
+		probe.free()
+	var tile: PropView = RoomDressing.make_asset(RoomDressing.PAVEMENT, "BackPath_%d_%d" % [cell.x, cell.y], false, true)
+	if tile == null:
+		return
+	var shade: float = PATH_SHADES[posmod(cell.x * 7 + cell.y * 13, PATH_SHADES.size())]
+	var color: Color = RoomDressing.pavement_color()
+	color = color.lerp(RoomDressing.PAVEMENT_LIGHT_SWATCH.color, shade) if shade >= 0.0 \
+		else color.lerp(RoomDressing.PAVEMENT_SWATCH.color, -shade)
+	if fade > 0.0:
+		color = color.lerp(PATH_FAR_SWATCH.color.lerp(RoomDressing.PAVEMENT_SWATCH.color, 0.3).darkened(0.35), fade)
+	tile.set_body_tint(color)
+	var square: float = GridMath.CELL_SIZE - PATH_JOINT
+	tile.scale = Vector3(square / _stone_bounds.size.x, PATH_THICKNESS / _stone_bounds.size.y, square / _stone_bounds.size.z)
+	tile.position = GridMath.cell_to_world(cell)
+	tile.position.y = -PATH_THICKNESS + 0.001
+	tile.set_meta(&"door_cell", door)
+	tile.set_meta(&"cell", cell)
+	_paths.append(tile)
+	add_child(tile)
 
 
 func path_tiles() -> Array[PropView]:

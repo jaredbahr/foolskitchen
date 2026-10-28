@@ -184,6 +184,12 @@ func _bind_world_presentation() -> void:
 	_paint_active = false
 	var view: ShopView = $ShopView
 	view.clear_paint_preview()
+	# The back alley runs along the lot's outer edge (FK-099).
+	var lot_layout: ShopLayout = _loaded_layout if _loaded_layout != null else LAYOUT
+	var lot: Rect2i = ShopFootprint.from_layout(lot_layout).lot
+	view.set_lot(lot)
+	if sim.dock != null:
+		sim.dock.lot = lot
 	view.show_world(world)
 	view.bind_cleanliness(sim.cleanliness)
 	view.bind_dock(sim.dock)

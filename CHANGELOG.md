@@ -11,7 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
-- Watch your daytime deliveries arrive: a delivery driver in a brown cap and uniform walks up a paved path to your back door (the front door if you have none), the door swinging out as she passes, and sets the crates down just inside. Goods count as stock once they are put away, so the Stock panel lists them as still to be put away until then; morning orders still arrive at once. (#195)
+- Watch your daytime deliveries arrive: a delivery driver in a brown cap and uniform walks along the back alley and up a short paved path to your back door (the front door if you have none), the door swinging out as she passes, and sets the crates down just inside. Goods count as stock once they are put away, so the Stock panel lists them as still to be put away until then; morning orders still arrive at once. (#195)
 - Your cleaner carries each delivered crate to the fridge, freezer or shelf; with no cleaner a server does it (a cleaner keeps your servers on the floor), and anything still waiting at closing is stored for you. Servers now walk normally while carrying plates or a crate instead of gliding. (#195)
 - A shop now has one back door, one cell wide: Build asks you to remove the old one before adding another (older shops keep the ones they have). New at level 2: a freezer in Buy mode's Kitchen tab, and frozen fries to stock in it (no dish uses them yet). (#195)
 - Guests lean forward a little in the cushioned chair, reducing the overlap with its backrest while keeping their heads above the table. (#193)

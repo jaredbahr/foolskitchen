@@ -79,6 +79,7 @@ var _preview_swatch_id: StringName = &""
 var _walls: Node3D
 ## Player-built wall segments (FK-070) and the shell cells holding their windows.
 var segment_view: WallSegmentView
+var _lot: Rect2i = Rect2i()
 var _shell_windows: Dictionary[Vector2i, Vector2i] = {}
 var selection_outline: BoundsOutline
 var _selected_item_id: int = -1
@@ -137,6 +138,7 @@ func show_world(value: SimWorld) -> void:
 	_walls.set_meta("shop_geometry", true)
 	add_child(_walls)
 	segment_view = WallSegmentView.new()
+	segment_view.lot = _lot
 	segment_view.name = "WallSegments"
 	segment_view.set_meta("shop_geometry", true)
 	add_child(segment_view)
@@ -151,6 +153,14 @@ func show_world(value: SimWorld) -> void:
 	_apply_paint()
 	_connect_grid()
 	_process(0.0)
+
+
+## The shop's lot (Main, before show_world()): the back alley behind a back
+## door runs along its outer edge.
+func set_lot(value: Rect2i) -> void:
+	_lot = value
+	if segment_view != null:
+		segment_view.lot = value
 
 
 ## Main binds the delivery dock after show_world(): crates on the floor and

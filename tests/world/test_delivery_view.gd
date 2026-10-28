@@ -101,24 +101,27 @@ func test_the_back_door_is_a_kenney_door_with_a_path_outside() -> void:
 	assert_true(leaf_bounds.end.x <= 7.0 + 0.15)
 	var tiles: Array[PropView] = _view.segment_view.path_tiles()
 	for tile: PropView in tiles:
+		# The alley hugs the wall here (no lot): the leaf stands against the wall
+		# at the inner lane's edge; the delivery person walks the outer lane.
 		var path_bounds: AABB = tile.global_transform * tile.get_combined_aabb()
-		assert_true(leaf_bounds.position.z >= path_bounds.end.z or leaf_bounds.end.z <= path_bounds.position.z,
-			"beside the path, not over it")
+		if leaf_bounds.position.z < path_bounds.end.z and leaf_bounds.end.z > path_bounds.position.z:
+			assert_true(leaf_bounds.end.x <= path_bounds.position.x + 0.15, "only along the wall, not over the alley")
 	_view.segment_view.set_door_open(DOOR, 0.0)
 	assert_true((leaf.global_transform * Vector3(0.4, 0.5, 0.0)).is_equal_approx(shut), "shuts exactly where it was")
 	_view.segment_view.set_door_open(DOOR, 1.0)
 	_view.segment_view.set_door_open(DOOR, 0.0)
-	# No lot bought east of the shop: the path fades out beyond the door.
-	assert_eq(tiles.size(), WallSegmentView.PATH_SOLID_CELLS + WallSegmentView.PATH_FADE_CELLS,
-		"one stone per approach cell, then it fades out")
+	# No lot given: the alley runs along the building's east edge, two lanes
+	# wide (x 14 and 15), from the back down to the shop's front.
+	assert_true(tiles.size() > 2 * WallRules.ALLEY_REACH, "the alley")
 	var tints: Dictionary[Color, bool] = {}
 	for tile: PropView in tiles:
 		var bounds: AABB = tile.global_transform * tile.get_combined_aabb()
 		assert_almost_eq(bounds.end.y, 0.001, 0.002, "level with the floor, so feet never sink")
 		assert_true(bounds.size.y < 0.02, "flush: no side face to show")
 		assert_true(bounds.size.x < GridMath.CELL_SIZE, "a joint between stones")
-		assert_true(bounds.position.x > 13.5 * GridMath.CELL_SIZE - 0.01, "all outside the shell")
-		assert_true(absf(bounds.get_center().z - GridMath.cell_to_world(DOOR).z) < 0.01, "in line with the door")
+		var cell: Vector2i = tile.get_meta(&"cell")
+		assert_true(cell.x == 14 or cell.x == 15, "on the alley: %s" % cell)
+		assert_true(cell.y <= 11, "never past the shop's front into the street")
 		tints[tile.active_body_material().albedo_color] = true
 	assert_true(tints.size() > 3, "the stones vary")
 	_view.set_wall_mode(ShopView.WallMode.DOWN)
@@ -139,7 +142,7 @@ func test_the_door_swings_open_for_the_delivery_and_shuts_after() -> void:
 	var opened: bool = false
 	var held: bool = false
 	var bent: bool = false
-	for tick: int in WallRules.OFF_LOT_CELLS * 4 + 12:
+	for tick: int in (WallRules.ALLEY_REACH + 8) * 4 + 12:
 		_tick()
 		var person: Node3D = _view.agent_nodes[courier.id]
 		var crates: Node3D = person.get_node_or_null("Crates") as Node3D
@@ -173,7 +176,7 @@ func test_the_door_swings_open_for_the_delivery_and_shuts_after() -> void:
 	layers.sort()
 	assert_almost_eq(layers[0], 0.0, 0.001, "on the floor")
 	assert_almost_eq(layers[1], _view.crate_height(), 0.001, "and on top of it")
-	for tick: int in WallRules.OFF_LOT_CELLS * 4 + 40:
+	for tick: int in (WallRules.ALLEY_REACH + 8) * 4 + 40:
 		_tick()
 		if not _sim.world.agents.has(courier):
 			break

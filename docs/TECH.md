@@ -872,13 +872,25 @@ an active edit/panel/selection first, or opens Settings when none is active.
   `WallRules.delivery_cell(grid, target)` returns a reachable inside receiving
   cell, with stable segment-order choice and a street-entry fallback, or
   `NO_CELL` when neither route reaches the target;
-  `WallRules.delivery_route(grid, target)` adds where the delivery person
-  steps on (`door`: the shell cell, or the street entry), the receiving cell
-  (`drop`: for the street, the floor cell inside the street door), `out` and
-  the `approach` cells: a back door's path, `back_door_approach` (straight out
-  across the open lot, then `OFF_LOT_CELLS` = 26 beyond it, stopping before
-  anything but open ground, so it never crosses a wing or the street); none at the street,
-  where the delivery person appears at the entry as guests do.
+  `WallRules.delivery_route(grid, target, lot)` adds where the delivery
+  person stands (`door`: the shell cell, or the street entry), the receiving
+  cell (`drop`: for the street, the floor cell inside the street door), `out`
+  and the `approach` cells, far to near: for a back door
+  (`back_door_approach`) along the **back alley** and up the door's path;
+  none at the street, where the delivery person appears at the entry as
+  guests do. **Back alley (Jared):** `WallRules.back_alley(grid, door, side,
+  lot)` puts a paved service lane on the first row or column outside the
+  shop's lot (`ShopFootprint.lot`, which Main hands to `DeliveryDock.lot` and
+  `ShopView.set_lot`; empty: the building) behind the door's wall, parallel
+  to it, two cells wide, running `ALLEY_REACH` (24) cells past the lot at
+  each end; a side wall's alley stops at the shop's front line, where it
+  meets the street (`street_side`), and deliveries come from its back end
+  (a back wall's from the west). The door's path runs straight out across
+  the open lot to it; with a wing of the shop in the way there is no path
+  and deliveries use the street door. The alley lies outside the lot, so it
+  never crosses the shop, bought floor or the street. She walks its outer
+  lane (clear of the wall and an open leaf), turns up the path to the door
+  and leaves the same way.
   **One back door per shop (D25).** `WallRules.back_door_problem(before,
   after)` refuses an edit that adds a back door to a shop that has one
   (`ONE_BACK_DOOR`, "The shop already has a back door: remove it first to
@@ -891,7 +903,7 @@ an active edit/panel/selection first, or opens Settings when none is active.
   **The view** hides the shell box and draws the Kenney `doorway` frame with
   its own `door` leaf (posts only when lowered) and a floor tile in the floor
   material, plus the path outside: the street's pavement (Kenney `floorHalf`,
-  palette tint) cut to one stone per approach cell, flush, fading out (2.3j).
+  palette tint) cut to one stone per cell, flush, out to the back alley (2.3j).
   The leaf swings out, onto the path where nothing is ever placed, like a
   service door (`WallSegmentView.set_door_open`, up to `DOOR_OPEN_DEGREES` =
   178, right round and flat against the outside wall, the turn's sign read
@@ -1599,12 +1611,12 @@ existing paint colour and camera-controlled build-grid parameters.
   (`arrive(lines)`; false, and Main stocks at once, when the shop is not open
   or no route reaches storage). A `CourierAgent` (role `courier`, a world agent
   that holds no task, reservation or random stream) walks the
-  `WallRules.delivery_route` up the back door's path (street door fallback,
-  where she appears at the entry as guests do) and stops in the doorway. The
-  path (`back_door_approach`) runs straight out across the open lot and
-  `OFF_LOT_CELLS` (26) beyond it, so at the default zoom she comes and goes
-  out of sight in every camera quarter (`tools/audit`-style check: her first
-  visible route cell is at least 6 cells in). She brings one crate per storage
+  `WallRules.delivery_route` along the back alley and up the back door's path
+  (street door fallback, where she appears at the entry as guests do) and
+  stops in the doorway. At the default zoom she comes and goes out of sight
+  in every camera quarter for back and side walls (her first visible route
+  cell is at least 13 cells in), and fades at the far ends (below) for the
+  widest zoom. She brings one crate per storage
   kind present (fridge, freezer, dry, in that order) and sets them down on the
   receiving cell just inside over `UNLOAD_TICKS` (4): the crate in her hands
   at `DROP_TICK` (2, the lowest point of the kit's 0.33 s `pick-up` bend),
@@ -1697,10 +1709,13 @@ existing paint colour and camera-controlled build-grid parameters.
     (`Frame.fade`; `ShopView._apply_fade` gives each surface a see-through
     copy of its material, as the Compatibility renderer has no per-instance
     alpha), so even at the widest zoom she never pops in or out;
-    the path is the street pavement cut to one stone per cell with a joint,
-    a sliver thick (flush, no side face), its stones varying in shade, solid
-    across the lot (at least `PATH_SOLID_CELLS`) and then fading into the
-    ground over `PATH_FADE_CELLS`.
+    the door's path and the alley are the street pavement cut to one stone
+    per cell with a joint, a sliver thick (flush, no side face), its stones
+    varying in shade; the alley is solid across the lot and
+    `PATH_SOLID_CELLS` past it, then fades into the ground over
+    `PATH_FADE_CELLS` (to its end, where she fades in and out). The open
+    leaf hinges on the side away from where she comes along the alley when
+    both sides are open ground.
   - Tests: `tests/sim/test_delivery_dock.gd` (back-door and street routes,
     stock on carry, closing and morning safety nets, job priority, guests
     never in the back door with deliveries coming and going, no change
