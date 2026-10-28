@@ -218,6 +218,9 @@ static func validate_definitions(ingredient_defs: Array[IngredientDef], recipe_d
 		if not is_finite(definition.seated_forward_offset) or definition.seated_forward_offset < 0.0 \
 				or definition.seated_forward_offset > ItemDef.MAX_SEATED_FORWARD_OFFSET:
 			errors.append("item '%s': seated_forward_offset must be finite and between 0 and 0.05 m" % definition.id)
+		if not is_finite(definition.seated_lean_degrees) or definition.seated_lean_degrees < 0.0 \
+				or definition.seated_lean_degrees > ItemDef.MAX_SEATED_LEAN_DEGREES:
+			errors.append("item '%s': seated_lean_degrees must be finite and between 0 and 35 degrees" % definition.id)
 		if not definition.placement_layer_valid():
 			errors.append("item '%s': invalid placement layer; floor decor must be non-solid decor without blocking, work or seat cells" % definition.id)
 		if not definition.blocking_cells_valid():

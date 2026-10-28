@@ -758,6 +758,22 @@ an active edit/panel/selection first, or opens Settings when none is active.
   finite and between 0 and 0.05, defaulting to zero. Presentation applies it
   along the authored seat facing before standing-person separation; simulation
   cells, reservations, random streams and save data do not move with it.
+  `ItemDef.seated_lean_degrees` separately authors a forward torso pose, finite
+  and between 0 and 35 degrees; zero preserves the imported sit pose. The
+  presenter's physical furnishing supplies it only after verified seat arrival.
+  PersonView keys a private duplicate of the sit clip at the native torso joint,
+  leaving root translation, sibling leg joints, shared models and scale alone.
+  Changing it re-seeks the same animation time, including while paused. Other
+  clips retain their source keys. Head-skinning and native-bake parity caches
+  include the applied lean as well as model and animation time. This mechanism
+  does not establish a seat's physical fit: authored tuning still requires the
+  full surface run, supported hips and actual rendered review.
+  Jared accepts some cushioned-chair backrest overlap with a small 10–15 degree
+  lean. Real-table review additionally seats guests opposite each other at
+  cross, glass, cloth and round tables: no head may enter or cross any table
+  mesh, and the exact head-to-head separation is reported for visual review.
+  A backrest exception never excuses table intrusion. Review images and JSON
+  remain external to shipped resources.
   The seated-head probe uses indexed, skinned Mini head surfaces at the shared
   scale: no head vertex may be inside any seat part, and an identified backrest
   must clear the head surface by at least 0.02 m. Made seats also require both

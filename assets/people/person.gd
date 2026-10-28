@@ -17,6 +17,9 @@ var _requested_clip: StringName = &"idle"
 var _seat_height: float = 0.0
 var _initialized: bool = false
 var _playback_speed: float = 1.0
+var _seated_lean_degrees: float = 0.0
+var _sit_lean_track: int = -1
+var _sit_base_rotations: Array[Quaternion] = []
 
 
 func _ready() -> void:
@@ -36,6 +39,7 @@ func set_look(value: StringName, id: int = 0, kind: StringName = &"regular") -> 
 		return desired_model != &""
 	if desired_model == _model_name and _model != null:
 		return true
+	var seated_time: float = _player.current_animation_position if _player != null and _clip == &"sit" else 0.0
 	_clear_model()
 	if desired_model == &"":
 		return false
@@ -71,17 +75,31 @@ func set_look(value: StringName, id: int = 0, kind: StringName = &"regular") -> 
 		_hat.reparent(attachment, false)
 		_hat.visible = true
 	_model_name = desired_model
-	return _play_requested_clip()
+	var played: bool = _play_requested_clip()
+	if played and _clip == &"sit" and seated_time > 0.0:
+		_player.seek(minf(seated_time, _player.get_animation(&"sit").length), true)
+	return played
 
 
 ## The caller passes the actual chair seat's world height after seat arrival.
 ## It also positions the person at the chair and supplies that chair's facing.
-func set_pose(moving: bool, seated: bool, carrying: bool, working: bool, seat_height: float = 0.0) -> bool:
+func set_pose(moving: bool, seated: bool, carrying: bool, working: bool, seat_height: float = 0.0,
+		seated_lean_degrees: float = 0.0) -> bool:
+	if not PersonPresentation.seated_lean_valid(seated_lean_degrees):
+		return false
+	var lean: float = seated_lean_degrees if seated else 0.0
+	var lean_changed: bool = lean != _seated_lean_degrees
 	_requested_clip = PersonPresentation.clip_for_state(moving, seated, carrying, working)
 	_seat_height = maxf(seat_height, 0.0) if seated else 0.0
+	_seated_lean_degrees = lean
 	var pivot: Node3D = get_node_or_null("ModelPivot") as Node3D
 	if pivot != null:
 		pivot.position.y = _seat_height
+	if lean_changed and _player != null:
+		_update_seated_lean()
+		if _clip == &"sit" and _player.has_animation(&"sit"):
+			# Re-evaluate the private track without restarting a paused/live pose.
+			_player.seek(_player.current_animation_position, true)
 	return _play_requested_clip()
 
 
@@ -105,6 +123,10 @@ func model_name() -> StringName:
 
 func current_clip() -> StringName:
 	return _clip
+
+
+func current_seated_lean_degrees() -> float:
+	return _seated_lean_degrees
 
 
 ## Person-local animated head top, including seat lift and shared scale.
@@ -153,11 +175,48 @@ func _prepare_clips() -> bool:
 			return false
 		var animation: Animation = source.duplicate(true) as Animation
 		animation.loop_mode = Animation.LOOP_LINEAR
+		if clip == &"sit" and not _prepare_seated_lean(animation):
+			return false
 		library.add_animation(clip, animation)
 	for name: StringName in _player.get_animation_library_list():
 		_player.remove_animation_library(name)
 	_player.add_animation_library(&"", library)
+	_update_seated_lean()
 	return true
+
+
+## The eight native guest rigs have identity torso rest rotation and sit keys
+## only on root/arms/legs. The torso joint is a sibling of both hip/leg joints.
+## Local +X pitches the upper body toward source +Z, person -Z after ModelPivot.
+## Build the actual imported path and retain any source rotation keys rather
+## than mutating the imported animation, root translation, legs or model scale.
+func _prepare_seated_lean(animation: Animation) -> bool:
+	var torso: int = _skeleton.find_bone("torso")
+	var animation_root: Node = _player.get_node_or_null(_player.root_node)
+	if torso < 0 or animation_root == null:
+		return false
+	var path: NodePath = NodePath(String(animation_root.get_path_to(_skeleton)) + ":torso")
+	_sit_lean_track = animation.find_track(path, Animation.TYPE_ROTATION_3D)
+	if _sit_lean_track < 0:
+		_sit_lean_track = animation.add_track(Animation.TYPE_ROTATION_3D)
+		animation.track_set_path(_sit_lean_track, path)
+		var rest: Quaternion = _skeleton.get_bone_rest(torso).basis.get_rotation_quaternion()
+		animation.track_insert_key(_sit_lean_track, 0.0, rest)
+		animation.track_insert_key(_sit_lean_track, animation.length, rest)
+	_sit_base_rotations.clear()
+	for key: int in animation.track_get_key_count(_sit_lean_track):
+		var rotation: Quaternion = animation.track_get_key_value(_sit_lean_track, key)
+		_sit_base_rotations.append(rotation)
+	return not _sit_base_rotations.is_empty()
+
+
+func _update_seated_lean() -> void:
+	if _player == null or not _player.has_animation(&"sit"):
+		return
+	var animation: Animation = _player.get_animation(&"sit")
+	var lean: Quaternion = Quaternion(Vector3.RIGHT, deg_to_rad(_seated_lean_degrees))
+	for key: int in _sit_base_rotations.size():
+		animation.track_set_key_value(_sit_lean_track, key, _sit_base_rotations[key] * lean)
 
 
 func _source_clip(clip: StringName) -> Animation:
@@ -197,6 +256,8 @@ func _clear_model() -> void:
 	_skeleton = null
 	_model_name = &""
 	_clip = &""
+	_sit_lean_track = -1
+	_sit_base_rotations.clear()
 
 
 func _first_descendant(root: Node, type: String) -> Node:

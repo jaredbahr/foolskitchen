@@ -68,6 +68,12 @@ static func source_head_top(model: StringName) -> float:
 	return HEAD_TOPS.get(model, 0.0)
 
 
+## One presentation limit shared with the content definition; zero is neutral.
+## This validates a pose request, not physical seat-fit acceptance.
+static func seated_lean_valid(degrees: float) -> bool:
+	return is_finite(degrees) and degrees >= 0.0 and degrees <= ItemDef.MAX_SEATED_LEAN_DEGREES
+
+
 ## Seat arrival wins, then carrying holds both hands, then walking, then work.
 ## Callers derive these flags from actual state, not task labels or future goals.
 ## This single-clip selection does not layer walk legs beneath a carrying pose.
