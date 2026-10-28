@@ -53,8 +53,10 @@ Any new building piece (walls, windows, doors, the awning, counters) follows the
   - **Server:** the kit model with a dark top (choose one and keep it).
   - **Owner:** one fixed model (D14).
   - **Guests:** the remaining models, chosen deterministically from the guest id.
+  - **Delivery driver (FK-099):** `character-female-b`, the one model no other role uses (cooks use `character-male-b`), in a delivery uniform no other role wears: a parcel-brown (`#9a6a3e`) cap with an amber (`#d98e2b`) peak, built from primitives in the kit's flat style like the chef hat, and her clothes repainted brown with amber sleeves. The repaint is a private copy of the kit colormap made when she loads; the vendored texture is never edited. Delivery crates are the Furniture Kit's `cardboardBoxClosed` at 0.65 of the furniture scale, one at a time in anyone's hands (its top under the chin), stacked at most as high as a standing person's chin. The **Freezer** is the kit's `kitchenFridgeLarge` with its metal tinted cool (slate blue mixed in, `PropView.rest_tint`) so it never reads as the tall fridge.
 - **Clips (kit names; the same for every model):**
   - `idle`, `walk`, `sit` (raise the body onto the chair seat), `holding-both` (carrying a plate or tray), `interact-right` (working a station), `pick-up`.
+  - `carry-walk` is not a new clip: the game builds it from the kit's `walk` with the arms of `holding-both`, so someone carrying walks instead of gliding.
   - Don't use the combat, die or wheelchair clips. Wheelchairs and aids may be added later for guest variety, as a director decision.
 - People face their walking direction. When people stand closer than 0.45 apart, the view nudges them apart (display only).
 

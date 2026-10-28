@@ -553,7 +553,10 @@ func check_segments(changes: Dictionary[Vector3i, int], exact: Exact = null) -> 
 		cost = maxi(-exact.amount, 0)
 		refund = maxi(exact.amount, 0)
 	preview.set_segments(effective)
-	var problem: String = WallRules.closed_door_problem(live, preview)
+	# D25: one back door per shop (undo/redo restores accepted layouts as they were).
+	var problem: String = WallRules.back_door_problem(live, preview) if exact == null else ""
+	if problem.is_empty():
+		problem = WallRules.closed_door_problem(live, preview)
 	if problem.is_empty():
 		problem = WallRules.layout_problem(preview)
 	if problem.is_empty() and exact == null:
@@ -778,7 +781,10 @@ func check_floor(cells: Array[Vector2i], adding: bool, exact: Exact = null,
 		for cell: Vector2i in next:
 			if was.has(cell) and not reach.has(cell):
 				return EditCheck.new(false, ShopFootprint.SPLITS)
-	problem = WallRules.layout_problem(preview)
+	# Selling floor can turn an interior doorway back into a back door (D25: one).
+	problem = WallRules.back_door_problem(live, preview) if exact == null else ""
+	if problem.is_empty():
+		problem = WallRules.layout_problem(preview)
 	if problem.is_empty() and exact == null:
 		var dining: EditCheck = EditCheck.validate_dining(live, preview, ids, -1, -1)
 		problem = "" if dining.ok else dining.why

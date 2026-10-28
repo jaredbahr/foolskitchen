@@ -5,9 +5,9 @@ extends TestCase
 func test_starter_data_loads_without_validation_errors() -> void:
 	var db: ContentDB = ContentDB.new()
 	assert_eq(db.load_all().size(), 0)
-	assert_eq(db.ingredients().size(), 16)
+	assert_eq(db.ingredients().size(), 17)
 	assert_eq(db.recipes().size(), 12)
-	assert_eq(db.items().size(), 51)
+	assert_eq(db.items().size(), 52)
 
 
 func test_lookups_find_each_kind_and_unknown_ids_return_null() -> void:
@@ -31,7 +31,7 @@ func test_lists_are_sorted_and_do_not_expose_index_arrays() -> void:
 	for definition: IngredientDef in db.ingredients():
 		ingredient_ids.append(definition.id)
 	assert_eq(ingredient_ids, [&"beef_patty", &"beer", &"bread", &"bun", &"cheese", &"coffee_beans", &"dough",
-		&"lettuce", &"oil", &"pastry", &"potato", &"soda", &"soup_stock", &"tea", &"tomato", &"wine"])
+		&"frozen_fries", &"lettuce", &"oil", &"pastry", &"potato", &"soda", &"soup_stock", &"tea", &"tomato", &"wine"])
 	var recipe_ids: Array[StringName] = []
 	for definition: RecipeDef in db.recipes():
 		recipe_ids.append(definition.id)
@@ -44,7 +44,7 @@ func test_lists_are_sorted_and_do_not_expose_index_arrays() -> void:
 		&"bar_corner", &"bar_counter", &"bar_end_left", &"bar_end_right", &"bar_section",
 		&"bar_stool", &"bathroom_sink", &"bench", &"bookcase_open_low", &"chair", &"cloth_table",
 		&"coat_rack_standing", &"coffee_machine", &"corner_cabinet", &"cross_table", &"cushioned_bench", &"diner_booth", &"diner_stool",
-		&"door", &"drinks_fridge", &"drinks_shelf", &"fridge", &"fryer", &"glass_table",
+		&"door", &"drinks_fridge", &"drinks_shelf", &"freezer", &"fridge", &"fryer", &"glass_table",
 		&"lounge_chair", &"modern_chair", &"modern_frame_chair", &"oven", &"pass_counter", &"plant_small_1",
 		&"plant_small_2", &"plant_small_3", &"potted_plant", &"prep_cabinet", &"prep_counter", &"round_table",
 		&"rounded_chair", &"rug_rectangle", &"rug_round", &"rug_square", &"side_table", &"sink",
@@ -52,15 +52,15 @@ func test_lists_are_sorted_and_do_not_expose_index_arrays() -> void:
 	])
 	var copy: Array[ItemDef] = db.items()
 	copy.clear()
-	assert_eq(db.items().size(), 51)
+	assert_eq(db.items().size(), 52)
 
 
 func test_reloading_does_not_duplicate_definitions() -> void:
 	var db: ContentDB = _starter_db()
 	assert_eq(db.load_all().size(), 0)
-	assert_eq(db.ingredients().size(), 16)
+	assert_eq(db.ingredients().size(), 17)
 	assert_eq(db.recipes().size(), 12)
-	assert_eq(db.items().size(), 51)
+	assert_eq(db.items().size(), 52)
 
 
 func test_recursive_resource_discovery_returns_sorted_original_tres_names() -> void:
@@ -73,7 +73,7 @@ func test_recursive_resource_discovery_returns_sorted_original_tres_names() -> v
 		if path.begins_with("res://data/ingredients/") or path.begins_with("res://data/recipes/") \
 				or path.begins_with("res://data/items/"):
 			content_paths += 1
-	assert_eq(content_paths, 79)
+	assert_eq(content_paths, 81)
 	assert_true(paths.has("res://data/ingredients/bun.tres"))
 	assert_true(paths.has("res://data/recipes/burger.tres"))
 	assert_true(paths.has("res://data/items/table_2.tres"))

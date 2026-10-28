@@ -4,6 +4,22 @@ extends Node3D
 
 const GRID_SHADER: Shader = preload("res://src/world/build_grid.gdshader")
 const PERSON_SCENE: PackedScene = preload("res://assets/people/person.tscn")
+## Delivery crates (FK-099): the Furniture Kit's closed cardboard box.
+const CRATE_SCENE: PackedScene = preload("res://assets/kenney/furniture/cardboardBoxClosed.glb")
+## Delivery crates are the kit box at this share of the furniture scale: a
+## parcel a person carries with its top under the chin, and two stacked stay
+## below a standing person's chin too (the Mini Characters' heads are big).
+const CRATE_SCALE: float = 0.65
+## A crate in hand hangs this share of its height below the palms (FK-099).
+const CRATE_GRIP: float = 0.6
+## A crate in hand lowered from a stack's upper layer to the carrying height
+## eases down at this speed (m/s) instead of dropping.
+const CRATE_LOWER_SPEED: float = 0.8
+## A back door is open while someone going through is within this distance
+## of it (fully open within DOOR_OPEN_NEAR), all view only.
+## The ramp is 1.25 m, about one second of walking at 1x.
+const DOOR_OPEN_FAR: float = 1.75
+const DOOR_OPEN_NEAR: float = 0.5
 const HEIGHTS: Dictionary[int, float] = {
 	ItemDef.Category.TABLE: 0.75, ItemDef.Category.CHAIR: 0.45,
 	ItemDef.Category.STATION: 0.9, ItemDef.Category.STORAGE: 0.9,
@@ -63,6 +79,7 @@ var _preview_swatch_id: StringName = &""
 var _walls: Node3D
 ## Player-built wall segments (FK-070) and the shell cells holding their windows.
 var segment_view: WallSegmentView
+var _lot: Rect2i = Rect2i()
 var _shell_windows: Dictionary[Vector2i, Vector2i] = {}
 var selection_outline: BoundsOutline
 var _selected_item_id: int = -1
@@ -70,6 +87,10 @@ var _selection_bounds: AABB
 ## How full each storage kind is, 0..1 (FK-087). Shelves show their stock
 ## crates in proportion. View only; Main sends it when stock changes.
 var _storage_fill: Dictionary[int, float] = {}
+var _crate_height: float = 0.0
+## Visible deliveries (FK-099): crates waiting on the floor, by crate id.
+var _dock: DeliveryDock
+var crate_nodes: Dictionary[int, Node3D] = {}
 
 
 ## Replaces a previous world and its signal bindings without modifying either.
@@ -86,6 +107,7 @@ func show_world(value: SimWorld) -> void:
 	item_nodes.clear()
 	agent_nodes.clear()
 	dirt_nodes.clear()
+	crate_nodes.clear()
 	_wall_nodes.clear()
 	_shell_windows.clear()
 	floor_mesh = null
@@ -116,6 +138,7 @@ func show_world(value: SimWorld) -> void:
 	_walls.set_meta("shop_geometry", true)
 	add_child(_walls)
 	segment_view = WallSegmentView.new()
+	segment_view.lot = _lot
 	segment_view.name = "WallSegments"
 	segment_view.set_meta("shop_geometry", true)
 	add_child(segment_view)
@@ -130,6 +153,21 @@ func show_world(value: SimWorld) -> void:
 	_apply_paint()
 	_connect_grid()
 	_process(0.0)
+
+
+## The shop's lot (Main, before show_world()): the back alley behind a back
+## door runs along its outer edge.
+func set_lot(value: Rect2i) -> void:
+	_lot = value
+	if segment_view != null:
+		segment_view.lot = value
+
+
+## Main binds the delivery dock after show_world(): crates on the floor and
+## in hands, and the back door swinging, all read from it and the agents.
+func bind_dock(value: DeliveryDock) -> void:
+	_dock = value
+	_sync_crates()
 
 
 ## Main binds day-local dirt after show_world(). A changed world drops the old
@@ -596,6 +634,8 @@ func _process(_delta: float) -> void:
 	_sync_dirt_spots()
 	_sync_item_selection()
 	_sync_agents()
+	_sync_crates()
+	_sync_back_doors()
 
 
 func _sync_agents() -> void:
@@ -639,10 +679,167 @@ func _sync_agents() -> void:
 		var tray: MeshInstance3D = node.get_node("Tray") as MeshInstance3D
 		tray.visible = frame.show_tray and (ready_person or not frame.look_supported)
 		tray.position = frame.tray_anchor if ready_person else Vector3(0.0, 0.02, -0.48)
+		_show_held_crates(node, frame, ready_person)
+		_apply_fade(node, frame.fade)
 		_update_guest_mood(agent, node, frame)
 	for id: int in agent_nodes.keys():
 		if not alive.has(id):
 			_remove_agent_visual(id)
+
+
+## A crate in a person's hands, between the palms (made on first use, so
+## ordinary guests never instance it). It follows the palms through the
+## pick-up bend but never sinks below the stack layer it leaves or joins, and
+## eases down to the carrying height from a high layer.
+func _show_held_crates(node: Node3D, frame: AgentPresentationController.Frame, ready_person: bool) -> void:
+	var held: Node3D = node.get_node_or_null("Crates") as Node3D
+	if frame.crate_count <= 0:
+		if held != null:
+			held.visible = false
+		return
+	var was_visible: bool = held != null and held.visible
+	if held == null:
+		held = Node3D.new()
+		held.name = "Crates"
+		for index: int in AgentPresentationController.MAX_CRATES_IN_HAND:
+			var box: PropView = RoomDressing.make_asset(CRATE_SCENE, "Crate%d" % index)
+			if box != null:
+				box.scale = Vector3.ONE * CRATE_SCALE
+				box.position.y = crate_height() * index
+				held.add_child(box)
+		node.add_child(held)
+	held.visible = true
+	for index: int in held.get_child_count():
+		(held.get_child(index) as Node3D).visible = index < frame.crate_count
+	var anchor: Vector3 = frame.tray_anchor if ready_person else Vector3(0.0, 0.35, -0.3)
+	var lowest: float = crate_height() * float(frame.crate_layer) if frame.bending else 0.0
+	var target: Vector3 = anchor + Vector3(0.0, -crate_height() * CRATE_GRIP, 0.0)
+	target.y = maxf(target.y, lowest)
+	if frame.crate_slide > 0.0:
+		var place: Vector3 = frame.crate_spot + Vector3(0.0, crate_height() * float(frame.crate_layer), 0.0)
+		target = target.lerp(node.global_transform.affine_inverse() * (global_transform * place), frame.crate_slide)
+	elif was_visible and not frame.bending and target.y < held.position.y:
+		target.y = maxf(target.y, held.position.y - CRATE_LOWER_SPEED * get_process_delta_time())
+	held.position = target
+
+
+## Fades a person (and what they hold) in or out: each surface gets a
+## see-through copy of its own material while `alpha` < 1, and its own
+## material back at 1. The Compatibility renderer has no per-instance alpha.
+func _apply_fade(node: Node3D, alpha: float) -> void:
+	var faded: Array = node.get_meta(&"fade_surfaces", []) as Array
+	if alpha >= 1.0:
+		if not faded.is_empty():
+			for entry: Array in faded:
+				var mesh: MeshInstance3D = entry[0] as MeshInstance3D
+				if is_instance_valid(mesh):
+					mesh.set_surface_override_material(int(entry[1]), entry[2] as Material)
+			node.remove_meta(&"fade_surfaces")
+		return
+	var meshes: Array[Node] = node.find_children("*", "MeshInstance3D", true, false)
+	var count: int = 0
+	for found: Node in meshes:
+		count += (found as MeshInstance3D).mesh.get_surface_count() if (found as MeshInstance3D).mesh != null else 0
+	if faded.size() != count:
+		_apply_fade(node, 1.0)
+		faded = []
+		for found: Node in meshes:
+			var mesh: MeshInstance3D = found as MeshInstance3D
+			if mesh.mesh == null:
+				continue
+			for surface: int in mesh.mesh.get_surface_count():
+				var source: BaseMaterial3D = mesh.get_active_material(surface) as BaseMaterial3D
+				var copy: BaseMaterial3D = source.duplicate() as BaseMaterial3D if source != null else null
+				if copy != null:
+					copy.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+				faded.append([mesh, surface, mesh.get_surface_override_material(surface), copy])
+				if copy != null:
+					mesh.set_surface_override_material(surface, copy)
+		node.set_meta(&"fade_surfaces", faded)
+	for entry: Array in faded:
+		var copy: BaseMaterial3D = entry[3] as BaseMaterial3D
+		if copy != null:
+			var source_alpha: float = (entry[2] as BaseMaterial3D).albedo_color.a if entry[2] is BaseMaterial3D else 1.0
+			copy.albedo_color.a = source_alpha * alpha
+
+
+## Height of one crate at the furniture scale.
+func crate_height() -> float:
+	if _crate_height <= 0.0:
+		var probe: PropView = RoomDressing.make_asset(CRATE_SCENE, "Measure")
+		if probe != null:
+			_crate_height = probe.get_combined_aabb().size.y * CRATE_SCALE
+			probe.free()
+	return _crate_height
+
+
+## Crates waiting on the floor, spread on their cell and kept to the side away
+## from a door or street entry next to it (clear of a swinging leaf).
+func _sync_crates() -> void:
+	var wanted: Dictionary[int, bool] = {}
+	if world != null and _dock != null:
+		for crate: Dictionary in _dock.crates():
+			if int(crate["state"]) != DeliveryDock.CrateState.WAITING:
+				continue
+			var id: int = int(crate["id"])
+			wanted[id] = true
+			if not crate_nodes.has(id):
+				var box: PropView = RoomDressing.make_asset(CRATE_SCENE, "DeliveryCrate%d" % id)
+				if box == null:
+					continue
+				box.scale = Vector3.ONE * CRATE_SCALE
+				box.set_meta("shop_geometry", true)
+				box.set_meta(&"crate_id", id)
+				add_child(box)
+				crate_nodes[id] = box
+			crate_nodes[id].position = crate_position(crate["cell"], int(crate["slot"]))
+	for id: int in crate_nodes.keys():
+		if not wanted.has(id):
+			var node: Node3D = crate_nodes[id]
+			crate_nodes.erase(id)
+			remove_child(node)
+			node.free()
+
+
+## Where crate `slot` stands on `cell`: one stack, `slot` crates up, on the
+## spot AgentPresentationController.crate_spot picks (towards the door it
+## came through, where the delivery person can set it down from the doorway
+## and staff pick it up from the cell, neither standing in it).
+func crate_position(cell: Vector2i, slot: int) -> Vector3:
+	return AgentPresentationController.crate_spot(world.grid if world != null else null, cell) \
+		+ Vector3(0.0, crate_height() * float(slot), 0.0)
+
+
+## Each back-door leaf opens as someone going through comes near: the delivery
+## person always, staff only when their way leads through the door. Pure
+## function of where people are drawn, so it swings and closes with them.
+func _sync_back_doors() -> void:
+	if segment_view == null or world == null:
+		return
+	for cell: Vector2i in segment_view.door_cells():
+		var center: Vector3 = GridMath.cell_to_world(cell)
+		var amount: float = 0.0
+		for agent: SimAgent in world.agents:
+			if agent is CustomerAgent or not agent_nodes.has(agent.id) or not _goes_through(agent, cell):
+				continue
+			var drawn: Vector3 = agent_nodes[agent.id].position
+			var distance: float = Vector2(drawn.x - center.x, drawn.z - center.z).length()
+			amount = maxf(amount, door_open_amount(distance))
+		segment_view.set_door_open(cell, amount)
+
+
+static func door_open_amount(distance: float) -> float:
+	var t: float = clampf((DOOR_OPEN_FAR - distance) / (DOOR_OPEN_FAR - DOOR_OPEN_NEAR), 0.0, 1.0)
+	return t * t * (3.0 - 2.0 * t)
+
+
+static func _goes_through(agent: SimAgent, door: Vector2i) -> bool:
+	if agent is CourierAgent or agent.cell == door:
+		return true
+	for index: int in range(maxi(agent.path_index - 1, 0), agent.path.size()):
+		if agent.path[index] == door:
+			return true
+	return false
 
 
 func _agent_playback_speed() -> float:

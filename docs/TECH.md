@@ -469,7 +469,9 @@ an active edit/panel/selection first, or opens Settings when none is active.
 #### Staff job priorities (FK-044)
 - `StaffJobPriorities.TASK_JOBS` is the single selection mapping: cook to
   Cooking; take-order and delivery to Serving; table clearing to Bussing;
-  plate washing to Washing; floor mopping to Cleaning. High, Normal, Low and
+  plate washing to Washing; floor mopping to Cleaning; putting a delivery
+  away (FK-099) to Cleaning, with one role exception in `ROLE_TASK_JOBS`: a
+  server does it as Serving (`job_for_task(kind, role)`). High, Normal, Low and
   Off choose work rather than changing its duration, skill or pay. A role's
   main job cannot be Off; work outside its existing capabilities stays Off.
 - Defaults keep a cook's Cooking and a cleaner's Cleaning High. Servers keep
@@ -869,13 +871,54 @@ an active edit/panel/selection first, or opens Settings when none is active.
   interior doorway, selling the floor makes it a back door again).
   `WallRules.delivery_cell(grid, target)` returns a reachable inside receiving
   cell, with stable segment-order choice and a street-entry fallback, or
-  `NO_CELL` when neither route reaches the target. The view hides the shell
-  box, draws the Kenney `doorwayOpen` frame (posts only when lowered) and a
-  floor tile in the floor material. This is the entrance foundation only:
-  accepted instant morning orders, daytime delivery scheduling, paid pending
-  orders, stock and capacities are unchanged. Delivery people, crates and
-  staff carrying are the remaining #187 integration, and must be tested
-  through actual queued tasks and execution.
+  `NO_CELL` when neither route reaches the target;
+  `WallRules.delivery_route(grid, target, lot)` adds where the delivery
+  person stands (`door`: the shell cell, or the street entry), the receiving
+  cell (`drop`: for the street, the floor cell inside the street door), `out`
+  and the `approach` cells, far to near: for a back door
+  (`back_door_approach`) along the **back alley** and up the door's path;
+  none at the street, where the delivery person appears at the entry as
+  guests do. **Back alley (Jared):** `WallRules.back_alley(grid, door, side,
+  lot)` puts a paved service lane on the first row or column outside the
+  shop's lot (`ShopFootprint.lot`, which Main hands to `DeliveryDock.lot` and
+  `ShopView.set_lot`; empty: the building) behind the door's wall, parallel
+  to it, two cells wide, running `ALLEY_REACH` (24) cells past the lot at
+  each end; a side wall's alley stops at the shop's front line, where it
+  meets the street (`street_side`), and deliveries come from its back end
+  (a back wall's from the west). The door's path runs straight out across
+  the open lot to it; with a wing of the shop in the way there is no path
+  and deliveries use the street door. The alley lies outside the lot, so it
+  never crosses the shop, bought floor or the street. She walks its outer
+  lane (clear of the wall and an open leaf), turns up the path to the door
+  and leaves the same way.
+  **One back door per shop (D25).** `WallRules.back_door_problem(before,
+  after)` refuses an edit that adds a back door to a shop that has one
+  (`ONE_BACK_DOOR`, "The shop already has a back door: remove it first to
+  move it"), or one more than a cell wide (two doorways side by side on one
+  face: `BACK_DOOR_WIDTH`, "A back door is one cell wide"), in `check_segments` and in `check_floor` (selling floor can turn
+  an interior doorway back into a back door). Only adding is refused: an
+  older save with several loads and keeps them all, every other edit still
+  works, removing one is fine, and deliveries use the first in segment order.
+  Undo and redo (`Exact`) restore accepted layouts as they were.
+  **The view** hides the shell box and draws the Kenney `doorway` frame with
+  its own `door` leaf (posts only when lowered) and a floor tile in the floor
+  material, plus the path outside: the street's pavement (Kenney `floorHalf`,
+  palette tint) cut to one stone per cell, flush, out to the back alley (2.3j).
+  The leaf swings out, onto the path where nothing is ever placed, like a
+  service door (`WallSegmentView.set_door_open`, up to `DOOR_OPEN_DEGREES` =
+  178, right round and flat against the outside wall, the turn's sign read
+  from the leaf's own transforms; the door is turned round to hinge on the
+  side with open ground beside the path), sliding `DOOR_OPEN_SLIDE` (0.08 m)
+  onto its hinge-side jamb as it opens and, past square, out to the wall's
+  outer face (`DOOR_FLAT_OUT`, 0.315 m from the wall's centre line, so its
+  handle clears the wall). Open, it lies along the wall beside the doorway,
+  clear of the path and of anyone on it (the Mini Characters' heads are about
+  as wide as the door, so only the jamb line is near them), while someone going
+  through is within 1.75 m (fully open within 0.5 m, smoothstep between:
+  about a second of walking at 1x): the delivery person always, staff only
+  when their path leads through the door, guests never
+  (`ShopView._sync_back_doors`, a pure function of where people are drawn;
+  no sim effect). Delivery people, crates and carrying: 2.3j.
 - **Floor expansion (FK-080)** builds on this: grid lines keep their keys,
   so an outer-face window becomes an interior window when the shell cell
   behind it turns into floor (see the next section).
@@ -1496,9 +1539,11 @@ existing paint colour and camera-controlled build-grid parameters.
   delivery; #183's top-up of drink supplies at opening is still bought and
   stocked at opening. Main also delivers on `EventBus.sim_ticked` while OPEN and
   on phase changes (anything overdue, e.g. a tick 0 order in an older save).
-  Arrivals are stocked dated the arrival day; `RestaurantSim.restock_sold_out()`
-  brings back dishes the delivery covers, and the Stock notes say what the
-  last daytime delivery brought.
+  A delivery due during service (OPEN or LAST_ORDERS) is visible (FK-099,
+  below): its goods become stock as staff put them away. Anything that lands
+  in the morning or once closed is stocked at once, dated the arrival day;
+  `RestaurantSim.restock_sold_out()` brings back dishes the goods cover, and
+  the Stock notes say what the last daytime delivery brought.
 - **Next delivery bar.** `Main.delivery_countdown()`: in the morning "Morning
   orders arrive at once. Next delivery at 14:00" (bar full); during service
   "Next delivery at 14:00" with the wait's fraction; afterwards "Next delivery:
@@ -1542,9 +1587,15 @@ existing paint colour and camera-controlled build-grid parameters.
   phase; the panel closes for the evening report. Reorder settings change in any
   phase and are saved at the next morning.
 - **Spoilage.** Freezer ingredients keep at least `freezer_shelf_life_days` (30);
-  fridge and dry keep their own `shelf_life_days`. No freezer item or frozen
-  ingredient exists yet: both are left to #154(b) (frozen fries and a Kenney
-  `kitchenFridgeLarge` freezer). The Freezer group appears once either exists.
+  fridge and dry keep their own `shelf_life_days`.
+- **Freezer (FK-099).** The **Freezer** (`freezer`, Kitchen tab, $90, level 2,
+  Kenney `kitchenFridgeLarge` on one cell) holds 40 freezer units; **Frozen
+  fries** (`frozen_fries`, $1, keeps 30 days) are a freezer ingredient listed
+  in `morning_stock` with a target of 0, so the auto-order never buys them
+  until the player raises it. No dish uses them yet (Fries still use
+  potatoes). The Stock panel lists the freezer's rows only while the shop has
+  freezer room or anything frozen (`Main.stock_rows`), so the Freezer group
+  appears once a freezer is bought.
 - **Visible stock.** `ShopView.set_storage_fill(kind -> 0..1)` from Main (stock on
   hand / capacity per kind, refreshed with the presentation when it changes):
   a storage item's parts tagged `metadata/stock_slot` show the first
@@ -1555,9 +1606,124 @@ existing paint colour and camera-controlled build-grid parameters.
   without them a concept's supplies do not fit beside the morning's food. Their
   rows are identical to main. `_finish` switches auto-reorder off only for the
   ingredients auto-reorder lists (`_reorder().ids()`), not the greyed rows.
-- **Not built here:** the visible delivery person, back door and staff carrying
-  crates (a follow-up issue).
+- **Visible deliveries (FK-099, #187).** `DeliveryDock` (src/sim/restaurant,
+  pure, owned by `RestaurantSim.dock`) takes a delivery due during service
+  (`arrive(lines)`; false, and Main stocks at once, when the shop is not open
+  or no route reaches storage). A `CourierAgent` (role `courier`, a world agent
+  that holds no task, reservation or random stream) walks the
+  `WallRules.delivery_route` along the back alley and up the back door's path
+  (street door fallback, where she appears at the entry as guests do) and
+  stops in the doorway. At the default zoom she comes and goes out of sight
+  in every camera quarter for back and side walls (her first visible route
+  cell is at least 13 cells in), and fades at the far ends (below) for the
+  widest zoom. She brings one crate per storage
+  kind present (fridge, freezer, dry, in that order) and sets them down on the
+  receiving cell just inside over `UNLOAD_TICKS` (4): the crate in her hands
+  at `DROP_TICK` (2, the lowest point of the kit's 0.33 s `pick-up` bend),
+  the rest on top of it once she has stepped away (`all_dropped`, her head
+  clear of the stack). Then she walks back out; the dock removes her when
+  gone. Off-lot cells are not on the grid, so she walks her planned cells
+  without path finding. Guests never share the back door: they plan on the
+  guest layer, where its cell is solid.
+  - **Carrying.** Each crate is one `put_away` task (role `any`, priority 1,
+    timeout 600; steps `STEP_WALK` .. `STEP_PUT_IN` and the fill): walk to the
+    crate, pick it up (a wait step: the crate is in the hands
+    `PICK_UP_TICKS` (2) ticks after the carrier arrives, the `pick-up` bend's
+    lowest point, counted in ticks so a carrier's skill never moves it; then
+    `LIFT_TICKS` 2 of work to straighten up), walk to the nearest
+    reachable storage of its kind (else any storage: the starter shop's
+    pantry is built in, behind the kitchen; else none, and it waits) and put
+    it in (`PUT_IN_TICKS` 4), when its goods become stock (`Stock.add`, dated
+    today) and `stored(lines)` fires, then fill the shelves (16 more, 20 in
+    all as before); `RestaurantSim` then brings sold-out dishes
+    back and Main refreshes the HUD and Stock panel. The carry walks to the
+    storage's work cell without reserving it, so a cook at the same fridge
+    never waits. A dropped task sets the crate down where its carrier stood
+    and starts again from there; a failed one (storage sold on the way, say)
+    puts it down and posts again, up to `MAX_TRIES` (3), then waits for a
+    layout change. `on_done` steps check the crate's state, so a restarted
+    task never stocks twice. Crates on a cell are one stack with no gaps
+    (`slot` is the layer): whoever lifts one takes the top (the crate on top
+    swaps places with the one whose task it is; crates look alike), so none
+    is ever left in mid-air. A stack is at most `STACK_CAP` (3) high; a crate
+    for a full stack goes to the nearest free cell (`_free_spot`: walkable,
+    no door, street entry, work spot or seat, against a wall or item first),
+    where it starts a stack of its own. With the stack inside the door full
+    the delivery person keeps hold of her crate and the whole delivery goes
+    down there as she leaves (`drop_layer` -1). The dock keeps
+    `payload["layer"]` (the layer the carrier will lift) and
+    `CourierAgent.drop_layer` current for the view.
+  - **Who carries (job priority).** With a cleaner on the team it is the
+    cleaner's (job Cleaning, their main job); otherwise servers do it as
+    Serving (`StaffJobPriorities.ROLE_TASK_JOBS`: front-of-house work, so a
+    mid-day order is put away during service rather than left to a Low
+    fallback a busy server never reaches); what is still waiting at closing
+    is stored. Cooks (Cleaning is Off for them) and the owner (no `any`
+    priority) never carry. **Service cost (director, #195):** a shop taking
+    several mid-day orders with no cleaner pays a visible cost, as servers
+    leave guests to carry crates and goods reach the shelves later (probe,
+    4 orders a day, 5 seeds x 5 days: 329 served against 361 when goods
+    arrived at once); hiring a cleaner removes it (347 against 353; with one
+    order a day 436, identical). Making servers wait for idle moments was
+    tried and cost more (313): goods sat longer and dishes ran out. Closing
+    withdraws the carrying tasks and frees their carriers on that tick
+    (`StaffAgent.let_go_if_withdrawn`).
+  - **Never lose goods.** Paid when ordered; while waiting the goods count as
+    on order in `StorageSpace` (`Main._on_the_way()`), so their space stays
+    reserved, Build refuses to sell storage they need, and the Stock rows
+    show them on order with a note, "Still to be put away: 6 Soup stock.".
+    `store_all()` stocks everything not yet put away (crates on the floor, in
+    hands or still on the way), withdraws the carrying tasks and ends the
+    visit: `RestaurantSim.advance` calls it on the tick service closes (before
+    `service_closed`, so the books and forecast see the stock) and
+    `start_day()` calls it each morning, so nothing is in transit at the
+    morning save (rule 9; nothing new is saved). Morning orders still arrive
+    at once, and with no order placed during service the dock does nothing:
+    no agent, task or event (`test_no_orders_change_nothing`), so the
+    balance probe is unchanged.
+  - **View.** `ShopView.bind_dock`: waiting crates are Kenney
+    `cardboardBoxClosed` at `CRATE_SCALE` (0.65), one stack per cell at
+    `AgentPresentationController.crate_spot`: on a door's receiving cell
+    `DOOR_STACK_INSET` towards the door (straddling the threshold), elsewhere
+    `CRATE_INSET` off the centre. People never stand in it: the delivery
+    person sets it down from the doorway and staff stand `reach_for(layer)`
+    from it on the cell (`picker_spot`; the last step in walks there, the
+    first step out walks from it): `CRATE_REACH` (0.27, the reach of the
+    `pick-up` bend's lowest point) to bend to a crate on the floor,
+    `CRATE_REACH_HIGH` (0.33) to reach one on top of another standing
+    (`holding-both`, the crate sliding between palms and stack,
+    `Frame.crate_slide`). A crate in hand (`Frame.crate_count`, one at a time
+    for everyone) hangs `CRATE_GRIP` of its height below the palms (top under
+    the chin), follows them through the bend without sinking below its layer,
+    eases down from a high layer, and changes between hands and floor at the
+    bend's lowest point; it goes into the storage at the put-in moment. The
+    delivery person is `character-female-b` in her uniform. People carrying
+    while walking play `carry-walk` (`PersonView` builds it from the kit's
+    `walk` with the arms of `holding-both`, so legs walk under carrying arms;
+    servers' trays use it too); switching among `pick-up`, `holding-both`
+    and `carry-walk` blends over 0.12 s so arms (and the crate) never jump.
+    The back door's leaf swings out and lies flat against the outside wall
+    (`WallSegmentView`, hinged on the side with open ground beside it, clear
+    of the path and of anyone on it). The delivery person fades in over the
+    first `FADE_CELLS` (4) cells of her walk and out over the last ones
+    (`Frame.fade`; `ShopView._apply_fade` gives each surface a see-through
+    copy of its material, as the Compatibility renderer has no per-instance
+    alpha), so even at the widest zoom she never pops in or out;
+    the door's path and the alley are the street pavement cut to one stone
+    per cell with a joint, a sliver thick (flush, no side face), its stones
+    varying in shade; the alley is solid across the lot and
+    `PATH_SOLID_CELLS` past it, then fades into the ground over
+    `PATH_FADE_CELLS` (to its end, where she fades in and out). The open
+    leaf hinges on the side away from where she comes along the alley when
+    both sides are open ground.
+  - Tests: `tests/sim/test_delivery_dock.gd` (back-door and street routes,
+    stock on carry, closing and morning safety nets, job priority, guests
+    never in the back door with deliveries coming and going, no change
+    without orders, one back door), `tests/world/test_delivery_view.gd`,
+    `tests/world/test_delivery_session.gd`. Captures (by hand):
+    `tools/delivery_shots.gd -- <out> [north|east] [up|cutaway]`.
 - Tests: `tests/sim/test_storage_space.gd`, `tests/sim/test_delivery_book.gd`,
+  `tests/sim/test_delivery_dock.gd`,
   `tests/world/test_delivery_session.gd`, `tests/ui/test_stock_panel.gd`,
   `tests/world/test_stock_session.gd`.
 

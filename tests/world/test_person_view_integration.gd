@@ -67,7 +67,9 @@ func test_native_roles_use_fixed_looks_hat_and_private_looping_clips() -> void:
 		assert_eq((person.get_node("ModelPivot") as Node3D).scale, Vector3.ONE * ArtScale.CHARACTER_SCALE)
 		for clip: StringName in PersonPresentation.CLIPS:
 			assert_true(person._player.has_animation(clip))
-			assert_eq(person._player.get_animation(clip).loop_mode, Animation.LOOP_LINEAR)
+			assert_eq(person._player.get_animation(clip).loop_mode,
+				Animation.LOOP_NONE if PersonPresentation.ONE_SHOT_CLIPS.has(clip) else Animation.LOOP_LINEAR)
+		assert_eq(person._player.get_animation(PersonPresentation.CARRY_WALK).loop_mode, Animation.LOOP_LINEAR)
 	assert_ne(_person(cook.id)._player.get_animation(&"walk"), _person(server.id)._player.get_animation(&"walk"))
 	assert_eq(_world.now, 0)
 
@@ -136,7 +138,7 @@ func test_all_imported_guest_rigs_stay_upright_across_timed_partial_clip_transit
 	for look: int in range(PersonPresentation.GUEST_MODELS.size()):
 		assert_true(person.set_look(&"customer", look))
 		assert_eq(person.model_name(), PersonPresentation.GUEST_MODELS[look])
-		assert_eq(person._player.get_animation_list().size(), PersonPresentation.CLIPS.size())
+		assert_eq(person._player.get_animation_list().size(), PersonPresentation.CLIPS.size() + 1, "plus carry-walk")
 		# Sample actual imported tracks after time has passed, not only advance(0).
 		for pose: Array in [[true, false], [false, true], [false, false],
 				[true, false], [false, true], [false, false]]:
@@ -652,6 +654,45 @@ func test_playback_matches_clock_speed_and_cleaner_remains_an_explicit_fallback(
 	assert_false(fallback.get_meta("person_ready"))
 	assert_eq((fallback.material_override as StandardMaterial3D).albedo_color, ShopView.CLEANER_SWATCH.color)
 	assert_eq(_world.now, 0)
+
+
+func test_courier_wears_a_cap_and_a_private_uniform_copy_of_the_colormap() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	await tree.process_frame
+	var scene: PackedScene = preload("res://assets/people/person.tscn")
+	var courier: PersonView = scene.instantiate() as PersonView
+	courier.role = &"courier"
+	var cook: PersonView = scene.instantiate() as PersonView
+	cook.role = &"cook"
+	tree.root.add_child(courier)
+	tree.root.add_child(cook)
+	assert_eq(courier.model_name(), PersonPresentation.COURIER_MODEL)
+	assert_true(courier._cap.visible)
+	assert_eq(courier._cap.get_parent().name, &"CourierCapAttachment")
+	assert_false(courier._hat.visible)
+	assert_false(cook._cap.visible, "only the delivery person wears the cap")
+	var crown: StandardMaterial3D = (courier._cap.get_node("Crown") as MeshInstance3D).mesh.surface_get_material(0)
+	assert_true(crown.albedo_color.is_equal_approx(PersonPresentation.COURIER_BROWN), "cap matches the shirt")
+	var peak: StandardMaterial3D = (courier._cap.get_node("Peak") as MeshInstance3D).mesh.surface_get_material(0)
+	assert_true(peak.albedo_color.is_equal_approx(PersonPresentation.COURIER_AMBER))
+	for node: Node in courier._model.find_children("*", "MeshInstance3D", true, false):
+		var mesh_instance: MeshInstance3D = node as MeshInstance3D
+		if courier._cap.is_ancestor_of(mesh_instance):
+			continue
+		var material: StandardMaterial3D = mesh_instance.get_surface_override_material(0) as StandardMaterial3D
+		assert_not_null(material)
+		var image: Image = material.albedo_texture.get_image()
+		assert_true(image.get_pixel(496, 256).is_equal_approx(PersonPresentation.COURIER_BROWN))
+		assert_true(image.get_pixel(176, 256).is_equal_approx(PersonPresentation.COURIER_AMBER))
+		# Outside the repainted blocks (skin at 496,400) the kit texture is unchanged.
+		var source: Image = (mesh_instance.mesh.surface_get_material(0) as StandardMaterial3D).albedo_texture.get_image()
+		assert_eq(image.get_pixel(496, 400), source.get_pixel(496, 400))
+		assert_eq(source.get_pixel(496, 256), Color8(168, 120, 232), "the shared colormap itself is untouched")
+	for node: Node in cook._model.find_children("*", "MeshInstance3D", true, false):
+		if not cook._hat.is_ancestor_of(node) and not cook._cap.is_ancestor_of(node):
+			assert_null((node as MeshInstance3D).get_surface_override_material(0))
+	courier.free()
+	cook.free()
 
 
 func _enter_view() -> void:

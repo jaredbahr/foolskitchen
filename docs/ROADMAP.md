@@ -47,7 +47,9 @@ The Tier 1 hole-in-the-wall: 1 door, 3 two-seat tables, 1 fridge, 1 prep counter
 - [ ] Sims-style Build and Buy modes: categories, theme filters, undo, eyedropper (#160, D23)
 - [ ] Concepts: coffee shop and bar, drinks, counter seating, opening hours (#158, D23)
 - [ ] Menu designer: name, sections, unlock tree, menu boards (#161, D23)
-- [ ] Restrooms as built rooms (#115)
+- [x] Rooms and restrooms as built rooms (#115, #192)
+- [x] Back door foundation (#191); real swinging door and one per shop with visible deliveries (#187, D25)
+- [ ] Floor types and patterns painted per cell or per room: tile, wood, checker and more (Sims-style, D25)
 - [x] Hiring pool, traits, wages
 - [ ] The priority matrix
 - [x] Plate cycle (sink, dirty plates)

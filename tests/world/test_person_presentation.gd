@@ -59,12 +59,28 @@ func test_unknown_and_unapproved_cleaner_roles_have_no_substitute() -> void:
 
 func test_models_are_restricted_to_vendored_mini_characters() -> void:
 	assert_eq(PersonPresentation.model_path_for(&"cook"), "res://assets/kenney/characters/character-male-b.glb")
-	for role: StringName in [&"cook", &"server", &"owner"]:
+	for role: StringName in [&"cook", &"server", &"owner", &"courier"]:
 		assert_true(PersonPresentation.source_head_top(PersonPresentation.model_for(role)) > 0.0)
+	assert_eq(PersonPresentation.model_for(&"courier"), &"character-female-b", "the one kit model no role uses")
+	assert_false(PersonPresentation.GUEST_MODELS.has(PersonPresentation.COURIER_MODEL))
 	for id: int in range(PersonPresentation.GUEST_MODELS.size()):
 		assert_true(PersonPresentation.model_path_for(&"customer", id).begins_with("res://assets/kenney/characters/character-"))
 		assert_true(PersonPresentation.model_path_for(&"customer", id).ends_with(".glb"))
 		assert_true(PersonPresentation.source_head_top(PersonPresentation.model_for(&"customer", id)) > 0.0)
+
+
+func test_only_the_courier_wears_the_delivery_uniform() -> void:
+	assert_true(PersonPresentation.has_courier_cap(&"courier"))
+	assert_false(PersonPresentation.has_chef_hat(&"courier"))
+	var recolors: Array[Dictionary] = PersonPresentation.uniform_recolors(&"courier")
+	assert_eq(recolors.size(), 2)
+	for recolor: Dictionary in recolors:
+		var rect: Rect2i = recolor["rect"]
+		assert_true(Rect2i(0, 0, 512, 512).encloses(rect), "blocks stay inside the kit colormap")
+	for role: StringName in [&"cook", &"server", &"owner", &"customer", &"guest", &"cleaner"]:
+		assert_false(PersonPresentation.has_courier_cap(role))
+		assert_eq(PersonPresentation.uniform_recolors(role).size(), 0)
+	assert_ne(PersonPresentation.COURIER_BROWN, PersonPresentation.COURIER_AMBER)
 
 
 func test_agent_state_flags_choose_required_kit_clips() -> void:
@@ -77,9 +93,15 @@ func test_agent_state_flags_choose_required_kit_clips() -> void:
 
 func test_pose_priority_keeps_seats_and_carried_meals_readable() -> void:
 	assert_eq(PersonPresentation.clip_for_state(true, true, true, true), &"sit")
-	assert_eq(PersonPresentation.clip_for_state(true, false, true, true), &"holding-both")
+	assert_eq(PersonPresentation.clip_for_state(true, false, true, true), PersonPresentation.CARRY_WALK,
+		"carrying while walking keeps the legs walking (FK-099)")
+	assert_eq(PersonPresentation.clip_for_state(false, false, true, true), &"holding-both")
 	assert_eq(PersonPresentation.clip_for_state(true, false, false, true), &"walk")
-	assert_eq(PersonPresentation.CLIPS.size(), 5)
+	assert_eq(PersonPresentation.clip_for_state(false, false, false, true, true), &"pick-up", "bending to a crate")
+	assert_eq(PersonPresentation.clip_for_state(false, false, true, false, true), &"pick-up",
+		"a crate stays in the hands through the bend")
+	assert_eq(PersonPresentation.clip_for_state(true, false, false, false, true), &"walk", "never bends while walking")
+	assert_eq(PersonPresentation.CLIPS.size(), 6)
 	for clip: StringName in PersonPresentation.CLIPS:
 		assert_false(String(clip).contains("wheelchair"))
 		assert_false(String(clip).contains("attack"))

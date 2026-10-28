@@ -11,6 +11,7 @@ var _model: Node3D
 var _player: AnimationPlayer
 var _skeleton: Skeleton3D
 var _hat: Node3D
+var _cap: Node3D
 var _model_name: StringName = &""
 var _clip: StringName = &""
 var _requested_clip: StringName = &"idle"
@@ -20,10 +21,13 @@ var _playback_speed: float = 1.0
 var _seated_lean_degrees: float = 0.0
 var _sit_lean_track: int = -1
 var _sit_base_rotations: Array[Quaternion] = []
+## Uniform materials by role, built once from the vendored colormap.
+static var _uniform_materials: Dictionary[StringName, Material] = {}
 
 
 func _ready() -> void:
 	_hat = get_node("ChefHat") as Node3D
+	_cap = get_node("CourierCap") as Node3D
 	_initialized = true
 	set_look(role, guest_id, customer_type)
 
@@ -63,17 +67,16 @@ func set_look(value: StringName, id: int = 0, kind: StringName = &"regular") -> 
 		_clear_model()
 		return false
 	_player.speed_scale = _playback_speed
-	if PersonPresentation.has_chef_hat(role):
-		var head: int = _skeleton.find_bone("head")
-		if head < 0:
-			_clear_model()
-			return false
-		var attachment: BoneAttachment3D = BoneAttachment3D.new()
-		attachment.name = "ChefHatAttachment"
-		attachment.bone_name = "head"
-		_skeleton.add_child(attachment)
-		_hat.reparent(attachment, false)
-		_hat.visible = true
+	# Repaint the kit meshes before any head piece joins the model's tree.
+	if not _apply_uniform():
+		_clear_model()
+		return false
+	if PersonPresentation.has_chef_hat(role) and not _attach_to_head(_hat, "ChefHatAttachment"):
+		_clear_model()
+		return false
+	if PersonPresentation.has_courier_cap(role) and not _attach_to_head(_cap, "CourierCapAttachment"):
+		_clear_model()
+		return false
 	_model_name = desired_model
 	var played: bool = _play_requested_clip()
 	if played and _clip == &"sit" and seated_time > 0.0:
@@ -81,15 +84,77 @@ func set_look(value: StringName, id: int = 0, kind: StringName = &"regular") -> 
 	return played
 
 
+func _attach_to_head(piece: Node3D, attachment_name: String) -> bool:
+	var head: int = _skeleton.find_bone("head")
+	if head < 0:
+		return false
+	var attachment: BoneAttachment3D = BoneAttachment3D.new()
+	attachment.name = attachment_name
+	attachment.bone_name = "head"
+	_skeleton.add_child(attachment)
+	piece.reparent(attachment, false)
+	piece.visible = true
+	return true
+
+
+## Overrides this instance's surfaces with the role's repainted colormap copy.
+## Roles without a uniform keep the imported, shared material untouched.
+func _apply_uniform() -> bool:
+	var recolors: Array[Dictionary] = PersonPresentation.uniform_recolors(role)
+	if recolors.is_empty():
+		return true
+	var meshes: Array[Node] = _model.find_children("*", "MeshInstance3D", true, false)
+	if meshes.is_empty():
+		return false
+	var material: Material = _uniform_materials.get(role)
+	if material == null:
+		material = _uniform_material((meshes[0] as MeshInstance3D).mesh.surface_get_material(0), recolors)
+		if material == null:
+			return false
+		_uniform_materials[role] = material
+	for node: Node in meshes:
+		var mesh_instance: MeshInstance3D = node as MeshInstance3D
+		for surface: int in mesh_instance.mesh.get_surface_count():
+			mesh_instance.set_surface_override_material(surface, material)
+	return true
+
+
+static func _uniform_material(source: Material, recolors: Array[Dictionary]) -> Material:
+	var base: StandardMaterial3D = source as StandardMaterial3D
+	if base == null or base.albedo_texture == null:
+		return null
+	var image: Image = base.albedo_texture.get_image()
+	if image == null:
+		return null
+	image = image.duplicate() as Image
+	if image.is_compressed() and image.decompress() != OK:
+		return null
+	image.convert(Image.FORMAT_RGBA8)
+	for recolor: Dictionary in recolors:
+		var rect: Rect2i = recolor["rect"]
+		var color: Color = recolor["color"]
+		for x: int in range(rect.position.x, rect.end.x):
+			var top: float = image.get_pixel(x, rect.position.y).get_luminance()
+			for y: int in range(rect.position.y, rect.end.y):
+				var shade: float = image.get_pixel(x, y).get_luminance() / top if top > 0.0 else 1.0
+				image.set_pixel(x, y, Color(color.r * shade, color.g * shade, color.b * shade, 1.0))
+	if image.has_mipmaps():
+		image.clear_mipmaps()
+	image.generate_mipmaps()
+	var material: StandardMaterial3D = base.duplicate() as StandardMaterial3D
+	material.albedo_texture = ImageTexture.create_from_image(image)
+	return material
+
+
 ## The caller passes the actual chair seat's world height after seat arrival.
 ## It also positions the person at the chair and supplies that chair's facing.
 func set_pose(moving: bool, seated: bool, carrying: bool, working: bool, seat_height: float = 0.0,
-		seated_lean_degrees: float = 0.0) -> bool:
+		seated_lean_degrees: float = 0.0, bending: bool = false) -> bool:
 	if not PersonPresentation.seated_lean_valid(seated_lean_degrees):
 		return false
 	var lean: float = seated_lean_degrees if seated else 0.0
 	var lean_changed: bool = lean != _seated_lean_degrees
-	_requested_clip = PersonPresentation.clip_for_state(moving, seated, carrying, working)
+	_requested_clip = PersonPresentation.clip_for_state(moving, seated, carrying, working, bending)
 	_seat_height = maxf(seat_height, 0.0) if seated else 0.0
 	_seated_lean_degrees = lean
 	var pivot: Node3D = get_node_or_null("ModelPivot") as Node3D
@@ -174,15 +239,45 @@ func _prepare_clips() -> bool:
 		if source == null:
 			return false
 		var animation: Animation = source.duplicate(true) as Animation
-		animation.loop_mode = Animation.LOOP_LINEAR
+		animation.loop_mode = Animation.LOOP_NONE if PersonPresentation.ONE_SHOT_CLIPS.has(clip) \
+			else Animation.LOOP_LINEAR
 		if clip == &"sit" and not _prepare_seated_lean(animation):
 			return false
 		library.add_animation(clip, animation)
+	var carry_walk: Animation = _carry_walk(library.get_animation(&"walk"), library.get_animation(&"holding-both"))
+	if carry_walk == null:
+		return false
+	library.add_animation(PersonPresentation.CARRY_WALK, carry_walk)
 	for name: StringName in _player.get_animation_library_list():
 		_player.remove_animation_library(name)
 	_player.add_animation_library(&"", library)
 	_update_seated_lean()
 	return true
+
+
+## `walk` with both arm tracks taken from `holding-both` (a held pose), so the
+## legs and body keep walking under arms that carry. Same rig, same bones.
+static func _carry_walk(walk: Animation, holding: Animation) -> Animation:
+	if walk == null or holding == null:
+		return null
+	var animation: Animation = walk.duplicate(true) as Animation
+	for index: int in range(animation.get_track_count() - 1, -1, -1):
+		if _is_arm_track(animation, index):
+			animation.remove_track(index)
+	var copied: int = 0
+	for index: int in holding.get_track_count():
+		if _is_arm_track(holding, index):
+			holding.copy_track(index, animation)
+			copied += 1
+	if copied == 0:
+		return null
+	animation.loop_mode = Animation.LOOP_LINEAR
+	return animation
+
+
+static func _is_arm_track(animation: Animation, index: int) -> bool:
+	var bone: String = String(animation.track_get_path(index)).get_slice(":", 1)
+	return bone == "arm-left" or bone == "arm-right"
 
 
 ## The eight native guest rigs have identity torso rest rotation and sit keys
@@ -234,6 +329,13 @@ func _play_requested_clip() -> bool:
 		return false
 	if _clip == _requested_clip:
 		return true
+	# Between carrying and bending to set down or pick up (FK-099), the arms
+	# ease across instead of jumping (a crate in hand follows them).
+	if PersonPresentation.CARRY_BLEND_CLIPS.has(_clip) and PersonPresentation.CARRY_BLEND_CLIPS.has(_requested_clip):
+		_player.play(_requested_clip, PersonPresentation.CARRY_BLEND_SECONDS)
+		_player.advance(0.0)
+		_clip = _requested_clip
+		return true
 	_player.stop()
 	# Holding and sitting only key part of the skeleton; clear the previous pose.
 	_skeleton.reset_bone_poses()
@@ -244,10 +346,11 @@ func _play_requested_clip() -> bool:
 
 
 func _clear_model() -> void:
-	if _hat != null:
-		_hat.visible = false
-		if _hat.get_parent() != self:
-			_hat.reparent(self, false)
+	for piece: Node3D in [_hat, _cap]:
+		if piece != null:
+			piece.visible = false
+			if piece.get_parent() != self:
+				piece.reparent(self, false)
 	if _model != null:
 		_model.get_parent().remove_child(_model)
 		_model.free()

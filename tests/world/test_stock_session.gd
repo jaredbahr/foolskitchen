@@ -48,7 +48,8 @@ func test_new_game_auto_order_buys_the_old_amounts_with_one_premium() -> void:
 	assert_true(cost > 88, "the default order pays a premium")
 	assert_eq(Economy.cash, TUNING.starting_cash - cost, "$88 at list price plus one premium")
 	var entries: Array[Dictionary] = _ingredient_entries(1)
-	assert_eq(entries.size(), TUNING.morning_stock.size() + 1)
+	# Every tuned ingredient with a target (frozen fries' is 0), plus the premium.
+	assert_eq(entries.size(), TUNING.morning_stock.size() - 1 + 1)
 	var premiums: int = 0
 	for entry: Dictionary in entries:
 		if entry["note"] == "auto_reorder_premium":
@@ -160,6 +161,16 @@ func test_expired_stock_is_thrown_out_and_replaced() -> void:
 	var notes: Array[String] = main.call("stock_notes")
 	assert_true(notes.has("Thrown out this morning (too old): 10 Beef patty."), str(notes))
 	assert_eq(notes[0], "This morning's auto-order cost $20.", "no premium part without a premium")
+
+
+func test_rows_say_when_no_dish_uses_an_ingredient_yet() -> void:
+	var main: Node = _start(false)
+	var rows: Array[Dictionary] = main.call("stock_rows")
+	for row: Dictionary in rows:
+		assert_false(bool(row["no_dish"]), "%s is in a dish" % row["name"])
+	var in_dishes: Dictionary[StringName, bool] = main.call("_dish_ingredients")
+	assert_true(in_dishes.has(&"potato"))
+	assert_false(in_dishes.has(&"frozen_fries"), "frozen fries: no dish uses them yet")
 
 
 ## A dish that runs out is tagged on the HUD and named in the report with

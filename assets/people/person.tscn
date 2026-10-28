@@ -1,4 +1,4 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=9 format=3]
 
 [ext_resource type="Script" path="res://assets/people/person.gd" id="1_person"]
 
@@ -21,6 +21,25 @@ height = 0.20
 radial_segments = 8
 rings = 3
 
+[sub_resource type="StandardMaterial3D" id="Material_cap"]
+albedo_color = Color(0.603922, 0.415686, 0.243137, 1)
+roughness = 1.0
+
+[sub_resource type="StandardMaterial3D" id="Material_cap_peak"]
+albedo_color = Color(0.85098, 0.556863, 0.168627, 1)
+roughness = 1.0
+
+[sub_resource type="SphereMesh" id="Mesh_cap_crown"]
+material = SubResource("Material_cap")
+radius = 0.262
+height = 0.27
+radial_segments = 8
+rings = 4
+
+[sub_resource type="BoxMesh" id="Mesh_cap_peak"]
+material = SubResource("Material_cap_peak")
+size = Vector3(0.3, 0.03, 0.13)
+
 [node name="Person" type="Node3D"]
 script = ExtResource("1_person")
 
@@ -37,3 +56,14 @@ mesh = SubResource("Mesh_hat_band")
 [node name="Puff" type="MeshInstance3D" parent="ChefHat"]
 position = Vector3(0, 0.43, 0)
 mesh = SubResource("Mesh_hat_puff")
+
+[node name="CourierCap" type="Node3D" parent="."]
+visible = false
+
+[node name="Crown" type="MeshInstance3D" parent="CourierCap"]
+position = Vector3(0, 0.26, 0)
+mesh = SubResource("Mesh_cap_crown")
+
+[node name="Peak" type="MeshInstance3D" parent="CourierCap"]
+position = Vector3(0, 0.27, 0.25)
+mesh = SubResource("Mesh_cap_peak")

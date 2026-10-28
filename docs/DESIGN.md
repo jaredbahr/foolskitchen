@@ -64,11 +64,13 @@ Morning (closed): plan menu and prices, buy stock, hire, rebuild
 - **Quality** = recipe base, then cook skill, then equipment tier, then ingredient freshness. Each factor is shown in the dish tooltip so you can see why quality is what it is.
 - **Pricing:** the player sets a price per dish, shown against the "standard" price. Guests weigh price against quality and their type's budget.
 - **Stock:** ingredients have shelf life. There's a stock panel, a low-stock alert, and optional automatic reordering at a small premium.
+- **Deliveries (D25):** morning orders arrive at once. An order placed during service comes with the next daytime delivery, which you can watch: a delivery driver walks the crates along the back alley and in through the back door (the front door if there is none) and sets them down inside, and the cleaner (or a server, without a cleaner) carries each crate to the fridge, freezer or shelf. Goods count as stock once put away; anything still waiting at closing is stored, so nothing is ever lost. A shop taking several mid-day orders with no cleaner pays a visible service cost (servers leave guests to carry crates); hiring a cleaner removes it.
 - **Carry capacity:** one plate by default. Trays (an upgrade) allow 2, then 4. This fixes TasteMaker's "one plate per trip" tedium.
 - **Recipe discovery (later):** combine ingredients in a mini-game to unlock variants.
 
 ### 4.3 Build mode
 - **Grid:** 0.5 m. Walls, floors, doors, windows, tables, chairs, stations, storage, decor.
+- **Doors (D25):** the street door is the only guest door. A shop may have one back door, one cell wide, on a back or side wall, for staff and deliveries; like a service door it swings out, flat against the outside wall, as people pass.
 - **Footprints show working tiles** (where a worker stands), so layouts are readable before you place them.
 - **Live path check:** unreachable tables or stations are highlighted as you build. It warns but doesn't block.
 - **Blueprints:** save a group of items (for example a 4-seat table cluster or a fry station) and stamp it again. This answers TasteMaker's "space management" pain.
@@ -143,6 +145,7 @@ Multiplayer, a story or campaign, scenario mode (career milestones replace it), 
 | D22 | Player-led look | The player decides how the restaurant looks. We offer many assets and variants (colours, materials, styles of the same piece) so there are several ways to design any space; no single "correct" look. Reviews judge Kenney-style consistency (D19), not taste | 2026-10-25 |
 | D23 | Restaurant designer | The game is a restaurant designer with a management sim underneath, in a Sims-like design language (Build and Buy modes, browsable catalogue, forgiving tools). The player builds the space (walls, windows, interior rooms, restrooms, floor, paint, decor, later entertainment) and chooses the concept (diner, coffee shop, bar or a mix) through what they build and serve, never a picker. The menu and theming are part of the design fun | 2026-10-27 |
 | D24 | More sites and managers | A second site unlocks at Tier 3, and you need a hired Manager to leave a site (the Manager role moves from Tier 6 to Tier 3). Away sites run a seeded summary sim: their own recent results scaled by manager skill, never more than playing in person. New lots differ in size, street, rent and guest mix, and start as a bare shell (#164) | 2026-10-27 |
+| D25 | Back door and floors | One back door per shop, with a real door that swings open when staff or deliveries pass; the street door stays the only guest door. Rooms are coloured tints in Build for now, but floors get their own types and patterns (tile, wood, checker and so on) painted per cell or per room, Sims-style | 2026-10-28 |
 | D11 | Platform | Both: a web build (play from a link) and a Windows download, from the same Godot project | 2026-10-23 |
 | D6 | Starting property | A rented hole-in-the-wall shop with 2 to 3 tables (not an outdoor food cart: indoor is simpler to simulate and to build) | 2026-10-23 |
 | D7 | Mode structure | Career mode only at first. A sandbox comes in Phase 5. No scenario mode. | 2026-10-23 |

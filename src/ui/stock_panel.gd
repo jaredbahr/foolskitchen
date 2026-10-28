@@ -155,7 +155,10 @@ func _refresh_row(row: Dictionary, data: Dictionary, editable: bool, free: int) 
 		count_text += ", %d on order" % on_order
 	if expiring > 0:
 		count_text += ". %d expire tomorrow" % expiring
-	if not in_use:
+	var no_dish: bool = bool(data.get("no_dish", false))
+	if no_dish:
+		count_text += ". No dish uses them yet"
+	elif not in_use:
 		count_text += ". Not on today's menu"
 	var count_label: Label = row["count"]
 	count_label.text = count_text
@@ -180,7 +183,8 @@ func _refresh_row(row: Dictionary, data: Dictionary, editable: bool, free: int) 
 			elif not fits:
 				button.tooltip_text = "Not enough %s space" % _space_word(int(data.get("kind", 0)))
 			else:
-				button.tooltip_text = "Add %d %s for $%d" % [step, display, unit_cost * step]
+				button.tooltip_text = "Add %d %s for $%d" % [step, display, unit_cost * step] \
+					+ (" (no dish uses them yet)" if no_dish else "")
 	var throw: Button = row["throw"]
 	var armed: bool = _armed_throw == StringName(data.get("id", &""))
 	if count <= 0 and armed:

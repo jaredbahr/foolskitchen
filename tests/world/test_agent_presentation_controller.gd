@@ -27,7 +27,7 @@ class SpyPerson extends PersonView:
 		return PersonPresentation.model_for(value, id, kind) != &""
 
 	func set_pose(moving: bool, seated: bool, carrying: bool, working: bool, seat_height: float = 0.0,
-			seated_lean_degrees: float = 0.0) -> bool:
+			seated_lean_degrees: float = 0.0, _bending: bool = false) -> bool:
 		seen_pose = [moving, seated, carrying, working]
 		seen_seat = seat_height
 		seen_lean = seated_lean_degrees

@@ -19,7 +19,8 @@ morning_stock = Dictionary[StringName, int]({
 &"cheese": 8,
 &"lettuce": 10,
 &"soup_stock": 8,
-&"tomato": 16
+&"tomato": 16,
+&"frozen_fries": 0
 })
 station_stock = Dictionary[StringName, int]({
 &"coffee_beans": 30,

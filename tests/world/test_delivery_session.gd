@@ -183,10 +183,25 @@ func test_deliveries_arrive_on_the_schedule_and_bring_sold_out_dishes_back() -> 
 	assert_eq(Economy.stock.count(&"soup_stock"), 0, "nothing before 14:00")
 	main.call("run_ticks", 1)
 	assert_eq(Clock.sim.phase_tick, 1080)
-	assert_eq(Economy.stock.count(&"soup_stock"), 6, "the 14:00 delivery")
-	assert_false(sim.is_sold_out(&"tomato_soup"), "the soup is back on")
-	assert_true((main.call("stock_notes") as Array[String]).has("The 14:00 delivery brought 6 Soup stock."))
+	# FK-099: the 14:00 delivery is carried in; it is stock once put away.
+	assert_eq(Economy.stock.count(&"soup_stock"), 0, "on its way in, not stock yet")
+	assert_true(sim.is_sold_out(&"tomato_soup"))
+	assert_false(sim.dock.is_idle(), "a delivery person brings it")
+	var notes: Array[String] = main.call("stock_notes")
+	assert_true(notes.has("The 14:00 delivery brought 6 Soup stock."), str(notes))
+	assert_true(notes.has("Still to be put away: 6 Soup stock."), str(notes))
 	assert_true((main.get("deliveries") as DeliveryBook).is_empty())
+	assert_eq((main.call("storage_space") as StorageSpace).on_order(StorageSpace.DRY), 6, "its space stays held")
+	var rows: Array[Dictionary] = main.call("stock_rows")
+	assert_eq(rows.filter(func(row: Dictionary) -> bool: return row["id"] == &"soup_stock")[0]["on_order"], 6)
+	var waited: int = 0
+	while sim.dock.pending_by_id().has(&"soup_stock") and waited < 3000:
+		main.call("run_ticks", 1)
+		waited += 1
+	assert_eq(Economy.stock.count(&"soup_stock"), 6, "put away by staff")
+	assert_false(sim.is_sold_out(&"tomato_soup"), "the soup is back on")
+	assert_false((main.call("stock_notes") as Array[String]).any(
+		func(note: String) -> bool: return note.begins_with("Still to be put away")))
 	# After the last delivery (20:00) an order waits for the morning.
 	main.call("run_ticks", 3240 - Clock.sim.phase_tick + 10)
 	assert_true(main.call("stock_cart_set", &"bread", 2))
