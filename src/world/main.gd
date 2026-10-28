@@ -1125,10 +1125,9 @@ func _update_build_controls() -> void:
 		reason = BuildCatalogue.FURNITURE_HINT
 	if not _edit_notice.is_empty():
 		reason = _edit_notice if reason.is_empty() else _edit_notice + "\n" + reason
-	var restock_warning: String = build_restock_warning()
-	if not restock_warning.is_empty():
-		reason = restock_warning if reason.is_empty() else reason + "\n" + restock_warning
-	$HUD.set_build_state(available, active, reason, int(build_mode.state), int(build_mode.tool))
+	# The restock advice gets its own amber line under the cost (FK-096).
+	$HUD.set_build_state(available, active, reason, int(build_mode.state), int(build_mode.tool),
+		build_restock_warning())
 	$HUD.set_paint_state(_paint_active)
 	if _build_catalogue != null:
 		_build_catalogue.set_paint_visible(_paint_active)
@@ -1146,7 +1145,8 @@ func build_restock_estimate() -> int:
 	if world == null or content == null:
 		return 0
 	var kinds: Dictionary[StringName, int] = StorageSpace.kinds_of(content)
-	var pending: Dictionary[StringName, int] = deliveries.pending_by_id()
+	# Paid, not stocked: the same source the real morning order plans with.
+	var pending: Dictionary[StringName, int] = _on_the_way()
 	if world.clock.phase == SimClock.Phase.CLOSED:
 		return int(StockAlerts.forecast(Economy.stock, _reorder(), _shelf_lives(),
 			world.clock.day + 1, _unit_costs(), 2147483647, auto_reorder_premium,
@@ -1163,7 +1163,7 @@ func build_restock_warning() -> String:
 	var cost: int = 0
 	if build_mode.state == BuildMode.State.BUY and build_mode.selected_definition != null:
 		cost = build_mode.selected_definition.price
-	elif build_mode.state in [BuildMode.State.WALLS, BuildMode.State.FLOOR]:
+	elif build_mode.state in [BuildMode.State.WALLS, BuildMode.State.FLOOR, BuildMode.State.FLOORS]:
 		cost = maxi(0, build_mode.current_check.cost - build_mode.current_check.refund)
 	if cost <= 0:
 		return ""

@@ -7,4 +7,4 @@ static func text(cash: int, purchase_cost: int, restock_estimate: int) -> String
 	var left: int = cash - purchase_cost
 	if left >= restock_estimate:
 		return ""
-	return "Leaves %s; allow about %s for restocking" % [Fmt.money(left), Fmt.money(restock_estimate)]
+	return "Leaves %s — tomorrow's restock needs about %s" % [Fmt.money(left), Fmt.money(restock_estimate)]

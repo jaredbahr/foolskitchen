@@ -38,13 +38,18 @@ func _run() -> void:
 		await process_frame
 	await RenderingServer.frame_post_draw
 	var warning: String = main.call("build_restock_warning")
-	var hint: Label = main.get_node("HUD").get("_build_hint_text")
-	var visible: bool = hint.is_visible_in_tree() and root.get_visible_rect().encloses(hint.get_global_rect())
-	var valid: bool = mode.current_check.ok and not warning.is_empty() and hint.text.contains(warning) and visible
+	var hud: Node = main.get_node("HUD")
+	var hint: Label = hud.get("_build_hint_text")
+	var line: Label = hud.get("_build_warning_text")
+	var visible: bool = line.is_visible_in_tree() and root.get_visible_rect().encloses(line.get_global_rect())
+	var amber: bool = line.get_theme_color("font_color") == hud.get("ADVICE_COLOR") \
+		and not hint.has_theme_color_override("font_color")
+	var valid: bool = mode.current_check.ok and not warning.is_empty() and line.text == warning \
+		and not hint.text.contains(warning) and visible and amber
 	var metadata: Dictionary = {"fixture": "Paused original five-cell expansion preview; input polling frozen; cash set through the ledger; no purchase committed",
 		"cash": int(economy.get("cash")), "preview_cost": cost, "leaves": int(economy.get("cash")) - cost,
 		"restock_estimate": main.call("build_restock_estimate"), "warning": warning,
-		"placement_allowed": mode.current_check.ok, "warning_in_viewport": visible, "engine_errors": errors.count()}
+		"placement_allowed": mode.current_check.ok, "warning_in_viewport": visible, "warning_amber": amber, "engine_errors": errors.count()}
 	if root.get_texture().get_image().save_png(output.path_join("restock-warning.png")) != OK:
 		valid = false
 	var file: FileAccess = FileAccess.open(output.path_join("restock-warning.json"), FileAccess.WRITE)

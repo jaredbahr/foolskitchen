@@ -58,8 +58,15 @@ func test_floor_budget_warning_is_visible_read_only_and_does_not_refuse_purchase
 	var warning: String = _main.call("build_restock_warning")
 	assert_eq(warning, RestockBudgetWarning.text(Economy.cash, cost, estimate))
 	assert_false(warning.is_empty())
-	var hint: Label = _main.get_node("HUD").get("_build_hint_text")
-	assert_true(hint.text.contains(warning), "the cash-change callback refreshes advice even while the check stays valid")
+	var hud: Node = _main.get_node("HUD")
+	var line: Label = hud.get("_build_warning_text")
+	assert_eq(line.text, warning, "the cash-change callback refreshes advice even while the check stays valid")
+	assert_true(line.visible)
+	assert_eq(line.get_theme_color("font_color"), hud.get("ADVICE_COLOR"), "advice is amber, not the red of an error")
+	var hint: Label = hud.get("_build_hint_text")
+	assert_false(hint.text.contains(warning), "the cost line above keeps its normal colour")
+	assert_true(hint.text.contains(mode.floor_summary()))
+	assert_false(hint.has_theme_color_override("font_color"))
 	assert_eq(Economy.ledger.to_dict(), books)
 	assert_eq(Economy.stock.to_dict(), stock)
 	assert_eq(GameState.call("_capture_save"), random)
@@ -99,6 +106,23 @@ func test_buy_preview_advice_does_not_block_an_affordable_item() -> void:
 	assert_eq(ShopBuilder.items_with_def(world, &"prep_counter").size(), count_before + 1)
 
 
+func test_floor_laying_preview_warns_with_its_tile_cost() -> void:
+	await _start()
+	assert_true(_main.call("set_build_active", true))
+	assert_true(_main.call("begin_floors_tool", &"herringbone", &"honey"))
+	var mode: BuildMode = _main.get("build_mode")
+	assert_eq(_main.call("build_restock_estimate"), 93)
+	Economy.add_cash(217 - Economy.cash, Ledger.OTHER)
+	assert_true(mode.floors_press(Vector2i(1, 1)))
+	mode.floors_pointer(Vector2i(8, 6))
+	assert_true(mode.current_check.ok, mode.current_check.why)
+	assert_eq(mode.current_check.finishes.size(), 43)
+	assert_eq(mode.current_check.cost, 129)
+	assert_eq(_main.call("build_restock_warning"), "Leaves $88 — tomorrow's restock needs about $93")
+	assert_true(mode.floors_release(Vector2i(8, 6)), "the advice never refuses laying the floor")
+	assert_eq(Economy.cash, 217 - 129)
+
+
 func test_estimate_tracks_enabled_targets_without_changing_them() -> void:
 	await _start()
 	var settings: ReorderSettings = _main.call("_reorder")
@@ -126,7 +150,7 @@ func test_closed_estimate_reuses_real_next_morning_forecast_and_idle_has_no_warn
 	var forecast: Dictionary = StockAlerts.forecast(Economy.stock, _main.call("_reorder"),
 		_main.call("_shelf_lives"), Clock.sim.day + 1, _main.call("_unit_costs"), 2147483647,
 		_main.get("auto_reorder_premium"), _main.call("_storage_capacity"),
-		StorageSpace.kinds_of(content), book.pending_by_id())
+		StorageSpace.kinds_of(content), _main.call("_on_the_way"))
 	assert_eq(_main.call("build_restock_estimate"), forecast["order_cost"])
 	var incoming_id: StringName = &""
 	for row: Dictionary in forecast["rows"]:
