@@ -106,7 +106,7 @@ func test_table_chairs_match_declared_seat_centres_facing_and_shared_scale() -> 
 		assert_eq(part.position, Vector3(centre.x, 0.0, centre.y))
 		var art: Node3D = part.get_node("Art") as Node3D
 		var model: Node3D = art.get_node("Model") as Node3D
-		assert_eq(model.scene_file_path, "res://assets/kenney/furniture/chairCushion.glb")
+		assert_eq(model.scene_file_path, "res://assets/props/seats/derived/chairCushion_low_back.glb")
 		assert_eq(art.scale, Vector3.ONE * ArtScale.FURNITURE_SCALE)
 		assert_almost_eq(art.rotation.y, PI)
 		# Seated guests face the mean of the occupied table cells. Check that

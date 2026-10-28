@@ -8,6 +8,7 @@ var _recipes: Dictionary[StringName, RecipeDef] = {}
 var _items: Dictionary[StringName, ItemDef] = {}
 var _swatches: Dictionary[StringName, SwatchDef] = {}
 var _walls: Dictionary[StringName, WallKindDef] = {}
+var _floors: Dictionary[StringName, FloorStyleDef] = {}
 
 
 ## On failure the database is empty, so an earlier load cannot hide bad data.
@@ -17,6 +18,7 @@ func load_all(root: String = "res://data") -> PackedStringArray:
 	_items.clear()
 	_swatches.clear()
 	_walls.clear()
+	_floors.clear()
 	var errors: PackedStringArray = []
 	var ingredient_defs: Array[IngredientDef] = []
 	var recipe_defs: Array[RecipeDef] = []
@@ -53,9 +55,17 @@ func load_all(root: String = "res://data") -> PackedStringArray:
 			wall_defs.append(resource as WallKindDef)
 		else:
 			errors.append("%s: expected WallKindDef" % path)
+	var floor_defs: Array[FloorStyleDef] = []
+	for path: String in _resource_paths(root.path_join("floors"), errors):
+		var resource: Resource = ResourceLoader.load(path)
+		if resource is FloorStyleDef:
+			floor_defs.append(resource as FloorStyleDef)
+		else:
+			errors.append("%s: expected FloorStyleDef" % path)
 	errors.append_array(validate_definitions(ingredient_defs, recipe_defs, item_defs))
 	errors.append_array(validate_swatches(swatch_defs))
 	errors.append_array(validate_wall_kinds(wall_defs))
+	errors.append_array(validate_floor_styles(floor_defs, swatch_defs))
 	if not errors.is_empty():
 		return errors
 	for definition: IngredientDef in ingredient_defs:
@@ -68,6 +78,8 @@ func load_all(root: String = "res://data") -> PackedStringArray:
 		_swatches[definition.id] = definition
 	for definition: WallKindDef in wall_defs:
 		_walls[definition.id] = definition
+	for definition: FloorStyleDef in floor_defs:
+		_floors[definition.id] = definition
 	return errors
 
 
@@ -129,6 +141,57 @@ static func validate_wall_kinds(definitions: Array[WallKindDef]) -> PackedString
 			errors.append("wall '%s': another wall definition has the same segment" % definition.id)
 		else:
 			segments[definition.segment] = true
+	return errors
+
+
+func floor_style(id: StringName) -> FloorStyleDef:
+	return _floors.get(id) as FloorStyleDef
+
+
+## Catalogue order (then ID); a new array each call.
+func floor_styles() -> Array[FloorStyleDef]:
+	var result: Array[FloorStyleDef] = []
+	result.assign(_floors.values())
+	result.sort_custom(func(a: FloorStyleDef, b: FloorStyleDef) -> bool:
+		return a.order < b.order or (a.order == b.order and String(a.id) < String(b.id)))
+	return result
+
+
+## Floor types (D25): unique ids with names, prices of 0 or more, a known
+## pattern and known colours, and exactly the free wide planks every shop
+## starts with (FloorStyleDef.DEFAULT_ID).
+static func validate_floor_styles(definitions: Array[FloorStyleDef], swatch_defs: Array[SwatchDef]) -> PackedStringArray:
+	var errors: PackedStringArray = []
+	var ids: Dictionary[StringName, bool] = {}
+	var swatch_ids: Dictionary[StringName, bool] = {}
+	for swatch: SwatchDef in swatch_defs:
+		if swatch != null:
+			swatch_ids[swatch.id] = true
+	var has_default: bool = false
+	for index: int in range(definitions.size()):
+		var definition: FloorStyleDef = definitions[index]
+		if definition == null:
+			errors.append("floor[%d] is null" % index)
+			continue
+		_check_id(definition.id, "floor", ids, errors)
+		if definition.display_name.strip_edges().is_empty():
+			errors.append("floor '%s': display_name is empty" % definition.id)
+		if definition.price < 0:
+			errors.append("floor '%s': price must be >= 0" % definition.id)
+		if not FloorStyleDef.Pattern.values().has(int(definition.pattern)):
+			errors.append("floor '%s': unknown pattern" % definition.id)
+		if definition.unlock_level < 1 or definition.unlock_tier < 1:
+			errors.append("floor '%s': unlock level and tier must be >= 1" % definition.id)
+		for swatch: StringName in [definition.default_swatch, definition.default_accent]:
+			if not swatch.is_empty() and not swatch_ids.has(swatch):
+				errors.append("floor '%s': unknown colour '%s'" % [definition.id, swatch])
+		if definition.id == FloorStyleDef.DEFAULT_ID:
+			has_default = true
+			if definition.price != 0 or definition.pattern != FloorStyleDef.Pattern.PLANKS \
+					or not definition.unlocked(1) or not definition.default_swatch.is_empty():
+				errors.append("floor '%s': the starting floor must be free wide planks in the shop's own colour" % definition.id)
+	if not has_default:
+		errors.append("floor '%s' (the starting floor) is missing" % FloorStyleDef.DEFAULT_ID)
 	return errors
 
 
@@ -218,6 +281,9 @@ static func validate_definitions(ingredient_defs: Array[IngredientDef], recipe_d
 		if not is_finite(definition.seated_forward_offset) or definition.seated_forward_offset < 0.0 \
 				or definition.seated_forward_offset > ItemDef.MAX_SEATED_FORWARD_OFFSET:
 			errors.append("item '%s': seated_forward_offset must be finite and between 0 and 0.05 m" % definition.id)
+		if not is_finite(definition.seated_lean_degrees) or definition.seated_lean_degrees < 0.0 \
+				or definition.seated_lean_degrees > ItemDef.MAX_SEATED_LEAN_DEGREES:
+			errors.append("item '%s': seated_lean_degrees must be finite and between 0 and 35 degrees" % definition.id)
 		if not definition.placement_layer_valid():
 			errors.append("item '%s': invalid placement layer; floor decor must be non-solid decor without blocking, work or seat cells" % definition.id)
 		if not definition.blocking_cells_valid():

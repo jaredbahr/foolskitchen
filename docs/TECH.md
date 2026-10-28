@@ -46,6 +46,8 @@ and save on release, after 0.5 seconds without another step, or when Settings
 closes. This is the issue's narrow exception to `AGENTS.md` rule 9; game state
 still uses only the existing morning `SaveSystem` autosave. Missing or invalid
 preference files restore the whole default set without touching a game save.
+Build's grid choice (`build_grid`, D25 follow-up) is optional in the file, so
+an older file without it still loads (grid on).
 The test and parse runners disable the default preference file before autoload
 reads; settings tests use explicit private `user://` fixtures on every platform.
 The HUD gear opens Settings during any day phase and pauses the clock. Closing
@@ -61,6 +63,7 @@ an active edit/panel/selection first, or opens Settings when none is active.
 ### 2.3 AI (agents)
 - **The sim owns movement.** Pathfinding runs in `src/sim/` on the 0.5 m build grid using `AStarGrid2D` (a `RefCounted`, so no nodes are involved). Agents have a grid position and a path. Visual nodes in `world/` only interpolate between grid points and play animations.
   - Why not `NavigationAgent3D`: it lives in the scene tree. That would break headless tests, determinism and background simulation of other sites (TECH 2.2 rule 1).
+  - **Smooth motion (view only, `src/world/motion_smoother.gd`).** The sim moves people in 10 Hz steps, so drawn as they are every pose would be held about three frames at 30 fps. `ShopView` feeds `MotionSmoother` each person's presented pose (the `AgentPresentationController.Frame`: drawn floor point with seat, reach and separation offsets, facing, fade, crate slide) every frame, keyed by `world.now`, and draws the blend between the last two ticks at `ShopView.interpolation_alpha()`, which is `Clock.tick_fraction()` (the accumulator's fraction, 0..1). The picture therefore runs one tick behind the sim (0.1 s at 1x, 25 ms at 4x) and moves every frame; the door leaf, held crates and the debug paths follow the drawn positions. Several ticks in one frame (2x/4x) keep the pose one tick back on the line between the two seen. A frame drawn at alpha 1 also settles the blend (`settle`: the previous pose becomes the newest), so a change made while the clock is not running (the morning reset puts staff back at their posts) is never slid across when service opens. A crate slide that ends at a tick finishes towards the spot and layer it slid from (the newest frame has none). Poses are refreshed in place within a tick. Paused, the fraction holds, so the picture freezes in place and resumes without a jump. Alpha is 1 (the newest state, exactly as before) outside OPEN/LAST_ORDERS, when the Clock is not attached to this world, and when the world tick is not the one the Clock last ran (`Clock.driven_world_tick`): tests, tools and `run_ticks` fast-forwards, including the screenshot tool's `--fast` and `--speed=0` captures, draw what they always drew. No blend across a jump: a new person, one hidden or shown again (restroom), a move of more than `SNAP_DISTANCE` (1 m) in a tick (teleports, the morning reset), a tick going backwards (another world, a reload; `show_world` clears it). Sitting down blends the walk onto the seat cell standing and sits at the tick; standing up starts from the seat cell. A stop keeps the walk clip for the last part of the step (not into a crate bend, so a pick-up keeps its timing). Discrete pose states (clips, carrying, bending) still change at the tick. The view never reads the sim beyond what the frames already read and never writes it. One sim change came with this work (#204): the back alley route is longer (`WallRules.ALLEY_REACH` 24 → 56) so the delivery person fades in and out off screen; it delays mid-day deliveries by about 14–17 s at 1x. The default balance probe is byte-identical (it places no mid-day orders), and in the director's paired probes with 1 and 4 orders a day, served, sales and profit stay within noise of main.
   - Diagonal moves are allowed, but corners can't be cut. Furniture marks cells solid, and stations expose "work cells" where a worker stands.
 - **Grid API (FK-012, `src/sim/grid/`):**
   - `GridMath`: `CELL_SIZE` 0.5 m. `rotate_cell(cell, footprint, quarter_turns)` turns clockwise seen from above, mapping one turn `(x, y) → (d-1-y, x)`. `rotated_footprint`, `cell_to_world`/`world_to_cell`, `path_cost`. Cell x → world +X, cell y → world +Z, and an unrotated item faces −Y (world −Z).
@@ -408,8 +411,12 @@ an active edit/panel/selection first, or opens Settings when none is active.
   short sentences from `ShopEditor.placement_reason`; path warnings do not block.
 - Valid checks supply unreachable IDs (0 for a proposed buy); committed warnings
   use actual IDs and survive invalid proposals, cancellation and exit until fixed.
-- Build forces the rendered grid while retaining the G preference; phase changes,
-  exit and presentation rebinding cancel previews and restore that preference.
+- Build shows its own grid choice (`CameraRig.build_grid_visible`, on by
+  default) while retaining the G preference used elsewhere; phase changes, exit
+  and presentation rebinding cancel previews and restore that preference. In
+  Build, G or the Build bar's Grid button (`BuildCatalogue.grid_requested`)
+  flips Build's grid and remembers it per viewer in `Preferences.build_grid`
+  (never in the shop save); Paint hides the button and keeps the G choice.
 - Build closes Menu and inspection; opening Menu exits build. GUI controls consume
   their clicks. Content-sized hints/catalogue use bounded scrolling when needed.
 - CLOSED edits hide the report; exit rebuilds it without recharging or day setup.
@@ -469,7 +476,9 @@ an active edit/panel/selection first, or opens Settings when none is active.
 #### Staff job priorities (FK-044)
 - `StaffJobPriorities.TASK_JOBS` is the single selection mapping: cook to
   Cooking; take-order and delivery to Serving; table clearing to Bussing;
-  plate washing to Washing; floor mopping to Cleaning. High, Normal, Low and
+  plate washing to Washing; floor mopping to Cleaning; putting a delivery
+  away (FK-099) to Cleaning, with one role exception in `ROLE_TASK_JOBS`: a
+  server does it as Serving (`job_for_task(kind, role)`). High, Normal, Low and
   Off choose work rather than changing its duration, skill or pay. A role's
   main job cannot be Off; work outside its existing capabilities stays Off.
 - Defaults keep a cook's Cooking and a cleaner's Cleaning High. Servers keep
@@ -590,7 +599,9 @@ an active edit/panel/selection first, or opens Settings when none is active.
   `PlacedItem.swatch_id` is cosmetic; moving preserves it, removing drops it,
   and buying starts with an empty ID and the authored placeholder colour.
 - `ShopEditor` owns whole-room wall and floor IDs plus per-item paint commands.
-  Paint is free and phase-independent. Version-1 `shop` snapshots add optional
+  Paint is free and phase-independent. Since D25 a floor click in Paint
+  recolours the connected floor of one look within its room (Shift: the room) instead of the
+  whole floor; the whole-floor ID is the default colour (see Floor types). Version-1 `shop` snapshots add optional
   swatch IDs; missing, unknown or malformed IDs restore the authored defaults.
   The existing morning autosave writes the section; no action saves immediately.
 - Main routes Paint clicks separately from furniture edits, so an open shop can
@@ -758,13 +769,32 @@ an active edit/panel/selection first, or opens Settings when none is active.
   finite and between 0 and 0.05, defaulting to zero. Presentation applies it
   along the authored seat facing before standing-person separation; simulation
   cells, reservations, random streams and save data do not move with it.
+  `ItemDef.seated_lean_degrees` separately authors a forward torso pose, finite
+  and between 0 and 35 degrees; zero preserves the imported sit pose. The
+  presenter's physical furnishing supplies it only after verified seat arrival.
+  PersonView keys a private duplicate of the sit clip at the native torso joint,
+  leaving root translation, sibling leg joints, shared models and scale alone.
+  Changing it re-seeks the same animation time, including while paused. Other
+  clips retain their source keys. Head-skinning and native-bake parity caches
+  include the applied lean as well as model and animation time. This mechanism
+  does not establish a seat's physical fit: authored tuning still requires the
+  full surface run, supported hips and actual rendered review.
+  No shipped seat uses a lean (Jared, 2026-10-28: leaning "looks pretty
+  rough"); the kit seats instead use lowered-backrest meshes derived by
+  `tools/derive_seat_backrests.py` (see `docs/ART_STYLE.md` §2). Real-table review additionally seats guests opposite each other at
+  cross, glass, cloth and round tables: no head may enter or cross any table
+  mesh, and the exact head-to-head separation is reported for visual review.
+  A backrest exception never excuses table intrusion. Review images and JSON
+  remain external to shipped resources.
   The seated-head probe uses indexed, skinned Mini head surfaces at the shared
   scale: no head vertex may be inside any seat part, and an identified backrest
-  must clear the head surface by at least 0.02 m. Made seats also require both
+  must clear the head surface by at least 0.02 m. No seat vertex may be inside
+  the closed head surface either (the reverse check catches a thin backrest
+  corner wholly inside the head). Made seats also require both
   hips to project onto their named cushion surfaces. Whole-head boxes are for
-  framing only. The Director permits explicitly named kit failures after a
-  supported trial offset of at most 0.05 m; each remains a measured failure in
-  the report, while new or made-seat failures still fail acceptance. See
+  framing only. The policy for explicitly named kit failures (after a supported
+  trial offset of at most 0.05 m) remains, but its list is empty: every
+  catalogue seat must pass. See
   `tools/seated_head_probe.md` for the bounded catalogue and native-pose checks.
 - No save section is added. Existing item IDs, positions, turns and swatches
   use the shop snapshot; dining links are derived again from the restored
@@ -853,13 +883,56 @@ an active edit/panel/selection first, or opens Settings when none is active.
   interior doorway, selling the floor makes it a back door again).
   `WallRules.delivery_cell(grid, target)` returns a reachable inside receiving
   cell, with stable segment-order choice and a street-entry fallback, or
-  `NO_CELL` when neither route reaches the target. The view hides the shell
-  box, draws the Kenney `doorwayOpen` frame (posts only when lowered) and a
-  floor tile in the floor material. This is the entrance foundation only:
-  accepted instant morning orders, daytime delivery scheduling, paid pending
-  orders, stock and capacities are unchanged. Delivery people, crates and
-  staff carrying are the remaining #187 integration, and must be tested
-  through actual queued tasks and execution.
+  `NO_CELL` when neither route reaches the target;
+  `WallRules.delivery_route(grid, target, lot)` adds where the delivery
+  person stands (`door`: the shell cell, or the street entry), the receiving
+  cell (`drop`: for the street, the floor cell inside the street door), `out`
+  and the `approach` cells, far to near: for a back door
+  (`back_door_approach`) along the **back alley** and up the door's path;
+  none at the street, where the delivery person appears at the entry as
+  guests do. **Back alley (Jared):** `WallRules.back_alley(grid, door, side,
+  lot)` puts a paved service lane on the first row or column outside the
+  shop's lot (`ShopFootprint.lot`, which Main hands to `DeliveryDock.lot` and
+  `ShopView.set_lot`; empty: the building) behind the door's wall, parallel
+  to it, two cells wide, paved `WallSegmentView.PATH_REACH` (24) cells past
+  the lot at each end, and walked by the delivery person on to
+  `ALLEY_REACH` (56) cells past it (#204: so she fades in and out off screen
+  even zoomed out to 26); a side wall's alley stops at the shop's front line, where it
+  meets the street (`street_side`), and deliveries come from its back end
+  (a back wall's from the west). The door's path runs straight out across
+  the open lot to it; with a wing of the shop in the way there is no path
+  and deliveries use the street door. The alley lies outside the lot, so it
+  never crosses the shop, bought floor or the street. She walks its outer
+  lane (clear of the wall and an open leaf), turns up the path to the door
+  and leaves the same way.
+  **One back door per shop (D25).** `WallRules.back_door_problem(before,
+  after)` refuses an edit that adds a back door to a shop that has one
+  (`ONE_BACK_DOOR`, "The shop already has a back door: remove it first to
+  move it"), or one more than a cell wide (two doorways side by side on one
+  face: `BACK_DOOR_WIDTH`, "A back door is one cell wide"), in `check_segments` and in `check_floor` (selling floor can turn
+  an interior doorway back into a back door). Only adding is refused: an
+  older save with several loads and keeps them all, every other edit still
+  works, removing one is fine, and deliveries use the first in segment order.
+  Undo and redo (`Exact`) restore accepted layouts as they were.
+  **The view** hides the shell box and draws the Kenney `doorway` frame with
+  its own `door` leaf (posts only when lowered) and a floor tile in the floor
+  material, plus the path outside: the street's pavement (Kenney `floorHalf`,
+  palette tint) cut to one stone per cell, flush, out to the back alley (2.3j).
+  The leaf swings out, onto the path where nothing is ever placed, like a
+  service door (`WallSegmentView.set_door_open`, up to `DOOR_OPEN_DEGREES` =
+  178, right round and flat against the outside wall, the turn's sign read
+  from the leaf's own transforms; the door is turned round to hinge on the
+  side with open ground beside the path), sliding `DOOR_OPEN_SLIDE` (0.08 m)
+  onto its hinge-side jamb as it opens and, past square, out to the wall's
+  outer face (`DOOR_FLAT_OUT`, 0.315 m from the wall's centre line, so its
+  handle clears the wall). Open, it lies along the wall beside the doorway,
+  clear of the path and of anyone on it (the Mini Characters' heads are about
+  as wide as the door, so only the jamb line is near them), while someone going
+  through is within 1.75 m (fully open within 0.5 m, smoothstep between:
+  about a second of walking at 1x): the delivery person always, staff only
+  when their path leads through the door, guests never
+  (`ShopView._sync_back_doors`, a pure function of where people are drawn;
+  no sim effect). Delivery people, crates and carrying: 2.3j.
 - **Floor expansion (FK-080)** builds on this: grid lines keep their keys,
   so an outer-face window becomes an interior window when the shell cell
   behind it turns into floor (see the next section).
@@ -1119,6 +1192,97 @@ an active edit/panel/selection first, or opens Settings when none is active.
   --frames=200` (the back room reached round the kitchen, with a restroom;
   the clock pauses on a guest walking there).
 
+### Floor types and patterns (D25)
+- **Data.** `FloorStyleDef` (`src/sim/content/floor_style_def.gd`,
+  `data/floors/*.tres`): id, display name, catalogue order, price per tile,
+  `pattern` (`FloorStyleDef.Pattern`, the shader's number: never renumber),
+  `default_swatch`/`default_accent` (SwatchDef ids; an empty main colour is
+  the shop's original brown, an empty accent a darker shade of the main
+  colour), empty `theme_tags`, `unlock_level` and `unlock_tier` (only tier 1
+  exists, so a higher tier stays locked: "Unlocks with a bigger restaurant").
+  `ContentDB.floor_style(s)` and `validate_floor_styles`: unique ids, names,
+  prices of 0 or more, known patterns and colours, and exactly one free
+  `planks` (pattern 0, level 1, the shop's own colour). This PR ships Wide
+  planks (free), Narrow planks ($1) and Herringbone ($3) as the starter set,
+  Small tiles ($2, level 2) and Checker tiles ($2, level 3). Herringbone
+  starts honey with walnut seams (the oak parquet look, Jared). Looks only: no
+  sim effect.
+- **Looks per cell.** `FloorFinishes` (`src/sim/shop/floor_finishes.gd`),
+  owned by `ShopEditor.floors`, never by `SimGrid`: cell -> `Finish`
+  {style, swatch, accent}, storing only cells that differ from the default
+  (`planks` in `ShopEditor.floor_swatch_id`), with one `changed(cells)` per
+  edit. A v4 shop therefore has no stored cells and looks exactly as before;
+  new floor is the default; `apply_floor` drops the looks of cells that stop
+  being floor. `room_cells` floods FLOOR cells of the same `SimGrid.Room` and
+  stops at any wall segment (doorways and windows too); `area_cells` floods
+  the connected same look within that same room, so it is never larger than
+  `room_cells` (Jared: a paint click stops at
+  room edges, so it never runs through the open pass into the kitchen). The legacy whole-floor `paint_floor` still sets
+  the default colour (`set_default_swatch`).
+- **Edits.** `ShopEditor.lay_changes(cells, style, swatch, accent)` and
+  `recolour_changes(cells, swatch)` build proposals on floor cells only;
+  `check_flooring`/`apply_flooring` price them: a change of floor type costs
+  the new type's price per tile and refunds `floor(old price / 2)` per tile,
+  only MORNING/CLOSED (`FLOORS_CLOSED`) and only when unlocked; a recolour
+  (same type) is free at any time. Undo/redo pass `Exact` (exact money, no
+  unlock check). `ShopEditHistory.Kind.FLOORING` keeps the looks before and
+  after ("lay Checker tiles" / "recolour the floor"); like paint, a recolour
+  during service is not recorded. A FLOOR removal keeps the looks of the
+  cells it took (`finishes_before`) and lays them again on undo.
+- **Tools.** Build > Floors (`BuildCatalogue.FLOORS`; the lot tool's tab is
+  now labelled Expand, id `floor` unchanged) shows one card per floor type
+  (price per tile, or "Level N" disabled with its reason) with a CPU-drawn
+  picture (`FloorThumbnail`, the shader's layout in flat colours, no
+  textures), then a Colour row (Original + the swatches) and an Accent row
+  (Auto + the swatches, hidden for wide planks). A card or chip emits
+  `floors_tool_requested(style, swatch, accent)`; Main's `begin_floors_tool`
+  starts or updates `BuildMode.State.FLOORS`: a drag lays the rectangle
+  (`floors_press`/`floors_pointer`/`floors_release`), Shift-click lays the
+  clicked room, Alt-click (`floors_pick`) copies a floor's look into the tool
+  and the tab, Esc cancels, and the hint line says "Lay 24 tiles of Narrow
+  planks: $24 (refund $12)", "Recolour 24 tiles (free)" or the refusal.
+  Commits go through Main's `shop_flooring`. Paint mode no longer paints the
+  whole floor: a floor click recolours the connected same look inside its
+  room (it stops at room edges, open passes included) and Shift the whole
+  room (`Main._floor_paint_changes`), at any phase, with the same
+  ShopView preview on hover. The level-up banner lists newly unlocked floors
+  ("Small tiles floor").
+- **Rendering.** One floor mesh and one `ShaderMaterial` with
+  `src/world/floor_finish.gdshader` (it replaces `build_grid.gdshader` and
+  keeps its uniforms). `ShopView` writes a per-cell RGBA8 data texture
+  (`finish_image`, origin `grid.origin`, rebuilt on terrain changes, so it
+  follows a grown grid, and on `FloorFinishes.changed`): R pattern, G main
+  colour index (0 = `floor_color`, the shop's own colour; 1 the authored
+  brown; 2.. the swatches in `content.swatches()` order, sent as the
+  `palette` uniform array), B accent index (0 = automatic), A a threshold
+  mask (1 west, 2 north, 4 east, 8 south: that neighbour is another floor
+  type). The street entry and a back door's threshold tile (which shares the
+  floor material) copy the floor inside them. The shader reads it with
+  `texelFetch` (GLES3/Compatibility) and lays patterns in world space so they
+  line up across cells; pattern 0 is the old plank code verbatim, so a default
+  shop is an all-zero map and renders pixel-identical to before. Fine detail
+  fades with `fwidth`; a thin darker line marks a change of floor type.
+  `preview_floor_finishes`/`clear_floor_preview` draw a proposal through a
+  preview copy of the map (the Floors drag, with a green outline from
+  `BuildPreview`, and the paint hover). Adding a floor look = a `Pattern`
+  value, a branch in the shader (and `FloorThumbnail`), and a data file.
+- **Save and vibe.** The `shop` snapshot is version 5 with `floor_style_id`
+  (the default type; only `planks` is accepted, any other value loads as
+  the planks so an edited save cannot make every cell a priced, refundable
+  type) and `floors: [[x, y, style, swatch, accent], ...]`
+  (stored cells, row-major); no new SaveSystem section. Versions 1-4 load as
+  all default. Decoding forgives (looks only): an unknown type or a cell
+  that is no longer floor falls back to the default, an unknown colour to the
+  type's own, a malformed row is skipped. `ShopEditor.floor_vibe_swatch()`
+  gives the vibe the main colour of most guest-room floor cells (ties go to
+  the first colour id), which is exactly the old whole-floor paint in a shop
+  with one colour.
+- **Review.** `tools/screenshot.sh --floors-review --speed=0 --frames=12,30`
+  (`tools/floors_review.gd`): small tiles in the kitchen with a back door,
+  narrow planks, herringbone and checker in the dining room with thresholds
+  and the street door, staff standing on them; then Build > Floors holding a
+  herringbone drag.
+
 ### Restaurant vibe core (FK-072)
 - `VibeModel.evaluate()` reads detached layout, paint and enabled-menu inputs.
   It never changes the inputs, draws randomness, reads nodes or saves a result.
@@ -1303,7 +1467,8 @@ visibility without reallocating models. Terrain/world replacement rebuilds and
 releases the old dressing. Dressing adds no lights, simulation cells, collision,
 random draws or saved state; functional lamps remain the separate lamp issue.
 The floor shader adds a subtle multiplicative plank pattern while retaining its
-existing paint colour and camera-controlled build-grid parameters.
+existing paint colour and camera-controlled build-grid parameters (D25: it is
+pattern 0 of `floor_finish.gdshader`, unchanged).
 
 ### Concepts: drinks, Café and Bar, opening hours (FK-083)
 - **No picker.** The concept is what the shop builds and serves. `VibeTuning`
@@ -1491,9 +1656,11 @@ existing paint colour and camera-controlled build-grid parameters.
   delivery; #183's top-up of drink supplies at opening is still bought and
   stocked at opening. Main also delivers on `EventBus.sim_ticked` while OPEN and
   on phase changes (anything overdue, e.g. a tick 0 order in an older save).
-  Arrivals are stocked dated the arrival day; `RestaurantSim.restock_sold_out()`
-  brings back dishes the delivery covers, and the Stock notes say what the
-  last daytime delivery brought.
+  A delivery due during service (OPEN or LAST_ORDERS) is visible (FK-099,
+  below): its goods become stock as staff put them away. Anything that lands
+  in the morning or once closed is stocked at once, dated the arrival day;
+  `RestaurantSim.restock_sold_out()` brings back dishes the goods cover, and
+  the Stock notes say what the last daytime delivery brought.
 - **Next delivery bar.** `Main.delivery_countdown()`: in the morning "Morning
   orders arrive at once. Next delivery at 14:00" (bar full); during service
   "Next delivery at 14:00" with the wait's fraction; afterwards "Next delivery:
@@ -1537,9 +1704,15 @@ existing paint colour and camera-controlled build-grid parameters.
   phase; the panel closes for the evening report. Reorder settings change in any
   phase and are saved at the next morning.
 - **Spoilage.** Freezer ingredients keep at least `freezer_shelf_life_days` (30);
-  fridge and dry keep their own `shelf_life_days`. No freezer item or frozen
-  ingredient exists yet: both are left to #154(b) (frozen fries and a Kenney
-  `kitchenFridgeLarge` freezer). The Freezer group appears once either exists.
+  fridge and dry keep their own `shelf_life_days`.
+- **Freezer (FK-099).** The **Freezer** (`freezer`, Kitchen tab, $90, level 2,
+  Kenney `kitchenFridgeLarge` on one cell) holds 40 freezer units; **Frozen
+  fries** (`frozen_fries`, $1, keeps 30 days) are a freezer ingredient listed
+  in `morning_stock` with a target of 0, so the auto-order never buys them
+  until the player raises it. No dish uses them yet (Fries still use
+  potatoes). The Stock panel lists the freezer's rows only while the shop has
+  freezer room or anything frozen (`Main.stock_rows`), so the Freezer group
+  appears once a freezer is bought.
 - **Visible stock.** `ShopView.set_storage_fill(kind -> 0..1)` from Main (stock on
   hand / capacity per kind, refreshed with the presentation when it changes):
   a storage item's parts tagged `metadata/stock_slot` show the first
@@ -1550,9 +1723,154 @@ existing paint colour and camera-controlled build-grid parameters.
   without them a concept's supplies do not fit beside the morning's food. Their
   rows are identical to main. `_finish` switches auto-reorder off only for the
   ingredients auto-reorder lists (`_reorder().ids()`), not the greyed rows.
-- **Not built here:** the visible delivery person, back door and staff carrying
-  crates (a follow-up issue).
+- **Visible deliveries (FK-099, #187).** `DeliveryDock` (src/sim/restaurant,
+  pure, owned by `RestaurantSim.dock`) takes a delivery due during service
+  (`arrive(lines)`; false, and Main stocks at once, when the shop is not open
+  or no route reaches storage). A `CourierAgent` (role `courier`, a world agent
+  that holds no task, reservation or random stream) walks the
+  `WallRules.delivery_route` along the back alley and up the back door's path
+  (street door fallback, where she appears at the entry as guests do) and
+  stops in the doorway. Her route starts and ends `ALLEY_REACH` (56) cells
+  past the lot, so at the shop's framing and zoomed out to 26 she comes and
+  goes out of sight in every camera quarter for back and side walls, so her
+  fade at the far ends (below) happens off screen (her first on-screen route
+  cell at zoom 26 is at least 10 in, past her 4 fade cells); zoomed further
+  out (to 40) it shows. The one exception is closing: `store_all()` ends her
+  visit wherever she is, possibly in view, and the view then keeps her last
+  drawn figure as a ghost (`ShopView._keep_as_ghost`) that walks on and
+  fades out over `GHOST_FADE_SECONDS` (1 s) with the same dither and no
+  shadow, then frees it; a ghost is no agent (never picked or selected,
+  opens no door, blocks nothing) and `show_world` clears it. She brings one crate per storage
+  kind present (fridge, freezer, dry, in that order) and sets them down on the
+  receiving cell just inside over `UNLOAD_TICKS` (4): the crate in her hands
+  at `DROP_TICK` (2, the lowest point of the kit's 0.33 s `pick-up` bend),
+  the rest on top of it once she has stepped away (`all_dropped`, her head
+  clear of the stack). Then she walks back out; the dock removes her when
+  gone. Off-lot cells are not on the grid, so she walks her planned cells
+  without path finding. Guests never share the back door: they plan on the
+  guest layer, where its cell is solid.
+  - **Carrying.** Each crate is one `put_away` task (role `any`, priority 1,
+    timeout 600; steps `STEP_WALK` .. `STEP_PUT_IN` and the fill): walk to the
+    crate, pick it up (a wait step: the crate is in the hands
+    `PICK_UP_TICKS` (2) ticks after the carrier arrives, the `pick-up` bend's
+    lowest point, counted in ticks so a carrier's skill never moves it; then
+    `LIFT_TICKS` 2 of work to straighten up), walk to the nearest
+    reachable storage of its kind (else any storage: the starter shop's
+    pantry is built in, behind the kitchen; else none, and it waits) and put
+    it in (`PUT_IN_TICKS` 4), when its goods become stock (`Stock.add`, dated
+    today) and `stored(lines)` fires, then fill the shelves (16 more, 20 in
+    all as before); `RestaurantSim` then brings sold-out dishes
+    back and Main refreshes the HUD and Stock panel. The carry walks to the
+    storage's work cell without reserving it, so a cook at the same fridge
+    never waits. A dropped task sets the crate down where its carrier stood
+    and starts again from there; a failed one (storage sold on the way, say)
+    puts it down and posts again, up to `MAX_TRIES` (3), then waits for a
+    layout change. `on_done` steps check the crate's state, so a restarted
+    task never stocks twice. Crates on a cell are one stack with no gaps
+    (`slot` is the layer): whoever lifts one takes the top (the crate on top
+    swaps places with the one whose task it is; crates look alike), so none
+    is ever left in mid-air. A stack is at most `STACK_CAP` (3) high; a crate
+    for a full stack goes to the nearest free cell (`_free_spot`: walkable,
+    no door, street entry, work spot or seat, against a wall or item first),
+    where it starts a stack of its own. With the stack inside the door full
+    the delivery person keeps hold of her crate and the whole delivery goes
+    down there as she leaves (`drop_layer` -1). The dock keeps
+    `payload["layer"]` (the layer the carrier will lift) and
+    `CourierAgent.drop_layer` current for the view.
+  - **Who carries (job priority).** With a cleaner on the team it is the
+    cleaner's (job Cleaning, their main job); otherwise servers do it as
+    Serving (`StaffJobPriorities.ROLE_TASK_JOBS`: front-of-house work, so a
+    mid-day order is put away during service rather than left to a Low
+    fallback a busy server never reaches); what is still waiting at closing
+    is stored. Cooks (Cleaning is Off for them) and the owner (no `any`
+    priority) never carry. **Service cost (director, #195):** a shop taking
+    several mid-day orders with no cleaner pays a visible cost, as servers
+    leave guests to carry crates and goods reach the shelves later (probe,
+    4 orders a day, 5 seeds x 5 days: 329 served against 361 when goods
+    arrived at once); hiring a cleaner removes it (347 against 353; with one
+    order a day 436, identical; measured with the 24-cell route, before
+    #204 lengthened her walk to 56). Making servers wait for idle moments was
+    tried and cost more (313): goods sat longer and dishes ran out. Closing
+    withdraws the carrying tasks and frees their carriers on that tick
+    (`StaffAgent.let_go_if_withdrawn`).
+  - **Never lose goods.** Paid when ordered; while waiting the goods count as
+    on order in `StorageSpace` (`Main._on_the_way()`), so their space stays
+    reserved, Build refuses to sell storage they need, and the Stock rows
+    show them on order with a note, "Still to be put away: 6 Soup stock.".
+    `store_all()` stocks everything not yet put away (crates on the floor, in
+    hands or still on the way), withdraws the carrying tasks and ends the
+    visit: `RestaurantSim.advance` calls it on the tick service closes (before
+    `service_closed`, so the books and forecast see the stock) and
+    `start_day()` calls it each morning, so nothing is in transit at the
+    morning save (rule 9; nothing new is saved). Morning orders still arrive
+    at once, and with no order placed during service the dock does nothing:
+    no agent, task or event (`test_no_orders_change_nothing`), so the
+    balance probe is unchanged.
+  - **View.** `ShopView.bind_dock`: waiting crates are Kenney
+    `cardboardBoxClosed` at `CRATE_SCALE` (0.65), one stack per cell at
+    `AgentPresentationController.crate_spot`: on a door's receiving cell
+    `DOOR_STACK_INSET` towards the door (straddling the threshold), elsewhere
+    `CRATE_INSET` off the centre. People never stand in it: the delivery
+    person sets it down from the doorway and staff stand `reach_for(layer)`
+    from it on the cell (`picker_spot`; the last step in walks there, the
+    first step out walks from it): `CRATE_REACH` (0.27, the reach of the
+    `pick-up` bend's lowest point) to bend to a crate on the floor,
+    `CRATE_REACH_HIGH` (0.33) to reach one on top of another standing
+    (`holding-both`, the crate sliding between palms and stack,
+    `Frame.crate_slide`). A crate in hand (`Frame.crate_count`, one at a time
+    for everyone) hangs `CRATE_GRIP` of its height below the palms (top under
+    the chin), follows them through the bend without sinking below its layer,
+    eases down from a high layer, and changes between hands and floor at the
+    bend's lowest point; it goes into the storage at the put-in moment. The
+    delivery person is `character-female-b` in her uniform. People carrying
+    while walking play `carry-walk` (`PersonView` builds it from the kit's
+    `walk` with the arms of `holding-both`, so legs walk under carrying arms;
+    servers' trays use it too); switching among `pick-up`, `holding-both`
+    and `carry-walk` blends over 0.12 s so arms (and the crate) never jump.
+    The back door's leaf swings out and lies flat against the outside wall
+    (`WallSegmentView`, hinged on the side with open ground beside it, clear
+    of the path and of anyone on it). Up to square it turns inside the
+    opening while its hinge moves out to the wall's outer face (stepping
+    `DOOR_TURN_CLEARANCE` off the jamb mid-turn), and only then swings on
+    round and slides onto the jamb, so no part of the leaf ever passes
+    through the wall (`test_the_leaf_never_passes_through_the_wall` checks
+    every mesh vertex at every 1%). Its opening follows the smoothed drawn
+    positions, so it swings every frame. The delivery person fades in over the
+    first `FADE_CELLS` (4) cells of her walk and out over the last ones
+    (`Frame.fade`; `ShopView._apply_fade` gives each surface an opaque
+    copy of its material that draws only that share of its pixels, a
+    screen-door dither, so she fades as one solid figure with no part
+    showing through another; the Compatibility renderer has no per-instance
+    alpha and its alpha hash draws wrongly, so the dither is the material's
+    own `DISTANCE_FADE_PIXEL_DITHER` with its range set every frame so the
+    fade at her distance is the wanted share, `ShopView.dither_range`;
+    the dither would also apply in the shadow pass, measured from the
+    light, so she casts no shadow while fading and her own once solid),
+    so even at the widest zoom she never pops in or out;
+    the door's path and the alley are the street pavement cut to one stone
+    per cell with a joint, a sliver thick (flush, no side face), its stones
+    varying in shade; the alley is solid across the lot and
+    `PATH_SOLID_CELLS` past it, then fades into the ground over
+    `PATH_FADE_CELLS` (to its end, where she fades in and out); a side
+    wall's alley is solid to the shop's front and fades out over
+    `PATH_STREET_FADE_CELLS` (3) towards the street instead of stopping
+    square. Crates that land on one cell in the same tick (the rest of a
+    delivery once she steps away, or the whole delivery on the cell beside a
+    full stack) appear one at a time, bottom first, `CRATE_STAGGER_TICKS`
+    (2, her bend) apart (view only, and only at play speed, not across a
+    fast-forward; the sim has them all down at once: with the stack inside
+    the door full she cannot reach the overflow cell from the doorway, and
+    walking her there would change the sim). The open
+    leaf hinges on the side away from where she comes along the alley when
+    both sides are open ground.
+  - Tests: `tests/sim/test_delivery_dock.gd` (back-door and street routes,
+    stock on carry, closing and morning safety nets, job priority, guests
+    never in the back door with deliveries coming and going, no change
+    without orders, one back door), `tests/world/test_delivery_view.gd`,
+    `tests/world/test_delivery_session.gd`. Captures (by hand):
+    `tools/delivery_shots.gd -- <out> [north|east] [up|cutaway]`.
 - Tests: `tests/sim/test_storage_space.gd`, `tests/sim/test_delivery_book.gd`,
+  `tests/sim/test_delivery_dock.gd`,
   `tests/world/test_delivery_session.gd`, `tests/ui/test_stock_panel.gd`,
   `tests/world/test_stock_session.gd`.
 

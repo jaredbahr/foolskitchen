@@ -34,7 +34,9 @@ func test_defaults_reproduce_the_old_restock_amounts() -> void:
 		assert_eq(settings.target(id), TUNING.morning_stock[id])
 	var plan: Dictionary = settings.plan(Stock.new(), _costs(), 10000, TUNING.auto_reorder_premium)
 	var bought: Dictionary = _bought(plan)
-	assert_eq(bought.size(), TUNING.morning_stock.size())
+	# Frozen fries (FK-099) are listed with a target of 0: never auto-bought.
+	assert_eq(TUNING.morning_stock[&"frozen_fries"], 0)
+	assert_eq(bought.size(), TUNING.morning_stock.size() - 1)
 	for id: StringName in TUNING.morning_stock:
 		assert_eq(int(bought.get(id, 0)), TUNING.morning_stock[id], "%s matches the old top-up" % id)
 	assert_eq(plan["list_total"], 88)

@@ -22,7 +22,50 @@ const CAP_HEIGHT: float = 0.02
 ## Shell panes sit this far inside the room-side face (as RoomDressing's FACE_GAP).
 const SHELL_PANE_GAP: float = 0.005
 const WINDOW_SCENE: PackedScene = preload("res://assets/kenney/furniture/wallWindow.glb")
-const BACK_DOOR_SCENE: PackedScene = preload("res://assets/kenney/furniture/doorwayOpen.glb")
+## The kit's doorway with its own door leaf (D25: a real back door). Like a
+## real service door the leaf swings out, onto the path outside where nothing
+## is ever placed, as the delivery person (or staff) pass; ShopView sets how
+## far from where people are (set_door_open), view only.
+const BACK_DOOR_SCENE: PackedScene = preload("res://assets/kenney/furniture/doorway.glb")
+## How far a fully open leaf turns (degrees): right round, flat against the
+## outside wall like a propped-open service door, clear of the path and of
+## anyone on it (the Mini Characters' heads are as wide as the door).
+const DOOR_OPEN_DEGREES: float = 178.0
+## While the leaf turns to square its hinge moves out to the wall's outer
+## face, so past square the leaf swings round outside the wall and lies on the
+## face: its centre this far from the wall's centre line (half the 0.5 m wall
+## plus the leaf's handle).
+const DOOR_FLAT_OUT: float = 0.315
+## Past square the leaf slides this far onto its hinge-side jamb (metres), so
+## an open leaf is clear of the opening.
+const DOOR_OPEN_SLIDE: float = 0.08
+## Share of DOOR_OPEN_SLIDE the hinge steps away from its jamb while turning
+## to square (0.16 = 13 mm), so the slab's corner clears the jamb.
+const DOOR_TURN_CLEARANCE: float = 0.16
+## The back path (FK-099): one square of the street's pavement per cell with a
+## thin joint between them, laid flush (a sliver thick, so no side face shows
+## against the dark beyond the lot).
+const PATH_JOINT: float = 0.025
+const PATH_THICKNESS: float = 0.008
+## Paving lightness steps (towards cream / charcoal), picked per tile from its
+## cell, so the path reads as laid stones, not one slab.
+const PATH_SHADES: Array[float] = [0.0, 0.07, -0.06, 0.03, -0.03]
+## The back alley is solid across the lot and PATH_SOLID_CELLS past it, then
+## fades into the ground colour over PATH_FADE_CELLS and stops (the delivery
+## person walks on, out of sight, and fades in and out further away). It is
+## ALLEY_LANES cells wide.
+const PATH_SOLID_CELLS: int = 4
+## The paving reaches this many cells past the lot (her route goes on further,
+## WallRules.ALLEY_REACH, over bare ground well out of sight).
+const PATH_REACH: int = 24
+const PATH_FADE_CELLS: int = PATH_REACH - PATH_SOLID_CELLS
+const ALLEY_LANES: int = 2
+## A side wall's alley fades out over this many cells past the shop's front,
+## towards the street, rather than stopping square at the front line.
+const PATH_STREET_FADE_CELLS: int = 3
+## The fade's end: walnut darkened towards charcoal, close to the dark ground
+## the lighting rig shows beyond the lot. Palette swatches only.
+const PATH_FAR_SWATCH: SwatchDef = preload("res://data/swatches/walnut.tres")
 ## Lowered (cutaway) windows show a glass-blue strip instead of the dark cap,
 ## so cycling wall -> window reads in the default view. Palette swatch only.
 const GLASS_SWATCH: SwatchDef = preload("res://data/swatches/slate_blue.tres")
@@ -39,6 +82,16 @@ var _glass_material: StandardMaterial3D
 var _painted: Array[MeshInstance3D] = []
 var _panes: Array[PropView] = []
 var _pane_bounds: AABB = AABB()
+## Back-door leaves by shell cell: {leaf, sign (turns it outward), base
+## (shut position), slide (fully open offset, in the leaf's parent space)}.
+var _leaves: Dictionary[Vector2i, Dictionary] = {}
+## Pavement of the paths outside back doors (their tints are released on clear).
+var _paths: Array[PropView] = []
+## The shop's lot (ShopView.set_lot from Main): the back alley runs along its
+## outer edge. Empty: along the building's.
+var lot: Rect2i = Rect2i()
+var _grid: SimGrid
+var _stone_bounds: AABB = AABB()
 
 
 func _notification(what: int) -> void:
@@ -64,6 +117,11 @@ func set_materials(wall_material: Material, top_material: Material, floor_materi
 func clear() -> void:
 	_painted.clear()
 	_panes.clear()
+	_leaves.clear()
+	for tile: PropView in _paths:
+		if is_instance_valid(tile):
+			tile.clear_body_tint()
+	_paths.clear()
 	for child: Node in get_children():
 		remove_child(child)
 		child.free()
@@ -73,6 +131,7 @@ func clear() -> void:
 ## the shell cells ShopView currently draws lowered (their windows hide).
 func rebuild(grid: SimGrid, interior_lowered: bool, lowered_cells: Array[Vector2i]) -> void:
 	clear()
+	_grid = grid
 	if grid == null:
 		return
 	var span: Vector2 = window_span()
@@ -94,7 +153,9 @@ func rebuild(grid: SimGrid, interior_lowered: bool, lowered_cells: Array[Vector2
 			_build_shell_window(wall_cell, side, span)
 	var doors: Dictionary[Vector2i, Vector2i] = shell_door_cells(grid)
 	for cell: Vector2i in doors:
-		_build_shell_door(cell, doors[cell], lowered_cells.has(cell))
+		var alley: Dictionary = WallRules.back_alley(grid, cell, doors[cell], lot)
+		_build_shell_door(grid, cell, doors[cell], lowered_cells.has(cell), alley.get("from", Vector2i.ZERO))
+		_build_back_path(cell, alley, doors[cell])
 
 
 static func shell_door_cells(grid: SimGrid) -> Dictionary[Vector2i, Vector2i]:
@@ -113,7 +174,8 @@ static func shell_door_cells(grid: SimGrid) -> Dictionary[Vector2i, Vector2i]:
 	return cells
 
 
-func _build_shell_door(cell: Vector2i, side: Vector2i, lowered: bool) -> void:
+func _build_shell_door(grid: SimGrid, cell: Vector2i, side: Vector2i, lowered: bool,
+		approach_from: Vector2i = Vector2i.ZERO) -> void:
 	var root: Node3D = Node3D.new()
 	root.name = "BackDoor_%d_%d" % [cell.x, cell.y]
 	root.position = GridMath.cell_to_world(cell)
@@ -140,6 +202,185 @@ func _build_shell_door(cell: Vector2i, side: Vector2i, lowered: bool) -> void:
 		var bounds: AABB = door.get_combined_aabb()
 		door.position = Vector3(-bounds.get_center().x, -bounds.position.y, -bounds.get_center().z)
 		root.add_child(door)
+		var leaf: Node3D = door.find_child("door", true, false) as Node3D
+		if leaf != null:
+			# Hinged on the side where the open leaf has open ground beside the
+			# path (a wing of the shop round an inner corner would cut it), and
+			# else on the side away from where deliveries come along the alley.
+			var hinge: Vector2i = _hinge_side(root, leaf)
+			var blocked: bool = not _open_ground(grid, cell + side + hinge)
+			if (blocked or hinge == approach_from) and _open_ground(grid, cell + side - hinge):
+				root.rotation.y += PI
+			leaf.set_meta(&"door_cell", cell)
+			_leaves[cell] = {"leaf": leaf, "sign": _outward_sign(root, leaf, side), "base": leaf.position,
+				"slide": _hinge_slide(root, leaf), "out": _flat_out(root, leaf, side)}
+
+
+## The paving behind a back door (FK-099): a short path from the door out to
+## the back alley (WallRules.back_alley), and the alley itself, two cells
+## wide along the lot's outer edge, both of the street's pavement (Kenney
+## floorHalf, palette tint) cut to one stone per cell, flush with the floor.
+## The alley is solid across the lot and PATH_SOLID_CELLS past it, then
+## fades into the ground over PATH_FADE_CELLS (out of sight at the usual
+## zoom); a side wall's alley is solid to the shop's front and fades out over
+## PATH_STREET_FADE_CELLS towards the street.
+func _build_back_path(door: Vector2i, alley: Dictionary, side: Vector2i) -> void:
+	if alley.is_empty():
+		return
+	var path: Array[Vector2i] = alley["path"]
+	for cell: Vector2i in path:
+		_add_stone(cell, 0.0, door)
+	var junction: Vector2i = alley["junction"]
+	var axis: Vector2i = alley["axis"]
+	var along: int = junction.x * axis.x + junction.y * axis.y
+	var span_low: int = int(alley["first"]) + WallRules.ALLEY_REACH
+	var span_high: int = int(alley["last"]) - WallRules.ALLEY_REACH
+	var street: Vector2i = WallRules.street_side(_grid) if _grid != null else Vector2i.DOWN
+	if street == axis:
+		span_high = int(alley["last"])
+	elif street == -axis:
+		span_low = int(alley["first"])
+	for t: int in range(int(alley["first"]), int(alley["last"]) + 1):
+		var outside: int = maxi(span_low - t, t - span_high) - PATH_SOLID_CELLS
+		if outside > PATH_FADE_CELLS:
+			continue
+		var fade: float = float(maxi(outside, 0)) / float(PATH_FADE_CELLS + 1)
+		var cell: Vector2i = junction + axis * (t - along)
+		for lane: int in ALLEY_LANES:
+			_add_stone(cell + side * lane, fade, door)
+	# A side wall's alley runs solid to the shop's front, then fades out over
+	# PATH_STREET_FADE_CELLS towards the street instead of stopping square.
+	if street == axis or street == -axis:
+		var end: int = int(alley["last"]) if street == axis else int(alley["first"])
+		for step: int in range(1, PATH_STREET_FADE_CELLS + 1):
+			var fade: float = float(step) / float(PATH_STREET_FADE_CELLS + 1)
+			var cell: Vector2i = junction + axis * (end + street.x * axis.x * step + street.y * axis.y * step - along)
+			for lane: int in ALLEY_LANES:
+				_add_stone(cell + side * lane, fade, door)
+
+
+## One paving stone on `cell`: the street's pavement, flush, a joint round
+## it, its shade picked from the cell, `fade` (0..1) of the way into the dark
+## ground beyond the lot.
+func _add_stone(cell: Vector2i, fade: float, door: Vector2i) -> void:
+	if _stone_bounds == AABB():
+		var probe: PropView = RoomDressing.make_asset(RoomDressing.PAVEMENT, "Measure", false, true)
+		if probe == null:
+			return
+		_stone_bounds = probe.get_combined_aabb()
+		probe.clear_body_tint()
+		probe.free()
+	var tile: PropView = RoomDressing.make_asset(RoomDressing.PAVEMENT, "BackPath_%d_%d" % [cell.x, cell.y], false, true)
+	if tile == null:
+		return
+	var shade: float = PATH_SHADES[posmod(cell.x * 7 + cell.y * 13, PATH_SHADES.size())]
+	var color: Color = RoomDressing.pavement_color()
+	color = color.lerp(RoomDressing.PAVEMENT_LIGHT_SWATCH.color, shade) if shade >= 0.0 \
+		else color.lerp(RoomDressing.PAVEMENT_SWATCH.color, -shade)
+	if fade > 0.0:
+		color = color.lerp(PATH_FAR_SWATCH.color.lerp(RoomDressing.PAVEMENT_SWATCH.color, 0.3).darkened(0.35), fade)
+	tile.set_body_tint(color)
+	var square: float = GridMath.CELL_SIZE - PATH_JOINT
+	tile.scale = Vector3(square / _stone_bounds.size.x, PATH_THICKNESS / _stone_bounds.size.y, square / _stone_bounds.size.z)
+	tile.position = GridMath.cell_to_world(cell)
+	tile.position.y = -PATH_THICKNESS + 0.001
+	tile.set_meta(&"door_cell", door)
+	tile.set_meta(&"cell", cell)
+	_paths.append(tile)
+	add_child(tile)
+
+
+func path_tiles() -> Array[PropView]:
+	return _paths.duplicate()
+
+
+## Back-door shell cells whose leaf is drawn (walls up), in grid order.
+func door_cells() -> Array[Vector2i]:
+	var cells: Array[Vector2i] = _leaves.keys()
+	cells.sort()
+	return cells
+
+
+func door_leaf(cell: Vector2i) -> Node3D:
+	return _leaves[cell]["leaf"] as Node3D if _leaves.has(cell) else null
+
+
+## 0 shut .. 1 flat open, out onto the path. View only.
+func set_door_open(cell: Vector2i, amount: float) -> void:
+	if not _leaves.has(cell):
+		return
+	var leaf: Node3D = _leaves[cell]["leaf"] as Node3D
+	var open: float = clampf(amount, 0.0, 1.0)
+	var degrees: float = DOOR_OPEN_DEGREES * open
+	# Up to square the leaf turns inside the opening while its hinge moves out
+	# to the wall's outer face; only then does it swing on round towards the
+	# wall, and slide onto the jamb, so no part of it ever passes into the wall.
+	var out: float = clampf(degrees / 90.0, 0.0, 1.0)
+	var slide: float = clampf((degrees - 90.0) / (DOOR_OPEN_DEGREES - 90.0), 0.0, 1.0)
+	# Mid-turn the slab's hinge-side corner would graze the jamb: the hinge
+	# steps that far off it (a few millimetres) and back by square.
+	slide -= DOOR_TURN_CLEARANCE * sin(PI * out)
+	leaf.rotation.y = float(_leaves[cell]["sign"]) * deg_to_rad(degrees)
+	leaf.position = (_leaves[cell]["base"] as Vector3) + (_leaves[cell]["slide"] as Vector3) * slide \
+		+ (_leaves[cell]["out"] as Vector3) * out
+
+
+## +1 or -1: the turn of the leaf about its hinge that moves its free edge out
+## of the shop (towards `side`, the outward direction). Read from the leaf's
+## actual transforms below the door root, so the kit's own facing is kept.
+static func _outward_sign(root: Node3D, leaf: Node3D, side: Vector2i) -> float:
+	var outward: Vector3 = Vector3(side.x, 0.0, side.y)
+	var local_outward: Vector3 = root.transform.basis.inverse() * outward
+	var saved: float = leaf.rotation.y
+	leaf.rotation.y = PI * 0.5
+	var open_edge: Vector3 = _to_ancestor(leaf, root) * Vector3(0.4, 0.0, 0.0)
+	leaf.rotation.y = 0.0
+	var shut_edge: Vector3 = _to_ancestor(leaf, root) * Vector3(0.4, 0.0, 0.0)
+	leaf.rotation.y = saved
+	return 1.0 if (open_edge - shut_edge).dot(local_outward) > 0.0 else -1.0
+
+
+## The grid direction along the wall from the door's centre to its hinge.
+static func _hinge_side(root: Node3D, leaf: Node3D) -> Vector2i:
+	var hinge: Vector3 = root.transform.basis * (_to_ancestor(leaf.get_parent() as Node3D, root) * leaf.position)
+	if absf(hinge.x) >= absf(hinge.z):
+		return Vector2i(int(signf(hinge.x)), 0)
+	return Vector2i(0, int(signf(hinge.z)))
+
+
+## Open ground outside: unbought lot, or beyond the grid.
+static func _open_ground(grid: SimGrid, cell: Vector2i) -> bool:
+	return not grid.in_bounds(cell) or grid.terrain(cell) == SimGrid.Terrain.OUTSIDE
+
+
+## DOOR_OPEN_SLIDE along the wall toward the leaf's hinge, in the leaf's
+## parent space (the kit model sits under a scaled, turned Art node).
+static func _hinge_slide(root: Node3D, leaf: Node3D) -> Vector3:
+	var parent: Node3D = leaf.get_parent() as Node3D
+	var to_root: Transform3D = _to_ancestor(parent, root)
+	var hinge: Vector3 = to_root * leaf.position
+	# Local +X runs along the wall; the hinge is on the side its x points to.
+	var along: Vector3 = Vector3(signf(hinge.x), 0.0, 0.0) * DOOR_OPEN_SLIDE
+	return to_root.basis.inverse() * along
+
+
+## DOOR_FLAT_OUT towards `side` (out of the shop), in the leaf's parent space.
+static func _flat_out(root: Node3D, leaf: Node3D, side: Vector2i) -> Vector3:
+	var to_root: Transform3D = _to_ancestor(leaf.get_parent() as Node3D, root)
+	var local_out: Vector3 = root.transform.basis.inverse() * Vector3(side.x, 0.0, side.y)
+	var hinge: Vector3 = to_root * leaf.position
+	var shift: float = DOOR_FLAT_OUT - hinge.dot(local_out.normalized())
+	return to_root.basis.inverse() * (local_out.normalized() * shift)
+
+
+static func _to_ancestor(node: Node3D, ancestor: Node3D) -> Transform3D:
+	var xf: Transform3D = Transform3D.IDENTITY
+	var cursor: Node = node
+	while cursor != null and cursor != ancestor:
+		if cursor is Node3D:
+			xf = (cursor as Node3D).transform * xf
+		cursor = cursor.get_parent()
+	return xf
 
 
 ## Shell cells whose own box ShopView must cut down to the sill.

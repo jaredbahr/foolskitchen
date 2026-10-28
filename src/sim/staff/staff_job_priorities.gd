@@ -10,6 +10,15 @@ const TASK_JOBS: Dictionary[StringName, StringName] = {
 	&"cook": &"cooking", &"take_order": &"serving", &"deliver": &"serving",
 	&"bus_table": &"bussing", &"wash": &"washing", &"clean_spot": &"cleaning",
 	&"pour": &"serving",
+	# Putting a delivery away (FK-099, #187): Cleaning for the cleaner, whose
+	# job it is while one is on the team; see ROLE_TASK_JOBS for servers.
+	&"put_away": &"cleaning",
+}
+## Role exceptions to TASK_JOBS: a server takes deliveries in as front-of-house
+## work (Serving), so a mid-day order is put away during service, not left
+## for a Low fallback a busy server never reaches.
+const ROLE_TASK_JOBS: Dictionary[StringName, Dictionary] = {
+	&"put_away": {&"server": &"serving"},
 }
 
 var role: StringName
@@ -76,7 +85,10 @@ func from_dict(data: Variant) -> bool:
 	return true
 
 
-static func job_for_task(kind: StringName) -> StringName:
+static func job_for_task(kind: StringName, staff_role: StringName = &"") -> StringName:
+	var by_role: Dictionary = ROLE_TASK_JOBS.get(kind, {})
+	if by_role.has(staff_role):
+		return by_role[staff_role]
 	return TASK_JOBS.get(kind, &"")
 
 

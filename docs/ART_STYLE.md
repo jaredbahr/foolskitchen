@@ -39,11 +39,14 @@ One grid cell is 0.5 units. Uniform scale only: never stretch or squash a model 
 - **Table tops:** about 0.36 high; a seated guest's arms rest on the table.
 - **Chair seats:** about 0.27 high, matching the `sit` pose raised onto the seat.
 
+**Seats with lowered backrests (Jared, 2026-10-28).** Mini Characters have big heads, and a seated guest's head sat inside the kit chairs' backrests. Guests are not leaned forward ("looks pretty rough"); instead every kit seat a guest sits in uses a derived copy with a lower backrest, in `assets/props/seats/derived/`. `tools/derive_seat_backrests.py` makes them from the unchanged kit files: it squashes only the heights above the seat top (to 52–58% of the kit's backrest height; the lounge chair's arms come down with its back), so the seat, legs, plan shape, materials and UVs stay the kit's and each seat still reads as the same piece. This is the one approved exception to "uniform scale only". A new seat must clear seated heads on its own (`tools/seated_head_probe.gd`, no exceptions); if a kit seat needs a lower back, add it to the tool's table rather than editing any file by hand.
+
 Any new building piece (walls, windows, doors, the awning, counters) follows these numbers. Every visual PR shows at least one capture with people standing beside the furniture, so the fit can be checked.
 
 ## 3. Colour and materials
 - Keep each kit's own materials and its shared `colormap.png`. No per-model textures, no new materials on kit models, and no vertex-colour edits.
 - **Paint (#94):** the swatch tints only the model's main body surface (for example a table top and legs, a chair frame). Pick the surface by its material name in the item's wrapper scene. Chrome, glass, food and faces are never painted.
+- **Floors (D25):** floor types are drawn by the floor shader (`floor_finish.gdshader`) as flat patterns in palette swatch colours, with no textures; the light comes from the scene, and the only extra marks are seams, grout and a thin darker line where two floor types meet. Catalogue cards draw the same patterns on the CPU (`FloorThumbnail`).
 - Placeholder colours and new UI colours come from the existing palette (`main_theme.tres`, the swatch list). No one-off hex values.
 - **Exception, glowing parts (Jared, 2026-10-26):** neon tubes, sign letters and lamp glow may use a dedicated emissive colour when no kit colour reads correctly (the kit's only red is a salmon). Define each one once as a named constant in the asset's build script, never inline. Non-glowing surfaces still use kit colours.
 
@@ -53,8 +56,10 @@ Any new building piece (walls, windows, doors, the awning, counters) follows the
   - **Server:** the kit model with a dark top (choose one and keep it).
   - **Owner:** one fixed model (D14).
   - **Guests:** the remaining models, chosen deterministically from the guest id.
+  - **Delivery driver (FK-099):** `character-female-b`, the one model no other role uses (cooks use `character-male-b`), in a delivery uniform no other role wears: a parcel-brown (`#9a6a3e`) cap with an amber (`#d98e2b`) peak, built from primitives in the kit's flat style like the chef hat, and her clothes repainted brown with amber sleeves. The repaint is a private copy of the kit colormap made when she loads; the vendored texture is never edited. Delivery crates are the Furniture Kit's `cardboardBoxClosed` at 0.65 of the furniture scale, one at a time in anyone's hands (its top under the chin), stacked at most as high as a standing person's chin. The **Freezer** is the kit's `kitchenFridgeLarge` with its metal tinted cool (slate blue mixed in, `PropView.rest_tint`) so it never reads as the tall fridge.
 - **Clips (kit names; the same for every model):**
   - `idle`, `walk`, `sit` (raise the body onto the chair seat), `holding-both` (carrying a plate or tray), `interact-right` (working a station), `pick-up`.
+  - `carry-walk` is not a new clip: the game builds it from the kit's `walk` with the arms of `holding-both`, so someone carrying walks instead of gliding.
   - Don't use the combat, die or wheelchair clips. Wheelchairs and aids may be added later for guest variety, as a director decision.
 - People face their walking direction. When people stand closer than 0.45 apart, the view nudges them apart (display only).
 

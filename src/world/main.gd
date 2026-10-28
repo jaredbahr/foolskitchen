@@ -123,6 +123,11 @@ var _debug_overlay: DebugOverlay
 var _debug_geometry: DebugGeometry
 var _build_preview: BuildPreview
 var _build_catalogue: BuildCatalogue
+## Paint hover cache (see _floor_paint_preview).
+var _paint_preview_key: Array = []
+var _paint_preview_changes: Dictionary[Vector2i, FloorFinishes.Finish] = {}
+## Where Build or Paint last saw the pointer (null before any), for Shift.
+var _last_pointer: Variant = null
 var _build_ready: bool = false
 var _was_build_active: bool = false
 var _build_phase: int = -1
@@ -184,8 +189,15 @@ func _bind_world_presentation() -> void:
 	_paint_active = false
 	var view: ShopView = $ShopView
 	view.clear_paint_preview()
+	# The back alley runs along the lot's outer edge (FK-099).
+	var lot_layout: ShopLayout = _loaded_layout if _loaded_layout != null else LAYOUT
+	var lot: Rect2i = ShopFootprint.from_layout(lot_layout).lot
+	view.set_lot(lot)
+	if sim.dock != null:
+		sim.dock.lot = lot
 	view.show_world(world)
 	view.bind_cleanliness(sim.cleanliness)
+	view.bind_dock(sim.dock)
 	var painted_layout: ShopLayout = _loaded_layout if _loaded_layout != null else LAYOUT
 	view.set_paint(content, painted_layout.wall_swatch_id, painted_layout.floor_swatch_id)
 	var camera: CameraRig = $CameraRig
@@ -224,6 +236,9 @@ func _bind_world_presentation() -> void:
 		_build_catalogue.floor_tool_requested.connect(_on_floor_tool_requested)
 	if not _build_catalogue.rooms_tool_requested.is_connected(_on_rooms_tool_requested):
 		_build_catalogue.rooms_tool_requested.connect(_on_rooms_tool_requested)
+	if not _build_catalogue.floors_tool_requested.is_connected(_on_floors_tool_requested):
+		_build_catalogue.floors_tool_requested.connect(_on_floors_tool_requested)
+	_build_catalogue.set_floor_base_color(view.floor_base_color())
 	if not _build_catalogue.swatch_requested.is_connected(_on_swatch_requested):
 		_build_catalogue.swatch_requested.connect(_on_swatch_requested)
 	if not _build_catalogue.mode_requested.is_connected(_on_catalogue_mode_requested):
@@ -232,6 +247,10 @@ func _bind_world_presentation() -> void:
 		_build_catalogue.tool_requested.connect(_on_catalogue_tool_requested)
 		_build_catalogue.undo_requested.connect(undo_edit)
 		_build_catalogue.redo_requested.connect(redo_edit)
+		_build_catalogue.grid_requested.connect(_on_catalogue_grid_requested)
+	if not camera.grid_shown_changed.is_connected(_on_grid_shown_changed):
+		camera.grid_shown_changed.connect(_on_grid_shown_changed)
+	_build_catalogue.set_grid_shown(camera.build_grid_visible)
 	if not $HUD.build_toggled.is_connected(_on_build_toggled):
 		$HUD.build_toggled.connect(_on_build_toggled)
 	if not $HUD.paint_toggled.is_connected(_on_paint_toggled):
@@ -431,6 +450,8 @@ func _connect_session() -> void:
 		EventBus.sim_ticked.connect(_on_inspection_tick)
 	if not EventBus.sim_ticked.is_connected(_on_delivery_tick):
 		EventBus.sim_ticked.connect(_on_delivery_tick)
+	if sim.dock != null and not sim.dock.stored.is_connected(_on_dock_stored):
+		sim.dock.stored.connect(_on_dock_stored)
 	if not EventBus.cash_changed.is_connected(_on_build_cash_changed):
 		EventBus.cash_changed.connect(_on_build_cash_changed)
 	if not _inspect_panel.owner_mode_requested.is_connected(_on_owner_mode_requested):
@@ -468,6 +489,8 @@ func _exit_tree() -> void:
 		EventBus.sim_ticked.disconnect(_on_inspection_tick)
 	if EventBus.sim_ticked.is_connected(_on_delivery_tick):
 		EventBus.sim_ticked.disconnect(_on_delivery_tick)
+	if sim != null and sim.dock != null and sim.dock.stored.is_connected(_on_dock_stored):
+		sim.dock.stored.disconnect(_on_dock_stored)
 	if EventBus.cash_changed.is_connected(_on_build_cash_changed):
 		EventBus.cash_changed.disconnect(_on_build_cash_changed)
 	if world != null and Clock.attached_world == world:
@@ -495,6 +518,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			set_debug_visible(not is_debug_visible())
 			_mark_input_handled()
 			return
+	if key != null and not key.echo:
+		_on_shift_changed(key)
 	if route_paint_input(event) or route_build_input(event):
 		_mark_input_handled()
 		return
@@ -580,6 +605,18 @@ func route_build_input(event: InputEvent) -> bool:
 			else:
 				build_mode.floor_release(floor_cell)
 		return true
+	if mouse != null and mouse.button_index == MOUSE_BUTTON_LEFT and build_mode.state == BuildMode.State.FLOORS:
+		var floors_cell: Variant = build_cell_at_screen_position(mouse.position)
+		if floors_cell is Vector2i:
+			if mouse.pressed and mouse.alt_pressed:
+				# The eyedropper: copy a floor's look into the tool and the tab.
+				if build_mode.floors_pick(floors_cell) and _build_catalogue != null:
+					_build_catalogue.select_floor(build_mode.floor_style, build_mode.floor_swatch, build_mode.floor_accent)
+			elif mouse.pressed:
+				build_mode.floors_press(floors_cell, mouse.shift_pressed)
+			else:
+				build_mode.floors_release(floors_cell)
+		return true
 	if mouse != null and mouse.button_index == MOUSE_BUTTON_LEFT and build_mode.state == BuildMode.State.ROOMS:
 		var room_cell: Variant = build_cell_at_screen_position(mouse.position)
 		if room_cell is Vector2i:
@@ -626,6 +663,18 @@ func _undo_key(key: InputEventKey) -> bool:
 	return false
 
 
+## Shift pressed or released over a still mouse: the Floors tool's room fill
+## and Paint's whole-room preview follow at once. Never consumes the key.
+func _on_shift_changed(key: InputEventKey) -> void:
+	var code: Key = key.physical_keycode if key.physical_keycode != KEY_NONE else key.keycode
+	if code != KEY_SHIFT or _last_pointer == null:
+		return
+	if _paint_active:
+		update_paint_pointer(_last_pointer, key.pressed)
+	elif is_build_active() and build_mode.state == BuildMode.State.FLOORS:
+		update_build_pointer(_last_pointer, key.pressed)
+
+
 ## Paint has its own input path so service-time recolouring cannot move items.
 func route_paint_input(event: InputEvent) -> bool:
 	var key: InputEventKey = event as InputEventKey
@@ -649,13 +698,13 @@ func route_paint_input(event: InputEvent) -> bool:
 		return false
 	var motion: InputEventMouseMotion = event as InputEventMouseMotion
 	if motion != null:
-		update_paint_pointer(motion.position)
+		update_paint_pointer(motion.position, motion.shift_pressed)
 		return false
 	var mouse: InputEventMouseButton = event as InputEventMouseButton
 	if mouse != null and mouse.pressed and mouse.button_index == MOUSE_BUTTON_LEFT:
 		var cell: Variant = paint_cell_at_screen_position(mouse.position)
 		if cell is Vector2i:
-			paint_cell(cell)
+			paint_cell(cell, mouse.shift_pressed)
 		return true
 	return false
 
@@ -713,11 +762,13 @@ func _paint_target(cell: Vector2i) -> Dictionary:
 	return {}
 
 
-func update_paint_pointer(screen_position: Vector2) -> void:
+## `whole_room` (Shift) recolours the pointed floor's whole room (D25).
+func update_paint_pointer(screen_position: Vector2, whole_room: bool = false) -> void:
 	if not _paint_active:
 		return
+	_last_pointer = screen_position
 	var cell: Variant = paint_cell_at_screen_position(screen_position)
-	preview_paint_cell(cell)
+	preview_paint_cell(cell, whole_room)
 
 
 func paint_cell_at_screen_position(screen_position: Vector2) -> Variant:
@@ -730,7 +781,7 @@ func paint_cell_at_screen_position(screen_position: Vector2) -> Variant:
 	return mesh_cell if mesh_cell is Vector2i else build_cell_at_screen_position(screen_position)
 
 
-func preview_paint_cell(cell: Variant) -> void:
+func preview_paint_cell(cell: Variant, whole_room: bool = false) -> void:
 	var view: ShopView = $ShopView as ShopView
 	if not _paint_active or not cell is Vector2i:
 		view.clear_paint_preview()
@@ -738,14 +789,50 @@ func preview_paint_cell(cell: Variant) -> void:
 	var target: Dictionary = _paint_target(cell)
 	var kind: StringName = target.get("kind", &"")
 	var item_id: int = target.get("item_id", -1)
+	if kind == &"floor":
+		# The floor recolours per area (D25): show just the cells a click changes.
+		view.preview_paint(&"", -1, &"")
+		view.preview_floor_finishes(_floor_paint_preview(cell, whole_room))
+		return
+	view.clear_floor_preview()
 	view.preview_paint(kind, item_id, _paint_swatch_id)
 
 
-func paint_cell(cell: Vector2i) -> bool:
+## A floor paint click (D25): the connected floor that looks like `cell`, or
+## with Shift its whole room, takes the paint colour and keeps its floor type.
+func _floor_paint_changes(cell: Vector2i, whole_room: bool) -> Dictionary[Vector2i, FloorFinishes.Finish]:
+	if shop_editor == null:
+		return {}
+	var cells: Array[Vector2i] = shop_editor.floor_room_cells(cell) if whole_room else shop_editor.floor_area_cells(cell)
+	return shop_editor.recolour_changes(cells, _paint_swatch_id)
+
+
+## The hover preview's area, re-filled only when the cell, Shift, the colour,
+## the floor looks or the grid changed (not on every mouse move in one cell).
+func _floor_paint_preview(cell: Vector2i, whole_room: bool) -> Dictionary[Vector2i, FloorFinishes.Finish]:
+	if shop_editor == null or world == null:
+		return {}
+	var key: Array = [cell, whole_room, _paint_swatch_id, world.grid.get_instance_id(), world.grid.version,
+		shop_editor.floors.get_instance_id(), shop_editor.floors.revision]
+	if key != _paint_preview_key:
+		_paint_preview_key = key
+		_paint_preview_changes = _floor_paint_changes(cell, whole_room)
+	return _paint_preview_changes
+
+
+func paint_cell(cell: Vector2i, whole_room: bool = false) -> bool:
 	if not _paint_active or shop_editor == null:
 		return false
 	var target: Dictionary = _paint_target(cell)
 	var kind: StringName = target.get("kind", &"")
+	if kind == &"floor":
+		# Free at any time; recorded for undo while editing is allowed.
+		var recoloured: bool = edit_history.apply_flooring(_floor_paint_changes(cell, whole_room))
+		if recoloured:
+			_edit_notice = ""
+			_update_build_controls()
+		# Painting a floor its own colour again is fine, like any paint.
+		return recoloured or shop_editor.last_check.why == ShopEditor.FLOORS_ALREADY
 	var previous: StringName = shop_editor.wall_swatch_id if kind == &"wall" else (
 		shop_editor.floor_swatch_id if kind == &"floor" else (
 			world.grid.item(target["item_id"]).swatch_id if kind == &"item" else &""))
@@ -781,7 +868,7 @@ func _recompute_vibe() -> void:
 	if sim == null or world == null or shop_editor == null or menu_settings == null:
 		return
 	var inputs: VibeModel.Inputs = VibeInputs.capture(world.grid, content, menu_settings.enabled_recipes(),
-		shop_editor.wall_swatch_id, shop_editor.floor_swatch_id)
+		shop_editor.wall_swatch_id, shop_editor.floor_vibe_swatch())
 	sim.set_vibe(VibeModel.evaluate(inputs, VIBE_TUNING))
 	var result: VibeModel.Result = vibe_result
 	_build_catalogue.set_vibe(result)
@@ -869,6 +956,7 @@ func begin_wall_tool(kind: SimGrid.Segment) -> bool:
 func update_build_pointer(screen_position: Vector2, shift: bool = false) -> bool:
 	if not is_build_active():
 		return false
+	_last_pointer = screen_position
 	if build_mode.state == BuildMode.State.FLOOR:
 		var floor_cell: Variant = build_cell_at_screen_position(screen_position)
 		if floor_cell is Vector2i:
@@ -879,6 +967,11 @@ func update_build_pointer(screen_position: Vector2, shift: bool = false) -> bool
 		if room_cell is Vector2i:
 			build_mode.rooms_pointer(room_cell)
 		return room_cell is Vector2i
+	if build_mode.state == BuildMode.State.FLOORS:
+		var floors_cell: Variant = build_cell_at_screen_position(screen_position)
+		if floors_cell is Vector2i:
+			build_mode.floors_pointer(floors_cell, shift)
+		return floors_cell is Vector2i
 	if build_mode.state == BuildMode.State.WALLS:
 		var point: Variant = build_point_at_screen_position(screen_position)
 		if point is Vector2:
@@ -916,6 +1009,25 @@ func begin_rooms_tool(kind: int) -> bool:
 	return started
 
 
+## Floors tool (D25): lay `style_id` in these colours; while the tool runs,
+## another card or colour changes what it lays.
+func begin_floors_tool(style_id: StringName, swatch_id: StringName, accent_id: StringName = &"") -> bool:
+	if not is_build_active():
+		return false
+	var started: bool = true
+	if build_mode.state == BuildMode.State.FLOORS:
+		build_mode.set_floor_finish(style_id, swatch_id, accent_id)
+	else:
+		started = build_mode.begin_floors(style_id, swatch_id, accent_id)
+	if started and is_inside_tree():
+		update_build_pointer(get_viewport().get_mouse_position())
+	return started
+
+
+func _on_floors_tool_requested(style_id: StringName, swatch_id: StringName, accent_id: StringName) -> void:
+	begin_floors_tool(style_id, swatch_id, accent_id)
+
+
 func begin_buy_item(def_id: StringName) -> bool:
 	if not is_build_active():
 		return false
@@ -928,8 +1040,11 @@ func _bind_build_session() -> void:
 		build_mode.changed.connect(_on_build_changed)
 	edit_history = ShopEditHistory.new(shop_editor, world.grid)
 	build_mode.bind_session(shop_editor, world, content, shop_move, shop_buy, shop_sell, shop_walls, shop_floor,
-		shop_rooms)
+		shop_rooms, shop_flooring)
 	($ShopView as ShopView).set_paint(content, shop_editor.wall_swatch_id, shop_editor.floor_swatch_id)
+	($ShopView as ShopView).bind_floor_finishes(shop_editor.floors)
+	if not shop_editor.floors.changed.is_connected(_on_floor_looks_changed):
+		shop_editor.floors.changed.connect(_on_floor_looks_changed)
 	_build_preview.bind_build_mode(build_mode, $ShopView as ShopView)
 	var lot: ShopFootprint = shop_editor.footprint()
 	if _build_catalogue != null:
@@ -947,6 +1062,19 @@ func _guard_build_phase() -> void:
 		build_mode.exit()
 	if _build_ui_phase != world.clock.phase:
 		_update_build_controls()
+
+
+## The Build bar's Grid button: like G while building.
+func _on_catalogue_grid_requested() -> void:
+	var camera: CameraRig = $CameraRig
+	if is_build_active():
+		camera.toggle_grid()
+	_build_catalogue.set_grid_shown(camera.build_grid_visible)
+
+
+func _on_grid_shown_changed(_shown: bool) -> void:
+	if _build_catalogue != null:
+		_build_catalogue.set_grid_shown(($CameraRig as CameraRig).build_grid_visible)
 
 
 func _on_build_changed() -> void:
@@ -982,6 +1110,8 @@ func _update_build_controls() -> void:
 		summary = build_mode.floor_summary()
 	elif build_mode.state == BuildMode.State.ROOMS:
 		summary = build_mode.rooms_summary()
+	elif build_mode.state == BuildMode.State.FLOORS:
+		summary = build_mode.floors_summary()
 	elif build_mode.state == BuildMode.State.IDLE:
 		# The sell/eyedropper hover text, or why an idle tool click was refused.
 		summary = build_mode.hover_summary()
@@ -1058,6 +1188,11 @@ func _on_floor_tool_requested() -> void:
 
 func _on_rooms_tool_requested(kind: int) -> void:
 	begin_rooms_tool(kind)
+
+
+## Floor looks changed (laid, recoloured, undone): their colours feed the vibe.
+func _on_floor_looks_changed(_cells: Array[Vector2i]) -> void:
+	_recompute_vibe()
 
 
 func _on_build_cash_changed(_cash: int, _delta: int, _reason: StringName) -> void:
@@ -2171,6 +2306,16 @@ func _clear_rooms_note() -> void:
 		$HUD.set_rooms_note("")
 
 
+## Floor types (D25): lay or recolour floor looks (cell -> Finish), checked
+## and booked by ShopEditor, undoable.
+func shop_flooring(changes: Dictionary[Vector2i, FloorFinishes.Finish]) -> bool:
+	var accepted: bool = shop_editor != null and edit_history.apply_flooring(changes)
+	_after_edit(accepted)
+	if _build_ready:
+		build_mode.refresh()
+	return accepted
+
+
 ## Room painting (FK-101): free, checked by ShopEditor, undoable.
 func shop_rooms(changes: Dictionary[Vector2i, int]) -> bool:
 	var accepted: bool = shop_editor != null and edit_history.apply_rooms(changes)
@@ -2235,7 +2380,8 @@ func _on_catalogue_mode_requested(mode: StringName) -> void:
 	# Switching side drops a held piece or tool that belongs to the other side.
 	var buying: bool = mode == BuildCatalogue.BUY
 	var state: BuildMode.State = build_mode.state
-	if (buying and (state == BuildMode.State.WALLS or state == BuildMode.State.FLOOR or state == BuildMode.State.ROOMS)) \
+	if (buying and (state == BuildMode.State.WALLS or state == BuildMode.State.FLOOR or state == BuildMode.State.ROOMS
+			or state == BuildMode.State.FLOORS)) \
 			or (not buying and (state == BuildMode.State.BUY or state == BuildMode.State.MOVE)):
 		build_mode.cancel_ghost()
 	_build_catalogue.set_mode(mode)
@@ -2390,7 +2536,7 @@ func _storage_capacity() -> Dictionary[int, int]:
 
 ## What the shop's storage holds and has on order, right now.
 func storage_space() -> StorageSpace:
-	return StorageSpace.new(_storage_capacity(), Economy.stock, deliveries.pending_by_id(),
+	return StorageSpace.new(_storage_capacity(), Economy.stock, _on_the_way(),
 		StorageSpace.kinds_of(content))
 
 
@@ -2461,10 +2607,15 @@ func _deliver_due(morning_setup: bool = false) -> bool:
 	var lines: Array[Dictionary] = deliveries.take_due(Clock.sim, morning_setup)
 	if lines.is_empty():
 		return false
-	Economy.receive(lines)
+	# During service a delivery person brings it in through the back door and
+	# staff put the crates away (FK-099): goods become stock as they are put
+	# away. Morning orders, and anything landing once closed, arrive at once.
+	var visible: bool = not morning_setup and sim != null and sim.dock != null and sim.dock.arrive(lines)
+	if not visible:
+		Economy.receive(lines)
 	if not morning_setup:
 		_last_delivery = {"lines": lines, "minute": Clock.sim.display_minutes()}
-	if sim != null and sim.restock_sold_out() > 0:
+	if not visible and sim != null and sim.restock_sold_out() > 0:
 		_refresh_sold_out_hud()
 	var parts: Array[String] = []
 	for line: Dictionary in lines:
@@ -2472,6 +2623,24 @@ func _deliver_due(morning_setup: bool = false) -> bool:
 	world.log_event("Delivery arrived: %s" % ", ".join(parts))
 	_refresh_stock_panel()
 	return true
+
+
+## Goods a delivery person brought were put away (or stored at closing).
+func _on_dock_stored(_lines: Array[Dictionary]) -> void:
+	_refresh_sold_out_hud()
+	_refresh_stock_panel()
+	_refresh_storage_view()
+
+
+## Paid and not in stock yet: orders on their way plus crates waiting to be
+## put away. Both hold their storage space.
+func _on_the_way() -> Dictionary[StringName, int]:
+	var out: Dictionary[StringName, int] = deliveries.pending_by_id()
+	if sim != null and sim.dock != null:
+		var waiting: Dictionary[StringName, int] = sim.dock.pending_by_id()
+		for id: StringName in waiting:
+			out[id] = int(out.get(id, 0)) + waiting[id]
+	return out
 
 
 func _on_delivery_tick(_tick: int) -> void:
@@ -2672,6 +2841,16 @@ func _menu_ingredients() -> Dictionary[StringName, bool]:
 	return used
 
 
+## Ingredients some dish or drink in the game uses (frozen fries: none yet).
+func _dish_ingredients() -> Dictionary[StringName, bool]:
+	var used: Dictionary[StringName, bool] = {}
+	for recipe: RecipeDef in content.recipes():
+		for ingredient: IngredientDef in recipe.ingredients:
+			if ingredient != null:
+				used[ingredient.id] = true
+	return used
+
+
 ## Rows hold display names only; the panel never sees a raw id as text.
 ## Grouped by storage kind (fridge, freezer, dry); inside a group the
 ## ingredients today's menu uses come first, in the fixed buying order.
@@ -2683,8 +2862,13 @@ func stock_rows() -> Array[Dictionary]:
 	_reorder()
 	var expiring: Dictionary = Economy.stock.expiring_on(Clock.sim.day + 1, _shelf_lives())
 	var used: Dictionary[StringName, bool] = _menu_ingredients()
-	var pending: Dictionary[StringName, int] = deliveries.pending_by_id()
+	var in_dishes: Dictionary[StringName, bool] = _dish_ingredients()
+	var pending: Dictionary[StringName, int] = _on_the_way()
+	var space: StorageSpace = storage_space()
 	for kind: int in StorageSpace.KINDS:
+		# The freezer is listed once the shop has one (or anything frozen).
+		if kind == StorageSpace.FREEZER and space.capacity(kind) <= 0 and space.committed(kind) <= 0:
+			continue
 		for in_use: bool in [true, false]:
 			for id: StringName in reorder_settings.all_ids():
 				var ingredient: IngredientDef = content.ingredient(id)
@@ -2694,7 +2878,8 @@ func stock_rows() -> Array[Dictionary]:
 					"expiring": int(expiring.get(id, 0)), "unit_cost": ingredient.unit_cost,
 					"enabled": reorder_settings.is_enabled(id), "target": reorder_settings.target(id),
 					"max_target": ReorderSettings.MAX_TARGET, "kind": kind, "in_use": in_use,
-					"cart": int(stock_cart.get(id, 0)), "on_order": int(pending.get(id, 0))})
+					"cart": int(stock_cart.get(id, 0)), "on_order": int(pending.get(id, 0)),
+					"no_dish": not in_dishes.has(id)})
 	return rows
 
 
@@ -2786,6 +2971,13 @@ func stock_notes() -> Array[String]:
 			brought.append("%d %s" % [int(line["qty"]), _ingredient_name(line["id"])])
 		notes.append("The %s delivery brought %s." % [Fmt.clock(int(_last_delivery["minute"])),
 			StockAlerts.join_names(brought)])
+	if sim != null and sim.dock != null:
+		var waiting: Dictionary[StringName, int] = sim.dock.pending_by_id()
+		var crates: Array[String] = []
+		for id: StringName in waiting:
+			crates.append("%d %s" % [waiting[id], _ingredient_name(id)])
+		if not crates.is_empty():
+			notes.append("Still to be put away: %s." % StockAlerts.join_names(crates))
 	var short: Dictionary = _morning_order.get("short", {})
 	var missed: Array[String] = []
 	for id: StringName in short:
@@ -3020,6 +3212,9 @@ func _unlocked_at_levels(previous_level: int, current_level: int) -> Array[Strin
 	for item: ItemDef in content.items():
 		if item.catalogue_visible and item.unlock_level > previous_level and item.unlock_level <= current_level:
 			unlocked.append(item.display_name)
+	for style: FloorStyleDef in content.floor_styles():
+		if style.unlock_tier == 1 and style.unlock_level > previous_level and style.unlock_level <= current_level:
+			unlocked.append(style.display_name + " floor")
 	unlocked.sort()
 	return unlocked
 

@@ -89,12 +89,23 @@ jobs:
           bash tools/screenshot.sh --out=screens/visual-review/staff --staff --speed=0 --frames=12
           bash tools/screenshot.sh --out=screens/visual-review/report --report --open --fast=100 --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/paint --paint --speed=0 --frames=60
+          bash tools/screenshot.sh --out=screens/visual-review/floors-review --floors-review --speed=0 --frames=12,30
           bash tools/screenshot.sh --out=screens/visual-review/build-green --build=green --quarter=0 --frames=12 --speed=1
           bash tools/screenshot.sh --out=screens/visual-review/build-red --build=red --quarter=0 --frames=12 --speed=1
           bash tools/screenshot.sh --out=screens/visual-review/settings --settings --speed=0 --frames=12
           bash tools/screenshot.sh --out=screens/visual-review/settings-world --settings-world --speed=0 --frames=90
           bash tools/screenshot.sh --out=screens/visual-review/hud-1280 --hud-layout --window-size=1280x720 --speed=0 --frames=12,90
           bash tools/screenshot.sh --out=screens/visual-review/hud-1600 --hud-layout --window-size=1600x900 --speed=0 --frames=12,90
+
+      - name: Capture seated guests at a real table
+        shell: bash
+        run: |
+          set -euo pipefail
+          export XDG_DATA_HOME="$(mktemp -d)"
+          timeout 120 xvfb-run -a -s '-screen 0 1600x900x24' "$GODOT" --path . --rendering-method gl_compatibility --audio-driver Dummy --script tools/seated_table_review.gd -- --capture-only --out=screens/visual-review/seated-tables 2>&1 | tee screens/visual-review/seated-tables.log
+          if grep -E 'SCRIPT ERROR|Parse Error|^[[:space:]]*ERROR:' screens/visual-review/seated-tables.log; then
+            exit 1
+          fi
 
       - name: Capture the advisory restock warning
         shell: bash

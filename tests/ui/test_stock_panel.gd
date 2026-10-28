@@ -30,7 +30,8 @@ func _rows() -> Array[Dictionary]:
 	for kind: int in StorageSpace.KINDS:
 		for id: StringName in TUNING.morning_stock.keys() + [&"beer"]:
 			var ingredient: IngredientDef = content.ingredient(id)
-			if int(ingredient.storage) != kind:
+			# The shop in this fixture has no freezer, so Main lists no freezer rows.
+			if int(ingredient.storage) != kind or kind == StorageSpace.FREEZER:
 				continue
 			rows.append({"id": id, "name": ingredient.display_name, "count": 10, "expiring": 3 if id == &"beef_patty" else 0,
 				"unit_cost": ingredient.unit_cost, "enabled": id != &"cheese", "target": TUNING.morning_stock.get(id, 20),
@@ -76,6 +77,16 @@ func test_rows_show_groups_cart_and_send_requests() -> void:
 	assert_true((beer["root"] as Control).modulate.a < 1.0, "an ingredient nothing on the menu uses is greyed out")
 	assert_eq((beer["count"] as Label).text, "10 in stock. Not on today's menu")
 	assert_false((beer["cart+1"] as Button).disabled, "but it can still be ordered")
+	var fries: Dictionary = _view(3, true)
+	for row: Dictionary in fries["rows"]:
+		if row["id"] == &"beer":
+			row["no_dish"] = true
+	_panel.set_view(fries)
+	beer = _panel.row_for(&"beer")
+	assert_eq((beer["count"] as Label).text, "10 in stock. No dish uses them yet")
+	assert_true((beer["cart+1"] as Button).tooltip_text.ends_with(" (no dish uses them yet)"))
+	_panel.set_view(_view(3, true, ["This morning's auto-order cost $93 ($88 at list price + $5 premium)."] as Array[String], 1))
+	beer = _panel.row_for(&"beer")
 	assert_eq((_panel.row_for(&"tomato")["root"] as Control).modulate.a, 1.0)
 	var cheese: Dictionary = _panel.row_for(&"cheese")
 	assert_eq((cheese["auto"] as Button).text, "Auto-reorder off")

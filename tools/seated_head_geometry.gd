@@ -15,6 +15,11 @@ const BOOTH_CUSHION_NAMES: PackedStringArray = ["Left seat cushion", "Right seat
 const BACKLESS_SCENES: PackedStringArray = ["bar_stool", "square_bar_stool", "diner_stool"]
 const KIT_BACKREST_SCENES: PackedStringArray = ["bench", "chair", "cushioned_bench", "lounge_chair",
 	"modern_chair", "modern_frame_chair", "rounded_chair", "table_2", "table_4", "wooden_chair"]
+const BACKREST_REGIONS: GDScript = preload("res://tools/seated_head_backrests.gd")
+## Count native backrest-bearing meshes, not materials or disconnected islands.
+const KIT_BACKREST_COUNTS: Dictionary[String, int] = {"bench": 2, "chair": 1,
+	"cushioned_bench": 2, "lounge_chair": 1, "modern_chair": 1, "modern_frame_chair": 1,
+	"rounded_chair": 1, "table_2": 2, "table_4": 4, "wooden_chair": 1}
 
 
 static func head_mesh(person: PersonView) -> MeshInstance3D:
@@ -196,7 +201,8 @@ static func measure(person: PersonView, seat: Node3D, native_bake: bool = false,
 	var classification: String = _backrest_status(seat, parts)
 	var key: Array = [head["triangles"], classification]
 	for part: Dictionary in parts:
-		key.append([part["path"], part["triangles"], part["is_backrest"]])
+		key.append([part["path"], part["triangles"], part["is_backrest"],
+			part.get("backrest_triangles", PackedVector3Array()), part.get("backrest_identity", "")])
 	var digest: int = hash(key)
 	var metrics: Dictionary = {}
 	var bucket: Array = comparisons.get(digest, [])
@@ -242,12 +248,51 @@ static func seat_parts(seat: Node3D, relative_to: Node3D) -> Array[Dictionary]:
 		for point: Vector3 in triangles:
 			bounds = bounds.expand(point)
 		var backrest: bool = scene == "diner_booth" and BOOTH_BACKREST_NAMES.has(String(instance.name))
+		var region: Dictionary = {"available": false, "error": ""}
+		if KIT_BACKREST_SCENES.has(scene):
+			region = BACKREST_REGIONS.select(instance)
+			if not String(region["error"]).is_empty():
+				return []
+			backrest = region["available"]
 		var cushion: bool = (scene == "diner_booth" and BOOTH_CUSHION_NAMES.has(String(instance.name))) \
 			or (scene == "diner_stool" and instance.name == &"Round red cushion")
-		parts.append({"path": String(seat.get_path_to(instance)), "name": String(instance.name),
+		var part: Dictionary = {"path": String(seat.get_path_to(instance)), "name": String(instance.name),
 			"triangles": triangles, "triangle_bounds": _triangle_bounds(triangles), "bounds": bounds,
-			"is_backrest": backrest, "is_cushion": cushion})
+			"is_backrest": backrest, "is_cushion": cushion}
+		if region["available"]:
+			var selected: PackedVector3Array = region["triangles"]
+			var region_triangles: PackedVector3Array = []
+			for vertex: Vector3 in selected:
+				region_triangles.append(transform * vertex)
+			var region_bounds: AABB = AABB(region_triangles[0], Vector3.ZERO)
+			for vertex: Vector3 in region_triangles:
+				region_bounds = region_bounds.expand(vertex)
+			part["backrest_triangles"] = region_triangles
+			part["backrest_bounds"] = region_bounds
+			part["backrest_triangle_bounds"] = _triangle_bounds(region_triangles)
+			part["backrest_identity"] = region["identity"]
+			part["backrest_origin"] = transform.origin
+		parts.append(part)
+	if KIT_BACKREST_SCENES.has(scene):
+		_select_guest_backrest(parts)
 	return parts
+
+
+## A bench/table wrapper can contain several chairs. Classify every source,
+## then measure only the nearest native chair origin in the guest's floor plane.
+## Other chairs retain their complete geometry for all intrusion checks.
+static func _select_guest_backrest(parts: Array[Dictionary]) -> void:
+	var nearest: float = INF
+	for part: Dictionary in parts:
+		if String(part.get("backrest_identity", "")).is_empty():
+			continue
+		var origin: Vector3 = part["backrest_origin"]
+		nearest = minf(nearest, Vector2(origin.x, origin.z).length_squared())
+	for part: Dictionary in parts:
+		if String(part.get("backrest_identity", "")).is_empty():
+			continue
+		var origin: Vector3 = part["backrest_origin"]
+		part["is_backrest"] = Vector2(origin.x, origin.z).length_squared() == nearest
 
 
 static func _backrest_status(seat: Node3D, parts: Array[Dictionary]) -> String:
@@ -260,11 +305,19 @@ static func _backrest_status(seat: Node3D, parts: Array[Dictionary]) -> String:
 			if part["is_backrest"]:
 				found.append(part["name"])
 		return "named_parts" if found.size() == BOOTH_BACKREST_NAMES.size() else "unclassified"
-	# Joined kit seats, including table_4's chairCushion pieces, are still
-	# measured for physical intrusion. Classification grants no policy exception.
-	# Their joined mesh does not provide reliable semantic backrest annotations.
-	# Never label the whole joined seat mesh as a measured backrest.
-	return "unclassified_kit" if KIT_BACKREST_SCENES.has(scene) else "unclassified"
+	# Joined kit parts, including table_4, retain complete intrusion checks.
+	# Only audited proper backrest subsets can classify the distance query;
+	# classification itself grants no policy exception.
+	if KIT_BACKREST_SCENES.has(scene):
+		var regions: int = 0
+		var selected: int = 0
+		for part: Dictionary in parts:
+			if not String(part.get("backrest_identity", "")).is_empty():
+				regions += 1
+				if part["is_backrest"]:
+					selected += 1
+		return "named_parts" if regions == KIT_BACKREST_COUNTS[scene] and selected > 0 else "unclassified_kit"
+	return "unclassified"
 
 
 static func _between_nodes(node: Node3D, target: Node3D) -> Transform3D:
@@ -302,12 +355,21 @@ static func measure_surfaces(vertices: PackedVector3Array, head_triangles: Packe
 	if vertices.is_empty() or head_triangles.is_empty() or head_triangles.size() % 3 != 0 or parts.is_empty():
 		return {"error": "surface measurement needs referenced head triangles and seat parts", "passes": false}
 	var head_boxes: Array[AABB] = _triangle_bounds(head_triangles)
+	var head_bounds: AABB = head_boxes[0]
+	for box: AABB in head_boxes:
+		head_bounds = head_bounds.merge(box)
 	var inside: Dictionary[Vector3, bool] = {}
+	# Reverse containment: a thin seat corner can sit wholly inside the head
+	# without any head vertex inside the seat or any edge/face crossing found
+	# from the head side. Count unique seat positions inside the closed head.
+	var seat_inside: Dictionary[Vector3, bool] = {}
+	var seat_inside_depth: float = 0.0
 	var maximum_depth: float = 0.0
 	var crossing_witnesses: int = 0
 	var intrusion_parts: Array[Dictionary] = []
 	var intrusion_paths: PackedStringArray = []
 	var backrest_paths: PackedStringArray = []
+	var backrest_provenance: Array[Dictionary] = []
 	var nearest_path: String = ""
 	var backrest_squared: float = INF
 	var seat_triangle_count: int = 0
@@ -333,6 +395,20 @@ static func measure_surfaces(vertices: PackedVector3Array, head_triangles: Packe
 				part_inside += 1
 				part_depth = maxf(part_depth, depth)
 		maximum_depth = maxf(maximum_depth, part_depth)
+		var part_seat_inside: int = 0
+		if _box_distance_squared(head_bounds, bounds) == 0.0:
+			var tested: Dictionary[Vector3, bool] = {}
+			for vertex: Vector3 in faces:
+				if tested.has(vertex) or vertex.x <= head_bounds.position.x or vertex.x >= head_bounds.end.x \
+						or vertex.y <= head_bounds.position.y or vertex.y >= head_bounds.end.y \
+						or vertex.z <= head_bounds.position.z or vertex.z >= head_bounds.end.z:
+					continue
+				tested[vertex] = true
+				var depth: float = _inside_depth(vertex, head_triangles, head_boxes)
+				if depth > 0.0:
+					seat_inside[vertex] = true
+					part_seat_inside += 1
+					seat_inside_depth = maxf(seat_inside_depth, depth)
 		var crosses: bool = false
 		for head_index: int in range(head_boxes.size()):
 			if _box_distance_squared(head_boxes[head_index], bounds) > 0.0:
@@ -347,20 +423,32 @@ static func measure_surfaces(vertices: PackedVector3Array, head_triangles: Packe
 				break
 		if crosses:
 			crossing_witnesses += 1
-		if part_inside > 0 or crosses:
+		if part_inside > 0 or part_seat_inside > 0 or crosses:
 			intrusion_paths.append(part["path"])
 			intrusion_parts.append({"path": part["path"], "head_vertices_inside": part_inside,
-				"max_vertex_penetration": part_depth, "surface_crossing_witness": crosses})
+				"max_vertex_penetration": part_depth, "surface_crossing_witness": crosses,
+				"seat_vertices_inside_head": part_seat_inside})
 		if not part["is_backrest"]:
 			continue
+		# Full closed meshes above retain every intrusion/crossing triangle. Only
+		# the distance query uses the separately audited actual backrest polygons.
+		var back_faces: PackedVector3Array = part.get("backrest_triangles", faces)
+		if back_faces.is_empty() or back_faces.size() % 3 != 0:
+			return {"error": "identified backrest has no complete triangles", "passes": false}
+		var back_bounds: AABB = part.get("backrest_bounds", bounds)
+		var back_boxes: Array[AABB] = part.get("backrest_triangle_bounds", boxes)
 		backrest_paths.append(part["path"])
+		if part.has("backrest_identity"):
+			backrest_provenance.append({"path": part["path"],
+				"identity_sha256": String(part["backrest_identity"]).sha256_text(),
+				"selected_triangles": back_faces.size() / 3, "complete_mesh_triangles": faces.size() / 3})
 		for head_index: int in range(head_boxes.size()):
-			if _box_distance_squared(head_boxes[head_index], bounds) >= backrest_squared:
+			if _box_distance_squared(head_boxes[head_index], back_bounds) >= backrest_squared:
 				continue
-			for seat_index: int in range(boxes.size()):
-				if _box_distance_squared(head_boxes[head_index], boxes[seat_index]) >= backrest_squared:
+			for seat_index: int in range(back_boxes.size()):
+				if _box_distance_squared(head_boxes[head_index], back_boxes[seat_index]) >= backrest_squared:
 					continue
-				var squared: float = _triangle_distance_squared(head_triangles, head_index * 3, faces, seat_index * 3)
+				var squared: float = _triangle_distance_squared(head_triangles, head_index * 3, back_faces, seat_index * 3)
 				if squared < backrest_squared:
 					backrest_squared = squared
 					nearest_path = part["path"]
@@ -369,12 +457,14 @@ static func measure_surfaces(vertices: PackedVector3Array, head_triangles: Packe
 	var gap_passes: bool = backrest_status == "backless" or (gap != null and float(gap) + EPSILON >= REQUIRED_CLEARANCE)
 	return {"error": "", "backrest_clearance": gap, "backrest_status": backrest_status,
 		"backrest_parts": backrest_paths, "nearest_backrest_part": nearest_path,
+		"backrest_region_provenance": backrest_provenance,
 		"clearance_metric": CLEARANCE_METRIC, "measurement_complete": classified,
 		"head_vertices_inside_count": inside.size(), "max_head_vertex_penetration": maximum_depth,
 		"head_seat_surface_crossings": crossing_witnesses, "intrusion_parts": intrusion_paths, "intrusion_details": intrusion_parts,
+		"seat_vertices_inside_head_count": seat_inside.size(), "max_seat_vertex_head_depth": seat_inside_depth,
 		"head_tested_vertices_unique": vertices.size(), "head_triangles": head_triangles.size() / 3,
 		"seat_triangles": seat_triangle_count,
-		"passes": classified and gap_passes and inside.is_empty() and crossing_witnesses == 0}
+		"passes": classified and gap_passes and inside.is_empty() and seat_inside.is_empty() and crossing_witnesses == 0}
 
 
 static func _inside_depth(point: Vector3, triangles: PackedVector3Array, boxes: Array[AABB]) -> float:

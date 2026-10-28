@@ -7,6 +7,12 @@ const COOK_MODEL: StringName = &"character-male-b"
 # The male-d torso uses the kit's dark charcoal palette column.
 const SERVER_MODEL: StringName = &"character-male-d"
 const OWNER_MODEL: StringName = &"character-male-a"
+# The delivery person (FK-099): the one kit model no other role uses. ART_STYLE
+# lists female-b for cooks too, but cooks use male-b; it never wears the hat.
+const COURIER_MODEL: StringName = &"character-female-b"
+# Delivery uniform colours (ART_STYLE section 4): no other role wears either.
+const COURIER_BROWN: Color = Color("9a6a3e")
+const COURIER_AMBER: Color = Color("d98e2b")
 # Both b models are reserved for cooks; owner and server looks stay distinct.
 const GUEST_MODELS: Array[StringName] = [
 	&"character-female-a", &"character-female-c", &"character-female-d",
@@ -14,15 +20,24 @@ const GUEST_MODELS: Array[StringName] = [
 	&"character-male-e", &"character-male-f",
 ]
 const CLIPS: Array[StringName] = [
-	&"idle", &"walk", &"sit", &"holding-both", &"interact-right",
+	&"idle", &"walk", &"sit", &"holding-both", &"interact-right", &"pick-up",
 ]
+## Built from the kit's own clips, not imported: `walk` with the arms of
+## `holding-both`, so a person carrying something walks instead of gliding.
+const CARRY_WALK: StringName = &"carry-walk"
+## Played once (bending to a crate), then held; every other clip loops.
+const ONE_SHOT_CLIPS: Array[StringName] = [&"pick-up"]
+## Switching among these blends over CARRY_BLEND_SECONDS (the arms of
+## `holding-both` and the `pick-up` bend's start differ by 0.2 m).
+const CARRY_BLEND_CLIPS: Array[StringName] = [&"pick-up", &"holding-both", CARRY_WALK]
+const CARRY_BLEND_SECONDS: float = 0.12
 # Rest-pose head mesh maxima read from the vendored GLB POSITION accessors.
 # These are source measurements, before the single shared character scale.
 const HEAD_TOPS: Dictionary[StringName, float] = {
 	&"character-male-a": 0.671325, &"character-male-b": 0.661325,
 	&"character-male-c": 0.792791, &"character-male-d": 0.721762,
 	&"character-male-e": 0.675967, &"character-male-f": 0.671325,
-	&"character-female-a": 0.775528, &"character-female-c": 0.775528,
+	&"character-female-a": 0.775528, &"character-female-b": 0.723353, &"character-female-c": 0.775528,
 	&"character-female-d": 0.775528, &"character-female-e": 0.716475,
 	&"character-female-f": 0.671325,
 }
@@ -36,6 +51,8 @@ static func model_for(role: StringName, guest_id: int = 0, customer_type: String
 			return SERVER_MODEL
 		&"owner":
 			return OWNER_MODEL
+		&"courier":
+			return COURIER_MODEL
 		&"customer", &"guest":
 			# Reuse native, unmodified Mini rigs. Each type has a deterministic
 			# pair; Regular retains its complete existing guest-id mapping.
@@ -64,18 +81,48 @@ static func has_chef_hat(role: StringName) -> bool:
 	return role == &"cook"
 
 
+## The delivery person's uniform (FK-099): a parcel-brown cap with an amber
+## peak, and the shared colormap's shirt ramps repainted for her alone.
+static func has_courier_cap(role: StringName) -> bool:
+	return role == &"courier"
+
+
+## Colormap blocks to repaint, as {rect, color}: the female-b clothes (purple
+## ramp) becomes parcel brown and her sleeves and collar (yellow ramp) amber.
+## Each pixel keeps its shade relative to the block's top row, so the kit's
+## baked gradient survives. Only a copy is painted; other roles see the
+## vendored texture.
+static func uniform_recolors(role: StringName) -> Array[Dictionary]:
+	if role != &"courier":
+		return []
+	return [
+		{"rect": Rect2i(480, 256, 32, 128), "color": COURIER_BROWN},
+		{"rect": Rect2i(160, 256, 32, 128), "color": COURIER_AMBER},
+	]
+
+
 static func source_head_top(model: StringName) -> float:
 	return HEAD_TOPS.get(model, 0.0)
 
 
-## Seat arrival wins, then carrying holds both hands, then walking, then work.
+## One presentation limit shared with the content definition; zero is neutral.
+## This validates a pose request, not physical seat-fit acceptance.
+static func seated_lean_valid(degrees: float) -> bool:
+	return is_finite(degrees) and degrees >= 0.0 and degrees <= ItemDef.MAX_SEATED_LEAN_DEGREES
+
+
+## Seat arrival wins, then bending to set down or pick up (a crate stays in
+## the hands through the bend), then carrying holds both hands (walking legs
+## under them while moving), then walking, then work.
 ## Callers derive these flags from actual state, not task labels or future goals.
-## This single-clip selection does not layer walk legs beneath a carrying pose.
-static func clip_for_state(moving: bool, seated: bool, carrying: bool, working: bool) -> StringName:
+static func clip_for_state(moving: bool, seated: bool, carrying: bool, working: bool,
+		bending: bool = false) -> StringName:
 	if seated:
 		return &"sit"
+	if bending and not moving:
+		return &"pick-up"
 	if carrying:
-		return &"holding-both"
+		return CARRY_WALK if moving else &"holding-both"
 	if moving:
 		return &"walk"
 	if working:

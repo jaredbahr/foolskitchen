@@ -3,13 +3,14 @@ extends RefCounted
 ## Read-only native ShopView fixture. Production code chooses seat position,
 ## height and facing; this harness never compensates for clipping itself.
 
-const VIEW: PackedScene = preload("res://src/world/shop_view.tscn")
 const GEOMETRY: GDScript = preload("res://tools/seated_head_geometry.gd")
 const SIT_FRACTIONS: Array[float] = [0.0, 0.37, 0.91]
-## Director 6404820766: unchanged kit items only. Every listed item must retain
+## Director 6404820766: kit failures only. Every listed item must retain
 ## at least one measured physical violation; unknown classification is not proof.
-const KNOWN_KIT_FAILURE_IDS: PackedStringArray = ["bench", "chair", "cushioned_bench", "lounge_chair",
-	"modern_chair", "modern_frame_chair", "rounded_chair", "table_2", "table_4", "wooden_chair"]
+## Empty since Jared's 2026-10-28 decision: the kit seats use lowered-backrest
+## derived meshes (tools/derive_seat_backrests.py) and no guest leans, so every
+## seat must pass. The policy below stays for any future, explicit exception.
+const KNOWN_KIT_FAILURE_IDS: PackedStringArray = []
 
 
 static func run(parent: Node, native_bake: bool = false) -> Dictionary:
@@ -49,6 +50,12 @@ static func _expect_item_cases(expected: Dictionary[String, bool], definition: I
 
 static func _case_key(item: String, turns: int, cell: Vector2i, model: String, fraction: float) -> String:
 	return "%s turns=%d cell=%d,%d model=%s sit_fraction=%.9f" % [item, turns, cell.x, cell.y, model, fraction]
+
+
+## Cached skinning and native parity must describe the same articulated pose.
+## Variant bytes retain float identity instead of rounding authored leans.
+static func _pose_key(model: StringName, time: float, lean_degrees: float) -> String:
+	return String(model) + ":" + var_to_bytes([time, lean_degrees]).hex_encode()
 
 
 ## Count identities independently of returned rows: an aborted item sampler or
@@ -131,7 +138,9 @@ static func _sample_item(parent: Node, definition: ItemDef, turns: int, native_b
 		if not tables[index].reserve(cell, guest.id):
 			errors.append("%s rotation %d: table did not project/reserve the native seat" % [definition.id, turns])
 		guests.append(guest)
-	var view: ShopView = VIEW.instantiate() as ShopView
+	# Load after autoload initialization; entry-script scene preloads retained
+	# the scene/script resource graph at diagnostic shutdown on current main.
+	var view: ShopView = (load("res://src/world/shop_view.tscn") as PackedScene).instantiate() as ShopView
 	parent.add_child(view)
 	view.set_process(false)
 	view.show_world(world)
@@ -153,7 +162,8 @@ static func _sample_item(parent: Node, definition: ItemDef, turns: int, native_b
 					person._player.seek(animation.length * fraction, true)
 					# Bone pose queries calculate dirty transforms synchronously.
 					person._skeleton.force_update_all_bone_transforms()
-					var pose_key: String = "%s:%.9f" % [person.model_name(), animation.length * fraction]
+					var pose_key: String = _pose_key(person.model_name(), animation.length * fraction,
+						person.current_seated_lean_degrees())
 					if not poses.has(pose_key):
 						var posed: Dictionary = GEOMETRY.skin_vertices(GEOMETRY.head_mesh(person), person._skeleton)
 						if not String(posed["error"]).is_empty():
@@ -201,6 +211,7 @@ static func _sample_item(parent: Node, definition: ItemDef, turns: int, native_b
 					sample["sit_duration"] = animation.length
 					sample["seat_height"] = person._seat_height
 					sample["seated_forward_offset"] = definition.seated_forward_offset
+					sample["seated_lean_degrees"] = person.current_seated_lean_degrees()
 					var zero: Vector2i = GridMath.rotate_cell(Vector2i.ZERO, definition.footprint, turns)
 					var front: Vector2i = GridMath.rotate_cell(Vector2i.UP, definition.footprint, turns) - zero
 					var palm: Vector3 = person.to_global(person.carry_anchor_position())
@@ -223,21 +234,22 @@ static func physical_violation(sample: Dictionary) -> bool:
 	var gap: Variant = sample.get("backrest_clearance")
 	return int(sample.get("head_vertices_inside_count", 0)) > 0 \
 		or int(sample.get("head_seat_surface_crossings", 0)) > 0 \
+		or int(sample.get("seat_vertices_inside_head_count", 0)) > 0 \
 		or (gap != null and is_finite(float(gap)) and float(gap) + GEOMETRY.EPSILON < GEOMETRY.REQUIRED_CLEARANCE)
 
 
-static func _apply_known_failure_policy(report: Dictionary) -> void:
+static func _apply_known_failure_policy(report: Dictionary, allowlist: PackedStringArray = KNOWN_KIT_FAILURE_IDS) -> void:
 	var findings: Dictionary[String, Dictionary] = {}
 	var eligible: Dictionary[String, Dictionary] = {}
 	var errors: PackedStringArray = report["errors"]
 	for trial: Dictionary in report.get("known_kit_offset_trials", []):
 		var item: String = trial["item"]
-		if KNOWN_KIT_FAILURE_IDS.has(item) and physical_violation(trial) \
+		if allowlist.has(item) and physical_violation(trial) \
 				and trial.get("trial_supported", false) and float(trial.get("trial_forward_offset", 0.0)) == 0.05:
 			eligible[item] = trial
 	for sample: Dictionary in report["samples"]:
 		var item: String = sample["item"]
-		if not KNOWN_KIT_FAILURE_IDS.has(item) or not physical_violation(sample):
+		if not allowlist.has(item) or not physical_violation(sample):
 			continue
 		if not findings.has(item):
 			findings[item] = {"item": item, "physical_violation_samples": 0, "inside_vertex_samples": 0,
@@ -253,7 +265,7 @@ static func _apply_known_failure_policy(report: Dictionary) -> void:
 		var gap: Variant = sample["backrest_clearance"]
 		if gap != null and (finding["minimum_identified_backrest_gap"] == null or float(gap) < float(finding["minimum_identified_backrest_gap"])):
 			finding["minimum_identified_backrest_gap"] = gap
-	for item: String in KNOWN_KIT_FAILURE_IDS:
+	for item: String in allowlist:
 		if not findings.has(item) or not eligible.has(item):
 			errors.append("known kit failure %s needs a measured physical violation at a supported 0.05 offset; remove or investigate its exception" % item)
 		elif findings.has(item):
@@ -269,18 +281,18 @@ static func _apply_known_failure_policy(report: Dictionary) -> void:
 			and is_finite(offset) and offset >= 0.0 and offset <= 0.05 + GEOMETRY.EPSILON
 		if sample.has("native_bake_max_error"):
 			valid = valid and is_finite(float(sample["native_bake_max_error"])) and float(sample["native_bake_max_error"]) <= 0.00001
-		sample["known_kit_failure"] = KNOWN_KIT_FAILURE_IDS.has(item) and findings.has(item) and eligible.has(item)
+		sample["known_kit_failure"] = allowlist.has(item) and findings.has(item) and eligible.has(item)
 		sample["accepted"] = valid and (sample.get("passes", false) or sample["known_kit_failure"])
 		if not sample.get("passes", false):
 			raw_failures += 1
 		if not sample["accepted"]:
 			failures += 1
 	var ordered: Array[Dictionary] = []
-	for item: String in KNOWN_KIT_FAILURE_IDS:
+	for item: String in allowlist:
 		if findings.has(item):
 			ordered.append(findings[item])
 	report["known_kit_failures"] = ordered
-	report["known_kit_failure_allowlist"] = KNOWN_KIT_FAILURE_IDS
+	report["known_kit_failure_allowlist"] = allowlist
 	report["raw_failures"] = raw_failures
 	report["failures"] = failures + errors.size()
 	report["errors"] = errors

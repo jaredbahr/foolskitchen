@@ -57,6 +57,14 @@ func test_scene_is_hidden_themed_and_mouse_safe_before_ready() -> void:
 		assert_eq(_control(path).mouse_filter, Control.MOUSE_FILTER_IGNORE, path)
 
 
+func test_the_delivery_driver_has_a_plain_title() -> void:
+	var courier: CourierAgent = CourierAgent.new([Vector2i(1, 1), Vector2i(2, 1)] as Array[Vector2i], 1, Vector2i(3, 1))
+	_world.add_agent(courier)
+	_panel.show_agent(courier.id)
+	assert_eq(_label("Title").text, "Delivery driver", "no raw role or id (rule 11)")
+	assert_eq(_label("Why").text, "Bringing a delivery")
+
+
 func test_staff_why_skill_task_and_step_refresh_before_ready() -> void:
 	var staff: StaffAgent = _staff()
 	_panel.show_agent(staff.id)

@@ -45,6 +45,10 @@ var attached_world: SimWorld
 ## Optional callable run once per tick instead of attached_world.advance(),
 ## e.g. RestaurantSim.advance (which advances the world and its arrivals).
 var tick_driver: Callable = Callable()
+## The attached world's tick after this clock last advanced it (-1: never).
+## A different world tick means something else advanced it (run_ticks in
+## tests and tools), so the view draws that newest state as it is.
+var driven_world_tick: int = -1
 
 
 ## Uses a world's clock and advances it once per fixed tick, through `driver`
@@ -56,6 +60,7 @@ func attach_world(world: SimWorld, driver: Callable = Callable()) -> void:
 	if world != null:
 		sim = world.clock
 	_accumulator = 0.0
+	driven_world_tick = -1
 
 
 func _init() -> void:
@@ -143,9 +148,16 @@ func _process(delta: float) -> void:
 		EventBus.sim_ticked.emit(sim.tick)
 		_accumulator -= 1.0
 		ticks_this_frame += 1
+		driven_world_tick = attached_world.now if attached_world != null else -1
 	if ticks_this_frame == MAX_TICKS_PER_FRAME:
 		# Discard overdue whole ticks; retain only the sub-tick fraction.
 		_accumulator = fmod(_accumulator, 1.0)
+
+
+## View only (smooth motion): how far this clock is from its last tick to the
+## next, 0..1. It holds still while paused, so the picture freezes in place.
+func tick_fraction() -> float:
+	return clampf(_accumulator, 0.0, 1.0)
 
 
 func _unhandled_input(event: InputEvent) -> void:

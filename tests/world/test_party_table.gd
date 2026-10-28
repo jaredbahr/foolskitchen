@@ -28,7 +28,7 @@ func test_four_seat_wrapper_uses_only_unchanged_approved_native_models() -> void
 		var model: Node3D = art.get_node("Model") as Node3D
 		assert_eq(art.scale, Vector3.ONE * ArtScale.FURNITURE_SCALE)
 		if part.has_meta(&"seat_cell"):
-			assert_eq(model.scene_file_path, "res://assets/kenney/furniture/chairCushion.glb")
+			assert_eq(model.scene_file_path, "res://assets/props/seats/derived/chairCushion_low_back.glb")
 			chairs += 1
 		else:
 			assert_eq(model.scene_file_path, "res://assets/kenney/furniture/table.glb")
@@ -65,12 +65,25 @@ func test_four_seat_classification_matches_cushioned_kit_and_its_measured_except
 	var party_parts: Array[Dictionary] = GEOMETRY.seat_parts(_view, _view)
 	assert_false(original_parts.is_empty())
 	assert_false(party_parts.is_empty())
-	assert_eq(GEOMETRY._backrest_status(original, original_parts), "unclassified_kit")
-	assert_eq(GEOMETRY._backrest_status(_view, party_parts), "unclassified_kit")
+	assert_eq(GEOMETRY._backrest_status(original, original_parts), "named_parts")
+	assert_eq(GEOMETRY._backrest_status(_view, party_parts), "named_parts")
+	var classified_chairs: int = 0
+	var selected_chairs: int = 0
 	for part: Dictionary in party_parts:
-		assert_false(part["is_backrest"], "a joined kit mesh is not an identified backrest surface")
-	assert_true(CATALOGUE.KNOWN_KIT_FAILURE_IDS.has("table_4"),
-		"measured: the same chairCushion crossing class as table_2 (see tools/seated_head_probe.md)")
+		if String(part.get("backrest_identity", "")).is_empty():
+			assert_false(part["is_backrest"], "the table is not a chair backrest")
+			continue
+		classified_chairs += 1
+		var selected: PackedVector3Array = part["backrest_triangles"]
+		var complete: PackedVector3Array = part["triangles"]
+		assert_true(selected.size() > 0 and selected.size() < complete.size(),
+			"an audited proper subset identifies the backrest without dropping full collision geometry")
+		if part["is_backrest"]:
+			selected_chairs += 1
+	assert_eq(classified_chairs, 4, "all four actual chair sources must match their audit")
+	assert_true(selected_chairs > 0, "the nearest chair backrest is identified")
+	assert_false(CATALOGUE.KNOWN_KIT_FAILURE_IDS.has("table_4"),
+		"the lowered-backrest chairs clear seated heads (see tools/seated_head_probe.md)")
 	original.free()
 
 

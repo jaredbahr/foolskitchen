@@ -6,8 +6,12 @@ extends RefCounted
 ## Version 2 adds wall segments (FK-070); version-1 shops have none.
 ## Version 3 adds the bought floor (FK-080); older shops are the starting shell.
 ## Version 4 adds rooms (FK-101); older shops get the starting layout's rooms.
-const SNAPSHOT_VERSION: int = 4
+## Version 5 adds floor types (D25); older shops are all the default planks.
+const SNAPSHOT_VERSION: int = 5
 const WALLS_CLOSED: String = "Walls can only be changed in the morning or after closing"
+const FLOORS_CLOSED: String = "New floors can only be laid in the morning or after closing"
+const FLOORS_NOT_FLOOR: String = "Floors are laid on the shop floor"
+const FLOORS_ALREADY: String = "This floor already looks like that"
 
 var last_check: EditCheck = EditCheck.new()
 ## The signed cash change of the last successful edit (negative = spent), and
@@ -17,6 +21,9 @@ var last_item_id: int = -1
 ## Cosmetic whole-room paint. Empty IDs use the ShopView defaults.
 var wall_swatch_id: StringName = &""
 var floor_swatch_id: StringName = &""
+## The floor's look per cell (D25). Its default is the free planks in
+## floor_swatch_id, so a shop without floor types looks as it always did.
+var floors: FloorFinishes = FloorFinishes.new()
 var _sim: RestaurantSim
 var _content: ContentDB
 var _books: ShopEditBooks
@@ -60,6 +67,7 @@ func _init(sim: RestaurantSim, content: ContentDB, books: ShopEditBooks, layout:
 		_footprint = ShopFootprint.from_layout(layout)
 		_bought = ShopFootprint.to_set(layout.floor_cells)
 		pantry_units = maxi(0, layout.pantry_units)
+		_load_floors(layout)
 
 
 ## Main injects the restored owner level before accepting a new purchase.
@@ -81,6 +89,7 @@ func paint_floor(swatch_id: StringName) -> bool:
 	if not _can_paint(swatch_id):
 		return false
 	floor_swatch_id = swatch_id
+	floors.set_default_swatch(swatch_id)
 	return true
 
 
@@ -286,7 +295,8 @@ func to_dict() -> Dictionary:
 	for cell: Vector2i in ShopFootprint.sorted(_cell_set(painted.keys())):
 		rooms.append([cell.x, cell.y, String(RoomRules.id_of(painted[cell]))])
 	return {"version": SNAPSHOT_VERSION, "items": placements, "walls": segments, "floor": floor,
-		"rooms": rooms, "wall_swatch_id": String(wall_swatch_id), "floor_swatch_id": String(floor_swatch_id)}
+		"rooms": rooms, "wall_swatch_id": String(wall_swatch_id), "floor_swatch_id": String(floor_swatch_id),
+		"floor_style_id": String(floors.default_style), "floors": floors.to_rows()}
 
 
 static func _cell_set(cells: Array) -> Dictionary[Vector2i, bool]:
@@ -470,7 +480,67 @@ static func from_dict(data: Dictionary, template_layout: ShopLayout, content: Co
 	layout.room_rows = template_layout.room_rows.duplicate()
 	layout.room_cells = rooms
 	layout.rooms_explicit = true
+	_decode_floors(data, preview, content, layout)
 	return layout
+
+
+## Floor types (D25) are looks only, so their decoding forgives: an unknown
+## floor type or a cell that is no longer floor falls back to the default
+## planks, an unknown colour to the floor type's own colour, and a malformed
+## row is skipped. Versions 1 to 4 had none (every cell the default).
+static func _decode_floors(data: Dictionary, preview: SimGrid, content: ContentDB, layout: ShopLayout) -> void:
+	# The shop's default floor is always the free wide planks: a saved
+	# "floor_style_id" naming anything else (a hand-edited save) is ignored, so
+	# it can never make every cell a priced type that refunds when replaced.
+	layout.floor_style_id = FloorStyleDef.DEFAULT_ID
+	layout.floor_finishes = {}
+	var saved: Variant = data.get("floors", [])
+	if not saved is Array:
+		return
+	var limit: int = preview.size.x * preview.size.y
+	for value: Variant in (saved as Array).slice(0, limit):
+		var row: Array = value if value is Array else []
+		if row.size() != 5 or not _integer_in(row[0], -100000, 100000) or not _integer_in(row[1], -100000, 100000):
+			continue
+		var cell: Vector2i = Vector2i(int(row[0]), int(row[1]))
+		if layout.floor_finishes.has(cell) or preview.terrain(cell) != SimGrid.Terrain.FLOOR \
+				or not (row[2] is String or row[2] is StringName):
+			continue
+		var style: FloorStyleDef = content.floor_style(StringName(row[2]))
+		if style == null:
+			continue
+		var swatch: StringName = _floor_colour(row[3], style.default_swatch, content)
+		var accent: StringName = _floor_colour(row[4], style.default_accent, content)
+		layout.floor_finishes[cell] = PackedStringArray([String(style.id), String(swatch), String(accent)])
+
+
+## A saved floor colour: empty or a known swatch, else `fallback`.
+static func _floor_colour(value: Variant, fallback: StringName, content: ContentDB) -> StringName:
+	if not (value is String or value is StringName):
+		return fallback
+	var id: StringName = StringName(value)
+	return id if id.is_empty() or content.swatch(id) != null else fallback
+
+
+## The layout's floor types onto this shop's floor (forgiving, like decoding).
+func _load_floors(layout: ShopLayout) -> void:
+	var style_id: StringName = layout.floor_style_id
+	if _content == null or style_id != FloorStyleDef.DEFAULT_ID or _content.floor_style(style_id) == null:
+		style_id = FloorStyleDef.DEFAULT_ID
+	floors = FloorFinishes.new(style_id, floor_swatch_id)
+	if _content == null or _sim == null or _sim.world == null:
+		return
+	var looks: Dictionary[Vector2i, FloorFinishes.Finish] = {}
+	for cell: Vector2i in layout.floor_finishes:
+		var row: PackedStringArray = layout.floor_finishes[cell]
+		if row.size() != 3 or _sim.world.grid.terrain(cell) != SimGrid.Terrain.FLOOR:
+			continue
+		var style: FloorStyleDef = _content.floor_style(StringName(row[0]))
+		if style == null:
+			continue
+		looks[cell] = FloorFinishes.Finish.new(style.id, _floor_colour(row[1], style.default_swatch, _content),
+			_floor_colour(row[2], style.default_accent, _content))
+	floors.set_finishes(looks)
 
 
 ## Invalid or removed palette entries revert to authored colours on old saves.
@@ -553,7 +623,10 @@ func check_segments(changes: Dictionary[Vector3i, int], exact: Exact = null) -> 
 		cost = maxi(-exact.amount, 0)
 		refund = maxi(exact.amount, 0)
 	preview.set_segments(effective)
-	var problem: String = WallRules.closed_door_problem(live, preview)
+	# D25: one back door per shop (undo/redo restores accepted layouts as they were).
+	var problem: String = WallRules.back_door_problem(live, preview) if exact == null else ""
+	if problem.is_empty():
+		problem = WallRules.closed_door_problem(live, preview)
 	if problem.is_empty():
 		problem = WallRules.layout_problem(preview)
 	if problem.is_empty() and exact == null:
@@ -662,6 +735,149 @@ func rooms() -> Dictionary[Vector2i, int]:
 	if _sim == null or _sim.world == null:
 		return {}
 	return _sim.world.grid.rooms()
+
+
+# --- Floor types (D25) ---------------------------------------------------------
+
+## Laying `style_id` in these colours on `cells`: the floor cells it covers.
+func lay_changes(cells: Array[Vector2i], style_id: StringName, swatch_id: StringName,
+		accent_id: StringName = &"") -> Dictionary[Vector2i, FloorFinishes.Finish]:
+	var changes: Dictionary[Vector2i, FloorFinishes.Finish] = {}
+	if _sim == null or _sim.world == null:
+		return changes
+	for cell: Vector2i in cells:
+		if _sim.world.grid.terrain(cell) == SimGrid.Terrain.FLOOR:
+			changes[cell] = FloorFinishes.Finish.new(style_id, swatch_id, accent_id)
+	return changes
+
+
+## Recolouring `cells` with `swatch_id`: each floor cell keeps its floor type
+## and accent and takes the new main colour.
+func recolour_changes(cells: Array[Vector2i], swatch_id: StringName) -> Dictionary[Vector2i, FloorFinishes.Finish]:
+	var changes: Dictionary[Vector2i, FloorFinishes.Finish] = {}
+	if _sim == null or _sim.world == null:
+		return changes
+	for cell: Vector2i in cells:
+		if _sim.world.grid.terrain(cell) == SimGrid.Terrain.FLOOR:
+			changes[cell] = floors.finish(cell).recoloured(swatch_id)
+	return changes
+
+
+## Player words for a floor type ("Checker tiles"), or "floor" when unknown.
+func floor_style_name(style_id: StringName) -> String:
+	var style: FloorStyleDef = _content.floor_style(style_id) if _content != null else null
+	return style.display_name if style != null else "floor"
+
+
+## The room's floor around `cell` (Shift: fill the room), row-major.
+func floor_room_cells(cell: Vector2i) -> Array[Vector2i]:
+	return FloorFinishes.room_cells(_sim.world.grid, cell) if _sim != null and _sim.world != null else []
+
+
+## The connected floor that looks like `cell` (a paint click), row-major.
+func floor_area_cells(cell: Vector2i) -> Array[Vector2i]:
+	return floors.area_cells(_sim.world.grid, cell) if _sim != null and _sim.world != null else []
+
+
+## Read-only check of new floor looks (cell -> Finish). A change of floor type
+## costs the new type's price per tile and refunds half the old type's price,
+## and only in the morning or after closing; a recolour (same floor type) is
+## free at any time. Undo and redo (`exact`) move exact money and restore
+## floor types already laid, so the unlock level is not checked then.
+func check_flooring(changes: Dictionary[Vector2i, FloorFinishes.Finish], exact: Exact = null) -> EditCheck:
+	if _sim == null or _sim.world == null or _content == null:
+		return EditCheck.new(false, "The shop is unavailable")
+	var live: SimGrid = _sim.world.grid
+	var effective: Dictionary[Vector2i, FloorFinishes.Finish] = {}
+	var floor_seen: bool = false
+	var relaid: bool = false
+	var cost: int = 0
+	var refund: int = 0
+	var locked: String = ""
+	for cell: Vector2i in changes:
+		var next: FloorFinishes.Finish = changes[cell]
+		var style: FloorStyleDef = _content.floor_style(next.style) if next != null else null
+		if style == null:
+			return EditCheck.new(false, "Unknown floor type")
+		for colour: StringName in [next.swatch, next.accent]:
+			if not colour.is_empty() and _content.swatch(colour) == null:
+				return EditCheck.new(false, "Unknown colour")
+		if live.terrain(cell) != SimGrid.Terrain.FLOOR:
+			continue
+		floor_seen = true
+		var current: FloorFinishes.Finish = floors.finish(cell)
+		if current.same(next):
+			continue
+		effective[cell] = next
+		if current.style == next.style:
+			continue
+		relaid = true
+		cost += style.price
+		var old: FloorStyleDef = _content.floor_style(current.style)
+		refund += floori(old.price / 2.0) if old != null else 0
+		if locked.is_empty() and not style.unlocked(_owner_level):
+			locked = style.locked_reason(_owner_level)
+	if effective.is_empty():
+		# Undo/redo of looks that are already in place has nothing to do.
+		if exact != null and floor_seen:
+			return EditCheck.new(true)
+		return EditCheck.new(false, FLOORS_ALREADY if floor_seen else FLOORS_NOT_FLOOR)
+	if relaid and not can_edit():
+		return EditCheck.new(false, FLOORS_CLOSED)
+	if exact == null and not locked.is_empty():
+		return EditCheck.new(false, locked)
+	if exact != null:
+		cost = maxi(-exact.amount, 0)
+		refund = maxi(exact.amount, 0)
+	if cost > 0 or refund > 0:
+		if _books == null or not _books.is_ready():
+			return EditCheck.new(false, "The shop books are unavailable")
+		if cost > refund and not _books.can_spend_without_loan(cost - refund):
+			return EditCheck.new(false, _books.purchase_refusal_reason(cost - refund))
+	var check: EditCheck = EditCheck.new(true)
+	check.cost = cost
+	check.refund = refund
+	check.finishes = effective
+	return check
+
+
+## Lays or recolours checked floor looks; books record the refund, then the cost.
+func apply_flooring(changes: Dictionary[Vector2i, FloorFinishes.Finish], exact: Exact = null) -> bool:
+	var check: EditCheck = check_flooring(changes, exact)
+	last_check = check
+	if not check.ok:
+		return false
+	last_cash_change = 0
+	if check.finishes.is_empty():
+		return true
+	floors.set_finishes(check.finishes)
+	if check.cost > 0 or check.refund > 0 or (exact != null and exact.amount != 0):
+		_record(check.refund, check.cost, exact)
+	return true
+
+
+## The floor colour guests see most (D25): the main colour of most guest-room
+## floor cells (ties go to the first colour id), for the vibe's floor paint.
+## A shop with one floor colour gives exactly its whole-floor paint, as before.
+func floor_vibe_swatch() -> StringName:
+	if _sim == null or _sim.world == null:
+		return floor_swatch_id
+	var grid: SimGrid = _sim.world.grid
+	var gated: bool = not grid.entries().is_empty()
+	var guests: Dictionary[Vector2i, bool] = RoomRules.guest_floor(grid) if gated else {}
+	var counts: Dictionary[StringName, int] = {}
+	for cell: Vector2i in grid.cells():
+		if grid.terrain(cell) != SimGrid.Terrain.FLOOR or (gated and not guests.has(cell)):
+			continue
+		var swatch: StringName = floors.finish(cell).swatch
+		counts[swatch] = int(counts.get(swatch, 0)) + 1
+	var best: StringName = floor_swatch_id
+	var most: int = 0
+	for swatch: StringName in counts:
+		if counts[swatch] > most or (counts[swatch] == most and String(swatch) < String(best)):
+			best = swatch
+			most = counts[swatch]
+	return best
 
 
 # --- Floor expansion (FK-080) ------------------------------------------------
@@ -778,7 +994,10 @@ func check_floor(cells: Array[Vector2i], adding: bool, exact: Exact = null,
 		for cell: Vector2i in next:
 			if was.has(cell) and not reach.has(cell):
 				return EditCheck.new(false, ShopFootprint.SPLITS)
-	problem = WallRules.layout_problem(preview)
+	# Selling floor can turn an interior doorway back into a back door (D25: one).
+	problem = WallRules.back_door_problem(live, preview) if exact == null else ""
+	if problem.is_empty():
+		problem = WallRules.layout_problem(preview)
 	if problem.is_empty() and exact == null:
 		var dining: EditCheck = EditCheck.validate_dining(live, preview, ids, -1, -1)
 		problem = "" if dining.ok else dining.why
@@ -833,6 +1052,12 @@ func apply_floor(cells: Array[Vector2i], adding: bool, exact: Exact = null,
 		if not check.rooms.is_empty():
 			grid.set_rooms(check.rooms)
 		_bought = next
+		# Floor that was taken away forgets its look; new floor is the default.
+		var gone: Array[Vector2i] = []
+		for cell: Vector2i in floors.cells():
+			if grid.terrain(cell) != SimGrid.Terrain.FLOOR:
+				gone.append(cell)
+		floors.drop(gone)
 		if _sim.cleanliness != null:
 			for spot: Vector2i in _sim.cleanliness.spots() + _sim.cleanliness.restroom_spots():
 				if grid.terrain(spot) != SimGrid.Terrain.FLOOR:

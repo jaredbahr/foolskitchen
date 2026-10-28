@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="IngredientDef" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/sim/content/ingredient_def.gd" id="1_script"]
+
+[resource]
+script = ExtResource("1_script")
+id = &"frozen_fries"
+display_name = "Frozen fries"
+unit_cost = 1
+shelf_life_days = 30
+storage = 2

@@ -26,6 +26,8 @@ const CUT_SINK: String = "That would cut off the sink"
 const CUT_STATION: String = "That would cut off a kitchen station"
 const CUT_SEAT: String = "That would cut off a seat"
 const CUT_PERSON: String = "That would shut someone in"
+const ONE_BACK_DOOR: String = "The shop already has a back door: remove it first to move it"
+const BACK_DOOR_WIDTH: String = "A back door is one cell wide"
 
 
 static func is_interior(grid: SimGrid, edge: Vector3i) -> bool:
@@ -110,6 +112,195 @@ static func delivery_cell(grid: SimGrid, target: Vector2i = SimGrid.NO_CELL) -> 
 		if grid.is_walkable(entry) and (target == SimGrid.NO_CELL or not grid.find_path(entry, target).is_empty()):
 			return entry
 	return SimGrid.NO_CELL
+
+
+## The back alley (FK-099, Jared): a paved service lane running along the
+## outer edge of the lot behind the back door's wall, ALLEY_REACH cells past
+## the lot at each end (a side wall's alley stops at the shop's front line,
+## where it meets the street). The delivery person walks in along it, turns
+## up the short path to the door and leaves the same way. Her route starts and
+## ends this far out so that, even zoomed out to 26 and in every camera
+## quarter, she fades in and out (over her first and last cells) off screen.
+## The paving itself stops sooner (WallSegmentView.PATH_REACH).
+const ALLEY_REACH: int = 56
+
+
+## How a visible delivery comes in (FK-099, #187): {door, drop, out, approach}.
+## `door` is where the delivery person stands to unload (the back door's
+## shell cell, or the street entry when there is no usable back door), `drop`
+## the receiving cell inside where the crates go down (the cell delivery_cell
+## picks; for the street, the floor cell inside the street door), `out` the
+## direction from `door` away from the shop and `approach` the outside cells
+## walked to reach the door, far to near: along the back alley and up the
+## back door's path (back_door_approach); none at the street, where people
+## appear at the entry as guests do. `lot` is the shop's lot (ShopFootprint;
+## empty: the building). Empty when no route reaches `target`.
+static func delivery_route(grid: SimGrid, target: Vector2i = SimGrid.NO_CELL, lot: Rect2i = Rect2i()) -> Dictionary:
+	var cell: Vector2i = delivery_cell(grid, target)
+	if cell == SimGrid.NO_CELL:
+		return {}
+	if grid.entries().has(cell):
+		return _street_route(grid, cell, target)
+	for step: Vector2i in [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]:
+		var door: Vector2i = cell + step
+		if grid.is_back_door(door) and grid.step_open(cell, door) \
+				and back_door_side(grid, SimGrid.edge_between(cell, door)) == step:
+			var approach: Array[Vector2i] = back_door_approach(grid, door, step, lot)
+			if approach.is_empty():
+				# A wing of the shop stands between the door and the alley.
+				for entry: Vector2i in grid.entries():
+					if grid.is_walkable(entry):
+						return _street_route(grid, entry, target)
+				return {}
+			return {"door": door, "drop": cell, "out": step, "approach": approach}
+	return {}
+
+
+static func _street_route(grid: SimGrid, cell: Vector2i, target: Vector2i) -> Dictionary:
+	var none: Array[Vector2i] = []
+	for step: Vector2i in [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]:
+		var inside: Vector2i = cell + step
+		if grid.terrain(inside) == SimGrid.Terrain.FLOOR and grid.is_walkable(inside) \
+				and grid.step_open(cell, inside) \
+				and (target == SimGrid.NO_CELL or not grid.find_path(inside, target).is_empty()):
+			return {"door": cell, "drop": inside, "out": -step, "approach": none}
+	return {"door": cell, "drop": cell, "out": Vector2i.ZERO, "approach": none}
+
+
+## The walk to a back door (shell cell `door`, facing `side`), far to near:
+## along the back alley's outer lane from its far end (the end away from the
+## street) to where the door's path meets it, then up that path. Empty when anything but
+## open ground (a wing of the shop) stands between the door and the alley.
+static func back_door_approach(grid: SimGrid, door: Vector2i, side: Vector2i,
+		lot: Rect2i = Rect2i()) -> Array[Vector2i]:
+	var cells: Array[Vector2i] = []
+	var alley: Dictionary = back_alley(grid, door, side, lot)
+	if alley.is_empty():
+		return cells
+	var path: Array[Vector2i] = alley["path"]
+	var junction: Vector2i = alley["junction"]
+	var from: Vector2i = alley["from"]
+	var axis: Vector2i = alley["axis"]
+	var far: int = int(alley["first"]) if from == -axis else int(alley["last"])
+	var along: int = junction.x * axis.x + junction.y * axis.y
+	var step_sign: int = 1 if far < along else -1
+	# Along the alley's outer lane, clear of the wall and an open door leaf.
+	var lane: Vector2i = junction + side
+	for t: int in range(far, along, step_sign):
+		cells.append(lane + axis * (t - along))
+	cells.append(lane)
+	cells.append(junction)
+	var near_first: Array[Vector2i] = path.duplicate()
+	near_first.reverse()
+	cells.append_array(near_first)
+	return cells
+
+
+## The back alley behind a back door: {path (door's outside cell .. the cell
+## before the alley, near to far), junction (where the path meets the alley),
+## axis (unit along the alley), first, last (its extent along `axis`), from
+## (unit from the junction towards the end deliveries come from: away from
+## the street)}, or {} when the path is blocked or `side` faces the street.
+static func back_alley(grid: SimGrid, door: Vector2i, side: Vector2i, lot: Rect2i = Rect2i()) -> Dictionary:
+	if side == Vector2i.ZERO:
+		return {}
+	var area: Rect2i = lot if lot.has_area() else _built_area(grid)
+	var street: Vector2i = street_side(grid)
+	if side == street:
+		return {}
+	var axis: Vector2i = Vector2i(absi(side.y), absi(side.x))
+	# The alley's line: the first row/column outside the lot behind the wall.
+	var line: int
+	if side == Vector2i.UP:
+		line = area.position.y - 1
+	elif side == Vector2i.DOWN:
+		line = area.end.y
+	elif side == Vector2i.LEFT:
+		line = area.position.x - 1
+	else:
+		line = area.end.x
+	var path: Array[Vector2i] = []
+	var cell: Vector2i = door + side
+	for guard: int in 64:
+		var depth: int = cell.y if side.y != 0 else cell.x
+		if depth == line:
+			break
+		if grid.in_bounds(cell) and grid.terrain(cell) != SimGrid.Terrain.OUTSIDE:
+			return {}
+		path.append(cell)
+		cell += side
+	var low: int = (area.position.x if axis.x != 0 else area.position.y) - ALLEY_REACH
+	var high: int = (area.end.x if axis.x != 0 else area.end.y) - 1 + ALLEY_REACH
+	var from: Vector2i = -axis
+	if street == axis:
+		# A side wall's alley comes from the back and stops at the shop's front.
+		high = (area.end.x if axis.x != 0 else area.end.y) - 1
+	elif street == -axis:
+		low = area.position.x if axis.x != 0 else area.position.y
+		from = axis
+	return {"path": path, "junction": cell, "axis": axis, "first": low, "last": high, "from": from}
+
+
+## The direction from the shop out to the street (from its street entries).
+static func street_side(grid: SimGrid) -> Vector2i:
+	for entry: Vector2i in grid.entries():
+		for step: Vector2i in [Vector2i.DOWN, Vector2i.UP, Vector2i.LEFT, Vector2i.RIGHT]:
+			if grid.terrain(entry - step) == SimGrid.Terrain.FLOOR:
+				return step
+	return Vector2i.DOWN
+
+
+## The cells of the shop itself (anything but open ground), as a rectangle.
+static func _built_area(grid: SimGrid) -> Rect2i:
+	var area: Rect2i = Rect2i()
+	for cell: Vector2i in grid.cells():
+		if grid.terrain(cell) == SimGrid.Terrain.OUTSIDE:
+			continue
+		area = Rect2i(cell, Vector2i.ONE) if not area.has_area() else area.merge(Rect2i(cell, Vector2i.ONE))
+	return area
+
+
+## Back doors on the grid (FK-099): DOORWAY segments on an outer back or side
+## face. D25 allows one per shop; older saves with more keep them all.
+static func back_door_count(grid: SimGrid) -> int:
+	return _back_door_cells(grid).size()
+
+
+## When an edit (`before` -> `after`) adds a back door: BACK_DOOR_WIDTH when
+## a new one would sit beside another back door on the same face (one wider
+## door), else
+## ONE_BACK_DOOR when the shop already has one (D25), else "". Only adding is
+## refused, so an older save with two keeps both and every other edit works.
+static func back_door_problem(before: SimGrid, after: SimGrid) -> String:
+	var doors: Dictionary[Vector2i, Vector2i] = _back_door_cells(after)
+	var old: Dictionary[Vector2i, Vector2i] = _back_door_cells(before)
+	if doors.size() <= 1 or doors.size() <= old.size():
+		return ""
+	# Only a new doorway can make a door wider (an older save's pair stays).
+	for cell: Vector2i in doors:
+		if old.get(cell, Vector2i.ZERO) == doors[cell]:
+			continue
+		var side: Vector2i = doors[cell]
+		var along: Vector2i = Vector2i(side.y, side.x)
+		for near: Vector2i in [cell + along, cell - along]:
+			if doors.get(near, Vector2i.ZERO) == side:
+				return BACK_DOOR_WIDTH
+	return ONE_BACK_DOOR
+
+
+## Shell cell -> outward side of each back door's DOORWAY segment.
+static func _back_door_cells(grid: SimGrid) -> Dictionary[Vector2i, Vector2i]:
+	var cells: Dictionary[Vector2i, Vector2i] = {}
+	for edge: Vector3i in grid.segment_edges():
+		if grid.segment(edge) != SimGrid.Segment.DOORWAY:
+			continue
+		var side: Vector2i = back_door_side(grid, edge)
+		if side == Vector2i.ZERO:
+			continue
+		for cell: Vector2i in SimGrid.edge_cells(edge):
+			if grid.terrain(cell) == SimGrid.Terrain.WALL:
+				cells[cell] = side
+	return cells
 
 
 ## Why `kind` cannot stand on `edge` (geometry only), or "" when it can.

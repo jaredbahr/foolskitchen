@@ -140,6 +140,9 @@ func _reset_content(keep_owner_controls: bool = false) -> void:
 
 func _agent_title(agent: SimAgent) -> String:
 	var role_name: String = "Guest" if agent is CustomerAgent else String(agent.role).capitalize()
+	# The delivery person's name already says who she is (rule 11: no raw role).
+	if agent is CourierAgent:
+		return agent.display_name if not agent.display_name.is_empty() else "Delivery driver"
 	if role_name.is_empty():
 		role_name = "Agent"
 	if agent.display_name.is_empty():

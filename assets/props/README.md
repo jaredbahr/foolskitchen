@@ -18,6 +18,15 @@ evidence never assumes that the first imported surface is the body.
 Food parts are always excluded, even if a future food material shares a body
 material name.
 
+**Lowered-backrest seats (Jared, 2026-10-28).** Every kit seat a guest sits in
+(`chair`, `chairCushion` in the chair and both tables, `chairRounded`,
+`chairModernCushion`, `chairModernFrameCushion`, `loungeChair`, `bench`,
+`benchCushion`) uses a derived copy from `seats/derived/<kit name>_low_back.glb`
+instead of the kit file, so seated heads never clip the backrest. The copies are
+made by `tools/derive_seat_backrests.py` (run it again after changing its table;
+`--check` verifies the files) and keep the kit's nodes, materials, UVs and faces;
+only heights above the seat top are squashed. The kit files stay untouched.
+
 | Item | Approved models | Named body surfaces | Surfaces kept as authored |
 | --- | --- | --- | --- |
 | Stove | `kitchenStove` + `kitchenCabinet` | `wood` | All metal, glass and dark wood trim |
@@ -35,6 +44,7 @@ material name.
 | Coffee machine | `kitchenCabinet` + `kitchenCoffeeMachine` on top | `wood` | The whole machine |
 | Drinks fridge | `kitchenFridgeSmall` | none (unpaintable) | All |
 | Drinks shelf | `bookcaseOpenLow` + Food Kit `wine-red`, `wine-white`, `soda-bottle` | `wood` | Every bottle |
+| Freezer (FK-099) | `kitchenFridgeLarge` (0.04 over each side of its one cell, inside the 0.05 fit rule) | `metalLight` | Door trim (`metalMedium`) |
 | Storage shelf (FK-087) | `bookcaseOpen` + Food Kit `barrel`, `loaf`, `carton`, `bag`, `can` on its shelves and 2 x Furniture Kit `cardboardBoxClosed` on top; parts tagged `metadata/stock_slot` 0-10 show in proportion to how full dry storage is | `wood` | Every crate, box and food piece |
 
 Existing `ItemDef.paintable` values are unchanged: the stove, sink and door

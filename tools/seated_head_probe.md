@@ -8,8 +8,8 @@ may lie inside any seat part. A non-backrest arm/cushion does not inherit the
 
 ## Commands and unchanged bounds
 
-Only run after the coordinator admits runtime work; keep the existing 60-second
-import and 30-second probe/test admissions. No extra CI job or workflow loop.
+Use the normal repository runtime workflow and current cooperative gaming
+policy. No extra CI job or workflow loop.
 
 ```sh
 godot --headless --path . --script tools/seated_head_probe.gd -- --out=seat-clearance.json
@@ -19,9 +19,8 @@ godot --headless --path . --script tools/run_tests.gd -- --filter=seated_head_cl
 
 The catalogue covers 14 definitions, 21 authored seat cells, four rotations,
 eight guest looks and three imported sit times: 2,016 rows (1,632 before
-`table_4` added one definition and four seat cells). Rendered parity still
-compares all 24 distinct model/time poses, with 24 first-pose upload waits. The
-native comparison uses every native vertex; collision/crop geometry uses each
+`table_4` added one definition and four seat cells). Rendered parity compares
+all 24 distinct model/time poses, with 24 first-pose upload waits. The native comparison uses every native vertex; collision/crop geometry uses each
 surface's actual indices, with a nonindexed fallback. An unused position cannot
 inflate the collision geometry or crop bounds.
 
@@ -43,6 +42,11 @@ facing, the 0.05 offset limit, or an unknown/new/made item ID.
 - `clearance_metric`: `indexed posed-head mesh to identified backrest surfaces`.
 - `head_vertices_inside_count`: unique referenced head positions inside solids;
   `max_head_vertex_penetration`: greatest such vertex's nearest-boundary depth.
+- `seat_vertices_inside_head_count`: unique seat-part positions inside the
+  closed posed head (solid-angle test, the reverse of the count above);
+  `max_seat_vertex_head_depth`: the deepest one. A thin backrest corner can sit
+  wholly inside the head with no head vertex inside the seat and no crossing
+  found, so this count is part of `passes` and of a physical violation.
 - `head_seat_surface_crossings`: number of seat parts with an actual proper
   crossing witness (a lower bound, not the total number of triangle pairs).
 - `intrusion_parts`: path strings; `intrusion_details`: each part's inside count,
@@ -62,6 +66,34 @@ Unclassified joined kit meshes receive no fabricated whole-prop backrest gap.
 In particular, table_2 does not measure the table or opposite chair as the
 current guest's backrest. All its parts still participate in intrusion checks.
 
+Joined kit backrests have explicit source-polygon selections in
+`seated_head_backrests.json` (schema 2). Each source pins its GLB SHA-256 and
+complete indexed source-face inventory, with a nonempty proper backrest subset.
+Face strings encode nine little-endian IEEE-754 float32 coordinates; this avoids
+Godot JSON decimal precision loss without introducing a geometry tolerance.
+The manual `audit_seated_backrests.py` verifies every source bit, original face
+order, hash and selection, and draws front/side/top SVGs for independent review.
+
+Native matching applies the pinned engine's exact `TriangleMesh::create`
+`snappedf(0.0001)` conversion to the source inventory, then compares complete
+triangle multisets bit for bit (order/winding independent, multiplicity retained).
+See [Godot ed1daf0bf, triangle_mesh.cpp:127](https://github.com/godotengine/godot/blob/ed1daf0bf/core/math/triangle_mesh.cpp#L127).
+This reproduces `Mesh.get_faces()`, already used by the seat oracle; it does not
+change the clearance epsilon, 0.02 m gap, source assets or collision geometry.
+Every returned selected triangle is taken from the actual native mesh.
+Unknown sources stay unclassified; missing, changed or invalid inventories fail
+closed. The source audit additionally detects manifest/source discrepancies
+smaller than the engine's face-grid conversion.
+
+Every original complete joined mesh remains in vertex-inside and crossing tests.
+Only backrest distance uses the audited polygon subset. Multi-chair wrappers
+validate all expected sources and choose the nearest native chair origin in the
+guest's floor plane, retaining exact ties; opposite chairs remain collision parts.
+Cache identity includes both complete and selected geometry. Provenance reports
+selected/full triangle counts and a source/selection digest. Continuous source
+faces remain whole, including conservative rear-stile/shell extensions.
+Classification is not a seat-fit fix and never grants an exception.
+
 `measure_person_head(person)` retains `world_bounds`, `person_bounds` (AABB),
 `head_vertices`, `error` and `provenance` for camera framing. Those bounds are
 formed from referenced posed vertices and are not the collision acceptance
@@ -72,9 +104,42 @@ head/backrest distance enumerates triangle vertex/face and edge/edge features;
 proper surface crossings and per-part solid-angle vertex containment remain
 separate. The comparison cache hashes and then compares the entire normalized
 person-local geometry payload. An item ID, nominal pose or rounded AABB alone
-cannot reuse a passing result. Runtime performance of this new oracle is unrun.
+cannot reuse a passing result. The complete native catalogue and renderer-parity results are recorded in the PR;
+physical kit exceptions remain separately reported.
 
-## Explicit unchanged-kit findings
+## Lowered-backrest seats (no exceptions)
+
+Jared, 2026-10-28: guests are not leaned forward ("looks pretty rough"); the kit
+seats get lowered backrests instead. `tools/derive_seat_backrests.py` writes
+`assets/props/seats/derived/<kit name>_low_back.glb` from the unchanged kit GLB:
+every height above the seat top is multiplied by a squash factor (the lounge
+chair's arms come down with its back, because they share edges). Nodes,
+materials, UVs, index order and faces stay the kit's, so each derived file has a
+schema-2 manifest entry with its own hash and inventory and the kit entry's
+backrest face selection. Rounding to 0.1 mm keeps derived heights off the
+engine's 0.0001 face-snap half steps. The cushioned chair's earlier 10° lean
+(PR #193) is removed; the lean mechanism itself remains for future use.
+
+Squash factors were the largest that keep at least 2 mm margin over the 0.02 m
+backrest rule for all eight looks, three sit times and four rotations:
+
+| Kit source | Seats | Seat top | Squash | Backrest top (source → derived) | Minimum gap |
+|---|---|---|---|---|---|
+| chair | wooden_chair | 0.24 | 0.52 | 0.47 → 0.360 | 26.0 mm |
+| chairCushion | chair, table_2, table_4 | 0.24 | 0.58 | 0.46 → 0.368 | 23.2 mm |
+| chairRounded | rounded_chair | 0.22 | 0.52 | 0.455 → 0.342 | 23.2 mm |
+| chairModernCushion | modern_chair | 0.24 | 0.55 | 0.46 → 0.361 | 24.5 mm |
+| chairModernFrameCushion | modern_frame_chair | 0.24 | 0.55 | 0.46 → 0.361 | 24.5 mm |
+| loungeChair (arms too) | lounge_chair | 0.23 | 0.52 | 0.46 → 0.350 (arms 0.37 → 0.303) | 26.0 mm |
+| bench | bench | 0.24 | 0.52 | 0.47 → 0.360 | 26.0 mm |
+| benchCushion | cushioned_bench | 0.24 | 0.55 | 0.46 → 0.361 | 24.5 mm |
+
+Source units; the game scale is ×1.1. With them, all 2,016 catalogue rows pass
+with no head vertex inside a seat, no crossing and no seat vertex inside a head,
+and `KNOWN_KIT_FAILURE_IDS` is empty. The real-table sweep still reports no
+head/table violation.
+
+## History: unchanged-kit findings (before the lowered backrests)
 
 The Director permitted item-ID exceptions for kit seats that still fail mesh
 measurements. The first nine were observed with actual head/seat surface crossings
@@ -84,7 +149,7 @@ in the bounded read-only source audit (at least one of the eight native looks);
 | Item ID | Actual physical finding at the unchanged original pose |
 |---|---|
 | bench | Indexed head triangles cross a bench mesh |
-| chair | Indexed head triangles cross chairCushion |
+| chair | Crosses chairCushion; Jared accepts the measured remainder with a small lean, subject to real-table safety |
 | cushioned_bench | Two looks cross benchCushion; six other looks had a 0.003575 surface gap, which alone is not proof of a backrest-rule violation |
 | lounge_chair | Indexed head triangles cross loungeChair |
 | modern_chair | Indexed head triangles cross chairModernCushion |
@@ -136,5 +201,5 @@ for all nine representative looks: bench 75, chair 71, cushioned_bench 41, loung
 These counts are historical source-audit evidence, not new native runtime
 penetration depths. The runtime report must independently record supported
 trial results and actual inside-vertex depths/crossing witnesses. The new oracle,
-its focused tests, and its 30-second runtime performance remain unrun in this
-source-only lane.
+its focused tests and runtime performance must be verified on the submitted
+head; historical source counts alone are not acceptance.

@@ -1,0 +1,428 @@
+extends TestCase
+## FK-099 (#187) presentation: the back door's Kenney leaf and path, the door
+## swinging with the delivery person, and crates on the floor and in hands.
+## View only: nothing here changes the sim.
+
+const VIEW: PackedScene = preload("res://src/world/shop_view.tscn")
+const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
+const DOOR: Vector2i = Vector2i(13, 6)
+const DROP: Vector2i = Vector2i(12, 6)
+
+var _view: ShopView
+var _sim: RestaurantSim
+var _old_speed: int = 0
+
+
+func before_each() -> void:
+	_old_speed = Clock.speed
+	Clock.set_speed(0)
+	var content: ContentDB = ContentDB.new()
+	assert_eq(content.load_all(), PackedStringArray())
+	var errors: Array[String] = []
+	var stock: Stock = Stock.new()
+	_sim = RestaurantSim.create(LAYOUT, content, 1, errors, stock)
+	assert_eq(errors, [] as Array[String])
+	assert_true(_sim.world.grid.set_segment(SimGrid.edge_between(DROP, DOOR), SimGrid.Segment.DOORWAY))
+	_view = VIEW.instantiate() as ShopView
+
+
+func after_each() -> void:
+	if is_instance_valid(_view):
+		_view.free()
+	_sim = null
+	Clock.set_speed(_old_speed)
+
+
+func _enter_view() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	await tree.process_frame
+	tree.root.add_child(_view)
+	_view.set_process(false)
+	_view.show_world(_sim.world)
+	_view.bind_dock(_sim.dock)
+	_view.set_wall_mode(ShopView.WallMode.UP)
+
+
+func _open_quiet() -> void:
+	assert_true(_sim.world.clock.start_service())
+	_sim.spawner.min_gap = 1000000
+	_sim.spawner.max_gap = 1000000
+	_sim.spawner.reset()
+
+
+func _courier() -> CourierAgent:
+	for agent: SimAgent in _sim.world.agents:
+		if agent is CourierAgent:
+			return agent as CourierAgent
+	return null
+
+
+func _tick(count: int = 1) -> void:
+	for index: int in count:
+		_sim.advance()
+	_view._process(0.0)
+
+
+## How much of a person is drawn: 1 with their own materials, else the
+## dithered share every surface draws (all alike, never see-through).
+func _alphas(node: Node3D) -> Array[float]:
+	var out: Array[float] = []
+	var fade: float = float(node.get_meta(&"fade", 1.0))
+	for found: Node in node.find_children("*", "MeshInstance3D", true, false):
+		var mesh: MeshInstance3D = found as MeshInstance3D
+		if not mesh.is_visible_in_tree():
+			continue
+		for surface: int in mesh.mesh.get_surface_count():
+			var material: BaseMaterial3D = mesh.get_active_material(surface) as BaseMaterial3D
+			assert_true(material == null or material.transparency == BaseMaterial3D.TRANSPARENCY_DISABLED,
+				"opaque: no part shows through another")
+			var dithered: bool = material != null \
+				and material.distance_fade_mode == BaseMaterial3D.DISTANCE_FADE_PIXEL_DITHER
+			assert_eq(dithered, fade < 1.0)
+			assert_eq(mesh.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, dithered,
+				"no shadow while fading (the dither would cast a full one), her own once solid")
+			out.append(fade if dithered else 1.0)
+	return out
+
+
+func _leaf_angle() -> float:
+	return absf(_view.segment_view.door_leaf(DOOR).rotation.y)
+
+
+func test_the_back_door_is_a_kenney_door_with_a_path_outside() -> void:
+	await _enter_view()
+	var leaf: Node3D = _view.segment_view.door_leaf(DOOR)
+	assert_not_null(leaf, "the kit doorway's own door leaf")
+	assert_eq(leaf.rotation.y, 0.0, "shut while nobody passes")
+	var shut: Vector3 = leaf.global_transform * Vector3(0.4, 0.5, 0.0)
+	_view.segment_view.set_door_open(DOOR, 1.0)
+	assert_almost_eq(rad_to_deg(absf(leaf.rotation.y)), WallSegmentView.DOOR_OPEN_DEGREES, 0.01)
+	var open: Vector3 = leaf.global_transform * Vector3(0.4, 0.5, 0.0)
+	assert_true(open.x > shut.x + 0.2, "it swings out, onto the path (east, like a service door)")
+	# Open, the leaf lies against its jamb: nothing of it in the 0.5 m opening.
+	var leaf_bounds: AABB = leaf.global_transform * (leaf as MeshInstance3D).get_aabb()
+	var center_z: float = GridMath.cell_to_world(DOOR).z
+	var half: float = GridMath.CELL_SIZE * 0.5
+	assert_true(leaf_bounds.position.z >= center_z + half - 0.001 or leaf_bounds.end.z <= center_z - half + 0.001,
+		"clear of the opening: %s" % leaf_bounds)
+	assert_true(leaf_bounds.position.x >= 7.0 - 0.01, "flat against the outside wall: %s" % leaf_bounds)
+	assert_true(leaf_bounds.end.x <= 7.0 + 0.15)
+	var tiles: Array[PropView] = _view.segment_view.path_tiles()
+	for tile: PropView in tiles:
+		# The alley hugs the wall here (no lot): the leaf stands against the wall
+		# at the inner lane's edge; the delivery person walks the outer lane.
+		var path_bounds: AABB = tile.global_transform * tile.get_combined_aabb()
+		if leaf_bounds.position.z < path_bounds.end.z and leaf_bounds.end.z > path_bounds.position.z:
+			assert_true(leaf_bounds.end.x <= path_bounds.position.x + 0.15, "only along the wall, not over the alley")
+	_view.segment_view.set_door_open(DOOR, 0.0)
+	assert_true((leaf.global_transform * Vector3(0.4, 0.5, 0.0)).is_equal_approx(shut), "shuts exactly where it was")
+	_view.segment_view.set_door_open(DOOR, 1.0)
+	_view.segment_view.set_door_open(DOOR, 0.0)
+	# No lot given: the alley runs along the building's east edge, two lanes
+	# wide (x 14 and 15), from the back down to the shop's front.
+	assert_true(tiles.size() > 2 * WallSegmentView.PATH_REACH, "the alley")
+	var tints: Dictionary[Color, bool] = {}
+	for tile: PropView in tiles:
+		var bounds: AABB = tile.global_transform * tile.get_combined_aabb()
+		assert_almost_eq(bounds.end.y, 0.001, 0.002, "level with the floor, so feet never sink")
+		assert_true(bounds.size.y < 0.02, "flush: no side face to show")
+		assert_true(bounds.size.x < GridMath.CELL_SIZE, "a joint between stones")
+		var cell: Vector2i = tile.get_meta(&"cell")
+		assert_true(cell.x == 14 or cell.x == 15, "on the alley: %s" % cell)
+		assert_true(cell.y <= 11 + WallSegmentView.PATH_STREET_FADE_CELLS,
+			"fades out just past the shop's front, never on into the street")
+		tints[tile.active_body_material().albedo_color] = true
+	assert_true(tints.size() > 3, "the stones vary")
+	# Past the front it fades towards the dark ground, one step a cell.
+	var front: Dictionary[int, float] = {}
+	for tile: PropView in tiles:
+		var cell: Vector2i = tile.get_meta(&"cell")
+		if cell.x == 14 and cell.y >= 11:
+			front[cell.y] = tile.active_body_material().albedo_color.get_luminance()
+	assert_eq(front.size(), 1 + WallSegmentView.PATH_STREET_FADE_CELLS, "solid to the front, then a short fade")
+	for row: int in range(11, 11 + WallSegmentView.PATH_STREET_FADE_CELLS):
+		assert_true(front[row + 1] < front[row], "darker towards the street: %s" % front)
+	_view.set_wall_mode(ShopView.WallMode.DOWN)
+	assert_null(_view.segment_view.door_leaf(DOOR), "lowered walls show posts, no floating leaf")
+	assert_eq(_view.segment_view.path_tiles().size(), tiles.size(), "the path stays")
+
+
+func test_the_door_swings_open_for_the_delivery_and_shuts_after() -> void:
+	await _enter_view()
+	_open_quiet()
+	assert_true(_sim.dock.arrive([{"id": &"cheese", "qty": 4}, {"id": &"bread", "qty": 6}] as Array[Dictionary]))
+	_tick()
+	var courier: CourierAgent = _courier()
+	assert_eq(_leaf_angle(), 0.0, "far up the path: shut")
+	var start_node: Node3D = _view.agent_nodes[courier.id]
+	assert_true(_alphas(start_node).all(func(alpha: float) -> bool: return alpha < 0.3),
+		"faded in at the far end of her path, never popping in")
+	var opened: bool = false
+	var held: bool = false
+	var bent: bool = false
+	for tick: int in (WallRules.ALLEY_REACH + 8) * 4 + 12:
+		_tick()
+		var person: Node3D = _view.agent_nodes[courier.id]
+		var crates: Node3D = person.get_node_or_null("Crates") as Node3D
+		if courier.state == CourierAgent.State.ARRIVING:
+			held = held or (crates != null and crates.visible and crates.get_child_count() == 1)
+		if courier.cell == DOOR:
+			opened = true
+			assert_true(_alphas(person).all(func(alpha: float) -> bool: return alpha == 1.0), "solid near the shop")
+			assert_almost_eq(rad_to_deg(_leaf_angle()), WallSegmentView.DOOR_OPEN_DEGREES, 0.01, "open as they pass")
+		if courier.state == CourierAgent.State.UNLOADING:
+			bent = true
+			assert_eq(crates.visible, courier.carrying, "in her hands until the bottom of the bend")
+			assert_eq((person as PersonView).current_clip(), &"pick-up")
+			assert_true(person.position.is_equal_approx(GridMath.cell_to_world(DOOR)), "in the doorway")
+		if courier.state == CourierAgent.State.LEAVING:
+			break
+	assert_true(opened)
+	assert_true(bent)
+	assert_true(held, "one crate in hand on the way in (a stack would hide her face)")
+	assert_eq(_view.crate_nodes.size(), 1, "the one from her hands, while she stands over it")
+	_tick()
+	assert_eq(_view.crate_nodes.size(), 2, "both crates on the floor once she steps away")
+	var spot: Vector3 = AgentPresentationController.crate_spot(_sim.world.grid, DROP)
+	var layers: Array[float] = []
+	for id: int in _view.crate_nodes:
+		var node: Node3D = _view.crate_nodes[id]
+		assert_almost_eq(node.position.x, spot.x, 0.001, "one stack")
+		assert_almost_eq(node.position.x - GridMath.cell_to_world(DOOR).x, -AgentPresentationController.CRATE_REACH,
+			0.001, "in front of her, at arm's reach")
+		layers.append(node.position.y)
+	layers.sort()
+	assert_almost_eq(layers[0], 0.0, 0.001, "on the floor")
+	assert_almost_eq(layers[1], _view.crate_height(), 0.001, "and on top of it")
+	for tick: int in (WallRules.ALLEY_REACH + 8) * 4 + 40:
+		_tick()
+		if not _sim.world.agents.has(courier):
+			break
+	assert_false(_sim.world.agents.has(courier))
+	_view._process(0.0)
+	assert_eq(_leaf_angle(), 0.0, "shut behind them")
+
+
+func test_a_carried_crate_shows_in_hand_and_guests_never_open_the_door() -> void:
+	await _enter_view()
+	_open_quiet()
+	var guest: CustomerAgent = _sim.add_customer(DROP, RandomNumberGenerator.new())
+	guest.state = CustomerAgent.State.QUEUED
+	_view._process(0.0)
+	assert_eq(_leaf_angle(), 0.0, "a guest beside the door never opens it")
+	_sim.world.remove_agent(guest)
+	assert_true(_sim.dock.arrive([{"id": &"cheese", "qty": 4}] as Array[Dictionary]))
+	var carrier_id: int = -1
+	var beside: bool = false
+	for tick: int in 600:
+		_tick()
+		for agent: SimAgent in _sim.world.agents:
+			var staff: StaffAgent = agent as StaffAgent
+			if staff == null or staff.task == null or staff.task.kind != DeliveryDock.TASK_KIND \
+					or staff.step_index != DeliveryDock.STEP_PICK_UP or staff.cell != DROP:
+				continue
+			beside = true
+			var drawn: Vector3 = _view.agent_nodes[staff.id].position
+			assert_true(drawn.is_equal_approx(AgentPresentationController.picker_spot(_sim.world.grid, DROP)),
+				"beside the stack, not in it")
+			var spot: Vector3 = AgentPresentationController.crate_spot(_sim.world.grid, DROP)
+			assert_almost_eq(Vector2(drawn.x - spot.x, drawn.z - spot.z).length(), AgentPresentationController.CRATE_REACH,
+				0.001)
+			assert_eq((_view.agent_nodes[staff.id] as PersonView).current_clip(), &"pick-up")
+		for crate: Dictionary in _sim.dock.crates():
+			if int(crate["state"]) == DeliveryDock.CrateState.CARRIED:
+				carrier_id = int(crate["carrier_id"])
+		if carrier_id >= 0:
+			break
+	assert_true(beside)
+	assert_true(carrier_id >= 0)
+	_tick(DeliveryDock.LIFT_TICKS + 2)
+	var person: PersonView = _view.agent_nodes[carrier_id] as PersonView
+	var crates: Node3D = person.get_node("Crates") as Node3D
+	assert_true(crates.visible)
+	assert_eq(crates.get_child_count(), 1, "one crate each trip")
+	assert_true(crates.get_child(0).visible)
+	assert_eq(person.current_clip(), PersonPresentation.CARRY_WALK, "walking legs under carrying arms")
+	assert_eq(_view.crate_nodes.size(), 0, "no longer on the floor")
+	for tick: int in 600:
+		_tick()
+		if _sim.dock.is_idle():
+			break
+	assert_true(_sim.dock.is_idle())
+	assert_false(crates.visible, "put away")
+
+
+func test_the_freezer_reads_cooler_than_the_fridge_and_keeps_it_after_paint() -> void:
+	var freezer: PropView = (load("res://assets/props/freezer.tscn") as PackedScene).instantiate() as PropView
+	var kit: Color = freezer.active_body_material().albedo_color
+	assert_true(kit.b > kit.r, "a cool metal: %s" % kit)
+	freezer.set_body_tint(Color(0.9, 0.5, 0.3))
+	assert_eq(freezer.active_body_material().albedo_color, Color(0.9, 0.5, 0.3), "paint replaces it")
+	freezer.clear_body_tint()
+	assert_eq(freezer.active_body_material().albedo_color, kit, "and clearing paint brings it back")
+	freezer.free()
+
+
+## Every vertex of the leaf's mesh (slab and handles), in world space.
+func _leaf_points(leaf: MeshInstance3D) -> Array[Vector3]:
+	var out: Array[Vector3] = []
+	for surface: int in leaf.mesh.get_surface_count():
+		var vertices: PackedVector3Array = leaf.mesh.surface_get_arrays(surface)[Mesh.ARRAY_VERTEX]
+		for vertex: Vector3 in vertices:
+			out.append(leaf.global_transform * vertex)
+	return out
+
+
+## Deepest a leaf point goes into the solid wall beside the doorway (metres).
+func _depth_in_wall(points: Array[Vector3]) -> float:
+	var deepest: float = 0.0
+	var grid: SimGrid = _sim.world.grid
+	for cell: Vector2i in [DOOR + Vector2i.UP, DOOR + Vector2i.DOWN]:
+		assert_eq(grid.terrain(cell), SimGrid.Terrain.WALL)
+		var center: Vector3 = GridMath.cell_to_world(cell)
+		for point: Vector3 in points:
+			if point.y > ArtScale.WALL_HEIGHT:
+				continue
+			var depth: float = minf(GridMath.CELL_SIZE * 0.5 - absf(point.x - center.x),
+				GridMath.CELL_SIZE * 0.5 - absf(point.z - center.z))
+			deepest = maxf(deepest, depth)
+	return deepest
+
+
+func test_the_leaf_never_passes_through_the_wall() -> void:
+	await _enter_view()
+	var leaf: MeshInstance3D = _view.segment_view.door_leaf(DOOR) as MeshInstance3D
+	assert_not_null(leaf)
+	var worst: float = 0.0
+	var worst_at: int = 0
+	for step: int in 101:
+		_view.segment_view.set_door_open(DOOR, step / 100.0)
+		var depth: float = _depth_in_wall(_leaf_points(leaf))
+		if depth > worst:
+			worst = depth
+			worst_at = step
+	assert_true(worst <= 0.001, "%.3f m into the wall at %d%% open" % [worst, worst_at])
+
+
+## Crates that land on one cell in the same tick come down one at a time
+## (view only): the stack inside the door is full, so the second delivery
+## goes down beside it all at once in the sim.
+func test_crates_landing_together_appear_one_at_a_time() -> void:
+	await _enter_view()
+	_open_quiet()
+	for agent: SimAgent in _sim.world.agents.duplicate():
+		if agent is StaffAgent:
+			_sim.world.remove_agent(agent)
+	var lines: Array[Dictionary] = [{"id": &"cheese", "qty": 4}, {"id": &"bread", "qty": 6},
+		{"id": &"frozen_fries", "qty": 4}]
+	for delivery: int in 2:
+		assert_true(_sim.dock.arrive(lines))
+		for tick: int in 1000:
+			_tick()
+			if _sim.dock.couriers().is_empty():
+				break
+	var shown_counts: Array[int] = []
+	var landed_at: int = -1
+	# Two deliveries down: the stack inside the door is full.
+	assert_eq(_view.crate_nodes.size(), 6)
+	for id: int in _view.crate_nodes:
+		assert_true(_view.crate_nodes[id].visible, "all shown in the end")
+	# A third delivery, watched tick by tick while it lands.
+	assert_true(_sim.dock.arrive(lines))
+	for tick: int in 1000:
+		_tick()
+		var visible: int = 0
+		for id: int in _view.crate_nodes:
+			visible += 1 if _view.crate_nodes[id].visible else 0
+		if _view.crate_nodes.size() > 6 and landed_at < 0:
+			landed_at = tick
+		if landed_at >= 0:
+			shown_counts.append(visible)
+		if landed_at >= 0 and tick > landed_at + 3 * ShopView.CRATE_STAGGER_TICKS:
+			break
+	assert_true(landed_at >= 0)
+	assert_eq(_view.crate_nodes.size(), 9)
+	assert_eq(shown_counts[0], 7, "the first at once")
+	assert_eq(shown_counts[ShopView.CRATE_STAGGER_TICKS], 8, "then the next")
+	assert_eq(shown_counts.back(), 9, "then the last")
+
+
+## A fade turns each mesh's shadow off and gives back its own setting after.
+func test_a_fade_gives_each_mesh_its_own_shadow_back() -> void:
+	await _enter_view()
+	var figure: Node3D = Node3D.new()
+	var body: MeshInstance3D = MeshInstance3D.new()
+	body.mesh = BoxMesh.new()
+	body.material_override = null
+	body.set_surface_override_material(0, StandardMaterial3D.new())
+	body.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED
+	var hat: MeshInstance3D = MeshInstance3D.new()
+	hat.mesh = BoxMesh.new()
+	hat.set_surface_override_material(0, StandardMaterial3D.new())
+	hat.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	figure.add_child(body)
+	figure.add_child(hat)
+	_view.add_child(figure)
+	_view._apply_fade(figure, 0.5)
+	assert_eq(body.cast_shadow, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF)
+	assert_eq(hat.cast_shadow, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF)
+	_view._apply_fade(figure, 0.7)
+	_view._apply_fade(figure, 1.0)
+	assert_eq(body.cast_shadow, GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED, "its own setting back")
+	assert_eq(hat.cast_shadow, GeometryInstance3D.SHADOW_CASTING_SETTING_ON)
+	assert_eq((body.get_active_material(0) as BaseMaterial3D).distance_fade_mode, BaseMaterial3D.DISTANCE_FADE_DISABLED)
+	figure.free()
+
+
+## Closing ends her visit wherever she is: the view fades her out over about
+## a second as she walks on (a ghost), instead of her vanishing.
+func test_a_courier_removed_mid_walk_fades_out_as_a_ghost() -> void:
+	await _enter_view()
+	_open_quiet()
+	assert_true(_sim.dock.arrive([{"id": &"cheese", "qty": 4}] as Array[Dictionary]))
+	_tick()
+	var courier: CourierAgent = _courier()
+	for tick: int in 2000:
+		_tick()
+		if courier.state == CourierAgent.State.LEAVING and courier.path_index > 4:
+			break
+	assert_eq(courier.state, CourierAgent.State.LEAVING)
+	var node: Node3D = _view.agent_nodes[courier.id]
+	assert_eq(float(node.get_meta(&"fade", 1.0)), 1.0, "solid, near the shop")
+	var at: Vector3 = node.position
+	_sim.dock.store_all()
+	assert_false(_sim.world.agents.has(courier), "the sim removed her")
+	_view._process(0.0)
+	assert_false(_view.agent_nodes.has(courier.id), "no longer an agent's figure")
+	assert_false(_view.drawn_agent_positions().has(courier.id), "never picked or selected")
+	assert_eq(_view.ghosts.size(), 1)
+	assert_true(is_instance_valid(node) and node.is_inside_tree(), "still drawn")
+	var fades: Array[float] = []
+	for step: int in 6:
+		_view._process(0.2)
+		if is_instance_valid(node):
+			fades.append(float(node.get_meta(&"fade", 1.0)))
+			assert_true(_alphas(node).all(func(alpha: float) -> bool: return alpha < 1.0), "dithered, no shadow")
+	assert_true(fades.size() >= 4, "about a second: %s" % [fades])
+	for index: int in range(1, fades.size()):
+		assert_true(fades[index] < fades[index - 1], "fading out: %s" % [fades])
+	assert_false(is_instance_valid(node), "then gone")
+	assert_true(_view.ghosts.is_empty())
+
+
+func test_show_world_clears_ghosts() -> void:
+	await _enter_view()
+	_open_quiet()
+	assert_true(_sim.dock.arrive([{"id": &"cheese", "qty": 4}] as Array[Dictionary]))
+	for tick: int in 2000:
+		_tick()
+		var courier: CourierAgent = _courier()
+		if courier != null and courier.state == CourierAgent.State.LEAVING and courier.path_index > 4:
+			break
+	_sim.dock.store_all()
+	_view._process(0.0)
+	assert_eq(_view.ghosts.size(), 1)
+	var ghost: Node3D = _view.ghosts[0]["node"]
+	_view.show_world(_sim.world)
+	assert_true(_view.ghosts.is_empty())
+	assert_false(is_instance_valid(ghost), "freed with the old world's figures")
