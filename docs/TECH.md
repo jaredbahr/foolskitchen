@@ -1592,6 +1592,22 @@ pattern 0 of `floor_finish.gdshader`, unchanged).
   list afterwards) and leave with `out_of_stock` only when it is empty. A ticket
   cancelled at the fridge still cancels as before. The HUD shows a "Sold out" chip
   during service.
+- **Build restock advice (FK-096):** a valid Buy, wall, floor-expansion or
+  floor-laying preview may add one advice line under the existing HUD hint,
+  "Leaves $75 — tomorrow's restock needs about $93" (`RestockBudgetWarning`),
+  passed to `HUD.set_build_state()` as `warning` and drawn in the HUD's amber
+  `ADVICE_COLOR` (not red: it is not an error; the cost line keeps its colour).
+  It never changes `EditCheck.ok`, prices, refunds, purchase
+  permission, stock, paid orders, RNG or saving. Morning advice reserves a
+  conservative refill of enabled targets after service (limited by current
+  storage and excluding units paid but not yet stocked: orders on their way and
+  crates waiting to be put away, the same `_on_the_way()` the real order uses);
+  at closing the existing `StockAlerts.forecast` supplies the next morning's
+  full order cost after expiry and incoming stock. Both reuse the ordinary order
+  planner/premium. This is a budget allowance, not a forecast of future sales or
+  operating losses. Invalid actions keep their original refusal, and free
+  edits/sales add no advice. Cash changes refresh the hint even when placement
+  validity stays unchanged.
 - **Report:** `DayReport.low_stock` holds `StockAlerts` sentences: each ingredient
   that sold dishes out (with the time), then tomorrow's forecast (tonight's expiry,
   then the order planned with tonight's cash): expiring units, ingredients the order
