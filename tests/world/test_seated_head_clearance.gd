@@ -231,6 +231,59 @@ func test_only_backrest_requires_point_zero_two_but_every_part_forbids_penetrati
 	assert_false(result["passes"])
 
 
+func test_audited_backrest_regions_keep_complete_joined_mesh_intrusion_checks() -> void:
+	var head: PackedVector3Array = _box_faces(Vector3(0, 0.6, 0), Vector3.ONE * 0.2)
+	var back: PackedVector3Array = _box_faces(Vector3(0, 0.6, 0.35), Vector3(0.8, 0.8, 0.1))
+	var arm: PackedVector3Array = _box_faces(Vector3(0, 0.49, 0), Vector3(0.4, 0.01, 0.4))
+	var joined: PackedVector3Array = back.duplicate()
+	joined.append_array(arm)
+	var part: Dictionary = _part("joined_kit_mesh", joined, true)
+	part["backrest_triangles"] = back
+	part["backrest_bounds"] = AABB(Vector3(-0.4, 0.2, 0.3), Vector3(0.8, 0.8, 0.1))
+	part["backrest_triangle_bounds"] = GEOMETRY._triangle_bounds(back)
+	var result: Dictionary = GEOMETRY.measure_surfaces(_unique_points(head), head, [part] as Array[Dictionary], "named_parts")
+	assert_true(result["passes"], "the nearby arm does not acquire a backrest-only clearance rule")
+	assert_almost_eq(float(result["backrest_clearance"]), 0.2, 0.000001)
+	assert_eq(result["seat_triangles"], joined.size() / 3, "every full-mesh triangle is still counted")
+	var crossing: PackedVector3Array = _box_faces(Vector3(0, 0.6, 0), Vector3(0.8, 0.8, 0.01))
+	joined = back.duplicate()
+	joined.append_array(crossing)
+	part = _part("joined_kit_mesh", joined, true)
+	part["backrest_triangles"] = back
+	part["backrest_bounds"] = AABB(Vector3(-0.4, 0.2, 0.3), Vector3(0.8, 0.8, 0.1))
+	part["backrest_triangle_bounds"] = GEOMETRY._triangle_bounds(back)
+	result = GEOMETRY.measure_surfaces(_unique_points(head), head, [part] as Array[Dictionary], "named_parts")
+	assert_false(result["passes"], "a non-backrest crossing cannot be omitted by the semantic selection")
+	assert_true(int(result["head_seat_surface_crossings"]) > 0)
+	assert_almost_eq(float(result["backrest_clearance"]), 0.2, 0.000001)
+
+
+func test_kit_backrest_classification_requires_every_expected_audited_mesh() -> void:
+	var chair: Node3D = preload("res://assets/props/chair.tscn").instantiate() as Node3D
+	var region: Dictionary = {"is_backrest": true, "backrest_identity": "audited-source-and-polygons"}
+	assert_eq(GEOMETRY._backrest_status(chair, [region] as Array[Dictionary]), "named_parts")
+	assert_eq(GEOMETRY._backrest_status(chair, [] as Array[Dictionary]), "unclassified_kit")
+	assert_eq(GEOMETRY._backrest_status(chair, [region, region] as Array[Dictionary]), "unclassified_kit")
+	region["backrest_identity"] = ""
+	assert_eq(GEOMETRY._backrest_status(chair, [region] as Array[Dictionary]), "unclassified_kit")
+	chair.free()
+
+
+func test_multi_seat_backrest_selection_keeps_the_guests_native_chair_and_all_other_meshes() -> void:
+	var own: Dictionary = {"backrest_identity": "own", "backrest_origin": Vector3(0, 0.3, 0.02), "is_backrest": true}
+	var opposite: Dictionary = {"backrest_identity": "other", "backrest_origin": Vector3(0, 0.3, 1.0), "is_backrest": true}
+	var table: Dictionary = {"path": "table", "is_backrest": false}
+	var parts: Array[Dictionary] = [own, opposite, table]
+	GEOMETRY._select_guest_backrest(parts)
+	assert_true(own["is_backrest"])
+	assert_false(opposite["is_backrest"])
+	assert_eq(parts.size(), 3, "semantic selection never removes other collision meshes")
+	opposite["backrest_origin"] = Vector3(0, 0.3, -0.02)
+	GEOMETRY._select_guest_backrest(parts)
+	assert_true(own["is_backrest"])
+	assert_true(opposite["is_backrest"], "exactly tied surfaces are retained conservatively")
+
+
 func test_unknown_backrest_does_not_invent_a_gap_or_waive_new_seat_failures() -> void:
 	var head: PackedVector3Array = _box_faces(Vector3(0, 0.6, 0), Vector3.ONE * 0.2)
 	var parts: Array[Dictionary] = [_part("unclassified_seat", _box_faces(Vector3(0, 0.1, 0), Vector3.ONE * 0.1), false)]
