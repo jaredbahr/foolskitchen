@@ -51,7 +51,7 @@ The Tier 1 hole-in-the-wall: 1 door, 3 two-seat tables, 1 fridge, 1 prep counter
 - [x] Back door foundation (#191); real swinging door and one per shop with visible deliveries (#187, D25)
 - [x] Floor types and patterns painted per cell or per room: wide and narrow planks, herringbone, small tiles, checker (Sims-style, D25, #200)
 - [ ] More floor types: hex tile, terracotta (#201); terrazzo, concrete, carpet (#202) (D25)
-- [ ] Smooth motion between sim ticks (presentation only)
+- [x] Smooth motion between sim ticks (presentation only) (#204)
 - [ ] Wall finishes and wall decor: wallpaper, panels, tile, brick; framed art, menu boards, neon (D26)
 - [ ] Waiting bench by the door: more guests wait, longer (D26)
 - [x] Hiring pool, traits, wages

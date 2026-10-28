@@ -79,6 +79,8 @@ func _alphas(node: Node3D) -> Array[float]:
 			var dithered: bool = material != null \
 				and material.distance_fade_mode == BaseMaterial3D.DISTANCE_FADE_PIXEL_DITHER
 			assert_eq(dithered, fade < 1.0)
+			assert_eq(mesh.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, dithered,
+				"no shadow while fading (the dither would cast a full one), her own once solid")
 			out.append(fade if dithered else 1.0)
 	return out
 
@@ -118,7 +120,7 @@ func test_the_back_door_is_a_kenney_door_with_a_path_outside() -> void:
 	_view.segment_view.set_door_open(DOOR, 0.0)
 	# No lot given: the alley runs along the building's east edge, two lanes
 	# wide (x 14 and 15), from the back down to the shop's front.
-	assert_true(tiles.size() > 2 * WallRules.ALLEY_REACH, "the alley")
+	assert_true(tiles.size() > 2 * WallSegmentView.PATH_REACH, "the alley")
 	var tints: Dictionary[Color, bool] = {}
 	for tile: PropView in tiles:
 		var bounds: AABB = tile.global_transform * tile.get_combined_aabb()

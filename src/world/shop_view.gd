@@ -27,8 +27,10 @@ const CRATE_LOWER_SPEED: float = 0.8
 ## Crates set down together appear this many ticks apart, one at a time (the
 ## delivery person's bend to its lowest point, CourierAgent.DROP_TICK).
 const CRATE_STAGGER_TICKS: int = CourierAgent.DROP_TICK
-## Fading the delivery person (dither_range): the distance-fade ramp is this
-## long (m), so across her own depth (under a metre) the fade varies by under 1%.
+## Fading the delivery person (dither_range): the distance-fade ramp is at
+## most this long (m), shorter only so it never starts behind the camera; the
+## longer it is, the less the fade changes across her own depth (a few per
+## cent from her front to her back at the usual camera distance).
 const DITHER_SPAN: float = 200.0
 ## A back door is open while someone going through is within this distance
 ## of it (fully open within DOOR_OPEN_NEAR), all view only.
@@ -843,6 +845,8 @@ func _sync_agents() -> void:
 		alive[agent.id] = true
 		var frame: AgentPresentationController.Frame = frames[agent.id]
 		motion.observe(agent.id, world.now, frame)
+		if alpha >= 1.0:
+			motion.settle(agent.id)
 		motion.blend(agent.id, alpha, frame)
 		if agent_nodes.has(agent.id) and (agent_nodes[agent.id] is PersonView) != frame.look_supported:
 			_remove_agent_visual(agent.id)
@@ -945,7 +949,7 @@ func _show_held_crates(node: Node3D, frame: AgentPresentationController.Frame, r
 ## has no per-instance alpha, and its alpha hash draws wrongly, so the dither
 ## is the material's own distance-fade dither (DISTANCE_FADE_PIXEL_DITHER)
 ## with its range set every frame so the fade at her distance is `alpha`
-## (dither_range).
+## (dither_range). While fading she casts no shadow.
 func _apply_fade(node: Node3D, alpha: float) -> void:
 	var faded: Array = node.get_meta(&"fade_surfaces", []) as Array
 	if alpha >= 1.0:
@@ -954,6 +958,7 @@ func _apply_fade(node: Node3D, alpha: float) -> void:
 				var mesh: MeshInstance3D = entry[0] as MeshInstance3D
 				if is_instance_valid(mesh):
 					mesh.set_surface_override_material(int(entry[1]), entry[2] as Material)
+					mesh.set(&"cast_shadow", entry[4])
 			node.remove_meta(&"fade_surfaces")
 		node.remove_meta(&"fade")
 		return
@@ -973,9 +978,13 @@ func _apply_fade(node: Node3D, alpha: float) -> void:
 				var copy: BaseMaterial3D = source.duplicate() as BaseMaterial3D if source != null else null
 				if copy != null:
 					copy.distance_fade_mode = BaseMaterial3D.DISTANCE_FADE_PIXEL_DITHER
-				faded.append([mesh, surface, mesh.get_surface_override_material(surface), copy])
+				faded.append([mesh, surface, mesh.get_surface_override_material(surface), copy, mesh.cast_shadow])
 				if copy != null:
 					mesh.set_surface_override_material(surface, copy)
+		# The dither also runs in the shadow pass, measured from the light, so
+		# a fading figure would cast a full shadow: none until she is solid.
+		for entry: Array in faded:
+			(entry[0] as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		node.set_meta(&"fade_surfaces", faded)
 	node.set_meta(&"fade", alpha)
 	var viewport: Viewport = get_viewport() if is_inside_tree() else null

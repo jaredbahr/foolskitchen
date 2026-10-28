@@ -52,9 +52,13 @@ const PATH_THICKNESS: float = 0.008
 const PATH_SHADES: Array[float] = [0.0, 0.07, -0.06, 0.03, -0.03]
 ## The back alley is solid across the lot and PATH_SOLID_CELLS past it, then
 ## fades into the ground colour over PATH_FADE_CELLS and stops (the delivery
-## person fades in and out at its ends). It is ALLEY_LANES cells wide.
+## person walks on, out of sight, and fades in and out further away). It is
+## ALLEY_LANES cells wide.
 const PATH_SOLID_CELLS: int = 4
-const PATH_FADE_CELLS: int = WallRules.ALLEY_REACH - PATH_SOLID_CELLS
+## The paving reaches this many cells past the lot (her route goes on further,
+## WallRules.ALLEY_REACH, over bare ground well out of sight).
+const PATH_REACH: int = 24
+const PATH_FADE_CELLS: int = PATH_REACH - PATH_SOLID_CELLS
 const ALLEY_LANES: int = 2
 ## A side wall's alley fades out over this many cells past the shop's front,
 ## towards the street, rather than stopping square at the front line.

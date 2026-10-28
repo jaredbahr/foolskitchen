@@ -114,10 +114,15 @@ func test_a_delivery_comes_from_off_the_lot_through_the_back_door() -> void:
 	assert_false(_sim.world.grid.in_bounds(courier.cell), "starts beyond the lot")
 	var seen: Dictionary[Vector2i, bool] = {}
 	var crates: Array[Dictionary] = []
-	for tick: int in 600:
+	var stocked_when_she_left: bool = true
+	var left: bool = false
+	for tick: int in 1200:
 		seen[courier.cell] = true
 		if crates.is_empty() and _dropped():
 			crates = _sim.dock.crates()
+		if not left and courier.state == CourierAgent.State.LEAVING:
+			left = true
+			stocked_when_she_left = _stock.count(&"cheese") == 12 and _stock.count(&"bread") == 16
 		if _sim.dock.couriers().is_empty():
 			break
 		_sim.advance()
@@ -132,7 +137,8 @@ func test_a_delivery_comes_from_off_the_lot_through_the_back_door() -> void:
 	for crate: Dictionary in crates:
 		if int(crate["state"]) == DeliveryDock.CrateState.WAITING:
 			assert_eq(crate["cell"], DROP, "set down on the receiving cell")
-	assert_true(_stock.count(&"cheese") == 8 or _stock.count(&"bread") == 10, "not all stock yet")
+	assert_true(left)
+	assert_false(stocked_when_she_left, "not all stock yet as she steps away")
 
 
 func test_without_a_back_door_the_delivery_uses_the_street_door() -> void:

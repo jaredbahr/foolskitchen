@@ -33,6 +33,9 @@ class Pose extends RefCounted:
 	var hidden: bool = false
 	var fade: float = 1.0
 	var crate_slide: float = 0.0
+	## Where a sliding crate goes (AgentPresentationController.Frame).
+	var crate_spot: Vector3 = Vector3.ZERO
+	var crate_layer: int = 0
 
 	func copy() -> Pose:
 		var out: Pose = Pose.new()
@@ -46,6 +49,8 @@ class Pose extends RefCounted:
 		out.hidden = hidden
 		out.fade = fade
 		out.crate_slide = crate_slide
+		out.crate_spot = crate_spot
+		out.crate_layer = crate_layer
 		return out
 
 
@@ -61,6 +66,11 @@ var _tracks: Dictionary[int, Track] = {}
 ## The pose a frame presents (yaw from its facing, else the last one known).
 static func pose_of(frame: AgentPresentationController.Frame, last: Pose = null) -> Pose:
 	var pose: Pose = Pose.new()
+	_fill(pose, frame, last)
+	return pose
+
+
+static func _fill(pose: Pose, frame: AgentPresentationController.Frame, last: Pose) -> void:
 	pose.position = frame.floor_position + frame.display_offset
 	pose.floor_position = frame.floor_position
 	var flat: Vector3 = Vector3(frame.facing_direction.x, 0.0, frame.facing_direction.z)
@@ -76,7 +86,8 @@ static func pose_of(frame: AgentPresentationController.Frame, last: Pose = null)
 	pose.hidden = frame.hidden
 	pose.fade = frame.fade
 	pose.crate_slide = frame.crate_slide
-	return pose
+	pose.crate_spot = frame.crate_spot
+	pose.crate_layer = frame.crate_layer
 
 
 ## Records `frame`'s pose for person `id` at world tick `tick`. Called every
@@ -86,22 +97,37 @@ static func pose_of(frame: AgentPresentationController.Frame, last: Pose = null)
 ## pose one tick back on the straight line between the two seen.
 func observe(id: int, tick: int, frame: AgentPresentationController.Frame) -> void:
 	var track: Track = _tracks.get(id) as Track
-	var pose: Pose = pose_of(frame, track.current if track != null else null)
 	if track == null or tick < track.tick:
+		var fresh: Pose = pose_of(frame)
 		track = Track.new()
 		track.tick = tick
-		track.previous = pose
-		track.current = pose
+		track.previous = fresh
+		track.current = fresh
 		_tracks[id] = track
 		return
-	if tick > track.tick:
-		var ticks: int = tick - track.tick
-		track.previous = track.current if ticks == 1 \
-			else _between(track.current, pose, float(ticks - 1) / float(ticks))
-		track.tick = tick
-	track.current = pose
-	if not continuous(track.previous, pose):
-		track.previous = pose
+	if tick == track.tick and track.current != track.previous:
+		# Same tick: refresh the newest pose in place (no allocation per frame).
+		_fill(track.current, frame, track.current)
+	else:
+		var pose: Pose = pose_of(frame, track.current)
+		if tick > track.tick:
+			var ticks: int = tick - track.tick
+			track.previous = track.current if ticks == 1 \
+				else _between(track.current, pose, float(ticks - 1) / float(ticks))
+			track.tick = tick
+		track.current = pose
+	if not continuous(track.previous, track.current):
+		track.previous = track.current
+
+
+## Drops the blend for person `id`: what is drawn now is where the next tick
+## blends from. ShopView calls it whenever it draws the newest state as it is
+## (alpha 1: the clock not running this world, e.g. all morning), so a reset
+## made then (staff back at their posts) is never slid across at opening.
+func settle(id: int) -> void:
+	var track: Track = _tracks.get(id) as Track
+	if track != null:
+		track.previous = track.current
 
 
 ## True when going from `a` to `b` in one tick may be blended.
@@ -145,6 +171,11 @@ func blend(id: int, alpha: float, frame: AgentPresentationController.Frame) -> v
 		frame.moving = true
 	frame.fade = lerpf(a.fade, b.fade, t)
 	frame.crate_slide = lerpf(a.crate_slide, b.crate_slide, t)
+	if b.crate_slide <= 0.0 and a.crate_slide > 0.0:
+		# The slide ends this tick (the crate is in the hands): the newest frame
+		# has no spot, so it finishes towards the one it slid from.
+		frame.crate_spot = a.crate_spot
+		frame.crate_layer = a.crate_layer
 	frame.clip = PersonPresentation.clip_for_state(frame.moving, frame.seated, frame.carrying, frame.working,
 		frame.bending)
 
@@ -162,6 +193,12 @@ func clear() -> void:
 
 func has_track(id: int) -> bool:
 	return _tracks.has(id)
+
+
+## True while person `id` has a previous pose to blend from.
+func blending(id: int) -> bool:
+	var track: Track = _tracks.get(id) as Track
+	return track != null and track.previous != track.current
 
 
 static func _between(a: Pose, b: Pose, t: float) -> Pose:

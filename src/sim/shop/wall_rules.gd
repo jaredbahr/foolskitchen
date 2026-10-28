@@ -118,8 +118,11 @@ static func delivery_cell(grid: SimGrid, target: Vector2i = SimGrid.NO_CELL) -> 
 ## outer edge of the lot behind the back door's wall, ALLEY_REACH cells past
 ## the lot at each end (a side wall's alley stops at the shop's front line,
 ## where it meets the street). The delivery person walks in along it, turns
-## up the short path to the door and leaves the same way.
-const ALLEY_REACH: int = 24
+## up the short path to the door and leaves the same way. Her route starts and
+## ends this far out so that, even zoomed out to 26 and in every camera
+## quarter, she fades in and out (over her first and last cells) off screen.
+## The paving itself stops sooner (WallSegmentView.PATH_REACH).
+const ALLEY_REACH: int = 56
 
 
 ## How a visible delivery comes in (FK-099, #187): {door, drop, out, approach}.
