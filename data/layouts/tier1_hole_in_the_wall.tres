@@ -58,6 +58,7 @@ id = &"tier1_hole_in_the_wall"
 display_name = "Hole-in-the-wall"
 rows = PackedStringArray("##############", "#............#", "#............#", "#............#", "#####...######", "#............#", "#............#", "#............#", "#............#", "#............#", "######..######", "      EE      ")
 placements = Array[ExtResource("1_f5t7v")]([SubResource("Resource_8swi5"), SubResource("Resource_o0wg6"), SubResource("Resource_3vvd5"), SubResource("Resource_aexx1"), SubResource("Resource_rgtxa"), SubResource("Resource_8ifey"), SubResource("Resource_ypch0"), SubResource("Resource_vsuro"), SubResource("Resource_sink")])
+room_rows = PackedStringArray("", " KKKKKKKKKKKK", " KKKKKKKKKKKK", " KKKKKKKKKKKK", "     KKK")
 staff_spawns = Dictionary[StringName, Vector2i]({
 &"cook": Vector2i(6, 2),
 &"owner": Vector2i(9, 3),

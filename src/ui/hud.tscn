@@ -179,6 +179,12 @@ layout_mode = 2
 mouse_filter = 1
 text = "Sold out"
 
+[node name="RoomsNote" type="Label" parent="Top/Row"]
+visible = false
+layout_mode = 2
+mouse_filter = 1
+text = "Mark your kitchen in Build → Rooms."
+
 [node name="Plates" type="Label" parent="Top/Row"]
 layout_mode = 2
 mouse_filter = 1

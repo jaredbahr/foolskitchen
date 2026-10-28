@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="RestroomTuning" format=3]
+
+[ext_resource type="Script" path="res://src/sim/restaurant/restroom_tuning.gd" id="1_restroom"]
+
+[resource]
+script = ExtResource("1_restroom")
+seat_threshold = 12
+use_ticks = 200
+missed_patience_share = 0.2
+restroom_review_bonus = 0.2
+missed_review_penalty = 0.8
+default_need_chance = 0.25

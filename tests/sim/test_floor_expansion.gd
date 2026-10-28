@@ -255,6 +255,12 @@ func test_furniture_walls_and_windows_keep_their_places() -> void:
 func test_shrinking_refunds_and_refuses_cut_offs() -> void:
 	var grid: SimGrid = _sim.world.grid
 	assert_true(_editor.apply_floor(_rect(1, -3, 12, 3), true))
+	# Guests may not walk through the kitchen (FK-101): the old kitchen becomes
+	# dining floor (with the opened back wall), except the pass's kitchen side,
+	# so they reach the back room.
+	var dining: Dictionary[Vector2i, int] = _editor.room_changes(_rect(1, 0, 12, 5), SimGrid.Room.DINING)
+	dining.erase(Vector2i(5, 3))
+	assert_true(_editor.apply_rooms(dining), _editor.last_check.why)
 	# A turned table in the new back room: its seats are at (5, -3) and (5, 0).
 	assert_true(_editor.buy(&"table_2", Vector2i(5, -2), 1), _editor.last_check.why)
 	assert_eq(grid.item_at(Vector2i(5, -2)).seat_cells, [Vector2i(5, -3), Vector2i(5, 0)] as Array[Vector2i])
@@ -333,7 +339,7 @@ func test_snapshot_round_trip_keeps_the_footprint() -> void:
 	assert_true(_editor.apply_segments({Vector3i(15, 3, SimGrid.EDGE_WEST): SimGrid.Segment.WINDOW} as Dictionary[Vector3i, int]),
 		_editor.last_check.why)
 	var snapshot: Dictionary = JSON.parse_string(JSON.stringify(_editor.to_dict()))
-	assert_eq(int(snapshot["version"]), 3)
+	assert_eq(int(snapshot["version"]), ShopEditor.SNAPSHOT_VERSION)
 	assert_eq((snapshot["floor"] as Array).size(), 10 + 21 + 6)
 	var errors: Array[String] = []
 	var layout: ShopLayout = ShopEditor.from_dict(snapshot, LAYOUT, _content, errors)

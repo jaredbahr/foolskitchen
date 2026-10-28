@@ -24,6 +24,11 @@ const STATION_TEXT: Dictionary[StringName, String] = {
 	&"drinks_fridge": "Keeps soft drinks cold",
 	&"drinks_shelf": "Holds the beer and wine",
 }
+## Restroom fixtures (FK-101): plain words, nothing more (D8).
+const RESTROOM_TEXT: Dictionary[StringName, String] = {
+	&"toilet": "Guests use it in a Restroom room, one at a time",
+	&"wash_basin": "A basin for washing hands",
+}
 ## What each storage kind holds (FK-087), for "Holds 30 units of dry goods".
 const STORAGE_WORDS: Dictionary[int, String] = {
 	IngredientDef.Storage.FRIDGE: "fridge food", IngredientDef.Storage.FREEZER: "frozen food",
@@ -34,7 +39,7 @@ const STATION_NAMES: Dictionary[StringName, String] = {
 	&"stove": "Stove", &"prep_counter": "Prep counter", &"sink": "Sink", &"fridge": "Fridge",
 	&"fryer": "Fryer", &"oven": "Oven", &"coffee": "Coffee machine",
 	&"drinks_fridge": "Drinks fridge", &"drinks_shelf": "Drinks shelf",
-	&"storage_shelf": "Storage shelf",
+	&"storage_shelf": "Storage shelf", &"toilet": "Toilet", &"wash_basin": "Wash basin",
 }
 
 
@@ -57,7 +62,8 @@ static func group_for(definition: ItemDef) -> StringName:
 			return &"seating"
 		ItemDef.Category.TABLE:
 			return &"tables"
-		ItemDef.Category.STATION, ItemDef.Category.STORAGE, ItemDef.Category.PASS, ItemDef.Category.DOOR:
+		ItemDef.Category.STATION, ItemDef.Category.STORAGE, ItemDef.Category.PASS, ItemDef.Category.DOOR, \
+				ItemDef.Category.RESTROOM:
 			return &"equipment"
 	return &"rugs" if definition.placement_layer == ItemDef.PlacementLayer.FLOOR_DECOR else &"accents"
 
@@ -85,6 +91,8 @@ static func does(definition: ItemDef) -> String:
 			return "Hands finished plates to the servers"
 		ItemDef.Category.DOOR:
 			return "The way in"
+		ItemDef.Category.RESTROOM:
+			return RESTROOM_TEXT.get(definition.station_type, "Restroom fixture")
 	if definition.placement_layer == ItemDef.PlacementLayer.FLOOR_DECOR:
 		return "Rug: tables and chairs can stand on it"
 	return "Decoration"
