@@ -24,6 +24,12 @@ const CRATE_GRIP: float = 0.6
 ## A crate in hand lowered from a stack's upper layer to the carrying height
 ## eases down at this speed (m/s) instead of dropping.
 const CRATE_LOWER_SPEED: float = 0.8
+## Crates set down together appear this many ticks apart, one at a time (the
+## delivery person's bend to its lowest point, CourierAgent.DROP_TICK).
+const CRATE_STAGGER_TICKS: int = CourierAgent.DROP_TICK
+## Fading the delivery person (dither_range): the distance-fade ramp is this
+## long (m), so across her own depth (under a metre) the fade varies by under 1%.
+const DITHER_SPAN: float = 200.0
 ## A back door is open while someone going through is within this distance
 ## of it (fully open within DOOR_OPEN_NEAR), all view only.
 ## The ramp is 1.25 m, about one second of walking at 1x.
@@ -108,6 +114,12 @@ var _crate_height: float = 0.0
 ## Visible deliveries (FK-099): crates waiting on the floor, by crate id.
 var _dock: DeliveryDock
 var crate_nodes: Dictionary[int, Node3D] = {}
+## Crates landed together, shown one at a time: crate id -> world tick.
+var _crate_reveal: Dictionary[int, int] = {}
+var _crates_synced: bool = false
+var _crates_tick: int = 0
+## Smooth motion: people are drawn between their last two sim ticks.
+var motion: MotionSmoother = MotionSmoother.new()
 
 
 ## Replaces a previous world and its signal bindings without modifying either.
@@ -125,6 +137,9 @@ func show_world(value: SimWorld) -> void:
 	agent_nodes.clear()
 	dirt_nodes.clear()
 	crate_nodes.clear()
+	_crate_reveal.clear()
+	_crates_synced = false
+	motion.clear()
 	_wall_nodes.clear()
 	_shell_windows.clear()
 	_floor_preview.clear()
@@ -184,6 +199,8 @@ func set_lot(value: Rect2i) -> void:
 ## Main binds the delivery dock after show_world(): crates on the floor and
 ## in hands, and the back door swinging, all read from it and the agents.
 func bind_dock(value: DeliveryDock) -> void:
+	if value != _dock:
+		_crates_synced = false
 	_dock = value
 	_sync_crates()
 
@@ -820,10 +837,13 @@ func _sync_agents() -> void:
 	var frames: Dictionary[int, AgentPresentationController.Frame] = AgentPresentationController.frames_for(
 		world.agents, world, _dining_seat_heights(), _dining_seat_facings(), _dining_seat_offsets(), _dining_seat_leans())
 	var playback_speed: float = _agent_playback_speed()
+	var alpha: float = interpolation_alpha()
 	var alive: Dictionary[int, bool] = {}
 	for agent: SimAgent in world.agents:
 		alive[agent.id] = true
 		var frame: AgentPresentationController.Frame = frames[agent.id]
+		motion.observe(agent.id, world.now, frame)
+		motion.blend(agent.id, alpha, frame)
 		if agent_nodes.has(agent.id) and (agent_nodes[agent.id] is PersonView) != frame.look_supported:
 			_remove_agent_visual(agent.id)
 		if not agent_nodes.has(agent.id):
@@ -863,6 +883,22 @@ func _sync_agents() -> void:
 	for id: int in agent_nodes.keys():
 		if not alive.has(id):
 			_remove_agent_visual(id)
+	motion.retain(alive)
+
+
+## How far the picture is between the world's last two ticks (smooth motion,
+## MotionSmoother): the clock's fraction while it is running this world, held
+## while paused; 1 (the newest tick as it is) when the clock is not driving
+## it, e.g. in the morning, after closing, or when tests and tools advance it.
+func interpolation_alpha() -> float:
+	if world == null or world.clock.phase not in [SimClock.Phase.OPEN, SimClock.Phase.LAST_ORDERS]:
+		return 1.0
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	var clock_node: Node = tree.root.get_node_or_null("Clock") if tree != null else null
+	if clock_node == null or clock_node.get("attached_world") != world \
+			or clock_node.get("driven_world_tick") != world.now or not clock_node.has_method("tick_fraction"):
+		return 1.0
+	return float(clock_node.call("tick_fraction"))
 
 
 ## A crate in a person's hands, between the palms (made on first use, so
@@ -902,8 +938,14 @@ func _show_held_crates(node: Node3D, frame: AgentPresentationController.Frame, r
 
 
 ## Fades a person (and what they hold) in or out: each surface gets a
-## see-through copy of its own material while `alpha` < 1, and its own
-## material back at 1. The Compatibility renderer has no per-instance alpha.
+## dithered copy of its own material while `alpha` < 1, and its own material
+## back at 1. The copy stays opaque and draws only a share `alpha` of its
+## pixels (screen-door), so she fades as one solid figure: no part of her
+## shows through another, as alpha blending did. The Compatibility renderer
+## has no per-instance alpha, and its alpha hash draws wrongly, so the dither
+## is the material's own distance-fade dither (DISTANCE_FADE_PIXEL_DITHER)
+## with its range set every frame so the fade at her distance is `alpha`
+## (dither_range).
 func _apply_fade(node: Node3D, alpha: float) -> void:
 	var faded: Array = node.get_meta(&"fade_surfaces", []) as Array
 	if alpha >= 1.0:
@@ -913,6 +955,7 @@ func _apply_fade(node: Node3D, alpha: float) -> void:
 				if is_instance_valid(mesh):
 					mesh.set_surface_override_material(int(entry[1]), entry[2] as Material)
 			node.remove_meta(&"fade_surfaces")
+		node.remove_meta(&"fade")
 		return
 	var meshes: Array[Node] = node.find_children("*", "MeshInstance3D", true, false)
 	var count: int = 0
@@ -929,16 +972,35 @@ func _apply_fade(node: Node3D, alpha: float) -> void:
 				var source: BaseMaterial3D = mesh.get_active_material(surface) as BaseMaterial3D
 				var copy: BaseMaterial3D = source.duplicate() as BaseMaterial3D if source != null else null
 				if copy != null:
-					copy.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+					copy.distance_fade_mode = BaseMaterial3D.DISTANCE_FADE_PIXEL_DITHER
 				faded.append([mesh, surface, mesh.get_surface_override_material(surface), copy])
 				if copy != null:
 					mesh.set_surface_override_material(surface, copy)
 		node.set_meta(&"fade_surfaces", faded)
+	node.set_meta(&"fade", alpha)
+	var viewport: Viewport = get_viewport() if is_inside_tree() else null
+	var camera: Camera3D = viewport.get_camera_3d() if viewport != null else null
+	var distance: float = camera.global_position.distance_to(node.global_position + Vector3.UP * 0.6) \
+		if camera != null else 10.0
+	var fade_range: Vector2 = dither_range(distance, alpha)
 	for entry: Array in faded:
 		var copy: BaseMaterial3D = entry[3] as BaseMaterial3D
 		if copy != null:
-			var source_alpha: float = (entry[2] as BaseMaterial3D).albedo_color.a if entry[2] is BaseMaterial3D else 1.0
-			copy.albedo_color.a = source_alpha * alpha
+			copy.distance_fade_min_distance = fade_range.x
+			copy.distance_fade_max_distance = fade_range.y
+
+
+## The distance-fade range that fades a figure `distance` from the camera to
+## `alpha` (0..1): a long range (DITHER_SPAN, shorter only where it would
+## start behind the camera), so the fade hardly changes across the figure's
+## own depth, placed so smoothstep(min, max, distance) = alpha.
+static func dither_range(distance: float, alpha: float) -> Vector2:
+	var a: float = clampf(alpha, 0.0, 1.0)
+	# Inverse of smoothstep's 3t^2 - 2t^3 on 0..1.
+	var t: float = 0.5 - sin(asin(1.0 - 2.0 * a) / 3.0)
+	var span: float = minf(DITHER_SPAN, maxf(distance, 0.01) / maxf(t, 0.001))
+	var low: float = maxf(distance - t * span, 0.0)
+	return Vector2(low, low + span)
 
 
 ## Height of one crate at the furniture scale.
@@ -953,9 +1015,14 @@ func crate_height() -> float:
 
 ## Crates waiting on the floor, spread on their cell and kept to the side away
 ## from a door or street entry next to it (clear of a swinging leaf).
+## Crates that land on one cell in the same tick (the rest of a delivery once
+## the delivery person steps away, or all of it on the cell beside a full
+## stack) come down one at a time, bottom first, CRATE_STAGGER_TICKS apart
+## (view only: the sim has them all down at once).
 func _sync_crates() -> void:
 	var wanted: Dictionary[int, bool] = {}
 	if world != null and _dock != null:
+		var landed: Dictionary[Vector2i, Array] = {}
 		for crate: Dictionary in _dock.crates():
 			if int(crate["state"]) != DeliveryDock.CrateState.WAITING:
 				continue
@@ -970,13 +1037,32 @@ func _sync_crates() -> void:
 				box.set_meta(&"crate_id", id)
 				add_child(box)
 				crate_nodes[id] = box
+				# Only crates seen landing at play speed (not a fast-forward).
+				if _crates_synced and world.now - _crates_tick <= CRATE_STAGGER_TICKS:
+					var cell: Vector2i = crate["cell"]
+					if not landed.has(cell):
+						landed[cell] = []
+					landed[cell].append([int(crate["slot"]), id])
 			crate_nodes[id].position = crate_position(crate["cell"], int(crate["slot"]))
+		for cell: Vector2i in landed:
+			var together: Array = landed[cell]
+			together.sort()
+			for index: int in together.size():
+				if index > 0:
+					_crate_reveal[int(together[index][1])] = world.now + index * CRATE_STAGGER_TICKS
+		_crates_synced = true
+		_crates_tick = world.now
 	for id: int in crate_nodes.keys():
 		if not wanted.has(id):
 			var node: Node3D = crate_nodes[id]
 			crate_nodes.erase(id)
+			_crate_reveal.erase(id)
 			remove_child(node)
 			node.free()
+		elif _crate_reveal.has(id):
+			crate_nodes[id].visible = world.now >= _crate_reveal[id]
+			if crate_nodes[id].visible:
+				_crate_reveal.erase(id)
 
 
 ## Where crate `slot` stands on `cell`: one stack, `slot` crates up, on the
