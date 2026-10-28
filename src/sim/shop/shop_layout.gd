@@ -33,6 +33,9 @@ extends Resource
 ## room_rows when rooms_explicit is set (a loaded save).
 @export var room_cells: Dictionary[Vector2i, int] = {}
 @export var rooms_explicit: bool = false
+## Set on an older save whose kitchen could not be inferred (a seat was in
+## or behind it): the morning asks the player to mark their kitchen.
+var rooms_unmarked: bool = false
 ## Built-in dry storage (FK-087): the back-room pantry the shop comes with,
 ## in units of dry (shelf) ingredients. Placed storage shelves add to it.
 @export var pantry_units: int = 0

@@ -55,13 +55,9 @@ func test_guest_paths_never_enter_kitchen_or_storage() -> void:
 	# A corridor along the east side: from the dining room round to the kitchen's far end.
 	assert_true(_editor.apply_floor(_rect(14, 0, 1, 10), true), _editor.last_check.why)
 	var start: Vector2i = Vector2i(2, 9)
-	var goal: Vector2i = Vector2i(13, 2)
-	assert_eq(grid.room(goal), SimGrid.Room.DINING, "the opened shell cell is new dining floor")
-	var staff: Array[Vector2i] = grid.find_path(start, goal)
-	var crosses: bool = false
-	for cell: Vector2i in staff:
-		crosses = crosses or grid.is_staff_only(cell)
-	assert_true(crosses, "staff take the short way through the kitchen")
+	var goal: Vector2i = Vector2i(14, 0)
+	assert_eq(grid.room(goal), SimGrid.Room.DINING, "the new floor is dining")
+	assert_eq(grid.room(Vector2i(13, 2)), SimGrid.Room.KITCHEN, "the opened wall beside the kitchen is kitchen")
 	var guest: Array[Vector2i] = grid.find_guest_path(start, goal)
 	assert_false(guest.is_empty(), "guests go round")
 	for cell: Vector2i in guest:
@@ -98,14 +94,16 @@ func test_seats_in_staff_rooms_are_refused() -> void:
 
 func test_back_room_through_the_kitchen_is_refused_and_around_it_accepted() -> void:
 	assert_true(_editor.apply_floor(_rect(1, -3, 12, 3), true), _editor.last_check.why)
-	var check: EditCheck = _editor.check_buy(&"table_2", Vector2i(5, -2), 1)
+	# A seat in the opened back wall is in the kitchen.
+	assert_eq(_editor.check_buy(&"table_2", Vector2i(5, -2), 1).why, RoomRules.SEAT_IN_KITCHEN)
+	var check: EditCheck = _editor.check_buy(&"table_2", Vector2i(4, -2), 0)
 	assert_false(check.ok)
 	assert_eq(check.why, RoomRules.THROUGH_KITCHEN)
 	# A corridor wrapping round the kitchen: east wing plus the back corner.
 	assert_true(_editor.apply_floor(_rect(14, -3, 1, 13), true), _editor.last_check.why)
 	assert_true(_editor.apply_floor(_rect(13, -3, 1, 3), true) or _sim.world.grid.terrain(Vector2i(13, -2)) == SimGrid.Terrain.FLOOR)
-	assert_true(_editor.buy(&"table_2", Vector2i(5, -2), 1), _editor.last_check.why)
-	var table: PlacedItem = _sim.world.grid.item_at(Vector2i(5, -2))
+	assert_true(_editor.buy(&"table_2", Vector2i(4, -2), 0), _editor.last_check.why)
+	var table: PlacedItem = _sim.world.grid.item_at(Vector2i(4, -2))
 	# Wall the corridor off and only the kitchen route is left: refused.
 	var wall: Dictionary[Vector3i, int] = {Vector3i(14, 4, SimGrid.EDGE_NORTH): SimGrid.Segment.WALL}
 	assert_eq(_editor.check_segments(wall).why, RoomRules.THROUGH_KITCHEN)
@@ -220,13 +218,85 @@ func test_older_saves_infer_the_starter_kitchen() -> void:
 	var layout: ShopLayout = ShopEditor.from_dict(snapshot, LAYOUT, _content, errors)
 	assert_eq(errors, [] as Array[String])
 	assert_eq(layout.room_map(), LAYOUT.authored_rooms())
-	# A table a player once put in the kitchen keeps its seats.
+	assert_false(layout.rooms_unmarked)
+	# A table a player once put in the kitchen area: marking the kitchen would
+	# leave its seats in it or cut off, so nothing is inferred (all Dining) and
+	# the morning asks the player to mark the kitchen.
 	var legacy: Dictionary = snapshot.duplicate(true)
 	(legacy["items"] as Array).append({"def_id": "table_2", "origin": [9, 2], "quarter_turns": 0, "swatch_id": ""})
 	var legacy_layout: ShopLayout = ShopEditor.from_dict(legacy, LAYOUT, _content, errors)
 	assert_eq(errors, [] as Array[String])
-	assert_false(legacy_layout.room_map().has(Vector2i(8, 3)), "seat cell left as dining")
-	assert_true(legacy_layout.room_map().has(Vector2i(2, 2)))
+	assert_true(legacy_layout.room_map().is_empty(), "every cell stays dining")
+	assert_true(legacy_layout.rooms_unmarked)
+	var restored: RestaurantSim = RestaurantSim.create(legacy_layout, _content, 1, errors, null, false, true)
+	var grid: SimGrid = restored.world.grid
+	var table: PlacedItem = grid.item_at(Vector2i(9, 2))
+	assert_false(DiningSeats.usable_cells(grid, table).is_empty(), "its seats still work")
+	for seat: Vector2i in table.seat_cells:
+		assert_eq(grid.is_guest_reachable(grid.entries()[0], seat), grid.is_reachable(grid.entries()[0], seat),
+			"no room keeps guests from %s" % seat)
+	# Older saves with bought floor get the back-wall rule too.
+	var expanded: Dictionary = snapshot.duplicate(true)
+	expanded["floor"] = [[5, -1], [6, -1], [7, -1]]
+	var expanded_layout: ShopLayout = ShopEditor.from_dict(expanded, LAYOUT, _content, errors)
+	assert_eq(errors, [] as Array[String])
+	assert_eq(expanded_layout.room_map().get(Vector2i(6, 0), -1), SimGrid.Room.KITCHEN)
+
+
+func test_opened_back_wall_beside_the_kitchen_is_kitchen() -> void:
+	var grid: SimGrid = _sim.world.grid
+	assert_true(_history.apply_floor(_rect(1, -3, 12, 3), true), _editor.last_check.why)
+	for x: int in range(1, 13):
+		assert_eq(grid.terrain(Vector2i(x, 0)), SimGrid.Terrain.FLOOR)
+		assert_eq(grid.room(Vector2i(x, 0)), SimGrid.Room.KITCHEN, "opened wall %d behind the stove" % x)
+	assert_eq(grid.room(Vector2i(5, -1)), SimGrid.Room.DINING, "bought floor is dining")
+	assert_true(grid.find_guest_path(grid.entries()[0], Vector2i(5, -2)).is_empty(),
+		"guests can't brush past the stove into the back room")
+	# The east wing: the shell beside the kitchen opens as kitchen, beside the
+	# dining room as dining.
+	assert_true(_history.apply_floor(_rect(14, 0, 1, 10), true), _editor.last_check.why)
+	assert_eq(grid.room(Vector2i(13, 2)), SimGrid.Room.KITCHEN)
+	assert_eq(grid.room(Vector2i(13, 6)), SimGrid.Room.DINING)
+	# The player may repaint it; undo takes the floor and its kitchen away.
+	assert_true(_editor.check_rooms(_rooms([Vector2i(13, 2)], SimGrid.Room.DINING)).ok)
+	assert_true(_history.undo(), _history.last_refusal)
+	assert_eq(grid.terrain(Vector2i(13, 2)), SimGrid.Terrain.WALL)
+	assert_true(_history.redo(), _history.last_refusal)
+	assert_eq(grid.room(Vector2i(13, 2)), SimGrid.Room.KITCHEN)
+
+
+func test_guests_never_cut_a_kitchen_corner() -> void:
+	var grid: SimGrid = _sim.world.grid
+	# A checkerboard pinch: two kitchen cells touching only at a corner.
+	grid.set_rooms(_rooms([Vector2i(9, 8), Vector2i(10, 9)], SimGrid.Room.KITCHEN))
+	assert_false(grid.guest_neighbours(Vector2i(9, 9)).has(Vector2i(10, 8)))
+	assert_true(grid.walkable_neighbours(Vector2i(9, 9)).has(Vector2i(10, 8)), "staff may")
+	var path: Array[Vector2i] = grid.find_guest_path(Vector2i(9, 9), Vector2i(10, 8))
+	assert_false(path.is_empty())
+	assert_true(path.size() > 2, "round, not through the pinch")
+	for index: int in range(1, path.size()):
+		assert_true(grid.guest_step_ok(path[index - 1], path[index]), "%s -> %s" % [path[index - 1], path[index]])
+	# The edit checks' flood fill agrees with what guests walk.
+	var flood: Dictionary[Vector2i, bool] = RoomRules.guest_reachable(grid)
+	for cell: Vector2i in grid.cells():
+		if grid.is_guest_walkable(cell):
+			assert_eq(flood.has(cell), not grid.find_guest_path(grid.entries()[0], cell).is_empty(), "%s" % cell)
+
+
+func test_buried_guests_escape_without_crossing_the_kitchen() -> void:
+	var grid: SimGrid = _sim.world.grid
+	# A guest buried under a crate in the dining room beside the kitchen door.
+	var crate: PlacedItem = grid.place(Vector2i.ONE, Vector2i(7, 5), 0, true)
+	assert_not_null(crate)
+	var path: Array[Vector2i] = grid.find_guest_path(Vector2i(7, 5), Vector2i(10, 9))
+	assert_false(path.is_empty())
+	for index: int in range(1, path.size()):
+		assert_false(grid.is_staff_only(path[index]), "%s" % path[index])
+
+
+func test_seats_in_a_restroom_are_refused() -> void:
+	var table: PlacedItem = _sim.world.grid.item_at(Vector2i(2, 6))
+	assert_eq(_editor.check_rooms(_rooms([table.seat_cells[0]], SimGrid.Room.RESTROOM)).why, RoomRules.SEAT_IN_RESTROOM)
 
 
 func test_vibe_counts_decor_only_in_guest_rooms() -> void:
@@ -245,6 +315,16 @@ func test_vibe_counts_decor_only_in_guest_rooms() -> void:
 	grid.set_segments(walls)
 	inputs = VibeInputs.capture(grid, _content, [])
 	assert_eq(inputs.items.size(), grid.items().size() - 2)
+
+
+func test_decor_crowded_by_furniture_still_counts() -> void:
+	var grid: SimGrid = _sim.world.grid
+	# Two plants beside the corner plant box it in, every room Dining but the
+	# kitchen: all three still count (furniture never hides decor).
+	assert_not_null(grid.place_def(_content.item(&"potted_plant"), Vector2i(11, 9)))
+	assert_not_null(grid.place_def(_content.item(&"potted_plant"), Vector2i(12, 8)))
+	var inputs: VibeModel.Inputs = VibeInputs.capture(grid, _content, [])
+	assert_eq(inputs.items.size(), grid.items().size())
 
 
 func _rooms(cells: Array[Vector2i], kind: int) -> Dictionary[Vector2i, int]:

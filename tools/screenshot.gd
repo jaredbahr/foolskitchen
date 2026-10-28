@@ -2391,8 +2391,12 @@ func _configure_rooms() -> void:
 		if not bool(_main.call("shop_floor", cells, true)):
 			_fail_capture("the floor fixture was refused: " + editor.last_check.why)
 			return
-	var steps: Array = [["shop_rooms", editor.room_changes(rooms_kitchen_cells(), SimGrid.Room.KITCHEN)],
-		["shop_walls", rooms_walls()],
+	# The opened back wall row is already kitchen (the back-wall rule).
+	for cell: Vector2i in rooms_kitchen_cells():
+		if world.grid.room(cell) != SimGrid.Room.KITCHEN:
+			_fail_capture("the opened back wall should be kitchen at %s" % cell)
+			return
+	var steps: Array = [["shop_walls", rooms_walls()],
 		["shop_rooms", editor.room_changes(rooms_restroom_cells(), SimGrid.Room.RESTROOM)],
 		["shop_buy", &"toilet", Vector2i(6, -3), 2], ["shop_buy", &"bathroom_sink", Vector2i(7, -3), 2],
 		["shop_buy", &"table_2", Vector2i(10, -3), 0], ["shop_buy", &"table_2", Vector2i(13, 6), 1]]

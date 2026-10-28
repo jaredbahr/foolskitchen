@@ -37,11 +37,13 @@ func sync_spots() -> void:
 	for cell: Vector2i in _suspended.keys():
 		if not dirt.has_spot(cell):
 			_suspended.erase(cell)
-	for cell: Vector2i in dirt.spots():
+	var cells: Array[Vector2i] = dirt.spots()
+	cells.append_array(dirt.restroom_spots())
+	for cell: Vector2i in cells:
 		if _tasks.has(cell) or _suspended.has(cell) or not _eligible(world, cell):
 			continue
-		# A restroom spot (FK-101) is a quick tidy-up, never called mess.
-		var restroom: bool = world.grid.room(cell) == SimGrid.Room.RESTROOM
+		# Restroom upkeep (FK-101) is a quick tidy-up, never called mess.
+		var restroom: bool = dirt.has_restroom_spot(cell) and not dirt.spots().has(cell)
 		var task: SimTask = SimTask.new(&"clean_spot", &"cleaner",
 			"Tidy the restroom" if restroom else "Mop up a floor spot")
 		task.priority = 0

@@ -992,11 +992,15 @@ an active edit/panel/selection first, or opens Settings when none is active.
 - **Guest path layer.** `SimAgent.plan_path()` is the route an agent walks;
   `CustomerAgent` overrides it with `SimGrid.find_guest_path()`. That tries
   the plain path first and keeps it when no cell after the start is
-  staff-only, so a shop whose guests never went near the kitchen keeps its
-  exact paths (the starter's do not: the balance probe is unchanged). Otherwise
-  it searches `_guest_astar`, a third `EdgeAStar` sharing the edge maps, where
-  staff-only cells are solid as well. A staff-only goal has no guest path; a
-  guest standing in a staff cell walks out on the plain path. Guests also use
+  staff-only and no diagonal step passes a staff cell (`guest_step_ok`: no
+  cutting a kitchen corner), so a shop whose guests never went near the
+  kitchen keeps its exact paths (the balance probe is unchanged). Otherwise it
+  searches `_guest_astar`, a third `EdgeAStar` sharing the edge maps, where
+  staff-only cells are solid as well. A staff-only goal has no guest path. A
+  guest buried by furniture escapes to a guest cell first; only a guest
+  standing in a staff cell, or one with no guest way out, walks out on the
+  plain path. `guest_neighbours` uses the same step rule, so the edit checks'
+  flood fill (`RoomRules.guest_reachable`) agrees with what guests walk. Guests also use
   `is_guest_reachable`, `find_guest_path_to_any` (the exit) and
   `guest_neighbours` (the door queue); `PartySeating` and
   `DiningSeats.usable_cells` count only seats guests can reach. Staff, the
@@ -1004,8 +1008,9 @@ an active edit/panel/selection first, or opens Settings when none is active.
 - **Rules (`RoomRules`, one place for every sentence).** Violations are keyed
   by item (live id; 0 for a proposed buy) and cell, and an edit is refused
   only when it adds one, so an older save's problem never blocks unrelated
-  edits: a table seat in a staff room ("Guests don't sit in the kitchen" /
-  "... storage room"); a seat, a toilet's use spot or the street door that
+  edits: a table seat in a Kitchen, Storage or Restroom room ("Guests don't
+  sit in the kitchen" / "... storage room" / "Guests don't eat in the
+  restroom"); a seat, a toilet's use spot or the street door that
   staff can reach but guests can't ("Guests can't reach this without walking
   through the kitchen"); and, once the shop has a Kitchen cell, a pass whose
   staff side (`work_cells[0]`) is not Kitchen or whose guest side is not
@@ -1013,6 +1018,16 @@ an active edit/panel/selection first, or opens Settings when none is active.
   other"). `ShopEditor` runs it for buys and moves (after the dining check),
   wall and floor edits (after the cut-off check) and room painting. Stations
   may stand in any room. Undo/redo (`Exact`) skips it (#178 accepted layout).
+  The live side is cached on the grid against `SimGrid.version` (bumped on
+  every terrain, item, segment or room change), so a hover only recomputes the
+  proposal (a buy check went from about 4.6 to 3.1 ms).
+- **The back-wall rule (Jared).** When a floor edit opens a starting-shell
+  cell that touches a Kitchen cell (the wall row behind the kitchen, the east
+  end of the divider), that cell becomes Kitchen, not Dining
+  (`RoomRules.opened_kitchen`, applied in `check_floor`'s preview and in
+  `apply_floor`). Guests reach a back room only by a route round the kitchen;
+  the player may repaint the cell. Opened cells were walls before, so this
+  can't cut off an existing seat, but the usual checks run on the preview.
 - **Painting.** `ShopEditor.room_changes(cells, kind)`, `check_rooms` and
   `apply_rooms` (MORNING/CLOSED, free, no ledger line); `ShopEditHistory`
   records `Kind.ROOMS` with the rooms before and after, and a floor removal
@@ -1030,20 +1045,24 @@ an active edit/panel/selection first, or opens Settings when none is active.
   openings (5..7, 4) are Kitchen. The `shop` snapshot is version 4 with
   `rooms: [[x, y, id], ...]` (non-Dining cells, row-major); `from_dict`
   refuses unknown ids, Dining rows, duplicates and non-floor cells. Versions
-  1-3 infer the template's rooms on the floor, except a cell that is already
-  a dining seat. `ShopLayout.room_cells`/`rooms_explicit` carry loaded rooms
-  to `ShopBuilder`.
+  1-3 infer the template's rooms on the floor (with the back-wall rule for
+  bought floor), unless that would break a room rule (a seat in or behind the
+  kitchen, say); then nothing is inferred, every cell stays Dining, and the
+  HUD shows "Mark your kitchen in Build → Rooms." that morning
+  (`ShopLayout.rooms_unmarked`; cleared on entering Build or opening).
+  `ShopLayout.room_cells`/`rooms_explicit` carry loaded rooms to `ShopBuilder`.
 - **Restroom pieces.** `ItemDef.Category.RESTROOM` (appended; vibe theme
   weight 0): `toilet` (station_type `toilet`, Kenney `toilet`) and
   `bathroom_sink` ("Wash basin", Kenney `bathroomSink`), both
   `catalogue_room = restroom`, so Buy's Restroom tab appears. No mirror: the
   kit's `bathroomMirror` hangs on a wall and the game has no wall-hung items.
 - **Restrooms.** `RoomRules.restroom_toilets()`: toilets in a Restroom room
-  whose use spot guests can reach. `RestaurantSim` caches them and the dining
+  whose use spot is in the Restroom too and reachable by guests. `RestaurantSim` caches them and the dining
   seat count per layout change (`has_restroom`, `seat_count`,
   `restrooms_expected` at `data/balance/restroom.tres` `seat_threshold` 12,
   `restrooms_matter`). After the ticket is placed a guest draws one
-  `randf()` from their own stream against `CustomerType.restroom_chance`, but
+  `randf()` from their own stream against `CustomerType.restroom_chance`
+  (`default_need_chance` for an untyped guest), but
   only when restrooms matter, so default play draws nothing new. The trip
   (`CustomerAgent.Restroom`: NEEDED, WALKING, INSIDE, RETURNING, DONE) runs
   inside WAITING_FOOD: the seat stays booked, a delivered meal waits and food
@@ -1053,17 +1072,23 @@ an active edit/panel/selection first, or opens Settings when none is active.
   at the seat with patience running; a meal arriving first ends the wait.
   Missing out (none, or the meal came first) costs `missed_patience_share` of
   food patience and adds `missed_review_penalty` (review cause `no_restroom`,
-  mentioned whenever it is the biggest complaint) only at or above the
-  threshold. Every OPEN arrival in a shop with a restroom gets
-  `restroom_review_bonus`. Walks are bounded by `SEAT_WALK_LIMIT`.
+  or `restroom_busy` when the shop had one, mentioned whenever it is the
+  biggest complaint) only at or above the threshold. Every OPEN arrival in a
+  shop with a restroom gets `restroom_review_bonus`. Walks are bounded by
+  `SEAT_WALK_LIMIT`; a guest who can't get back to their seat leaves
+  (`no_table`) rather than eat away from the table.
 - **Cleaning.** Each use calls `CleanlinessState.add_use_spot()` on the use
-  cell (no draw) when cleanliness exists, and `CleanTaskController` posts
-  "Tidy the restroom" for spots in a Restroom room. `ShopView` never draws a
-  decal in a restroom (D8: no mess).
+  cell (no draw) when cleanliness exists. Restroom spots are a separate set:
+  never in the dirt fraction, arrival patience, the dirty-floor review, the
+  day's worst band or the floor spot cap, and never drawn (D8: no mess).
+  `CleanTaskController` posts "Tidy the restroom" for them (tagged by origin,
+  not by the room under the cell).
 - **Vibe.** `VibeInputs.capture()` drops DECOR items that are not in a guest
   room: none of their non-staff cells is, or is next to without a wall, a cell
-  guests can walk to (`RoomRules.guest_reachable`). Grids without a street
-  entry (tests) count everything. Stations still vote as before.
+  of `RoomRules.guest_floor` (floor joined to the door by orthogonal steps
+  through no wall and no staff room; furniture ignored, so crowded decor still
+  counts). Grids without a street entry (tests) count everything. Stations
+  still vote as before.
 - Tests: `tests/sim/test_rooms.gd`, `tests/sim/test_restrooms.gd`. Captures:
   `tools/screenshot.sh --rooms=tool --speed=0 --frames=30`, `--rooms=refused
   --speed=0 --frames=30`, `--rooms=restroom --open --fast=10 --speed=1

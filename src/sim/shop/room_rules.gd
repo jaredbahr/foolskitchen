@@ -16,6 +16,7 @@ const LABELS: Array[String] = ["Dining room", "Kitchen", "Restroom", "Storage"]
 
 const SEAT_IN_KITCHEN: String = "Guests don't sit in the kitchen"
 const SEAT_IN_STORAGE: String = "Guests don't sit in the storage room"
+const SEAT_IN_RESTROOM: String = "Guests don't eat in the restroom"
 const THROUGH_KITCHEN: String = "Guests can't reach this without walking through the kitchen"
 const PASS_SIDES: String = "The pass needs the kitchen on one side and guests on the other"
 const ROOMS_CLOSED: String = "Rooms can only be painted in the morning or after closing"
@@ -62,6 +63,51 @@ static func guest_reachable(grid: SimGrid) -> Dictionary[Vector2i, bool]:
 	return seen
 
 
+## The guest rooms as seen, not walked (the vibe, FK-101): FLOOR cells joined
+## to the street door by orthogonal steps that cross no wall or window and
+## never enter a staff-only room. Furniture is ignored, so decor crowded by
+## other furniture still shows.
+static func guest_floor(grid: SimGrid) -> Dictionary[Vector2i, bool]:
+	var seen: Dictionary[Vector2i, bool] = {}
+	var frontier: Array[Vector2i] = []
+	for entry: Vector2i in grid.entries():
+		if not seen.has(entry):
+			seen[entry] = true
+			frontier.append(entry)
+	while not frontier.is_empty():
+		var next: Array[Vector2i] = []
+		for cell: Vector2i in frontier:
+			for step: Vector2i in [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]:
+				var neighbour: Vector2i = cell + step
+				var terrain: SimGrid.Terrain = grid.terrain(neighbour)
+				if seen.has(neighbour) or (terrain != SimGrid.Terrain.FLOOR and terrain != SimGrid.Terrain.ENTRY) \
+						or grid.is_staff_only(neighbour) or grid.edge_blocked(cell, neighbour):
+					continue
+				seen[neighbour] = true
+				next.append(neighbour)
+		frontier = next
+	return seen
+
+
+## The back-wall rule (Jared, FK-101): starting-shell cells that a floor change
+## opens into floor become Kitchen when they touch a Kitchen cell, so guests
+## never brush past the stove through an opened wall; the player may repaint
+## them. `before` is the shop before the change (its rooms decide), `after`
+## the shop's terrain after it. Cells outside `building` (bought lot floor)
+## stay Dining.
+static func opened_kitchen(before: SimGrid, after: SimGrid, building: Rect2i) -> Dictionary[Vector2i, int]:
+	var out: Dictionary[Vector2i, int] = {}
+	for cell: Vector2i in after.cells():
+		if not building.has_point(cell) or after.terrain(cell) != SimGrid.Terrain.FLOOR \
+				or before.terrain(cell) == SimGrid.Terrain.FLOOR:
+			continue
+		for step: Vector2i in [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]:
+			if before.room(cell + step) == SimGrid.Room.KITCHEN:
+				out[cell] = SimGrid.Room.KITCHEN
+				break
+	return out
+
+
 ## True for a placed toilet (a restroom fixture guests use).
 static func is_toilet(placed: PlacedItem) -> bool:
 	var definition: ItemDef = placed.def as ItemDef if placed != null else null
@@ -72,10 +118,9 @@ static func is_toilet(placed: PlacedItem) -> bool:
 ## The first problem `preview` adds over `live`, or "". `ids` maps preview item
 ## ids to live ids (0 for a proposed new item).
 static func problem(live: SimGrid, preview: SimGrid, ids: Dictionary[int, int]) -> String:
-	if not live.has_staff_rooms() and not preview.has_staff_rooms():
+	if not live.has_rooms() and not preview.has_rooms():
 		return ""
-	var identity: Dictionary[int, int] = {}
-	var before: Dictionary[String, String] = violations(live, identity)
+	var before: Dictionary[String, String] = live_violations(live)
 	var after: Dictionary[String, String] = violations(preview, ids)
 	for key: String in after:
 		if not before.has(key):
@@ -83,11 +128,23 @@ static func problem(live: SimGrid, preview: SimGrid, ids: Dictionary[int, int]) 
 	return ""
 
 
+## The live shop's violations, cached on the grid against its layout version:
+## hovering a buy, move or room paint only recomputes the proposed side.
+static func live_violations(live: SimGrid) -> Dictionary[String, String]:
+	var cached: Array = live.get_meta(&"room_violations", [])
+	if cached.size() == 2 and cached[0] == live.version:
+		return cached[1]
+	var identity: Dictionary[int, int] = {}
+	var found: Dictionary[String, String] = violations(live, identity)
+	live.set_meta(&"room_violations", [live.version, found])
+	return found
+
+
 ## Every rule broken in `grid`, key -> sentence, in a fixed order (seats in
 ## staff rooms first, then cut-off seats, toilets and the door, then the pass).
 static func violations(grid: SimGrid, ids: Dictionary[int, int]) -> Dictionary[String, String]:
 	var out: Dictionary[String, String] = {}
-	if not grid.has_staff_rooms():
+	if not grid.has_rooms():
 		return out
 	var anyone: Dictionary[Vector2i, bool] = WallRules.reachable(grid)
 	var guests: Dictionary[Vector2i, bool] = guest_reachable(grid)
@@ -100,9 +157,9 @@ static func violations(grid: SimGrid, ids: Dictionary[int, int]) -> Dictionary[S
 		if definition.category == ItemDef.Category.TABLE:
 			for seat: Vector2i in placed.seat_cells:
 				var kind: int = grid.room(seat)
-				if SimGrid.room_staff_only(kind):
-					out["seat:%d:%d:%d" % [live_id, seat.x, seat.y]] = \
-						SEAT_IN_KITCHEN if kind == SimGrid.Room.KITCHEN else SEAT_IN_STORAGE
+				if kind != SimGrid.Room.DINING:
+					out["seat:%d:%d:%d" % [live_id, seat.x, seat.y]] = SEAT_IN_KITCHEN \
+						if kind == SimGrid.Room.KITCHEN else (SEAT_IN_STORAGE if kind == SimGrid.Room.STORAGE else SEAT_IN_RESTROOM)
 				elif anyone.has(seat) and not guests.has(seat):
 					cut_off["reach:%d:%d:%d" % [live_id, seat.x, seat.y]] = THROUGH_KITCHEN
 		elif is_toilet(placed):
@@ -132,7 +189,8 @@ static func _has_kitchen(grid: SimGrid) -> bool:
 	return false
 
 
-## Toilets guests can use: in a Restroom room, with a use spot guests can reach.
+## Toilets guests can use: standing in a Restroom room, with a use spot in
+## the Restroom room too that guests can reach.
 ## In placement order. Empty when the shop has no restroom.
 static func restroom_toilets(grid: SimGrid) -> Array[PlacedItem]:
 	var out: Array[PlacedItem] = []
@@ -151,7 +209,7 @@ static func restroom_toilets(grid: SimGrid) -> Array[PlacedItem]:
 			guests = guest_reachable(grid)
 			computed = true
 		for spot: Vector2i in placed.work_cells:
-			if guests.has(spot):
+			if grid.room(spot) == SimGrid.Room.RESTROOM and guests.has(spot):
 				out.append(placed)
 				break
 	return out

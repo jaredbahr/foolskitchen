@@ -56,13 +56,17 @@ var vibe_review_bonus: float = 0.0
 var vibe_theme_label: String = ""
 ## Restrooms (FK-101). The need is drawn once, after ordering, only in a shop
 ## with a restroom or at the seat threshold.
-var restroom_chance: float = 0.25
+## Set from the customer type; below zero (an untyped guest) uses
+## RestroomTuning.default_need_chance.
+var restroom_chance: float = -1.0
 var restroom: Restroom = Restroom.NONE
 ## The toilet in use (its work cell is reserved for this guest), or 0.
 var restroom_toilet_id: int = 0
 ## Review terms: a shop with a restroom is a bit nicer; a missed need hurts.
 var restroom_bonus: float = 0.0
 var restroom_penalty: float = 0.0
+## The missed restroom existed but was busy (the review says which).
+var restroom_was_busy: bool = false
 var _restroom_spot: Vector2i = SimGrid.NO_CELL
 var _restroom_ticks: int = 0
 ## Survives morning report resets so stale removal callbacks cannot count twice.
@@ -305,6 +309,7 @@ func review_visit(standard_price: int, dirt_fraction: float = 0.0) -> ReviewVisi
 	visit.vibe_review_bonus = vibe_review_bonus
 	visit.restroom_bonus = restroom_bonus
 	visit.restroom_penalty = restroom_penalty
+	visit.restroom_was_busy = restroom_was_busy
 	return visit
 
 
@@ -630,7 +635,8 @@ func in_restroom() -> bool:
 func _maybe_need_restroom(sim: RestaurantSim) -> void:
 	if restroom != Restroom.NONE or not sim.restrooms_matter():
 		return
-	if rng.randf() < clampf(restroom_chance, 0.0, 1.0):
+	var chance: float = restroom_chance if restroom_chance >= 0.0 else sim.restroom_tuning.default_need_chance
+	if rng.randf() < clampf(chance, 0.0, 1.0):
 		restroom = Restroom.NEEDED
 
 
@@ -678,10 +684,12 @@ func _restroom_tick(world: SimWorld, sim: RestaurantSim) -> void:
 				restroom = Restroom.DONE
 				clear_path()
 			elif _restroom_ticks >= SEAT_WALK_LIMIT:
-				# Never stranded with patience paused: carry on from here.
+				# Never stranded with patience paused, and never eating away
+				# from the table: the visit ends as if the table were lost.
 				world.log_event("Guest #%d could not get back to their seat" % id)
 				restroom = Restroom.DONE
 				clear_path()
+				_leave(world, sim, &"no_table")
 
 
 ## A guest who needed a restroom and couldn't use one: in a shop that seats
@@ -689,6 +697,7 @@ func _restroom_tick(world: SimWorld, sim: RestaurantSim) -> void:
 func _miss_restroom(sim: RestaurantSim) -> void:
 	restroom = Restroom.DONE
 	if sim.restrooms_expected() and sim.restroom_tuning != null:
+		restroom_was_busy = sim.has_restroom()
 		_food_wait = mini(food_patience, _food_wait + roundi(float(food_patience) * sim.restroom_tuning.missed_patience_share))
 		restroom_penalty = sim.restroom_tuning.missed_review_penalty
 

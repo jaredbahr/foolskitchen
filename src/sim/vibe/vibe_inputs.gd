@@ -14,12 +14,13 @@ static func capture(grid: SimGrid, content: ContentDB, menu: Array[RecipeDef],
 	for cell: Vector2i in grid.cells():
 		if grid.terrain(cell) == SimGrid.Terrain.FLOOR:
 			inputs.floor_cells.append(cell)
-	# Decor only counts where guests can see it (FK-101): in a room they can
-	# walk to. A shop without a street entry (a test grid) counts everything.
+	# Decor only counts where guests can see it (FK-101): in a guest room joined
+	# to the door (furniture ignored). A grid without a street entry (a test
+	# grid) counts everything.
 	var guests: Dictionary[Vector2i, bool] = {}
 	var gated: bool = not grid.entries().is_empty()
 	if gated:
-		guests = RoomRules.guest_reachable(grid)
+		guests = RoomRules.guest_floor(grid)
 	for placed: PlacedItem in grid.items():
 		var definition: ItemDef = placed.def as ItemDef
 		if placed.removed or definition == null or definition.id.is_empty() \
@@ -65,7 +66,8 @@ static func capture(grid: SimGrid, content: ContentDB, menu: Array[RecipeDef],
 
 
 ## True when guests can see this item: one of its cells is outside the staff
-## rooms and is, or is next to (no wall between), a cell guests can walk to.
+## rooms and is, or is next to (no wall between), a guest-room floor cell
+## (RoomRules.guest_floor).
 static func guest_room_item(grid: SimGrid, placed: PlacedItem, guests: Dictionary[Vector2i, bool]) -> bool:
 	for cell: Vector2i in placed.cells:
 		if grid.is_staff_only(cell):

@@ -134,6 +134,9 @@ var _paint_from_build: bool = false
 ## The last undo/redo refusal or result, shown in the hint strip until the
 ## next edit, tool change or mode change.
 var _edit_notice: String = ""
+## FK-101: an older save's kitchen could not be marked; asked once that morning.
+const ROOMS_NOTE: String = "Mark your kitchen in Build → Rooms."
+var _rooms_note: bool = false
 var _menu_quality: Dictionary[StringName, Dictionary] = {}
 var _menu_panel: MenuPanel
 var _staff_panel: StaffPanel
@@ -372,6 +375,8 @@ func start() -> void:
 	SaveSystem.register("reorder", _capture_reorder, _restore_reorder)
 	SaveSystem.register("deliveries", _capture_deliveries, _restore_deliveries)
 	var loaded: bool = use_saves and _load_autosave()
+	_rooms_note = loaded and _loaded_layout != null and _loaded_layout.rooms_unmarked
+	$HUD.set_rooms_note(ROOMS_NOTE if _rooms_note else "")
 	if not loaded:
 		_skip_next_autosave = use_saves and SaveSystem.list_slots().has(save_slot)
 		_new_game()
@@ -949,6 +954,7 @@ func _on_build_changed() -> void:
 	($CameraRig as CameraRig).set_grid_forced(active)
 	if active and not _was_build_active:
 		_build_phase = world.clock.phase
+		_clear_rooms_note()
 		_dismiss_goals()
 		set_menu_visible(false)
 		set_staff_visible(false)
@@ -2124,6 +2130,12 @@ func shop_floor(cells: Array[Vector2i], adding: bool) -> bool:
 	return accepted
 
 
+func _clear_rooms_note() -> void:
+	if _rooms_note:
+		_rooms_note = false
+		$HUD.set_rooms_note("")
+
+
 ## Room painting (FK-101): free, checked by ShopEditor, undoable.
 func shop_rooms(changes: Dictionary[Vector2i, int]) -> bool:
 	var accepted: bool = shop_editor != null and edit_history.apply_rooms(changes)
@@ -2979,6 +2991,7 @@ func _unlocked_at_levels(previous_level: int, current_level: int) -> Array[Strin
 
 func _on_day_phase_changed(_day: int, phase: int) -> void:
 	_dismiss_goals()
+	_clear_rooms_note()
 	# Undo never reaches back across opening (or into a new morning).
 	edit_history.clear()
 	if menu_settings != null:

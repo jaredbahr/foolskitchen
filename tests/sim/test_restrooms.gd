@@ -159,9 +159,68 @@ func test_each_use_leaves_a_tidy_job_for_the_cleaners() -> void:
 	var spot: Vector2i = toilet.work_cells[0]
 	_sim.restroom_used(spot)
 	assert_true(_sim.cleanliness.has_spot(spot))
+	assert_true(_sim.cleanliness.has_restroom_spot(spot))
+	# Restroom upkeep is not floor dirt: no patience, review or band effect.
+	assert_eq(_sim.cleanliness.spot_count(), 0)
+	assert_eq(_sim.cleanliness.dirt_fraction(), 0.0)
+	assert_eq(_sim.cleanliness.worst_today_count(), 0)
+	assert_eq(_sim.cleanliness.patience_multiplier(), 1.0)
 	var task: SimTask = _sim.clean_tasks.task_for(spot)
 	assert_not_null(task)
 	assert_eq(task.label, "Tidy the restroom")
+	# A floor spot on the same cell is still a floor spot, and a mop job.
+	_sim.cleanliness.clear_spot(spot)
+	assert_false(_sim.cleanliness.has_spot(spot))
+
+
+func test_a_toilet_needs_its_use_spot_in_the_restroom() -> void:
+	var grid: SimGrid = _sim.world.grid
+	var toilet: PlacedItem = grid.place_def(_content.item(&"toilet"), Vector2i(1, 9), 0)
+	grid.set_rooms({Vector2i(1, 9): SimGrid.Room.RESTROOM} as Dictionary[Vector2i, int])
+	assert_false(_sim.has_restroom(), "the use spot is in the dining room")
+	grid.set_rooms({toilet.work_cells[0]: SimGrid.Room.RESTROOM} as Dictionary[Vector2i, int])
+	assert_true(_sim.has_restroom())
+
+
+func test_a_guest_who_cannot_get_back_ends_the_visit() -> void:
+	var toilet: PlacedItem = _restroom(Vector2i(1, 9))
+	_sim.world.clock.start_service()
+	var guest: CustomerAgent = _guest(1.0)
+	assert_true(_run_until(guest, &"_inside"))
+	# Shut the restroom in while they are inside: no way back to the seat.
+	var spot: Vector2i = toilet.work_cells[0]
+	_sim.world.grid.set_segments({SimGrid.edge_between(spot, spot + Vector2i.UP): SimGrid.Segment.WALL,
+		SimGrid.edge_between(spot, spot + Vector2i.RIGHT): SimGrid.Segment.WALL} as Dictionary[Vector3i, int])
+	var ate: bool = false
+	for tick: int in 1500:
+		_sim.advance()
+		ate = ate or guest.state == CustomerAgent.State.EATING
+		if guest.state >= CustomerAgent.State.LEAVING:
+			break
+	assert_false(ate, "never eats away from the table")
+	assert_true(guest.state >= CustomerAgent.State.LEAVING)
+	assert_eq(guest.leave_reason, &"no_table")
+	assert_eq(toilet.reserved_by(spot), -1)
+
+
+func test_untyped_guests_use_the_tuned_chance_and_busy_restrooms_say_so() -> void:
+	var tuning: RestroomTuning = TUNING.duplicate() as RestroomTuning
+	tuning.default_need_chance = 1.0
+	_sim.restroom_tuning = tuning
+	var toilet: PlacedItem = _restroom(Vector2i(1, 9))
+	toilet.reserve(toilet.work_cells[0], 9999)
+	tuning.seat_threshold = 6
+	_sim.world.clock.start_service()
+	var guest: CustomerAgent = _guest(-1.0)
+	assert_true(_run_until(guest, &"_waiting_food"))
+	assert_ne(guest.restroom, CustomerAgent.Restroom.NONE, "the tuned default chance applies")
+	_sim.orders.set_state(guest.order, Order.State.READY)
+	_sim.orders.set_state(guest.order, Order.State.DELIVERED)
+	_sim.advance()
+	assert_true(guest.restroom_was_busy)
+	var visit: ReviewVisit = guest.review_visit(10)
+	visit.served = true
+	assert_eq(ReputationBook.cause_of(visit, load("res://data/balance/reviews.tres") as ReviewTuning), &"restroom_busy")
 
 
 ## A toilet at `cell` facing north (its use spot just north), in a Restroom.

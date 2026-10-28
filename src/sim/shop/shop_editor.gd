@@ -440,12 +440,33 @@ static func from_dict(data: Dictionary, template_layout: ShopLayout, content: Co
 				return null
 			rooms[cell] = kind
 	else:
-		# Older saves had no rooms: the starting layout's kitchen is inferred,
-		# except under a seat a player already put there.
-		var authored: Dictionary[Vector2i, int] = template_layout.authored_rooms()
-		for cell: Vector2i in authored:
-			if preview.terrain(cell) == SimGrid.Terrain.FLOOR and preview.dining_table_id(cell) == 0:
-				rooms[cell] = authored[cell]
+		# Older saves had no rooms: the starting layout's kitchen is inferred
+		# (with the back-wall rule for floor they bought). If that would put a
+		# seat in the kitchen or leave a seat, toilet or the door reachable only
+		# through it, nothing is inferred: every cell stays Dining and the
+		# morning asks the player to mark their kitchen.
+		var start: SimGrid = SimGrid.from_ascii(template_layout.rows)
+		var authored: Dictionary[Vector2i, int] = {}
+		var wanted: Dictionary[Vector2i, int] = template_layout.authored_rooms()
+		for cell: Vector2i in wanted:
+			if start.terrain(cell) == SimGrid.Terrain.FLOOR:
+				authored[cell] = wanted[cell]
+		start.set_rooms(authored)
+		var inferred: Dictionary[Vector2i, int] = authored.duplicate()
+		inferred.merge(RoomRules.opened_kitchen(start, preview, footprint.building))
+		var filtered: Dictionary[Vector2i, int] = {}
+		for cell: Vector2i in inferred:
+			if preview.terrain(cell) == SimGrid.Terrain.FLOOR:
+				filtered[cell] = inferred[cell]
+		preview.set_rooms(filtered)
+		var problems: bool = false
+		for key: String in RoomRules.violations(preview, {} as Dictionary[int, int]):
+			if not key.begins_with("pass:"):
+				problems = true
+		if problems:
+			layout.rooms_unmarked = true
+		else:
+			rooms = filtered
 	layout.room_rows = template_layout.room_rows.duplicate()
 	layout.room_cells = rooms
 	layout.rooms_explicit = true
@@ -725,6 +746,9 @@ func check_floor(cells: Array[Vector2i], adding: bool, exact: Exact = null,
 		var old_def: WallKindDef = _content.wall_kind_for(kind)
 		refund += floori(old_def.price / 2.0) if old_def != null else 0
 	preview.set_segments(removals)
+	# The back-wall rule: an opened shell cell beside the kitchen is kitchen.
+	var kitchen: Dictionary[Vector2i, int] = RoomRules.opened_kitchen(live, preview, _footprint.building)
+	preview.set_rooms(kitchen)
 	for edge: Vector3i in _sorted_edges(restore):
 		var restored: String = WallRules.edge_problem(preview, edge, restore[edge] as SimGrid.Segment)
 		if not restored.is_empty():
@@ -773,6 +797,7 @@ func check_floor(cells: Array[Vector2i], adding: bool, exact: Exact = null,
 	check.changes = removals
 	check.floor_cells = ShopFootprint.sorted(effective)
 	check.floor_adding = adding
+	check.rooms = kitchen
 	_fill_warnings(check, preview, ids)
 	return check
 
@@ -798,9 +823,11 @@ func apply_floor(cells: Array[Vector2i], adding: bool, exact: Exact = null,
 	if applied:
 		if not check.changes.is_empty():
 			grid.set_segments(check.changes)
+		if not check.rooms.is_empty():
+			grid.set_rooms(check.rooms)
 		_bought = next
 		if _sim.cleanliness != null:
-			for spot: Vector2i in _sim.cleanliness.spots():
+			for spot: Vector2i in _sim.cleanliness.spots() + _sim.cleanliness.restroom_spots():
 				if grid.terrain(spot) != SimGrid.Terrain.FLOOR:
 					_sim.cleanliness.clear_spot(spot)
 		_record(check.refund, check.cost, exact)

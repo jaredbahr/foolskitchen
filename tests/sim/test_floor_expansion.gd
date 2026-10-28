@@ -256,8 +256,9 @@ func test_shrinking_refunds_and_refuses_cut_offs() -> void:
 	var grid: SimGrid = _sim.world.grid
 	assert_true(_editor.apply_floor(_rect(1, -3, 12, 3), true))
 	# Guests may not walk through the kitchen (FK-101): the old kitchen becomes
-	# dining floor, except the pass's kitchen side, so they reach the back room.
-	var dining: Dictionary[Vector2i, int] = _editor.room_changes(_rect(1, 1, 12, 4), SimGrid.Room.DINING)
+	# dining floor (with the opened back wall), except the pass's kitchen side,
+	# so they reach the back room.
+	var dining: Dictionary[Vector2i, int] = _editor.room_changes(_rect(1, 0, 12, 5), SimGrid.Room.DINING)
 	dining.erase(Vector2i(5, 3))
 	assert_true(_editor.apply_rooms(dining), _editor.last_check.why)
 	# A turned table in the new back room: its seats are at (5, -3) and (5, 0).

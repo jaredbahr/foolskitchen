@@ -690,9 +690,6 @@ func _sync_dirt_spots() -> void:
 		for cell: Vector2i in _cleanliness.spots():
 			if world.grid.terrain(cell) != SimGrid.Terrain.FLOOR or not world.grid.is_walkable(cell):
 				continue
-			# Restroom upkeep is never shown as mess (D8, FK-101).
-			if world.grid.room(cell) == SimGrid.Room.RESTROOM:
-				continue
 			wanted[cell] = true
 			if dirt_nodes.has(cell):
 				continue

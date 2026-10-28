@@ -130,7 +130,7 @@ static func cause_of(visit: ReviewVisit, tuning: ReviewTuning, vibe_tuning: Vibe
 	# A guest who needed a restroom and couldn't use one says so when that was
 	# their biggest complaint, even on a good day (FK-101). Zero otherwise.
 	if best == causes.size() - 1:
-		return causes[best]
+		return &"restroom_busy" if visit.restroom_was_busy else &"no_restroom"
 	if score_visit(visit, tuning, vibe_tuning) >= 4 or largest < tuning.positive_penalty_threshold:
 		return &"great_value" if is_finite(visit.price_ratio) and visit.price_ratio < 0.9 else &"lovely_place"
 	if best >= 0:

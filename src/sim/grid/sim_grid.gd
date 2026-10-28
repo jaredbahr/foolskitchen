@@ -71,6 +71,13 @@ var bounds: Rect2i:
 	get:
 		return Rect2i(_origin, _size)
 
+## Bumped on every terrain, item, segment or room change (FK-101): callers
+## cache derived layout facts against it. Read-only.
+var version: int:
+	get:
+		return _version
+
+var _version: int = 0
 var _size: Vector2i = Vector2i.ZERO
 var _origin: Vector2i = Vector2i.ZERO
 
@@ -192,6 +199,7 @@ func grow_to(rect: Rect2i) -> bool:
 	# update() resets every point, so solidity is rebuilt from terrain and items.
 	for cell: Vector2i in cells():
 		_refresh_cell(cell)
+	_version += 1
 	return true
 
 
@@ -238,6 +246,7 @@ func set_terrains(changes: Dictionary[Vector2i, int]) -> bool:
 		for edge: Vector3i in cell_edges(cell):
 			_refresh_edge(edge)
 	_refresh_dining_seats()
+	_version += 1
 	cells_changed.emit(touched)
 	return true
 
@@ -262,6 +271,7 @@ func set_terrain(cell: Vector2i, t: Terrain) -> bool:
 	for edge: Vector3i in cell_edges(cell):
 		_refresh_edge(edge)
 	_refresh_dining_seats()
+	_version += 1
 	cells_changed.emit([cell] as Array[Vector2i])
 	return true
 
@@ -364,6 +374,7 @@ func place(footprint: Vector2i, origin: Vector2i, quarter_turns: int, solid: boo
 		cover[cell] = item.id
 		_refresh_cell(cell)
 	_refresh_dining_seats()
+	_version += 1
 	cells_changed.emit(item.cells.duplicate())
 	return item
 
@@ -429,6 +440,7 @@ func relocate_def(item_id: int, origin: Vector2i, quarter_turns: int) -> bool:
 	for cell: Vector2i in changed:
 		_refresh_cell(cell)
 	_refresh_dining_seats()
+	_version += 1
 	cells_changed.emit(changed)
 	return true
 
@@ -446,6 +458,7 @@ func remove(item_id: int) -> bool:
 		cover.erase(cell)
 		_refresh_cell(cell)
 	_refresh_dining_seats()
+	_version += 1
 	cells_changed.emit(item.cells.duplicate())
 	item_removed.emit(item)
 	return true
@@ -763,6 +776,7 @@ func set_segment(edge: Vector3i, kind: Segment) -> bool:
 		_segments[edge] = kind
 	_refresh_edge(edge)
 	_refresh_dining_seats()
+	_version += 1
 	cells_changed.emit(edge_cells(edge))
 	return true
 
@@ -790,6 +804,7 @@ func set_segments(changes: Dictionary[Vector3i, int]) -> bool:
 	if touched.is_empty():
 		return true
 	_refresh_dining_seats()
+	_version += 1
 	cells_changed.emit(touched)
 	return true
 
@@ -897,6 +912,11 @@ func has_staff_rooms() -> bool:
 	return _staff_cells > 0
 
 
+## True while any cell has a room other than Dining.
+func has_rooms() -> bool:
+	return not _rooms.is_empty()
+
+
 ## Every painted (non-Dining) cell -> Room. Detached.
 func rooms() -> Dictionary[Vector2i, int]:
 	return _rooms.duplicate()
@@ -925,6 +945,7 @@ func set_rooms(changes: Dictionary[Vector2i, int]) -> bool:
 	touched.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return a.y < b.y or (a.y == b.y and a.x < b.x))
 	for cell: Vector2i in touched:
 		_refresh_cell(cell)
+	_version += 1
 	cells_changed.emit(touched)
 	return true
 
@@ -942,39 +963,77 @@ func is_guest_walkable(cell: Vector2i) -> bool:
 	return is_walkable(cell) and not is_staff_only(cell)
 
 
-## Guest-walkable neighbours, in walkable_neighbours() order.
+## Guest-walkable neighbours, in walkable_neighbours() order. A diagonal step
+## also needs both cells beside it out of the staff rooms (no cutting a
+## kitchen corner), exactly as on the guest path layer.
 func guest_neighbours(cell: Vector2i) -> Array[Vector2i]:
 	var out: Array[Vector2i] = []
 	for neighbour: Vector2i in walkable_neighbours(cell):
-		if not is_staff_only(neighbour):
+		if guest_step_ok(cell, neighbour):
 			out.append(neighbour)
 	return out
 
 
-## find_path() for guests: never through a Kitchen or Storage cell. The plain
-## path is tried first and kept when it stays out of staff rooms, so a shop
-## whose guests never went near the kitchen keeps its exact paths; otherwise
-## the guest layer (staff cells solid) finds the shortest guest route. A guest
-## standing in a staff cell (it can only happen through an edit) walks out on
-## the plain path, so nobody is ever trapped.
+## A step a guest may take between two adjacent cells, as far as rooms go:
+## into a non-staff cell, and for a diagonal past two non-staff cells.
+## Walkability and walls are checked separately.
+func guest_step_ok(from_cell: Vector2i, to_cell: Vector2i) -> bool:
+	if is_staff_only(to_cell):
+		return false
+	var delta: Vector2i = to_cell - from_cell
+	if absi(delta.x) == 1 and absi(delta.y) == 1:
+		return not is_staff_only(from_cell + Vector2i(delta.x, 0)) \
+			and not is_staff_only(from_cell + Vector2i(0, delta.y))
+	return true
+
+
+## find_path() for guests: never through a Kitchen or Storage cell, nor
+## diagonally past one. The plain path is tried first and kept when it stays
+## clear of the staff rooms, so a shop whose guests never went near the kitchen
+## keeps its exact paths; otherwise the guest layer (staff cells solid) finds
+## the shortest guest route. A guest buried by furniture escapes to a guest
+## cell first. Only a guest already standing in a staff cell (an edit can do
+## that), or one with no guest way out, falls back to the plain path, so
+## nobody is ever trapped.
 func find_guest_path(start: Vector2i, goal: Vector2i) -> Array[Vector2i]:
-	var path: Array[Vector2i] = find_path(start, goal)
-	if _staff_cells == 0 or path.is_empty():
-		return path
-	if is_staff_only(goal):
+	if _staff_cells == 0:
+		return find_path(start, goal)
+	if not in_bounds(start) or not is_walkable(goal) or is_staff_only(goal):
 		return []
-	var clear: bool = true
-	for index: int in range(1, path.size()):
-		if is_staff_only(path[index]):
-			clear = false
-			break
-	if clear or is_staff_only(start) or not is_walkable(start):
+	if start == goal:
+		return [start]
+	if is_staff_only(start):
+		return find_path(start, goal)
+	if is_walkable(start):
+		return _guest_route(start, goal)
+	for exit: Vector2i in _walkable_rings(start, ESCAPE_CANDIDATES):
+		if is_staff_only(exit) or not step_open(start, exit):
+			continue
+		var rest: Array[Vector2i] = [exit] if exit == goal else _guest_route(exit, goal)
+		if rest.is_empty():
+			continue
+		var path: Array[Vector2i] = [start]
+		path.append_array(rest)
+		return path
+	return find_path(start, goal)
+
+
+func _guest_route(start: Vector2i, goal: Vector2i) -> Array[Vector2i]:
+	var path: Array[Vector2i] = _solve(start, goal)
+	if path.is_empty() or _guest_clear(path):
 		return path
 	var route: Array[Vector2i] = _guest_astar.get_id_path(start, goal)
 	for index: int in range(1, route.size()):
 		if not _guest_astar.step_open(route[index - 1], route[index]):
 			return []
 	return route
+
+
+func _guest_clear(path: Array[Vector2i]) -> bool:
+	for index: int in range(1, path.size()):
+		if not guest_step_ok(path[index - 1], path[index]):
+			return false
+	return true
 
 
 func is_guest_reachable(start: Vector2i, goal: Vector2i) -> bool:

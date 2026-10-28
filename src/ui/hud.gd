@@ -278,6 +278,20 @@ func _on_stock_pressed() -> void:
 	stock_pressed.emit()
 
 
+## A one-time morning note (FK-101), e.g. after an older save whose kitchen
+## could not be marked. Empty hides it; it only shows in the morning.
+func set_rooms_note(text: String) -> void:
+	var label: Label = get_node_or_null("Top/Row/RoomsNote") as Label
+	if label == null:
+		return
+	label.text = text
+	label.tooltip_text = "Guests never walk through the kitchen. Paint it in Build, Rooms tab." if not text.is_empty() else ""
+	label.visible = not text.is_empty() and Clock.sim.phase == SimClock.Phase.MORNING
+	var row: Container = get_node("Top/Row") as Container
+	row.update_minimum_size()
+	row.queue_sort()
+
+
 ## Main lists today's sold-out dishes by display name; empty hides the tag.
 func set_sold_out(names: Array[String]) -> void:
 	_sold_out_names = names.duplicate()
