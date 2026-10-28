@@ -635,6 +635,7 @@ func _sync_agents() -> void:
 				node.rotation.y = atan2(-frame.facing_direction.x, -frame.facing_direction.z)
 		node.set_meta("person_ready", ready_person)
 		node.set_meta("display_separation_blocked", frame.separation_blocked)
+		node.visible = not frame.hidden
 		var tray: MeshInstance3D = node.get_node("Tray") as MeshInstance3D
 		tray.visible = frame.show_tray and (ready_person or not frame.look_supported)
 		tray.position = frame.tray_anchor if ready_person else Vector3(0.0, 0.02, -0.48)

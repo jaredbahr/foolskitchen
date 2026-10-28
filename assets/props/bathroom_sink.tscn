@@ -1,0 +1,15 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://src/world/prop_view.gd" id="1_view"]
+[ext_resource type="PackedScene" path="res://assets/kenney/furniture/bathroomSink.glb" id="2_model"]
+
+[node name="BathroomSink" type="Node3D"]
+script = ExtResource("1_view")
+footprint = Vector2i(1, 1)
+
+[node name="Basin" type="Node3D" parent="."]
+
+[node name="Art" type="Node3D" parent="Basin"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="Basin/Art" instance=ExtResource("2_model")]

@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="ItemDef" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://src/sim/content/item_def.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://assets/props/toilet.tscn" id="2_view"]
+
+[resource]
+script = ExtResource("1_script")
+view_scene = ExtResource("2_view")
+id = &"toilet"
+display_name = "Toilet"
+catalogue_room = &"restroom"
+category = 7
+footprint = Vector2i(1, 1)
+solid = true
+work_cells = Array[Vector2i]([Vector2i(0, -1)])
+seat_cells = Array[Vector2i]([])
+station_type = &"toilet"
+capacity = 1
+quality_bonus = 0.0
+price = 60
+unlock_level = 1
+charm = 0
+theme_tags = Array[StringName]([])
+placeholder_color = Color(0.93, 0.93, 0.9, 1)
+paintable = false

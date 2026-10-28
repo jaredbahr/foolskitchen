@@ -471,7 +471,7 @@ func test_snapshot_round_trip_keeps_segments() -> void:
 	changes[_edge(9, 6, 0)] = SimGrid.Segment.WINDOW
 	assert_true(_editor.apply_segments(changes), _editor.last_check.why)
 	var snapshot: Dictionary = JSON.parse_string(JSON.stringify(_editor.to_dict()))
-	assert_eq(int(snapshot["version"]), 3)
+	assert_eq(int(snapshot["version"]), ShopEditor.SNAPSHOT_VERSION)
 	var errors: Array[String] = []
 	var layout: ShopLayout = ShopEditor.from_dict(snapshot, LAYOUT, _content, errors)
 	assert_eq(errors, [] as Array[String])

@@ -11,6 +11,8 @@ signal swatch_requested(swatch_id: StringName)
 signal wall_tool_requested(segment: int)
 ## Floor tool (FK-080): buy floor on the lot.
 signal floor_tool_requested()
+## Rooms tool (FK-101): paint a room type (SimGrid.Room) onto the floor.
+signal rooms_tool_requested(kind: int)
 ## FK-085: the Build/Buy tabs, the Paint tab, the tools and undo/redo.
 signal mode_requested(mode: StringName)
 signal paint_requested()
@@ -30,13 +32,22 @@ const MIN_COLUMNS: int = 6
 const BUY: StringName = &"buy"
 const BUILD: StringName = &"build"
 const BUY_CATEGORIES: Array[StringName] = [&"dining", &"kitchen", &"bar_cafe", &"decor", &"lighting", &"restroom"]
-const BUILD_CATEGORIES: Array[StringName] = [&"walls", &"floor", &"paint"]
+const BUILD_CATEGORIES: Array[StringName] = [&"walls", &"floor", &"rooms", &"paint"]
 const CATEGORY_IDS: Array[StringName] = [&"dining", &"kitchen", &"bar_cafe", &"decor", &"lighting", &"restroom",
-	&"walls", &"floor", &"paint"]
+	&"walls", &"floor", &"rooms", &"paint"]
 const CATEGORY_LABELS: Dictionary = {
 	&"dining": "Dining", &"kitchen": "Kitchen", &"bar_cafe": "Bar & Café", &"decor": "Decor",
-	&"lighting": "Lighting", &"restroom": "Restroom", &"walls": "Walls", &"floor": "Floor", &"paint": "Paint",
+	&"lighting": "Lighting", &"restroom": "Restroom", &"walls": "Walls", &"floor": "Floor", &"rooms": "Rooms",
+	&"paint": "Paint",
 }
+const ROOMS: StringName = &"rooms"
+## Rooms tab cards: what each room is for (FK-101), by SimGrid.Room.
+const ROOM_TIPS: Array[String] = [
+	"Dining room: where guests sit. New floor starts as dining",
+	"Kitchen: staff only. Guests never walk through it",
+	"Restroom: put a toilet in it and guests can use it",
+	"Storage: staff only, like the kitchen",
+]
 const WALLS: StringName = &"walls"
 const FLOOR: StringName = &"floor"
 const PAINT: StringName = &"paint"
@@ -60,6 +71,10 @@ var item_buttons: Dictionary[StringName, Button] = {}
 var wall_buttons: Dictionary[StringName, Button] = {}
 ## Floor tab card (FK-080); its tab hides while the shop has no lot to grow into.
 var floor_button: Button
+## Rooms tab cards, by SimGrid.Room.
+var room_buttons: Array[Button] = []
+## Main turns the Rooms tab on once a shop is bound (like the Floor tab's price).
+var _rooms_enabled: bool = false
 var swatch_buttons: Dictionary[StringName, Button] = {}
 var category_buttons: Dictionary[StringName, Button] = {}
 var mode_buttons: Dictionary[StringName, Button] = {}
@@ -301,6 +316,7 @@ func refresh_content() -> void:
 	_refresh_groups()
 	_refresh_wall_cards()
 	_refresh_floor_card()
+	_refresh_room_cards()
 	_apply_category()
 	# Queue the current category first so visible previews arrive first. Every
 	# remaining wrapper is still prepared once at startup in the same cache.
@@ -370,6 +386,52 @@ func _refresh_floor_card() -> void:
 	floor_button.icon = _thumbnails.request(FLOOR_THUMBNAIL)
 
 
+## The Rooms tab (FK-101) shows once a shop is bound to paint.
+func set_rooms_enabled(enabled: bool) -> void:
+	if enabled == _rooms_enabled:
+		return
+	_rooms_enabled = enabled
+	_refresh_room_cards()
+	if selected_category == ROOMS and not enabled:
+		selected_category = WALLS
+	_apply_category()
+	_fit_panel()
+
+
+## One card per room type, with a swatch of the room's floor tint.
+func _refresh_room_cards() -> void:
+	if not _rooms_enabled:
+		return
+	var row: GridContainer = _items()
+	if room_buttons.is_empty():
+		for kind: int in range(RoomRules.LABELS.size()):
+			var button: Button = _tile("Room_%s" % RoomRules.IDS[kind])
+			button.pressed.connect(_on_room_pressed.bind(kind))
+			button.text = "%s\nFree" % RoomRules.label(kind)
+			button.tooltip_text = ROOM_TIPS[kind]
+			button.icon = _room_swatch(BuildPreview.ROOM_SWATCHES[kind].color)
+			row.add_child(button)
+			room_buttons.append(button)
+	for button: Button in room_buttons:
+		row.move_child(button, row.get_child_count() - 1)
+
+
+## A flat swatch in the room's palette colour with a darker edge of the same
+## colour, like the Paint tab's colour chips.
+static func _room_swatch(color: Color) -> ImageTexture:
+	var image: Image = Image.create(THUMBNAIL_WIDTH, 44, false, Image.FORMAT_RGBA8)
+	image.fill(color.darkened(0.35))
+	image.fill_rect(Rect2i(3, 3, THUMBNAIL_WIDTH - 6, 38), color)
+	return ImageTexture.create_from_image(image)
+
+
+func _on_room_pressed(kind: int) -> void:
+	if not visible or _paint_visible or selected_category != ROOMS \
+			or (is_inside_tree() and not is_visible_in_tree()):
+		return
+	rooms_tool_requested.emit(kind)
+
+
 func _on_floor_pressed() -> void:
 	if not visible or _paint_visible or selected_category != FLOOR or _floor_price <= 0 \
 			or (is_inside_tree() and not is_visible_in_tree()):
@@ -430,6 +492,8 @@ func _apply_category() -> void:
 		wall_buttons[id].visible = not _paint_visible and mode == BUILD and selected_category == WALLS
 	if floor_button != null:
 		floor_button.visible = not _paint_visible and mode == BUILD and selected_category == FLOOR and _floor_price > 0
+	for button: Button in room_buttons:
+		button.visible = not _paint_visible and mode == BUILD and selected_category == ROOMS and _rooms_enabled
 	var shown_groups: Array[StringName] = _room_groups(selected_category)
 	for group: StringName in group_buttons:
 		var button: Button = group_buttons[group]
@@ -503,7 +567,7 @@ func _room_groups(category: StringName) -> Array[StringName]:
 ## Buy rooms appear once they hold an item; Floor only with a lot to grow.
 func _category_shown(category: StringName) -> bool:
 	if BUILD_CATEGORIES.has(category):
-		return category != FLOOR or _floor_price > 0
+		return (category != FLOOR or _floor_price > 0) and (category != ROOMS or _rooms_enabled)
 	if not BUY_CATEGORIES.has(category) or _content == null:
 		return false
 	for id: StringName in _ordered_ids:
@@ -769,7 +833,7 @@ func _prepare_layout() -> void:
 	var bar: HBoxContainer = content.get_node("Bar") as HBoxContainer
 	for side: StringName in [BUILD, BUY]:
 		var button: Button = _chip("Mode_%s" % side, "Build" if side == BUILD else "Buy", 18)
-		button.tooltip_text = "Build: walls, doorways, windows, floor and paint" if side == BUILD \
+		button.tooltip_text = "Build: walls, doorways, windows, floor, rooms and paint" if side == BUILD \
 			else "Buy: furniture and decor by room"
 		button.pressed.connect(_on_mode_pressed.bind(side))
 		mode_buttons[side] = button
@@ -947,6 +1011,9 @@ func _visible_cards() -> Array[Button]:
 			cards.append(button)
 	if floor_button != null and floor_button.visible:
 		cards.append(floor_button)
+	for button: Button in room_buttons:
+		if button.visible:
+			cards.append(button)
 	return cards
 
 

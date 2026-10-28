@@ -4,6 +4,7 @@ extends RefCounted
 
 const VIBE_TUNING: VibeTuning = preload("res://data/balance/vibe.tres")
 const VISIT_TUNING: VisitTuning = preload("res://data/balance/visits.tres")
+const RESTROOM_TUNING: RestroomTuning = preload("res://data/balance/restroom.tres")
 
 signal customer_arrived(customer: CustomerAgent)
 signal customer_paid(customer: CustomerAgent, order: Order, amount: int)
@@ -62,10 +63,16 @@ var vibe_result: VibeModel.Result:
 	get:
 		return _copy_vibe(_vibe_result)
 var _vibe_result: VibeModel.Result = VibeModel.Result.new()
+## Restrooms (FK-101): the threshold, visit length and review terms.
+var restroom_tuning: RestroomTuning = RESTROOM_TUNING
 ## Where each staff role starts the day (from the layout).
 var staff_spawns: Dictionary[StringName, Vector2i] = {}
 
 var _departed: Dictionary[int, bool] = {}
+## Restroom toilets and dining seats, recounted after a layout change.
+var _layout_counted: bool = false
+var _toilets: Array[int] = []
+var _seats: int = 0
 ## Dishes that ran out during today's service; they stay sold out until a
 ## delivery covers them again or the next morning.
 var sold_out_today: Dictionary[StringName, bool] = {}
@@ -81,6 +88,7 @@ static func create(layout: ShopLayout, content: ContentDB, seed: int, errors: Ar
 		roster: Array[StaffMember] = [], catalogue: StaffCatalogue = StaffRoster.CATALOGUE) -> RestaurantSim:
 	var sim: RestaurantSim = RestaurantSim.new()
 	sim.world = ShopBuilder.build(layout, content, errors, allow_blocked_spawns)
+	sim.world.grid.cells_changed.connect(sim._on_layout_changed)
 	sim.rng.seed = seed
 	sim.spawner = CustomerSpawner.new(sim.rng)
 	for role: StringName in [&"cook", &"server", &"owner", &"cleaner"]:
@@ -583,6 +591,8 @@ func _install_customer(entry: Vector2i, random: RandomNumberGenerator,
 		var spot: Vector2i = cleanliness.try_spawn_on_arrival(entry)
 		if spot != SimGrid.NO_CELL and clean_tasks != null:
 			clean_tasks.sync_spots()
+	if world.clock.phase == SimClock.Phase.OPEN and has_restroom() and restroom_tuning != null:
+		customer.restroom_bonus = restroom_tuning.restroom_review_bonus
 	if world.clock.phase == SimClock.Phase.OPEN:
 		customer.queue_patience = _vibe_patience(customer.queue_patience, _vibe_result.patience_multiplier)
 		customer.food_patience = _vibe_patience(customer.food_patience, _vibe_result.patience_multiplier)
@@ -621,6 +631,70 @@ func add_party(entry: Vector2i, randoms: Array[RandomNumberGenerator], kind: Cus
 	for guest: CustomerAgent in guests:
 		_publish_customer_arrival(guest)
 	return group
+
+
+# --- Restrooms (FK-101) -------------------------------------------------------
+
+## A restroom: a Restroom room with a toilet guests can reach.
+func has_restroom() -> bool:
+	_count_layout()
+	return not _toilets.is_empty()
+
+
+## Dining seats in the shop (every table's seat cells).
+func seat_count() -> int:
+	_count_layout()
+	return _seats
+
+
+## Guests start expecting a restroom once the shop seats enough of them.
+func restrooms_expected() -> bool:
+	return restroom_tuning != null and restroom_tuning.is_valid() and seat_count() >= restroom_tuning.seat_threshold
+
+
+## Whether guests draw a restroom need at all. False keeps every guest's random
+## stream exactly as it was before restrooms existed.
+func restrooms_matter() -> bool:
+	return restroom_tuning != null and restroom_tuning.is_valid() and (has_restroom() or restrooms_expected())
+
+
+## The first restroom toilet (placement order) that is free and that this
+## guest can walk to without entering a staff-only room, or null.
+func free_toilet(guest: CustomerAgent) -> PlacedItem:
+	_count_layout()
+	for toilet_id: int in _toilets:
+		var toilet: PlacedItem = world.grid.item(toilet_id)
+		if toilet == null or toilet.work_cells.is_empty():
+			continue
+		var spot: Vector2i = toilet.work_cells[0]
+		if toilet.reserved_by(spot) == -1 and world.grid.is_walkable(spot) \
+				and world.grid.is_guest_reachable(guest.cell, spot):
+			return toilet
+	return null
+
+
+## Each use leaves the restroom needing a tidy, if cleaning exists here.
+func restroom_used(spot: Vector2i) -> void:
+	if cleanliness != null and cleanliness.add_use_spot(spot) and clean_tasks != null:
+		clean_tasks.sync_spots()
+
+
+func _on_layout_changed(_cells: Array[Vector2i]) -> void:
+	_layout_counted = false
+
+
+func _count_layout() -> void:
+	if _layout_counted or world == null:
+		return
+	_layout_counted = true
+	_toilets.clear()
+	for toilet: PlacedItem in RoomRules.restroom_toilets(world.grid):
+		_toilets.append(toilet.id)
+	_seats = 0
+	for placed: PlacedItem in world.grid.items():
+		var definition: ItemDef = placed.def as ItemDef
+		if definition != null and definition.category == ItemDef.Category.TABLE:
+			_seats += placed.seat_cells.size()
 
 
 ## Current guests in stable agent-id order.

@@ -7,6 +7,10 @@ enum State { ARRIVING, QUEUED, WALKING_TO_SEAT, ORDERING, WAITING_FOOD,
 
 enum MoodBand { HAPPY, WAITING, IMPATIENT, ABOUT_TO_LEAVE }
 
+## A restroom trip (FK-101), only while waiting for food: the seat stays
+## booked, the food waits and patience pauses until the guest is back.
+enum Restroom { NONE, NEEDED, WALKING, INSIDE, RETURNING, DONE }
+
 const MOOD_HAPPY_THRESHOLD: float = 0.6
 const MOOD_WAITING_THRESHOLD: float = 0.35
 const MOOD_IMPATIENT_THRESHOLD: float = 0.15
@@ -50,6 +54,21 @@ var arrival_dirt_fraction: float = 0.0
 ## Derived ambience sampled once on a real OPEN arrival, before later edits.
 var vibe_review_bonus: float = 0.0
 var vibe_theme_label: String = ""
+## Restrooms (FK-101). The need is drawn once, after ordering, only in a shop
+## with a restroom or at the seat threshold.
+## Set from the customer type; below zero (an untyped guest) uses
+## RestroomTuning.default_need_chance.
+var restroom_chance: float = -1.0
+var restroom: Restroom = Restroom.NONE
+## The toilet in use (its work cell is reserved for this guest), or 0.
+var restroom_toilet_id: int = 0
+## Review terms: a shop with a restroom is a bit nicer; a missed need hurts.
+var restroom_bonus: float = 0.0
+var restroom_penalty: float = 0.0
+## The missed restroom existed but was busy (the review says which).
+var restroom_was_busy: bool = false
+var _restroom_spot: Vector2i = SimGrid.NO_CELL
+var _restroom_ticks: int = 0
 ## Survives morning report resets so stale removal callbacks cannot count twice.
 var departure_recorded: bool = false
 var rng: RandomNumberGenerator
@@ -82,6 +101,7 @@ func configure_type(kind: CustomerType) -> bool:
 	budget_multiplier = kind.budget_multiplier
 	drink_add_chance = kind.drink_add_chance
 	pastry_add_chance = kind.pastry_add_chance
+	restroom_chance = kind.restroom_chance
 	quality_weight = kind.quality_weight
 	review_chance_multiplier = kind.review_chance_multiplier
 	queue_patience = _type_patience(queue_patience, kind.patience_multiplier)
@@ -151,7 +171,12 @@ func tick(world: SimWorld) -> void:
 		# Terminal kitchen results win over the patience deadline on the same tick.
 		if order != null and order.state == Order.State.CANCELLED:
 			_leave(world, sim, player_reason(order.cancellation_reason))
+		elif away():
+			pass  # The food waits and patience pauses while at the restroom.
 		elif order != null and order.state == Order.State.DELIVERED and not _waiting_for_side():
+			if restroom == Restroom.NEEDED:
+				# The meal came before a toilet was free: they make do.
+				_miss_restroom(sim)
 			state = State.EATING
 			_eating = 0
 		else:
@@ -187,7 +212,8 @@ func tick(world: SimWorld) -> void:
 			if _task == null or _task.state == SimTask.State.CANCELLED:
 				_post_order_task(world, sim)
 		State.WAITING_FOOD:
-			pass
+			if restroom != Restroom.NONE and restroom != Restroom.DONE:
+				_restroom_tick(world, sim)
 		State.EATING:
 			_eating += 1
 			if _eating >= eat_ticks:
@@ -199,6 +225,11 @@ func tick(world: SimWorld) -> void:
 			_walk_to_exit(world)
 
 
+## Guests never walk through the kitchen or storage (FK-101).
+func plan_path(grid: SimGrid, from_cell: Vector2i, to_cell: Vector2i) -> Array[Vector2i]:
+	return grid.find_guest_path(from_cell, to_cell)
+
+
 ## Friendly status text suitable for the guest inspector.
 func why() -> String:
 	match state:
@@ -208,6 +239,14 @@ func why() -> String:
 			return _waiting_why("Waiting by the door for a free table")
 		State.WALKING_TO_SEAT:
 			return "Walking to my seat"
+		State.WAITING_FOOD when restroom == Restroom.WALKING:
+			return "Walking to the restroom"
+		State.WAITING_FOOD when restroom == Restroom.INSIDE:
+			return "In the restroom"
+		State.WAITING_FOOD when restroom == Restroom.RETURNING:
+			return "Walking back to my seat"
+		State.WAITING_FOOD when restroom == Restroom.NEEDED:
+			return _waiting_why("Waiting for the restroom")
 		State.ORDERING:
 			return _waiting_why("Waiting for a server to take my order")
 		State.WAITING_FOOD:
@@ -268,6 +307,9 @@ func review_visit(standard_price: int, dirt_fraction: float = 0.0) -> ReviewVisi
 	visit.review_chance_multiplier = review_chance_multiplier
 	visit.dirt_fraction = dirt_fraction
 	visit.vibe_review_bonus = vibe_review_bonus
+	visit.restroom_bonus = restroom_bonus
+	visit.restroom_penalty = restroom_penalty
+	visit.restroom_was_busy = restroom_was_busy
 	return visit
 
 
@@ -290,6 +332,7 @@ func on_removed(world: SimWorld) -> void:
 		PartySeating.leave_waiting(party, world, sim, leave_reason if leave_reason != &"happy" else &"no_table")
 	_cancel_work(world, sim)
 	_release_seat(world)
+	_release_toilet(world)
 	state = State.LEFT
 	if sim != null:
 		sim.record_departure(self)
@@ -311,7 +354,7 @@ func _try_seat(world: SimWorld) -> bool:
 		for seat: Vector2i in table.seat_cells:
 			if table.reserved_by(seat) != -1 or not world.grid.is_walkable(seat):
 				continue
-			if not world.grid.is_reachable(cell, seat) or not table.reserve(seat, id):
+			if not world.grid.is_guest_reachable(cell, seat) or not table.reserve(seat, id):
 				continue
 			if not set_destination(world.grid, seat):
 				table.release(seat, id)
@@ -380,7 +423,7 @@ func _requeue(world: SimWorld, sim: RestaurantSim) -> void:
 func _queue_inside(world: SimWorld) -> void:
 	if world.grid.terrain(cell) == SimGrid.Terrain.FLOOR:
 		return
-	for neighbour: Vector2i in world.grid.walkable_neighbours(cell):
+	for neighbour: Vector2i in world.grid.guest_neighbours(cell):
 		if world.grid.terrain(neighbour) == SimGrid.Terrain.FLOOR:
 			_move(world, neighbour)
 			return
@@ -463,6 +506,7 @@ func _take_order(server: SimAgent) -> bool:
 		_maybe_add_drink(sim, available)
 	elif visit_kind == RecipeDef.COFFEE:
 		_maybe_add_pastry(sim, available)
+	_maybe_need_restroom(sim)
 	return true
 
 
@@ -527,6 +571,7 @@ func _leave(world: SimWorld, sim: RestaurantSim, reason: StringName) -> void:
 	leave_reason = reason
 	_cancel_work(world, sim)
 	_release_seat(world)
+	_release_toilet(world)
 	clear_path()
 	state = State.LEAVING
 
@@ -573,9 +618,108 @@ static func _plated(sim: RestaurantSim, ticket: Order) -> bool:
 	return false
 
 
+# --- Restrooms (FK-101) -------------------------------------------------------
+
+## Out of the seat for a restroom trip (walking, inside or coming back).
+func away() -> bool:
+	return restroom == Restroom.WALKING or restroom == Restroom.INSIDE or restroom == Restroom.RETURNING
+
+
+## Inside the restroom: the view hides the guest.
+func in_restroom() -> bool:
+	return restroom == Restroom.INSIDE and state == State.WAITING_FOOD
+
+
+## One draw, after the ticket is placed, and only when restrooms matter here
+## (a restroom exists or the shop seats enough guests to expect one).
+func _maybe_need_restroom(sim: RestaurantSim) -> void:
+	if restroom != Restroom.NONE or not sim.restrooms_matter():
+		return
+	var chance: float = restroom_chance if restroom_chance >= 0.0 else sim.restroom_tuning.default_need_chance
+	if rng.randf() < clampf(chance, 0.0, 1.0):
+		restroom = Restroom.NEEDED
+
+
+func _restroom_tick(world: SimWorld, sim: RestaurantSim) -> void:
+	match restroom:
+		Restroom.NEEDED:
+			if order != null and order.state == Order.State.DELIVERED:
+				# The food came first; they make do (one toilet was busy).
+				_miss_restroom(sim)
+				return
+			var toilet: PlacedItem = sim.free_toilet(self)
+			if toilet == null:
+				if not sim.has_restroom():
+					_miss_restroom(sim)
+				return  # Busy: wait at the seat, patience running.
+			var spot: Vector2i = toilet.work_cells[0]
+			if not toilet.reserve(spot, id) or not set_destination(world.grid, spot):
+				toilet.release(spot, id)
+				_miss_restroom(sim)
+				return
+			restroom_toilet_id = toilet.id
+			_restroom_spot = spot
+			restroom = Restroom.WALKING
+			_restroom_ticks = 0
+		Restroom.WALKING:
+			var toilet: PlacedItem = world.grid.item(restroom_toilet_id)
+			_restroom_ticks += 1
+			if toilet == null or toilet.reserved_by(_restroom_spot) != id or _restroom_ticks >= SEAT_WALK_LIMIT:
+				_head_back(world)
+				return
+			if _move(world, _restroom_spot):
+				restroom = Restroom.INSIDE
+				_restroom_ticks = 0
+				clear_path()
+			elif path.is_empty():
+				_head_back(world)
+		Restroom.INSIDE:
+			_restroom_ticks += 1
+			if _restroom_ticks >= sim.restroom_tuning.use_ticks:
+				sim.restroom_used(_restroom_spot)
+				_head_back(world)
+		Restroom.RETURNING:
+			_restroom_ticks += 1
+			if _move(world, seat_cell):
+				restroom = Restroom.DONE
+				clear_path()
+			elif _restroom_ticks >= SEAT_WALK_LIMIT:
+				# Never stranded with patience paused, and never eating away
+				# from the table: the visit ends as if the table were lost.
+				world.log_event("Guest #%d could not get back to their seat" % id)
+				restroom = Restroom.DONE
+				clear_path()
+				_leave(world, sim, &"no_table")
+
+
+## A guest who needed a restroom and couldn't use one: in a shop that seats
+## enough guests to expect one, some patience goes and the review says so.
+func _miss_restroom(sim: RestaurantSim) -> void:
+	restroom = Restroom.DONE
+	if sim.restrooms_expected() and sim.restroom_tuning != null:
+		restroom_was_busy = sim.has_restroom()
+		_food_wait = mini(food_patience, _food_wait + roundi(float(food_patience) * sim.restroom_tuning.missed_patience_share))
+		restroom_penalty = sim.restroom_tuning.missed_review_penalty
+
+
+func _head_back(world: SimWorld) -> void:
+	_release_toilet(world)
+	restroom = Restroom.RETURNING
+	_restroom_ticks = 0
+	clear_path()
+	set_destination(world.grid, seat_cell)
+
+
+func _release_toilet(world: SimWorld) -> void:
+	var toilet: PlacedItem = world.grid.item(restroom_toilet_id)
+	if toilet != null and toilet.reserved_by(_restroom_spot) == id:
+		toilet.release(_restroom_spot, id)
+	restroom_toilet_id = 0
+
+
 func _walk_to_exit(world: SimWorld) -> void:
 	if needs_repath or path.is_empty():
-		var route: Array[Vector2i] = world.grid.find_path_to_any(cell, world.grid.entries())
+		var route: Array[Vector2i] = world.grid.find_guest_path_to_any(cell, world.grid.entries())
 		if route.is_empty():
 			_exit_unreachable += 1
 			if _exit_unreachable >= 100:

@@ -25,6 +25,9 @@ extends Resource
 ## Chance that a coffee-only guest adds a pastry (a dish served with drinks)
 ## while one is on the menu. Never drawn otherwise.
 @export_range(0.0, 1.0, 0.01) var pastry_add_chance: float = 0.0
+## Chance that a guest needs the restroom after ordering (FK-101). Drawn only
+## in a shop with a restroom or at the restroom seat threshold.
+@export_range(0.0, 1.0, 0.01) var restroom_chance: float = 0.25
 ## Multiplies the time-of-day weight of each drinks-only visit kind
 ## (RecipeDef.COFFEE, RecipeDef.DRINKS). Missing kinds count 1.0.
 @export var visit_weights: Dictionary[StringName, float] = {}
@@ -49,7 +52,7 @@ func is_valid() -> bool:
 			weight_at_five_stars, liked_theme_bonus]:
 		if not is_finite(value) or value < 0.0:
 			return false
-	for chance: float in [drink_add_chance, pastry_add_chance]:
+	for chance: float in [drink_add_chance, pastry_add_chance, restroom_chance]:
 		if not is_finite(chance) or chance < 0.0 or chance > 1.0:
 			return false
 	for kind: StringName in visit_weights:

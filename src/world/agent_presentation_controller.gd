@@ -25,6 +25,8 @@ class Frame extends RefCounted:
 	var show_tray: bool = false
 	var mood_visible: bool = false
 	var mood_band: int = -1
+	## A guest inside the restroom is not drawn (FK-101).
+	var hidden: bool = false
 	var clip: StringName = &"idle"
 	# Local to PersonView, so parented attachments inherit its facing and nudge.
 	var anchors_ready: bool = false
@@ -49,7 +51,8 @@ static func frame_for(agent: SimAgent, world: SimWorld, chair_seat_height: float
 	frame.moving = frame.facing_direction.length_squared() > 0.000001
 	if agent is CustomerAgent:
 		var customer: CustomerAgent = agent as CustomerAgent
-		frame.mood_visible = CustomerAgent.MOOD_WAITING_STATES.has(int(customer.state))
+		frame.mood_visible = CustomerAgent.MOOD_WAITING_STATES.has(int(customer.state)) and not customer.away()
+		frame.hidden = customer.in_restroom()
 		frame.mood_band = customer.mood_band()
 		frame.seated = _is_seated(customer, world)
 		if frame.seated:

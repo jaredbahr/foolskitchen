@@ -79,7 +79,7 @@ func test_rooms_without_items_have_no_tab_and_buy_hides_build_tabs() -> void:
 	for room: StringName in [&"dining", &"kitchen", &"bar_cafe", &"decor"]:
 		assert_true(_catalogue.category_buttons[room].visible, String(room))
 	assert_false(_catalogue.category_buttons[&"lighting"].visible, "no lamps exist yet")
-	assert_false(_catalogue.category_buttons[&"restroom"].visible)
+	assert_true(_catalogue.category_buttons[&"restroom"].visible, "the toilet and wash basin (FK-101)")
 	assert_eq(_catalogue.category_buttons[&"bar_cafe"].text, "Bar & Café")
 	for build: StringName in BuildCatalogue.BUILD_CATEGORIES:
 		assert_false(_catalogue.category_buttons[build].visible)

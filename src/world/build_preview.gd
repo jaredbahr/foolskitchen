@@ -20,6 +20,18 @@ const LOT_EDGE_ALPHA: float = 0.75
 const LOT_EDGE_WIDTH: float = 0.05
 const FLOOR_GHOST_ALPHA: float = 0.6
 const FLOOR_GHOST_INSET: float = 0.03
+## Rooms tool (FK-101): a subtle floor tint per room, from the paint palette,
+## and a small label per connected room area. Shown only while the tool is on.
+const ROOM_SWATCHES: Array[SwatchDef] = [preload("res://data/swatches/butter.tres"),
+	preload("res://data/swatches/slate_blue.tres"), preload("res://data/swatches/sage.tres"),
+	preload("res://data/swatches/clay.tres")]
+const ROOM_TINT_ALPHA: float = 0.38
+const ROOM_GHOST_ALPHA: float = 0.75
+const ROOM_LABEL_THEME: Theme = preload("res://src/ui/theme/main_theme.tres")
+const ROOM_LABEL_SIZE: int = 64
+## The label colours of the guests' mood marks: cream on dark brown.
+const ROOM_LABEL_COLOR: Color = Color("f3e6cc")
+const ROOM_LABEL_OUTLINE: Color = Color("3b2a20")
 
 var ghost_mesh: ItemVisual
 var work_markers: Array[MeshInstance3D] = []
@@ -32,6 +44,10 @@ var floor_ghost: MeshInstance3D
 var floor_ghost_cells: Array[Vector2i] = []
 ## FK-085: the tiles under the item the hand, eyedropper or sell tool points at.
 var hover_mesh: MeshInstance3D
+## Rooms tool: one tint mesh per room kind, its labels, and the drag ghost.
+var room_tints: Dictionary[int, MeshInstance3D] = {}
+var room_labels: Array[Label3D] = []
+var room_ghost: MeshInstance3D
 ## The lot outline and fill, shown in every Build mode state.
 var lot_outline: Node3D
 var _lot_root: Node3D
@@ -211,6 +227,12 @@ func refresh() -> void:
 		_build_floor_ghost(floor_cells, valid, snapshot.get("floor_removing", false))
 		if not valid:
 			reason = snapshot.get("why", "")
+	elif snapshot.get("active", false) and snapshot.get("state", -1) == BuildMode.State.ROOMS:
+		var room_cells: Array[Vector2i] = []
+		room_cells.assign(snapshot.get("room_cells", []))
+		_build_rooms(room_cells, snapshot.get("room_kind", 0), valid, snapshot.get("why", ""))
+		if not valid:
+			reason = snapshot.get("why", "")
 	elif snapshot.get("active", false) and snapshot.get("state", -1) == BuildMode.State.IDLE:
 		_build_hover(snapshot.get("hover_item_id", -1), snapshot.get("tool", BuildMode.Tool.HAND), valid)
 		if not valid:
@@ -295,6 +317,9 @@ func _clear_geometry() -> void:
 	floor_ghost = null
 	floor_ghost_cells.clear()
 	hover_mesh = null
+	room_tints.clear()
+	room_labels.clear()
+	room_ghost = null
 	if is_instance_valid(_lot_root):
 		_free_node(_lot_root)
 	_lot_root = null
@@ -395,6 +420,108 @@ func _build_floor_ghost(cells: Array[Vector2i], valid: bool, removing: bool) -> 
 	floor_ghost.set_meta("removing", removing)
 	floor_ghost_cells = cells.duplicate()
 	_ghost_root.add_child(floor_ghost)
+
+
+## Every floor cell tinted by its room, a label per connected room area, and
+## the dragged rectangle in the room's colour (red when refused).
+func _build_rooms(proposal: Array[Vector2i], kind: int, valid: bool, why: String) -> void:
+	var grid: SimGrid = _shop_view.world.grid if _shop_view.world != null else null
+	if grid == null:
+		return
+	_ghost_root = Node3D.new()
+	_ghost_root.name = "Rooms"
+	add_child(_ghost_root)
+	var by_kind: Dictionary[int, Array] = {}
+	for cell: Vector2i in grid.cells():
+		if grid.terrain(cell) != SimGrid.Terrain.FLOOR:
+			continue
+		var room: int = grid.room(cell)
+		if not by_kind.has(room):
+			by_kind[room] = [] as Array[Vector2i]
+		(by_kind[room] as Array[Vector2i]).append(cell)
+	for room: int in range(ROOM_SWATCHES.size()):
+		if not by_kind.has(room):
+			continue
+		var cells: Array[Vector2i] = by_kind[room]
+		var tint: Color = ROOM_SWATCHES[room].color
+		tint.a = ROOM_TINT_ALPHA
+		var mesh: MeshInstance3D = MeshInstance3D.new()
+		mesh.name = "Tint%d" % room
+		mesh.mesh = _tile_mesh(cells, 0.02, 0.0)
+		mesh.material_override = _material(tint, true)
+		mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mesh.set_meta("room", room)
+		_ghost_root.add_child(mesh)
+		room_tints[room] = mesh
+	for area: Array[Vector2i] in _room_areas(grid):
+		var label: Label3D = Label3D.new()
+		label.name = "Label%d" % room_labels.size()
+		label.text = RoomRules.label(grid.room(area[0]))
+		label.font = ROOM_LABEL_THEME.default_font if ROOM_LABEL_THEME.default_font != null else ThemeDB.fallback_font
+		label.font_size = ROOM_LABEL_SIZE
+		label.pixel_size = 0.005
+		label.modulate = ROOM_LABEL_COLOR
+		label.outline_modulate = ROOM_LABEL_OUTLINE
+		label.outline_size = 14
+		label.render_priority = 2
+		label.outline_render_priority = 1
+		label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		label.no_depth_test = true
+		label.position = GridMath.cell_to_world(_label_cell(area)) + Vector3(0.0, 0.05, 0.0)
+		label.set_meta("cells", area.size())
+		_ghost_root.add_child(label)
+		room_labels.append(label)
+	if proposal.is_empty() or (not valid and why.is_empty()):
+		return
+	var color: Color = ROOM_SWATCHES[clampi(kind, 0, ROOM_SWATCHES.size() - 1)].color if valid else INVALID_COLOR
+	color.a = ROOM_GHOST_ALPHA
+	room_ghost = MeshInstance3D.new()
+	room_ghost.name = "Proposal"
+	room_ghost.mesh = _tile_mesh(proposal, 0.03, FLOOR_GHOST_INSET)
+	room_ghost.material_override = _material(color, true)
+	room_ghost.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	room_ghost.set_meta("valid", valid)
+	_ghost_root.add_child(room_ghost)
+
+
+## Connected areas of one room (orthogonal steps not crossing a wall), in
+## row-major order of their first cell. Tiny areas (under 2 cells) get no label.
+static func _room_areas(grid: SimGrid) -> Array[Array]:
+	var areas: Array[Array] = []
+	var seen: Dictionary[Vector2i, bool] = {}
+	for cell: Vector2i in grid.cells():
+		if seen.has(cell) or grid.terrain(cell) != SimGrid.Terrain.FLOOR:
+			continue
+		var room: int = grid.room(cell)
+		var area: Array[Vector2i] = [cell]
+		seen[cell] = true
+		var index: int = 0
+		while index < area.size():
+			var here: Vector2i = area[index]
+			index += 1
+			for step: Vector2i in [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]:
+				var next: Vector2i = here + step
+				if seen.has(next) or grid.terrain(next) != SimGrid.Terrain.FLOOR or grid.room(next) != room \
+						or grid.edge_blocked(here, next):
+					continue
+				seen[next] = true
+				area.append(next)
+		if area.size() >= 2:
+			areas.append(area)
+	return areas
+
+
+## The area's cell nearest its centre (ties keep row-major order).
+static func _label_cell(area: Array[Vector2i]) -> Vector2i:
+	var centre: Vector2 = Vector2.ZERO
+	for cell: Vector2i in area:
+		centre += Vector2(cell)
+	centre /= float(area.size())
+	var best: Vector2i = area[0]
+	for cell: Vector2i in area:
+		if Vector2(cell).distance_squared_to(centre) < Vector2(best).distance_squared_to(centre):
+			best = cell
+	return best
 
 
 ## Tiles under the pointed-at item: red for Sell (or a refused sale), green for

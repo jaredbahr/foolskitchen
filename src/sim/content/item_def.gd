@@ -2,7 +2,8 @@ class_name ItemDef
 extends Resource
 ## Placeable content definition in 0.5 m grid cells, facing -Z by default.
 
-enum Category { DOOR, TABLE, CHAIR, STATION, STORAGE, PASS, DECOR }
+## RESTROOM (FK-101): restroom fixtures; a toilet has station_type &"toilet".
+enum Category { DOOR, TABLE, CHAIR, STATION, STORAGE, PASS, DECOR, RESTROOM }
 enum PlacementLayer { NORMAL, FLOOR_DECOR }
 
 ## Buy mode groups furniture by room or function (FK-085). An item without
