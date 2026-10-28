@@ -22,6 +22,7 @@ const CAP_HEIGHT: float = 0.02
 ## Shell panes sit this far inside the room-side face (as RoomDressing's FACE_GAP).
 const SHELL_PANE_GAP: float = 0.005
 const WINDOW_SCENE: PackedScene = preload("res://assets/kenney/furniture/wallWindow.glb")
+const BACK_DOOR_SCENE: PackedScene = preload("res://assets/kenney/furniture/doorwayOpen.glb")
 ## Lowered (cutaway) windows show a glass-blue strip instead of the dark cap,
 ## so cycling wall -> window reads in the default view. Palette swatch only.
 const GLASS_SWATCH: SwatchDef = preload("res://data/swatches/slate_blue.tres")
@@ -31,6 +32,9 @@ const THRESHOLD_HEIGHT: float = 0.012
 
 var _wall_material: Material
 var _top_material: Material
+## ShopView's floor material (world-space planks and grid), shared so a back
+## door's threshold follows floor paint and the grid toggle.
+var _floor_material: Material
 var _glass_material: StandardMaterial3D
 var _painted: Array[MeshInstance3D] = []
 var _panes: Array[PropView] = []
@@ -49,9 +53,10 @@ func window_span() -> Vector2:
 	return Vector2(center - bounds.size.y * 0.5, center + bounds.size.y * 0.5)
 
 
-func set_materials(wall_material: Material, top_material: Material) -> void:
+func set_materials(wall_material: Material, top_material: Material, floor_material: Material = null) -> void:
 	_wall_material = wall_material
 	_top_material = top_material
+	_floor_material = floor_material
 	for mesh: MeshInstance3D in _painted:
 		mesh.material_override = wall_material
 
@@ -87,6 +92,54 @@ func rebuild(grid: SimGrid, interior_lowered: bool, lowered_cells: Array[Vector2
 		var wall_cell: Vector2i = cells[0] if grid.terrain(cells[0]) == SimGrid.Terrain.WALL else cells[1]
 		if not lowered_cells.has(wall_cell):
 			_build_shell_window(wall_cell, side, span)
+	var doors: Dictionary[Vector2i, Vector2i] = shell_door_cells(grid)
+	for cell: Vector2i in doors:
+		_build_shell_door(cell, doors[cell], lowered_cells.has(cell))
+
+
+static func shell_door_cells(grid: SimGrid) -> Dictionary[Vector2i, Vector2i]:
+	var cells: Dictionary[Vector2i, Vector2i] = {}
+	if grid == null:
+		return cells
+	for edge: Vector3i in grid.segment_edges():
+		if grid.segment(edge) != SimGrid.Segment.DOORWAY:
+			continue
+		var side: Vector2i = WallRules.back_door_side(grid, edge)
+		if side == Vector2i.ZERO:
+			continue
+		for cell: Vector2i in SimGrid.edge_cells(edge):
+			if grid.terrain(cell) == SimGrid.Terrain.WALL:
+				cells[cell] = side
+	return cells
+
+
+func _build_shell_door(cell: Vector2i, side: Vector2i, lowered: bool) -> void:
+	var root: Node3D = Node3D.new()
+	root.name = "BackDoor_%d_%d" % [cell.x, cell.y]
+	root.position = GridMath.cell_to_world(cell)
+	root.rotation.y = -PI * 0.5 if side.y == 0 else 0.0
+	add_child(root)
+	# The opened shell cell gets a floor tile, level with the room's floor and
+	# in its material, so the doorway has a threshold instead of a hole.
+	var tile: MeshInstance3D = MeshInstance3D.new()
+	tile.name = "Floor"
+	var plane: PlaneMesh = PlaneMesh.new()
+	plane.size = Vector2(GridMath.CELL_SIZE, GridMath.CELL_SIZE)
+	tile.mesh = plane
+	tile.material_override = _floor_material
+	root.add_child(tile)
+	var half: float = GridMath.CELL_SIZE * 0.5
+	if lowered:
+		_slab(root, -half, -half + LOWERED_POST, 0.0, ShopView.LOWERED_HEIGHT, GridMath.CELL_SIZE)
+		_slab(root, half - LOWERED_POST, half, 0.0, ShopView.LOWERED_HEIGHT, GridMath.CELL_SIZE)
+		return
+	_slab(root, -half, half, DOOR_HEIGHT, ArtScale.WALL_HEIGHT, GridMath.CELL_SIZE)
+	_cap(root, -half, half, ArtScale.WALL_HEIGHT, GridMath.CELL_SIZE)
+	var door: PropView = RoomDressing.make_asset(BACK_DOOR_SCENE, "KenneyDoor")
+	if door != null:
+		var bounds: AABB = door.get_combined_aabb()
+		door.position = Vector3(-bounds.get_center().x, -bounds.position.y, -bounds.get_center().z)
+		root.add_child(door)
 
 
 ## Shell cells whose own box ShopView must cut down to the sill.

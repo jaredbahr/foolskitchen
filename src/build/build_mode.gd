@@ -582,7 +582,7 @@ func wall_press(point: Vector2) -> bool:
 
 ## Ends a drag: a run builds the dragged line; a click without a run changes
 ## the clicked edge (empty -> chosen kind, wall -> doorway -> window -> wall,
-## outer face solid <-> window). Returns true when the shop changed.
+## outer face solid <-> selected window/back doorway). Returns true when the shop changed.
 func wall_release(point: Vector2) -> bool:
 	if state != State.WALLS or not wall_dragging or not _can_interact():
 		return false

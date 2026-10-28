@@ -140,7 +140,8 @@ static func _absolute_cell(item: PlacedItem, definition: ItemDef, authored: Vect
 static func _cell_failure(grid: SimGrid, cell: Vector2i, claimed: Dictionary[Vector2i, bool]) -> String:
 	if not grid.in_bounds(cell):
 		return "A seat is outside the shop"
-	if not grid.is_walkable(cell):
+	# A back door's shell cell is walkable for staff only: never a seat.
+	if not grid.is_walkable(cell) or grid.is_back_door(cell):
 		return "Keep every seat on a clear floor tile"
 	if claimed.has(cell):
 		return "There is already a seat here"
