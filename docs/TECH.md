@@ -1283,6 +1283,118 @@ an active edit/panel/selection first, or opens Settings when none is active.
   and the street door, staff standing on them; then Build > Floors holding a
   herringbone drag.
 
+### Wall finishes and wall decor (D26)
+- **Faces.** `WallFaces` (`src/sim/shop/wall_faces.gd`, pure, static): a face
+  is one 0.5 m side of a wall seen from the floor cell in front of it, keyed
+  `Vector3i(x, y, dir)` (the floor cell, and the direction into the wall:
+  0 north, 1 east, 2 south, 3 west). Faces are derived from the grid on every
+  query, never stored: the room side of a solid shell `WALL` cell, and both
+  sides of an interior `WALL` segment. Windows, doorways (the back door too),
+  the street door and a shell cell cut by a window or back door (on any side;
+  its box is cut or hidden) have none. `problem(grid, face)` gives the
+  sentence (rule 11). `flood` follows a face along its wall and round inside
+  corners (an opening ends the run); `span(anchor, width)` is a wide item's
+  faces to the right of its anchor seen from the room.
+- **Finishes.** `WallStyleDef` (`src/sim/content/wall_style_def.gd`,
+  `data/wall_finishes/*.tres`), as `FloorStyleDef`: id, name, order, price per
+  face, `pattern` (`WallStyleDef.Pattern`, never renumber: 0 plain paint),
+  `default_swatch`/`default_accent` (empty main: the shop's wall colour; empty
+  accent: automatic, the shop's wall colour above painted panelling, else a
+  darker shade), empty `theme_tags`, `unlock_level`/`unlock_tier`.
+  `ContentDB.wall_style(s)` and `validate_wall_styles` (exactly one free
+  `paint`, pattern 0, level 1). This PR: Plain paint (free), Painted panelling
+  ($2, sage, a 0.46 m wainscot under the shop colour), Striped wallpaper ($2),
+  Subway tiles ($3, level 2), Brick ($4, level 3). `WallFinishes`
+  (`src/sim/shop/wall_finishes.gd`, owned by `ShopEditor.walls`) mirrors
+  `FloorFinishes` and shares its `Finish` value: face -> look, only faces that
+  differ from the default (plain paint in `ShopEditor.wall_swatch_id`) are
+  stored, so a v5 shop has none and looks exactly as before; `paint_wall`
+  still sets the default colour (`set_default_swatch`).
+- **Finish edits.** `ShopEditor.wall_lay_changes`/`wall_recolour_changes`
+  build proposals on faces only; `check_wall_finishes`/`apply_wall_finishes`
+  price them like floors: a new finish costs its price per face and refunds
+  `floor(old price / 2)`, MORNING/CLOSED only (`WALL_FINISH_CLOSED`) and only
+  when unlocked; a recolour is free at any time. `ShopEditHistory.Kind.WALL_FINISH`
+  ("put up Brick" / "recolour the walls"); a service-time recolour is not
+  recorded. Build > **Wall finish** (`BuildCatalogue.WALL_FINISH`, between
+  Walls and Floors): one card per finish with a CPU picture (`WallThumbnail`),
+  a Colour row (Original + swatches) and an Accent row (Auto + swatches,
+  hidden for plain paint); a card or chip emits `wall_finish_tool_requested`,
+  Main's `begin_wall_finish_tool` runs `BuildMode.State.WALL_FINISH`: click a
+  face, drag (every face of the floor rectangle between the two ends that
+  turns the way either end does: one wall, or round a corner), Shift-click the
+  room (`wall_room_faces`), Alt-click copies a look (`wall_finish_pick`).
+  Commits go through Main's `shop_wall_finishes`. **Paint** on a wall face hit
+  before any furniture recolours the connected run of that look inside its
+  room (`wall_area_faces`), Shift the room; the outside of the shell (no face)
+  still calls the legacy whole-shop `paint_wall`.
+- **Wall decor.** A wall item is an `ItemDef` on `PlacementLayer.WALL`
+  (DECOR or RESTROOM, not solid, no work/seat/blocking cells, footprint
+  `(width 1..4, 1)`); `SimGrid` refuses that layer (`INVALID_LAYER`), so it
+  can never stand on the floor. `WallDecor` (`src/sim/shop/wall_decor.gd`,
+  owned by `ShopEditor.decor`, never by `SimGrid`) maps anchor face -> item
+  (`def_id`, width) and face -> anchor: one item per face, never in anyone's
+  way. `problem` refuses a span that is not one straight run of solid faces
+  (`WallFaces` sentences: window, doorway, street door, "Not enough wall here",
+  "A wall is in the way") or covers another item ("Something already hangs
+  here"). `ShopEditor.check_hang`/`hang` (price, unlock, cash; one ledger line
+  like furniture), `check_rehang`/`rehang` (free), `check_take_down`/`take_down`
+  (half price), all MORNING/CLOSED (`DECOR_CLOSED`); `Exact` for undo/redo.
+  History kinds HANG, TAKE_DOWN, REHANG. This PR's items are the made diner
+  wall pieces (#147) through their wrappers: Sunrise print ($30), Chalk menu
+  board ($25), Mountain print ($35, level 2), Neon OPEN sign ($80, level 4).
+  They show in Buy > Decor under a **Wall decor** sub-tab
+  (`CatalogueText.group_for`), and a tile starts `BuildMode.State.HANG`: the
+  hovered face (`ShopView.wall_face_at_ray`, with the nearest face of the
+  floor cell as a fallback for low walls) and the pointer's side pick the
+  anchor (`WallFaces.anchor_for`); a buy keeps the item in hand. While idle the
+  Hand picks a hung item up (Del sells it), the Eyedropper hangs another and
+  Sell (or Del) sells the pointed one (`ShopView.wall_item_at_ray`).
+  Rotating does nothing: an item always faces out from its wall. A restroom
+  mirror or dryer (#198) is another WALL-layer `ItemDef` with
+  `catalogue_room = restroom`.
+- **Walls that go.** A wall or floor edit that takes a face away (a wall
+  removed or turned into a doorway or window, a shell cell bought as floor or
+  cut by a window, floor sold) takes its finish and every item covering it
+  down: `check_segments`/`check_floor` note them (`EditCheck.lost_finishes`,
+  `lost_decor`) and add their refund (half the finish's price per face, the
+  item's sale refund) to the edit's refund; the apply drops them. The history
+  entry keeps them (`lost_walls`, `lost_decor`) and puts them back free on
+  undo (the entry's exact cash already moved the money); redo takes them again.
+- **Rendering.** `WallFinishView` (under `ShopView`, rebuilt on terrain,
+  wall heights, finish and decor changes) draws each finished face as a thin
+  quad 3 mm off the wall (interior faces off the slab's face), as high as the
+  wall is drawn (full, or the stub in Cutaway and Down), with world-metre UVs
+  so patterns line up from face to face; an interior face stops at a joining
+  slab on its side and wraps a corner on the far side. One `ShaderMaterial`
+  of `src/world/wall_finish.gdshader` per look (pattern, main and resolved
+  accent colours, roughness 0.9 like the plain walls); a proposal (the tool's
+  drag, the paint hover) draws with a thin green outline. Default faces draw
+  nothing, so a shop without finishes renders pixel-identical to before. Hung
+  items are their `ItemVisual` wrappers standing on the span's floor cells
+  with their back (+Z) on the face; they hide while any wall they cover is
+  drawn lowered (they would float over the stub). The HANG ghost is a tinted
+  copy (`BuildPreview` colours) shown on any face, the held item hidden while
+  moved. Catalogue thumbnails turn wall wrappers (`WallMount` node) to face
+  the camera.
+- **Save and vibe.** The `shop` snapshot is version 6 with `wall_style_id`
+  (always `paint`: any other value is ignored, like floors), `wall_finishes:
+  [[x, y, dir, style, swatch, accent], ...]` and `wall_items: [[x, y, dir,
+  def_id], ...]` (sorted); no new SaveSystem section. Versions 1-5 load as
+  plain paint with nothing hung. Decoding forgives: a face that is no longer a
+  face, an unknown finish or item, a non-wall item, an overlap or a malformed
+  row is skipped; an unknown colour falls back to the finish's own. The vibe
+  reads `ShopEditor.wall_vibe_swatch()` (the main colour of most guest-room
+  wall faces: exactly the old wall paint by default) and
+  `decor_vibe_items()` (hung items on guest-room faces) through
+  `VibeInputs.capture(..., wall_items)`: decor charm and themes like rugs
+  (no floor space). Looks only: no other sim effect.
+- **Review.** `tools/screenshot.sh --walls-review --speed=0 --frames=12,30`
+  (`tools/walls_review.gd`, `[--quarter=N]` for frame 12): finishes on shell
+  and interior walls and four hung items in Cutaway, then Walls Up with
+  Build > Wall finish holding a striped wallpaper drag; a hand-run frame after
+  40 holds a chalk menu board from Buy > Decor > Wall decor.
+
 ### Restaurant vibe core (FK-072)
 - `VibeModel.evaluate()` reads detached layout, paint and enabled-menu inputs.
   It never changes the inputs, draws randomness, reads nodes or saves a result.

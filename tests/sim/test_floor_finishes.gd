@@ -47,7 +47,7 @@ func test_every_shop_starts_as_default_planks_with_nothing_stored() -> void:
 	assert_eq(look.swatch, LAYOUT.floor_swatch_id)
 	assert_eq(look.accent, &"")
 	var snapshot: Dictionary = _editor.to_dict()
-	assert_eq(int(snapshot["version"]), 5)
+	assert_eq(int(snapshot["version"]), ShopEditor.SNAPSHOT_VERSION)
 	assert_eq(snapshot["floor_style_id"], "planks")
 	assert_eq(snapshot["floors"], [] as Array[Array])
 

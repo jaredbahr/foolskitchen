@@ -9,6 +9,7 @@ var _items: Dictionary[StringName, ItemDef] = {}
 var _swatches: Dictionary[StringName, SwatchDef] = {}
 var _walls: Dictionary[StringName, WallKindDef] = {}
 var _floors: Dictionary[StringName, FloorStyleDef] = {}
+var _wall_styles: Dictionary[StringName, WallStyleDef] = {}
 
 
 ## On failure the database is empty, so an earlier load cannot hide bad data.
@@ -19,6 +20,7 @@ func load_all(root: String = "res://data") -> PackedStringArray:
 	_swatches.clear()
 	_walls.clear()
 	_floors.clear()
+	_wall_styles.clear()
 	var errors: PackedStringArray = []
 	var ingredient_defs: Array[IngredientDef] = []
 	var recipe_defs: Array[RecipeDef] = []
@@ -62,10 +64,18 @@ func load_all(root: String = "res://data") -> PackedStringArray:
 			floor_defs.append(resource as FloorStyleDef)
 		else:
 			errors.append("%s: expected FloorStyleDef" % path)
+	var wall_style_defs: Array[WallStyleDef] = []
+	for path: String in _resource_paths(root.path_join("wall_finishes"), errors):
+		var resource: Resource = ResourceLoader.load(path)
+		if resource is WallStyleDef:
+			wall_style_defs.append(resource as WallStyleDef)
+		else:
+			errors.append("%s: expected WallStyleDef" % path)
 	errors.append_array(validate_definitions(ingredient_defs, recipe_defs, item_defs))
 	errors.append_array(validate_swatches(swatch_defs))
 	errors.append_array(validate_wall_kinds(wall_defs))
 	errors.append_array(validate_floor_styles(floor_defs, swatch_defs))
+	errors.append_array(validate_wall_styles(wall_style_defs, swatch_defs))
 	if not errors.is_empty():
 		return errors
 	for definition: IngredientDef in ingredient_defs:
@@ -80,6 +90,8 @@ func load_all(root: String = "res://data") -> PackedStringArray:
 		_walls[definition.id] = definition
 	for definition: FloorStyleDef in floor_defs:
 		_floors[definition.id] = definition
+	for definition: WallStyleDef in wall_style_defs:
+		_wall_styles[definition.id] = definition
 	return errors
 
 
@@ -195,6 +207,57 @@ static func validate_floor_styles(definitions: Array[FloorStyleDef], swatch_defs
 	return errors
 
 
+func wall_style(id: StringName) -> WallStyleDef:
+	return _wall_styles.get(id) as WallStyleDef
+
+
+## Catalogue order (then ID); a new array each call.
+func wall_styles() -> Array[WallStyleDef]:
+	var result: Array[WallStyleDef] = []
+	result.assign(_wall_styles.values())
+	result.sort_custom(func(a: WallStyleDef, b: WallStyleDef) -> bool:
+		return a.order < b.order or (a.order == b.order and String(a.id) < String(b.id)))
+	return result
+
+
+## Wall finishes (D26): unique ids with names, prices of 0 or more, a known
+## pattern and known colours, and exactly the free plain paint every wall
+## face starts with (WallStyleDef.DEFAULT_ID).
+static func validate_wall_styles(definitions: Array[WallStyleDef], swatch_defs: Array[SwatchDef]) -> PackedStringArray:
+	var errors: PackedStringArray = []
+	var ids: Dictionary[StringName, bool] = {}
+	var swatch_ids: Dictionary[StringName, bool] = {}
+	for swatch: SwatchDef in swatch_defs:
+		if swatch != null:
+			swatch_ids[swatch.id] = true
+	var has_default: bool = false
+	for index: int in range(definitions.size()):
+		var definition: WallStyleDef = definitions[index]
+		if definition == null:
+			errors.append("wall finish[%d] is null" % index)
+			continue
+		_check_id(definition.id, "wall finish", ids, errors)
+		if definition.display_name.strip_edges().is_empty():
+			errors.append("wall finish '%s': display_name is empty" % definition.id)
+		if definition.price < 0:
+			errors.append("wall finish '%s': price must be >= 0" % definition.id)
+		if not WallStyleDef.Pattern.values().has(int(definition.pattern)):
+			errors.append("wall finish '%s': unknown pattern" % definition.id)
+		if definition.unlock_level < 1 or definition.unlock_tier < 1:
+			errors.append("wall finish '%s': unlock level and tier must be >= 1" % definition.id)
+		for swatch: StringName in [definition.default_swatch, definition.default_accent]:
+			if not swatch.is_empty() and not swatch_ids.has(swatch):
+				errors.append("wall finish '%s': unknown colour '%s'" % [definition.id, swatch])
+		if definition.id == WallStyleDef.DEFAULT_ID:
+			has_default = true
+			if definition.price != 0 or definition.pattern != WallStyleDef.Pattern.PAINT \
+					or not definition.unlocked(1) or not definition.default_swatch.is_empty():
+				errors.append("wall finish '%s': the starting finish must be free plain paint in the shop's own colour" % definition.id)
+	if not has_default:
+		errors.append("wall finish '%s' (the starting finish) is missing" % WallStyleDef.DEFAULT_ID)
+	return errors
+
+
 func swatches() -> Array[SwatchDef]:
 	var result: Array[SwatchDef] = []
 	var ids: Array[StringName] = []
@@ -285,7 +348,7 @@ static func validate_definitions(ingredient_defs: Array[IngredientDef], recipe_d
 				or definition.seated_lean_degrees > ItemDef.MAX_SEATED_LEAN_DEGREES:
 			errors.append("item '%s': seated_lean_degrees must be finite and between 0 and 35 degrees" % definition.id)
 		if not definition.placement_layer_valid():
-			errors.append("item '%s': invalid placement layer; floor decor must be non-solid decor without blocking, work or seat cells" % definition.id)
+			errors.append("item '%s': invalid placement layer; floor decor must be non-solid decor without blocking, work or seat cells, and wall decor also one face deep and at most 4 faces wide" % definition.id)
 		if not definition.blocking_cells_valid():
 			errors.append("item '%s': blocking cells must be unique, inside the footprint, and separate from work and seat cells" % definition.id)
 		if not definition.catalogue_room.is_empty() and not ItemDef.CATALOGUE_ROOMS.has(definition.catalogue_room):

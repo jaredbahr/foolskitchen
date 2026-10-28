@@ -144,7 +144,11 @@ func _start_next() -> void:
 		return
 	_stage.add_child(_active)
 	_active.prepare()
-	var frame: Dictionary = framing_for(_active.get_combined_aabb(), IMAGE_SIZE)
+	if _active.has_node(^"WallMount"):
+		# Wall decor wrappers (D26) face -Z off a wall behind them: turn the
+		# front square to the camera's diagonal (not the back of the frame).
+		_active.rotation.y = -PI * 0.75
+	var frame: Dictionary = framing_for(_active.transform * _active.get_combined_aabb(), IMAGE_SIZE)
 	if frame.is_empty():
 		_fail_active("The item wrapper has no finite visible bounds")
 		return

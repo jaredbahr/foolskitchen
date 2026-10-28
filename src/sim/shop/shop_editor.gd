@@ -7,11 +7,18 @@ extends RefCounted
 ## Version 3 adds the bought floor (FK-080); older shops are the starting shell.
 ## Version 4 adds rooms (FK-101); older shops get the starting layout's rooms.
 ## Version 5 adds floor types (D25); older shops are all the default planks.
-const SNAPSHOT_VERSION: int = 5
+## Version 6 adds wall finishes and wall decor (D26); older shops are plain
+## paint with nothing hung.
+const SNAPSHOT_VERSION: int = 6
 const WALLS_CLOSED: String = "Walls can only be changed in the morning or after closing"
 const FLOORS_CLOSED: String = "New floors can only be laid in the morning or after closing"
 const FLOORS_NOT_FLOOR: String = "Floors are laid on the shop floor"
 const FLOORS_ALREADY: String = "This floor already looks like that"
+const WALL_FINISH_CLOSED: String = "New wall finishes can only be put up in the morning or after closing"
+const WALL_FINISH_NOT_WALL: String = "Wall finishes go on the walls inside the shop"
+const WALL_FINISH_ALREADY: String = "This wall already looks like that"
+const DECOR_CLOSED: String = "Wall decor can only be changed in the morning or after closing"
+const DECOR_GONE: String = "That wall decor is no longer there"
 
 var last_check: EditCheck = EditCheck.new()
 ## The signed cash change of the last successful edit (negative = spent), and
@@ -24,6 +31,13 @@ var floor_swatch_id: StringName = &""
 ## The floor's look per cell (D25). Its default is the free planks in
 ## floor_swatch_id, so a shop without floor types looks as it always did.
 var floors: FloorFinishes = FloorFinishes.new()
+## The walls' look per face and the decor hung on them (D26). The finishes'
+## default is the free plain paint in wall_swatch_id, so a shop without wall
+## finishes looks as it always did.
+var walls: WallFinishes = WallFinishes.new()
+var decor: WallDecor = WallDecor.new()
+## The anchor a successful hang or move left its item at (undo history).
+var last_anchor: Vector3i = WallFaces.NO_FACE
 var _sim: RestaurantSim
 var _content: ContentDB
 var _books: ShopEditBooks
@@ -68,6 +82,7 @@ func _init(sim: RestaurantSim, content: ContentDB, books: ShopEditBooks, layout:
 		_bought = ShopFootprint.to_set(layout.floor_cells)
 		pantry_units = maxi(0, layout.pantry_units)
 		_load_floors(layout)
+		_load_walls(layout)
 
 
 ## Main injects the restored owner level before accepting a new purchase.
@@ -82,6 +97,7 @@ func paint_wall(swatch_id: StringName) -> bool:
 	if not _can_paint(swatch_id):
 		return false
 	wall_swatch_id = swatch_id
+	walls.set_default_swatch(swatch_id)
 	return true
 
 
@@ -296,7 +312,8 @@ func to_dict() -> Dictionary:
 		rooms.append([cell.x, cell.y, String(RoomRules.id_of(painted[cell]))])
 	return {"version": SNAPSHOT_VERSION, "items": placements, "walls": segments, "floor": floor,
 		"rooms": rooms, "wall_swatch_id": String(wall_swatch_id), "floor_swatch_id": String(floor_swatch_id),
-		"floor_style_id": String(floors.default_style), "floors": floors.to_rows()}
+		"floor_style_id": String(floors.default_style), "floors": floors.to_rows(),
+		"wall_style_id": String(walls.default_style), "wall_finishes": walls.to_rows(), "wall_items": decor.to_rows()}
 
 
 static func _cell_set(cells: Array) -> Dictionary[Vector2i, bool]:
@@ -340,7 +357,8 @@ static func from_dict(data: Dictionary, template_layout: ShopLayout, content: Co
 		errors.append("Saved floor does not fit the lot")
 		return null
 	var rows: Array = data["items"]
-	if rows.size() > preview.size.x * preview.size.y * ItemDef.PlacementLayer.size():
+	# Two grid layers (normal and floor decor); wall decor is saved separately.
+	if rows.size() > preview.size.x * preview.size.y * 2:
 		errors.append("Too many shop items")
 		return null
 	var layout: ShopLayout = ShopLayout.new()
@@ -481,6 +499,7 @@ static func from_dict(data: Dictionary, template_layout: ShopLayout, content: Co
 	layout.room_cells = rooms
 	layout.rooms_explicit = true
 	_decode_floors(data, preview, content, layout)
+	_decode_walls(data, preview, content, layout)
 	return layout
 
 
@@ -541,6 +560,81 @@ func _load_floors(layout: ShopLayout) -> void:
 		looks[cell] = FloorFinishes.Finish.new(style.id, _floor_colour(row[1], style.default_swatch, _content),
 			_floor_colour(row[2], style.default_accent, _content))
 	floors.set_finishes(looks)
+
+
+## Wall finishes and wall decor (D26) decode as forgivingly as floor types:
+## the default is always plain paint (a saved other default is ignored), a
+## face that is no longer a wall face, an unknown finish or item and a
+## malformed or overlapping row are skipped, and an unknown colour falls back
+## to the finish's own. Versions 1 to 5 had none (plain paint, nothing hung).
+static func _decode_walls(data: Dictionary, preview: SimGrid, content: ContentDB, layout: ShopLayout) -> void:
+	layout.wall_style_id = WallStyleDef.DEFAULT_ID
+	layout.wall_finishes = {}
+	layout.wall_items = {}
+	var limit: int = preview.size.x * preview.size.y * 4
+	var saved: Variant = data.get("wall_finishes", [])
+	if saved is Array:
+		for value: Variant in (saved as Array).slice(0, limit):
+			var row: Array = value if value is Array else []
+			var face: Vector3i = _saved_face(row, 6)
+			if face == WallFaces.NO_FACE or layout.wall_finishes.has(face) or not WallFaces.is_face(preview, face) \
+					or not (row[3] is String or row[3] is StringName):
+				continue
+			var style: WallStyleDef = content.wall_style(StringName(row[3]))
+			if style == null:
+				continue
+			layout.wall_finishes[face] = PackedStringArray([String(style.id),
+				String(_floor_colour(row[4], style.default_swatch, content)),
+				String(_floor_colour(row[5], style.default_accent, content))])
+	var hung: Variant = data.get("wall_items", [])
+	if not hung is Array:
+		return
+	var staged: WallDecor = WallDecor.new()
+	for value: Variant in (hung as Array).slice(0, limit):
+		var row: Array = value if value is Array else []
+		var anchor: Vector3i = _saved_face(row, 4)
+		if anchor == WallFaces.NO_FACE or not (row[3] is String or row[3] is StringName):
+			continue
+		var definition: ItemDef = content.item(StringName(row[3]))
+		if definition == null or not staged.problem(preview, definition, anchor).is_empty():
+			continue
+		staged.add(definition.id, anchor, definition.footprint.x)
+		layout.wall_items[anchor] = definition.id
+
+
+## A saved face key [x, y, dir, ...] of `size` values, or NO_FACE.
+static func _saved_face(row: Array, size: int) -> Vector3i:
+	if row.size() != size or not _integer_in(row[0], -100000, 100000) or not _integer_in(row[1], -100000, 100000) \
+			or not _integer_in(row[2], 0, 3):
+		return WallFaces.NO_FACE
+	return Vector3i(int(row[0]), int(row[1]), int(row[2]))
+
+
+## The layout's wall finishes and decor onto this shop (forgiving, like decoding).
+func _load_walls(layout: ShopLayout) -> void:
+	walls = WallFinishes.new(WallStyleDef.DEFAULT_ID, wall_swatch_id)
+	decor = WallDecor.new()
+	if _content == null or _sim == null or _sim.world == null:
+		return
+	var grid: SimGrid = _sim.world.grid
+	var looks: Dictionary[Vector3i, FloorFinishes.Finish] = {}
+	for face: Vector3i in layout.wall_finishes:
+		var row: PackedStringArray = layout.wall_finishes[face]
+		if row.size() != 3 or not WallFaces.is_face(grid, face):
+			continue
+		var style: WallStyleDef = _content.wall_style(StringName(row[0]))
+		if style == null:
+			continue
+		looks[face] = FloorFinishes.Finish.new(style.id, _floor_colour(row[1], style.default_swatch, _content),
+			_floor_colour(row[2], style.default_accent, _content))
+	walls.set_finishes(looks)
+	var anchors: Array[Vector3i] = []
+	anchors.assign(layout.wall_items.keys())
+	WallFaces.sort(anchors)
+	for anchor: Vector3i in anchors:
+		var definition: ItemDef = _content.item(layout.wall_items[anchor])
+		if definition != null and decor.problem(grid, definition, anchor).is_empty():
+			decor.add(definition.id, anchor, definition.footprint.x)
 
 
 ## Invalid or removed palette entries revert to authored colours on old saves.
@@ -638,11 +732,15 @@ func check_segments(changes: Dictionary[Vector3i, int], exact: Exact = null) -> 
 		problem = RoomRules.problem(live, preview, ids)
 	if not problem.is_empty():
 		return EditCheck.new(false, problem)
+	var check: EditCheck = EditCheck.new(true)
+	# D26: finishes and decor on walls that go come down too, refunded at half.
+	var lost: int = _note_wall_losses(preview, check)
+	if exact == null:
+		refund += lost
 	if _books == null or not _books.is_ready():
 		return EditCheck.new(false, "The shop books are unavailable")
 	if cost > refund and not _books.can_spend_without_loan(cost - refund):
 		return EditCheck.new(false, _books.purchase_refusal_reason(cost - refund))
-	var check: EditCheck = EditCheck.new(true)
 	check.cost = cost
 	check.refund = refund
 	check.changes = effective
@@ -659,6 +757,7 @@ func apply_segments(changes: Dictionary[Vector3i, int], exact: Exact = null) -> 
 	_applying = true
 	# One batch: observers (view, agents, vibe) see a dragged run as one change.
 	_sim.world.grid.set_segments(check.changes)
+	_drop_wall_losses(check)
 	_record(check.refund, check.cost, exact)
 	_applying = false
 	return true
@@ -880,6 +979,303 @@ func floor_vibe_swatch() -> StringName:
 	return best
 
 
+# --- Wall finishes (D26) -------------------------------------------------------
+
+## Putting `style_id` up in these colours on `faces`: the wall faces it covers.
+func wall_lay_changes(faces: Array[Vector3i], style_id: StringName, swatch_id: StringName,
+		accent_id: StringName = &"") -> Dictionary[Vector3i, FloorFinishes.Finish]:
+	var changes: Dictionary[Vector3i, FloorFinishes.Finish] = {}
+	if _sim == null or _sim.world == null:
+		return changes
+	for face: Vector3i in faces:
+		if WallFaces.is_face(_sim.world.grid, face):
+			changes[face] = FloorFinishes.Finish.new(style_id, swatch_id, accent_id)
+	return changes
+
+
+## Recolouring `faces` with `swatch_id`: each keeps its finish and accent.
+func wall_recolour_changes(faces: Array[Vector3i], swatch_id: StringName) -> Dictionary[Vector3i, FloorFinishes.Finish]:
+	var changes: Dictionary[Vector3i, FloorFinishes.Finish] = {}
+	if _sim == null or _sim.world == null:
+		return changes
+	for face: Vector3i in faces:
+		if WallFaces.is_face(_sim.world.grid, face):
+			changes[face] = walls.finish(face).recoloured(swatch_id)
+	return changes
+
+
+## Player words for a wall finish ("Brick"), or "wall finish" when unknown.
+func wall_style_name(style_id: StringName) -> String:
+	var style: WallStyleDef = _content.wall_style(style_id) if _content != null else null
+	return style.display_name if style != null else "wall finish"
+
+
+## Every wall face of the room `face` looks into (Shift), sorted.
+func wall_room_faces(face: Vector3i) -> Array[Vector3i]:
+	return WallFaces.room_faces(_sim.world.grid, face) if _sim != null and _sim.world != null else []
+
+
+## The connected run of walls that look like `face` (a paint click), sorted.
+func wall_area_faces(face: Vector3i) -> Array[Vector3i]:
+	return walls.area_faces(_sim.world.grid, face) if _sim != null and _sim.world != null else []
+
+
+## The wall faces of these floor cells (a dragged rectangle), sorted.
+func wall_faces_of(cells: Array[Vector2i]) -> Array[Vector3i]:
+	return WallFaces.of_cells(_sim.world.grid, cells) if _sim != null and _sim.world != null else []
+
+
+## Read-only check of new wall looks (face -> Finish), like check_flooring: a
+## change of finish costs the new finish's price per face and refunds half
+## the old one's, only in the morning or after closing; a recolour (same
+## finish) is free at any time. Undo and redo (`exact`) move exact money and
+## skip the unlock level.
+func check_wall_finishes(changes: Dictionary[Vector3i, FloorFinishes.Finish], exact: Exact = null) -> EditCheck:
+	if _sim == null or _sim.world == null or _content == null:
+		return EditCheck.new(false, "The shop is unavailable")
+	var live: SimGrid = _sim.world.grid
+	var effective: Dictionary[Vector3i, FloorFinishes.Finish] = {}
+	var face_seen: bool = false
+	var relaid: bool = false
+	var cost: int = 0
+	var refund: int = 0
+	var locked: String = ""
+	for face: Vector3i in changes:
+		var next: FloorFinishes.Finish = changes[face]
+		var style: WallStyleDef = _content.wall_style(next.style) if next != null else null
+		if style == null:
+			return EditCheck.new(false, "Unknown wall finish")
+		for colour: StringName in [next.swatch, next.accent]:
+			if not colour.is_empty() and _content.swatch(colour) == null:
+				return EditCheck.new(false, "Unknown colour")
+		if not WallFaces.is_face(live, face):
+			continue
+		face_seen = true
+		var current: FloorFinishes.Finish = walls.finish(face)
+		if current.same(next):
+			continue
+		effective[face] = next
+		if current.style == next.style:
+			continue
+		relaid = true
+		cost += style.price
+		var old: WallStyleDef = _content.wall_style(current.style)
+		refund += floori(old.price / 2.0) if old != null else 0
+		if locked.is_empty() and not style.unlocked(_owner_level):
+			locked = style.locked_reason(_owner_level)
+	if effective.is_empty():
+		if exact != null and face_seen:
+			return EditCheck.new(true)
+		return EditCheck.new(false, WALL_FINISH_ALREADY if face_seen else WALL_FINISH_NOT_WALL)
+	if relaid and not can_edit():
+		return EditCheck.new(false, WALL_FINISH_CLOSED)
+	if exact == null and not locked.is_empty():
+		return EditCheck.new(false, locked)
+	if exact != null:
+		cost = maxi(-exact.amount, 0)
+		refund = maxi(exact.amount, 0)
+	if cost > 0 or refund > 0:
+		if _books == null or not _books.is_ready():
+			return EditCheck.new(false, "The shop books are unavailable")
+		if cost > refund and not _books.can_spend_without_loan(cost - refund):
+			return EditCheck.new(false, _books.purchase_refusal_reason(cost - refund))
+	var check: EditCheck = EditCheck.new(true)
+	check.cost = cost
+	check.refund = refund
+	check.wall_finishes = effective
+	return check
+
+
+## Puts up or recolours checked wall looks; books record the refund, then the cost.
+func apply_wall_finishes(changes: Dictionary[Vector3i, FloorFinishes.Finish], exact: Exact = null) -> bool:
+	var check: EditCheck = check_wall_finishes(changes, exact)
+	last_check = check
+	if not check.ok:
+		return false
+	last_cash_change = 0
+	if check.wall_finishes.is_empty():
+		return true
+	walls.set_finishes(check.wall_finishes)
+	if check.cost > 0 or check.refund > 0 or (exact != null and exact.amount != 0):
+		_record(check.refund, check.cost, exact)
+	return true
+
+
+## The wall colour guests see most (D26): the main colour of most wall faces
+## of the guest rooms (ties go to the first colour id), for the vibe's wall
+## paint. A shop with one wall colour gives exactly its whole-shop paint.
+func wall_vibe_swatch() -> StringName:
+	if _sim == null or _sim.world == null:
+		return wall_swatch_id
+	var grid: SimGrid = _sim.world.grid
+	var guests: Dictionary[Vector2i, bool] = _guest_cells(grid)
+	var counts: Dictionary[StringName, int] = {}
+	for face: Vector3i in WallFaces.all(grid):
+		if guests.is_empty() or guests.has(WallFaces.cell(face)):
+			var swatch: StringName = walls.finish(face).swatch
+			counts[swatch] = int(counts.get(swatch, 0)) + 1
+	var best: StringName = wall_swatch_id
+	var most: int = 0
+	for swatch: StringName in counts:
+		if counts[swatch] > most or (counts[swatch] == most and String(swatch) < String(best)):
+			best = swatch
+			most = counts[swatch]
+	return best
+
+
+## The guest-room floor (RoomRules.guest_floor); empty on a grid without a
+## street entry (a test grid), where everything counts.
+static func _guest_cells(grid: SimGrid) -> Dictionary[Vector2i, bool]:
+	if grid.entries().is_empty():
+		return {}
+	var guests: Dictionary[Vector2i, bool] = RoomRules.guest_floor(grid)
+	if guests.is_empty():
+		guests[SimGrid.NO_CELL] = true
+	return guests
+
+
+# --- Wall decor (D26) ------------------------------------------------------------
+
+## The hung item's definition at `anchor`, or null.
+func hung_definition(anchor: Vector3i) -> ItemDef:
+	var hung: WallDecor.Hung = decor.item(anchor)
+	return _content.item(hung.def_id) if hung != null and _content != null else null
+
+
+## Read-only check of hanging a new `def_id` from `anchor` (its leftmost face).
+func check_hang(def_id: StringName, anchor: Vector3i, exact: Exact = null) -> EditCheck:
+	if not can_edit():
+		return EditCheck.new(false, DECOR_CLOSED)
+	if _content == null:
+		return EditCheck.new(false, "The shop content is unavailable")
+	var definition: ItemDef = _content.item(def_id)
+	if definition == null or not definition.hangs_on_wall() or not _valid_definition(definition):
+		return EditCheck.new(false, WallDecor.NOT_WALL_DECOR)
+	if exact == null and definition.unlock_level > _owner_level:
+		return EditCheck.new(false, "Unlocks at level %d" % definition.unlock_level)
+	var why: String = decor.problem(_sim.world.grid, definition, anchor)
+	if not why.is_empty():
+		return EditCheck.new(false, why)
+	if _books == null or not _books.is_ready():
+		return EditCheck.new(false, "The shop books are unavailable")
+	var charge: int = definition.price if exact == null else -exact.amount
+	if (exact == null or charge > 0) and not _books.can_spend_without_loan(charge):
+		return EditCheck.new(false, _books.purchase_refusal_reason(charge))
+	var check: EditCheck = EditCheck.new(true)
+	check.cost = maxi(charge, 0)
+	return check
+
+
+## Hangs a checked item; one ledger line like furniture (undo/redo: `exact`).
+func hang(def_id: StringName, anchor: Vector3i, exact: Exact = null) -> bool:
+	var check: EditCheck = check_hang(def_id, anchor, exact)
+	last_check = check
+	if not check.ok:
+		return false
+	var definition: ItemDef = _content.item(def_id)
+	_applying = true
+	var added: bool = decor.add(definition.id, anchor, definition.footprint.x)
+	if added:
+		last_anchor = anchor
+		_record_decor(-definition.price if exact == null else exact.amount, exact)
+	_applying = false
+	if not added:
+		last_check = EditCheck.new(false, WallDecor.OCCUPIED)
+	return added
+
+
+## Read-only check of moving the item at `anchor` so it hangs from `to_anchor`.
+func check_rehang(anchor: Vector3i, to_anchor: Vector3i, _exact: Exact = null) -> EditCheck:
+	if not can_edit():
+		return EditCheck.new(false, DECOR_CLOSED)
+	var definition: ItemDef = hung_definition(anchor)
+	if definition == null:
+		return EditCheck.new(false, DECOR_GONE)
+	var why: String = decor.problem(_sim.world.grid, definition, to_anchor, anchor)
+	return EditCheck.new(why.is_empty(), why)
+
+
+## Moves a hung item (free, no ledger line).
+func rehang(anchor: Vector3i, to_anchor: Vector3i, exact: Exact = null) -> bool:
+	var check: EditCheck = check_rehang(anchor, to_anchor, exact)
+	last_check = check
+	if not check.ok:
+		return false
+	if anchor == to_anchor:
+		last_anchor = anchor
+		last_cash_change = 0
+		return true
+	var hung: WallDecor.Hung = decor.item(anchor)
+	_applying = true
+	decor.remove(anchor)
+	var added: bool = decor.add(hung.def_id, to_anchor, hung.width)
+	if not added:
+		decor.add(hung.def_id, anchor, hung.width)
+	_applying = false
+	last_anchor = to_anchor if added else anchor
+	last_cash_change = 0
+	if not added:
+		last_check = EditCheck.new(false, WallDecor.OCCUPIED)
+	return added
+
+
+func check_take_down(anchor: Vector3i, exact: Exact = null) -> EditCheck:
+	if not can_edit():
+		return EditCheck.new(false, DECOR_CLOSED)
+	var definition: ItemDef = hung_definition(anchor)
+	if definition == null:
+		return EditCheck.new(false, DECOR_GONE)
+	if _books == null or not _books.is_ready():
+		return EditCheck.new(false, "The shop books are unavailable")
+	var refund: int = sale_refund(definition) if exact == null else exact.amount
+	if refund < 0 and not _books.can_spend_without_loan(-refund):
+		return EditCheck.new(false, _books.purchase_refusal_reason(-refund))
+	var check: EditCheck = EditCheck.new(true)
+	check.refund = maxi(refund, 0)
+	return check
+
+
+## Sells the item at `anchor`: half its price (undo/redo: `exact`). -1 refuses.
+func take_down(anchor: Vector3i, exact: Exact = null) -> int:
+	var check: EditCheck = check_take_down(anchor, exact)
+	last_check = check
+	if not check.ok:
+		return -1
+	var refund: int = sale_refund(hung_definition(anchor)) if exact == null else exact.amount
+	_applying = true
+	decor.remove(anchor)
+	_record_decor(refund, exact)
+	_applying = false
+	return refund
+
+
+## Hung decor guests can see (D26), as definitions: items on the wall faces of
+## the guest rooms, for the vibe (decor charm and themes, like floor decor).
+func decor_vibe_items() -> Array[ItemDef]:
+	var out: Array[ItemDef] = []
+	if _sim == null or _sim.world == null or _content == null:
+		return out
+	var guests: Dictionary[Vector2i, bool] = _guest_cells(_sim.world.grid)
+	for anchor: Vector3i in decor.anchors():
+		var definition: ItemDef = hung_definition(anchor)
+		if definition == null:
+			continue
+		var seen: bool = guests.is_empty()
+		for face: Vector3i in decor.item(anchor).faces():
+			if guests.has(WallFaces.cell(face)):
+				seen = true
+		if seen:
+			out.append(definition)
+	return out
+
+
+## Furniture books one line even at a zero price; undo/redo only when money moves.
+func _record_decor(amount: int, exact: Exact) -> void:
+	if exact == null or amount != 0:
+		_books.add_cash(amount, Ledger.UPGRADES, exact.note if exact != null else "")
+	last_cash_change = amount
+
+
 # --- Floor expansion (FK-080) ------------------------------------------------
 
 ## The lot and floor plan, or null when this shop has no layout.
@@ -1007,6 +1403,9 @@ func check_floor(cells: Array[Vector2i], adding: bool, exact: Exact = null,
 		problem = RoomRules.problem(live, preview, ids)
 	if not problem.is_empty():
 		return EditCheck.new(false, problem)
+	var check: EditCheck = EditCheck.new(true)
+	# D26: finishes and decor on walls that go come down too, refunded at half.
+	refund += _note_wall_losses(preview, check)
 	var cost: int = effective.size() * _footprint.cell_price if adding else 0
 	if not adding:
 		refund += effective.size() * floori(_footprint.cell_price / 2.0)
@@ -1017,7 +1416,6 @@ func check_floor(cells: Array[Vector2i], adding: bool, exact: Exact = null,
 		return EditCheck.new(false, "The shop books are unavailable")
 	if cost > refund and not _books.can_spend_without_loan(cost - refund):
 		return EditCheck.new(false, _books.purchase_refusal_reason(cost - refund))
-	var check: EditCheck = EditCheck.new(true)
 	check.cost = cost
 	check.refund = refund
 	check.changes = removals
@@ -1058,6 +1456,7 @@ func apply_floor(cells: Array[Vector2i], adding: bool, exact: Exact = null,
 			if grid.terrain(cell) != SimGrid.Terrain.FLOOR:
 				gone.append(cell)
 		floors.drop(gone)
+		_drop_wall_losses(check)
 		if _sim.cleanliness != null:
 			for spot: Vector2i in _sim.cleanliness.spots() + _sim.cleanliness.restroom_spots():
 				if grid.terrain(spot) != SimGrid.Terrain.FLOOR:
@@ -1067,6 +1466,32 @@ func apply_floor(cells: Array[Vector2i], adding: bool, exact: Exact = null,
 	if not applied:
 		last_check = EditCheck.new(false, "The shop changed; check the floor again")
 	return applied
+
+
+## Finished faces and hung decor that the edited shop (`preview`) would no
+## longer have (D26), noted in `check`; returns their refund: half the
+## finish's price per face and the sale refund of each item.
+func _note_wall_losses(preview: SimGrid, check: EditCheck) -> int:
+	var refund: int = 0
+	if _content == null:
+		return refund
+	for face: Vector3i in walls.faces():
+		if not WallFaces.is_face(preview, face):
+			check.lost_finishes.append(face)
+			var style: WallStyleDef = _content.wall_style(walls.finish(face).style)
+			refund += floori(style.price / 2.0) if style != null else 0
+	for anchor: Vector3i in decor.lost_on(preview):
+		check.lost_decor.append(anchor)
+		refund += sale_refund(_content.item(decor.item(anchor).def_id))
+	return refund
+
+
+## Takes down what a checked wall or floor edit left without a wall.
+func _drop_wall_losses(check: EditCheck) -> void:
+	if not check.lost_finishes.is_empty():
+		walls.drop(check.lost_finishes)
+	for anchor: Vector3i in check.lost_decor:
+		decor.remove(anchor)
 
 
 ## What selling a piece of furniture refunds: half its price, rounded down.

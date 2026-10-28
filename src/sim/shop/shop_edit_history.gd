@@ -12,7 +12,9 @@ const REDO_NOTE: String = "redo"
 ## Older entries are dropped beyond this; a morning rarely comes close.
 const MAX_ENTRIES: int = 200
 
-enum Kind { BUY, MOVE, SELL, WALLS, FLOOR, PAINT, ROOMS, FLOORING }
+## D26: WALL_FINISH puts up or recolours wall finishes; HANG, TAKE_DOWN and
+## REHANG are wall decor bought, sold and moved.
+enum Kind { BUY, MOVE, SELL, WALLS, FLOOR, PAINT, ROOMS, FLOORING, WALL_FINISH, HANG, TAKE_DOWN, REHANG }
 
 ## One placed item across undo and redo. Re-placing an item gives it a new
 ## grid id, so entries share this reference instead of holding raw ids.
@@ -48,6 +50,17 @@ class Entry extends RefCounted:
 	## keeps the looks of the cells it took in finishes_before, laid again on undo.
 	var finishes_before: Dictionary[Vector2i, FloorFinishes.Finish] = {}
 	var finishes_after: Dictionary[Vector2i, FloorFinishes.Finish] = {}
+	## Wall looks before and after (D26), changed faces only.
+	var walls_before: Dictionary[Vector3i, FloorFinishes.Finish] = {}
+	var walls_after: Dictionary[Vector3i, FloorFinishes.Finish] = {}
+	## A wall or floor edit's losses (D26): the looks of faces it took away,
+	## and the decor it took down (anchor -> ItemDef id), put back on undo
+	## (the edit's exact cash already refunded them; redo takes them again).
+	var lost_walls: Dictionary[Vector3i, FloorFinishes.Finish] = {}
+	var lost_decor: Dictionary[Vector3i, StringName] = {}
+	## Wall decor (D26): where it hung before and after a hang, sale or move.
+	var anchor: Vector3i = WallFaces.NO_FACE
+	var to_anchor: Vector3i = WallFaces.NO_FACE
 	## &"wall", &"floor" or &"item"; colours before and after.
 	var paint_target: StringName = &""
 	var paint_after: StringName = &""
@@ -165,10 +178,12 @@ func sell(item_id: int) -> int:
 
 func apply_segments(changes: Dictionary[Vector3i, int]) -> bool:
 	var before: Dictionary[Vector3i, int] = _editor.segments()
+	var losses: Entry = _losses_before()
 	if not _editor.apply_segments(changes):
 		return false
 	var entry: Entry = Entry.new()
 	entry.kind = Kind.WALLS
+	_note_losses(losses, entry)
 	_diff_segments(before, _editor.segments(), entry)
 	entry.cash = _editor.last_cash_change
 	entry.label = "wall changes"
@@ -181,6 +196,7 @@ func apply_floor(cells: Array[Vector2i], adding: bool) -> bool:
 	var bought_before: Array[Vector2i] = _editor.bought_floor()
 	var rooms_before: Dictionary[Vector2i, int] = _editor.rooms()
 	var looks_before: Dictionary[Vector2i, FloorFinishes.Finish] = _editor.floors.snapshot(_editor.floors.cells())
+	var losses: Entry = _losses_before()
 	var floor_before: Dictionary[Vector2i, bool] = {}
 	if _grid != null:
 		for cell: Vector2i in _grid.cells():
@@ -197,6 +213,7 @@ func apply_floor(cells: Array[Vector2i], adding: bool) -> bool:
 			changed.append(cell)
 	var entry: Entry = Entry.new()
 	entry.kind = Kind.FLOOR
+	_note_losses(losses, entry)
 	entry.floor_cells = changed
 	entry.floor_adding = adding
 	for cell: Vector2i in floor_before:
@@ -249,6 +266,78 @@ func apply_flooring(changes: Dictionary[Vector2i, FloorFinishes.Finish]) -> bool
 			laid = effective[cell].style
 	entry.cash = _editor.last_cash_change
 	entry.label = "recolour the floor" if laid.is_empty() else "lay " + _editor.floor_style_name(laid)
+	_push(entry)
+	return true
+
+
+## Puts up or recolours wall looks (face -> Finish, D26), like apply_flooring:
+## a new finish costs money and is closed-only; a recolour is free at any
+## time and recorded only while editing is allowed.
+func apply_wall_finishes(changes: Dictionary[Vector3i, FloorFinishes.Finish]) -> bool:
+	var faces: Array[Vector3i] = []
+	faces.assign(changes.keys())
+	var before: Dictionary[Vector3i, FloorFinishes.Finish] = _editor.walls.snapshot(faces)
+	if not _editor.apply_wall_finishes(changes):
+		return false
+	var effective: Dictionary[Vector3i, FloorFinishes.Finish] = _editor.last_check.wall_finishes
+	if effective.is_empty() or not _editor.can_edit():
+		return true
+	var entry: Entry = Entry.new()
+	entry.kind = Kind.WALL_FINISH
+	var laid: StringName = &""
+	for face: Vector3i in effective:
+		entry.walls_before[face] = before[face]
+		entry.walls_after[face] = effective[face]
+		if before[face].style != effective[face].style and laid.is_empty():
+			laid = effective[face].style
+	entry.cash = _editor.last_cash_change
+	entry.label = "recolour the walls" if laid.is_empty() else "put up " + _editor.wall_style_name(laid)
+	_push(entry)
+	return true
+
+
+## Hangs new wall decor (D26).
+func hang(def_id: StringName, anchor: Vector3i) -> bool:
+	if not _editor.hang(def_id, anchor):
+		return false
+	var entry: Entry = Entry.new()
+	entry.kind = Kind.HANG
+	entry.def_id = def_id
+	entry.anchor = anchor
+	entry.cash = _editor.last_cash_change
+	entry.label = "hang " + _decor_name(def_id)
+	_push(entry)
+	return true
+
+
+## Sells wall decor; the refund, or -1 when refused.
+func take_down(anchor: Vector3i) -> int:
+	var definition: ItemDef = _editor.hung_definition(anchor)
+	var refund: int = _editor.take_down(anchor)
+	if refund < 0 or definition == null:
+		return refund
+	var entry: Entry = Entry.new()
+	entry.kind = Kind.TAKE_DOWN
+	entry.def_id = definition.id
+	entry.anchor = anchor
+	entry.cash = _editor.last_cash_change
+	entry.label = "sell " + definition.display_name
+	_push(entry)
+	return refund
+
+
+func rehang(anchor: Vector3i, to_anchor: Vector3i) -> bool:
+	var definition: ItemDef = _editor.hung_definition(anchor)
+	if not _editor.rehang(anchor, to_anchor):
+		return false
+	if anchor == to_anchor or definition == null:
+		return true
+	var entry: Entry = Entry.new()
+	entry.kind = Kind.REHANG
+	entry.def_id = definition.id
+	entry.anchor = anchor
+	entry.to_anchor = to_anchor
+	entry.label = "move " + definition.display_name
 	_push(entry)
 	return true
 
@@ -317,7 +406,10 @@ func _invert(entry: Entry) -> bool:
 		Kind.MOVE:
 			return _check(_editor.move(entry.item.id, entry.origin, entry.turns, exact))
 		Kind.WALLS:
-			return _check(_editor.apply_segments(entry.segments_before, exact))
+			if not _check(_editor.apply_segments(entry.segments_before, exact)):
+				return false
+			_restore_losses(entry)
+			return true
 		Kind.FLOOR:
 			if not _check(_editor.apply_floor(entry.floor_cells, not entry.floor_adding, exact,
 					_put_back(entry.segments_before))):
@@ -329,6 +421,7 @@ func _invert(entry: Entry) -> bool:
 			# And with the floor looks they had (free, like the rooms).
 			if not entry.finishes_before.is_empty():
 				_editor.apply_flooring(entry.finishes_before, ShopEditor.Exact.new(0, UNDO_NOTE))
+			_restore_losses(entry)
 			return true
 		Kind.PAINT:
 			return _check(_paint(entry.paint_target, entry.swatch_id, entry.item.id if entry.item != null else -1))
@@ -336,6 +429,14 @@ func _invert(entry: Entry) -> bool:
 			return _check(_editor.apply_rooms(entry.rooms_before, exact))
 		Kind.FLOORING:
 			return _check(_editor.apply_flooring(entry.finishes_before, exact))
+		Kind.WALL_FINISH:
+			return _check(_editor.apply_wall_finishes(entry.walls_before, exact))
+		Kind.HANG:
+			return _check(_editor.take_down(entry.anchor, exact) >= 0)
+		Kind.TAKE_DOWN:
+			return _check(_editor.hang(entry.def_id, entry.anchor, exact))
+		Kind.REHANG:
+			return _check(_editor.rehang(entry.to_anchor, entry.anchor, exact))
 	return false
 
 
@@ -366,7 +467,52 @@ func _reapply(entry: Entry) -> bool:
 			return _check(_editor.apply_rooms(entry.rooms_after, exact))
 		Kind.FLOORING:
 			return _check(_editor.apply_flooring(entry.finishes_after, exact))
+		Kind.WALL_FINISH:
+			return _check(_editor.apply_wall_finishes(entry.walls_after, exact))
+		Kind.HANG:
+			return _check(_editor.hang(entry.def_id, entry.anchor, exact))
+		Kind.TAKE_DOWN:
+			return _check(_editor.take_down(entry.anchor, exact) >= 0)
+		Kind.REHANG:
+			return _check(_editor.rehang(entry.anchor, entry.to_anchor, exact))
 	return false
+
+
+## The wall looks and decor before a wall or floor edit (D26), to note what
+## it took away.
+func _losses_before() -> Entry:
+	var snapshot: Entry = Entry.new()
+	snapshot.lost_walls = _editor.walls.snapshot(_editor.walls.faces())
+	for anchor: Vector3i in _editor.decor.anchors():
+		snapshot.lost_decor[anchor] = _editor.decor.item(anchor).def_id
+	return snapshot
+
+
+func _note_losses(before: Entry, entry: Entry) -> void:
+	for face: Vector3i in _editor.last_check.lost_finishes:
+		if before.lost_walls.has(face):
+			entry.lost_walls[face] = before.lost_walls[face]
+	for anchor: Vector3i in _editor.last_check.lost_decor:
+		if before.lost_decor.has(anchor):
+			entry.lost_decor[anchor] = before.lost_decor[anchor]
+
+
+## Puts back what an undone wall or floor edit took down (free: its exact
+## cash already moved the money back).
+func _restore_losses(entry: Entry) -> void:
+	if not entry.lost_walls.is_empty():
+		_editor.apply_wall_finishes(entry.lost_walls, ShopEditor.Exact.new(0, UNDO_NOTE))
+	var anchors: Array[Vector3i] = []
+	anchors.assign(entry.lost_decor.keys())
+	WallFaces.sort(anchors)
+	for anchor: Vector3i in anchors:
+		_editor.hang(entry.lost_decor[anchor], anchor, ShopEditor.Exact.new(0, UNDO_NOTE))
+	_editor.last_check = EditCheck.new(true)
+
+
+func _decor_name(def_id: StringName) -> String:
+	var definition: ItemDef = _editor.hung_definition(_editor.last_anchor)
+	return definition.display_name if definition != null and definition.id == def_id else "wall decor"
 
 
 ## Takes an item out of the shop (undo a buy, redo a sell).

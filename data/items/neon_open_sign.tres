@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="ItemDef" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://src/sim/content/item_def.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://assets/props/diner_open_sign.tscn" id="2_view"]
+
+[resource]
+script = ExtResource("1_script")
+view_scene = ExtResource("2_view")
+id = &"neon_open_sign"
+display_name = "Neon OPEN sign"
+category = 6
+placement_layer = 2
+footprint = Vector2i(2, 1)
+solid = false
+work_cells = Array[Vector2i]([])
+seat_cells = Array[Vector2i]([])
+station_type = &""
+capacity = 1
+quality_bonus = 0.0
+price = 80
+unlock_level = 4
+charm = 3
+theme_tags = Array[StringName]([&"bar", &"diner"])
+paintable = false

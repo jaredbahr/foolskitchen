@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="WallStyleDef" format=3]
+
+[ext_resource type="Script" path="res://src/sim/content/wall_style_def.gd" id="1_script"]
+
+[resource]
+script = ExtResource("1_script")
+id = &"subway_tile"
+display_name = "Subway tiles"
+order = 4
+price = 3
+pattern = 3
+default_swatch = &"cream"
+default_accent = &""
+unlock_level = 2

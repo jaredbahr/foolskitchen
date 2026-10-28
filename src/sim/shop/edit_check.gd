@@ -21,6 +21,13 @@ var floor_adding: bool = true
 var rooms: Dictionary[Vector2i, int] = {}
 ## Floor types (D25): the cells a valid change would relay or recolour.
 var finishes: Dictionary[Vector2i, FloorFinishes.Finish] = {}
+## Wall finishes (D26): the faces a valid change would refinish or recolour.
+var wall_finishes: Dictionary[Vector3i, FloorFinishes.Finish] = {}
+## Wall and floor edits (D26): finished faces and hung wall decor (anchors)
+## the changed shop would no longer have. They come down with the edit, and
+## their refund (half the price) is part of `refund`.
+var lost_finishes: Array[Vector3i] = []
+var lost_decor: Array[Vector3i] = []
 
 
 func _init(allowed: bool = false, reason: String = "") -> void:

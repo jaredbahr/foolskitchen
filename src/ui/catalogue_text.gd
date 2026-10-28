@@ -11,10 +11,10 @@ const ROOM_LABELS: Dictionary[StringName, String] = {
 	&"decor": "Decor", &"lighting": "Lighting", &"restroom": "Restroom",
 }
 ## Sub-tabs inside a room, by what the furniture is for.
-const GROUP_IDS: Array[StringName] = [&"seating", &"tables", &"equipment", &"accents", &"rugs"]
+const GROUP_IDS: Array[StringName] = [&"seating", &"tables", &"equipment", &"accents", &"rugs", &"wall_decor"]
 const GROUP_LABELS: Dictionary[StringName, String] = {
 	&"seating": "Seating", &"tables": "Tables", &"equipment": "Equipment",
-	&"accents": "Accents", &"rugs": "Rugs",
+	&"accents": "Accents", &"rugs": "Rugs", &"wall_decor": "Wall decor",
 }
 const STATION_TEXT: Dictionary[StringName, String] = {
 	&"stove": "Cooks hot dishes", &"prep_counter": "Prepares ingredients for dishes",
@@ -57,6 +57,8 @@ static func room_label(room: StringName) -> String:
 static func group_for(definition: ItemDef) -> StringName:
 	if definition == null:
 		return &""
+	if definition.hangs_on_wall():
+		return &"wall_decor"
 	match definition.category:
 		ItemDef.Category.CHAIR:
 			return &"seating"
@@ -95,6 +97,8 @@ static func does(definition: ItemDef) -> String:
 			return RESTROOM_TEXT.get(definition.station_type, "Restroom fixture")
 	if definition.placement_layer == ItemDef.PlacementLayer.FLOOR_DECOR:
 		return "Rug: tables and chairs can stand on it"
+	if definition.hangs_on_wall():
+		return "Hangs on a wall, %d tiles wide" % definition.footprint.x
 	return "Decoration"
 
 

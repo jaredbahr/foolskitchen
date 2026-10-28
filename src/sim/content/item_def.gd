@@ -4,7 +4,11 @@ extends Resource
 
 ## RESTROOM (FK-101): restroom fixtures; a toilet has station_type &"toilet".
 enum Category { DOOR, TABLE, CHAIR, STATION, STORAGE, PASS, DECOR, RESTROOM }
-enum PlacementLayer { NORMAL, FLOOR_DECOR }
+## WALL (D26): hangs on a wall face (ShopEditor.decor, WallDecor), never on
+## the grid; its footprint is (width along the wall in faces, 1).
+enum PlacementLayer { NORMAL, FLOOR_DECOR, WALL }
+## The widest wall item, in wall faces (0.5 m each).
+const MAX_WALL_WIDTH: int = 4
 
 ## Buy mode groups furniture by room or function (FK-085). An item without
 ## one (or with an unknown one) is shown under Decor.
@@ -73,11 +77,20 @@ func buy_room() -> StringName:
 
 ## Only passive, non-blocking decor may occupy the floor layer. Interaction
 ## cells and all gameplay furniture stay in the ordinary placement layer.
+## Wall items (D26) are passive decor or restroom fixtures one face deep.
 func placement_layer_valid() -> bool:
 	if placement_layer == PlacementLayer.NORMAL:
 		return true
-	return placement_layer == PlacementLayer.FLOOR_DECOR and category == Category.DECOR \
-		and not solid and blocking_cells.is_empty() and work_cells.is_empty() and seat_cells.is_empty()
+	var passive: bool = not solid and blocking_cells.is_empty() and work_cells.is_empty() and seat_cells.is_empty()
+	if placement_layer == PlacementLayer.WALL:
+		return passive and (category == Category.DECOR or category == Category.RESTROOM) \
+			and footprint.y == 1 and footprint.x >= 1 and footprint.x <= MAX_WALL_WIDTH
+	return placement_layer == PlacementLayer.FLOOR_DECOR and category == Category.DECOR and passive
+
+
+## Hangs on a wall face (D26) instead of standing on the floor.
+func hangs_on_wall() -> bool:
+	return placement_layer == PlacementLayer.WALL
 
 
 ## Partial blocking is authored in the same unrotated coordinates as seats.
