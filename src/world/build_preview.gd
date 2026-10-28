@@ -48,6 +48,10 @@ var hover_mesh: MeshInstance3D
 var room_tints: Dictionary[int, MeshInstance3D] = {}
 var room_labels: Array[Label3D] = []
 var room_ghost: MeshInstance3D
+## Floors tool (D25): the proposed look is drawn on the floor itself (ShopView's
+## preview map); a refused proposal gets red tiles instead.
+var floors_ghost: MeshInstance3D
+var _floor_preview_shown: bool = false
 ## The lot outline and fill, shown in every Build mode state.
 var lot_outline: Node3D
 var _lot_root: Node3D
@@ -200,6 +204,7 @@ func refresh() -> void:
 		global_transform = _shop_view.global_transform
 	else:
 		transform = _shop_view.transform
+	var floor_preview: Dictionary = {}
 	var definition: ItemDef = snapshot.get("definition") as ItemDef
 	var origin: Vector2i = snapshot.get("origin", Vector2i.ZERO)
 	var turns: int = snapshot.get("quarter_turns", 0)
@@ -233,6 +238,17 @@ func refresh() -> void:
 		_build_rooms(room_cells, snapshot.get("room_kind", 0), valid, snapshot.get("why", ""))
 		if not valid:
 			reason = snapshot.get("why", "")
+	elif snapshot.get("active", false) and snapshot.get("state", -1) == BuildMode.State.FLOORS:
+		var floors_cells: Array[Vector2i] = []
+		floors_cells.assign(snapshot.get("floors_cells", []))
+		floor_preview = snapshot.get("floors_finishes", {})
+		if not valid and not String(snapshot.get("why", "")).is_empty():
+			_build_floors_refusal(floors_cells)
+			reason = snapshot.get("why", "")
+		elif not floor_preview.is_empty():
+			var proposal: Array[Vector2i] = []
+			proposal.assign(floor_preview.keys())
+			_build_floors_outline(proposal)
 	elif snapshot.get("active", false) and snapshot.get("state", -1) == BuildMode.State.IDLE:
 		_build_hover(snapshot.get("hover_item_id", -1), snapshot.get("tool", BuildMode.Tool.HAND), valid)
 		if not valid:
@@ -252,12 +268,14 @@ func refresh() -> void:
 			var item: PlacedItem = _shop_view.world.grid.item(id)
 			if item != null and item.def is ItemDef:
 				_build_warning(id, item.def as ItemDef, item.origin, item.quarter_turns)
+	_show_floor_preview(floor_preview)
 	_set_reason(reason)
 
 
 func clear() -> void:
 	_disconnect_controller()
 	_clear_geometry()
+	_show_floor_preview({})
 	_controller = null
 	_shop_view = null
 	_grid = null
@@ -320,6 +338,7 @@ func _clear_geometry() -> void:
 	room_tints.clear()
 	room_labels.clear()
 	room_ghost = null
+	floors_ghost = null
 	if is_instance_valid(_lot_root):
 		_free_node(_lot_root)
 	_lot_root = null
@@ -482,6 +501,81 @@ func _build_rooms(proposal: Array[Vector2i], kind: int, valid: bool, why: String
 	room_ghost.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	room_ghost.set_meta("valid", valid)
 	_ghost_root.add_child(room_ghost)
+
+
+## Red tiles on a refused Floors proposal (the reason is in the hint).
+func _build_floors_refusal(cells: Array[Vector2i]) -> void:
+	if cells.is_empty():
+		return
+	_ghost_root = Node3D.new()
+	_ghost_root.name = "FloorsGhost"
+	add_child(_ghost_root)
+	var tint: Color = INVALID_COLOR
+	tint.a = FLOOR_GHOST_ALPHA
+	floors_ghost = MeshInstance3D.new()
+	floors_ghost.name = "Refused"
+	floors_ghost.mesh = _tile_mesh(cells, 0.03, FLOOR_GHOST_INSET)
+	floors_ghost.material_override = _material(tint, true)
+	floors_ghost.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_ghost_root.add_child(floors_ghost)
+
+
+## A thin green line round the proposal; the floor itself shows the new look.
+func _build_floors_outline(cells: Array[Vector2i]) -> void:
+	_ghost_root = Node3D.new()
+	_ghost_root.name = "FloorsGhost"
+	add_child(_ghost_root)
+	var inside: Dictionary[Vector2i, bool] = {}
+	for cell: Vector2i in cells:
+		inside[cell] = true
+	var surface: SurfaceTool = SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var width: float = 0.035
+	var size: float = GridMath.CELL_SIZE
+	for cell: Vector2i in cells:
+		var low: Vector2 = Vector2(cell) * size
+		# West, north, east and south edges that face cells outside the proposal.
+		var strips: Array[Rect2] = []
+		if not inside.has(cell + Vector2i.LEFT):
+			strips.append(Rect2(low, Vector2(width, size)))
+		if not inside.has(cell + Vector2i.UP):
+			strips.append(Rect2(low, Vector2(size, width)))
+		if not inside.has(cell + Vector2i.RIGHT):
+			strips.append(Rect2(low + Vector2(size - width, 0.0), Vector2(width, size)))
+		if not inside.has(cell + Vector2i.DOWN):
+			strips.append(Rect2(low + Vector2(0.0, size - width), Vector2(size, width)))
+		for strip: Rect2 in strips:
+			var corners: Array[Vector3] = [Vector3(strip.position.x, 0.02, strip.position.y),
+				Vector3(strip.end.x, 0.02, strip.position.y), Vector3(strip.end.x, 0.02, strip.end.y),
+				Vector3(strip.position.x, 0.02, strip.end.y)]
+			for index: int in [0, 1, 2, 0, 2, 3]:
+				surface.set_normal(Vector3.UP)
+				surface.add_vertex(corners[index])
+	var tint: Color = VALID_COLOR
+	tint.a = VALID_ALPHA
+	floors_ghost = MeshInstance3D.new()
+	floors_ghost.name = "Outline"
+	floors_ghost.mesh = surface.commit()
+	floors_ghost.material_override = _material(tint, true)
+	floors_ghost.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_ghost_root.add_child(floors_ghost)
+
+
+## The Floors tool draws its proposal with ShopView's preview map. Only a
+## preview this node showed is cleared, so the paint hover is left alone.
+func _show_floor_preview(looks: Dictionary) -> void:
+	if not is_instance_valid(_shop_view):
+		_floor_preview_shown = false
+		return
+	if looks.is_empty():
+		if _floor_preview_shown:
+			_shop_view.clear_floor_preview()
+		_floor_preview_shown = false
+		return
+	var typed: Dictionary[Vector2i, FloorFinishes.Finish] = {}
+	typed.assign(looks)
+	_shop_view.preview_floor_finishes(typed)
+	_floor_preview_shown = true
 
 
 ## Connected areas of one room (orthogonal steps not crossing a wall), in

@@ -19,6 +19,8 @@ var floor_cells: Array[Vector2i] = []
 var floor_adding: bool = true
 ## Room painting (FK-101): the cells a valid change would repaint (cell -> Room).
 var rooms: Dictionary[Vector2i, int] = {}
+## Floor types (D25): the cells a valid change would relay or recolour.
+var finishes: Dictionary[Vector2i, FloorFinishes.Finish] = {}
 
 
 func _init(allowed: bool = false, reason: String = "") -> void:

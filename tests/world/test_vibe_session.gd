@@ -392,7 +392,7 @@ func _assert_current_inputs(main: Node) -> void:
 	var editor: ShopEditor = main.get("shop_editor") as ShopEditor
 	var expected: VibeModel.Result = VibeModel.evaluate(VibeInputs.capture(
 		(main.get("world") as SimWorld).grid, main.get("content") as ContentDB,
-		(main.get("menu_settings") as MenuSettings).enabled_recipes(), editor.wall_swatch_id, editor.floor_swatch_id), VIBE)
+		(main.get("menu_settings") as MenuSettings).enabled_recipes(), editor.wall_swatch_id, editor.floor_vibe_swatch()), VIBE)
 	assert_eq(_result_state(main.get("vibe_result") as VibeModel.Result), _result_state(expected))
 
 

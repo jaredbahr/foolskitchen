@@ -12,7 +12,7 @@ const REDO_NOTE: String = "redo"
 ## Older entries are dropped beyond this; a morning rarely comes close.
 const MAX_ENTRIES: int = 200
 
-enum Kind { BUY, MOVE, SELL, WALLS, FLOOR, PAINT, ROOMS }
+enum Kind { BUY, MOVE, SELL, WALLS, FLOOR, PAINT, ROOMS, FLOORING }
 
 ## One placed item across undo and redo. Re-placing an item gives it a new
 ## grid id, so entries share this reference instead of holding raw ids.
@@ -44,6 +44,10 @@ class Entry extends RefCounted:
 	## again on redo, so both restore the shop exactly.
 	var rooms_before: Dictionary[Vector2i, int] = {}
 	var rooms_after: Dictionary[Vector2i, int] = {}
+	## Floor looks before and after (D25), changed cells only. A floor removal
+	## keeps the looks of the cells it took in finishes_before, laid again on undo.
+	var finishes_before: Dictionary[Vector2i, FloorFinishes.Finish] = {}
+	var finishes_after: Dictionary[Vector2i, FloorFinishes.Finish] = {}
 	## &"wall", &"floor" or &"item"; colours before and after.
 	var paint_target: StringName = &""
 	var paint_after: StringName = &""
@@ -176,6 +180,7 @@ func apply_floor(cells: Array[Vector2i], adding: bool) -> bool:
 	var before: Dictionary[Vector3i, int] = _editor.segments()
 	var bought_before: Array[Vector2i] = _editor.bought_floor()
 	var rooms_before: Dictionary[Vector2i, int] = _editor.rooms()
+	var looks_before: Dictionary[Vector2i, FloorFinishes.Finish] = _editor.floors.snapshot(_editor.floors.cells())
 	var floor_before: Dictionary[Vector2i, bool] = {}
 	if _grid != null:
 		for cell: Vector2i in _grid.cells():
@@ -197,6 +202,8 @@ func apply_floor(cells: Array[Vector2i], adding: bool) -> bool:
 	for cell: Vector2i in floor_before:
 		if _grid.terrain(cell) != SimGrid.Terrain.FLOOR:
 			entry.rooms_before[cell] = rooms_before.get(cell, SimGrid.Room.DINING)
+			if looks_before.has(cell):
+				entry.finishes_before[cell] = looks_before[cell]
 	entry.rooms_after = painted
 	_diff_segments(before, _editor.segments(), entry)
 	entry.cash = _editor.last_cash_change
@@ -216,6 +223,32 @@ func apply_rooms(changes: Dictionary[Vector2i, int]) -> bool:
 		entry.rooms_before[cell] = before.get(cell, SimGrid.Room.DINING)
 		entry.rooms_after[cell] = _editor.last_check.rooms[cell]
 	entry.label = "room painting"
+	_push(entry)
+	return true
+
+
+## Lays or recolours floor looks (cell -> FloorFinishes.Finish, D25). Laying
+## costs money and is closed-only; a recolour is free at any time and, like
+## paint, recorded only while editing is allowed.
+func apply_flooring(changes: Dictionary[Vector2i, FloorFinishes.Finish]) -> bool:
+	var cells: Array[Vector2i] = []
+	cells.assign(changes.keys())
+	var before: Dictionary[Vector2i, FloorFinishes.Finish] = _editor.floors.snapshot(cells)
+	if not _editor.apply_flooring(changes):
+		return false
+	var effective: Dictionary[Vector2i, FloorFinishes.Finish] = _editor.last_check.finishes
+	if effective.is_empty() or not _editor.can_edit():
+		return true
+	var entry: Entry = Entry.new()
+	entry.kind = Kind.FLOORING
+	var laid: StringName = &""
+	for cell: Vector2i in effective:
+		entry.finishes_before[cell] = before[cell]
+		entry.finishes_after[cell] = effective[cell]
+		if before[cell].style != effective[cell].style and laid.is_empty():
+			laid = effective[cell].style
+	entry.cash = _editor.last_cash_change
+	entry.label = "recolour the floor" if laid.is_empty() else "lay " + _editor.floor_style_name(laid)
 	_push(entry)
 	return true
 
@@ -293,11 +326,16 @@ func _invert(entry: Entry) -> bool:
 			# check), over whatever the back-wall rule painted on re-adding.
 			if not entry.rooms_before.is_empty():
 				_editor.apply_rooms(entry.rooms_before, ShopEditor.Exact.new(0, UNDO_NOTE))
+			# And with the floor looks they had (free, like the rooms).
+			if not entry.finishes_before.is_empty():
+				_editor.apply_flooring(entry.finishes_before, ShopEditor.Exact.new(0, UNDO_NOTE))
 			return true
 		Kind.PAINT:
 			return _check(_paint(entry.paint_target, entry.swatch_id, entry.item.id if entry.item != null else -1))
 		Kind.ROOMS:
 			return _check(_editor.apply_rooms(entry.rooms_before, exact))
+		Kind.FLOORING:
+			return _check(_editor.apply_flooring(entry.finishes_before, exact))
 	return false
 
 
@@ -326,6 +364,8 @@ func _reapply(entry: Entry) -> bool:
 			return _check(_paint(entry.paint_target, entry.paint_after, entry.item.id if entry.item != null else -1))
 		Kind.ROOMS:
 			return _check(_editor.apply_rooms(entry.rooms_after, exact))
+		Kind.FLOORING:
+			return _check(_editor.apply_flooring(entry.finishes_after, exact))
 	return false
 
 

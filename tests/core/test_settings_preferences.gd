@@ -41,6 +41,7 @@ func test_missing_file_uses_safe_defaults_without_creating_a_save() -> void:
 	assert_eq(_model.default_open_speed, 1)
 	assert_false(_model.fullscreen_enabled)
 	assert_true(_model.edge_pan_enabled)
+	assert_true(_model.build_grid_enabled)
 	assert_false(FileAccess.file_exists(_path))
 
 
@@ -75,8 +76,10 @@ func test_changes_save_immediately_and_round_trip_all_choices() -> void:
 	assert_true(_model.set_default_open_speed(2))
 	assert_true(_model.set_fullscreen_enabled(true))
 	assert_true(_model.set_edge_pan_enabled(false))
+	assert_true(_model.set_build_grid_enabled(false))
 	var restored: SettingsPreferences = SettingsPreferences.new(_path)
 	assert_true(restored.load_from_disk())
+	assert_false(restored.build_grid_enabled)
 	assert_eq(restored.master_volume_percent, 42)
 	assert_eq(restored.music_volume_percent, 57)
 	assert_eq(restored.effects_volume_percent, 0)
@@ -119,6 +122,29 @@ func test_missing_or_invalid_field_discards_the_whole_file() -> void:
 	assert_false(_model.load_from_disk())
 	assert_eq(_model.master_volume_percent, 100)
 	assert_eq(_model.ui_scale_percent, 100)
+
+
+func test_a_file_from_before_the_build_grid_choice_still_loads() -> void:
+	var older: ConfigFile = ConfigFile.new()
+	for pair: Array in [["version", 1], ["master_volume", 40], ["music_volume", 80], ["effects_volume", 80],
+			["ui_scale", 125], ["default_open_speed", 2], ["fullscreen", false], ["edge_pan", false]]:
+		older.set_value("preferences", pair[0], pair[1])
+	assert_eq(older.save(_path), OK)
+	assert_true(_model.load_from_disk(), "a missing build_grid is not a broken file")
+	assert_eq(_model.master_volume_percent, 40)
+	assert_false(_model.edge_pan_enabled)
+	assert_true(_model.build_grid_enabled, "Build shows the grid by default")
+	older.set_value("preferences", "build_grid", 3)
+	assert_eq(older.save(_path), OK)
+	assert_false(_model.load_from_disk(), "a build_grid that is not true/false discards the file")
+	assert_eq(_model.master_volume_percent, 100)
+
+
+func test_build_grid_choice_holds_for_the_session_when_it_cannot_be_written() -> void:
+	var unwritable: SettingsPreferences = SettingsPreferences.new("res://settings.cfg")
+	assert_false(unwritable.set_build_grid_enabled(false))
+	assert_false(unwritable.build_grid_enabled, "G still hides Build's grid")
+	unwritable.free()
 
 
 func test_invalid_choices_and_unwritable_path_do_not_change_memory() -> void:
