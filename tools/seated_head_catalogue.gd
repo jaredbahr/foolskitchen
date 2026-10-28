@@ -3,7 +3,6 @@ extends RefCounted
 ## Read-only native ShopView fixture. Production code chooses seat position,
 ## height and facing; this harness never compensates for clipping itself.
 
-const VIEW: PackedScene = preload("res://src/world/shop_view.tscn")
 const GEOMETRY: GDScript = preload("res://tools/seated_head_geometry.gd")
 const SIT_FRACTIONS: Array[float] = [0.0, 0.37, 0.91]
 ## Director 6404820766: unchanged kit items only. Every listed item must retain
@@ -137,7 +136,9 @@ static func _sample_item(parent: Node, definition: ItemDef, turns: int, native_b
 		if not tables[index].reserve(cell, guest.id):
 			errors.append("%s rotation %d: table did not project/reserve the native seat" % [definition.id, turns])
 		guests.append(guest)
-	var view: ShopView = VIEW.instantiate() as ShopView
+	# Load after autoload initialization; entry-script scene preloads retained
+	# the scene/script resource graph at diagnostic shutdown on current main.
+	var view: ShopView = (load("res://src/world/shop_view.tscn") as PackedScene).instantiate() as ShopView
 	parent.add_child(view)
 	view.set_process(false)
 	view.show_world(world)

@@ -1,7 +1,6 @@
 extends SceneTree
 ## Manual FK-082 native before/after evidence. No production state is saved.
 ## godot --rendering-method gl_compatibility --path . --script tools/chair_pose_review.gd -- --out=/fresh/directory
-const VIEW: PackedScene = preload("res://src/world/shop_view.tscn")
 const GEOMETRY: Script = preload("res://tools/seated_head_geometry.gd")
 var _out: String = ""
 
@@ -62,7 +61,7 @@ func _capture(authored: ItemDef, corrected: bool) -> Dictionary:
 	table.reserve(guest.cell, guest.id)
 	var staff: StaffAgent = world.add_agent(StaffAgent.new(&"server")) as StaffAgent
 	staff.cell = Vector2i(7, 4)
-	var view: ShopView = VIEW.instantiate() as ShopView
+	var view: ShopView = (load("res://src/world/shop_view.tscn") as PackedScene).instantiate() as ShopView
 	root.add_child(view)
 	view.set_process(false)
 	view.show_world(world)
