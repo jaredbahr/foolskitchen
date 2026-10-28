@@ -39,12 +39,18 @@ extends SceneTree
 ##   --milestone-review --speed=0 --frames=12,90  authored goals and close reward evidence
 ##   --catalogue-review=rustic|modern --speed=0 --frames=90,120  furnishing fixture
 ##   --diner-review --speed=0 --frames=12,90  six native comparisons, then seated diner fixture
+##   --floors-review --speed=0 --frames=12,30  D25 floor types fixture (tools/floors_review.gd):
+##             the laid floors with thresholds and both doors, then Build > Floors
+##             holding a herringbone drag over the planks
 ## Ordinary captures record real moods, markers and seeds without a fixture.
 
 const MAX_CAPTURE_WAIT_FRAMES: int = 8
 const MAX_OWNER_WARMUP_TICKS: int = 900
 const SETTINGS_CAPTURE_SIZE: Vector2i = Vector2i(1600, 900)
 const DINER_REVIEW: Script = preload("res://tools/diner_review.gd")
+const FLOORS_REVIEW: Script = preload("res://tools/floors_review.gd")
+## --floors-review: the frame Build > Floors opens with its drag held.
+const FLOORS_DRAG_FRAME: int = 20
 const LOAN_TERMS: LoanTuning = preload("res://data/balance/loans.tres")
 const VIBE_TERMS: VibeTuning = preload("res://data/balance/vibe.tres")
 const LOAN_NOTICE: String = "The bank covered your shortfall. It'll take a share of your profits until it's paid back."
@@ -130,6 +136,8 @@ var _catalogue_profile: StringName = &""
 var _catalogue_fixture: Dictionary = {}
 var _diner_review: bool = false
 var _diner_fixture: Dictionary = {}
+var _floors_review: bool = false
+var _floors_fixture: Dictionary = {}
 var _build_pointer: Vector2 = Vector2.ZERO
 var _selected_agent_id: int = -1
 var _capture_pending: bool = false
@@ -240,6 +248,11 @@ func _initialize() -> void:
 				_fail_capture("--rooms supports tool, refused or restroom")
 				return
 			_rooms = requested_rooms
+		elif arg.begins_with("--floors-review"):
+			if arg != "--floors-review":
+				_fail_capture("--floors-review does not accept a value")
+				return
+			_floors_review = true
 		elif arg.begins_with("--door-queue"):
 			if arg != "--door-queue":
 				_fail_capture("--door-queue does not accept a value")
@@ -287,6 +300,13 @@ func _initialize() -> void:
 			or (_rooms != "restroom" and (_open or _fast != 0)) or (_rooms == "restroom" and not _open)):
 		_fail_capture("--rooms requires Main without other panels; tool and refused need a fresh morning, restroom --open")
 		return
+	if _floors_review and (_scene_path != "res://src/world/main.tscn" or _open or _fast != 0 or _speed != 0 \
+			or not _build.is_empty() or _paint or not _walls.is_empty() or not _expand.is_empty() \
+			or not _rooms.is_empty() or _menu or _staff or _settings or not _selection.is_empty() or _f3 \
+			or _report_requested or _shots.min() < 4 or _shots.max() <= FLOORS_DRAG_FRAME):
+		_fail_capture("--floors-review requires a paused fresh morning without other options, and a frame after %d" \
+			% FLOORS_DRAG_FRAME)
+		return
 	if _menu and (_open or not _selection.is_empty()):
 		_fail_capture("--menu requires morning and cannot combine with --open or --select")
 		return
@@ -327,7 +347,8 @@ func _initialize() -> void:
 	# Preserve capture isolation when the integrated game session supports saves.
 	if "use_saves" in _main:
 		_main.set("use_saves", false)
-	if (_report_requested or _milestone_review or _diner_review or _expand == "shop" or not _rooms.is_empty()) \
+	if (_report_requested or _milestone_review or _diner_review or _expand == "shop" or not _rooms.is_empty() \
+			or _floors_review) \
 			and "new_game_seed_override" in _main:
 		_main.set("new_game_seed_override", 1)
 	root.add_child(_main)
@@ -1225,7 +1246,7 @@ static func catalogue_review_evidence(main: Node, context_root: Node) -> Diction
 		"day": world.clock.day, "phase": int(world.clock.phase), "clock_speed": clock.get("speed"),
 		"owner_level": progress.level, "build_active": main.call("is_build_active"), "paint_active": main.call("is_paint_active"),
 		"catalogue_visible": catalogue.is_visible_in_tree(), "category": String(catalogue.selected_category),
-		"wall": String(editor.wall_swatch_id), "floor": String(editor.floor_swatch_id),
+		"wall": String(editor.wall_swatch_id), "floor": String(editor.floor_vibe_swatch()),
 		"cache": {"supported": cache.rendering_supported(), "pending": cache.pending_count(), "cached": cache.cached_count(),
 			"expected": expected["wrappers"].size(), "expected_scenes": expected["wrappers"], "cached_scenes": cached_scenes,
 			"active": cache._active_scene != null, "failed": cache._failed.size(),
@@ -1314,7 +1335,7 @@ static func catalogue_vibe_evidence(main: Node, world: SimWorld, content: Conten
 	if not ("vibe_result" in main) or menu == null or meter == null or panel == null or scroll == null:
 		return {"available": false}
 	var inputs: VibeModel.Inputs = VibeInputs.capture(world.grid, content, menu.enabled_recipes(),
-		editor.wall_swatch_id, editor.floor_swatch_id)
+		editor.wall_swatch_id, editor.floor_vibe_swatch())
 	var expected: VibeModel.Result = VibeModel.evaluate(inputs, VIBE_TERMS)
 	var actual: VibeModel.Result = main.get("vibe_result") as VibeModel.Result
 	var caption: Label = meter.caption_label
@@ -1331,7 +1352,7 @@ static func catalogue_vibe_evidence(main: Node, world: SimWorld, content: Conten
 		recipes.append(String(recipe.id))
 	recipes.sort()
 	return {"available": true, "expected": _vibe_result_record(expected), "main": _vibe_result_record(actual),
-		"inputs": {"wall": String(editor.wall_swatch_id), "floor": String(editor.floor_swatch_id),
+		"inputs": {"wall": String(editor.wall_swatch_id), "floor": String(editor.floor_vibe_swatch()),
 			"menu_ids": recipes, "item_count": world.grid.items().size()},
 		"meter": {"visible": meter.is_visible_in_tree(), "caption_visible": caption.is_visible_in_tree(),
 			"bar_visible": bar.is_visible_in_tree(), "caption": caption.text, "value": bar.value,
@@ -1727,6 +1748,11 @@ func _process(_delta: float) -> bool:
 			_configure_rooms()
 			if _failed:
 				return true
+		if _floors_review:
+			_floors_fixture = FLOORS_REVIEW.prepare(_main, root)
+			if not String(_floors_fixture.get("error", "")).is_empty():
+				_fail_capture(String(_floors_fixture["error"]))
+				return true
 		if _open:
 			(clock.get("sim") as SimClock).start_service()
 		clock.call("set_speed", _speed)
@@ -1804,6 +1830,19 @@ func _process(_delta: float) -> bool:
 				return true
 	if _stock and _report_requested:
 		_scroll_report_to_low_stock()
+	if _floors_review and _frames == 3:
+		# The floors without grid lines first, as a player sees them with G.
+		var rig: CameraRig = _main.get_node_or_null("CameraRig") as CameraRig
+		if rig != null and rig.grid_visible:
+			rig.toggle_grid()
+	if _floors_review and _frames == FLOORS_DRAG_FRAME:
+		var drag: Dictionary = FLOORS_REVIEW.begin_drag(_main, root)
+		if not String(drag.get("error", "")).is_empty():
+			_fail_capture(String(drag["error"]))
+			return true
+		_build_pointer = drag["pointer"]
+	if _floors_review and _frames > FLOORS_DRAG_FRAME:
+		_hold_build_pointer()
 	if _diner_review and _frames == 24:
 		_diner_fixture = DINER_REVIEW.furnish(_main, root, _diner_fixture)
 		if not String(_diner_fixture.get("error", "")).is_empty():
@@ -2184,10 +2223,13 @@ func _paint_state() -> Dictionary:
 	return {"active": _main.call("is_paint_active"), "catalogue_visible": catalogue.is_visible_in_tree(),
 		"swatch_count": catalogue.swatch_buttons.size(), "grid_forced": rig.is_grid_forced(),
 		"grid_visible": rig.effective_grid_visible(), "wall": String(editor.wall_swatch_id),
-		"floor": String(editor.floor_swatch_id), "table": String(tables[0].swatch_id),
+		"floor": String(editor.floors.finish(Vector2i(8, 8)).swatch), "table": String(tables[0].swatch_id),
 		"plant": String(plants[0].swatch_id),
+		# D25: a floor click recolours the dining room's floor in the finish map.
 		"rendered": (wall.material_override as StandardMaterial3D).albedo_color == content.swatch(&"sage").color \
-			and floor_shader.get_shader_parameter("floor_color") == content.swatch(&"honey").color \
+			and floor_shader.get_shader_parameter("finish_map") == view.finish_texture \
+			and view.finish_texel(Vector2i(8, 8)).g8 == ShopView.FINISH_FIRST_SWATCH + content.swatches().find(content.swatch(&"honey")) \
+			and view.finish_texel(Vector2i(3, 2)).g8 == ShopView.FINISH_SHOP_COLOUR \
 			and table_material.albedo_color == content.swatch(&"terracotta").color \
 			and plant_material.albedo_color == content.swatch(&"sage").color}
 
@@ -2460,6 +2502,21 @@ func _pause_on_restroom_walk() -> void:
 			return
 
 
+## Before the drag: every sample cell draws its floor type, thresholds exist and
+## Build is closed. After: the Floors tool holds an 8-tile herringbone drag
+## drawn as the floor's own preview, priced in the hint.
+func _floors_capture_valid(state: Dictionary) -> bool:
+	if state.is_empty() or state.get("patterns_match") != true or int(state.get("threshold_cells", 0)) < 8 \
+			or state.get("floor_material_shared") != true:
+		return false
+	print("FLOORS_REVIEW frame=%d %s" % [_capture_frame, JSON.stringify(state)])
+	if _capture_frame < FLOORS_DRAG_FRAME:
+		return int(state.get("state", -1)) == BuildMode.State.INACTIVE and int(state.get("preview_cells", -1)) == 0
+	return int(state.get("state", -1)) == BuildMode.State.FLOORS and state.get("dragging") == true \
+		and state.get("check_ok") == true and int(state.get("proposal", 0)) == 8 \
+		and int(state.get("preview_cells", 0)) == 8 and String(state.get("summary", "")).begins_with("Lay 8 tiles of Herringbone")
+
+
 func _rooms_capture_valid() -> bool:
 	var world: SimWorld = _capture_world()
 	var mode: BuildMode = _main.get("build_mode") as BuildMode
@@ -2675,6 +2732,10 @@ func _capture() -> void:
 			"cache": catalogue_state.get("cache", {}), "vibe": catalogue_state.get("vibe", {}),
 			"generated_vibe_uids": catalogue_state.get("generated_vibe_uids", {})}))
 		return
+	var floors_state: Dictionary = FLOORS_REVIEW.evidence(_main) if _floors_review else {}
+	if _floors_review and not _floors_capture_valid(floors_state):
+		_fail_capture("floors review did not match its fixture or Floors tool state: " + JSON.stringify(floors_state))
+		return
 	var settings_state: Dictionary = _settings_state() if _settings else {}
 	var hud_layout_state: Dictionary = _hud_layout_state() if _hud_layout else {}
 	if _settings and not _settings_capture_valid(settings_state, world):
@@ -2882,6 +2943,8 @@ func _capture() -> void:
 	if not _catalogue_profile.is_empty():
 		metadata["catalogue_review"] = {"fixture": _catalogue_fixture, "state": catalogue_state,
 			"generated_uids": generated_uid_evidence(CATALOGUE_UID_SOURCES)}
+	if _floors_review:
+		metadata["floors_review"] = {"fixture": _floors_fixture, "state": floors_state}
 	if _diner_review:
 		metadata["diner_review"] = {"fixture": _diner_fixture, "state": diner_state}
 		if _capture_frame == 90:

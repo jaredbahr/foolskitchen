@@ -87,7 +87,8 @@ func test_recursive_resource_discovery_returns_sorted_original_tres_names() -> v
 func test_missing_resource_directories_report_errors_and_clear_old_indices() -> void:
 	var db: ContentDB = _starter_db()
 	var errors: PackedStringArray = db.load_all("res://data/missing_content_db_test_root")
-	assert_eq(errors.size(), 5)
+	# Six folders, plus the missing starting floor.
+	assert_eq(errors.size(), 7)
 	assert_true(_has_error(errors, "Cannot open content directory:"))
 	assert_eq(db.ingredients().size(), 0)
 	assert_eq(db.recipes().size(), 0)

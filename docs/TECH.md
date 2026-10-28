@@ -592,7 +592,9 @@ an active edit/panel/selection first, or opens Settings when none is active.
   `PlacedItem.swatch_id` is cosmetic; moving preserves it, removing drops it,
   and buying starts with an empty ID and the authored placeholder colour.
 - `ShopEditor` owns whole-room wall and floor IDs plus per-item paint commands.
-  Paint is free and phase-independent. Version-1 `shop` snapshots add optional
+  Paint is free and phase-independent. Since D25 a floor click in Paint
+  recolours the connected floor of one look (Shift: the room) instead of the
+  whole floor; the whole-floor ID is the default colour (see Floor types). Version-1 `shop` snapshots add optional
   swatch IDs; missing, unknown or malformed IDs restore the authored defaults.
   The existing morning autosave writes the section; no action saves immediately.
 - Main routes Paint clicks separately from furniture edits, so an open shop can
@@ -1178,6 +1180,91 @@ an active edit/panel/selection first, or opens Settings when none is active.
   --frames=200` (the back room reached round the kitchen, with a restroom;
   the clock pauses on a guest walking there).
 
+### Floor types and patterns (D25)
+- **Data.** `FloorStyleDef` (`src/sim/content/floor_style_def.gd`,
+  `data/floors/*.tres`): id, display name, catalogue order, price per tile,
+  `pattern` (`FloorStyleDef.Pattern`, the shader's number: never renumber),
+  `default_swatch`/`default_accent` (SwatchDef ids; an empty main colour is
+  the shop's original brown, an empty accent a darker shade of the main
+  colour), empty `theme_tags`, `unlock_level` and `unlock_tier` (only tier 1
+  exists, so a higher tier stays locked: "Unlocks with a bigger restaurant").
+  `ContentDB.floor_style(s)` and `validate_floor_styles`: unique ids, names,
+  prices of 0 or more, known patterns and colours, and exactly one free
+  `planks` (pattern 0, level 1, the shop's own colour). This PR ships Wide
+  planks (free), Narrow planks ($1) and Herringbone ($3) as the starter set,
+  Small tiles ($2, level 2) and Checker tiles ($2, level 3). Looks only: no
+  sim effect.
+- **Looks per cell.** `FloorFinishes` (`src/sim/shop/floor_finishes.gd`),
+  owned by `ShopEditor.floors`, never by `SimGrid`: cell -> `Finish`
+  {style, swatch, accent}, storing only cells that differ from the default
+  (`planks` in `ShopEditor.floor_swatch_id`), with one `changed(cells)` per
+  edit. A v4 shop therefore has no stored cells and looks exactly as before;
+  new floor is the default; `apply_floor` drops the looks of cells that stop
+  being floor. `room_cells` floods FLOOR cells of the same `SimGrid.Room` and
+  stops at any wall segment (doorways and windows too); `area_cells` floods
+  the connected same look. The legacy whole-floor `paint_floor` still sets
+  the default colour (`set_default_swatch`).
+- **Edits.** `ShopEditor.lay_changes(cells, style, swatch, accent)` and
+  `recolour_changes(cells, swatch)` build proposals on floor cells only;
+  `check_flooring`/`apply_flooring` price them: a change of floor type costs
+  the new type's price per tile and refunds `floor(old price / 2)` per tile,
+  only MORNING/CLOSED (`FLOORS_CLOSED`) and only when unlocked; a recolour
+  (same type) is free at any time. Undo/redo pass `Exact` (exact money, no
+  unlock check). `ShopEditHistory.Kind.FLOORING` keeps the looks before and
+  after ("lay Checker tiles" / "recolour the floor"); like paint, a recolour
+  during service is not recorded. A FLOOR removal keeps the looks of the
+  cells it took (`finishes_before`) and lays them again on undo.
+- **Tools.** Build > Floors (`BuildCatalogue.FLOORS`; the lot tool's tab is
+  now labelled Expand, id `floor` unchanged) shows one card per floor type
+  (price per tile, or "Level N" disabled with its reason) with a CPU-drawn
+  picture (`FloorThumbnail`, the shader's layout in flat colours, no
+  textures), then a Colour row (Original + the swatches) and an Accent row
+  (Auto + the swatches, hidden for wide planks). A card or chip emits
+  `floors_tool_requested(style, swatch, accent)`; Main's `begin_floors_tool`
+  starts or updates `BuildMode.State.FLOORS`: a drag lays the rectangle
+  (`floors_press`/`floors_pointer`/`floors_release`), Shift-click lays the
+  clicked room, Alt-click (`floors_pick`) copies a floor's look into the tool
+  and the tab, Esc cancels, and the hint line says "Lay 24 tiles of Narrow
+  planks: $24 (refund $12)", "Recolour 24 tiles (free)" or the refusal.
+  Commits go through Main's `shop_flooring`. Paint mode no longer paints the
+  whole floor: a floor click recolours the connected same look and Shift the
+  whole room (`Main._floor_paint_changes`), at any phase, with the same
+  ShopView preview on hover. The level-up banner lists newly unlocked floors
+  ("Small tiles floor").
+- **Rendering.** One floor mesh and one `ShaderMaterial` with
+  `src/world/floor_finish.gdshader` (it replaces `build_grid.gdshader` and
+  keeps its uniforms). `ShopView` writes a per-cell RGBA8 data texture
+  (`finish_image`, origin `grid.origin`, rebuilt on terrain changes, so it
+  follows a grown grid, and on `FloorFinishes.changed`): R pattern, G main
+  colour index (0 = `floor_color`, the shop's own colour; 1 the authored
+  brown; 2.. the swatches in `content.swatches()` order, sent as the
+  `palette` uniform array), B accent index (0 = automatic), A a threshold
+  mask (1 west, 2 north, 4 east, 8 south: that neighbour is another floor
+  type). The street entry and a back door's threshold tile (which shares the
+  floor material) copy the floor inside them. The shader reads it with
+  `texelFetch` (GLES3/Compatibility) and lays patterns in world space so they
+  line up across cells; pattern 0 is the old plank code verbatim, so a default
+  shop is an all-zero map and renders pixel-identical to before. Fine detail
+  fades with `fwidth`; a thin darker line marks a change of floor type.
+  `preview_floor_finishes`/`clear_floor_preview` draw a proposal through a
+  preview copy of the map (the Floors drag, with a green outline from
+  `BuildPreview`, and the paint hover). Adding a floor look = a `Pattern`
+  value, a branch in the shader (and `FloorThumbnail`), and a data file.
+- **Save and vibe.** The `shop` snapshot is version 5 with `floor_style_id`
+  (the default type) and `floors: [[x, y, style, swatch, accent], ...]`
+  (stored cells, row-major); no new SaveSystem section. Versions 1-4 load as
+  all default. Decoding forgives (looks only): an unknown type or a cell
+  that is no longer floor falls back to the default, an unknown colour to the
+  type's own, a malformed row is skipped. `ShopEditor.floor_vibe_swatch()`
+  gives the vibe the main colour of most guest-room floor cells (ties go to
+  the first colour id), which is exactly the old whole-floor paint in a shop
+  with one colour.
+- **Review.** `tools/screenshot.sh --floors-review --speed=0 --frames=12,30`
+  (`tools/floors_review.gd`): small tiles in the kitchen with a back door,
+  narrow planks, herringbone and checker in the dining room with thresholds
+  and the street door, staff standing on them; then Build > Floors holding a
+  herringbone drag.
+
 ### Restaurant vibe core (FK-072)
 - `VibeModel.evaluate()` reads detached layout, paint and enabled-menu inputs.
   It never changes the inputs, draws randomness, reads nodes or saves a result.
@@ -1362,7 +1449,8 @@ visibility without reallocating models. Terrain/world replacement rebuilds and
 releases the old dressing. Dressing adds no lights, simulation cells, collision,
 random draws or saved state; functional lamps remain the separate lamp issue.
 The floor shader adds a subtle multiplicative plank pattern while retaining its
-existing paint colour and camera-controlled build-grid parameters.
+existing paint colour and camera-controlled build-grid parameters (D25: it is
+pattern 0 of `floor_finish.gdshader`, unchanged).
 
 ### Concepts: drinks, Café and Bar, opening hours (FK-083)
 - **No picker.** The concept is what the shop builds and serves. `VibeTuning`

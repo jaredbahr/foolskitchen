@@ -192,7 +192,7 @@ func test_rooms_save_and_load() -> void:
 	var grid: SimGrid = _sim.world.grid
 	assert_true(_editor.apply_rooms(_rooms(_rect(11, 8, 2, 2), SimGrid.Room.RESTROOM)), _editor.last_check.why)
 	var snapshot: Dictionary = _editor.to_dict()
-	assert_eq(int(snapshot["version"]), 4)
+	assert_eq(int(snapshot["version"]), ShopEditor.SNAPSHOT_VERSION)
 	assert_true((snapshot["rooms"] as Array).has([11, 8, "restroom"]))
 	assert_true((snapshot["rooms"] as Array).has([5, 4, "kitchen"]))
 	var errors: Array[String] = []

@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- Lay new floors in Build mode's new Floors tab: wide planks, narrow planks and herringbone to start with, small tiles at level 2 and checker tiles at level 3, each in a colour and an accent colour you choose. Drag over the floor, Shift-click to fill a whole room, or Alt-click a floor to copy it. A new floor costs $1 to $4 a tile (wide planks are free) and replacing one refunds half; laying floors works in the morning or after closing, with undo. A thin line marks where one floor meets another, and doorways take the floor of the room inside. In Paint, clicking the floor now recolours that patch of floor (Shift-click: the whole room), free at any time. The old Floor tab that grows your shop is now called Expand. Older shops keep their floors exactly as they were. (#TBD)
 - Watch your daytime deliveries arrive: a delivery driver in a brown cap and uniform walks along the back alley and up a short paved path to your back door (the front door if you have none), the door swinging out as she passes, and sets the crates down just inside. Goods count as stock once they are put away, so the Stock panel lists them as still to be put away until then; morning orders still arrive at once. (#195)
 - Your cleaner carries each delivered crate to the fridge, freezer or shelf; with no cleaner a server does it (a cleaner keeps your servers on the floor), and anything still waiting at closing is stored for you. Servers now walk normally while carrying plates or a crate instead of gliding. (#195)
 - A shop now has one back door, one cell wide: Build asks you to remove the old one before adding another (older shops keep the ones they have). New at level 2: a freezer in Buy mode's Kitchen tab, and frozen fries to stock in it (no dish uses them yet). (#195)
@@ -86,6 +87,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- Floor types are data (`data/floors/`, `FloorStyleDef`) drawn by one floor shader from a per-cell data texture, so a new floor look is a data file and a shader branch; shop saves are version 5, and the visual review adds a `--floors-review` capture. (#TBD)
 - `tools/delivery_shots.gd` captures a visible delivery (door swing, crates, carrying) for review by hand; it is not part of CI. (#195)
 - Seat-fit review tools identify the actual backrest polygons in joined kit furniture and verify their source and native geometry. Existing clipping exceptions remain visible. (#193)
 - The five-day soak tests now start their new game from a fixed seed instead of the clock, so they play the same guests on every run and stop failing at random. (#176)

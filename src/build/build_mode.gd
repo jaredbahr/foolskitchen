@@ -6,7 +6,9 @@ extends RefCounted
 ## WALLS is the Walls tool (FK-070): drag along grid lines, click a segment.
 ## FLOOR is the Floor tool (FK-080): drag a rectangle of lot cells.
 ## ROOMS is the Rooms tool (FK-101): drag a rectangle to paint a room type.
-enum State { INACTIVE, IDLE, MOVE, BUY, WALLS, FLOOR, ROOMS }
+## FLOORS is the Floors tool (D25): drag a rectangle (or Shift-click a room)
+## to lay a floor type in chosen colours; Alt-click copies a floor's look.
+enum State { INACTIVE, IDLE, MOVE, BUY, WALLS, FLOOR, ROOMS, FLOORS }
 ## What a click on placed furniture does while IDLE (FK-085, Sims-style):
 ## HAND picks it up to move or rotate, EYEDROPPER starts buying another of
 ## it (in its colour), SELL sells it straight away.
@@ -47,6 +49,16 @@ var room_kind: int = SimGrid.Room.DINING
 var room_hover: Vector2i = SimGrid.NO_CELL
 var room_dragging: bool = false
 var room_drag_start: Vector2i = Vector2i.ZERO
+## Floors tool (D25): the look being laid, the hovered cell, the drag, and
+## whether the proposal is the hovered cell's whole room (Shift).
+var floor_style: StringName = FloorStyleDef.DEFAULT_ID
+var floor_swatch: StringName = &""
+var floor_accent: StringName = &""
+var floors_hover: Vector2i = SimGrid.NO_CELL
+var floors_dragging: bool = false
+var floors_drag_start: Vector2i = Vector2i.ZERO
+var floors_room: bool = false
+var _floors_command: Callable
 ## Floor checks by [rect, removing] for the current topology/books (a check
 ## costs ~15 ms); cleared by refresh(), topology signals and commits.
 var _floor_checks: Dictionary = {}
@@ -72,7 +84,7 @@ var _topology_dirty: bool = false
 func bind_session(editor: ShopEditor, world: SimWorld, content: ContentDB,
 		move_command: Callable, buy_command: Callable, sell_command: Callable,
 		walls_command: Callable = Callable(), floor_command: Callable = Callable(),
-		rooms_command: Callable = Callable()) -> void:
+		rooms_command: Callable = Callable(), floors_command: Callable = Callable()) -> void:
 	if _committing:
 		return
 	_disconnect_sources()
@@ -88,6 +100,7 @@ func bind_session(editor: ShopEditor, world: SimWorld, content: ContentDB,
 	_walls_command = walls_command
 	_floor_command = floor_command
 	_rooms_command = rooms_command
+	_floors_command = floors_command
 	_clear_ghost(State.INACTIVE)
 	committed_warning_ids.clear()
 	committed_seat_warnings.clear()
@@ -289,7 +302,11 @@ func cancel_ghost() -> bool:
 		room_dragging = false
 		_recheck_rooms()
 		changed.emit()
-	elif has_ghost() or state == State.WALLS or state == State.FLOOR or state == State.ROOMS:
+	elif state == State.FLOORS and floors_dragging:
+		floors_dragging = false
+		_recheck_floors()
+		changed.emit()
+	elif has_ghost() or state == State.WALLS or state == State.FLOOR or state == State.ROOMS or state == State.FLOORS:
 		_clear_ghost(State.IDLE)
 		changed.emit()
 	else:
@@ -405,6 +422,8 @@ func refresh() -> void:
 		_recheck_floor()
 	elif state == State.ROOMS:
 		_recheck_rooms()
+	elif state == State.FLOORS:
+		_recheck_floors()
 	elif state == State.IDLE:
 		_recheck_hover()
 	if before != presentation_state():
@@ -461,7 +480,10 @@ func presentation_state() -> Dictionary:
 		"floor_cells": floor_proposal(), "floor_removing": floor_removing,
 		"floor_dragging": floor_dragging, "lot": lot_rect(), "lot_open": lot_open_cells(),
 		"tool": int(tool), "hover_item_id": hover_item_id,
-		"room_kind": room_kind, "room_cells": room_proposal(), "room_dragging": room_dragging}
+		"room_kind": room_kind, "room_cells": room_proposal(), "room_dragging": room_dragging,
+		"floor_style": floor_style, "floor_swatch": floor_swatch, "floor_accent": floor_accent,
+		"floors_cells": floors_proposal(), "floors_dragging": floors_dragging, "floors_room": floors_room,
+		"floors_finishes": current_check.finishes.duplicate() if state == State.FLOORS and current_check.ok else {}}
 
 
 func _available() -> bool:
@@ -519,6 +541,9 @@ func _clear_ghost(next_state: State) -> void:
 	floor_removing = false
 	room_hover = SimGrid.NO_CELL
 	room_dragging = false
+	floors_hover = SimGrid.NO_CELL
+	floors_dragging = false
+	floors_room = false
 
 
 func _finish_command(accepted: bool, previous_check: EditCheck, fallback_reason: String) -> void:
@@ -959,6 +984,163 @@ func _recheck_rooms() -> void:
 		return
 	current_check = _editor.check_rooms(_editor.room_changes(cells, room_kind))
 	if not room_dragging and not current_check.ok and current_check.why == RoomRules.ALREADY:
+		current_check = EditCheck.new(false, "")
+
+
+# --- Floors tool (D25) -----------------------------------------------------------
+
+## Enters the Floors tool with the look to lay (FloorStyleDef and SwatchDef ids).
+func begin_floors(style_id: StringName, swatch_id: StringName, accent_id: StringName = &"") -> bool:
+	if not _can_interact() or not _floors_command.is_valid() or _content.floor_style(style_id) == null:
+		return false
+	_clear_ghost(State.FLOORS)
+	floor_style = style_id
+	floor_swatch = swatch_id
+	floor_accent = accent_id
+	_recheck_floors()
+	changed.emit()
+	return true
+
+
+## Another look for the running tool (a catalogue card or colour chip).
+func set_floor_finish(style_id: StringName, swatch_id: StringName, accent_id: StringName = &"") -> void:
+	if state != State.FLOORS or _content == null or _content.floor_style(style_id) == null:
+		return
+	if style_id == floor_style and swatch_id == floor_swatch and accent_id == floor_accent:
+		return
+	floor_style = style_id
+	floor_swatch = swatch_id
+	floor_accent = accent_id
+	_recheck_floors()
+	changed.emit()
+
+
+## Pointer over a cell. `room` (Shift) previews the hovered room's whole floor.
+func floors_pointer(cell: Vector2i, room: bool = false) -> void:
+	if state != State.FLOORS or not _can_interact():
+		return
+	if cell == floors_hover and (floors_dragging or room == floors_room) and not _topology_dirty:
+		return
+	floors_hover = cell
+	if not floors_dragging:
+		floors_room = room
+	if _topology_dirty:
+		_refresh_committed()
+	_recheck_floors()
+	changed.emit()
+
+
+## Starts a drag, or with `room` (Shift) picks the clicked room.
+func floors_press(cell: Vector2i, room: bool = false) -> bool:
+	if state != State.FLOORS or not _can_interact():
+		return false
+	floors_dragging = true
+	floors_room = room
+	floors_drag_start = cell
+	floors_hover = cell
+	_recheck_floors()
+	changed.emit()
+	return true
+
+
+## Ends a drag: lays the look on the dragged rectangle's (or room's) floor.
+func floors_release(cell: Vector2i) -> bool:
+	if state != State.FLOORS or not floors_dragging or not _can_interact():
+		return false
+	if not floors_room:
+		floors_hover = cell
+	_recheck_floors()
+	floors_dragging = false
+	if not current_check.ok or current_check.finishes.is_empty():
+		changed.emit()
+		return false
+	var previous_check: EditCheck = _editor.last_check
+	var proposal: Dictionary[Vector2i, FloorFinishes.Finish] = current_check.finishes.duplicate()
+	_committing = true
+	var answer: Variant = _floors_command.call(proposal)
+	var accepted: bool = answer is bool and answer
+	_refresh_committed()
+	if not accepted:
+		var result: EditCheck = _editor.last_check
+		current_check = result if result != previous_check and not result.ok \
+			else EditCheck.new(false, "The change was refused; try again")
+	_committing = false
+	if _clock.phase != _phase or not _editor.can_edit():
+		_phase = _clock.phase
+		_clear_ghost(State.INACTIVE)
+	elif accepted:
+		_recheck_floors()
+	changed.emit()
+	return accepted
+
+
+## The eyedropper (Alt-click): the tool takes the clicked floor's look.
+func floors_pick(cell: Vector2i) -> bool:
+	if state != State.FLOORS or not _can_interact() or _grid.terrain(cell) != SimGrid.Terrain.FLOOR:
+		return false
+	var look: FloorFinishes.Finish = _editor.floors.finish(cell)
+	floors_dragging = false
+	floor_style = look.style
+	floor_swatch = look.swatch
+	floor_accent = look.accent
+	_recheck_floors()
+	changed.emit()
+	return true
+
+
+## The floor cells the look would cover: the dragged rectangle (or the hovered
+## cell), or with Shift the pressed (or hovered) cell's room. Row-major.
+func floors_proposal() -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	if state != State.FLOORS or _grid == null or floors_hover == SimGrid.NO_CELL:
+		return out
+	if floors_room:
+		return _editor.floor_room_cells(floors_drag_start if floors_dragging else floors_hover)
+	var start: Vector2i = floors_drag_start if floors_dragging else floors_hover
+	var low: Vector2i = start.min(floors_hover)
+	for cell: Vector2i in _rect_cells(Rect2i(low, (start.max(floors_hover) - low) + Vector2i.ONE)):
+		if _grid.terrain(cell) == SimGrid.Terrain.FLOOR:
+			out.append(cell)
+	return out
+
+
+## One player sentence: what laying costs, or why it can't.
+func floors_summary() -> String:
+	if state != State.FLOORS:
+		return ""
+	var style: FloorStyleDef = _content.floor_style(floor_style) if _content != null else null
+	var name: String = style.display_name if style != null else "floor"
+	if not current_check.ok and not current_check.why.is_empty():
+		return current_check.why
+	var count: int = current_check.finishes.size()
+	if count == 0:
+		return "Drag over the floor to lay %s" % name
+	var tiles: String = "%d tile%s" % [count, "" if count == 1 else "s"]
+	var relaid: bool = false
+	for cell: Vector2i in current_check.finishes:
+		if _editor.floors.finish(cell).style != current_check.finishes[cell].style:
+			relaid = true
+			break
+	if not relaid:
+		return "Recolour %s (free)" % tiles
+	var text: String = "Lay %s of %s: %s" % [tiles, name,
+		Fmt.money(current_check.cost) if current_check.cost > 0 else "free"]
+	if current_check.refund > 0:
+		text += " (refund %s)" % Fmt.money(current_check.refund)
+	return text
+
+
+func _recheck_floors() -> void:
+	if state != State.FLOORS or _editor == null:
+		return
+	var cells: Array[Vector2i] = floors_proposal()
+	# Nothing proposed (off the floor, or hovering floor that already looks like
+	# this): an empty refusal keeps the hint quiet.
+	if cells.is_empty():
+		current_check = EditCheck.new(false, "")
+		return
+	current_check = _editor.check_flooring(_editor.lay_changes(cells, floor_style, floor_swatch, floor_accent))
+	if not floors_dragging and not current_check.ok and current_check.why == ShopEditor.FLOORS_ALREADY:
 		current_check = EditCheck.new(false, "")
 
 

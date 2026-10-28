@@ -11,6 +11,11 @@ extends Resource
 ## Whole-room paint; empty IDs preserve the authored placeholder palette.
 @export var wall_swatch_id: StringName = &""
 @export var floor_swatch_id: StringName = &""
+## Floor types (D25): the shop's default floor type (empty is the free wide
+## planks) and the cells laid differently (cell -> [style, swatch, accent],
+## FloorStyleDef and SwatchDef ids). Empty is every cell the default.
+@export var floor_style_id: StringName = &""
+@export var floor_finishes: Dictionary[Vector2i, PackedStringArray] = {}
 ## Starting cell per staff role (&"cook", &"server", &"cleaner", &"owner").
 @export var staff_spawns: Dictionary[StringName, Vector2i] = {}
 ## Wall segments (FK-070): edge key (SimGrid edge) -> WallKindDef id.

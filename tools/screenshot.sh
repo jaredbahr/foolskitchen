@@ -15,6 +15,7 @@
 # --diner-review --speed=0 --frames=12,90 captures six native comparisons, then real seated diner guests.
 # --walls=place --speed=0 --frames=12 holds a dragged wall run (ghost + cost); --walls=room --open --fast=10 --speed=1 --frames=150 [--quarter=0] shows a built room, Walls Up or Cutaway.
 # --expand=drag --speed=0 --frames=12 holds a dragged floor rectangle on the lot (ghost + cost + lot outline); --expand=shop --open --fast=10 --speed=1 --frames=150 [--quarter=0] shows the finished L-shaped shop.
+# --floors-review --speed=0 --frames=12,30 shows laid floor types (thresholds, both doors, staff on them), then Build > Floors with a held drag.
 # --rooms=tool|refused --speed=0 --frames=30 shows the Rooms tool tints or a refused kitchen seat; --rooms=restroom --open --fast=10 --speed=1 --frames=200 pauses on a guest walking round the kitchen to the restroom.
 # Build previews use the production morning input API without buying or saving.
 set -euo pipefail
