@@ -27,6 +27,12 @@ const CRATE_LOWER_SPEED: float = 0.8
 ## Crates set down together appear this many ticks apart, one at a time (the
 ## delivery person's bend to its lowest point, CourierAgent.DROP_TICK).
 const CRATE_STAGGER_TICKS: int = CourierAgent.DROP_TICK
+## A delivery person removed while still visible (at closing) fades out over
+## this long (s), walking on at her 1x pace (m/s) if she was walking. Below
+## GHOST_MIN_FADE she was already all but gone (the end of her route).
+const GHOST_FADE_SECONDS: float = 1.0
+const GHOST_WALK_SPEED: float = 1.25
+const GHOST_MIN_FADE: float = 0.1
 ## Fading the delivery person (dither_range): the distance-fade ramp is at
 ## most this long (m), shorter only so it never starts behind the camera; the
 ## longer it is, the less the fade changes across her own depth (a few per
@@ -122,6 +128,9 @@ var _crates_synced: bool = false
 var _crates_tick: int = 0
 ## Smooth motion: people are drawn between their last two sim ticks.
 var motion: MotionSmoother = MotionSmoother.new()
+## Faded-out figures of people the sim removed while visible (_keep_as_ghost):
+## [{node, fade, step}].
+var ghosts: Array[Dictionary] = []
 
 
 ## Replaces a previous world and its signal bindings without modifying either.
@@ -139,6 +148,7 @@ func show_world(value: SimWorld) -> void:
 	agent_nodes.clear()
 	dirt_nodes.clear()
 	crate_nodes.clear()
+	ghosts.clear()
 	_crate_reveal.clear()
 	_crates_synced = false
 	motion.clear()
@@ -831,6 +841,7 @@ func _process(_delta: float) -> void:
 	_sync_dirt_spots()
 	_sync_item_selection()
 	_sync_agents()
+	_fade_ghosts(_delta)
 	_sync_crates()
 	_sync_back_doors()
 
@@ -857,6 +868,7 @@ func _sync_agents() -> void:
 				(created as PersonView).set_look(frame.role, frame.id, frame.customer_type)
 			created.name = "Agent%d" % agent.id
 			created.set_meta("agent_id", agent.id)
+			created.set_meta(&"courier", agent is CourierAgent)
 			created.set_meta("shop_geometry", true)
 			created.set_meta("unsupported_role", not frame.look_supported)
 			# Keep FK-079's exact tray shape. Its size beside Mini Characters is
@@ -886,8 +898,50 @@ func _sync_agents() -> void:
 		_update_guest_mood(agent, node, frame)
 	for id: int in agent_nodes.keys():
 		if not alive.has(id):
-			_remove_agent_visual(id)
+			if not _keep_as_ghost(id):
+				_remove_agent_visual(id)
 	motion.retain(alive)
+
+
+## The delivery person taken out of the world while still visible (closing
+## stores everything and ends her visit, wherever she is on her walk): the
+## view keeps her last drawn figure as a ghost that walks on and fades out
+## over GHOST_FADE_SECONDS with the usual dither and no shadow, then frees
+## it. View only: a ghost is no agent, so it is never picked, selected,
+## opens no door and blocks nothing; show_world clears it. False when there
+## is nothing to fade (she was already faded out at the end of her route).
+func _keep_as_ghost(id: int) -> bool:
+	var node: Node3D = agent_nodes[id]
+	var fade: float = float(node.get_meta(&"fade", 1.0))
+	if not bool(node.get_meta(&"courier", false)) or not node.visible or fade < GHOST_MIN_FADE:
+		return false
+	_remove_mood_icon(id)
+	agent_nodes.erase(id)
+	node.name = "Ghost%d" % id
+	node.remove_meta("agent_id")
+	var person: PersonView = node as PersonView
+	var walking: bool = person != null and [&"walk", PersonPresentation.CARRY_WALK].has(person.current_clip())
+	if person != null:
+		# The clock may be closed (playback 0): keep her legs going while she fades.
+		person.set_playback_speed(1.0)
+	var heading: Vector3 = Vector3(-sin(node.rotation.y), 0.0, -cos(node.rotation.y))
+	ghosts.append({"node": node, "fade": fade, "step": heading * GHOST_WALK_SPEED if walking else Vector3.ZERO})
+	return true
+
+
+func _fade_ghosts(delta: float) -> void:
+	for ghost: Dictionary in ghosts.duplicate():
+		var node: Node3D = ghost["node"] as Node3D
+		var fade: float = float(ghost["fade"]) - maxf(delta, 0.0) / GHOST_FADE_SECONDS
+		if not is_instance_valid(node) or fade <= 0.0:
+			ghosts.erase(ghost)
+			if is_instance_valid(node):
+				remove_child(node)
+				node.free()
+			continue
+		ghost["fade"] = fade
+		node.position += (ghost["step"] as Vector3) * maxf(delta, 0.0)
+		_apply_fade(node, minf(fade, 0.999))
 
 
 ## How far the picture is between the world's last two ticks (smooth motion,

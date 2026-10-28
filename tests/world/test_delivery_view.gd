@@ -345,3 +345,84 @@ func test_crates_landing_together_appear_one_at_a_time() -> void:
 	assert_eq(shown_counts[0], 7, "the first at once")
 	assert_eq(shown_counts[ShopView.CRATE_STAGGER_TICKS], 8, "then the next")
 	assert_eq(shown_counts.back(), 9, "then the last")
+
+
+## A fade turns each mesh's shadow off and gives back its own setting after.
+func test_a_fade_gives_each_mesh_its_own_shadow_back() -> void:
+	await _enter_view()
+	var figure: Node3D = Node3D.new()
+	var body: MeshInstance3D = MeshInstance3D.new()
+	body.mesh = BoxMesh.new()
+	body.material_override = null
+	body.set_surface_override_material(0, StandardMaterial3D.new())
+	body.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED
+	var hat: MeshInstance3D = MeshInstance3D.new()
+	hat.mesh = BoxMesh.new()
+	hat.set_surface_override_material(0, StandardMaterial3D.new())
+	hat.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	figure.add_child(body)
+	figure.add_child(hat)
+	_view.add_child(figure)
+	_view._apply_fade(figure, 0.5)
+	assert_eq(body.cast_shadow, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF)
+	assert_eq(hat.cast_shadow, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF)
+	_view._apply_fade(figure, 0.7)
+	_view._apply_fade(figure, 1.0)
+	assert_eq(body.cast_shadow, GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED, "its own setting back")
+	assert_eq(hat.cast_shadow, GeometryInstance3D.SHADOW_CASTING_SETTING_ON)
+	assert_eq((body.get_active_material(0) as BaseMaterial3D).distance_fade_mode, BaseMaterial3D.DISTANCE_FADE_DISABLED)
+	figure.free()
+
+
+## Closing ends her visit wherever she is: the view fades her out over about
+## a second as she walks on (a ghost), instead of her vanishing.
+func test_a_courier_removed_mid_walk_fades_out_as_a_ghost() -> void:
+	await _enter_view()
+	_open_quiet()
+	assert_true(_sim.dock.arrive([{"id": &"cheese", "qty": 4}] as Array[Dictionary]))
+	_tick()
+	var courier: CourierAgent = _courier()
+	for tick: int in 2000:
+		_tick()
+		if courier.state == CourierAgent.State.LEAVING and courier.path_index > 4:
+			break
+	assert_eq(courier.state, CourierAgent.State.LEAVING)
+	var node: Node3D = _view.agent_nodes[courier.id]
+	assert_eq(float(node.get_meta(&"fade", 1.0)), 1.0, "solid, near the shop")
+	var at: Vector3 = node.position
+	_sim.dock.store_all()
+	assert_false(_sim.world.agents.has(courier), "the sim removed her")
+	_view._process(0.0)
+	assert_false(_view.agent_nodes.has(courier.id), "no longer an agent's figure")
+	assert_false(_view.drawn_agent_positions().has(courier.id), "never picked or selected")
+	assert_eq(_view.ghosts.size(), 1)
+	assert_true(is_instance_valid(node) and node.is_inside_tree(), "still drawn")
+	var fades: Array[float] = []
+	for step: int in 6:
+		_view._process(0.2)
+		if is_instance_valid(node):
+			fades.append(float(node.get_meta(&"fade", 1.0)))
+			assert_true(_alphas(node).all(func(alpha: float) -> bool: return alpha < 1.0), "dithered, no shadow")
+	assert_true(fades.size() >= 4, "about a second: %s" % [fades])
+	for index: int in range(1, fades.size()):
+		assert_true(fades[index] < fades[index - 1], "fading out: %s" % [fades])
+	assert_false(is_instance_valid(node), "then gone")
+	assert_true(_view.ghosts.is_empty())
+
+
+func test_show_world_clears_ghosts() -> void:
+	await _enter_view()
+	_open_quiet()
+	assert_true(_sim.dock.arrive([{"id": &"cheese", "qty": 4}] as Array[Dictionary]))
+	for tick: int in 2000:
+		_tick()
+		var courier: CourierAgent = _courier()
+		if courier != null and courier.state == CourierAgent.State.LEAVING and courier.path_index > 4:
+			break
+	_sim.dock.store_all()
+	_view._process(0.0)
+	assert_eq(_view.ghosts.size(), 1)
+	var ghost: Node3D = _view.ghosts[0]["node"]
+	_view.show_world(_sim.world)
+	assert_true(_view.ghosts.is_empty())
+	assert_false(is_instance_valid(ghost), "freed with the old world's figures")

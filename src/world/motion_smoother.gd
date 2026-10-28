@@ -106,7 +106,8 @@ func observe(id: int, tick: int, frame: AgentPresentationController.Frame) -> vo
 		_tracks[id] = track
 		return
 	if tick == track.tick and track.current != track.previous:
-		# Same tick: refresh the newest pose in place (no allocation per frame).
+		# Same tick: refresh the newest pose in place, no new Pose (a new one is
+		# made only on a new tick, or while previous and current are one object).
 		_fill(track.current, frame, track.current)
 	else:
 		var pose: Pose = pose_of(frame, track.current)
