@@ -407,7 +407,7 @@ func _apply_paint() -> void:
 	for wall: MeshInstance3D in _wall_nodes.values():
 		wall.material_override = _paint_material(wall_id, wall_color)
 	if segment_view != null:
-		segment_view.set_materials(_paint_material(wall_id, wall_color), _material(wall_top_color))
+		segment_view.set_materials(_paint_material(wall_id, wall_color), _material(wall_top_color), floor_mesh.material_override)
 	var floor_id: StringName = _preview_swatch_id if _preview_kind == &"floor" else _floor_swatch_id
 	var floor_shader: ShaderMaterial = floor_mesh.material_override as ShaderMaterial
 	if floor_shader != null:
@@ -484,7 +484,7 @@ func _apply_wall_heights() -> void:
 		wall.position.y = body * 0.5
 		(wall.get_node("Top") as MeshInstance3D).position.y = height - body * 0.5 + 0.005
 	if segment_view != null and world != null:
-		segment_view.set_materials(_current_wall_material(), _material(wall_top_color))
+		segment_view.set_materials(_current_wall_material(), _material(wall_top_color), floor_mesh.material_override)
 		segment_view.rebuild(world.grid, wall_mode != WallMode.UP, lowered_wall_cells())
 	if room_dressing != null:
 		room_dressing.set_lowered_walls(lowered_wall_cells())

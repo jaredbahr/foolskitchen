@@ -32,6 +32,9 @@ const THRESHOLD_HEIGHT: float = 0.012
 
 var _wall_material: Material
 var _top_material: Material
+## ShopView's floor material (world-space planks and grid), shared so a back
+## door's threshold follows floor paint and the grid toggle.
+var _floor_material: Material
 var _glass_material: StandardMaterial3D
 var _painted: Array[MeshInstance3D] = []
 var _panes: Array[PropView] = []
@@ -50,9 +53,10 @@ func window_span() -> Vector2:
 	return Vector2(center - bounds.size.y * 0.5, center + bounds.size.y * 0.5)
 
 
-func set_materials(wall_material: Material, top_material: Material) -> void:
+func set_materials(wall_material: Material, top_material: Material, floor_material: Material = null) -> void:
 	_wall_material = wall_material
 	_top_material = top_material
+	_floor_material = floor_material
 	for mesh: MeshInstance3D in _painted:
 		mesh.material_override = wall_material
 
@@ -115,6 +119,15 @@ func _build_shell_door(cell: Vector2i, side: Vector2i, lowered: bool) -> void:
 	root.position = GridMath.cell_to_world(cell)
 	root.rotation.y = -PI * 0.5 if side.y == 0 else 0.0
 	add_child(root)
+	# The opened shell cell gets a floor tile, level with the room's floor and
+	# in its material, so the doorway has a threshold instead of a hole.
+	var tile: MeshInstance3D = MeshInstance3D.new()
+	tile.name = "Floor"
+	var plane: PlaneMesh = PlaneMesh.new()
+	plane.size = Vector2(GridMath.CELL_SIZE, GridMath.CELL_SIZE)
+	tile.mesh = plane
+	tile.material_override = _floor_material
+	root.add_child(tile)
 	var half: float = GridMath.CELL_SIZE * 0.5
 	if lowered:
 		_slab(root, -half, -half + LOWERED_POST, 0.0, ShopView.LOWERED_HEIGHT, GridMath.CELL_SIZE)

@@ -1,18 +1,6 @@
 # Fool's Kitchen: Technical Plan
 
 ## 1. Engine
-
-**Visible delivery foundation (FK-099, #187):** Build's Doorway tool can put
-a back door on an outer face at the back or side, using the existing saved
-doorway segment kind and price. It opens that shell cell without changing
-terrain or customer entry cells. Removing it restores the wall; floor edits
-derive its new role again. `WallRules.delivery_cell(grid, target)` returns a
-reachable inside receiving cell, with stable segment-order choice and a
-street-entry fallback. It returns `NO_CELL` when neither route reaches the
-target. This is the entrance foundation only: accepted instant morning orders,
-daytime delivery scheduling, paid pending orders, stock and capacities remain
-unchanged. Delivery people, crates and staff carrying are the remaining #187
-integration, and must be tested through actual queued tasks and execution.
 - **Godot 4.7.2 stable** (pinned 2026-10-23). It's recorded here, in `AGENTS.md` and in `tools/godot_version.txt`. Don't upgrade mid-phase. Upgrades are their own issue.
 - **Language:** GDScript with static typing everywhere (`var x: int`, typed function signatures). No C#: it keeps one toolchain and avoids the .NET export setup.
 - **Renderer:** Compatibility (OpenGL). Godot's web export only supports this renderer. It runs on older family laptops, and low-poly flat shading doesn't need Forward+ effects. It can be switched to Forward+ later for a Steam build, but lighting and shaders would need a retune.
@@ -848,6 +836,26 @@ an active edit/panel/selection first, or opens Settings when none is active.
   Cutaway and Down lower every interior segment; a lowered doorway keeps a
   post stub at each end and a floor threshold, and a lowered window shows a
   Slate blue glass strip instead of the dark cap, so cycling reads there too.
+- **Back doors (FK-099, #187).** The Doorway tool can put a back door on an
+  outer face at the back or side (`WallRules.back_door_side`: not the street
+  side, inferred from the entry cells), using the saved doorway segment kind
+  and price. It opens that shell cell for staff and deliveries without
+  changing terrain or customer entry cells: `SimGrid.is_back_door(cell)`. The
+  cell is never guest-walkable: solid on the guest layer, refused by
+  `is_guest_walkable`, `guest_step_ok` and `find_guest_path`, and any back
+  door turns the guest layer on (`has_guest_limits()`), staff rooms or not, so
+  `RoomRules.guest_reachable` agrees. Removing the door restores the wall;
+  floor edits derive its role again (bought floor behind it makes it an
+  interior doorway, selling the floor makes it a back door again).
+  `WallRules.delivery_cell(grid, target)` returns a reachable inside receiving
+  cell, with stable segment-order choice and a street-entry fallback, or
+  `NO_CELL` when neither route reaches the target. The view hides the shell
+  box, draws the Kenney `doorwayOpen` frame (posts only when lowered) and a
+  floor tile in the floor material. This is the entrance foundation only:
+  accepted instant morning orders, daytime delivery scheduling, paid pending
+  orders, stock and capacities are unchanged. Delivery people, crates and
+  staff carrying are the remaining #187 integration, and must be tested
+  through actual queued tasks and execution.
 - **Floor expansion (FK-080)** builds on this: grid lines keep their keys,
   so an outer-face window becomes an interior window when the shell cell
   behind it turns into floor (see the next section).

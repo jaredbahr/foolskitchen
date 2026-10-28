@@ -371,7 +371,7 @@ func test_outer_windows_follow_the_shell_rules() -> void:
 	assert_false(grid.walkable_neighbours(Vector2i(12, 6)).has(Vector2i(13, 6)))
 
 
-# --- Saves -------------------------------------------------------------------
+# --- Back doors (FK-099) ------------------------------------------------------
 
 func test_back_door_opens_shell_without_changing_customer_entries() -> void:
 	var grid: SimGrid = _sim.world.grid
@@ -431,7 +431,14 @@ func test_delivery_falls_back_when_back_door_receiving_cell_is_blocked() -> void
 	assert_eq(WallRules.delivery_cell(grid), grid.entries()[0], "blocked drop spots do not strand deliveries")
 	assert_true(grid.remove(blocker.id))
 	assert_eq(WallRules.delivery_cell(grid), Vector2i(12, 6))
-	assert_eq(WallRules.delivery_cell(grid, Vector2i(1, 0)), SimGrid.NO_CELL, "no reachable receiving route")
+	# A real floor cell sealed off by interior walls: neither entrance reaches it.
+	var sealed: Vector2i = Vector2i(1, 9)
+	assert_true(grid.is_walkable(sealed))
+	assert_true(grid.set_segments({_edge(2, 9, 0): SimGrid.Segment.WALL,
+		_edge(1, 9, 1): SimGrid.Segment.WALL} as Dictionary[Vector3i, int]))
+	assert_true(grid.is_walkable(sealed), "still floor, just walled in")
+	assert_eq(WallRules.delivery_cell(grid, sealed), SimGrid.NO_CELL, "no reachable receiving route")
+	assert_eq(WallRules.delivery_cell(grid, Vector2i(8, 8)), Vector2i(12, 6), "open floor still uses the back door")
 
 
 func test_back_door_refreshes_when_expansion_moves_the_shell() -> void:
@@ -450,6 +457,94 @@ func test_back_door_refreshes_when_expansion_moves_the_shell() -> void:
 	assert_false(grid.is_walkable(Vector2i(13, 6)))
 	assert_eq(WallRules.delivery_cell(grid), grid.entries()[0])
 
+
+func test_back_door_follows_floor_bought_and_sold_through_the_editor() -> void:
+	var grid: SimGrid = _sim.world.grid
+	var editor: ShopEditor = ShopEditor.new(_sim, _content, ShopEditBooks.new(_can_spend, _record_cash), LAYOUT)
+	var east: Vector3i = _edge(13, 6, 0)
+	var wing: Array[Vector2i] = []
+	for y: int in range(5, 10):
+		wing.append(Vector2i(14, y))
+	assert_true(editor.apply_segments({east: SimGrid.Segment.DOORWAY} as Dictionary[Vector3i, int]), editor.last_check.why)
+	assert_true(grid.is_back_door(Vector2i(13, 6)))
+	var check: EditCheck = editor.check_floor(wing, true)
+	assert_true(check.ok, check.why)
+	assert_true(grid.is_back_door(Vector2i(13, 6)), "checking changes nothing")
+	assert_true(editor.apply_floor(wing, true), editor.last_check.why)
+	assert_eq(grid.segment(east), SimGrid.Segment.DOORWAY, "the door stays as an interior doorway")
+	assert_true(WallRules.is_interior(grid, east))
+	assert_false(grid.is_back_door(Vector2i(13, 6)))
+	assert_true(grid.is_guest_walkable(Vector2i(13, 6)), "opened shell is ordinary dining floor")
+	assert_eq(WallRules.delivery_cell(grid), grid.entries()[0], "an interior doorway is no longer a receiving entrance")
+	assert_true(editor.apply_floor(wing, false), editor.last_check.why)
+	assert_eq(grid.terrain(Vector2i(13, 6)), SimGrid.Terrain.WALL)
+	assert_eq(grid.segment(east), SimGrid.Segment.DOORWAY, "the old shell face is a back door again")
+	assert_true(grid.is_back_door(Vector2i(13, 6)))
+	assert_false(grid.is_guest_walkable(Vector2i(13, 6)))
+	assert_eq(WallRules.delivery_cell(grid), Vector2i(12, 6))
+
+
+func test_guests_never_use_a_dining_side_back_door_but_staff_do() -> void:
+	var grid: SimGrid = _sim.world.grid
+	var door: Vector2i = Vector2i(13, 6)
+	assert_eq(grid.room(Vector2i(12, 6)), SimGrid.Room.DINING, "the door opens off the dining room")
+	assert_true(_editor.apply_segments({_edge(13, 6, 0): SimGrid.Segment.DOORWAY} as Dictionary[Vector3i, int]))
+	for staff_rooms: bool in [true, false]:
+		if not staff_rooms:
+			var clear: Dictionary[Vector2i, int] = {}
+			for cell: Vector2i in grid.rooms():
+				clear[cell] = SimGrid.Room.DINING
+			assert_true(grid.set_rooms(clear))
+		assert_eq(grid.has_staff_rooms(), staff_rooms)
+		assert_true(grid.has_guest_limits(), "a back door alone keeps guests on their own layer")
+		assert_true(grid.is_back_door(door))
+		assert_true(grid.is_walkable(door))
+		assert_false(grid.is_guest_walkable(door))
+		assert_false(grid.guest_step_ok(Vector2i(12, 6), door))
+		var entry: Vector2i = grid.entries()[0]
+		assert_true(grid.find_guest_path(entry, door).is_empty(), "staff_rooms=%s" % staff_rooms)
+		var guest: Array[Vector2i] = grid.find_guest_path(entry, Vector2i(12, 6))
+		assert_false(guest.is_empty())
+		assert_false(guest.has(door))
+		assert_false(grid.find_guest_path(door, Vector2i(12, 7)).is_empty(), "a guest left in the door still gets out")
+		var reach: Dictionary[Vector2i, bool] = RoomRules.guest_reachable(grid)
+		assert_true(reach.has(Vector2i(12, 6)))
+		assert_false(reach.has(door), "edit checks agree with guest paths")
+		var staff: Array[Vector2i] = grid.find_path(door, Vector2i(8, 8))
+		assert_false(staff.is_empty(), "staff still walk through the door")
+		assert_eq(staff[1], Vector2i(12, 6))
+		assert_eq(WallRules.delivery_cell(grid, Vector2i(8, 8)), Vector2i(12, 6))
+
+
+func test_guests_go_round_a_back_door_that_would_be_a_shortcut() -> void:
+	# A notch in the north wall: (3, 1) is shell with the street lot beyond
+	# (3, 0), and floor on both sides of it. As a back door it is the short
+	# way from (2, 1) to (4, 1) for staff; guests go round.
+	var grid: SimGrid = SimGrid.from_ascii(PackedStringArray([
+		"### ###", "#..#..#", "#.....#", "#.....#", "###E###"]))
+	var door: Vector2i = Vector2i(3, 1)
+	var edge: Vector3i = SimGrid.edge_between(door, Vector2i(3, 2))
+	assert_eq(WallRules.edge_problem(grid, edge, SimGrid.Segment.DOORWAY), "")
+	assert_true(grid.set_segment(edge, SimGrid.Segment.DOORWAY))
+	assert_true(grid.is_back_door(door))
+	assert_false(grid.has_staff_rooms())
+	assert_true(grid.find_path(Vector2i(2, 1), Vector2i(4, 1)).has(door), "staff take the short way")
+	for kitchen: bool in [false, true]:
+		if kitchen:
+			assert_true(grid.set_rooms({Vector2i(1, 3): SimGrid.Room.KITCHEN} as Dictionary[Vector2i, int]))
+		var guest: Array[Vector2i] = grid.find_guest_path(Vector2i(2, 1), Vector2i(4, 1))
+		assert_false(guest.is_empty(), "kitchen=%s" % kitchen)
+		assert_false(guest.has(door), "guests never route through the door (kitchen=%s)" % kitchen)
+		for index: int in range(1, guest.size()):
+			assert_true(grid.guest_step_ok(guest[index - 1], guest[index]))
+		assert_false(grid.find_guest_path_to_any(Vector2i(2, 1), [door, Vector2i(4, 1)] as Array[Vector2i]).has(door))
+		assert_false(RoomRules.guest_reachable(grid).has(door))
+	assert_true(grid.set_segment(edge, SimGrid.Segment.NONE))
+	assert_false(grid.is_back_door(door))
+	assert_false(grid.is_walkable(door), "removing the door restores the wall")
+
+
+# --- Saves -------------------------------------------------------------------
 
 func test_back_door_snapshot_round_trip_keeps_receiving_route() -> void:
 	assert_true(_editor.apply_segments({_edge(13, 6, 0): SimGrid.Segment.DOORWAY} as Dictionary[Vector3i, int]))

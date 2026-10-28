@@ -42,9 +42,10 @@ static func label(kind: int) -> String:
 	return LABELS[kind] if kind >= 0 and kind < LABELS.size() else ""
 
 
-## Cells guests can walk to from the street, never entering a staff-only room.
+## Cells guests can walk to from the street, never entering a staff-only room
+## or a back door (the same cells find_guest_path allows).
 static func guest_reachable(grid: SimGrid) -> Dictionary[Vector2i, bool]:
-	if not grid.has_staff_rooms():
+	if not grid.has_guest_limits():
 		return WallRules.reachable(grid)
 	var seen: Dictionary[Vector2i, bool] = {}
 	var frontier: Array[Vector2i] = []

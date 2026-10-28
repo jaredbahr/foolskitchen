@@ -75,6 +75,12 @@ static func door_cells(grid: SimGrid) -> Dictionary[Vector2i, bool]:
 
 ## A delivery entrance must face away from the street frontage. Derived from
 ## entry terrain, so rotated layouts and floor expansions keep their identity.
+## Assumption: the street side is the side the ENTRY cells sit on, found by
+## stepping from an entry against `side` onto FLOOR (the street door's
+## threshold). It holds while every entry is a street cell directly outside the
+## shell on one side; a layout with entries on two sides would refuse back
+## doors on both, and one whose entries do not touch floor would allow a door
+## on the street side. Revisit if layouts gain such entries.
 static func back_door_side(grid: SimGrid, edge: Vector3i) -> Vector2i:
 	var side: Vector2i = outer_side(grid, edge)
 	if side == Vector2i.ZERO:
