@@ -553,7 +553,9 @@ func check_segments(changes: Dictionary[Vector3i, int], exact: Exact = null) -> 
 		cost = maxi(-exact.amount, 0)
 		refund = maxi(exact.amount, 0)
 	preview.set_segments(effective)
-	var problem: String = WallRules.layout_problem(preview)
+	var problem: String = WallRules.closed_door_problem(live, preview)
+	if problem.is_empty():
+		problem = WallRules.layout_problem(preview)
 	if problem.is_empty() and exact == null:
 		var dining: EditCheck = EditCheck.validate_dining(live, preview, ids, -1, -1)
 		problem = "" if dining.ok else dining.why

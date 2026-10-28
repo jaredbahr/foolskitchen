@@ -165,10 +165,28 @@ static func item_walled_off(grid: SimGrid, placed: PlacedItem) -> bool:
 	var definition: ItemDef = placed.def as ItemDef
 	if definition == null or not grid.has_segments():
 		return false
+	return grid.access_walled_off(placed.cells, work_cells(placed))
+
+
+## An item's work cells on the grid.
+static func work_cells(placed: PlacedItem) -> Array[Vector2i]:
 	var access: Array[Vector2i] = []
+	var definition: ItemDef = placed.def as ItemDef
+	if definition == null:
+		return access
 	for authored: Vector2i in definition.work_cells:
 		access.append(placed.origin + GridMath.rotate_cell(authored, definition.footprint, placed.quarter_turns))
-	return grid.access_walled_off(placed.cells, access)
+	return access
+
+
+## BLOCKS_ACCESS when closing a back door (on `before`, gone on `after`) would
+## wall up the work cell an item uses in its opening, else "".
+static func closed_door_problem(before: SimGrid, after: SimGrid) -> String:
+	for placed: PlacedItem in after.items():
+		for cell: Vector2i in work_cells(placed):
+			if before.is_back_door(cell) and not after.is_back_door(cell):
+				return BLOCKS_ACCESS
+	return ""
 
 
 ## Cells reachable on foot from any street entry.

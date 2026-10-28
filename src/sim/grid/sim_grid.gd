@@ -716,10 +716,38 @@ func _refresh_shell_doors(touched: Array[Vector2i]) -> void:
 			_refresh_cell(cell)
 			if was != is_walkable(cell) and not touched.has(cell):
 				touched.append(cell)
+	_refresh_door_edges()
+
+
+## Doorway edges depend on the terrain round their cells (_dead_end_door), so
+## any terrain or segment change re-derives them all. Segments are few.
+func _refresh_door_edges() -> void:
+	for edge: Vector3i in segment_edges():
+		if segment(edge) == Segment.DOORWAY:
+			_refresh_edge(edge)
+
+
+## A back-door shell cell whose only walkable neighbour is the floor cell it
+## opens onto. Every other neighbour is solid, so the engine search already
+## refuses each diagonal past the doorway's posts: its edge needs no edge
+## search, and a shop whose only wall work is such a door keeps the fast,
+## plain paths. (Two doors side by side, or a notch with floor beside the
+## door, still go through the edge search.)
+func _dead_end_door(cell: Vector2i) -> bool:
+	if not _shell_door(cell):
+		return false
+	var open: int = 0
+	for step: Vector2i in [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]:
+		var next: Vector2i = cell + step
+		var t: Terrain = terrain(next)
+		if t == Terrain.FLOOR or t == Terrain.ENTRY or _shell_door(next):
+			open += 1
+	return open == 1
 
 
 ## The plain engine search while no interior segment exists, so a shop without
-## walls keeps exactly the paths (and tie-breaks) it had before FK-070.
+## walls keeps exactly the paths (and tie-breaks) it had before FK-070. A
+## dead-end back door is not an interior segment (_dead_end_door).
 func _solve(start: Vector2i, goal: Vector2i) -> Array[Vector2i]:
 	if _edge_occupied.is_empty():
 		return _astar.get_id_path(start, goal)
@@ -834,6 +862,7 @@ func set_segments(changes: Dictionary[Vector3i, int]) -> bool:
 	for cell: Vector2i in touched:
 		for edge: Vector3i in cell_edges(cell):
 			_refresh_edge(edge)
+	_refresh_door_edges()
 	_refresh_dining_seats()
 	_version += 1
 	cells_changed.emit(touched)
@@ -869,6 +898,8 @@ func _refresh_edge(edge: Vector3i) -> void:
 		for cell: Vector2i in edge_cells(edge):
 			var t: Terrain = terrain(cell)
 			if t != Terrain.FLOOR and t != Terrain.ENTRY and not _shell_door(cell):
+				inside = false
+			elif kind == Segment.DOORWAY and _dead_end_door(cell):
 				inside = false
 	if inside:
 		_edge_occupied[edge] = true

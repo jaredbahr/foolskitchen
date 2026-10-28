@@ -844,7 +844,11 @@ an active edit/panel/selection first, or opens Settings when none is active.
   cell is never guest-walkable: solid on the guest layer, refused by
   `is_guest_walkable`, `guest_step_ok` and `find_guest_path`, and any back
   door turns the guest layer on (`has_guest_limits()`), staff rooms or not, so
-  `RoomRules.guest_reachable` agrees. Removing the door restores the wall;
+  `RoomRules.guest_reachable` agrees, and no seat may stand in it
+  (`DiningSeats`). A door whose cell has only its own floor cell as a walkable
+  neighbour does not count as an interior segment, so such a shop keeps the
+  engine's plain paths (`_solve`); removing a door that is an item's work spot
+  is refused as a blocked work spot. Removing the door restores the wall;
   floor edits derive its role again (bought floor behind it makes it an
   interior doorway, selling the floor makes it a back door again).
   `WallRules.delivery_cell(grid, target)` returns a reachable inside receiving

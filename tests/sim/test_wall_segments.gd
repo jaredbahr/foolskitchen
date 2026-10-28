@@ -516,6 +516,69 @@ func test_guests_never_use_a_dining_side_back_door_but_staff_do() -> void:
 		assert_eq(WallRules.delivery_cell(grid, Vector2i(8, 8)), Vector2i(12, 6))
 
 
+func test_a_table_seat_never_lands_in_a_back_door() -> void:
+	var grid: SimGrid = _sim.world.grid
+	var door: Vector2i = Vector2i(13, 6)
+	assert_true(_editor.apply_segments({_edge(13, 6, 0): SimGrid.Segment.DOORWAY} as Dictionary[Vector3i, int]))
+	var table: PlacedItem = grid.item_at(Vector2i(10, 6))
+	assert_not_null(table)
+	assert_ne(_editor.sell(table.id), -1, _editor.last_check.why)
+	# A table whose built-in seat would fall in the doorway keeps its other seat.
+	assert_true(_editor.buy(&"table_2", Vector2i(11, 5), 0), _editor.last_check.why)
+	var bought: PlacedItem = grid.item_at(Vector2i(11, 5))
+	assert_not_null(bought)
+	assert_eq(bought.seat_cells, [Vector2i(10, 6)] as Array[Vector2i], "no guest seat in the doorway")
+	for placed: PlacedItem in grid.items():
+		assert_false(placed.seat_cells.has(door), "item %d seats a guest in the back door" % placed.id)
+
+
+func test_a_dead_end_back_door_keeps_the_fast_plain_paths() -> void:
+	var grid: SimGrid = _sim.world.grid
+	var door: Vector2i = Vector2i(13, 6)
+	var cells: Array[Vector2i] = []
+	for cell: Vector2i in grid.cells():
+		if grid.is_walkable(cell):
+			cells.append(cell)
+	var before: Dictionary = {}
+	var guest_before: Dictionary = {}
+	for start: Vector2i in cells:
+		for goal: Vector2i in [Vector2i(8, 8), Vector2i(12, 6), Vector2i(2, 2), grid.entries()[0]]:
+			before[[start, goal]] = grid.find_path(start, goal)
+			guest_before[[start, goal]] = grid.find_guest_path(start, goal)
+	assert_true(_editor.apply_segments({_edge(13, 6, 0): SimGrid.Segment.DOORWAY} as Dictionary[Vector3i, int]))
+	assert_true(grid.has_segments())
+	assert_true(grid._edge_occupied.is_empty(), "a dead-end back door needs no edge search")
+	for key: Array in before:
+		assert_eq(grid.find_path(key[0], key[1]), before[key], "staff path %s" % [key])
+		assert_eq(grid.find_guest_path(key[0], key[1]), guest_before[key], "guest path %s" % [key])
+	var staff: Array[Vector2i] = grid.find_path(door, Vector2i(8, 8))
+	assert_false(staff.is_empty(), "staff still cross the door")
+	assert_eq(staff[1], Vector2i(12, 6))
+	assert_eq(grid.find_path(Vector2i(8, 8), door).back(), door)
+	assert_true(grid.find_guest_path(grid.entries()[0], door).is_empty(), "guests stay barred")
+	assert_false(grid.walkable_neighbours(door).has(Vector2i(12, 5)), "no diagonal past the posts")
+	assert_false(grid.walkable_neighbours(door).has(Vector2i(12, 7)))
+	# A second door beside it makes the pair a real edge case again.
+	assert_true(_editor.apply_segments({_edge(13, 7, 0): SimGrid.Segment.DOORWAY} as Dictionary[Vector3i, int]),
+		_editor.last_check.why)
+	assert_false(grid._edge_occupied.is_empty(), "side-by-side doors use the edge search")
+	assert_false(grid.walkable_neighbours(Vector2i(12, 6)).has(Vector2i(13, 7)), "no diagonal past the shared post")
+	assert_true(_editor.apply_segments({_edge(13, 7, 0): SimGrid.Segment.NONE} as Dictionary[Vector3i, int]))
+	assert_true(grid._edge_occupied.is_empty())
+
+
+func test_closing_a_back_door_used_as_a_work_spot_says_so() -> void:
+	var grid: SimGrid = _sim.world.grid
+	var edge: Vector3i = _edge(13, 6, 0)
+	assert_true(_editor.apply_segments({edge: SimGrid.Segment.DOORWAY} as Dictionary[Vector3i, int]))
+	# A prep counter turned to face the door: its only work cell is the doorway.
+	assert_true(_editor.buy(&"prep_counter", Vector2i(12, 6), 1), _editor.last_check.why)
+	var counter: PlacedItem = grid.item_at(Vector2i(12, 6))
+	assert_eq(WallRules.work_cells(counter), [Vector2i(13, 6)] as Array[Vector2i])
+	assert_eq(_editor.check_segments({edge: SimGrid.Segment.NONE} as Dictionary[Vector3i, int]).why,
+		WallRules.BLOCKS_ACCESS, "names the blocked work spot, not a cut-off station")
+
+
 func test_guests_go_round_a_back_door_that_would_be_a_shortcut() -> void:
 	# A notch in the north wall: (3, 1) is shell with the street lot beyond
 	# (3, 0), and floor on both sides of it. As a back door it is the short
