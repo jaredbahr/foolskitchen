@@ -96,7 +96,7 @@ jobs:
           bash tools/screenshot.sh --out=screens/visual-review/hud-1280 --hud-layout --window-size=1280x720 --speed=0 --frames=12,90
           bash tools/screenshot.sh --out=screens/visual-review/hud-1600 --hud-layout --window-size=1600x900 --speed=0 --frames=12,90
 
-      - name: Capture small seated lean at a real table
+      - name: Capture seated guests at a real table
         shell: bash
         run: |
           set -euo pipefail

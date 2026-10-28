@@ -103,7 +103,9 @@ def verify(root, manifest):
     require(manifest["sources"], "empty source manifest")
     verified = []
     for reference, entry in manifest["sources"].items():
-        require(reference.startswith("res://assets/kenney/furniture/") and reference.endswith(".glb"),
+        # Kit sources, plus the lowered-backrest copies from tools/derive_seat_backrests.py.
+        require((reference.startswith("res://assets/kenney/furniture/")
+                 or reference.startswith("res://assets/props/seats/derived/")) and reference.endswith(".glb"),
                 "unexpected source path: " + reference)
         relative = reference.removeprefix("res://")
         source = (root / relative).resolve()

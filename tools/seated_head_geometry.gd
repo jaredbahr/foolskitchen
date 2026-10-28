@@ -355,7 +355,15 @@ static func measure_surfaces(vertices: PackedVector3Array, head_triangles: Packe
 	if vertices.is_empty() or head_triangles.is_empty() or head_triangles.size() % 3 != 0 or parts.is_empty():
 		return {"error": "surface measurement needs referenced head triangles and seat parts", "passes": false}
 	var head_boxes: Array[AABB] = _triangle_bounds(head_triangles)
+	var head_bounds: AABB = head_boxes[0]
+	for box: AABB in head_boxes:
+		head_bounds = head_bounds.merge(box)
 	var inside: Dictionary[Vector3, bool] = {}
+	# Reverse containment: a thin seat corner can sit wholly inside the head
+	# without any head vertex inside the seat or any edge/face crossing found
+	# from the head side. Count unique seat positions inside the closed head.
+	var seat_inside: Dictionary[Vector3, bool] = {}
+	var seat_inside_depth: float = 0.0
 	var maximum_depth: float = 0.0
 	var crossing_witnesses: int = 0
 	var intrusion_parts: Array[Dictionary] = []
@@ -387,6 +395,20 @@ static func measure_surfaces(vertices: PackedVector3Array, head_triangles: Packe
 				part_inside += 1
 				part_depth = maxf(part_depth, depth)
 		maximum_depth = maxf(maximum_depth, part_depth)
+		var part_seat_inside: int = 0
+		if _box_distance_squared(head_bounds, bounds) == 0.0:
+			var tested: Dictionary[Vector3, bool] = {}
+			for vertex: Vector3 in faces:
+				if tested.has(vertex) or vertex.x <= head_bounds.position.x or vertex.x >= head_bounds.end.x \
+						or vertex.y <= head_bounds.position.y or vertex.y >= head_bounds.end.y \
+						or vertex.z <= head_bounds.position.z or vertex.z >= head_bounds.end.z:
+					continue
+				tested[vertex] = true
+				var depth: float = _inside_depth(vertex, head_triangles, head_boxes)
+				if depth > 0.0:
+					seat_inside[vertex] = true
+					part_seat_inside += 1
+					seat_inside_depth = maxf(seat_inside_depth, depth)
 		var crosses: bool = false
 		for head_index: int in range(head_boxes.size()):
 			if _box_distance_squared(head_boxes[head_index], bounds) > 0.0:
@@ -401,10 +423,11 @@ static func measure_surfaces(vertices: PackedVector3Array, head_triangles: Packe
 				break
 		if crosses:
 			crossing_witnesses += 1
-		if part_inside > 0 or crosses:
+		if part_inside > 0 or part_seat_inside > 0 or crosses:
 			intrusion_paths.append(part["path"])
 			intrusion_parts.append({"path": part["path"], "head_vertices_inside": part_inside,
-				"max_vertex_penetration": part_depth, "surface_crossing_witness": crosses})
+				"max_vertex_penetration": part_depth, "surface_crossing_witness": crosses,
+				"seat_vertices_inside_head": part_seat_inside})
 		if not part["is_backrest"]:
 			continue
 		# Full closed meshes above retain every intrusion/crossing triangle. Only
@@ -438,9 +461,10 @@ static func measure_surfaces(vertices: PackedVector3Array, head_triangles: Packe
 		"clearance_metric": CLEARANCE_METRIC, "measurement_complete": classified,
 		"head_vertices_inside_count": inside.size(), "max_head_vertex_penetration": maximum_depth,
 		"head_seat_surface_crossings": crossing_witnesses, "intrusion_parts": intrusion_paths, "intrusion_details": intrusion_parts,
+		"seat_vertices_inside_head_count": seat_inside.size(), "max_seat_vertex_head_depth": seat_inside_depth,
 		"head_tested_vertices_unique": vertices.size(), "head_triangles": head_triangles.size() / 3,
 		"seat_triangles": seat_triangle_count,
-		"passes": classified and gap_passes and inside.is_empty() and crossing_witnesses == 0}
+		"passes": classified and gap_passes and inside.is_empty() and seat_inside.is_empty() and crossing_witnesses == 0}
 
 
 static func _inside_depth(point: Vector3, triangles: PackedVector3Array, boxes: Array[AABB]) -> float:
