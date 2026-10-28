@@ -35,6 +35,8 @@ func _run() -> void:
 	for result: Dictionary in results:
 		valid = valid and String(result["error"]).is_empty() and float(result["native_bake_max_error"]) <= 0.00001
 	valid = valid and results[1]["hips_supported_at_offset"]
+	for support: Dictionary in results[1]["all_look_support"]:
+		valid = valid and support["supported"]
 	print("CHAIR NATIVE BEFORE/AFTER: ", "PASS" if valid else "FAIL")
 	quit(0 if valid else 1)
 
@@ -109,6 +111,24 @@ func _capture(authored: ItemDef, corrected: bool) -> Dictionary:
 		person.position = saved_position
 		result["hips_supported_at_offset"] = support["trial_supported"]
 		result["hip_support_points"] = support["trial_support_points"]
+		var all_support: Array[Dictionary] = []
+		for look: int in PersonPresentation.GUEST_MODELS.size():
+			person.set_look(&"customer", look)
+			person._player.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
+			var animation: Animation = person._player.get_animation(&"sit")
+			for fraction: float in [0.0, 0.37, 0.91]:
+				person._player.seek(animation.length * fraction, true)
+				person._skeleton.force_update_all_bone_transforms()
+				person.position -= -person.basis.z * definition.seated_forward_offset
+				var trial: Dictionary = GEOMETRY.supported_offset_trial(person, prop,
+					GEOMETRY.seat_parts(prop, person), 0.0)
+				person.position = saved_position
+				all_support.append({"model": String(person.model_name()), "sit_fraction": fraction,
+					"supported": trial["trial_supported"], "points": trial["trial_support_points"]})
+		result["all_look_support"] = all_support
+		person.set_look(&"customer", PersonPresentation.GUEST_MODELS.find(&"character-female-e"))
+		person._player.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
+		person._player.seek(0.0, true)
 		view.agent_nodes[staff.id].visible = true
 		camera.size = 2.0
 		camera.global_position = person.global_position + Vector3(2.5, 1.1, 2.5)
