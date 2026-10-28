@@ -35,8 +35,9 @@ var all_dropped: bool = false
 var route: Array[Vector2i] = []
 ## The receiving cell the crates go down on, just inside the door.
 var drop: Vector2i = SimGrid.NO_CELL
-## The stack layer her crates go down on (the dock keeps it current; the view
-## lowers them that far).
+## The stack layer her crate goes down on (the dock keeps it current; the view
+## lowers it that far), or -1 when that stack is full: then everything goes
+## to the nearest free cell once she has stepped away.
 var drop_layer: int = 0
 
 var _unload_left: int = 0
@@ -70,9 +71,10 @@ func tick(world: SimWorld) -> void:
 		State.UNLOADING:
 			_unload_left -= 1
 			last_progress_tick = world.now
-			if UNLOAD_TICKS - _unload_left >= DROP_TICK and carrying:
-				carrying = false
+			if UNLOAD_TICKS - _unload_left >= DROP_TICK and not dropped:
 				dropped = true
+				# With the stack inside the door full she keeps hold of it.
+				carrying = drop_layer < 0
 			if _unload_left <= 0:
 				state = State.LEAVING
 				path = route.duplicate()
@@ -83,6 +85,7 @@ func tick(world: SimWorld) -> void:
 			if _walk(world):
 				state = State.GONE
 			all_dropped = true
+			carrying = false
 
 
 func why() -> String:

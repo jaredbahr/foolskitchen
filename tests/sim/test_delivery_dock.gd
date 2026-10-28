@@ -478,6 +478,65 @@ func test_servers_put_deliveries_away_as_serving_and_the_cleaner_as_cleaning() -
 	assert_not_null(owner)
 
 
+func test_a_crate_comes_up_at_the_bottom_of_the_bend_whatever_the_skill() -> void:
+	_back_door()
+	_open_quiet()
+	for agent: SimAgent in _sim.world.agents:
+		if agent is StaffAgent:
+			# Slow and fast carriers alike.
+			(agent as StaffAgent).skills[&"any"] = 1 if agent.role == &"server" else 5
+	assert_true(_sim.dock.arrive(_lines(4, 0)))
+	var arrived: int = -1
+	var lifted: int = -1
+	for tick: int in 3000:
+		_sim.advance()
+		for agent: SimAgent in _sim.world.agents:
+			var staff: StaffAgent = agent as StaffAgent
+			if arrived < 0 and staff != null and staff.task != null and staff.task.kind == DeliveryDock.TASK_KIND \
+					and staff.step_index == DeliveryDock.STEP_PICK_UP:
+				arrived = _sim.world.now
+		if lifted < 0 and _sim.dock.crates().any(func(crate: Dictionary) -> bool:
+				return int(crate["state"]) == DeliveryDock.CrateState.CARRIED):
+			lifted = _sim.world.now
+			break
+	assert_true(arrived >= 0 and lifted >= 0)
+	assert_eq(lifted - arrived, DeliveryDock.PICK_UP_TICKS, "0.2 s after arriving: the bend's lowest point")
+
+
+func test_stacks_stop_at_three_and_go_on_beside_them() -> void:
+	_back_door()
+	_open_quiet()
+	# Nobody carries, so the deliveries pile up.
+	for agent: SimAgent in _sim.world.agents.duplicate():
+		if agent is StaffAgent:
+			_sim.world.remove_agent(agent)
+	var lines: Array[Dictionary] = _lines(4, 6)
+	lines.append({"id": &"frozen_fries", "qty": 4})
+	for delivery: int in 3:
+		assert_true(_sim.dock.arrive(lines))
+		assert_true(_run_until(func() -> bool: return _sim.dock.couriers().is_empty(), 1000) >= 0)
+	var stacks: Dictionary[Vector2i, Array] = {}
+	for crate: Dictionary in _sim.dock.crates():
+		assert_eq(int(crate["state"]), DeliveryDock.CrateState.WAITING)
+		if not stacks.has(crate["cell"]):
+			stacks[crate["cell"]] = []
+		stacks[crate["cell"]].append(int(crate["slot"]))
+	assert_eq(_sim.dock.crates().size(), 9)
+	assert_eq(stacks[DROP].size(), DeliveryDock.STACK_CAP, "three high inside the door")
+	assert_true(stacks.size() >= 3)
+	var grid: SimGrid = _sim.world.grid
+	for cell: Vector2i in stacks:
+		var found: Array = stacks[cell]
+		found.sort()
+		assert_eq(found, range(found.size()), "no gaps at %s" % cell)
+		assert_true(found.size() <= DeliveryDock.STACK_CAP)
+		assert_true(grid.is_walkable(cell) and not grid.is_back_door(cell) and not grid.entries().has(cell))
+		for placed: PlacedItem in grid.items():
+			assert_false(placed.work_cells.has(cell) or placed.seat_cells.has(cell), "%s keeps clear of %s" % [cell,
+				placed.def.id])
+		assert_true(GridMath.octile(cell, DROP) <= 3.0, "beside the first stack: %s" % cell)
+
+
 func test_closing_frees_whoever_was_carrying_at_once() -> void:
 	_back_door()
 	_open_quiet()
@@ -588,6 +647,19 @@ func test_a_back_door_is_one_cell_wide() -> void:
 	assert_eq(_editor.check_segments({SimGrid.edge_between(Vector2i(12, 7), Vector2i(13, 7)):
 		SimGrid.Segment.DOORWAY} as Dictionary[Vector3i, int]).why, WallRules.BACK_DOOR_WIDTH,
 		"widening the one there is")
+
+
+func test_an_older_shop_with_a_wide_back_door_is_told_it_has_one() -> void:
+	# An older save: two back doors side by side, from before D25.
+	assert_true(_sim.world.grid.set_segment(SimGrid.edge_between(DROP, DOOR), SimGrid.Segment.DOORWAY))
+	assert_true(_sim.world.grid.set_segment(SimGrid.edge_between(Vector2i(12, 7), Vector2i(13, 7)),
+		SimGrid.Segment.DOORWAY))
+	var apart: Vector3i = SimGrid.edge_between(Vector2i(12, 2), Vector2i(13, 2))
+	assert_eq(_editor.check_segments({apart: SimGrid.Segment.DOORWAY} as Dictionary[Vector3i, int]).why,
+		WallRules.ONE_BACK_DOOR, "a third door apart from them: it already has one")
+	var beside: Vector3i = SimGrid.edge_between(Vector2i(12, 5), Vector2i(13, 5))
+	assert_eq(_editor.check_segments({beside: SimGrid.Segment.DOORWAY} as Dictionary[Vector3i, int]).why,
+		WallRules.BACK_DOOR_WIDTH, "widening them further")
 
 
 func test_selling_floor_cannot_bring_back_a_second_back_door() -> void:

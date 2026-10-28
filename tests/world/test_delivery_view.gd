@@ -63,6 +63,20 @@ func _tick(count: int = 1) -> void:
 	_view._process(0.0)
 
 
+## Alpha of every surface drawn for a person (1 for their own materials).
+func _alphas(node: Node3D) -> Array[float]:
+	var out: Array[float] = []
+	for found: Node in node.find_children("*", "MeshInstance3D", true, false):
+		var mesh: MeshInstance3D = found as MeshInstance3D
+		if not mesh.is_visible_in_tree():
+			continue
+		for surface: int in mesh.mesh.get_surface_count():
+			var material: BaseMaterial3D = mesh.get_active_material(surface) as BaseMaterial3D
+			out.append(material.albedo_color.a if material != null \
+				and material.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA else 1.0)
+	return out
+
+
 func _leaf_angle() -> float:
 	return absf(_view.segment_view.door_leaf(DOOR).rotation.y)
 
@@ -83,6 +97,8 @@ func test_the_back_door_is_a_kenney_door_with_a_path_outside() -> void:
 	var half: float = GridMath.CELL_SIZE * 0.5
 	assert_true(leaf_bounds.position.z >= center_z + half - 0.001 or leaf_bounds.end.z <= center_z - half + 0.001,
 		"clear of the opening: %s" % leaf_bounds)
+	assert_true(leaf_bounds.position.x >= 7.0 - 0.01, "flat against the outside wall: %s" % leaf_bounds)
+	assert_true(leaf_bounds.end.x <= 7.0 + 0.15)
 	var tiles: Array[PropView] = _view.segment_view.path_tiles()
 	for tile: PropView in tiles:
 		var path_bounds: AABB = tile.global_transform * tile.get_combined_aabb()
@@ -117,6 +133,9 @@ func test_the_door_swings_open_for_the_delivery_and_shuts_after() -> void:
 	_tick()
 	var courier: CourierAgent = _courier()
 	assert_eq(_leaf_angle(), 0.0, "far up the path: shut")
+	var start_node: Node3D = _view.agent_nodes[courier.id]
+	assert_true(_alphas(start_node).all(func(alpha: float) -> bool: return alpha < 0.3),
+		"faded in at the far end of her path, never popping in")
 	var opened: bool = false
 	var held: bool = false
 	var bent: bool = false
@@ -128,6 +147,7 @@ func test_the_door_swings_open_for_the_delivery_and_shuts_after() -> void:
 			held = held or (crates != null and crates.visible and crates.get_child_count() == 1)
 		if courier.cell == DOOR:
 			opened = true
+			assert_true(_alphas(person).all(func(alpha: float) -> bool: return alpha == 1.0), "solid near the shop")
 			assert_almost_eq(rad_to_deg(_leaf_angle()), WallSegmentView.DOOR_OPEN_DEGREES, 0.01, "open as they pass")
 		if courier.state == CourierAgent.State.UNLOADING:
 			bent = true

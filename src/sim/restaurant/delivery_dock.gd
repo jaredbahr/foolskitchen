@@ -31,11 +31,14 @@ signal stored(lines: Array[Dictionary])
 enum CrateState { ON_THE_WAY, WAITING, CARRIED }
 
 const TASK_KIND: StringName = &"put_away"
-## Picking a crate up is one bend (the kit's `pick-up` clip, 0.33 s): it is in
-## the hands from the bend's lowest point (PICK_UP_TICKS in), then the carrier
-## straightens up (LIFT_TICKS).
+## Picking a crate up is one bend (the kit's `pick-up` clip, 0.33 s), which
+## the view starts the tick the carrier arrives: the crate is in the hands
+## PICK_UP_TICKS later, at the bend's lowest point (0.2 s), counted in ticks so
+## a carrier's skill never moves it, then they straighten up (LIFT_TICKS work).
 const PICK_UP_TICKS: int = 2
 const LIFT_TICKS: int = 2
+## Crates stacked on one cell at most; more go to the nearest free cell.
+const STACK_CAP: int = 3
 ## At the storage the crate goes in after PUT_IN_TICKS (when its goods become
 ## stock), then the shelves are filled for the rest of PUT_AWAY_TICKS.
 const PUT_IN_TICKS: int = 4
@@ -143,8 +146,11 @@ func advance() -> void:
 		return
 	for courier: CourierAgent in _couriers.duplicate():
 		if not courier.dropped:
-			courier.drop_layer = _next_slot(courier.drop_cell())
-		if courier.dropped:
+			# -1: the stack inside the door is full, so nothing goes down from
+			# her hands; everything goes to the nearest free cell as she leaves.
+			var top: int = _next_slot(courier.drop_cell())
+			courier.drop_layer = top if top < STACK_CAP else -1
+		if (courier.dropped and courier.drop_layer >= 0) or courier.all_dropped:
 			# The crate in her hands at the bottom of her bend, the others
 			# once she has stepped away (her head clear of the stack).
 			var placed: bool = false
@@ -156,9 +162,7 @@ func advance() -> void:
 					continue
 				if placed and not courier.all_dropped:
 					break
-				crate.cell = courier.drop_cell()
-				crate.slot = _next_slot(crate.cell)
-				crate.state = CrateState.WAITING
+				_set_down(crate, courier.drop_cell())
 				placed = true
 		if courier.state == CourierAgent.State.GONE:
 			world.remove_agent(courier)
@@ -256,7 +260,7 @@ func _post(world: SimWorld, crate: Crate) -> void:
 	task.priority = 1
 	task.payload = {"crate": crate.id, "carrying": false, "item": placed.id, "layer": _next_slot(crate.cell) - 1}
 	task.steps.append(TaskStep.go_to_cell(crate.cell, "walking to the delivery"))
-	task.steps.append(TaskStep.work(PICK_UP_TICKS, "picking up a crate", _on_picked_up))
+	task.steps.append(TaskStep.wait_until(_on_bend, "a good grip"))
 	task.steps.append(TaskStep.work(LIFT_TICKS, "picking up a crate"))
 	# To the storage's work spot without reserving it: a cook fetching from the
 	# same fridge never waits for a crate (agents don't block each other).
@@ -328,8 +332,25 @@ func _crate_for_task(task: SimTask) -> Crate:
 	return null
 
 
-## Work step: the crate goes from the floor into the carrier's hands. Safe to
-## run again after a dropped task (the crate is back on the floor by then).
+## Wait step at the crate: PICK_UP_TICKS after the carrier arrived (the first
+## call is the tick after), the crate comes up into their hands.
+func _on_bend(agent: SimAgent) -> bool:
+	var staff: StaffAgent = agent as StaffAgent
+	var world: SimWorld = _world()
+	if staff == null or staff.task == null or world == null:
+		return false
+	if not staff.task.payload.has("bend_from"):
+		staff.task.payload["bend_from"] = world.now - 1
+	if world.now - int(staff.task.payload["bend_from"]) < PICK_UP_TICKS:
+		return false
+	if not _on_picked_up(agent):
+		world.board.cancel(staff.task, &"step_failed")
+		return false
+	return true
+
+
+## The crate goes from the floor into the carrier's hands. Safe to run again
+## after a dropped task (the crate is back on the floor by then).
 func _on_picked_up(agent: SimAgent) -> bool:
 	var staff: StaffAgent = agent as StaffAgent
 	var crate: Crate = _crate_for_task(staff.task if staff != null else null)
@@ -377,6 +398,7 @@ func _on_task_dropped(task: SimTask, agent_id: int, _reason: StringName) -> void
 	var crate: Crate = _crate_for_task(task)
 	if crate == null:
 		return
+	task.payload.erase("bend_from")
 	_put_down(crate, agent_id)
 	if not task.steps.is_empty() and task.steps[0].kind == TaskStep.Kind.GO_TO_CELL:
 		task.steps[0].cell = crate.cell
@@ -401,11 +423,83 @@ func _put_down(crate: Crate, agent_id: int) -> void:
 		return
 	var world: SimWorld = _world()
 	var carrier: SimAgent = world.agent(agent_id) if world != null else null
+	var cell: Vector2i = crate.cell
 	if carrier != null and world.grid.is_walkable(carrier.cell):
-		crate.cell = carrier.cell
+		cell = carrier.cell
 	crate.carrier_id = -1
-	crate.slot = _next_slot(crate.cell)
+	_set_down(crate, cell)
+
+
+## Puts `crate` on top of the stack on `cell`, or, with that stack full, on
+## the nearest free cell (_free_spot); with none, on `cell` after all.
+func _set_down(crate: Crate, cell: Vector2i) -> void:
+	var world: SimWorld = _world()
+	if _next_slot(cell) >= STACK_CAP and world != null:
+		var spot: Vector2i = _free_spot(world.grid, cell)
+		if spot != SimGrid.NO_CELL:
+			cell = spot
+	crate.cell = cell
+	crate.slot = _next_slot(cell)
 	crate.state = CrateState.WAITING
+
+
+## Which side of `cell` its stack leans to: {side, door}. Towards the back
+## door or street entry the cell opens onto (door true), else towards the
+## first wall or item beside it, else north (open true: nothing beside it).
+static func stack_side(grid: SimGrid, cell: Vector2i) -> Dictionary:
+	var sides: Array[Vector2i] = [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]
+	if grid == null:
+		return {"side": Vector2i.UP, "door": false, "open": true}
+	for step: Vector2i in sides:
+		if (grid.is_back_door(cell + step) or grid.entries().has(cell + step)) and grid.step_open(cell, cell + step):
+			return {"side": step, "door": true, "open": false}
+	for step: Vector2i in sides:
+		if not grid.is_walkable(cell + step) or not grid.step_open(cell, cell + step):
+			return {"side": step, "door": false, "open": false}
+	return {"side": Vector2i.UP, "door": false, "open": true}
+
+
+## The nearest walkable cell (by steps from `from`) with room on its stack
+## that is no door, street entry, item work spot or seat: crates never block
+## the back door's swing, a doorway or anyone's place at a station or table.
+## Among the nearest, one against a wall or an item comes first (out of the
+## way of people walking through).
+func _free_spot(grid: SimGrid, from: Vector2i) -> Vector2i:
+	var blocked: Dictionary[Vector2i, bool] = {}
+	for placed: PlacedItem in grid.items():
+		if placed.removed:
+			continue
+		for cell: Vector2i in placed.work_cells:
+			blocked[cell] = true
+		for cell: Vector2i in placed.seat_cells:
+			blocked[cell] = true
+	for cell: Vector2i in grid.entries():
+		blocked[cell] = true
+	var seen: Dictionary[Vector2i, bool] = {from: true}
+	var queue: Array[Vector2i] = [from]
+	var depth: Dictionary[Vector2i, int] = {from: 0}
+	var head: int = 0
+	var open_choice: Vector2i = SimGrid.NO_CELL
+	while head < queue.size():
+		var cell: Vector2i = queue[head]
+		head += 1
+		if open_choice != SimGrid.NO_CELL and depth[cell] > depth[open_choice]:
+			return open_choice
+		if cell != from and not blocked.has(cell) and not grid.is_back_door(cell) \
+				and _next_slot(cell) < STACK_CAP:
+			if not stack_side(grid, cell)["open"]:
+				return cell
+			if open_choice == SimGrid.NO_CELL:
+				open_choice = cell
+		for step: Vector2i in [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]:
+			var near: Vector2i = cell + step
+			if seen.has(near) or not grid.in_bounds(near) or not grid.is_walkable(near) \
+					or not grid.step_open(cell, near):
+				continue
+			seen[near] = true
+			depth[near] = depth[cell] + 1
+			queue.append(near)
+	return open_choice
 
 
 func _stock(lines: Array[Dictionary]) -> void:

@@ -17,6 +17,10 @@ const MAX_CRATES_IN_HAND: int = 1
 ## big head stays clear of the stack.
 const CRATE_REACH: float = 0.27
 const CRATE_REACH_HIGH: float = 0.33
+## The delivery person fades in over the first cells of her walk up the back
+## path and out over the last ones going back, so even zoomed right out she
+## never pops in or out (FK-099).
+const FADE_CELLS: float = 4.0
 ## A stack on the receiving cell of a door sits this far towards the door
 ## (straddling the threshold), so the delivery person sets it down from the
 ## doorway's centre and staff pick it up from the cell's centre. Anywhere
@@ -49,6 +53,8 @@ class Frame extends RefCounted:
 	## 1 at its place on the stack (crate_spot, world, at crate_layer).
 	var crate_slide: float = 0.0
 	var crate_spot: Vector3 = Vector3.ZERO
+	## 0 invisible .. 1 solid (the delivery person at the far end of her path).
+	var fade: float = 1.0
 	var seat_height: float = 0.0
 	var seated_lean_degrees: float = 0.0
 	var show_tray: bool = false
@@ -245,6 +251,12 @@ static func _courier_frame(frame: Frame, courier: CourierAgent, world: SimWorld)
 	frame.crate_count = mini(courier.crate_count, MAX_CRATES_IN_HAND) if frame.carrying else 0
 	if courier.route.is_empty() or world == null:
 		return
+	if courier.route.size() > 1 and not courier.path.is_empty():
+		var walked: float = float(maxi(courier.path_index - 1, 0)) + clampf(courier.move_progress, 0.0, 1.0)
+		var far: float = walked if courier.state == CourierAgent.State.ARRIVING \
+			else float(courier.path.size() - 1) - walked if courier.state == CourierAgent.State.LEAVING \
+			else FADE_CELLS
+		frame.fade = clampf(far / FADE_CELLS, 0.0, 1.0)
 	var door: Vector2i = courier.route.back()
 	var spot: Vector3 = crate_spot(world.grid, courier.drop_cell())
 	var layer: int = courier.drop_layer
@@ -267,9 +279,10 @@ static func _courier_frame(frame: Frame, courier: CourierAgent, world: SimWorld)
 		frame.floor_position += back * (1.0 - progress)
 
 
-## How far from a stack someone stands to set down or lift its `layer`.
+## How far from a stack someone stands to set down or lift its `layer` (-1:
+## a full stack, kept clear of).
 static func reach_for(layer: int) -> float:
-	return CRATE_REACH if layer <= 0 else CRATE_REACH_HIGH
+	return CRATE_REACH if layer == 0 else CRATE_REACH_HIGH
 
 
 ## Carrying a delivery crate (FK-099): in hand from the moment it is lifted
@@ -315,17 +328,12 @@ static func _put_away_frame(frame: Frame, staff: StaffAgent, task: SimTask, worl
 
 
 ## Where crates stand on `cell` (world, floor level): towards the door or
-## street entry the cell opens onto, else north of its centre.
+## street entry the cell opens onto, else against a wall or item beside it
+## (DeliveryDock.stack_side), else north of its centre.
 static func crate_spot(grid: SimGrid, cell: Vector2i) -> Vector3:
-	var axis: Vector2i = Vector2i.UP
-	var inset: float = CRATE_INSET
-	if grid != null:
-		for step: Vector2i in [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]:
-			if (grid.is_back_door(cell + step) or grid.entries().has(cell + step)) \
-					and grid.step_open(cell, cell + step):
-				axis = step
-				inset = DOOR_STACK_INSET
-				break
+	var side: Dictionary = DeliveryDock.stack_side(grid, cell)
+	var axis: Vector2i = side["side"]
+	var inset: float = DOOR_STACK_INSET if bool(side["door"]) else CRATE_INSET
 	return GridMath.cell_to_world(cell) + Vector3(axis.x, 0.0, axis.y) * inset
 
 

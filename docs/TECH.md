@@ -894,12 +894,14 @@ an active edit/panel/selection first, or opens Settings when none is active.
   palette tint) cut to one stone per approach cell, flush, fading out (2.3j).
   The leaf swings out, onto the path where nothing is ever placed, like a
   service door (`WallSegmentView.set_door_open`, up to `DOOR_OPEN_DEGREES` =
-  110, a little past square, the turn's sign read from the leaf's own
-  transforms; the door is turned round to hinge on the side with open ground
-  beside the path), sliding `DOOR_OPEN_SLIDE` (0.08 m) onto its hinge-side
-  jamb as it opens. Open, the visible leaf is 0.38 m from the path's centre
-  line: clear of the path (0.24) and 0.1 m clear of a passing head (the Mini
-  Characters' heads are about as wide as the door), while someone going
+  178, right round and flat against the outside wall, the turn's sign read
+  from the leaf's own transforms; the door is turned round to hinge on the
+  side with open ground beside the path), sliding `DOOR_OPEN_SLIDE` (0.08 m)
+  onto its hinge-side jamb as it opens and, past square, out to the wall's
+  outer face (`DOOR_FLAT_OUT`, 0.315 m from the wall's centre line, so its
+  handle clears the wall). Open, it lies along the wall beside the doorway,
+  clear of the path and of anyone on it (the Mini Characters' heads are about
+  as wide as the door, so only the jamb line is near them), while someone going
   through is within 1.75 m (fully open within 0.5 m, smoothstep between:
   about a second of walking at 1x): the delivery person always, staff only
   when their path leads through the door, guests never
@@ -1613,8 +1615,10 @@ existing paint colour and camera-controlled build-grid parameters.
   guest layer, where its cell is solid.
   - **Carrying.** Each crate is one `put_away` task (role `any`, priority 1,
     timeout 600; steps `STEP_WALK` .. `STEP_PUT_IN` and the fill): walk to the
-    crate, pick it up (`PICK_UP_TICKS` 2: it is in the hands at the bend's
-    lowest point, then `LIFT_TICKS` 2 to straighten up), walk to the nearest
+    crate, pick it up (a wait step: the crate is in the hands
+    `PICK_UP_TICKS` (2) ticks after the carrier arrives, the `pick-up` bend's
+    lowest point, counted in ticks so a carrier's skill never moves it; then
+    `LIFT_TICKS` 2 of work to straighten up), walk to the nearest
     reachable storage of its kind (else any storage: the starter shop's
     pantry is built in, behind the kitchen; else none, and it waits) and put
     it in (`PUT_IN_TICKS` 4), when its goods become stock (`Stock.add`, dated
@@ -1629,8 +1633,14 @@ existing paint colour and camera-controlled build-grid parameters.
     task never stocks twice. Crates on a cell are one stack with no gaps
     (`slot` is the layer): whoever lifts one takes the top (the crate on top
     swaps places with the one whose task it is; crates look alike), so none
-    is ever left in mid-air. The dock keeps `payload["layer"]` (the layer the
-    carrier will lift) and `CourierAgent.drop_layer` current for the view.
+    is ever left in mid-air. A stack is at most `STACK_CAP` (3) high; a crate
+    for a full stack goes to the nearest free cell (`_free_spot`: walkable,
+    no door, street entry, work spot or seat, against a wall or item first),
+    where it starts a stack of its own. With the stack inside the door full
+    the delivery person keeps hold of her crate and the whole delivery goes
+    down there as she leaves (`drop_layer` -1). The dock keeps
+    `payload["layer"]` (the layer the carrier will lift) and
+    `CourierAgent.drop_layer` current for the view.
   - **Who carries (job priority).** With a cleaner on the team it is the
     cleaner's (job Cleaning, their main job); otherwise servers do it as
     Serving (`StaffJobPriorities.ROLE_TASK_JOBS`: front-of-house work, so a
@@ -1680,9 +1690,13 @@ existing paint colour and camera-controlled build-grid parameters.
     `walk` with the arms of `holding-both`, so legs walk under carrying arms;
     servers' trays use it too); switching among `pick-up`, `holding-both`
     and `carry-walk` blends over 0.12 s so arms (and the crate) never jump.
-    The back door's leaf swings out onto the path
-    (`WallSegmentView`, hinged on the side with open ground beside it, slid
-    `DOOR_OPEN_SLIDE` onto its jamb, clear of the path and of anyone on it);
+    The back door's leaf swings out and lies flat against the outside wall
+    (`WallSegmentView`, hinged on the side with open ground beside it, clear
+    of the path and of anyone on it). The delivery person fades in over the
+    first `FADE_CELLS` (4) cells of her walk and out over the last ones
+    (`Frame.fade`; `ShopView._apply_fade` gives each surface a see-through
+    copy of its material, as the Compatibility renderer has no per-instance
+    alpha), so even at the widest zoom she never pops in or out;
     the path is the street pavement cut to one stone per cell with a joint,
     a sliver thick (flush, no side face), its stones varying in shade, solid
     across the lot (at least `PATH_SOLID_CELLS`) and then fading into the

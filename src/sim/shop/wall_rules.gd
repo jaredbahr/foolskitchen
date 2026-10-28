@@ -187,15 +187,19 @@ static func back_door_count(grid: SimGrid) -> int:
 
 
 ## When an edit (`before` -> `after`) adds a back door: BACK_DOOR_WIDTH when
-## it would sit beside another back door on the same face (one wider door), else
+## a new one would sit beside another back door on the same face (one wider
+## door), else
 ## ONE_BACK_DOOR when the shop already has one (D25), else "". Only adding is
 ## refused, so an older save with two keeps both and every other edit works.
 static func back_door_problem(before: SimGrid, after: SimGrid) -> String:
 	var doors: Dictionary[Vector2i, Vector2i] = _back_door_cells(after)
-	var had: int = back_door_count(before)
-	if doors.size() <= 1 or doors.size() <= had:
+	var old: Dictionary[Vector2i, Vector2i] = _back_door_cells(before)
+	if doors.size() <= 1 or doors.size() <= old.size():
 		return ""
+	# Only a new doorway can make a door wider (an older save's pair stays).
 	for cell: Vector2i in doors:
+		if old.get(cell, Vector2i.ZERO) == doors[cell]:
+			continue
 		var side: Vector2i = doors[cell]
 		var along: Vector2i = Vector2i(side.y, side.x)
 		for near: Vector2i in [cell + along, cell - along]:

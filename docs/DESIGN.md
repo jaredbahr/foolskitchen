@@ -70,7 +70,7 @@ Morning (closed): plan menu and prices, buy stock, hire, rebuild
 
 ### 4.3 Build mode
 - **Grid:** 0.5 m. Walls, floors, doors, windows, tables, chairs, stations, storage, decor.
-- **Doors (D25):** the street door is the only guest door. A shop may have one back door, one cell wide, on a back or side wall, for staff and deliveries; like a service door it swings out, onto its path, as people pass.
+- **Doors (D25):** the street door is the only guest door. A shop may have one back door, one cell wide, on a back or side wall, for staff and deliveries; like a service door it swings out, flat against the outside wall, as people pass.
 - **Footprints show working tiles** (where a worker stands), so layouts are readable before you place them.
 - **Live path check:** unreachable tables or stations are highlighted as you build. It warns but doesn't block.
 - **Blueprints:** save a group of items (for example a 4-seat table cluster or a fry station) and stamp it again. This answers TasteMaker's "space management" pain.

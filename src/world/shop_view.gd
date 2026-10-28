@@ -670,6 +670,7 @@ func _sync_agents() -> void:
 		tray.visible = frame.show_tray and (ready_person or not frame.look_supported)
 		tray.position = frame.tray_anchor if ready_person else Vector3(0.0, 0.02, -0.48)
 		_show_held_crates(node, frame, ready_person)
+		_apply_fade(node, frame.fade)
 		_update_guest_mood(agent, node, frame)
 	for id: int in agent_nodes.keys():
 		if not alive.has(id):
@@ -710,6 +711,46 @@ func _show_held_crates(node: Node3D, frame: AgentPresentationController.Frame, r
 	elif was_visible and not frame.bending and target.y < held.position.y:
 		target.y = maxf(target.y, held.position.y - CRATE_LOWER_SPEED * get_process_delta_time())
 	held.position = target
+
+
+## Fades a person (and what they hold) in or out: each surface gets a
+## see-through copy of its own material while `alpha` < 1, and its own
+## material back at 1. The Compatibility renderer has no per-instance alpha.
+func _apply_fade(node: Node3D, alpha: float) -> void:
+	var faded: Array = node.get_meta(&"fade_surfaces", []) as Array
+	if alpha >= 1.0:
+		if not faded.is_empty():
+			for entry: Array in faded:
+				var mesh: MeshInstance3D = entry[0] as MeshInstance3D
+				if is_instance_valid(mesh):
+					mesh.set_surface_override_material(int(entry[1]), entry[2] as Material)
+			node.remove_meta(&"fade_surfaces")
+		return
+	var meshes: Array[Node] = node.find_children("*", "MeshInstance3D", true, false)
+	var count: int = 0
+	for found: Node in meshes:
+		count += (found as MeshInstance3D).mesh.get_surface_count() if (found as MeshInstance3D).mesh != null else 0
+	if faded.size() != count:
+		_apply_fade(node, 1.0)
+		faded = []
+		for found: Node in meshes:
+			var mesh: MeshInstance3D = found as MeshInstance3D
+			if mesh.mesh == null:
+				continue
+			for surface: int in mesh.mesh.get_surface_count():
+				var source: BaseMaterial3D = mesh.get_active_material(surface) as BaseMaterial3D
+				var copy: BaseMaterial3D = source.duplicate() as BaseMaterial3D if source != null else null
+				if copy != null:
+					copy.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+				faded.append([mesh, surface, mesh.get_surface_override_material(surface), copy])
+				if copy != null:
+					mesh.set_surface_override_material(surface, copy)
+		node.set_meta(&"fade_surfaces", faded)
+	for entry: Array in faded:
+		var copy: BaseMaterial3D = entry[3] as BaseMaterial3D
+		if copy != null:
+			var source_alpha: float = (entry[2] as BaseMaterial3D).albedo_color.a if entry[2] is BaseMaterial3D else 1.0
+			copy.albedo_color.a = source_alpha * alpha
 
 
 ## Height of one crate at the furniture scale.
