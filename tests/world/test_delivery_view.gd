@@ -63,17 +63,25 @@ func _tick(count: int = 1) -> void:
 	_view._process(0.0)
 
 
-## Alpha of every surface drawn for a person (1 for their own materials).
+## How much of a person is drawn: 1 with their own materials, else the
+## dithered share every surface draws (all alike, never see-through).
 func _alphas(node: Node3D) -> Array[float]:
 	var out: Array[float] = []
+	var fade: float = float(node.get_meta(&"fade", 1.0))
 	for found: Node in node.find_children("*", "MeshInstance3D", true, false):
 		var mesh: MeshInstance3D = found as MeshInstance3D
 		if not mesh.is_visible_in_tree():
 			continue
 		for surface: int in mesh.mesh.get_surface_count():
 			var material: BaseMaterial3D = mesh.get_active_material(surface) as BaseMaterial3D
-			out.append(material.albedo_color.a if material != null \
-				and material.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA else 1.0)
+			assert_true(material == null or material.transparency == BaseMaterial3D.TRANSPARENCY_DISABLED,
+				"opaque: no part shows through another")
+			var dithered: bool = material != null \
+				and material.distance_fade_mode == BaseMaterial3D.DISTANCE_FADE_PIXEL_DITHER
+			assert_eq(dithered, fade < 1.0)
+			assert_eq(mesh.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, dithered,
+				"no shadow while fading (the dither would cast a full one), her own once solid")
+			out.append(fade if dithered else 1.0)
 	return out
 
 
@@ -112,7 +120,7 @@ func test_the_back_door_is_a_kenney_door_with_a_path_outside() -> void:
 	_view.segment_view.set_door_open(DOOR, 0.0)
 	# No lot given: the alley runs along the building's east edge, two lanes
 	# wide (x 14 and 15), from the back down to the shop's front.
-	assert_true(tiles.size() > 2 * WallRules.ALLEY_REACH, "the alley")
+	assert_true(tiles.size() > 2 * WallSegmentView.PATH_REACH, "the alley")
 	var tints: Dictionary[Color, bool] = {}
 	for tile: PropView in tiles:
 		var bounds: AABB = tile.global_transform * tile.get_combined_aabb()
@@ -121,9 +129,19 @@ func test_the_back_door_is_a_kenney_door_with_a_path_outside() -> void:
 		assert_true(bounds.size.x < GridMath.CELL_SIZE, "a joint between stones")
 		var cell: Vector2i = tile.get_meta(&"cell")
 		assert_true(cell.x == 14 or cell.x == 15, "on the alley: %s" % cell)
-		assert_true(cell.y <= 11, "never past the shop's front into the street")
+		assert_true(cell.y <= 11 + WallSegmentView.PATH_STREET_FADE_CELLS,
+			"fades out just past the shop's front, never on into the street")
 		tints[tile.active_body_material().albedo_color] = true
 	assert_true(tints.size() > 3, "the stones vary")
+	# Past the front it fades towards the dark ground, one step a cell.
+	var front: Dictionary[int, float] = {}
+	for tile: PropView in tiles:
+		var cell: Vector2i = tile.get_meta(&"cell")
+		if cell.x == 14 and cell.y >= 11:
+			front[cell.y] = tile.active_body_material().albedo_color.get_luminance()
+	assert_eq(front.size(), 1 + WallSegmentView.PATH_STREET_FADE_CELLS, "solid to the front, then a short fade")
+	for row: int in range(11, 11 + WallSegmentView.PATH_STREET_FADE_CELLS):
+		assert_true(front[row + 1] < front[row], "darker towards the street: %s" % front)
 	_view.set_wall_mode(ShopView.WallMode.DOWN)
 	assert_null(_view.segment_view.door_leaf(DOOR), "lowered walls show posts, no floating leaf")
 	assert_eq(_view.segment_view.path_tiles().size(), tiles.size(), "the path stays")
@@ -243,3 +261,168 @@ func test_the_freezer_reads_cooler_than_the_fridge_and_keeps_it_after_paint() ->
 	freezer.clear_body_tint()
 	assert_eq(freezer.active_body_material().albedo_color, kit, "and clearing paint brings it back")
 	freezer.free()
+
+
+## Every vertex of the leaf's mesh (slab and handles), in world space.
+func _leaf_points(leaf: MeshInstance3D) -> Array[Vector3]:
+	var out: Array[Vector3] = []
+	for surface: int in leaf.mesh.get_surface_count():
+		var vertices: PackedVector3Array = leaf.mesh.surface_get_arrays(surface)[Mesh.ARRAY_VERTEX]
+		for vertex: Vector3 in vertices:
+			out.append(leaf.global_transform * vertex)
+	return out
+
+
+## Deepest a leaf point goes into the solid wall beside the doorway (metres).
+func _depth_in_wall(points: Array[Vector3]) -> float:
+	var deepest: float = 0.0
+	var grid: SimGrid = _sim.world.grid
+	for cell: Vector2i in [DOOR + Vector2i.UP, DOOR + Vector2i.DOWN]:
+		assert_eq(grid.terrain(cell), SimGrid.Terrain.WALL)
+		var center: Vector3 = GridMath.cell_to_world(cell)
+		for point: Vector3 in points:
+			if point.y > ArtScale.WALL_HEIGHT:
+				continue
+			var depth: float = minf(GridMath.CELL_SIZE * 0.5 - absf(point.x - center.x),
+				GridMath.CELL_SIZE * 0.5 - absf(point.z - center.z))
+			deepest = maxf(deepest, depth)
+	return deepest
+
+
+func test_the_leaf_never_passes_through_the_wall() -> void:
+	await _enter_view()
+	var leaf: MeshInstance3D = _view.segment_view.door_leaf(DOOR) as MeshInstance3D
+	assert_not_null(leaf)
+	var worst: float = 0.0
+	var worst_at: int = 0
+	for step: int in 101:
+		_view.segment_view.set_door_open(DOOR, step / 100.0)
+		var depth: float = _depth_in_wall(_leaf_points(leaf))
+		if depth > worst:
+			worst = depth
+			worst_at = step
+	assert_true(worst <= 0.001, "%.3f m into the wall at %d%% open" % [worst, worst_at])
+
+
+## Crates that land on one cell in the same tick come down one at a time
+## (view only): the stack inside the door is full, so the second delivery
+## goes down beside it all at once in the sim.
+func test_crates_landing_together_appear_one_at_a_time() -> void:
+	await _enter_view()
+	_open_quiet()
+	for agent: SimAgent in _sim.world.agents.duplicate():
+		if agent is StaffAgent:
+			_sim.world.remove_agent(agent)
+	var lines: Array[Dictionary] = [{"id": &"cheese", "qty": 4}, {"id": &"bread", "qty": 6},
+		{"id": &"frozen_fries", "qty": 4}]
+	for delivery: int in 2:
+		assert_true(_sim.dock.arrive(lines))
+		for tick: int in 1000:
+			_tick()
+			if _sim.dock.couriers().is_empty():
+				break
+	var shown_counts: Array[int] = []
+	var landed_at: int = -1
+	# Two deliveries down: the stack inside the door is full.
+	assert_eq(_view.crate_nodes.size(), 6)
+	for id: int in _view.crate_nodes:
+		assert_true(_view.crate_nodes[id].visible, "all shown in the end")
+	# A third delivery, watched tick by tick while it lands.
+	assert_true(_sim.dock.arrive(lines))
+	for tick: int in 1000:
+		_tick()
+		var visible: int = 0
+		for id: int in _view.crate_nodes:
+			visible += 1 if _view.crate_nodes[id].visible else 0
+		if _view.crate_nodes.size() > 6 and landed_at < 0:
+			landed_at = tick
+		if landed_at >= 0:
+			shown_counts.append(visible)
+		if landed_at >= 0 and tick > landed_at + 3 * ShopView.CRATE_STAGGER_TICKS:
+			break
+	assert_true(landed_at >= 0)
+	assert_eq(_view.crate_nodes.size(), 9)
+	assert_eq(shown_counts[0], 7, "the first at once")
+	assert_eq(shown_counts[ShopView.CRATE_STAGGER_TICKS], 8, "then the next")
+	assert_eq(shown_counts.back(), 9, "then the last")
+
+
+## A fade turns each mesh's shadow off and gives back its own setting after.
+func test_a_fade_gives_each_mesh_its_own_shadow_back() -> void:
+	await _enter_view()
+	var figure: Node3D = Node3D.new()
+	var body: MeshInstance3D = MeshInstance3D.new()
+	body.mesh = BoxMesh.new()
+	body.material_override = null
+	body.set_surface_override_material(0, StandardMaterial3D.new())
+	body.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED
+	var hat: MeshInstance3D = MeshInstance3D.new()
+	hat.mesh = BoxMesh.new()
+	hat.set_surface_override_material(0, StandardMaterial3D.new())
+	hat.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	figure.add_child(body)
+	figure.add_child(hat)
+	_view.add_child(figure)
+	_view._apply_fade(figure, 0.5)
+	assert_eq(body.cast_shadow, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF)
+	assert_eq(hat.cast_shadow, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF)
+	_view._apply_fade(figure, 0.7)
+	_view._apply_fade(figure, 1.0)
+	assert_eq(body.cast_shadow, GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED, "its own setting back")
+	assert_eq(hat.cast_shadow, GeometryInstance3D.SHADOW_CASTING_SETTING_ON)
+	assert_eq((body.get_active_material(0) as BaseMaterial3D).distance_fade_mode, BaseMaterial3D.DISTANCE_FADE_DISABLED)
+	figure.free()
+
+
+## Closing ends her visit wherever she is: the view fades her out over about
+## a second as she walks on (a ghost), instead of her vanishing.
+func test_a_courier_removed_mid_walk_fades_out_as_a_ghost() -> void:
+	await _enter_view()
+	_open_quiet()
+	assert_true(_sim.dock.arrive([{"id": &"cheese", "qty": 4}] as Array[Dictionary]))
+	_tick()
+	var courier: CourierAgent = _courier()
+	for tick: int in 2000:
+		_tick()
+		if courier.state == CourierAgent.State.LEAVING and courier.path_index > 4:
+			break
+	assert_eq(courier.state, CourierAgent.State.LEAVING)
+	var node: Node3D = _view.agent_nodes[courier.id]
+	assert_eq(float(node.get_meta(&"fade", 1.0)), 1.0, "solid, near the shop")
+	var at: Vector3 = node.position
+	_sim.dock.store_all()
+	assert_false(_sim.world.agents.has(courier), "the sim removed her")
+	_view._process(0.0)
+	assert_false(_view.agent_nodes.has(courier.id), "no longer an agent's figure")
+	assert_false(_view.drawn_agent_positions().has(courier.id), "never picked or selected")
+	assert_eq(_view.ghosts.size(), 1)
+	assert_true(is_instance_valid(node) and node.is_inside_tree(), "still drawn")
+	var fades: Array[float] = []
+	for step: int in 6:
+		_view._process(0.2)
+		if is_instance_valid(node):
+			fades.append(float(node.get_meta(&"fade", 1.0)))
+			assert_true(_alphas(node).all(func(alpha: float) -> bool: return alpha < 1.0), "dithered, no shadow")
+	assert_true(fades.size() >= 4, "about a second: %s" % [fades])
+	for index: int in range(1, fades.size()):
+		assert_true(fades[index] < fades[index - 1], "fading out: %s" % [fades])
+	assert_false(is_instance_valid(node), "then gone")
+	assert_true(_view.ghosts.is_empty())
+
+
+func test_show_world_clears_ghosts() -> void:
+	await _enter_view()
+	_open_quiet()
+	assert_true(_sim.dock.arrive([{"id": &"cheese", "qty": 4}] as Array[Dictionary]))
+	for tick: int in 2000:
+		_tick()
+		var courier: CourierAgent = _courier()
+		if courier != null and courier.state == CourierAgent.State.LEAVING and courier.path_index > 4:
+			break
+	_sim.dock.store_all()
+	_view._process(0.0)
+	assert_eq(_view.ghosts.size(), 1)
+	var ghost: Node3D = _view.ghosts[0]["node"]
+	_view.show_world(_sim.world)
+	assert_true(_view.ghosts.is_empty())
+	assert_false(is_instance_valid(ghost), "freed with the old world's figures")

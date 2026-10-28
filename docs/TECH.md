@@ -63,6 +63,7 @@ an active edit/panel/selection first, or opens Settings when none is active.
 ### 2.3 AI (agents)
 - **The sim owns movement.** Pathfinding runs in `src/sim/` on the 0.5 m build grid using `AStarGrid2D` (a `RefCounted`, so no nodes are involved). Agents have a grid position and a path. Visual nodes in `world/` only interpolate between grid points and play animations.
   - Why not `NavigationAgent3D`: it lives in the scene tree. That would break headless tests, determinism and background simulation of other sites (TECH 2.2 rule 1).
+  - **Smooth motion (view only, `src/world/motion_smoother.gd`).** The sim moves people in 10 Hz steps, so drawn as they are every pose would be held about three frames at 30 fps. `ShopView` feeds `MotionSmoother` each person's presented pose (the `AgentPresentationController.Frame`: drawn floor point with seat, reach and separation offsets, facing, fade, crate slide) every frame, keyed by `world.now`, and draws the blend between the last two ticks at `ShopView.interpolation_alpha()`, which is `Clock.tick_fraction()` (the accumulator's fraction, 0..1). The picture therefore runs one tick behind the sim (0.1 s at 1x, 25 ms at 4x) and moves every frame; the door leaf, held crates and the debug paths follow the drawn positions. Several ticks in one frame (2x/4x) keep the pose one tick back on the line between the two seen. A frame drawn at alpha 1 also settles the blend (`settle`: the previous pose becomes the newest), so a change made while the clock is not running (the morning reset puts staff back at their posts) is never slid across when service opens. A crate slide that ends at a tick finishes towards the spot and layer it slid from (the newest frame has none). Poses are refreshed in place within a tick. Paused, the fraction holds, so the picture freezes in place and resumes without a jump. Alpha is 1 (the newest state, exactly as before) outside OPEN/LAST_ORDERS, when the Clock is not attached to this world, and when the world tick is not the one the Clock last ran (`Clock.driven_world_tick`): tests, tools and `run_ticks` fast-forwards, including the screenshot tool's `--fast` and `--speed=0` captures, draw what they always drew. No blend across a jump: a new person, one hidden or shown again (restroom), a move of more than `SNAP_DISTANCE` (1 m) in a tick (teleports, the morning reset), a tick going backwards (another world, a reload; `show_world` clears it). Sitting down blends the walk onto the seat cell standing and sits at the tick; standing up starts from the seat cell. A stop keeps the walk clip for the last part of the step (not into a crate bend, so a pick-up keeps its timing). Discrete pose states (clips, carrying, bending) still change at the tick. The view never reads the sim beyond what the frames already read and never writes it. One sim change came with this work (#204): the back alley route is longer (`WallRules.ALLEY_REACH` 24 → 56) so the delivery person fades in and out off screen; it delays mid-day deliveries by about 14–17 s at 1x. The default balance probe is byte-identical (it places no mid-day orders), and in the director's paired probes with 1 and 4 orders a day, served, sales and profit stay within noise of main.
   - Diagonal moves are allowed, but corners can't be cut. Furniture marks cells solid, and stations expose "work cells" where a worker stands.
 - **Grid API (FK-012, `src/sim/grid/`):**
   - `GridMath`: `CELL_SIZE` 0.5 m. `rotate_cell(cell, footprint, quarter_turns)` turns clockwise seen from above, mapping one turn `(x, y) → (d-1-y, x)`. `rotated_footprint`, `cell_to_world`/`world_to_cell`, `path_cost`. Cell x → world +X, cell y → world +Z, and an unrotated item faces −Y (world −Z).
@@ -893,8 +894,10 @@ an active edit/panel/selection first, or opens Settings when none is active.
   lot)` puts a paved service lane on the first row or column outside the
   shop's lot (`ShopFootprint.lot`, which Main hands to `DeliveryDock.lot` and
   `ShopView.set_lot`; empty: the building) behind the door's wall, parallel
-  to it, two cells wide, running `ALLEY_REACH` (24) cells past the lot at
-  each end; a side wall's alley stops at the shop's front line, where it
+  to it, two cells wide, paved `WallSegmentView.PATH_REACH` (24) cells past
+  the lot at each end, and walked by the delivery person on to
+  `ALLEY_REACH` (56) cells past it (#204: so she fades in and out off screen
+  even zoomed out to 26); a side wall's alley stops at the shop's front line, where it
   meets the street (`street_side`), and deliveries come from its back end
   (a back wall's from the west). The door's path runs straight out across
   the open lot to it; with a wing of the shop in the way there is no path
@@ -1716,10 +1719,17 @@ pattern 0 of `floor_finish.gdshader`, unchanged).
   that holds no task, reservation or random stream) walks the
   `WallRules.delivery_route` along the back alley and up the back door's path
   (street door fallback, where she appears at the entry as guests do) and
-  stops in the doorway. At the default zoom she comes and goes out of sight
-  in every camera quarter for back and side walls (her first visible route
-  cell is at least 13 cells in), and fades at the far ends (below) for the
-  widest zoom. She brings one crate per storage
+  stops in the doorway. Her route starts and ends `ALLEY_REACH` (56) cells
+  past the lot, so at the shop's framing and zoomed out to 26 she comes and
+  goes out of sight in every camera quarter for back and side walls, so her
+  fade at the far ends (below) happens off screen (her first on-screen route
+  cell at zoom 26 is at least 10 in, past her 4 fade cells); zoomed further
+  out (to 40) it shows. The one exception is closing: `store_all()` ends her
+  visit wherever she is, possibly in view, and the view then keeps her last
+  drawn figure as a ghost (`ShopView._keep_as_ghost`) that walks on and
+  fades out over `GHOST_FADE_SECONDS` (1 s) with the same dither and no
+  shadow, then frees it; a ghost is no agent (never picked or selected,
+  opens no door, blocks nothing) and `show_world` clears it. She brings one crate per storage
   kind present (fridge, freezer, dry, in that order) and sets them down on the
   receiving cell just inside over `UNLOAD_TICKS` (4): the crate in her hands
   at `DROP_TICK` (2, the lowest point of the kit's 0.33 s `pick-up` bend),
@@ -1767,7 +1777,8 @@ pattern 0 of `floor_finish.gdshader`, unchanged).
     leave guests to carry crates and goods reach the shelves later (probe,
     4 orders a day, 5 seeds x 5 days: 329 served against 361 when goods
     arrived at once); hiring a cleaner removes it (347 against 353; with one
-    order a day 436, identical). Making servers wait for idle moments was
+    order a day 436, identical; measured with the 24-cell route, before
+    #204 lengthened her walk to 56). Making servers wait for idle moments was
     tried and cost more (313): goods sat longer and dishes ran out. Closing
     withdraws the carrying tasks and frees their carriers on that tick
     (`StaffAgent.let_go_if_withdrawn`).
@@ -1807,16 +1818,38 @@ pattern 0 of `floor_finish.gdshader`, unchanged).
     and `carry-walk` blends over 0.12 s so arms (and the crate) never jump.
     The back door's leaf swings out and lies flat against the outside wall
     (`WallSegmentView`, hinged on the side with open ground beside it, clear
-    of the path and of anyone on it). The delivery person fades in over the
+    of the path and of anyone on it). Up to square it turns inside the
+    opening while its hinge moves out to the wall's outer face (stepping
+    `DOOR_TURN_CLEARANCE` off the jamb mid-turn), and only then swings on
+    round and slides onto the jamb, so no part of the leaf ever passes
+    through the wall (`test_the_leaf_never_passes_through_the_wall` checks
+    every mesh vertex at every 1%). Its opening follows the smoothed drawn
+    positions, so it swings every frame. The delivery person fades in over the
     first `FADE_CELLS` (4) cells of her walk and out over the last ones
-    (`Frame.fade`; `ShopView._apply_fade` gives each surface a see-through
-    copy of its material, as the Compatibility renderer has no per-instance
-    alpha), so even at the widest zoom she never pops in or out;
+    (`Frame.fade`; `ShopView._apply_fade` gives each surface an opaque
+    copy of its material that draws only that share of its pixels, a
+    screen-door dither, so she fades as one solid figure with no part
+    showing through another; the Compatibility renderer has no per-instance
+    alpha and its alpha hash draws wrongly, so the dither is the material's
+    own `DISTANCE_FADE_PIXEL_DITHER` with its range set every frame so the
+    fade at her distance is the wanted share, `ShopView.dither_range`;
+    the dither would also apply in the shadow pass, measured from the
+    light, so she casts no shadow while fading and her own once solid),
+    so even at the widest zoom she never pops in or out;
     the door's path and the alley are the street pavement cut to one stone
     per cell with a joint, a sliver thick (flush, no side face), its stones
     varying in shade; the alley is solid across the lot and
     `PATH_SOLID_CELLS` past it, then fades into the ground over
-    `PATH_FADE_CELLS` (to its end, where she fades in and out). The open
+    `PATH_FADE_CELLS` (to its end, where she fades in and out); a side
+    wall's alley is solid to the shop's front and fades out over
+    `PATH_STREET_FADE_CELLS` (3) towards the street instead of stopping
+    square. Crates that land on one cell in the same tick (the rest of a
+    delivery once she steps away, or the whole delivery on the cell beside a
+    full stack) appear one at a time, bottom first, `CRATE_STAGGER_TICKS`
+    (2, her bend) apart (view only, and only at play speed, not across a
+    fast-forward; the sim has them all down at once: with the stack inside
+    the door full she cannot reach the overflow cell from the doorway, and
+    walking her there would change the sim). The open
     leaf hinges on the side away from where she comes along the alley when
     both sides are open ground.
   - Tests: `tests/sim/test_delivery_dock.gd` (back-door and street routes,
