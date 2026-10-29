@@ -27,6 +27,7 @@ const CUT_SHELL: String = "This part of the wall has a window or door in it"
 const STREET_DOOR: String = "This is the street door"
 const TOO_NARROW: String = "Not enough wall here"
 const CORNER: String = "A wall is in the way"
+const TWO_WALLS: String = "This would span two different walls"
 const WINDOW_ONLY: String = "This sign hangs in a window"
 const OUTSIDE_WINDOW_ONLY: String = "This sign hangs in a window on an outside wall"
 
@@ -203,7 +204,8 @@ static func span(anchor: Vector3i, width: int) -> Array[Vector3i]:
 
 
 ## Why `width` faces from `anchor` are not one straight run of wall ("" when
-## they are): every face solid, and no segment between their floor cells.
+## they are): every face solid, no segment between their floor cells, and
+## all on the shell or all on one interior wall.
 static func span_problem(grid: SimGrid, anchor: Vector3i, width: int) -> String:
 	var faces: Array[Vector3i] = span(anchor, width)
 	for index: int in range(faces.size()):
@@ -212,6 +214,11 @@ static func span_problem(grid: SimGrid, anchor: Vector3i, width: int) -> String:
 			return why if index == 0 or why != NOT_INSIDE and why != NO_WALL else TOO_NARROW
 		if index > 0 and grid.segment(SimGrid.edge_between(cell(faces[index - 1]), cell(faces[index]))) != SimGrid.Segment.NONE:
 			return CORNER
+		# An interior slab's face is nearer the room than the shell's: one
+		# item never spans both (it would float or cut into a wall).
+		if index > 0 and (grid.segment(edge(faces[index])) == SimGrid.Segment.WALL) \
+				!= (grid.segment(edge(faces[0])) == SimGrid.Segment.WALL):
+			return TWO_WALLS
 	return ""
 
 

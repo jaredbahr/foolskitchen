@@ -1318,7 +1318,10 @@ an active edit/panel/selection first, or opens Settings when none is active.
   `FloorFinishes` and shares its `Finish` value: face -> look, only faces that
   differ from the default (plain paint in `ShopEditor.wall_swatch_id`) are
   stored, so a v5 shop has none and looks exactly as before; `paint_wall`
-  still sets the default colour (`set_default_swatch`).
+  still sets the default colour (`set_default_swatch`, which folds faces
+  already in that colour into the default; the history's PAINT entry keeps
+  the stored wall faces, or floor cells for floor paint, and puts them back
+  on undo, so an unwind is exact).
 - **Finish edits.** `ShopEditor.wall_lay_changes`/`wall_recolour_changes`
   build proposals on faces only; `check_wall_finishes`/`apply_wall_finishes`
   price them like floors: a new finish costs its price per face and refunds
@@ -1350,8 +1353,9 @@ an active edit/panel/selection first, or opens Settings when none is active.
   (`def_id`, width) and face -> anchor: one item per face, never in anyone's
   way. `problem` refuses a span that is not one straight run of solid faces
   (`WallFaces` sentences: window, doorway, street door, "Not enough wall here",
-  "A wall is in the way") or covers another item ("Something already hangs
-  here"); a window item instead needs an outside window slot, one per window
+  "A wall is in the way", "This would span two different walls": a shell
+  face and an interior slab's face are on different planes) or covers another
+  item ("Something already hangs here"); a window item instead needs an outside window slot, one per window
   (`Hung.window`). `ShopEditor.check_hang`/`hang` (price, unlock, cash; one ledger line
   like furniture), `check_rehang`/`rehang` (free), `check_take_down`/`take_down`
   (half price), all MORNING/CLOSED (`DECOR_CLOSED`); `Exact` for undo/redo.
@@ -1368,7 +1372,12 @@ an active edit/panel/selection first, or opens Settings when none is active.
   floor cell pointed at) and otherwise the wall face (refused with the window
   sentence); a buy keeps the item in hand. While idle the
   Hand picks a hung item up (Del sells it), the Eyedropper hangs another and
-  Sell (or Del) sells the pointed one (`ShopView.wall_item_at_ray`).
+  Sell (or Del) sells the pointed one (`ShopView.wall_item_at_ray`: an item
+  only counts when no furniture or wall (`wall_distance`: shell boxes and
+  segment meshes, not window glass) is nearer along the ray, so nothing is
+  picked or sold through a wall). A shell box hit on a side counts only for
+  that side's face (`_shell_face`): its street side has none (paint there
+  repaints the building); a hit on a lowered box's top takes the nearest face.
   Rotating does nothing: an item always faces out from its wall. A restroom
   mirror or dryer (#198) is another WALL-layer `ItemDef` with
   `catalogue_room = restroom`.
@@ -1403,11 +1412,19 @@ an active edit/panel/selection first, or opens Settings when none is active.
   like wall decor. Catalogue thumbnails turn wall wrappers (`WallMount` node) to face
   the camera. **Glow** (Jared): an item with `ItemDef.glow_color` (alpha > 0;
   the neon OPEN sign's red) gets one `OmniLight3D` child "Glow" on its
-  visual, 0.2 m out from the face at the item's middle (a window item's: in
-  the window plane, halfway through the opening, so one light pools on the
-  floor inside and the pavement outside): range 1.2 m, energy
+  visual, 0.2 m out from the face at the item's middle: range 1.2 m, energy
   0.45, attenuation 1.6, no shadows, no specular. That is a soft pool on its
-  wall, a nearby corner and the floor below, not the room. The item's own
+  wall, a nearby corner and the floor below, not the room (a future
+  face-mounted glowing item should get the window treatment below, since a
+  shadowless 1.2 m light reaches past an interior wall). A window item's
+  light (the OPEN sign, the only glowing item) stands in the window plane,
+  halfway through the opening at the sign's height, with range 0.34 m: it
+  lights the window's own jambs, and no room beside the window (at least
+  0.375 m away, past an interior wall on the window cell's side line). Its
+  pools are two flat additive, unshaded glow squares ("PoolInside",
+  "PoolOutside"), each exactly the one cell in front of the window (the floor
+  inside, the ground outside the shell), fading from the wall, so the glow
+  never bleeds into another room. The item's own
   meshes move to render layer 20 (`GLOW_SELF_LAYER`), which the light's cull
   mask skips, so the sign isn't washed out by its own glow. It hides with the
   item (lowered walls, held for a move); ghosts get none. The shop has no

@@ -45,6 +45,15 @@ const GLOW_SELF_LAYER: int = 1 << 19
 ## opening, so it pools on the floor inside and the pavement outside alike.
 const WINDOW_GAP: float = 0.012
 const WINDOW_FILL: Vector2 = Vector2(0.9, 0.8)
+## A window item's glow never reaches another room: its light is this small
+## (it lights the window's own jambs; a neighbouring room is at least 0.375 m
+## away, past an interior wall at the window cell's side), and the pools on
+## the floor inside and the ground outside are flat additive glow squares,
+## each exactly the one cell in front of the window, brightest at the wall.
+const WINDOW_GLOW_RANGE: float = 0.34
+const WINDOW_GLOW_ENERGY: float = 0.6
+const POOL_LIFT: float = 0.004
+const POOL_STRENGTH: float = 0.55
 
 var _grid: SimGrid
 var _content: ContentDB
@@ -422,6 +431,8 @@ func _rebuild_items() -> void:
 			_add_glow(node, definition, hung.window)
 		node.transform = window_transform(anchor, node.get_aabb()) if hung.window \
 			else hung_transform(_grid, anchor, hung.width)
+		if hung.window:
+			place_window_glow(node, anchor)
 	_sync_item_visibility()
 
 
@@ -432,6 +443,8 @@ static func _add_glow(node: ItemVisual, definition: ItemDef, window: bool = fals
 	if definition.glow_color.a <= 0.0:
 		return
 	var box: AABB = node.get_aabb()
+	for mesh: MeshInstance3D in node.rendered_meshes():
+		mesh.layers = GLOW_SELF_LAYER
 	var light: OmniLight3D = OmniLight3D.new()
 	light.name = "Glow"
 	light.light_color = Color(definition.glow_color, 1.0)
@@ -442,14 +455,73 @@ static func _add_glow(node: ItemVisual, definition: ItemDef, window: bool = fals
 	light.omni_attenuation = GLOW_ATTENUATION
 	light.light_bake_mode = Light3D.BAKE_DISABLED
 	light.light_cull_mask = 0xFFFFF & ~GLOW_SELF_LAYER
-	for mesh: MeshInstance3D in node.rendered_meshes():
-		mesh.layers = GLOW_SELF_LAYER
+	node.add_child(light)
+	if window:
+		# Placed by place_window_glow once the item stands in its window.
+		light.omni_range = WINDOW_GLOW_RANGE
+		light.light_energy = WINDOW_GLOW_ENERGY * definition.glow_color.a
+		for pool_name: String in ["PoolInside", "PoolOutside"]:
+			node.add_child(_glow_pool(pool_name, definition.glow_color))
+		return
 	# The wrapper's front is -Z; its back (+Z) is on the face.
 	var centre: Vector3 = box.get_center() if box.size != Vector3.ZERO else Vector3(0.0, HUNG_FALLBACK_HEIGHT, 0.0)
 	light.position = Vector3(centre.x, centre.y, box.position.z - GLOW_OUT)
-	if window:
-		light.position.z = box.position.z + GridMath.CELL_SIZE * 0.5 - WINDOW_GAP
-	node.add_child(light)
+
+
+## One flat glow square for a window item: a cell-sized quad just above the
+## ground, additive and unshaded, fading from its -Z edge (the wall) outward.
+static func _glow_pool(pool_name: String, colour: Color) -> MeshInstance3D:
+	var gradient: Gradient = Gradient.new()
+	var strong: Color = Color(colour.r, colour.g, colour.b) * POOL_STRENGTH * colour.a
+	gradient.set_color(0, Color(strong, 1.0))
+	gradient.set_color(1, Color(0.0, 0.0, 0.0, 1.0))
+	var texture: GradientTexture2D = GradientTexture2D.new()
+	texture.gradient = gradient
+	texture.fill = GradientTexture2D.FILL_RADIAL
+	texture.fill_from = Vector2(0.5, 0.0)
+	texture.fill_to = Vector2(0.5, 1.0)
+	texture.width = 64
+	texture.height = 64
+	var material: StandardMaterial3D = StandardMaterial3D.new()
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	material.albedo_texture = texture
+	material.disable_receive_shadows = true
+	var plane: PlaneMesh = PlaneMesh.new()
+	plane.size = Vector2.ONE * GridMath.CELL_SIZE
+	var pool: MeshInstance3D = MeshInstance3D.new()
+	pool.name = pool_name
+	pool.mesh = plane
+	pool.material_override = material
+	pool.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	pool.layers = GLOW_SELF_LAYER
+	return pool
+
+
+## Puts a window item's glow in place (parent space: the window at `slot`):
+## the light halfway through the opening at the item's height, one pool on
+## the floor cell inside and one on the ground cell outside the shell.
+static func place_window_glow(node: ItemVisual, slot: Vector3i) -> void:
+	var light: Node3D = node.get_node_or_null(^"Glow") as Node3D
+	if light == null:
+		return
+	var into: Vector2i = WallFaces.step(slot)
+	var out: Vector3 = Vector3(into.x, 0.0, into.y)
+	var inside: Vector3 = GridMath.cell_to_world(WallFaces.cell(slot))
+	var back: Transform3D = node.transform.affine_inverse()
+	var height: float = (node.transform * node.get_aabb()).get_center().y
+	light.position = back * (inside + out * GridMath.CELL_SIZE + Vector3.UP * height)
+	# Each pool's -Z edge lies on the wall: +Z points away from it.
+	var room_side: Basis = Basis(Vector3.UP, atan2(-out.x, -out.z))
+	var street_side: Basis = Basis(Vector3.UP, atan2(out.x, out.z))
+	var pools: Dictionary[String, Transform3D] = {
+		"PoolInside": Transform3D(room_side, inside + Vector3.UP * POOL_LIFT),
+		"PoolOutside": Transform3D(street_side, inside + out * GridMath.CELL_SIZE * 2.0 + Vector3.UP * POOL_LIFT),
+	}
+	for pool_name: String in pools:
+		var pool: Node3D = node.get_node_or_null(NodePath(pool_name)) as Node3D
+		if pool != null:
+			pool.transform = back * pools[pool_name]
 
 
 ## A hung item hides while any wall it covers is drawn lowered, or while it

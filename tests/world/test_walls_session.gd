@@ -181,11 +181,26 @@ func test_the_neon_sign_hangs_in_a_window_facing_the_street_and_glows_both_ways(
 	assert_true((sign.global_transform.basis * Vector3.FORWARD).dot(Vector3.BACK) > 0.99, "text faces the street")
 	var glow: OmniLight3D = sign.get_node("Glow") as OmniLight3D
 	assert_false(glow.shadow_enabled, "no shadows: cheap in Compatibility")
-	assert_true(glow.omni_range <= 1.25, "a small pool, never the whole room")
 	assert_true(glow.light_energy <= 1.0)
 	assert_true(glow.light_color.r > 0.9 and glow.light_color.g < 0.3, "neon red")
-	assert_almost_eq(glow.global_position.z, inner + GridMath.CELL_SIZE * 0.5, 0.02,
+	assert_almost_eq(glow.global_position.z, inner + GridMath.CELL_SIZE * 0.5, 0.001,
 		"in the window plane, halfway between the room and the street")
+	assert_almost_eq(glow.global_position.x, bounds.get_center().x, 0.001)
+	# Its light stays in the window: a room beside it starts past an interior
+	# wall on the window cell's side line, at least sqrt(0.28^2 + 0.25^2) away.
+	assert_true(glow.omni_range < Vector2(GridMath.CELL_SIZE * 0.5 + WallSegmentView.THICKNESS * 0.5, GridMath.CELL_SIZE * 0.5).length(),
+		"the light never reaches a neighbouring room")
+	# The pools are exactly the floor cell inside and the ground cell outside.
+	var pools: Dictionary[String, Vector2i] = {"PoolInside": Vector2i(8, 9), "PoolOutside": Vector2i(8, 11)}
+	for pool_name: String in pools:
+		var pool: MeshInstance3D = sign.get_node(pool_name) as MeshInstance3D
+		var area: AABB = pool.global_transform * pool.get_aabb()
+		var cell: Vector3 = GridMath.cell_to_world(pools[pool_name])
+		assert_almost_eq(area.get_center().x, cell.x, 0.001, pool_name)
+		assert_almost_eq(area.get_center().z, cell.z, 0.001, pool_name)
+		assert_true(area.size.x <= GridMath.CELL_SIZE + 0.001 and area.size.z <= GridMath.CELL_SIZE + 0.001, pool_name)
+		assert_true(area.position.y < 0.01, "%s lies on the ground" % pool_name)
+		assert_eq(pool.layers & glow.light_cull_mask, 0)
 	for mesh: MeshInstance3D in sign.rendered_meshes():
 		assert_eq(mesh.layers & glow.light_cull_mask, 0, "the glow does not wash out its own sign")
 	assert_true(glow.is_visible_in_tree())
@@ -310,6 +325,92 @@ func test_a_paint_click_on_wall_decor_paints_nothing() -> void:
 	assert_eq(_editor().wall_swatch_id, &"", "never the whole building behind it")
 	assert_eq(_editor().walls.count(), 0)
 	assert_true(_main.call("set_paint_active", false))
+
+
+func test_the_street_side_of_a_shell_wall_has_no_face() -> void:
+	await _start()
+	var view: ShopView = _view()
+	view.set_wall_mode(ShopView.WallMode.UP)
+	var west: Vector3 = GridMath.cell_to_world(Vector2i(1, 6))
+	var along: Vector3 = Vector3(1.0, -0.1, 0.0).normalized()
+	var outside: Dictionary = view.wall_face_at_ray(Vector3(-3.0, 1.0, west.z), along)
+	assert_false(outside.is_empty(), "the wall is hit")
+	assert_eq(outside.get("face"), WallFaces.NO_FACE, "its street side is not the room-side face")
+	var inside: Dictionary = view.wall_face_at_ray(Vector3(3.0, 1.0, west.z), Vector3(-1.0, -0.1, 0.0).normalized())
+	assert_eq(inside.get("face"), _face(1, 6, WEST), "the room side still is")
+
+
+func test_wall_decor_behind_a_wall_cannot_be_picked_or_sold() -> void:
+	await _start()
+	Economy.add_cash(500, Ledger.OTHER)
+	_editor().set_owner_level(4)
+	var view: ShopView = _view()
+	assert_true(_main.call("shop_hang", &"wall_art_sunrise", _face(1, 8, WEST)), _editor().last_check.why)
+	var wall: Dictionary[Vector3i, int] = {}
+	for y: int in range(5, 8):
+		wall[Vector3i(9, y, SimGrid.EDGE_WEST)] = SimGrid.Segment.WALL
+	assert_true(_main.call("shop_walls", wall), _editor().last_check.why)
+	assert_true(_main.call("shop_hang", &"menu_board", _face(9, 6, WEST)), _editor().last_check.why)
+	view.set_wall_mode(ShopView.WallMode.UP)
+	var print_node: ItemVisual = view.wall_finish_view.item_nodes[_face(1, 8, WEST)]
+	var print_centre: Vector3 = print_node.global_transform * print_node.get_aabb().get_center()
+	# From the street, through the shell: not picked. From the room: picked.
+	var from_street: Vector3 = print_centre + Vector3(-3.0, 0.3, 0.0)
+	assert_eq(view.wall_item_at_ray(from_street, (print_centre - from_street).normalized()), WallFaces.NO_FACE)
+	var from_room: Vector3 = print_centre + Vector3(3.0, 0.3, 0.0)
+	assert_eq(view.wall_item_at_ray(from_room, (print_centre - from_room).normalized()), _face(1, 8, WEST))
+	# Through the interior slab from the room west of it: not picked.
+	var board: ItemVisual = view.wall_finish_view.item_nodes[_face(9, 6, WEST)]
+	var board_centre: Vector3 = board.global_transform * board.get_aabb().get_center()
+	var behind: Vector3 = board_centre + Vector3(-3.0, 0.3, 0.0)
+	assert_eq(view.wall_item_at_ray(behind, (board_centre - behind).normalized()), WallFaces.NO_FACE)
+	# The real camera at quarter 2, Walls Up: the west wall hides the print.
+	var rig: CameraRig = _main.get_node("CameraRig") as CameraRig
+	rig.rotate_quarter(2 - rig.camera_quarter())
+	rig.step_view(10.0, Vector2.ZERO)
+	var camera: Camera3D = _main.get_node("CameraRig/Camera3D") as Camera3D
+	var screen: Vector2 = camera.unproject_position(print_centre)
+	assert_eq(_main.call("wall_item_at_screen_position", screen), WallFaces.NO_FACE)
+	assert_true(_main.call("set_build_active", true))
+	view.set_wall_mode(ShopView.WallMode.UP)
+	_mode().tool = BuildMode.Tool.SELL
+	_main.call("update_build_pointer", screen)
+	var cash: int = Economy.cash
+	var click: InputEventMouseButton = InputEventMouseButton.new()
+	click.position = screen
+	click.global_position = screen
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+	_main.call("_unhandled_input", click)
+	assert_eq(_editor().decor.count(), 2, "nothing sold through the wall")
+	assert_eq(Economy.cash, cash)
+
+
+func test_a_window_sign_is_picked_from_the_street_not_through_the_wall() -> void:
+	await _start()
+	Economy.add_cash(500, Ledger.OTHER)
+	_editor().set_owner_level(4)
+	var windows: Dictionary[Vector3i, int] = {Vector3i(8, 10, SimGrid.EDGE_NORTH): SimGrid.Segment.WINDOW}
+	assert_true(_main.call("shop_walls", windows), _editor().last_check.why)
+	assert_true(_main.call("shop_hang", &"neon_open_sign", Vector3i(8, 9, 2)), _editor().last_check.why)
+	var view: ShopView = _view()
+	view.set_wall_mode(ShopView.WallMode.UP)
+	var sign: ItemVisual = view.wall_finish_view.item_nodes[Vector3i(8, 9, 2)]
+	var centre: Vector3 = sign.global_transform * sign.get_aabb().get_center()
+	var street: Vector3 = centre + Vector3(0.0, 2.0, 2.0)
+	assert_eq(view.wall_item_at_ray(street, (centre - street).normalized()), Vector3i(8, 9, 2))
+	# From the room the ray drops past the window head: the wall is in the way.
+	var room: Vector3 = centre + Vector3(0.0, 2.0, -2.0)
+	assert_eq(view.wall_item_at_ray(room, (centre - room).normalized()), WallFaces.NO_FACE)
+
+
+func test_the_hand_names_the_hung_item_it_points_at() -> void:
+	await _start()
+	Economy.add_cash(500, Ledger.OTHER)
+	assert_true(_main.call("shop_hang", &"menu_board", _face(2, 1, 0)), _editor().last_check.why)
+	assert_true(_main.call("set_build_active", true))
+	_mode().hover_wall_item(_face(2, 1, 0))
+	assert_eq(_mode().hover_summary(), "Pick up Chalk menu board to move it")
 
 
 func _start() -> void:

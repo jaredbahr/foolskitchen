@@ -424,6 +424,8 @@ func hover_summary() -> String:
 						if current_check.ok else current_check.why
 				Tool.EYEDROPPER:
 					return "Hang another %s" % hung.display_name
+				_:
+					return "Pick up %s to move it" % hung.display_name
 	if state != State.IDLE or hover_item_id < 0 or _grid == null:
 		return ""
 	var placed: PlacedItem = _grid.item(hover_item_id)

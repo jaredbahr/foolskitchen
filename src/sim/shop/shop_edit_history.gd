@@ -346,6 +346,16 @@ func rehang(anchor: Vector3i, to_anchor: Vector3i) -> bool:
 ## Recorded only while editing is allowed (paint also works during service).
 func paint(target: StringName, swatch_id: StringName, item_id: int = -1) -> bool:
 	var before: StringName = _paint_value(target, item_id)
+	# Whole-shop paint folds faces or cells already in the new colour into the
+	# default; keep their own looks so undo puts them back exactly.
+	var walls_before: Dictionary[Vector3i, FloorFinishes.Finish] = {}
+	var floors_before: Dictionary[Vector2i, FloorFinishes.Finish] = {}
+	if _editor != null and target == &"wall":
+		for face: Vector3i in _editor.walls.faces():
+			walls_before[face] = _editor.walls.finish(face)
+	elif _editor != null and target == &"floor":
+		for cell: Vector2i in _editor.floors.cells():
+			floors_before[cell] = _editor.floors.finish(cell)
 	if not _paint(target, swatch_id, item_id):
 		return false
 	if before == swatch_id or _editor == null or not _editor.can_edit():
@@ -355,6 +365,8 @@ func paint(target: StringName, swatch_id: StringName, item_id: int = -1) -> bool
 	entry.paint_target = target
 	entry.swatch_id = before
 	entry.paint_after = swatch_id
+	entry.walls_before = walls_before
+	entry.finishes_before = floors_before
 	if target == &"item":
 		entry.item = _ref(item_id)
 		entry.label = "paint " + _name(item_id)
@@ -424,7 +436,13 @@ func _invert(entry: Entry) -> bool:
 			_restore_losses(entry)
 			return true
 		Kind.PAINT:
-			return _check(_paint(entry.paint_target, entry.swatch_id, entry.item.id if entry.item != null else -1))
+			if not _check(_paint(entry.paint_target, entry.swatch_id, entry.item.id if entry.item != null else -1)):
+				return false
+			if not entry.walls_before.is_empty():
+				_editor.walls.set_finishes(entry.walls_before)
+			if not entry.finishes_before.is_empty():
+				_editor.floors.set_finishes(entry.finishes_before)
+			return true
 		Kind.ROOMS:
 			return _check(_editor.apply_rooms(entry.rooms_before, exact))
 		Kind.FLOORING:
