@@ -8,7 +8,9 @@ const CAPTURE: Script = preload("res://tools/screenshot.gd")
 func test_catalogue_capture_expectations_include_every_native_card_and_the_waiting_bench() -> void:
 	var content: ContentDB = ContentDB.new()
 	assert_eq(content.load_all(), PackedStringArray())
-	var catalogue: BuildCatalogue = preload("res://src/ui/build_catalogue.tscn").instantiate() as BuildCatalogue
+	# Load after autoload initialization to avoid retaining the diagnostic
+	# entry script's scene/script resource graph at shutdown.
+	var catalogue: BuildCatalogue = (load("res://src/ui/build_catalogue.tscn") as PackedScene).instantiate() as BuildCatalogue
 	catalogue.bind_content(content)
 	var evidence: Dictionary = CAPTURE._catalogue_content_expectations(content)
 	var expected_ids: Array[String] = []

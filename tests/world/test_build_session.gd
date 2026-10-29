@@ -1218,7 +1218,7 @@ func _assert_catalogue_cards_match_data(state: Dictionary, content: ContentDB) -
 		if not definition.catalogue_visible or definition.id.is_empty() or definition.display_name.strip_edges().is_empty() \
 				or definition.price < 0 or definition.unlock_level < 1 or definition.footprint.x < 1 or definition.footprint.y < 1 \
 				or not definition.placement_layer_valid() or definition.category < ItemDef.Category.TABLE \
-				or definition.category > ItemDef.Category.RESTROOM:
+				or definition.category > ItemDef.Category.WAITING:
 			continue
 		wanted.append(String(definition.id))
 		if definition.view_scene != null and not wrappers.has(definition.view_scene.resource_path):
@@ -1243,6 +1243,7 @@ func _assert_catalogue_cards_match_data(state: Dictionary, content: ContentDB) -
 		assert_false(content.item(hidden).catalogue_visible)
 		assert_false(actual.has(String(hidden)))
 	assert_true(actual.has("potted_plant"))
+	assert_true(actual.has("waiting_bench"), "waiting seats remain real catalogue cards")
 
 
 func _catalogue_capture_snapshot() -> Dictionary:
