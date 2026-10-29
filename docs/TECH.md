@@ -327,6 +327,36 @@ an active edit/panel/selection first, or opens Settings when none is active.
   restored RNG, stock top-up, ledger prune and autosave. Missing old-save `shop`
   sections use the authored layout. Non-MORNING saves remain unsupported.
 
+### Seafood content (FK-076)
+- Five level-gated food recipes form a data-defined seafood branch: Fries →
+  Fish & chips (level 2) → Salmon maki (4), and Tomato soup → Mussels in
+  broth (3) → Shrimp skewer (4) → Seafood stew (5). The first uses prep and
+  fryer, maki uses prep, mussels/skewer use the stove, and stew uses prep
+  then stove. Sections and `seafood` theme tags live in recipe resources.
+- Fish fillet and shrimp use freezer storage, mussels and lemon use the
+  fridge, and rice uses dry storage. All five have station-only reorder
+  targets, so the existing menu-use projection buys them only while a
+  selected dish needs them. Starting menus, default orders and save formats
+  are unchanged; levels make foods selectable without enabling them.
+- Deck planks is a level-4 floor resource using the existing `PLANKS`
+  pattern, Slate Blue boards and Cream seams, priced at $3 a tile. It adds
+  no shader branch, texture or pattern number and carries the `seafood` tag.
+- **Model support.** The approved Food Kit contains `fish` and `fries`,
+  `mussel-open`, `bowl-broth`, `maki-salmon`, `skewer` and `pot-stew`.
+  Maki has a direct match. Fish & chips and mussels in broth have matching
+  components but no composed whole-dish model; there is no shrimp-specific
+  skewer or seafood-specific stew model. Current recipes have no per-dish
+  render binding (food-on-plates is FK-054/#99), so this data-only change
+  creates no renderer, speculative scene metadata, substituted art or new
+  model. Those fitting kit parts remain available to the food presentation
+  work; whole-dish gaps are disclosed rather than claiming new visuals.
+- `tools/seafood_review.tscn` is an explicit unsaved capture fixture with
+  seed 126, $2,000 extra funds and owner level 5. Run it through
+  `tools/screenshot.sh --scene=res://tools/seafood_review.tscn --speed=0
+  --frames=30` with `SEAFOOD_REVIEW_STAGE=floor` or `menu`. It uses normal
+  purchase/menu/floor commands and shows the furnished Deck planks room or
+  selected seafood stew details. No service, stock grant or save is faked.
+
 ### 2.3d Menu and prices (FK-030)
 - **Menu identity (FK-086a):** `MenuSettings` owns a trimmed 1–24 character
   restaurant name. The morning request updates the HUD and view-only entrance

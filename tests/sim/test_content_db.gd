@@ -5,8 +5,8 @@ extends TestCase
 func test_starter_data_loads_without_validation_errors() -> void:
 	var db: ContentDB = ContentDB.new()
 	assert_eq(db.load_all().size(), 0)
-	assert_eq(db.ingredients().size(), 17)
-	assert_eq(db.recipes().size(), 13)
+	assert_eq(db.ingredients().size(), 22)
+	assert_eq(db.recipes().size(), 18)
 	assert_eq(db.items().size(), 56)
 
 
@@ -31,11 +31,11 @@ func test_lists_are_sorted_and_do_not_expose_index_arrays() -> void:
 	for definition: IngredientDef in db.ingredients():
 		ingredient_ids.append(definition.id)
 	assert_eq(ingredient_ids, [&"beef_patty", &"beer", &"bread", &"bun", &"cheese", &"coffee_beans", &"dough",
-		&"frozen_fries", &"lettuce", &"oil", &"pastry", &"potato", &"soda", &"soup_stock", &"tea", &"tomato", &"wine"])
+		&"fish_fillet", &"frozen_fries", &"lemon", &"lettuce", &"mussels", &"oil", &"pastry", &"potato", &"rice", &"shrimp", &"soda", &"soup_stock", &"tea", &"tomato", &"wine"])
 	var recipe_ids: Array[StringName] = []
 	for definition: RecipeDef in db.recipes():
 		recipe_ids.append(definition.id)
-	assert_eq(recipe_ids, [&"bar_fries", &"beer", &"burger", &"coffee", &"croissant", &"fries", &"grilled_cheese", &"savoury_pie", &"soft_drink",
+	assert_eq(recipe_ids, [&"bar_fries", &"beer", &"burger", &"coffee", &"croissant", &"fish_and_chips", &"fries", &"grilled_cheese", &"mussels_broth", &"salmon_maki", &"savoury_pie", &"seafood_stew", &"shrimp_skewer", &"soft_drink",
 		&"tea", &"tomato_melt", &"tomato_soup", &"wine"])
 	var item_ids: Array[StringName] = []
 	for definition: ItemDef in db.items():
@@ -59,8 +59,8 @@ func test_lists_are_sorted_and_do_not_expose_index_arrays() -> void:
 func test_reloading_does_not_duplicate_definitions() -> void:
 	var db: ContentDB = _starter_db()
 	assert_eq(db.load_all().size(), 0)
-	assert_eq(db.ingredients().size(), 17)
-	assert_eq(db.recipes().size(), 13)
+	assert_eq(db.ingredients().size(), 22)
+	assert_eq(db.recipes().size(), 18)
 	assert_eq(db.items().size(), 56)
 
 
@@ -74,7 +74,7 @@ func test_recursive_resource_discovery_returns_sorted_original_tres_names() -> v
 		if path.begins_with("res://data/ingredients/") or path.begins_with("res://data/recipes/") \
 				or path.begins_with("res://data/items/"):
 			content_paths += 1
-	assert_eq(content_paths, 86)
+	assert_eq(content_paths, 96)
 	assert_true(paths.has("res://data/ingredients/bun.tres"))
 	assert_true(paths.has("res://data/recipes/burger.tres"))
 	assert_true(paths.has("res://data/items/table_2.tres"))
