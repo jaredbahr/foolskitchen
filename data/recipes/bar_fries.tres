@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="RecipeDef" load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://src/sim/content/recipe_def.gd" id="1_recipe"]
+[ext_resource type="Script" path="res://src/sim/content/ingredient_def.gd" id="2_ingredient"]
+[ext_resource type="Script" path="res://src/sim/content/recipe_step.gd" id="3_step"]
+[ext_resource type="Resource" path="res://data/ingredients/frozen_fries.tres" id="ingredient_fries"]
+[ext_resource type="Resource" path="res://data/ingredients/oil.tres" id="ingredient_oil"]
+
+[sub_resource type="Resource" id="Step_fry"]
+script = ExtResource("3_step")
+station_type = &"fryer"
+duration_ticks = 35
+
+[resource]
+script = ExtResource("1_recipe")
+id = &"bar_fries"
+unlock_from = &"beer"
+display_name = "Bar fries"
+section = 2
+ingredients = Array[ExtResource("2_ingredient")]([ExtResource("ingredient_fries"), ExtResource("ingredient_oil")])
+steps = Array[ExtResource("3_step")]([SubResource("Step_fry")])
+base_quality = 0.6
+standard_price = 5
+unlock_tier = 1
+unlock_level = 2
+theme_tags = Array[StringName]([&"bar"])
