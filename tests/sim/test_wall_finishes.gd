@@ -323,6 +323,41 @@ func test_opening_the_shell_takes_its_finish_and_decor_down() -> void:
 	assert_eq(_editor.decor.anchors(), [_face(12, 2, EAST)] as Array[Vector3i])
 
 
+func test_expansion_takes_down_a_print_and_window_sign_with_exact_undo() -> void:
+	var grid: SimGrid = _sim.world.grid
+	var window: Vector3i = Vector3i(13, 2, SimGrid.EDGE_WEST)
+	var print_face: Vector3i = _face(12, 7, EAST)
+	var sign_face: Vector3i = _face(12, 2, EAST)
+	_window(window)
+	assert_true(_history.apply_wall_finishes(_editor.wall_lay_changes(
+		[print_face] as Array[Vector3i], &"stripes", &"butter")))
+	assert_true(_history.hang(&"wall_art_sunrise", print_face), _editor.last_check.why)
+	assert_true(_history.hang(&"neon_open_sign", sign_face), _editor.last_check.why)
+	var before: Dictionary = _editor.to_dict()
+	var cash: int = _ledger.cash
+	var check: EditCheck = _editor.check_floor(_lot_column(), true)
+	assert_true(check.ok, check.why)
+	assert_eq(check.changes[window], SimGrid.Segment.NONE)
+	assert_true(check.lost_decor.has(print_face))
+	assert_true(check.lost_decor.has(sign_face))
+	assert_eq(check.lost_finishes, [print_face] as Array[Vector3i])
+	var expected: int = 10 + 1 + ShopEditor.sale_refund(_content.item(&"wall_art_sunrise")) \
+		+ ShopEditor.sale_refund(_content.item(&"neon_open_sign"))
+	assert_eq(check.refund, expected, "window, wallpaper, print and sign refund once each")
+	assert_true(_history.apply_floor(_lot_column(), true), _editor.last_check.why)
+	assert_eq(grid.segment(window), SimGrid.Segment.NONE)
+	assert_eq(_editor.decor.count(), 0)
+	assert_eq(_editor.walls.count(), 0)
+	assert_eq(_ledger.cash, cash - check.cost + expected)
+	assert_true(_history.undo(), _history.last_refusal)
+	assert_eq(_editor.to_dict(), before, "floor, window, finish and both pieces of decor restore exactly")
+	assert_eq(_ledger.cash, cash)
+	assert_true(_history.redo(), _history.last_refusal)
+	assert_eq(grid.segment(window), SimGrid.Segment.NONE)
+	assert_eq(_editor.decor.count(), 0)
+	assert_eq(_ledger.cash, cash - check.cost + expected)
+
+
 func test_history_undoes_and_redoes_wall_finishes_with_exact_cash() -> void:
 	var faces: Array[Vector3i] = _west(5, 3)
 	assert_true(_history.apply_wall_finishes(_editor.wall_lay_changes(faces, &"subway_tile", &"cream")))

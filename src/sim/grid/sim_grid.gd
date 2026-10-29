@@ -12,9 +12,8 @@ extends RefCounted
 ## Vector3i(x, y, axis): EDGE_WEST is the grid line on the west side of cell
 ## (x, y) (between x-1 and x), EDGE_NORTH the line on its north side. Keys are
 ## grid-line positions, independent of whether the line is inside the room or
-## on the outer shell, so they survive terrain changes such as a floor
-## expansion: a window on an outer face becomes an interior window when the
-## wall cell behind it turns into floor.
+## on the outer shell. ShopEditor removes windows and doorways left without
+## a continuing wall when terrain changes, such as a floor expansion.
 ##
 ## Bounds (FK-080): the grid covers `bounds`, which starts at `origin`. An
 ## authored layout starts at (0, 0); a floor expansion may grow the grid north

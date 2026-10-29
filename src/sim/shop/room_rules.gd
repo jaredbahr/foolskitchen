@@ -119,7 +119,8 @@ static func is_toilet(placed: PlacedItem) -> bool:
 ## The first problem `preview` adds over `live`, or "". `ids` maps preview item
 ## ids to live ids (0 for a proposed new item).
 static func problem(live: SimGrid, preview: SimGrid, ids: Dictionary[int, int]) -> String:
-	if not live.has_rooms() and not preview.has_rooms():
+	if not live.has_rooms() and not preview.has_rooms() \
+			and WaitingBench.benches(preview).is_empty():
 		return ""
 	var before: Dictionary[String, String] = live_violations(live)
 	var after: Dictionary[String, String] = violations(preview, ids)
@@ -145,7 +146,7 @@ static func live_violations(live: SimGrid) -> Dictionary[String, String]:
 ## staff rooms first, then cut-off seats, toilets and the door, then the pass).
 static func violations(grid: SimGrid, ids: Dictionary[int, int]) -> Dictionary[String, String]:
 	var out: Dictionary[String, String] = {}
-	if not grid.has_rooms():
+	if not grid.has_rooms() and WaitingBench.benches(grid).is_empty():
 		return out
 	var anyone: Dictionary[Vector2i, bool] = WallRules.reachable(grid)
 	var guests: Dictionary[Vector2i, bool] = guest_reachable(grid)
@@ -155,7 +156,11 @@ static func violations(grid: SimGrid, ids: Dictionary[int, int]) -> Dictionary[S
 		if definition == null:
 			continue
 		var live_id: int = ids.get(placed.id, placed.id)
-		if definition.category == ItemDef.Category.TABLE:
+		if definition.category == ItemDef.Category.WAITING:
+			var waiting_problem: String = WaitingBench.placement_problem(grid, placed, guests)
+			if not waiting_problem.is_empty():
+				out["waiting:%d:%d:%d" % [live_id, placed.origin.x, placed.origin.y]] = waiting_problem
+		elif definition.category == ItemDef.Category.TABLE:
 			for seat: Vector2i in placed.seat_cells:
 				var kind: int = grid.room(seat)
 				if kind != SimGrid.Room.DINING:

@@ -963,12 +963,26 @@ func floor_summary() -> String:
 		count, "" if count == 1 else "s"]
 	if current_check.cost > 0:
 		text += "  $%d" % current_check.cost
+	var losses: PackedStringArray = []
+	for kind: SimGrid.Segment in [SimGrid.Segment.WALL, SimGrid.Segment.WINDOW, SimGrid.Segment.DOORWAY]:
+		var removed: int = 0
+		for edge: Vector3i in current_check.changes:
+			if current_check.changes[edge] == SimGrid.Segment.NONE and _grid.segment(edge) == kind:
+				removed += 1
+		if removed > 0:
+			var definition: WallKindDef = _content.wall_kind_for(kind) if _content != null else null
+			if definition != null:
+				losses.append("%d %s%s" % [removed, definition.display_name.to_lower(), "" if removed == 1 else "s"])
+	if not current_check.lost_decor.is_empty():
+		var count_lost: int = current_check.lost_decor.size()
+		losses.append("%d wall decoration%s" % [count_lost, "" if count_lost == 1 else "s"])
 	if current_check.refund > 0:
+		var removes: String = "removes %s, " % ", ".join(losses) if not losses.is_empty() else ""
 		if current_check.floor_finish_refund > 0:
-			text += "  (refund $%d, $%d of it for the flooring)" % [current_check.refund,
+			text += "  (%srefund $%d, $%d of it for the flooring)" % [removes, current_check.refund,
 				current_check.floor_finish_refund]
 		else:
-			text += "  (refund $%d)" % current_check.refund
+			text += "  (%srefund $%d)" % [removes, current_check.refund]
 	return text
 
 

@@ -3,7 +3,7 @@ extends Resource
 ## Placeable content definition in 0.5 m grid cells, facing -Z by default.
 
 ## RESTROOM (FK-101): restroom fixtures; a toilet has station_type &"toilet".
-enum Category { DOOR, TABLE, CHAIR, STATION, STORAGE, PASS, DECOR, RESTROOM }
+enum Category { DOOR, TABLE, CHAIR, STATION, STORAGE, PASS, DECOR, RESTROOM, WAITING }
 ## WALL (D26): hangs on a wall face (ShopEditor.decor, WallDecor), never on
 ## the grid; its footprint is (width along the wall in faces, 1).
 enum PlacementLayer { NORMAL, FLOOR_DECOR, WALL }

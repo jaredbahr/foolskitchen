@@ -2,8 +2,6 @@ extends TestCase
 ## FK-045 selection, pointer state, keyboard rotation and native ghost geometry.
 
 const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
-const PREVIEW: PackedScene = preload("res://src/world/build_preview.tscn")
-const VIEW: PackedScene = preload("res://src/world/shop_view.tscn")
 
 var _content: ContentDB
 var _sim: RestaurantSim
@@ -119,9 +117,11 @@ func test_native_group_ghost_is_red_when_refused_and_clears_on_cancel() -> void:
 	var second: ShopPlacement = blueprint.entries[0].duplicate() as ShopPlacement
 	second.origin = Vector2i(3, 0)
 	blueprint.entries.append(second)
-	var view: ShopView = VIEW.instantiate() as ShopView
+	# Acquire native scenes after autoload initialization; entry-script
+	# scene preloads can retain a cyclic script graph at shutdown.
+	var view: ShopView = (load("res://src/world/shop_view.tscn") as PackedScene).instantiate() as ShopView
 	view.show_world(_sim.world)
-	var preview: BuildPreview = PREVIEW.instantiate() as BuildPreview
+	var preview: BuildPreview = (load("res://src/world/build_preview.tscn") as PackedScene).instantiate() as BuildPreview
 	preview.bind_build_mode(_mode, view)
 	assert_true(_mode.begin_blueprint(blueprint, Vector2i(-30, -30)))
 	assert_eq(preview.blueprint_ghosts.size(), 2)
