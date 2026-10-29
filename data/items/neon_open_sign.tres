@@ -22,3 +22,4 @@ unlock_level = 4
 charm = 3
 theme_tags = Array[StringName]([&"bar", &"diner"])
 paintable = false
+glow_color = Color(1, 0.16, 0.14, 1)

@@ -152,6 +152,44 @@ func test_wall_decor_hangs_moves_and_sells_from_the_buy_catalogue() -> void:
 	assert_true(view.wall_finish_view.item_nodes[_face(1, 9, WEST)].visible)
 
 
+func test_the_neon_sign_glows_softly_and_its_glow_hides_with_it() -> void:
+	await _start()
+	Economy.add_cash(500, Ledger.OTHER)
+	_editor().set_owner_level(4)
+	assert_true(_main.call("shop_hang", &"wall_art_sunrise", _face(2, 1, 0)))
+	assert_true(_main.call("shop_hang", &"neon_open_sign", _face(1, 9, WEST)))
+	var view: ShopView = _view()
+	view.set_wall_mode(ShopView.WallMode.UP)
+	var finish_view: WallFinishView = view.wall_finish_view
+	assert_eq(finish_view.find_children("Glow", "OmniLight3D", true, false).size(), 1, "prints do not glow")
+	var sign: ItemVisual = finish_view.item_nodes[_face(1, 9, WEST)]
+	var glow: OmniLight3D = sign.get_node("Glow") as OmniLight3D
+	assert_false(glow.shadow_enabled, "no shadows: cheap in Compatibility")
+	assert_true(glow.omni_range <= 1.25, "a small pool, never the whole room")
+	assert_true(glow.light_energy <= 1.0)
+	assert_true(glow.light_color.r > 0.9 and glow.light_color.g < 0.3, "neon red")
+	assert_true(glow.position.z < sign.get_aabb().position.z, "in front of the sign, out from the wall")
+	for mesh: MeshInstance3D in sign.rendered_meshes():
+		assert_eq(mesh.layers & glow.light_cull_mask, 0, "the glow does not wash out its own sign")
+	assert_true(glow.is_visible_in_tree())
+	# Walls Down hides the sign and its glow; a held sign hides both too.
+	view.set_wall_mode(ShopView.WallMode.DOWN)
+	assert_false(glow.is_visible_in_tree())
+	view.set_wall_mode(ShopView.WallMode.UP)
+	assert_true(glow.is_visible_in_tree())
+	assert_true(_main.call("set_build_active", true))
+	assert_true(_mode().begin_rehang(_face(1, 9, WEST)))
+	_mode().hang_pointer(_face(1, 6, WEST), 0.1)
+	assert_true(_mode().current_check.ok, _mode().current_check.why)
+	assert_false(glow.is_visible_in_tree(), "the held sign's glow goes with it")
+	assert_eq(finish_view.ghost().find_children("Glow", "OmniLight3D", true, false).size(), 0,
+		"a ghost previews no light")
+	assert_true(_mode().hang_commit())
+	var moved: ItemVisual = finish_view.item_nodes[_face(1, 6, WEST)]
+	assert_true((moved.get_node("Glow") as Node3D).is_visible_in_tree(), "the glow follows the sign")
+	assert_eq(finish_view.find_children("Glow", "OmniLight3D", true, false).size(), 1)
+
+
 func test_removing_a_wall_takes_its_finish_and_decor_off_the_view() -> void:
 	await _start()
 	Economy.add_cash(500, Ledger.OTHER)

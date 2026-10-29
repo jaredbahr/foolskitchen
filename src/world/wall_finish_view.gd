@@ -21,6 +21,20 @@ const AUTO_ACCENT_SHADE: float = 0.78
 ## Wall decor wrappers stand on a cell centre with their back on the cell's
 ## far edge; a face of an interior wall is this much nearer the room.
 const HUNG_FALLBACK_HEIGHT: float = 0.6
+## A glowing hung item (`ItemDef.glow_color`) gets one small omni light this
+## far in front of its face, at its middle: a soft pool on the wall and the
+## floor below, never the whole room. No shadows, so it stays cheap in the
+## Compatibility renderer (each light is one more pass over the meshes in its
+## range; Godot draws up to 8 per mesh). The shop has no day/night yet, so
+## the glow is constant.
+const GLOW_OUT: float = 0.2
+const GLOW_RANGE: float = 1.2
+const GLOW_ENERGY: float = 0.45
+const GLOW_ATTENUATION: float = 1.6
+## The glowing item's own meshes sit on this render layer only (every camera
+## and the shop's lights still see it), and its glow skips it: the light
+## would wash out the sign it comes from.
+const GLOW_SELF_LAYER: int = 1 << 19
 
 var _grid: SimGrid
 var _content: ContentDB
@@ -362,8 +376,33 @@ func _rebuild_items() -> void:
 			node.set_meta(&"def_id", definition.id)
 			item_nodes[anchor] = node
 			add_child(node)
+			_add_glow(node, definition)
 		node.transform = hung_transform(_grid, anchor, hung.width)
 	_sync_item_visibility()
+
+
+## The soft light of a glowing item, a child of its visual so it hides with
+## it (a lowered wall, a held item). Build ghosts get none.
+static func _add_glow(node: ItemVisual, definition: ItemDef) -> void:
+	if definition.glow_color.a <= 0.0:
+		return
+	var box: AABB = node.get_aabb()
+	var light: OmniLight3D = OmniLight3D.new()
+	light.name = "Glow"
+	light.light_color = Color(definition.glow_color, 1.0)
+	light.light_energy = GLOW_ENERGY * definition.glow_color.a
+	light.light_specular = 0.0
+	light.shadow_enabled = false
+	light.omni_range = GLOW_RANGE
+	light.omni_attenuation = GLOW_ATTENUATION
+	light.light_bake_mode = Light3D.BAKE_DISABLED
+	light.light_cull_mask = 0xFFFFF & ~GLOW_SELF_LAYER
+	for mesh: MeshInstance3D in node.rendered_meshes():
+		mesh.layers = GLOW_SELF_LAYER
+	# The wrapper's front is -Z; its back (+Z) is on the face.
+	var centre: Vector3 = box.get_center() if box.size != Vector3.ZERO else Vector3(0.0, HUNG_FALLBACK_HEIGHT, 0.0)
+	light.position = Vector3(centre.x, centre.y, box.position.z - GLOW_OUT)
+	node.add_child(light)
 
 
 ## A hung item hides while any wall it covers is drawn lowered, or while it

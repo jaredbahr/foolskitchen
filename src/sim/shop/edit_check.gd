@@ -28,6 +28,9 @@ var wall_finishes: Dictionary[Vector3i, FloorFinishes.Finish] = {}
 ## their refund (half the price) is part of `refund`.
 var lost_finishes: Array[Vector3i] = []
 var lost_decor: Array[Vector3i] = []
+## Floor edits (D25/D26): the part of `refund` that is half the floor-type
+## price of the cells that stop being floor (their looks come up with them).
+var floor_finish_refund: int = 0
 
 
 func _init(allowed: bool = false, reason: String = "") -> void:

@@ -984,7 +984,9 @@ an active edit/panel/selection first, or opens Settings when none is active.
   Wall segments that would no longer fit (for example an outer window now
   facing the wing's new wall) are taken down and refunded at the furniture
   rate. Floor costs `floor_cell_price` per cell, refunds half, under
-  `Ledger.UPGRADES`. The terrain change is one `set_terrains` batch (one
+  `Ledger.UPGRADES`; every cell that stops being floor (bought cells and
+  shell cells that close again) also refunds `floor(price / 2)` of its floor
+  type (D25, `EditCheck.floor_finish_refund`, part of `refund`). The terrain change is one `set_terrains` batch (one
   `cells_changed`), applied before any segment is taken down so a refusal
   changes nothing; dirt spots on cells that stop being floor are cleared.
 - **Save.** The `shop` snapshot is version 3 with `floor: [[x, y], ...]`
@@ -1227,8 +1229,11 @@ an active edit/panel/selection first, or opens Settings when none is active.
   (same type) is free at any time. Undo/redo pass `Exact` (exact money, no
   unlock check). `ShopEditHistory.Kind.FLOORING` keeps the looks before and
   after ("lay Checker tiles" / "recolour the floor"); like paint, a recolour
-  during service is not recorded. A FLOOR removal keeps the looks of the
-  cells it took (`finishes_before`) and lays them again on undo.
+  during service is not recorded. A FLOOR removal refunds half the type's
+  price of each cell it takes (Jared, as walls do), keeps their looks
+  (`finishes_before`) and lays them again free on undo (the entry's exact
+  cash takes the refund back); redo takes them up again. The Expand line
+  says so: "Remove 10 floor tiles  (refund $75, $5 of it for the flooring)".
 - **Tools.** Build > Floors (`BuildCatalogue.FLOORS`; the lot tool's tab is
   now labelled Expand, id `floor` unchanged) shows one card per floor type
   (price per tile, or "Level N" disabled with its reason) with a CPU-drawn
@@ -1377,7 +1382,18 @@ an active edit/panel/selection first, or opens Settings when none is active.
   drawn lowered (they would float over the stub). The HANG ghost is a tinted
   copy (`BuildPreview` colours) shown on any face, the held item hidden while
   moved. Catalogue thumbnails turn wall wrappers (`WallMount` node) to face
-  the camera.
+  the camera. **Glow** (Jared): an item with `ItemDef.glow_color` (alpha > 0;
+  the neon OPEN sign's red) gets one `OmniLight3D` child "Glow" on its
+  visual, 0.2 m out from the face at the item's middle: range 1.2 m, energy
+  0.45, attenuation 1.6, no shadows, no specular. That is a soft pool on its
+  wall, a nearby corner and the floor below, not the room. The item's own
+  meshes move to render layer 20 (`GLOW_SELF_LAYER`), which the light's cull
+  mask skips, so the sign isn't washed out by its own glow. It hides with the
+  item (lowered walls, held for a move); ghosts get none. The shop has no
+  day/night, so the glow is constant. Compatibility draws each light as one
+  more pass over the meshes in its range, up to 8 lights per mesh (the
+  floor is one mesh), so many glowing items in one shop would start to drop
+  lights on the floor; a shop without one renders exactly as before.
 - **Save and vibe.** The `shop` snapshot is version 6 with `wall_style_id`
   (always `paint`: any other value is ignored, like floors), `wall_finishes:
   [[x, y, dir, style, swatch, accent], ...]` and `wall_items: [[x, y, dir,

@@ -65,6 +65,10 @@ const MAX_SEATED_LEAN_DEGREES: float = 35.0
 ## Optional presentation resource. The sim never instantiates or reads this scene.
 ## The world view keeps its box fallback when this is absent.
 @export var view_scene: PackedScene
+## Wall decor (D26): the colour of a soft light the view puts in front of a
+## hung item, such as the neon sign's red glow on its wall and the floor
+## below. Alpha 0 (the default) is no light. Looks only.
+@export var glow_color: Color = Color(0.0, 0.0, 0.0, 0.0)
 ## One body-colour slot; unpainted items keep their authored placeholder colour.
 @export var paintable: bool = true
 @export var paint_slot: StringName = &"body"

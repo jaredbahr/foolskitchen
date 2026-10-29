@@ -1296,7 +1296,9 @@ func is_bought(cell: Vector2i) -> bool:
 ## Adding uses every unbuilt lot cell; cells of the starting building, already
 ## bought or on the lot's wall ring are skipped, any cell beyond the lot refuses. Removing uses
 ## only bought cells. Wall segments that would no longer fit are taken down
-## and refunded at the furniture rate; floor refunds half its price too.
+## and refunded at the furniture rate; floor refunds half its price too, and
+## half the price of its floor type (D25), as do the wall finishes and hung
+## decor on walls that go (D26).
 ##
 ## Undo (FK-085) passes `restore`: segments (edge -> segment) the edit being
 ## undone took down, put back in the same change, and exact money.
@@ -1409,6 +1411,13 @@ func check_floor(cells: Array[Vector2i], adding: bool, exact: Exact = null,
 	var cost: int = effective.size() * _footprint.cell_price if adding else 0
 	if not adding:
 		refund += effective.size() * floori(_footprint.cell_price / 2.0)
+	# Floor that goes takes its look up too, refunded at half the type's price.
+	for cell: Vector2i in losing:
+		if floors.is_default(cell):
+			continue
+		var laid: FloorStyleDef = _content.floor_style(floors.finish(cell).style)
+		check.floor_finish_refund += floori(laid.price / 2.0) if laid != null else 0
+	refund += check.floor_finish_refund
 	if exact != null:
 		cost = maxi(-exact.amount, 0)
 		refund = maxi(exact.amount, 0)

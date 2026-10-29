@@ -185,6 +185,8 @@ func test_wall_finish_drag_warns_with_its_net_cost() -> void:
 	Economy.add_cash(estimate + cost - 5 - Economy.cash, Ledger.OTHER)
 	mode.wall_finish_pointer(Vector3i(1, 6, 3), true)
 	assert_eq(_main.call("build_restock_warning"), "Leaves $88 — tomorrow's restock needs about $93")
+	_assert_amber_warning("Leaves $88 — tomorrow's restock needs about $93")
+	assert_true(_hint_label().text.contains(mode.wall_finish_summary()), "the cost line stays above the advice")
 	var cash: int = Economy.cash
 	assert_true(mode.wall_finish_release(Vector3i(1, 6, 3)), "the advice never refuses a wall finish")
 	assert_eq(Economy.cash, cash - cost)
@@ -202,6 +204,7 @@ func test_neon_sign_hang_warns_with_its_price_and_a_move_does_not() -> void:
 	assert_true(mode.current_check.ok, mode.current_check.why)
 	assert_eq(mode.current_check.cost, 80)
 	assert_eq(_main.call("build_restock_warning"), "Leaves $88 — tomorrow's restock needs about $93")
+	_assert_amber_warning("Leaves $88 — tomorrow's restock needs about $93")
 	assert_true(mode.hang_commit(), "the advice never refuses hanging")
 	assert_eq(Economy.cash, 88)
 	_main.call("_on_catalogue_mode_requested", BuildCatalogue.BUY)
@@ -210,3 +213,24 @@ func test_neon_sign_hang_warns_with_its_price_and_a_move_does_not() -> void:
 	mode.hang_pointer(Vector3i(1, 9, 3), 0.1)
 	assert_true(mode.current_check.ok, mode.current_check.why)
 	assert_eq(_main.call("build_restock_warning"), "", "moving wall decor is free")
+	var line: Label = _warning_label()
+	assert_false(line.visible, "no advice line for a free move")
+	assert_eq(line.text, "")
+
+
+func _warning_label() -> Label:
+	return _main.get_node("HUD/BuildHints/Scroll/Lines/Warning") as Label
+
+
+func _hint_label() -> Label:
+	return _main.get_node("HUD/BuildHints/Scroll/Lines/Text") as Label
+
+
+## The advice sits on the amber Warning line, not on the cost line above it.
+func _assert_amber_warning(expected: String) -> void:
+	var line: Label = _warning_label()
+	var hud: Node = _main.get_node("HUD")
+	assert_eq(line.text, expected)
+	assert_true(line.visible)
+	assert_eq(line.get_theme_color("font_color"), hud.get("ADVICE_COLOR"), "advice is amber")
+	assert_false(_hint_label().text.contains(expected), "the cost line keeps its own text")

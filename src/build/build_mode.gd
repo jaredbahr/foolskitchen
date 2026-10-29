@@ -928,7 +928,11 @@ func floor_summary() -> String:
 	if current_check.cost > 0:
 		text += "  $%d" % current_check.cost
 	if current_check.refund > 0:
-		text += "  (refund $%d)" % current_check.refund
+		if current_check.floor_finish_refund > 0:
+			text += "  (refund $%d, $%d of it for the flooring)" % [current_check.refund,
+				current_check.floor_finish_refund]
+		else:
+			text += "  (refund $%d)" % current_check.refund
 	return text
 
 

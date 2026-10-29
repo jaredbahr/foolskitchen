@@ -169,6 +169,111 @@ func test_removed_floor_forgets_its_look_and_undo_brings_it_back() -> void:
 	assert_eq(_editor.floors.count(), 3)
 
 
+func test_removed_floor_refunds_half_its_floor_type() -> void:
+	# Jared: like wall finishes, floor that goes refunds half its type's price.
+	var lot: Array[Vector2i] = _rect(14, 0, 1, 10)
+	assert_true(_history.apply_floor(lot, true), _editor.last_check.why)
+	assert_eq(_ledger.cash, START_CASH - 150)
+	# Herringbone ($3) on three bought cells and on the opened shell cell
+	# (13, 6), which turns back into wall when the column goes; checker ($2)
+	# on (12, 6), which stays floor and keeps its look.
+	assert_true(_history.apply_flooring(_editor.lay_changes(_rect(13, 5, 2, 2) + _rect(14, 7, 1, 1), &"herringbone", &"")))
+	assert_true(_history.apply_flooring(_editor.lay_changes(_rect(12, 6, 1, 1), &"checker", &"")))
+	var spent: int = 150 + 5 * 3 + 2
+	assert_eq(_ledger.cash, START_CASH - spent)
+	var check: EditCheck = _editor.check_floor(lot, false)
+	assert_true(check.ok, check.why)
+	assert_eq(check.floor_finish_refund, 5, "half of $3, rounded down, for each of the five cells that go")
+	assert_eq(check.refund, 10 * 7 + 5, "the floor's own half price plus its looks")
+	# The Expand tool's line says how much of the refund is the flooring.
+	var mode: BuildMode = BuildMode.new()
+	mode.bind_session(_editor, _sim.world, _content, _no_command, _no_command, _no_command, Callable(),
+		_history.apply_floor)
+	assert_true(mode.enter())
+	assert_true(mode.begin_floor())
+	assert_true(mode.floor_press(Vector2i(14, 0), true))
+	mode.floor_pointer(Vector2i(14, 9), true)
+	assert_eq(mode.floor_summary(), "Remove 10 floor tiles  (refund $75, $5 of it for the flooring)")
+	mode.bind_session(null, null, null, Callable(), Callable(), Callable())
+	assert_true(_history.apply_floor(lot, false), _editor.last_check.why)
+	assert_eq(_ledger.cash, START_CASH - spent + 75)
+	assert_eq(_editor.last_cash_change, 75)
+	assert_eq(_editor.floors.count(), 1, "only the checker cell that stays floor keeps a look")
+	assert_eq(_editor.floors.finish(Vector2i(12, 6)).style, &"checker")
+	# Undo puts the looks back free; the edit's exact cash takes the refund back.
+	assert_true(_history.undo(), _history.last_refusal)
+	assert_eq(_ledger.cash, START_CASH - spent)
+	assert_eq(_editor.floors.count(), 6)
+	assert_eq(_editor.floors.finish(Vector2i(13, 6)).style, &"herringbone")
+	assert_eq(_editor.floors.finish(Vector2i(14, 7)).style, &"herringbone")
+	assert_true(_history.redo(), _history.last_refusal)
+	assert_eq(_ledger.cash, START_CASH - spent + 75)
+	assert_eq(_editor.floors.count(), 1)
+	assert_true(_history.undo(), _history.last_refusal)
+	assert_eq(_ledger.cash, START_CASH - spent)
+	assert_eq(_upgrades(), -spent)
+
+
+func test_floor_money_fuzz_round_trips_exactly() -> void:
+	# A seeded run of floor buys and sales, floor types and recolours through
+	# the history: the books always equal the ledger, looks only sit on floor,
+	# and a full undo returns to the start exactly.
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	rng.seed = 2510
+	var styles: Array[StringName] = [&"planks", &"narrow_planks", &"herringbone", &"small_tile", &"checker"]
+	var colours: Array[StringName] = [&"", &"cream", &"sage", &"clay", &"walnut"]
+	var done: int = 0
+	var sold: int = 0
+	for step: int in 160:
+		match rng.randi_range(0, 5):
+			0:
+				var x: int = rng.randi_range(-2, 15)
+				var y: int = rng.randi_range(-4, 9)
+				done += int(_history.apply_floor(_rect(x, y, rng.randi_range(1, 3), rng.randi_range(1, 4)), true))
+			1:
+				var bought: Array[Vector2i] = _editor.bought_floor()
+				if not bought.is_empty():
+					var cell: Vector2i = bought[rng.randi_range(0, bought.size() - 1)]
+					var removed: bool = _history.apply_floor(_rect(cell.x, cell.y, rng.randi_range(1, 2), rng.randi_range(1, 3)), false)
+					done += int(removed)
+					sold += int(removed and _editor.last_check.floor_finish_refund > 0)
+			2, 3:
+				var floor_cells: Array[Vector2i] = []
+				for cell: Vector2i in _sim.world.grid.cells():
+					if _sim.world.grid.terrain(cell) == SimGrid.Terrain.FLOOR:
+						floor_cells.append(cell)
+				# Lean on the bought and edge cells so sales take looks with them.
+				var cell: Vector2i = floor_cells[rng.randi_range(0, floor_cells.size() - 1)]
+				var bought: Array[Vector2i] = _editor.bought_floor()
+				if not bought.is_empty() and rng.randi() % 2 == 0:
+					cell = bought[rng.randi_range(0, bought.size() - 1)]
+				done += int(_history.apply_flooring(_editor.lay_changes(_rect(cell.x - 1, cell.y - 1, 3, 3),
+					styles[rng.randi_range(0, 4)], colours[rng.randi_range(0, 4)], colours[rng.randi_range(0, 4)])))
+			4:
+				if rng.randi() % 2 == 0:
+					_history.undo()
+				else:
+					_history.redo()
+			5:
+				var cells: Array[Vector2i] = _editor.floors.cells()
+				if not cells.is_empty():
+					var cell: Vector2i = cells[rng.randi_range(0, cells.size() - 1)]
+					done += int(_history.apply_flooring(_editor.recolour_changes([cell] as Array[Vector2i], colours[rng.randi_range(1, 4)])))
+		assert_eq(_ledger.cash, START_CASH + _upgrades(), "step %d: books match the ledger" % step)
+		for laid: Vector2i in _editor.floors.cells():
+			assert_eq(_sim.world.grid.terrain(laid), SimGrid.Terrain.FLOOR, "step %d: looks only on floor" % step)
+	assert_true(done > 40, "the run did real edits (%d)" % done)
+	assert_true(sold > 0, "some sales refunded a floor type (%d)" % sold)
+	var guard: int = 0
+	while _history.can_undo() and guard < 400:
+		guard += 1
+		if not _history.undo():
+			fail("undo refused: %s" % _history.last_refusal)
+			break
+	assert_eq(_ledger.cash, START_CASH, "a full undo nets to zero")
+	assert_eq([_editor.floors.count(), _editor.bought_floor().size()], [0, 0])
+
+
 func test_history_undoes_and_redoes_floors_with_exact_cash() -> void:
 	var cells: Array[Vector2i] = _rect(2, 6, 2, 2)
 	assert_true(_history.apply_flooring(_editor.lay_changes(cells, &"checker", &"cream", &"charcoal")))
@@ -325,6 +430,11 @@ func test_vibe_sees_the_old_floor_paint_by_default_and_the_majority_after() -> v
 	var dining: Array[Vector2i] = _editor.floor_room_cells(Vector2i(3, 6))
 	assert_true(_editor.apply_flooring(_editor.recolour_changes(dining.slice(0, 40), &"sage")))
 	assert_eq(_editor.floor_vibe_swatch(), &"sage", "most of the guests' floor")
+
+
+## Stands in for the furniture commands the Expand summary never calls.
+func _no_command(..._args: Array) -> bool:
+	return false
 
 
 func _floor_defs() -> Array[FloorStyleDef]:
