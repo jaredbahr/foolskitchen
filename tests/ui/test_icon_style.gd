@@ -4,15 +4,31 @@ extends TestCase
 const MAIN_THEME: Theme = preload("res://src/ui/theme/main_theme.tres")
 
 
-func test_every_mapped_icon_is_a_vendored_100_pixel_texture() -> void:
+func test_every_mapped_icon_is_an_approved_100_pixel_texture() -> void:
 	for role: StringName in IconCatalogue.ICON_ROLES:
 		var path: String = IconCatalogue.path_for(role)
-		assert_true(path.begins_with(IconCatalogue.ROOT), "approved icon path for %s" % role)
-		assert_true(ResourceLoader.exists(path, "Texture2D"), "vendored icon exists for %s" % role)
+		if role in [&"chef", &"paint"]:
+			assert_eq(path, IconCatalogue.MADE_ROOT + ("chefHat.png" if role == &"chef" else "paintBrush.png"))
+		else:
+			assert_true(path.begins_with(IconCatalogue.ROOT), "approved icon path for %s" % role)
+		assert_true(ResourceLoader.exists(path, "Texture2D"), "approved icon exists for %s" % role)
 		var texture: Texture2D = IconCatalogue.texture_for(role)
 		assert_not_null(texture, "icon loads for %s" % role)
 		if texture != null:
 			assert_eq(texture.get_size(), Vector2(100.0, 100.0), "pack dimensions for %s" % role)
+			if role in [&"chef", &"paint"]:
+				var image: Image = texture.get_image()
+				assert_eq(image.get_pixel(0, 0).a, 0.0, "made icons keep transparent padding")
+				var white_only: bool = true
+				var filled: int = 0
+				for y: int in image.get_height():
+					for x: int in image.get_width():
+						var pixel: Color = image.get_pixel(x, y)
+						if pixel.a > 0.0:
+							filled += 1
+							white_only = white_only and pixel.r == 1.0 and pixel.g == 1.0 and pixel.b == 1.0
+				assert_true(white_only, "the made silhouette stays white before theme tinting")
+				assert_true(filled > 0, "the export contains a visible silhouette")
 	assert_eq(IconCatalogue.TOP_BAR_SIZE, 28)
 	assert_eq(IconCatalogue.PANEL_SIZE, 24)
 
@@ -74,7 +90,7 @@ func test_icon_only_gets_a_tooltip_and_absent_roles_keep_text() -> void:
 	assert_true(IconStyle.configure_button(button, &"pause", "Pause", "", 28, true))
 	assert_eq(button.text, "")
 	assert_eq(button.tooltip_text, "Pause")
-	for role: StringName in [&"cash", &"paint", &"unknown"]:
+	for role: StringName in [&"cash", &"unknown"]:
 		assert_eq(IconCatalogue.path_for(role), "", "no substitute icon for %s" % role)
 		assert_false(IconStyle.configure_button(button, role, "Cash", "", 28, true))
 		assert_null(button.icon)
@@ -101,11 +117,11 @@ func test_panel_heading_icon_keeps_label_colour_and_size() -> void:
 		assert_eq(icon.modulate, MAIN_THEME.get_color("font_color", "Label"))
 		assert_eq(icon.mouse_filter, Control.MOUSE_FILTER_IGNORE)
 		icon.free()
-	assert_null(IconStyle.heading_icon(&"paint", heading))
+	assert_null(IconStyle.heading_icon(&"unknown", heading))
 	heading.free()
 
 
-func test_existing_panel_heading_paths_gain_one_icon_and_paint_keeps_text() -> void:
+func test_existing_panel_heading_paths_gain_one_icon_and_paint_uses_made_brush() -> void:
 	var menu: MenuPanel = load("res://src/ui/menu_panel.tscn").instantiate() as MenuPanel
 	menu.refresh()
 	menu.refresh()
@@ -121,7 +137,9 @@ func test_existing_panel_heading_paths_gain_one_icon_and_paint_keeps_text() -> v
 	_assert_heading(title, "menuGrid.png")
 	var furniture_minimum: Vector2 = title.get_combined_minimum_size()
 	catalogue.set_paint_visible(true)
-	assert_false((title.get_node("ThemeIcon") as Control).visible, "Paint keeps text until an approved brush exists")
+	var paint_icon: TextureRect = title.get_node("ThemeIcon") as TextureRect
+	assert_true(paint_icon.visible)
+	assert_eq(paint_icon.texture.resource_path, IconCatalogue.path_for(&"paint"))
 	assert_true(title.text.begins_with("Paint |"))
 	catalogue.set_paint_visible(false)
 	_assert_heading(title, "menuGrid.png")
@@ -242,7 +260,7 @@ func test_heading_padding_resolves_style_fallback_and_restores_it_without_drift(
 	assert_true(decorated.get_combined_minimum_size().x >= plain.get_combined_minimum_size().x + 30.0 - 0.5,
 		"fallback padding still reserves the complete icon and gap")
 	assert_eq(base.get_content_margin(SIDE_LEFT), -1.0, "the shared original style is untouched")
-	assert_false(IconStyle.decorate_label(decorated, &"paint"))
+	assert_false(IconStyle.decorate_label(decorated, &"unknown"))
 	await tree.process_frame
 	assert_false(icon.visible)
 	assert_eq(decorated.get_theme_stylebox("normal").get_content_margin(SIDE_LEFT), -1.0)
