@@ -1,7 +1,7 @@
 extends SceneTree
 ## Native review fixture. Normal modes leave the window interactive; all state
 ## is in memory (use_saves=false). --capture-set=<fresh output> writes the three
-## lease views in one bounded process for the existing visual-review artifact.
+## lease views in one bounded manual process for PR attachment, outside CI.
 ## godot --path . --resolution 1600x900 --script tools/lease_review.gd -- offer
 ## Modes: offer (deposit + $1, amber restock advice), short (cash refusal),
 ## expand (accepted lease, real Expand tool with the larger lot).

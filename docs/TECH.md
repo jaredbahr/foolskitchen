@@ -2171,5 +2171,6 @@ new floor, alley edge, legacy decoding and both sides of the morning checkpoint.
 For native review, `tools/lease_review.gd -- offer|short|expand` opens a seeded,
 interactive fixture with explicit synthetic XP/cash and saves disabled.
 `--capture-set=<fresh output directory>` captures the offer, cash refusal and
-accepted lease in Expand in one bounded process, then exits. The existing visual
-review job uploads these PNGs and their state metadata in its capture artifact.
+accepted lease in Expand in one bounded manual process, then exits. Attach all
+three PNGs to the PR and keep their state metadata outside Git; this capture set
+is not part of CI.
