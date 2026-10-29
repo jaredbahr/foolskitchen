@@ -266,6 +266,7 @@ func check_stamp(blueprint: Blueprint, anchor: Vector2i, rotation: int = 0, exac
 			return EditCheck.new(false, problem)
 	check.cost = charge
 	_fill_warnings(check, preview, ids)
+	_note_menu_access(check, preview, exact != null)
 	return check
 
 
@@ -405,6 +406,7 @@ func check_sell(item_id: int, exact: Exact = null) -> EditCheck:
 	if not dining.ok:
 		return dining
 	_fill_warnings(check, preview, ids)
+	_note_menu_access(check, preview, exact != null)
 	return check
 
 
@@ -872,6 +874,8 @@ func check_segments(changes: Dictionary[Vector3i, int], exact: Exact = null) -> 
 		cost = maxi(-exact.amount, 0)
 		refund = maxi(exact.amount, 0)
 	preview.set_segments(effective)
+	var menu_check: EditCheck = EditCheck.new(true)
+	_note_menu_access(menu_check, preview, exact != null)
 	# D25: one back door per shop (undo/redo restores accepted layouts as they were).
 	var problem: String = WallRules.back_door_problem(live, preview) if exact == null else ""
 	if problem.is_empty():
@@ -886,7 +890,11 @@ func check_segments(changes: Dictionary[Vector3i, int], exact: Exact = null) -> 
 	if problem.is_empty() and exact == null:
 		problem = RoomRules.problem(live, preview, ids)
 	if not problem.is_empty():
-		return EditCheck.new(false, problem)
+		menu_check.ok = false
+		menu_check.why = problem
+		return menu_check
+	if not menu_check.ok:
+		return menu_check
 	var check: EditCheck = EditCheck.new(true)
 	# D26: finishes and decor on walls that go come down too, refunded at half.
 	var lost: int = _note_wall_losses(preview, check)
@@ -900,6 +908,8 @@ func check_segments(changes: Dictionary[Vector3i, int], exact: Exact = null) -> 
 	check.refund = refund
 	check.changes = effective
 	_fill_warnings(check, preview, ids)
+	check.menu_losses = menu_check.menu_losses
+	check.menu_warning = menu_check.menu_warning
 	return check
 
 
@@ -1502,10 +1512,6 @@ func check_floor(cells: Array[Vector2i], adding: bool, exact: Exact = null,
 			if not live.items_at(cell).is_empty():
 				return EditCheck.new(false, ShopFootprint.HAS_FURNITURE)
 			losing.append(cell)
-	for cell: Vector2i in losing:
-		var lost: String = _lost_spot(live, cell) if exact == null else ""
-		if not lost.is_empty():
-			return EditCheck.new(false, lost)
 	var ids: Dictionary[int, int] = {}
 	var preview: SimGrid = _preview_without(-1, ids)
 	if preview == null:
@@ -1531,6 +1537,14 @@ func check_floor(cells: Array[Vector2i], adding: bool, exact: Exact = null,
 			return EditCheck.new(false, restored)
 		preview.set_segment(edge, restore[edge] as SimGrid.Segment)
 		removals[edge] = restore[edge]
+	var menu_check: EditCheck = EditCheck.new(true)
+	_note_menu_access(menu_check, preview, exact != null)
+	for cell: Vector2i in losing:
+		var lost: String = _lost_spot(live, cell) if exact == null else ""
+		if not lost.is_empty():
+			menu_check.ok = false
+			menu_check.why = lost
+			return menu_check
 	# New floor must be walkable from the street through the walls as built:
 	# an outer window that turned interior can seal a pocket.
 	# Removing must not seal bought floor that people can walk to now.
@@ -1559,7 +1573,11 @@ func check_floor(cells: Array[Vector2i], adding: bool, exact: Exact = null,
 	if problem.is_empty() and exact == null:
 		problem = RoomRules.problem(live, preview, ids)
 	if not problem.is_empty():
-		return EditCheck.new(false, problem)
+		menu_check.ok = false
+		menu_check.why = problem
+		return menu_check
+	if not menu_check.ok:
+		return menu_check
 	var check: EditCheck = EditCheck.new(true)
 	# D26: finishes and decor on walls that go come down too, refunded at half.
 	refund += _note_wall_losses(preview, check)
@@ -1587,6 +1605,8 @@ func check_floor(cells: Array[Vector2i], adding: bool, exact: Exact = null,
 	check.floor_adding = adding
 	check.rooms = kitchen
 	_fill_warnings(check, preview, ids)
+	check.menu_losses = menu_check.menu_losses
+	check.menu_warning = menu_check.menu_warning
 	return check
 
 
@@ -1776,7 +1796,23 @@ func _check_placement(definition: ItemDef, origin: Vector2i, turns: int, exclude
 			return EditCheck.new(false, rooms)
 	var check: EditCheck = EditCheck.new(true)
 	_fill_warnings(check, preview, ids)
+	_note_menu_access(check, preview, restoring)
 	return check
+
+
+## Keep a new edit from leaving an empty unlocked catalogue. Exact history
+## restores an accepted layout, so its existing access exemption still holds.
+func _note_menu_access(check: EditCheck, preview: SimGrid, restoring: bool) -> void:
+	if restoring:
+		return
+	check.menu_losses = MenuAccess.lost(_sim.world.grid, preview, _sim.menu)
+	check.menu_warning = MenuAccess.warning(check.menu_losses, preview, _content)
+	var recipes: Array[RecipeDef] = _content.recipes()
+	if MenuAccess.cookable(preview, recipes, _owner_level).is_empty() \
+			and not MenuAccess.cookable(_sim.world.grid, recipes, _owner_level).is_empty():
+		check.ok = false
+		check.why = MenuAccess.NO_DISH
+		return
 
 
 ## One presentation mapping for every geometric placement result.

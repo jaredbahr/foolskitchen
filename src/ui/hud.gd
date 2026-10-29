@@ -77,6 +77,7 @@ var _sold_out_names: Array[String] = []
 var _settings_button: Button
 var _header_bottom: float = -1.0
 var _preferences: SettingsPreferences
+var _opening_refusal: String = ""
 
 
 func bind_preferences(model: SettingsPreferences) -> void:
@@ -156,6 +157,9 @@ func refresh() -> void:
 	_context.visible = Clock.sim.phase == SimClock.Phase.MORNING or Clock.sim.phase == SimClock.Phase.CLOSED
 	_context.text = "Open shop" if Clock.sim.phase == SimClock.Phase.MORNING else "Next day"
 	_context.tooltip_text = "Open for today's service" if Clock.sim.phase == SimClock.Phase.MORNING else "Begin the next morning"
+	_context.disabled = Clock.sim.phase == SimClock.Phase.MORNING and not _opening_refusal.is_empty()
+	if _context.disabled:
+		_context.tooltip_text = _opening_refusal
 	_on_speed_changed(Clock.speed)
 	_refresh_wall_mode()
 	if is_inside_tree() and _hint_viewport != get_viewport():
@@ -273,6 +277,7 @@ func _on_header_resized() -> void:
 	if not is_inside_tree():
 		return
 	_layout_build_hints()
+	_layout_menu_notice()
 	var bottom: float = (get_node("Top") as Control).get_global_rect().end.y
 	if not is_equal_approx(bottom, _header_bottom):
 		_header_bottom = bottom
@@ -301,6 +306,27 @@ func set_rooms_note(text: String) -> void:
 	var row: Container = get_node("Top/Row") as Container
 	row.update_minimum_size()
 	row.queue_sort()
+
+
+## Layout advice at opening; a legacy empty catalogue also disables Open shop
+## until the player repairs access. This never changes the clock itself.
+func set_menu_notice(text: String, refuses_opening: bool = false) -> void:
+	_opening_refusal = text if refuses_opening else ""
+	var panel: Control = get_node("MenuNotice") as Control
+	var label: Label = get_node("MenuNotice/Text") as Label
+	label.text = text
+	panel.visible = not text.is_empty()
+	_layout_menu_notice()
+	refresh()
+
+
+func _layout_menu_notice() -> void:
+	var panel: Control = get_node_or_null("MenuNotice") as Control
+	if panel == null or not panel.visible:
+		return
+	var width: float = maxf(1.0, get_viewport().get_visible_rect().size.x - 24.0) if is_inside_tree() else 1576.0
+	panel.position = Vector2(12.0, (get_node("Top") as Control).get_global_rect().end.y + 6.0)
+	panel.size = Vector2(width, panel.get_combined_minimum_size().y)
 
 
 ## Main lists today's sold-out dishes by display name; empty hides the tag.
@@ -599,6 +625,8 @@ func _on_phase_changed(_day: int, _phase: int) -> void:
 
 func _on_context_pressed() -> void:
 	if Clock.sim.phase == SimClock.Phase.MORNING:
+		if not _opening_refusal.is_empty():
+			return
 		if Clock.sim.start_service():
 			Clock.set_speed(_preferences.default_open_speed if _preferences != null else 1)
 	elif Clock.sim.phase == SimClock.Phase.CLOSED:

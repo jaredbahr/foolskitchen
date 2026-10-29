@@ -228,6 +228,16 @@ layout_mode = 0
 mouse_filter = 2
 theme = ExtResource("2_theme")
 
+[node name="MenuNotice" type="PanelContainer" parent="."]
+visible = false
+mouse_filter = 2
+theme = ExtResource("2_theme")
+
+[node name="Text" type="Label" parent="MenuNotice"]
+layout_mode = 2
+mouse_filter = 2
+autowrap_mode = 3
+
 [node name="BuildHints" type="PanelContainer" parent="."]
 visible = false
 offset_left = 12.0
