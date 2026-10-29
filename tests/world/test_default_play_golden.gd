@@ -1,13 +1,12 @@
 extends TestCase
-## FK-083 golden: default hours, the default menu and no drink station play
-## exactly as main did before drinks, Café/Bar themes and opening hours
-## (main 6f6495d). Two seeded production days; every value below was
-## recorded on that main. The new arrival weights, visit draw and drink-add
-## chance must draw nothing and change nothing here.
+## Exact production default outputs, refreshed for FK-077's explicitly approved
+## mechanic change. The first baseline was pre-drinks main6f6495d; these rows
+## were measured with authored everyday messes, then retained as strict guards.
+## Customers RNG remains unchanged in this seed; reviews and service may change.
 
 const MainScene: PackedScene = preload("res://src/world/main.tscn")
 ## Day -> [served, lost, sales, closing cash, customers RNG state, reviews RNG state].
-const EXPECTED: Array = [[18, 3, 166, 308, "-3340690172320019757", "759273845251939063"], [17, 2, 155, 330, "1894290104310310707", "1950031383951538676"]]
+const EXPECTED: Array = [[17, 4, 158, 280, "-3340690172320019757", "-3285513833473108564"], [16, 3, 146, 280, "1894290104310310707", "6227064950443097254"]]
 
 var _main: Node
 
@@ -23,7 +22,7 @@ func after_each() -> void:
 	GameState.new_run(1)
 
 
-func test_two_default_days_match_main_draw_for_draw() -> void:
+func test_two_default_days_match_recorded_mishap_baseline() -> void:
 	_main = MainScene.instantiate()
 	_main.set("use_saves", false)
 	_main.set("new_game_seed_override", 7)

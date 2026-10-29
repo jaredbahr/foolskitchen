@@ -1678,11 +1678,12 @@ func run_ticks(ticks: int) -> void:
 	refresh_presentation()
 
 
-## Builds the evening report for `day` from the ledger and today's counters.
+## Paid replacements arrive during the existing overnight tidy.
 func _on_plate_broken(cost: int) -> void:
 	Economy.add_cash(-cost, Ledger.BREAKAGES, "Replacement plate, delivered tomorrow morning")
 
 
+## Builds the evening report for `day` from the ledger and today's counters.
 func build_report(day: int) -> DayReport:
 	var report := DayReport.new()
 	report.day = day
