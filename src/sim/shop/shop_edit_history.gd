@@ -14,7 +14,7 @@ const MAX_ENTRIES: int = 200
 
 ## D26: WALL_FINISH puts up or recolours wall finishes; HANG, TAKE_DOWN and
 ## REHANG are wall decor bought, sold and moved.
-enum Kind { BUY, MOVE, SELL, WALLS, FLOOR, PAINT, ROOMS, FLOORING, WALL_FINISH, HANG, TAKE_DOWN, REHANG }
+enum Kind { BUY, MOVE, SELL, WALLS, FLOOR, PAINT, ROOMS, FLOORING, WALL_FINISH, HANG, TAKE_DOWN, REHANG, VARIANT }
 
 ## One placed item across undo and redo. Re-placing an item gives it a new
 ## grid id, so entries share this reference instead of holding raw ids.
@@ -32,6 +32,8 @@ class Entry extends RefCounted:
 	var to_origin: Vector2i = Vector2i.ZERO
 	var to_turns: int = 0
 	var swatch_id: StringName = &""
+	var variant_id: StringName = &""
+	var variant_after: StringName = &""
 	## Signed cash the original edit moved (negative = spent).
 	var cash: int = 0
 	## Wall segments before and after (edge -> segment), changed edges only.
@@ -116,8 +118,9 @@ func redo_label() -> String:
 # --- Edits (each applies through ShopEditor, then records itself) -------------
 
 ## A colour (the eyedropper's copy) is a free repaint that is part of the buy.
-func buy(def_id: StringName, origin: Vector2i, quarter_turns: int = 0, swatch_id: StringName = &"") -> bool:
-	if not _editor.buy(def_id, origin, quarter_turns):
+func buy(def_id: StringName, origin: Vector2i, quarter_turns: int = 0, swatch_id: StringName = &"",
+		variant_id: StringName = &"") -> bool:
+	if not _editor.buy(def_id, origin, quarter_turns, null, variant_id):
 		return false
 	if not swatch_id.is_empty():
 		_editor.paint_item(_editor.last_item_id, swatch_id)
@@ -128,6 +131,7 @@ func buy(def_id: StringName, origin: Vector2i, quarter_turns: int = 0, swatch_id
 	entry.origin = origin
 	entry.turns = quarter_turns
 	entry.swatch_id = _paint_value(&"item", _editor.last_item_id)
+	entry.variant_id = _grid.item(_editor.last_item_id).variant_id
 	entry.cash = _editor.last_cash_change
 	entry.label = "buy " + _name(_editor.last_item_id)
 	_push(entry)
@@ -165,6 +169,7 @@ func sell(item_id: int) -> int:
 	entry.origin = placed.origin
 	entry.turns = placed.quarter_turns
 	entry.swatch_id = placed.swatch_id
+	entry.variant_id = placed.variant_id
 	entry.label = "sell " + _name(item_id)
 	entry.item = _ref(item_id)
 	var refund: int = _editor.sell(item_id)
@@ -342,6 +347,27 @@ func rehang(anchor: Vector3i, to_anchor: Vector3i) -> bool:
 	return true
 
 
+func paint_variant(item_id: int, variant_id: StringName) -> bool:
+	var placed: PlacedItem = _grid.item(item_id) if _grid != null else null
+	if placed == null:
+		return false
+	var before: StringName = placed.variant_id
+	var paint_before: StringName = placed.swatch_id
+	if not _editor.paint_variant(item_id, variant_id):
+		return false
+	if not _editor.can_edit() or (before == placed.variant_id and paint_before.is_empty()):
+		return true
+	var entry: Entry = Entry.new()
+	entry.kind = Kind.VARIANT
+	entry.item = _ref(item_id)
+	entry.variant_id = before
+	entry.variant_after = placed.variant_id
+	entry.swatch_id = paint_before
+	entry.label = "change look of " + _name(item_id)
+	_push(entry)
+	return true
+
+
 ## `target` is &"wall", &"floor" or &"item" (with `item_id`). Paint is free.
 ## Recorded only while editing is allowed (paint also works during service).
 func paint(target: StringName, swatch_id: StringName, item_id: int = -1) -> bool:
@@ -435,6 +461,10 @@ func _invert(entry: Entry) -> bool:
 				_editor.apply_flooring(entry.finishes_before, ShopEditor.Exact.new(0, UNDO_NOTE))
 			_restore_losses(entry)
 			return true
+		Kind.VARIANT:
+			if not _check(_editor.paint_variant(entry.item.id, entry.variant_id)):
+				return false
+			return _check(_editor.paint_item(entry.item.id, entry.swatch_id))
 		Kind.PAINT:
 			if not _check(_paint(entry.paint_target, entry.swatch_id, entry.item.id if entry.item != null else -1)):
 				return false
@@ -479,6 +509,8 @@ func _reapply(entry: Entry) -> bool:
 			if not entry.rooms_after.is_empty():
 				_editor.apply_rooms(entry.rooms_after, ShopEditor.Exact.new(0, REDO_NOTE))
 			return true
+		Kind.VARIANT:
+			return _check(_editor.paint_variant(entry.item.id, entry.variant_after))
 		Kind.PAINT:
 			return _check(_paint(entry.paint_target, entry.paint_after, entry.item.id if entry.item != null else -1))
 		Kind.ROOMS:
@@ -544,7 +576,7 @@ func _remove(entry: Entry, exact: ShopEditor.Exact) -> bool:
 
 ## Puts an item back where it was, with its colour (undo a sell, redo a buy).
 func _restore(entry: Entry, exact: ShopEditor.Exact) -> bool:
-	if not _check(_editor.buy(entry.def_id, entry.origin, entry.turns, exact)):
+	if not _check(_editor.buy(entry.def_id, entry.origin, entry.turns, exact, entry.variant_id)):
 		return false
 	var id: int = _editor.last_item_id
 	entry.item.id = id

@@ -32,6 +32,7 @@ var tool: Tool = Tool.HAND
 var hover_item_id: int = -1
 ## Colour the eyedropper copied; a buy commits it as a free repaint.
 var buy_swatch_id: StringName = &""
+var buy_variant_id: StringName = &""
 var committed_warning_ids: Array[int] = []
 var committed_seat_warnings: Dictionary[int, String] = {}
 ## Walls tool: the kind new edges get, the hovered edge and the dragged run.
@@ -216,7 +217,7 @@ func _pick_up(item_id: int, clicked_cell: Vector2i, keep_offset: bool) -> bool:
 	return true
 
 
-func begin_buy(def_id: StringName, cell: Vector2i) -> bool:
+func begin_buy(def_id: StringName, cell: Vector2i, variant_id: StringName = &"") -> bool:
 	if not _can_interact():
 		return false
 	var definition: ItemDef = _content.item(def_id)
@@ -228,6 +229,7 @@ func begin_buy(def_id: StringName, cell: Vector2i) -> bool:
 	selected_item_id = -1
 	selected_definition = definition
 	buy_swatch_id = &""
+	buy_variant_id = definition.known_variant_id(variant_id)
 	origin = cell
 	grab_offset = Vector2i.ZERO
 	quarter_turns = 0
@@ -278,6 +280,8 @@ func commit() -> bool:
 	var answer: Variant
 	if state == State.MOVE:
 		answer = _move_command.call(selected_item_id, origin, quarter_turns)
+	elif not buy_variant_id.is_empty():
+		answer = _buy_command.call(selected_definition.id, origin, quarter_turns, buy_swatch_id, buy_variant_id)
 	elif not buy_swatch_id.is_empty():
 		answer = _buy_command.call(selected_definition.id, origin, quarter_turns, buy_swatch_id)
 	else:
@@ -404,7 +408,7 @@ func eyedrop(item_id: int, cell: Vector2i) -> bool:
 		current_check = EditCheck.new(false, "%s isn't sold in the catalogue" % definition.display_name)
 		changed.emit()
 		return false
-	if not begin_buy(definition.id, cell):
+	if not begin_buy(definition.id, cell, placed.variant_id):
 		return false
 	quarter_turns = posmod(placed.quarter_turns, 4)
 	buy_swatch_id = placed.swatch_id if definition.paintable else &""
@@ -434,7 +438,7 @@ func hover_summary() -> String:
 		return ""
 	match tool:
 		Tool.SELL:
-			return "Sell %s for %s" % [definition.display_name, Fmt.money(ShopEditor.sale_refund(definition))] \
+			return "Sell %s for %s" % [definition.display_name, Fmt.money(ShopEditor.sale_refund(definition, placed.variant_id))] \
 				if current_check.ok else current_check.why
 		Tool.EYEDROPPER:
 			return "Place another %s" % definition.display_name if definition.catalogue_visible \
@@ -522,6 +526,7 @@ func feedback_text() -> String:
 func presentation_state() -> Dictionary:
 	return {"state": state, "active": is_active(), "has_ghost": has_ghost(),
 		"item_id": selected_item_id, "definition": selected_definition,
+		"variant_id": _grid.item(selected_item_id).variant_id if state == State.MOVE and _grid.item(selected_item_id) != null else buy_variant_id,
 		"origin": origin, "quarter_turns": quarter_turns, "grab_offset": grab_offset,
 		"check_ok": current_check.ok, "why": current_check.why,
 		"unreachable": current_check.unreachable.duplicate(),
@@ -586,7 +591,7 @@ func _recheck_ghost() -> void:
 	if state == State.MOVE:
 		current_check = _editor.check_move(selected_item_id, origin, quarter_turns)
 	elif state == State.BUY:
-		current_check = _editor.check_buy(selected_definition.id, origin, quarter_turns)
+		current_check = _editor.check_buy(selected_definition.id, origin, quarter_turns, null, buy_variant_id)
 
 
 func _refresh_committed() -> void:
@@ -610,6 +615,7 @@ func _clear_ghost(next_state: State) -> void:
 	current_check = EditCheck.new(true)
 	hover_item_id = -1
 	buy_swatch_id = &""
+	buy_variant_id = &""
 	wall_hover_edge = SimGrid.NO_EDGE
 	wall_dragging = false
 	wall_changes.clear()

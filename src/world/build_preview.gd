@@ -212,7 +212,7 @@ func refresh() -> void:
 	var valid: bool = snapshot.get("check_ok", false)
 	var selected_id: int = snapshot.get("item_id", -1)
 	if has_ghost:
-		_build_ghost(definition, origin, turns, valid)
+		_build_ghost(definition, origin, turns, valid, snapshot.get("variant_id", &""))
 		if selected_id > 0 and _shop_view.item_nodes.has(selected_id):
 			_hidden_original = _shop_view.item_nodes[selected_id]
 			if is_instance_valid(_hidden_original):
@@ -351,7 +351,7 @@ func _clear_geometry() -> void:
 	warning_nodes.clear()
 
 
-func _build_ghost(definition: ItemDef, origin: Vector2i, turns: int, valid: bool) -> void:
+func _build_ghost(definition: ItemDef, origin: Vector2i, turns: int, valid: bool, variant_id: StringName = &"") -> void:
 	_ghost_root = Node3D.new()
 	_ghost_root.name = "Ghost"
 	add_child(_ghost_root)
@@ -359,6 +359,7 @@ func _build_ghost(definition: ItemDef, origin: Vector2i, turns: int, valid: bool
 	var tint: Color = definition.placeholder_color.lerp(VALID_COLOR if valid else INVALID_COLOR, 0.8)
 	tint.a = VALID_ALPHA if valid else INVALID_ALPHA
 	ghost_mesh = ItemVisual.create(definition, height, _material(definition.placeholder_color))
+	ghost_mesh.apply_variant(definition.variant(variant_id))
 	ghost_mesh.set_ghost_tint(tint)
 	ghost_mesh.name = "Furniture"
 	ghost_mesh.transform = ItemVisual.placed_transform(definition, origin, turns)

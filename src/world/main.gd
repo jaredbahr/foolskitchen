@@ -136,6 +136,8 @@ var _was_build_active: bool = false
 var _build_phase: int = -1
 var _build_ui_phase: int = -1
 var _paint_active: bool = false
+var _paint_variant_item: StringName = &""
+var _paint_variant_id: StringName = &""
 var _paint_swatch_id: StringName = &"butter"
 ## Paint was opened from Build mode's Paint tab: Esc goes back to Build.
 var _paint_from_build: bool = false
@@ -233,6 +235,10 @@ func _bind_world_presentation() -> void:
 	_paint_swatch_id = _build_catalogue.selected_swatch_id
 	if not _build_catalogue.buy_requested.is_connected(_on_build_buy_requested):
 		_build_catalogue.buy_requested.connect(_on_build_buy_requested)
+	if not _build_catalogue.variant_buy_requested.is_connected(_on_build_variant_buy_requested):
+		_build_catalogue.variant_buy_requested.connect(_on_build_variant_buy_requested)
+	if not _build_catalogue.variant_paint_requested.is_connected(_on_variant_paint_requested):
+		_build_catalogue.variant_paint_requested.connect(_on_variant_paint_requested)
 	if not _build_catalogue.wall_tool_requested.is_connected(_on_wall_tool_requested):
 		_build_catalogue.wall_tool_requested.connect(_on_wall_tool_requested)
 	if not _build_catalogue.floor_tool_requested.is_connected(_on_floor_tool_requested):
@@ -777,6 +783,8 @@ func paint_face_at_screen_position(screen_position: Vector2) -> Vector3i:
 ## (inside its room), or with Shift every wall of the room, takes the paint
 ## colour and keeps its finish. Free at any time, like all paint.
 func paint_face(face: Vector3i, whole_room: bool = false) -> bool:
+	if not _paint_variant_item.is_empty():
+		return false
 	if not _paint_active or shop_editor == null:
 		return false
 	var accepted: bool = edit_history.apply_wall_finishes(_wall_paint_changes(face, whole_room))
@@ -853,6 +861,9 @@ func update_paint_pointer(screen_position: Vector2, whole_room: bool = false) ->
 	_last_pointer = screen_position
 	var face: Vector3i = paint_face_at_screen_position(screen_position)
 	if face != WallFaces.NO_FACE:
+		if not _paint_variant_item.is_empty():
+			($ShopView as ShopView).clear_paint_preview()
+			return
 		var view: ShopView = $ShopView as ShopView
 		view.preview_paint(&"", -1, &"")
 		view.clear_floor_preview()
@@ -887,6 +898,12 @@ func preview_paint_cell(cell: Variant, whole_room: bool = false) -> void:
 		return
 	view.clear_wall_preview()
 	var target: Dictionary = _paint_target(cell)
+	if not _paint_variant_item.is_empty():
+		var selected: PlacedItem = world.grid.item(target.get("item_id", -1))
+		var matches: bool = selected != null and (selected.def as ItemDef).id == _paint_variant_item
+		view.clear_floor_preview()
+		view.preview_paint(&"variant" if matches else &"", selected.id if matches else -1, _paint_variant_id)
+		return
 	var kind: StringName = target.get("kind", &"")
 	var item_id: int = target.get("item_id", -1)
 	if kind == &"floor":
@@ -924,6 +941,17 @@ func paint_cell(cell: Vector2i, whole_room: bool = false) -> bool:
 	if not _paint_active or shop_editor == null:
 		return false
 	var target: Dictionary = _paint_target(cell)
+	if not _paint_variant_item.is_empty():
+		var placed: PlacedItem = world.grid.item(target.get("item_id", -1))
+		if placed == null or (placed.def as ItemDef).id != _paint_variant_item:
+			return false
+		var changed: bool = edit_history.paint_variant(placed.id, _paint_variant_id)
+		if changed:
+			($ShopView as ShopView).clear_paint_preview()
+			($ShopView as ShopView).set_paint(content, shop_editor.wall_swatch_id, shop_editor.floor_swatch_id)
+			_recompute_vibe()
+			_update_build_controls()
+		return changed
 	var kind: StringName = target.get("kind", &"")
 	if kind == &"floor":
 		# Free at any time; recorded for undo while editing is allowed.
@@ -1008,6 +1036,8 @@ func _on_paint_toggled() -> void:
 
 
 func _on_swatch_requested(id: StringName) -> void:
+	_paint_variant_item = &""
+	_paint_variant_id = &""
 	_paint_swatch_id = id
 	if _paint_active and is_inside_tree():
 		update_paint_pointer(get_viewport().get_mouse_position())
@@ -1201,11 +1231,11 @@ func wall_item_at_screen_position(screen_position: Vector2) -> Vector3i:
 		camera.project_ray_normal(screen_position))
 
 
-func begin_buy_item(def_id: StringName) -> bool:
+func begin_buy_item(def_id: StringName, variant_id: StringName = &"") -> bool:
 	if not is_build_active():
 		return false
 	var cell: Variant = build_cell_at_screen_position(get_viewport().get_mouse_position()) if is_inside_tree() else null
-	return build_mode.begin_buy(def_id, cell if cell is Vector2i else Vector2i.ZERO)
+	return build_mode.begin_buy(def_id, cell if cell is Vector2i else Vector2i.ZERO, variant_id)
 
 
 func _bind_build_session() -> void:
@@ -1365,7 +1395,7 @@ func build_restock_warning() -> String:
 		return ""
 	var cost: int = 0
 	if build_mode.state == BuildMode.State.BUY and build_mode.selected_definition != null:
-		cost = build_mode.selected_definition.price
+		cost = build_mode.selected_definition.variant_price(build_mode.buy_variant_id)
 	elif build_mode.state in [BuildMode.State.WALLS, BuildMode.State.FLOOR, BuildMode.State.FLOORS,
 			BuildMode.State.WALL_FINISH, BuildMode.State.HANG]:
 		# D26: a wall finish drag's price less its refund; a new wall item's
@@ -1378,6 +1408,10 @@ func build_restock_warning() -> String:
 
 func _on_build_toggled() -> void:
 	set_build_active(not is_build_active())
+
+
+func _on_build_variant_buy_requested(def_id: StringName, variant_id: StringName) -> void:
+	begin_buy_item(def_id, variant_id)
 
 
 func _on_build_buy_requested(def_id: StringName) -> void:
@@ -2490,8 +2524,9 @@ func shop_move(item_id: int, origin: Vector2i, quarter_turns: int) -> bool:
 
 
 ## A colour (the eyedropper's copy) is applied as a free repaint with the buy.
-func shop_buy(def_id: StringName, origin: Vector2i, quarter_turns: int = 0, swatch_id: StringName = &"") -> bool:
-	var accepted: bool = shop_editor != null and edit_history.buy(def_id, origin, quarter_turns, swatch_id)
+func shop_buy(def_id: StringName, origin: Vector2i, quarter_turns: int = 0, swatch_id: StringName = &"",
+		variant_id: StringName = &"") -> bool:
+	var accepted: bool = shop_editor != null and edit_history.buy(def_id, origin, quarter_turns, swatch_id, variant_id)
 	if accepted and not swatch_id.is_empty():
 		($ShopView as ShopView).set_paint(content, shop_editor.wall_swatch_id, shop_editor.floor_swatch_id)
 	_after_edit(accepted)
@@ -3630,3 +3665,11 @@ func _support_item_name(kind: StringName) -> String:
 		if matches and (best == null or definition.unlock_level < best.unlock_level):
 			best = definition
 	return best.display_name if best != null else String(kind).capitalize()
+
+
+func _on_variant_paint_requested(id: StringName, look: StringName) -> void:
+	if not _paint_active or content.item(id) == null:
+		return
+	_paint_variant_item = id
+	_paint_variant_id = content.item(id).known_variant_id(look)
+	($ShopView as ShopView).clear_paint_preview()
