@@ -1843,6 +1843,10 @@ static func _fill_warnings(check: EditCheck, grid: SimGrid, ids: Dictionary[int,
 	check.unreachable = _unreachable(grid, ids)
 	for table: PlacedItem in grid.items():
 		var definition: ItemDef = table.def as ItemDef
+		if definition.category == ItemDef.Category.WAITING:
+			if WaitingBench.door_distance(grid, table.seat_cells) > WaitingBench.TUNING.waiting_bench_door_distance:
+				check.seat_warnings[ids[table.id]] = WaitingBench.FAR_FROM_DOOR
+			continue
 		if definition.category != ItemDef.Category.TABLE:
 			continue
 		var nominal: int = DiningSeats.nominal_capacity(grid, table)

@@ -26,6 +26,11 @@ var food_patience: int = 1200
 var eat_ticks: int = 300
 var table_item_id: int = 0
 var seat_cell: Vector2i = SimGrid.NO_CELL
+## A temporary bench booking while QUEUED. It never becomes a dining order.
+var waiting_item_id: int = 0
+var waiting_cell: Vector2i = SimGrid.NO_CELL
+## Retained only for this visit's review and one-time patience bonus.
+var waited_seated: bool = false
 var order: Order = null
 ## What this guest came for (FK-083): a meal (RecipeDef.FOOD), or a drink only
 ## (COFFEE or DRINKS). A drinks-only guest orders from that part of the menu,
@@ -236,6 +241,9 @@ func why() -> String:
 		State.ARRIVING:
 			return "Arriving: looking for a table"
 		State.QUEUED:
+			if waiting_item_id > 0:
+				return _waiting_why("Waiting on a bench for a free table" if cell == waiting_cell and has_arrived() \
+					else "Walking to a waiting bench")
 			return _waiting_why("Waiting by the door for a free table")
 		State.WALKING_TO_SEAT:
 			return "Walking to my seat"
@@ -310,6 +318,7 @@ func review_visit(standard_price: int, dirt_fraction: float = 0.0) -> ReviewVisi
 	visit.restroom_bonus = restroom_bonus
 	visit.restroom_penalty = restroom_penalty
 	visit.restroom_was_busy = restroom_was_busy
+	visit.waited_seated = waited_seated
 	return visit
 
 
@@ -331,6 +340,7 @@ func on_removed(world: SimWorld) -> void:
 	if party != null and party.size() > 1 and not party.seated:
 		PartySeating.leave_waiting(party, world, sim, leave_reason if leave_reason != &"happy" else &"no_table")
 	_cancel_work(world, sim)
+	release_waiting_seat(world)
 	_release_seat(world)
 	_release_toilet(world)
 	state = State.LEFT
@@ -359,6 +369,7 @@ func _try_seat(world: SimWorld) -> bool:
 			if not set_destination(world.grid, seat):
 				table.release(seat, id)
 				continue
+			release_waiting_seat(world)
 			table_item_id = table.id
 			seat_cell = seat
 			_walk_wait = 0
@@ -421,12 +432,32 @@ func _requeue(world: SimWorld, sim: RestaurantSim) -> void:
 
 
 func _queue_inside(world: SimWorld) -> void:
+	var sim: RestaurantSim = _restaurant.get_ref() as RestaurantSim
+	if WaitingBench.advance(self, world, sim):
+		return
 	if world.grid.terrain(cell) == SimGrid.Terrain.FLOOR:
 		return
 	for neighbour: Vector2i in world.grid.guest_neighbours(cell):
 		if world.grid.terrain(neighbour) == SimGrid.Terrain.FLOOR:
 			_move(world, neighbour)
 			return
+
+
+func is_waiting_seated(world: SimWorld) -> bool:
+	if state != State.QUEUED or waiting_item_id == 0 or cell != waiting_cell or not has_arrived() \
+			or not world.grid.is_guest_walkable(waiting_cell):
+		return false
+	var bench: PlacedItem = world.grid.item(waiting_item_id)
+	return WaitingBench.is_bench(bench) and bench.seat_cells.has(waiting_cell) \
+		and bench.reserved_by(waiting_cell) == id
+
+
+func release_waiting_seat(world: SimWorld) -> void:
+	var bench: PlacedItem = world.grid.item(waiting_item_id)
+	if bench != null:
+		bench.release(waiting_cell, id)
+	waiting_item_id = 0
+	waiting_cell = SimGrid.NO_CELL
 
 
 func _move(world: SimWorld, destination: Vector2i) -> bool:
@@ -570,6 +601,7 @@ func _leave(world: SimWorld, sim: RestaurantSim, reason: StringName) -> void:
 		return
 	leave_reason = reason
 	_cancel_work(world, sim)
+	release_waiting_seat(world)
 	_release_seat(world)
 	_release_toilet(world)
 	clear_path()

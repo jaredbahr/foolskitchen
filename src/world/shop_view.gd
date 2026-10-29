@@ -1543,7 +1543,7 @@ func _dining_seat_heights() -> Dictionary[int, float]:
 		var guest: CustomerAgent = agent as CustomerAgent
 		if guest == null:
 			continue
-		var source_id: int = world.grid.dining_furnishing_id(guest.seat_cell)
+		var source_id: int = _guest_seat_source_id(guest)
 		if source_id == 0 or source_id == guest.table_item_id:
 			continue
 		var visual: ItemVisual = item_nodes.get(source_id) as ItemVisual
@@ -1572,7 +1572,7 @@ func _dining_seat_offsets() -> Dictionary[int, float]:
 		var guest: CustomerAgent = agent as CustomerAgent
 		if guest == null:
 			continue
-		var source: PlacedItem = world.grid.item(world.grid.dining_furnishing_id(guest.seat_cell))
+		var source: PlacedItem = world.grid.item(_guest_seat_source_id(guest))
 		var definition: ItemDef = source.def as ItemDef if source != null else null
 		if definition != null:
 			offsets[guest.id] = definition.seated_forward_offset
@@ -1586,7 +1586,7 @@ func _dining_seat_leans() -> Dictionary[int, float]:
 		var guest: CustomerAgent = agent as CustomerAgent
 		if guest == null:
 			continue
-		var source: PlacedItem = world.grid.item(world.grid.dining_furnishing_id(guest.seat_cell))
+		var source: PlacedItem = world.grid.item(_guest_seat_source_id(guest))
 		var definition: ItemDef = source.def as ItemDef if source != null else null
 		if definition != null:
 			leans[guest.id] = definition.seated_lean_degrees
@@ -1594,16 +1594,24 @@ func _dining_seat_leans() -> Dictionary[int, float]:
 
 
 func _dining_seat_facing(guest: CustomerAgent) -> Vector3:
-	var source_id: int = world.grid.dining_furnishing_id(guest.seat_cell)
+	var source_id: int = _guest_seat_source_id(guest)
 	if source_id == 0 or source_id == guest.table_item_id:
 		return Vector3.ZERO
 	var source: PlacedItem = world.grid.item(source_id)
 	var definition: ItemDef = source.def as ItemDef if source != null else null
-	if definition == null or definition.category != ItemDef.Category.CHAIR:
+	if definition == null or definition.category not in [ItemDef.Category.CHAIR, ItemDef.Category.WAITING]:
 		return Vector3.ZERO
 	var origin: Vector2i = GridMath.rotate_cell(Vector2i.ZERO, definition.footprint, source.quarter_turns)
 	var forward: Vector2i = GridMath.rotate_cell(Vector2i.UP, definition.footprint, source.quarter_turns) - origin
 	return Vector3(forward.x, 0.0, forward.y)
+
+
+## Waiting benches are physical seats without a dining-table link. Resolve
+## their measured surface and facing through their own reservation instead.
+func _guest_seat_source_id(guest: CustomerAgent) -> int:
+	if guest.state == CustomerAgent.State.QUEUED and guest.waiting_item_id > 0:
+		return guest.waiting_item_id
+	return world.grid.dining_furnishing_id(guest.seat_cell)
 
 
 func _remove_mood_icon(id: int) -> void:
