@@ -158,6 +158,44 @@ vec3 terracotta(vec2 p, vec3 base, vec3 joint, float fw) {
 	return mix(base, joint * shade, line_cover(min(d.x, d.y), 0.005, fw) * detail(size, fw));
 }
 
+// Integer lattice hash shared with FloorThumbnail. Bounded operands keep
+// all arithmetic within uint32 and give the CPU exactly the same samples.
+float lattice_hash(ivec2 p) {
+	uint n = (uint(p.x) & 65535u) * 251u + (uint(p.y) & 65535u) * 199u;
+	n = (n ^ (n >> 7u)) * 109u;
+	return float((n ^ (n >> 11u)) & 65535u) / 65535.0;
+}
+
+// 7: one small irregularly placed chip per 0.125 m lattice square.
+vec3 terrazzo(vec2 p, vec3 base, vec3 accent, float fw) {
+	float size = 0.125;
+	ivec2 cell = ivec2(floor(p / size));
+	float h = lattice_hash(cell);
+	float j = lattice_hash(cell + ivec2(37, 91));
+	vec2 centre = vec2(0.25 + h * 0.5, 0.25 + j * 0.5);
+	float d = length((fract(p / size) - centre) * size);
+	float radius = 0.015 + j * 0.0075;
+	vec3 chip = accent * (h < 0.5 ? 1.0 : 0.8);
+	// Fade by chip diameter, not lattice spacing: subpixel chips vanish
+	// before they can sparkle during a pan or at maximum zoom-out.
+	return mix(base, chip, line_cover(d, radius, fw) * detail(0.045, fw));
+}
+
+// 8: metre-wide slabs; faint fine-lattice mottling, thin accent joints.
+vec3 concrete(vec2 p, vec3 base, vec3 joint, float fw) {
+	vec2 f = fract(p);
+	vec2 d = min(f, 1.0 - f);
+	float shade = 1.0 + (lattice_hash(ivec2(floor(p / 0.125))) - 0.5) * 0.035 * detail(0.125, fw);
+	return mix(base * shade, joint, line_cover(min(d.x, d.y), 0.002, fw) * detail(1.0, fw));
+}
+
+// 9: no joints; a quiet alternating warp/weft in the selected colours.
+vec3 carpet(vec2 p, vec3 base, vec3 accent, float fw) {
+	vec2 f = fract(p / 0.025);
+	float weave = (step(0.5, f.x) + step(0.5, f.y)) * 0.5;
+	return mix(base, accent, weave * 0.06 * detail(0.025, fw));
+}
+
 void fragment() {
 	vec2 grid_position = world_position.xz / cell_size;
 	vec2 line_distance = abs(fract(grid_position + 0.5) - 0.5) * cell_size;
@@ -185,6 +223,12 @@ void fragment() {
 		patterned_floor = hex_tiles(world_position.xz, base, accent, fw);
 	} else if (finish.r == 6) {
 		patterned_floor = terracotta(world_position.xz, base, accent, fw);
+	} else if (finish.r == 7) {
+		patterned_floor = terrazzo(world_position.xz, base, accent, fw);
+	} else if (finish.r == 8) {
+		patterned_floor = concrete(world_position.xz, base, accent, fw);
+	} else if (finish.r == 9) {
+		patterned_floor = carpet(world_position.xz, base, accent, fw);
 	} else {
 		// 0: the original wide planks, unchanged. A quiet world-space plank
 		// variation remains multiplicative with the authored floor swatch, so
