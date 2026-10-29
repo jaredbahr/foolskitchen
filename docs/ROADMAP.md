@@ -88,7 +88,7 @@ The Tier 1 hole-in-the-wall: 1 door, 3 two-seat tables, 1 fridge, 1 prep counter
 - [x] Floor types and patterns painted per cell or per room: wide and narrow planks, herringbone, small tiles, checker (Sims-style, D25, #200)
 - [ ] More floor types: hex tile, terracotta (#201); terrazzo, concrete, carpet (#202) (D25)
 - [x] Smooth motion between sim ticks (presentation only) (#204)
-- [ ] Wall finishes and wall decor: wallpaper, panels, tile, brick; framed art, menu boards, neon (D26)
+- [x] Wall finishes and wall decor: wallpaper, panels, tile, brick; framed art, menu boards, neon (D26) (#TBD)
 - [ ] Waiting bench by the door: more guests wait, longer (D26)
 - [ ] Smarter cutaway: lower only the walls facing the camera (#205), then lighting decor (lamps, pendants, chandeliers at Tier 3) next (Jared, 2026-10-29)
 - [ ] Sound and music after the designer core: ambience, UI clicks, cooking sounds, a light music loop (Jared, 2026-10-29)

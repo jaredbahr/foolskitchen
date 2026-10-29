@@ -7,7 +7,7 @@ func test_starter_data_loads_without_validation_errors() -> void:
 	assert_eq(db.load_all().size(), 0)
 	assert_eq(db.ingredients().size(), 17)
 	assert_eq(db.recipes().size(), 12)
-	assert_eq(db.items().size(), 52)
+	assert_eq(db.items().size(), 56)
 
 
 func test_lookups_find_each_kind_and_unknown_ids_return_null() -> void:
@@ -45,14 +45,15 @@ func test_lists_are_sorted_and_do_not_expose_index_arrays() -> void:
 		&"bar_stool", &"bathroom_sink", &"bench", &"bookcase_open_low", &"chair", &"cloth_table",
 		&"coat_rack_standing", &"coffee_machine", &"corner_cabinet", &"cross_table", &"cushioned_bench", &"diner_booth", &"diner_stool",
 		&"door", &"drinks_fridge", &"drinks_shelf", &"freezer", &"fridge", &"fryer", &"glass_table",
-		&"lounge_chair", &"modern_chair", &"modern_frame_chair", &"oven", &"pass_counter", &"plant_small_1",
+		&"lounge_chair", &"menu_board", &"modern_chair", &"modern_frame_chair", &"neon_open_sign", &"oven", &"pass_counter", &"plant_small_1",
 		&"plant_small_2", &"plant_small_3", &"potted_plant", &"prep_cabinet", &"prep_counter", &"round_table",
 		&"rounded_chair", &"rug_rectangle", &"rug_round", &"rug_square", &"side_table", &"sink",
-		&"speaker", &"square_bar_stool", &"storage_shelf", &"stove", &"table_2", &"table_4", &"television_vintage", &"toilet", &"wooden_chair",
+		&"speaker", &"square_bar_stool", &"storage_shelf", &"stove", &"table_2", &"table_4", &"television_vintage", &"toilet",
+		&"wall_art_peaks", &"wall_art_sunrise", &"wooden_chair",
 	])
 	var copy: Array[ItemDef] = db.items()
 	copy.clear()
-	assert_eq(db.items().size(), 52)
+	assert_eq(db.items().size(), 56)
 
 
 func test_reloading_does_not_duplicate_definitions() -> void:
@@ -60,7 +61,7 @@ func test_reloading_does_not_duplicate_definitions() -> void:
 	assert_eq(db.load_all().size(), 0)
 	assert_eq(db.ingredients().size(), 17)
 	assert_eq(db.recipes().size(), 12)
-	assert_eq(db.items().size(), 52)
+	assert_eq(db.items().size(), 56)
 
 
 func test_recursive_resource_discovery_returns_sorted_original_tres_names() -> void:
@@ -73,7 +74,7 @@ func test_recursive_resource_discovery_returns_sorted_original_tres_names() -> v
 		if path.begins_with("res://data/ingredients/") or path.begins_with("res://data/recipes/") \
 				or path.begins_with("res://data/items/"):
 			content_paths += 1
-	assert_eq(content_paths, 81)
+	assert_eq(content_paths, 85)
 	assert_true(paths.has("res://data/ingredients/bun.tres"))
 	assert_true(paths.has("res://data/recipes/burger.tres"))
 	assert_true(paths.has("res://data/items/table_2.tres"))
@@ -87,8 +88,8 @@ func test_recursive_resource_discovery_returns_sorted_original_tres_names() -> v
 func test_missing_resource_directories_report_errors_and_clear_old_indices() -> void:
 	var db: ContentDB = _starter_db()
 	var errors: PackedStringArray = db.load_all("res://data/missing_content_db_test_root")
-	# Six folders, plus the missing starting floor.
-	assert_eq(errors.size(), 7)
+	# Seven folders, plus the missing starting floor and wall finish.
+	assert_eq(errors.size(), 9)
 	assert_true(_has_error(errors, "Cannot open content directory:"))
 	assert_eq(db.ingredients().size(), 0)
 	assert_eq(db.recipes().size(), 0)

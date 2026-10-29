@@ -7,7 +7,8 @@ extends RefCounted
 ## Null means an unavailable or invalid source; VibeModel evaluates it neutrally.
 ## No resource, placement, reservation, menu selection or random stream mutates.
 static func capture(grid: SimGrid, content: ContentDB, menu: Array[RecipeDef],
-		wall_swatch: StringName = &"", floor_swatch: StringName = &"") -> VibeModel.Inputs:
+		wall_swatch: StringName = &"", floor_swatch: StringName = &"",
+		wall_items: Array[ItemDef] = []) -> VibeModel.Inputs:
 	if grid == null or content == null:
 		return null
 	var inputs: VibeModel.Inputs = VibeModel.Inputs.new()
@@ -43,6 +44,19 @@ static func capture(grid: SimGrid, content: ContentDB, menu: Array[RecipeDef],
 				return null
 			item.paint_theme_tags = paint.theme_tags.duplicate()
 		inputs.items.append(item)
+	# Wall decor (D26) the guests can see (ShopEditor.decor_vibe_items): decor
+	# charm and themes like any decor, but it takes no floor space.
+	for definition: ItemDef in wall_items:
+		if definition == null or definition.id.is_empty() or definition.charm < 0 \
+				or not definition.hangs_on_wall() or not definition.placement_layer_valid():
+			return null
+		var hung: VibeModel.Item = VibeModel.Item.new()
+		hung.definition_id = definition.id
+		hung.charm = float(definition.charm)
+		hung.category = definition.category
+		hung.theme_tags = definition.theme_tags.duplicate()
+		hung.floor_decor = true
+		inputs.items.append(hung)
 	var recipe_ids: Dictionary[StringName, bool] = {}
 	for recipe: RecipeDef in menu:
 		if recipe == null or String(recipe.id).strip_edges().is_empty() or recipe_ids.has(recipe.id):

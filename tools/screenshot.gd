@@ -42,6 +42,9 @@ extends SceneTree
 ##   --floors-review --speed=0 --frames=12,30  D25 floor types fixture (tools/floors_review.gd):
 ##             the laid floors with thresholds and both doors, then Build > Floors
 ##             holding a herringbone drag over the planks
+##   --walls-review --speed=0 --frames=12,30 [--quarter=N]  D26 wall finishes and wall decor
+##             (tools/walls_review.gd): Cutaway, then Walls Up with Build > Wall finish
+##             holding a striped wallpaper drag
 ## Ordinary captures record real moods, markers and seeds without a fixture.
 
 const MAX_CAPTURE_WAIT_FRAMES: int = 8
@@ -49,6 +52,7 @@ const MAX_OWNER_WARMUP_TICKS: int = 900
 const SETTINGS_CAPTURE_SIZE: Vector2i = Vector2i(1600, 900)
 const DINER_REVIEW: Script = preload("res://tools/diner_review.gd")
 const FLOORS_REVIEW: Script = preload("res://tools/floors_review.gd")
+const WALLS_REVIEW: Script = preload("res://tools/walls_review.gd")
 ## --floors-review: the frame Build > Floors opens with its drag held.
 const FLOORS_DRAG_FRAME: int = 20
 const LOAN_TERMS: LoanTuning = preload("res://data/balance/loans.tres")
@@ -137,6 +141,8 @@ var _catalogue_fixture: Dictionary = {}
 var _diner_review: bool = false
 var _diner_fixture: Dictionary = {}
 var _floors_review: bool = false
+var _walls_review: bool = false
+var _walls_fixture: Dictionary = {}
 var _floors_fixture: Dictionary = {}
 var _build_pointer: Vector2 = Vector2.ZERO
 var _selected_agent_id: int = -1
@@ -230,6 +236,11 @@ func _initialize() -> void:
 			_build = requested
 		elif arg == "--paint":
 			_paint = true
+		elif arg.begins_with("--walls-review"):
+			if arg != "--walls-review":
+				_fail_capture("--walls-review does not accept a value")
+				return
+			_walls_review = true
 		elif arg.begins_with("--walls"):
 			var requested_walls: String = arg.trim_prefix("--walls=")
 			if not ["place", "room"].has(requested_walls):
@@ -307,6 +318,13 @@ func _initialize() -> void:
 		_fail_capture("--floors-review requires a paused fresh morning without other options, and a frame after %d" \
 			% FLOORS_DRAG_FRAME)
 		return
+	if _walls_review and (_scene_path != "res://src/world/main.tscn" or _open or _fast != 0 or _speed != 0 \
+			or not _build.is_empty() or _paint or not _walls.is_empty() or not _expand.is_empty() or _floors_review \
+			or not _rooms.is_empty() or _menu or _staff or _settings or not _selection.is_empty() or _f3 \
+			or _report_requested or _shots.min() < 4 or _shots.max() <= WALLS_REVIEW.WALL_UP_FRAME):
+		_fail_capture("--walls-review requires a paused fresh morning without other options (but --quarter), and a frame after %d" \
+			% WALLS_REVIEW.WALL_UP_FRAME)
+		return
 	if _menu and (_open or not _selection.is_empty()):
 		_fail_capture("--menu requires morning and cannot combine with --open or --select")
 		return
@@ -348,7 +366,7 @@ func _initialize() -> void:
 	if "use_saves" in _main:
 		_main.set("use_saves", false)
 	if (_report_requested or _milestone_review or _diner_review or _expand == "shop" or not _rooms.is_empty() \
-			or _floors_review or _assign_owner) \
+			or _floors_review or _walls_review or _assign_owner) \
 			and "new_game_seed_override" in _main:
 		_main.set("new_game_seed_override", 1)
 	root.add_child(_main)
@@ -1755,6 +1773,11 @@ func _process(_delta: float) -> bool:
 			_configure_rooms()
 			if _failed:
 				return true
+		if _walls_review:
+			_walls_fixture = WALLS_REVIEW.prepare(_main, root)
+			if not String(_walls_fixture.get("error", "")).is_empty():
+				_fail_capture(String(_walls_fixture["error"]))
+				return true
 		if _floors_review:
 			_floors_fixture = FLOORS_REVIEW.prepare(_main, root)
 			if not String(_floors_fixture.get("error", "")).is_empty():
@@ -1849,6 +1872,22 @@ func _process(_delta: float) -> bool:
 			return true
 		_build_pointer = drag["pointer"]
 	if _floors_review and _frames > FLOORS_DRAG_FRAME:
+		_hold_build_pointer()
+	if _walls_review and _frames == WALLS_REVIEW.WALL_UP_FRAME:
+		var wall_drag: Dictionary = WALLS_REVIEW.begin_drag(_main, root)
+		if not String(wall_drag.get("error", "")).is_empty():
+			_fail_capture(String(wall_drag["error"]))
+			return true
+		_build_pointer = wall_drag["pointer"]
+	if _walls_review and _frames == WALLS_REVIEW.DOWN_FRAME:
+		WALLS_REVIEW.walls_down(_main)
+	if _walls_review and _frames == WALLS_REVIEW.HANG_FRAME:
+		var hang: Dictionary = WALLS_REVIEW.begin_hang(_main, root)
+		if not String(hang.get("error", "")).is_empty():
+			_fail_capture(String(hang["error"]))
+			return true
+		_build_pointer = hang["pointer"]
+	if _walls_review and _frames > WALLS_REVIEW.WALL_UP_FRAME and _frames < WALLS_REVIEW.DOWN_FRAME:
 		_hold_build_pointer()
 	if _diner_review and _frames == 24:
 		_diner_fixture = DINER_REVIEW.furnish(_main, root, _diner_fixture)
@@ -2516,6 +2555,23 @@ func _pause_on_restroom_walk() -> void:
 ## Before the drag: every sample cell draws its floor type, thresholds exist and
 ## Build is closed. After: the Floors tool holds an 8-tile herringbone drag
 ## drawn as the floor's own preview, priced in the hint.
+func _walls_review_valid(state: Dictionary) -> bool:
+	if state.is_empty() or int(state.get("stored_faces", 0)) < 20 or int(state.get("hung", 0)) != 4 \
+			or int(state.get("drawn_faces", 0)) < int(state.get("stored_faces", 0)):
+		return false
+	print("WALLS_REVIEW frame=%d %s" % [_capture_frame, JSON.stringify(state)])
+	if _capture_frame < WALLS_REVIEW.WALL_UP_FRAME:
+		return int(state.get("state", -1)) == BuildMode.State.INACTIVE and int(state.get("preview_faces", -1)) == 0
+	if _capture_frame >= WALLS_REVIEW.DOWN_FRAME:
+		return int(state.get("wall_mode", -1)) == ShopView.WallMode.DOWN and int(state.get("hung_shown", -1)) == 0
+	if _capture_frame >= WALLS_REVIEW.HANG_FRAME:
+		return int(state.get("state", -1)) == BuildMode.State.HANG
+	return int(state.get("state", -1)) == BuildMode.State.WALL_FINISH and state.get("dragging") == true \
+		and state.get("check_ok") == true and int(state.get("proposal", 0)) > 0 \
+		and int(state.get("hung_shown", 0)) == 4 and int(state.get("wall_mode", -1)) == ShopView.WallMode.UP \
+		and String(state.get("summary", "")).begins_with("Put up Striped wallpaper")
+
+
 func _floors_capture_valid(state: Dictionary) -> bool:
 	if state.is_empty() or state.get("patterns_match") != true or int(state.get("threshold_cells", 0)) < 8 \
 			or state.get("floor_material_shared") != true:
@@ -2743,6 +2799,10 @@ func _capture() -> void:
 			"cache": catalogue_state.get("cache", {}), "vibe": catalogue_state.get("vibe", {}),
 			"generated_vibe_uids": catalogue_state.get("generated_vibe_uids", {})}))
 		return
+	var walls_state: Dictionary = WALLS_REVIEW.evidence(_main) if _walls_review else {}
+	if _walls_review and not _walls_review_valid(walls_state):
+		_fail_capture("walls review did not match its fixture or Wall finish tool state: " + JSON.stringify(walls_state))
+		return
 	var floors_state: Dictionary = FLOORS_REVIEW.evidence(_main) if _floors_review else {}
 	if _floors_review and not _floors_capture_valid(floors_state):
 		_fail_capture("floors review did not match its fixture or Floors tool state: " + JSON.stringify(floors_state))
@@ -2956,6 +3016,8 @@ func _capture() -> void:
 			"generated_uids": generated_uid_evidence(CATALOGUE_UID_SOURCES)}
 	if _floors_review:
 		metadata["floors_review"] = {"fixture": _floors_fixture, "state": floors_state}
+	if _walls_review:
+		metadata["walls_review"] = {"fixture": _walls_fixture, "state": walls_state}
 	if _diner_review:
 		metadata["diner_review"] = {"fixture": _diner_fixture, "state": diner_state}
 		if _capture_frame == 90:

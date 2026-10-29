@@ -123,6 +123,9 @@ var _debug_overlay: DebugOverlay
 var _debug_geometry: DebugGeometry
 var _build_preview: BuildPreview
 var _build_catalogue: BuildCatalogue
+## Wall paint hover cache (D26), like the floor's.
+var _wall_paint_key: Array = []
+var _wall_paint_changes_cache: Dictionary[Vector3i, FloorFinishes.Finish] = {}
 ## Paint hover cache (see _floor_paint_preview).
 var _paint_preview_key: Array = []
 var _paint_preview_changes: Dictionary[Vector2i, FloorFinishes.Finish] = {}
@@ -238,7 +241,10 @@ func _bind_world_presentation() -> void:
 		_build_catalogue.rooms_tool_requested.connect(_on_rooms_tool_requested)
 	if not _build_catalogue.floors_tool_requested.is_connected(_on_floors_tool_requested):
 		_build_catalogue.floors_tool_requested.connect(_on_floors_tool_requested)
+	if not _build_catalogue.wall_finish_tool_requested.is_connected(_on_wall_finish_tool_requested):
+		_build_catalogue.wall_finish_tool_requested.connect(_on_wall_finish_tool_requested)
 	_build_catalogue.set_floor_base_color(view.floor_base_color())
+	_build_catalogue.set_wall_base_color(view.shop_wall_colour())
 	if not _build_catalogue.swatch_requested.is_connected(_on_swatch_requested):
 		_build_catalogue.swatch_requested.connect(_on_swatch_requested)
 	if not _build_catalogue.mode_requested.is_connected(_on_catalogue_mode_requested):
@@ -571,6 +577,10 @@ func route_build_input(event: InputEvent) -> bool:
 				KEY_DELETE:
 					if build_mode.state == BuildMode.State.WALLS:
 						build_mode.wall_remove_hovered()
+					elif build_mode.state == BuildMode.State.HANG:
+						build_mode.sell_held_wall_item()
+					elif build_mode.state == BuildMode.State.IDLE and build_mode.hover_anchor != WallFaces.NO_FACE:
+						build_mode.take_down_hovered()
 					elif build_mode.state == BuildMode.State.IDLE and build_mode.tool == BuildMode.Tool.SELL:
 						build_mode.sell_hovered()
 					else:
@@ -617,6 +627,35 @@ func route_build_input(event: InputEvent) -> bool:
 			else:
 				build_mode.floors_release(floors_cell)
 		return true
+	if mouse != null and mouse.button_index == MOUSE_BUTTON_LEFT and build_mode.state == BuildMode.State.WALL_FINISH:
+		var face: Vector3i = wall_face_at_screen_position(mouse.position).get("face", WallFaces.NO_FACE)
+		if mouse.pressed and mouse.alt_pressed:
+			if build_mode.wall_finish_pick(face) and _build_catalogue != null:
+				_build_catalogue.select_wall_finish(build_mode.wall_style, build_mode.wall_swatch, build_mode.wall_accent)
+		elif mouse.pressed:
+			build_mode.wall_finish_press(face, mouse.shift_pressed)
+		else:
+			build_mode.wall_finish_release(face)
+		return true
+	if mouse != null and mouse.pressed and mouse.button_index == MOUSE_BUTTON_LEFT and build_mode.state == BuildMode.State.HANG:
+		update_build_pointer(mouse.position)
+		build_mode.hang_commit()
+		return true
+	if mouse != null and mouse.pressed and mouse.button_index == MOUSE_BUTTON_LEFT and build_mode.state == BuildMode.State.IDLE:
+		var hung: Vector3i = wall_item_at_screen_position(mouse.position)
+		if hung != WallFaces.NO_FACE:
+			build_mode.hover_wall_item(hung)
+			match build_mode.tool:
+				BuildMode.Tool.EYEDROPPER:
+					var copied: ItemDef = shop_editor.hung_definition(hung)
+					if copied != null and build_mode.begin_hang(copied.id) and _build_catalogue != null:
+						_build_catalogue.set_category(BuildCatalogue.category_for(copied))
+				BuildMode.Tool.SELL:
+					build_mode.take_down_hovered()
+				_:
+					build_mode.begin_rehang(hung)
+			update_build_pointer(mouse.position)
+			return true
 	if mouse != null and mouse.button_index == MOUSE_BUTTON_LEFT and build_mode.state == BuildMode.State.ROOMS:
 		var room_cell: Variant = build_cell_at_screen_position(mouse.position)
 		if room_cell is Vector2i:
@@ -671,7 +710,7 @@ func _on_shift_changed(key: InputEventKey) -> void:
 		return
 	if _paint_active:
 		update_paint_pointer(_last_pointer, key.pressed)
-	elif is_build_active() and build_mode.state == BuildMode.State.FLOORS:
+	elif is_build_active() and (build_mode.state == BuildMode.State.FLOORS or build_mode.state == BuildMode.State.WALL_FINISH):
 		update_build_pointer(_last_pointer, key.pressed)
 
 
@@ -702,11 +741,56 @@ func route_paint_input(event: InputEvent) -> bool:
 		return false
 	var mouse: InputEventMouseButton = event as InputEventMouseButton
 	if mouse != null and mouse.pressed and mouse.button_index == MOUSE_BUTTON_LEFT:
+		var face: Vector3i = paint_face_at_screen_position(mouse.position)
+		if face != WallFaces.NO_FACE:
+			paint_face(face, mouse.shift_pressed)
+			return true
+		if wall_item_at_screen_position(mouse.position) != WallFaces.NO_FACE:
+			return true  # Wall decor takes no paint (yet); never the wall behind it.
 		var cell: Variant = paint_cell_at_screen_position(mouse.position)
 		if cell is Vector2i:
 			paint_cell(cell, mouse.shift_pressed)
 		return true
 	return false
+
+
+## The wall face a paint click would recolour (D26): the room side of a wall
+## hit before any furniture; NO_FACE otherwise (the outside of the shell
+## still paints the shop's own wall colour, as before).
+func paint_face_at_screen_position(screen_position: Vector2) -> Vector3i:
+	var camera: Camera3D = $CameraRig/Camera3D
+	if world == null or not camera.is_inside_tree():
+		return WallFaces.NO_FACE
+	var origin: Vector3 = camera.project_ray_origin(screen_position)
+	var direction: Vector3 = camera.project_ray_normal(screen_position)
+	var view: ShopView = $ShopView as ShopView
+	var hit: Dictionary = view.wall_face_at_ray(origin, direction)
+	if hit.is_empty() or hit["face"] == WallFaces.NO_FACE:
+		return WallFaces.NO_FACE
+	if view.nearest_item_distance(origin, direction) < float(hit["distance"]) \
+			or view.wall_item_at_ray(origin, direction) != WallFaces.NO_FACE:
+		return WallFaces.NO_FACE
+	return hit["face"]
+
+
+## A wall paint click (D26): the connected run of walls that look like `face`
+## (inside its room), or with Shift every wall of the room, takes the paint
+## colour and keeps its finish. Free at any time, like all paint.
+func paint_face(face: Vector3i, whole_room: bool = false) -> bool:
+	if not _paint_active or shop_editor == null:
+		return false
+	var accepted: bool = edit_history.apply_wall_finishes(_wall_paint_changes(face, whole_room))
+	if accepted:
+		_edit_notice = ""
+		_update_build_controls()
+	return accepted or shop_editor.last_check.why == ShopEditor.WALL_FINISH_ALREADY
+
+
+func _wall_paint_changes(face: Vector3i, whole_room: bool) -> Dictionary[Vector3i, FloorFinishes.Finish]:
+	if shop_editor == null:
+		return {}
+	var faces: Array[Vector3i] = shop_editor.wall_room_faces(face) if whole_room else shop_editor.wall_area_faces(face)
+	return shop_editor.wall_recolour_changes(faces, _paint_swatch_id)
 
 
 func _mark_input_handled() -> void:
@@ -767,6 +851,21 @@ func update_paint_pointer(screen_position: Vector2, whole_room: bool = false) ->
 	if not _paint_active:
 		return
 	_last_pointer = screen_position
+	var face: Vector3i = paint_face_at_screen_position(screen_position)
+	if face != WallFaces.NO_FACE:
+		var view: ShopView = $ShopView as ShopView
+		view.preview_paint(&"", -1, &"")
+		view.clear_floor_preview()
+		var key: Array = [face, whole_room, _paint_swatch_id, world.grid.get_instance_id(), world.grid.version,
+			shop_editor.walls.get_instance_id(), shop_editor.walls.revision]
+		if key != _wall_paint_key:
+			_wall_paint_key = key
+			_wall_paint_changes_cache = _wall_paint_changes(face, whole_room)
+		view.preview_wall_finishes(_wall_paint_changes_cache)
+		return
+	if wall_item_at_screen_position(screen_position) != WallFaces.NO_FACE:
+		($ShopView as ShopView).clear_paint_preview()
+		return
 	var cell: Variant = paint_cell_at_screen_position(screen_position)
 	preview_paint_cell(cell, whole_room)
 
@@ -786,6 +885,7 @@ func preview_paint_cell(cell: Variant, whole_room: bool = false) -> void:
 	if not _paint_active or not cell is Vector2i:
 		view.clear_paint_preview()
 		return
+	view.clear_wall_preview()
 	var target: Dictionary = _paint_target(cell)
 	var kind: StringName = target.get("kind", &"")
 	var item_id: int = target.get("item_id", -1)
@@ -868,7 +968,7 @@ func _recompute_vibe() -> void:
 	if sim == null or world == null or shop_editor == null or menu_settings == null:
 		return
 	var inputs: VibeModel.Inputs = VibeInputs.capture(world.grid, content, menu_settings.enabled_recipes(),
-		shop_editor.wall_swatch_id, shop_editor.floor_vibe_swatch())
+		shop_editor.wall_vibe_swatch(), shop_editor.floor_vibe_swatch(), shop_editor.decor_vibe_items())
 	sim.set_vibe(VibeModel.evaluate(inputs, VIBE_TUNING))
 	var result: VibeModel.Result = vibe_result
 	_build_catalogue.set_vibe(result)
@@ -977,6 +1077,19 @@ func update_build_pointer(screen_position: Vector2, shift: bool = false) -> bool
 		if point is Vector2:
 			build_mode.wall_pointer(point)
 		return point is Vector2
+	if build_mode.state == BuildMode.State.WALL_FINISH:
+		build_mode.wall_finish_pointer(wall_face_at_screen_position(screen_position).get("face", WallFaces.NO_FACE), shift)
+		return true
+	if build_mode.state == BuildMode.State.HANG:
+		var hit: Dictionary = wall_face_at_screen_position(screen_position)
+		build_mode.hang_pointer(hit.get("face", WallFaces.NO_FACE), float(hit.get("offset", 0.0)))
+		return true
+	if build_mode.state == BuildMode.State.IDLE:
+		var hung: Vector3i = wall_item_at_screen_position(screen_position)
+		build_mode.hover_wall_item(hung)
+		if hung != WallFaces.NO_FACE:
+			build_mode.hover_item(-1)
+			return true
 	var cell: Variant = build_cell_at_screen_position(screen_position)
 	if not cell is Vector2i:
 		build_mode.hover_item(-1)
@@ -1028,6 +1141,53 @@ func _on_floors_tool_requested(style_id: StringName, swatch_id: StringName, acce
 	begin_floors_tool(style_id, swatch_id, accent_id)
 
 
+## Wall decor (D26): hold a wall item to hang on the hovered wall face.
+func begin_hang_item(def_id: StringName) -> bool:
+	if not is_build_active():
+		return false
+	var started: bool = build_mode.begin_hang(def_id)
+	if started and is_inside_tree():
+		update_build_pointer(get_viewport().get_mouse_position())
+	return started
+
+
+## Wall finish tool (D26): put `style_id` up in these colours; while the tool
+## runs, another card or colour changes what it puts up.
+func begin_wall_finish_tool(style_id: StringName, swatch_id: StringName, accent_id: StringName = &"") -> bool:
+	if not is_build_active():
+		return false
+	var started: bool = true
+	if build_mode.state == BuildMode.State.WALL_FINISH:
+		build_mode.set_wall_finish(style_id, swatch_id, accent_id)
+	else:
+		started = build_mode.begin_wall_finish(style_id, swatch_id, accent_id)
+	if started and is_inside_tree():
+		update_build_pointer(get_viewport().get_mouse_position())
+	return started
+
+
+func _on_wall_finish_tool_requested(style_id: StringName, swatch_id: StringName, accent_id: StringName) -> void:
+	begin_wall_finish_tool(style_id, swatch_id, accent_id)
+
+
+## The wall face under the pointer ({face, offset}, see ShopView.wall_face_at_ray).
+func wall_face_at_screen_position(screen_position: Vector2, floor_fallback: bool = true) -> Dictionary:
+	var camera: Camera3D = $CameraRig/Camera3D
+	if world == null or not camera.is_inside_tree():
+		return {}
+	return ($ShopView as ShopView).wall_face_at_ray(camera.project_ray_origin(screen_position),
+		camera.project_ray_normal(screen_position), floor_fallback)
+
+
+## The hung wall item under the pointer, or NO_FACE.
+func wall_item_at_screen_position(screen_position: Vector2) -> Vector3i:
+	var camera: Camera3D = $CameraRig/Camera3D
+	if world == null or not camera.is_inside_tree():
+		return WallFaces.NO_FACE
+	return ($ShopView as ShopView).wall_item_at_ray(camera.project_ray_origin(screen_position),
+		camera.project_ray_normal(screen_position))
+
+
 func begin_buy_item(def_id: StringName) -> bool:
 	if not is_build_active():
 		return false
@@ -1045,6 +1205,15 @@ func _bind_build_session() -> void:
 	($ShopView as ShopView).bind_floor_finishes(shop_editor.floors)
 	if not shop_editor.floors.changed.is_connected(_on_floor_looks_changed):
 		shop_editor.floors.changed.connect(_on_floor_looks_changed)
+	# Wall finishes and wall decor (D26): drawn by ShopView, felt by the vibe.
+	build_mode.bind_walls(shop_wall_finishes, shop_hang, shop_rehang, shop_take_down)
+	($ShopView as ShopView).bind_wall_finishes(shop_editor.walls, shop_editor.decor)
+	if _build_catalogue != null:
+		_build_catalogue.set_wall_base_color(($ShopView as ShopView).shop_wall_colour())
+	if not shop_editor.walls.changed.is_connected(_on_wall_looks_changed):
+		shop_editor.walls.changed.connect(_on_wall_looks_changed)
+	if not shop_editor.decor.changed.is_connected(_on_wall_decor_changed):
+		shop_editor.decor.changed.connect(_on_wall_decor_changed)
 	_build_preview.bind_build_mode(build_mode, $ShopView as ShopView)
 	var lot: ShopFootprint = shop_editor.footprint()
 	if _build_catalogue != null:
@@ -1100,6 +1269,7 @@ func _on_build_changed() -> void:
 
 
 func _update_build_controls() -> void:
+	_sync_wall_build_preview()
 	var active: bool = is_build_active()
 	var available: bool = _build_ready and shop_editor != null and shop_editor.can_edit()
 	var reason: String = build_mode.feedback_text()
@@ -1112,6 +1282,10 @@ func _update_build_controls() -> void:
 		summary = build_mode.rooms_summary()
 	elif build_mode.state == BuildMode.State.FLOORS:
 		summary = build_mode.floors_summary()
+	elif build_mode.state == BuildMode.State.WALL_FINISH:
+		summary = build_mode.wall_finish_summary()
+	elif build_mode.state == BuildMode.State.HANG:
+		summary = build_mode.hang_summary()
 	elif build_mode.state == BuildMode.State.IDLE:
 		# The sell/eyedropper hover text, or why an idle tool click was refused.
 		summary = build_mode.hover_summary()
@@ -1138,6 +1312,22 @@ func _update_build_controls() -> void:
 	_build_ui_phase = world.clock.phase if world != null else -1
 
 
+## The Wall finish tool's proposal and a held wall item's ghost (D26), drawn
+## by ShopView; nothing changes until a commit.
+func _sync_wall_build_preview() -> void:
+	var view: ShopView = $ShopView as ShopView
+	if view == null or view.wall_finish_view == null:
+		return
+	if build_mode.state == BuildMode.State.WALL_FINISH and build_mode.current_check.ok:
+		view.preview_wall_finishes(build_mode.current_check.wall_finishes)
+	elif not _paint_active:
+		view.clear_wall_preview()
+	if build_mode.state == BuildMode.State.HANG:
+		view.wall_finish_view.show_ghost(build_mode.hang_definition, build_mode.hang_anchor,
+			build_mode.current_check.ok, build_mode.hang_moving)
+	else:
+		view.wall_finish_view.hide_ghost()
+
 ## The preview remains buyable. A morning budget conservatively allows for
 ## refilling enabled targets after service; at closing the existing expiry /
 ## paid-delivery forecast gives the next morning's actual full-order estimate.
@@ -1163,7 +1353,10 @@ func build_restock_warning() -> String:
 	var cost: int = 0
 	if build_mode.state == BuildMode.State.BUY and build_mode.selected_definition != null:
 		cost = build_mode.selected_definition.price
-	elif build_mode.state in [BuildMode.State.WALLS, BuildMode.State.FLOOR, BuildMode.State.FLOORS]:
+	elif build_mode.state in [BuildMode.State.WALLS, BuildMode.State.FLOOR, BuildMode.State.FLOORS,
+			BuildMode.State.WALL_FINISH, BuildMode.State.HANG]:
+		# D26: a wall finish drag's price less its refund; a new wall item's
+		# price (moving one costs nothing).
 		cost = maxi(0, build_mode.current_check.cost - build_mode.current_check.refund)
 	if cost <= 0:
 		return ""
@@ -1175,7 +1368,11 @@ func _on_build_toggled() -> void:
 
 
 func _on_build_buy_requested(def_id: StringName) -> void:
-	begin_buy_item(def_id)
+	var definition: ItemDef = content.item(def_id)
+	if definition != null and definition.hangs_on_wall():
+		begin_hang_item(def_id)
+	else:
+		begin_buy_item(def_id)
 
 
 func _on_wall_tool_requested(kind: int) -> void:
@@ -1192,6 +1389,17 @@ func _on_rooms_tool_requested(kind: int) -> void:
 
 ## Floor looks changed (laid, recoloured, undone): their colours feed the vibe.
 func _on_floor_looks_changed(_cells: Array[Vector2i]) -> void:
+	_recompute_vibe()
+
+
+## An empty list is the shop's own wall colour changing (the legacy wall
+## paint), which recomputes the vibe itself.
+func _on_wall_looks_changed(faces: Array[Vector3i]) -> void:
+	if not faces.is_empty():
+		_recompute_vibe()
+
+
+func _on_wall_decor_changed() -> void:
 	_recompute_vibe()
 
 
@@ -2316,6 +2524,41 @@ func shop_flooring(changes: Dictionary[Vector2i, FloorFinishes.Finish]) -> bool:
 	return accepted
 
 
+## Wall finishes (D26): put up or recolour wall looks (face -> Finish),
+## checked and booked by ShopEditor, undoable.
+func shop_wall_finishes(changes: Dictionary[Vector3i, FloorFinishes.Finish]) -> bool:
+	var accepted: bool = shop_editor != null and edit_history.apply_wall_finishes(changes)
+	_after_edit(accepted)
+	if _build_ready:
+		build_mode.refresh()
+	return accepted
+
+
+## Wall decor (D26): hang, move and sell, checked and booked by ShopEditor.
+func shop_hang(def_id: StringName, anchor: Vector3i) -> bool:
+	var accepted: bool = shop_editor != null and edit_history.hang(def_id, anchor)
+	_after_edit(accepted)
+	if _build_ready:
+		build_mode.refresh()
+	return accepted
+
+
+func shop_rehang(anchor: Vector3i, to_anchor: Vector3i) -> bool:
+	var accepted: bool = shop_editor != null and edit_history.rehang(anchor, to_anchor)
+	_after_edit(accepted)
+	if _build_ready:
+		build_mode.refresh()
+	return accepted
+
+
+func shop_take_down(anchor: Vector3i) -> int:
+	var refund: int = edit_history.take_down(anchor) if shop_editor != null else -1
+	_after_edit(refund >= 0)
+	if _build_ready:
+		build_mode.refresh()
+	return refund
+
+
 ## Room painting (FK-101): free, checked by ShopEditor, undoable.
 func shop_rooms(changes: Dictionary[Vector2i, int]) -> bool:
 	var accepted: bool = shop_editor != null and edit_history.apply_rooms(changes)
@@ -2381,8 +2624,8 @@ func _on_catalogue_mode_requested(mode: StringName) -> void:
 	var buying: bool = mode == BuildCatalogue.BUY
 	var state: BuildMode.State = build_mode.state
 	if (buying and (state == BuildMode.State.WALLS or state == BuildMode.State.FLOOR or state == BuildMode.State.ROOMS
-			or state == BuildMode.State.FLOORS)) \
-			or (not buying and (state == BuildMode.State.BUY or state == BuildMode.State.MOVE)):
+			or state == BuildMode.State.FLOORS or state == BuildMode.State.WALL_FINISH)) \
+			or (not buying and (state == BuildMode.State.BUY or state == BuildMode.State.MOVE or state == BuildMode.State.HANG)):
 		build_mode.cancel_ghost()
 	_build_catalogue.set_mode(mode)
 
@@ -3215,6 +3458,9 @@ func _unlocked_at_levels(previous_level: int, current_level: int) -> Array[Strin
 	for style: FloorStyleDef in content.floor_styles():
 		if style.unlock_tier == 1 and style.unlock_level > previous_level and style.unlock_level <= current_level:
 			unlocked.append(style.display_name + " floor")
+	for wall_style: WallStyleDef in content.wall_styles():
+		if wall_style.unlock_tier == 1 and wall_style.unlock_level > previous_level and wall_style.unlock_level <= current_level:
+			unlocked.append(wall_style.display_name + " walls")
 	unlocked.sort()
 	return unlocked
 

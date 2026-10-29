@@ -15,6 +15,8 @@ signal floor_tool_requested()
 signal rooms_tool_requested(kind: int)
 ## Floors tool (D25): lay a floor type (FloorStyleDef id) in these colours.
 signal floors_tool_requested(style_id: StringName, swatch_id: StringName, accent_id: StringName)
+## Wall finish tool (D26): put a wall finish (WallStyleDef id) up in these colours.
+signal wall_finish_tool_requested(style_id: StringName, swatch_id: StringName, accent_id: StringName)
 ## FK-085: the Build/Buy tabs, the Paint tab, the tools and undo/redo.
 signal mode_requested(mode: StringName)
 signal paint_requested()
@@ -38,15 +40,20 @@ const BUILD: StringName = &"build"
 const BUY_CATEGORIES: Array[StringName] = [&"dining", &"kitchen", &"bar_cafe", &"decor", &"lighting", &"restroom"]
 ## &"floor" is the lot expansion tool (FK-080), labelled Expand since the
 ## Floors tab (D25, &"floors") lays floor types.
-const BUILD_CATEGORIES: Array[StringName] = [&"walls", &"floors", &"rooms", &"floor", &"paint"]
+const BUILD_CATEGORIES: Array[StringName] = [&"walls", &"wall_finish", &"floors", &"rooms", &"floor", &"paint"]
 const CATEGORY_IDS: Array[StringName] = [&"dining", &"kitchen", &"bar_cafe", &"decor", &"lighting", &"restroom",
-	&"walls", &"floors", &"rooms", &"floor", &"paint"]
+	&"walls", &"wall_finish", &"floors", &"rooms", &"floor", &"paint"]
 const CATEGORY_LABELS: Dictionary = {
 	&"dining": "Dining", &"kitchen": "Kitchen", &"bar_cafe": "Bar & Café", &"decor": "Decor",
-	&"lighting": "Lighting", &"restroom": "Restroom", &"walls": "Walls", &"floors": "Floors", &"floor": "Expand",
+	&"lighting": "Lighting", &"restroom": "Restroom", &"walls": "Walls", &"wall_finish": "Wall finish",
+	&"floors": "Floors", &"floor": "Expand",
 	&"rooms": "Rooms", &"paint": "Paint",
 }
 const FLOORS: StringName = &"floors"
+## Wall finishes (D26): one card per finish, then Colour and Accent rows.
+const WALL_FINISH: StringName = &"wall_finish"
+## The shop's original wall cream (ShopView.wall_color) until Main passes its own.
+const ORIGINAL_WALL: Color = Color("e6d5b8")
 ## The shop's original floor brown (ShopView's default floor colour), for the
 ## "Original" colour chip and cards until Main passes the shop's own.
 const ORIGINAL_FLOOR: Color = Color("7d5533")
@@ -95,6 +102,15 @@ var selected_floor_style: StringName = FloorStyleDef.DEFAULT_ID
 var selected_floor_swatch: StringName = &""
 var selected_floor_accent: StringName = &""
 var _floor_base: Color = ORIGINAL_FLOOR
+## Wall finish tab (D26), like the Floors tab.
+var wall_style_buttons: Dictionary[StringName, Button] = {}
+var wall_colour_buttons: Dictionary[StringName, Button] = {}
+var wall_accent_buttons: Dictionary[StringName, Button] = {}
+var selected_wall_style: StringName = WallStyleDef.DEFAULT_ID
+var selected_wall_swatch: StringName = &""
+var selected_wall_accent: StringName = &""
+var _wall_base: Color = ORIGINAL_WALL
+var _wall_pictures: Dictionary[String, ImageTexture] = {}
 ## Drawn card pictures by look (see _floor_picture), cleared when full.
 var _floor_pictures: Dictionary[String, ImageTexture] = {}
 ## Main turns the Rooms tab on once a shop is bound (like the Floor tab's price).
@@ -345,6 +361,7 @@ func refresh_content() -> void:
 	_refresh_floor_card()
 	_refresh_room_cards()
 	_refresh_floor_styles()
+	_refresh_wall_styles()
 	_apply_category()
 	# Queue the current category first so visible previews arrive first. Every
 	# remaining wrapper is still prepared once at startup in the same cache.
@@ -610,6 +627,159 @@ func select_floor(style_id: StringName, swatch_id: StringName, accent_id: String
 	_refresh_floor_styles()
 
 
+# --- Wall finish tab (D26) -------------------------------------------------------
+
+## The shop's own wall colour for the "Original" chip and the card pictures.
+func set_wall_base_color(color: Color) -> void:
+	if color == _wall_base:
+		return
+	_wall_base = color
+	_refresh_wall_styles()
+
+
+## One card per wall finish (price per wall, or the level that unlocks it),
+## after the other cards; then the colour rows.
+func _refresh_wall_styles() -> void:
+	if _content == null:
+		return
+	var row: GridContainer = _items()
+	var definitions: Array[WallStyleDef] = _content.wall_styles()
+	if _content.wall_style(selected_wall_style) == null and not definitions.is_empty():
+		selected_wall_style = definitions[0].id
+	for definition: WallStyleDef in definitions:
+		var button: Button = wall_style_buttons.get(definition.id) as Button
+		if button == null:
+			button = _tile("WallStyle_%s" % definition.id)
+			button.toggle_mode = true
+			button.pressed.connect(_on_wall_style_pressed.bind(definition.id))
+			wall_style_buttons[definition.id] = button
+			row.add_child(button)
+		row.move_child(button, row.get_child_count() - 1)
+		var locked: String = definition.locked_reason(_owner_level)
+		var price: String = "Free" if definition.price == 0 else "%s a wall" % Fmt.money(definition.price)
+		button.text = "%s\n%s" % [definition.display_name, price if locked.is_empty() else "Level %d" % definition.unlock_level]
+		button.disabled = not locked.is_empty()
+		button.tooltip_text = locked if not locked.is_empty() else \
+			"Put up %s for %s (each 0.5 m of wall). Replacing a finish refunds half its price; recolouring is free" % [
+				definition.display_name.to_lower(), price.to_lower()]
+		var selected: bool = definition.id == selected_wall_style
+		button.set_pressed_no_signal(selected)
+		var picture: ImageTexture = _wall_picture(definition,
+			selected_wall_swatch if selected else definition.default_swatch,
+			selected_wall_accent if selected else definition.default_accent)
+		if button.icon != picture:
+			button.icon = picture
+	_refresh_wall_colours()
+
+
+func _wall_picture(definition: WallStyleDef, swatch_id: StringName, accent_id: StringName) -> ImageTexture:
+	var main: Color = _swatch_colour(swatch_id, _wall_base)
+	var accent: Color = _swatch_colour(accent_id, main) if not accent_id.is_empty() \
+		else WallFinishView.auto_accent(int(definition.pattern), main, _wall_base)
+	var key: String = "%d|%s|%s" % [int(definition.pattern), main.to_html(), accent.to_html()]
+	var cached: ImageTexture = _wall_pictures.get(key) as ImageTexture
+	if cached != null:
+		return cached
+	if _wall_pictures.size() >= FLOOR_PICTURE_LIMIT:
+		_wall_pictures.clear()
+	cached = WallThumbnail.texture(int(definition.pattern), main, accent)
+	_wall_pictures[key] = cached
+	return cached
+
+
+## "Colour" (Original + every swatch) and, for patterned finishes, "Accent"
+## (Auto + every swatch).
+func _refresh_wall_colours() -> void:
+	var rows: VBoxContainer = _content_node().get_node_or_null("WallColours") as VBoxContainer
+	if rows == null:
+		rows = VBoxContainer.new()
+		rows.name = "WallColours"
+		rows.add_theme_constant_override("separation", 4)
+		var content: Control = _content_node()
+		content.add_child(rows)
+		content.move_child(rows, _items().get_index() + 1)
+		for accent: bool in [false, true]:
+			var line: HBoxContainer = HBoxContainer.new()
+			line.name = "Accent" if accent else "Colour"
+			line.add_theme_constant_override("separation", 4)
+			rows.add_child(line)
+			var label: Label = Label.new()
+			label.name = "Label"
+			label.text = "Accent" if accent else "Colour"
+			label.custom_minimum_size = Vector2(64.0, 0.0)
+			line.add_child(label)
+			var ids: Array[StringName] = [&""]
+			for swatch: SwatchDef in _content.swatches():
+				ids.append(swatch.id)
+			for id: StringName in ids:
+				var chip: Button = Button.new()
+				chip.name = "%s_%s" % ["Accent" if accent else "Colour", "auto" if id.is_empty() else String(id)]
+				chip.custom_minimum_size = Vector2(30.0, 30.0)
+				chip.focus_mode = Control.FOCUS_NONE
+				chip.mouse_filter = Control.MOUSE_FILTER_STOP
+				chip.pressed.connect(_on_wall_colour_pressed.bind(id, accent))
+				line.add_child(chip)
+				if accent:
+					wall_accent_buttons[id] = chip
+				else:
+					wall_colour_buttons[id] = chip
+	var style: WallStyleDef = _content.wall_style(selected_wall_style)
+	(rows.get_node("Accent") as Control).visible = style != null and style.pattern != WallStyleDef.Pattern.PAINT
+	var button_outline: StyleBoxFlat = theme.get_stylebox("normal", "Button") as StyleBoxFlat if theme != null else null
+	var selected_ring: Color = button_outline.border_color if button_outline != null else Color("3b2a20")
+	var main: Color = _swatch_colour(selected_wall_swatch, _wall_base)
+	var pattern: int = int(style.pattern) if style != null else 0
+	for accent: bool in [false, true]:
+		var chips: Dictionary[StringName, Button] = wall_accent_buttons if accent else wall_colour_buttons
+		var chosen: StringName = selected_wall_accent if accent else selected_wall_swatch
+		for id: StringName in chips:
+			var chip: Button = chips[id]
+			var definition: SwatchDef = _content.swatch(id)
+			chip.tooltip_text = definition.display_name if definition != null else (
+				("Auto: the wall colour above the panelling" if pattern == WallStyleDef.Pattern.WAINSCOT
+					else "Auto: a darker shade of the colour") if accent else "Original wall colour")
+			var look: StyleBoxFlat = StyleBoxFlat.new()
+			look.bg_color = _swatch_colour(id, WallFinishView.auto_accent(pattern, main, _wall_base) if accent else _wall_base)
+			look.bg_color.a = 1.0
+			look.set_corner_radius_all(15)
+			look.set_border_width_all(3 if id == chosen else 1)
+			look.border_color = selected_ring if id == chosen else Color("5d4637")
+			for state: StringName in [&"normal", &"hover", &"pressed"]:
+				chip.add_theme_stylebox_override(state, look)
+
+
+func _on_wall_style_pressed(style_id: StringName) -> void:
+	var definition: WallStyleDef = _content.wall_style(style_id) if _content != null else null
+	if definition == null or not visible or _paint_visible or selected_category != WALL_FINISH \
+			or not definition.unlocked(_owner_level) or (is_inside_tree() and not is_visible_in_tree()):
+		if wall_style_buttons.has(style_id):
+			wall_style_buttons[style_id].set_pressed_no_signal(style_id == selected_wall_style)
+		return
+	select_wall_finish(style_id, definition.default_swatch, definition.default_accent)
+	wall_finish_tool_requested.emit(selected_wall_style, selected_wall_swatch, selected_wall_accent)
+
+
+func _on_wall_colour_pressed(swatch_id: StringName, accent: bool) -> void:
+	if not visible or _paint_visible or selected_category != WALL_FINISH or (is_inside_tree() and not is_visible_in_tree()):
+		return
+	if accent:
+		selected_wall_accent = swatch_id
+	else:
+		selected_wall_swatch = swatch_id
+	_refresh_wall_styles()
+	wall_finish_tool_requested.emit(selected_wall_style, selected_wall_swatch, selected_wall_accent)
+
+
+## Shows a look as chosen (a card, or the tool's eyedropper).
+func select_wall_finish(style_id: StringName, swatch_id: StringName, accent_id: StringName) -> void:
+	if _content == null or _content.wall_style(style_id) == null:
+		return
+	selected_wall_style = style_id
+	selected_wall_swatch = swatch_id if swatch_id.is_empty() or _content.swatch(swatch_id) != null else &""
+	selected_wall_accent = accent_id if accent_id.is_empty() or _content.swatch(accent_id) != null else &""
+	_refresh_wall_styles()
+
+
 func _on_room_pressed(kind: int) -> void:
 	if not visible or _paint_visible or selected_category != ROOMS \
 			or (is_inside_tree() and not is_visible_in_tree()):
@@ -687,6 +857,12 @@ func _apply_category() -> void:
 	var floor_colours: Control = _content_node().get_node_or_null("FloorColours") as Control
 	if floor_colours != null:
 		floor_colours.visible = floors_shown
+	var wall_finish_shown: bool = not _paint_visible and mode == BUILD and selected_category == WALL_FINISH
+	for button: Button in wall_style_buttons.values():
+		button.visible = wall_finish_shown
+	var wall_colours: Control = _content_node().get_node_or_null("WallColours") as Control
+	if wall_colours != null:
+		wall_colours.visible = wall_finish_shown
 	var shown_groups: Array[StringName] = _room_groups(selected_category)
 	for group: StringName in group_buttons:
 		var button: Button = group_buttons[group]
@@ -761,7 +937,8 @@ func _room_groups(category: StringName) -> Array[StringName]:
 func _category_shown(category: StringName) -> bool:
 	if BUILD_CATEGORIES.has(category):
 		return (category != FLOOR or _floor_price > 0) and (category != ROOMS or _rooms_enabled) \
-			and (category != FLOORS or (_content != null and not _content.floor_styles().is_empty()))
+			and (category != FLOORS or (_content != null and not _content.floor_styles().is_empty())) \
+			and (category != WALL_FINISH or (_content != null and not _content.wall_styles().is_empty()))
 	if not BUY_CATEGORIES.has(category) or _content == null:
 		return false
 	for id: StringName in _ordered_ids:
@@ -1041,7 +1218,7 @@ func _prepare_layout() -> void:
 	var bar: HBoxContainer = content.get_node("Bar") as HBoxContainer
 	for side: StringName in [BUILD, BUY]:
 		var button: Button = _chip("Mode_%s" % side, "Build" if side == BUILD else "Buy", 18)
-		button.tooltip_text = "Build: walls, doorways, windows, floors, rooms, more floor space and paint" if side == BUILD \
+		button.tooltip_text = "Build: walls, doorways, windows, wall finishes, floors, rooms, more floor space and paint" if side == BUILD \
 			else "Buy: furniture and decor by room"
 		button.pressed.connect(_on_mode_pressed.bind(side))
 		mode_buttons[side] = button
@@ -1230,6 +1407,9 @@ func _visible_cards() -> Array[Button]:
 		if button.visible:
 			cards.append(button)
 	for button: Button in floor_style_buttons.values():
+		if button.visible:
+			cards.append(button)
+	for button: Button in wall_style_buttons.values():
 		if button.visible:
 			cards.append(button)
 	return cards
