@@ -48,8 +48,8 @@ func test_new_game_auto_order_buys_the_old_amounts_with_one_premium() -> void:
 	assert_true(cost > 88, "the default order pays a premium")
 	assert_eq(Economy.cash, TUNING.starting_cash - cost, "$88 at list price plus one premium")
 	var entries: Array[Dictionary] = _ingredient_entries(1)
-	# Every tuned ingredient with a target (frozen fries' is 0), plus the premium.
-	assert_eq(entries.size(), TUNING.morning_stock.size() - 1 + 1)
+	# Every everyday ingredient has a nonzero target, plus one premium entry.
+	assert_eq(entries.size(), TUNING.morning_stock.size() + 1)
 	var premiums: int = 0
 	for entry: Dictionary in entries:
 		if entry["note"] == "auto_reorder_premium":
@@ -170,7 +170,7 @@ func test_rows_say_when_no_dish_uses_an_ingredient_yet() -> void:
 		assert_false(bool(row["no_dish"]), "%s is in a dish" % row["name"])
 	var in_dishes: Dictionary[StringName, bool] = main.call("_dish_ingredients")
 	assert_true(in_dishes.has(&"potato"))
-	assert_false(in_dishes.has(&"frozen_fries"), "frozen fries: no dish uses them yet")
+	assert_true(in_dishes.has(&"frozen_fries"), "Bar fries now use them, even when not on today's menu")
 
 
 ## A dish that runs out is tagged on the HUD and named in the report with
@@ -208,6 +208,62 @@ func test_sold_out_dish_reaches_hud_and_report() -> void:
 	assert_eq((rows.get_child(0) as Label).text, report.low_stock[0])
 	(main.get_node("Overlay/EveningReport") as Control).emit_signal(&"next_day_pressed")
 	assert_false(tag.visible, "a new morning clears the tag")
+
+
+func test_bar_fries_morning_and_opening_orders_follow_menu_and_freezer() -> void:
+	# Exercise the actual session's two standing-order paths, not just plan().
+	for at_opening: bool in [false, true]:
+		for menu_on: bool in [false, true]:
+			for freezer_present: bool in [false, true]:
+				var main: Node = _bar_fries_shop(freezer_present)
+				assert_true(main.call("menu_set_enabled", &"bar_fries", menu_on))
+				assert_eq(Economy.stock.count(&"frozen_fries"), 0, "edits do not order stock")
+				if at_opening:
+					assert_true(Clock.sim.start_service())
+				else:
+					_next_morning()
+				assert_eq(Economy.stock.count(&"frozen_fries"), 12 if menu_on and freezer_present else 0,
+					"opening=%s menu=%s freezer=%s" % [at_opening, menu_on, freezer_present])
+				_close(main)
+
+
+func test_bar_fries_freezer_advice_and_menu_inspection_are_read_only() -> void:
+	var main: Node = _bar_fries_shop(false)
+	assert_true(main.call("menu_set_enabled", &"bar_fries", true))
+	var settings: MenuSettings = main.get("menu_settings")
+	var menu: Dictionary = settings.to_dict()
+	var stock: Dictionary = Economy.stock.to_dict()
+	var books: Dictionary = Economy.ledger.to_dict()
+	var random: Variant = GameState.call("_capture_save")
+	var details: Dictionary = main.call("menu_recipe_details")
+	assert_true(details[&"bar_fries"]["equipment"].has({"text": "Buy a freezer", "met": false}))
+	assert_true(details[&"bar_fries"]["equipment"].has({"text": "Fryer ready", "met": true}))
+	assert_false(details[&"fries"]["equipment"].has({"text": "Buy a freezer", "met": false}))
+	var rows: Array[Dictionary] = main.call("stock_rows")
+	for row: Dictionary in rows:
+		if row["id"] == &"frozen_fries":
+			assert_false(row["no_dish"], "the legacy no-dish note drops away automatically")
+	assert_eq(settings.to_dict(), menu)
+	assert_eq(Economy.stock.to_dict(), stock)
+	assert_eq(Economy.ledger.to_dict(), books)
+	assert_eq(GameState.call("_capture_save"), random)
+	assert_true(main.call("shop_buy", &"freezer", Vector2i(12, 3), 0))
+	details = main.call("menu_recipe_details")
+	assert_true(details[&"bar_fries"]["equipment"].has({"text": "Freezer ready", "met": true}))
+	assert_eq(Economy.stock.count(&"frozen_fries"), 0)
+
+
+func _bar_fries_shop(with_freezer: bool) -> Node:
+	var main: Node = _start(false)
+	var progress: OwnerProgress = main.get("owner_progress")
+	assert_false(progress.award_bonus(progress.threshold_for(2)).is_empty())
+	assert_true((main.get("menu_settings") as MenuSettings).set_owner_level(2))
+	(main.get("shop_editor") as ShopEditor).set_owner_level(2)
+	Economy.add_cash(10000, Ledger.SALE)
+	assert_true(main.call("shop_buy", &"fryer", Vector2i(9, 3), 0))
+	if with_freezer:
+		assert_true(main.call("shop_buy", &"freezer", Vector2i(12, 3), 0))
+	return main
 
 
 func _order_note(list_total: int) -> String:

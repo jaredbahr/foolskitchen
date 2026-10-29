@@ -34,9 +34,10 @@ func test_defaults_reproduce_the_old_restock_amounts() -> void:
 		assert_eq(settings.target(id), TUNING.morning_stock[id])
 	var plan: Dictionary = settings.plan(Stock.new(), _costs(), 10000, TUNING.auto_reorder_premium)
 	var bought: Dictionary = _bought(plan)
-	# Frozen fries (FK-099) are listed with a target of 0: never auto-bought.
-	assert_eq(TUNING.morning_stock[&"frozen_fries"], 0)
-	assert_eq(bought.size(), TUNING.morning_stock.size() - 1)
+	# Frozen fries are station-only: the starter menu never auto-buys them.
+	assert_false(TUNING.morning_stock.has(&"frozen_fries"))
+	assert_false(bought.has(&"frozen_fries"))
+	assert_eq(bought.size(), TUNING.morning_stock.size())
 	for id: StringName in TUNING.morning_stock:
 		assert_eq(int(bought.get(id, 0)), TUNING.morning_stock[id], "%s matches the old top-up" % id)
 	assert_eq(plan["list_total"], 88)
@@ -140,3 +141,75 @@ func test_restore_validates_before_changing_anything() -> void:
 			{"version": 1, "ingredients": {"bread": {"enabled": true, "target": 2.5}}}]:
 		assert_false(settings.from_dict(bad), "rejects %s" % [bad])
 		assert_eq(settings.to_dict(), before)
+
+
+func test_bar_fries_recipe_and_level_two_unlock() -> void:
+	var content: ContentDB = ContentDB.new()
+	assert_eq(content.load_all(), PackedStringArray())
+	var recipe: RecipeDef = content.recipe(&"bar_fries")
+	assert_eq(recipe.display_name, "Bar fries")
+	assert_eq(recipe.unlock_from, &"beer")
+	assert_eq(recipe.unlock_level, 2)
+	assert_eq(recipe.section, RecipeDef.Section.SIDES)
+	assert_eq(recipe.standard_price, 5)
+	assert_eq(recipe.theme_tags, [&"bar"] as Array[StringName])
+	assert_eq(recipe.ingredients.size(), 2)
+	assert_eq(recipe.ingredients[0].id, &"frozen_fries")
+	assert_eq(recipe.ingredients[1].id, &"oil")
+	assert_eq(recipe.steps.size(), 1)
+	assert_eq(recipe.steps[0].station_type, &"fryer")
+	assert_eq(recipe.steps[0].duration_ticks, 35)
+	assert_eq(content.recipe(&"fries").ingredients[0].id, &"potato")
+	assert_eq(RecipeDef.validate_unlocks(content.recipes()), PackedStringArray())
+	var menu: MenuSettings = MenuSettings.new(content.recipes(), 1)
+	assert_false(menu.set_enabled(&"bar_fries", true))
+	assert_true(menu.set_owner_level(2))
+	assert_true(menu.set_enabled(&"bar_fries", true))
+
+
+func test_station_target_follows_menu_use_and_preserves_saved_zero() -> void:
+	var settings: ReorderSettings = ReorderSettings.new(TUNING)
+	assert_false(TUNING.morning_stock.has(&"frozen_fries"))
+	assert_eq(settings.default_target(&"frozen_fries"), 12)
+	assert_false(settings.ids().has(&"frozen_fries"))
+	settings.set_in_use([&"frozen_fries"])
+	assert_true(settings.ids().has(&"frozen_fries"))
+	assert_true(settings.from_dict({"version": 1, "ingredients": {
+		"frozen_fries": {"enabled": true, "target": 0}}}))
+	assert_eq(settings.target(&"frozen_fries"), 0)
+	var restored: ReorderSettings = ReorderSettings.new(TUNING)
+	assert_true(restored.from_dict(JSON.parse_string(JSON.stringify(settings.to_dict()))))
+	assert_eq(restored.target(&"frozen_fries"), 0, "explicit old-save zero is a player choice")
+	settings.set_in_use([])
+	assert_false(settings.ids().has(&"frozen_fries"))
+
+
+func test_freezer_capacity_and_pending_orders_bound_the_plan_without_mutation() -> void:
+	var settings: ReorderSettings = ReorderSettings.new(TUNING)
+	settings.set_in_use([&"frozen_fries"])
+	var stock: Stock = Stock.new()
+	var costs: Dictionary = {&"frozen_fries": 1}
+	var kinds: Dictionary[StringName, int] = {&"frozen_fries": StorageSpace.FREEZER}
+	var capacity: Dictionary[int, int] = {StorageSpace.FREEZER: 0}
+	var absent: StorageSpace = StorageSpace.new(capacity, stock, {}, kinds)
+	assert_eq(_quantity(settings.plan(stock, costs, 100, 0.05, true, absent)), 0)
+	capacity[StorageSpace.FREEZER] = 12
+	var room: StorageSpace = StorageSpace.new(capacity, stock, {}, kinds)
+	assert_eq(_quantity(settings.plan(stock, costs, 100, 0.05, true, room)), 12)
+	var pending: Dictionary[StringName, int] = {&"frozen_fries": 5}
+	room = StorageSpace.new(capacity, stock, pending, kinds)
+	var before: Dictionary = settings.to_dict()
+	assert_eq(_quantity(settings.plan(stock, costs, 100, 0.05, true, room)), 7)
+	assert_eq(room.pending_of(&"frozen_fries"), 5)
+	assert_eq(settings.to_dict(), before)
+	assert_eq(stock.count(&"frozen_fries"), 0)
+	stock.add(&"frozen_fries", 12, 1)
+	room = StorageSpace.new(capacity, stock, {}, kinds)
+	assert_eq(_quantity(settings.plan(stock, costs, 100, 0.05, true, room)), 0)
+
+
+func _quantity(plan: Dictionary) -> int:
+	for line: Dictionary in plan["lines"]:
+		if line["id"] == &"frozen_fries":
+			return int(line["qty"])
+	return 0
