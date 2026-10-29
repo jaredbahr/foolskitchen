@@ -109,6 +109,29 @@ func test_real_departure_updates_mood_only_once_and_favourite_has_gentle_tip() -
 	assert_eq(sim.regular_tip(guest, guest.order), 1, "a modest drink keeps its visible favourite bonus")
 
 
+func test_sold_out_favourite_keeps_the_original_stocked_visit_kind() -> void:
+	var sim: RestaurantSim = _sim()
+	var food: RecipeDef = sim.menu[0]
+	var coffee: RecipeDef = load("res://data/recipes/coffee.tres") as RecipeDef
+	var profile: RegularProfile = _cast_member(sim)
+	profile.favourite_dish = coffee.id
+	sim.menu = [food, coffee]
+	sim.world.clock.day = profile.next_visit_day
+	assert_true(sim.world.clock.start_service())
+	sim.sold_out_today[coffee.id] = true
+	assert_eq(sim.visit_kinds(), [RecipeDef.FOOD] as Array[StringName])
+	var guest: CustomerAgent = sim.add_customer(sim.world.grid.entries()[0], _random(51),
+		TYPES.find_type(&"regular"))
+	assert_eq(guest.regular_profile, profile)
+	assert_eq(guest.visit_kind, RecipeDef.FOOD, "an unavailable usual must not replace a stocked visit")
+	guest.state = CustomerAgent.State.ORDERING
+	assert_true(guest._take_order(SimAgent.new()))
+	assert_not_null(guest.order, "the regular can order the stocked alternative")
+	if guest.order != null:
+		assert_eq(guest.order.recipe_id, food.id)
+	assert_ne(guest.leave_reason, &"out_of_stock")
+
+
 func _sim() -> RestaurantSim:
 	var content: ContentDB = ContentDB.new()
 	assert_true(content.load_all().is_empty())

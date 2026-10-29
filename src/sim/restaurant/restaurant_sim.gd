@@ -660,7 +660,10 @@ func _configure_regular_customer(customer: CustomerAgent) -> void:
 		if recipe.id == profile.favourite_dish:
 			customer.regular_favourite_available = true
 			customer.regular_favourite_label = recipe.display_name
-			customer.set_visit_kind(recipe.order_type, visit_tuning)
+			# A listed usual keeps its menu bonus, but must not replace a
+			# stocked visit with an order type that cannot currently be cooked.
+			if available_menu().has(recipe):
+				customer.set_visit_kind(recipe.order_type, visit_tuning)
 			break
 	customer.vibe_review_bonus += regulars.menu_happiness(profile, customer.regular_favourite_available)
 
