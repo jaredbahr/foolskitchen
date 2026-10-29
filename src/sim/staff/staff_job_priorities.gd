@@ -9,7 +9,7 @@ const JOBS: Array[StringName] = [&"cooking", &"serving", &"bussing", &"washing",
 const TASK_JOBS: Dictionary[StringName, StringName] = {
 	&"cook": &"cooking", &"take_order": &"serving", &"deliver": &"serving",
 	&"bus_table": &"bussing", &"wash": &"washing", &"clean_spot": &"cleaning",
-	&"pour": &"serving",
+	&"pour": &"serving", &"degrease": &"cleaning",
 	# Putting a delivery away (FK-099, #187): Cleaning for the cleaner, whose
 	# job it is while one is on the team; see ROLE_TASK_JOBS for servers.
 	&"put_away": &"cleaning",

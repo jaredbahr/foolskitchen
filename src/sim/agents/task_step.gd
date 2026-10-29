@@ -23,6 +23,8 @@ var ticks: int = 0
 ## Short text for the "why" readout, e.g. "fetching ingredients".
 var label: String = ""
 var on_done: Callable = Callable()
+## Optional live station factor. Receives the worker; neutral when absent.
+var work_rate: Callable = Callable()
 
 
 static func go_to_item(target_item_id: int, step_label: String = "", seat: bool = false) -> TaskStep:

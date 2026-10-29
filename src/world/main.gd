@@ -16,6 +16,7 @@ const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tr
 const SHOP_ZOOM: float = 12.0
 const SHOP_FRAME_CELLS: Vector2 = Vector2(14.0, 12.0)
 const TUNING: EconomyTuning = preload("res://data/balance/tier1_economy.tres")
+const MESS_TUNING: MessTuning = preload("res://data/balance/messes.tres")
 const CLEANLINESS_TUNING: CleanlinessTuning = preload("res://data/balance/cleanliness.tres")
 const REVIEW_TUNING: ReviewTuning = preload("res://data/balance/reviews.tres")
 const REVIEW_QUOTES: ReviewQuotes = preload("res://data/reviews/quotes.tres")
@@ -427,6 +428,10 @@ func start() -> void:
 	if not sim.configure_cleanliness(cleanliness, CLEANLINESS_TUNING):
 		push_error("Cannot initialize shop cleanliness")
 		return
+	if not sim.configure_messes(MESS_TUNING, GameState.rng(&"cleanliness")):
+		push_error("Cannot initialize everyday messes")
+		return
+	sim.plate_broken.connect(_on_plate_broken)
 	# The loaded layout can replace both world and view during _load_autosave().
 	($ShopView as ShopView).bind_cleanliness(cleanliness)
 	_debug_overlay.bind_cleanliness(cleanliness)
@@ -1674,6 +1679,10 @@ func run_ticks(ticks: int) -> void:
 
 
 ## Builds the evening report for `day` from the ledger and today's counters.
+func _on_plate_broken(cost: int) -> void:
+	Economy.add_cash(-cost, Ledger.BREAKAGES, "Replacement plate, delivered tomorrow morning")
+
+
 func build_report(day: int) -> DayReport:
 	var report := DayReport.new()
 	report.day = day
@@ -1689,6 +1698,9 @@ func build_report(day: int) -> DayReport:
 	report.dishes_sold = dishes_sold_today.duplicate()
 	report.customers_served = sim.served_today
 	report.customers_lost = sim.lost_today
+	if sim.mishaps != null:
+		report.mishaps_text = MishapText.daily(sim.mishaps.spills_today,
+			sim.mishaps.broken_plates_today, sim.mishaps.degreases_today)
 	report.record_dish_quality(sim.orders.orders_in_state(Order.State.DELIVERED))
 	for reason: StringName in sim.leave_reasons_today:
 		if reason != &"happy":

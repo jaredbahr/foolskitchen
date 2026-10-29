@@ -5,6 +5,7 @@ signal next_day_pressed
 
 const LOAN_INTRODUCTION: String = "The bank covered your shortfall. It'll take a share of your profits until it's paid back."
 const MONEY_LABELS: Dictionary = {
+	Ledger.BREAKAGES: "Breakages",
 	Ledger.BANK_LOAN: "Bank loan",
 	Ledger.LOAN_INTEREST: "Loan interest",
 	Ledger.LOAN_REPAYMENT: "Loan repayment",
@@ -93,6 +94,15 @@ func show_report(report: DayReport) -> void:
 	_cleanliness.text = "Cleanliness: %s" % report.cleanliness_label \
 		if not report.cleanliness_label.is_empty() else ""
 	_cleanliness.visible = not report.cleanliness_label.is_empty()
+	var mishaps: Label = get_node_or_null("Panel/Scroll/Content/Mishaps") as Label
+	if mishaps == null:
+		mishaps = Label.new()
+		mishaps.name = "Mishaps"
+		mishaps.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_cleanliness.get_parent().add_child(mishaps)
+		_cleanliness.get_parent().move_child(mishaps, _cleanliness.get_index() + 1)
+	mishaps.text = report.mishaps_text
+	mishaps.visible = not report.mishaps_text.is_empty()
 	_fill_reasons(report.leave_reasons)
 	_clear(_low_stock)
 	for line: String in report.low_stock:

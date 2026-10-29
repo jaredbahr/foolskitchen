@@ -53,6 +53,11 @@ const HEIGHTS: Dictionary[int, float] = {
 const CUSTOMER_COLORS: Array[Color] = [Color("c8743a"), Color("b89568"), Color("986357")]
 ## Reuse a curated placeholder swatch rather than introduce a one-off art colour.
 const DIRT_SWATCH: SwatchDef = preload("res://data/swatches/walnut.tres")
+const DIRT_LIGHT_SWATCH: SwatchDef = preload("res://data/swatches/cream.tres")
+## Existing palette ink outlines every mess; kit plate materials stay unchanged.
+const MESS_THEME: Theme = preload("res://src/ui/theme/main_theme.tres")
+const BROKEN_PLATE_SCENE: PackedScene = preload("res://assets/kenney/food/plate-broken.glb")
+const MESS_OUTLINE_SCALE: float = 1.1
 const CLEANER_SWATCH: SwatchDef = preload("res://data/swatches/sage.tres")
 const DIRT_OUTLINE: Array[Vector2] = [
 	Vector2(-0.20, -0.09), Vector2(-0.13, 0.14), Vector2(0.03, 0.20),
@@ -94,7 +99,8 @@ var _paint_materials: Dictionary[StringName, StandardMaterial3D] = {}
 var _paint_content: ContentDB
 var _cleanliness: CleanlinessState
 var _shared_dirt_mesh: ArrayMesh
-var _shared_dirt_material: StandardMaterial3D
+var _shared_spill_mesh: ArrayMesh
+var _mess_materials: Dictionary[Color, StandardMaterial3D] = {}
 var _wall_swatch_id: StringName = &""
 var _floor_swatch_id: StringName = &""
 var _floor_base_color: Color = Color("7d5533")
@@ -691,6 +697,7 @@ func _rebuild_finish_map() -> void:
 		shader.set_shader_parameter("finish_map", finish_texture)
 		shader.set_shader_parameter("map_origin", _finish_origin)
 		shader.set_shader_parameter("map_size", size)
+	_sync_dirt_spots()
 
 
 ## A colour's palette index: the shop's own colour is 0 (main only), the
@@ -726,6 +733,25 @@ func shop_wall_colour() -> Color:
 ## The authored floor brown (the floor material's own colour).
 func floor_base_color() -> Color:
 	return _floor_base_color
+
+
+## Match the floor shader's main colour, including either kind of paint preview.
+func drawn_floor_main_color(cell: Vector2i) -> Color:
+	var look: FloorFinishes.Finish = drawn_finish(cell)
+	if look.swatch == _floor_swatch_id:
+		var id: StringName = _preview_swatch_id if _preview_kind == &"floor" else _floor_swatch_id
+		return _paint_color(id, _floor_base_color)
+	if look.swatch.is_empty():
+		return _floor_base_color
+	return _paint_color(look.swatch, _floor_base_color)
+
+
+## Both tones are already in the game's palette. No fixed Walnut-on-Walnut dirt.
+func mess_fill_color(cell: Vector2i) -> Color:
+	var floor_luma: float = drawn_floor_main_color(cell).get_luminance()
+	return DIRT_LIGHT_SWATCH.color \
+		if absf(DIRT_LIGHT_SWATCH.color.get_luminance() - floor_luma) \
+			> absf(DIRT_SWATCH.color.get_luminance() - floor_luma) else DIRT_SWATCH.color
 
 
 ## Resolve the nearest visible shop mesh before using the floor plane. An item
@@ -909,6 +935,7 @@ func _apply_paint() -> void:
 			item_nodes[id].apply_paint(swatch.color, _paint_material(swatch_id, definition.placeholder_color))
 		else:
 			item_nodes[id].clear_paint()
+	_sync_dirt_spots()
 
 
 ## Selects the wall presentation without changing terrain or pathfinding.
@@ -1455,8 +1482,8 @@ func _remove_agent_visual(id: int) -> void:
 	agent_nodes.erase(id)
 
 
-## The pure state has no scene signals. A bounded reconciliation observes its
-## at-most-twelve spots without allocating replacement meshes every frame.
+## The pure state has no scene signals. Reconciliation retains unchanged nodes
+## and shared meshes/materials, while paint changes can recolour a live mess.
 func _sync_dirt_spots() -> void:
 	var wanted: Dictionary[Vector2i, bool] = {}
 	if world != null and _cleanliness != null:
@@ -1464,18 +1491,32 @@ func _sync_dirt_spots() -> void:
 			if world.grid.terrain(cell) != SimGrid.Terrain.FLOOR or not world.grid.is_walkable(cell):
 				continue
 			wanted[cell] = true
-			if dirt_nodes.has(cell):
-				continue
-			var node: MeshInstance3D = MeshInstance3D.new()
-			node.name = "Dirt_%d_%d" % [cell.x, cell.y]
-			node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			node.mesh = _dirt_mesh()
-			node.material_override = _dirt_material()
-			node.position = GridMath.cell_to_world(cell) + Vector3(0.0, 0.015, 0.0)
-			node.rotation.y = float(posmod(cell.x * 3 + cell.y, 4)) * PI * 0.5
-			node.set_meta("shop_geometry", true)
-			dirt_nodes[cell] = node
-			add_child(node)
+			var node: MeshInstance3D = dirt_nodes.get(cell) as MeshInstance3D
+			if node == null:
+				node = MeshInstance3D.new()
+				node.name = "Dirt_%d_%d" % [cell.x, cell.y]
+				node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+				node.position = GridMath.cell_to_world(cell) + Vector3(0.0, 0.015, 0.0)
+				node.rotation.y = float(posmod(cell.x * 3 + cell.y, 4)) * PI * 0.5
+				node.set_meta("shop_geometry", true)
+				dirt_nodes[cell] = node
+				add_child(node)
+			var kind: int = _cleanliness.floor_mess_kind(cell)
+			var mesh: ArrayMesh = _dirt_mesh() if kind == CleanlinessState.MessKind.DIRT else _spill_mesh()
+			node.mesh = mesh
+			node.material_override = _dirt_material(mess_fill_color(cell))
+			var outline: MeshInstance3D = node.get_node_or_null("Outline") as MeshInstance3D
+			if outline == null:
+				outline = MeshInstance3D.new()
+				outline.name = "Outline"
+				outline.position.y = -0.001
+				outline.scale = Vector3.ONE * MESS_OUTLINE_SCALE
+				outline.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+				outline.material_override = _dirt_material(MESS_THEME.get_color("font_color", "Label"))
+				node.add_child(outline)
+			outline.mesh = mesh
+			if int(node.get_meta("mess_kind", -1)) != kind:
+				_set_mess_kind(node, kind)
 	for cell: Vector2i in dirt_nodes.keys():
 		if wanted.has(cell):
 			continue
@@ -1500,15 +1541,58 @@ func _dirt_mesh() -> ArrayMesh:
 	return _shared_dirt_mesh
 
 
-func _dirt_material() -> StandardMaterial3D:
-	if _shared_dirt_material == null:
-		_shared_dirt_material = StandardMaterial3D.new()
-		_shared_dirt_material.albedo_color = DIRT_SWATCH.color
-		_shared_dirt_material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
-		_shared_dirt_material.roughness = 1.0
-		_shared_dirt_material.metallic_specular = 0.0
-		_shared_dirt_material.cull_mode = BaseMaterial3D.CULL_DISABLED
-	return _shared_dirt_material
+func _spill_mesh() -> ArrayMesh:
+	if _shared_spill_mesh != null:
+		return _shared_spill_mesh
+	var surface: SurfaceTool = SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for index: int in range(12):
+		for point: Vector2 in [Vector2.ZERO, Vector2.from_angle(float(index + 1) * TAU / 12.0),
+				Vector2.from_angle(float(index) * TAU / 12.0)]:
+			surface.set_normal(Vector3.UP)
+			surface.add_vertex(Vector3(point.x * 0.22, 0.0, point.y * 0.18))
+	_shared_spill_mesh = surface.commit()
+	return _shared_spill_mesh
+
+
+func _dirt_material(color: Color) -> StandardMaterial3D:
+	if not _mess_materials.has(color):
+		var material: StandardMaterial3D = StandardMaterial3D.new()
+		material.albedo_color = color
+		material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
+		material.roughness = 1.0
+		material.metallic_specular = 0.0
+		material.cull_mode = BaseMaterial3D.CULL_DISABLED
+		_mess_materials[color] = material
+	return _mess_materials[color]
+
+
+func _set_mess_kind(node: MeshInstance3D, kind: int) -> void:
+	node.set_meta("mess_kind", kind)
+	for child_name: String in ["BrokenPlate", "PlateContrast"]:
+		var old: Node = node.get_node_or_null(child_name)
+		if old != null:
+			node.remove_child(old)
+			old.free()
+	if kind != CleanlinessState.MessKind.BROKEN_PLATE:
+		return
+	# The white kit fragments also need contrast against a light spill fill.
+	var underlay: MeshInstance3D = MeshInstance3D.new()
+	underlay.name = "PlateContrast"
+	underlay.mesh = _dirt_mesh()
+	underlay.scale = Vector3.ONE * 0.7
+	underlay.position.y = 0.002
+	underlay.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	underlay.material_override = _dirt_material(MESS_THEME.get_color("font_color", "Label"))
+	node.add_child(underlay)
+	var holder: Node3D = Node3D.new()
+	holder.name = "BrokenPlate"
+	var model: Node3D = BROKEN_PLATE_SCENE.instantiate() as Node3D
+	model.scale = Vector3.ONE * ArtScale.FOOD_SCALE
+	holder.add_child(model)
+	var bounds: AABB = PropView._children_aabb(holder)
+	holder.position = Vector3(-bounds.get_center().x, 0.004 - bounds.position.y, -bounds.get_center().z)
+	node.add_child(holder)
 
 
 func _update_guest_mood(agent: SimAgent, body: Node3D, frame: AgentPresentationController.Frame) -> void:

@@ -15,6 +15,8 @@ static func apply(name: String, main: Node, extra_cook_skill: int = 3) -> bool:
 			or sim.cleanliness == null \
 			or not sim.cleanliness.use_rng(GameState.rng(&"cleanliness")):
 		return false
+	if sim.mishaps != null and not sim.mishaps.use_rng(GameState.rng(&"cleanliness")):
+		return false
 	match name:
 		"default":
 			return true

@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="StaffCatalogue" load_steps=10 format=3]
+[gd_resource type="Resource" script_class="StaffCatalogue" load_steps=11 format=3]
 
 [ext_resource type="Script" path="res://src/sim/staff/staff_catalogue.gd" id="1_catalogue"]
 [ext_resource type="Script" path="res://src/sim/staff/staff_trait.gd" id="2_trait"]
@@ -34,6 +34,15 @@ role_descriptions = Dictionary[StringName, String]({
 })
 food_patience_multiplier = 1.1
 
+[sub_resource type="Resource" id="Trait_clumsy"]
+script = ExtResource("2_trait")
+id = &"clumsy"
+display_name = "Clumsy"
+description = "A little accident-prone. No special effect in this role."
+role_descriptions = Dictionary[StringName, String]({
+&"server": "More likely to spill a meal while carrying it."
+})
+
 [sub_resource type="Resource" id="Starter_cook"]
 script = ExtResource("3_member")
 id = &"starter_cook"
@@ -48,6 +57,6 @@ role = &"server"
 
 [resource]
 script = ExtResource("1_catalogue")
-traits = Array[ExtResource("2_trait")]([SubResource("Trait_steady"), SubResource("Trait_quick"), SubResource("Trait_careful"), SubResource("Trait_cheerful")])
+traits = Array[ExtResource("2_trait")]([SubResource("Trait_steady"), SubResource("Trait_quick"), SubResource("Trait_careful"), SubResource("Trait_cheerful"), SubResource("Trait_clumsy")])
 starters = Array[ExtResource("3_member")]([SubResource("Starter_cook"), SubResource("Starter_server")])
 candidate_names = PackedStringArray("Robin", "Jamie", "Charlie", "Morgan", "Casey", "Taylor", "Jess", "Drew", "Lee", "Frankie", "Pat", "Blair")

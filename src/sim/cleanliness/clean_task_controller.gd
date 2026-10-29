@@ -11,6 +11,10 @@ var _cells_by_id: Dictionary[int, Vector2i] = {}
 ## A task that exhausted its retries waits for a layout change before reposting.
 var _suspended: Dictionary[Vector2i, bool] = {}
 var _tidying: bool = false
+var _mishaps_ref: WeakRef
+var _station_tasks: Dictionary[int, SimTask] = {}
+var _stations_by_id: Dictionary[int, int] = {}
+var _station_suspended: Dictionary[int, bool] = {}
 
 
 func _init(world: SimWorld, dirt: CleanlinessState, tuning: CleanlinessTuning) -> void:
@@ -31,6 +35,7 @@ func sync_spots() -> void:
 	var dirt: CleanlinessState = _dirt()
 	if _tidying or world == null or dirt == null or _tuning == null or not _tuning.is_valid():
 		return
+	sync_stations()
 	for cell: Vector2i in _tasks.keys():
 		if not dirt.has_spot(cell) or not _eligible(world, cell):
 			_retire_task(world, cell, &"target_gone")
@@ -45,7 +50,7 @@ func sync_spots() -> void:
 		# Restroom upkeep (FK-101) is a quick tidy-up, never called mess.
 		var restroom: bool = dirt.has_restroom_spot(cell) and not dirt.spots().has(cell)
 		var task: SimTask = SimTask.new(&"clean_spot", &"cleaner",
-			"Tidy the restroom" if restroom else "Mop up a floor spot")
+			"Tidy the restroom" if restroom else MishapText.cleaning(dirt.floor_mess_kind(cell)))
 		task.priority = 0
 		task.defer_to_higher_priority = true
 		task.steps.append(TaskStep.go_to_cell(cell, "walking to the restroom" if restroom else "walking to floor spot"))
@@ -55,12 +60,47 @@ func sync_spots() -> void:
 		_cells_by_id[task.id] = cell
 
 
+func bind_mishaps(state: MishapState) -> void:
+	_mishaps_ref = weakref(state) if state != null else null
+
+
+func station_task_for(item_id: int) -> SimTask:
+	return _station_tasks.get(item_id, null) as SimTask
+
+
+func sync_stations() -> void:
+	var world: SimWorld = _world()
+	var state: MishapState = _mishaps()
+	if _tidying or world == null or state == null:
+		return
+	for station_id: int in _station_tasks.keys():
+		if world.grid.item(station_id) == null or not state.is_greasy(station_id):
+			var previous: SimTask = _station_tasks[station_id]
+			_forget_station(station_id, previous.id)
+			world.board.cancel(previous, &"target_gone")
+	for station_id: int in state.greasy_stations(world.grid):
+		if _station_tasks.has(station_id) or _station_suspended.has(station_id):
+			continue
+		var item: PlacedItem = world.grid.item(station_id)
+		var definition: ItemDef = item.def as ItemDef
+		if definition == null or item.work_cells.is_empty():
+			continue
+		var task: SimTask = SimTask.new(&"degrease", &"cleaner", MishapText.degrease(definition.display_name))
+		task.priority = 0
+		task.defer_to_higher_priority = true
+		task.steps.append(TaskStep.go_to_item(item.id, "walking to the station"))
+		task.steps.append(TaskStep.work(state.tuning.degrease_work_ticks, "degreasing the station"))
+		world.board.post(task, world.now)
+		_station_tasks[station_id] = task
+		_stations_by_id[task.id] = station_id
+
+
 func task_for(cell: Vector2i) -> SimTask:
 	return _tasks.get(cell, null) as SimTask
 
 
 func active_task_count() -> int:
-	return _tasks.size()
+	return _tasks.size() + _station_tasks.size()
 
 
 ## Morning reset withdraws both open and claimed tasks before removing dirt.
@@ -70,6 +110,13 @@ func tidy_overnight() -> void:
 	if world != null:
 		for cell: Vector2i in _tasks.keys():
 			_retire_task(world, cell, &"overnight_tidy")
+		for station_id: int in _station_tasks.keys():
+			var task: SimTask = _station_tasks[station_id]
+			_forget_station(station_id, task.id)
+			world.board.cancel(task, &"overnight_tidy")
+	_station_tasks.clear()
+	_stations_by_id.clear()
+	_station_suspended.clear()
 	_tasks.clear()
 	_cells_by_id.clear()
 	_suspended.clear()
@@ -80,6 +127,13 @@ func tidy_overnight() -> void:
 
 
 func _on_task_completed(task: SimTask) -> void:
+	if _stations_by_id.has(task.id):
+		var station_id: int = _stations_by_id[task.id]
+		_forget_station(station_id, task.id)
+		var state: MishapState = _mishaps()
+		if state != null:
+			state.degrease(station_id)
+		return
 	if not _cells_by_id.has(task.id):
 		return
 	var cell: Vector2i = _cells_by_id[task.id]
@@ -90,6 +144,12 @@ func _on_task_completed(task: SimTask) -> void:
 
 
 func _on_task_failed(task: SimTask, _reason: StringName) -> void:
+	if _stations_by_id.has(task.id):
+		var station_id: int = _stations_by_id[task.id]
+		_forget_station(station_id, task.id)
+		if not _tidying:
+			_station_suspended[station_id] = true
+		return
 	if not _cells_by_id.has(task.id):
 		return
 	var cell: Vector2i = _cells_by_id[task.id]
@@ -101,6 +161,7 @@ func _on_task_failed(task: SimTask, _reason: StringName) -> void:
 
 func _on_cells_changed(_cells: Array[Vector2i]) -> void:
 	_suspended.clear()
+	_station_suspended.clear()
 	sync_spots()
 
 
@@ -113,6 +174,15 @@ func _retire_task(world: SimWorld, cell: Vector2i, reason: StringName) -> void:
 func _forget(cell: Vector2i, task_id: int) -> void:
 	_tasks.erase(cell)
 	_cells_by_id.erase(task_id)
+
+
+func _forget_station(station_id: int, task_id: int) -> void:
+	_station_tasks.erase(station_id)
+	_stations_by_id.erase(task_id)
+
+
+func _mishaps() -> MishapState:
+	return _mishaps_ref.get_ref() as MishapState if _mishaps_ref != null else null
 
 
 func _eligible(world: SimWorld, cell: Vector2i) -> bool:

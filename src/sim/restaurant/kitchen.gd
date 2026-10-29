@@ -36,6 +36,8 @@ var _plate_cycle_enabled: bool = false
 ## Retain bypass decisions until morning, including after a cook task completes.
 var _plate_bypassed_orders: Dictionary[int, bool] = {}
 var _tidying: bool = false
+var _carry_cells: Dictionary[int, Vector2i] = {}
+var _carry_tasks: Dictionary[int, int] = {}
 
 
 ## Uses explicitly supplied stock; a new restaurant never invents ingredients.
@@ -75,6 +77,7 @@ func advance() -> void:
 		var order: Order = sim.orders.get_order(int(task.payload["order_id"]))
 		if order != null and order.state == Order.State.PLACED:
 			sim.orders.set_state(order, Order.State.COOKING)
+	_advance_spills(sim)
 	_ensure_wash_task()
 
 
@@ -128,6 +131,8 @@ func tidy_overnight() -> void:
 	_wash_blocked = false
 	_wash_retry_tick = 0
 	_plate_bypassed_orders.clear()
+	_carry_cells.clear()
+	_carry_tasks.clear()
 	_plates.tidy_overnight()
 	_tidying = false
 	_notify_plates()
@@ -202,7 +207,11 @@ func _on_order_placed(order: Order) -> void:
 		if not stations.has(station.id):
 			stations.append(station.id)
 		task.steps.append(TaskStep.go_to_item(station.id, "walking to %s" % step.station_type))
-		task.steps.append(TaskStep.work(step.duration_ticks, String(step.station_type)))
+		var work: TaskStep = TaskStep.work(step.duration_ticks,
+			"cooking at the %s" % (station.def as ItemDef).display_name.to_lower(),
+			_station_worked.bind(station.id))
+		work.work_rate = _station_work_rate.bind(station.id)
+		task.steps.append(work)
 	task.payload["station_ids"] = stations
 	task.steps.append(TaskStep.go_to_work_cell(pass_item.id, 0, "plating at kitchen side"))
 	task.steps.append(TaskStep.wait_until(_take_clean_plate, "a clean plate"))
@@ -348,6 +357,114 @@ func _take_clean_plate(agent: SimAgent) -> bool:
 	return accepted
 
 
+## Rates are read only for authored recipe work at its held station. Fridge,
+## plating, walking and all unconfigured test worlds keep their exact cadence.
+func _station_work_rate(_agent: SimAgent, station_id: int) -> float:
+	var sim: RestaurantSim = _restaurant.get_ref() as RestaurantSim
+	return sim.mishaps.work_multiplier(station_id) if sim != null and sim.mishaps != null else 1.0
+
+
+func _station_worked(agent: SimAgent, station_id: int) -> bool:
+	var sim: RestaurantSim = _restaurant.get_ref() as RestaurantSim
+	var staff: StaffAgent = agent as StaffAgent
+	if sim == null or sim.mishaps == null or staff == null or staff.task == null:
+		return true
+	var done: Array = staff.task.payload.get("grease_steps", [])
+	if not done.has(staff.step_index):
+		done.append(staff.step_index)
+		staff.task.payload["grease_steps"] = done
+		sim.mishaps.station_used(station_id)
+		sim.clean_tasks.sync_stations()
+	return true
+
+
+## One chance per entered cell while food is genuinely in hand. Waiting at a
+## table or pass never rolls, and a disabled chance consumes no RNG draws.
+func _advance_spills(sim: RestaurantSim) -> void:
+	if sim.mishaps == null or sim.cleanliness == null:
+		return
+	for agent: SimAgent in sim.world.agents:
+		var staff: StaffAgent = agent as StaffAgent
+		if staff == null:
+			continue
+		var task: SimTask = staff.task
+		if task == null or task.kind != &"deliver" or task.state != SimTask.State.CLAIMED \
+				or task.claimed_by != staff.id or int(task.payload.get("carried_count", 0)) <= 0:
+			_carry_cells.erase(staff.id)
+			_carry_tasks.erase(staff.id)
+			continue
+		var moved: bool = _carry_tasks.get(staff.id, 0) == task.id \
+			and _carry_cells.get(staff.id, staff.cell) != staff.cell
+		_carry_cells[staff.id] = staff.cell
+		_carry_tasks[staff.id] = task.id
+		if not moved:
+			continue
+		var nearby: int = 0
+		var pass_item: PlacedItem = sim.world.grid.item(int(task.payload.get("pass_id", 0)))
+		var radius: int = sim.mishaps.tuning.pass_crowding_radius
+		if pass_item != null and GridMath.octile(staff.cell, pass_item.origin) <= radius:
+			for other: SimAgent in sim.world.agents:
+				if other != staff and GridMath.octile(other.cell, pass_item.origin) <= radius:
+					nearby += 1
+		if sim.mishaps.roll_spill(staff.trait_id == &"clumsy", nearby):
+			spill_carried_meal(staff)
+
+
+## Public for precise lifecycle tests; production calls only after a successful
+## per-cell roll. One spill removes one meal from a tray, preserving all others.
+func spill_carried_meal(staff: StaffAgent) -> bool:
+	var sim: RestaurantSim = _restaurant.get_ref() as RestaurantSim
+	if sim == null or sim.mishaps == null or sim.cleanliness == null or staff == null:
+		return false
+	var task: SimTask = staff.task
+	if task == null or task.kind != &"deliver" or task.state != SimTask.State.CLAIMED \
+			or int(task.payload.get("carried_count", 0)) <= 0:
+		return false
+	var order: Order = null
+	for order_id: int in task.payload.get("order_ids", []):
+		var candidate: Order = sim.orders.get_order(order_id)
+		if candidate != null and candidate.state == Order.State.READY:
+			order = candidate
+			break
+	if order == null:
+		return false
+	var broken: bool = sim.mishaps.roll_breakage()
+	var held: bool = _plates.has_order(order.id)
+	if held:
+		_plates.spill_order(order.id, broken)
+	elif broken:
+		broken = _plates.break_untracked_plate()
+	if held or broken:
+		_notify_plates()
+	if broken:
+		sim.plate_broken.emit(sim.mishaps.tuning.replacement_plate_cost)
+	sim.mishaps.record_spill(broken)
+	sim.cleanliness.add_spill(staff.cell, broken)
+	sim.clean_tasks.sync_spots()
+	var ids: Array = task.payload.get("order_ids", []).duplicate()
+	ids.erase(order.id)
+	task.payload["order_ids"] = ids
+	if int(task.payload.get("order_id", 0)) == order.id:
+		for remaining_id: int in ids:
+			var remaining: Order = sim.orders.get_order(remaining_id)
+			if remaining != null and remaining.state == Order.State.READY:
+				task.payload["order_id"] = remaining_id
+				break
+	task.payload["carried_count"] = maxi(0, int(task.payload["carried_count"]) - 1)
+	if int(task.payload["carried_count"]) == 0:
+		_tasks.erase(task.id)
+		sim.world.board.cancel(task, &"meal_spilled")
+		staff.let_go_if_withdrawn(sim.world)
+	# Same customer, same ticket and original wait budget; real ingredients and
+	# preparation are required again, but payment still occurs only on delivery.
+	order.quality = 0.0
+	order.quality_breakdown = null
+	sim.orders.set_state(order, Order.State.PLACED)
+	_on_order_placed(order)
+	_ensure_wash_task()
+	return true
+
+
 func _on_order_ready(order: Order) -> void:
 	var sim: RestaurantSim = _restaurant.get_ref() as RestaurantSim
 	if sim == null:
@@ -480,6 +597,10 @@ func _serve_order(agent: SimAgent, order_id: int) -> bool:
 	var sim: RestaurantSim = _restaurant.get_ref() as RestaurantSim
 	if staff == null or staff.task == null or sim == null:
 		return false
+	# A spilled meal can be READY again before this old route step runs.
+	# Only the trip that actually picked it up may hand it to the guest.
+	if staff.task.kind == &"deliver" and not staff.task.payload.get("order_ids", []).has(order_id):
+		return true
 	var order: Order = sim.orders.get_order(order_id)
 	if order == null or order.state != Order.State.READY:
 		return true  # A departing guest only loses their own meal and plate.
