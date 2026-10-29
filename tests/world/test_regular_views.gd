@@ -10,7 +10,7 @@ func after_each() -> void:
 		_view.free()
 
 
-func test_fixed_model_cap_and_star_follow_drawn_person_without_draws() -> void:
+func test_fixed_model_clothing_and_star_follow_drawn_person_without_draws() -> void:
 	var world: SimWorld = SimWorld.new(SimGrid.new(Vector2i(8, 8)))
 	var sim: RestaurantSim = RestaurantSim.new()
 	sim.world = world
@@ -40,11 +40,19 @@ func test_fixed_model_cap_and_star_follow_drawn_person_without_draws() -> void:
 	assert_eq(icon.greeting.text, "The usual!")
 	assert_true(icon.greeting.visible)
 	assert_true(icon.position.y > _view.mood_nodes[guest.id].position.y)
-	var cap: Node3D = body.get_node("ModelPivot").find_child("CourierCap", true, false) as Node3D
-	assert_true(cap != null and cap.visible)
-	var crown: MeshInstance3D = cap.get_node("Crown") as MeshInstance3D
-	assert_eq((crown.material_override as StandardMaterial3D).albedo_color, PersonView.REGULAR_SWATCHES[&"sage"].color)
-	assert_ne(crown.material_override, crown.mesh.surface_get_material(0), "regular tint never changes shared kit/cap material")
+	var body_mesh: MeshInstance3D = body._model.find_child("body-mesh", true, false) as MeshInstance3D
+	var head_mesh: MeshInstance3D = body._model.find_child("head-mesh", true, false) as MeshInstance3D
+	assert_not_null(body_mesh.get_surface_override_material(0))
+	assert_null(head_mesh.get_surface_override_material(0), "head and hair keep the kit material")
+	var source: StandardMaterial3D = body_mesh.mesh.surface_get_material(0) as StandardMaterial3D
+	var material: StandardMaterial3D = body_mesh.get_surface_override_material(0) as StandardMaterial3D
+	var tinted: Image = material.albedo_texture.get_image()
+	var original: Image = source.albedo_texture.get_image()
+	assert_ne(material, source, "regular tint never changes the shared kit material")
+	assert_eq(tinted.get_pixel(336, 388), original.get_pixel(336, 388), "light skin ramp stays untouched")
+	assert_eq(tinted.get_pixel(400, 388), original.get_pixel(400, 388), "dark skin ramp stays untouched")
+	assert_ne(tinted.get_pixel(368, 260), original.get_pixel(368, 260), "authored shirt ramp changes")
+	assert_false(body._cap.visible, "a fixed shirt tint needs no second hat through the bun")
 	var original_model: Object = body._model
 	world.now = 2 * SimClock.TICKS_PER_SECOND
 	for frame: int in 3:
@@ -59,13 +67,13 @@ func test_fixed_model_cap_and_star_follow_drawn_person_without_draws() -> void:
 	assert_false(_view.regular_nodes.has(guest.id))
 	assert_false(is_instance_valid(icon))
 	assert_eq(body.model_name(), PersonPresentation.model_for(&"customer", guest.id))
-	assert_false(cap.visible)
-	assert_null(crown.material_override, "removing a regular restores the shared cap materials")
+	var plain_body: MeshInstance3D = body._model.find_child("body-mesh", true, false) as MeshInstance3D
+	assert_null(plain_body.get_surface_override_material(0), "removing a regular restores the imported outfit")
 	_view.show_world(null)
 	assert_true(_view.regular_nodes.is_empty())
 
 
-func test_all_authored_regular_looks_use_the_fixed_model_and_private_cap_tint() -> void:
+func test_all_authored_regular_looks_use_the_fixed_model_and_private_clothing_tint() -> void:
 	var tuning: RegularsTuning = load("res://data/regulars/cast.tres") as RegularsTuning
 	var packed: PackedScene = load("res://assets/people/person.tscn") as PackedScene
 	var person: PersonView = packed.instantiate() as PersonView

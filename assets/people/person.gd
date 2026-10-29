@@ -14,6 +14,22 @@ const REGULAR_SWATCHES: Dictionary[StringName, SwatchDef] = {
 	&"cream": preload("res://data/swatches/cream.tres"),
 }
 
+## Clothing ramps measured from each kit body-mesh's torso UVs. None is a
+## skin ramp; the separate head mesh always keeps its imported material.
+const REGULAR_CLOTHING_RAMPS: Dictionary[StringName, Rect2i] = {
+	&"character-female-a": Rect2i(480, 256, 32, 128),
+	&"character-female-c": Rect2i(352, 256, 32, 128),
+	&"character-female-d": Rect2i(96, 384, 32, 128),
+	&"character-female-e": Rect2i(288, 384, 32, 128),
+	&"character-female-f": Rect2i(160, 256, 32, 128),
+	&"character-male-a": Rect2i(96, 256, 32, 128),
+	&"character-male-c": Rect2i(352, 256, 32, 128),
+	&"character-male-d": Rect2i(32, 384, 32, 128),
+	&"character-male-e": Rect2i(160, 256, 32, 128),
+	&"character-male-f": Rect2i(96, 256, 32, 128),
+}
+static var _regular_materials: Dictionary[StringName, Material] = {}
+
 var _regular_model: StringName = &""
 var _regular_tint: StringName = &""
 var _model: Node3D
@@ -84,11 +100,12 @@ func set_look(value: StringName, id: int = 0, kind: StringName = &"regular") -> 
 	if PersonPresentation.has_chef_hat(role) and not _attach_to_head(_hat, "ChefHatAttachment"):
 		_clear_model()
 		return false
-	if (PersonPresentation.has_courier_cap(role) or regular) and not _attach_to_head(_cap, "CourierCapAttachment"):
+	if PersonPresentation.has_courier_cap(role) and not _attach_to_head(_cap, "CourierCapAttachment"):
 		_clear_model()
 		return false
-	if regular:
-		_tint_regular_cap()
+	if regular and not _apply_regular_clothing(desired_model):
+		_clear_model()
+		return false
 	_model_name = desired_model
 	var played: bool = _play_requested_clip()
 	if played and _clip == &"sit" and seated_time > 0.0:
@@ -96,10 +113,10 @@ func set_look(value: StringName, id: int = 0, kind: StringName = &"regular") -> 
 	return played
 
 
-## Fixed guest appearance survives changing runtime agent IDs. The cap reuses
-## the delivery cap geometry with private materials in existing swatch colours.
+## Fixed guest appearance survives changing runtime agent IDs. Only a private
+## clothing-colormap copy is tinted; faces, hands and hair keep kit colours.
 func set_regular_look(model: StringName = &"", tint: StringName = &"") -> bool:
-	if not model.is_empty() and (not PersonPresentation.HEAD_TOPS.has(model) or not REGULAR_SWATCHES.has(tint)):
+	if not model.is_empty() and (not REGULAR_CLOTHING_RAMPS.has(model) or not REGULAR_SWATCHES.has(tint)):
 		return false
 	if model == _regular_model and tint == _regular_tint:
 		return true
@@ -115,15 +132,25 @@ func regular_tint() -> StringName:
 	return _regular_tint
 
 
-func _tint_regular_cap() -> void:
-	var swatch: SwatchDef = REGULAR_SWATCHES[_regular_tint]
-	for child: Node in _cap.get_children():
-		var mesh: MeshInstance3D = child as MeshInstance3D
-		if mesh == null:
+func _apply_regular_clothing(model: StringName) -> bool:
+	var meshes: Array[Node] = _model.find_children("*", "MeshInstance3D", true, false)
+	for node: Node in meshes:
+		var mesh: MeshInstance3D = node as MeshInstance3D
+		if mesh.name != &"body-mesh":
 			continue
-		var material: StandardMaterial3D = mesh.mesh.surface_get_material(0).duplicate() as StandardMaterial3D
-		material.albedo_color = swatch.color
-		mesh.material_override = material
+		var key: StringName = StringName(String(model) + ":" + String(_regular_tint))
+		var material: Material = _regular_materials.get(key)
+		if material == null:
+			var recolors: Array[Dictionary] = [{"rect": REGULAR_CLOTHING_RAMPS[model],
+				"color": REGULAR_SWATCHES[_regular_tint].color}]
+			material = _uniform_material(mesh.mesh.surface_get_material(0), recolors)
+			if material == null:
+				return false
+			_regular_materials[key] = material
+		for surface: int in mesh.mesh.get_surface_count():
+			mesh.set_surface_override_material(surface, material)
+		return true
+	return false
 
 
 func _attach_to_head(piece: Node3D, attachment_name: String) -> bool:
@@ -388,10 +415,6 @@ func _play_requested_clip() -> bool:
 
 
 func _clear_model() -> void:
-	if _cap != null:
-		for child: Node in _cap.get_children():
-			if child is MeshInstance3D:
-				(child as MeshInstance3D).material_override = null
 	for piece: Node3D in [_hat, _cap]:
 		if piece != null:
 			piece.visible = false

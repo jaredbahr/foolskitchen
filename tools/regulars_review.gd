@@ -149,7 +149,7 @@ func _assert_recognition() -> void:
 		return
 	print("REGULARS_REVIEW ", JSON.stringify({"stage": "recognition", "fixture": _fixture_description(),
 		"name": _fixture_profile.display_name, "model": String(person.model_name()),
-		"cap_tint": String(person.regular_tint()), "greeting": indicator.greeting.text,
+		"clothing_tint": String(person.regular_tint()), "greeting": indicator.greeting.text,
 		"star_pixel": [star_pixel.x, star_pixel.y], "inspector": details.text,
 		"world_tick": world.now, "use_saves": use_saves}))
 

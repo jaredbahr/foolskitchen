@@ -2162,7 +2162,7 @@ eight lifetime identities, including those who stop coming; departed names are
 retained in the saved history and never silently reassigned.
 
 Only an actual promotion asks the session's lazy `GameState.rng(&"regulars")`
-provider for a stream. Names, cap colours, greetings and the next visit date are
+provider for a stream. Names, clothing colours, greetings and the next visit date are
 seeded; each identity gets a fixed approved Mini Character model. Returning
 regulars replace ordinary solo Regular arrivals when due, at most once per day,
 rescheduling 2–4 days later. A shortage of eligible arrivals delays a visit rather
@@ -2186,7 +2186,9 @@ autosave writes them. New promotions and menu edits never save immediately.
 The Menu marks active favourites; inspection uses `RegularText` for dish names,
 seat coordinates and plain mood words. ShopView attaches a reused star/name/
 greeting billboard to the drawn person, and PersonView uses their fixed model
-plus a small existing cap in an approved swatch. Greeting lifetime is two sim
+plus a private copy of its clothing colormap tinted in an approved swatch.
+The torso UV ramp is measured per model; skin ramps and the separate head mesh
+keep their original materials. Greeting lifetime is two sim
 seconds, so pausing also pauses it. None of these presenters advances the sim.
 
 Validation: pure cast tests cover gates, learning, cap, calendar and RNG/save
