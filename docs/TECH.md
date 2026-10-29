@@ -933,11 +933,25 @@ an active edit/panel/selection first, or opens Settings when none is active.
   when their path leads through the door, guests never
   (`ShopView._sync_back_doors`, a pure function of where people are drawn;
   no sim effect). Delivery people, crates and carrying: 2.3j.
-- **Floor expansion (FK-080)** builds on this: grid lines keep their keys,
-  so an outer-face window becomes an interior window when the shell cell
-  behind it turns into floor (see the next section).
+- **Openings need a wall (#212).** `WallRules.has_continuing_wall` requires
+  a WINDOW or DOORWAY to have a neighbouring WALL terrain cell or an interior
+  WALL segment continuing along its line. Full-cell dividers and shell cells
+  cut by an opening count as wall terrain, preserving existing wall runs.
+  New unsupported openings are refused;
+  removing their last wall support takes existing frames down with their
+  half-price refund. Perpendicular thin wall segments and neighbouring
+  interior openings alone are not support.
+  Loading older saves stages every wall first, then drops only unsupported
+  opening rows with a plain load note; the shop and its cash remain intact.
+  Floor expansion uses the same rule (see the next section).
 - Captures: `tools/screenshot.sh --walls=place` (a dragged run with ghost and
   cost) and `--walls=room` (a built room; add `--quarter=0` for Cutaway).
+  For the expansion regression, run `OPENINGS_REVIEW_STAGE=before` or `after`
+  with `bash tools/screenshot.sh --scene=res://tools/openings_review.tscn
+  --speed=0 --frames=30 --quarter=2`. This unsaved fixture uses the production morning
+  commands with $2,000 extra cash and wall decor unlocked, showing the
+  supported window, back door and decor before expansion, then their removal
+  and refund after opening that wall.
 
 ### Floor expansion (FK-080)
 - **Lot (data).** `ShopLayout.lot_west`, `lot_east`, `lot_north` say how many
@@ -975,15 +989,19 @@ an active edit/panel/selection first, or opens Settings when none is active.
   MORNING/CLOSED only. Adding takes the unbuilt lot cells of the rectangle
   (starting building, bought cells and the lot's wall ring are skipped; a cell
   beyond the lot refuses), and every new floor cell must then be walkable from
-  the street through the walls as built (an outer window that turned interior
-  can seal a pocket: "New floor must join the shop"). Removing may not cut off
+  the street through the walls as built (a window still supported by remaining
+  wall can seal a pocket: "New floor must join the shop"). Removing may not cut off
   bought floor that is reachable now. Removing takes only bought cells: furniture on any cell that would
   stop being floor refuses ("Clear the furniture off that floor first"), then a
   lost seat, work spot or door uses the wall cut-off sentences, then the usual
   walls/dining/cut-off checks run on a preview (people standing there count).
   Wall segments that would no longer fit (for example an outer window now
-  facing the wing's new wall) are taken down and refunded at the furniture
-  rate. Floor costs `floor_cell_price` per cell, refunds half, under
+  facing the wing's new wall), and window/doorway frames with no continuing
+  wall along their line, are taken down and refunded at the furniture rate.
+  This includes a back door whose supporting shell opens; selling the floor
+  later does not buy the refunded door back. The Expand summary names removed
+  openings and wall decor with their refund. Undo restores their exact
+  segments, finishes, hung decor and cash. Floor costs `floor_cell_price` per cell, refunds half, under
   `Ledger.UPGRADES`; every cell that stops being floor (bought cells and
   shell cells that close again) also refunds `floor(price / 2)` of its floor
   type (D25, `EditCheck.floor_finish_refund`, part of `refund`). The terrain change is one `set_terrains` batch (one

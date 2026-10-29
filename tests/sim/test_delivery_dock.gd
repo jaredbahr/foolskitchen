@@ -695,15 +695,69 @@ func test_an_older_shop_with_a_wide_back_door_is_told_it_has_one() -> void:
 		WallRules.BACK_DOOR_WIDTH, "widening them further")
 
 
-func test_selling_floor_cannot_bring_back_a_second_back_door() -> void:
-	_back_door()
+func test_selling_floor_keeps_the_new_back_door_after_expansion_refunds_the_old_one() -> void:
+	var grid: SimGrid = _sim.world.grid
+	var ledger: Ledger = Ledger.new()
+	ledger.cash = 1000
+	var record: Callable = func(amount: int, category: StringName, note: String = "") -> void:
+		ledger.record(1, amount, category, note)
+	_editor = ShopEditor.new(_sim, _content, ShopEditBooks.new(_can_spend, record), LAYOUT)
+	var history: ShopEditHistory = ShopEditHistory.new(_editor, grid)
+	var old: Vector3i = SimGrid.edge_between(DROP, DOOR)
+	assert_true(history.apply_segments({old: SimGrid.Segment.DOORWAY} as Dictionary[Vector3i, int]),
+		_editor.last_check.why)
+	var original: Dictionary = _editor.to_dict()
+	var before_expansion: int = ledger.cash
+	assert_eq(before_expansion, 985)
 	var wing: Array[Vector2i] = []
 	for y: int in range(5, 10):
 		wing.append(Vector2i(14, y))
-	assert_true(_editor.apply_floor(wing, true), _editor.last_check.why)
-	assert_eq(WallRules.back_door_count(_sim.world.grid), 0, "now an interior doorway")
+	var expansion: EditCheck = _editor.check_floor(wing, true)
+	assert_true(expansion.ok, expansion.why)
+	assert_eq(expansion.refund, 7, "the old back door refunds half its $15 price")
+	assert_true(history.apply_floor(wing, true), _editor.last_check.why)
+	assert_eq(ledger.cash, before_expansion - 75 + 7)
+	assert_eq(grid.segment(old), SimGrid.Segment.NONE, "the old doorway frame comes down with its wall")
+	assert_eq(WallRules.back_door_count(grid), 0)
+	assert_eq(WallRules.delivery_cell(grid), grid.entries()[0], "deliveries use the street until another back door is bought")
 	var other: Vector3i = SimGrid.edge_between(Vector2i(12, 2), Vector2i(13, 2))
-	assert_true(_editor.apply_segments({other: SimGrid.Segment.DOORWAY} as Dictionary[Vector3i, int]),
+	assert_true(history.apply_segments({other: SimGrid.Segment.DOORWAY} as Dictionary[Vector3i, int]),
 		_editor.last_check.why)
-	assert_eq(_editor.check_floor(wing, false).why, WallRules.ONE_BACK_DOOR,
-		"selling the wing would make the old doorway a second back door")
+	var before_sale: Dictionary = _editor.to_dict()
+	var cash_before_sale: int = ledger.cash
+	assert_eq(cash_before_sale, 902)
+	var sale: EditCheck = _editor.check_floor(wing, false)
+	assert_true(sale.ok, sale.why)
+	assert_eq(sale.refund, 35, "selling five floor tiles never buys the refunded doorway back")
+	assert_true(history.apply_floor(wing, false), _editor.last_check.why)
+	assert_eq(ledger.cash, cash_before_sale + 35)
+	assert_eq(grid.segment(old), SimGrid.Segment.NONE)
+	assert_eq(grid.segment(other), SimGrid.Segment.DOORWAY)
+	assert_eq(WallRules.back_door_count(grid), 1)
+	assert_eq(WallRules.delivery_cell(grid), Vector2i(12, 2))
+	var sold: Dictionary = _editor.to_dict()
+	assert_true(history.undo(), history.last_refusal)
+	assert_eq(_editor.to_dict(), before_sale)
+	assert_eq(ledger.cash, cash_before_sale)
+	assert_eq(WallRules.back_door_count(grid), 1)
+	assert_eq(WallRules.delivery_cell(grid), Vector2i(12, 2))
+	assert_true(history.redo(), history.last_refusal)
+	assert_eq(_editor.to_dict(), sold)
+	assert_eq(ledger.cash, cash_before_sale + 35)
+	assert_true(history.undo(), history.last_refusal)
+	assert_true(history.undo(), history.last_refusal)
+	assert_eq(WallRules.back_door_count(grid), 0)
+	assert_eq(WallRules.delivery_cell(grid), grid.entries()[0])
+	assert_true(history.undo(), history.last_refusal)
+	assert_eq(_editor.to_dict(), original, "undoing the expansion restores only its original back door")
+	assert_eq(ledger.cash, before_expansion)
+	assert_eq(WallRules.back_door_count(grid), 1)
+	assert_eq(WallRules.delivery_cell(grid), DROP)
+	assert_true(history.redo(), history.last_refusal)
+	assert_eq(WallRules.back_door_count(grid), 0)
+	assert_true(history.redo(), history.last_refusal)
+	assert_true(history.redo(), history.last_refusal)
+	assert_eq(_editor.to_dict(), sold)
+	assert_eq(ledger.cash, cash_before_sale + 35)
+	assert_eq(WallRules.back_door_count(grid), 1)
+	assert_eq(WallRules.delivery_cell(grid), Vector2i(12, 2))
