@@ -11,7 +11,7 @@ extends RefCounted
 ## WALL_FINISH is the Wall finish tool (D26): click a wall face, drag along
 ## walls (or Shift-click a room) to put a finish up; Alt-click copies a look.
 ## HANG holds a wall item (D26) to hang, bought or moved, on the hovered face.
-enum State { INACTIVE, IDLE, MOVE, BUY, WALLS, FLOOR, ROOMS, FLOORS, WALL_FINISH, HANG }
+enum State { INACTIVE, IDLE, MOVE, BUY, WALLS, FLOOR, ROOMS, FLOORS, WALL_FINISH, HANG, SELECT, BLUEPRINT }
 ## What a click on placed furniture does while IDLE (FK-085, Sims-style):
 ## HAND picks it up to move or rotate, EYEDROPPER starts buying another of
 ## it (in its colour), SELL sells it straight away.
@@ -84,6 +84,15 @@ var _wall_finish_command: Callable
 var _hang_command: Callable
 var _rehang_command: Callable
 var _take_down_command: Callable
+
+## Player library selection and group stamp. Selection never edits the shop.
+var blueprint_library: BlueprintLibrary
+var selected_blueprint: Blueprint
+var blueprint_selection: Array[int] = []
+var blueprint_dragging: bool = false
+var blueprint_start: Vector2i = SimGrid.NO_CELL
+var blueprint_end: Vector2i = SimGrid.NO_CELL
+var _stamp_command: Callable
 
 var _editor: ShopEditor
 var _world: SimWorld
@@ -179,7 +188,7 @@ func is_active() -> bool:
 
 
 func has_ghost() -> bool:
-	return state == State.MOVE or state == State.BUY
+	return state == State.MOVE or state == State.BUY or state == State.BLUEPRINT
 
 
 ## A valid item may still start a red ghost (for example a held reservation).
@@ -205,7 +214,7 @@ func _pick_up(item_id: int, clicked_cell: Vector2i, keep_offset: bool) -> bool:
 		current_check = EditCheck.new(false, "Pick an occupied tile of this item")
 		changed.emit()
 		return false
-	state = State.MOVE
+	_clear_ghost(State.MOVE)
 	selected_item_id = item_id
 	selected_definition = placed.def as ItemDef
 	origin = placed.origin
@@ -224,7 +233,7 @@ func begin_buy(def_id: StringName, cell: Vector2i) -> bool:
 		current_check = EditCheck.new(false, "Unknown item definition")
 		changed.emit()
 		return false
-	state = State.BUY
+	_clear_ghost(State.BUY)
 	selected_item_id = -1
 	selected_definition = definition
 	buy_swatch_id = &""
@@ -278,6 +287,8 @@ func commit() -> bool:
 	var answer: Variant
 	if state == State.MOVE:
 		answer = _move_command.call(selected_item_id, origin, quarter_turns)
+	elif state == State.BLUEPRINT:
+		answer = _stamp_command.call(selected_blueprint, origin, quarter_turns)
 	elif not buy_swatch_id.is_empty():
 		answer = _buy_command.call(selected_definition.id, origin, quarter_turns, buy_swatch_id)
 	else:
@@ -343,7 +354,7 @@ func cancel_ghost() -> bool:
 		_recheck_wall_finish()
 		changed.emit()
 	elif has_ghost() or state == State.WALLS or state == State.FLOOR or state == State.ROOMS or state == State.FLOORS \
-			or state == State.WALL_FINISH or state == State.HANG:
+			or state == State.WALL_FINISH or state == State.HANG or state == State.SELECT:
 		_clear_ghost(State.IDLE)
 		changed.emit()
 	else:
@@ -478,6 +489,8 @@ func refresh() -> void:
 		_recheck_wall_finish()
 	elif state == State.HANG:
 		_recheck_hang()
+	elif state == State.SELECT:
+		_refresh_blueprint_selection()
 	elif state == State.IDLE:
 		_recheck_hover()
 	if before != _comparable_state():
@@ -542,7 +555,9 @@ func presentation_state() -> Dictionary:
 		"wall_faces": wall_finish_proposal(), "wall_face_dragging": wall_face_dragging,
 		"wall_finishes": current_check.wall_finishes.duplicate() if state == State.WALL_FINISH and current_check.ok else {},
 		"hang_definition": hang_definition, "hang_anchor": hang_anchor, "hang_moving": hang_moving,
-		"hover_anchor": hover_anchor}
+		"hover_anchor": hover_anchor,
+		"blueprint_placements": blueprint_placements(), "blueprint_visuals": blueprint_visuals(), "blueprint_selection": blueprint_selection.duplicate(),
+		"blueprint_selection_cells": blueprint_selection_cells(), "blueprint_box": blueprint_box()}
 
 
 ## presentation_state() with the floor looks by value (cell ->
@@ -550,6 +565,12 @@ func presentation_state() -> Dictionary:
 ## count as a change.
 func _comparable_state() -> Dictionary:
 	var snapshot: Dictionary = presentation_state()
+	# Placement resources are newly projected per snapshot; compare values.
+	var placement_values: Array[Dictionary] = []
+	for placement: ShopPlacement in snapshot["blueprint_placements"]:
+		placement_values.append({"id": placement.item_id, "origin": placement.origin,
+			"turns": placement.quarter_turns, "swatch": placement.swatch_id})
+	snapshot["blueprint_placements"] = placement_values
 	var values: Dictionary = {}
 	var finishes: Dictionary = snapshot["floors_finishes"]
 	for cell: Variant in finishes:
@@ -583,7 +604,9 @@ func _can_interact() -> bool:
 
 
 func _recheck_ghost() -> void:
-	if state == State.MOVE:
+	if state == State.BLUEPRINT:
+		current_check = _editor.check_stamp(selected_blueprint, origin, quarter_turns)
+	elif state == State.MOVE:
 		current_check = _editor.check_move(selected_item_id, origin, quarter_turns)
 	elif state == State.BUY:
 		current_check = _editor.check_buy(selected_definition.id, origin, quarter_turns)
@@ -601,6 +624,11 @@ func _refresh_committed() -> void:
 
 func _clear_ghost(next_state: State) -> void:
 	state = next_state
+	selected_blueprint = null
+	blueprint_selection.clear()
+	blueprint_dragging = false
+	blueprint_start = SimGrid.NO_CELL
+	blueprint_end = SimGrid.NO_CELL
 	_floor_checks.clear()
 	selected_item_id = -1
 	selected_definition = null
@@ -1575,3 +1603,152 @@ func _disconnect_sources() -> void:
 		_grid.cells_changed.disconnect(_on_cells_changed)
 	if _clock != null and _clock.phase_changed.is_connected(_on_phase_changed):
 		_clock.phase_changed.disconnect(_on_phase_changed)
+
+
+# --- Blueprint selection and placement (FK-045) -------------------------------
+
+func bind_blueprints(library: BlueprintLibrary, stamp_command: Callable) -> void:
+	blueprint_library = library
+	_stamp_command = stamp_command
+	if state == State.SELECT or state == State.BLUEPRINT:
+		_clear_ghost(State.IDLE if is_active() else State.INACTIVE)
+		changed.emit()
+
+
+func begin_blueprint_selection() -> bool:
+	if not _can_interact() or blueprint_library == null:
+		return false
+	_clear_ghost(State.SELECT)
+	changed.emit()
+	return true
+
+
+func blueprint_press(cell: Vector2i) -> bool:
+	if state != State.SELECT or not _can_interact() or cell == SimGrid.NO_CELL:
+		return false
+	blueprint_start = cell
+	blueprint_end = cell
+	blueprint_dragging = true
+	_refresh_blueprint_selection()
+	changed.emit()
+	return true
+
+
+func blueprint_pointer(cell: Vector2i) -> void:
+	if state != State.SELECT or not blueprint_dragging or not _can_interact() or cell == SimGrid.NO_CELL:
+		return
+	if cell == blueprint_end and not _topology_dirty:
+		return
+	blueprint_end = cell
+	_refresh_blueprint_selection()
+	changed.emit()
+
+
+func blueprint_release(cell: Vector2i) -> bool:
+	if state != State.SELECT or not blueprint_dragging or not _can_interact():
+		return false
+	if cell != SimGrid.NO_CELL:
+		blueprint_end = cell
+	blueprint_dragging = false
+	_refresh_blueprint_selection()
+	changed.emit()
+	return not blueprint_selection.is_empty()
+
+
+func blueprint_box() -> Rect2i:
+	if state != State.SELECT or blueprint_start == SimGrid.NO_CELL or blueprint_end == SimGrid.NO_CELL:
+		return Rect2i()
+	var low: Vector2i = blueprint_start.min(blueprint_end)
+	return Rect2i(low, blueprint_start.max(blueprint_end) - low + Vector2i.ONE)
+
+
+## Only fully enclosed occupied footprints count; rugs are a separate layer
+## and may be selected together with the furniture above them. No structure.
+func _refresh_blueprint_selection() -> void:
+	blueprint_selection.clear()
+	if _grid == null or state != State.SELECT:
+		return
+	var box: Rect2i = blueprint_box()
+	for placed: PlacedItem in _grid.items():
+		if not Blueprint.eligible(placed.def as ItemDef):
+			continue
+		var enclosed: bool = not placed.cells.is_empty()
+		for cell: Vector2i in placed.cells:
+			if not box.has_point(cell):
+				enclosed = false
+				break
+		if enclosed:
+			blueprint_selection.append(placed.id)
+	_topology_dirty = false
+
+
+func blueprint_selection_cells() -> Array[Vector2i]:
+	var cells: Array[Vector2i] = []
+	if state == State.SELECT and _grid != null:
+		for id: int in blueprint_selection:
+			var placed: PlacedItem = _grid.item(id)
+			if placed != null:
+				for cell: Vector2i in placed.cells:
+					if not cells.has(cell):
+						cells.append(cell)
+	return cells
+
+
+func save_blueprint(display_name: String) -> bool:
+	if state != State.SELECT or blueprint_dragging or not _can_interact() or blueprint_library == null:
+		return false
+	_refresh_blueprint_selection()
+	if blueprint_selection.is_empty():
+		current_check = EditCheck.new(false, CatalogueText.BLUEPRINT_NONE_SELECTED)
+		changed.emit()
+		return false
+	var name: String = display_name.strip_edges()
+	if name.is_empty():
+		name = CatalogueText.blueprint_default_name(blueprint_library.blueprints.size() + 1)
+	var blueprint: Blueprint = Blueprint.capture(_grid, blueprint_selection, name)
+	if blueprint == null or not blueprint_library.add(blueprint):
+		current_check = EditCheck.new(false, CatalogueText.BLUEPRINT_FAILED)
+		changed.emit()
+		return false
+	_clear_ghost(State.IDLE)
+	changed.emit()
+	return true
+
+
+func begin_blueprint(blueprint: Blueprint, cell: Vector2i) -> bool:
+	if not _can_interact() or not _stamp_command.is_valid() or blueprint == null or blueprint.entries.is_empty():
+		return false
+	_clear_ghost(State.BLUEPRINT)
+	selected_blueprint = blueprint
+	origin = cell
+	_recheck_ghost()
+	changed.emit()
+	return true
+
+
+func blueprint_placements() -> Array[ShopPlacement]:
+	return selected_blueprint.placements(_content, origin, quarter_turns) \
+		if state == State.BLUEPRINT and selected_blueprint != null else [] as Array[ShopPlacement]
+
+
+func blueprint_cost() -> int:
+	return selected_blueprint.total_price(_content) if state == State.BLUEPRINT and selected_blueprint != null else 0
+
+
+func blueprint_summary() -> String:
+	if state == State.SELECT:
+		return CatalogueText.blueprint_selection(blueprint_selection.size())
+	if state == State.BLUEPRINT and selected_blueprint != null:
+		var summary: String = CatalogueText.blueprint_stamp(selected_blueprint.display_name, blueprint_cost())
+		if not current_check.ok and not current_check.why.is_empty():
+			summary += "\n" + current_check.why
+		return summary
+	return ""
+
+
+func blueprint_visuals() -> Array[Dictionary]:
+	var visuals: Array[Dictionary] = []
+	for placement: ShopPlacement in blueprint_placements():
+		visuals.append({"definition": _content.item(placement.item_id), "origin": placement.origin,
+			"turns": placement.quarter_turns, "swatch": _content.swatch(placement.swatch_id)})
+	return visuals

@@ -53,6 +53,9 @@ This file is read by every coding agent (Codex, harness workers, Claude). Read `
 - Put a short checklist in the PR body: each **Done when** item ticked, with evidence (the test name, probe table or screenshot), plus "Rules 9/10/11: held" or what you changed and why.
 - Never commit review evidence: no screenshots, review PNGs, `.import` sidecars, evidence JSON or review notes (for example under `docs/reviews/`). Everything inside the project ships in builds. Attach images to the PR or let the visual-review job upload them.
 - Mark the PR ready for review. Don't leave it as a draft.
+  - Mark it ready as soon as `check.sh`, the balance probe, CI and your own captures are done. Director visual or taste acceptance, director decisions and Jared's playtests happen **after** it is ready, never before. "Draft retained for Director review" is wrong: the director reviews ready PRs only.
+  - If you need a director decision, ask in a PR comment and still mark the PR ready with your best default. The director answers on the ready PR.
+  - Finish your open PRs (answer director comments, merge `main`, mark ready) before you start a new issue.
 
 ## Before you finish
 - Run `tools/check.sh` (created in Phase 0). It must pass.

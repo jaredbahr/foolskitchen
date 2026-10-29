@@ -396,6 +396,69 @@ func place_def(def: ItemDef, origin: Vector2i, quarter_turns: int = 0) -> Placed
 	return place(def.footprint, origin, quarter_turns, def.solid, def.work_cells, def.seat_cells, def)
 
 
+## Blueprint transaction. Preflight the whole batch before touching this grid
+## or its id counter. No observer can mutate the grid between placements;
+## the one notification sees the final group (including all seat links).
+func place_group(definitions: Array[ItemDef], placements: Array[ShopPlacement]) -> Array[PlacedItem]:
+	var result: Array[PlacedItem] = []
+	if definitions.size() != placements.size() or placements.is_empty():
+		return result
+	var preview: SimGrid = terrain_copy()
+	var walls: Dictionary[Vector3i, int] = {}
+	for edge: Vector3i in segment_edges():
+		walls[edge] = segment(edge)
+	preview.set_segments(walls)
+	for placed: PlacedItem in items():
+		if preview.place_def(placed.def as ItemDef, placed.origin, placed.quarter_turns) == null:
+			return result
+	for index: int in placements.size():
+		var entry: ShopPlacement = placements[index]
+		if entry == null or preview.place_def(definitions[index], entry.origin, entry.quarter_turns) == null:
+			return result
+	var blocked: bool = is_blocking_signals()
+	set_block_signals(true)
+	var changed: Array[Vector2i] = []
+	var before_version: int = _version
+	for index: int in placements.size():
+		var entry: ShopPlacement = placements[index]
+		# Identical geometry just passed on the preview and no signals or
+		# callbacks run inside this loop, so every placement is guaranteed.
+		var placed: PlacedItem = place_def(definitions[index], entry.origin, entry.quarter_turns)
+		placed.swatch_id = entry.swatch_id
+		result.append(placed)
+		changed.append_array(placed.cells)
+	_version = before_version + 1
+	set_block_signals(blocked)
+	cells_changed.emit(changed)
+	return result
+
+
+## All ids must exist and be unique. Editor owns use/storage/economy rules.
+## A refused group removal leaves ids, reservations and signals untouched.
+func remove_group(ids: Array[int]) -> bool:
+	if ids.is_empty():
+		return false
+	var removed: Array[PlacedItem] = []
+	for id: int in ids:
+		var placed: PlacedItem = item(id)
+		if placed == null or removed.has(placed):
+			return false
+		removed.append(placed)
+	var blocked: bool = is_blocking_signals()
+	set_block_signals(true)
+	var changed: Array[Vector2i] = []
+	var before_version: int = _version
+	for placed: PlacedItem in removed:
+		changed.append_array(placed.cells)
+		remove(placed.id)
+	_version = before_version + 1
+	set_block_signals(blocked)
+	cells_changed.emit(changed)
+	for placed: PlacedItem in removed:
+		item_removed.emit(placed)
+	return true
+
+
 ## Moves/rotates an existing definition-backed item without replacing its id or
 ## object. Reservations refuse the move; the editor can explain "try next morning".
 ## Validation is read-only. Observers see the completed update once, never a

@@ -19,6 +19,7 @@
 # --walls-review --speed=0 --frames=12,30 [--quarter=N] shows wall finishes and hung wall decor in Cutaway, then Walls Up with Build > Wall finish holding a striped wallpaper drag.
 # --rooms=tool|refused --speed=0 --frames=30 shows the Rooms tool tints or a refused kitchen seat; --rooms=restroom --open --fast=10 --speed=1 --frames=200 pauses on a guest walking round the kitchen to the restroom.
 # --restroom-review --speed=0 --frames=12,30 shows two toilets, partitions, mirror and dryer, then person scale.
+# --blueprints=selection|ghost|stamped --speed=0 --frames=30 [--quarter=N] shows a table/rug box selection, rotated group ghost, or stamped pair.
 # Build previews use the production morning input API without buying or saving.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"

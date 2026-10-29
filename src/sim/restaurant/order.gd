@@ -15,5 +15,7 @@ var state: State = State.PLACED
 
 ## Final clamped dish quality for future guest reviews.
 var quality: float = 0.0
+## Captured when prepared, independent of later staff or equipment.
+var quality_breakdown: DishQuality = null
 ## Why preparation or delivery was cancelled; carried through to the guest.
 var cancellation_reason: StringName = &""

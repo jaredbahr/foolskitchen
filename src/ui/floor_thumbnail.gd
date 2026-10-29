@@ -96,6 +96,24 @@ static func _colour(pattern: int, p: Vector2, main: Color, seam: Color, second: 
 			var side: float = f.x if d.x < d.y else f.y
 			if minf(d.x, d.y) < 0.005:
 				out = seam * (0.65 if side > 0.5 else 0.82)
+		FloorStyleDef.Pattern.TERRAZZO:
+			var cell: Vector2i = Vector2i((p / 0.125).floor())
+			var h: float = _lattice_hash(cell)
+			var j: float = _lattice_hash(cell + Vector2i(37, 91))
+			var centre: Vector2 = Vector2(0.25 + h * 0.5, 0.25 + j * 0.5)
+			var d: float = ((p / 0.125).posmod(1.0) - centre).length() * 0.125
+			if d < 0.015 + j * 0.0075:
+				out = seam * (1.0 if h < 0.5 else 0.8)
+		FloorStyleDef.Pattern.CONCRETE:
+			var f: Vector2 = p.posmod(1.0)
+			var d: Vector2 = f.min(Vector2.ONE - f)
+			out = main * (1.0 + (_lattice_hash(Vector2i((p / 0.125).floor())) - 0.5) * 0.035)
+			if minf(d.x, d.y) < 0.002:
+				out = seam
+		FloorStyleDef.Pattern.CARPET:
+			var f: Vector2 = (p / 0.025).posmod(1.0)
+			var weave: float = (float(f.x >= 0.5) + float(f.y >= 0.5)) * 0.5
+			out = main.lerp(seam, weave * 0.06)
 		_:
 			var band: float = fposmod(floorf(p.y / 0.5), 2.0)
 			var seam_amount: float = 1.0 - smoothstep(0.0, 0.012, absf(fposmod(p.y / 0.5, 1.0) - 0.5))
@@ -110,3 +128,10 @@ static func _hash(p: Vector2) -> float:
 	var d: float = q.dot(Vector3(q.y, q.z, q.x) + Vector3(33.33, 33.33, 33.33))
 	q += Vector3(d, d, d)
 	return fposmod((q.x + q.y) * q.z, 1.0)
+
+
+## Same bounded integer operations as the shader, including negative cells.
+static func _lattice_hash(p: Vector2i) -> float:
+	var n: int = (p.x & 65535) * 251 + (p.y & 65535) * 199
+	n = (n ^ (n >> 7)) * 109
+	return float((n ^ (n >> 11)) & 65535) / 65535.0

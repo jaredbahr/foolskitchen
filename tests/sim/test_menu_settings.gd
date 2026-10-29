@@ -14,6 +14,30 @@ func before_each() -> void:
 	_menu = MenuSettings.new([_soup, _burger, _cheese])
 
 
+func test_legacy_croissant_menu_round_trips_after_bakery_move() -> void:
+	var content: ContentDB = ContentDB.new()
+	assert_eq(content.load_all(), PackedStringArray())
+	var coffee: RecipeDef = content.recipe(&"coffee")
+	var croissant: RecipeDef = content.recipe(&"croissant")
+	var legacy_croissant: RecipeDef = croissant.duplicate(true) as RecipeDef
+	legacy_croissant.section = RecipeDef.Section.DESSERTS
+	var legacy: Dictionary = {"enabled": ["coffee", "croissant"],
+		"prices": {"coffee": "4", "croissant": "8"}}
+	var old_menu: MenuSettings = MenuSettings.new([coffee, legacy_croissant] as Array[RecipeDef])
+	assert_true(old_menu.from_dict(legacy))
+	var expected: Dictionary = old_menu.to_dict()
+	var restored: MenuSettings = MenuSettings.new([coffee, croissant] as Array[RecipeDef])
+	assert_true(restored.from_dict(JSON.parse_string(JSON.stringify(legacy))))
+	assert_eq(restored.to_dict(), expected, "section labels never rewrite saved dishes or prices")
+	assert_eq(restored.recipe(&"croissant").menu_section(), RecipeDef.Section.BAKERY)
+	assert_true(restored.is_enabled(&"croissant"))
+	assert_eq(restored.price_of(croissant), 8)
+	var again: MenuSettings = MenuSettings.new([coffee, croissant] as Array[RecipeDef])
+	assert_true(again.from_dict(JSON.parse_string(JSON.stringify(restored.to_dict()))))
+	assert_eq(again.to_dict(), expected)
+	assert_eq(content.recipe(&"croissant").section, RecipeDef.Section.BAKERY)
+
+
 func test_defaults_use_every_injected_recipe_and_standard_price_in_lexical_order() -> void:
 	assert_true(_menu.is_valid())
 	assert_eq(_ids(_menu.recipes()), [&"burger", &"grilled_cheese", &"tomato_soup"] as Array[StringName])

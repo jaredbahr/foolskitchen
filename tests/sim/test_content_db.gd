@@ -6,7 +6,7 @@ func test_starter_data_loads_without_validation_errors() -> void:
 	var db: ContentDB = ContentDB.new()
 	assert_eq(db.load_all().size(), 0)
 	assert_eq(db.ingredients().size(), 17)
-	assert_eq(db.recipes().size(), 12)
+	assert_eq(db.recipes().size(), 13)
 	assert_eq(db.items().size(), 58)
 
 
@@ -35,7 +35,7 @@ func test_lists_are_sorted_and_do_not_expose_index_arrays() -> void:
 	var recipe_ids: Array[StringName] = []
 	for definition: RecipeDef in db.recipes():
 		recipe_ids.append(definition.id)
-	assert_eq(recipe_ids, [&"beer", &"burger", &"coffee", &"croissant", &"fries", &"grilled_cheese", &"savoury_pie", &"soft_drink",
+	assert_eq(recipe_ids, [&"bar_fries", &"beer", &"burger", &"coffee", &"croissant", &"fries", &"grilled_cheese", &"savoury_pie", &"soft_drink",
 		&"tea", &"tomato_melt", &"tomato_soup", &"wine"])
 	var item_ids: Array[StringName] = []
 	for definition: ItemDef in db.items():
@@ -60,7 +60,7 @@ func test_reloading_does_not_duplicate_definitions() -> void:
 	var db: ContentDB = _starter_db()
 	assert_eq(db.load_all().size(), 0)
 	assert_eq(db.ingredients().size(), 17)
-	assert_eq(db.recipes().size(), 12)
+	assert_eq(db.recipes().size(), 13)
 	assert_eq(db.items().size(), 58)
 
 
@@ -74,7 +74,7 @@ func test_recursive_resource_discovery_returns_sorted_original_tres_names() -> v
 		if path.begins_with("res://data/ingredients/") or path.begins_with("res://data/recipes/") \
 				or path.begins_with("res://data/items/"):
 			content_paths += 1
-	assert_eq(content_paths, 87)
+	assert_eq(content_paths, 88)
 	assert_true(paths.has("res://data/ingredients/bun.tres"))
 	assert_true(paths.has("res://data/recipes/burger.tres"))
 	assert_true(paths.has("res://data/items/table_2.tres"))
@@ -364,7 +364,7 @@ func test_recipe_menu_sections_validate_without_changing_shared_content() -> voi
 	var errors: PackedStringArray = ContentDB.validate_definitions([], [invalid], [_station()])
 	assert_eq(errors.size(), 1)
 	assert_true(_has_error(errors, "unknown menu section"))
-	assert_eq(definition.section, RecipeDef.Section.DESSERTS)
+	assert_eq(definition.section, RecipeDef.Section.BAKERY)
 	assert_eq(_starter_db().recipe(&"tomato_soup").section, RecipeDef.Section.STARTERS)
 
 

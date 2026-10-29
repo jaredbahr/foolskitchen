@@ -40,8 +40,15 @@ func test_authored_recipe_sections_have_one_plain_label_mapping() -> void:
 	for id: StringName in [&"burger", &"grilled_cheese", &"tomato_melt"]:
 		assert_eq(content.recipe(id).section, RecipeDef.Section.MAINS)
 	assert_eq(RecipeDef.new().section, RecipeDef.Section.MAINS)
-	var expected: Array[String] = ["Starters", "Mains", "Sides", "Drinks", "Desserts"]
+	var expected: Array[String] = ["Starters", "Mains", "Sides", "Drinks", "Desserts", "Bakery"]
 	for section: int in RecipeDef.Section.values():
 		assert_eq(RecipeDef.section_name(section), expected[section])
 	assert_eq(RecipeDef.section_name(-1), "")
-	assert_eq(RecipeDef.section_name(5), "")
+	assert_eq(RecipeDef.section_name(6), "")
+	assert_eq(RecipeDef.Section.STARTERS, 0)
+	assert_eq(RecipeDef.Section.MAINS, 1)
+	assert_eq(RecipeDef.Section.SIDES, 2)
+	assert_eq(RecipeDef.Section.DRINKS, 3)
+	assert_eq(RecipeDef.Section.DESSERTS, 4)
+	assert_eq(RecipeDef.Section.BAKERY, 5)
+	assert_eq(content.recipe(&"croissant").menu_section(), RecipeDef.Section.BAKERY)

@@ -1081,6 +1081,47 @@ an active edit/panel/selection first, or opens Settings when none is active.
   tool, history clearing on open). Captures: the catalogue review
   (`--catalogue-review=rustic|modern`) shows Buy mode.
 
+### Furniture blueprints (FK-045)
+- `Blueprint` is a Resource containing a player name and `ShopPlacement`
+  entries: content id, anchor-relative offset, quarter turns and body swatch.
+  Only floor furniture and rugs participate, never doors, wall decor or
+  structure. Box selection includes whole footprints on both placement layers.
+  Rotation turns the group's bounding rectangle and each item's already-rotated
+  footprint together; non-square pieces retain the same relative geometry.
+- `ShopEditor.check_stamp` stages every entry on one preview, then checks each
+  chair's dining links and the final `RoomRules`, existing buy path warnings,
+  unlocks and total affordability. Chairs may precede their tables in the
+  saved list. A refused proposal changes no live items, ids, cash or history.
+  `SimGrid.place_group` preflights and publishes the complete group through one
+  grid notification; observers never see a partially placed group. Normal
+  stamping writes one upgrade ledger line per item. `ShopEditHistory.STAMP`
+  records one step with shared item references and a private blueprint copy;
+  undo removes the whole group with an exact refund and redo restores it.
+  Group removal validates reservations, remaining required equipment and
+  combined storage capacity before changing anything. Both directions are
+  closed-only and retain refused history steps.
+- Buy's Blueprints tab has selection, naming, total price, rename and delete.
+  The group ghost uses the existing item palette, rejection sentences, rotation
+  keys (R, comma, period) and amber restock line. Blueprint names consume text
+  input without triggering build shortcuts. Cancel/phase changes discard only
+  the active selection/ghost, not the player's library.
+- `BlueprintLibrary` is registered as a separate `blueprints` save section in
+  Main, not inside the version-6 `shop` snapshot. The existing morning autosave
+  is the only write boundary; creating, renaming, deleting and stamping do not
+  save immediately. Restore stages the library until the whole morning load
+  succeeds. Old saves without it get an empty library; unknown item ids are
+  skipped with a world log line (empty resulting blueprints are omitted).
+  Unknown swatches use the item's default; malformed section data is rejected
+  transactionally with the existing failed-load protection. Library state does
+  not reset when a shop editor is rebound. Names are single-line, at most 80
+  characters; bounded input supports 256 blueprints of 512 entries each.
+- Tests: `tests/sim/test_blueprints.gd`, `tests/build/test_blueprint_mode.gd`,
+  `tests/ui/test_blueprint_catalogue.gd`, `tests/world/test_blueprint_session.gd`,
+  `tests/world/test_blueprint_build_session.gd`, `tests/tools/test_blueprint_review.gd`.
+  Manual native captures: `bash tools/screenshot.sh
+  --blueprints=selection|ghost|stamped --speed=0 --frames=30 --out=<review-dir>`
+  (choose one profile per run). No additional CI jobs or repeated probes.
+
 ### Rooms and restrooms (FK-101)
 - **Rooms on the grid.** `SimGrid.Room` is DINING (the default, never
   stored), KITCHEN, RESTROOM or STORAGE. Only FLOOR cells take a room
@@ -1219,7 +1260,18 @@ an active edit/panel/selection first, or opens Settings when none is active.
   starts honey with walnut seams (the oak parquet look, Jared). Hex tiles
   (butter/cream, 0.125 m across) and Terracotta pavers (terracotta/clay,
   0.25 m squares in half-offset rows) each cost $3 and unlock at level 4.
-  Their pattern values are appended as 5 and 6. Looks only: no
+  Their pattern values are appended as 5 and 6. Terrazzo ($4, level 5),
+  Polished concrete ($1, level 3) and Carpet ($2, level 4) append 7, 8 and 9.
+  Terrazzo uses cream/slate-blue hashed chips on a 0.125 m lattice;
+  concrete uses slate-blue/charcoal metre slabs with faint mottling; carpet
+  uses dusty-rose/walnut with a faint 0.025 m weave and no joints. The
+  existing slate-blue swatch is the lighter blue-grey concrete main: the
+  initially specified charcoal read near-black in the native normal/close
+  review. Charcoal remains the joint colour; no new palette colour is added.
+  The integer lattice hash is shared exactly by the shader and thumbnail;
+  chip edges use smooth pixel coverage, and the fine lattice fades with
+  `fwidth` as its cells approach a few pixels.
+  Looks only: no
   sim effect.
 - **Looks per cell.** `FloorFinishes` (`src/sim/shop/floor_finishes.gd`),
   owned by `ShopEditor.floors`, never by `SimGrid`: cell -> `Finish`
@@ -2074,6 +2126,18 @@ pattern 0 of `floor_finish.gdshader`, unchanged).
 - RNG seed/state and the master seed use decimal strings to preserve 64-bit integers through JSON parsing.
 
 ### 2.5 Testing
+Dish quality explanations (FK-063): `DishQuality.breakdown()` snapshots the recipe
+base, role skill factor, cooking trait and distinct preparation station bonuses,
+then the unchanged 0–1 clamp. Both food and pour tasks store that typed result on
+`Order.quality_breakdown` and copy its quality to `Order.quality`. Drinks retain
+their existing server-skill calculation without a cooking trait bonus. The skill
+weights (`0.7`, `0.1`) are authored in `data/balance/menu.tres` (`MenuTuning`).
+The menu shows a read-only best-case estimate from today's eligible workers and
+reachable stations beside its existing measured sample. Guest inspection shows
+the captured result for each delivered order, including sides. The evening report
+averages all delivered orders (food and drinks); count and average round-trip with
+historical reports. There are no new save points or random draws.
+
 - **In-repo runner, not GUT** (decision D9). `tools/run_tests.gd` finds `tests/**/test_*.gd`, runs every `test_*` method, and exits non-zero on failure. Tests extend `tests/test_case.gd`, which provides `assert_eq`, `assert_true`, `assert_false`, `assert_almost_eq` and `assert_null`. No downloads and nothing to version-match. The sim is pure logic, so it doesn't need mocks.
 - A test also fails if it raises an engine or script error (a null call, `push_error`), even when its asserts pass. So code paths exercised by tests report problems through return values, not `push_error`.
 - `tools/check.sh` runs a headless import, then loads every script and resource (`tools/parse_all.gd`, which also catches scenes pointing at missing files), then the tests. Untyped declarations are errors (`untyped_declaration=2`). Every diff must pass it.

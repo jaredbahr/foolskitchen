@@ -13,6 +13,16 @@ func after_each() -> void:
 	_report.free()
 
 
+func test_food_quality_line_displays_average_and_empty_day_in_plain_words() -> void:
+	var day: DayReport = DayReport.new()
+	day.dish_quality_count = 2
+	day.dish_quality_average = 0.68
+	_report.call("show_report", day)
+	assert_eq((_report.get_node("%FoodQuality") as Label).text, "Food quality: good (3.4 / 5)")
+	_report.call("show_report", DayReport.new())
+	assert_eq((_report.get_node("%FoodQuality") as Label).text, "Food quality: no dishes served")
+
+
 func test_saved_report_name_contextualizes_reviews_without_changing_quotes() -> void:
 	var day: DayReport = DayReport.new()
 	day.restaurant_name = "Copper Cafe"

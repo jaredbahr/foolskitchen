@@ -17,6 +17,8 @@ var costs: Dictionary = {}
 var loan_first_advance: bool = false
 var dishes_sold: Dictionary = {}
 var customers_served: int = 0
+var dish_quality_count: int = 0
+var dish_quality_average: float = 0.0
 var customers_lost: int = 0
 var leave_reasons: Dictionary = {}
 var reviews: Array[String] = []
@@ -46,6 +48,29 @@ var low_stock: Array[String] = []
 ## Returns income across all categories in whole currency units.
 func total_income() -> int:
 	return _sum(income)
+
+
+func record_dish_quality(orders: Array[Order]) -> void:
+	dish_quality_count = 0
+	var total: float = 0.0
+	for order: Order in orders:
+		if order.state == Order.State.DELIVERED:
+			total += order.quality
+			dish_quality_count += 1
+	dish_quality_average = total / dish_quality_count if dish_quality_count > 0 else 0.0
+
+
+func food_quality_text() -> String:
+	if dish_quality_count == 0:
+		return "Food quality: no dishes served"
+	var word: String = "poor"
+	if dish_quality_average >= 0.8:
+		word = "excellent"
+	elif dish_quality_average >= 0.6:
+		word = "good"
+	elif dish_quality_average >= 0.4:
+		word = "fair"
+	return "Food quality: %s (%.1f / 5)" % [word, dish_quality_average * 5.0]
 
 
 ## Returns costs as a positive amount in whole currency units.
@@ -89,6 +114,8 @@ func to_dict() -> Dictionary:
 		"loan_first_advance": loan_first_advance,
 		"dishes_sold": _string_counts(dishes_sold),
 		"customers_served": customers_served,
+		"dish_quality_count": dish_quality_count,
+		"dish_quality_average": dish_quality_average,
 		"customers_lost": customers_lost,
 		"leave_reasons": _string_counts(leave_reasons),
 		"reviews": reviews.duplicate(),
@@ -122,6 +149,8 @@ static func from_dict(data: Dictionary) -> DayReport:
 	report.loan_first_advance = saved_loan_notice is bool and saved_loan_notice
 	report.dishes_sold = _name_counts(data.get("dishes_sold", {}))
 	report.customers_served = int(data.get("customers_served", 0))
+	report.dish_quality_count = maxi(0, int(data.get("dish_quality_count", 0)))
+	report.dish_quality_average = clampf(float(data.get("dish_quality_average", 0.0)), 0.0, 1.0)
 	report.customers_lost = int(data.get("customers_lost", 0))
 	report.leave_reasons = _name_counts(data.get("leave_reasons", {}))
 	var saved_reviews: Variant = data.get("reviews", [])
