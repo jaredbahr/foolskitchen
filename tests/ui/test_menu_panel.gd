@@ -87,6 +87,27 @@ func test_secondary_settings_button_requests_panel_without_editing_dishes() -> v
 	assert_eq(_menu.to_dict(), before)
 
 
+func test_theme_readout_tracks_accepted_enabled_dishes_without_editing_menu() -> void:
+	var diner: RecipeDef = _recipe(&"diner", "Diner dish", 8)
+	diner.theme_tags = [&"diner"]
+	var cafe: RecipeDef = _recipe(&"cafe", "Café drink", 5)
+	cafe.theme_tags = [&"cafe"]
+	var plain: RecipeDef = _recipe(&"plain", "Plain dish", 6)
+	var settings: MenuSettings = MenuSettings.new([diner, cafe, plain])
+	_panel.bind_menu(settings)
+	var readout: Label = _panel.get_node("Panel/Content/Identity/MenuTheme") as Label
+	assert_eq(readout.theme, MenuPanel.SHARED_THEME)
+	assert_eq(readout.text, "Menu leans: Diner 50%, Café 50%")
+	var before: Dictionary = settings.to_dict()
+	_panel.refresh()
+	assert_eq(settings.to_dict(), before, "the readout does not change menu choices")
+	assert_true(settings.set_enabled(&"cafe", false))
+	_panel.refresh()
+	assert_eq(readout.text, "Menu leans: Diner 100%")
+	_panel.bind_menu(null)
+	assert_eq(readout.text, "Menu leans: No theme")
+
+
 func test_goals_button_requests_panel_without_editing_menu_or_phase() -> void:
 	var before: Dictionary = _menu.to_dict()
 	_panel.set_phase(SimClock.Phase.OPEN)

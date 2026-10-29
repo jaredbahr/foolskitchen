@@ -726,6 +726,7 @@ static func _decode_walls(data: Dictionary, preview: SimGrid, content: ContentDB
 	layout.wall_style_id = WallStyleDef.DEFAULT_ID
 	layout.wall_finishes = {}
 	layout.wall_items = {}
+	layout.wall_menu_sections = {}
 	var limit: int = preview.size.x * preview.size.y * 4
 	var saved: Variant = data.get("wall_finishes", [])
 	if saved is Array:
@@ -747,14 +748,22 @@ static func _decode_walls(data: Dictionary, preview: SimGrid, content: ContentDB
 	var staged: WallDecor = WallDecor.new()
 	for value: Variant in (hung as Array).slice(0, limit):
 		var row: Array = value if value is Array else []
-		var anchor: Vector3i = _saved_face(row, 4)
+		if row.size() != 4 and row.size() != 5:
+			continue
+		var anchor: Vector3i = _saved_face(row.slice(0, 4), 4)
 		if anchor == WallFaces.NO_FACE or not (row[3] is String or row[3] is StringName):
 			continue
 		var definition: ItemDef = content.item(StringName(row[3]))
 		if definition == null or not staged.problem(preview, definition, anchor).is_empty():
 			continue
-		staged.add(definition.id, anchor, definition.footprint.x, definition.hangs_in_window())
+		var section: int = -1
+		if definition.id == WallDecor.MENU_BOARD_ID and row.size() == 5 \
+				and _integer_in(row[4], -1, RecipeDef.Section.BAKERY):
+			section = int(row[4])
+		staged.add(definition.id, anchor, definition.footprint.x, definition.hangs_in_window(), section)
 		layout.wall_items[anchor] = definition.id
+		if section != -1:
+			layout.wall_menu_sections[anchor] = section
 
 
 ## A saved face key [x, y, dir, ...] of `size` values, or NO_FACE.
@@ -789,7 +798,8 @@ func _load_walls(layout: ShopLayout) -> void:
 	for anchor: Vector3i in anchors:
 		var definition: ItemDef = _content.item(layout.wall_items[anchor])
 		if definition != null and decor.problem(grid, definition, anchor).is_empty():
-			decor.add(definition.id, anchor, definition.footprint.x, definition.hangs_in_window())
+			var section: int = layout.wall_menu_sections.get(anchor, -1)
+			decor.add(definition.id, anchor, definition.footprint.x, definition.hangs_in_window(), section)
 
 
 ## Invalid or removed palette entries revert to authored colours on old saves.
@@ -1297,6 +1307,12 @@ func hung_definition(anchor: Vector3i) -> ItemDef:
 	return _content.item(hung.def_id) if hung != null and _content != null else null
 
 
+## Chooses the section shown by a placed menu board; -1 follows the first
+## nonempty section. This is a free presentation choice in any phase.
+func set_menu_board_section(anchor: Vector3i, section: int) -> bool:
+	return decor.set_menu_section(anchor, section)
+
+
 ## Read-only check of hanging a new `def_id` from `anchor` (its leftmost face).
 func check_hang(def_id: StringName, anchor: Vector3i, exact: Exact = null) -> EditCheck:
 	if not can_edit():
@@ -1363,9 +1379,9 @@ func rehang(anchor: Vector3i, to_anchor: Vector3i, exact: Exact = null) -> bool:
 	var hung: WallDecor.Hung = decor.item(anchor)
 	_applying = true
 	decor.remove(anchor)
-	var added: bool = decor.add(hung.def_id, to_anchor, hung.width, hung.window)
+	var added: bool = decor.add(hung.def_id, to_anchor, hung.width, hung.window, hung.menu_section)
 	if not added:
-		decor.add(hung.def_id, anchor, hung.width, hung.window)
+		decor.add(hung.def_id, anchor, hung.width, hung.window, hung.menu_section)
 	_applying = false
 	last_anchor = to_anchor if added else anchor
 	last_cash_change = 0

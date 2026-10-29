@@ -71,6 +71,8 @@ var item_nodes: Dictionary[Vector3i, ItemVisual] = {}
 var _ghost: ItemVisual
 var _ghost_key: Array = []
 var _hidden_anchor: Vector3i = WallFaces.NO_FACE
+var _menu_board_name: String = MenuSettings.DEFAULT_NAME
+var _menu_board_recipes: Array[RecipeDef] = []
 
 
 func bind(grid: SimGrid, content: ContentDB, finishes: WallFinishes, decor: WallDecor) -> void:
@@ -80,6 +82,30 @@ func bind(grid: SimGrid, content: ContentDB, finishes: WallFinishes, decor: Wall
 	_decor = decor
 	_preview.clear()
 	rebuild()
+
+
+## Main supplies today's enabled dishes; the full recipe catalogue is never
+## used to label a board. Existing nodes update in place on menu/name edits.
+func set_menu_board_content(restaurant_name: String, enabled_recipes: Array[RecipeDef]) -> void:
+	_menu_board_name = restaurant_name
+	_menu_board_recipes.assign(enabled_recipes)
+	refresh_menu_boards()
+
+
+func refresh_menu_boards() -> void:
+	if _decor == null:
+		return
+	for anchor: Vector3i in item_nodes:
+		var hung: WallDecor.Hung = _decor.item(anchor)
+		if hung == null or hung.def_id != &"menu_board":
+			continue
+		var node: ItemVisual = item_nodes[anchor]
+		if node.prop == null:
+			continue
+		var label: Label3D = node.prop.get_node_or_null(^"WallMount/MenuText") as Label3D
+		if label != null:
+			label.call("set_menu_board_text", MenuBoardText.text(_menu_board_name,
+				_menu_board_recipes, hung.menu_section))
 
 
 ## The shop's own wall colour (the default faces' paint) and its swatch id.
@@ -434,6 +460,7 @@ func _rebuild_items() -> void:
 		if hung.window:
 			place_window_glow(node, anchor)
 	_sync_item_visibility()
+	refresh_menu_boards()
 
 
 ## The soft light of a glowing item, a child of its visual so it hides with
