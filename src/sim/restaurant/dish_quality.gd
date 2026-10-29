@@ -43,7 +43,8 @@ func explanation() -> String:
 		text += ", Cooking trait %+.2f" % trait_bonus
 	for index: int in station_names.size():
 		text += ", %s %+.2f" % [station_names[index], station_bonuses[index]]
-	text += " = %.2f" % quality
+	# End on the same star scale the menu and report use.
+	text += " = %.2f (%.1f / 5 stars)" % [quality, quality * 5.0]
 	if unclamped != quality:
 		text += " (limited to 0–1)"
 	return text

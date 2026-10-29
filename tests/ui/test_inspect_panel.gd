@@ -36,6 +36,7 @@ func test_served_guest_shows_captured_quality_and_hides_unserved_extra() -> void
 	var before: int = random.state
 	_panel.show_agent(guest.id)
 	assert_true(_label("Details").text.contains("Served quality: Recipe 0.50"))
+	assert_true(_label("Details").text.contains("/ 5 stars)"), "served quality ends on the star scale")
 	assert_false(_label("Details").text.contains("cook skill 1"))
 	guest.extra_order.state = Order.State.DELIVERED
 	_panel.refresh()
