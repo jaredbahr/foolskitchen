@@ -155,19 +155,115 @@ func test_real_main_fixture_shows_goals_then_uses_real_close_and_read_only_evide
 	assert_eq(_uid_snapshot(CAPTURE.MILESTONE_UID_SOURCES), uid_before, "UID provenance never generates or registers sidecars")
 
 
-func _start_main() -> Node:
+func test_goals_fit_below_unchanged_hud_after_resize() -> void:
+	var main: Node = await _start_main()
+	assert_true(main.call("set_goals_visible", true))
+	var panel: Control = main.get_node("Overlay/GoalsPanel/Panel") as Control
+	var hud: CanvasLayer = main.get_node("HUD") as CanvasLayer
+	for viewport_size: Vector2i in [Vector2i(1600, 900), Vector2i(1280, 720), Vector2i(1600, 900)]:
+		_viewport.size = viewport_size
+		await _wait_frames(4)
+		assert_false(hud.has_node("Top/Row/Grid"), "play grid does not add a HUD control")
+		var bounds: Rect2 = panel.get_global_rect()
+		assert_true(bounds.position.y >= float(hud.call("panel_top")) - 0.5,
+			"Goals stays below the header")
+		assert_true(bounds.end.y <= float(viewport_size.y), "Goals remains inside the viewport")
+		var scroll: ScrollContainer = panel.get_node("Content/Scroll") as ScrollContainer
+		assert_true(bounds.encloses(scroll.get_global_rect()), "the scroll region remains inside Goals")
+		if viewport_size == Vector2i(1600, 900):
+			var goals: GoalsPanel = main.get_node("Overlay/GoalsPanel") as GoalsPanel
+			for goal_id: StringName in goals.active_goal_ids():
+				assert_true(scroll.get_global_rect().encloses(goals.goal_card_for(goal_id).get_global_rect()),
+					"the initial three career goals fit without scrolling at 1600x900")
+
+
+func test_real_main_staff_priorities_fit_without_grid_header_reflow() -> void:
+	var main: Node = await _start_main(true)
+	var window: Window = main.get_window()
+	assert_true(main.call("set_staff_visible", true))
+	var panel: StaffPanel = main.get_node("Overlay/StaffPanel") as StaffPanel
+	var roster: StaffRoster = main.get("staff_roster") as StaffRoster
+	var before: Dictionary = roster.to_dict()
+	var card: Control = panel.get_node("Panel") as Control
+	var close: Button = panel.get_node("%Close") as Button
+	for dimensions: Vector2i in [Vector2i(1600, 900), Vector2i(1280, 720), Vector2i(1600, 900)]:
+		window.size = dimensions
+		await _wait_frames(4)
+		assert_true(card.get_global_rect().position.y >= float(main.get_node("HUD").call("panel_top")) - 0.5,
+			"Staff remains below the real header")
+		assert_true(card.get_global_rect().encloses(close.get_global_rect()), "Close remains inside Staff after resize")
+		assert_true(close.is_visible_in_tree())
+		if dimensions == Vector2i(1600, 900):
+			var evidence: Dictionary = CAPTURE.staff_priority_grid_evidence(panel, roster)
+			assert_true(CAPTURE.staff_priority_grid_valid(evidence, before["members"]),
+				"Real Main must retain the full grid and main-job explanation inside the scroll viewport: " + JSON.stringify(evidence))
+	assert_eq(roster.to_dict(), before, "layout and read-only capture validation never change the roster")
+	close.pressed.emit()
+	assert_false(panel.visible, "the real Close signal still closes Staff")
+
+
+func test_real_main_settings_keyboard_traverses_grid_choices_then_closes() -> void:
+	var main: Node = await _start_main(true)
+	var window: Window = main.get_window()
+	for dimensions: Vector2i in [Vector2i(1600, 900), Vector2i(1280, 720)]:
+		window.size = dimensions
+		for scale: float in [1.0, 1.25, 1.5]:
+			window.content_scale_factor = scale
+			assert_true(main.call("set_settings_visible", true))
+			await _wait_frames(4)
+			var panel: SettingsPanel = main.get_node("Overlay/SettingsPanel") as SettingsPanel
+			var card: Control = panel.get_node("Panel") as Control
+			var close: Button = panel.get_node("%CloseButton") as Button
+			assert_true(window.get_visible_rect().grow(1.0).encloses(card.get_global_rect()), "Settings card fits the scaled window")
+			assert_true(card.get_global_rect().grow(1.0).encloses(close.get_global_rect()), "pinned Close remains bounded")
+			assert_true(card.get_global_rect().position.y >= float(main.get_node("HUD").call("panel_top")) - 0.5,
+				"Settings remains below the wrapped HUD")
+			var before: Dictionary = _preference_snapshot()
+			var play_before: bool = Preferences.play_grid_enabled
+			var build_before: bool = Preferences.build_grid_enabled
+			var evidence: Dictionary = CAPTURE.settings_tab_to_close(panel, window)
+			assert_true(evidence["tab_from_edge_pan"])
+			assert_true(evidence["tab_through_grid_controls"], "native Tab visits both play and Build grid checkboxes")
+			assert_true(evidence["tab_to_close"], "native Tab reaches Close after both grid choices")
+			assert_eq(_preference_snapshot(), before)
+			assert_eq(Preferences.play_grid_enabled, play_before)
+			assert_eq(Preferences.build_grid_enabled, build_before)
+			for pressed: bool in [true, false]:
+				var event: InputEventKey = InputEventKey.new()
+				event.keycode = KEY_ENTER
+				event.physical_keycode = KEY_ENTER
+				event.pressed = pressed
+				window.push_input(event, true)
+			await _wait_frames(2)
+			assert_false(main.call("is_settings_visible"), "native Enter on Close returns to the world")
+			assert_false(main.call("is_menu_visible"))
+
+
+func _start_main(in_window: bool = false) -> Node:
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	await _wait_frames(2)
 	_viewport = SubViewport.new()
 	_viewport.size = Vector2i(1600, 900)
 	_viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
 	tree.root.add_child(_viewport)
+	var host: Node = _viewport
+	if in_window:
+		_viewport.gui_embed_subwindows = true
+		var window: Window = Window.new()
+		window.borderless = true
+		window.content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS
+		window.content_scale_aspect = Window.CONTENT_SCALE_ASPECT_EXPAND
+		window.content_scale_size = Vector2i(1600, 900)
+		window.content_scale_factor = 1.0
+		window.size = Vector2i(1600, 900)
+		_viewport.add_child(window)
+		host = window
 	var main: Node = MAIN.instantiate()
 	main.set("use_saves", false)
 	main.set("save_slot", SLOT)
 	main.set("new_game_seed_override", 1)
 	_mains.append(main)
-	_viewport.add_child(main)
+	host.add_child(main)
 	main.call("start")
 	Clock.set_speed(0)
 	await _wait_frames(2)

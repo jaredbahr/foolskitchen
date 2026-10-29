@@ -264,3 +264,15 @@ func test_review_fixture_maps_both_new_patterns_across_adjacent_cells() -> void:
 	assert_eq(patterns.get("3,5"), FloorStyleDef.Pattern.HEX_TILE)
 	assert_eq(patterns.get("10,7"), FloorStyleDef.Pattern.TERRACOTTA)
 	assert_eq(patterns.get("11,7"), FloorStyleDef.Pattern.TERRACOTTA)
+
+
+func test_floor_review_samples_survive_the_herringbone_drag_preview() -> void:
+	await _start()
+	var fixture: Script = load("res://tools/floors_review.gd")
+	assert_eq(fixture.prepare(_main, _main.get_tree().root).get("error"), "")
+	await _main.get_tree().process_frame
+	assert_eq(fixture.begin_drag(_main, _main.get_tree().root).get("error"), "")
+	var evidence: Dictionary = fixture.evidence(_main)
+	assert_true(evidence.get("dragging", false))
+	assert_true(evidence.get("preview_cells", 0) > 0)
+	assert_true(evidence.get("patterns_match", false), "Review samples must remain outside the live herringbone preview")

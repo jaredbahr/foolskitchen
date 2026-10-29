@@ -2,6 +2,7 @@ extends CanvasLayer
 ## Event-driven day, speed and cash controls. refresh() also supports scenes
 ## instantiated before SceneTree readiness (including the custom test runner).
 
+const WALLS_TOOLTIP: String = "Cycle walls: Up, Cutaway, Down (C)  |  G: grid"
 const SPEEDS: Array[int] = [0, 1, 2, 4]
 const PHASE_NAMES: Array[String] = ["Morning", "Open", "Last orders", "Closed"]
 const STAFF_PHASES: Array[int] = [SimClock.Phase.MORNING, SimClock.Phase.OPEN,
@@ -101,6 +102,7 @@ func refresh() -> void:
 		_context = get_node("Top/Row/Context") as Button
 		_deltas = get_node("Deltas") as Control
 		_wall_button = get_node("Top/Row/Walls") as Button
+		_wall_button.tooltip_text = WALLS_TOOLTIP
 		_wall_button.pressed.connect(_on_wall_button_pressed)
 		_build_button = get_node("Top/Row/Build") as Button
 		_build_hints = get_node("BuildHints") as PanelContainer
@@ -425,6 +427,10 @@ static func build_hint(painting: bool, state: int, tool: int) -> String:
 	if painting:
 		return "Click to paint  |  Shift-click: whole room  |  Ctrl+Z Undo  Ctrl+Y Redo  |  Esc Back"
 	match state:
+		BuildMode.State.SELECT:
+			return CatalogueText.BLUEPRINT_SELECTION_KEYS
+		BuildMode.State.BLUEPRINT:
+			return CatalogueText.BLUEPRINT_KEYS
 		BuildMode.State.MOVE:
 			return "Click Place  |  , . or R Rotate  |  Del Sell  |  Esc or Right-click Cancel"
 		BuildMode.State.BUY:

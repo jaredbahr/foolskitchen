@@ -467,7 +467,7 @@ func _record(amount: int, category: StringName, note: String = "") -> void:
 
 
 func test_new_tiles_append_patterns_and_keep_the_starter_set() -> void:
-	assert_eq(FloorStyleDef.Pattern.values(), [0, 1, 2, 3, 4, 5, 6])
+	assert_eq(FloorStyleDef.Pattern.values(), [0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
 	assert_eq([FloorStyleDef.Pattern.PLANKS, FloorStyleDef.Pattern.NARROW_PLANKS,
 		FloorStyleDef.Pattern.HERRINGBONE, FloorStyleDef.Pattern.CHECKER, FloorStyleDef.Pattern.SMALL_TILE], [0, 1, 2, 3, 4])
 	var starters: Array[StringName] = []
@@ -497,3 +497,30 @@ func test_new_tiles_append_patterns_and_keep_the_starter_set() -> void:
 		var restored: ShopLayout = ShopEditor.from_dict(_editor.to_dict(), LAYOUT, _content, errors)
 		assert_eq(errors, [] as Array[String])
 		assert_eq(restored.floor_finishes[Vector2i(2, 6)], PackedStringArray([style.id, style.default_swatch, style.default_accent]))
+
+
+func test_terrazzo_concrete_and_carpet_unlock_cost_refund_and_round_trip() -> void:
+	for row: Array in [[&"terrazzo", 7, 4, 5, &"cream", &"slate_blue"],
+			[&"concrete", 8, 1, 3, &"slate_blue", &"charcoal"],
+			[&"carpet", 9, 2, 4, &"dusty_rose", &"walnut"]]:
+		var style: FloorStyleDef = _content.floor_style(row[0])
+		assert_not_null(style)
+		assert_eq([style.pattern, style.price, style.unlock_level], [row[1], row[2], row[3]])
+		assert_eq([style.default_swatch, style.default_accent], [row[4], row[5]])
+		assert_not_null(_content.swatch(row[4]))
+		assert_not_null(_content.swatch(row[5]))
+		var cells: Array[Vector2i] = _rect(2, 6, 2, 1)
+		_editor.set_owner_level(int(row[3]) - 1)
+		var changes: Dictionary[Vector2i, FloorFinishes.Finish] = _editor.lay_changes(cells, style.id, row[4], row[5])
+		assert_false(_editor.check_flooring(changes).ok)
+		assert_eq(_editor.check_flooring(changes).why, "Unlocks at level %d" % int(row[3]))
+		_editor.set_owner_level(int(row[3]))
+		assert_eq(_editor.check_flooring(changes).cost, int(row[2]) * 2)
+		assert_true(_editor.apply_flooring(changes))
+		var errors: Array[String] = []
+		var restored: ShopLayout = ShopEditor.from_dict(_editor.to_dict(), LAYOUT, _content, errors)
+		assert_eq(errors, [] as Array[String])
+		assert_eq(restored.floor_finishes[Vector2i(2, 6)], PackedStringArray([style.id, row[4], row[5]]))
+		var clear: Dictionary[Vector2i, FloorFinishes.Finish] = _editor.lay_changes(cells, &"planks", &"")
+		assert_eq(_editor.check_flooring(clear).refund, floori(float(row[2]) * 0.5) * 2)
+		assert_true(_editor.apply_flooring(clear))
