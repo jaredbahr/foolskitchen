@@ -79,6 +79,23 @@ static func _colour(pattern: int, p: Vector2, main: Color, seam: Color, second: 
 			out = main * (1.0 + (_hash(tile) - 0.5) * 0.05)
 			if minf(f.x, 1.0 - f.x) * 0.125 < 0.006 or minf(f.y, 1.0 - f.y) * 0.125 < 0.006:
 				out = seam
+		FloorStyleDef.Pattern.HEX_TILE:
+			var period: Vector2 = Vector2(1.0, 1.73205081)
+			var scaled: Vector2 = p / 0.125
+			var a: Vector2 = (scaled + period * 0.5).posmodv(period) - period * 0.5
+			var b: Vector2 = scaled.posmodv(period) - period * 0.5
+			var q: Vector2 = a if a.length_squared() < b.length_squared() else b
+			var normal: Vector2 = Vector2(signf(q.x), 0.0) if absf(q.x) > q.abs().dot(Vector2(0.5, 0.8660254)) \
+				else q.sign() * Vector2(0.5, 0.8660254)
+			if (0.5 - q.dot(normal)) * 0.125 < 0.003:
+				out = seam * (0.65 if normal.dot(Vector2.ONE) > 0.0 else 0.82)
+		FloorStyleDef.Pattern.TERRACOTTA:
+			var row: float = floorf(p.y / 0.25)
+			var f: Vector2 = Vector2(p.x / 0.25 + fposmod(row, 2.0) * 0.5, p.y / 0.25).posmod(1.0)
+			var d: Vector2 = f.min(Vector2.ONE - f) * 0.25
+			var side: float = f.x if d.x < d.y else f.y
+			if minf(d.x, d.y) < 0.005:
+				out = seam * (0.65 if side > 0.5 else 0.82)
 		_:
 			var band: float = fposmod(floorf(p.y / 0.5), 2.0)
 			var seam_amount: float = 1.0 - smoothstep(0.0, 0.012, absf(fposmod(p.y / 0.5, 1.0) - 0.5))

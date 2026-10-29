@@ -1215,7 +1215,10 @@ an active edit/panel/selection first, or opens Settings when none is active.
   `planks` (pattern 0, level 1, the shop's own colour). This PR ships Wide
   planks (free), Narrow planks ($1) and Herringbone ($3) as the starter set,
   Small tiles ($2, level 2) and Checker tiles ($2, level 3). Herringbone
-  starts honey with walnut seams (the oak parquet look, Jared). Looks only: no
+  starts honey with walnut seams (the oak parquet look, Jared). Hex tiles
+  (butter/cream, 0.125 m across) and Terracotta pavers (terracotta/clay,
+  0.25 m squares in half-offset rows) each cost $3 and unlock at level 4.
+  Their pattern values are appended as 5 and 6. Looks only: no
   sim effect.
 - **Looks per cell.** `FloorFinishes` (`src/sim/shop/floor_finishes.gd`),
   owned by `ShopEditor.floors`, never by `SimGrid`: cell -> `Finish`
@@ -1292,7 +1295,7 @@ an active edit/panel/selection first, or opens Settings when none is active.
   with one colour.
 - **Review.** `tools/screenshot.sh --floors-review --speed=0 --frames=12,30`
   (`tools/floors_review.gd`): small tiles in the kitchen with a back door,
-  narrow planks, herringbone and checker in the dining room with thresholds
+  narrow planks, herringbone, checker, hex tiles and terracotta in the dining room with thresholds
   and the street door, staff standing on them; then Build > Floors holding a
   herringbone drag.
 

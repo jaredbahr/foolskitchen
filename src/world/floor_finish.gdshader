@@ -132,6 +132,32 @@ vec3 small_tiles(vec2 p, vec3 base, vec3 grout, float fw) {
 	return mix(colour, grout, cover * fade);
 }
 
+// 5: regular hexagons, 0.125 m between opposite parallel edges.
+// Two interleaved rectangular centre lattices; do not restart at cell edges.
+vec3 hex_tiles(vec2 p, vec3 base, vec3 grout, float fw) {
+	float size = 0.125;
+	vec2 period = vec2(1.0, 1.73205081);
+	vec2 a = mod(p / size + period * 0.5, period) - period * 0.5;
+	vec2 b = mod(p / size, period) - period * 0.5;
+	vec2 q = dot(a, a) < dot(b, b) ? a : b;
+	vec2 normal = abs(q.x) > dot(abs(q), vec2(0.5, 0.8660254))
+		? vec2(sign(q.x), 0.0) : sign(q) * vec2(0.5, 0.8660254);
+	float d = (0.5 - dot(q, normal)) * size;
+	float shade = dot(normal, vec2(1.0)) > 0.0 ? 0.65 : 0.82;
+	return mix(base, grout * shade, line_cover(d, 0.003, fw) * detail(size, fw));
+}
+
+// 6: 0.25 m square pavers, each row offset by half a paver.
+vec3 terracotta(vec2 p, vec3 base, vec3 joint, float fw) {
+	float size = 0.25;
+	float row = floor(p.y / size);
+	vec2 f = fract(vec2(p.x / size + mod(row, 2.0) * 0.5, p.y / size));
+	vec2 d = min(f, 1.0 - f) * size;
+	float side = d.x < d.y ? f.x : f.y;
+	float shade = side > 0.5 ? 0.65 : 0.82;
+	return mix(base, joint * shade, line_cover(min(d.x, d.y), 0.005, fw) * detail(size, fw));
+}
+
 void fragment() {
 	vec2 grid_position = world_position.xz / cell_size;
 	vec2 line_distance = abs(fract(grid_position + 0.5) - 0.5) * cell_size;
@@ -155,6 +181,10 @@ void fragment() {
 		patterned_floor = checker(world_position.xz, base, finish.b > 0 ? accent : base * 0.55, fw);
 	} else if (finish.r == 4) {
 		patterned_floor = small_tiles(world_position.xz, base, accent, fw);
+	} else if (finish.r == 5) {
+		patterned_floor = hex_tiles(world_position.xz, base, accent, fw);
+	} else if (finish.r == 6) {
+		patterned_floor = terracotta(world_position.xz, base, accent, fw);
 	} else {
 		// 0: the original wide planks, unchanged. A quiet world-space plank
 		// variation remains multiplicative with the authored floor swatch, so
