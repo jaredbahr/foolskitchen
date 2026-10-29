@@ -12,6 +12,7 @@ Hobby pace: there are no dates, only exit criteria. Each phase ends with a playa
 Codex takes `worker-ready` issues in this order; the director validates, reviews and merges every PR, and builds only what needs art judgement. Each wave can run in parallel inside itself.
 
 **Wave 1, ready now (game logic, data and UI with tests)**
+- #209 Grid on/off in normal play too (remembered, HUD button, setting) — first, it's small
 - #189 Warn when a build edit cuts staff off from menu dishes
 - #196 Bar-snack fries from frozen fries
 - #197 Bakery menu section
