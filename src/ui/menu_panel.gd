@@ -7,6 +7,7 @@ signal enable_requested(recipe_id: StringName, enabled: bool)
 signal price_requested(recipe_id: StringName, price: int)
 signal settings_requested()
 signal goals_requested()
+signal lease_requested()
 ## Morning opening-hours request (FK-083); the session checks the limits.
 signal hours_requested(open_minute: int, close_minute: int)
 
@@ -98,8 +99,33 @@ func bind_menu(model: MenuSettings) -> void:
 	refresh()
 
 
+## Request-only morning lease offer, with restock advice directly below cost.
+func set_lease_offer(offered: bool, cost: String, warning: String, refusal: String) -> void:
+	var box: VBoxContainer = get_node("Panel/Content/LeaseOffer")
+	box.visible = offered
+	(box.get_node("Cost") as Label).text = cost
+	var advice: Label = box.get_node("Warning")
+	advice.text = warning
+	advice.visible = not warning.is_empty()
+	advice.add_theme_color_override("font_color", preload("res://src/ui/hud.gd").ADVICE_COLOR)
+	var reason: Label = box.get_node("Refusal")
+	reason.text = refusal
+	reason.visible = not refusal.is_empty()
+	var button: Button = box.get_node("Accept")
+	button.disabled = not refusal.is_empty()
+	if not button.pressed.is_connected(_on_lease_pressed):
+		button.pressed.connect(_on_lease_pressed)
+
+
+func _on_lease_pressed() -> void:
+	if _phase == SimClock.Phase.MORNING:
+		lease_requested.emit()
+
+
 func set_phase(phase: int) -> void:
 	_phase = phase
+	if phase != SimClock.Phase.MORNING:
+		get_node("Panel/Content/LeaseOffer").hide()
 	refresh()
 
 

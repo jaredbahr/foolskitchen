@@ -2080,3 +2080,27 @@ pattern 0 of `floor_finish.gdshader`, unchanged).
 - **Poly budget (guide):** furniture 300 to 1,500 tris, characters 1,500 to 4,000 tris, small props under 300 tris.
 - **AI-generated meshes** (Tripo and similar) need retopology or decimation, a pivot fix, a scale check and a swap to the palette material before they go into `assets/models/`.
 - **Placeholders:** CSG or primitive shapes are fine until Phase 4. Systems first, art later.
+
+### Tier 2 lease (FK-064)
+`data/balance/lease_upgrade.tres` defines the level-3 morning offer, deposit,
+rent and extra lot margins. Initial **provisional tuning for Director review**:
+$300 deposit, $60 daily rent, four extra cells east and north (none west).
+The deposit uses `Ledger.UPGRADES` / `lease_deposit`; closing rent uses
+`Ledger.RENT`. Existing loans block upgrading. The Menu morning panel shows
+the cost, amber `RestockBudgetWarning`, and a plain cash/loan refusal.
+
+`OwnerProgress.property_tier` joins the existing owner progress snapshot;
+missing legacy fields mean Tier 1. Owner restores before shop, so the shop's
+floor decoder validates bought cells against the tier's larger template lot.
+No new section or save point. No floor, furniture, movement, RNG draw, or
+change to the default Tier 1 play. The current live editor's footprint, Build
+preview, delivery dock and rendered alley all use the enlarged lot. Recipe,
+floor and wall-finish tier gates now read the saved property tier.
+
+Regression coverage: `tests/sim/test_lease_upgrade.gd` and
+`tests/world/test_lease_session.gd` exercise eligibility, refusals, exact books,
+new floor, alley edge, legacy decoding and both sides of the morning checkpoint.
+For native review, `tools/lease_review.gd -- offer|short|expand` opens a seeded,
+interactive fixture with explicit synthetic XP/cash and saves disabled; capture
+the offer and Expand using the supported desktop route. This tool itself writes
+no images or game state.
