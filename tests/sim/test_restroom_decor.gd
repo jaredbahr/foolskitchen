@@ -157,6 +157,56 @@ func test_partition_between_two_toilets_keeps_both_and_basin_accessible() -> voi
 	assert_eq(RoomRules.restroom_toilets(restored.grid).size(), 2)
 
 
+func test_partition_cannot_seal_toilet_use_spot() -> void:
+	_assert_corner_fixture_stays_reachable(&"toilet")
+
+
+func test_partition_cannot_seal_basin_use_spot() -> void:
+	_assert_corner_fixture_stays_reachable(&"bathroom_sink")
+
+
+func test_existing_sealed_restroom_fixture_allows_unrelated_wall_edit() -> void:
+	var grid: SimGrid = _sim.world.grid
+	var fixture: PlacedItem = _corner_fixture(&"toilet")
+	var sealed: Vector3i = Vector3i(2, 5, SimGrid.EDGE_WEST)
+	assert_true(grid.set_segment(sealed, SimGrid.Segment.STALL_PARTITION))
+	assert_true(grid.find_guest_path(grid.entries()[0], fixture.work_cells[0]).is_empty())
+	var unrelated: Vector3i = Vector3i(9, 6, SimGrid.EDGE_WEST)
+	var check: EditCheck = _editor.check_segments({unrelated: SimGrid.Segment.STALL_PARTITION}
+		as Dictionary[Vector3i, int])
+	assert_true(check.ok, check.why)
+
+
+func _assert_corner_fixture_stays_reachable(fixture_id: StringName) -> void:
+	var grid: SimGrid = _sim.world.grid
+	var fixture: PlacedItem = _corner_fixture(fixture_id)
+	var spot: Vector2i = fixture.work_cells[0]
+	assert_eq(spot, Vector2i(1, 5))
+	assert_false(grid.find_guest_path(grid.entries()[0], spot).is_empty())
+	# The shell closes north/west and the fixture closes south. This side panel
+	# seals the east approach without crossing the fixture's own front edge.
+	var edge: Vector3i = Vector3i(2, 5, SimGrid.EDGE_WEST)
+	var check: EditCheck = _editor.check_segments({edge: SimGrid.Segment.STALL_PARTITION}
+		as Dictionary[Vector3i, int])
+	assert_false(check.ok, "a partition must not seal the %s use spot" % fixture_id)
+	assert_eq(check.why, WallRules.CUT_RESTROOM)
+	assert_eq(grid.segment(edge), SimGrid.Segment.NONE, "checking does not place the partition")
+
+
+func _corner_fixture(fixture_id: StringName) -> PlacedItem:
+	var grid: SimGrid = _sim.world.grid
+	for placed: PlacedItem in grid.items():
+		if placed.origin.y >= 5 and (placed.def as ItemDef).category != ItemDef.Category.DOOR:
+			grid.remove(placed.id)
+	var spot: Vector2i = Vector2i(1, 5)
+	var origin: Vector2i = Vector2i(1, 6)
+	assert_true(grid.set_rooms({spot: SimGrid.Room.RESTROOM, origin: SimGrid.Room.RESTROOM}
+		as Dictionary[Vector2i, int]))
+	var fixture: PlacedItem = grid.place_def(_content.item(fixture_id), origin, 0)
+	assert_not_null(fixture)
+	return fixture
+
+
 func test_partition_tool_never_makes_an_outside_window() -> void:
 	var edge: Vector3i = Vector3i(1, 8, SimGrid.EDGE_WEST)
 	var kind: SimGrid.Segment = _editor.next_segment(edge, SimGrid.Segment.STALL_PARTITION)
