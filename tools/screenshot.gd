@@ -1337,26 +1337,34 @@ static func catalogue_review_valid(state: Dictionary, frame: int, fixture: Dicti
 	if frame != 90 or state["catalogue_visible"] != true or state["build_active"] != true \
 			or state["category"] != String(profile["category"]) or state["onscreen_cards"] < 1:
 		return false
+	if not catalogue_tabs_valid(state, profile):
+		return false
+	var cache: Dictionary = state["cache"]
+	return cache["supported"] == true and cache["pending"] == 0 and cache["active"] == false \
+		and cache["failed"] == 0 and cache["error"] == "" and cache["icons_match"] == true and cache["cached"] == cache["expected"] \
+		and cache["cached_scenes"] == cache["expected_scenes"]
+
+
+## Native tab validation is independent of thumbnail rendering, so headless
+## real-Main tests can guard visible tabs without fabricating preview pixels.
+static func catalogue_tabs_valid(state: Dictionary, profile: Dictionary) -> bool:
 	if state["tabs"].size() != BuildCatalogue.CATEGORY_IDS.size():
 		return false
-	# Buy mode (FK-085) shows one tab per room that holds an item; the Build
-	# tabs belong to the other side and stay hidden.
+	# Buy mode shows each room with items plus the player blueprint library.
+	# The library is not an ItemDef room. Build tabs still stay hidden.
 	var rooms: Array[String] = []
 	for card: Dictionary in state.get("expected_cards", []):
 		if not rooms.has(String(card.get("room", ""))):
 			rooms.append(String(card.get("room", "")))
 	for tab: Dictionary in state["tabs"]:
 		var id: StringName = StringName(tab["id"])
-		var expected_shown: bool = rooms.has(String(id))
+		var expected_shown: bool = id == BuildCatalogue.BLUEPRINTS or rooms.has(String(id))
 		if tab["text"] != BuildCatalogue.CATEGORY_LABELS.get(id, "") or tab["pressed"] != (id == profile["category"]) \
 				or tab.get("shown") != expected_shown:
 			return false
 		if expected_shown and (tab["native"]["visible"] != true or tab["native"]["inside_clip"] != true):
 			return false
-	var cache: Dictionary = state["cache"]
-	return cache["supported"] == true and cache["pending"] == 0 and cache["active"] == false \
-		and cache["failed"] == 0 and cache["error"] == "" and cache["icons_match"] == true and cache["cached"] == cache["expected"] \
-		and cache["cached_scenes"] == cache["expected_scenes"]
+	return true
 
 
 ## Re-evaluate the actual layout/menu/paint independently of Main's cached
