@@ -2169,6 +2169,7 @@ Regression coverage: `tests/sim/test_lease_upgrade.gd` and
 `tests/world/test_lease_session.gd` exercise eligibility, refusals, exact books,
 new floor, alley edge, legacy decoding and both sides of the morning checkpoint.
 For native review, `tools/lease_review.gd -- offer|short|expand` opens a seeded,
-interactive fixture with explicit synthetic XP/cash and saves disabled; capture
-the offer and Expand using the supported desktop route. This tool itself writes
-no images or game state.
+interactive fixture with explicit synthetic XP/cash and saves disabled.
+`--capture-set=<fresh output directory>` captures the offer, cash refusal and
+accepted lease in Expand in one bounded process, then exits. The existing visual
+review job uploads these PNGs and their state metadata in its capture artifact.

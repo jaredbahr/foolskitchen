@@ -118,6 +118,16 @@ jobs:
             exit 1
           fi
 
+      - name: Capture the lease offer, refusal and expanded lot
+        shell: bash
+        run: |
+          set -euo pipefail
+          export XDG_DATA_HOME="$(mktemp -d)"
+          timeout 60 xvfb-run -a -s '-screen 0 1600x900x24' "$GODOT" --path . --rendering-method gl_compatibility --audio-driver Dummy --script tools/lease_review.gd -- --capture-set=screens/visual-review/lease 2>&1 | tee screens/visual-review/lease.log
+          if grep -E 'SCRIPT ERROR|Parse Error|^[[:space:]]*ERROR:' screens/visual-review/lease.log; then
+            exit 1
+          fi
+
       - name: Verify capture identity and image metadata
         shell: bash
         run: |
