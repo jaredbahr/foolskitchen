@@ -7,6 +7,15 @@ extends Node3D
 @export var guest_id: int = 0
 @export var customer_type: StringName = &"regular"
 
+const REGULAR_SWATCHES: Dictionary[StringName, SwatchDef] = {
+	&"honey": preload("res://data/swatches/honey.tres"),
+	&"slate_blue": preload("res://data/swatches/slate_blue.tres"),
+	&"sage": preload("res://data/swatches/sage.tres"),
+	&"cream": preload("res://data/swatches/cream.tres"),
+}
+
+var _regular_model: StringName = &""
+var _regular_tint: StringName = &""
 var _model: Node3D
 var _player: AnimationPlayer
 var _skeleton: Skeleton3D
@@ -38,7 +47,8 @@ func set_look(value: StringName, id: int = 0, kind: StringName = &"regular") -> 
 	role = value
 	guest_id = id
 	customer_type = kind
-	var desired_model: StringName = PersonPresentation.model_for(role, guest_id, customer_type)
+	var regular: bool = role in [&"customer", &"guest"] and not _regular_model.is_empty()
+	var desired_model: StringName = _regular_model if regular else PersonPresentation.model_for(role, guest_id, customer_type)
 	if not _initialized:
 		return desired_model != &""
 	if desired_model == _model_name and _model != null:
@@ -47,7 +57,7 @@ func set_look(value: StringName, id: int = 0, kind: StringName = &"regular") -> 
 	_clear_model()
 	if desired_model == &"":
 		return false
-	var path: String = PersonPresentation.model_path_for(role, guest_id, customer_type)
+	var path: String = PersonPresentation.MODEL_DIRECTORY + String(desired_model) + ".glb"
 	if not ResourceLoader.exists(path, "PackedScene"):
 		return false
 	var packed: PackedScene = load(path) as PackedScene
@@ -74,14 +84,46 @@ func set_look(value: StringName, id: int = 0, kind: StringName = &"regular") -> 
 	if PersonPresentation.has_chef_hat(role) and not _attach_to_head(_hat, "ChefHatAttachment"):
 		_clear_model()
 		return false
-	if PersonPresentation.has_courier_cap(role) and not _attach_to_head(_cap, "CourierCapAttachment"):
+	if (PersonPresentation.has_courier_cap(role) or regular) and not _attach_to_head(_cap, "CourierCapAttachment"):
 		_clear_model()
 		return false
+	if regular:
+		_tint_regular_cap()
 	_model_name = desired_model
 	var played: bool = _play_requested_clip()
 	if played and _clip == &"sit" and seated_time > 0.0:
 		_player.seek(minf(seated_time, _player.get_animation(&"sit").length), true)
 	return played
+
+
+## Fixed guest appearance survives changing runtime agent IDs. The cap reuses
+## the delivery cap geometry with private materials in existing swatch colours.
+func set_regular_look(model: StringName = &"", tint: StringName = &"") -> bool:
+	if not model.is_empty() and (not PersonPresentation.HEAD_TOPS.has(model) or not REGULAR_SWATCHES.has(tint)):
+		return false
+	if model == _regular_model and tint == _regular_tint:
+		return true
+	_regular_model = model
+	_regular_tint = tint
+	if _initialized:
+		_clear_model()
+		return set_look(role, guest_id, customer_type)
+	return true
+
+
+func regular_tint() -> StringName:
+	return _regular_tint
+
+
+func _tint_regular_cap() -> void:
+	var swatch: SwatchDef = REGULAR_SWATCHES[_regular_tint]
+	for child: Node in _cap.get_children():
+		var mesh: MeshInstance3D = child as MeshInstance3D
+		if mesh == null:
+			continue
+		var material: StandardMaterial3D = mesh.mesh.surface_get_material(0).duplicate() as StandardMaterial3D
+		material.albedo_color = swatch.color
+		mesh.material_override = material
 
 
 func _attach_to_head(piece: Node3D, attachment_name: String) -> bool:
@@ -346,6 +388,10 @@ func _play_requested_clip() -> bool:
 
 
 func _clear_model() -> void:
+	if _cap != null:
+		for child: Node in _cap.get_children():
+			if child is MeshInstance3D:
+				(child as MeshInstance3D).material_override = null
 	for piece: Node3D in [_hat, _cap]:
 		if piece != null:
 			piece.visible = false

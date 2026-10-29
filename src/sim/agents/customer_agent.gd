@@ -42,6 +42,13 @@ var party: Party = null
 ## Detached preferences captured before arrival. Existing guests never change type.
 var customer_type_id: StringName = &"regular"
 var customer_type_name: String = "Regular"
+## Named regular identity is durable in the cast, not in a transient visit.
+var regular_profile: RegularProfile = null
+var regular_arrival_tick: int = 0
+var regular_favourite_label: String = ""
+var regular_favourite_available: bool = false
+## Anonymous repeat cohort; never exposed to the player or randomly drawn.
+var repeat_guest_key: String = ""
 var budget_multiplier: float = 1.0
 var quality_weight: float = 0.0
 var review_chance_multiplier: float = 1.0
@@ -351,7 +358,7 @@ func _try_seat(world: SimWorld) -> bool:
 			continue
 		if PartySeating.held_for_earlier_party(table, id, world):
 			continue
-		for seat: Vector2i in table.seat_cells:
+		for seat: Vector2i in _preferred_seats(table):
 			if table.reserved_by(seat) != -1 or not world.grid.is_walkable(seat):
 				continue
 			if not world.grid.is_guest_reachable(cell, seat) or not table.reserve(seat, id):
@@ -372,6 +379,13 @@ func _try_seat(world: SimWorld) -> bool:
 ## the serve-across counters first, then any other table.
 func _seat_order(world: SimWorld) -> Array[PlacedItem]:
 	var items: Array[PlacedItem] = world.grid.items()
+	if regular_profile != null:
+		for index: int in items.size():
+			if items[index].seat_cells.has(regular_profile.favourite_seat):
+				var favourite: PlacedItem = items[index]
+				items.remove_at(index)
+				items.push_front(favourite)
+				return items
 	if not is_drinks_visit():
 		return items
 	var counters: Array[PlacedItem] = []
@@ -384,6 +398,15 @@ func _seat_order(world: SimWorld) -> Array[PlacedItem]:
 			others.append(item)
 	counters.append_array(others)
 	return counters
+
+
+func _preferred_seats(table: PlacedItem) -> Array[Vector2i]:
+	if regular_profile == null or not table.seat_cells.has(regular_profile.favourite_seat):
+		return table.seat_cells
+	var seats: Array[Vector2i] = table.seat_cells.duplicate()
+	seats.erase(regular_profile.favourite_seat)
+	seats.push_front(regular_profile.favourite_seat)
+	return seats
 
 
 func _walk_to_seat(world: SimWorld, sim: RestaurantSim) -> void:
@@ -490,6 +513,13 @@ func _take_order(server: SimAgent) -> bool:
 		_leave(sim.world, sim, &"out_of_stock")
 		return true
 	var recipe: RecipeDef = choices[rng.randi_range(0, choices.size() - 1)]
+	# Keep the ordinary private pick; a returning guest chooses the usual
+	# only while it is genuinely available in this visit's menu section.
+	if regular_profile != null:
+		for choice: RecipeDef in choices:
+			if choice.id == regular_profile.favourite_dish:
+				recipe = choice
+				break
 	var price: int = sim.price_of(recipe)
 	var chance: float = sim.price_walkout_chance(recipe, budget_multiplier)
 	# Standard/cheaper prices preserve the existing guest stream exactly.

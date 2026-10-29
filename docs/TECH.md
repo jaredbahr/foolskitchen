@@ -2147,3 +2147,51 @@ historical reports. There are no new save points or random draws.
 - **Poly budget (guide):** furniture 300 to 1,500 tris, characters 1,500 to 4,000 tris, small props under 300 tris.
 - **AI-generated meshes** (Tripo and similar) need retopology or decimation, a pivot fix, a scale check and a swap to the palette material before they go into `assets/models/`.
 - **Placeholders:** CSG or primitive shapes are fine until Phase 4. Systems first, art later.
+
+### Named regulars (FK-088)
+
+`RegularCast` and `RegularProfile` (`src/sim/regulars/`) hold a small persistent
+cast, authored by `data/regulars/cast.tres`. Solo arrivals of the existing Regular
+type belong to sixteen anonymous, deterministic repeat cohorts (their daily
+arrival order, cycling without a random draw). Satisfied visits on distinct days
+teach the most-enjoyed dish and most-used seat; ties keep the first favourite.
+Promotion requires two satisfied visits, at least 2.5 stars, positive vibe (1),
+and **day 6 or later**. The five-day balance probe therefore has no promotions,
+new regular-stream draws, tips, or changed guest choices. The cast keeps at most
+eight lifetime identities, including those who stop coming; departed names are
+retained in the saved history and never silently reassigned.
+
+Only an actual promotion asks the session's lazy `GameState.rng(&"regulars")`
+provider for a stream. Names, cap colours, greetings and the next visit date are
+seeded; each identity gets a fixed approved Mini Character model. Returning
+regulars replace ordinary solo Regular arrivals when due, at most once per day,
+rescheduling 2–4 days later. A shortage of eligible arrivals delays a visit rather
+than spawning extra guests. Arrival and private guest draws retain their ordinary
+order. Parties and other customer types remain anonymous.
+
+A regular tries their favourite seat first, then any usable seat, and orders the
+favourite when it is available in their visit's menu section. A missing or sold-out
+favourite never prevents another order. Having it on the menu adds the authored
+0.08 happiness term to their arrival review bonus. Their existing wait and meal
+quality determine relationship mood at departure; repeated missing favourites
+lower it too. Below 0.2 they stop visiting, and the evening report names them.
+`regular_tip` adds a whole-unit `Ledger.TIP` alongside the existing guarded sale:
+4% normally, 8% with the favourite on the menu, rounding the latter up so a $5
+coffee can produce a $1 bonus. No extra random draw or alternate currency is used.
+
+`Main` stages the `regulars` save section and installs it only after a complete
+morning load. Anonymous learning, fixed identities, preferences, moods and due
+dates round-trip; absent legacy sections start empty. Only the existing morning
+autosave writes them. New promotions and menu edits never save immediately.
+The Menu marks active favourites; inspection uses `RegularText` for dish names,
+seat coordinates and plain mood words. ShopView attaches a reused star/name/
+greeting billboard to the drawn person, and PersonView uses their fixed model
+plus a small existing cap in an approved swatch. Greeting lifetime is two sim
+seconds, so pausing also pauses it. None of these presenters advances the sim.
+
+Validation: pure cast tests cover gates, learning, cap, calendar and RNG/save
+continuation; integration/session tests cover actual arrival, seating, orders,
+departure, tips and morning-only persistence. `tools/regulars_probe.gd` is a manual
+25-day paired café probe (equipment-free existing concept fixture; stock and
+running costs paid, morning raises accepted). `tools/regulars_review.tscn` is an
+explicit staged view fixture for two native captures, not balance evidence.

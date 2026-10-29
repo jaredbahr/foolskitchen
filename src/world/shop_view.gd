@@ -87,6 +87,7 @@ var item_nodes: Dictionary[int, ItemVisual] = {}
 var agent_nodes: Dictionary[int, Node3D] = {}
 var dirt_nodes: Dictionary[Vector2i, MeshInstance3D] = {}
 var mood_nodes: Dictionary[int, GuestMoodIndicator] = {}
+var regular_nodes: Dictionary[int, RegularGuestIndicator] = {}
 var _mood_states: Dictionary[int, int] = {}
 var _mood_bands: Dictionary[int, int] = {}
 var _materials: Dictionary[Color, StandardMaterial3D] = {}
@@ -144,6 +145,7 @@ func show_world(value: SimWorld) -> void:
 	var previous_world: SimWorld = world
 	_disconnect_grid()
 	mood_nodes.clear()
+	regular_nodes.clear()
 	_mood_states.clear()
 	_mood_bands.clear()
 	for child: Node in get_children():
@@ -1111,6 +1113,7 @@ func _sync_agents() -> void:
 			if created is PersonView:
 				# _ready runs on add_child; record the real look before rig creation.
 				(created as PersonView).set_look(frame.role, frame.id, frame.customer_type)
+				_set_regular_look(agent, created as PersonView)
 			created.name = "Agent%d" % agent.id
 			created.set_meta("agent_id", agent.id)
 			created.set_meta(&"courier", agent is CourierAgent)
@@ -1127,6 +1130,7 @@ func _sync_agents() -> void:
 		var node: Node3D = agent_nodes[agent.id]
 		var ready_person: bool = false
 		if node is PersonView:
+			_set_regular_look(agent, node as PersonView)
 			ready_person = AgentPresentationController.apply(frame, node as PersonView, playback_speed)
 		else:
 			node.position = frame.floor_position + frame.display_offset + Vector3(0.0, 0.875, 0.0)
@@ -1141,6 +1145,7 @@ func _sync_agents() -> void:
 		_show_held_crates(node, frame, ready_person)
 		_apply_fade(node, frame.fade)
 		_update_guest_mood(agent, node, frame)
+		_update_regular(agent, node, frame)
 	for id: int in agent_nodes.keys():
 		if not alive.has(id):
 			if not _keep_as_ghost(id):
@@ -1446,6 +1451,7 @@ func _legacy_person_fallback(agent: SimAgent) -> MeshInstance3D:
 
 
 func _remove_agent_visual(id: int) -> void:
+	_remove_regular_icon(id)
 	_remove_mood_icon(id)
 	_mood_states.erase(id)
 	_mood_bands.erase(id)
@@ -1643,3 +1649,36 @@ func _material(color: Color) -> StandardMaterial3D:
 		material.roughness = 0.9
 		_materials[color] = material
 	return _materials[color]
+
+
+func _set_regular_look(agent: SimAgent, person: PersonView) -> void:
+	var guest: CustomerAgent = agent as CustomerAgent
+	if guest != null and guest.regular_profile != null:
+		person.set_regular_look(guest.regular_profile.model_id, guest.regular_profile.tint_id)
+	else:
+		person.set_regular_look()
+
+
+func _update_regular(agent: SimAgent, body: Node3D, frame: AgentPresentationController.Frame) -> void:
+	var guest: CustomerAgent = agent as CustomerAgent
+	if guest == null or guest.regular_profile == null or frame.hidden:
+		_remove_regular_icon(agent.id)
+		return
+	if not regular_nodes.has(agent.id):
+		var created: RegularGuestIndicator = RegularGuestIndicator.new()
+		body.add_child(created)
+		regular_nodes[agent.id] = created
+	var indicator: RegularGuestIndicator = regular_nodes[agent.id]
+	indicator.position = (frame.head_anchor if frame.anchors_ready else Vector3.UP * 0.8) + Vector3.UP * 0.32
+	indicator.present(guest.regular_profile.display_name, guest.regular_profile.greeting,
+		world.now - guest.regular_arrival_tick < 2 * SimClock.TICKS_PER_SECOND)
+
+
+func _remove_regular_icon(id: int) -> void:
+	if not regular_nodes.has(id):
+		return
+	var indicator: RegularGuestIndicator = regular_nodes[id]
+	if is_instance_valid(indicator):
+		indicator.get_parent().remove_child(indicator)
+		indicator.free()
+	regular_nodes.erase(id)

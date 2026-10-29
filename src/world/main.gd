@@ -65,6 +65,8 @@ var _staff_notice_day: int = 0
 var _staff_notices: Array[Dictionary] = []
 ## Last thirty eligible reviews, including five virtual three-star starters.
 var reputation: ReputationBook = ReputationBook.new()
+## Small persistent named cast, written only with the normal morning save.
+var regulars: RegularCast = RegularCast.new()
 var owner_progress: OwnerProgress = OwnerProgress.new(PROGRESSION_TUNING)
 ## Authored arrivals; tests may inject an explicit neutral Regular-only catalogue.
 var customer_type_catalogue: CustomerTypeCatalogue = CUSTOMER_TYPES
@@ -96,6 +98,7 @@ var _loaded_menu: MenuSettings = null
 var _loaded_staff: StaffRoster = null
 var _loaded_plates: PlateLedger = null
 var _loaded_reputation: ReputationBook = null
+var _loaded_regulars: RegularCast = null
 var _loaded_milestones: MilestoneTracker = null
 var _loaded_tray_level: int = 0
 var _loaded_reorder: ReorderSettings = null
@@ -410,6 +413,7 @@ func start() -> void:
 	SaveSystem.register("staff", _capture_staff, _restore_staff)
 	SaveSystem.register("plates", _capture_plates, _restore_plates)
 	SaveSystem.register("reviews", _capture_reviews, _restore_reviews)
+	SaveSystem.register("regulars", _capture_regulars, _restore_regulars)
 	SaveSystem.register("milestones", _capture_milestones, _restore_milestones)
 	SaveSystem.register("reorder", _capture_reorder, _restore_reorder)
 	SaveSystem.register("deliveries", _capture_deliveries, _restore_deliveries)
@@ -431,6 +435,10 @@ func start() -> void:
 	($ShopView as ShopView).bind_cleanliness(cleanliness)
 	_debug_overlay.bind_cleanliness(cleanliness)
 	sim.configure_reviews(reputation, REVIEW_TUNING, REVIEW_QUOTES, GameState.rng(&"reviews"))
+	sim.regulars = regulars
+	sim.regular_rng_provider = GameState.rng.bind(&"regulars")
+	for recipe: RecipeDef in content.recipes():
+		sim.regular_recipe_labels[recipe.id] = recipe.display_name
 	# Configure only after the complete restore/new-game decision, using its
 	# real reputation and owner level. This consumes no customer RNG draw.
 	if not sim.configure_customer_types(customer_type_catalogue, owner_progress.level):
@@ -1678,6 +1686,7 @@ func build_report(day: int) -> DayReport:
 	var report := DayReport.new()
 	report.day = day
 	report.restaurant_name = menu_settings.restaurant_name() if menu_settings != null else MenuSettings.DEFAULT_NAME
+	report.regulars_lines = RegularText.report_lines(regulars)
 	report.loan_first_advance = _loan_notice_day == day
 	var totals: Dictionary = Economy.ledger.day_totals(day)
 	for category: StringName in totals:
@@ -1732,6 +1741,8 @@ func build_report(day: int) -> DayReport:
 
 
 func _new_game() -> void:
+	regulars = RegularCast.new()
+	_loaded_regulars = null
 	blueprint_library = BlueprintLibrary.new()
 	_loaded_blueprints = null
 	_blueprint_load_notes.clear()
@@ -1784,6 +1795,7 @@ func _new_game() -> void:
 
 
 func _load_autosave() -> bool:
+	_loaded_regulars = null
 	_loaded_blueprints = null
 	_blueprint_load_notes.clear()
 	_loaded_layout = null
@@ -1830,6 +1842,7 @@ func _load_autosave() -> bool:
 		world = candidate.world
 	staff_roster = employees
 	reputation = _loaded_reputation if _loaded_reputation != null else ReputationBook.new()
+	regulars = _loaded_regulars if _loaded_regulars != null else RegularCast.new()
 	tray_level = _loaded_tray_level
 	sim.carry_capacity = 1 << tray_level
 	menu_settings = choices
@@ -1867,6 +1880,18 @@ func _restore_plates(data: Dictionary) -> bool:
 	if restored == null:
 		return false
 	_loaded_plates = restored
+	return true
+
+
+func _capture_regulars() -> Dictionary:
+	return regulars.to_dict()
+
+
+func _restore_regulars(data: Dictionary) -> bool:
+	var restored: RegularCast = RegularCast.new()
+	if not restored.from_dict(data):
+		return false
+	_loaded_regulars = restored
 	return true
 
 
@@ -3474,8 +3499,11 @@ func _charge_closing_costs() -> void:
 		Economy.add_cash(-TUNING.daily_rent, Ledger.RENT)
 
 
-func _on_customer_paid(_customer: CustomerAgent, order: Order, amount: int) -> void:
+func _on_customer_paid(customer: CustomerAgent, order: Order, amount: int) -> void:
 	Economy.add_cash(amount, Ledger.SALE)
+	var tip: int = sim.regular_tip(customer, order)
+	if tip > 0:
+		Economy.add_cash(tip, Ledger.TIP)
 	dishes_sold_today[order.recipe_id] = dishes_sold_today.get(order.recipe_id, 0) + 1
 
 
@@ -3707,6 +3735,11 @@ func _expected_dish_quality(recipe: RecipeDef) -> DishQuality:
 func _refresh_menu_details() -> void:
 	if _menu_panel != null and content != null:
 		_menu_panel.set_recipe_details(content.recipes(), menu_recipe_details())
+		var favourites: Array[StringName] = []
+		for profile: RegularProfile in regulars.profiles:
+			if profile.active and not favourites.has(profile.favourite_dish):
+				favourites.append(profile.favourite_dish)
+		_menu_panel.set_regular_favourites(favourites)
 
 
 ## Keep the last service's measured dish quality for the morning view. This
