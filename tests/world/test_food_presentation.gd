@@ -173,6 +173,120 @@ func test_pour_frame_carries_unplated_drink_only_after_ready() -> void:
 	assert_false((_view.agent_nodes[server.id].get_node("Tray") as Node3D).visible)
 
 
+func test_reclaimed_production_delivery_waits_for_pickup_before_carrying_again() -> void:
+	var table: PlacedItem = ShopBuilder.items_with_def(_sim.world, &"table_2")[0]
+	var pass_item: PlacedItem = ShopBuilder.items_with_def(_sim.world, &"pass_counter")[0]
+	var order: Order = Order.new()
+	order.recipe_id = &"burger"
+	order.table_item_id = table.id
+	order.seat_cell = table.seat_cells[0]
+	_sim.orders.place(order, 0)
+	assert_true(_sim.kitchen.plates.take(order.id, table.id))
+	_sim.orders.set_state(order, Order.State.READY)
+	var delivery: SimTask = _open_kitchen_task(&"deliver", order.id)
+	assert_not_null(delivery)
+	if delivery == null:
+		return
+	var server: StaffAgent = _staff(&"server")
+	assert_true(_sim.world.board.claim(delivery, server.id, _sim.world.now))
+	server.task = delivery
+	_view._sync_agents()
+	var dish: DishVisual = _view.food.tickets[order.id].dish
+	assert_not_null(dish)
+	if dish == null:
+		return
+	assert_eq(dish.stage, &"ready")
+	assert_true(dish.get_parent() == _view.food)
+	# Invoke the real pass-pickup callback, then advance to the first carry step.
+	server.cell = pass_item.work_cells[1]
+	server.step_index = 1
+	assert_true(pass_item.reserve(server.cell, server.id))
+	assert_true(bool(delivery.steps[1].on_done.call(server)))
+	assert_true(bool(delivery.payload.get("batch_prepared", false)))
+	server.step_index = 2
+	_view._sync_agents()
+	assert_eq(dish.stage, &"carried")
+	assert_true(dish.get_parent() == _view.agent_nodes[server.id])
+	server.call(&"_drop", _sim.world, &"stuck")
+	assert_eq(delivery.state, SimTask.State.OPEN)
+	_view._sync_agents()
+	assert_eq(dish.stage, &"ready")
+	assert_true(dish.get_parent() == _view.food)
+	assert_true(_sim.world.board.claim(delivery, server.id, _sim.world.now))
+	server.task = delivery
+	assert_eq(server.step_index, 0)
+	_view._sync_agents()
+	assert_eq(dish.stage, &"ready", "the new claimant has not reached the pass")
+	assert_true(dish.get_parent() == _view.food)
+	# Replaying the same production pickup now puts the dish back in the hands.
+	server.cell = pass_item.work_cells[1]
+	server.step_index = 1
+	assert_true(pass_item.reserve(server.cell, server.id))
+	assert_true(bool(delivery.steps[1].on_done.call(server)))
+	server.step_index = 2
+	_view._sync_agents()
+	assert_eq(dish.stage, &"carried")
+	assert_true(dish.get_parent() == _view.agent_nodes[server.id])
+
+
+func test_reclaimed_production_pour_waits_for_drink_ready_step() -> void:
+	var machine: PlacedItem = _sim.world.grid.place_def(_content.item(&"coffee_machine"), Vector2i(1, 3), 0)
+	assert_not_null(machine)
+	if machine == null:
+		return
+	_sim.stock.add(&"coffee_beans", 1, 1)
+	var table: PlacedItem = ShopBuilder.items_with_def(_sim.world, &"table_2")[0]
+	var order: Order = Order.new()
+	order.recipe_id = &"coffee"
+	order.table_item_id = table.id
+	order.seat_cell = table.seat_cells[0]
+	_sim.orders.place(order, 0)
+	var pour: SimTask = _open_kitchen_task(&"pour", order.id)
+	assert_not_null(pour)
+	if pour == null:
+		return
+	var server: StaffAgent = _staff(&"server")
+	assert_true(_sim.world.board.claim(pour, server.id, _sim.world.now))
+	server.task = pour
+	server.cell = machine.work_cells[0]
+	server._held_item_id = machine.id
+	server._held_cell = server.cell
+	assert_true(machine.reserve(server.cell, server.id))
+	assert_true(bool(pour.steps[1].on_done.call(server)))
+	_view._sync_agents()
+	assert_null(_view.food.tickets[order.id].dish)
+	# The production drink-ready callback is three steps from the end;
+	# the following walk is the first step that carries the finished drink.
+	server.step_index = pour.steps.size() - 3
+	assert_true(bool(pour.steps[server.step_index].on_done.call(server)))
+	assert_eq(order.state, Order.State.READY)
+	server.step_index = pour.steps.size() - 2
+	_view._sync_agents()
+	var dish: DishVisual = _view.food.tickets[order.id].dish
+	assert_not_null(dish)
+	if dish == null:
+		return
+	assert_eq(dish.stage, &"carried")
+	assert_true(dish.get_parent() == _view.agent_nodes[server.id])
+	server.call(&"_drop", _sim.world, &"stuck")
+	assert_eq(pour.state, SimTask.State.OPEN)
+	_view._sync_agents()
+	assert_false(dish.visible)
+	assert_true(_sim.world.board.claim(pour, server.id, _sim.world.now))
+	server.task = pour
+	assert_eq(server.step_index, 0)
+	_view._sync_agents()
+	assert_false(dish.visible, "the new claimant has not made the drink")
+	assert_null(_view.food.tickets[order.id].dish)
+	server.step_index = pour.steps.size() - 3
+	assert_true(bool(pour.steps[server.step_index].on_done.call(server)))
+	server.step_index = pour.steps.size() - 2
+	_view._sync_agents()
+	assert_true(dish.visible)
+	assert_eq(dish.stage, &"carried")
+	assert_true(dish.get_parent() == _view.agent_nodes[server.id])
+
+
 func test_steam_only_during_cooking_and_turns_off_when_station_is_idle() -> void:
 	var stove: PlacedItem = ShopBuilder.items_with_def(_sim.world, &"stove")[0]
 	var cook: StaffAgent = _staff(&"cook")
@@ -389,6 +503,13 @@ func _dish_count(node: Node) -> int:
 	for child: Node in node.get_children():
 		count += _dish_count(child)
 	return count
+
+
+func _open_kitchen_task(kind: StringName, order_id: int) -> SimTask:
+	for task: SimTask in _sim.world.board.open_tasks():
+		if task.kind == kind and int(task.payload.get("order_id", 0)) == order_id:
+			return task
+	return null
 
 
 func _staff(role: StringName) -> StaffAgent:

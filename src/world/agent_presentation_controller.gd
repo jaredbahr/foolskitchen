@@ -116,9 +116,15 @@ static func frame_for(agent: SimAgent, world: SimWorld, chair_seat_height: float
 		var task: SimTask = _active_task(staff, world)
 		if task != null:
 			var count: int = int(task.payload.get("carried_count", 0)) if task.kind == &"deliver" else 0
+			# Reclaimed deliveries retain their batch but replay travel and pickup.
+			if task.kind == &"deliver" and task.payload.has("pass_id") and staff.step_index < 2:
+				count = 0
 			if task.kind == &"pour" and orders != null:
 				var drink: Order = orders.get_order(int(task.payload.get("order_id", 0)))
 				count = 1 if drink != null and drink.state == Order.State.READY else 0
+				# Kitchen pours end with drink-ready, travel to the guest, then serve.
+				if bool(task.payload.get("kitchen", false)) and staff.step_index < task.steps.size() - 2:
+					count = 0
 			frame.carrying = count > 0
 			frame.show_tray = count > 1
 			frame.working = not frame.moving and staff.step_index >= 0 \
