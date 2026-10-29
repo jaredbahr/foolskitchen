@@ -250,3 +250,17 @@ func _rect(x: int, y: int, w: int, h: int) -> Array[Vector2i]:
 		for column: int in range(x, x + w):
 			out.append(Vector2i(column, row))
 	return out
+
+
+func test_review_fixture_maps_both_new_patterns_across_adjacent_cells() -> void:
+	await _start()
+	var fixture: Script = load("res://tools/floors_review.gd")
+	var prepared: Dictionary = fixture.prepare(_main, _main.get_tree().root)
+	assert_eq(prepared.get("error"), "")
+	var evidence: Dictionary = fixture.evidence(_main)
+	assert_true(evidence.get("patterns_match", false))
+	var patterns: Dictionary = evidence.get("patterns", {})
+	assert_eq(patterns.get("2,5"), FloorStyleDef.Pattern.HEX_TILE)
+	assert_eq(patterns.get("3,5"), FloorStyleDef.Pattern.HEX_TILE)
+	assert_eq(patterns.get("10,7"), FloorStyleDef.Pattern.TERRACOTTA)
+	assert_eq(patterns.get("11,7"), FloorStyleDef.Pattern.TERRACOTTA)
