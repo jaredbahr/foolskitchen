@@ -86,7 +86,7 @@ func _day_wage(wage: int) -> int:
 
 
 func refresh() -> void:
-	IconStyle.decorate_label($Panel/Content/Title, &"staff")
+	IconStyle.decorate_label($Panel/Content/Header/Title, &"staff")
 	IconStyle.decorate_label(%RosterTitle, &"staff")
 	IconStyle.decorate_label($Panel/Content/Scroll/List/CandidateTitle, &"staff")
 	_refresh_priorities()

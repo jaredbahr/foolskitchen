@@ -475,7 +475,7 @@ func test_native_staff_controls_survive_refresh_and_fit_web_and_capture_widths()
 	var before_close: Dictionary = _roster(main).to_dict()
 	var books: Dictionary = Economy.ledger.to_dict()
 	var hiring_state: int = GameState.rng(&"hiring").state
-	var close_button: Button = panel.get_node("Panel/Content/Close") as Button
+	var close_button: Button = panel.get_node("Panel/Content/Header/Close") as Button
 	point = close_button.get_global_rect().get_center()
 	_mouse(point, true)
 	panel.refresh()

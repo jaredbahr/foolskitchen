@@ -180,19 +180,56 @@ func test_goals_uses_available_height_below_wrapped_grid_hud_after_resize() -> v
 					"the initial three career goals fit without scrolling at 1600x900")
 
 
-func _start_main() -> Node:
+func test_real_main_staff_priorities_fit_below_wrapped_grid_header() -> void:
+	var main: Node = await _start_main(true)
+	var window: Window = main.get_window()
+	assert_true(main.call("set_staff_visible", true))
+	var panel: StaffPanel = main.get_node("Overlay/StaffPanel") as StaffPanel
+	var roster: StaffRoster = main.get("staff_roster") as StaffRoster
+	var before: Dictionary = roster.to_dict()
+	var card: Control = panel.get_node("Panel") as Control
+	var close: Button = panel.get_node("%Close") as Button
+	for dimensions: Vector2i in [Vector2i(1600, 900), Vector2i(1280, 720), Vector2i(1600, 900)]:
+		window.size = dimensions
+		await _wait_frames(4)
+		assert_true(card.get_global_rect().position.y >= float(main.get_node("HUD").call("panel_top")) - 0.5,
+			"Staff remains below the real wrapped header")
+		assert_true(card.get_global_rect().encloses(close.get_global_rect()), "Close remains inside Staff after resize")
+		assert_true(close.is_visible_in_tree())
+		if dimensions == Vector2i(1600, 900):
+			var evidence: Dictionary = CAPTURE.staff_priority_grid_evidence(panel, roster)
+			assert_true(CAPTURE.staff_priority_grid_valid(evidence, before["members"]),
+				"Real Main must retain the full grid and main-job explanation inside the scroll viewport: " + JSON.stringify(evidence))
+	assert_eq(roster.to_dict(), before, "layout and read-only capture validation never change the roster")
+	close.pressed.emit()
+	assert_false(panel.visible, "the real Close signal still closes Staff")
+
+
+func _start_main(in_window: bool = false) -> Node:
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	await _wait_frames(2)
 	_viewport = SubViewport.new()
 	_viewport.size = Vector2i(1600, 900)
 	_viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
 	tree.root.add_child(_viewport)
+	var host: Node = _viewport
+	if in_window:
+		_viewport.gui_embed_subwindows = true
+		var window: Window = Window.new()
+		window.borderless = true
+		window.content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS
+		window.content_scale_aspect = Window.CONTENT_SCALE_ASPECT_EXPAND
+		window.content_scale_size = Vector2i(1600, 900)
+		window.content_scale_factor = 1.0
+		window.size = Vector2i(1600, 900)
+		_viewport.add_child(window)
+		host = window
 	var main: Node = MAIN.instantiate()
 	main.set("use_saves", false)
 	main.set("save_slot", SLOT)
 	main.set("new_game_seed_override", 1)
 	_mains.append(main)
-	_viewport.add_child(main)
+	host.add_child(main)
 	main.call("start")
 	Clock.set_speed(0)
 	await _wait_frames(2)
