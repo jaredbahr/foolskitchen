@@ -337,3 +337,30 @@ func _run_day(main: Node) -> void:
 			break
 		main.call("run_ticks", 1000)
 	assert_eq(Clock.sim.phase, SimClock.Phase.CLOSED)
+
+
+func test_level_four_banner_names_both_new_floors() -> void:
+	var main: Node = _start()
+	var morning_file: String = FileAccess.get_file_as_string(_path())
+	var unlocks: Array[String] = main.call("_unlocked_at_levels", 3, 4)
+	assert_true(unlocks.has("Hex tiles floor"))
+	assert_true(unlocks.has("Terracotta pavers floor"))
+	var earlier: Array[String] = main.call("_unlocked_at_levels", 1, 3)
+	assert_false(earlier.has("Hex tiles floor"))
+	assert_false(earlier.has("Terracotta pavers floor"))
+
+	var progress: OwnerProgress = main.get("owner_progress") as OwnerProgress
+	assert_false(progress.award_bonus(progress.threshold_for(3)).is_empty())
+	var happy_needed: int = ceili(float(progress.threshold_for(4) - progress.total_xp) / float(PROGRESSION.happy_guest_xp))
+	(main.get("sim") as RestaurantSim).leave_reasons_today[&"happy"] = happy_needed
+	Clock.sim.phase = SimClock.Phase.CLOSED
+	main.call("_on_service_closed", Clock.sim.day)
+	var report: DayReport = main.get("shown_report") as DayReport
+	assert_eq([report.owner_level_before, report.owner_level_after], [3, 4])
+	assert_true(report.owner_unlocks.has("Hex tiles floor"))
+	assert_true(report.owner_unlocks.has("Terracotta pavers floor"))
+	var banner: Label = main.get_node("Overlay/EveningReport/Panel/Scroll/Content/LevelUpCallout/OwnerUnlocks") as Label
+	assert_true(banner.visible)
+	assert_true(banner.text.contains("Hex tiles floor"))
+	assert_true(banner.text.contains("Terracotta pavers floor"))
+	assert_eq(FileAccess.get_file_as_string(_path()), morning_file, "unlocking floors never adds a save")
