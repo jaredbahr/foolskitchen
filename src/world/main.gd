@@ -54,6 +54,10 @@ var shop_editor: ShopEditor
 ## phase change, so it never reaches across opening or into the save.
 var edit_history: ShopEditHistory = ShopEditHistory.new()
 var build_mode: BuildMode = BuildMode.new()
+## Player library is independent of the per-shop snapshot (FK-045).
+var blueprint_library: BlueprintLibrary = BlueprintLibrary.new()
+var _loaded_blueprints: BlueprintLibrary
+var _blueprint_load_notes: Array[String] = []
 ## Cookable dishes/prices belong to this shop, never to shared recipe resources.
 var menu_settings: MenuSettings
 var staff_roster: StaffRoster
@@ -188,6 +192,7 @@ func _bind_world_presentation() -> void:
 	_build_preview = $BuildPreview
 	_build_preview.clear()
 	build_mode.bind_session(null, null, null, Callable(), Callable(), Callable())
+	build_mode.bind_blueprints(null, Callable())
 	_was_build_active = false
 	_paint_active = false
 	var view: ShopView = $ShopView
@@ -233,6 +238,12 @@ func _bind_world_presentation() -> void:
 	_paint_swatch_id = _build_catalogue.selected_swatch_id
 	if not _build_catalogue.buy_requested.is_connected(_on_build_buy_requested):
 		_build_catalogue.buy_requested.connect(_on_build_buy_requested)
+	if _build_catalogue != null and not _build_catalogue.blueprint_requested.is_connected(_on_blueprint_requested):
+		_build_catalogue.blueprint_selection_requested.connect(_on_blueprint_selection_requested)
+		_build_catalogue.blueprint_save_requested.connect(_on_blueprint_save_requested)
+		_build_catalogue.blueprint_requested.connect(_on_blueprint_requested)
+		_build_catalogue.blueprint_rename_requested.connect(_on_blueprint_rename_requested)
+		_build_catalogue.blueprint_delete_requested.connect(_on_blueprint_delete_requested)
 	if not _build_catalogue.wall_tool_requested.is_connected(_on_wall_tool_requested):
 		_build_catalogue.wall_tool_requested.connect(_on_wall_tool_requested)
 	if not _build_catalogue.floor_tool_requested.is_connected(_on_floor_tool_requested):
@@ -362,6 +373,8 @@ func _process(_delta: float) -> void:
 		return
 	_debug_overlay.sample_rates(float(Time.get_ticks_usec()) / 1000000.0, Engine.get_frames_per_second())
 	_guard_build_phase()
+	if build_mode.blueprint_dragging and not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+		build_mode.blueprint_release(SimGrid.NO_CELL)
 	if build_mode.wall_dragging and not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
 		# A release over a panel never reaches _unhandled_input (the GUI consumes
 		# it); end that wall drag instead of leaving it stuck to the pointer.
@@ -392,6 +405,7 @@ func start() -> void:
 		autoload.call(&"register_save_provider")
 	SaveSystem.register("owner", _capture_owner, _restore_owner)
 	SaveSystem.register("shop", _capture_shop, _restore_shop)
+	SaveSystem.register("blueprints", _capture_blueprints, _restore_blueprints)
 	SaveSystem.register("menu", _capture_menu, _restore_menu)
 	SaveSystem.register("staff", _capture_staff, _restore_staff)
 	SaveSystem.register("plates", _capture_plates, _restore_plates)
@@ -473,6 +487,7 @@ func _exit_tree() -> void:
 		_build_preview.clear()
 	_paint_active = false
 	build_mode.bind_session(null, null, null, Callable(), Callable(), Callable())
+	build_mode.bind_blueprints(null, Callable())
 	($CameraRig as CameraRig).set_grid_forced(false)
 	if _inspect_panel != null and _inspect_panel.owner_mode_requested.is_connected(_on_owner_mode_requested):
 		_inspect_panel.owner_mode_requested.disconnect(_on_owner_mode_requested)
@@ -506,6 +521,8 @@ func _exit_tree() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and _build_catalogue != null and _build_catalogue.blueprint_name_has_focus():
+		return
 	if is_settings_visible():
 		var settings_key: InputEventKey = event as InputEventKey
 		if settings_key != null and settings_key.pressed and not settings_key.echo:
@@ -558,6 +575,8 @@ func _unhandled_input(event: InputEvent) -> void:
 ## The single Main input owner calls this before normal inspection. Inactive
 ## build mode deliberately leaves R and service input unhandled.
 func route_build_input(event: InputEvent) -> bool:
+	if event is InputEventKey and _build_catalogue != null and _build_catalogue.blueprint_name_has_focus():
+		return false
 	_guard_build_phase()
 	var key: InputEventKey = event as InputEventKey
 	if key != null and key.pressed and not key.echo:
@@ -599,6 +618,13 @@ func route_build_input(event: InputEvent) -> bool:
 	if mouse != null and mouse.pressed and mouse.button_index == MOUSE_BUTTON_RIGHT:
 		# Right-click drops the ghost (or a drag); it never leaves the mode.
 		return build_mode.cancel_ghost()
+	if mouse != null and mouse.button_index == MOUSE_BUTTON_LEFT and build_mode.state == BuildMode.State.SELECT:
+		var selection_cell: Variant = build_cell_at_screen_position(mouse.position)
+		if mouse.pressed and selection_cell is Vector2i:
+			build_mode.blueprint_press(selection_cell)
+		elif not mouse.pressed:
+			build_mode.blueprint_release(selection_cell if selection_cell is Vector2i else SimGrid.NO_CELL)
+		return true
 	if mouse != null and mouse.button_index == MOUSE_BUTTON_LEFT and build_mode.state == BuildMode.State.WALLS:
 		var point: Variant = build_point_at_screen_position(mouse.position)
 		if point is Vector2:
@@ -1057,6 +1083,11 @@ func update_build_pointer(screen_position: Vector2, shift: bool = false) -> bool
 	if not is_build_active():
 		return false
 	_last_pointer = screen_position
+	if build_mode.state == BuildMode.State.SELECT:
+		var selection_cell: Variant = build_cell_at_screen_position(screen_position)
+		if selection_cell is Vector2i:
+			build_mode.blueprint_pointer(selection_cell)
+		return selection_cell is Vector2i
 	if build_mode.state == BuildMode.State.FLOOR:
 		var floor_cell: Variant = build_cell_at_screen_position(screen_position)
 		if floor_cell is Vector2i:
@@ -1208,6 +1239,36 @@ func begin_buy_item(def_id: StringName) -> bool:
 	return build_mode.begin_buy(def_id, cell if cell is Vector2i else Vector2i.ZERO)
 
 
+func _on_blueprint_selection_requested() -> void:
+	if is_build_active():
+		build_mode.begin_blueprint_selection()
+
+
+func _on_blueprint_save_requested(name: String) -> void:
+	if is_build_active():
+		build_mode.save_blueprint(name)
+
+
+func _on_blueprint_requested(blueprint: Blueprint) -> void:
+	if not is_build_active() or not blueprint_library.blueprints.has(blueprint):
+		return
+	var cell: Variant = build_cell_at_screen_position(get_viewport().get_mouse_position()) if is_inside_tree() else null
+	build_mode.begin_blueprint(blueprint, cell if cell is Vector2i else Vector2i.ZERO)
+
+
+func _on_blueprint_rename_requested(blueprint: Blueprint, name: String) -> void:
+	if is_build_active() and shop_editor.can_edit():
+		blueprint_library.rename(blueprint, name)
+		_update_build_controls()
+
+
+func _on_blueprint_delete_requested(blueprint: Blueprint) -> void:
+	if is_build_active() and shop_editor.can_edit():
+		if build_mode.selected_blueprint == blueprint:
+			build_mode.cancel_ghost()
+		blueprint_library.remove(blueprint)
+
+
 func _bind_build_session() -> void:
 	if not build_mode.changed.is_connected(_on_build_changed):
 		build_mode.changed.connect(_on_build_changed)
@@ -1220,6 +1281,9 @@ func _bind_build_session() -> void:
 		shop_editor.floors.changed.connect(_on_floor_looks_changed)
 	# Wall finishes and wall decor (D26): drawn by ShopView, felt by the vibe.
 	build_mode.bind_walls(shop_wall_finishes, shop_hang, shop_rehang, shop_take_down)
+	build_mode.bind_blueprints(blueprint_library, shop_stamp)
+	if _build_catalogue != null:
+		_build_catalogue.bind_blueprints(blueprint_library)
 	($ShopView as ShopView).bind_wall_finishes(shop_editor.walls, shop_editor.decor)
 	if _build_catalogue != null:
 		_build_catalogue.set_wall_base_color(($ShopView as ShopView).shop_wall_colour())
@@ -1299,6 +1363,8 @@ func _update_build_controls() -> void:
 		summary = build_mode.wall_finish_summary()
 	elif build_mode.state == BuildMode.State.HANG:
 		summary = build_mode.hang_summary()
+	elif build_mode.state in [BuildMode.State.SELECT, BuildMode.State.BLUEPRINT]:
+		summary = build_mode.blueprint_summary()
 	elif build_mode.state == BuildMode.State.IDLE:
 		# The sell/eyedropper hover text, or why an idle tool click was refused.
 		summary = build_mode.hover_summary()
@@ -1322,6 +1388,7 @@ func _update_build_controls() -> void:
 		_build_catalogue.set_tool_state(int(build_mode.tool), edit_history.can_undo(), edit_history.can_redo(),
 			edit_history.undo_label(), edit_history.redo_label(), editable)
 		_build_catalogue.set_build_visible(active or _paint_active)
+		_build_catalogue.set_blueprint_selection(0 if build_mode.blueprint_dragging else build_mode.blueprint_selection.size())
 	_build_ui_phase = world.clock.phase if world != null else -1
 
 
@@ -1366,6 +1433,8 @@ func build_restock_warning() -> String:
 	var cost: int = 0
 	if build_mode.state == BuildMode.State.BUY and build_mode.selected_definition != null:
 		cost = build_mode.selected_definition.price
+	elif build_mode.state == BuildMode.State.BLUEPRINT:
+		cost = build_mode.blueprint_cost()
 	elif build_mode.state in [BuildMode.State.WALLS, BuildMode.State.FLOOR, BuildMode.State.FLOORS,
 			BuildMode.State.WALL_FINISH, BuildMode.State.HANG]:
 		# D26: a wall finish drag's price less its refund; a new wall item's
@@ -1662,6 +1731,9 @@ func build_report(day: int) -> DayReport:
 
 
 func _new_game() -> void:
+	blueprint_library = BlueprintLibrary.new()
+	_loaded_blueprints = null
+	_blueprint_load_notes.clear()
 	# A fresh clock and seed too, so a half-loaded save can't leave its day
 	# or random state behind.
 	Clock.sim = SimClock.new()
@@ -1711,6 +1783,8 @@ func _new_game() -> void:
 
 
 func _load_autosave() -> bool:
+	_loaded_blueprints = null
+	_blueprint_load_notes.clear()
 	_loaded_layout = null
 	_loaded_menu = null
 	_loaded_staff = null
@@ -1776,6 +1850,9 @@ func _load_autosave() -> bool:
 	deliveries = _loaded_deliveries if _loaded_deliveries != null else DeliveryBook.new()
 	stock_cart.clear()
 	_last_delivery.clear()
+	blueprint_library = _loaded_blueprints if _loaded_blueprints != null else BlueprintLibrary.new()
+	for note: String in _blueprint_load_notes:
+		world.log_event(note)
 	return true
 
 
@@ -1868,6 +1945,20 @@ func _restore_owner(data: Dictionary) -> bool:
 		return false
 	_owner_preferences = preferences
 	owner_progress = progress
+	return true
+
+
+func _capture_blueprints() -> Dictionary:
+	return blueprint_library.to_dict()
+
+
+func _restore_blueprints(data: Dictionary) -> bool:
+	var restored: BlueprintLibrary = BlueprintLibrary.new()
+	var notes: Array[String] = []
+	if not restored.restore(data, content, notes):
+		return false
+	_loaded_blueprints = restored
+	_blueprint_load_notes = notes
 	return true
 
 
@@ -2493,6 +2584,16 @@ func shop_move(item_id: int, origin: Vector2i, quarter_turns: int) -> bool:
 func shop_buy(def_id: StringName, origin: Vector2i, quarter_turns: int = 0, swatch_id: StringName = &"") -> bool:
 	var accepted: bool = shop_editor != null and edit_history.buy(def_id, origin, quarter_turns, swatch_id)
 	if accepted and not swatch_id.is_empty():
+		($ShopView as ShopView).set_paint(content, shop_editor.wall_swatch_id, shop_editor.floor_swatch_id)
+	_after_edit(accepted)
+	if _build_ready:
+		build_mode.refresh()
+	return accepted
+
+
+func shop_stamp(blueprint: Blueprint, anchor: Vector2i, rotation: int = 0) -> bool:
+	var accepted: bool = shop_editor != null and edit_history.stamp(blueprint, anchor, rotation)
+	if accepted:
 		($ShopView as ShopView).set_paint(content, shop_editor.wall_swatch_id, shop_editor.floor_swatch_id)
 	_after_edit(accepted)
 	if _build_ready:
