@@ -36,18 +36,21 @@ func test_partition_and_thumbnail_have_matching_thin_laminate_geometry() -> void
 	view.free()
 
 
-func test_hand_dryer_has_small_uniformly_scaled_housing_and_downward_nozzle() -> void:
+func test_hand_dryer_keeps_its_size_and_aligns_its_bottom_with_the_mirror() -> void:
 	var scene: PackedScene = load("res://assets/props/wall_hand_dryer.tscn") as PackedScene
 	var dryer: PropView = scene.instantiate() as PropView
+	var mirror: PropView = (load("res://assets/props/restroom_mirror.tscn") as PackedScene).instantiate() as PropView
 	var box: AABB = dryer.get_combined_aabb()
 	var art: Node3D = dryer.get_node("WallMount/Art") as Node3D
 	assert_eq(art.scale, Vector3.ONE * ArtScale.FURNITURE_SCALE)
 	assert_almost_eq(box.size.x, 0.30 * ArtScale.FURNITURE_SCALE, 0.001)
 	assert_almost_eq(box.size.y, 0.25 * ArtScale.FURNITURE_SCALE, 0.001)
 	assert_true(box.size.z < 0.18)
-	assert_almost_eq(box.position.y, 1.0, 0.001)
+	assert_almost_eq(box.position.y, mirror.get_combined_aabb().position.y, 0.001,
+		"both fittings share a bottom edge at the game's person scale")
 	assert_true(box.end.y < ArtScale.WALL_HEIGHT)
 	assert_true(box.end.z < GridMath.CELL_SIZE * 0.5)
 	assert_not_null(art.find_child("DownwardNozzle", true, false))
 	assert_not_null(art.find_child("FrontSensor", true, false))
+	mirror.free()
 	dryer.free()

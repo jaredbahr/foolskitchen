@@ -1198,6 +1198,8 @@ an active edit/panel/selection first, or opens Settings when none is active.
   `bathroomMirror` and `wall_hand_dryer` using the approved made hand dryer:
   both WALL / INSIDE_FACE, RESTROOM, charm 1. `WallDecor.room_hint`
   suggests marking a Restroom when hung elsewhere; it never refuses placement.
+  Their bottom edges align at 0.6 m for the game's person scale; lowering the
+  dryer's mount leaves its approved model dimensions and shared scale unchanged.
   Hung RESTROOM accents contribute charm with the usual diminishing returns;
   floor fixtures still do not. `STALL_PARTITION` is appended to the segment
   enum and uses the same access checks as a wall (including toilet and basin

@@ -39,4 +39,5 @@ the darker nozzle/sensor use `wall`'s `metalDark`. Edge softness follows the
 Furniture Kit bathroom cabinet and wall lamp. No textures or baked lighting.
 Rebuild with `blender --background --factory-startup --python tools/build_hand_dryer.py`.
 The source envelope is approximately 0.30 × 0.25 × 0.15 m; its wrapper uses
-the shared uniform furniture scale and hangs the bottom 1 m above the floor.
+the shared uniform furniture scale and aligns its bottom with the mirror at
+0.6 m above the floor, fitting the game's person scale.
