@@ -271,6 +271,7 @@ func check_stamp(blueprint: Blueprint, anchor: Vector2i, rotation: int = 0, exac
 			return EditCheck.new(false, problem)
 	check.cost = charge
 	_fill_warnings(check, preview, ids)
+	_note_menu_access(check, preview, exact != null)
 	return check
 
 
@@ -410,6 +411,7 @@ func check_sell(item_id: int, exact: Exact = null) -> EditCheck:
 	if not dining.ok:
 		return dining
 	_fill_warnings(check, preview, ids)
+	_note_menu_access(check, preview, exact != null)
 	return check
 
 
@@ -606,6 +608,15 @@ static func from_dict(data: Dictionary, template_layout: ShopLayout, content: Co
 			return null
 		preview.set_segment(edge, kind.segment as SimGrid.Segment)
 		layout.wall_segments[edge] = kind.id
+	# Older expansions could leave a frame standing after its wall opened.
+	# Stage the complete run first so a supporting wall saved later counts;
+	# drop only unsupported openings instead of discarding the player's shop.
+	var orphaned: Array[Vector3i] = WallRules.orphan_openings(preview)
+	for edge: Vector3i in orphaned:
+		preview.set_segment(edge, SimGrid.Segment.NONE)
+		layout.wall_segments.erase(edge)
+	if not orphaned.is_empty():
+		layout.load_notes.append("Removed window or doorway frames that no longer had a wall.")
 	if not WallRules.layout_problem(preview).is_empty():
 		errors.append("Saved walls block the shop")
 		return null
@@ -873,10 +884,24 @@ func check_segments(changes: Dictionary[Vector3i, int], exact: Exact = null) -> 
 			return EditCheck.new(false, "Unknown wall type")
 		cost += new_def.price if new_def != null else 0
 		refund += floori(old_def.price / 2.0) if old_def != null else 0
+	preview.set_segments(effective)
+	# A new frame must be part of a wall. Existing frames whose last wall
+	# support this edit removes come down too, with their normal sale refund.
+	for edge: Vector3i in effective:
+		if effective[edge] in [SimGrid.Segment.WINDOW, SimGrid.Segment.DOORWAY] \
+				and not WallRules.has_continuing_wall(preview, edge):
+			return EditCheck.new(false, WallRules.OPENING_NEEDS_WALL)
+	for edge: Vector3i in WallRules.orphan_openings(preview):
+		effective[edge] = SimGrid.Segment.NONE
+		var old_def: WallKindDef = _content.wall_kind_for(live.segment(edge))
+		refund += floori(old_def.price / 2.0) if old_def != null else 0
+	preview.set_segments(effective)
 	if exact != null:
 		cost = maxi(-exact.amount, 0)
 		refund = maxi(exact.amount, 0)
 	preview.set_segments(effective)
+	var menu_check: EditCheck = EditCheck.new(true)
+	_note_menu_access(menu_check, preview, exact != null)
 	# D25: one back door per shop (undo/redo restores accepted layouts as they were).
 	var problem: String = WallRules.back_door_problem(live, preview) if exact == null else ""
 	if problem.is_empty():
@@ -891,7 +916,11 @@ func check_segments(changes: Dictionary[Vector3i, int], exact: Exact = null) -> 
 	if problem.is_empty() and exact == null:
 		problem = RoomRules.problem(live, preview, ids)
 	if not problem.is_empty():
-		return EditCheck.new(false, problem)
+		menu_check.ok = false
+		menu_check.why = problem
+		return menu_check
+	if not menu_check.ok:
+		return menu_check
 	var check: EditCheck = EditCheck.new(true)
 	# D26: finishes and decor on walls that go come down too, refunded at half.
 	var lost: int = _note_wall_losses(preview, check)
@@ -905,6 +934,8 @@ func check_segments(changes: Dictionary[Vector3i, int], exact: Exact = null) -> 
 	check.refund = refund
 	check.changes = effective
 	_fill_warnings(check, preview, ids)
+	check.menu_losses = menu_check.menu_losses
+	check.menu_warning = menu_check.menu_warning
 	return check
 
 
@@ -1518,10 +1549,6 @@ func check_floor(cells: Array[Vector2i], adding: bool, exact: Exact = null,
 			if not live.items_at(cell).is_empty():
 				return EditCheck.new(false, ShopFootprint.HAS_FURNITURE)
 			losing.append(cell)
-	for cell: Vector2i in losing:
-		var lost: String = _lost_spot(live, cell) if exact == null else ""
-		if not lost.is_empty():
-			return EditCheck.new(false, lost)
 	var ids: Dictionary[int, int] = {}
 	var preview: SimGrid = _preview_without(-1, ids)
 	if preview == null:
@@ -1547,6 +1574,21 @@ func check_floor(cells: Array[Vector2i], adding: bool, exact: Exact = null,
 			return EditCheck.new(false, restored)
 		preview.set_segment(edge, restore[edge] as SimGrid.Segment)
 		removals[edge] = restore[edge]
+	# Judge support on the complete proposal, including walls restored by an
+	# undo. An existing opening may rely on one of those restored wall edges.
+	for edge: Vector3i in WallRules.orphan_openings(preview):
+		removals[edge] = SimGrid.Segment.NONE
+		var old_def: WallKindDef = _content.wall_kind_for(preview.segment(edge))
+		refund += floori(old_def.price / 2.0) if old_def != null else 0
+	preview.set_segments(removals)
+	var menu_check: EditCheck = EditCheck.new(true)
+	_note_menu_access(menu_check, preview, exact != null)
+	for cell: Vector2i in losing:
+		var lost: String = _lost_spot(live, cell) if exact == null else ""
+		if not lost.is_empty():
+			menu_check.ok = false
+			menu_check.why = lost
+			return menu_check
 	# New floor must be walkable from the street through the walls as built:
 	# an outer window that turned interior can seal a pocket.
 	# Removing must not seal bought floor that people can walk to now.
@@ -1575,7 +1617,11 @@ func check_floor(cells: Array[Vector2i], adding: bool, exact: Exact = null,
 	if problem.is_empty() and exact == null:
 		problem = RoomRules.problem(live, preview, ids)
 	if not problem.is_empty():
-		return EditCheck.new(false, problem)
+		menu_check.ok = false
+		menu_check.why = problem
+		return menu_check
+	if not menu_check.ok:
+		return menu_check
 	var check: EditCheck = EditCheck.new(true)
 	# D26: finishes and decor on walls that go come down too, refunded at half.
 	refund += _note_wall_losses(preview, check)
@@ -1603,6 +1649,8 @@ func check_floor(cells: Array[Vector2i], adding: bool, exact: Exact = null,
 	check.floor_adding = adding
 	check.rooms = kitchen
 	_fill_warnings(check, preview, ids)
+	check.menu_losses = menu_check.menu_losses
+	check.menu_warning = menu_check.menu_warning
 	return check
 
 
@@ -1792,7 +1840,23 @@ func _check_placement(definition: ItemDef, origin: Vector2i, turns: int, exclude
 			return EditCheck.new(false, rooms)
 	var check: EditCheck = EditCheck.new(true)
 	_fill_warnings(check, preview, ids)
+	_note_menu_access(check, preview, restoring)
 	return check
+
+
+## Keep a new edit from leaving an empty unlocked catalogue. Exact history
+## restores an accepted layout, so its existing access exemption still holds.
+func _note_menu_access(check: EditCheck, preview: SimGrid, restoring: bool) -> void:
+	if restoring:
+		return
+	check.menu_losses = MenuAccess.lost(_sim.world.grid, preview, _sim.menu, _property_tier)
+	check.menu_warning = MenuAccess.warning(check.menu_losses, preview, _content)
+	var recipes: Array[RecipeDef] = _content.recipes()
+	if MenuAccess.cookable(preview, recipes, _owner_level, _property_tier).is_empty() \
+			and not MenuAccess.cookable(_sim.world.grid, recipes, _owner_level, _property_tier).is_empty():
+		check.ok = false
+		check.why = MenuAccess.NO_DISH
+		return
 
 
 ## One presentation mapping for every geometric placement result.
@@ -1859,6 +1923,10 @@ static func _fill_warnings(check: EditCheck, grid: SimGrid, ids: Dictionary[int,
 	check.unreachable = _unreachable(grid, ids)
 	for table: PlacedItem in grid.items():
 		var definition: ItemDef = table.def as ItemDef
+		if definition.category == ItemDef.Category.WAITING:
+			if WaitingBench.door_distance(grid, table.seat_cells) > WaitingBench.TUNING.waiting_bench_door_distance:
+				check.seat_warnings[ids[table.id]] = WaitingBench.FAR_FROM_DOOR
+			continue
 		if definition.category != ItemDef.Category.TABLE:
 			continue
 		var nominal: int = DiningSeats.nominal_capacity(grid, table)
