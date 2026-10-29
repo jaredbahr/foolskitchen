@@ -7,7 +7,7 @@ This file is read by every coding agent (Codex, harness workers, Claude). Read `
 - Hobby project with a light process.
 
 ## Workflow
-1. Work comes from an assigned GitHub issue. The issue is the brief: do what its **Do** says, stay out of **Don't**, and finish **Done when**.
+1. Work comes from an assigned GitHub issue. When choosing your next issue yourself, take open `worker-ready` issues in the order of `docs/ROADMAP.md` → "Up next: the Codex queue" (wave 1 first, top to bottom), skipping any whose **Depends on** / "Start after" hasn't merged. Issues without `worker-ready` are not yours yet. The issue is the brief: do what its **Do** says, stay out of **Don't**, and finish **Done when**.
 2. Branch from `main` as `issue-<number>-<slug>`.
 3. Open a PR into `main` with `Closes #<number>` in the body.
 4. One task per PR. If you find extra work, note it in the PR body instead of doing it.
@@ -51,6 +51,7 @@ This file is read by every coding agent (Codex, harness workers, Claude). Read `
 - Merge the latest `main` into your branch (a merge commit, not a rebase) and run `bash tools/check.sh` again. A PR that only passed on an old base has broken `main` before.
 - Self-review: in a fresh pass, re-read your whole diff against the issue's **Do**, **Don't** and **Done when**, and against code rules 1–11. Fix what you find.
 - Put a short checklist in the PR body: each **Done when** item ticked, with evidence (the test name, probe table or screenshot), plus "Rules 9/10/11: held" or what you changed and why.
+- Never commit review evidence: no screenshots, review PNGs, `.import` sidecars, evidence JSON or review notes (for example under `docs/reviews/`). Everything inside the project ships in builds. Attach images to the PR or let the visual-review job upload them.
 - Mark the PR ready for review. Don't leave it as a draft.
 
 ## Before you finish
