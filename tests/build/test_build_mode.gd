@@ -434,6 +434,9 @@ func test_pickup_offset_keeps_the_grabbed_tile_and_clears_on_cancel_or_buy() -> 
 
 
 func test_far_tile_stays_fixed_through_four_rotations_of_a_two_by_one_item() -> void:
+	# Some initial poses face the boundary wall. A second fridge keeps meals
+	# cookable while this test isolates the grabbed-tile rotation pivot.
+	assert_not_null(_sim.world.grid.place_def(_content.item(&"fridge"), Vector2i(10, 3)))
 	assert_true(_mode.enter())
 	var item: PlacedItem = _sim.world.grid.item(_id(&"fridge"))
 	assert_eq((item.def as ItemDef).footprint, Vector2i(2, 1))

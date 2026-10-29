@@ -96,7 +96,9 @@ static func frame_for(agent: SimAgent, world: SimWorld, chair_seat_height: float
 			if is_finite(seated_lean_degrees) and seated_lean_degrees >= 0.0 \
 					and seated_lean_degrees <= ItemDef.MAX_SEATED_LEAN_DEGREES:
 				frame.seated_lean_degrees = seated_lean_degrees
-			frame.facing_direction = _item_center(world.grid.item(customer.table_item_id)) - start
+			var seat_item_id: int = customer.waiting_item_id if customer.state == CustomerAgent.State.QUEUED \
+				else customer.table_item_id
+			frame.facing_direction = _item_center(world.grid.item(seat_item_id)) - start
 			var authored: Vector3 = Vector3(seated_facing.x, 0.0, seated_facing.z)
 			if authored.is_finite() and authored.length_squared() > 0.000001:
 				frame.facing_direction = authored
@@ -233,7 +235,11 @@ static func apply(frame: Frame, view: PersonView, playback_speed: float) -> bool
 
 
 static func _is_seated(customer: CustomerAgent, world: SimWorld) -> bool:
-	if world == null or not customer.has_arrived() or customer.cell != customer.seat_cell:
+	if world == null:
+		return false
+	if customer.is_waiting_seated(world):
+		return true
+	if not customer.has_arrived() or customer.cell != customer.seat_cell:
 		return false
 	if not [CustomerAgent.State.ORDERING, CustomerAgent.State.WAITING_FOOD,
 			CustomerAgent.State.EATING, CustomerAgent.State.PAYING].has(customer.state):

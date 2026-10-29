@@ -74,6 +74,7 @@ static func try_seat(party: Party, world: SimWorld, kitchen: Kitchen = null) -> 
 		party.table_item_id = table.id
 		for index: int in guests.size():
 			var guest: CustomerAgent = guests[index]
+			guest.release_waiting_seat(world)
 			guest.table_item_id = table.id
 			guest.seat_cell = seats[index]
 			guest._walk_wait = 0

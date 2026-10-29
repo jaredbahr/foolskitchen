@@ -80,6 +80,7 @@ jobs:
           bash tools/screenshot.sh --out=screens/visual-review/mood-waits --open --fast=8 --frames=120,180,240,300 --speed=1
           bash tools/screenshot.sh --out=screens/visual-review/people-poses --open --fast=8 --frames=60,240 --speed=1
           bash tools/screenshot.sh --out=screens/visual-review/door-queue --door-queue --open --fast=8 --frames=240 --speed=1
+          bash tools/screenshot.sh --out=screens/visual-review/waiting-bench --scene=res://tools/waiting_bench_review.tscn --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/loan-review --loan-review --speed=0 --frames=12,90
           bash tools/screenshot.sh --out=screens/visual-review/milestone-review --milestone-review --speed=0 --frames=12,90
           bash tools/screenshot.sh --out=screens/visual-review/catalogue-rustic --catalogue-review=rustic --speed=0 --frames=90,120
@@ -92,8 +93,12 @@ jobs:
           bash tools/screenshot.sh --out=screens/visual-review/floors-review --floors-review --speed=0 --frames=12,30
           bash tools/screenshot.sh --out=screens/visual-review/walls-review --walls-review --speed=0 --frames=12,30
           bash tools/screenshot.sh --out=screens/visual-review/hygiene-review --scene=res://tools/hygiene_review.tscn --speed=0 --frames=12,60 --quarter=2
+          OPENINGS_REVIEW_STAGE=before bash tools/screenshot.sh --out=screens/visual-review/openings-before --scene=res://tools/openings_review.tscn --speed=0 --frames=30 --quarter=2
+          OPENINGS_REVIEW_STAGE=after bash tools/screenshot.sh --out=screens/visual-review/openings-after --scene=res://tools/openings_review.tscn --speed=0 --frames=30 --quarter=2
           bash tools/screenshot.sh --out=screens/visual-review/build-green --build=green --quarter=0 --frames=12 --speed=1
           bash tools/screenshot.sh --out=screens/visual-review/build-red --build=red --quarter=0 --frames=12 --speed=1
+          bash tools/screenshot.sh --out=screens/visual-review/menu-access-preview --scene=res://tools/menu_access_review.tscn --speed=0 --frames=12
+          FK_MENU_REVIEW_STAGE=open bash tools/screenshot.sh --out=screens/visual-review/menu-access-open --scene=res://tools/menu_access_review.tscn --speed=0 --frames=12
           bash tools/screenshot.sh --out=screens/visual-review/settings --settings --speed=0 --frames=12
           bash tools/screenshot.sh --out=screens/visual-review/settings-world --settings-world --speed=0 --frames=90
           bash tools/screenshot.sh --out=screens/visual-review/hud-1280 --hud-layout --window-size=1280x720 --speed=0 --frames=12,90

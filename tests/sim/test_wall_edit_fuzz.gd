@@ -74,6 +74,9 @@ func _diff(a: String, b: String) -> String:
 func _invariants(step: int) -> void:
 	var grid: SimGrid = _sim.world.grid
 	_expect(_ledger.cash == START_CASH + _upgrades(), "step %d books" % step)
+	for edge: Vector3i in grid.segment_edges():
+		if grid.segment(edge) in [SimGrid.Segment.WINDOW, SimGrid.Segment.DOORWAY]:
+			_expect(WallRules.has_continuing_wall(grid, edge), "step %d freestanding window/doorway %s" % [step, edge])
 	for face: Vector3i in _editor.walls.faces():
 		_expect(WallFaces.is_face(grid, face), "step %d finish on non-face %s" % [step, face])
 	for anchor: Vector3i in _editor.decor.anchors():
