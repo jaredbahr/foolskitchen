@@ -45,6 +45,13 @@ func start() -> void:
 	settings_button.text = TitleText.SETTINGS
 	quit_button.text = TitleText.QUIT
 	quit_button.visible = not OS.has_feature("web")
+	# Keep native dialog padding, but use the shared palette in this dialog only.
+	var dialog_theme: Theme = theme.duplicate() as Theme
+	var dialog_panel: StyleBoxFlat = confirmation.get_theme_stylebox("panel", "AcceptDialog").duplicate() as StyleBoxFlat
+	dialog_panel.bg_color = (theme.get_stylebox("panel", "PanelContainer") as StyleBoxFlat).bg_color
+	dialog_theme.set_stylebox("panel", "AcceptDialog", dialog_panel)
+	dialog_theme.set_color("font_focus_color", "Button", theme.get_color("font_color", "Button"))
+	confirmation.theme = dialog_theme
 	confirmation.dialog_text = TitleText.START_OVER
 	confirmation.title = TitleText.NEW_GAME
 	confirmation.ok_button_text = TitleText.NEW_GAME

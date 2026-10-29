@@ -107,6 +107,34 @@ func test_settings_reuses_the_existing_panel_without_an_in_game_quit_action() ->
 	assert_eq(SaveSystem.list_slots().size(), 0)
 
 
+func test_confirmation_text_stays_readable_with_focus_without_changing_shared_theme_or_padding() -> void:
+	var shared: Theme = load("res://src/ui/theme/main_theme.tres") as Theme
+	var had_panel: bool = shared.has_stylebox("panel", "AcceptDialog")
+	var had_focus: bool = shared.has_color("font_focus_color", "Button")
+	var default_panel: StyleBoxFlat = ThemeDB.get_default_theme().get_stylebox("panel", "AcceptDialog") as StyleBoxFlat
+	var default_fill: Color = default_panel.bg_color
+	var shared_panel: StyleBoxFlat = shared.get_stylebox("panel", "PanelContainer") as StyleBoxFlat
+	var shared_fill: Color = shared_panel.bg_color
+	var title: TitleScreen = _title()
+	var main: Node = _shop()
+	for dialog: ConfirmationDialog in [title.confirmation, main.get_node("Overlay/QuitToTitle")]:
+		var panel: StyleBoxFlat = dialog.get_theme_stylebox("panel", "AcceptDialog") as StyleBoxFlat
+		assert_eq(panel.bg_color, shared_fill, "dialog content uses the approved cream")
+		assert_true(_contrast(dialog.get_label().get_theme_color("font_color"), panel.bg_color) >= 4.5,
+			"replacement and progress-loss warnings remain readable")
+		for button: Button in [dialog.get_ok_button(), dialog.get_cancel_button()]:
+			var normal: StyleBoxFlat = button.get_theme_stylebox("normal") as StyleBoxFlat
+			assert_true(_contrast(button.get_theme_color("font_focus_color"), normal.bg_color) >= 4.5,
+				"focused confirmation and cancel captions remain readable")
+		for side: Side in [SIDE_LEFT, SIDE_TOP, SIDE_RIGHT, SIDE_BOTTOM]:
+			assert_almost_eq(panel.get_content_margin(side), default_panel.get_content_margin(side),
+				0.001, "the correction retains the native dialog padding")
+	assert_eq(default_panel.bg_color, default_fill, "the engine fallback style is unchanged")
+	assert_eq(shared_panel.bg_color, shared_fill, "the shared panel is unchanged")
+	assert_eq(shared.has_stylebox("panel", "AcceptDialog"), had_panel, "other dialogs keep their theme")
+	assert_eq(shared.has_color("font_focus_color", "Button"), had_focus, "other buttons keep their theme")
+
+
 func test_new_game_without_a_save_boots_the_real_shop_and_uses_its_morning_autosave() -> void:
 	var title: TitleScreen = _title()
 	title.request_new_game()
@@ -261,3 +289,11 @@ func _saved_text() -> String:
 
 func _tree() -> SceneTree:
 	return Engine.get_main_loop() as SceneTree
+
+
+static func _contrast(a: Color, b: Color) -> float:
+	var first: Color = a.srgb_to_linear()
+	var second: Color = b.srgb_to_linear()
+	var la: float = first.get_luminance()
+	var lb: float = second.get_luminance()
+	return (maxf(la, lb) + 0.05) / (minf(la, lb) + 0.05)

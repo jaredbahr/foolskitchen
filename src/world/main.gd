@@ -308,7 +308,13 @@ func _bind_world_presentation() -> void:
 	if not _settings_panel.quit_to_title_requested.is_connected(request_quit_to_title):
 		_settings_panel.quit_to_title_requested.connect(request_quit_to_title)
 	var quit_dialog: ConfirmationDialog = $Overlay/QuitToTitle
-	quit_dialog.theme = _menu_panel.theme
+	# Keep native dialog padding, but use the shared palette in this dialog only.
+	var dialog_theme: Theme = _menu_panel.theme.duplicate() as Theme
+	var dialog_panel: StyleBoxFlat = quit_dialog.get_theme_stylebox("panel", "AcceptDialog").duplicate() as StyleBoxFlat
+	dialog_panel.bg_color = (_menu_panel.theme.get_stylebox("panel", "PanelContainer") as StyleBoxFlat).bg_color
+	dialog_theme.set_stylebox("panel", "AcceptDialog", dialog_panel)
+	dialog_theme.set_color("font_focus_color", "Button", _menu_panel.theme.get_color("font_color", "Button"))
+	quit_dialog.theme = dialog_theme
 	quit_dialog.title = TitleText.QUIT_TO_TITLE
 	quit_dialog.dialog_text = TitleText.LOST_PROGRESS
 	quit_dialog.ok_button_text = TitleText.QUIT_TO_TITLE
