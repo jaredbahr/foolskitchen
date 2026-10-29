@@ -8,7 +8,7 @@ extends Resource
 
 ## The shader's pattern numbers (the data texture's red channel). Never
 ## renumber: 0 is the legacy wide planks every older shop is drawn with.
-enum Pattern { PLANKS, NARROW_PLANKS, HERRINGBONE, CHECKER, SMALL_TILE, HEX_TILE, TERRACOTTA }
+enum Pattern { PLANKS, NARROW_PLANKS, HERRINGBONE, CHECKER, SMALL_TILE, HEX_TILE, TERRACOTTA, TERRAZZO, CONCRETE, CARPET }
 
 ## The free starting floor every shop has (the legacy wide planks).
 const DEFAULT_ID: StringName = &"planks"

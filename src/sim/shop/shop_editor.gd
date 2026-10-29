@@ -25,6 +25,8 @@ var last_check: EditCheck = EditCheck.new()
 ## the id a successful buy gave its item. Undo history reads both (FK-085).
 var last_cash_change: int = 0
 var last_item_id: int = -1
+## The ids of the last successful blueprint stamp, in entry order.
+var last_stamp_ids: Array[int] = []
 ## Cosmetic whole-room paint. Empty IDs use the ShopView defaults.
 var wall_swatch_id: StringName = &""
 var floor_swatch_id: StringName = &""
@@ -217,6 +219,159 @@ func buy(def_id: StringName, origin: Vector2i, quarter_turns: int = 0, exact: Ex
 	_applying = false
 	last_check = check if placed != null else EditCheck.new(false, "The shop changed; check the purchase again")
 	return placed != null
+
+
+## All entries share one final preview. In particular chairs may appear before
+## their table in the library; their links and RoomRules are checked only
+## after every item has been staged. Normal buy path warnings stay warnings.
+func check_stamp(blueprint: Blueprint, anchor: Vector2i, rotation: int = 0, exact: Exact = null) -> EditCheck:
+	var check: EditCheck = _edit_check()
+	if not check.ok:
+		return check
+	if blueprint == null or blueprint.entries.is_empty() or blueprint.entries.size() > BlueprintLibrary.MAX_ENTRIES:
+		return EditCheck.new(false, CatalogueText.BLUEPRINT_EMPTY)
+	var total: int = 0
+	for entry: ShopPlacement in blueprint.entries:
+		var definition: ItemDef = _content.item(entry.item_id) if entry != null else null
+		if not _valid_definition(definition) or not Blueprint.eligible(definition):
+			return EditCheck.new(false, CatalogueText.BLUEPRINT_CONTENT)
+		if entry.origin.x < 0 or entry.origin.y < 0 or entry.quarter_turns < 0 or entry.quarter_turns > 3:
+			return EditCheck.new(false, CatalogueText.BLUEPRINT_INVALID)
+		if not entry.swatch_id.is_empty() and (not definition.paintable or _content.swatch(entry.swatch_id) == null):
+			return EditCheck.new(false, "Unknown colour")
+		if exact == null and definition.unlock_level > _owner_level:
+			return EditCheck.new(false, "Unlocks at level %d" % definition.unlock_level)
+		total += definition.price
+	if _books == null or not _books.is_ready():
+		return EditCheck.new(false, "The shop books are unavailable")
+	var charge: int = total if exact == null else maxi(0, -exact.amount)
+	if (exact == null or charge > 0) and not _books.can_spend_without_loan(charge):
+		return EditCheck.new(false, _books.purchase_refusal_reason(charge))
+	var ids: Dictionary[int, int] = {}
+	var preview: SimGrid = _preview_without(-1, ids)
+	if preview == null:
+		return EditCheck.new(false, "The current shop has invalid placements")
+	var proposed: Array[int] = []
+	for entry: ShopPlacement in blueprint.placements(_content, anchor, rotation):
+		var definition: ItemDef = _content.item(entry.item_id)
+		var result: SimGrid.PlaceResult = preview.can_place_def(definition, entry.origin, entry.quarter_turns)
+		if result != SimGrid.PlaceResult.OK:
+			return EditCheck.new(false, placement_reason(result))
+		var placed: PlacedItem = preview.place_def(definition, entry.origin, entry.quarter_turns)
+		# Distinct non-live ids let dining and room rules identify every entry.
+		ids[placed.id] = -1 - proposed.size()
+		proposed.append(placed.id)
+	if exact == null:
+		for id: int in proposed:
+			var dining: EditCheck = EditCheck.validate_dining(_sim.world.grid, preview, ids, id, -1)
+			if not dining.ok:
+				return dining
+		var problem: String = RoomRules.problem(_sim.world.grid, preview, ids)
+		if not problem.is_empty():
+			return EditCheck.new(false, problem)
+	check.cost = charge
+	_fill_warnings(check, preview, ids)
+	return check
+
+
+func stamp(blueprint: Blueprint, anchor: Vector2i, rotation: int = 0, exact: Exact = null) -> bool:
+	var check: EditCheck = check_stamp(blueprint, anchor, rotation, exact)
+	last_check = check
+	if not check.ok:
+		return false
+	var entries: Array[ShopPlacement] = blueprint.placements(_content, anchor, rotation)
+	var definitions: Array[ItemDef] = []
+	for entry: ShopPlacement in entries:
+		definitions.append(_content.item(entry.item_id))
+	_applying = true
+	var placed: Array[PlacedItem] = _sim.world.grid.place_group(definitions, entries)
+	if placed.is_empty():
+		_applying = false
+		last_check = EditCheck.new(false, "The shop changed; check the purchase again")
+		return false
+	last_stamp_ids.clear()
+	for item: PlacedItem in placed:
+		last_stamp_ids.append(item.id)
+	if exact == null:
+		var total: int = 0
+		for definition: ItemDef in definitions:
+			_record_item(-definition.price, null)
+			total += definition.price
+		last_cash_change = -total
+	else:
+		_record_item(exact.amount, exact)
+	_applying = false
+	last_check = check
+	return true
+
+
+## Undo of one stamp is also all-or-nothing. Check remaining equipment and
+## storage as a group: individually removable shelves may not ALL be removed.
+func remove_stamp(item_ids: Array[int], exact: Exact) -> bool:
+	var check: EditCheck = _check_remove_stamp(item_ids, exact)
+	last_check = check
+	if not check.ok:
+		return false
+	_applying = true
+	var removed: bool = _sim.world.grid.remove_group(item_ids)
+	if removed:
+		_record_item(exact.amount, exact)
+	_applying = false
+	last_check = check if removed else EditCheck.new(false, "The shop changed; check the sale again")
+	return removed
+
+
+func _check_remove_stamp(item_ids: Array[int], exact: Exact) -> EditCheck:
+	var check: EditCheck = _edit_check()
+	if not check.ok:
+		return check
+	if exact == null or item_ids.is_empty():
+		return EditCheck.new(false, "That furniture is no longer in the shop")
+	if _books == null or not _books.is_ready():
+		return EditCheck.new(false, "The shop books are unavailable")
+	if exact.amount < 0 and not _books.can_spend_without_loan(-exact.amount):
+		return EditCheck.new(false, _books.purchase_refusal_reason(-exact.amount))
+	var live: SimGrid = _sim.world.grid
+	var seen: Dictionary[int, bool] = {}
+	var required: Dictionary[String, bool] = {}
+	var storage_kinds: Dictionary[int, bool] = {}
+	for id: int in item_ids:
+		var placed: PlacedItem = live.item(id)
+		if placed == null or seen.has(id) or not Blueprint.eligible(placed.def as ItemDef):
+			return EditCheck.new(false, "That furniture is no longer in the shop")
+		seen[id] = true
+		for cell: Vector2i in placed.work_cells + placed.seat_cells:
+			if placed.reserved_by(cell) != -1:
+				return EditCheck.new(false, "This item is in use; try next morning")
+		if _linked_seat_in_use(placed):
+			return EditCheck.new(false, "This item is in use; try next morning")
+		var definition: ItemDef = placed.def as ItemDef
+		if definition.storage_units > 0:
+			storage_kinds[int(definition.storage_kind)] = true
+		var key: String = _required_key(definition)
+		if not key.is_empty():
+			required[key] = true
+	var ids: Dictionary[int, int] = {}
+	var preview: SimGrid = _preview_without(-1, ids)
+	if preview == null:
+		return EditCheck.new(false, "The current shop has invalid placements")
+	for preview_id: int in ids.keys():
+		if seen.has(ids[preview_id]):
+			preview.remove(preview_id)
+			ids.erase(preview_id)
+	for placed: PlacedItem in preview.items():
+		required.erase(_required_key(placed.def as ItemDef))
+	if not required.is_empty():
+		return EditCheck.new(false, "Keep at least one %s" % required.keys()[0])
+	if not storage_kinds.is_empty() and storage_need.is_valid():
+		var need: Variant = storage_need.call()
+		if need is Dictionary:
+			var left: Dictionary[int, int] = StorageSpace.capacities(preview, pantry_units)
+			for kind: int in storage_kinds:
+				if int(need.get(kind, 0)) > int(left.get(kind, 0)):
+					return EditCheck.new(false, StorageSpace.removal_refusal(kind))
+	_fill_warnings(check, preview, ids)
+	return check
 
 
 func check_sell(item_id: int, exact: Exact = null) -> EditCheck:

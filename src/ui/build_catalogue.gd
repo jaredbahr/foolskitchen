@@ -5,6 +5,11 @@ extends Control
 ## under it) with a hover card. Build holds the structure tools: walls,
 ## floor and paint. Requests only: the session/controller owns every edit.
 
+signal blueprint_selection_requested()
+signal blueprint_save_requested(display_name: String)
+signal blueprint_requested(blueprint: Blueprint)
+signal blueprint_rename_requested(blueprint: Blueprint, display_name: String)
+signal blueprint_delete_requested(blueprint: Blueprint)
 signal buy_requested(def_id: StringName)
 signal swatch_requested(swatch_id: StringName)
 ## Walls tool (FK-070): the SimGrid.Segment new edges should get.
@@ -37,13 +42,15 @@ const MAX_COLUMNS: int = 12
 const MIN_COLUMNS: int = 6
 const BUY: StringName = &"buy"
 const BUILD: StringName = &"build"
-const BUY_CATEGORIES: Array[StringName] = [&"dining", &"kitchen", &"bar_cafe", &"decor", &"lighting", &"restroom"]
+const BUY_CATEGORIES: Array[StringName] = [&"dining", &"kitchen", &"bar_cafe", &"decor", &"lighting", &"restroom", &"blueprints"]
 ## &"floor" is the lot expansion tool (FK-080), labelled Expand since the
 ## Floors tab (D25, &"floors") lays floor types.
 const BUILD_CATEGORIES: Array[StringName] = [&"walls", &"wall_finish", &"floors", &"rooms", &"floor", &"paint"]
-const CATEGORY_IDS: Array[StringName] = [&"dining", &"kitchen", &"bar_cafe", &"decor", &"lighting", &"restroom",
+const CATEGORY_IDS: Array[StringName] = [&"dining", &"kitchen", &"bar_cafe", &"decor", &"lighting", &"restroom", &"blueprints",
 	&"walls", &"wall_finish", &"floors", &"rooms", &"floor", &"paint"]
+const BLUEPRINTS: StringName = &"blueprints"
 const CATEGORY_LABELS: Dictionary = {
+	&"blueprints": CatalogueText.BLUEPRINTS,
 	&"dining": "Dining", &"kitchen": "Kitchen", &"bar_cafe": "Bar & Café", &"decor": "Decor",
 	&"lighting": "Lighting", &"restroom": "Restroom", &"walls": "Walls", &"wall_finish": "Wall finish",
 	&"floors": "Floors", &"floor": "Expand",
@@ -85,6 +92,18 @@ const FLOOR_THUMBNAIL: PackedScene = preload("res://assets/props/floor_tile.tscn
 ## The ghost's marker legend; Main shows it in the HUD key strip while a piece is held.
 const FURNITURE_HINT: String = "Square: work tile   Circle: seat"
 const CHIP_FONT_SIZE: int = 15
+
+var blueprint_library: BlueprintLibrary
+var blueprint_name: LineEdit
+var blueprint_save: Button
+var blueprint_select: Button
+var blueprint_selected: Label
+var blueprint_rows: VBoxContainer
+var blueprint_buttons: Array[Button] = []
+var _blueprint_controls: Array[BaseButton] = []
+var _blueprint_name_fields: Array[LineEdit] = []
+var _blueprint_count: int = 0
+var _blueprint_panel: VBoxContainer
 
 var item_buttons: Dictionary[StringName, Button] = {}
 ## Walls tab cards by WallKindDef id.
@@ -317,6 +336,8 @@ func _ready() -> void:
 
 
 func _notification(what: int) -> void:
+	if what == NOTIFICATION_PREDELETE and blueprint_library != null and blueprint_library.changed.is_connected(refresh_blueprints):
+		blueprint_library.changed.disconnect(refresh_blueprints)
 	if what == NOTIFICATION_RESIZED and _layout_ready:
 		_fit_panel()
 	elif what == NOTIFICATION_VISIBILITY_CHANGED and _layout_ready and not is_visible_in_tree():
@@ -830,6 +851,15 @@ func _tile(node_name: String) -> Button:
 
 func _apply_category() -> void:
 	var buying: bool = mode == BUY and not _paint_visible
+	var blueprints_shown: bool = buying and selected_category == BLUEPRINTS
+	if _blueprint_panel != null:
+		_blueprint_panel.visible = blueprints_shown
+		for button: BaseButton in _blueprint_controls:
+			button.disabled = not _editable
+		blueprint_save.disabled = not _editable or _blueprint_count <= 0
+		blueprint_name.editable = _editable
+		for field: LineEdit in _blueprint_name_fields:
+			field.editable = _editable
 	for category: StringName in category_buttons:
 		var button: Button = category_buttons[category]
 		button.visible = _category_shown(category) and (BUY_CATEGORIES.has(category) == (mode == BUY))
@@ -879,12 +909,12 @@ func _apply_category() -> void:
 		theme_buttons[tag].set_pressed_no_signal(theme_filters.has(tag))
 	sort_button.visible = buying
 	sort_button.text = SORT_LABELS[sort]
-	(_content_node().get_node("Filters") as Control).visible = buying
-	(_content_node().get_node("Items") as Control).visible = not _paint_visible
+	(_content_node().get_node("Filters") as Control).visible = buying and not blueprints_shown
+	(_content_node().get_node("Items") as Control).visible = not _paint_visible and not blueprints_shown
 	(_content_node().get_node("PaintSwatches") as Control).visible = _paint_visible
 	_refresh_title()
 	var empty: Label = _content_node().get_node("Empty") as Label
-	empty.visible = buying and visible_ids().is_empty()
+	empty.visible = buying and not blueprints_shown and visible_ids().is_empty()
 	empty.text = "No items match these filters" if not theme_filters.is_empty() or selected_group != ALL_GROUPS \
 		else "Nothing in this room yet"
 	if not hover_id.is_empty() and (not item_buttons.has(hover_id) or not item_buttons[hover_id].visible):
@@ -941,6 +971,8 @@ func _room_groups(category: StringName) -> Array[StringName]:
 
 ## Buy rooms appear once they hold an item; Floor only with a lot to grow.
 func _category_shown(category: StringName) -> bool:
+	if category == BLUEPRINTS:
+		return blueprint_library != null
 	if BUILD_CATEGORIES.has(category):
 		return (category != FLOOR or _floor_price > 0) and (category != ROOMS or _rooms_enabled) \
 			and (category != FLOORS or (_content != null and not _content.floor_styles().is_empty())) \
@@ -1301,6 +1333,7 @@ func _prepare_layout() -> void:
 	_thumbnails.name = "ItemThumbnails"
 	_thumbnails.thumbnail_ready.connect(_on_thumbnail_ready)
 	add_child(_thumbnails)
+	_prepare_blueprints()
 	_layout_ready = true
 	_apply_category()
 
@@ -1452,3 +1485,148 @@ static func _definition_before(first: ItemDef, second: ItemDef) -> bool:
 	if first_name == second_name:
 		return String(first.id) < String(second.id)
 	return first_name < second_name
+
+
+# --- Player blueprint library (FK-045) ----------------------------------------
+
+func bind_blueprints(library: BlueprintLibrary) -> void:
+	if blueprint_library != null and blueprint_library.changed.is_connected(refresh_blueprints):
+		blueprint_library.changed.disconnect(refresh_blueprints)
+	blueprint_library = library
+	_prepare_layout()
+	if blueprint_library != null and not blueprint_library.changed.is_connected(refresh_blueprints):
+		blueprint_library.changed.connect(refresh_blueprints)
+	refresh_blueprints()
+
+
+func _prepare_blueprints() -> void:
+	_blueprint_panel = VBoxContainer.new()
+	_blueprint_panel.name = "Blueprints"
+	_blueprint_panel.add_theme_constant_override("separation", 8)
+	_content_node().add_child(_blueprint_panel)
+	var create_row: HBoxContainer = HBoxContainer.new()
+	create_row.name = "Create"
+	_blueprint_panel.add_child(create_row)
+	blueprint_select = _chip("SelectFurniture", CatalogueText.BLUEPRINT_SELECT, CHIP_FONT_SIZE, false)
+	blueprint_select.tooltip_text = CatalogueText.BLUEPRINT_SELECT_TIP
+	blueprint_select.pressed.connect(_on_blueprint_select)
+	create_row.add_child(blueprint_select)
+	blueprint_name = LineEdit.new()
+	blueprint_name.name = "Name"
+	blueprint_name.placeholder_text = CatalogueText.BLUEPRINT_NAME
+	blueprint_name.tooltip_text = CatalogueText.BLUEPRINT_NAME
+	blueprint_name.custom_minimum_size.x = 180.0
+	blueprint_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	blueprint_name.max_length = BlueprintLibrary.MAX_NAME_LENGTH
+	blueprint_name.text = CatalogueText.blueprint_default_name(1)
+	create_row.add_child(blueprint_name)
+	blueprint_save = _chip("SaveBlueprint", CatalogueText.BLUEPRINT_SAVE, CHIP_FONT_SIZE, false)
+	blueprint_save.tooltip_text = CatalogueText.BLUEPRINT_SAVE_TIP
+	blueprint_save.pressed.connect(_on_blueprint_save)
+	blueprint_save.disabled = true
+	create_row.add_child(blueprint_save)
+	blueprint_selected = Label.new()
+	blueprint_selected.name = "Selection"
+	blueprint_selected.text = CatalogueText.BLUEPRINT_NONE_SELECTED
+	blueprint_selected.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_blueprint_panel.add_child(blueprint_selected)
+	blueprint_rows = VBoxContainer.new()
+	blueprint_rows.name = "Library"
+	blueprint_rows.add_theme_constant_override("separation", 6)
+	_blueprint_panel.add_child(blueprint_rows)
+	_blueprint_controls = [blueprint_select, blueprint_save]
+
+
+## Called only when the library changes, not on pointer motion. Native buttons
+## and name fields survive hover updates and preserve keyboard focus.
+func refresh_blueprints() -> void:
+	_prepare_layout()
+	for child: Node in blueprint_rows.get_children():
+		blueprint_rows.remove_child(child)
+		child.queue_free()
+	blueprint_buttons.clear()
+	_blueprint_name_fields.clear()
+	_blueprint_controls = [blueprint_select, blueprint_save]
+	var count: int = blueprint_library.blueprints.size() if blueprint_library != null else 0
+	blueprint_name.text = CatalogueText.blueprint_default_name(count + 1)
+	if count == 0:
+		var empty: Label = Label.new()
+		empty.text = CatalogueText.BLUEPRINT_LIBRARY_EMPTY
+		blueprint_rows.add_child(empty)
+	else:
+		for blueprint: Blueprint in blueprint_library.blueprints:
+			var row: HBoxContainer = HBoxContainer.new()
+			blueprint_rows.add_child(row)
+			var place: Button = _chip("Stamp", CatalogueText.blueprint_card(blueprint.display_name,
+				blueprint.total_price(_content)), CHIP_FONT_SIZE, false)
+			place.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			place.clip_text = true
+			place.custom_minimum_size.x = 240.0
+			place.tooltip_text = place.text + "\n" + CatalogueText.BLUEPRINT_PLACE_TIP + "\n" + CatalogueText.BLUEPRINT_SAVE_TIP
+			place.pressed.connect(_on_blueprint_stamp.bind(blueprint))
+			row.add_child(place)
+			blueprint_buttons.append(place)
+			var name_field: LineEdit = LineEdit.new()
+			name_field.name = "RenameField"
+			name_field.text = blueprint.display_name
+			name_field.custom_minimum_size.x = 140.0
+			name_field.max_length = BlueprintLibrary.MAX_NAME_LENGTH
+			name_field.tooltip_text = CatalogueText.BLUEPRINT_NAME
+			name_field.editable = _editable
+			row.add_child(name_field)
+			_blueprint_name_fields.append(name_field)
+			var rename_button: Button = _chip("Rename", CatalogueText.BLUEPRINT_RENAME, CHIP_FONT_SIZE, false)
+			rename_button.tooltip_text = CatalogueText.BLUEPRINT_SAVE_TIP
+			rename_button.pressed.connect(_on_blueprint_rename.bind(blueprint, name_field))
+			row.add_child(rename_button)
+			var delete_button: Button = _chip("Delete", CatalogueText.BLUEPRINT_DELETE, CHIP_FONT_SIZE, false)
+			delete_button.tooltip_text = CatalogueText.BLUEPRINT_SAVE_TIP
+			delete_button.pressed.connect(_on_blueprint_delete.bind(blueprint))
+			row.add_child(delete_button)
+			_blueprint_controls.append_array([place, rename_button, delete_button])
+	_apply_category()
+	_fit_panel()
+
+
+func set_blueprint_selection(count: int) -> void:
+	_prepare_layout()
+	_blueprint_count = maxi(0, count)
+	blueprint_save.disabled = not _editable or _blueprint_count == 0
+	blueprint_selected.text = CatalogueText.blueprint_selection(_blueprint_count)
+
+
+func _blueprint_available() -> bool:
+	return visible and _editable and not _paint_visible and mode == BUY and selected_category == BLUEPRINTS \
+		and (not is_inside_tree() or is_visible_in_tree())
+
+
+func _on_blueprint_select() -> void:
+	if _blueprint_available():
+		blueprint_selection_requested.emit()
+
+
+func _on_blueprint_save() -> void:
+	if _blueprint_available() and _blueprint_count > 0:
+		blueprint_save_requested.emit(blueprint_name.text)
+
+
+func _on_blueprint_stamp(blueprint: Blueprint) -> void:
+	if _blueprint_available() and blueprint_library != null and blueprint_library.blueprints.has(blueprint):
+		blueprint_requested.emit(blueprint)
+
+
+func _on_blueprint_rename(blueprint: Blueprint, field: LineEdit) -> void:
+	if _blueprint_available() and is_instance_valid(field) and not field.text.strip_edges().is_empty():
+		blueprint_rename_requested.emit(blueprint, field.text)
+
+
+func _on_blueprint_delete(blueprint: Blueprint) -> void:
+	if _blueprint_available():
+		blueprint_delete_requested.emit(blueprint)
+
+
+func blueprint_name_has_focus() -> bool:
+	if not is_inside_tree() or _blueprint_panel == null or not _blueprint_panel.is_visible_in_tree():
+		return false
+	var focused: Control = get_viewport().gui_get_focus_owner()
+	return focused is LineEdit and _blueprint_panel.is_ancestor_of(focused)

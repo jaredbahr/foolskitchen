@@ -50,7 +50,7 @@ var grid_material: ShaderMaterial:
 			return null
 		return grid_floor.material_override as ShaderMaterial
 
-## The G preference outside Build (this session only).
+## The remembered per-player G preference outside Build.
 var grid_visible: bool = true
 ## Build's own grid choice (on by default), remembered per viewer in
 ## Preferences (`build_grid`); G or the Build bar's Grid button flips it.
@@ -91,16 +91,28 @@ func _exit_tree() -> void:
 
 
 func _ready() -> void:
-	_preferences = get_node_or_null("/root/Preferences") as SettingsPreferences
-	if _preferences != null:
-		edge_pan_enabled = _preferences.edge_pan_enabled
-		build_grid_visible = _preferences.build_grid_enabled
-		_preferences.changed.connect(_on_preference_changed)
+	if _preferences == null:
+		bind_preferences(get_node_or_null("/root/Preferences") as SettingsPreferences)
 	reset_view()
 
 
+func bind_preferences(model: SettingsPreferences) -> void:
+	if _preferences != null and _preferences.changed.is_connected(_on_preference_changed):
+		_preferences.changed.disconnect(_on_preference_changed)
+	_preferences = model
+	if _preferences != null:
+		edge_pan_enabled = _preferences.edge_pan_enabled
+		grid_visible = _preferences.play_grid_enabled
+		build_grid_visible = _preferences.build_grid_enabled
+		_preferences.changed.connect(_on_preference_changed)
+	_apply_grid()
+
+
 func _on_preference_changed(key: StringName) -> void:
-	if key == &"edge_pan" and _preferences != null:
+	if key == &"play_grid" and _preferences != null:
+		grid_visible = _preferences.play_grid_enabled
+		_apply_grid()
+	elif key == &"edge_pan" and _preferences != null:
 		edge_pan_enabled = _preferences.edge_pan_enabled
 	elif key == &"build_grid" and _preferences != null and build_grid_visible != _preferences.build_grid_enabled:
 		build_grid_visible = _preferences.build_grid_enabled
@@ -268,7 +280,7 @@ func edge_pan_direction(mouse: Vector2, viewport_rect: Rect2) -> Vector2:
 
 
 ## G: in Build it flips Build's grid (and remembers it per viewer), elsewhere
-## the session's G preference. Returns whether the grid now shows.
+## the remembered play preference. Returns whether the grid now shows.
 func toggle_grid() -> bool:
 	if _grid_forced:
 		build_grid_visible = not build_grid_visible
@@ -276,6 +288,8 @@ func toggle_grid() -> bool:
 			_preferences.set_build_grid_enabled(build_grid_visible)
 	else:
 		grid_visible = not grid_visible
+		if _preferences != null:
+			_preferences.set_play_grid_enabled(grid_visible)
 	_apply_grid()
 	return effective_grid_visible()
 

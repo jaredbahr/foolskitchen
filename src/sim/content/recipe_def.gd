@@ -2,7 +2,7 @@ class_name RecipeDef
 extends Resource
 ## Data for one menu dish; no preparation or economy behavior lives here.
 
-enum Section { STARTERS, MAINS, SIDES, DRINKS, DESSERTS }
+enum Section { STARTERS, MAINS, SIDES, DRINKS, DESSERTS, BAKERY }
 const FOOD: StringName = &"food"
 const COFFEE: StringName = &"coffee"
 const DRINKS: StringName = &"drinks"
@@ -55,6 +55,8 @@ static func section_name(value: int) -> String:
 			return "Drinks"
 		Section.DESSERTS:
 			return "Desserts"
+		Section.BAKERY:
+			return "Bakery"
 	return ""
 
 

@@ -22,6 +22,28 @@ func after_each() -> void:
 	_panel.free()
 
 
+func test_served_guest_shows_captured_quality_and_hides_unserved_extra() -> void:
+	var random: RandomNumberGenerator = RandomNumberGenerator.new()
+	random.seed = 113
+	var guest: CustomerAgent = _restaurant.add_customer(Vector2i.ONE, random)
+	guest.order = Order.new()
+	guest.order.state = Order.State.DELIVERED
+	var recipe: RecipeDef = RecipeDef.new()
+	recipe.base_quality = 0.5
+	guest.order.quality_breakdown = DishQuality.breakdown(recipe, StaffAgent.new(&"cook", 3), [])
+	guest.extra_order = Order.new()
+	guest.extra_order.quality_breakdown = DishQuality.breakdown(recipe, StaffAgent.new(&"cook", 1), [])
+	var before: int = random.state
+	_panel.show_agent(guest.id)
+	assert_true(_label("Details").text.contains("Served quality: Recipe 0.50"))
+	assert_true(_label("Details").text.contains("/ 5 stars)"), "served quality ends on the star scale")
+	assert_false(_label("Details").text.contains("cook skill 1"))
+	guest.extra_order.state = Order.State.DELIVERED
+	_panel.refresh()
+	assert_true(_label("Details").text.contains("cook skill 1"))
+	assert_eq(random.state, before)
+
+
 func test_type_name_is_authored_text_and_inspection_does_not_draw() -> void:
 	var kind: CustomerType = preload("res://data/customers/types.tres").find_type(&"foodie").duplicate() as CustomerType
 	kind.id = &"internal_profile_key"
