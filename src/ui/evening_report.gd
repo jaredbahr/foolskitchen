@@ -89,6 +89,7 @@ func show_report(report: DayReport) -> void:
 	_guest_bar.tooltip_text = "Guests served out of all guests"
 	if guest_total == 0:
 		_guests.text = "No guests visited today"
+	(get_node("%FoodQuality") as Label).text = report.food_quality_text()
 	_cleanliness.text = "Cleanliness: %s" % report.cleanliness_label \
 		if not report.cleanliness_label.is_empty() else ""
 	_cleanliness.visible = not report.cleanliness_label.is_empty()

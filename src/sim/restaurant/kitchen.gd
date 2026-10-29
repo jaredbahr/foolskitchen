@@ -265,12 +265,8 @@ func _drink_ready(agent: SimAgent) -> bool:
 	if order.state == Order.State.READY:
 		return true
 	var recipe: RecipeDef = _content.recipe(order.recipe_id)
-	var quality: float = recipe.base_quality * (0.7 + 0.1 * clampi(staff.skill_for(&"server"), 1, 5))
-	for station_id: int in staff.task.payload["station_ids"]:
-		var station: PlacedItem = sim.world.grid.item(station_id)
-		if station != null:
-			quality += (station.def as ItemDef).quality_bonus
-	order.quality = clampf(quality, 0.0, 1.0)
+	order.quality_breakdown = DishQuality.breakdown(recipe, staff, _quality_stations(staff.task, sim))
+	order.quality = order.quality_breakdown.quality
 	sim.orders.set_state(order, Order.State.READY)
 	return true
 
@@ -550,15 +546,8 @@ func _on_task_completed(task: SimTask) -> void:
 			return
 		var cook: StaffAgent = sim.world.agent(task.claimed_by) as StaffAgent
 		var recipe: RecipeDef = _content.recipe(order.recipe_id)
-		var skill: int = cook.skill_for(&"cook") if cook != null else 1
-		var quality: float = recipe.base_quality * (0.7 + 0.1 * clampi(skill, 1, 5))
-		if cook != null:
-			quality += cook.cook_quality_bonus
-		for station_id: int in task.payload["station_ids"]:
-			var station: PlacedItem = sim.world.grid.item(station_id)
-			if station != null:
-				quality += (station.def as ItemDef).quality_bonus
-		order.quality = clampf(quality, 0.0, 1.0)
+		order.quality_breakdown = DishQuality.breakdown(recipe, cook, _quality_stations(task, sim))
+		order.quality = order.quality_breakdown.quality
 		sim.orders.set_state(order, Order.State.READY)
 	# Delivery settles each ticket at its own table through _serve_order.
 
@@ -752,6 +741,15 @@ func _queued_visits(world: SimWorld, item_id: int, bookers: Array[int]) -> int:
 				count += 1
 				break
 	return count
+
+
+func _quality_stations(task: SimTask, sim: RestaurantSim) -> Array[ItemDef]:
+	var result: Array[ItemDef] = []
+	for station_id: int in task.payload["station_ids"]:
+		var station: PlacedItem = sim.world.grid.item(station_id)
+		if station != null:
+			result.append(station.def as ItemDef)
+	return result
 
 
 func _pass(world: SimWorld) -> PlacedItem:

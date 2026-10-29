@@ -1620,6 +1620,7 @@ func build_report(day: int) -> DayReport:
 	report.dishes_sold = dishes_sold_today.duplicate()
 	report.customers_served = sim.served_today
 	report.customers_lost = sim.lost_today
+	report.record_dish_quality(sim.orders.orders_in_state(Order.State.DELIVERED))
 	for reason: StringName in sim.leave_reasons_today:
 		if reason != &"happy":
 			report.leave_reasons[reason] = sim.leave_reasons_today[reason]
@@ -3556,12 +3557,44 @@ func menu_recipe_details() -> Dictionary[StringName, Dictionary]:
 		var room: bool = menu_settings.is_enabled(recipe.id) or menu_settings.enabled_count() < menu_settings.menu_limit()
 		other.append({"text": "Menu space: %d / %d dishes" % [menu_settings.enabled_count(), menu_settings.menu_limit()], "met": room})
 		var quality: Dictionary = _menu_quality.get(recipe.id, {})
+		var expected: DishQuality = _expected_dish_quality(recipe)
 		rows[recipe.id] = {"equipment": equipment, "ingredients": ingredients, "other": other,
+			"quality_breakdown": expected.explanation() if expected != null else "No available worker or reachable station",
 			"quality": quality.get("quality", recipe.base_quality),
 			"quality_source": "%d served dishes on day %d" % [quality.get("count", 0), quality.get("day", 0)]
 				if not quality.is_empty() else "Recipe base quality; no served-dish sample",
 			"reviews": "Shop reviews: %.1f / 5 (%d ratings)" % [reputation.average(), reputation.scores().size()]}
 	return rows
+
+
+## A read-only best-case estimate, using today's eligible team and reachable stations.
+func _expected_dish_quality(recipe: RecipeDef) -> DishQuality:
+	var stations: Array[ItemDef] = []
+	var seen: Dictionary[int, bool] = {}
+	for step: RecipeStep in recipe.steps:
+		var best_station: PlacedItem = null
+		for placed: PlacedItem in world.grid.items():
+			var definition: ItemDef = placed.def as ItemDef
+			if definition == null or definition.category != ItemDef.Category.STATION \
+					or definition.station_type != step.station_type or not _station_reachable(placed):
+				continue
+			if best_station == null or definition.quality_bonus > (best_station.def as ItemDef).quality_bonus:
+				best_station = placed
+		if best_station == null:
+			return null
+		if not seen.has(best_station.id):
+			seen[best_station.id] = true
+			stations.append(best_station.def as ItemDef)
+	var best: DishQuality = null
+	var role: StringName = &"server" if recipe.is_drink() else &"cook"
+	for agent: SimAgent in world.agents:
+		var worker: StaffAgent = agent as StaffAgent
+		if worker == null or int(worker.priorities.get(role, 0)) <= 0:
+			continue
+		var candidate: DishQuality = DishQuality.breakdown(recipe, worker, stations)
+		if best == null or candidate.quality > best.quality:
+			best = candidate
+	return best
 
 
 func _refresh_menu_details() -> void:

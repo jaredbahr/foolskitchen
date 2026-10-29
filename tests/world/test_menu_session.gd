@@ -586,6 +586,46 @@ func test_detail_requirements_aggregate_real_stock_and_use_reachable_station_nam
 	assert_eq(Economy.stock.count(&"coffee_beans"), 0, "inspecting and buying equipment never restocks")
 
 
+func test_expected_quality_uses_today_team_and_reachable_station_without_mutation() -> void:
+	var main: Node = _start(false)
+	var sim: RestaurantSim = main.get("sim") as RestaurantSim
+	var rng_state: int = GameState.rng(&"customers").state
+	var details: Dictionary[StringName, Dictionary] = main.call("menu_recipe_details")
+	assert_true(String(details[&"burger"]["quality_breakdown"]).contains("cook skill 3"))
+	assert_true(String(details[&"burger"]["quality_breakdown"]).contains("Stove"))
+	assert_eq(String(details[&"coffee"]["quality_breakdown"]), "No available worker or reachable station")
+	for agent: SimAgent in sim.world.agents:
+		if agent is StaffAgent and agent.role == &"cook":
+			(agent as StaffAgent).skills[&"cook"] = 5
+	details = main.call("menu_recipe_details")
+	assert_true(String(details[&"burger"]["quality_breakdown"]).contains("cook skill 5"))
+	var extra_cook: StaffAgent = StaffAgent.new(&"cook", 2)
+	sim.world.add_agent(extra_cook)
+	details = main.call("menu_recipe_details")
+	assert_true(String(details[&"burger"]["quality_breakdown"]).contains("cook skill 5"), "choose quality, not the last worker")
+	var content: ContentDB = main.get("content") as ContentDB
+	var better: ItemDef = content.item(&"stove").duplicate() as ItemDef
+	better.display_name = "Better stove"
+	better.quality_bonus = 0.1
+	var placed: PlacedItem = sim.world.grid.place_def(better, Vector2i(10, 3))
+	assert_not_null(placed)
+	if placed == null:
+		return
+	details = main.call("menu_recipe_details")
+	assert_true(String(details[&"burger"]["quality_breakdown"]).contains("Better stove +0.10"))
+	for cell: Vector2i in placed.work_cells:
+		assert_true(sim.world.grid.set_terrain(cell, SimGrid.Terrain.WALL))
+	details = main.call("menu_recipe_details")
+	assert_false(String(details[&"burger"]["quality_breakdown"]).contains("Better stove"), "ignore unreachable equipment")
+	assert_eq(GameState.rng(&"customers").state, rng_state)
+	assert_true(main.call("set_menu_visible", true))
+	var panel: MenuPanel = main.get_node("Overlay/MenuPanel") as MenuPanel
+	assert_true(panel.select_recipe(&"burger"))
+	assert_true((panel.get("_quality_label") as Label).text.contains("Expected with today's best worker and station:"))
+	var report: DayReport = main.call("build_report", Clock.sim.day)
+	assert_eq(report.dish_quality_count, 0)
+
+
 func test_last_service_quality_is_a_read_only_morning_sample_not_a_fake_dish_review() -> void:
 	var main: Node = _start(false)
 	assert_true(main.call("menu_set_enabled", &"grilled_cheese", false))
@@ -606,6 +646,9 @@ func test_last_service_quality_is_a_read_only_morning_sample_not_a_fake_dish_rev
 	assert_true(count > 0)
 	var details: Dictionary[StringName, Dictionary] = main.call("menu_recipe_details")
 	assert_almost_eq(details[&"burger"]["quality"], total / float(count))
+	var report: DayReport = main.call("build_report", Clock.sim.day)
+	assert_eq(report.dish_quality_count, count)
+	assert_almost_eq(report.dish_quality_average, total / float(count))
 	assert_eq(details[&"burger"]["quality_source"], "%d served dishes on day 1" % count)
 	assert_true(Clock.sim.next_day())
 	assert_true(main.call("set_menu_visible", true))

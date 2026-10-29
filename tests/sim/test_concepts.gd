@@ -158,6 +158,14 @@ func test_drinks_only_guests_take_a_counter_seat_get_their_drink_across_it_and_l
 	for guest: CustomerAgent in guests:
 		assert_eq(_left.get(guest.id), &"happy")
 		assert_true(_content.recipe(guest.order.recipe_id).order_type == RecipeDef.DRINKS, "ordered a drink")
+		assert_not_null(guest.order.quality_breakdown)
+		assert_true(guest.order.quality_breakdown.is_drink)
+		assert_almost_eq(guest.order.quality_breakdown.quality, guest.order.quality)
+		var breakdown: DishQuality = guest.order.quality_breakdown
+		var expected: float = breakdown.recipe_base * (0.7 + 0.1 * breakdown.skill)
+		for bonus: float in breakdown.station_bonuses:
+			expected += bonus
+		assert_almost_eq(guest.order.quality, clampf(expected, 0.0, 1.0))
 		assert_true((_sim.world.grid.item(guest.table_item_id).def as ItemDef).serve_across, "sat at the counter")
 		assert_eq(guest.eat_ticks, VISITS.drink_visit_ticks, "a quick visit")
 	assert_eq(_paid.size(), 3)
