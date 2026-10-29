@@ -155,6 +155,31 @@ func test_real_main_fixture_shows_goals_then_uses_real_close_and_read_only_evide
 	assert_eq(_uid_snapshot(CAPTURE.MILESTONE_UID_SOURCES), uid_before, "UID provenance never generates or registers sidecars")
 
 
+func test_goals_uses_available_height_below_wrapped_grid_hud_after_resize() -> void:
+	var main: Node = await _start_main()
+	assert_true(main.call("set_goals_visible", true))
+	var panel: Control = main.get_node("Overlay/GoalsPanel/Panel") as Control
+	var hud: CanvasLayer = main.get_node("HUD") as CanvasLayer
+	var grid: Button = hud.get_node("Top/Row/Grid") as Button
+	for viewport_size: Vector2i in [Vector2i(1600, 900), Vector2i(1280, 720), Vector2i(1600, 900)]:
+		_viewport.size = viewport_size
+		await _wait_frames(4)
+		assert_true(grid.is_visible_in_tree(), "the play Grid toggle remains visible")
+		assert_false(grid.disabled, "the Grid toggle remains bound to the camera")
+		var bounds: Rect2 = panel.get_global_rect()
+		assert_true(bounds.position.y >= float(hud.call("panel_top")) - 0.5,
+			"Goals stays below the final wrapped header")
+		assert_almost_eq(bounds.end.y, float(viewport_size.y) - 12.0, 0.5,
+			"Goals uses available height while retaining a 12px bottom gutter")
+		var scroll: ScrollContainer = panel.get_node("Content/Scroll") as ScrollContainer
+		assert_true(bounds.encloses(scroll.get_global_rect()), "the scroll region remains inside Goals")
+		if viewport_size == Vector2i(1600, 900):
+			var goals: GoalsPanel = main.get_node("Overlay/GoalsPanel") as GoalsPanel
+			for goal_id: StringName in goals.active_goal_ids():
+				assert_true(scroll.get_global_rect().encloses(goals.goal_card_for(goal_id).get_global_rect()),
+					"the initial three career goals fit without scrolling at 1600x900")
+
+
 func _start_main() -> Node:
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	await _wait_frames(2)

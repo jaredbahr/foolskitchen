@@ -2,6 +2,8 @@ extends CanvasLayer
 ## Event-driven day, speed and cash controls. refresh() also supports scenes
 ## instantiated before SceneTree readiness (including the custom test runner).
 
+const GRID_LABEL: String = "Grid"
+const GRID_TOOLTIP: String = "Show floor grid while playing (G)"
 const SPEEDS: Array[int] = [0, 1, 2, 4]
 const PHASE_NAMES: Array[String] = ["Morning", "Open", "Last orders", "Closed"]
 const STAFF_PHASES: Array[int] = [SimClock.Phase.MORNING, SimClock.Phase.OPEN,
@@ -51,6 +53,8 @@ var _vibe_theme: String = ""
 var _owner_level: int = 1
 var _owner_xp_into: int = 0
 var _owner_xp_needed: int = 1
+var _grid_button: Button
+var _camera_rig: CameraRig
 var _wall_button: Button
 var _shop_view: ShopView
 var _build_button: Button
@@ -102,6 +106,10 @@ func refresh() -> void:
 		_deltas = get_node("Deltas") as Control
 		_wall_button = get_node("Top/Row/Walls") as Button
 		_wall_button.pressed.connect(_on_wall_button_pressed)
+		_grid_button = get_node("Top/Row/Grid") as Button
+		_grid_button.text = GRID_LABEL
+		_grid_button.tooltip_text = GRID_TOOLTIP
+		_grid_button.pressed.connect(_on_grid_pressed)
 		_build_button = get_node("Top/Row/Build") as Button
 		_build_hints = get_node("BuildHints") as PanelContainer
 		_build_hint_scroll = get_node("BuildHints/Scroll") as ScrollContainer
@@ -156,6 +164,7 @@ func refresh() -> void:
 	_context.tooltip_text = "Open for today's service" if Clock.sim.phase == SimClock.Phase.MORNING else "Begin the next morning"
 	_on_speed_changed(Clock.speed)
 	_refresh_wall_mode()
+	_refresh_grid()
 	if is_inside_tree() and _hint_viewport != get_viewport():
 		if _hint_viewport != null and _hint_viewport.size_changed.is_connected(_layout_build_hints):
 			_hint_viewport.size_changed.disconnect(_layout_build_hints)
@@ -373,6 +382,7 @@ func set_build_state(available: bool, active: bool, reason: String = "", held_st
 		tool: int = BuildMode.Tool.HAND, warning: String = "") -> void:
 	_build_available = available
 	_build_active = active
+	_refresh_grid()
 	_build_reason = reason
 	_build_warning = warning
 	_build_state = held_state
@@ -561,6 +571,32 @@ func _on_speed_changed(speed: int) -> void:
 		var button: Button = _buttons[index]
 		var active: bool = SPEEDS[index] == speed
 		button.set_pressed_no_signal(active)
+
+
+func bind_camera_rig(rig: CameraRig) -> void:
+	if is_instance_valid(_camera_rig) and _camera_rig.grid_shown_changed.is_connected(_on_grid_shown_changed):
+		_camera_rig.grid_shown_changed.disconnect(_on_grid_shown_changed)
+	_camera_rig = rig
+	if is_instance_valid(_camera_rig):
+		_camera_rig.grid_shown_changed.connect(_on_grid_shown_changed)
+	refresh()
+
+
+func _on_grid_pressed() -> void:
+	if is_instance_valid(_camera_rig) and not _build_active:
+		_camera_rig.toggle_grid()
+
+
+func _on_grid_shown_changed(_shown: bool) -> void:
+	_refresh_grid()
+
+
+func _refresh_grid() -> void:
+	if _grid_button == null:
+		return
+	_grid_button.visible = not _build_active
+	_grid_button.disabled = not is_instance_valid(_camera_rig)
+	_grid_button.set_pressed_no_signal(is_instance_valid(_camera_rig) and _camera_rig.grid_visible)
 
 
 func _on_wall_button_pressed() -> void:
