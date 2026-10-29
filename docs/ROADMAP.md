@@ -12,6 +12,7 @@ Hobby pace: there are no dates, only exit criteria. Each phase ends with a playa
 Codex takes `worker-ready` issues in this order; the director validates, reviews and merges every PR, and builds only what needs art judgement. Each wave can run in parallel inside itself.
 
 **Wave 1, ready now (game logic, data and UI with tests)**
+- #209 Grid on/off in normal play too (remembered, HUD button, setting) — first, it's small
 - #189 Warn when a build edit cuts staff off from menu dishes
 - #196 Bar-snack fries from frozen fries
 - #197 Bakery menu section
@@ -19,6 +20,7 @@ Codex takes `worker-ready` issues in this order; the director validates, reviews
 - #113 Dish quality breakdown
 - #179 Hygiene overview in Build
 - #108 Title screen, then #110 First-day guide
+- #211 Pick your owner character (hooks into #108's New game if merged)
 - #126 Seafood menu (data; the deck-plank floor after #202)
 - #114 Tier 2 lease upgrade (more lot to expand)
 
