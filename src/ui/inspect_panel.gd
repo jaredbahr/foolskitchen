@@ -95,6 +95,7 @@ func refresh() -> void:
 			_title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 			_title.clip_text = true
 			_title.tooltip_text = _title.text
+			_title.mouse_filter = Control.MOUSE_FILTER_PASS
 		_why.text = _agent_why(agent)
 		_why.show()
 		if agent is StaffAgent:
@@ -142,6 +143,7 @@ func _reset_content(keep_owner_controls: bool = false) -> void:
 	_title.text_overrun_behavior = TextServer.OVERRUN_NO_TRIMMING
 	_title.clip_text = false
 	_title.tooltip_text = ""
+	_title.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_why.text = ""
 	_why.hide()
 	_details.text = ""

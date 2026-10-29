@@ -51,6 +51,10 @@ func test_staff_heading_keeps_maximum_name_and_action_inside_small_ui_bounds() -
 	assert_true(Rect2(Vector2.ZERO, Vector2(viewport.size)).encloses(heading.get_global_rect()))
 	assert_true(name.get_global_rect().end.x <= button.get_global_rect().position.x)
 	assert_true(name.clip_text)
+	var motion: InputEventMouseMotion = InputEventMouseMotion.new()
+	motion.position = name.get_global_rect().get_center()
+	viewport.push_input(motion, true)
+	assert_eq(viewport.gui_get_hovered_control(), name, "the complete name tooltip must accept hover")
 	assert_eq(name.tooltip_text, OwnerText.owner_label("W".repeat(OwnerAppearance.MAX_NAME_LENGTH)))
 	assert_false(button.disabled)
 

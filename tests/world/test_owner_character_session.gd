@@ -161,6 +161,7 @@ func test_long_owner_name_keeps_one_inspector_heading_line_and_full_hover_text()
 	var title: Label = main.get_node("Overlay/InspectPanel/Panel/Rows/Title") as Label
 	assert_eq(title.get_line_count(), 1, "long names must not push the owner portrait up into the HUD")
 	assert_eq(title.tooltip_text, title.text, "the complete owner name remains available")
+	assert_eq(title.mouse_filter, Control.MOUSE_FILTER_PASS, "the tooltip must accept hover")
 	assert_eq((main.get("owner_appearance") as OwnerAppearance).display_name, name)
 
 
