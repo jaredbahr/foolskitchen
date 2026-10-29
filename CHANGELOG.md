@@ -12,6 +12,8 @@ Each line ends with its PR number.
 
 ### Players
 - See how recipe quality, staff skill, cooking traits and equipment add up in the Menu and on served guests, plus the day's average food quality in the evening report. Dish quality and balance are unchanged. (#224)
+- Croissants now appear in the menu's Bakery section, after Desserts. Existing menus, prices and coffee-with-pastry orders stay the same. (#222)
+- Bar fries unlock at owner level 2 after Beer: a quick, $5 side cooked in the fryer. Frozen fries auto-order only while needed by the menu and within freezer space; the menu explains when a freezer is missing. (#221)
 - Save groups of furniture and rugs as named blueprints in Buy mode, then rotate and place a whole group at once. See the total cost before buying, undo the whole group for an exact refund, and rename or delete blueprints in your library. Library changes are saved at the start of tomorrow. (#218)
 - Lay new floors in your own colours: polished concrete at level 3 ($1 a floor tile), soft carpet at level 4 ($2) and speckled terrazzo at level 5 ($4). (#219)
 - Toggle the floor grid while playing with G or Settings; remember separate play and Build choices on this device. (#214)
@@ -100,6 +102,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- Workers mark a PR ready once their own checks and captures are done; director review and decisions happen on the ready PR, and open PRs are finished before new issues start. (#225)
 - Verify keyboard navigation through both grid settings before closing Settings in review captures. (#214)
 - The roadmap puts the expand-over-a-window bug first in the worker queue. (#213)
 - The roadmap lists the play-mode grid toggle first in the worker queue and adds the owner character picker. (#210)

@@ -405,9 +405,24 @@ func test_identity_and_section_controls_fit_short_and_wide_viewports() -> void:
 	viewport.remove_child(_panel)
 	viewport.free()
 
-func test_all_five_sections_use_readable_headings_in_menu_order() -> void:
+func test_authored_croissant_tree_and_detail_show_bakery_without_menu_edits() -> void:
+	var content: ContentDB = ContentDB.new()
+	assert_eq(content.load_all(), PackedStringArray())
+	var croissant: RecipeDef = content.recipe(&"croissant")
+	var menu: MenuSettings = MenuSettings.new([croissant] as Array[RecipeDef])
+	var before: Dictionary = menu.to_dict()
+	_panel.bind_menu(menu)
+	assert_eq(_panel.tree_item_for(&"croissant").get_parent().get_text(0), "Bakery")
+	assert_true(_panel.select_recipe(&"croissant"))
+	assert_eq((_panel.get("_detail_heading") as Label).text, "Croissant - Bakery")
+	assert_false(_panel.drinks_section().is_ancestor_of(_panel.row_for(&"croissant")))
+	assert_eq(menu.to_dict(), before)
+	assert_true(_enable_requests.is_empty() and _price_requests.is_empty())
+
+
+func test_all_six_sections_use_readable_headings_in_menu_order() -> void:
 	var recipes: Array[RecipeDef] = []
-	for section: int in [RecipeDef.Section.DESSERTS, RecipeDef.Section.DRINKS,
+	for section: int in [RecipeDef.Section.BAKERY, RecipeDef.Section.DESSERTS, RecipeDef.Section.DRINKS,
 		RecipeDef.Section.SIDES, RecipeDef.Section.MAINS, RecipeDef.Section.STARTERS]:
 		var dish: RecipeDef = _recipe(StringName("section%d" % section), "Example dish", 6)
 		dish.section = section as RecipeDef.Section
@@ -417,7 +432,7 @@ func test_all_five_sections_use_readable_headings_in_menu_order() -> void:
 	var tree: Tree = _panel.get("_recipe_tree") as Tree
 	for section: TreeItem in tree.get_root().get_children():
 		headings.append(section.get_text(0))
-	assert_eq(headings, ["Starters", "Mains", "Sides", "Drinks", "Desserts"] as Array[String])
+	assert_eq(headings, ["Starters", "Mains", "Sides", "Drinks", "Desserts", "Bakery"] as Array[String])
 	for dish: RecipeDef in recipes:
 		assert_not_null(_panel.row_for(dish.id), "grouping retains each interactive dish row")
 

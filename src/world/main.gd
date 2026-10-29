@@ -3627,6 +3627,7 @@ func menu_recipe_details() -> Dictionary[StringName, Dictionary]:
 	var present: Dictionary[StringName, bool] = station_state["reachable"]
 	var installed: Dictionary[StringName, bool] = station_state["installed"]
 	var support: Array[Dictionary] = station_state["support"]
+	var freezer_ready: bool = int(_storage_capacity().get(StorageSpace.FREEZER, 0)) > 0
 	for recipe: RecipeDef in content.recipes():
 		var equipment: Array[Dictionary] = []
 		var required: Dictionary[StringName, bool] = {}
@@ -3638,6 +3639,11 @@ func menu_recipe_details() -> Dictionary[StringName, Dictionary]:
 				present.has(step.station_type), installed.has(step.station_type)))
 		# Every dish also needs a fridge and a pass; they are listed only when missing or walled in.
 		equipment.append_array(support)
+		# Storage advice belongs to dishes that actually use frozen ingredients.
+		for ingredient: IngredientDef in recipe.ingredients:
+			if ingredient.storage == IngredientDef.Storage.FREEZER:
+				equipment.append(_equipment_slot("Freezer", freezer_ready, freezer_ready))
+				break
 		var amounts: Dictionary[StringName, int] = {}
 		for ingredient: IngredientDef in recipe.ingredients:
 			amounts[ingredient.id] = amounts.get(ingredient.id, 0) + 1

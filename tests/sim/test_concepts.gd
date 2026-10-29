@@ -229,8 +229,31 @@ func test_a_pour_frees_its_station_before_carrying_the_drink() -> void:
 	assert_eq(_sim.served_today, 2)
 
 
+func test_pastry_add_on_uses_with_drinks_not_dessert_or_bakery_section() -> void:
+	for with_drink: bool in [false, true]:
+		var expected: Dictionary = {}
+		for section: int in [RecipeDef.Section.DESSERTS, RecipeDef.Section.BAKERY]:
+			_build(_bar_layout())
+			var pastry: RecipeDef = _content.recipe(&"croissant").duplicate(true) as RecipeDef
+			pastry.section = section as RecipeDef.Section
+			pastry.with_drinks = with_drink
+			_sim.menu = [_content.recipe(&"coffee"), pastry] as Array[RecipeDef]
+			var guest: CustomerAgent = _guest(RecipeDef.COFFEE, 12)
+			guest.pastry_add_chance = 1.0
+			guest.call("_maybe_add_pastry", _sim, [pastry] as Array[RecipeDef])
+			var result: Dictionary = {"recipe": guest.extra_order.recipe_id if guest.extra_order != null else &"",
+				"random_state": guest.rng.state}
+			assert_eq(result["recipe"], &"croissant" if with_drink else &"")
+			if expected.is_empty():
+				expected = result
+			else:
+				assert_eq(result, expected, "the section change preserves selection and RNG draws")
+
+
 func test_a_coffee_guest_may_add_a_pastry_and_has_it_with_the_coffee() -> void:
 	_build(_bar_layout())
+	assert_eq(_content.recipe(&"croissant").menu_section(), RecipeDef.Section.BAKERY)
+	assert_true(_content.recipe(&"croissant").with_drinks)
 	_sim.menu = [_content.recipe(&"coffee"), _content.recipe(&"croissant")] as Array[RecipeDef]
 	var kind: CustomerType = CustomerType.new()
 	kind.id = &"peckish"
