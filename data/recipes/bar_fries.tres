@@ -1,10 +1,11 @@
-[gd_resource type="Resource" script_class="RecipeDef" load_steps=7 format=3]
+[gd_resource type="Resource" script_class="RecipeDef" load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://src/sim/content/recipe_def.gd" id="1_recipe"]
 [ext_resource type="Script" path="res://src/sim/content/ingredient_def.gd" id="2_ingredient"]
 [ext_resource type="Script" path="res://src/sim/content/recipe_step.gd" id="3_step"]
 [ext_resource type="Resource" path="res://data/ingredients/frozen_fries.tres" id="ingredient_fries"]
 [ext_resource type="Resource" path="res://data/ingredients/oil.tres" id="ingredient_oil"]
+[ext_resource type="PackedScene" path="res://assets/kenney/food/fries.glb" id="view_model"]
 
 [sub_resource type="Resource" id="Step_fry"]
 script = ExtResource("3_step")
@@ -13,6 +14,7 @@ duration_ticks = 35
 
 [resource]
 script = ExtResource("1_recipe")
+view_model = ExtResource("view_model")
 id = &"bar_fries"
 unlock_from = &"beer"
 display_name = "Bar fries"

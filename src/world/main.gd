@@ -205,6 +205,7 @@ func _bind_world_presentation() -> void:
 		sim.dock.lot = lot
 	view.show_world(world)
 	view.bind_cleanliness(sim.cleanliness)
+	view.bind_restaurant(sim, content)
 	view.bind_dock(sim.dock)
 	var painted_layout: ShopLayout = _loaded_layout if _loaded_layout != null else LAYOUT
 	view.set_paint(content, painted_layout.wall_swatch_id, painted_layout.floor_swatch_id)
