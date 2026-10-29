@@ -10,8 +10,8 @@ extends RefCounted
 ##   it restores the solid shell. Its side is the direction from the floor
 ##   into the wall. Back doors exclude the street-facing side. At least one
 ##   face per side stays solid.
-## Because this is derived from terrain, an expansion that turns shell cells
-## into floor turns their faces' windows into interior windows automatically.
+## Openings need a continuing shell wall or interior WALL segment along their
+## line. An edit that removes their last support takes the frame down too.
 
 const NOT_INSIDE: String = "Walls must stand inside the shop"
 const DOOR_FIXED: String = "The street door stays as it is"
@@ -29,6 +29,7 @@ const CUT_RESTROOM: String = "That would cut off a restroom fixture"
 const CUT_PERSON: String = "That would shut someone in"
 const ONE_BACK_DOOR: String = "The shop already has a back door: remove it first to move it"
 const BACK_DOOR_WIDTH: String = "A back door is one cell wide"
+const OPENING_NEEDS_WALL: String = "Windows and doorways need a wall beside them"
 
 
 static func is_interior(grid: SimGrid, edge: Vector3i) -> bool:
@@ -38,6 +39,31 @@ static func is_interior(grid: SimGrid, edge: Vector3i) -> bool:
 		if grid.terrain(cell) != SimGrid.Terrain.FLOOR:
 			return false
 	return true
+
+
+## A window/doorway needs WALL terrain or an interior WALL edge continuing
+## from either end along its line. Full-cell dividers and shell cells cut by
+## an opening remain wall terrain; a neighbouring interior opening or a
+## perpendicular thin wall segment alone cannot support the frame.
+static func has_continuing_wall(grid: SimGrid, edge: Vector3i) -> bool:
+	var along: Vector3i = Vector3i(0, 1, 0) if edge.z == SimGrid.EDGE_WEST else Vector3i(1, 0, 0)
+	for neighbour: Vector3i in [edge - along, edge + along]:
+		if grid.segment(neighbour) == SimGrid.Segment.WALL and is_interior(grid, neighbour):
+			return true
+		for cell: Vector2i in SimGrid.edge_cells(neighbour):
+			if grid.terrain(cell) == SimGrid.Terrain.WALL:
+				return true
+	return false
+
+
+## Unsupported frames after a complete proposal, independent of edit order.
+static func orphan_openings(grid: SimGrid) -> Array[Vector3i]:
+	var orphaned: Array[Vector3i] = []
+	for edge: Vector3i in grid.segment_edges():
+		if grid.segment(edge) in [SimGrid.Segment.WINDOW, SimGrid.Segment.DOORWAY] \
+				and not has_continuing_wall(grid, edge):
+			orphaned.append(edge)
+	return orphaned
 
 
 ## Direction from the floor cell into the shell wall cell, or ZERO when the
@@ -330,6 +356,8 @@ static func edge_problem(grid: SimGrid, edge: Vector3i, kind: SimGrid.Segment) -
 
 ## Whole-shop checks after a proposed change has been applied to `grid`.
 static func layout_problem(grid: SimGrid) -> String:
+	if not orphan_openings(grid).is_empty():
+		return OPENING_NEEDS_WALL
 	for placed: PlacedItem in grid.items():
 		if item_walled_off(grid, placed):
 			return BLOCKS_ACCESS

@@ -5,6 +5,7 @@ extends Resource
 const CAUSES: Array[StringName] = [
 	&"slow_seating", &"slow_food", &"great_value", &"too_pricey",
 	&"dirty_floor", &"lovely_place", &"never_served", &"no_restroom", &"restroom_busy",
+	&"comfortable_wait",
 ]
 
 @export var groups: Dictionary[StringName, PackedStringArray] = {}

@@ -469,19 +469,67 @@ func test_back_door_follows_floor_bought_and_sold_through_the_editor() -> void:
 	assert_true(grid.is_back_door(Vector2i(13, 6)))
 	var check: EditCheck = editor.check_floor(wing, true)
 	assert_true(check.ok, check.why)
+	assert_eq(check.refund, 7, "half the back door's $15 price")
 	assert_true(grid.is_back_door(Vector2i(13, 6)), "checking changes nothing")
 	assert_true(editor.apply_floor(wing, true), editor.last_check.why)
-	assert_eq(grid.segment(east), SimGrid.Segment.DOORWAY, "the door stays as an interior doorway")
+	assert_eq(grid.segment(east), SimGrid.Segment.NONE, "the opened wall takes its unsupported door frame down")
 	assert_true(WallRules.is_interior(grid, east))
 	assert_false(grid.is_back_door(Vector2i(13, 6)))
 	assert_true(grid.is_guest_walkable(Vector2i(13, 6)), "opened shell is ordinary dining floor")
 	assert_eq(WallRules.delivery_cell(grid), grid.entries()[0], "an interior doorway is no longer a receiving entrance")
 	assert_true(editor.apply_floor(wing, false), editor.last_check.why)
 	assert_eq(grid.terrain(Vector2i(13, 6)), SimGrid.Terrain.WALL)
-	assert_eq(grid.segment(east), SimGrid.Segment.DOORWAY, "the old shell face is a back door again")
-	assert_true(grid.is_back_door(Vector2i(13, 6)))
+	assert_eq(grid.segment(east), SimGrid.Segment.NONE, "selling floor does not buy the refunded door back")
+	assert_false(grid.is_back_door(Vector2i(13, 6)))
 	assert_false(grid.is_guest_walkable(Vector2i(13, 6)))
-	assert_eq(WallRules.delivery_cell(grid), Vector2i(12, 6))
+	assert_eq(WallRules.delivery_cell(grid), grid.entries()[0])
+
+
+func test_a_new_opening_needs_collinear_wall_support() -> void:
+	var edge: Vector3i = _edge(9, 7, SimGrid.EDGE_WEST)
+	for kind: SimGrid.Segment in [SimGrid.Segment.WINDOW, SimGrid.Segment.DOORWAY]:
+		var check: EditCheck = _editor.check_segments({edge: kind} as Dictionary[Vector3i, int])
+		assert_false(check.ok)
+		assert_eq(check.why, WallRules.OPENING_NEEDS_WALL)
+	var grid: SimGrid = _sim.world.grid
+	grid.set_segment(_edge(9, 7, SimGrid.EDGE_NORTH), SimGrid.Segment.WALL)
+	assert_false(WallRules.has_continuing_wall(grid, edge), "a perpendicular wall is not support along this line")
+	grid.set_segment(_edge(9, 7, SimGrid.EDGE_NORTH), SimGrid.Segment.NONE)
+	assert_true(_editor.apply_segments({_edge(9, 6, SimGrid.EDGE_WEST): SimGrid.Segment.WALL,
+		edge: SimGrid.Segment.WINDOW} as Dictionary[Vector3i, int]), _editor.last_check.why)
+	assert_true(WallRules.has_continuing_wall(grid, edge))
+	var cash: int = _cash
+	var remove: Dictionary[Vector3i, int] = {_edge(9, 6, SimGrid.EDGE_WEST): SimGrid.Segment.NONE}
+	var check: EditCheck = _editor.check_segments(remove)
+	assert_true(check.ok, check.why)
+	assert_eq(check.refund, 15, "the wall and window both refund half")
+	assert_true(_editor.apply_segments(remove), _editor.last_check.why)
+	assert_eq(grid.segment(edge), SimGrid.Segment.NONE)
+	assert_eq(_cash, cash + 15)
+
+
+func test_wall_terrain_support_includes_cut_shell_cells_and_full_cell_dividers() -> void:
+	var grid: SimGrid = SimGrid.new(Vector2i(6, 6))
+	var opening: Vector3i = _edge(3, 3, SimGrid.EDGE_WEST)
+	var neighbour: Vector3i = _edge(3, 2, SimGrid.EDGE_WEST)
+	grid.set_segment(opening, SimGrid.Segment.WINDOW)
+	grid.set_segment(neighbour, SimGrid.Segment.WINDOW)
+	grid.set_segment(_edge(3, 3, SimGrid.EDGE_NORTH), SimGrid.Segment.WALL)
+	assert_false(WallRules.has_continuing_wall(grid, opening),
+		"a neighbouring interior opening and perpendicular thin wall do not continue its wall")
+	grid.set_terrain(Vector2i(3, 2), SimGrid.Terrain.WALL)
+	grid.set_terrain(Vector2i(4, 2), SimGrid.Terrain.OUTSIDE)
+	assert_eq(WallRules.outer_side(grid, neighbour), Vector2i.RIGHT)
+	assert_true(WallFaces.shell_cut(grid, Vector2i(3, 2)))
+	assert_true(WallRules.has_continuing_wall(grid, opening),
+		"the neighbouring shell cell still belongs to its wall run with a window cut into it")
+	grid.set_segment(neighbour, SimGrid.Segment.NONE)
+	grid.set_terrain(Vector2i(4, 2), SimGrid.Terrain.FLOOR)
+	assert_eq(WallRules.outer_side(grid, neighbour), Vector2i.ZERO)
+	assert_true(WallRules.has_continuing_wall(grid, opening),
+		"an authored full-cell divider also supplies continuing wall terrain")
+	grid.set_terrain(Vector2i(3, 2), SimGrid.Terrain.FLOOR)
+	assert_false(WallRules.has_continuing_wall(grid, opening), "opening that last terrain wall removes support")
 
 
 func test_guests_never_use_a_dining_side_back_door_but_staff_do() -> void:
@@ -656,6 +704,37 @@ func test_version_one_snapshot_loads_without_walls() -> void:
 	var rebuilt: RestaurantSim = RestaurantSim.create(layout, _content, 1, errors, null, true, true)
 	assert_eq(errors, [] as Array[String])
 	assert_false(rebuilt.world.grid.has_segments())
+
+
+func test_legacy_orphan_openings_load_safely_and_keep_supported_runs_in_any_order() -> void:
+	var editor: ShopEditor = ShopEditor.new(_sim, _content, ShopEditBooks.new(_can_spend, _record_cash), LAYOUT)
+	var wing: Array[Vector2i] = []
+	for y: int in range(5, 10):
+		wing.append(Vector2i(14, y))
+	assert_true(editor.apply_floor(wing, true), editor.last_check.why)
+	var snapshot: Dictionary = editor.to_dict()
+	snapshot["walls"] = [
+		{"edge": [13, 7, SimGrid.EDGE_WEST], "kind": "window"},
+		{"edge": [13, 8, SimGrid.EDGE_WEST], "kind": "doorway"},
+		{"edge": [9, 7, SimGrid.EDGE_WEST], "kind": "window"},
+		{"edge": [9, 6, SimGrid.EDGE_WEST], "kind": "wall"},
+	]
+	var cash: int = _cash
+	var errors: Array[String] = []
+	var layout: ShopLayout = ShopEditor.from_dict(snapshot, LAYOUT, _content, errors)
+	assert_eq(errors, [] as Array[String])
+	assert_not_null(layout, "old frames must not force a new game")
+	if layout == null:
+		return
+	assert_eq(layout.wall_segments.size(), 2)
+	assert_eq(layout.wall_segments[_edge(9, 7, SimGrid.EDGE_WEST)], &"window")
+	assert_eq(layout.wall_segments[_edge(9, 6, SimGrid.EDGE_WEST)], &"wall")
+	assert_eq(layout.load_notes, ["Removed window or doorway frames that no longer had a wall."] as Array[String])
+	assert_eq(_cash, cash, "loading does not alter the books")
+	var rebuilt: RestaurantSim = RestaurantSim.create(layout, _content, 1, errors, null, true, true)
+	assert_eq(errors, [] as Array[String])
+	assert_true(WallRules.orphan_openings(rebuilt.world.grid).is_empty())
+	assert_eq(rebuilt.world.grid.segment(_edge(9, 7, SimGrid.EDGE_WEST)), SimGrid.Segment.WINDOW)
 
 
 func test_bad_saved_walls_are_rejected() -> void:

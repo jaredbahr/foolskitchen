@@ -60,7 +60,7 @@ static func group_for(definition: ItemDef) -> StringName:
 	if definition.hangs_on_wall():
 		return &"wall_decor"
 	match definition.category:
-		ItemDef.Category.CHAIR:
+		ItemDef.Category.CHAIR, ItemDef.Category.WAITING:
 			return &"seating"
 		ItemDef.Category.TABLE:
 			return &"tables"
@@ -75,6 +75,8 @@ static func does(definition: ItemDef) -> String:
 	if definition == null:
 		return ""
 	match definition.category:
+		ItemDef.Category.WAITING:
+			return "Waiting seats for %d: guests wait more patiently, never eat here" % definition.seat_cells.size()
 		ItemDef.Category.CHAIR:
 			return "Seats %d" % maxi(definition.seat_cells.size(), 1)
 		ItemDef.Category.TABLE:
