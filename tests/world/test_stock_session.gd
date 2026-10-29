@@ -253,6 +253,31 @@ func test_bar_fries_freezer_advice_and_menu_inspection_are_read_only() -> void:
 	assert_eq(Economy.stock.count(&"frozen_fries"), 0)
 
 
+func test_bar_fries_real_service_cooks_delivers_and_pays_for_the_single_fryer_recipe() -> void:
+	var main: Node = _bar_fries_shop(true)
+	assert_true(main.call("menu_set_enabled", &"bar_fries", true))
+	var settings: MenuSettings = main.get("menu_settings")
+	for recipe: RecipeDef in settings.enabled_recipes():
+		if recipe.id != &"bar_fries":
+			assert_true(main.call("menu_set_enabled", recipe.id, false))
+	assert_true(Clock.sim.start_service())
+	assert_eq(Economy.stock.count(&"frozen_fries"), 12)
+	var sim: RestaurantSim = main.get("sim")
+	for guard: int in range(30):
+		if Clock.sim.phase == SimClock.Phase.CLOSED:
+			break
+		main.call("run_ticks", 1000)
+	assert_eq(Clock.sim.phase, SimClock.Phase.CLOSED)
+	var sold: int = int((main.get("dishes_sold_today") as Dictionary).get(&"bar_fries", 0))
+	assert_true(sold > 0, "real queued tickets must cook, deliver and receive payment")
+	assert_eq(sim.served_today, sold, "no other dish is enabled")
+	assert_true(Economy.stock.count(&"frozen_fries") < 12, "the fryer recipe consumed frozen fries")
+	for order: Order in sim.orders.orders_in_state(Order.State.DELIVERED):
+		assert_eq(order.recipe_id, &"bar_fries")
+	print("BAR_FRIES_SERVICE served=%d lost=%d frozen_remaining=%d" % [
+		sim.served_today, sim.lost_today, Economy.stock.count(&"frozen_fries")])
+
+
 func _bar_fries_shop(with_freezer: bool) -> Node:
 	var main: Node = _start(false)
 	var progress: OwnerProgress = main.get("owner_progress")
