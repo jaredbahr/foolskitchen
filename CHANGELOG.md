@@ -11,7 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
-- Wall menu boards show your restaurant name and dishes from a section you choose, and the Menu panel shows which themes your dishes lean toward. (#161)
+- Wall menu boards show your restaurant name and dishes from a section you choose, and the Menu panel shows which themes your dishes lean toward. (#231)
 - See how recipe quality, staff skill, cooking traits and equipment add up in the Menu and on served guests, plus the day's average food quality in the evening report. Dish quality and balance are unchanged. (#224)
 - Croissants now appear in the menu's Bakery section, after Desserts. Existing menus, prices and coffee-with-pastry orders stay the same. (#222)
 - Bar fries unlock at owner level 2 after Beer: a quick, $5 side cooked in the fryer. Frozen fries auto-order only while needed by the menu and within freezer space; the menu explains when a freezer is missing. (#221)
