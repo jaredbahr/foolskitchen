@@ -1541,9 +1541,10 @@ func hang_summary() -> String:
 		return "Point at a %s to hang %s" % ["window" if hang_definition.hangs_in_window() else "wall", hang_definition.display_name]
 	if not current_check.ok:
 		return current_check.why
-	if hang_moving != WallFaces.NO_FACE:
-		return "Move %s here (Del sells it)" % hang_definition.display_name
-	return "Hang %s for %s" % [hang_definition.display_name, Fmt.money(hang_definition.price)]
+	var hint: String = WallDecor.room_hint(_grid, hang_definition, hang_anchor)
+	var action: String = "Move %s here (Del sells it)" % hang_definition.display_name if hang_moving != WallFaces.NO_FACE \
+		else "Hang %s for %s" % [hang_definition.display_name, Fmt.money(hang_definition.price)]
+	return action if hint.is_empty() else "%s. %s" % [action, hint]
 
 
 func _recheck_hang() -> void:
