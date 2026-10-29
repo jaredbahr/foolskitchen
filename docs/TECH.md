@@ -946,6 +946,12 @@ an active edit/panel/selection first, or opens Settings when none is active.
   Floor expansion uses the same rule (see the next section).
 - Captures: `tools/screenshot.sh --walls=place` (a dragged run with ghost and
   cost) and `--walls=room` (a built room; add `--quarter=0` for Cutaway).
+  For the expansion regression, run `OPENINGS_REVIEW_STAGE=before` or `after`
+  with `bash tools/screenshot.sh --scene=res://tools/openings_review.tscn
+  --speed=0 --frames=30 --quarter=2`. This unsaved fixture uses the production morning
+  commands with $2,000 extra cash and wall decor unlocked, showing the
+  supported window, back door and decor before expansion, then their removal
+  and refund after opening that wall.
 
 ### Floor expansion (FK-080)
 - **Lot (data).** `ShopLayout.lot_west`, `lot_east`, `lot_north` say how many
