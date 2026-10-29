@@ -32,10 +32,17 @@ func test_every_authored_item_has_floor_aligned_parts_inside_its_footprint_or_de
 			instance.free()
 			continue
 		_views.append(view)
-		assert_eq(view.footprint, definition.footprint, String(definition.id))
+		# A window item (D26, the OPEN sign) is one window wide; its wrapper keeps
+		# the native wall width and is fitted to the window opening when hung.
+		var footprint: Vector2i = definition.footprint
+		if definition.hangs_in_window():
+			assert_eq(definition.footprint, Vector2i.ONE, String(definition.id))
+			footprint = view.footprint
+		else:
+			assert_eq(view.footprint, definition.footprint, String(definition.id))
 		var bounds: AABB = view.get_combined_aabb()
-		var half_width: float = float(definition.footprint.x) * GridMath.CELL_SIZE * 0.5
-		var half_depth: float = float(definition.footprint.y) * GridMath.CELL_SIZE * 0.5
+		var half_width: float = float(footprint.x) * GridMath.CELL_SIZE * 0.5
+		var half_depth: float = float(footprint.y) * GridMath.CELL_SIZE * 0.5
 		assert_true(bounds.size.x > 0.0 and bounds.size.y > 0.0 and bounds.size.z > 0.0, String(definition.id))
 		if definition.hangs_on_wall():
 			# Wall decor (D26) hangs off the floor, its back on the face.

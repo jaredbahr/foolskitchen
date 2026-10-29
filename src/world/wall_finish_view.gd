@@ -9,7 +9,9 @@ extends Node3D
 ## nothing here, so a shop without finishes renders exactly as before.
 ## Hung items are the item's PropView wrapper with its back on the face; they
 ## hide while their wall is lowered (they would float over the stub), and the
-## build ghost shows on any face so placing still reads.
+## build ghost shows on any face so placing still reads. A window item (the
+## neon OPEN sign) hangs in an outside window instead, fitted to its opening
+## and facing the street (window_transform).
 
 const SHADER: Shader = preload("res://src/world/wall_finish.gdshader")
 ## The facing sits this far off the wall surface (no depth fighting).
@@ -35,6 +37,14 @@ const GLOW_ATTENUATION: float = 1.6
 ## and the shop's lights still see it), and its glow skips it: the light
 ## would wash out the sign it comes from.
 const GLOW_SELF_LAYER: int = 1 << 19
+## A window item (the OPEN sign) hangs in the street end of the opening, its
+## front to the street just inside the wall's outer face (the steep camera
+## sees no deeper into a window from outside; from the room it shows its back
+## through the glass), scaled down (never up) to this share of the opening's
+## width and height, and centred in it. Its glow stands in the middle of the
+## opening, so it pools on the floor inside and the pavement outside alike.
+const WINDOW_GAP: float = 0.012
+const WINDOW_FILL: Vector2 = Vector2(0.9, 0.8)
 
 var _grid: SimGrid
 var _content: ContentDB
@@ -133,7 +143,13 @@ func show_ghost(definition: ItemDef, anchor: Vector3i, valid: bool, moving: Vect
 	var tint: Color = BuildPreview.VALID_COLOR if valid else BuildPreview.INVALID_COLOR
 	tint.a = BuildPreview.VALID_ALPHA if valid else BuildPreview.INVALID_ALPHA
 	_ghost.set_ghost_tint(tint)
-	_ghost.transform = hung_transform(_grid, anchor, definition.footprint.x)
+	if definition.hangs_in_window():
+		# In a window, or (refused) flat on the pointed wall face.
+		fit_window(_ghost)
+		_ghost.transform = window_transform(anchor, _ghost.get_aabb()) if WallFaces.is_window(_grid, anchor) \
+			else hung_transform(_grid, anchor, 1)
+	else:
+		_ghost.transform = hung_transform(_grid, anchor, definition.footprint.x)
 	_ghost.set_meta(&"anchor", anchor)
 	add_child(_ghost)
 
@@ -351,6 +367,31 @@ static func hung_transform(grid: SimGrid, anchor: Vector3i, width: int) -> Trans
 	return Transform3D(basis, centre)
 
 
+## Scales a window item's model down to fit the window opening (WINDOW_FILL).
+static func fit_window(node: ItemVisual) -> void:
+	var box: AABB = node.get_aabb()
+	var opening: Rect2 = WallSegmentView.window_opening()
+	if box.size.x <= 0.0 or box.size.y <= 0.0 or opening.size.x <= 0.0:
+		return
+	var fit: float = minf(1.0, minf(opening.size.x * WINDOW_FILL.x / box.size.x, opening.size.y * WINDOW_FILL.y / box.size.y))
+	var part: Node3D = node.prop if node.prop != null else node.fallback
+	if part != null:
+		part.scale *= fit
+
+
+## Where a window item's wrapper stands: its front (-Z) to the street, just
+## inside the shell's outer face, centred in the opening (`box`: its fitted
+## bounds).
+static func window_transform(slot: Vector3i, box: AABB) -> Transform3D:
+	var into: Vector2i = WallFaces.step(slot)
+	var out: Vector3 = Vector3(into.x, 0.0, into.y)
+	var opening: Rect2 = WallSegmentView.window_opening()
+	var basis: Basis = Basis(Vector3.UP, atan2(-float(into.x), -float(into.y)))
+	var at: Vector3 = GridMath.cell_to_world(WallFaces.cell(slot)) + out * (GridMath.CELL_SIZE * 1.5 - WINDOW_GAP) \
+		+ Vector3.UP * opening.get_center().y
+	var front: Vector3 = Vector3(box.get_center().x, box.get_center().y, box.position.z)
+	return Transform3D(basis, at - basis * front)
+
 func _rebuild_items() -> void:
 	var wanted: Dictionary[Vector3i, bool] = {}
 	if _decor != null and _grid != null:
@@ -375,15 +416,19 @@ func _rebuild_items() -> void:
 			node.set_meta(&"anchor", anchor)
 			node.set_meta(&"def_id", definition.id)
 			item_nodes[anchor] = node
+			if hung.window:
+				fit_window(node)
 			add_child(node)
-			_add_glow(node, definition)
-		node.transform = hung_transform(_grid, anchor, hung.width)
+			_add_glow(node, definition, hung.window)
+		node.transform = window_transform(anchor, node.get_aabb()) if hung.window \
+			else hung_transform(_grid, anchor, hung.width)
 	_sync_item_visibility()
 
 
 ## The soft light of a glowing item, a child of its visual so it hides with
-## it (a lowered wall, a held item). Build ghosts get none.
-static func _add_glow(node: ItemVisual, definition: ItemDef) -> void:
+## it (a lowered wall, a held item). Build ghosts get none. A window item's
+## stands in the middle of the opening, behind its front.
+static func _add_glow(node: ItemVisual, definition: ItemDef, window: bool = false) -> void:
 	if definition.glow_color.a <= 0.0:
 		return
 	var box: AABB = node.get_aabb()
@@ -402,6 +447,8 @@ static func _add_glow(node: ItemVisual, definition: ItemDef) -> void:
 	# The wrapper's front is -Z; its back (+Z) is on the face.
 	var centre: Vector3 = box.get_center() if box.size != Vector3.ZERO else Vector3(0.0, HUNG_FALLBACK_HEIGHT, 0.0)
 	light.position = Vector3(centre.x, centre.y, box.position.z - GLOW_OUT)
+	if window:
+		light.position.z = box.position.z + GridMath.CELL_SIZE * 0.5 - WINDOW_GAP
 	node.add_child(light)
 
 

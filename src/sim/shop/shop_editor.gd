@@ -598,7 +598,7 @@ static func _decode_walls(data: Dictionary, preview: SimGrid, content: ContentDB
 		var definition: ItemDef = content.item(StringName(row[3]))
 		if definition == null or not staged.problem(preview, definition, anchor).is_empty():
 			continue
-		staged.add(definition.id, anchor, definition.footprint.x)
+		staged.add(definition.id, anchor, definition.footprint.x, definition.hangs_in_window())
 		layout.wall_items[anchor] = definition.id
 
 
@@ -634,7 +634,7 @@ func _load_walls(layout: ShopLayout) -> void:
 	for anchor: Vector3i in anchors:
 		var definition: ItemDef = _content.item(layout.wall_items[anchor])
 		if definition != null and decor.problem(grid, definition, anchor).is_empty():
-			decor.add(definition.id, anchor, definition.footprint.x)
+			decor.add(definition.id, anchor, definition.footprint.x, definition.hangs_in_window())
 
 
 ## Invalid or removed palette entries revert to authored colours on old saves.
@@ -1174,7 +1174,7 @@ func hang(def_id: StringName, anchor: Vector3i, exact: Exact = null) -> bool:
 		return false
 	var definition: ItemDef = _content.item(def_id)
 	_applying = true
-	var added: bool = decor.add(definition.id, anchor, definition.footprint.x)
+	var added: bool = decor.add(definition.id, anchor, definition.footprint.x, definition.hangs_in_window())
 	if added:
 		last_anchor = anchor
 		_record_decor(-definition.price if exact == null else exact.amount, exact)
@@ -1208,9 +1208,9 @@ func rehang(anchor: Vector3i, to_anchor: Vector3i, exact: Exact = null) -> bool:
 	var hung: WallDecor.Hung = decor.item(anchor)
 	_applying = true
 	decor.remove(anchor)
-	var added: bool = decor.add(hung.def_id, to_anchor, hung.width)
+	var added: bool = decor.add(hung.def_id, to_anchor, hung.width, hung.window)
 	if not added:
-		decor.add(hung.def_id, anchor, hung.width)
+		decor.add(hung.def_id, anchor, hung.width, hung.window)
 	_applying = false
 	last_anchor = to_anchor if added else anchor
 	last_cash_change = 0

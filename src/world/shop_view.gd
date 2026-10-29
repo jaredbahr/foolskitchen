@@ -441,6 +441,32 @@ func wall_face_at_ray(ray_origin: Vector3, ray_direction: Vector3, floor_fallbac
 	return best
 
 
+## The outside window under a ray, as {face (its window slot, see
+## WallFaces.window_problem), offset 0, distance}, for hanging a window item
+## (D26): the nearest window whose shell cell (full height) the ray passes
+## through, else a window of the floor cell the ray reaches. {} for none.
+func window_at_ray(ray_origin: Vector3, ray_direction: Vector3) -> Dictionary:
+	if world == null or ray_direction.y >= -0.00001:
+		return {}
+	var best: Dictionary = {}
+	var slots: Array[Vector3i] = WallFaces.windows(world.grid)
+	for slot: Vector3i in slots:
+		var into: Vector2i = WallFaces.step(slot)
+		var centre: Vector3 = GridMath.cell_to_world(WallFaces.cell(slot) + into)
+		var half: float = GridMath.CELL_SIZE * 0.5
+		var box: AABB = AABB(centre - Vector3(half, 0.0, half), Vector3(GridMath.CELL_SIZE, ArtScale.WALL_HEIGHT, GridMath.CELL_SIZE))
+		var distance: float = _ray_box_distance(ray_origin, ray_direction, box)
+		if distance >= 0.0 and (best.is_empty() or distance < float(best["distance"])):
+			best = {"face": slot, "offset": 0.0, "distance": distance}
+	if best.is_empty():
+		var nearest: float = -ray_origin.y / ray_direction.y
+		var cell: Vector2i = GridMath.world_to_cell(ray_origin + ray_direction * nearest)
+		for slot: Vector3i in slots:
+			if WallFaces.cell(slot) == cell:
+				return {"face": slot, "offset": 0.0, "distance": nearest}
+	return best
+
+
 ## The hung wall item under a ray before any furniture, or NO_FACE.
 func wall_item_at_ray(ray_origin: Vector3, ray_direction: Vector3) -> Vector3i:
 	if wall_finish_view == null:

@@ -440,7 +440,7 @@ static func build_hint(painting: bool, state: int, tool: int) -> String:
 		BuildMode.State.WALL_FINISH:
 			return "Click or drag along walls  |  Shift-click Whole room  |  Alt-click Copy a wall  |  Ctrl+Z Undo  Ctrl+Y Redo  |  Esc Cancel"
 		BuildMode.State.HANG:
-			return "Click a wall to hang  |  Del Sell (when moving)  |  Esc or Right-click Cancel"
+			return "Click to hang  |  Del Sell (when moving)  |  Esc or Right-click Cancel"
 	match tool:
 		BuildMode.Tool.EYEDROPPER:
 			return "Eyedropper: click an item to place another  |  Ctrl+Z Undo  Ctrl+Y Redo  |  Esc Hand"

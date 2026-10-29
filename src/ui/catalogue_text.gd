@@ -97,6 +97,8 @@ static func does(definition: ItemDef) -> String:
 			return RESTROOM_TEXT.get(definition.station_type, "Restroom fixture")
 	if definition.placement_layer == ItemDef.PlacementLayer.FLOOR_DECOR:
 		return "Rug: tables and chairs can stand on it"
+	if definition.hangs_in_window():
+		return "Hangs in a window, facing the street"
 	if definition.hangs_on_wall():
 		return "Hangs on a wall, %d tiles wide" % definition.footprint.x
 	return "Decoration"
