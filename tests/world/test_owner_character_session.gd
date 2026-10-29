@@ -162,6 +162,14 @@ func test_long_owner_name_keeps_one_inspector_heading_line_and_full_hover_text()
 	assert_eq(title.get_line_count(), 1, "long names must not push the owner portrait up into the HUD")
 	assert_eq(title.tooltip_text, title.text, "the complete owner name remains available")
 	assert_eq(title.mouse_filter, Control.MOUSE_FILTER_PASS, "the tooltip must accept hover")
+	var viewport: Viewport = main.get_viewport()
+	var motion: InputEventMouseMotion = InputEventMouseMotion.new()
+	motion.position = title.get_global_rect().get_center()
+	viewport.push_input(motion, true)
+	assert_eq(viewport.gui_get_hovered_control(), title)
+	main.call("refresh_presentation")
+	await (Engine.get_main_loop() as SceneTree).process_frame
+	assert_eq(viewport.gui_get_hovered_control(), title, "frame refresh must keep the full-name hover active")
 	assert_eq((main.get("owner_appearance") as OwnerAppearance).display_name, name)
 
 

@@ -138,12 +138,14 @@ func _bind_nodes() -> void:
 func _reset_content(keep_owner_controls: bool = false) -> void:
 	if _owner_portrait != null:
 		_owner_portrait.hide()
-	_title.text = ""
-	_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_title.text_overrun_behavior = TextServer.OVERRUN_NO_TRIMMING
-	_title.clip_text = false
-	_title.tooltip_text = ""
-	_title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Preserve hover and its tooltip while the same owner is refreshed each frame.
+	if not keep_owner_controls:
+		_title.text = ""
+		_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_title.text_overrun_behavior = TextServer.OVERRUN_NO_TRIMMING
+		_title.clip_text = false
+		_title.tooltip_text = ""
+		_title.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_why.text = ""
 	_why.hide()
 	_details.text = ""
