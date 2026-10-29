@@ -96,6 +96,8 @@ jobs:
           OPENINGS_REVIEW_STAGE=after bash tools/screenshot.sh --out=screens/visual-review/openings-after --scene=res://tools/openings_review.tscn --speed=0 --frames=30 --quarter=2
           bash tools/screenshot.sh --out=screens/visual-review/build-green --build=green --quarter=0 --frames=12 --speed=1
           bash tools/screenshot.sh --out=screens/visual-review/build-red --build=red --quarter=0 --frames=12 --speed=1
+          bash tools/screenshot.sh --out=screens/visual-review/menu-access-preview --scene=res://tools/menu_access_review.tscn --speed=0 --frames=12
+          FK_MENU_REVIEW_STAGE=open bash tools/screenshot.sh --out=screens/visual-review/menu-access-open --scene=res://tools/menu_access_review.tscn --speed=0 --frames=12
           bash tools/screenshot.sh --out=screens/visual-review/settings --settings --speed=0 --frames=12
           bash tools/screenshot.sh --out=screens/visual-review/settings-world --settings-world --speed=0 --frames=90
           bash tools/screenshot.sh --out=screens/visual-review/hud-1280 --hud-layout --window-size=1280x720 --speed=0 --frames=12,90

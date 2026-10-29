@@ -58,6 +58,9 @@ func after_each() -> void:
 
 func test_projected_world_clicks_match_editor_for_four_camera_quarters_and_four_world_turns() -> void:
 	await _start()
+	# Some target rotations have blocked work cells. Keep another fridge
+	# reachable so all sixteen requests still isolate projection and rotation.
+	assert_true(_main.call("shop_buy", &"fridge", Vector2i(10, 3), 0))
 	assert_true(_main.call("set_build_active", true))
 	var item: PlacedItem = _world().grid.item(_id(&"fridge"))
 	var original: Vector2i = item.origin
@@ -452,6 +455,8 @@ func test_native_catalogue_click_consumes_gui_input_and_starts_one_ghost_without
 
 func test_main_build_hud_shows_partial_seats_and_clears_warning_after_the_layout_is_fixed() -> void:
 	await _start()
+	# The table below blocks the kitchen aisle; coffee remains serviceable.
+	assert_true(_main.call("shop_buy", &"coffee_machine", Vector2i(12, 5), 2))
 	var center: PlacedItem = _world().grid.item_at(Vector2i(6, 6))
 	assert_true(int(_main.call("shop_sell", center.id)) >= 0)
 	_editor().set_owner_level(TABLE_4.unlock_level)  # Explicit purchase-unlock fixture.
@@ -486,6 +491,7 @@ func test_main_build_hud_shows_partial_seats_and_clears_warning_after_the_layout
 
 func test_floor_tool_hint_keeps_the_partial_seat_warning_beside_its_summary() -> void:
 	await _start()
+	assert_true(_main.call("shop_buy", &"coffee_machine", Vector2i(12, 5), 2))
 	var center: PlacedItem = _world().grid.item_at(Vector2i(6, 6))
 	assert_true(int(_main.call("shop_sell", center.id)) >= 0)
 	_editor().set_owner_level(TABLE_4.unlock_level)  # Explicit purchase-unlock fixture.
