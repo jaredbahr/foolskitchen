@@ -205,6 +205,43 @@ func test_real_main_staff_priorities_fit_below_wrapped_grid_header() -> void:
 	assert_false(panel.visible, "the real Close signal still closes Staff")
 
 
+func test_real_main_settings_keyboard_traverses_grid_choices_then_closes() -> void:
+	var main: Node = await _start_main(true)
+	var window: Window = main.get_window()
+	for dimensions: Vector2i in [Vector2i(1600, 900), Vector2i(1280, 720)]:
+		window.size = dimensions
+		for scale: float in [1.0, 1.25, 1.5]:
+			window.content_scale_factor = scale
+			assert_true(main.call("set_settings_visible", true))
+			await _wait_frames(4)
+			var panel: SettingsPanel = main.get_node("Overlay/SettingsPanel") as SettingsPanel
+			var card: Control = panel.get_node("Panel") as Control
+			var close: Button = panel.get_node("%CloseButton") as Button
+			assert_true(window.get_visible_rect().grow(1.0).encloses(card.get_global_rect()), "Settings card fits the scaled window")
+			assert_true(card.get_global_rect().grow(1.0).encloses(close.get_global_rect()), "pinned Close remains bounded")
+			assert_true(card.get_global_rect().position.y >= float(main.get_node("HUD").call("panel_top")) - 0.5,
+				"Settings remains below the wrapped HUD")
+			var before: Dictionary = _preference_snapshot()
+			var play_before: bool = Preferences.play_grid_enabled
+			var build_before: bool = Preferences.build_grid_enabled
+			var evidence: Dictionary = CAPTURE.settings_tab_to_close(panel, window)
+			assert_true(evidence["tab_from_edge_pan"])
+			assert_true(evidence["tab_through_grid_controls"], "native Tab visits both play and Build grid checkboxes")
+			assert_true(evidence["tab_to_close"], "native Tab reaches Close after both grid choices")
+			assert_eq(_preference_snapshot(), before)
+			assert_eq(Preferences.play_grid_enabled, play_before)
+			assert_eq(Preferences.build_grid_enabled, build_before)
+			for pressed: bool in [true, false]:
+				var event: InputEventKey = InputEventKey.new()
+				event.keycode = KEY_ENTER
+				event.physical_keycode = KEY_ENTER
+				event.pressed = pressed
+				window.push_input(event, true)
+			await _wait_frames(2)
+			assert_false(main.call("is_settings_visible"), "native Enter on Close returns to the world")
+			assert_false(main.call("is_menu_visible"))
+
+
 func _start_main(in_window: bool = false) -> Node:
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	await _wait_frames(2)

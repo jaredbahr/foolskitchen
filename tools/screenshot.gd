@@ -2081,6 +2081,7 @@ func _settings_capture_valid(state: Dictionary, world: SimWorld) -> bool:
 		and state.get("menu_visible") == false and state.get("hud_bounded") == true \
 		and (_settings_world or state.get("card_and_close_bounded") == true) \
 		and (not _settings_world or (_settings_keyboard.get("settings_closed") == true \
+			and _settings_keyboard.get("tab_through_grid_controls") == true \
 			and _settings_keyboard.get("tab_to_close") == true and _settings_keyboard.get("close_visible") == true)) \
 		and state.get("ui_scale_percent") == _settings_scale \
 		and state.get("selected_ui_scale_percent") == _settings_scale \
@@ -2116,6 +2117,7 @@ func _hud_layout_capture_valid(state: Dictionary, world: SimWorld) -> bool:
 		and state.get("visible") == false and state.get("menu_visible") == false \
 		and state.get("header_visible") == true and state.get("entered_from_menu") == false \
 		and _settings_keyboard.get("settings_closed") == true \
+		and _settings_keyboard.get("tab_through_grid_controls") == true \
 		and _settings_keyboard.get("tab_to_close") == true and _settings_keyboard.get("close_visible") == true \
 		and _settings_keyboard.get("verification_frame") == close_frame \
 		and state.get("clock_speed") == 0 \
@@ -2153,21 +2155,40 @@ func _settings_hud_bounded() -> bool:
 
 func _close_settings_with_keyboard() -> void:
 	var panel: SettingsPanel = _main.get_node("Overlay/SettingsPanel") as SettingsPanel
-	var edge: CheckButton = panel.get_node("Panel/Column/Scroll/Content/EdgePanToggle") as CheckButton
-	var close: Button = panel.get_node("Panel/Column/CloseButton") as Button
-	var scroll: ScrollContainer = panel.get_node("Panel/Column/Scroll") as ScrollContainer
-	scroll.ensure_control_visible(edge)
-	edge.grab_focus()
-	var from_edge: bool = root.gui_get_focus_owner() == edge
-	_settings_key(KEY_TAB, true)
-	_settings_key(KEY_TAB, false)
-	_settings_keyboard = {"tab_from_edge_pan": from_edge, "tab_to_close": root.gui_get_focus_owner() == close,
-		"close_visible": _settings_card_bounded(panel), "accept_key": "Enter", "input_frame": _frames}
-	if not from_edge or _settings_keyboard["tab_to_close"] != true or _settings_keyboard["close_visible"] != true:
-		_fail_capture("native Tab did not focus the visible pinned Close button")
+	_settings_keyboard = settings_tab_to_close(panel, root)
+	_settings_keyboard.merge({"close_visible": _settings_card_bounded(panel), "accept_key": "Enter", "input_frame": _frames})
+	if _settings_keyboard["tab_from_edge_pan"] != true or _settings_keyboard["tab_through_grid_controls"] != true \
+			or _settings_keyboard["tab_to_close"] != true or _settings_keyboard["close_visible"] != true:
+		_fail_capture("native Tab did not traverse the grid settings to the visible pinned Close button")
 		return
 	_settings_key(KEY_ENTER, true)
 	_settings_key(KEY_ENTER, false)
+
+
+## Follow the native focus order through both new grid choices, without jumping
+## directly to Close or changing either preference.
+static func settings_tab_to_close(panel: SettingsPanel, window: Window) -> Dictionary:
+	var edge: CheckButton = panel.get_node("%EdgePanToggle") as CheckButton
+	var play: CheckButton = panel.get_node("%PlayGridToggle") as CheckButton
+	var build: CheckButton = panel.get_node("%BuildGridToggle") as CheckButton
+	var close: Button = panel.get_node("%CloseButton") as Button
+	var scroll: ScrollContainer = panel.get_node("Panel/Column/Scroll") as ScrollContainer
+	scroll.ensure_control_visible(edge)
+	edge.grab_focus()
+	var result: Dictionary = {"tab_from_edge_pan": window.gui_get_focus_owner() == edge,
+		"tab_through_grid_controls": true, "tab_to_close": false}
+	for target: Control in [play, build, close]:
+		for pressed: bool in [true, false]:
+			var event: InputEventKey = InputEventKey.new()
+			event.keycode = KEY_TAB
+			event.physical_keycode = KEY_TAB
+			event.pressed = pressed
+			window.push_input(event, true)
+		if window.gui_get_focus_owner() != target:
+			result["tab_through_grid_controls"] = false
+			return result
+	result["tab_to_close"] = window.gui_get_focus_owner() == close
+	return result
 
 
 func _settings_key(code: Key, pressed: bool) -> void:
