@@ -1809,6 +1809,41 @@ pattern 0 of `floor_finish.gdshader`, unchanged).
   `tests/world/test_concept_session.gd`, counter head clearance in
   `tests/world/test_seated_head_clearance.gd`.
 
+### Waiting benches (FK-106)
+
+- `data/items/waiting_bench.tres` reuses the approved low-back Kenney bench
+  wrapper: two waiting places, $35, available from level 1 under Dining >
+  Seating. The appended `ItemDef.Category.WAITING` keeps its seat reservations
+  separate from `DiningSeats`, table capacity and the restroom threshold.
+- A queued guest tries a table first, then `WaitingBench` chooses a free bench
+  seat, nearest to the street door and then in placement/seat order. The guest
+  walks there using the ordinary guest path and sits only after arriving at
+  their reserved cell. Parties keep their existing arrival priority and
+  shared least-patient-member deadline; they can use separate waiting spots
+  but still move to one dining table together. There is no queue cap.
+- Only actual bench arrival grants the one-time
+  `VisitTuning.waiting_bench_patience_multiplier` (1.5 in
+  `data/balance/visits.tres`). A walking or standing guest gets no bonus. A
+  bench booking is released when a table is assigned or the guest leaves;
+  removed or inaccessible benches release their stale bookings. No RNG is
+  consumed, and a shop without benches keeps its exact existing behavior.
+- `RoomRules` requires guest-reachable Dining cells, separate from dining
+  seats. A bench more than `waiting_bench_door_distance` (8 grid cells) from
+  the nearest street entry produces a normal nonblocking Build warning.
+- The view uses the bench's existing seat surface, front and sit animation;
+  a queued guest never receives a dining order there. `ReviewVisit.waited_seated`
+  selects the `comfortable_wait` quote when the guest's complaint would
+  otherwise be slow seating, while retaining food, price and restroom issues.
+  The bench uses the ordinary placed-item snapshot. Waiting state is visit-only
+  and is never saved; morning autosave remains the only game save point.
+- Coverage: `tests/sim/test_waiting_bench.gd` and
+  `tests/world/test_waiting_bench_view.gd`. The former includes a real-kitchen
+  busy-service comparison. For a rendered seated-party fixture, run
+  `bash tools/screenshot.sh --scene=res://tools/waiting_bench_review.tscn --speed=0 --frames=60`.
+  Dining seats are explicitly held in that fixture; it is not balance evidence.
+  The existing unmodified `--door-queue` capture continues to exercise ordinary
+  queue behavior.
+
 ### 2.3i Stock panel, auto-reorder and sold-out dishes (FK-033, #54)
 - `ReorderSettings` (`src/sim/economy/reorder_settings.gd`) holds `{enabled, target}`
   per ingredient. Defaults are enabled with `EconomyTuning.morning_stock` targets,

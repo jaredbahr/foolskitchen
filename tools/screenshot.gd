@@ -1155,7 +1155,8 @@ static func _catalogue_content_expectations(content: ContentDB) -> Dictionary:
 				or definition.display_name.strip_edges().is_empty() or definition.price < 0 or definition.unlock_level < 1 \
 				or definition.footprint.x < 1 or definition.footprint.y < 1 or not definition.placement_layer_valid() \
 				or not [ItemDef.Category.TABLE, ItemDef.Category.CHAIR, ItemDef.Category.STATION,
-					ItemDef.Category.STORAGE, ItemDef.Category.PASS, ItemDef.Category.DECOR, ItemDef.Category.RESTROOM].has(definition.category):
+					ItemDef.Category.STORAGE, ItemDef.Category.PASS, ItemDef.Category.DECOR,
+					ItemDef.Category.RESTROOM, ItemDef.Category.WAITING].has(definition.category):
 			continue
 		var path: String = definition.view_scene.resource_path if definition.view_scene != null else ""
 		cards.append({"id": String(definition.id), "name": definition.display_name, "price": definition.price,
