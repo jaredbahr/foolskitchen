@@ -22,12 +22,37 @@ func _ready() -> void:
 		push_error("Food review could not open the seeded shop")
 		return
 	_checkpoint(false)
+	main.set_process(false)
+	view.set_process(false)
+	_present(false)
 
 
 func _process(_delta: float) -> void:
 	_frames += 1
 	if _frames == 30:
-		_checkpoint(true)
+		_present(true)
+
+
+## These two hosted frames share the same actual service tick. Hide every new
+## attachment for the before image, including dishes parented to drawn people.
+## The old-main paired run verifies that this before image really matches it.
+func _present(enabled: bool) -> void:
+	var view: ShopView = main.get_node("ShopView") as ShopView
+	if "food" in view:
+		var food: Node3D = view.get("food") as Node3D
+		food.visible = enabled
+		if enabled:
+			view._process(0.0)
+		else:
+			for dish: Node3D in food.get("pool"):
+				dish.visible = false
+			for dish: Node3D in food.get("stack"):
+				dish.visible = false
+			var emitters: Dictionary = food.get("steam")
+			for item_id: int in emitters:
+				(emitters[item_id] as CPUParticles3D).emitting = false
+	print("FOOD PAIR: ", JSON.stringify({"tick": fixture["world_tick"],
+		"presentation": enabled, "source_has_food": "food" in view}))
 
 
 func _checkpoint(stove: bool) -> void:
