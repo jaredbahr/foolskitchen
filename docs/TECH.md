@@ -409,6 +409,17 @@ an active edit/panel/selection first, or opens Settings when none is active.
   a held MOVE item. Esc cancels a preview, then exits. Hints show available actions.
 - Previews/cancellation never change the grid or books. Placement failures use
   short sentences from `ShopEditor.placement_reason`; path warnings do not block.
+- **Menu access (FK-100).** `MenuAccess` shares the live station scan with
+  isolated furniture, wall and Expand previews. Enabled dishes that would lose
+  their last reachable station are named on the existing amber advice line,
+  alongside the restock budget. A new edit that would leave no unlocked dish
+  cookable is refused; `Exact` undo/redo keeps its accepted-layout exemption.
+  Existing structural cut-off guards still apply, with the dish advice retained
+  on their refused previews. Rooms, finishes and wall decor do not run this
+  topology check. Opening names dishes that left the menu during the morning;
+  restoring access removes them from the note. This memory is day-local and
+  never saved. A previously broken layout explains its empty catalogue and
+  disables the HUD's Open shop button until access is repaired.
 - Valid checks supply unreachable IDs (0 for a proposed buy); committed warnings
   use actual IDs and survive invalid proposals, cancellation and exit until fixed.
 - Build shows its own grid choice (`CameraRig.build_grid_visible`, on by
