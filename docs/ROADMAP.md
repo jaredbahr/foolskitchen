@@ -8,6 +8,42 @@ Hobby pace: there are no dates, only exit criteria. Each phase ends with a playa
 - **Jared:** taste and lore calls, playtests each phase build, merges or asks for changes.
 - Each phase has a tracking issue (`Phase N: ...`) that lists its task issues.
 
+## Up next: the Codex queue (set 2026-10-29)
+Codex takes `worker-ready` issues in this order; the director validates, reviews and merges every PR, and builds only what needs art judgement. Each wave can run in parallel inside itself.
+
+**Wave 1, ready now (game logic, data and UI with tests)**
+- #189 Warn when a build edit cuts staff off from menu dishes
+- #196 Bar-snack fries from frozen fries
+- #197 Bakery menu section
+- #203 Waiting bench by the door
+- #113 Dish quality breakdown
+- #179 Hygiene overview in Build
+- #108 Title screen, then #110 First-day guide
+- #126 Seafood menu (data; the deck-plank floor after #202)
+- #114 Tier 2 lease upgrade (more lot to expand)
+
+**Wave 2, after wall finishes and decor (#207) merge**
+- #205 Smarter cutaway, then #208 Day and night cycle (morning prep, service into the evening, close and wind-down), then #84 Lighting decor
+- #198 Restroom decor (mirror, hand dryer, stall partitions)
+- #201 Hex tile and terracotta floors, then #202 terrazzo, concrete, carpet
+- #161 Menu boards show your menu, theme read-out (after #197)
+- #83 Blueprints
+- #150 Furniture variants
+
+**Wave 3, the designer core is done**
+- #166 Named regulars (first backlog pick)
+- #127 Everyday messes (spills, broken plates, grease)
+- #99 Food on plates, dirty plates, steam
+- #118 Made icons (chef hat, paint brush)
+
+**Then, director-scoped as each comes up**
+- #168 Street front, patio and a simple overworld, with exterior wall finishes and weather
+- #117 Sound and music
+- #85 Tier 1 balance pass (measure first)
+- Later backlog: #164 more sites, #167 makeovers, #169 staff drama, #170 design extras, #171 food depth, #172 visitors, #173 neighbourhood, #159 entertainment, #180 café counter, #206 premium decor, #125 aquarium
+
+**Also ready (Jared, 2026-10-29):** #114 Tier 2 is a lease upgrade that grows your lot (no move, keep your build). The cat #119 arrives at shop level 4 (art, director-scoped).
+
 ## Phase 0: Foundation
 - [ ] Project skeleton, autoload stubs, test runner, `check.sh`, `get_godot.sh` (FK-001, Claude)
 - [ ] CI on every PR (FK-003)
@@ -52,8 +88,10 @@ The Tier 1 hole-in-the-wall: 1 door, 3 two-seat tables, 1 fridge, 1 prep counter
 - [x] Floor types and patterns painted per cell or per room: wide and narrow planks, herringbone, small tiles, checker (Sims-style, D25, #200)
 - [ ] More floor types: hex tile, terracotta (#201); terrazzo, concrete, carpet (#202) (D25)
 - [x] Smooth motion between sim ticks (presentation only) (#204)
-- [ ] Wall finishes and wall decor: wallpaper, panels, tile, brick; framed art, menu boards, neon (D26)
+- [x] Wall finishes and wall decor: wallpaper, panels, tile, brick; framed art, menu boards, neon (D26) (#TBD)
 - [ ] Waiting bench by the door: more guests wait, longer (D26)
+- [ ] Smarter cutaway: lower only the walls facing the camera (#205), then lighting decor (lamps, pendants, chandeliers at Tier 3) next (Jared, 2026-10-29)
+- [ ] Sound and music after the designer core: ambience, UI clicks, cooking sounds, a light music loop (Jared, 2026-10-29)
 - [x] Hiring pool, traits, wages
 - [ ] The priority matrix
 - [x] Plate cycle (sink, dirty plates)
@@ -87,7 +125,7 @@ The Tier 1 hole-in-the-wall: 1 door, 3 two-seat tables, 1 fridge, 1 prep counter
 Each is a `phase-later` issue. Pick from here when Phase 2's designer work is solid.
 - [ ] More sites run by managers (#164, D24)
 - [ ] Named regulars who remember your place (#166): first after the designer core (Jared, D26)
-- [ ] Street front and patio, with curb appeal and weather (#168): second (D26); needs a simple overworld (road and neighbourhood around the lot) and outdoor waiting seats when the weather allows
+- [ ] Street front and patio, with curb appeal and weather (#168): second (D26); needs a simple overworld (road and neighbourhood around the lot) and outdoor waiting seats when the weather allows; exterior wall finishes (brick front, siding, shopfront) come with it
 - [ ] Makeover jobs, renovating to a brief as career side jobs, needing a D7 amendment (#167)
 - [ ] Staff relationships and drama (#169)
 - [ ] Design extras: collection sets, lighting moods, staff room, blueprint codes (#170)

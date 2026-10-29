@@ -32,12 +32,23 @@ func test_every_authored_item_has_floor_aligned_parts_inside_its_footprint_or_de
 			instance.free()
 			continue
 		_views.append(view)
-		assert_eq(view.footprint, definition.footprint, String(definition.id))
+		# A window item (D26, the OPEN sign) is one window wide; its wrapper keeps
+		# the native wall width and is fitted to the window opening when hung.
+		var footprint: Vector2i = definition.footprint
+		if definition.hangs_in_window():
+			assert_eq(definition.footprint, Vector2i.ONE, String(definition.id))
+			footprint = view.footprint
+		else:
+			assert_eq(view.footprint, definition.footprint, String(definition.id))
 		var bounds: AABB = view.get_combined_aabb()
-		var half_width: float = float(definition.footprint.x) * GridMath.CELL_SIZE * 0.5
-		var half_depth: float = float(definition.footprint.y) * GridMath.CELL_SIZE * 0.5
+		var half_width: float = float(footprint.x) * GridMath.CELL_SIZE * 0.5
+		var half_depth: float = float(footprint.y) * GridMath.CELL_SIZE * 0.5
 		assert_true(bounds.size.x > 0.0 and bounds.size.y > 0.0 and bounds.size.z > 0.0, String(definition.id))
-		assert_almost_eq(bounds.position.y, 0.0, 0.0001, String(definition.id))
+		if definition.hangs_on_wall():
+			# Wall decor (D26) hangs off the floor, its back on the face.
+			assert_true(bounds.position.y > 0.2 and bounds.end.y < ArtScale.WALL_HEIGHT, String(definition.id))
+		else:
+			assert_almost_eq(bounds.position.y, 0.0, 0.0001, String(definition.id))
 		var footprint_rect: Rect2 = Rect2(-half_width, -half_depth, half_width * 2.0, half_depth * 2.0)
 		var permitted: Rect2 = footprint_rect
 		var body_bounds: AABB
@@ -62,7 +73,11 @@ func test_every_authored_item_has_floor_aligned_parts_inside_its_footprint_or_de
 		# Bodies are centred unless the wrapper declares an offset inside its footprint.
 		assert_true(absf(view.body_center_offset.x) <= half_width and absf(view.body_center_offset.y) <= half_depth, "%s body offset must stay inside its footprint" % definition.id)
 		assert_almost_eq(body_bounds.get_center().x, view.body_center_offset.x, 0.001, String(definition.id))
-		assert_almost_eq(body_bounds.get_center().z, view.body_center_offset.y, 0.001, String(definition.id))
+		if definition.hangs_on_wall():
+			# Wall decor: its back rests on the wall at the footprint's far (+Z) edge.
+			assert_almost_eq(body_bounds.end.z, half_depth, 0.01, "%s hangs flat on its wall" % definition.id)
+		else:
+			assert_almost_eq(body_bounds.get_center().z, view.body_center_offset.y, 0.001, String(definition.id))
 		if not view.body_material_names.is_empty():
 			assert_true(view.body_surface_count() > 0, "%s body material names must match imported surfaces" % definition.id)
 		else:

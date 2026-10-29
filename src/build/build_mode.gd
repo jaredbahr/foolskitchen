@@ -8,7 +8,10 @@ extends RefCounted
 ## ROOMS is the Rooms tool (FK-101): drag a rectangle to paint a room type.
 ## FLOORS is the Floors tool (D25): drag a rectangle (or Shift-click a room)
 ## to lay a floor type in chosen colours; Alt-click copies a floor's look.
-enum State { INACTIVE, IDLE, MOVE, BUY, WALLS, FLOOR, ROOMS, FLOORS }
+## WALL_FINISH is the Wall finish tool (D26): click a wall face, drag along
+## walls (or Shift-click a room) to put a finish up; Alt-click copies a look.
+## HANG holds a wall item (D26) to hang, bought or moved, on the hovered face.
+enum State { INACTIVE, IDLE, MOVE, BUY, WALLS, FLOOR, ROOMS, FLOORS, WALL_FINISH, HANG }
 ## What a click on placed furniture does while IDLE (FK-085, Sims-style):
 ## HAND picks it up to move or rotate, EYEDROPPER starts buying another of
 ## it (in its colour), SELL sells it straight away.
@@ -62,6 +65,25 @@ var _floors_command: Callable
 ## Floor checks by [rect, removing] for the current topology/books (a check
 ## costs ~15 ms); cleared by refresh(), topology signals and commits.
 var _floor_checks: Dictionary = {}
+## Wall finish tool (D26): the look, the hovered face, the drag and Shift.
+var wall_style: StringName = WallStyleDef.DEFAULT_ID
+var wall_swatch: StringName = &""
+var wall_accent: StringName = &""
+var wall_face_hover: Vector3i = WallFaces.NO_FACE
+var wall_face_dragging: bool = false
+var wall_face_start: Vector3i = WallFaces.NO_FACE
+var wall_face_room: bool = false
+## Wall decor (D26): the item held, where it would hang, and the anchor of
+## the hung item being moved (NO_FACE for a new one). While IDLE,
+## hover_anchor is the hung item under the pointer.
+var hang_definition: ItemDef = null
+var hang_anchor: Vector3i = WallFaces.NO_FACE
+var hang_moving: Vector3i = WallFaces.NO_FACE
+var hover_anchor: Vector3i = WallFaces.NO_FACE
+var _wall_finish_command: Callable
+var _hang_command: Callable
+var _rehang_command: Callable
+var _take_down_command: Callable
 
 var _editor: ShopEditor
 var _world: SimWorld
@@ -111,6 +133,16 @@ func bind_session(editor: ShopEditor, world: SimWorld, content: ContentDB,
 		_clock.phase_changed.connect(_on_phase_changed)
 	_refresh_committed()
 	changed.emit()
+
+
+## The wall commands (D26): (changes) -> bool, (def_id, anchor) -> bool,
+## (anchor, to_anchor) -> bool and (anchor) -> int.
+func bind_walls(wall_finish_command: Callable, hang_command: Callable, rehang_command: Callable,
+		take_down_command: Callable) -> void:
+	_wall_finish_command = wall_finish_command
+	_hang_command = hang_command
+	_rehang_command = rehang_command
+	_take_down_command = take_down_command
 
 
 func enter() -> bool:
@@ -306,7 +338,12 @@ func cancel_ghost() -> bool:
 		floors_dragging = false
 		_recheck_floors()
 		changed.emit()
-	elif has_ghost() or state == State.WALLS or state == State.FLOOR or state == State.ROOMS or state == State.FLOORS:
+	elif state == State.WALL_FINISH and wall_face_dragging:
+		wall_face_dragging = false
+		_recheck_wall_finish()
+		changed.emit()
+	elif has_ghost() or state == State.WALLS or state == State.FLOOR or state == State.ROOMS or state == State.FLOORS \
+			or state == State.WALL_FINISH or state == State.HANG:
 		_clear_ghost(State.IDLE)
 		changed.emit()
 	else:
@@ -378,6 +415,17 @@ func eyedrop(item_id: int, cell: Vector2i) -> bool:
 
 ## One player sentence for the hovered item under the sell or eyedropper tool.
 func hover_summary() -> String:
+	if state == State.IDLE and hover_anchor != WallFaces.NO_FACE and _editor != null:
+		var hung: ItemDef = _editor.hung_definition(hover_anchor)
+		if hung != null:
+			match tool:
+				Tool.SELL:
+					return "Sell %s for %s" % [hung.display_name, Fmt.money(ShopEditor.sale_refund(hung))] \
+						if current_check.ok else current_check.why
+				Tool.EYEDROPPER:
+					return "Hang another %s" % hung.display_name
+				_:
+					return "Pick up %s to move it" % hung.display_name
 	if state != State.IDLE or hover_item_id < 0 or _grid == null:
 		return ""
 	var placed: PlacedItem = _grid.item(hover_item_id)
@@ -397,7 +445,9 @@ func hover_summary() -> String:
 func _recheck_hover() -> void:
 	if state != State.IDLE:
 		return
-	if tool == Tool.SELL and hover_item_id >= 0 and _editor != null:
+	if tool == Tool.SELL and hover_anchor != WallFaces.NO_FACE and _editor != null:
+		current_check = _editor.check_take_down(hover_anchor)
+	elif tool == Tool.SELL and hover_item_id >= 0 and _editor != null:
 		current_check = _editor.check_sell(hover_item_id)
 	else:
 		current_check = EditCheck.new(true)
@@ -424,6 +474,10 @@ func refresh() -> void:
 		_recheck_rooms()
 	elif state == State.FLOORS:
 		_recheck_floors()
+	elif state == State.WALL_FINISH:
+		_recheck_wall_finish()
+	elif state == State.HANG:
+		_recheck_hang()
 	elif state == State.IDLE:
 		_recheck_hover()
 	if before != _comparable_state():
@@ -483,7 +537,12 @@ func presentation_state() -> Dictionary:
 		"room_kind": room_kind, "room_cells": room_proposal(), "room_dragging": room_dragging,
 		"floor_style": floor_style, "floor_swatch": floor_swatch, "floor_accent": floor_accent,
 		"floors_cells": floors_proposal(), "floors_dragging": floors_dragging, "floors_room": floors_room,
-		"floors_finishes": current_check.finishes.duplicate() if state == State.FLOORS and current_check.ok else {}}
+		"floors_finishes": current_check.finishes.duplicate() if state == State.FLOORS and current_check.ok else {},
+		"wall_style": wall_style, "wall_swatch": wall_swatch, "wall_accent": wall_accent,
+		"wall_faces": wall_finish_proposal(), "wall_face_dragging": wall_face_dragging,
+		"wall_finishes": current_check.wall_finishes.duplicate() if state == State.WALL_FINISH and current_check.ok else {},
+		"hang_definition": hang_definition, "hang_anchor": hang_anchor, "hang_moving": hang_moving,
+		"hover_anchor": hover_anchor}
 
 
 ## presentation_state() with the floor looks by value (cell ->
@@ -496,6 +555,11 @@ func _comparable_state() -> Dictionary:
 	for cell: Variant in finishes:
 		values[cell] = str(finishes[cell])
 	snapshot["floors_finishes"] = values
+	var wall_values: Dictionary = {}
+	var wall_looks: Dictionary = snapshot["wall_finishes"]
+	for face: Variant in wall_looks:
+		wall_values[face] = str(wall_looks[face])
+	snapshot["wall_finishes"] = wall_values
 	return snapshot
 
 
@@ -557,6 +621,14 @@ func _clear_ghost(next_state: State) -> void:
 	floors_hover = SimGrid.NO_CELL
 	floors_dragging = false
 	floors_room = false
+	wall_face_hover = WallFaces.NO_FACE
+	wall_face_dragging = false
+	wall_face_start = WallFaces.NO_FACE
+	wall_face_room = false
+	hang_definition = null
+	hang_anchor = WallFaces.NO_FACE
+	hang_moving = WallFaces.NO_FACE
+	hover_anchor = WallFaces.NO_FACE
 
 
 func _finish_command(accepted: bool, previous_check: EditCheck, fallback_reason: String) -> void:
@@ -858,7 +930,11 @@ func floor_summary() -> String:
 	if current_check.cost > 0:
 		text += "  $%d" % current_check.cost
 	if current_check.refund > 0:
-		text += "  (refund $%d)" % current_check.refund
+		if current_check.floor_finish_refund > 0:
+			text += "  (refund $%d, $%d of it for the flooring)" % [current_check.refund,
+				current_check.floor_finish_refund]
+		else:
+			text += "  (refund $%d)" % current_check.refund
 	return text
 
 
@@ -1155,6 +1231,330 @@ func _recheck_floors() -> void:
 	current_check = _editor.check_flooring(_editor.lay_changes(cells, floor_style, floor_swatch, floor_accent))
 	if not floors_dragging and not current_check.ok and current_check.why == ShopEditor.FLOORS_ALREADY:
 		current_check = EditCheck.new(false, "")
+
+
+# --- Wall finish tool (D26) ----------------------------------------------------
+
+## Enters the Wall finish tool with the look to put up.
+func begin_wall_finish(style_id: StringName, swatch_id: StringName, accent_id: StringName = &"") -> bool:
+	if not _can_interact() or not _wall_finish_command.is_valid() or _content.wall_style(style_id) == null:
+		return false
+	_clear_ghost(State.WALL_FINISH)
+	wall_style = style_id
+	wall_swatch = swatch_id
+	wall_accent = accent_id
+	_recheck_wall_finish()
+	changed.emit()
+	return true
+
+
+## Another look for the running tool (a catalogue card or colour chip).
+func set_wall_finish(style_id: StringName, swatch_id: StringName, accent_id: StringName = &"") -> void:
+	if state != State.WALL_FINISH or _content == null or _content.wall_style(style_id) == null:
+		return
+	if style_id == wall_style and swatch_id == wall_swatch and accent_id == wall_accent:
+		return
+	wall_style = style_id
+	wall_swatch = swatch_id
+	wall_accent = accent_id
+	_recheck_wall_finish()
+	changed.emit()
+
+
+## The wall face under the pointer (NO_FACE off the walls). `room` (Shift)
+## previews the hovered face's whole room.
+func wall_finish_pointer(face: Vector3i, room: bool = false) -> void:
+	if state != State.WALL_FINISH or not _can_interact():
+		return
+	if face == wall_face_hover and (wall_face_dragging or room == wall_face_room) and not _topology_dirty:
+		return
+	wall_face_hover = face
+	if not wall_face_dragging:
+		wall_face_room = room
+	if _topology_dirty:
+		_refresh_committed()
+	_recheck_wall_finish()
+	changed.emit()
+
+
+## Starts a drag on a face, or with `room` (Shift) picks the face's room.
+func wall_finish_press(face: Vector3i, room: bool = false) -> bool:
+	if state != State.WALL_FINISH or not _can_interact() or face == WallFaces.NO_FACE:
+		return false
+	wall_face_dragging = true
+	wall_face_room = room
+	wall_face_start = face
+	wall_face_hover = face
+	_recheck_wall_finish()
+	changed.emit()
+	return true
+
+
+## Ends a drag: puts the look up on the faces dragged over (or the room).
+func wall_finish_release(face: Vector3i) -> bool:
+	if state != State.WALL_FINISH or not wall_face_dragging or not _can_interact():
+		return false
+	if not wall_face_room and face != WallFaces.NO_FACE:
+		wall_face_hover = face
+	_recheck_wall_finish()
+	wall_face_dragging = false
+	if not current_check.ok or current_check.wall_finishes.is_empty():
+		changed.emit()
+		return false
+	var previous_check: EditCheck = _editor.last_check
+	var proposal: Dictionary[Vector3i, FloorFinishes.Finish] = current_check.wall_finishes.duplicate()
+	_committing = true
+	var answer: Variant = _wall_finish_command.call(proposal)
+	var accepted: bool = answer is bool and answer
+	_refresh_committed()
+	if not accepted:
+		var result: EditCheck = _editor.last_check
+		current_check = result if result != previous_check and not result.ok \
+			else EditCheck.new(false, "The change was refused; try again")
+	_committing = false
+	if _clock.phase != _phase or not _editor.can_edit():
+		_phase = _clock.phase
+		_clear_ghost(State.INACTIVE)
+	elif accepted:
+		_recheck_wall_finish()
+	changed.emit()
+	return accepted
+
+
+## The eyedropper (Alt-click): the tool takes the clicked face's look.
+func wall_finish_pick(face: Vector3i) -> bool:
+	if state != State.WALL_FINISH or not _can_interact() or not WallFaces.is_face(_grid, face):
+		return false
+	var look: FloorFinishes.Finish = _editor.walls.finish(face)
+	wall_face_dragging = false
+	wall_style = look.style
+	wall_swatch = look.swatch
+	wall_accent = look.accent
+	_recheck_wall_finish()
+	changed.emit()
+	return true
+
+
+## The faces the look would cover: the hovered face; while dragging, every
+## face of the floor rectangle between the start and the pointer that turns
+## the same way as either end (one wall, or round a corner); with Shift the
+## room. Sorted.
+func wall_finish_proposal() -> Array[Vector3i]:
+	var out: Array[Vector3i] = []
+	if state != State.WALL_FINISH or _grid == null or _editor == null or wall_face_hover == WallFaces.NO_FACE:
+		return out
+	if wall_face_room:
+		return _editor.wall_room_faces(wall_face_start if wall_face_dragging else wall_face_hover)
+	if not wall_face_dragging or wall_face_start == wall_face_hover:
+		if WallFaces.is_face(_grid, wall_face_hover):
+			out.append(wall_face_hover)
+		return out
+	var a: Vector2i = WallFaces.cell(wall_face_start)
+	var b: Vector2i = WallFaces.cell(wall_face_hover)
+	var low: Vector2i = a.min(b)
+	for face: Vector3i in _editor.wall_faces_of(_rect_cells(Rect2i(low, (a.max(b) - low) + Vector2i.ONE))):
+		if face.z == wall_face_start.z or face.z == wall_face_hover.z:
+			out.append(face)
+	return out
+
+
+## One player sentence: what putting the finish up costs, or why it can't.
+func wall_finish_summary() -> String:
+	if state != State.WALL_FINISH:
+		return ""
+	var style: WallStyleDef = _content.wall_style(wall_style) if _content != null else null
+	var name: String = style.display_name if style != null else "wall finish"
+	if not current_check.ok and not current_check.why.is_empty():
+		return current_check.why
+	var count: int = current_check.wall_finishes.size()
+	if count == 0:
+		return "Click or drag along a wall to put up %s" % name
+	var faces: String = "%d wall%s" % [count, "" if count == 1 else "s"]
+	var relaid: bool = false
+	for face: Vector3i in current_check.wall_finishes:
+		if _editor.walls.finish(face).style != current_check.wall_finishes[face].style:
+			relaid = true
+			break
+	if not relaid:
+		return "Recolour %s (free)" % faces
+	var text: String = "Put up %s on %s: %s" % [name, faces,
+		Fmt.money(current_check.cost) if current_check.cost > 0 else "free"]
+	if current_check.refund > 0:
+		text += " (refund %s)" % Fmt.money(current_check.refund)
+	return text
+
+
+func _recheck_wall_finish() -> void:
+	if state != State.WALL_FINISH or _editor == null:
+		return
+	var faces: Array[Vector3i] = wall_finish_proposal()
+	if faces.is_empty():
+		current_check = EditCheck.new(false, "")
+		return
+	current_check = _editor.check_wall_finishes(_editor.wall_lay_changes(faces, wall_style, wall_swatch, wall_accent))
+	if not wall_face_dragging and not current_check.ok and current_check.why == ShopEditor.WALL_FINISH_ALREADY:
+		current_check = EditCheck.new(false, "")
+
+
+# --- Wall decor (D26) --------------------------------------------------------------
+
+func holds_wall_item() -> bool:
+	return state == State.HANG
+
+
+## Starts hanging a new wall item (a catalogue tile or the eyedropper).
+func begin_hang(def_id: StringName) -> bool:
+	if not _can_interact() or not _hang_command.is_valid():
+		return false
+	var definition: ItemDef = _content.item(def_id)
+	if definition == null or not definition.hangs_on_wall():
+		current_check = EditCheck.new(false, WallDecor.NOT_WALL_DECOR)
+		changed.emit()
+		return false
+	_clear_ghost(State.HANG)
+	hang_definition = definition
+	_recheck_hang()
+	changed.emit()
+	return true
+
+
+## Picks up a hung item to move it (the hand tool on wall decor).
+func begin_rehang(anchor: Vector3i) -> bool:
+	if not _can_interact() or not _rehang_command.is_valid():
+		return false
+	var definition: ItemDef = _editor.hung_definition(anchor)
+	if definition == null:
+		current_check = EditCheck.new(false, ShopEditor.DECOR_GONE)
+		changed.emit()
+		return false
+	_clear_ghost(State.HANG)
+	hang_definition = definition
+	hang_moving = anchor
+	hang_anchor = anchor
+	_recheck_hang()
+	changed.emit()
+	return true
+
+
+## The face under the pointer and how far along it (metres right of its
+## centre): a wide item hangs on that face and the neighbour nearest the
+## pointer. NO_FACE: off the walls.
+func hang_pointer(face: Vector3i, offset: float = 0.0) -> void:
+	if state != State.HANG or not _can_interact():
+		return
+	var anchor: Vector3i = WallFaces.NO_FACE if face == WallFaces.NO_FACE \
+		else WallFaces.anchor_for(face, 1 if hang_definition.hangs_in_window() else hang_definition.footprint.x, offset)
+	if anchor == hang_anchor and not _topology_dirty:
+		return
+	hang_anchor = anchor
+	if _topology_dirty:
+		_refresh_committed()
+	_recheck_hang()
+	changed.emit()
+
+
+func hang_commit() -> bool:
+	if state != State.HANG or not _can_interact():
+		return false
+	_recheck_hang()
+	if not current_check.ok:
+		changed.emit()
+		return false
+	var previous_check: EditCheck = _editor.last_check
+	_committing = true
+	var answer: Variant = _rehang_command.call(hang_moving, hang_anchor) if hang_moving != WallFaces.NO_FACE \
+		else _hang_command.call(hang_definition.id, hang_anchor)
+	var accepted: bool = answer is bool and answer
+	_refresh_committed()
+	if accepted:
+		# Buying keeps the item in hand for another; a move puts it down.
+		if hang_moving != WallFaces.NO_FACE:
+			_clear_ghost(State.IDLE)
+		else:
+			_recheck_hang()
+	else:
+		var result: EditCheck = _editor.last_check
+		current_check = result if result != previous_check and not result.ok \
+			else EditCheck.new(false, "The placement was refused; try again")
+	_committing = false
+	if _clock.phase != _phase or not _editor.can_edit():
+		_phase = _clock.phase
+		_clear_ghost(State.INACTIVE)
+	changed.emit()
+	return accepted
+
+
+## Del while moving a hung item sells it; -1 is refusal.
+func sell_held_wall_item() -> int:
+	if state != State.HANG or hang_moving == WallFaces.NO_FACE or not _can_interact():
+		return -1
+	return _take_down(hang_moving)
+
+
+## The hung item under the pointer while IDLE (NO_FACE for none).
+func hover_wall_item(anchor: Vector3i) -> void:
+	var next: Vector3i = anchor if state == State.IDLE and _editor != null and _editor.decor.item(anchor) != null \
+		else WallFaces.NO_FACE
+	if next == hover_anchor:
+		return
+	hover_anchor = next
+	_recheck_hover()
+	changed.emit()
+
+
+## Sells the hovered hung item (the sell tool, or Del while idle). -1 refuses.
+func take_down_hovered() -> int:
+	if state != State.IDLE or hover_anchor == WallFaces.NO_FACE or not _can_interact():
+		return -1
+	return _take_down(hover_anchor)
+
+
+func _take_down(anchor: Vector3i) -> int:
+	current_check = _editor.check_take_down(anchor)
+	if not current_check.ok or not _take_down_command.is_valid():
+		changed.emit()
+		return -1
+	var previous_check: EditCheck = _editor.last_check
+	_committing = true
+	var answer: Variant = _take_down_command.call(anchor)
+	var amount: int = answer if answer is int else -1
+	_refresh_committed()
+	if amount >= 0:
+		_clear_ghost(State.IDLE)
+	else:
+		var result: EditCheck = _editor.last_check
+		current_check = result if result != previous_check and not result.ok \
+			else EditCheck.new(false, "The sale was refused; try again")
+	_committing = false
+	if _clock.phase != _phase or not _editor.can_edit():
+		_phase = _clock.phase
+		_clear_ghost(State.INACTIVE)
+	changed.emit()
+	return amount
+
+
+## One player sentence while holding a wall item.
+func hang_summary() -> String:
+	if state != State.HANG or hang_definition == null:
+		return ""
+	if hang_anchor == WallFaces.NO_FACE:
+		return "Point at a %s to hang %s" % ["window" if hang_definition.hangs_in_window() else "wall", hang_definition.display_name]
+	if not current_check.ok:
+		return current_check.why
+	if hang_moving != WallFaces.NO_FACE:
+		return "Move %s here (Del sells it)" % hang_definition.display_name
+	return "Hang %s for %s" % [hang_definition.display_name, Fmt.money(hang_definition.price)]
+
+
+func _recheck_hang() -> void:
+	if state != State.HANG or _editor == null or hang_definition == null:
+		return
+	if hang_anchor == WallFaces.NO_FACE:
+		current_check = EditCheck.new(false, "")
+	elif hang_moving != WallFaces.NO_FACE:
+		current_check = _editor.check_rehang(hang_moving, hang_anchor)
+	else:
+		current_check = _editor.check_hang(hang_definition.id, hang_anchor)
 
 
 func _on_cells_changed(_cells: Array[Vector2i]) -> void:

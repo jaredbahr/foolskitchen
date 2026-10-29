@@ -16,6 +16,12 @@ extends Resource
 ## FloorStyleDef and SwatchDef ids). Empty is every cell the default.
 @export var floor_style_id: StringName = &""
 @export var floor_finishes: Dictionary[Vector2i, PackedStringArray] = {}
+## Wall finishes (D26): the default finish (empty is plain paint) and the
+## faces finished differently (WallFaces key Vector3i(x, y, dir) -> [style,
+## swatch, accent]). Wall decor: anchor face -> ItemDef id (WALL layer).
+@export var wall_style_id: StringName = &""
+@export var wall_finishes: Dictionary[Vector3i, PackedStringArray] = {}
+@export var wall_items: Dictionary[Vector3i, StringName] = {}
 ## Starting cell per staff role (&"cook", &"server", &"cleaner", &"owner").
 @export var staff_spawns: Dictionary[StringName, Vector2i] = {}
 ## Wall segments (FK-070): edge key (SimGrid edge) -> WallKindDef id.

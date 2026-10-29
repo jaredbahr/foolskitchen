@@ -5,6 +5,8 @@ extends Node3D
 const GRID_SHADER: Shader = preload("res://src/world/floor_finish.gdshader")
 ## Floor types (D25): colour indices in the finish map. 0 is the shop's own
 ## floor paint (the floor_color uniform), 1 the authored brown, then swatches.
+## A ray hit on a shell box counts as on one of its sides within this (metres).
+const SIDE_EPSILON: float = 0.01
 const FINISH_SHOP_COLOUR: int = 0
 const FINISH_AUTHORED_COLOUR: int = 1
 const FINISH_FIRST_SWATCH: int = 2
@@ -110,6 +112,10 @@ var _swatch_index: Dictionary[StringName, int] = {}
 var _walls: Node3D
 ## Player-built wall segments (FK-070) and the shell cells holding their windows.
 var segment_view: WallSegmentView
+## Wall finishes and hung wall decor (D26).
+var wall_finish_view: WallFinishView
+var _wall_finishes: WallFinishes
+var _wall_decor: WallDecor
 var _lot: Rect2i = Rect2i()
 var _shell_windows: Dictionary[Vector2i, Vector2i] = {}
 var selection_outline: BoundsOutline
@@ -158,6 +164,7 @@ func show_world(value: SimWorld) -> void:
 	floor_mesh = null
 	room_dressing = null
 	segment_view = null
+	wall_finish_view = null
 	selection_outline = null
 	_selected_item_id = -1
 	world = value
@@ -187,6 +194,11 @@ func show_world(value: SimWorld) -> void:
 	segment_view.name = "WallSegments"
 	segment_view.set_meta("shop_geometry", true)
 	add_child(segment_view)
+	wall_finish_view = WallFinishView.new()
+	wall_finish_view.name = "WallFinishes"
+	wall_finish_view.set_meta("shop_geometry", true)
+	add_child(wall_finish_view)
+	wall_finish_view.bind(world.grid, _paint_content, _wall_finishes, _wall_decor)
 	room_dressing = RoomDressing.new()
 	room_dressing.name = "RoomDressing"
 	room_dressing.set_restaurant_name(_restaurant_name)
@@ -330,11 +342,214 @@ func set_paint(content: ContentDB, wall_id: StringName, floor_id: StringName) ->
 		if content != null:
 			for swatch: SwatchDef in content.swatches():
 				_paint_materials[swatch.id] = _material(swatch.color)
+		if wall_finish_view != null and world != null:
+			wall_finish_view.bind(world.grid, content, _wall_finishes, _wall_decor)
 	_wall_swatch_id = wall_id
 	_floor_swatch_id = floor_id
 	_apply_paint()
 	_apply_finish_palette()
 	_rebuild_finish_map()
+
+
+# --- Wall finishes and wall decor (D26) ----------------------------------------
+
+## Main binds the editor's wall looks and hung decor after show_world(); both
+## redraw when they change. Null shows plain paint and nothing hung.
+func bind_wall_finishes(finishes: WallFinishes, decor: WallDecor) -> void:
+	if _wall_finishes != null and _wall_finishes.changed.is_connected(_on_wall_finishes_changed):
+		_wall_finishes.changed.disconnect(_on_wall_finishes_changed)
+	if _wall_decor != null and _wall_decor.changed.is_connected(_on_wall_decor_changed):
+		_wall_decor.changed.disconnect(_on_wall_decor_changed)
+	_wall_finishes = finishes
+	_wall_decor = decor
+	if _wall_finishes != null:
+		_wall_finishes.changed.connect(_on_wall_finishes_changed)
+	if _wall_decor != null:
+		_wall_decor.changed.connect(_on_wall_decor_changed)
+	if wall_finish_view != null and world != null:
+		wall_finish_view.bind(world.grid, _paint_content, _wall_finishes, _wall_decor)
+		_apply_paint()
+
+
+func _on_wall_finishes_changed(_faces: Array[Vector3i]) -> void:
+	if wall_finish_view != null:
+		wall_finish_view.rebuild()
+
+
+func _on_wall_decor_changed() -> void:
+	if wall_finish_view != null:
+		wall_finish_view.rebuild()
+
+
+## Shows proposed wall looks (face -> Finish) until cleared.
+func preview_wall_finishes(changes: Dictionary[Vector3i, FloorFinishes.Finish]) -> void:
+	if wall_finish_view != null:
+		wall_finish_view.preview_finishes(changes)
+
+
+func clear_wall_preview() -> void:
+	if wall_finish_view != null:
+		wall_finish_view.clear_preview()
+
+
+## The wall face under a ray ({face, offset, distance}; {} for none): the
+## nearest shell wall box or interior wall slab before the floor. `offset` is
+## metres along the face from its centre, to its right. A wall hit on a side
+## with no face (the street side, a window) is an empty face (NO_FACE).
+## `floor_fallback`: when no wall is hit, the nearest face of the floor cell
+## the ray lands on (walls drawn low are easy to miss).
+func wall_face_at_ray(ray_origin: Vector3, ray_direction: Vector3, floor_fallback: bool = false) -> Dictionary:
+	if world == null or ray_direction.y >= -0.00001:
+		return {}
+	var nearest: float = -ray_origin.y / ray_direction.y
+	var best: Dictionary = {}
+	for cell: Vector2i in _wall_nodes:
+		var wall: MeshInstance3D = _wall_nodes[cell]
+		if not wall.is_visible_in_tree():
+			continue
+		var box: AABB = wall.global_transform * wall.get_aabb()
+		var distance: float = _ray_box_distance(ray_origin, ray_direction, box)
+		if distance >= 0.0 and distance < nearest:
+			nearest = distance
+			var point: Vector3 = ray_origin + ray_direction * distance
+			best = _face_hit(_shell_face(cell, point, point.y >= box.end.y - SIDE_EPSILON), point, distance)
+	if segment_view != null:
+		for root: Node in segment_view.get_children():
+			if not root.has_meta(&"edge") or not (root as Node3D).is_visible_in_tree():
+				continue
+			for child: Node in root.get_children():
+				var slab: MeshInstance3D = child as MeshInstance3D
+				if slab == null or slab.name == "Top" or slab.mesh == null:
+					continue
+				var distance: float = _ray_box_distance(ray_origin, ray_direction, slab.global_transform * slab.get_aabb())
+				if distance >= 0.0 and distance < nearest:
+					nearest = distance
+					var point: Vector3 = ray_origin + ray_direction * distance
+					best = _face_hit(_interior_face(root.get_meta(&"edge"), point), point, distance)
+	if best.is_empty() and floor_fallback:
+		var point: Vector3 = ray_origin + ray_direction * nearest
+		var cell: Vector2i = GridMath.world_to_cell(point)
+		var face: Vector3i = WallFaces.NO_FACE
+		var closest: float = INF
+		for dir: int in 4:
+			var candidate: Vector3i = WallFaces.make(cell, dir)
+			if not WallFaces.is_face(world.grid, candidate):
+				continue
+			var into: Vector2i = WallFaces.DIRS[dir]
+			var gap: float = GridMath.CELL_SIZE * 0.5 - (point - GridMath.cell_to_world(cell)).dot(Vector3(into.x, 0.0, into.y))
+			if gap < closest:
+				closest = gap
+				face = candidate
+		if face != WallFaces.NO_FACE:
+			best = _face_hit(face, point, nearest)
+	return best
+
+
+## The outside window under a ray, as {face (its window slot, see
+## WallFaces.window_problem), offset 0, distance}, for hanging a window item
+## (D26): the nearest window whose shell cell (full height) the ray passes
+## through, else a window of the floor cell the ray reaches. {} for none.
+func window_at_ray(ray_origin: Vector3, ray_direction: Vector3) -> Dictionary:
+	if world == null or ray_direction.y >= -0.00001:
+		return {}
+	var best: Dictionary = {}
+	var slots: Array[Vector3i] = WallFaces.windows(world.grid)
+	for slot: Vector3i in slots:
+		var into: Vector2i = WallFaces.step(slot)
+		var centre: Vector3 = GridMath.cell_to_world(WallFaces.cell(slot) + into)
+		var half: float = GridMath.CELL_SIZE * 0.5
+		var box: AABB = AABB(centre - Vector3(half, 0.0, half), Vector3(GridMath.CELL_SIZE, ArtScale.WALL_HEIGHT, GridMath.CELL_SIZE))
+		var distance: float = _ray_box_distance(ray_origin, ray_direction, box)
+		if distance >= 0.0 and (best.is_empty() or distance < float(best["distance"])):
+			best = {"face": slot, "offset": 0.0, "distance": distance}
+	if best.is_empty():
+		var nearest: float = -ray_origin.y / ray_direction.y
+		var cell: Vector2i = GridMath.world_to_cell(ray_origin + ray_direction * nearest)
+		for slot: Vector3i in slots:
+			if WallFaces.cell(slot) == cell:
+				return {"face": slot, "offset": 0.0, "distance": nearest}
+	return best
+
+
+## The hung wall item under a ray before any furniture or wall, or NO_FACE:
+## an item seen only through a wall (from behind it, or from outside) is never
+## picked.
+func wall_item_at_ray(ray_origin: Vector3, ray_direction: Vector3) -> Vector3i:
+	if wall_finish_view == null:
+		return WallFaces.NO_FACE
+	var hit: Dictionary = wall_finish_view.item_hit(ray_origin, ray_direction)
+	if hit.is_empty() or nearest_item_distance(ray_origin, ray_direction) < float(hit["distance"]) \
+			or wall_distance(ray_origin, ray_direction) < float(hit["distance"]):
+		return WallFaces.NO_FACE
+	return hit["anchor"]
+
+
+## How far along a ray the first visible wall is: a shell box, or any mesh of
+## the wall segments (slabs, jambs, heads, doors; not window glass, which a
+## window sign is seen through). INF for none.
+func wall_distance(ray_origin: Vector3, ray_direction: Vector3) -> float:
+	var nearest: float = INF
+	for cell: Vector2i in _wall_nodes:
+		var wall: MeshInstance3D = _wall_nodes[cell]
+		if wall.is_visible_in_tree():
+			var distance: float = _ray_box_distance(ray_origin, ray_direction, wall.global_transform * wall.get_aabb())
+			if distance >= 0.0 and distance < nearest:
+				nearest = distance
+	if segment_view != null:
+		var glass: Dictionary[Node, bool] = {}
+		for pane: PropView in segment_view.pane_nodes():
+			for node: Node in pane.find_children("*", "MeshInstance3D", true, false):
+				glass[node] = true
+		for node: Node in segment_view.find_children("*", "MeshInstance3D", true, false):
+			var mesh: MeshInstance3D = node as MeshInstance3D
+			if mesh.mesh == null or glass.has(mesh) or not mesh.is_visible_in_tree():
+				continue
+			var distance: float = _ray_box_distance(ray_origin, ray_direction, mesh.global_transform * mesh.get_aabb())
+			if distance >= 0.0 and distance < nearest:
+				nearest = distance
+	return nearest
+
+
+func _face_hit(face: Vector3i, point: Vector3, distance: float) -> Dictionary:
+	if face == WallFaces.NO_FACE:
+		return {"face": WallFaces.NO_FACE, "offset": 0.0, "distance": distance}
+	var into: Vector2i = WallFaces.step(face)
+	var right: Vector2i = WallFaces.along(face)
+	var centre: Vector3 = GridMath.cell_to_world(WallFaces.cell(face)) + Vector3(into.x, 0.0, into.y) * GridMath.CELL_SIZE * 0.5
+	return {"face": face, "offset": (point - centre).dot(Vector3(right.x, 0.0, right.y)), "distance": distance}
+
+
+## The room-side face of a shell cell at a point on its box. A side hit
+## must be on that face's own side (the street side or a side with no face is
+## NO_FACE); a hit on the box's top (a lowered wall) takes the nearest face.
+func _shell_face(cell: Vector2i, point: Vector3, on_top: bool = false) -> Vector3i:
+	var local: Vector3 = point - GridMath.cell_to_world(cell)
+	var best: Vector3i = WallFaces.NO_FACE
+	var closest: float = INF
+	for dir: int in 4:
+		var outward: Vector2i = WallFaces.DIRS[dir]
+		var gap: float = GridMath.CELL_SIZE * 0.5 - local.dot(Vector3(outward.x, 0.0, outward.y))
+		if not on_top and gap > SIDE_EPSILON:
+			continue
+		var face: Vector3i = WallFaces.make(cell + outward, (dir + 2) % 4)
+		if not WallFaces.is_face(world.grid, face):
+			continue
+		if gap < closest:
+			closest = gap
+			best = face
+	return best
+
+
+## The face of an interior wall on the side of the line a point is on.
+func _interior_face(edge: Vector3i, point: Vector3) -> Vector3i:
+	var cells: Array[Vector2i] = SimGrid.edge_cells(edge)
+	var line: float = (edge.x if edge.z == SimGrid.EDGE_WEST else edge.y) * GridMath.CELL_SIZE
+	var at: float = point.x if edge.z == SimGrid.EDGE_WEST else point.z
+	var first_side: bool = at < line
+	var here: Vector2i = cells[0] if first_side else cells[1]
+	var there: Vector2i = cells[1] if first_side else cells[0]
+	var face: Vector3i = WallFaces.make(here, WallFaces.DIRS.find(there - here))
+	return face if WallFaces.is_face(world.grid, face) else WallFaces.NO_FACE
 
 
 # --- Floor types (D25) ---------------------------------------------------------
@@ -500,6 +715,12 @@ func preview_paint(kind: StringName, item_id: int, swatch_id: StringName) -> voi
 func clear_paint_preview() -> void:
 	preview_paint(&"", -1, &"")
 	clear_floor_preview()
+	clear_wall_preview()
+
+
+## The shop's own wall colour (its whole-shop paint, else the authored cream).
+func shop_wall_colour() -> Color:
+	return _paint_color(_wall_swatch_id, wall_color)
 
 
 ## The authored floor brown (the floor material's own colour).
@@ -561,6 +782,19 @@ func item_at_ray(ray_origin: Vector3, ray_direction: Vector3) -> int:
 	return result
 
 
+## Distance along the ray to the nearest visible furniture, or INF.
+func nearest_item_distance(ray_origin: Vector3, ray_direction: Vector3) -> float:
+	var nearest: float = INF
+	for id: int in item_nodes:
+		var node: ItemVisual = item_nodes[id]
+		if not node.is_visible_in_tree():
+			continue
+		var distance: float = _ray_box_distance(ray_origin, ray_direction, node.global_transform * node.get_aabb())
+		if distance >= 0.0 and distance < nearest:
+			nearest = distance
+	return nearest
+
+
 ## Shop-local displayed bounds, shared by diagnostics and selection tests.
 func item_bounds(id: int) -> AABB:
 	var node: ItemVisual = item_nodes.get(id) as ItemVisual
@@ -615,6 +849,11 @@ func wall_cell_at_ray(ray_origin: Vector3, ray_direction: Vector3) -> Variant:
 	return result
 
 
+## Distance along a ray to a box, or -1 for a miss (shared with WallFinishView).
+static func ray_box_distance(ray_origin: Vector3, ray_direction: Vector3, bounds: AABB) -> float:
+	return _ray_box_distance(ray_origin, ray_direction, bounds)
+
+
 static func _ray_box_distance(ray_origin: Vector3, ray_direction: Vector3, bounds: AABB) -> float:
 	var near: float = 0.0
 	var far: float = INF
@@ -651,6 +890,8 @@ func _apply_paint() -> void:
 	var wall_id: StringName = _preview_swatch_id if _preview_kind == &"wall" else _wall_swatch_id
 	for wall: MeshInstance3D in _wall_nodes.values():
 		wall.material_override = _paint_material(wall_id, wall_color)
+	if wall_finish_view != null:
+		wall_finish_view.set_wall_colour(_paint_color(wall_id, wall_color), wall_id)
 	if segment_view != null:
 		segment_view.set_materials(_paint_material(wall_id, wall_color), _material(wall_top_color), floor_mesh.material_override)
 	var floor_id: StringName = _preview_swatch_id if _preview_kind == &"floor" else _floor_swatch_id
@@ -731,6 +972,8 @@ func _apply_wall_heights() -> void:
 	if segment_view != null and world != null:
 		segment_view.set_materials(_current_wall_material(), _material(wall_top_color), floor_mesh.material_override)
 		segment_view.rebuild(world.grid, wall_mode != WallMode.UP, lowered_wall_cells())
+	if wall_finish_view != null and world != null:
+		wall_finish_view.set_lowered(wall_mode != WallMode.UP, lowered_wall_cells())
 	if room_dressing != null:
 		room_dressing.set_lowered_walls(lowered_wall_cells())
 
@@ -821,6 +1064,8 @@ func _remove_item(id: int) -> void:
 
 func _on_cells_changed(cells: Array[Vector2i]) -> void:
 	_build_terrain()
+	if wall_finish_view != null:
+		wall_finish_view.rebuild()
 	var affected: Dictionary[int, bool] = {}
 	for cell: Vector2i in cells:
 		for item: PlacedItem in world.grid.items_at(cell):

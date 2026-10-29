@@ -92,6 +92,8 @@ var _paths: Array[PropView] = []
 var lot: Rect2i = Rect2i()
 var _grid: SimGrid
 var _stone_bounds: AABB = AABB()
+## The pane's bounds for `window_opening` (measured once).
+static var _opening_bounds: AABB = AABB()
 
 
 func _notification(what: int) -> void:
@@ -104,6 +106,19 @@ func window_span() -> Vector2:
 	var bounds: AABB = _native_pane_bounds()
 	var center: float = ArtScale.WALL_HEIGHT * 0.5
 	return Vector2(center - bounds.size.y * 0.5, center + bounds.size.y * 0.5)
+
+
+## A window's opening seen from the room: x across the wall from its middle,
+## y from the floor (sill to head). Hung window items (D26) fit inside it.
+static func window_opening() -> Rect2:
+	if _opening_bounds.size == Vector3.ZERO:
+		var pane: PropView = RoomDressing.make_asset(WINDOW_SCENE, "Measure", true)
+		if pane != null:
+			_opening_bounds = pane.get_combined_aabb()
+			pane.free()
+	var centre: float = ArtScale.WALL_HEIGHT * 0.5
+	return Rect2(-_opening_bounds.size.x * 0.5, centre - _opening_bounds.size.y * 0.5,
+		_opening_bounds.size.x, _opening_bounds.size.y)
 
 
 func set_materials(wall_material: Material, top_material: Material, floor_material: Material = null) -> void:
