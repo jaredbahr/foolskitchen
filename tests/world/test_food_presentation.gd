@@ -216,6 +216,7 @@ func test_one_real_day_reuses_a_bounded_pool_and_never_changes_rng() -> void:
 				observed[dish.stage] = true
 		if _sim.world.clock.phase == SimClock.Phase.CLOSED:
 			break
+	assert_eq(_sim.world.clock.phase, SimClock.Phase.CLOSED, "the complete real service day finished")
 	assert_true(_sim.served_today > 0)
 	assert_eq(_dish_count(_view), nodes, "the complete serving-node count stays bounded")
 	for stage: StringName in [&"ready", &"carried", &"eating", &"dirty"]:

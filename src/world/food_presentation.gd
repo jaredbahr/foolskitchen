@@ -14,6 +14,8 @@ class Ticket extends RefCounted:
 	var recipe: RecipeDef
 	var dish: DishVisual
 	var retired: bool = false
+	var carrier_id: int = 0
+	var carry_index: int = 0
 
 var restaurant: RestaurantSim
 var content: ContentDB
@@ -26,8 +28,6 @@ var tickets: Dictionary[int, Ticket] = {}
 var _recipes: Array[RecipeDef] = []
 var _sink_id: int = 0
 var _pass_id: int = 0
-var _carrier: Dictionary[int, int] = {}
-var _carry_index: Dictionary[int, int] = {}
 
 
 func bind(value: RestaurantSim, definitions: ContentDB, items: Dictionary[int, ItemVisual]) -> void:
@@ -111,8 +111,9 @@ func refresh_layout(items: Dictionary[int, ItemVisual]) -> void:
 
 
 func sync(frames: Dictionary[int, AgentPresentationController.Frame], people: Dictionary[int, Node3D]) -> void:
-	_carrier.clear()
-	_carry_index.clear()
+	for id: int in tickets:
+		tickets[id].carrier_id = 0
+		tickets[id].carry_index = 0
 	for agent: SimAgent in restaurant.world.agents:
 		if not agent is StaffAgent or not frames.has(agent.id) or not frames[agent.id].carrying:
 			continue
@@ -121,15 +122,18 @@ func sync(frames: Dictionary[int, AgentPresentationController.Frame], people: Di
 			continue
 		var order_ids: Variant = task.payload.get("order_ids")
 		if task.kind == &"pour":
-			_carrier[int(task.payload.get("order_id", 0))] = agent.id
-			_carry_index[int(task.payload.get("order_id", 0))] = 0
+			var ticket: Ticket = tickets.get(int(task.payload.get("order_id", 0))) as Ticket
+			if ticket != null:
+				ticket.carrier_id = agent.id
 		elif task.kind == &"deliver" and order_ids != null:
 			var index: int = 0
 			for order_id: int in order_ids:
 				var order: Order = restaurant.orders.get_order(order_id)
 				if order != null and order.state == Order.State.READY:
-					_carrier[order_id] = agent.id
-					_carry_index[order_id] = index
+					var ticket: Ticket = tickets.get(order_id) as Ticket
+					if ticket != null:
+						ticket.carrier_id = agent.id
+						ticket.carry_index = index
 					index += 1
 	var pass_index: int = 0
 	for id: int in tickets:
@@ -144,12 +148,12 @@ func sync(frames: Dictionary[int, AgentPresentationController.Frame], people: Di
 		var parent: Node3D = self
 		var spot: Vector3 = Vector3.ZERO
 		if order.state == Order.State.READY:
-			if _carrier.has(id) and people.has(_carrier[id]):
-				var frame: AgentPresentationController.Frame = frames[_carrier[id]]
-				parent = people[_carrier[id]]
+			if ticket.carrier_id > 0 and people.has(ticket.carrier_id):
+				var frame: AgentPresentationController.Frame = frames[ticket.carrier_id]
+				parent = people[ticket.carrier_id]
 				spot = frame.tray_anchor + Vector3.UP * (0.025 if frame.show_tray else 0.0)
 				if frame.show_tray:
-					var index: int = _carry_index[id]
+					var index: int = ticket.carry_index
 					spot += Vector3((index % 2 - 0.5) * 0.24, 0.0, (index / 2 - 0.5) * 0.18)
 				stage = &"carried"
 			elif not ticket.recipe.is_drink() and surfaces.has(_pass_id):
@@ -164,7 +168,8 @@ func sync(frames: Dictionary[int, AgentPresentationController.Frame], people: Di
 			if not ticket.recipe.is_drink() and ledger and not restaurant.kitchen.plates.has_order(id):
 				_retire(ticket)
 				continue
-			if customer != null and customer.state not in [CustomerAgent.State.LEAVING, CustomerAgent.State.LEFT]:
+			if customer != null and customer.state != CustomerAgent.State.LEAVING \
+					and customer.state != CustomerAgent.State.LEFT:
 				stage = &"eating"
 			elif dirty and not ticket.recipe.is_drink():
 				stage = &"dirty"
