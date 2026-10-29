@@ -161,7 +161,7 @@ func test_bar_fries_recipe_and_level_two_unlock() -> void:
 	assert_eq(recipe.steps[0].duration_ticks, 35)
 	assert_eq(content.recipe(&"fries").ingredients[0].id, &"potato")
 	assert_eq(RecipeDef.validate_unlocks(content.recipes()), PackedStringArray())
-	var menu: MenuSettings = MenuSettings.new(content.recipes(), 1)
+	var menu: MenuSettings = MenuSettings.new([content.recipe(&"beer"), recipe] as Array[RecipeDef], 1)
 	assert_false(menu.set_enabled(&"bar_fries", true))
 	assert_true(menu.set_owner_level(2))
 	assert_true(menu.set_enabled(&"bar_fries", true))
