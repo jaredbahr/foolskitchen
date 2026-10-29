@@ -364,7 +364,7 @@ func test_recipe_menu_sections_validate_without_changing_shared_content() -> voi
 	var errors: PackedStringArray = ContentDB.validate_definitions([], [invalid], [_station()])
 	assert_eq(errors.size(), 1)
 	assert_true(_has_error(errors, "unknown menu section"))
-	assert_eq(definition.section, RecipeDef.Section.DESSERTS)
+	assert_eq(definition.section, RecipeDef.Section.BAKERY)
 	assert_eq(_starter_db().recipe(&"tomato_soup").section, RecipeDef.Section.STARTERS)
 
 

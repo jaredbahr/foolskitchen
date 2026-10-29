@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- Croissants now appear in the menu's Bakery section, after Desserts. Existing menus, prices and coffee-with-pastry orders stay the same. (#222)
 - Bar fries unlock at owner level 2 after Beer: a quick, $5 side cooked in the fryer. Frozen fries auto-order only while needed by the menu and within freezer space; the menu explains when a freezer is missing. (#221)
 - Save groups of furniture and rugs as named blueprints in Buy mode, then rotate and place a whole group at once. See the total cost before buying, undo the whole group for an exact refund, and rename or delete blueprints in your library. Library changes are saved at the start of tomorrow. (#218)
 - Lay new floors in your own colours: polished concrete at level 3 ($1 a floor tile), soft carpet at level 4 ($2) and speckled terrazzo at level 5 ($4). (#219)
