@@ -315,6 +315,7 @@ func set_menu_notice(text: String, refuses_opening: bool = false) -> void:
 	var panel: Control = get_node("MenuNotice") as Control
 	var label: Label = get_node("MenuNotice/Text") as Label
 	label.text = text
+	label.tooltip_text = text
 	panel.visible = not text.is_empty()
 	_layout_menu_notice()
 	refresh()
@@ -324,9 +325,11 @@ func _layout_menu_notice() -> void:
 	var panel: Control = get_node_or_null("MenuNotice") as Control
 	if panel == null or not panel.visible:
 		return
-	var width: float = maxf(1.0, get_viewport().get_visible_rect().size.x - 24.0) if is_inside_tree() else 1576.0
-	panel.position = Vector2(12.0, (get_node("Top") as Control).get_global_rect().end.y + 6.0)
-	panel.size = Vector2(width, panel.get_combined_minimum_size().y)
+	# Horizontal anchors follow the viewport. Keep the single-line native
+	# height explicit: wrapped labels can otherwise retain a full-screen
+	# minimum measured before their container receives its width.
+	panel.offset_top = (get_node("Top") as Control).get_global_rect().end.y + 6.0
+	panel.offset_bottom = panel.offset_top + panel.get_combined_minimum_size().y
 
 
 ## Main lists today's sold-out dishes by display name; empty hides the tag.
