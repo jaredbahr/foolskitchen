@@ -124,8 +124,8 @@ func test_floor_beside_the_kitchen_divider_alone_is_refused() -> void:
 	assert_true(_editor.check_floor(_rect(-1, 4, 1, 1), false).ok)
 
 
-## A west outer window turns into an interior window when the wall behind it
-## opens. Floor bought behind it alone would be sealed off by that window.
+## A window kept between the remaining shell walls still seals a one-cell
+## pocket. Expanding far enough to remove its support takes its frame down.
 func test_floor_sealed_by_an_old_outer_window_is_refused() -> void:
 	var window: Vector3i = Vector3i(1, 2, SimGrid.EDGE_WEST)
 	assert_true(_editor.apply_segments({window: SimGrid.Segment.WINDOW} as Dictionary[Vector3i, int]), _editor.last_check.why)
@@ -135,6 +135,49 @@ func test_floor_sealed_by_an_old_outer_window_is_refused() -> void:
 	assert_eq(_cash, 1000)
 	assert_eq(_sim.world.grid.terrain(Vector2i(0, 2)), SimGrid.Terrain.WALL)
 	assert_true(_editor.check_floor(_rect(-1, 2, 1, 2), true).ok, "with a neighbour it joins round the window")
+
+
+func test_expanding_over_a_window_removes_its_frame_and_refunds_half() -> void:
+	var grid: SimGrid = _sim.world.grid
+	var window: Vector3i = Vector3i(13, 7, SimGrid.EDGE_WEST)
+	assert_true(_editor.apply_segments({window: SimGrid.Segment.WINDOW} as Dictionary[Vector3i, int]))
+	var cash: int = _cash
+	var check: EditCheck = _editor.check_floor(_rect(14, 5, 1, 5), true)
+	assert_true(check.ok, check.why)
+	assert_eq(check.changes, {window: SimGrid.Segment.NONE} as Dictionary[Vector3i, int])
+	assert_eq(check.refund, 10)
+	assert_eq(grid.segment(window), SimGrid.Segment.WINDOW, "the preview changes nothing")
+	assert_true(_editor.apply_floor(_rect(14, 5, 1, 5), true), _editor.last_check.why)
+	assert_eq(grid.segment(window), SimGrid.Segment.NONE)
+	assert_true(grid.step_open(Vector2i(12, 7), Vector2i(13, 7)), "no invisible window blocks the new floor")
+	assert_eq(_cash, cash - 75 + 10)
+
+
+func test_expansion_keeps_a_window_with_a_continuing_interior_wall() -> void:
+	var grid: SimGrid = _sim.world.grid
+	var window: Vector3i = Vector3i(13, 7, SimGrid.EDGE_WEST)
+	var support: Vector3i = Vector3i(13, 6, SimGrid.EDGE_WEST)
+	assert_true(_editor.apply_floor(_rect(14, 5, 1, 5), true), _editor.last_check.why)
+	assert_true(_editor.apply_segments({support: SimGrid.Segment.WALL,
+		window: SimGrid.Segment.WINDOW} as Dictionary[Vector3i, int]), _editor.last_check.why)
+	assert_true(_editor.apply_floor(_rect(1, -2, 4, 2), true), _editor.last_check.why)
+	assert_eq(grid.segment(window), SimGrid.Segment.WINDOW)
+	assert_true(WallRules.has_continuing_wall(grid, window))
+
+
+func test_expand_summary_names_the_openings_that_come_down() -> void:
+	var window: Vector3i = Vector3i(13, 7, SimGrid.EDGE_WEST)
+	assert_true(_editor.apply_segments({window: SimGrid.Segment.WINDOW} as Dictionary[Vector3i, int]))
+	var mode: BuildMode = BuildMode.new()
+	mode.bind_session(_editor, _sim.world, _content, _editor.move, _editor.buy, _editor.sell,
+		_editor.apply_segments, _editor.apply_floor)
+	assert_true(mode.enter())
+	assert_true(mode.begin_floor())
+	assert_true(mode.floor_press(Vector2i(14, 5)))
+	mode.floor_pointer(Vector2i(14, 9))
+	assert_eq(mode.floor_summary(), "Add 5 floor tiles  $75  (removes 1 window, refund $10)")
+	assert_eq(_sim.world.grid.segment(window), SimGrid.Segment.WINDOW, "summary is read-only")
+	mode.bind_session(null, null, null, Callable(), Callable(), Callable())
 
 
 ## Fuzz seed 5: a two-cell notch at (4..5, -1) between wall runs used to stay
@@ -215,10 +258,10 @@ func test_an_l_shaped_building_opens_its_inner_corner() -> void:
 	assert_eq(_cash, 5000 - (10 + 42) * 15)
 
 
-func test_furniture_walls_and_windows_keep_their_places() -> void:
+func test_expansion_keeps_furniture_and_interior_walls_but_removes_displaced_windows() -> void:
 	var grid: SimGrid = _sim.world.grid
 	var walls: Dictionary[Vector3i, int] = {
-		Vector3i(13, 7, SimGrid.EDGE_WEST): SimGrid.Segment.WINDOW,  # outer face, becomes interior
+		Vector3i(13, 7, SimGrid.EDGE_WEST): SimGrid.Segment.WINDOW,  # outer face, loses its wall
 		Vector3i(13, 5, SimGrid.EDGE_WEST): SimGrid.Segment.WINDOW,  # outer face, buried by the wing's wall
 		Vector3i(9, 6, SimGrid.EDGE_WEST): SimGrid.Segment.WALL,
 	}
@@ -229,11 +272,12 @@ func test_furniture_walls_and_windows_keep_their_places() -> void:
 	_cash = 1000
 	var check: EditCheck = _editor.check_floor(_rect(14, 6, 1, 4), true)
 	assert_true(check.ok, check.why)
-	assert_eq(check.changes, {Vector3i(13, 5, SimGrid.EDGE_WEST): SimGrid.Segment.NONE} as Dictionary[Vector3i, int],
-		"a window that no longer faces outside comes down")
-	assert_eq(check.refund, 10)
+	assert_eq(check.changes, {Vector3i(13, 5, SimGrid.EDGE_WEST): SimGrid.Segment.NONE,
+		Vector3i(13, 7, SimGrid.EDGE_WEST): SimGrid.Segment.NONE} as Dictionary[Vector3i, int],
+		"the buried and unsupported windows both come down")
+	assert_eq(check.refund, 20)
 	assert_true(_editor.apply_floor(_rect(14, 6, 1, 4), true))
-	assert_eq(_cash, 1000 - 4 * 15 + 10)
+	assert_eq(_cash, 1000 - 4 * 15 + 20)
 	assert_true(_editor.apply_floor(_rect(1, -2, 4, 2), true), _editor.last_check.why)
 	assert_true(_editor.apply_floor(_rect(-1, 2, 1, 7), true), _editor.last_check.why)
 	var after: Array[Array] = []
@@ -242,13 +286,12 @@ func test_furniture_walls_and_windows_keep_their_places() -> void:
 	assert_eq(after, before, "items keep ids, origins and cells")
 	assert_eq(grid.segment(Vector3i(9, 6, SimGrid.EDGE_WEST)), SimGrid.Segment.WALL)
 	var inner: Vector3i = Vector3i(13, 7, SimGrid.EDGE_WEST)
-	assert_eq(grid.segment(inner), SimGrid.Segment.WINDOW, "the outer window is now an interior window")
+	assert_eq(grid.segment(inner), SimGrid.Segment.NONE, "the old window has no supporting wall")
 	assert_true(WallRules.is_interior(grid, inner))
-	assert_false(grid.walkable_neighbours(Vector2i(12, 7)).has(Vector2i(13, 7)), "and blocks like one")
-	assert_false(grid.find_path(Vector2i(12, 7), Vector2i(13, 7)).is_empty(), "people go round it")
+	assert_true(grid.step_open(Vector2i(12, 7), Vector2i(13, 7)), "the old window no longer blocks movement")
 	assert_eq(_editor.next_segment(inner, SimGrid.Segment.WALL), SimGrid.Segment.WALL, "it cycles as interior")
 	# No wall is added along the old outline: the room just opens up.
-	assert_eq(grid.segment_edges().size(), 2)
+	assert_eq(grid.segment_edges().size(), 1)
 	assert_eq(_sim.staff_spawns[&"cook"], Vector2i(6, 2))
 
 

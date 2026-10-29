@@ -424,6 +424,17 @@ an active edit/panel/selection first, or opens Settings when none is active.
   a held MOVE item. Esc cancels a preview, then exits. Hints show available actions.
 - Previews/cancellation never change the grid or books. Placement failures use
   short sentences from `ShopEditor.placement_reason`; path warnings do not block.
+- **Menu access (FK-100).** `MenuAccess` shares the live station scan with
+  isolated furniture, wall and Expand previews. Enabled dishes that would lose
+  their last reachable station are named on the existing amber advice line,
+  alongside the restock budget. A new edit that would leave no unlocked dish
+  cookable is refused; `Exact` undo/redo keeps its accepted-layout exemption.
+  Existing structural cut-off guards still apply, with the dish advice retained
+  on their refused previews. Rooms, finishes and wall decor do not run this
+  topology check. Opening names dishes that left the menu during the morning;
+  restoring access removes them from the note. This memory is day-local and
+  never saved. A previously broken layout explains its empty catalogue and
+  disables the HUD's Open shop button until access is repaired.
 - Valid checks supply unreachable IDs (0 for a proposed buy); committed warnings
   use actual IDs and survive invalid proposals, cancellation and exit until fixed.
 - Build shows its own grid choice (`CameraRig.build_grid_visible`, on by
@@ -948,11 +959,25 @@ an active edit/panel/selection first, or opens Settings when none is active.
   when their path leads through the door, guests never
   (`ShopView._sync_back_doors`, a pure function of where people are drawn;
   no sim effect). Delivery people, crates and carrying: 2.3j.
-- **Floor expansion (FK-080)** builds on this: grid lines keep their keys,
-  so an outer-face window becomes an interior window when the shell cell
-  behind it turns into floor (see the next section).
+- **Openings need a wall (#212).** `WallRules.has_continuing_wall` requires
+  a WINDOW or DOORWAY to have a neighbouring WALL terrain cell or an interior
+  WALL segment continuing along its line. Full-cell dividers and shell cells
+  cut by an opening count as wall terrain, preserving existing wall runs.
+  New unsupported openings are refused;
+  removing their last wall support takes existing frames down with their
+  half-price refund. Perpendicular thin wall segments and neighbouring
+  interior openings alone are not support.
+  Loading older saves stages every wall first, then drops only unsupported
+  opening rows with a plain load note; the shop and its cash remain intact.
+  Floor expansion uses the same rule (see the next section).
 - Captures: `tools/screenshot.sh --walls=place` (a dragged run with ghost and
   cost) and `--walls=room` (a built room; add `--quarter=0` for Cutaway).
+  For the expansion regression, run `OPENINGS_REVIEW_STAGE=before` or `after`
+  with `bash tools/screenshot.sh --scene=res://tools/openings_review.tscn
+  --speed=0 --frames=30 --quarter=2`. This unsaved fixture uses the production morning
+  commands with $2,000 extra cash and wall decor unlocked, showing the
+  supported window, back door and decor before expansion, then their removal
+  and refund after opening that wall.
 
 ### Floor expansion (FK-080)
 - **Lot (data).** `ShopLayout.lot_west`, `lot_east`, `lot_north` say how many
@@ -990,15 +1015,19 @@ an active edit/panel/selection first, or opens Settings when none is active.
   MORNING/CLOSED only. Adding takes the unbuilt lot cells of the rectangle
   (starting building, bought cells and the lot's wall ring are skipped; a cell
   beyond the lot refuses), and every new floor cell must then be walkable from
-  the street through the walls as built (an outer window that turned interior
-  can seal a pocket: "New floor must join the shop"). Removing may not cut off
+  the street through the walls as built (a window still supported by remaining
+  wall can seal a pocket: "New floor must join the shop"). Removing may not cut off
   bought floor that is reachable now. Removing takes only bought cells: furniture on any cell that would
   stop being floor refuses ("Clear the furniture off that floor first"), then a
   lost seat, work spot or door uses the wall cut-off sentences, then the usual
   walls/dining/cut-off checks run on a preview (people standing there count).
   Wall segments that would no longer fit (for example an outer window now
-  facing the wing's new wall) are taken down and refunded at the furniture
-  rate. Floor costs `floor_cell_price` per cell, refunds half, under
+  facing the wing's new wall), and window/doorway frames with no continuing
+  wall along their line, are taken down and refunded at the furniture rate.
+  This includes a back door whose supporting shell opens; selling the floor
+  later does not buy the refunded door back. The Expand summary names removed
+  openings and wall decor with their refund. Undo restores their exact
+  segments, finishes, hung decor and cash. Floor costs `floor_cell_price` per cell, refunds half, under
   `Ledger.UPGRADES`; every cell that stops being floor (bought cells and
   shell cells that close again) also refunds `floor(price / 2)` of its floor
   type (D25, `EditCheck.floor_finish_refund`, part of `refund`). The terrain change is one `set_terrains` batch (one
@@ -1794,6 +1823,41 @@ pattern 0 of `floor_finish.gdshader`, unchanged).
   on newly unlocked drinks). Tests: `tests/sim/test_concepts.gd`,
   `tests/world/test_concept_session.gd`, counter head clearance in
   `tests/world/test_seated_head_clearance.gd`.
+
+### Waiting benches (FK-106)
+
+- `data/items/waiting_bench.tres` reuses the approved low-back Kenney bench
+  wrapper: two waiting places, $35, available from level 1 under Dining >
+  Seating. The appended `ItemDef.Category.WAITING` keeps its seat reservations
+  separate from `DiningSeats`, table capacity and the restroom threshold.
+- A queued guest tries a table first, then `WaitingBench` chooses a free bench
+  seat, nearest to the street door and then in placement/seat order. The guest
+  walks there using the ordinary guest path and sits only after arriving at
+  their reserved cell. Parties keep their existing arrival priority and
+  shared least-patient-member deadline; they can use separate waiting spots
+  but still move to one dining table together. There is no queue cap.
+- Only actual bench arrival grants the one-time
+  `VisitTuning.waiting_bench_patience_multiplier` (1.5 in
+  `data/balance/visits.tres`). A walking or standing guest gets no bonus. A
+  bench booking is released when a table is assigned or the guest leaves;
+  removed or inaccessible benches release their stale bookings. No RNG is
+  consumed, and a shop without benches keeps its exact existing behavior.
+- `RoomRules` requires guest-reachable Dining cells, separate from dining
+  seats. A bench more than `waiting_bench_door_distance` (8 grid cells) from
+  the nearest street entry produces a normal nonblocking Build warning.
+- The view uses the bench's existing seat surface, front and sit animation;
+  a queued guest never receives a dining order there. `ReviewVisit.waited_seated`
+  selects the `comfortable_wait` quote when the guest's complaint would
+  otherwise be slow seating, while retaining food, price and restroom issues.
+  The bench uses the ordinary placed-item snapshot. Waiting state is visit-only
+  and is never saved; morning autosave remains the only game save point.
+- Coverage: `tests/sim/test_waiting_bench.gd` and
+  `tests/world/test_waiting_bench_view.gd`. The former includes a real-kitchen
+  busy-service comparison. For a rendered seated-party fixture, run
+  `bash tools/screenshot.sh --scene=res://tools/waiting_bench_review.tscn --speed=0 --frames=60`.
+  Dining seats are explicitly held in that fixture; it is not balance evidence.
+  The existing unmodified `--door-queue` capture continues to exercise ordinary
+  queue behavior.
 
 ### 2.3i Stock panel, auto-reorder and sold-out dishes (FK-033, #54)
 - `ReorderSettings` (`src/sim/economy/reorder_settings.gd`) holds `{enabled, target}`
