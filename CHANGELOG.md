@@ -96,6 +96,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- The roadmap puts the expand-over-a-window bug first in the worker queue. (#213)
 - The roadmap lists the play-mode grid toggle first in the worker queue and adds the owner character picker. (#210)
 - Wall finishes are data (`data/wall_finishes/`, `WallStyleDef`) drawn by a wall finish shader on a thin facing per wall face; wall decor is `ItemDef`s on a new wall placement layer, hung by `ShopEditor`'s wall decor rather than the grid. Shop saves are version 6; older saves load as plain paint with nothing hung, and unreadable wall rows are skipped. A `--walls-review` capture shows both. A glowing wall item (`ItemDef.glow_color`) gets one small shadowless light that skips its own meshes. `ItemDef.wall_mount` says where a wall item hangs: on an inside wall face, or in an outside window (the OPEN sign), saved in the same version 6 row. (#207)
 - Floor types are data (`data/floors/`, `FloorStyleDef`) drawn by one floor shader from a per-cell data texture, so a new floor look is a data file and a shader branch; shop saves are version 5, and the visual review adds a `--floors-review` capture. (#200)
