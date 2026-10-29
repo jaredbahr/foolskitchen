@@ -1210,7 +1210,18 @@ an active edit/panel/selection first, or opens Settings when none is active.
   starts honey with walnut seams (the oak parquet look, Jared). Hex tiles
   (butter/cream, 0.125 m across) and Terracotta pavers (terracotta/clay,
   0.25 m squares in half-offset rows) each cost $3 and unlock at level 4.
-  Their pattern values are appended as 5 and 6. Looks only: no
+  Their pattern values are appended as 5 and 6. Terrazzo ($4, level 5),
+  Polished concrete ($1, level 3) and Carpet ($2, level 4) append 7, 8 and 9.
+  Terrazzo uses cream/slate-blue hashed chips on a 0.125 m lattice;
+  concrete uses slate-blue/charcoal metre slabs with faint mottling; carpet
+  uses dusty-rose/walnut with a faint 0.025 m weave and no joints. The
+  existing slate-blue swatch is the lighter blue-grey concrete main: the
+  initially specified charcoal read near-black in the native normal/close
+  review. Charcoal remains the joint colour; no new palette colour is added.
+  The integer lattice hash is shared exactly by the shader and thumbnail;
+  chip edges use smooth pixel coverage, and the fine lattice fades with
+  `fwidth` as its cells approach a few pixels.
+  Looks only: no
   sim effect.
 - **Looks per cell.** `FloorFinishes` (`src/sim/shop/floor_finishes.gd`),
   owned by `ShopEditor.floors`, never by `SimGrid`: cell -> `Finish`

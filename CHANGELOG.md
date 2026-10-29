@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- Lay new floors in your own colours: polished concrete at level 3 ($1 a floor tile), soft carpet at level 4 ($2) and speckled terrazzo at level 5 ($4). (#219)
 - Toggle the floor grid while playing with G or Settings; remember separate play and Build choices on this device. (#214)
 - Unlock butter-and-cream hex tiles and rustic terracotta pavers at level 4, each $3 a floor tile, with your choice of colours. (#215)
 - Give every wall its own look in Build mode's new Wall finish tab: plain paint (free), painted panelling and striped wallpaper to start with, subway tiles at level 2 and brick at level 3, each in a colour and an accent colour you choose. Click a wall, drag along walls, Shift-click to do a whole room or Alt-click a wall to copy it. Each side of a wall is separate, so a wall between two rooms can look different on each side. A finish costs $2 to $4 for each half-metre of wall and replacing one refunds half; putting finishes up works in the morning or after closing, with undo. In Paint, clicking a wall now recolours that run of wall inside its room (Shift-click: the whole room), free at any time; clicking the outside of the building still repaints the building, inside walls included except those you have finished or recoloured. Older shops keep their walls exactly as they were. (#207)
