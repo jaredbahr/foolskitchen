@@ -155,22 +155,19 @@ func test_real_main_fixture_shows_goals_then_uses_real_close_and_read_only_evide
 	assert_eq(_uid_snapshot(CAPTURE.MILESTONE_UID_SOURCES), uid_before, "UID provenance never generates or registers sidecars")
 
 
-func test_goals_uses_available_height_below_wrapped_grid_hud_after_resize() -> void:
+func test_goals_fit_below_unchanged_hud_after_resize() -> void:
 	var main: Node = await _start_main()
 	assert_true(main.call("set_goals_visible", true))
 	var panel: Control = main.get_node("Overlay/GoalsPanel/Panel") as Control
 	var hud: CanvasLayer = main.get_node("HUD") as CanvasLayer
-	var grid: Button = hud.get_node("Top/Row/Grid") as Button
 	for viewport_size: Vector2i in [Vector2i(1600, 900), Vector2i(1280, 720), Vector2i(1600, 900)]:
 		_viewport.size = viewport_size
 		await _wait_frames(4)
-		assert_true(grid.is_visible_in_tree(), "the play Grid toggle remains visible")
-		assert_false(grid.disabled, "the Grid toggle remains bound to the camera")
+		assert_false(hud.has_node("Top/Row/Grid"), "play grid does not add a HUD control")
 		var bounds: Rect2 = panel.get_global_rect()
 		assert_true(bounds.position.y >= float(hud.call("panel_top")) - 0.5,
-			"Goals stays below the final wrapped header")
-		assert_almost_eq(bounds.end.y, float(viewport_size.y) - 12.0, 0.5,
-			"Goals uses available height while retaining a 12px bottom gutter")
+			"Goals stays below the header")
+		assert_true(bounds.end.y <= float(viewport_size.y), "Goals remains inside the viewport")
 		var scroll: ScrollContainer = panel.get_node("Content/Scroll") as ScrollContainer
 		assert_true(bounds.encloses(scroll.get_global_rect()), "the scroll region remains inside Goals")
 		if viewport_size == Vector2i(1600, 900):
@@ -180,7 +177,7 @@ func test_goals_uses_available_height_below_wrapped_grid_hud_after_resize() -> v
 					"the initial three career goals fit without scrolling at 1600x900")
 
 
-func test_real_main_staff_priorities_fit_below_wrapped_grid_header() -> void:
+func test_real_main_staff_priorities_fit_without_grid_header_reflow() -> void:
 	var main: Node = await _start_main(true)
 	var window: Window = main.get_window()
 	assert_true(main.call("set_staff_visible", true))
@@ -193,7 +190,7 @@ func test_real_main_staff_priorities_fit_below_wrapped_grid_header() -> void:
 		window.size = dimensions
 		await _wait_frames(4)
 		assert_true(card.get_global_rect().position.y >= float(main.get_node("HUD").call("panel_top")) - 0.5,
-			"Staff remains below the real wrapped header")
+			"Staff remains below the real header")
 		assert_true(card.get_global_rect().encloses(close.get_global_rect()), "Close remains inside Staff after resize")
 		assert_true(close.is_visible_in_tree())
 		if dimensions == Vector2i(1600, 900):

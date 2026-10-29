@@ -149,7 +149,7 @@ func test_staff_headings_keep_native_paths_padding_and_caches_after_roster_refre
 	staff.bind_roster(roster)
 	await tree.process_frame
 	await tree.process_frame
-	var paths: Array[NodePath] = [^"Panel/Content/Header/Title",
+	var paths: Array[NodePath] = [^"Panel/Content/Title",
 		^"Panel/Content/Scroll/List/RosterTitle", ^"Panel/Content/Scroll/List/CandidateTitle"]
 	var labels: Array[Label] = []
 	var icons: Array[TextureRect] = []

@@ -91,29 +91,14 @@ func test_g_persists_and_fresh_camera_reads_saved_play_choice() -> void:
 	assert_false(rig.grid_visible)
 
 
-func test_hud_button_matches_g_and_hides_during_build() -> void:
-	var rig: CameraRig = _rig(_model)
+func test_walls_tooltip_exposes_g_without_adding_a_hud_control() -> void:
 	var hud: CanvasLayer = HUD.instantiate() as CanvasLayer
 	_nodes.append(hud)
-	hud.call("bind_camera_rig", rig)
-	var button: Button = hud.get_node("Top/Row/Grid") as Button
-	assert_true(button.button_pressed)
-	button.pressed.emit()
-	assert_false(rig.grid_visible)
-	assert_false(button.button_pressed)
-	var restored: SettingsPreferences = SettingsPreferences.new(_path)
-	assert_true(restored.load_from_disk())
-	assert_false(restored.play_grid_enabled)
-	assert_true(restored.build_grid_enabled)
-	restored.free()
-	rig.toggle_grid()
-	assert_true(button.button_pressed)
-	hud.call("set_build_state", true, true, "")
-	assert_false(button.visible)
-	button.pressed.emit()
-	assert_true(rig.grid_visible)
-	hud.call("set_build_state", true, false, "")
-	assert_true(button.visible)
+	hud.call("refresh")
+	assert_false(hud.has_node("Top/Row/Grid"), "play grid must not reflow the existing HUD")
+	var walls: Button = hud.get_node("Top/Row/Walls") as Button
+	assert_true(walls.tooltip_text.contains("G: grid"))
+	assert_true(walls.tooltip_text.contains("Cycle walls:"))
 
 
 func test_settings_checkboxes_persist_and_follow_external_grid_changes() -> void:

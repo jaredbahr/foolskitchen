@@ -40,7 +40,7 @@ extends SceneTree
 ##   --catalogue-review=rustic|modern --speed=0 --frames=90,120  furnishing fixture
 ##   --diner-review --speed=0 --frames=12,90  six native comparisons, then seated diner fixture
 ##   --floors-review --speed=0 --frames=12,30  D25 floor types fixture (tools/floors_review.gd):
-##             the laid floors with thresholds and both doors, then Build > Floors
+##             the laid floors (including hex tile and terracotta) with thresholds and both doors, then Build > Floors
 ##             holding a herringbone drag over the planks
 ##   --walls-review --speed=0 --frames=12,30 [--quarter=N]  D26 wall finishes and wall decor
 ##             (tools/walls_review.gd): Cutaway, then Walls Up with Build > Wall finish

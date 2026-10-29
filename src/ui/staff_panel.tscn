@@ -32,25 +32,11 @@ mouse_force_pass_scroll_events = false
 layout_mode = 2
 mouse_filter = 2
 
-[node name="Header" type="HBoxContainer" parent="Panel/Content"]
+[node name="Title" type="Label" parent="Panel/Content"]
 layout_mode = 2
-mouse_filter = 2
-
-[node name="Title" type="Label" parent="Panel/Content/Header"]
-layout_mode = 2
-size_flags_horizontal = 3
 mouse_filter = 2
 theme_override_font_sizes/font_size = 26
 text = "Staff"
-
-[node name="Close" type="Button" parent="Panel/Content/Header"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(110, 0)
-layout_mode = 2
-size_flags_horizontal = 8
-mouse_filter = 0
-focus_mode = 0
-text = "Close"
 
 [node name="Status" type="Label" parent="Panel/Content"]
 unique_name_in_owner = true
@@ -207,7 +193,15 @@ layout_mode = 2
 focus_mode = 0
 text = "Buy"
 
+[node name="Close" type="Button" parent="Panel/Content"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(110, 0)
+layout_mode = 2
+size_flags_horizontal = 8
+mouse_filter = 0
+focus_mode = 0
+text = "Close"
 
-[connection signal="pressed" from="Panel/Content/Header/Close" to="." method="_on_close_pressed"]
+[connection signal="pressed" from="Panel/Content/Close" to="." method="_on_close_pressed"]
 [connection signal="pressed" from="Panel/Content/Scroll/List/TraysRow/TraysBuy" to="." method="_on_trays_buy_pressed"]
 [connection signal="pressed" from="Panel/Content/Scroll/List/BigTraysRow/BigTraysBuy" to="." method="_on_big_trays_buy_pressed"]

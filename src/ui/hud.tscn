@@ -116,13 +116,6 @@ size_flags_horizontal = 3
 layout_mode = 2
 focus_mode = 0
 text = "Walls: Cutaway"
-tooltip_text = "Cycle walls: Up, Cutaway, Down (C)"
-
-[node name="Grid" type="Button" parent="Top/Row"]
-layout_mode = 2
-focus_mode = 0
-toggle_mode = true
-button_pressed = true
 
 [node name="Build" type="Button" parent="Top/Row"]
 layout_mode = 2

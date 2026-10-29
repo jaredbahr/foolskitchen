@@ -464,3 +464,36 @@ func _can_spend(amount: int) -> bool:
 
 func _record(amount: int, category: StringName, note: String = "") -> void:
 	_ledger.record(1, amount, category, note)
+
+
+func test_new_tiles_append_patterns_and_keep_the_starter_set() -> void:
+	assert_eq(FloorStyleDef.Pattern.values(), [0, 1, 2, 3, 4, 5, 6])
+	assert_eq([FloorStyleDef.Pattern.PLANKS, FloorStyleDef.Pattern.NARROW_PLANKS,
+		FloorStyleDef.Pattern.HERRINGBONE, FloorStyleDef.Pattern.CHECKER, FloorStyleDef.Pattern.SMALL_TILE], [0, 1, 2, 3, 4])
+	var starters: Array[StringName] = []
+	for style: FloorStyleDef in _content.floor_styles():
+		if style.unlocked(1):
+			starters.append(style.id)
+	assert_eq(starters, [&"planks", &"narrow_planks", &"herringbone"] as Array[StringName])
+	for row: Array in [[&"hex_tile", FloorStyleDef.Pattern.HEX_TILE, &"butter", &"cream"],
+			[&"terracotta", FloorStyleDef.Pattern.TERRACOTTA, &"terracotta", &"clay"]]:
+		var style: FloorStyleDef = _content.floor_style(row[0])
+		assert_not_null(style)
+		assert_eq(style.pattern, row[1])
+		assert_eq([style.default_swatch, style.default_accent], [row[2], row[3]])
+		assert_eq([style.price, style.unlock_level, style.unlock_tier], [3, 4, 1])
+		assert_not_null(_content.swatch(style.default_swatch))
+		assert_not_null(_content.swatch(style.default_accent))
+		var changes: Dictionary[Vector2i, FloorFinishes.Finish] = _editor.lay_changes(_rect(2, 6, 2, 1),
+			style.id, style.default_swatch, style.default_accent)
+		_editor.set_owner_level(3)
+		assert_eq(_editor.check_flooring(changes).why, "Unlocks at level 4")
+		_editor.set_owner_level(4)
+		assert_true(_editor.check_flooring(changes).ok)
+		assert_eq(_editor.check_flooring(changes).cost, 6)
+		assert_true(_editor.apply_flooring(changes))
+		assert_eq(_editor.check_flooring(_editor.lay_changes(_rect(2, 6, 2, 1), &"planks", &"")).refund, 2)
+		var errors: Array[String] = []
+		var restored: ShopLayout = ShopEditor.from_dict(_editor.to_dict(), LAYOUT, _content, errors)
+		assert_eq(errors, [] as Array[String])
+		assert_eq(restored.floor_finishes[Vector2i(2, 6)], PackedStringArray([style.id, style.default_swatch, style.default_accent]))

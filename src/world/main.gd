@@ -211,7 +211,6 @@ func _bind_world_presentation() -> void:
 		camera.yaw_snapped.connect(view.set_camera_quarter)
 	view.set_camera_quarter(camera.camera_quarter())
 	$HUD.bind_shop_view(view)
-	$HUD.bind_camera_rig(camera)
 	$HUD.bind_preferences(Preferences)
 	_refresh_loan_hud()
 	if not $HUD.is_connected(&"header_layout_changed", _on_header_layout_changed):
