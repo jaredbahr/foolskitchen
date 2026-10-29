@@ -270,8 +270,9 @@ an active edit/panel/selection first, or opens Settings when none is active.
   command. Other selections retain normal inspection. The inspector preserves
   native button press attempts across frame/tick refreshes and emits primitive
   requests; it never assigns sim work itself.
-- A small `owner` save section stores only the mode through Main's capture and
-  restore methods, with `OwnerModeSettings` validating the plain mode data.
+- The `owner` save section stores mode, experience and presentation appearance
+  through Main's capture and restore methods. `OwnerModeSettings`,
+  `OwnerProgress` and `OwnerAppearance` validate each part before installation.
   Like the shop and menu providers, these callbacks belong to the active Main.
   Startup applies the validated mode only after a complete
   successful MORNING load; missing old-save data defaults to rest, and failed
@@ -279,6 +280,20 @@ an active edit/panel/selection first, or opens Settings when none is active.
   Assignment commands in every phase wait for the next normal MORNING autosave;
   quitting before that checkpoint loses those assignment changes. No service
   snapshot or additional stock purchase is introduced by a service hotkey.
+- **Owner appearance (FK-111):** the new-run picker offers all 12 approved
+  Mini Characters and an optional name. A fresh interactive run finishes this
+  choice before the existing initial `_begin_morning()` checkpoint; Confirm
+  never adds a separate save call. The Staff panel can reopen the picker in
+  MORNING for a free presentation-only change, saved next morning. Old saves
+  without appearance data keep `character-male-a` and "You". ShopView and the
+  owner's inspector portrait use the same session-owned choice; simulation
+  names, tasks, money and paths are untouched. Random draws only on the explicit
+  button, from the separate `owner_appearance` stream. Main with `use_saves=false`,
+  headless drivers and `skip_owner_picker` retain the old direct boot and look.
+  The row of live previews owns a private World3D with the shared lighting rig.
+  `OWNER_REVIEW_STAGE=picker|shop bash tools/screenshot.sh
+  --scene=res://tools/owner_character_review.tscn --speed=0 --frames=60`
+  captures the picker or a chosen owner with saves disabled and seed 1.
 - Capture option `--select=owner --assign-owner=kitchen --open` selects the live
   factory owner and uses the same command. At each requested image it permits
   at most 900 extra normal sim ticks to observe actual claimed cooking work.

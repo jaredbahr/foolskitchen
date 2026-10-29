@@ -9,6 +9,7 @@ signal raise_decline_requested(id: StringName)
 signal tray_requested(level: int)
 signal close_requested()
 signal job_priority_requested(id: StringName, job: StringName, value: int)
+signal owner_look_requested()
 
 const SHARED_THEME: Theme = preload("res://src/ui/theme/main_theme.tres")
 const GROWTH_RULES: StaffGrowthTuning = preload("res://data/balance/staff_growth.tres")
@@ -38,10 +39,21 @@ var _cash: int = 0
 var _priority_headers_ready: bool = false
 var _priority_names: Dictionary[StringName, Label] = {}
 var _priority_buttons: Dictionary[StringName, Dictionary] = {}
+var _owner_name: String = OwnerAppearance.DEFAULT_NAME
 
 
 func _ready() -> void:
 	refresh()
+
+
+func set_owner_name(display_name: String) -> void:
+	_owner_name = display_name
+	refresh()
+
+
+func _on_owner_look() -> void:
+	if _phase == SimClock.Phase.MORNING:
+		owner_look_requested.emit()
 
 
 func bind_roster(roster: StaffRoster) -> void:
@@ -86,6 +98,12 @@ func _day_wage(wage: int) -> int:
 
 
 func refresh() -> void:
+	if not (%OwnerLook as Button).pressed.is_connected(_on_owner_look):
+		(%OwnerLook as Button).pressed.connect(_on_owner_look)
+	(%OwnerName as Label).text = OwnerText.owner_label(_owner_name)
+	(%OwnerLook as Button).text = OwnerText.CHANGE_LOOK
+	(%OwnerLook as Button).disabled = _phase != SimClock.Phase.MORNING
+	(%OwnerLook as Button).tooltip_text = "" if _phase == SimClock.Phase.MORNING else OwnerText.MORNING_ONLY
 	IconStyle.decorate_label($Panel/Content/Title, &"staff")
 	IconStyle.decorate_label(%RosterTitle, &"staff")
 	IconStyle.decorate_label($Panel/Content/Scroll/List/CandidateTitle, &"staff")

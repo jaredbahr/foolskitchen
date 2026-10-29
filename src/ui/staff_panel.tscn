@@ -59,6 +59,18 @@ layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 2
 
+[node name="Owner" type="HBoxContainer" parent="Panel/Content/Scroll/List"]
+layout_mode = 2
+
+[node name="OwnerName" type="Label" parent="Panel/Content/Scroll/List/Owner"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="OwnerLook" type="Button" parent="Panel/Content/Scroll/List/Owner"]
+unique_name_in_owner = true
+layout_mode = 2
+
 [node name="MorningNotices" type="VBoxContainer" parent="Panel/Content/Scroll/List"]
 visible = false
 unique_name_in_owner = true

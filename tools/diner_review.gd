@@ -343,7 +343,7 @@ static func valid(state: Dictionary, frame: int, fixture: Dictionary) -> bool:
 		var pairs: Array = state.get("pairs", [])
 		var mini: Dictionary = state.get("scale_mini", {})
 		if pairs.size() != IDS.size() or mini.get("visible") != true or mini.get("role") != "owner" \
-				or mini.get("model") != String(PersonPresentation.OWNER_MODEL) \
+				or mini.get("model") != String(OwnerAppearance.DEFAULT_MODEL) \
 				or mini.get("scale") != (Vector3.ONE * ArtScale.CHARACTER_SCALE).x \
 				or mini.get("source") != PersonPresentation.model_path_for(&"owner") or not _bounds_valid(mini.get("bounds", {})):
 			return false

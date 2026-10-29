@@ -378,7 +378,8 @@ func _item(main: Node, id: StringName) -> PlacedItem:
 
 func _assert_saved_owner(main: Node, mode: StringName) -> void:
 	var saved: Dictionary = _document()["data"]["owner"]
-	assert_eq(saved.size(), 2)
+	assert_eq(saved.size(), 3)
+	assert_eq(saved["appearance"], (main.get("owner_appearance") as OwnerAppearance).to_dict())
 	assert_eq(saved["mode"], String(mode))
 	var progress: OwnerProgress = main.get("owner_progress") as OwnerProgress
 	var raw: Dictionary = saved["progress"]
