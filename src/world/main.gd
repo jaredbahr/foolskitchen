@@ -1880,6 +1880,9 @@ func _load_autosave() -> bool:
 	blueprint_library = _loaded_blueprints if _loaded_blueprints != null else BlueprintLibrary.new()
 	for note: String in _blueprint_load_notes:
 		world.log_event(note)
+	if _loaded_layout != null:
+		for note: String in _loaded_layout.load_notes:
+			world.log_event(note)
 	return true
 
 
