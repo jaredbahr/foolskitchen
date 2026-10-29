@@ -100,6 +100,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- Workers mark a PR ready once their own checks and captures are done; director review and decisions happen on the ready PR, and open PRs are finished before new issues start. (#225)
 - Verify keyboard navigation through both grid settings before closing Settings in review captures. (#214)
 - The roadmap puts the expand-over-a-window bug first in the worker queue. (#213)
 - The roadmap lists the play-mode grid toggle first in the worker queue and adds the owner character picker. (#210)
