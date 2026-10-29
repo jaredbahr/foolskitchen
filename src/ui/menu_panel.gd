@@ -33,6 +33,7 @@ var _name_edit: LineEdit
 var _name_apply: Button
 var _name_feedback: Label
 var _menu_count: Label
+var _theme_label: Label
 var _name_dirty: bool = false
 var _menu: MenuSettings
 var _phase: int = SimClock.Phase.MORNING
@@ -120,11 +121,13 @@ func refresh() -> void:
 	_refresh_drinks_section()
 	if _menu == null or not _menu.is_valid():
 		_menu_count.text = ""
+		_theme_label.text = MenuThemeText.summary([] as Array[RecipeDef])
 		_refresh_selection()
 		return
 	if not _name_dirty and _name_edit.text != _menu.restaurant_name():
 		_name_edit.text = _menu.restaurant_name()
 	_menu_count.text = "%d / %d dishes on the menu" % [_menu.enabled_count(), _menu.menu_limit()]
+	_theme_label.text = MenuThemeText.summary(_menu.enabled_recipes())
 	for definition: RecipeDef in _display_recipes():
 		var row: Dictionary = _rows[definition.id]
 		var title: Label = row["title"]
@@ -344,6 +347,8 @@ func _build_sections() -> void:
 	note.add_theme_color_override("font_color", LOCKED_COLOR)
 	identity.move_child(note, _name_feedback.get_index())
 	_hours_controls["note"] = note
+	_theme_label = _add_label(identity, "MenuTheme", "")
+	identity.move_child(_theme_label, _name_feedback.get_index())
 	_add_separator(identity)
 	_drinks_title = _add_label(list, "DrinksTitle", "Drinks")
 	_drinks_title.add_theme_font_size_override("font_size", 20)

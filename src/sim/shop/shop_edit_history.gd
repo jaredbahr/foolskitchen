@@ -60,9 +60,12 @@ class Entry extends RefCounted:
 	## (the edit's exact cash already refunded them; redo takes them again).
 	var lost_walls: Dictionary[Vector3i, FloorFinishes.Finish] = {}
 	var lost_decor: Dictionary[Vector3i, StringName] = {}
+	var lost_menu_sections: Dictionary[Vector3i, int] = {}
 	## Wall decor (D26): where it hung before and after a hang, sale or move.
 	var anchor: Vector3i = WallFaces.NO_FACE
 	var to_anchor: Vector3i = WallFaces.NO_FACE
+	## The section of a sold or undone menu board (-1: automatic).
+	var menu_section: int = -1
 	## &"wall", &"floor" or &"item"; colours before and after.
 	var paint_target: StringName = &""
 	var paint_after: StringName = &""
@@ -333,6 +336,7 @@ func hang(def_id: StringName, anchor: Vector3i) -> bool:
 ## Sells wall decor; the refund, or -1 when refused.
 func take_down(anchor: Vector3i) -> int:
 	var definition: ItemDef = _editor.hung_definition(anchor)
+	var hung: WallDecor.Hung = _editor.decor.item(anchor)
 	var refund: int = _editor.take_down(anchor)
 	if refund < 0 or definition == null:
 		return refund
@@ -340,6 +344,7 @@ func take_down(anchor: Vector3i) -> int:
 	entry.kind = Kind.TAKE_DOWN
 	entry.def_id = definition.id
 	entry.anchor = anchor
+	entry.menu_section = hung.menu_section if hung != null else -1
 	entry.cash = _editor.last_cash_change
 	entry.label = "sell " + definition.display_name
 	_push(entry)
@@ -479,9 +484,16 @@ func _invert(entry: Entry) -> bool:
 		Kind.WALL_FINISH:
 			return _check(_editor.apply_wall_finishes(entry.walls_before, exact))
 		Kind.HANG:
-			return _check(_editor.take_down(entry.anchor, exact) >= 0)
+			var hung: WallDecor.Hung = _editor.decor.item(entry.anchor)
+			if not _check(_editor.take_down(entry.anchor, exact) >= 0):
+				return false
+			entry.menu_section = hung.menu_section if hung != null else -1
+			return true
 		Kind.TAKE_DOWN:
-			return _check(_editor.hang(entry.def_id, entry.anchor, exact))
+			if not _check(_editor.hang(entry.def_id, entry.anchor, exact)):
+				return false
+			_restore_board_section(entry.anchor, entry.def_id, entry.menu_section)
+			return true
 		Kind.REHANG:
 			return _check(_editor.rehang(entry.to_anchor, entry.anchor, exact))
 	return false
@@ -507,12 +519,18 @@ func _reapply(entry: Entry) -> bool:
 		Kind.MOVE:
 			return _check(_editor.move(entry.item.id, entry.to_origin, entry.to_turns, exact))
 		Kind.WALLS:
-			return _check(_editor.apply_segments(entry.segments_after, exact))
+			var sections: Dictionary[Vector3i, int] = _current_lost_menu_sections(entry)
+			if not _check(_editor.apply_segments(entry.segments_after, exact)):
+				return false
+			entry.lost_menu_sections.merge(sections, true)
+			return true
 		Kind.FLOOR:
 			# The same cells take down the same segments as the first time, and
 			# an add paints the same rooms it painted then.
+			var sections: Dictionary[Vector3i, int] = _current_lost_menu_sections(entry)
 			if not _check(_editor.apply_floor(entry.floor_cells, entry.floor_adding, exact)):
 				return false
+			entry.lost_menu_sections.merge(sections, true)
 			if not entry.rooms_after.is_empty():
 				_editor.apply_rooms(entry.rooms_after, ShopEditor.Exact.new(0, REDO_NOTE))
 			return true
@@ -525,9 +543,16 @@ func _reapply(entry: Entry) -> bool:
 		Kind.WALL_FINISH:
 			return _check(_editor.apply_wall_finishes(entry.walls_after, exact))
 		Kind.HANG:
-			return _check(_editor.hang(entry.def_id, entry.anchor, exact))
+			if not _check(_editor.hang(entry.def_id, entry.anchor, exact)):
+				return false
+			_restore_board_section(entry.anchor, entry.def_id, entry.menu_section)
+			return true
 		Kind.TAKE_DOWN:
-			return _check(_editor.take_down(entry.anchor, exact) >= 0)
+			var hung: WallDecor.Hung = _editor.decor.item(entry.anchor)
+			if not _check(_editor.take_down(entry.anchor, exact) >= 0):
+				return false
+			entry.menu_section = hung.menu_section if hung != null else -1
+			return true
 		Kind.REHANG:
 			return _check(_editor.rehang(entry.anchor, entry.to_anchor, exact))
 	return false
@@ -539,7 +564,10 @@ func _losses_before() -> Entry:
 	var snapshot: Entry = Entry.new()
 	snapshot.lost_walls = _editor.walls.snapshot(_editor.walls.faces())
 	for anchor: Vector3i in _editor.decor.anchors():
-		snapshot.lost_decor[anchor] = _editor.decor.item(anchor).def_id
+		var hung: WallDecor.Hung = _editor.decor.item(anchor)
+		snapshot.lost_decor[anchor] = hung.def_id
+		if hung.def_id == WallDecor.MENU_BOARD_ID:
+			snapshot.lost_menu_sections[anchor] = hung.menu_section
 	return snapshot
 
 
@@ -550,6 +578,8 @@ func _note_losses(before: Entry, entry: Entry) -> void:
 	for anchor: Vector3i in _editor.last_check.lost_decor:
 		if before.lost_decor.has(anchor):
 			entry.lost_decor[anchor] = before.lost_decor[anchor]
+			if before.lost_menu_sections.has(anchor):
+				entry.lost_menu_sections[anchor] = before.lost_menu_sections[anchor]
 
 
 ## Puts back what an undone wall or floor edit took down (free: its exact
@@ -561,8 +591,26 @@ func _restore_losses(entry: Entry) -> void:
 	anchors.assign(entry.lost_decor.keys())
 	WallFaces.sort(anchors)
 	for anchor: Vector3i in anchors:
-		_editor.hang(entry.lost_decor[anchor], anchor, ShopEditor.Exact.new(0, UNDO_NOTE))
+		var def_id: StringName = entry.lost_decor[anchor]
+		if _editor.hang(def_id, anchor, ShopEditor.Exact.new(0, UNDO_NOTE)):
+			_restore_board_section(anchor, def_id, entry.lost_menu_sections.get(anchor, -1))
 	_editor.last_check = EditCheck.new(true)
+
+
+func _restore_board_section(anchor: Vector3i, def_id: StringName, section: int) -> void:
+	if def_id == WallDecor.MENU_BOARD_ID and section != -1:
+		_editor.set_menu_board_section(anchor, section)
+
+
+## A board can be reconfigured after its wall or floor is restored. Its next
+## redo should remember the latest choice for another undo.
+func _current_lost_menu_sections(entry: Entry) -> Dictionary[Vector3i, int]:
+	var sections: Dictionary[Vector3i, int] = {}
+	for anchor: Vector3i in entry.lost_menu_sections:
+		var hung: WallDecor.Hung = _editor.decor.item(anchor)
+		if hung != null and hung.def_id == WallDecor.MENU_BOARD_ID:
+			sections[anchor] = hung.menu_section
+	return sections
 
 
 func _decor_name(def_id: StringName) -> String:

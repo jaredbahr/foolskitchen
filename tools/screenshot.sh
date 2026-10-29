@@ -19,6 +19,7 @@
 # --walls-review --speed=0 --frames=12,30 [--quarter=N] shows wall finishes and hung wall decor in Cutaway, then Walls Up with Build > Wall finish holding a striped wallpaper drag.
 # --rooms=tool|refused --speed=0 --frames=30 shows the Rooms tool tints or a refused kitchen seat; --rooms=restroom --open --fast=10 --speed=1 --frames=200 pauses on a guest walking round the kitchen to the restroom.
 # --blueprints=selection|ghost|stamped --speed=0 --frames=30 [--quarter=N] shows a table/rug box selection, rotated group ghost, or stamped pair.
+# --menu-boards-review --speed=0 --frames=12,30 shows a placed board and its inspector section choice, then the Menu theme readout.
 # Build previews use the production morning input API without buying or saving.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -34,7 +35,7 @@ window_size="1600x900"
 window_size_requested=false
 for a in "$@"; do
   [[ "$a" == --out=* ]] && out="${a#--out=}"
-  [[ "$a" == --settings || "$a" == --settings-world || "$a" == --loan-review || "$a" == --milestone-review || "$a" == --diner-review ]] && settings_capture=true
+  [[ "$a" == --settings || "$a" == --settings-world || "$a" == --loan-review || "$a" == --milestone-review || "$a" == --diner-review || "$a" == --menu-boards-review ]] && settings_capture=true
   [[ "$a" == --catalogue-review=* ]] && settings_capture=true
   if [[ "$a" == --hud-layout ]]; then
     hud_layout=true

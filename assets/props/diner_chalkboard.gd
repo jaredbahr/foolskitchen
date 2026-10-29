@@ -10,3 +10,10 @@ func _init() -> void:
 	if shared_font == null:
 		shared_font = ThemeDB.fallback_font
 	font = shared_font
+
+
+## Only a placed board calls this. The wrapper keeps its authored preview.
+func set_menu_board_text(value: String) -> void:
+	font_size = MenuBoardText.FONT_SIZE
+	pixel_size = MenuBoardText.PIXEL_SIZE
+	text = value

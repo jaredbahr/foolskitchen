@@ -47,6 +47,8 @@ extends SceneTree
 ##             holding a striped wallpaper drag (--quarter turns the camera for both frames)
 ##   --blueprints=selection|ghost|stamped --speed=0 --frames=30
 ##             FK-045 original table + rug selection, rotated ghost, or stamped pair.
+##   --menu-boards-review --speed=0 --frames=12,30  #161 placed chalk board
+##             with real inspector section choice, then Menu theme readout.
 ## Ordinary captures record real moods, markers and seeds without a fixture.
 
 const MAX_CAPTURE_WAIT_FRAMES: int = 8
@@ -56,6 +58,7 @@ const DINER_REVIEW: Script = preload("res://tools/diner_review.gd")
 const FLOORS_REVIEW: Script = preload("res://tools/floors_review.gd")
 const BLUEPRINT_REVIEW: Script = preload("res://tools/blueprint_review.gd")
 const WALLS_REVIEW: Script = preload("res://tools/walls_review.gd")
+const MENU_BOARDS_REVIEW: Script = preload("res://tools/menu_boards_review.gd")
 ## --floors-review: the frame Build > Floors opens with its drag held.
 const FLOORS_DRAG_FRAME: int = 20
 const LOAN_TERMS: LoanTuning = preload("res://data/balance/loans.tres")
@@ -149,6 +152,8 @@ var _floors_review: bool = false
 var _walls_review: bool = false
 var _walls_fixture: Dictionary = {}
 var _floors_fixture: Dictionary = {}
+var _menu_boards_review: bool = false
+var _menu_boards_fixture: Dictionary = {}
 var _build_pointer: Vector2 = Vector2.ZERO
 var _selected_agent_id: int = -1
 var _capture_pending: bool = false
@@ -159,6 +164,11 @@ var _finish_requested: bool = false
 
 func _initialize() -> void:
 	OS.add_logger(_errors)
+	var menu_boards_options: Dictionary = MENU_BOARDS_REVIEW.options(OS.get_cmdline_user_args())
+	if not String(menu_boards_options["error"]).is_empty():
+		_fail_capture(menu_boards_options["error"])
+		return
+	_menu_boards_review = menu_boards_options["enabled"]
 	var diner_options: Dictionary = DINER_REVIEW.options(OS.get_cmdline_user_args())
 	if not String(diner_options["error"]).is_empty():
 		_fail_capture(diner_options["error"])
@@ -214,6 +224,9 @@ func _initialize() -> void:
 				_fail_capture("--f3 does not accept a value")
 				return
 			_f3 = true
+		elif arg == "--menu-boards-review":
+			# Parsed and validated above, before the generic --menu prefix.
+			pass
 		elif arg.begins_with("--menu"):
 			if arg != "--menu":
 				_fail_capture("--menu does not accept a value")
@@ -376,7 +389,7 @@ func _initialize() -> void:
 	if "use_saves" in _main:
 		_main.set("use_saves", false)
 	if (_report_requested or _milestone_review or _diner_review or _expand == "shop" or not _rooms.is_empty() \
-			or _floors_review or _walls_review or _assign_owner) \
+			or _floors_review or _walls_review or _menu_boards_review or _assign_owner) \
 			and "new_game_seed_override" in _main:
 		_main.set("new_game_seed_override", 1)
 	root.add_child(_main)
@@ -1805,6 +1818,11 @@ func _process(_delta: float) -> bool:
 			(clock.get("sim") as SimClock).start_service()
 		clock.call("set_speed", _speed)
 		_configure_camera()
+		if _menu_boards_review:
+			_menu_boards_fixture = MENU_BOARDS_REVIEW.prepare(_main, root)
+			if not String(_menu_boards_fixture.get("error", "")).is_empty():
+				_fail_capture(String(_menu_boards_fixture["error"]))
+				return true
 		if not _rooms.is_empty() and _quarter < 0:
 			(_main.get_node("ShopView") as ShopView).set_wall_mode(ShopView.WallMode.UP)
 		if _rooms == "tool" or _rooms == "refused":
@@ -1915,6 +1933,11 @@ func _process(_delta: float) -> bool:
 		_build_pointer = hang["pointer"]
 	if _walls_review and _frames > WALLS_REVIEW.WALL_UP_FRAME and _frames < WALLS_REVIEW.DOWN_FRAME:
 		_hold_build_pointer()
+	if _menu_boards_review and _frames == 20:
+		var theme_view: Dictionary = MENU_BOARDS_REVIEW.show_menu_theme(_main)
+		if not String(theme_view.get("error", "")).is_empty():
+			_fail_capture(String(theme_view["error"]))
+			return true
 	if _diner_review and _frames == 24:
 		_diner_fixture = DINER_REVIEW.furnish(_main, root, _diner_fixture)
 		if not String(_diner_fixture.get("error", "")).is_empty():
@@ -2858,6 +2881,10 @@ func _capture() -> void:
 	if _floors_review and not _floors_capture_valid(floors_state):
 		_fail_capture("floors review did not match its fixture or Floors tool state: " + JSON.stringify(floors_state))
 		return
+	var menu_boards_state: Dictionary = MENU_BOARDS_REVIEW.evidence(_main, root, _capture_frame) if _menu_boards_review else {}
+	if _menu_boards_review and not MENU_BOARDS_REVIEW.valid(menu_boards_state, _capture_frame, _menu_boards_fixture):
+		_fail_capture("menu boards review did not match its placed label or native inspector/Menu controls: " + JSON.stringify(menu_boards_state))
+		return
 	var settings_state: Dictionary = _settings_state() if _settings else {}
 	var hud_layout_state: Dictionary = _hud_layout_state() if _hud_layout else {}
 	if _settings and not _settings_capture_valid(settings_state, world):
@@ -2978,6 +3005,9 @@ func _capture() -> void:
 	if _milestone_review and (image == null or image.get_size() != SETTINGS_CAPTURE_SIZE):
 		_fail_capture("milestone review image did not match the usual 1600x900 dimensions")
 		return
+	if _menu_boards_review and (image == null or image.get_size() != SETTINGS_CAPTURE_SIZE):
+		_fail_capture("menu boards review image did not match 1600x900")
+		return
 	if not _catalogue_profile.is_empty() and (image == null or image.get_size() != SETTINGS_CAPTURE_SIZE):
 		_fail_capture("catalogue review image did not match 1600x900")
 		return
@@ -3075,6 +3105,8 @@ func _capture() -> void:
 		metadata["blueprints"] = {"fixture": _blueprint_fixture, "state": blueprint_state}
 	if _walls_review:
 		metadata["walls_review"] = {"fixture": _walls_fixture, "state": walls_state}
+	if _menu_boards_review:
+		metadata["menu_boards_review"] = {"fixture": _menu_boards_fixture, "state": menu_boards_state}
 	if _diner_review:
 		metadata["diner_review"] = {"fixture": _diner_fixture, "state": diner_state}
 		if _capture_frame == 90:

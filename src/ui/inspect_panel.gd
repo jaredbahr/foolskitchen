@@ -4,14 +4,18 @@ extends Control
 
 signal selection_cleared()
 signal owner_mode_requested(mode: StringName)
+signal menu_board_section_requested(anchor: Vector3i, section: int)
 
 const GUEST_STATES: Array[String] = ["Arriving", "Queued", "Walking to seat", "Ordering",
 	"Waiting for food", "Eating", "Paying", "Leaving", "Left"]
 
 var selected_agent_id: int = -1
 var selected_item_id: int = -1
+var selected_menu_board_anchor: Vector3i = WallFaces.NO_FACE
 
 var _world: SimWorld
+var _wall_decor: WallDecor
+var _menu_settings: MenuSettings
 var _title: Label
 var _why: Label
 var _details: Label
@@ -22,6 +26,9 @@ var _reservations: Label
 var _owner_modes: GridContainer
 var _owner_buttons: Dictionary[StringName, Button] = {}
 var _shown_owner_id: int = -1
+var _shown_menu_board_anchor: Vector3i = WallFaces.NO_FACE
+var _menu_section_row: VBoxContainer
+var _menu_section_option: OptionButton
 var _nodes_bound: bool = false
 
 
@@ -37,12 +44,19 @@ func bind_world(value: SimWorld) -> void:
 		refresh()
 
 
+func bind_menu_boards(decor: WallDecor, menu: MenuSettings) -> void:
+	_wall_decor = decor
+	_menu_settings = menu
+	refresh()
+
+
 func show_agent(agent_id: int) -> void:
 	if agent_id < 0:
 		clear()
 		return
 	selected_agent_id = agent_id
 	selected_item_id = -1
+	selected_menu_board_anchor = WallFaces.NO_FACE
 	refresh()
 
 
@@ -52,14 +66,31 @@ func show_item(item_id: int) -> void:
 		return
 	selected_agent_id = -1
 	selected_item_id = item_id
+	selected_menu_board_anchor = WallFaces.NO_FACE
+	refresh()
+
+
+func show_menu_board(anchor: Vector3i) -> void:
+	if _wall_decor == null or _menu_settings == null:
+		clear()
+		return
+	var hung: WallDecor.Hung = _wall_decor.item(anchor)
+	if hung == null or hung.def_id != &"menu_board":
+		clear()
+		return
+	selected_agent_id = -1
+	selected_item_id = -1
+	selected_menu_board_anchor = anchor
 	refresh()
 
 
 func clear() -> void:
 	_bind_nodes()
-	var had_selection: bool = selected_agent_id >= 0 or selected_item_id >= 0
+	var had_selection: bool = selected_agent_id >= 0 or selected_item_id >= 0 \
+		or selected_menu_board_anchor != WallFaces.NO_FACE
 	selected_agent_id = -1
 	selected_item_id = -1
+	selected_menu_board_anchor = WallFaces.NO_FACE
 	_reset_content()
 	hide()
 	if had_selection:
@@ -71,7 +102,15 @@ func refresh() -> void:
 	if _world == null:
 		clear()
 		return
-	if selected_agent_id >= 0:
+	if selected_menu_board_anchor != WallFaces.NO_FACE:
+		var hung: WallDecor.Hung = _wall_decor.item(selected_menu_board_anchor) if _wall_decor != null else null
+		if hung == null or hung.def_id != &"menu_board":
+			clear()
+			return
+		_reset_content(false, _shown_menu_board_anchor == selected_menu_board_anchor)
+		_show_menu_board(hung)
+		show()
+	elif selected_agent_id >= 0:
 		var agent: SimAgent = _world.agent(selected_agent_id)
 		if agent == null:
 			clear()
@@ -114,10 +153,28 @@ func _bind_nodes() -> void:
 		var button: Button = _owner_modes.get_node(String(mode).capitalize()) as Button
 		_owner_buttons[mode] = button
 		button.pressed.connect(_on_owner_mode_pressed.bind(mode))
+	_menu_section_row = VBoxContainer.new()
+	_menu_section_row.name = "MenuSectionRow"
+	_menu_section_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var heading: Label = Label.new()
+	heading.text = "Board section"
+	heading.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_menu_section_row.add_child(heading)
+	_menu_section_option = OptionButton.new()
+	_menu_section_option.name = "MenuSectionOption"
+	_menu_section_option.focus_mode = Control.FOCUS_NONE
+	_menu_section_option.add_item("Automatic")
+	_menu_section_option.set_item_metadata(0, -1)
+	for value: int in RecipeDef.Section.values():
+		_menu_section_option.add_item(RecipeDef.section_name(value))
+		_menu_section_option.set_item_metadata(_menu_section_option.item_count - 1, value)
+	_menu_section_option.item_selected.connect(_on_menu_section_selected)
+	_menu_section_row.add_child(_menu_section_option)
+	_reservations.get_parent().add_child(_menu_section_row)
 	_nodes_bound = true
 
 
-func _reset_content(keep_owner_controls: bool = false) -> void:
+func _reset_content(keep_owner_controls: bool = false, keep_menu_board_controls: bool = false) -> void:
 	_title.text = ""
 	_why.text = ""
 	_why.hide()
@@ -128,6 +185,12 @@ func _reset_content(keep_owner_controls: bool = false) -> void:
 	_patience_bar.value = 0.0
 	_reservations.text = ""
 	_reservations.hide()
+	# The tick refresh must not cancel an open native option popup.
+	if not keep_menu_board_controls:
+		if _shown_menu_board_anchor != WallFaces.NO_FACE:
+			_menu_section_option.get_popup().hide()
+		_shown_menu_board_anchor = WallFaces.NO_FACE
+		_menu_section_row.hide()
 	# Hiding or disabling a BaseButton cancels an in-flight native mouse press.
 	# Tick/frame refreshes must preserve controls for the same live owner.
 	if not keep_owner_controls:
@@ -269,6 +332,31 @@ func _show_item(item: PlacedItem) -> void:
 		lines.append(_reservation_line("Seat", cell, item.reserved_by(cell)))
 	_reservations.text = "No work or seat cells" if lines.is_empty() else "\n".join(lines)
 	_reservations.show()
+
+
+func _show_menu_board(hung: WallDecor.Hung) -> void:
+	_shown_menu_board_anchor = hung.anchor
+	_title.text = "Chalk menu board"
+	var menu: Array[RecipeDef] = _menu_settings.enabled_recipes() if _menu_settings != null else []
+	var shown: int = MenuBoardText.selected_section(menu, hung.menu_section)
+	_details.text = "Shows: %s" % (RecipeDef.section_name(shown) if shown >= 0 else "No dishes today")
+	_details.show()
+	var chosen_index: int = 0
+	for index: int in range(1, _menu_section_option.item_count):
+		if int(_menu_section_option.get_item_metadata(index)) == hung.menu_section:
+			chosen_index = index
+			break
+	if _menu_section_option.selected != chosen_index:
+		_menu_section_option.select(chosen_index)
+	_menu_section_row.show()
+
+
+func _on_menu_section_selected(index: int) -> void:
+	if selected_menu_board_anchor == WallFaces.NO_FACE or not visible or not _menu_section_row.visible:
+		return
+	menu_board_section_requested.emit(selected_menu_board_anchor,
+		int(_menu_section_option.get_item_metadata(index)))
+	refresh()
 
 
 func _reservation_line(kind: String, cell: Vector2i, holder_id: int) -> String:

@@ -328,6 +328,17 @@ an active edit/panel/selection first, or opens Settings when none is active.
   sections use the authored layout. Non-MORNING saves remain unsupported.
 
 ### 2.3d Menu and prices (FK-030)
+- **Live menu boards (FK-086 remainder):** each placed `menu_board` keeps a
+  section choice in `WallDecor.Hung.menu_section` (`-1`: first nonempty section).
+  The inspector changes it through `ShopEditor.set_menu_board_section`; its
+  optional fifth wall-item save field joins the existing morning shop autosave.
+  Legacy four-field rows keep automatic selection. Rehang, removal and undo keep
+  each board's choice. `MenuBoardText` draws the restaurant name, section and up
+  to four enabled dishes with the shared theme font, bounded to the existing
+  chalkboard face; accepted menu/name changes refresh placed boards.
+  `MenuThemeText` gives the Menu panel's read-out using the existing known-tag
+  votes and labels. A dish can count toward several themes, so percentages can
+  total over 100%; this display adds no variety/focus bonus or simulation change.
 - **Menu identity (FK-086a):** `MenuSettings` owns a trimmed 1–24 character
   restaurant name. The morning request updates the HUD and view-only entrance
   sign; `DayReport` snapshots it for the report and its review heading. Reviews'
