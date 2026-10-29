@@ -22,6 +22,7 @@ func test_every_catalogue_seat_is_measured_and_clears_heads_without_exceptions()
 	assert_eq((report["known_kit_failures"] as Array).size(), CATALOGUE.KNOWN_KIT_FAILURE_IDS.size())
 	var coverage: Dictionary[String, bool] = {}
 	var authored_chair_cases: int = 0
+	var waiting_cases: int = 0
 	assert_true(CATALOGUE.KNOWN_KIT_FAILURE_IDS.is_empty(), "every kit seat now clears seated heads (derived lowered backrests)")
 	for sample: Dictionary in report["samples"]:
 		var context: String = "%s %s turns=%d cell=%s sit_t=%.5f" % [sample["item"], sample["model"], sample["turns"], sample["seat_cell"], sample["sit_time"]]
@@ -31,11 +32,18 @@ func test_every_catalogue_seat_is_measured_and_clears_heads_without_exceptions()
 		coverage[String(sample["item"])] = true
 		if sample["item"] == "chair":
 			authored_chair_cases += 1
+		if sample["item"] == "waiting_bench":
+			waiting_cases += 1
+			assert_eq(sample["seating_kind"], "waiting", context)
+			assert_true(sample["waiting_seated"], context + " holds its actual waiting reservation")
+			assert_eq(sample["table_item_id"], 0, context + " has no dining table")
+			assert_eq(sample["dining_seat_cell"], [SimGrid.NO_CELL.x, SimGrid.NO_CELL.y], context)
+			assert_null(sample["palms_to_table_horizontal"], context + " no dining table is fabricated")
 		assert_eq(float(sample["seated_lean_degrees"]), 0.0, context + " sits without a lean (Jared 2026-10-28)")
 		assert_false(sample["known_kit_failure"], context)
 		assert_true(int(sample["head_vertices"]) > 0, context)
 		assert_true(int(sample["seat_triangles"]) > 0, context)
-		assert_true(float(sample["facing_dot"]) > 0.9999, context + " faces its table")
+		assert_true(float(sample["facing_dot"]) > 0.9999, context + " faces its expected seat direction")
 		assert_eq(sample["clearance_metric"], GEOMETRY.CLEARANCE_METRIC, context)
 		assert_true(sample["accepted"], context)
 		assert_true(float(sample["seated_forward_offset"]) <= 0.05 + GEOMETRY.EPSILON, context)
@@ -55,11 +63,32 @@ func test_every_catalogue_seat_is_measured_and_clears_heads_without_exceptions()
 			assert_true(sample["hips_supported"], context)
 			assert_eq((sample["hip_support_points"] as Array).size(), 2, context)
 	assert_eq(authored_chair_cases, 96, "all eight looks, three sit times and four rotations are still measured")
+	assert_eq(waiting_cases, 2 * 4 * PersonPresentation.GUEST_MODELS.size() * CATALOGUE.SIT_FRACTIONS.size(),
+		"both waiting seats, every rotation/model/sit time are physically measured")
+	print("SEATED_HEAD_COVERAGE samples=%d expected=%d waiting_samples=%d" % [
+		(report["samples"] as Array).size(), report["expected_samples"], waiting_cases])
 	for required: String in ["chair", "wooden_chair", "rounded_chair", "modern_chair", "modern_frame_chair",
-		"bar_stool", "square_bar_stool", "bench", "cushioned_bench", "lounge_chair", "diner_booth", "diner_stool", "table_2", "table_4"]:
+		"bar_stool", "square_bar_stool", "bench", "cushioned_bench", "lounge_chair", "diner_booth", "diner_stool", "table_2", "table_4", "waiting_bench"]:
 		assert_true(coverage.has(required), required + " was actually measured")
 	for finding: Dictionary in report["known_kit_failures"]:
 		assert_true(int(finding["physical_violation_samples"]) > 0, String(finding["item"]))
+
+
+func test_failed_waiting_seat_measurement_frees_its_native_view() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	await tree.process_frame
+	var fixture: Node3D = Node3D.new()
+	tree.root.add_child(fixture)
+	var definition: ItemDef = (load("res://data/items/waiting_bench.tres") as ItemDef).duplicate() as ItemDef
+	definition.view_scene = null  # Force the missing-native-wrapper diagnostic after real waiting reservations.
+	var report: Dictionary = {"errors": PackedStringArray(), "samples": []}
+	var poses: Dictionary[String, PackedVector3Array] = {}
+	var parity: Dictionary[String, Dictionary] = {}
+	await CATALOGUE._sample_item(fixture, definition, 0, false, poses, parity, {}, report)
+	assert_eq(report["errors"], PackedStringArray(["waiting_bench: missing native seat wrapper"]))
+	assert_true((report["samples"] as Array).is_empty(), "failed native geometry never counts as a measured case")
+	assert_eq(fixture.get_child_count(), 0, "the diagnostic frees its temporary ShopView on failure too")
+	fixture.free()
 
 
 func test_cached_head_vertices_and_native_parity_distinguish_seat_pose_variants() -> void:

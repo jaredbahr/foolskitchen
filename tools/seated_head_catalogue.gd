@@ -108,7 +108,8 @@ static func _sample_item(parent: Node, definition: ItemDef, turns: int, native_b
 	table_def.category = ItemDef.Category.TABLE
 	table_def.footprint = Vector2i.ONE
 	var tables: Array[PlacedItem] = []
-	if definition.category != ItemDef.Category.TABLE:
+	var waiting: bool = definition.category == ItemDef.Category.WAITING
+	if definition.category != ItemDef.Category.TABLE and not waiting:
 		for authored: Vector2i in definition.seat_cells:
 			var front: Vector2i = origin + GridMath.rotate_cell(authored + Vector2i.UP, definition.footprint, turns)
 			var table: PlacedItem = world.grid.place_def(table_def, front)
@@ -131,12 +132,24 @@ static func _sample_item(parent: Node, definition: ItemDef, turns: int, native_b
 		var random: RandomNumberGenerator = RandomNumberGenerator.new()
 		random.seed = 147 + index
 		var guest: CustomerAgent = world.add_agent(CustomerAgent.new(restaurant, random)) as CustomerAgent
-		guest.state = CustomerAgent.State.WAITING_FOOD
-		guest.table_item_id = tables[index].id
 		guest.cell = cell
-		guest.seat_cell = cell
-		if not tables[index].reserve(cell, guest.id):
-			errors.append("%s rotation %d: table did not project/reserve the native seat" % [definition.id, turns])
+		if waiting:
+			# Exercise the real queue reservation and arrival path, without
+			# inventing a dining table or setting presentation poses ourselves.
+			guest.state = CustomerAgent.State.QUEUED
+			if not WaitingBench.advance(guest, world, restaurant) or guest.waiting_cell != cell \
+					or not guest.is_waiting_seated(world):
+				errors.append("%s rotation %d: waiting bench did not reserve its native seat" % [definition.id, turns])
+				report["errors"] = errors
+				return
+		else:
+			guest.state = CustomerAgent.State.WAITING_FOOD
+			guest.table_item_id = tables[index].id
+			guest.seat_cell = cell
+			if not tables[index].reserve(cell, guest.id):
+				errors.append("%s rotation %d: table did not project/reserve the native seat" % [definition.id, turns])
+				report["errors"] = errors
+				return
 		guests.append(guest)
 	# Load after autoload initialization; entry-script scene preloads retained
 	# the scene/script resource graph at diagnostic shutdown on current main.
@@ -215,13 +228,20 @@ static func _sample_item(parent: Node, definition: ItemDef, turns: int, native_b
 					var zero: Vector2i = GridMath.rotate_cell(Vector2i.ZERO, definition.footprint, turns)
 					var front: Vector2i = GridMath.rotate_cell(Vector2i.UP, definition.footprint, turns) - zero
 					var palm: Vector3 = person.to_global(person.carry_anchor_position())
-					var table_item: PlacedItem = tables[guests.find(guest)]
-					var table_center: Vector3 = ItemVisual.placed_transform(table_item.def as ItemDef, table_item.origin, turns if definition.category == ItemDef.Category.TABLE else 0).origin
 					var direction: Vector3 = Vector3(front.x, 0.0, front.y)
-					if definition.category == ItemDef.Category.TABLE:
-						direction = (table_center - GridMath.cell_to_world(guest.cell)).normalized()
+					if waiting:
+						sample["palms_to_table_horizontal"] = null  # Waiting seats have no dining table.
+					else:
+						var table_item: PlacedItem = tables[guests.find(guest)]
+						var table_center: Vector3 = ItemVisual.placed_transform(table_item.def as ItemDef, table_item.origin, turns if definition.category == ItemDef.Category.TABLE else 0).origin
+						if definition.category == ItemDef.Category.TABLE:
+							direction = (table_center - GridMath.cell_to_world(guest.cell)).normalized()
+						sample["palms_to_table_horizontal"] = Vector2(palm.x - table_center.x, palm.z - table_center.z).length()
 					sample["facing_dot"] = (-person.global_basis.z).normalized().dot(direction)
-					sample["palms_to_table_horizontal"] = Vector2(palm.x - table_center.x, palm.z - table_center.z).length()
+					sample["seating_kind"] = "waiting" if waiting else "dining"
+					sample["waiting_seated"] = guest.is_waiting_seated(world)
+					sample["table_item_id"] = guest.table_item_id
+					sample["dining_seat_cell"] = [guest.seat_cell.x, guest.seat_cell.y]
 					sample["palms_world_y"] = palm.y
 					(report["samples"] as Array).append(sample)
 	view.free()
