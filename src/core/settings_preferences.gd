@@ -15,7 +15,7 @@ const INTEGER_KEYS: Array[String] = ["version", "master_volume", "music_volume",
 	"effects_volume", "ui_scale", "default_open_speed"]
 const BOOL_KEYS: Array[String] = ["fullscreen", "edge_pan"]
 ## Later additions: a file without them still loads, with their defaults.
-const OPTIONAL_BOOL_KEYS: Array[String] = ["build_grid"]
+const OPTIONAL_BOOL_KEYS: Array[String] = ["build_grid", "play_grid"]
 
 var master_volume_percent: int = 100
 var music_volume_percent: int = 100
@@ -26,6 +26,8 @@ var fullscreen_enabled: bool = false
 var edge_pan_enabled: bool = true
 ## Whether Build shows the placement grid (G or the Build bar's Grid button).
 var build_grid_enabled: bool = true
+## Whether normal play shows the floor grid.
+var play_grid_enabled: bool = true
 
 var _file_path: String = DEFAULT_PATH
 var _disk_enabled: bool = true
@@ -63,12 +65,13 @@ func load_from_disk() -> bool:
 	var fullscreen: Variant = config.get_value(SECTION, "fullscreen", MISSING)
 	var edge_pan: Variant = config.get_value(SECTION, "edge_pan", MISSING)
 	var build_grid: Variant = config.get_value(SECTION, "build_grid", true)
+	var play_grid: Variant = config.get_value(SECTION, "play_grid", true)
 	if not version is int or version != VERSION \
 			or not _valid_volume(master) or not _valid_volume(music) \
 			or not _valid_volume(effects) or not scale is int \
 			or not UI_SCALES.has(scale) or not speed is int \
 			or not OPEN_SPEEDS.has(speed) or not fullscreen is bool \
-			or not edge_pan is bool or not build_grid is bool:
+			or not edge_pan is bool or not build_grid is bool or not play_grid is bool:
 		return false
 	master_volume_percent = master
 	music_volume_percent = music
@@ -78,6 +81,7 @@ func load_from_disk() -> bool:
 	fullscreen_enabled = fullscreen
 	edge_pan_enabled = edge_pan
 	build_grid_enabled = build_grid
+	play_grid_enabled = play_grid
 	return true
 
 
@@ -136,6 +140,7 @@ func save_to_disk() -> bool:
 	config.set_value(SECTION, "fullscreen", fullscreen_enabled)
 	config.set_value(SECTION, "edge_pan", edge_pan_enabled)
 	config.set_value(SECTION, "build_grid", build_grid_enabled)
+	config.set_value(SECTION, "play_grid", play_grid_enabled)
 	var saved: bool = config.save(_file_path) == OK
 	if saved:
 		_pending_volume_save = false
@@ -272,6 +277,16 @@ func set_build_grid_enabled(value: bool) -> bool:
 	return saved
 
 
+## Normal play has the same session fallback as Build when disk is unavailable.
+func set_play_grid_enabled(value: bool) -> bool:
+	if play_grid_enabled == value:
+		return true
+	play_grid_enabled = value
+	var saved: bool = save_to_disk()
+	changed.emit(&"play_grid")
+	return saved
+
+
 ## Audio buses are authored in default_bus_layout.tres. A missing bus on an
 ## older project is ignored rather than causing an engine error.
 func apply_audio() -> void:
@@ -315,3 +330,4 @@ func _reset_defaults() -> void:
 	fullscreen_enabled = false
 	edge_pan_enabled = true
 	build_grid_enabled = true
+	play_grid_enabled = true
