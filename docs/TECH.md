@@ -1084,6 +1084,8 @@ an active edit/panel/selection first, or opens Settings when none is active.
 ### Furniture blueprints (FK-045)
 - `Blueprint` is a Resource containing a player name and `ShopPlacement`
   entries: content id, anchor-relative offset, quarter turns and body swatch.
+  Variant ids in blueprint entries remain a separate follow-up after FK-079;
+  existing blueprints keep their default furniture looks.
   Only floor furniture and rugs participate, never doors, wall decor or
   structure. Box selection includes whole footprints on both placement layers.
   Rotation turns the group's bounding rectangle and each item's already-rotated
@@ -1106,7 +1108,7 @@ an active edit/panel/selection first, or opens Settings when none is active.
   input without triggering build shortcuts. Cancel/phase changes discard only
   the active selection/ghost, not the player's library.
 - `BlueprintLibrary` is registered as a separate `blueprints` save section in
-  Main, not inside the version-6 `shop` snapshot. The existing morning autosave
+  Main, not inside the version-7 `shop` snapshot. The existing morning autosave
   is the only write boundary; creating, renaming, deleting and stamping do not
   save immediately. Restore stages the library until the whole morning load
   succeeds. Old saves without it get an empty library; unknown item ids are
@@ -1543,16 +1545,16 @@ an active edit/panel/selection first, or opens Settings when none is active.
 - Paint offers named looks for the first set at any phase and clears the
   ordinary body swatch so the selected recipe is visible. Closed-phase undo
   restores both old look and swatch; painting during service adds no history.
-  Equal-price look changes are free. Cross-price repaint is refused rather
-  than inventing an upgrade/refund policy or creating resale gains; Director
-  policy for that optional-price repaint case remains unresolved. Buying still charges the selected variant's authored price delta.
+  Equal-price look changes are free. The Director-approved policy refuses
+  cross-price repaint: choose a differently priced look at purchase time,
+  when its authored price delta is charged. No repaint charge or refund is needed.
 - Vibe keeps repeat decay, variety and item-specific weights grouped by base
   furniture definition, while counting theme votes by explicit look identity.
   Different looks can coexist; inconsistent copies of the same look are still
   rejected. Default looks retain the previous balance.
-- Director visual acceptance is still required for the first set: the kit's
-  dark blue-green is not literal black, and descriptive names do not constitute
-  acceptance of the issue's requested black/teal palette.
+- Director visual review follows the ready PR. For the first set, the kit's
+  dark blue-green is not literal black. The Director accepted the existing kit
+  palette and honest dark-frame/dark-teal names; no replacement colours are needed.
 
 ### Restaurant vibe core (FK-072)
 - `VibeModel.evaluate()` reads detached layout, paint and enabled-menu inputs.

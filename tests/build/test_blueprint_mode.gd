@@ -148,6 +148,26 @@ func test_native_group_ghost_is_red_when_refused_and_clears_on_cancel() -> void:
 	view.free()
 
 
+func test_variant_buy_then_blueprint_uses_stamp_command() -> void:
+	_editor.set_owner_level(6)
+	assert_true(_mode.begin_buy(&"diner_stool", Vector2i.ZERO, &"stool_chrome_teal"))
+	var blueprint: Blueprint = _plant_blueprint()
+	var destination: Vector2i = SimGrid.NO_CELL
+	for y: int in range(_sim.world.grid.bounds.position.y, _sim.world.grid.bounds.end.y):
+		for x: int in range(_sim.world.grid.bounds.position.x, _sim.world.grid.bounds.end.x):
+			var cell: Vector2i = Vector2i(x, y)
+			if _editor.check_stamp(blueprint, cell, 0).ok:
+				destination = cell
+				break
+		if destination != SimGrid.NO_CELL:
+			break
+	assert_ne(destination, SimGrid.NO_CELL)
+	assert_true(_mode.begin_blueprint(blueprint, destination))
+	assert_eq(_mode.buy_variant_id, &"")
+	assert_true(_mode.commit())
+	assert_eq(_stamp_calls, 1)
+
+
 func _plant_blueprint() -> Blueprint:
 	var plants: Array[PlacedItem] = ShopBuilder.items_with_def(_sim.world, &"potted_plant")
 	return Blueprint.capture(_sim.world.grid, [plants[0].id] as Array[int], "Plant corner")
