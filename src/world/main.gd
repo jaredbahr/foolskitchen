@@ -151,6 +151,11 @@ var _edit_notice: String = ""
 const ROOMS_NOTE: String = "Mark your kitchen in Build → Rooms."
 var _rooms_note: bool = false
 var _menu_quality: Dictionary[StringName, Dictionary] = {}
+## Day-local advice only: these choices were enabled before a layout edit
+## made their station unavailable. Undo removes restored dishes from the note.
+var _menu_access_losses: Dictionary[StringName, RecipeDef] = {}
+var _menu_access_day: int = 0
+var _menu_access_error: String = ""
 var _menu_panel: MenuPanel
 var _staff_panel: StaffPanel
 var _settings_panel: SettingsPanel
@@ -1383,9 +1388,11 @@ func _update_build_controls() -> void:
 		reason = BuildCatalogue.FURNITURE_HINT
 	if not _edit_notice.is_empty():
 		reason = _edit_notice if reason.is_empty() else _edit_notice + "\n" + reason
-	# The restock advice gets its own amber line under the cost (FK-096).
+	if not _menu_access_error.is_empty():
+		reason = _menu_access_error if reason.is_empty() else reason + "\n" + _menu_access_error
+	# Menu and restock advice share the existing amber line under the cost.
 	$HUD.set_build_state(available, active, reason, int(build_mode.state), int(build_mode.tool),
-		build_restock_warning())
+		build_warning())
 	$HUD.set_paint_state(_paint_active)
 	if _build_catalogue != null:
 		_build_catalogue.set_paint_visible(_paint_active)
@@ -1448,6 +1455,18 @@ func build_restock_warning() -> String:
 	if cost <= 0:
 		return ""
 	return RestockBudgetWarning.text(Economy.cash, cost, build_restock_estimate())
+
+
+func build_warning() -> String:
+	if not is_build_active():
+		return ""
+	var lines: PackedStringArray = []
+	if not build_mode.current_check.menu_warning.is_empty():
+		lines.append(build_mode.current_check.menu_warning)
+	var budget: String = build_restock_warning()
+	if not budget.is_empty():
+		lines.append(budget)
+	return "\n".join(lines)
 
 
 func _on_build_toggled() -> void:
@@ -1745,6 +1764,10 @@ func build_report(day: int) -> DayReport:
 
 
 func _new_game() -> void:
+	_menu_access_losses.clear()
+	_menu_access_day = 0
+	_menu_access_error = ""
+	$HUD.set_menu_notice("")
 	blueprint_library = BlueprintLibrary.new()
 	_loaded_blueprints = null
 	_blueprint_load_notes.clear()
@@ -1848,7 +1871,10 @@ func _load_autosave() -> bool:
 	menu_settings = choices
 	# The saved layout lists every station; drinks at a station staff cannot
 	# reach stay off the live menu (and out of the next save), as in play.
-	menu_settings.set_catalogue(_cookable_live())
+	var enabled: Array[RecipeDef] = menu_settings.enabled_recipes()
+	var cookable: Array[RecipeDef] = _cookable_live()
+	menu_settings.set_catalogue(cookable)
+	_track_menu_access_losses(enabled, cookable)
 	menu_settings.clear_stash()
 	_apply_menu(sim, menu_settings)
 	if sim.kitchen == null or not sim.kitchen.configure_plates(
@@ -1867,6 +1893,9 @@ func _load_autosave() -> bool:
 	blueprint_library = _loaded_blueprints if _loaded_blueprints != null else BlueprintLibrary.new()
 	for note: String in _blueprint_load_notes:
 		world.log_event(note)
+	if _loaded_layout != null:
+		for note: String in _loaded_layout.load_notes:
+			world.log_event(note)
 	return true
 
 
@@ -2204,15 +2233,7 @@ func _cookable_recipes(layout: ShopLayout) -> Array[RecipeDef]:
 ## A station staff cannot reach (a bar or a fryer walled in on every side)
 ## does not count, so its dishes never go on sale only to be cancelled.
 func _cookable_live() -> Array[RecipeDef]:
-	var definitions: Array[ItemDef] = []
-	for placed: PlacedItem in world.grid.items():
-		var definition: ItemDef = placed.def as ItemDef
-		if definition == null or placed.removed:
-			continue
-		if definition.category == ItemDef.Category.STATION and not _station_reachable(placed):
-			continue
-		definitions.append(definition)
-	return _cookable_from(definitions)
+	return MenuAccess.cookable(world.grid, content.recipes())
 
 
 func _station_reachable(placed: PlacedItem) -> bool:
@@ -2254,13 +2275,47 @@ func _cookable_from(definitions: Array[ItemDef]) -> Array[RecipeDef]:
 ## After a station is bought, sold or undone, the menu offers what the shop
 ## can now make: buying a coffee machine puts Coffee and Tea on the menu.
 func _refresh_menu_catalogue() -> void:
-	if menu_settings == null or world == null or not menu_settings.set_catalogue(_cookable_live()):
+	if menu_settings == null or world == null:
 		return
-	_apply_menu(sim, menu_settings)
-	if _menu_panel != null:
-		_refresh_menu_details()
-	_recompute_vibe()
-	_refresh_stock_panel()
+	var cookable: Array[RecipeDef] = _cookable_live()
+	if MenuAccess.cookable(world.grid, content.recipes(), menu_settings.owner_level()).is_empty():
+		# An older or externally edited layout can already be broken. Explain
+		# why it cannot open rather than silently leaving stale dishes on sale.
+		_menu_access_error = MenuAccess.NO_DISH
+		$HUD.set_menu_notice(_menu_access_error, true)
+		return
+	_menu_access_error = ""
+	_track_menu_access_losses(menu_settings.enabled_recipes(), cookable)
+	if menu_settings.set_catalogue(cookable):
+		_apply_menu(sim, menu_settings)
+		if _menu_panel != null:
+			_refresh_menu_details()
+		_recompute_vibe()
+		_refresh_stock_panel()
+	$HUD.set_menu_notice(menu_open_note())
+
+
+## Load filters the saved choices before normal morning setup. Retain those
+## losses for this morning too, without saving a notice or adding a save point.
+func _track_menu_access_losses(enabled: Array[RecipeDef], cookable: Array[RecipeDef]) -> void:
+	if _menu_access_day != Clock.sim.day:
+		_menu_access_losses.clear()
+	_menu_access_day = Clock.sim.day
+	for id: StringName in _menu_access_losses.keys():
+		if cookable.has(_menu_access_losses[id]):
+			_menu_access_losses.erase(id)
+	for recipe: RecipeDef in enabled:
+		if not cookable.has(recipe):
+			_menu_access_losses[recipe.id] = recipe
+
+
+## The Open-shop note survives Build closing but never becomes save data.
+func menu_open_note() -> String:
+	var recipes: Array[RecipeDef] = []
+	for recipe: RecipeDef in _menu_access_losses.values():
+		recipes.append(recipe)
+	return MenuAccess.warning(recipes, world.grid, content, true) \
+		if world != null and world.clock.phase in [SimClock.Phase.OPEN, SimClock.Phase.LAST_ORDERS] else ""
 
 
 ## Station-only ingredients (coffee beans, beer...) are ordered and listed
@@ -2802,6 +2857,11 @@ func shop_sell(item_id: int) -> int:
 
 ## Morning setup: new counters, a stocked fridge, and an autosave.
 func _begin_morning() -> void:
+	if _menu_access_day != Clock.sim.day:
+		_menu_access_losses.clear()
+	_menu_access_day = Clock.sim.day
+	_menu_access_error = ""
+	$HUD.set_menu_notice("")
 	# The preceding close may unlock a new type; current guests are unaffected.
 	sim.set_customer_level(owner_progress.level)
 	_dismiss_goals()
@@ -2870,6 +2930,9 @@ func _begin_morning() -> void:
 	if not _staff_notices.is_empty() \
 			or not staff_roster.morning_raise_offers(Clock.sim.day, Clock.sim.phase).is_empty():
 		set_staff_visible(true)
+	# A legacy layout may already have every cooking station blocked. The
+	# normal editor prevents new empty catalogues; opening still explains old ones.
+	_refresh_menu_catalogue()
 	_refresh_stock_panel()
 	refresh_presentation()
 
@@ -3617,10 +3680,12 @@ func _on_day_phase_changed(_day: int, phase: int) -> void:
 	if phase == SimClock.Phase.MORNING:
 		_begin_morning()
 	elif phase == SimClock.Phase.OPEN:
+		$HUD.set_menu_notice(menu_open_note())
 		_restock_station_supplies()
 		# Morning orders arrive at once; this only lands overdue orders from older saves.
 		_deliver_due()
 	else:
+		$HUD.set_menu_notice("")
 		# A delivery slot never falls after opening hours; anything overdue lands now.
 		_deliver_due()
 	_refresh_stock_panel()

@@ -23,3 +23,5 @@ var restroom_bonus: float = 0.0
 var restroom_penalty: float = 0.0
 ## The shop had a restroom, but it was busy (a different complaint).
 var restroom_was_busy: bool = false
+## This guest actually reached a waiting bench before a dining seat opened.
+var waited_seated: bool = false

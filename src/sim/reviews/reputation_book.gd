@@ -134,8 +134,12 @@ static func cause_of(visit: ReviewVisit, tuning: ReviewTuning, vibe_tuning: Vibe
 	if best == causes.size() - 1:
 		return &"restroom_busy" if visit.restroom_was_busy else &"no_restroom"
 	if score_visit(visit, tuning, vibe_tuning) >= 4 or largest < tuning.positive_penalty_threshold:
+		if visit.waited_seated:
+			return &"comfortable_wait"
 		return &"great_value" if is_finite(visit.price_ratio) and visit.price_ratio < 0.9 else &"lovely_place"
 	if best >= 0:
+		if best == 0 and visit.waited_seated:
+			return &"comfortable_wait"
 		return causes[best]
 	return &"great_value" if is_finite(visit.price_ratio) and visit.price_ratio < 0.9 else &"lovely_place"
 
