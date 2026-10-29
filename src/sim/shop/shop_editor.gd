@@ -601,6 +601,15 @@ static func from_dict(data: Dictionary, template_layout: ShopLayout, content: Co
 			return null
 		preview.set_segment(edge, kind.segment as SimGrid.Segment)
 		layout.wall_segments[edge] = kind.id
+	# Older expansions could leave a frame standing after its wall opened.
+	# Stage the complete run first so a supporting wall saved later counts;
+	# drop only unsupported openings instead of discarding the player's shop.
+	var orphaned: Array[Vector3i] = WallRules.orphan_openings(preview)
+	for edge: Vector3i in orphaned:
+		preview.set_segment(edge, SimGrid.Segment.NONE)
+		layout.wall_segments.erase(edge)
+	if not orphaned.is_empty():
+		layout.load_notes.append("Removed window or doorway frames that no longer had a wall.")
 	if not WallRules.layout_problem(preview).is_empty():
 		errors.append("Saved walls block the shop")
 		return null
@@ -868,10 +877,21 @@ func check_segments(changes: Dictionary[Vector3i, int], exact: Exact = null) -> 
 			return EditCheck.new(false, "Unknown wall type")
 		cost += new_def.price if new_def != null else 0
 		refund += floori(old_def.price / 2.0) if old_def != null else 0
+	preview.set_segments(effective)
+	# A new frame must be part of a wall. Existing frames whose last wall
+	# support this edit removes come down too, with their normal sale refund.
+	for edge: Vector3i in effective:
+		if effective[edge] in [SimGrid.Segment.WINDOW, SimGrid.Segment.DOORWAY] \
+				and not WallRules.has_continuing_wall(preview, edge):
+			return EditCheck.new(false, WallRules.OPENING_NEEDS_WALL)
+	for edge: Vector3i in WallRules.orphan_openings(preview):
+		effective[edge] = SimGrid.Segment.NONE
+		var old_def: WallKindDef = _content.wall_kind_for(live.segment(edge))
+		refund += floori(old_def.price / 2.0) if old_def != null else 0
+	preview.set_segments(effective)
 	if exact != null:
 		cost = maxi(-exact.amount, 0)
 		refund = maxi(exact.amount, 0)
-	preview.set_segments(effective)
 	# D25: one back door per shop (undo/redo restores accepted layouts as they were).
 	var problem: String = WallRules.back_door_problem(live, preview) if exact == null else ""
 	if problem.is_empty():
@@ -1531,6 +1551,13 @@ func check_floor(cells: Array[Vector2i], adding: bool, exact: Exact = null,
 			return EditCheck.new(false, restored)
 		preview.set_segment(edge, restore[edge] as SimGrid.Segment)
 		removals[edge] = restore[edge]
+	# Judge support on the complete proposal, including walls restored by an
+	# undo. An existing opening may rely on one of those restored wall edges.
+	for edge: Vector3i in WallRules.orphan_openings(preview):
+		removals[edge] = SimGrid.Segment.NONE
+		var old_def: WallKindDef = _content.wall_kind_for(preview.segment(edge))
+		refund += floori(old_def.price / 2.0) if old_def != null else 0
+	preview.set_segments(removals)
 	# New floor must be walkable from the street through the walls as built:
 	# an outer window that turned interior can seal a pocket.
 	# Removing must not seal bought floor that people can walk to now.

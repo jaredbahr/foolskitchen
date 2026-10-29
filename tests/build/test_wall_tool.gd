@@ -66,6 +66,8 @@ func test_drag_previews_a_priced_run_then_builds_it() -> void:
 
 
 func test_click_cycles_a_segment_and_delete_removes_it() -> void:
+	assert_true(_editor.apply_segments({Vector3i(9, 5, SimGrid.EDGE_WEST): SimGrid.Segment.WALL} \
+		as Dictionary[Vector3i, int]), _editor.last_check.why)
 	assert_true(_mode.enter())
 	assert_true(_mode.begin_walls(SimGrid.Segment.WALL))
 	var on_edge: Vector2 = Vector2(9 * 0.5, 6.5 * 0.5)
