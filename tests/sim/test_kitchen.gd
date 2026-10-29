@@ -72,6 +72,8 @@ func test_real_staff_cook_pass_deliver_eat_pay_and_bus() -> void:
 	for id: StringName in [&"fridge", &"prep_counter", &"stove"]:
 		assert_true(visited.has(_item(id).id), "real work at %s" % id)
 	assert_almost_eq(guest.order.quality, 0.6)
+	assert_not_null(guest.order.quality_breakdown)
+	assert_almost_eq(guest.order.quality_breakdown.quality, guest.order.quality)
 	assert_eq(_paid.get(guest.id, -1), guest.order.price, "the guest pays the menu price")
 	assert_true(guest.order.price > 0)
 	assert_eq(_left.get(guest.id, &""), &"happy")

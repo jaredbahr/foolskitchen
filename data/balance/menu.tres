@@ -7,3 +7,5 @@ script = ExtResource("1_script")
 base_dishes = 6
 levels_per_extra_dish = 2
 max_dishes = 12
+quality_skill_base = 0.7
+quality_per_skill = 0.1

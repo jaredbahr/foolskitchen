@@ -5,6 +5,8 @@ extends Control
 
 signal close_requested
 
+const PLAY_GRID_LABEL: String = "Show floor grid while playing"
+const BUILD_GRID_LABEL: String = "Show floor grid in Build"
 const SAVE_DELAY: float = 0.5
 const VIEW_MARGIN: float = 12.0
 
@@ -28,6 +30,8 @@ var _panel_top: float = VIEW_MARGIN
 @onready var _fullscreen_row: HBoxContainer = %FullscreenRow
 @onready var _fullscreen: CheckButton = %FullscreenToggle
 @onready var _edge_pan: CheckButton = %EdgePanToggle
+@onready var _play_grid: CheckButton = %PlayGridToggle
+@onready var _build_grid: CheckButton = %BuildGridToggle
 @onready var _status: Label = %Status
 @onready var _close: Button = %CloseButton
 
@@ -53,6 +57,10 @@ func _ready() -> void:
 	_speed.item_selected.connect(_on_speed_selected)
 	_fullscreen.toggled.connect(_on_fullscreen_toggled)
 	_edge_pan.toggled.connect(_on_edge_pan_toggled)
+	_play_grid.text = PLAY_GRID_LABEL
+	_build_grid.text = BUILD_GRID_LABEL
+	_play_grid.toggled.connect(_on_play_grid_toggled)
+	_build_grid.toggled.connect(_on_build_grid_toggled)
 	_close.pressed.connect(_on_close_pressed)
 	resized.connect(_layout_card)
 	visibility_changed.connect(_on_visibility_changed)
@@ -99,6 +107,8 @@ func refresh() -> void:
 	_speed.select(_speed.get_item_index(_preferences.default_open_speed))
 	_fullscreen.set_pressed_no_signal(_preferences.fullscreen_enabled)
 	_edge_pan.set_pressed_no_signal(_preferences.edge_pan_enabled)
+	_play_grid.set_pressed_no_signal(_preferences.play_grid_enabled)
+	_build_grid.set_pressed_no_signal(_preferences.build_grid_enabled)
 	_status.text = "Changes are saved automatically."
 	_layout_card()
 
@@ -192,6 +202,14 @@ func _on_fullscreen_toggled(value: bool) -> void:
 
 func _on_edge_pan_toggled(value: bool) -> void:
 	_record(_preferences != null and _preferences.set_edge_pan_enabled(value))
+
+
+func _on_play_grid_toggled(value: bool) -> void:
+	_record(_preferences != null and _preferences.set_play_grid_enabled(value))
+
+
+func _on_build_grid_toggled(value: bool) -> void:
+	_record(_preferences != null and _preferences.set_build_grid_enabled(value))
 
 
 func _on_close_pressed() -> void:

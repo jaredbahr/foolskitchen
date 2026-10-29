@@ -33,6 +33,8 @@ const ROOM_LABEL_SIZE: int = 64
 const ROOM_LABEL_COLOR: Color = Color("f3e6cc")
 const ROOM_LABEL_OUTLINE: Color = Color("3b2a20")
 
+var blueprint_ghosts: Array[ItemVisual] = []
+var blueprint_selection_mesh: MeshInstance3D
 var ghost_mesh: ItemVisual
 var work_markers: Array[MeshInstance3D] = []
 var seat_markers: Array[MeshInstance3D] = []
@@ -211,8 +213,22 @@ func refresh() -> void:
 	var has_ghost: bool = snapshot.get("active", false) and snapshot.get("has_ghost", false) and definition != null
 	var valid: bool = snapshot.get("check_ok", false)
 	var selected_id: int = snapshot.get("item_id", -1)
-	if has_ghost:
-		_build_ghost(definition, origin, turns, valid, snapshot.get("variant_id", &""))
+	if snapshot.get("active", false) and snapshot.get("state", -1) == BuildMode.State.BLUEPRINT:
+		for entry: Dictionary in snapshot.get("blueprint_visuals", []):
+			var entry_definition: ItemDef = entry.get("definition") as ItemDef
+			if entry_definition == null:
+				continue
+			var swatch: SwatchDef = entry.get("swatch") as SwatchDef
+			_build_ghost(entry_definition, entry["origin"], entry["turns"], valid,
+				swatch.color if swatch != null else entry_definition.placeholder_color)
+			ghost_mesh.name = "BlueprintItem%d" % blueprint_ghosts.size()
+			blueprint_ghosts.append(ghost_mesh)
+		if not valid:
+			reason = snapshot.get("why", "")
+	elif snapshot.get("active", false) and snapshot.get("state", -1) == BuildMode.State.SELECT:
+		_build_blueprint_selection(snapshot.get("blueprint_selection_cells", []), snapshot.get("blueprint_box", Rect2i()))
+	elif has_ghost:
+		_build_ghost(definition, origin, turns, valid, Color.TRANSPARENT, snapshot.get("variant_id", &""))
 		if selected_id > 0 and _shop_view.item_nodes.has(selected_id):
 			_hidden_original = _shop_view.item_nodes[selected_id]
 			if is_instance_valid(_hidden_original):
@@ -262,7 +278,17 @@ func refresh() -> void:
 	for id: int in warning_ids:
 		# A valid check describes the proposed layout: a moved item's real ID
 		# follows its ghost. An invalid proposal retains actual-layout warnings.
-		if has_ghost and valid and (id == 0 or id == selected_id):
+		if snapshot.get("state", -1) == BuildMode.State.BLUEPRINT and valid and id < 0:
+			# The shared preview assigns each proposed entry a distinct negative
+			# id, in blueprint order, so every group's warning follows its ghost.
+			var visuals: Array = snapshot.get("blueprint_visuals", [])
+			var index: int = -id - 1
+			if index < visuals.size():
+				var entry: Dictionary = visuals[index]
+				var proposed: ItemDef = entry.get("definition") as ItemDef
+				if proposed != null:
+					_build_warning(id, proposed, entry["origin"], entry["turns"])
+		elif has_ghost and valid and (id == 0 or id == selected_id):
 			_build_warning(id, definition, origin, turns)
 		elif _shop_view.world != null:
 			var item: PlacedItem = _shop_view.world.grid.item(id)
@@ -331,6 +357,8 @@ func _clear_geometry() -> void:
 		_free_node(_ghost_root)
 	_ghost_root = null
 	ghost_mesh = null
+	blueprint_ghosts.clear()
+	blueprint_selection_mesh = null
 	wall_ghosts.clear()
 	floor_ghost = null
 	floor_ghost_cells.clear()
@@ -351,12 +379,15 @@ func _clear_geometry() -> void:
 	warning_nodes.clear()
 
 
-func _build_ghost(definition: ItemDef, origin: Vector2i, turns: int, valid: bool, variant_id: StringName = &"") -> void:
-	_ghost_root = Node3D.new()
-	_ghost_root.name = "Ghost"
-	add_child(_ghost_root)
+func _build_ghost(definition: ItemDef, origin: Vector2i, turns: int, valid: bool,
+		body_color: Color = Color.TRANSPARENT, variant_id: StringName = &"") -> void:
+	if _ghost_root == null:
+		_ghost_root = Node3D.new()
+		_ghost_root.name = "Ghost"
+		add_child(_ghost_root)
 	var height: float = ShopView.HEIGHTS.get(definition.category, 0.6)
-	var tint: Color = definition.placeholder_color.lerp(VALID_COLOR if valid else INVALID_COLOR, 0.8)
+	var base: Color = definition.placeholder_color if body_color == Color.TRANSPARENT else body_color
+	var tint: Color = base.lerp(VALID_COLOR if valid else INVALID_COLOR, 0.8)
 	tint.a = VALID_ALPHA if valid else INVALID_ALPHA
 	ghost_mesh = ItemVisual.create(definition, height, _material(definition.placeholder_color))
 	ghost_mesh.apply_variant(definition.variant(variant_id))
@@ -743,3 +774,35 @@ static func _free_node(node: Node) -> void:
 	if parent != null:
 		parent.remove_child(node)
 	node.free()
+
+
+## Selection uses the same warm highlight palette as the other build tools.
+## The box marks the dragged region; stronger tiles mark whole selected items.
+func _build_blueprint_selection(cells: Array, box: Rect2i) -> void:
+	if box.size == Vector2i.ZERO:
+		return
+	_ghost_root = Node3D.new()
+	_ghost_root.name = "BlueprintSelection"
+	add_child(_ghost_root)
+	var tint: Color = WORK_COLOR
+	tint.a = FLOOR_GHOST_ALPHA
+	var selected: Array[Vector2i] = []
+	selected.assign(cells)
+	if not selected.is_empty():
+		blueprint_selection_mesh = MeshInstance3D.new()
+		blueprint_selection_mesh.name = "SelectedFurniture"
+		blueprint_selection_mesh.mesh = _tile_mesh(selected, 0.04, FLOOR_GHOST_INSET)
+		blueprint_selection_mesh.material_override = _material(tint, true)
+		blueprint_selection_mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_ghost_root.add_child(blueprint_selection_mesh)
+	var size: Vector2 = Vector2(box.size) * GridMath.CELL_SIZE
+	var corner: Vector2 = Vector2(box.position) * GridMath.CELL_SIZE
+	var outline: StandardMaterial3D = _material(WORK_COLOR)
+	for y: float in [corner.y, corner.y + size.y]:
+		var rail: MeshInstance3D = _box(Vector3(size.x, 0.035, LOT_EDGE_WIDTH), outline)
+		rail.position = Vector3(corner.x + size.x * 0.5, 0.05, y)
+		_ghost_root.add_child(rail)
+	for x: float in [corner.x, corner.x + size.x]:
+		var rail: MeshInstance3D = _box(Vector3(LOT_EDGE_WIDTH, 0.035, size.y), outline)
+		rail.position = Vector3(x, 0.05, corner.y + size.y * 0.5)
+		_ghost_root.add_child(rail)

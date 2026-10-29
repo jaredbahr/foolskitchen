@@ -721,6 +721,8 @@ func _refresh_selection() -> void:
 		details.get("quality_source", "Recipe base quality; no served-dish sample")]
 	if details.has("reviews"):
 		_quality_label.text += "\n" + String(details["reviews"])
+	if details.has("quality_breakdown"):
+		_quality_label.text += "\nExpected with today's best worker and station:\n" + String(details["quality_breakdown"])
 	# Until its equipment is in, a dish's ingredients are not the problem:
 	# they read greyed out rather than red.
 	var equipment_met: bool = true

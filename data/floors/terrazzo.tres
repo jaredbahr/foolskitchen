@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="FloorStyleDef" format=3]
+
+[ext_resource type="Script" path="res://src/sim/content/floor_style_def.gd" id="1_script"]
+
+[resource]
+script = ExtResource("1_script")
+id = &"terrazzo"
+display_name = "Terrazzo"
+order = 7
+price = 4
+pattern = 7
+default_swatch = &"cream"
+default_accent = &"slate_blue"
+unlock_level = 5
