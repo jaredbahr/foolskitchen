@@ -2117,6 +2117,18 @@ pattern 0 of `floor_finish.gdshader`, unchanged).
 - RNG seed/state and the master seed use decimal strings to preserve 64-bit integers through JSON parsing.
 
 ### 2.5 Testing
+Dish quality explanations (FK-063): `DishQuality.breakdown()` snapshots the recipe
+base, role skill factor, cooking trait and distinct preparation station bonuses,
+then the unchanged 0–1 clamp. Both food and pour tasks store that typed result on
+`Order.quality_breakdown` and copy its quality to `Order.quality`. Drinks retain
+their existing server-skill calculation without a cooking trait bonus. The skill
+weights (`0.7`, `0.1`) are authored in `data/balance/menu.tres` (`MenuTuning`).
+The menu shows a read-only best-case estimate from today's eligible workers and
+reachable stations beside its existing measured sample. Guest inspection shows
+the captured result for each delivered order, including sides. The evening report
+averages all delivered orders (food and drinks); count and average round-trip with
+historical reports. There are no new save points or random draws.
+
 - **In-repo runner, not GUT** (decision D9). `tools/run_tests.gd` finds `tests/**/test_*.gd`, runs every `test_*` method, and exits non-zero on failure. Tests extend `tests/test_case.gd`, which provides `assert_eq`, `assert_true`, `assert_false`, `assert_almost_eq` and `assert_null`. No downloads and nothing to version-match. The sim is pure logic, so it doesn't need mocks.
 - A test also fails if it raises an engine or script error (a null call, `push_error`), even when its asserts pass. So code paths exercised by tests report problems through return values, not `push_error`.
 - `tools/check.sh` runs a headless import, then loads every script and resource (`tools/parse_all.gd`, which also catches scenes pointing at missing files), then the tests. Untyped declarations are errors (`untyped_declaration=2`). Every diff must pass it.
