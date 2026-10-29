@@ -5,6 +5,35 @@ extends TestCase
 const CAPTURE: Script = preload("res://tools/screenshot.gd")
 
 
+func test_catalogue_capture_expectations_include_every_native_card_and_the_waiting_bench() -> void:
+	var content: ContentDB = ContentDB.new()
+	assert_eq(content.load_all(), PackedStringArray())
+	# Load after autoload initialization to avoid retaining the diagnostic
+	# entry script's scene/script resource graph at shutdown.
+	var catalogue: BuildCatalogue = (load("res://src/ui/build_catalogue.tscn") as PackedScene).instantiate() as BuildCatalogue
+	catalogue.bind_content(content)
+	var evidence: Dictionary = CAPTURE._catalogue_content_expectations(content)
+	var expected_ids: Array[String] = []
+	var waiting: Dictionary = {}
+	for card: Dictionary in evidence["cards"]:
+		expected_ids.append(card["id"])
+		if card["id"] == "waiting_bench":
+			waiting = card
+	var actual_ids: Array[String] = []
+	for id: StringName in catalogue.item_buttons:
+		actual_ids.append(String(id))
+	expected_ids.sort()
+	actual_ids.sort()
+	assert_eq(expected_ids, actual_ids, "capture expectations must cover every real catalogue card")
+	assert_false(waiting.is_empty(), "the waiting bench belongs in catalogue-review captures")
+	if not waiting.is_empty():
+		assert_eq(waiting["name"], "Waiting bench")
+		assert_eq(waiting["room"], "dining")
+		assert_eq(waiting["scene"], "res://assets/props/bench.tscn")
+		assert_true(evidence["wrappers"].has(waiting["scene"]))
+	catalogue.free()
+
+
 func test_catalogue_review_requires_one_profile_paused_main_and_exact_schedule() -> void:
 	for profile: String in ["rustic", "modern"]:
 		var arguments: PackedStringArray = PackedStringArray(["--catalogue-review=" + profile, "--speed=0", "--frames=90,120"])

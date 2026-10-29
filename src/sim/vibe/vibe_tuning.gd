@@ -32,6 +32,8 @@ const KNOWN_THEMES: Array[StringName] = [&"cosy", &"modern", &"rustic", &"diner"
 	ItemDef.Category.STORAGE: 0.0,
 	ItemDef.Category.PASS: 0.0,
 	ItemDef.Category.DECOR: 1.0,
+	ItemDef.Category.RESTROOM: 0.0,
+	ItemDef.Category.WAITING: 1.0,
 }
 ## Per-item overrides of the category weight (FK-083): a coffee machine or a
 ## drinks shelf is equipment, yet it says "café" or "bar" more than a stove
