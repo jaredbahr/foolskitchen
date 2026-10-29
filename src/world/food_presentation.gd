@@ -85,9 +85,9 @@ func refresh_layout(items: Dictionary[int, ItemVisual]) -> void:
 		surfaces[item.id] = surface.point
 		surface_bounds[item.id] = surface.bounds
 		var definition: ItemDef = item.def as ItemDef
-		if definition.id == &"pass_counter":
+		if _pass_id == 0 and definition.category == ItemDef.Category.PASS and item.work_cells.size() >= 2:
 			_pass_id = item.id
-		elif definition.id == &"sink":
+		elif _sink_id == 0 and definition.category == ItemDef.Category.STATION and definition.station_type == &"sink":
 			_sink_id = item.id
 		if definition.id in [&"stove", &"fryer"] and not steam.has(item.id):
 			var puff: CPUParticles3D = _steam()
@@ -200,16 +200,21 @@ func sync(frames: Dictionary[int, AgentPresentationController.Frame], people: Di
 		dish.show_dish(ticket.recipe, stage == &"dirty")
 	for item_id: int in steam:
 		steam[item_id].emitting = false
+	var washing_sink: int = _sink_id
 	for agent: SimAgent in restaurant.world.agents:
 		if agent is StaffAgent and frames.has(agent.id) and frames[agent.id].working:
 			var staff: StaffAgent = agent as StaffAgent
 			if steam.has(staff._held_item_id) and staff.task != null and staff.task.kind == &"cook":
 				steam[staff._held_item_id].emitting = true
+			if staff.task != null and staff.task.kind == &"wash":
+				var active_sink: int = int(staff.task.payload.get("sink_id", 0))
+				if surfaces.has(active_sink):
+					washing_sink = active_sink
 	for index: int in range(stack.size()):
 		var dish: DishVisual = stack[index]
-		dish.visible = _sink_id > 0 and restaurant.kitchen.plate_cycle_enabled and index < restaurant.kitchen.plates.dirty
+		dish.visible = washing_sink > 0 and restaurant.kitchen.plate_cycle_enabled and index < restaurant.kitchen.plates.dirty
 		if dish.visible:
-			dish.position = surfaces[_sink_id] + Vector3(0.12, index * 0.018, 0.0)
+			dish.position = surfaces[washing_sink] + Vector3(0.12, index * 0.018, 0.0)
 
 
 ## Keep the dish beside its own seat, including the end of a long table.

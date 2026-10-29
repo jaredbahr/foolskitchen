@@ -248,7 +248,11 @@ func test_new_world_releases_held_dishes_and_old_order_signal() -> void:
 	var old_food: FoodPresentation = _view.food
 	var old_book: OrderBook = _sim.orders
 	assert_true(old_book.order_placed.is_connected(old_food._remember))
+	var held: DishVisual = old_food.pool[0]
+	held.reparent(_view.agent_nodes[_staff(&"server").id], false)
+	held.visible = true
 	_view.show_world(null)
+	assert_false(is_instance_valid(held), "held attachments outside the controller are released too")
 	assert_false(is_instance_valid(old_food))
 	assert_eq(old_book.order_placed.get_connections().size(), 1, "only the kitchen remains connected")
 
@@ -271,6 +275,113 @@ func test_rotated_long_table_servings_stay_inside_the_top_and_near_each_seat() -
 				assert_true(spot.distance_to(other) > 0.24, "distinct seats do not share a plate position")
 			drawn.append(spot)
 		_sim.world.grid.remove(table.id)
+
+
+func test_two_passes_and_sinks_follow_kitchen_order_and_refresh_after_removal() -> void:
+	var first_pass: PlacedItem = ShopBuilder.items_with_def(_sim.world, &"pass_counter")[0]
+	var first_sink: PlacedItem = ShopBuilder.items_with_def(_sim.world, &"sink")[0]
+	var other_pass: PlacedItem = _sim.world.grid.place_def(_content.item(&"pass_counter"), Vector2i(8, 3), 0)
+	var other_sink: PlacedItem = _sim.world.grid.place_def(_content.item(&"sink"), Vector2i(12, 1), 2)
+	assert_not_null(other_pass)
+	assert_not_null(other_sink)
+	var table: PlacedItem = ShopBuilder.items_with_def(_sim.world, &"table_2")[0]
+	var order: Order = Order.new()
+	order.recipe_id = &"burger"
+	order.table_item_id = table.id
+	order.seat_cell = table.seat_cells[0]
+	_sim.orders.place(order, 0)
+	_sim.orders.set_state(order, Order.State.READY)
+	_view._sync_agents()
+	var dish: DishVisual = _view.food.tickets[order.id].dish
+	assert_true(dish.position.distance_to(_view.food.surfaces[first_pass.id]) < 0.3)
+	assert_true(dish.position.distance_to(_view.food.surfaces[other_pass.id]) > 1.0)
+	assert_true(_sim.kitchen.plates.take(9001, table.id))
+	assert_true(_sim.kitchen.plates.return_to_table(9001, table.id))
+	assert_eq(_sim.kitchen.plates.collect_table(table.id), 1)
+	_view._sync_agents()
+	assert_true(_view.food.stack[0].visible)
+	assert_true(_view.food.stack[0].position.is_equal_approx(_view.food.surfaces[first_sink.id] + Vector3(0.12, 0, 0)))
+	_sim.world.grid.remove(first_sink.id)
+	_view._sync_agents()
+	assert_true(_view.food.stack[0].position.is_equal_approx(_view.food.surfaces[other_sink.id] + Vector3(0.12, 0, 0)))
+	_sim.world.grid.remove(other_sink.id)
+	_view._sync_agents()
+	assert_false(_view.food.stack[0].visible)
+	_sim.world.grid.remove(first_pass.id)
+	_view._sync_agents()
+	assert_false(dish.visible, "the real kitchen cancels the removed pass's ready ticket")
+	var next: Order = Order.new()
+	next.recipe_id = &"burger"
+	next.table_item_id = table.id
+	next.seat_cell = table.seat_cells[0]
+	_sim.orders.place(next, 0)
+	_sim.orders.set_state(next, Order.State.READY)
+	_view._sync_agents()
+	var next_dish: DishVisual = _view.food.tickets[next.id].dish
+	assert_not_null(next_dish)
+	assert_true(next_dish.position.distance_to(_view.food.surfaces[other_pass.id]) < 0.3)
+
+
+func test_recooking_hides_then_reuses_serving_and_cancelled_pruned_tickets_disappear() -> void:
+	var table: PlacedItem = ShopBuilder.items_with_def(_sim.world, &"table_2")[0]
+	var order: Order = Order.new()
+	order.recipe_id = &"burger"
+	order.table_item_id = table.id
+	order.seat_cell = table.seat_cells[0]
+	_sim.orders.place(order, 0)
+	_sim.orders.set_state(order, Order.State.READY)
+	_view._sync_agents()
+	var dish: DishVisual = _view.food.tickets[order.id].dish
+	assert_true(dish.visible)
+	_sim.orders.set_state(order, Order.State.COOKING)
+	_view._sync_agents()
+	assert_false(dish.visible)
+	assert_eq(dish.order_id, 0)
+	assert_false(_view.food.tickets[order.id].retired)
+	_sim.orders.set_state(order, Order.State.READY)
+	_view._sync_agents()
+	assert_true(dish.visible)
+	assert_true(_view.food.tickets[order.id].dish == dish)
+	_sim.orders.set_state(order, Order.State.CANCELLED)
+	_view._sync_agents()
+	assert_false(dish.visible)
+	assert_true(_view.food.tickets[order.id].retired)
+	_sim.orders.prune_finished()
+	var next: Order = Order.new()
+	next.recipe_id = &"burger"
+	next.table_item_id = table.id
+	next.seat_cell = table.seat_cells[0]
+	_sim.orders.place(next, 0)
+	assert_false(_view.food.tickets.has(order.id))
+	assert_eq(_view.food.tickets.size(), 1)
+	assert_true(_view.food.tickets.has(next.id))
+
+
+func test_dirty_stack_follows_real_washing_at_a_reachable_second_sink() -> void:
+	var first: PlacedItem = ShopBuilder.items_with_def(_sim.world, &"sink")[0]
+	assert_true(_sim.world.grid.set_terrain(first.work_cells[0], SimGrid.Terrain.WALL))
+	var second: PlacedItem = _sim.world.grid.place_def(_content.item(&"sink"), Vector2i(11, 1), 2)
+	assert_not_null(second)
+	assert_true(_sim.kitchen.configure_plates(2))
+	var table: PlacedItem = ShopBuilder.items_with_def(_sim.world, &"table_2")[0]
+	for order_id: int in range(10000, 10002):
+		assert_true(_sim.kitchen.plates.take(order_id, table.id))
+		assert_true(_sim.kitchen.plates.recover_order(order_id))
+	_sim.kitchen.advance()
+	var server: StaffAgent = _staff(&"server")
+	var saw_washing: bool = false
+	for tick: int in range(500):
+		_sim.advance()
+		_view._sync_agents()
+		if server.task != null and server.task.kind == &"wash" \
+				and AgentPresentationController.frame_for(server, _sim.world).working:
+			saw_washing = true
+			assert_eq(server.task.payload["sink_id"], second.id)
+			assert_eq(second.reserved_by(server.cell), server.id)
+			assert_true(_view.food.stack[0].visible)
+			assert_true(_view.food.stack[0].position.is_equal_approx(_view.food.surfaces[second.id] + Vector3(0.12, 0, 0)))
+			break
+	assert_true(saw_washing, "the real server worked the reachable second sink")
 
 
 func _dish_count(node: Node) -> int:
