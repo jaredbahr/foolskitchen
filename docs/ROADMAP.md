@@ -54,6 +54,8 @@ The Tier 1 hole-in-the-wall: 1 door, 3 two-seat tables, 1 fridge, 1 prep counter
 - [x] Smooth motion between sim ticks (presentation only) (#204)
 - [ ] Wall finishes and wall decor: wallpaper, panels, tile, brick; framed art, menu boards, neon (D26)
 - [ ] Waiting bench by the door: more guests wait, longer (D26)
+- [ ] Smarter cutaway: lower only the walls facing the camera (#205), then lighting decor (lamps, pendants, chandeliers at Tier 3) next (Jared, 2026-10-29)
+- [ ] Sound and music after the designer core: ambience, UI clicks, cooking sounds, a light music loop (Jared, 2026-10-29)
 - [x] Hiring pool, traits, wages
 - [ ] The priority matrix
 - [x] Plate cycle (sink, dirty plates)
@@ -87,7 +89,7 @@ The Tier 1 hole-in-the-wall: 1 door, 3 two-seat tables, 1 fridge, 1 prep counter
 Each is a `phase-later` issue. Pick from here when Phase 2's designer work is solid.
 - [ ] More sites run by managers (#164, D24)
 - [ ] Named regulars who remember your place (#166): first after the designer core (Jared, D26)
-- [ ] Street front and patio, with curb appeal and weather (#168): second (D26); needs a simple overworld (road and neighbourhood around the lot) and outdoor waiting seats when the weather allows
+- [ ] Street front and patio, with curb appeal and weather (#168): second (D26); needs a simple overworld (road and neighbourhood around the lot) and outdoor waiting seats when the weather allows; exterior wall finishes (brick front, siding, shopfront) come with it
 - [ ] Makeover jobs, renovating to a brief as career side jobs, needing a D7 amendment (#167)
 - [ ] Staff relationships and drama (#169)
 - [ ] Design extras: collection sets, lighting moods, staff room, blueprint codes (#170)
