@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- Save groups of furniture and rugs as named blueprints in Buy mode, then rotate and place a whole group at once. See the total cost before buying, undo the whole group for an exact refund, and rename or delete blueprints in your library. Library changes are saved at the start of tomorrow. (#218)
 - Lay new floors in your own colours: polished concrete at level 3 ($1 a floor tile), soft carpet at level 4 ($2) and speckled terrazzo at level 5 ($4). (#219)
 - Toggle the floor grid while playing with G or Settings; remember separate play and Build choices on this device. (#214)
 - Unlock butter-and-cream hex tiles and rustic terracotta pavers at level 4, each $3 a floor tile, with your choice of colours. (#215)
