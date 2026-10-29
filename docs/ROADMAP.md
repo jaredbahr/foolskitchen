@@ -20,6 +20,7 @@ Codex takes `worker-ready` issues in this order; the director validates, reviews
 - #113 Dish quality breakdown
 - #179 Hygiene overview in Build
 - #108 Title screen, then #110 First-day guide
+- #211 Pick your owner character (hooks into #108's New game if merged)
 - #126 Seafood menu (data; the deck-plank floor after #202)
 - #114 Tier 2 lease upgrade (more lot to expand)
 
