@@ -6,6 +6,7 @@ var _profile: OwnerAppearance
 var _confirmations: Array[Dictionary] = []
 var _random_requests: int = 0
 var _cancel_requests: int = 0
+var _viewports: Array[SubViewport] = []
 
 
 func before_each() -> void:
@@ -20,6 +21,38 @@ func before_each() -> void:
 
 func after_each() -> void:
 	_picker.free()
+	for viewport: SubViewport in _viewports:
+		viewport.free()
+	_viewports.clear()
+
+
+func test_staff_heading_keeps_maximum_name_and_action_inside_small_ui_bounds() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	await tree.process_frame
+	var viewport: SubViewport = SubViewport.new()
+	# Logical area of a 1280×720 window at the supported enlarged UI scale.
+	viewport.size = Vector2i(1066, 600)
+	tree.root.add_child(viewport)
+	_viewports.append(viewport)
+	var staff: StaffPanel = (load("res://src/ui/staff_panel.tscn") as PackedScene).instantiate() as StaffPanel
+	viewport.add_child(staff)
+	staff.bind_roster(StaffRoster.new(preload("res://data/balance/tier1_economy.tres")))
+	staff.set_owner_name("W".repeat(OwnerAppearance.MAX_NAME_LENGTH))
+	staff.set_phase(SimClock.Phase.MORNING)
+	staff.show()
+	await tree.process_frame
+	await tree.process_frame
+	var heading: Label = staff.get_node("Panel/Content/Title") as Label
+	var name: Label = staff.get_node("%OwnerName") as Label
+	var button: Button = staff.get_node("%OwnerLook") as Button
+	var context: String = "heading=%s button=%s name=%s" % [heading.get_global_rect(), button.get_global_rect(), name.get_global_rect()]
+	assert_true(heading.get_global_rect().encloses(button.get_global_rect()), "the action shares the existing heading: " + context)
+	assert_true(heading.get_global_rect().encloses(name.get_global_rect()), context)
+	assert_true(Rect2(Vector2.ZERO, Vector2(viewport.size)).encloses(heading.get_global_rect()))
+	assert_true(name.get_global_rect().end.x <= button.get_global_rect().position.x)
+	assert_true(name.clip_text)
+	assert_eq(name.tooltip_text, OwnerText.owner_label("W".repeat(OwnerAppearance.MAX_NAME_LENGTH)))
+	assert_false(button.disabled)
 
 
 func test_picker_lists_all_twelve_native_looks_with_plain_labels_and_shared_theme() -> void:

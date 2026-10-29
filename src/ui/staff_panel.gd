@@ -100,7 +100,11 @@ func _day_wage(wage: int) -> int:
 func refresh() -> void:
 	if not (%OwnerLook as Button).pressed.is_connected(_on_owner_look):
 		(%OwnerLook as Button).pressed.connect(_on_owner_look)
+	# These controls share the heading row, but retain ordinary body sizing.
+	(%OwnerName as Label).add_theme_font_size_override("font_size", SHARED_THEME.default_font_size)
+	(%OwnerLook as Button).add_theme_font_size_override("font_size", SHARED_THEME.default_font_size)
 	(%OwnerName as Label).text = OwnerText.owner_label(_owner_name)
+	(%OwnerName as Label).tooltip_text = (%OwnerName as Label).text
 	(%OwnerLook as Button).text = OwnerText.CHANGE_LOOK
 	(%OwnerLook as Button).disabled = _phase != SimClock.Phase.MORNING
 	(%OwnerLook as Button).tooltip_text = "" if _phase == SimClock.Phase.MORNING else OwnerText.MORNING_ONLY
