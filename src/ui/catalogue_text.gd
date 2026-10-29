@@ -149,3 +149,46 @@ static func card_lines(definition: ItemDef, owner_level: int) -> Array[String]:
 	var themes: String = themes_text(definition)
 	lines.append("Themes: " + themes if not themes.is_empty() else "No theme")
 	return lines
+
+
+# Blueprints (FK-045): names and instructions are shared by the catalogue,
+# selection tool and HUD rather than exposing internal state names.
+const BLUEPRINTS: String = "Blueprints"
+const BLUEPRINT_SELECT: String = "Select furniture"
+const BLUEPRINT_SELECT_TIP: String = "Drag a box around whole pieces of furniture and rugs"
+const BLUEPRINT_SAVE: String = "Save as blueprint"
+const BLUEPRINT_SAVE_TIP: String = "Saved to your library at the start of tomorrow"
+const BLUEPRINT_NAME: String = "Blueprint name"
+const BLUEPRINT_RENAME: String = "Rename"
+const BLUEPRINT_DELETE: String = "Delete"
+const BLUEPRINT_LIBRARY_EMPTY: String = "Select furniture to start your blueprint library"
+const BLUEPRINT_EMPTY: String = "Choose a blueprint with furniture"
+const BLUEPRINT_CONTENT: String = "Blueprints only contain floor furniture and rugs"
+const BLUEPRINT_INVALID: String = "This blueprint has invalid furniture positions"
+const BLUEPRINT_NONE_SELECTED: String = "Drag a box around furniture and rugs to save a blueprint"
+const BLUEPRINT_FAILED: String = "The blueprint could not be saved"
+const BLUEPRINT_STAMP_REFUSED: String = "The blueprint could not be placed; try again"
+const BLUEPRINT_PLACE_TIP: String = "Place this blueprint; R or . rotates right, , rotates left"
+
+
+static func blueprint_default_name(number: int) -> String:
+	return "Blueprint %d" % number
+
+
+static func blueprint_selection(count: int) -> String:
+	return "%d piece%s selected" % [count, "" if count == 1 else "s"] if count > 0 else BLUEPRINT_NONE_SELECTED
+
+
+static func blueprint_stamp(name: String, cost: int) -> String:
+	return "%s — %s  ·  R / , / . rotate" % [name, Fmt.money(cost)]
+
+
+static func blueprint_stamp_label(name: String) -> String:
+	return "stamp " + name
+
+
+static func blueprint_card(name: String, cost: int) -> String:
+	return "%s — %s" % [name, Fmt.money(cost)]
+
+const BLUEPRINT_KEYS: String = "Click Place blueprint  |  , . or R Rotate  |  Esc or Right-click Cancel"
+const BLUEPRINT_SELECTION_KEYS: String = "Drag a box around furniture  |  Save as blueprint in Buy → Blueprints  |  Esc Cancel"

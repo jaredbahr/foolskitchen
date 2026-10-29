@@ -425,6 +425,10 @@ static func build_hint(painting: bool, state: int, tool: int) -> String:
 	if painting:
 		return "Click to paint  |  Shift-click: whole room  |  Ctrl+Z Undo  Ctrl+Y Redo  |  Esc Back"
 	match state:
+		BuildMode.State.SELECT:
+			return CatalogueText.BLUEPRINT_SELECTION_KEYS
+		BuildMode.State.BLUEPRINT:
+			return CatalogueText.BLUEPRINT_KEYS
 		BuildMode.State.MOVE:
 			return "Click Place  |  , . or R Rotate  |  Del Sell  |  Esc or Right-click Cancel"
 		BuildMode.State.BUY:

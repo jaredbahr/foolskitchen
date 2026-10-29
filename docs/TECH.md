@@ -1081,6 +1081,47 @@ an active edit/panel/selection first, or opens Settings when none is active.
   tool, history clearing on open). Captures: the catalogue review
   (`--catalogue-review=rustic|modern`) shows Buy mode.
 
+### Furniture blueprints (FK-045)
+- `Blueprint` is a Resource containing a player name and `ShopPlacement`
+  entries: content id, anchor-relative offset, quarter turns and body swatch.
+  Only floor furniture and rugs participate, never doors, wall decor or
+  structure. Box selection includes whole footprints on both placement layers.
+  Rotation turns the group's bounding rectangle and each item's already-rotated
+  footprint together; non-square pieces retain the same relative geometry.
+- `ShopEditor.check_stamp` stages every entry on one preview, then checks each
+  chair's dining links and the final `RoomRules`, existing buy path warnings,
+  unlocks and total affordability. Chairs may precede their tables in the
+  saved list. A refused proposal changes no live items, ids, cash or history.
+  `SimGrid.place_group` preflights and publishes the complete group through one
+  grid notification; observers never see a partially placed group. Normal
+  stamping writes one upgrade ledger line per item. `ShopEditHistory.STAMP`
+  records one step with shared item references and a private blueprint copy;
+  undo removes the whole group with an exact refund and redo restores it.
+  Group removal validates reservations, remaining required equipment and
+  combined storage capacity before changing anything. Both directions are
+  closed-only and retain refused history steps.
+- Buy's Blueprints tab has selection, naming, total price, rename and delete.
+  The group ghost uses the existing item palette, rejection sentences, rotation
+  keys (R, comma, period) and amber restock line. Blueprint names consume text
+  input without triggering build shortcuts. Cancel/phase changes discard only
+  the active selection/ghost, not the player's library.
+- `BlueprintLibrary` is registered as a separate `blueprints` save section in
+  Main, not inside the version-6 `shop` snapshot. The existing morning autosave
+  is the only write boundary; creating, renaming, deleting and stamping do not
+  save immediately. Restore stages the library until the whole morning load
+  succeeds. Old saves without it get an empty library; unknown item ids are
+  skipped with a world log line (empty resulting blueprints are omitted).
+  Unknown swatches use the item's default; malformed section data is rejected
+  transactionally with the existing failed-load protection. Library state does
+  not reset when a shop editor is rebound. Names are single-line, at most 80
+  characters; bounded input supports 256 blueprints of 512 entries each.
+- Tests: `tests/sim/test_blueprints.gd`, `tests/build/test_blueprint_mode.gd`,
+  `tests/ui/test_blueprint_catalogue.gd`, `tests/world/test_blueprint_session.gd`,
+  `tests/world/test_blueprint_build_session.gd`, `tests/tools/test_blueprint_review.gd`.
+  Manual native captures: `bash tools/screenshot.sh
+  --blueprints=selection|ghost|stamped --speed=0 --frames=30 --out=<review-dir>`
+  (choose one profile per run). No additional CI jobs or repeated probes.
+
 ### Rooms and restrooms (FK-101)
 - **Rooms on the grid.** `SimGrid.Room` is DINING (the default, never
   stored), KITCHEN, RESTROOM or STORAGE. Only FLOOR cells take a room
