@@ -19,8 +19,7 @@ morning_stock = Dictionary[StringName, int]({
 &"cheese": 8,
 &"lettuce": 10,
 &"soup_stock": 8,
-&"tomato": 16,
-&"frozen_fries": 0
+&"tomato": 16
 })
 station_stock = Dictionary[StringName, int]({
 &"coffee_beans": 30,
@@ -31,7 +30,8 @@ station_stock = Dictionary[StringName, int]({
 &"pastry": 12,
 &"potato": 12,
 &"oil": 12,
-&"dough": 12
+&"dough": 12,
+&"frozen_fries": 12
 })
 auto_reorder_premium = 0.05
 delivery_interval_minutes = 180
