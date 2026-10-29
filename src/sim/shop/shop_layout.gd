@@ -47,6 +47,8 @@ extends Resource
 ## Set on an older save whose kitchen could not be inferred (a seat was in
 ## or behind it): the morning asks the player to mark their kitchen.
 var rooms_unmarked: bool = false
+## Plain notes from forgiving normalization of older saves, logged on load.
+var load_notes: Array[String] = []
 ## Built-in dry storage (FK-087): the back-room pantry the shop comes with,
 ## in units of dry (shelf) ingredients. Placed storage shelves add to it.
 @export var pantry_units: int = 0

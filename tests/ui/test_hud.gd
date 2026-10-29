@@ -204,6 +204,41 @@ func test_scaled_window_keeps_every_hud_control_readable_and_build_hints_below_h
 	view.free()
 
 
+func test_opening_menu_notice_stays_one_line_below_the_header_at_native_and_small_widths() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	await tree.process_frame
+	var viewport: SubViewport = SubViewport.new()
+	viewport.size = Vector2i(1600, 900)
+	tree.root.add_child(viewport)
+	viewport.add_child(_hud)
+	var note: String = "Fries left today's menu: staff can't reach the fryer"
+	_hud.call("set_menu_notice", note)
+	await _layout_frames()
+	var panel: Control = _hud.get_node("MenuNotice") as Control
+	var label: Label = _hud.get_node("MenuNotice/Text") as Label
+	var header: Control = _hud.get_node("Top") as Control
+	assert_true(panel.visible)
+	assert_eq(label.text, note)
+	assert_true(panel.size.y < 100.0, "an opening note leaves the restaurant visible rather than filling the viewport")
+	assert_true(panel.get_global_rect().position.y >= header.get_global_rect().end.y + 5.5)
+	# Long lists and a smaller logical viewport still use one line, with the
+	# complete explanation available on hover instead of covering the shop.
+	viewport.size = Vector2i(854, 480)
+	note = note.repeat(6)
+	_hud.call("set_menu_notice", note)
+	await _layout_frames()
+	assert_eq(label.tooltip_text, note)
+	assert_true(label.mouse_filter != Control.MOUSE_FILTER_IGNORE, "the full note can be read on hover")
+	assert_eq(label.get_line_count(), 1)
+	assert_true(panel.size.y < 100.0, "long lists never turn the note into a tall panel")
+	assert_true(panel.get_global_rect().position.y >= header.get_global_rect().end.y + 5.5)
+	assert_true(viewport.get_visible_rect().encloses(panel.get_global_rect()), "the notice stays inside the smaller viewport")
+	_hud.call("set_menu_notice", "")
+	assert_false(panel.visible)
+	viewport.remove_child(_hud)
+	viewport.free()
+
+
 func test_staff_entry_requests_work_in_every_phase_without_loosening_menu_or_changing_data() -> void:
 	_hud.connect(&"staff_pressed", _record_staff)
 	var staff: Button = _control("Staff") as Button
