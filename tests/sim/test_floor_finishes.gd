@@ -501,7 +501,7 @@ func test_new_tiles_append_patterns_and_keep_the_starter_set() -> void:
 
 func test_terrazzo_concrete_and_carpet_unlock_cost_refund_and_round_trip() -> void:
 	for row: Array in [[&"terrazzo", 7, 4, 5, &"cream", &"slate_blue"],
-			[&"concrete", 8, 1, 3, &"charcoal", &"slate_blue"],
+			[&"concrete", 8, 1, 3, &"slate_blue", &"charcoal"],
 			[&"carpet", 9, 2, 4, &"dusty_rose", &"walnut"]]:
 		var style: FloorStyleDef = _content.floor_style(row[0])
 		assert_not_null(style)

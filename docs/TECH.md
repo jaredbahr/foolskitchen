@@ -1213,9 +1213,11 @@ an active edit/panel/selection first, or opens Settings when none is active.
   Their pattern values are appended as 5 and 6. Terrazzo ($4, level 5),
   Polished concrete ($1, level 3) and Carpet ($2, level 4) append 7, 8 and 9.
   Terrazzo uses cream/slate-blue hashed chips on a 0.125 m lattice;
-  concrete uses charcoal/slate-blue metre slabs with faint mottling; carpet
-  uses dusty-rose/walnut with a faint 0.025 m weave and no joints. Charcoal
-  is the existing warm mid-grey (RGB 98/90/82), not a new black swatch.
+  concrete uses slate-blue/charcoal metre slabs with faint mottling; carpet
+  uses dusty-rose/walnut with a faint 0.025 m weave and no joints. The
+  existing slate-blue swatch is the lighter blue-grey concrete main: the
+  initially specified charcoal read near-black in the native normal/close
+  review. Charcoal remains the joint colour; no new palette colour is added.
   The integer lattice hash is shared exactly by the shader and thumbnail;
   chip edges use smooth pixel coverage, and the fine lattice fades with
   `fwidth` as its cells approach a few pixels.
