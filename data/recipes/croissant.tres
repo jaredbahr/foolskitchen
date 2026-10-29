@@ -21,6 +21,6 @@ standard_price = 6
 unlock_tier = 1
 unlock_level = 1
 theme_tags = Array[StringName]([&"cafe"])
-section = 4
+section = 5
 order_type = &"food"
 with_drinks = true
