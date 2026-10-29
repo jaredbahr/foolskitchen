@@ -176,9 +176,10 @@ vec3 terrazzo(vec2 p, vec3 base, vec3 accent, float fw) {
 	float d = length((fract(p / size) - centre) * size);
 	float radius = 0.015 + j * 0.0075;
 	vec3 chip = accent * (h < 0.5 ? 1.0 : 0.8);
-	// Fade by chip diameter, not lattice spacing: subpixel chips vanish
-	// before they can sparkle during a pan or at maximum zoom-out.
-	return mix(base, chip, line_cover(d, radius, fw) * detail(0.045, fw));
+	// The smooth chip coverage handles pixel edges; fade the entire lattice
+	// when cells approach a few pixels. Diameter-based fading hid all chips
+	// even at the normal camera size. Fine detail still vanishes at far zoom.
+	return mix(base, chip, line_cover(d, radius, fw) * detail(size, fw));
 }
 
 // 8: metre-wide slabs; faint fine-lattice mottling, thin accent joints.

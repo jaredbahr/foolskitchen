@@ -1217,7 +1217,8 @@ an active edit/panel/selection first, or opens Settings when none is active.
   uses dusty-rose/walnut with a faint 0.025 m weave and no joints. Charcoal
   is the existing warm mid-grey (RGB 98/90/82), not a new black swatch.
   The integer lattice hash is shared exactly by the shader and thumbnail;
-  tiny chips fade by their diameter with `fwidth`, before they become subpixel.
+  chip edges use smooth pixel coverage, and the fine lattice fades with
+  `fwidth` as its cells approach a few pixels.
   Looks only: no
   sim effect.
 - **Looks per cell.** `FloorFinishes` (`src/sim/shop/floor_finishes.gd`),

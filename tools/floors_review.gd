@@ -22,13 +22,15 @@ const AREAS: Array[Array] = [
 	[&"terracotta", &"terracotta", &"clay", Vector2i(9, 7), Vector2i(12, 7)],
 	[&"terrazzo", &"cream", &"slate_blue", Vector2i(5, 5), Vector2i(8, 5)],
 	[&"concrete", &"charcoal", &"slate_blue", Vector2i(5, 6), Vector2i(8, 6)],
-	[&"carpet", &"dusty_rose", &"walnut", Vector2i(9, 5), Vector2i(12, 5)],
+	[&"carpet", &"dusty_rose", &"walnut", Vector2i(9, 5), Vector2i(12, 6)],
 ]
 ## Cells and the floor pattern each must draw with once the fixture is laid.
+## Keep samples outside DRAG_START..DRAG_END: the later live preview replaces
+## those texels with herringbone without changing the stored floor.
 const SAMPLES: Dictionary = {
 	Vector2i(5, 5): FloorStyleDef.Pattern.TERRAZZO, Vector2i(6, 5): FloorStyleDef.Pattern.TERRAZZO,
 	Vector2i(5, 6): FloorStyleDef.Pattern.CONCRETE, Vector2i(6, 6): FloorStyleDef.Pattern.CONCRETE,
-	Vector2i(9, 5): FloorStyleDef.Pattern.CARPET, Vector2i(10, 5): FloorStyleDef.Pattern.CARPET,
+	Vector2i(12, 5): FloorStyleDef.Pattern.CARPET, Vector2i(12, 6): FloorStyleDef.Pattern.CARPET,
 	Vector2i(2, 5): FloorStyleDef.Pattern.HEX_TILE, Vector2i(3, 5): FloorStyleDef.Pattern.HEX_TILE,
 	Vector2i(10, 7): FloorStyleDef.Pattern.TERRACOTTA, Vector2i(11, 7): FloorStyleDef.Pattern.TERRACOTTA,
 	Vector2i(3, 2): FloorStyleDef.Pattern.SMALL_TILE, Vector2i(6, 4): FloorStyleDef.Pattern.SMALL_TILE,
