@@ -153,6 +153,7 @@ var _menu_quality: Dictionary[StringName, Dictionary] = {}
 ## Day-local advice only: these choices were enabled before a layout edit
 ## made their station unavailable. Undo removes restored dishes from the note.
 var _menu_access_losses: Dictionary[StringName, RecipeDef] = {}
+var _menu_access_day: int = 0
 var _menu_access_error: String = ""
 var _menu_panel: MenuPanel
 var _staff_panel: StaffPanel
@@ -1751,6 +1752,7 @@ func build_report(day: int) -> DayReport:
 
 func _new_game() -> void:
 	_menu_access_losses.clear()
+	_menu_access_day = 0
 	_menu_access_error = ""
 	$HUD.set_menu_notice("")
 	blueprint_library = BlueprintLibrary.new()
@@ -1856,7 +1858,10 @@ func _load_autosave() -> bool:
 	menu_settings = choices
 	# The saved layout lists every station; drinks at a station staff cannot
 	# reach stay off the live menu (and out of the next save), as in play.
-	menu_settings.set_catalogue(_cookable_live())
+	var enabled: Array[RecipeDef] = menu_settings.enabled_recipes()
+	var cookable: Array[RecipeDef] = _cookable_live()
+	menu_settings.set_catalogue(cookable)
+	_track_menu_access_losses(enabled, cookable)
 	menu_settings.clear_stash()
 	_apply_menu(sim, menu_settings)
 	if sim.kitchen == null or not sim.kitchen.configure_plates(
@@ -2264,12 +2269,7 @@ func _refresh_menu_catalogue() -> void:
 		$HUD.set_menu_notice(_menu_access_error, true)
 		return
 	_menu_access_error = ""
-	for id: StringName in _menu_access_losses.keys():
-		if cookable.has(_menu_access_losses[id]):
-			_menu_access_losses.erase(id)
-	for recipe: RecipeDef in menu_settings.enabled_recipes():
-		if not cookable.has(recipe):
-			_menu_access_losses[recipe.id] = recipe
+	_track_menu_access_losses(menu_settings.enabled_recipes(), cookable)
 	if menu_settings.set_catalogue(cookable):
 		_apply_menu(sim, menu_settings)
 		if _menu_panel != null:
@@ -2277,6 +2277,20 @@ func _refresh_menu_catalogue() -> void:
 		_recompute_vibe()
 		_refresh_stock_panel()
 	$HUD.set_menu_notice(menu_open_note())
+
+
+## Load filters the saved choices before normal morning setup. Retain those
+## losses for this morning too, without saving a notice or adding a save point.
+func _track_menu_access_losses(enabled: Array[RecipeDef], cookable: Array[RecipeDef]) -> void:
+	if _menu_access_day != Clock.sim.day:
+		_menu_access_losses.clear()
+	_menu_access_day = Clock.sim.day
+	for id: StringName in _menu_access_losses.keys():
+		if cookable.has(_menu_access_losses[id]):
+			_menu_access_losses.erase(id)
+	for recipe: RecipeDef in enabled:
+		if not cookable.has(recipe):
+			_menu_access_losses[recipe.id] = recipe
 
 
 ## The Open-shop note survives Build closing but never becomes save data.
@@ -2827,7 +2841,9 @@ func shop_sell(item_id: int) -> int:
 
 ## Morning setup: new counters, a stocked fridge, and an autosave.
 func _begin_morning() -> void:
-	_menu_access_losses.clear()
+	if _menu_access_day != Clock.sim.day:
+		_menu_access_losses.clear()
+	_menu_access_day = Clock.sim.day
 	_menu_access_error = ""
 	$HUD.set_menu_notice("")
 	# The preceding close may unlock a new type; current guests are unaffected.

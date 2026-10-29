@@ -263,3 +263,100 @@ func test_a_legacy_blocked_morning_save_loads_its_shop_with_opening_refused() ->
 	assert_not_null(_grid().item_at(blocked_spot), "the old edited shop loads rather than starting fresh")
 	assert_eq((_main.get_node("HUD/MenuNotice/Text") as Label).text, MenuAccess.NO_DISH)
 	assert_true((_main.get_node("HUD/Top/Row/Context") as Button).disabled)
+
+
+## Preserve a real old morning choice before
+## load-time reachability filtering, with another meal still reachable.
+func _save_partial_blocked_coffee(enabled: bool) -> Vector2i:
+	await _start()
+	assert_true(_settings().set_owner_level(2))
+	_editor().set_owner_level(2)
+	assert_true(_main.call("shop_buy", &"coffee_machine", Vector2i(12, 5), 2))
+	for id: StringName in [&"tea", &"tomato_soup", &"grilled_cheese"]:
+		assert_true(_main.call("menu_set_enabled", id, false))
+	assert_true(_main.call("menu_set_enabled", &"coffee", enabled))
+	assert_true(_main.call("menu_set_price", &"burger", 18))
+	var cell: Vector2i = _item(&"coffee_machine").work_cells[0]
+	assert_true(_editor().buy(&"potted_plant", cell, 0, ShopEditor.Exact.new()))
+	assert_eq(_settings().is_enabled(&"coffee"), enabled)
+	Clock.sim.phase = SimClock.Phase.CLOSED
+	assert_true(Clock.sim.next_day())
+	var document: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(SaveSystem._slot_path(SLOT)))
+	assert_eq((document["data"]["menu"]["enabled"] as Array).has("coffee"), enabled,
+		"the actual morning autosave retains the pre-filter Coffee choice")
+	return cell
+
+
+func _reload_saved_morning() -> void:
+	_main.get_parent().remove_child(_main)
+	_main.free()
+	_main = MAIN.instantiate()
+	_main.set("use_saves", true)
+	_main.set("save_slot", SLOT)
+	(Engine.get_main_loop() as SceneTree).root.add_child(_main)
+	_main.call("start")
+	_main.set_process(false)
+
+
+func test_loading_enabled_unreachable_dish_keeps_the_same_mornings_opening_note() -> void:
+	var cell: Vector2i = await _save_partial_blocked_coffee(true)
+	_reload_saved_morning()
+	assert_eq((_grid().item_at(cell).def as ItemDef).id, &"potted_plant", "the accepted blocked layout loaded")
+	assert_true(_settings().is_enabled(&"burger"), "another unlocked meal remains reachable")
+	assert_eq(_settings().price_of(_settings().recipe(&"burger")), 18)
+	assert_false(_settings().is_enabled(&"coffee"))
+	assert_null(_settings().recipe(&"coffee"))
+	assert_true((_main.get("_menu_access_losses") as Dictionary).has(&"coffee"))
+	_main.call("_begin_morning")
+	assert_true((_main.get("_menu_access_losses") as Dictionary).has(&"coffee"),
+		"repeated setup of the same morning retains the load-time loss")
+	assert_true(Clock.sim.start_service())
+	var note: String = "Coffee left today's menu: staff can't reach the coffee machine"
+	assert_eq(_main.call("menu_open_note"), note)
+	assert_eq((_main.get_node("HUD/MenuNotice/Text") as Label).text, note)
+	assert_true((_main.get_node("HUD/MenuNotice") as Control).visible)
+	Clock.sim.phase = SimClock.Phase.CLOSED
+	assert_true(Clock.sim.next_day())
+	assert_true((_main.get("_menu_access_losses") as Dictionary).is_empty())
+	assert_eq(_main.call("menu_open_note"), "", "the next morning does not repeat yesterday's loss")
+	assert_false((_main.get_node("HUD/MenuNotice") as Control).visible)
+	_reload_saved_morning()
+	assert_true((_main.get("_menu_access_losses") as Dictionary).is_empty(),
+		"the rewritten save no longer had Coffee enabled")
+
+
+func test_loading_disabled_unreachable_dish_does_not_report_a_loss() -> void:
+	await _save_partial_blocked_coffee(false)
+	_reload_saved_morning()
+	assert_true(_settings().is_enabled(&"burger"))
+	assert_false(_settings().is_enabled(&"coffee"))
+	assert_true((_main.get("_menu_access_losses") as Dictionary).is_empty())
+	assert_true(Clock.sim.start_service())
+	assert_eq(_main.call("menu_open_note"), "")
+	assert_false((_main.get_node("HUD/MenuNotice") as Control).visible)
+
+
+func test_repairing_a_loaded_station_clears_its_loss_and_undo_restores_it() -> void:
+	var cell: Vector2i = await _save_partial_blocked_coffee(true)
+	_reload_saved_morning()
+	assert_true((_main.get("_menu_access_losses") as Dictionary).has(&"coffee"))
+	assert_true(_main.call("set_build_active", true))
+	assert_true(_main.call("shop_move", _grid().item_at(cell).id, Vector2i(10, 9), 0))
+	assert_true(_settings().is_enabled(&"coffee"))
+	assert_true(_main.call("menu_set_enabled", &"tea", false))
+	assert_true((_main.get("_menu_access_losses") as Dictionary).is_empty())
+	assert_true(_main.call("undo_edit"))
+	assert_false(_settings().is_enabled(&"coffee"))
+	assert_true((_main.get("_menu_access_losses") as Dictionary).has(&"coffee"))
+	assert_true(Clock.sim.start_service())
+	assert_eq(_main.call("menu_open_note"), "Coffee left today's menu: staff can't reach the coffee machine")
+
+
+func test_fresh_game_fallback_clears_a_partially_loaded_access_notice() -> void:
+	await _save_partial_blocked_coffee(true)
+	_reload_saved_morning()
+	assert_true((_main.get("_menu_access_losses") as Dictionary).has(&"coffee"))
+	_main.call("_new_game")
+	assert_true((_main.get("_menu_access_losses") as Dictionary).is_empty())
+	assert_eq(_main.get("_menu_access_day"), 0)
+	assert_false((_main.get_node("HUD/MenuNotice") as Control).visible)
