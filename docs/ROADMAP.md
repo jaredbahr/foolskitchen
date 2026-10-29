@@ -20,6 +20,7 @@ Codex takes `worker-ready` issues in this order; the director validates, reviews
 - #179 Hygiene overview in Build
 - #108 Title screen, then #110 First-day guide
 - #126 Seafood menu (data; the deck-plank floor after #202)
+- #114 Tier 2 lease upgrade (more lot to expand)
 
 **Wave 2, after wall finishes and decor (#207) merge**
 - #205 Smarter cutaway, then #84 Lighting decor
@@ -41,7 +42,7 @@ Codex takes `worker-ready` issues in this order; the director validates, reviews
 - #85 Tier 1 balance pass (measure first)
 - Later backlog: #164 more sites, #167 makeovers, #169 staff drama, #170 design extras, #171 food depth, #172 visitors, #173 neighbourhood, #159 entertainment, #180 café counter, #206 premium decor, #125 aquarium
 
-**Waiting on Jared:** #114 Tier 2 (bare lot, lease upgrade or multi-site?) and the cat #119.
+**Also ready (Jared, 2026-10-29):** #114 Tier 2 is a lease upgrade that grows your lot (no move, keep your build). The cat #119 arrives at shop level 4 (art, director-scoped).
 
 ## Phase 0: Foundation
 - [ ] Project skeleton, autoload stubs, test runner, `check.sh`, `get_godot.sh` (FK-001, Claude)
