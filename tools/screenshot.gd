@@ -45,6 +45,8 @@ extends SceneTree
 ##   --walls-review --speed=0 --frames=12,30 [--quarter=N]  D26 wall finishes and wall decor
 ##             (tools/walls_review.gd): Cutaway, then Walls Up with Build > Wall finish
 ##             holding a striped wallpaper drag (--quarter turns the camera for both frames)
+##   --blueprints=selection|ghost|stamped --speed=0 --frames=30
+##             FK-045 original table + rug selection, rotated ghost, or stamped pair.
 ## Ordinary captures record real moods, markers and seeds without a fixture.
 
 const MAX_CAPTURE_WAIT_FRAMES: int = 8
@@ -52,6 +54,7 @@ const MAX_OWNER_WARMUP_TICKS: int = 900
 const SETTINGS_CAPTURE_SIZE: Vector2i = Vector2i(1600, 900)
 const DINER_REVIEW: Script = preload("res://tools/diner_review.gd")
 const FLOORS_REVIEW: Script = preload("res://tools/floors_review.gd")
+const BLUEPRINT_REVIEW: Script = preload("res://tools/blueprint_review.gd")
 const WALLS_REVIEW: Script = preload("res://tools/walls_review.gd")
 ## --floors-review: the frame Build > Floors opens with its drag held.
 const FLOORS_DRAG_FRAME: int = 20
@@ -129,6 +132,8 @@ var _build: String = ""
 var _paint: bool = false
 var _walls: String = ""
 var _expand: String = ""
+var _blueprint_profile: String = ""
+var _blueprint_fixture: Dictionary = {}
 var _rooms: String = ""
 var _rooms_paused: bool = false
 var _door_queue: bool = false
@@ -169,6 +174,11 @@ func _initialize() -> void:
 		_fail_capture(milestone_options["error"])
 		return
 	_milestone_review = milestone_options["enabled"]
+	var blueprint_options: Dictionary = BLUEPRINT_REVIEW.options(OS.get_cmdline_user_args())
+	if not String(blueprint_options["error"]).is_empty():
+		_fail_capture(blueprint_options["error"])
+		return
+	_blueprint_profile = blueprint_options["profile"]
 	var catalogue_options: Dictionary = catalogue_review_options(OS.get_cmdline_user_args())
 	if not String(catalogue_options["error"]).is_empty():
 		_fail_capture(catalogue_options["error"])
@@ -1327,26 +1337,34 @@ static func catalogue_review_valid(state: Dictionary, frame: int, fixture: Dicti
 	if frame != 90 or state["catalogue_visible"] != true or state["build_active"] != true \
 			or state["category"] != String(profile["category"]) or state["onscreen_cards"] < 1:
 		return false
+	if not catalogue_tabs_valid(state, profile):
+		return false
+	var cache: Dictionary = state["cache"]
+	return cache["supported"] == true and cache["pending"] == 0 and cache["active"] == false \
+		and cache["failed"] == 0 and cache["error"] == "" and cache["icons_match"] == true and cache["cached"] == cache["expected"] \
+		and cache["cached_scenes"] == cache["expected_scenes"]
+
+
+## Native tab validation is independent of thumbnail rendering, so headless
+## real-Main tests can guard visible tabs without fabricating preview pixels.
+static func catalogue_tabs_valid(state: Dictionary, profile: Dictionary) -> bool:
 	if state["tabs"].size() != BuildCatalogue.CATEGORY_IDS.size():
 		return false
-	# Buy mode (FK-085) shows one tab per room that holds an item; the Build
-	# tabs belong to the other side and stay hidden.
+	# Buy mode shows each room with items plus the player blueprint library.
+	# The library is not an ItemDef room. Build tabs still stay hidden.
 	var rooms: Array[String] = []
 	for card: Dictionary in state.get("expected_cards", []):
 		if not rooms.has(String(card.get("room", ""))):
 			rooms.append(String(card.get("room", "")))
 	for tab: Dictionary in state["tabs"]:
 		var id: StringName = StringName(tab["id"])
-		var expected_shown: bool = rooms.has(String(id))
+		var expected_shown: bool = id == BuildCatalogue.BLUEPRINTS or rooms.has(String(id))
 		if tab["text"] != BuildCatalogue.CATEGORY_LABELS.get(id, "") or tab["pressed"] != (id == profile["category"]) \
 				or tab.get("shown") != expected_shown:
 			return false
 		if expected_shown and (tab["native"]["visible"] != true or tab["native"]["inside_clip"] != true):
 			return false
-	var cache: Dictionary = state["cache"]
-	return cache["supported"] == true and cache["pending"] == 0 and cache["active"] == false \
-		and cache["failed"] == 0 and cache["error"] == "" and cache["icons_match"] == true and cache["cached"] == cache["expected"] \
-		and cache["cached_scenes"] == cache["expected_scenes"]
+	return true
 
 
 ## Re-evaluate the actual layout/menu/paint independently of Main's cached
@@ -1827,6 +1845,14 @@ func _process(_delta: float) -> bool:
 			if not String(_catalogue_fixture["error"]).is_empty():
 				_fail_capture(_catalogue_fixture["error"])
 				return true
+		if not _blueprint_profile.is_empty():
+			_blueprint_fixture = BLUEPRINT_REVIEW.prepare(_main, _blueprint_profile)
+			if not String(_blueprint_fixture.get("error", "")).is_empty():
+				_fail_capture(_blueprint_fixture["error"])
+				return true
+			if _blueprint_profile == "ghost":
+				var camera: Camera3D = _main.get_node("CameraRig/Camera3D") as Camera3D
+				_build_pointer = camera.unproject_position(GridMath.cell_to_world(BLUEPRINT_REVIEW.TARGET))
 		_configure_inspection()
 		if _failed:
 			return true
@@ -1926,7 +1952,7 @@ func _process(_delta: float) -> bool:
 		if _settings_keyboard["settings_closed"] != true or _settings_keyboard["menu_visible"] != false:
 			_fail_capture("native Close acceptance did not return from Settings to the world")
 			return true
-	if (not _build.is_empty() or _walls == "place" or _expand == "drag" or _rooms == "tool" or _rooms == "refused") \
+	if (not _build.is_empty() or _walls == "place" or _expand == "drag" or _rooms == "tool" or _rooms == "refused" or _blueprint_profile == "ghost") \
 			and _frames >= 3:
 		_hold_build_pointer()
 	if _rooms == "restroom" and _frames > 3 and not _rooms_paused:
@@ -2820,6 +2846,10 @@ func _capture() -> void:
 			"cache": catalogue_state.get("cache", {}), "vibe": catalogue_state.get("vibe", {}),
 			"generated_vibe_uids": catalogue_state.get("generated_vibe_uids", {})}))
 		return
+	var blueprint_state: Dictionary = BLUEPRINT_REVIEW.evidence(_main) if not _blueprint_profile.is_empty() else {}
+	if not _blueprint_profile.is_empty() and not BLUEPRINT_REVIEW.valid(blueprint_state, _blueprint_profile):
+		_fail_capture("blueprint review did not match its native selection, ghost or stamped pair: " + JSON.stringify(blueprint_state))
+		return
 	var walls_state: Dictionary = WALLS_REVIEW.evidence(_main) if _walls_review else {}
 	if _walls_review and not _walls_review_valid(walls_state):
 		_fail_capture("walls review did not match its fixture or Wall finish tool state: " + JSON.stringify(walls_state))
@@ -3041,6 +3071,8 @@ func _capture() -> void:
 			"generated_uids": generated_uid_evidence(CATALOGUE_UID_SOURCES)}
 	if _floors_review:
 		metadata["floors_review"] = {"fixture": _floors_fixture, "state": floors_state}
+	if not _blueprint_profile.is_empty():
+		metadata["blueprints"] = {"fixture": _blueprint_fixture, "state": blueprint_state}
 	if _walls_review:
 		metadata["walls_review"] = {"fixture": _walls_fixture, "state": walls_state}
 	if _diner_review:

@@ -1059,6 +1059,24 @@ func _assert_catalogue_capture_fixture(profile: StringName) -> void:
 	assert_true(catalogue["catalogue_visible"])
 	_assert_catalogue_cards_match_data(catalogue, content)
 	_assert_catalogue_vibe_matches_actual_sources(catalogue, 90)
+	assert_true(CAPTURE.catalogue_tabs_valid(catalogue, recipe), "the real Buy tabs include Blueprints without an ItemDef room")
+	var blueprint_index: int = -1
+	for index: int in range(catalogue["tabs"].size()):
+		if catalogue["tabs"][index]["id"] == String(BuildCatalogue.BLUEPRINTS):
+			blueprint_index = index
+	assert_true(blueprint_index >= 0)
+	if blueprint_index >= 0:
+		for field: String in ["shown", "text", "id"]:
+			var invalid: Dictionary = catalogue.duplicate(true)
+			invalid["tabs"][blueprint_index][field] = false if field == "shown" else "missing"
+			assert_false(CAPTURE.catalogue_tabs_valid(invalid, recipe), "hidden or malformed Blueprints must fail")
+		for field: String in ["visible", "inside_clip"]:
+			var invalid: Dictionary = catalogue.duplicate(true)
+			invalid["tabs"][blueprint_index]["native"][field] = false
+			assert_false(CAPTURE.catalogue_tabs_valid(invalid, recipe), "Blueprints must be visibly inside the viewport")
+		var missing: Dictionary = catalogue.duplicate(true)
+		missing["tabs"].remove_at(blueprint_index)
+		assert_false(CAPTURE.catalogue_tabs_valid(missing, recipe), "a missing tab must fail")
 	var bad_meter: Dictionary = catalogue["vibe"].duplicate(true)
 	bad_meter["meter"]["caption_bounds"][0] = float(bad_meter["meter"]["panel_bounds"][0]) - 10.0
 	assert_false(CAPTURE.catalogue_vibe_valid(bad_meter, 90), "the native meter cannot be clipped out of its panel or scroll viewport")

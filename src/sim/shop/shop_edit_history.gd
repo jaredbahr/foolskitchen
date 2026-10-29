@@ -14,7 +14,7 @@ const MAX_ENTRIES: int = 200
 
 ## D26: WALL_FINISH puts up or recolours wall finishes; HANG, TAKE_DOWN and
 ## REHANG are wall decor bought, sold and moved.
-enum Kind { BUY, MOVE, SELL, WALLS, FLOOR, PAINT, ROOMS, FLOORING, WALL_FINISH, HANG, TAKE_DOWN, REHANG }
+enum Kind { BUY, MOVE, SELL, WALLS, FLOOR, PAINT, ROOMS, FLOORING, WALL_FINISH, HANG, TAKE_DOWN, REHANG, STAMP }
 
 ## One placed item across undo and redo. Re-placing an item gives it a new
 ## grid id, so entries share this reference instead of holding raw ids.
@@ -25,6 +25,8 @@ class Entry extends RefCounted:
 	var kind: Kind = Kind.BUY
 	## Player words for the undo/redo buttons, e.g. "buy Round table".
 	var label: String = ""
+	var blueprint: Blueprint
+	var items: Array[ItemRef] = []
 	var item: ItemRef
 	var def_id: StringName = &""
 	var origin: Vector2i = Vector2i.ZERO
@@ -130,6 +132,24 @@ func buy(def_id: StringName, origin: Vector2i, quarter_turns: int = 0, swatch_id
 	entry.swatch_id = _paint_value(&"item", _editor.last_item_id)
 	entry.cash = _editor.last_cash_change
 	entry.label = "buy " + _name(_editor.last_item_id)
+	_push(entry)
+	return true
+
+
+## One entry for the entire group. Keep a private copy so renaming/deleting
+## the library entry cannot alter redo; shared item refs survive later sales.
+func stamp(blueprint: Blueprint, anchor: Vector2i, rotation: int = 0) -> bool:
+	if not _editor.stamp(blueprint, anchor, rotation):
+		return false
+	var entry: Entry = Entry.new()
+	entry.kind = Kind.STAMP
+	entry.blueprint = blueprint.copy()
+	entry.origin = anchor
+	entry.turns = rotation
+	entry.cash = _editor.last_cash_change
+	entry.label = CatalogueText.blueprint_stamp_label(blueprint.display_name)
+	for id: int in _editor.last_stamp_ids:
+		entry.items.append(_ref(id))
 	_push(entry)
 	return true
 
@@ -411,6 +431,15 @@ func _invert(entry: Entry) -> bool:
 	_editor.last_check = EditCheck.new(true)
 	var exact: ShopEditor.Exact = ShopEditor.Exact.new(-entry.cash, UNDO_NOTE)
 	match entry.kind:
+		Kind.STAMP:
+			var ids: Array[int] = []
+			for item: ItemRef in entry.items:
+				ids.append(item.id)
+			if not _check(_editor.remove_stamp(ids, exact)):
+				return false
+			for id: int in ids:
+				_refs.erase(id)
+			return true
 		Kind.BUY:
 			return _remove(entry, exact)
 		Kind.SELL:
@@ -463,6 +492,14 @@ func _reapply(entry: Entry) -> bool:
 	_editor.last_check = EditCheck.new(true)
 	var exact: ShopEditor.Exact = ShopEditor.Exact.new(entry.cash, REDO_NOTE)
 	match entry.kind:
+		Kind.STAMP:
+			if not _check(_editor.stamp(entry.blueprint, entry.origin, entry.turns, exact)):
+				return false
+			for index: int in entry.items.size():
+				var item: ItemRef = entry.items[index]
+				item.id = _editor.last_stamp_ids[index]
+				_refs[item.id] = item
+			return true
 		Kind.BUY:
 			return _restore(entry, exact)
 		Kind.SELL:
