@@ -1154,7 +1154,8 @@ an active edit/panel/selection first, or opens Settings when none is active.
   weight 0): `toilet` (station_type `toilet`, Kenney `toilet`) and
   `bathroom_sink` ("Wash basin", Kenney `bathroomSink`), both
   `catalogue_room = restroom`, so Buy's Restroom tab appears. FK-103 adds `restroom_mirror` using the kit's
-  `bathroomMirror`: WALL / INSIDE_FACE, RESTROOM, charm 1. `WallDecor.room_hint`
+  `bathroomMirror` and `wall_hand_dryer` using the approved made hand dryer:
+  both WALL / INSIDE_FACE, RESTROOM, charm 1. `WallDecor.room_hint`
   suggests marking a Restroom when hung elsewhere; it never refuses placement.
   Hung RESTROOM accents contribute charm with the usual diminishing returns;
   floor fixtures still do not. `STALL_PARTITION` is appended to the segment

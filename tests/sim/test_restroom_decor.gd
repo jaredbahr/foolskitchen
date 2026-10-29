@@ -44,6 +44,27 @@ func test_mirror_hangs_inside_or_outside_restroom_with_hint_only() -> void:
 	assert_eq(CatalogueText.charm_text(mirror), "Charm +1")
 
 
+func test_dryer_hangs_inside_or_outside_restroom_with_hint_only() -> void:
+	var grid: SimGrid = _sim.world.grid
+	var dryer: ItemDef = _content.item(&"wall_hand_dryer")
+	assert_true(dryer.placement_layer_valid())
+	assert_eq(dryer.placement_layer, ItemDef.PlacementLayer.WALL)
+	assert_eq(dryer.wall_mount, ItemDef.WallMount.INSIDE_FACE)
+	assert_eq(dryer.category, ItemDef.Category.RESTROOM)
+	assert_eq(dryer.buy_room(), &"restroom")
+	assert_true(_editor.check_hang(dryer.id, FACE).ok)
+	assert_false(WallDecor.room_hint(grid, dryer, FACE).is_empty())
+	var before: Array[Vector2i] = grid.find_guest_path(Vector2i(6, 11), Vector2i(1, 8))
+	assert_true(_editor.hang(dryer.id, FACE), _editor.last_check.why)
+	assert_eq(grid.find_guest_path(Vector2i(6, 11), Vector2i(1, 8)), before)
+	grid.set_rooms({Vector2i(1, 8): SimGrid.Room.RESTROOM} as Dictionary[Vector2i, int])
+	assert_eq(WallDecor.room_hint(grid, dryer, FACE), "")
+	assert_true(_editor.check_rehang(FACE, FACE).ok)
+	assert_null(grid.place_def(dryer, Vector2i(1, 8), 0), "never becomes a floor obstruction")
+	assert_eq(CatalogueText.group_for(dryer), &"wall_decor")
+	assert_eq(CatalogueText.charm_text(dryer), "Charm +1")
+
+
 func test_mirror_adds_small_charm_but_toilets_do_not() -> void:
 	var grid: SimGrid = _sim.world.grid
 	var tuning: VibeTuning = (load("res://data/balance/vibe.tres") as VibeTuning).duplicate() as VibeTuning
@@ -51,6 +72,29 @@ func test_mirror_adds_small_charm_but_toilets_do_not() -> void:
 	tuning.free_variety = 0
 	var before: VibeModel.Result = VibeModel.evaluate(VibeInputs.capture(grid, _content, []), tuning)
 	assert_true(_editor.hang(&"restroom_mirror", FACE))
+	var after: VibeModel.Result = VibeModel.evaluate(VibeInputs.capture(grid, _content, [], &"", &"", _editor.decor_vibe_items()), tuning)
+	assert_true(after.valid)
+	assert_almost_eq(after.decor_points - before.decor_points, tuning.decor_points_per_charm, 0.0001)
+	assert_almost_eq(after.crowding_penalty, before.crowding_penalty, 0.0001)
+	var toilet: ItemDef = _content.item(&"toilet")
+	assert_eq(CatalogueText.charm_text(toilet), "")
+	# Even a malformed caller's floor fixture charm cannot count as wall decor.
+	var inputs: VibeModel.Inputs = VibeModel.Inputs.new()
+	var floor_fixture: VibeModel.Item = VibeModel.Item.new()
+	floor_fixture.definition_id = toilet.id
+	floor_fixture.category = ItemDef.Category.RESTROOM
+	floor_fixture.charm = 1.0
+	inputs.items.append(floor_fixture)
+	assert_almost_eq(VibeModel.evaluate(inputs, tuning).decor_points, 0.0, 0.0001)
+
+
+func test_dryer_adds_small_charm_but_toilets_do_not() -> void:
+	var grid: SimGrid = _sim.world.grid
+	var tuning: VibeTuning = (load("res://data/balance/vibe.tres") as VibeTuning).duplicate() as VibeTuning
+	tuning.free_charm = 0.0
+	tuning.free_variety = 0
+	var before: VibeModel.Result = VibeModel.evaluate(VibeInputs.capture(grid, _content, []), tuning)
+	assert_true(_editor.hang(&"wall_hand_dryer", FACE))
 	var after: VibeModel.Result = VibeModel.evaluate(VibeInputs.capture(grid, _content, [], &"", &"", _editor.decor_vibe_items()), tuning)
 	assert_true(after.valid)
 	assert_almost_eq(after.decor_points - before.decor_points, tuning.decor_points_per_charm, 0.0001)
@@ -99,6 +143,7 @@ func test_partition_between_two_toilets_keeps_both_and_basin_accessible() -> voi
 	assert_false(_editor.check_segments({Vector3i(4, 9, SimGrid.EDGE_NORTH):
 		SimGrid.Segment.STALL_PARTITION} as Dictionary[Vector3i, int]).ok)
 	assert_true(_editor.hang(&"restroom_mirror", FACE), _editor.last_check.why)
+	assert_true(_editor.hang(&"wall_hand_dryer", Vector3i(1, 7, 3)), _editor.last_check.why)
 	assert_eq(_content.wall_kinds().size(), 4)
 	assert_eq(_content.wall_kind_for(SimGrid.Segment.STALL_PARTITION).id, &"stall_partition")
 	var errors: Array[String] = []
@@ -107,6 +152,7 @@ func test_partition_between_two_toilets_keeps_both_and_basin_accessible() -> voi
 	var restored: SimWorld = ShopBuilder.build(saved, _content, errors)
 	assert_eq(errors, [] as Array[String])
 	assert_eq(saved.wall_items[FACE], &"restroom_mirror")
+	assert_eq(saved.wall_items[Vector3i(1, 7, 3)], &"wall_hand_dryer")
 	assert_eq(restored.grid.segment(edge), SimGrid.Segment.STALL_PARTITION)
 	assert_eq(RoomRules.restroom_toilets(restored.grid).size(), 2)
 

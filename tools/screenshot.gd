@@ -45,6 +45,8 @@ extends SceneTree
 ##   --walls-review --speed=0 --frames=12,30 [--quarter=N]  D26 wall finishes and wall decor
 ##             (tools/walls_review.gd): Cutaway, then Walls Up with Build > Wall finish
 ##             holding a striped wallpaper drag (--quarter turns the camera for both frames)
+##   --restroom-review --speed=0 --frames=12,30 shows the complete two-toilet
+##             restroom, then a close wall-fitting view with the owner for scale.
 ## Ordinary captures record real moods, markers and seeds without a fixture.
 
 const MAX_CAPTURE_WAIT_FRAMES: int = 8
@@ -52,6 +54,7 @@ const MAX_OWNER_WARMUP_TICKS: int = 900
 const SETTINGS_CAPTURE_SIZE: Vector2i = Vector2i(1600, 900)
 const DINER_REVIEW: Script = preload("res://tools/diner_review.gd")
 const FLOORS_REVIEW: Script = preload("res://tools/floors_review.gd")
+const RESTROOM_REVIEW: Script = preload("res://tools/restroom_review.gd")
 const WALLS_REVIEW: Script = preload("res://tools/walls_review.gd")
 ## --floors-review: the frame Build > Floors opens with its drag held.
 const FLOORS_DRAG_FRAME: int = 20
@@ -141,6 +144,7 @@ var _catalogue_fixture: Dictionary = {}
 var _diner_review: bool = false
 var _diner_fixture: Dictionary = {}
 var _floors_review: bool = false
+var _restroom_review: bool = false
 var _walls_review: bool = false
 var _walls_fixture: Dictionary = {}
 var _floors_fixture: Dictionary = {}
@@ -236,6 +240,8 @@ func _initialize() -> void:
 			_build = requested
 		elif arg == "--paint":
 			_paint = true
+		elif arg == "--restroom-review":
+			_restroom_review = true
 		elif arg.begins_with("--walls-review"):
 			if arg != "--walls-review":
 				_fail_capture("--walls-review does not accept a value")
@@ -318,6 +324,13 @@ func _initialize() -> void:
 		_fail_capture("--floors-review requires a paused fresh morning without other options, and a frame after %d" \
 			% FLOORS_DRAG_FRAME)
 		return
+	if _restroom_review and (_scene_path != "res://src/world/main.tscn" or _speed != 0 or _open or _fast != 0
+			or _walls_review or _floors_review or _diner_review or not _rooms.is_empty() or not _walls.is_empty()
+			or not _expand.is_empty() or not _build.is_empty() or _paint or _menu or _staff or _stock or _settings
+			or _report_requested or _milestone_review or _loan_review or not _catalogue_profile.is_empty()
+			or not _selection.is_empty() or _assign_owner or _door_queue or _f3 or _quarter >= 0):
+		_fail_capture("--restroom-review requires a paused fresh morning without other view options")
+		return
 	if _walls_review and (_scene_path != "res://src/world/main.tscn" or _open or _fast != 0 or _speed != 0 \
 			or not _build.is_empty() or _paint or not _walls.is_empty() or not _expand.is_empty() or _floors_review \
 			or not _rooms.is_empty() or _menu or _staff or _settings or not _selection.is_empty() or _f3 \
@@ -366,7 +379,7 @@ func _initialize() -> void:
 	if "use_saves" in _main:
 		_main.set("use_saves", false)
 	if (_report_requested or _milestone_review or _diner_review or _expand == "shop" or not _rooms.is_empty() \
-			or _floors_review or _walls_review or _assign_owner) \
+			or _floors_review or _walls_review or _restroom_review or _assign_owner) \
 			and "new_game_seed_override" in _main:
 		_main.set("new_game_seed_override", 1)
 	root.add_child(_main)
@@ -1773,6 +1786,11 @@ func _process(_delta: float) -> bool:
 			_configure_rooms()
 			if _failed:
 				return true
+		if _restroom_review:
+			var refusal: String = RESTROOM_REVIEW.prepare(_main, root)
+			if not refusal.is_empty():
+				_fail_capture(refusal)
+				return true
 		if _walls_review:
 			_walls_fixture = WALLS_REVIEW.prepare(_main, root)
 			if not String(_walls_fixture.get("error", "")).is_empty():
@@ -1787,6 +1805,8 @@ func _process(_delta: float) -> bool:
 			(clock.get("sim") as SimClock).start_service()
 		clock.call("set_speed", _speed)
 		_configure_camera()
+		if _restroom_review:
+			RESTROOM_REVIEW.focus(_main, false)
 		if not _rooms.is_empty() and _quarter < 0:
 			(_main.get_node("ShopView") as ShopView).set_wall_mode(ShopView.WallMode.UP)
 		if _rooms == "tool" or _rooms == "refused":
@@ -1873,6 +1893,8 @@ func _process(_delta: float) -> bool:
 		_build_pointer = drag["pointer"]
 	if _floors_review and _frames > FLOORS_DRAG_FRAME:
 		_hold_build_pointer()
+	if _restroom_review and _frames == 20:
+		RESTROOM_REVIEW.focus(_main, true)
 	if _walls_review and _frames == WALLS_REVIEW.WALL_UP_FRAME:
 		var wall_drag: Dictionary = WALLS_REVIEW.begin_drag(_main, root)
 		if not String(wall_drag.get("error", "")).is_empty():
@@ -3020,6 +3042,9 @@ func _capture() -> void:
 			"generated_uids": generated_uid_evidence(CATALOGUE_UID_SOURCES)}
 	if _floors_review:
 		metadata["floors_review"] = {"fixture": _floors_fixture, "state": floors_state}
+	if _restroom_review:
+		metadata["restroom_review"] = {"fixture": "two-toilet restroom with standing owner",
+			"close_view": _capture_frame >= 20}
 	if _walls_review:
 		metadata["walls_review"] = {"fixture": _walls_fixture, "state": walls_state}
 	if _diner_review:
