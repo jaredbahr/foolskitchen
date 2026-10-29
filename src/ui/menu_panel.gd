@@ -16,6 +16,8 @@ const STANDARD_COLOR: Color = Color("3b2a20")
 const LOWER_COLOR: Color = Color("38764b")
 const HIGHER_COLOR: Color = Color("a83e35")
 const LOCKED_COLOR: Color = Color("766b60")
+## Same amber as the HUD restock advice, without importing its autoload adapter.
+const ADVICE_COLOR: Color = Color("7F5100")
 const SECTION_FONT_SIZE: int = 22
 const MORNING_HINT: String = "Menu changes are available in the morning."
 ## Widest panel; narrower windows (or a large UI scale) keep a margin each side.
@@ -107,7 +109,7 @@ func set_lease_offer(offered: bool, cost: String, warning: String, refusal: Stri
 	var advice: Label = box.get_node("Warning")
 	advice.text = warning
 	advice.visible = not warning.is_empty()
-	advice.add_theme_color_override("font_color", preload("res://src/ui/hud.gd").ADVICE_COLOR)
+	advice.add_theme_color_override("font_color", ADVICE_COLOR)
 	var reason: Label = box.get_node("Refusal")
 	reason.text = refusal
 	reason.visible = not refusal.is_empty()

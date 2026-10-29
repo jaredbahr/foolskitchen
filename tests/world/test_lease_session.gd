@@ -83,6 +83,7 @@ func test_offer_and_refusals_are_morning_only_and_side_effect_free() -> void:
 	Economy.cash = LEASE.deposit + 1
 	assert_false((_offer().get_node("Accept") as Button).disabled, "restock advice does not block")
 	assert_true((_offer().get_node("Warning") as Label).visible)
+	assert_eq((_offer().get_node("Warning") as Label).get_theme_color("font_color"), Color("7F5100"))
 	Economy.loan.principal = 1
 	assert_false(_main.call("lease_buy"))
 	Economy.loan.principal = 0
