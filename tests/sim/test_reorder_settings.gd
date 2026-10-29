@@ -182,6 +182,36 @@ func test_station_target_follows_menu_use_and_preserves_saved_zero() -> void:
 	assert_eq(restored.target(&"frozen_fries"), 0, "explicit old-save zero is a player choice")
 	settings.set_in_use([])
 	assert_false(settings.ids().has(&"frozen_fries"))
+	assert_true(restored.copy().target(&"frozen_fries") == 0)
+	var capacity: Dictionary[int, int] = {StorageSpace.FREEZER: 40}
+	var kinds: Dictionary[StringName, int] = {&"frozen_fries": StorageSpace.FREEZER}
+	var stock: Stock = Stock.new()
+	restored.set_in_use([&"frozen_fries"])
+	assert_eq(_quantity(restored.plan(stock, {&"frozen_fries": 1}, 100, 0.05, true,
+		StorageSpace.new(capacity, stock, {}, kinds))), 0, "a saved zero never buys even with a freezer")
+
+
+func test_missing_disabled_and_custom_frozen_targets_keep_player_intent() -> void:
+	var settings: ReorderSettings = ReorderSettings.new(TUNING)
+	assert_true(settings.from_dict({"version": 1, "ingredients": {}}))
+	assert_eq(settings.target(&"frozen_fries"), 12, "a missing row inherits the new default")
+	var stock: Stock = Stock.new()
+	var capacity: Dictionary[int, int] = {StorageSpace.FREEZER: 40}
+	var kinds: Dictionary[StringName, int] = {&"frozen_fries": StorageSpace.FREEZER}
+	var room: StorageSpace = StorageSpace.new(capacity, stock, {}, kinds)
+	for enabled: bool in [false, true]:
+		assert_true(settings.from_dict({"version": 1, "ingredients": {
+			"frozen_fries": {"enabled": enabled, "target": 7}}}))
+		var restored: ReorderSettings = ReorderSettings.new(TUNING)
+		assert_true(restored.from_dict(JSON.parse_string(JSON.stringify(settings.to_dict()))))
+		assert_eq(restored.target(&"frozen_fries"), 7)
+		assert_eq(restored.is_enabled(&"frozen_fries"), enabled)
+		restored.set_in_use([&"frozen_fries"])
+		assert_eq(_quantity(restored.copy().plan(stock, {&"frozen_fries": 1}, 100, 0.05, true, room)),
+			7 if enabled else 0)
+		restored.set_in_use([])
+		assert_eq(_quantity(restored.plan(stock, {&"frozen_fries": 1}, 100, 0.05, true, room)), 0)
+		assert_eq(restored.target(&"frozen_fries"), 7)
 
 
 func test_freezer_capacity_and_pending_orders_bound_the_plan_without_mutation() -> void:
@@ -192,7 +222,10 @@ func test_freezer_capacity_and_pending_orders_bound_the_plan_without_mutation() 
 	var kinds: Dictionary[StringName, int] = {&"frozen_fries": StorageSpace.FREEZER}
 	var capacity: Dictionary[int, int] = {StorageSpace.FREEZER: 0}
 	var absent: StorageSpace = StorageSpace.new(capacity, stock, {}, kinds)
-	assert_eq(_quantity(settings.plan(stock, costs, 100, 0.05, true, absent)), 0)
+	var blocked: Dictionary = settings.plan(stock, costs, 100, 0.05, true, absent)
+	assert_eq(_quantity(blocked), 0)
+	assert_eq(blocked["cost"], 0)
+	assert_eq(blocked["unfit"].get(&"frozen_fries", 0), 12)
 	capacity[StorageSpace.FREEZER] = 12
 	var room: StorageSpace = StorageSpace.new(capacity, stock, {}, kinds)
 	assert_eq(_quantity(settings.plan(stock, costs, 100, 0.05, true, room)), 12)
@@ -203,6 +236,12 @@ func test_freezer_capacity_and_pending_orders_bound_the_plan_without_mutation() 
 	assert_eq(room.pending_of(&"frozen_fries"), 5)
 	assert_eq(settings.to_dict(), before)
 	assert_eq(stock.count(&"frozen_fries"), 0)
+	kinds[&"another_frozen_food"] = StorageSpace.FREEZER
+	stock.add(&"another_frozen_food", 4, 1)
+	room = StorageSpace.new(capacity, stock, pending, kinds)
+	assert_eq(_quantity(settings.plan(stock, costs, 100, 0.05, true, room)), 3,
+		"other frozen goods and pending fries share the same freezer capacity")
+	assert_true(stock.take(&"another_frozen_food", 4))
 	stock.add(&"frozen_fries", 12, 1)
 	room = StorageSpace.new(capacity, stock, {}, kinds)
 	assert_eq(_quantity(settings.plan(stock, costs, 100, 0.05, true, room)), 0)
