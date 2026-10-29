@@ -9,7 +9,9 @@ extends Node3D
 ## nothing here, so a shop without finishes renders exactly as before.
 ## Hung items are the item's PropView wrapper with its back on the face; they
 ## hide while their wall is lowered (they would float over the stub), and the
-## build ghost shows on any face so placing still reads.
+## build ghost shows on any face so placing still reads. A window item (the
+## neon OPEN sign) hangs in an outside window instead, fitted to its opening
+## and facing the street (window_transform).
 
 const SHADER: Shader = preload("res://src/world/wall_finish.gdshader")
 ## The facing sits this far off the wall surface (no depth fighting).
@@ -35,6 +37,23 @@ const GLOW_ATTENUATION: float = 1.6
 ## and the shop's lights still see it), and its glow skips it: the light
 ## would wash out the sign it comes from.
 const GLOW_SELF_LAYER: int = 1 << 19
+## A window item (the OPEN sign) hangs in the street end of the opening, its
+## front to the street just inside the wall's outer face (the steep camera
+## sees no deeper into a window from outside; from the room it shows its back
+## through the glass), scaled down (never up) to this share of the opening's
+## width and height, and centred in it. Its glow stands in the middle of the
+## opening, so it pools on the floor inside and the pavement outside alike.
+const WINDOW_GAP: float = 0.012
+const WINDOW_FILL: Vector2 = Vector2(0.9, 0.8)
+## A window item's glow never reaches another room: its light is this small
+## (it lights the window's own jambs; a neighbouring room is at least 0.375 m
+## away, past an interior wall at the window cell's side), and the pools on
+## the floor inside and the ground outside are flat additive glow squares,
+## each exactly the one cell in front of the window, brightest at the wall.
+const WINDOW_GLOW_RANGE: float = 0.34
+const WINDOW_GLOW_ENERGY: float = 0.6
+const POOL_LIFT: float = 0.004
+const POOL_STRENGTH: float = 0.55
 
 var _grid: SimGrid
 var _content: ContentDB
@@ -133,7 +152,13 @@ func show_ghost(definition: ItemDef, anchor: Vector3i, valid: bool, moving: Vect
 	var tint: Color = BuildPreview.VALID_COLOR if valid else BuildPreview.INVALID_COLOR
 	tint.a = BuildPreview.VALID_ALPHA if valid else BuildPreview.INVALID_ALPHA
 	_ghost.set_ghost_tint(tint)
-	_ghost.transform = hung_transform(_grid, anchor, definition.footprint.x)
+	if definition.hangs_in_window():
+		# In a window, or (refused) flat on the pointed wall face.
+		fit_window(_ghost)
+		_ghost.transform = window_transform(anchor, _ghost.get_aabb()) if WallFaces.is_window(_grid, anchor) \
+			else hung_transform(_grid, anchor, 1)
+	else:
+		_ghost.transform = hung_transform(_grid, anchor, definition.footprint.x)
 	_ghost.set_meta(&"anchor", anchor)
 	add_child(_ghost)
 
@@ -351,6 +376,31 @@ static func hung_transform(grid: SimGrid, anchor: Vector3i, width: int) -> Trans
 	return Transform3D(basis, centre)
 
 
+## Scales a window item's model down to fit the window opening (WINDOW_FILL).
+static func fit_window(node: ItemVisual) -> void:
+	var box: AABB = node.get_aabb()
+	var opening: Rect2 = WallSegmentView.window_opening()
+	if box.size.x <= 0.0 or box.size.y <= 0.0 or opening.size.x <= 0.0:
+		return
+	var fit: float = minf(1.0, minf(opening.size.x * WINDOW_FILL.x / box.size.x, opening.size.y * WINDOW_FILL.y / box.size.y))
+	var part: Node3D = node.prop if node.prop != null else node.fallback
+	if part != null:
+		part.scale *= fit
+
+
+## Where a window item's wrapper stands: its front (-Z) to the street, just
+## inside the shell's outer face, centred in the opening (`box`: its fitted
+## bounds).
+static func window_transform(slot: Vector3i, box: AABB) -> Transform3D:
+	var into: Vector2i = WallFaces.step(slot)
+	var out: Vector3 = Vector3(into.x, 0.0, into.y)
+	var opening: Rect2 = WallSegmentView.window_opening()
+	var basis: Basis = Basis(Vector3.UP, atan2(-float(into.x), -float(into.y)))
+	var at: Vector3 = GridMath.cell_to_world(WallFaces.cell(slot)) + out * (GridMath.CELL_SIZE * 1.5 - WINDOW_GAP) \
+		+ Vector3.UP * opening.get_center().y
+	var front: Vector3 = Vector3(box.get_center().x, box.get_center().y, box.position.z)
+	return Transform3D(basis, at - basis * front)
+
 func _rebuild_items() -> void:
 	var wanted: Dictionary[Vector3i, bool] = {}
 	if _decor != null and _grid != null:
@@ -375,18 +425,26 @@ func _rebuild_items() -> void:
 			node.set_meta(&"anchor", anchor)
 			node.set_meta(&"def_id", definition.id)
 			item_nodes[anchor] = node
+			if hung.window:
+				fit_window(node)
 			add_child(node)
-			_add_glow(node, definition)
-		node.transform = hung_transform(_grid, anchor, hung.width)
+			_add_glow(node, definition, hung.window)
+		node.transform = window_transform(anchor, node.get_aabb()) if hung.window \
+			else hung_transform(_grid, anchor, hung.width)
+		if hung.window:
+			place_window_glow(node, anchor)
 	_sync_item_visibility()
 
 
 ## The soft light of a glowing item, a child of its visual so it hides with
-## it (a lowered wall, a held item). Build ghosts get none.
-static func _add_glow(node: ItemVisual, definition: ItemDef) -> void:
+## it (a lowered wall, a held item). Build ghosts get none. A window item's
+## stands in the middle of the opening, behind its front.
+static func _add_glow(node: ItemVisual, definition: ItemDef, window: bool = false) -> void:
 	if definition.glow_color.a <= 0.0:
 		return
 	var box: AABB = node.get_aabb()
+	for mesh: MeshInstance3D in node.rendered_meshes():
+		mesh.layers = GLOW_SELF_LAYER
 	var light: OmniLight3D = OmniLight3D.new()
 	light.name = "Glow"
 	light.light_color = Color(definition.glow_color, 1.0)
@@ -397,12 +455,73 @@ static func _add_glow(node: ItemVisual, definition: ItemDef) -> void:
 	light.omni_attenuation = GLOW_ATTENUATION
 	light.light_bake_mode = Light3D.BAKE_DISABLED
 	light.light_cull_mask = 0xFFFFF & ~GLOW_SELF_LAYER
-	for mesh: MeshInstance3D in node.rendered_meshes():
-		mesh.layers = GLOW_SELF_LAYER
+	node.add_child(light)
+	if window:
+		# Placed by place_window_glow once the item stands in its window.
+		light.omni_range = WINDOW_GLOW_RANGE
+		light.light_energy = WINDOW_GLOW_ENERGY * definition.glow_color.a
+		for pool_name: String in ["PoolInside", "PoolOutside"]:
+			node.add_child(_glow_pool(pool_name, definition.glow_color))
+		return
 	# The wrapper's front is -Z; its back (+Z) is on the face.
 	var centre: Vector3 = box.get_center() if box.size != Vector3.ZERO else Vector3(0.0, HUNG_FALLBACK_HEIGHT, 0.0)
 	light.position = Vector3(centre.x, centre.y, box.position.z - GLOW_OUT)
-	node.add_child(light)
+
+
+## One flat glow square for a window item: a cell-sized quad just above the
+## ground, additive and unshaded, fading from its -Z edge (the wall) outward.
+static func _glow_pool(pool_name: String, colour: Color) -> MeshInstance3D:
+	var gradient: Gradient = Gradient.new()
+	var strong: Color = Color(colour.r, colour.g, colour.b) * POOL_STRENGTH * colour.a
+	gradient.set_color(0, Color(strong, 1.0))
+	gradient.set_color(1, Color(0.0, 0.0, 0.0, 1.0))
+	var texture: GradientTexture2D = GradientTexture2D.new()
+	texture.gradient = gradient
+	texture.fill = GradientTexture2D.FILL_RADIAL
+	texture.fill_from = Vector2(0.5, 0.0)
+	texture.fill_to = Vector2(0.5, 1.0)
+	texture.width = 64
+	texture.height = 64
+	var material: StandardMaterial3D = StandardMaterial3D.new()
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	material.albedo_texture = texture
+	material.disable_receive_shadows = true
+	var plane: PlaneMesh = PlaneMesh.new()
+	plane.size = Vector2.ONE * GridMath.CELL_SIZE
+	var pool: MeshInstance3D = MeshInstance3D.new()
+	pool.name = pool_name
+	pool.mesh = plane
+	pool.material_override = material
+	pool.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	pool.layers = GLOW_SELF_LAYER
+	return pool
+
+
+## Puts a window item's glow in place (parent space: the window at `slot`):
+## the light halfway through the opening at the item's height, one pool on
+## the floor cell inside and one on the ground cell outside the shell.
+static func place_window_glow(node: ItemVisual, slot: Vector3i) -> void:
+	var light: Node3D = node.get_node_or_null(^"Glow") as Node3D
+	if light == null:
+		return
+	var into: Vector2i = WallFaces.step(slot)
+	var out: Vector3 = Vector3(into.x, 0.0, into.y)
+	var inside: Vector3 = GridMath.cell_to_world(WallFaces.cell(slot))
+	var back: Transform3D = node.transform.affine_inverse()
+	var height: float = (node.transform * node.get_aabb()).get_center().y
+	light.position = back * (inside + out * GridMath.CELL_SIZE + Vector3.UP * height)
+	# Each pool's -Z edge lies on the wall: +Z points away from it.
+	var room_side: Basis = Basis(Vector3.UP, atan2(-out.x, -out.z))
+	var street_side: Basis = Basis(Vector3.UP, atan2(out.x, out.z))
+	var pools: Dictionary[String, Transform3D] = {
+		"PoolInside": Transform3D(room_side, inside + Vector3.UP * POOL_LIFT),
+		"PoolOutside": Transform3D(street_side, inside + out * GridMath.CELL_SIZE * 2.0 + Vector3.UP * POOL_LIFT),
+	}
+	for pool_name: String in pools:
+		var pool: Node3D = node.get_node_or_null(NodePath(pool_name)) as Node3D
+		if pool != null:
+			pool.transform = back * pools[pool_name]
 
 
 ## A hung item hides while any wall it covers is drawn lowered, or while it

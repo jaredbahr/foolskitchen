@@ -424,6 +424,8 @@ func hover_summary() -> String:
 						if current_check.ok else current_check.why
 				Tool.EYEDROPPER:
 					return "Hang another %s" % hung.display_name
+				_:
+					return "Pick up %s to move it" % hung.display_name
 	if state != State.IDLE or hover_item_id < 0 or _grid == null:
 		return ""
 	var placed: PlacedItem = _grid.item(hover_item_id)
@@ -1441,7 +1443,7 @@ func hang_pointer(face: Vector3i, offset: float = 0.0) -> void:
 	if state != State.HANG or not _can_interact():
 		return
 	var anchor: Vector3i = WallFaces.NO_FACE if face == WallFaces.NO_FACE \
-		else WallFaces.anchor_for(face, hang_definition.footprint.x, offset)
+		else WallFaces.anchor_for(face, 1 if hang_definition.hangs_in_window() else hang_definition.footprint.x, offset)
 	if anchor == hang_anchor and not _topology_dirty:
 		return
 	hang_anchor = anchor
@@ -1536,7 +1538,7 @@ func hang_summary() -> String:
 	if state != State.HANG or hang_definition == null:
 		return ""
 	if hang_anchor == WallFaces.NO_FACE:
-		return "Point at a wall to hang %s" % hang_definition.display_name
+		return "Point at a %s to hang %s" % ["window" if hang_definition.hangs_in_window() else "wall", hang_definition.display_name]
 	if not current_check.ok:
 		return current_check.why
 	if hang_moving != WallFaces.NO_FACE:

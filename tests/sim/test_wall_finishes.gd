@@ -4,7 +4,9 @@ extends TestCase
 ## a new finish costs its price per face and refunds half the old one,
 ## morning or closed only; recolouring is free at any time; locked finishes
 ## wait for their level. Wall decor hangs on solid faces only, one item per
-## face, and comes down with its wall (refunded). Saves keep both (forgiving),
+## face, and comes down with its wall (refunded); the neon OPEN sign hangs in
+## an outside window instead, one per window, and comes down with the window.
+## Saves keep both (forgiving),
 ## older saves are plain paint with nothing hung, and the vibe sees exactly
 ## the old whole-shop paint and no wall decor by default.
 ## Grid: the starting shell is x 0..13, y 0..10; kitchen x 1..12, y 1..3 plus
@@ -16,6 +18,10 @@ const START_CASH: int = 1000
 const WEST: int = 3
 const EAST: int = 1
 const NORTH: int = 0
+const SOUTH: int = 2
+## A street-front window right of the door, and the OPEN sign's slot in it.
+const FRONT_WINDOW: Vector3i = Vector3i(8, 10, SimGrid.EDGE_NORTH)
+const FRONT_SLOT: Vector3i = Vector3i(8, 9, SOUTH)
 
 var _content: ContentDB
 var _sim: RestaurantSim
@@ -135,7 +141,8 @@ func test_locked_finishes_and_decor_wait_for_their_level() -> void:
 		assert_true(_editor.check_wall_finishes(_editor.wall_lay_changes(faces, style, &"cream")).ok, "starter %s" % style)
 	assert_eq(_editor.check_wall_finishes(_editor.wall_lay_changes(faces, &"subway_tile", &"cream")).why, "Unlocks at level 2")
 	assert_eq(_editor.check_wall_finishes(_editor.wall_lay_changes(faces, &"brick", &"brick")).why, "Unlocks at level 3")
-	assert_eq(_editor.check_hang(&"neon_open_sign", _face(1, 5, WEST)).why, "Unlocks at level 4")
+	_window(FRONT_WINDOW)
+	assert_eq(_editor.check_hang(&"neon_open_sign", FRONT_SLOT).why, "Unlocks at level 4")
 	assert_true(_editor.check_hang(&"wall_art_sunrise", _face(1, 6, WEST)).ok)
 	_editor.set_owner_level(3)
 	assert_true(_editor.check_wall_finishes(_editor.wall_lay_changes(faces, &"brick", &"brick")).ok)
@@ -202,6 +209,64 @@ func test_hanging_rules_sale_and_move() -> void:
 		assert_true(_history.redo(), _history.last_refusal)
 	assert_eq(_ledger.cash, START_CASH - 15)
 	assert_eq(_upgrades(), -15)
+
+
+func test_the_open_sign_hangs_only_in_an_outside_window() -> void:
+	var sign: ItemDef = _content.item(&"neon_open_sign")
+	assert_eq(sign.wall_mount, ItemDef.WallMount.WINDOW)
+	assert_true(sign.hangs_in_window() and sign.placement_layer_valid())
+	assert_false(_content.item(&"menu_board").hangs_in_window(), "boards and prints stay on inside walls")
+	assert_eq(_editor.check_hang(&"neon_open_sign", _face(1, 7, WEST)).why, WallFaces.WINDOW_ONLY, "not on a wall")
+	assert_eq(_editor.check_hang(&"neon_open_sign", FRONT_SLOT).why, WallFaces.WINDOW_ONLY, "no window yet")
+	assert_eq(WallFaces.WINDOW_ONLY, "This sign hangs in a window")
+	_window(FRONT_WINDOW)
+	_window(Vector3i(10, 10, SimGrid.EDGE_NORTH))
+	_wall(9, 5, 5, SimGrid.Segment.WINDOW)
+	assert_eq(WallFaces.windows(_sim.world.grid), [FRONT_SLOT, _face(10, 9, SOUTH)] as Array[Vector3i],
+		"outside windows only, seen from the floor inside")
+	assert_eq(_editor.check_hang(&"neon_open_sign", _face(8, 5, EAST)).why, WallFaces.OUTSIDE_WINDOW_ONLY,
+		"not in a window between two rooms")
+	assert_eq(_editor.check_hang(&"wall_art_sunrise", FRONT_SLOT).why, WallFaces.WINDOW, "prints keep to walls")
+	var cash: int = _ledger.cash
+	assert_true(_history.hang(&"neon_open_sign", FRONT_SLOT), _editor.last_check.why)
+	assert_eq(_ledger.cash, cash - 80)
+	assert_eq(_editor.decor.item(FRONT_SLOT).width, 1, "one window wide")
+	assert_eq(_editor.check_hang(&"neon_open_sign", FRONT_SLOT).why, WallDecor.OCCUPIED, "one sign per window")
+	assert_true(_editor.check_rehang(FRONT_SLOT, _face(10, 9, SOUTH)).ok, "moves to another window")
+	assert_eq(_editor.check_rehang(FRONT_SLOT, _face(1, 7, WEST)).why, WallFaces.WINDOW_ONLY)
+	assert_true(_history.rehang(FRONT_SLOT, _face(10, 9, SOUTH)), _editor.last_check.why)
+	assert_eq(_editor.decor.anchors(), [_face(10, 9, SOUTH)] as Array[Vector3i])
+	assert_eq(_editor.decor_vibe_items(), [sign] as Array[ItemDef], "guests see it from the dining room")
+	assert_eq(_history.take_down(_face(10, 9, SOUTH)), 40, "sold for half")
+	# A window-mounted item is one window wide.
+	var wide: ItemDef = sign.duplicate() as ItemDef
+	wide.footprint = Vector2i(2, 1)
+	assert_false(wide.placement_layer_valid())
+
+
+func test_closing_the_window_takes_the_sign_down_with_a_refund() -> void:
+	_window(FRONT_WINDOW)
+	var to_wall: Dictionary[Vector3i, int] = {FRONT_WINDOW: SimGrid.Segment.NONE}
+	var bare: int = _editor.check_segments(to_wall).refund
+	assert_true(_history.hang(&"neon_open_sign", FRONT_SLOT), _editor.last_check.why)
+	var check: EditCheck = _editor.check_segments(to_wall)
+	assert_true(check.ok, check.why)
+	assert_eq(check.lost_decor, [FRONT_SLOT] as Array[Vector3i])
+	assert_eq(check.refund, bare + 40, "the sign's sale refund on top")
+	var before: int = _ledger.cash
+	assert_true(_history.apply_segments(to_wall), _editor.last_check.why)
+	assert_eq(_ledger.cash, before + bare + 40)
+	assert_eq(_editor.decor.count(), 0)
+	assert_true(_history.undo(), _history.last_refusal)
+	assert_eq(_ledger.cash, before, "exact cash back")
+	assert_eq(_editor.decor.anchors(), [FRONT_SLOT] as Array[Vector3i], "back in its window")
+	# Floor bought behind the window's shell cell makes it an inside window: down it comes.
+	var east: Vector3i = Vector3i(13, 2, SimGrid.EDGE_WEST)
+	_window(east)
+	assert_true(_history.hang(&"neon_open_sign", _face(12, 2, EAST)), _editor.last_check.why)
+	var floor_check: EditCheck = _editor.check_floor(_lot_column(), true)
+	assert_true(floor_check.ok, floor_check.why)
+	assert_eq(floor_check.lost_decor, [_face(12, 2, EAST)] as Array[Vector3i])
 
 
 func test_removing_a_wall_takes_its_finish_and_decor_down_with_a_refund() -> void:
@@ -281,10 +346,13 @@ func test_history_undoes_and_redoes_wall_finishes_with_exact_cash() -> void:
 func test_snapshot_round_trip_keeps_finishes_and_decor() -> void:
 	assert_true(_editor.apply_wall_finishes(_editor.wall_lay_changes(_west(5, 2), &"brick", &"brick", &"cream")))
 	assert_true(_editor.apply_wall_finishes(_editor.wall_lay_changes([_face(3, 1, NORTH)] as Array[Vector3i], &"wainscot", &"walnut")))
-	assert_true(_editor.hang(&"neon_open_sign", _face(1, 9, WEST)), _editor.last_check.why)
+	assert_true(_editor.hang(&"wall_art_sunrise", _face(1, 7, WEST)), _editor.last_check.why)
+	_window(FRONT_WINDOW)
+	assert_true(_editor.hang(&"neon_open_sign", FRONT_SLOT), _editor.last_check.why)
 	var snapshot: Dictionary = _editor.to_dict()
+	assert_eq(int(snapshot["version"]), 6, "a window slot fits the v6 row")
 	assert_eq((snapshot["wall_finishes"] as Array)[0], [3, 1, 0, "wainscot", "walnut", ""], "sorted")
-	assert_eq(snapshot["wall_items"], [[1, 9, 3, "neon_open_sign"]])
+	assert_eq(snapshot["wall_items"], [[1, 7, 3, "wall_art_sunrise"], [8, 9, 2, "neon_open_sign"]])
 	var errors: Array[String] = []
 	var layout: ShopLayout = ShopEditor.from_dict(JSON.parse_string(JSON.stringify(snapshot)), LAYOUT, _content, errors)
 	assert_eq(errors, [] as Array[String])
@@ -292,6 +360,14 @@ func test_snapshot_round_trip_keeps_finishes_and_decor() -> void:
 	assert_eq(copy.walls.to_rows(), _editor.walls.to_rows())
 	assert_eq(copy.decor.to_rows(), _editor.decor.to_rows())
 	assert_eq(copy.to_dict()["wall_items"], snapshot["wall_items"])
+	assert_true(copy.decor.item(FRONT_SLOT).window, "loads back into its window")
+	# A save whose window is gone (or a sign row on a plain wall) skips the sign.
+	var broken: Dictionary = JSON.parse_string(JSON.stringify(snapshot))
+	broken["wall_items"] = [[1, 7, 3, "wall_art_sunrise"], [1, 9, 3, "neon_open_sign"], [8, 9, 2, "neon_open_sign"],
+		[12, 9, 2, "neon_open_sign"]]
+	layout = ShopEditor.from_dict(broken, LAYOUT, _content, errors)
+	assert_eq(_restore(layout).decor.to_rows(), [[1, 7, 3, "wall_art_sunrise"], [8, 9, 2, "neon_open_sign"]] as Array[Array],
+		"only the sign in a real window loads")
 
 
 func test_older_snapshots_are_plain_paint_with_nothing_hung() -> void:
@@ -493,6 +569,12 @@ func _segments(x: int, y0: int, y1: int, kind: int) -> Dictionary[Vector3i, int]
 	for y: int in range(y0, y1 + 1):
 		out[Vector3i(x, y, SimGrid.EDGE_WEST)] = kind
 	return out
+
+
+## Opens an outside window on `edge` through the editor (bought).
+func _window(edge: Vector3i) -> void:
+	var change: Dictionary[Vector3i, int] = {edge: SimGrid.Segment.WINDOW}
+	assert_true(_editor.apply_segments(change), _editor.last_check.why)
 
 
 func _wall(x: int, y0: int, y1: int, kind: int) -> void:

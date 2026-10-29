@@ -5,6 +5,8 @@ extends Node3D
 const GRID_SHADER: Shader = preload("res://src/world/floor_finish.gdshader")
 ## Floor types (D25): colour indices in the finish map. 0 is the shop's own
 ## floor paint (the floor_color uniform), 1 the authored brown, then swatches.
+## A ray hit on a shell box counts as on one of its sides within this (metres).
+const SIDE_EPSILON: float = 0.01
 const FINISH_SHOP_COLOUR: int = 0
 const FINISH_AUTHORED_COLOUR: int = 1
 const FINISH_FIRST_SWATCH: int = 2
@@ -405,10 +407,12 @@ func wall_face_at_ray(ray_origin: Vector3, ray_direction: Vector3, floor_fallbac
 		var wall: MeshInstance3D = _wall_nodes[cell]
 		if not wall.is_visible_in_tree():
 			continue
-		var distance: float = _ray_box_distance(ray_origin, ray_direction, wall.global_transform * wall.get_aabb())
+		var box: AABB = wall.global_transform * wall.get_aabb()
+		var distance: float = _ray_box_distance(ray_origin, ray_direction, box)
 		if distance >= 0.0 and distance < nearest:
 			nearest = distance
-			best = _face_hit(_shell_face(cell, ray_origin + ray_direction * distance), ray_origin + ray_direction * distance, distance)
+			var point: Vector3 = ray_origin + ray_direction * distance
+			best = _face_hit(_shell_face(cell, point, point.y >= box.end.y - SIDE_EPSILON), point, distance)
 	if segment_view != null:
 		for root: Node in segment_view.get_children():
 			if not root.has_meta(&"edge") or not (root as Node3D).is_visible_in_tree():
@@ -441,14 +445,69 @@ func wall_face_at_ray(ray_origin: Vector3, ray_direction: Vector3, floor_fallbac
 	return best
 
 
-## The hung wall item under a ray before any furniture, or NO_FACE.
+## The outside window under a ray, as {face (its window slot, see
+## WallFaces.window_problem), offset 0, distance}, for hanging a window item
+## (D26): the nearest window whose shell cell (full height) the ray passes
+## through, else a window of the floor cell the ray reaches. {} for none.
+func window_at_ray(ray_origin: Vector3, ray_direction: Vector3) -> Dictionary:
+	if world == null or ray_direction.y >= -0.00001:
+		return {}
+	var best: Dictionary = {}
+	var slots: Array[Vector3i] = WallFaces.windows(world.grid)
+	for slot: Vector3i in slots:
+		var into: Vector2i = WallFaces.step(slot)
+		var centre: Vector3 = GridMath.cell_to_world(WallFaces.cell(slot) + into)
+		var half: float = GridMath.CELL_SIZE * 0.5
+		var box: AABB = AABB(centre - Vector3(half, 0.0, half), Vector3(GridMath.CELL_SIZE, ArtScale.WALL_HEIGHT, GridMath.CELL_SIZE))
+		var distance: float = _ray_box_distance(ray_origin, ray_direction, box)
+		if distance >= 0.0 and (best.is_empty() or distance < float(best["distance"])):
+			best = {"face": slot, "offset": 0.0, "distance": distance}
+	if best.is_empty():
+		var nearest: float = -ray_origin.y / ray_direction.y
+		var cell: Vector2i = GridMath.world_to_cell(ray_origin + ray_direction * nearest)
+		for slot: Vector3i in slots:
+			if WallFaces.cell(slot) == cell:
+				return {"face": slot, "offset": 0.0, "distance": nearest}
+	return best
+
+
+## The hung wall item under a ray before any furniture or wall, or NO_FACE:
+## an item seen only through a wall (from behind it, or from outside) is never
+## picked.
 func wall_item_at_ray(ray_origin: Vector3, ray_direction: Vector3) -> Vector3i:
 	if wall_finish_view == null:
 		return WallFaces.NO_FACE
 	var hit: Dictionary = wall_finish_view.item_hit(ray_origin, ray_direction)
-	if hit.is_empty() or nearest_item_distance(ray_origin, ray_direction) < float(hit["distance"]):
+	if hit.is_empty() or nearest_item_distance(ray_origin, ray_direction) < float(hit["distance"]) \
+			or wall_distance(ray_origin, ray_direction) < float(hit["distance"]):
 		return WallFaces.NO_FACE
 	return hit["anchor"]
+
+
+## How far along a ray the first visible wall is: a shell box, or any mesh of
+## the wall segments (slabs, jambs, heads, doors; not window glass, which a
+## window sign is seen through). INF for none.
+func wall_distance(ray_origin: Vector3, ray_direction: Vector3) -> float:
+	var nearest: float = INF
+	for cell: Vector2i in _wall_nodes:
+		var wall: MeshInstance3D = _wall_nodes[cell]
+		if wall.is_visible_in_tree():
+			var distance: float = _ray_box_distance(ray_origin, ray_direction, wall.global_transform * wall.get_aabb())
+			if distance >= 0.0 and distance < nearest:
+				nearest = distance
+	if segment_view != null:
+		var glass: Dictionary[Node, bool] = {}
+		for pane: PropView in segment_view.pane_nodes():
+			for node: Node in pane.find_children("*", "MeshInstance3D", true, false):
+				glass[node] = true
+		for node: Node in segment_view.find_children("*", "MeshInstance3D", true, false):
+			var mesh: MeshInstance3D = node as MeshInstance3D
+			if mesh.mesh == null or glass.has(mesh) or not mesh.is_visible_in_tree():
+				continue
+			var distance: float = _ray_box_distance(ray_origin, ray_direction, mesh.global_transform * mesh.get_aabb())
+			if distance >= 0.0 and distance < nearest:
+				nearest = distance
+	return nearest
 
 
 func _face_hit(face: Vector3i, point: Vector3, distance: float) -> Dictionary:
@@ -460,17 +519,21 @@ func _face_hit(face: Vector3i, point: Vector3, distance: float) -> Dictionary:
 	return {"face": face, "offset": (point - centre).dot(Vector3(right.x, 0.0, right.y)), "distance": distance}
 
 
-## The room-side face of a shell cell nearest to a point on its box.
-func _shell_face(cell: Vector2i, point: Vector3) -> Vector3i:
+## The room-side face of a shell cell at a point on its box. A side hit
+## must be on that face's own side (the street side or a side with no face is
+## NO_FACE); a hit on the box's top (a lowered wall) takes the nearest face.
+func _shell_face(cell: Vector2i, point: Vector3, on_top: bool = false) -> Vector3i:
 	var local: Vector3 = point - GridMath.cell_to_world(cell)
 	var best: Vector3i = WallFaces.NO_FACE
 	var closest: float = INF
 	for dir: int in 4:
 		var outward: Vector2i = WallFaces.DIRS[dir]
+		var gap: float = GridMath.CELL_SIZE * 0.5 - local.dot(Vector3(outward.x, 0.0, outward.y))
+		if not on_top and gap > SIDE_EPSILON:
+			continue
 		var face: Vector3i = WallFaces.make(cell + outward, (dir + 2) % 4)
 		if not WallFaces.is_face(world.grid, face):
 			continue
-		var gap: float = GridMath.CELL_SIZE * 0.5 - local.dot(Vector3(outward.x, 0.0, outward.y))
 		if gap < closest:
 			closest = gap
 			best = face

@@ -7,6 +7,11 @@ enum Category { DOOR, TABLE, CHAIR, STATION, STORAGE, PASS, DECOR, RESTROOM }
 ## WALL (D26): hangs on a wall face (ShopEditor.decor, WallDecor), never on
 ## the grid; its footprint is (width along the wall in faces, 1).
 enum PlacementLayer { NORMAL, FLOOR_DECOR, WALL }
+## Where a WALL-layer item hangs (D26). INSIDE_FACE: on a solid wall face
+## inside the shop (prints, boards). WINDOW: in an outside window, one per
+## window, its front facing the street (the neon OPEN sign). Never renumber;
+## an exterior-face mount (the street front, #168) would be the next value.
+enum WallMount { INSIDE_FACE, WINDOW }
 ## The widest wall item, in wall faces (0.5 m each).
 const MAX_WALL_WIDTH: int = 4
 
@@ -69,6 +74,9 @@ const MAX_SEATED_LEAN_DEGREES: float = 35.0
 ## hung item, such as the neon sign's red glow on its wall and the floor
 ## below. Alpha 0 (the default) is no light. Looks only.
 @export var glow_color: Color = Color(0.0, 0.0, 0.0, 0.0)
+## Wall items only: on an inside wall face, or in an outside window (one
+## window wide, so `footprint` is (1, 1)).
+@export var wall_mount: WallMount = WallMount.INSIDE_FACE
 ## One body-colour slot; unpainted items keep their authored placeholder colour.
 @export var paintable: bool = true
 @export var paint_slot: StringName = &"body"
@@ -88,13 +96,19 @@ func placement_layer_valid() -> bool:
 	var passive: bool = not solid and blocking_cells.is_empty() and work_cells.is_empty() and seat_cells.is_empty()
 	if placement_layer == PlacementLayer.WALL:
 		return passive and (category == Category.DECOR or category == Category.RESTROOM) \
-			and footprint.y == 1 and footprint.x >= 1 and footprint.x <= MAX_WALL_WIDTH
+			and footprint.y == 1 and footprint.x >= 1 and footprint.x <= MAX_WALL_WIDTH \
+			and (wall_mount == WallMount.INSIDE_FACE or wall_mount == WallMount.WINDOW and footprint.x == 1)
 	return placement_layer == PlacementLayer.FLOOR_DECOR and category == Category.DECOR and passive
 
 
 ## Hangs on a wall face (D26) instead of standing on the floor.
 func hangs_on_wall() -> bool:
 	return placement_layer == PlacementLayer.WALL
+
+
+## A wall item that hangs in an outside window rather than on a wall face.
+func hangs_in_window() -> bool:
+	return placement_layer == PlacementLayer.WALL and wall_mount == WallMount.WINDOW
 
 
 ## Partial blocking is authored in the same unrotated coordinates as seats.

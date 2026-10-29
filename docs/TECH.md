@@ -1299,7 +1299,11 @@ an active edit/panel/selection first, or opens Settings when none is active.
   its box is cut or hidden) have none. `problem(grid, face)` gives the
   sentence (rule 11). `flood` follows a face along its wall and round inside
   corners (an opening ends the run); `span(anchor, width)` is a wide item's
-  faces to the right of its anchor seen from the room.
+  faces to the right of its anchor seen from the room. A **window slot** uses
+  the same key for an outside window (the floor cell inside and the direction
+  into a WINDOW segment whose `WallRules.outer_side` is that direction):
+  `window_problem` ("This sign hangs in a window", "... on an outside wall"),
+  `windows(grid)`. A slot is never a face, so both share one decor map.
 - **Finishes.** `WallStyleDef` (`src/sim/content/wall_style_def.gd`,
   `data/wall_finishes/*.tres`), as `FloorStyleDef`: id, name, order, price per
   face, `pattern` (`WallStyleDef.Pattern`, never renumber: 0 plain paint),
@@ -1314,7 +1318,10 @@ an active edit/panel/selection first, or opens Settings when none is active.
   `FloorFinishes` and shares its `Finish` value: face -> look, only faces that
   differ from the default (plain paint in `ShopEditor.wall_swatch_id`) are
   stored, so a v5 shop has none and looks exactly as before; `paint_wall`
-  still sets the default colour (`set_default_swatch`).
+  still sets the default colour (`set_default_swatch`, which folds faces
+  already in that colour into the default; the history's PAINT entry keeps
+  the stored wall faces, or floor cells for floor paint, and puts them back
+  on undo, so an unwind is exact).
 - **Finish edits.** `ShopEditor.wall_lay_changes`/`wall_recolour_changes`
   build proposals on faces only; `check_wall_finishes`/`apply_wall_finishes`
   price them like floors: a new finish costs its price per face and refunds
@@ -1337,32 +1344,48 @@ an active edit/panel/selection first, or opens Settings when none is active.
 - **Wall decor.** A wall item is an `ItemDef` on `PlacementLayer.WALL`
   (DECOR or RESTROOM, not solid, no work/seat/blocking cells, footprint
   `(width 1..4, 1)`); `SimGrid` refuses that layer (`INVALID_LAYER`), so it
-  can never stand on the floor. `WallDecor` (`src/sim/shop/wall_decor.gd`,
+  can never stand on the floor. `ItemDef.wall_mount` (`WallMount`, never
+  renumber) says where: `INSIDE_FACE` (prints, boards: the default) or
+  `WINDOW` (Jared: the neon OPEN sign hangs in a window, not inside; one
+  window wide, footprint (1, 1)); an exterior-face mount for the street front
+  (#168) would be the next value. `WallDecor` (`src/sim/shop/wall_decor.gd`,
   owned by `ShopEditor.decor`, never by `SimGrid`) maps anchor face -> item
   (`def_id`, width) and face -> anchor: one item per face, never in anyone's
   way. `problem` refuses a span that is not one straight run of solid faces
   (`WallFaces` sentences: window, doorway, street door, "Not enough wall here",
-  "A wall is in the way") or covers another item ("Something already hangs
-  here"). `ShopEditor.check_hang`/`hang` (price, unlock, cash; one ledger line
+  "A wall is in the way", "This would span two different walls": a shell
+  face and an interior slab's face are on different planes) or covers another
+  item ("Something already hangs here"); a window item instead needs an outside window slot, one per window
+  (`Hung.window`). `ShopEditor.check_hang`/`hang` (price, unlock, cash; one ledger line
   like furniture), `check_rehang`/`rehang` (free), `check_take_down`/`take_down`
   (half price), all MORNING/CLOSED (`DECOR_CLOSED`); `Exact` for undo/redo.
   History kinds HANG, TAKE_DOWN, REHANG. This PR's items are the made diner
   wall pieces (#147) through their wrappers: Sunrise print ($30), Chalk menu
-  board ($25), Mountain print ($35, level 2), Neon OPEN sign ($80, level 4).
+  board ($25), Mountain print ($35, level 2), Neon OPEN sign ($80, level 4,
+  in a window).
   They show in Buy > Decor under a **Wall decor** sub-tab
   (`CatalogueText.group_for`), and a tile starts `BuildMode.State.HANG`: the
   hovered face (`ShopView.wall_face_at_ray`, with the nearest face of the
   floor cell as a fallback for low walls) and the pointer's side pick the
-  anchor (`WallFaces.anchor_for`); a buy keeps the item in hand. While idle the
+  anchor (`WallFaces.anchor_for`); a window item takes the window under the
+  pointer (`ShopView.window_at_ray`: the shell cell's box, else a window of the
+  floor cell pointed at) and otherwise the wall face (refused with the window
+  sentence); a buy keeps the item in hand. While idle the
   Hand picks a hung item up (Del sells it), the Eyedropper hangs another and
-  Sell (or Del) sells the pointed one (`ShopView.wall_item_at_ray`).
+  Sell (or Del) sells the pointed one (`ShopView.wall_item_at_ray`: an item
+  only counts when no furniture or wall (`wall_distance`: shell boxes and
+  segment meshes, not window glass) is nearer along the ray, so nothing is
+  picked or sold through a wall). A shell box hit on a side counts only for
+  that side's face (`_shell_face`): its street side has none (paint there
+  repaints the building); a hit on a lowered box's top takes the nearest face.
   Rotating does nothing: an item always faces out from its wall. A restroom
   mirror or dryer (#198) is another WALL-layer `ItemDef` with
   `catalogue_room = restroom`.
 - **Walls that go.** A wall or floor edit that takes a face away (a wall
   removed or turned into a doorway or window, a shell cell bought as floor or
   cut by a window, floor sold) takes its finish and every item covering it
-  down: `check_segments`/`check_floor` note them (`EditCheck.lost_finishes`,
+  down, and an edit that takes a window slot away (the window closed or turned
+  into a doorway, its shell cell bought as floor) takes its sign down: `check_segments`/`check_floor` note them (`EditCheck.lost_finishes`,
   `lost_decor`) and add their refund (half the finish's price per face, the
   item's sale refund) to the edit's refund; the apply drops them. The history
   entry keeps them (`lost_walls`, `lost_decor`) and puts them back free on
@@ -1381,12 +1404,27 @@ an active edit/panel/selection first, or opens Settings when none is active.
   with their back (+Z) on the face; they hide while any wall they cover is
   drawn lowered (they would float over the stub). The HANG ghost is a tinted
   copy (`BuildPreview` colours) shown on any face, the held item hidden while
-  moved. Catalogue thumbnails turn wall wrappers (`WallMount` node) to face
+  moved. A window item is its wrapper scaled down to fit 90% x 80% of the
+  window opening (`WallSegmentView.window_opening`), centred in it, front
+  (-Z) to the street, just inside the shell's outer face: the steep camera
+  sees no deeper into a window from outside, and from the room it shows its
+  back through the glass; it hides while its shell cell is drawn lowered,
+  like wall decor. Catalogue thumbnails turn wall wrappers (`WallMount` node) to face
   the camera. **Glow** (Jared): an item with `ItemDef.glow_color` (alpha > 0;
   the neon OPEN sign's red) gets one `OmniLight3D` child "Glow" on its
   visual, 0.2 m out from the face at the item's middle: range 1.2 m, energy
   0.45, attenuation 1.6, no shadows, no specular. That is a soft pool on its
-  wall, a nearby corner and the floor below, not the room. The item's own
+  wall, a nearby corner and the floor below, not the room (a future
+  face-mounted glowing item should get the window treatment below, since a
+  shadowless 1.2 m light reaches past an interior wall). A window item's
+  light (the OPEN sign, the only glowing item) stands in the window plane,
+  halfway through the opening at the sign's height, with range 0.34 m: it
+  lights the window's own jambs, and no room beside the window (at least
+  0.375 m away, past an interior wall on the window cell's side line). Its
+  pools are two flat additive, unshaded glow squares ("PoolInside",
+  "PoolOutside"), each exactly the one cell in front of the window (the floor
+  inside, the ground outside the shell), fading from the wall, so the glow
+  never bleeds into another room. The item's own
   meshes move to render layer 20 (`GLOW_SELF_LAYER`), which the light's cull
   mask skips, so the sign isn't washed out by its own glow. It hides with the
   item (lowered walls, held for a move); ghosts get none. The shop has no
@@ -1397,7 +1435,8 @@ an active edit/panel/selection first, or opens Settings when none is active.
 - **Save and vibe.** The `shop` snapshot is version 6 with `wall_style_id`
   (always `paint`: any other value is ignored, like floors), `wall_finishes:
   [[x, y, dir, style, swatch, accent], ...]` and `wall_items: [[x, y, dir,
-  def_id], ...]` (sorted); no new SaveSystem section. Versions 1-5 load as
+  def_id], ...]` (sorted; a window item's row is its window slot, so the row
+  format is unchanged); no new SaveSystem section. Versions 1-5 load as
   plain paint with nothing hung. Decoding forgives: a face that is no longer a
   face, an unknown finish or item, a non-wall item, an overlap or a malformed
   row is skipped; an unknown colour falls back to the finish's own. The vibe
@@ -1408,7 +1447,10 @@ an active edit/panel/selection first, or opens Settings when none is active.
   (no floor space). Looks only: no other sim effect.
 - **Review.** `tools/screenshot.sh --walls-review --speed=0 --frames=12,30`
   (`tools/walls_review.gd`, `[--quarter=N]` for frame 12): finishes on shell
-  and interior walls and four hung items in Cutaway, then Walls Up with
+  and interior walls and four hung items (the OPEN sign in a street-front
+  window right of the door: hidden in frame 12's quarter-0 Cutaway, which
+  lowers the front; seen from the street in frame 30 and from inside with
+  `--quarter=2`) in Cutaway, then Walls Up with
   Build > Wall finish holding a striped wallpaper drag; a hand-run frame after
   40 holds a chalk menu board from Buy > Decor > Wall decor, and one after 60
   shows Walls Down (finished stubs, hung items hidden).

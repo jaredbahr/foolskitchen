@@ -1081,7 +1081,11 @@ func update_build_pointer(screen_position: Vector2, shift: bool = false) -> bool
 		build_mode.wall_finish_pointer(wall_face_at_screen_position(screen_position).get("face", WallFaces.NO_FACE), shift)
 		return true
 	if build_mode.state == BuildMode.State.HANG:
-		var hit: Dictionary = wall_face_at_screen_position(screen_position)
+		var hit: Dictionary = {}
+		if build_mode.hang_definition != null and build_mode.hang_definition.hangs_in_window():
+			hit = window_at_screen_position(screen_position)
+		if hit.is_empty():
+			hit = wall_face_at_screen_position(screen_position)
 		build_mode.hang_pointer(hit.get("face", WallFaces.NO_FACE), float(hit.get("offset", 0.0)))
 		return true
 	if build_mode.state == BuildMode.State.IDLE:
@@ -1177,6 +1181,15 @@ func wall_face_at_screen_position(screen_position: Vector2, floor_fallback: bool
 		return {}
 	return ($ShopView as ShopView).wall_face_at_ray(camera.project_ray_origin(screen_position),
 		camera.project_ray_normal(screen_position), floor_fallback)
+
+
+## The outside window under the pointer ({face, offset}, see ShopView.window_at_ray).
+func window_at_screen_position(screen_position: Vector2) -> Dictionary:
+	var camera: Camera3D = $CameraRig/Camera3D
+	if world == null or not camera.is_inside_tree():
+		return {}
+	return ($ShopView as ShopView).window_at_ray(camera.project_ray_origin(screen_position),
+		camera.project_ray_normal(screen_position))
 
 
 ## The hung wall item under the pointer, or NO_FACE.

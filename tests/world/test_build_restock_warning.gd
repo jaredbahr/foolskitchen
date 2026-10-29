@@ -198,9 +198,14 @@ func test_neon_sign_hang_warns_with_its_price_and_a_move_does_not() -> void:
 	var editor: ShopEditor = _main.get("shop_editor")
 	editor.set_owner_level(4)
 	var mode: BuildMode = _main.get("build_mode")
+	# Two street-front windows for the sign (it hangs only in a window).
+	Economy.add_cash(500, Ledger.OTHER)
+	var windows: Dictionary[Vector3i, int] = {Vector3i(8, 10, SimGrid.EDGE_NORTH): SimGrid.Segment.WINDOW,
+		Vector3i(10, 10, SimGrid.EDGE_NORTH): SimGrid.Segment.WINDOW}
+	assert_true(_main.call("shop_walls", windows), editor.last_check.why)
 	assert_true(mode.begin_hang(&"neon_open_sign"))
 	Economy.add_cash(93 + 80 - 5 - Economy.cash, Ledger.OTHER)
-	mode.hang_pointer(Vector3i(1, 7, 3), 0.1)
+	mode.hang_pointer(Vector3i(8, 9, 2), 0.1)
 	assert_true(mode.current_check.ok, mode.current_check.why)
 	assert_eq(mode.current_check.cost, 80)
 	assert_eq(_main.call("build_restock_warning"), "Leaves $88 — tomorrow's restock needs about $93")
@@ -209,8 +214,8 @@ func test_neon_sign_hang_warns_with_its_price_and_a_move_does_not() -> void:
 	assert_eq(Economy.cash, 88)
 	_main.call("_on_catalogue_mode_requested", BuildCatalogue.BUY)
 	mode.cancel_ghost()
-	assert_true(mode.begin_rehang(Vector3i(1, 7, 3)))
-	mode.hang_pointer(Vector3i(1, 9, 3), 0.1)
+	assert_true(mode.begin_rehang(Vector3i(8, 9, 2)))
+	mode.hang_pointer(Vector3i(10, 9, 2), 0.1)
 	assert_true(mode.current_check.ok, mode.current_check.why)
 	assert_eq(_main.call("build_restock_warning"), "", "moving wall decor is free")
 	var line: Label = _warning_label()

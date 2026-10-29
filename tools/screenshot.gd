@@ -44,7 +44,7 @@ extends SceneTree
 ##             holding a herringbone drag over the planks
 ##   --walls-review --speed=0 --frames=12,30 [--quarter=N]  D26 wall finishes and wall decor
 ##             (tools/walls_review.gd): Cutaway, then Walls Up with Build > Wall finish
-##             holding a striped wallpaper drag
+##             holding a striped wallpaper drag (--quarter turns the camera for both frames)
 ## Ordinary captures record real moods, markers and seeds without a fixture.
 
 const MAX_CAPTURE_WAIT_FRAMES: int = 8
@@ -2903,7 +2903,11 @@ func _capture() -> void:
 				lowered.append([cell.x, cell.y])
 	if _quarter >= 0:
 		var expected_yaw: float = 45.0 + 90.0 * _quarter
-		if actual_quarter != _quarter or wall_mode != 1 or yaw_degrees == null or absf(float(yaw_degrees) - expected_yaw) > 0.01:
+		# The walls review puts the walls Up itself from WALL_UP_FRAME (its
+		# --quarter covers the camera there, the Cutaway only before).
+		var cutaway_expected: bool = not (_walls_review and _capture_frame >= WALLS_REVIEW.WALL_UP_FRAME)
+		if actual_quarter != _quarter or (cutaway_expected and wall_mode != 1) or yaw_degrees == null \
+				or absf(float(yaw_degrees) - expected_yaw) > 0.01:
 			_fail_capture("requested camera quarter/cutaway mode did not match the rendered scene")
 			return
 	var path: String = _out.path_join("shot_%04d.png" % _capture_frame)

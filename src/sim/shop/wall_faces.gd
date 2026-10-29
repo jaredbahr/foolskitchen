@@ -8,6 +8,10 @@ extends RefCounted
 ## interior wall segment. Windows, doorways (the back door too), the street
 ## door and shell cells cut by a window or door have no face. Wall finishes
 ## and wall decor live on faces; both are looks only.
+##
+## A window slot uses the same key for an outside window: the floor cell
+## inside and the direction from it into the window (WallRules.outer_side).
+## A slot is never a face, so window signs and wall decor share one map.
 
 const DIRS: Array[Vector2i] = [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]
 const NO_FACE: Vector3i = Vector3i(-1000000, -1000000, -1)
@@ -23,6 +27,9 @@ const CUT_SHELL: String = "This part of the wall has a window or door in it"
 const STREET_DOOR: String = "This is the street door"
 const TOO_NARROW: String = "Not enough wall here"
 const CORNER: String = "A wall is in the way"
+const TWO_WALLS: String = "This would span two different walls"
+const WINDOW_ONLY: String = "This sign hangs in a window"
+const OUTSIDE_WINDOW_ONLY: String = "This sign hangs in a window on an outside wall"
 
 
 static func make(cell: Vector2i, dir: int) -> Vector3i:
@@ -87,6 +94,38 @@ static func shell_cut(grid: SimGrid, wall_cell: Vector2i) -> bool:
 		if grid.segment(side) != SimGrid.Segment.NONE:
 			return true
 	return false
+
+
+## Why `slot` is not an outside window an item can hang in ("" when it is):
+## a window segment between a floor cell and the shell, the street beyond.
+static func window_problem(grid: SimGrid, slot: Vector3i) -> String:
+	if grid == null or slot.z < 0 or slot.z > 3:
+		return WINDOW_ONLY
+	if grid.terrain(cell(slot)) != SimGrid.Terrain.FLOOR or grid.segment(edge(slot)) != SimGrid.Segment.WINDOW:
+		return WINDOW_ONLY
+	if WallRules.outer_side(grid, edge(slot)) != step(slot):
+		return OUTSIDE_WINDOW_ONLY
+	return ""
+
+
+static func is_window(grid: SimGrid, slot: Vector3i) -> bool:
+	return window_problem(grid, slot).is_empty()
+
+
+## Every outside window slot of the shop, sorted.
+static func windows(grid: SimGrid) -> Array[Vector3i]:
+	var out: Array[Vector3i] = []
+	if grid == null:
+		return out
+	for edge_key: Vector3i in grid.segment_edges():
+		var side: Vector2i = WallRules.outer_side(grid, edge_key)
+		if side == Vector2i.ZERO or grid.segment(edge_key) != SimGrid.Segment.WINDOW:
+			continue
+		for here: Vector2i in SimGrid.edge_cells(edge_key):
+			if grid.terrain(here) == SimGrid.Terrain.FLOOR:
+				out.append(make(here, DIRS.find(side)))
+	sort(out)
+	return out
 
 
 ## Every wall face of the shop, sorted.
@@ -165,7 +204,8 @@ static func span(anchor: Vector3i, width: int) -> Array[Vector3i]:
 
 
 ## Why `width` faces from `anchor` are not one straight run of wall ("" when
-## they are): every face solid, and no segment between their floor cells.
+## they are): every face solid, no segment between their floor cells, and
+## all on the shell or all on one interior wall.
 static func span_problem(grid: SimGrid, anchor: Vector3i, width: int) -> String:
 	var faces: Array[Vector3i] = span(anchor, width)
 	for index: int in range(faces.size()):
@@ -174,6 +214,11 @@ static func span_problem(grid: SimGrid, anchor: Vector3i, width: int) -> String:
 			return why if index == 0 or why != NOT_INSIDE and why != NO_WALL else TOO_NARROW
 		if index > 0 and grid.segment(SimGrid.edge_between(cell(faces[index - 1]), cell(faces[index]))) != SimGrid.Segment.NONE:
 			return CORNER
+		# An interior slab's face is nearer the room than the shell's: one
+		# item never spans both (it would float or cut into a wall).
+		if index > 0 and (grid.segment(edge(faces[index])) == SimGrid.Segment.WALL) \
+				!= (grid.segment(edge(faces[0])) == SimGrid.Segment.WALL):
+			return TWO_WALLS
 	return ""
 
 
