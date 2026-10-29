@@ -23,7 +23,7 @@ Codex takes `worker-ready` issues in this order; the director validates, reviews
 - #114 Tier 2 lease upgrade (more lot to expand)
 
 **Wave 2, after wall finishes and decor (#207) merge**
-- #205 Smarter cutaway, then #208 Day and night cycle (director: morning prep, service into the evening, close and wind-down), then #84 Lighting decor
+- #205 Smarter cutaway, then #208 Day and night cycle (morning prep, service into the evening, close and wind-down), then #84 Lighting decor
 - #198 Restroom decor (mirror, hand dryer, stall partitions)
 - #201 Hex tile and terracotta floors, then #202 terrazzo, concrete, carpet
 - #161 Menu boards show your menu, theme read-out (after #197)
