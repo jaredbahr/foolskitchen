@@ -46,6 +46,9 @@ extends SceneTree
 ##   --walls-review --speed=0 --frames=12,30 [--quarter=N]  D26 wall finishes and wall decor
 ##             (tools/walls_review.gd): Cutaway, then Walls Up with Build > Wall finish
 ##             holding a striped wallpaper drag (--quarter turns the camera for both frames)
+##   Plain Main default/quarter frame60 photos use seed1 and neighbourhood time4s.
+##   --neighbourhood-review=street --speed=0 --frames=60 pans to the real road centre
+##             through the normal street-only clamp; photo override never runs in performance.
 ##   --restroom-review --speed=0 --frames=12,30 shows the complete two-toilet
 ##             restroom, then a close wall-fitting view with the owner for scale.
 ##   --blueprints=selection|ghost|stamped --speed=0 --frames=30
@@ -55,6 +58,7 @@ extends SceneTree
 const MAX_CAPTURE_WAIT_FRAMES: int = 8
 const MAX_OWNER_WARMUP_TICKS: int = 900
 const SETTINGS_CAPTURE_SIZE: Vector2i = Vector2i(1600, 900)
+const NEIGHBOURHOOD_REVIEW: Script = preload("res://tools/neighbourhood_review.gd")
 const LEASE_REVIEW: Script = preload("res://tools/lease_review.gd")
 const DINER_REVIEW: Script = preload("res://tools/diner_review.gd")
 const FLOORS_REVIEW: Script = preload("res://tools/floors_review.gd")
@@ -143,6 +147,8 @@ var _blueprint_fixture: Dictionary = {}
 var _rooms: String = ""
 var _rooms_paused: bool = false
 var _door_queue: bool = false
+var _neighbourhood_mode: String = ""
+var _neighbourhood_fixture: Dictionary = {}
 var _lease_mode: String = ""
 var _lease_fixture: Dictionary = {}
 var _loan_review: bool = false
@@ -168,6 +174,11 @@ var _finish_requested: bool = false
 
 func _initialize() -> void:
 	OS.add_logger(_errors)
+	var neighbourhood_options: Dictionary = NEIGHBOURHOOD_REVIEW.options(OS.get_cmdline_user_args())
+	if not String(neighbourhood_options["error"]).is_empty():
+		_fail_capture(neighbourhood_options["error"])
+		return
+	_neighbourhood_mode = neighbourhood_options["mode"]
 	var lease_options: Dictionary = LEASE_REVIEW.options(OS.get_cmdline_user_args())
 	if not String(lease_options["error"]).is_empty():
 		_fail_capture(lease_options["error"])
@@ -399,7 +410,7 @@ func _initialize() -> void:
 	if "use_saves" in _main:
 		_main.set("use_saves", false)
 	if (not _lease_mode.is_empty() or _report_requested or _milestone_review or _diner_review or _expand == "shop" or not _rooms.is_empty() \
-			or _floors_review or _walls_review or _restroom_review or _assign_owner) \
+			or _floors_review or _walls_review or _restroom_review or _assign_owner or not _neighbourhood_mode.is_empty()) \
 			and "new_game_seed_override" in _main:
 		_main.set("new_game_seed_override", 1)
 	root.add_child(_main)
@@ -1859,6 +1870,11 @@ func _process(_delta: float) -> bool:
 			(clock.get("sim") as SimClock).start_service()
 		clock.call("set_speed", _speed)
 		_configure_camera()
+		if not _neighbourhood_mode.is_empty():
+			_neighbourhood_fixture = NEIGHBOURHOOD_REVIEW.prepare(_main, root, _neighbourhood_mode)
+			if not String(_neighbourhood_fixture["error"]).is_empty():
+				_fail_capture(_neighbourhood_fixture["error"])
+				return true
 		if _restroom_review:
 			RESTROOM_REVIEW.focus(_main, false)
 		if not _rooms.is_empty() and _quarter < 0:
@@ -2897,6 +2913,10 @@ func _capture() -> void:
 	if _main.has_method("inspection_state"):
 		inspection = _main.call("inspection_state")
 	var world: SimWorld = _capture_world()
+	var neighbourhood_state: Dictionary = NEIGHBOURHOOD_REVIEW.evidence(_main, root, _neighbourhood_fixture) if not _neighbourhood_mode.is_empty() else {}
+	if not _neighbourhood_mode.is_empty() and not NEIGHBOURHOOD_REVIEW.valid(neighbourhood_state, _neighbourhood_fixture):
+		_fail_capture("neighbourhood photo failed actual pose/player, outside-only, simulation isolation or camera checks: " + JSON.stringify(neighbourhood_state))
+		return
 	var diner_state: Dictionary = DINER_REVIEW.evidence(_main, root, _capture_frame) if _diner_review else {}
 	if _diner_review and not DINER_REVIEW.valid(diner_state, _capture_frame, _diner_fixture):
 		_fail_capture("diner review failed actual source, bounds, native actor or seat validation: " + JSON.stringify(diner_state))
@@ -3149,6 +3169,8 @@ func _capture() -> void:
 	if not _catalogue_profile.is_empty():
 		metadata["catalogue_review"] = {"fixture": _catalogue_fixture, "state": catalogue_state,
 			"generated_uids": generated_uid_evidence(CATALOGUE_UID_SOURCES)}
+	if not _neighbourhood_mode.is_empty():
+		metadata["neighbourhood_review"] = {"fixture": _neighbourhood_fixture, "state": neighbourhood_state}
 	if _floors_review:
 		metadata["floors_review"] = {"fixture": _floors_fixture, "state": floors_state}
 	if _restroom_review:
