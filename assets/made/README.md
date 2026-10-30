@@ -2,15 +2,15 @@
 
 These assets are made for the named issues and follow `docs/ART_STYLE.md` §8. They do not modify the Kenney source kits.
 
-## #118 pending integration
-These icon entries are carried forward from issue #118; they are not part of PR #147.
+## Icons (#118)
+The two named icons fill gaps in the approved Kenney Game Icons pack. Their white, filled silhouettes use the pack's broad 18–20 px transparent margins and rounded corners; they add no outlines, gradients or fine details.
 
 | Asset | Issue | Style reference |
 |---|---|---|
-| `icons/chefHat.svg` and `icons/chefHat.png` | #118 | Kenney Game Icons `home.png`, `star.png` and `menuList.png`: one white, rounded silhouette with broad transparent margins. |
-| `icons/paintBrush.svg` and `icons/paintBrush.png` | #118 | Kenney Game Icons `wrench.png`, `home.png` and `menuList.png`: a thick diagonal tool silhouette with rounded ends and no outlines or gradients. |
+| `icons/chefHat.svg` and `icons/chefHat.png` | #118 | Kenney Game Icons `home.png`, `star.png` and `gear.png`: a broad, rounded crown and a solid hat band, with the same white fill and transparent margins. |
+| `icons/paintBrush.svg` and `icons/paintBrush.png` | #118 | Kenney Game Icons `wrench.png`, `home.png` and `gear.png`: a thick diagonal handle, broad brush head and rounded ends, with no outlines or gradients. |
 
-The SVG files are the editable sources; the 100 × 100 PNG files are their raster exports.
+The SVG files are the hand-authored editable sources; the 100 × 100 transparent PNG files are their Inkscape raster exports. To export either source again, run `inkscape assets/made/icons/<name>.svg --export-filename=assets/made/icons/<name>.png --export-width=100 --export-height=100`. The source comments record the four reference bounds and filled areas. The files use no art from another source and leave the Kenney kit unchanged.
 
 ## Diner booth (#147)
 The white booth pairs the Kenney Furniture Kit `benchCushion` seat cushion and `loungeSofa` backrest proportions.
@@ -78,3 +78,23 @@ Rebuild all eight with
 `blender --background --factory-startup --python tools/build_street_front.py`.
 The optional `-- --manifest /outside/project/manifest.json` writes measured
 bounds, triangle counts, material names and hashes outside the shipping project.
+
+## Weather icons (#241)
+
+`icons/weather_sunny.svg`, `icons/weather_cloudy.svg` and
+`icons/weather_rain.svg` are the editable sources for the three matching
+100 × 100 PNG exports. They use white solid rounded silhouettes on transparent
+backgrounds, with the same approximately 64 px visual width and broad margins
+as the approved Kenney Game Icons. The sunny disc and rounded rays reference
+`gear.png` and `star.png`; the solid cloud and rounded rain strokes reference
+`home.png`'s filled silhouette and `audioOn.png`'s rounded marks. No outside
+art source, font, texture, gradient or outline is used. Runtime tint belongs to
+the existing UI theme through `IconCatalogue`; SVGs are source files and the
+catalogue aliases use only the PNG exports.
+
+Rebuild with `python3 tools/build_weather_icons.py` (Pillow, already available
+in the development environment). The generator shares one set of primitive
+coordinates between SVG and supersampled PNG output. It never edits the
+vendored kit or another made asset. Optional `--manifest /outside/project.json`
+writes audit data outside the shipping project; review comparisons are never
+stored with the assets.

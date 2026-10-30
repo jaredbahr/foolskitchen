@@ -253,7 +253,7 @@ func test_staff_entry_requests_work_in_every_phase_without_loosening_menu_or_cha
 		_hud.call("refresh")
 		assert_eq(_control("Staff").get_instance_id(), identity)
 		assert_false(staff.disabled, "staff job choices remain reachable during service")
-		assert_eq(staff.icon.resource_path, "res://assets/kenney/icons/singleplayer.png")
+		assert_eq(staff.icon.resource_path, IconCatalogue.path_for(&"chef"))
 		assert_eq((_control("Menu") as Button).disabled, phase != SimClock.Phase.MORNING)
 		if phase == SimClock.Phase.MORNING:
 			assert_eq(staff.tooltip_text, "Hire staff and plan today's wages")
@@ -527,11 +527,15 @@ func test_every_header_button_has_readable_content_and_tooltip() -> void:
 		assert_true(button.icon != null or not button.text.is_empty(), name + " has readable content")
 		assert_false(button.tooltip_text.is_empty(), name + " explains its action")
 		if button.icon != null:
-			assert_true(button.icon.resource_path.begins_with(IconCatalogue.ROOT))
+			assert_true(button.icon.resource_path.begins_with(IconCatalogue.ROOT) \
+				or button.icon.resource_path in [IconCatalogue.path_for(&"chef"), IconCatalogue.path_for(&"paint")])
 			assert_eq(button.get_theme_constant("icon_max_width"), 28)
-	for name: String in ["Speed1", "Speed2", "Speed4", "Build", "Paint", "Context", "Menu", "Staff"]:
+	for name: String in ["Speed1", "Speed2", "Speed4", "Build", "Context", "Menu", "Staff"]:
 		assert_false((_control(name) as Button).text.is_empty(), name + " keeps its main label")
-	assert_null((_control("Paint") as Button).icon)
+	assert_eq((_control("Paint") as Button).icon.resource_path, IconCatalogue.path_for(&"paint"))
+	assert_eq((_control("Paint") as Button).text, "")
+	assert_eq((_control("Paint") as Button).tooltip_text, "Paint walls, floor and furniture (P)")
+	assert_eq((_control("Staff") as Button).icon.resource_path, IconCatalogue.path_for(&"chef"))
 	assert_eq((_control("Reputation").get_node("ThemeIcon") as TextureRect).texture.resource_path,
 		IconCatalogue.ROOT + "star.png")
 	for name: String in ["Day", "Time", "Phase", "Cash", "Reputation", "Plates"]:
@@ -696,7 +700,7 @@ func _assert_one_row_when_native_content_fits() -> void:
 	# packing result. Icons may legitimately require another row even at 100%.
 	var required_width: float = 24.0 * 2.0
 	var visible_count: int = 0
-	for name: String in ["Day", "Time", "Phase", "Speed0", "Speed1", "Speed2", "Speed4", "Cash",
+	for name: String in ["Day", "Weather", "Time", "Phase", "Speed0", "Speed1", "Speed2", "Speed4", "Cash",
 			"Reputation", "OwnerProgress", "Plates", "Walls", "Build", "Paint", "Context", "Menu", "Stock", "Staff", "Settings"]:
 		var control: Control = _control(name)
 		if control.visible:
@@ -712,7 +716,7 @@ func _assert_one_row_when_native_content_fits() -> void:
 	var previous_end: float = first.position.x
 	# Labels shrink to their text height and center within the native flow line.
 	# Check a shared row band and order rather than requiring equal top edges.
-	for name: String in ["Day", "Time", "Phase", "Speed0", "Speed1", "Speed2", "Speed4", "Cash",
+	for name: String in ["Day", "Weather", "Time", "Phase", "Speed0", "Speed1", "Speed2", "Speed4", "Cash",
 			"Reputation", "OwnerProgress", "Plates", "Walls", "Build", "Paint", "Context", "Menu", "Stock", "Staff", "Settings"]:
 		var rect: Rect2 = _control(name).get_global_rect()
 		assert_true(rect.position.x >= previous_end - 0.01, "a fitting row keeps " + name + " in left-to-right group order")

@@ -1917,6 +1917,38 @@ The floor shader adds a subtle multiplicative plank pattern while retaining its
 existing paint colour and camera-controlled build-grid parameters (D25: it is
 pattern 0 of `floor_finish.gdshader`, unchanged).
 
+### Daily weather
+`SimWorld.weather` is a separate `WeatherState` value per world, with stable
+SUNNY 0 / CLOUDY 1 / RAIN 2 kinds and a chosen morning `day`; day 0 means unchosen.
+`WeatherTuning` reads the relative 50/30/20 weights from
+`data/balance/weather.tres`. Finite, nonnegative weights and a finite positive
+sum are validated before selection. `ensure_today` consumes exactly one
+`randf` from the caller's current `GameState.rng(&"weather")` for a new morning;
+a repeated morning consumes none, and zero-weight bins stay impossible even
+at the upper endpoint. No state/world retains that RNG across a new run.
+Weather has no arrival, patience, economy, vibe or simulation-tick effect.
+
+Main registers the existing save system's `weather` section as
+`{version:1,day,kind}`. Restore validates into a detached staged value; the day
+must match the saved Clock, and installation waits until the whole morning
+load succeeds on its final world. Missing legacy sections install Sunny
+already chosen for that saved day, without obtaining a weather stream.
+Malformed present sections refuse. New mornings select before the existing
+`_begin_morning` autosave; no new save point or SaveSystem code is added.
+`WeatherText` centralizes Sunny/Cloudy/Rain, the forecast line and named icon
+aliases; the future patio may read the value, but no patio behavior is added.
+
+`WeatherView` preserves the original Environment, Sky, reflection, ambient,
+directional and exposure settings. Only proven outdoor front pavement gets
+private colour treatment and an additional reserved receiver bit `1<<18`
+(layer 19); a weak cool OmniLight affects only that bit. Sunny, rebinding and
+cleanup restore original material colours and masks. Rain is an unshaded,
+shadowless deterministic MultiMesh with complete-column and camera-projected
+built-volume exclusion. It uses no simulation RNG. Camera priority 0 precedes
+weather priority 1 and Main priority 10, so the mask uses the rendered camera;
+unchanged kind/world/dressing skips rebuilding, while terrain/camera changes
+invalidate the appropriate cached geometry. HUD/Menu presentation is read-only.
+
 ### Concepts: drinks, Café and Bar, opening hours (FK-083)
 - **No picker.** The concept is what the shop builds and serves. `VibeTuning`
   knows Café and Bar (`KNOWN_THEMES`, order and labels in `vibe.tres`);

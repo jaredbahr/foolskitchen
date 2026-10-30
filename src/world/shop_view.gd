@@ -84,6 +84,7 @@ var _wall_nodes: Dictionary[Vector2i, MeshInstance3D] = {}
 var world: SimWorld
 var floor_mesh: MeshInstance3D
 var room_dressing: RoomDressing
+var weather_view: WeatherView
 var _restaurant_name: String = MenuSettings.DEFAULT_NAME
 var item_nodes: Dictionary[int, ItemVisual] = {}
 var agent_nodes: Dictionary[int, Node3D] = {}
@@ -150,6 +151,8 @@ func show_world(value: SimWorld) -> void:
 	regular_nodes.clear()
 	_mood_states.clear()
 	_mood_bands.clear()
+	if weather_view != null:
+		weather_view.bind(null)
 	for child: Node in get_children():
 		if child.has_meta("shop_geometry"):
 			remove_child(child)
@@ -167,6 +170,7 @@ func show_world(value: SimWorld) -> void:
 	_floor_preview.clear()
 	floor_mesh = null
 	room_dressing = null
+	weather_view = null
 	segment_view = null
 	wall_finish_view = null
 	selection_outline = null
@@ -210,6 +214,11 @@ func show_world(value: SimWorld) -> void:
 	room_dressing.set_meta("shop_geometry", true)
 	add_child(room_dressing)
 	_build_terrain()
+	weather_view = WeatherView.new()
+	weather_view.name = "Weather"
+	weather_view.set_meta("shop_geometry", true)
+	add_child(weather_view)
+	weather_view.bind(self)
 	for item: PlacedItem in world.grid.items():
 		_build_item(item)
 	_apply_paint()
@@ -328,6 +337,8 @@ func _build_terrain() -> void:
 	_apply_paint()
 	if room_dressing != null:
 		room_dressing.rebuild(world, lowered_wall_cells())
+	if weather_view != null:
+		weather_view.refresh(true)
 
 
 ## View-only name survives terrain rebuilds, moves and loading another layout.
