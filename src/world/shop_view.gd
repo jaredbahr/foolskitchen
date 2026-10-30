@@ -234,6 +234,8 @@ func set_lot(value: Rect2i) -> void:
 	_lot = value
 	if segment_view != null:
 		segment_view.lot = value
+		if world != null:
+			segment_view.rebuild(world.grid, wall_mode != WallMode.UP, lowered_wall_cells())
 
 
 ## Main binds the delivery dock after show_world(): crates on the floor and

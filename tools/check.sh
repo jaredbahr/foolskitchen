@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Project checks. Must pass before every push and in CI.
 #   1. headless import (builds the .godot cache, catches broken resources)
-#   2. compile check of every .gd script, with autoloads loaded (tools/parse_all.gd)
-#   3. unit tests (tools/run_tests.gd)
+#   2. fresh screenshot entry compile, before autoloads exist
+#   3. compile check of every .gd script, with autoloads loaded (tools/parse_all.gd)
+#   4. unit tests (tools/run_tests.gd)
 # Any "SCRIPT ERROR", "Parse Error" or "ERROR:" line in the output fails the check, so code
 # paths exercised by tests must not push_error() on purpose (test the return value instead).
 # Each step has a timeout so a hung script fails instead of blocking CI: 5
@@ -30,6 +31,14 @@ echo "== import"
 timeout 300 "$GODOT" --headless --path . --import >"$log" 2>&1
 code=$?
 if [[ $code -ne 0 ]] || has_errors "$log"; then cat "$log"; echo "FAIL: import"; fail=1; else echo "ok"; fi
+
+# --script compiles its entry before autoloads join the tree. parse_all loads
+# after that point, so it cannot catch an eager UI -> autoload dependency.
+# Godot can return zero for a dependency compile error: inspect the log too.
+echo "== capture bootstrap"
+timeout 30 "$GODOT" --headless --path . --check-only --script tools/screenshot.gd >"$log" 2>&1
+code=$?
+if [[ $code -ne 0 ]] || has_errors "$log"; then cat "$log"; echo "FAIL: capture bootstrap"; fail=1; else echo "ok"; fi
 
 echo "== parse"
 timeout 300 "$GODOT" --headless --path . --script tools/parse_all.gd >"$log" 2>&1

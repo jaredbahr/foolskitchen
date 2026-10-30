@@ -1266,8 +1266,19 @@ an active edit/panel/selection first, or opens Settings when none is active.
 - **Restroom pieces.** `ItemDef.Category.RESTROOM` (appended; vibe theme
   weight 0): `toilet` (station_type `toilet`, Kenney `toilet`) and
   `bathroom_sink` ("Wash basin", Kenney `bathroomSink`), both
-  `catalogue_room = restroom`, so Buy's Restroom tab appears. No mirror: the
-  kit's `bathroomMirror` hangs on a wall and the game has no wall-hung items.
+  `catalogue_room = restroom`, so Buy's Restroom tab appears. FK-103 adds `restroom_mirror` using the kit's
+  `bathroomMirror` and `wall_hand_dryer` using the approved made hand dryer:
+  both WALL / INSIDE_FACE, RESTROOM, charm 1. `WallDecor.room_hint`
+  suggests marking a Restroom when hung elsewhere; it never refuses placement.
+  Their bottom edges align at 0.6 m for the game's person scale; lowering the
+  dryer's mount leaves its approved model dimensions and shared scale unchanged.
+  Hung RESTROOM accents contribute charm with the usual diminishing returns;
+  floor fixtures still do not. `STALL_PARTITION` is appended to the segment
+  enum and uses the same access checks as a wall (including toilet and basin
+  use spots). Its fixed cream-laminate panel is 1.4 m high and 0.035 m thin,
+  drawn on the edge; it takes no floor cell and has no finish/decor face.
+  The catalogue and live view share `StallPartitionView` geometry; existing
+  cutaway input lowers it without changing saved state.
 - **Restrooms.** `RoomRules.restroom_toilets()`: toilets in a Restroom room
   whose use spot is in the Restroom too and reachable by guests. `RestaurantSim` caches them and the dining
   seat count per layout change (`has_restroom`, `seat_count`,
@@ -2254,7 +2265,7 @@ historical reports. There are no new save points or random draws.
 
 - **In-repo runner, not GUT** (decision D9). `tools/run_tests.gd` finds `tests/**/test_*.gd`, runs every `test_*` method, and exits non-zero on failure. Tests extend `tests/test_case.gd`, which provides `assert_eq`, `assert_true`, `assert_false`, `assert_almost_eq` and `assert_null`. No downloads and nothing to version-match. The sim is pure logic, so it doesn't need mocks.
 - A test also fails if it raises an engine or script error (a null call, `push_error`), even when its asserts pass. So code paths exercised by tests report problems through return values, not `push_error`.
-- `tools/check.sh` runs a headless import, then loads every script and resource (`tools/parse_all.gd`, which also catches scenes pointing at missing files), then the tests. Untyped declarations are errors (`untyped_declaration=2`). Every diff must pass it.
+- `tools/check.sh` runs a headless import, a bounded fresh `--check-only` compile of the screenshot entry before autoloads exist (including error-log inspection, because Godot may exit zero for dependency compile errors), then loads every script and resource (`tools/parse_all.gd`, which also catches scenes pointing at missing files), then the tests. Untyped declarations are errors (`untyped_declaration=2`). Every diff must pass it.
 - **Sim tests run without the scene tree** wherever possible (`RefCounted` classes, which can be built directly in tests).
 
 ## 3. Art pipeline
@@ -2270,3 +2281,30 @@ historical reports. There are no new save points or random draws.
 - **Poly budget (guide):** furniture 300 to 1,500 tris, characters 1,500 to 4,000 tris, small props under 300 tris.
 - **AI-generated meshes** (Tripo and similar) need retopology or decimation, a pivot fix, a scale check and a swap to the palette material before they go into `assets/models/`.
 - **Placeholders:** CSG or primitive shapes are fine until Phase 4. Systems first, art later.
+
+### Tier 2 lease (FK-064)
+`data/balance/lease_upgrade.tres` defines the level-3 morning offer, deposit,
+rent and extra lot margins. The Director accepted these **provisional** numbers
+on 2026-10-29: $300 deposit, $60 daily rent, four extra cells east and north
+(none west); a later balance pass can tune them in the data without code changes.
+The deposit uses `Ledger.UPGRADES` / `lease_deposit`; closing rent uses
+`Ledger.RENT`. Existing loans block upgrading. The Menu morning panel shows
+the cost, amber `RestockBudgetWarning`, and a plain cash/loan refusal.
+
+`OwnerProgress.property_tier` joins the existing owner progress snapshot;
+missing legacy fields mean Tier 1. Owner restores before shop, so the shop's
+floor decoder validates bought cells against the tier's larger template lot.
+No new section or save point. No floor, furniture, movement, RNG draw, or
+change to the default Tier 1 play. The current live editor's footprint, Build
+preview, delivery dock and rendered alley all use the enlarged lot. Recipe,
+floor and wall-finish tier gates now read the saved property tier.
+
+Regression coverage: `tests/sim/test_lease_upgrade.gd` and
+`tests/world/test_lease_session.gd` exercise eligibility, refusals, exact books,
+new floor, alley edge, legacy decoding and both sides of the morning checkpoint.
+For native review, `tools/lease_review.gd -- offer|short|expand` opens a seeded,
+interactive fixture with explicit synthetic XP/cash and saves disabled.
+`--capture-set=<fresh output directory>` captures the offer, cash refusal and
+accepted lease in Expand in one bounded manual process, then exits. Attach all
+three PNGs to the PR and keep their state metadata outside Git; this capture set
+is not part of CI.

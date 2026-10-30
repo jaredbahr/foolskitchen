@@ -147,8 +147,8 @@ static func validate_wall_kinds(definitions: Array[WallKindDef]) -> PackedString
 			errors.append("wall '%s': display_name is empty" % definition.id)
 		if definition.price < 0:
 			errors.append("wall '%s': price must be >= 0" % definition.id)
-		if definition.segment < SimGrid.Segment.WALL or definition.segment > SimGrid.Segment.WINDOW:
-			errors.append("wall '%s': segment must be wall, doorway or window" % definition.id)
+		if definition.segment < SimGrid.Segment.WALL or definition.segment > SimGrid.Segment.STALL_PARTITION:
+			errors.append("wall '%s': segment must be wall, doorway, window or stall partition" % definition.id)
 		elif segments.has(definition.segment):
 			errors.append("wall '%s': another wall definition has the same segment" % definition.id)
 		else:
