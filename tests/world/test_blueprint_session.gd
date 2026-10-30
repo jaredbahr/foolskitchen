@@ -41,7 +41,7 @@ func test_player_library_only_saves_at_next_morning_and_survives_load() -> void:
 	(first.get("shop_editor") as ShopEditor).set_owner_level(2)
 	assert_true(first.call("shop_stamp", blueprint, Vector2i(11, 8), 1), (first.get("shop_editor") as ShopEditor).last_check.why)
 	assert_eq(FileAccess.get_file_as_string(_path()), before, "library and stamp actions never save")
-	assert_eq(int(_document()["data"]["shop"]["version"]), 7, "the shop snapshot includes furniture looks")
+	assert_eq(int(_document()["data"]["shop"]["version"]), 8, "the thin-divider shop snapshot must not go backwards")
 	assert_false((_document()["data"]["shop"] as Dictionary).has("blueprints"))
 	assert_eq((_document()["data"]["blueprints"]["blueprints"] as Array).size(), 0)
 	Clock.sim.phase = SimClock.Phase.CLOSED
