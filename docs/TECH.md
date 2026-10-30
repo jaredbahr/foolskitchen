@@ -1497,8 +1497,12 @@ tables and buys two normal chairs for $20, without changing menu/staff/tuning.
   is one 0.5 m side of a wall seen from the floor cell in front of it, keyed
   `Vector3i(x, y, dir)` (the floor cell, and the direction into the wall:
   0 north, 1 east, 2 south, 3 west). Faces are derived from the grid on every
-  query, never stored: the room side of a solid shell `WALL` cell, and both
-  sides of an interior `WALL` segment. Windows, doorways (the back door too),
+  query, never stored: the room side of a solid shell `WALL` cell, both
+  sides of an interior `WALL` segment, and solid street-facing outside shell
+  faces. An outside key uses the outside/entry cell and direction into the
+  shell; no existing inside/window coordinates change meaning.
+  `WallFaces.all(grid)` and room fill retain inside-only enumeration; the
+  explicit `include_exterior` argument includes outside faces. Windows, doorways (the back door too),
   the street door and a shell cell cut by a window or back door (on any side;
   its box is cut or hidden) have none. `problem(grid, face)` gives the
   sentence (rule 11). `flood` follows a face along its wall and round inside
@@ -1542,20 +1546,22 @@ tables and buys two normal chairs for $20, without changing menu/staff/tuning.
   room (`wall_room_faces`), Alt-click copies a look (`wall_finish_pick`).
   Commits go through Main's `shop_wall_finishes`. **Paint** on a wall face hit
   before any furniture recolours the connected run of that look inside its
-  room (`wall_area_faces`), Shift the room; the outside of the shell (no face)
-  still calls the legacy whole-shop `paint_wall`; a click on hung decor paints
-  nothing (wall items take no paint yet).
+  room (`wall_area_faces`), Shift the room; Paint on the outside of the shell
+  still calls the legacy whole-shop `paint_wall`, even when an outside face
+  has a stored finish override. Existing inside/window decor ignores Paint;
+  a paintable exterior awning uses free `paint_hung`, with closed-phase history.
 - **Wall decor.** A wall item is an `ItemDef` on `PlacementLayer.WALL`
   (DECOR or RESTROOM, not solid, no work/seat/blocking cells, footprint
   `(width 1..4, 1)`); `SimGrid` refuses that layer (`INVALID_LAYER`), so it
   can never stand on the floor. `ItemDef.wall_mount` (`WallMount`, never
   renumber) says where: `INSIDE_FACE` (prints, boards: the default) or
-  `WINDOW` (Jared: the neon OPEN sign hangs in a window, not inside; one
-  window wide, footprint (1, 1)); an exterior-face mount for the street front
-  (#168) would be the next value. `WallDecor` (`src/sim/shop/wall_decor.gd`,
+  `WINDOW` (one outside window wide, footprint (1, 1)), or appended
+  `EXTERIOR=2` on the fixed street front. The OPEN sign retains WINDOW and
+  its original price/unlock, adding `allow_exterior`; its instance records
+  the actual mount, so moving between window and outside is unambiguous. `WallDecor` (`src/sim/shop/wall_decor.gd`,
   owned by `ShopEditor.decor`, never by `SimGrid`) maps anchor face -> item
-  (`def_id`, width) and face -> anchor: one item per face, never in anyone's
-  way. `problem` refuses a span that is not one straight run of solid faces
+  (`def_id`, width, actual mount, swatch) and face -> anchor: one item per
+  face/band, never in anyone's way. `problem` refuses a span that is not one straight run of solid faces
   (`WallFaces` sentences: window, doorway, street door, "Not enough wall here",
   "A wall is in the way", "This would span two different walls": a shell
   face and an interior slab's face are on different planes) or covers another
@@ -1621,7 +1627,7 @@ tables and buys two normal chairs for $20, without changing menu/staff/tuning.
   wall, a nearby corner and the floor below, not the room (a future
   face-mounted glowing item should get the window treatment below, since a
   shadowless 1.2 m light reaches past an interior wall). A window item's
-  light (the OPEN sign, the only glowing item) stands in the window plane,
+  light (the window-mounted OPEN sign) stands in the window plane,
   halfway through the opening at the sign's height, with range 0.34 m: it
   lights the window's own jambs, and no room beside the window (at least
   0.375 m away, past an interior wall on the window cell's side line). Its
@@ -1636,11 +1642,30 @@ tables and buys two normal chairs for $20, without changing menu/staff/tuning.
   more pass over the meshes in its range, up to 8 lights per mesh (the
   floor is one mesh), so many glowing items in one shop would start to drop
   lights on the floor; a shop without one renders exactly as before.
-- **Save and vibe.** The `shop` snapshot is version 6 with `wall_style_id`
+- **Street-front supports.** Pure `ExteriorSupport` derives the fixed front
+  from street entries and `WallRules.street_side`; back/side walls refuse.
+  It distinguishes solid finishable surfaces from door/window supports,
+  including the unchanged decorative frontage panes. Outside item keys keep
+  the outside cell and encode `z=dir+4*band`: BODY0, CANOPY1, HEADER2, SILL3,
+  LIGHTS4. `span`/`anchor_for` preserve the full key. A canopy spans a door
+  or window, a sign header spans the street door, and a sill supports a
+  flower box under a window. Independent bands coexist; same-band overlaps
+  refuse. Solid finish quads never cover a cut window or doorway. Support
+  loss refunds/deletes dependent items and history restores their mount and
+  swatch exactly. New data supplies awning widths2–4, a flower box, one shop
+  sign and light runs2–4. The new `shows_restaurant_name` sign follows the
+  existing MenuSettings -> Main -> ShopView name path on rename/rebuild/load;
+  the free RoomDressing board remains unchanged. No second saved name.
+- **Save and vibe.** The current `shop` snapshot remains version 7 (furniture
+  looks); wall fields introduced in version 6 keep `wall_style_id`
   (always `paint`: any other value is ignored, like floors), `wall_finishes:
   [[x, y, dir, style, swatch, accent], ...]` and `wall_items: [[x, y, dir,
   def_id], ...]` (sorted; a window item's row is its window slot, so the row
-  format is unchanged); no new SaveSystem section. Versions 1-5 load as
+  format is unchanged). Only exterior instances append their actual mount
+  and selected swatch: `[x,y,z,def_id,2,swatch_id]`; old inside/window rows
+  remain four fields on load and output. Optional rows validate band, mount,
+  support and uniqueness before staging. There is no new SaveSystem section
+  or action save; all state joins the existing morning checkpoint. Versions 1-5 load as
   plain paint with nothing hung. Decoding forgives: a face that is no longer a
   face, an unknown finish or item, a non-wall item, an overlap or a malformed
   row is skipped; an unknown colour falls back to the finish's own. The vibe
@@ -1648,7 +1673,9 @@ tables and buys two normal chairs for $20, without changing menu/staff/tuning.
   wall faces: exactly the old wall paint by default) and
   `decor_vibe_items()` (hung items on guest-room faces) through
   `VibeInputs.capture(..., wall_items)`: decor charm and themes like rugs
-  (no floor space). Looks only: no other sim effect.
+  (no floor space). Actual exterior placements are explicitly excluded even
+  when guest cells are empty; outside finishes do not vote in inside wall
+  colour. No curb-appeal state is added. Looks only: no other sim effect.
 - **Review.** `tools/screenshot.sh --walls-review --speed=0 --frames=12,30`
   (`tools/walls_review.gd`, `[--quarter=N]` for frame 12): finishes on shell
   and interior walls and four hung items (the OPEN sign in a street-front
@@ -1919,6 +1946,38 @@ limits belong in the PR, not an invented hardware or FPS acceptance threshold.
 The floor shader adds a subtle multiplicative plank pattern while retaining its
 existing paint colour and camera-controlled build-grid parameters (D25: it is
 pattern 0 of `floor_finish.gdshader`, unchanged).
+
+### Daily weather
+`SimWorld.weather` is a separate `WeatherState` value per world, with stable
+SUNNY 0 / CLOUDY 1 / RAIN 2 kinds and a chosen morning `day`; day 0 means unchosen.
+`WeatherTuning` reads the relative 50/30/20 weights from
+`data/balance/weather.tres`. Finite, nonnegative weights and a finite positive
+sum are validated before selection. `ensure_today` consumes exactly one
+`randf` from the caller's current `GameState.rng(&"weather")` for a new morning;
+a repeated morning consumes none, and zero-weight bins stay impossible even
+at the upper endpoint. No state/world retains that RNG across a new run.
+Weather has no arrival, patience, economy, vibe or simulation-tick effect.
+
+Main registers the existing save system's `weather` section as
+`{version:1,day,kind}`. Restore validates into a detached staged value; the day
+must match the saved Clock, and installation waits until the whole morning
+load succeeds on its final world. Missing legacy sections install Sunny
+already chosen for that saved day, without obtaining a weather stream.
+Malformed present sections refuse. New mornings select before the existing
+`_begin_morning` autosave; no new save point or SaveSystem code is added.
+`WeatherText` centralizes Sunny/Cloudy/Rain, the forecast line and named icon
+aliases; the future patio may read the value, but no patio behavior is added.
+
+`WeatherView` preserves the original Environment, Sky, reflection, ambient,
+directional and exposure settings. Only proven outdoor front pavement gets
+private colour treatment and an additional reserved receiver bit `1<<18`
+(layer 19); a weak cool OmniLight affects only that bit. Sunny, rebinding and
+cleanup restore original material colours and masks. Rain is an unshaded,
+shadowless deterministic MultiMesh with complete-column and camera-projected
+built-volume exclusion. It uses no simulation RNG. Camera priority 0 precedes
+weather priority 1 and Main priority 10, so the mask uses the rendered camera;
+unchanged kind/world/dressing skips rebuilding, while terrain/camera changes
+invalidate the appropriate cached geometry. HUD/Menu presentation is read-only.
 
 ### Concepts: drinks, Café and Bar, opening hours (FK-083)
 - **No picker.** The concept is what the shop builds and serves. `VibeTuning`

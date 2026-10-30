@@ -1560,8 +1560,11 @@ func begin_rehang(anchor: Vector3i) -> bool:
 func hang_pointer(face: Vector3i, offset: float = 0.0) -> void:
 	if state != State.HANG or not _can_interact():
 		return
-	var anchor: Vector3i = WallFaces.NO_FACE if face == WallFaces.NO_FACE \
-		else WallFaces.anchor_for(face, 1 if hang_definition.hangs_in_window() else hang_definition.footprint.x, offset)
+	var target: Vector3i = face
+	if ExteriorSupport.is_exterior(_grid, face) and (hang_definition.wall_mount == ItemDef.WallMount.EXTERIOR or hang_definition.allow_exterior):
+		target = ExteriorSupport.key_for(face, hang_definition.exterior_band)
+	var anchor: Vector3i = WallFaces.NO_FACE if target == WallFaces.NO_FACE \
+		else WallFaces.anchor_for(target, 1 if hang_definition.hangs_in_window() else hang_definition.footprint.x, offset)
 	if anchor == hang_anchor and not _topology_dirty:
 		return
 	hang_anchor = anchor
@@ -1656,7 +1659,7 @@ func hang_summary() -> String:
 	if state != State.HANG or hang_definition == null:
 		return ""
 	if hang_anchor == WallFaces.NO_FACE:
-		return "Point at a %s to hang %s" % ["window" if hang_definition.hangs_in_window() else "wall", hang_definition.display_name]
+		return CatalogueText.hang_pointer_text(hang_definition)
 	if not current_check.ok:
 		return current_check.why
 	var hint: String = WallDecor.room_hint(_grid, hang_definition, hang_anchor)

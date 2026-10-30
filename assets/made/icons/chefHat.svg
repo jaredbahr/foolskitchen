@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">
+  <title>Chef hat</title>
+  <!-- Hand-authored for #118, based only on the approved Kenney Game Icons.
+       References at 100 px (bounds: alpha >0, filled area: alpha >127): wrench bbox(20,20,84,84), area1918;
+       star bbox(18,20,82,80), area2117; home bbox(20,18,84,82), area2266;
+       gear bbox(20,20,84,84), area2193. Bounds are half-open pixel bounds.
+       Match their broad transparent margins, rounded silhouette and white fill.
+       Export at 100 by 100 pixels with Inkscape, as documented in README.md. -->
+  <path fill="#ffffff" d="M30 58C22 58 18 52 18 44C18 36 24 30 32 30C34 22 41 18 50 18C59 18 66 22 68 30C76 30 82 36 82 44C82 52 78 58 70 58V78Q70 82 66 82H34Q30 82 30 78Z"/>
+</svg>

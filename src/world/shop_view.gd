@@ -87,6 +87,7 @@ var room_dressing: RoomDressing
 var neighbourhood_dressing: NeighbourhoodDressing
 ## Separate from the actual delivery/service lot: maximum future building land.
 var _neighbourhood_reserve: Rect2i = Rect2i()
+var weather_view: WeatherView
 var _restaurant_name: String = MenuSettings.DEFAULT_NAME
 var item_nodes: Dictionary[int, ItemVisual] = {}
 var agent_nodes: Dictionary[int, Node3D] = {}
@@ -154,6 +155,8 @@ func show_world(value: SimWorld, maximum_reserve: Rect2i = Rect2i()) -> void:
 	regular_nodes.clear()
 	_mood_states.clear()
 	_mood_bands.clear()
+	if weather_view != null:
+		weather_view.bind(null)
 	for child: Node in get_children():
 		if child.has_meta("shop_geometry"):
 			remove_child(child)
@@ -172,6 +175,7 @@ func show_world(value: SimWorld, maximum_reserve: Rect2i = Rect2i()) -> void:
 	floor_mesh = null
 	room_dressing = null
 	neighbourhood_dressing = null
+	weather_view = null
 	segment_view = null
 	wall_finish_view = null
 	selection_outline = null
@@ -208,6 +212,7 @@ func show_world(value: SimWorld, maximum_reserve: Rect2i = Rect2i()) -> void:
 	wall_finish_view.set_meta("shop_geometry", true)
 	add_child(wall_finish_view)
 	wall_finish_view.bind(world.grid, _paint_content, _wall_finishes, _wall_decor)
+	wall_finish_view.set_restaurant_name(_restaurant_name)
 	room_dressing = RoomDressing.new()
 	room_dressing.name = "RoomDressing"
 	room_dressing.set_restaurant_name(_restaurant_name)
@@ -218,6 +223,11 @@ func show_world(value: SimWorld, maximum_reserve: Rect2i = Rect2i()) -> void:
 	neighbourhood_dressing.set_meta("shop_geometry", true)
 	add_child(neighbourhood_dressing)
 	_build_terrain()
+	weather_view = WeatherView.new()
+	weather_view.name = "Weather"
+	weather_view.set_meta("shop_geometry", true)
+	add_child(weather_view)
+	weather_view.bind(self)
 	for item: PlacedItem in world.grid.items():
 		_build_item(item)
 	_apply_paint()
@@ -369,6 +379,8 @@ func _build_terrain() -> void:
 	if room_dressing != null:
 		room_dressing.rebuild(world, lowered_wall_cells())
 	_refresh_neighbourhood()
+	if weather_view != null:
+		weather_view.refresh(true)
 
 
 ## View-only name survives terrain rebuilds, moves and loading another layout.
@@ -379,6 +391,8 @@ func set_restaurant_name(value: String) -> bool:
 	_restaurant_name = normalized
 	if room_dressing != null:
 		room_dressing.set_restaurant_name(normalized)
+	if wall_finish_view != null:
+		wall_finish_view.set_restaurant_name(normalized)
 	return true
 
 
@@ -490,7 +504,61 @@ func wall_face_at_ray(ray_origin: Vector3, ray_direction: Vector3, floor_fallbac
 				face = candidate
 		if face != WallFaces.NO_FACE:
 			best = _face_hit(face, point, nearest)
+	if not best.is_empty() and best.get("face", WallFaces.NO_FACE) != WallFaces.NO_FACE \
+			and ExteriorSupport.is_exterior(world.grid, best["face"]):
+		if _exterior_occluder_distance(ray_origin, ray_direction) < float(best["distance"]):
+			return {}
 	return best
+
+
+## A street-facing mount slot on the fixed facade, including its door header.
+## Placement uses that support plane; foreground opaque meshes still win.
+func exterior_mount_at_ray(ray_origin: Vector3, ray_direction: Vector3, mount_band: int = ExteriorSupport.Band.BODY) -> Dictionary:
+	if world == null:
+		return {}
+	var outward: Vector2i = WallRules.street_side(world.grid)
+	var normal: Vector3 = Vector3(outward.x, 0.0, outward.y)
+	var denominator: float = ray_direction.dot(normal)
+	if denominator >= -0.00001:
+		return {}
+	var into: Vector2i = -outward
+	var direction: int = WallFaces.DIRS.find(into)
+	var supports: Array[Vector2i] = []
+	supports.assign(_wall_nodes.keys())
+	for cell: Vector2i in ExteriorSupport.door_cells(world.grid):
+		if not supports.has(cell):
+			supports.append(cell)
+	var best: Dictionary = {}
+	for shell: Vector2i in supports:
+		var base: Vector3i = WallFaces.make(shell + outward, direction)
+		var key: Vector3i = ExteriorSupport.key_for(base, mount_band)
+		if not ExteriorSupport.is_exterior(world.grid, key):
+			continue
+		var plane: Vector3 = GridMath.cell_to_world(shell) + normal * GridMath.CELL_SIZE * 0.5
+		var distance: float = (plane - ray_origin).dot(normal) / denominator
+		if distance < 0.0:
+			continue
+		var point: Vector3 = ray_origin + ray_direction * distance
+		var along: Vector2i = WallFaces.along(key)
+		var offset: float = (point - plane).dot(Vector3(along.x, 0.0, along.y))
+		if absf(offset) > GridMath.CELL_SIZE * 0.5 or point.y < 0.0 or point.y > ArtScale.WALL_HEIGHT:
+			continue
+		if _exterior_occluder_distance(ray_origin, ray_direction) < distance - SIDE_EPSILON \
+				or wall_distance(ray_origin, ray_direction) < distance - SIDE_EPSILON:
+			continue
+		if best.is_empty() or distance < float(best["distance"]):
+			best = {"face": key, "offset": offset, "distance": distance}
+	return best
+
+
+## Exterior placement/finish picking never looks through opaque furniture or decor.
+func _exterior_occluder_distance(ray_origin: Vector3, ray_direction: Vector3) -> float:
+	var distance: float = nearest_item_distance(ray_origin, ray_direction)
+	if wall_finish_view != null:
+		var hit: Dictionary = wall_finish_view.item_hit(ray_origin, ray_direction)
+		if not hit.is_empty():
+			distance = minf(distance, float(hit["distance"]))
+	return distance
 
 
 ## Sell picks visible segment geometry, including outer fittings and headers.
@@ -807,6 +875,8 @@ func preview_paint(kind: StringName, item_id: int, swatch_id: StringName) -> voi
 
 
 func clear_paint_preview() -> void:
+	if wall_finish_view != null:
+		wall_finish_view.clear_hung_paint_preview()
 	preview_paint(&"", -1, &"")
 	clear_floor_preview()
 	clear_wall_preview()

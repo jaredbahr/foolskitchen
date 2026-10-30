@@ -1,0 +1,30 @@
+[gd_resource type="Resource" script_class="ItemDef" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://src/sim/content/item_def.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://assets/props/string_lights_2.tscn" id="2_view"]
+
+[resource]
+script = ExtResource("1_script")
+view_scene = ExtResource("2_view")
+id = &"string_lights_2"
+display_name = "String lights (2 faces)"
+category = 6
+catalogue_room = &"lighting"
+wall_mount = 2
+exterior_band = 4
+unique_per_shop = false
+shows_restaurant_name = false
+placement_layer = 2
+footprint = Vector2i(2, 1)
+solid = false
+work_cells = Array[Vector2i]([])
+seat_cells = Array[Vector2i]([])
+station_type = &""
+capacity = 1
+quality_bonus = 0.0
+price = 25
+unlock_level = 3
+charm = 0
+theme_tags = Array[StringName]([])
+paintable = false
+glow_color = Color(1, 0.9137255, 0.5882353, 1)
