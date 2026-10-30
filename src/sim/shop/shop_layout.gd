@@ -7,6 +7,11 @@ extends Resource
 @export var id: StringName = &""
 @export var display_name: String = ""
 @export var rows: PackedStringArray = []
+## Authored terrain before thin dividers (snapshot versions 1–7 omit terrain).
+@export var legacy_rows: PackedStringArray = []
+## Version-8 interior-only terrain exceptions, normalized into rows on load.
+@export var thin_cells: Array[Vector2i] = []
+@export var thick_cells: Array[Vector2i] = []
 @export var placements: Array[ShopPlacement] = []
 ## Whole-room paint; empty IDs preserve the authored placeholder palette.
 @export var wall_swatch_id: StringName = &""
@@ -49,6 +54,8 @@ extends Resource
 var rooms_unmarked: bool = false
 ## Plain notes from forgiving normalization of older saves, logged on load.
 var load_notes: Array[String] = []
+## Pure load migration stages refunds; Main applies them after complete success.
+var load_refund: int = 0
 ## Built-in dry storage (FK-087): the back-room pantry the shop comes with,
 ## in units of dry (shelf) ingredients. Placed storage shelves add to it.
 @export var pantry_units: int = 0

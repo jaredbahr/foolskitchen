@@ -1,0 +1,7 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="PackedScene" path="res://src/world/main.tscn" id="1_main"]
+[ext_resource type="Script" path="res://tools/divider_review.gd" id="2_review"]
+
+[node name="DividerReview" instance=ExtResource("1_main")]
+script = ExtResource("2_review")
