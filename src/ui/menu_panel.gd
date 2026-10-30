@@ -7,6 +7,7 @@ signal enable_requested(recipe_id: StringName, enabled: bool)
 signal price_requested(recipe_id: StringName, price: int)
 signal settings_requested()
 signal goals_requested()
+signal lease_requested()
 signal quit_to_title_requested()
 ## Morning opening-hours request (FK-083); the session checks the limits.
 signal hours_requested(open_minute: int, close_minute: int)
@@ -16,6 +17,8 @@ const STANDARD_COLOR: Color = Color("3b2a20")
 const LOWER_COLOR: Color = Color("38764b")
 const HIGHER_COLOR: Color = Color("a83e35")
 const LOCKED_COLOR: Color = Color("766b60")
+## Same amber as the HUD restock advice, without importing its autoload adapter.
+const ADVICE_COLOR: Color = Color("7F5100")
 const SECTION_FONT_SIZE: int = 22
 const MORNING_HINT: String = "Menu changes are available in the morning."
 ## Widest panel; narrower windows (or a large UI scale) keep a margin each side.
@@ -106,8 +109,33 @@ func set_regular_favourites(ids: Array[StringName]) -> void:
 	refresh()
 
 
+## Request-only morning lease offer, with restock advice directly below cost.
+func set_lease_offer(offered: bool, cost: String, warning: String, refusal: String) -> void:
+	var box: VBoxContainer = get_node("Panel/Content/LeaseOffer")
+	box.visible = offered
+	(box.get_node("Cost") as Label).text = cost
+	var advice: Label = box.get_node("Warning")
+	advice.text = warning
+	advice.visible = not warning.is_empty()
+	advice.add_theme_color_override("font_color", ADVICE_COLOR)
+	var reason: Label = box.get_node("Refusal")
+	reason.text = refusal
+	reason.visible = not refusal.is_empty()
+	var button: Button = box.get_node("Accept")
+	button.disabled = not refusal.is_empty()
+	if not button.pressed.is_connected(_on_lease_pressed):
+		button.pressed.connect(_on_lease_pressed)
+
+
+func _on_lease_pressed() -> void:
+	if _phase == SimClock.Phase.MORNING:
+		lease_requested.emit()
+
+
 func set_phase(phase: int) -> void:
 	_phase = phase
+	if phase != SimClock.Phase.MORNING:
+		get_node("Panel/Content/LeaseOffer").hide()
 	refresh()
 
 

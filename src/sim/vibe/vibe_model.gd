@@ -4,9 +4,11 @@ extends RefCounted
 ## and again on load; no ticks, random draws, nodes or saved state belong here.
 
 ## Detached placed-item input. Cells are absolute occupied footprint cells.
-## Only DECOR earns charm/variety; other categories may contribute theme tags.
+## DECOR and hung RESTROOM accents earn charm/variety; other items may vote for themes.
 class Item extends RefCounted:
 	var definition_id: StringName = &""
+	## Explicit cosmetic identity; base definition still owns repetition/variety.
+	var variant_id: StringName = &""
 	var charm: float = 0.0
 	var category: int = ItemDef.Category.DECOR
 	var theme_tags: Array[StringName] = []
@@ -52,10 +54,14 @@ class Result extends RefCounted:
 	var occupied_normal_cells: int = 0
 	var crowding_density: float = 0.0
 
+class _ThemeCopies extends RefCounted:
+	var tags: Array[StringName] = []
+	var count: int = 0
+
 class _Group extends RefCounted:
 	var charm: float = 0.0
 	var category: int = ItemDef.Category.DECOR
-	var tags: Array[StringName] = []
+	var variant_themes: Dictionary[StringName, _ThemeCopies] = {}
 	var floor_decor: bool = false
 	var count: int = 0
 	var paint_sources: int = 0
@@ -100,7 +106,8 @@ static func evaluate(inputs: Inputs, tuning: VibeTuning) -> Result:
 	for id_text: String in ids:
 		var item_id: StringName = StringName(id_text)
 		var group: _Group = collected.groups[item_id]
-		if group.category == ItemDef.Category.DECOR and group.charm > 0.0:
+		if (group.category == ItemDef.Category.DECOR or
+				(group.category == ItemDef.Category.RESTROOM and group.floor_decor)) and group.charm > 0.0:
 			var charm: float = group.charm * (1.0 - pow(tuning.repeat_decay, group.count)) \
 				/ (1.0 - tuning.repeat_decay)
 			if not is_finite(charm):
@@ -111,8 +118,15 @@ static func evaluate(inputs: Inputs, tuning: VibeTuning) -> Result:
 				decor_charm += charm
 			varieties += 1
 		var weight: float = tuning.theme_item_weights.get(item_id, tuning.theme_category_weights[group.category])
-		if not _add_tags(themes, group.tags, weight, group.count, true) \
-				or not _add_item_paint(themes, group, tuning):
+		var variant_ids: Array[String] = []
+		for variant_id: StringName in group.variant_themes:
+			variant_ids.append(String(variant_id))
+		variant_ids.sort()
+		for variant_id: String in variant_ids:
+			var copies: _ThemeCopies = group.variant_themes[StringName(variant_id)]
+			if not _add_tags(themes, copies.tags, weight, copies.count, true):
+				return _invalid("The vibe amounts are too large")
+		if not _add_item_paint(themes, group, tuning):
 			return _invalid("The vibe amounts are too large")
 	var total_charm: float = decor_charm + lamp_charm
 	if not is_finite(total_charm):
@@ -174,13 +188,21 @@ static func _collect(inputs: Inputs, tuning: VibeTuning) -> _Collected:
 			group = _Group.new()
 			group.charm = item.charm
 			group.category = item.category
-			group.tags = tags
 			group.floor_decor = item.floor_decor
 			collected.groups[item.definition_id] = group
 		elif group.charm != item.charm or group.category != item.category \
-				or group.tags != tags or group.floor_decor != item.floor_decor:
+				or group.floor_decor != item.floor_decor:
 			collected.reason = "Copies of an item have different vibe data"
 			return collected
+		var copies: _ThemeCopies = group.variant_themes.get(item.variant_id)
+		if copies == null:
+			copies = _ThemeCopies.new()
+			copies.tags = tags
+			group.variant_themes[item.variant_id] = copies
+		elif copies.tags != tags:
+			collected.reason = "Copies of an item have different vibe data"
+			return collected
+		copies.count += 1
 		group.count += 1
 		var paint_tags: Array[StringName] = _known_tags(item.paint_theme_tags, tuning)
 		if not paint_tags.is_empty():

@@ -370,6 +370,36 @@ an active edit/panel/selection first, or opens Settings when none is active.
   restored RNG, stock top-up, ledger prune and autosave. Missing old-save `shop`
   sections use the authored layout. Non-MORNING saves remain unsupported.
 
+### Seafood content (FK-076)
+- Five level-gated food recipes form a data-defined seafood branch: Fries →
+  Fish & chips (level 2) → Salmon maki (4), and Tomato soup → Mussels in
+  broth (3) → Shrimp skewer (4) → Seafood stew (5). The first uses prep and
+  fryer, maki uses prep, mussels/skewer use the stove, and stew uses prep
+  then stove. Sections and `seafood` theme tags live in recipe resources.
+- Fish fillet and shrimp use freezer storage, mussels and lemon use the
+  fridge, and rice uses dry storage. All five have station-only reorder
+  targets, so the existing menu-use projection buys them only while a
+  selected dish needs them. Starting menus, default orders and save formats
+  are unchanged; levels make foods selectable without enabling them.
+- Deck planks is a level-4 floor resource using the existing `PLANKS`
+  pattern, Slate Blue boards and Cream seams, priced at $3 a tile. It adds
+  no shader branch, texture or pattern number and carries the `seafood` tag.
+- **Model support.** The approved Food Kit contains `fish` and `fries`,
+  `mussel-open`, `bowl-broth`, `maki-salmon`, `skewer` and `pot-stew`.
+  Maki has a direct match. Fish & chips and mussels in broth have matching
+  components but no composed whole-dish model; there is no shrimp-specific
+  skewer or seafood-specific stew model. Current recipes have no per-dish
+  render binding (food-on-plates is FK-054/#99), so this data-only change
+  creates no renderer, speculative scene metadata, substituted art or new
+  model. Those fitting kit parts remain available to the food presentation
+  work; whole-dish gaps are disclosed rather than claiming new visuals.
+- `tools/seafood_review.tscn` is an explicit unsaved capture fixture with
+  seed 126, $2,000 extra funds and owner level 5. Run it through
+  `tools/screenshot.sh --scene=res://tools/seafood_review.tscn --speed=0
+  --frames=30` with `SEAFOOD_REVIEW_STAGE=floor` or `menu`. It uses normal
+  purchase/menu/floor commands and shows the furnished Deck planks room or
+  selected seafood stew details. No service, stock grant or save is faked.
+
 ### 2.3d Menu and prices (FK-030)
 - **Menu identity (FK-086a):** `MenuSettings` owns a trimmed 1–24 character
   restaurant name. The morning request updates the HUD and view-only entrance
@@ -1156,6 +1186,8 @@ an active edit/panel/selection first, or opens Settings when none is active.
 ### Furniture blueprints (FK-045)
 - `Blueprint` is a Resource containing a player name and `ShopPlacement`
   entries: content id, anchor-relative offset, quarter turns and body swatch.
+  Variant ids in blueprint entries remain a separate follow-up after FK-079;
+  existing blueprints keep their default furniture looks.
   Only floor furniture and rugs participate, never doors, wall decor or
   structure. Box selection includes whole footprints on both placement layers.
   Rotation turns the group's bounding rectangle and each item's already-rotated
@@ -1178,7 +1210,7 @@ an active edit/panel/selection first, or opens Settings when none is active.
   input without triggering build shortcuts. Cancel/phase changes discard only
   the active selection/ghost, not the player's library.
 - `BlueprintLibrary` is registered as a separate `blueprints` save section in
-  Main, not inside the version-6 `shop` snapshot. The existing morning autosave
+  Main, not inside the version-7 `shop` snapshot. The existing morning autosave
   is the only write boundary; creating, renaming, deleting and stamping do not
   save immediately. Restore stages the library until the whole morning load
   succeeds. Old saves without it get an empty library; unknown item ids are
@@ -1266,8 +1298,19 @@ an active edit/panel/selection first, or opens Settings when none is active.
 - **Restroom pieces.** `ItemDef.Category.RESTROOM` (appended; vibe theme
   weight 0): `toilet` (station_type `toilet`, Kenney `toilet`) and
   `bathroom_sink` ("Wash basin", Kenney `bathroomSink`), both
-  `catalogue_room = restroom`, so Buy's Restroom tab appears. No mirror: the
-  kit's `bathroomMirror` hangs on a wall and the game has no wall-hung items.
+  `catalogue_room = restroom`, so Buy's Restroom tab appears. FK-103 adds `restroom_mirror` using the kit's
+  `bathroomMirror` and `wall_hand_dryer` using the approved made hand dryer:
+  both WALL / INSIDE_FACE, RESTROOM, charm 1. `WallDecor.room_hint`
+  suggests marking a Restroom when hung elsewhere; it never refuses placement.
+  Their bottom edges align at 0.6 m for the game's person scale; lowering the
+  dryer's mount leaves its approved model dimensions and shared scale unchanged.
+  Hung RESTROOM accents contribute charm with the usual diminishing returns;
+  floor fixtures still do not. `STALL_PARTITION` is appended to the segment
+  enum and uses the same access checks as a wall (including toilet and basin
+  use spots). Its fixed cream-laminate panel is 1.4 m high and 0.035 m thin,
+  drawn on the edge; it takes no floor cell and has no finish/decor face.
+  The catalogue and live view share `StallPartitionView` geometry; existing
+  cutaway input lowers it without changing saved state.
 - **Restrooms.** `RoomRules.restroom_toilets()`: toilets in a Restroom room
   whose use spot is in the Restroom too and reachable by guests. `RestaurantSim` caches them and the dining
   seat count per layout change (`has_restroom`, `seat_count`,
@@ -1581,6 +1624,50 @@ an active edit/panel/selection first, or opens Settings when none is active.
   Build > Wall finish holding a striped wallpaper drag; a hand-run frame after
   40 holds a chalk menu board from Buy > Decor > Wall decor, and one after 60
   shows Walls Down (finished stubs, hung items hidden).
+
+### Furniture variant data and materials (FK-079)
+- `ItemDef.variants` lists `ItemVariant` resources. The first is the legacy
+  default. A missing/unknown id resolves to that default; content without
+  variants retains its original price and tags. Each look holds a player
+  name, price delta, theme tags and imported-material-name to kit-colour-name
+  recipe. Returned theme tags are detached copies.
+- `KitMaterialColours` reads colours from unchanged Furniture Kit donors once.
+  `PropVariantMaterials` validates every named surface and donor before any
+  change, duplicates only affected active materials and changes their colour,
+  retaining alpha and other material properties. Switching or clearing a
+  recipe restores exact original overrides. It never modifies imported meshes,
+  materials, textures or scales. The caller restores it before model disposal.
+- First authored resources are the booth's white, walnut and red shells and
+  the stool's chrome/red, chrome/dark-teal and dark-frame/white looks. The
+  colour names are descriptive: the donor colours remain exactly the kit's
+  `carpet`, `carpetWhite`, `woodDark` and `metalDark`; there is no invented
+  black, red or teal RGB value.
+- `ShopPlacement` and `PlacedItem` carry `variant_id` (empty for the legacy
+  default); the grid sets it before its placement signal. Shop snapshots are
+  version 7; missing, malformed and removed look ids fall back to the default.
+  The morning autosave remains the only save boundary. Purchases and sale
+  refunds use the look's price; undo/redo restores the id with exact ledger
+  deltas, and `VibeInputs` reads its detached theme tags.
+- Buy tiles choose a named kit-colour dot without purchasing. `CatalogueText`
+  supplies that look's price/name/themes; thumbnail cache keys include both
+  wrapper and look resources and retain them for identity safety. The buy
+  command, eyedropper, live model and ghost carry the selected look.
+- `PropView` owns the material recipe below body paint: painting preserves
+  frame/other surfaces, and clearing paint reveals the selected look again.
+  Imported resources remain immutable and disposal restores overrides first.
+- Paint offers named looks for the first set at any phase and clears the
+  ordinary body swatch so the selected recipe is visible. Closed-phase undo
+  restores both old look and swatch; painting during service adds no history.
+  Equal-price look changes are free. The Director-approved policy refuses
+  cross-price repaint: choose a differently priced look at purchase time,
+  when its authored price delta is charged. No repaint charge or refund is needed.
+- Vibe keeps repeat decay, variety and item-specific weights grouped by base
+  furniture definition, while counting theme votes by explicit look identity.
+  Different looks can coexist; inconsistent copies of the same look are still
+  rejected. Default looks retain the previous balance.
+- Director visual review follows the ready PR. For the first set, the kit's
+  dark blue-green is not literal black. The Director accepted the existing kit
+  palette and honest dark-frame/dark-teal names; no replacement colours are needed.
 
 ### Restaurant vibe core (FK-072)
 - `VibeModel.evaluate()` reads detached layout, paint and enabled-menu inputs.
@@ -2238,7 +2325,7 @@ historical reports. There are no new save points or random draws.
 
 - **In-repo runner, not GUT** (decision D9). `tools/run_tests.gd` finds `tests/**/test_*.gd`, runs every `test_*` method, and exits non-zero on failure. Tests extend `tests/test_case.gd`, which provides `assert_eq`, `assert_true`, `assert_false`, `assert_almost_eq` and `assert_null`. No downloads and nothing to version-match. The sim is pure logic, so it doesn't need mocks.
 - A test also fails if it raises an engine or script error (a null call, `push_error`), even when its asserts pass. So code paths exercised by tests report problems through return values, not `push_error`.
-- `tools/check.sh` runs a headless import, then loads every script and resource (`tools/parse_all.gd`, which also catches scenes pointing at missing files), then the tests. Untyped declarations are errors (`untyped_declaration=2`). Every diff must pass it.
+- `tools/check.sh` runs a headless import, a bounded fresh `--check-only` compile of the screenshot entry before autoloads exist (including error-log inspection, because Godot may exit zero for dependency compile errors), then loads every script and resource (`tools/parse_all.gd`, which also catches scenes pointing at missing files), then the tests. Untyped declarations are errors (`untyped_declaration=2`). Every diff must pass it.
 - **Sim tests run without the scene tree** wherever possible (`RefCounted` classes, which can be built directly in tests).
 
 ## 3. Art pipeline
@@ -2306,3 +2393,30 @@ departure, tips and morning-only persistence. `tools/regulars_probe.gd` is a man
 25-day paired café probe (equipment-free existing concept fixture; stock and
 running costs paid, morning raises accepted). `tools/regulars_review.tscn` is an
 explicit staged view fixture for two native captures, not balance evidence.
+
+### Tier 2 lease (FK-064)
+`data/balance/lease_upgrade.tres` defines the level-3 morning offer, deposit,
+rent and extra lot margins. The Director accepted these **provisional** numbers
+on 2026-10-29: $300 deposit, $60 daily rent, four extra cells east and north
+(none west); a later balance pass can tune them in the data without code changes.
+The deposit uses `Ledger.UPGRADES` / `lease_deposit`; closing rent uses
+`Ledger.RENT`. Existing loans block upgrading. The Menu morning panel shows
+the cost, amber `RestockBudgetWarning`, and a plain cash/loan refusal.
+
+`OwnerProgress.property_tier` joins the existing owner progress snapshot;
+missing legacy fields mean Tier 1. Owner restores before shop, so the shop's
+floor decoder validates bought cells against the tier's larger template lot.
+No new section or save point. No floor, furniture, movement, RNG draw, or
+change to the default Tier 1 play. The current live editor's footprint, Build
+preview, delivery dock and rendered alley all use the enlarged lot. Recipe,
+floor and wall-finish tier gates now read the saved property tier.
+
+Regression coverage: `tests/sim/test_lease_upgrade.gd` and
+`tests/world/test_lease_session.gd` exercise eligibility, refusals, exact books,
+new floor, alley edge, legacy decoding and both sides of the morning checkpoint.
+For native review, `tools/lease_review.gd -- offer|short|expand` opens a seeded,
+interactive fixture with explicit synthetic XP/cash and saves disabled.
+`--capture-set=<fresh output directory>` captures the offer, cash refusal and
+accepted lease in Expand in one bounded manual process, then exits. Attach all
+three PNGs to the PR and keep their state metadata outside Git; this capture set
+is not part of CI.

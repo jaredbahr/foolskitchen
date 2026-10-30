@@ -26,9 +26,10 @@ class CountingEditor extends ShopEditor:
 		move_queries += 1
 		return super.check_move(item_id, cell, turns, exact)
 
-	func check_buy(def_id: StringName, cell: Vector2i, turns: int = 0, exact: ShopEditor.Exact = null) -> EditCheck:
+	func check_buy(def_id: StringName, cell: Vector2i, turns: int = 0, exact: ShopEditor.Exact = null,
+			variant_id: StringName = &"") -> EditCheck:
 		buy_queries += 1
-		return super.check_buy(def_id, cell, turns, exact)
+		return super.check_buy(def_id, cell, turns, exact, variant_id)
 
 var _content: Catalog
 var _sim: RestaurantSim
@@ -514,12 +515,13 @@ func _shop_move(item_id: int, cell: Vector2i, turns: int) -> bool:
 	return _editor.move(item_id, cell, turns)
 
 
-func _shop_buy(def_id: StringName, cell: Vector2i, turns: int) -> bool:
+func _shop_buy(def_id: StringName, cell: Vector2i, turns: int, _swatch: StringName = &"",
+		variant_id: StringName = &"") -> bool:
 	_buy_calls += 1
 	if _refuse:
 		_editor.last_check = EditCheck.new(false, "Session refused buy")
 		return false
-	return _editor.buy(def_id, cell, turns)
+	return _editor.buy(def_id, cell, turns, null, variant_id)
 
 
 func _shop_sell(item_id: int) -> int:
@@ -535,3 +537,17 @@ func _record_cells(_cells: Array[Vector2i]) -> void:
 	if _reenter:
 		_reenter = false
 		_reentry_result = _mode.commit()
+
+
+func test_variant_selection_and_eyedropper_copy_reach_purchase() -> void:
+	_editor.set_owner_level(6)
+	assert_true(_mode.enter())
+	assert_true(_mode.begin_buy(&"diner_stool", Vector2i(10, 8), &"stool_chrome_teal"))
+	assert_eq(_mode.presentation_state().variant_id, &"stool_chrome_teal")
+	assert_true(_mode.commit(), _mode.current_check.why)
+	var placed: PlacedItem = _sim.world.grid.item_at(Vector2i(10, 8))
+	assert_eq(placed.variant_id, &"stool_chrome_teal")
+	assert_true(_mode.eyedrop(placed.id, Vector2i(11, 8)))
+	assert_eq(_mode.buy_variant_id, &"stool_chrome_teal")
+	assert_true(_mode.commit(), _mode.current_check.why)
+	assert_eq(_sim.world.grid.item_at(Vector2i(11, 8)).variant_id, &"stool_chrome_teal")

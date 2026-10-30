@@ -222,6 +222,8 @@ func set_lot(value: Rect2i) -> void:
 	_lot = value
 	if segment_view != null:
 		segment_view.lot = value
+		if world != null:
+			segment_view.rebuild(world.grid, wall_mode != WallMode.UP, lowered_wall_cells())
 
 
 ## Main binds the delivery dock after show_world(): crates on the floor and
@@ -907,9 +909,11 @@ func _apply_paint() -> void:
 		if placed == null or not placed.def is ItemDef:
 			continue
 		var definition: ItemDef = placed.def as ItemDef
+		var variant_preview: bool = _preview_kind == &"variant" and id == _preview_item_id
+		item_nodes[id].apply_variant(definition.variant(_preview_swatch_id if variant_preview else placed.variant_id))
 		var swatch_id: StringName = _preview_swatch_id if _preview_kind == &"item" and id == _preview_item_id else placed.swatch_id
 		var swatch: SwatchDef = _paint_content.swatch(swatch_id) if _paint_content != null else null
-		if definition.paintable and swatch != null:
+		if definition.paintable and swatch != null and not variant_preview:
 			item_nodes[id].apply_paint(swatch.color, _paint_material(swatch_id, definition.placeholder_color))
 		else:
 			item_nodes[id].clear_paint()

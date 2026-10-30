@@ -9,7 +9,8 @@ extends RefCounted
 ## Version 5 adds floor types (D25); older shops are all the default planks.
 ## Version 6 adds wall finishes and wall decor (D26); older shops are plain
 ## paint with nothing hung.
-const SNAPSHOT_VERSION: int = 6
+## Version 7 adds furniture looks; older placements keep their original look.
+const SNAPSHOT_VERSION: int = 7
 const WALLS_CLOSED: String = "Walls can only be changed in the morning or after closing"
 const FLOORS_CLOSED: String = "New floors can only be laid in the morning or after closing"
 const FLOORS_NOT_FLOOR: String = "Floors are laid on the shop floor"
@@ -45,6 +46,7 @@ var _content: ContentDB
 var _books: ShopEditBooks
 var _applying: bool = false
 var _owner_level: int = 1
+var _property_tier: int = 1
 ## The lot and the bought floor (FK-080). Null without a layout.
 var _footprint: ShopFootprint
 var _bought: Dictionary[Vector2i, bool] = {}
@@ -89,6 +91,10 @@ func _init(sim: RestaurantSim, content: ContentDB, books: ShopEditBooks, layout:
 
 ## Main injects the restored owner level before accepting a new purchase.
 ## This does not change saved placements, including starter furniture.
+func set_property_tier(tier: int) -> void:
+	_property_tier = clampi(tier, 1, 2)
+
+
 func set_owner_level(level: int) -> void:
 	if level >= 1:
 		_owner_level = level
@@ -118,6 +124,25 @@ func paint_item(item_id: int, swatch_id: StringName) -> bool:
 	if placed == null or not placed.def is ItemDef or not (placed.def as ItemDef).paintable:
 		return false
 	placed.swatch_id = swatch_id
+	return true
+
+
+## Like body paint, switching equal-price looks is cosmetic and free at any phase.
+## Price-changing upgrades need a purchase policy; never create resale profit by paint.
+func paint_variant(item_id: int, variant_id: StringName) -> bool:
+	if not _can_paint(&""):
+		return false
+	var placed: PlacedItem = _sim.world.grid.item(item_id)
+	var definition: ItemDef = placed.def as ItemDef if placed != null else null
+	if definition == null or not definition.paintable or definition.variants.is_empty() \
+			or (not variant_id.is_empty() and definition.known_variant_id(variant_id).is_empty()):
+		return false
+	if definition.variant_price(placed.variant_id) != definition.variant_price(variant_id):
+		last_check = EditCheck.new(false, "Buy a new piece to choose a different-priced look")
+		return false
+	placed.variant_id = definition.known_variant_id(variant_id)
+	placed.swatch_id = &""
+	last_check = EditCheck.new(true)
 	return true
 
 
@@ -182,7 +207,8 @@ func move(item_id: int, origin: Vector2i, quarter_turns: int, exact: Exact = nul
 	return moved
 
 
-func check_buy(def_id: StringName, origin: Vector2i, quarter_turns: int = 0, exact: Exact = null) -> EditCheck:
+func check_buy(def_id: StringName, origin: Vector2i, quarter_turns: int = 0, exact: Exact = null,
+		variant_id: StringName = &"") -> EditCheck:
 	var check: EditCheck = _edit_check()
 	if not check.ok:
 		return check
@@ -194,23 +220,24 @@ func check_buy(def_id: StringName, origin: Vector2i, quarter_turns: int = 0, exa
 		return EditCheck.new(false, "Unlocks at level %d" % definition.unlock_level)
 	if _books == null or not _books.is_ready():
 		return EditCheck.new(false, "The shop books are unavailable")
-	var charge: int = definition.price if exact == null else -exact.amount
+	var charge: int = definition.variant_price(variant_id) if exact == null else -exact.amount
 	if (exact == null or charge > 0) and not _books.can_spend_without_loan(charge):
 		return EditCheck.new(false, _books.purchase_refusal_reason(charge))
 	return _check_placement(definition, origin, quarter_turns, -1, 0, exact != null)
 
 
-func buy(def_id: StringName, origin: Vector2i, quarter_turns: int = 0, exact: Exact = null) -> bool:
-	var check: EditCheck = check_buy(def_id, origin, quarter_turns, exact)
+func buy(def_id: StringName, origin: Vector2i, quarter_turns: int = 0, exact: Exact = null,
+		variant_id: StringName = &"") -> bool:
+	var check: EditCheck = check_buy(def_id, origin, quarter_turns, exact, variant_id)
 	last_check = check
 	if not check.ok:
 		return false
 	var definition: ItemDef = _content.item(def_id)
 	_applying = true
-	var placed: PlacedItem = _sim.world.grid.place_def(definition, origin, quarter_turns)
+	var placed: PlacedItem = _sim.world.grid.place_def(definition, origin, quarter_turns, variant_id)
 	if placed != null:
 		last_item_id = placed.id
-		_record_item(-definition.price if exact == null else exact.amount, exact)
+		_record_item(-definition.variant_price(placed.variant_id) if exact == null else exact.amount, exact)
 	_applying = false
 	last_check = check if placed != null else EditCheck.new(false, "The shop changed; check the purchase again")
 	return placed != null
@@ -416,8 +443,9 @@ func sell(item_id: int, exact: Exact = null) -> int:
 	last_check = check
 	if not check.ok:
 		return -1
-	var definition: ItemDef = _sim.world.grid.item(item_id).def as ItemDef
-	var refund: int = sale_refund(definition) if exact == null else exact.amount
+	var placed: PlacedItem = _sim.world.grid.item(item_id)
+	var definition: ItemDef = placed.def as ItemDef
+	var refund: int = sale_refund(definition, placed.variant_id) if exact == null else exact.amount
 	if refund < 0 and not _books.can_spend_without_loan(-refund):
 		last_check = EditCheck.new(false, _books.purchase_refusal_reason(-refund))
 		return -1
@@ -454,7 +482,7 @@ func to_dict() -> Dictionary:
 		var definition: ItemDef = placed.def as ItemDef
 		placements.append({"def_id": String(definition.id),
 			"origin": [placed.origin.x, placed.origin.y], "quarter_turns": placed.quarter_turns,
-			"swatch_id": String(placed.swatch_id)})
+			"swatch_id": String(placed.swatch_id), "variant_id": String(placed.variant_id)})
 	var segments: Array[Dictionary] = []
 	for edge: Vector3i in _sim.world.grid.segment_edges():
 		var kind: WallKindDef = _content.wall_kind_for(_sim.world.grid.segment(edge)) if _content != null else null
@@ -555,6 +583,9 @@ static func from_dict(data: Dictionary, template_layout: ShopLayout, content: Co
 		placement.item_id = definition.id
 		placement.origin = Vector2i(int(origin[0]), int(origin[1]))
 		placement.quarter_turns = int(turns)
+		var saved_variant: Variant = row.get("variant_id", "")
+		placement.variant_id = definition.known_variant_id(StringName(saved_variant)) \
+			if saved_variant is String or saved_variant is StringName else &""
 		placement.swatch_id = _saved_swatch(row.get("swatch_id", ""), content) if definition.paintable else &""
 		if preview.place_def(definition, placement.origin, placement.quarter_turns) == null:
 			errors.append("Saved item does not fit on the layout's floor")
@@ -834,6 +865,9 @@ func next_segment(edge: Vector3i, empty_kind: SimGrid.Segment) -> SimGrid.Segmen
 	var grid: SimGrid = _sim.world.grid
 	var current: SimGrid.Segment = grid.segment(edge)
 	if WallRules.outer_side(grid, edge) != Vector2i.ZERO:
+		# An interior-only partition must refuse here, never become a window.
+		if empty_kind == SimGrid.Segment.STALL_PARTITION:
+			return empty_kind
 		if empty_kind == SimGrid.Segment.DOORWAY:
 			return SimGrid.Segment.NONE if current == SimGrid.Segment.DOORWAY else SimGrid.Segment.DOORWAY
 		return SimGrid.Segment.NONE if current == SimGrid.Segment.WINDOW else SimGrid.Segment.WINDOW
@@ -1100,8 +1134,8 @@ func check_flooring(changes: Dictionary[Vector2i, FloorFinishes.Finish], exact: 
 		cost += style.price
 		var old: FloorStyleDef = _content.floor_style(current.style)
 		refund += floori(old.price / 2.0) if old != null else 0
-		if locked.is_empty() and not style.unlocked(_owner_level):
-			locked = style.locked_reason(_owner_level)
+		if locked.is_empty() and not style.unlocked(_owner_level, _property_tier):
+			locked = style.locked_reason(_owner_level, _property_tier)
 	if effective.is_empty():
 		# Undo/redo of looks that are already in place has nothing to do.
 		if exact != null and floor_seen:
@@ -1247,8 +1281,8 @@ func check_wall_finishes(changes: Dictionary[Vector3i, FloorFinishes.Finish], ex
 		cost += style.price
 		var old: WallStyleDef = _content.wall_style(current.style)
 		refund += floori(old.price / 2.0) if old != null else 0
-		if locked.is_empty() and not style.unlocked(_owner_level):
-			locked = style.locked_reason(_owner_level)
+		if locked.is_empty() and not style.unlocked(_owner_level, _property_tier):
+			locked = style.locked_reason(_owner_level, _property_tier)
 	if effective.is_empty():
 		if exact != null and face_seen:
 			return EditCheck.new(true)
@@ -1463,6 +1497,17 @@ func _record_decor(amount: int, exact: Exact) -> void:
 
 
 # --- Floor expansion (FK-080) ------------------------------------------------
+
+## Replace only the lot; the built shop, floor and object identities stay put.
+func grow_lot(layout: ShopLayout) -> bool:
+	var candidate: ShopFootprint = ShopFootprint.from_layout(layout)
+	if _footprint == null or candidate.building != _footprint.building \
+			or not candidate.lot.encloses(_footprint.lot) or candidate.lot == _footprint.lot \
+			or not candidate.problem(_bought).is_empty():
+		return false
+	_footprint = candidate
+	return true
+
 
 ## The lot and floor plan, or null when this shop has no layout.
 func footprint() -> ShopFootprint:
@@ -1708,8 +1753,8 @@ func _drop_wall_losses(check: EditCheck) -> void:
 
 ## What selling a piece of furniture refunds: half its price, rounded down.
 @warning_ignore("integer_division")
-static func sale_refund(definition: ItemDef) -> int:
-	return definition.price / 2 if definition != null else 0
+static func sale_refund(definition: ItemDef, variant_id: StringName = &"") -> int:
+	return definition.variant_price(variant_id) / 2 if definition != null else 0
 
 
 ## Books a successful edit: list-price edits record the refund, then the cost
@@ -1833,11 +1878,11 @@ func _check_placement(definition: ItemDef, origin: Vector2i, turns: int, exclude
 func _note_menu_access(check: EditCheck, preview: SimGrid, restoring: bool) -> void:
 	if restoring:
 		return
-	check.menu_losses = MenuAccess.lost(_sim.world.grid, preview, _sim.menu)
+	check.menu_losses = MenuAccess.lost(_sim.world.grid, preview, _sim.menu, _property_tier)
 	check.menu_warning = MenuAccess.warning(check.menu_losses, preview, _content)
 	var recipes: Array[RecipeDef] = _content.recipes()
-	if MenuAccess.cookable(preview, recipes, _owner_level).is_empty() \
-			and not MenuAccess.cookable(_sim.world.grid, recipes, _owner_level).is_empty():
+	if MenuAccess.cookable(preview, recipes, _owner_level, _property_tier).is_empty() \
+			and not MenuAccess.cookable(_sim.world.grid, recipes, _owner_level, _property_tier).is_empty():
 		check.ok = false
 		check.why = MenuAccess.NO_DISH
 		return

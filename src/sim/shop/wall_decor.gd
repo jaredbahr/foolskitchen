@@ -139,3 +139,13 @@ func to_rows() -> Array[Array]:
 	for anchor: Vector3i in anchors():
 		rows.append([anchor.x, anchor.y, anchor.z, String(_items[anchor].def_id)])
 	return rows
+
+
+## A suggestion only: restroom decor is legal on any suitable inside wall.
+static func room_hint(grid: SimGrid, definition: ItemDef, anchor: Vector3i) -> String:
+	if grid == null or definition == null or definition.category != ItemDef.Category.RESTROOM:
+		return ""
+	for face: Vector3i in WallFaces.span(anchor, definition.footprint.x):
+		if grid.room(WallFaces.cell(face)) != SimGrid.Room.RESTROOM:
+			return "Tip: mark this room as Restroom in Build → Rooms"
+	return ""

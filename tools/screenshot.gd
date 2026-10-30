@@ -35,6 +35,7 @@ extends SceneTree
 ##             --fast=N --speed=1) a guest walking round the kitchen to the
 ##             restroom; the clock pauses on the first such guest.
 ##   --door-queue  zoom the existing camera onto a real queue, or its empty entry
+##   --lease-review=offer|short|expand --speed=0 --frames=12; offer/short also require --menu
 ##   --loan-review --speed=0 --frames=12,90  explicit financial-fixture UI evidence
 ##   --milestone-review --speed=0 --frames=12,90  authored goals and close reward evidence
 ##   --catalogue-review=rustic|modern --speed=0 --frames=90,120  furnishing fixture
@@ -45,6 +46,8 @@ extends SceneTree
 ##   --walls-review --speed=0 --frames=12,30 [--quarter=N]  D26 wall finishes and wall decor
 ##             (tools/walls_review.gd): Cutaway, then Walls Up with Build > Wall finish
 ##             holding a striped wallpaper drag (--quarter turns the camera for both frames)
+##   --restroom-review --speed=0 --frames=12,30 shows the complete two-toilet
+##             restroom, then a close wall-fitting view with the owner for scale.
 ##   --blueprints=selection|ghost|stamped --speed=0 --frames=30
 ##             FK-045 original table + rug selection, rotated ghost, or stamped pair.
 ## Ordinary captures record real moods, markers and seeds without a fixture.
@@ -52,8 +55,10 @@ extends SceneTree
 const MAX_CAPTURE_WAIT_FRAMES: int = 8
 const MAX_OWNER_WARMUP_TICKS: int = 900
 const SETTINGS_CAPTURE_SIZE: Vector2i = Vector2i(1600, 900)
+const LEASE_REVIEW: Script = preload("res://tools/lease_review.gd")
 const DINER_REVIEW: Script = preload("res://tools/diner_review.gd")
 const FLOORS_REVIEW: Script = preload("res://tools/floors_review.gd")
+const RESTROOM_REVIEW: Script = preload("res://tools/restroom_review.gd")
 const BLUEPRINT_REVIEW: Script = preload("res://tools/blueprint_review.gd")
 const WALLS_REVIEW: Script = preload("res://tools/walls_review.gd")
 ## --floors-review: the frame Build > Floors opens with its drag held.
@@ -137,6 +142,8 @@ var _blueprint_fixture: Dictionary = {}
 var _rooms: String = ""
 var _rooms_paused: bool = false
 var _door_queue: bool = false
+var _lease_mode: String = ""
+var _lease_fixture: Dictionary = {}
 var _loan_review: bool = false
 var _loan_fixture: Dictionary = {}
 var _milestone_review: bool = false
@@ -146,6 +153,7 @@ var _catalogue_fixture: Dictionary = {}
 var _diner_review: bool = false
 var _diner_fixture: Dictionary = {}
 var _floors_review: bool = false
+var _restroom_review: bool = false
 var _walls_review: bool = false
 var _walls_fixture: Dictionary = {}
 var _floors_fixture: Dictionary = {}
@@ -159,6 +167,11 @@ var _finish_requested: bool = false
 
 func _initialize() -> void:
 	OS.add_logger(_errors)
+	var lease_options: Dictionary = LEASE_REVIEW.options(OS.get_cmdline_user_args())
+	if not String(lease_options["error"]).is_empty():
+		_fail_capture(lease_options["error"])
+		return
+	_lease_mode = lease_options["mode"]
 	var diner_options: Dictionary = DINER_REVIEW.options(OS.get_cmdline_user_args())
 	if not String(diner_options["error"]).is_empty():
 		_fail_capture(diner_options["error"])
@@ -246,6 +259,8 @@ func _initialize() -> void:
 			_build = requested
 		elif arg == "--paint":
 			_paint = true
+		elif arg == "--restroom-review":
+			_restroom_review = true
 		elif arg.begins_with("--walls-review"):
 			if arg != "--walls-review":
 				_fail_capture("--walls-review does not accept a value")
@@ -328,6 +343,13 @@ func _initialize() -> void:
 		_fail_capture("--floors-review requires a paused fresh morning without other options, and a frame after %d" \
 			% FLOORS_DRAG_FRAME)
 		return
+	if _restroom_review and (_scene_path != "res://src/world/main.tscn" or _speed != 0 or _open or _fast != 0
+			or _walls_review or _floors_review or _diner_review or not _rooms.is_empty() or not _walls.is_empty()
+			or not _expand.is_empty() or not _build.is_empty() or _paint or _menu or _staff or _stock or _settings
+			or _report_requested or _milestone_review or _loan_review or not _catalogue_profile.is_empty()
+			or not _selection.is_empty() or _assign_owner or _door_queue or _f3 or _quarter >= 0):
+		_fail_capture("--restroom-review requires a paused fresh morning without other view options")
+		return
 	if _walls_review and (_scene_path != "res://src/world/main.tscn" or _open or _fast != 0 or _speed != 0 \
 			or not _build.is_empty() or _paint or not _walls.is_empty() or not _expand.is_empty() or _floors_review \
 			or not _rooms.is_empty() or _menu or _staff or _settings or not _selection.is_empty() or _f3 \
@@ -375,8 +397,8 @@ func _initialize() -> void:
 	# Preserve capture isolation when the integrated game session supports saves.
 	if "use_saves" in _main:
 		_main.set("use_saves", false)
-	if (_report_requested or _milestone_review or _diner_review or _expand == "shop" or not _rooms.is_empty() \
-			or _floors_review or _walls_review or _assign_owner) \
+	if (not _lease_mode.is_empty() or _report_requested or _milestone_review or _diner_review or _expand == "shop" or not _rooms.is_empty() \
+			or _floors_review or _walls_review or _restroom_review or _assign_owner) \
 			and "new_game_seed_override" in _main:
 		_main.set("new_game_seed_override", 1)
 	root.add_child(_main)
@@ -1147,7 +1169,7 @@ static func prepare_catalogue_review(main: Node, context_root: Node, profile: St
 
 ## Expected identities come from all valid visible data, including locked cards
 ## and other categories, independently of the catalogue's actual button list.
-static func _catalogue_content_expectations(content: ContentDB) -> Dictionary:
+static func _catalogue_content_expectations(content: ContentDB, selected: Dictionary[StringName, StringName] = {}) -> Dictionary:
 	var cards: Array[Dictionary] = []
 	var wrappers: Array[String] = []
 	for definition: ItemDef in content.items():
@@ -1159,7 +1181,7 @@ static func _catalogue_content_expectations(content: ContentDB) -> Dictionary:
 					ItemDef.Category.RESTROOM, ItemDef.Category.WAITING].has(definition.category):
 			continue
 		var path: String = definition.view_scene.resource_path if definition.view_scene != null else ""
-		cards.append({"id": String(definition.id), "name": definition.display_name, "price": definition.price,
+		cards.append({"id": String(definition.id), "name": definition.display_name, "price": definition.variant_price(selected.get(definition.id, &"")),
 			"unlock_level": definition.unlock_level, "scene": path, "room": String(definition.buy_room())})
 		if not path.is_empty() and not wrappers.has(path):
 			wrappers.append(path)
@@ -1181,6 +1203,35 @@ static func _catalogue_content_expectations(content: ContentDB) -> Dictionary:
 	return {"cards": cards, "wrappers": wrappers, "wall_scenes": wall_scenes}
 
 
+## Look up the exact selected scene/look without scheduling a missing render.
+static func catalogue_cached_thumbnail(cache: ItemThumbnailCache, definition: ItemDef,
+		variant_id: StringName = &"") -> Texture2D:
+	if definition.view_scene == null:
+		return null
+	var request: ItemThumbnailCache.Request = ItemThumbnailCache.Request.new(definition.view_scene, definition.variant(variant_id))
+	return cache._textures.get(request.key) as Texture2D
+
+
+## Validate each rendered request, then report unique wrapper coverage separately:
+## multiple looks of one wrapper are legitimate cache entries.
+static func catalogue_cached_evidence(cache: ItemThumbnailCache) -> Dictionary:
+	var scenes: Array[String] = []
+	var valid: bool = true
+	for key: String in cache._textures:
+		var request: ItemThumbnailCache.Request = cache._scenes.get(key)
+		var texture: Texture2D = cache._textures[key]
+		if request == null or request.scene == null:
+			valid = false
+			continue
+		var identity: ItemThumbnailCache.Request = ItemThumbnailCache.Request.new(request.scene, request.look)
+		valid = valid and key == request.key and key == identity.key \
+			and texture is ImageTexture and texture.get_size() == Vector2(96, 96)
+		if not scenes.has(request.scene.resource_path):
+			scenes.append(request.scene.resource_path)
+	scenes.sort()
+	return {"scenes": scenes, "valid": valid}
+
+
 ## Read existing cache entries only: request() would queue missing thumbnails.
 ## Visibility here means native clipping geometry, not an aesthetic verdict.
 static func catalogue_review_evidence(main: Node, context_root: Node) -> Dictionary:
@@ -1194,12 +1245,8 @@ static func catalogue_review_evidence(main: Node, context_root: Node) -> Diction
 	if world == null or editor == null or content == null or progress == null or catalogue == null or shop == null or clock == null:
 		return {"available": false}
 	var cache: ItemThumbnailCache = catalogue._thumbnails
-	var expected: Dictionary = _catalogue_content_expectations(content)
-	var cached_scenes: Array[String] = []
-	for key: int in cache._textures:
-		var scene: PackedScene = cache._scenes.get(key) as PackedScene
-		cached_scenes.append(scene.resource_path if scene != null else "")
-	cached_scenes.sort()
+	var expected: Dictionary = _catalogue_content_expectations(content, catalogue.selected_variants)
+	var cached: Dictionary = catalogue_cached_evidence(cache)
 	var cards: Array[Dictionary] = []
 	var icons_match: bool = true
 	var onscreen: int = 0
@@ -1211,7 +1258,7 @@ static func catalogue_review_evidence(main: Node, context_root: Node) -> Diction
 		var button: Button = catalogue.item_buttons[id]
 		var texture: Texture2D = null
 		if scene != null:
-			texture = cache._textures.get(scene.get_instance_id()) as Texture2D
+			texture = catalogue_cached_thumbnail(cache, definition, catalogue.selected_variants.get(id, &""))
 		var matches: bool = texture is ImageTexture and button.icon == texture and texture.get_size() == Vector2(96, 96)
 		icons_match = icons_match and matches
 		var control: Dictionary = _loan_control_evidence(button)
@@ -1284,7 +1331,7 @@ static func catalogue_review_evidence(main: Node, context_root: Node) -> Diction
 		"catalogue_visible": catalogue.is_visible_in_tree(), "category": String(catalogue.selected_category),
 		"wall": String(editor.wall_swatch_id), "floor": String(editor.floor_vibe_swatch()),
 		"cache": {"supported": cache.rendering_supported(), "pending": cache.pending_count(), "cached": cache.cached_count(),
-			"expected": expected["wrappers"].size(), "expected_scenes": expected["wrappers"], "cached_scenes": cached_scenes,
+			"expected": expected["wrappers"].size(), "expected_scenes": expected["wrappers"], "cached_scenes": cached.scenes, "requests_valid": cached.valid,
 			"active": cache._active_scene != null, "failed": cache._failed.size(),
 			"error": cache.last_error, "icons_match": icons_match},
 		"expected_cards": expected["cards"], "expected_wall_scenes": expected["wall_scenes"], "cards": cards, "onscreen_cards": onscreen, "tabs": tabs, "items": items,
@@ -1342,7 +1389,7 @@ static func catalogue_review_valid(state: Dictionary, frame: int, fixture: Dicti
 		return false
 	var cache: Dictionary = state["cache"]
 	return cache["supported"] == true and cache["pending"] == 0 and cache["active"] == false \
-		and cache["failed"] == 0 and cache["error"] == "" and cache["icons_match"] == true and cache["cached"] == cache["expected"] \
+		and cache["failed"] == 0 and cache["error"] == "" and cache["icons_match"] == true and cache.get("requests_valid") == true and cache["cached"] >= cache["expected"] \
 		and cache["cached_scenes"] == cache["expected_scenes"]
 
 
@@ -1554,7 +1601,7 @@ static func _catalogue_cards_valid(state: Dictionary) -> bool:
 		var locked: bool = int(definition["unlock_level"]) > int(state["owner_level"])
 		# FK-085 tiles show the price (or unlock level) under the picture.
 		var text: String = "Level %d" % definition["unlock_level"] if locked else Fmt.money(int(definition["price"]))
-		if card.get("scene") != definition["scene"] or card.get("text") != text or card.get("disabled") != locked:
+		if card.get("scene") != definition["scene"] or String(card.get("text", "")).strip_edges() != text or card.get("disabled") != locked:
 			return false
 	var cache: Dictionary = state.get("cache", {})
 	return cache.get("expected") == wrappers.size() and cache.get("expected_scenes") == wrappers
@@ -1792,6 +1839,11 @@ func _process(_delta: float) -> bool:
 			_configure_rooms()
 			if _failed:
 				return true
+		if _restroom_review:
+			var refusal: String = RESTROOM_REVIEW.prepare(_main, root)
+			if not refusal.is_empty():
+				_fail_capture(refusal)
+				return true
 		if _walls_review:
 			_walls_fixture = WALLS_REVIEW.prepare(_main, root)
 			if not String(_walls_fixture.get("error", "")).is_empty():
@@ -1806,6 +1858,8 @@ func _process(_delta: float) -> bool:
 			(clock.get("sim") as SimClock).start_service()
 		clock.call("set_speed", _speed)
 		_configure_camera()
+		if _restroom_review:
+			RESTROOM_REVIEW.focus(_main, false)
 		if not _rooms.is_empty() and _quarter < 0:
 			(_main.get_node("ShopView") as ShopView).set_wall_mode(ShopView.WallMode.UP)
 		if _rooms == "tool" or _rooms == "refused":
@@ -1831,6 +1885,12 @@ func _process(_delta: float) -> bool:
 			if not String(_diner_fixture.get("error", "")).is_empty():
 				_fail_capture(String(_diner_fixture["error"]))
 				return true
+		if not _lease_mode.is_empty():
+			_lease_fixture = LEASE_REVIEW.prepare(_main, root, _lease_mode)
+			if not String(_lease_fixture["error"]).is_empty():
+				_fail_capture(_lease_fixture["error"])
+				return true
+			_main.set_process(false)
 		if _loan_review:
 			_loan_fixture = prepare_loan_review(_main, root)
 			if not String(_loan_fixture["error"]).is_empty():
@@ -1900,6 +1960,8 @@ func _process(_delta: float) -> bool:
 		_build_pointer = drag["pointer"]
 	if _floors_review and _frames > FLOORS_DRAG_FRAME:
 		_hold_build_pointer()
+	if _restroom_review and _frames == 20:
+		RESTROOM_REVIEW.focus(_main, true)
 	if _walls_review and _frames == WALLS_REVIEW.WALL_UP_FRAME:
 		var wall_drag: Dictionary = WALLS_REVIEW.begin_drag(_main, root)
 		if not String(wall_drag.get("error", "")).is_empty():
@@ -2833,6 +2895,10 @@ func _capture() -> void:
 	if _diner_review and not DINER_REVIEW.valid(diner_state, _capture_frame, _diner_fixture):
 		_fail_capture("diner review failed actual source, bounds, native actor or seat validation: " + JSON.stringify(diner_state))
 		return
+	var lease_state: Dictionary = LEASE_REVIEW.evidence(_main, root, _lease_fixture) if not _lease_mode.is_empty() else {}
+	if not _lease_mode.is_empty() and not LEASE_REVIEW.valid(lease_state, _lease_fixture, _capture_frame):
+		_fail_capture("lease review did not match its real Menu/Expand controls, purchase, lot or default recipe choices: " + JSON.stringify(lease_state))
+		return
 	var loan_state: Dictionary = loan_review_evidence(_main, root) if _loan_review else {}
 	if _loan_review and not loan_review_valid(loan_state, _capture_frame, _loan_fixture):
 		_fail_capture("loan review did not match its real account, phase and visible native controls")
@@ -2982,6 +3048,10 @@ func _capture() -> void:
 	if not _catalogue_profile.is_empty() and (image == null or image.get_size() != SETTINGS_CAPTURE_SIZE):
 		_fail_capture("catalogue review image did not match 1600x900")
 		return
+	if not _lease_mode.is_empty() and (image == null or image.get_size() != SETTINGS_CAPTURE_SIZE \
+			or OS.get_environment("FK_LEASE_CAPTURE_SHA").length() != 40 or OS.get_environment("FK_LEASE_CAPTURE_TREE").length() != 40):
+		_fail_capture("lease review requires a 1600x900 image and committed source identity from screenshot.sh")
+		return
 	var world_render: Dictionary = _settings_world_evidence(image) if _settings_world else {}
 	if image == null or image.is_empty() or image.save_png(path) != OK:
 		_fail_capture("cannot save viewport image: " + path)
@@ -3061,6 +3131,9 @@ func _capture() -> void:
 		metadata.merge({"requested_hud_layout": true, "hud_layout": hud_layout_state,
 			"requested_ui_scale_percent": 125 if _capture_frame == 12 else 150,
 			"requested_window_size": [_hud_window_size.x, _hud_window_size.y]})
+	if not _lease_mode.is_empty():
+		metadata["lease_review"] = {"fixture": _lease_fixture, "state": lease_state,
+			"source_commit": OS.get_environment("FK_LEASE_CAPTURE_SHA"), "source_tree": OS.get_environment("FK_LEASE_CAPTURE_TREE")}
 	if _loan_review:
 		metadata["loan_review"] = {"fixture": _loan_fixture, "state": loan_state,
 			"generated_uids": generated_uid_evidence()}
@@ -3072,6 +3145,9 @@ func _capture() -> void:
 			"generated_uids": generated_uid_evidence(CATALOGUE_UID_SOURCES)}
 	if _floors_review:
 		metadata["floors_review"] = {"fixture": _floors_fixture, "state": floors_state}
+	if _restroom_review:
+		metadata["restroom_review"] = {"fixture": "two-toilet restroom with standing owner",
+			"close_view": _capture_frame >= 20}
 	if not _blueprint_profile.is_empty():
 		metadata["blueprints"] = {"fixture": _blueprint_fixture, "state": blueprint_state}
 	if _walls_review:

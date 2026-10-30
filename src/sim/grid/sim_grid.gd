@@ -30,9 +30,9 @@ enum PlaceResult { OK, OUT_OF_BOUNDS, NOT_FLOOR, OVERLAPS, INVALID_LAYER, INVALI
 ## stored. Kitchen and Storage are staff-only: guests never walk through them.
 enum Room { DINING, KITCHEN, RESTROOM, STORAGE }
 
-## What stands on a cell edge. WALL and WINDOW block movement across the edge;
+## What stands on a cell edge. Walls, windows and stall partitions block crossing;
 ## DOORWAY is open. Any segment blocks diagonal steps past its end posts.
-enum Segment { NONE, WALL, DOORWAY, WINDOW }
+enum Segment { NONE, WALL, DOORWAY, WINDOW, STALL_PARTITION }
 
 ## Emitted after cells change walkability (place/remove/terrain edits).
 ## Agents whose path crosses one of these cells must re-plan.
@@ -350,7 +350,7 @@ func can_place_def(definition: ItemDef, origin: Vector2i, quarter_turns: int = 0
 ## cells, validated against both its authored and these actual placement values.
 func place(footprint: Vector2i, origin: Vector2i, quarter_turns: int, solid: bool,
 		work_cells: Array[Vector2i] = [], seat_cells: Array[Vector2i] = [],
-		def: Resource = null) -> PlacedItem:
+		def: Resource = null, variant_id: StringName = &"") -> PlacedItem:
 	var definition: ItemDef = def as ItemDef
 	var layer: ItemDef.PlacementLayer = definition.placement_layer if definition != null else ItemDef.PlacementLayer.NORMAL
 	if definition != null and (not definition.placement_layer_valid() or not definition.blocking_cells_valid() \
@@ -364,6 +364,7 @@ func place(footprint: Vector2i, origin: Vector2i, quarter_turns: int, solid: boo
 	item.id = _next_id
 	_next_id += 1
 	item.def = def
+	item.variant_id = definition.known_variant_id(variant_id) if definition != null else &""
 	item.placement_layer = layer
 	item.origin = origin
 	item.quarter_turns = posmod(quarter_turns, 4)
@@ -389,10 +390,10 @@ func place(footprint: Vector2i, origin: Vector2i, quarter_turns: int, solid: boo
 
 ## Places an item from its content definition (footprint, solidity, work and
 ## seat cells come from the def). Returns null if it doesn't fit.
-func place_def(def: ItemDef, origin: Vector2i, quarter_turns: int = 0) -> PlacedItem:
+func place_def(def: ItemDef, origin: Vector2i, quarter_turns: int = 0, variant_id: StringName = &"") -> PlacedItem:
 	if can_place_def(def, origin, quarter_turns) != PlaceResult.OK:
 		return null
-	return place(def.footprint, origin, quarter_turns, def.solid, def.work_cells, def.seat_cells, def)
+	return place(def.footprint, origin, quarter_turns, def.solid, def.work_cells, def.seat_cells, def, variant_id)
 
 
 ## Blueprint transaction. Preflight the whole batch before touching this grid
@@ -903,7 +904,7 @@ func set_segment(edge: Vector3i, kind: Segment) -> bool:
 func set_segments(changes: Dictionary[Vector3i, int]) -> bool:
 	for edge: Vector3i in changes:
 		var kind: int = changes[edge]
-		if not edge_in_bounds(edge) or kind < Segment.NONE or kind > Segment.WINDOW:
+		if not edge_in_bounds(edge) or kind < Segment.NONE or kind > Segment.STALL_PARTITION:
 			return false
 	var touched: Array[Vector2i] = []
 	for edge: Vector3i in changes:
@@ -944,10 +945,10 @@ func has_segments() -> bool:
 	return not _segments.is_empty()
 
 
-## True when a wall or window stands between two orthogonally adjacent cells.
+## True when a wall, window or stall partition blocks two adjacent cells.
 func edge_blocked(a: Vector2i, b: Vector2i) -> bool:
 	var kind: Segment = segment(edge_between(a, b))
-	return kind == Segment.WALL or kind == Segment.WINDOW
+	return kind in [Segment.WALL, Segment.WINDOW, Segment.STALL_PARTITION]
 
 
 ## Only edges with walkable-shell terrain on both sides take part in pathing,
@@ -965,7 +966,7 @@ func _refresh_edge(edge: Vector3i) -> void:
 				inside = false
 	if inside:
 		_edge_occupied[edge] = true
-		if kind == Segment.WALL or kind == Segment.WINDOW:
+		if kind in [Segment.WALL, Segment.WINDOW, Segment.STALL_PARTITION]:
 			_edge_blocking[edge] = true
 		else:
 			_edge_blocking.erase(edge)
