@@ -1328,6 +1328,8 @@ func _bind_build_session() -> void:
 	if not shop_editor.decor.changed.is_connected(_on_wall_decor_changed):
 		shop_editor.decor.changed.connect(_on_wall_decor_changed)
 	_build_preview.bind_build_mode(build_mode, $ShopView as ShopView)
+	if _build_catalogue != null and not _build_catalogue.hygiene_toggled.is_connected(_on_hygiene_toggled):
+		_build_catalogue.hygiene_toggled.connect(_on_hygiene_toggled)
 	var lot: ShopFootprint = shop_editor.footprint()
 	if _build_catalogue != null:
 		_build_catalogue.set_floor_price(lot.cell_price if lot != null and lot.has_lot() else 0)
@@ -1352,6 +1354,22 @@ func _on_catalogue_grid_requested() -> void:
 	if is_build_active():
 		camera.toggle_grid()
 	_build_catalogue.set_grid_shown(camera.build_grid_visible)
+
+
+func _on_hygiene_toggled(_active: bool) -> void:
+	_refresh_hygiene_overview()
+
+
+func _refresh_hygiene_overview() -> void:
+	if _build_catalogue == null or _build_preview == null:
+		return
+	var active: bool = is_build_active() and _build_catalogue.hygiene_enabled
+	if active:
+		var state: HygieneOverview.Snapshot = HygieneOverview.capture(sim)
+		_build_catalogue.set_hygiene_lines(HygieneOverview.lines(state))
+		_build_preview.set_hygiene_cells(state.problem_cells, true)
+	else:
+		_build_preview.set_hygiene_cells([] as Array[Vector2i], false)
 
 
 func _on_grid_shown_changed(_shown: bool) -> void:
@@ -1428,6 +1446,7 @@ func _update_build_controls() -> void:
 		_build_catalogue.set_build_visible(active or _paint_active)
 		_build_catalogue.set_blueprint_selection(0 if build_mode.blueprint_dragging else build_mode.blueprint_selection.size())
 	_build_ui_phase = world.clock.phase if world != null else -1
+	_refresh_hygiene_overview()
 
 
 ## The Wall finish tool's proposal and a held wall item's ghost (D26), drawn
@@ -1689,6 +1708,7 @@ func refresh_presentation() -> void:
 	if _inspect_panel == null or _debug_overlay == null or _debug_geometry == null:
 		return
 	_inspect_panel.refresh()
+	_refresh_hygiene_overview()
 	if _debug_overlay.is_enabled():
 		_debug_overlay.refresh()
 	var view: ShopView = $ShopView
