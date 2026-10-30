@@ -37,7 +37,11 @@ func prepare(recipes: Array[RecipeDef]) -> void:
 	var plate_height: float = PropView._children_aabb(plate).end.y
 	var by_scene: Dictionary[String, Node3D] = {}
 	for recipe: RecipeDef in recipes:
+		if recipe == null or recipe.id.is_empty():
+			continue
 		if recipe.view_model == null:
+			# A future unmapped dish still has an actual, already-warmed serving.
+			models[recipe.id] = plate
 			continue
 		var path: String = recipe.view_model.resource_path
 		var food: Node3D = by_scene.get(path) as Node3D
@@ -51,18 +55,44 @@ func prepare(recipes: Array[RecipeDef]) -> void:
 
 
 func show_dish(recipe: RecipeDef, dirty: bool) -> void:
-	if visible and recipe_id == recipe.id and _dirty == dirty:
+	# Absence clears presentation; it must never become a fallback serving.
+	if recipe == null or recipe.id.is_empty():
+		clear_dish()
+		return
+	var model: Node3D = plate
+	if recipe.view_model != null:
+		model = models.get(recipe.id, plate) as Node3D
+		if model == null:
+			model = plate
+	if visible and recipe_id == recipe.id and _dirty == dirty and _shown == model:
 		return
 	_dirty = dirty
 	if _shown != null:
 		_shown.visible = false
-	plate.visible = not recipe.is_drink() and not dirty
-	dirty_plate.visible = not recipe.is_drink() and dirty
-	_shown = models.get(recipe.id) as Node3D
-	if _shown != null:
-		_shown.visible = not dirty
+	_shown = model
+	# Reuse the clean plate itself for an unmapped recipe: exactly one plate,
+	# no fabricated dish and no scene allocation in the presentation loop.
+	var plated: bool = not recipe.is_drink() or _shown == plate
+	plate.visible = plated and not dirty
+	dirty_plate.visible = plated and dirty
+	_shown.visible = not dirty
 	recipe_id = recipe.id
 	visible = true
+
+
+func clear_dish() -> void:
+	if _shown != null:
+		_shown.visible = false
+	if plate != null:
+		plate.visible = false
+	if dirty_plate != null:
+		dirty_plate.visible = false
+	_shown = null
+	_dirty = false
+	recipe_id = &""
+	stage = &""
+	order_id = 0
+	visible = false
 
 
 func _model(scene: PackedScene) -> Node3D:

@@ -155,7 +155,10 @@ func sync(frames: Dictionary[int, AgentPresentationController.Frame], people: Di
 	for id: int in tickets:
 		var ticket: Ticket = tickets[id]
 		var order: Order = ticket.order
-		if ticket.retired or ticket.recipe == null or ticket.recipe.view_model == null:
+		if ticket.retired:
+			continue
+		if ticket.recipe == null or ticket.recipe.id.is_empty():
+			_release(ticket)
 			continue
 		if restaurant.orders.get_order(id) != order or order.state == Order.State.CANCELLED:
 			_retire(ticket)
@@ -273,8 +276,7 @@ func _retire(ticket: Ticket) -> void:
 
 func _release(ticket: Ticket) -> void:
 	if is_instance_valid(ticket.dish):
-		ticket.dish.visible = false
-		ticket.dish.order_id = 0
+		ticket.dish.clear_dish()
 		ticket.dish.reparent(self, false)
 	ticket.dish = null
 

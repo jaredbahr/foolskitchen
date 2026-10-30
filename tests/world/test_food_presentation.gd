@@ -31,11 +31,29 @@ func test_every_current_recipe_uses_the_approved_food_kit_model() -> void:
 		&"fries": "fries", &"bar_fries": "fries", &"savoury_pie": "pie",
 		&"croissant": "croissant", &"coffee": "cup-coffee", &"tea": "cup-tea",
 		&"soft_drink": "soda-glass", &"beer": "glass", &"wine": "glass-wine",
+		&"fish_and_chips": "fish", &"mussels_broth": "mussel-open", &"salmon_maki": "sushi-salmon",
+		&"seafood_stew": "bowl-broth", &"shrimp_skewer": "skewer",
 	}
-	assert_eq(_content.recipes().size(), expected.size())
-	for recipe: RecipeDef in _content.recipes():
+	var paths: PackedStringArray = _recipe_resource_paths("res://data/recipes")
+	var recipes: Array[RecipeDef] = _content.recipes()
+	assert_false(paths.is_empty())
+	assert_eq(recipes.size(), paths.size(), "every actual recipe resource is loaded, without a fixed total")
+	for recipe: RecipeDef in recipes:
+		assert_true(paths.has(recipe.resource_path))
+		assert_not_null(recipe.view_model, String(recipe.id) + " has its authored presentation mapping")
+		if recipe.view_model != null:
+			assert_true(recipe.view_model.resource_path.begins_with("res://assets/kenney/food/"))
+		assert_true(_view.food.pool[0].models.has(recipe.id), "the warmed pool covers every loaded recipe")
+		assert_not_null(_view.food.pool[0].models.get(recipe.id))
+	# Preserve every existing exact model choice; new content is discovered above.
+	for id: StringName in expected:
+		var recipe: RecipeDef = _content.recipe(id)
+		assert_not_null(recipe)
+		if recipe == null:
+			continue
 		assert_not_null(recipe.view_model)
-		assert_eq(recipe.view_model.resource_path, "res://assets/kenney/food/%s.glb" % expected[recipe.id])
+		if recipe.view_model != null:
+			assert_eq(recipe.view_model.resource_path, "res://assets/kenney/food/%s.glb" % expected[id])
 
 
 func test_ready_carried_eating_dirty_bussed_and_sink_stack_lifecycle() -> void:
@@ -395,11 +413,20 @@ func test_ready_burger_rests_on_the_native_pass_top_at_every_rotation() -> void:
 	var original: PlacedItem = ShopBuilder.items_with_def(_sim.world, &"pass_counter")[0]
 	_sim.world.grid.remove(original.id)
 	var table: PlacedItem = ShopBuilder.items_with_def(_sim.world, &"table_2")[0]
+	for blocked_turns: int in [0, 2]:
+		assert_eq(_sim.world.grid.can_place_def(_content.item(&"pass_counter"), Vector2i(8, 5), blocked_turns),
+			SimGrid.PlaceResult.WALL_IN_WAY, "the old fixture crosses the current authored thin divider")
 	for turns: int in range(4):
-		var counter: PlacedItem = _sim.world.grid.place_def(_content.item(&"pass_counter"), Vector2i(8, 5), turns)
+		assert_eq(_sim.world.grid.can_place_def(_content.item(&"pass_counter"), Vector2i(8, 8), turns), SimGrid.PlaceResult.OK)
+		var counter: PlacedItem = _sim.world.grid.place_def(_content.item(&"pass_counter"), Vector2i(8, 8), turns)
 		assert_not_null(counter)
 		if counter == null:
 			return
+		assert_eq(counter.work_cells.size(), 2)
+		for cell: Vector2i in counter.work_cells:
+			assert_true(_sim.world.grid.is_walkable(cell), "each rotated pass work cell remains clear")
+			assert_true(_sim.world.grid.is_reachable(_sim.staff_spawns[&"cook"], cell),
+				"the real cook spawn can reach both sides of each rotated pass")
 		var order: Order = Order.new()
 		order.recipe_id = &"burger"
 		order.table_item_id = table.id
@@ -646,3 +673,222 @@ func _staff(role: StringName) -> StaffAgent:
 		if agent.role == role:
 			return agent as StaffAgent
 	return null
+
+
+func test_every_seafood_mapping_draws_its_actual_model_on_a_supported_pooled_plate() -> void:
+	var expected: Dictionary[StringName, String] = {
+		&"fish_and_chips": "fish", &"mussels_broth": "mussel-open", &"salmon_maki": "sushi-salmon",
+		&"seafood_stew": "bowl-broth", &"shrimp_skewer": "skewer",
+	}
+	assert_not_null(_sim.world.grid.place_def(_content.item(&"fryer"), Vector2i(2, 3)))
+	var table: PlacedItem = ShopBuilder.items_with_def(_sim.world, &"table_2")[0]
+	var pass_item: PlacedItem = ShopBuilder.items_with_def(_sim.world, &"pass_counter")[0]
+	var pool_count: int = _view.food.pool.size()
+	var dish_count: int = _dish_count(_view)
+	var first: DishVisual
+	for id: StringName in expected:
+		var recipe: RecipeDef = _content.recipe(id)
+		assert_not_null(recipe)
+		assert_not_null(recipe.view_model)
+		if recipe.view_model == null:
+			continue
+		assert_eq(recipe.view_model.resource_path, "res://assets/kenney/food/%s.glb" % expected[id])
+		var order: Order = Order.new()
+		order.recipe_id = id
+		order.table_item_id = table.id
+		order.seat_cell = table.seat_cells[0]
+		_sim.orders.place(order, 0)
+		_sim.orders.set_state(order, Order.State.READY)
+		assert_eq(order.state, Order.State.READY, String(id) + " has all real fixture stations")
+		_view._sync_agents()
+		var dish: DishVisual = _view.food.tickets[order.id].dish
+		assert_not_null(dish, String(id) + " has an actual serving")
+		if dish == null:
+			continue
+		if first == null:
+			first = dish
+		assert_true(dish == first, "successive seafood meals reuse the same released pool node")
+		assert_true(dish.visible)
+		assert_eq(dish.stage, &"ready")
+		assert_true(dish.plate.visible)
+		assert_false(dish.dirty_plate.visible)
+		assert_true(dish.models[id].visible)
+		assert_true(dish._shown == dish.models[id])
+		assert_eq(dish.models[id].get_child(0).scene_file_path, recipe.view_model.resource_path)
+		assert_eq((dish.models[id].get_child(0) as Node3D).scale, Vector3.ONE * ArtScale.FOOD_SCALE)
+		_assert_native_plate_support(pass_item, dish, String(id) + " native pass support")
+		_sim.orders.set_state(order, Order.State.CANCELLED)
+		_view._sync_agents()
+		assert_false(dish.visible)
+		assert_eq(dish.order_id, 0)
+		assert_eq(_view.food.pool.size(), pool_count)
+		assert_eq(_dish_count(_view), dish_count)
+
+
+func test_unmapped_valid_recipe_uses_a_prewarmed_real_plate_without_allocating_during_show_or_clear() -> void:
+	var future: RecipeDef = _future_recipe()
+	var definitions: Array[RecipeDef] = _content.recipes()
+	definitions.append(future)
+	assert_eq(ContentDB.validate_definitions(_content.ingredients(), definitions, _content.items()), PackedStringArray())
+	for warm_future: bool in [false, true]:
+		var dish: DishVisual = DishVisual.new()
+		dish.prepare(definitions if warm_future else _content.recipes())
+		var count: int = _food_node_count(dish)
+		var plate_id: int = dish.plate.get_instance_id()
+		var plate_faces: PackedVector3Array = _native_faces(dish.plate, Transform3D.IDENTITY)
+		assert_false(plate_faces.is_empty(), "the fallback contains real approved plate mesh geometry")
+		assert_true(dish.footprint_radius > 0.0)
+		if warm_future:
+			assert_not_null(dish.models.get(future.id))
+		for iteration: int in 20:
+			dish.show_dish(_content.recipe(&"burger"), false)
+			assert_true(dish.models[&"burger"].visible)
+			dish.show_dish(future, false)
+			assert_true(dish.visible)
+			assert_not_null(dish._shown)
+			assert_true(dish._shown == dish.plate, "a valid unmapped dish has one actual generic plated serving")
+			assert_true(dish.plate.visible)
+			assert_false(dish.dirty_plate.visible)
+			assert_false(dish.models[&"burger"].visible)
+			assert_eq(dish.recipe_id, future.id)
+			assert_eq(dish.plate.get_instance_id(), plate_id)
+			dish.show_dish(future, true)
+			assert_false(dish.plate.visible)
+			assert_true(dish.dirty_plate.visible)
+			assert_eq(_food_node_count(dish), count)
+			dish.show_dish(_content.recipe(&"coffee"), false)
+			assert_true(dish.models[&"coffee"].visible)
+			assert_false(dish.plate.visible, "a mapped drink keeps its existing unplated presentation")
+			assert_false(dish.dirty_plate.visible)
+		dish.stage = &"carried"
+		dish.order_id = 9236
+		dish.show_dish(null, false)
+		_assert_empty_serving(dish)
+		dish.show_dish(future, false)
+		dish.show_dish(RecipeDef.new(), false)
+		_assert_empty_serving(dish)
+		assert_eq(_food_node_count(dish), count)
+		dish.free()
+
+
+func test_future_valid_recipe_with_no_model_survives_ready_carry_cancel_and_pool_reuse() -> void:
+	var future: RecipeDef = _future_recipe()
+	var definitions: Array[RecipeDef] = _content.recipes()
+	definitions.append(future)
+	assert_eq(ContentDB.validate_definitions(_content.ingredients(), definitions, _content.items()), PackedStringArray())
+	# ContentDB has no mutation API: add one validated in-memory future resource
+	# to this test-owned catalogue so both Kitchen and presentation read it.
+	_content._recipes[future.id] = future
+	_view.bind_restaurant(_sim, _content)
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	tree.root.add_child(_view)
+	_view.set_process(false)
+	await tree.process_frame
+	var table: PlacedItem = ShopBuilder.items_with_def(_sim.world, &"table_2")[0]
+	var pass_item: PlacedItem = ShopBuilder.items_with_def(_sim.world, &"pass_counter")[0]
+	var order: Order = Order.new()
+	order.recipe_id = future.id
+	order.table_item_id = table.id
+	order.seat_cell = table.seat_cells[0]
+	_sim.orders.place(order, 0)
+	_sim.orders.set_state(order, Order.State.READY)
+	assert_eq(order.state, Order.State.READY)
+	_view._sync_agents()
+	var dish: DishVisual = _view.food.tickets[order.id].dish
+	assert_not_null(dish)
+	if dish == null:
+		return
+	assert_true(dish.visible)
+	assert_true(dish._shown == dish.plate)
+	assert_true(dish.plate.visible)
+	assert_eq(dish.stage, &"ready")
+	_assert_native_plate_support(pass_item, dish, "future generic plate native pass support")
+	var pool_count: int = _view.food.pool.size()
+	var node_count: int = _dish_count(_view)
+	var server: StaffAgent = _staff(&"server")
+	var delivery: SimTask = SimTask.new(&"deliver", &"server", "Carry future serving")
+	delivery.payload = {"order_ids": [order.id], "carried_count": 1}
+	_sim.world.board.post(delivery, 0)
+	assert_true(_sim.world.board.claim(delivery, server.id, 0))
+	server.task = delivery
+	_view._sync_agents()
+	var person: PersonView = _view.agent_nodes[server.id] as PersonView
+	assert_not_null(person._skeleton)
+	assert_eq(dish.stage, &"carried")
+	assert_true(dish.get_parent() == person)
+	assert_true(person.carry_anchor_position().y > 0.2)
+	assert_true(dish.position.is_equal_approx(person.carry_anchor_position()))
+	assert_true(dish.global_position.is_equal_approx(person.global_transform * person.carry_anchor_position()))
+	_sim.orders.set_state(order, Order.State.CANCELLED)
+	_view._sync_agents()
+	assert_null(_view.food.tickets[order.id].dish)
+	_assert_empty_serving(dish)
+	assert_true(dish.get_parent() == _view.food)
+	assert_eq(_view.food.pool.size(), pool_count)
+	assert_eq(_dish_count(_view), node_count)
+	var next: Order = Order.new()
+	next.recipe_id = future.id
+	next.table_item_id = table.id
+	next.seat_cell = table.seat_cells[0]
+	_sim.orders.place(next, 0)
+	_sim.orders.set_state(next, Order.State.READY)
+	_view._sync_agents()
+	assert_true(_view.food.tickets[next.id].dish == dish)
+	assert_true(dish.plate.visible)
+	assert_eq(_view.food.pool.size(), pool_count)
+	assert_eq(_dish_count(_view), node_count)
+
+
+func test_missing_or_empty_order_recipe_never_becomes_a_generic_meal() -> void:
+	var before: int = _dish_count(_view)
+	for id: StringName in [&"", &"not_a_catalogue_recipe"]:
+		var order: Order = Order.new()
+		order.recipe_id = id
+		_sim.orders.place(order, 0)
+		_view._sync_agents()
+		assert_null(_view.food.tickets[order.id].recipe)
+		assert_null(_view.food.tickets[order.id].dish)
+	for dish: DishVisual in _view.food.pool:
+		assert_false(dish.visible)
+		assert_eq(dish.order_id, 0)
+	assert_eq(_dish_count(_view), before)
+
+
+func _future_recipe() -> RecipeDef:
+	var future: RecipeDef = _content.recipe(&"burger").duplicate() as RecipeDef
+	future.id = &"future_unmapped_special"
+	future.display_name = "Future special"
+	future.view_model = null
+	return future
+
+
+func _assert_empty_serving(dish: DishVisual) -> void:
+	assert_false(dish.visible)
+	assert_false(dish.plate.visible)
+	assert_false(dish.dirty_plate.visible)
+	assert_null(dish._shown)
+	assert_eq(dish.recipe_id, &"")
+	assert_eq(dish.stage, &"")
+	assert_eq(dish.order_id, 0)
+
+
+func _food_node_count(node: Node) -> int:
+	var count: int = 1
+	for child: Node in node.get_children():
+		count += _food_node_count(child)
+	return count
+
+
+func _recipe_resource_paths(folder: String) -> PackedStringArray:
+	var directory: DirAccess = DirAccess.open(folder)
+	assert_not_null(directory)
+	var paths: PackedStringArray = PackedStringArray()
+	if directory == null:
+		return paths
+	for file: String in directory.get_files():
+		if file.ends_with(".tres"):
+			paths.append(folder.path_join(file))
+	for child: String in directory.get_directories():
+		paths.append_array(_recipe_resource_paths(folder.path_join(child)))
+	paths.sort()
+	return paths
