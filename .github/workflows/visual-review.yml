@@ -100,6 +100,7 @@ jobs:
           OWNER_REVIEW_STAGE=picker bash tools/screenshot.sh --out=screens/visual-review/owner-picker --scene=res://tools/owner_character_review.tscn --speed=0 --frames=60
           OWNER_REVIEW_STAGE=shop bash tools/screenshot.sh --out=screens/visual-review/owner-character --scene=res://tools/owner_character_review.tscn --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/report --report --open --fast=100 --speed=0 --frames=60
+          bash tools/screenshot.sh --out=screens/visual-review/demand-report --scene=res://tools/demand_report_review.tscn --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/regulars-review --scene=res://tools/regulars_review.tscn --frames=12,90 --speed=0
           bash tools/screenshot.sh --out=screens/visual-review/paint --paint --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/floors-review --floors-review --speed=0 --frames=12,30
@@ -291,6 +292,26 @@ jobs:
           verify_hud_identity('hud-1280', (1280, 720), 90, 150)
           verify_hud_identity('hud-1600', (1600, 900), 12, 125)
           verify_hud_identity('hud-1600', (1600, 900), 90, 150)
+
+          # One actual five-day service capture; the scene validates native forecast text and bounds.
+          png = root / 'demand-report' / 'shot_0060.png'
+          raw = png.read_bytes()
+          assert raw[:8] == b'\x89PNG\r\n\x1a\n' and len(raw) > 1000, 'demand-report: missing/invalid PNG'
+          assert struct.unpack('>II', raw[16:24]) == (1600, 900), 'demand-report: wrong PNG dimensions'
+          data = json.loads(png.with_suffix('.json').read_text())
+          assert data['image_file'] == png.name and data['image_sha256'] == hashlib.sha256(raw).hexdigest(), 'demand-report: image identity mismatch'
+          assert data['scene'] == 'res://tools/demand_report_review.tscn' and data['capture_timing'] == 'frame_post_draw', 'demand-report: wrong image source'
+          assert (data['width'], data['height'], data['frame']) == (1600, 900, 60), 'demand-report: wrong viewport/frame'
+          assert type(data['engine_errors']) is int and data['engine_errors'] == 0, 'demand-report: engine/script errors'
+          assert 'llvmpipe' in data['video_adapter'].lower(), 'demand-report: wrong software Mesa adapter'
+          assert data['day_phase'] == 3 and data['world_tick'] > 0, 'demand-report: service did not close'
+          assert data['capture_parameters'] == {'open': False, 'fast_ticks_per_frame': 0, 'speed': 0}, 'demand-report: wrong paused capture parameters'
+          assert data['master_seed'] == data['new_game_seed_override'] == '1', 'demand-report: wrong actual seed'
+          log = (root / 'demand-report' / 'capture.log').read_text()
+          assert log.count('DEMAND_REPORT_REVIEW ') == 1, 'demand-report: missing unique native validation receipt'
+          review = json.loads(log.split('DEMAND_REPORT_REVIEW ', 1)[1].splitlines()[0])
+          assert review['unchanged'] is True and review['day'] == 5 and review['forecast']['day'] == 6, 'demand-report: incoherent actual forecast'
+          print(f'demand-report: actual day5 forecast, unchanged session, sha256={hashlib.sha256(raw).hexdigest()}')
 
           PY
           timeout 60 "$GODOT" --headless --path . --script tools/diner_capture_validator.gd

@@ -50,7 +50,8 @@ func advance(sim: RestaurantSim) -> void:
 			var entry: Vector2i = entries[rng.randi_range(0, entries.size() - 1)]
 			# A type whose groups are still locked draws exactly what a single
 			# guest draws: no size draw and one private seed.
-			var drawn_count: int = kind.draw_party_size_at(rng, sim.customer_level) if kind != null else 1
+			var drawn_count: int = kind.draw_party_size_for_demand(rng, sim.customer_level,
+				sim.demand_factor, sim.demand_tuning) if kind != null else 1
 			var count: int = drawn_count
 			if drawn_count > 1:
 				# Parties clamp after every draw to the largest usable table, but

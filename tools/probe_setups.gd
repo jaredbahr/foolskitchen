@@ -6,7 +6,8 @@ extends RefCounted
 
 static func names() -> Array[String]:
 	return ["default", "extra_cook", "extra_server", "owner_kitchen", "owner_floor",
-		"trays_2", "trays_4", "extra_cleaner", "expanded_tables", "coffee_shop", "bar", "fryer_coffee", "joined_tables"]
+		"trays_2", "trays_4", "extra_cleaner", "expanded_tables", "coffee_shop", "bar", "fryer_coffee", "joined_tables",
+		"grown", "neglected"]
 
 
 static func apply(name: String, main: Node, extra_cook_skill: int = 3) -> bool:
@@ -42,6 +43,10 @@ static func apply(name: String, main: Node, extra_cook_skill: int = 3) -> bool:
 			return _bar(main)
 		"fryer_coffee":
 			return _fryer_coffee(main)
+		"grown":
+			return _grown(main)
+		"neglected":
+			return _neglected(main)
 	return false
 
 
@@ -49,12 +54,47 @@ static func apply(name: String, main: Node, extra_cook_skill: int = 3) -> bool:
 ## has newly unlocked (wine at level 2), as a player running it would.
 static func morning(name: String, main: Node) -> bool:
 	match name:
+		"neglected":
+			return _neglected(main)
 		"coffee_shop":
 			return _enable(main, [&"coffee", &"tea", &"croissant"])
 		"fryer_coffee":
 			return _enable(main, [&"burger", &"grilled_cheese", &"fries", &"coffee"])
 		"bar":
 			return _enable(main, [&"beer", &"wine", &"soft_drink", &"burger", &"grilled_cheese"])
+	return true
+
+
+## Demand comparison: the existing free expanded layout plus a reachable
+## coffee machine and storage, with all five unlocked dishes enabled through
+## Main. Construction is free, as in expanded_tables; supplies and daily costs
+## are paid normally. No XP, reputation, renown or stock is granted.
+static func _grown(main: Node) -> bool:
+	if not _expand_with_tables(main):
+		return false
+	var editor: ShopEditor = _free_editor(main)
+	if editor == null or not editor.buy(&"coffee_machine", Vector2i(12, 3), 0) \
+			or not _storage_shelves(editor) or not editor.last_check.unreachable.is_empty():
+		return false
+	main.call("_refresh_menu_catalogue")
+	var settings: MenuSettings = main.get("menu_settings") as MenuSettings
+	if settings == null:
+		return false
+	for id: StringName in [&"burger", &"grilled_cheese", &"tomato_soup", &"coffee", &"tea"]:
+		if settings.recipe(id) == null or not main.call("menu_set_enabled", id, true):
+			return false
+	return settings.enabled_recipes().size() == 5
+
+
+## Ordinary maximum menu prices, with genuine reviews earned during service.
+## Repeating the command each morning also covers later enabled dishes.
+static func _neglected(main: Node) -> bool:
+	var settings: MenuSettings = main.get("menu_settings") as MenuSettings
+	if settings == null:
+		return false
+	for recipe: RecipeDef in settings.enabled_recipes():
+		if not main.call("menu_set_price", recipe.id, recipe.standard_price * 2):
+			return false
 	return true
 
 

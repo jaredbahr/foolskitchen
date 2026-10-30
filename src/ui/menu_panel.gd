@@ -68,6 +68,8 @@ var _hours_tuning: OpeningHoursTuning = null
 
 
 func _ready() -> void:
+	# Keep every header control reachable when HUD notices leave a short panel.
+	$Panel.add_theme_stylebox_override("panel", SHARED_THEME.get_stylebox("panel", "PanelContainer"))
 	refresh()
 	_fit_width()
 

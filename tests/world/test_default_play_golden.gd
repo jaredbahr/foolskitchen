@@ -5,7 +5,9 @@ extends TestCase
 ## recorded on that main. The new arrival weights, visit draw and drink-add
 ## chance must draw nothing and change nothing here. Freeze the historical
 ## thick-divider fixture for that contract; the shipped thin layout has separate
-## migration, service and balance-probe coverage.
+## migration, service and balance-probe coverage. FK-120 also freezes demand
+## at 1.0 in this detached historical context; actual default Day 1 draw-for-draw,
+## later demand growth and replay have separate test_demand_session coverage.
 
 const MainScene: PackedScene = preload("res://src/world/main.tscn")
 const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
@@ -48,6 +50,16 @@ func after_each() -> void:
 func test_two_default_days_match_main_draw_for_draw() -> void:
 	_main = MainScene.instantiate()
 	_main.set("use_saves", false)
+	# Keep this pre-demand compatibility oracle's original two-day assertions.
+	# A per-session Resource prevents any change to shipped authored tuning.
+	var neutral: DemandTuning = DemandTuning.new()
+	neutral.reputation_factors = PackedFloat32Array([1, 1, 1])
+	neutral.renown_max_factor = 1.0
+	neutral.menu_per_extra_dish = 0.0
+	neutral.menu_max_bonus = 0.0
+	neutral.vibe_min_factor = 1.0
+	neutral.vibe_max_factor = 1.0
+	_main.set("demand_tuning", neutral)
 	_main.set("new_game_seed_override", 7)
 	(Engine.get_main_loop() as SceneTree).root.add_child(_main)
 	_main.call("start")
