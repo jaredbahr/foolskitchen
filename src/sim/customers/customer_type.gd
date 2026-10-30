@@ -40,7 +40,7 @@ extends Resource
 func is_valid() -> bool:
 	if id.is_empty() or display_name.strip_edges().is_empty() or unlock_level < 1:
 		return false
-	if party_size_min < 1 or party_size_max < party_size_min or party_size_max > 4:
+	if party_size_min < 1 or party_size_max < party_size_min or party_size_max > Party.MAX_SIZE:
 		return false
 	if party_unlock_level < 1:
 		return false

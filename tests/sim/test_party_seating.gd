@@ -37,7 +37,7 @@ func test_invalid_ranges_and_member_ids_are_rejected_without_a_draw() -> void:
 	var kind: CustomerType = TYPES.types[0].duplicate() as CustomerType
 	var random: RandomNumberGenerator = _rng(1)
 	var before: int = random.state
-	for pair: Vector2i in [Vector2i(0, 1), Vector2i(2, 1), Vector2i(1, 5)]:
+	for pair: Vector2i in [Vector2i(0, 1), Vector2i(2, 1), Vector2i(1, 7)]:
 		kind.party_size_min = pair.x
 		kind.party_size_max = pair.y
 		assert_false(kind.is_valid())

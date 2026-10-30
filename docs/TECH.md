@@ -809,6 +809,40 @@ an active edit/panel/selection first, or opens Settings when none is active.
   review requirements. Int64 charge, shortfall and principal limits reject an
   unrepresentable settlement before any account or ledger mutation.
 
+### Joined dining tables (FK-246)
+
+`DiningSeats` derives components of ordinary TABLE items sharing an entire
+unblocked facing edge in one room. Both rectangles must have the same facing
+edge span; corners and partial edges do not join. Serve-across counters never
+join, and chairs/booths contribute seats without connecting components. The
+leader is chosen by geometry (row, column, definition, rotation), independently
+of placement order. Only outside seats contribute to a joined component.
+
+`SimGrid` caches detached group/member/seat lookups before geometry or room
+notifications. `PlacedItem.seat_cells`, seat links, guest and order table IDs
+remain physical. Group reservations validate the whole request before holding
+each seat on its physical owner. Editor previews report group capacity and
+refuse moving/selling any occupied joined group's member, changing occupied
+membership, or orphaning a held seat; cosmetic edits remain available. An
+occupied standalone table retains its established sale/undo-removal cancellation
+and refund behavior. Relocating it or joining another table onto it is refused. Forced low-level removal
+continues to support lifecycle recovery. Groups are derived after load and never
+stored; the snapshot version and morning-only save policy are unchanged.
+
+Explicit parties support at most six people. Shipped type ranges and arrival
+random draws remain unchanged. Standalone parties of at most four retain the
+existing matching order; joined groups and larger parties use deterministic
+augmenting-path matching. Bookings share spare seats and capture transient
+physical `booked_table_ids`. Before seating, stale topology releases all holds
+and paths together. After seating, each person's delivery/payment outcome stays
+independent. A real meal departure dirties every original surviving member,
+while plate tokens and bus tasks stay on physical tables. New seating waits for
+all current members to be clean; existing bus-completion timing is unchanged.
+
+Build previews, hover and Inspect use the same cached component and display
+`Seats N (joined table)`. The manual `joined_tables` probe moves two starter
+tables and buys two normal chairs for $20, without changing menu/staff/tuning.
+
 ### Furniture catalogue and dining seats (FK-071)
 - Twenty-five additional item resources use unchanged approved Furniture Kit
   scenes: nine seats, four tables, a counter assembled from bar pieces and
@@ -1758,7 +1792,7 @@ level 4). Below it the type is a single guest that draws exactly what main's
 single guest draws: no size draw and one private seed, so play before any
 group type unlocks matches single-guest main draw for draw (golden-tested).
 Fixed-size ranges consume no size draw either. An unlocked type draws one
-ranged party size, then clamps it to the largest currently usable table
+ranged party size, then clamps it to the largest currently usable dining group
 reachable from the chosen street entry, but never below one. Capacity counts
 clear, unique, reachable seats, including linked furnishings; temporary
 bookings and dirt do not shrink the layout's capacity. Single guests always
@@ -1772,7 +1806,7 @@ type's short `party_tip` once, in the evening report of the day the owner reache
 It installs and links
 every member before publishing any arrival; singleton installation retains
 the old draw and signal order. `Party` stores member IDs rather than strong
-agent references. `PartySeating` searches one table with enough reachable
+agent references. `PartySeating` searches one derived table group with enough reachable
 free seats, matches all members before reserving, and rolls back every hold
 and path on failure. Arrival IDs give waiting parties first choice: later
 guests and parties leave clear seats at any table that could seat an earlier
@@ -2400,6 +2434,58 @@ historical reports. There are no new save points or random draws.
 - **Poly budget (guide):** furniture 300 to 1,500 tris, characters 1,500 to 4,000 tris, small props under 300 tris.
 - **AI-generated meshes** (Tripo and similar) need retopology or decimation, a pivot fix, a scale check and a swap to the palette material before they go into `assets/models/`.
 - **Placeholders:** CSG or primitive shapes are fine until Phase 4. Systems first, art later.
+
+### Named regulars (FK-088)
+
+`RegularCast` and `RegularProfile` (`src/sim/regulars/`) hold a small persistent
+cast, authored by `data/regulars/cast.tres`. Solo arrivals of the existing Regular
+type belong to sixteen anonymous, deterministic repeat cohorts (their daily
+arrival order, cycling without a random draw). Satisfied visits on distinct days
+teach the most-enjoyed dish and most-used seat; ties keep the first favourite.
+Promotion requires two satisfied visits, at least 2.5 stars, positive vibe (1),
+and **day 6 or later**. The five-day balance probe therefore has no promotions,
+new regular-stream draws, tips, or changed guest choices. The cast keeps at most
+eight lifetime identities, including those who stop coming; departed names are
+retained in the saved history and never silently reassigned.
+
+Only an actual promotion asks the session's lazy `GameState.rng(&"regulars")`
+provider for a stream. Names, clothing colours, greetings and the next visit date are
+seeded; each identity gets a fixed approved Mini Character model. Returning
+regulars replace ordinary solo Regular arrivals when due, at most once per day,
+rescheduling 2–4 days later. A shortage of eligible arrivals delays a visit rather
+than spawning extra guests. Arrival and private guest draws retain their ordinary
+order. Parties and other customer types remain anonymous.
+
+A regular tries their favourite seat first, then any usable seat, and orders the
+favourite when it is available in their visit's menu section. A missing or sold-out
+favourite never prevents another order. The final visit kind is applied once after
+choosing the usual, so a food favourite keeps the normal meal duration even when
+replacing a coffee or drinks arrival. Having it on the menu adds the authored
+0.08 happiness term to their arrival review bonus. Their existing wait and meal
+quality determine relationship mood at departure; repeated missing favourites
+lower it too. Below 0.2 they stop visiting, and the evening report names them.
+`regular_tip` adds a whole-unit `Ledger.TIP` alongside the existing guarded sale:
+4% normally, 8% with the favourite on the menu, rounding the latter up so a $5
+coffee can produce a $1 bonus. No extra random draw or alternate currency is used.
+
+`Main` stages the `regulars` save section and installs it only after a complete
+morning load. Anonymous learning, fixed identities, preferences, moods and due
+dates round-trip; absent legacy sections start empty. Only the existing morning
+autosave writes them. New promotions and menu edits never save immediately.
+The Menu marks active favourites; inspection uses `RegularText` for dish names,
+seat coordinates and plain mood words. ShopView attaches a reused star/name/
+greeting billboard to the drawn person, and PersonView uses their fixed model
+plus a private copy of its clothing colormap tinted in an approved swatch.
+The torso UV ramp is measured per model; skin ramps and the separate head mesh
+keep their original materials. Greeting lifetime is two sim
+seconds, so pausing also pauses it. None of these presenters advances the sim.
+
+Validation: pure cast tests cover gates, learning, cap, calendar and RNG/save
+continuation; integration/session tests cover actual arrival, seating, orders,
+departure, tips and morning-only persistence. `tools/regulars_probe.gd` is a manual
+25-day paired café probe (equipment-free existing concept fixture; stock and
+running costs paid, morning raises accepted). `tools/regulars_review.tscn` is an
+explicit staged view fixture for two native captures, not balance evidence.
 
 ### Tier 2 lease (FK-064)
 `data/balance/lease_upgrade.tres` defines the level-3 morning offer, deposit,

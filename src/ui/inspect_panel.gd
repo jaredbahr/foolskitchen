@@ -25,6 +25,11 @@ var _shown_owner_id: int = -1
 var _nodes_bound: bool = false
 var _owner_appearance: OwnerAppearance = OwnerAppearance.new()
 var _owner_portrait: OwnerCharacterPreview
+## Reachability changes with topology, not with reservations or dirt.
+var _dining_cache_grid: SimGrid
+var _dining_cache_version: int = -1
+var _dining_cache_group: int = 0
+var _dining_cache_capacity: int = 0
 
 
 func _ready() -> void:
@@ -34,6 +39,9 @@ func _ready() -> void:
 func bind_world(value: SimWorld) -> void:
 	if _world != value:
 		_world = value
+		_dining_cache_grid = null
+		_dining_cache_version = -1
+		_dining_cache_group = 0
 		clear()
 	else:
 		refresh()
@@ -166,6 +174,8 @@ func _reset_content(keep_owner_controls: bool = false) -> void:
 
 
 func _agent_title(agent: SimAgent) -> String:
+	if agent is CustomerAgent and (agent as CustomerAgent).regular_profile != null:
+		return (agent as CustomerAgent).regular_profile.display_name + " (Regular)"
 	if agent is OwnerAgent:
 		return OwnerText.inspect_title(_owner_appearance.display_name, agent.id)
 	var role_name: String = "Guest" if agent is CustomerAgent else String(agent.role).capitalize()
@@ -265,6 +275,8 @@ func _show_guest(guest: CustomerAgent) -> void:
 	if int(guest.state) >= 0 and int(guest.state) < GUEST_STATES.size():
 		state_name = GUEST_STATES[int(guest.state)]
 	_details.text = "Type: %s\nState: %s" % [guest.customer_type_name, state_name]
+	if guest.regular_profile != null:
+		_details.text += "\n" + RegularText.inspection(guest.regular_profile, guest.regular_favourite_label)
 	for order: Order in [guest.order, guest.extra_order]:
 		if order != null and order.state == Order.State.DELIVERED and order.quality_breakdown != null:
 			_details.text += "\nServed quality: " + order.quality_breakdown.explanation()
@@ -300,12 +312,23 @@ func _show_item(item: PlacedItem) -> void:
 		station_name = CatalogueText.station_name(definition)
 	_title.text = "%s #%d" % [item_name, item.id]
 	_details.text = "Station: %s" % station_name
+	var group: DiningSeats.Group = _world.grid.dining_group(item.id)
+	var seats: Array[Vector2i] = item.seat_cells
+	if group != null:
+		if _dining_cache_grid != _world.grid or _dining_cache_version != _world.grid.version or _dining_cache_group != group.id:
+			_dining_cache_grid = _world.grid
+			_dining_cache_version = _world.grid.version
+			_dining_cache_group = group.id
+			_dining_cache_capacity = DiningSeats.usable_cells(_world.grid, item).size()
+		_details.text += "\n" + CatalogueText.dining_capacity(_dining_cache_capacity, group.is_joined())
+		seats = group.seat_cells
 	_details.show()
 	var lines: PackedStringArray = []
 	for cell: Vector2i in item.work_cells:
 		lines.append(_reservation_line("Work", cell, item.reserved_by(cell)))
-	for cell: Vector2i in item.seat_cells:
-		lines.append(_reservation_line("Seat", cell, item.reserved_by(cell)))
+	for cell: Vector2i in seats:
+		var owner: PlacedItem = _world.grid.item(_world.grid.dining_owner_id(item.id, cell)) if group != null else item
+		lines.append(_reservation_line("Seat", cell, owner.reserved_by(cell) if owner != null else -1))
 	_reservations.text = "No work or seat cells" if lines.is_empty() else "\n".join(lines)
 	_reservations.show()
 

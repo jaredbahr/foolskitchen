@@ -48,6 +48,8 @@ extends SceneTree
 ##             holding a striped wallpaper drag (--quarter turns the camera for both frames)
 ##   --weather-review=sunny --menu --speed=0 --frames=60, or rain without --menu:
 ##             explicit unsaved weather override after the real seed-1 morning selection
+##   --joined-tables-review --speed=0 --frames=90 shows one real six-person party
+##             after normal table moves, opening and bounded walking (unsaved fixture).
 ##   --restroom-review --speed=0 --frames=12,30 shows the complete two-toilet
 ##             restroom, then a close wall-fitting view with the owner for scale.
 ##   --blueprints=selection|ghost|stamped --speed=0 --frames=30
@@ -58,6 +60,7 @@ const MAX_CAPTURE_WAIT_FRAMES: int = 8
 const MAX_OWNER_WARMUP_TICKS: int = 900
 const SETTINGS_CAPTURE_SIZE: Vector2i = Vector2i(1600, 900)
 const WEATHER_REVIEW: Script = preload("res://tools/weather_review.gd")
+const JOINED_TABLES_REVIEW: Script = preload("res://tools/joined_tables_review.gd")
 const LEASE_REVIEW: Script = preload("res://tools/lease_review.gd")
 const DINER_REVIEW: Script = preload("res://tools/diner_review.gd")
 const FLOORS_REVIEW: Script = preload("res://tools/floors_review.gd")
@@ -148,6 +151,8 @@ var _rooms_paused: bool = false
 var _door_queue: bool = false
 var _weather_mode: String = ""
 var _weather_fixture: Dictionary = {}
+var _joined_tables_review: bool = false
+var _joined_tables_fixture: Dictionary = {}
 var _lease_mode: String = ""
 var _lease_fixture: Dictionary = {}
 var _loan_review: bool = false
@@ -178,6 +183,11 @@ func _initialize() -> void:
 		_fail_capture(weather_options["error"])
 		return
 	_weather_mode = weather_options["mode"]
+	var joined_options: Dictionary = JOINED_TABLES_REVIEW.options(OS.get_cmdline_user_args())
+	if not String(joined_options["error"]).is_empty():
+		_fail_capture(joined_options["error"])
+		return
+	_joined_tables_review = joined_options["enabled"]
 	var lease_options: Dictionary = LEASE_REVIEW.options(OS.get_cmdline_user_args())
 	if not String(lease_options["error"]).is_empty():
 		_fail_capture(lease_options["error"])
@@ -409,7 +419,7 @@ func _initialize() -> void:
 	if "use_saves" in _main:
 		_main.set("use_saves", false)
 	if (not _lease_mode.is_empty() or _report_requested or _milestone_review or _diner_review or _expand == "shop" or not _rooms.is_empty() \
-			or _floors_review or _walls_review or _restroom_review or _assign_owner or not _weather_mode.is_empty()) \
+			or _floors_review or _walls_review or _restroom_review or _assign_owner or not _weather_mode.is_empty() or _joined_tables_review) \
 			and "new_game_seed_override" in _main:
 		_main.set("new_game_seed_override", 1)
 	root.add_child(_main)
@@ -1874,6 +1884,11 @@ func _process(_delta: float) -> bool:
 			if not String(_weather_fixture["error"]).is_empty():
 				_fail_capture(_weather_fixture["error"])
 				return true
+		if _joined_tables_review:
+			_joined_tables_fixture = JOINED_TABLES_REVIEW.prepare(_main, root)
+			if not String(_joined_tables_fixture["error"]).is_empty():
+				_fail_capture(_joined_tables_fixture["error"])
+				return true
 		if _restroom_review:
 			RESTROOM_REVIEW.focus(_main, false)
 		if not _rooms.is_empty() and _quarter < 0:
@@ -2915,6 +2930,9 @@ func _capture() -> void:
 	var weather_state: Dictionary = WEATHER_REVIEW.evidence(_main, root, _weather_fixture) if not _weather_mode.is_empty() else {}
 	if not _weather_mode.is_empty() and not WEATHER_REVIEW.valid(weather_state, _weather_mode):
 		_fail_capture("weather review failed its actual morning UI, stream, outside rain or isolated receiver checks: " + JSON.stringify(weather_state))
+	var joined_tables_state: Dictionary = JOINED_TABLES_REVIEW.evidence(_main, root, _joined_tables_fixture) if _joined_tables_review else {}
+	if _joined_tables_review and not JOINED_TABLES_REVIEW.valid(joined_tables_state, _joined_tables_fixture):
+		_fail_capture("joined-table review failed its actual six-person party, physical holds, group or native sit checks: " + JSON.stringify(joined_tables_state))
 		return
 	var diner_state: Dictionary = DINER_REVIEW.evidence(_main, root, _capture_frame) if _diner_review else {}
 	if _diner_review and not DINER_REVIEW.valid(diner_state, _capture_frame, _diner_fixture):
@@ -3170,6 +3188,8 @@ func _capture() -> void:
 			"generated_uids": generated_uid_evidence(CATALOGUE_UID_SOURCES)}
 	if not _weather_mode.is_empty():
 		metadata["weather_review"] = {"fixture": _weather_fixture, "state": weather_state}
+	if _joined_tables_review:
+		metadata["joined_tables_review"] = {"fixture": _joined_tables_fixture, "state": joined_tables_state}
 	if _floors_review:
 		metadata["floors_review"] = {"fixture": _floors_fixture, "state": floors_state}
 	if _restroom_review:

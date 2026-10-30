@@ -25,6 +25,7 @@ const MORNING_HINT: String = "Menu changes are available in the morning."
 const PANEL_MAX_WIDTH: float = 1000.0
 const PANEL_SIDE_MARGIN: float = 12.0
 
+var _regular_favourites: Array[StringName] = []
 var _catalogue: Array[RecipeDef] = []
 var _details: Dictionary[StringName, Dictionary] = {}
 var _selected_recipe: StringName = &""
@@ -101,6 +102,12 @@ func bind_menu(model: MenuSettings) -> void:
 		_needs_rebuild = true
 		if _menu != null:
 			_menu.owner_level_changed.connect(_on_owner_level_changed)
+	refresh()
+
+
+## Read-only cast preference; this never enables or reprices a recipe.
+func set_regular_favourites(ids: Array[StringName]) -> void:
+	_regular_favourites.assign(ids)
 	refresh()
 
 
@@ -726,6 +733,9 @@ func _refresh_tree_state() -> void:
 		if locked:
 			status = "Lv %d" % recipe.unlock_level + (", " + status.to_lower() if missing else "")
 			tooltip = "Unlocks at owner level %d." % recipe.unlock_level + (" " + state + "." if missing else "")
+		node.set_icon(0, IconCatalogue.texture_for(&"reputation") if _regular_favourites.has(recipe.id) else null)
+		node.set_icon_max_width(0, IconCatalogue.PANEL_SIZE)
+		node.set_tooltip_text(0, RegularText.FAVOURITE if _regular_favourites.has(recipe.id) else recipe.display_name)
 		node.set_text(1, status)
 		node.set_tooltip_text(1, tooltip)
 		node.set_custom_color(0, LOCKED_COLOR if locked else STANDARD_COLOR)
@@ -772,6 +782,8 @@ func _refresh_selection() -> void:
 	var quality: float = float(details.get("quality", chosen.base_quality))
 	_quality_label.text = "Quality: %d / 5 stars\n%s" % [RecipeDef.quality_stars(quality),
 		details.get("quality_source", "Recipe base quality; no served-dish sample")]
+	if _regular_favourites.has(chosen.id):
+		_quality_label.text += "\n" + RegularText.FAVOURITE
 	if details.has("reviews"):
 		_quality_label.text += "\n" + String(details["reviews"])
 	if details.has("quality_breakdown"):

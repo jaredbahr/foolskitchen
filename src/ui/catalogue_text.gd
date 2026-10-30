@@ -48,6 +48,11 @@ const STATION_NAMES: Dictionary[StringName, String] = {
 }
 
 
+## One capacity readout for live tables, prospective ghosts and inspection.
+static func dining_capacity(capacity: int, joined: bool = false) -> String:
+	return "Seats %d (joined table)" % capacity if joined else "Seats %d" % capacity
+
+
 static func wall_removal_refund(refund: int) -> String:
 	return "%s wall (refund %s)" % [WALL_REMOVE_LABEL, Fmt.money(refund)]
 

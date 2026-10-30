@@ -189,6 +189,8 @@ func check_move(item_id: int, origin: Vector2i, quarter_turns: int, exact: Exact
 	var definition: ItemDef = placed.def as ItemDef
 	if not _valid_definition(definition):
 		return EditCheck.new(false, "That item has no valid definition")
+	if definition.category == ItemDef.Category.TABLE and _sim.world.grid.dining_group_has_reservations(item_id):
+		return EditCheck.new(false, "This item is in use; try next morning")
 	for cell: Vector2i in placed.work_cells + placed.seat_cells:
 		if placed.reserved_by(cell) != -1:
 			return EditCheck.new(false, "This item is in use; try next morning")
@@ -412,6 +414,9 @@ func check_sell(item_id: int, exact: Exact = null) -> EditCheck:
 	var definition: ItemDef = placed.def as ItemDef
 	if not _valid_definition(definition):
 		return EditCheck.new(false, "That item has no valid definition")
+	if definition.category == ItemDef.Category.TABLE and _sim.world.grid.dining_group_members(item_id).size() > 1 \
+			and _sim.world.grid.dining_group_has_reservations(item_id):
+		return EditCheck.new(false, "This item is in use; try next morning")
 	if _linked_seat_in_use(placed):
 		return EditCheck.new(false, "This item is in use; try next morning")
 	if definition.category == ItemDef.Category.DOOR:
@@ -1890,6 +1895,11 @@ func _check_placement(definition: ItemDef, origin: Vector2i, turns: int, exclude
 			return EditCheck.new(false, rooms)
 	var check: EditCheck = EditCheck.new(true)
 	_fill_warnings(check, preview, ids)
+	var proposed: PlacedItem = preview.item(proposed_id)
+	if check.ok and proposed != null and definition.category == ItemDef.Category.TABLE:
+		check.dining_capacity = DiningSeats.usable_cells(preview, proposed).size()
+		var group: DiningSeats.Group = preview.dining_group(proposed.id)
+		check.dining_joined = group != null and group.is_joined()
 	_note_menu_access(check, preview, restoring)
 	return check
 
@@ -1969,7 +1979,12 @@ func _linked_seat_in_use(placed: PlacedItem) -> bool:
 	return false
 
 
-static func _fill_warnings(check: EditCheck, grid: SimGrid, ids: Dictionary[int, int]) -> void:
+func _fill_warnings(check: EditCheck, grid: SimGrid, ids: Dictionary[int, int]) -> void:
+	var occupied: String = EditCheck.occupied_dining_problem(_sim.world.grid, grid, ids)
+	if not occupied.is_empty():
+		check.ok = false
+		check.why = occupied
+		return
 	check.unreachable = _unreachable(grid, ids)
 	for table: PlacedItem in grid.items():
 		var definition: ItemDef = table.def as ItemDef
@@ -1991,7 +2006,7 @@ static func _unreachable(grid: SimGrid, ids: Dictionary[int, int]) -> Array[int]
 		var definition: ItemDef = placed.def as ItemDef
 		var reachable: bool = true
 		if definition.category == ItemDef.Category.TABLE:
-			reachable = _any_reachable(grid, placed.seat_cells)
+			reachable = _any_reachable(grid, grid.dining_group_seats(placed.id))
 		elif definition.category == ItemDef.Category.PASS:
 			reachable = placed.work_cells.size() >= 2
 			for index: int in range(mini(2, placed.work_cells.size())):
