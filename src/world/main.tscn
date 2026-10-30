@@ -54,3 +54,7 @@ layer = 10
 [node name="SettingsPanel" parent="Overlay" instance=ExtResource("12_settings")]
 
 [node name="GoalsPanel" parent="Overlay" instance=ExtResource("13_goals")]
+
+[node name="QuitToTitle" type="ConfirmationDialog" parent="Overlay"]
+title = "Quit to title"
+dialog_text = "Progress since this morning will be lost."
