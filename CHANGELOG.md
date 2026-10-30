@@ -12,6 +12,8 @@ Each line ends with its PR number.
 
 ### Players
 - See meals on the pass, in servers' hands or trays and on guests' tables. Plates follow a rotated pass and stay on round tabletops. Dirty plates stay until bussing, collected plates stack by the working sink, and cooking stoves and fryers give off a little steam. Food and drinks use their matching Kenney models without changing service or balance. (#236)
+- Choose diner booth and stool looks in Buy, or change an existing piece in Paint. Copying, undoing and loading keep the chosen look. (#220)
+
 - Add a wall-hung restroom mirror and hand dryer with a little charm, a gentle room-label hint, and thin light-laminate stall partitions in Build > Walls that keep toilet and basin access clear. (#217)
 - Upgrade your lease from owner level 3 in the morning Menu panel: keep your shop, pay a deposit and higher rent, and unlock more land to expand. (#216)
 - Pick your owner's character and name when starting a shop, and change their look from Staff in the morning. (#233)
@@ -111,6 +113,9 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- Workers check GitHub for an existing PR or claim before starting an issue, claim it with a comment, and stop pushing once a PR is ready, so no work is done twice. (#249)
+- Add data-driven furniture looks and named kit-material colour recipes for the first diner seats. (#220)
+
 - Include the lease offer, cash refusal and larger lot in the normal visual review without adding more than two captures. (#216)
 - Keep the morning lease advice independent of the HUD during capture startup, and check that fresh startup path before the full test suite. (#216)
 - The roadmap's Codex queue is reset: finish open PRs, then the thin divider fix, the outside of the shop (street front, weather, neighbourhood, patio, curb appeal) and sound. (#245)

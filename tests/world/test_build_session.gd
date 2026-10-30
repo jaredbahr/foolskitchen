@@ -303,6 +303,9 @@ func test_native_alt_picks_moves_rotates_and_sells_only_the_covered_rug_at_all_c
 	var view: ShopView = _main.get_node("ShopView") as ShopView
 	var rug_visual: ItemVisual = view.item_nodes[rug.id]
 	var clicked_cell: Vector2i = table.origin + Vector2i.ONE
+	# Centre the target tile above the native catalogue, including its look dots.
+	var focus: Vector3 = GridMath.cell_to_world(clicked_cell)
+	_rig().initial_focus = Vector2(focus.x, focus.z)
 	for quarter: int in 4:
 		_rig().initial_yaw_degrees = 45.0 + quarter * 90.0
 		_rig().reset_view()

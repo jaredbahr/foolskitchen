@@ -24,7 +24,7 @@ static func build(layout: ShopLayout, content: ContentDB, errors: Array[String],
 		if def == null:
 			errors.append("%s: unknown item '%s'" % [layout.id, p.item_id])
 			continue
-		var placed: PlacedItem = grid.place_def(def, p.origin, p.quarter_turns)
+		var placed: PlacedItem = grid.place_def(def, p.origin, p.quarter_turns, p.variant_id)
 		if placed == null:
 			errors.append("%s: %s doesn't fit at %s (turns %d): %s" % [layout.id, p.item_id, p.origin,
 					p.quarter_turns, SimGrid.PlaceResult.keys()[grid.can_place_def(def, p.origin, p.quarter_turns)]])

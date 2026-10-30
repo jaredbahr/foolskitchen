@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="ItemVariant" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/sim/content/item_variant.gd" id="1_script"]
+
+[resource]
+script = ExtResource("1_script")
+id = &"stool_chrome_teal"
+display_name = "Chrome and dark teal"
+theme_tags = Array[StringName]([&"modern"])
+material_colours = Dictionary[StringName, StringName]({&"carpet": &"metalDark"})
+chip_colour = &"metalDark"

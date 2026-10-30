@@ -134,11 +134,11 @@ func test_shipped_catalogue_is_derived_from_every_valid_non_door_definition() ->
 		var button: Button = _catalogue.item_buttons[definition.id]
 		if definition.unlock_level > 1:
 			assert_true(button.disabled)
-			assert_true(button.text.ends_with("Level %d" % definition.unlock_level))
+			assert_true(button.text.strip_edges().ends_with("Level %d" % definition.unlock_level))
 			assert_eq(button.tooltip_text, "Unlocks at level %d" % definition.unlock_level)
 		else:
 			assert_false(button.disabled)
-			assert_true(button.text.ends_with("$%d" % definition.price))
+			assert_true(button.text.strip_edges().ends_with("$%d" % definition.price))
 	for id: StringName in [&"plant_small_1", &"plant_small_2", &"plant_small_3"]:
 		var hidden: ItemDef = shipped.item(id)
 		assert_not_null(hidden, "hidden floor plants remain valid content for existing placements")
@@ -150,7 +150,7 @@ func test_shipped_catalogue_is_derived_from_every_valid_non_door_definition() ->
 		if hidden.view_scene != null:
 			var thumbnails: ItemThumbnailCache = _catalogue.get("_thumbnails") as ItemThumbnailCache
 			var requested_scenes: Dictionary = thumbnails.get("_scenes")
-			assert_false(requested_scenes.has(hidden.view_scene.get_instance_id()),
+			assert_false(requested_scenes.has(ItemThumbnailCache.Request.new(hidden.view_scene).key),
 				"a hidden floor plant never queues a thumbnail")
 	var potted_plant: ItemDef = shipped.item(&"potted_plant")
 	assert_true(potted_plant.catalogue_visible, "the larger unlockable plant stays in the catalogue")
@@ -506,6 +506,11 @@ func test_grid_bounds_at_supported_window_sizes_and_interface_scales() -> void:
 						"%s item=%s height=%s card_min=%s" % [context, id, button.size.y, BuildCatalogue.CARD_MINIMUM.y])
 					assert_false(button.clip_text)
 					assert_false(button.disabled)
+					var dots: HBoxContainer = button.get_node_or_null("VariantDots") as HBoxContainer
+					if dots != null:
+						for dot: Node in dots.get_children():
+							assert_true(button.get_global_rect().grow(0.5).encloses((dot as Control).get_global_rect()),
+								"%s item=%s look=%s must stay inside its tile" % [context, id, dot.name])
 	window.remove_child(_host)
 	viewport.free()
 
@@ -555,3 +560,25 @@ static func _definition(id: StringName, label: String, price: int, category: Ite
 	definition.category = category
 	definition.catalogue_room = room
 	return definition
+
+
+func test_variant_dots_select_a_named_look_without_buying_or_mutating_content() -> void:
+	var shipped: ContentDB = ContentDB.new()
+	assert_true(shipped.load_all().is_empty())
+	_catalogue.bind_content(shipped)
+	_catalogue.set_owner_level(6)
+	_catalogue.set_build_visible(true)
+	_catalogue.set_category(&"bar_cafe")
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	tree.root.add_child(_catalogue)
+	await tree.process_frame
+	var button: Button = _catalogue.item_buttons[&"diner_stool"]
+	var dots: HBoxContainer = button.get_node("VariantDots") as HBoxContainer
+	assert_eq(dots.get_child_count(), 3)
+	var teal: Button = dots.get_node("stool_chrome_teal") as Button
+	assert_eq(teal.tooltip_text, "Chrome and dark teal")
+	teal.pressed.emit()
+	assert_eq(_catalogue.selected_variants[&"diner_stool"], &"stool_chrome_teal")
+	assert_true(_requests.is_empty(), "choosing a dot does not buy furniture")
+	assert_true(_catalogue.hover_card_lines(&"diner_stool").has("Chrome and dark teal"))
+	assert_eq(shipped.item(&"diner_stool").theme_tags, [&"diner"] as Array[StringName])
