@@ -1844,7 +1844,7 @@ func _process(_delta: float) -> bool:
 			_lease_fixture = LEASE_REVIEW.prepare(_main, root, _lease_mode)
 			if not String(_lease_fixture["error"]).is_empty():
 				_fail_capture(_lease_fixture["error"])
-				return
+				return true
 			_main.set_process(false)
 		if _loan_review:
 			_loan_fixture = prepare_loan_review(_main, root)
