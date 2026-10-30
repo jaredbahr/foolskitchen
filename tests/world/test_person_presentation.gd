@@ -41,7 +41,7 @@ func test_guest_ids_are_stable_and_use_only_remaining_models() -> void:
 		assert_ne(model, PersonPresentation.COOK_MODEL)
 		assert_ne(model, &"character-female-b")
 		assert_ne(model, PersonPresentation.SERVER_MODEL)
-		assert_ne(model, PersonPresentation.OWNER_MODEL)
+		assert_ne(model, OwnerAppearance.DEFAULT_MODEL)
 		assert_false(PersonPresentation.has_chef_hat(&"customer"))
 		seen[model] = true
 	assert_eq(seen.size(), 8)
