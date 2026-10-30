@@ -24,3 +24,4 @@ theme_tags = Array[StringName]([&"bar", &"diner"])
 paintable = false
 glow_color = Color(1, 0.16, 0.14, 1)
 wall_mount = 1
+allow_exterior = true

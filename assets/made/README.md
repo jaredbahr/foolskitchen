@@ -42,6 +42,43 @@ The source envelope is approximately 0.30 × 0.25 × 0.15 m; its wrapper uses
 the shared uniform furniture scale and aligns its bottom with the mirror at
 0.6 m above the floor, fitting the game's person scale.
 
+## Street-front decor (#240)
+
+These eight pieces use the Furniture Kit's unchanged material colours and flat,
+slightly bevelled shapes. Each width is authored as real geometry, with the
+shared uniform furniture scale applied by its wrapper. No textures, baked light,
+or light nodes are included. Prices and unlock levels live in `data/items/`.
+
+| Asset under `street_front/` | Kit reference | Triangles | Materials |
+|---|---|---:|---|
+| `street_awning_2.glb` | `wallWindow` frame and `benchCushion` cloth | 308 | `carpet`, `carpetWhite`, `metalDark` |
+| `street_awning_3.glb` | `wallWindow` frame and `benchCushion` cloth | 356 | `carpet`, `carpetWhite`, `metalDark` |
+| `street_awning_4.glb` | `wallWindow` frame and `benchCushion` cloth | 404 | `carpet`, `carpetWhite`, `metalDark` |
+| `flower_window_box.glb` | `pottedPlant` planter, foliage and chunky silhouette | 218 | `wood`, `woodDark`, `plant`, `carpetWhite`, `carpet`, `lamp` |
+| `shop_name_sign.glb` | `wallWindow` frame and `bathroomCabinetDrawer` cream panel | 56 | `woodDark`, `carpetWhite` |
+| `string_lights_2.glb` | `lampWall` warm bulbs, dark mounts and simple silhouette | 180 | `metalDark`, `lamp` |
+| `string_lights_3.glb` | `lampWall` warm bulbs, dark mounts and simple silhouette | 216 | `metalDark`, `lamp` |
+| `string_lights_4.glb` | `lampWall` warm bulbs, dark mounts and simple silhouette | 252 | `metalDark`, `lamp` |
+
+At the shared scale, awnings are 0.95/1.45/1.95 m wide, 0.15 m high and 0.43 m
+deep. Their bottoms clear the 1.10 m door opening and their tops sit at 1.25 m,
+above the 0.74 m people and 0.02 m below the sign band.
+Only the named `carpet` cloth surface accepts paint; white stripes and brackets
+retain their kit materials. The flower box is 0.44 × 0.22 × 0.20 m and fits under
+the actual window sill. Its flowers reuse the kit's cream, cloth red and lamp
+yellow, with no new colour source.
+
+The blank sign is 0.94 × 0.12 × 0.056 m, mounted from 1.27 m. The game adds the
+live restaurant name using its existing font. String lights are approximately
+0.968/1.468/1.968 m wide, 0.096 m high and 0.033 m deep; their `ItemDef.glow_color`
+is the exact warm `lampWall` colour. Mount heights, sign text geometry and light
+outset are centralized in `ArtScale`.
+
+Rebuild all eight with
+`blender --background --factory-startup --python tools/build_street_front.py`.
+The optional `-- --manifest /outside/project/manifest.json` writes measured
+bounds, triangle counts, material names and hashes outside the shipping project.
+
 ## Weather icons (#241)
 
 `icons/weather_sunny.svg`, `icons/weather_cloudy.svg` and

@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- Decorate the street front with wall finishes, coloured awnings, flower boxes, string lights and a sign showing your restaurant's name; hang the OPEN sign outside too. (#250)
 - Staff now has a chef hat icon, and Paint uses a matching brush icon with its usual tooltip. (#237)
 - Get to know named regulars after day five: they keep a favourite dish, seat and look, greet you on return visits, tip more for their favourite and may stop coming after poor service. The Menu and evening report show who they are; their history saves each morning. (#234)
 - Regulars who drop in for coffee but order their usual meal now take the normal time to eat it. (#234)
