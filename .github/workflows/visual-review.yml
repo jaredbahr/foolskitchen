@@ -95,6 +95,8 @@ jobs:
           bash tools/screenshot.sh --out=screens/visual-review/report --report --open --fast=100 --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/paint --paint --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/floors-review --floors-review --speed=0 --frames=12,30
+          SEAFOOD_REVIEW_STAGE=floor bash tools/screenshot.sh --out=screens/visual-review/seafood-floor --scene=res://tools/seafood_review.tscn --speed=0 --frames=30
+          SEAFOOD_REVIEW_STAGE=menu bash tools/screenshot.sh --out=screens/visual-review/seafood-menu --scene=res://tools/seafood_review.tscn --speed=0 --frames=30
           bash tools/screenshot.sh --out=screens/visual-review/walls-review --walls-review --speed=0 --frames=12,30
           bash tools/screenshot.sh --out=screens/visual-review/restroom-review --restroom-review --speed=0 --frames=12,30
           bash tools/screenshot.sh --out=screens/visual-review/hygiene-review --scene=res://tools/hygiene_review.tscn --speed=0 --frames=12,60 --quarter=2
