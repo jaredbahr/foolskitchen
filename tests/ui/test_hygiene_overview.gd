@@ -70,6 +70,33 @@ func test_restroom_separates_used_toilets_from_upkeep_spots_and_deduplicates_tin
 	assert_eq(state.today_label, "A bit messy", "cleaning does not erase today's report rating")
 
 
+func test_spills_and_broken_plates_share_floor_counts_and_clear_with_their_spots() -> void:
+	var broken: Vector2i = Vector2i(4, 4)
+	var spill: Vector2i = Vector2i(5, 4)
+	assert_true(_sim.cleanliness.try_spawn_at_departed_seat(broken))
+	assert_true(_sim.cleanliness.add_spill(broken, true))
+	assert_true(_sim.cleanliness.add_spill(spill))
+	var random_before: int = _random.state
+	var state: HygieneOverview.Snapshot = HygieneOverview.capture(_sim)
+	assert_eq(state.floor_spots, 2, "dirt and broken fragments on one cell count once")
+	assert_eq(state.problem_cells, [broken, spill] as Array[Vector2i])
+	assert_eq(state.today_label, "A bit messy")
+	assert_eq(_random.state, random_before, "reading actual mishaps draws no random numbers")
+	assert_eq(_sim.cleanliness.floor_mess_kind(broken), CleanlinessState.MessKind.BROKEN_PLATE)
+	assert_eq(_sim.cleanliness.floor_mess_kind(spill), CleanlinessState.MessKind.SPILL)
+	assert_true(_sim.cleanliness.clear_spot(broken))
+	state = HygieneOverview.capture(_sim)
+	assert_eq(state.floor_spots, 1)
+	assert_eq(state.problem_cells, [spill] as Array[Vector2i])
+	assert_eq(state.today_label, "A bit messy", "cleaning keeps the day's worst rating")
+	_sim.cleanliness.tidy_overnight()
+	state = HygieneOverview.capture(_sim)
+	assert_eq(state.floor_spots, 0)
+	assert_true(state.problem_cells.is_empty())
+	assert_eq(state.today_label, "Spotless")
+	assert_eq(_random.state, random_before)
+
+
 func test_reading_and_mutating_the_detached_result_cannot_change_cleaning_or_random_streams() -> void:
 	_sim.kitchen.mark_table_dirty(_table().id)
 	_sim.restroom_used(_toilet().work_cells[0])
