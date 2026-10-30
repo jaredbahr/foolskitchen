@@ -10,8 +10,8 @@ extends TestCase
 ## later demand growth and replay have separate test_demand_session coverage.
 ## FK-121 selects genuine manual stock targets before ordinary planning.
 ## Director #257 intentionally rebaselined EXPECTED for faster cooking and
-## $30 rent; those current data values apply here unchanged. Automatic targets
-## have separate forecast, accounting and balance coverage.
+## $30 rent; that declared rent is charged by this historical fixture. Current
+## automatic targets and rent have separate accounting and balance coverage.
 
 const MainScene: PackedScene = preload("res://src/world/main.tscn")
 const MANUAL_MAIN: GDScript = preload("res://tests/fixtures/manual_restock_main.gd")
@@ -55,6 +55,7 @@ func after_each() -> void:
 func test_two_default_days_match_main_draw_for_draw() -> void:
 	_main = MainScene.instantiate()
 	_main.set_script(MANUAL_MAIN)
+	_main.set("historical_rent", 30)
 	_main.set("use_saves", false)
 	# Keep this pre-demand compatibility oracle's original two-day assertions.
 	# A per-session Resource prevents any change to shipped authored tuning.
