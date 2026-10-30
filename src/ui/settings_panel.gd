@@ -4,6 +4,7 @@ extends Control
 ## future title screen can both instantiate this scene without owning storage.
 
 signal close_requested
+signal quit_to_title_requested
 
 const PLAY_GRID_LABEL: String = "Show floor grid while playing"
 const BUILD_GRID_LABEL: String = "Show floor grid in Build"
@@ -34,6 +35,7 @@ var _panel_top: float = VIEW_MARGIN
 @onready var _build_grid: CheckButton = %BuildGridToggle
 @onready var _status: Label = %Status
 @onready var _close: Button = %CloseButton
+@onready var _quit_to_title: Button = %QuitToTitleButton
 
 
 func _ready() -> void:
@@ -62,6 +64,8 @@ func _ready() -> void:
 	_play_grid.toggled.connect(_on_play_grid_toggled)
 	_build_grid.toggled.connect(_on_build_grid_toggled)
 	_close.pressed.connect(_on_close_pressed)
+	_quit_to_title.text = TitleText.QUIT_TO_TITLE
+	_quit_to_title.pressed.connect(_on_quit_to_title_pressed)
 	resized.connect(_layout_card)
 	visibility_changed.connect(_on_visibility_changed)
 	_content.minimum_size_changed.connect(_layout_card)
@@ -89,6 +93,14 @@ func bind_preferences(model: SettingsPreferences) -> void:
 	if is_node_ready():
 		_connect_preferences()
 		refresh()
+
+
+## Main enables this route; title Settings keeps only its Close action.
+func set_quit_to_title_available(value: bool) -> void:
+	if _quit_to_title == null:
+		_quit_to_title = get_node("Panel/Column/QuitToTitleButton") as Button
+	_quit_to_title.visible = value
+	_layout_card()
 
 
 func refresh() -> void:
@@ -136,6 +148,9 @@ func _layout_card() -> void:
 	var padding: Vector2 = _panel.get_theme_stylebox("panel").get_minimum_size()
 	var footer_height: float = _close.get_combined_minimum_size().y \
 		+ float(_column.get_theme_constant("separation"))
+	if _quit_to_title.visible:
+		footer_height += _quit_to_title.get_combined_minimum_size().y \
+			+ float(_column.get_theme_constant("separation"))
 	var natural: Vector2 = _content.get_combined_minimum_size()
 	var content_height: float = minf(natural.y,
 		maxf(0.0, available.y - padding.y - footer_height))
@@ -215,6 +230,13 @@ func _on_build_grid_toggled(value: bool) -> void:
 func _on_close_pressed() -> void:
 	if flush_pending_changes():
 		close_requested.emit()
+	else:
+		_record(false)
+
+
+func _on_quit_to_title_pressed() -> void:
+	if flush_pending_changes():
+		quit_to_title_requested.emit()
 	else:
 		_record(false)
 
