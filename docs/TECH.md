@@ -1266,8 +1266,19 @@ an active edit/panel/selection first, or opens Settings when none is active.
 - **Restroom pieces.** `ItemDef.Category.RESTROOM` (appended; vibe theme
   weight 0): `toilet` (station_type `toilet`, Kenney `toilet`) and
   `bathroom_sink` ("Wash basin", Kenney `bathroomSink`), both
-  `catalogue_room = restroom`, so Buy's Restroom tab appears. No mirror: the
-  kit's `bathroomMirror` hangs on a wall and the game has no wall-hung items.
+  `catalogue_room = restroom`, so Buy's Restroom tab appears. FK-103 adds `restroom_mirror` using the kit's
+  `bathroomMirror` and `wall_hand_dryer` using the approved made hand dryer:
+  both WALL / INSIDE_FACE, RESTROOM, charm 1. `WallDecor.room_hint`
+  suggests marking a Restroom when hung elsewhere; it never refuses placement.
+  Their bottom edges align at 0.6 m for the game's person scale; lowering the
+  dryer's mount leaves its approved model dimensions and shared scale unchanged.
+  Hung RESTROOM accents contribute charm with the usual diminishing returns;
+  floor fixtures still do not. `STALL_PARTITION` is appended to the segment
+  enum and uses the same access checks as a wall (including toilet and basin
+  use spots). Its fixed cream-laminate panel is 1.4 m high and 0.035 m thin,
+  drawn on the edge; it takes no floor cell and has no finish/decor face.
+  The catalogue and live view share `StallPartitionView` geometry; existing
+  cutaway input lowers it without changing saved state.
 - **Restrooms.** `RoomRules.restroom_toilets()`: toilets in a Restroom room
   whose use spot is in the Restroom too and reachable by guests. `RestaurantSim` caches them and the dining
   seat count per layout change (`has_restroom`, `seat_count`,
