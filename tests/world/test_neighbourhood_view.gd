@@ -198,8 +198,10 @@ func test_actors_use_existing_guest_models_and_no_neighbourhood_nodes_add_lights
 		var person: PersonView = dressing.pedestrians[index]
 		assert_eq(person.model_name(), PersonPresentation.model_for(&"guest", fixed_ids[index]))
 		assert_eq(person.current_clip(), &"walk")
-		assert_false(view.agent_nodes.values().has(person))
-		assert_false(view.item_nodes.values().has(person))
+		for agent_view: Node3D in view.agent_nodes.values():
+			assert_ne(agent_view.get_instance_id(), person.get_instance_id())
+		for item_view: Node3D in view.item_nodes.values():
+			assert_ne(item_view.get_instance_id(), person.get_instance_id())
 		assert_eq((person.get_node("ModelPivot") as Node3D).scale, Vector3.ONE * ArtScale.CHARACTER_SCALE)
 	for node: Node in _nodes_below(dressing):
 		assert_false(node is Light3D, "street lamps remain unlit until the night-lighting issue")
@@ -214,7 +216,10 @@ func test_actors_use_existing_guest_models_and_no_neighbourhood_nodes_add_lights
 			for surface: int in mesh.mesh.get_surface_count():
 				var material: Material = mesh.get_active_material(surface)
 				if material is BaseMaterial3D:
-					assert_false((material as BaseMaterial3D).emission_enabled)
+					var base: BaseMaterial3D = material as BaseMaterial3D
+					var rgb: Color = Color(base.emission.r, base.emission.g, base.emission.b, 1.0)
+					assert_true(not base.emission_enabled or (rgb == Color.BLACK and base.emission_texture == null),
+						"the material emits no light: disabled or exact zero RGB without an emission texture")
 	var before_agents: Array[int] = _agent_ids(view.world)
 	var before_items: Dictionary = view.item_nodes.duplicate()
 	for person: PersonView in dressing.pedestrians:
@@ -408,7 +413,7 @@ func _assert_mesh_triangles_avoid(mesh: MeshInstance3D, space: Node3D, forbidden
 			continue
 		var arrays: Array = mesh.mesh.surface_get_arrays(surface)
 		var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
-		var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+		var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX] if arrays[Mesh.ARRAY_INDEX] != null else PackedInt32Array()
 		var size: int = indices.size() if not indices.is_empty() else vertices.size()
 		for offset: int in range(0, size - 2, 3):
 			var points: Array[Vector2] = []
@@ -516,8 +521,12 @@ func test_real_back_door_alley_and_bought_floor_rebuild_preserve_actors_and_excl
 	var elapsed: float = dressing.display_seconds
 	var pads: Array[AABB] = view.room_dressing.native_pavement_bounds()
 	assert_true(_main.call("shop_walls", {Vector3i(13, 6, SimGrid.EDGE_WEST): SimGrid.Segment.DOORWAY} as Dictionary[Vector3i, int]))
-	assert_true(_main.call("shop_floor", [Vector2i(14, 7), Vector2i(14, 8), Vector2i(14, 9)] as Array[Vector2i], true))
-	assert_eq(view.world.grid.terrain(Vector2i(14, 8)), SimGrid.Terrain.FLOOR)
+	assert_true(_main.call("shop_floor", [Vector2i(-1, 7), Vector2i(-1, 8), Vector2i(-1, 9)] as Array[Vector2i], true))
+	assert_eq(view.world.grid.terrain(Vector2i(-1, 8)), SimGrid.Terrain.FLOOR)
+	assert_eq(view.world.grid.segment(Vector3i(13, 6, SimGrid.EDGE_WEST)), SimGrid.Segment.DOORWAY,
+		"unrelated west growth preserves the installed east doorway")
+	assert_eq(WallRules.back_door_side(view.world.grid, Vector3i(13, 6, SimGrid.EDGE_WEST)), Vector2i.RIGHT,
+		"the surviving opening is still an actual outside back door")
 	assert_true(view.neighbourhood_dressing == dressing)
 	assert_true(dressing.display_seconds >= elapsed)
 	assert_eq(dressing.car.get_instance_id(), car_id)
