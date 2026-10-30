@@ -12,6 +12,7 @@ Each line ends with its PR number.
 
 ### Players
 - Build a seafood menu with fish and chips, mussels in broth, salmon maki, shrimp skewers and seafood stew, using new ingredients that restock only while needed. Lay sea-coloured Deck planks at level 4. (#229)
+- Check dirty tables, floor dirt and restroom upkeep in Build's new Hygiene overview, with problem tiles highlighted and today's cleanliness rating. (#232)
 - Waiting benches let guests sit near the door and wait longer for a dining table. (#228)
 - Build warns when an edit would take dishes off the menu and refuses edits that leave nothing cookable. Opening explains dishes removed that morning. (#227)
 - Expanding rooms removes and refunds unsupported windows, back doors and affected wall decorations. Undo restores the complete layout and cash. (#226)
