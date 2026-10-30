@@ -32,6 +32,8 @@ signal undo_requested()
 signal redo_requested()
 ## The Build bar's Grid button: show or hide Build's floor grid (like G).
 signal grid_requested()
+## A view-only cleaning overview beside the room's vibe and theme.
+signal hygiene_toggled(active: bool)
 
 const EDGE_MARGIN: float = 12.0
 const MAX_PANEL_WIDTH: float = 980.0
@@ -165,6 +167,10 @@ var selected_swatch_id: StringName = &"butter"
 ## Stable capture path: Panel/Margin/Rows/Scroll/Content/Categories/Readout/VibeMeter.
 var vibe_meter: VibeMeter
 var theme_label: Label
+var hygiene_button: Button
+var hygiene_panel: PanelContainer
+var hygiene_summary: Label
+var hygiene_enabled: bool = false
 ## The item the hover card describes (empty when hidden).
 var hover_id: StringName = &""
 var _floor_price: int = 0
@@ -199,6 +205,7 @@ func set_build_visible(active: bool) -> void:
 		visible = active
 	if not active:
 		_hide_hover_card()
+	_update_hygiene_visibility()
 
 
 ## Paint shows the Build side with the Paint tab and its swatches.
@@ -207,6 +214,7 @@ func set_paint_visible(active: bool) -> void:
 	if _paint_visible == active:
 		return
 	_paint_visible = active
+	_update_hygiene_visibility()
 	if active:
 		if mode == BUY:
 			_mode_category[BUY] = selected_category
@@ -265,6 +273,36 @@ func set_vibe(result: VibeModel.Result) -> void:
 		text = "Theme: %s" % result.theme_label
 	theme_label.text = text
 	_fit_panel()
+
+
+func set_hygiene_lines(lines: PackedStringArray) -> void:
+	_prepare_layout()
+	var text: String = "\n".join(lines)
+	if hygiene_summary.text != text:
+		hygiene_summary.text = text
+		_fit_panel()
+
+
+func set_hygiene_enabled(enabled: bool) -> void:
+	_prepare_layout()
+	if hygiene_enabled == enabled:
+		return
+	hygiene_enabled = enabled
+	hygiene_button.set_pressed_no_signal(enabled)
+	_update_hygiene_visibility()
+	hygiene_toggled.emit(enabled)
+	_fit_panel()
+
+
+func _update_hygiene_visibility() -> void:
+	if hygiene_button == null:
+		return
+	hygiene_button.visible = not _paint_visible
+	hygiene_panel.visible = visible and hygiene_enabled and not _paint_visible
+
+
+func _on_hygiene_pressed() -> void:
+	set_hygiene_enabled(hygiene_button.button_pressed)
 
 
 ## Filters never replace the native buttons or alter the underlying definitions.
@@ -1300,7 +1338,7 @@ func _prepare_layout() -> void:
 	grid_button.button_pressed = true
 	grid_button.pressed.connect(_on_grid_pressed)
 	bar.add_child(grid_button)
-	var categories: HBoxContainer = content.get_node("Categories") as HBoxContainer
+	var categories: HFlowContainer = content.get_node("Categories") as HFlowContainer
 	for category: StringName in CATEGORY_IDS:
 		var button: Button = Button.new()
 		button.name = String(category).capitalize()
@@ -1310,6 +1348,7 @@ func _prepare_layout() -> void:
 		button.toggle_mode = true
 		button.focus_mode = Control.FOCUS_ALL
 		button.mouse_filter = Control.MOUSE_FILTER_STOP
+		button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		button.pressed.connect(_on_category_pressed.bind(category))
 		_tighten(button, 12.0, 5.0)
 		category_buttons[category] = button
@@ -1318,6 +1357,7 @@ func _prepare_layout() -> void:
 	var readout: HBoxContainer = HBoxContainer.new()
 	readout.name = "Readout"
 	readout.mouse_filter = Control.MOUSE_FILTER_PASS
+	readout.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	readout.add_theme_constant_override("separation", 10)
 	readout.tooltip_text = "Your room's vibe and theme right now"
 	categories.add_child(_divider())
@@ -1329,6 +1369,22 @@ func _prepare_layout() -> void:
 	theme_label.text = "No theme yet"
 	theme_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	readout.add_child(theme_label)
+	hygiene_button = _chip("Hygiene", HygieneOverview.TITLE)
+	hygiene_button.tooltip_text = HygieneOverview.TOGGLE_TIP
+	hygiene_button.pressed.connect(_on_hygiene_pressed)
+	readout.add_child(hygiene_button)
+	hygiene_panel = PanelContainer.new()
+	hygiene_panel.name = "HygieneOverview"
+	hygiene_panel.visible = false
+	hygiene_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	content.add_child(hygiene_panel)
+	content.move_child(hygiene_panel, categories.get_index() + 1)
+	hygiene_summary = Label.new()
+	hygiene_summary.name = "Summary"
+	hygiene_summary.add_theme_font_size_override("font_size", 18)
+	hygiene_summary.tooltip_text = HygieneOverview.TODAY_TIP
+	hygiene_summary.mouse_filter = Control.MOUSE_FILTER_PASS
+	hygiene_panel.add_child(hygiene_summary)
 	var filters: HBoxContainer = content.get_node("Filters") as HBoxContainer
 	_refresh_groups()
 	filters.add_child(_divider())
@@ -1428,6 +1484,16 @@ func _fit_panel() -> void:
 	for child: Node in content.get_children():
 		if child != row and child is Control and (child as Control).visible:
 			rows_width = maxf(rows_width, (child as Control).get_combined_minimum_size().x)
+			if child is HFlowContainer:
+				# Flow's minimum is only its widest child. Keep the catalogue's
+				# usual card capacity when a complete room/readout row can fit;
+				# its controls may still wrap inside the bounded native panel.
+				var ideal: float = 0.0
+				for control: Node in child.get_children():
+					if control is Control and (control as Control).visible:
+						ideal += (control as Control).get_combined_minimum_size().x \
+							+ (child as HFlowContainer).get_theme_constant("h_separation")
+				rows_width = maxf(rows_width, ideal)
 	var wanted: float = maxf(rows_width, MIN_COLUMNS * (card_width + CARD_GAP) - CARD_GAP)
 	var grid_width: float = minf(wanted, limit.x - bar_width)
 	var columns: int = clampi(floori((grid_width + CARD_GAP) / (card_width + CARD_GAP)), 1, MAX_COLUMNS)
