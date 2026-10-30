@@ -1,7 +1,7 @@
 class_name PartySeating
 extends RefCounted
 ## Atomic party reservations and a shared, bounded table search. The ordinary
-## singleton path stays in CustomerAgent and never calls this controller.
+## singleton search stays in CustomerAgent and shares only read-only helpers.
 
 
 static func members(party: Party, world: SimWorld) -> Array[CustomerAgent]:
@@ -17,8 +17,7 @@ static func members(party: Party, world: SimWorld) -> Array[CustomerAgent]:
 
 
 ## Candidate paths are checked for every member before any hold is acquired.
-## Backtracking is bounded by the four-member contract and preserves authored
-## seat order, including a case where a greedy first choice would strand one.
+## Standalone parties up to four retain their original assignment order.
 static func try_seat(party: Party, world: SimWorld, kitchen: Kitchen = null) -> bool:
 	if party == null or party.departing or party.seated or party.table_item_id != 0:
 		return false
@@ -28,17 +27,23 @@ static func try_seat(party: Party, world: SimWorld, kitchen: Kitchen = null) -> 
 	for guest: CustomerAgent in guests:
 		if guest.state != CustomerAgent.State.ARRIVING and guest.state != CustomerAgent.State.QUEUED:
 			return false
+	var seen: Dictionary[int, bool] = {}
 	for table: PlacedItem in world.grid.items():
 		var definition: ItemDef = table.def as ItemDef
 		if table.removed or (definition != null and definition.category != ItemDef.Category.TABLE):
 			continue
-		if kitchen != null and kitchen.is_table_dirty(table.id):
+		var group_id: int = table_group_id(table, world.grid)
+		if seen.has(group_id):
+			continue
+		seen[group_id] = true
+		if kitchen != null and kitchen.is_dining_group_dirty(table.id):
 			continue
 		if held_for_earlier_party(table, guests[0].id, world):
 			continue
 		var available: Array[Vector2i] = []
-		for seat: Vector2i in table.seat_cells:
-			if table.reserved_by(seat) == -1 and world.grid.is_walkable(seat) and not available.has(seat):
+		for seat: Vector2i in table_group_seats(table, world.grid):
+			var owner: PlacedItem = world.grid.item(world.grid.dining_owner_id(table.id, seat))
+			if owner != null and owner.reserved_by(seat) == -1 and world.grid.is_walkable(seat) and not available.has(seat):
 				available.append(seat)
 		if available.size() < guests.size():
 			continue
@@ -50,16 +55,13 @@ static func try_seat(party: Party, world: SimWorld, kitchen: Kitchen = null) -> 
 					reachable.append(seat)
 			choices.append(reachable)
 		var seats: Array[Vector2i] = []
-		if not _match(choices, 0, seats):
+		var table_ids: Array[int] = table_group_members(table, world.grid)
+		if not _match_candidate(choices, seats, table_ids.size() > 1):
 			continue
-		var held: int = 0
-		for index: int in guests.size():
-			if not table.reserve(seats[index], guests[index].id):
-				break
-			held += 1
-		if held != guests.size():
-			for index: int in held:
-				table.release(seats[index], guests[index].id)
+		var agent_ids: Array[int] = []
+		for guest: CustomerAgent in guests:
+			agent_ids.append(guest.id)
+		if not world.grid.reserve_dining_seats(table.id, seats, agent_ids):
 			continue
 		var routed: bool = true
 		for index: int in guests.size():
@@ -68,20 +70,63 @@ static func try_seat(party: Party, world: SimWorld, kitchen: Kitchen = null) -> 
 				break
 		if not routed:
 			for index: int in guests.size():
-				table.release(seats[index], guests[index].id)
+				var owner: PlacedItem = world.grid.item(world.grid.dining_owner_id(table.id, seats[index]))
+				if owner != null:
+					owner.release(seats[index], guests[index].id)
 				guests[index].clear_path()
 			continue
-		party.table_item_id = table.id
+		party.table_item_id = group_id
+		party.booked_table_ids = table_ids.duplicate()
 		for index: int in guests.size():
 			var guest: CustomerAgent = guests[index]
 			guest.release_waiting_seat(world)
-			guest.table_item_id = table.id
+			guest.table_item_id = world.grid.dining_owner_id(table.id, seats[index])
+			guest.booked_table_ids = table_ids.duplicate()
 			guest.seat_cell = seats[index]
 			guest._walk_wait = 0
 			guest._ordering_block_logged = false
 			guest.state = CustomerAgent.State.WALKING_TO_SEAT
 		return true
 	return false
+
+
+## Untyped synthetic table fixtures keep their original standalone contract.
+static func table_group_id(table: PlacedItem, grid: SimGrid) -> int:
+	var group_id: int = grid.dining_group_id(table.id)
+	return group_id if group_id != 0 else table.id
+
+
+static func table_group_members(table: PlacedItem, grid: SimGrid) -> Array[int]:
+	var ids: Array[int] = grid.dining_group_members(table.id)
+	if ids.is_empty():
+		ids.append(table.id)
+	return ids
+
+
+static func table_group_seats(table: PlacedItem, grid: SimGrid) -> Array[Vector2i]:
+	if grid.dining_group_id(table.id) == 0:
+		return table.seat_cells.duplicate()
+	return grid.dining_group_seats(table.id)
+
+
+## A forced topology edit before arrival invalidates the complete booking.
+static func booking_valid(party: Party, world: SimWorld) -> bool:
+	if party == null or party.table_item_id == 0:
+		return false
+	var leader: PlacedItem = world.grid.item(party.table_item_id)
+	if leader == null or table_group_id(leader, world.grid) != party.table_item_id \
+			or table_group_members(leader, world.grid) != party.booked_table_ids:
+		return false
+	var guests: Array[CustomerAgent] = members(party, world)
+	if guests.is_empty():
+		return false
+	for guest: CustomerAgent in guests:
+		var owner: PlacedItem = world.grid.item(guest.table_item_id)
+		if owner == null or world.grid.dining_owner_id(leader.id, guest.seat_cell) != owner.id \
+				or owner.reserved_by(guest.seat_cell) != guest.id \
+				or not owner.seat_cells.has(guest.seat_cell) or not world.grid.is_walkable(guest.seat_cell):
+			return false
+	return true
 
 
 ## A waiting party keeps priority at every table that could fit it once the
@@ -106,13 +151,40 @@ static func held_for_earlier_party(table: PlacedItem, arrival_id: int, world: Si
 		var choices: Array[Array] = []
 		for member: CustomerAgent in waiting:
 			var reachable: Array[Vector2i] = []
-			for seat: Vector2i in table.seat_cells:
+			for seat: Vector2i in table_group_seats(table, world.grid):
 				if world.grid.is_walkable(seat) and world.grid.is_guest_reachable(member.cell, seat) \
 						and not reachable.has(seat):
 					reachable.append(seat)
 			choices.append(reachable)
 		var seats: Array[Vector2i] = []
-		if _match(choices, 0, seats):
+		if _match_candidate(choices, seats, table_group_members(table, world.grid).size() > 1):
+			return true
+	return false
+
+
+static func _match_candidate(choices: Array[Array], seats: Array[Vector2i], joined: bool) -> bool:
+	if not joined and choices.size() <= 4:
+		return _match(choices, 0, seats)
+	var owners: Dictionary[Vector2i, int] = {}
+	for index: int in choices.size():
+		var visited: Dictionary[Vector2i, bool] = {}
+		if not _augment(choices, index, visited, owners):
+			return false
+	seats.resize(choices.size())
+	for seat: Vector2i in owners:
+		seats[owners[seat]] = seat
+	return true
+
+
+## At most six guest nodes; each augmentation visits every seat at most once.
+static func _augment(choices: Array[Array], index: int, visited: Dictionary[Vector2i, bool],
+		owners: Dictionary[Vector2i, int]) -> bool:
+	for seat: Vector2i in choices[index]:
+		if visited.has(seat):
+			continue
+		visited[seat] = true
+		if not owners.has(seat) or _augment(choices, owners[seat], visited, owners):
+			owners[seat] = index
 			return true
 	return false
 
@@ -165,12 +237,10 @@ static func finish_seating(party: Party, world: SimWorld, sim: RestaurantSim) ->
 	if guests.is_empty():
 		leave_waiting(party, world, sim, &"no_table")
 		return
+	if not booking_valid(party, world):
+		requeue(party, world, sim)
+		return
 	for guest: CustomerAgent in guests:
-		var table: PlacedItem = world.grid.item(party.table_item_id)
-		if table == null or table.reserved_by(guest.seat_cell) != guest.id \
-				or not table.seat_cells.has(guest.seat_cell) or not world.grid.is_walkable(guest.seat_cell):
-			requeue(party, world, sim)
-			return
 		if guest.cell != guest.seat_cell:
 			return
 	party.seated = true
@@ -195,6 +265,7 @@ static func requeue(party: Party, world: SimWorld, sim: RestaurantSim) -> void:
 	party.queue_wait += walked
 	party.queue_started = true
 	party.table_item_id = 0
+	party.booked_table_ids.clear()
 	party.last_queue_tick = world.now
 	for guest: CustomerAgent in guests:
 		guest._release_seat(world, false)
