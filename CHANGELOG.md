@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- The kitchen divider is now thin, leaving more floor space. Walls has a visible Remove button with red refund previews and undo; Sell also handles walls and window or door frames. Existing shops retain or receive refunds for affected wall finishes and decorations. (#248)
 - Pick your owner's character and name when starting a shop, and change their look from Staff in the morning. (#233)
 - Start from a title screen with New game, Continue and Settings, and quit back to it without overwriting your morning autosave. (#230)
 - Check dirty tables, floor dirt and restroom upkeep in Build's new Hygiene overview, with problem tiles highlighted and today's cleanliness rating. (#232)
