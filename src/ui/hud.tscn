@@ -33,6 +33,12 @@ text_overrun_behavior = 3
 layout_mode = 2
 text = "Day 1"
 
+[node name="Weather" type="Label" parent="Top/Row"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_font_sizes/font_size = 14
+text = "Sunny"
+
 [node name="Time" type="Label" parent="Top/Row"]
 layout_mode = 2
 text = "11:00"
@@ -47,7 +53,7 @@ layout_mode = 2
 size_flags_horizontal = 3
 
 [node name="Speed0" type="Button" parent="Top/Row"]
-custom_minimum_size = Vector2(54, 46)
+custom_minimum_size = Vector2(46, 46)
 layout_mode = 2
 theme = ExtResource("2_theme")
 focus_mode = 0
@@ -240,6 +246,20 @@ theme = ExtResource("2_theme")
 [node name="Text" type="Label" parent="MenuNotice"]
 layout_mode = 2
 mouse_filter = 1
+text_overrun_behavior = 3
+
+[node name="DemandNotice" type="PanelContainer" parent="."]
+visible = false
+anchors_preset = 10
+anchor_right = 1.0
+offset_left = 12.0
+offset_right = -12.0
+mouse_filter = 2
+theme = ExtResource("2_theme")
+
+[node name="Text" type="Label" parent="DemandNotice"]
+layout_mode = 2
+mouse_filter = 2
 text_overrun_behavior = 3
 
 [node name="BuildHints" type="PanelContainer" parent="."]

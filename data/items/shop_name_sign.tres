@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="ItemDef" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://src/sim/content/item_def.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://assets/props/shop_name_sign.tscn" id="2_view"]
+
+[resource]
+script = ExtResource("1_script")
+view_scene = ExtResource("2_view")
+id = &"shop_name_sign"
+display_name = "Shop name sign"
+category = 6
+catalogue_room = &"decor"
+wall_mount = 2
+exterior_band = 2
+unique_per_shop = true
+shows_restaurant_name = true
+placement_layer = 2
+footprint = Vector2i(2, 1)
+solid = false
+work_cells = Array[Vector2i]([])
+seat_cells = Array[Vector2i]([])
+station_type = &""
+capacity = 1
+quality_bonus = 0.0
+price = 45
+unlock_level = 2
+charm = 0
+theme_tags = Array[StringName]([])
+paintable = false

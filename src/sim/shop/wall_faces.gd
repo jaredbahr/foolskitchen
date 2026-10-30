@@ -60,6 +60,10 @@ static func kind(grid: SimGrid, face: Vector3i) -> Kind:
 		Kind.INTERIOR if grid.segment(edge(face)) == SimGrid.Segment.WALL else Kind.SHELL)
 
 
+static func is_exterior(grid: SimGrid, face: Vector3i) -> bool:
+	return ExteriorSupport.is_exterior(grid, face)
+
+
 static func is_face(grid: SimGrid, face: Vector3i) -> bool:
 	return grid != null and face.z >= 0 and face.z < 4 and problem(grid, face).is_empty()
 
@@ -68,6 +72,8 @@ static func is_face(grid: SimGrid, face: Vector3i) -> bool:
 static func problem(grid: SimGrid, face: Vector3i) -> String:
 	if grid == null or face.z < 0 or face.z > 3:
 		return NO_WALL
+	if is_exterior(grid, face):
+		return ExteriorSupport.finish_problem(grid, face)
 	var here: Vector2i = cell(face)
 	if grid.terrain(here) != SimGrid.Terrain.FLOOR:
 		return NOT_INSIDE
@@ -129,12 +135,12 @@ static func windows(grid: SimGrid) -> Array[Vector3i]:
 
 
 ## Every wall face of the shop, sorted.
-static func all(grid: SimGrid) -> Array[Vector3i]:
+static func all(grid: SimGrid, include_exterior: bool = false) -> Array[Vector3i]:
 	var out: Array[Vector3i] = []
 	if grid == null:
 		return out
 	for here: Vector2i in grid.cells():
-		if grid.terrain(here) != SimGrid.Terrain.FLOOR:
+		if not include_exterior and grid.terrain(here) != SimGrid.Terrain.FLOOR:
 			continue
 		for dir: int in 4:
 			var face: Vector3i = make(here, dir)
@@ -199,7 +205,8 @@ static func _neighbours(grid: SimGrid, face: Vector3i) -> Array[Vector3i]:
 static func span(anchor: Vector3i, width: int) -> Array[Vector3i]:
 	var out: Array[Vector3i] = []
 	for index: int in range(maxi(width, 1)):
-		out.append(make(cell(anchor) + along(anchor) * index, anchor.z))
+		var at: Vector2i = cell(anchor) + along(anchor) * index
+		out.append(Vector3i(at.x, at.y, anchor.z))
 	return out
 
 
@@ -207,6 +214,8 @@ static func span(anchor: Vector3i, width: int) -> Array[Vector3i]:
 ## they are): every face solid, no segment between their floor cells, and
 ## all on the shell or all on one interior wall.
 static func span_problem(grid: SimGrid, anchor: Vector3i, width: int) -> String:
+	if is_exterior(grid, anchor):
+		return ExteriorSupport.span_problem(grid, anchor, width)
 	var faces: Array[Vector3i] = span(anchor, width)
 	for index: int in range(faces.size()):
 		var why: String = problem(grid, faces[index])
@@ -236,7 +245,8 @@ static func anchor_for(hovered: Vector3i, width: int, along_offset: float) -> Ve
 			if distance < best - 0.0001:
 				best = distance
 				shift = back
-	return make(cell(hovered) - along(hovered) * shift, hovered.z)
+	var at: Vector2i = cell(hovered) - along(hovered) * shift
+	return Vector3i(at.x, at.y, hovered.z)
 
 
 static func sort(faces: Array[Vector3i]) -> void:

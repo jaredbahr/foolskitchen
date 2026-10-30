@@ -5,6 +5,7 @@ extends Control
 
 signal close_requested
 signal quit_to_title_requested
+signal show_guide_requested
 
 const PLAY_GRID_LABEL: String = "Show floor grid while playing"
 const BUILD_GRID_LABEL: String = "Show floor grid in Build"
@@ -66,6 +67,9 @@ func _ready() -> void:
 	_close.pressed.connect(_on_close_pressed)
 	_quit_to_title.text = TitleText.QUIT_TO_TITLE
 	_quit_to_title.pressed.connect(_on_quit_to_title_pressed)
+	var guide_button: Button = %ShowGuideButton
+	guide_button.text = Hints.SHOW_AGAIN
+	guide_button.pressed.connect(_on_show_guide_pressed)
 	resized.connect(_layout_card)
 	visibility_changed.connect(_on_visibility_changed)
 	_content.minimum_size_changed.connect(_layout_card)
@@ -252,3 +256,13 @@ func _record(saved: bool) -> void:
 	if not saved:
 		refresh()
 		_status.text = "Could not save settings. Please try again."
+
+
+## A session owns guide progress; title Settings has no run to change.
+func set_show_guide_available(value: bool) -> void:
+	(get_node("Panel/Column/Scroll/Content/ShowGuideButton") as Button).visible = value
+	_layout_card()
+
+
+func _on_show_guide_pressed() -> void:
+	show_guide_requested.emit()

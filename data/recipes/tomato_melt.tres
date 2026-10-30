@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="RecipeDef" load_steps=9 format=3]
+[gd_resource type="Resource" script_class="RecipeDef" load_steps=10 format=3]
 
 [ext_resource type="Script" path="res://src/sim/content/recipe_def.gd" id="1_recipe"]
 [ext_resource type="Script" path="res://src/sim/content/ingredient_def.gd" id="2_ingredient"]
@@ -6,19 +6,21 @@
 [ext_resource type="Resource" path="res://data/ingredients/bread.tres" id="ingredient_bread"]
 [ext_resource type="Resource" path="res://data/ingredients/cheese.tres" id="ingredient_cheese"]
 [ext_resource type="Resource" path="res://data/ingredients/tomato.tres" id="ingredient_tomato"]
+[ext_resource type="PackedScene" path="res://assets/kenney/food/sandwich.glb" id="view_model"]
 
 [sub_resource type="Resource" id="Step_prep"]
 script = ExtResource("3_step")
 station_type = &"prep_counter"
-duration_ticks = 25
+duration_ticks = 18
 
 [sub_resource type="Resource" id="Step_cook"]
 script = ExtResource("3_step")
 station_type = &"stove"
-duration_ticks = 60
+duration_ticks = 42
 
 [resource]
 script = ExtResource("1_recipe")
+view_model = ExtResource("view_model")
 id = &"tomato_melt"
 unlock_from = &"burger"
 section = 1

@@ -6,8 +6,8 @@ func test_starter_data_loads_without_validation_errors() -> void:
 	var db: ContentDB = ContentDB.new()
 	assert_eq(db.load_all().size(), 0)
 	assert_eq(db.ingredients().size(), 22)
-	assert_eq(db.recipes().size(), 18)
-	assert_eq(db.items().size(), 59)
+	assert_eq(db.recipes().size(), _recipe_resource_count("res://data/recipes"))
+	assert_eq(db.items().size(), 67)
 
 
 func test_lookups_find_each_kind_and_unknown_ids_return_null() -> void:
@@ -44,24 +44,25 @@ func test_lists_are_sorted_and_do_not_expose_index_arrays() -> void:
 		&"bar_corner", &"bar_counter", &"bar_end_left", &"bar_end_right", &"bar_section",
 		&"bar_stool", &"bathroom_sink", &"bench", &"bookcase_open_low", &"chair", &"cloth_table",
 		&"coat_rack_standing", &"coffee_machine", &"corner_cabinet", &"cross_table", &"cushioned_bench", &"diner_booth", &"diner_stool",
-		&"door", &"drinks_fridge", &"drinks_shelf", &"freezer", &"fridge", &"fryer", &"glass_table",
+		&"door", &"drinks_fridge", &"drinks_shelf", &"flower_window_box", &"freezer", &"fridge", &"fryer", &"glass_table",
 		&"lounge_chair", &"menu_board", &"modern_chair", &"modern_frame_chair", &"neon_open_sign", &"oven", &"pass_counter", &"plant_small_1",
 		&"plant_small_2", &"plant_small_3", &"potted_plant", &"prep_cabinet", &"prep_counter", &"restroom_mirror", &"round_table",
-		&"rounded_chair", &"rug_rectangle", &"rug_round", &"rug_square", &"side_table", &"sink",
-		&"speaker", &"square_bar_stool", &"storage_shelf", &"stove", &"table_2", &"table_4", &"television_vintage", &"toilet",
+		&"rounded_chair", &"rug_rectangle", &"rug_round", &"rug_square", &"shop_name_sign", &"side_table", &"sink",
+		&"speaker", &"square_bar_stool", &"storage_shelf", &"stove", &"street_awning_2", &"street_awning_3", &"street_awning_4",
+		&"string_lights_2", &"string_lights_3", &"string_lights_4", &"table_2", &"table_4", &"television_vintage", &"toilet",
 		&"waiting_bench", &"wall_art_peaks", &"wall_art_sunrise", &"wall_hand_dryer", &"wooden_chair",
 	])
 	var copy: Array[ItemDef] = db.items()
 	copy.clear()
-	assert_eq(db.items().size(), 59)
+	assert_eq(db.items().size(), 67)
 
 
 func test_reloading_does_not_duplicate_definitions() -> void:
 	var db: ContentDB = _starter_db()
 	assert_eq(db.load_all().size(), 0)
 	assert_eq(db.ingredients().size(), 22)
-	assert_eq(db.recipes().size(), 18)
-	assert_eq(db.items().size(), 59)
+	assert_eq(db.recipes().size(), _recipe_resource_count("res://data/recipes"))
+	assert_eq(db.items().size(), 67)
 
 
 func test_recursive_resource_discovery_returns_sorted_original_tres_names() -> void:
@@ -74,7 +75,7 @@ func test_recursive_resource_discovery_returns_sorted_original_tres_names() -> v
 		if path.begins_with("res://data/ingredients/") or path.begins_with("res://data/recipes/") \
 				or path.begins_with("res://data/items/"):
 			content_paths += 1
-	assert_eq(content_paths, 99)
+	assert_eq(content_paths, 107)
 	assert_true(paths.has("res://data/ingredients/bun.tres"))
 	assert_true(paths.has("res://data/recipes/burger.tres"))
 	assert_true(paths.has("res://data/items/table_2.tres"))
@@ -252,14 +253,14 @@ func test_outside_work_cells_rotate_without_clamping_and_turns_wrap() -> void:
 func test_recipe_helpers_count_repeated_ingredient_units_and_all_steps() -> void:
 	var db: ContentDB = _starter_db()
 	assert_eq(db.recipe(&"burger").ingredient_cost(), 4)
-	assert_eq(db.recipe(&"burger").total_ticks(), 120)
+	assert_eq(db.recipe(&"burger").total_ticks(), 84)
 	var grilled: RecipeDef = db.recipe(&"grilled_cheese")
 	assert_eq(grilled.ingredients.size(), 3)
 	assert_true(grilled.ingredients[0] == grilled.ingredients[1])
 	assert_eq(grilled.ingredient_cost(), 3)
-	assert_eq(grilled.total_ticks(), 70)
+	assert_eq(grilled.total_ticks(), 49)
 	assert_eq(db.recipe(&"tomato_soup").ingredient_cost(), 3)
-	assert_eq(db.recipe(&"tomato_soup").total_ticks(), 150)
+	assert_eq(db.recipe(&"tomato_soup").total_ticks(), 105)
 
 
 func test_starter_footprints_categories_and_interaction_cells() -> void:
@@ -440,8 +441,8 @@ func test_quality_star_projection_is_bounded_without_replacing_quality() -> void
 
 func test_fryer_and_oven_recipes_have_data_owned_prices_levels_sections_and_steps() -> void:
 	var db: ContentDB = _starter_db()
-	for row: Array in [[&"fries", &"fryer", 7, 2, RecipeDef.Section.SIDES, 70, 2],
-			[&"savoury_pie", &"oven", 13, 3, RecipeDef.Section.MAINS, 130, 4]]:
+	for row: Array in [[&"fries", &"fryer", 7, 2, RecipeDef.Section.SIDES, 49, 2],
+			[&"savoury_pie", &"oven", 13, 3, RecipeDef.Section.MAINS, 91, 4]]:
 		var recipe: RecipeDef = db.recipe(row[0])
 		assert_eq(recipe.standard_price, row[2])
 		assert_eq(recipe.unlock_level, row[3])
@@ -454,3 +455,17 @@ func test_fryer_and_oven_recipes_have_data_owned_prices_levels_sections_and_step
 		assert_eq(recipe.ingredient_cost(), row[6])
 		assert_eq(recipe.theme_tags, [&"diner"] as Array[StringName])
 		assert_false(recipe.is_drink())
+
+
+func _recipe_resource_count(folder: String) -> int:
+	var directory: DirAccess = DirAccess.open(folder)
+	assert_not_null(directory)
+	if directory == null:
+		return 0
+	var count: int = 0
+	for file: String in directory.get_files():
+		if file.ends_with(".tres"):
+			count += 1
+	for child: String in directory.get_directories():
+		count += _recipe_resource_count(folder.path_join(child))
+	return count

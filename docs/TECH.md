@@ -677,10 +677,9 @@ an active edit/panel/selection first, or opens Settings when none is active.
 - A separate saved `GameState.rng(&"reviews")` stream draws the 50% chance and
   quote, with the type's review-chance multiplier applied before the draw.
   Neither reviews nor quotes consume customer, kitchen or hiring draws.
-  The 0.8x-at-one-star to 1.2x-at-five-stars arrival curve is linear in the
-  authored resource. Main samples it once before `sim.start_day()` schedules
-  the first guest, scaling the base min/max arrival gaps inversely. Reviews
-  earned during service update the HUD but do not change that day's gaps.
+  Demand growth (FK-120 below) replaces Main's former reputation-only gap
+  division. Reviews earned during service update the HUD; reputation joins
+  demand at the next morning's latch.
 - Main stages the versioned `reviews` save section and installs it only after a
   successful full morning load. Missing sections in older saves start at the
   five virtual reviews. A rejected section follows the existing failed-load
@@ -1538,8 +1537,12 @@ tables and buys two normal chairs for $20, without changing menu/staff/tuning.
   is one 0.5 m side of a wall seen from the floor cell in front of it, keyed
   `Vector3i(x, y, dir)` (the floor cell, and the direction into the wall:
   0 north, 1 east, 2 south, 3 west). Faces are derived from the grid on every
-  query, never stored: the room side of a solid shell `WALL` cell, and both
-  sides of an interior `WALL` segment. Windows, doorways (the back door too),
+  query, never stored: the room side of a solid shell `WALL` cell, both
+  sides of an interior `WALL` segment, and solid street-facing outside shell
+  faces. An outside key uses the outside/entry cell and direction into the
+  shell; no existing inside/window coordinates change meaning.
+  `WallFaces.all(grid)` and room fill retain inside-only enumeration; the
+  explicit `include_exterior` argument includes outside faces. Windows, doorways (the back door too),
   the street door and a shell cell cut by a window or back door (on any side;
   its box is cut or hidden) have none. `problem(grid, face)` gives the
   sentence (rule 11). `flood` follows a face along its wall and round inside
@@ -1583,20 +1586,22 @@ tables and buys two normal chairs for $20, without changing menu/staff/tuning.
   room (`wall_room_faces`), Alt-click copies a look (`wall_finish_pick`).
   Commits go through Main's `shop_wall_finishes`. **Paint** on a wall face hit
   before any furniture recolours the connected run of that look inside its
-  room (`wall_area_faces`), Shift the room; the outside of the shell (no face)
-  still calls the legacy whole-shop `paint_wall`; a click on hung decor paints
-  nothing (wall items take no paint yet).
+  room (`wall_area_faces`), Shift the room; Paint on the outside of the shell
+  still calls the legacy whole-shop `paint_wall`, even when an outside face
+  has a stored finish override. Existing inside/window decor ignores Paint;
+  a paintable exterior awning uses free `paint_hung`, with closed-phase history.
 - **Wall decor.** A wall item is an `ItemDef` on `PlacementLayer.WALL`
   (DECOR or RESTROOM, not solid, no work/seat/blocking cells, footprint
   `(width 1..4, 1)`); `SimGrid` refuses that layer (`INVALID_LAYER`), so it
   can never stand on the floor. `ItemDef.wall_mount` (`WallMount`, never
   renumber) says where: `INSIDE_FACE` (prints, boards: the default) or
-  `WINDOW` (Jared: the neon OPEN sign hangs in a window, not inside; one
-  window wide, footprint (1, 1)); an exterior-face mount for the street front
-  (#168) would be the next value. `WallDecor` (`src/sim/shop/wall_decor.gd`,
+  `WINDOW` (one outside window wide, footprint (1, 1)), or appended
+  `EXTERIOR=2` on the fixed street front. The OPEN sign retains WINDOW and
+  its original price/unlock, adding `allow_exterior`; its instance records
+  the actual mount, so moving between window and outside is unambiguous. `WallDecor` (`src/sim/shop/wall_decor.gd`,
   owned by `ShopEditor.decor`, never by `SimGrid`) maps anchor face -> item
-  (`def_id`, width) and face -> anchor: one item per face, never in anyone's
-  way. `problem` refuses a span that is not one straight run of solid faces
+  (`def_id`, width, actual mount, swatch) and face -> anchor: one item per
+  face/band, never in anyone's way. `problem` refuses a span that is not one straight run of solid faces
   (`WallFaces` sentences: window, doorway, street door, "Not enough wall here",
   "A wall is in the way", "This would span two different walls": a shell
   face and an interior slab's face are on different planes) or covers another
@@ -1662,7 +1667,7 @@ tables and buys two normal chairs for $20, without changing menu/staff/tuning.
   wall, a nearby corner and the floor below, not the room (a future
   face-mounted glowing item should get the window treatment below, since a
   shadowless 1.2 m light reaches past an interior wall). A window item's
-  light (the OPEN sign, the only glowing item) stands in the window plane,
+  light (the window-mounted OPEN sign) stands in the window plane,
   halfway through the opening at the sign's height, with range 0.34 m: it
   lights the window's own jambs, and no room beside the window (at least
   0.375 m away, past an interior wall on the window cell's side line). Its
@@ -1677,11 +1682,30 @@ tables and buys two normal chairs for $20, without changing menu/staff/tuning.
   more pass over the meshes in its range, up to 8 lights per mesh (the
   floor is one mesh), so many glowing items in one shop would start to drop
   lights on the floor; a shop without one renders exactly as before.
-- **Save and vibe.** The `shop` snapshot is version 6 with `wall_style_id`
+- **Street-front supports.** Pure `ExteriorSupport` derives the fixed front
+  from street entries and `WallRules.street_side`; back/side walls refuse.
+  It distinguishes solid finishable surfaces from door/window supports,
+  including the unchanged decorative frontage panes. Outside item keys keep
+  the outside cell and encode `z=dir+4*band`: BODY0, CANOPY1, HEADER2, SILL3,
+  LIGHTS4. `span`/`anchor_for` preserve the full key. A canopy spans a door
+  or window, a sign header spans the street door, and a sill supports a
+  flower box under a window. Independent bands coexist; same-band overlaps
+  refuse. Solid finish quads never cover a cut window or doorway. Support
+  loss refunds/deletes dependent items and history restores their mount and
+  swatch exactly. New data supplies awning widths2–4, a flower box, one shop
+  sign and light runs2–4. The new `shows_restaurant_name` sign follows the
+  existing MenuSettings -> Main -> ShopView name path on rename/rebuild/load;
+  the free RoomDressing board remains unchanged. No second saved name.
+- **Save and vibe.** The current `shop` snapshot remains version 7 (furniture
+  looks); wall fields introduced in version 6 keep `wall_style_id`
   (always `paint`: any other value is ignored, like floors), `wall_finishes:
   [[x, y, dir, style, swatch, accent], ...]` and `wall_items: [[x, y, dir,
   def_id], ...]` (sorted; a window item's row is its window slot, so the row
-  format is unchanged); no new SaveSystem section. Versions 1-5 load as
+  format is unchanged). Only exterior instances append their actual mount
+  and selected swatch: `[x,y,z,def_id,2,swatch_id]`; old inside/window rows
+  remain four fields on load and output. Optional rows validate band, mount,
+  support and uniqueness before staging. There is no new SaveSystem section
+  or action save; all state joins the existing morning checkpoint. Versions 1-5 load as
   plain paint with nothing hung. Decoding forgives: a face that is no longer a
   face, an unknown finish or item, a non-wall item, an overlap or a malformed
   row is skipped; an unknown colour falls back to the finish's own. The vibe
@@ -1689,7 +1713,9 @@ tables and buys two normal chairs for $20, without changing menu/staff/tuning.
   wall faces: exactly the old wall paint by default) and
   `decor_vibe_items()` (hung items on guest-room faces) through
   `VibeInputs.capture(..., wall_items)`: decor charm and themes like rugs
-  (no floor space). Looks only: no other sim effect.
+  (no floor space). Actual exterior placements are explicitly excluded even
+  when guest cells are empty; outside finishes do not vote in inside wall
+  colour. No curb-appeal state is added. Looks only: no other sim effect.
 - **Review.** `tools/screenshot.sh --walls-review --speed=0 --frames=12,30`
   (`tools/walls_review.gd`, `[--quarter=N]` for frame 12): finishes on shell
   and interior walls and four hung items (the OPEN sign in a street-front
@@ -1930,6 +1956,54 @@ random draws or saved state; functional lamps remain the separate lamp issue.
 The floor shader adds a subtle multiplicative plank pattern while retaining its
 existing paint colour and camera-controlled build-grid parameters (D25: it is
 pattern 0 of `floor_finish.gdshader`, unchanged).
+
+### Food and plate presentation (FK-054)
+- `FoodPresentation` reads order, plate-ledger and agent-presentation state.
+  Serving nodes and approved recipe models are warmed at layout boundaries;
+  carried dishes inherit the smoothed person's palm/tray transform.
+- Tabletop measurements retain the selected native horizontal triangles.
+  At layout refresh, their merged outlines are inset by the measured plate
+  radius plus 1 mm. Seat positions keep their rectangular inset where it
+  fits; unsupported positions project to the cached safe outline, including
+  round-table edges and counter cutouts. Degenerate or too-small surfaces
+  retain the existing bounds fallback. Polygon construction and mesh reads
+  never run in frame sync.
+- READY food uses the actual pass basis, with three slots along one centered
+  row. Further groups stack at the existing 0.025 m layer spacing. This fits
+  the shallow native counter depth at every rotation without changing the
+  kitchen's task, timing or plate ownership.
+
+### Daily weather
+`SimWorld.weather` is a separate `WeatherState` value per world, with stable
+SUNNY 0 / CLOUDY 1 / RAIN 2 kinds and a chosen morning `day`; day 0 means unchosen.
+`WeatherTuning` reads the relative 50/30/20 weights from
+`data/balance/weather.tres`. Finite, nonnegative weights and a finite positive
+sum are validated before selection. `ensure_today` consumes exactly one
+`randf` from the caller's current `GameState.rng(&"weather")` for a new morning;
+a repeated morning consumes none, and zero-weight bins stay impossible even
+at the upper endpoint. No state/world retains that RNG across a new run.
+Weather has no arrival, patience, economy, vibe or simulation-tick effect.
+
+Main registers the existing save system's `weather` section as
+`{version:1,day,kind}`. Restore validates into a detached staged value; the day
+must match the saved Clock, and installation waits until the whole morning
+load succeeds on its final world. Missing legacy sections install Sunny
+already chosen for that saved day, without obtaining a weather stream.
+Malformed present sections refuse. New mornings select before the existing
+`_begin_morning` autosave; no new save point or SaveSystem code is added.
+`WeatherText` centralizes Sunny/Cloudy/Rain, the forecast line and named icon
+aliases; the future patio may read the value, but no patio behavior is added.
+
+`WeatherView` preserves the original Environment, Sky, reflection, ambient,
+directional and exposure settings. Only proven outdoor front pavement gets
+private colour treatment and an additional reserved receiver bit `1<<18`
+(layer 19); a weak cool OmniLight affects only that bit. Sunny, rebinding and
+cleanup restore original material colours and masks. Rain is an unshaded,
+shadowless deterministic MultiMesh with complete-column and camera-projected
+built-volume exclusion. It uses no simulation RNG. Camera priority 0 precedes
+weather priority 1 and Main priority 10, so the mask uses the rendered camera;
+unchanged kind/world/dressing skips rebuilding, while terrain/camera changes
+invalidate the appropriate cached geometry. HUD/Menu presentation is read-only.
 
 ### Concepts: drinks, Café and Bar, opening hours (FK-083)
 - **No picker.** The concept is what the shop builds and serves. `VibeTuning`
@@ -2412,6 +2486,24 @@ There is no new save point or SaveSystem migration.
   starts fresh and skips only the next autosave; later morning saves resume.
 - RNG seed/state and the master seed use decimal strings to preserve 64-bit integers through JSON parsing.
 
+### First-day guide (FK-060)
+
+`Hints` owns ordered, once-only presentation progress for the first two mornings.
+Menu must actually open and close before the Stock hint; later hints observe the
+first queued guest, dirty table and visible evening report. Hidden targets and
+missed day-one steps are consumed rather than blocking play. `HintsBubble` uses
+the shared theme and anchors to HUD controls or the bottom-right corner. Its root,
+card and labels ignore mouse input; only its two unfocused buttons receive it.
+No hint changes the clock, speed, world or random streams.
+
+Main registers the `hints` save section. Missing sections start complete on an
+older save; a new game starts fresh. Settings' “Show guide again” resets in-memory
+progress for this morning (or the next morning during service), with persistence
+at the next existing morning autosave only. Title Settings hides that run-specific
+action. `use_saves = false` and title backdrops suppress guide presentation unless
+a review tool explicitly sets `guide_for_tools`. `tools/hints_review.tscn` opts in
+for the single first-morning capture in the existing visual-review job.
+
 ### 2.5 Testing
 Dish quality explanations (FK-063): `DishQuality.breakdown()` snapshots the recipe
 base, role skill factor, cooking trait and distinct preparation station bonuses,
@@ -2522,3 +2614,66 @@ interactive fixture with explicit synthetic XP/cash and saves disabled.
 accepted lease in Expand in one bounded manual process, then exits. Attach all
 three PNGs to the PR and keep their state metadata outside Git; this capture set
 is not part of CI.
+
+
+### Demand growth (FK-120)
+
+`DemandTuning` in `data/balance/demand.tres` authors every calibration value.
+`DemandBreakdown` multiplies reputation, word of mouth, menu variety, vibe and
+the neutral curb-appeal hook, then caps the result at 3. Main latches reputation
+and renown each morning; accepted menu and shop edits refresh only the editable
+factors. `RestaurantSim.arrival_rate()` multiplies the existing hourly visit rate
+by this factor. The existing `CustomerSpawner.scaled_gap` applies it once to the
+authored base gaps, with no new random stream or draw. Edits never reset the
+arrival countdown.
+
+Calibration (the full paired balance report accompanies the PR):
+- Reputation knots 1/3/5 stars give 0.6/1/1.6, with straight interpolation; a
+  poor shop loses walk-ins while consistently good reviews allow more growth.
+- Each complete happy departure earns 1 renown; each following morning keeps
+  95%. Its bonus approaches 1.8, reaching half that bonus at 90 renown, so repeat
+  good services build recognition without unlimited arrivals. The first measured
+  candidate used 60: default five-day arrivals rose from 103.8 to 119.8 while
+  losses doubled and mean profit fell 26.34%. The slower ramp protects early
+  starter-shop throughput while retaining the same long-term limit. Its five-day
+  confirmation averaged $67.2 against $78.2 on main, within the 25% target band.
+- Each distinct enabled dish above the starter 3 adds 0.04, capped at 0.30;
+  variety helps without making a long menu the whole strategy.
+- Steady vibe maps 0–100 to 0.9–1.15. The actual starter vibe remains 0. Day 1
+  alone uses an authored floor of 1 on its effective vibe factor to preserve
+  the introductory arrival and random-draw path. Day 1's evening forecast
+  already uses the ordinary Day 2 curve.
+- The neutral curb hook is 1. At demand above 1, unlocked party sizes blend
+  toward authored weights 1/.8/.6/.5/.3/.15 for sizes 1–6, reaching those weights
+  at factor 3. This favours smaller groups while allowing larger tables to
+  matter. At demand 1 or below, the existing size draw is called unchanged,
+  including fixed-size and locked no-draw cases. Capacity clamps after the
+  size draw; every drawn private seed and actual-headcount gap are retained.
+
+`DemandState` saves renown, independent award/decay day guards, and the previous
+service factor for the morning growth notice. Close awards use the sim's
+idempotent complete happy-departure count, never the food/drink payment signal.
+Main stages and validates the versioned `demand` section against the saved
+morning before installing it. Missing legacy sections start with zero renown
+at the saved day, with no retroactive decay. Failed whole loads and new runs
+start fresh. Only the existing morning autosave persists this state.
+
+`current_demand_snapshot()` returns detached factors. `forecast_next_demand()`
+copies progress, applies next morning's decay once, and combines current shop
+facts without awarding live renown, selecting future weather or drawing RNG.
+RestaurantSim owns the read-only guest estimate alongside its clock, menu and
+spawner. Expected guests are approximate: opening ticks times the mean real menu/hour
+visit weight and forecast factor, divided by the mean authored base gap. No
+service simulation is hidden in the estimate. The optional detached forecast
+round-trips with DayReport; older reports stay valid. DemandText owns the plain
+player wording; factors are multiplicative and do not pretend their percentages
+add. The HUD's morning notice compares with the immediately preceding service.
+Menu and Staff keep their existing controls inside an outer vertical scroll so
+both notices and the panels remain readable on short, scaled windows.
+
+The historical thick-divider two-day drinks compatibility fixture uses a
+detached neutral demand context and retains every original expected row and
+assertion. It predates this growth system; actual default play, growth, saves,
+parties and deterministic replay are covered by the demand tests. The manual
+Day 1 observer also compares all ticks, event/private guest seeds and named
+streams with immutable actual main. No compatibility branch exists in production.

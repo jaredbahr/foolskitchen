@@ -1,13 +1,18 @@
 extends TestCase
-## Exact production default outputs, refreshed for FK-077's explicitly approved
-## mechanic change. The first baseline was pre-drinks main6f6495d; these rows
-## were measured with authored everyday messes, then retained as strict guards.
-## Customers RNG remains unchanged in this seed; reviews and service may change.
+## FK-083 golden: default hours, the default menu and no drink station play
+## exactly as main did before drinks, Café/Bar themes and opening hours
+## (main 6f6495d). Two seeded production days; every value below was
+## recorded on that main. The new arrival weights, visit draw and drink-add
+## chance must draw nothing and change nothing here. Freeze the historical
+## thick-divider fixture for that contract; the shipped thin layout has separate
+## migration, service and balance-probe coverage. FK-120 also freezes demand
+## at 1.0 in this detached historical context; actual default Day 1 draw-for-draw,
+## later demand growth and replay have separate test_demand_session coverage.
 
 const MainScene: PackedScene = preload("res://src/world/main.tscn")
 const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
 ## Day -> [served, lost, sales, closing cash, customers RNG state, reviews RNG state].
-const EXPECTED: Array = [[17, 4, 158, 280, "-3340690172320019757", "-3285513833473108564"], [16, 3, 146, 280, "1894290104310310707", "6227064950443097254"]]
+const EXPECTED: Array = [[19, 2, 175, 347, "-3340690172320019757", "-3285513833473108564"], [19, 0, 172, 376, "1894290104310310707", "4855308092454611495"]]
 
 var _main: Node
 var _layout_backup: Dictionary = {}
@@ -42,9 +47,19 @@ func after_each() -> void:
 	GameState.new_run(1)
 
 
-func test_two_default_days_match_recorded_mishap_baseline() -> void:
+func test_two_default_days_match_main_draw_for_draw() -> void:
 	_main = MainScene.instantiate()
 	_main.set("use_saves", false)
+	# Keep this pre-demand compatibility oracle's original two-day assertions.
+	# A per-session Resource prevents any change to shipped authored tuning.
+	var neutral: DemandTuning = DemandTuning.new()
+	neutral.reputation_factors = PackedFloat32Array([1, 1, 1])
+	neutral.renown_max_factor = 1.0
+	neutral.menu_per_extra_dish = 0.0
+	neutral.menu_max_bonus = 0.0
+	neutral.vibe_min_factor = 1.0
+	neutral.vibe_max_factor = 1.0
+	_main.set("demand_tuning", neutral)
 	_main.set("new_game_seed_override", 7)
 	(Engine.get_main_loop() as SceneTree).root.add_child(_main)
 	_main.call("start")

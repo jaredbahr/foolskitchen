@@ -158,7 +158,7 @@ func test_bar_fries_recipe_and_level_two_unlock() -> void:
 	assert_eq(recipe.ingredients[1].id, &"oil")
 	assert_eq(recipe.steps.size(), 1)
 	assert_eq(recipe.steps[0].station_type, &"fryer")
-	assert_eq(recipe.steps[0].duration_ticks, 35)
+	assert_eq(recipe.steps[0].duration_ticks, 24)
 	assert_eq(content.recipe(&"fries").ingredients[0].id, &"potato")
 	assert_eq(RecipeDef.validate_unlocks(content.recipes()), PackedStringArray())
 	var menu: MenuSettings = MenuSettings.new([content.recipe(&"beer"), recipe] as Array[RecipeDef], 1)

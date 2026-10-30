@@ -1,17 +1,19 @@
-[gd_resource type="Resource" script_class="RecipeDef" load_steps=6 format=3]
+[gd_resource type="Resource" script_class="RecipeDef" load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://src/sim/content/recipe_def.gd" id="1_recipe"]
 [ext_resource type="Script" path="res://src/sim/content/ingredient_def.gd" id="2_ingredient"]
 [ext_resource type="Script" path="res://src/sim/content/recipe_step.gd" id="3_step"]
 [ext_resource type="Resource" path="res://data/ingredients/soda.tres" id="ingredient_soda"]
+[ext_resource type="PackedScene" path="res://assets/kenney/food/soda-glass.glb" id="view_model"]
 
 [sub_resource type="Resource" id="Step_make"]
 script = ExtResource("3_step")
 station_type = &"drinks_fridge"
-duration_ticks = 8
+duration_ticks = 6
 
 [resource]
 script = ExtResource("1_recipe")
+view_model = ExtResource("view_model")
 id = &"soft_drink"
 display_name = "Soft drink"
 ingredients = Array[ExtResource("2_ingredient")]([ExtResource("ingredient_soda")])

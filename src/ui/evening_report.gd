@@ -52,6 +52,10 @@ var _report_shown: bool = false
 var regulars_summary: Label
 var vibe_summary: Label
 var _vibe_text: String = ""
+var _demand_section: VBoxContainer
+var _demand_summary: Label
+var _demand_factors: Label
+var _demand_explanation: Label
 
 
 func _ready() -> void:
@@ -129,6 +133,7 @@ func show_report(report: DayReport) -> void:
 	else:
 		_add_label(_reviews, "No reviews today")
 	_fill_owner_progress(report)
+	_render_demand(report.demand_forecast)
 	_render_vibe()
 	show()
 
@@ -150,6 +155,13 @@ func set_vibe(result: VibeModel.Result, experienced_theme_label: String = "") ->
 func _render_vibe() -> void:
 	vibe_summary.text = _vibe_text
 	vibe_summary.visible = not _vibe_text.is_empty()
+
+
+func _render_demand(forecast: Dictionary) -> void:
+	_demand_summary.text = DemandText.forecast_summary(forecast)
+	_demand_factors.text = "\n".join(DemandText.factor_lines(forecast))
+	_demand_explanation.text = DemandText.forecast_note(forecast)
+	_demand_section.visible = not _demand_summary.text.is_empty()
 
 
 func _bind_nodes() -> void:
@@ -192,6 +204,22 @@ func _bind_nodes() -> void:
 	vibe_summary.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	content.add_child(vibe_summary)
 	content.move_child(vibe_summary, (content.get_node("ReviewHeading") as Control).get_index())
+	_demand_section = VBoxContainer.new()
+	_demand_section.name = "DemandForecast"
+	_demand_section.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	content.add_child(_demand_section)
+	content.move_child(_demand_section, _reviews.get_index() + 1)
+	var demand_heading: Label = _add_label(_demand_section, DemandText.FORECAST_HEADING)
+	demand_heading.name = "Heading"
+	demand_heading.add_theme_font_size_override("font_size", 22)
+	IconStyle.decorate_label(demand_heading, &"report")
+	_demand_summary = _add_label(_demand_section, "")
+	_demand_summary.name = "Summary"
+	_demand_factors = _add_label(_demand_section, "")
+	_demand_factors.name = "Factors"
+	_demand_explanation = _add_label(_demand_section, "")
+	_demand_explanation.name = "Explanation"
+	_demand_section.hide()
 	var next_day: Button = %NextDay
 	IconStyle.decorate_label(_header, &"report")
 	for path: String in ["ReviewHeading", "GuestHeading", "ReasonHeading", "LowStockHeading", "OwnerHeading"]:

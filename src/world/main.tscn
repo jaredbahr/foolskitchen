@@ -1,4 +1,4 @@
-[gd_scene load_steps=16 format=3 uid="uid://b0fkmain0001"]
+[gd_scene load_steps=17 format=3 uid="uid://b0fkmain0001"]
 
 [ext_resource type="Script" path="res://src/world/main.gd" id="1"]
 [ext_resource type="PackedScene" path="res://src/world/shop_view.tscn" id="2"]
@@ -16,6 +16,8 @@
 [ext_resource type="PackedScene" path="res://src/ui/goals_panel.tscn" id="13_goals"]
 [ext_resource type="PackedScene" path="res://src/ui/stock_panel.tscn" id="14_stock"]
 [ext_resource type="PackedScene" path="res://src/world/lighting_rig.tscn" id="13_lighting"]
+
+[ext_resource type="Script" path="res://src/ui/hints_bubble.gd" id="16_hints"]
 
 [node name="Main" type="Node3D"]
 process_priority = 10
@@ -58,3 +60,13 @@ layer = 10
 [node name="QuitToTitle" type="ConfirmationDialog" parent="Overlay"]
 title = "Quit to title"
 dialog_text = "Progress since this morning will be lost."
+
+[node name="HintsBubble" type="Control" parent="Overlay"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("16_hints")

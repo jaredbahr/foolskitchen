@@ -12,6 +12,12 @@ Each line ends with its PR number.
 
 ### Players
 - Staff carrying meals can spill them and break plates, especially when clumsy or crowded at the pass. Reassigning a delivery makes the next worker collect the meals before they can spill. Meals are cooked again, broken plates are replaced tomorrow, and greasy stations work 10% slower until someone degreases them. Floor messes stand out on light and dark floors, with mishaps listed in the evening report. (#235)
+- An easier start: cooks work about 30% faster, rent is $30 a day instead of $40, and seafood restocks in smaller batches (mussels also keep a day longer), so a growing shop now makes money. (#257)
+- Your shop gets busier as reputation and word of mouth grow; menu variety and vibe bring more guests, with tomorrow’s crowd shown in the evening report. (#256)
+- New shops get short, optional hints through their first two mornings; skip them at any time or show the guide again from Settings. (#238)
+- See meals on the pass, in servers' hands or trays and on guests' tables. Plates follow a rotated pass and stay on round tabletops. Dirty plates stay until bussing, collected plates stack by the working sink, and cooking stoves and fryers give off a little steam. Food and drinks use their matching Kenney models without changing service or balance. (#236)
+- Decorate the street front with wall finishes, coloured awnings, flower boxes, string lights and a sign showing your restaurant's name; hang the OPEN sign outside too. (#250)
+- Staff now has a chef hat icon, and Paint uses a matching brush icon with its usual tooltip. (#237)
 - Get to know named regulars after day five: they keep a favourite dish, seat and look, greet you on return visits, tip more for their favourite and may stop coming after poor service. The Menu and evening report show who they are; their history saves each morning. (#234)
 - Regulars who drop in for coffee but order their usual meal now take the normal time to eat it. (#234)
 - The kitchen divider is now thin, leaving more floor space. Walls has a visible Remove button with red refund previews and undo; Sell also handles walls and window or door frames. Existing shops retain or receive refunds for affected wall finishes and decorations. (#248)
@@ -109,6 +115,7 @@ Each line ends with its PR number.
 - The game opens on a warm wooden test floor with a 0.5 m build grid (press **G** to toggle). The isometric camera pans with WASD, screen edges or middle-mouse drag, zooms with the wheel, and rotates in 90° steps with Q and E. (#22)
 - Day clock and speed controls: each day runs morning → open → last orders → closed. **Space** pauses or resumes, and **1**, **2** and **3** set 1×, 2× and 4× speed. (#15)
 - An evening report screen (not yet shown during play): profit, income and costs by category, dishes sold with the best seller marked, guests served versus lost, why guests left, and review quotes. (#25)
+- See a daily Sunny, Cloudy or Rain forecast in the HUD and morning Menu, with gentle rain and cooler light outside. The forecast is saved for the day and leaves service unchanged. (#251)
 - Push tables together to seat bigger parties. (#253)
 
 ### Content

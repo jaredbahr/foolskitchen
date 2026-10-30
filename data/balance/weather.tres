@@ -1,0 +1,9 @@
+[gd_resource type="Resource" script_class="WeatherTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/sim/weather_tuning.gd" id="1_weather"]
+
+[resource]
+script = ExtResource("1_weather")
+sunny_weight = 50.0
+cloudy_weight = 30.0
+rain_weight = 20.0

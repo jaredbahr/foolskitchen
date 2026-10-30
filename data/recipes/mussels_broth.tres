@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="RecipeDef" load_steps=8 format=3]
+[gd_resource type="Resource" script_class="RecipeDef" load_steps=9 format=3]
 
 [ext_resource type="Script" path="res://src/sim/content/recipe_def.gd" id="1_recipe"]
 [ext_resource type="Script" path="res://src/sim/content/ingredient_def.gd" id="2_ingredient"]
@@ -7,13 +7,16 @@
 [ext_resource type="Resource" path="res://data/ingredients/soup_stock.tres" id="ingredient_soup_stock"]
 [ext_resource type="Resource" path="res://data/ingredients/lemon.tres" id="ingredient_lemon"]
 
+[ext_resource type="PackedScene" path="res://assets/kenney/food/mussel-open.glb" id="view_model"]
+
 [sub_resource type="Resource" id="Step_0"]
 script = ExtResource("3_step")
 station_type = &"stove"
-duration_ticks = 100
+duration_ticks = 70
 
 [resource]
 script = ExtResource("1_recipe")
+view_model = ExtResource("view_model")
 id = &"mussels_broth"
 display_name = "Mussels in broth"
 section = 0

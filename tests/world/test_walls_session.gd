@@ -104,8 +104,9 @@ func test_wall_decor_hangs_moves_and_sells_from_the_buy_catalogue() -> void:
 	catalogue.set_category(&"decor")
 	catalogue.set_group(&"wall_decor")
 	assert_true(catalogue.group_buttons[&"wall_decor"].visible)
-	assert_eq(catalogue.visible_ids(), [&"menu_board", &"wall_art_peaks", &"neon_open_sign", &"wall_art_sunrise"] as Array[StringName],
-		"the four wall pieces by name")
+	assert_eq(catalogue.visible_ids(), [&"street_awning_2", &"street_awning_3", &"street_awning_4",
+		&"menu_board", &"flower_window_box", &"wall_art_peaks", &"neon_open_sign", &"shop_name_sign",
+		&"wall_art_sunrise"] as Array[StringName], "the original four and five new exterior pieces by name")
 	assert_true(catalogue.item_buttons[&"neon_open_sign"].disabled, "level 4")
 	assert_eq(catalogue.hover_card_lines(&"wall_art_sunrise")[2], "Hangs on a wall, 2 tiles wide")
 	var cash: int = Economy.cash

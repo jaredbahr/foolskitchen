@@ -23,8 +23,8 @@ func test_seafood_ingredients_have_their_authored_storage_and_conditional_target
 		assert_true(ingredient.unit_cost > 0)
 		assert_true(ingredient.shelf_life_days > 0)
 		assert_false(ECONOMY.morning_stock.has(ingredient.id), "seafood never joins the fixed starter order")
-		assert_eq(ECONOMY.station_stock[ingredient.id], 12)
-		assert_eq(settings.default_target(ingredient.id), 12)
+		assert_eq(ECONOMY.station_stock[ingredient.id], _target(ingredient.id))
+		assert_eq(settings.default_target(ingredient.id), _target(ingredient.id))
 		assert_false(settings.ids().has(ingredient.id), "an unused seafood ingredient is not ordered")
 	settings.set_in_use(INGREDIENTS)
 	var costs: Dictionary = {}
@@ -34,7 +34,7 @@ func test_seafood_ingredients_have_their_authored_storage_and_conditional_target
 	assert_eq((plan["lines"] as Array).size(), INGREDIENTS.size())
 	for line: Dictionary in plan["lines"]:
 		assert_true(INGREDIENTS.has(line["id"]))
-		assert_eq(line["qty"], 12)
+		assert_eq(line["qty"], _target(line["id"]))
 	settings.set_in_use([])
 	assert_true((settings.plan(Stock.new(), costs, 10000, 0.0, true)["lines"] as Array).is_empty())
 
@@ -90,3 +90,8 @@ func test_deck_planks_reuses_the_existing_pattern_and_palette_without_changing_t
 	assert_eq(_content.floor_style(FloorStyleDef.DEFAULT_ID).price, 0)
 	assert_eq(_content.floor_styles().size(), 11)
 	assert_eq(FloorStyleDef.Pattern.values(), [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], "no shader pattern is added")
+
+
+## Pricey seafood restocks in smaller batches (6) to limit waste; rice and lemon keep 12.
+func _target(id: StringName) -> int:
+	return 6 if id in [&"fish_fillet", &"shrimp", &"mussels"] else 12

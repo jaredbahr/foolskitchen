@@ -23,6 +23,9 @@ var prices: Dictionary[StringName, int] = {}
 var pricing_tuning: EconomyTuning = EconomyTuning.new()
 ## Who visits when, and how long a drinks-only visit lasts (FK-083).
 var visit_tuning: VisitTuning = VISIT_TUNING
+## Session-latched deterministic growth, independent of visit-kind/hour weights.
+var demand_factor: float = 1.0
+var demand_tuning: DemandTuning = null
 ## Shop-wide server capacity. Morning upgrades select one of these three values.
 var carry_capacity: int:
 	get:
@@ -502,9 +505,42 @@ func visit_kinds() -> Array[StringName]:
 ## Arrivals relative to the default rate at the current shop minute: exactly
 ## 1.0 for a food-only menu at a full-weight hour (all default opening hours).
 func arrival_rate() -> float:
-	if visit_tuning == null or not visit_tuning.is_valid() or world == null:
-		return 1.0
-	return visit_tuning.arrival_rate(visit_kinds(), world.clock.display_minutes())
+	var base: float = 1.0
+	if visit_tuning != null and visit_tuning.is_valid() and world != null:
+		base = visit_tuning.arrival_rate(visit_kinds(), world.clock.display_minutes())
+	return base * demand_factor
+
+
+## Configuration and live menu edits never redraw the current countdown.
+func configure_demand(tuning: DemandTuning) -> void:
+	demand_tuning = tuning if tuning != null and tuning.is_valid() else null
+	demand_factor = 1.0
+
+
+func set_demand_factor(value: float) -> bool:
+	if demand_tuning == null or not demand_tuning.is_valid() or not is_finite(value) \
+			or value <= 0.0 or value > demand_tuning.total_cap:
+		return false
+	demand_factor = value
+	return true
+
+
+## Read-only approximation from this restaurant's actual opening hours, menu
+## weights and authored base gaps. Parties already space arrivals by headcount.
+func expected_demand_guests(factor: float) -> int:
+	if world == null or not is_finite(factor) or factor <= 0.0:
+		return 0
+	var clock: SimClock = world.clock
+	var minutes: int = clock.display_close_minute - clock.display_open_minute
+	var mean_gap: float = float(spawner.min_gap + spawner.max_gap) / 2.0
+	if minutes <= 0 or clock.open_ticks <= 0 or mean_gap <= 0.0:
+		return 0
+	var weight: float = 0.0
+	var kinds: Array[StringName] = visit_kinds()
+	var valid_visits: bool = visit_tuning != null and visit_tuning.is_valid()
+	for minute: int in range(clock.display_open_minute, clock.display_close_minute):
+		weight += visit_tuning.arrival_rate(kinds, minute) if valid_visits else 1.0
+	return maxi(0, roundi(float(clock.open_ticks) * weight / float(minutes) * factor / mean_gap))
 
 
 ## Where staff stand to take an order or hand over a meal or drink at a seat.

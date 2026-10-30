@@ -7,6 +7,10 @@ const NON_OPERATING_CATEGORIES: Array[StringName] = [
 	Ledger.MILESTONE_BONUS,
 ]
 const MAX_MILESTONE_REWARD: int = 1000000
+const MAX_FORECAST_INTEGER: int = 9007199254740991
+const DEMAND_FACTOR_KEYS: Array[String] = [
+	"reputation", "word_of_mouth", "menu", "vibe", "curb_appeal", "total",
+]
 
 var day: int = 1
 ## Snapshot of the name used for this service day and its review heading.
@@ -47,6 +51,10 @@ var milestones_reached: Array[Dictionary] = []
 var low_stock: Array[String] = []
 ## Named regular visit, promotion and farewell notes, already player-facing.
 var regulars_lines: Array[String] = []
+## Optional detached estimate for the next service day; older reports omit it.
+var demand_forecast: Dictionary = {}:
+	set(value):
+		demand_forecast = public_demand_forecast(value)
 
 
 ## Returns income across all categories in whole currency units.
@@ -136,6 +144,7 @@ func to_dict() -> Dictionary:
 		"milestones_reached": milestones,
 		"low_stock": low_stock.duplicate(),
 		"regulars_lines": regulars_lines.duplicate(),
+		"demand_forecast": public_demand_forecast(demand_forecast),
 	}
 
 
@@ -195,7 +204,30 @@ static func from_dict(data: Dictionary) -> DayReport:
 		for line: Variant in saved_regulars:
 			if line is String:
 				report.regulars_lines.append(line)
+	report.demand_forecast = public_demand_forecast(data.get("demand_forecast", {}))
 	return report
+
+
+## Optional display data never prevents a historical report from loading.
+## Copy only known primitives, accepting JSON's whole-valued floats too.
+static func public_demand_forecast(value: Variant) -> Dictionary:
+	if not value is Dictionary:
+		return {}
+	var forecast: Dictionary = value
+	if not _whole_in_range(forecast.get("day"), 1, MAX_FORECAST_INTEGER) \
+			or not _whole_in_range(forecast.get("expected_guests"), 0, MAX_FORECAST_INTEGER):
+		return {}
+	var result: Dictionary = {
+		"day": int(forecast["day"]),
+		"expected_guests": int(forecast["expected_guests"]),
+	}
+	for key: String in DEMAND_FACTOR_KEYS:
+		var factor: Variant = forecast.get(key)
+		if (typeof(factor) != TYPE_INT and typeof(factor) != TYPE_FLOAT) \
+				or not is_finite(float(factor)) or float(factor) <= 0.0:
+			return {}
+		result[key] = float(factor)
+	return result
 
 
 ## Copy only display fields, so a sim result cannot leak its cause into a save.

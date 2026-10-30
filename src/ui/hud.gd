@@ -27,6 +27,8 @@ signal settings_pressed()
 signal header_layout_changed()
 
 var _restaurant_name: String = MenuSettings.DEFAULT_NAME
+var _weather_kind: int = WeatherState.Kind.SUNNY
+var _weather_rendered_kind: int = -1
 var _day_label: Label
 var _time_label: Label
 var _phase_label: Label
@@ -78,6 +80,7 @@ var _settings_button: Button
 var _header_bottom: float = -1.0
 var _preferences: SettingsPreferences
 var _opening_refusal: String = ""
+var _demand_status: String = ""
 
 
 func bind_preferences(model: SettingsPreferences) -> void:
@@ -91,6 +94,7 @@ func _ready() -> void:
 ## Idempotently binds controls and events, then renders current simulation state.
 func refresh() -> void:
 	_render_restaurant_name()
+	_render_weather()
 	if _day_label == null:
 		_day_label = get_node("Top/Row/Day") as Label
 		_time_label = get_node("Top/Row/Time") as Label
@@ -175,7 +179,49 @@ func refresh() -> void:
 	_staff_button.disabled = not STAFF_PHASES.has(Clock.sim.phase)
 	_staff_button.tooltip_text = "Hire staff and plan today's wages" if Clock.sim.phase == SimClock.Phase.MORNING \
 		else "Set staff job priorities. Hiring and upgrades are available in the morning."
+	_render_demand_status()
 	_layout_header()
+
+
+func set_weather(kind: int) -> void:
+	if kind == _weather_kind and _weather_rendered_kind == kind:
+		return
+	_weather_kind = kind
+	_render_weather()
+	_layout_header()
+
+
+func _render_weather() -> void:
+	if _weather_rendered_kind == _weather_kind:
+		return
+	_weather_rendered_kind = _weather_kind
+	var label: Label = get_node("Top/Row/Weather") as Label
+	label.text = WeatherText.name_for(_weather_kind)
+	IconStyle.decorate_label(label, WeatherText.icon_for(_weather_kind), IconCatalogue.TOP_BAR_SIZE)
+	var font: Font = label.get_theme_font("font")
+	var font_size: int = label.get_theme_font_size("font_size")
+	var width: float = 0.0
+	for kind: int in [WeatherState.Kind.SUNNY, WeatherState.Kind.CLOUDY, WeatherState.Kind.RAIN]:
+		width = maxf(width, font.get_string_size(WeatherText.name_for(kind), HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x)
+	# A compact badge keeps the forecast beside Day without displacing the
+	# existing finance/action groups. Its icon stays the full top-bar size.
+	var style: StyleBox = (label.get_meta(&"icon_base_style") as StyleBox).duplicate() as StyleBox
+	style.set_content_margin(SIDE_LEFT, 0.0)
+	style.set_content_margin(SIDE_RIGHT, 0.0)
+	style.set_content_margin(SIDE_TOP, float(IconCatalogue.TOP_BAR_SIZE) + 2.0)
+	style.set_content_margin(SIDE_BOTTOM, 0.0)
+	label.add_theme_stylebox_override("normal", style)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.custom_minimum_size.x = width + style.get_minimum_size().x
+	var icon: TextureRect = label.get_node("ThemeIcon") as TextureRect
+	icon.anchor_left = 0.5
+	icon.anchor_right = 0.5
+	icon.anchor_top = 0.0
+	icon.anchor_bottom = 0.0
+	icon.offset_left = -float(IconCatalogue.TOP_BAR_SIZE) * 0.5
+	icon.offset_right = float(IconCatalogue.TOP_BAR_SIZE) * 0.5
+	icon.offset_top = 0.0
+	icon.offset_bottom = float(IconCatalogue.TOP_BAR_SIZE)
 
 
 ## Main supplies the rolling score and sample count; the HUD only presents it.
@@ -257,7 +303,16 @@ func _layout_header() -> void:
 
 ## Main uses the final native header height to keep morning panels below it.
 func panel_top() -> float:
-	return maxf(112.0, (get_node("Top") as Control).get_global_rect().end.y + 12.0)
+	return maxf(112.0, _notices_bottom() + 12.0)
+
+
+func _notices_bottom() -> float:
+	var bottom: float = (get_node("Top") as Control).get_global_rect().end.y
+	for path: String in ["MenuNotice", "DemandNotice"]:
+		var notice: Control = get_node(path) as Control
+		if notice.visible:
+			bottom = maxf(bottom, notice.get_global_rect().end.y)
+	return bottom
 
 
 ## Controls grow to a larger minimum but never shrink back on their own. When
@@ -276,9 +331,9 @@ func _fit_header_height() -> void:
 func _on_header_resized() -> void:
 	if not is_inside_tree():
 		return
-	_layout_build_hints()
 	_layout_menu_notice()
-	var bottom: float = (get_node("Top") as Control).get_global_rect().end.y
+	_layout_build_hints()
+	var bottom: float = _notices_bottom()
 	if not is_equal_approx(bottom, _header_bottom):
 		_header_bottom = bottom
 		header_layout_changed.emit()
@@ -319,17 +374,40 @@ func set_menu_notice(text: String, refuses_opening: bool = false) -> void:
 	panel.visible = not text.is_empty()
 	_layout_menu_notice()
 	refresh()
+	_on_header_resized()
 
 
 func _layout_menu_notice() -> void:
-	var panel: Control = get_node_or_null("MenuNotice") as Control
-	if panel == null or not panel.visible:
-		return
 	# Horizontal anchors follow the viewport. Keep the single-line native
 	# height explicit: wrapped labels can otherwise retain a full-screen
 	# minimum measured before their container receives its width.
-	panel.offset_top = (get_node("Top") as Control).get_global_rect().end.y + 6.0
-	panel.offset_bottom = panel.offset_top + panel.get_combined_minimum_size().y
+	var top: float = (get_node("Top") as Control).get_global_rect().end.y + 6.0
+	for path: String in ["MenuNotice", "DemandNotice"]:
+		var panel: Control = get_node(path) as Control
+		if not panel.visible:
+			continue
+		panel.offset_top = top
+		panel.offset_bottom = panel.offset_top + panel.get_combined_minimum_size().y
+		top = panel.offset_bottom + 4.0
+
+
+## Main supplies the current and previous completed service day's factors.
+## Missing history uses a nonpositive previous factor and shows no trend.
+func set_demand_status(factor: float, previous_factor: float) -> void:
+	_demand_status = DemandText.morning_status(factor, previous_factor)
+	_render_demand_status()
+
+
+func _render_demand_status() -> void:
+	var panel: Control = get_node("DemandNotice") as Control
+	var label: Label = get_node("DemandNotice/Text") as Label
+	var shown: bool = Clock.sim.phase == SimClock.Phase.MORNING and not _demand_status.is_empty()
+	if panel.visible == shown and label.text == _demand_status:
+		return
+	label.text = _demand_status
+	panel.visible = shown
+	_layout_menu_notice()
+	_on_header_resized()
 
 
 ## Main lists today's sold-out dishes by display name; empty hides the tag.
@@ -361,17 +439,26 @@ func _on_settings_pressed() -> void:
 func _style_header() -> void:
 	var roles: Dictionary[String, StringName] = {"Speed0": &"pause", "Speed1": &"speed_1",
 		"Speed2": &"speed_2", "Speed4": &"speed_4", "Build": &"build", "Menu": &"menu",
-		"Staff": &"staff", "Context": &"open_shop", "Settings": &"settings", "Stock": &"stock"}
+		"Staff": &"chef", "Paint": &"paint", "Context": &"open_shop", "Settings": &"settings", "Stock": &"stock"}
 	for child: Node in (get_node("Top/Row") as Container).get_children():
 		var button: Button = child as Button
 		if button == null:
 			continue
 		if roles.has(String(button.name)):
 			var label: String = "Pause" if button == get_node("Top/Row/Speed0") else ("Settings" if button == _settings_button else button.text)
-			# Stock is icon-only so the whole header still fits one row at 1600 px.
+			# Stock and Paint are icon-only so the header still fits one row at 1600 px.
 			IconStyle.configure_button(button, roles[String(button.name)], label, button.tooltip_text,
-				IconCatalogue.TOP_BAR_SIZE, button == _settings_button or String(button.name) in ["Speed0", "Stock"])
+				IconCatalogue.TOP_BAR_SIZE, button == _settings_button or String(button.name) in ["Speed0", "Stock", "Paint"])
 		IconStyle.compact_button(button)
+		if String(button.name) in ["Speed1", "Speed2", "Speed4", "Build"]:
+			# Preserve native icons, words and 46px targets while making room
+			# for the weather badge; only the horizontal padding changes.
+			button.custom_minimum_size.x = maxf(button.custom_minimum_size.x, 46.0)
+			for state: StringName in [&"normal", &"hover", &"pressed", &"hover_pressed", &"disabled"]:
+				var compact: StyleBox = button.get_theme_stylebox(state).duplicate() as StyleBox
+				compact.set_content_margin(SIDE_LEFT, 1.0)
+				compact.set_content_margin(SIDE_RIGHT, 1.0)
+				button.add_theme_stylebox_override(state, compact)
 	IconStyle.decorate_label(_reputation_label, &"reputation", IconCatalogue.TOP_BAR_SIZE)
 	# Reuse the warm theme's existing cream, ink and accent for the warning chip.
 	var header_theme: Theme = (get_node("Top") as Control).theme
@@ -490,7 +577,7 @@ func _layout_build_hints() -> void:
 		return
 	var viewport_size: Vector2 = get_viewport().get_visible_rect().size if is_inside_tree() else Vector2(1600.0, 900.0)
 	var padding: Vector2 = _build_hints.get_theme_stylebox("panel").get_minimum_size()
-	var header_bottom: float = (get_node("Top") as Control).get_global_rect().end.y
+	var header_bottom: float = _notices_bottom()
 	var top: float = minf(maxf(104.0, header_bottom + 6.0), maxf(12.0, viewport_size.y - 64.0))
 	var available: Vector2 = Vector2(minf(HINT_MAX_WIDTH, viewport_size.x - 24.0), viewport_size.y - top - 12.0) - padding
 	if available.x <= 0.0 or available.y <= 0.0:
