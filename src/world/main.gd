@@ -33,6 +33,10 @@ var save_slot: String = AUTOSAVE_SLOT
 var use_saves: bool = true
 ## Title backdrop only: build the default view without starting a run.
 var display_only: bool = false
+## Tools opt in explicitly, preserving every existing capture and test fixture.
+var guide_for_tools: bool = false
+var hints: Hints = Hints.new()
+var _hints_bubble: HintsBubble
 ## Test/capture override only; zero keeps the normal wall-clock new-game seed.
 var new_game_seed_override: int = 0
 ## Tools that boot Main directly retain the old default appearance and flow.
@@ -315,6 +319,9 @@ func _bind_world_presentation() -> void:
 	_settings_panel = $Overlay/SettingsPanel
 	_settings_panel.bind_preferences(Preferences)
 	_settings_panel.set_quit_to_title_available(true)
+	_settings_panel.set_show_guide_available(true)
+	if not _settings_panel.show_guide_requested.is_connected(_on_show_guide_requested):
+		_settings_panel.show_guide_requested.connect(_on_show_guide_requested)
 	if not _settings_panel.close_requested.is_connected(_on_settings_close_requested):
 		_settings_panel.close_requested.connect(_on_settings_close_requested)
 	if not _settings_panel.quit_to_title_requested.is_connected(request_quit_to_title):
@@ -364,6 +371,10 @@ func _bind_world_presentation() -> void:
 	if not $HUD.is_connected(&"stock_pressed", toggle_stock):
 		$HUD.connect(&"stock_pressed", toggle_stock)
 	_refresh_stock_panel()
+	_hints_bubble = $Overlay/HintsBubble
+	if not _hints_bubble.got_it.is_connected(_on_hint_acknowledged):
+		_hints_bubble.got_it.connect(_on_hint_acknowledged)
+		_hints_bubble.skip_guide.connect(_on_guide_skipped)
 	_inspect_panel.bind_world(world)
 	_sync_owner_appearance()
 	_debug_overlay.bind_world(world)
@@ -457,6 +468,7 @@ func start() -> void:
 	SaveSystem.register("milestones", _capture_milestones, _restore_milestones)
 	SaveSystem.register("reorder", _capture_reorder, _restore_reorder)
 	SaveSystem.register("deliveries", _capture_deliveries, _restore_deliveries)
+	SaveSystem.register("hints", hints.capture, hints.restore)
 	var loaded: bool = use_saves and _load_autosave()
 	_rooms_note = loaded and _loaded_layout != null and _loaded_layout.rooms_unmarked
 	$HUD.set_rooms_note(ROOMS_NOTE if _rooms_note else "")
@@ -1736,11 +1748,13 @@ func refresh_presentation() -> void:
 	view.set_selected_item(_inspect_panel.selected_item_id)
 	_refresh_storage_view()
 	_debug_geometry.update_geometry(world, view.drawn_agent_positions(), view.drawn_agent_colors(), _inspect_panel.selected_agent_id, _debug_overlay.is_enabled())
+	refresh_hints()
 
 
 func _on_inspection_tick(_tick: int) -> void:
 	# Text follows every tick; geometry follows the drawn agents once per frame.
 	_refresh_sold_out_hud()
+	refresh_hints()
 	_inspect_panel.refresh()
 	if _debug_overlay.is_enabled():
 		_debug_overlay.refresh()
@@ -1853,6 +1867,7 @@ func build_report(day: int) -> DayReport:
 
 
 func _new_game() -> void:
+	hints.restart()
 	owner_appearance = OwnerAppearance.new()
 	_sync_owner_appearance()
 	_menu_access_losses.clear()
@@ -1924,6 +1939,8 @@ func _load_autosave() -> bool:
 	_loaded_deliveries = null
 	if not SaveSystem.list_slots().has(save_slot):
 		return false
+	# Missing sections are skipped by SaveSystem: old runs stay out of the guide.
+	hints.skip()
 	if SaveSystem.load_game(save_slot) != OK:
 		world.log_event("Autosave could not be loaded; starting a new game")
 		return false
@@ -2664,6 +2681,7 @@ func set_menu_visible(value: bool) -> bool:
 		_menu_panel.set_hours(Clock.sim.display_open_minute, Clock.sim.display_close_minute, HOURS_TUNING)
 	_menu_panel.set_phase(Clock.sim.phase)
 	_menu_panel.visible = value
+	refresh_hints()
 	return true
 
 
@@ -4013,3 +4031,59 @@ func _support_item_name(kind: StringName) -> String:
 		if matches and (best == null or definition.unlock_level < best.unlock_level):
 			best = definition
 	return best.display_name if best != null else String(kind).capitalize()
+
+
+## Read-only context: no sim actions, random draws, speed changes or saves.
+func refresh_hints() -> void:
+	if _hints_bubble == null:
+		return
+	if not _started or display_only or is_owner_picker_visible() or (not use_saves and not guide_for_tools) \
+			or (hints.next_hint == Hints.Step.COMPLETE and hints.active_hint < 0):
+		_hints_bubble.clear_hint()
+		return
+	var context: Hints.Context = Hints.Context.new()
+	context.day = Clock.sim.day
+	context.phase = Clock.sim.phase
+	context.menu_open = is_menu_visible()
+	context.report_visible = _report != null and _report.visible
+	context.dirty_table = sim.kitchen != null and not sim.kitchen.dirty_tables.is_empty()
+	for agent: SimAgent in world.agents:
+		if agent is CustomerAgent and (agent as CustomerAgent).state == CustomerAgent.State.QUEUED:
+			context.queued_guest = true
+			break
+	for step: int in range(Hints.Step.COMPLETE):
+		var target: Control = _hint_target(step)
+		context.targets_visible[step] = target == null or (target.visible and (not target.is_inside_tree() or target.is_visible_in_tree()))
+	var step: int = hints.observe(context)
+	# Modal panels keep their own input and remain readable. Progress waits
+	# here; closing Settings after a replay immediately reveals the guide.
+	if step < 0 or is_settings_visible() or is_goals_visible() or is_staff_visible() or is_owner_picker_visible() \
+			or is_menu_visible() or is_stock_visible() or is_build_active() or _paint_active:
+		_hints_bubble.clear_hint()
+		return
+	_hints_bubble.show_hint(step, _hint_target(step), $HUD.panel_top())
+
+
+func _hint_target(step: int) -> Control:
+	match step:
+		Hints.Step.MENU: return $HUD/Top/Row/Menu as Control
+		Hints.Step.STOCK: return $HUD/Top/Row/Stock as Control
+		Hints.Step.BUILD: return $HUD/Top/Row/Build as Control
+		Hints.Step.OPEN: return $HUD/Top/Row/Context as Control
+	return null
+
+
+func _on_hint_acknowledged() -> void:
+	hints.acknowledge()
+	refresh_hints()
+
+
+func _on_guide_skipped() -> void:
+	hints.skip()
+	refresh_hints()
+
+
+func _on_show_guide_requested() -> void:
+	# Guide progress joins the next morning snapshot, just like build edits.
+	hints.restart(Clock.sim.day if Clock.sim.phase == SimClock.Phase.MORNING else Clock.sim.day + 1)
+	refresh_hints()

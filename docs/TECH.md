@@ -2223,6 +2223,24 @@ pattern 0 of `floor_finish.gdshader`, unchanged).
   starts fresh and skips only the next autosave; later morning saves resume.
 - RNG seed/state and the master seed use decimal strings to preserve 64-bit integers through JSON parsing.
 
+### First-day guide (FK-060)
+
+`Hints` owns ordered, once-only presentation progress for the first two mornings.
+Menu must actually open and close before the Stock hint; later hints observe the
+first queued guest, dirty table and visible evening report. Hidden targets and
+missed day-one steps are consumed rather than blocking play. `HintsBubble` uses
+the shared theme and anchors to HUD controls or the bottom-right corner. Its root,
+card and labels ignore mouse input; only its two unfocused buttons receive it.
+No hint changes the clock, speed, world or random streams.
+
+Main registers the `hints` save section. Missing sections start complete on an
+older save; a new game starts fresh. Settings' “Show guide again” resets in-memory
+progress for this morning (or the next morning during service), with persistence
+at the next existing morning autosave only. Title Settings hides that run-specific
+action. `use_saves = false` and title backdrops suppress guide presentation unless
+a review tool explicitly sets `guide_for_tools`. `tools/hints_review.tscn` opts in
+for the single first-morning capture in the existing visual-review job.
+
 ### 2.5 Testing
 Dish quality explanations (FK-063): `DishQuality.breakdown()` snapshots the recipe
 base, role skill factor, cooking trait and distinct preparation station bonuses,
