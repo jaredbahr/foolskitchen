@@ -69,7 +69,6 @@ static func run_cli(tree: SceneTree, args: PackedStringArray) -> int:
 	lines.append("|---|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|")
 	var staff_lines: PackedStringArray = PackedStringArray()
 	var summary_lines: PackedStringArray = PackedStringArray()
-	var failed: bool = false
 	var observe_staff: bool = options["staff_growth"] or options["auto_accept_raises"]
 	var failed: bool = false
 	if observe_staff:

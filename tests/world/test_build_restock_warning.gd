@@ -1,5 +1,6 @@
 extends TestCase
 const MAIN: PackedScene = preload("res://src/world/main.tscn")
+const MANUAL_MAIN: GDScript = preload("res://tests/fixtures/manual_restock_main.gd")
 const SLOT: String = "restock_budget_warning"
 var _main: Node
 var _old_dir: String
@@ -27,9 +28,11 @@ func after_each() -> void:
 	Economy.reset(0)
 	GameState.new_run(1)
 
-func _start() -> void:
+func _start(manual_stock: bool = false) -> void:
 	await (Engine.get_main_loop() as SceneTree).process_frame
 	_main = MAIN.instantiate()
+	if manual_stock:
+		_main.set_script(MANUAL_MAIN)
 	_main.set("use_saves", true)
 	_main.set("save_slot", SLOT)
 	_main.set("new_game_seed_override", 23)
@@ -107,7 +110,8 @@ func test_buy_preview_advice_does_not_block_an_affordable_item() -> void:
 
 
 func test_floor_laying_preview_warns_with_its_tile_cost() -> void:
-	await _start()
+	# Literal restock wording uses the original player-selected fixed targets.
+	await _start(true)
 	assert_true(_main.call("set_build_active", true))
 	assert_true(_main.call("begin_floors_tool", &"herringbone", &"honey"))
 	var mode: BuildMode = _main.get("build_mode")
@@ -126,7 +130,7 @@ func test_floor_laying_preview_warns_with_its_tile_cost() -> void:
 
 func test_estimate_tracks_enabled_targets_without_changing_them() -> void:
 	await _start()
-	var settings: ReorderSettings = _main.call("_reorder")
+	var settings: ReorderSettings = _main.get("reorder_settings")
 	var original: Dictionary = settings.to_dict()
 	var estimate: int = _main.call("build_restock_estimate")
 	assert_true(settings.set_enabled(&"tomato", false))
@@ -172,7 +176,8 @@ func test_closed_estimate_reuses_real_next_morning_forecast_and_idle_has_no_warn
 
 
 func test_wall_finish_drag_warns_with_its_net_cost() -> void:
-	await _start()
+	# Literal restock wording uses the original player-selected fixed targets.
+	await _start(true)
 	assert_true(_main.call("set_build_active", true))
 	assert_true(_main.call("begin_wall_finish_tool", &"stripes", &"butter", &"cream"))
 	var mode: BuildMode = _main.get("build_mode")
@@ -194,7 +199,8 @@ func test_wall_finish_drag_warns_with_its_net_cost() -> void:
 
 
 func test_neon_sign_hang_warns_with_its_price_and_a_move_does_not() -> void:
-	await _start()
+	# Literal restock wording uses the original player-selected fixed targets.
+	await _start(true)
 	assert_true(_main.call("set_build_active", true))
 	var editor: ShopEditor = _main.get("shop_editor")
 	editor.set_owner_level(4)

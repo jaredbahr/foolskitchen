@@ -128,8 +128,24 @@ func _assert_clean_morning(main: Node, day: int) -> void:
 	for item: PlacedItem in world.grid.items():
 		for cell: Vector2i in item.work_cells + item.seat_cells:
 			assert_eq(item.reserved_by(cell), -1, "day %d: nothing reserved overnight" % day)
-	for id: StringName in TUNING.morning_stock:
-		assert_true(Economy.stock.count(id) >= TUNING.morning_stock[id], "day %d: %s restocked" % [day, id])
+	var planned: ReorderSettings = main.call("_reorder")
+	var space: StorageSpace = main.call("storage_space")
+	var unit_costs: Dictionary = main.call("_unit_costs")
+	var premium: float = main.get("auto_reorder_premium")
+	for kind: int in StorageSpace.KINDS:
+		assert_true(space.in_stock(kind) + space.on_order(kind) <= space.capacity(kind),
+			"day %d: stock plus paid pending deliveries fit their reserved storage" % day)
+	for id: StringName in planned.ids():
+		if not planned.is_enabled(id):
+			continue
+		var available: int = Economy.stock.count(id) + space.pending_of(id)
+		if available < planned.target(id):
+			var one_unit_cost: int = ReorderSettings.auto_cost(int(unit_costs[id]), premium)
+			assert_true(space.free_units(space.kind_of(id)) == 0 or Economy.cash < one_unit_cost,
+				"day %d: %s below its forecast/manual target only when cash or storage prevents restocking" % [day, id])
+	var remainder: Dictionary = planned.plan(Economy.stock, unit_costs, Economy.cash, premium, false, space)
+	assert_true((remainder["lines"] as Array).is_empty(),
+		"day %d: no affordable stock fitting the effective targets remains unordered" % day)
 	assert_true(sim.stock == Economy.stock, "day %d: the kitchen cooks from the books' stock" % day)
 
 
@@ -233,7 +249,11 @@ func _assert_closed_books(main: Node, day: int) -> void:
 		if category != Ledger.BANK_LOAN and category != Ledger.LOAN_INTEREST \
 				and category != Ledger.LOAN_REPAYMENT and category != Ledger.MILESTONE_BONUS:
 			operating_profit += int(totals[category])
-	assert_eq(shown.operating_profit(), operating_profit, "the headline excludes every financing movement")
+	assert_eq(shown.purchase_basis_operating_profit(), operating_profit,
+		"progression and financing retain the original purchase-basis business result")
+	assert_true(shown.operating_profit_recorded(), "real purchased stock has recorded served-food costs")
+	assert_eq(shown.operating_profit(), operating_profit - int(totals.get(Ledger.INGREDIENTS, 0)) - shown.food_cost,
+		"the headline replaces signed stock-purchase cash flows with the cost of sold dishes")
 	assert_eq(shown.profit(), Economy.ledger.day_profit(day), "full financial cash movement still matches the ledger")
 	var dishes: int = 0
 	for recipe: StringName in shown.dishes_sold:

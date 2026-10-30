@@ -30,6 +30,7 @@ var _profit: Label
 var _income: GridContainer
 var _costs: GridContainer
 var _stock: GridContainer
+var _stock_summary: VBoxContainer
 var _cash_change: Label
 var _loan_notice: Label
 var _dishes: GridContainer
@@ -61,6 +62,7 @@ var _demand_explanation: Label
 
 func _ready() -> void:
 	_bind_nodes()
+	_on_report_resized()
 	if not _report_shown:
 		show_report(DayReport.new())
 
@@ -180,6 +182,7 @@ func _bind_nodes() -> void:
 	_income = %IncomeRows
 	_costs = %CostRows
 	_stock = %StockRows
+	_stock_summary = %StockSummary
 	_cash_change = %CashChange
 	_loan_notice = %LoanNotice
 	_dishes = %DishRows
@@ -238,6 +241,22 @@ func _bind_nodes() -> void:
 	IconStyle.configure_button(next_day, &"next_day", "Next day", "Begin the next morning", IconCatalogue.PANEL_SIZE)
 	next_day.pressed.connect(_on_next_day_pressed)
 	_nodes_bound = true
+	resized.connect(_on_report_resized)
+	_on_report_resized()
+
+
+## Normal windows keep the stock detail beside the books, leaving the real
+## review cards in view. Large UI sizes give those rows the full scroll width.
+func _on_report_resized() -> void:
+	if not is_inside_tree():
+		return
+	var finances: HBoxContainer = get_node("Panel/Scroll/Content/Finances") as HBoxContainer
+	var content: VBoxContainer = get_node("Panel/Scroll/Content") as VBoxContainer
+	var target: Node = finances if size.x >= 1100.0 else content
+	if _stock_summary.get_parent() != target:
+		_stock_summary.reparent(target, false)
+	if target == content:
+		content.move_child(_stock_summary, finances.get_index() + 1)
 
 
 func _fill_owner_progress(report: DayReport) -> void:
@@ -328,6 +347,10 @@ func _add_row(parent: GridContainer, title: String, amount: String) -> void:
 	_add_label(parent, title)
 	var value: Label = _add_label(parent, amount)
 	value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	value.size_flags_horizontal = Control.SIZE_SHRINK_END
+	var font: Font = value.get_theme_font("font")
+	value.custom_minimum_size.x = minf(180.0,
+		font.get_string_size(amount, HORIZONTAL_ALIGNMENT_LEFT, -1, value.get_theme_font_size("font_size")).x)
 
 
 func _add_label(parent: Node, text: String) -> Label:

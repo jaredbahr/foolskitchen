@@ -1702,12 +1702,12 @@ func build_restock_estimate() -> int:
 	# Paid, not stocked: the same source the real morning order plans with.
 	var pending: Dictionary[StringName, int] = _on_the_way()
 	if world.clock.phase == SimClock.Phase.CLOSED:
-		return int(StockAlerts.forecast(Economy.stock, _reorder(), _shelf_lives(),
+		return int(StockAlerts.forecast(Economy.stock, _reorder(true), _shelf_lives(),
 			world.clock.day + 1, _unit_costs(), 2147483647, auto_reorder_premium,
 			_storage_capacity(), kinds, pending)["order_cost"])
 	var empty: Stock = Stock.new()
 	var space: StorageSpace = StorageSpace.new(_storage_capacity(), empty, pending, kinds)
-	return int(_reorder().plan(empty, _unit_costs(), 2147483647,
+	return int(_reorder(true).plan(empty, _unit_costs(), 2147483647,
 		auto_reorder_premium, false, space)["cost"])
 
 
@@ -2074,7 +2074,7 @@ func build_report(day: int) -> DayReport:
 	report.low_stock = StockAlerts.sell_out_lines(sim.stock_outs_today, content)
 	var incoming: Dictionary[StringName, int] = deliveries.pending_by_id()
 	report.low_stock.append_array(StockAlerts.forecast_lines(StockAlerts.forecast(Economy.stock,
-		_reorder(), _shelf_lives(), day + 1, _unit_costs(), Economy.cash, auto_reorder_premium,
+		_reorder(true), _shelf_lives(), day + 1, _unit_costs(), Economy.cash, auto_reorder_premium,
 		_storage_capacity(), StorageSpace.kinds_of(content), incoming), content))
 	if _milestone_award_day == day:
 		for goal: Milestone in _milestones_reached_today:
@@ -2835,9 +2835,10 @@ func menu_open_note() -> String:
 		if world != null and world.clock.phase in [SimClock.Phase.OPEN, SimClock.Phase.LAST_ORDERS] else ""
 
 
-## Station-only ingredients (coffee beans, beer...) are ordered and listed
-## only while a dish on the menu uses them; everyday ones always are.
-func _reorder() -> ReorderSettings:
+## Automatic targets cover the service being stocked: today's actual demand
+## before opening, tomorrow's existing demand forecast after closing. Saved
+## player targets are fixed; evaluating a plan never rewrites those choices.
+func _reorder(tomorrow: bool = false) -> ReorderSettings:
 	var used: Array[StringName] = []
 	if menu_settings != null and menu_settings.is_valid():
 		for recipe: RecipeDef in menu_settings.enabled_recipes():
@@ -2845,7 +2846,47 @@ func _reorder() -> ReorderSettings:
 				if ingredient != null and not used.has(ingredient.id):
 					used.append(ingredient.id)
 	reorder_settings.set_in_use(used)
-	return reorder_settings
+	if sim == null or _demand_day != Clock.sim.day or menu_settings == null:
+		return reorder_settings
+	return reorder_settings.with_forecast(restock_forecast_targets(
+		tomorrow or Clock.sim.phase == SimClock.Phase.CLOSED))
+
+
+## Approximate menu shares use the authored visit hours and current eligible
+## customer mix, including ordinary optional drinks and pastries. No future
+## guest is spawned, no weather selected, and no random stream is requested.
+func restock_forecast_targets(tomorrow: bool = false) -> Dictionary[StringName, int]:
+	if sim == null or menu_settings == null or world == null:
+		return {}
+	var expected: int = sim.expected_demand_guests(sim.demand_factor)
+	if tomorrow:
+		var forecast: Dictionary = forecast_next_demand()
+		if forecast.is_empty():
+			return {}
+		expected = int(forecast["expected_guests"])
+	var weights: Dictionary[StringName, float] = sim.expected_visit_weights()
+	var preferences: Dictionary[StringName, float] = {}
+	var total: float = 0.0
+	var drink_chance: float = 0.0
+	var pastry_chance: float = 0.0
+	if sim.customer_types != null:
+		for kind: CustomerType in sim.customer_types.types:
+			if kind.unlock_level > owner_progress.level:
+				continue
+			var weight: float = kind.weight_for_stars(reputation.average())
+			weight *= kind.theme_multiplier(sim.vibe_result.active_theme, sim.vibe_result.arrival_theme_strength)
+			total += weight
+			drink_chance += weight * kind.drink_add_chance
+			pastry_chance += weight * kind.pastry_add_chance
+			for visit: StringName in RecipeDef.ORDER_TYPES:
+				preferences[visit] = preferences.get(visit, 0.0) + weight * kind.visit_weight(visit)
+	if total > 0.0:
+		drink_chance /= total
+		pastry_chance /= total
+	for visit: StringName in weights:
+		weights[visit] *= preferences.get(visit, 0.0) / total if total > 0.0 else 1.0
+	return RestockForecast.targets(menu_settings.enabled_recipes(), expected,
+		weights, TUNING.restock_buffer, drink_chance, pastry_chance)
 
 
 ## The Drinks hints explain what each missing drink needs, by name. Food
@@ -3847,7 +3888,7 @@ func stock_rows() -> Array[Dictionary]:
 	var rows: Array[Dictionary] = []
 	if content == null or reorder_settings == null:
 		return rows
-	_reorder()
+	var planned: ReorderSettings = _reorder()
 	var expiring: Dictionary = Economy.stock.expiring_on(Clock.sim.day + 1, _shelf_lives())
 	var used: Dictionary[StringName, bool] = _menu_ingredients()
 	var in_dishes: Dictionary[StringName, bool] = _dish_ingredients()
@@ -3864,7 +3905,7 @@ func stock_rows() -> Array[Dictionary]:
 					continue
 				rows.append({"id": id, "name": ingredient.display_name, "count": Economy.stock.count(id),
 					"expiring": int(expiring.get(id, 0)), "unit_cost": ingredient.unit_cost,
-					"enabled": reorder_settings.is_enabled(id), "target": reorder_settings.target(id),
+					"enabled": reorder_settings.is_enabled(id), "target": planned.target(id),
 					"max_target": ReorderSettings.MAX_TARGET, "kind": kind, "in_use": in_use,
 					"cart": int(stock_cart.get(id, 0)), "on_order": int(pending.get(id, 0)),
 					"no_dish": not in_dishes.has(id)})

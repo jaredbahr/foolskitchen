@@ -4,6 +4,7 @@ extends TestCase
 
 const MAIN: PackedScene = preload("res://src/world/main.tscn")
 const REPORT_SCENE: PackedScene = preload("res://src/ui/evening_report.tscn")
+const TUNING: EconomyTuning = preload("res://data/balance/tier1_economy.tres")
 const SLOT: String = "profit_accounting"
 
 var _mains: Array[Node] = []
@@ -229,7 +230,7 @@ func test_evening_report_renders_known_unknown_and_legacy_values_without_mutatio
 	var report: DayReport = _known_report()
 	var original: Dictionary = report.to_dict()
 	screen.call("show_report", report)
-	assert_eq((screen.get_node("%Profit") as Label).text, "Operating profit: $63")
+	assert_eq((screen.get_node("%Profit") as Label).text, "$63 operating profit")
 	assert_eq((screen.get_node("%CashChange") as Label).text, "Cash change today: $46")
 	assert_eq(_label_texts(screen.get_node("%StockRows")),
 		["Stock bought today", "$45", "Spoiled stock", "$3", "Stock on hand worth", "$25"] as Array[String])
@@ -251,6 +252,139 @@ func test_evening_report_renders_known_unknown_and_legacy_values_without_mutatio
 	assert_eq(_label_texts(screen.get_node("%StockRows")),
 		["Stock bought today", "Not recorded", "Spoiled stock", "Not recorded",
 		"Stock on hand worth", "Not recorded"] as Array[String])
+
+
+func test_report_overflow_and_malformed_flags_cannot_advertise_an_exact_headline() -> void:
+	var report: DayReport = _known_report()
+	report.food_cost = 9223372036854775807
+	assert_false(report.operating_profit_recorded(), "food plus fixed costs exceeds the integer range")
+	report = _known_report()
+	report.income = {Ledger.SALE: 9223372036854775807, Ledger.TIP: 1}
+	assert_false(report.operating_profit_recorded(), "total takings cannot wrap into an exact loss")
+	for field: String in ["food_cost", "stock_bought", "spoiled_stock", "stock_on_hand"]:
+		var bad: Dictionary = _known_report().to_dict()
+		bad[field + "_recorded"] = 1
+		var restored: DayReport = DayReport.from_dict(bad)
+		assert_false(restored.get(field + "_recorded"), "a truthy number is not a recorded-value flag")
+	var invalid_version_flag: Dictionary = _known_report().to_dict()
+	invalid_version_flag["stock_values_recorded"] = "true"
+	assert_false(DayReport.from_dict(invalid_version_flag).operating_profit_recorded())
+
+
+func test_real_morning_and_opening_station_orders_use_the_forecast_menu_mix() -> void:
+	var main: Node = await _start(false)
+	assert_true(main.call("menu_set_enabled", &"tomato_soup", false))
+	assert_true(main.call("menu_set_enabled", &"grilled_cheese", false))
+	var sim: RestaurantSim = main.get("sim")
+	Economy.reset(1000)
+	sim.stock = Economy.stock
+	assert_true(sim.set_demand_factor(0.5))
+	var expected_meals: int = sim.expected_demand_guests(0.5)
+	var expected_units: int = ceili(expected_meals * TUNING.restock_buffer)
+	assert_true(expected_units > 0 and expected_units * 2 <= 40,
+		"this focused shop can store a whole forecast day's burger ingredients")
+	var rng: Dictionary = GameState._capture_save()
+	var targets: Dictionary = main.call("restock_forecast_targets")
+	assert_eq(targets[&"bun"], expected_units)
+	assert_eq(GameState._capture_save(), rng)
+	main.call("_restock")
+	for id: StringName in [&"bun", &"beef_patty", &"lettuce"]:
+		assert_eq(Economy.stock.count(id), expected_units, "the real morning order buys the forecast use")
+	for id: StringName in [&"bread", &"cheese", &"tomato", &"soup_stock"]:
+		assert_eq(Economy.stock.count(id), 0, "unused automatic food is absent from the real order")
+	assert_true(main.call("shop_buy", &"coffee_machine", Vector2i(12, 5), 2))
+	assert_true(main.call("menu_set_enabled", &"tea", false))
+	assert_true(main.call("menu_set_enabled", &"burger", false))
+	assert_eq(sim.menu.size(), 1)
+	assert_eq(sim.menu[0].id, &"coffee")
+	Economy.reset(1000)
+	sim.stock = Economy.stock
+	assert_true(sim.set_demand_factor(0.5))
+	var expected_coffees: int = sim.expected_demand_guests(0.5)
+	var expected_beans: int = ceili(expected_coffees * TUNING.restock_buffer)
+	assert_true(expected_beans > 0 and expected_beans <= 60)
+	assert_true(Clock.sim.start_service())
+	assert_eq(Economy.stock.count(&"coffee_beans"), expected_beans,
+		"opening station supplies use a day of forecast coffee rather than the fixed 30-unit order")
+	assert_eq(Economy.stock.ids(), [&"coffee_beans"] as Array[StringName])
+	var report: DayReport = main.call("build_report", 1)
+	assert_eq(report.food_cost, 0)
+	assert_eq(report.stock_on_hand, report.stock_bought, "all paid opening supplies remain unused on hand")
+
+
+func test_real_legacy_stock_cooks_and_sells_without_inventing_a_purchase_cost() -> void:
+	var main: Node = await _start(false)
+	var sim: RestaurantSim = main.get("sim")
+	var content: ContentDB = main.get("content")
+	_no_arrivals(sim)
+	Economy.reset(1000)
+	sim.stock = Economy.stock
+	for ingredient: IngredientDef in content.recipe(&"burger").ingredients:
+		Economy.stock.add(ingredient.id, 3, 1)
+	sim.menu = [content.recipe(&"burger")] as Array[RecipeDef]
+	assert_true(Clock.sim.start_service())
+	var guest: CustomerAgent = _guest(sim, 3)
+	for tick: int in range(2000):
+		main.call("run_ticks", 1)
+		if guest.paid:
+			break
+	assert_true(guest.paid, "legacy price metadata never blocks actual cooking or payment")
+	assert_not_null(guest.order)
+	if guest.order == null:
+		return
+	assert_true(guest.order.paid)
+	assert_false(guest.order.ingredient_cost_recorded)
+	var report: DayReport = main.call("build_report", 1)
+	assert_false(report.food_cost_recorded)
+	assert_false(report.operating_profit_recorded(), "today's catalog price cannot reconstruct yesterday's lot")
+	assert_eq(report.profit(), guest.order.price)
+	assert_eq(Economy.cash, 1000 + guest.order.price)
+
+
+func test_rejected_optional_stock_metadata_preserves_live_economy_models() -> void:
+	var main: Node = await _start(false)
+	var ledger: Ledger = Economy.ledger
+	var stock: Stock = Economy.stock
+	var loan: LoanAccount = Economy.loan
+	var original: Dictionary = Economy._capture_save()
+	var bad: Dictionary = original.duplicate(true)
+	var first_id: String = bad["stock"]["batches"].keys()[0]
+	bad["stock"]["batches"][first_id][0]["total_cost"] = "9223372036854775808"
+	assert_false(Economy._restore_save(bad))
+	assert_true(Economy.ledger == ledger)
+	assert_true(Economy.stock == stock)
+	assert_true(Economy.loan == loan)
+	assert_eq(Economy._capture_save(), original)
+	assert_true((main.get("sim") as RestaurantSim).stock == stock, "failed restore keeps the live kitchen inventory")
+
+
+func test_tomorrows_standing_targets_follow_projected_growth_without_mutating_the_morning() -> void:
+	var main: Node = await _start(false)
+	assert_true(main.call("menu_set_enabled", &"tomato_soup", false))
+	assert_true(main.call("menu_set_enabled", &"grilled_cheese", false))
+	var before: Dictionary = main.call("forecast_next_demand")
+	var sim: RestaurantSim = main.get("sim")
+	var growth: DemandState = main.get("demand_state")
+	var tuning: DemandTuning = main.get("demand_tuning")
+	assert_true(growth.award_close(1, 100, sim.demand_factor, tuning), "a real growth-model award raises tomorrow's renown")
+	var after: Dictionary = main.call("forecast_next_demand")
+	assert_true(int(after["expected_guests"]) > int(before["expected_guests"]))
+	var state: Dictionary = growth.to_dict()
+	var choices: Dictionary = (main.get("reorder_settings") as ReorderSettings).to_dict()
+	var clock: Dictionary = Clock.sim.to_dict()
+	var rng: Dictionary = GameState._capture_save()
+	var stock: Dictionary = Economy.stock.to_dict()
+	var cash: int = Economy.cash
+	var targets: Dictionary = main.call("restock_forecast_targets", true)
+	var expected_units: int = ceili(int(after["expected_guests"]) * TUNING.restock_buffer)
+	assert_eq(targets[&"bun"], expected_units)
+	assert_eq((main.call("_reorder", true) as ReorderSettings).target(&"bun"), expected_units)
+	assert_eq(growth.to_dict(), state, "forecasting stages tomorrow's decay without applying it today")
+	assert_eq((main.get("reorder_settings") as ReorderSettings).to_dict(), choices)
+	assert_eq(Clock.sim.to_dict(), clock)
+	assert_eq(GameState._capture_save(), rng)
+	assert_eq(Economy.stock.to_dict(), stock)
+	assert_eq(Economy.cash, cash)
 
 
 func _known_report() -> DayReport:

@@ -152,3 +152,60 @@ func test_same_morning_reload_retains_spoilage_without_charging_it_twice() -> vo
 	var bad_flag: Dictionary = saved.duplicate(true)
 	bad_flag["spoilage"]["recorded"] = 1
 	assert_null(Stock.from_dict(bad_flag))
+
+
+func test_pending_delivery_json_preserves_large_purchase_prices_and_quantities() -> void:
+	var large: int = 9007199254740993
+	var book: DeliveryBook = DeliveryBook.new()
+	assert_true(book.place([{"id": &"rice", "qty": 1, "unit_cost": large}] as Array[Dictionary],
+		large, false, Vector2i(1, DeliveryBook.MORNING)))
+	assert_true(book.place([{"id": &"free", "qty": large, "unit_cost": 0}] as Array[Dictionary],
+		0, false, Vector2i(1, DeliveryBook.MORNING)))
+	var restored: DeliveryBook = DeliveryBook.new()
+	assert_true(restored.from_dict(JSON.parse_string(JSON.stringify(book.to_dict()))))
+	assert_eq(restored.paid_total(), large, "refunds preserve the actual charge beyond double precision")
+	assert_eq(restored.pending_by_id()[&"free"], large)
+	var clock: SimClock = SimClock.new()
+	var lots: Array[Dictionary] = restored.take_due_valued(clock, true)
+	assert_eq(lots[0]["total_cost"], large)
+	assert_eq(lots[1]["qty"], large)
+	assert_eq(lots[1]["total_cost"], 0)
+	var stock: Stock = Stock.new()
+	for lot: Dictionary in lots:
+		stock.add(lot["id"], lot["qty"], 1, lot["total_cost"])
+	assert_eq(stock.take_many_valued({&"rice": 1})["cost"], large)
+	assert_true(stock.value()["recorded"])
+	assert_eq(stock.count(&"free"), large)
+
+
+func test_pending_delivery_rejects_ambiguous_large_legacy_numbers_transactionally() -> void:
+	var book: DeliveryBook = DeliveryBook.new()
+	assert_true(book.place([{"id": &"rice", "qty": 2, "unit_cost": 3}] as Array[Dictionary],
+		6, false, Vector2i(1, DeliveryBook.MORNING)))
+	var original: Dictionary = book.to_dict()
+	for field: String in ["cost", "qty", "unit_cost"]:
+		var bad: Dictionary = original.duplicate(true)
+		if field == "cost":
+			bad["orders"][0][field] = 9007199254740992.0
+		else:
+			bad["orders"][0]["lines"][0][field] = 9007199254740992.0
+		assert_false(book.from_dict(bad), "unsafe numeric history cannot be declared exact: %s" % field)
+		assert_eq(book.to_dict(), original)
+	var legacy: Dictionary = {"version": 1, "orders": [{"day": 1, "tick": -1,
+		"cost": 6.0, "standing": false, "lines": [{"id": "rice", "qty": 2.0, "unit_cost": 3.0}]}]}
+	assert_true(book.from_dict(legacy), "safe whole-number legacy orders remain loadable")
+	assert_eq(book.paid_total(), 6)
+
+
+func test_unknown_spoilage_stays_unrecorded_after_known_stock_is_reordered_and_saved() -> void:
+	var stock: Stock = Stock.new()
+	stock.add(&"rice", 1, 1)
+	stock.add(&"cheese", 1, 1, 7)
+	var expired: Dictionary = stock.expire_valued(3, {&"rice": 2, &"cheese": 2})
+	assert_eq(expired["quantities"], {&"rice": 1, &"cheese": 1})
+	assert_false(expired["recorded"])
+	stock.add(&"rice", 2, 3, 6)
+	assert_eq(stock.value(), {"cost": 6, "recorded": true}, "new stock can have an exact value")
+	var restored: Stock = Stock.from_dict(JSON.parse_string(JSON.stringify(stock.to_dict())))
+	assert_false(restored.spoilage_value(3)["recorded"], "the same morning's unknown loss remains unknown")
+	assert_eq(restored.value(), {"cost": 6, "recorded": true})

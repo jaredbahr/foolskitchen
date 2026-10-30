@@ -4,6 +4,9 @@ extends TestCase
 ## Two isolated fresh runs skip service and use the normal next-morning route.
 
 const MAIN: PackedScene = preload("res://src/world/main.tscn")
+## Preserve the recorded 8fbe fixed-stock trace in its explicit manual context.
+## All other demand tests use the real adaptive default Main.
+const MANUAL_MAIN: GDScript = preload("res://tests/fixtures/manual_restock_main.gd")
 const SEED: int = 1
 
 var _main: Node
@@ -397,13 +400,15 @@ func test_accepted_layout_edit_updates_actual_raw_vibe_without_rng_gap_reset_or_
 	_finish_demand()
 
 
-func _start_demand(saves: bool, fresh_directory: bool = true) -> void:
+func _start_demand(saves: bool, fresh_directory: bool = true, manual_stock: bool = false) -> void:
 	if fresh_directory:
 		_demand_old_dir = SaveSystem.save_dir
 		_demand_dir = SaveTestPaths.case_dir(OS.get_process_id(), DEMAND_SLOT)
 		SaveSystem.save_dir = _demand_dir
 		SaveSystem.delete_slot(DEMAND_SLOT)
 	_main = MAIN.instantiate()
+	if manual_stock:
+		_main.set_script(MANUAL_MAIN)
 	_main.set("use_saves", saves)
 	_main.set("skip_owner_picker", true)
 	_main.set("save_slot", DEMAND_SLOT)
@@ -511,7 +516,9 @@ func test_actual_default_day_one_events_private_seeds_and_every_named_stream_mat
 
 func _played_day_one() -> Dictionary:
 	_trace_events.clear()
-	_start_demand(false)
+	# This immutable event oracle predates forecast-sized stock. Real manual
+	# targets preserve that declared context without changing demand or rent.
+	_start_demand(false, true, true)
 	var sim: RestaurantSim = _main.get("sim") as RestaurantSim
 	sim.customer_arrived.connect(_demand_trace_arrived)
 	sim.customer_paid.connect(_demand_trace_paid)

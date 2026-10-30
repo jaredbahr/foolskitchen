@@ -11,6 +11,7 @@ wages = Dictionary[StringName, int]({
 })
 staff_wage_curve = PackedFloat32Array(0.7, 0.85, 1.0, 1.2, 1.4)
 starting_plates = 12
+daily_rent = 30
 tray_prices = PackedInt32Array(60, 150)
 morning_stock = Dictionary[StringName, int]({
 &"beef_patty": 10,
@@ -39,5 +40,6 @@ station_stock = Dictionary[StringName, int]({
 &"lemon": 12
 })
 auto_reorder_premium = 0.05
+restock_buffer = 1.10
 delivery_interval_minutes = 180
 freezer_shelf_life_days = 30
