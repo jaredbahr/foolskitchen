@@ -89,6 +89,8 @@ jobs:
           bash tools/screenshot.sh --out=screens/visual-review/menu --menu --speed=0 --frames=12
           bash tools/screenshot.sh --out=screens/visual-review/staff --staff --speed=0 --frames=12
           bash tools/screenshot.sh --out=screens/visual-review/icons-review --scene=res://tools/icons_review.tscn --speed=0 --frames=12,60
+          OWNER_REVIEW_STAGE=picker bash tools/screenshot.sh --out=screens/visual-review/owner-picker --scene=res://tools/owner_character_review.tscn --speed=0 --frames=60
+          OWNER_REVIEW_STAGE=shop bash tools/screenshot.sh --out=screens/visual-review/owner-character --scene=res://tools/owner_character_review.tscn --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/report --report --open --fast=100 --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/paint --paint --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/floors-review --floors-review --speed=0 --frames=12,30
@@ -104,6 +106,7 @@ jobs:
           bash tools/screenshot.sh --out=screens/visual-review/settings-world --settings-world --speed=0 --frames=90
           bash tools/screenshot.sh --out=screens/visual-review/hud-1280 --hud-layout --window-size=1280x720 --speed=0 --frames=12,90
           bash tools/screenshot.sh --out=screens/visual-review/hud-1600 --hud-layout --window-size=1600x900 --speed=0 --frames=12,90
+          timeout 60 xvfb-run -a -s '-screen 0 1600x900x24' "$GODOT" --path . --rendering-method gl_compatibility --audio-driver Dummy --script tools/title_review.gd -- --out=screens/visual-review/title
 
       - name: Capture seated guests at a real table
         shell: bash
