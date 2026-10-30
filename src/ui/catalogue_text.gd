@@ -5,6 +5,11 @@ extends RefCounted
 ## and enum names never reach the screen (rule 11); add new words here.
 
 const VIBE: VibeTuning = preload("res://data/balance/vibe.tres")
+const WALL_REMOVE_LABEL: String = "Remove"
+const WALL_REMOVE_TOOLTIP: String = "Click a wall segment or drag along a run to remove it for a refund. Del: remove the hovered wall."
+const WALL_REMOVE_EMPTY: String = "Point at a built wall to remove it"
+const WALLS_KEYS: String = "Drag along grid lines  |  Click to build, change or remove  |  Del: remove  |  Ctrl+Z Undo  |  Esc Cancel"
+
 
 const ROOM_LABELS: Dictionary[StringName, String] = {
 	&"dining": "Dining", &"kitchen": "Kitchen", &"bar_cafe": "Bar & Café",
@@ -41,6 +46,10 @@ const STATION_NAMES: Dictionary[StringName, String] = {
 	&"drinks_fridge": "Drinks fridge", &"drinks_shelf": "Drinks shelf",
 	&"storage_shelf": "Storage shelf", &"freezer": "Freezer", &"toilet": "Toilet", &"wash_basin": "Wash basin",
 }
+
+
+static func wall_removal_refund(refund: int) -> String:
+	return "%s wall (refund %s)" % [WALL_REMOVE_LABEL, Fmt.money(refund)]
 
 
 ## A station type's player name; an unlisted type falls back to the item's own name.

@@ -2,7 +2,6 @@ extends TestCase
 ## FK-070 wall segment presentation: geometry follows the sim, never the reverse.
 
 const VIEW: PackedScene = preload("res://src/world/shop_view.tscn")
-const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
 
 var _view: ShopView
 var _world: SimWorld
@@ -12,7 +11,10 @@ func before_each() -> void:
 	var content: ContentDB = ContentDB.new()
 	assert_eq(content.load_all(), PackedStringArray())
 	var errors: Array[String] = []
-	_world = ShopBuilder.build(LAYOUT, content, errors)
+	# Isolate synthetic wall/window/doorway geometry from authored segments.
+	# The shipped thin divider has dedicated migration and session coverage.
+	var layout: ShopLayout = LegacyTier1Layout.make()
+	_world = ShopBuilder.build(layout, content, errors)
 	assert_eq(errors, [] as Array[String])
 	_view = VIEW.instantiate() as ShopView
 	(Engine.get_main_loop() as SceneTree).root.add_child(_view)

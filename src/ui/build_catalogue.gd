@@ -117,6 +117,7 @@ var _blueprint_panel: VBoxContainer
 var item_buttons: Dictionary[StringName, Button] = {}
 ## Walls tab cards by WallKindDef id.
 var wall_buttons: Dictionary[StringName, Button] = {}
+var wall_remove_button: Button
 ## Floor tab card (FK-080); its tab hides while the shop has no lot to grow into.
 var floor_button: Button
 ## Rooms tab cards, by SimGrid.Room.
@@ -466,6 +467,12 @@ func _refresh_wall_cards() -> void:
 			row.remove_child(old_button)
 			old_button.free()
 			wall_buttons.erase(id)
+	if _content == null:
+		if wall_remove_button != null:
+			row.remove_child(wall_remove_button)
+			wall_remove_button.free()
+			wall_remove_button = null
+		return
 	for definition: WallKindDef in definitions:
 		var button: Button = wall_buttons.get(definition.id) as Button
 		if button == null:
@@ -479,6 +486,13 @@ func _refresh_wall_cards() -> void:
 		if definition.segment == SimGrid.Segment.DOORWAY:
 			button.tooltip_text += ". On a back or side outside wall, this makes a back door"
 		button.icon = _thumbnails.request(definition.thumbnail_scene)
+	if wall_remove_button == null:
+		wall_remove_button = _tile("WallRemove")
+		wall_remove_button.text = CatalogueText.WALL_REMOVE_LABEL
+		wall_remove_button.tooltip_text = CatalogueText.WALL_REMOVE_TOOLTIP
+		wall_remove_button.pressed.connect(_on_wall_remove_pressed)
+		row.add_child(wall_remove_button)
+	row.move_child(wall_remove_button, row.get_child_count() - 1)
 
 
 ## Main passes the lot's price per floor tile; 0 means there is no lot.
@@ -870,6 +884,12 @@ func _on_floor_pressed() -> void:
 	floor_tool_requested.emit()
 
 
+func _on_wall_remove_pressed() -> void:
+	if visible and _editable and not _paint_visible and mode == BUILD and selected_category == WALLS \
+			and wall_remove_button != null and wall_remove_button.is_visible_in_tree():
+		wall_tool_requested.emit(SimGrid.Segment.NONE)
+
+
 func _on_wall_pressed(id: StringName) -> void:
 	if not visible or _paint_visible or _content == null or selected_category != WALLS \
 			or (is_inside_tree() and not is_visible_in_tree()):
@@ -932,6 +952,8 @@ func _apply_category() -> void:
 			row.move_child(item_buttons[order[index]], index)
 	for id: StringName in wall_buttons:
 		wall_buttons[id].visible = not _paint_visible and mode == BUILD and selected_category == WALLS
+	if wall_remove_button != null:
+		wall_remove_button.visible = not _paint_visible and mode == BUILD and selected_category == WALLS
 	if floor_button != null:
 		floor_button.visible = not _paint_visible and mode == BUILD and selected_category == FLOOR and _floor_price > 0
 	for button: Button in room_buttons:
@@ -1528,6 +1550,8 @@ func _visible_cards() -> Array[Button]:
 	for button: Button in wall_buttons.values():
 		if button.visible:
 			cards.append(button)
+	if wall_remove_button != null and wall_remove_button.visible:
+		cards.append(wall_remove_button)
 	if floor_button != null and floor_button.visible:
 		cards.append(floor_button)
 	for button: Button in room_buttons:

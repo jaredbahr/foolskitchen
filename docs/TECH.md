@@ -2332,6 +2332,33 @@ invalidate the appropriate cached geometry. HUD/Menu presentation is read-only.
   `tests/world/test_delivery_session.gd`, `tests/ui/test_stock_panel.gd`,
   `tests/world/test_stock_session.gd`.
 
+### Thin interior dividers (FK-113)
+
+The starter kitchen's former wall row is now Kitchen floor, with thin wall
+segments on its southern boundary and the original pass gap unchanged. Outer
+shell cells stay thick. Every authored layout was checked (the Tier 1 layout is
+currently the only one). `ShopLayout.legacy_rows` retains the authored terrain
+that snapshots 1–7 did not save.
+
+Shop snapshots use version 8 (version 7 is reserved for furniture looks, #220).
+`ThinDividers.prepare` reconstructs legacy terrain before ordinary item, room,
+wall and finish validation. The pure migration uses the same interior-wall
+classification as `ShopFootprint`; nearest bordering floor determines each new
+cell's room, with Kitchen winning equal-distance ties, then Restroom, Storage
+and Dining, with stable cell order. Only different-room boundaries gain a wall.
+Existing window and doorway frames retain enough thick support to remain valid.
+
+Version 8 records `thin_cells` and `thick_cells`, strictly validated against the
+original interior cells (no duplicates, overlap or shell/street changes). These
+exceptions are normalized into the loaded layout's rows before footprint
+construction, so later Expand edits and reloads keep them. Migration runs only
+for older versions. Finishes and complete wall-decor spans move to a new thin
+face in the same room; unchanged faces take priority and nothing is overwritten.
+A missing or invalid destination refunds half the original price, rounded down.
+The decoder only stages `load_refund` and plain `load_notes`; Main applies a
+refund after complete successful load, before the existing morning checkpoint.
+There is no new save point or SaveSystem migration.
+
 ### 2.4 Save system
 - JSON in `user://saves/`, with a `version` field and migration functions per version.
 - Only sim state is saved, never nodes. The world is rebuilt from sim state on load.
