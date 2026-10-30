@@ -288,7 +288,8 @@ func test_old_v6_and_v7_inside_finish_and_four_field_window_rows_load_without_re
 			if version == 7:
 				row["variant_id"] = String(placement.variant_id)
 			(legacy["items"] as Array).append(row)
-		var rooms: Dictionary[Vector2i, int] = LAYOUT.authored_rooms()
+		# Pre-v8 saves have the thick divider, so their rooms come from that layout.
+		var rooms: Dictionary[Vector2i, int] = LegacyTier1Layout.make().authored_rooms()
 		for cell: Vector2i in rooms:
 			(legacy["rooms"] as Array).append([cell.x, cell.y, String(RoomRules.id_of(rooms[cell]))])
 		var untouched: Dictionary = legacy.duplicate(true)
