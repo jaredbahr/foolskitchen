@@ -106,13 +106,13 @@ Each line ends with its PR number.
 - The game opens on a warm wooden test floor with a 0.5 m build grid (press **G** to toggle). The isometric camera pans with WASD, screen edges or middle-mouse drag, zooms with the wheel, and rotates in 90° steps with Q and E. (#22)
 - Day clock and speed controls: each day runs morning → open → last orders → closed. **Space** pauses or resumes, and **1**, **2** and **3** set 1×, 2× and 4× speed. (#15)
 - An evening report screen (not yet shown during play): profit, income and costs by category, dishes sold with the best seller marked, guests served versus lost, why guests left, and review quotes. (#25)
+- See a daily Sunny, Cloudy or Rain forecast in the HUD and morning Menu, with gentle rain and cooler light outside. The forecast is saved for the day and leaves service unchanged. (#251)
 
 ### Content
 - Placed chairs now have a usable seat. (#48)
 - Tier 1 money numbers as data: $300 starting cash, $40 rent, wages of $30 (cook) and $25 (server), and a daily fridge restock. (#40)
 - Starter content as data: 7 ingredients, 3 recipes (burger, grilled cheese, tomato soup) and 8 items (door, two-seat table, chair, fridge, prep counter, stove, pass counter, potted plant). (#23)
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
-- See a daily Sunny, Cloudy or Rain forecast in the HUD and morning Menu, with gentle rain and cooler light outside. The forecast is saved for the day and leaves service unchanged. (#251)
 
 ### Under the hood
 - Workers check GitHub for an existing PR or claim before starting an issue, claim it with a comment, and stop pushing once a PR is ready, so no work is done twice. (#249)
