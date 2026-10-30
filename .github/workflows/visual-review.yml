@@ -95,6 +95,7 @@ jobs:
           bash tools/screenshot.sh --out=screens/visual-review/lease-short --menu --lease-review=short --speed=0 --frames=12
           bash tools/screenshot.sh --out=screens/visual-review/lease-expand --lease-review=expand --speed=0 --frames=12
           bash tools/screenshot.sh --out=screens/visual-review/staff --staff --speed=0 --frames=12
+          bash tools/screenshot.sh --scene=res://tools/food_review.tscn --out=screens/visual-review/food-service --speed=0 --frames=12,90
           bash tools/screenshot.sh --out=screens/visual-review/icons-review --scene=res://tools/icons_review.tscn --speed=0 --frames=12,60
           OWNER_REVIEW_STAGE=picker bash tools/screenshot.sh --out=screens/visual-review/owner-picker --scene=res://tools/owner_character_review.tscn --speed=0 --frames=60
           OWNER_REVIEW_STAGE=shop bash tools/screenshot.sh --out=screens/visual-review/owner-character --scene=res://tools/owner_character_review.tscn --speed=0 --frames=60

@@ -141,6 +141,7 @@ var _crates_synced: bool = false
 var _crates_tick: int = 0
 ## Smooth motion: people are drawn between their last two sim ticks.
 var motion: MotionSmoother = MotionSmoother.new()
+var food: FoodPresentation
 ## Faded-out figures of people the sim removed while visible (_keep_as_ghost):
 ## [{node, fade, step}].
 var ghosts: Array[Dictionary] = []
@@ -148,6 +149,9 @@ var ghosts: Array[Dictionary] = []
 
 ## Replaces a previous world and its signal bindings without modifying either.
 func show_world(value: SimWorld, maximum_reserve: Rect2i = Rect2i()) -> void:
+	if is_instance_valid(food):
+		food.free()
+	food = null
 	var previous_world: SimWorld = world
 	_neighbourhood_reserve = maximum_reserve
 	_disconnect_grid()
@@ -233,6 +237,16 @@ func show_world(value: SimWorld, maximum_reserve: Rect2i = Rect2i()) -> void:
 	_apply_paint()
 	_connect_grid()
 	_process(0.0)
+
+
+## Read-only kitchen dressing is rebound with the same session as the world.
+func bind_restaurant(restaurant: RestaurantSim, definitions: ContentDB) -> void:
+	if is_instance_valid(food):
+		food.free()
+	food = FoodPresentation.new()
+	food.name = "Food"
+	add_child(food)
+	food.bind(restaurant, definitions, item_nodes)
 
 
 ## The shop's lot (Main, before show_world()): the back alley behind a back
@@ -1247,10 +1261,14 @@ func _on_cells_changed(cells: Array[Vector2i]) -> void:
 		_build_item(world.grid.item(id))
 	_apply_paint()
 	_sync_dirt_spots()
+	if is_instance_valid(food):
+		food.refresh_layout(item_nodes)
 
 
 func _on_item_removed(item: PlacedItem) -> void:
 	_remove_item(item.id)
+	if is_instance_valid(food):
+		food.refresh_layout(item_nodes)
 
 
 func _process(_delta: float) -> void:
@@ -1266,7 +1284,8 @@ func _process(_delta: float) -> void:
 
 func _sync_agents() -> void:
 	var frames: Dictionary[int, AgentPresentationController.Frame] = AgentPresentationController.frames_for(
-		world.agents, world, _dining_seat_heights(), _dining_seat_facings(), _dining_seat_offsets(), _dining_seat_leans())
+		world.agents, world, _dining_seat_heights(), _dining_seat_facings(), _dining_seat_offsets(), _dining_seat_leans(),
+		food.restaurant.orders if is_instance_valid(food) else null)
 	var playback_speed: float = _agent_playback_speed()
 	var alpha: float = interpolation_alpha()
 	var alive: Dictionary[int, bool] = {}
@@ -1320,6 +1339,8 @@ func _sync_agents() -> void:
 		_apply_fade(node, frame.fade)
 		_update_guest_mood(agent, node, frame)
 		_update_regular(agent, node, frame)
+	if is_instance_valid(food):
+		food.sync(frames, agent_nodes)
 	for id: int in agent_nodes.keys():
 		if not alive.has(id):
 			if not _keep_as_ghost(id):

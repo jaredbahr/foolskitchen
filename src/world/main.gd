@@ -234,6 +234,7 @@ func _bind_world_presentation() -> void:
 	var maximum_reserve: Rect2i = ShopFootprint.from_layout(LEASE.layout_for(LAYOUT, 2)).lot.merge(lot)
 	view.show_world(world, maximum_reserve)
 	view.bind_cleanliness(sim.cleanliness)
+	view.bind_restaurant(sim, content)
 	view.bind_dock(sim.dock)
 	var painted_layout: ShopLayout = _loaded_layout if _loaded_layout != null else LAYOUT
 	view.set_paint(content, painted_layout.wall_swatch_id, painted_layout.floor_swatch_id)

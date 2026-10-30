@@ -6,7 +6,7 @@ func test_starter_data_loads_without_validation_errors() -> void:
 	var db: ContentDB = ContentDB.new()
 	assert_eq(db.load_all().size(), 0)
 	assert_eq(db.ingredients().size(), 22)
-	assert_eq(db.recipes().size(), 18)
+	assert_eq(db.recipes().size(), _recipe_resource_count("res://data/recipes"))
 	assert_eq(db.items().size(), 67)
 
 
@@ -61,7 +61,7 @@ func test_reloading_does_not_duplicate_definitions() -> void:
 	var db: ContentDB = _starter_db()
 	assert_eq(db.load_all().size(), 0)
 	assert_eq(db.ingredients().size(), 22)
-	assert_eq(db.recipes().size(), 18)
+	assert_eq(db.recipes().size(), _recipe_resource_count("res://data/recipes"))
 	assert_eq(db.items().size(), 67)
 
 
@@ -455,3 +455,17 @@ func test_fryer_and_oven_recipes_have_data_owned_prices_levels_sections_and_step
 		assert_eq(recipe.ingredient_cost(), row[6])
 		assert_eq(recipe.theme_tags, [&"diner"] as Array[StringName])
 		assert_false(recipe.is_drink())
+
+
+func _recipe_resource_count(folder: String) -> int:
+	var directory: DirAccess = DirAccess.open(folder)
+	assert_not_null(directory)
+	if directory == null:
+		return 0
+	var count: int = 0
+	for file: String in directory.get_files():
+		if file.ends_with(".tres"):
+			count += 1
+	for child: String in directory.get_directories():
+		count += _recipe_resource_count(folder.path_join(child))
+	return count
