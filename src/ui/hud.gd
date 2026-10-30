@@ -361,16 +361,16 @@ func _on_settings_pressed() -> void:
 func _style_header() -> void:
 	var roles: Dictionary[String, StringName] = {"Speed0": &"pause", "Speed1": &"speed_1",
 		"Speed2": &"speed_2", "Speed4": &"speed_4", "Build": &"build", "Menu": &"menu",
-		"Staff": &"staff", "Context": &"open_shop", "Settings": &"settings", "Stock": &"stock"}
+		"Staff": &"chef", "Paint": &"paint", "Context": &"open_shop", "Settings": &"settings", "Stock": &"stock"}
 	for child: Node in (get_node("Top/Row") as Container).get_children():
 		var button: Button = child as Button
 		if button == null:
 			continue
 		if roles.has(String(button.name)):
 			var label: String = "Pause" if button == get_node("Top/Row/Speed0") else ("Settings" if button == _settings_button else button.text)
-			# Stock is icon-only so the whole header still fits one row at 1600 px.
+			# Stock and Paint are icon-only so the header still fits one row at 1600 px.
 			IconStyle.configure_button(button, roles[String(button.name)], label, button.tooltip_text,
-				IconCatalogue.TOP_BAR_SIZE, button == _settings_button or String(button.name) in ["Speed0", "Stock"])
+				IconCatalogue.TOP_BAR_SIZE, button == _settings_button or String(button.name) in ["Speed0", "Stock", "Paint"])
 		IconStyle.compact_button(button)
 	IconStyle.decorate_label(_reputation_label, &"reputation", IconCatalogue.TOP_BAR_SIZE)
 	# Reuse the warm theme's existing cream, ink and accent for the warning chip.

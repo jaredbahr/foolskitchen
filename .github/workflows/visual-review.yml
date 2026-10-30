@@ -21,7 +21,7 @@ jobs:
   capture:
     name: Default, cutaway and inspection views
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     env:
       LIBGL_ALWAYS_SOFTWARE: 'true'
       GALLIUM_DRIVER: llvmpipe
@@ -93,6 +93,7 @@ jobs:
           bash tools/screenshot.sh --out=screens/visual-review/lease-short --menu --lease-review=short --speed=0 --frames=12
           bash tools/screenshot.sh --out=screens/visual-review/lease-expand --lease-review=expand --speed=0 --frames=12
           bash tools/screenshot.sh --out=screens/visual-review/staff --staff --speed=0 --frames=12
+          bash tools/screenshot.sh --out=screens/visual-review/icons-review --scene=res://tools/icons_review.tscn --speed=0 --frames=12,60
           OWNER_REVIEW_STAGE=picker bash tools/screenshot.sh --out=screens/visual-review/owner-picker --scene=res://tools/owner_character_review.tscn --speed=0 --frames=60
           OWNER_REVIEW_STAGE=shop bash tools/screenshot.sh --out=screens/visual-review/owner-character --scene=res://tools/owner_character_review.tscn --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/report --report --open --fast=100 --speed=0 --frames=60

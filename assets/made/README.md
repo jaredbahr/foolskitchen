@@ -2,15 +2,15 @@
 
 These assets are made for the named issues and follow `docs/ART_STYLE.md` §8. They do not modify the Kenney source kits.
 
-## #118 pending integration
-These icon entries are carried forward from issue #118; they are not part of PR #147.
+## Icons (#118)
+The two named icons fill gaps in the approved Kenney Game Icons pack. Their white, filled silhouettes use the pack's broad 18–20 px transparent margins and rounded corners; they add no outlines, gradients or fine details.
 
 | Asset | Issue | Style reference |
 |---|---|---|
-| `icons/chefHat.svg` and `icons/chefHat.png` | #118 | Kenney Game Icons `home.png`, `star.png` and `menuList.png`: one white, rounded silhouette with broad transparent margins. |
-| `icons/paintBrush.svg` and `icons/paintBrush.png` | #118 | Kenney Game Icons `wrench.png`, `home.png` and `menuList.png`: a thick diagonal tool silhouette with rounded ends and no outlines or gradients. |
+| `icons/chefHat.svg` and `icons/chefHat.png` | #118 | Kenney Game Icons `home.png`, `star.png` and `gear.png`: a broad, rounded crown and a solid hat band, with the same white fill and transparent margins. |
+| `icons/paintBrush.svg` and `icons/paintBrush.png` | #118 | Kenney Game Icons `wrench.png`, `home.png` and `gear.png`: a thick diagonal handle, broad brush head and rounded ends, with no outlines or gradients. |
 
-The SVG files are the editable sources; the 100 × 100 PNG files are their raster exports.
+The SVG files are the hand-authored editable sources; the 100 × 100 transparent PNG files are their Inkscape raster exports. To export either source again, run `inkscape assets/made/icons/<name>.svg --export-filename=assets/made/icons/<name>.png --export-width=100 --export-height=100`. The source comments record the four reference bounds and filled areas. The files use no art from another source and leave the Kenney kit unchanged.
 
 ## Diner booth (#147)
 The white booth pairs the Kenney Furniture Kit `benchCushion` seat cushion and `loungeSofa` backrest proportions.
