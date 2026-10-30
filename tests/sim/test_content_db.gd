@@ -7,7 +7,7 @@ func test_starter_data_loads_without_validation_errors() -> void:
 	assert_eq(db.load_all().size(), 0)
 	assert_eq(db.ingredients().size(), 22)
 	assert_eq(db.recipes().size(), 18)
-	assert_eq(db.items().size(), 57)
+	assert_eq(db.items().size(), 59)
 
 
 func test_lookups_find_each_kind_and_unknown_ids_return_null() -> void:
@@ -46,14 +46,14 @@ func test_lists_are_sorted_and_do_not_expose_index_arrays() -> void:
 		&"coat_rack_standing", &"coffee_machine", &"corner_cabinet", &"cross_table", &"cushioned_bench", &"diner_booth", &"diner_stool",
 		&"door", &"drinks_fridge", &"drinks_shelf", &"freezer", &"fridge", &"fryer", &"glass_table",
 		&"lounge_chair", &"menu_board", &"modern_chair", &"modern_frame_chair", &"neon_open_sign", &"oven", &"pass_counter", &"plant_small_1",
-		&"plant_small_2", &"plant_small_3", &"potted_plant", &"prep_cabinet", &"prep_counter", &"round_table",
+		&"plant_small_2", &"plant_small_3", &"potted_plant", &"prep_cabinet", &"prep_counter", &"restroom_mirror", &"round_table",
 		&"rounded_chair", &"rug_rectangle", &"rug_round", &"rug_square", &"side_table", &"sink",
 		&"speaker", &"square_bar_stool", &"storage_shelf", &"stove", &"table_2", &"table_4", &"television_vintage", &"toilet",
-		&"waiting_bench", &"wall_art_peaks", &"wall_art_sunrise", &"wooden_chair",
+		&"waiting_bench", &"wall_art_peaks", &"wall_art_sunrise", &"wall_hand_dryer", &"wooden_chair",
 	])
 	var copy: Array[ItemDef] = db.items()
 	copy.clear()
-	assert_eq(db.items().size(), 57)
+	assert_eq(db.items().size(), 59)
 
 
 func test_reloading_does_not_duplicate_definitions() -> void:
@@ -61,7 +61,7 @@ func test_reloading_does_not_duplicate_definitions() -> void:
 	assert_eq(db.load_all().size(), 0)
 	assert_eq(db.ingredients().size(), 22)
 	assert_eq(db.recipes().size(), 18)
-	assert_eq(db.items().size(), 57)
+	assert_eq(db.items().size(), 59)
 
 
 func test_recursive_resource_discovery_returns_sorted_original_tres_names() -> void:
@@ -74,7 +74,7 @@ func test_recursive_resource_discovery_returns_sorted_original_tres_names() -> v
 		if path.begins_with("res://data/ingredients/") or path.begins_with("res://data/recipes/") \
 				or path.begins_with("res://data/items/"):
 			content_paths += 1
-	assert_eq(content_paths, 97)
+	assert_eq(content_paths, 99)
 	assert_true(paths.has("res://data/ingredients/bun.tres"))
 	assert_true(paths.has("res://data/recipes/burger.tres"))
 	assert_true(paths.has("res://data/items/table_2.tres"))

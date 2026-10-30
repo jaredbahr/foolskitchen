@@ -457,3 +457,72 @@ func test_hud_layout_uses_only_actual_main_without_other_capture_modes() -> void
 		assert_false(String(CAPTURE.hud_layout_options(arguments)["error"]).is_empty(), argument)
 	var main: PackedStringArray = PackedStringArray(["--hud-layout", "--speed=0", "--frames=12,90", "--scene=res://src/world/main.tscn", "--out=screens/hud"])
 	assert_eq(CAPTURE.hud_layout_options(main)["error"], "")
+
+
+func test_lease_review_accepts_exactly_one_declared_state_and_one_frame() -> void:
+	for mode: String in ["offer", "short", "expand"]:
+		var arguments: PackedStringArray = PackedStringArray(["--lease-review=" + mode, "--speed=0", "--frames=12"])
+		if mode != "expand":
+			arguments.append("--menu")
+		var accepted: Dictionary = CAPTURE.LEASE_REVIEW.options(arguments)
+		assert_eq(accepted["mode"], mode)
+		assert_eq(accepted["error"], "")
+		arguments.append_array(["--out=screens/lease", "--out=screens/lease", "--scene=res://src/world/main.tscn"])
+		assert_eq(CAPTURE.LEASE_REVIEW.options(arguments)["error"], "")
+		for extra: String in ["--lease-review=offer", "--capture-set=three", "--frames=12,60", "--frames=12", "--speed=0",
+				"--open", "--fast=1", "--quarter=0", "--staff", "--stock", "--build=green", "--paint", "--loan-review",
+				"--milestone-review", "--catalogue-review=rustic", "--diner-review", "--hud-layout", "--scene=res://other.tscn", "--unknown"]:
+			var invalid: PackedStringArray = arguments.duplicate()
+			invalid.append(extra)
+			assert_false(String(CAPTURE.LEASE_REVIEW.options(invalid)["error"]).is_empty(), mode + ": " + extra)
+	for arguments: PackedStringArray in [PackedStringArray(["--lease-review"]), PackedStringArray(["--lease-review=all"]),
+			PackedStringArray(["--lease-review=offer", "--speed=0", "--frames=12"]),
+			PackedStringArray(["--lease-review=expand", "--menu", "--speed=0", "--frames=12"])]:
+		assert_false(String(CAPTURE.LEASE_REVIEW.options(arguments)["error"]).is_empty())
+	assert_eq(CAPTURE.LEASE_REVIEW.options(PackedStringArray(["--menu", "--speed=0", "--frames=12"]))["mode"], "")
+
+
+func test_lease_capture_prepares_real_offer_refusal_and_purchase_without_changing_default_recipes() -> void:
+	var scene: PackedScene = load("res://src/world/main.tscn") as PackedScene
+	for mode: String in ["offer", "short", "expand"]:
+		var main: Node = scene.instantiate()
+		main.set("use_saves", false)
+		main.set("new_game_seed_override", 1)
+		var tree: SceneTree = Engine.get_main_loop() as SceneTree
+		tree.root.add_child(main)
+		main.call("start")
+		Clock.set_speed(0)
+		var fixture: Dictionary = CAPTURE.LEASE_REVIEW.prepare(main, tree.root, mode)
+		assert_eq(fixture["error"], "", mode)
+		if fixture["error"] == "":
+			assert_eq(fixture["starting_enabled_recipes"], ["burger", "grilled_cheese", "tomato_soup"] as Array[String])
+			var state: Dictionary = CAPTURE.LEASE_REVIEW.evidence(main, tree.root, fixture)
+			assert_eq(state["enabled_recipes"], fixture["starting_enabled_recipes"])
+			assert_eq(state["owner_level"], 3)
+			assert_eq(state["world_tick"], 0)
+			assert_false(state["use_saves"])
+			assert_eq(state["cash"], 5000 if mode == "expand" else 299 if mode == "short" else 301)
+			assert_eq(state["property_tier"], 2 if mode == "expand" else 1)
+			assert_eq(state["lot"], fixture["lot_after"] if mode == "expand" else fixture["lot_before"])
+			assert_eq(fixture["purchase_attempted"], mode != "offer")
+			assert_eq(fixture["purchase_accepted"], mode == "expand")
+			if mode == "short":
+				assert_eq(state["refusal"], "Not enough cash for the lease deposit")
+				assert_true(state["button_disabled"])
+			elif mode == "expand":
+				assert_eq(state["category"], "floor")
+				assert_eq(state["view_lot"], state["lot"])
+			else:
+				assert_true(String(state["warning"]).contains("Leaves $1"))
+				assert_true(state["warning_amber"])
+				assert_false(state["button_disabled"])
+			var before: Dictionary = (main.get("shop_editor") as ShopEditor).to_dict()
+			var cash: int = Economy.cash
+			assert_false(String(CAPTURE.LEASE_REVIEW.prepare(main, tree.root, mode)["error"]).is_empty(), "a capture cannot prepare a second hidden state")
+			assert_eq((main.get("shop_editor") as ShopEditor).to_dict(), before)
+			assert_eq(Economy.cash, cash)
+		tree.root.remove_child(main)
+		main.free()
+		Clock.set_speed(0)
+		Economy.reset(0)
+		GameState.new_run(1)

@@ -30,9 +30,9 @@ enum PlaceResult { OK, OUT_OF_BOUNDS, NOT_FLOOR, OVERLAPS, INVALID_LAYER, INVALI
 ## stored. Kitchen and Storage are staff-only: guests never walk through them.
 enum Room { DINING, KITCHEN, RESTROOM, STORAGE }
 
-## What stands on a cell edge. WALL and WINDOW block movement across the edge;
+## What stands on a cell edge. Walls, windows and stall partitions block crossing;
 ## DOORWAY is open. Any segment blocks diagonal steps past its end posts.
-enum Segment { NONE, WALL, DOORWAY, WINDOW }
+enum Segment { NONE, WALL, DOORWAY, WINDOW, STALL_PARTITION }
 
 ## Emitted after cells change walkability (place/remove/terrain edits).
 ## Agents whose path crosses one of these cells must re-plan.
@@ -903,7 +903,7 @@ func set_segment(edge: Vector3i, kind: Segment) -> bool:
 func set_segments(changes: Dictionary[Vector3i, int]) -> bool:
 	for edge: Vector3i in changes:
 		var kind: int = changes[edge]
-		if not edge_in_bounds(edge) or kind < Segment.NONE or kind > Segment.WINDOW:
+		if not edge_in_bounds(edge) or kind < Segment.NONE or kind > Segment.STALL_PARTITION:
 			return false
 	var touched: Array[Vector2i] = []
 	for edge: Vector3i in changes:
@@ -944,10 +944,10 @@ func has_segments() -> bool:
 	return not _segments.is_empty()
 
 
-## True when a wall or window stands between two orthogonally adjacent cells.
+## True when a wall, window or stall partition blocks two adjacent cells.
 func edge_blocked(a: Vector2i, b: Vector2i) -> bool:
 	var kind: Segment = segment(edge_between(a, b))
-	return kind == Segment.WALL or kind == Segment.WINDOW
+	return kind in [Segment.WALL, Segment.WINDOW, Segment.STALL_PARTITION]
 
 
 ## Only edges with walkable-shell terrain on both sides take part in pathing,
@@ -965,7 +965,7 @@ func _refresh_edge(edge: Vector3i) -> void:
 				inside = false
 	if inside:
 		_edge_occupied[edge] = true
-		if kind == Segment.WALL or kind == Segment.WINDOW:
+		if kind in [Segment.WALL, Segment.WINDOW, Segment.STALL_PARTITION]:
 			_edge_blocking[edge] = true
 		else:
 			_edge_blocking.erase(edge)

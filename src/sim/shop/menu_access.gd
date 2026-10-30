@@ -6,14 +6,15 @@ extends RefCounted
 const NO_DISH: String = "Staff must be able to reach a stove or prep counter"
 
 
-static func cookable(grid: SimGrid, recipes: Array[RecipeDef], level: int = 0) -> Array[RecipeDef]:
+static func cookable(grid: SimGrid, recipes: Array[RecipeDef], level: int = 0,
+		tier: int = 1) -> Array[RecipeDef]:
 	var state: Dictionary = _state(grid)
 	var result: Array[RecipeDef] = []
 	if not state["fridge"] or not state["pass"]:
 		return result
 	var reachable: Dictionary[StringName, bool] = state["reachable"]
 	for recipe: RecipeDef in recipes:
-		if recipe.unlock_tier != 1 or (level > 0 and recipe.unlock_level > level):
+		if recipe.unlock_tier > tier or (level > 0 and recipe.unlock_level > level):
 			continue
 		var available: bool = true
 		for station: StringName in _requirements(recipe):
@@ -27,9 +28,9 @@ static func cookable(grid: SimGrid, recipes: Array[RecipeDef], level: int = 0) -
 
 ## Only dishes a proposal newly takes away are named. Kept duplicate stations
 ## count normally, and a dish that was already unavailable is not new advice.
-static func lost(before: SimGrid, after: SimGrid, enabled: Array[RecipeDef]) -> Array[RecipeDef]:
-	var previous: Array[RecipeDef] = cookable(before, enabled)
-	var next: Array[RecipeDef] = cookable(after, enabled)
+static func lost(before: SimGrid, after: SimGrid, enabled: Array[RecipeDef], tier: int = 1) -> Array[RecipeDef]:
+	var previous: Array[RecipeDef] = cookable(before, enabled, 0, tier)
+	var next: Array[RecipeDef] = cookable(after, enabled, 0, tier)
 	var result: Array[RecipeDef] = []
 	for recipe: RecipeDef in previous:
 		if not next.has(recipe):
