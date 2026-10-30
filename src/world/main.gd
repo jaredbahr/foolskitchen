@@ -438,7 +438,6 @@ func _on_header_layout_changed() -> void:
 		panel.offset_top = top
 	if _settings_panel != null:
 		_settings_panel.set_panel_top(top)
-	refresh_hints()
 
 
 func _ready() -> void:
