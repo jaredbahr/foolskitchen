@@ -7,6 +7,7 @@ signal enable_requested(recipe_id: StringName, enabled: bool)
 signal price_requested(recipe_id: StringName, price: int)
 signal settings_requested()
 signal goals_requested()
+signal quit_to_title_requested()
 ## Morning opening-hours request (FK-083); the session checks the limits.
 signal hours_requested(open_minute: int, close_minute: int)
 
@@ -319,6 +320,9 @@ func _bind_nodes() -> void:
 	_build_recipe_tree()
 	IconStyle.configure_button(_settings_button, &"settings", "Settings", "Audio, display and controls", IconCatalogue.PANEL_SIZE)
 	_settings_button.pressed.connect(_on_settings_pressed)
+	var quit_button: Button = %QuitToTitleButton
+	quit_button.text = TitleText.QUIT_TO_TITLE
+	quit_button.pressed.connect(_on_quit_to_title_pressed)
 	_goals_button.pressed.connect(_on_goals_pressed)
 
 
@@ -376,6 +380,10 @@ func _add_separator(parent: Node) -> void:
 
 func _on_settings_pressed() -> void:
 	settings_requested.emit()
+
+
+func _on_quit_to_title_pressed() -> void:
+	quit_to_title_requested.emit()
 
 
 func _on_goals_pressed() -> void:
