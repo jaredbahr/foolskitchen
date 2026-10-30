@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="RecipeDef" load_steps=9 format=3]
+[gd_resource type="Resource" script_class="RecipeDef" load_steps=10 format=3]
 
 [ext_resource type="Script" path="res://src/sim/content/recipe_def.gd" id="1_recipe"]
 [ext_resource type="Script" path="res://src/sim/content/ingredient_def.gd" id="2_ingredient"]
@@ -6,6 +6,7 @@
 [ext_resource type="Resource" path="res://data/ingredients/dough.tres" id="ingredient_dough"]
 [ext_resource type="Resource" path="res://data/ingredients/beef_patty.tres" id="ingredient_beef_patty"]
 [ext_resource type="Resource" path="res://data/ingredients/tomato.tres" id="ingredient_tomato"]
+[ext_resource type="PackedScene" path="res://assets/kenney/food/pie.glb" id="view_model"]
 
 [sub_resource type="Resource" id="Step_prep"]
 script = ExtResource("3_step")
@@ -19,6 +20,7 @@ duration_ticks = 90
 
 [resource]
 script = ExtResource("1_recipe")
+view_model = ExtResource("view_model")
 id = &"savoury_pie"
 unlock_from = &"tomato_soup"
 display_name = "Savoury pie"
