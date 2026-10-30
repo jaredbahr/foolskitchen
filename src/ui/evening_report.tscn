@@ -51,6 +51,13 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 36
 text = "$0 profit"
 horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="ProfitBasis" type="Label" parent="Panel/Scroll/Content"]
+layout_mode = 2
+text = "Stock bought or spoiled, loans and milestone bonuses are outside operating profit."
+horizontal_alignment = 1
+autowrap_mode = 3
 
 [node name="LevelUpCallout" type="HBoxContainer" parent="Panel/Scroll/Content"]
 visible = false
@@ -109,6 +116,11 @@ layout_mode = 2
 size_flags_horizontal = 3
 autowrap_mode = 3
 
+[node name="StockRows" type="GridContainer" parent="Panel/Scroll/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+columns = 2
+
 [node name="MilestoneHeading" type="Label" parent="Panel/Scroll/Content"]
 unique_name_in_owner = true
 visible = false
@@ -121,6 +133,13 @@ unique_name_in_owner = true
 visible = false
 layout_mode = 2
 size_flags_horizontal = 3
+
+[node name="CashChange" type="Label" parent="Panel/Scroll/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "Cash change today: $0"
+autowrap_mode = 3
 
 [node name="ReviewHeading" type="Label" parent="Panel/Scroll/Content"]
 layout_mode = 2

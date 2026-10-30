@@ -29,6 +29,8 @@ var _header: Label
 var _profit: Label
 var _income: GridContainer
 var _costs: GridContainer
+var _stock: GridContainer
+var _cash_change: Label
 var _loan_notice: Label
 var _dishes: GridContainer
 var _guests: Label
@@ -66,11 +68,26 @@ func show_report(report: DayReport) -> void:
 	_restaurant_name.text = report.restaurant_name
 	(get_node("Panel/Scroll/Content/ReviewHeading") as Label).text = "Reviews of %s" % report.restaurant_name
 	_header.text = "Day %d: Closed" % report.day
-	var operating_profit: int = report.operating_profit()
-	_profit.text = "%s operating profit" % _money(operating_profit)
-	_profit.add_theme_color_override("font_color", PROFIT_GREEN if operating_profit >= 0 else LOSS_RED)
+	if report.operating_profit_recorded():
+		var operating_profit: int = report.operating_profit()
+		_profit.text = "%s operating profit" % _money(operating_profit)
+		_profit.add_theme_color_override("font_color", PROFIT_GREEN if operating_profit >= 0 else LOSS_RED)
+	else:
+		_profit.text = "Operating profit not recorded"
+		_profit.remove_theme_color_override("font_color")
 	_fill_money(_income, report.income, "No income today")
-	_fill_money(_costs, report.costs, "No costs today")
+	var displayed_costs: Dictionary = report.costs.duplicate()
+	if report.stock_values_recorded:
+		displayed_costs.erase(Ledger.INGREDIENTS)
+	_fill_money(_costs, displayed_costs, "No costs today" if not report.stock_values_recorded else "")
+	if report.stock_values_recorded:
+		_add_row(_costs, "Cost of food served", _recorded_money(report.food_cost, report.food_cost_recorded))
+	_clear(_stock)
+	_add_row(_stock, "Stock bought today", _recorded_money(report.stock_bought,
+		report.stock_values_recorded and report.stock_bought_recorded))
+	_add_row(_stock, "Spoiled stock", _recorded_money(report.spoiled_stock, report.spoiled_stock_recorded))
+	_add_row(_stock, "Stock on hand worth", _recorded_money(report.stock_on_hand, report.stock_on_hand_recorded))
+	_cash_change.text = "Cash change today: %s" % _money(report.profit())
 	_loan_notice.text = LOAN_INTRODUCTION if report.loan_first_advance else ""
 	_loan_notice.visible = report.loan_first_advance
 	_fill_milestones(DayReport.public_milestones(report.milestones_reached))
@@ -150,6 +167,8 @@ func _bind_nodes() -> void:
 	_profit = %Profit
 	_income = %IncomeRows
 	_costs = %CostRows
+	_stock = %StockRows
+	_cash_change = %CashChange
 	_loan_notice = %LoanNotice
 	_dishes = %DishRows
 	_guests = %Guests
@@ -244,7 +263,7 @@ func _fill_money(rows: GridContainer, amounts: Dictionary, empty_text: String) -
 	_clear(rows)
 	for id: String in _sorted_ids(amounts):
 		_add_row(rows, String(MONEY_LABELS.get(StringName(id), id.capitalize())), _money(int(amounts[StringName(id)])))
-	if amounts.is_empty():
+	if amounts.is_empty() and not empty_text.is_empty():
 		_add_row(rows, empty_text, "")
 
 
@@ -300,6 +319,10 @@ func _money(amount: int) -> String:
 			grouped += ","
 		grouped += digits[index]
 	return ("-$" if amount < 0 else "$") + grouped
+
+
+func _recorded_money(amount: int, recorded: bool) -> String:
+	return _money(amount) if recorded else "Not recorded"
 
 
 func _on_next_day_pressed() -> void:

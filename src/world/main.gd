@@ -60,6 +60,7 @@ var _vibe_experiences: Dictionary[String, int] = {}
 var shown_report: DayReport = null
 ## Dishes sold today (recipe id -> count), for the evening report.
 var dishes_sold_today: Dictionary[StringName, int] = {}
+var _food_cost_today: Dictionary = PurchaseBasis.zero()
 ## Closed-phase edits are persisted by the next normal morning autosave.
 var shop_editor: ShopEditor
 ## Undo/redo of this morning's (or evening's) edits (FK-085). Cleared at every
@@ -1958,6 +1959,22 @@ func build_report(day: int) -> DayReport:
 			report.income[category] = amount
 		elif amount < 0:
 			report.costs[category] = -amount
+	report.stock_values_recorded = true
+	report.food_cost = int(_food_cost_today["cost"])
+	report.food_cost_recorded = bool(_food_cost_today["recorded"])
+	# Gross purchases remain visible even when a cancelled order was refunded.
+	var bought: Dictionary = PurchaseBasis.zero()
+	for entry: Dictionary in Economy.ledger.entries_for_day(day):
+		if entry["category"] == Ledger.INGREDIENTS and int(entry["amount"]) < 0:
+			PurchaseBasis.combine(bought, {"cost": -int(entry["amount"]), "recorded": true})
+	report.stock_bought = int(bought["cost"])
+	report.stock_bought_recorded = bool(bought["recorded"])
+	var spoiled: Dictionary = Economy.stock.spoilage_value(day)
+	report.spoiled_stock = int(spoiled["cost"])
+	report.spoiled_stock_recorded = bool(spoiled["recorded"])
+	var on_hand: Dictionary = Economy.stock.value()
+	report.stock_on_hand = int(on_hand["cost"])
+	report.stock_on_hand_recorded = bool(on_hand["recorded"])
 	report.dishes_sold = dishes_sold_today.duplicate()
 	report.customers_served = sim.served_today
 	report.customers_lost = sim.lost_today
@@ -2986,7 +3003,7 @@ func _milestone_observation(operating_profit: int) -> MilestoneDay:
 func _refresh_goals(force: bool = false) -> void:
 	if not is_goals_visible() or sim == null:
 		return
-	var observation: MilestoneDay = _milestone_observation(build_report(Clock.sim.day).operating_profit())
+	var observation: MilestoneDay = _milestone_observation(build_report(Clock.sim.day).purchase_basis_operating_profit())
 	var progress: Dictionary[StringName, float] = milestones.progress_values(milestone_catalogue, observation)
 	var completed: Array[StringName] = milestones.completed_ids()
 	var snapshot: Dictionary = {"catalogue": milestone_catalogue.get_instance_id() if milestone_catalogue != null else 0,
@@ -3325,6 +3342,7 @@ func _begin_morning() -> void:
 	_staff_panel.set_phase(Clock.sim.phase)
 	_staff_panel.set_morning(Clock.sim.day, _staff_notices)
 	dishes_sold_today.clear()
+	_food_cost_today = PurchaseBasis.zero()
 	shown_report = null
 	_sold_out_shown = -1
 	_refresh_sold_out_hud()
@@ -3475,7 +3493,7 @@ func _trim_cart() -> void:
 func _deliver_due(morning_setup: bool = false) -> bool:
 	if deliveries.is_empty() or Clock.sim == null:
 		return false
-	var lines: Array[Dictionary] = deliveries.take_due(Clock.sim, morning_setup)
+	var lines: Array[Dictionary] = deliveries.take_due_valued(Clock.sim, morning_setup)
 	if lines.is_empty():
 		return false
 	# During service a delivery person brings it in through the back door and
@@ -3989,6 +4007,10 @@ func _charge_closing_costs() -> void:
 
 
 func _on_customer_paid(customer: CustomerAgent, order: Order, amount: int) -> void:
+	if not order.paid:
+		order.paid = true
+		PurchaseBasis.combine(_food_cost_today, {"cost": order.ingredient_cost,
+			"recorded": order.ingredient_cost_recorded})
 	Economy.add_cash(amount, Ledger.SALE)
 	var tip: int = sim.regular_tip(customer, order)
 	if tip > 0:

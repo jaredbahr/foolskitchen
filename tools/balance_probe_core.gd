@@ -69,6 +69,7 @@ static func run_cli(tree: SceneTree, args: PackedStringArray) -> int:
 	lines.append("|---|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|")
 	var staff_lines: PackedStringArray = PackedStringArray()
 	var summary_lines: PackedStringArray = PackedStringArray()
+	var failed: bool = false
 	var observe_staff: bool = options["staff_growth"] or options["auto_accept_raises"]
 	if observe_staff:
 		staff_lines.append("\nStaff growth at service close (%s):" % (
@@ -87,13 +88,24 @@ static func run_cli(tree: SceneTree, args: PackedStringArray) -> int:
 		seeds.append(int(value))
 	for setup_name: String in setups:
 		var combined: Dictionary = _empty_stats()
+		var completed: int = 0
 		for seed_value: int in seeds:
 			var row: Dictionary = run_case(tree, seed_value, setup_name, options["days"],
 				options["extra_cook_skill"], options["gap"], options["price"], options["staff_growth"],
-				options["auto_accept_raises"])
+				options["auto_accept_raises"], options["daily"])
 			if row.has("error"):
 				printerr("%s, seed %d: %s" % [setup_name, seed_value, row["error"]])
-				return 2
+				if not options["daily"]:
+					return 2
+				failed = true
+				print("PROBE_CASE ", JSON.stringify({"setup": setup_name, "seed": seed_value,
+					"days": options["days"], "error": row["error"]}))
+				lines.append("| %s | %d | FAILED: %s |" % [setup_name, seed_value, row["error"]])
+				continue
+			completed += 1
+			if options["daily"]:
+				print("PROBE_CASE ", JSON.stringify({"setup": setup_name, "seed": seed_value,
+					"days": options["days"], "stats": row}))
 			lines.append(_format_row(setup_name, str(seed_value), row, 1))
 			if observe_staff:
 				for staff_row: Dictionary in row["staff_growth"]:
@@ -101,11 +113,15 @@ static func run_cli(tree: SceneTree, args: PackedStringArray) -> int:
 				for summary: Dictionary in row["staff_summary"]:
 					summary_lines.append(_format_staff_summary(setup_name, seed_value, summary))
 			_add_stats(combined, row)
-		lines.append(_format_row(setup_name, "mean", combined, seeds.size()))
+		if completed == seeds.size():
+			lines.append(_format_row(setup_name, "mean", combined, seeds.size()))
+		else:
+			lines.append("| %s | mean | UNAVAILABLE: %d/%d cases completed |" % [
+				setup_name, completed, seeds.size()])
 	lines.append_array(staff_lines)
 	lines.append_array(summary_lines)
 	print("\n".join(lines))
-	return 0
+	return 2 if failed else 0
 
 
 ## Runs the production Main scene with saving disabled, like the multi-day
@@ -113,7 +129,8 @@ static func run_cli(tree: SceneTree, args: PackedStringArray) -> int:
 static func run_case(tree: SceneTree, seed_value: int, setup_name: String, days: int,
 		extra_cook_skill: int = 3, gap: Vector2i = Vector2i(-1, -1),
 		price: float = 1.0, trace_staff_growth: bool = false,
-		auto_accept_raises: bool = false) -> Dictionary:
+		auto_accept_raises: bool = false, observe_daily: bool = false,
+		capture_control: bool = false) -> Dictionary:
 	if tree == null or days < 1 or not ProbeSetups.names().has(setup_name):
 		return {"error": "Invalid probe case"}
 	var scene: PackedScene = load("res://src/world/main.tscn") as PackedScene
@@ -146,6 +163,8 @@ static func run_case(tree: SceneTree, seed_value: int, setup_name: String, days:
 		return {"error": "Cannot apply the requested set-up"}
 	sim.start_day()
 	var totals: Dictionary = _empty_stats()
+	if observe_daily:
+		totals["daily"] = []
 	var observe_staff: bool = trace_staff_growth or auto_accept_raises
 	var staff_level_ups: Array[Dictionary] = []
 	var accepted_requests: int = 0
@@ -214,6 +233,19 @@ static func run_case(tree: SceneTree, seed_value: int, setup_name: String, days:
 				reasons[reason] = int(reasons.get(reason, 0)) + sim.leave_reasons_today[reason]
 		totals["reasons"] = reasons
 		totals["cash"] = Economy.cash
+		# Observe settled books before the next morning expires stock or prunes
+		# terminal orders. No stock operation, RNG lookup or planner runs here.
+		if observe_daily:
+			var before: Dictionary = _control_snapshot(main, sim) if capture_control else {}
+			var daily: Dictionary = _daily_snapshot(sim, report, book)
+			if capture_control and before != _control_snapshot(main, sim):
+				_free_main(main)
+				return {"error": "Daily observer changed session state on day %d" % report.day}
+			if daily.has("error"):
+				_free_main(main)
+				return daily
+			var daily_rows: Array = totals["daily"]
+			daily_rows.append(daily)
 		if day_index + 1 < days and not Clock.sim.next_day():
 			_free_main(main)
 			return {"error": "The next morning did not start"}
@@ -221,8 +253,123 @@ static func run_case(tree: SceneTree, seed_value: int, setup_name: String, days:
 		totals["staff_level_ups"] = staff_level_ups
 		totals["staff_summary"] = _staff_summary(main.get("staff_roster") as StaffRoster, staff_level_ups)
 		totals["accepted_requests"] = accepted_requests
+	if capture_control:
+		totals["control_state"] = _control_snapshot(main, sim)
 	_free_main(main)
 	return totals
+
+
+## Hand-run evidence only. Missing basis remains null instead of presenting
+## a legacy report's zero defaults as a measured cost or profit.
+static func _daily_snapshot(sim: RestaurantSim, report: DayReport,
+		book: Dictionary) -> Dictionary:
+	var categories: Dictionary = {}
+	var signed_sum: int = 0
+	for category: Variant in book:
+		categories[String(category)] = int(book[category])
+		signed_sum += int(book[category])
+	var cash_change: int = Economy.ledger.day_profit(report.day)
+	if signed_sum != cash_change or report.profit() != cash_change:
+		return {"error": "Cash accounting differs on day %d" % report.day}
+	var orders: Array[Dictionary] = _order_snapshot(sim)
+	var sold_cost: int = 0
+	var sold_recorded: bool = true
+	var paid_count: int = 0
+	for order: Dictionary in orders:
+		if order["paid"]:
+			paid_count += 1
+			sold_cost += int(order["ingredient_cost"])
+			sold_recorded = sold_recorded and bool(order["ingredient_cost_recorded"])
+	if report.stock_values_recorded and (report.food_cost != sold_cost \
+			or report.food_cost_recorded != sold_recorded):
+		return {"error": "Sold-order ingredient cost differs on day %d" % report.day}
+	var op_recorded: bool = report.operating_profit_recorded()
+	return {"day": report.day, "arrivals": sim.served_today + sim.lost_today,
+		"served": report.customers_served, "lost": report.customers_lost,
+		"ledger_categories": categories, "ledger_cash_profit": cash_change,
+		"cash": Economy.cash, "report_cash_change": report.profit(),
+		"purchase_based_operating_profit": report.purchase_basis_operating_profit(),
+		"consumed_food_operating_profit": report.operating_profit() if op_recorded else null,
+		"consumed_food_status": "recorded" if op_recorded else "not recorded",
+		"operating_profit_recorded": op_recorded,
+		"stock_values_recorded": report.stock_values_recorded,
+		"sold_food_purchase_cost": report.food_cost if report.food_cost_recorded else null,
+		"food_cost_recorded": report.food_cost_recorded,
+		"stock_bought_today": report.stock_bought if report.stock_bought_recorded else null,
+		"stock_bought_recorded": report.stock_bought_recorded,
+		"spoilage_purchase_value": report.spoiled_stock if report.spoiled_stock_recorded else null,
+		"spoiled_stock_recorded": report.spoiled_stock_recorded,
+		"closing_inventory_purchase_value": report.stock_on_hand if report.stock_on_hand_recorded else null,
+		"stock_on_hand_recorded": report.stock_on_hand_recorded,
+		"paid_order_count": paid_count,
+		"paid_order_cost_sum": sold_cost if sold_recorded else null,
+		"paid_order_cost_recorded": sold_recorded,
+		"orders": orders, "report": report.to_dict().duplicate(true),
+		"stock": Economy.stock.to_dict().duplicate(true)}
+
+
+static func _order_snapshot(sim: RestaurantSim) -> Array[Dictionary]:
+	var rows: Array[Dictionary] = []
+	for state: Order.State in [Order.State.PLACED, Order.State.COOKING,
+			Order.State.READY, Order.State.DELIVERED, Order.State.CANCELLED]:
+		for order: Order in sim.orders.orders_in_state(state):
+			rows.append({"id": order.id, "recipe": String(order.recipe_id),
+				"customer": order.customer_id, "table": order.table_item_id,
+				"seat": [order.seat_cell.x, order.seat_cell.y], "price": order.price,
+				"placed_tick": order.placed_tick, "state": int(order.state),
+				"paid": order.paid, "ingredient_cost": order.ingredient_cost,
+				"ingredient_cost_recorded": order.ingredient_cost_recorded})
+	return rows
+
+
+## Existing named streams are captured, never looked up through rng(), which
+## could lazily create one. Returned data has no live session references.
+static func _control_snapshot(main: Node, sim: RestaurantSim) -> Dictionary:
+	var result: Dictionary = {"rng": GameState._capture_save(), "clock": Clock._capture_save(),
+		"economy": Economy._capture_save(), "world_tick": sim.world.now,
+		"events": sim.world.event_log.duplicate(), "reputation": sim.review_book.to_dict(),
+		"served": sim.served_today, "lost": sim.lost_today,
+		"reasons": sim.leave_reasons_today.duplicate(true), "orders": _order_snapshot(sim)}
+	for key: String in ["staff_roster", "menu_settings", "owner_progress", "regulars", "milestones"]:
+		var value: Variant = main.get(key)
+		if value is Object and value.has_method("to_dict"):
+			result[key] = value.call("to_dict")
+	var report: DayReport = main.get("shown_report") as DayReport
+	if report != null:
+		result["report"] = report.to_dict()
+	return result.duplicate(true)
+
+
+## Manual controls only, on the same real session driver used by the probe.
+## A fixture overlay may supply grown; the shipped 13-setup list is unchanged.
+static func run_observer_controls(tree: SceneTree) -> int:
+	var checks: Array[Dictionary] = []
+	var valid: bool = true
+	var second_setup: String = "grown" if ProbeSetups.names().has("grown") else "fryer_coffee"
+	for setup: String in ["default", second_setup]:
+		for seed_value: int in [1, 5]:
+			var plain: Dictionary = run_case(tree, seed_value, setup, 5,
+				3, Vector2i(-1, -1), 1.0, false, false, false, true)
+			var observed: Dictionary = run_case(tree, seed_value, setup, 5,
+				3, Vector2i(-1, -1), 1.0, false, false, true, true)
+			var days: Variant = observed.get("daily", [])
+			var detached: bool = false
+			if days is Array and days.size() == 5:
+				var independent: Dictionary = (days[0] as Dictionary).duplicate(true)
+				var prior: String = JSON.stringify(days)
+				(independent["ledger_categories"] as Dictionary)["observer_copy_test"] = 1
+				(independent["report"] as Dictionary)["food_cost"] = -1
+				(independent["stock"] as Dictionary).clear()
+				detached = JSON.stringify(days) == prior
+			observed.erase("daily")
+			var equal: bool = not plain.has("error") and not observed.has("error") \
+				and plain == observed and detached
+			checks.append({"setup": setup, "seed": seed_value, "days": 5,
+				"equal": equal, "detached": detached, "plain": plain, "observed": observed})
+			valid = valid and equal
+	print("PROBE_OBSERVER_CONTROL ", JSON.stringify({"source": _git_sha(),
+		"checks": checks, "passed": valid}))
+	return 0 if valid else 1
 
 
 ## Manual probe policy only. Every request, including a no-pay acknowledgement,
@@ -371,6 +518,7 @@ static func _parse_args(args: PackedStringArray) -> Dictionary:
 		"gap": Vector2i(-1, -1), "price": 1.0, "extra_cook_skill": 3,
 		"staff_growth": false,
 		"auto_accept_raises": false,
+		"daily": false,
 	}
 	var explicit_setup: bool = false
 	var legacy_extra: bool = false
@@ -386,6 +534,10 @@ static func _parse_args(args: PackedStringArray) -> Dictionary:
 				return {"error": "%s needs a value" % key}
 			value = args[index]
 		match key:
+			"--daily":
+				if value != "true" and value != "false":
+					return {"error": "--daily must be true or false"}
+				options["daily"] = value == "true"
 			"--auto-accept-raises":
 				if value != "true" and value != "false":
 					return {"error": "--auto-accept-raises must be true or false"}
