@@ -112,6 +112,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- Workers check GitHub for an existing PR or claim before starting an issue, claim it with a comment, and stop pushing once a PR is ready, so no work is done twice. (#248)
 - Add data-driven furniture looks and named kit-material colour recipes for the first diner seats. (#220)
 
 - Include the lease offer, cash refusal and larger lot in the normal visual review without adding more than two captures. (#216)
