@@ -15,6 +15,7 @@ const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tr
 ## Camera fit (FK-080): this zoom frames this many cells; bigger shops zoom out.
 const SHOP_ZOOM: float = 12.0
 const SHOP_FRAME_CELLS: Vector2 = Vector2(14.0, 12.0)
+const LEASE: LeaseUpgrade = preload("res://data/balance/lease_upgrade.tres")
 const TUNING: EconomyTuning = preload("res://data/balance/tier1_economy.tres")
 const CLEANLINESS_TUNING: CleanlinessTuning = preload("res://data/balance/cleanliness.tres")
 const REVIEW_TUNING: ReviewTuning = preload("res://data/balance/reviews.tres")
@@ -213,7 +214,7 @@ func _bind_world_presentation() -> void:
 	var view: ShopView = $ShopView
 	view.clear_paint_preview()
 	# The back alley runs along the lot's outer edge (FK-099).
-	var lot_layout: ShopLayout = _loaded_layout if _loaded_layout != null else LAYOUT
+	var lot_layout: ShopLayout = _loaded_layout if _loaded_layout != null else _lease_layout()
 	var lot: Rect2i = ShopFootprint.from_layout(lot_layout).lot
 	view.set_lot(lot)
 	if sim.dock != null:
@@ -248,6 +249,7 @@ func _bind_world_presentation() -> void:
 	_build_catalogue = $Overlay/BuildCatalogue
 	_build_catalogue.bind_content(content)
 	_build_catalogue.set_owner_level(owner_progress.level)
+	_build_catalogue.set_property_tier(owner_progress.property_tier)
 	_build_catalogue.set_build_visible(false)
 	_build_catalogue.set_paint_visible(false)
 	_paint_swatch_id = _build_catalogue.selected_swatch_id
@@ -292,6 +294,8 @@ func _bind_world_presentation() -> void:
 	$HUD.set_paint_state(false)
 	_menu_panel = $Overlay/MenuPanel
 	_menu_panel.bind_menu(menu_settings)
+	if not _menu_panel.lease_requested.is_connected(_on_lease_requested):
+		_menu_panel.lease_requested.connect(_on_lease_requested)
 	_menu_panel.set_phase(Clock.sim.phase)
 	if not _menu_panel.enable_requested.is_connected(_on_menu_enable_requested):
 		_menu_panel.enable_requested.connect(_on_menu_enable_requested)
@@ -486,6 +490,7 @@ func start() -> void:
 		Economy.add_cash, _furniture_purchase_refusal),
 		_loaded_layout if _loaded_layout != null else LAYOUT)
 	shop_editor.set_owner_level(owner_progress.level)
+	shop_editor.set_property_tier(owner_progress.property_tier)
 	shop_editor.storage_need = _storage_need
 	_connect_session()
 	Clock.attach_world(world, sim.advance)
@@ -1576,6 +1581,7 @@ func _on_wall_decor_changed() -> void:
 
 
 func _on_build_cash_changed(_cash: int, _delta: int, _reason: StringName) -> void:
+	_refresh_lease_offer()
 	_refresh_loan_hud()
 	if _build_ready and is_build_active():
 		build_mode.refresh()
@@ -2059,6 +2065,55 @@ func _on_plates_changed(clean: int, total: int, dirty: int, in_use: int) -> void
 	$HUD.set_plate_counts(clean, total, dirty, in_use, sim.kitchen.plate_cycle_enabled)
 
 
+func _lease_layout() -> ShopLayout:
+	return LEASE.layout_for(LAYOUT, owner_progress.property_tier)
+
+
+func lease_refusal() -> String:
+	return LEASE.refusal(owner_progress, Clock.sim.phase, Economy.cash, Economy.loan.principal)
+
+
+func _refresh_lease_offer() -> void:
+	if _menu_panel == null:
+		return
+	if not LEASE.offered(owner_progress, Clock.sim.phase):
+		_menu_panel.set_lease_offer(false, "", "", "")
+		return
+	_menu_panel.set_lease_offer(true,
+		"Deposit %s · Daily rent %s. More land to expand; floor is bought separately." % [
+			Fmt.money(LEASE.deposit), Fmt.money(LEASE.daily_rent)],
+		RestockBudgetWarning.text(Economy.cash, LEASE.deposit, build_restock_estimate()), lease_refusal())
+
+
+## A single morning transaction, included only in the next normal autosave.
+func lease_buy() -> bool:
+	if not _started or shop_editor == null or not lease_refusal().is_empty():
+		_refresh_lease_offer()
+		return false
+	var layout: ShopLayout = LEASE.layout_for(LAYOUT, 2)
+	if not shop_editor.grow_lot(layout):
+		return false
+	owner_progress.property_tier = 2
+	shop_editor.set_property_tier(2)
+	_build_catalogue.set_property_tier(2)
+	var lot: Rect2i = shop_editor.footprint().lot
+	($ShopView as ShopView).set_lot(lot)
+	if sim.dock != null:
+		sim.dock.lot = lot
+	# Existing build history remains valid: it contains built cells, not a lease.
+	Economy.add_cash(-LEASE.deposit, Ledger.UPGRADES, "lease_deposit")
+	_refresh_menu_catalogue()
+	if _build_ready:
+		build_mode.refresh()
+		_update_build_controls()
+	refresh_presentation()
+	return true
+
+
+func _on_lease_requested() -> void:
+	lease_buy()
+
+
 func _capture_owner() -> Dictionary:
 	return {"mode": String(_owner_preferences.current_mode()),
 		"progress": owner_progress.to_dict(), "appearance": owner_appearance.to_dict()}
@@ -2186,7 +2241,7 @@ func _restore_shop(data: Dictionary) -> bool:
 			or saved_level < 0 or saved_level > 2:
 		return false
 	var errors: Array[String] = []
-	var layout: ShopLayout = ShopEditor.from_dict(data, LAYOUT, content, errors)
+	var layout: ShopLayout = ShopEditor.from_dict(data, _lease_layout(), content, errors)
 	if layout == null:
 		return false
 	_loaded_layout = layout
@@ -2398,7 +2453,7 @@ func _cookable_recipes(layout: ShopLayout) -> Array[RecipeDef]:
 ## A station staff cannot reach (a bar or a fryer walled in on every side)
 ## does not count, so its dishes never go on sale only to be cancelled.
 func _cookable_live() -> Array[RecipeDef]:
-	return MenuAccess.cookable(world.grid, content.recipes())
+	return MenuAccess.cookable(world.grid, content.recipes(), 0, owner_progress.property_tier)
 
 
 func _station_reachable(placed: PlacedItem) -> bool:
@@ -2424,8 +2479,7 @@ func _cookable_from(definitions: Array[ItemDef]) -> Array[RecipeDef]:
 	if not fridge or not pass_counter:
 		return recipes
 	for definition: RecipeDef in content.recipes():
-		# Phase 3: replace with the unlocked tier.
-		if definition.unlock_tier != 1:
+		if definition.unlock_tier > owner_progress.property_tier:
 			continue
 		var cookable: bool = true
 		for step: RecipeStep in definition.steps:
@@ -2443,7 +2497,8 @@ func _refresh_menu_catalogue() -> void:
 	if menu_settings == null or world == null:
 		return
 	var cookable: Array[RecipeDef] = _cookable_live()
-	if MenuAccess.cookable(world.grid, content.recipes(), menu_settings.owner_level()).is_empty():
+	if MenuAccess.cookable(world.grid, content.recipes(), menu_settings.owner_level(),
+			owner_progress.property_tier).is_empty():
 		# An older or externally edited layout can already be broken. Explain
 		# why it cannot open rather than silently leaving stale dishes on sale.
 		_menu_access_error = MenuAccess.NO_DISH
@@ -2514,7 +2569,7 @@ func drink_station_hints() -> Array[String]:
 	for drinks_pass: bool in [true, false]:
 		for kind: StringName in RecipeDef.ORDER_TYPES:
 			for recipe: RecipeDef in content.recipes():
-				if recipe.order_type == kind and recipe.is_drink() == drinks_pass and recipe.unlock_tier == 1 \
+				if recipe.order_type == kind and recipe.is_drink() == drinks_pass and recipe.unlock_tier <= owner_progress.property_tier \
 						and recipe.unlock_level <= owner_progress.level:
 					waiting.append(recipe)
 	for recipe: RecipeDef in waiting:
@@ -2646,6 +2701,7 @@ func toggle_menu() -> void:
 
 ## Idempotent production path for the HUD and genuine review captures.
 func set_menu_visible(value: bool) -> bool:
+	_refresh_lease_offer()
 	if _menu_panel == null or (value and not can_edit_menu()):
 		return false
 	if value:
@@ -3022,6 +3078,7 @@ func shop_sell(item_id: int) -> int:
 
 ## Morning setup: new counters, a stocked fridge, and an autosave.
 func _begin_morning() -> void:
+	_refresh_lease_offer()
 	if _menu_access_day != Clock.sim.day:
 		_menu_access_losses.clear()
 	_menu_access_day = Clock.sim.day
@@ -3711,8 +3768,9 @@ func _charge_closing_costs() -> void:
 		if agent is StaffAgent and not agent is OwnerAgent:
 			# Paid by the hour: the default day keeps the exact daily wage.
 			Economy.add_cash(-OpeningHours.wage_for_day((agent as StaffAgent).wage, Clock.sim, HOURS_TUNING), Ledger.WAGES)
-	if TUNING.daily_rent > 0:
-		Economy.add_cash(-TUNING.daily_rent, Ledger.RENT)
+	var rent: int = LEASE.daily_rent if owner_progress.property_tier == 2 else TUNING.daily_rent
+	if rent > 0:
+		Economy.add_cash(-rent, Ledger.RENT)
 
 
 func _on_customer_paid(_customer: CustomerAgent, order: Order, amount: int) -> void:
@@ -3764,7 +3822,9 @@ func _on_service_closed(day: int) -> void:
 		menu_settings.set_owner_level(owner_progress.level)
 		sim.set_customer_level(owner_progress.level)
 		shop_editor.set_owner_level(owner_progress.level)
+		shop_editor.set_property_tier(owner_progress.property_tier)
 		_build_catalogue.set_owner_level(owner_progress.level)
+		_build_catalogue.set_property_tier(owner_progress.property_tier)
 		$HUD.set_owner_progress(owner_progress.level, owner_progress.xp_into_level(), owner_progress.xp_in_level())
 	shown_report = build_report(day)
 	_report.call(&"show_report", shown_report)
@@ -3806,16 +3866,16 @@ func _award_milestones(day: int, operating_profit: int) -> void:
 func _unlocked_at_levels(previous_level: int, current_level: int) -> Array[String]:
 	var unlocked: Array[String] = []
 	for recipe: RecipeDef in content.recipes():
-		if recipe.unlock_tier == 1 and recipe.unlock_level > previous_level and recipe.unlock_level <= current_level:
+		if recipe.unlock_tier <= owner_progress.property_tier and recipe.unlock_level > previous_level and recipe.unlock_level <= current_level:
 			unlocked.append(recipe.display_name + " recipe")
 	for item: ItemDef in content.items():
 		if item.catalogue_visible and item.unlock_level > previous_level and item.unlock_level <= current_level:
 			unlocked.append(item.display_name)
 	for style: FloorStyleDef in content.floor_styles():
-		if style.unlock_tier == 1 and style.unlock_level > previous_level and style.unlock_level <= current_level:
+		if style.unlock_tier <= owner_progress.property_tier and style.unlock_level > previous_level and style.unlock_level <= current_level:
 			unlocked.append(style.display_name + " floor")
 	for wall_style: WallStyleDef in content.wall_styles():
-		if wall_style.unlock_tier == 1 and wall_style.unlock_level > previous_level and wall_style.unlock_level <= current_level:
+		if wall_style.unlock_tier <= owner_progress.property_tier and wall_style.unlock_level > previous_level and wall_style.unlock_level <= current_level:
 			unlocked.append(wall_style.display_name + " walls")
 	unlocked.sort()
 	return unlocked
@@ -3897,6 +3957,8 @@ func menu_recipe_details() -> Dictionary[StringName, Dictionary]:
 			ingredients.append({"text": "%s: %d in stock / %d needed" % [ingredient.display_name, count, amounts[id]],
 				"met": count >= amounts[id]})
 		var other: Array[Dictionary] = []
+		if recipe.unlock_tier > 1:
+			other.append({"text": "Requires a larger lease", "met": owner_progress.property_tier >= recipe.unlock_tier})
 		other.append({"text": "Owner level %d (you are level %d)" % [recipe.unlock_level, menu_settings.owner_level()],
 			"met": menu_settings.owner_level() >= recipe.unlock_level})
 		if not recipe.unlock_from.is_empty():

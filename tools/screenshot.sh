@@ -9,6 +9,7 @@
 # --hud-layout --window-size=1280x720|1600x900 --speed=0 --frames=12,90 captures 125%, then 150%.
 # --report --open --fast=100 --speed=0 --frames=60 captures a real closed-day report.
 # --door-queue --open --fast=8 --speed=1 --frames=240 zooms a real queue, or records its absence at the entry.
+# --lease-review=offer|short|expand --speed=0 --frames=12 captures exactly one declared lease state; offer/short also need --menu.
 # --loan-review --speed=0 --frames=12,90 captures an explicit loss fixture's bank report, then next-morning Loan HUD.
 # --milestone-review --speed=0 --frames=12,90 captures Goals, then an explicit close-data reward fixture.
 # --catalogue-review=rustic|modern --speed=0 --frames=90,120 captures real previews, then the furnishing fixture.
@@ -30,6 +31,7 @@ GODOT="${GODOT:-.tools/godot-$ver/Godot_v${ver}-stable_linux.x86_64}"
 command -v xvfb-run >/dev/null || { echo "BLOCKED: xvfb-run is not preinstalled; a supported Xvfb/Mesa environment is required."; exit 2; }
 out="screens"
 settings_capture=false
+lease_capture=false
 hud_layout=false
 window_size="1600x900"
 window_size_requested=false
@@ -37,6 +39,10 @@ for a in "$@"; do
   [[ "$a" == --out=* ]] && out="${a#--out=}"
   [[ "$a" == --settings || "$a" == --settings-world || "$a" == --loan-review || "$a" == --milestone-review || "$a" == --diner-review ]] && settings_capture=true
   [[ "$a" == --catalogue-review=* ]] && settings_capture=true
+  if [[ "$a" == --lease-review* ]]; then
+    settings_capture=true
+    lease_capture=true
+  fi
   if [[ "$a" == --hud-layout ]]; then
     hud_layout=true
     settings_capture=true
@@ -59,6 +65,11 @@ if "$settings_capture"; then
   settings_data="$(mktemp -d)"
   export XDG_DATA_HOME="$settings_data"
   trap 'rm -rf -- "$settings_data"' EXIT
+fi
+if "$lease_capture"; then
+  git diff --quiet && git diff --cached --quiet || { echo "FAIL: lease captures require a committed source tree"; exit 1; }
+  export FK_LEASE_CAPTURE_SHA="$(git rev-parse HEAD)"
+  export FK_LEASE_CAPTURE_TREE="$(git rev-parse HEAD^{tree})"
 fi
 mkdir -p "$out"
 log="$out/capture.log"
