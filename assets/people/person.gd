@@ -6,6 +6,7 @@ extends Node3D
 @export var role: StringName = &"customer"
 @export var guest_id: int = 0
 @export var customer_type: StringName = &"regular"
+@export var owner_model: StringName = OwnerAppearance.DEFAULT_MODEL
 
 var _model: Node3D
 var _player: AnimationPlayer
@@ -38,7 +39,7 @@ func set_look(value: StringName, id: int = 0, kind: StringName = &"regular") -> 
 	role = value
 	guest_id = id
 	customer_type = kind
-	var desired_model: StringName = PersonPresentation.model_for(role, guest_id, customer_type)
+	var desired_model: StringName = PersonPresentation.model_for(role, guest_id, customer_type, owner_model)
 	if not _initialized:
 		return desired_model != &""
 	if desired_model == _model_name and _model != null:
@@ -47,7 +48,7 @@ func set_look(value: StringName, id: int = 0, kind: StringName = &"regular") -> 
 	_clear_model()
 	if desired_model == &"":
 		return false
-	var path: String = PersonPresentation.model_path_for(role, guest_id, customer_type)
+	var path: String = PersonPresentation.model_path_for(role, guest_id, customer_type, owner_model)
 	if not ResourceLoader.exists(path, "PackedScene"):
 		return false
 	var packed: PackedScene = load(path) as PackedScene
@@ -82,6 +83,13 @@ func set_look(value: StringName, id: int = 0, kind: StringName = &"regular") -> 
 	if played and _clip == &"sit" and seated_time > 0.0:
 		_player.seek(minf(seated_time, _player.get_animation(&"sit").length), true)
 	return played
+
+
+func set_owner_model(model: StringName) -> bool:
+	if not OwnerAppearance.valid_model(model):
+		return false
+	owner_model = model
+	return set_look(role, guest_id, customer_type)
 
 
 func _attach_to_head(piece: Node3D, attachment_name: String) -> bool:

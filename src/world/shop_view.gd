@@ -1,5 +1,7 @@
 class_name ShopView
 extends Node3D
+## Session-owned appearance; only the owner reads this presentation choice.
+var owner_model: StringName = OwnerAppearance.DEFAULT_MODEL
 ## Read-only restaurant view. Simulation ownership stays with the caller.
 
 const GRID_SHADER: Shader = preload("res://src/world/floor_finish.gdshader")
@@ -1137,6 +1139,7 @@ func _sync_agents() -> void:
 			var created: Node3D = PERSON_SCENE.instantiate() as PersonView if frame.look_supported else _legacy_person_fallback(agent)
 			if created is PersonView:
 				# _ready runs on add_child; record the real look before rig creation.
+				(created as PersonView).owner_model = owner_model
 				(created as PersonView).set_look(frame.role, frame.id, frame.customer_type)
 			created.name = "Agent%d" % agent.id
 			created.set_meta("agent_id", agent.id)
@@ -1154,6 +1157,8 @@ func _sync_agents() -> void:
 		var node: Node3D = agent_nodes[agent.id]
 		var ready_person: bool = false
 		if node is PersonView:
+			if frame.role == &"owner" and (node as PersonView).owner_model != owner_model:
+				(node as PersonView).set_owner_model(owner_model)
 			ready_person = AgentPresentationController.apply(frame, node as PersonView, playback_speed)
 		else:
 			node.position = frame.floor_position + frame.display_offset + Vector3(0.0, 0.875, 0.0)
