@@ -383,6 +383,30 @@ func hover_item(item_id: int) -> void:
 	changed.emit()
 
 
+## The actual rendered wall hit, separate from decor and floor-item picking.
+func hover_wall_segment(edge: Vector3i) -> void:
+	var next: Vector3i = edge if state == State.IDLE and tool == Tool.SELL and _grid != null \
+		and _grid.segment(edge) != SimGrid.Segment.NONE else SimGrid.NO_EDGE
+	if next == wall_hover_edge:
+		return
+	wall_hover_edge = next
+	_recheck_hover()
+	changed.emit()
+
+
+func sell_hovered_wall() -> int:
+	if not _can_interact() or state != State.IDLE or tool != Tool.SELL \
+			or wall_hover_edge == SimGrid.NO_EDGE or not _walls_command.is_valid():
+		return -1
+	wall_changes = {wall_hover_edge: SimGrid.Segment.NONE} as Dictionary[Vector3i, int]
+	current_check = _editor.check_segments(wall_changes)
+	var refund: int = current_check.refund
+	if not _commit_walls():
+		return -1
+	hover_wall_segment(SimGrid.NO_EDGE)
+	return refund
+
+
 ## Sells the hovered item (the sell tool, or Del while idle). -1 is refusal.
 func sell_hovered() -> int:
 	if not _can_interact() or state != State.IDLE or hover_item_id < 0:
@@ -437,6 +461,8 @@ func hover_summary() -> String:
 					return "Hang another %s" % hung.display_name
 				_:
 					return "Pick up %s to move it" % hung.display_name
+	if state == State.IDLE and tool == Tool.SELL and wall_hover_edge != SimGrid.NO_EDGE:
+		return CatalogueText.wall_removal_refund(current_check.refund) if current_check.ok else current_check.why
 	if state != State.IDLE or hover_item_id < 0 or _grid == null:
 		return ""
 	var placed: PlacedItem = _grid.item(hover_item_id)
@@ -456,8 +482,12 @@ func hover_summary() -> String:
 func _recheck_hover() -> void:
 	if state != State.IDLE:
 		return
+	wall_changes.clear()
 	if tool == Tool.SELL and hover_anchor != WallFaces.NO_FACE and _editor != null:
 		current_check = _editor.check_take_down(hover_anchor)
+	elif tool == Tool.SELL and wall_hover_edge != SimGrid.NO_EDGE and _editor != null:
+		wall_changes[wall_hover_edge] = SimGrid.Segment.NONE
+		current_check = _editor.check_segments(wall_changes)
 	elif tool == Tool.SELL and hover_item_id >= 0 and _editor != null:
 		current_check = _editor.check_sell(hover_item_id)
 	else:
@@ -679,7 +709,7 @@ func _finish_command(accepted: bool, previous_check: EditCheck, fallback_reason:
 
 ## Enters the Walls tool from idle or a held ghost; new edges get `kind`.
 func begin_walls(kind: SimGrid.Segment) -> bool:
-	if not _can_interact() or not _walls_command.is_valid() or kind == SimGrid.Segment.NONE:
+	if not _can_interact() or not _walls_command.is_valid():
 		return false
 	_clear_ghost(State.WALLS)
 	wall_kind = kind
@@ -760,7 +790,7 @@ func wall_summary() -> String:
 	var text: String = ""
 	var definition: WallKindDef = _content.wall_kind_for(last) if _content != null else null
 	if removed > 0 and added == 0:
-		text = "Remove"
+		text = CatalogueText.WALL_REMOVE_LABEL
 	elif added == 1 and definition != null:
 		text = definition.display_name
 	elif definition != null:
@@ -803,14 +833,25 @@ func _recheck_walls() -> void:
 	wall_changes.clear()
 	if wall_dragging and wall_drag_end != wall_drag_start:
 		var run: Array[Vector3i] = run_edges(wall_drag_start, wall_drag_end)
-		wall_changes = _editor.run_changes(run, wall_kind)
+		if wall_kind == SimGrid.Segment.NONE:
+			for edge: Vector3i in run:
+				if _grid.segment(edge) != SimGrid.Segment.NONE:
+					wall_changes[edge] = SimGrid.Segment.NONE
+		else:
+			wall_changes = _editor.run_changes(run, wall_kind)
 		if wall_changes.is_empty():
-			current_check = EditCheck.new(false, "These walls are already built")
+			current_check = EditCheck.new(false, CatalogueText.WALL_REMOVE_EMPTY if wall_kind == SimGrid.Segment.NONE \
+				else "These walls are already built")
 			return
 	elif _grid != null and _grid.edge_in_bounds(wall_hover_edge):
-		wall_changes[wall_hover_edge] = _editor.next_segment(wall_hover_edge, wall_kind)
+		if wall_kind == SimGrid.Segment.NONE:
+			if _grid.segment(wall_hover_edge) != SimGrid.Segment.NONE:
+				wall_changes[wall_hover_edge] = SimGrid.Segment.NONE
+		else:
+			wall_changes[wall_hover_edge] = _editor.next_segment(wall_hover_edge, wall_kind)
 	if wall_changes.is_empty():
-		current_check = EditCheck.new(false, WallRules.NOT_INSIDE)
+		current_check = EditCheck.new(false, CatalogueText.WALL_REMOVE_EMPTY if wall_kind == SimGrid.Segment.NONE \
+			else WallRules.NOT_INSIDE)
 		return
 	current_check = _editor.check_segments(wall_changes)
 

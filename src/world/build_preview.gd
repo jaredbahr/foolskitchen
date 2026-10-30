@@ -262,6 +262,11 @@ func refresh() -> void:
 		_build_wall_ghosts(changes, valid)
 		if not valid:
 			reason = snapshot.get("why", "")
+	elif snapshot.get("active", false) and snapshot.get("state", -1) == BuildMode.State.IDLE \
+			and snapshot.get("tool", -1) == BuildMode.Tool.SELL and not snapshot.get("wall_changes", {}).is_empty():
+		_build_wall_ghosts(snapshot.get("wall_changes", {}), valid)
+		if not valid:
+			reason = snapshot.get("why", "")
 	elif snapshot.get("active", false) and snapshot.get("state", -1) == BuildMode.State.FLOOR:
 		var floor_cells: Array[Vector2i] = []
 		floor_cells.assign(snapshot.get("floor_cells", []))
@@ -478,7 +483,7 @@ func _build_ghost(definition: ItemDef, origin: Vector2i, turns: int, valid: bool
 
 
 ## Translucent slabs on each proposed edge: full height for a new or changed
-## segment, low for a removal; green when the change is allowed, red if not.
+## segment, low for a removal; removals and refused changes are red.
 func _build_wall_ghosts(changes: Dictionary, valid: bool) -> void:
 	if changes.is_empty():
 		return
@@ -488,6 +493,9 @@ func _build_wall_ghosts(changes: Dictionary, valid: bool) -> void:
 	var tint: Color = VALID_COLOR if valid else INVALID_COLOR
 	tint.a = WALL_GHOST_ALPHA
 	var material: StandardMaterial3D = _material(tint, true)
+	var removal_tint: Color = INVALID_COLOR
+	removal_tint.a = WALL_GHOST_ALPHA
+	var removal_material: StandardMaterial3D = _material(removal_tint, true)
 	for key: Variant in changes:
 		var edge: Vector3i = key
 		var removing: bool = int(changes[key]) == SimGrid.Segment.NONE
@@ -497,7 +505,7 @@ func _build_wall_ghosts(changes: Dictionary, valid: bool) -> void:
 		var length: float = GridMath.CELL_SIZE
 		var depth: float = WALL_GHOST_DEPTH
 		var size: Vector3 = Vector3(depth, height, length) if edge.z == SimGrid.EDGE_WEST else Vector3(length, height, depth)
-		var ghost: MeshInstance3D = _box(size, material)
+		var ghost: MeshInstance3D = _box(size, removal_material if removing else material)
 		ghost.name = "Edge_%d_%d_%d" % [edge.x, edge.y, edge.z]
 		ghost.position = Vector3(mid.x, height * 0.5 + 0.002, mid.y)
 		ghost.set_meta("edge", edge)

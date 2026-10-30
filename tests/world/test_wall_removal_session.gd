@@ -262,6 +262,94 @@ func test_a_later_invalid_save_section_does_not_apply_staged_migration_refunds()
 	assert_eq(Clock.sim.day, 1)
 
 
+func test_native_sell_removes_an_outer_window_header_without_exposing_a_paint_face() -> void:
+	await _start()
+	_assert_outer_sell(SimGrid.Segment.WINDOW)
+
+
+func test_native_sell_removes_an_outer_back_door_top_with_exact_refund_and_undo() -> void:
+	await _start()
+	_assert_outer_sell(SimGrid.Segment.DOORWAY)
+
+
+func test_native_sell_refuses_an_outer_door_frame_while_someone_stands_in_it() -> void:
+	await _start()
+	var mesh: MeshInstance3D = _prepare_outer_frame(SimGrid.Segment.DOORWAY)
+	assert_not_null(mesh)
+	if mesh == null:
+		return
+	var person: SimAgent = SimAgent.new()
+	person.cell = Vector2i(13, 6)
+	(_main.get("world") as SimWorld).add_agent(person)
+	_mode().set_tool(BuildMode.Tool.SELL)
+	var centre: Vector3 = mesh.global_transform * mesh.get_aabb().get_center()
+	_rig().initial_yaw_degrees = 90.0
+	_focus(Vector2(centre.x, centre.z))
+	var point: Vector2 = _camera().unproject_position(centre)
+	_assert_clear(point)
+	var cash: int = Economy.cash
+	_native_pointer(point)
+	assert_eq(_mode().hover_summary(), WallRules.CUT_PERSON)
+	_native_click(point)
+	assert_eq(_grid().segment(Vector3i(13, 6, SimGrid.EDGE_WEST)), SimGrid.Segment.DOORWAY)
+	assert_eq(person.cell, Vector2i(13, 6))
+	assert_eq(Economy.cash, cash)
+	assert_eq(_mode().hover_summary(), WallRules.CUT_PERSON)
+
+
+func test_outer_frame_sell_ray_respects_foreground_furniture_and_thick_shell_geometry() -> void:
+	await _start()
+	var header: MeshInstance3D = _prepare_outer_frame(SimGrid.Segment.WINDOW)
+	assert_not_null(header)
+	if header == null:
+		return
+	assert_true(_main.call("shop_buy", &"fridge", Vector2i(9, 8), 0), _editor().last_check.why)
+	var fridge: PlacedItem = _grid().item_at(Vector2i(9, 8))
+	assert_not_null(fridge)
+	if fridge == null:
+		return
+	var view: ShopView = _main.get_node("ShopView") as ShopView
+	var frame: Node3D = view.segment_view.get_node("ShellWindow_13_6") as Node3D
+	var jamb: MeshInstance3D = _frame_piece(frame, false)
+	assert_not_null(jamb)
+	if jamb == null:
+		return
+	var target: Vector3 = jamb.global_transform * jamb.get_aabb().get_center()
+	var furniture: ItemVisual = view.item_nodes[fridge.id]
+	var furniture_bounds: AABB = furniture.global_transform * furniture.get_aabb()
+	var furniture_point: Vector3 = furniture_bounds.get_center()
+	furniture_point.y = furniture_bounds.end.y - 0.02
+	assert_true(furniture_point.y > target.y, "the measured opaque furniture stands above this frame part")
+	var origin: Vector3 = furniture_point + (furniture_point - target).normalized()
+	var direction: Vector3 = (target - origin).normalized()
+	var candidate: Dictionary = view.wall_segment_at_ray(origin, direction)
+	assert_eq(candidate.get("edge", SimGrid.NO_EDGE), Vector3i(13, 6, SimGrid.EDGE_WEST))
+	assert_true(view.nearest_item_distance(origin, direction) < float(candidate.get("distance", INF)),
+		"the rendered furniture is measurably in front of the frame")
+	_camera().global_position = origin
+	_camera().look_at(target)
+	_camera().near = 0.01
+	var point: Vector2 = _camera().unproject_position(target)
+	_assert_clear(point)
+	assert_eq(_main.call("wall_segment_at_screen_position", point), SimGrid.NO_EDGE)
+	_mode().set_tool(BuildMode.Tool.SELL)
+	_native_pointer(point)
+	assert_eq(_mode().wall_hover_edge, SimGrid.NO_EDGE)
+	var shell: MeshInstance3D = (view.get("_wall_nodes") as Dictionary)[Vector2i(13, 5)] as MeshInstance3D
+	var shell_bounds: AABB = shell.global_transform * shell.get_aabb()
+	var shell_point: Vector3 = shell_bounds.get_center()
+	shell_point.y = shell_bounds.end.y - 0.02
+	origin = shell_point + (shell_point - target).normalized()
+	direction = (target - origin).normalized()
+	assert_true(view.wall_segment_at_ray(origin, direction).is_empty(),
+		"the opaque shell blocks a frame behind it")
+	_camera().global_position = origin
+	_camera().look_at(target)
+	point = _camera().unproject_position(target)
+	assert_eq(_main.call("wall_segment_at_screen_position", point), SimGrid.NO_EDGE)
+	assert_eq(_grid().segment(Vector3i(13, 6, SimGrid.EDGE_WEST)), SimGrid.Segment.WINDOW)
+
+
 func _start() -> void:
 	await _tree().process_frame
 	_viewport = SubViewport.new()
@@ -296,6 +384,70 @@ func _add_run() -> void:
 		changes[Vector3i(9, y, SimGrid.EDGE_WEST)] = SimGrid.Segment.WALL
 	assert_true(_main.call("shop_walls", changes), _editor().last_check.why)
 	assert_true(_main.call("set_build_active", true))
+
+
+func _assert_outer_sell(kind: SimGrid.Segment) -> void:
+	var mesh: MeshInstance3D = _prepare_outer_frame(kind)
+	assert_not_null(mesh)
+	if mesh == null:
+		return
+	var centre: Vector3 = mesh.global_transform * mesh.get_aabb().get_center()
+	_rig().initial_yaw_degrees = 90.0
+	_focus(Vector2(centre.x, centre.z))
+	var point: Vector2 = _camera().unproject_position(centre)
+	_assert_clear(point)
+	var paint: Dictionary = _main.call("wall_face_at_screen_position", point, false)
+	assert_eq(paint.get("face", WallFaces.NO_FACE), WallFaces.NO_FACE,
+		"a removable fitting never becomes a paintable wall face")
+	var edge: Vector3i = Vector3i(13, 6, SimGrid.EDGE_WEST)
+	assert_eq(_main.call("wall_segment_at_screen_position", point), edge)
+	_mode().set_tool(BuildMode.Tool.SELL)
+	var cash: int = Economy.cash
+	var saved: String = _saved_text()
+	var refund: int = floori(float((_main.get("content") as ContentDB).wall_kind_for(kind).price) / 2.0)
+	_native_pointer(point)
+	assert_eq(_mode().wall_hover_edge, edge)
+	assert_true(_mode().hover_summary().contains("$%d" % refund))
+	_native_click(point)
+	assert_eq(_grid().segment(edge), SimGrid.Segment.NONE)
+	assert_false(_grid().is_walkable(Vector2i(13, 6)), "removing the fitting restores the thick shell")
+	assert_eq(Economy.cash, cash + refund)
+	assert_eq(_saved_text(), saved)
+	_native_key(KEY_Z, true)
+	assert_eq(_grid().segment(edge), kind)
+	assert_eq(Economy.cash, cash)
+	assert_eq(_saved_text(), saved)
+
+
+func _prepare_outer_frame(kind: SimGrid.Segment) -> MeshInstance3D:
+	assert_true(_main.call("set_build_active", false))
+	assert_true(_main.call("shop_walls", {Vector3i(13, 6, SimGrid.EDGE_WEST): kind} as Dictionary[Vector3i, int]),
+		_editor().last_check.why)
+	assert_true(_main.call("set_build_active", true))
+	var view: ShopView = _main.get_node("ShopView") as ShopView
+	view.set_wall_mode(ShopView.WallMode.UP)
+	var name: String = "ShellWindow_13_6" if kind == SimGrid.Segment.WINDOW else "BackDoor_13_6"
+	var root: Node3D = view.segment_view.get_node_or_null(name) as Node3D
+	assert_not_null(root)
+	return _frame_piece(root, true) if root != null else null
+
+
+func _frame_piece(root: Node3D, highest: bool) -> MeshInstance3D:
+	var selected: MeshInstance3D
+	for child: Node in root.get_children():
+		if not child is MeshInstance3D or child.name == &"Floor":
+			continue
+		var mesh: MeshInstance3D = child as MeshInstance3D
+		if mesh.mesh == null or not mesh.is_visible_in_tree():
+			continue
+		var height: float = (mesh.global_transform * mesh.get_aabb().get_center()).y
+		if selected == null:
+			selected = mesh
+		else:
+			var previous: float = (selected.global_transform * selected.get_aabb().get_center()).y
+			if (highest and height > previous) or (not highest and height < previous):
+				selected = mesh
+	return selected
 
 
 func _legacy_snapshot_with_lost_face() -> Dictionary:
@@ -424,6 +576,10 @@ func _grid() -> SimGrid:
 
 func _rig() -> CameraRig:
 	return _main.get_node("CameraRig") as CameraRig
+
+
+func _camera() -> Camera3D:
+	return _main.get_node("CameraRig/Camera3D") as Camera3D
 
 
 func _saved_text() -> String:
