@@ -267,6 +267,21 @@ an active edit/panel/selection first, or opens Settings when none is active.
   side with deterministic ties. It changes no grid, reservation or agent state.
 
 ### 2.3b Game session (FK-024, `src/world/main.gd`)
+- **Entry screen (FK-058):** `src/ui/title_screen.tscn` is the project startup
+  scene. Continue opens `main.tscn` and uses its existing morning-load path;
+  New game confirms replacement when an autosave exists, then shares F10's
+  `Main.start_fresh_run` reset route. The live, slowly orbiting title backdrop
+  uses Main's `display_only` mode: local fixed-seed view initialization only,
+  with no session start, save providers, autosave or run RNG draws. Title
+  disables Clock processing/input until it leaves. Settings uses the existing
+  shared panel and theme; Quit is hidden on web.
+- **Quit to title** is available in Menu and also in Settings during service.
+  Outside MORNING it pauses for the progress-loss confirmation; Cancel resumes
+  the prior speed. Returning never saves. Continue therefore restores the last
+  normal morning checkpoint. `main.tscn` stays directly bootable: existing
+  screenshot, balance-probe and soak entry points still choose it explicitly,
+  so they skip the title without a new flag. `tools/title_review.gd` captures
+  the real title in a no-save fixture and verifies unchanged run state.
 - `main.tscn` is the game session for one shop. It builds a `RestaurantSim` from the layout and content, and points `sim.stock` at `Economy.stock`.
 - `Clock.attach_world(world, sim.advance)` makes every tick run the restaurant (guests, staff, and the kitchen once it lands).
 - **Day loop:**

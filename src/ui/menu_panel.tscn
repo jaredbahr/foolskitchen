@@ -68,6 +68,13 @@ mouse_filter = 2
 autowrap_mode = 3
 text = "Choose dishes and prices for today."
 
+[node name="QuitToTitleButton" type="Button" parent="Panel/Content/Header"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 4
+focus_mode = 0
+text = "Quit to title"
+
 [node name="Identity" type="VBoxContainer" parent="Panel/Content"]
 layout_mode = 2
 mouse_filter = 2
