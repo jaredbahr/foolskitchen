@@ -248,6 +248,20 @@ layout_mode = 2
 mouse_filter = 1
 text_overrun_behavior = 3
 
+[node name="DemandNotice" type="PanelContainer" parent="."]
+visible = false
+anchors_preset = 10
+anchor_right = 1.0
+offset_left = 12.0
+offset_right = -12.0
+mouse_filter = 2
+theme = ExtResource("2_theme")
+
+[node name="Text" type="Label" parent="DemandNotice"]
+layout_mode = 2
+mouse_filter = 2
+text_overrun_behavior = 3
+
 [node name="BuildHints" type="PanelContainer" parent="."]
 visible = false
 offset_left = 12.0

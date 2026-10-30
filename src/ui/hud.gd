@@ -80,6 +80,7 @@ var _settings_button: Button
 var _header_bottom: float = -1.0
 var _preferences: SettingsPreferences
 var _opening_refusal: String = ""
+var _demand_status: String = ""
 
 
 func bind_preferences(model: SettingsPreferences) -> void:
@@ -178,6 +179,7 @@ func refresh() -> void:
 	_staff_button.disabled = not STAFF_PHASES.has(Clock.sim.phase)
 	_staff_button.tooltip_text = "Hire staff and plan today's wages" if Clock.sim.phase == SimClock.Phase.MORNING \
 		else "Set staff job priorities. Hiring and upgrades are available in the morning."
+	_render_demand_status()
 	_layout_header()
 
 
@@ -301,7 +303,16 @@ func _layout_header() -> void:
 
 ## Main uses the final native header height to keep morning panels below it.
 func panel_top() -> float:
-	return maxf(112.0, (get_node("Top") as Control).get_global_rect().end.y + 12.0)
+	return maxf(112.0, _notices_bottom() + 12.0)
+
+
+func _notices_bottom() -> float:
+	var bottom: float = (get_node("Top") as Control).get_global_rect().end.y
+	for path: String in ["MenuNotice", "DemandNotice"]:
+		var notice: Control = get_node(path) as Control
+		if notice.visible:
+			bottom = maxf(bottom, notice.get_global_rect().end.y)
+	return bottom
 
 
 ## Controls grow to a larger minimum but never shrink back on their own. When
@@ -320,9 +331,9 @@ func _fit_header_height() -> void:
 func _on_header_resized() -> void:
 	if not is_inside_tree():
 		return
-	_layout_build_hints()
 	_layout_menu_notice()
-	var bottom: float = (get_node("Top") as Control).get_global_rect().end.y
+	_layout_build_hints()
+	var bottom: float = _notices_bottom()
 	if not is_equal_approx(bottom, _header_bottom):
 		_header_bottom = bottom
 		header_layout_changed.emit()
@@ -363,17 +374,40 @@ func set_menu_notice(text: String, refuses_opening: bool = false) -> void:
 	panel.visible = not text.is_empty()
 	_layout_menu_notice()
 	refresh()
+	_on_header_resized()
 
 
 func _layout_menu_notice() -> void:
-	var panel: Control = get_node_or_null("MenuNotice") as Control
-	if panel == null or not panel.visible:
-		return
 	# Horizontal anchors follow the viewport. Keep the single-line native
 	# height explicit: wrapped labels can otherwise retain a full-screen
 	# minimum measured before their container receives its width.
-	panel.offset_top = (get_node("Top") as Control).get_global_rect().end.y + 6.0
-	panel.offset_bottom = panel.offset_top + panel.get_combined_minimum_size().y
+	var top: float = (get_node("Top") as Control).get_global_rect().end.y + 6.0
+	for path: String in ["MenuNotice", "DemandNotice"]:
+		var panel: Control = get_node(path) as Control
+		if not panel.visible:
+			continue
+		panel.offset_top = top
+		panel.offset_bottom = panel.offset_top + panel.get_combined_minimum_size().y
+		top = panel.offset_bottom + 4.0
+
+
+## Main supplies the current and previous completed service day's factors.
+## Missing history uses a nonpositive previous factor and shows no trend.
+func set_demand_status(factor: float, previous_factor: float) -> void:
+	_demand_status = DemandText.morning_status(factor, previous_factor)
+	_render_demand_status()
+
+
+func _render_demand_status() -> void:
+	var panel: Control = get_node("DemandNotice") as Control
+	var label: Label = get_node("DemandNotice/Text") as Label
+	var shown: bool = Clock.sim.phase == SimClock.Phase.MORNING and not _demand_status.is_empty()
+	if panel.visible == shown and label.text == _demand_status:
+		return
+	label.text = _demand_status
+	panel.visible = shown
+	_layout_menu_notice()
+	_on_header_resized()
 
 
 ## Main lists today's sold-out dishes by display name; empty hides the tag.
@@ -543,7 +577,7 @@ func _layout_build_hints() -> void:
 		return
 	var viewport_size: Vector2 = get_viewport().get_visible_rect().size if is_inside_tree() else Vector2(1600.0, 900.0)
 	var padding: Vector2 = _build_hints.get_theme_stylebox("panel").get_minimum_size()
-	var header_bottom: float = (get_node("Top") as Control).get_global_rect().end.y
+	var header_bottom: float = _notices_bottom()
 	var top: float = minf(maxf(104.0, header_bottom + 6.0), maxf(12.0, viewport_size.y - 64.0))
 	var available: Vector2 = Vector2(minf(HINT_MAX_WIDTH, viewport_size.x - 24.0), viewport_size.y - top - 12.0) - padding
 	if available.x <= 0.0 or available.y <= 0.0:
