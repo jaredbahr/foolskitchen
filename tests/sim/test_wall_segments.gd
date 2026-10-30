@@ -216,7 +216,7 @@ func test_prices_come_from_data() -> void:
 	var ids: Array[StringName] = []
 	for definition: WallKindDef in _content.wall_kinds():
 		ids.append(definition.id)
-	assert_eq(ids, [&"wall", &"doorway", &"window"] as Array[StringName])
+	assert_eq(ids, [&"wall", &"doorway", &"window", &"stall_partition"] as Array[StringName])
 
 
 func test_wall_definitions_are_validated() -> void:

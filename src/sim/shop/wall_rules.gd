@@ -25,6 +25,7 @@ const CUT_DOOR: String = "That would cut off the door"
 const CUT_SINK: String = "That would cut off the sink"
 const CUT_STATION: String = "That would cut off a kitchen station"
 const CUT_SEAT: String = "That would cut off a seat"
+const CUT_RESTROOM: String = "That would cut off a restroom fixture"
 const CUT_PERSON: String = "That would shut someone in"
 const ONE_BACK_DOOR: String = "The shop already has a back door: remove it first to move it"
 const BACK_DOOR_WIDTH: String = "A back door is one cell wide"
@@ -465,7 +466,7 @@ static func _cut_off(after: SimGrid, was: Dictionary[Vector2i, bool], now: Dicti
 	door.assign(door_cells(after).keys())
 	if _lost(door, was, now):
 		return CUT_DOOR
-	var groups: Array[Array] = [[], [], []]
+	var groups: Array[Array] = [[], [], [], []]
 	for placed: PlacedItem in after.items():
 		var definition: ItemDef = placed.def as ItemDef
 		if definition == null:
@@ -479,11 +480,13 @@ static func _cut_off(after: SimGrid, was: Dictionary[Vector2i, bool], now: Dicti
 			ItemDef.Category.TABLE:
 				for seat: Vector2i in placed.seat_cells:
 					groups[2].append([seat] as Array[Vector2i])
+			ItemDef.Category.RESTROOM:
+				groups[3].append(placed.work_cells)
 	# When nothing that was reachable stays reachable, the street door itself
 	# has been boxed in, so name the door rather than the first station.
 	var lost: Array[String] = []
 	var kept: bool = false
-	var reasons: Array[String] = [CUT_SINK, CUT_STATION, CUT_SEAT]
+	var reasons: Array[String] = [CUT_SINK, CUT_STATION, CUT_SEAT, CUT_RESTROOM]
 	for index: int in groups.size():
 		for cells: Array in groups[index]:
 			var typed: Array[Vector2i] = []

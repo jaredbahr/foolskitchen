@@ -441,6 +441,9 @@ func _build_interior(edge: Vector3i, kind: SimGrid.Segment, interior: Dictionary
 	var full: float = ArtScale.WALL_HEIGHT
 	var low: float = ShopView.LOWERED_HEIGHT
 	match kind:
+		SimGrid.Segment.STALL_PARTITION:
+			var height: float = low if lowered else ArtScale.STALL_PARTITION_HEIGHT
+			root.add_child(StallPartitionView.make_panel(height))
 		SimGrid.Segment.WALL:
 			var height: float = low if lowered else full
 			_slab(root, x0, x1, 0.0, height, THICKNESS)

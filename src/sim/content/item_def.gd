@@ -65,6 +65,8 @@ const MAX_SEATED_LEAN_DEGREES: float = 35.0
 @export var unlock_level: int = 1
 @export var charm: int = 0
 @export var theme_tags: Array[StringName] = []
+## Empty keeps legacy content unchanged; the first authored look is the default.
+@export var variants: Array[ItemVariant] = []
 ## Warm placeholder palette until the shared model palette is locked in Phase 4.
 @export var placeholder_color: Color = Color(0.65, 0.44, 0.27, 1.0)
 ## Optional presentation resource. The sim never instantiates or reads this scene.
@@ -135,3 +137,29 @@ func blocking_cells_fit(occupied_footprint: Vector2i, standing_cells: Array[Vect
 ## relative to that rectangle; they are deliberately never clamped into it.
 static func rotate_cell(cell: Vector2i, unrotated_footprint: Vector2i, quarter_turns: int) -> Vector2i:
 	return GridMath.rotate_cell(cell, unrotated_footprint, quarter_turns)
+
+
+## Missing/unknown saved IDs resolve to the default, never a random look.
+func variant(variant_id: StringName = &"") -> ItemVariant:
+	for look: ItemVariant in variants:
+		if look != null and look.id == variant_id:
+			return look
+	return variants[0] if not variants.is_empty() else null
+
+
+func variant_price(variant_id: StringName = &"") -> int:
+	var look: ItemVariant = variant(variant_id)
+	return maxi(0, price + (look.price_delta if look != null else 0))
+
+
+func variant_tags(variant_id: StringName = &"") -> Array[StringName]:
+	var look: ItemVariant = variant(variant_id)
+	return look.theme_tags.duplicate() if look != null else theme_tags.duplicate()
+
+
+## Canonical saved selection: unknown or removed looks safely use the default.
+func known_variant_id(value: StringName) -> StringName:
+	for look: ItemVariant in variants:
+		if look != null and look.id == value:
+			return value
+	return &""
