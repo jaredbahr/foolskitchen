@@ -4,7 +4,7 @@ extends RefCounted
 ## and again on load; no ticks, random draws, nodes or saved state belong here.
 
 ## Detached placed-item input. Cells are absolute occupied footprint cells.
-## Only DECOR earns charm/variety; other categories may contribute theme tags.
+## DECOR and hung RESTROOM accents earn charm/variety; other items may vote for themes.
 class Item extends RefCounted:
 	var definition_id: StringName = &""
 	## Explicit cosmetic identity; base definition still owns repetition/variety.
@@ -106,7 +106,8 @@ static func evaluate(inputs: Inputs, tuning: VibeTuning) -> Result:
 	for id_text: String in ids:
 		var item_id: StringName = StringName(id_text)
 		var group: _Group = collected.groups[item_id]
-		if group.category == ItemDef.Category.DECOR and group.charm > 0.0:
+		if (group.category == ItemDef.Category.DECOR or
+				(group.category == ItemDef.Category.RESTROOM and group.floor_decor)) and group.charm > 0.0:
 			var charm: float = group.charm * (1.0 - pow(tuning.repeat_decay, group.count)) \
 				/ (1.0 - tuning.repeat_decay)
 			if not is_finite(charm):

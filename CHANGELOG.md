@@ -13,6 +13,8 @@ Each line ends with its PR number.
 ### Players
 - Choose diner booth and stool looks in Buy, or change an existing piece in Paint. Copying, undoing and loading keep the chosen look. (#220)
 
+- Add a wall-hung restroom mirror and hand dryer with a little charm, a gentle room-label hint, and thin light-laminate stall partitions in Build > Walls that keep toilet and basin access clear. (#217)
+- Upgrade your lease from owner level 3 in the morning Menu panel: keep your shop, pay a deposit and higher rent, and unlock more land to expand. (#216)
 - Pick your owner's character and name when starting a shop, and change their look from Staff in the morning. (#233)
 - Start from a title screen with New game, Continue and Settings, and quit back to it without overwriting your morning autosave. (#230)
 - Check dirty tables, floor dirt and restroom upkeep in Build's new Hygiene overview, with problem tiles highlighted and today's cleanliness rating. (#232)
@@ -112,6 +114,8 @@ Each line ends with its PR number.
 ### Under the hood
 - Add data-driven furniture looks and named kit-material colour recipes for the first diner seats. (#220)
 
+- Include the lease offer, cash refusal and larger lot in the normal visual review without adding more than two captures. (#216)
+- Keep the morning lease advice independent of the HUD during capture startup, and check that fresh startup path before the full test suite. (#216)
 - The roadmap's Codex queue is reset: finish open PRs, then the thin divider fix, the outside of the shop (street front, weather, neighbourhood, patio, curb appeal) and sound. (#245)
 - Workers mark a PR ready once their own checks and captures are done; director review and decisions happen on the ready PR, and open PRs are finished before new issues start. (#225)
 - Verify keyboard navigation through both grid settings before closing Settings in review captures. (#214)

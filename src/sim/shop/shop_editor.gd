@@ -46,6 +46,7 @@ var _content: ContentDB
 var _books: ShopEditBooks
 var _applying: bool = false
 var _owner_level: int = 1
+var _property_tier: int = 1
 ## The lot and the bought floor (FK-080). Null without a layout.
 var _footprint: ShopFootprint
 var _bought: Dictionary[Vector2i, bool] = {}
@@ -90,6 +91,10 @@ func _init(sim: RestaurantSim, content: ContentDB, books: ShopEditBooks, layout:
 
 ## Main injects the restored owner level before accepting a new purchase.
 ## This does not change saved placements, including starter furniture.
+func set_property_tier(tier: int) -> void:
+	_property_tier = clampi(tier, 1, 2)
+
+
 func set_owner_level(level: int) -> void:
 	if level >= 1:
 		_owner_level = level
@@ -860,6 +865,9 @@ func next_segment(edge: Vector3i, empty_kind: SimGrid.Segment) -> SimGrid.Segmen
 	var grid: SimGrid = _sim.world.grid
 	var current: SimGrid.Segment = grid.segment(edge)
 	if WallRules.outer_side(grid, edge) != Vector2i.ZERO:
+		# An interior-only partition must refuse here, never become a window.
+		if empty_kind == SimGrid.Segment.STALL_PARTITION:
+			return empty_kind
 		if empty_kind == SimGrid.Segment.DOORWAY:
 			return SimGrid.Segment.NONE if current == SimGrid.Segment.DOORWAY else SimGrid.Segment.DOORWAY
 		return SimGrid.Segment.NONE if current == SimGrid.Segment.WINDOW else SimGrid.Segment.WINDOW
@@ -1126,8 +1134,8 @@ func check_flooring(changes: Dictionary[Vector2i, FloorFinishes.Finish], exact: 
 		cost += style.price
 		var old: FloorStyleDef = _content.floor_style(current.style)
 		refund += floori(old.price / 2.0) if old != null else 0
-		if locked.is_empty() and not style.unlocked(_owner_level):
-			locked = style.locked_reason(_owner_level)
+		if locked.is_empty() and not style.unlocked(_owner_level, _property_tier):
+			locked = style.locked_reason(_owner_level, _property_tier)
 	if effective.is_empty():
 		# Undo/redo of looks that are already in place has nothing to do.
 		if exact != null and floor_seen:
@@ -1273,8 +1281,8 @@ func check_wall_finishes(changes: Dictionary[Vector3i, FloorFinishes.Finish], ex
 		cost += style.price
 		var old: WallStyleDef = _content.wall_style(current.style)
 		refund += floori(old.price / 2.0) if old != null else 0
-		if locked.is_empty() and not style.unlocked(_owner_level):
-			locked = style.locked_reason(_owner_level)
+		if locked.is_empty() and not style.unlocked(_owner_level, _property_tier):
+			locked = style.locked_reason(_owner_level, _property_tier)
 	if effective.is_empty():
 		if exact != null and face_seen:
 			return EditCheck.new(true)
@@ -1489,6 +1497,17 @@ func _record_decor(amount: int, exact: Exact) -> void:
 
 
 # --- Floor expansion (FK-080) ------------------------------------------------
+
+## Replace only the lot; the built shop, floor and object identities stay put.
+func grow_lot(layout: ShopLayout) -> bool:
+	var candidate: ShopFootprint = ShopFootprint.from_layout(layout)
+	if _footprint == null or candidate.building != _footprint.building \
+			or not candidate.lot.encloses(_footprint.lot) or candidate.lot == _footprint.lot \
+			or not candidate.problem(_bought).is_empty():
+		return false
+	_footprint = candidate
+	return true
+
 
 ## The lot and floor plan, or null when this shop has no layout.
 func footprint() -> ShopFootprint:
@@ -1859,11 +1878,11 @@ func _check_placement(definition: ItemDef, origin: Vector2i, turns: int, exclude
 func _note_menu_access(check: EditCheck, preview: SimGrid, restoring: bool) -> void:
 	if restoring:
 		return
-	check.menu_losses = MenuAccess.lost(_sim.world.grid, preview, _sim.menu)
+	check.menu_losses = MenuAccess.lost(_sim.world.grid, preview, _sim.menu, _property_tier)
 	check.menu_warning = MenuAccess.warning(check.menu_losses, preview, _content)
 	var recipes: Array[RecipeDef] = _content.recipes()
-	if MenuAccess.cookable(preview, recipes, _owner_level).is_empty() \
-			and not MenuAccess.cookable(_sim.world.grid, recipes, _owner_level).is_empty():
+	if MenuAccess.cookable(preview, recipes, _owner_level, _property_tier).is_empty() \
+			and not MenuAccess.cookable(_sim.world.grid, recipes, _owner_level, _property_tier).is_empty():
 		check.ok = false
 		check.why = MenuAccess.NO_DISH
 		return

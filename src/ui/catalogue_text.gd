@@ -96,7 +96,7 @@ static func does(definition: ItemDef) -> String:
 		ItemDef.Category.DOOR:
 			return "The way in"
 		ItemDef.Category.RESTROOM:
-			return RESTROOM_TEXT.get(definition.station_type, "Restroom fixture")
+			return "Hangs on a restroom wall" if definition.hangs_on_wall() else RESTROOM_TEXT.get(definition.station_type, "Restroom fixture")
 	if definition.placement_layer == ItemDef.PlacementLayer.FLOOR_DECOR:
 		return "Rug: tables and chairs can stand on it"
 	if definition.hangs_in_window():
@@ -106,9 +106,12 @@ static func does(definition: ItemDef) -> String:
 	return "Decoration"
 
 
-## Only decor earns charm in the vibe model; other furniture shows none.
+## Ordinary decor and hung restroom accents earn charm; floor fixtures do not.
 static func charm_text(definition: ItemDef) -> String:
-	if definition == null or definition.category != ItemDef.Category.DECOR or definition.charm <= 0:
+	if definition == null or definition.charm <= 0:
+		return ""
+	if definition.category != ItemDef.Category.DECOR and not (
+			definition.category == ItemDef.Category.RESTROOM and definition.hangs_on_wall()):
 		return ""
 	return "Charm +%d" % definition.charm
 
