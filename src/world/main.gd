@@ -31,6 +31,8 @@ const LOAN_LOCK_REASON: String = "Pay off your bank loan first"
 var save_slot: String = AUTOSAVE_SLOT
 ## When false, _ready() neither loads nor writes saves (used by tests).
 var use_saves: bool = true
+## Title backdrop only: build the default view without starting a run.
+var display_only: bool = false
 ## Test/capture override only; zero keeps the normal wall-clock new-game seed.
 var new_game_seed_override: int = 0
 ## Tools that boot Main directly retain the old default appearance and flow.
@@ -165,6 +167,7 @@ var _staff_panel: StaffPanel
 var _settings_panel: SettingsPanel
 var _settings_return_to_menu: bool = false
 var _settings_previous_speed: int = 0
+var _quit_title_previous_speed: int = 0
 var _goals_panel: GoalsPanel
 var _goals_return_to_menu: bool = false
 var _goals_snapshot: Dictionary = {}
@@ -300,6 +303,8 @@ func _bind_world_presentation() -> void:
 		_menu_panel.goals_requested.connect(_on_menu_goals_requested)
 	if not _menu_panel.hours_requested.is_connected(_on_hours_requested):
 		_menu_panel.hours_requested.connect(_on_hours_requested)
+	if not _menu_panel.quit_to_title_requested.is_connected(request_quit_to_title):
+		_menu_panel.quit_to_title_requested.connect(request_quit_to_title)
 	_menu_panel.set_hours(Clock.sim.display_open_minute, Clock.sim.display_close_minute, HOURS_TUNING)
 	_goals_panel = $Overlay/GoalsPanel
 	_dismiss_goals()
@@ -309,8 +314,26 @@ func _bind_world_presentation() -> void:
 		$HUD.connect(&"menu_pressed", toggle_menu)
 	_settings_panel = $Overlay/SettingsPanel
 	_settings_panel.bind_preferences(Preferences)
+	_settings_panel.set_quit_to_title_available(true)
 	if not _settings_panel.close_requested.is_connected(_on_settings_close_requested):
 		_settings_panel.close_requested.connect(_on_settings_close_requested)
+	if not _settings_panel.quit_to_title_requested.is_connected(request_quit_to_title):
+		_settings_panel.quit_to_title_requested.connect(request_quit_to_title)
+	var quit_dialog: ConfirmationDialog = $Overlay/QuitToTitle
+	# Keep native dialog padding, but use the shared palette in this dialog only.
+	var dialog_theme: Theme = _menu_panel.theme.duplicate() as Theme
+	var dialog_panel: StyleBoxFlat = quit_dialog.get_theme_stylebox("panel", "AcceptDialog").duplicate() as StyleBoxFlat
+	dialog_panel.bg_color = (_menu_panel.theme.get_stylebox("panel", "PanelContainer") as StyleBoxFlat).bg_color
+	dialog_theme.set_stylebox("panel", "AcceptDialog", dialog_panel)
+	dialog_theme.set_color("font_focus_color", "Button", _menu_panel.theme.get_color("font_color", "Button"))
+	quit_dialog.theme = dialog_theme
+	quit_dialog.title = TitleText.QUIT_TO_TITLE
+	quit_dialog.dialog_text = TitleText.LOST_PROGRESS
+	quit_dialog.ok_button_text = TitleText.QUIT_TO_TITLE
+	quit_dialog.cancel_button_text = TitleText.KEEP_PLAYING
+	if not quit_dialog.confirmed.is_connected(_quit_to_title):
+		quit_dialog.confirmed.connect(_quit_to_title)
+		quit_dialog.canceled.connect(_cancel_quit_to_title)
 	_staff_panel = $Overlay/StaffPanel
 	_staff_panel.bind_roster(staff_roster)
 	_staff_panel.set_phase(Clock.sim.phase)
@@ -378,7 +401,13 @@ func _on_header_layout_changed() -> void:
 
 
 func _ready() -> void:
-	start()
+	if display_only:
+		initialize()
+		$HUD.hide()
+		$Overlay.hide()
+		process_mode = Node.PROCESS_MODE_DISABLED
+	else:
+		start()
 
 
 func _process(_delta: float) -> void:
@@ -408,6 +437,8 @@ func start() -> void:
 	if _started:
 		return
 	initialize()
+	if display_only:
+		return
 	if sim == null:
 		return
 	_started = true
@@ -1318,6 +1349,8 @@ func _bind_build_session() -> void:
 	if not shop_editor.decor.changed.is_connected(_on_wall_decor_changed):
 		shop_editor.decor.changed.connect(_on_wall_decor_changed)
 	_build_preview.bind_build_mode(build_mode, $ShopView as ShopView)
+	if _build_catalogue != null and not _build_catalogue.hygiene_toggled.is_connected(_on_hygiene_toggled):
+		_build_catalogue.hygiene_toggled.connect(_on_hygiene_toggled)
 	var lot: ShopFootprint = shop_editor.footprint()
 	if _build_catalogue != null:
 		_build_catalogue.set_floor_price(lot.cell_price if lot != null and lot.has_lot() else 0)
@@ -1342,6 +1375,22 @@ func _on_catalogue_grid_requested() -> void:
 	if is_build_active():
 		camera.toggle_grid()
 	_build_catalogue.set_grid_shown(camera.build_grid_visible)
+
+
+func _on_hygiene_toggled(_active: bool) -> void:
+	_refresh_hygiene_overview()
+
+
+func _refresh_hygiene_overview() -> void:
+	if _build_catalogue == null or _build_preview == null:
+		return
+	var active: bool = is_build_active() and _build_catalogue.hygiene_enabled
+	if active:
+		var state: HygieneOverview.Snapshot = HygieneOverview.capture(sim)
+		_build_catalogue.set_hygiene_lines(HygieneOverview.lines(state))
+		_build_preview.set_hygiene_cells(state.problem_cells, true)
+	else:
+		_build_preview.set_hygiene_cells([] as Array[Vector2i], false)
 
 
 func _on_grid_shown_changed(_shown: bool) -> void:
@@ -1418,6 +1467,7 @@ func _update_build_controls() -> void:
 		_build_catalogue.set_build_visible(active or _paint_active)
 		_build_catalogue.set_blueprint_selection(0 if build_mode.blueprint_dragging else build_mode.blueprint_selection.size())
 	_build_ui_phase = world.clock.phase if world != null else -1
+	_refresh_hygiene_overview()
 
 
 ## The Wall finish tool's proposal and a held wall item's ghost (D26), drawn
@@ -1679,6 +1729,7 @@ func refresh_presentation() -> void:
 	if _inspect_panel == null or _debug_overlay == null or _debug_geometry == null:
 		return
 	_inspect_panel.refresh()
+	_refresh_hygiene_overview()
 	if _debug_overlay.is_enabled():
 		_debug_overlay.refresh()
 	var view: ShopView = $ShopView
@@ -1698,9 +1749,39 @@ func _on_inspection_tick(_tick: int) -> void:
 
 ## Deletes the autosave and restarts the scene from day 1.
 func start_over() -> void:
-	if use_saves:
-		SaveSystem.delete_slot(save_slot)
-	get_tree().reload_current_scene()
+	start_fresh_run(get_tree(), save_slot, use_saves)
+
+
+## The title's New game and the existing F10 route share replacement semantics.
+static func start_fresh_run(tree: SceneTree, slot: String = AUTOSAVE_SLOT, with_saves: bool = true) -> Error:
+	if with_saves:
+		var error: Error = SaveSystem.delete_slot(slot)
+		if error != OK and error != ERR_FILE_NOT_FOUND:
+			return error
+	return tree.change_scene_to_file("res://src/world/main.tscn")
+
+
+## Returning discards only unsaved changes; the existing morning save is intact.
+func request_quit_to_title() -> void:
+	if not _started or display_only:
+		return
+	if Clock.sim.phase == SimClock.Phase.MORNING:
+		_quit_to_title()
+	else:
+		_quit_title_previous_speed = Clock.speed
+		Clock.set_speed(0)
+		($Overlay/QuitToTitle as ConfirmationDialog).popup_centered(Vector2i(480, 160))
+
+
+func _cancel_quit_to_title() -> void:
+	Clock.set_speed(_quit_title_previous_speed)
+
+
+func _quit_to_title() -> void:
+	if _settings_panel != null and not _settings_panel.flush_pending_changes():
+		return
+	Clock.set_speed(0)
+	get_tree().change_scene_to_file("res://src/ui/title_screen.tscn")
 
 
 ## Advances the restaurant by `ticks` sim ticks right now (tests and tools).

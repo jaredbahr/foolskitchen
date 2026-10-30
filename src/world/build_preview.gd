@@ -32,6 +32,9 @@ const ROOM_LABEL_SIZE: int = 64
 ## The label colours of the guests' mood marks: cream on dark brown.
 const ROOM_LABEL_COLOR: Color = Color("f3e6cc")
 const ROOM_LABEL_OUTLINE: Color = Color("3b2a20")
+## Hygiene overview uses an existing paint colour, separate from edit ghosts.
+const HYGIENE_SWATCH: SwatchDef = preload("res://data/swatches/clay.tres")
+const HYGIENE_ALPHA: float = 0.5
 
 var blueprint_ghosts: Array[ItemVisual] = []
 var blueprint_selection_mesh: MeshInstance3D
@@ -50,6 +53,9 @@ var hover_mesh: MeshInstance3D
 var room_tints: Dictionary[int, MeshInstance3D] = {}
 var room_labels: Array[Label3D] = []
 var room_ghost: MeshInstance3D
+var hygiene_mesh: MeshInstance3D
+var _hygiene_cells: Array[Vector2i] = []
+var _hygiene_enabled: bool = false
 ## Floors tool (D25): the proposed look is drawn on the floor itself (ShopView's
 ## preview map); a refused proposal gets red tiles instead.
 var floors_ghost: MeshInstance3D
@@ -70,6 +76,7 @@ var _reason: String = ""
 func bind_build_mode(controller: BuildMode, shop_view: ShopView) -> void:
 	_disconnect_controller()
 	_clear_geometry()
+	_clear_hygiene()
 	_controller = controller
 	_shop_view = shop_view
 	_grid = shop_view.world.grid if is_instance_valid(shop_view) and shop_view.world != null else null
@@ -86,6 +93,19 @@ func displayed_warning_ids() -> Array[int]:
 	ids.assign(warning_nodes.keys())
 	ids.sort()
 	return ids
+
+
+## Only this derived display data is retained; no cleaning state is owned here.
+func set_hygiene_cells(cells: Array[Vector2i], enabled: bool) -> void:
+	if _hygiene_cells == cells and _hygiene_enabled == enabled:
+		return
+	_hygiene_cells = cells.duplicate()
+	_hygiene_enabled = enabled
+	_refresh_hygiene_geometry()
+
+
+func displayed_hygiene_cells() -> Array[Vector2i]:
+	return _hygiene_cells.duplicate() if is_instance_valid(hygiene_mesh) else [] as Array[Vector2i]
 
 
 ## Native-node evidence only, independent of the controller's expected state.
@@ -295,12 +315,14 @@ func refresh() -> void:
 			if item != null and item.def is ItemDef:
 				_build_warning(id, item.def as ItemDef, item.origin, item.quarter_turns)
 	_show_floor_preview(floor_preview)
+	_refresh_hygiene_geometry()
 	_set_reason(reason)
 
 
 func clear() -> void:
 	_disconnect_controller()
 	_clear_geometry()
+	_clear_hygiene()
 	_show_floor_preview({})
 	_controller = null
 	_shop_view = null
@@ -316,6 +338,7 @@ func _enter_tree() -> void:
 func _exit_tree() -> void:
 	_disconnect_controller()
 	_clear_geometry()
+	_clear_hygiene()
 	_set_reason("")
 
 
@@ -323,6 +346,7 @@ func _notification(what: int) -> void:
 	if what == NOTIFICATION_PREDELETE or what == NOTIFICATION_UNPARENTED:
 		_disconnect_controller()
 		_clear_geometry()
+		_clear_hygiene()
 		if what == NOTIFICATION_UNPARENTED:
 			_set_reason("")
 
@@ -345,6 +369,37 @@ func _disconnect_controller() -> void:
 
 func _on_cells_changed(_cells: Array[Vector2i]) -> void:
 	refresh()
+
+
+func _refresh_hygiene_geometry() -> void:
+	var shown: bool = _hygiene_enabled and _controller != null and _controller.is_active() \
+		and not _hygiene_cells.is_empty()
+	if not shown:
+		if is_instance_valid(hygiene_mesh):
+			_free_node(hygiene_mesh)
+		hygiene_mesh = null
+		return
+	if is_instance_valid(hygiene_mesh) and hygiene_mesh.get_meta("cells", []) == _hygiene_cells:
+		return
+	if is_instance_valid(hygiene_mesh):
+		_free_node(hygiene_mesh)
+	hygiene_mesh = MeshInstance3D.new()
+	hygiene_mesh.name = "HygieneCells"
+	hygiene_mesh.mesh = _tile_mesh(_hygiene_cells, 0.04, 0.025)
+	var tint: Color = HYGIENE_SWATCH.color
+	tint.a = HYGIENE_ALPHA
+	hygiene_mesh.material_override = _material(tint, true)
+	hygiene_mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	hygiene_mesh.set_meta("cells", _hygiene_cells.duplicate())
+	add_child(hygiene_mesh)
+
+
+func _clear_hygiene() -> void:
+	if is_instance_valid(hygiene_mesh):
+		_free_node(hygiene_mesh)
+	hygiene_mesh = null
+	_hygiene_cells.clear()
+	_hygiene_enabled = false
 
 
 func _clear_geometry() -> void:

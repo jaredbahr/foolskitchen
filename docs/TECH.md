@@ -238,6 +238,19 @@ an active edit/panel/selection first, or opens Settings when none is active.
   candidate and next-morning staff-save paths, with a skill-scaled Tier 1
   base wage of $20 versus a server's $25; cook/server minimums still hold.
 - **Debug overlay (F3):** paths, claimed tasks, agent states and the task board, from Phase 1 onward.
+
+- **Hygiene overview (FK-097):** the Build/Buy room readout has a session-local
+  Hygiene toggle. `HygieneOverview` reads existing dirty-table holds, floor spots
+  and restroom upkeep; it counts used toilets separately from their tidy spots.
+  Today's cleanliness is the same worst-so-far label used by the evening report,
+  not a new gameplay score. `BuildPreview` tints a detached, deduplicated set of
+  problem cells using the existing Clay swatch. The native mesh updates only
+  when those cells change and disappears outside Build; no sim, RNG or save
+  state changes. The catalogue's shared readout wraps within its bounded panel.
+  `bash tools/screenshot.sh --scene=res://tools/hygiene_review.tscn --speed=0
+  --frames=12,60 --quarter=2` shows an explicitly staged, unsaved slightly messy
+  shop before and after enabling Hygiene (seed 1, one dirty table, two floor
+  spots and one toilet needing a tidy).
 - **Owner assignment (FK-020):** the restaurant factory creates one `OwnerAgent`
   at the authored owner spawn, with cook/server skill 3 and default `rest`.
   `owner_agent()` returns that live agent and `assign_owner(mode) -> bool`
@@ -254,6 +267,21 @@ an active edit/panel/selection first, or opens Settings when none is active.
   side with deterministic ties. It changes no grid, reservation or agent state.
 
 ### 2.3b Game session (FK-024, `src/world/main.gd`)
+- **Entry screen (FK-058):** `src/ui/title_screen.tscn` is the project startup
+  scene. Continue opens `main.tscn` and uses its existing morning-load path;
+  New game confirms replacement when an autosave exists, then shares F10's
+  `Main.start_fresh_run` reset route. The live, slowly orbiting title backdrop
+  uses Main's `display_only` mode: local fixed-seed view initialization only,
+  with no session start, save providers, autosave or run RNG draws. Title
+  disables Clock processing/input until it leaves. Settings uses the existing
+  shared panel and theme; Quit is hidden on web.
+- **Quit to title** is available in Menu and also in Settings during service.
+  Outside MORNING it pauses for the progress-loss confirmation; Cancel resumes
+  the prior speed. Returning never saves. Continue therefore restores the last
+  normal morning checkpoint. `main.tscn` stays directly bootable: existing
+  screenshot, balance-probe and soak entry points still choose it explicitly,
+  so they skip the title without a new flag. `tools/title_review.gd` captures
+  the real title in a no-save fixture and verifies unchanged run state.
 - `main.tscn` is the game session for one shop. It builds a `RestaurantSim` from the layout and content, and points `sim.stock` at `Economy.stock`.
 - `Clock.attach_world(world, sim.advance)` makes every tick run the restaurant (guests, staff, and the kitchen once it lands).
 - **Day loop:**
