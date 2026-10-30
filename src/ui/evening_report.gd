@@ -198,7 +198,7 @@ func _bind_nodes() -> void:
 	_demand_section.name = "DemandForecast"
 	_demand_section.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	content.add_child(_demand_section)
-	content.move_child(_demand_section, (content.get_node("ReviewHeading") as Control).get_index())
+	content.move_child(_demand_section, _reviews.get_index() + 1)
 	var demand_heading: Label = _add_label(_demand_section, DemandText.FORECAST_HEADING)
 	demand_heading.name = "Heading"
 	demand_heading.add_theme_font_size_override("font_size", 22)
