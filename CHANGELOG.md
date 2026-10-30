@@ -12,6 +12,7 @@ Each line ends with its PR number.
 
 ### Players
 - Get to know named regulars after day five: they keep a favourite dish, seat and look, greet you on return visits, tip more for their favourite and may stop coming after poor service. The Menu and evening report show who they are; their history saves each morning. (#234)
+- Regulars who drop in for coffee but order their usual meal now take the normal time to eat it. (#234)
 - Waiting benches let guests sit near the door and wait longer for a dining table. (#228)
 - Build warns when an edit would take dishes off the menu and refuses edits that leave nothing cookable. Opening explains dishes removed that morning. (#227)
 - Expanding rooms removes and refunds unsupported windows, back doors and affected wall decorations. Undo restores the complete layout and cash. (#226)

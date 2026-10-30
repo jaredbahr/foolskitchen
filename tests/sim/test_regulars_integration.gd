@@ -132,6 +132,32 @@ func test_sold_out_favourite_keeps_the_original_stocked_visit_kind() -> void:
 	assert_ne(guest.leave_reason, &"out_of_stock")
 
 
+func test_food_favourite_replacing_coffee_arrival_keeps_normal_meal_duration() -> void:
+	var sim: RestaurantSim = _sim()
+	var food: RecipeDef = sim.menu[0]
+	var coffee: RecipeDef = load("res://data/recipes/coffee.tres") as RecipeDef
+	var profile: RegularProfile = _cast_member(sim)
+	sim.menu = [food, coffee]
+	sim.world.clock.day = profile.next_visit_day
+	assert_true(sim.world.clock.start_service())
+	var guest: CustomerAgent = sim.add_visitor(sim.world.grid.entries()[0], _random(52),
+		TYPES.find_type(&"regular"), RecipeDef.COFFEE)
+	assert_eq(guest.regular_profile, profile)
+	assert_true(guest.regular_favourite_available)
+	assert_eq(guest.visit_kind, RecipeDef.FOOD)
+	var ordinary: CustomerAgent = sim.add_customer(sim.world.grid.entries()[0], _random(53),
+		TYPES.find_type(&"regular"))
+	assert_null(ordinary.regular_profile)
+	assert_eq(ordinary.visit_kind, RecipeDef.FOOD)
+	assert_eq(guest.eat_ticks, ordinary.eat_ticks,
+		"a returning meal guest must not retain the shorter coffee duration")
+	guest.state = CustomerAgent.State.ORDERING
+	assert_true(guest._take_order(SimAgent.new()))
+	assert_not_null(guest.order)
+	if guest.order != null:
+		assert_eq(guest.order.recipe_id, profile.favourite_dish)
+
+
 func _sim() -> RestaurantSim:
 	var content: ContentDB = ContentDB.new()
 	assert_true(content.load_all().is_empty())

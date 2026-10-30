@@ -2235,7 +2235,9 @@ order. Parties and other customer types remain anonymous.
 
 A regular tries their favourite seat first, then any usable seat, and orders the
 favourite when it is available in their visit's menu section. A missing or sold-out
-favourite never prevents another order. Having it on the menu adds the authored
+favourite never prevents another order. The final visit kind is applied once after
+choosing the usual, so a food favourite keeps the normal meal duration even when
+replacing a coffee or drinks arrival. Having it on the menu adds the authored
 0.08 happiness term to their arrival review bonus. Their existing wait and meal
 quality determine relationship mood at departure; repeated missing favourites
 lower it too. Below 0.2 they stop visiting, and the evening report names them.

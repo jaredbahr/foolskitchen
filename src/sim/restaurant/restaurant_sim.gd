@@ -611,7 +611,6 @@ func _install_customer(entry: Vector2i, random: RandomNumberGenerator,
 	var customer: CustomerAgent = CustomerAgent.new(self, random)
 	if kind != null:
 		customer.configure_type(kind)
-	customer.set_visit_kind(visit, visit_tuning)
 	customer.cell = entry
 	# Only a real service arrival can dirty the floor or consume its stream.
 	if cleanliness != null and world.clock.phase == SimClock.Phase.OPEN:
@@ -631,7 +630,9 @@ func _install_customer(entry: Vector2i, random: RandomNumberGenerator,
 		if _vibe_result.score > 0.0 and not _vibe_result.active_theme.is_empty():
 			customer.vibe_theme_label = _vibe_result.theme_label
 	if publish:
-		_configure_regular_customer(customer)
+		visit = _configure_regular_customer(customer, visit)
+	# Set the duration once, after a returning regular has chosen their usual.
+	customer.set_visit_kind(visit, visit_tuning)
 	world.add_agent(customer)
 	if publish:
 		_publish_customer_arrival(customer)
@@ -640,18 +641,18 @@ func _install_customer(entry: Vector2i, random: RandomNumberGenerator,
 
 ## A due cast member takes the place of an ordinary solo Regular arrival;
 ## neither the arrival clock nor its existing draws are changed.
-func _configure_regular_customer(customer: CustomerAgent) -> void:
+func _configure_regular_customer(customer: CustomerAgent, visit: StringName) -> StringName:
 	if regulars == null or customer.customer_type_id != &"regular" \
 			or world.clock.phase != SimClock.Phase.OPEN:
-		return
+		return visit
 	var profile: RegularProfile = regulars.due_regular(world.clock.day)
 	if profile == null:
 		customer.repeat_guest_key = "guest_%d" % (_regular_cohort_index % 16)
 		_regular_cohort_index += 1
-		return
+		return visit
 	if not regular_rng_provider.is_valid() or not regulars.mark_arrived(profile,
 			world.clock.day, regular_rng_provider.call() as RandomNumberGenerator):
-		return
+		return visit
 	customer.regular_profile = profile
 	customer.display_name = profile.display_name
 	customer.regular_arrival_tick = world.now
@@ -663,9 +664,10 @@ func _configure_regular_customer(customer: CustomerAgent) -> void:
 			# A listed usual keeps its menu bonus, but must not replace a
 			# stocked visit with an order type that cannot currently be cooked.
 			if available_menu().has(recipe):
-				customer.set_visit_kind(recipe.order_type, visit_tuning)
+				visit = recipe.order_type
 			break
 	customer.vibe_review_bonus += regulars.menu_happiness(profile, customer.regular_favourite_available)
+	return visit
 
 
 func regular_tip(customer: CustomerAgent, order: Order) -> int:
