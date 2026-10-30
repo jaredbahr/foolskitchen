@@ -56,11 +56,13 @@ func _morning_stock_cost(main: Node) -> int:
 
 
 ## Independent opening-food oracle: all default visits order one equally
-## likely food recipe; repeated ingredient entries count separate units.
+## likely food recipe. Round the uniform buffered portions once, then count
+## each repeated ingredient entry as a separate unit.
 ## It never reads the production forecast helper, stock or purchase ledger.
 func _morning_food_targets(main: Node) -> Dictionary[StringName, int]:
 	var sim: RestaurantSim = main.get("sim")
 	var guests: int = sim.expected_demand_guests(sim.demand_factor)
+	var servings_per_recipe: int = ceili(float(guests) * TUNING.restock_buffer / float(sim.menu.size()))
 	var portions: Dictionary[StringName, int] = {}
 	for recipe: RecipeDef in sim.menu:
 		assert_false(recipe.is_drink(), "the ordinary starting fixture has a food-only menu")
@@ -68,7 +70,7 @@ func _morning_food_targets(main: Node) -> Dictionary[StringName, int]:
 			portions[ingredient.id] = portions.get(ingredient.id, 0) + 1
 	var targets: Dictionary[StringName, int] = {}
 	for id: StringName in portions:
-		targets[id] = ceili(float(guests * portions[id]) * TUNING.restock_buffer / float(sim.menu.size()))
+		targets[id] = mini(ReorderSettings.MAX_TARGET, servings_per_recipe * portions[id])
 	return targets
 
 
