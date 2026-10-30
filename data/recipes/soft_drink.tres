@@ -9,7 +9,7 @@
 [sub_resource type="Resource" id="Step_make"]
 script = ExtResource("3_step")
 station_type = &"drinks_fridge"
-duration_ticks = 8
+duration_ticks = 6
 
 [resource]
 script = ExtResource("1_recipe")
