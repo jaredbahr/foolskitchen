@@ -33,9 +33,11 @@ static func capture(grid: SimGrid, content: ContentDB, menu: Array[RecipeDef],
 			continue
 		var item: VibeModel.Item = VibeModel.Item.new()
 		item.definition_id = definition.id
+		var look: ItemVariant = definition.variant(placed.variant_id)
+		item.variant_id = look.id if look != null else &""
 		item.charm = float(definition.charm)
 		item.category = definition.category
-		item.theme_tags = definition.theme_tags.duplicate()
+		item.theme_tags = definition.variant_tags(placed.variant_id)
 		item.cells = placed.cells.duplicate()
 		item.floor_decor = definition.placement_layer == ItemDef.PlacementLayer.FLOOR_DECOR
 		if not placed.swatch_id.is_empty():
