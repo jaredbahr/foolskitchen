@@ -13,7 +13,7 @@ extends TestCase
 ## (5..7, 4); dining x 1..12, y 5..9 plus (6..7, 10); street entry (6..7, 11).
 ## Faces: Vector3i(x, y, dir) with dir 0 north, 1 east, 2 south, 3 west.
 
-const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
+var _layout: ShopLayout
 const START_CASH: int = 1000
 const WEST: int = 3
 const EAST: int = 1
@@ -31,14 +31,16 @@ var _ledger: Ledger
 
 
 func before_each() -> void:
+	# Isolate wall transactions from the starter shop's authored divider.
+	_layout = LegacyTier1Layout.make()
 	_content = ContentDB.new()
 	assert_eq(_content.load_all(), PackedStringArray())
 	var errors: Array[String] = []
-	_sim = RestaurantSim.create(LAYOUT, _content, 1, errors, null, false)
+	_sim = RestaurantSim.create(_layout, _content, 1, errors, null, false)
 	assert_eq(errors, [] as Array[String])
 	_ledger = Ledger.new()
 	_ledger.cash = START_CASH
-	_editor = ShopEditor.new(_sim, _content, ShopEditBooks.new(_can_spend, _record), LAYOUT)
+	_editor = ShopEditor.new(_sim, _content, ShopEditBooks.new(_can_spend, _record), _layout)
 	_editor.set_owner_level(6)
 	_history = ShopEditHistory.new(_editor, _sim.world.grid)
 
@@ -56,7 +58,7 @@ func test_every_shop_starts_as_plain_paint_with_nothing_stored_or_hung() -> void
 	assert_eq(_editor.decor.count(), 0)
 	var look: FloorFinishes.Finish = _editor.walls.finish(_face(1, 6, WEST))
 	assert_eq(look.style, WallStyleDef.DEFAULT_ID)
-	assert_eq(look.swatch, LAYOUT.wall_swatch_id)
+	assert_eq(look.swatch, _layout.wall_swatch_id)
 	var snapshot: Dictionary = _editor.to_dict()
 	assert_eq(int(snapshot["version"]), ShopEditor.SNAPSHOT_VERSION)
 	assert_eq(snapshot["wall_style_id"], "paint")
@@ -111,10 +113,10 @@ func test_putting_up_costs_per_face_and_replacing_refunds_half() -> void:
 	assert_true(_editor.apply_wall_finishes(_editor.wall_recolour_changes(faces, &"clay")))
 	assert_eq(_editor.walls.finish(_face(1, 5, WEST)).swatch, &"clay")
 	assert_eq(_editor.walls.finish(_face(1, 5, WEST)).accent, &"cream")
-	assert_true(_editor.apply_wall_finishes(_editor.wall_lay_changes(faces, &"paint", LAYOUT.wall_swatch_id)))
+	assert_true(_editor.apply_wall_finishes(_editor.wall_lay_changes(faces, &"paint", _layout.wall_swatch_id)))
 	assert_eq(_editor.walls.count(), 0, "plain paint in the shop colour stores nothing")
 	assert_eq(_ledger.cash, START_CASH - 16 + 8)
-	assert_eq(_editor.check_wall_finishes(_editor.wall_lay_changes(faces, &"paint", LAYOUT.wall_swatch_id)).why,
+	assert_eq(_editor.check_wall_finishes(_editor.wall_lay_changes(faces, &"paint", _layout.wall_swatch_id)).why,
 		ShopEditor.WALL_FINISH_ALREADY)
 	assert_eq(_editor.check_wall_finishes(_editor.wall_lay_changes([_face(3, 6, NORTH)] as Array[Vector3i],
 		&"brick", &"brick")).why, ShopEditor.WALL_FINISH_NOT_WALL)
@@ -385,11 +387,11 @@ func test_snapshot_round_trip_keeps_finishes_and_decor() -> void:
 	_window(FRONT_WINDOW)
 	assert_true(_editor.hang(&"neon_open_sign", FRONT_SLOT), _editor.last_check.why)
 	var snapshot: Dictionary = _editor.to_dict()
-	assert_eq(int(snapshot["version"]), ShopEditor.SNAPSHOT_VERSION, "a window slot keeps its v6 row format")
+	assert_eq(int(snapshot["version"]), ShopEditor.SNAPSHOT_VERSION, "window slots keep the same row format")
 	assert_eq((snapshot["wall_finishes"] as Array)[0], [3, 1, 0, "wainscot", "walnut", ""], "sorted")
 	assert_eq(snapshot["wall_items"], [[1, 7, 3, "wall_art_sunrise"], [8, 9, 2, "neon_open_sign"]])
 	var errors: Array[String] = []
-	var layout: ShopLayout = ShopEditor.from_dict(JSON.parse_string(JSON.stringify(snapshot)), LAYOUT, _content, errors)
+	var layout: ShopLayout = ShopEditor.from_dict(JSON.parse_string(JSON.stringify(snapshot)), _layout, _content, errors)
 	assert_eq(errors, [] as Array[String])
 	var copy: ShopEditor = _restore(layout)
 	assert_eq(copy.walls.to_rows(), _editor.walls.to_rows())
@@ -400,7 +402,7 @@ func test_snapshot_round_trip_keeps_finishes_and_decor() -> void:
 	var broken: Dictionary = JSON.parse_string(JSON.stringify(snapshot))
 	broken["wall_items"] = [[1, 7, 3, "wall_art_sunrise"], [1, 9, 3, "neon_open_sign"], [8, 9, 2, "neon_open_sign"],
 		[12, 9, 2, "neon_open_sign"]]
-	layout = ShopEditor.from_dict(broken, LAYOUT, _content, errors)
+	layout = ShopEditor.from_dict(broken, _layout, _content, errors)
 	assert_eq(_restore(layout).decor.to_rows(), [[1, 7, 3, "wall_art_sunrise"], [8, 9, 2, "neon_open_sign"]] as Array[Array],
 		"only the sign in a real window loads")
 
@@ -413,7 +415,7 @@ func test_older_snapshots_are_plain_paint_with_nothing_hung() -> void:
 	for key: String in ["wall_style_id", "wall_finishes", "wall_items"]:
 		legacy.erase(key)
 	var errors: Array[String] = []
-	var layout: ShopLayout = ShopEditor.from_dict(legacy, LAYOUT, _content, errors)
+	var layout: ShopLayout = ShopEditor.from_dict(legacy, _layout, _content, errors)
 	assert_eq(errors, [] as Array[String])
 	assert_true(layout.wall_finishes.is_empty() and layout.wall_items.is_empty())
 	var copy: ShopEditor = _restore(layout)
@@ -442,7 +444,7 @@ func test_saved_walls_decode_forgivingly_and_ignore_another_default() -> void:
 		[5, 1, 0],
 	]
 	var errors: Array[String] = []
-	var layout: ShopLayout = ShopEditor.from_dict(snapshot, LAYOUT, _content, errors)
+	var layout: ShopLayout = ShopEditor.from_dict(snapshot, _layout, _content, errors)
 	assert_eq(errors, [] as Array[String], "wall looks never refuse a save")
 	assert_eq(layout.wall_style_id, WallStyleDef.DEFAULT_ID)
 	assert_eq(layout.wall_finishes.get(_face(1, 5, WEST)), PackedStringArray(["brick", "brick", "cream"]), "first row wins")
@@ -457,7 +459,7 @@ func test_saved_walls_decode_forgivingly_and_ignore_another_default() -> void:
 	assert_eq([check.cost, check.refund], [2, 0], "nothing to refund over plain paint")
 	snapshot["wall_finishes"] = "nonsense"
 	snapshot["wall_items"] = 7
-	assert_not_null(ShopEditor.from_dict(snapshot, LAYOUT, _content, errors))
+	assert_not_null(ShopEditor.from_dict(snapshot, _layout, _content, errors))
 
 
 func test_content_validation() -> void:
@@ -565,7 +567,7 @@ func test_money_fuzz_round_trips_exactly() -> void:
 	assert_true(done > 40, "the run did real edits (%d)" % done)
 	var snapshot: Dictionary = _editor.to_dict()
 	var errors: Array[String] = []
-	var copy: ShopEditor = _restore(ShopEditor.from_dict(JSON.parse_string(JSON.stringify(snapshot)), LAYOUT, _content, errors))
+	var copy: ShopEditor = _restore(ShopEditor.from_dict(JSON.parse_string(JSON.stringify(snapshot)), _layout, _content, errors))
 	assert_eq(errors, [] as Array[String])
 	assert_eq(copy.walls.to_rows(), _editor.walls.to_rows())
 	assert_eq(copy.decor.to_rows(), _editor.decor.to_rows())

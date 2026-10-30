@@ -111,17 +111,18 @@ func test_refuses_floor_that_does_not_join_or_leaves_the_lot() -> void:
 	assert_eq(bare.check_floor(_rect(14, 5, 1, 1), true).why, ShopFootprint.NO_LOT)
 
 
-## The divider's end cells (0, 4) and (13, 4) never open, so floor bought
-## beside them alone would be a sealed pocket.
-func test_floor_beside_the_kitchen_divider_alone_is_refused() -> void:
-	assert_eq(_editor.check_floor(_rect(-1, 4, 1, 1), true).why, ShopFootprint.NOT_JOINED)
-	assert_eq(_editor.check_floor(_rect(14, 4, 1, 1), true).why, ShopFootprint.NOT_JOINED)
-	assert_true(_editor.apply_floor(_rect(-1, 3, 1, 2), true), _editor.last_check.why)
-	assert_eq(_sim.world.grid.terrain(Vector2i(0, 4)), SimGrid.Terrain.WALL)
+## The recovered divider row is usable floor, so side expansion can join it.
+## A separate disconnected patch must still be refused.
+func test_floor_beside_the_recovered_divider_row_joins_the_kitchen() -> void:
+	assert_true(_editor.check_floor(_rect(-1, 4, 1, 1), true).ok)
+	assert_true(_editor.check_floor(_rect(14, 4, 1, 1), true).ok)
+	assert_true(_editor.apply_floor(_rect(-1, 4, 1, 1), true), _editor.last_check.why)
+	assert_eq(_sim.world.grid.terrain(Vector2i(0, 4)), SimGrid.Terrain.FLOOR)
+	assert_eq(_sim.world.grid.room(Vector2i(0, 4)), SimGrid.Room.KITCHEN)
 	assert_eq(_sim.world.grid.find_path(Vector2i(6, 11), Vector2i(-1, 4)).back(), Vector2i(-1, 4))
-	assert_eq(_editor.check_floor(_rect(-1, 3, 1, 1), false).why, ShopFootprint.SPLITS,
-		"removing the joining cell would seal (-1, 4)")
 	assert_true(_editor.check_floor(_rect(-1, 4, 1, 1), false).ok)
+	assert_eq(_editor.check_floor(_rect(1, -3, 1, 1), true).why, ShopFootprint.NOT_JOINED,
+		"recovering the divider does not permit disconnected floor")
 
 
 ## A window kept between the remaining shell walls still seals a one-cell
@@ -249,10 +250,10 @@ func test_an_l_shaped_building_opens_its_inner_corner() -> void:
 	assert_true(_editor.apply_floor(_rect(14, 0, 1, 10), true), _editor.last_check.why)
 	assert_eq(grid.terrain(Vector2i(13, 0)), SimGrid.Terrain.WALL, "the corner waits for floor beside it")
 	assert_true(_editor.apply_floor(_rect(1, -3, 14, 3), true), _editor.last_check.why)
-	for cell: Vector2i in [Vector2i(13, 0), Vector2i(13, 5), Vector2i(6, 0), Vector2i(14, -3)]:
+	for cell: Vector2i in [Vector2i(13, 0), Vector2i(13, 5), Vector2i(6, 0), Vector2i(14, -3), Vector2i(12, 4), Vector2i(13, 4)]:
 		assert_eq(grid.terrain(cell), SimGrid.Terrain.FLOOR, "%s" % cell)
-	# (13, 4) ends the kitchen divider: authored interior walls never open.
-	for cell: Vector2i in [Vector2i(0, 0), Vector2i(0, -2), Vector2i(0, -4), Vector2i(15, -4), Vector2i(15, 4), Vector2i(12, 4), Vector2i(13, 4)]:
+	# The recovered divider row is floor, so its side shell can open too.
+	for cell: Vector2i in [Vector2i(0, 0), Vector2i(0, -2), Vector2i(0, -4), Vector2i(15, -4), Vector2i(15, 4)]:
 		assert_eq(grid.terrain(cell), SimGrid.Terrain.WALL, "%s" % cell)
 	assert_false(grid.find_path(Vector2i(7, 11), Vector2i(1, -3)).is_empty())
 	assert_eq(_cash, 5000 - (10 + 42) * 15)
@@ -291,7 +292,7 @@ func test_expansion_keeps_furniture_and_interior_walls_but_removes_displaced_win
 	assert_true(grid.step_open(Vector2i(12, 7), Vector2i(13, 7)), "the old window no longer blocks movement")
 	assert_eq(_editor.next_segment(inner, SimGrid.Segment.WALL), SimGrid.Segment.WALL, "it cycles as interior")
 	# No wall is added along the old outline: the room just opens up.
-	assert_eq(grid.segment_edges().size(), 1)
+	assert_eq(grid.segment_edges().size(), LAYOUT.wall_segments.size() + 1)
 	assert_eq(_sim.staff_spawns[&"cook"], Vector2i(6, 2))
 
 
@@ -436,8 +437,11 @@ func test_a_walled_shop_still_loads_and_paths_after_expanding() -> void:
 
 
 func test_older_snapshots_load_as_the_starting_shell() -> void:
+	var old_layout: ShopLayout = LegacyTier1Layout.make()
+	var old_sim: RestaurantSim = RestaurantSim.create(old_layout, _content, 1, [] as Array[String])
+	var old_editor: ShopEditor = ShopEditor.new(old_sim, _content, ShopEditBooks.new(_can_spend, _record_cash), old_layout)
 	for version: int in [1, 2]:
-		var legacy: Dictionary = _editor.to_dict()
+		var legacy: Dictionary = old_editor.to_dict()
 		legacy["version"] = version
 		legacy.erase("floor")
 		if version == 1:

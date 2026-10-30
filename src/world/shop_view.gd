@@ -451,6 +451,52 @@ func wall_face_at_ray(ray_origin: Vector3, ray_direction: Vector3, floor_fallbac
 	return best
 
 
+## Sell picks visible segment geometry, including outer fittings and headers.
+## Shell walls occlude it; floor thresholds and separate previews/selections
+## are not targets. Paint keeps the independent face picker above.
+func wall_segment_at_ray(ray_origin: Vector3, ray_direction: Vector3) -> Dictionary:
+	if world == null or ray_direction.y >= -0.00001 or segment_view == null:
+		return {}
+	var nearest: float = -ray_origin.y / ray_direction.y
+	var best: Dictionary = {}
+	for wall: MeshInstance3D in _wall_nodes.values():
+		var distance: float = _wall_mesh_distance(wall, ray_origin, ray_direction)
+		if distance < nearest:
+			nearest = distance
+			best = {}
+		var top: MeshInstance3D = wall.get_node_or_null("Top") as MeshInstance3D
+		if top != null and top.has_meta(&"segment_edge"):
+			var cap_distance: float = _wall_mesh_distance(top, ray_origin, ray_direction)
+			if cap_distance < INF and cap_distance <= nearest:
+				nearest = cap_distance
+				best = {"edge": top.get_meta(&"segment_edge"), "distance": cap_distance}
+	for root: Node in segment_view.get_children():
+		if not root.has_meta(&"edge") and not root.has_meta(&"segment_edge"):
+			continue
+		var distance: float = _wall_mesh_distance(root, ray_origin, ray_direction)
+		if distance < INF and distance <= nearest:
+			nearest = distance
+			best = {"edge": root.get_meta(&"edge", root.get_meta(&"segment_edge", SimGrid.NO_EDGE)),
+				"distance": distance}
+	return best
+
+
+## Descend into kit props rather than filling their window/door openings
+## with one combined bounds box. Segment roots own only rendered fittings.
+func _wall_mesh_distance(node: Node, ray_origin: Vector3, ray_direction: Vector3) -> float:
+	if node.name == &"Floor" or (node is Node3D and not (node as Node3D).is_visible_in_tree()):
+		return INF
+	var nearest: float = INF
+	var mesh: MeshInstance3D = node as MeshInstance3D
+	if mesh != null and mesh.mesh != null:
+		var distance: float = _ray_box_distance(ray_origin, ray_direction, mesh.global_transform * mesh.get_aabb())
+		if distance >= 0.0:
+			nearest = distance
+	for child: Node in node.get_children():
+		nearest = minf(nearest, _wall_mesh_distance(child, ray_origin, ray_direction))
+	return nearest
+
+
 ## The outside window under a ray, as {face (its window slot, see
 ## WallFaces.window_problem), offset 0, distance}, for hanging a window item
 ## (D26): the nearest window whose shell cell (full height) the ray passes
@@ -976,7 +1022,14 @@ func _apply_wall_heights() -> void:
 		var body: float = sill if _shell_windows.has(cell) and not lowered else height
 		(wall.mesh as BoxMesh).size.y = body
 		wall.position.y = body * 0.5
-		(wall.get_node("Top") as MeshInstance3D).position.y = height - body * 0.5 + 0.005
+		var top: MeshInstance3D = wall.get_node("Top") as MeshInstance3D
+		top.position.y = height - body * 0.5 + 0.005
+		# This visible cap completes the window header, even though its box
+		# belongs to the retained thick shell. Sell still changes only its segment.
+		if _shell_windows.has(cell):
+			top.set_meta(&"segment_edge", SimGrid.edge_between(cell, cell - _shell_windows[cell]))
+		elif top.has_meta(&"segment_edge"):
+			top.remove_meta(&"segment_edge")
 	if segment_view != null and world != null:
 		segment_view.set_materials(_current_wall_material(), _material(wall_top_color), floor_mesh.material_override)
 		segment_view.rebuild(world.grid, wall_mode != WallMode.UP, lowered_wall_cells())

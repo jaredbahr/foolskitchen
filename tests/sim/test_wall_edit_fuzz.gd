@@ -6,7 +6,7 @@ extends TestCase
 ## took down, refused edits change nothing, a full unwind returns the start
 ## exactly and a save loads back the same shop.
 
-const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
+var _layout: ShopLayout
 const START_CASH: int = 5000
 
 var _content: ContentDB
@@ -19,16 +19,18 @@ var _fail_count: int = 0
 
 
 func before_each() -> void:
+	# Isolate wall transactions from the starter shop's authored divider.
+	_layout = LegacyTier1Layout.make()
 	_content = ContentDB.new()
 	assert_eq(_content.load_all(), PackedStringArray())
 
 
 func _start() -> void:
 	var errors: Array[String] = []
-	_sim = RestaurantSim.create(LAYOUT, _content, 1, errors, null, false)
+	_sim = RestaurantSim.create(_layout, _content, 1, errors, null, false)
 	_ledger = Ledger.new()
 	_ledger.cash = START_CASH
-	_editor = ShopEditor.new(_sim, _content, ShopEditBooks.new(_can_spend, _record), LAYOUT)
+	_editor = ShopEditor.new(_sim, _content, ShopEditBooks.new(_can_spend, _record), _layout)
 	_editor.set_owner_level(6)
 	_history = ShopEditHistory.new(_editor, _sim.world.grid)
 
@@ -36,7 +38,7 @@ func _start() -> void:
 func _reload() -> void:
 	var snap: Dictionary = JSON.parse_string(JSON.stringify(_editor.to_dict()))
 	var errors: Array[String] = []
-	var layout: ShopLayout = ShopEditor.from_dict(snap, LAYOUT, _content, errors)
+	var layout: ShopLayout = ShopEditor.from_dict(snap, _layout, _content, errors)
 	_expect(errors.is_empty() and layout != null, "reload errors %s" % [errors])
 	_sim = RestaurantSim.create(layout, _content, 1, errors, null, false, true)
 	_editor = ShopEditor.new(_sim, _content, ShopEditBooks.new(_can_spend, _record), layout)
@@ -402,7 +404,7 @@ func test_older_and_junk_saves_load_without_errors() -> void:
 		if v < 3:
 			legacy.erase("floor")
 		var errors: Array[String] = []
-		var layout: ShopLayout = ShopEditor.from_dict(legacy, LAYOUT, _content, errors)
+		var layout: ShopLayout = ShopEditor.from_dict(legacy, _layout, _content, errors)
 		assert_eq(errors, [] as Array[String], "v%d" % v)
 		assert_not_null(layout, "v%d" % v)
 		if layout != null:
@@ -412,7 +414,7 @@ func test_older_and_junk_saves_load_without_errors() -> void:
 	junk["wall_finishes"] = [[1.5, 6, 3, "brick", "", ""], [1, 6, 3, null, "", ""], [1, 6, 3, "brick", 7, []], [99999999, 1, 0, "brick", "", ""], {}]
 	junk["wall_items"] = [[1, 6, 3, null], [14, 5, 1, "menu_board"], [14, 6, 1, "menu_board"], [1, 6, 3, 5]]
 	var junk_errors: Array[String] = []
-	var junk_layout: ShopLayout = ShopEditor.from_dict(junk, LAYOUT, _content, junk_errors)
+	var junk_layout: ShopLayout = ShopEditor.from_dict(junk, _layout, _content, junk_errors)
 	assert_eq(junk_errors, [] as Array[String], "bad wall rows never refuse a save")
 	assert_not_null(junk_layout)
 	if junk_layout != null:

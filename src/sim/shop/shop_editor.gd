@@ -9,8 +9,9 @@ extends RefCounted
 ## Version 5 adds floor types (D25); older shops are all the default planks.
 ## Version 6 adds wall finishes and wall decor (D26); older shops are plain
 ## paint with nothing hung.
-## Version 7 adds furniture looks; older placements keep their original look.
-const SNAPSHOT_VERSION: int = 7
+## Version 7 is reserved for furniture looks (#220); version 8 normalizes
+## interior dividers and persists strictly interior thin/thick exceptions.
+const SNAPSHOT_VERSION: int = 8
 const WALLS_CLOSED: String = "Walls can only be changed in the morning or after closing"
 const FLOORS_CLOSED: String = "New floors can only be laid in the morning or after closing"
 const FLOORS_NOT_FLOOR: String = "Floors are laid on the shop floor"
@@ -50,6 +51,8 @@ var _property_tier: int = 1
 ## The lot and the bought floor (FK-080). Null without a layout.
 var _footprint: ShopFootprint
 var _bought: Dictionary[Vector2i, bool] = {}
+var _thin_cells: Array[Vector2i] = []
+var _thick_cells: Array[Vector2i] = []
 ## Built-in dry storage from the layout (FK-087).
 var pantry_units: int = 0
 ## Optional () -> Dictionary[int, int]: ingredient units each storage kind
@@ -84,6 +87,8 @@ func _init(sim: RestaurantSim, content: ContentDB, books: ShopEditBooks, layout:
 		floor_swatch_id = _known_swatch(layout.floor_swatch_id)
 		_footprint = ShopFootprint.from_layout(layout)
 		_bought = ShopFootprint.to_set(layout.floor_cells)
+		_thin_cells = layout.thin_cells.duplicate()
+		_thick_cells = layout.thick_cells.duplicate()
 		pantry_units = maxi(0, layout.pantry_units)
 		_load_floors(layout)
 		_load_walls(layout)
@@ -496,6 +501,7 @@ func to_dict() -> Dictionary:
 	for cell: Vector2i in ShopFootprint.sorted(_cell_set(painted.keys())):
 		rooms.append([cell.x, cell.y, String(RoomRules.id_of(painted[cell]))])
 	return {"version": SNAPSHOT_VERSION, "items": placements, "walls": segments, "floor": floor,
+		"thin_cells": ThinDividers.rows(_thin_cells), "thick_cells": ThinDividers.rows(_thick_cells),
 		"rooms": rooms, "wall_swatch_id": String(wall_swatch_id), "floor_swatch_id": String(floor_swatch_id),
 		"floor_style_id": String(floors.default_style), "floors": floors.to_rows(),
 		"wall_style_id": String(walls.default_style), "wall_finishes": walls.to_rows(), "wall_items": decor.to_rows()}
@@ -524,8 +530,11 @@ static func from_dict(data: Dictionary, template_layout: ShopLayout, content: Co
 	if (int(data["version"]) >= 3 or data.has("floor")) and not data.get("floor") is Array:
 		errors.append("Invalid shop floor")
 		return null
-	var preview: SimGrid = SimGrid.from_ascii(template_layout.rows)
-	var footprint: ShopFootprint = ShopFootprint.from_layout(template_layout)
+	var terrain_layout: ShopLayout = ThinDividers.prepare(data, template_layout, errors)
+	if terrain_layout == null:
+		return null
+	var preview: SimGrid = SimGrid.from_ascii(terrain_layout.rows)
+	var footprint: ShopFootprint = ShopFootprint.from_layout(terrain_layout)
 	var bought: Dictionary[Vector2i, bool] = {}
 	var floor_rows: Array = data.get("floor", [])
 	if floor_rows.size() > footprint.lot.get_area():
@@ -549,7 +558,10 @@ static func from_dict(data: Dictionary, template_layout: ShopLayout, content: Co
 	var layout: ShopLayout = ShopLayout.new()
 	layout.id = template_layout.id
 	layout.display_name = template_layout.display_name
-	layout.rows = template_layout.rows.duplicate()
+	layout.rows = terrain_layout.rows.duplicate()
+	layout.legacy_rows = terrain_layout.legacy_rows.duplicate()
+	layout.thin_cells = terrain_layout.thin_cells.duplicate()
+	layout.thick_cells = terrain_layout.thick_cells.duplicate()
 	layout.staff_spawns = template_layout.staff_spawns.duplicate()
 	layout.lot_west = template_layout.lot_west
 	layout.lot_east = template_layout.lot_east
@@ -670,7 +682,7 @@ static func from_dict(data: Dictionary, template_layout: ShopLayout, content: Co
 		# seat in the kitchen or leave a seat, toilet or the door reachable only
 		# through it, nothing is inferred: every cell stays Dining and the
 		# morning asks the player to mark their kitchen.
-		var start: SimGrid = SimGrid.from_ascii(template_layout.rows)
+		var start: SimGrid = SimGrid.from_ascii(terrain_layout.rows)
 		var authored: Dictionary[Vector2i, int] = {}
 		var wanted: Dictionary[Vector2i, int] = template_layout.authored_rooms()
 		for cell: Vector2i in wanted:
@@ -695,8 +707,17 @@ static func from_dict(data: Dictionary, template_layout: ShopLayout, content: Co
 	layout.room_rows = template_layout.room_rows.duplicate()
 	layout.room_cells = rooms
 	layout.rooms_explicit = true
+	# Inference may have staged a kitchen that was rejected. set_rooms is a
+	# delta setter, so explicitly clear those tentative keys before selection.
+	var selected_rooms: Dictionary[Vector2i, int] = {}
+	for cell: Vector2i in preview.rooms():
+		selected_rooms[cell] = SimGrid.Room.DINING
+	selected_rooms.merge(rooms, true)
+	preview.set_rooms(selected_rooms)
 	_decode_floors(data, preview, content, layout)
 	_decode_walls(data, preview, content, layout)
+	if int(data["version"]) < 8:
+		ThinDividers.convert(layout, preview, content)
 	return layout
 
 

@@ -676,6 +676,9 @@ func route_build_input(event: InputEvent) -> bool:
 						build_mode.sell_held_wall_item()
 					elif build_mode.state == BuildMode.State.IDLE and build_mode.hover_anchor != WallFaces.NO_FACE:
 						build_mode.take_down_hovered()
+					elif build_mode.state == BuildMode.State.IDLE and build_mode.tool == BuildMode.Tool.SELL \
+							and build_mode.wall_hover_edge != SimGrid.NO_EDGE:
+						build_mode.sell_hovered_wall()
 					elif build_mode.state == BuildMode.State.IDLE and build_mode.tool == BuildMode.Tool.SELL:
 						build_mode.sell_hovered()
 					else:
@@ -771,6 +774,11 @@ func route_build_input(event: InputEvent) -> bool:
 			if build_mode.has_ghost():
 				build_mode.commit()
 			elif build_mode.state == BuildMode.State.IDLE:
+				if build_mode.tool == BuildMode.Tool.SELL and not mouse.alt_pressed \
+						and build_mode.wall_hover_edge != SimGrid.NO_EDGE:
+					build_mode.sell_hovered_wall()
+					update_build_pointer(mouse.position)
+					return true
 				var cell: Variant = build_cell_at_screen_position(mouse.position)
 				# Alt explicitly picks the floor layer. A miss cannot accidentally
 				# grab the furniture above it; normal clicks keep their old order.
@@ -1223,6 +1231,13 @@ func update_build_pointer(screen_position: Vector2, shift: bool = false) -> bool
 		var hung: Vector3i = wall_item_at_screen_position(screen_position)
 		build_mode.hover_wall_item(hung)
 		if hung != WallFaces.NO_FACE:
+			build_mode.hover_wall_segment(SimGrid.NO_EDGE)
+			build_mode.hover_item(-1)
+			return true
+		var edge: Vector3i = wall_segment_at_screen_position(screen_position) \
+			if build_mode.tool == BuildMode.Tool.SELL else SimGrid.NO_EDGE
+		build_mode.hover_wall_segment(edge)
+		if edge != SimGrid.NO_EDGE:
 			build_mode.hover_item(-1)
 			return true
 	var cell: Variant = build_cell_at_screen_position(screen_position)
@@ -1312,6 +1327,22 @@ func wall_face_at_screen_position(screen_position: Vector2, floor_fallback: bool
 		return {}
 	return ($ShopView as ShopView).wall_face_at_ray(camera.project_ray_origin(screen_position),
 		camera.project_ray_normal(screen_position), floor_fallback)
+
+
+## The rendered segment under the pointer, with foreground furniture respected.
+func wall_segment_at_screen_position(screen_position: Vector2) -> Vector3i:
+	var camera: Camera3D = $CameraRig/Camera3D
+	if world == null or not camera.is_inside_tree():
+		return SimGrid.NO_EDGE
+	var view: ShopView = $ShopView as ShopView
+	var ray_origin: Vector3 = camera.project_ray_origin(screen_position)
+	var ray_direction: Vector3 = camera.project_ray_normal(screen_position)
+	var hit: Dictionary = view.wall_segment_at_ray(ray_origin, ray_direction)
+	var edge: Vector3i = hit.get("edge", SimGrid.NO_EDGE)
+	if edge == SimGrid.NO_EDGE or world.grid.segment(edge) == SimGrid.Segment.NONE \
+			or view.nearest_item_distance(ray_origin, ray_direction) < float(hit.get("distance", INF)):
+		return SimGrid.NO_EDGE
+	return edge
 
 
 ## The outside window under the pointer ({face, offset}, see ShopView.window_at_ray).
@@ -2040,6 +2071,10 @@ func _load_autosave() -> bool:
 	if _loaded_layout != null:
 		for note: String in _loaded_layout.load_notes:
 			world.log_event(note)
+		# The decoder stages this; only a wholly successful load may pay it once.
+		if _loaded_layout.load_refund > 0:
+			Economy.add_cash(_loaded_layout.load_refund, Ledger.UPGRADES)
+			_loaded_layout.load_refund = 0
 	return true
 
 
