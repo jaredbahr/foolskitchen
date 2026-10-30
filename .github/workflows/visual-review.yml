@@ -105,6 +105,7 @@ jobs:
           bash tools/screenshot.sh --out=screens/visual-review/settings-world --settings-world --speed=0 --frames=90
           bash tools/screenshot.sh --out=screens/visual-review/hud-1280 --hud-layout --window-size=1280x720 --speed=0 --frames=12,90
           bash tools/screenshot.sh --out=screens/visual-review/hud-1600 --hud-layout --window-size=1600x900 --speed=0 --frames=12,90
+          timeout 60 xvfb-run -a -s '-screen 0 1600x900x24' "$GODOT" --path . --rendering-method gl_compatibility --audio-driver Dummy --script tools/title_review.gd -- --out=screens/visual-review/title
 
       - name: Capture seated guests at a real table
         shell: bash
