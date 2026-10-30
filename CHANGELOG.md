@@ -109,6 +109,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- Include the lease offer, cash refusal and larger lot in the normal visual review without adding more than two captures. (#216)
 - Keep the morning lease advice independent of the HUD during capture startup, and check that fresh startup path before the full test suite. (#216)
 - The roadmap's Codex queue is reset: finish open PRs, then the thin divider fix, the outside of the shop (street front, weather, neighbourhood, patio, curb appeal) and sound. (#245)
 - Workers mark a PR ready once their own checks and captures are done; director review and decisions happen on the ready PR, and open PRs are finished before new issues start. (#225)
