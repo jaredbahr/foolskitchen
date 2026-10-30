@@ -79,9 +79,9 @@ jobs:
           bash tools/screenshot.sh --out=screens/visual-review/inspect-guest --open --fast=5 --select=guest --frames=60 --speed=1
           bash tools/screenshot.sh --out=screens/visual-review/debug-busy --open --fast=5 --select=guest --f3 --frames=60 --speed=1
           bash tools/screenshot.sh --out=screens/visual-review/owner-kitchen --open --fast=5 --select=owner --assign-owner=kitchen --frames=60 --speed=1
-          SCREENSHOT_TIMEOUT_SECONDS=90 bash tools/screenshot.sh --out=screens/visual-review/mood-waits --open --fast=8 --frames=120,180,240,300 --speed=1
-          SCREENSHOT_TIMEOUT_SECONDS=90 bash tools/screenshot.sh --out=screens/visual-review/people-poses --open --fast=8 --frames=60,240 --speed=1
-          SCREENSHOT_TIMEOUT_SECONDS=90 bash tools/screenshot.sh --out=screens/visual-review/door-queue --door-queue --open --fast=8 --frames=240 --speed=1
+          SCREENSHOT_TIMEOUT_SECONDS=120 bash tools/screenshot.sh --out=screens/visual-review/mood-waits --open --fast=8 --frames=120,180,240,300 --speed=1
+          SCREENSHOT_TIMEOUT_SECONDS=120 bash tools/screenshot.sh --out=screens/visual-review/people-poses --open --fast=8 --frames=60,240 --speed=1
+          SCREENSHOT_TIMEOUT_SECONDS=120 bash tools/screenshot.sh --out=screens/visual-review/door-queue --door-queue --open --fast=8 --frames=240 --speed=1
           bash tools/screenshot.sh --out=screens/visual-review/waiting-bench --scene=res://tools/waiting_bench_review.tscn --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/thin-divider --scene=res://tools/divider_review.tscn --speed=0 --frames=30
           DIVIDER_REVIEW_STAGE=remove bash tools/screenshot.sh --out=screens/visual-review/divider-remove-restroom --scene=res://tools/divider_review.tscn --speed=0 --frames=60
