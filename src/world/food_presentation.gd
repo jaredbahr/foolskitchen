@@ -8,6 +8,8 @@ const CREAM: SwatchDef = preload("res://data/swatches/cream.tres")
 class Surface extends RefCounted:
 	var point: Vector3
 	var bounds: AABB
+	var outlines: Array[PackedVector2Array] = []
+	var safe: Array[PackedVector2Array] = []
 
 class Ticket extends RefCounted:
 	var order: Order
@@ -24,6 +26,8 @@ var stack: Array[DishVisual] = []
 var steam: Dictionary[int, CPUParticles3D] = {}
 var surfaces: Dictionary[int, Vector3] = {}
 var surface_bounds: Dictionary[int, AABB] = {}
+var _tops: Dictionary[int, Surface] = {}
+var _bases: Dictionary[int, Basis] = {}
 var tickets: Dictionary[int, Ticket] = {}
 var _recipes: Array[RecipeDef] = []
 var _sink_id: int = 0
@@ -69,6 +73,8 @@ func _remember(order: Order) -> void:
 func refresh_layout(items: Dictionary[int, ItemVisual]) -> void:
 	surfaces.clear()
 	surface_bounds.clear()
+	_tops.clear()
+	_bases.clear()
 	_sink_id = 0
 	_pass_id = 0
 	var seats: int = 0
@@ -81,10 +87,14 @@ func refresh_layout(items: Dictionary[int, ItemVisual]) -> void:
 		if not items.has(item.id):
 			continue
 		var visual: ItemVisual = items[item.id]
-		var surface: Surface = _surface(visual)
+		var definition: ItemDef = item.def as ItemDef
+		var serving_surface: bool = definition.category == ItemDef.Category.TABLE or definition.category == ItemDef.Category.PASS
+		var surface: Surface = _surface(visual, serving_surface)
 		surfaces[item.id] = surface.point
 		surface_bounds[item.id] = surface.bounds
-		var definition: ItemDef = item.def as ItemDef
+		if serving_surface:
+			_tops[item.id] = surface
+			_bases[item.id] = visual.basis
 		if _pass_id == 0 and definition.category == ItemDef.Category.PASS and item.work_cells.size() >= 2:
 			_pass_id = item.id
 		elif _sink_id == 0 and definition.category == ItemDef.Category.STATION and definition.station_type == &"sink":
@@ -108,6 +118,12 @@ func refresh_layout(items: Dictionary[int, ItemVisual]) -> void:
 		dish.prepare([])
 		dish.dirty_plate.visible = true
 		stack.append(dish)
+	# Polygon operations and plate measurement stay at layout boundaries.
+	# Inset the real outline, including round edges and counter cutouts.
+	for id: int in _tops:
+		for outline: PackedVector2Array in _tops[id].outlines:
+			_tops[id].safe.append_array(Geometry2D.offset_polygon(outline,
+				-pool[0].footprint_radius - 0.001, Geometry2D.JOIN_MITER))
 
 
 func sync(frames: Dictionary[int, AgentPresentationController.Frame], people: Dictionary[int, Node3D]) -> void:
@@ -157,8 +173,11 @@ func sync(frames: Dictionary[int, AgentPresentationController.Frame], people: Di
 					spot += Vector3((index % 2 - 0.5) * 0.24, 0.0, (index / 2 - 0.5) * 0.18)
 				stage = &"carried"
 			elif not ticket.recipe.is_drink() and surfaces.has(_pass_id):
-				spot = surfaces[_pass_id] + Vector3((pass_index % 3 - 1) * 0.24,
-					float(pass_index / 6) * 0.025, (pass_index / 3 % 2 - 0.5) * 0.2)
+				# One centered row fits the measured counter depth. Additional
+				# groups of three retain the existing 0.025 m stacking convention.
+				spot = _inset_spot(_pass_id, surfaces[_pass_id]
+					+ _bases[_pass_id] * Vector3((pass_index % 3 - 1) * 0.24, 0.0, 0.0))
+				spot.y += float(pass_index / 3) * 0.025
 				pass_index += 1
 				stage = &"ready"
 		elif order.state == Order.State.DELIVERED and surfaces.has(order.table_item_id):
@@ -227,8 +246,24 @@ func _inset_spot(item_id: int, spot: Vector3) -> Vector3:
 	var bounds: AABB = surface_bounds[item_id]
 	var inset_x: float = minf(0.12, bounds.size.x * 0.45)
 	var inset_z: float = minf(0.12, bounds.size.z * 0.45)
-	return Vector3(clampf(spot.x, bounds.position.x + inset_x, bounds.end.x - inset_x),
+	var result: Vector3 = Vector3(clampf(spot.x, bounds.position.x + inset_x, bounds.end.x - inset_x),
 		surfaces[item_id].y, clampf(spot.z, bounds.position.z + inset_z, bounds.end.z - inset_z))
+	if not _tops.has(item_id) or _tops[item_id].safe.is_empty():
+		return result  # Preserve the bounds fallback for degenerate/small surfaces.
+	var point: Vector2 = Vector2(result.x, result.z)
+	var closest: Vector2 = point
+	var distance: float = INF
+	for polygon: PackedVector2Array in _tops[item_id].safe:
+		if Geometry2D.is_point_in_polygon(point, polygon):
+			return result
+		for index: int in range(polygon.size()):
+			var candidate: Vector2 = Geometry2D.get_closest_point_to_segment(point,
+				polygon[index], polygon[(index + 1) % polygon.size()])
+			var squared: float = point.distance_squared_to(candidate)
+			if squared < distance:
+				distance = squared
+				closest = candidate
+	return Vector3(closest.x, result.y, closest.y)
 
 
 func _retire(ticket: Ticket) -> void:
@@ -253,11 +288,12 @@ func _available() -> DishVisual:
 
 ## Find the broad horizontal surface of the real model, excluding seat parts.
 ## Measuring once avoids chair backs and sink taps becoming a table/counter top.
-static func _surface(visual: ItemVisual) -> Surface:
+static func _surface(visual: ItemVisual, serving: bool = false) -> Surface:
 	var areas: Dictionary[int, float] = {}
 	var centers: Dictionary[int, Vector3] = {}
 	var bounds: Dictionary[int, AABB] = {}
-	_collect_surfaces(visual, Transform3D.IDENTITY, areas, centers, bounds)
+	var triangles: Dictionary[int, Array] = {}
+	_collect_surfaces(visual, Transform3D.IDENTITY, areas, centers, bounds, triangles, serving)
 	var best: int = 0
 	var area: float = 0.0
 	for height: int in areas:
@@ -268,10 +304,34 @@ static func _surface(visual: ItemVisual) -> Surface:
 	var surface: Surface = Surface.new()
 	surface.point = visual.transform * (local + Vector3.UP * 0.003)
 	surface.bounds = visual.transform * (bounds[best] if area > 0.0 else visual.get_aabb())
+	if serving and area > 0.0:
+		for triangle: PackedVector3Array in triangles[best]:
+			var polygon: PackedVector2Array = PackedVector2Array()
+			for vertex: Vector3 in triangle:
+				var point: Vector3 = visual.transform * vertex
+				polygon.append(Vector2(point.x, point.z))
+			if Geometry2D.is_polygon_clockwise(polygon):
+				polygon.reverse()
+			_merge_top(surface.outlines, polygon)
 	return surface
 
 
-static func _collect_surfaces(node: Node, transform: Transform3D, areas: Dictionary[int, float], centers: Dictionary[int, Vector3], bounds: Dictionary[int, AABB]) -> void:
+## Merge the selected native triangles, rather than inventing a convex top
+## across an empty corner. All temporary polygons are built outside sync().
+static func _merge_top(outlines: Array[PackedVector2Array], polygon: PackedVector2Array) -> void:
+	var index: int = 0
+	while index < outlines.size():
+		var joined: Array[PackedVector2Array] = Geometry2D.merge_polygons(polygon, outlines[index])
+		if joined.size() == 1:
+			polygon = joined[0]
+			outlines.remove_at(index)
+			index = 0
+		else:
+			index += 1
+	outlines.append(polygon)
+
+
+static func _collect_surfaces(node: Node, transform: Transform3D, areas: Dictionary[int, float], centers: Dictionary[int, Vector3], bounds: Dictionary[int, AABB], triangles: Dictionary[int, Array], serving: bool) -> void:
 	if node.has_meta("seat_cell") or node.get_meta("art_group", &"") == &"food":
 		return
 	var mesh: MeshInstance3D = node as MeshInstance3D
@@ -284,14 +344,20 @@ static func _collect_surfaces(node: Node, transform: Transform3D, areas: Diction
 			if absf(a.y - b.y) > 0.001 or absf(a.y - c.y) > 0.001 or a.y < 0.1:
 				continue
 			var area: float = (b - a).cross(c - a).length() * 0.5
+			if area <= 0.000001:
+				continue
 			var height: int = roundi(a.y * 1000.0)
 			areas[height] = areas.get(height, 0.0) + area
 			centers[height] = centers.get(height, Vector3.ZERO) + (a + b + c) / 3.0 * area
 			var box: AABB = bounds.get(height, AABB(a, Vector3.ZERO))
 			bounds[height] = box.expand(a).expand(b).expand(c)
+			if serving:
+				if not triangles.has(height):
+					triangles[height] = []
+				triangles[height].append(PackedVector3Array([a, b, c]))
 	for child: Node in node.get_children():
 		var spatial: Node3D = child as Node3D
-		_collect_surfaces(child, transform * spatial.transform if spatial != null else transform, areas, centers, bounds)
+		_collect_surfaces(child, transform * spatial.transform if spatial != null else transform, areas, centers, bounds, triangles, serving)
 
 
 static func _steam() -> CPUParticles3D:

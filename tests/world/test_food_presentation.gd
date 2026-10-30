@@ -391,6 +391,135 @@ func test_rotated_long_table_servings_stay_inside_the_top_and_near_each_seat() -
 		_sim.world.grid.remove(table.id)
 
 
+func test_ready_burger_rests_on_the_native_pass_top_at_every_rotation() -> void:
+	var original: PlacedItem = ShopBuilder.items_with_def(_sim.world, &"pass_counter")[0]
+	_sim.world.grid.remove(original.id)
+	var table: PlacedItem = ShopBuilder.items_with_def(_sim.world, &"table_2")[0]
+	for turns: int in range(4):
+		var counter: PlacedItem = _sim.world.grid.place_def(_content.item(&"pass_counter"), Vector2i(8, 5), turns)
+		assert_not_null(counter)
+		if counter == null:
+			return
+		var order: Order = Order.new()
+		order.recipe_id = &"burger"
+		order.table_item_id = table.id
+		order.seat_cell = table.seat_cells[0]
+		_sim.orders.place(order, 0)
+		_sim.orders.set_state(order, Order.State.READY)
+		_view._sync_agents()
+		var dish: DishVisual = _view.food.tickets[order.id].dish
+		assert_not_null(dish)
+		if dish != null:
+			assert_eq(dish.stage, &"ready")
+			_assert_native_plate_support(counter, dish, "pass quarter turn %d" % turns)
+		_sim.orders.set_state(order, Order.State.CANCELLED)
+		_sim.world.grid.remove(counter.id)
+
+
+func test_round_table_linked_chair_meals_fit_the_native_top_at_every_rotation() -> void:
+	for existing: PlacedItem in ShopBuilder.items_with_def(_sim.world, &"table_2"):
+		_sim.world.grid.remove(existing.id)
+	for turns: int in range(4):
+		var table: PlacedItem = _sim.world.grid.place_def(_content.item(&"round_table"), Vector2i(2, 6), turns)
+		assert_not_null(table)
+		if table == null:
+			return
+		var chairs: Array[PlacedItem] = []
+		var spots: Array[Vector3] = []
+		for relative: Vector2i in [Vector2i(0, -1), Vector2i(1, 2)]:
+			var seat: Vector2i = table.origin + GridMath.rotate_cell(relative, Vector2i(2, 2), turns)
+			var facing: int = (turns + (2 if relative.y < 0 else 0)) % 4
+			var chair: PlacedItem = _sim.world.grid.place_def(_content.item(&"chair"), seat, facing)
+			assert_not_null(chair)
+			if chair == null:
+				return
+			chairs.append(chair)
+			var plan: DiningSeats.Plan = DiningSeats.derive(_sim.world.grid)
+			assert_eq(plan.failure_for(chair.id), "")
+			assert_true(plan.seats_for(table.id).has(seat), "the actual chair must link to this table")
+			assert_true(table.seat_cells.has(seat))
+			var guest: CustomerAgent = _sim.add_customer(_sim.world.grid.entries()[0], RandomNumberGenerator.new())
+			guest.table_item_id = table.id
+			guest.seat_cell = seat
+			guest.cell = seat
+			guest.state = CustomerAgent.State.EATING
+			var order: Order = Order.new()
+			order.recipe_id = &"burger"
+			order.customer_id = guest.id
+			order.table_item_id = table.id
+			order.seat_cell = seat
+			_sim.orders.place(order, 0)
+			assert_true(_sim.kitchen.plates.take(order.id, table.id))
+			_sim.orders.set_state(order, Order.State.DELIVERED)
+			_view._sync_agents()
+			var dish: DishVisual = _view.food.tickets[order.id].dish
+			assert_not_null(dish)
+			if dish != null:
+				assert_eq(dish.stage, &"eating")
+				_assert_native_plate_support(table, dish, "round table quarter turn %d seat %s" % [turns, seat])
+				assert_true(dish.position.distance_to(GridMath.cell_to_world(seat) + Vector3.UP * dish.position.y) < 0.6)
+				for other: Vector3 in spots:
+					assert_true(dish.position.distance_to(other) > 0.24, "opposite chairs keep distinct servings")
+				spots.append(dish.position)
+		for chair: PlacedItem in chairs:
+			_sim.world.grid.remove(chair.id)
+		_sim.world.grid.remove(table.id)
+
+
+# Independent geometry oracle: support comes from the actual imported triangles
+# beneath the plate, never the presentation controller's bounds or inset helper.
+func _assert_native_plate_support(item: PlacedItem, dish: DishVisual, context: String) -> void:
+	var faces: PackedVector3Array = _native_faces(_view.item_nodes[item.id], Transform3D.IDENTITY)
+	var top: PackedVector3Array = []
+	for index: int in range(0, faces.size(), 3):
+		var a: Vector3 = faces[index]
+		var b: Vector3 = faces[index + 1]
+		var c: Vector3 = faces[index + 2]
+		if absf(a.y - b.y) < 0.0001 and absf(a.y - c.y) < 0.0001 \
+				and absf(dish.position.y - a.y) < 0.01 \
+				and (b - a).cross(c - a).length() > 0.000001:
+			top.append_array(PackedVector3Array([a, b, c]))
+	assert_false(top.is_empty(), "%s has native horizontal support at plate height" % context)
+	assert_true(_point_on_native_top(dish.position, top), "%s serving center is over the native top" % context)
+	var plate: PackedVector3Array = _native_faces(dish.plate, dish.transform)
+	assert_false(plate.is_empty(), "%s measures the actual plate mesh" % context)
+	var unsupported: int = 0
+	for vertex: Vector3 in plate:
+		if not _point_on_native_top(vertex, top):
+			unsupported += 1
+	assert_eq(unsupported, 0, "%s full plate footprint is supported (%d/%d unsupported vertices)" % [context, unsupported, plate.size()])
+
+
+func _native_faces(node: Node, parent_transform: Transform3D) -> PackedVector3Array:
+	var transform: Transform3D = parent_transform
+	if node is Node3D:
+		transform *= (node as Node3D).transform
+	var result: PackedVector3Array = []
+	if node is MeshInstance3D:
+		var mesh: Mesh = (node as MeshInstance3D).mesh
+		if mesh != null:
+			for vertex: Vector3 in mesh.get_faces():
+				result.append(transform * vertex)
+	for child: Node in node.get_children():
+		if not child.has_meta(&"seat_cell"):
+			result.append_array(_native_faces(child, transform))
+	return result
+
+
+func _point_on_native_top(point: Vector3, faces: PackedVector3Array) -> bool:
+	var p: Vector2 = Vector2(point.x, point.z)
+	for index: int in range(0, faces.size(), 3):
+		var a: Vector2 = Vector2(faces[index].x, faces[index].z)
+		var b: Vector2 = Vector2(faces[index + 1].x, faces[index + 1].z)
+		var c: Vector2 = Vector2(faces[index + 2].x, faces[index + 2].z)
+		var ab: float = (b - a).cross(p - a)
+		var bc: float = (c - b).cross(p - b)
+		var ca: float = (a - c).cross(p - c)
+		if minf(ab, minf(bc, ca)) >= -0.000001 or maxf(ab, maxf(bc, ca)) <= 0.000001:
+			return true
+	return false
+
+
 func test_two_passes_and_sinks_follow_kitchen_order_and_refresh_after_removal() -> void:
 	var first_pass: PlacedItem = ShopBuilder.items_with_def(_sim.world, &"pass_counter")[0]
 	var first_sink: PlacedItem = ShopBuilder.items_with_def(_sim.world, &"sink")[0]

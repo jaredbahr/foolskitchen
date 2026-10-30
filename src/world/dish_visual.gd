@@ -9,6 +9,7 @@ var models: Dictionary[StringName, Node3D] = {}
 var recipe_id: StringName = &""
 var stage: StringName = &""
 var order_id: int = 0
+var footprint_radius: float = 0.0
 var _shown: Node3D
 var _dirty: bool = false
 
@@ -29,6 +30,7 @@ static func _clear_overrides(node: Node) -> void:
 
 func prepare(recipes: Array[RecipeDef]) -> void:
 	plate = _model(PLATE)
+	footprint_radius = _footprint_radius(plate, Transform3D.IDENTITY)
 	dirty_plate = _model(PLATE)
 	# ART_STYLE §5 permits a private darker copy for dirty crockery.
 	_darken(dirty_plate)
@@ -73,6 +75,21 @@ func _model(scene: PackedScene) -> Node3D:
 	wrapper.visible = false
 	add_child(wrapper)
 	return wrapper
+
+
+## Measured once while warming the pool; any serving rotation stays supported.
+static func _footprint_radius(node: Node, transform: Transform3D) -> float:
+	var spatial: Node3D = node as Node3D
+	var accumulated: Transform3D = transform * spatial.transform if spatial != null else transform
+	var radius: float = 0.0
+	var mesh: MeshInstance3D = node as MeshInstance3D
+	if mesh != null and mesh.mesh != null:
+		for vertex: Vector3 in mesh.mesh.get_faces():
+			var point: Vector3 = accumulated * vertex
+			radius = maxf(radius, Vector2(point.x, point.z).length())
+	for child: Node in node.get_children():
+		radius = maxf(radius, _footprint_radius(child, accumulated))
+	return radius
 
 
 static func _darken(node: Node) -> void:

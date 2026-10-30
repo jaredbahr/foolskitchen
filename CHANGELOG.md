@@ -11,7 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
-- See meals on the pass, in servers' hands or trays and on guests' tables. Dirty plates stay until bussing, collected plates stack by the working sink, and cooking stoves and fryers give off a little steam. Food and drinks use their matching Kenney models without changing service or balance. (#236)
+- See meals on the pass, in servers' hands or trays and on guests' tables. Plates follow a rotated pass and stay on round tabletops. Dirty plates stay until bussing, collected plates stack by the working sink, and cooking stoves and fryers give off a little steam. Food and drinks use their matching Kenney models without changing service or balance. (#236)
 - Waiting benches let guests sit near the door and wait longer for a dining table. (#228)
 - Build warns when an edit would take dishes off the menu and refuses edits that leave nothing cookable. Opening explains dishes removed that morning. (#227)
 - Expanding rooms removes and refunds unsupported windows, back doors and affected wall decorations. Undo restores the complete layout and cash. (#226)

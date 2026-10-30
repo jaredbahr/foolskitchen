@@ -1726,6 +1726,22 @@ The floor shader adds a subtle multiplicative plank pattern while retaining its
 existing paint colour and camera-controlled build-grid parameters (D25: it is
 pattern 0 of `floor_finish.gdshader`, unchanged).
 
+### Food and plate presentation (FK-054)
+- `FoodPresentation` reads order, plate-ledger and agent-presentation state.
+  Serving nodes and approved recipe models are warmed at layout boundaries;
+  carried dishes inherit the smoothed person's palm/tray transform.
+- Tabletop measurements retain the selected native horizontal triangles.
+  At layout refresh, their merged outlines are inset by the measured plate
+  radius plus 1 mm. Seat positions keep their rectangular inset where it
+  fits; unsupported positions project to the cached safe outline, including
+  round-table edges and counter cutouts. Degenerate or too-small surfaces
+  retain the existing bounds fallback. Polygon construction and mesh reads
+  never run in frame sync.
+- READY food uses the actual pass basis, with three slots along one centered
+  row. Further groups stack at the existing 0.025 m layer spacing. This fits
+  the shallow native counter depth at every rotation without changing the
+  kitchen's task, timing or plate ownership.
+
 ### Concepts: drinks, Café and Bar, opening hours (FK-083)
 - **No picker.** The concept is what the shop builds and serves. `VibeTuning`
   knows Café and Bar (`KNOWN_THEMES`, order and labels in `vibe.tres`);
