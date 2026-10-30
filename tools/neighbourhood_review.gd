@@ -5,6 +5,9 @@ const PHOTO_TIME: float = 4.0
 const FRAME: int = 60
 const ROAD_CENTRE: float = 4.605
 const STREET_EXTENSION: float = 3.0
+# Independent AABB transform paths can round one FP32 ULP apart. Only the
+# containment comparison gets this metre tolerance; all clearances stay strict.
+const CAR_CONTAINMENT_ALLOWANCE: float = 0.00001
 const IDS: Array[int] = [1, 4, 6]
 
 
@@ -139,7 +142,7 @@ static func evidence(main: Node, root: Window, fixture: Dictionary) -> Dictionar
 			safe_sweeps = safe_sweeps and not overlaps_xz(sweep, aabb(approach))
 	var car_sweep: AABB = aabb(bounds.get("car_sweep", {}))
 	var actual_car_safe: bool = outside(world.grid, car_local) and not overlaps_xz(car_local, reserve)
-	var car_sweep_safe: bool = outside(world.grid, car_sweep) and not overlaps_xz(car_sweep, reserve) and car_sweep.encloses(car_local)
+	var car_sweep_safe: bool = outside(world.grid, car_sweep) and not overlaps_xz(car_sweep, reserve) and car_sweep.grow(CAR_CONTAINMENT_ALLOWANCE).encloses(car_local)
 	for approach: Dictionary in approaches:
 		actual_car_safe = actual_car_safe and not overlaps_xz(car_local, aabb(approach))
 		car_sweep_safe = car_sweep_safe and not overlaps_xz(car_sweep, aabb(approach))
@@ -150,6 +153,7 @@ static func evidence(main: Node, root: Window, fixture: Dictionary) -> Dictionar
 		"viewport": [root.size.x, root.size.y], "sim_state": sim_state(main, root),
 		"camera": camera_state(main), "actual_photo_pose": poses(node), "actors": actors,
 		"car_visible": car.is_visible_in_tree(), "actual_car_bounds": box(car_local),
+		"declared_car_sweep": box(car_sweep), "car_containment_allowance_metres": CAR_CONTAINMENT_ALLOWANCE,
 		"actual_car_safe": actual_car_safe, "declared_car_sweep_safe": car_sweep_safe,
 		"declared_complete_sweeps_safe": safe_sweeps,
 		"sweep_count": sweeps.size(), "static_root_present": static_root != null, "hazards": hazards,
