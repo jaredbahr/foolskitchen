@@ -370,6 +370,36 @@ an active edit/panel/selection first, or opens Settings when none is active.
   restored RNG, stock top-up, ledger prune and autosave. Missing old-save `shop`
   sections use the authored layout. Non-MORNING saves remain unsupported.
 
+### Seafood content (FK-076)
+- Five level-gated food recipes form a data-defined seafood branch: Fries →
+  Fish & chips (level 2) → Salmon maki (4), and Tomato soup → Mussels in
+  broth (3) → Shrimp skewer (4) → Seafood stew (5). The first uses prep and
+  fryer, maki uses prep, mussels/skewer use the stove, and stew uses prep
+  then stove. Sections and `seafood` theme tags live in recipe resources.
+- Fish fillet and shrimp use freezer storage, mussels and lemon use the
+  fridge, and rice uses dry storage. All five have station-only reorder
+  targets, so the existing menu-use projection buys them only while a
+  selected dish needs them. Starting menus, default orders and save formats
+  are unchanged; levels make foods selectable without enabling them.
+- Deck planks is a level-4 floor resource using the existing `PLANKS`
+  pattern, Slate Blue boards and Cream seams, priced at $3 a tile. It adds
+  no shader branch, texture or pattern number and carries the `seafood` tag.
+- **Model support.** The approved Food Kit contains `fish` and `fries`,
+  `mussel-open`, `bowl-broth`, `maki-salmon`, `skewer` and `pot-stew`.
+  Maki has a direct match. Fish & chips and mussels in broth have matching
+  components but no composed whole-dish model; there is no shrimp-specific
+  skewer or seafood-specific stew model. Current recipes have no per-dish
+  render binding (food-on-plates is FK-054/#99), so this data-only change
+  creates no renderer, speculative scene metadata, substituted art or new
+  model. Those fitting kit parts remain available to the food presentation
+  work; whole-dish gaps are disclosed rather than claiming new visuals.
+- `tools/seafood_review.tscn` is an explicit unsaved capture fixture with
+  seed 126, $2,000 extra funds and owner level 5. Run it through
+  `tools/screenshot.sh --scene=res://tools/seafood_review.tscn --speed=0
+  --frames=30` with `SEAFOOD_REVIEW_STAGE=floor` or `menu`. It uses normal
+  purchase/menu/floor commands and shows the furnished Deck planks room or
+  selected seafood stew details. No service, stock grant or save is faked.
+
 ### 2.3d Menu and prices (FK-030)
 - **Menu identity (FK-086a):** `MenuSettings` owns a trimmed 1–24 character
   restaurant name. The morning request updates the HUD and view-only entrance
@@ -778,6 +808,40 @@ an active edit/panel/selection first, or opens Settings when none is active.
   and accounting; playable balance and rendered loan-state UI are separate
   review requirements. Int64 charge, shortfall and principal limits reject an
   unrepresentable settlement before any account or ledger mutation.
+
+### Joined dining tables (FK-246)
+
+`DiningSeats` derives components of ordinary TABLE items sharing an entire
+unblocked facing edge in one room. Both rectangles must have the same facing
+edge span; corners and partial edges do not join. Serve-across counters never
+join, and chairs/booths contribute seats without connecting components. The
+leader is chosen by geometry (row, column, definition, rotation), independently
+of placement order. Only outside seats contribute to a joined component.
+
+`SimGrid` caches detached group/member/seat lookups before geometry or room
+notifications. `PlacedItem.seat_cells`, seat links, guest and order table IDs
+remain physical. Group reservations validate the whole request before holding
+each seat on its physical owner. Editor previews report group capacity and
+refuse moving/selling any occupied joined group's member, changing occupied
+membership, or orphaning a held seat; cosmetic edits remain available. An
+occupied standalone table retains its established sale/undo-removal cancellation
+and refund behavior. Relocating it or joining another table onto it is refused. Forced low-level removal
+continues to support lifecycle recovery. Groups are derived after load and never
+stored; the snapshot version and morning-only save policy are unchanged.
+
+Explicit parties support at most six people. Shipped type ranges and arrival
+random draws remain unchanged. Standalone parties of at most four retain the
+existing matching order; joined groups and larger parties use deterministic
+augmenting-path matching. Bookings share spare seats and capture transient
+physical `booked_table_ids`. Before seating, stale topology releases all holds
+and paths together. After seating, each person's delivery/payment outcome stays
+independent. A real meal departure dirties every original surviving member,
+while plate tokens and bus tasks stay on physical tables. New seating waits for
+all current members to be clean; existing bus-completion timing is unchanged.
+
+Build previews, hover and Inspect use the same cached component and display
+`Seats N (joined table)`. The manual `joined_tables` probe moves two starter
+tables and buys two normal chairs for $20, without changing menu/staff/tuning.
 
 ### Furniture catalogue and dining seats (FK-071)
 - Twenty-five additional item resources use unchanged approved Furniture Kit
@@ -1433,8 +1497,12 @@ an active edit/panel/selection first, or opens Settings when none is active.
   is one 0.5 m side of a wall seen from the floor cell in front of it, keyed
   `Vector3i(x, y, dir)` (the floor cell, and the direction into the wall:
   0 north, 1 east, 2 south, 3 west). Faces are derived from the grid on every
-  query, never stored: the room side of a solid shell `WALL` cell, and both
-  sides of an interior `WALL` segment. Windows, doorways (the back door too),
+  query, never stored: the room side of a solid shell `WALL` cell, both
+  sides of an interior `WALL` segment, and solid street-facing outside shell
+  faces. An outside key uses the outside/entry cell and direction into the
+  shell; no existing inside/window coordinates change meaning.
+  `WallFaces.all(grid)` and room fill retain inside-only enumeration; the
+  explicit `include_exterior` argument includes outside faces. Windows, doorways (the back door too),
   the street door and a shell cell cut by a window or back door (on any side;
   its box is cut or hidden) have none. `problem(grid, face)` gives the
   sentence (rule 11). `flood` follows a face along its wall and round inside
@@ -1478,20 +1546,22 @@ an active edit/panel/selection first, or opens Settings when none is active.
   room (`wall_room_faces`), Alt-click copies a look (`wall_finish_pick`).
   Commits go through Main's `shop_wall_finishes`. **Paint** on a wall face hit
   before any furniture recolours the connected run of that look inside its
-  room (`wall_area_faces`), Shift the room; the outside of the shell (no face)
-  still calls the legacy whole-shop `paint_wall`; a click on hung decor paints
-  nothing (wall items take no paint yet).
+  room (`wall_area_faces`), Shift the room; Paint on the outside of the shell
+  still calls the legacy whole-shop `paint_wall`, even when an outside face
+  has a stored finish override. Existing inside/window decor ignores Paint;
+  a paintable exterior awning uses free `paint_hung`, with closed-phase history.
 - **Wall decor.** A wall item is an `ItemDef` on `PlacementLayer.WALL`
   (DECOR or RESTROOM, not solid, no work/seat/blocking cells, footprint
   `(width 1..4, 1)`); `SimGrid` refuses that layer (`INVALID_LAYER`), so it
   can never stand on the floor. `ItemDef.wall_mount` (`WallMount`, never
   renumber) says where: `INSIDE_FACE` (prints, boards: the default) or
-  `WINDOW` (Jared: the neon OPEN sign hangs in a window, not inside; one
-  window wide, footprint (1, 1)); an exterior-face mount for the street front
-  (#168) would be the next value. `WallDecor` (`src/sim/shop/wall_decor.gd`,
+  `WINDOW` (one outside window wide, footprint (1, 1)), or appended
+  `EXTERIOR=2` on the fixed street front. The OPEN sign retains WINDOW and
+  its original price/unlock, adding `allow_exterior`; its instance records
+  the actual mount, so moving between window and outside is unambiguous. `WallDecor` (`src/sim/shop/wall_decor.gd`,
   owned by `ShopEditor.decor`, never by `SimGrid`) maps anchor face -> item
-  (`def_id`, width) and face -> anchor: one item per face, never in anyone's
-  way. `problem` refuses a span that is not one straight run of solid faces
+  (`def_id`, width, actual mount, swatch) and face -> anchor: one item per
+  face/band, never in anyone's way. `problem` refuses a span that is not one straight run of solid faces
   (`WallFaces` sentences: window, doorway, street door, "Not enough wall here",
   "A wall is in the way", "This would span two different walls": a shell
   face and an interior slab's face are on different planes) or covers another
@@ -1557,7 +1627,7 @@ an active edit/panel/selection first, or opens Settings when none is active.
   wall, a nearby corner and the floor below, not the room (a future
   face-mounted glowing item should get the window treatment below, since a
   shadowless 1.2 m light reaches past an interior wall). A window item's
-  light (the OPEN sign, the only glowing item) stands in the window plane,
+  light (the window-mounted OPEN sign) stands in the window plane,
   halfway through the opening at the sign's height, with range 0.34 m: it
   lights the window's own jambs, and no room beside the window (at least
   0.375 m away, past an interior wall on the window cell's side line). Its
@@ -1572,11 +1642,30 @@ an active edit/panel/selection first, or opens Settings when none is active.
   more pass over the meshes in its range, up to 8 lights per mesh (the
   floor is one mesh), so many glowing items in one shop would start to drop
   lights on the floor; a shop without one renders exactly as before.
-- **Save and vibe.** The `shop` snapshot is version 6 with `wall_style_id`
+- **Street-front supports.** Pure `ExteriorSupport` derives the fixed front
+  from street entries and `WallRules.street_side`; back/side walls refuse.
+  It distinguishes solid finishable surfaces from door/window supports,
+  including the unchanged decorative frontage panes. Outside item keys keep
+  the outside cell and encode `z=dir+4*band`: BODY0, CANOPY1, HEADER2, SILL3,
+  LIGHTS4. `span`/`anchor_for` preserve the full key. A canopy spans a door
+  or window, a sign header spans the street door, and a sill supports a
+  flower box under a window. Independent bands coexist; same-band overlaps
+  refuse. Solid finish quads never cover a cut window or doorway. Support
+  loss refunds/deletes dependent items and history restores their mount and
+  swatch exactly. New data supplies awning widths2–4, a flower box, one shop
+  sign and light runs2–4. The new `shows_restaurant_name` sign follows the
+  existing MenuSettings -> Main -> ShopView name path on rename/rebuild/load;
+  the free RoomDressing board remains unchanged. No second saved name.
+- **Save and vibe.** The current `shop` snapshot remains version 7 (furniture
+  looks); wall fields introduced in version 6 keep `wall_style_id`
   (always `paint`: any other value is ignored, like floors), `wall_finishes:
   [[x, y, dir, style, swatch, accent], ...]` and `wall_items: [[x, y, dir,
   def_id], ...]` (sorted; a window item's row is its window slot, so the row
-  format is unchanged); no new SaveSystem section. Versions 1-5 load as
+  format is unchanged). Only exterior instances append their actual mount
+  and selected swatch: `[x,y,z,def_id,2,swatch_id]`; old inside/window rows
+  remain four fields on load and output. Optional rows validate band, mount,
+  support and uniqueness before staging. There is no new SaveSystem section
+  or action save; all state joins the existing morning checkpoint. Versions 1-5 load as
   plain paint with nothing hung. Decoding forgives: a face that is no longer a
   face, an unknown finish or item, a non-wall item, an overlap or a malformed
   row is skipped; an unknown colour falls back to the finish's own. The vibe
@@ -1584,7 +1673,9 @@ an active edit/panel/selection first, or opens Settings when none is active.
   wall faces: exactly the old wall paint by default) and
   `decor_vibe_items()` (hung items on guest-room faces) through
   `VibeInputs.capture(..., wall_items)`: decor charm and themes like rugs
-  (no floor space). Looks only: no other sim effect.
+  (no floor space). Actual exterior placements are explicitly excluded even
+  when guest cells are empty; outside finishes do not vote in inside wall
+  colour. No curb-appeal state is added. Looks only: no other sim effect.
 - **Review.** `tools/screenshot.sh --walls-review --speed=0 --frames=12,30`
   (`tools/walls_review.gd`, `[--quarter=N]` for frame 12): finishes on shell
   and interior walls and four hung items (the OPEN sign in a street-front
@@ -1728,7 +1819,7 @@ level 4). Below it the type is a single guest that draws exactly what main's
 single guest draws: no size draw and one private seed, so play before any
 group type unlocks matches single-guest main draw for draw (golden-tested).
 Fixed-size ranges consume no size draw either. An unlocked type draws one
-ranged party size, then clamps it to the largest currently usable table
+ranged party size, then clamps it to the largest currently usable dining group
 reachable from the chosen street entry, but never below one. Capacity counts
 clear, unique, reachable seats, including linked furnishings; temporary
 bookings and dirt do not shrink the layout's capacity. Single guests always
@@ -1742,7 +1833,7 @@ type's short `party_tip` once, in the evening report of the day the owner reache
 It installs and links
 every member before publishing any arrival; singleton installation retains
 the old draw and signal order. `Party` stores member IDs rather than strong
-agent references. `PartySeating` searches one table with enough reachable
+agent references. `PartySeating` searches one derived table group with enough reachable
 free seats, matches all members before reserving, and rolls back every hold
 and path on failure. Arrival IDs give waiting parties first choice: later
 guests and parties leave clear seats at any table that could seat an earlier
@@ -1825,6 +1916,38 @@ random draws or saved state; functional lamps remain the separate lamp issue.
 The floor shader adds a subtle multiplicative plank pattern while retaining its
 existing paint colour and camera-controlled build-grid parameters (D25: it is
 pattern 0 of `floor_finish.gdshader`, unchanged).
+
+### Daily weather
+`SimWorld.weather` is a separate `WeatherState` value per world, with stable
+SUNNY 0 / CLOUDY 1 / RAIN 2 kinds and a chosen morning `day`; day 0 means unchosen.
+`WeatherTuning` reads the relative 50/30/20 weights from
+`data/balance/weather.tres`. Finite, nonnegative weights and a finite positive
+sum are validated before selection. `ensure_today` consumes exactly one
+`randf` from the caller's current `GameState.rng(&"weather")` for a new morning;
+a repeated morning consumes none, and zero-weight bins stay impossible even
+at the upper endpoint. No state/world retains that RNG across a new run.
+Weather has no arrival, patience, economy, vibe or simulation-tick effect.
+
+Main registers the existing save system's `weather` section as
+`{version:1,day,kind}`. Restore validates into a detached staged value; the day
+must match the saved Clock, and installation waits until the whole morning
+load succeeds on its final world. Missing legacy sections install Sunny
+already chosen for that saved day, without obtaining a weather stream.
+Malformed present sections refuse. New mornings select before the existing
+`_begin_morning` autosave; no new save point or SaveSystem code is added.
+`WeatherText` centralizes Sunny/Cloudy/Rain, the forecast line and named icon
+aliases; the future patio may read the value, but no patio behavior is added.
+
+`WeatherView` preserves the original Environment, Sky, reflection, ambient,
+directional and exposure settings. Only proven outdoor front pavement gets
+private colour treatment and an additional reserved receiver bit `1<<18`
+(layer 19); a weak cool OmniLight affects only that bit. Sunny, rebinding and
+cleanup restore original material colours and masks. Rain is an unshaded,
+shadowless deterministic MultiMesh with complete-column and camera-projected
+built-volume exclusion. It uses no simulation RNG. Camera priority 0 precedes
+weather priority 1 and Main priority 10, so the mask uses the rendered camera;
+unchanged kind/world/dressing skips rebuilding, while terrain/camera changes
+invalidate the appropriate cached geometry. HUD/Menu presentation is read-only.
 
 ### Concepts: drinks, Café and Bar, opening hours (FK-083)
 - **No picker.** The concept is what the shop builds and serves. `VibeTuning`
@@ -2270,6 +2393,33 @@ pattern 0 of `floor_finish.gdshader`, unchanged).
   `tests/world/test_delivery_session.gd`, `tests/ui/test_stock_panel.gd`,
   `tests/world/test_stock_session.gd`.
 
+### Thin interior dividers (FK-113)
+
+The starter kitchen's former wall row is now Kitchen floor, with thin wall
+segments on its southern boundary and the original pass gap unchanged. Outer
+shell cells stay thick. Every authored layout was checked (the Tier 1 layout is
+currently the only one). `ShopLayout.legacy_rows` retains the authored terrain
+that snapshots 1–7 did not save.
+
+Shop snapshots use version 8 (version 7 is reserved for furniture looks, #220).
+`ThinDividers.prepare` reconstructs legacy terrain before ordinary item, room,
+wall and finish validation. The pure migration uses the same interior-wall
+classification as `ShopFootprint`; nearest bordering floor determines each new
+cell's room, with Kitchen winning equal-distance ties, then Restroom, Storage
+and Dining, with stable cell order. Only different-room boundaries gain a wall.
+Existing window and doorway frames retain enough thick support to remain valid.
+
+Version 8 records `thin_cells` and `thick_cells`, strictly validated against the
+original interior cells (no duplicates, overlap or shell/street changes). These
+exceptions are normalized into the loaded layout's rows before footprint
+construction, so later Expand edits and reloads keep them. Migration runs only
+for older versions. Finishes and complete wall-decor spans move to a new thin
+face in the same room; unchanged faces take priority and nothing is overwritten.
+A missing or invalid destination refunds half the original price, rounded down.
+The decoder only stages `load_refund` and plain `load_notes`; Main applies a
+refund after complete successful load, before the existing morning checkpoint.
+There is no new save point or SaveSystem migration.
+
 ### 2.4 Save system
 - JSON in `user://saves/`, with a `version` field and migration functions per version.
 - Only sim state is saved, never nodes. The world is rebuilt from sim state on load.
@@ -2329,6 +2479,58 @@ historical reports. There are no new save points or random draws.
 - **Poly budget (guide):** furniture 300 to 1,500 tris, characters 1,500 to 4,000 tris, small props under 300 tris.
 - **AI-generated meshes** (Tripo and similar) need retopology or decimation, a pivot fix, a scale check and a swap to the palette material before they go into `assets/models/`.
 - **Placeholders:** CSG or primitive shapes are fine until Phase 4. Systems first, art later.
+
+### Named regulars (FK-088)
+
+`RegularCast` and `RegularProfile` (`src/sim/regulars/`) hold a small persistent
+cast, authored by `data/regulars/cast.tres`. Solo arrivals of the existing Regular
+type belong to sixteen anonymous, deterministic repeat cohorts (their daily
+arrival order, cycling without a random draw). Satisfied visits on distinct days
+teach the most-enjoyed dish and most-used seat; ties keep the first favourite.
+Promotion requires two satisfied visits, at least 2.5 stars, positive vibe (1),
+and **day 6 or later**. The five-day balance probe therefore has no promotions,
+new regular-stream draws, tips, or changed guest choices. The cast keeps at most
+eight lifetime identities, including those who stop coming; departed names are
+retained in the saved history and never silently reassigned.
+
+Only an actual promotion asks the session's lazy `GameState.rng(&"regulars")`
+provider for a stream. Names, clothing colours, greetings and the next visit date are
+seeded; each identity gets a fixed approved Mini Character model. Returning
+regulars replace ordinary solo Regular arrivals when due, at most once per day,
+rescheduling 2–4 days later. A shortage of eligible arrivals delays a visit rather
+than spawning extra guests. Arrival and private guest draws retain their ordinary
+order. Parties and other customer types remain anonymous.
+
+A regular tries their favourite seat first, then any usable seat, and orders the
+favourite when it is available in their visit's menu section. A missing or sold-out
+favourite never prevents another order. The final visit kind is applied once after
+choosing the usual, so a food favourite keeps the normal meal duration even when
+replacing a coffee or drinks arrival. Having it on the menu adds the authored
+0.08 happiness term to their arrival review bonus. Their existing wait and meal
+quality determine relationship mood at departure; repeated missing favourites
+lower it too. Below 0.2 they stop visiting, and the evening report names them.
+`regular_tip` adds a whole-unit `Ledger.TIP` alongside the existing guarded sale:
+4% normally, 8% with the favourite on the menu, rounding the latter up so a $5
+coffee can produce a $1 bonus. No extra random draw or alternate currency is used.
+
+`Main` stages the `regulars` save section and installs it only after a complete
+morning load. Anonymous learning, fixed identities, preferences, moods and due
+dates round-trip; absent legacy sections start empty. Only the existing morning
+autosave writes them. New promotions and menu edits never save immediately.
+The Menu marks active favourites; inspection uses `RegularText` for dish names,
+seat coordinates and plain mood words. ShopView attaches a reused star/name/
+greeting billboard to the drawn person, and PersonView uses their fixed model
+plus a private copy of its clothing colormap tinted in an approved swatch.
+The torso UV ramp is measured per model; skin ramps and the separate head mesh
+keep their original materials. Greeting lifetime is two sim
+seconds, so pausing also pauses it. None of these presenters advances the sim.
+
+Validation: pure cast tests cover gates, learning, cap, calendar and RNG/save
+continuation; integration/session tests cover actual arrival, seating, orders,
+departure, tips and morning-only persistence. `tools/regulars_probe.gd` is a manual
+25-day paired café probe (equipment-free existing concept fixture; stock and
+running costs paid, morning raises accepted). `tools/regulars_review.tscn` is an
+explicit staged view fixture for two native captures, not balance evidence.
 
 ### Tier 2 lease (FK-064)
 `data/balance/lease_upgrade.tres` defines the level-3 morning offer, deposit,

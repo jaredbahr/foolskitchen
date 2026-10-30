@@ -56,9 +56,10 @@ quarter_turns = 2
 script = ExtResource("2_asj40")
 id = &"tier1_hole_in_the_wall"
 display_name = "Hole-in-the-wall"
-rows = PackedStringArray("##############", "#............#", "#............#", "#............#", "#####...######", "#............#", "#............#", "#............#", "#............#", "#............#", "######..######", "      EE      ")
+rows = PackedStringArray("##############", "#............#", "#............#", "#............#", "#............#", "#............#", "#............#", "#............#", "#............#", "#............#", "######..######", "      EE      ")
+legacy_rows = PackedStringArray("##############", "#............#", "#............#", "#............#", "#####...######", "#............#", "#............#", "#............#", "#............#", "#............#", "######..######", "      EE      ")
 placements = Array[ExtResource("1_f5t7v")]([SubResource("Resource_8swi5"), SubResource("Resource_o0wg6"), SubResource("Resource_3vvd5"), SubResource("Resource_aexx1"), SubResource("Resource_rgtxa"), SubResource("Resource_8ifey"), SubResource("Resource_ypch0"), SubResource("Resource_vsuro"), SubResource("Resource_sink")])
-room_rows = PackedStringArray("", " KKKKKKKKKKKK", " KKKKKKKKKKKK", " KKKKKKKKKKKK", "     KKK")
+room_rows = PackedStringArray("", " KKKKKKKKKKKK", " KKKKKKKKKKKK", " KKKKKKKKKKKK", " KKKKKKKKKKKK")
 staff_spawns = Dictionary[StringName, Vector2i]({
 &"cook": Vector2i(6, 2),
 &"owner": Vector2i(9, 3),
@@ -70,3 +71,15 @@ lot_east = 2
 lot_north = 4
 floor_cell_price = 15
 pantry_units = 60
+
+wall_segments = Dictionary[Vector3i, StringName]({
+Vector3i(1, 5, 1): &"wall",
+Vector3i(2, 5, 1): &"wall",
+Vector3i(3, 5, 1): &"wall",
+Vector3i(4, 5, 1): &"wall",
+Vector3i(8, 5, 1): &"wall",
+Vector3i(9, 5, 1): &"wall",
+Vector3i(10, 5, 1): &"wall",
+Vector3i(11, 5, 1): &"wall",
+Vector3i(12, 5, 1): &"wall"
+})

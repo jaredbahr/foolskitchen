@@ -59,6 +59,7 @@ Any new building piece (walls, windows, doors, the awning, counters) follows the
     older shops and tools retain `character-male-a`. The existing owner-selection
     ring keeps an inspected owner recognisable. No new character art or uniform.
   - **Guests:** the remaining models, chosen deterministically from the guest id.
+  - **Named regulars (FK-088):** a saved Mini Character model with one fixed clothing tint from Honey, Slate blue, Sage or Cream. Like the delivery uniform, this uses a private copy of the kit colormap, changing only a measured clothing ramp on the body mesh. Skin, heads and hair retain the kit materials; the vendored texture is never edited. No extra hat is added through a model's existing hair or bun.
   - **Delivery driver (FK-099):** `character-female-b`, the one model no other role uses (cooks use `character-male-b`), in a delivery uniform no other role wears: a parcel-brown (`#9a6a3e`) cap with an amber (`#d98e2b`) peak, built from primitives in the kit's flat style like the chef hat, and her clothes repainted brown with amber sleeves. The repaint is a private copy of the kit colormap made when she loads; the vendored texture is never edited. Delivery crates are the Furniture Kit's `cardboardBoxClosed` at 0.65 of the furniture scale, one at a time in anyone's hands (its top under the chin), stacked at most as high as a standing person's chin. The **Freezer** is the kit's `kitchenFridgeLarge` with its metal tinted cool (slate blue mixed in, `PropView.rest_tint`) so it never reads as the tall fridge.
 - **Clips (kit names; the same for every model):**
   - `idle`, `walk`, `sit` (raise the body onto the chair seat), `holding-both` (carrying a plate or tray), `interact-right` (working a station), `pick-up`.
@@ -83,7 +84,7 @@ Any new building piece (walls, windows, doors, the awning, counters) follows the
 ## 7. UI
 - **Icons:** `assets/kenney/icons/`, tinted with theme colours, at one size per context (top bar 28 px, panels 24 px).
 - **Text:** stays on the current font and theme.
-- **Missing icons:** there is no chef-hat or paint-brush icon in the pack. Make them in the Game Icons style (§8), or use text until one exists.
+- **Made icons (FK-068):** the pack has no chef hat or paint brush; the two named SVG sources and 100 px PNG exports in `assets/made/icons/` follow its filled, rounded style (§8). The Staff button uses the chef hat; Paint uses the brush with its existing tooltip. Staff panel headings retain the pack's people icon.
 
 ## 8. Making new items in the Kenney style
 New stoves, cooking gear, decor, building pieces or icons may be made when the kits lack them (Jared). **Designing the space is a core part of the fun** (walls, layouts, tables and chairs, restaurant styles and vibes), so making assets for variety is encouraged. **The player decides the look (D22)**: prefer several variants of a piece (other kit material colours, wood vs. painted, plain vs. trimmed) over one "right" version, so every theme can be built more than one way. Reviews check Kenney-style consistency, not taste. A made item must be indistinguishable in style from the kits:

@@ -33,6 +33,12 @@ text_overrun_behavior = 3
 layout_mode = 2
 text = "Day 1"
 
+[node name="Weather" type="Label" parent="Top/Row"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_font_sizes/font_size = 14
+text = "Sunny"
+
 [node name="Time" type="Label" parent="Top/Row"]
 layout_mode = 2
 text = "11:00"
@@ -47,7 +53,7 @@ layout_mode = 2
 size_flags_horizontal = 3
 
 [node name="Speed0" type="Button" parent="Top/Row"]
-custom_minimum_size = Vector2(54, 46)
+custom_minimum_size = Vector2(46, 46)
 layout_mode = 2
 theme = ExtResource("2_theme")
 focus_mode = 0

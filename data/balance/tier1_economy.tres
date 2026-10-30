@@ -31,7 +31,12 @@ station_stock = Dictionary[StringName, int]({
 &"potato": 12,
 &"oil": 12,
 &"dough": 12,
-&"frozen_fries": 12
+&"frozen_fries": 12,
+&"fish_fillet": 12,
+&"shrimp": 12,
+&"mussels": 12,
+&"rice": 12,
+&"lemon": 12
 })
 auto_reorder_premium = 0.05
 delivery_interval_minutes = 180

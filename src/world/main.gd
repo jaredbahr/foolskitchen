@@ -18,6 +18,7 @@ const SHOP_FRAME_CELLS: Vector2 = Vector2(14.0, 12.0)
 const LEASE: LeaseUpgrade = preload("res://data/balance/lease_upgrade.tres")
 const TUNING: EconomyTuning = preload("res://data/balance/tier1_economy.tres")
 const CLEANLINESS_TUNING: CleanlinessTuning = preload("res://data/balance/cleanliness.tres")
+const WEATHER_TUNING: WeatherTuning = preload("res://data/balance/weather.tres")
 const REVIEW_TUNING: ReviewTuning = preload("res://data/balance/reviews.tres")
 const REVIEW_QUOTES: ReviewQuotes = preload("res://data/reviews/quotes.tres")
 const PROGRESSION_TUNING: ProgressionTuning = preload("res://data/balance/progression.tres")
@@ -76,6 +77,8 @@ var _staff_notice_day: int = 0
 var _staff_notices: Array[Dictionary] = []
 ## Last thirty eligible reviews, including five virtual three-star starters.
 var reputation: ReputationBook = ReputationBook.new()
+## Small persistent named cast, written only with the normal morning save.
+var regulars: RegularCast = RegularCast.new()
 var owner_progress: OwnerProgress = OwnerProgress.new(PROGRESSION_TUNING)
 var owner_appearance: OwnerAppearance = OwnerAppearance.new()
 ## Authored arrivals; tests may inject an explicit neutral Regular-only catalogue.
@@ -108,10 +111,14 @@ var _loaded_menu: MenuSettings = null
 var _loaded_staff: StaffRoster = null
 var _loaded_plates: PlateLedger = null
 var _loaded_reputation: ReputationBook = null
+var _loaded_regulars: RegularCast = null
 var _loaded_milestones: MilestoneTracker = null
 var _loaded_tray_level: int = 0
 var _loaded_reorder: ReorderSettings = null
 var _loaded_deliveries: DeliveryBook = null
+var _loaded_weather: WeatherState = null
+## Tests may provide explicit weights without changing the shared authored resource.
+var weather_tuning: WeatherTuning = WEATHER_TUNING
 ## Today's last daytime delivery ({lines, minute}), for the Stock notes.
 var _last_delivery: Dictionary = {}
 var _storage_fill_key: String = ""
@@ -475,10 +482,12 @@ func start() -> void:
 	SaveSystem.register("staff", _capture_staff, _restore_staff)
 	SaveSystem.register("plates", _capture_plates, _restore_plates)
 	SaveSystem.register("reviews", _capture_reviews, _restore_reviews)
+	SaveSystem.register("regulars", _capture_regulars, _restore_regulars)
 	SaveSystem.register("milestones", _capture_milestones, _restore_milestones)
 	SaveSystem.register("reorder", _capture_reorder, _restore_reorder)
 	SaveSystem.register("deliveries", _capture_deliveries, _restore_deliveries)
 	SaveSystem.register("hints", hints.capture, hints.restore)
+	SaveSystem.register("weather", _capture_weather, _restore_weather)
 	var loaded: bool = use_saves and _load_autosave()
 	_rooms_note = loaded and _loaded_layout != null and _loaded_layout.rooms_unmarked
 	$HUD.set_rooms_note(ROOMS_NOTE if _rooms_note else "")
@@ -497,6 +506,10 @@ func start() -> void:
 	($ShopView as ShopView).bind_cleanliness(cleanliness)
 	_debug_overlay.bind_cleanliness(cleanliness)
 	sim.configure_reviews(reputation, REVIEW_TUNING, REVIEW_QUOTES, GameState.rng(&"reviews"))
+	sim.regulars = regulars
+	sim.regular_rng_provider = GameState.rng.bind(&"regulars")
+	for recipe: RecipeDef in content.recipes():
+		sim.regular_recipe_labels[recipe.id] = recipe.display_name
 	# Configure only after the complete restore/new-game decision, using its
 	# real reputation and owner level. This consumes no customer RNG draw.
 	if not sim.configure_customer_types(customer_type_catalogue, owner_progress.level):
@@ -680,6 +693,9 @@ func route_build_input(event: InputEvent) -> bool:
 						build_mode.sell_held_wall_item()
 					elif build_mode.state == BuildMode.State.IDLE and build_mode.hover_anchor != WallFaces.NO_FACE:
 						build_mode.take_down_hovered()
+					elif build_mode.state == BuildMode.State.IDLE and build_mode.tool == BuildMode.Tool.SELL \
+							and build_mode.wall_hover_edge != SimGrid.NO_EDGE:
+						build_mode.sell_hovered_wall()
 					elif build_mode.state == BuildMode.State.IDLE and build_mode.tool == BuildMode.Tool.SELL:
 						build_mode.sell_hovered()
 					else:
@@ -775,6 +791,11 @@ func route_build_input(event: InputEvent) -> bool:
 			if build_mode.has_ghost():
 				build_mode.commit()
 			elif build_mode.state == BuildMode.State.IDLE:
+				if build_mode.tool == BuildMode.Tool.SELL and not mouse.alt_pressed \
+						and build_mode.wall_hover_edge != SimGrid.NO_EDGE:
+					build_mode.sell_hovered_wall()
+					update_build_pointer(mouse.position)
+					return true
 				var cell: Variant = build_cell_at_screen_position(mouse.position)
 				# Alt explicitly picks the floor layer. A miss cannot accidentally
 				# grab the furniture above it; normal clicks keep their old order.
@@ -851,8 +872,10 @@ func route_paint_input(event: InputEvent) -> bool:
 		if face != WallFaces.NO_FACE:
 			paint_face(face, mouse.shift_pressed)
 			return true
-		if wall_item_at_screen_position(mouse.position) != WallFaces.NO_FACE:
-			return true  # Wall decor takes no paint (yet); never the wall behind it.
+		var hung: Vector3i = wall_item_at_screen_position(mouse.position)
+		if hung != WallFaces.NO_FACE:
+			paint_hung(hung)
+			return true  # Never paint the wall behind a hung item.
 		var cell: Variant = paint_cell_at_screen_position(mouse.position)
 		if cell is Vector2i:
 			paint_cell(cell, mouse.shift_pressed)
@@ -871,7 +894,8 @@ func paint_face_at_screen_position(screen_position: Vector2) -> Vector3i:
 	var direction: Vector3 = camera.project_ray_normal(screen_position)
 	var view: ShopView = $ShopView as ShopView
 	var hit: Dictionary = view.wall_face_at_ray(origin, direction)
-	if hit.is_empty() or hit["face"] == WallFaces.NO_FACE:
+	if hit.is_empty() or hit["face"] == WallFaces.NO_FACE \
+			or ExteriorSupport.is_exterior(world.grid, hit["face"]):
 		return WallFaces.NO_FACE
 	if view.nearest_item_distance(origin, direction) < float(hit["distance"]) \
 			or view.wall_item_at_ray(origin, direction) != WallFaces.NO_FACE:
@@ -892,6 +916,18 @@ func paint_face(face: Vector3i, whole_room: bool = false) -> bool:
 		_edit_notice = ""
 		_update_build_controls()
 	return accepted or shop_editor.last_check.why == ShopEditor.WALL_FINISH_ALREADY
+
+
+## Exterior body swatches use the existing palette and morning undo boundary.
+func paint_hung(anchor: Vector3i) -> bool:
+	if not _paint_active or shop_editor == null or not _paint_variant_item.is_empty():
+		return false
+	var accepted: bool = edit_history.paint_hung(anchor, _paint_swatch_id)
+	if accepted:
+		($ShopView as ShopView).clear_paint_preview()
+		_edit_notice = ""
+		_update_build_controls()
+	return accepted
 
 
 func _wall_paint_changes(face: Vector3i, whole_room: bool) -> Dictionary[Vector3i, FloorFinishes.Finish]:
@@ -959,6 +995,18 @@ func update_paint_pointer(screen_position: Vector2, whole_room: bool = false) ->
 	if not _paint_active:
 		return
 	_last_pointer = screen_position
+	var paint_view: ShopView = $ShopView as ShopView
+	var hung_anchor: Vector3i = wall_item_at_screen_position(screen_position)
+	var hung: WallDecor.Hung = shop_editor.decor.item(hung_anchor) if shop_editor != null else null
+	var definition: ItemDef = content.item(hung.def_id) if hung != null else null
+	if hung != null and hung.mount == ItemDef.WallMount.EXTERIOR and definition != null \
+			and definition.paintable and _paint_variant_item.is_empty():
+		paint_view.preview_paint(&"", -1, &"")
+		paint_view.clear_floor_preview()
+		paint_view.clear_wall_preview()
+		paint_view.wall_finish_view.preview_hung_paint(hung_anchor, _paint_swatch_id)
+		return
+	paint_view.wall_finish_view.clear_hung_paint_preview()
 	var face: Vector3i = paint_face_at_screen_position(screen_position)
 	if face != WallFaces.NO_FACE:
 		if not _paint_variant_item.is_empty():
@@ -1217,8 +1265,11 @@ func update_build_pointer(screen_position: Vector2, shift: bool = false) -> bool
 		return true
 	if build_mode.state == BuildMode.State.HANG:
 		var hit: Dictionary = {}
-		if build_mode.hang_definition != null and build_mode.hang_definition.hangs_in_window():
+		var definition: ItemDef = build_mode.hang_definition
+		if definition != null and definition.hangs_in_window():
 			hit = window_at_screen_position(screen_position)
+		if hit.is_empty() and definition != null and (definition.wall_mount == ItemDef.WallMount.EXTERIOR or definition.allow_exterior):
+			hit = exterior_face_at_screen_position(screen_position, definition.exterior_band)
 		if hit.is_empty():
 			hit = wall_face_at_screen_position(screen_position)
 		build_mode.hang_pointer(hit.get("face", WallFaces.NO_FACE), float(hit.get("offset", 0.0)))
@@ -1227,6 +1278,13 @@ func update_build_pointer(screen_position: Vector2, shift: bool = false) -> bool
 		var hung: Vector3i = wall_item_at_screen_position(screen_position)
 		build_mode.hover_wall_item(hung)
 		if hung != WallFaces.NO_FACE:
+			build_mode.hover_wall_segment(SimGrid.NO_EDGE)
+			build_mode.hover_item(-1)
+			return true
+		var edge: Vector3i = wall_segment_at_screen_position(screen_position) \
+			if build_mode.tool == BuildMode.Tool.SELL else SimGrid.NO_EDGE
+		build_mode.hover_wall_segment(edge)
+		if edge != SimGrid.NO_EDGE:
 			build_mode.hover_item(-1)
 			return true
 	var cell: Variant = build_cell_at_screen_position(screen_position)
@@ -1318,13 +1376,44 @@ func wall_face_at_screen_position(screen_position: Vector2, floor_fallback: bool
 		camera.project_ray_normal(screen_position), floor_fallback)
 
 
+## New exterior mount bands keep the existing inside/window picker unchanged.
+func exterior_face_at_screen_position(screen_position: Vector2, mount_band: int = ExteriorSupport.Band.BODY) -> Dictionary:
+	var camera: Camera3D = $CameraRig/Camera3D as Camera3D
+	if world == null or not camera.is_inside_tree():
+		return {}
+	return ($ShopView as ShopView).exterior_mount_at_ray(camera.project_ray_origin(screen_position),
+		camera.project_ray_normal(screen_position), mount_band)
+
+
+## The rendered segment under the pointer, with foreground furniture respected.
+func wall_segment_at_screen_position(screen_position: Vector2) -> Vector3i:
+	var camera: Camera3D = $CameraRig/Camera3D
+	if world == null or not camera.is_inside_tree():
+		return SimGrid.NO_EDGE
+	var view: ShopView = $ShopView as ShopView
+	var ray_origin: Vector3 = camera.project_ray_origin(screen_position)
+	var ray_direction: Vector3 = camera.project_ray_normal(screen_position)
+	var hit: Dictionary = view.wall_segment_at_ray(ray_origin, ray_direction)
+	var edge: Vector3i = hit.get("edge", SimGrid.NO_EDGE)
+	if edge == SimGrid.NO_EDGE or world.grid.segment(edge) == SimGrid.Segment.NONE \
+			or view.nearest_item_distance(ray_origin, ray_direction) < float(hit.get("distance", INF)):
+		return SimGrid.NO_EDGE
+	return edge
+
+
 ## The outside window under the pointer ({face, offset}, see ShopView.window_at_ray).
 func window_at_screen_position(screen_position: Vector2) -> Dictionary:
 	var camera: Camera3D = $CameraRig/Camera3D
 	if world == null or not camera.is_inside_tree():
 		return {}
-	return ($ShopView as ShopView).window_at_ray(camera.project_ray_origin(screen_position),
-		camera.project_ray_normal(screen_position))
+	var view: ShopView = $ShopView as ShopView
+	var origin: Vector3 = camera.project_ray_origin(screen_position)
+	var direction: Vector3 = camera.project_ray_normal(screen_position)
+	var hit: Dictionary = view.window_at_ray(origin, direction)
+	if not hit.is_empty() and (view.nearest_item_distance(origin, direction) < float(hit["distance"]) \
+			or view.wall_distance(origin, direction) < float(hit["distance"]) - ShopView.SIDE_EPSILON):
+		return {}
+	return hit
 
 
 ## The hung wall item under the pointer, or NO_FACE.
@@ -1473,7 +1562,12 @@ func _update_build_controls() -> void:
 	var available: bool = _build_ready and shop_editor != null and shop_editor.can_edit()
 	var reason: String = build_mode.feedback_text()
 	var summary: String = ""
-	if build_mode.state == BuildMode.State.WALLS:
+	if build_mode.state in [BuildMode.State.BUY, BuildMode.State.MOVE]:
+		summary = build_mode.dining_summary()
+		if not summary.is_empty() and reason.is_empty():
+			# Retain the existing marker legend beside the new capacity readout.
+			summary += "\n" + BuildCatalogue.FURNITURE_HINT
+	elif build_mode.state == BuildMode.State.WALLS:
 		summary = build_mode.wall_summary()
 	elif build_mode.state == BuildMode.State.FLOOR:
 		summary = build_mode.floor_summary()
@@ -1778,6 +1872,7 @@ func inspection_state() -> Dictionary:
 
 ## Refreshes after completed morning setup, removals and paused grid edits too.
 func refresh_presentation() -> void:
+	_refresh_weather()
 	if _inspect_panel == null or _debug_overlay == null or _debug_geometry == null:
 		return
 	_inspect_panel.refresh()
@@ -1853,6 +1948,7 @@ func build_report(day: int) -> DayReport:
 	var report := DayReport.new()
 	report.day = day
 	report.restaurant_name = menu_settings.restaurant_name() if menu_settings != null else MenuSettings.DEFAULT_NAME
+	report.regulars_lines = RegularText.report_lines(regulars)
 	report.loan_first_advance = _loan_notice_day == day
 	var totals: Dictionary = Economy.ledger.day_totals(day)
 	for category: StringName in totals:
@@ -1908,6 +2004,8 @@ func build_report(day: int) -> DayReport:
 
 func _new_game() -> void:
 	hints.restart()
+	regulars = RegularCast.new()
+	_loaded_regulars = null
 	owner_appearance = OwnerAppearance.new()
 	_sync_owner_appearance()
 	_menu_access_losses.clear()
@@ -1922,6 +2020,7 @@ func _new_game() -> void:
 	Clock.sim = SimClock.new()
 	GameState.new_run(new_game_seed_override if new_game_seed_override != 0
 		else int(Time.get_unix_time_from_system()))
+	world.weather = WeatherState.new()
 	Economy.reset(TUNING.starting_cash)
 	_loaded_layout = null
 	_owner_preferences.reset()
@@ -1948,6 +2047,7 @@ func _new_game() -> void:
 	_loaded_reorder = null
 	reorder_settings = ReorderSettings.new(TUNING)
 	_loaded_deliveries = null
+	_loaded_weather = null
 	deliveries = DeliveryBook.new()
 	stock_cart.clear()
 	_last_delivery.clear()
@@ -1966,6 +2066,7 @@ func _new_game() -> void:
 
 
 func _load_autosave() -> bool:
+	_loaded_regulars = null
 	_loaded_blueprints = null
 	_blueprint_load_notes.clear()
 	_loaded_layout = null
@@ -1977,6 +2078,7 @@ func _load_autosave() -> bool:
 	_loaded_tray_level = 0
 	_loaded_reorder = null
 	_loaded_deliveries = null
+	_loaded_weather = null
 	if not SaveSystem.list_slots().has(save_slot):
 		return false
 	# Missing sections are skipped by SaveSystem: old runs stay out of the guide.
@@ -1986,6 +2088,10 @@ func _load_autosave() -> bool:
 		return false
 	if Clock.sim.phase != SimClock.Phase.MORNING:
 		world.log_event("Autosave is not from a morning; starting a new game")
+		return false
+	var saved_weather: WeatherState = _loaded_weather if _loaded_weather != null else WeatherState.legacy_sunny(Clock.sim.day)
+	if saved_weather == null or not saved_weather.is_for_day(Clock.sim.day):
+		world.log_event("Saved weather does not match this morning; starting a new game")
 		return false
 	if not OpeningHours.clock_valid(Clock.sim, HOURS_TUNING):
 		# Keep the game; only the hours go back to the default day.
@@ -2014,6 +2120,7 @@ func _load_autosave() -> bool:
 		world = candidate.world
 	staff_roster = employees
 	reputation = _loaded_reputation if _loaded_reputation != null else ReputationBook.new()
+	regulars = _loaded_regulars if _loaded_regulars != null else RegularCast.new()
 	tray_level = _loaded_tray_level
 	sim.carry_capacity = 1 << tray_level
 	menu_settings = choices
@@ -2044,6 +2151,24 @@ func _load_autosave() -> bool:
 	if _loaded_layout != null:
 		for note: String in _loaded_layout.load_notes:
 			world.log_event(note)
+		# The decoder stages this; only a wholly successful load may pay it once.
+		if _loaded_layout.load_refund > 0:
+			Economy.add_cash(_loaded_layout.load_refund, Ledger.UPGRADES)
+			_loaded_layout.load_refund = 0
+	# Install only after every other whole-load validation has succeeded.
+	world.weather = saved_weather.copy()
+	return true
+
+
+func _capture_weather() -> Dictionary:
+	return world.weather.to_dict() if world != null and world.weather != null else {}
+
+
+func _restore_weather(data: Dictionary) -> bool:
+	var restored: WeatherState = WeatherState.from_dict(data)
+	if restored == null:
+		return false
+	_loaded_weather = restored
 	return true
 
 
@@ -2057,6 +2182,18 @@ func _restore_plates(data: Dictionary) -> bool:
 	if restored == null:
 		return false
 	_loaded_plates = restored
+	return true
+
+
+func _capture_regulars() -> Dictionary:
+	return regulars.to_dict()
+
+
+func _restore_regulars(data: Dictionary) -> bool:
+	var restored: RegularCast = RegularCast.new()
+	if not restored.from_dict(data):
+		return false
+	_loaded_regulars = restored
 	return true
 
 
@@ -2992,8 +3129,8 @@ func shop_wall_finishes(changes: Dictionary[Vector3i, FloorFinishes.Finish]) -> 
 
 
 ## Wall decor (D26): hang, move and sell, checked and booked by ShopEditor.
-func shop_hang(def_id: StringName, anchor: Vector3i) -> bool:
-	var accepted: bool = shop_editor != null and edit_history.hang(def_id, anchor)
+func shop_hang(def_id: StringName, anchor: Vector3i, swatch_id: StringName = &"") -> bool:
+	var accepted: bool = shop_editor != null and edit_history.hang(def_id, anchor, swatch_id)
 	_after_edit(accepted)
 	if _build_ready:
 		build_mode.refresh()
@@ -3166,6 +3303,8 @@ func _begin_morning() -> void:
 		_staff_notices.assign(notices)
 	elif not notices.is_empty():
 		_staff_notices.assign(notices)
+	if not _select_morning_weather():
+		return
 	# Sample the rating once, before start_day resets the first guest's gap.
 	# Positive stars increase arrivals, so their time between arrivals shrinks.
 	var rate: float = reputation.arrival_multiplier(REVIEW_TUNING)
@@ -3210,6 +3349,28 @@ func _begin_morning() -> void:
 	_refresh_menu_catalogue()
 	_refresh_stock_panel()
 	refresh_presentation()
+
+
+## Fetch the current run's stream lazily: reloads and legacy saves fetch none.
+func _select_morning_weather() -> bool:
+	if world == null or world.weather == null or weather_tuning == null or not weather_tuning.is_valid():
+		return false
+	if world.weather.needs_selection(Clock.sim.day):
+		if not world.weather.ensure_today(Clock.sim.day, GameState.rng(&"weather"), weather_tuning):
+			return false
+	_refresh_weather()
+	return world.weather.is_for_day(Clock.sim.day)
+
+
+func _refresh_weather() -> void:
+	if world == null or world.weather == null:
+		return
+	$HUD.set_weather(world.weather.kind)
+	if _menu_panel != null:
+		_menu_panel.set_weather(world.weather.kind)
+	var view: ShopView = $ShopView as ShopView
+	if view.weather_view != null:
+		view.weather_view.refresh()
 
 
 func _shelf_lives() -> Dictionary:
@@ -3826,8 +3987,11 @@ func _charge_closing_costs() -> void:
 		Economy.add_cash(-rent, Ledger.RENT)
 
 
-func _on_customer_paid(_customer: CustomerAgent, order: Order, amount: int) -> void:
+func _on_customer_paid(customer: CustomerAgent, order: Order, amount: int) -> void:
 	Economy.add_cash(amount, Ledger.SALE)
+	var tip: int = sim.regular_tip(customer, order)
+	if tip > 0:
+		Economy.add_cash(tip, Ledger.TIP)
 	dishes_sold_today[order.recipe_id] = dishes_sold_today.get(order.recipe_id, 0) + 1
 
 
@@ -4065,6 +4229,11 @@ func _expected_dish_quality(recipe: RecipeDef) -> DishQuality:
 func _refresh_menu_details() -> void:
 	if _menu_panel != null and content != null:
 		_menu_panel.set_recipe_details(content.recipes(), menu_recipe_details())
+		var favourites: Array[StringName] = []
+		for profile: RegularProfile in regulars.profiles:
+			if profile.active and not favourites.has(profile.favourite_dish):
+				favourites.append(profile.favourite_dish)
+		_menu_panel.set_regular_favourites(favourites)
 
 
 ## Keep the last service's measured dish quality for the morning view. This

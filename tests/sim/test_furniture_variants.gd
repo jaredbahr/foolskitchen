@@ -54,7 +54,7 @@ func test_variant_survives_buy_move_sell_undo_redo() -> void:
 func test_snapshot_v7_roundtrip_and_v6_default_and_missing_look() -> void:
 	assert_true(_history.buy(&"diner_stool", Vector2i(10, 8), 0, &"", &"stool_chrome_teal"))
 	var saved: Dictionary = _editor.to_dict()
-	assert_eq(saved.version, 7)
+	assert_eq(saved.version, ShopEditor.SNAPSHOT_VERSION)
 	var errors: Array[String] = []
 	var layout: ShopLayout = ShopEditor.from_dict(saved, LAYOUT, _content, errors)
 	assert_true(errors.is_empty())
@@ -62,12 +62,11 @@ func test_snapshot_v7_roundtrip_and_v6_default_and_missing_look() -> void:
 	assert_eq(restored.grid.item_at(Vector2i(10, 8)).variant_id, &"stool_chrome_teal")
 	for row: Dictionary in saved.items:
 		row.erase("variant_id")
-	saved.version = 6
+	# A row without a look (as every pre-v7 row was) loads with the default look.
 	layout = ShopEditor.from_dict(saved, LAYOUT, _content, errors)
 	assert_true(errors.is_empty())
 	for entry: ShopPlacement in layout.placements:
 		assert_eq(entry.variant_id, &"")
-	saved.version = 7
 	for row: Dictionary in saved.items:
 		row.variant_id = "removed-look"
 	layout = ShopEditor.from_dict(saved, LAYOUT, _content, errors)

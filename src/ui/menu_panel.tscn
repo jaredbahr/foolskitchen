@@ -101,6 +101,11 @@ layout_mode = 2
 mouse_filter = 2
 autowrap_mode = 3
 
+[node name="WeatherForecast" type="Label" parent="Panel/Content"]
+layout_mode = 2
+mouse_filter = 2
+text = "Sunny today"
+
 [node name="LeaseOffer" type="VBoxContainer" parent="Panel/Content"]
 visible = false
 layout_mode = 2

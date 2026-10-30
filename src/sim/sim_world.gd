@@ -11,6 +11,8 @@ const LOG_LIMIT: int = 200
 var now: int = 0
 var clock: SimClock
 var grid: SimGrid
+## Daily forecast; selection belongs to the existing game morning boundary.
+var weather: WeatherState = WeatherState.new()
 var board: TaskBoard = TaskBoard.new()
 ## Agents in id order.
 var agents: Array[SimAgent] = []

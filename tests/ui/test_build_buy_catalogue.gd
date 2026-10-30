@@ -75,14 +75,46 @@ func test_unknown_rooms_fall_back_to_decor_and_content_validation_names_them() -
 
 
 func test_rooms_without_items_have_no_tab_and_buy_hides_build_tabs() -> void:
+	# A genuine no-light catalogue still hides the empty room. Shipped content
+	# now has three string lights, so remove only those entries in this fixture.
+	var no_lights: ContentDB = ContentDB.new()
+	assert_eq(no_lights.load_all(), PackedStringArray())
+	for id: StringName in [&"string_lights_2", &"string_lights_3", &"string_lights_4"]:
+		assert_true(no_lights._items.erase(id), "the fixture removes each shipped light")
+	for definition: ItemDef in no_lights.items():
+		assert_false(definition.buy_room() == &"lighting", "this fixture genuinely has no lights")
+	_catalogue.bind_content(no_lights)
 	assert_eq(_catalogue.mode, BuildCatalogue.BUY)
 	for room: StringName in [&"dining", &"kitchen", &"bar_cafe", &"decor"]:
 		assert_true(_catalogue.category_buttons[room].visible, String(room))
-	assert_false(_catalogue.category_buttons[&"lighting"].visible, "no lamps exist yet")
+	assert_false(_catalogue.category_buttons[&"lighting"].visible, "a room without any fixture item has no tab")
 	assert_true(_catalogue.category_buttons[&"restroom"].visible, "the toilet and wash basin (FK-101)")
 	assert_eq(_catalogue.category_buttons[&"bar_cafe"].text, "Bar & Café")
 	for build: StringName in BuildCatalogue.BUILD_CATEGORIES:
 		assert_false(_catalogue.category_buttons[build].visible)
+
+
+func test_shipped_string_lights_have_their_lighting_tab_and_level_gate() -> void:
+	assert_true(_catalogue.category_buttons[&"lighting"].visible, "shipped street lights make Lighting available")
+	assert_eq(_catalogue.category_buttons[&"lighting"].text, "Lighting")
+	_catalogue.set_category(&"lighting")
+	var expected: Array[StringName] = [&"string_lights_2", &"string_lights_3", &"string_lights_4"]
+	assert_eq(_catalogue.visible_ids(), expected, "the three named lighting widths are offered in order")
+	assert_false(_catalogue.group_buttons[&"wall_decor"].visible, "a room with only one group does not need subgroup tabs")
+	_catalogue.set_owner_level(2)
+	for id: StringName in expected:
+		assert_eq(_content.item(id).catalogue_room, &"lighting")
+		assert_eq(_content.item(id).unlock_level, 3)
+		assert_true(_catalogue.item_buttons[id].disabled)
+		_catalogue.item_buttons[id].pressed.emit()
+	assert_true(_kitchen_buy_requests.is_empty(), "locked direct signals cannot buy a light")
+	_catalogue.set_owner_level(3)
+	for id: StringName in expected:
+		assert_false(_catalogue.item_buttons[id].disabled)
+		_catalogue.item_buttons[id].pressed.emit()
+	assert_eq(_kitchen_buy_requests, expected, "each unlocked width requests its actual item")
+	for build: StringName in BuildCatalogue.BUILD_CATEGORIES:
+		assert_false(_catalogue.category_buttons[build].visible, "Lighting remains on the Buy side")
 
 
 func test_dining_sub_tabs_split_seating_and_tables() -> void:

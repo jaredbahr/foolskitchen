@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">
+  <title>Paint brush</title>
+  <!-- Hand-authored for #118, based only on the approved Kenney Game Icons.
+       References at 100 px (bounds: alpha >0, filled area: alpha >127): wrench bbox(20,20,84,84), area1918;
+       star bbox(18,20,82,80), area2117; home bbox(20,18,84,82), area2266;
+       gear bbox(20,20,84,84), area2193. Bounds are half-open pixel bounds.
+       Match the wrench's thick diagonal tool handle and softly rounded ends.
+       Export at 100 by 100 pixels with Inkscape, as documented in README.md. -->
+  <path fill="#ffffff" transform="translate(-2 3) rotate(45 50 50)" d="M34 18H66Q69 18 69 21V46Q69 50 65 50H59V73A9 9 0 0 1 41 73V50H35Q31 50 31 46V21Q31 18 34 18Z"/>
+</svg>

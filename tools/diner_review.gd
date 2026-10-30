@@ -584,6 +584,8 @@ static func _comparison_visibility(shop: ShopView, visible: bool) -> void:
 	for person: Node3D in shop.agent_nodes.values():
 		person.visible = visible
 	shop._walls.visible = visible
+	if shop.segment_view != null:
+		shop.segment_view.visible = visible
 	if shop.room_dressing != null:
 		shop.room_dressing.visible = visible
 
