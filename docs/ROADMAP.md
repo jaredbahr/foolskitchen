@@ -8,44 +8,28 @@ Hobby pace: there are no dates, only exit criteria. Each phase ends with a playa
 - **Jared:** taste and lore calls, playtests each phase build, merges or asks for changes.
 - Each phase has a tracking issue (`Phase N: ...`) that lists its task issues.
 
-## Up next: the Codex queue (set 2026-10-29)
-Codex takes `worker-ready` issues in this order; the director validates, reviews and merges every PR, and builds only what needs art judgement. Each wave can run in parallel inside itself.
+## Up next: the Codex queue (reset 2026-10-30)
+Codex takes `worker-ready` issues in this order, skipping any whose **Depends on** hasn't merged. It marks a PR ready as soon as its own checks pass; the director reviews, fixes up and merges. Merged since 2026-10-29: #209, #212, #189, #196, #197, #203, #113, #179, #108, #211, #201, #202, #83 and the AGENTS rule #225.
 
-**Wave 1, ready now (game logic, data and UI with tests)**
-- #212 Bug: expanding over an outside wall leaves its window or doorway standing (do first)
-- #209 Grid on/off in normal play too (remembered, HUD button, setting) — first, it's small
-- #189 Warn when a build edit cuts staff off from menu dishes
-- #196 Bar-snack fries from frozen fries
-- #197 Bakery menu section
-- #203 Waiting bench by the door
-- #113 Dish quality breakdown
-- #179 Hygiene overview in Build
-- #108 Title screen, then #110 First-day guide
-- #211 Pick your owner character (hooks into #108's New game if merged)
-- #126 Seafood menu (data; the deck-plank floor after #202)
-- #114 Tier 2 lease upgrade (more lot to expand)
+**Now: open PRs to finish first (answer review notes, merge `main`, mark ready)**
+- #216 lease upgrade, #217 restroom decor, #220 furniture looks, #229 seafood, #234 named regulars, #235 messes, #236 food on plates, #237 icons, #231 menu boards (draft), #238 first-day guide (draft)
 
-**Wave 2, after wall finishes and decor (#207) merge**
+**Wave 4: fix, then the outside and atmosphere**
+- #239 Thin kitchen divider and a visible Remove mode for walls (bug, do first)
 - #205 Smarter cutaway, then #208 Day and night cycle (morning prep, service into the evening, close and wind-down), then #84 Lighting decor
-- #198 Restroom decor (mirror, hand dryer, stall partitions)
-- #201 Hex tile and terracotta floors, then #202 terrazzo, concrete, carpet
-- #161 Menu boards show your menu, theme read-out (after #197)
-- #83 Blueprints
-- #150 Furniture variants
+- #240 Street front decor: outside wall finishes, awning, window boxes, shop sign, outside OPEN sign
+- #241 Daily weather (seeded, saved, no effect yet)
+- #242 A simple neighbourhood: road, pavement, buildings, passers-by (visual only)
+- #117 Sound: UI clicks, kitchen ambience, cash and review stings
+- #223 Blueprints remember furniture looks (after #220)
 
-**Wave 3, the designer core is done**
-- #166 Named regulars (first backlog pick)
-- #127 Everyday messes (spills, broken plates, grease)
-- #99 Food on plates, dirty plates, steam
-- #118 Made icons (chef hat, paint brush)
+**Wave 5: the outside matters**
+- #243 Patio: outdoor tables and waiting seats, closed in rain (after #241 and #242)
+- #244 Curb appeal: a nicer front draws a few more walk-ins (after #240)
+- #85 Tier 1 balance pass, last: measure with every setup once waves 4 and 5 are in
 
-**Then, director-scoped as each comes up**
-- #168 Street front, patio and a simple overworld, with exterior wall finishes and weather
-- #117 Sound and music
-- #85 Tier 1 balance pass (measure first)
-- Later backlog: #164 more sites, #167 makeovers, #169 staff drama, #170 design extras, #171 food depth, #172 visitors, #173 neighbourhood, #159 entertainment, #180 café counter, #206 premium decor, #125 aquarium
-
-**Also ready (Jared, 2026-10-29):** #114 Tier 2 is a lease upgrade that grows your lot (no move, keep your build). The cat #119 arrives at shop level 4 (art, director-scoped).
+**Director-scoped (art or taste first):** the cat #119 (shop level 4), aquarium #125, premium decor #206.
+**Later backlog:** #164 more sites, #167 makeovers, #169 staff drama, #170 design extras, #171 food depth, #172 visitors, #173 neighbourhood rivals, #159 entertainment, #180 café counter.
 
 ## Phase 0: Foundation
 - [ ] Project skeleton, autoload stubs, test runner, `check.sh`, `get_godot.sh` (FK-001, Claude)
