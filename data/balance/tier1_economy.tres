@@ -40,6 +40,6 @@ station_stock = Dictionary[StringName, int]({
 })
 daily_rent = 30
 auto_reorder_premium = 0.05
-restock_buffer = 1.15
+restock_buffer = 1.10
 delivery_interval_minutes = 180
 freezer_shelf_life_days = 30

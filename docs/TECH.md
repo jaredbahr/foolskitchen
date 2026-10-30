@@ -2111,6 +2111,10 @@ invalidate the appropriate cached geometry. HUD/Menu presentation is read-only.
   cookable recipes, repeated ingredients, authored opening-hour visit weights
   and the eligible customer mix's optional drink/pastry chances. It assumes
   equal dish choices within each visit kind; it does not simulate future guests.
+  A recipe's primary and optional side portions combine before the buffer is
+  applied and rounded up once to a whole portion, then expand into ingredient
+  units. This can add up to one extra portion per recipe beyond the fractional
+  estimate; the final quantity, cash and storage caps still apply.
   Morning and opening orders use the service being stocked; closing stock and
   build-budget forecasts use the existing next-day demand projection. All use
   the same ordinary cash/storage-limited order planner. Targets never exceed

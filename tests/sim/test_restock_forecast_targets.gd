@@ -188,3 +188,49 @@ func _hour_weights(tuning: VisitTuning, open_minute: int, close_minute: int) -> 
 	restaurant.world.clock.display_open_minute = open_minute
 	restaurant.world.clock.display_close_minute = close_minute
 	return restaurant.expected_visit_weights()
+
+
+func test_starting_menu_forecast_covers_whole_buffered_recipe_portions() -> void:
+	var menu: Array[RecipeDef] = [_content.recipe(&"burger"), _content.recipe(&"grilled_cheese"),
+		_content.recipe(&"tomato_soup")] as Array[RecipeDef]
+	var targets: Dictionary[StringName, int] = RestockForecast.targets(menu, 20, {}, 1.10)
+	# ceil(20 / 3 * 1.10) = 8 portions per recipe. Fifteen bread slices
+	# would cover only seven complete sandwiches despite buying eight cheese.
+	assert_eq(targets[&"bread"], 16, "eight whole grilled cheese portions need two bread slices each")
+	assert_eq(targets[&"cheese"], 8)
+	assert_eq(targets[&"bun"], 8)
+	assert_eq(targets[&"beef_patty"], 8)
+	assert_eq(targets[&"lettuce"], 8)
+	assert_eq(targets[&"tomato"], 16, "eight whole soup portions need two tomatoes each")
+	assert_eq(targets[&"soup_stock"], 8)
+
+
+func test_primary_and_side_coffee_combine_before_buffered_portion_rounding() -> void:
+	var menu: Array[RecipeDef] = [_content.recipe(&"burger"), _content.recipe(&"coffee")] as Array[RecipeDef]
+	var targets: Dictionary[StringName, int] = RestockForecast.targets(menu, 4,
+		{RecipeDef.FOOD: 1.0, RecipeDef.COFFEE: 1.0}, 1.10, 0.1)
+	# Two coffee visits plus 0.2 meal-side coffees: ceil(2.2 * 1.10) = 3.
+	# Rounding each source separately would incorrectly buy 3 + 1 = 4.
+	assert_eq(targets[&"coffee_beans"], 3, "the same coffee recipe combines primary and side portions")
+	assert_eq(targets[&"bun"], 3)
+
+
+func test_primary_and_side_pastry_combine_before_buffered_portion_rounding() -> void:
+	var menu: Array[RecipeDef] = [_content.recipe(&"croissant"), _content.recipe(&"coffee")] as Array[RecipeDef]
+	var targets: Dictionary[StringName, int] = RestockForecast.targets(menu, 4,
+		{RecipeDef.FOOD: 1.0, RecipeDef.COFFEE: 1.0}, 1.10, 0.0, 0.1)
+	# Two food visits plus 0.2 coffee-side pastries also need three whole
+	# portions, rather than four from separately rounding the two sources.
+	assert_eq(targets[&"pastry"], 3, "the same pastry recipe combines primary and side portions")
+	assert_eq(targets[&"coffee_beans"], 3)
+
+
+func test_whole_portion_rounding_bounds_huge_repeated_ingredients_and_keeps_zero() -> void:
+	var menu: Array[RecipeDef] = [_content.recipe(&"grilled_cheese"),
+		_content.recipe(&"tomato_soup"), _content.recipe(&"tomato_melt")] as Array[RecipeDef]
+	# Tomato melt also shares bread, cheese and tomato with the other recipes.
+	var huge: Dictionary[StringName, int] = RestockForecast.targets(menu, 9223372036854775807, {}, 2.0)
+	assert_eq(huge, {&"bread": 99, &"cheese": 99, &"tomato": 99,
+		&"soup_stock": 99} as Dictionary[StringName, int], "bound whole portions before integer conversion")
+	assert_eq(RestockForecast.targets(menu, 0, {}, 1.10),
+		{&"bread": 0, &"cheese": 0, &"tomato": 0, &"soup_stock": 0} as Dictionary[StringName, int])

@@ -50,24 +50,30 @@ static func targets(recipes: Array[RecipeDef], expected_guests: int,
 				break
 		if weight_total <= 0.0:
 			return result
-	var amounts: Dictionary[StringName, float] = {}
+	var portions: Dictionary[StringName, float] = {}
 	for kind: StringName in by_kind:
 		var guests: float = float(expected_guests) * weights[kind] / weight_total
 		var choices: Array = by_kind[kind]
 		for recipe: RecipeDef in choices:
-			_add_recipe(amounts, recipe, guests / float(choices.size()))
+			_add_portions(portions, recipe, guests / float(choices.size()))
 		if kind == RecipeDef.FOOD and not drinks.is_empty():
 			for recipe: RecipeDef in drinks:
-				_add_recipe(amounts, recipe, guests * clampf(drink_add_chance, 0.0, 1.0) / drinks.size())
+				_add_portions(portions, recipe, guests * clampf(drink_add_chance, 0.0, 1.0) / drinks.size())
 		if kind == RecipeDef.COFFEE and not pastries.is_empty():
 			for recipe: RecipeDef in pastries:
-				_add_recipe(amounts, recipe, guests * clampf(pastry_add_chance, 0.0, 1.0) / pastries.size())
-	for id: StringName in amounts:
-		result[id] = maxi(0, ceili(minf(amounts[id] * buffer, ReorderSettings.MAX_TARGET)))
+				_add_portions(portions, recipe, guests * clampf(pastry_add_chance, 0.0, 1.0) / pastries.size())
+	# Combine a recipe's primary and side demand before rounding. Stock whole
+	# portions so repeated ingredients cover the same number of complete dishes.
+	for kind: StringName in by_kind:
+		for recipe: RecipeDef in by_kind[kind]:
+			# No ingredient target can exceed 99; bound the float before ceili
+			# converts even an enormous forecast into an integer.
+			var count: int = maxi(0, ceili(minf(portions.get(recipe.id, 0.0) * buffer, ReorderSettings.MAX_TARGET)))
+			for ingredient: IngredientDef in recipe.ingredients:
+				if ingredient != null:
+					result[ingredient.id] = mini(ReorderSettings.MAX_TARGET, result[ingredient.id] + count)
 	return result
 
 
-static func _add_recipe(amounts: Dictionary[StringName, float], recipe: RecipeDef, count: float) -> void:
-	for ingredient: IngredientDef in recipe.ingredients:
-		if ingredient != null:
-			amounts[ingredient.id] = amounts.get(ingredient.id, 0.0) + count
+static func _add_portions(portions: Dictionary[StringName, float], recipe: RecipeDef, count: float) -> void:
+	portions[recipe.id] = portions.get(recipe.id, 0.0) + count
