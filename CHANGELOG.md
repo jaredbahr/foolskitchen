@@ -12,6 +12,7 @@ Each line ends with its PR number.
 
 ### Players
 - Staff carrying meals can spill them and break plates, especially when clumsy or crowded at the pass. Reassigning a delivery makes the next worker collect the meals before they can spill. Meals are cooked again, broken plates are replaced tomorrow, and greasy stations work 10% slower until someone degreases them. Floor messes stand out on light and dark floors, with mishaps listed in the evening report. (#235)
+- Add a wall-hung restroom mirror and hand dryer with a little charm, a gentle room-label hint, and thin light-laminate stall partitions in Build > Walls that keep toilet and basin access clear. (#217)
 - Upgrade your lease from owner level 3 in the morning Menu panel: keep your shop, pay a deposit and higher rent, and unlock more land to expand. (#216)
 - Pick your owner's character and name when starting a shop, and change their look from Staff in the morning. (#233)
 - Start from a title screen with New game, Continue and Settings, and quit back to it without overwriting your morning autosave. (#230)

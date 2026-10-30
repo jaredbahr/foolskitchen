@@ -352,3 +352,10 @@ func _on_undo() -> void:
 
 func _on_kitchen_buy(id: StringName) -> void:
 	_kitchen_buy_requests.append(id)
+
+
+func test_restroom_wall_decor_shows_mirror_and_hand_dryer() -> void:
+	_catalogue.set_category(&"restroom")
+	_catalogue.set_group(&"wall_decor")
+	assert_eq(_catalogue.visible_ids(), [&"wall_hand_dryer", &"restroom_mirror"])
+	assert_eq(_content.item(&"wall_hand_dryer").display_name, "Hand dryer")
