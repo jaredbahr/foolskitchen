@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- Decorate the street front with wall finishes, coloured awnings, flower boxes, string lights and a sign showing your restaurant's name; hang the OPEN sign outside too. (#250)
 - Choose diner booth and stool looks in Buy, or change an existing piece in Paint. Copying, undoing and loading keep the chosen look. (#220)
 
 - Add a wall-hung restroom mirror and hand dryer with a little charm, a gentle room-label hint, and thin light-laminate stall partitions in Build > Walls that keep toilet and basin access clear. (#217)
