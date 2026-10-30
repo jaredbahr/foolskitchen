@@ -71,6 +71,7 @@ static func run_cli(tree: SceneTree, args: PackedStringArray) -> int:
 	var summary_lines: PackedStringArray = PackedStringArray()
 	var failed: bool = false
 	var observe_staff: bool = options["staff_growth"] or options["auto_accept_raises"]
+	var failed: bool = false
 	if observe_staff:
 		staff_lines.append("\nStaff growth at service close (%s):" % (
 			"all morning requests accepted through Main" if options["auto_accept_raises"]
@@ -237,7 +238,7 @@ static func run_case(tree: SceneTree, seed_value: int, setup_name: String, days:
 		# terminal orders. No stock operation, RNG lookup or planner runs here.
 		if observe_daily:
 			var before: Dictionary = _control_snapshot(main, sim) if capture_control else {}
-			var daily: Dictionary = _daily_snapshot(sim, report, book)
+			var daily: Dictionary = _daily_snapshot(main, sim, report, book)
 			if capture_control and before != _control_snapshot(main, sim):
 				_free_main(main)
 				return {"error": "Daily observer changed session state on day %d" % report.day}
@@ -261,7 +262,7 @@ static func run_case(tree: SceneTree, seed_value: int, setup_name: String, days:
 
 ## Hand-run evidence only. Missing basis remains null instead of presenting
 ## a legacy report's zero defaults as a measured cost or profit.
-static func _daily_snapshot(sim: RestaurantSim, report: DayReport,
+static func _daily_snapshot(main: Node, sim: RestaurantSim, report: DayReport,
 		book: Dictionary) -> Dictionary:
 	var categories: Dictionary = {}
 	var signed_sum: int = 0
@@ -304,6 +305,8 @@ static func _daily_snapshot(sim: RestaurantSim, report: DayReport,
 		"paid_order_count": paid_count,
 		"paid_order_cost_sum": sold_cost if sold_recorded else null,
 		"paid_order_cost_recorded": sold_recorded,
+		"current_demand": _optional_demand(main, &"current_demand_snapshot"),
+		"next_demand": _optional_demand(main, &"forecast_next_demand"),
 		"orders": orders, "report": report.to_dict().duplicate(true),
 		"stock": Economy.stock.to_dict().duplicate(true)}
 
@@ -322,6 +325,23 @@ static func _order_snapshot(sim: RestaurantSim) -> Array[Dictionary]:
 	return rows
 
 
+## Parse-safe on actual pre-feature main: never name a feature-only class or
+## statically call a missing method. Unavailable data is not a neutral factor.
+static func _optional_demand(main: Node, method: StringName) -> Dictionary:
+	if not main.has_method(method):
+		return {"status": "unavailable", "reason": "API absent on this source"}
+	var value: Variant = main.call(method)
+	if not value is Dictionary:
+		return {"status": "invalid", "reason": "API returned a non-dictionary"}
+	var snapshot: Dictionary = value
+	for key: String in ["reputation", "word_of_mouth", "menu", "vibe", "curb_appeal", "total"]:
+		var factor: Variant = snapshot.get(key)
+		if not (factor is float or factor is int) or not is_finite(float(factor)) \
+				or float(factor) < 0.0:
+			return {"status": "invalid", "reason": "Missing or invalid factor: " + key}
+	return {"status": "available", "snapshot": snapshot.duplicate(true)}
+
+
 ## Existing named streams are captured, never looked up through rng(), which
 ## could lazily create one. Returned data has no live session references.
 static func _control_snapshot(main: Node, sim: RestaurantSim) -> Dictionary:
@@ -334,19 +354,25 @@ static func _control_snapshot(main: Node, sim: RestaurantSim) -> Dictionary:
 		var value: Variant = main.get(key)
 		if value is Object and value.has_method("to_dict"):
 			result[key] = value.call("to_dict")
+	for property: Dictionary in main.get_property_list():
+		var name: String = String(property["name"])
+		if name == "demand_state" or name == "_demand_state":
+			var state: Variant = main.get(name)
+			if state is Object and state.has_method("to_dict"):
+				result[name] = state.call("to_dict")
 	var report: DayReport = main.get("shown_report") as DayReport
 	if report != null:
 		result["report"] = report.to_dict()
 	return result.duplicate(true)
 
 
-## Manual controls only, on the same real session driver used by the probe.
-## A fixture overlay may supply grown; the shipped 13-setup list is unchanged.
+## Hand-run controls, never called by CI. Each pair uses the same production
+## driver with the observer switched off/on, preserving all old aggregate
+## fields and complete final named-stream/economy/report snapshots.
 static func run_observer_controls(tree: SceneTree) -> int:
 	var checks: Array[Dictionary] = []
 	var valid: bool = true
-	var second_setup: String = "grown" if ProbeSetups.names().has("grown") else "fryer_coffee"
-	for setup: String in ["default", second_setup]:
+	for setup: String in ["default", "grown"]:
 		for seed_value: int in [1, 5]:
 			var plain: Dictionary = run_case(tree, seed_value, setup, 5,
 				3, Vector2i(-1, -1), 1.0, false, false, false, true)

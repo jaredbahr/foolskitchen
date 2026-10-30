@@ -93,6 +93,54 @@ func draw_party_size_at(random: RandomNumberGenerator, owner_level: int) -> int:
 	return draw_party_size(random) if owner_level >= party_unlock_level else 1
 
 
+## Growth blends the authored uniform range with the demand weights, extending
+## unlocked groups (including a fixed solo range) up to the tuning's maximum.
+## Neutral and invalid contexts
+## delegate before any new draw, retaining the original fixed/locked streams.
+func draw_party_size_for_demand(random: RandomNumberGenerator, owner_level: int,
+		demand_factor: float, tuning: DemandTuning) -> int:
+	if not is_finite(demand_factor) or demand_factor <= 1.0 \
+			or owner_level < party_unlock_level or not is_valid() or random == null:
+		return draw_party_size_at(random, owner_level)
+	if tuning == null or not tuning.is_valid() or tuning.party_max_size < party_size_max:
+		return draw_party_size_at(random, owner_level)
+	var growth_total: float = 0.0
+	for size: int in range(party_size_min, tuning.party_max_size + 1):
+		growth_total += tuning.party_size_weights[size - 1]
+	if not is_finite(growth_total) or growth_total <= 0.0:
+		return draw_party_size_at(random, owner_level)
+	# Compare first so even a very large finite factor cannot overflow the ratio.
+	var blend: float = 1.0 if demand_factor >= tuning.party_growth_full_factor \
+		else (demand_factor - 1.0) / (tuning.party_growth_full_factor - 1.0)
+	var baseline_weight: float = 1.0 / float(party_size_max - party_size_min + 1)
+	var weights: Array[float] = []
+	var total: float = 0.0
+	var positive_bins: int = 0
+	var last_positive: int = party_size_min
+	for size: int in range(party_size_min, tuning.party_max_size + 1):
+		var baseline: float = baseline_weight if size <= party_size_max else 0.0
+		var growth: float = tuning.party_size_weights[size - 1] / growth_total
+		var weight: float = (1.0 - blend) * baseline + blend * growth
+		weights.append(weight)
+		total += weight
+		if weight > 0.0:
+			positive_bins += 1
+			last_positive = size
+	if not is_finite(total) or total <= 0.0:
+		return draw_party_size_at(random, owner_level)
+	if positive_bins == 1:
+		return last_positive
+	var ticket: float = random.randf() * total
+	for index: int in weights.size():
+		if weights[index] <= 0.0:
+			continue
+		ticket -= weights[index]
+		if ticket < 0.0:
+			return party_size_min + index
+	# randf() may return its upper endpoint; a zero-weight final bin stays absent.
+	return last_positive
+
+
 ## The owner level at which this type first arrives as a group (0 if never).
 func group_level() -> int:
 	return maxi(unlock_level, party_unlock_level) if party_size_max > 1 else 0

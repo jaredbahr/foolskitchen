@@ -7,6 +7,10 @@ const NON_OPERATING_CATEGORIES: Array[StringName] = [
 	Ledger.MILESTONE_BONUS,
 ]
 const MAX_MILESTONE_REWARD: int = 1000000
+const MAX_FORECAST_INTEGER: int = 9007199254740991
+const DEMAND_FACTOR_KEYS: Array[String] = [
+	"reputation", "word_of_mouth", "menu", "vibe", "curb_appeal", "total",
+]
 
 var day: int = 1
 ## Snapshot of the name used for this service day and its review heading.
@@ -56,6 +60,10 @@ var spoiled_stock: int = 0
 var spoiled_stock_recorded: bool = false
 var stock_on_hand: int = 0
 var stock_on_hand_recorded: bool = false
+## Optional detached estimate for the next service day; older reports omit it.
+var demand_forecast: Dictionary = {}:
+	set(value):
+		demand_forecast = public_demand_forecast(value)
 
 
 ## Returns income across all categories in whole currency units.
@@ -186,6 +194,7 @@ func to_dict() -> Dictionary:
 		"spoiled_stock_recorded": spoiled_stock_recorded,
 		"stock_on_hand": str(stock_on_hand),
 		"stock_on_hand_recorded": stock_on_hand_recorded,
+		"demand_forecast": public_demand_forecast(demand_forecast),
 	}
 
 
@@ -253,7 +262,30 @@ static func from_dict(data: Dictionary) -> DayReport:
 		if value >= 0 and flag is bool:
 			report.set(field, value)
 			report.set(field + "_recorded", flag)
+	report.demand_forecast = public_demand_forecast(data.get("demand_forecast", {}))
 	return report
+
+
+## Optional display data never prevents a historical report from loading.
+## Copy only known primitives, accepting JSON's whole-valued floats too.
+static func public_demand_forecast(value: Variant) -> Dictionary:
+	if not value is Dictionary:
+		return {}
+	var forecast: Dictionary = value
+	if not _whole_in_range(forecast.get("day"), 1, MAX_FORECAST_INTEGER) \
+			or not _whole_in_range(forecast.get("expected_guests"), 0, MAX_FORECAST_INTEGER):
+		return {}
+	var result: Dictionary = {
+		"day": int(forecast["day"]),
+		"expected_guests": int(forecast["expected_guests"]),
+	}
+	for key: String in DEMAND_FACTOR_KEYS:
+		var factor: Variant = forecast.get(key)
+		if (typeof(factor) != TYPE_INT and typeof(factor) != TYPE_FLOAT) \
+				or not is_finite(float(factor)) or float(factor) <= 0.0:
+			return {}
+		result[key] = float(factor)
+	return result
 
 
 ## Copy only display fields, so a sim result cannot leak its cause into a save.
