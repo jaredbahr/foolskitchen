@@ -245,8 +245,10 @@ an active edit/panel/selection first, or opens Settings when none is active.
   section is created. While genuinely carrying food, a server rolls once per
   newly entered cell (0.4% normally; Clumsy ×3; extra crowding near the pass
   adds 0.2% per person above the authored threshold, capped at 3%). Standing
-  still and a zero base chance draw nothing. Drinks are excluded. The first
-  carried READY meal spills; other tray meals continue on the same route.
+  still and a zero base chance draw nothing. Drinks are excluded. Pickup
+  must finish before any spill rolls, including a reclaimed trip's
+  walk back to the pass after the owner changes duties.
+  The first carried READY meal spills; other tray meals continue on the same route.
   The original ticket returns to PLACED and follows real ingredient fetching,
   cooking and plating again, retaining the guest's original wait budget and
   price. It never charges a second meal or creates a second guest order.

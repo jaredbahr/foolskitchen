@@ -11,7 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
-- Staff can spill meals and break plates, especially when clumsy or crowded at the pass. Meals are cooked again, broken plates are replaced tomorrow, and greasy stations work 10% slower until someone degreases them. Floor messes stand out on light and dark floors, with mishaps listed in the evening report. (#235)
+- Staff carrying meals can spill them and break plates, especially when clumsy or crowded at the pass. Reassigning a delivery makes the next worker collect the meals before they can spill. Meals are cooked again, broken plates are replaced tomorrow, and greasy stations work 10% slower until someone degreases them. Floor messes stand out on light and dark floors, with mishaps listed in the evening report. (#235)
 - Waiting benches let guests sit near the door and wait longer for a dining table. (#228)
 - Build warns when an edit would take dishes off the menu and refuses edits that leave nothing cookable. Opening explains dishes removed that morning. (#227)
 - Expanding rooms removes and refunds unsupported windows, back doors and affected wall decorations. Undo restores the complete layout and cash. (#226)

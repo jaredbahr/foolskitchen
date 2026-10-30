@@ -5,6 +5,8 @@ extends RefCounted
 signal plates_changed(clean: int, total: int, dirty: int, in_use: int)
 
 const WASH_RETRY_TICKS: int = 30
+## A delivery first walks to the pass, then completes its pickup WORK step.
+const DELIVERY_PICKUP_STEP: int = 1
 
 var stock: Stock
 var dirty_tables: Dictionary[int, bool] = {}
@@ -389,7 +391,10 @@ func _advance_spills(sim: RestaurantSim) -> void:
 			continue
 		var task: SimTask = staff.task
 		if task == null or task.kind != &"deliver" or task.state != SimTask.State.CLAIMED \
-				or task.claimed_by != staff.id or int(task.payload.get("carried_count", 0)) <= 0:
+				or task.claimed_by != staff.id or staff.step_index <= DELIVERY_PICKUP_STEP \
+				or int(task.payload.get("carried_count", 0)) <= 0:
+			# Prepared batches retain their meals across drops, but the next
+			# claimant must finish the replayed pickup before carrying them.
 			_carry_cells.erase(staff.id)
 			_carry_tasks.erase(staff.id)
 			continue

@@ -255,6 +255,14 @@ func test_real_food_spill_recooks_same_ticket_and_charges_exactly_one_replacemen
 	assert_eq(_sim.kitchen.plates.total, total)
 
 
+func test_resting_owner_delivery_reclaim_cannot_spill_before_pickup() -> void:
+	_assert_reclaimed_delivery_waits_for_pickup(&"rest")
+
+
+func test_kitchen_reassigned_owner_delivery_reclaim_cannot_spill_before_pickup() -> void:
+	_assert_reclaimed_delivery_waits_for_pickup(&"kitchen")
+
+
 func test_real_seeded_carry_spills_repeat_without_stationary_draws() -> void:
 	var first: Array[int] = _real_spill_trace(127)
 	_sim.start_day()
@@ -325,6 +333,89 @@ func test_sticky_floor_has_three_plain_quotes_and_report_is_transient() -> void:
 	assert_true(report.mishaps_text.begins_with("Mishaps: 1 spill, 1 broken plate; 2 stations degreased"))
 	assert_false(report.to_dict().has("mishaps_text"), "no new saved report fields")
 	assert_eq(report.to_dict().get("costs"), {})
+
+
+## Use a real cooked meal and the owner's normal reassignment/drop path.
+## The server returns from elsewhere in Dining and reclaims through its board
+## selection, so persisted batch data must not count as food already in hand.
+func _assert_reclaimed_delivery_waits_for_pickup(next_mode: StringName) -> void:
+	_make()
+	var server: StaffAgent = _server()
+	_sim.world.remove_agent(server)
+	var owner: OwnerAgent = _sim.owner_agent()
+	assert_true(_sim.assign_owner(&"floor"))
+	var guest: CustomerAgent = _sim.add_customer(_sim.world.grid.entries()[0], _rng(42))
+	guest.food_patience = 6000
+	assert_true(_sim.world.clock.start_service())
+	var pass_item: PlacedItem = ShopBuilder.items_with_def(_sim.world, &"pass_counter")[0]
+	for tick: int in range(2000):
+		_sim.advance()
+		if owner.task != null and owner.task.kind == &"deliver" and owner.step_index >= 2 \
+				and int(owner.task.payload.get("carried_count", 0)) == 1 \
+				and owner.cell != pass_item.work_cells[1]:
+			break
+	assert_not_null(owner.task, "Floor owner picks up the real cooked meal")
+	if owner.task == null:
+		return
+	var task: SimTask = owner.task
+	var order: Order = guest.order
+	assert_eq(task.kind, &"deliver")
+	assert_eq(order.state, Order.State.READY)
+	assert_true(bool(task.payload.get("batch_prepared", false)))
+	assert_true(owner.step_index >= 2)
+	assert_ne(owner.cell, pass_item.work_cells[1], "owner has left the pass carrying food")
+	assert_true(_sim.assign_owner(next_mode))
+	_sim.advance()
+	assert_null(owner.task, "normal mode change releases the held delivery")
+	assert_eq(task.state, SimTask.State.OPEN)
+	assert_eq(task.drops, 1)
+	assert_true(bool(task.payload.get("batch_prepared", false)), "drop retains the prepared meal")
+	assert_eq(int(task.payload.get("carried_count", 0)), 1)
+	assert_eq(order.state, Order.State.READY)
+	assert_ne(server.cell, pass_item.work_cells[1], "replacement must walk to pickup")
+	_sim.world.add_agent(server)
+	_sim.advance()
+	assert_eq(server.task, task, "server selects the dropped task through the real task board")
+	assert_eq(task.claimed_by, server.id)
+	assert_eq(server.step_index, 0, "replacement claimant replays from the pass walk")
+	_sim.mishaps.tuning.spill_chance_per_cell = 1.0
+	_sim.mishaps.tuning.maximum_spill_chance = 1.0
+	_sim.mishaps.tuning.broken_plate_chance = 1.0
+	var random_before: int = _stream.state
+	var stock_before: Dictionary = _sim.stock.to_dict().duplicate(true)
+	var plates_before: int = _sim.kitchen.plates.total
+	var walk_cells: int = 0
+	for tick: int in range(200):
+		var previous: Vector2i = server.cell
+		_sim.advance()
+		if server.cell != previous:
+			walk_cells += 1
+		assert_eq(_stream.state, random_before, "pickup walk consumes no mishap RNG")
+		assert_eq(_sim.mishaps.spills_today, 0, "meal stays at the pass until pickup")
+		assert_eq(_sim.mishaps.broken_plates_today, 0)
+		assert_eq(_sim.kitchen.plates.total, plates_before, "pickup walk cannot break a plate")
+		assert_eq(_sim.stock.to_dict(), stock_before, "pickup walk cannot consume recook ingredients")
+		assert_eq(guest.order, order)
+		assert_eq(order.state, Order.State.READY, "original cooked ticket survives pickup walk")
+		assert_eq(task.state, SimTask.State.CLAIMED, "pickup walk cannot cancel the delivery")
+		if server.task != task:
+			return
+		if server.step_index >= 2:
+			break
+	assert_true(walk_cells > 0, "regression exercises actual movement before pickup")
+	assert_eq(server.step_index, 2, "the replacement completes the real pickup WORK step")
+	assert_eq(server.cell, pass_item.work_cells[1])
+	assert_eq(int(task.payload.get("carried_count", 0)), 1)
+	for tick: int in range(200):
+		_sim.advance()
+		if _sim.mishaps.spills_today > 0:
+			break
+	assert_eq(_sim.mishaps.spills_today, 1, "actual carrying movement remains spill-eligible")
+	assert_eq(_sim.mishaps.broken_plates_today, 1)
+	assert_ne(_stream.state, random_before, "actual carrying consumes its seeded rolls")
+	assert_eq(_sim.kitchen.plates.total, plates_before - 1)
+	assert_eq(order.state, Order.State.PLACED, "the genuine spill requests a recook")
+	assert_eq(task.state, SimTask.State.CANCELLED)
 
 
 func _real_spill_trace(_seed_value: int) -> Array[int]:
