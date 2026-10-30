@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="RecipeDef" load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://src/sim/content/recipe_def.gd" id="1_recipe"]
+[ext_resource type="Script" path="res://src/sim/content/ingredient_def.gd" id="2_ingredient"]
+[ext_resource type="Script" path="res://src/sim/content/recipe_step.gd" id="3_step"]
+[ext_resource type="Resource" path="res://data/ingredients/fish_fillet.tres" id="ingredient_fish_fillet"]
+[ext_resource type="Resource" path="res://data/ingredients/rice.tres" id="ingredient_rice"]
+[ext_resource type="Resource" path="res://data/ingredients/lemon.tres" id="ingredient_lemon"]
+
+[sub_resource type="Resource" id="Step_0"]
+script = ExtResource("3_step")
+station_type = &"prep_counter"
+duration_ticks = 70
+
+[resource]
+script = ExtResource("1_recipe")
+id = &"salmon_maki"
+display_name = "Salmon maki"
+section = 0
+unlock_from = &"fish_and_chips"
+ingredients = Array[ExtResource("2_ingredient")]([ExtResource("ingredient_fish_fillet"), ExtResource("ingredient_rice"), ExtResource("ingredient_lemon")])
+steps = Array[ExtResource("3_step")]([SubResource("Step_0")])
+base_quality = 0.7
+standard_price = 14
+unlock_tier = 1
+unlock_level = 4
+theme_tags = Array[StringName]([&"seafood"])
