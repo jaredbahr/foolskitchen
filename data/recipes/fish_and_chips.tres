@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="RecipeDef" load_steps=10 format=3]
+[gd_resource type="Resource" script_class="RecipeDef" load_steps=11 format=3]
 
 [ext_resource type="Script" path="res://src/sim/content/recipe_def.gd" id="1_recipe"]
 [ext_resource type="Script" path="res://src/sim/content/ingredient_def.gd" id="2_ingredient"]
@@ -7,6 +7,8 @@
 [ext_resource type="Resource" path="res://data/ingredients/potato.tres" id="ingredient_potato"]
 [ext_resource type="Resource" path="res://data/ingredients/oil.tres" id="ingredient_oil"]
 [ext_resource type="Resource" path="res://data/ingredients/lemon.tres" id="ingredient_lemon"]
+
+[ext_resource type="PackedScene" path="res://assets/kenney/food/fish.glb" id="view_model"]
 
 [sub_resource type="Resource" id="Step_0"]
 script = ExtResource("3_step")
@@ -20,6 +22,7 @@ duration_ticks = 80
 
 [resource]
 script = ExtResource("1_recipe")
+view_model = ExtResource("view_model")
 id = &"fish_and_chips"
 display_name = "Fish & chips"
 section = 1
