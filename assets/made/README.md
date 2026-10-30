@@ -41,3 +41,23 @@ Rebuild with `blender --background --factory-startup --python tools/build_hand_d
 The source envelope is approximately 0.30 × 0.25 × 0.15 m; its wrapper uses
 the shared uniform furniture scale and aligns its bottom with the mirror at
 0.6 m above the floor, fitting the game's person scale.
+
+## Weather icons (#241)
+
+`icons/weather_sunny.svg`, `icons/weather_cloudy.svg` and
+`icons/weather_rain.svg` are the editable sources for the three matching
+100 × 100 PNG exports. They use white solid rounded silhouettes on transparent
+backgrounds, with the same approximately 64 px visual width and broad margins
+as the approved Kenney Game Icons. The sunny disc and rounded rays reference
+`gear.png` and `star.png`; the solid cloud and rounded rain strokes reference
+`home.png`'s filled silhouette and `audioOn.png`'s rounded marks. No outside
+art source, font, texture, gradient or outline is used. Runtime tint belongs to
+the existing UI theme through `IconCatalogue`; SVGs are source files and the
+catalogue aliases use only the PNG exports.
+
+Rebuild with `python3 tools/build_weather_icons.py` (Pillow, already available
+in the development environment). The generator shares one set of primitive
+coordinates between SVG and supersampled PNG output. It never edits the
+vendored kit or another made asset. Optional `--manifest /outside/project.json`
+writes audit data outside the shipping project; review comparisons are never
+stored with the assets.

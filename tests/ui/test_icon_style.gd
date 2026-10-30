@@ -2,12 +2,23 @@ extends TestCase
 ## Approved assets, shared theme styling and actual panel heading integration.
 
 const MAIN_THEME: Theme = preload("res://src/ui/theme/main_theme.tres")
+## Exact issue-authorized exceptions; every other role stays in the vendor root.
+const WEATHER_PATHS: Dictionary[StringName, String] = {
+	&"weather_sunny": "res://assets/made/icons/weather_sunny.png",
+	&"weather_cloudy": "res://assets/made/icons/weather_cloudy.png",
+	&"weather_rain": "res://assets/made/icons/weather_rain.png",
+}
 
 
 func test_every_mapped_icon_is_an_approved_100_pixel_texture() -> void:
+	for role: StringName in WEATHER_PATHS:
+		assert_true(IconCatalogue.ICON_ROLES.has(role), "declared weather role is public")
 	for role: StringName in IconCatalogue.ICON_ROLES:
 		var path: String = IconCatalogue.path_for(role)
-		if role in [&"chef", &"paint"]:
+		if WEATHER_PATHS.has(role):
+			assert_eq(path, WEATHER_PATHS[role], "only the exact weather PNG is authorized")
+			_assert_weather_silhouette(path)
+		elif role in [&"chef", &"paint"]:
 			assert_eq(path, IconCatalogue.MADE_ROOT + ("chefHat.png" if role == &"chef" else "paintBrush.png"))
 		else:
 			assert_true(path.begins_with(IconCatalogue.ROOT), "approved icon path for %s" % role)
@@ -268,6 +279,33 @@ func test_heading_padding_resolves_style_fallback_and_restores_it_without_drift(
 	assert_eq(decorated.get_combined_minimum_size().x, plain.get_combined_minimum_size().x,
 		"text-only fallback restores native width without accumulating icon padding")
 	holder.free()
+
+
+func _assert_weather_silhouette(path: String) -> void:
+	var texture: Texture2D = ResourceLoader.load(path, "Texture2D") as Texture2D
+	assert_not_null(texture, "imported weather texture loads")
+	if texture == null:
+		return
+	var image: Image = texture.get_image()
+	assert_not_null(image, "weather PNG decodes")
+	if image == null:
+		return
+	assert_eq(image.get_size(), Vector2i(100, 100))
+	assert_eq(image.get_format(), Image.FORMAT_RGBA8, "weather source keeps alpha")
+	if image.get_format() != Image.FORMAT_RGBA8:
+		return
+	var pixels: PackedByteArray = image.get_data()
+	var white: bool = true
+	var opaque: bool = false
+	var transparent: bool = false
+	for offset: int in range(0, pixels.size(), 4):
+		if pixels[offset + 3] > 0:
+			white = white and pixels[offset] == 255 and pixels[offset + 1] == 255 and pixels[offset + 2] == 255
+		opaque = opaque or pixels[offset + 3] == 255
+		transparent = transparent or pixels[offset + 3] == 0
+	assert_true(white, "only existing theme tint supplies weather colour")
+	assert_true(opaque, "weather silhouette has a solid white body")
+	assert_true(transparent, "weather silhouette has a transparent background")
 
 
 func _assert_heading(label: Label, filename: String) -> void:

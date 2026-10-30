@@ -7,11 +7,14 @@ const TOP_BAR_SIZE: int = 28
 const PANEL_SIZE: int = 24
 const ROOT: String = "res://assets/kenney/icons/"
 const MADE_ROOT: String = "res://assets/made/icons/"
+## Issue #241: explicitly approved made silhouettes in the same icon style.
+const WEATHER_ROOT: String = MADE_ROOT
 
 const ICON_ROLES: Array[StringName] = [
 	&"pause", &"speed_1", &"speed_2", &"speed_4", &"build", &"menu", &"staff",
 	&"reputation", &"open_shop", &"next_day", &"catalogue", &"report", &"settings",
 	&"stock", &"sell", &"chef", &"paint",
+	&"weather_sunny", &"weather_cloudy", &"weather_rain",
 ]
 
 
@@ -48,6 +51,12 @@ static func path_for(role: StringName) -> String:
 			return ROOT + "shoppingBasket.png"
 		&"sell":
 			return ROOT + "trashcan.png"
+		&"weather_sunny":
+			return WEATHER_ROOT + "weather_sunny.png"
+		&"weather_cloudy":
+			return WEATHER_ROOT + "weather_cloudy.png"
+		&"weather_rain":
+			return WEATHER_ROOT + "weather_rain.png"
 	return ""
 
 

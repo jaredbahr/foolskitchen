@@ -103,6 +103,8 @@ jobs:
           SEAFOOD_REVIEW_STAGE=floor bash tools/screenshot.sh --out=screens/visual-review/seafood-floor --scene=res://tools/seafood_review.tscn --speed=0 --frames=30
           SEAFOOD_REVIEW_STAGE=menu bash tools/screenshot.sh --out=screens/visual-review/seafood-menu --scene=res://tools/seafood_review.tscn --speed=0 --frames=30
           bash tools/screenshot.sh --out=screens/visual-review/walls-review --walls-review --speed=0 --frames=12,30
+          bash tools/screenshot.sh --out=screens/visual-review/weather-sunny --weather-review=sunny --menu --speed=0 --frames=60
+          bash tools/screenshot.sh --out=screens/visual-review/weather-rain --weather-review=rain --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/restroom-review --restroom-review --speed=0 --frames=12,30
           bash tools/screenshot.sh --out=screens/visual-review/hygiene-review --scene=res://tools/hygiene_review.tscn --speed=0 --frames=12,60 --quarter=2
           OPENINGS_REVIEW_STAGE=before bash tools/screenshot.sh --out=screens/visual-review/openings-before --scene=res://tools/openings_review.tscn --speed=0 --frames=30 --quarter=2
