@@ -30,3 +30,14 @@ The framed sunrise uses the `wallWindow` frame and `paneling` proportions as ref
 
 ## Diner wall art B (#147)
 The framed geometric peaks use the `wallWindow` frame and `paneling` proportions as references.
+
+## Restroom hand dryer (#198 / #217)
+`restroom/wall_hand_dryer.glb` is the Director-approved small rounded box with
+a short downward nozzle and front sensor, not a towel dispenser or cabinet.
+Its cream housing uses `bathroomCabinetDrawer`'s unchanged `carpetWhite` colour;
+the darker nozzle/sensor use `wall`'s `metalDark`. Edge softness follows the
+Furniture Kit bathroom cabinet and wall lamp. No textures or baked lighting.
+Rebuild with `blender --background --factory-startup --python tools/build_hand_dryer.py`.
+The source envelope is approximately 0.30 × 0.25 × 0.15 m; its wrapper uses
+the shared uniform furniture scale and aligns its bottom with the mirror at
+0.6 m above the floor, fitting the game's person scale.

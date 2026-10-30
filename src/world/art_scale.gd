@@ -7,3 +7,7 @@ const FURNITURE_SCALE: float = 1.1
 const CHARACTER_SCALE: float = 1.1
 const FOOD_SCALE: float = 0.22
 const WALL_HEIGHT: float = 1.4
+
+## Restroom edge panels: fixed laminate, thinner than the painted walls.
+const STALL_PARTITION_HEIGHT: float = 1.4
+const STALL_PARTITION_THICKNESS: float = 0.035

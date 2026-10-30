@@ -839,6 +839,9 @@ func next_segment(edge: Vector3i, empty_kind: SimGrid.Segment) -> SimGrid.Segmen
 	var grid: SimGrid = _sim.world.grid
 	var current: SimGrid.Segment = grid.segment(edge)
 	if WallRules.outer_side(grid, edge) != Vector2i.ZERO:
+		# An interior-only partition must refuse here, never become a window.
+		if empty_kind == SimGrid.Segment.STALL_PARTITION:
+			return empty_kind
 		if empty_kind == SimGrid.Segment.DOORWAY:
 			return SimGrid.Segment.NONE if current == SimGrid.Segment.DOORWAY else SimGrid.Segment.DOORWAY
 		return SimGrid.Segment.NONE if current == SimGrid.Segment.WINDOW else SimGrid.Segment.WINDOW
