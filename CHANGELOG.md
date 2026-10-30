@@ -11,6 +11,8 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- Get to know named regulars after day five: they keep a favourite dish, seat and look, greet you on return visits, tip more for their favourite and may stop coming after poor service. The Menu and evening report show who they are; their history saves each morning. (#234)
+- Regulars who drop in for coffee but order their usual meal now take the normal time to eat it. (#234)
 - The kitchen divider is now thin, leaving more floor space. Walls has a visible Remove button with red refund previews and undo; Sell also handles walls and window or door frames. Existing shops retain or receive refunds for affected wall finishes and decorations. (#248)
 - Build a seafood menu with fish and chips, mussels in broth, salmon maki, shrimp skewers and seafood stew, using new ingredients that restock only while needed. Lay sea-coloured Deck planks at level 4. (#229)
 - Choose diner booth and stool looks in Buy, or change an existing piece in Paint. Copying, undoing and loading keep the chosen look. (#220)
