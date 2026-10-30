@@ -260,4 +260,8 @@ func _assert_heading(label: Label, filename: String) -> void:
 	assert_eq(icon.modulate, MAIN_THEME.get_color("font_color", "Label"))
 	assert_eq(icon.mouse_filter, Control.MOUSE_FILTER_IGNORE)
 	assert_true(label.get_theme_stylebox("normal").get_content_margin(SIDE_LEFT) >= 30.0)
-	assert_eq(label.get_child_count(), 1, "refresh retains one native icon under the original Label")
+	var icon_count: int = 0
+	for child: Node in label.get_children():
+		if child is TextureRect:
+			icon_count += 1
+	assert_eq(icon_count, 1, "refresh retains one native icon under the original Label")

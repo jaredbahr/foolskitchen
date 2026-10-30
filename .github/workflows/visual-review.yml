@@ -88,6 +88,8 @@ jobs:
           bash tools/screenshot.sh --out=screens/visual-review/diner-review --diner-review --speed=0 --frames=12,90
           bash tools/screenshot.sh --out=screens/visual-review/menu --menu --speed=0 --frames=12
           bash tools/screenshot.sh --out=screens/visual-review/staff --staff --speed=0 --frames=12
+          OWNER_REVIEW_STAGE=picker bash tools/screenshot.sh --out=screens/visual-review/owner-picker --scene=res://tools/owner_character_review.tscn --speed=0 --frames=60
+          OWNER_REVIEW_STAGE=shop bash tools/screenshot.sh --out=screens/visual-review/owner-character --scene=res://tools/owner_character_review.tscn --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/report --report --open --fast=100 --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/paint --paint --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/floors-review --floors-review --speed=0 --frames=12,30
