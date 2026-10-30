@@ -809,6 +809,40 @@ an active edit/panel/selection first, or opens Settings when none is active.
   review requirements. Int64 charge, shortfall and principal limits reject an
   unrepresentable settlement before any account or ledger mutation.
 
+### Joined dining tables (FK-246)
+
+`DiningSeats` derives components of ordinary TABLE items sharing an entire
+unblocked facing edge in one room. Both rectangles must have the same facing
+edge span; corners and partial edges do not join. Serve-across counters never
+join, and chairs/booths contribute seats without connecting components. The
+leader is chosen by geometry (row, column, definition, rotation), independently
+of placement order. Only outside seats contribute to a joined component.
+
+`SimGrid` caches detached group/member/seat lookups before geometry or room
+notifications. `PlacedItem.seat_cells`, seat links, guest and order table IDs
+remain physical. Group reservations validate the whole request before holding
+each seat on its physical owner. Editor previews report group capacity and
+refuse moving/selling any occupied joined group's member, changing occupied
+membership, or orphaning a held seat; cosmetic edits remain available. An
+occupied standalone table retains its established sale/undo-removal cancellation
+and refund behavior. Relocating it or joining another table onto it is refused. Forced low-level removal
+continues to support lifecycle recovery. Groups are derived after load and never
+stored; the snapshot version and morning-only save policy are unchanged.
+
+Explicit parties support at most six people. Shipped type ranges and arrival
+random draws remain unchanged. Standalone parties of at most four retain the
+existing matching order; joined groups and larger parties use deterministic
+augmenting-path matching. Bookings share spare seats and capture transient
+physical `booked_table_ids`. Before seating, stale topology releases all holds
+and paths together. After seating, each person's delivery/payment outcome stays
+independent. A real meal departure dirties every original surviving member,
+while plate tokens and bus tasks stay on physical tables. New seating waits for
+all current members to be clean; existing bus-completion timing is unchanged.
+
+Build previews, hover and Inspect use the same cached component and display
+`Seats N (joined table)`. The manual `joined_tables` probe moves two starter
+tables and buys two normal chairs for $20, without changing menu/staff/tuning.
+
 ### Furniture catalogue and dining seats (FK-071)
 - Twenty-five additional item resources use unchanged approved Furniture Kit
   scenes: nine seats, four tables, a counter assembled from bar pieces and
@@ -1758,7 +1792,7 @@ level 4). Below it the type is a single guest that draws exactly what main's
 single guest draws: no size draw and one private seed, so play before any
 group type unlocks matches single-guest main draw for draw (golden-tested).
 Fixed-size ranges consume no size draw either. An unlocked type draws one
-ranged party size, then clamps it to the largest currently usable table
+ranged party size, then clamps it to the largest currently usable dining group
 reachable from the chosen street entry, but never below one. Capacity counts
 clear, unique, reachable seats, including linked furnishings; temporary
 bookings and dirt do not shrink the layout's capacity. Single guests always
@@ -1772,7 +1806,7 @@ type's short `party_tip` once, in the evening report of the day the owner reache
 It installs and links
 every member before publishing any arrival; singleton installation retains
 the old draw and signal order. `Party` stores member IDs rather than strong
-agent references. `PartySeating` searches one table with enough reachable
+agent references. `PartySeating` searches one derived table group with enough reachable
 free seats, matches all members before reserving, and rolls back every hold
 and path on failure. Arrival IDs give waiting parties first choice: later
 guests and parties leave clear seats at any table that could seat an earlier
