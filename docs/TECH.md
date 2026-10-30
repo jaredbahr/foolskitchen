@@ -1197,6 +1197,8 @@ an active edit/panel/selection first, or opens Settings when none is active.
 ### Furniture blueprints (FK-045)
 - `Blueprint` is a Resource containing a player name and `ShopPlacement`
   entries: content id, anchor-relative offset, quarter turns and body swatch.
+  Variant ids in blueprint entries remain a separate follow-up after FK-079;
+  existing blueprints keep their default furniture looks.
   Only floor furniture and rugs participate, never doors, wall decor or
   structure. Box selection includes whole footprints on both placement layers.
   Rotation turns the group's bounding rectangle and each item's already-rotated
@@ -1219,7 +1221,7 @@ an active edit/panel/selection first, or opens Settings when none is active.
   input without triggering build shortcuts. Cancel/phase changes discard only
   the active selection/ghost, not the player's library.
 - `BlueprintLibrary` is registered as a separate `blueprints` save section in
-  Main, not inside the version-6 `shop` snapshot. The existing morning autosave
+  Main, not inside the version-7 `shop` snapshot. The existing morning autosave
   is the only write boundary; creating, renaming, deleting and stamping do not
   save immediately. Restore stages the library until the whole morning load
   succeeds. Old saves without it get an empty library; unknown item ids are
@@ -1633,6 +1635,50 @@ an active edit/panel/selection first, or opens Settings when none is active.
   Build > Wall finish holding a striped wallpaper drag; a hand-run frame after
   40 holds a chalk menu board from Buy > Decor > Wall decor, and one after 60
   shows Walls Down (finished stubs, hung items hidden).
+
+### Furniture variant data and materials (FK-079)
+- `ItemDef.variants` lists `ItemVariant` resources. The first is the legacy
+  default. A missing/unknown id resolves to that default; content without
+  variants retains its original price and tags. Each look holds a player
+  name, price delta, theme tags and imported-material-name to kit-colour-name
+  recipe. Returned theme tags are detached copies.
+- `KitMaterialColours` reads colours from unchanged Furniture Kit donors once.
+  `PropVariantMaterials` validates every named surface and donor before any
+  change, duplicates only affected active materials and changes their colour,
+  retaining alpha and other material properties. Switching or clearing a
+  recipe restores exact original overrides. It never modifies imported meshes,
+  materials, textures or scales. The caller restores it before model disposal.
+- First authored resources are the booth's white, walnut and red shells and
+  the stool's chrome/red, chrome/dark-teal and dark-frame/white looks. The
+  colour names are descriptive: the donor colours remain exactly the kit's
+  `carpet`, `carpetWhite`, `woodDark` and `metalDark`; there is no invented
+  black, red or teal RGB value.
+- `ShopPlacement` and `PlacedItem` carry `variant_id` (empty for the legacy
+  default); the grid sets it before its placement signal. Shop snapshots are
+  version 7; missing, malformed and removed look ids fall back to the default.
+  The morning autosave remains the only save boundary. Purchases and sale
+  refunds use the look's price; undo/redo restores the id with exact ledger
+  deltas, and `VibeInputs` reads its detached theme tags.
+- Buy tiles choose a named kit-colour dot without purchasing. `CatalogueText`
+  supplies that look's price/name/themes; thumbnail cache keys include both
+  wrapper and look resources and retain them for identity safety. The buy
+  command, eyedropper, live model and ghost carry the selected look.
+- `PropView` owns the material recipe below body paint: painting preserves
+  frame/other surfaces, and clearing paint reveals the selected look again.
+  Imported resources remain immutable and disposal restores overrides first.
+- Paint offers named looks for the first set at any phase and clears the
+  ordinary body swatch so the selected recipe is visible. Closed-phase undo
+  restores both old look and swatch; painting during service adds no history.
+  Equal-price look changes are free. The Director-approved policy refuses
+  cross-price repaint: choose a differently priced look at purchase time,
+  when its authored price delta is charged. No repaint charge or refund is needed.
+- Vibe keeps repeat decay, variety and item-specific weights grouped by base
+  furniture definition, while counting theme votes by explicit look identity.
+  Different looks can coexist; inconsistent copies of the same look are still
+  rejected. Default looks retain the previous balance.
+- Director visual review follows the ready PR. For the first set, the kit's
+  dark blue-green is not literal black. The Director accepted the existing kit
+  palette and honest dark-frame/dark-teal names; no replacement colours are needed.
 
 ### Restaurant vibe core (FK-072)
 - `VibeModel.evaluate()` reads detached layout, paint and enabled-menu inputs.
