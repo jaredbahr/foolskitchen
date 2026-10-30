@@ -111,8 +111,8 @@ func test_refuses_floor_that_does_not_join_or_leaves_the_lot() -> void:
 	assert_eq(bare.check_floor(_rect(14, 5, 1, 1), true).why, ShopFootprint.NO_LOT)
 
 
-## The divider's end cells (0, 4) and (13, 4) never open, so floor bought
-## beside them alone would be a sealed pocket.
+## The recovered divider row is usable floor, so side expansion can join it.
+## A separate disconnected patch must still be refused.
 func test_floor_beside_the_recovered_divider_row_joins_the_kitchen() -> void:
 	assert_true(_editor.check_floor(_rect(-1, 4, 1, 1), true).ok)
 	assert_true(_editor.check_floor(_rect(14, 4, 1, 1), true).ok)
