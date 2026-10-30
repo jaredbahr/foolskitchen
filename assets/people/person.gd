@@ -6,6 +6,7 @@ extends Node3D
 @export var role: StringName = &"customer"
 @export var guest_id: int = 0
 @export var customer_type: StringName = &"regular"
+@export var owner_model: StringName = OwnerAppearance.DEFAULT_MODEL
 
 const REGULAR_SWATCHES: Dictionary[StringName, SwatchDef] = {
 	&"honey": preload("res://data/swatches/honey.tres"),
@@ -64,7 +65,7 @@ func set_look(value: StringName, id: int = 0, kind: StringName = &"regular") -> 
 	guest_id = id
 	customer_type = kind
 	var regular: bool = role in [&"customer", &"guest"] and not _regular_model.is_empty()
-	var desired_model: StringName = _regular_model if regular else PersonPresentation.model_for(role, guest_id, customer_type)
+	var desired_model: StringName = _regular_model if regular else PersonPresentation.model_for(role, guest_id, customer_type, owner_model)
 	if not _initialized:
 		return desired_model != &""
 	if desired_model == _model_name and _model != null:
@@ -151,6 +152,13 @@ func _apply_regular_clothing(model: StringName) -> bool:
 			mesh.set_surface_override_material(surface, material)
 		return true
 	return false
+
+
+func set_owner_model(model: StringName) -> bool:
+	if not OwnerAppearance.valid_model(model):
+		return false
+	owner_model = model
+	return set_look(role, guest_id, customer_type)
 
 
 func _attach_to_head(piece: Node3D, attachment_name: String) -> bool:

@@ -13,6 +13,7 @@ Each line ends with its PR number.
 ### Players
 - Get to know named regulars after day five: they keep a favourite dish, seat and look, greet you on return visits, tip more for their favourite and may stop coming after poor service. The Menu and evening report show who they are; their history saves each morning. (#234)
 - Regulars who drop in for coffee but order their usual meal now take the normal time to eat it. (#234)
+- Pick your owner's character and name when starting a shop, and change their look from Staff in the morning. (#233)
 - Start from a title screen with New game, Continue and Settings, and quit back to it without overwriting your morning autosave. (#230)
 - Check dirty tables, floor dirt and restroom upkeep in Build's new Hygiene overview, with problem tiles highlighted and today's cleanliness rating. (#232)
 - Waiting benches let guests sit near the door and wait longer for a dining table. (#228)

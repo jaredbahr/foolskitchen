@@ -6,7 +6,6 @@ const MODEL_DIRECTORY: String = "res://assets/kenney/characters/"
 const COOK_MODEL: StringName = &"character-male-b"
 # The male-d torso uses the kit's dark charcoal palette column.
 const SERVER_MODEL: StringName = &"character-male-d"
-const OWNER_MODEL: StringName = &"character-male-a"
 # The delivery person (FK-099): the one kit model no other role uses. ART_STYLE
 # lists female-b for cooks too, but cooks use male-b; it never wears the hat.
 const COURIER_MODEL: StringName = &"character-female-b"
@@ -43,14 +42,15 @@ const HEAD_TOPS: Dictionary[StringName, float] = {
 }
 
 
-static func model_for(role: StringName, guest_id: int = 0, customer_type: StringName = &"regular") -> StringName:
+static func model_for(role: StringName, guest_id: int = 0, customer_type: StringName = &"regular",
+		owner_model: StringName = OwnerAppearance.DEFAULT_MODEL) -> StringName:
 	match role:
 		&"cook":
 			return COOK_MODEL
 		&"server":
 			return SERVER_MODEL
 		&"owner":
-			return OWNER_MODEL
+			return owner_model if OwnerAppearance.valid_model(owner_model) else OwnerAppearance.DEFAULT_MODEL
 		&"courier":
 			return COURIER_MODEL
 		&"customer", &"guest":
@@ -72,8 +72,9 @@ static func model_for(role: StringName, guest_id: int = 0, customer_type: String
 	return &""
 
 
-static func model_path_for(role: StringName, guest_id: int = 0, customer_type: StringName = &"regular") -> String:
-	var model: StringName = model_for(role, guest_id, customer_type)
+static func model_path_for(role: StringName, guest_id: int = 0, customer_type: StringName = &"regular",
+		owner_model: StringName = OwnerAppearance.DEFAULT_MODEL) -> String:
+	var model: StringName = model_for(role, guest_id, customer_type, owner_model)
 	return "" if model == &"" else MODEL_DIRECTORY + String(model) + ".glb"
 
 

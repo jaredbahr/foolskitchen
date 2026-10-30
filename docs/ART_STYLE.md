@@ -55,7 +55,9 @@ Any new building piece (walls, windows, doors, the awning, counters) follows the
 - Every person is a Mini Character. **Roles:**
   - **Cook:** `character-male-b` or `character-female-b`, plus a chef-hat piece. The hat is built from Furniture or Food Kit shapes in white, or from a simple primitive in the kit's flat style. Add nothing more than the hat.
   - **Server:** the kit model with a dark top (choose one and keep it).
-  - **Owner:** one fixed model (D14).
+  - **Owner (FK-111):** the player's choice of the 12 unmodified Mini Characters;
+    older shops and tools retain `character-male-a`. The existing owner-selection
+    ring keeps an inspected owner recognisable. No new character art or uniform.
   - **Guests:** the remaining models, chosen deterministically from the guest id.
   - **Named regulars (FK-088):** a saved Mini Character model with one fixed clothing tint from Honey, Slate blue, Sage or Cream. Like the delivery uniform, this uses a private copy of the kit colormap, changing only a measured clothing ramp on the body mesh. Skin, heads and hair retain the kit materials; the vendored texture is never edited. No extra hat is added through a model's existing hair or bun.
   - **Delivery driver (FK-099):** `character-female-b`, the one model no other role uses (cooks use `character-male-b`), in a delivery uniform no other role wears: a parcel-brown (`#9a6a3e`) cap with an amber (`#d98e2b`) peak, built from primitives in the kit's flat style like the chef hat, and her clothes repainted brown with amber sleeves. The repaint is a private copy of the kit colormap made when she loads; the vendored texture is never edited. Delivery crates are the Furniture Kit's `cardboardBoxClosed` at 0.65 of the furniture scale, one at a time in anyone's hands (its top under the chin), stacked at most as high as a standing person's chin. The **Freezer** is the kit's `kitchenFridgeLarge` with its metal tinted cool (slate blue mixed in, `PropView.rest_tint`) so it never reads as the tall fridge.
