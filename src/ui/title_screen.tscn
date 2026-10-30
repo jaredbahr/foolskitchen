@@ -1,0 +1,60 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://src/ui/title_screen.gd" id="1_script"]
+[ext_resource type="Theme" path="res://src/ui/theme/main_theme.tres" id="2_theme"]
+[ext_resource type="PackedScene" path="res://src/ui/settings_panel.tscn" id="3_settings"]
+
+[node name="TitleScreen" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = ExtResource("2_theme")
+script = ExtResource("1_script")
+
+[node name="Menu" type="PanelContainer" parent="."]
+layout_mode = 0
+offset_left = 24.0
+offset_top = 220.0
+offset_right = 504.0
+offset_bottom = 640.0
+
+[node name="Column" type="VBoxContainer" parent="Menu"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="Title" type="Label" parent="Menu/Column"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 44
+text = "Fool's Kitchen"
+horizontal_alignment = 1
+
+[node name="Continue" type="Button" parent="Menu/Column"]
+layout_mode = 2
+text = "Continue"
+
+[node name="NewGame" type="Button" parent="Menu/Column"]
+layout_mode = 2
+text = "New game"
+
+[node name="Settings" type="Button" parent="Menu/Column"]
+layout_mode = 2
+text = "Settings"
+
+[node name="Quit" type="Button" parent="Menu/Column"]
+layout_mode = 2
+text = "Quit"
+
+[node name="Status" type="Label" parent="Menu/Column"]
+visible = false
+layout_mode = 2
+autowrap_mode = 3
+
+[node name="StartOver" type="ConfirmationDialog" parent="."]
+title = "New game"
+theme = ExtResource("2_theme")
+dialog_text = "Start over? Your current shop will be replaced."
+
+[node name="SettingsPanel" parent="." instance=ExtResource("3_settings")]

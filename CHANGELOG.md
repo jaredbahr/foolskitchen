@@ -12,6 +12,7 @@ Each line ends with its PR number.
 
 ### Players
 - Staff carrying meals can spill them and break plates, especially when clumsy or crowded at the pass. Reassigning a delivery makes the next worker collect the meals before they can spill. Meals are cooked again, broken plates are replaced tomorrow, and greasy stations work 10% slower until someone degreases them. Floor messes stand out on light and dark floors, with mishaps listed in the evening report. (#235)
+- Start from a title screen with New game, Continue and Settings, and quit back to it without overwriting your morning autosave. (#230)
 - Check dirty tables, floor dirt and restroom upkeep in Build's new Hygiene overview, with problem tiles highlighted and today's cleanliness rating. (#232)
 - Waiting benches let guests sit near the door and wait longer for a dining table. (#228)
 - Build warns when an edit would take dishes off the menu and refuses edits that leave nothing cookable. Opening explains dishes removed that morning. (#227)
