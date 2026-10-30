@@ -248,7 +248,7 @@ func refresh() -> void:
 	elif snapshot.get("active", false) and snapshot.get("state", -1) == BuildMode.State.SELECT:
 		_build_blueprint_selection(snapshot.get("blueprint_selection_cells", []), snapshot.get("blueprint_box", Rect2i()))
 	elif has_ghost:
-		_build_ghost(definition, origin, turns, valid)
+		_build_ghost(definition, origin, turns, valid, Color.TRANSPARENT, snapshot.get("variant_id", &""))
 		if selected_id > 0 and _shop_view.item_nodes.has(selected_id):
 			_hidden_original = _shop_view.item_nodes[selected_id]
 			if is_instance_valid(_hidden_original):
@@ -435,7 +435,7 @@ func _clear_geometry() -> void:
 
 
 func _build_ghost(definition: ItemDef, origin: Vector2i, turns: int, valid: bool,
-		body_color: Color = Color.TRANSPARENT) -> void:
+		body_color: Color = Color.TRANSPARENT, variant_id: StringName = &"") -> void:
 	if _ghost_root == null:
 		_ghost_root = Node3D.new()
 		_ghost_root.name = "Ghost"
@@ -445,6 +445,7 @@ func _build_ghost(definition: ItemDef, origin: Vector2i, turns: int, valid: bool
 	var tint: Color = base.lerp(VALID_COLOR if valid else INVALID_COLOR, 0.8)
 	tint.a = VALID_ALPHA if valid else INVALID_ALPHA
 	ghost_mesh = ItemVisual.create(definition, height, _material(definition.placeholder_color))
+	ghost_mesh.apply_variant(definition.variant(variant_id))
 	ghost_mesh.set_ghost_tint(tint)
 	ghost_mesh.name = "Furniture"
 	ghost_mesh.transform = ItemVisual.placed_transform(definition, origin, turns)

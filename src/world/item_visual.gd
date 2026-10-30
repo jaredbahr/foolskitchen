@@ -44,6 +44,10 @@ static func create(definition: ItemDef, fallback_height: float, material: Materi
 	return result
 
 
+func apply_variant(look: ItemVariant) -> bool:
+	return prop.set_variant(look) if prop != null else look == null
+
+
 func get_aabb() -> AABB:
 	if prop != null:
 		return prop.transform * prop.get_combined_aabb()

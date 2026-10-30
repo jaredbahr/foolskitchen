@@ -58,7 +58,7 @@ func test_every_shop_starts_as_plain_paint_with_nothing_stored_or_hung() -> void
 	assert_eq(look.style, WallStyleDef.DEFAULT_ID)
 	assert_eq(look.swatch, LAYOUT.wall_swatch_id)
 	var snapshot: Dictionary = _editor.to_dict()
-	assert_eq(int(snapshot["version"]), 6)
+	assert_eq(int(snapshot["version"]), ShopEditor.SNAPSHOT_VERSION)
 	assert_eq(snapshot["wall_style_id"], "paint")
 	assert_eq(snapshot["wall_finishes"], [] as Array[Array])
 	assert_eq(snapshot["wall_items"], [] as Array[Array])
@@ -385,7 +385,7 @@ func test_snapshot_round_trip_keeps_finishes_and_decor() -> void:
 	_window(FRONT_WINDOW)
 	assert_true(_editor.hang(&"neon_open_sign", FRONT_SLOT), _editor.last_check.why)
 	var snapshot: Dictionary = _editor.to_dict()
-	assert_eq(int(snapshot["version"]), 6, "a window slot fits the v6 row")
+	assert_eq(int(snapshot["version"]), ShopEditor.SNAPSHOT_VERSION, "a window slot keeps its v6 row format")
 	assert_eq((snapshot["wall_finishes"] as Array)[0], [3, 1, 0, "wainscot", "walnut", ""], "sorted")
 	assert_eq(snapshot["wall_items"], [[1, 7, 3, "wall_art_sunrise"], [8, 9, 2, "neon_open_sign"]])
 	var errors: Array[String] = []
