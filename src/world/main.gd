@@ -36,6 +36,10 @@ var use_saves: bool = true
 var display_only: bool = false
 ## Test/capture override only; zero keeps the normal wall-clock new-game seed.
 var new_game_seed_override: int = 0
+## Tools that boot Main directly retain the old default appearance and flow.
+var skip_owner_picker: bool = false
+## An explicit fresh-run UI request also works in headless integration tests.
+var owner_creation_requested: bool = false
 var sim: RestaurantSim
 var world: SimWorld
 var content: ContentDB
@@ -69,6 +73,7 @@ var _staff_notices: Array[Dictionary] = []
 ## Last thirty eligible reviews, including five virtual three-star starters.
 var reputation: ReputationBook = ReputationBook.new()
 var owner_progress: OwnerProgress = OwnerProgress.new(PROGRESSION_TUNING)
+var owner_appearance: OwnerAppearance = OwnerAppearance.new()
 ## Authored arrivals; tests may inject an explicit neutral Regular-only catalogue.
 var customer_type_catalogue: CustomerTypeCatalogue = CUSTOMER_TYPES
 ## Durable once-only career state; the catalogue is authored, never saved.
@@ -168,6 +173,8 @@ var _goals_panel: GoalsPanel
 var _goals_return_to_menu: bool = false
 var _goals_snapshot: Dictionary = {}
 var _stock_panel: StockPanel
+var _owner_picker: OwnerPicker
+var _owner_first_morning_pending: bool = false
 
 
 ## Builds the restaurant and the read-only view. Safe before tree readiness.
@@ -362,6 +369,7 @@ func _bind_world_presentation() -> void:
 		$HUD.connect(&"stock_pressed", toggle_stock)
 	_refresh_stock_panel()
 	_inspect_panel.bind_world(world)
+	_sync_owner_appearance()
 	_debug_overlay.bind_world(world)
 	_debug_overlay.bind_cleanliness(sim.cleanliness)
 	_on_header_layout_changed()
@@ -486,9 +494,19 @@ func start() -> void:
 	shop_editor.storage_need = _storage_need
 	_connect_session()
 	Clock.attach_world(world, sim.advance)
-	_begin_morning()
-	_bind_build_session()
-	_bind_vibe_grid()
+	if not loaded and not skip_owner_picker and (owner_creation_requested \
+			or use_saves and DisplayServer.get_name() != "headless"):
+		# Creation finishes before the existing initial morning checkpoint.
+		# It does not introduce a save on Confirm or after a later look change.
+		_owner_first_morning_pending = true
+		_bind_build_session()
+		_bind_vibe_grid()
+		$HUD.hide()
+		show_owner_picker(true)
+	else:
+		_begin_morning()
+		_bind_build_session()
+		_bind_vibe_grid()
 
 
 func _connect_session() -> void:
@@ -562,6 +580,9 @@ func _exit_tree() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if is_owner_picker_visible():
+		_mark_input_handled()
+		return
 	if event is InputEventKey and _build_catalogue != null and _build_catalogue.blueprint_name_has_focus():
 		return
 	if is_settings_visible():
@@ -1838,6 +1859,8 @@ func build_report(day: int) -> DayReport:
 
 
 func _new_game() -> void:
+	owner_appearance = OwnerAppearance.new()
+	_sync_owner_appearance()
 	_menu_access_losses.clear()
 	_menu_access_day = 0
 	_menu_access_error = ""
@@ -2093,15 +2116,15 @@ func _on_lease_requested() -> void:
 
 func _capture_owner() -> Dictionary:
 	return {"mode": String(_owner_preferences.current_mode()),
-		"progress": owner_progress.to_dict()}
+		"progress": owner_progress.to_dict(), "appearance": owner_appearance.to_dict()}
 
 
 ## Accept old mode-only sections; validate mode and XP before staging either.
 func _restore_owner(data: Dictionary) -> bool:
-	if not data.has("mode") or data.size() > 2:
+	if not data.has("mode") or data.size() > 3:
 		return false
 	for key: Variant in data:
-		if typeof(key) != TYPE_STRING or (key != "mode" and key != "progress"):
+		if typeof(key) != TYPE_STRING or key not in ["mode", "progress", "appearance"]:
 			return false
 	var preferences: OwnerModeSettings = OwnerModeSettings.new()
 	if not preferences.restore({"mode": data["mode"]}):
@@ -2109,9 +2132,83 @@ func _restore_owner(data: Dictionary) -> bool:
 	var progress: OwnerProgress = OwnerProgress.new(PROGRESSION_TUNING)
 	if data.has("progress") and not progress.from_dict(data["progress"]):
 		return false
+	var appearance: OwnerAppearance = OwnerAppearance.new()
+	if data.has("appearance") and (not data["appearance"] is Dictionary \
+			or not appearance.from_dict(data["appearance"])):
+		return false
 	_owner_preferences = preferences
 	owner_progress = progress
+	owner_appearance = appearance
 	return true
+
+
+## Presentation choices never alter the owner's sim agent or random streams.
+func owner_set_appearance(model: StringName, display_name: String) -> bool:
+	if sim == null or Clock.sim.phase != SimClock.Phase.MORNING:
+		return false
+	if not owner_appearance.set_choice(model, display_name):
+		return false
+	_sync_owner_appearance()
+	refresh_presentation()
+	return true
+
+
+func _sync_owner_appearance() -> void:
+	var view: ShopView = get_node_or_null("ShopView") as ShopView
+	if view != null:
+		view.owner_model = owner_appearance.model
+	if _inspect_panel != null:
+		_inspect_panel.set_owner_appearance(owner_appearance)
+	if _staff_panel != null:
+		_staff_panel.set_owner_name(owner_appearance.display_name)
+		if not _staff_panel.owner_look_requested.is_connected(_on_owner_look_requested):
+			_staff_panel.owner_look_requested.connect(_on_owner_look_requested)
+
+
+func show_owner_picker(creating: bool = false) -> bool:
+	if sim == null or Clock.sim.phase != SimClock.Phase.MORNING:
+		return false
+	if _owner_picker == null:
+		_owner_picker = (load("res://src/ui/owner_picker.tscn") as PackedScene).instantiate() as OwnerPicker
+		$Overlay.add_child(_owner_picker)
+		_owner_picker.confirmed.connect(_on_owner_appearance_confirmed)
+		_owner_picker.random_requested.connect(_on_owner_appearance_random)
+		_owner_picker.cancelled.connect(_on_owner_appearance_cancelled)
+	if _staff_panel != null:
+		_staff_panel.hide()
+	_owner_picker.open(owner_appearance, not creating)
+	return true
+
+
+func is_owner_picker_visible() -> bool:
+	return _owner_picker != null and _owner_picker.visible
+
+
+func _on_owner_look_requested() -> void:
+	show_owner_picker()
+
+
+func _on_owner_appearance_random() -> void:
+	if not is_owner_picker_visible() or Clock.sim.phase != SimClock.Phase.MORNING:
+		return
+	# Only an explicit Random click creates/draws this presentation stream.
+	var index: int = GameState.rng(&"owner_appearance").randi_range(0, OwnerAppearance.MODELS.size() - 1)
+	_owner_picker.choose(OwnerAppearance.MODELS[index])
+
+
+func _on_owner_appearance_confirmed(model: StringName, display_name: String) -> void:
+	if not is_owner_picker_visible() or not owner_set_appearance(model, display_name):
+		return
+	_owner_picker.hide()
+	if _owner_first_morning_pending:
+		_owner_first_morning_pending = false
+		$HUD.show()
+		_begin_morning()
+
+
+func _on_owner_appearance_cancelled() -> void:
+	if not _owner_first_morning_pending:
+		set_staff_visible(true)
 
 
 func _capture_blueprints() -> Dictionary:

@@ -33,6 +33,7 @@ layout_mode = 2
 mouse_filter = 2
 
 [node name="Title" type="Label" parent="Panel/Content"]
+custom_minimum_size = Vector2(0, 46)
 layout_mode = 2
 mouse_filter = 2
 theme_override_font_sizes/font_size = 26
@@ -58,6 +59,26 @@ vertical_scroll_mode = 1
 layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 2
+
+[node name="Owner" type="HBoxContainer" parent="Panel/Content/Title"]
+layout_mode = 1
+anchor_left = 0.3
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+
+[node name="OwnerName" type="Label" parent="Panel/Content/Title/Owner"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 1
+text_overrun_behavior = 3
+clip_text = true
+vertical_alignment = 1
+
+[node name="OwnerLook" type="Button" parent="Panel/Content/Title/Owner"]
+unique_name_in_owner = true
+layout_mode = 2
 
 [node name="MorningNotices" type="VBoxContainer" parent="Panel/Content/Scroll/List"]
 visible = false
