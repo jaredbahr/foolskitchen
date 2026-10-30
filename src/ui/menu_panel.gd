@@ -40,6 +40,8 @@ var _menu_count: Label
 var _name_dirty: bool = false
 var _menu: MenuSettings
 var _phase: int = SimClock.Phase.MORNING
+var _weather_kind: int = WeatherState.Kind.SUNNY
+var _forecast_rendered_kind: int = -1
 var _status: Label
 var _empty: Label
 var _rows_node: VBoxContainer
@@ -125,6 +127,20 @@ func _on_lease_pressed() -> void:
 		lease_requested.emit()
 
 
+func set_weather(kind: int) -> void:
+	_weather_kind = kind
+	_refresh_forecast()
+
+
+func _refresh_forecast() -> void:
+	var forecast: Label = get_node("Panel/Content/WeatherForecast") as Label
+	forecast.visible = _phase == SimClock.Phase.MORNING
+	if _forecast_rendered_kind != _weather_kind:
+		_forecast_rendered_kind = _weather_kind
+		forecast.text = WeatherText.forecast_for(_weather_kind)
+		IconStyle.decorate_label(forecast, WeatherText.icon_for(_weather_kind), IconCatalogue.PANEL_SIZE)
+
+
 func set_phase(phase: int) -> void:
 	_phase = phase
 	if phase != SimClock.Phase.MORNING:
@@ -134,6 +150,7 @@ func set_phase(phase: int) -> void:
 
 func refresh() -> void:
 	_bind_nodes()
+	_refresh_forecast()
 	if _needs_rebuild or _catalogue_changed():
 		_rebuild_rows()
 	var editable: bool = _phase == SimClock.Phase.MORNING

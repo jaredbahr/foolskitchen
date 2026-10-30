@@ -33,6 +33,11 @@ text_overrun_behavior = 3
 layout_mode = 2
 text = "Day 1"
 
+[node name="Weather" type="Label" parent="Top/Row"]
+layout_mode = 2
+mouse_filter = 2
+text = "Sunny"
+
 [node name="Time" type="Label" parent="Top/Row"]
 layout_mode = 2
 text = "11:00"

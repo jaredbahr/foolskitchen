@@ -27,6 +27,8 @@ signal settings_pressed()
 signal header_layout_changed()
 
 var _restaurant_name: String = MenuSettings.DEFAULT_NAME
+var _weather_kind: int = WeatherState.Kind.SUNNY
+var _weather_rendered_kind: int = -1
 var _day_label: Label
 var _time_label: Label
 var _phase_label: Label
@@ -91,6 +93,7 @@ func _ready() -> void:
 ## Idempotently binds controls and events, then renders current simulation state.
 func refresh() -> void:
 	_render_restaurant_name()
+	_render_weather()
 	if _day_label == null:
 		_day_label = get_node("Top/Row/Day") as Label
 		_time_label = get_node("Top/Row/Time") as Label
@@ -176,6 +179,30 @@ func refresh() -> void:
 	_staff_button.tooltip_text = "Hire staff and plan today's wages" if Clock.sim.phase == SimClock.Phase.MORNING \
 		else "Set staff job priorities. Hiring and upgrades are available in the morning."
 	_layout_header()
+
+
+func set_weather(kind: int) -> void:
+	if kind == _weather_kind and _weather_rendered_kind == kind:
+		return
+	_weather_kind = kind
+	_render_weather()
+	_layout_header()
+
+
+func _render_weather() -> void:
+	if _weather_rendered_kind == _weather_kind:
+		return
+	_weather_rendered_kind = _weather_kind
+	var label: Label = get_node("Top/Row/Weather") as Label
+	label.text = WeatherText.name_for(_weather_kind)
+	IconStyle.decorate_label(label, WeatherText.icon_for(_weather_kind), IconCatalogue.TOP_BAR_SIZE)
+	var font: Font = label.get_theme_font("font")
+	var font_size: int = label.get_theme_font_size("font_size")
+	var width: float = 0.0
+	for kind: int in [WeatherState.Kind.SUNNY, WeatherState.Kind.CLOUDY, WeatherState.Kind.RAIN]:
+		width = maxf(width, font.get_string_size(WeatherText.name_for(kind), HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x)
+	var style: StyleBox = label.get_theme_stylebox("normal")
+	label.custom_minimum_size.x = width + style.get_minimum_size().x
 
 
 ## Main supplies the rolling score and sample count; the HUD only presents it.

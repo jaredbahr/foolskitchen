@@ -18,6 +18,7 @@ const SHOP_FRAME_CELLS: Vector2 = Vector2(14.0, 12.0)
 const LEASE: LeaseUpgrade = preload("res://data/balance/lease_upgrade.tres")
 const TUNING: EconomyTuning = preload("res://data/balance/tier1_economy.tres")
 const CLEANLINESS_TUNING: CleanlinessTuning = preload("res://data/balance/cleanliness.tres")
+const WEATHER_TUNING: WeatherTuning = preload("res://data/balance/weather.tres")
 const REVIEW_TUNING: ReviewTuning = preload("res://data/balance/reviews.tres")
 const REVIEW_QUOTES: ReviewQuotes = preload("res://data/reviews/quotes.tres")
 const PROGRESSION_TUNING: ProgressionTuning = preload("res://data/balance/progression.tres")
@@ -108,6 +109,9 @@ var _loaded_milestones: MilestoneTracker = null
 var _loaded_tray_level: int = 0
 var _loaded_reorder: ReorderSettings = null
 var _loaded_deliveries: DeliveryBook = null
+var _loaded_weather: WeatherState = null
+## Tests may provide explicit weights without changing the shared authored resource.
+var weather_tuning: WeatherTuning = WEATHER_TUNING
 ## Today's last daytime delivery ({lines, minute}), for the Stock notes.
 var _last_delivery: Dictionary = {}
 var _storage_fill_key: String = ""
@@ -467,6 +471,7 @@ func start() -> void:
 	SaveSystem.register("milestones", _capture_milestones, _restore_milestones)
 	SaveSystem.register("reorder", _capture_reorder, _restore_reorder)
 	SaveSystem.register("deliveries", _capture_deliveries, _restore_deliveries)
+	SaveSystem.register("weather", _capture_weather, _restore_weather)
 	var loaded: bool = use_saves and _load_autosave()
 	_rooms_note = loaded and _loaded_layout != null and _loaded_layout.rooms_unmarked
 	$HUD.set_rooms_note(ROOMS_NOTE if _rooms_note else "")
@@ -1766,6 +1771,7 @@ func inspection_state() -> Dictionary:
 
 ## Refreshes after completed morning setup, removals and paused grid edits too.
 func refresh_presentation() -> void:
+	_refresh_weather()
 	if _inspect_panel == null or _debug_overlay == null or _debug_geometry == null:
 		return
 	_inspect_panel.refresh()
@@ -1907,6 +1913,7 @@ func _new_game() -> void:
 	Clock.sim = SimClock.new()
 	GameState.new_run(new_game_seed_override if new_game_seed_override != 0
 		else int(Time.get_unix_time_from_system()))
+	world.weather = WeatherState.new()
 	Economy.reset(TUNING.starting_cash)
 	_loaded_layout = null
 	_owner_preferences.reset()
@@ -1933,6 +1940,7 @@ func _new_game() -> void:
 	_loaded_reorder = null
 	reorder_settings = ReorderSettings.new(TUNING)
 	_loaded_deliveries = null
+	_loaded_weather = null
 	deliveries = DeliveryBook.new()
 	stock_cart.clear()
 	_last_delivery.clear()
@@ -1962,6 +1970,7 @@ func _load_autosave() -> bool:
 	_loaded_tray_level = 0
 	_loaded_reorder = null
 	_loaded_deliveries = null
+	_loaded_weather = null
 	if not SaveSystem.list_slots().has(save_slot):
 		return false
 	if SaveSystem.load_game(save_slot) != OK:
@@ -1969,6 +1978,10 @@ func _load_autosave() -> bool:
 		return false
 	if Clock.sim.phase != SimClock.Phase.MORNING:
 		world.log_event("Autosave is not from a morning; starting a new game")
+		return false
+	var saved_weather: WeatherState = _loaded_weather if _loaded_weather != null else WeatherState.legacy_sunny(Clock.sim.day)
+	if saved_weather == null or not saved_weather.is_for_day(Clock.sim.day):
+		world.log_event("Saved weather does not match this morning; starting a new game")
 		return false
 	if not OpeningHours.clock_valid(Clock.sim, HOURS_TUNING):
 		# Keep the game; only the hours go back to the default day.
@@ -2027,6 +2040,20 @@ func _load_autosave() -> bool:
 	if _loaded_layout != null:
 		for note: String in _loaded_layout.load_notes:
 			world.log_event(note)
+	# Install only after every other whole-load validation has succeeded.
+	world.weather = saved_weather.copy()
+	return true
+
+
+func _capture_weather() -> Dictionary:
+	return world.weather.to_dict() if world != null and world.weather != null else {}
+
+
+func _restore_weather(data: Dictionary) -> bool:
+	var restored: WeatherState = WeatherState.from_dict(data)
+	if restored == null:
+		return false
+	_loaded_weather = restored
 	return true
 
 
@@ -3148,6 +3175,8 @@ func _begin_morning() -> void:
 		_staff_notices.assign(notices)
 	elif not notices.is_empty():
 		_staff_notices.assign(notices)
+	if not _select_morning_weather():
+		return
 	# Sample the rating once, before start_day resets the first guest's gap.
 	# Positive stars increase arrivals, so their time between arrivals shrinks.
 	var rate: float = reputation.arrival_multiplier(REVIEW_TUNING)
@@ -3192,6 +3221,28 @@ func _begin_morning() -> void:
 	_refresh_menu_catalogue()
 	_refresh_stock_panel()
 	refresh_presentation()
+
+
+## Fetch the current run's stream lazily: reloads and legacy saves fetch none.
+func _select_morning_weather() -> bool:
+	if world == null or world.weather == null or weather_tuning == null or not weather_tuning.is_valid():
+		return false
+	if world.weather.needs_selection(Clock.sim.day):
+		if not world.weather.ensure_today(Clock.sim.day, GameState.rng(&"weather"), weather_tuning):
+			return false
+	_refresh_weather()
+	return world.weather.is_for_day(Clock.sim.day)
+
+
+func _refresh_weather() -> void:
+	if world == null or world.weather == null:
+		return
+	$HUD.set_weather(world.weather.kind)
+	if _menu_panel != null:
+		_menu_panel.set_weather(world.weather.kind)
+	var view: ShopView = $ShopView as ShopView
+	if view.weather_view != null:
+		view.weather_view.refresh()
 
 
 func _shelf_lives() -> Dictionary:
