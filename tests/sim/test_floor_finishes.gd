@@ -6,8 +6,7 @@ extends TestCase
 ## stops at walls and room edges; removed floor forgets its look and undo
 ## brings it back; saves keep the looks (forgiving), older saves are all
 ## default, and the vibe sees exactly the old whole-floor paint by default.
-## Grid: the starting shell is x 0..13, y 0..10; kitchen x 1..12, y 1..3 plus
-## (5..7, 4); dining x 1..12, y 5..9 plus (6..7, 10); street entry (6..7, 11).
+## Grid: the starting shell is x 0..13, y 0..10; kitchen x 1..12, y 1..4; dining x 1..12, y 5..9 plus (6..7, 10); street entry (6..7, 11).
 
 const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
 const START_CASH: int = 1000
@@ -120,7 +119,7 @@ func test_locked_floor_types_wait_for_their_level() -> void:
 
 func test_fill_room_stops_at_walls_doorways_and_other_rooms() -> void:
 	var kitchen: Array[Vector2i] = _editor.floor_room_cells(Vector2i(3, 2))
-	assert_eq(kitchen.size(), 12 * 3 + 3, "the kitchen, its pass openings included")
+	assert_eq(kitchen.size(), 12 * 4, "the kitchen includes the recovered divider row")
 	assert_false(kitchen.has(Vector2i(6, 5)), "the dining room is another room")
 	var dining: Array[Vector2i] = _editor.floor_room_cells(Vector2i(3, 6))
 	assert_eq(dining.size(), 12 * 5 + 2)
@@ -320,8 +319,11 @@ func test_snapshot_round_trip_keeps_the_looks() -> void:
 
 
 func test_older_snapshots_are_all_default_planks() -> void:
-	assert_true(_editor.apply_flooring(_editor.lay_changes(_rect(1, 5, 3, 2), &"herringbone", &"walnut")))
-	var legacy: Dictionary = _editor.to_dict()
+	var old_layout: ShopLayout = LegacyTier1Layout.make()
+	var old_sim: RestaurantSim = RestaurantSim.create(old_layout, _content, 1, [] as Array[String], null, false)
+	var old_editor: ShopEditor = ShopEditor.new(old_sim, _content, ShopEditBooks.new(_can_spend, _record), old_layout)
+	assert_true(old_editor.apply_flooring(old_editor.lay_changes(_rect(1, 5, 3, 2), &"herringbone", &"walnut")))
+	var legacy: Dictionary = old_editor.to_dict()
 	legacy["version"] = 4
 	legacy.erase("floors")
 	legacy.erase("floor_style_id")

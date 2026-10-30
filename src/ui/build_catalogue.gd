@@ -450,6 +450,12 @@ func _refresh_wall_cards() -> void:
 			row.remove_child(old_button)
 			old_button.free()
 			wall_buttons.erase(id)
+	if _content == null:
+		if wall_remove_button != null:
+			row.remove_child(wall_remove_button)
+			wall_remove_button.free()
+			wall_remove_button = null
+		return
 	for definition: WallKindDef in definitions:
 		var button: Button = wall_buttons.get(definition.id) as Button
 		if button == null:
