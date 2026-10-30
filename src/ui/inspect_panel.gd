@@ -25,6 +25,11 @@ var _shown_owner_id: int = -1
 var _nodes_bound: bool = false
 var _owner_appearance: OwnerAppearance = OwnerAppearance.new()
 var _owner_portrait: OwnerCharacterPreview
+## Reachability changes with topology, not with reservations or dirt.
+var _dining_cache_grid: SimGrid
+var _dining_cache_version: int = -1
+var _dining_cache_group: int = 0
+var _dining_cache_capacity: int = 0
 
 
 func _ready() -> void:
@@ -34,6 +39,9 @@ func _ready() -> void:
 func bind_world(value: SimWorld) -> void:
 	if _world != value:
 		_world = value
+		_dining_cache_grid = null
+		_dining_cache_version = -1
+		_dining_cache_group = 0
 		clear()
 	else:
 		refresh()
@@ -304,12 +312,23 @@ func _show_item(item: PlacedItem) -> void:
 		station_name = CatalogueText.station_name(definition)
 	_title.text = "%s #%d" % [item_name, item.id]
 	_details.text = "Station: %s" % station_name
+	var group: DiningSeats.Group = _world.grid.dining_group(item.id)
+	var seats: Array[Vector2i] = item.seat_cells
+	if group != null:
+		if _dining_cache_grid != _world.grid or _dining_cache_version != _world.grid.version or _dining_cache_group != group.id:
+			_dining_cache_grid = _world.grid
+			_dining_cache_version = _world.grid.version
+			_dining_cache_group = group.id
+			_dining_cache_capacity = DiningSeats.usable_cells(_world.grid, item).size()
+		_details.text += "\n" + CatalogueText.dining_capacity(_dining_cache_capacity, group.is_joined())
+		seats = group.seat_cells
 	_details.show()
 	var lines: PackedStringArray = []
 	for cell: Vector2i in item.work_cells:
 		lines.append(_reservation_line("Work", cell, item.reserved_by(cell)))
-	for cell: Vector2i in item.seat_cells:
-		lines.append(_reservation_line("Seat", cell, item.reserved_by(cell)))
+	for cell: Vector2i in seats:
+		var owner: PlacedItem = _world.grid.item(_world.grid.dining_owner_id(item.id, cell)) if group != null else item
+		lines.append(_reservation_line("Seat", cell, owner.reserved_by(cell) if owner != null else -1))
 	_reservations.text = "No work or seat cells" if lines.is_empty() else "\n".join(lines)
 	_reservations.show()
 

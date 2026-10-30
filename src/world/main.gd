@@ -1500,7 +1500,12 @@ func _update_build_controls() -> void:
 	var available: bool = _build_ready and shop_editor != null and shop_editor.can_edit()
 	var reason: String = build_mode.feedback_text()
 	var summary: String = ""
-	if build_mode.state == BuildMode.State.WALLS:
+	if build_mode.state in [BuildMode.State.BUY, BuildMode.State.MOVE]:
+		summary = build_mode.dining_summary()
+		if not summary.is_empty() and reason.is_empty():
+			# Retain the existing marker legend beside the new capacity readout.
+			summary += "\n" + BuildCatalogue.FURNITURE_HINT
+	elif build_mode.state == BuildMode.State.WALLS:
 		summary = build_mode.wall_summary()
 	elif build_mode.state == BuildMode.State.FLOOR:
 		summary = build_mode.floor_summary()

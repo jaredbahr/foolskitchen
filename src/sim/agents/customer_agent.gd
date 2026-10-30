@@ -25,6 +25,8 @@ var queue_patience: int = 300
 var food_patience: int = 1200
 var eat_ticks: int = 300
 var table_item_id: int = 0
+## Physical members captured at booking; never saved or recomputed on departure.
+var booked_table_ids: Array[int] = []
 var seat_cell: Vector2i = SimGrid.NO_CELL
 ## A temporary bench booking while QUEUED. It never becomes a dining order.
 var waiting_item_id: int = 0
@@ -169,6 +171,10 @@ func tick(world: SimWorld) -> void:
 	if party != null and party.size() > 1 and state <= State.QUEUED:
 		PartySeating.advance_queue(party, world, sim)
 		return
+	if state == State.WALKING_TO_SEAT and party != null and party.size() > 1 and not party.seated:
+		if not PartySeating.booking_valid(party, world):
+			PartySeating.requeue(party, world, sim)
+			return
 	if state >= State.WALKING_TO_SEAT and state <= State.PAYING:
 		var table: PlacedItem = world.grid.item(table_item_id)
 		if table == null or not table.seat_cells.has(seat_cell) \
@@ -357,27 +363,32 @@ func on_removed(world: SimWorld) -> void:
 
 func _try_seat(world: SimWorld) -> bool:
 	var sim: RestaurantSim = _restaurant.get_ref() as RestaurantSim
+	var seen: Dictionary[int, bool] = {}
 	for table: PlacedItem in _seat_order(world):
-		# Definition-backed dining belongs to a physical table/counter. A chair
-		# contributes its valid cells there rather than serving meals on its own.
-		# Untyped synthetic grid fixtures retain their established seat contract.
+		# Physical ownership remains on the table linked to the chosen seat.
 		var definition: ItemDef = table.def as ItemDef
 		if definition != null and definition.category != ItemDef.Category.TABLE:
 			continue
-		if sim != null and sim.kitchen != null and sim.kitchen.is_table_dirty(table.id):
+		var group_id: int = PartySeating.table_group_id(table, world.grid)
+		if seen.has(group_id):
+			continue
+		seen[group_id] = true
+		if sim != null and sim.kitchen != null and sim.kitchen.is_dining_group_dirty(table.id):
 			continue
 		if PartySeating.held_for_earlier_party(table, id, world):
 			continue
-		for seat: Vector2i in _preferred_seats(table):
-			if table.reserved_by(seat) != -1 or not world.grid.is_walkable(seat):
+		for seat: Vector2i in _preferred_seats(table, world):
+			var owner: PlacedItem = world.grid.item(world.grid.dining_owner_id(table.id, seat))
+			if owner == null or owner.reserved_by(seat) != -1 or not world.grid.is_walkable(seat):
 				continue
-			if not world.grid.is_guest_reachable(cell, seat) or not table.reserve(seat, id):
+			if not world.grid.is_guest_reachable(cell, seat) or not owner.reserve(seat, id):
 				continue
 			if not set_destination(world.grid, seat):
-				table.release(seat, id)
+				owner.release(seat, id)
 				continue
 			release_waiting_seat(world)
-			table_item_id = table.id
+			table_item_id = owner.id
+			booked_table_ids = PartySeating.table_group_members(table, world.grid)
 			seat_cell = seat
 			_walk_wait = 0
 			_ordering_block_logged = false
@@ -411,12 +422,11 @@ func _seat_order(world: SimWorld) -> Array[PlacedItem]:
 	return counters
 
 
-func _preferred_seats(table: PlacedItem) -> Array[Vector2i]:
-	if regular_profile == null or not table.seat_cells.has(regular_profile.favourite_seat):
-		return table.seat_cells
-	var seats: Array[Vector2i] = table.seat_cells.duplicate()
-	seats.erase(regular_profile.favourite_seat)
-	seats.push_front(regular_profile.favourite_seat)
+func _preferred_seats(table: PlacedItem, world: SimWorld) -> Array[Vector2i]:
+	var seats: Array[Vector2i] = PartySeating.table_group_seats(table, world.grid)
+	if regular_profile != null and seats.has(regular_profile.favourite_seat):
+		seats.erase(regular_profile.favourite_seat)
+		seats.push_front(regular_profile.favourite_seat)
 	return seats
 
 
@@ -650,16 +660,22 @@ func _cancel_work(world: SimWorld, sim: RestaurantSim) -> void:
 
 func _release_seat(world: SimWorld, dirty: bool = true) -> void:
 	var table: PlacedItem = world.grid.item(table_item_id)
-	if table != null and table.reserved_by(seat_cell) == id:
+	var held: bool = table != null and table.reserved_by(seat_cell) == id
+	# A forced removal can erase a seated guest's physical hold before cleanup.
+	# Its original joined members still need bussing; unfinished walks stay clean.
+	var removed_booking: bool = booked_table_ids.size() > 1 and state >= State.ORDERING and state <= State.PAYING
+	if held or removed_booking:
 		var sim: RestaurantSim = _restaurant.get_ref() as RestaurantSim
 		# A drinks-only visit leaves no plates to clear: staff take the cup
 		# back with them, so the seat is free at once (FK-083).
 		var plated_extra: bool = extra_order != null and _plated(sim, extra_order)
 		if dirty and cell == seat_cell and sim != null and sim.kitchen != null and (not is_drinks_visit() or plated_extra):
-			sim.kitchen.mark_table_dirty(table.id, order.id if order != null and not is_drinks_visit() else 0)
+			sim.kitchen.mark_dining_group_dirty(table_item_id, order.id if order != null and not is_drinks_visit() else 0, booked_table_ids)
 			if plated_extra:
-				sim.kitchen.mark_table_dirty(table.id, extra_order.id)
-		table.release(seat_cell, id)
+				sim.kitchen.mark_dining_group_dirty(table_item_id, extra_order.id, booked_table_ids)
+		if held:
+			table.release(seat_cell, id)
+	booked_table_ids.clear()
 
 
 ## A coffee guest who added a pastry has it with the coffee: they start once

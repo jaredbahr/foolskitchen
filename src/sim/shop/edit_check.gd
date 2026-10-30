@@ -5,6 +5,9 @@ extends RefCounted
 
 var ok: bool = false
 var why: String = ""
+## Capacity of the valid proposed table component; -1 for other proposals.
+var dining_capacity: int = -1
+var dining_joined: bool = false
 var unreachable: Array[int] = []
 ## Partial capacity is still a permitted placement, with a readable warning.
 var seat_warnings: Dictionary[int, String] = {}
@@ -46,6 +49,9 @@ func _init(allowed: bool = false, reason: String = "") -> void:
 ## furnishings cannot lose their table through another item's edit.
 static func validate_dining(live: SimGrid, preview: SimGrid, ids: Dictionary[int, int],
 		proposed_id: int, exclude_id: int) -> EditCheck:
+	var occupied: String = occupied_dining_problem(live, preview, ids)
+	if not occupied.is_empty():
+		return EditCheck.new(false, occupied)
 	var plan: DiningSeats.Plan = DiningSeats.derive(preview)
 	var future: Dictionary[int, bool] = _linked_furnishings(plan, ids)
 	var failures: Dictionary[int, String] = {}
@@ -100,3 +106,47 @@ static func _built_in_owners(grid: SimGrid, ids: Dictionary[int, int]) -> Dictio
 	for cell: Vector2i in owners:
 		(owners[cell] as Array).sort()
 	return owners
+
+
+## Geometry cannot change an occupied component, including its unheld members.
+## Compare physical identities through the preview mapping, never preview IDs.
+static func occupied_dining_problem(live: SimGrid, preview: SimGrid, ids: Dictionary[int, int]) -> String:
+	var future_ids: Dictionary[int, int] = {}
+	for preview_id: int in ids:
+		future_ids[ids[preview_id]] = preview_id
+	var seen: Dictionary[int, bool] = {}
+	for table: PlacedItem in live.items():
+		var group_id: int = live.dining_group_id(table.id)
+		if group_id == 0 or seen.has(group_id):
+			continue
+		seen[group_id] = true
+		if not live.dining_group_has_reservations(table.id):
+			continue
+		var members: Array[int] = live.dining_group_members(table.id)
+		for member_id: int in members:
+			var before: PlacedItem = live.item(member_id)
+			var after: PlacedItem = preview.item(future_ids.get(member_id, -1))
+			# A standalone sale retains its original targeted-work cancellation.
+			# A surviving singleton still compares its pose and future membership.
+			if after == null and members.size() == 1:
+				continue
+			if after == null or before.origin != after.origin or before.quarter_turns != after.quarter_turns:
+				return "This joined table is in use; try next morning"
+			var future_members: Array[int] = []
+			for future_id: int in preview.dining_group_members(after.id):
+				future_members.append(ids.get(future_id, 0))
+			if future_members.size() != members.size():
+				return "This joined table is in use; try next morning"
+			for original: int in members:
+				if not future_members.has(original):
+					return "This joined table is in use; try next morning"
+			for cell: Vector2i in before.work_cells + before.seat_cells:
+				if before.reserved_by(cell) == -1:
+					continue
+				if before.seat_cells.has(cell):
+					if not after.seat_cells.has(cell) or preview.dining_owner_id(after.id, cell) != after.id \
+							or not preview.is_walkable(cell):
+						return "This joined table is in use; try next morning"
+				elif not after.work_cells.has(cell):
+					return "This joined table is in use; try next morning"
+	return ""
