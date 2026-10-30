@@ -12,6 +12,10 @@ Each line ends with its PR number.
 
 ### Players
 - See meals on the pass, in servers' hands or trays and on guests' tables. Plates follow a rotated pass and stay on round tabletops. Dirty plates stay until bussing, collected plates stack by the working sink, and cooking stoves and fryers give off a little steam. Food and drinks use their matching Kenney models without changing service or balance. (#236)
+- Get to know named regulars after day five: they keep a favourite dish, seat and look, greet you on return visits, tip more for their favourite and may stop coming after poor service. The Menu and evening report show who they are; their history saves each morning. (#234)
+- Regulars who drop in for coffee but order their usual meal now take the normal time to eat it. (#234)
+- The kitchen divider is now thin, leaving more floor space. Walls has a visible Remove button with red refund previews and undo; Sell also handles walls and window or door frames. Existing shops retain or receive refunds for affected wall finishes and decorations. (#248)
+- Build a seafood menu with fish and chips, mussels in broth, salmon maki, shrimp skewers and seafood stew, using new ingredients that restock only while needed. Lay sea-coloured Deck planks at level 4. (#229)
 - Choose diner booth and stool looks in Buy, or change an existing piece in Paint. Copying, undoing and loading keep the chosen look. (#220)
 
 - Add a wall-hung restroom mirror and hand dryer with a little charm, a gentle room-label hint, and thin light-laminate stall partitions in Build > Walls that keep toilet and basin access clear. (#217)
@@ -105,6 +109,7 @@ Each line ends with its PR number.
 - The game opens on a warm wooden test floor with a 0.5 m build grid (press **G** to toggle). The isometric camera pans with WASD, screen edges or middle-mouse drag, zooms with the wheel, and rotates in 90° steps with Q and E. (#22)
 - Day clock and speed controls: each day runs morning → open → last orders → closed. **Space** pauses or resumes, and **1**, **2** and **3** set 1×, 2× and 4× speed. (#15)
 - An evening report screen (not yet shown during play): profit, income and costs by category, dishes sold with the best seller marked, guests served versus lost, why guests left, and review quotes. (#25)
+- Push tables together to seat bigger parties. (#253)
 
 ### Content
 - Placed chairs now have a usable seat. (#48)
@@ -113,6 +118,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- `tools/check.sh` gives the test suite 25 minutes instead of 10; the full suite now takes about 11 minutes on a busy machine and was being cut off without a failure. (#252)
 - Workers check GitHub for an existing PR or claim before starting an issue, claim it with a comment, and stop pushing once a PR is ready, so no work is done twice. (#249)
 - Add data-driven furniture looks and named kit-material colour recipes for the first diner seats. (#220)
 

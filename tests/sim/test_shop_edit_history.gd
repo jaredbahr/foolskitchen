@@ -348,6 +348,12 @@ func test_undo_sell_restores_starter_furniture_above_the_owner_level() -> void:
 ## old west wall; the new floor there made it usable, and undoing the floor must
 ## not be refused forever with "That would cut off a seat".
 func test_undo_back_to_an_accepted_layout_with_an_unusable_seat() -> void:
+	# This historical accepted seat relies on the old thick divider endpoint.
+	var layout: ShopLayout = LegacyTier1Layout.make()
+	_sim = RestaurantSim.create(layout, _content, 1, [] as Array[String])
+	_editor = ShopEditor.new(_sim, _content, ShopEditBooks.new(_can_spend, _record), layout)
+	_editor.set_owner_level(6)
+	_history = ShopEditHistory.new(_editor, _sim.world.grid)
 	var grid: SimGrid = _sim.world.grid
 	var table: PlacedItem = grid.item(5)
 	assert_not_null(table)

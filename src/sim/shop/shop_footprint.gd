@@ -89,6 +89,16 @@ static func from_layout(layout: ShopLayout) -> ShopFootprint:
 	return footprint
 
 
+## The same authored interior classification used by floor expansion. Shell,
+## street-facing cells and divider endpoints on the shell are excluded.
+func interior_wall_cells() -> Array[Vector2i]:
+	var cells: Dictionary[Vector2i, bool] = {}
+	for cell: Vector2i in _interior:
+		if _base.terrain(cell) == SimGrid.Terrain.WALL:
+			cells[cell] = true
+	return sorted(cells)
+
+
 func has_lot() -> bool:
 	return lot != building and building.size != Vector2i.ZERO
 

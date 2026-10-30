@@ -1,7 +1,7 @@
 extends TestCase
 ## FK-070: wall segments on cell edges, their pathing, rules, prices and saves.
 
-const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
+var _layout: ShopLayout
 
 var _content: ContentDB
 var _sim: RestaurantSim
@@ -11,10 +11,12 @@ var _entries: Array[Dictionary] = []
 
 
 func before_each() -> void:
+	# Isolate wall transactions from the starter shop's authored divider.
+	_layout = LegacyTier1Layout.make()
 	_content = ContentDB.new()
 	assert_eq(_content.load_all(), PackedStringArray())
 	var errors: Array[String] = []
-	_sim = RestaurantSim.create(LAYOUT, _content, 1, errors)
+	_sim = RestaurantSim.create(_layout, _content, 1, errors)
 	assert_eq(errors, [] as Array[String])
 	_cash = 1000
 	_entries.clear()
@@ -148,7 +150,7 @@ func test_furniture_cannot_straddle_a_segment_or_face_a_wall() -> void:
 
 
 func test_no_wall_paths_match_the_plain_engine_search() -> void:
-	var grid: SimGrid = ShopBuilder.build(LAYOUT, _content, [] as Array[String]).grid
+	var grid: SimGrid = ShopBuilder.build(_layout, _content, [] as Array[String]).grid
 	var plain: AStarGrid2D = AStarGrid2D.new()
 	plain.region = Rect2i(Vector2i.ZERO, grid.size)
 	plain.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
@@ -460,7 +462,7 @@ func test_back_door_refreshes_when_expansion_moves_the_shell() -> void:
 
 func test_back_door_follows_floor_bought_and_sold_through_the_editor() -> void:
 	var grid: SimGrid = _sim.world.grid
-	var editor: ShopEditor = ShopEditor.new(_sim, _content, ShopEditBooks.new(_can_spend, _record_cash), LAYOUT)
+	var editor: ShopEditor = ShopEditor.new(_sim, _content, ShopEditBooks.new(_can_spend, _record_cash), _layout)
 	var east: Vector3i = _edge(13, 6, 0)
 	var wing: Array[Vector2i] = []
 	for y: int in range(5, 10):
@@ -663,7 +665,7 @@ func test_back_door_snapshot_round_trip_keeps_receiving_route() -> void:
 	assert_true(_editor.apply_segments({_edge(13, 6, 0): SimGrid.Segment.DOORWAY} as Dictionary[Vector3i, int]))
 	var snapshot: Dictionary = JSON.parse_string(JSON.stringify(_editor.to_dict()))
 	var errors: Array[String] = []
-	var layout: ShopLayout = ShopEditor.from_dict(snapshot, LAYOUT, _content, errors)
+	var layout: ShopLayout = ShopEditor.from_dict(snapshot, _layout, _content, errors)
 	assert_eq(errors, [] as Array[String])
 	assert_not_null(layout)
 	var rebuilt: RestaurantSim = RestaurantSim.create(layout, _content, 1, errors, null, true, true)
@@ -681,7 +683,7 @@ func test_snapshot_round_trip_keeps_segments() -> void:
 	var snapshot: Dictionary = JSON.parse_string(JSON.stringify(_editor.to_dict()))
 	assert_eq(int(snapshot["version"]), ShopEditor.SNAPSHOT_VERSION)
 	var errors: Array[String] = []
-	var layout: ShopLayout = ShopEditor.from_dict(snapshot, LAYOUT, _content, errors)
+	var layout: ShopLayout = ShopEditor.from_dict(snapshot, _layout, _content, errors)
 	assert_eq(errors, [] as Array[String])
 	assert_not_null(layout)
 	assert_eq(layout.wall_segments.size(), 6)
@@ -692,22 +694,22 @@ func test_snapshot_round_trip_keeps_segments() -> void:
 	assert_eq(rebuilt.world.grid.segment_edges(), _sim.world.grid.segment_edges())
 
 
-func test_version_one_snapshot_loads_without_walls() -> void:
+func test_version_one_snapshot_adds_only_the_migrated_divider() -> void:
 	var legacy: Dictionary = _editor.to_dict()
 	legacy["version"] = 1
 	legacy.erase("walls")
 	var errors: Array[String] = []
-	var layout: ShopLayout = ShopEditor.from_dict(legacy, LAYOUT, _content, errors)
+	var layout: ShopLayout = ShopEditor.from_dict(legacy, _layout, _content, errors)
 	assert_eq(errors, [] as Array[String])
 	assert_not_null(layout)
-	assert_true(layout.wall_segments.is_empty())
+	assert_eq(layout.wall_segments, LegacyTier1Layout.TEMPLATE.wall_segments, "no player walls are invented")
 	var rebuilt: RestaurantSim = RestaurantSim.create(layout, _content, 1, errors, null, true, true)
 	assert_eq(errors, [] as Array[String])
-	assert_false(rebuilt.world.grid.has_segments())
+	assert_eq(rebuilt.world.grid.segment_edges().size(), 9, "only the converted divider is added")
 
 
 func test_legacy_orphan_openings_load_safely_and_keep_supported_runs_in_any_order() -> void:
-	var editor: ShopEditor = ShopEditor.new(_sim, _content, ShopEditBooks.new(_can_spend, _record_cash), LAYOUT)
+	var editor: ShopEditor = ShopEditor.new(_sim, _content, ShopEditBooks.new(_can_spend, _record_cash), _layout)
 	var wing: Array[Vector2i] = []
 	for y: int in range(5, 10):
 		wing.append(Vector2i(14, y))
@@ -721,7 +723,7 @@ func test_legacy_orphan_openings_load_safely_and_keep_supported_runs_in_any_orde
 	]
 	var cash: int = _cash
 	var errors: Array[String] = []
-	var layout: ShopLayout = ShopEditor.from_dict(snapshot, LAYOUT, _content, errors)
+	var layout: ShopLayout = ShopEditor.from_dict(snapshot, _layout, _content, errors)
 	assert_eq(errors, [] as Array[String])
 	assert_not_null(layout, "old frames must not force a new game")
 	if layout == null:
@@ -748,15 +750,15 @@ func test_bad_saved_walls_are_rejected() -> void:
 		var data: Dictionary = base.duplicate(true)
 		data["walls"] = walls
 		var errors: Array[String] = []
-		assert_null(ShopEditor.from_dict(data, LAYOUT, _content, errors), str(walls))
+		assert_null(ShopEditor.from_dict(data, _layout, _content, errors), str(walls))
 		assert_false(errors.is_empty())
 	var legacy: Dictionary = base.duplicate(true)
 	legacy["version"] = 1
 	legacy["walls"] = "bad"
-	assert_null(ShopEditor.from_dict(legacy, LAYOUT, _content, [] as Array[String]), "bad walls fail cleanly in any version")
+	assert_null(ShopEditor.from_dict(legacy, _layout, _content, [] as Array[String]), "bad walls fail cleanly in any version")
 	var missing: Dictionary = base.duplicate(true)
 	missing.erase("walls")
-	assert_null(ShopEditor.from_dict(missing, LAYOUT, _content, [] as Array[String]), "version 2 needs walls")
+	assert_null(ShopEditor.from_dict(missing, _layout, _content, [] as Array[String]), "version 2 needs walls")
 
 
 # --- Soak --------------------------------------------------------------------
@@ -765,7 +767,7 @@ func test_bad_saved_walls_are_rejected() -> void:
 ## doorway, and windows inside and out. Nobody ever crosses a wall or window,
 ## every day drains, and guests still use the walled-off table.
 func test_five_day_soak_with_a_walled_off_dining_corner() -> void:
-	var layout: ShopLayout = LAYOUT.duplicate() as ShopLayout
+	var layout: ShopLayout = _layout.duplicate() as ShopLayout
 	var segments: Dictionary[Vector3i, StringName] = {}
 	for y: int in range(5, 10):
 		segments[_edge(9, y, 0)] = &"wall"

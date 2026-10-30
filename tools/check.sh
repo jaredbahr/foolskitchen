@@ -46,7 +46,7 @@ code=$?
 if [[ $code -ne 0 ]] || has_errors "$log"; then cat "$log"; echo "FAIL: parse"; fail=1; else tail -1 "$log"; fi
 
 echo "== tests"
-timeout 600 "$GODOT" --headless --path . --script tools/run_tests.gd >"$log" 2>&1
+timeout 1500 "$GODOT" --headless --path . --script tools/run_tests.gd >"$log" 2>&1
 code=$?
 cat "$log"
 if [[ $code -ne 0 ]] || has_errors "$log"; then echo "FAIL: tests"; fail=1; fi
