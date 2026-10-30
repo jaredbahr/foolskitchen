@@ -279,6 +279,19 @@ an active edit/panel/selection first, or opens Settings when none is active.
   Tests: `tests/sim/test_mishaps.gd`, `tests/world/test_mess_view.gd`.
   Manual visual fixture: `tools/messes_review.tscn` (dark/light, one frame each).
 - **Debug overlay (F3):** paths, claimed tasks, agent states and the task board, from Phase 1 onward.
+
+- **Hygiene overview (FK-097):** the Build/Buy room readout has a session-local
+  Hygiene toggle. `HygieneOverview` reads existing dirty-table holds, floor spots
+  and restroom upkeep; it counts used toilets separately from their tidy spots.
+  Today's cleanliness is the same worst-so-far label used by the evening report,
+  not a new gameplay score. `BuildPreview` tints a detached, deduplicated set of
+  problem cells using the existing Clay swatch. The native mesh updates only
+  when those cells change and disappears outside Build; no sim, RNG or save
+  state changes. The catalogue's shared readout wraps within its bounded panel.
+  `bash tools/screenshot.sh --scene=res://tools/hygiene_review.tscn --speed=0
+  --frames=12,60 --quarter=2` shows an explicitly staged, unsaved slightly messy
+  shop before and after enabling Hygiene (seed 1, one dirty table, two floor
+  spots and one toilet needing a tidy).
 - **Owner assignment (FK-020):** the restaurant factory creates one `OwnerAgent`
   at the authored owner spawn, with cook/server skill 3 and default `rest`.
   `owner_agent()` returns that live agent and `assign_owner(mode) -> bool`
