@@ -12,6 +12,7 @@ const MAX_LEVEL: int = 1000000
 var tuning: ProgressionTuning
 var total_xp: int = 0
 var level: int = 1
+var property_tier: int = 1
 ## Persisted guard against awarding the same closing day twice.
 var last_awarded_day: int = 0
 
@@ -103,7 +104,7 @@ func award_bonus(amount: int) -> Dictionary:
 
 func to_dict() -> Dictionary:
 	return {"version": SAVE_VERSION, "total_xp": total_xp, "level": level,
-		"last_awarded_day": last_awarded_day}
+		"last_awarded_day": last_awarded_day, "property_tier": property_tier}
 
 
 ## Decode a present section transactionally. The Main save provider supplies
@@ -112,7 +113,8 @@ func from_dict(value: Variant) -> bool:
 	if tuning == null or not tuning.is_valid() or not value is Dictionary:
 		return false
 	var row: Dictionary = value
-	if row.size() != 4 or not _whole(row.get("version"), SAVE_VERSION, SAVE_VERSION) \
+	if row.size() != (5 if row.has("property_tier") else 4) \
+			or not _whole(row.get("property_tier", 1), 1, 2) or not _whole(row.get("version"), SAVE_VERSION, SAVE_VERSION) \
 			or not _whole(row.get("total_xp"), 0, MAX_TOTAL_XP) \
 			or not _whole(row.get("level"), 1, MAX_LEVEL) \
 			or not _whole(row.get("last_awarded_day"), 0, MAX_TOTAL_XP):
@@ -124,6 +126,7 @@ func from_dict(value: Variant) -> bool:
 	total_xp = saved_xp
 	level = saved_level
 	last_awarded_day = int(row["last_awarded_day"])
+	property_tier = int(row.get("property_tier", 1))
 	return true
 
 
