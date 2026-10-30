@@ -533,7 +533,6 @@ func _apply_time(seconds: float) -> void:
 		person.show()
 		if _players.size() == 3:
 			_players[index].seek(fposmod(seconds + PHASES[index], _animation_lengths[index]), true)
-			_players[index].advance(0.0)
 	var travel: float = (_car_route.y - _car_route.x) / CAR_SPEED
 	var phase: float = fposmod(seconds, maxf(travel + CAR_REST, 1.0))
 	car.visible = travel > 0.0 and phase >= 1.0 and phase <= travel + 1.0
