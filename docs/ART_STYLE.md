@@ -84,7 +84,7 @@ Any new building piece (walls, windows, doors, the awning, counters) follows the
 ## 7. UI
 - **Icons:** `assets/kenney/icons/`, tinted with theme colours, at one size per context (top bar 28 px, panels 24 px).
 - **Text:** stays on the current font and theme.
-- **Missing icons:** there is no chef-hat or paint-brush icon in the pack. Make them in the Game Icons style (§8), or use text until one exists.
+- **Made icons (FK-068):** the pack has no chef hat or paint brush; the two named SVG sources and 100 px PNG exports in `assets/made/icons/` follow its filled, rounded style (§8). The Staff button uses the chef hat; Paint uses the brush with its existing tooltip. Staff panel headings retain the pack's people icon.
 
 ## 8. Making new items in the Kenney style
 New stoves, cooking gear, decor, building pieces or icons may be made when the kits lack them (Jared). **Designing the space is a core part of the fun** (walls, layouts, tables and chairs, restaurant styles and vibes), so making assets for variety is encouraged. **The player decides the look (D22)**: prefer several variants of a piece (other kit material colours, wood vs. painted, plain vs. trimmed) over one "right" version, so every theme can be built more than one way. Reviews check Kenney-style consistency, not taste. A made item must be indistinguishable in style from the kits:

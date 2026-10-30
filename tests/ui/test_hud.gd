@@ -253,7 +253,7 @@ func test_staff_entry_requests_work_in_every_phase_without_loosening_menu_or_cha
 		_hud.call("refresh")
 		assert_eq(_control("Staff").get_instance_id(), identity)
 		assert_false(staff.disabled, "staff job choices remain reachable during service")
-		assert_eq(staff.icon.resource_path, "res://assets/kenney/icons/singleplayer.png")
+		assert_eq(staff.icon.resource_path, IconCatalogue.path_for(&"chef"))
 		assert_eq((_control("Menu") as Button).disabled, phase != SimClock.Phase.MORNING)
 		if phase == SimClock.Phase.MORNING:
 			assert_eq(staff.tooltip_text, "Hire staff and plan today's wages")
@@ -527,11 +527,15 @@ func test_every_header_button_has_readable_content_and_tooltip() -> void:
 		assert_true(button.icon != null or not button.text.is_empty(), name + " has readable content")
 		assert_false(button.tooltip_text.is_empty(), name + " explains its action")
 		if button.icon != null:
-			assert_true(button.icon.resource_path.begins_with(IconCatalogue.ROOT))
+			assert_true(button.icon.resource_path.begins_with(IconCatalogue.ROOT) \
+				or button.icon.resource_path in [IconCatalogue.path_for(&"chef"), IconCatalogue.path_for(&"paint")])
 			assert_eq(button.get_theme_constant("icon_max_width"), 28)
-	for name: String in ["Speed1", "Speed2", "Speed4", "Build", "Paint", "Context", "Menu", "Staff"]:
+	for name: String in ["Speed1", "Speed2", "Speed4", "Build", "Context", "Menu", "Staff"]:
 		assert_false((_control(name) as Button).text.is_empty(), name + " keeps its main label")
-	assert_null((_control("Paint") as Button).icon)
+	assert_eq((_control("Paint") as Button).icon.resource_path, IconCatalogue.path_for(&"paint"))
+	assert_eq((_control("Paint") as Button).text, "")
+	assert_eq((_control("Paint") as Button).tooltip_text, "Paint walls, floor and furniture (P)")
+	assert_eq((_control("Staff") as Button).icon.resource_path, IconCatalogue.path_for(&"chef"))
 	assert_eq((_control("Reputation").get_node("ThemeIcon") as TextureRect).texture.resource_path,
 		IconCatalogue.ROOT + "star.png")
 	for name: String in ["Day", "Time", "Phase", "Cash", "Reputation", "Plates"]:
