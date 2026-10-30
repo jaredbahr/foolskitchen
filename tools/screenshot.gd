@@ -35,6 +35,7 @@ extends SceneTree
 ##             --fast=N --speed=1) a guest walking round the kitchen to the
 ##             restroom; the clock pauses on the first such guest.
 ##   --door-queue  zoom the existing camera onto a real queue, or its empty entry
+##   --lease-review=offer|short|expand --speed=0 --frames=12; offer/short also require --menu
 ##   --loan-review --speed=0 --frames=12,90  explicit financial-fixture UI evidence
 ##   --milestone-review --speed=0 --frames=12,90  authored goals and close reward evidence
 ##   --catalogue-review=rustic|modern --speed=0 --frames=90,120  furnishing fixture
@@ -52,6 +53,7 @@ extends SceneTree
 const MAX_CAPTURE_WAIT_FRAMES: int = 8
 const MAX_OWNER_WARMUP_TICKS: int = 900
 const SETTINGS_CAPTURE_SIZE: Vector2i = Vector2i(1600, 900)
+const LEASE_REVIEW: Script = preload("res://tools/lease_review.gd")
 const DINER_REVIEW: Script = preload("res://tools/diner_review.gd")
 const FLOORS_REVIEW: Script = preload("res://tools/floors_review.gd")
 const BLUEPRINT_REVIEW: Script = preload("res://tools/blueprint_review.gd")
@@ -137,6 +139,8 @@ var _blueprint_fixture: Dictionary = {}
 var _rooms: String = ""
 var _rooms_paused: bool = false
 var _door_queue: bool = false
+var _lease_mode: String = ""
+var _lease_fixture: Dictionary = {}
 var _loan_review: bool = false
 var _loan_fixture: Dictionary = {}
 var _milestone_review: bool = false
@@ -159,6 +163,11 @@ var _finish_requested: bool = false
 
 func _initialize() -> void:
 	OS.add_logger(_errors)
+	var lease_options: Dictionary = LEASE_REVIEW.options(OS.get_cmdline_user_args())
+	if not String(lease_options["error"]).is_empty():
+		_fail_capture(lease_options["error"])
+		return
+	_lease_mode = lease_options["mode"]
 	var diner_options: Dictionary = DINER_REVIEW.options(OS.get_cmdline_user_args())
 	if not String(diner_options["error"]).is_empty():
 		_fail_capture(diner_options["error"])
@@ -375,7 +384,7 @@ func _initialize() -> void:
 	# Preserve capture isolation when the integrated game session supports saves.
 	if "use_saves" in _main:
 		_main.set("use_saves", false)
-	if (_report_requested or _milestone_review or _diner_review or _expand == "shop" or not _rooms.is_empty() \
+	if (not _lease_mode.is_empty() or _report_requested or _milestone_review or _diner_review or _expand == "shop" or not _rooms.is_empty() \
 			or _floors_review or _walls_review or _assign_owner) \
 			and "new_game_seed_override" in _main:
 		_main.set("new_game_seed_override", 1)
@@ -1831,6 +1840,12 @@ func _process(_delta: float) -> bool:
 			if not String(_diner_fixture.get("error", "")).is_empty():
 				_fail_capture(String(_diner_fixture["error"]))
 				return true
+		if not _lease_mode.is_empty():
+			_lease_fixture = LEASE_REVIEW.prepare(_main, root, _lease_mode)
+			if not String(_lease_fixture["error"]).is_empty():
+				_fail_capture(_lease_fixture["error"])
+				return true
+			_main.set_process(false)
 		if _loan_review:
 			_loan_fixture = prepare_loan_review(_main, root)
 			if not String(_loan_fixture["error"]).is_empty():
@@ -2833,6 +2848,10 @@ func _capture() -> void:
 	if _diner_review and not DINER_REVIEW.valid(diner_state, _capture_frame, _diner_fixture):
 		_fail_capture("diner review failed actual source, bounds, native actor or seat validation: " + JSON.stringify(diner_state))
 		return
+	var lease_state: Dictionary = LEASE_REVIEW.evidence(_main, root, _lease_fixture) if not _lease_mode.is_empty() else {}
+	if not _lease_mode.is_empty() and not LEASE_REVIEW.valid(lease_state, _lease_fixture, _capture_frame):
+		_fail_capture("lease review did not match its real Menu/Expand controls, purchase, lot or default recipe choices: " + JSON.stringify(lease_state))
+		return
 	var loan_state: Dictionary = loan_review_evidence(_main, root) if _loan_review else {}
 	if _loan_review and not loan_review_valid(loan_state, _capture_frame, _loan_fixture):
 		_fail_capture("loan review did not match its real account, phase and visible native controls")
@@ -2982,6 +3001,10 @@ func _capture() -> void:
 	if not _catalogue_profile.is_empty() and (image == null or image.get_size() != SETTINGS_CAPTURE_SIZE):
 		_fail_capture("catalogue review image did not match 1600x900")
 		return
+	if not _lease_mode.is_empty() and (image == null or image.get_size() != SETTINGS_CAPTURE_SIZE \
+			or OS.get_environment("FK_LEASE_CAPTURE_SHA").length() != 40 or OS.get_environment("FK_LEASE_CAPTURE_TREE").length() != 40):
+		_fail_capture("lease review requires a 1600x900 image and committed source identity from screenshot.sh")
+		return
 	var world_render: Dictionary = _settings_world_evidence(image) if _settings_world else {}
 	if image == null or image.is_empty() or image.save_png(path) != OK:
 		_fail_capture("cannot save viewport image: " + path)
@@ -3061,6 +3084,9 @@ func _capture() -> void:
 		metadata.merge({"requested_hud_layout": true, "hud_layout": hud_layout_state,
 			"requested_ui_scale_percent": 125 if _capture_frame == 12 else 150,
 			"requested_window_size": [_hud_window_size.x, _hud_window_size.y]})
+	if not _lease_mode.is_empty():
+		metadata["lease_review"] = {"fixture": _lease_fixture, "state": lease_state,
+			"source_commit": OS.get_environment("FK_LEASE_CAPTURE_SHA"), "source_tree": OS.get_environment("FK_LEASE_CAPTURE_TREE")}
 	if _loan_review:
 		metadata["loan_review"] = {"fixture": _loan_fixture, "state": loan_state,
 			"generated_uids": generated_uid_evidence()}
