@@ -173,8 +173,8 @@ static func _pieces(grid: SimGrid) -> Array[Dictionary]:
 	if not ExteriorSupport.window_cells(grid).has(window):
 		return []
 	return [
-		{"id": &"street_awning_3", "anchor": _key(window, into, ExteriorSupport.Band.CANOPY), "swatch": AWNING_SWATCH},
-		{"id": &"flower_window_box", "anchor": _key(window, into, ExteriorSupport.Band.SILL), "swatch": &""},
+		{"id": &"street_awning_4", "anchor": _key(window, into, ExteriorSupport.Band.CANOPY), "swatch": AWNING_SWATCH},
+		{"id": &"flower_window_box", "anchor": _key(first + along * doors.size(), into, ExteriorSupport.Band.SILL), "swatch": &""},
 		{"id": &"shop_name_sign", "anchor": _key(first, into, ExteriorSupport.Band.HEADER), "swatch": &""},
 		{"id": &"string_lights_4", "anchor": _key(first + along * 3, into, ExteriorSupport.Band.LIGHTS), "swatch": &""},
 		{"id": &"neon_open_sign", "anchor": _key(window - along, into, ExteriorSupport.Band.BODY), "swatch": &""},
