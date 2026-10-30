@@ -40,11 +40,19 @@ func test_every_authored_item_has_floor_aligned_parts_inside_its_footprint_or_de
 			footprint = view.footprint
 		else:
 			assert_eq(view.footprint, definition.footprint, String(definition.id))
+		var exterior: bool = definition.hangs_on_wall() and definition.wall_mount == ItemDef.WallMount.EXTERIOR
 		var bounds: AABB = view.get_combined_aabb()
 		var half_width: float = float(footprint.x) * GridMath.CELL_SIZE * 0.5
 		var half_depth: float = float(footprint.y) * GridMath.CELL_SIZE * 0.5
 		assert_true(bounds.size.x > 0.0 and bounds.size.y > 0.0 and bounds.size.z > 0.0, String(definition.id))
-		if definition.hangs_on_wall():
+		if exterior:
+			# Exterior models are base-centred; the mount applies their height and measured back plane.
+			assert_almost_eq(bounds.get_center().x, 0.0, 0.001, String(definition.id))
+			assert_almost_eq(bounds.position.y, 0.0, 0.0001, String(definition.id))
+			assert_almost_eq(bounds.get_center().z, 0.0, 0.001, String(definition.id))
+			assert_true(bounds.size.x <= half_width * 2.0 + 0.1, "%s exterior width fits its span plus the allowed overhang" % definition.id)
+			assert_true(bounds.size.z <= half_depth * 2.0 + 0.1, "%s exterior depth fits its footprint plus the allowed overhang" % definition.id)
+		elif definition.hangs_on_wall():
 			# Wall decor (D26) hangs off the floor, its back on the face.
 			assert_true(bounds.position.y > 0.2 and bounds.end.y < ArtScale.WALL_HEIGHT, String(definition.id))
 		else:
@@ -57,6 +65,11 @@ func test_every_authored_item_has_floor_aligned_parts_inside_its_footprint_or_de
 			var part: Node3D = child as Node3D
 			if part == null:
 				continue
+			if exterior:
+				var art: Node3D = part.get_node_or_null("Art") as Node3D
+				assert_not_null(art, "%s exterior parts use the shared Art scale" % definition.id)
+				if art != null:
+					assert_eq(art.scale, Vector3.ONE * ArtScale.FURNITURE_SCALE, "%s exterior scale stays uniform" % definition.id)
 			var part_bounds: AABB = part.transform * PropView._children_aabb(part)
 			var allowed: Rect2 = footprint_rect
 			if part.has_meta(&"seat_cell"):
@@ -73,7 +86,10 @@ func test_every_authored_item_has_floor_aligned_parts_inside_its_footprint_or_de
 		# Bodies are centred unless the wrapper declares an offset inside its footprint.
 		assert_true(absf(view.body_center_offset.x) <= half_width and absf(view.body_center_offset.y) <= half_depth, "%s body offset must stay inside its footprint" % definition.id)
 		assert_almost_eq(body_bounds.get_center().x, view.body_center_offset.x, 0.001, String(definition.id))
-		if definition.hangs_on_wall():
+		if exterior:
+			assert_almost_eq(body_bounds.position.y, 0.0, 0.0001, String(definition.id))
+			assert_almost_eq(body_bounds.get_center().z, 0.0, 0.001, "%s exterior body stays centred before mounting" % definition.id)
+		elif definition.hangs_on_wall():
 			# Wall decor: its back rests on the wall at the footprint's far (+Z) edge.
 			assert_almost_eq(body_bounds.end.z, half_depth, 0.01, "%s hangs flat on its wall" % definition.id)
 		else:

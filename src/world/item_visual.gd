@@ -6,6 +6,10 @@ extends Node3D
 var prop: PropView
 var fallback: MeshInstance3D
 var _fallback_material: Material
+const SIGN_THEME: Theme = preload("res://src/ui/theme/main_theme.tres")
+const SIGN_FONT_SIZE: int = 48
+var restaurant_name_label: Label3D
+var _shows_restaurant_name: bool = false
 
 
 func _notification(what: int) -> void:
@@ -41,7 +45,39 @@ static func create(definition: ItemDef, fallback_height: float, material: Materi
 		result._fallback_material = material
 		result.fallback.material_override = material
 		result.add_child(result.fallback)
+	result._shows_restaurant_name = definition.shows_restaurant_name
+	if result._shows_restaurant_name:
+		result.set_restaurant_name(MenuSettings.DEFAULT_NAME)
 	return result
+
+
+## Only the purchased name sign gets text; ordinary models remain untouched.
+func set_restaurant_name(value: String) -> bool:
+	if not _shows_restaurant_name:
+		return false
+	var normalized: String = MenuSettings.normalized_restaurant_name(value)
+	if normalized.is_empty():
+		return false
+	if restaurant_name_label == null:
+		restaurant_name_label = Label3D.new()
+		restaurant_name_label.name = "RestaurantName"
+		restaurant_name_label.font = SIGN_THEME.default_font if SIGN_THEME.default_font != null else ThemeDB.fallback_font
+		restaurant_name_label.font_size = SIGN_FONT_SIZE
+		restaurant_name_label.modulate = SIGN_THEME.get_color("font_color", "Label")
+		restaurant_name_label.outline_size = 0
+		restaurant_name_label.double_sided = false
+		restaurant_name_label.no_depth_test = false
+		restaurant_name_label.rotation.y = PI
+		restaurant_name_label.position = ArtScale.EXTERIOR_SIGN_TEXT_POSITION
+		add_child(restaurant_name_label)
+	var font: Font = restaurant_name_label.font
+	var width: float = font.get_string_size(normalized, HORIZONTAL_ALIGNMENT_LEFT, -1, SIGN_FONT_SIZE).x
+	var height: float = font.get_height(SIGN_FONT_SIZE)
+	restaurant_name_label.pixel_size = minf(ArtScale.EXTERIOR_SIGN_TEXT_SIZE.x / maxf(width, 1.0),
+		ArtScale.EXTERIOR_SIGN_TEXT_SIZE.y / maxf(height, 1.0))
+	restaurant_name_label.text = normalized
+	restaurant_name_label.set_meta(&"full_name", normalized)
+	return true
 
 
 func apply_variant(look: ItemVariant) -> bool:

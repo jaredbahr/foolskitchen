@@ -71,6 +71,9 @@ var item_nodes: Dictionary[Vector3i, ItemVisual] = {}
 var _ghost: ItemVisual
 var _ghost_key: Array = []
 var _hidden_anchor: Vector3i = WallFaces.NO_FACE
+var _restaurant_name: String = MenuSettings.DEFAULT_NAME
+var _hung_preview_anchor: Vector3i = WallFaces.NO_FACE
+var _hung_preview_swatch: StringName = &""
 
 
 func bind(grid: SimGrid, content: ContentDB, finishes: WallFinishes, decor: WallDecor) -> void:
@@ -80,6 +83,35 @@ func bind(grid: SimGrid, content: ContentDB, finishes: WallFinishes, decor: Wall
 	_decor = decor
 	_preview.clear()
 	rebuild()
+
+
+## The same normalized name used by the HUD and the existing free name board.
+func set_restaurant_name(value: String) -> bool:
+	var normalized: String = MenuSettings.normalized_restaurant_name(value)
+	if normalized.is_empty():
+		return false
+	_restaurant_name = normalized
+	for node: ItemVisual in item_nodes.values():
+		node.set_restaurant_name(normalized)
+	if _ghost != null:
+		_ghost.set_restaurant_name(normalized)
+	return true
+
+
+func preview_hung_paint(anchor: Vector3i, swatch_id: StringName) -> void:
+	if _hung_preview_anchor == anchor and _hung_preview_swatch == swatch_id:
+		return
+	_hung_preview_anchor = anchor
+	_hung_preview_swatch = swatch_id
+	_rebuild_items()
+
+
+func clear_hung_paint_preview() -> void:
+	if _hung_preview_anchor == WallFaces.NO_FACE:
+		return
+	_hung_preview_anchor = WallFaces.NO_FACE
+	_hung_preview_swatch = &""
+	_rebuild_items()
 
 
 ## The shop's own wall colour (the default faces' paint) and its swatch id.
@@ -135,7 +167,9 @@ func preview_faces() -> Array[Vector3i]:
 ## The build ghost of a wall item at `anchor` (valid: green, else red), and
 ## the hung item it moves (hidden while held). NO_FACE anchor hides it.
 func show_ghost(definition: ItemDef, anchor: Vector3i, valid: bool, moving: Vector3i = WallFaces.NO_FACE) -> void:
-	var key: Array = [definition, anchor, valid, moving]
+	var held: WallDecor.Hung = _decor.item(moving) if _decor != null else null
+	var swatch: StringName = held.swatch_id if held != null else &""
+	var key: Array = [definition, anchor, valid, moving, swatch]
 	if key == _ghost_key:
 		return
 	_ghost_key = key
@@ -149,10 +183,17 @@ func show_ghost(definition: ItemDef, anchor: Vector3i, valid: bool, moving: Vect
 		return
 	_ghost = ItemVisual.create(definition, HUNG_FALLBACK_HEIGHT, _flat(definition.placeholder_color))
 	_ghost.name = "WallGhost"
+	_ghost.set_restaurant_name(_restaurant_name)
+	if definition.paintable and not swatch.is_empty():
+		var color: Color = _colour(swatch, definition.placeholder_color)
+		_ghost.apply_paint(color, _flat(color))
 	var tint: Color = BuildPreview.VALID_COLOR if valid else BuildPreview.INVALID_COLOR
 	tint.a = BuildPreview.VALID_ALPHA if valid else BuildPreview.INVALID_ALPHA
 	_ghost.set_ghost_tint(tint)
-	if definition.hangs_in_window():
+	if ExteriorSupport.is_exterior(_grid, anchor):
+		fit_exterior(_ghost, definition.footprint.x)
+		_ghost.transform = exterior_transform(_grid, anchor, definition.footprint.x, _ghost.get_aabb())
+	elif definition.hangs_in_window():
 		# In a window, or (refused) flat on the pointed wall face.
 		fit_window(_ghost)
 		_ghost.transform = window_transform(anchor, _ghost.get_aabb()) if WallFaces.is_window(_grid, anchor) \
@@ -285,11 +326,27 @@ static func face_frame(grid: SimGrid, face: Vector3i, interior_lowered: bool,
 	var x0: float = -half
 	var x1: float = half
 	var lowered: bool = interior_lowered if interior else lowered_cells.has(here + into)
+	if ExteriorSupport.is_exterior(grid, face) and grid.terrain(here + into) != SimGrid.Terrain.WALL:
+		lowered = _opening_lowered(grid, face, lowered_cells)
 	if interior:
 		x0 -= _corner_reach(grid, face, -right)
 		x1 += _corner_reach(grid, face, right)
 	return {"origin": origin, "normal": normal, "tangent": tangent, "x0": x0, "x1": x1,
 		"height": ShopView.LOWERED_HEIGHT if lowered else ArtScale.WALL_HEIGHT, "inset": inset, "lowered": lowered}
+
+
+## The header over the fixed doorway follows its nearest supporting shell.
+static func _opening_lowered(grid: SimGrid, face: Vector3i, lowered: Dictionary[Vector2i, bool]) -> bool:
+	var shell: Vector2i = ExteriorSupport.shell_cell(face)
+	var along: Vector2i = WallFaces.along(face)
+	for direction: int in [-1, 1]:
+		for distance: int in range(1, ItemDef.MAX_WALL_WIDTH + 1):
+			var support: Vector2i = shell + along * direction * distance
+			if grid.terrain(support) == SimGrid.Terrain.WALL:
+				if lowered.has(support):
+					return true
+				break
+	return false
 
 
 ## At the end of an interior face towards `side`: another segment meeting it
@@ -376,6 +433,49 @@ static func hung_transform(grid: SimGrid, anchor: Vector3i, width: int) -> Trans
 	return Transform3D(basis, centre)
 
 
+## Exterior wrappers face out; their measured back rests on the actual shell.
+## Geometry is translated, never stretched to fit a wall or an opening.
+static func exterior_transform(grid: SimGrid, anchor: Vector3i, width: int, box: AABB) -> Transform3D:
+	if grid == null:
+		return Transform3D.IDENTITY
+	var into: Vector2i = WallFaces.step(anchor)
+	var right: Vector2i = WallFaces.along(anchor)
+	var inward: Vector3 = Vector3(into.x, 0.0, into.y)
+	var basis: Basis = Basis(Vector3.UP, atan2(float(into.x), float(into.y)))
+	var at: Vector3 = GridMath.cell_to_world(WallFaces.cell(anchor)) + inward * GridMath.CELL_SIZE * 0.5 \
+		+ Vector3(right.x, 0.0, right.y) * GridMath.CELL_SIZE * float(maxi(width, 1) - 1) * 0.5
+	var bottom: float = HUNG_FALLBACK_HEIGHT
+	var outset: float = FACE_GAP
+	match ExteriorSupport.band(anchor):
+		ExteriorSupport.Band.CANOPY:
+			bottom = ArtScale.EXTERIOR_CANOPY_BOTTOM
+		ExteriorSupport.Band.HEADER:
+			bottom = ArtScale.EXTERIOR_HEADER_BOTTOM
+		ExteriorSupport.Band.SILL:
+			bottom = maxf(0.0, minf(ArtScale.EXTERIOR_SILL_BOTTOM,
+				WallSegmentView.window_opening().position.y - box.size.y - FACE_GAP))
+		ExteriorSupport.Band.LIGHTS:
+			bottom = ArtScale.EXTERIOR_LIGHTS_BOTTOM
+			outset += ArtScale.EXTERIOR_LIGHTS_OUTSET
+	at += Vector3.UP * bottom - inward * outset
+	return Transform3D(basis, at - basis * Vector3(box.get_center().x, box.position.y, box.end.z))
+
+
+## Existing wide wall models may occupy one facade face. Fit the whole model
+## uniformly before positioning; authored pieces that already fit stay unchanged.
+static func fit_exterior(node: ItemVisual, width: int) -> void:
+	var box: AABB = node.get_aabb()
+	if box.size.x <= 0.0:
+		return
+	var available: float = GridMath.CELL_SIZE * float(maxi(width, 1))
+	var fit: float = minf(1.0, available / box.size.x)
+	if fit >= 1.0:
+		return
+	var part: Node3D = node.prop if node.prop != null else node.fallback
+	if part != null:
+		part.scale *= fit
+
+
 ## Scales a window item's model down to fit the window opening (WINDOW_FILL).
 static func fit_window(node: ItemVisual) -> void:
 	var box: AABB = node.get_aabb()
@@ -427,10 +527,23 @@ func _rebuild_items() -> void:
 			item_nodes[anchor] = node
 			if hung.window:
 				fit_window(node)
+			elif hung.mount == ItemDef.WallMount.EXTERIOR:
+				fit_exterior(node, hung.width)
 			add_child(node)
-			_add_glow(node, definition, hung.window)
-		node.transform = window_transform(anchor, node.get_aabb()) if hung.window \
-			else hung_transform(_grid, anchor, hung.width)
+			_add_glow(node, definition, hung.window, hung.mount == ItemDef.WallMount.EXTERIOR)
+		if hung.mount == ItemDef.WallMount.EXTERIOR:
+			node.transform = exterior_transform(_grid, anchor, hung.width, node.get_aabb())
+		else:
+			node.transform = window_transform(anchor, node.get_aabb()) if hung.window \
+				else hung_transform(_grid, anchor, hung.width)
+		node.set_restaurant_name(_restaurant_name)
+		if hung.mount == ItemDef.WallMount.EXTERIOR and definition.paintable:
+			var swatch: StringName = _hung_preview_swatch if anchor == _hung_preview_anchor else hung.swatch_id
+			if swatch.is_empty():
+				node.clear_paint()
+			else:
+				var colour: Color = _colour(swatch, definition.placeholder_color)
+				node.apply_paint(colour, _flat(colour))
 		if hung.window:
 			place_window_glow(node, anchor)
 	_sync_item_visibility()
@@ -439,7 +552,7 @@ func _rebuild_items() -> void:
 ## The soft light of a glowing item, a child of its visual so it hides with
 ## it (a lowered wall, a held item). Build ghosts get none. A window item's
 ## stands in the middle of the opening, behind its front.
-static func _add_glow(node: ItemVisual, definition: ItemDef, window: bool = false) -> void:
+static func _add_glow(node: ItemVisual, definition: ItemDef, window: bool = false, exterior: bool = false) -> void:
 	if definition.glow_color.a <= 0.0:
 		return
 	var box: AABB = node.get_aabb()
@@ -466,6 +579,9 @@ static func _add_glow(node: ItemVisual, definition: ItemDef, window: bool = fals
 	# The wrapper's front is -Z; its back (+Z) is on the face.
 	var centre: Vector3 = box.get_center() if box.size != Vector3.ZERO else Vector3(0.0, HUNG_FALLBACK_HEIGHT, 0.0)
 	light.position = Vector3(centre.x, centre.y, box.position.z - GLOW_OUT)
+	if exterior:
+		# An outside accent never lights through the thick shell into the room.
+		light.omni_range = WINDOW_GLOW_RANGE
 
 
 ## One flat glow square for a window item: a cell-sized quad just above the
@@ -548,7 +664,17 @@ func item_hit(ray_origin: Vector3, ray_direction: Vector3) -> Dictionary:
 		var node: ItemVisual = item_nodes[anchor]
 		if not node.is_visible_in_tree():
 			continue
-		var distance: float = ShopView.ray_box_distance(ray_origin, ray_direction, node.global_transform * node.get_aabb())
+		var hung: WallDecor.Hung = _decor.item(anchor) if _decor != null else null
+		var distance: float = -1.0
+		if hung != null and hung.mount == ItemDef.WallMount.EXTERIOR:
+			for mesh: MeshInstance3D in node.rendered_meshes():
+				if mesh.mesh == null or not mesh.is_visible_in_tree():
+					continue
+				var hit: float = ShopView.ray_box_distance(ray_origin, ray_direction, mesh.global_transform * mesh.get_aabb())
+				if hit >= 0.0 and (distance < 0.0 or hit < distance):
+					distance = hit
+		else:
+			distance = ShopView.ray_box_distance(ray_origin, ray_direction, node.global_transform * node.get_aabb())
 		if distance >= 0.0 and (best.is_empty() or distance < float(best["distance"])):
 			best = {"anchor": anchor, "distance": distance}
 	return best

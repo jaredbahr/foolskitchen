@@ -21,7 +21,7 @@ jobs:
   capture:
     name: Default, cutaway and inspection views
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     env:
       LIBGL_ALWAYS_SOFTWARE: 'true'
       GALLIUM_DRIVER: llvmpipe
@@ -71,6 +71,7 @@ jobs:
         run: |
           set -euo pipefail
           bash tools/screenshot.sh --out=screens/visual-review/default --frames=60 --speed=1
+          bash tools/screenshot.sh --out=screens/visual-review/street-front --street-front-review --speed=0 --frames=60
           for quarter in 0 1 2 3; do
             bash tools/screenshot.sh "--out=screens/visual-review/quarter-$quarter" --frames=60 --speed=1 "--quarter=$quarter"
           done
@@ -94,6 +95,7 @@ jobs:
           bash tools/screenshot.sh --out=screens/visual-review/lease-expand --lease-review=expand --speed=0 --frames=12
           bash tools/screenshot.sh --out=screens/visual-review/staff --staff --speed=0 --frames=12
           bash tools/screenshot.sh --scene=res://tools/food_review.tscn --out=screens/visual-review/food-service --speed=0 --frames=12,90
+          bash tools/screenshot.sh --out=screens/visual-review/icons-review --scene=res://tools/icons_review.tscn --speed=0 --frames=12,60
           OWNER_REVIEW_STAGE=picker bash tools/screenshot.sh --out=screens/visual-review/owner-picker --scene=res://tools/owner_character_review.tscn --speed=0 --frames=60
           OWNER_REVIEW_STAGE=shop bash tools/screenshot.sh --out=screens/visual-review/owner-character --scene=res://tools/owner_character_review.tscn --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/report --report --open --fast=100 --speed=0 --frames=60
@@ -103,6 +105,8 @@ jobs:
           SEAFOOD_REVIEW_STAGE=floor bash tools/screenshot.sh --out=screens/visual-review/seafood-floor --scene=res://tools/seafood_review.tscn --speed=0 --frames=30
           SEAFOOD_REVIEW_STAGE=menu bash tools/screenshot.sh --out=screens/visual-review/seafood-menu --scene=res://tools/seafood_review.tscn --speed=0 --frames=30
           bash tools/screenshot.sh --out=screens/visual-review/walls-review --walls-review --speed=0 --frames=12,30
+          bash tools/screenshot.sh --out=screens/visual-review/weather-sunny --weather-review=sunny --menu --speed=0 --frames=60
+          bash tools/screenshot.sh --out=screens/visual-review/weather-rain --weather-review=rain --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/restroom-review --restroom-review --speed=0 --frames=12,30
           bash tools/screenshot.sh --out=screens/visual-review/hygiene-review --scene=res://tools/hygiene_review.tscn --speed=0 --frames=12,60 --quarter=2
           OPENINGS_REVIEW_STAGE=before bash tools/screenshot.sh --out=screens/visual-review/openings-before --scene=res://tools/openings_review.tscn --speed=0 --frames=30 --quarter=2
