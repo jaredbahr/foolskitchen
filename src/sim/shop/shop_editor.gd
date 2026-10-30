@@ -768,6 +768,8 @@ static func _decode_walls(data: Dictionary, preview: SimGrid, content: ContentDB
 	layout.wall_style_id = WallStyleDef.DEFAULT_ID
 	layout.wall_finishes = {}
 	layout.wall_items = {}
+	layout.wall_item_mounts = {}
+	layout.wall_item_swatches = {}
 	var limit: int = preview.size.x * preview.size.y * 4
 	var saved: Variant = data.get("wall_finishes", [])
 	if saved is Array:
@@ -789,20 +791,33 @@ static func _decode_walls(data: Dictionary, preview: SimGrid, content: ContentDB
 	var staged: WallDecor = WallDecor.new()
 	for value: Variant in (hung as Array).slice(0, limit):
 		var row: Array = value if value is Array else []
-		var anchor: Vector3i = _saved_face(row, 4)
+		var extended: bool = row.size() == 6
+		var anchor: Vector3i = _saved_face(row, 6 if extended else 4, ExteriorSupport.MAX_KEY_DIRECTION if extended else 3)
 		if anchor == WallFaces.NO_FACE or not (row[3] is String or row[3] is StringName):
 			continue
 		var definition: ItemDef = content.item(StringName(row[3]))
 		if definition == null or not staged.problem(preview, definition, anchor).is_empty():
 			continue
-		staged.add(definition.id, anchor, definition.footprint.x, definition.hangs_in_window())
+		var mount: ItemDef.WallMount = WallDecor.mount_for(preview, definition, anchor)
+		var swatch: StringName = &""
+		if extended:
+			if not _integer_in(row[4], ItemDef.WallMount.EXTERIOR, ItemDef.WallMount.EXTERIOR) \
+					or mount != ItemDef.WallMount.EXTERIOR or not (row[5] is String or row[5] is StringName):
+				continue
+			swatch = _saved_swatch(row[5], content) if definition.paintable else &""
+		elif mount == ItemDef.WallMount.EXTERIOR:
+			continue
+		staged.add(definition.id, anchor, definition.footprint.x, mount == ItemDef.WallMount.WINDOW, mount, swatch)
 		layout.wall_items[anchor] = definition.id
+		if extended:
+			layout.wall_item_mounts[anchor] = mount
+			layout.wall_item_swatches[anchor] = swatch
 
 
 ## A saved face key [x, y, dir, ...] of `size` values, or NO_FACE.
-static func _saved_face(row: Array, size: int) -> Vector3i:
+static func _saved_face(row: Array, size: int, max_direction: int = 3) -> Vector3i:
 	if row.size() != size or not _integer_in(row[0], -100000, 100000) or not _integer_in(row[1], -100000, 100000) \
-			or not _integer_in(row[2], 0, 3):
+			or not _integer_in(row[2], 0, max_direction):
 		return WallFaces.NO_FACE
 	return Vector3i(int(row[0]), int(row[1]), int(row[2]))
 
@@ -831,7 +846,12 @@ func _load_walls(layout: ShopLayout) -> void:
 	for anchor: Vector3i in anchors:
 		var definition: ItemDef = _content.item(layout.wall_items[anchor])
 		if definition != null and decor.problem(grid, definition, anchor).is_empty():
-			decor.add(definition.id, anchor, definition.footprint.x, definition.hangs_in_window())
+			var mount: ItemDef.WallMount = WallDecor.mount_for(grid, definition, anchor)
+			if layout.wall_item_mounts.get(anchor, mount) != mount:
+				continue
+			var swatch: StringName = _saved_swatch(layout.wall_item_swatches.get(anchor, &""), _content) \
+				if definition.paintable and mount == ItemDef.WallMount.EXTERIOR else &""
+			decor.add(definition.id, anchor, definition.footprint.x, mount == ItemDef.WallMount.WINDOW, mount, swatch)
 
 
 ## Invalid or removed palette entries revert to authored colours on old saves.
@@ -1363,7 +1383,7 @@ func hung_definition(anchor: Vector3i) -> ItemDef:
 
 
 ## Read-only check of hanging a new `def_id` from `anchor` (its leftmost face).
-func check_hang(def_id: StringName, anchor: Vector3i, exact: Exact = null) -> EditCheck:
+func check_hang(def_id: StringName, anchor: Vector3i, exact: Exact = null, swatch_id: StringName = &"") -> EditCheck:
 	if not can_edit():
 		return EditCheck.new(false, DECOR_CLOSED)
 	if _content == null:
@@ -1376,6 +1396,10 @@ func check_hang(def_id: StringName, anchor: Vector3i, exact: Exact = null) -> Ed
 	var why: String = decor.problem(_sim.world.grid, definition, anchor)
 	if not why.is_empty():
 		return EditCheck.new(false, why)
+	if not swatch_id.is_empty() and (not definition.paintable \
+			or WallDecor.mount_for(_sim.world.grid, definition, anchor) != ItemDef.WallMount.EXTERIOR \
+			or _content.swatch(swatch_id) == null):
+		return EditCheck.new(false, "Choose an available colour for this outside item")
 	if _books == null or not _books.is_ready():
 		return EditCheck.new(false, "The shop books are unavailable")
 	var charge: int = definition.price if exact == null else -exact.amount
@@ -1387,14 +1411,15 @@ func check_hang(def_id: StringName, anchor: Vector3i, exact: Exact = null) -> Ed
 
 
 ## Hangs a checked item; one ledger line like furniture (undo/redo: `exact`).
-func hang(def_id: StringName, anchor: Vector3i, exact: Exact = null) -> bool:
-	var check: EditCheck = check_hang(def_id, anchor, exact)
+func hang(def_id: StringName, anchor: Vector3i, exact: Exact = null, swatch_id: StringName = &"") -> bool:
+	var check: EditCheck = check_hang(def_id, anchor, exact, swatch_id)
 	last_check = check
 	if not check.ok:
 		return false
 	var definition: ItemDef = _content.item(def_id)
 	_applying = true
-	var added: bool = decor.add(definition.id, anchor, definition.footprint.x, definition.hangs_in_window())
+	var mount: ItemDef.WallMount = WallDecor.mount_for(_sim.world.grid, definition, anchor)
+	var added: bool = decor.add(definition.id, anchor, definition.footprint.x, mount == ItemDef.WallMount.WINDOW, mount, swatch_id)
 	if added:
 		last_anchor = anchor
 		_record_decor(-definition.price if exact == null else exact.amount, exact)
@@ -1428,9 +1453,10 @@ func rehang(anchor: Vector3i, to_anchor: Vector3i, exact: Exact = null) -> bool:
 	var hung: WallDecor.Hung = decor.item(anchor)
 	_applying = true
 	decor.remove(anchor)
-	var added: bool = decor.add(hung.def_id, to_anchor, hung.width, hung.window)
+	var mount: ItemDef.WallMount = WallDecor.mount_for(_sim.world.grid, _content.item(hung.def_id), to_anchor)
+	var added: bool = decor.add(hung.def_id, to_anchor, hung.width, mount == ItemDef.WallMount.WINDOW, mount, hung.swatch_id)
 	if not added:
-		decor.add(hung.def_id, anchor, hung.width, hung.window)
+		decor.add(hung.def_id, anchor, hung.width, hung.window, hung.mount, hung.swatch_id)
 	_applying = false
 	last_anchor = to_anchor if added else anchor
 	last_cash_change = 0
@@ -1469,6 +1495,20 @@ func take_down(anchor: Vector3i, exact: Exact = null) -> int:
 	return refund
 
 
+## Free body paint for the new paintable outside items; old inside/window
+## decor still ignores Paint. History records it only in an editable phase.
+func paint_hung(anchor: Vector3i, swatch_id: StringName) -> bool:
+	if not _can_paint(swatch_id):
+		return false
+	var hung: WallDecor.Hung = decor.item(anchor)
+	var definition: ItemDef = hung_definition(anchor)
+	if hung == null or definition == null or hung.mount != ItemDef.WallMount.EXTERIOR or not definition.paintable:
+		return false
+	last_check = EditCheck.new(true)
+	last_cash_change = 0
+	return decor.set_swatch(anchor, swatch_id)
+
+
 ## Hung decor guests can see (D26), as definitions: items on the wall faces of
 ## the guest rooms, for the vibe (decor charm and themes, like floor decor).
 func decor_vibe_items() -> Array[ItemDef]:
@@ -1478,7 +1518,7 @@ func decor_vibe_items() -> Array[ItemDef]:
 	var guests: Dictionary[Vector2i, bool] = _guest_cells(_sim.world.grid)
 	for anchor: Vector3i in decor.anchors():
 		var definition: ItemDef = hung_definition(anchor)
-		if definition == null:
+		if definition == null or decor.item(anchor).mount == ItemDef.WallMount.EXTERIOR:
 			continue
 		var seen: bool = guests.is_empty()
 		for face: Vector3i in decor.item(anchor).faces():

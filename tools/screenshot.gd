@@ -48,6 +48,8 @@ extends SceneTree
 ##             holding a striped wallpaper drag (--quarter turns the camera for both frames)
 ##   --restroom-review --speed=0 --frames=12,30 shows the complete two-toilet
 ##             restroom, then a close wall-fitting view with the owner for scale.
+##   --street-front-review --speed=0 --frames=60 shows a purchased, finished
+##             street front in daylight, with its live name and owner for scale.
 ##   --blueprints=selection|ghost|stamped --speed=0 --frames=30
 ##             FK-045 original table + rug selection, rotated ghost, or stamped pair.
 ## Ordinary captures record real moods, markers and seeds without a fixture.
@@ -61,6 +63,7 @@ const FLOORS_REVIEW: Script = preload("res://tools/floors_review.gd")
 const RESTROOM_REVIEW: Script = preload("res://tools/restroom_review.gd")
 const BLUEPRINT_REVIEW: Script = preload("res://tools/blueprint_review.gd")
 const WALLS_REVIEW: Script = preload("res://tools/walls_review.gd")
+const STREET_FRONT_REVIEW: Script = preload("res://tools/street_front_review.gd")
 ## --floors-review: the frame Build > Floors opens with its drag held.
 const FLOORS_DRAG_FRAME: int = 20
 const LOAN_TERMS: LoanTuning = preload("res://data/balance/loans.tres")
@@ -156,6 +159,8 @@ var _floors_review: bool = false
 var _restroom_review: bool = false
 var _walls_review: bool = false
 var _walls_fixture: Dictionary = {}
+var _street_front_review: bool = false
+var _street_front_fixture: Dictionary = {}
 var _floors_fixture: Dictionary = {}
 var _build_pointer: Vector2 = Vector2.ZERO
 var _selected_agent_id: int = -1
@@ -167,6 +172,11 @@ var _finish_requested: bool = false
 
 func _initialize() -> void:
 	OS.add_logger(_errors)
+	var street_options: Dictionary = STREET_FRONT_REVIEW.options(OS.get_cmdline_user_args())
+	if not String(street_options["error"]).is_empty():
+		_fail_capture(street_options["error"])
+		return
+	_street_front_review = street_options["enabled"]
 	var lease_options: Dictionary = LEASE_REVIEW.options(OS.get_cmdline_user_args())
 	if not String(lease_options["error"]).is_empty():
 		_fail_capture(lease_options["error"])
@@ -261,6 +271,8 @@ func _initialize() -> void:
 			_paint = true
 		elif arg == "--restroom-review":
 			_restroom_review = true
+		elif arg == "--street-front-review":
+			_street_front_review = true
 		elif arg.begins_with("--walls-review"):
 			if arg != "--walls-review":
 				_fail_capture("--walls-review does not accept a value")
@@ -398,7 +410,7 @@ func _initialize() -> void:
 	if "use_saves" in _main:
 		_main.set("use_saves", false)
 	if (not _lease_mode.is_empty() or _report_requested or _milestone_review or _diner_review or _expand == "shop" or not _rooms.is_empty() \
-			or _floors_review or _walls_review or _restroom_review or _assign_owner) \
+			or _floors_review or _walls_review or _restroom_review or _street_front_review or _assign_owner) \
 			and "new_game_seed_override" in _main:
 		_main.set("new_game_seed_override", 1)
 	root.add_child(_main)
@@ -1844,6 +1856,11 @@ func _process(_delta: float) -> bool:
 			if not refusal.is_empty():
 				_fail_capture(refusal)
 				return true
+		if _street_front_review:
+			_street_front_fixture = STREET_FRONT_REVIEW.prepare(_main, root)
+			if not String(_street_front_fixture.get("error", "")).is_empty():
+				_fail_capture(String(_street_front_fixture["error"]))
+				return true
 		if _walls_review:
 			_walls_fixture = WALLS_REVIEW.prepare(_main, root)
 			if not String(_walls_fixture.get("error", "")).is_empty():
@@ -1860,6 +1877,8 @@ func _process(_delta: float) -> bool:
 		_configure_camera()
 		if _restroom_review:
 			RESTROOM_REVIEW.focus(_main, false)
+		if _street_front_review:
+			STREET_FRONT_REVIEW.focus(_main)
 		if not _rooms.is_empty() and _quarter < 0:
 			(_main.get_node("ShopView") as ShopView).set_wall_mode(ShopView.WallMode.UP)
 		if _rooms == "tool" or _rooms == "refused":
@@ -2921,6 +2940,11 @@ func _capture() -> void:
 	if _walls_review and not _walls_review_valid(walls_state):
 		_fail_capture("walls review did not match its fixture or Wall finish tool state: " + JSON.stringify(walls_state))
 		return
+	var street_front_state: Dictionary = STREET_FRONT_REVIEW.evidence(_main, root) if _street_front_review else {}
+	if _street_front_review and not STREET_FRONT_REVIEW.valid(street_front_state):
+		_fail_capture("street-front review did not show its purchased items, finish, live name and owner: " \
+			+ JSON.stringify(street_front_state))
+		return
 	var floors_state: Dictionary = FLOORS_REVIEW.evidence(_main) if _floors_review else {}
 	if _floors_review and not _floors_capture_valid(floors_state):
 		_fail_capture("floors review did not match its fixture or Floors tool state: " + JSON.stringify(floors_state))
@@ -3152,6 +3176,8 @@ func _capture() -> void:
 		metadata["blueprints"] = {"fixture": _blueprint_fixture, "state": blueprint_state}
 	if _walls_review:
 		metadata["walls_review"] = {"fixture": _walls_fixture, "state": walls_state}
+	if _street_front_review:
+		metadata["street_front_review"] = {"fixture": _street_front_fixture, "state": street_front_state}
 	if _diner_review:
 		metadata["diner_review"] = {"fixture": _diner_fixture, "state": diner_state}
 		if _capture_frame == 90:

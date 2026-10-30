@@ -99,16 +99,28 @@ static func does(definition: ItemDef) -> String:
 			return "Hangs on a restroom wall" if definition.hangs_on_wall() else RESTROOM_TEXT.get(definition.station_type, "Restroom fixture")
 	if definition.placement_layer == ItemDef.PlacementLayer.FLOOR_DECOR:
 		return "Rug: tables and chairs can stand on it"
+	if definition.wall_mount == ItemDef.WallMount.EXTERIOR:
+		return "Hangs outside on the street front, %d tiles wide" % definition.footprint.x
 	if definition.hangs_in_window():
-		return "Hangs in a window, facing the street"
+		return "Hangs in a window or on the street front" if definition.allow_exterior else "Hangs in a window, facing the street"
 	if definition.hangs_on_wall():
 		return "Hangs on a wall, %d tiles wide" % definition.footprint.x
 	return "Decoration"
 
 
+## A target hint for the existing hanging tool; player words stay centralized.
+static func hang_pointer_text(definition: ItemDef) -> String:
+	var target: String = "wall"
+	if definition.wall_mount == ItemDef.WallMount.EXTERIOR:
+		target = "street-facing outside wall"
+	elif definition.hangs_in_window():
+		target = "window or street-facing outside wall" if definition.allow_exterior else "window"
+	return "Point at a %s to hang %s" % [target, definition.display_name]
+
+
 ## Ordinary decor and hung restroom accents earn charm; floor fixtures do not.
 static func charm_text(definition: ItemDef) -> String:
-	if definition == null or definition.charm <= 0:
+	if definition == null or definition.charm <= 0 or definition.wall_mount == ItemDef.WallMount.EXTERIOR:
 		return ""
 	if definition.category != ItemDef.Category.DECOR and not (
 			definition.category == ItemDef.Category.RESTROOM and definition.hangs_on_wall()):
