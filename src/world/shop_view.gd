@@ -89,6 +89,7 @@ var item_nodes: Dictionary[int, ItemVisual] = {}
 var agent_nodes: Dictionary[int, Node3D] = {}
 var dirt_nodes: Dictionary[Vector2i, MeshInstance3D] = {}
 var mood_nodes: Dictionary[int, GuestMoodIndicator] = {}
+var regular_nodes: Dictionary[int, RegularGuestIndicator] = {}
 var _mood_states: Dictionary[int, int] = {}
 var _mood_bands: Dictionary[int, int] = {}
 var _materials: Dictionary[Color, StandardMaterial3D] = {}
@@ -146,6 +147,7 @@ func show_world(value: SimWorld) -> void:
 	var previous_world: SimWorld = world
 	_disconnect_grid()
 	mood_nodes.clear()
+	regular_nodes.clear()
 	_mood_states.clear()
 	_mood_bands.clear()
 	for child: Node in get_children():
@@ -447,6 +449,52 @@ func wall_face_at_ray(ray_origin: Vector3, ray_direction: Vector3, floor_fallbac
 		if face != WallFaces.NO_FACE:
 			best = _face_hit(face, point, nearest)
 	return best
+
+
+## Sell picks visible segment geometry, including outer fittings and headers.
+## Shell walls occlude it; floor thresholds and separate previews/selections
+## are not targets. Paint keeps the independent face picker above.
+func wall_segment_at_ray(ray_origin: Vector3, ray_direction: Vector3) -> Dictionary:
+	if world == null or ray_direction.y >= -0.00001 or segment_view == null:
+		return {}
+	var nearest: float = -ray_origin.y / ray_direction.y
+	var best: Dictionary = {}
+	for wall: MeshInstance3D in _wall_nodes.values():
+		var distance: float = _wall_mesh_distance(wall, ray_origin, ray_direction)
+		if distance < nearest:
+			nearest = distance
+			best = {}
+		var top: MeshInstance3D = wall.get_node_or_null("Top") as MeshInstance3D
+		if top != null and top.has_meta(&"segment_edge"):
+			var cap_distance: float = _wall_mesh_distance(top, ray_origin, ray_direction)
+			if cap_distance < INF and cap_distance <= nearest:
+				nearest = cap_distance
+				best = {"edge": top.get_meta(&"segment_edge"), "distance": cap_distance}
+	for root: Node in segment_view.get_children():
+		if not root.has_meta(&"edge") and not root.has_meta(&"segment_edge"):
+			continue
+		var distance: float = _wall_mesh_distance(root, ray_origin, ray_direction)
+		if distance < INF and distance <= nearest:
+			nearest = distance
+			best = {"edge": root.get_meta(&"edge", root.get_meta(&"segment_edge", SimGrid.NO_EDGE)),
+				"distance": distance}
+	return best
+
+
+## Descend into kit props rather than filling their window/door openings
+## with one combined bounds box. Segment roots own only rendered fittings.
+func _wall_mesh_distance(node: Node, ray_origin: Vector3, ray_direction: Vector3) -> float:
+	if node.name == &"Floor" or (node is Node3D and not (node as Node3D).is_visible_in_tree()):
+		return INF
+	var nearest: float = INF
+	var mesh: MeshInstance3D = node as MeshInstance3D
+	if mesh != null and mesh.mesh != null:
+		var distance: float = _ray_box_distance(ray_origin, ray_direction, mesh.global_transform * mesh.get_aabb())
+		if distance >= 0.0:
+			nearest = distance
+	for child: Node in node.get_children():
+		nearest = minf(nearest, _wall_mesh_distance(child, ray_origin, ray_direction))
+	return nearest
 
 
 ## The outside window under a ray, as {face (its window slot, see
@@ -974,7 +1022,14 @@ func _apply_wall_heights() -> void:
 		var body: float = sill if _shell_windows.has(cell) and not lowered else height
 		(wall.mesh as BoxMesh).size.y = body
 		wall.position.y = body * 0.5
-		(wall.get_node("Top") as MeshInstance3D).position.y = height - body * 0.5 + 0.005
+		var top: MeshInstance3D = wall.get_node("Top") as MeshInstance3D
+		top.position.y = height - body * 0.5 + 0.005
+		# This visible cap completes the window header, even though its box
+		# belongs to the retained thick shell. Sell still changes only its segment.
+		if _shell_windows.has(cell):
+			top.set_meta(&"segment_edge", SimGrid.edge_between(cell, cell - _shell_windows[cell]))
+		elif top.has_meta(&"segment_edge"):
+			top.remove_meta(&"segment_edge")
 	if segment_view != null and world != null:
 		segment_view.set_materials(_current_wall_material(), _material(wall_top_color), floor_mesh.material_override)
 		segment_view.rebuild(world.grid, wall_mode != WallMode.UP, lowered_wall_cells())
@@ -1118,6 +1173,7 @@ func _sync_agents() -> void:
 				# _ready runs on add_child; record the real look before rig creation.
 				(created as PersonView).owner_model = owner_model
 				(created as PersonView).set_look(frame.role, frame.id, frame.customer_type)
+				_set_regular_look(agent, created as PersonView)
 			created.name = "Agent%d" % agent.id
 			created.set_meta("agent_id", agent.id)
 			created.set_meta(&"courier", agent is CourierAgent)
@@ -1134,6 +1190,7 @@ func _sync_agents() -> void:
 		var node: Node3D = agent_nodes[agent.id]
 		var ready_person: bool = false
 		if node is PersonView:
+			_set_regular_look(agent, node as PersonView)
 			if frame.role == &"owner" and (node as PersonView).owner_model != owner_model:
 				(node as PersonView).set_owner_model(owner_model)
 			ready_person = AgentPresentationController.apply(frame, node as PersonView, playback_speed)
@@ -1150,6 +1207,7 @@ func _sync_agents() -> void:
 		_show_held_crates(node, frame, ready_person)
 		_apply_fade(node, frame.fade)
 		_update_guest_mood(agent, node, frame)
+		_update_regular(agent, node, frame)
 	for id: int in agent_nodes.keys():
 		if not alive.has(id):
 			if not _keep_as_ghost(id):
@@ -1455,6 +1513,7 @@ func _legacy_person_fallback(agent: SimAgent) -> MeshInstance3D:
 
 
 func _remove_agent_visual(id: int) -> void:
+	_remove_regular_icon(id)
 	_remove_mood_icon(id)
 	_mood_states.erase(id)
 	_mood_bands.erase(id)
@@ -1660,3 +1719,36 @@ func _material(color: Color) -> StandardMaterial3D:
 		material.roughness = 0.9
 		_materials[color] = material
 	return _materials[color]
+
+
+func _set_regular_look(agent: SimAgent, person: PersonView) -> void:
+	var guest: CustomerAgent = agent as CustomerAgent
+	if guest != null and guest.regular_profile != null:
+		person.set_regular_look(guest.regular_profile.model_id, guest.regular_profile.tint_id)
+	else:
+		person.set_regular_look()
+
+
+func _update_regular(agent: SimAgent, body: Node3D, frame: AgentPresentationController.Frame) -> void:
+	var guest: CustomerAgent = agent as CustomerAgent
+	if guest == null or guest.regular_profile == null or frame.hidden:
+		_remove_regular_icon(agent.id)
+		return
+	if not regular_nodes.has(agent.id):
+		var created: RegularGuestIndicator = RegularGuestIndicator.new()
+		body.add_child(created)
+		regular_nodes[agent.id] = created
+	var indicator: RegularGuestIndicator = regular_nodes[agent.id]
+	indicator.position = (frame.head_anchor if frame.anchors_ready else Vector3.UP * 0.8) + Vector3.UP * 0.32
+	indicator.present(guest.regular_profile.display_name, guest.regular_profile.greeting,
+		world.now - guest.regular_arrival_tick < 2 * SimClock.TICKS_PER_SECOND)
+
+
+func _remove_regular_icon(id: int) -> void:
+	if not regular_nodes.has(id):
+		return
+	var indicator: RegularGuestIndicator = regular_nodes[id]
+	if is_instance_valid(indicator):
+		indicator.get_parent().remove_child(indicator)
+		indicator.free()
+	regular_nodes.erase(id)

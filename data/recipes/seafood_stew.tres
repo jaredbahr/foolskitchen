@@ -1,0 +1,34 @@
+[gd_resource type="Resource" script_class="RecipeDef" load_steps=11 format=3]
+
+[ext_resource type="Script" path="res://src/sim/content/recipe_def.gd" id="1_recipe"]
+[ext_resource type="Script" path="res://src/sim/content/ingredient_def.gd" id="2_ingredient"]
+[ext_resource type="Script" path="res://src/sim/content/recipe_step.gd" id="3_step"]
+[ext_resource type="Resource" path="res://data/ingredients/fish_fillet.tres" id="ingredient_fish_fillet"]
+[ext_resource type="Resource" path="res://data/ingredients/shrimp.tres" id="ingredient_shrimp"]
+[ext_resource type="Resource" path="res://data/ingredients/mussels.tres" id="ingredient_mussels"]
+[ext_resource type="Resource" path="res://data/ingredients/potato.tres" id="ingredient_potato"]
+[ext_resource type="Resource" path="res://data/ingredients/soup_stock.tres" id="ingredient_soup_stock"]
+
+[sub_resource type="Resource" id="Step_0"]
+script = ExtResource("3_step")
+station_type = &"prep_counter"
+duration_ticks = 50
+
+[sub_resource type="Resource" id="Step_1"]
+script = ExtResource("3_step")
+station_type = &"stove"
+duration_ticks = 120
+
+[resource]
+script = ExtResource("1_recipe")
+id = &"seafood_stew"
+display_name = "Seafood stew"
+section = 1
+unlock_from = &"shrimp_skewer"
+ingredients = Array[ExtResource("2_ingredient")]([ExtResource("ingredient_fish_fillet"), ExtResource("ingredient_shrimp"), ExtResource("ingredient_mussels"), ExtResource("ingredient_potato"), ExtResource("ingredient_soup_stock")])
+steps = Array[ExtResource("3_step")]([SubResource("Step_0"), SubResource("Step_1")])
+base_quality = 0.75
+standard_price = 22
+unlock_tier = 1
+unlock_level = 5
+theme_tags = Array[StringName]([&"seafood"])

@@ -53,6 +53,12 @@ var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 ## Opt-in catalogue. An unconfigured sim retains the exact Regular arrival stream.
 var customer_types: CustomerTypeCatalogue = null
 var customer_level: int = 1
+## Optional persistent cast. A null cast preserves all earlier simulation callers.
+var regulars: RegularCast = null
+## The session supplies a lazy named stream; no stream is created before promotion.
+var regular_rng_provider: Callable
+var regular_recipe_labels: Dictionary[StringName, String] = {}
+var _regular_cohort_index: int = 0
 var served_today: int = 0
 var lost_today: int = 0
 var leave_reasons_today: Dictionary[StringName, int] = {}
@@ -209,6 +215,9 @@ func assign_owner(mode: StringName) -> bool:
 
 ## Clears daily reports and redraws the first arrival; the caller opens the clock.
 func start_day() -> void:
+	_regular_cohort_index = 0
+	if regulars != null:
+		regulars.begin_day(world.clock.day)
 	served_today = 0
 	lost_today = 0
 	leave_reasons_today.clear()
@@ -602,7 +611,6 @@ func _install_customer(entry: Vector2i, random: RandomNumberGenerator,
 	var customer: CustomerAgent = CustomerAgent.new(self, random)
 	if kind != null:
 		customer.configure_type(kind)
-	customer.set_visit_kind(visit, visit_tuning)
 	customer.cell = entry
 	# Only a real service arrival can dirty the floor or consume its stream.
 	if cleanliness != null and world.clock.phase == SimClock.Phase.OPEN:
@@ -621,10 +629,75 @@ func _install_customer(entry: Vector2i, random: RandomNumberGenerator,
 		customer.vibe_review_bonus = _vibe_result.raw_review_bonus
 		if _vibe_result.score > 0.0 and not _vibe_result.active_theme.is_empty():
 			customer.vibe_theme_label = _vibe_result.theme_label
+	if publish:
+		visit = _configure_regular_customer(customer, visit)
+	# Set the duration once, after a returning regular has chosen their usual.
+	customer.set_visit_kind(visit, visit_tuning)
 	world.add_agent(customer)
 	if publish:
 		_publish_customer_arrival(customer)
 	return customer
+
+
+## A due cast member takes the place of an ordinary solo Regular arrival;
+## neither the arrival clock nor its existing draws are changed.
+func _configure_regular_customer(customer: CustomerAgent, visit: StringName) -> StringName:
+	if regulars == null or customer.customer_type_id != &"regular" \
+			or world.clock.phase != SimClock.Phase.OPEN:
+		return visit
+	var profile: RegularProfile = regulars.due_regular(world.clock.day)
+	if profile == null:
+		customer.repeat_guest_key = "guest_%d" % (_regular_cohort_index % 16)
+		_regular_cohort_index += 1
+		return visit
+	if not regular_rng_provider.is_valid() or not regulars.mark_arrived(profile,
+			world.clock.day, regular_rng_provider.call() as RandomNumberGenerator):
+		return visit
+	customer.regular_profile = profile
+	customer.display_name = profile.display_name
+	customer.regular_arrival_tick = world.now
+	customer.regular_favourite_label = regular_recipe_labels.get(profile.favourite_dish, "Favourite dish")
+	for recipe: RecipeDef in menu:
+		if recipe.id == profile.favourite_dish:
+			customer.regular_favourite_available = true
+			customer.regular_favourite_label = recipe.display_name
+			# A listed usual keeps its menu bonus, but must not replace a
+			# stocked visit with an order type that cannot currently be cooked.
+			if available_menu().has(recipe):
+				visit = recipe.order_type
+			break
+	customer.vibe_review_bonus += regulars.menu_happiness(profile, customer.regular_favourite_available)
+	return visit
+
+
+func regular_tip(customer: CustomerAgent, order: Order) -> int:
+	if regulars == null or customer == null or customer.regular_profile == null or order == null:
+		return 0
+	var amount: float = order.price * regulars.tip_rate(customer.regular_profile,
+		customer.regular_favourite_available)
+	# Cash is whole units. Rounding the favourite bonus up keeps a modest
+	# drink's extra tip visible instead of rounding it away on every visit.
+	return maxi(0, ceili(amount) if customer.regular_favourite_available else roundi(amount))
+
+
+func _record_regular_visit(customer: CustomerAgent) -> void:
+	if regulars == null:
+		return
+	var recipe: StringName = customer.order.recipe_id if customer.order != null else &""
+	var quality: float = customer.order.quality if customer.order != null else 0.0
+	var waited: float = maxf(float(customer._queue_wait) / maxi(1, customer.queue_patience),
+		float(customer._food_wait) / maxi(1, customer.food_patience))
+	if customer.regular_profile != null:
+		var enjoyed: Array[StringName] = []
+		if customer.paid and not recipe.is_empty():
+			enjoyed.append(recipe)
+		regulars.finish_visit(customer.regular_profile, world.clock.day, enjoyed,
+			customer.seat_cell, customer.paid, quality, waited, customer.regular_favourite_available)
+	elif not customer.repeat_guest_key.is_empty():
+		regulars.observe_visit(customer.repeat_guest_key, customer.customer_type_id,
+			world.clock.day, review_book.average(), _vibe_result.score, recipe,
+			customer.seat_cell, quality, customer.paid and waited < regulars.tuning.long_wait_fraction,
+			regular_rng_provider)
 
 
 func _publish_customer_arrival(customer: CustomerAgent) -> void:
@@ -747,6 +820,7 @@ func record_departure(customer: CustomerAgent) -> void:
 		return
 	_departed[customer.id] = true
 	customer.departure_recorded = true
+	_record_regular_visit(customer)
 	if cleanliness != null and customer.paid and customer.seat_cell != SimGrid.NO_CELL:
 		if cleanliness.try_spawn_at_departed_seat(customer.seat_cell) and clean_tasks != null:
 			clean_tasks.sync_spots()

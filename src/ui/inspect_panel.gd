@@ -166,6 +166,8 @@ func _reset_content(keep_owner_controls: bool = false) -> void:
 
 
 func _agent_title(agent: SimAgent) -> String:
+	if agent is CustomerAgent and (agent as CustomerAgent).regular_profile != null:
+		return (agent as CustomerAgent).regular_profile.display_name + " (Regular)"
 	if agent is OwnerAgent:
 		return OwnerText.inspect_title(_owner_appearance.display_name, agent.id)
 	var role_name: String = "Guest" if agent is CustomerAgent else String(agent.role).capitalize()
@@ -265,6 +267,8 @@ func _show_guest(guest: CustomerAgent) -> void:
 	if int(guest.state) >= 0 and int(guest.state) < GUEST_STATES.size():
 		state_name = GUEST_STATES[int(guest.state)]
 	_details.text = "Type: %s\nState: %s" % [guest.customer_type_name, state_name]
+	if guest.regular_profile != null:
+		_details.text += "\n" + RegularText.inspection(guest.regular_profile, guest.regular_favourite_label)
 	for order: Order in [guest.order, guest.extra_order]:
 		if order != null and order.state == Order.State.DELIVERED and order.quality_breakdown != null:
 			_details.text += "\nServed quality: " + order.quality_breakdown.explanation()

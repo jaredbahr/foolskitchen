@@ -136,6 +136,7 @@ var _report_requested: bool = false
 var _build: String = ""
 var _paint: bool = false
 var _walls: String = ""
+var _walls_initial: Dictionary[Vector3i, int] = {}
 var _expand: String = ""
 var _blueprint_profile: String = ""
 var _blueprint_fixture: Dictionary = {}
@@ -2449,6 +2450,9 @@ func _configure_walls() -> void:
 	if world == null or rig == null or world.clock.phase != SimClock.Phase.MORNING or not _main.has_method("shop_walls"):
 		_fail_capture("--walls requires the production morning wall APIs")
 		return
+	_walls_initial.clear()
+	for edge: Vector3i in world.grid.segment_edges():
+		_walls_initial[edge] = world.grid.segment(edge)
 	if _walls == "room" and not bool(_main.call("shop_walls", walls_fixture())):
 		_fail_capture("the walls fixture was refused: " + (_main.get("shop_editor") as ShopEditor).last_check.why)
 		return
@@ -2489,15 +2493,17 @@ func _walls_capture_valid() -> bool:
 	var preview: BuildPreview = _main.get_node_or_null("BuildPreview") as BuildPreview
 	if world == null or mode == null or preview == null:
 		return false
+	var expected: Dictionary[Vector3i, int] = _walls_initial.duplicate()
 	if _walls == "place":
-		return mode.state == BuildMode.State.WALLS and mode.wall_dragging and mode.current_check.ok \
-			and mode.current_check.changes.size() == 4 and preview.wall_ghosts.size() == 4 \
-			and not world.grid.has_segments()
-	var fixture: Dictionary[Vector3i, int] = walls_fixture()
-	for edge: Vector3i in fixture:
-		if world.grid.segment(edge) != fixture[edge]:
+		if mode.state != BuildMode.State.WALLS or not mode.wall_dragging or not mode.current_check.ok \
+				or mode.current_check.changes.size() != 4 or preview.wall_ghosts.size() != 4:
 			return false
-	return world.grid.segment_edges().size() == fixture.size()
+	else:
+		expected.merge(walls_fixture(), true)
+	for edge: Vector3i in expected:
+		if world.grid.segment(edge) != expected[edge]:
+			return false
+	return world.grid.segment_edges().size() == expected.size()
 
 
 ## FK-080 shop: an L of new floor (an east wing beside the dining room and a

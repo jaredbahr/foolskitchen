@@ -465,7 +465,7 @@ static func build_hint(painting: bool, state: int, tool: int) -> String:
 		BuildMode.State.BUY:
 			return "Click Place  |  , . or R Rotate  |  Esc or Right-click Cancel"
 		BuildMode.State.WALLS:
-			return "Drag along grid lines to build  |  Click a wall to change it  |  Del Remove  |  Esc Cancel"
+			return CatalogueText.WALLS_KEYS
 		BuildMode.State.FLOOR:
 			return "Drag onto the lot to add floor  |  Shift-drag Remove added floor  |  Esc Cancel"
 		BuildMode.State.ROOMS:

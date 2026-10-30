@@ -279,9 +279,13 @@ func test_null_rebind_removes_old_buttons_and_can_repopulate_before_ready() -> v
 	_content.definitions = [_definition(&"fixture", "Fixture", 10)]
 	_catalogue.bind_content(_content)
 	var button: Button = _catalogue.item_buttons[&"fixture"]
+	var remove: Button = _catalogue.wall_remove_button
+	assert_not_null(remove)
 	_catalogue.bind_content(null)
 	_catalogue.bind_content(null)
 	assert_false(is_instance_valid(button))
+	assert_false(is_instance_valid(remove), "null content also releases the synthetic Remove card")
+	assert_null(_catalogue.wall_remove_button)
 	assert_true(_catalogue.ordered_ids().is_empty())
 	assert_eq(_scroll().get_node("Content/Items").get_child_count(), 0)
 	_catalogue.bind_content(_content)

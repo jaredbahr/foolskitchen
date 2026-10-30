@@ -43,6 +43,8 @@ var milestones_reached: Array[Dictionary] = []
 ## Player-facing "Low stock" sentences (StockAlerts): what ran out today and
 ## when, then ingredients below tomorrow's target or expiring tomorrow.
 var low_stock: Array[String] = []
+## Named regular visit, promotion and farewell notes, already player-facing.
+var regulars_lines: Array[String] = []
 
 
 ## Returns income across all categories in whole currency units.
@@ -131,6 +133,7 @@ func to_dict() -> Dictionary:
 		"owner_tips": owner_tips.duplicate(),
 		"milestones_reached": milestones,
 		"low_stock": low_stock.duplicate(),
+		"regulars_lines": regulars_lines.duplicate(),
 	}
 
 
@@ -185,6 +188,11 @@ static func from_dict(data: Dictionary) -> DayReport:
 		for line: Variant in saved_low_stock:
 			if line is String:
 				report.low_stock.append(line)
+	var saved_regulars: Variant = data.get("regulars_lines", [])
+	if saved_regulars is Array:
+		for line: Variant in saved_regulars:
+			if line is String:
+				report.regulars_lines.append(line)
 	return report
 
 
