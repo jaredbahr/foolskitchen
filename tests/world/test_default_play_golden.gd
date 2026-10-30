@@ -12,7 +12,7 @@ extends TestCase
 const MainScene: PackedScene = preload("res://src/world/main.tscn")
 const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
 ## Day -> [served, lost, sales, closing cash, customers RNG state, reviews RNG state].
-const EXPECTED: Array = [[18, 3, 166, 308, "-3340690172320019757", "759273845251939063"], [17, 2, 155, 330, "1894290104310310707", "1950031383951538676"]]
+const EXPECTED: Array = [[19, 2, 175, 347, "-3340690172320019757", "-3285513833473108564"], [19, 0, 172, 376, "1894290104310310707", "4855308092454611495"]]
 
 var _main: Node
 var _layout_backup: Dictionary = {}

@@ -22,7 +22,7 @@ func test_tomato_melt_loads_from_real_content_and_waits_for_owner_level_two() ->
 	for step: RecipeStep in recipe.steps:
 		station_types.append(step.station_type)
 	assert_eq(station_types, [&"prep_counter", &"stove"] as Array[StringName])
-	assert_eq(recipe.total_ticks(), 85)
+	assert_eq(recipe.total_ticks(), 60)
 	# The food menu alone: drinks (FK-083) would fill the level-1 dish limit.
 	var food: Array[RecipeDef] = []
 	for definition: RecipeDef in content.recipes():
