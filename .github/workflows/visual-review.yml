@@ -86,7 +86,9 @@ jobs:
           bash tools/screenshot.sh --out=screens/visual-review/catalogue-rustic --catalogue-review=rustic --speed=0 --frames=90,120
           bash tools/screenshot.sh --out=screens/visual-review/catalogue-modern --catalogue-review=modern --speed=0 --frames=90,120
           bash tools/screenshot.sh --out=screens/visual-review/diner-review --diner-review --speed=0 --frames=12,90
-          bash tools/screenshot.sh --out=screens/visual-review/menu --menu --speed=0 --frames=12
+          bash tools/screenshot.sh --out=screens/visual-review/menu --menu --lease-review=offer --speed=0 --frames=12
+          bash tools/screenshot.sh --out=screens/visual-review/lease-short --menu --lease-review=short --speed=0 --frames=12
+          bash tools/screenshot.sh --out=screens/visual-review/lease-expand --lease-review=expand --speed=0 --frames=12
           bash tools/screenshot.sh --out=screens/visual-review/staff --staff --speed=0 --frames=12
           bash tools/screenshot.sh --out=screens/visual-review/first-day-guide --scene=res://tools/hints_review.tscn --speed=0 --frames=30
           OWNER_REVIEW_STAGE=picker bash tools/screenshot.sh --out=screens/visual-review/owner-picker --scene=res://tools/owner_character_review.tscn --speed=0 --frames=60
@@ -95,6 +97,7 @@ jobs:
           bash tools/screenshot.sh --out=screens/visual-review/paint --paint --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/floors-review --floors-review --speed=0 --frames=12,30
           bash tools/screenshot.sh --out=screens/visual-review/walls-review --walls-review --speed=0 --frames=12,30
+          bash tools/screenshot.sh --out=screens/visual-review/restroom-review --restroom-review --speed=0 --frames=12,30
           bash tools/screenshot.sh --out=screens/visual-review/hygiene-review --scene=res://tools/hygiene_review.tscn --speed=0 --frames=12,60 --quarter=2
           OPENINGS_REVIEW_STAGE=before bash tools/screenshot.sh --out=screens/visual-review/openings-before --scene=res://tools/openings_review.tscn --speed=0 --frames=30 --quarter=2
           OPENINGS_REVIEW_STAGE=after bash tools/screenshot.sh --out=screens/visual-review/openings-after --scene=res://tools/openings_review.tscn --speed=0 --frames=30 --quarter=2
