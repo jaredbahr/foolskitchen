@@ -30,18 +30,18 @@ const DEFAULT_ID: StringName = &"planks"
 @export var theme_tags: Array[StringName] = []
 ## Owner level that unlocks laying this floor; 1 is the starting set.
 @export var unlock_level: int = 1
-## Property tier that unlocks it (only tier 1 exists yet).
+## Property tier that unlocks it.
 @export var unlock_tier: int = 1
 
 
-## Whether an owner at `level` may lay this floor (tier 1 only for now).
-func unlocked(level: int) -> bool:
-	return unlock_tier <= 1 and unlock_level <= level
+## Whether an owner at `level` may lay this floor.
+func unlocked(level: int, tier: int = 1) -> bool:
+	return unlock_tier <= tier and unlock_level <= level
 
 
 ## Player words for why this floor is locked, or "" when it is not.
-func locked_reason(level: int) -> String:
-	if unlock_tier > 1:
+func locked_reason(level: int, tier: int = 1) -> String:
+	if unlock_tier > tier:
 		return "Unlocks with a bigger restaurant"
 	if unlock_level > level:
 		return "Unlocks at level %d" % unlock_level
