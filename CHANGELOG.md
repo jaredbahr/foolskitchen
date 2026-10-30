@@ -109,6 +109,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- The roadmap's Codex queue is reset: finish open PRs, then the thin divider fix, the outside of the shop (street front, weather, neighbourhood, patio, curb appeal) and sound. (#245)
 - Workers mark a PR ready once their own checks and captures are done; director review and decisions happen on the ready PR, and open PRs are finished before new issues start. (#225)
 - Verify keyboard navigation through both grid settings before closing Settings in review captures. (#214)
 - The roadmap puts the expand-over-a-window bug first in the worker queue. (#213)
