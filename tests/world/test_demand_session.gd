@@ -468,16 +468,17 @@ func _reject_after_demand(_value: Dictionary) -> bool:
 	return false
 
 
-# Actual complete default Main day 1, seed 1, observed from immutable commit
+# Actual complete default Main day 1, seed 1. Rebaselined for the director's
+# easier-economy tuning (faster cooking, rent $30); originally observed from
 # 8fbe652826c34333e6b7b51f63ede116901582f9. Full signed raw tick/event
 # evidence is retained outside the project in issue247/day1-trace.
-const DAY_ONE_EVENTS_SHA256: String = "89306e8b88e412022c872117b73ce9a2b89a2df664790a4b48256b9599c1ba7a"
+const DAY_ONE_EVENTS_SHA256: String = "ed3f9e0b517932eb92ef6ca358a8689d93648cdbb5f3466a16cbba4b2d981f93"
 const DAY_ONE_STREAMS: Dictionary = {
 	"master_seed": "1",
 	"rngs": {
 		"cleanliness": {
 			"seed": "2378578401",
-			"state": "4204680873151375338"
+			"state": "6137073932875255692"
 		},
 		"customers": {
 			"seed": "232337077",
@@ -489,7 +490,7 @@ const DAY_ONE_STREAMS: Dictionary = {
 		},
 		"reviews": {
 			"seed": "7543029",
-			"state": "7930172525103179214"
+			"state": "-7929524535254594193"
 		},
 		"weather": {
 			"seed": "2145409216",
@@ -507,11 +508,11 @@ func test_actual_default_day_one_events_private_seeds_and_every_named_stream_mat
 	assert_eq(first["streams"], DAY_ONE_STREAMS, "every created named stream, including absent extra streams")
 	assert_eq(first["events_sha256"], DAY_ONE_EVENTS_SHA256,
 		"actual arrival/payment/departure ticks and signed private RNG seeds/states match immutable8fbe")
-	assert_eq(first["tick"], 4500)
-	assert_eq(first["served"], 17)
-	assert_eq(first["lost"], 1)
-	assert_eq(first["happy"], 17)
-	assert_almost_eq(float(first["renown"]), 17.0, 0.00001, "new progress accrues only after unchanged service")
+	assert_eq(first["tick"], 4343)
+	assert_eq(first["served"], 18)
+	assert_eq(first["lost"], 0)
+	assert_eq(first["happy"], 18)
+	assert_almost_eq(float(first["renown"]), 18.0, 0.00001, "new progress accrues only after unchanged service")
 
 
 func _played_day_one() -> Dictionary:

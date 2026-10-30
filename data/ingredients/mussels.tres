@@ -7,5 +7,5 @@ script = ExtResource("1_script")
 id = &"mussels"
 display_name = "Mussels"
 unit_cost = 3
-shelf_life_days = 2
+shelf_life_days = 3
 storage = 1

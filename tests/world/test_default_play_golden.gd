@@ -8,15 +8,16 @@ extends TestCase
 ## migration, service and balance-probe coverage. FK-120 also freezes demand
 ## at 1.0 in this detached historical context; actual default Day 1 draw-for-draw,
 ## later demand growth and replay have separate test_demand_session coverage.
-## FK-121 also selects the original manual stock targets and $40 rent before
-## ordinary morning planning. Current automatic targets and cash have separate
-## forecast, accounting and balance coverage; this recorded oracle stays literal.
+## FK-121 selects genuine manual stock targets before ordinary planning.
+## Director #257 intentionally rebaselined EXPECTED for faster cooking and
+## $30 rent; those current data values apply here unchanged. Automatic targets
+## have separate forecast, accounting and balance coverage.
 
 const MainScene: PackedScene = preload("res://src/world/main.tscn")
 const MANUAL_MAIN: GDScript = preload("res://tests/fixtures/manual_restock_main.gd")
 const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
 ## Day -> [served, lost, sales, closing cash, customers RNG state, reviews RNG state].
-const EXPECTED: Array = [[18, 3, 166, 308, "-3340690172320019757", "759273845251939063"], [17, 2, 155, 330, "1894290104310310707", "1950031383951538676"]]
+const EXPECTED: Array = [[19, 2, 175, 347, "-3340690172320019757", "-3285513833473108564"], [19, 0, 172, 376, "1894290104310310707", "4855308092454611495"]]
 
 var _main: Node
 var _layout_backup: Dictionary = {}
@@ -54,7 +55,6 @@ func after_each() -> void:
 func test_two_default_days_match_main_draw_for_draw() -> void:
 	_main = MainScene.instantiate()
 	_main.set_script(MANUAL_MAIN)
-	_main.set("historical_rent", 40)
 	_main.set("use_saves", false)
 	# Keep this pre-demand compatibility oracle's original two-day assertions.
 	# A per-session Resource prevents any change to shipped authored tuning.
