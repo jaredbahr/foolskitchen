@@ -108,6 +108,7 @@ var _entries: Array[Vector2i] = []
 ## Derived dining links. These are rebuilt from definitions, never saved.
 var _dining_tables: Dictionary[Vector2i, int] = {}
 var _dining_furnishings: Dictionary[Vector2i, int] = {}
+var _dining_plan: DiningSeats.Plan = null
 
 
 ## A new grid is all FLOOR (handy for tests); from_ascii() sets real terrain.
@@ -472,6 +473,8 @@ func relocate_def(item_id: int, origin: Vector2i, quarter_turns: int) -> bool:
 			or not definition.placement_layer_valid() or not definition.blocking_cells_valid() \
 			or definition.placement_layer != placed.placement_layer:
 		return false
+	if definition.category == ItemDef.Category.TABLE and dining_group_has_reservations(item_id):
+		return false
 	for cell: Vector2i in placed.work_cells + placed.seat_cells:
 		if placed.reserved_by(cell) != -1:
 			return false
@@ -575,6 +578,83 @@ func dining_table_id(seat_cell: Vector2i) -> int:
 ## Returns 0 when the cell is not part of a valid dining link.
 func dining_furnishing_id(seat_cell: Vector2i) -> int:
 	return _dining_furnishings.get(seat_cell, 0)
+
+
+## Logical components are cached; physical seat ownership remains independent.
+func dining_group_id(member_table_id: int) -> int:
+	return _dining_plan.member_groups.get(member_table_id, 0) if _dining_plan != null else 0
+
+
+func dining_group(member_table_id: int) -> DiningSeats.Group:
+	var group: DiningSeats.Group = _dining_plan.group_for(member_table_id) if _dining_plan != null else null
+	return group.copy() if group != null else null
+
+
+func dining_group_members(member_table_id: int) -> Array[int]:
+	var group: DiningSeats.Group = dining_group(member_table_id)
+	return group.member_ids if group != null else [] as Array[int]
+
+
+func dining_group_seats(member_table_id: int) -> Array[Vector2i]:
+	var group: DiningSeats.Group = dining_group(member_table_id)
+	return group.seat_cells if group != null else [] as Array[Vector2i]
+
+
+## Includes work holds, such as the server currently bussing one member.
+func dining_group_has_reservations(member_table_id: int) -> bool:
+	for table_id: int in dining_group_members(member_table_id):
+		var table: PlacedItem = item(table_id)
+		if table == null:
+			continue
+		for cell: Vector2i in table.work_cells + table.seat_cells:
+			if table.reserved_by(cell) != -1:
+				return true
+	return false
+
+
+## Untyped legacy fixtures have their own seats rather than definition links.
+func dining_owner_id(member_table_id: int, seat: Vector2i) -> int:
+	var members: Array[int] = dining_group_members(member_table_id)
+	var owner: int = dining_table_id(seat)
+	if owner > 0 and members.has(owner):
+		return owner
+	if members.size() == 1:
+		var table: PlacedItem = item(members[0])
+		if table != null and not table.def is ItemDef and table.seat_cells.has(seat):
+			return table.id
+	return 0
+
+
+## Validate the complete group booking before acquiring any physical hold.
+func reserve_dining_seats(member_table_id: int, seats: Array[Vector2i], agent_ids: Array[int]) -> bool:
+	if seats.is_empty() or seats.size() != agent_ids.size() or dining_group_id(member_table_id) == 0:
+		return false
+	var owners: Array[PlacedItem] = []
+	var previous: Array[int] = []
+	var cells_seen: Dictionary[Vector2i, bool] = {}
+	var agents_seen: Dictionary[int, bool] = {}
+	for index: int in seats.size():
+		var seat: Vector2i = seats[index]
+		var agent_id: int = agent_ids[index]
+		var owner: PlacedItem = item(dining_owner_id(member_table_id, seat))
+		if agent_id <= 0 or cells_seen.has(seat) or agents_seen.has(agent_id) \
+				or owner == null or owner.removed or not owner.seat_cells.has(seat) or not is_walkable(seat):
+			return false
+		var held: int = owner.reserved_by(seat)
+		if held != -1 and held != agent_id:
+			return false
+		owners.append(owner)
+		previous.append(held)
+		cells_seen[seat] = true
+		agents_seen[agent_id] = true
+	for index: int in seats.size():
+		if owners[index].reserve(seats[index], agent_ids[index]):
+			continue
+		for acquired: int in range(index):
+			if previous[acquired] == -1:
+				owners[acquired].release(seats[acquired], agent_ids[acquired])
+		return false
+	return true
 
 
 ## All items, ordered by id (placement order), so iteration is deterministic.
@@ -720,6 +800,7 @@ func _refresh_dining_seats() -> void:
 		furnishings[link.cell] = link.furnishing_item_id
 	_dining_tables = tables
 	_dining_furnishings = furnishings
+	_dining_plan = plan
 
 
 func _dining_furnishing_reserved(furnishing_id: int) -> bool:
@@ -1087,6 +1168,7 @@ func set_rooms(changes: Dictionary[Vector2i, int]) -> bool:
 	touched.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return a.y < b.y or (a.y == b.y and a.x < b.x))
 	for cell: Vector2i in touched:
 		_refresh_cell(cell)
+	_refresh_dining_seats()
 	_version += 1
 	cells_changed.emit(touched)
 	return true

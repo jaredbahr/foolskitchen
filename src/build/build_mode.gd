@@ -99,6 +99,12 @@ var _editor: ShopEditor
 var _world: SimWorld
 var _content: ContentDB
 var _grid: SimGrid
+## Capacity ignores temporary holds/dirt; only topology or the selected group
+## invalidates the cached path queries. Live reservation names are not cached.
+var _dining_cache_grid: SimGrid
+var _dining_cache_version: int = -1
+var _dining_cache_group: int = 0
+var _dining_cache_capacity: int = 0
 var _clock: SimClock
 var _phase: int = -1
 var _move_command: Callable
@@ -124,6 +130,9 @@ func bind_session(editor: ShopEditor, world: SimWorld, content: ContentDB,
 	_world = world
 	_content = content
 	_grid = world.grid if world != null else null
+	_dining_cache_grid = null
+	_dining_cache_version = -1
+	_dining_cache_group = 0
 	_clock = world.clock if world != null else null
 	_phase = _clock.phase if _clock != null else -1
 	_move_command = move_command
@@ -480,7 +489,7 @@ func hover_summary() -> String:
 		Tool.EYEDROPPER:
 			return "Place another %s" % definition.display_name if definition.catalogue_visible \
 				and definition.category != ItemDef.Category.DOOR else "%s isn't sold in the catalogue" % definition.display_name
-	return ""
+	return dining_summary() if tool == Tool.HAND else ""
 
 
 func _recheck_hover() -> void:
@@ -545,6 +554,26 @@ func warning_ids() -> Array[int]:
 ## A ghost, wall run or floor drag is being checked against the live shop.
 func _proposal_active() -> bool:
 	return has_ghost() or state == State.WALLS or state == State.FLOOR or state == State.ROOMS
+
+
+## The ghost describes its proposed shop; the hand describes the live one.
+func dining_summary() -> String:
+	if state in [State.BUY, State.MOVE]:
+		if not current_check.ok or current_check.dining_capacity < 0:
+			return ""
+		return CatalogueText.dining_capacity(current_check.dining_capacity, current_check.dining_joined)
+	if state != State.IDLE or tool != Tool.HAND or _grid == null or hover_item_id < 0:
+		return ""
+	var table: PlacedItem = _grid.item(hover_item_id)
+	var group: DiningSeats.Group = _grid.dining_group(hover_item_id)
+	if table == null or group == null:
+		return ""
+	if _dining_cache_grid != _grid or _dining_cache_version != _grid.version or _dining_cache_group != group.id:
+		_dining_cache_grid = _grid
+		_dining_cache_version = _grid.version
+		_dining_cache_group = group.id
+		_dining_cache_capacity = DiningSeats.usable_cells(_grid, table).size()
+	return CatalogueText.dining_capacity(_dining_cache_capacity, group.is_joined())
 
 
 func seat_warnings() -> Dictionary[int, String]:

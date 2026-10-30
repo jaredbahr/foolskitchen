@@ -709,7 +709,7 @@ func _publish_customer_arrival(customer: CustomerAgent) -> void:
 ## Singletons keep add_customer's exact path, including its signal order.
 func add_party(entry: Vector2i, randoms: Array[RandomNumberGenerator], kind: CustomerType = null,
 		visit: StringName = RecipeDef.FOOD) -> Party:
-	if randoms.is_empty() or randoms.size() > 4 or (kind != null and not kind.is_valid()):
+	if randoms.is_empty() or randoms.size() > Party.MAX_SIZE or (kind != null and not kind.is_valid()):
 		return null
 	for random: RandomNumberGenerator in randoms:
 		if random == null:
