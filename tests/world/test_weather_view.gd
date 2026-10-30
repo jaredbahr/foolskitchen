@@ -95,8 +95,13 @@ func test_hud_day_weather_group_and_morning_forecast_fit_both_windows_and_all_ui
 			assert_eq(weather.text, "Rain")
 			assert_true(weather.is_visible_in_tree())
 			assert_true(_root_window.get_visible_rect().grow(1.0).encloses((hud.get_node("Top") as Control).get_global_rect()))
-			assert_almost_eq(day.get_global_rect().position.y, weather.get_global_rect().position.y, 1.0,
-				"day and weather stay in the same explicit HUD group")
+			var day_rect: Rect2 = day.get_global_rect()
+			var weather_rect: Rect2 = weather.get_global_rect()
+			assert_true(day_rect.size.y > 0.0 and weather_rect.size.y > 0.0)
+			assert_true(minf(day_rect.end.y, weather_rect.end.y) > maxf(day_rect.position.y, weather_rect.position.y),
+				"day and weather share a positive vertical HUD band")
+			assert_almost_eq(day_rect.get_center().y, weather_rect.get_center().y, 1.0,
+				"day and the taller weather badge stay vertically centered together")
 			assert_true(weather.get_global_rect().position.x >= day.get_global_rect().end.x - 0.5)
 			var icon: TextureRect = weather.get_node("ThemeIcon") as TextureRect
 			assert_true(icon.visible)

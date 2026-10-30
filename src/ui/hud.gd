@@ -201,8 +201,25 @@ func _render_weather() -> void:
 	var width: float = 0.0
 	for kind: int in [WeatherState.Kind.SUNNY, WeatherState.Kind.CLOUDY, WeatherState.Kind.RAIN]:
 		width = maxf(width, font.get_string_size(WeatherText.name_for(kind), HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x)
-	var style: StyleBox = label.get_theme_stylebox("normal")
+	# A compact badge keeps the forecast beside Day without displacing the
+	# existing finance/action groups. Its icon stays the full top-bar size.
+	var style: StyleBox = (label.get_meta(&"icon_base_style") as StyleBox).duplicate() as StyleBox
+	style.set_content_margin(SIDE_LEFT, 0.0)
+	style.set_content_margin(SIDE_RIGHT, 0.0)
+	style.set_content_margin(SIDE_TOP, float(IconCatalogue.TOP_BAR_SIZE) + 2.0)
+	style.set_content_margin(SIDE_BOTTOM, 0.0)
+	label.add_theme_stylebox_override("normal", style)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.custom_minimum_size.x = width + style.get_minimum_size().x
+	var icon: TextureRect = label.get_node("ThemeIcon") as TextureRect
+	icon.anchor_left = 0.5
+	icon.anchor_right = 0.5
+	icon.anchor_top = 0.0
+	icon.anchor_bottom = 0.0
+	icon.offset_left = -float(IconCatalogue.TOP_BAR_SIZE) * 0.5
+	icon.offset_right = float(IconCatalogue.TOP_BAR_SIZE) * 0.5
+	icon.offset_top = 0.0
+	icon.offset_bottom = float(IconCatalogue.TOP_BAR_SIZE)
 
 
 ## Main supplies the rolling score and sample count; the HUD only presents it.
@@ -399,6 +416,15 @@ func _style_header() -> void:
 			IconStyle.configure_button(button, roles[String(button.name)], label, button.tooltip_text,
 				IconCatalogue.TOP_BAR_SIZE, button == _settings_button or String(button.name) in ["Speed0", "Stock"])
 		IconStyle.compact_button(button)
+		if String(button.name) in ["Speed1", "Speed2", "Speed4", "Build"]:
+			# Preserve native icons, words and 46px targets while making room
+			# for the weather badge; only the horizontal padding changes.
+			button.custom_minimum_size.x = maxf(button.custom_minimum_size.x, 46.0)
+			for state: StringName in [&"normal", &"hover", &"pressed", &"hover_pressed", &"disabled"]:
+				var compact: StyleBox = button.get_theme_stylebox(state).duplicate() as StyleBox
+				compact.set_content_margin(SIDE_LEFT, 1.0)
+				compact.set_content_margin(SIDE_RIGHT, 1.0)
+				button.add_theme_stylebox_override(state, compact)
 	IconStyle.decorate_label(_reputation_label, &"reputation", IconCatalogue.TOP_BAR_SIZE)
 	# Reuse the warm theme's existing cream, ink and accent for the warning chip.
 	var header_theme: Theme = (get_node("Top") as Control).theme

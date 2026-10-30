@@ -696,7 +696,7 @@ func _assert_one_row_when_native_content_fits() -> void:
 	# packing result. Icons may legitimately require another row even at 100%.
 	var required_width: float = 24.0 * 2.0
 	var visible_count: int = 0
-	for name: String in ["Day", "Time", "Phase", "Speed0", "Speed1", "Speed2", "Speed4", "Cash",
+	for name: String in ["Day", "Weather", "Time", "Phase", "Speed0", "Speed1", "Speed2", "Speed4", "Cash",
 			"Reputation", "OwnerProgress", "Plates", "Walls", "Build", "Paint", "Context", "Menu", "Stock", "Staff", "Settings"]:
 		var control: Control = _control(name)
 		if control.visible:
@@ -712,7 +712,7 @@ func _assert_one_row_when_native_content_fits() -> void:
 	var previous_end: float = first.position.x
 	# Labels shrink to their text height and center within the native flow line.
 	# Check a shared row band and order rather than requiring equal top edges.
-	for name: String in ["Day", "Time", "Phase", "Speed0", "Speed1", "Speed2", "Speed4", "Cash",
+	for name: String in ["Day", "Weather", "Time", "Phase", "Speed0", "Speed1", "Speed2", "Speed4", "Cash",
 			"Reputation", "OwnerProgress", "Plates", "Walls", "Build", "Paint", "Context", "Menu", "Stock", "Staff", "Settings"]:
 		var rect: Rect2 = _control(name).get_global_rect()
 		assert_true(rect.position.x >= previous_end - 0.01, "a fitting row keeps " + name + " in left-to-right group order")
