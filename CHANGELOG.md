@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- New shops get short, optional hints through their first two mornings; skip them at any time or show the guide again from Settings. (#238)
 - See meals on the pass, in servers' hands or trays and on guests' tables. Plates follow a rotated pass and stay on round tabletops. Dirty plates stay until bussing, collected plates stack by the working sink, and cooking stoves and fryers give off a little steam. Food and drinks use their matching Kenney models without changing service or balance. (#236)
 - Decorate the street front with wall finishes, coloured awnings, flower boxes, string lights and a sign showing your restaurant's name; hang the OPEN sign outside too. (#250)
 - Staff now has a chef hat icon, and Paint uses a matching brush icon with its usual tooltip. (#237)

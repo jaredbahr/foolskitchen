@@ -2304,19 +2304,25 @@ func _close_settings_with_keyboard() -> void:
 	_settings_key(KEY_ENTER, false)
 
 
-## Follow the native focus order through both new grid choices, without jumping
-## directly to Close or changing either preference.
+## Follow native focus through both grid choices and the optional guide action,
+## without jumping directly to Close or changing any preference or guide state.
 static func settings_tab_to_close(panel: SettingsPanel, window: Window) -> Dictionary:
 	var edge: CheckButton = panel.get_node("%EdgePanToggle") as CheckButton
 	var play: CheckButton = panel.get_node("%PlayGridToggle") as CheckButton
 	var build: CheckButton = panel.get_node("%BuildGridToggle") as CheckButton
 	var close: Button = panel.get_node("%CloseButton") as Button
+	var replay: Button = panel.get_node("%ShowGuideButton") as Button
+	var targets: Array[Control] = [play, build]
+	if replay.is_visible_in_tree():
+		targets.append(replay)
+	targets.append(close)
 	var scroll: ScrollContainer = panel.get_node("Panel/Column/Scroll") as ScrollContainer
 	scroll.ensure_control_visible(edge)
 	edge.grab_focus()
 	var result: Dictionary = {"tab_from_edge_pan": window.gui_get_focus_owner() == edge,
-		"tab_through_grid_controls": true, "tab_to_close": false}
-	for target: Control in [play, build, close]:
+		"tab_through_grid_controls": true, "tab_through_guide_action": not replay.is_visible_in_tree(),
+		"tab_to_close": false}
+	for target: Control in targets:
 		for pressed: bool in [true, false]:
 			var event: InputEventKey = InputEventKey.new()
 			event.keycode = KEY_TAB
@@ -2326,6 +2332,8 @@ static func settings_tab_to_close(panel: SettingsPanel, window: Window) -> Dicti
 		if window.gui_get_focus_owner() != target:
 			result["tab_through_grid_controls"] = false
 			return result
+		if target == replay:
+			result["tab_through_guide_action"] = true
 	result["tab_to_close"] = window.gui_get_focus_owner() == close
 	return result
 
