@@ -49,6 +49,7 @@ var _milestone_heading: Label
 var _milestone_rows: VBoxContainer
 var _nodes_bound: bool = false
 var _report_shown: bool = false
+var regulars_summary: Label
 var vibe_summary: Label
 var _vibe_text: String = ""
 
@@ -103,6 +104,8 @@ func show_report(report: DayReport) -> void:
 		_cleanliness.get_parent().move_child(mishaps, _cleanliness.get_index() + 1)
 	mishaps.text = report.mishaps_text
 	mishaps.visible = not report.mishaps_text.is_empty()
+	regulars_summary.text = "Regulars: " + "; ".join(PackedStringArray(report.regulars_lines))
+	regulars_summary.visible = not report.regulars_lines.is_empty()
 	_fill_reasons(report.leave_reasons)
 	_clear(_low_stock)
 	for line: String in report.low_stock:
@@ -175,6 +178,13 @@ func _bind_nodes() -> void:
 	_milestone_heading = %MilestoneHeading
 	_milestone_rows = %MilestoneRows
 	var content: VBoxContainer = get_node("Panel/Scroll/Content") as VBoxContainer
+	regulars_summary = Label.new()
+	regulars_summary.name = "RegularsSummary"
+	regulars_summary.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	regulars_summary.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	regulars_summary.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	content.add_child(regulars_summary)
+	content.move_child(regulars_summary, _cleanliness.get_index() + 1)
 	vibe_summary = Label.new()
 	vibe_summary.name = "VibeSummary"
 	vibe_summary.size_flags_horizontal = Control.SIZE_EXPAND_FILL

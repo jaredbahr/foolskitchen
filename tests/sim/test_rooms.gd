@@ -213,6 +213,8 @@ func test_rooms_save_and_load() -> void:
 func test_older_saves_infer_the_starter_kitchen() -> void:
 	var snapshot: Dictionary = _editor.to_dict()
 	snapshot["version"] = 3
+	# An untouched legacy shop had full-cell dividers, not the new authored segments.
+	snapshot["walls"] = []
 	snapshot.erase("rooms")
 	var errors: Array[String] = []
 	var layout: ShopLayout = ShopEditor.from_dict(snapshot, LAYOUT, _content, errors)

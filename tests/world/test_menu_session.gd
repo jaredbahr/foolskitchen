@@ -89,8 +89,8 @@ func test_legacy_menu_section_loads_current_choices_with_default_name() -> void:
 func test_menu_edits_wait_for_next_morning_then_reload_without_recipe_mutation() -> void:
 	var first: Node = _start()
 	var settings: MenuSettings = first.get("menu_settings")
-	assert_eq(settings.recipes().size(), 4)
-	assert_eq(settings.enabled_count(), 3, "the fourth recipe is visible but locked")
+	assert_eq(settings.recipes().size(), 8)
+	assert_eq(settings.enabled_count(), 3, "new recipes are visible but locked")
 	var standard: int = (first.get("content") as ContentDB).recipe(&"burger").standard_price
 	var morning_file: String = FileAccess.get_file_as_string(_path())
 	var before_books: Dictionary = Economy.ledger.to_dict()
@@ -473,14 +473,15 @@ func test_cookable_catalog_requires_the_actual_station_definitions() -> void:
 	var authored: ShopLayout = load("res://data/layouts/tier1_hole_in_the_wall.tres") as ShopLayout
 	layout.placements = authored.placements.duplicate()
 	recipes = main.call("_cookable_recipes", layout)
-	assert_eq(recipes.size(), 4)
+	assert_eq(recipes.size(), 8)
 	var content: ContentDB = main.get("content")
 	for index: int in range(layout.placements.size() - 1, -1, -1):
 		if content.item(layout.placements[index].item_id).station_type == &"stove":
 			layout.placements.remove_at(index)
 	recipes = main.call("_cookable_recipes", layout)
-	assert_true(recipes.is_empty(), "all current dishes need their stove step")
-	assert_eq((main.get("menu_settings") as MenuSettings).recipes().size(), 4, "catalog checks do not mutate the live menu")
+	assert_eq(recipes.size(), 1, "only the prep-only maki remains without a stove")
+	assert_eq(recipes[0].id, &"salmon_maki")
+	assert_eq((main.get("menu_settings") as MenuSettings).recipes().size(), 8, "catalog checks do not mutate the live menu")
 
 
 ## Persistence fixtures skip service; the real kitchen/order test above covers it.

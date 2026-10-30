@@ -5,10 +5,24 @@ extends TestCase
 ## Customers RNG remains unchanged in this seed; reviews and service may change.
 
 const MainScene: PackedScene = preload("res://src/world/main.tscn")
+const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
 ## Day -> [served, lost, sales, closing cash, customers RNG state, reviews RNG state].
 const EXPECTED: Array = [[17, 4, 158, 280, "-3340690172320019757", "-3285513833473108564"], [16, 3, 146, 280, "1894290104310310707", "6227064950443097254"]]
 
 var _main: Node
+var _layout_backup: Dictionary = {}
+
+
+func before_each() -> void:
+	# Main owns this preloaded Resource. Scope the historical terrain override to
+	# this test and restore it after freeing Main, including when assertions fail.
+	var layout: ShopLayout = LAYOUT
+	_layout_backup = {"rows": layout.rows.duplicate(), "rooms": layout.room_rows.duplicate(),
+		"walls": layout.wall_segments.duplicate()}
+	var legacy: ShopLayout = LegacyTier1Layout.make()
+	layout.rows = legacy.rows.duplicate()
+	layout.room_rows = legacy.room_rows.duplicate()
+	layout.wall_segments = legacy.wall_segments.duplicate()
 
 
 func after_each() -> void:
@@ -17,6 +31,12 @@ func after_each() -> void:
 			_main.get_parent().remove_child(_main)
 		_main.free()
 	_main = null
+	if not _layout_backup.is_empty():
+		var layout: ShopLayout = LAYOUT
+		layout.rows = _layout_backup["rows"]
+		layout.room_rows = _layout_backup["rooms"]
+		layout.wall_segments = _layout_backup["walls"]
+		_layout_backup.clear()
 	Clock.set_speed(0)
 	Economy.reset(0)
 	GameState.new_run(1)

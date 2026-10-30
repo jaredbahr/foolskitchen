@@ -6,7 +6,7 @@ extends RefCounted
 
 static func names() -> Array[String]:
 	return ["default", "extra_cook", "extra_server", "owner_kitchen", "owner_floor",
-		"trays_2", "trays_4", "extra_cleaner", "expanded_tables", "coffee_shop", "bar", "fryer_coffee"]
+		"trays_2", "trays_4", "extra_cleaner", "expanded_tables", "coffee_shop", "bar", "fryer_coffee", "joined_tables"]
 
 
 static func apply(name: String, main: Node, extra_cook_skill: int = 3) -> bool:
@@ -36,6 +36,8 @@ static func apply(name: String, main: Node, extra_cook_skill: int = 3) -> bool:
 			return main.call("tray_buy", 1) and main.call("tray_buy", 2)
 		"expanded_tables":
 			return _expand_with_tables(main)
+		"joined_tables":
+			return _joined_tables(main)
 		"coffee_shop":
 			return _coffee_shop(main)
 		"bar":
@@ -235,3 +237,32 @@ static func _fryer_coffee(main: Node) -> bool:
 		return false
 	return _finish(main, 11 * 60, 21 * 60, [&"burger", &"grilled_cheese", &"fries", &"coffee"],
 		[&"tea", &"tomato_soup"])
+
+
+## Joined-table fixture: two starter tables joined, plus two real cushioned chairs bought
+## for $20 through normal morning commands. Third table, menu, stock and staff
+## remain as shipped; service pays its ordinary running costs.
+static func _joined_tables(main: Node) -> bool:
+	var sim: RestaurantSim = main.get("sim") as RestaurantSim
+	if sim == null:
+		return false
+	var starts: Array[Vector2i] = [Vector2i(2, 6), Vector2i(6, 6)]
+	var targets: Array[Vector2i] = [Vector2i(3, 6), Vector2i(5, 6)]
+	var ids: Array[int] = []
+	for origin: Vector2i in starts:
+		var found: int = 0
+		for item: PlacedItem in sim.world.grid.items():
+			var definition: ItemDef = item.def as ItemDef
+			if definition != null and definition.id == &"table_2" and item.origin == origin:
+				found = item.id
+		if found == 0:
+			return false
+		ids.append(found)
+	for index: int in ids.size():
+		if not main.call("shop_move", ids[index], targets[index], 1):
+			return false
+	if not main.call("shop_buy", &"chair", Vector2i(4, 5), 2) \
+			or not main.call("shop_buy", &"chair", Vector2i(6, 8), 0):
+		return false
+	return sim.world.grid.dining_group_members(ids[0]) == ids \
+		and DiningSeats.usable_cells(sim.world.grid, sim.world.grid.item(ids[0])).size() == 6

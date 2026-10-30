@@ -8,6 +8,31 @@ extends Node3D
 @export var customer_type: StringName = &"regular"
 @export var owner_model: StringName = OwnerAppearance.DEFAULT_MODEL
 
+const REGULAR_SWATCHES: Dictionary[StringName, SwatchDef] = {
+	&"honey": preload("res://data/swatches/honey.tres"),
+	&"slate_blue": preload("res://data/swatches/slate_blue.tres"),
+	&"sage": preload("res://data/swatches/sage.tres"),
+	&"cream": preload("res://data/swatches/cream.tres"),
+}
+
+## Clothing ramps measured from each kit body-mesh's torso UVs. None is a
+## skin ramp; the separate head mesh always keeps its imported material.
+const REGULAR_CLOTHING_RAMPS: Dictionary[StringName, Rect2i] = {
+	&"character-female-a": Rect2i(480, 256, 32, 128),
+	&"character-female-c": Rect2i(352, 256, 32, 128),
+	&"character-female-d": Rect2i(96, 384, 32, 128),
+	&"character-female-e": Rect2i(288, 384, 32, 128),
+	&"character-female-f": Rect2i(160, 256, 32, 128),
+	&"character-male-a": Rect2i(96, 256, 32, 128),
+	&"character-male-c": Rect2i(352, 256, 32, 128),
+	&"character-male-d": Rect2i(32, 384, 32, 128),
+	&"character-male-e": Rect2i(160, 256, 32, 128),
+	&"character-male-f": Rect2i(96, 256, 32, 128),
+}
+static var _regular_materials: Dictionary[StringName, Material] = {}
+
+var _regular_model: StringName = &""
+var _regular_tint: StringName = &""
 var _model: Node3D
 var _player: AnimationPlayer
 var _skeleton: Skeleton3D
@@ -39,7 +64,8 @@ func set_look(value: StringName, id: int = 0, kind: StringName = &"regular") -> 
 	role = value
 	guest_id = id
 	customer_type = kind
-	var desired_model: StringName = PersonPresentation.model_for(role, guest_id, customer_type, owner_model)
+	var regular: bool = role in [&"customer", &"guest"] and not _regular_model.is_empty()
+	var desired_model: StringName = _regular_model if regular else PersonPresentation.model_for(role, guest_id, customer_type, owner_model)
 	if not _initialized:
 		return desired_model != &""
 	if desired_model == _model_name and _model != null:
@@ -48,7 +74,7 @@ func set_look(value: StringName, id: int = 0, kind: StringName = &"regular") -> 
 	_clear_model()
 	if desired_model == &"":
 		return false
-	var path: String = PersonPresentation.model_path_for(role, guest_id, customer_type, owner_model)
+	var path: String = PersonPresentation.MODEL_DIRECTORY + String(desired_model) + ".glb"
 	if not ResourceLoader.exists(path, "PackedScene"):
 		return false
 	var packed: PackedScene = load(path) as PackedScene
@@ -78,11 +104,54 @@ func set_look(value: StringName, id: int = 0, kind: StringName = &"regular") -> 
 	if PersonPresentation.has_courier_cap(role) and not _attach_to_head(_cap, "CourierCapAttachment"):
 		_clear_model()
 		return false
+	if regular and not _apply_regular_clothing(desired_model):
+		_clear_model()
+		return false
 	_model_name = desired_model
 	var played: bool = _play_requested_clip()
 	if played and _clip == &"sit" and seated_time > 0.0:
 		_player.seek(minf(seated_time, _player.get_animation(&"sit").length), true)
 	return played
+
+
+## Fixed guest appearance survives changing runtime agent IDs. Only a private
+## clothing-colormap copy is tinted; faces, hands and hair keep kit colours.
+func set_regular_look(model: StringName = &"", tint: StringName = &"") -> bool:
+	if not model.is_empty() and (not REGULAR_CLOTHING_RAMPS.has(model) or not REGULAR_SWATCHES.has(tint)):
+		return false
+	if model == _regular_model and tint == _regular_tint:
+		return true
+	_regular_model = model
+	_regular_tint = tint
+	if _initialized:
+		_clear_model()
+		return set_look(role, guest_id, customer_type)
+	return true
+
+
+func regular_tint() -> StringName:
+	return _regular_tint
+
+
+func _apply_regular_clothing(model: StringName) -> bool:
+	var meshes: Array[Node] = _model.find_children("*", "MeshInstance3D", true, false)
+	for node: Node in meshes:
+		var mesh: MeshInstance3D = node as MeshInstance3D
+		if mesh.name != &"body-mesh":
+			continue
+		var key: StringName = StringName(String(model) + ":" + String(_regular_tint))
+		var material: Material = _regular_materials.get(key)
+		if material == null:
+			var recolors: Array[Dictionary] = [{"rect": REGULAR_CLOTHING_RAMPS[model],
+				"color": REGULAR_SWATCHES[_regular_tint].color}]
+			material = _uniform_material(mesh.mesh.surface_get_material(0), recolors)
+			if material == null:
+				return false
+			_regular_materials[key] = material
+		for surface: int in mesh.mesh.get_surface_count():
+			mesh.set_surface_override_material(surface, material)
+		return true
+	return false
 
 
 func set_owner_model(model: StringName) -> bool:

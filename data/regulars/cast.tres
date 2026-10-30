@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="RegularsTuning" format=3]
+
+[ext_resource type="Script" path="res://src/sim/regulars/regulars_tuning.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+min_day = 6
+min_stars = 2.5
+min_vibe = 1.0
+min_satisfied_visits = 2
+cast_cap = 8
+visit_days_min = 2
+visit_days_max = 4
+initial_mood = 0.7
+good_visit_gain = 0.08
+bad_visit_loss = 0.2
+missing_favourite_loss = 0.12
+missing_penalty_after = 2
+leave_below = 0.2
+good_quality = 0.6
+long_wait_fraction = 0.75
+favourite_happiness = 0.08
+base_tip_rate = 0.04
+favourite_tip_rate = 0.04
+names = PackedStringArray("Rosa", "Theo", "Mina", "Jules", "Nora", "Ben", "Ada", "Omar", "Iris", "Felix")
+model_ids = Array[StringName]([&"character-female-a", &"character-male-a", &"character-female-c", &"character-male-c", &"character-female-d", &"character-male-d", &"character-female-e", &"character-male-e", &"character-female-f", &"character-male-f"])
+tint_ids = Array[StringName]([&"honey", &"slate_blue", &"sage", &"cream"])
+greetings = PackedStringArray("The usual!", "Hi again!", "My favourite place.", "Good to be back!")

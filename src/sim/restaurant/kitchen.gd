@@ -88,6 +88,35 @@ func is_table_dirty(table_item_id: int) -> bool:
 	return dirty_tables.has(table_item_id)
 
 
+## Joined seats are unavailable until every physical member has been bused.
+func is_dining_group_dirty(table_item_id: int) -> bool:
+	var sim: RestaurantSim = _restaurant.get_ref() as RestaurantSim
+	if sim == null:
+		return is_table_dirty(table_item_id)
+	var member_ids: Array[int] = sim.world.grid.dining_group_members(table_item_id)
+	if member_ids.is_empty():
+		return is_table_dirty(table_item_id)
+	for member_id: int in member_ids:
+		if is_table_dirty(member_id):
+			return true
+	return false
+
+
+## Return a plate only to its physical owner, then dirty each original member.
+## A booking snapshot survives forced splits/removal; ordinary calls use live groups.
+func mark_dining_group_dirty(table_item_id: int, order_id: int = 0, member_ids: Array[int] = []) -> void:
+	mark_table_dirty(table_item_id, order_id)
+	var sim: RestaurantSim = _restaurant.get_ref() as RestaurantSim
+	if sim == null:
+		return
+	var targets: Array[int] = member_ids
+	if targets.is_empty():
+		targets = sim.world.grid.dining_group_members(table_item_id)
+	for member_id: int in targets:
+		if member_id != table_item_id and sim.world.grid.item(member_id) != null:
+			mark_table_dirty(member_id)
+
+
 ## Reports whether closing cleanup has returned every table to service.
 func is_clean() -> bool:
 	return dirty_tables.is_empty() and (not _plate_cycle_enabled or (_plates.dirty == 0 and _plates.in_use == 0))

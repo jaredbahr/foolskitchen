@@ -187,6 +187,10 @@ func test_wall_refusal_keeps_named_dish_advice_without_weakening_the_work_spot_g
 	var changes: Dictionary[Vector3i, int] = {}
 	for adjacent: Vector2i in [Vector2i(8, 2), Vector2i(9, 1), Vector2i(10, 2)]:
 		changes[SimGrid.edge_between(Vector2i(9, 2), adjacent)] = SimGrid.Segment.WALL
+	# Row 4 is now floor, so the sink can reach the new route around the fryer.
+	# Enclose its actual work cell too, retaining the sink-specific guard.
+	var sink_work: Vector2i = _item(&"sink").work_cells[0]
+	changes[SimGrid.edge_between(sink_work, sink_work + Vector2i.RIGHT)] = SimGrid.Segment.WALL
 	var check: EditCheck = _editor().check_segments(changes)
 	assert_false(check.ok)
 	assert_eq(check.why, WallRules.CUT_SINK)

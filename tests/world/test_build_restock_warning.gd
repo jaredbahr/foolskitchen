@@ -116,11 +116,12 @@ func test_floor_laying_preview_warns_with_its_tile_cost() -> void:
 	assert_true(mode.floors_press(Vector2i(1, 1)))
 	mode.floors_pointer(Vector2i(8, 6))
 	assert_true(mode.current_check.ok, mode.current_check.why)
-	assert_eq(mode.current_check.finishes.size(), 43)
-	assert_eq(mode.current_check.cost, 129)
-	assert_eq(_main.call("build_restock_warning"), "Leaves $88 — tomorrow's restock needs about $93")
+	# The rectangle now includes five reclaimed row-4 floor tiles.
+	assert_eq(mode.current_check.finishes.size(), 48)
+	assert_eq(mode.current_check.cost, 144)
+	assert_eq(_main.call("build_restock_warning"), "Leaves $73 — tomorrow's restock needs about $93")
 	assert_true(mode.floors_release(Vector2i(8, 6)), "the advice never refuses laying the floor")
-	assert_eq(Economy.cash, 217 - 129)
+	assert_eq(Economy.cash, 217 - 144)
 
 
 func test_estimate_tracks_enabled_targets_without_changing_them() -> void:
