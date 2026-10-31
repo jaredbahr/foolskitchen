@@ -97,7 +97,7 @@ an active edit/panel/selection first, or opens Settings when none is active.
   - `SimTask(kind, role, label)`: `priority` 0–3, `timeout_ticks` (default 600), `payload` for the poster's data, and `steps`.
   - `TaskStep`:
     - `go_to_item(item_id, label, seat)` reserves a free work cell (or seat) and walks there.
-    - `go_to_cell(cell, label)`.
+    - `go_to_cell(cell, label)` retains its exact point by default. Ordinary take-order steps also carry candidate service cells and their seat origin: the actual claimant chooses the shortest legal approach when GO starts, retaining the posted point for scoring. Current neighbour, seat, room and edge rules still apply; later repaths keep the selected destination. Serve-across counters keep their exact point.
     - `go_to_work_cell(item_id, index, label)` is an exact rotated work-cell selector (used for the two pass sides). It retains GO_TO_ITEM reservation, busy wait, removal, repath and timeout handling. `work_cell_index = -1` preserves legacy first-free-cell selection.
     - `work(ticks, label, on_done)`. `on_done(agent) -> bool`; false cancels the task with `step_failed`.
   - `SimAgent` (movement base, which customers will extend): `cell`, `path`, `path_index`, `move_progress` (0–1 toward `next_cell()`, which the world view lerps), `set_destination`, `step_move`, `why()`.

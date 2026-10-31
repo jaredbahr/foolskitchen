@@ -19,6 +19,11 @@ var use_seat: bool = false
 ## -1 chooses any free work cell; nonnegative selects one exact rotated work cell.
 var work_cell_index: int = -1
 var cell: Vector2i = Vector2i.ZERO
+## Optional GO_TO_CELL service approaches, selected once by the real worker.
+## Empty retains the exact authored cell; neither array nor anchor is mutated.
+var candidate_cells: Array[Vector2i] = []
+## Optional contact point: candidates must still neighbour it when GO starts.
+var candidate_origin: Vector2i = SimGrid.NO_CELL
 var ticks: int = 0
 ## Short text for the "why" readout, e.g. "fetching ingredients".
 var label: String = ""

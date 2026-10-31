@@ -554,7 +554,13 @@ func _post_order_task(world: SimWorld, sim: RestaurantSim) -> void:
 	_task = SimTask.new(&"take_order", &"server", "Take guest #%d's order" % id)
 	_task.priority = 2
 	_task.payload["customer_id"] = id
-	_task.steps.append(TaskStep.go_to_cell(target, "walking to guest"))
+	var approach: TaskStep = TaskStep.go_to_cell(target, "walking to guest")
+	if not neighbours.is_empty():
+		approach.candidate_origin = seat_cell
+	for neighbour: Vector2i in neighbours:
+		if world.movement.standing_cell(world, neighbour):
+			approach.candidate_cells.append(neighbour)
+	_task.steps.append(approach)
 	_task.steps.append(TaskStep.work(30, "taking order", _take_order))
 	world.board.post(_task, world.now)
 

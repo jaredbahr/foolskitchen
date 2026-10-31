@@ -370,11 +370,72 @@ func _run_go_to_item(world: SimWorld, s: TaskStep) -> void:
 
 func _run_go_to_cell(world: SimWorld, s: TaskStep) -> void:
 	if not _step_started:
-		if not set_destination(world.grid, s.cell):
+		var target: Vector2i = s.cell
+		if not s.candidate_cells.is_empty():
+			target = _closest_go_to_candidate(world, s.candidate_cells, s.candidate_origin)
+			if target == SimGrid.NO_CELL:
+				_drop(world, &"unreachable")
+				return
+		if not set_destination(world.grid, target):
 			_drop(world, &"unreachable")
 			return
 		_step_started = true
 	_walk(world)
+
+## Read current physical permissions once, when this worker actually starts GO.
+## Later repaths follow the existing selected _goal, not the posted anchor.
+func _closest_go_to_candidate(world: SimWorld, candidates: Array[Vector2i],
+		origin: Vector2i) -> Vector2i:
+	if not movement_admitted or world.agent(id) != self or not is_finite(move_progress) \
+			or move_progress < 0.0 or move_progress >= 1.0:
+		return SimGrid.NO_CELL
+	var start: Vector2i = cell
+	if move_progress > 0.0:
+		var next: Vector2i = next_cell()
+		var snapshot: Dictionary = world.movement.snapshot()
+		var delta: Vector2i = next - cell
+		if maxi(absi(delta.x), absi(delta.y)) != 1 \
+				or not world.grid.is_walkable(cell) or not world.grid.is_walkable(next) \
+				or not world.grid.step_open(cell, next) \
+				or snapshot.occupied.get(cell, -1) != id or snapshot.next.get(next, -1) != id:
+			return SimGrid.NO_CELL
+		var swept: Array[Vector2i] = [next]
+		if delta.x != 0 and delta.y != 0:
+			swept.append(cell + Vector2i(delta.x, 0))
+			swept.append(cell + Vector2i(0, delta.y))
+		for point: Vector2i in swept:
+			if not world.movement.can_enter(world, self, point):
+				return SimGrid.NO_CELL
+		var held_edge: bool = false
+		for edge: Dictionary in snapshot.edges:
+			if edge.id == id and edge["from"] == cell and edge["to"] == next:
+				held_edge = true
+				break
+		if not held_edge:
+			return SimGrid.NO_CELL
+		# set_destination retains this real edge and defers the chosen goal.
+		start = next
+	var current_neighbours: Array[Vector2i] = []
+	if origin != SimGrid.NO_CELL:
+		if not world.grid.is_walkable(origin):
+			return SimGrid.NO_CELL
+		current_neighbours = world.grid.walkable_neighbours(origin)
+	var chosen: Vector2i = SimGrid.NO_CELL
+	var shortest: float = INF
+	for candidate: Vector2i in candidates:
+		if origin != SimGrid.NO_CELL and not current_neighbours.has(candidate):
+			continue
+		if not world.movement.standing_cell(world, candidate):
+			continue
+		var route: Array[Vector2i] = world.movement.route(world, self, start, candidate, false)
+		if route.is_empty():
+			continue
+		var cost: float = GridMath.path_cost(route)
+		if cost < shortest:
+			shortest = cost
+			chosen = candidate
+	return chosen
+
 
 
 func _walk(world: SimWorld) -> void:
