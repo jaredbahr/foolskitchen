@@ -313,6 +313,64 @@ func walkable_neighbours(cell: Vector2i) -> Array[Vector2i]:
 	return out
 
 
+## Actor-specific obstacles never mutate the shared terrain/path layers.
+## Keep the ordinary route when it is legal, preserving uncontested timing.
+func find_path_avoiding(start: Vector2i, goal: Vector2i,
+		blocked: Dictionary[Vector2i, bool], guest: bool = false) -> Array[Vector2i]:
+	if not is_walkable(start) or not is_walkable(goal) or blocked.has(goal) \
+			or (guest and not is_guest_walkable(goal)):
+		return []
+	var original: Array[Vector2i] = find_guest_path(start, goal) if guest else find_path(start, goal)
+	var clear: bool = not original.is_empty()
+	for index: int in range(1, original.size()):
+		if not _actor_step(original[index - 1], original[index], blocked, guest):
+			clear = false
+			break
+	if clear:
+		return original
+	var open: Array[Vector2i] = [start]
+	var costs: Dictionary[Vector2i, float] = {start: 0.0}
+	var previous: Dictionary[Vector2i, Vector2i] = {}
+	var closed: Dictionary[Vector2i, bool] = {}
+	while not open.is_empty():
+		var best: int = 0
+		for index: int in range(1, open.size()):
+			if costs[open[index]] + GridMath.octile(open[index], goal) \
+					< costs[open[best]] + GridMath.octile(open[best], goal):
+				best = index
+		var current: Vector2i = open[best]
+		open.remove_at(best)
+		if current == goal:
+			var path: Array[Vector2i] = [current]
+			while previous.has(current):
+				current = previous[current]
+				path.push_front(current)
+			return path
+		closed[current] = true
+		for next: Vector2i in walkable_neighbours(current):
+			if closed.has(next) or not _actor_step(current, next, blocked, guest):
+				continue
+			var cost: float = costs[current] + GridMath.octile(current, next)
+			if costs.has(next) and costs[next] <= cost:
+				continue
+			costs[next] = cost
+			previous[next] = current
+			if not open.has(next):
+				open.append(next)
+	return []
+
+
+func _actor_step(from: Vector2i, to: Vector2i, blocked: Dictionary[Vector2i, bool], guest: bool) -> bool:
+	var delta: Vector2i = to - from
+	if maxi(absi(delta.x), absi(delta.y)) != 1 or blocked.has(to) \
+			or not step_open(from, to) or (guest and not guest_step_ok(from, to)):
+		return false
+	if delta.x != 0 and delta.y != 0:
+		return not blocked.has(from + Vector2i(delta.x, 0)) \
+			and not blocked.has(from + Vector2i(0, delta.y))
+	return true
+
+
 ## Checks whether an item could go at origin with the given rotation.
 ## Items need FLOOR under every footprint cell and no item in the same layer.
 func can_place(footprint: Vector2i, origin: Vector2i, quarter_turns: int,

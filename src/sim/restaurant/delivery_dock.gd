@@ -212,7 +212,7 @@ func store_all() -> Array[Dictionary]:
 				holder.let_go_if_withdrawn(world)
 		lines.append_array(crate.lines)
 	for courier: CourierAgent in _couriers:
-		if world != null and world.agents.has(courier):
+		if world != null and (world.agents.has(courier) or world.pending_agents().has(courier)):
 			world.remove_agent(courier)
 	_couriers.clear()
 	if not lines.is_empty():

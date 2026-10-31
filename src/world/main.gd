@@ -12,6 +12,7 @@ extends Node3D
 ## F10 starts a new game (deletes the autosave).
 
 const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
+const ORIGINAL_LAYOUT: ShopLayout = preload("res://data/layouts/tier1_original.tres")
 ## Camera fit (FK-080): this zoom frames this many cells; bigger shops zoom out.
 const SHOP_ZOOM: float = 12.0
 const SHOP_FRAME_CELLS: Vector2 = Vector2(14.0, 12.0)
@@ -111,6 +112,8 @@ var _previous_clock: SimClock = null
 var _started: bool = false
 var _skip_next_autosave: bool = false
 var _owner_preferences: OwnerModeSettings = OwnerModeSettings.new()
+## Authored base, never an already leased or expanded loaded layout.
+var _base_layout: ShopLayout = LAYOUT
 var _loaded_layout: ShopLayout = null
 var _loaded_menu: MenuSettings = null
 var _loaded_staff: StaffRoster = null
@@ -249,7 +252,9 @@ func _bind_world_presentation() -> void:
 		sim.dock.lot = lot
 	# Keep future scenery off every cell this lease can eventually build on.
 	# The actual service/delivery lot above keeps its existing semantics.
-	var maximum_reserve: Rect2i = ShopFootprint.from_layout(LEASE.layout_for(LAYOUT, 2)).lot.merge(lot)
+	var presentation_base: ShopLayout = _base_for_saved_shop({"layout_id": _loaded_layout.save_layout_id}) \
+		if _loaded_layout != null else _base_layout
+	var maximum_reserve: Rect2i = ShopFootprint.from_layout(LEASE.layout_for(presentation_base, 2)).lot.merge(lot)
 	view.show_world(world, maximum_reserve)
 	view.bind_cleanliness(sim.cleanliness)
 	view.bind_restaurant(sim, content)
@@ -2098,6 +2103,7 @@ func build_report(day: int) -> DayReport:
 
 
 func _new_game() -> void:
+	_base_layout = LAYOUT
 	_last_team_activity.clear()
 	hints.restart()
 	demand_state = DemandState.new()
@@ -2215,20 +2221,34 @@ func _load_autosave() -> bool:
 	if career.last_evaluated_day >= Clock.sim.day:
 		world.log_event("Autosave career goals are ahead of this morning; starting a new game")
 		return false
-	var layout: ShopLayout = _loaded_layout if _loaded_layout != null else LAYOUT
+	# A saved game predating the shop section still owns the original shell.
+	# Initial presentation may already have built the roomier NEW-shop world.
+	var base: ShopLayout = _base_for_saved_shop({"layout_id": _loaded_layout.save_layout_id}) \
+		if _loaded_layout != null else ORIGINAL_LAYOUT
+	if base == null:
+		return false
+	var layout: ShopLayout = _loaded_layout if _loaded_layout != null \
+		else LEASE.layout_for(base, owner_progress.property_tier)
 	var choices: MenuSettings = _loaded_menu if _loaded_menu != null else MenuSettings.new(_cookable_recipes(layout), owner_progress.level)
 	if not choices.is_valid():
 		return false
 	var employees: StaffRoster = _loaded_staff if _loaded_staff != null else StaffRoster.new(TUNING)
 	if employees.candidate_day > Clock.sim.day:
 		return false
-	if _loaded_layout != null or _loaded_staff != null:
-		var errors: Array[String] = []
-		var candidate: RestaurantSim = RestaurantSim.create(layout, content, 1, errors, Economy.stock, true, _loaded_layout != null, employees.members())
-		if not errors.is_empty():
-			return false
-		sim = candidate
-		world = candidate.world
+	var errors: Array[String] = []
+	var candidate: RestaurantSim = RestaurantSim.create(layout, content, 1, errors, Economy.stock, true, _loaded_layout != null, employees.members())
+	if not errors.is_empty():
+		return false
+	# Complete fallible candidate setup before replacing the initialized NEW
+	# world. A refused restore must not leave an old shell as the new game.
+	if candidate.kitchen == null or not candidate.kitchen.configure_plates(
+			_loaded_plates.total if _loaded_plates != null else TUNING.starting_plates):
+		return false
+	if not candidate.assign_owner(_owner_preferences.current_mode()):
+		return false
+	sim = candidate
+	world = candidate.world
+	_loaded_layout = layout
 	staff_roster = employees
 	reputation = _loaded_reputation if _loaded_reputation != null else ReputationBook.new()
 	regulars = _loaded_regulars if _loaded_regulars != null else RegularCast.new()
@@ -2243,12 +2263,7 @@ func _load_autosave() -> bool:
 	_track_menu_access_losses(enabled, cookable)
 	menu_settings.clear_stash()
 	_apply_menu(sim, menu_settings)
-	if sim.kitchen == null or not sim.kitchen.configure_plates(
-			_loaded_plates.total if _loaded_plates != null else TUNING.starting_plates):
-		return false
 	_bind_world_presentation()
-	if not sim.assign_owner(_owner_preferences.current_mode()):
-		return false
 	milestones = career
 	# Saves from before the Stock panel have no section: today's defaults.
 	reorder_settings = _loaded_reorder if _loaded_reorder != null else ReorderSettings.new(TUNING)
@@ -2269,6 +2284,7 @@ func _load_autosave() -> bool:
 	# Install only after every other whole-load validation has succeeded.
 	world.weather = saved_weather.copy()
 	demand_state = saved_demand
+	_base_layout = base
 	return true
 
 
@@ -2378,7 +2394,7 @@ func _on_plates_changed(clean: int, total: int, dirty: int, in_use: int) -> void
 
 
 func _lease_layout() -> ShopLayout:
-	return LEASE.layout_for(LAYOUT, owner_progress.property_tier)
+	return LEASE.layout_for(_base_layout, owner_progress.property_tier)
 
 
 func lease_refusal() -> String:
@@ -2402,7 +2418,7 @@ func lease_buy() -> bool:
 	if not _started or shop_editor == null or not lease_refusal().is_empty():
 		_refresh_lease_offer()
 		return false
-	var layout: ShopLayout = LEASE.layout_for(LAYOUT, 2)
+	var layout: ShopLayout = LEASE.layout_for(_base_layout, 2)
 	if not shop_editor.grow_lot(layout):
 		return false
 	owner_progress.property_tier = 2
@@ -2545,6 +2561,19 @@ func _capture_shop() -> Dictionary:
 	return snapshot
 
 
+## Missing identities are pre-roomier saves. Present identities are authored
+## keys only: never load a path supplied by a save or guess from item positions.
+func _base_for_saved_shop(data: Dictionary) -> ShopLayout:
+	var identity: Variant = data.get("layout_id", "")
+	if not (identity is String or identity is StringName):
+		return null
+	if StringName(identity) == ORIGINAL_LAYOUT.save_layout_id:
+		return ORIGINAL_LAYOUT
+	if StringName(identity) == LAYOUT.save_layout_id:
+		return LAYOUT
+	return null
+
+
 ## Restore callbacks only stage decoded data. Live replacement waits for OK.
 func _restore_shop(data: Dictionary) -> bool:
 	var saved_level: Variant = data.get("tray_level", 0)
@@ -2553,7 +2582,11 @@ func _restore_shop(data: Dictionary) -> bool:
 			or saved_level < 0 or saved_level > 2:
 		return false
 	var errors: Array[String] = []
-	var layout: ShopLayout = ShopEditor.from_dict(data, _lease_layout(), content, errors)
+	var base: ShopLayout = _base_for_saved_shop(data)
+	if base == null:
+		return false
+	var template: ShopLayout = LEASE.layout_for(base, owner_progress.property_tier)
+	var layout: ShopLayout = ShopEditor.from_dict(data, template, content, errors)
 	if layout == null:
 		return false
 	_loaded_layout = layout
@@ -2586,7 +2619,7 @@ func _capture_menu() -> Dictionary:
 
 
 func _restore_menu(data: Dictionary) -> bool:
-	var layout: ShopLayout = _loaded_layout if _loaded_layout != null else LAYOUT
+	var layout: ShopLayout = _loaded_layout if _loaded_layout != null else ORIGINAL_LAYOUT
 	var choices: MenuSettings = MenuSettings.new(_cookable_recipes(layout), owner_progress.level)
 	if not choices.from_dict(data):
 		return false

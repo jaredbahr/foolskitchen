@@ -170,7 +170,7 @@ func set_staff_roster(people: Array[StaffMember], catalogue: StaffCatalogue = St
 	if not roles.has(&"cook") or not roles.has(&"server"):
 		return false
 	var retained: Dictionary[StringName, bool] = {}
-	for agent: SimAgent in world.agents.duplicate():
+	for agent: SimAgent in world.all_agents():
 		if not agent is StaffAgent or agent is OwnerAgent:
 			continue
 		var employee: StaffAgent = agent as StaffAgent
@@ -195,7 +195,7 @@ func set_staff_roster(people: Array[StaffMember], catalogue: StaffCatalogue = St
 func apply_staff_job_priorities(member_id: StringName, choices: StaffJobPriorities) -> bool:
 	if world == null or member_id.is_empty():
 		return false
-	for agent: SimAgent in world.agents:
+	for agent: SimAgent in world.all_agents():
 		if agent is StaffAgent and not agent is OwnerAgent:
 			var employee: StaffAgent = agent as StaffAgent
 			if employee.member_id == member_id:
@@ -206,7 +206,7 @@ func apply_staff_job_priorities(member_id: StringName, choices: StaffJobPrioriti
 ## The factory's one live owner, or null for a manually constructed world.
 func owner_agent() -> OwnerAgent:
 	if world != null:
-		for agent: SimAgent in world.agents:
+		for agent: SimAgent in world.all_agents():
 			if agent is OwnerAgent:
 				return agent as OwnerAgent
 	return null
@@ -249,13 +249,12 @@ func start_day() -> void:
 
 ## Each morning staff start at their posts, with nothing in hand.
 func _staff_to_posts() -> void:
-	for agent: SimAgent in world.agents:
+	for agent: SimAgent in world.all_agents():
 		if staff_spawns.has(agent.role) and agent is StaffAgent:
 			var staff := agent as StaffAgent
 			if staff.task != null:
 				staff.on_removed(world)
-			staff.cell = staff_spawns[agent.role]
-			staff.clear_path()
+			world.reset_agent_position(staff, staff_spawns[agent.role])
 
 
 ## One fixed world tick, arrivals, then departed-guest cleanup.
@@ -561,7 +560,11 @@ func service_cells(table_item_id: int, seat_cell: Vector2i) -> Array[Vector2i]:
 	var across: Vector2i = across_cell(table_item_id, seat_cell)
 	if across != SimGrid.NO_CELL:
 		return [across] as Array[Vector2i]
-	return world.grid.walkable_neighbours(seat_cell)
+	var cells: Array[Vector2i] = []
+	for cell: Vector2i in world.grid.walkable_neighbours(seat_cell):
+		if world.movement.standing_cell(world, cell):
+			cells.append(cell)
+	return cells
 
 
 ## The cell behind a serve-across counter, opposite this seat, or NO_CELL.
@@ -853,10 +856,11 @@ func _count_layout() -> void:
 			_seats += placed.seat_cells.size()
 
 
-## Current guests in stable agent-id order.
+## Current guests, including the ordered, non-ticking admission queue. Pending
+## arrivals are still visits and must close/depart exactly once with the shop.
 func customers() -> Array[CustomerAgent]:
 	var out: Array[CustomerAgent] = []
-	for agent: SimAgent in world.agents:
+	for agent: SimAgent in world.all_agents():
 		if agent is CustomerAgent:
 			out.append(agent as CustomerAgent)
 	return out

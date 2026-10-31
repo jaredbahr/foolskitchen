@@ -35,6 +35,11 @@ class Frame extends RefCounted:
 	var customer_type: StringName = &"regular"
 	var look_supported: bool = false
 	var floor_position: Vector3 = Vector3.ZERO
+	## Bare sim projection, before authored seat/reach or separation offsets.
+	var sim_floor_position: Vector3 = Vector3.ZERO
+	## Actual movement for the latest sim tick; hand-built Frame fixtures omit it.
+	var movement_trace_expected: bool = false
+	var movement_trace: Dictionary = {}
 	var display_offset: Vector3 = Vector3.ZERO
 	var separation_blocked: bool = false
 	var facing_direction: Vector3 = Vector3.ZERO
@@ -82,13 +87,27 @@ static func frame_for(agent: SimAgent, world: SimWorld, chair_seat_height: float
 	frame.look_supported = PersonPresentation.model_for(agent.role, agent.id, frame.customer_type) != &""
 	var start: Vector3 = GridMath.cell_to_world(agent.cell)
 	var end: Vector3 = GridMath.cell_to_world(agent.next_cell())
-	frame.floor_position = start.lerp(end, clampf(agent.move_progress, 0.0, 1.0))
+	frame.sim_floor_position = start.lerp(end, clampf(agent.move_progress, 0.0, 1.0))
+	frame.floor_position = frame.sim_floor_position
+	frame.movement_trace_expected = true
+	frame.movement_trace = agent.movement_trace()
+	frame.hidden = not agent.movement_admitted
 	frame.facing_direction = end - start
 	frame.moving = frame.facing_direction.length_squared() > 0.000001
+	# A reserved route is not movement while its next cell is held. Keep the
+	# legacy projection for authored pre-tick fixtures, but use real motion
+	# once the world has produced this tick's complete trace.
+	if world != null and frame.movement_trace.get("tick") == world.now \
+			and frame.movement_trace.get("discontinuous") == false:
+		var moved: bool = false
+		var points: Array = frame.movement_trace.get("points", [])
+		for point: Vector3 in points:
+			moved = moved or not point.is_equal_approx(frame.sim_floor_position)
+		frame.moving = frame.moving and moved
 	if agent is CustomerAgent:
 		var customer: CustomerAgent = agent as CustomerAgent
 		frame.mood_visible = CustomerAgent.MOOD_WAITING_STATES.has(int(customer.state)) and not customer.away()
-		frame.hidden = customer.in_restroom()
+		frame.hidden = frame.hidden or customer.in_restroom()
 		frame.mood_band = customer.mood_band()
 		frame.seated = _is_seated(customer, world)
 		if frame.seated:
@@ -159,18 +178,28 @@ static func frames_for(agents: Array[SimAgent], world: SimWorld, chair_heights: 
 			seat_offsets.get(agent.id, 0.0), seat_facings.get(agent.id, Vector3.ZERO), seat_leans.get(agent.id, 0.0), orders)
 		ids.append(agent.id)
 	ids.sort()
-	# Final authored seated positions are immutable blockers, including higher IDs.
+	# Moving people and final authored seats are immutable blockers, including
+	# higher IDs. Hidden people have no drawn footprint.
 	var occupied: Array[Vector3] = []
 	for id: int in ids:
-		if frames[id].seated:
+		if not frames[id].hidden and (frames[id].seated or frames[id].moving):
 			occupied.append(frames[id].floor_position + frames[id].display_offset)
 	for id: int in ids:
 		var frame: Frame = frames[id]
-		if frame.moving or frame.seated:
+		if frame.hidden or frame.moving or frame.seated:
 			continue
-		var drawn: Vector3 = _separated_position(frame.floor_position, occupied, world.grid)
+		var blockers: Array[Vector3] = occupied.duplicate()
+		for other: int in ids:
+			if other <= id or frames[other].hidden or frames[other].seated or frames[other].moving:
+				continue
+			var point: Vector3 = frames[other].floor_position
+			# Existing overlaps resolve by stable ID, but do not create new ones
+			# by nudging into or through a later person's original position.
+			if point.distance_squared_to(frame.floor_position) >= MIN_STANDING_DISTANCE * MIN_STANDING_DISTANCE:
+				blockers.append(point)
+		var drawn: Vector3 = _separated_position(frame.floor_position, blockers, world.grid)
 		frame.display_offset = drawn - frame.floor_position
-		frame.separation_blocked = not _has_clearance(drawn, occupied) \
+		frame.separation_blocked = not _has_clearance(drawn, blockers) \
 			or not _floor_safe(frame.floor_position, drawn, world.grid)
 		occupied.append(drawn)
 	return frames
@@ -189,7 +218,8 @@ static func _separated_position(origin: Vector3, occupied: Array[Vector3], grid:
 	for ring: int in range(1, 2 * occupied.size() + 2):
 		for direction: Vector3 in directions:
 			var candidate: Vector3 = origin + direction * DISPLAY_NUDGE_STEP * float(ring)
-			if _has_clearance(candidate, occupied) and _floor_safe(origin, candidate, grid):
+			if _has_clearance(candidate, occupied) and _swept_clearance(origin, candidate, occupied) \
+					and _floor_safe(origin, candidate, grid):
 				return candidate
 	return origin
 
@@ -207,9 +237,78 @@ static func _floor_safe(origin: Vector3, candidate: Vector3, grid: SimGrid) -> b
 		return false
 	for y: int in range(low.y, high.y + 1):
 		for x: int in range(low.x, high.x + 1):
-			if not grid.is_walkable(Vector2i(x, y)):
+			var cell: Vector2i = Vector2i(x, y)
+			if not grid.is_walkable(cell):
+				return false
+			# Walkable cells may still have an interior wall on their shared edge.
+			if x < high.x and not grid.step_open(cell, cell + Vector2i.RIGHT):
+				return false
+			if y < high.y and not grid.step_open(cell, cell + Vector2i.DOWN):
 				return false
 	return true
+
+
+## A nudge must not pass through a person merely because its endpoint is free.
+## Already-overlapping legacy poses may separate, but never move closer first.
+static func _swept_clearance(origin: Vector3, candidate: Vector3, occupied: Array[Vector3]) -> bool:
+	var step: Vector3 = candidate - origin
+	step.y = 0.0
+	var length_squared: float = step.length_squared()
+	for point: Vector3 in occupied:
+		var relative: Vector3 = point - origin
+		relative.y = 0.0
+		var fraction: float = clampf(relative.dot(step) / length_squared, 0.0, 1.0) \
+			if length_squared > 0.000001 else 0.0
+		var distance_squared: float = (relative - step * fraction).length_squared()
+		var required: float = minf(relative.length_squared(), MIN_STANDING_DISTANCE * MIN_STANDING_DISTANCE)
+		if distance_squared + 0.000001 < required:
+			return false
+	return true
+
+
+## After smoothing, validate only presentation offsets against actual geometry
+## and the other drawn people. The actual centre route remains sim-owned.
+static func constrain_display_offsets(frames: Dictionary[int, Frame], grid: SimGrid) -> void:
+	var ids: Array[int] = frames.keys()
+	ids.sort()
+	# Reject simultaneously, then recheck the resulting complete group. A
+	# rejected neighbor can return closer to an earlier accepted candidate.
+	# Every rejection removes an offset permanently, so this reaches a stable
+	# final set in at most N passes plus the final verification pass.
+	for _pass: int in range(ids.size() + 1):
+		var rejected: Array[int] = []
+		for id: int in ids:
+			var frame: Frame = frames[id]
+			if frame.hidden:
+				continue
+			var origin: Vector3 = frame.sim_floor_position
+			var candidate: Vector3 = frame.floor_position + frame.display_offset
+			if origin.is_equal_approx(candidate):
+				continue
+			var occupied: Array[Vector3] = []
+			for other: int in ids:
+				if other != id and not frames[other].hidden:
+					occupied.append(frames[other].floor_position + frames[other].display_offset)
+			var floor_safe: bool = _seat_offset_safe(origin, candidate, grid) if frame.seated \
+				else _floor_safe(origin, candidate, grid)
+			if not floor_safe or not _has_clearance(candidate, occupied) \
+					or not _swept_clearance(origin, candidate, occupied):
+				rejected.append(id)
+		if rejected.is_empty():
+			return
+		for id: int in rejected:
+			frames[id].floor_position = frames[id].sim_floor_position
+			frames[id].display_offset = Vector3.ZERO
+			frames[id].separation_blocked = true
+
+
+## Authored seated shifts are bounded to five centimetres inside the guest's
+## assigned walkable seat cell, not generic standing separation or a new route.
+static func _seat_offset_safe(origin: Vector3, candidate: Vector3, grid: SimGrid) -> bool:
+	var cell: Vector2i = GridMath.world_to_cell(origin)
+	return candidate.is_finite() and origin.is_equal_approx(GridMath.cell_to_world(cell)) \
+		and origin.distance_to(candidate) <= ItemDef.MAX_SEATED_FORWARD_OFFSET + 0.000001 \
+		and GridMath.world_to_cell(candidate) == cell and grid.is_walkable(cell)
 
 
 static func _has_clearance(candidate: Vector3, occupied: Array[Vector3]) -> bool:

@@ -88,6 +88,17 @@ func movement_multiplier() -> float:
 	return _walk_multiplier
 
 
+## Physical meals in hand, not a retained delivery batch before re-pickup.
+func carries_food() -> bool:
+	if task == null or task.state != SimTask.State.CLAIMED or task.claimed_by != id \
+			or task.kind != &"deliver" or int(task.payload.get("carried_count", 0)) <= 0:
+		return false
+	var world: SimWorld = movement_world()
+	if world != null and world.board.get_task(task.id) != task:
+		return false
+	return not task.payload.has("pass_id") or step_index >= 2
+
+
 ## Skill used for a task role: role-free (&"any") tasks use the agent's own role.
 func skill_for(task_role: StringName) -> int:
 	var r := role if task_role == &"any" else task_role
@@ -418,7 +429,10 @@ func _release_held(world: SimWorld) -> void:
 	if _held_item_id != 0:
 		var it := world.grid.item(_held_item_id)
 		if it != null:
-			it.release(_held_cell, id)
+			if it.seat_cells.has(_held_cell):
+				world.movement.defer_seat_release(world, it.id, _held_cell, id)
+			else:
+				it.release(_held_cell, id)
 	_held_item_id = 0
 	_held_cell = SimGrid.NO_CELL
 

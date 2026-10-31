@@ -106,7 +106,7 @@ static func _neglected(main: Node) -> bool:
 ## expanded_tables, so level-two pieces too), stocked at the normal price.
 static func _coffee_shop(main: Node) -> bool:
 	var editor: ShopEditor = _free_editor(main)
-	if editor == null or not _clear_east_table(main, editor):
+	if editor == null or not _clear_east_table(main, editor) or not _concept_west_table(main, editor):
 		return false
 	for placement: Array in [[&"coffee_machine", Vector2i(9, 5), 2], [&"coffee_machine", Vector2i(10, 5), 2],
 			[&"round_table", Vector2i(2, 8), 0], [&"rounded_chair", Vector2i(1, 8), 1],
@@ -126,7 +126,7 @@ static func _coffee_shop(main: Node) -> bool:
 ## and two storage shelves (FK-087).
 static func _bar(main: Node) -> bool:
 	var editor: ShopEditor = _free_editor(main)
-	if editor == null or not _clear_east_table(main, editor):
+	if editor == null or not _clear_east_table(main, editor) or not _concept_west_table(main, editor):
 		return false
 	for placement: Array in [[&"drinks_shelf", Vector2i(10, 5), 2], [&"drinks_fridge", Vector2i(11, 5), 2],
 			[&"table_2", Vector2i(2, 8), 0]]:
@@ -142,7 +142,7 @@ static func _bar(main: Node) -> bool:
 static func _free_editor(main: Node) -> ShopEditor:
 	var sim: RestaurantSim = main.get("sim") as RestaurantSim
 	var content: ContentDB = main.get("content") as ContentDB
-	var layout: ShopLayout = load("res://data/layouts/tier1_hole_in_the_wall.tres") as ShopLayout
+	var layout: ShopLayout = _probe_layout(main)
 	if sim == null or content == null:
 		return null
 	var books: ShopEditBooks = ShopEditBooks.new(func(_amount: int) -> bool: return true,
@@ -155,13 +155,16 @@ static func _free_editor(main: Node) -> ShopEditor:
 ## The east two-seat table and the plant make room for the counter.
 static func _clear_east_table(main: Node, editor: ShopEditor) -> bool:
 	var sim: RestaurantSim = main.get("sim") as RestaurantSim
+	var tables: Array[PlacedItem] = _starter_tables(sim.world.grid)
+	if tables.is_empty() or editor.sell(tables[-1].id) < 0:
+		return false
+	# The authored starter has one potted plant; its position moves with the
+	# roomier shell. Remove that real instance, never a coordinate guess.
 	for placed: PlacedItem in sim.world.grid.items():
 		var definition: ItemDef = placed.def as ItemDef
-		if (definition.id == &"table_2" and placed.origin == Vector2i(10, 6)) \
-				or (definition.id == &"potted_plant" and placed.origin == Vector2i(12, 9)):
-			if editor.sell(placed.id) < 0:
-				return false
-	return true
+		if definition != null and definition.id == &"potted_plant":
+			return editor.sell(placed.id) >= 0
+	return false
 
 
 ## FK-087: a concept's supplies need storage beyond the starter pantry, as a
@@ -241,18 +244,34 @@ static func _add_staff(main: Node, role: StringName, skill: int) -> bool:
 static func _expand_with_tables(main: Node) -> bool:
 	var sim: RestaurantSim = main.get("sim") as RestaurantSim
 	var content: ContentDB = main.get("content") as ContentDB
-	var layout: ShopLayout = load("res://data/layouts/tier1_hole_in_the_wall.tres") as ShopLayout
+	var layout: ShopLayout = _probe_layout(main)
 	var books: ShopEditBooks = ShopEditBooks.new(func(_amount: int) -> bool: return true,
 		func(_amount: int, _category: StringName) -> void: pass)
 	var editor: ShopEditor = ShopEditor.new(sim, content, books, layout)
-	for rect: Rect2i in [Rect2i(14, 0, 1, 10), Rect2i(-1, 5, 1, 5)]:
+	var building: Rect2i = ShopFootprint.from_layout(layout).building
+	var tables: Array[PlacedItem] = _starter_tables(sim.world.grid)
+	if tables.is_empty():
+		return false
+	var dining_y: int = building.end.y
+	for cell: Vector2i in sim.world.grid.cells():
+		if sim.world.grid.terrain(cell) == SimGrid.Terrain.FLOOR \
+				and sim.world.grid.room(cell) == SimGrid.Room.DINING:
+			dining_y = mini(dining_y, cell.y)
+	# One-cell side wings stop before the street wall on either authored base.
+	# Geometry changes with the larger starter; the extra two tables and free
+	# construction convention do not change.
+	var front_y: int = building.end.y - 1
+	for rect: Rect2i in [Rect2i(building.end.x, building.position.y, 1, front_y - building.position.y),
+			Rect2i(building.position.x - 1, dining_y, 1, front_y - dining_y)]:
 		var cells: Array[Vector2i] = []
 		for y: int in range(rect.position.y, rect.end.y):
 			for x: int in range(rect.position.x, rect.end.x):
 				cells.append(Vector2i(x, y))
 		if not editor.apply_floor(cells, true):
 			return false
-	return editor.buy(&"table_2", Vector2i(13, 6), 1) and editor.buy(&"table_2", Vector2i(-1, 6), 1)
+	return editor.buy(&"table_2", Vector2i(building.end.x - 1, tables[0].origin.y), 1) \
+		and editor.buy(&"table_2", Vector2i(building.position.x - 1, tables[0].origin.y), 1) \
+		and editor.last_check.unreachable.is_empty()
 
 
 
@@ -264,6 +283,8 @@ static func _fryer_coffee(main: Node) -> bool:
 	var settings: MenuSettings = main.get("menu_settings") as MenuSettings
 	var sim: RestaurantSim = main.get("sim") as RestaurantSim
 	if progress == null or settings == null or sim == null:
+		return false
+	if not _stage_fryer_owner(sim):
 		return false
 	if progress.award_bonus(maxi(0, progress.threshold_for(2) - progress.total_xp)).is_empty() \
 			or not settings.set_owner_level(progress.level) or not sim.set_customer_level(progress.level):
@@ -284,23 +305,70 @@ static func _joined_tables(main: Node) -> bool:
 	var sim: RestaurantSim = main.get("sim") as RestaurantSim
 	if sim == null:
 		return false
-	var starts: Array[Vector2i] = [Vector2i(2, 6), Vector2i(6, 6)]
-	var targets: Array[Vector2i] = [Vector2i(3, 6), Vector2i(5, 6)]
-	var ids: Array[int] = []
-	for origin: Vector2i in starts:
-		var found: int = 0
-		for item: PlacedItem in sim.world.grid.items():
-			var definition: ItemDef = item.def as ItemDef
-			if definition != null and definition.id == &"table_2" and item.origin == origin:
-				found = item.id
-		if found == 0:
-			return false
-		ids.append(found)
+	var tables: Array[PlacedItem] = _starter_tables(sim.world.grid)
+	if tables.size() < 2:
+		return false
+	var targets: Array[Vector2i] = [tables[0].origin + Vector2i.RIGHT,
+		tables[0].origin + Vector2i(3, 0)]
+	var ids: Array[int] = [tables[0].id, tables[1].id]
 	for index: int in ids.size():
 		if not main.call("shop_move", ids[index], targets[index], 1):
 			return false
-	if not main.call("shop_buy", &"chair", Vector2i(4, 5), 2) \
-			or not main.call("shop_buy", &"chair", Vector2i(6, 8), 0):
+	if not main.call("shop_buy", &"chair", targets[0] + Vector2i(1, -1), 2) \
+			or not main.call("shop_buy", &"chair", targets[1] + Vector2i(1, 2), 0):
 		return false
 	return sim.world.grid.dining_group_members(ids[0]) == ids \
 		and DiningSeats.usable_cells(sim.world.grid, sim.world.grid.item(ids[0])).size() == 6
+
+
+## The selected authored base, including the preserved original-save template.
+static func _probe_layout(main: Node) -> ShopLayout:
+	var loaded: ShopLayout = main.get("_loaded_layout") as ShopLayout
+	return loaded if loaded != null else main.call("_lease_layout") as ShopLayout
+
+
+static func _starter_tables(grid: SimGrid) -> Array[PlacedItem]:
+	var result: Array[PlacedItem] = []
+	for placed: PlacedItem in grid.items():
+		var definition: ItemDef = placed.def as ItemDef
+		if definition != null and definition.id == &"table_2":
+			result.append(placed)
+	result.sort_custom(_table_before)
+	return result
+
+
+static func _table_before(left: PlacedItem, right: PlacedItem) -> bool:
+	if left.origin.x != right.origin.x:
+		return left.origin.x < right.origin.x
+	if left.origin.y != right.origin.y:
+		return left.origin.y < right.origin.y
+	return left.id < right.id
+
+
+## These concepts retain the original four-seat left dining group. The
+## roomier default rotates its starter tables, so this one square table is
+## explicitly returned to the concept's original orientation before the
+## unchanged lower table/chairs are installed. Default play is untouched.
+static func _concept_west_table(main: Node, editor: ShopEditor) -> bool:
+	var sim: RestaurantSim = main.get("sim") as RestaurantSim
+	var tables: Array[PlacedItem] = _starter_tables(sim.world.grid)
+	if tables.is_empty():
+		return false
+	var west: PlacedItem = tables[0]
+	return west.quarter_turns == 0 or editor.move(west.id, west.origin, 0)
+
+
+## Declared fryer-fixture construction pose, not a service-policy change.
+## The owner starts on the planned fryer at (9,3). In the closed morning,
+## legally step aside to (8,3), outside the fryer (9/10,3), coffee (12,3)
+## and shelf (11/12,1) placements. The canonical probe's ordinary
+## sim.start_day() still resets everyone to their authored posts afterward.
+static func _stage_fryer_owner(sim: RestaurantSim) -> bool:
+	if sim == null or sim.world.clock.phase != SimClock.Phase.MORNING:
+		return false
+	var owner: OwnerAgent = sim.owner_agent()
+	var target: Vector2i = Vector2i(8, 3)
+	if owner == null or owner.task != null or not sim.world.grid.is_walkable(target) \
+			or not sim.world.movement.can_enter(sim.world, owner, target):
+		return false
+	return sim.world.reset_agent_position(owner, target) and owner.cell == target

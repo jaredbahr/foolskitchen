@@ -488,7 +488,7 @@ func is_waiting_seated(world: SimWorld) -> bool:
 func release_waiting_seat(world: SimWorld) -> void:
 	var bench: PlacedItem = world.grid.item(waiting_item_id)
 	if bench != null:
-		bench.release(waiting_cell, id)
+		world.movement.defer_seat_release(world, bench.id, waiting_cell, id)
 	waiting_item_id = 0
 	waiting_cell = SimGrid.NO_CELL
 
@@ -515,6 +515,8 @@ func _post_order_task(world: SimWorld, sim: RestaurantSim) -> void:
 	# Closest to the seat; fixed neighbour order breaks distance ties.
 	var distance: float = INF
 	for neighbour: Vector2i in neighbours:
+		if not world.movement.standing_cell(world, neighbour):
+			continue
 		var candidate: float = GridMath.octile(seat_cell, neighbour)
 		if candidate < distance:
 			distance = candidate
@@ -674,7 +676,7 @@ func _release_seat(world: SimWorld, dirty: bool = true) -> void:
 			if plated_extra:
 				sim.kitchen.mark_dining_group_dirty(table_item_id, extra_order.id, booked_table_ids)
 		if held:
-			table.release(seat_cell, id)
+			world.movement.defer_seat_release(world, table.id, seat_cell, id)
 	booked_table_ids.clear()
 
 
@@ -798,16 +800,18 @@ func _release_toilet(world: SimWorld) -> void:
 func _walk_to_exit(world: SimWorld) -> void:
 	if needs_repath or path.is_empty():
 		var route: Array[Vector2i] = world.grid.find_guest_path_to_any(cell, world.grid.entries())
-		if route.is_empty():
+		if route.is_empty() or not set_destination(world.grid, route.back()):
 			_exit_unreachable += 1
 			if _exit_unreachable >= 100:
 				world.log_event("Guest #%d removed: exit unreachable for 100 ticks" % id)
 				state = State.LEFT
 			return
-		set_destination(world.grid, route.back())
 		_exit_unreachable = 0
 	match step_move(world):
 		MoveResult.ARRIVED:
-			state = State.LEFT
+			if world.grid.entries().has(cell):
+				state = State.LEFT
+			else:
+				clear_path()
 		MoveResult.BLOCKED:
 			clear_path()

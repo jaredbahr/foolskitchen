@@ -11,6 +11,7 @@ extends RefCounted
 ## paint with nothing hung.
 ## Version 7 is reserved for furniture looks (#220); version 8 normalizes
 ## interior dividers and persists strictly interior thin/thick exceptions.
+## Optional layout_id identifies a newer authored base; old bases omit it.
 const SNAPSHOT_VERSION: int = 8
 const WALLS_CLOSED: String = "Walls can only be changed in the morning or after closing"
 const FLOORS_CLOSED: String = "New floors can only be laid in the morning or after closing"
@@ -21,6 +22,7 @@ const WALL_FINISH_NOT_WALL: String = "Wall finishes go on the walls inside the s
 const WALL_FINISH_ALREADY: String = "This wall already looks like that"
 const DECOR_CLOSED: String = "Wall decor can only be changed in the morning or after closing"
 const DECOR_GONE: String = "That wall decor is no longer there"
+const PERSON_IN_WAY: String = "Someone is in the way."
 
 var last_check: EditCheck = EditCheck.new()
 ## The signed cash change of the last successful edit (negative = spent), and
@@ -42,6 +44,7 @@ var walls: WallFinishes = WallFinishes.new()
 var decor: WallDecor = WallDecor.new()
 ## The anchor a successful hang or move left its item at (undo history).
 var last_anchor: Vector3i = WallFaces.NO_FACE
+var _save_layout_id: StringName = &""
 var _sim: RestaurantSim
 var _content: ContentDB
 var _books: ShopEditBooks
@@ -83,6 +86,7 @@ func _init(sim: RestaurantSim, content: ContentDB, books: ShopEditBooks, layout:
 	_content = content
 	_books = books
 	if layout != null:
+		_save_layout_id = layout.save_layout_id
 		wall_swatch_id = _known_swatch(layout.wall_swatch_id)
 		floor_swatch_id = _known_swatch(layout.floor_swatch_id)
 		_footprint = ShopFootprint.from_layout(layout)
@@ -290,6 +294,9 @@ func check_stamp(blueprint: Blueprint, anchor: Vector2i, rotation: int = 0, exac
 		# Distinct non-live ids let dining and room rules identify every entry.
 		ids[placed.id] = -1 - proposed.size()
 		proposed.append(placed.id)
+	var people_problem: String = _placement_people_problem(preview)
+	if not people_problem.is_empty():
+		return EditCheck.new(false, people_problem)
 	if exact == null:
 		for id: int in proposed:
 			var dining: EditCheck = EditCheck.validate_dining(_sim.world.grid, preview, ids, id, -1)
@@ -507,11 +514,16 @@ func to_dict() -> Dictionary:
 	var painted: Dictionary[Vector2i, int] = _sim.world.grid.rooms()
 	for cell: Vector2i in ShopFootprint.sorted(_cell_set(painted.keys())):
 		rooms.append([cell.x, cell.y, String(RoomRules.id_of(painted[cell]))])
-	return {"version": SNAPSHOT_VERSION, "items": placements, "walls": segments, "floor": floor,
+	var snapshot: Dictionary = {"version": SNAPSHOT_VERSION, "items": placements, "walls": segments, "floor": floor,
 		"thin_cells": ThinDividers.rows(_thin_cells), "thick_cells": ThinDividers.rows(_thick_cells),
 		"rooms": rooms, "wall_swatch_id": String(wall_swatch_id), "floor_swatch_id": String(floor_swatch_id),
 		"floor_style_id": String(floors.default_style), "floors": floors.to_rows(),
 		"wall_style_id": String(walls.default_style), "wall_finishes": walls.to_rows(), "wall_items": decor.to_rows()}
+	# Older bases keep their exact v8 wire shape. New shops always identify
+	# their authored geometry, without adding a section or an action save.
+	if not _save_layout_id.is_empty():
+		snapshot["layout_id"] = String(_save_layout_id)
+	return snapshot
 
 
 static func _cell_set(cells: Array) -> Dictionary[Vector2i, bool]:
@@ -528,6 +540,12 @@ static func from_dict(data: Dictionary, template_layout: ShopLayout, content: Co
 	if template_layout == null or content == null:
 		errors.append("Shop snapshot needs a layout and content")
 		return null
+	if data.has("layout_id"):
+		var identity: Variant = data["layout_id"]
+		if not (identity is String or identity is StringName) \
+				or StringName(identity) != template_layout.save_layout_id:
+			errors.append("Saved shop base does not match its layout")
+			return null
 	if not _integer_in(data.get("version"), 1, SNAPSHOT_VERSION) or not data.get("items") is Array:
 		errors.append("Invalid shop snapshot version or items")
 		return null
@@ -564,6 +582,7 @@ static func from_dict(data: Dictionary, template_layout: ShopLayout, content: Co
 		return null
 	var layout: ShopLayout = ShopLayout.new()
 	layout.id = template_layout.id
+	layout.save_layout_id = template_layout.save_layout_id
 	layout.display_name = template_layout.display_name
 	layout.rows = terrain_layout.rows.duplicate()
 	layout.legacy_rows = terrain_layout.legacy_rows.duplicate()
@@ -1927,6 +1946,9 @@ func _check_placement(definition: ItemDef, origin: Vector2i, turns: int, exclude
 		proposed_id = placed.id
 	if proposed_id < 0:
 		return EditCheck.new(false, "The shop changed; check the placement again")
+	var people_problem: String = _placement_people_problem(preview)
+	if not people_problem.is_empty():
+		return EditCheck.new(false, people_problem)
 	var dining: EditCheck = EditCheck.new(true) if restoring \
 		else EditCheck.validate_dining(_sim.world.grid, preview, ids, proposed_id, exclude_id)
 	if not dining.ok:
@@ -1944,6 +1966,34 @@ func _check_placement(definition: ItemDef, origin: Vector2i, turns: int, exclude
 		check.dining_joined = group != null and group.is_joined()
 	_note_menu_access(check, preview, restoring)
 	return check
+
+
+## Physical safety also applies to exact history and complete blueprint previews.
+## Existing saved/fault-injected geometry is untouched; refuse NEW obstruction.
+func _placement_people_problem(preview: SimGrid) -> String:
+	var live: SimGrid = _sim.world.grid
+	var held: Dictionary[Vector2i, bool] = {}
+	for agent: SimAgent in _sim.world.agents:
+		held[agent.cell] = true
+	var claims: Dictionary = _sim.world.movement.snapshot()
+	# next includes partial-edge corners and same-tick swept cells. Retain the
+	# coordinator's conservative interval even when closing has paused the tick.
+	for key: String in ["occupied", "next"]:
+		for cell: Vector2i in claims[key]:
+			held[cell] = true
+	var old_seats: Dictionary[Vector2i, bool] = {}
+	for item: PlacedItem in live.items():
+		for cell: Vector2i in item.seat_cells:
+			old_seats[cell] = true
+	var new_seats: Dictionary[Vector2i, bool] = {}
+	for item: PlacedItem in preview.items():
+		for cell: Vector2i in item.seat_cells:
+			if not old_seats.has(cell):
+				new_seats[cell] = true
+	for cell: Vector2i in held:
+		if (live.is_walkable(cell) and not preview.is_walkable(cell)) or new_seats.has(cell):
+			return PERSON_IN_WAY
+	return ""
 
 
 ## Keep a new edit from leaving an empty unlocked catalogue. Exact history

@@ -10,6 +10,8 @@ static func members(party: Party, world: SimWorld) -> Array[CustomerAgent]:
 		return result
 	for member_id: int in party.member_ids:
 		var guest: CustomerAgent = world.agent(member_id) as CustomerAgent
+		if guest == null:
+			guest = world.pending_agent(member_id) as CustomerAgent
 		if guest == null or guest.state >= CustomerAgent.State.LEAVING:
 			return []
 		result.append(guest)
@@ -25,6 +27,8 @@ static func try_seat(party: Party, world: SimWorld, kitchen: Kitchen = null) -> 
 	if guests.is_empty():
 		return false
 	for guest: CustomerAgent in guests:
+		if not guest.movement_admitted:
+			return false
 		if guest.state != CustomerAgent.State.ARRIVING and guest.state != CustomerAgent.State.QUEUED:
 			return false
 	var seen: Dictionary[int, bool] = {}
@@ -134,7 +138,7 @@ static func booking_valid(party: Party, world: SimWorld) -> bool:
 ## IDs are arrival order; reading paths and holds consumes no random draws.
 static func held_for_earlier_party(table: PlacedItem, arrival_id: int, world: SimWorld) -> bool:
 	var seen: Array[Party] = []
-	for agent: SimAgent in world.agents:
+	for agent: SimAgent in world.all_agents():
 		if agent.id >= arrival_id:
 			break
 		var guest: CustomerAgent = agent as CustomerAgent
@@ -212,6 +216,14 @@ static func advance_queue(party: Party, world: SimWorld, sim: RestaurantSim) -> 
 	if guests.is_empty():
 		leave_waiting(party, world, sim, &"no_table")
 		return
+	for guest: CustomerAgent in guests:
+		if not guest.movement_admitted:
+			# The active members may clear the entry, but the party's shared
+			# patience/booking cannot advance before every birth is admitted.
+			for waiting: CustomerAgent in guests:
+				if waiting.movement_admitted and not world.movement.is_yielding(waiting.id):
+					waiting._queue_inside(world)
+			return
 	if party.queue_started and party.queue_wait >= _budget(guests):
 		leave_waiting(party, world, sim, &"no_table")
 		return
@@ -224,7 +236,8 @@ static func advance_queue(party: Party, world: SimWorld, sim: RestaurantSim) -> 
 	for guest: CustomerAgent in guests:
 		guest.state = CustomerAgent.State.QUEUED
 		guest._queue_wait = party.queue_wait
-		guest._queue_inside(world)
+		if not world.movement.is_yielding(guest.id):
+			guest._queue_inside(world)
 	if already_waiting and party.queue_wait >= _budget(guests):
 		leave_waiting(party, world, sim, &"no_table")
 
@@ -297,6 +310,8 @@ static func leave_together(party: Party, world: SimWorld, sim: RestaurantSim,
 	party.departing = true
 	for member_id: int in party.member_ids:
 		var guest: CustomerAgent = world.agent(member_id) as CustomerAgent
+		if guest == null:
+			guest = world.pending_agent(member_id) as CustomerAgent
 		if guest == null or guest.paid:
 			continue
 		if reason == &"waited_too_long":
