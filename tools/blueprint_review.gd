@@ -5,7 +5,7 @@ extends RefCounted
 ## stood. No state is written to disk and no new assets are involved.
 
 const SOURCE: Vector2i = Vector2i(2, 6)
-const TARGET: Vector2i = Vector2i(10, 6)
+const TARGET: Vector2i = Vector2i(12, 6)
 const PROFILES: Array[String] = ["selection", "ghost", "stamped"]
 
 
@@ -83,7 +83,9 @@ static func evidence(main: Node) -> Dictionary:
 	if mode == null or world == null or preview == null or catalogue == null or library == null:
 		return {}
 	var target: PlacedItem = world.grid.item_at(TARGET)
-	var placed: bool = target != null and (target.def as ItemDef).id == &"table_2" and target.quarter_turns == 1
+	var source: PlacedItem = world.grid.item_at(SOURCE)
+	var placed: bool = source != null and target != null and (target.def as ItemDef).id == &"table_2" \
+		and target.quarter_turns == posmod(source.quarter_turns + 1, 4)
 	var ghosts: Array[Dictionary] = []
 	for ghost: ItemVisual in preview.blueprint_ghosts:
 		ghosts.append({"visible": ghost.is_visible_in_tree(), "valid": ghost.get_meta("valid", false)})

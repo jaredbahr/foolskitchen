@@ -1284,13 +1284,15 @@ static func catalogue_cached_evidence(cache: ItemThumbnailCache) -> Dictionary:
 ## Visibility here means native clipping geometry, not an aesthetic verdict.
 static func catalogue_review_evidence(main: Node, context_root: Node) -> Dictionary:
 	var world: SimWorld = main.get("world") as SimWorld
+	var sim: RestaurantSim = main.get("sim") as RestaurantSim
 	var editor: ShopEditor = main.get("shop_editor") as ShopEditor
 	var content: ContentDB = main.get("content") as ContentDB
 	var progress: OwnerProgress = main.get("owner_progress") as OwnerProgress
 	var catalogue: BuildCatalogue = main.get_node_or_null("Overlay/BuildCatalogue") as BuildCatalogue
 	var shop: ShopView = main.get_node_or_null("ShopView") as ShopView
 	var clock: Node = context_root.get_node_or_null("Clock")
-	if world == null or editor == null or content == null or progress == null or catalogue == null or shop == null or clock == null:
+	if world == null or sim == null or not sim.staff_spawns.has(&"server") \
+			or editor == null or content == null or progress == null or catalogue == null or shop == null or clock == null:
 		return {"available": false}
 	var cache: ItemThumbnailCache = catalogue._thumbnails
 	var expected: Dictionary = _catalogue_content_expectations(content, catalogue.selected_variants)
@@ -1383,7 +1385,7 @@ static func catalogue_review_evidence(main: Node, context_root: Node) -> Diction
 			"active": cache._active_scene != null, "failed": cache._failed.size(),
 			"error": cache.last_error, "icons_match": icons_match},
 		"expected_cards": expected["cards"], "expected_wall_scenes": expected["wall_scenes"], "cards": cards, "onscreen_cards": onscreen, "tabs": tabs, "items": items,
-		"server": _catalogue_server_evidence(world, shop, main.get_node_or_null("CameraRig/Camera3D") as Camera3D),
+		"server": _catalogue_server_evidence(world, shop, main.get_node_or_null("CameraRig/Camera3D") as Camera3D, sim.staff_spawns[&"server"]),
 		"vibe": catalogue_vibe_evidence(main, world, content, editor, catalogue),
 		"generated_vibe_uids": generated_uid_evidence(VIBE_UID_SOURCES),
 		"dining_failures": dining.failures, "dining_links": links, "edit_ok": check.ok, "unreachable": check.unreachable}
@@ -1716,13 +1718,13 @@ static func _catalogue_rug_context_valid(state: Dictionary, fixture: Dictionary)
 
 ## Read the existing server and native rig without moving, animating or warming
 ## up the simulation. Visibility/frustum fields still require image review.
-static func _catalogue_server_evidence(world: SimWorld, shop: ShopView, camera: Camera3D) -> Dictionary:
+static func _catalogue_server_evidence(world: SimWorld, shop: ShopView, camera: Camera3D, post: Vector2i) -> Dictionary:
 	for agent: SimAgent in world.agents:
 		if not agent is StaffAgent or agent is OwnerAgent or agent.role != &"server":
 			continue
 		var person: PersonView = shop.agent_nodes.get(agent.id) as PersonView
 		var record: Dictionary = {"available": true, "id": agent.id, "role": String(agent.role),
-			"cell": [agent.cell.x, agent.cell.y], "native_person": person != null,
+			"cell": [agent.cell.x, agent.cell.y], "expected_post": [post.x, post.y], "native_person": person != null,
 			"expected_model": String(PersonPresentation.model_for(agent.role, agent.id))}
 		if person != null:
 			record.merge({"visible": person.is_visible_in_tree(), "native_role": String(person.role),
@@ -1738,9 +1740,12 @@ static func _catalogue_server_evidence(world: SimWorld, shop: ShopView, camera: 
 
 
 static func _catalogue_server_valid(server: Dictionary) -> bool:
+	var post: Variant = server.get("expected_post")
+	if not post is Array or post.size() != 2 or not post[0] is int or not post[1] is int:
+		return false
 	if server.get("available") != true or server.get("native_person") != true \
 			or server.get("visible") != true or server.get("model_visible") != true \
-			or server.get("role") != "server" or server.get("native_role") != "server" or server.get("cell") != [8, 8] \
+			or server.get("role") != "server" or server.get("native_role") != "server" or server.get("cell") != post \
 			or server.get("clip") != "idle" or String(server.get("model", "")).is_empty() \
 			or server.get("model") != server.get("expected_model"):
 		return false

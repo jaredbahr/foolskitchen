@@ -167,16 +167,77 @@ func test_failed_step_cancels_task() -> void:
 	assert_null(cook.task)
 
 
-func test_buried_cook_walks_out() -> void:
-	var cook := _cook(Vector2i(5, 3))
-	world.grid.place(Vector2i(3, 3), Vector2i(4, 2), 0, true)
-	var t := SimTask.new(&"go", &"cook", "Walk")
+func test_buried_cook_waits_for_restored_floor_then_walks() -> void:
+	var cook: StaffAgent = _cook(Vector2i(5, 3))
+	assert_eq(world.agent(cook.id), cook)
+	assert_true(cook.movement_admitted)
+	assert_true(world.grid.is_walkable(cook.cell))
+	assert_true(world.clock.start_service())
+	var origin: Vector2i = cook.cell
+	var position: Vector3 = cook.movement_position()
+	var physical_claims: Dictionary = world.movement.snapshot()
+	# Deliberate direct-grid fault: never escape a large solid by a long jump.
+	var blocker: PlacedItem = world.grid.place(Vector2i(3, 3), Vector2i(4, 2), 0, true)
+	assert_not_null(blocker)
+	if blocker == null:
+		return
+	var t: SimTask = SimTask.new(&"go", &"cook", "Walk")
 	t.steps.append(TaskStep.go_to_cell(Vector2i(1, 5), "walking"))
 	world.board.post(t, world.now)
-	_run(200)
-	assert_eq(completed, [t.id] as Array[int])
+	assert_true(200 < t.timeout_ticks, "the unchanged total fits the original claim timeout")
+	# The injected solid is intentionally invalid geometry; check containment,
+	# not a geometry oracle that correctly rejects the injected fault itself.
+	for tick: int in 40:
+		world.advance()
+		assert_eq(world.agents, [cook] as Array[SimAgent])
+		assert_true(world.pending_agents().is_empty())
+		assert_true(cook.movement_admitted)
+		assert_eq(cook.cell, origin)
+		assert_eq(cook.next_cell(), origin)
+		assert_eq(cook.move_progress, 0.0)
+		assert_eq(cook.movement_position(), position)
+		assert_eq(world.movement.snapshot(), physical_claims)
+		var trace: Dictionary = cook.movement_trace()
+		assert_eq(trace.tick, world.now)
+		assert_false(trace.discontinuous)
+		assert_eq(trace.discontinuity_cause, "")
+		assert_eq(trace.points, [position, position] as Array[Vector3])
+		assert_eq(trace.times, [0.0, 1.0] as Array[float])
+		assert_null(cook.task)
+		assert_eq(t.state, SimTask.State.OPEN)
+		assert_eq(t.claimed_by, -1)
+		assert_eq(t.claimed_tick, -1)
+		assert_eq(t.drops, 0, "the origin fault cannot spend the waiting job's retry budget")
+		assert_eq(world.board.open_tasks(), [t] as Array[SimTask])
+		assert_true(world.board.claimed_tasks().is_empty())
+	assert_true(world.grid.remove(blocker.id), "restore the real floor without moving the actor")
+	assert_true(world.grid.is_walkable(origin))
+	assert_eq(cook.movement_position(), position)
+	var walked: bool = false
+	for tick: int in range(40, 200):
+		var before: Dictionary = MovementInvariants.capture(world)
+		var previous_position: Vector3 = cook.movement_position()
+		world.advance()
+		assert_eq(MovementInvariants.problem(world, before), "", "restored movement obeys the full physical oracle")
+		var distance: float = cook.movement_position().distance_to(previous_position)
+		assert_true(distance <= cook.move_speed * GridMath.CELL_SIZE + MovementInvariants.EPSILON,
+			"each actual tick respects the walk budget; no cell or wall jump")
+		walked = walked or distance > 0.0
+		if tick == 40:
+			assert_eq(cook.task, t, "the first legal-origin tick claims the original waiting job")
+			assert_eq(t.claimed_by, cook.id)
+			assert_eq(t.claimed_tick, world.now)
+	assert_true(walked, "restoration is followed by a genuine physical walk")
+	assert_eq(world.now, 200, "burial and recovery share the unchanged total tick budget")
+	assert_eq(t.state, SimTask.State.DONE, "the original job finishes after real geometry restoration")
 	assert_eq(cook.cell, Vector2i(1, 5))
-
+	assert_null(cook.task)
+	assert_eq(t.drops, 0)
+	assert_eq(world.board.active_count(), 0)
+	assert_true(world.movement.snapshot().edges.is_empty())
+	assert_true(world.movement.snapshot().next.is_empty())
+	assert_eq(completed, [t.id] as Array[int])
+	assert_true(failed.is_empty())
 
 func test_removed_agent_gives_task_back() -> void:
 	var cook := _cook(Vector2i(4, 4))
@@ -205,21 +266,79 @@ func test_task_posted_for_missing_item_fails_fast() -> void:
 	assert_eq(failed, [&"target_gone"] as Array[StringName])
 
 
-func test_deeply_buried_cook_escapes_with_long_step() -> void:
-	var grid := SimGrid.new(Vector2i(30, 12))
-	var w := SimWorld.new(grid)
-	var cook := StaffAgent.new(&"cook", 3)
+func test_deeply_buried_cook_never_jumps_and_walks_after_restoration() -> void:
+	var grid: SimGrid = SimGrid.new(Vector2i(30, 12))
+	var w: SimWorld = SimWorld.new(grid)
+	var cook: StaffAgent = StaffAgent.new(&"cook", 3)
 	cook.cell = Vector2i(15, 6)
 	w.add_agent(cook)
-	grid.place(Vector2i(25, 11), Vector2i(2, 0), 0, true)
-	var t := SimTask.new(&"go", &"cook", "Walk")
+	assert_eq(w.agent(cook.id), cook)
+	assert_true(cook.movement_admitted)
+	assert_true(w.grid.is_walkable(cook.cell))
+	assert_true(w.clock.start_service())
+	var origin: Vector2i = cook.cell
+	var position: Vector3 = cook.movement_position()
+	var physical_claims: Dictionary = w.movement.snapshot()
+	# Deliberate direct-grid fault: never escape a large solid by a long jump.
+	var blocker: PlacedItem = grid.place(Vector2i(25, 11), Vector2i(2, 0), 0, true)
+	assert_not_null(blocker)
+	if blocker == null:
+		return
+	var t: SimTask = SimTask.new(&"go", &"cook", "Walk")
 	t.steps.append(TaskStep.go_to_cell(Vector2i(0, 11), "walking"))
 	w.board.post(t, w.now)
-	for i in 400:
+	assert_true(400 < t.timeout_ticks, "the unchanged total fits the original claim timeout")
+	# The injected solid is intentionally invalid geometry; check containment,
+	# not a geometry oracle that correctly rejects the injected fault itself.
+	for tick: int in 40:
 		w.advance()
-	assert_eq(t.state, SimTask.State.DONE, "escaped and arrived (%s)" % [w.event_log])
+		assert_eq(w.agents, [cook] as Array[SimAgent])
+		assert_true(w.pending_agents().is_empty())
+		assert_true(cook.movement_admitted)
+		assert_eq(cook.cell, origin)
+		assert_eq(cook.next_cell(), origin)
+		assert_eq(cook.move_progress, 0.0)
+		assert_eq(cook.movement_position(), position)
+		assert_eq(w.movement.snapshot(), physical_claims)
+		var trace: Dictionary = cook.movement_trace()
+		assert_eq(trace.tick, w.now)
+		assert_false(trace.discontinuous)
+		assert_eq(trace.discontinuity_cause, "")
+		assert_eq(trace.points, [position, position] as Array[Vector3])
+		assert_eq(trace.times, [0.0, 1.0] as Array[float])
+		assert_null(cook.task)
+		assert_eq(t.state, SimTask.State.OPEN)
+		assert_eq(t.claimed_by, -1)
+		assert_eq(t.claimed_tick, -1)
+		assert_eq(t.drops, 0, "the origin fault cannot spend the waiting job's retry budget")
+		assert_eq(w.board.open_tasks(), [t] as Array[SimTask])
+		assert_true(w.board.claimed_tasks().is_empty())
+	assert_true(w.grid.remove(blocker.id), "restore the real floor without moving the actor")
+	assert_true(w.grid.is_walkable(origin))
+	assert_eq(cook.movement_position(), position)
+	var walked: bool = false
+	for tick: int in range(40, 400):
+		var before: Dictionary = MovementInvariants.capture(w)
+		var previous_position: Vector3 = cook.movement_position()
+		w.advance()
+		assert_eq(MovementInvariants.problem(w, before), "", "restored movement obeys the full physical oracle")
+		var distance: float = cook.movement_position().distance_to(previous_position)
+		assert_true(distance <= cook.move_speed * GridMath.CELL_SIZE + MovementInvariants.EPSILON,
+			"each actual tick respects the walk budget; no cell or wall jump")
+		walked = walked or distance > 0.0
+		if tick == 40:
+			assert_eq(cook.task, t, "the first legal-origin tick claims the original waiting job")
+			assert_eq(t.claimed_by, cook.id)
+			assert_eq(t.claimed_tick, w.now)
+	assert_true(walked, "restoration is followed by a genuine physical walk")
+	assert_eq(w.now, 400, "burial and recovery share the unchanged total tick budget")
+	assert_eq(t.state, SimTask.State.DONE, "the original job finishes after real geometry restoration")
 	assert_eq(cook.cell, Vector2i(0, 11))
-
+	assert_null(cook.task)
+	assert_eq(t.drops, 0)
+	assert_eq(w.board.active_count(), 0)
+	assert_true(w.movement.snapshot().edges.is_empty())
+	assert_true(w.movement.snapshot().next.is_empty())
 
 func test_drop_signal_sees_final_state() -> void:
 	var b := TaskBoard.new()

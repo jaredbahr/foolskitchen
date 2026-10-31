@@ -423,7 +423,10 @@ func test_native_hud_toggle_survives_refresh_between_mouse_down_and_up() -> void
 func test_native_catalogue_click_consumes_gui_input_and_starts_one_ghost_without_booking() -> void:
 	await _start()
 	assert_true(_main.call("set_build_active", true))
-	assert_true(_mode().begin_buy(&"chair", Vector2i(2, 8)))
+	# Start with a valid ghost beside the rotated west table, off its built-in seat.
+	var west: PlacedItem = ShopBuilder.items_with_def(_world(), &"table_2")[0]
+	assert_true(_mode().begin_buy(&"chair", west.origin + Vector2i.LEFT))
+	assert_true(_mode().rotate(1))
 	assert_true(_mode().current_check.ok)
 	var catalogue: BuildCatalogue = _main.get_node("Overlay/BuildCatalogue") as BuildCatalogue
 	await _frames(3)
@@ -458,19 +461,20 @@ func test_native_catalogue_click_consumes_gui_input_and_starts_one_ghost_without
 
 func test_main_build_hud_shows_partial_seats_and_clears_warning_after_the_layout_is_fixed() -> void:
 	await _start()
-	# The north seat is in the kitchen; coffee remains serviceable.
+	# The pass blocks the north seat; its dining work cell stays clear to the west.
 	assert_true(_main.call("shop_buy", &"coffee_machine", _coffee_cell(), 2))
-	var center: PlacedItem = ShopBuilder.items_with_def(_world(), &"table_2")[1]
+	var center: PlacedItem = ShopBuilder.items_with_def(_world(), &"table_2")[0]
 	var center_origin: Vector2i = center.origin
+	var partial_origin: Vector2i = center_origin + Vector2i(2, -1)
 	assert_true(int(_main.call("shop_sell", center.id)) >= 0)
 	_editor().set_owner_level(TABLE_4.unlock_level)  # Explicit purchase-unlock fixture.
 	assert_true(_main.call("set_build_active", true))
 	var label: Label = _main.get_node("HUD/BuildHints/Scroll/Lines/Text") as Label
-	assert_true(_mode().begin_buy(&"table_4", center_origin + Vector2i.UP))
+	assert_true(_mode().begin_buy(&"table_4", partial_origin))
 	assert_true(_mode().current_check.ok)
 	assert_true(label.text.contains("Only 3 of 4 seats usable"), "the production Main binding reaches the native HUD")
 	assert_true(_mode().commit())
-	var table: PlacedItem = _world().grid.item_at(center_origin + Vector2i.UP)
+	var table: PlacedItem = _world().grid.item_at(partial_origin)
 	assert_true(label.text.contains("Only 3 of 4 seats usable"), "a committed table retains its warning")
 	assert_true(_mode().pick_up(table.id))
 	_mode().update_origin(Vector2i(-1, 0))
@@ -496,12 +500,13 @@ func test_main_build_hud_shows_partial_seats_and_clears_warning_after_the_layout
 func test_floor_tool_hint_keeps_the_partial_seat_warning_beside_its_summary() -> void:
 	await _start()
 	assert_true(_main.call("shop_buy", &"coffee_machine", _coffee_cell(), 2))
-	var center: PlacedItem = ShopBuilder.items_with_def(_world(), &"table_2")[1]
+	var center: PlacedItem = ShopBuilder.items_with_def(_world(), &"table_2")[0]
 	var center_origin: Vector2i = center.origin
+	var partial_origin: Vector2i = center_origin + Vector2i(2, -1)
 	assert_true(int(_main.call("shop_sell", center.id)) >= 0)
 	_editor().set_owner_level(TABLE_4.unlock_level)  # Explicit purchase-unlock fixture.
 	assert_true(_main.call("set_build_active", true))
-	assert_true(_mode().begin_buy(&"table_4", center_origin + Vector2i.UP))
+	assert_true(_mode().begin_buy(&"table_4", partial_origin))
 	assert_true(_mode().commit())
 	var label: Label = _main.get_node("HUD/BuildHints/Scroll/Lines/Text") as Label
 	assert_true(_mode().begin_floor())
@@ -1176,12 +1181,16 @@ func _assert_catalogue_capture_fixture(profile: StringName) -> void:
 			break
 	assert_false(CAPTURE.catalogue_review_valid(wrong, 120, fixture))
 	if profile == &"rustic":
-		assert_eq(room["server"]["cell"], [8, 8])
+		var server_post: Vector2i = (_main.get("sim") as RestaurantSim).staff_spawns[&"server"]
+		assert_eq(room["server"]["cell"], [server_post.x, server_post.y])
 		assert_true(room["server"]["native_person"])
 		assert_true(room["server"]["visible"])
 		assert_true(room["server"]["model_visible"])
 		assert_eq(room["server"]["clip"], "idle")
 		assert_eq(room["server"]["model"], room["server"]["expected_model"])
+		wrong = room.duplicate(true)
+		wrong["server"]["cell"] = [server_post.x + 1, server_post.y]
+		assert_false(CAPTURE.catalogue_review_valid(wrong, 120, fixture), "an off-post server cannot prove the authored paused pose")
 		wrong = room.duplicate(true)
 		wrong["server"]["visible"] = false
 		assert_false(CAPTURE.catalogue_review_valid(wrong, 120, fixture), "a hidden server cannot prove the person-beside-rug requirement")

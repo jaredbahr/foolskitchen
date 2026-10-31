@@ -146,12 +146,24 @@ func begin_tick(world: SimWorld) -> void:
 		if _resume.has(agent.id) and agent.has_arrived() and not _stopping.has(agent.id):
 			var goal: Vector2i = _resume[agent.id]
 			if agent.cell == goal:
+				if _idle_without_route(world, agent):
+					if _cooperative_holding(world, agent):
+						continue
+					# Retire an idle service goal only at the pocket really reached.
+					agent.set_destination(world.grid, agent.cell)
 				# A sidestep is not arrival at the actor's productive station.
 				_resume.erase(agent.id)
 				_returning.erase(agent.id)
 				_cooperative.erase(agent.id)
 				continue
 			if _cooperative_holding(world, agent):
+				continue
+			if not _returning.has(agent.id) and _idle_without_route(world, agent) \
+					and agent.destination() != SimGrid.NO_CELL and goal != agent.destination():
+				# A second completed idle pocket supersedes an earlier parking target.
+				# Explicit journeys retain their real goal as the resume destination.
+				agent.set_destination(world.grid, agent.cell)
+				supersede_destination(agent.id)
 				continue
 			if not _returning.has(agent.id) and _can_queue_in_pocket(world, agent):
 				# A door waiter can wait on the ordinary floor it actually reached.
@@ -464,7 +476,7 @@ func _wait(world: SimWorld, agent: SimAgent, next: Vector2i) -> void:
 		if waits >= world.movement_tuning.yield_after_ticks \
 				and _idle_station_holder(world, agent, holder, next):
 			if _yield(world, holder, agent) == YieldAttempt.STARTED:
-				# Idle staff have no productive reason to return to this station.
+				# No station lease requires a return to this cleared position.
 				_resume[holder.id] = holder.path.back()
 				return
 		var yielding: SimAgent = holder if _before(world, agent, holder) else agent
@@ -475,9 +487,16 @@ func _wait(world: SimWorld, agent: SimAgent, next: Vector2i) -> void:
 				# ask the normal winner to make a physical cooperative vacancy.
 				var blocked_cell: Vector2i = yielding.cell
 				var cleared_cell: Vector2i = winner.cell
+				var idle_blocked: bool = _idle_without_route(world, yielding)
+				var winner_route: Array[Vector2i] = [winner.cell]
+				if idle_blocked:
+					winner_route.append_array(winner.path.slice(winner.path_index))
 				if _yield(world, winner, yielding) == YieldAttempt.STARTED:
 					_cooperative[winner.id] = {"blocked_id": yielding.id, "blocked_cell": blocked_cell,
 						"cleared_cell": cleared_cell, "arrival_tick": -1, "hold_until": -1}
+					if idle_blocked:
+						# Preserve the productive route before the clearer's retreat replaces it.
+						_cooperative[winner.id]["winner_route"] = winner_route
 	if waits % world.movement_tuning.repath_after_ticks == 0 \
 			and (not _resume.has(agent.id) or _returning.has(agent.id)) \
 			and not agent is CourierAgent:
@@ -486,18 +505,29 @@ func _wait(world: SimWorld, agent: SimAgent, next: Vector2i) -> void:
 			agent.install_movement_route(alternate)
 
 
-## An idle employee can clear a station actually leased by incoming work.
+## An idle or unleased waiting employee can clear incoming leased work.
 ## Active workers, owners and ordinary route priority retain their policy.
 func _idle_station_holder(world: SimWorld, agent: SimAgent, holder: SimAgent, next: Vector2i) -> bool:
 	if not agent is StaffAgent or not holder is StaffAgent or holder is OwnerAgent:
 		return false
 	var worker: StaffAgent = agent as StaffAgent
 	var idle: StaffAgent = holder as StaffAgent
-	if idle.task != null or idle.carries_food() or not idle.has_arrived() or _resume.has(idle.id) \
+	if idle.carries_food() or not idle.has_arrived() or _resume.has(idle.id) \
 			or _stopping.has(idle.id) or _edges.has(idle.id):
 		return false
+	if idle.task != null:
+		if idle.task.state != SimTask.State.CLAIMED or idle.task.claimed_by != idle.id \
+				or world.board.get_task(idle.task.id) != idle.task or idle.step_index < 0 \
+				or idle.step_index >= idle.task.steps.size():
+			return false
+		var pending: TaskStep = idle.task.steps[idle.step_index]
+		if pending.kind != TaskStep.Kind.GO_TO_ITEM or idle._step_started \
+				or idle._waiting_for.is_empty() or idle._held_item_id != 0 \
+				or idle._held_cell != SimGrid.NO_CELL:
+			return false
 	if worker.task == null or worker.task.state != SimTask.State.CLAIMED \
 			or worker.task.claimed_by != worker.id or worker.step_index < 0 \
+			or world.board.get_task(worker.task.id) != worker.task \
 			or worker.step_index >= worker.task.steps.size() \
 			or worker.destination() != next or holder.cell != next:
 		return false
@@ -508,7 +538,16 @@ func _idle_station_holder(world: SimWorld, agent: SimAgent, holder: SimAgent, ne
 	return item != null and item.work_cells.has(next) and item.reserved_by(next) == worker.id
 
 
-func _yield(world: SimWorld, yielding: SimAgent, winner: SimAgent) -> YieldAttempt:
+func _idle_without_route(_world: SimWorld, agent: SimAgent) -> bool:
+	if not agent is StaffAgent or agent is OwnerAgent or not agent.has_arrived() \
+			or agent.move_progress != 0.0 or _stopping.has(agent.id) or _edges.has(agent.id):
+		return false
+	var staff: StaffAgent = agent as StaffAgent
+	return staff.task == null and not staff.carries_food() and staff._held_item_id == 0 \
+		and staff._held_cell == SimGrid.NO_CELL
+
+
+func _yield(world: SimWorld, yielding: SimAgent, winner: SimAgent, avoid_parking: Array[Vector2i] = []) -> YieldAttempt:
 	var fresh_outbound: bool = _resume.has(yielding.id) and not _returning.has(yielding.id) \
 			and int(_blocked.get(yielding.id, 0)) < world.movement_tuning.yield_after_ticks
 	if fresh_outbound or _stopping.has(yielding.id) or _edges.has(yielding.id) \
@@ -521,13 +560,21 @@ func _yield(world: SimWorld, yielding: SimAgent, winner: SimAgent) -> YieldAttem
 	var original: Vector2i = _resume.get(yielding.id, yielding.destination())
 	if original == SimGrid.NO_CELL:
 		original = yielding.cell
+	var parking: bool = _idle_without_route(world, yielding)
+	var winner_route: Array[Vector2i] = []
+	if parking:
+		winner_route.assign(winner.path.slice(winner.path_index))
+		winner_route.append(winner.cell)
+		winner_route.append_array(avoid_parking)
 	for cell: Vector2i in _nearby(world, yielding, yielding.cell, world.movement_tuning.yield_search_radius):
 		if cell == winner.cell or cell == winner.next_cell() or not can_enter(world, yielding, cell):
+			continue
+		if parking and winner_route.has(cell):
 			continue
 		var path: Array[Vector2i] = route(world, yielding, yielding.cell, cell, true)
 		if path.size() < 2 or path.slice(1).has(winner.cell) or path.slice(1).has(winner.next_cell()):
 			continue
-		_resume[yielding.id] = original
+		_resume[yielding.id] = cell if parking else original
 		_returning.erase(yielding.id)
 		_cooperative.erase(yielding.id)
 		_blocked.erase(yielding.id)
@@ -562,6 +609,12 @@ func _cooperative_holding(world: SimWorld, agent: SimAgent) -> bool:
 	if world.now >= int(row["hold_until"]):
 		_cooperative.erase(agent.id)
 		return false
+	if blocked != null and row.has("winner_route") and _idle_without_route(world, blocked):
+		# The clearer is physically in its pocket. Ask the ordinary idle loser
+		# to use that real vacancy; a route alone never counts as progress.
+		var winner_route: Array[Vector2i] = []
+		winner_route.assign(row["winner_route"])
+		_yield(world, blocked, agent, winner_route)
 	return true
 
 

@@ -120,6 +120,8 @@ func on_removed(world: SimWorld) -> void:
 
 func tick(world: SimWorld) -> void:
 	if task == null:
+		if not world.grid.is_walkable(cell):
+			return
 		_try_claim(world)
 		return
 	if not _maintain_claim(world):

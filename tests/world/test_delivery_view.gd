@@ -36,6 +36,10 @@ func _delivery_fixture_layout() -> ShopLayout:
 		var placed: ShopPlacement = authored.duplicate(true) as ShopPlacement
 		if placed.item_id == &"table_2" and placed.origin == Vector2i(6, 6):
 			placed.quarter_turns = 1
+		if placed.item_id == &"table_2" and placed.origin == Vector2i(10, 6):
+			# The 2x2 body stays square when turned: move it off the picker footprint.
+			placed.origin = Vector2i(10, 7)
+			placed.quarter_turns = 1
 		layout.placements.append(placed)
 	return layout
 

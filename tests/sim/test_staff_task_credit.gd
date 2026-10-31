@@ -7,15 +7,29 @@ var _credited: Array[bool] = []
 
 
 func before_each() -> void:
-	_world = SimWorld.new(SimGrid.from_ascii(PackedStringArray(["###", "#.#", "###"])))
+	# Four legal cells hold the default cohort and the explicit outsider.
+	_world = SimWorld.new(SimGrid.from_ascii(PackedStringArray(["######", "#....#", "######"])))
 	_roster = StaffRoster.new()
 	_credited.clear()
 	_world.board.task_completed.connect(_on_task_completed)
+	var spawn: Vector2i = Vector2i(1, 1)
 	for member: StaffMember in _roster.members():
 		var agent: StaffAgent = StaffAgent.new(member.role, member.skill)
 		agent.configure_member(member, _roster.catalogue.find_trait(member.trait_id))
+		agent.cell = spawn
+		spawn += Vector2i.RIGHT
 		_world.add_agent(agent)
-	_world.add_agent(OwnerAgent.new())
+		assert_eq(_world.agent(agent.id), agent)
+		assert_true(agent.movement_admitted)
+	var owner: OwnerAgent = OwnerAgent.new(spawn)
+	_world.add_agent(owner)
+	assert_eq(_world.agent(owner.id), owner)
+	assert_true(owner.movement_admitted)
+	var roles: Array[StringName] = []
+	for agent: SimAgent in _world.agents:
+		roles.append(agent.role)
+	assert_eq(roles, [&"cook", &"server", &"owner"] as Array[StringName])
+	assert_true(_world.pending_agents().is_empty())
 
 
 func after_each() -> void:
@@ -74,7 +88,10 @@ func test_owner_unrostered_staff_and_unknown_kind_cannot_credit_xp() -> void:
 	var owner: OwnerAgent = _world.agents[2] as OwnerAgent
 	var outside: StaffAgent = StaffAgent.new(&"cook", 3)
 	outside.member_id = &"someone_else"
+	outside.cell = Vector2i(4, 1)
 	_world.add_agent(outside)
+	assert_eq(_world.agent(outside.id), outside)
+	assert_true(outside.movement_admitted)
 	for agent: StaffAgent in [owner, outside]:
 		var task: SimTask = _task(&"cook")
 		_world.board.post(task, 0)

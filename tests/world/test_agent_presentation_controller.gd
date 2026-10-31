@@ -537,24 +537,99 @@ func test_moving_and_seated_people_stay_anchored_and_dense_groups_remain_bounded
 		var agent: SimAgent = _admit(SimAgent.new())
 		agent.cell = customer.cell
 		standers.append(agent)
+	var before: Dictionary = _dense_projection_state(standers, customer, table)
 	var frames: Dictionary[int, AgentPresentationController.Frame] = AgentPresentationController.frames_for(standers, _world)
 	assert_eq(frames[customer.id].display_offset, Vector3.ZERO)
 	assert_eq(frames[walker.id].display_offset, Vector3.ZERO)
 	var reverse: Array[SimAgent] = standers.duplicate()
 	reverse.reverse()
 	var repeated: Dictionary[int, AgentPresentationController.Frame] = AgentPresentationController.frames_for(reverse, _world)
+	var proved_infeasible: Dictionary[int, bool] = {}
 	for first: SimAgent in standers:
 		var frame: AgentPresentationController.Frame = frames[first.id]
 		assert_eq(frame.display_offset, repeated[first.id].display_offset)
+		assert_false(frame.hidden, "the deliberate legacy overlap must not hide a body")
+		assert_eq(frame.floor_position, GridMath.cell_to_world(first.cell))
+		var blockers: Array[Vector3] = []
+		for other: SimAgent in standers:
+			if other != first:
+				blockers.append(_drawn(frames[other.id]))
+		assert_true(_projection_sweep_clear(frame.floor_position, _drawn(frame), blockers),
+			"an accepted display offset cannot cross the map or another drawn person")
+		if frame.separation_blocked:
+			assert_false(frame.moving or frame.seated, "fixed anchors are not rejected movable nudges")
+			assert_eq(frame.display_offset, Vector3.ZERO, "infeasible legacy poses hold their actual origin")
+			var blocked_rays: bool = _all_projection_ray_prefixes_blocked(first, standers, frames)
+			assert_true(blocked_rays, "fixed-prefix greedy-ray infeasibility needs geometric evidence")
+			if blocked_rays:
+				proved_infeasible[first.id] = true
 		assert_true(frame.display_offset.length() <= AgentPresentationController.DISPLAY_NUDGE_STEP * float(2 * standers.size() + 1))
 		assert_almost_eq(frame.display_offset.y, 0.0)
+	for first: SimAgent in standers:
 		if first == walker:
 			continue
 		for second: SimAgent in standers:
 			if first.id >= second.id or second == walker:
 				continue
-			assert_true(_drawn(frames[first.id]).distance_to(_drawn(frames[second.id])) >= 0.45)
+			var distance: float = _drawn(frames[first.id]).distance_to(_drawn(frames[second.id]))
+			assert_true(distance >= 0.45 or proved_infeasible.has(first.id) or proved_infeasible.has(second.id),
+				"unresolved legacy overlap needs a real fixed-ray blockade, not a flag alone")
 	assert_eq(table.reserved_by(customer.seat_cell), customer.id)
+
+	assert_eq(_dense_projection_state(standers, customer, table), before)
+	# Independent controls: a free ray must remain available; a table or person
+	# cannot be ignored. Longer straight segments contain their short prefixes.
+	var origin: Vector3 = GridMath.cell_to_world(customer.cell)
+	assert_true(_projection_sweep_clear(origin, origin + Vector3.LEFT * 0.45, []))
+	assert_false(_projection_sweep_clear(origin, origin + Vector3.RIGHT * 0.45, []))
+	assert_false(_projection_sweep_clear(origin, origin + Vector3.BACK * 0.9,
+		[origin + Vector3.BACK * 0.45] as Array[Vector3]))
+	assert_false(_projection_sweep_clear(origin, origin + Vector3.BACK * 1.35,
+		[origin + Vector3.BACK * 0.45] as Array[Vector3]))
+	assert_false(_projection_sweep_clear(origin, origin + Vector3.LEFT, []))
+
+
+func test_solvable_dense_pairs_keep_strict_clearance_and_fixed_anchors_without_sim_mutation() -> void:
+	var table: PlacedItem = _table()
+	var customer: CustomerAgent = _seated_customer(table)
+	var walker: SimAgent = _admit(SimAgent.new())
+	walker.cell = customer.cell + Vector2i.DOWN * 2
+	walker.path = [walker.cell, walker.cell + Vector2i.LEFT]
+	walker.path_index = 1
+	var actors: Array[SimAgent] = [customer, walker]
+	var origins: Array[Vector2i] = [customer.cell + Vector2i.UP,
+		customer.cell + Vector2i.LEFT, customer.cell + Vector2i.DOWN]
+	for index: int in range(6):
+		var actor: SimAgent = _admit(SimAgent.new())
+		actor.cell = origins[index % origins.size()]
+		actors.append(actor)
+	var before: Dictionary = _dense_projection_state(actors, customer, table)
+	var frames: Dictionary[int, AgentPresentationController.Frame] = AgentPresentationController.frames_for(actors, _world)
+	var reverse: Array[SimAgent] = actors.duplicate()
+	reverse.reverse()
+	var repeated: Dictionary[int, AgentPresentationController.Frame] = AgentPresentationController.frames_for(reverse, _world)
+	assert_eq(frames[customer.id].display_offset, Vector3.ZERO)
+	assert_eq(frames[walker.id].display_offset, Vector3.ZERO)
+	var nudged: int = 0
+	for first: SimAgent in actors:
+		var frame: AgentPresentationController.Frame = frames[first.id]
+		assert_false(frame.hidden)
+		assert_false(frame.separation_blocked, "the positive dense arrangement has actual safe exits")
+		assert_eq(frame.display_offset, repeated[first.id].display_offset)
+		assert_eq(frame.floor_position, GridMath.cell_to_world(first.cell))
+		assert_true(frame.display_offset.length() <= AgentPresentationController.DISPLAY_NUDGE_STEP * float(2 * actors.size() + 1))
+		assert_almost_eq(frame.display_offset.y, 0.0)
+		nudged += 1 if frame.display_offset != Vector3.ZERO else 0
+		var blockers: Array[Vector3] = []
+		for second: SimAgent in actors:
+			if second != first:
+				blockers.append(_drawn(frames[second.id]))
+			if first.id < second.id:
+				assert_true(_drawn(frame).distance_to(_drawn(frames[second.id])) >= 0.45)
+		assert_true(_projection_sweep_clear(frame.floor_position, _drawn(frame), blockers))
+	assert_true(nudged > 0, "the positive fixture genuinely resolves overlapping pairs")
+	assert_eq(table.reserved_by(customer.seat_cell), customer.id)
+	assert_eq(_dense_projection_state(actors, customer, table), before)
 
 
 func test_standers_avoid_seats_even_when_seated_id_is_later_and_nudges_create_new_neighbors() -> void:
@@ -721,6 +796,69 @@ func test_head_and_hand_anchors_include_rig_pose_seat_lift_and_shared_scale() ->
 	var band: MeshInstance3D = view.get_node("ChefHat/Band") as MeshInstance3D
 	assert_true(0.34325 + band.position.y - (band.mesh as CylinderMesh).height * 0.5 >= 0.661325)
 	view.free()
+
+
+## Independent continuous geometry, not the controller's private validators.
+## These fixtures use the same conservative body footprint as their contract.
+func _projection_sweep_clear(origin: Vector3, target: Vector3, people: Array[Vector3]) -> bool:
+	if not origin.is_finite() or not target.is_finite():
+		return false
+	var start: Vector2 = Vector2(origin.x, origin.z)
+	var end: Vector2 = Vector2(target.x, target.z)
+	var sweep: Rect2 = Rect2(start, Vector2.ZERO).expand(end).grow(0.45 * 0.5)
+	var bounds: Rect2 = Rect2(Vector2(_world.grid.origin) * GridMath.CELL_SIZE,
+		Vector2(_world.grid.size) * GridMath.CELL_SIZE)
+	if not bounds.encloses(sweep):
+		return false
+	var touched: Dictionary[Vector2i, bool] = {}
+	for cell: Vector2i in _world.grid.cells():
+		var tile: Rect2 = Rect2(Vector2(cell) * GridMath.CELL_SIZE, Vector2.ONE * GridMath.CELL_SIZE)
+		if not sweep.intersects(tile, true):
+			continue
+		if not _world.grid.is_walkable(cell):
+			return false
+		touched[cell] = true
+	for cell: Vector2i in touched:
+		for step: Vector2i in [Vector2i.RIGHT, Vector2i.DOWN]:
+			if touched.has(cell + step) and not _world.grid.step_open(cell, cell + step):
+				return false
+	for person: Vector3 in people:
+		var point: Vector2 = Vector2(person.x, person.z)
+		var closest: Vector2 = Geometry2D.get_closest_point_to_segment(point, start, end)
+		# Initial overlap may separate, but may never deepen or cross a person.
+		if closest.distance_to(point) < minf(start.distance_to(point), 0.45):
+			return false
+	return true
+
+
+## A blocked0.45m prefix rules out EVERY longer segment on that same ray.
+## This proves only the existing8 greedy rays under earlier accepted blockers,
+## not global packing impossibility or the absence of a curved escape route.
+func _all_projection_ray_prefixes_blocked(actor: SimAgent, actors: Array[SimAgent],
+		frames: Dictionary[int, AgentPresentationController.Frame]) -> bool:
+	var people: Array[Vector3] = []
+	for other: SimAgent in actors:
+		if other != actor and (frames[other.id].moving or frames[other.id].seated or other.id < actor.id):
+			people.append(_drawn(frames[other.id]))
+	var origin: Vector3 = GridMath.cell_to_world(actor.cell)
+	var directions: Array[Vector3] = [Vector3.RIGHT, Vector3.BACK, Vector3.LEFT, Vector3.FORWARD,
+		Vector3(1, 0, 1), Vector3(-1, 0, 1), Vector3(-1, 0, -1), Vector3(1, 0, -1)]
+	for direction: Vector3 in directions:
+		if _projection_sweep_clear(origin, origin + direction.normalized() * 0.45, people):
+			return false
+	return true
+
+
+func _dense_projection_state(actors: Array[SimAgent], guest: CustomerAgent, table: PlacedItem) -> Dictionary:
+	var people: Array[Dictionary] = []
+	for actor: SimAgent in actors:
+		people.append({"id": actor.id, "cell": actor.cell, "path": actor.path.duplicate(),
+			"index": actor.path_index, "progress": actor.move_progress, "admitted": actor.movement_admitted})
+	return {"people": people, "reservations": table._reservations.duplicate(),
+		"clock": _world.clock.to_dict(), "tick": _world.now, "grid_version": _world.grid.version,
+		"claims": _world.movement.snapshot(), "log": _world.event_log.duplicate(),
+		"guest_state": guest.state, "guest_rng": [guest.rng.seed, guest.rng.state],
+		"restaurant_rng": [_restaurant.rng.seed, _restaurant.rng.state]}
 
 
 func _admit(agent: SimAgent) -> SimAgent:

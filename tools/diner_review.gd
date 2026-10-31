@@ -23,10 +23,11 @@ const REFERENCES: Array[String] = ["benchCushion", "stoolBar", "lampWall", "wall
 const COMPARISON: String = "DinerComparison"
 const WALLS: String = "DinerWallStaging"
 const NOTICE: String = "Diner review fixture - unsaved; wall pieces are view-only staging, not player wall placement."
+## Keep both side aisles open and the booth backs below the pass work cell (3,5).
 const PURCHASES: Array[Dictionary] = [
-	{"id": &"cross_table", "cell": Vector2i(2, 7), "turns": 0},
-	{"id": &"diner_booth", "cell": Vector2i(2, 8), "turns": 0},
-	{"id": &"diner_booth", "cell": Vector2i(2, 5), "turns": 2},
+	{"id": &"cross_table", "cell": Vector2i(2, 8), "turns": 0},
+	{"id": &"diner_booth", "cell": Vector2i(2, 9), "turns": 0},
+	{"id": &"diner_booth", "cell": Vector2i(2, 6), "turns": 2},
 	{"id": &"bar_counter", "cell": Vector2i(6, 6), "turns": 0},
 	{"id": &"diner_stool", "cell": Vector2i(6, 7), "turns": 0},
 	{"id": &"diner_stool", "cell": Vector2i(7, 7), "turns": 0},
@@ -122,7 +123,7 @@ static func prepare(main: Node, context_root: Node) -> Dictionary:
 
 
 ## Real shop APIs author the layout. Six explicit arrivals walk and reserve seats
-## through CustomerAgent.tick(), bounded independently; no hand-set sit state,
+## through the guest-only movement lifecycle, bounded independently; no hand-set sit state,
 ## no clock/service advancement, earned progress or balance claim.
 static func furnish(main: Node, context_root: Node, fixture: Dictionary) -> Dictionary:
 	var result: Dictionary = fixture.duplicate(true)
@@ -179,15 +180,30 @@ static func furnish(main: Node, context_root: Node, fixture: Dictionary) -> Dict
 	if not plan.failures.is_empty() or plan.links.size() != 6:
 		result["error"] = "diner fixture must have six valid production dining links"
 		return result
+	var entries: Array[Vector2i] = world.grid.entries()
+	if entries.is_empty():
+		result["error"] = "diner fixture needs an actual street entry"
+		return result
 	var guests: Array[int] = []
 	var ticks: Array[int] = []
 	for index: int in range(6):
 		var random: RandomNumberGenerator = RandomNumberGenerator.new()
 		random.seed = 12300 + index
-		var guest: CustomerAgent = sim.add_customer(Vector2i(6, 11), random)
+		# Previous guest-only steps ended real movement intervals at paused tick0.
+		world.movement.begin_tick(world)
+		var guest: CustomerAgent = sim.add_customer(entries[0], random)
+		if world.agent(guest.id) != guest or not guest.movement_admitted:
+			result["error"] = "diner fixture arrival was not admitted at its street entry"
+			return result
 		var walked: int = 0
 		for tick: int in range(WALK_BUDGET):
-			guest.tick(world)
+			world.movement.begin_tick(world)
+			guest.begin_movement_trace(world.now)
+			if world.movement.advance_stop(world, guest) or world.movement.advance_yield(world, guest):
+				guest.maintain_movement_pause(world)
+			else:
+				guest.tick(world)
+			guest.end_movement_trace()
 			walked = tick + 1
 			if AgentPresentationController.frame_for(guest, world).seated:
 				break

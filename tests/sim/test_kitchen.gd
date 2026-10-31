@@ -877,6 +877,17 @@ func test_dropped_prepared_trip_cannot_orphan_its_other_ready_meal() -> void:
 
 
 func test_path_change_at_pickup_fails_primary_and_recovers_held_plate() -> void:
+	# Keep this chaos route failure separate from the pass itself. The default
+	# first north seat (2,5) otherwise shares pass pickup workcell (3,5).
+	var table: PlacedItem = _item(&"table_2")
+	var table_id: int = table.id
+	var table_capacity: int = table.seat_cells.size()
+	assert_true(_sim.world.grid.relocate_def(table.id, table.origin + Vector2i(0, 2), table.quarter_turns))
+	assert_eq(table.id, table_id)
+	assert_eq(table.seat_cells.size(), table_capacity)
+	var pass_item: PlacedItem = _item(&"pass_counter")
+	assert_eq(pass_item.work_cells.size(), 2)
+	var pickup: Vector2i = pass_item.work_cells[1]
 	var guest: CustomerAgent = _guest()
 	assert_true(_sim.world.clock.start_service())
 	for tick: int in range(1200):
@@ -899,18 +910,46 @@ func test_path_change_at_pickup_fails_primary_and_recovers_held_plate() -> void:
 	server.priorities[&"server"] = 2
 	server.priorities[&"any"] = 1
 	var claimed: SimTask = null
+	var pickup_reached: bool = false
 	for tick: int in range(1200):
 		_sim.advance()
 		if server.task != null and server.task.kind == &"deliver":
 			claimed = server.task
-			break
+			# Claim alone precedes travel. Inject the changed route only after
+			# the real leased GO_TO_ITEM completed, before pickup WORK runs.
+			if server.step_index == 1 and server.cell == pickup and server.move_progress == 0.0 \
+					and pass_item.reserved_by(pickup) == server.id \
+					and not _sim.world.movement.is_yielding(server.id) \
+					and not _sim.world.movement.is_stopping(server.id):
+				pickup_reached = true
+				break
 	assert_not_null(claimed)
 	if claimed == null:
 		return
+	assert_true(pickup_reached, "the original trip reaches its actual held pickup before the path changes")
+	if not pickup_reached:
+		return
+	assert_eq(server.task, claimed)
+	assert_eq(_sim.world.board.get_task(claimed.id), claimed)
+	assert_eq(claimed.state, SimTask.State.CLAIMED)
+	assert_eq(claimed.claimed_by, server.id)
+	var drops_at_pickup: int = claimed.drops
+	assert_eq(claimed.steps[server.step_index].kind, TaskStep.Kind.WORK)
+	assert_false(bool(claimed.payload.get("batch_prepared", false)))
+	assert_eq(guest.order.state, Order.State.READY)
+	assert_true(_sim.kitchen.plates.has_order(guest.order.id))
 	var approaches: Array[Vector2i] = _sim.world.grid.walkable_neighbours(guest.order.seat_cell)
+	assert_false(approaches.has(pickup), "the unreachable service target cannot remove pickup access")
 	assert_true(approaches.size() > 0)
 	for cell: Vector2i in approaches:
+		for actor: SimAgent in _sim.world.agents:
+			assert_ne(cell, actor.cell, "the fixture must not wall in an actor before pickup")
+			if actor.move_progress > 0.0:
+				assert_ne(cell, actor.next_cell(), "a real reserved edge is not the route-change target")
 		assert_true(_sim.world.grid.set_terrain(cell, SimGrid.Terrain.WALL))
+	assert_true(_sim.world.grid.is_walkable(pickup))
+	assert_eq(server.cell, pickup)
+	assert_eq(pass_item.reserved_by(pickup), server.id)
 	assert_true(_sim.world.grid.walkable_neighbours(guest.order.seat_cell).is_empty())
 	for tick: int in range(500):
 		_sim.advance()
@@ -919,7 +958,11 @@ func test_path_change_at_pickup_fails_primary_and_recovers_held_plate() -> void:
 			break
 	assert_eq(claimed.state, SimTask.State.CANCELLED)
 	assert_eq(guest.order.state, Order.State.CANCELLED, "the READY order is never silently lost")
+	assert_eq(guest.order.cancellation_reason, &"step_failed", "the pickup callback, not guest patience, fails the primary")
 	assert_false(_sim.kitchen.plates.has_order(guest.order.id), "the held plate is recovered")
+
+	assert_eq(claimed.drops, drops_at_pickup, "the actual pickup callback fails, rather than a new stuck/drop/timeout escape")
+	assert_eq(pass_item.reserved_by(pickup), -1, "normal failed pickup releases its station lease")
 
 
 func _two_ready_guests_for_trays() -> Array[CustomerAgent]:
