@@ -253,14 +253,14 @@ func test_outside_work_cells_rotate_without_clamping_and_turns_wrap() -> void:
 func test_recipe_helpers_count_repeated_ingredient_units_and_all_steps() -> void:
 	var db: ContentDB = _starter_db()
 	assert_eq(db.recipe(&"burger").ingredient_cost(), 4)
-	assert_eq(db.recipe(&"burger").total_ticks(), 120)
+	assert_eq(db.recipe(&"burger").total_ticks(), 84)
 	var grilled: RecipeDef = db.recipe(&"grilled_cheese")
 	assert_eq(grilled.ingredients.size(), 3)
 	assert_true(grilled.ingredients[0] == grilled.ingredients[1])
 	assert_eq(grilled.ingredient_cost(), 3)
-	assert_eq(grilled.total_ticks(), 70)
+	assert_eq(grilled.total_ticks(), 49)
 	assert_eq(db.recipe(&"tomato_soup").ingredient_cost(), 3)
-	assert_eq(db.recipe(&"tomato_soup").total_ticks(), 150)
+	assert_eq(db.recipe(&"tomato_soup").total_ticks(), 105)
 
 
 func test_starter_footprints_categories_and_interaction_cells() -> void:
@@ -441,8 +441,8 @@ func test_quality_star_projection_is_bounded_without_replacing_quality() -> void
 
 func test_fryer_and_oven_recipes_have_data_owned_prices_levels_sections_and_steps() -> void:
 	var db: ContentDB = _starter_db()
-	for row: Array in [[&"fries", &"fryer", 7, 2, RecipeDef.Section.SIDES, 70, 2],
-			[&"savoury_pie", &"oven", 13, 3, RecipeDef.Section.MAINS, 130, 4]]:
+	for row: Array in [[&"fries", &"fryer", 7, 2, RecipeDef.Section.SIDES, 49, 2],
+			[&"savoury_pie", &"oven", 13, 3, RecipeDef.Section.MAINS, 91, 4]]:
 		var recipe: RecipeDef = db.recipe(row[0])
 		assert_eq(recipe.standard_price, row[2])
 		assert_eq(recipe.unlock_level, row[3])

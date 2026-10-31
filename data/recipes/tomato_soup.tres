@@ -10,12 +10,12 @@
 [sub_resource type="Resource" id="Step_prep"]
 script = ExtResource("3_step")
 station_type = &"prep_counter"
-duration_ticks = 30
+duration_ticks = 21
 
 [sub_resource type="Resource" id="Step_cook"]
 script = ExtResource("3_step")
 station_type = &"stove"
-duration_ticks = 120
+duration_ticks = 84
 
 [resource]
 script = ExtResource("1_recipe")

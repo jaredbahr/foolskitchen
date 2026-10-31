@@ -636,10 +636,9 @@ an active edit/panel/selection first, or opens Settings when none is active.
 - A separate saved `GameState.rng(&"reviews")` stream draws the 50% chance and
   quote, with the type's review-chance multiplier applied before the draw.
   Neither reviews nor quotes consume customer, kitchen or hiring draws.
-  The 0.8x-at-one-star to 1.2x-at-five-stars arrival curve is linear in the
-  authored resource. Main samples it once before `sim.start_day()` schedules
-  the first guest, scaling the base min/max arrival gaps inversely. Reviews
-  earned during service update the HUD but do not change that day's gaps.
+  Demand growth (FK-120 below) replaces Main's former reputation-only gap
+  division. Reviews earned during service update the HUD; reputation joins
+  demand at the next morning's latch.
 - Main stages the versioned `reviews` save section and installs it only after a
   successful full morning load. Missing sections in older saves start at the
   five virtual reviews. A rejected section follows the existing failed-load
@@ -2476,6 +2475,24 @@ There is no new save point or SaveSystem migration.
   starts fresh and skips only the next autosave; later morning saves resume.
 - RNG seed/state and the master seed use decimal strings to preserve 64-bit integers through JSON parsing.
 
+### First-day guide (FK-060)
+
+`Hints` owns ordered, once-only presentation progress for the first two mornings.
+Menu must actually open and close before the Stock hint; later hints observe the
+first queued guest, dirty table and visible evening report. Hidden targets and
+missed day-one steps are consumed rather than blocking play. `HintsBubble` uses
+the shared theme and anchors to HUD controls or the bottom-right corner. Its root,
+card and labels ignore mouse input; only its two unfocused buttons receive it.
+No hint changes the clock, speed, world or random streams.
+
+Main registers the `hints` save section. Missing sections start complete on an
+older save; a new game starts fresh. Settings' “Show guide again” resets in-memory
+progress for this morning (or the next morning during service), with persistence
+at the next existing morning autosave only. Title Settings hides that run-specific
+action. `use_saves = false` and title backdrops suppress guide presentation unless
+a review tool explicitly sets `guide_for_tools`. `tools/hints_review.tscn` opts in
+for the single first-morning capture in the existing visual-review job.
+
 ### 2.5 Testing
 Dish quality explanations (FK-063): `DishQuality.breakdown()` snapshots the recipe
 base, role skill factor, cooking trait and distinct preparation station bonuses,
@@ -2586,3 +2603,66 @@ interactive fixture with explicit synthetic XP/cash and saves disabled.
 accepted lease in Expand in one bounded manual process, then exits. Attach all
 three PNGs to the PR and keep their state metadata outside Git; this capture set
 is not part of CI.
+
+
+### Demand growth (FK-120)
+
+`DemandTuning` in `data/balance/demand.tres` authors every calibration value.
+`DemandBreakdown` multiplies reputation, word of mouth, menu variety, vibe and
+the neutral curb-appeal hook, then caps the result at 3. Main latches reputation
+and renown each morning; accepted menu and shop edits refresh only the editable
+factors. `RestaurantSim.arrival_rate()` multiplies the existing hourly visit rate
+by this factor. The existing `CustomerSpawner.scaled_gap` applies it once to the
+authored base gaps, with no new random stream or draw. Edits never reset the
+arrival countdown.
+
+Calibration (the full paired balance report accompanies the PR):
+- Reputation knots 1/3/5 stars give 0.6/1/1.6, with straight interpolation; a
+  poor shop loses walk-ins while consistently good reviews allow more growth.
+- Each complete happy departure earns 1 renown; each following morning keeps
+  95%. Its bonus approaches 1.8, reaching half that bonus at 90 renown, so repeat
+  good services build recognition without unlimited arrivals. The first measured
+  candidate used 60: default five-day arrivals rose from 103.8 to 119.8 while
+  losses doubled and mean profit fell 26.34%. The slower ramp protects early
+  starter-shop throughput while retaining the same long-term limit. Its five-day
+  confirmation averaged $67.2 against $78.2 on main, within the 25% target band.
+- Each distinct enabled dish above the starter 3 adds 0.04, capped at 0.30;
+  variety helps without making a long menu the whole strategy.
+- Steady vibe maps 0–100 to 0.9–1.15. The actual starter vibe remains 0. Day 1
+  alone uses an authored floor of 1 on its effective vibe factor to preserve
+  the introductory arrival and random-draw path. Day 1's evening forecast
+  already uses the ordinary Day 2 curve.
+- The neutral curb hook is 1. At demand above 1, unlocked party sizes blend
+  toward authored weights 1/.8/.6/.5/.3/.15 for sizes 1–6, reaching those weights
+  at factor 3. This favours smaller groups while allowing larger tables to
+  matter. At demand 1 or below, the existing size draw is called unchanged,
+  including fixed-size and locked no-draw cases. Capacity clamps after the
+  size draw; every drawn private seed and actual-headcount gap are retained.
+
+`DemandState` saves renown, independent award/decay day guards, and the previous
+service factor for the morning growth notice. Close awards use the sim's
+idempotent complete happy-departure count, never the food/drink payment signal.
+Main stages and validates the versioned `demand` section against the saved
+morning before installing it. Missing legacy sections start with zero renown
+at the saved day, with no retroactive decay. Failed whole loads and new runs
+start fresh. Only the existing morning autosave persists this state.
+
+`current_demand_snapshot()` returns detached factors. `forecast_next_demand()`
+copies progress, applies next morning's decay once, and combines current shop
+facts without awarding live renown, selecting future weather or drawing RNG.
+RestaurantSim owns the read-only guest estimate alongside its clock, menu and
+spawner. Expected guests are approximate: opening ticks times the mean real menu/hour
+visit weight and forecast factor, divided by the mean authored base gap. No
+service simulation is hidden in the estimate. The optional detached forecast
+round-trips with DayReport; older reports stay valid. DemandText owns the plain
+player wording; factors are multiplicative and do not pretend their percentages
+add. The HUD's morning notice compares with the immediately preceding service.
+Menu and Staff keep their existing controls inside an outer vertical scroll so
+both notices and the panels remain readable on short, scaled windows.
+
+The historical thick-divider two-day drinks compatibility fixture uses a
+detached neutral demand context and retains every original expected row and
+assertion. It predates this growth system; actual default play, growth, saves,
+parties and deterministic replay are covered by the demand tests. The manual
+Day 1 observer also compares all ticks, event/private guest seeds and named
+streams with immutable actual main. No compatibility branch exists in production.

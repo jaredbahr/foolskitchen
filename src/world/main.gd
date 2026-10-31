@@ -20,6 +20,7 @@ const LEASE: LeaseUpgrade = preload("res://data/balance/lease_upgrade.tres")
 const TUNING: EconomyTuning = preload("res://data/balance/tier1_economy.tres")
 const CLEANLINESS_TUNING: CleanlinessTuning = preload("res://data/balance/cleanliness.tres")
 const WEATHER_TUNING: WeatherTuning = preload("res://data/balance/weather.tres")
+const DEMAND_TUNING: DemandTuning = preload("res://data/balance/demand.tres")
 const REVIEW_TUNING: ReviewTuning = preload("res://data/balance/reviews.tres")
 const REVIEW_QUOTES: ReviewQuotes = preload("res://data/reviews/quotes.tres")
 const PROGRESSION_TUNING: ProgressionTuning = preload("res://data/balance/progression.tres")
@@ -36,6 +37,10 @@ var save_slot: String = AUTOSAVE_SLOT
 var use_saves: bool = true
 ## Title backdrop only: build the default view without starting a run.
 var display_only: bool = false
+## Tools opt in explicitly, preserving every existing capture and test fixture.
+var guide_for_tools: bool = false
+var hints: Hints = Hints.new()
+var _hints_bubble: HintsBubble
 ## Test/capture override only; zero keeps the normal wall-clock new-game seed.
 var new_game_seed_override: int = 0
 ## Tools that boot Main directly retain the old default appearance and flow.
@@ -116,6 +121,16 @@ var _loaded_deliveries: DeliveryBook = null
 var _loaded_weather: WeatherState = null
 ## Tests may provide explicit weights without changing the shared authored resource.
 var weather_tuning: WeatherTuning = WEATHER_TUNING
+## Each run owns its tuning instance; fixtures never mutate the authored resource.
+var demand_tuning: DemandTuning = DEMAND_TUNING.duplicate(true) as DemandTuning
+var demand_state: DemandState = DemandState.new()
+var _loaded_demand: DemandState = null
+var _demand_breakdown: DemandBreakdown = null
+var _demand_day: int = 0
+var _demand_reputation: float = 3.0
+var _demand_renown: float = 0.0
+## Neutral until the separate curb-appeal feature supplies its derived factor.
+var curb_appeal_factor: float = 1.0
 ## Today's last daytime delivery ({lines, minute}), for the Stock notes.
 var _last_delivery: Dictionary = {}
 var _storage_fill_key: String = ""
@@ -337,6 +352,9 @@ func _bind_world_presentation() -> void:
 	_settings_panel = $Overlay/SettingsPanel
 	_settings_panel.bind_preferences(Preferences)
 	_settings_panel.set_quit_to_title_available(true)
+	_settings_panel.set_show_guide_available(true)
+	if not _settings_panel.show_guide_requested.is_connected(_on_show_guide_requested):
+		_settings_panel.show_guide_requested.connect(_on_show_guide_requested)
 	if not _settings_panel.close_requested.is_connected(_on_settings_close_requested):
 		_settings_panel.close_requested.connect(_on_settings_close_requested)
 	if not _settings_panel.quit_to_title_requested.is_connected(request_quit_to_title):
@@ -386,6 +404,10 @@ func _bind_world_presentation() -> void:
 	if not $HUD.is_connected(&"stock_pressed", toggle_stock):
 		$HUD.connect(&"stock_pressed", toggle_stock)
 	_refresh_stock_panel()
+	_hints_bubble = $Overlay/HintsBubble
+	if not _hints_bubble.got_it.is_connected(_on_hint_acknowledged):
+		_hints_bubble.got_it.connect(_on_hint_acknowledged)
+		_hints_bubble.skip_guide.connect(_on_guide_skipped)
 	_inspect_panel.bind_world(world)
 	_sync_owner_appearance()
 	_debug_overlay.bind_world(world)
@@ -485,7 +507,9 @@ func start() -> void:
 	SaveSystem.register("milestones", _capture_milestones, _restore_milestones)
 	SaveSystem.register("reorder", _capture_reorder, _restore_reorder)
 	SaveSystem.register("deliveries", _capture_deliveries, _restore_deliveries)
+	SaveSystem.register("hints", hints.capture, hints.restore)
 	SaveSystem.register("weather", _capture_weather, _restore_weather)
+	SaveSystem.register("demand", _capture_demand, _restore_demand)
 	var loaded: bool = use_saves and _load_autosave()
 	_rooms_note = loaded and _loaded_layout != null and _loaded_layout.rooms_unmarked
 	$HUD.set_rooms_note(ROOMS_NOTE if _rooms_note else "")
@@ -504,6 +528,7 @@ func start() -> void:
 	($ShopView as ShopView).bind_cleanliness(cleanliness)
 	_debug_overlay.bind_cleanliness(cleanliness)
 	sim.configure_reviews(reputation, REVIEW_TUNING, REVIEW_QUOTES, GameState.rng(&"reviews"))
+	sim.configure_demand(demand_tuning)
 	sim.regulars = regulars
 	sim.regular_rng_provider = GameState.rng.bind(&"regulars")
 	for recipe: RecipeDef in content.recipes():
@@ -1149,6 +1174,56 @@ func _recompute_vibe() -> void:
 	$HUD.set_vibe(result)
 	_report.call(&"set_vibe", result, _experienced_vibe_theme())
 	vibe_changed.emit(vibe_result)
+	_refresh_demand()
+
+
+## Reputation and word of mouth stay fixed through this service; accepted menu
+## and shop edits only refresh the editable factors, never the arrival countdown.
+func _refresh_demand() -> void:
+	if sim == null or _demand_day != Clock.sim.day or menu_settings == null \
+			or not vibe_result.valid:
+		return
+	var next: DemandBreakdown = DemandBreakdown.evaluate(demand_tuning,
+		_demand_reputation, _demand_renown, _demand_enabled_dishes(),
+		vibe_result.score, _demand_day, curb_appeal_factor)
+	if next == null or not sim.set_demand_factor(next.total):
+		return
+	_demand_breakdown = next
+	var previous: float = demand_state.last_service_factor \
+		if demand_state.last_service_day == _demand_day - 1 else 0.0
+	$HUD.set_demand_status(next.total, previous)
+
+
+func _demand_enabled_dishes() -> int:
+	var unique: Dictionary[StringName, bool] = {}
+	for recipe: RecipeDef in menu_settings.enabled_recipes():
+		unique[recipe.id] = true
+	return unique.size()
+
+
+func current_demand_snapshot() -> Dictionary:
+	return _demand_breakdown.to_dict() if _demand_breakdown != null else {}
+
+
+## Current shop facts, projected one morning forward. This is a detached
+## approximation: no service simulation, future weather selection or RNG draw.
+func forecast_next_demand() -> Dictionary:
+	if sim == null or menu_settings == null or not vibe_result.valid \
+			or demand_state == null or reputation == null:
+		return {}
+	var projected: DemandState = DemandState.new()
+	if not projected.from_dict(demand_state.to_dict()) \
+			or not projected.begin_morning(Clock.sim.day + 1, demand_tuning):
+		return {}
+	var next: DemandBreakdown = DemandBreakdown.evaluate(demand_tuning,
+		reputation.average(), projected.renown, _demand_enabled_dishes(),
+		vibe_result.score, projected.day, curb_appeal_factor)
+	if next == null:
+		return {}
+	var result: Dictionary = next.to_dict()
+	result["day"] = projected.day
+	result["expected_guests"] = sim.expected_demand_guests(next.total)
+	return result
 
 
 ## The sim emits each departure once. Observe only its captured presentation
@@ -1881,11 +1956,13 @@ func refresh_presentation() -> void:
 	view.set_selected_item(_inspect_panel.selected_item_id)
 	_refresh_storage_view()
 	_debug_geometry.update_geometry(world, view.drawn_agent_positions(), view.drawn_agent_colors(), _inspect_panel.selected_agent_id, _debug_overlay.is_enabled())
+	refresh_hints()
 
 
 func _on_inspection_tick(_tick: int) -> void:
 	# Text follows every tick; geometry follows the drawn agents once per frame.
 	_refresh_sold_out_hud()
+	refresh_hints()
 	_inspect_panel.refresh()
 	if _debug_overlay.is_enabled():
 		_debug_overlay.refresh()
@@ -1995,10 +2072,16 @@ func build_report(day: int) -> DayReport:
 		for goal: Milestone in _milestones_reached_today:
 			report.milestones_reached.append({"title": goal.title,
 				"reward_xp": goal.reward_xp, "reward_cash": goal.reward_cash})
+	report.demand_forecast = forecast_next_demand()
 	return report
 
 
 func _new_game() -> void:
+	hints.restart()
+	demand_state = DemandState.new()
+	_loaded_demand = null
+	_demand_breakdown = null
+	_demand_day = 0
 	regulars = RegularCast.new()
 	_loaded_regulars = null
 	owner_appearance = OwnerAppearance.new()
@@ -2061,6 +2144,7 @@ func _new_game() -> void:
 
 
 func _load_autosave() -> bool:
+	_loaded_demand = null
 	_loaded_regulars = null
 	_loaded_blueprints = null
 	_blueprint_load_notes.clear()
@@ -2076,6 +2160,8 @@ func _load_autosave() -> bool:
 	_loaded_weather = null
 	if not SaveSystem.list_slots().has(save_slot):
 		return false
+	# Missing sections are skipped by SaveSystem: old runs stay out of the guide.
+	hints.skip()
 	if SaveSystem.load_game(save_slot) != OK:
 		world.log_event("Autosave could not be loaded; starting a new game")
 		return false
@@ -2085,6 +2171,15 @@ func _load_autosave() -> bool:
 	var saved_weather: WeatherState = _loaded_weather if _loaded_weather != null else WeatherState.legacy_sunny(Clock.sim.day)
 	if saved_weather == null or not saved_weather.is_for_day(Clock.sim.day):
 		world.log_event("Saved weather does not match this morning; starting a new game")
+		return false
+	var saved_demand: DemandState = _loaded_demand if _loaded_demand != null \
+		else DemandState.legacy_for_day(Clock.sim.day)
+	if saved_demand == null or saved_demand.day != Clock.sim.day \
+			or saved_demand.last_decay_day != Clock.sim.day \
+			or saved_demand.last_award_day >= Clock.sim.day \
+			or demand_tuning == null or not demand_tuning.is_valid() \
+			or saved_demand.last_service_factor > demand_tuning.total_cap:
+		world.log_event("Saved shop growth does not match this morning; starting a new game")
 		return false
 	if not OpeningHours.clock_valid(Clock.sim, HOURS_TUNING):
 		# Keep the game; only the hours go back to the default day.
@@ -2150,6 +2245,19 @@ func _load_autosave() -> bool:
 			_loaded_layout.load_refund = 0
 	# Install only after every other whole-load validation has succeeded.
 	world.weather = saved_weather.copy()
+	demand_state = saved_demand
+	return true
+
+
+func _capture_demand() -> Dictionary:
+	return demand_state.to_dict()
+
+
+func _restore_demand(data: Dictionary) -> bool:
+	var restored: DemandState = DemandState.new()
+	if not restored.from_dict(data):
+		return false
+	_loaded_demand = restored
 	return true
 
 
@@ -2901,6 +3009,7 @@ func set_menu_visible(value: bool) -> bool:
 		_menu_panel.set_hours(Clock.sim.display_open_minute, Clock.sim.display_close_minute, HOURS_TUNING)
 	_menu_panel.set_phase(Clock.sim.phase)
 	_menu_panel.visible = value
+	refresh_hints()
 	return true
 
 
@@ -3297,11 +3406,19 @@ func _begin_morning() -> void:
 		_staff_notices.assign(notices)
 	if not _select_morning_weather():
 		return
-	# Sample the rating once, before start_day resets the first guest's gap.
-	# Positive stars increase arrivals, so their time between arrivals shrinks.
-	var rate: float = reputation.arrival_multiplier(REVIEW_TUNING)
-	sim.spawner.min_gap = maxi(1, roundi(float(TUNING.arrival_gap_min) / rate))
-	sim.spawner.max_gap = maxi(sim.spawner.min_gap, roundi(float(TUNING.arrival_gap_max) / rate))
+	# Keep authored gaps. Demand joins the existing scaled_gap exactly once.
+	# Derive actual editable facts before the first gap, without a random draw.
+	_recompute_vibe()
+	if demand_state.begin_morning(Clock.sim.day, demand_tuning):
+		_demand_day = Clock.sim.day
+		_demand_reputation = reputation.average()
+		_demand_renown = demand_state.renown
+		_refresh_demand()
+	else:
+		_demand_day = 0
+		_demand_breakdown = null
+		sim.demand_factor = 1.0
+		$HUD.set_demand_status(1.0, 0.0)
 	sim.start_day()
 	$HUD.set_reputation(reputation.average(), reputation.scores().size())
 	_owner_award_today.clear()
@@ -4002,6 +4119,8 @@ func _on_service_closed(day: int) -> void:
 	if day != Clock.sim.day or _closed_report_day == day:
 		return
 	_closed_report_day = day
+	demand_state.award_close(day, int(sim.leave_reasons_today.get(&"happy", 0)),
+		sim.demand_factor, demand_tuning)
 	_remember_menu_quality()
 	_charge_closing_costs()
 	# Capture business profit before milestone cash or financing enters the books.
@@ -4297,3 +4416,59 @@ func _on_variant_paint_requested(id: StringName, look: StringName) -> void:
 	_paint_variant_item = id
 	_paint_variant_id = content.item(id).known_variant_id(look)
 	($ShopView as ShopView).clear_paint_preview()
+
+
+## Read-only context: no sim actions, random draws, speed changes or saves.
+func refresh_hints() -> void:
+	if _hints_bubble == null:
+		return
+	if not _started or display_only or is_owner_picker_visible() or (not use_saves and not guide_for_tools) \
+			or (hints.next_hint == Hints.Step.COMPLETE and hints.active_hint < 0):
+		_hints_bubble.clear_hint()
+		return
+	var context: Hints.Context = Hints.Context.new()
+	context.day = Clock.sim.day
+	context.phase = Clock.sim.phase
+	context.menu_open = is_menu_visible()
+	context.report_visible = _report != null and _report.visible
+	context.dirty_table = sim.kitchen != null and not sim.kitchen.dirty_tables.is_empty()
+	for agent: SimAgent in world.agents:
+		if agent is CustomerAgent and (agent as CustomerAgent).state == CustomerAgent.State.QUEUED:
+			context.queued_guest = true
+			break
+	for step: int in range(Hints.Step.COMPLETE):
+		var target: Control = _hint_target(step)
+		context.targets_visible[step] = target == null or (target.visible and (not target.is_inside_tree() or target.is_visible_in_tree()))
+	var step: int = hints.observe(context)
+	# Modal panels keep their own input and remain readable. Progress waits
+	# here; closing Settings after a replay immediately reveals the guide.
+	if step < 0 or is_settings_visible() or is_goals_visible() or is_staff_visible() or is_owner_picker_visible() \
+			or is_menu_visible() or is_stock_visible() or is_build_active() or _paint_active:
+		_hints_bubble.clear_hint()
+		return
+	_hints_bubble.show_hint(step, _hint_target(step), $HUD.panel_top())
+
+
+func _hint_target(step: int) -> Control:
+	match step:
+		Hints.Step.MENU: return $HUD/Top/Row/Menu as Control
+		Hints.Step.STOCK: return $HUD/Top/Row/Stock as Control
+		Hints.Step.BUILD: return $HUD/Top/Row/Build as Control
+		Hints.Step.OPEN: return $HUD/Top/Row/Context as Control
+	return null
+
+
+func _on_hint_acknowledged() -> void:
+	hints.acknowledge()
+	refresh_hints()
+
+
+func _on_guide_skipped() -> void:
+	hints.skip()
+	refresh_hints()
+
+
+func _on_show_guide_requested() -> void:
+	# Guide progress joins the next morning snapshot, just like build edits.
+	hints.restart(Clock.sim.day if Clock.sim.phase == SimClock.Phase.MORNING else Clock.sim.day + 1)
+	refresh_hints()

@@ -43,6 +43,8 @@ var _owner_name: String = OwnerAppearance.DEFAULT_NAME
 
 
 func _ready() -> void:
+	# The outer scroll bounds the header as well as the existing staff list.
+	$Panel.add_theme_stylebox_override("panel", SHARED_THEME.get_stylebox("panel", "PanelContainer"))
 	refresh()
 
 
