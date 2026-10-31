@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- Decorating the street front now raises curb appeal for a small walk-in boost, shown beside Vibe in Build and in the evening crowd forecast. (#266)
 - See how busy your team was in the evening report and morning Staff panel, with evening advice on hiring or adding tables. (#264)
 - Blueprints keep each piece's furniture look and charge the right price when you stamp it, with exact undo refunds. (#262)
 - The evening report now shows the profit your dishes made, with stock bought and spoiled listed separately. Automatic orders follow the forecast crowd, and the starting shop pays $18 rent each day. (#258)
