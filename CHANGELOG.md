@@ -12,6 +12,7 @@ Each line ends with its PR number.
 
 ### Players
 - Staff carrying meals can spill them and break plates, especially when clumsy or crowded at the pass. Reassigning a delivery makes the next worker collect the meals before they can spill. Meals are cooked again, broken plates are replaced tomorrow, and greasy stations work 10% slower until someone degreases them. Floor messes stand out on light and dark floors, with mishaps listed in the evening report. (#235)
+- Blueprints keep each piece's furniture look and charge the right price when you stamp it, with exact undo refunds. (#262)
 - The evening report now shows the profit your dishes made, with stock bought and spoiled listed separately. Automatic orders follow the forecast crowd, and the starting shop pays $18 rent each day. (#258)
 - An easier start: cooks work about 30% faster, rent is $30 a day instead of $40, and seafood restocks in smaller batches (mussels also keep a day longer), so a growing shop now makes money. (#257)
 - Your shop gets busier as reputation and word of mouth grow; menu variety and vibe bring more guests, with tomorrow’s crowd shown in the evening report. (#256)

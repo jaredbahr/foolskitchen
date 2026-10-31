@@ -32,6 +32,7 @@ static func capture(grid: SimGrid, ids: Array[int], name: String) -> Blueprint:
 		entry.origin = placed.origin - anchor
 		entry.quarter_turns = placed.quarter_turns
 		entry.swatch_id = placed.swatch_id
+		entry.variant_id = placed.variant_id
 		result.entries.append(entry)
 	return result
 
@@ -43,7 +44,7 @@ func total_price(content: ContentDB) -> int:
 	for entry: ShopPlacement in entries:
 		var definition: ItemDef = content.item(entry.item_id) if entry != null else null
 		if definition != null:
-			total += definition.price
+			total += definition.variant_price(entry.variant_id)
 	return total
 
 
@@ -69,6 +70,7 @@ func placements(content: ContentDB, anchor: Vector2i, rotation: int) -> Array[Sh
 			- GridMath.rotate_cell(Vector2i.ZERO, footprint, rotation)
 		placed.quarter_turns = posmod(entry.quarter_turns + rotation, 4)
 		placed.swatch_id = entry.swatch_id
+		placed.variant_id = entry.variant_id
 		result.append(placed)
 	return result
 
@@ -85,5 +87,6 @@ func to_dict() -> Dictionary:
 	var rows: Array[Dictionary] = []
 	for entry: ShopPlacement in entries:
 		rows.append({"item_id": String(entry.item_id), "offset": [entry.origin.x, entry.origin.y],
-			"rotation": entry.quarter_turns, "swatch_id": String(entry.swatch_id)})
+			"rotation": entry.quarter_turns, "swatch_id": String(entry.swatch_id),
+			"variant_id": String(entry.variant_id)})
 	return {"name": display_name, "entries": rows}

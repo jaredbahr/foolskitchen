@@ -410,11 +410,11 @@ func place_group(definitions: Array[ItemDef], placements: Array[ShopPlacement]) 
 		walls[edge] = segment(edge)
 	preview.set_segments(walls)
 	for placed: PlacedItem in items():
-		if preview.place_def(placed.def as ItemDef, placed.origin, placed.quarter_turns) == null:
+		if preview.place_def(placed.def as ItemDef, placed.origin, placed.quarter_turns, placed.variant_id) == null:
 			return result
 	for index: int in placements.size():
 		var entry: ShopPlacement = placements[index]
-		if entry == null or preview.place_def(definitions[index], entry.origin, entry.quarter_turns) == null:
+		if entry == null or preview.place_def(definitions[index], entry.origin, entry.quarter_turns, entry.variant_id) == null:
 			return result
 	var blocked: bool = is_blocking_signals()
 	set_block_signals(true)
@@ -424,7 +424,7 @@ func place_group(definitions: Array[ItemDef], placements: Array[ShopPlacement]) 
 		var entry: ShopPlacement = placements[index]
 		# Identical geometry just passed on the preview and no signals or
 		# callbacks run inside this loop, so every placement is guaranteed.
-		var placed: PlacedItem = place_def(definitions[index], entry.origin, entry.quarter_turns)
+		var placed: PlacedItem = place_def(definitions[index], entry.origin, entry.quarter_turns, entry.variant_id)
 		placed.swatch_id = entry.swatch_id
 		result.append(placed)
 		changed.append_array(placed.cells)

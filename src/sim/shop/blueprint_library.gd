@@ -78,7 +78,8 @@ func restore(data: Dictionary, content: ContentDB, messages: Array[String]) -> b
 				return false
 			var saved: Dictionary = entry_value
 			if not saved.get("item_id") is String or not saved.get("offset") is Array \
-					or not saved.get("swatch_id", "") is String or not _integer(saved.get("rotation"), 0, 3):
+					or not saved.get("swatch_id", "") is String or not saved.get("variant_id", "") is String \
+					or not _integer(saved.get("rotation"), 0, 3):
 				return false
 			var offset: Array = saved["offset"]
 			if offset.size() != 2 or not _integer(offset[0], 0, 100000) or not _integer(offset[1], 0, 100000):
@@ -96,6 +97,7 @@ func restore(data: Dictionary, content: ContentDB, messages: Array[String]) -> b
 			entry.quarter_turns = int(saved["rotation"])
 			var swatch: StringName = StringName(saved.get("swatch_id", ""))
 			entry.swatch_id = swatch if definition.paintable and content.swatch(swatch) != null else &""
+			entry.variant_id = definition.known_variant_id(StringName(saved.get("variant_id", "")))
 			blueprint.entries.append(entry)
 		if not blueprint.entries.is_empty():
 			staged.append(blueprint)

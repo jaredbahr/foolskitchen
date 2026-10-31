@@ -1843,5 +1843,6 @@ func blueprint_visuals() -> Array[Dictionary]:
 	var visuals: Array[Dictionary] = []
 	for placement: ShopPlacement in blueprint_placements():
 		visuals.append({"definition": _content.item(placement.item_id), "origin": placement.origin,
-			"turns": placement.quarter_turns, "swatch": _content.swatch(placement.swatch_id)})
+			"turns": placement.quarter_turns, "swatch": _content.swatch(placement.swatch_id),
+			"variant_id": placement.variant_id})
 	return visuals
