@@ -799,3 +799,39 @@ func _advance(world: SimWorld) -> void:
 func _advance_sim(sim: RestaurantSim) -> void:
 	_previous[sim.world.get_instance_id()] = MovementInvariants.capture(sim.world)
 	sim.advance()
+
+
+func test_infeasible_diagonal_intent_cannot_veto_a_free_cardinal_step() -> void:
+	var world: SimWorld = _world(["...", "...", "..."])
+	var shared: Vector2i = Vector2i(0, 2)
+	var final_cardinal: Vector2i = Vector2i(2, 2)
+	var diagonal: Walker = _walker(world, Vector2i(1, 1), shared)
+	var cardinal: Walker = _walker(world, Vector2i(0, 1), shared)
+	assert_true(diagonal.id < cardinal.id)
+	assert_eq(world.movement.priority(world, diagonal), world.movement.priority(world, cardinal))
+	assert_eq(diagonal.next_cell(), shared)
+	assert_eq(cardinal.next_cell(), shared)
+	assert_true(world.movement.can_enter(world, cardinal, shared), "the cardinal destination is physically free")
+	assert_false(world.movement.can_enter(world, diagonal, cardinal.cell), "the lower-ID diagonal's corner is occupied")
+	_advance(world)
+	if not _safe(world):
+		return
+	assert_true(cardinal.move_progress > 0.0, "an infeasible higher-priority intention cannot reserve a physically free target")
+	var changed_goal: bool = false
+	# The first checked tick above is included in the existing512tick bound.
+	for tick: int in range(1, WATCHDOG):
+		_advance(world)
+		if not _safe(world):
+			return
+		if not changed_goal and cardinal.cell == shared and cardinal.move_progress == 0.0:
+			assert_true(cardinal.set_destination(world.grid, final_cardinal),
+				"after physically reaching the shared target, use the public API to choose a distinct final goal")
+			changed_goal = true
+		if changed_goal and diagonal.cell == shared and diagonal.has_arrived() \
+				and cardinal.cell == final_cardinal and cardinal.has_arrived():
+			break
+	assert_true(changed_goal, "the higher-ID person actually reaches the formerly contested target")
+	assert_eq(diagonal.cell, shared, "the original lower-ID goal is reached before the bounded watchdog")
+	assert_true(diagonal.has_arrived())
+	assert_eq(cardinal.cell, final_cardinal, "both final goals are physically distinct and achieved")
+	assert_true(cardinal.has_arrived())

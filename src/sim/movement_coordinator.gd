@@ -254,14 +254,22 @@ func route(world: SimWorld, agent: SimAgent, from: Vector2i, to: Vector2i,
 	return world.grid.find_path_avoiding(from, to, blocked, agent is CustomerAgent)
 
 
-func try_step(world: SimWorld, agent: SimAgent, next: Vector2i) -> bool:
+## Physical cells swept by one adjacent edge, including diagonal corners.
+## Shared by the read-only feasibility query and actual claim installation.
+func _step_cells(from_cell: Vector2i, to_cell: Vector2i) -> Array[Vector2i]:
+	var cells: Array[Vector2i] = [to_cell]
+	var delta: Vector2i = to_cell - from_cell
+	if delta.x != 0 and delta.y != 0:
+		cells.append(from_cell + Vector2i(delta.x, 0))
+		cells.append(from_cell + Vector2i(0, delta.y))
+	return cells
+
+
+## An impossible intention cannot veto somebody who can actually move.
+## Query geometry/rights/claims only: no arbitration or state changes.
+func _edge_feasible(world: SimWorld, agent: SimAgent, next: Vector2i) -> bool:
 	if not agent.movement_admitted:
 		return false
-	if _edges.has(agent.id):
-		var existing: Dictionary = _edges[agent.id]
-		if existing["from"] == agent.cell and existing["to"] == next:
-			return true
-		_release_edge(agent.id)
 	var delta: Vector2i = next - agent.cell
 	var legal: bool = maxi(absi(delta.x), absi(delta.y)) == 1
 	if not agent is CourierAgent:
@@ -271,25 +279,34 @@ func try_step(world: SimWorld, agent: SimAgent, next: Vector2i) -> bool:
 			legal = legal and world.grid.guest_step_ok(agent.cell, next)
 	elif world.grid.is_walkable(agent.cell) and world.grid.is_walkable(next):
 		legal = legal and world.grid.step_open(agent.cell, next)
-	var cells: Array[Vector2i] = [next]
-	if delta.x != 0 and delta.y != 0:
-		cells.append(agent.cell + Vector2i(delta.x, 0))
-		cells.append(agent.cell + Vector2i(0, delta.y))
-	for cell: Vector2i in cells:
+	for cell: Vector2i in _step_cells(agent.cell, next):
 		legal = legal and can_enter(world, agent, cell)
+	return legal
+
+
+func try_step(world: SimWorld, agent: SimAgent, next: Vector2i) -> bool:
+	if not agent.movement_admitted:
+		return false
+	if _edges.has(agent.id):
+		var existing: Dictionary = _edges[agent.id]
+		if existing["from"] == agent.cell and existing["to"] == next:
+			return true
+		_release_edge(agent.id)
+	var legal: bool = _edge_feasible(world, agent, next)
 	# Arbitrate simultaneous intentions by physical carrying priority, before
 	# a lower ID can claim a cell merely because its tick runs first.
 	if legal:
 		for other: SimAgent in world.agents:
 			if other == agent or other.has_arrived() or other.move_progress > 0.0:
 				continue
-			if other.next_cell() == next and _before(world, other, agent):
+			if other.next_cell() == next and _before(world, other, agent) \
+					and _edge_feasible(world, other, next):
 				legal = false
 				break
 	if not legal:
 		_wait(world, agent, next)
 		return false
-	for cell: Vector2i in cells:
+	for cell: Vector2i in _step_cells(agent.cell, next):
 		_next[cell] = agent.id
 	_edges[agent.id] = {"id": agent.id, "from": agent.cell, "to": next}
 	_blocked.erase(agent.id)
