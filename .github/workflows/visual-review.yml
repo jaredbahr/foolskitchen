@@ -72,6 +72,7 @@ jobs:
           set -euo pipefail
           bash tools/screenshot.sh --out=screens/visual-review/default --frames=60 --speed=1
           bash tools/screenshot.sh --out=screens/visual-review/street-front --street-front-review --speed=0 --frames=60
+          SCREENSHOT_TIMEOUT_SECONDS=120 bash tools/screenshot.sh --out=screens/visual-review/curb-appeal --scene=res://tools/curb_appeal_review.tscn --speed=0 --frames=60
           for quarter in 0 1 2 3; do
             bash tools/screenshot.sh "--out=screens/visual-review/quarter-$quarter" --frames=60 --speed=1 "--quarter=$quarter"
           done
