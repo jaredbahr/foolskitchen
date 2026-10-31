@@ -162,6 +162,13 @@ func test_failed_seat_walk_releases_every_hold_and_charges_elapsed_time_once() -
 func test_orders_start_only_after_all_members_reach_the_same_table() -> void:
 	var sim: RestaurantSim = _sim()
 	sim.menu = [preload("res://data/recipes/burger.tres")] as Array[RecipeDef]
+	# Real order-approach reachability needs an admitted server or street entry.
+	# This movement-only unit fixture keeps its worker still and unclaimed.
+	var server: StaffAgent = StaffAgent.new(&"server")
+	server.cell = Vector2i(10, 10)
+	sim.world.add_agent(server)
+	assert_true(server.movement_admitted)
+	assert_eq(sim.world.agent(server.id), server)
 	var table: PlacedItem = sim.world.grid.place_def(TABLE, Vector2i(4, 5))
 	var party: Party = _party(sim, 3)
 	assert_true(PartySeating.try_seat(party, sim.world))

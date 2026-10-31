@@ -51,6 +51,10 @@ func test_actual_six_person_party_books_the_joined_surface_without_splitting() -
 	assert_true(party.is_valid())
 	assert_eq(party.size(), 6)
 	assert_eq(_sim.customers().size(), 6)
+	for guest: CustomerAgent in PartySeating.members(party, _sim.world):
+		if not guest.movement_admitted:
+			assert_true(_sim.world.reset_agent_position(guest, _unit_start()))
+		assert_true(guest.movement_admitted)
 	assert_true(PartySeating.try_seat(party, _sim.world), "the six-person party acquires one complete booking")
 	var held: Array[Vector2i] = []
 	for guest: CustomerAgent in PartySeating.members(party, _sim.world):
@@ -353,3 +357,19 @@ func _rotate_fixture_cell(cell: Vector2i, turns: int) -> Vector2i:
 		3:
 			return Vector2i(cell.y, 15 - cell.x)
 	return cell
+
+
+func _unit_start() -> Vector2i:
+	for y: int in _sim.world.grid.size.y:
+		for x: int in _sim.world.grid.size.x:
+			var candidate: Vector2i = _sim.world.grid.origin + Vector2i(x, y)
+			if not _sim.world.grid.is_guest_walkable(candidate) \
+					or not _sim.world.movement.standing_cell(_sim.world, candidate):
+				continue
+			var used: bool = false
+			for agent: SimAgent in _sim.world.all_agents():
+				used = used or agent.cell == candidate
+			if not used:
+				return candidate
+	fail("isolated joined booking fixture ran out of distinct guest starts")
+	return SimGrid.NO_CELL

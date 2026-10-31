@@ -339,7 +339,8 @@ func test_sticky_floor_has_three_plain_quotes_and_report_is_transient() -> void:
 ## The server returns from elsewhere in Dining and reclaims through its board
 ## selection, so persisted batch data must not count as food already in hand.
 func _assert_reclaimed_delivery_waits_for_pickup(next_mode: StringName) -> void:
-	_make()
+	if not _make_carry_route():
+		return
 	var server: StaffAgent = _server()
 	_sim.world.remove_agent(server)
 	var owner: OwnerAgent = _sim.owner_agent()
@@ -360,6 +361,9 @@ func _assert_reclaimed_delivery_waits_for_pickup(next_mode: StringName) -> void:
 	var task: SimTask = owner.task
 	var order: Order = guest.order
 	assert_eq(task.kind, &"deliver")
+	assert_eq(_sim.world.movement.priority(_sim.world, owner), 3)
+	assert_eq(guest.table_item_id, ShopBuilder.items_with_def(_sim.world, &"table_2")[0].id)
+	assert_false(_sim.service_cells(guest.table_item_id, guest.seat_cell).has(pass_item.work_cells[1]), "the actual booked seat needs carrying away from the pass")
 	assert_eq(order.state, Order.State.READY)
 	assert_true(bool(task.payload.get("batch_prepared", false)))
 	assert_true(owner.step_index >= 2)
@@ -378,6 +382,7 @@ func _assert_reclaimed_delivery_waits_for_pickup(next_mode: StringName) -> void:
 	assert_eq(server.task, task, "server selects the dropped task through the real task board")
 	assert_eq(task.claimed_by, server.id)
 	assert_eq(server.step_index, 0, "replacement claimant replays from the pass walk")
+	assert_eq(_sim.world.movement.priority(_sim.world, server), 2, "persisted tray data is not a picked-up meal")
 	_sim.mishaps.tuning.spill_chance_per_cell = 1.0
 	_sim.mishaps.tuning.maximum_spill_chance = 1.0
 	_sim.mishaps.tuning.broken_plate_chance = 1.0
@@ -404,6 +409,7 @@ func _assert_reclaimed_delivery_waits_for_pickup(next_mode: StringName) -> void:
 			break
 	assert_true(walk_cells > 0, "regression exercises actual movement before pickup")
 	assert_eq(server.step_index, 2, "the replacement completes the real pickup WORK step")
+	assert_eq(_sim.world.movement.priority(_sim.world, server), 3)
 	assert_eq(server.cell, pass_item.work_cells[1])
 	assert_eq(int(task.payload.get("carried_count", 0)), 1)
 	for tick: int in range(200):
@@ -419,7 +425,8 @@ func _assert_reclaimed_delivery_waits_for_pickup(next_mode: StringName) -> void:
 
 
 func _real_spill_trace(_seed_value: int) -> Array[int]:
-	_make()
+	if not _make_carry_route():
+		return [0, 0, 0] as Array[int]
 	var guest: CustomerAgent = _sim.add_customer(_sim.world.grid.entries()[0], _rng(42))
 	guest.food_patience = 6000
 	guest.eat_ticks = 3
@@ -429,19 +436,58 @@ func _real_spill_trace(_seed_value: int) -> Array[int]:
 		_sim.advance()
 		if server.task != null and int(server.task.payload.get("carried_count", 0)) > 0:
 			break
+	assert_not_null(server.task, "the fixture reaches a real active carried delivery")
+	if server.task == null:
+		return [0, 0, _sim.kitchen.plates.total] as Array[int]
+	assert_eq(server.task.kind, &"deliver")
+	assert_true(server.step_index >= 2)
+	assert_true(int(server.task.payload.get("carried_count", 0)) > 0)
+	assert_eq(_sim.world.movement.priority(_sim.world, server), 3)
+	var pass_item: PlacedItem = ShopBuilder.items_with_def(_sim.world, &"pass_counter")[0]
+	assert_eq(guest.table_item_id, ShopBuilder.items_with_def(_sim.world, &"table_2")[0].id)
+	assert_false(_sim.service_cells(guest.table_item_id, guest.seat_cell).has(pass_item.work_cells[1]), "the actual booked seat needs a nonzero carrying route")
 	var random: RandomNumberGenerator = _stream
 	_sim.mishaps.tuning.spill_chance_per_cell = 1.0
 	_sim.mishaps.tuning.maximum_spill_chance = 1.0
 	_sim.mishaps.tuning.broken_plate_chance = 0.5
 	var before: int = random.state
+	var stationary_position: Vector3 = server.movement_position()
 	for tick: int in range(10):
 		_sim.kitchen.advance()
+	assert_eq(server.movement_position(), stationary_position)
 	assert_eq(random.state, before, "no cell entered: no spill roll")
 	for tick: int in range(500):
 		_sim.advance()
 		if _sim.mishaps.spills_today > 0:
 			break
 	return [_sim.mishaps.spills_today, _sim.mishaps.broken_plates_today, _sim.kitchen.plates.total] as Array[int]
+
+
+## Only the three carry-route regressions need distance after pickup. The new
+## west seat can be served from the pass itself; retain the other default geometry.
+func _make_carry_route() -> bool:
+	_make()
+	var tables: Array[PlacedItem] = ShopBuilder.items_with_def(_sim.world, &"table_2")
+	assert_true(tables.size() > 1)
+	if tables.size() <= 1:
+		return false
+	var pass_item: PlacedItem = ShopBuilder.items_with_def(_sim.world, &"pass_counter")[0]
+	var zero_distance: bool = false
+	for seat: Vector2i in tables[0].seat_cells:
+		zero_distance = zero_distance or _sim.service_cells(tables[0].id, seat).has(pass_item.work_cells[1])
+	assert_true(zero_distance, "remove the actual near table that permits a zero-distance handover")
+	if not zero_distance:
+		return false
+	var random_before: int = _stream.state
+	var removed: bool = _sim.world.grid.remove(tables[0].id)
+	assert_true(removed)
+	assert_eq(_stream.state, random_before, "fixture geometry consumes no mishap randomness")
+	if not removed:
+		return false
+	tables = ShopBuilder.items_with_def(_sim.world, &"table_2")
+	for seat: Vector2i in tables[0].seat_cells:
+		assert_false(_sim.service_cells(tables[0].id, seat).has(pass_item.work_cells[1]))
+	return true
 
 
 func _make() -> void:

@@ -124,10 +124,36 @@ func test_single_guest_seats_orders_eats_pays_and_leaves() -> void:
 ## With six reserved seats the seventh guest waits inside, then gives up.
 func test_seventh_guest_queues_and_leaves_with_no_table() -> void:
 	_no_arrivals()
+	# Capacity is the subject here; pending same-entry births are a separate contract.
+	var seated_guests: Array[CustomerAgent] = []
 	for index: int in 6:
 		var seated: CustomerAgent = _guest()
 		seated.food_patience = 5000
+		for tick: int in CustomerAgent.SEAT_WALK_LIMIT:
+			_sim.advance()
+			if seated.state == CustomerAgent.State.ORDERING:
+				break
+		assert_true(seated.movement_admitted)
+		assert_eq(_sim.world.agent(seated.id), seated)
+		assert_eq(seated.state, CustomerAgent.State.ORDERING, "a real admitted guest occupies each existing seat")
+		assert_eq(seated.cell, seated.seat_cell)
+		assert_true(seated.has_arrived())
+		assert_eq(_sim.lost_today, 0)
+		seated_guests.append(seated)
+	assert_eq(seated_guests.size(), 6)
+	assert_eq(_sim.customers().size(), 6)
+	var occupied_seats: Dictionary[Vector2i, bool] = {}
+	for occupied_guest: CustomerAgent in seated_guests:
+		assert_false(occupied_seats.has(occupied_guest.seat_cell))
+		occupied_seats[occupied_guest.seat_cell] = true
+		assert_eq(_sim.world.grid.item(occupied_guest.table_item_id).reserved_by(occupied_guest.seat_cell), occupied_guest.id)
+	assert_true(_sim.world.pending_agents().is_empty())
+	var entry: Vector2i = _sim.world.grid.entries()[0]
+	for actor: SimAgent in _sim.world.agents:
+		assert_ne(actor.cell, entry, "the seventh birth has a genuinely free entry")
 	var seventh: CustomerAgent = _guest()
+	assert_true(seventh.movement_admitted)
+	assert_eq(_sim.world.agent(seventh.id), seventh)
 	seventh.queue_patience = 20
 	_sim.advance()
 	assert_eq(seventh.state, CustomerAgent.State.QUEUED)
