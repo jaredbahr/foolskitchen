@@ -153,6 +153,12 @@ func begin_tick(world: SimWorld) -> void:
 				continue
 			if _cooperative_holding(world, agent):
 				continue
+			if not _returning.has(agent.id) and _can_queue_in_pocket(world, agent):
+				# A door waiter can wait on the ordinary floor it actually reached.
+				# Keep that vertex as the real goal so later yields cannot revive
+				# the obsolete doorway return. Never cancel a partial/outbound edge.
+				agent.set_destination(world.grid, agent.cell)
+				continue
 			var path: Array[Vector2i] = route(world, agent, agent.cell, goal, false)
 			if not path.is_empty():
 				# Keep work paused while allowing this returning actor to yield again.
@@ -169,6 +175,23 @@ func begin_tick(world: SimWorld) -> void:
 				else:
 					agent.clear_path()
 					agent.needs_repath = true
+
+
+## Only public NEW destinations replace recovery intent. This never releases
+## the physical occupied/next/swept claims or a reserved partial edge.
+func supersede_destination(id: int) -> void:
+	_resume.erase(id)
+	_returning.erase(id)
+	_cooperative.erase(id)
+
+
+func _can_queue_in_pocket(world: SimWorld, agent: SimAgent) -> bool:
+	if not agent is CustomerAgent or agent.move_progress != 0.0:
+		return false
+	var guest: CustomerAgent = agent as CustomerAgent
+	return guest.state in [CustomerAgent.State.ARRIVING, CustomerAgent.State.QUEUED] \
+		and guest.waiting_item_id == 0 and world.grid.terrain(guest.cell) == SimGrid.Terrain.FLOOR \
+		and world.grid.room(guest.cell) == SimGrid.Room.DINING and standing_cell(world, guest.cell)
 
 
 func priority(_world: SimWorld, agent: SimAgent) -> int:
@@ -438,6 +461,12 @@ func _wait(world: SimWorld, agent: SimAgent, next: Vector2i) -> void:
 				holder = corner_holder
 				break
 	if holder != null and holder.move_progress == 0.0:
+		if waits >= world.movement_tuning.yield_after_ticks \
+				and _idle_station_holder(world, agent, holder, next):
+			if _yield(world, holder, agent) == YieldAttempt.STARTED:
+				# Idle staff have no productive reason to return to this station.
+				_resume[holder.id] = holder.path.back()
+				return
 		var yielding: SimAgent = holder if _before(world, agent, holder) else agent
 		if waits >= world.movement_tuning.yield_after_ticks:
 			var winner: SimAgent = agent if yielding == holder else holder
@@ -455,6 +484,28 @@ func _wait(world: SimWorld, agent: SimAgent, next: Vector2i) -> void:
 		var alternate: Array[Vector2i] = route(world, agent, agent.cell, agent.destination(), true)
 		if not alternate.is_empty() and alternate.size() > 1 and alternate[1] != next:
 			agent.install_movement_route(alternate)
+
+
+## An idle employee can clear a station actually leased by incoming work.
+## Active workers, owners and ordinary route priority retain their policy.
+func _idle_station_holder(world: SimWorld, agent: SimAgent, holder: SimAgent, next: Vector2i) -> bool:
+	if not agent is StaffAgent or not holder is StaffAgent or holder is OwnerAgent:
+		return false
+	var worker: StaffAgent = agent as StaffAgent
+	var idle: StaffAgent = holder as StaffAgent
+	if idle.task != null or idle.carries_food() or not idle.has_arrived() or _resume.has(idle.id) \
+			or _stopping.has(idle.id) or _edges.has(idle.id):
+		return false
+	if worker.task == null or worker.task.state != SimTask.State.CLAIMED \
+			or worker.task.claimed_by != worker.id or worker.step_index < 0 \
+			or worker.step_index >= worker.task.steps.size() \
+			or worker.destination() != next or holder.cell != next:
+		return false
+	var step: TaskStep = worker.task.steps[worker.step_index]
+	if step.kind != TaskStep.Kind.GO_TO_ITEM:
+		return false
+	var item: PlacedItem = world.grid.item(step.item_id)
+	return item != null and item.work_cells.has(next) and item.reserved_by(next) == worker.id
 
 
 func _yield(world: SimWorld, yielding: SimAgent, winner: SimAgent) -> YieldAttempt:

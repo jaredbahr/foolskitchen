@@ -4,7 +4,8 @@ extends TestCase
 ## View only: nothing here changes the sim.
 
 const VIEW: PackedScene = preload("res://src/world/shop_view.tscn")
-const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
+## This native door/alley fixture measures the historical east shell at x=13.
+const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_original.tres")
 const DOOR: Vector2i = Vector2i(13, 6)
 const DROP: Vector2i = Vector2i(12, 6)
 
@@ -20,10 +21,23 @@ func before_each() -> void:
 	assert_eq(content.load_all(), PackedStringArray())
 	var errors: Array[String] = []
 	var stock: Stock = Stock.new()
-	_sim = RestaurantSim.create(LAYOUT, content, 1, errors, stock)
+	_sim = RestaurantSim.create(_delivery_fixture_layout(), content, 1, errors, stock)
 	assert_eq(errors, [] as Array[String])
 	assert_true(_sim.world.grid.set_segment(SimGrid.edge_between(DROP, DOOR), SimGrid.Segment.DOORWAY))
 	_view = VIEW.instantiate() as ShopView
+
+
+## Match the reviewed dock fixture: its middle table opens an ordinary aisle
+## for staff carrying crates; shell, item count, capacity and all prices stay.
+func _delivery_fixture_layout() -> ShopLayout:
+	var layout: ShopLayout = LAYOUT.duplicate(true) as ShopLayout
+	layout.placements = []
+	for authored: ShopPlacement in LAYOUT.placements:
+		var placed: ShopPlacement = authored.duplicate(true) as ShopPlacement
+		if placed.item_id == &"table_2" and placed.origin == Vector2i(6, 6):
+			placed.quarter_turns = 1
+		layout.placements.append(placed)
+	return layout
 
 
 func after_each() -> void:

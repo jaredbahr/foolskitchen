@@ -208,7 +208,7 @@ static func _match(choices: Array[Array], index: int, seats: Array[Vector2i]) ->
 
 ## One common queue budget uses the least patient member. The arrival's first
 ## search is free, just as for an individual guest; subsequent ticks count once.
-static func advance_queue(party: Party, world: SimWorld, sim: RestaurantSim) -> void:
+static func advance_queue(party: Party, world: SimWorld, sim: RestaurantSim, allow_movement: bool = true) -> void:
 	if party == null or party.departing or party.seated or party.last_queue_tick == world.now:
 		return
 	party.last_queue_tick = world.now
@@ -221,7 +221,8 @@ static func advance_queue(party: Party, world: SimWorld, sim: RestaurantSim) -> 
 			# The active members may clear the entry, but the party's shared
 			# patience/booking cannot advance before every birth is admitted.
 			for waiting: CustomerAgent in guests:
-				if waiting.movement_admitted and not world.movement.is_yielding(waiting.id):
+				if allow_movement and waiting.movement_admitted and not world.movement.is_yielding(waiting.id) \
+						and not world.movement.is_stopping(waiting.id):
 					waiting._queue_inside(world)
 			return
 	if party.queue_started and party.queue_wait >= _budget(guests):
@@ -236,8 +237,10 @@ static func advance_queue(party: Party, world: SimWorld, sim: RestaurantSim) -> 
 	for guest: CustomerAgent in guests:
 		guest.state = CustomerAgent.State.QUEUED
 		guest._queue_wait = party.queue_wait
-		if not world.movement.is_yielding(guest.id):
+		if allow_movement and not world.movement.is_yielding(guest.id) and not world.movement.is_stopping(guest.id):
 			guest._queue_inside(world)
+		elif not allow_movement:
+			WaitingBench.observe_arrival(guest, world, sim)
 	if already_waiting and party.queue_wait >= _budget(guests):
 		leave_waiting(party, world, sim, &"no_table")
 

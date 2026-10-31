@@ -145,6 +145,8 @@ func advance() -> void:
 		if movement.advance_stop(self, a) or movement.advance_yield(self, a):
 			if a is StaffAgent:
 				(a as StaffAgent).maintain_movement_pause(self)
+			elif a is CustomerAgent:
+				(a as CustomerAgent).maintain_movement_pause(self)
 		else:
 			a.tick(self)
 	for a: SimAgent in agents:

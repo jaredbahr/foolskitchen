@@ -51,9 +51,12 @@ func why() -> String:
 func set_destination(grid: SimGrid, goal: Vector2i) -> bool:
 	var old_next := next_cell()
 	var was_moving: bool = move_progress > 0.0
+	var previous_goal: Vector2i = _goal
 	_goal = goal
 	needs_repath = false
 	var world: SimWorld = movement_world()
+	if world != null and world.grid == grid and movement_admitted and not was_moving and goal != previous_goal:
+		world.movement.supersede_destination(id)
 	path = world.movement.route(world, self, cell, goal, false) \
 		if world != null and world.grid == grid else plan_path(grid, cell, goal)
 	var found: bool = not path.is_empty()

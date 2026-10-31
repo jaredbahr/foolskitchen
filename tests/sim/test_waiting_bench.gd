@@ -271,6 +271,7 @@ func _busy_service(with_bench: bool) -> Dictionary:
 	assert_true(sim.world.clock.start_service())
 	sim.spawner._remaining = 1000000
 	var guest: CustomerAgent = sim.add_customer(sim.world.grid.entries()[0], _rng(100))
+	_assert_clear_door_and_table_routes(sim, guest, tables)
 	guest.queue_patience = 120
 	var sat_waiting: bool = false
 	for tick: int in 2400:
@@ -281,6 +282,10 @@ func _busy_service(with_bench: bool) -> Dictionary:
 		sat_waiting = sat_waiting or guest.is_waiting_seated(sim.world)
 		if sim.customers().is_empty():
 			break
+	assert_true(sim.customers().is_empty(), "busy service completes within the existing 2400-tick bound")
+	assert_eq(guest.state, CustomerAgent.State.LEFT)
+	assert_true(sim.world.grid.entries().has(guest.cell),
+		"the waiter physically reaches a real street entry rather than unreachable-exit cleanup")
 	return {"served": sim.served_today, "lost": sim.lost_today, "sat_waiting": sat_waiting}
 
 
@@ -310,7 +315,7 @@ func _rng(seed_value: int) -> RandomNumberGenerator:
 
 
 func _door_bench_origin(grid: SimGrid) -> Vector2i:
-	return grid.entries()[0] + Vector2i.UP * 2
+	return grid.entries()[0] + Vector2i.LEFT * 2 + Vector2i.UP * 2
 
 
 ## Real same-entry births must enter before spending shared active patience.
@@ -349,3 +354,46 @@ func _sit_waiter(sim: RestaurantSim, guest: CustomerAgent) -> bool:
 		if not _advance_checked(sim):
 			return false
 	return guest.is_waiting_seated(sim.world)
+
+
+## Read-only setup proof: neither empty seats nor other people's spawn cells
+## may supply an aisle. Each real table has an ordinary approach and return
+## route from every street entry before the paired busy services begin.
+func _assert_clear_door_and_table_routes(sim: RestaurantSim, guest: CustomerAgent,
+		tables: Array[PlacedItem]) -> void:
+	var world: SimWorld = sim.world
+	var blocked: Dictionary[Vector2i, bool] = {}
+	for item: PlacedItem in world.grid.items():
+		for seat: Vector2i in item.seat_cells:
+			blocked[seat] = true
+	for actor: SimAgent in world.all_agents():
+		if actor != guest:
+			blocked[actor.cell] = true
+	for spawn: Vector2i in sim.staff_spawns.values():
+		blocked[spawn] = true
+	var entries: Array[Vector2i] = world.grid.entries()
+	assert_false(entries.is_empty())
+	for entry: Vector2i in entries:
+		assert_false(blocked.has(entry), "the actual entry is not a seat or another body's spawn")
+		for depth: int in [1, 2]:
+			var inward: Vector2i = entry + Vector2i.UP * depth
+			assert_true(world.movement.standing_cell(world, inward), "both door lanes remain ordinary aisle")
+			assert_eq(world.grid.room(inward), SimGrid.Room.DINING)
+			assert_false(blocked.has(inward), "the nearby bench does not obstruct either inward lane")
+			assert_false(world.grid.find_path_avoiding(entry, inward, blocked, true).is_empty())
+		for table: PlacedItem in tables:
+			var round_trip: bool = false
+			for seat: Vector2i in table.seat_cells:
+				if not world.grid.is_guest_walkable(seat) or world.grid.room(seat) != SimGrid.Room.DINING:
+					continue
+				for approach: Vector2i in world.grid.guest_neighbours(seat):
+					if absi(approach.x - seat.x) + absi(approach.y - seat.y) != 1:
+						continue
+					if blocked.has(approach) or not world.movement.standing_cell(world, approach) \
+							or world.grid.room(approach) != SimGrid.Room.DINING:
+						continue
+					var incoming: Array[Vector2i] = world.grid.find_path_avoiding(entry, approach, blocked, true)
+					var outgoing: Array[Vector2i] = world.grid.find_path_avoiding(approach, entry, blocked, true)
+					if not incoming.is_empty() and not outgoing.is_empty():
+						round_trip = true
+			assert_true(round_trip, "each actual table has a two-way ordinary aisle with every seat blocked")

@@ -21,10 +21,22 @@ func before_each() -> void:
 	_stock = Stock.new()
 	_stock.add(&"cheese", 8, 1)
 	_stock.add(&"bread", 10, 1)
-	_sim = RestaurantSim.create(LAYOUT, _content, 1, errors, _stock)
+	var layout: ShopLayout = _delivery_fixture_layout()
+	_sim = RestaurantSim.create(layout, _content, 1, errors, _stock)
 	assert_eq(errors, [] as Array[String])
-	_editor = ShopEditor.new(_sim, _content, ShopEditBooks.new(_can_spend, _record_cash), LAYOUT)
+	_editor = ShopEditor.new(_sim, _content, ShopEditBooks.new(_can_spend, _record_cash), layout)
 	_editor.set_owner_level(5)
+
+
+func _delivery_fixture_layout() -> ShopLayout:
+	var layout: ShopLayout = LAYOUT.duplicate(true) as ShopLayout
+	layout.placements = []
+	for authored: ShopPlacement in LAYOUT.placements:
+		var placed: ShopPlacement = authored.duplicate(true) as ShopPlacement
+		if placed.item_id == &"table_2" and placed.origin == Vector2i(6, 6):
+			placed.quarter_turns = 1
+		layout.placements.append(placed)
+	return layout
 
 
 func after_each() -> void:

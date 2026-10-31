@@ -504,12 +504,19 @@ func test_dropped_cook_task_restarts_without_taking_ingredients_twice() -> void:
 
 
 func test_rotated_pass_keeps_explicit_kitchen_and_dining_work_cells() -> void:
+	var orientation: ShopLayout = ORIENTATION_LAYOUT.duplicate(true) as ShopLayout
+	orientation.placements = []
+	for authored: ShopPlacement in ORIENTATION_LAYOUT.placements:
+		var placed: ShopPlacement = authored.duplicate(true) as ShopPlacement
+		if placed.item_id == &"table_2" and placed.origin in [Vector2i(6, 6), Vector2i(10, 6)]:
+			placed.quarter_turns = 1
+		orientation.placements.append(placed)
 	# This independent rotation fixture uses the historical free pose at(8,5).
 	var stock: Stock = Stock.new()
 	for ingredient: IngredientDef in _content.ingredients():
 		stock.add(ingredient.id, 100, 1)
 	var errors: Array[String] = []
-	_sim = RestaurantSim.create(ORIENTATION_LAYOUT, _content, 29015, errors, stock)
+	_sim = RestaurantSim.create(orientation, _content, 29015, errors, stock)
 	assert_eq(errors, [] as Array[String])
 	_sim.customer_arrived.connect(_on_arrived)
 	_sim.customer_paid.connect(_on_paid)
@@ -664,7 +671,7 @@ func test_overnight_tidy_starts_morning_clean_with_staff_at_posts() -> void:
 	_run(5)
 	var server: StaffAgent = _staff(&"server")
 	assert_not_null(server.task, "a server took a bussing job before the tidy")
-	assert_ne(server.cell, LAYOUT.staff_spawns[&"server"])
+	assert_ne(server.movement_position(), GridMath.cell_to_world(LAYOUT.staff_spawns[&"server"]))
 	_staff(&"cook").cell = LAYOUT.staff_spawns[&"server"]
 	_sim.start_day()
 	assert_eq(_sim.kitchen.dirty_tables.size(), 0, "every table is clean in the morning")

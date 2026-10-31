@@ -414,7 +414,7 @@ func test_real_kitchen_party_gets_three_individual_orders_payments_and_reviews()
 			layout.placements.append(placement.duplicate(true) as ShopPlacement)
 	var large: ShopPlacement = ShopPlacement.new()
 	large.item_id = &"table_4"
-	large.origin = Vector2i(3, 6)
+	large.origin = Vector2i(3, 7)
 	layout.placements.append(large)
 	var stock: Stock = Stock.new()
 	for ingredient: IngredientDef in content.ingredients():

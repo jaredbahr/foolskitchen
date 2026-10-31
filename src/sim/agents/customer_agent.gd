@@ -161,6 +161,17 @@ static func player_reason(raw: StringName) -> StringName:
 
 ## Advances movement and the visit state, including all timeout backstops.
 func tick(world: SimWorld) -> void:
+	_advance_visit(world)
+
+
+## Movement already consumed this tick. Keep the same logical validation,
+## queue search/deadline and seat-walk budget, with no second move or meal work.
+func maintain_movement_pause(world: SimWorld) -> void:
+	if state <= State.WALKING_TO_SEAT:
+		_advance_visit(world, false)
+
+
+func _advance_visit(world: SimWorld, allow_movement: bool = true) -> void:
 	var sim: RestaurantSim = _restaurant.get_ref() as RestaurantSim
 	if sim == null:
 		state = State.LEFT
@@ -169,7 +180,7 @@ func tick(world: SimWorld) -> void:
 	if world.clock.phase == SimClock.Phase.CLOSED:
 		return
 	if party != null and party.size() > 1 and state <= State.QUEUED:
-		PartySeating.advance_queue(party, world, sim)
+		PartySeating.advance_queue(party, world, sim, allow_movement)
 		return
 	if state == State.WALKING_TO_SEAT and party != null and party.size() > 1 and not party.seated:
 		if not PartySeating.booking_valid(party, world):
@@ -211,12 +222,18 @@ func tick(world: SimWorld) -> void:
 		State.ARRIVING:
 			if not _try_seat(world):
 				state = State.QUEUED
-				_queue_inside(world)
+				if allow_movement:
+					_queue_inside(world)
+				else:
+					WaitingBench.observe_arrival(self, world, sim)
 		State.QUEUED:
 			if _queue_wait >= queue_patience:
 				_leave(world, sim, &"no_table")
 			elif not _try_seat(world):
-				_queue_inside(world)
+				if allow_movement:
+					_queue_inside(world)
+				else:
+					WaitingBench.observe_arrival(self, world, sim)
 				_queue_wait += 1
 				if _queue_wait >= queue_patience:
 					_leave(world, sim, &"no_table")
@@ -224,7 +241,7 @@ func tick(world: SimWorld) -> void:
 			_walk_wait += 1
 			if _walk_wait >= SEAT_WALK_LIMIT:
 				_requeue(world, sim)
-			else:
+			elif allow_movement:
 				_walk_to_seat(world, sim)
 		State.ORDERING:
 			if _task == null or _task.state == SimTask.State.CANCELLED:
@@ -240,7 +257,8 @@ func tick(world: SimWorld) -> void:
 			sim.pay(self, order)
 			_leave(world, sim, &"happy")
 		State.LEAVING:
-			_walk_to_exit(world)
+			if allow_movement:
+				_walk_to_exit(world)
 
 
 ## Guests never walk through the kitchen or storage (FK-101).
@@ -497,6 +515,10 @@ func _move(world: SimWorld, destination: Vector2i) -> bool:
 	if needs_repath or path.is_empty():
 		if not set_destination(world.grid, destination):
 			return false
+	# A new destination can hand a real partial edge to coordinator STOP.
+	# The coordinator owns its next move, including a later party-member slot.
+	if world.movement.is_stopping(id):
+		return false
 	var result: MoveResult = step_move(world)
 	if result == MoveResult.BLOCKED:
 		set_destination(world.grid, destination)
