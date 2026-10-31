@@ -146,8 +146,8 @@ an active edit/panel/selection first, or opens Settings when none is active.
     failed-item guard against blind retries; global renderer/stage failures
     keep their existing separate handling.
   - The Tier 1 hole-in-the-wall is `data/layouts/tier1_hole_in_the_wall.tres`:
-    - kitchen at the top (fridge, prep counter and stove facing down, with a kitchen door at x=7);
-    - the pass at (5,4), worked from both sides;
+    - kitchen at the top (fridge, prep counter and stove facing down), with two seat-free doorway lanes at x=5 and x=6;
+    - the pass at (3,4), worked from both sides, beside the doorway;
     - three two-seat tables in the dining room;
     - street entry at (6,11) and (7,11).
 - **Customers and orders (FK-014, `src/sim/restaurant/`):**

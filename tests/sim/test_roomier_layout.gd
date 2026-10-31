@@ -29,12 +29,34 @@ func test_new_shop_has_two_cell_aisles_and_six_seats_without_moving_the_old_temp
 		seats.append_array(table.seat_cells)
 	assert_eq(seats.size(), 6)
 	for corridor: Rect2i in [Rect2i(4, 5, 2, 6), Rect2i(9, 5, 2, 6),
-			Rect2i(4, 9, 7, 2), Rect2i(5, 5, 2, 2), Rect2i(7, 10, 2, 3)]:
+			Rect2i(4, 9, 7, 2), Rect2i(5, 3, 2, 8), Rect2i(7, 10, 2, 3)]:
 		for y: int in range(corridor.position.y, corridor.end.y):
 			for x: int in range(corridor.position.x, corridor.end.x):
 				var cell: Vector2i = Vector2i(x, y)
 				assert_true(world.grid.is_walkable(cell), "two-cell aisle at %s" % cell)
 				assert_false(seats.has(cell), "a through aisle cannot be another guest's seat")
+	# Free floor alone does not prove a doorway: both columns must cross the
+	# room boundary without a divider or a guest's seat in either lane.
+	for x: int in [5, 6]:
+		for y: int in range(3, 10):
+			assert_true(world.grid.step_open(Vector2i(x, y), Vector2i(x, y + 1)),
+				"two-cell kitchen/dining route crosses the edge at %s" % Vector2i(x, y))
+	var blocked_seats: Dictionary[Vector2i, bool] = {}
+	for seat: Vector2i in seats:
+		blocked_seats[seat] = true
+	# Physical chairs remain unavailable even while the shop is empty.
+	# Every actual starter station and both sides of the pass must still be
+	# connected to the entrance, without treating any seat as through floor.
+	for item: PlacedItem in world.grid.items():
+		var definition: ItemDef = item.def as ItemDef
+		if definition.id not in [&"fridge", &"prep_counter", &"stove", &"sink", &"pass_counter"]:
+			continue
+		assert_false(item.work_cells.is_empty())
+		for target: Vector2i in item.work_cells:
+			var path: Array[Vector2i] = world.grid.find_path_avoiding(Vector2i(7, 12), target, blocked_seats)
+			assert_false(path.is_empty(), "seat-free entrance route to %s at %s" % [definition.id, target])
+			for cell: Vector2i in path:
+				assert_false(blocked_seats.has(cell), "staff cannot use a dining seat as a shortcut")
 	assert_eq(world.grid.entries(), [Vector2i(7, 12), Vector2i(8, 12)] as Array[Vector2i])
 
 
