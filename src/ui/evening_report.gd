@@ -71,6 +71,8 @@ func _ready() -> void:
 ## Replaces every section with the supplied day's results, including empty states.
 func show_report(report: DayReport) -> void:
 	_bind_nodes()
+	# Main follows this compatible single-report API with the detached history.
+	show_history([], report.day)
 	_report_shown = true
 	_restaurant_name.text = report.restaurant_name
 	(get_node("Panel/Scroll/Content/ReviewHeading") as Label).text = "Reviews of %s" % report.restaurant_name
@@ -147,6 +149,17 @@ func show_report(report: DayReport) -> void:
 	_render_demand(report.demand_forecast)
 	_render_vibe()
 	show()
+
+
+func show_history(rows: Array[Dictionary], today: int) -> void:
+	_bind_nodes()
+	var clean: Array[Dictionary] = BusinessTrendText.display_rows(rows, today)
+	(%BusinessTrendHeading as Label).text = BusinessTrendText.HEADING
+	(%BusinessTrendSummary as Label).text = BusinessTrendText.summary(clean, today)
+	var chart: BusinessTrendChart = %BusinessTrendChart
+	chart.set_history(clean, today if not clean.is_empty() else 0)
+	chart.visible = clean.size() >= 2
+	(%BusinessTrendSection as VBoxContainer).show()
 
 
 ## Current room presentation is derived, never part of the saved day report.
