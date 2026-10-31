@@ -48,10 +48,30 @@ func _start(with_saves: bool) -> Node:
 func _morning_stock_cost(main: Node) -> int:
 	var content: ContentDB = main.get("content")
 	var total := 0
-	for id: StringName in TUNING.morning_stock:
-		total += TUNING.morning_stock[id] * content.ingredient(id).unit_cost
+	var targets: Dictionary[StringName, int] = _morning_food_targets(main)
+	for id: StringName in targets:
+		total += targets[id] * content.ingredient(id).unit_cost
 	# The morning auto-order pays its premium once on the order total (#54).
 	return ReorderSettings.auto_cost(total, TUNING.auto_reorder_premium)
+
+
+## Independent opening-food oracle: all default visits order one equally
+## likely food recipe. Round the uniform buffered portions once, then count
+## each repeated ingredient entry as a separate unit.
+## It never reads the production forecast helper, stock or purchase ledger.
+func _morning_food_targets(main: Node) -> Dictionary[StringName, int]:
+	var sim: RestaurantSim = main.get("sim")
+	var guests: int = sim.expected_demand_guests(sim.demand_factor)
+	var servings_per_recipe: int = ceili(float(guests) * TUNING.restock_buffer / float(sim.menu.size()))
+	var portions: Dictionary[StringName, int] = {}
+	for recipe: RecipeDef in sim.menu:
+		assert_false(recipe.is_drink(), "the ordinary starting fixture has a food-only menu")
+		for ingredient: IngredientDef in recipe.ingredients:
+			portions[ingredient.id] = portions.get(ingredient.id, 0) + 1
+	var targets: Dictionary[StringName, int] = {}
+	for id: StringName in portions:
+		targets[id] = mini(ReorderSettings.MAX_TARGET, servings_per_recipe * portions[id])
+	return targets
 
 
 func _run_day(main: Node) -> void:
@@ -66,7 +86,7 @@ func _run_day(main: Node) -> void:
 func test_new_game_starts_with_cash_minus_morning_stock() -> void:
 	var main := _start(false)
 	assert_eq(Economy.cash, TUNING.starting_cash - _morning_stock_cost(main))
-	assert_eq(Economy.stock.count(&"bun"), TUNING.morning_stock[&"bun"])
+	assert_eq(Economy.stock.count(&"bun"), _morning_food_targets(main)[&"bun"])
 	assert_eq(Clock.sim.phase, SimClock.Phase.MORNING)
 	assert_true(Clock.attached_world == main.get("world"), "Clock drives this restaurant")
 	var report: Control = main.get_node("Overlay/EveningReport")
@@ -108,7 +128,7 @@ func test_full_day_charges_costs_and_shows_report() -> void:
 		if int(review.get("stars", 0)) == 5:
 			five_star += 1
 	var expected_happy_xp: int = int(sim.leave_reasons_today.get(&"happy", 0)) * PROGRESSION.happy_guest_xp
-	var expected_profit_xp: int = floori(float(maxi(0, day_report.operating_profit())) / float(PROGRESSION.profit_step)) \
+	var expected_profit_xp: int = floori(float(maxi(0, day_report.purchase_basis_operating_profit())) / float(PROGRESSION.profit_step)) \
 		* PROGRESSION.profit_step_xp
 	var expected_review_xp: int = five_star * PROGRESSION.five_star_review_xp
 	var expected_total: int = expected_happy_xp + expected_profit_xp + expected_review_xp + milestone_xp
@@ -118,7 +138,7 @@ func test_full_day_charges_costs_and_shows_report() -> void:
 	if milestone_xp > 0:
 		expected_breakdown["milestone_xp"] = milestone_xp
 	assert_eq(day_report.owner_xp_breakdown, expected_breakdown,
-		"the real day-close report explains every XP source and uses operating profit")
+		"the real day-close report explains every XP source and preserves the original cash-basis progression policy")
 	var progress: OwnerProgress = main.get("owner_progress") as OwnerProgress
 	assert_eq(progress.total_xp, expected_total)
 	assert_eq(progress.last_awarded_day, 1)
@@ -180,7 +200,7 @@ func test_next_day_resets_and_hides_report() -> void:
 	assert_false(report.visible)
 	var sim: RestaurantSim = main.get("sim")
 	assert_eq(sim.served_today + sim.lost_today, 0, "day counters reset")
-	assert_eq(Economy.stock.count(&"bun"), TUNING.morning_stock[&"bun"], "fridge topped up again")
+	assert_eq(Economy.stock.count(&"bun"), _morning_food_targets(main)[&"bun"], "fridge topped up to the next service forecast")
 
 
 func test_autosave_resumes_next_morning() -> void:

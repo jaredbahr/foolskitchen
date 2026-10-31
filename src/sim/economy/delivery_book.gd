@@ -158,23 +158,33 @@ static func is_due(due: Vector2i, clock: SimClock, morning_setup: bool = false) 
 ## Removes and returns the lines of every order due now, merged by id in
 ## first-placed order: [{id, qty}].
 func take_due(clock: SimClock, morning_setup: bool = false) -> Array[Dictionary]:
-	var kept: Array[Dictionary] = []
 	var merged: Dictionary[StringName, int] = {}
 	var order_ids: Array[StringName] = []
+	for line: Dictionary in take_due_valued(clock, morning_setup):
+		var id: StringName = line["id"]
+		if not merged.has(id):
+			order_ids.append(id)
+			merged[id] = 0
+		merged[id] += int(line["qty"])
+	var out: Array[Dictionary] = []
+	for id: StringName in order_ids:
+		out.append({"id": id, "qty": merged[id]})
+	return out
+
+
+## Production receipts keep each paid lot separate, including distinct prices
+## for the same ingredient. The legacy quantity-only API above still merges.
+func take_due_valued(clock: SimClock, morning_setup: bool = false) -> Array[Dictionary]:
+	var kept: Array[Dictionary] = []
+	var out: Array[Dictionary] = []
 	for order: Dictionary in _orders:
 		if not is_due(order["due"], clock, morning_setup):
 			kept.append(order)
 			continue
-		for line: Dictionary in order["lines"]:
-			var id: StringName = line["id"]
-			if not merged.has(id):
-				order_ids.append(id)
-				merged[id] = 0
-			merged[id] += int(line["qty"])
+		var lines: Array[Dictionary] = []
+		lines.assign(order["lines"])
+		out.append_array(PurchaseBasis.allocate(lines, int(order["cost"])))
 	_orders = kept
-	var out: Array[Dictionary] = []
-	for id: StringName in order_ids:
-		out.append({"id": id, "qty": merged[id]})
 	return out
 
 
@@ -195,10 +205,10 @@ func to_dict() -> Dictionary:
 	for order: Dictionary in _orders:
 		var lines: Array = []
 		for line: Dictionary in order["lines"]:
-			lines.append({"id": String(line["id"]), "qty": int(line["qty"]), "unit_cost": int(line["unit_cost"])})
+			lines.append({"id": String(line["id"]), "qty": str(line["qty"]), "unit_cost": str(line["unit_cost"])})
 		var due: Vector2i = order["due"]
 		rows.append({"day": due.x, "tick": due.y, "lines": lines,
-			"cost": int(order["cost"]), "standing": bool(order["standing"])})
+			"cost": str(order["cost"]), "standing": bool(order["standing"])})
 	return {"version": VERSION, "orders": rows}
 
 
@@ -217,11 +227,11 @@ func from_dict(data: Dictionary) -> bool:
 		var order: Dictionary = row
 		var day: Variant = order.get("day", null)
 		var tick: Variant = order.get("tick", null)
-		var cost: Variant = order.get("cost", null)
+		var cost: int = PurchaseBasis.decode(order.get("cost", null))
 		var standing: Variant = order.get("standing", null)
 		var lines: Variant = order.get("lines", null)
 		if not _is_whole(day) or int(day) < 1 or not _is_whole(tick) or int(tick) < MORNING \
-				or not _is_whole(cost) or int(cost) < 0 or typeof(standing) != TYPE_BOOL or not lines is Array:
+				or cost < 0 or typeof(standing) != TYPE_BOOL or not lines is Array:
 			return false
 		var parsed: Array[Dictionary] = []
 		for value: Variant in lines:
@@ -229,10 +239,10 @@ func from_dict(data: Dictionary) -> bool:
 				return false
 			var line: Dictionary = value
 			var id: Variant = line.get("id", null)
-			var qty: Variant = line.get("qty", null)
-			var unit_cost: Variant = line.get("unit_cost", null)
-			if typeof(id) != TYPE_STRING or (id as String).is_empty() or not _is_whole(qty) or int(qty) <= 0 \
-					or not _is_whole(unit_cost) or int(unit_cost) < 0:
+			var qty: int = PurchaseBasis.decode(line.get("qty", null))
+			var unit_cost: int = PurchaseBasis.decode(line.get("unit_cost", null))
+			if typeof(id) != TYPE_STRING or (id as String).is_empty() or qty <= 0 \
+					or unit_cost < 0:
 				return false
 			parsed.append({"id": StringName(id), "qty": int(qty), "unit_cost": int(unit_cost)})
 		if not restored.place(parsed, int(cost), bool(standing), Vector2i(int(day), int(tick))):

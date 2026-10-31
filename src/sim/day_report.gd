@@ -51,6 +51,17 @@ var milestones_reached: Array[Dictionary] = []
 var low_stock: Array[String] = []
 ## Named regular visit, promotion and farewell notes, already player-facing.
 var regulars_lines: Array[String] = []
+## Optional purchase-basis accounting. Historical reports retain their cash
+## basis; missing historical ingredient prices are never fabricated.
+var stock_values_recorded: bool = false
+var food_cost: int = 0
+var food_cost_recorded: bool = false
+var stock_bought: int = 0
+var stock_bought_recorded: bool = false
+var spoiled_stock: int = 0
+var spoiled_stock_recorded: bool = false
+var stock_on_hand: int = 0
+var stock_on_hand_recorded: bool = false
 ## Optional detached estimate for the next service day; older reports omit it.
 var demand_forecast: Dictionary = {}:
 	set(value):
@@ -99,7 +110,39 @@ func profit() -> int:
 ## Shop performance before financing. Borrowing cannot turn a loss into profit,
 ## and paying back principal does not make the shop's operations look worse.
 func operating_profit() -> int:
+	if not stock_values_recorded:
+		return purchase_basis_operating_profit()
+	var result: Dictionary = _served_operating_result()
+	return int(result["amount"]) if bool(result["recorded"]) else 0
+
+
+## Keep existing goal, XP and financing policies on their original basis.
+func purchase_basis_operating_profit() -> int:
 	return _operating_sum(income) - _operating_sum(costs)
+
+
+func operating_profit_recorded() -> bool:
+	return stock_values_recorded and bool(_served_operating_result()["recorded"])
+
+
+## Exclude the signed ingredient net entirely, including refunds. Only the
+## ingredients in paid orders enter the served-food result. Build positive
+## sides first so an oversized valuation is explicitly unavailable.
+func _served_operating_result() -> Dictionary:
+	if not food_cost_recorded:
+		return {"amount": 0, "recorded": false}
+	var takings: Dictionary = PurchaseBasis.zero()
+	var expenses: Dictionary = {"cost": food_cost, "recorded": true}
+	for key: Variant in income:
+		var category: StringName = StringName(str(key))
+		if category != Ledger.INGREDIENTS and not NON_OPERATING_CATEGORIES.has(category):
+			PurchaseBasis.combine(takings, {"cost": int(income[key]), "recorded": true})
+	for key: Variant in costs:
+		var category: StringName = StringName(str(key))
+		if category != Ledger.INGREDIENTS and not NON_OPERATING_CATEGORIES.has(category):
+			PurchaseBasis.combine(expenses, {"cost": int(costs[key]), "recorded": true})
+	return {"amount": int(takings["cost"]) - int(expenses["cost"]),
+		"recorded": bool(takings["recorded"]) and bool(expenses["recorded"])}
 
 
 ## Returns the most-sold recipe, breaking ties by its alphabetical id.
@@ -144,6 +187,15 @@ func to_dict() -> Dictionary:
 		"milestones_reached": milestones,
 		"low_stock": low_stock.duplicate(),
 		"regulars_lines": regulars_lines.duplicate(),
+		"stock_values_recorded": stock_values_recorded,
+		"food_cost": str(food_cost),
+		"food_cost_recorded": food_cost_recorded,
+		"stock_bought": str(stock_bought),
+		"stock_bought_recorded": stock_bought_recorded,
+		"spoiled_stock": str(spoiled_stock),
+		"spoiled_stock_recorded": spoiled_stock_recorded,
+		"stock_on_hand": str(stock_on_hand),
+		"stock_on_hand_recorded": stock_on_hand_recorded,
 		"demand_forecast": public_demand_forecast(demand_forecast),
 	}
 
@@ -204,6 +256,14 @@ static func from_dict(data: Dictionary) -> DayReport:
 		for line: Variant in saved_regulars:
 			if line is String:
 				report.regulars_lines.append(line)
+	var recorded: Variant = data.get("stock_values_recorded", false)
+	report.stock_values_recorded = recorded is bool and recorded
+	for field: String in ["food_cost", "stock_bought", "spoiled_stock", "stock_on_hand"]:
+		var value: int = PurchaseBasis.decode(data.get(field, null))
+		var flag: Variant = data.get(field + "_recorded", false)
+		if value >= 0 and flag is bool:
+			report.set(field, value)
+			report.set(field + "_recorded", flag)
 	report.demand_forecast = public_demand_forecast(data.get("demand_forecast", {}))
 	return report
 

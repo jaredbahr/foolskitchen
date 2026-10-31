@@ -5,6 +5,9 @@ extends TestCase
 ## and the shelves showing their stock.
 
 const MAIN: PackedScene = preload("res://src/world/main.tscn")
+## These capacity/cart fixtures select fixed manual targets before the first
+## real morning purchase; adaptive default planning is tested independently.
+const MANUAL_MAIN: GDScript = preload("res://tests/fixtures/manual_restock_main.gd")
 const TUNING: EconomyTuning = preload("res://data/balance/tier1_economy.tres")
 const SLOT: String = "delivery_session"
 
@@ -405,6 +408,7 @@ func _next_morning() -> void:
 
 func _start(with_saves: bool, tuning: EconomyTuning = null) -> Node:
 	var main: Node = MAIN.instantiate()
+	main.set_script(MANUAL_MAIN)
 	main.set("use_saves", with_saves)
 	main.set("save_slot", SLOT)
 	if tuning != null:

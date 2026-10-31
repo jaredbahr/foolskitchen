@@ -36,7 +36,9 @@ func _run() -> void:
 	var check: RefCounted = mode.get("current_check") as RefCounted
 	var cost: int = int(check.get("cost"))
 	var economy: Node = root.get_node("Economy")
-	economy.call("add_cash", 75 + cost - int(economy.get("cash")), Ledger.OTHER)
+	var restock_estimate: int = int(main.call("build_restock_estimate"))
+	var remaining_cash: int = maxi(0, restock_estimate - 1)
+	economy.call("add_cash", remaining_cash + cost - int(economy.get("cash")), Ledger.OTHER)
 	for frame: int in 12:
 		await process_frame
 	await RenderingServer.frame_post_draw
@@ -51,7 +53,8 @@ func _run() -> void:
 		and not hint.has_theme_color_override("font_color")
 	var valid: bool = allowed and not warning.is_empty() and line.text == warning \
 		and not hint.text.contains(warning) and visible and amber
-	var metadata: Dictionary = {"fixture": "Paused original five-cell expansion preview; input polling frozen; cash set through the ledger; no purchase committed",
+	valid = valid and cost > 0 and restock_estimate > 0
+	var metadata: Dictionary = {"fixture": "Paused original five-cell expansion preview; input polling frozen; cash set through the ledger to leave one dollar below the current restock estimate; no purchase committed",
 		"cash": int(economy.get("cash")), "preview_cost": cost, "leaves": int(economy.get("cash")) - cost,
 		"restock_estimate": main.call("build_restock_estimate"), "warning": warning,
 		"placement_allowed": allowed, "warning_in_viewport": visible, "warning_amber": amber, "engine_errors": errors.count()}

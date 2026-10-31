@@ -525,6 +525,24 @@ func set_demand_factor(value: float) -> bool:
 	return true
 
 
+## Read-only menu-kind hours for the same service as expected_demand_guests.
+## Keep the typed visit resource beside its owning sim; callers receive only
+## detached primitive weights, including partial opening hours.
+func expected_visit_weights() -> Dictionary[StringName, float]:
+	var result: Dictionary[StringName, float] = {}
+	if world == null:
+		return result
+	var clock: SimClock = world.clock
+	for kind: StringName in RecipeDef.ORDER_TYPES:
+		var weight: float = 0.0
+		for hour: int in range(24):
+			var minutes: int = maxi(0, mini(clock.display_close_minute, (hour + 1) * 60)
+				- maxi(clock.display_open_minute, hour * 60))
+			weight += minutes * (visit_tuning.weight(kind, hour * 60) if visit_tuning != null else 0.0)
+		result[kind] = weight
+	return result
+
+
 ## Read-only approximation from this restaurant's actual opening hours, menu
 ## weights and authored base gaps. Parties already space arrivals by headcount.
 func expected_demand_guests(factor: float) -> int:
