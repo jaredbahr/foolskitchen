@@ -429,6 +429,14 @@ func _wait(world: SimWorld, agent: SimAgent, next: Vector2i) -> void:
 	if agent.move_progress > 0.0:
 		return
 	var holder: SimAgent = world.agent(_occupied.get(next, _next.get(next, -1)))
+	if holder == null:
+		for corner: Vector2i in _step_cells(agent.cell, next):
+			if corner == next:
+				continue
+			var corner_holder: SimAgent = world.agent(_occupied.get(corner, _next.get(corner, -1)))
+			if corner_holder != null and corner_holder != agent:
+				holder = corner_holder
+				break
 	if holder != null and holder.move_progress == 0.0:
 		var yielding: SimAgent = holder if _before(world, agent, holder) else agent
 		if waits >= world.movement_tuning.yield_after_ticks:
@@ -450,8 +458,10 @@ func _wait(world: SimWorld, agent: SimAgent, next: Vector2i) -> void:
 
 
 func _yield(world: SimWorld, yielding: SimAgent, winner: SimAgent) -> YieldAttempt:
-	if (_resume.has(yielding.id) and not _returning.has(yielding.id)) \
-			or _stopping.has(yielding.id) or yielding.move_progress > 0.0:
+	var fresh_outbound: bool = _resume.has(yielding.id) and not _returning.has(yielding.id) \
+			and int(_blocked.get(yielding.id, 0)) < world.movement_tuning.yield_after_ticks
+	if fresh_outbound or _stopping.has(yielding.id) or _edges.has(yielding.id) \
+			or yielding.move_progress > 0.0:
 		return YieldAttempt.IN_PROGRESS_PROTECTED
 	if yielding is CustomerAgent:
 		var guest: CustomerAgent = yielding as CustomerAgent
@@ -469,6 +479,7 @@ func _yield(world: SimWorld, yielding: SimAgent, winner: SimAgent) -> YieldAttem
 		_resume[yielding.id] = original
 		_returning.erase(yielding.id)
 		_cooperative.erase(yielding.id)
+		_blocked.erase(yielding.id)
 		yielding.install_movement_route(path)
 		return YieldAttempt.STARTED
 
