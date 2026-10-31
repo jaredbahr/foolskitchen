@@ -64,6 +64,8 @@ var regular_recipe_labels: Dictionary[StringName, String] = {}
 var _regular_cohort_index: int = 0
 var served_today: int = 0
 var lost_today: int = 0
+## Read-only OPEN-hour observations; only the detached report survives a day.
+var staff_activity: StaffActivity = StaffActivity.new()
 var leave_reasons_today: Dictionary[StringName, int] = {}
 ## Optional review dependencies are injected by the game session. Keeping the
 ## stream separate leaves arrivals and individual guest choices unchanged.
@@ -218,6 +220,7 @@ func assign_owner(mode: StringName) -> bool:
 
 ## Clears daily reports and redraws the first arrival; the caller opens the clock.
 func start_day() -> void:
+	staff_activity.reset(world.clock.day)
 	_regular_cohort_index = 0
 	if regulars != null:
 		regulars.begin_day(world.clock.day)
@@ -260,6 +263,10 @@ func advance() -> void:
 	var was_closed: bool = world.clock.phase == SimClock.Phase.CLOSED
 	if clean_tasks != null:
 		clean_tasks.sync_spots()
+	# The incoming OPEN interval includes the tick that reaches last orders.
+	# Observe existing assignments before agents can complete or replace them.
+	if world.clock.phase == SimClock.Phase.OPEN:
+		staff_activity.observe(world)
 	world.advance()
 	if kitchen != null:
 		kitchen.advance()

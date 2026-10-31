@@ -60,6 +60,8 @@ var _vibe_grid: SimGrid
 var _vibe_experiences: Dictionary[String, int] = {}
 ## The last evening report put on screen (for tests and tools).
 var shown_report: DayReport = null
+## Previous service's display summary for the morning panel; never a save section.
+var _last_team_activity: Dictionary = {}
 ## Dishes sold today (recipe id -> count), for the evening report.
 var dishes_sold_today: Dictionary[StringName, int] = {}
 var _food_cost_today: Dictionary = PurchaseBasis.zero()
@@ -377,6 +379,7 @@ func _bind_world_presentation() -> void:
 		quit_dialog.canceled.connect(_cancel_quit_to_title)
 	_staff_panel = $Overlay/StaffPanel
 	_staff_panel.bind_roster(staff_roster)
+	_staff_panel.set_team_activity(_last_team_activity)
 	_staff_panel.set_phase(Clock.sim.phase)
 	_staff_panel.set_wage_factor(OpeningHours.wage_factor(Clock.sim, HOURS_TUNING))
 	_staff_panel.set_trays(tray_level, TUNING.tray_prices, Economy.cash, _loan_upgrade_refusal())
@@ -2021,6 +2024,7 @@ func run_ticks(ticks: int) -> void:
 func build_report(day: int) -> DayReport:
 	var report := DayReport.new()
 	report.day = day
+	report.staff_activity = sim.staff_activity.snapshot()
 	report.restaurant_name = menu_settings.restaurant_name() if menu_settings != null else MenuSettings.DEFAULT_NAME
 	report.regulars_lines = RegularText.report_lines(regulars)
 	report.loan_first_advance = _loan_notice_day == day
@@ -2094,6 +2098,7 @@ func build_report(day: int) -> DayReport:
 
 
 func _new_game() -> void:
+	_last_team_activity.clear()
 	hints.restart()
 	demand_state = DemandState.new()
 	_loaded_demand = null
@@ -2161,6 +2166,7 @@ func _new_game() -> void:
 
 
 func _load_autosave() -> bool:
+	_last_team_activity.clear()
 	_loaded_demand = null
 	_loaded_regulars = null
 	_loaded_blueprints = null
@@ -3457,6 +3463,8 @@ func _begin_morning() -> void:
 		return
 	staff_roster = choices
 	_staff_panel.bind_roster(staff_roster)
+	# Retain yesterday's detached report while today's live counters reset.
+	_staff_panel.set_team_activity(_last_team_activity)
 	if _staff_notice_day != Clock.sim.day:
 		_staff_notice_day = Clock.sim.day
 		_staff_notices.assign(notices)
@@ -4218,6 +4226,8 @@ func _on_service_closed(day: int) -> void:
 		_build_catalogue.set_property_tier(owner_progress.property_tier)
 		$HUD.set_owner_progress(owner_progress.level, owner_progress.xp_into_level(), owner_progress.xp_in_level())
 	shown_report = build_report(day)
+	_last_team_activity = StaffActivity.public_snapshot(shown_report.staff_activity)
+	_staff_panel.set_team_activity(_last_team_activity)
 	_report.call(&"show_report", shown_report)
 	if _paint_active or is_staff_visible() or is_goals_visible():
 		_report.hide()

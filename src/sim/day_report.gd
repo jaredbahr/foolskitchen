@@ -64,6 +64,10 @@ var stock_on_hand_recorded: bool = false
 var demand_forecast: Dictionary = {}:
 	set(value):
 		demand_forecast = public_demand_forecast(value)
+## Optional detached display data; older reports have no measured activity.
+var staff_activity: Dictionary = {}:
+	set(value):
+		staff_activity = StaffActivity.public_snapshot(value)
 
 
 ## Returns income across all categories in whole currency units.
@@ -159,7 +163,7 @@ func to_dict() -> Dictionary:
 	for card: Dictionary in review_cards:
 		cards.append(_public_review_card(card))
 	var milestones: Array[Dictionary] = public_milestones(milestones_reached)
-	return {
+	var result: Dictionary = {
 		"day": day,
 		"restaurant_name": restaurant_name,
 		"income": _string_counts(income),
@@ -196,6 +200,10 @@ func to_dict() -> Dictionary:
 		"stock_on_hand_recorded": stock_on_hand_recorded,
 		"demand_forecast": public_demand_forecast(demand_forecast),
 	}
+	var activity: Dictionary = StaffActivity.public_snapshot(staff_activity)
+	if not activity.is_empty():
+		result["staff_activity"] = activity
+	return result
 
 
 ## Restores a snapshot, including JSON's string keys and numeric values.
@@ -263,6 +271,7 @@ static func from_dict(data: Dictionary) -> DayReport:
 			report.set(field, value)
 			report.set(field + "_recorded", flag)
 	report.demand_forecast = public_demand_forecast(data.get("demand_forecast", {}))
+	report.staff_activity = StaffActivity.public_snapshot(data.get("staff_activity", {}))
 	return report
 
 
