@@ -101,6 +101,7 @@ jobs:
           OWNER_REVIEW_STAGE=picker bash tools/screenshot.sh --out=screens/visual-review/owner-picker --scene=res://tools/owner_character_review.tscn --speed=0 --frames=60
           OWNER_REVIEW_STAGE=shop bash tools/screenshot.sh --out=screens/visual-review/owner-character --scene=res://tools/owner_character_review.tscn --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/report --report --open --fast=100 --speed=0 --frames=60
+          bash tools/screenshot.sh --out=screens/visual-review/profit-review --scene=res://tools/profit_review.tscn --report --open --fast=1 --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/demand-report --scene=res://tools/demand_report_review.tscn --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/regulars-review --scene=res://tools/regulars_review.tscn --frames=12,90 --speed=0
           bash tools/screenshot.sh --out=screens/visual-review/paint --paint --speed=0 --frames=60

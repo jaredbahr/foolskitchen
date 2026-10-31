@@ -29,6 +29,9 @@ var _header: Label
 var _profit: Label
 var _income: GridContainer
 var _costs: GridContainer
+var _stock: GridContainer
+var _stock_summary: VBoxContainer
+var _cash_change: Label
 var _loan_notice: Label
 var _dishes: GridContainer
 var _guests: Label
@@ -59,6 +62,7 @@ var _demand_explanation: Label
 
 func _ready() -> void:
 	_bind_nodes()
+	_on_report_resized()
 	if not _report_shown:
 		show_report(DayReport.new())
 
@@ -70,11 +74,26 @@ func show_report(report: DayReport) -> void:
 	_restaurant_name.text = report.restaurant_name
 	(get_node("Panel/Scroll/Content/ReviewHeading") as Label).text = "Reviews of %s" % report.restaurant_name
 	_header.text = "Day %d: Closed" % report.day
-	var operating_profit: int = report.operating_profit()
-	_profit.text = "%s operating profit" % _money(operating_profit)
-	_profit.add_theme_color_override("font_color", PROFIT_GREEN if operating_profit >= 0 else LOSS_RED)
+	if report.operating_profit_recorded():
+		var operating_profit: int = report.operating_profit()
+		_profit.text = "%s operating profit" % _money(operating_profit)
+		_profit.add_theme_color_override("font_color", PROFIT_GREEN if operating_profit >= 0 else LOSS_RED)
+	else:
+		_profit.text = "Operating profit not recorded"
+		_profit.remove_theme_color_override("font_color")
 	_fill_money(_income, report.income, "No income today")
-	_fill_money(_costs, report.costs, "No costs today")
+	var displayed_costs: Dictionary = report.costs.duplicate()
+	if report.stock_values_recorded:
+		displayed_costs.erase(Ledger.INGREDIENTS)
+	_fill_money(_costs, displayed_costs, "No costs today" if not report.stock_values_recorded else "")
+	if report.stock_values_recorded:
+		_add_row(_costs, "Cost of food served", _recorded_money(report.food_cost, report.food_cost_recorded))
+	_clear(_stock)
+	_add_row(_stock, "Stock bought today", _recorded_money(report.stock_bought,
+		report.stock_values_recorded and report.stock_bought_recorded))
+	_add_row(_stock, "Spoiled stock", _recorded_money(report.spoiled_stock, report.spoiled_stock_recorded))
+	_add_row(_stock, "Stock on hand worth", _recorded_money(report.stock_on_hand, report.stock_on_hand_recorded))
+	_cash_change.text = "Cash change today: %s" % _money(report.profit())
 	_loan_notice.text = LOAN_INTRODUCTION if report.loan_first_advance else ""
 	_loan_notice.visible = report.loan_first_advance
 	_fill_milestones(DayReport.public_milestones(report.milestones_reached))
@@ -162,6 +181,9 @@ func _bind_nodes() -> void:
 	_profit = %Profit
 	_income = %IncomeRows
 	_costs = %CostRows
+	_stock = %StockRows
+	_stock_summary = %StockSummary
+	_cash_change = %CashChange
 	_loan_notice = %LoanNotice
 	_dishes = %DishRows
 	_guests = %Guests
@@ -219,6 +241,22 @@ func _bind_nodes() -> void:
 	IconStyle.configure_button(next_day, &"next_day", "Next day", "Begin the next morning", IconCatalogue.PANEL_SIZE)
 	next_day.pressed.connect(_on_next_day_pressed)
 	_nodes_bound = true
+	resized.connect(_on_report_resized)
+	_on_report_resized()
+
+
+## Normal windows keep the stock detail beside the books, leaving the real
+## review cards in view. Large UI sizes give those rows the full scroll width.
+func _on_report_resized() -> void:
+	if not is_inside_tree():
+		return
+	var finances: HBoxContainer = get_node("Panel/Scroll/Content/Finances") as HBoxContainer
+	var content: VBoxContainer = get_node("Panel/Scroll/Content") as VBoxContainer
+	var target: Node = finances if size.x >= 1100.0 else content
+	if _stock_summary.get_parent() != target:
+		_stock_summary.reparent(target, false)
+	if target == content:
+		content.move_child(_stock_summary, finances.get_index() + 1)
 
 
 func _fill_owner_progress(report: DayReport) -> void:
@@ -272,7 +310,7 @@ func _fill_money(rows: GridContainer, amounts: Dictionary, empty_text: String) -
 	_clear(rows)
 	for id: String in _sorted_ids(amounts):
 		_add_row(rows, String(MONEY_LABELS.get(StringName(id), id.capitalize())), _money(int(amounts[StringName(id)])))
-	if amounts.is_empty():
+	if amounts.is_empty() and not empty_text.is_empty():
 		_add_row(rows, empty_text, "")
 
 
@@ -309,6 +347,10 @@ func _add_row(parent: GridContainer, title: String, amount: String) -> void:
 	_add_label(parent, title)
 	var value: Label = _add_label(parent, amount)
 	value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	value.size_flags_horizontal = Control.SIZE_SHRINK_END
+	var font: Font = value.get_theme_font("font")
+	value.custom_minimum_size.x = minf(180.0,
+		font.get_string_size(amount, HORIZONTAL_ALIGNMENT_LEFT, -1, value.get_theme_font_size("font_size")).x)
 
 
 func _add_label(parent: Node, text: String) -> Label:
@@ -328,6 +370,10 @@ func _money(amount: int) -> String:
 			grouped += ","
 		grouped += digits[index]
 	return ("-$" if amount < 0 else "$") + grouped
+
+
+func _recorded_money(amount: int, recorded: bool) -> String:
+	return _money(amount) if recorded else "Not recorded"
 
 
 func _on_next_day_pressed() -> void:

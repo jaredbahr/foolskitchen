@@ -233,14 +233,17 @@ static func run_case(tree: SceneTree, seed_value: int, setup_name: String, days:
 				reasons[reason] = int(reasons.get(reason, 0)) + sim.leave_reasons_today[reason]
 		totals["reasons"] = reasons
 		totals["cash"] = Economy.cash
-		# The day is settled here. Observe once before next_day expires stock,
-		# restocks, prunes reports and prepares the following service.
+		# Observe settled books before the next morning expires stock or prunes
+		# terminal orders. No stock operation, RNG lookup or planner runs here.
 		if observe_daily:
 			var before: Dictionary = _control_snapshot(main, sim) if capture_control else {}
 			var daily: Dictionary = _daily_snapshot(main, sim, report, book)
 			if capture_control and before != _control_snapshot(main, sim):
 				_free_main(main)
 				return {"error": "Daily observer changed session state on day %d" % report.day}
+			if daily.has("error"):
+				_free_main(main)
+				return daily
 			var daily_rows: Array = totals["daily"]
 			daily_rows.append(daily)
 		if day_index + 1 < days and not Clock.sim.next_day():
@@ -256,24 +259,69 @@ static func run_case(tree: SceneTree, seed_value: int, setup_name: String, days:
 	return totals
 
 
-## All amounts are actual signed cash categories. The old total-profit column
-## remains Ledger.day_profit; purchase-based report OP is a separate measure.
-## Historical purchase-cost valuation/consumed-food OP needs FK-121 (#255).
+## Hand-run evidence only. Missing basis remains null instead of presenting
+## a legacy report's zero defaults as a measured cost or profit.
 static func _daily_snapshot(main: Node, sim: RestaurantSim, report: DayReport,
 		book: Dictionary) -> Dictionary:
 	var categories: Dictionary = {}
+	var signed_sum: int = 0
 	for category: Variant in book:
 		categories[String(category)] = int(book[category])
+		signed_sum += int(book[category])
+	var cash_change: int = Economy.ledger.day_profit(report.day)
+	if signed_sum != cash_change or report.profit() != cash_change:
+		return {"error": "Cash accounting differs on day %d" % report.day}
+	var orders: Array[Dictionary] = _order_snapshot(sim)
+	var sold_cost: int = 0
+	var sold_recorded: bool = true
+	var paid_count: int = 0
+	for order: Dictionary in orders:
+		if order["paid"]:
+			paid_count += 1
+			sold_cost += int(order["ingredient_cost"])
+			sold_recorded = sold_recorded and bool(order["ingredient_cost_recorded"])
+	if report.stock_values_recorded and (report.food_cost != sold_cost \
+			or report.food_cost_recorded != sold_recorded):
+		return {"error": "Sold-order ingredient cost differs on day %d" % report.day}
+	var op_recorded: bool = report.operating_profit_recorded()
 	return {"day": report.day, "arrivals": sim.served_today + sim.lost_today,
 		"served": report.customers_served, "lost": report.customers_lost,
-		"ledger_categories": categories, "ledger_cash_profit": Economy.ledger.day_profit(report.day),
-		"cash": Economy.cash, "purchase_based_operating_profit": report.operating_profit(),
-		"report": report.to_dict().duplicate(true), "stock": Economy.stock.to_dict().duplicate(true),
+		"ledger_categories": categories, "ledger_cash_profit": cash_change,
+		"cash": Economy.cash, "report_cash_change": report.profit(),
+		"purchase_based_operating_profit": report.purchase_basis_operating_profit(),
+		"consumed_food_operating_profit": report.operating_profit() if op_recorded else null,
+		"consumed_food_status": "recorded" if op_recorded else "not recorded",
+		"operating_profit_recorded": op_recorded,
+		"stock_values_recorded": report.stock_values_recorded,
+		"sold_food_purchase_cost": report.food_cost if report.food_cost_recorded else null,
+		"food_cost_recorded": report.food_cost_recorded,
+		"stock_bought_today": report.stock_bought if report.stock_bought_recorded else null,
+		"stock_bought_recorded": report.stock_bought_recorded,
+		"spoilage_purchase_value": report.spoiled_stock if report.spoiled_stock_recorded else null,
+		"spoiled_stock_recorded": report.spoiled_stock_recorded,
+		"closing_inventory_purchase_value": report.stock_on_hand if report.stock_on_hand_recorded else null,
+		"stock_on_hand_recorded": report.stock_on_hand_recorded,
+		"paid_order_count": paid_count,
+		"paid_order_cost_sum": sold_cost if sold_recorded else null,
+		"paid_order_cost_recorded": sold_recorded,
 		"current_demand": _optional_demand(main, &"current_demand_snapshot"),
 		"next_demand": _optional_demand(main, &"forecast_next_demand"),
-		"consumed_food_operating_profit": null, "sold_food_purchase_cost": null,
-		"spoilage_purchase_value": null, "closing_inventory_purchase_value": null,
-		"consumed_food_status": "not recorded; combined operating target pending #255"}
+		"orders": orders, "report": report.to_dict().duplicate(true),
+		"stock": Economy.stock.to_dict().duplicate(true)}
+
+
+static func _order_snapshot(sim: RestaurantSim) -> Array[Dictionary]:
+	var rows: Array[Dictionary] = []
+	for state: Order.State in [Order.State.PLACED, Order.State.COOKING,
+			Order.State.READY, Order.State.DELIVERED, Order.State.CANCELLED]:
+		for order: Order in sim.orders.orders_in_state(state):
+			rows.append({"id": order.id, "recipe": String(order.recipe_id),
+				"customer": order.customer_id, "table": order.table_item_id,
+				"seat": [order.seat_cell.x, order.seat_cell.y], "price": order.price,
+				"placed_tick": order.placed_tick, "state": int(order.state),
+				"paid": order.paid, "ingredient_cost": order.ingredient_cost,
+				"ingredient_cost_recorded": order.ingredient_cost_recorded})
+	return rows
 
 
 ## Parse-safe on actual pre-feature main: never name a feature-only class or
@@ -293,14 +341,14 @@ static func _optional_demand(main: Node, method: StringName) -> Dictionary:
 	return {"status": "available", "snapshot": snapshot.duplicate(true)}
 
 
-## Opt-in manual inertness control only. Existing RNGs are copied through the
-## save capture; no GameState.rng lookup can lazily create a stream here.
+## Existing named streams are captured, never looked up through rng(), which
+## could lazily create one. Returned data has no live session references.
 static func _control_snapshot(main: Node, sim: RestaurantSim) -> Dictionary:
 	var result: Dictionary = {"rng": GameState._capture_save(), "clock": Clock._capture_save(),
 		"economy": Economy._capture_save(), "world_tick": sim.world.now,
 		"events": sim.world.event_log.duplicate(), "reputation": sim.review_book.to_dict(),
 		"served": sim.served_today, "lost": sim.lost_today,
-		"reasons": sim.leave_reasons_today.duplicate(true)}
+		"reasons": sim.leave_reasons_today.duplicate(true), "orders": _order_snapshot(sim)}
 	for key: String in ["staff_roster", "menu_settings", "owner_progress", "regulars", "milestones"]:
 		var value: Variant = main.get(key)
 		if value is Object and value.has_method("to_dict"):
@@ -335,6 +383,8 @@ static func run_observer_controls(tree: SceneTree) -> int:
 				var independent: Dictionary = (days[0] as Dictionary).duplicate(true)
 				var prior: String = JSON.stringify(days)
 				(independent["ledger_categories"] as Dictionary)["observer_copy_test"] = 1
+				(independent["report"] as Dictionary)["food_cost"] = -1
+				(independent["stock"] as Dictionary).clear()
 				detached = JSON.stringify(days) == prior
 			observed.erase("daily")
 			var equal: bool = not plain.has("error") and not observed.has("error") \

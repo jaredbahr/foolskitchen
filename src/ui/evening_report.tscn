@@ -29,6 +29,7 @@ horizontal_scroll_mode = 0
 [node name="Content" type="VBoxContainer" parent="Panel/Scroll"]
 layout_mode = 2
 size_flags_horizontal = 3
+theme_override_constants/separation = 4
 
 [node name="RestaurantName" type="Label" parent="Panel/Scroll/Content"]
 unique_name_in_owner = true
@@ -51,6 +52,8 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 36
 text = "$0 profit"
 horizontal_alignment = 1
+autowrap_mode = 3
+tooltip_text = "Uses the purchase cost of food served. Stock bought or spoiled, loans and milestone bonuses are outside operating profit."
 
 [node name="LevelUpCallout" type="HBoxContainer" parent="Panel/Scroll/Content"]
 visible = false
@@ -102,6 +105,22 @@ unique_name_in_owner = true
 layout_mode = 2
 columns = 2
 
+[node name="StockSummary" type="VBoxContainer" parent="Panel/Scroll/Content/Finances"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 1.6
+
+[node name="Heading" type="Label" parent="Panel/Scroll/Content/Finances/StockSummary"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "Stock"
+
+[node name="StockRows" type="GridContainer" parent="Panel/Scroll/Content/Finances/StockSummary"]
+unique_name_in_owner = true
+layout_mode = 2
+columns = 2
+
 [node name="LoanNotice" type="Label" parent="Panel/Scroll/Content"]
 unique_name_in_owner = true
 visible = false
@@ -121,6 +140,13 @@ unique_name_in_owner = true
 visible = false
 layout_mode = 2
 size_flags_horizontal = 3
+
+[node name="CashChange" type="Label" parent="Panel/Scroll/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "Cash change today: $0"
+autowrap_mode = 3
 
 [node name="ReviewHeading" type="Label" parent="Panel/Scroll/Content"]
 layout_mode = 2

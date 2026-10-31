@@ -19,3 +19,8 @@ var quality: float = 0.0
 var quality_breakdown: DishQuality = null
 ## Why preparation or delivery was cancelled; carried through to the guest.
 var cancellation_reason: StringName = &""
+## Actual FIFO ingredient value captured once when preparation takes stock.
+var ingredient_cost: int = 0
+var ingredient_cost_recorded: bool = false
+## Set only by the actual customer payment callback, including side drinks.
+var paid: bool = false

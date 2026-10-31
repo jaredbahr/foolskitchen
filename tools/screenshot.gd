@@ -1008,6 +1008,10 @@ static func loan_review_evidence(main: Node, context_root: Node) -> Dictionary:
 		"report_cash_change": report.profit() if report != null else null,
 		"settled_day_cash_change": ledger.day_profit(account.last_settled_day),
 		"report_operating_profit": report.operating_profit() if report != null else null,
+		"report_purchase_basis_operating_profit": report.purchase_basis_operating_profit() if report != null else null,
+		"report_ingredient_net": int(report.income.get(Ledger.INGREDIENTS, 0)) - int(report.costs.get(Ledger.INGREDIENTS, 0)) if report != null else null,
+		"report_food_cost": report.food_cost if report != null else null,
+		"report_food_cost_recorded": report.food_cost_recorded if report != null else false,
 		"operating_headline": _loan_control_evidence(headline),
 		"report": _loan_control_evidence(panel), "notice": _loan_control_evidence(notice),
 		"loan_hud": _loan_control_evidence(hud), "bank_labels": labels}
@@ -1784,13 +1788,28 @@ static func loan_review_valid(state: Dictionary, frame: int, fixture: Dictionary
 		return state["day"] == 2 and state["phase"] == SimClock.Phase.MORNING \
 			and state["report_present"] == false and state["report"]["visible"] == false \
 			and state["notice"]["visible"] == false and state["operating_headline"]["visible"] == false
+	# Keep the original cash bridge and check the served-food bridge separately.
+	# Optional/malformed new evidence fails closed before financial arithmetic.
+	for field: String in ["report_purchase_basis_operating_profit", "report_ingredient_net", "report_food_cost"]:
+		var value: Variant = state.get(field, null)
+		if not value is int:
+			if not value is float or not is_finite(float(value)) \
+					or absf(float(value)) > 9007199254740991.0 or floorf(float(value)) != float(value):
+				return false
+		if field == "report_food_cost" and float(value) < 0.0:
+			return false
 	if frame != 12 or state["day"] != 1 or state["phase"] != SimClock.Phase.CLOSED \
 			or state["report_present"] != true or state["report_day"] != 1 or state["report_first_advance"] != true \
 			or state["report"]["visible"] != true or state["notice"]["visible"] != true \
 			or state["notice"]["inside_clip"] != true or state["notice"]["text"] != LOAN_NOTICE \
+			or state.get("report_food_cost_recorded", false) != true \
+			or not state.has("report_purchase_basis_operating_profit") \
+			or not state.has("report_ingredient_net") or not state.has("report_food_cost") \
 			or state["report_bank_advance"] != int(state["principal"]) \
 			or state["report_cash_change"] != state["settled_day_cash_change"] \
-			or state["report_cash_change"] != state["report_operating_profit"] + state["report_bank_advance"] \
+			or state["report_cash_change"] != state["report_purchase_basis_operating_profit"] + state["report_bank_advance"] \
+			or state["report_operating_profit"] != state["report_purchase_basis_operating_profit"] \
+				- state["report_ingredient_net"] - state["report_food_cost"] \
 			or state["operating_headline"]["visible"] != true or state["operating_headline"]["inside_clip"] != true \
 			or state["operating_headline"]["text"] != "%s operating profit" % Fmt.money(int(state["report_operating_profit"])):
 		return false

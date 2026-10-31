@@ -2,6 +2,8 @@ extends TestCase
 ## One staged shop provider; existing morning saves and failed-load behavior.
 
 const MAIN: PackedScene = preload("res://src/world/main.tscn")
+## Fixed restock/save-policy cases choose genuine manual stock targets.
+const MANUAL_MAIN: GDScript = preload("res://tests/fixtures/manual_restock_main.gd")
 const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
 const TUNING: EconomyTuning = preload("res://data/balance/tier1_economy.tres")
 const PROGRESSION: ProgressionTuning = preload("res://data/balance/progression.tres")
@@ -79,7 +81,7 @@ func test_old_morning_save_without_shop_uses_original_layout() -> void:
 
 
 func test_invalid_shop_starts_fresh_skips_one_save_then_autosaves_next_morning() -> void:
-	var first: Node = _start()
+	var first: Node = _start(true, true)
 	var document: Dictionary = _document()
 	document["data"]["clock"]["day"] = 9
 	document["data"]["shop"]["items"][0]["def_id"] = "missing_item"
@@ -87,7 +89,7 @@ func test_invalid_shop_starts_fresh_skips_one_save_then_autosaves_next_morning()
 	_remove_backup()
 	var broken: String = FileAccess.get_file_as_string(_path())
 	_close(first)
-	var second: Node = _start()
+	var second: Node = _start(true, true)
 	assert_eq(Clock.sim.day, 1)
 	assert_eq(Clock.sim.phase, SimClock.Phase.MORNING)
 	assert_eq((second.get("world") as SimWorld).grid.item(_id(second, &"potted_plant")).origin, Vector2i(12, 9))
@@ -219,14 +221,14 @@ func test_level_three_announcements_skip_hidden_tall_plant_and_keep_visible_unlo
 
 
 func test_loaded_morning_keeps_the_existing_restock_and_autosave_policy() -> void:
-	var first: Node = _start()
+	var first: Node = _start(true, true)
 	var used: Dictionary[StringName, int] = {&"bun": 1}
 	assert_true(Economy.stock.take_many(used))
 	assert_eq(SaveSystem.save_game(SLOT), OK)
 	var cash: int = Economy.cash
 	var unit_cost: int = (first.get("content") as ContentDB).ingredient(&"bun").unit_cost
 	_close(first)
-	var second: Node = _start()
+	var second: Node = _start(true, true)
 	assert_eq(Economy.stock.count(&"bun"), TUNING.morning_stock[&"bun"])
 	assert_eq(Economy.cash, cash - ReorderSettings.auto_cost(unit_cost, TUNING.auto_reorder_premium),
 		"loaded morning tops up missing stock as before, as one auto-order with its premium")
@@ -262,8 +264,10 @@ func test_closed_edits_wait_for_next_morning_autosave() -> void:
 	assert_eq(Economy.ledger.day_totals(1), closed_totals, "loading does not repeat closing costs")
 
 
-func _start(with_saves: bool = true) -> Node:
+func _start(with_saves: bool = true, manual_stock: bool = false) -> Node:
 	var main: Node = MAIN.instantiate()
+	if manual_stock:
+		main.set_script(MANUAL_MAIN)
 	main.set("save_slot", SLOT)
 	main.set("use_saves", with_saves)
 	_mains.append(main)

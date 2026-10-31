@@ -335,8 +335,41 @@ func test_loan_capture_fixture_and_queries_use_real_close_then_next_morning_with
 	assert_eq(closed["report_cash_change"], report.profit())
 	assert_eq(closed["report_cash_change"], Economy.ledger.day_profit(1))
 	assert_eq(closed["report_operating_profit"], report.operating_profit())
+	assert_eq(closed["report_purchase_basis_operating_profit"], report.purchase_basis_operating_profit())
+	assert_eq(closed["report_food_cost"], report.food_cost)
+	assert_true(closed["report_food_cost_recorded"])
+	assert_eq(closed["report_ingredient_net"],
+		int(report.income.get(Ledger.INGREDIENTS, 0)) - int(report.costs.get(Ledger.INGREDIENTS, 0)))
 	assert_true(report.operating_profit() < 0, "borrowing does not turn the operating loss into profit")
-	assert_eq(report.profit(), report.operating_profit() + Economy.loan.principal)
+	assert_eq(report.profit(), report.purchase_basis_operating_profit() + Economy.loan.principal,
+		"the original signed cash result still includes the exact bank advance")
+	assert_eq(report.operating_profit(), report.purchase_basis_operating_profit()
+		- int(closed["report_ingredient_net"]) - report.food_cost,
+		"the served-food headline replaces stock-purchase cash with actual sold ingredient cost")
+	var wrong_cash: Dictionary = closed.duplicate(true)
+	wrong_cash["report_cash_change"] = int(wrong_cash["report_cash_change"]) + 1
+	assert_false(CAPTURE_SCRIPT.loan_review_valid(wrong_cash, 12, fixture), "cash drift cannot pass capture validation")
+	wrong_cash["settled_day_cash_change"] = int(wrong_cash["settled_day_cash_change"]) + 1
+	assert_false(CAPTURE_SCRIPT.loan_review_valid(wrong_cash, 12, fixture),
+		"matching wrong cash fields still fail the independent purchase-basis plus bank bridge")
+	var wrong_food_cost: Dictionary = closed.duplicate(true)
+	wrong_food_cost["report_food_cost"] = int(wrong_food_cost["report_food_cost"]) + 1
+	assert_false(CAPTURE_SCRIPT.loan_review_valid(wrong_food_cost, 12, fixture), "an incorrect served-cost bridge cannot pass")
+	var unknown_food_cost: Dictionary = closed.duplicate(true)
+	unknown_food_cost["report_food_cost_recorded"] = false
+	assert_false(CAPTURE_SCRIPT.loan_review_valid(unknown_food_cost, 12, fixture), "unknown costs cannot advertise an exact headline")
+	for field: String in ["report_purchase_basis_operating_profit", "report_ingredient_net", "report_food_cost"]:
+		for malformed: Variant in [null, "1", true, 1.5, NAN, INF, {}, [], 9007199254740992.0]:
+			var bad: Dictionary = closed.duplicate(true)
+			bad[field] = malformed
+			assert_false(CAPTURE_SCRIPT.loan_review_valid(bad, 12, fixture),
+				"malformed %s is rejected before arithmetic: %s" % [field, malformed])
+		var missing: Dictionary = closed.duplicate(true)
+		missing.erase(field)
+		assert_false(CAPTURE_SCRIPT.loan_review_valid(missing, 12, fixture), "missing %s is not recorded evidence" % field)
+	var negative_food: Dictionary = closed.duplicate(true)
+	negative_food["report_food_cost"] = -1
+	assert_false(CAPTURE_SCRIPT.loan_review_valid(negative_food, 12, fixture), "a negative served cost is invalid")
 	assert_eq(closed["operating_headline"]["text"], "%s operating profit" % Fmt.money(report.operating_profit()))
 	assert_true(closed["operating_headline"]["visible"])
 	assert_eq(closed["loan_hud"]["text"], "Loan %s" % Fmt.money(Economy.loan.principal))
@@ -361,6 +394,10 @@ func test_loan_capture_fixture_and_queries_use_real_close_then_next_morning_with
 	assert_false(morning["notice"]["visible"], "a locally visible child of the hidden report is not on screen")
 	assert_null(morning["report_cash_change"])
 	assert_null(morning["report_operating_profit"])
+	assert_null(morning["report_purchase_basis_operating_profit"])
+	assert_null(morning["report_ingredient_net"])
+	assert_null(morning["report_food_cost"])
+	assert_false(morning["report_food_cost_recorded"])
 	assert_false(morning["operating_headline"]["visible"])
 	assert_true(morning["loan_hud"]["visible"])
 	assert_eq(morning["loan_hud"]["text"], closed["loan_hud"]["text"])
