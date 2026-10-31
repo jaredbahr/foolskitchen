@@ -1735,7 +1735,8 @@ tables and buys two normal chairs for $20, without changing menu/staff/tuning.
   `VibeInputs.capture(..., wall_items)`: decor charm and themes like rugs
   (no floor space). Actual exterior placements are explicitly excluded even
   when guest cells are empty; outside finishes do not vote in inside wall
-  colour. No curb-appeal state is added. Looks only: no other sim effect.
+  colour. Their existing saved shop facts also feed the derived curb appeal
+  below; geometry, paths and indoor vibe remain unchanged.
 - **Review.** `tools/screenshot.sh --walls-review --speed=0 --frames=12,30`
   (`tools/walls_review.gd`, `[--quarter=N]` for frame 12): finishes on shell
   and interior walls and four hung items (the OPEN sign in a street-front
@@ -2566,6 +2567,16 @@ refund after complete successful load, before the existing morning checkpoint.
 There is no new save point or SaveSystem migration.
 
 ### 2.4 Save system
+Business trends (FK-123): Main keeps fourteen detached `BusinessHistory` closing
+summaries outside `DayReport` serialization. Reopening the evening report and
+advancing to the next morning upsert the current day after evening purchases;
+`build_report()` stays a read-only query. The optional `business_history` section
+uses decimal strings for signed currency and joins only the existing morning
+autosave. Load stages it until the whole morning validates; older saves start
+empty. The evening report draws seven days in the current theme, with separate
+dish-profit and guest scales, today's label, unknown-profit gaps and comparisons
+between equal recorded-day windows. "Last week" requires two complete weeks.
+
 - JSON in `user://saves/`, with a `version` field and migration functions per version.
 - Only sim state is saved, never nodes. The world is rebuilt from sim state on load.
 - `SaveSystem.register(key, capture, restore)` replaces a unique section provider; capture returns a dictionary and restore returns success.
@@ -2705,11 +2716,32 @@ three PNGs to the PR and keep their state metadata outside Git; this capture set
 is not part of CI.
 
 
+### Curb appeal (FK-118)
+
+`CurbAppealInputs` reads supported street-front finish faces and actual hung
+anchors. Plain paint and the view-only name board stay neutral. Authored item
+families, weights, caps, repeat decay and maximum bonus live in
+`data/balance/curb_appeal.tres`; widths and swatches share each family's repeat
+allowance. The pure model clamps the score to 0–100 and returns
+`1 + score / 100 * max_bonus`, exactly 1 for a bare front and at most 1.10.
+Main derives this before refreshing the existing live/forecast demand hook;
+there is no second arrival multiplier, RNG fetch/draw or countdown reset.
+Edits, undo, support changes and load refresh the derived facts. No score is
+saved: the existing morning shop save already contains its inputs.
+
+Build shows the themed meter beside Vibe when the rendered camera faces the
+street, including during smooth rotation and Paint. The existing “Tomorrow's
+crowd” curb factor supplies its plain bonus line without a new report field.
+The named `curb_appeal` manual setup uses disclosed free construction (nominal
+catalogue/finish cost $256, fixture charge $0), retains ordinary service and
+stock costs, and measures appeal rather than purchase return on investment.
+Its default counterpart and the default setup itself remain unchanged.
+
 ### Demand growth (FK-120)
 
 `DemandTuning` in `data/balance/demand.tres` authors every calibration value.
 `DemandBreakdown` multiplies reputation, word of mouth, menu variety, vibe and
-the neutral curb-appeal hook, then caps the result at 3. Main latches reputation
+the curb-appeal hook (neutral for a bare front), then caps the result at 3. Main latches reputation
 and renown each morning; accepted menu and shop edits refresh only the editable
 factors. `RestaurantSim.arrival_rate()` multiplies the existing hourly visit rate
 by this factor. The existing `CustomerSpawner.scaled_gap` applies it once to the
@@ -2732,7 +2764,7 @@ Calibration (the full paired balance report accompanies the PR):
   alone uses an authored floor of 1 on its effective vibe factor to preserve
   the introductory arrival and random-draw path. Day 1's evening forecast
   already uses the ordinary Day 2 curve.
-- The neutral curb hook is 1. At demand above 1, unlocked party sizes blend
+- The curb hook is exactly 1 for a bare front. At demand above 1, unlocked party sizes blend
   toward authored weights 1/.8/.6/.5/.3/.15 for sizes 1–6, reaching those weights
   at factor 3. This favours smaller groups while allowing larger tables to
   matter. At demand 1 or below, the existing size draw is called unchanged,

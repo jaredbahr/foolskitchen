@@ -1,7 +1,8 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://src/ui/evening_report.gd" id="1_script"]
 [ext_resource type="Theme" path="res://src/ui/theme/main_theme.tres" id="2_theme"]
+[ext_resource type="Script" path="res://src/ui/business_trend_chart.gd" id="3_trend"]
 
 [node name="EveningReport" type="Control"]
 layout_mode = 3
@@ -265,6 +266,34 @@ layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 2
 autowrap_mode = 3
+
+[node name="BusinessTrendSection" type="VBoxContainer" parent="Panel/Scroll/Content"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+
+[node name="BusinessTrendHeading" type="Label" parent="Panel/Scroll/Content/BusinessTrendSection"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+theme_override_font_sizes/font_size = 22
+autowrap_mode = 3
+
+[node name="BusinessTrendSummary" type="Label" parent="Panel/Scroll/Content/BusinessTrendSection"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+autowrap_mode = 3
+
+[node name="BusinessTrendChart" type="Control" parent="Panel/Scroll/Content/BusinessTrendSection"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+script = ExtResource("3_trend")
 
 [node name="LowStockHeading" type="Label" parent="Panel/Scroll/Content"]
 layout_mode = 2
