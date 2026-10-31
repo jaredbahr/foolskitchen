@@ -77,7 +77,8 @@ func test_authored_rug_and_table_build_in_either_placement_order() -> void:
 		var layout: ShopLayout = (load(LAYOUT) as ShopLayout).duplicate(true) as ShopLayout
 		var floor_placement: ShopPlacement = ShopPlacement.new()
 		floor_placement.item_id = &"rug_rectangle"
-		floor_placement.origin = Vector2i(1, 6)
+		floor_placement.origin = Vector2i(2, 5)
+		floor_placement.quarter_turns = 1  # Cover both seats of the actual rotated west table.
 		if floor_first:
 			layout.placements.push_front(floor_placement)
 		else:

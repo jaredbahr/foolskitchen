@@ -129,16 +129,40 @@ func test_mixed_booth_library_and_stamp_wait_for_morning_then_reload_looks() -> 
 	assert_eq(Economy.cash, 1000)
 	editor.set_owner_level(3)
 	var content: ContentDB = first.get("content") as ContentDB
-	for origin: Vector2i in [Vector2i(4, 7), Vector2i(8, 7)]:
+	var tables: Array[PlacedItem] = ShopBuilder.items_with_def(world, &"table_2")
+	assert_true(tables.size() >= 2)
+	if tables.size() < 2:
+		return
+	var west: PlacedItem = tables[0]
+	for table: PlacedItem in tables:
+		if table.origin.x < west.origin.x:
+			west = table
+	var next_west: PlacedItem = null
+	for table: PlacedItem in tables:
+		if table.origin.x > west.origin.x and (next_west == null or table.origin.x < next_west.origin.x):
+			next_west = table
+	assert_not_null(next_west)
+	if next_west == null:
+		return
+	assert_eq(Clock.sim.phase, SimClock.Phase.MORNING)
+	var staging_cash: int = Economy.cash
+	assert_true(first.call("shop_move", west.id, west.origin, 0), editor.last_check.why)
+	assert_true(first.call("shop_move", next_west.id, next_west.origin, 0), editor.last_check.why)
+	assert_eq(Economy.cash, staging_cash, "the support table rotations are free")
+	var source_white: Vector2i = west.origin + Vector2i(0, (west.def as ItemDef).footprint.y)
+	var source_walnut: Vector2i = source_white + Vector2i((content.item(&"diner_booth")).footprint.x, 0)
+	var stamp_origin: Vector2i = next_west.origin + Vector2i(0, (next_west.def as ItemDef).footprint.y)
+	var stamp_walnut: Vector2i = stamp_origin + (source_walnut - source_white)
+	for origin: Vector2i in [source_walnut + Vector2i.UP, stamp_walnut + Vector2i.UP]:
 		assert_not_null(world.grid.place_def(content.item(&"cross_table"), origin), "unselected dining support")
-	var white_check: EditCheck = editor.check_buy(&"diner_booth", Vector2i(2, 8), 0, null, &"booth_white")
+	var white_check: EditCheck = editor.check_buy(&"diner_booth", source_white, 0, null, &"booth_white")
 	assert_true(white_check.ok, white_check.why)
-	assert_true(first.call("shop_buy", &"diner_booth", Vector2i(2, 8), 0, &"", &"booth_white"), editor.last_check.why)
-	var walnut_check: EditCheck = editor.check_buy(&"diner_booth", Vector2i(4, 8), 0, null, &"booth_walnut")
+	assert_true(first.call("shop_buy", &"diner_booth", source_white, 0, &"", &"booth_white"), editor.last_check.why)
+	var walnut_check: EditCheck = editor.check_buy(&"diner_booth", source_walnut, 0, null, &"booth_walnut")
 	assert_true(walnut_check.ok, walnut_check.why)
-	assert_true(first.call("shop_buy", &"diner_booth", Vector2i(4, 8), 0, &"", &"booth_walnut"), editor.last_check.why)
-	var white: PlacedItem = world.grid.item_at(Vector2i(2, 8))
-	var walnut: PlacedItem = world.grid.item_at(Vector2i(4, 8))
+	assert_true(first.call("shop_buy", &"diner_booth", source_walnut, 0, &"", &"booth_walnut"), editor.last_check.why)
+	var white: PlacedItem = world.grid.item_at(source_white)
+	var walnut: PlacedItem = world.grid.item_at(source_walnut)
 	assert_not_null(white)
 	assert_not_null(walnut)
 	if white == null or walnut == null:
@@ -152,9 +176,9 @@ func test_mixed_booth_library_and_stamp_wait_for_morning_then_reload_looks() -> 
 	var blueprint: Blueprint = Blueprint.capture(world.grid, [white.id, walnut.id] as Array[int], "Mixed booths")
 	assert_eq(blueprint.entries.size(), 2, "support tables are excluded from the capture")
 	assert_true(library.add(blueprint))
-	var stamp_check: EditCheck = editor.check_stamp(blueprint, Vector2i(8, 8))
+	var stamp_check: EditCheck = editor.check_stamp(blueprint, stamp_origin)
 	assert_true(stamp_check.ok, stamp_check.why)
-	assert_true(first.call("shop_stamp", blueprint, Vector2i(8, 8)), editor.last_check.why)
+	assert_true(first.call("shop_stamp", blueprint, stamp_origin), editor.last_check.why)
 	assert_eq(Economy.cash, 580, "one real stamp debits both copied booths")
 	assert_eq(FileAccess.get_file_as_string(_path()), before, "buy, capture and stamp wait for the morning autosave")
 	Clock.sim.phase = SimClock.Phase.CLOSED
@@ -172,10 +196,10 @@ func test_mixed_booth_library_and_stamp_wait_for_morning_then_reload_looks() -> 
 	assert_eq(restored.blueprints[0].entries[0].variant_id, &"booth_white")
 	assert_eq(restored.blueprints[0].entries[1].variant_id, &"booth_walnut")
 	var grid: SimGrid = (second.get("world") as SimWorld).grid
-	assert_eq(grid.item_at(Vector2i(2, 8)).variant_id, &"booth_white")
-	assert_eq(grid.item_at(Vector2i(4, 8)).variant_id, &"booth_walnut")
-	assert_eq(grid.item_at(Vector2i(8, 8)).variant_id, &"booth_white")
-	assert_eq(grid.item_at(Vector2i(10, 8)).variant_id, &"booth_walnut")
+	assert_eq(grid.item_at(source_white).variant_id, &"booth_white")
+	assert_eq(grid.item_at(source_walnut).variant_id, &"booth_walnut")
+	assert_eq(grid.item_at(stamp_origin).variant_id, &"booth_white")
+	assert_eq(grid.item_at(stamp_walnut).variant_id, &"booth_walnut")
 
 
 func _plant(main: Node) -> Blueprint:

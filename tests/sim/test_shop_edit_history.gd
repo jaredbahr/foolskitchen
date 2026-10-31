@@ -130,21 +130,24 @@ func test_undo_wall_edits_with_an_exact_ledger_round_trip() -> void:
 
 func test_undo_floor_puts_back_the_window_it_took_down() -> void:
 	var grid: SimGrid = _sim.world.grid
-	var window: Vector3i = Vector3i(13, 7, SimGrid.EDGE_WEST)
+	var wing_x: int = _editor.footprint().building.end.x
+	var window: Vector3i = Vector3i(wing_x - 1, 7, SimGrid.EDGE_WEST)
+	assert_eq(grid.terrain(Vector2i(wing_x - 1, 7)), SimGrid.Terrain.WALL)
+	assert_eq(grid.terrain(Vector2i(wing_x, 7)), SimGrid.Terrain.OUTSIDE)
 	assert_true(_history.apply_segments({window: SimGrid.Segment.WINDOW} as Dictionary[Vector3i, int]), _editor.last_check.why)
 	var before_floor: int = _ledger.cash
-	assert_true(_history.apply_floor(_rect(14, 6, 1, 4), true), _editor.last_check.why)
+	assert_true(_history.apply_floor(_rect(wing_x, 6, 1, 4), true), _editor.last_check.why)
 	assert_eq(grid.segment(window), SimGrid.Segment.NONE, "the wing opens the old wall and removes its window")
 	assert_eq(_ledger.cash, before_floor - 60 + 10)
-	assert_eq(grid.terrain(Vector2i(14, 7)), SimGrid.Terrain.FLOOR)
+	assert_eq(grid.terrain(Vector2i(wing_x, 7)), SimGrid.Terrain.FLOOR)
 	assert_true(_history.undo(), _history.last_refusal)
-	assert_eq(grid.terrain(Vector2i(14, 7)), SimGrid.Terrain.OUTSIDE)
-	assert_eq(grid.terrain(Vector2i(13, 7)), SimGrid.Terrain.WALL)
+	assert_eq(grid.terrain(Vector2i(wing_x, 7)), SimGrid.Terrain.OUTSIDE)
+	assert_eq(grid.terrain(Vector2i(wing_x - 1, 7)), SimGrid.Terrain.WALL)
 	assert_eq(grid.segment(window), SimGrid.Segment.WINDOW, "the window is back")
 	assert_eq(_ledger.cash, before_floor, "the floor price and the window refund both reverse")
 	assert_true(_editor.bought_floor().is_empty())
 	assert_true(_history.redo(), _history.last_refusal)
-	assert_eq(grid.terrain(Vector2i(14, 7)), SimGrid.Terrain.FLOOR)
+	assert_eq(grid.terrain(Vector2i(wing_x, 7)), SimGrid.Terrain.FLOOR)
 	assert_eq(grid.segment(window), SimGrid.Segment.NONE)
 	assert_true(_history.undo(), _history.last_refusal)
 	assert_true(_history.undo(), _history.last_refusal)
@@ -173,18 +176,23 @@ func test_undo_wall_removal_restores_its_orphaned_opening_and_exact_cash() -> vo
 
 func test_undo_expansion_restores_the_back_door_and_its_receiving_route() -> void:
 	var grid: SimGrid = _sim.world.grid
-	var door: Vector3i = Vector3i(13, 6, SimGrid.EDGE_WEST)
+	var wing_x: int = _editor.footprint().building.end.x
+	var receiving: Vector2i = Vector2i(wing_x - 2, 6)
+	var door: Vector3i = Vector3i(wing_x - 1, 6, SimGrid.EDGE_WEST)
+	assert_eq(grid.terrain(receiving), SimGrid.Terrain.FLOOR)
+	assert_eq(grid.terrain(Vector2i(wing_x - 1, 6)), SimGrid.Terrain.WALL)
 	assert_true(_history.apply_segments({door: SimGrid.Segment.DOORWAY} as Dictionary[Vector3i, int]), _editor.last_check.why)
+	assert_eq(WallRules.delivery_cell(grid), receiving, "the real side door supplies a receiving route before expansion")
 	var before: Dictionary = _editor.to_dict()
 	var cash: int = _ledger.cash
-	assert_true(_history.apply_floor(_rect(14, 5, 1, 5), true), _editor.last_check.why)
+	assert_true(_history.apply_floor(_rect(wing_x, 5, 1, 5), true), _editor.last_check.why)
 	assert_eq(grid.segment(door), SimGrid.Segment.NONE)
 	assert_eq(_ledger.cash, cash - 75 + 7)
 	assert_eq(WallRules.delivery_cell(grid), grid.entries()[0])
 	assert_true(_history.undo(), _history.last_refusal)
 	assert_eq(_editor.to_dict(), before)
 	assert_eq(_ledger.cash, cash)
-	assert_eq(WallRules.delivery_cell(grid), Vector2i(12, 6))
+	assert_eq(WallRules.delivery_cell(grid), receiving)
 	assert_true(_history.redo(), _history.last_refusal)
 	assert_eq(grid.segment(door), SimGrid.Segment.NONE)
 	assert_eq(_ledger.cash, cash - 75 + 7)
