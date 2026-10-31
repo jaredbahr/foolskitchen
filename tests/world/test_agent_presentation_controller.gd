@@ -1,5 +1,7 @@
 extends TestCase
 ## Source-authored regressions. They do not import Kenney models or render pixels.
+## Actors enter at unique legal staging cells. Later overlapping poses are
+## deliberately invalid sim states for defensive view checks, never service proof.
 
 var _world: SimWorld
 var _restaurant: RestaurantSim
@@ -72,7 +74,7 @@ func test_customer_type_reaches_person_view_without_rng_or_sim_mutation() -> voi
 
 
 func test_interpolation_and_facing_read_existing_path_without_advancing() -> void:
-	var agent: SimAgent = _world.add_agent(SimAgent.new())
+	var agent: SimAgent = _admit(SimAgent.new())
 	agent.cell = Vector2i(1, 1)
 	agent.path = [agent.cell, Vector2i(2, 1)]
 	agent.path_index = 1
@@ -187,7 +189,7 @@ func test_seated_pose_rejects_nonseat_wrong_claimant_and_unfinished_path() -> vo
 
 
 func test_only_started_claimed_work_plays_station_animation_without_calling_waits() -> void:
-	var worker: StaffAgent = _world.add_agent(StaffAgent.new(&"cook")) as StaffAgent
+	var worker: StaffAgent = _admit(StaffAgent.new(&"cook")) as StaffAgent
 	var task: SimTask = _claimed_task(worker, &"cook", &"cook")
 	task.steps = [TaskStep.work(10)]
 	worker.work_left = 5.0
@@ -211,7 +213,7 @@ func test_only_started_claimed_work_plays_station_animation_without_calling_wait
 
 
 func test_delivery_pose_uses_picked_up_count_and_preserves_tray_threshold() -> void:
-	var worker: StaffAgent = _world.add_agent(StaffAgent.new(&"server")) as StaffAgent
+	var worker: StaffAgent = _admit(StaffAgent.new(&"server")) as StaffAgent
 	var task: SimTask = _claimed_task(worker, &"deliver", &"server")
 	assert_false(AgentPresentationController.frame_for(worker, _world).carrying)
 	task.payload["carried_count"] = 2
@@ -239,7 +241,7 @@ func test_work_facing_ignores_a_released_pass_bookkeeping_reference() -> void:
 	definition.category = ItemDef.Category.PASS
 	definition.work_cells = [Vector2i(-1, 0)]
 	var item: PlacedItem = _world.grid.place_def(definition, Vector2i(4, 1))
-	var worker: StaffAgent = _world.add_agent(StaffAgent.new(&"server")) as StaffAgent
+	var worker: StaffAgent = _admit(StaffAgent.new(&"server")) as StaffAgent
 	worker.cell = item.work_cells[0]
 	worker._held_item_id = item.id
 	worker._held_cell = worker.cell
@@ -258,7 +260,7 @@ func test_work_facing_ignores_a_released_pass_bookkeeping_reference() -> void:
 
 
 func test_owner_reassignment_suppresses_stale_task_but_rest_can_walk_home() -> void:
-	var owner: OwnerAgent = _world.add_agent(OwnerAgent.new(Vector2i(1, 1))) as OwnerAgent
+	var owner: OwnerAgent = _admit(OwnerAgent.new(Vector2i(1, 1))) as OwnerAgent
 	assert_true(owner.assign_mode(&"floor"))
 	var task: SimTask = _claimed_task(owner, &"deliver", &"server")
 	task.payload["carried_count"] = 2
@@ -398,12 +400,12 @@ func test_seated_offsets_ignore_invalid_distances_and_unverified_seated_states()
 	var unreserved: AgentPresentationController.Frame = AgentPresentationController.frame_for(guest, _world, 0.31, 0.04, Vector3.FORWARD)
 	assert_false(unreserved.seated)
 	assert_eq(unreserved.display_offset, Vector3.ZERO)
-	var other: SimAgent = _world.add_agent(SimAgent.new())
+	var other: SimAgent = _admit(SimAgent.new())
 	assert_true(table.reserve(guest.seat_cell, other.id))
 	var wrong_claimant: AgentPresentationController.Frame = AgentPresentationController.frame_for(guest, _world, 0.31, 0.04, Vector3.FORWARD)
 	assert_false(wrong_claimant.seated)
 	assert_eq(wrong_claimant.display_offset, Vector3.ZERO)
-	var worker: StaffAgent = _world.add_agent(StaffAgent.new(&"server")) as StaffAgent
+	var worker: StaffAgent = _admit(StaffAgent.new(&"server")) as StaffAgent
 	worker.cell = guest.cell
 	assert_eq(AgentPresentationController.frame_for(worker, _world, 0.31, 0.04, Vector3.FORWARD).display_offset, Vector3.ZERO)
 
@@ -420,8 +422,8 @@ func test_invalid_or_vertical_authored_facing_uses_the_unchanged_table_direction
 
 
 func test_final_shifted_seat_blocks_earlier_standers_without_drift_or_sim_mutation() -> void:
-	var first: StaffAgent = _world.add_agent(StaffAgent.new(&"server")) as StaffAgent
-	var second: SimAgent = _world.add_agent(SimAgent.new())
+	var first: StaffAgent = _admit(StaffAgent.new(&"server")) as StaffAgent
+	var second: SimAgent = _admit(SimAgent.new())
 	var table: PlacedItem = _table()
 	var guest: CustomerAgent = _seated_customer(table)
 	first.cell = guest.seat_cell
@@ -495,8 +497,8 @@ func test_final_shifted_seat_blocks_earlier_standers_without_drift_or_sim_mutati
 
 
 func test_display_nudges_are_stable_bounded_and_independent_of_input_order() -> void:
-	var first: SimAgent = _world.add_agent(SimAgent.new())
-	var second: SimAgent = _world.add_agent(SimAgent.new())
+	var first: SimAgent = _admit(SimAgent.new())
+	var second: SimAgent = _admit(SimAgent.new())
 	first.cell = Vector2i(1, 1)
 	second.cell = first.cell
 	var forward: Array[SimAgent] = [first, second]
@@ -526,13 +528,13 @@ func test_display_nudges_are_stable_bounded_and_independent_of_input_order() -> 
 func test_moving_and_seated_people_stay_anchored_and_dense_groups_remain_bounded() -> void:
 	var table: PlacedItem = _table()
 	var customer: CustomerAgent = _seated_customer(table)
-	var walker: SimAgent = _world.add_agent(SimAgent.new())
+	var walker: SimAgent = _admit(SimAgent.new())
 	walker.cell = customer.cell
 	walker.path = [walker.cell, Vector2i(0, 3)]
 	walker.path_index = 1
 	var standers: Array[SimAgent] = [customer, walker]
 	for index: int in range(6):
-		var agent: SimAgent = _world.add_agent(SimAgent.new())
+		var agent: SimAgent = _admit(SimAgent.new())
 		agent.cell = customer.cell
 		standers.append(agent)
 	var frames: Dictionary[int, AgentPresentationController.Frame] = AgentPresentationController.frames_for(standers, _world)
@@ -556,8 +558,8 @@ func test_moving_and_seated_people_stay_anchored_and_dense_groups_remain_bounded
 
 
 func test_standers_avoid_seats_even_when_seated_id_is_later_and_nudges_create_new_neighbors() -> void:
-	var first: StaffAgent = _world.add_agent(StaffAgent.new(&"server")) as StaffAgent
-	var second: SimAgent = _world.add_agent(SimAgent.new())
+	var first: StaffAgent = _admit(StaffAgent.new(&"server")) as StaffAgent
+	var second: SimAgent = _admit(SimAgent.new())
 	first.cell = Vector2i(1, 2)
 	second.cell = first.cell
 	var table: PlacedItem = _table()
@@ -586,7 +588,7 @@ func test_infeasible_room_spacing_is_reported_without_jumping_through_a_wall() -
 	_world = SimWorld.new(SimGrid.from_ascii(["#####", "#.#.#", "#####"]))
 	var agents: Array[SimAgent] = []
 	for index: int in range(2):
-		var agent: SimAgent = _world.add_agent(SimAgent.new())
+		var agent: SimAgent = _admit(SimAgent.new())
 		agent.cell = Vector2i(1, 1)
 		agents.append(agent)
 	var frames: Dictionary[int, AgentPresentationController.Frame] = AgentPresentationController.frames_for(agents, _world)
@@ -611,7 +613,7 @@ func test_infeasible_nudges_do_not_cross_a_solid_table_or_room_edge() -> void:
 	assert_false(_world.grid.is_walkable(Vector2i(2, 1)))
 	var agents: Array[SimAgent] = []
 	for index: int in range(2):
-		var agent: SimAgent = _world.add_agent(SimAgent.new())
+		var agent: SimAgent = _admit(SimAgent.new())
 		agent.cell = Vector2i(1, 1)
 		agents.append(agent)
 	var frames: Dictionary[int, AgentPresentationController.Frame] = AgentPresentationController.frames_for(agents, _world)
@@ -625,7 +627,7 @@ func test_infeasible_nudges_do_not_cross_a_solid_table_or_room_edge() -> void:
 func test_sampling_preserves_paths_tasks_reservations_world_and_guest_rng() -> void:
 	var table: PlacedItem = _table()
 	var customer: CustomerAgent = _seated_customer(table)
-	var worker: StaffAgent = _world.add_agent(StaffAgent.new(&"server")) as StaffAgent
+	var worker: StaffAgent = _admit(StaffAgent.new(&"server")) as StaffAgent
 	worker.cell = Vector2i(0, 1)
 	worker.path = [worker.cell, Vector2i(1, 1)]
 	worker.path_index = 1
@@ -671,7 +673,7 @@ func test_apply_passes_real_pose_and_local_attachment_anchors_to_person_api() ->
 
 
 func test_cleaner_returns_explicit_fallback_without_assigning_a_new_model() -> void:
-	var cleaner: StaffAgent = _world.add_agent(StaffAgent.new(&"cleaner")) as StaffAgent
+	var cleaner: StaffAgent = _admit(StaffAgent.new(&"cleaner")) as StaffAgent
 	var frame: AgentPresentationController.Frame = AgentPresentationController.frame_for(cleaner, _world)
 	assert_false(frame.look_supported)
 	var view: SpyPerson = SpyPerson.new()
@@ -721,10 +723,28 @@ func test_head_and_hand_anchors_include_rig_pose_seat_lift_and_shared_scale() ->
 	view.free()
 
 
+func _admit(agent: SimAgent) -> SimAgent:
+	var occupied: Dictionary[Vector2i, bool] = {}
+	for other: SimAgent in _world.agents:
+		occupied[other.cell] = true
+	var candidates: Array[Vector2i] = [agent.cell]
+	candidates.append_array(_world.grid.cells())
+	for cell: Vector2i in candidates:
+		if occupied.has(cell) or not _world.movement.can_enter(_world, agent, cell):
+			continue
+		agent.cell = cell
+		_world.add_agent(agent)
+		assert_true(_world.agents.has(agent), "the staged presentation actor must be active")
+		assert_true(agent.movement_admitted, "the staged actor must use real movement admission")
+		return agent
+	fail("presentation fixture has no free legal staging cell")
+	return agent
+
+
 func _customer() -> CustomerAgent:
 	var random: RandomNumberGenerator = RandomNumberGenerator.new()
 	random.seed = 42
-	return _world.add_agent(CustomerAgent.new(_restaurant, random)) as CustomerAgent
+	return _admit(CustomerAgent.new(_restaurant, random)) as CustomerAgent
 
 
 func _drawn(frame: AgentPresentationController.Frame) -> Vector3:

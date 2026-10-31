@@ -2,6 +2,7 @@ extends TestCase
 ## Real kitchen/staff/customer integration. Runtime evidence comes from check.sh.
 
 const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
+const ORIENTATION_LAYOUT: ShopLayout = preload("res://data/layouts/tier1_original.tres")
 var _content: ContentDB
 var _sim: RestaurantSim
 var _arrived: Dictionary[int, bool] = {}
@@ -84,7 +85,7 @@ func test_real_staff_cook_pass_deliver_eat_pay_and_bus() -> void:
 
 func test_cook_uses_free_prep_counter_instead_of_waiting_for_busy_first_counter() -> void:
 	var original: PlacedItem = _item(&"prep_counter")
-	var alternative: PlacedItem = _sim.world.grid.place_def(_content.item(&"prep_counter"), Vector2i(3, 3))
+	var alternative: PlacedItem = _sim.world.grid.place_def(_content.item(&"prep_counter"), Vector2i(1, 3))
 	assert_not_null(alternative)
 	if alternative == null:
 		return
@@ -143,7 +144,7 @@ func test_cook_skips_unreachable_first_prep_and_stove_for_reachable_alternatives
 
 func test_all_busy_prep_counters_keep_first_fallback_and_wait_without_stealing_bookings() -> void:
 	var original: PlacedItem = _item(&"prep_counter")
-	var alternative: PlacedItem = _sim.world.grid.place_def(_content.item(&"prep_counter"), Vector2i(3, 3))
+	var alternative: PlacedItem = _sim.world.grid.place_def(_content.item(&"prep_counter"), Vector2i(1, 3))
 	assert_not_null(alternative)
 	if alternative == null:
 		return
@@ -186,7 +187,7 @@ func test_all_busy_prep_counters_keep_first_fallback_and_wait_without_stealing_b
 
 func test_owner_assigned_to_kitchen_works_at_the_selected_free_prep_counter() -> void:
 	var original: PlacedItem = _item(&"prep_counter")
-	var alternative: PlacedItem = _sim.world.grid.place_def(_content.item(&"prep_counter"), Vector2i(3, 3))
+	var alternative: PlacedItem = _sim.world.grid.place_def(_content.item(&"prep_counter"), Vector2i(1, 3))
 	assert_not_null(alternative)
 	if alternative == null:
 		return
@@ -273,7 +274,7 @@ func test_queued_party_tickets_with_two_real_cooks_use_both_prep_counters() -> v
 	# for the original counter. The cooks are held off (as if busy elsewhere)
 	# until both of the party's tickets are up, then both cook at once.
 	var original: PlacedItem = _item(&"prep_counter")
-	var alternative: PlacedItem = _sim.world.grid.place_def(_content.item(&"prep_counter"), Vector2i(3, 3))
+	var alternative: PlacedItem = _sim.world.grid.place_def(_content.item(&"prep_counter"), Vector2i(1, 3))
 	assert_not_null(alternative)
 	if alternative == null:
 		return
@@ -503,6 +504,18 @@ func test_dropped_cook_task_restarts_without_taking_ingredients_twice() -> void:
 
 
 func test_rotated_pass_keeps_explicit_kitchen_and_dining_work_cells() -> void:
+	# This independent rotation fixture uses the historical free pose at(8,5).
+	var stock: Stock = Stock.new()
+	for ingredient: IngredientDef in _content.ingredients():
+		stock.add(ingredient.id, 100, 1)
+	var errors: Array[String] = []
+	_sim = RestaurantSim.create(ORIENTATION_LAYOUT, _content, 29015, errors, stock)
+	assert_eq(errors, [] as Array[String])
+	_sim.customer_arrived.connect(_on_arrived)
+	_sim.customer_paid.connect(_on_paid)
+	_sim.customer_left.connect(_on_left)
+	_sim.menu = [_content.recipe(&"burger")] as Array[RecipeDef]
+	_no_arrivals()
 	var original: PlacedItem = _item(&"pass_counter")
 	var definition: ItemDef = original.def as ItemDef
 	_sim.world.grid.remove(original.id)

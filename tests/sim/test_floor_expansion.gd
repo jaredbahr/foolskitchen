@@ -6,7 +6,8 @@ extends TestCase
 ## (x 15) and 4 north (y -4); never towards the street. New floor can go on
 ## x -1 and x 14 beside the shop and on y -3..-1 behind it.
 
-const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
+## Historical shell coordinates below are fixed expansion and refund fixtures.
+const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_original.tres")
 
 var _content: ContentDB
 var _sim: RestaurantSim

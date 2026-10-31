@@ -122,13 +122,31 @@ func tick(world: SimWorld) -> void:
 	if task == null:
 		_try_claim(world)
 		return
-	if task.state != SimTask.State.CLAIMED or task.claimed_by != id:
-		_let_go(world)
-		return
-	if world.now - task.claimed_tick > task.timeout_ticks:
-		_drop(world, &"timeout")
+	if not _maintain_claim(world):
 		return
 	_run_step(world)
+	_recover_no_progress(world)
+
+
+## Movement owns the physical tick, while task leases still need maintenance.
+## This never claims work or advances a productive task step.
+func maintain_movement_pause(world: SimWorld) -> void:
+	if task == null or not _maintain_claim(world):
+		return
+	_recover_no_progress(world)
+
+
+func _maintain_claim(world: SimWorld) -> bool:
+	if task.state != SimTask.State.CLAIMED or task.claimed_by != id:
+		_let_go(world)
+		return false
+	if world.now - task.claimed_tick > task.timeout_ticks:
+		_drop(world, &"timeout")
+		return false
+	return true
+
+
+func _recover_no_progress(world: SimWorld) -> void:
 	if task != null and _waiting_for.is_empty() and world.now - last_progress_tick > STUCK_TICKS:
 		if _repaths == 0 and _step_started and repath(world.grid):
 			_repaths += 1

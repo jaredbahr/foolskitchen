@@ -21,7 +21,7 @@ func test_waiting_item_is_buyable_but_never_a_dining_seat_or_restroom_threshold(
 	assert_eq(DiningSeats.largest_usable_capacity(sim.world.grid), 0)
 	assert_eq(sim.seat_count(), 0)
 	assert_false(sim.restrooms_expected())
-	var guest: CustomerAgent = sim.add_customer(Vector2i(1, 1), _rng(7))
+	var guest: CustomerAgent = sim.add_customer(Vector2i(0, 1), _rng(7))
 	assert_false(guest._try_seat(sim.world))
 	assert_eq(guest.table_item_id, 0)
 	assert_eq(guest.order, null)
@@ -76,13 +76,14 @@ func test_full_bench_leaves_other_waiters_in_the_uncapped_door_queue() -> void:
 	var sim: RestaurantSim = _empty_sim()
 	var bench: PlacedItem = sim.world.grid.place_def(BENCH, Vector2i(1, 1))
 	var guests: Array[CustomerAgent] = []
+	var starts: Array[Vector2i] = [Vector2i(0, 1), Vector2i(3, 1), Vector2i(0, 2),
+		Vector2i(3, 2), Vector2i(4, 2)]
 	for index: int in 5:
-		var guest: CustomerAgent = sim.add_customer(Vector2i(1, 1), _rng(index + 20))
+		var guest: CustomerAgent = sim.add_customer(starts[index], _rng(index + 20))
 		guest.move_speed = 1.0
 		guests.append(guest)
 	for tick: int in 6:
-		for guest: CustomerAgent in guests:
-			guest.tick(sim.world)
+		sim.world.advance()
 	var seated: int = 0
 	for guest: CustomerAgent in guests:
 		assert_eq(guest.state, CustomerAgent.State.QUEUED)
@@ -99,14 +100,15 @@ func test_waiting_pair_releases_bench_and_walks_to_one_table_together() -> void:
 	var sim: RestaurantSim = _empty_sim()
 	var bench: PlacedItem = sim.world.grid.place_def(BENCH, Vector2i(1, 1))
 	var randoms: Array[RandomNumberGenerator] = [_rng(31), _rng(32)]
-	var party: Party = sim.add_party(Vector2i(1, 1), randoms)
+	var party: Party = sim.add_party(sim.world.grid.entries()[0], randoms)
 	var guests: Array[CustomerAgent] = PartySeating.members(party, sim.world)
 	for guest: CustomerAgent in guests:
 		guest.move_speed = 1.0
 		guest.queue_patience = 20
+	if not _admit_waiting_pair(sim, party):
+		return
 	for tick: int in 6:
-		sim.world.now = tick
-		PartySeating.advance_queue(party, sim.world, sim)
+		assert_true(_advance_checked(sim))
 	for guest: CustomerAgent in guests:
 		assert_true(guest.is_waiting_seated(sim.world))
 		assert_eq(guest.queue_patience, 30)
@@ -117,20 +119,30 @@ func test_waiting_pair_releases_bench_and_walks_to_one_table_together() -> void:
 		assert_eq(guest.table_item_id, table.id)
 		assert_eq(guest.waiting_item_id, 0)
 		assert_eq(table.reserved_by(guest.seat_cell), guest.id)
+	for index: int in guests.size():
+		assert_eq(bench.reserved_by(bench.seat_cells[index]), guests[index].id,
+			"an occupied waiting seat stays held until its diner physically vacates")
+	for tick: int in CustomerAgent.SEAT_WALK_LIMIT:
+		var vacated: bool = true
+		for seat: Vector2i in bench.seat_cells:
+			vacated = vacated and bench.reserved_by(seat) == -1
+		if vacated:
+			break
+		assert_true(_advance_checked(sim))
 	for seat: Vector2i in bench.seat_cells:
-		assert_eq(bench.reserved_by(seat), -1)
+		assert_eq(bench.reserved_by(seat), -1, "real departure releases every waiting hold")
 
 
 func test_bench_loss_and_guest_removal_release_all_waiting_holds() -> void:
 	var sim: RestaurantSim = _empty_sim()
 	var bench: PlacedItem = sim.world.grid.place_def(BENCH, Vector2i(1, 1))
-	var guest: CustomerAgent = sim.add_customer(Vector2i(1, 1), _rng(42))
-	guest.tick(sim.world)
+	var guest: CustomerAgent = sim.add_customer(Vector2i(0, 1), _rng(42))
+	assert_true(_sit_waiter(sim, guest))
 	assert_true(guest.is_waiting_seated(sim.world))
 	sim.world.remove_agent(guest)
 	assert_eq(bench.reserved_by(bench.seat_cells[0]), -1)
-	var second: CustomerAgent = sim.add_customer(Vector2i(1, 1), _rng(43))
-	second.tick(sim.world)
+	var second: CustomerAgent = sim.add_customer(Vector2i(0, 1), _rng(43))
+	assert_true(_sit_waiter(sim, second))
 	assert_true(second.is_waiting_seated(sim.world))
 	assert_true(sim.world.grid.remove(bench.id))
 	second.tick(sim.world)
@@ -174,15 +186,15 @@ func test_editor_refuses_a_bench_in_staff_rooms_or_cut_off_floor() -> void:
 	var check: EditCheck = editor._check_placement(BENCH, Vector2i(10, 2), 0, -1, 0)
 	assert_false(check.ok)
 	assert_eq(check.why, WaitingBench.DINING_ONLY)
-	check = editor._check_placement(BENCH, Vector2i(6, 10), 0, -1, 0)
+	check = editor._check_placement(BENCH, _door_bench_origin(sim.world.grid), 0, -1, 0)
 	assert_true(check.ok, check.why)
 
 
 func test_seated_wait_gets_its_own_quote_but_real_food_complaints_still_win() -> void:
 	var sim: RestaurantSim = _empty_sim()
 	sim.world.grid.place_def(BENCH, Vector2i(1, 1))
-	var guest: CustomerAgent = sim.add_customer(Vector2i(1, 1), _rng(51))
-	guest.tick(sim.world)
+	var guest: CustomerAgent = sim.add_customer(Vector2i(0, 1), _rng(51))
+	assert_true(_sit_waiter(sim, guest))
 	guest.paid = true
 	guest._queue_wait = 400
 	var visit: ReviewVisit = guest.review_visit(12)
@@ -212,7 +224,7 @@ func test_waiting_bench_uses_the_existing_item_save_format_without_visit_state()
 	var errors: Array[String] = []
 	var sim: RestaurantSim = RestaurantSim.create(LAYOUT, content, 1, errors)
 	assert_eq(errors, [] as Array[String])
-	assert_not_null(sim.world.grid.place_def(BENCH, Vector2i(6, 10)))
+	assert_not_null(sim.world.grid.place_def(BENCH, _door_bench_origin(sim.world.grid)))
 	var editor: ShopEditor = ShopEditor.new(sim, content, null, LAYOUT)
 	var saved: Dictionary = editor.to_dict()
 	assert_eq(saved["version"], ShopEditor.SNAPSHOT_VERSION)
@@ -249,7 +261,7 @@ func _busy_service(with_bench: bool) -> Dictionary:
 	var sim: RestaurantSim = RestaurantSim.create(LAYOUT, content, 1, errors, stock)
 	assert_eq(errors, [] as Array[String])
 	if with_bench:
-		assert_not_null(sim.world.grid.place_def(BENCH, Vector2i(6, 10)))
+		assert_not_null(sim.world.grid.place_def(BENCH, _door_bench_origin(sim.world.grid)))
 	var tables: Array[PlacedItem] = []
 	for item: PlacedItem in sim.world.grid.items():
 		if (item.def as ItemDef).category == ItemDef.Category.TABLE:
@@ -258,7 +270,7 @@ func _busy_service(with_bench: bool) -> Dictionary:
 				assert_true(item.reserve(seat, 900))
 	assert_true(sim.world.clock.start_service())
 	sim.spawner._remaining = 1000000
-	var guest: CustomerAgent = sim.add_customer(Vector2i(6, 10), _rng(100))
+	var guest: CustomerAgent = sim.add_customer(sim.world.grid.entries()[0], _rng(100))
 	guest.queue_patience = 120
 	var sat_waiting: bool = false
 	for tick: int in 2400:
@@ -277,6 +289,8 @@ func _empty_sim() -> RestaurantSim:
 	var grid: SimGrid = SimGrid.new(Vector2i(12, 12))
 	grid.set_terrain(Vector2i(0, 1), SimGrid.Terrain.ENTRY)
 	sim.world = SimWorld.new(grid, SimClock.new())
+	sim.spawner = CustomerSpawner.new(sim.rng)
+	sim.spawner._remaining = 1000000
 	assert_true(sim.world.clock.start_service())
 	return sim
 
@@ -293,3 +307,45 @@ func _rng(seed_value: int) -> RandomNumberGenerator:
 	var random: RandomNumberGenerator = RandomNumberGenerator.new()
 	random.seed = seed_value
 	return random
+
+
+func _door_bench_origin(grid: SimGrid) -> Vector2i:
+	return grid.entries()[0] + Vector2i.UP * 2
+
+
+## Real same-entry births must enter before spending shared active patience.
+func _admit_waiting_pair(sim: RestaurantSim, party: Party) -> bool:
+	var guests: Array[CustomerAgent] = PartySeating.members(party, sim.world)
+	for tick: int in 512:
+		var all_admitted: bool = true
+		for guest: CustomerAgent in guests:
+			if not guest.movement_admitted:
+				all_admitted = false
+				assert_eq(guest.state, CustomerAgent.State.ARRIVING)
+				assert_eq(guest._queue_wait, 0)
+		if all_admitted:
+			return true
+		assert_eq(party.queue_wait, 0, "pending party births spend no shared patience")
+		assert_eq(sim.customers().size(), 2, "the complete waiting pair remains counted")
+		if not _advance_checked(sim):
+			return false
+	fail("natural waiting-pair admission exceeded its 512-tick watchdog")
+	return false
+
+
+func _advance_checked(sim: RestaurantSim) -> bool:
+	var before: Dictionary = MovementInvariants.capture(sim.world)
+	sim.advance()
+	var problem: String = MovementInvariants.problem(sim.world, before)
+	assert_eq(problem, "", "waiting service preserves physical ownership and movement traces")
+	return problem.is_empty()
+
+
+## A legal arrival walks the one cell into its reserved bench at ordinary speed.
+func _sit_waiter(sim: RestaurantSim, guest: CustomerAgent) -> bool:
+	for tick: int in 5:
+		if guest.is_waiting_seated(sim.world):
+			return true
+		if not _advance_checked(sim):
+			return false
+	return guest.is_waiting_seated(sim.world)

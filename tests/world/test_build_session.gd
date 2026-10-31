@@ -458,18 +458,19 @@ func test_native_catalogue_click_consumes_gui_input_and_starts_one_ghost_without
 
 func test_main_build_hud_shows_partial_seats_and_clears_warning_after_the_layout_is_fixed() -> void:
 	await _start()
-	# The table below blocks the kitchen aisle; coffee remains serviceable.
-	assert_true(_main.call("shop_buy", &"coffee_machine", Vector2i(12, 5), 2))
-	var center: PlacedItem = _world().grid.item_at(Vector2i(6, 6))
+	# The north seat is in the kitchen; coffee remains serviceable.
+	assert_true(_main.call("shop_buy", &"coffee_machine", _coffee_cell(), 2))
+	var center: PlacedItem = ShopBuilder.items_with_def(_world(), &"table_2")[1]
+	var center_origin: Vector2i = center.origin
 	assert_true(int(_main.call("shop_sell", center.id)) >= 0)
 	_editor().set_owner_level(TABLE_4.unlock_level)  # Explicit purchase-unlock fixture.
 	assert_true(_main.call("set_build_active", true))
 	var label: Label = _main.get_node("HUD/BuildHints/Scroll/Lines/Text") as Label
-	assert_true(_mode().begin_buy(&"table_4", Vector2i(6, 5)))
+	assert_true(_mode().begin_buy(&"table_4", center_origin + Vector2i.UP))
 	assert_true(_mode().current_check.ok)
 	assert_true(label.text.contains("Only 3 of 4 seats usable"), "the production Main binding reaches the native HUD")
 	assert_true(_mode().commit())
-	var table: PlacedItem = _world().grid.item_at(Vector2i(6, 5))
+	var table: PlacedItem = _world().grid.item_at(center_origin + Vector2i.UP)
 	assert_true(label.text.contains("Only 3 of 4 seats usable"), "a committed table retains its warning")
 	assert_true(_mode().pick_up(table.id))
 	_mode().update_origin(Vector2i(-1, 0))
@@ -483,7 +484,7 @@ func test_main_build_hud_shows_partial_seats_and_clears_warning_after_the_layout
 	assert_true(_main.call("set_build_active", true))
 	assert_true(label.text.contains("Only 3 of 4 seats usable"), "re-entering reads the actual layout")
 	assert_true(_mode().pick_up(table.id))
-	_mode().update_origin(Vector2i(6, 6))
+	_mode().update_origin(center_origin)
 	assert_true(_mode().current_check.ok)
 	assert_false(label.text.contains("seats usable"), "a valid repaired proposal uses the new capacity")
 	assert_true(_mode().commit())
@@ -494,19 +495,20 @@ func test_main_build_hud_shows_partial_seats_and_clears_warning_after_the_layout
 
 func test_floor_tool_hint_keeps_the_partial_seat_warning_beside_its_summary() -> void:
 	await _start()
-	assert_true(_main.call("shop_buy", &"coffee_machine", Vector2i(12, 5), 2))
-	var center: PlacedItem = _world().grid.item_at(Vector2i(6, 6))
+	assert_true(_main.call("shop_buy", &"coffee_machine", _coffee_cell(), 2))
+	var center: PlacedItem = ShopBuilder.items_with_def(_world(), &"table_2")[1]
+	var center_origin: Vector2i = center.origin
 	assert_true(int(_main.call("shop_sell", center.id)) >= 0)
 	_editor().set_owner_level(TABLE_4.unlock_level)  # Explicit purchase-unlock fixture.
 	assert_true(_main.call("set_build_active", true))
-	assert_true(_mode().begin_buy(&"table_4", Vector2i(6, 5)))
+	assert_true(_mode().begin_buy(&"table_4", center_origin + Vector2i.UP))
 	assert_true(_mode().commit())
 	var label: Label = _main.get_node("HUD/BuildHints/Scroll/Lines/Text") as Label
 	assert_true(_mode().begin_floor())
 	# Before any lot hover the Floor check is (false, ""): the warning must still show.
 	assert_false(_mode().current_check.ok)
 	assert_true(label.text.contains("Only 3 of 4 seats usable"), "an empty floor check keeps the seat warning")
-	_mode().floor_pointer(Vector2i(14, 6))
+	_mode().floor_pointer(Vector2i(_editor().footprint().building.end.x, center_origin.y))
 	assert_true(_mode().current_check.ok, _mode().current_check.why)
 	assert_true(label.text.contains(_mode().floor_summary()), "the floor tool's own summary")
 	assert_true(_mode().floor_summary().begins_with("Add 1 floor tile"))
@@ -678,8 +680,15 @@ func test_native_menu_and_build_transitions_cancel_ghost_and_preserve_data_and_a
 	assert_false(menu.visible, "native Build entry closes Menu before world building")
 	assert_true(catalogue.visible)
 	assert_true(_rig().is_grid_forced())
+	var tables: Array[PlacedItem] = ShopBuilder.items_with_def(_world(), &"table_2")
+	var west: PlacedItem = tables[0]
+	for table: PlacedItem in tables:
+		if table.origin.x < west.origin.x:
+			west = table
+	var chair_cell: Vector2i = west.origin + Vector2i.LEFT
 	assert_true(_main.call("begin_buy_item", &"chair"))
-	_main.call("update_build_pointer", _project(Vector2i(2, 8)))
+	assert_true(_mode().rotate(1))
+	_main.call("update_build_pointer", _project(chair_cell))
 	assert_true(_mode().has_ghost())
 	assert_true(_mode().current_check.ok)
 	var menu_button: Button = _main.get_node("HUD/Top/Row/Menu") as Button
@@ -733,7 +742,8 @@ func test_preview_warning_ids_match_proposal_actual_purchase_cancel_exit_and_fix
 	assert_eq(_preview().displayed_warning_ids(), _mode().committed_warning_ids)
 	_key(KEY_ESCAPE)
 	assert_true(_preview().displayed_warning_ids().has(id))
-	assert_true(_main.call("shop_move", id, Vector2i(3, 3), 0))
+	var repair: Vector2i = _world().grid.item(_id(&"pass_counter")).origin + Vector2i(2, -1)
+	assert_true(_main.call("shop_move", id, repair, 0))
 	assert_eq(_preview().displayed_warning_ids(), _editor().check_current().unreachable)
 	assert_false(_preview().displayed_warning_ids().has(id))
 
@@ -1335,6 +1345,16 @@ func _camera() -> Camera3D:
 
 func _preview() -> BuildPreview:
 	return _main.get_node("BuildPreview") as BuildPreview
+
+
+## The extra drink station must not replace the east table's intrinsic seat.
+func _coffee_cell() -> Vector2i:
+	var tables: Array[PlacedItem] = ShopBuilder.items_with_def(_world(), &"table_2")
+	var east: PlacedItem = tables[0]
+	for table: PlacedItem in tables:
+		if table.origin.x > east.origin.x:
+			east = table
+	return east.origin + Vector2i(-1, -1)
 
 
 func _id(def_id: StringName) -> int:

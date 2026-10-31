@@ -56,6 +56,16 @@ func _grid() -> SimGrid:
 	return (_main.get("world") as SimWorld).grid
 
 
+## Keep the pouring spot beside the actual east table, outside its seat cells.
+func _coffee_cell() -> Vector2i:
+	var tables: Array[PlacedItem] = ShopBuilder.items_with_def(_main.get("world") as SimWorld, &"table_2")
+	var east: PlacedItem = tables[0]
+	for table: PlacedItem in tables:
+		if table.origin.x > east.origin.x:
+			east = table
+	return east.origin + Vector2i(-1, -1)
+
+
 func _item(id: StringName) -> PlacedItem:
 	for placed: PlacedItem in _grid().items():
 		if (placed.def as ItemDef).id == id:
@@ -64,6 +74,14 @@ func _item(id: StringName) -> PlacedItem:
 
 
 func _add_fryer() -> void:
+	# The real owner starts on this fixture's fryer; stage aside only in MORNING.
+	var world: SimWorld = _main.get("world") as SimWorld
+	var owner: OwnerAgent = (_main.get("sim") as RestaurantSim).owner_agent()
+	assert_eq(world.clock.phase, SimClock.Phase.MORNING)
+	assert_not_null(owner)
+	if world.clock.phase == SimClock.Phase.MORNING and owner != null:
+		assert_true(world.reset_agent_position(owner, Vector2i(8, 3)))
+		assert_eq(owner.cell, Vector2i(8, 3))
 	assert_true(_settings().set_owner_level(2))
 	_editor().set_owner_level(2)
 	assert_true(_main.call("shop_buy", &"fryer", Vector2i(9, 3), 0))
@@ -134,7 +152,7 @@ func test_food_needs_a_reachable_fridge_and_both_pass_sides_but_drinks_do_not() 
 		assert_false(refused.ok)
 		assert_true(refused.why == MenuAccess.NO_DISH or refused.why == RoomRules.PASS_SIDES,
 			"the menu guard or existing room-side guard protects this support")
-	assert_true(_main.call("shop_buy", &"coffee_machine", Vector2i(12, 5), 2))
+	assert_true(_main.call("shop_buy", &"coffee_machine", _coffee_cell(), 2))
 	var check: EditCheck = _editor().check_move(plant.id, _item(&"fridge").work_cells[0], 0)
 	assert_true(check.ok, check.why)
 	assert_true(check.menu_warning.ends_with("staff can't reach the fridge"), check.menu_warning)
@@ -203,9 +221,10 @@ func test_wall_refusal_keeps_named_dish_advice_without_weakening_the_work_spot_g
 func test_floor_removal_names_the_affected_dish_before_refusing_a_lost_work_spot() -> void:
 	await _start()
 	_add_fryer()
-	var wing: Array[Vector2i] = [Vector2i(14, 1), Vector2i(14, 2), Vector2i(14, 3)]
+	var wing_x: int = _editor().footprint().building.end.x
+	var wing: Array[Vector2i] = [Vector2i(wing_x, 1), Vector2i(wing_x, 2), Vector2i(wing_x, 3)]
 	assert_true(_main.call("shop_floor", wing, true))
-	assert_true(_main.call("shop_move", _item(&"fryer").id, Vector2i(12, 2), 1))
+	assert_true(_main.call("shop_move", _item(&"fryer").id, Vector2i(wing_x - 2, 2), 1))
 	var removal: Array[Vector2i] = wing.duplicate()
 	var check: EditCheck = _editor().check_floor(removal, false)
 	assert_false(check.ok)
@@ -275,7 +294,7 @@ func _save_partial_blocked_coffee(enabled: bool) -> Vector2i:
 	await _start()
 	assert_true(_settings().set_owner_level(2))
 	_editor().set_owner_level(2)
-	assert_true(_main.call("shop_buy", &"coffee_machine", Vector2i(12, 5), 2))
+	assert_true(_main.call("shop_buy", &"coffee_machine", _coffee_cell(), 2))
 	for id: StringName in [&"tea", &"tomato_soup", &"grilled_cheese"]:
 		assert_true(_main.call("menu_set_enabled", id, false))
 	assert_true(_main.call("menu_set_enabled", &"coffee", enabled))

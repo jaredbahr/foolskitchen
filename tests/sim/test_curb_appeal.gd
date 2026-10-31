@@ -3,8 +3,6 @@ extends TestCase
 
 const TUNING: CurbAppealTuning = preload("res://data/balance/curb_appeal.tres")
 const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
-const FRONT: Vector3i = Vector3i(3, 11, 0)
-const INSIDE: Vector3i = Vector3i(3, 9, 2)
 
 var _content: ContentDB
 
@@ -144,7 +142,7 @@ func test_plain_paint_recolours_and_free_front_do_not_earn_points() -> void:
 	var decor: WallDecor = WallDecor.new()
 	assert_eq(CurbAppealInputs.collect(grid, finishes, decor, _content, TUNING), [] as Array[Dictionary])
 	var paint: Dictionary[Vector3i, FloorFinishes.Finish] = {
-		FRONT: FloorFinishes.Finish.new(&"paint", &"sage")}
+		_front(grid, -3): FloorFinishes.Finish.new(&"paint", &"sage")}
 	finishes.set_finishes(paint)
 	finishes.set_default_swatch(&"clay")
 	assert_eq(CurbAppealModel.evaluate(CurbAppealInputs.collect(grid, finishes, decor, _content, TUNING), TUNING).score, 0.0)
@@ -154,9 +152,10 @@ func test_only_nonpaint_supported_front_finishes_are_collected() -> void:
 	var grid: SimGrid = SimGrid.from_ascii(LAYOUT.rows)
 	var finishes: WallFinishes = WallFinishes.new()
 	var changes: Dictionary[Vector3i, FloorFinishes.Finish] = {}
-	for face: Vector3i in [FRONT, INSIDE, Vector3i(14, 6, 3), Vector3i(3, -1, 2)]:
+	for face: Vector3i in [_front(grid, -3), _front_window(grid, -3),
+		Vector3i(grid.bounds.end.x, 6, 3), Vector3i(3, -1, 2)]:
 		changes[face] = FloorFinishes.Finish.new(&"brick", &"sage", &"cream")
-	changes[Vector3i(4, 11, 0)] = FloorFinishes.Finish.new(&"stripes", &"clay", &"cream")
+	changes[_front(grid, -2)] = FloorFinishes.Finish.new(&"stripes", &"clay", &"cream")
 	finishes.set_finishes(changes)
 	var rows: Array[Dictionary] = CurbAppealInputs.collect(grid, finishes, WallDecor.new(), _content, TUNING)
 	assert_eq(rows.size(), 2)
@@ -168,17 +167,17 @@ func test_only_nonpaint_supported_front_finishes_are_collected() -> void:
 
 func test_all_named_exterior_items_count_once_in_their_family() -> void:
 	var grid: SimGrid = SimGrid.from_ascii(LAYOUT.rows)
-	assert_true(grid.set_segment(Vector3i(10, 10, SimGrid.EDGE_NORTH), SimGrid.Segment.WINDOW))
+	assert_true(grid.set_segment(WallFaces.edge(_front_window(grid, 4)), SimGrid.Segment.WINDOW))
 	assert_eq(TUNING.item_categories.size(), 9, "all approved street item widths and the OPEN sign are authored")
 	for id: StringName in TUNING.item_categories:
 		var definition: ItemDef = _content.item(id)
-		var base: Vector3i = Vector3i(5, 11, 0)
+		var base: Vector3i = _front(grid, -1)
 		if id == &"flower_window_box":
-			base = Vector3i(10, 11, 0)
+			base = _front(grid, 4)
 		elif id == &"shop_name_sign":
-			base = Vector3i(6, 11, 0)
+			base = _front(grid, 0)
 		elif id == &"neon_open_sign":
-			base = Vector3i(8, 11, 0)
+			base = _front(grid, 2)
 		var anchor: Vector3i = ExteriorSupport.key_for(base, definition.exterior_band)
 		var decor: WallDecor = WallDecor.new()
 		assert_eq(decor.problem(grid, definition, anchor), "", String(id))
@@ -192,7 +191,7 @@ func test_all_named_exterior_items_count_once_in_their_family() -> void:
 func test_item_eligibility_and_family_are_read_from_private_authored_tuning() -> void:
 	var grid: SimGrid = SimGrid.from_ascii(LAYOUT.rows)
 	var decor: WallDecor = WallDecor.new()
-	assert_true(decor.add(&"street_awning_2", Vector3i(6, 11, 4), 2, false, ItemDef.WallMount.EXTERIOR))
+	assert_true(decor.add(&"street_awning_2", _front(grid, 0, ExteriorSupport.Band.CANOPY), 2, false, ItemDef.WallMount.EXTERIOR))
 	var private_tuning: CurbAppealTuning = TUNING.duplicate(true) as CurbAppealTuning
 	private_tuning.item_categories.clear()
 	assert_true(private_tuning.is_valid())
@@ -210,11 +209,11 @@ func test_item_eligibility_and_family_are_read_from_private_authored_tuning() ->
 func test_same_front_cell_in_different_bands_has_distinct_stable_ids() -> void:
 	var grid: SimGrid = SimGrid.from_ascii(LAYOUT.rows)
 	var finishes: WallFinishes = WallFinishes.new()
-	finishes.set_finishes({FRONT: FloorFinishes.Finish.new(&"brick")} as Dictionary[Vector3i, FloorFinishes.Finish])
+	finishes.set_finishes({_front(grid, -3): FloorFinishes.Finish.new(&"brick")} as Dictionary[Vector3i, FloorFinishes.Finish])
 	var decor: WallDecor = WallDecor.new()
 	for id: StringName in [&"street_awning_2", &"shop_name_sign", &"string_lights_2"]:
 		var definition: ItemDef = _content.item(id)
-		var anchor: Vector3i = ExteriorSupport.key_for(Vector3i(6, 11, 0), definition.exterior_band)
+		var anchor: Vector3i = _front(grid, 0, definition.exterior_band)
 		assert_true(decor.add(id, anchor, definition.footprint.x, false, ItemDef.WallMount.EXTERIOR))
 	var rows: Array[Dictionary] = CurbAppealInputs.collect(grid, finishes, decor, _content, TUNING)
 	assert_eq(rows.size(), 4)
@@ -227,8 +226,8 @@ func test_same_front_cell_in_different_bands_has_distinct_stable_ids() -> void:
 
 func test_old_window_open_sign_counts_only_on_the_actual_front_window() -> void:
 	var grid: SimGrid = SimGrid.from_ascii(LAYOUT.rows)
-	var front_slot: Vector3i = Vector3i(10, 9, 2)
-	var side_slot: Vector3i = Vector3i(12, 6, 1)
+	var front_slot: Vector3i = _front_window(grid, 4)
+	var side_slot: Vector3i = Vector3i(grid.bounds.end.x - 2, 6, 1)
 	var back_slot: Vector3i = Vector3i(3, 1, 0)
 	for slot: Vector3i in [front_slot, side_slot, back_slot]:
 		assert_true(grid.set_segment(WallFaces.edge(slot), SimGrid.Segment.WINDOW))
@@ -240,22 +239,33 @@ func test_old_window_open_sign_counts_only_on_the_actual_front_window() -> void:
 	assert_eq(rows.size(), 1)
 	if rows.size() == 1:
 		assert_eq(rows[0].category, &"open_sign")
-		assert_eq(rows[0].id, "decor:10:9:2")
+		assert_eq(rows[0].id, "decor:%d:%d:%d" % [front_slot.x, front_slot.y, front_slot.z])
 
 
 func test_stale_unsupported_wrong_band_width_and_inside_mounts_are_excluded() -> void:
 	var grid: SimGrid = SimGrid.from_ascii(LAYOUT.rows)
+	# Each stale record has the intended geometry: unrelated invalid support
+	# cannot make an eligibility check pass accidentally.
+	assert_eq(ExteriorSupport.span_problem(grid, _front(grid, -3, ExteriorSupport.Band.CANOPY), 2),
+		ExteriorSupport.OPENING_ONLY)
+	assert_eq(ExteriorSupport.span_problem(grid, _front(grid, 0, ExteriorSupport.Band.HEADER), 2), "")
+	assert_eq(ExteriorSupport.span_problem(grid, _front(grid, 0, ExteriorSupport.Band.LIGHTS), 2), "")
+	assert_eq(ExteriorSupport.span_problem(grid, _front(grid, 3, ExteriorSupport.Band.LIGHTS), 4), "")
+	assert_eq(WallDecor.new().problem(grid, _content.item(&"neon_open_sign"), _front(grid, 2)), "")
+	assert_eq(WallFaces.window_problem(grid, _front_window(grid, 4)), WallFaces.WINDOW_ONLY)
+	assert_eq(grid.terrain(Vector2i(grid.bounds.end.x - 1, 6)), SimGrid.Terrain.WALL)
+	assert_eq(grid.terrain(Vector2i(grid.bounds.end.x - 2, 6)), SimGrid.Terrain.FLOOR)
 	var decor: WallDecor = WallDecor.new()
-	assert_true(decor.add(&"street_awning_2", Vector3i(3, 11, 4), 2, false, ItemDef.WallMount.EXTERIOR),
+	assert_true(decor.add(&"street_awning_2", _front(grid, -3, ExteriorSupport.Band.CANOPY), 2, false, ItemDef.WallMount.EXTERIOR),
 		"above solid wall without a window or door")
-	assert_true(decor.add(&"shop_name_sign", Vector3i(6, 11, 16), 2, false, ItemDef.WallMount.EXTERIOR),
+	assert_true(decor.add(&"shop_name_sign", _front(grid, 0, ExteriorSupport.Band.LIGHTS), 2, false, ItemDef.WallMount.EXTERIOR),
 		"wrong band")
-	assert_true(decor.add(&"string_lights_4", Vector3i(9, 11, 16), 1, false, ItemDef.WallMount.EXTERIOR),
+	assert_true(decor.add(&"string_lights_4", _front(grid, 3, ExteriorSupport.Band.LIGHTS), 1, false, ItemDef.WallMount.EXTERIOR),
 		"stale width")
-	assert_true(decor.add(&"neon_open_sign", Vector3i(8, 11, 0), 1, false, ItemDef.WallMount.INSIDE_FACE),
+	assert_true(decor.add(&"neon_open_sign", _front(grid, 2), 1, false, ItemDef.WallMount.INSIDE_FACE),
 		"definition allows exterior, but this actual mount does not")
-	assert_true(decor.add(&"neon_open_sign", Vector3i(10, 9, 2), 1, true), "no actual window")
-	assert_true(decor.add(&"string_lights_2", Vector3i(14, 6, 19), 2, false, ItemDef.WallMount.EXTERIOR),
+	assert_true(decor.add(&"neon_open_sign", _front_window(grid, 4), 1, true), "no actual window")
+	assert_true(decor.add(&"string_lights_2", Vector3i(grid.bounds.end.x, 6, 19), 2, false, ItemDef.WallMount.EXTERIOR),
 		"side wall")
 	assert_eq(CurbAppealInputs.collect(grid, WallFinishes.new(), decor, _content, TUNING), [] as Array[Dictionary])
 
@@ -286,9 +296,9 @@ func test_collect_and_evaluate_leave_world_rng_clock_and_edit_state_unchanged() 
 	assert_eq(errors, [] as Array[String])
 	var grid: SimGrid = sim.world.grid
 	var finishes: WallFinishes = WallFinishes.new()
-	finishes.set_finishes({FRONT: FloorFinishes.Finish.new(&"brick")} as Dictionary[Vector3i, FloorFinishes.Finish])
+	finishes.set_finishes({_front(grid, -3): FloorFinishes.Finish.new(&"brick")} as Dictionary[Vector3i, FloorFinishes.Finish])
 	var decor: WallDecor = WallDecor.new()
-	assert_true(decor.add(&"street_awning_2", Vector3i(6, 11, 4), 2, false, ItemDef.WallMount.EXTERIOR))
+	assert_true(decor.add(&"street_awning_2", _front(grid, 0, ExteriorSupport.Band.CANOPY), 2, false, ItemDef.WallMount.EXTERIOR))
 	var clock: Dictionary = sim.world.clock.to_dict()
 	var rng_state: int = sim.spawner.rng.state
 	var grid_version: int = grid.version
@@ -296,7 +306,8 @@ func test_collect_and_evaluate_leave_world_rng_clock_and_edit_state_unchanged() 
 	var decor_rows: Array[Array] = decor.to_rows()
 	var finish_revision: int = finishes.revision
 	var decor_revision: int = decor.revision
-	var path: Array[Vector2i] = grid.find_guest_path(Vector2i(6, 11), Vector2i(8, 8))
+	var path: Array[Vector2i] = grid.find_guest_path(grid.entries()[0], Vector2i(8, 8))
+	assert_false(path.is_empty(), "the purity comparison uses a real reachable entry route")
 	var tuning_before: Dictionary = {"items": TUNING.item_categories.duplicate(),
 		"weights": TUNING.weights.duplicate(), "caps": TUNING.caps.duplicate(),
 		"decay": TUNING.repeat_decay, "bonus": TUNING.max_bonus}
@@ -311,9 +322,31 @@ func test_collect_and_evaluate_leave_world_rng_clock_and_edit_state_unchanged() 
 	assert_eq(decor.to_rows(), decor_rows)
 	assert_eq(finishes.revision, finish_revision)
 	assert_eq(decor.revision, decor_revision)
-	assert_eq(grid.find_guest_path(Vector2i(6, 11), Vector2i(8, 8)), path)
+	assert_eq(grid.find_guest_path(grid.entries()[0], Vector2i(8, 8)), path)
 	assert_eq({"items": TUNING.item_categories, "weights": TUNING.weights, "caps": TUNING.caps, "decay": TUNING.repeat_decay,
 		"bonus": TUNING.max_bonus}, tuning_before)
+
+
+func _front(grid: SimGrid, offset: int, mount_band: int = ExteriorSupport.Band.BODY) -> Vector3i:
+	var doors: Array[Vector2i] = ExteriorSupport.door_cells(grid)
+	assert_eq(doors.size(), 2, "the current starter has its real two-cell street door")
+	if doors.is_empty():
+		return WallFaces.NO_FACE
+	var into: Vector2i = -WallRules.street_side(grid)
+	var direction: int = WallFaces.DIRS.find(into)
+	var along: Vector2i = WallFaces.DIRS[posmod(direction + 1, 4)]
+	var first: Vector2i = doors[0]
+	for cell: Vector2i in doors:
+		if cell.x * along.x + cell.y * along.y < first.x * along.x + first.y * along.y:
+			first = cell
+	assert_true(doors.has(first + along), "frontage offsets use adjacent actual door cells")
+	return ExteriorSupport.key_for(WallFaces.make(first + along * offset - into, direction), mount_band)
+
+
+func _front_window(grid: SimGrid, offset: int) -> Vector3i:
+	var outside: Vector3i = _front(grid, offset)
+	var into: Vector2i = WallFaces.step(outside)
+	return WallFaces.make(WallFaces.cell(outside) + into * 2, posmod(outside.z + 2, 4))
 
 
 func _copies(category: StringName, count: int) -> Array[Dictionary]:

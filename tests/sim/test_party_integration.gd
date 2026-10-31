@@ -1,5 +1,5 @@
 extends TestCase
-## Production FK-066 paths. UNRUN while the live demo holds engine admission.
+## Actual same-entry party births, serialized admission and ordinary service ticks.
 
 const TABLE: ItemDef = preload("res://data/items/table_4.tres")
 const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
@@ -193,8 +193,12 @@ func test_real_ticks_keep_three_waiting_until_one_table_has_three_free_seats() -
 		[], [Vector2i(-1, 0), Vector2i(1, 0)] as Array[Vector2i])
 	var party: Party = sim.add_party(Vector2i.ZERO, _randoms(3), TYPES.find_type(&"family"))
 	var guests: Array[CustomerAgent] = PartySeating.members(party, sim.world)
+	if not _admit_party(sim, party):
+		return
+	# The final admission tick is the first free table-search tick.
 	for tick: int in 4:
-		sim.advance()
+		if tick > 0:
+			assert_true(_advance_checked(sim))
 	for guest: CustomerAgent in guests:
 		assert_eq(guest.state, CustomerAgent.State.QUEUED)
 		assert_eq(guest.table_item_id, 0)
@@ -217,8 +221,12 @@ func test_real_timeout_leaves_all_members_and_records_each_reason_once() -> void
 	var guests: Array[CustomerAgent] = PartySeating.members(party, sim.world)
 	for guest: CustomerAgent in guests:
 		guest.queue_patience = 3
+	if not _admit_party(sim, party):
+		return
+	# The final admission tick is the first free table-search tick.
 	for tick: int in 4:
-		sim.advance()
+		if tick > 0:
+			assert_true(_advance_checked(sim))
 	assert_true(party.departing)
 	for guest: CustomerAgent in guests:
 		assert_true(guest.state >= CustomerAgent.State.LEAVING)
@@ -240,7 +248,8 @@ func test_live_invalid_seat_requeues_every_member_without_a_singleton_fallthroug
 	var table: PlacedItem = sim.world.grid.place_def(TABLE, Vector2i(4, 5))
 	var party: Party = sim.add_party(Vector2i.ZERO, _randoms(3))
 	var guests: Array[CustomerAgent] = PartySeating.members(party, sim.world)
-	sim.advance()
+	if not _admit_party(sim, party):
+		return
 	var seat: Vector2i = guests[0].seat_cell
 	var blocker: PlacedItem = sim.world.grid.place(Vector2i.ONE, seat, 0, true)
 	assert_not_null(blocker)
@@ -264,7 +273,8 @@ func test_external_removal_before_seating_releases_the_whole_party() -> void:
 	var table: PlacedItem = sim.world.grid.place_def(TABLE, Vector2i(4, 5))
 	var party: Party = sim.add_party(Vector2i.ZERO, _randoms(3))
 	var guests: Array[CustomerAgent] = PartySeating.members(party, sim.world)
-	sim.advance()
+	if not _admit_party(sim, party):
+		return
 	sim.world.remove_agent(guests[0])
 	assert_true(party.departing)
 	for guest: CustomerAgent in guests:
@@ -279,10 +289,9 @@ func test_food_timeout_ends_all_members_still_waiting_with_the_same_reason() -> 
 	sim.world.grid.place_def(TABLE, Vector2i(4, 5))
 	var party: Party = sim.add_party(Vector2i.ZERO, _randoms(3))
 	var guests: Array[CustomerAgent] = PartySeating.members(party, sim.world)
-	assert_true(PartySeating.try_seat(party, sim.world))
-	party.seated = true
+	if not _seat_party(sim, party):
+		return
 	for guest: CustomerAgent in guests:
-		guest.cell = guest.seat_cell
 		guest.state = CustomerAgent.State.WAITING_FOOD
 	guests[0].food_patience = 1
 	sim.advance()
@@ -304,11 +313,10 @@ func test_food_timeout_keeps_eating_paying_and_delivered_members_to_finish_once(
 	var table: PlacedItem = sim.world.grid.place_def(TABLE, Vector2i(4, 5))
 	var party: Party = sim.add_party(Vector2i.ZERO, _randoms(4))
 	var guests: Array[CustomerAgent] = PartySeating.members(party, sim.world)
-	assert_true(PartySeating.try_seat(party, sim.world))
-	party.seated = true
+	if not _seat_party(sim, party):
+		return
 	sim.customer_paid.connect(_record_payment)
 	for guest: CustomerAgent in guests:
-		guest.cell = guest.seat_cell
 		guest.state = CustomerAgent.State.WAITING_FOOD
 		guest.eat_ticks = 3
 		guest.order = Order.new()
@@ -366,10 +374,9 @@ func test_collective_timeout_preserves_a_members_already_recorded_payment() -> v
 	sim.world.grid.place_def(TABLE, Vector2i(4, 5))
 	var party: Party = sim.add_party(Vector2i.ZERO, _randoms(3))
 	var guests: Array[CustomerAgent] = PartySeating.members(party, sim.world)
-	assert_true(PartySeating.try_seat(party, sim.world))
-	party.seated = true
+	if not _seat_party(sim, party):
+		return
 	for guest: CustomerAgent in guests:
-		guest.cell = guest.seat_cell
 		guest.state = CustomerAgent.State.WAITING_FOOD
 	guests[0].order = Order.new()
 	guests[0].order.price = 12
@@ -398,11 +405,10 @@ func test_collective_timeout_preserves_a_members_already_recorded_payment() -> v
 func test_real_kitchen_party_gets_three_individual_orders_payments_and_reviews() -> void:
 	var content: ContentDB = ContentDB.new()
 	assert_eq(content.load_all(), PackedStringArray())
-	var layout: ShopLayout = ShopLayout.new()
+	var layout: ShopLayout = LAYOUT.duplicate(true) as ShopLayout
 	layout.id = &"party_service_fixture"
 	layout.display_name = "Party service fixture"
-	layout.rows = LAYOUT.rows.duplicate()
-	layout.staff_spawns = LAYOUT.staff_spawns.duplicate()
+	layout.placements.clear()
 	for placement: ShopPlacement in LAYOUT.placements:
 		if content.item(placement.item_id).category != ItemDef.Category.TABLE:
 			layout.placements.append(placement.duplicate(true) as ShopPlacement)
@@ -572,3 +578,47 @@ func _rng(seed_value: int) -> RandomNumberGenerator:
 	var random: RandomNumberGenerator = RandomNumberGenerator.new()
 	random.seed = seed_value
 	return random
+
+
+## Admission is real service: no position, clock, RNG or queue counter resets.
+## A failure here is a party-liveness regression, not permission to stage bodies.
+func _admit_party(sim: RestaurantSim, party: Party) -> bool:
+	var guests: Array[CustomerAgent] = PartySeating.members(party, sim.world)
+	for tick: int in 512:
+		var all_admitted: bool = true
+		for guest: CustomerAgent in guests:
+			if not guest.movement_admitted:
+				all_admitted = false
+				assert_eq(guest.state, CustomerAgent.State.ARRIVING)
+				assert_eq(guest._queue_wait, 0, "pending births spend no active queue budget")
+		if all_admitted:
+			return true
+		assert_eq(party.queue_wait, 0, "shared patience starts after the whole party enters")
+		assert_eq(sim.customers().size(), guests.size(), "pending party members stay counted")
+		if not _advance_checked(sim):
+			return false
+	fail("natural same-entry party admission exceeded its 512-tick watchdog")
+	return false
+
+
+func _seat_party(sim: RestaurantSim, party: Party) -> bool:
+	# These tests install synthetic food/payment outcomes after a real seat walk.
+	# An available dish keeps that preparation in ORDERING until the fixture acts.
+	sim.menu = [preload("res://data/recipes/burger.tres")] as Array[RecipeDef]
+	if not _admit_party(sim, party):
+		return false
+	for tick: int in CustomerAgent.SEAT_WALK_LIMIT:
+		if party.seated:
+			return true
+		if not _advance_checked(sim):
+			return false
+	fail("party did not physically reach its booked seats within the existing seat-walk limit")
+	return false
+
+
+func _advance_checked(sim: RestaurantSim) -> bool:
+	var before: Dictionary = MovementInvariants.capture(sim.world)
+	sim.advance()
+	var problem: String = MovementInvariants.problem(sim.world, before)
+	assert_eq(problem, "", "ordinary service preserves physical ownership and movement traces")
+	return problem.is_empty()

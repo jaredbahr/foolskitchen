@@ -3,7 +3,8 @@ extends TestCase
 
 const PREVIEW: PackedScene = preload("res://src/world/build_preview.tscn")
 const VIEW: PackedScene = preload("res://src/world/shop_view.tscn")
-const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
+## Fixed original geometry isolates preview transforms and warning fixtures.
+const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_original.tres")
 
 class PreviewContent extends ContentDB:
 	var extra: Dictionary[StringName, ItemDef] = {}

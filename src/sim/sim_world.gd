@@ -142,7 +142,10 @@ func advance() -> void:
 	for a: SimAgent in agents:
 		a.begin_movement_trace(now)
 	for a: SimAgent in agents.duplicate():
-		if not movement.advance_stop(self, a) and not movement.advance_yield(self, a):
+		if movement.advance_stop(self, a) or movement.advance_yield(self, a):
+			if a is StaffAgent:
+				(a as StaffAgent).maintain_movement_pause(self)
+		else:
 			a.tick(self)
 	for a: SimAgent in agents:
 		a.end_movement_trace()

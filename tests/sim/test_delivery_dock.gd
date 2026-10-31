@@ -3,7 +3,8 @@ extends TestCase
 ## street door), crates that become stock only when staff put them away, the
 ## close-of-day safety net, job priority and guests kept off the back door.
 
-const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
+## This dock fixture uses the historical east wall and fixed delivery cells.
+const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_original.tres")
 const DOOR: Vector2i = Vector2i(13, 6)
 const DROP: Vector2i = Vector2i(12, 6)
 

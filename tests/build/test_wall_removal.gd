@@ -1,7 +1,8 @@
 extends TestCase
 ## FK-113: Remove reuses the checked wall transaction, including exact undo.
 
-const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
+## Original shell coordinates isolate wall removal and exact-refund checks.
+const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_original.tres")
 
 var _content: ContentDB
 var _sim: RestaurantSim
