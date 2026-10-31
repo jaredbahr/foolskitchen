@@ -18,6 +18,8 @@ var board: TaskBoard = TaskBoard.new()
 ## Agents in id order.
 var agents: Array[SimAgent] = []
 var movement: MovementCoordinator = MovementCoordinator.new()
+## The restaurant owns Kitchen; traffic only holds a weak read-only query seam.
+var _kitchen: WeakRef
 var movement_tuning: MovementTuning = MOVEMENT_TUNING.duplicate(true) as MovementTuning
 var _pending_agents: Array[SimAgent] = []
 ## Recent human-readable events (newest last), for the debug overlay.
@@ -209,3 +211,12 @@ func _on_item_removed(item: PlacedItem) -> void:
 			if s.kind == TaskStep.Kind.GO_TO_ITEM and s.item_id == item.id:
 				board.cancel(t, &"target_gone")
 				break
+
+
+func bind_kitchen(kitchen: Kitchen) -> void:
+	_kitchen = weakref(kitchen)
+
+
+func carries_prepared_drink(staff: StaffAgent) -> bool:
+	var kitchen: Kitchen = _kitchen.get_ref() as Kitchen if _kitchen != null else null
+	return kitchen != null and kitchen.carries_prepared_drink(staff)

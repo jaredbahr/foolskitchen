@@ -90,6 +90,9 @@ func movement_multiplier() -> float:
 
 ## Physical meals in hand, not a retained delivery batch before re-pickup.
 func carries_food() -> bool:
+	if task != null and task.kind == &"pour":
+		var drink_world: SimWorld = movement_world()
+		return drink_world != null and drink_world.carries_prepared_drink(self)
 	if task == null or task.state != SimTask.State.CLAIMED or task.claimed_by != id \
 			or task.kind != &"deliver" or int(task.payload.get("carried_count", 0)) <= 0:
 		return false
