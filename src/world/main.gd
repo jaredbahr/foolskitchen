@@ -18,6 +18,7 @@ const SHOP_FRAME_CELLS: Vector2 = Vector2(14.0, 12.0)
 const STREET_PAN_EXTENSION: float = 3.0
 const LEASE: LeaseUpgrade = preload("res://data/balance/lease_upgrade.tres")
 const TUNING: EconomyTuning = preload("res://data/balance/tier1_economy.tres")
+const MESS_TUNING: MessTuning = preload("res://data/balance/messes.tres")
 const CLEANLINESS_TUNING: CleanlinessTuning = preload("res://data/balance/cleanliness.tres")
 const WEATHER_TUNING: WeatherTuning = preload("res://data/balance/weather.tres")
 const DEMAND_TUNING: DemandTuning = preload("res://data/balance/demand.tres")
@@ -129,6 +130,9 @@ var weather_tuning: WeatherTuning = WEATHER_TUNING
 var demand_tuning: DemandTuning = DEMAND_TUNING.duplicate(true) as DemandTuning
 var demand_state: DemandState = DemandState.new()
 var _loaded_demand: DemandState = null
+## Detached closing summaries; persistence stays at the morning checkpoint.
+var business_history: BusinessHistory = BusinessHistory.new()
+var _loaded_business_history: BusinessHistory = null
 var _demand_breakdown: DemandBreakdown = null
 var _demand_day: int = 0
 var _demand_reputation: float = 3.0
@@ -519,6 +523,7 @@ func start() -> void:
 	SaveSystem.register("hints", hints.capture, hints.restore)
 	SaveSystem.register("weather", _capture_weather, _restore_weather)
 	SaveSystem.register("demand", _capture_demand, _restore_demand)
+	SaveSystem.register("business_history", _capture_business_history, _restore_business_history)
 	var loaded: bool = use_saves and _load_autosave()
 	_rooms_note = loaded and _loaded_layout != null and _loaded_layout.rooms_unmarked
 	$HUD.set_rooms_note(ROOMS_NOTE if _rooms_note else "")
@@ -533,6 +538,10 @@ func start() -> void:
 	if not sim.configure_cleanliness(cleanliness, CLEANLINESS_TUNING):
 		push_error("Cannot initialize shop cleanliness")
 		return
+	if not sim.configure_messes(MESS_TUNING, GameState.rng(&"cleanliness")):
+		push_error("Cannot initialize everyday messes")
+		return
+	sim.plate_broken.connect(_on_plate_broken)
 	# The loaded layout can replace both world and view during _load_autosave().
 	($ShopView as ShopView).bind_cleanliness(cleanliness)
 	_debug_overlay.bind_cleanliness(cleanliness)
@@ -1000,7 +1009,7 @@ func set_paint_active(active: bool) -> bool:
 		_paint_from_build = false
 		($ShopView as ShopView).clear_paint_preview()
 		if world.clock.phase == SimClock.Phase.CLOSED and shown_report != null:
-			_report.call(&"show_report", build_report(world.clock.day))
+			_show_evening_report(build_report(world.clock.day))
 	# Painting is cosmetic: keep the player's existing G preference. Only
 	# furniture building needs the temporarily forced placement grid.
 	($CameraRig as CameraRig).set_grid_forced(is_build_active())
@@ -1669,7 +1678,7 @@ func _on_build_changed() -> void:
 	if not active and _was_build_active and _build_ready and world.clock.phase == SimClock.Phase.CLOSED:
 		# Rebuild from current books; do not run closing charges or day setup.
 		shown_report = build_report(world.clock.day)
-		_report.call(&"show_report", shown_report)
+		_show_evening_report(shown_report)
 	_was_build_active = active
 	_update_build_controls()
 
@@ -2067,6 +2076,11 @@ func run_ticks(ticks: int) -> void:
 	refresh_presentation()
 
 
+## Paid replacements arrive during the existing overnight tidy.
+func _on_plate_broken(cost: int) -> void:
+	Economy.add_cash(-cost, Ledger.BREAKAGES, "Replacement plate, delivered tomorrow morning")
+
+
 ## Builds the evening report for `day` from the ledger and today's counters.
 func build_report(day: int) -> DayReport:
 	var report := DayReport.new()
@@ -2101,6 +2115,9 @@ func build_report(day: int) -> DayReport:
 	report.dishes_sold = dishes_sold_today.duplicate()
 	report.customers_served = sim.served_today
 	report.customers_lost = sim.lost_today
+	if sim.mishaps != null:
+		report.mishaps_text = MishapText.daily(sim.mishaps.spills_today,
+			sim.mishaps.broken_plates_today, sim.mishaps.degreases_today)
 	report.record_dish_quality(sim.orders.orders_in_state(Order.State.DELIVERED))
 	for reason: StringName in sim.leave_reasons_today:
 		if reason != &"happy":
@@ -2145,6 +2162,8 @@ func build_report(day: int) -> DayReport:
 
 
 func _new_game() -> void:
+	business_history = BusinessHistory.new()
+	_loaded_business_history = null
 	curb_appeal_score = 0.0
 	curb_appeal_factor = 1.0
 	_last_team_activity.clear()
@@ -2215,6 +2234,15 @@ func _new_game() -> void:
 
 
 func _load_autosave() -> bool:
+	business_history = BusinessHistory.new()
+	_loaded_business_history = null
+	var loaded: bool = _load_autosave_sections()
+	if not loaded:
+		_loaded_business_history = null
+	return loaded
+
+
+func _load_autosave_sections() -> bool:
 	curb_appeal_score = 0.0
 	curb_appeal_factor = 1.0
 	_last_team_activity.clear()
@@ -2254,6 +2282,9 @@ func _load_autosave() -> bool:
 			or demand_tuning == null or not demand_tuning.is_valid() \
 			or saved_demand.last_service_factor > demand_tuning.total_cap:
 		world.log_event("Saved shop growth does not match this morning; starting a new game")
+		return false
+	if _loaded_business_history != null and not _loaded_business_history.valid_before(Clock.sim.day):
+		world.log_event("Saved business history is ahead of this morning; starting a new game")
 		return false
 	if not OpeningHours.clock_valid(Clock.sim, HOURS_TUNING):
 		# Keep the game; only the hours go back to the default day.
@@ -2320,6 +2351,21 @@ func _load_autosave() -> bool:
 	# Install only after every other whole-load validation has succeeded.
 	world.weather = saved_weather.copy()
 	demand_state = saved_demand
+	business_history = _loaded_business_history if _loaded_business_history != null else BusinessHistory.new()
+	_loaded_business_history = null
+	return true
+
+
+func _capture_business_history() -> Dictionary:
+	return business_history.capture()
+
+
+## SaveSystem may reject a later provider: never install a partial load here.
+func _restore_business_history(data: Dictionary) -> bool:
+	var restored: BusinessHistory = BusinessHistory.new()
+	if not restored.restore(data):
+		return false
+	_loaded_business_history = restored
 	return true
 
 
@@ -2764,7 +2810,7 @@ func set_staff_visible(value: bool) -> bool:
 	_staff_panel.set_trays(tray_level, TUNING.tray_prices, Economy.cash, _loan_upgrade_refusal())
 	_staff_panel.visible = value
 	if not value and Clock.sim.phase == SimClock.Phase.CLOSED and shown_report != null:
-		_report.call(&"show_report", build_report(Clock.sim.day))
+		_show_evening_report(build_report(Clock.sim.day))
 	return true
 
 
@@ -3163,7 +3209,7 @@ func set_goals_visible(value: bool) -> bool:
 		if return_to_menu:
 			set_menu_visible(true)
 		elif Clock.sim.phase == SimClock.Phase.CLOSED and shown_report != null:
-			_report.call(&"show_report", build_report(Clock.sim.day))
+			_show_evening_report(build_report(Clock.sim.day))
 	return true
 
 
@@ -3919,7 +3965,7 @@ func set_stock_visible(value: bool) -> bool:
 		_refresh_stock_panel()
 	elif Clock.sim.phase == SimClock.Phase.CLOSED and shown_report != null:
 		# Back to the evening report, rebuilt so closed-phase orders show.
-		_report.call(&"show_report", build_report(Clock.sim.day))
+		_show_evening_report(build_report(Clock.sim.day))
 	return true
 
 
@@ -4236,6 +4282,17 @@ func _on_review_recorded(_row: Dictionary) -> void:
 	_refresh_goals()
 
 
+## Presentation refreshes may revisit a close after evening purchases.
+## build_report itself remains a pure query used by previews and tools.
+func _show_evening_report(report: DayReport) -> void:
+	shown_report = report
+	if Clock.sim.phase == SimClock.Phase.CLOSED and _closed_report_day == report.day \
+			and report.day == Clock.sim.day:
+		business_history.record(report)
+	_report.call(&"show_report", report)
+	_report.call(&"show_history", business_history.summaries(), report.day)
+
+
 ## Service is over and every guest's departure is recorded: close the books.
 func _on_service_closed(day: int) -> void:
 	if day != Clock.sim.day or _closed_report_day == day:
@@ -4279,7 +4336,7 @@ func _on_service_closed(day: int) -> void:
 	shown_report = build_report(day)
 	_last_team_activity = StaffActivity.public_snapshot(shown_report.staff_activity)
 	_staff_panel.set_team_activity(_last_team_activity)
-	_report.call(&"show_report", shown_report)
+	_show_evening_report(shown_report)
 	if _paint_active or is_staff_visible() or is_goals_visible():
 		_report.hide()
 	if is_staff_visible():
@@ -4369,6 +4426,10 @@ func _on_day_phase_changed(_day: int, phase: int) -> void:
 
 
 func _on_next_day_pressed() -> void:
+	# Evening purchases can change cash while their panel hides the report.
+	# Capture them before next_day clears day-local counters; do not save here.
+	if Clock.sim.phase == SimClock.Phase.CLOSED and _closed_report_day == Clock.sim.day:
+		business_history.record(build_report(Clock.sim.day))
 	Clock.sim.next_day()
 
 

@@ -5,6 +5,7 @@ signal next_day_pressed
 
 const LOAN_INTRODUCTION: String = "The bank covered your shortfall. It'll take a share of your profits until it's paid back."
 const MONEY_LABELS: Dictionary = {
+	Ledger.BREAKAGES: "Breakages",
 	Ledger.BANK_LOAN: "Bank loan",
 	Ledger.LOAN_INTEREST: "Loan interest",
 	Ledger.LOAN_REPAYMENT: "Loan repayment",
@@ -71,6 +72,8 @@ func _ready() -> void:
 ## Replaces every section with the supplied day's results, including empty states.
 func show_report(report: DayReport) -> void:
 	_bind_nodes()
+	# Main follows this compatible single-report API with the detached history.
+	show_history([], report.day)
 	_report_shown = true
 	_restaurant_name.text = report.restaurant_name
 	(get_node("Panel/Scroll/Content/ReviewHeading") as Label).text = "Reviews of %s" % report.restaurant_name
@@ -118,6 +121,15 @@ func show_report(report: DayReport) -> void:
 	_cleanliness.text = "Cleanliness: %s" % report.cleanliness_label \
 		if not report.cleanliness_label.is_empty() else ""
 	_cleanliness.visible = not report.cleanliness_label.is_empty()
+	var mishaps: Label = get_node_or_null("Panel/Scroll/Content/Mishaps") as Label
+	if mishaps == null:
+		mishaps = Label.new()
+		mishaps.name = "Mishaps"
+		mishaps.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_cleanliness.get_parent().add_child(mishaps)
+		_cleanliness.get_parent().move_child(mishaps, _cleanliness.get_index() + 1)
+	mishaps.text = report.mishaps_text
+	mishaps.visible = not report.mishaps_text.is_empty()
 	regulars_summary.text = "Regulars: " + "; ".join(PackedStringArray(report.regulars_lines))
 	regulars_summary.visible = not report.regulars_lines.is_empty()
 	_fill_reasons(report.leave_reasons)
@@ -147,6 +159,17 @@ func show_report(report: DayReport) -> void:
 	_render_demand(report.demand_forecast)
 	_render_vibe()
 	show()
+
+
+func show_history(rows: Array[Dictionary], today: int) -> void:
+	_bind_nodes()
+	var clean: Array[Dictionary] = BusinessTrendText.display_rows(rows, today)
+	(%BusinessTrendHeading as Label).text = BusinessTrendText.HEADING
+	(%BusinessTrendSummary as Label).text = BusinessTrendText.summary(clean, today)
+	var chart: BusinessTrendChart = %BusinessTrendChart
+	chart.set_history(clean, today if not clean.is_empty() else 0)
+	chart.visible = clean.size() >= 2
+	(%BusinessTrendSection as VBoxContainer).show()
 
 
 ## Current room presentation is derived, never part of the saved day report.

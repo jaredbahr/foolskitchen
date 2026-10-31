@@ -230,13 +230,54 @@ an active edit/panel/selection first, or opens Settings when none is active.
   `1.0 - 0.3 * spots / 12`; later dirt changes do not rescale that visit or
   replace the retained review input.
   The report captures the day's worst Spotless/A bit messy/Grubby band, F3
-  shows the current spot count, and ShopView draws shaded, matte Walnut floor
+  shows the current spot count, and ShopView draws shaded, matte floor
   decals with a roughly 0.2-unit radius, using the approved swatch palette.
+  The active floor paint and finish's main swatch chooses cream on dark floors
+  and dark brown on light floors; a thin ink outline keeps every kind readable.
   `start_day()` tidies all spots and mop tasks before the existing morning
   autosave. Spots themselves are never saved; only the named RNG stream is
   restored by GameState. The optional Cleaner joins the existing roster,
   candidate and next-morning staff-save paths, with a skill-scaled Tier 1
   base wage of $20 versus a server's $25; cook/server minimums still hold.
+- **Everyday messes (FK-077):** `data/balance/messes.tres` authors every chance,
+  cap and threshold. `RestaurantSim.configure_messes` installs a transient
+  `MishapState` sharing the existing cleanliness RNG; no new stream or save
+  section is created. While genuinely carrying food, a server rolls once per
+  newly entered cell (0.04% normally; Clumsy ×3; extra crowding near the pass
+  adds 0.02% per person above the authored threshold, capped at 0.3%). Standing
+  still and a zero base chance draw nothing. Drinks are excluded. Pickup
+  must finish before any spill rolls, including a reclaimed trip's
+  walk back to the pass after the owner changes duties.
+  The first carried READY meal spills; other tray meals continue on the same route.
+  The original ticket returns to PLACED and follows real ingredient fetching,
+  cooking and plating again, retaining the guest's original wait budget and
+  price. It never charges a second meal or creates a second guest order.
+  A spill enters `CleanlinessState` independently of random dirt's cap;
+  one cleaning task clears a cell's dirt, spill and broken fragments together.
+  Five percent of spills break one actual owned plate. `PlateLedger.spill_order`
+  makes an intact held plate dirty, or removes a broken one from owned stock;
+  legacy no-sink service can break a clean/dirty owned plate without an order
+  token. Clean + dirty + in use remains equal to the live total, even at zero.
+  Main records the authored $2 replacement immediately under **Breakages**.
+  Already-paid replacements arrive during overnight tidy, before the existing
+  morning autosave, restoring the existing `plates.total` section with no new
+  fields or recovery UI. No morning is written with a transient zero total.
+  Each completed recipe station step adds one grease use, once per real task
+  step even across replay. At 24 uses that station works at 90% of its
+  normal work rate (walking, fetching and plating keep their rates).
+  `CleanTaskController` posts a priority-0 **Degrease** walk/work task at the
+  actual station, with normal reservations; completion clears its grease.
+  Cleaning job priorities apply: a dedicated cleaner owns it; without one,
+  servers use low-priority Cleaning, then the owner on Floor duty. Off remains
+  Off. Terminal failed maintenance waits for a layout change before retrying.
+  Uncleaned spills can produce three **Sticky floor** review quotes. The live
+  evening report adds a plain **Mishaps** line with spills, broken plates and
+  stations degreased; this display text is deliberately absent from historical
+  report saves. Overnight withdraws all mess/maintenance tasks and clears floor
+  messes, grease and daily counters. The approved Food Kit `plate-broken` model
+  marks a broken spill and disappears with its cleaning task.
+  Tests: `tests/sim/test_mishaps.gd`, `tests/world/test_mess_view.gd`.
+  Manual visual fixture: `tools/messes_review.tscn` (dark/light, one frame each).
 - **Debug overlay (F3):** paths, claimed tasks, agent states and the task board, from Phase 1 onward.
 
 - **Hygiene overview (FK-097):** the Build/Buy room readout has a session-local
@@ -2522,6 +2563,16 @@ refund after complete successful load, before the existing morning checkpoint.
 There is no new save point or SaveSystem migration.
 
 ### 2.4 Save system
+Business trends (FK-123): Main keeps fourteen detached `BusinessHistory` closing
+summaries outside `DayReport` serialization. Reopening the evening report and
+advancing to the next morning upsert the current day after evening purchases;
+`build_report()` stays a read-only query. The optional `business_history` section
+uses decimal strings for signed currency and joins only the existing morning
+autosave. Load stages it until the whole morning validates; older saves start
+empty. The evening report draws seven days in the current theme, with separate
+dish-profit and guest scales, today's label, unknown-profit gaps and comparisons
+between equal recorded-day windows. "Last week" requires two complete weeks.
+
 - JSON in `user://saves/`, with a `version` field and migration functions per version.
 - Only sim state is saved, never nodes. The world is rebuilt from sim state on load.
 - `SaveSystem.register(key, capture, restore)` replaces a unique section provider; capture returns a dictionary and restore returns success.

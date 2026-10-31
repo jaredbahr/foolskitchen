@@ -4,11 +4,15 @@ extends RefCounted
 ## during integration; this class never obtains a global or scene dependency.
 
 enum Band { SPOTLESS, A_BIT_MESSY, GRUBBY }
+enum MessKind { DIRT, SPILL, BROKEN_PLATE }
 
 var _grid: SimGrid
 var _tuning: CleanlinessTuning
 var _rng: RandomNumberGenerator
 var _spots: Dictionary[Vector2i, bool] = {}
+## Real spills cannot disappear when the ordinary arrival/departure dirt cap
+## is full. Their finite cell map shares the same cleaning tasks and drawing.
+var _messes: Dictionary[Vector2i, int] = {}
 ## Restroom upkeep (FK-101): toilets used since the last tidy. Kept apart from
 ## floor dirt: never counted in the dirt fraction, patience, reviews, the day's
 ## worst band or the floor spot cap, and never drawn.
@@ -25,7 +29,7 @@ func _init(grid: SimGrid, tuning: CleanlinessTuning, random: RandomNumberGenerat
 ## The manual probe seeds the run after Main constructs the morning world.
 ## Rebind only before this state has recorded any dirt, without drawing.
 func use_rng(random: RandomNumberGenerator) -> bool:
-	if random == null or not _spots.is_empty() or _worst_today > 0:
+	if random == null or not _spots.is_empty() or not _messes.is_empty() or _worst_today > 0:
 		return false
 	_rng = random
 	return true
@@ -89,16 +93,43 @@ func restroom_spots() -> Array[Vector2i]:
 ## Cleaning removes only the requested spot. It cannot erase the day's worst.
 func clear_spot(cell: Vector2i) -> bool:
 	var restroom: bool = _restroom_spots.erase(cell)
-	return _spots.erase(cell) or restroom
+	var dirt: bool = _spots.erase(cell)
+	var mess: bool = _messes.erase(cell)
+	return dirt or restroom or mess
 
 
 ## A floor spot or a restroom tidy job on this cell.
 func has_spot(cell: Vector2i) -> bool:
-	return _spots.has(cell) or _restroom_spots.has(cell)
+	return _spots.has(cell) or _restroom_spots.has(cell) or _messes.has(cell)
 
 
 func spot_count() -> int:
-	return _spots.size()
+	var count: int = _spots.size()
+	for cell: Vector2i in _messes:
+		if not _spots.has(cell):
+			count += 1
+	return count
+
+
+## A spill is a real event, not another random arrival dirt draw. Promoting an
+## existing spill to broken preserves its native node until the one mop clears it.
+func add_spill(cell: Vector2i, broken: bool = false) -> bool:
+	if not _configured() or _grid.terrain(cell) != SimGrid.Terrain.FLOOR or not _grid.is_walkable(cell):
+		return false
+	var kind: int = MessKind.BROKEN_PLATE if broken else MessKind.SPILL
+	if _messes.has(cell) and _messes[cell] >= kind:
+		return false
+	_messes[cell] = kind
+	_worst_today = maxi(_worst_today, spot_count())
+	return true
+
+
+func floor_mess_kind(cell: Vector2i) -> int:
+	return _messes.get(cell, MessKind.DIRT)
+
+
+func sticky_spot_count() -> int:
+	return _messes.size()
 
 
 ## A detached, row-major list for task posting and drawing.
@@ -106,13 +137,16 @@ func spots() -> Array[Vector2i]:
 	var result: Array[Vector2i] = []
 	for cell: Vector2i in _spots:
 		result.append(cell)
+	for cell: Vector2i in _messes:
+		if not result.has(cell):
+			result.append(cell)
 	result.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
 		return a.y < b.y or (a.y == b.y and a.x < b.x))
 	return result
 
 
 func dirt_fraction() -> float:
-	return float(_spots.size()) / float(_tuning.max_spots) if _configured() else 0.0
+	return minf(1.0, float(spot_count()) / float(_tuning.max_spots)) if _configured() else 0.0
 
 
 ## Sample once when a guest arrives; callers retain that sample for the visit.
@@ -151,6 +185,7 @@ func worst_category_label() -> String:
 ## End-of-day report reads worst before the next morning resets it.
 func tidy_overnight() -> void:
 	_spots.clear()
+	_messes.clear()
 	_restroom_spots.clear()
 	_worst_today = 0
 
@@ -160,10 +195,10 @@ func _configured() -> bool:
 
 
 func _can_place(cell: Vector2i) -> bool:
-	return _configured() and _spots.size() < _tuning.max_spots and not _spots.has(cell) \
+	return _configured() and spot_count() < _tuning.max_spots and not _spots.has(cell) and not _messes.has(cell) \
 		and _grid.terrain(cell) == SimGrid.Terrain.FLOOR and _grid.is_walkable(cell)
 
 
 func _place(cell: Vector2i) -> void:
 	_spots[cell] = true
-	_worst_today = maxi(_worst_today, _spots.size())
+	_worst_today = maxi(_worst_today, spot_count())
