@@ -20,7 +20,7 @@ static func factor_label(key: StringName) -> String:
 		&"vibe":
 			return "Vibe"
 		&"curb_appeal":
-			return "Curb appeal"
+			return CurbAppealText.TITLE
 	return ""
 
 
@@ -51,7 +51,10 @@ static func factor_lines(forecast: Dictionary) -> PackedStringArray:
 	if clean.is_empty():
 		return lines
 	for key: StringName in FACTOR_KEYS:
-		lines.append("%s: %s" % [factor_label(key), change_text(float(clean[String(key)]))])
+		if key == &"curb_appeal":
+			lines.append(CurbAppealText.forecast_line(float(clean[String(key)])))
+		else:
+			lines.append("%s: %s" % [factor_label(key), change_text(float(clean[String(key)]))])
 	return lines
 
 

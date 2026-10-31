@@ -21,6 +21,7 @@ const TUNING: EconomyTuning = preload("res://data/balance/tier1_economy.tres")
 const CLEANLINESS_TUNING: CleanlinessTuning = preload("res://data/balance/cleanliness.tres")
 const WEATHER_TUNING: WeatherTuning = preload("res://data/balance/weather.tres")
 const DEMAND_TUNING: DemandTuning = preload("res://data/balance/demand.tres")
+const CURB_APPEAL_TUNING: CurbAppealTuning = preload("res://data/balance/curb_appeal.tres")
 const REVIEW_TUNING: ReviewTuning = preload("res://data/balance/reviews.tres")
 const REVIEW_QUOTES: ReviewQuotes = preload("res://data/reviews/quotes.tres")
 const PROGRESSION_TUNING: ProgressionTuning = preload("res://data/balance/progression.tres")
@@ -132,8 +133,10 @@ var _demand_breakdown: DemandBreakdown = null
 var _demand_day: int = 0
 var _demand_reputation: float = 3.0
 var _demand_renown: float = 0.0
-## Neutral until the separate curb-appeal feature supplies its derived factor.
+## Derived from the current frontage; only the existing shop facts are saved.
+var curb_appeal_score: float = 0.0
 var curb_appeal_factor: float = 1.0
+var curb_appeal_tuning: CurbAppealTuning = CURB_APPEAL_TUNING.duplicate(true) as CurbAppealTuning
 ## Today's last daytime delivery ({lines, minute}), for the Stock notes.
 var _last_delivery: Dictionary = {}
 var _storage_fill_key: String = ""
@@ -479,6 +482,8 @@ func _process(_delta: float) -> void:
 		update_build_pointer(get_viewport().get_mouse_position())
 	if _paint_active and is_inside_tree():
 		update_paint_pointer(get_viewport().get_mouse_position())
+	if (is_build_active() or _paint_active) and is_inside_tree():
+		_update_curb_appeal_meter()
 	# Run after ShopView's interpolation, including while the sim is paused.
 	refresh_presentation()
 
@@ -1170,6 +1175,7 @@ func _on_vibe_cells_changed(_cells: Array[Vector2i]) -> void:
 func _recompute_vibe() -> void:
 	if sim == null or world == null or shop_editor == null or menu_settings == null:
 		return
+	_recompute_curb_appeal()
 	var inputs: VibeModel.Inputs = VibeInputs.capture(world.grid, content, menu_settings.enabled_recipes(),
 		shop_editor.wall_vibe_swatch(), shop_editor.floor_vibe_swatch(), shop_editor.decor_vibe_items())
 	sim.set_vibe(VibeModel.evaluate(inputs, VIBE_TUNING))
@@ -1179,6 +1185,41 @@ func _recompute_vibe() -> void:
 	_report.call(&"set_vibe", result, _experienced_vibe_theme())
 	vibe_changed.emit(vibe_result)
 	_refresh_demand()
+
+
+## Pure frontage inputs feed the existing demand hook, never a second rate path.
+func _recompute_curb_appeal() -> void:
+	curb_appeal_score = 0.0
+	curb_appeal_factor = 1.0
+	if world != null and shop_editor != null and content != null:
+		var inputs: Array[Dictionary] = CurbAppealInputs.collect(world.grid,
+			shop_editor.walls, shop_editor.decor, content, curb_appeal_tuning)
+		var result: Dictionary = CurbAppealModel.evaluate(inputs, curb_appeal_tuning)
+		if bool(result.get("valid", false)):
+			curb_appeal_score = float(result.get("score", 0.0))
+			curb_appeal_factor = float(result.get("multiplier", 1.0))
+	_update_curb_appeal_meter()
+
+
+## Use the rendered orientation, including its smooth transition between snaps.
+## Translating the camera's focus never changes which side it looks from.
+func curb_appeal_street_visible() -> bool:
+	if world == null or world.grid == null:
+		return false
+	var rig: CameraRig = $CameraRig
+	var camera: Camera3D = $CameraRig/Camera3D
+	if not rig.is_inside_tree() or not camera.is_inside_tree():
+		return false
+	var street: Vector2i = WallRules.street_side(world.grid)
+	var front: Vector3 = global_transform.basis * Vector3(street.x, 0.0, street.y)
+	var offset: Vector3 = camera.global_position - rig.global_position
+	return Vector2(offset.x, offset.z).dot(Vector2(front.x, front.z)) > 0.0001
+
+
+func _update_curb_appeal_meter() -> void:
+	if _build_catalogue != null:
+		_build_catalogue.set_curb_appeal(curb_appeal_score, curb_appeal_factor,
+			curb_appeal_street_visible())
 
 
 ## Reputation and word of mouth stay fixed through this service; accepted menu
@@ -1686,6 +1727,7 @@ func _update_build_controls() -> void:
 		_build_catalogue.set_blueprint_selection(0 if build_mode.blueprint_dragging else build_mode.blueprint_selection.size())
 	_build_ui_phase = world.clock.phase if world != null else -1
 	_refresh_hygiene_overview()
+	_update_curb_appeal_meter()
 
 
 ## The Wall finish tool's proposal and a held wall item's ghost (D26), drawn
@@ -1789,7 +1831,12 @@ func _on_floor_looks_changed(_cells: Array[Vector2i]) -> void:
 ## An empty list is the shop's own wall colour changing (the legacy wall
 ## paint), which recomputes the vibe itself.
 func _on_wall_looks_changed(faces: Array[Vector3i]) -> void:
-	if not faces.is_empty():
+	if faces.is_empty():
+		# Whole-wall paint can remove explicit faces. Its caller refreshes vibe;
+		# refresh this independent derived input without another vibe event.
+		_recompute_curb_appeal()
+		_refresh_demand()
+	else:
 		_recompute_vibe()
 
 
@@ -2098,6 +2145,8 @@ func build_report(day: int) -> DayReport:
 
 
 func _new_game() -> void:
+	curb_appeal_score = 0.0
+	curb_appeal_factor = 1.0
 	_last_team_activity.clear()
 	hints.restart()
 	demand_state = DemandState.new()
@@ -2166,6 +2215,8 @@ func _new_game() -> void:
 
 
 func _load_autosave() -> bool:
+	curb_appeal_score = 0.0
+	curb_appeal_factor = 1.0
 	_last_team_activity.clear()
 	_loaded_demand = null
 	_loaded_regulars = null
