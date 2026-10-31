@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- See seven days of dish profit and guests served in the evening report, with today's results highlighted and a plain trend summary. (#265)
 - See how busy your team was in the evening report and morning Staff panel, with evening advice on hiring or adding tables. (#264)
 - Blueprints keep each piece's furniture look and charge the right price when you stamp it, with exact undo refunds. (#262)
 - The evening report now shows the profit your dishes made, with stock bought and spoiled listed separately. Automatic orders follow the forecast crowd, and the starting shop pays $18 rent each day. (#258)
