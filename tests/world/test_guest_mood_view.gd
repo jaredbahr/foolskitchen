@@ -28,7 +28,10 @@ func test_only_the_three_waiting_guest_states_receive_native_billboard_icons() -
 		guest._food_wait = 80 if state == CustomerAgent.State.WAITING_FOOD else 50
 		guests.append(guest)
 	var staff: StaffAgent = StaffAgent.new(&"customer")
+	staff.cell = Vector2i(7, 7)
 	_world.add_agent(staff)
+	assert_true(_world.agents.has(staff))
+	assert_true(staff.movement_admitted)
 	await _show_world()
 	assert_eq(_view.mood_nodes.size(), 3)
 	assert_false(_view.mood_nodes.has(staff.id), "role text alone never makes staff a guest")
@@ -267,7 +270,13 @@ func _guest(state: CustomerAgent.State) -> CustomerAgent:
 	guest.food_patience = 100
 	guest.order = Order.new()
 	guest.order.recipe_id = &"tomato_soup"
+	# This pure view fixture gives every birth its own legal floor cell; it
+	# does not test overlapping ENTRY admission or advance the simulation.
+	var index: int = _world.all_agents().size()
+	guest.cell = Vector2i(1 + index % 4, 1 + floori(float(index) / 4.0))
 	_world.add_agent(guest)
+	assert_true(_world.agents.has(guest))
+	assert_true(guest.movement_admitted)
 	return guest
 
 

@@ -157,12 +157,16 @@ func _measure_counter_heads(parent: Node, counter: ItemDef, stool: ItemDef, turn
 			stool_turns += 1
 		assert_not_null(world.grid.place_def(stool, cell, stool_turns), "%s stool at %s" % [counter.id, cell])
 		assert_true(placed.seat_cells.has(cell), "%s turns %d: the facing stool is a seat" % [counter.id, turns])
-		var guest: CustomerAgent = world.add_agent(CustomerAgent.new(restaurant, RandomNumberGenerator.new())) as CustomerAgent
+		var guest: CustomerAgent = CustomerAgent.new(restaurant, RandomNumberGenerator.new())
+		guest.cell = Vector2i(guests.size(), 0)
+		world.add_agent(guest)
+		assert_eq(world.agent(guest.id), guest)
+		assert_true(guest.movement_admitted)
 		guest.state = CustomerAgent.State.WAITING_FOOD
 		guest.table_item_id = placed.id
-		guest.cell = cell
 		guest.seat_cell = cell
 		assert_true(placed.reserve(cell, guest.id))
+		assert_true(world.reset_agent_position(guest, cell), "MORNING native pose uses the real owned seat")
 		guests.append(guest)
 	var view: ShopView = load("res://src/world/shop_view.tscn").instantiate() as ShopView
 	parent.add_child(view)

@@ -65,7 +65,7 @@ func test_ready_carried_eating_dirty_bussed_and_sink_stack_lifecycle() -> void:
 	var guest: CustomerAgent = _sim.add_customer(_sim.world.grid.entries()[0], RandomNumberGenerator.new())
 	guest.table_item_id = table.id
 	guest.seat_cell = table.seat_cells[0]
-	guest.cell = guest.seat_cell
+	_pose_guest_at_seat(guest, table, guest.seat_cell)
 	guest.state = CustomerAgent.State.WAITING_FOOD
 	var order: Order = Order.new()
 	order.recipe_id = &"burger"
@@ -106,6 +106,9 @@ func test_ready_carried_eating_dirty_bussed_and_sink_stack_lifecycle() -> void:
 
 	# A real rig carries the plate through both the smoother and display nudge.
 	var frame: AgentPresentationController.Frame = AgentPresentationController.frame_for(server, _sim.world)
+	# This is an authored endpoint-only presentation segment, not a production
+	# movement tick. Runtime frames with absent/stale traces must still snap.
+	frame.movement_trace_expected = false
 	frame.display_offset = Vector3(0.1, 0.0, 0.0)
 	var smoother: MotionSmoother = MotionSmoother.new()
 	smoother.observe(server.id, 0, frame)
@@ -417,8 +420,8 @@ func test_ready_burger_rests_on_the_native_pass_top_at_every_rotation() -> void:
 		assert_eq(_sim.world.grid.can_place_def(_content.item(&"pass_counter"), Vector2i(8, 5), blocked_turns),
 			SimGrid.PlaceResult.WALL_IN_WAY, "the old fixture crosses the current authored thin divider")
 	for turns: int in range(4):
-		assert_eq(_sim.world.grid.can_place_def(_content.item(&"pass_counter"), Vector2i(8, 8), turns), SimGrid.PlaceResult.OK)
-		var counter: PlacedItem = _sim.world.grid.place_def(_content.item(&"pass_counter"), Vector2i(8, 8), turns)
+		assert_eq(_sim.world.grid.can_place_def(_content.item(&"pass_counter"), Vector2i(9, 8), turns), SimGrid.PlaceResult.OK)
+		var counter: PlacedItem = _sim.world.grid.place_def(_content.item(&"pass_counter"), Vector2i(9, 8), turns)
 		assert_not_null(counter)
 		if counter == null:
 			return
@@ -447,6 +450,7 @@ func test_round_table_linked_chair_meals_fit_the_native_top_at_every_rotation() 
 	for existing: PlacedItem in ShopBuilder.items_with_def(_sim.world, &"table_2"):
 		_sim.world.grid.remove(existing.id)
 	for turns: int in range(4):
+		var posed_guests: Array[CustomerAgent] = []
 		var table: PlacedItem = _sim.world.grid.place_def(_content.item(&"round_table"), Vector2i(2, 6), turns)
 		assert_not_null(table)
 		if table == null:
@@ -468,7 +472,8 @@ func test_round_table_linked_chair_meals_fit_the_native_top_at_every_rotation() 
 			var guest: CustomerAgent = _sim.add_customer(_sim.world.grid.entries()[0], RandomNumberGenerator.new())
 			guest.table_item_id = table.id
 			guest.seat_cell = seat
-			guest.cell = seat
+			_pose_guest_at_seat(guest, table, seat)
+			posed_guests.append(guest)
 			guest.state = CustomerAgent.State.EATING
 			var order: Order = Order.new()
 			order.recipe_id = &"burger"
@@ -488,6 +493,10 @@ func test_round_table_linked_chair_meals_fit_the_native_top_at_every_rotation() 
 				for other: Vector3 in spots:
 					assert_true(dish.position.distance_to(other) > 0.24, "opposite chairs keep distinct servings")
 				spots.append(dish.position)
+		# Move these authored guests aside in MORNING before changing their
+		# seats; do not fabricate a service departure or leave stale claims.
+		for index: int in range(posed_guests.size()):
+			assert_true(_sim.world.reset_agent_position(posed_guests[index], Vector2i(5 + turns * 2 + index, 10)))
 		for chair: PlacedItem in chairs:
 			_sim.world.grid.remove(chair.id)
 		_sim.world.grid.remove(table.id)
@@ -892,3 +901,12 @@ func _recipe_resource_paths(folder: String) -> PackedStringArray:
 		paths.append_array(_recipe_resource_paths(folder.path_join(child)))
 	paths.sort()
 	return paths
+
+
+# Closed-phase fixture placement keeps both physical admission and seat rights.
+# Never change an admitted actor's raw cell behind the movement coordinator.
+func _pose_guest_at_seat(guest: CustomerAgent, table: PlacedItem, seat: Vector2i) -> void:
+	assert_true(table.reserve(seat, guest.id))
+	assert_true(_sim.world.reset_agent_position(guest, seat))
+	assert_true(_sim.world.agents.has(guest))
+	assert_true(guest.movement_admitted)

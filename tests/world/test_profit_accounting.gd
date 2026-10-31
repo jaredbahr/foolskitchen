@@ -43,7 +43,8 @@ func after_each() -> void:
 
 func test_real_paid_meal_and_extra_drink_exclude_consumed_cancelled_food() -> void:
 	var main: Node = await _start(false)
-	assert_true(main.call("shop_buy", &"coffee_machine", Vector2i(12, 5), 2))
+	# The former (12, 5) is a current dining seat; keep the real machine/front clear.
+	assert_true(main.call("shop_buy", &"coffee_machine", Vector2i(11, 5), 2))
 	var sim: RestaurantSim = main.get("sim")
 	var content: ContentDB = main.get("content")
 	_no_arrivals(sim)
@@ -292,7 +293,8 @@ func test_real_morning_and_opening_station_orders_use_the_forecast_menu_mix() ->
 		assert_eq(Economy.stock.count(id), expected_units, "the real morning order buys the forecast use")
 	for id: StringName in [&"bread", &"cheese", &"tomato", &"soup_stock"]:
 		assert_eq(Economy.stock.count(id), 0, "unused automatic food is absent from the real order")
-	assert_true(main.call("shop_buy", &"coffee_machine", Vector2i(12, 5), 2))
+	# The former (12, 5) is a current dining seat; keep the real machine/front clear.
+	assert_true(main.call("shop_buy", &"coffee_machine", Vector2i(11, 5), 2))
 	assert_true(main.call("menu_set_enabled", &"tea", false))
 	assert_true(main.call("menu_set_enabled", &"burger", false))
 	assert_eq(sim.menu.size(), 1)

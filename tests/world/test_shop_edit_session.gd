@@ -38,7 +38,7 @@ func test_morning_items_and_books_round_trip_through_the_shop_provider() -> void
 	var original_file: String = FileAccess.get_file_as_string(_path())
 	var price: int = (first.get("content") as ContentDB).item(&"chair").price
 	var before_cash: int = Economy.cash
-	assert_true(first.call("shop_buy", &"chair", Vector2i(2, 8)))
+	assert_true(first.call("shop_buy", &"chair", Vector2i(3, 8)))
 	assert_eq(Economy.cash, before_cash - price)
 	assert_true(first.call("shop_move", _id(first, &"potted_plant"), Vector2i(11, 9), 1))
 	assert_eq(FileAccess.get_file_as_string(_path()), original_file, "edits do not introduce another autosave boundary")
@@ -57,7 +57,10 @@ func test_morning_items_and_books_round_trip_through_the_shop_provider() -> void
 	_assert_bindings(second)
 	var world: SimWorld = second.get("world")
 	var extra: StaffAgent = StaffAgent.new(&"server")
+	extra.cell = LAYOUT.staff_spawns[&"server"] + Vector2i.DOWN * 2
 	world.add_agent(extra)
+	assert_eq(world.agent(extra.id), extra)
+	assert_true(extra.movement_admitted)
 	assert_true(second.call("select_agent", extra.id), "inspector binds the restored world")
 
 
@@ -92,10 +95,10 @@ func test_invalid_shop_starts_fresh_skips_one_save_then_autosaves_next_morning()
 	var second: Node = _start(true, true)
 	assert_eq(Clock.sim.day, 1)
 	assert_eq(Clock.sim.phase, SimClock.Phase.MORNING)
-	assert_eq((second.get("world") as SimWorld).grid.item(_id(second, &"potted_plant")).origin, Vector2i(12, 9))
+	assert_eq((second.get("world") as SimWorld).grid.item(_id(second, &"potted_plant")).origin, _authored_origin(&"potted_plant"))
 	assert_eq(Economy.cash, TUNING.starting_cash - _stock_cost(second))
 	assert_eq(FileAccess.get_file_as_string(_path()), broken, "only the first autosave is skipped")
-	assert_true(second.call("shop_buy", &"chair", Vector2i(2, 8)))
+	assert_true(second.call("shop_buy", &"chair", Vector2i(3, 8)))
 	assert_eq(FileAccess.get_file_as_string(_path()), broken, "editing does not write a save")
 	_assert_bindings(second)
 	Clock.sim.phase = SimClock.Phase.CLOSED
@@ -117,7 +120,7 @@ func test_non_morning_save_is_rejected_without_rebuilding_its_items() -> void:
 	_close(first)
 	var second: Node = _start()
 	assert_eq(Clock.sim.phase, SimClock.Phase.MORNING)
-	assert_eq((second.get("world") as SimWorld).grid.item(_id(second, &"potted_plant")).origin, Vector2i(12, 9))
+	assert_eq((second.get("world") as SimWorld).grid.item(_id(second, &"potted_plant")).origin, _authored_origin(&"potted_plant"))
 	assert_eq(FileAccess.get_file_as_string(_path()), broken)
 
 
@@ -170,7 +173,9 @@ func test_saved_furniture_on_staff_spawn_loads_and_staff_can_escape() -> void:
 	assert_eq(xp_rows.get_child_count(), 8, "the native report shows four labelled XP sources")
 	assert_eq((xp_rows.get_child(7) as Label).text, "+%d XP" % report.owner_xp_breakdown["total_xp"])
 	assert_eq(FileAccess.get_file_as_string(_path()), morning_file)
-	assert_true(first.call("shop_buy", &"potted_plant", spawn))
+	assert_false(first.call("shop_buy", &"potted_plant", spawn), "unlocking does not permit covering the active server")
+	var purchase_cell: Vector2i = spawn + Vector2i.DOWN * 2
+	assert_true(first.call("shop_buy", &"potted_plant", purchase_cell))
 	assert_eq(FileAccess.get_file_as_string(_path()), morning_file, "unlock and purchase do not save immediately")
 	assert_true(Clock.sim.next_day())
 	assert_true(first.call("menu_set_enabled", &"tomato_melt", true),
@@ -183,6 +188,23 @@ func test_saved_furniture_on_staff_spawn_loads_and_staff_can_escape() -> void:
 	var decoded: OwnerProgress = OwnerProgress.new(progress.tuning)
 	assert_true(decoded.from_dict(raw_progress), "the morning JSON stores valid owner progress")
 	assert_eq(decoded.to_dict(), saved_progress)
+	# Represent an existing saved layout that already covered its staff post.
+	# The real paid purchase and next-morning checkpoint above remain intact;
+	# only that saved furniture origin changes in this explicit legacy fixture.
+	var legacy: Dictionary = _document()
+	var purchased_row: Dictionary = {}
+	for row: Dictionary in legacy["data"]["shop"]["items"]:
+		var origin: Variant = row.get("origin")
+		if row["def_id"] == "potted_plant" and origin is Array and origin.size() == 2 \
+				and ShopEditor._integer_in(origin[0], purchase_cell.x, purchase_cell.x) \
+				and ShopEditor._integer_in(origin[1], purchase_cell.y, purchase_cell.y):
+			purchased_row = row
+	assert_false(purchased_row.is_empty())
+	if purchased_row.is_empty():
+		return
+	purchased_row["origin"] = [spawn.x, spawn.y]
+	_write_document(legacy)
+	_remove_backup()
 	_close(first)
 	var second: Node = _start()
 	assert_eq((second.get("owner_progress") as OwnerProgress).to_dict(), saved_progress,
@@ -190,14 +212,48 @@ func test_saved_furniture_on_staff_spawn_loads_and_staff_can_escape() -> void:
 	var world: SimWorld = second.get("world")
 	assert_false(world.grid.is_walkable(spawn))
 	var server: SimAgent = world.agents[1]
-	assert_eq(server.cell, spawn)
+	assert_eq(server.role, &"server")
+	assert_eq(world.agent(server.id), server)
+	assert_true(server.movement_admitted)
+	assert_null(world.pending_agent(server.id))
+	assert_ne(server.cell, spawn, "restored birth admission chooses legal floor before activation")
+	assert_true(world.grid.is_walkable(server.cell))
+	var admitted_origin: Vector2i = server.cell
 	assert_true(server.set_destination(world.grid, world.grid.entries()[0]))
-	assert_eq(server.path[0], spawn)
+	assert_eq(server.path[0], admitted_origin)
+	# This explicit test-only GO task runs through ordinary world ticks. Its
+	# unmapped kind earns no employee XP; it has no WORK step or callback.
+	var roster: StaffRoster = second.get("staff_roster") as StaffRoster
+	var earned_before: Dictionary = {}
+	for member: StaffMember in roster.members():
+		var earned: Dictionary = {}
+		for skill: StringName in StaffGrowth.SKILLS:
+			earned[skill] = member.growth_state().earned_today(skill)
+		earned_before[member.id] = earned
+	var books_before_walk: Dictionary = Economy.ledger.to_dict()
+	var randoms_before_walk: Dictionary = GameState._capture_save()
+	var walk: SimTask = SimTask.new(&"fixture_restored_post_walk", &"server", "Walk from restored staff post")
+	walk.steps = [TaskStep.go_to_cell(world.grid.entries()[0])]
+	world.board.post(walk, world.now)
+	var started_tick: int = world.now
 	for _index: int in range(200):
-		if server.has_arrived():
+		if walk.state == SimTask.State.DONE:
 			break
-		assert_ne(server.step_move(world), SimAgent.MoveResult.BLOCKED)
+		var before: Dictionary = MovementInvariants.capture(world)
+		world.advance()
+		assert_eq(MovementInvariants.problem(world, before), "")
+	assert_eq(walk.state, SimTask.State.DONE)
+	assert_eq(walk.claimed_by, server.id)
+	assert_true(world.now > started_tick and world.now <= started_tick + 200)
 	assert_true(server.has_arrived())
+	assert_eq(server.cell, world.grid.entries()[0])
+	for member: StaffMember in roster.members():
+		for skill: StringName in StaffGrowth.SKILLS:
+			assert_eq(member.growth_state().earned_today(skill), earned_before[member.id][skill],
+				"the synthetic walk cannot earn employee XP")
+	assert_eq((second.get("owner_progress") as OwnerProgress).to_dict(), saved_progress)
+	assert_eq(Economy.ledger.to_dict(), books_before_walk)
+	assert_eq(GameState._capture_save(), randoms_before_walk)
 
 
 func test_level_three_announcements_skip_hidden_tall_plant_and_keep_visible_unlocks() -> void:
@@ -283,6 +339,13 @@ func _close(main: Node) -> void:
 	if main.is_inside_tree():
 		main.get_parent().remove_child(main)
 	main.free()
+
+
+func _authored_origin(def_id: StringName) -> Vector2i:
+	for placement: ShopPlacement in LAYOUT.placements:
+		if placement.item_id == def_id:
+			return placement.origin
+	return SimGrid.NO_CELL
 
 
 func _id(main: Node, def_id: StringName) -> int:

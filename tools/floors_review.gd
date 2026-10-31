@@ -46,14 +46,23 @@ static func prepare(main: Node, root: Window) -> Dictionary:
 	if world == null or editor == null or world.clock.phase != SimClock.Phase.MORNING \
 			or not main.has_method("shop_flooring") or not main.has_method("shop_walls"):
 		return {"error": "floors review needs Main's morning flooring commands"}
+	var entry: Vector2i = _street_entry(world.grid)
+	if entry == SimGrid.NO_CELL:
+		return {"error": "floors review needs its two-cell south street entry and inner floor threshold"}
+	var threshold: Vector2i = entry + Vector2i.UP
 	root.get_node("Economy").call("add_cash", 2000, Ledger.OTHER)
 	editor.set_owner_level(5)
 	var door: Dictionary[Vector3i, int] = {SimGrid.edge_between(BACK_DOOR_INSIDE, BACK_DOOR): SimGrid.Segment.DOORWAY}
 	if not bool(main.call("shop_walls", door)):
 		return {"error": "the back door was refused: " + editor.last_check.why}
 	for area: Array in AREAS:
-		var cells: Array[Vector2i] = editor.floor_room_cells(area[3]) if area[4] == Vector2i(-1, -1) \
-			else rect_cells(area[3], area[4])
+		var first: Vector2i = area[3]
+		var last: Vector2i = area[4]
+		if area[0] == &"checker":
+			first = threshold + Vector2i(-1, -2)
+			last = threshold + Vector2i(6, 0)
+		var cells: Array[Vector2i] = editor.floor_room_cells(first) if last == Vector2i(-1, -1) \
+			else rect_cells(first, last)
 		var changes: Dictionary[Vector2i, FloorFinishes.Finish] = editor.lay_changes(cells, area[0], area[1], area[2])
 		if not bool(main.call("shop_flooring", changes)):
 			return {"error": "laying %s was refused: %s" % [area[0], editor.last_check.why]}
@@ -93,11 +102,12 @@ static func evidence(main: Node) -> Dictionary:
 	if view == null or mode == null or editor == null:
 		return {}
 	var patterns: Dictionary = {}
-	var matches: bool = true
-	for cell: Vector2i in SAMPLES:
+	var samples: Dictionary = _samples(view.world.grid)
+	var matches: bool = samples.size() == SAMPLES.size()
+	for cell: Vector2i in samples:
 		var texel: Color = view.finish_texel(cell)
 		patterns["%d,%d" % [cell.x, cell.y]] = texel.r8
-		matches = matches and texel.r8 == int(SAMPLES[cell])
+		matches = matches and texel.r8 == int(samples[cell])
 	var thresholds: int = 0
 	for cell: Vector2i in view.world.grid.cells():
 		if view.finish_texel(cell).a8 != 0:
@@ -115,3 +125,30 @@ static func rect_cells(first: Vector2i, last: Vector2i) -> Array[Vector2i]:
 		for x: int in range(first.x, last.x + 1):
 			cells.append(Vector2i(x, y))
 	return cells
+
+
+## The review's authored patches use a south-facing, two-cell street entry.
+## Read its real terrain rather than painting or sampling an old doorway.
+static func _street_entry(grid: SimGrid) -> Vector2i:
+	var entries: Array[Vector2i] = grid.entries()
+	if entries.size() != 2:
+		return SimGrid.NO_CELL
+	var first: Vector2i = entries[0] if entries[0].x < entries[1].x else entries[1]
+	if not entries.has(first + Vector2i.RIGHT):
+		return SimGrid.NO_CELL
+	for entry: Vector2i in entries:
+		if grid.terrain(entry + Vector2i.UP) != SimGrid.Terrain.FLOOR:
+			return SimGrid.NO_CELL
+	return first
+
+
+## Keep every original pattern sample, including a real entry texel copying
+## its painted inner threshold; a bad fixture cannot pass with fewer samples.
+static func _samples(grid: SimGrid) -> Dictionary:
+	var entry: Vector2i = _street_entry(grid)
+	if entry == SimGrid.NO_CELL:
+		return {}
+	var samples: Dictionary = SAMPLES.duplicate()
+	samples.erase(Vector2i(6, 11))  # Original fixture's street-entry sample.
+	samples[entry] = FloorStyleDef.Pattern.CHECKER
+	return samples

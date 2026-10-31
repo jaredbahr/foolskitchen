@@ -1,5 +1,5 @@
 extends TestCase
-## Initial existing-API RED: preserve this entire source and setup through GREEN.
+## Actual native neighbourhood isolation and geometry on the authored new-shop layout.
 
 const MAIN: PackedScene = preload("res://src/world/main.tscn")
 
@@ -280,12 +280,13 @@ func test_actual_pedestrian_and_car_meshes_stay_clear_of_the_lease_and_door_acro
 	var layout: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
 	var lease: LeaseUpgrade = preload("res://data/balance/lease_upgrade.tres")
 	var reserve: Rect2 = _cell_rect(ShopFootprint.from_layout(lease.layout_for(layout, 2)).lot)
-	var apron: Rect2 = Rect2(Vector2(2.5, 6.0), Vector2(2.0, 2.2))
+	var apron: Rect2 = Rect2(Vector2(3.0, 6.5), Vector2(2.0, 2.2))
 	var road: Node3D = dressing.find_child("Road", true, false) as Node3D
 	assert_not_null(road)
 	if road == null:
 		return
 	var road_bounds: Rect2 = _xz_rect(_visible_mesh_bounds(road, view))
+	assert_almost_eq(road_bounds.size.y, 2.40, 0.0001, "the actual road still contains two 1.20m lanes")
 	var visible_car: bool = false
 	var hidden_car: bool = false
 	var sweeps: Array[AABB] = []
@@ -309,8 +310,8 @@ func test_actual_pedestrian_and_car_meshes_stay_clear_of_the_lease_and_door_acro
 			visible_car = true
 			var bounds: AABB = _visible_mesh_bounds(dressing.car, view)
 			assert_true(road_bounds.grow(0.0001).encloses(_xz_rect(bounds)), "the full actual car stays above the actual road surface")
-			var near_lane: Rect2 = Rect2(Vector2(road_bounds.position.x, 9.405), Vector2(road_bounds.size.x, 1.20))
-			var far_lane: Rect2 = Rect2(Vector2(road_bounds.position.x, 10.605), Vector2(road_bounds.size.x, 1.20))
+			var near_lane: Rect2 = Rect2(road_bounds.position, Vector2(road_bounds.size.x, 1.20))
+			var far_lane: Rect2 = Rect2(road_bounds.position + Vector2(0.0, 1.20), Vector2(road_bounds.size.x, 1.20))
 			assert_true(near_lane.grow(0.0001).encloses(_xz_rect(bounds)) or far_lane.grow(0.0001).encloses(_xz_rect(bounds)),
 				"the full car fits one 1.20m lane rather than straddling both")
 			assert_false(_positive_overlap(_xz_rect(bounds), reserve))
@@ -454,14 +455,19 @@ func test_real_main_keeps_the_original_default_shop_framing_and_reserves_the_max
 	await _start()
 	var rig: CameraRig = _main.get_node("CameraRig") as CameraRig
 	var camera: Camera3D = rig.get_node("Camera3D") as Camera3D
-	assert_eq(rig.initial_focus, Vector2(3.5, 3.0))
-	assert_eq(rig.initial_zoom, 12.0)
+	# The authored new shop is16x13; retain the original14x12 framing scale,
+	# yaw, pitch and projection while centring and fitting the larger shell.
+	var expected_focus: Vector2 = Vector2(4.0, 3.25)
+	var expected_zoom: float = 12.0 * (16.0 / 14.0)
+	assert_eq(rig.initial_focus, expected_focus)
+	assert_eq(rig.initial_zoom, expected_zoom)
 	assert_eq(rig.initial_yaw_degrees, 45.0)
 	assert_almost_eq(rig.pitch_degrees, 54.7356, 0.0001)
-	assert_eq(rig.position, Vector3(3.5, 0.0, 3.0))
+	assert_eq(rig.position, Vector3(expected_focus.x, 0.0, expected_focus.y))
 	assert_almost_eq(rig.rotation.y, PI / 4.0, 0.0001)
 	assert_eq(camera.projection, Camera3D.PROJECTION_ORTHOGONAL)
-	assert_eq(camera.size, 12.0)
+	# Camera3D's native real_t size is float32; preserve exact comparison.
+	assert_eq(camera.size, PackedFloat32Array([expected_zoom])[0])
 	var view: ShopView = _main.get_node("ShopView") as ShopView
 	var layout: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
 	var lease: LeaseUpgrade = preload("res://data/balance/lease_upgrade.tres")
@@ -520,12 +526,12 @@ func test_real_back_door_alley_and_bought_floor_rebuild_preserve_actors_and_excl
 	var car_id: int = dressing.car.get_instance_id()
 	var elapsed: float = dressing.display_seconds
 	var pads: Array[AABB] = view.room_dressing.native_pavement_bounds()
-	assert_true(_main.call("shop_walls", {Vector3i(13, 6, SimGrid.EDGE_WEST): SimGrid.Segment.DOORWAY} as Dictionary[Vector3i, int]))
+	assert_true(_main.call("shop_walls", {Vector3i(15, 6, SimGrid.EDGE_WEST): SimGrid.Segment.DOORWAY} as Dictionary[Vector3i, int]))
 	assert_true(_main.call("shop_floor", [Vector2i(-1, 7), Vector2i(-1, 8), Vector2i(-1, 9)] as Array[Vector2i], true))
 	assert_eq(view.world.grid.terrain(Vector2i(-1, 8)), SimGrid.Terrain.FLOOR)
-	assert_eq(view.world.grid.segment(Vector3i(13, 6, SimGrid.EDGE_WEST)), SimGrid.Segment.DOORWAY,
+	assert_eq(view.world.grid.segment(Vector3i(15, 6, SimGrid.EDGE_WEST)), SimGrid.Segment.DOORWAY,
 		"unrelated west growth preserves the installed east doorway")
-	assert_eq(WallRules.back_door_side(view.world.grid, Vector3i(13, 6, SimGrid.EDGE_WEST)), Vector2i.RIGHT,
+	assert_eq(WallRules.back_door_side(view.world.grid, Vector3i(15, 6, SimGrid.EDGE_WEST)), Vector2i.RIGHT,
 		"the surviving opening is still an actual outside back door")
 	assert_true(view.neighbourhood_dressing == dressing)
 	assert_true(dressing.display_seconds >= elapsed)

@@ -7,13 +7,13 @@ const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tr
 ## Exact outer-shell sets from the layout's two-cell diagonal rays. The
 ## recovered divider row is floor; its nine thin segments are checked separately.
 const LOWERED: Array[String] = [
-	"13,2;13,3;13,4;13,5;13,6;13,7;13,8;13,9;2,10;3,10;4,10;5,10;8,10;9,10;10,10;11,10;12,10;13,10",
-	"2,0;3,0;4,0;5,0;6,0;7,0;8,0;9,0;10,0;11,0;12,0;13,0;13,1;13,2;13,3;13,4;13,5;13,6;13,7;13,8",
-	"0,0;1,0;2,0;3,0;4,0;5,0;6,0;7,0;8,0;9,0;10,0;11,0;0,1;0,2;0,3;0,4;0,5;0,6;0,7;0,8",
-	"0,2;0,3;0,4;0,5;0,6;0,7;0,8;0,9;0,10;1,10;2,10;3,10;4,10;5,10;8,10;9,10;10,10;11,10",
+	"15,2;15,3;15,4;15,5;15,6;15,7;15,8;15,9;15,10;2,11;3,11;4,11;5,11;6,11;9,11;10,11;11,11;12,11;13,11;14,11;15,11",
+	"2,0;3,0;4,0;5,0;6,0;7,0;8,0;9,0;10,0;11,0;12,0;13,0;14,0;15,0;15,1;15,2;15,3;15,4;15,5;15,6;15,7;15,8;15,9",
+	"0,0;1,0;2,0;3,0;4,0;5,0;6,0;7,0;8,0;9,0;10,0;11,0;12,0;13,0;0,1;0,2;0,3;0,4;0,5;0,6;0,7;0,8;0,9",
+	"0,2;0,3;0,4;0,5;0,6;0,7;0,8;0,9;0,10;0,11;1,11;2,11;3,11;4,11;5,11;6,11;9,11;10,11;11,11;12,11;13,11",
 ]
-## The three-cell pass opening remains free of wall geometry.
-const DIVIDER_COLUMNS: Array[int] = [1, 2, 3, 4, 8, 9, 10, 11, 12]
+## The authored pass approaches and two-cell crossing stay free of divider geometry.
+const DIVIDER_COLUMNS: Array[int] = [1, 2, 8, 9, 10, 11, 12, 13, 14]
 
 var _view: ShopView
 var _rig: CameraRig
@@ -55,7 +55,7 @@ func test_tier_one_exact_cutaway_sets_at_every_camera_quarter() -> void:
 		_assert_divider_height(ShopView.LOWERED_HEIGHT)
 		_view.set_wall_mode(ShopView.WallMode.CUTAWAY)
 	assert_false(_cells(LOWERED[0]).has(Vector2i(3, 0)), "north back wall stays up at default quarter")
-	assert_false(_cells(LOWERED[2]).has(Vector2i(3, 10)), "south back wall stays up from opposite quarter")
+	assert_false(_cells(LOWERED[2]).has(Vector2i(3, 11)), "south back wall stays up from opposite quarter")
 	assert_eq(world.now, 0, "presentation never advances the simulation")
 
 

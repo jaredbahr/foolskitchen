@@ -56,7 +56,7 @@ func test_live_hover_and_inspect_each_physical_member_report_six_seats_and_refre
 		panel.refresh()
 		assert_true((panel.get_node("Panel/Rows/Details") as Label).text.contains("Seats 6 (joined table)"))
 		assert_eq((panel.get_node("Panel/Rows/Reservations") as Label).text.split("\n").size(), 6)
-	assert_true(_main.call("shop_move", _tables[1].id, Vector2i(10, 6), 1))
+	assert_true(_main.call("shop_move", _tables[1].id, Vector2i(12, 8), 1))
 	panel.show_item(_tables[0].id)
 	panel.refresh()
 	assert_true((panel.get_node("Panel/Rows/Details") as Label).text.contains("Seats 2"))
@@ -72,7 +72,7 @@ func test_valid_buy_and_move_ghosts_use_proposed_group_capacity_without_editing_
 	assert_true(_main.call("set_build_active", true))
 	var before: Dictionary = _editor().to_dict()
 	var cash: int = Economy.cash
-	assert_true(_mode().begin_buy(&"table_2", Vector2i(9, 6)))
+	assert_true(_mode().begin_buy(&"table_2", Vector2i(1, 6)))
 	# Rotate the held model to the same north/south chair orientation.
 	assert_true(_mode().rotate())
 	assert_true(_mode().current_check.ok)
@@ -83,7 +83,7 @@ func test_valid_buy_and_move_ghosts_use_proposed_group_capacity_without_editing_
 	assert_eq(Economy.cash, cash)
 	_mode().cancel_ghost()
 	assert_true(_mode().pick_up(_tables[2].id))
-	_mode().update_origin(Vector2i(10, 6))
+	_mode().update_origin(Vector2i(12, 8))
 	assert_true(_mode().current_check.ok)
 	assert_eq(_mode().current_check.dining_capacity, 2)
 	assert_false(_mode().current_check.dining_joined)
@@ -102,17 +102,17 @@ func test_normal_editor_refuses_unreserved_member_edits_and_new_joins_while_anot
 	assert_true(_tables[0].reserve(seat, 246001))
 	var before: Dictionary = _editor().to_dict()
 	var books: Dictionary = Economy.ledger.to_dict()
-	assert_false(_editor().check_move(_tables[2].id, Vector2i(10, 6), 1).ok)
-	assert_false(_main.call("shop_move", _tables[2].id, Vector2i(10, 6), 1))
+	assert_false(_editor().check_move(_tables[2].id, Vector2i(12, 8), 1).ok)
+	assert_false(_main.call("shop_move", _tables[2].id, Vector2i(12, 8), 1))
 	assert_false(_editor().check_sell(_tables[2].id).ok)
 	assert_eq(_editor().sell(_tables[2].id), -1)
-	assert_false(_editor().check_buy(&"table_2", Vector2i(9, 6), 1).ok)
-	assert_false(_main.call("shop_buy", &"table_2", Vector2i(9, 6), 1))
+	assert_false(_editor().check_buy(&"table_2", Vector2i(1, 6), 1).ok)
+	assert_false(_main.call("shop_buy", &"table_2", Vector2i(1, 6), 1))
 	assert_eq(_editor().to_dict(), before)
 	assert_eq(Economy.ledger.to_dict(), books)
 	assert_eq(_tables[0].reserved_by(seat), 246001)
 	assert_true(_tables[0].release(seat, 246001))
-	assert_true(_main.call("shop_move", _tables[2].id, Vector2i(10, 6), 1))
+	assert_true(_main.call("shop_move", _tables[2].id, Vector2i(12, 8), 1))
 	assert_eq(_world().grid.dining_group_members(_tables[0].id).size(), 2)
 	assert_true(_main.call("set_build_active", true), "undo is invoked through the real active Build flow")
 	assert_true(_main.call("undo_edit"))
@@ -123,7 +123,7 @@ func test_normal_editor_refuses_unreserved_member_edits_and_new_joins_while_anot
 
 func test_six_actual_bookings_are_visible_in_every_member_inspector_within_native_window_bounds() -> void:
 	await _start()
-	_join_starter_tables()
+	_join_starter_tables(7)
 	var randoms: Array[RandomNumberGenerator] = []
 	for index: int in 6:
 		var random: RandomNumberGenerator = RandomNumberGenerator.new()
@@ -131,6 +131,25 @@ func test_six_actual_bookings_are_visible_in_every_member_inspector_within_nativ
 		randoms.append(random)
 	var sim: RestaurantSim = _main.get("sim") as RestaurantSim
 	var party: Party = sim.add_party(_world().grid.entries()[0], randoms)
+	# This paused inspector fixture needs six real admitted bodies before its
+	# atomic booking. Same-entry arrival serialization is covered separately;
+	# use the public MORNING reset, without ticking staff, service or patience.
+	assert_eq(Clock.sim.phase, SimClock.Phase.MORNING)
+	var guests: Array[CustomerAgent] = PartySeating.members(party, _world())
+	var starts: Array[Vector2i] = [Vector2i(3, 10), Vector2i(4, 10), Vector2i(5, 10),
+		Vector2i(6, 10), Vector2i(7, 10), Vector2i(8, 10)]
+	assert_eq(guests.size(), starts.size())
+	var before_admission_now: int = _world().now
+	var before_admission_clock: Dictionary = Clock.sim.to_dict()
+	var before_admission_rng: Dictionary = GameState.call("_capture_save")
+	for index: int in guests.size():
+		assert_true(_world().reset_agent_position(guests[index], starts[index]),
+			"the paused booking fixture must actually admit each guest on legal floor")
+		assert_true(guests[index].movement_admitted)
+		assert_eq(guests[index].cell, starts[index])
+	assert_eq(_world().now, before_admission_now)
+	assert_eq(Clock.sim.to_dict(), before_admission_clock)
+	assert_eq(GameState.call("_capture_save"), before_admission_rng)
 	assert_true(PartySeating.try_seat(party, _world(), sim.kitchen))
 	var panel: InspectPanel = _panel()
 	var window: Window = (Engine.get_main_loop() as SceneTree).root
@@ -206,11 +225,11 @@ func _start(with_saves: bool = false) -> void:
 	await _frames(3)
 
 
-func _join_starter_tables() -> void:
+func _join_starter_tables(row: int = 6) -> void:
 	_tables.assign(ShopBuilder.items_with_def(_world(), &"table_2"))
 	assert_eq(_tables.size(), 3)
 	for index: int in _tables.size():
-		assert_true(_main.call("shop_move", _tables[index].id, Vector2i(3 + index * 2, 6), 1))
+		assert_true(_main.call("shop_move", _tables[index].id, Vector2i(3 + index * 2, row), 1))
 	assert_eq(DiningSeats.largest_usable_capacity(_world().grid), 6)
 
 
@@ -292,7 +311,7 @@ func test_occupied_singleton_cannot_move_or_accept_joins_but_its_legacy_sale_sti
 		"the proposed new-table join is legal before the hold")
 	assert_true(_editor().check_move(incoming.id, Vector2i(4, 6), 1).ok,
 		"the proposed moved-table join is legal before the hold")
-	var held_seat: Vector2i = Vector2i(1, 7)
+	var held_seat: Vector2i = single.seat_cells[0]
 	assert_true(single.seat_cells.has(held_seat))
 	assert_true(single.reserve(held_seat, 246002))
 	var layout: Dictionary = _editor().to_dict()
