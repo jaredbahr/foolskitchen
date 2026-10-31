@@ -366,6 +366,9 @@ func _release_edge(id: int) -> void:
 
 func release_motion(id: int) -> void:
 	_release_edge(id)
+	_resume.erase(id)
+	_returning.erase(id)
+	_cooperative.erase(id)
 
 
 ## Cancellation changes intent, not the physical position halfway along an
