@@ -270,7 +270,7 @@ func check_stamp(blueprint: Blueprint, anchor: Vector2i, rotation: int = 0, exac
 			return EditCheck.new(false, "Unknown colour")
 		if exact == null and definition.unlock_level > _owner_level:
 			return EditCheck.new(false, "Unlocks at level %d" % definition.unlock_level)
-		total += definition.price
+		total += definition.variant_price(entry.variant_id)
 	if _books == null or not _books.is_ready():
 		return EditCheck.new(false, "The shop books are unavailable")
 	var charge: int = total if exact == null else maxi(0, -exact.amount)
@@ -324,9 +324,11 @@ func stamp(blueprint: Blueprint, anchor: Vector2i, rotation: int = 0, exact: Exa
 		last_stamp_ids.append(item.id)
 	if exact == null:
 		var total: int = 0
-		for definition: ItemDef in definitions:
-			_record_item(-definition.price, null)
-			total += definition.price
+		for item: PlacedItem in placed:
+			var definition: ItemDef = item.def as ItemDef
+			var price: int = definition.variant_price(item.variant_id)
+			_record_item(-price, null)
+			total += price
 		last_cash_change = -total
 	else:
 		_record_item(exact.amount, exact)
