@@ -103,6 +103,7 @@ jobs:
           bash tools/screenshot.sh --out=screens/visual-review/report --report --open --fast=100 --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/profit-review --scene=res://tools/profit_review.tscn --report --open --fast=1 --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/demand-report --scene=res://tools/demand_report_review.tscn --speed=0 --frames=60
+          SCREENSHOT_TIMEOUT_SECONDS=120 bash tools/screenshot.sh --out=screens/visual-review/staff-activity-report --scene=res://tools/staff_activity_review.tscn --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/regulars-review --scene=res://tools/regulars_review.tscn --frames=12,90 --speed=0
           bash tools/screenshot.sh --out=screens/visual-review/paint --paint --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/floors-review --floors-review --speed=0 --frames=12,30
@@ -315,6 +316,27 @@ jobs:
           review = json.loads(log.split('DEMAND_REPORT_REVIEW ', 1)[1].splitlines()[0])
           assert review['unchanged'] is True and review['day'] == 5 and review['forecast']['day'] == 6, 'demand-report: incoherent actual forecast'
           print(f'demand-report: actual day5 forecast, unchanged session, sha256={hashlib.sha256(raw).hexdigest()}')
+
+          # One fixed real fourteen-day service; GDScript validates team/reason text and geometry.
+          png = root / 'staff-activity-report' / 'shot_0060.png'
+          raw = png.read_bytes()
+          assert raw[:8] == b'\x89PNG\r\n\x1a\n' and len(raw) > 1000, 'staff-activity-report: missing/invalid PNG'
+          assert struct.unpack('>II', raw[16:24]) == (1600, 900), 'staff-activity-report: wrong PNG dimensions'
+          data = json.loads(png.with_suffix('.json').read_text())
+          assert data['image_file'] == png.name and data['image_sha256'] == hashlib.sha256(raw).hexdigest(), 'staff-activity-report: image identity mismatch'
+          assert data['scene'] == 'res://tools/staff_activity_review.tscn' and data['capture_timing'] == 'frame_post_draw', 'staff-activity-report: wrong image source'
+          assert (data['width'], data['height'], data['frame']) == (1600, 900, 60), 'staff-activity-report: wrong viewport/frame'
+          assert type(data['engine_errors']) is int and data['engine_errors'] == 0, 'staff-activity-report: engine/script errors'
+          assert 'llvmpipe' in data['video_adapter'].lower() and data['day_phase'] == 3, 'staff-activity-report: wrong renderer or phase'
+          assert data['capture_parameters'] == {'open': False, 'fast_ticks_per_frame': 0, 'speed': 0}, 'staff-activity-report: wrong paused capture parameters'
+          log = (root / 'staff-activity-report' / 'capture.log').read_text()
+          assert log.count('STAFF_ACTIVITY_REPORT_REVIEW ') == 1, 'staff-activity-report: missing unique native validation receipt'
+          review = json.loads(log.split('STAFF_ACTIVITY_REPORT_REVIEW ', 1)[1].splitlines()[0])
+          assert review['seed'] == data['master_seed'] == data['new_game_seed_override'] == '1', 'staff-activity-report: wrong actual seed'
+          assert review['setup'] == 'expanded_tables' and review['days'] == review['day'] == 14, 'staff-activity-report: wrong fixed service case'
+          assert review['unchanged'] is True and review['validation_timing'] == 'frame_post_draw' and review['world_tick'] == data['world_tick'] > 0, 'staff-activity-report: incoherent native receipt'
+          assert review['advice_id'] == 'cook' and 'hiring another cook' in review['advice'], 'staff-activity-report: missing natural cook advice'
+          print(f'staff-activity-report: actual expanded_tables day14 cook advice, unchanged session, sha256={hashlib.sha256(raw).hexdigest()}')
 
           PY
           timeout 60 "$GODOT" --headless --path . --script tools/diner_capture_validator.gd

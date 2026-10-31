@@ -23,6 +23,7 @@ const LEAVE_LABELS: Dictionary = {
 }
 const PROFIT_GREEN: Color = Color("38764b")
 const LOSS_RED: Color = Color("a83e35")
+const STAFF_ADVICE_RULES: StaffAdviceTuning = preload("res://data/balance/staff_advice.tres")
 
 var _restaurant_name: Label
 var _header: Label
@@ -120,6 +121,7 @@ func show_report(report: DayReport) -> void:
 	regulars_summary.text = "Regulars: " + "; ".join(PackedStringArray(report.regulars_lines))
 	regulars_summary.visible = not report.regulars_lines.is_empty()
 	_fill_reasons(report.leave_reasons)
+	_render_team(report.staff_activity, report.leave_reasons)
 	_clear(_low_stock)
 	for line: String in report.low_stock:
 		_add_label(_low_stock, line)
@@ -173,6 +175,19 @@ func _render_demand(forecast: Dictionary) -> void:
 	_demand_section.visible = not _demand_summary.text.is_empty()
 
 
+func _render_team(summary: Dictionary, leave_reasons: Dictionary) -> void:
+	var clean: Dictionary = StaffActivity.public_snapshot(summary)
+	var rows: VBoxContainer = %TeamActivityRows
+	for index: int in range(StaffAdviceText.ROLES.size()):
+		var label: Label = rows.get_node(NodePath(String(StaffAdviceText.ROLE_NODES[index]))) as Label
+		label.text = StaffAdviceText.role_line(StaffAdviceText.ROLES[index], clean)
+		label.visible = not label.text.is_empty()
+	var advice: Label = %TeamAdvice
+	advice.text = StaffAdviceText.recommendation(STAFF_ADVICE_RULES.recommendation(clean, leave_reasons))
+	advice.visible = not advice.text.is_empty()
+	(%TeamSection as VBoxContainer).visible = not clean.is_empty()
+
+
 func _bind_nodes() -> void:
 	if _nodes_bound:
 		return
@@ -201,6 +216,8 @@ func _bind_nodes() -> void:
 	_owner_unlocks = %OwnerUnlocks
 	_milestone_heading = %MilestoneHeading
 	_milestone_rows = %MilestoneRows
+	(%TeamHeading as Label).text = StaffAdviceText.TEAM_HEADING
+	IconStyle.decorate_label(%TeamHeading as Label, &"staff")
 	var content: VBoxContainer = get_node("Panel/Scroll/Content") as VBoxContainer
 	regulars_summary = Label.new()
 	regulars_summary.name = "RegularsSummary"

@@ -215,6 +215,57 @@ unique_name_in_owner = true
 layout_mode = 2
 columns = 2
 
+[node name="TeamSection" type="VBoxContainer" parent="Panel/Scroll/Content"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+
+[node name="TeamHeading" type="Label" parent="Panel/Scroll/Content/TeamSection"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+theme_override_font_sizes/font_size = 22
+autowrap_mode = 3
+
+[node name="TeamActivityRows" type="VBoxContainer" parent="Panel/Scroll/Content/TeamSection"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+
+[node name="CookActivity" type="Label" parent="Panel/Scroll/Content/TeamSection/TeamActivityRows"]
+visible = false
+layout_mode = 2
+mouse_filter = 2
+autowrap_mode = 3
+
+[node name="ServerActivity" type="Label" parent="Panel/Scroll/Content/TeamSection/TeamActivityRows"]
+visible = false
+layout_mode = 2
+mouse_filter = 2
+autowrap_mode = 3
+
+[node name="CleanerActivity" type="Label" parent="Panel/Scroll/Content/TeamSection/TeamActivityRows"]
+visible = false
+layout_mode = 2
+mouse_filter = 2
+autowrap_mode = 3
+
+[node name="OwnerActivity" type="Label" parent="Panel/Scroll/Content/TeamSection/TeamActivityRows"]
+visible = false
+layout_mode = 2
+mouse_filter = 2
+autowrap_mode = 3
+
+[node name="TeamAdvice" type="Label" parent="Panel/Scroll/Content/TeamSection"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+autowrap_mode = 3
+
 [node name="LowStockHeading" type="Label" parent="Panel/Scroll/Content"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 22
