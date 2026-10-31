@@ -191,7 +191,7 @@ func test_floor_dirt_decals_reuse_geometry_and_follow_cleanliness_without_changi
 	assert_almost_eq(dirt_material.roughness, 1.0)
 	assert_almost_eq(dirt_material.metallic_specular, 0.0)
 	assert_eq((first_node.material_override as StandardMaterial3D).albedo_color,
-		ShopView.DIRT_SWATCH.color)
+		ShopView.DIRT_LIGHT_SWATCH.color, "the dark authored floor receives a contrasting light spot")
 	assert_true(world.grid.is_walkable(first))
 	for _frame: int in range(4):
 		_view._process(0.1)
@@ -230,7 +230,7 @@ func test_dirt_decals_survive_paint_and_wall_changes_but_hide_on_blocked_floor()
 	_view._process(0.1)
 	assert_true(_view.dirt_nodes[cell] == node)
 	assert_eq((node.material_override as StandardMaterial3D).albedo_color,
-		ShopView.DIRT_SWATCH.color)
+		ShopView.DIRT_LIGHT_SWATCH.color, "Walnut floor paint receives the light palette tone")
 	assert_true(world.grid.set_terrain(cell, SimGrid.Terrain.WALL))
 	assert_false(_view.dirt_nodes.has(cell), "only current walkable floor receives a decal")
 	assert_false(is_instance_valid(node))
