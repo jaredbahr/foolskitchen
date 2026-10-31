@@ -15,6 +15,7 @@ const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tr
 ## Camera fit (FK-080): this zoom frames this many cells; bigger shops zoom out.
 const SHOP_ZOOM: float = 12.0
 const SHOP_FRAME_CELLS: Vector2 = Vector2(14.0, 12.0)
+const STREET_PAN_EXTENSION: float = 3.0
 const LEASE: LeaseUpgrade = preload("res://data/balance/lease_upgrade.tres")
 const TUNING: EconomyTuning = preload("res://data/balance/tier1_economy.tres")
 const MESS_TUNING: MessTuning = preload("res://data/balance/messes.tres")
@@ -245,7 +246,10 @@ func _bind_world_presentation() -> void:
 	view.set_lot(lot)
 	if sim.dock != null:
 		sim.dock.lot = lot
-	view.show_world(world)
+	# Keep future scenery off every cell this lease can eventually build on.
+	# The actual service/delivery lot above keeps its existing semantics.
+	var maximum_reserve: Rect2i = ShopFootprint.from_layout(LEASE.layout_for(LAYOUT, 2)).lot.merge(lot)
+	view.show_world(world, maximum_reserve)
 	view.bind_cleanliness(sim.cleanliness)
 	view.bind_restaurant(sim, content)
 	view.bind_dock(sim.dock)
@@ -428,6 +432,11 @@ func _frame_shop(reset: bool) -> void:
 	var zoom: float = SHOP_ZOOM * maxf(1.0, maxf(float(area.size.x) / SHOP_FRAME_CELLS.x, float(area.size.y) / SHOP_FRAME_CELLS.y))
 	# Pan around the shop itself, with a 2 m margin on every side.
 	camera.frame_area(low + half, half + Vector2(2.0, 2.0), zoom, reset)
+	var dressing: RoomDressing = ($ShopView as ShopView).room_dressing
+	if dressing != null:
+		var runs: Array[Dictionary] = dressing.frontage_runs()
+		if not runs.is_empty():
+			camera.set_street_pan_extension(runs[0][&"normal"], STREET_PAN_EXTENSION)
 
 
 func _on_header_layout_changed() -> void:

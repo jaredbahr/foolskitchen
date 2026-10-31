@@ -588,6 +588,8 @@ static func _comparison_visibility(shop: ShopView, visible: bool) -> void:
 		shop.segment_view.visible = visible
 	if shop.room_dressing != null:
 		shop.room_dressing.visible = visible
+	if shop.neighbourhood_dressing != null:
+		shop.neighbourhood_dressing.visible = visible
 
 
 static func _camera(rig: CameraRig, focus: Vector2, yaw: float, zoom: float) -> void:

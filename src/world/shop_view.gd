@@ -89,6 +89,9 @@ var _wall_nodes: Dictionary[Vector2i, MeshInstance3D] = {}
 var world: SimWorld
 var floor_mesh: MeshInstance3D
 var room_dressing: RoomDressing
+var neighbourhood_dressing: NeighbourhoodDressing
+## Separate from the actual delivery/service lot: maximum future building land.
+var _neighbourhood_reserve: Rect2i = Rect2i()
 var weather_view: WeatherView
 var _restaurant_name: String = MenuSettings.DEFAULT_NAME
 var item_nodes: Dictionary[int, ItemVisual] = {}
@@ -151,11 +154,12 @@ var ghosts: Array[Dictionary] = []
 
 
 ## Replaces a previous world and its signal bindings without modifying either.
-func show_world(value: SimWorld) -> void:
+func show_world(value: SimWorld, maximum_reserve: Rect2i = Rect2i()) -> void:
 	if is_instance_valid(food):
 		food.free()
 	food = null
 	var previous_world: SimWorld = world
+	_neighbourhood_reserve = maximum_reserve
 	_disconnect_grid()
 	mood_nodes.clear()
 	regular_nodes.clear()
@@ -180,6 +184,7 @@ func show_world(value: SimWorld) -> void:
 	_floor_preview.clear()
 	floor_mesh = null
 	room_dressing = null
+	neighbourhood_dressing = null
 	weather_view = null
 	segment_view = null
 	wall_finish_view = null
@@ -223,6 +228,10 @@ func show_world(value: SimWorld) -> void:
 	room_dressing.set_restaurant_name(_restaurant_name)
 	room_dressing.set_meta("shop_geometry", true)
 	add_child(room_dressing)
+	neighbourhood_dressing = NeighbourhoodDressing.new()
+	neighbourhood_dressing.name = "NeighbourhoodDressing"
+	neighbourhood_dressing.set_meta("shop_geometry", true)
+	add_child(neighbourhood_dressing)
 	_build_terrain()
 	weather_view = WeatherView.new()
 	weather_view.name = "Weather"
@@ -254,6 +263,38 @@ func set_lot(value: Rect2i) -> void:
 		segment_view.lot = value
 		if world != null:
 			segment_view.rebuild(world.grid, wall_mode != WallMode.UP, lowered_wall_cells())
+	_refresh_neighbourhood()
+
+
+## Active-view update; world replacement binds its own optional reserve in
+## show_world(), rather than inheriting another world's numeric exclusion.
+func set_neighbourhood_reserve(value: Rect2i) -> void:
+	_neighbourhood_reserve = value
+	_refresh_neighbourhood()
+
+
+func neighbourhood_reserved_lot() -> Rect2i:
+	var reserve: Rect2i = _neighbourhood_reserve
+	if _lot.has_area():
+		reserve = reserve.merge(_lot) if reserve.has_area() else _lot
+	if world != null:
+		for cell: Vector2i in world.grid.cells():
+			if world.grid.terrain(cell) == SimGrid.Terrain.OUTSIDE:
+				continue
+			var single: Rect2i = Rect2i(cell, Vector2i.ONE)
+			reserve = reserve.merge(single) if reserve.has_area() else single
+	return reserve
+
+
+func _refresh_neighbourhood() -> void:
+	if neighbourhood_dressing == null or room_dressing == null or world == null:
+		return
+	var paving: Array[AABB] = room_dressing.native_pavement_bounds()
+	if segment_view != null:
+		for tile: PropView in segment_view.path_tiles():
+			paving.append((segment_view.transform * tile.transform) * tile.get_combined_aabb())
+	neighbourhood_dressing.configure(world.grid, neighbourhood_reserved_lot(),
+		room_dressing.frontage_runs(), paving)
 
 
 ## Main binds the delivery dock after show_world(): crates on the floor and
@@ -357,6 +398,7 @@ func _build_terrain() -> void:
 	_apply_paint()
 	if room_dressing != null:
 		room_dressing.rebuild(world, lowered_wall_cells())
+	_refresh_neighbourhood()
 	if weather_view != null:
 		weather_view.refresh(true)
 
