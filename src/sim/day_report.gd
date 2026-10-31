@@ -28,6 +28,8 @@ var leave_reasons: Dictionary = {}
 var reviews: Array[String] = []
 ## Worst observed floor condition, already mapped to a player-facing word.
 var cleanliness_label: String = ""
+## Live closing display only: transient mishaps never add save fields.
+var mishaps_text: String = ""
 ## Player-facing reviews for this day. Each card has an integer stars (1-5)
 ## and a quote; simulation cause ids are deliberately excluded.
 var review_cards: Array[Dictionary] = []

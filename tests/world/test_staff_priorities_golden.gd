@@ -1,5 +1,9 @@
 extends TestCase
-## Actual five-day sessions compare default choices with the frozen main picker.
+## Actual five-day sessions compare default job choices with the frozen picker.
+## FK-077 adds a new task kind absent from that historical policy: both sides
+## use zero spill chance and an unreachable grease threshold here. All report,
+## books, RNG and actual task trace equality assertions remain unchanged.
+## Feature-enabled five-day invariants and test_mishaps cover everyday messes.
 ## The reference is dfbc206efdecd4b44654979901511fc813c48ee3, not a fabricated
 ## expected score table. Runtime evidence exists only after this test is run.
 
@@ -93,6 +97,10 @@ func _run_case(seed_value: int, frozen: bool) -> Dictionary:
 	if sim == null:
 		_close(main)
 		return {"error": "The actual Main session did not start"}
+	var legacy: MessTuning = sim.mishaps.tuning.duplicate() as MessTuning
+	legacy.spill_chance_per_cell = 0.0
+	legacy.grease_threshold = 1000
+	sim.mishaps.tuning = legacy
 	if frozen and not _install_frozen_picker(main, sim):
 		_close(main)
 		return {"error": "Could not install the frozen main picker before service"}

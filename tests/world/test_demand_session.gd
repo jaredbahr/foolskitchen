@@ -473,12 +473,13 @@ func _reject_after_demand(_value: Dictionary) -> bool:
 # 8fbe652826c34333e6b7b51f63ede116901582f9. Full signed raw tick/event
 # evidence is retained outside the project in issue247/day1-trace.
 const DAY_ONE_EVENTS_SHA256: String = "ed3f9e0b517932eb92ef6ca358a8689d93648cdbb5f3466a16cbba4b2d981f93"
+## FK-077 spill rolls advance cleanliness; this trace's other streams and events stay unchanged.
 const DAY_ONE_STREAMS: Dictionary = {
 	"master_seed": "1",
 	"rngs": {
 		"cleanliness": {
 			"seed": "2378578401",
-			"state": "6137073932875255692"
+			"state": "-7560570339864635624"
 		},
 		"customers": {
 			"seed": "232337077",
