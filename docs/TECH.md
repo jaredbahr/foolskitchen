@@ -2562,6 +2562,16 @@ refund after complete successful load, before the existing morning checkpoint.
 There is no new save point or SaveSystem migration.
 
 ### 2.4 Save system
+Business trends (FK-123): Main keeps fourteen detached `BusinessHistory` closing
+summaries outside `DayReport` serialization. Reopening the evening report and
+advancing to the next morning upsert the current day after evening purchases;
+`build_report()` stays a read-only query. The optional `business_history` section
+uses decimal strings for signed currency and joins only the existing morning
+autosave. Load stages it until the whole morning validates; older saves start
+empty. The evening report draws seven days in the current theme, with separate
+dish-profit and guest scales, today's label, unknown-profit gaps and comparisons
+between equal recorded-day windows. "Last week" requires two complete weeks.
+
 - JSON in `user://saves/`, with a `version` field and migration functions per version.
 - Only sim state is saved, never nodes. The world is rebuilt from sim state on load.
 - `SaveSystem.register(key, capture, restore)` replaces a unique section provider; capture returns a dictionary and restore returns success.
