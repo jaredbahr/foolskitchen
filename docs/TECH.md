@@ -243,8 +243,8 @@ an active edit/panel/selection first, or opens Settings when none is active.
   cap and threshold. `RestaurantSim.configure_messes` installs a transient
   `MishapState` sharing the existing cleanliness RNG; no new stream or save
   section is created. While genuinely carrying food, a server rolls once per
-  newly entered cell (0.4% normally; Clumsy ×3; extra crowding near the pass
-  adds 0.2% per person above the authored threshold, capped at 3%). Standing
+  newly entered cell (0.04% normally; Clumsy ×3; extra crowding near the pass
+  adds 0.02% per person above the authored threshold, capped at 0.3%). Standing
   still and a zero base chance draw nothing. Drinks are excluded. Pickup
   must finish before any spill rolls, including a reclaimed trip's
   walk back to the pass after the owner changes duties.
@@ -254,7 +254,7 @@ an active edit/panel/selection first, or opens Settings when none is active.
   price. It never charges a second meal or creates a second guest order.
   A spill enters `CleanlinessState` independently of random dirt's cap;
   one cleaning task clears a cell's dirt, spill and broken fragments together.
-  A fifth of spills break one actual owned plate. `PlateLedger.spill_order`
+  Five percent of spills break one actual owned plate. `PlateLedger.spill_order`
   makes an intact held plate dirty, or removes a broken one from owned stock;
   legacy no-sink service can break a clean/dirty owned plate without an order
   token. Clean + dirty + in use remains equal to the live total, even at zero.
@@ -263,7 +263,7 @@ an active edit/panel/selection first, or opens Settings when none is active.
   morning autosave, restoring the existing `plates.total` section with no new
   fields or recovery UI. No morning is written with a transient zero total.
   Each completed recipe station step adds one grease use, once per real task
-  step even across replay. At eight uses that station works at 90% of its
+  step even across replay. At 24 uses that station works at 90% of its
   normal work rate (walking, fetching and plating keep their rates).
   `CleanTaskController` posts a priority-0 **Degrease** walk/work task at the
   actual station, with normal reservations; completion clears its grease.
