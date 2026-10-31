@@ -510,12 +510,15 @@ func _post_order_task(world: SimWorld, sim: RestaurantSim) -> void:
 	# At a serve-across counter the server stands on the far side (FK-083).
 	var target: Vector2i = sim.across_cell(table_item_id, seat_cell)
 	var neighbours: Array[Vector2i] = []
+	var workers: Array[StaffAgent] = []
 	if target == SimGrid.NO_CELL:
 		neighbours = world.grid.walkable_neighbours(seat_cell)
+		workers = _order_approach_workers(world)
 	# Closest to the seat; fixed neighbour order breaks distance ties.
 	var distance: float = INF
 	for neighbour: Vector2i in neighbours:
-		if not world.movement.standing_cell(world, neighbour):
+		if not world.movement.standing_cell(world, neighbour) \
+				or not _order_approach_reachable(world, neighbour, workers):
 			continue
 		var candidate: float = GridMath.octile(seat_cell, neighbour)
 		if candidate < distance:
@@ -532,6 +535,52 @@ func _post_order_task(world: SimWorld, sim: RestaurantSim) -> void:
 	_task.steps.append(TaskStep.go_to_cell(target, "walking to guest"))
 	_task.steps.append(TaskStep.work(30, "taking order", _take_order))
 	world.board.post(_task, world.now)
+
+
+## Use the same role priority and authored job mapping as StaffAgent's claim
+## eligibility, including Floor/Help owners and configured employee choices.
+func _order_approach_workers(world: SimWorld) -> Array[StaffAgent]:
+	var workers: Array[StaffAgent] = []
+	for agent: SimAgent in world.agents:
+		if not agent is StaffAgent or not agent.movement_admitted:
+			continue
+		var staff: StaffAgent = agent as StaffAgent
+		if int(staff.priorities.get(&"server", 0)) <= 0:
+			continue
+		var choices: StaffJobPriorities = staff.job_priorities()
+		var job: StringName = StaffJobPriorities.job_for_task(&"take_order", staff.role)
+		if choices != null and not job.is_empty() and choices.priority(job) == StaffJobPriorities.Level.OFF:
+			continue
+		workers.append(staff)
+	return workers
+
+
+## A locally open neighbour may be a pocket reachable only THROUGH this seat.
+## Ignore temporary people, retaining seat/room/edge rules and old tie order.
+func _order_approach_reachable(world: SimWorld, target: Vector2i, workers: Array[StaffAgent]) -> bool:
+	for worker: StaffAgent in workers:
+		var start: Vector2i = worker.cell
+		if worker.move_progress > 0.0:
+			var next: Vector2i = worker.next_cell()
+			if next == start or not world.grid.is_walkable(next) \
+					or world.movement.snapshot()["next"].get(next) != worker.id:
+				continue
+			# Existing motion must finish its reserved edge before a new task.
+			start = next
+		if not world.movement.route(world, worker, start, target, false).is_empty():
+			return true
+	if not workers.is_empty():
+		return false
+	# No eligible active worker yet (including pending admission): keep useful
+	# order tasks without pretending a person exists or crossing another seat.
+	var blocked: Dictionary[Vector2i, bool] = {}
+	for item: PlacedItem in world.grid.items():
+		for cell: Vector2i in item.seat_cells:
+			blocked[cell] = true
+	for entry: Vector2i in world.grid.entries():
+		if not world.grid.find_path_avoiding(entry, target, blocked).is_empty():
+			return true
+	return false
 
 
 func _take_order(server: SimAgent) -> bool:
@@ -798,6 +847,11 @@ func _release_toilet(world: SimWorld) -> void:
 
 
 func _walk_to_exit(world: SimWorld) -> void:
+	# Both authored street cells are real exits. Reaching one physically is
+	# enough; do not force a guest across a blocked second doorway cell.
+	if move_progress == 0.0 and world.grid.entries().has(cell):
+		state = State.LEFT
+		return
 	if needs_repath or path.is_empty():
 		var route: Array[Vector2i] = world.grid.find_guest_path_to_any(cell, world.grid.entries())
 		if route.is_empty() or not set_destination(world.grid, route.back()):
@@ -807,7 +861,11 @@ func _walk_to_exit(world: SimWorld) -> void:
 				state = State.LEFT
 			return
 		_exit_unreachable = 0
-	match step_move(world):
+	var result: MoveResult = step_move(world)
+	if move_progress == 0.0 and world.grid.entries().has(cell):
+		state = State.LEFT
+		return
+	match result:
 		MoveResult.ARRIVED:
 			if world.grid.entries().has(cell):
 				state = State.LEFT

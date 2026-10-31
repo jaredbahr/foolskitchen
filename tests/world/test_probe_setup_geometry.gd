@@ -150,6 +150,10 @@ func _assert_all_setups(original: bool) -> void:
 		var initial: Dictionary = _profile_people(sim)
 		var accepted: bool = ProbeSetups.apply(profile, _main)
 		var after_apply: Dictionary = _profile_people(sim)
+		if accepted:
+			_assert_work_cells_not_seats(sim, profile)
+			if profile == "joined_tables":
+				_assert_joined_fixture(sim)
 		# This is the same ordinary boundary used immediately after apply by
 		# BalanceProbe. A refusal remains a test failure; record all profiles.
 		sim.start_day()
@@ -244,3 +248,34 @@ func _assert_fryer_staging_only(original: bool) -> void:
 	assert_eq(after["customers"], 0)
 	_close()
 	SaveSystem.delete_slot(SLOT)
+
+
+## Static editor reachability alone does not prove legal actor access: an
+## empty dining seat is still forbidden as an aisle or a station work cell.
+## Serve-across counters are TABLEs; their intentional customer seats are
+## checked through their behind-counter stations, not treated as work cells.
+func _assert_work_cells_not_seats(sim: RestaurantSim, profile: String) -> void:
+	var seats: Dictionary[Vector2i, bool] = {}
+	for placed: PlacedItem in sim.world.grid.items():
+		for seat: Vector2i in placed.seat_cells:
+			seats[seat] = true
+	for placed: PlacedItem in sim.world.grid.items():
+		var definition: ItemDef = placed.def as ItemDef
+		if definition.category not in [ItemDef.Category.PASS, ItemDef.Category.STATION, ItemDef.Category.STORAGE]:
+			continue
+		for work: Vector2i in placed.work_cells:
+			assert_false(seats.has(work), "%s: %s work cell %s must not be a reserved-only seat" % [profile, definition.id, work])
+
+
+func _assert_joined_fixture(sim: RestaurantSim) -> void:
+	var west: PlacedItem = sim.world.grid.item_at(Vector2i(3, 7))
+	var east: PlacedItem = sim.world.grid.item_at(Vector2i(5, 7))
+	assert_not_null(west)
+	assert_not_null(east)
+	if west == null or east == null:
+		return
+	assert_eq(west.quarter_turns, 1)
+	assert_eq(east.quarter_turns, 1)
+	var ids: Array[int] = [west.id, east.id]
+	assert_eq(sim.world.grid.dining_group_members(west.id), ids, "the same two tables form one joined group")
+	assert_eq(DiningSeats.usable_cells(sim.world.grid, west).size(), 6, "the translated group retains six usable seats")

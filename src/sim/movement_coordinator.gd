@@ -3,6 +3,8 @@ extends RefCounted
 ## Cell and swept-edge ownership, separate from task/station reservations.
 ## IDs and value maps only: no back reference to a world or its agents.
 
+enum YieldAttempt { STARTED, IN_PROGRESS_PROTECTED, NO_POCKET }
+
 var _occupied: Dictionary[Vector2i, int] = {}
 var _next: Dictionary[Vector2i, int] = {}
 var _edges: Dictionary[int, Dictionary] = {}
@@ -11,6 +13,10 @@ var _edges: Dictionary[int, Dictionary] = {}
 var _swept: Dictionary[Vector2i, int] = {}
 var _blocked: Dictionary[int, int] = {}
 var _resume: Dictionary[int, Vector2i] = {}
+## Return travel still suppresses productive work, but can yield again if blocked.
+var _returning: Dictionary[int, bool] = {}
+## A cooperative clearer waits briefly for the boxed actor to use its vacancy.
+var _cooperative: Dictionary[int, Dictionary] = {}
 var _pending: Array[int] = []
 var _stopping: Dictionary[int, bool] = {}
 var _after_stop: Dictionary[int, Vector2i] = {}
@@ -29,8 +35,19 @@ func snapshot() -> Dictionary:
 	var stopping: Array[int] = []
 	stopping.assign(_stopping.keys())
 	stopping.sort()
+	var returning: Array[int] = []
+	returning.assign(_returning.keys())
+	returning.sort()
+	var cooperative: Array[Dictionary] = []
+	var clearers: Array[int] = []
+	clearers.assign(_cooperative.keys())
+	clearers.sort()
+	for id: int in clearers:
+		var row: Dictionary = _cooperative[id].duplicate(true)
+		row["id"] = id
+		cooperative.append(row)
 	return {"occupied": _occupied.duplicate(), "next": claims,
-		"edges": edges, "pending": _pending.duplicate(), "stopping": stopping}
+		"edges": edges, "pending": _pending.duplicate(), "stopping": stopping, "returning": returning, "cooperative": cooperative}
 
 
 func set_pending(ids: Array[int]) -> void:
@@ -70,6 +87,11 @@ func unregister_agent(agent_id: int) -> void:
 			_occupied.erase(cell)
 	_blocked.erase(agent_id)
 	_resume.erase(agent_id)
+	_returning.erase(agent_id)
+	_cooperative.erase(agent_id)
+	for clearer: int in _cooperative.keys():
+		if int(_cooperative[clearer]["blocked_id"]) == agent_id:
+			_cooperative.erase(clearer)
 	_stopping.erase(agent_id)
 	_after_stop.erase(agent_id)
 	for cell: Vector2i in _swept.keys():
@@ -111,20 +133,42 @@ func begin_tick(world: SimWorld) -> void:
 				agent.cell = old
 				agent.clear_path()
 	for agent: SimAgent in world.agents:
+		if _resume.has(agent.id) and agent is StaffAgent:
+			var staff: StaffAgent = agent as StaffAgent
+			if staff.task != null and (staff.task.state != SimTask.State.CLAIMED or staff.task.claimed_by != staff.id):
+				# Withdrawal cancels return intent, not an edge already travelled.
+				_resume.erase(agent.id)
+				_returning.erase(agent.id)
+				_cooperative.erase(agent.id)
+				staff.let_go_if_withdrawn(world)
 		if agent.move_progress == 0.0 and _edges.has(agent.id):
 			_release_edge(agent.id)
 		if _resume.has(agent.id) and agent.has_arrived() and not _stopping.has(agent.id):
 			var goal: Vector2i = _resume[agent.id]
+			if agent.cell == goal:
+				# A sidestep is not arrival at the actor's productive station.
+				_resume.erase(agent.id)
+				_returning.erase(agent.id)
+				_cooperative.erase(agent.id)
+				continue
+			if _cooperative_holding(world, agent):
+				continue
 			var path: Array[Vector2i] = route(world, agent, agent.cell, goal, false)
 			if not path.is_empty():
-				_resume.erase(agent.id)
+				# Keep work paused while allowing this returning actor to yield again.
+				_returning[agent.id] = true
 				agent.install_movement_route(path)
 			elif not agent is CourierAgent:
-				# A removed/blocked original target must return to the task's
-				# ordinary unreachable recovery, never strand an actor in yield.
 				_resume.erase(agent.id)
-				agent.clear_path()
-				agent.needs_repath = true
+				_returning.erase(agent.id)
+				_cooperative.erase(agent.id)
+				if agent is StaffAgent and (agent as StaffAgent).task != null:
+					# WORK does not process needs_repath. Use the actor's existing
+					# unreachable drop/cleanup instead of working in the pocket.
+					(agent as StaffAgent)._drop(world, &"unreachable")
+				else:
+					agent.clear_path()
+					agent.needs_repath = true
 
 
 func priority(_world: SimWorld, agent: SimAgent) -> int:
@@ -329,6 +373,8 @@ func release_motion(id: int) -> void:
 func stop_motion(id: int, next_goal: Vector2i = SimGrid.NO_CELL) -> void:
 	_stopping[id] = true
 	_resume.erase(id)
+	_returning.erase(id)
+	_cooperative.erase(id)
 	if next_goal == SimGrid.NO_CELL:
 		_after_stop.erase(id)
 	else:
@@ -366,22 +412,32 @@ func _wait(world: SimWorld, agent: SimAgent, next: Vector2i) -> void:
 	if holder != null and holder.move_progress == 0.0:
 		var yielding: SimAgent = holder if _before(world, agent, holder) else agent
 		if waits >= world.movement_tuning.yield_after_ticks:
-			_yield(world, yielding, agent if yielding == holder else holder)
-	if waits % world.movement_tuning.repath_after_ticks == 0 and not _resume.has(agent.id) \
+			var winner: SimAgent = agent if yielding == holder else holder
+			if _yield(world, yielding, winner) == YieldAttempt.NO_POCKET:
+				# A boxed lower-priority actor cannot clear itself. Only then
+				# ask the normal winner to make a physical cooperative vacancy.
+				var blocked_cell: Vector2i = yielding.cell
+				var cleared_cell: Vector2i = winner.cell
+				if _yield(world, winner, yielding) == YieldAttempt.STARTED:
+					_cooperative[winner.id] = {"blocked_id": yielding.id, "blocked_cell": blocked_cell,
+						"cleared_cell": cleared_cell, "arrival_tick": -1, "hold_until": -1}
+	if waits % world.movement_tuning.repath_after_ticks == 0 \
+			and (not _resume.has(agent.id) or _returning.has(agent.id)) \
 			and not agent is CourierAgent:
 		var alternate: Array[Vector2i] = route(world, agent, agent.cell, agent.destination(), true)
 		if not alternate.is_empty() and alternate.size() > 1 and alternate[1] != next:
 			agent.install_movement_route(alternate)
 
 
-func _yield(world: SimWorld, yielding: SimAgent, winner: SimAgent) -> void:
-	if _resume.has(yielding.id) or _stopping.has(yielding.id) or yielding.move_progress > 0.0:
-		return
+func _yield(world: SimWorld, yielding: SimAgent, winner: SimAgent) -> YieldAttempt:
+	if (_resume.has(yielding.id) and not _returning.has(yielding.id)) \
+			or _stopping.has(yielding.id) or yielding.move_progress > 0.0:
+		return YieldAttempt.IN_PROGRESS_PROTECTED
 	if yielding is CustomerAgent:
 		var guest: CustomerAgent = yielding as CustomerAgent
 		if guest.state >= CustomerAgent.State.ORDERING and guest.state <= CustomerAgent.State.PAYING:
-			return
-	var original: Vector2i = yielding.destination()
+			return YieldAttempt.IN_PROGRESS_PROTECTED
+	var original: Vector2i = _resume.get(yielding.id, yielding.destination())
 	if original == SimGrid.NO_CELL:
 		original = yielding.cell
 	for cell: Vector2i in _nearby(world, yielding, yielding.cell, world.movement_tuning.yield_search_radius):
@@ -391,13 +447,54 @@ func _yield(world: SimWorld, yielding: SimAgent, winner: SimAgent) -> void:
 		if path.size() < 2 or path.slice(1).has(winner.cell) or path.slice(1).has(winner.next_cell()):
 			continue
 		_resume[yielding.id] = original
+		_returning.erase(yielding.id)
+		_cooperative.erase(yielding.id)
 		yielding.install_movement_route(path)
-		return
+		return YieldAttempt.STARTED
+
+	return YieldAttempt.NO_POCKET
+
+
+## Called only after the clearer physically reaches its temporary pocket.
+## Route changes alone are not evidence that the boxed actor has progressed.
+func _cooperative_holding(world: SimWorld, agent: SimAgent) -> bool:
+	if not _cooperative.has(agent.id):
+		return false
+	var row: Dictionary = _cooperative[agent.id]
+	var blocked: SimAgent = world.agent(int(row["blocked_id"]))
+	var progressed: bool = blocked == null
+	if blocked != null:
+		progressed = blocked.cell != row["blocked_cell"]
+		if not progressed and blocked.move_progress > 0.0 and _edges.has(blocked.id):
+			var edge: Dictionary = _edges[blocked.id]
+			progressed = edge["from"] == row["blocked_cell"] and edge["to"] == blocked.next_cell() \
+				and _next.get(blocked.next_cell(), -1) == blocked.id
+	if progressed:
+		_cooperative.erase(agent.id)
+		return false
+	if int(row["arrival_tick"]) < 0:
+		# Movement completion sets last_progress_tick on the arrival tick;
+		# begin_tick observes it one tick later without extending the deadline.
+		row["arrival_tick"] = agent.last_progress_tick
+		row["hold_until"] = agent.last_progress_tick + world.movement_tuning.yield_after_ticks
+	if world.now >= int(row["hold_until"]):
+		_cooperative.erase(agent.id)
+		return false
+	return true
 
 
 func advance_yield(world: SimWorld, agent: SimAgent) -> bool:
 	if not _resume.has(agent.id):
 		return false
+	if agent is OwnerAgent:
+		var owner: OwnerAgent = agent as OwnerAgent
+		if owner.task != null and int(owner.priorities.get(owner.task.role, 0)) <= 0:
+			# Let the ordinary owner tick settle the new mode exactly once,
+			# including normal cleanup/stop-motion for any reserved partial edge.
+			_resume.erase(agent.id)
+			_returning.erase(agent.id)
+			_cooperative.erase(agent.id)
+			return false
 	if not agent.has_arrived():
 		if agent is CourierAgent:
 			(agent as CourierAgent)._walk(world)

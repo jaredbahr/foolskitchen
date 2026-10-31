@@ -308,8 +308,10 @@ static func _joined_tables(main: Node) -> bool:
 	var tables: Array[PlacedItem] = _starter_tables(sim.world.grid)
 	if tables.size() < 2:
 		return false
-	var targets: Array[Vector2i] = [tables[0].origin + Vector2i.RIGHT,
-		tables[0].origin + Vector2i(3, 0)]
+	# Keep the six-seat joined fixture one row below the starter-table line:
+	# its northern seats must not double as either base's pass work cells.
+	var targets: Array[Vector2i] = [tables[0].origin + Vector2i(1, 1),
+		tables[0].origin + Vector2i(3, 1)]
 	var ids: Array[int] = [tables[0].id, tables[1].id]
 	for index: int in ids.size():
 		if not main.call("shop_move", ids[index], targets[index], 1):

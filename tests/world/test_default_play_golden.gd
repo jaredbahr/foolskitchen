@@ -24,15 +24,21 @@ var _layout_backup: Dictionary = {}
 
 
 func before_each() -> void:
-	# Main owns this preloaded Resource. Scope the historical terrain override to
+	# Main owns this preloaded Resource. Scope the complete historical geometry to
 	# this test and restore it after freeing Main, including when assertions fail.
 	var layout: ShopLayout = LAYOUT
 	_layout_backup = {"rows": layout.rows.duplicate(), "rooms": layout.room_rows.duplicate(),
-		"walls": layout.wall_segments.duplicate()}
+		"walls": layout.wall_segments.duplicate(), "legacy_rows": layout.legacy_rows.duplicate(),
+		"placements": layout.placements.duplicate(), "spawns": layout.staff_spawns.duplicate(),
+		"layout_id": layout.save_layout_id}
 	var legacy: ShopLayout = LegacyTier1Layout.make()
 	layout.rows = legacy.rows.duplicate()
 	layout.room_rows = legacy.room_rows.duplicate()
 	layout.wall_segments = legacy.wall_segments.duplicate()
+	layout.legacy_rows = legacy.legacy_rows.duplicate()
+	layout.placements = legacy.placements.duplicate()
+	layout.staff_spawns = legacy.staff_spawns.duplicate()
+	layout.save_layout_id = legacy.save_layout_id
 
 
 func after_each() -> void:
@@ -46,6 +52,10 @@ func after_each() -> void:
 		layout.rows = _layout_backup["rows"]
 		layout.room_rows = _layout_backup["rooms"]
 		layout.wall_segments = _layout_backup["walls"]
+		layout.legacy_rows = _layout_backup["legacy_rows"]
+		layout.placements = _layout_backup["placements"]
+		layout.staff_spawns = _layout_backup["spawns"]
+		layout.save_layout_id = _layout_backup["layout_id"]
 		_layout_backup.clear()
 	Clock.set_speed(0)
 	Economy.reset(0)
