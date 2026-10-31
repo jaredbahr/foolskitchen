@@ -104,6 +104,7 @@ jobs:
           bash tools/screenshot.sh --out=screens/visual-review/profit-review --scene=res://tools/profit_review.tscn --report --open --fast=1 --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/demand-report --scene=res://tools/demand_report_review.tscn --speed=0 --frames=60
           SCREENSHOT_TIMEOUT_SECONDS=120 bash tools/screenshot.sh --out=screens/visual-review/staff-activity-report --scene=res://tools/staff_activity_review.tscn --speed=0 --frames=60
+          SCREENSHOT_TIMEOUT_SECONDS=120 bash tools/screenshot.sh --out=screens/visual-review/business-trend --scene=res://tools/business_trend_review.tscn --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/regulars-review --scene=res://tools/regulars_review.tscn --frames=12,90 --speed=0
           bash tools/screenshot.sh --out=screens/visual-review/paint --paint --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/floors-review --floors-review --speed=0 --frames=12,30
