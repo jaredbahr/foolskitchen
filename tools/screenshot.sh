@@ -20,6 +20,8 @@
 # --walls-review --speed=0 --frames=12,30 [--quarter=N] shows wall finishes and hung wall decor in Cutaway, then Walls Up with Build > Wall finish holding a striped wallpaper drag.
 # --street-front-review --speed=0 --frames=60 shows the purchased, finished front in daylight, with its live restaurant name and real owner for scale.
 # --rooms=tool|refused --speed=0 --frames=30 shows the Rooms tool tints or a refused kitchen seat; --rooms=restroom --open --fast=10 --speed=1 --frames=200 pauses on a guest walking round the kitchen to the restroom.
+# Plain Main default/quarter frame60 captures use seed1 and neighbourhood photo time4s; unrelated review modes retain their original behavior.
+# --neighbourhood-review=street --speed=0 --frames=60 uses the real road centre through the street-only pan clamp (photo override only).
 # --weather-review=sunny --menu --speed=0 --frames=60 (or rain without --menu) forces explicitly unsaved morning weather after the real seed-1 selection.
 # --joined-tables-review --speed=0 --frames=90 shows one real party of six after normal table moves/opening/walking (explicit unsaved fixture).
 # --restroom-review --speed=0 --frames=12,30 shows two toilets, partitions, mirror and dryer, then person scale.

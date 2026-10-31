@@ -89,6 +89,29 @@ func rebuild(world: SimWorld, lowered_wall_cells: Array[Vector2i] = []) -> void:
 	set_lowered_walls(lowered_wall_cells)
 
 
+## Detached street runs use the same entrance interpretation as the frontage.
+func frontage_runs() -> Array[Dictionary]:
+	var runs: Array[Dictionary] = []
+	if _world == null:
+		return runs
+	for entrance: Dictionary in _entrances(_world.grid):
+		var cells: Array[Vector2i] = []
+		cells.assign(entrance[&"cells"])
+		runs.append({&"cells": cells, &"normal": entrance[&"normal"]})
+	return runs
+
+
+## Actual native pad boxes, in the parent ShopView's space. Local transforms
+## also work before the containing scene enters a World3D (headless callers).
+func native_pavement_bounds() -> Array[AABB]:
+	var bounds: Array[AABB] = []
+	for child: Node in get_children():
+		if child is PropView and child.get_meta(&"kind", &"") == &"pavement":
+			var paving: PropView = child as PropView
+			bounds.append((transform * paving.transform) * paving.get_combined_aabb())
+	return bounds
+
+
 ## Palette-only pavement tint: charcoal, cooled by slate and lifted by cream.
 static func pavement_color() -> Color:
 	return PAVEMENT_SWATCH.color.lerp(PAVEMENT_COOL_SWATCH.color, PAVEMENT_COOL_MIX) \

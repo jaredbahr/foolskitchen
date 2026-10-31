@@ -117,6 +117,7 @@ Each line ends with its PR number.
 - An evening report screen (not yet shown during play): profit, income and costs by category, dishes sold with the best seller marked, guests served versus lost, why guests left, and review quotes. (#25)
 - See a daily Sunny, Cloudy or Rain forecast in the HUD and morning Menu, with gentle rain and cooler light outside. The forecast is saved for the day and leaves service unchanged. (#251)
 - Push tables together to seat bigger parties. (#253)
+- Surround the shop with a street, neighbouring buildings, passing pedestrians and a car, with more room to pan toward the road. (#254)
 
 ### Content
 - Placed chairs now have a usable seat. (#48)

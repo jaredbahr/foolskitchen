@@ -1913,6 +1913,36 @@ are unchanged. Cutaway mode and camera quarters change stable wall attachments'
 visibility without reallocating models. Terrain/world replacement rebuilds and
 releases the old dressing. Dressing adds no lights, simulation cells, collision,
 random draws or saved state; functional lamps remain the separate lamp issue.
+`NeighbourhoodDressing` is a separate view-only child of `ShopView` (FK-242).
+Main binds the maximum supported lease footprint separately from the actual
+service lot; all current built cells and native entrance/alley paving also
+participate in exclusion. Native pads, mats, windows and the name board remain
+owned by `RoomDressing`. Additional copied pavement is clipped around those
+actual transformed boxes and the maximum reserve; it never covers future
+buyable land. Static road/crossing/kerb/building/roof/lamp copies are batched by
+material, with no new lights or shadows into the shop. Made models use the
+central furniture scale once; all source-kit and original rig resources remain
+unchanged.
+
+Three reused Mini guest views and one pooled occasional car follow fixed
+presentation paths using monotonic display seconds, independently of the sim
+clock. Whole animated sweeps clear the maximum lot, door approach and paving
+edges. They are not agents, physics bodies, navigation or input targets, and
+never enter the shop's item/agent maps, RNG streams or save providers. Normal
+frame processing stays enabled; the photo-only `set_review_time` override pins
+both real transforms and animation phase without changing game state. Read-only
+`capture_state` exposes actual observations for native and timing tools.
+Terrain/lot changes reconfigure a cached geometry signature while retaining
+actor nodes/time; world replacement frees the old controller and atomically
+binds the new world's reserve through `show_world`.
+
+The camera still frames only the shop with its original defaults and expansion
+glides. Main adds a three-metre extension to only the street-facing pan clamp;
+the other sides and initial focus, yaw, pitch and zoom are unchanged. Frame-time
+comparisons use the same normal-process harness, 60 warm-up plus 300 post-draw
+intervals, in an exclusive local render lane; before/after values and adapter
+limits belong in the PR, not an invented hardware or FPS acceptance threshold.
+
 The floor shader adds a subtle multiplicative plank pattern while retaining its
 existing paint colour and camera-controlled build-grid parameters (D25: it is
 pattern 0 of `floor_finish.gdshader`, unchanged).
