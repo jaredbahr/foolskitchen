@@ -117,6 +117,7 @@ Each line ends with its PR number.
 - An evening report screen (not yet shown during play): profit, income and costs by category, dishes sold with the best seller marked, guests served versus lost, why guests left, and review quotes. (#25)
 - See a daily Sunny, Cloudy or Rain forecast in the HUD and morning Menu, with gentle rain and cooler light outside. The forecast is saved for the day and leaves service unchanged. (#251)
 - Push tables together to seat bigger parties. (#253)
+- Surround the shop with a street, neighbouring buildings, passing pedestrians and a car, with more room to pan toward the road. (#254)
 
 ### Content
 - Placed chairs now have a usable seat. (#48)
@@ -125,6 +126,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- The roadmap's Codex queue is reset: finish open PRs, then make growing pay (balance pass, staff bottleneck advice, a 7-day trend, curb appeal), then the outside and atmosphere. (#261)
 - `tools/check.sh` gives the test suite 25 minutes instead of 10; the full suite now takes about 11 minutes on a busy machine and was being cut off without a failure. (#252)
 - Workers check GitHub for an existing PR or claim before starting an issue, claim it with a comment, and stop pushing once a PR is ready, so no work is done twice. (#249)
 - Add data-driven furniture looks and named kit-material colour recipes for the first diner seats. (#220)
