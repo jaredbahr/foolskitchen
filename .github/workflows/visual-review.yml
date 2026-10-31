@@ -335,7 +335,7 @@ jobs:
           assert review['seed'] == data['master_seed'] == data['new_game_seed_override'] == '1', 'staff-activity-report: wrong actual seed'
           assert review['setup'] == 'expanded_tables' and review['days'] == review['day'] == 14, 'staff-activity-report: wrong fixed service case'
           assert review['unchanged'] is True and review['validation_timing'] == 'frame_post_draw' and review['world_tick'] == data['world_tick'] > 0, 'staff-activity-report: incoherent native receipt'
-          assert review['advice_id'] == 'cook' and 'hiring a second cook' in review['advice'], 'staff-activity-report: missing natural cook advice'
+          assert review['advice_id'] == 'cook' and 'hiring another cook' in review['advice'], 'staff-activity-report: missing natural cook advice'
           print(f'staff-activity-report: actual expanded_tables day14 cook advice, unchanged session, sha256={hashlib.sha256(raw).hexdigest()}')
 
           PY

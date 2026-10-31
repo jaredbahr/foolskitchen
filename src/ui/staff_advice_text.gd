@@ -17,7 +17,7 @@ const ROLE_LABELS: Dictionary = {
 const BUSY_HOURS: String = "%s: busy %d%% of open hours"
 const OWNER_BUSY_HOURS: String = "%s: busy %d%% of assigned open hours"
 const ADVICE: Dictionary = {
-	&"cook": "Your cooks are busy and guests are leaving after waiting. Consider hiring a second cook before adding tables.",
+	&"cook": "Your cooks are busy and guests are leaving after waiting. Consider hiring another cook before adding tables.",
 	&"server": "Your servers are busy and guests are leaving after waiting. Consider hiring another server before adding tables.",
 	&"tables": "Your team has time to spare. Add tables to make room for more guests.",
 	&"keeping_up": "Your team is keeping up.",
