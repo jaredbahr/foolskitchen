@@ -114,7 +114,14 @@ func arrive(lines: Array[Dictionary]) -> bool:
 		var kind: int = int(_kinds.get(id, StorageSpace.DRY))
 		if not by_kind.has(kind):
 			by_kind[kind] = []
-		by_kind[kind].append({"id": id, "qty": qty})
+		var copied: Dictionary = {"id": id, "qty": qty}
+		if line.has("total_cost"):
+			copied["total_cost"] = line["total_cost"]
+		elif line.has("unit_cost"):
+			var valued: Array[Dictionary] = PurchaseBasis.allocate([line] as Array[Dictionary])
+			if valued[0].has("total_cost"):
+				copied["total_cost"] = valued[0]["total_cost"]
+		by_kind[kind].append(copied)
 	if by_kind.is_empty():
 		return false
 	var door: Vector2i = route["door"]
@@ -510,7 +517,7 @@ func _stock(lines: Array[Dictionary]) -> void:
 	var day: int = world.clock.day if world != null else 1
 	var merged: Array[Dictionary] = []
 	for line: Dictionary in lines:
-		stock.add(StringName(line["id"]), int(line["qty"]), day)
+		stock.add(StringName(line["id"]), int(line["qty"]), day, int(line.get("total_cost", -1)))
 		merged.append({"id": StringName(line["id"]), "qty": int(line["qty"])})
 	stored.emit(merged)
 

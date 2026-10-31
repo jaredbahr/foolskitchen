@@ -26,6 +26,8 @@ extends Resource
 ## list-price total and rounded up: ceil(list_total * (1 + premium)).
 ## Buying by hand in the Stock panel is always at list price.
 @export_range(0.0, 1.0, 0.01) var auto_reorder_premium: float = 0.05
+## Automatic untouched targets cover one forecast service plus this buffer.
+@export_range(1.0, 2.0, 0.05) var restock_buffer: float = 1.10
 
 ## Deliveries (FK-087). Orders placed in the morning (the auto-reorder and
 ## hand orders) arrive at once, as before deliveries. Orders placed during

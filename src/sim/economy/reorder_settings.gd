@@ -13,6 +13,8 @@ var _order: Array[StringName] = []
 var _defaults: Dictionary[StringName, int] = {}
 var _enabled: Dictionary[StringName, bool] = {}
 var _target: Dictionary[StringName, int] = {}
+## Explicit player choices stay fixed; untouched targets follow the forecast.
+var _manual: Dictionary[StringName, bool] = {}
 ## Station-only ingredients (EconomyTuning.station_stock) are listed and
 ## ordered only while in use (FK-083): a shop without a coffee machine never
 ## auto-buys coffee beans. Not saved: the session derives it from the dishes
@@ -21,8 +23,8 @@ var _station_only: Dictionary[StringName, bool] = {}
 var _in_use: Dictionary[StringName, bool] = {}
 
 
-## Defaults: every tuned ingredient is enabled with its morning_stock target,
-## so a new game restocks exactly the same amounts as before this feature.
+## Authored defaults and buying order. Main projects untouched targets from
+## the upcoming service forecast without changing these saved choices.
 func _init(tuning: EconomyTuning = null) -> void:
 	if tuning == null:
 		return
@@ -93,7 +95,17 @@ func set_target(id: StringName, amount: int) -> bool:
 	if not has(id) or amount < 0 or amount > MAX_TARGET:
 		return false
 	_target[id] = amount
+	_manual[id] = true
 	return true
+
+
+## A forecast is a detached plan, never a change to saved player choices.
+func with_forecast(targets: Dictionary[StringName, int]) -> ReorderSettings:
+	var planned: ReorderSettings = copy()
+	for id: StringName in _order:
+		if not bool(_manual.get(id, false)):
+			planned._target[id] = clampi(targets.get(id, 0), 0, MAX_TARGET)
+	return planned
 
 
 ## A detached copy for staged morning changes.
@@ -103,6 +115,7 @@ func copy() -> ReorderSettings:
 	other._defaults = _defaults.duplicate()
 	other._enabled = _enabled.duplicate()
 	other._target = _target.duplicate()
+	other._manual = _manual.duplicate()
 	other._in_use = _in_use.duplicate()
 	other._station_only = _station_only.duplicate()
 	return other
@@ -113,9 +126,11 @@ func to_dict() -> Dictionary:
 	var rows: Dictionary = {}
 	for id: StringName in _order:
 		# Untouched station-only rows stay out of the save, as before them.
-		if _station_only.has(id) and is_enabled(id) and target(id) == default_target(id):
+		if _station_only.has(id) and is_enabled(id) and target(id) == default_target(id) \
+				and not bool(_manual.get(id, false)):
 			continue
-		rows[String(id)] = {"enabled": is_enabled(id), "target": target(id)}
+		rows[String(id)] = {"enabled": is_enabled(id), "target": target(id),
+			"manual": bool(_manual.get(id, false))}
 	return {"version": VERSION, "ingredients": rows}
 
 
@@ -130,6 +145,7 @@ func from_dict(data: Dictionary) -> bool:
 		return false
 	var enabled: Dictionary[StringName, bool] = _enabled.duplicate()
 	var targets: Dictionary[StringName, int] = _target.duplicate()
+	var manual: Dictionary[StringName, bool] = _manual.duplicate()
 	for key: Variant in rows:
 		if typeof(key) != TYPE_STRING:
 			return false
@@ -138,16 +154,20 @@ func from_dict(data: Dictionary) -> bool:
 			return false
 		var on: Variant = (row as Dictionary).get("enabled", null)
 		var amount: Variant = (row as Dictionary).get("target", null)
+		var fixed: Variant = (row as Dictionary).get("manual", null)
 		if typeof(on) != TYPE_BOOL or not _is_whole(amount) \
-				or int(amount) < 0 or int(amount) > MAX_TARGET:
+				or int(amount) < 0 or int(amount) > MAX_TARGET \
+				or ((row as Dictionary).has("manual") and not fixed is bool):
 			return false
 		var id: StringName = StringName(key)
 		if not has(id):
 			continue
 		enabled[id] = on
 		targets[id] = int(amount)
+		manual[id] = bool(fixed) if fixed is bool else int(amount) != default_target(id)
 	_enabled = enabled
 	_target = targets
+	_manual = manual
 	return true
 
 

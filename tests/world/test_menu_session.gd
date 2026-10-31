@@ -2,6 +2,7 @@ extends TestCase
 ## Menu requests, autosave/startup staging and the real kitchen's sale prices.
 
 const MAIN: PackedScene = preload("res://src/world/main.tscn")
+const MANUAL_MAIN: GDScript = preload("res://tests/fixtures/manual_restock_main.gd")
 const SLOT: String = "menu_session"
 
 var _mains: Array[Node] = []
@@ -434,7 +435,8 @@ func test_menu_restore_provider_only_stages_choices_without_touching_the_live_si
 
 
 func test_panel_edits_do_not_save_restock_or_draw_rng_before_next_morning() -> void:
-	var main: Node = _start()
+	# This persistence fixture retains the player-selected stock targets across menu edits.
+	var main: Node = _start(true, null, true)
 	var morning_file: String = FileAccess.get_file_as_string(_path())
 	var full_count: int = Economy.stock.count(&"bun")
 	var consumed: Dictionary[StringName, int] = {&"bun": 1}
@@ -494,8 +496,10 @@ func _next_morning() -> void:
 	assert_eq(Clock.sim.phase, SimClock.Phase.MORNING)
 
 
-func _start(with_saves: bool = true, host: Node = null) -> Node:
+func _start(with_saves: bool = true, host: Node = null, manual_stock: bool = false) -> Node:
 	var main: Node = MAIN.instantiate()
+	if manual_stock:
+		main.set_script(MANUAL_MAIN)
 	main.set("use_saves", with_saves)
 	main.set("save_slot", SLOT)
 	_mains.append(main)
@@ -572,7 +576,8 @@ func test_tree_browsing_missing_and_locked_dishes_draws_no_rng_and_changes_no_sa
 
 
 func test_detail_requirements_aggregate_real_stock_and_use_reachable_station_names() -> void:
-	var main: Node = _start(false)
+	# Fixed opening stock keeps the original Bread 16 -> take 16 -> Bread 0 example.
+	var main: Node = _start(false, null, true)
 	var details: Dictionary[StringName, Dictionary] = main.call("menu_recipe_details")
 	var ingredients: Array = details[&"grilled_cheese"]["ingredients"]
 	assert_true(ingredients.has({"text": "Bread: 16 in stock / 2 needed", "met": true}))

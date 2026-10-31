@@ -315,9 +315,12 @@ func _take_ingredients(agent: SimAgent) -> bool:
 	var needs: Dictionary[StringName, int] = {}
 	for ingredient: IngredientDef in recipe.ingredients:
 		needs[ingredient.id] = needs.get(ingredient.id, 0) + 1
-	if not stock.take_many(needs):
+	var used: Dictionary = stock.take_many_valued(needs)
+	if not bool(used["taken"]):
 		_cancel(order, &"out_of_stock")
 		return false
+	order.ingredient_cost = int(used["cost"])
+	order.ingredient_cost_recorded = bool(used["recorded"])
 	task.payload["ingredients_taken"] = true
 	return true
 

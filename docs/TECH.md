@@ -775,8 +775,9 @@ an active edit/panel/selection first, or opens Settings when none is active.
   use `DayReport.operating_profit()`, excluding all three financing categories.
   The existing `profit()` API still returns the full financial cash movement,
   as do `total_income()` and `total_costs()` for their respective sides; this
-  preserves ledger-parity callers and historical report decoding. Both metrics
-  derive from the existing income/cost dictionaries without new saved fields.
+  preserves ledger-parity callers and historical report decoding. Since #255,
+  the headline also substitutes recorded sold-food cost for stock purchases;
+  unrecorded historical basis is labelled plainly instead of estimated.
   The five-day invariant independently checks the headline's operating result
   and retains the full financial result's parity with the ledger. Main captures
   operating profit before financing for owner XP, so advances earn no XP and repayments/interest
@@ -2083,10 +2084,49 @@ invalidate the appropriate cached geometry. HUD/Menu presentation is read-only.
   queue behavior.
 
 ### 2.3i Stock panel, auto-reorder and sold-out dishes (FK-033, #54)
+- **Served-food accounting (FK-121, #255).** Stock lots retain their actual
+  remaining purchase cost, including the charged standing-order premium.
+  `PurchaseBasis` shares the premium equally across purchase lines (earlier
+  lines receive any whole-unit remainder), then FIFO lots share their total
+  across units by quotient and remainder. Partial takes, deliveries, crate
+  put-away, expiry and JSON reload conserve that value without repricing it.
+  Old lots without cost metadata stay explicitly unrecorded. Aggregate value
+  overflow makes the valuation unavailable and never refuses a stock movement.
+  Kitchen captures the atomic take's cost on the order once; Main includes it
+  only when that order is actually paid, including side drinks. Cancelled or
+  unpaid prepared food does not enter the sold-food cost.
+  `DayReport.operating_profit()` substitutes this sold-food cost for the signed
+  ingredient-purchase net, excluding milestone bonuses and financing as before.
+  Raw income/cost dictionaries and `profit()` retain actual cash movement;
+  `purchase_basis_operating_profit()` preserves existing goal previews, and
+  closing XP/milestone/loan policy still uses the existing ledger input.
+  The report shows purchases, spoilage, remaining stock value and cash change
+  separately, and hides exact unavailable values. New optional report and batch
+  values use decimal strings. A day-scoped spoilage receipt in the existing
+  stock save survives the morning reload without expiring stock twice. There
+  is no new save section, save point, random stream or random draw.
+- **Forecast stock targets (Director's #255 addendum).** Untouched automatic
+  targets cover approximately one service plus `EconomyTuning.restock_buffer`.
+  `RestockForecast` combines the existing demand guest estimate, enabled
+  cookable recipes, repeated ingredients, authored opening-hour visit weights
+  and the eligible customer mix's optional drink/pastry chances. It assumes
+  equal dish choices within each visit kind; it does not simulate future guests.
+  A recipe's primary and optional side portions combine before the buffer is
+  applied and rounded up once to a whole portion, then expand into ingredient
+  units. This can add up to one extra portion per recipe beyond the fractional
+  estimate; the final quantity, cash and storage caps still apply.
+  Morning and opening orders use the service being stocked; closing stock and
+  build-budget forecasts use the existing next-day demand projection. All use
+  the same ordinary cash/storage-limited order planner. Targets never exceed
+  the existing 99-unit limit. Evaluating a forecast returns a detached settings
+  copy and does not rewrite saved choices. Changing a target fixes that player's
+  value; an optional saved `manual` flag preserves it. Legacy targets matching
+  their authored defaults remain automatic, while custom legacy targets stay
+  fixed. Only the existing morning autosave writes these choices.
 - `ReorderSettings` (`src/sim/economy/reorder_settings.gd`) holds `{enabled, target}`
-  per ingredient. Defaults are enabled with `EconomyTuning.morning_stock` targets,
-  whose key order is the fixed buying order. It is saved in the `reorder` section
-  (`{"version": 1, "ingredients": {id: {enabled, target}}}`) at the morning autosave
+  per ingredient, with optional `manual` metadata as described above. The
+  `EconomyTuning.morning_stock` key order remains the fixed buying order. It is
+  saved in the `reorder` section at the morning autosave
   only; restore stages a candidate installed after a complete morning load. A save
   without the section uses the defaults; unknown ids are ignored.
 - **Morning order:** `ReorderSettings.plan(stock, unit_costs, cash, premium)` tops
