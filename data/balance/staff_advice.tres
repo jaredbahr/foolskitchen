@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="StaffAdviceTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/sim/staff_advice_tuning.gd" id="1_staff_advice"]
+
+[resource]
+script = ExtResource("1_staff_advice")
+high_busy_percent = 90.0
+low_busy_percent = 70.0
+min_waiting_losses = 1
+min_no_table_losses = 5

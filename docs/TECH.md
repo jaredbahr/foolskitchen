@@ -563,6 +563,21 @@ an active edit/panel/selection first, or opens Settings when none is active.
   order and defaults. MORNING `set_staff_roster` keeps retained agents and the
   exact owner, adds hires at their role's spawn and removes departures through
   normal task/reservation cleanup. Several people may share a spawn.
+- `StaffActivity` observes existing claims at the start of each OPEN tick,
+  including the final tick before last orders. Travel and station waits count
+  as busy; task selection, movement and random streams are unchanged. Employee
+  rows pool busy person-ticks over open person-ticks by their primary role.
+  The owner has a separate row covering assigned open hours only.
+- Closing copies these counts into optional `DayReport.staff_activity` display
+  data. The next morning resets live counters while `StaffPanel` retains a
+  detached last-service summary in memory. No save provider or save point is
+  added; historical reports without observations remain unknown, not 0% busy.
+- `data/balance/staff_advice.tres` authors the high/low busy thresholds and
+  minimum waiting/table losses. Advice checks cooks, servers, then spare team
+  capacity in that order, using unrounded ratios; `StaffAdviceText` owns the
+  shared wording and display rounding. Waiting losses are a staffing heuristic,
+  not proof of which task delayed a guest. The ordinary balance probe output
+  stays unchanged; opt-in daily report snapshots add the activity field.
 - Quick changes walking by its data multiplier once. Its opt-in movement carries
   baseline-tick credit across cells: the existing neutral cadence is four ticks
   per straight edge and six per diagonal at speed 0.25. Scaling that quantized
