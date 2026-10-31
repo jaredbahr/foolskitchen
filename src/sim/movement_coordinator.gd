@@ -499,10 +499,51 @@ func _wait(world: SimWorld, agent: SimAgent, next: Vector2i) -> void:
 						_cooperative[winner.id]["winner_route"] = winner_route
 	if waits % world.movement_tuning.repath_after_ticks == 0 \
 			and (not _resume.has(agent.id) or _returning.has(agent.id)) \
-			and not agent is CourierAgent:
+			and not agent is CourierAgent \
+			and not _reciprocal_head_on_winner(world, agent, holder, next):
 		var alternate: Array[Vector2i] = route(world, agent, agent.cell, agent.destination(), true)
 		if not alternate.is_empty() and alternate.size() > 1 and alternate[1] != next:
 			agent.install_movement_route(alternate)
+
+
+## A reciprocal cardinal pair must not both detour at the same early deadline.
+## Keep actual right of way while the other actor uses existing route/yield rules.
+## This only queries legal physical intentions; no claims or movement change here.
+func _reciprocal_head_on_winner(world: SimWorld, agent: SimAgent, holder: SimAgent,
+		next: Vector2i) -> bool:
+	if holder == null or holder == agent or not _before(world, agent, holder):
+		return false
+	if not agent.movement_admitted or not holder.movement_admitted \
+			or agent.has_arrived() or holder.has_arrived() or agent.next_cell() != next \
+			or holder.cell != next or holder.next_cell() != agent.cell:
+		return false
+	var delta: Vector2i = next - agent.cell
+	if absi(delta.x) + absi(delta.y) != 1:
+		return false
+	if agent.move_progress != 0.0 or holder.move_progress != 0.0 \
+			or _stopping.has(agent.id) or _stopping.has(holder.id) \
+			or _edges.has(agent.id) or _edges.has(holder.id):
+		return false
+	if _occupied.get(agent.cell, -1) != agent.id or _occupied.get(holder.cell, -1) != holder.id:
+		return false
+	for mover: SimAgent in [agent, holder]:
+		var multiplier: float = mover.movement_multiplier()
+		if not is_finite(mover.move_speed) or mover.move_speed <= 0.0 \
+				or not is_finite(multiplier) or multiplier <= 0.0:
+			return false
+		var target: Vector2i = holder.cell if mover == agent else agent.cell
+		if not _legal_cell(world, mover, mover.cell) or not _legal_cell(world, mover, target) \
+				or not world.grid.step_open(mover.cell, target):
+			return false
+		if mover is CustomerAgent and not world.grid.guest_step_ok(mover.cell, target):
+			return false
+		for point: Vector2i in [mover.cell, target]:
+			var next_owner: int = _next.get(point, mover.id)
+			var swept_owner: int = _swept.get(point, mover.id)
+			if (next_owner != agent.id and next_owner != holder.id) \
+					or (swept_owner != agent.id and swept_owner != holder.id):
+				return false
+	return true
 
 
 ## An idle or unleased waiting employee can clear incoming leased work.
