@@ -114,7 +114,7 @@ static func _coffee_shop(main: Node) -> bool:
 		return false
 	for placement: Array in [[&"coffee_machine", Vector2i(9, 5), 2], [&"coffee_machine", Vector2i(10, 5), 2],
 			[&"round_table", Vector2i(2, 8), 0], [&"rounded_chair", Vector2i(1, 8), 1],
-			[&"rounded_chair", Vector2i(4, 9), 3], [&"plant_small_2", Vector2i(12, 9), 0],
+			[&"rounded_chair", Vector2i(4, 9), 3], [&"plant_small_2", Vector2i(5, 8), 0],
 			[&"side_table", Vector2i(11, 5), 2], [&"plant_small_2", Vector2i(12, 5), 0]]:
 		if not editor.buy(placement[0], placement[1], placement[2]):
 			return false
@@ -351,17 +351,38 @@ static func _table_before(left: PlacedItem, right: PlacedItem) -> bool:
 	return left.id < right.id
 
 
-## These concepts retain the original four-seat left dining group. The
-## roomier default rotates its starter tables, so this one square table is
-## explicitly returned to the concept's original orientation before the
-## unchanged lower table/chairs are installed. Default play is untouched.
+## Preserve real aisles around the concepts' ten seats. Empty seats still
+## cannot be used as paths: the original narrow shell needs both side
+## bypasses, while the roomier shop already has the eastern floor. As with
+## the existing concept equipment, the ordinary editor builds these strips
+## with the same free construction books; stock and service remain paid.
+static func _concept_access_floor(main: Node, editor: ShopEditor) -> bool:
+	var sim: RestaurantSim = main.get("sim") as RestaurantSim
+	var building: Rect2i = editor.footprint().building
+	var columns: Array[int] = [building.position.x - 1]
+	if not sim.world.grid.is_walkable(Vector2i(13, 8)):
+		columns.append(building.end.x)
+	for x: int in columns:
+		var cells: Array[Vector2i] = []
+		for y: int in range(6, 10):
+			cells.append(Vector2i(x, y))
+		if not editor.apply_floor(cells, true):
+			return false
+	return true
+
+
+## These concepts retain the original four-seat left dining group. Restore
+## its complete pose before adding the unchanged lower table/chairs: merely
+## turning the roomier starter in place overlaps that lower table. The other
+## starter table, item counts and default play remain untouched.
 static func _concept_west_table(main: Node, editor: ShopEditor) -> bool:
 	var sim: RestaurantSim = main.get("sim") as RestaurantSim
 	var tables: Array[PlacedItem] = _starter_tables(sim.world.grid)
-	if tables.is_empty():
+	if tables.is_empty() or not _concept_access_floor(main, editor):
 		return false
 	var west: PlacedItem = tables[0]
-	return west.quarter_turns == 0 or editor.move(west.id, west.origin, 0)
+	var target: Vector2i = Vector2i(2, 6)
+	return (west.origin == target and west.quarter_turns == 0) or editor.move(west.id, target, 0)
 
 
 ## Declared fryer-fixture construction pose, not a service-policy change.

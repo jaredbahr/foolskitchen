@@ -104,6 +104,7 @@ func _assert_profile(profile: String, original: bool) -> void:
 	if west != null:
 		assert_eq(west.quarter_turns, 0, "only this concept restores the west table's original seating orientation")
 		assert_eq(DiningSeats.usable_cells(sim.world.grid, west).size(), 4, "the left dining group retains four usable seats")
+	_assert_actor_access(sim)
 
 
 func _start(with_saves: bool) -> void:
@@ -153,7 +154,7 @@ func _assert_all_setups(original: bool) -> void:
 		if accepted:
 			_assert_work_cells_not_seats(sim, profile)
 			if profile == "joined_tables":
-				_assert_joined_fixture(sim)
+				_assert_joined_fixture(sim, original)
 		# This is the same ordinary boundary used immediately after apply by
 		# BalanceProbe. A refusal remains a test failure; record all profiles.
 		sim.start_day()
@@ -267,9 +268,10 @@ func _assert_work_cells_not_seats(sim: RestaurantSim, profile: String) -> void:
 			assert_false(seats.has(work), "%s: %s work cell %s must not be a reserved-only seat" % [profile, definition.id, work])
 
 
-func _assert_joined_fixture(sim: RestaurantSim) -> void:
-	var west: PlacedItem = sim.world.grid.item_at(Vector2i(3, 7))
-	var east: PlacedItem = sim.world.grid.item_at(Vector2i(5, 7))
+func _assert_joined_fixture(sim: RestaurantSim, original: bool) -> void:
+	var origin: Vector2i = Vector2i(3, 7) if original else Vector2i(4, 8)
+	var west: PlacedItem = sim.world.grid.item_at(origin)
+	var east: PlacedItem = sim.world.grid.item_at(origin + Vector2i(2, 0))
 	assert_not_null(west)
 	assert_not_null(east)
 	if west == null or east == null:
@@ -279,3 +281,59 @@ func _assert_joined_fixture(sim: RestaurantSim) -> void:
 	var ids: Array[int] = [west.id, east.id]
 	assert_eq(sim.world.grid.dining_group_members(west.id), ids, "the same two tables form one joined group")
 	assert_eq(DiningSeats.usable_cells(sim.world.grid, west).size(), 6, "the translated group retains six usable seats")
+
+
+## Static actor-aware routes ignore temporary people, never private seats.
+## A real admitted guest borrows exactly its destination's normal booking;
+## no one moves and every booking is released after the individual query.
+func _assert_actor_access(sim: RestaurantSim) -> void:
+	var world: SimWorld = sim.world
+	var streams: Dictionary = GameState._capture_save()
+	var staff_checked: int = 0
+	for actor: SimAgent in world.agents:
+		if not actor is StaffAgent or actor.role not in [&"cook", &"server"]:
+			continue
+		staff_checked += 1
+		for item: PlacedItem in world.grid.items():
+			for work: Vector2i in item.work_cells:
+				var path: Array[Vector2i] = world.movement.route(world, actor, actor.cell, work, false)
+				assert_false(path.is_empty(), "each real staff member reaches every authored work cell without any seat")
+				for cell: Vector2i in path:
+					assert_eq(MovementInvariants._cell_problem(world, actor, cell), "")
+				for index: int in range(1, path.size()):
+					assert_eq(MovementInvariants._edge_problem(world, actor, path[index - 1], path[index]), "")
+	assert_eq(staff_checked, 2)
+	var random: RandomNumberGenerator = RandomNumberGenerator.new()
+	random.seed = 263
+	var guest: CustomerAgent = CustomerAgent.new(sim, random)
+	guest.cell = world.grid.entries()[0]
+	world.add_agent(guest)
+	assert_true(guest.movement_admitted, "the route witness is a real street admission")
+	if not guest.movement_admitted:
+		world.remove_agent(guest)
+		return
+	var checked: Dictionary[Vector2i, bool] = {}
+	for item: PlacedItem in world.grid.items():
+		for seat: Vector2i in item.seat_cells:
+			if checked.has(seat):
+				continue
+			checked[seat] = true
+			var table: PlacedItem = world.grid.item(world.grid.dining_table_id(seat))
+			assert_not_null(table)
+			if table == null:
+				continue
+			var booked: bool = table.reserve(seat, guest.id)
+			assert_true(booked)
+			if not booked:
+				continue
+			var path: Array[Vector2i] = world.movement.route(world, guest, guest.cell, seat, false)
+			assert_false(path.is_empty(), "each of the ten seats has a route that avoids every foreign seat")
+			for cell: Vector2i in path:
+				assert_eq(MovementInvariants._cell_problem(world, guest, cell), "")
+			for index: int in range(1, path.size()):
+				assert_eq(MovementInvariants._edge_problem(world, guest, path[index - 1], path[index]), "")
+			assert_true(table.release(seat, guest.id))
+	assert_eq(checked.size(), 10)
+	assert_eq(world.now, 0, "route inspection never advances service")
+	assert_eq(GameState._capture_save(), streams, "the independent route witness draws no named stream")
+	world.remove_agent(guest)
