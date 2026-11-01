@@ -95,7 +95,7 @@ func test_theme_readout_tracks_accepted_enabled_dishes_without_editing_menu() ->
 	var plain: RecipeDef = _recipe(&"plain", "Plain dish", 6)
 	var settings: MenuSettings = MenuSettings.new([diner, cafe, plain])
 	_panel.bind_menu(settings)
-	var readout: Label = _panel.get_node("Panel/Content/Identity/MenuTheme") as Label
+	var readout: Label = _panel.get_node("Panel/Content/Body/Scroll/Pad/List/MenuTheme") as Label
 	assert_eq(readout.theme, MenuPanel.SHARED_THEME)
 	assert_eq(readout.text, "Menu leans: Diner 50%, Café 50%")
 	var before: Dictionary = settings.to_dict()

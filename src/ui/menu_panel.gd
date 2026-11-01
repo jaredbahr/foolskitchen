@@ -405,8 +405,9 @@ func _build_sections() -> void:
 	note.add_theme_color_override("font_color", LOCKED_COLOR)
 	identity.move_child(note, _name_feedback.get_index())
 	_hours_controls["note"] = note
-	_theme_label = _add_label(identity, "MenuTheme", "")
-	identity.move_child(_theme_label, _name_feedback.get_index())
+	# Under the dish count, inside the scroll, so short screens keep the list usable.
+	_theme_label = _add_label(list, "MenuTheme", "")
+	list.move_child(_theme_label, _menu_count.get_index() + 1)
 	_add_separator(identity)
 	_drinks_title = _add_label(list, "DrinksTitle", "Drinks")
 	_drinks_title.add_theme_font_size_override("font_size", 20)
