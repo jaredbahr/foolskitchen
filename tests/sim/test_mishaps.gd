@@ -121,7 +121,7 @@ func test_actual_station_work_slows_ten_percent_until_the_degrease_completes() -
 
 func test_spill_messes_ignore_random_dirt_cap_and_one_clean_clears_all_kinds() -> void:
 	_make()
-	var cell: Vector2i = Vector2i(4, 7)
+	var cell: Vector2i = Vector2i(5, 7)
 	assert_true(_sim.cleanliness.add_spill(cell))
 	assert_true(_sim.cleanliness.add_spill(cell, true))
 	assert_eq(_sim.cleanliness.spot_count(), 1)
@@ -204,7 +204,7 @@ func test_owner_floor_can_degrease_but_rest_cannot_and_real_work_clears_grease()
 func test_overnight_withdraws_claimed_degrease_and_clears_every_day_local_counter() -> void:
 	_make()
 	_grease(_station().id)
-	_sim.cleanliness.add_spill(Vector2i(4, 7), true)
+	_sim.cleanliness.add_spill(Vector2i(5, 7), true)
 	_sim.clean_tasks.sync_spots()
 	_sim.mishaps.record_spill(true)
 	_server().tick(_sim.world)
@@ -464,7 +464,7 @@ func _real_spill_trace(_seed_value: int) -> Array[int]:
 
 
 ## Only the three carry-route regressions need distance after pickup. The new
-## west seat can be served from the pass itself; retain the other default geometry.
+## near seat can be served from the pass itself; retain the other default geometry.
 func _make_carry_route() -> bool:
 	_make()
 	var tables: Array[PlacedItem] = ShopBuilder.items_with_def(_sim.world, &"table_2")
@@ -473,20 +473,28 @@ func _make_carry_route() -> bool:
 		return false
 	var pass_item: PlacedItem = ShopBuilder.items_with_def(_sim.world, &"pass_counter")[0]
 	var zero_distance: bool = false
-	for seat: Vector2i in tables[0].seat_cells:
-		zero_distance = zero_distance or _sim.service_cells(tables[0].id, seat).has(pass_item.work_cells[1])
+	var near_table: PlacedItem = null
+	for table: PlacedItem in tables:
+		for seat: Vector2i in table.seat_cells:
+			if _sim.service_cells(table.id, seat).has(pass_item.work_cells[1]):
+				near_table = table
+				zero_distance = true
+				break
+		if zero_distance:
+			break
 	assert_true(zero_distance, "remove the actual near table that permits a zero-distance handover")
 	if not zero_distance:
 		return false
 	var random_before: int = _stream.state
-	var removed: bool = _sim.world.grid.remove(tables[0].id)
+	var removed: bool = _sim.world.grid.remove(near_table.id)
 	assert_true(removed)
 	assert_eq(_stream.state, random_before, "fixture geometry consumes no mishap randomness")
 	if not removed:
 		return false
 	tables = ShopBuilder.items_with_def(_sim.world, &"table_2")
-	for seat: Vector2i in tables[0].seat_cells:
-		assert_false(_sim.service_cells(tables[0].id, seat).has(pass_item.work_cells[1]))
+	for table: PlacedItem in tables:
+		for seat: Vector2i in table.seat_cells:
+			assert_false(_sim.service_cells(table.id, seat).has(pass_item.work_cells[1]))
 	return true
 
 

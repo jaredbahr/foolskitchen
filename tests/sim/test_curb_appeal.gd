@@ -306,7 +306,7 @@ func test_collect_and_evaluate_leave_world_rng_clock_and_edit_state_unchanged() 
 	var decor_rows: Array[Array] = decor.to_rows()
 	var finish_revision: int = finishes.revision
 	var decor_revision: int = decor.revision
-	var path: Array[Vector2i] = grid.find_guest_path(grid.entries()[0], Vector2i(8, 8))
+	var path: Array[Vector2i] = grid.find_guest_path(grid.entries()[0], Vector2i(9, 10))
 	assert_false(path.is_empty(), "the purity comparison uses a real reachable entry route")
 	var tuning_before: Dictionary = {"items": TUNING.item_categories.duplicate(),
 		"weights": TUNING.weights.duplicate(), "caps": TUNING.caps.duplicate(),
@@ -322,7 +322,7 @@ func test_collect_and_evaluate_leave_world_rng_clock_and_edit_state_unchanged() 
 	assert_eq(decor.to_rows(), decor_rows)
 	assert_eq(finishes.revision, finish_revision)
 	assert_eq(decor.revision, decor_revision)
-	assert_eq(grid.find_guest_path(grid.entries()[0], Vector2i(8, 8)), path)
+	assert_eq(grid.find_guest_path(grid.entries()[0], Vector2i(9, 10)), path)
 	assert_eq({"items": TUNING.item_categories, "weights": TUNING.weights, "caps": TUNING.caps, "decay": TUNING.repeat_decay,
 		"bonus": TUNING.max_bonus}, tuning_before)
 

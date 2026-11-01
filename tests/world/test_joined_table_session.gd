@@ -303,13 +303,15 @@ func test_occupied_singleton_cannot_move_or_accept_joins_but_its_legacy_sale_sti
 	assert_eq(_tables.size(), 3)
 	var single: PlacedItem = _tables[0]
 	var incoming: PlacedItem = _tables[2]
-	assert_eq(single.origin, Vector2i(2, 6))
+	# Join the west side of the actual singleton, clear of its body and other tables.
+	var join_origin: Vector2i = single.origin + Vector2i(-2, 0)
+	assert_eq(single.origin, Vector2i(3, 7))
 	assert_eq(_world().grid.dining_group_members(single.id), [single.id] as Array[int])
 	assert_true(_editor().check_move(single.id, Vector2i(2, 8), 0).ok,
 		"the singleton relocation is legal before the hold")
-	assert_true(_editor().check_buy(&"table_2", Vector2i(4, 6), 1).ok,
+	assert_true(_editor().check_buy(&"table_2", join_origin, 1).ok,
 		"the proposed new-table join is legal before the hold")
-	assert_true(_editor().check_move(incoming.id, Vector2i(4, 6), 1).ok,
+	assert_true(_editor().check_move(incoming.id, join_origin, 1).ok,
 		"the proposed moved-table join is legal before the hold")
 	var held_seat: Vector2i = single.seat_cells[0]
 	assert_true(single.seat_cells.has(held_seat))
@@ -318,14 +320,14 @@ func test_occupied_singleton_cannot_move_or_accept_joins_but_its_legacy_sale_sti
 	var books: Dictionary = Economy.ledger.to_dict()
 	var cash: int = Economy.cash
 	var relocation: EditCheck = _editor().check_move(single.id, Vector2i(2, 8), 0)
-	var purchase: EditCheck = _editor().check_buy(&"table_2", Vector2i(4, 6), 1)
-	var joining: EditCheck = _editor().check_move(incoming.id, Vector2i(4, 6), 1)
+	var purchase: EditCheck = _editor().check_buy(&"table_2", join_origin, 1)
+	var joining: EditCheck = _editor().check_move(incoming.id, join_origin, 1)
 	for check: EditCheck in [relocation, purchase, joining]:
 		assert_false(check.ok)
 		assert_true(check.why.contains("in use"), "the actual hold, rather than incidental placement, refuses the edit")
 	assert_false(_main.call("shop_move", single.id, Vector2i(2, 8), 0))
-	assert_false(_main.call("shop_buy", &"table_2", Vector2i(4, 6), 1))
-	assert_false(_main.call("shop_move", incoming.id, Vector2i(4, 6), 1))
+	assert_false(_main.call("shop_buy", &"table_2", join_origin, 1))
+	assert_false(_main.call("shop_move", incoming.id, join_origin, 1))
 	assert_eq(_editor().to_dict(), layout)
 	assert_eq(Economy.ledger.to_dict(), books)
 	assert_eq(Economy.cash, cash)

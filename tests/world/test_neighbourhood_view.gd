@@ -455,10 +455,10 @@ func test_real_main_keeps_the_original_default_shop_framing_and_reserves_the_max
 	await _start()
 	var rig: CameraRig = _main.get_node("CameraRig") as CameraRig
 	var camera: Camera3D = rig.get_node("Camera3D") as Camera3D
-	# The authored new shop is16x13; retain the original14x12 framing scale,
+	# The authored new shop is16x14; its height now limits the fit. Retain the14x12 framing scale,
 	# yaw, pitch and projection while centring and fitting the larger shell.
-	var expected_focus: Vector2 = Vector2(4.0, 3.25)
-	var expected_zoom: float = 12.0 * (16.0 / 14.0)
+	var expected_focus: Vector2 = Vector2(4.0, 3.5)
+	var expected_zoom: float = 12.0 * (14.0 / 12.0)
 	assert_eq(rig.initial_focus, expected_focus)
 	assert_eq(rig.initial_zoom, expected_zoom)
 	assert_eq(rig.initial_yaw_degrees, 45.0)
