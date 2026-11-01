@@ -335,12 +335,13 @@ func _bind_saved_capture() -> void:
 		_review_fail("the canonical frame60 capture or native proof is missing")
 		return
 	var metadata: Dictionary = raw
+	# JSON numbers are floats; nested Dictionary equality preserves numeric types.
 	if metadata.get("scene") != "res://tools/movement_review.tscn" or metadata.get("frame") != 60 \
 			or metadata.get("width") != 1600 or metadata.get("height") != 900 \
 			or metadata.get("world_tick") != _review_render["world_tick"] \
 			or metadata.get("master_seed") != "1" or metadata.get("new_game_seed_override") != "1" \
 			or metadata.get("engine_errors") != 0 or metadata.get("day_phase") != _review_render["phase"] \
-			or metadata.get("capture_parameters") != {"open": false, "fast_ticks_per_frame": 0, "speed": 0} \
+			or metadata.get("capture_parameters") != {"open": false, "fast_ticks_per_frame": 0.0, "speed": 0.0} \
 			or metadata.get("capture_timing") != "frame_post_draw" \
 			or metadata.get("image_file") != "shot_0060.png" \
 			or FileAccess.get_sha256(png).length() != 64 \
