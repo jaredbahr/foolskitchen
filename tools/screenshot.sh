@@ -26,6 +26,7 @@
 # --joined-tables-review --speed=0 --frames=90 shows one real party of six after normal table moves/opening/walking (explicit unsaved fixture).
 # --restroom-review --speed=0 --frames=12,30 shows two toilets, partitions, mirror and dryer, then person scale.
 # --blueprints=selection|ghost|stamped --speed=0 --frames=30 [--quarter=N] shows a table/rug box selection, rotated group ghost, or stamped pair.
+# --menu-boards-review --speed=0 --frames=12,30 shows a placed board and its inspector section choice, then the Menu theme readout.
 # Build previews use the production morning input API without buying or saving.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -42,7 +43,7 @@ window_size="1600x900"
 window_size_requested=false
 for a in "$@"; do
   [[ "$a" == --out=* ]] && out="${a#--out=}"
-  [[ "$a" == --settings || "$a" == --settings-world || "$a" == --loan-review || "$a" == --milestone-review || "$a" == --diner-review ]] && settings_capture=true
+  [[ "$a" == --settings || "$a" == --settings-world || "$a" == --loan-review || "$a" == --milestone-review || "$a" == --diner-review || "$a" == --menu-boards-review ]] && settings_capture=true
   [[ "$a" == --catalogue-review=* ]] && settings_capture=true
   if [[ "$a" == --lease-review* ]]; then
     settings_capture=true
