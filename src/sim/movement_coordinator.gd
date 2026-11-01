@@ -503,8 +503,47 @@ func _wait(world: SimWorld, agent: SimAgent, next: Vector2i) -> void:
 			and not (_reciprocal_head_on_winner(world, agent, holder, next) \
 				or (holder != null and _reciprocal_head_on_winner(world, holder, agent, agent.cell))):
 		var alternate: Array[Vector2i] = route(world, agent, agent.cell, agent.destination(), true)
+		if alternate.is_empty():
+			alternate = _local_reconnection(world, agent, next)
 		if not alternate.is_empty() and alternate.size() > 1 and alternate[1] != next:
 			agent.install_movement_route(alternate)
+
+
+## A distant body cut must not hide a legal local way around this blocker.
+## Rejoin a strictly later original vertex; preserve its real goal and suffix.
+func _local_reconnection(world: SimWorld, agent: SimAgent, blocked_next: Vector2i) -> Array[Vector2i]:
+	if agent.move_progress != 0.0 or _edges.has(agent.id) or _stopping.has(agent.id) \
+			or agent.has_arrived() or agent.path.back() != agent.destination():
+		return []
+	var original: Array[Vector2i] = agent.path.duplicate()
+	for index: int in range(agent.path_index + 1, original.size()):
+		var anchor: Vector2i = original[index]
+		if GridMath.octile(agent.cell, anchor) > float(world.movement_tuning.yield_search_radius) \
+				or not can_enter(world, agent, anchor):
+			continue
+		# The suffix may still meet people, but never stale geometry or seats.
+		var valid_suffix: bool = _legal_cell(world, agent, anchor)
+		for suffix_index: int in range(index + 1, original.size()):
+			var from: Vector2i = original[suffix_index - 1]
+			var to: Vector2i = original[suffix_index]
+			var delta: Vector2i = to - from
+			if maxi(absi(delta.x), absi(delta.y)) != 1 or not world.grid.step_open(from, to) \
+					or (agent is CustomerAgent and not world.grid.guest_step_ok(from, to)):
+				valid_suffix = false
+				break
+			for cell: Vector2i in _step_cells(from, to):
+				if not _legal_cell(world, agent, cell):
+					valid_suffix = false
+			if not valid_suffix:
+				break
+		if not valid_suffix:
+			continue
+		var prefix: Array[Vector2i] = route(world, agent, agent.cell, anchor, true)
+		if prefix.size() < 2 or prefix[1] == blocked_next:
+			continue
+		prefix.append_array(original.slice(index + 1))
+		return prefix
+	return []
 
 
 ## A reciprocal cardinal pair must not both detour at the same early deadline.
