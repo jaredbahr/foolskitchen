@@ -169,6 +169,10 @@ func tick(world: SimWorld) -> void:
 func maintain_movement_pause(world: SimWorld) -> void:
 	if state <= State.WALKING_TO_SEAT:
 		_advance_visit(world, false)
+	elif state == State.LEAVING and world.clock.phase != SimClock.Phase.CLOSED \
+			and move_progress == 0.0 and world.grid.entries().has(cell):
+		# Consumed recovery movement can physically reach either real exit.
+		state = State.LEFT
 
 
 func _advance_visit(world: SimWorld, allow_movement: bool = true) -> void:
