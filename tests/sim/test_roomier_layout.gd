@@ -13,7 +13,7 @@ func before_each() -> void:
 
 
 func test_new_shop_has_two_cell_aisles_and_six_seats_without_moving_the_old_template() -> void:
-	assert_eq(NEW.rows.size(), 13)
+	assert_eq(NEW.rows.size(), 14)
 	assert_eq(NEW.rows[0].length(), 16)
 	assert_eq(ORIGINAL.rows.size(), 12)
 	assert_eq(ORIGINAL.rows[0].length(), 14)
@@ -28,19 +28,35 @@ func test_new_shop_has_two_cell_aisles_and_six_seats_without_moving_the_old_temp
 	for table: PlacedItem in tables:
 		seats.append_array(table.seat_cells)
 	assert_eq(seats.size(), 6)
-	for corridor: Rect2i in [Rect2i(4, 5, 2, 6), Rect2i(9, 5, 2, 6),
-			Rect2i(4, 9, 7, 2), Rect2i(5, 3, 2, 8), Rect2i(7, 10, 2, 3)]:
+	# Table-band gaps, two lower lanes, the bent pass bypass, and both door lanes.
+	# The right fringe plant is outside these central through routes.
+	for corridor: Rect2i in [Rect2i(5, 6, 2, 6), Rect2i(9, 6, 2, 6),
+			Rect2i(5, 10, 6, 2), Rect2i(4, 3, 2, 4), Rect2i(5, 5, 2, 7),
+			Rect2i(4, 5, 3, 2), Rect2i(7, 11, 2, 3)]:
 		for y: int in range(corridor.position.y, corridor.end.y):
 			for x: int in range(corridor.position.x, corridor.end.x):
 				var cell: Vector2i = Vector2i(x, y)
 				assert_true(world.grid.is_walkable(cell), "two-cell aisle at %s" % cell)
 				assert_false(seats.has(cell), "a through aisle cannot be another guest's seat")
-	# Free floor alone does not prove a doorway: both columns must cross the
-	# room boundary without a divider or a guest's seat in either lane.
-	for x: int in [5, 6]:
-		for y: int in range(3, 10):
-			assert_true(world.grid.step_open(Vector2i(x, y), Vector2i(x, y + 1)),
-				"two-cell kitchen/dining route crosses the edge at %s" % Vector2i(x, y))
+				# Width includes transverse edges as well as forward travel.
+				for direction: Vector2i in [Vector2i.RIGHT, Vector2i.DOWN]:
+					var next: Vector2i = cell + direction
+					if corridor.has_point(next):
+						assert_true(world.grid.step_open(cell, next), "aisle edge at %s to %s" % [cell, next])
+	# The pass at (6,4) makes this a bend: two disjoint cardinal routes cross
+	# the kitchen boundary without borrowing the blocked diagonal past its corner.
+	var left_bypass: Array[Vector2i] = [Vector2i(5, 6), Vector2i(4, 6),
+		Vector2i(4, 5), Vector2i(4, 4)]
+	var right_bypass: Array[Vector2i] = [Vector2i(6, 6), Vector2i(6, 5),
+		Vector2i(5, 5), Vector2i(5, 4)]
+	for path: Array[Vector2i] in [left_bypass, right_bypass]:
+		for index: int in range(1, path.size()):
+			assert_true(world.grid.step_open(path[index - 1], path[index]),
+				"two-cell pass bypass crosses the edge at %s" % path[index - 1])
+	for cell: Vector2i in left_bypass:
+		assert_false(right_bypass.has(cell), "the two pass bypass lanes have no shared vertex")
+	assert_false(world.grid.walkable_neighbours(Vector2i(6, 5)).has(Vector2i(5, 4)),
+		"the real pass corner still forbids the diagonal shortcut")
 	var blocked_seats: Dictionary[Vector2i, bool] = {}
 	for seat: Vector2i in seats:
 		blocked_seats[seat] = true
@@ -53,11 +69,12 @@ func test_new_shop_has_two_cell_aisles_and_six_seats_without_moving_the_old_temp
 			continue
 		assert_false(item.work_cells.is_empty())
 		for target: Vector2i in item.work_cells:
-			var path: Array[Vector2i] = world.grid.find_path_avoiding(Vector2i(7, 12), target, blocked_seats)
-			assert_false(path.is_empty(), "seat-free entrance route to %s at %s" % [definition.id, target])
-			for cell: Vector2i in path:
-				assert_false(blocked_seats.has(cell), "staff cannot use a dining seat as a shortcut")
-	assert_eq(world.grid.entries(), [Vector2i(7, 12), Vector2i(8, 12)] as Array[Vector2i])
+			for entry: Vector2i in world.grid.entries():
+				var path: Array[Vector2i] = world.grid.find_path_avoiding(entry, target, blocked_seats)
+				assert_false(path.is_empty(), "seat-free entrance route to %s at %s" % [definition.id, target])
+				for cell: Vector2i in path:
+					assert_false(blocked_seats.has(cell), "staff cannot use a dining seat as a shortcut")
+	assert_eq(world.grid.entries(), [Vector2i(7, 13), Vector2i(8, 13)] as Array[Vector2i])
 
 
 func test_current_snapshot_identifies_its_base_and_rejects_wrong_or_malformed_identity() -> void:

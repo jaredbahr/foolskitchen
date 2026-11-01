@@ -63,13 +63,17 @@ func test_default_staff_can_reach_every_work_cell_without_using_any_dining_seat(
 
 
 func test_old_doorway_gap_is_detected_even_when_all_dining_seats_are_empty() -> void:
-	# Recreate d7's faulty wall on a detached resource, preserving actual furniture.
+	# Recreate d7's bad-gap components on a detached current shell: old pass,
+	# divider, and the middle north chair at (7,5). Other current furniture stays put.
 	var blocked: ShopLayout = LAYOUT.duplicate(true) as ShopLayout
 	blocked.placements = []
 	for authored: ShopPlacement in LAYOUT.placements:
 		var placement: ShopPlacement = authored.duplicate(true) as ShopPlacement
 		if placement.item_id == &"pass_counter":
 			placement.origin = Vector2i(5, 4)
+		elif placement.item_id == &"table_2" and placement.origin.x == 7:
+			placement.origin = Vector2i(7, 6)
+			placement.quarter_turns = 1
 		blocked.placements.append(placement)
 	blocked.wall_segments = {}
 	for x: int in range(1, blocked.rows[0].length() - 1):
@@ -80,6 +84,13 @@ func test_old_doorway_gap_is_detected_even_when_all_dining_seats_are_empty() -> 
 	assert_not_null(server)
 	if server == null:
 		return
+	assert_eq(sim.world.grid.room(server.cell), SimGrid.Room.DINING)
+	assert_eq(_seats(sim.world).size(), 6)
+	assert_true(_seats(sim.world).has(Vector2i(7, 5)), "the historical north chair closes the sole gap")
+	assert_false(sim.world.movement.standing_cell(sim.world, Vector2i(7, 5)))
+	for item: PlacedItem in sim.world.grid.items():
+		for seat: Vector2i in item.seat_cells:
+			assert_eq(item.reserved_by(seat), -1, "the negative control has no occupied dining seats")
 	assert_false(_has_two_cell_crossing(sim.world))
 	var kitchen_cells: int = 0
 	for item: PlacedItem in sim.world.grid.items():
