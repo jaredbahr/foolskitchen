@@ -1878,8 +1878,8 @@ and Regular, Student and Foodie parties of 1-2. Each type's
 `party_unlock_level` (data) sets the owner level from which it may arrive as
 a group: 5 for Regular, Student and Foodie, 1 for Family (whose own unlock is
 level 4). Below it the type is a single guest that draws exactly what main's
-single guest draws: no size draw and one private seed, so play before any
-group type unlocks matches single-guest main draw for draw (golden-tested).
+single guest draws: no size draw and one private seed. Frozen single-guest
+integration comparisons share the current traffic and world implementation.
 Fixed-size ranges consume no size draw either. An unlocked type draws one
 ranged party size, then clamps it to the largest currently usable dining group
 reachable from the chosen street entry, but never below one. Capacity counts
@@ -1920,7 +1920,8 @@ chairCushion meshes like the existing cushioned kit seats; classification
 does not grant an exception or establish a measured fit. The inspector adds "Party of N".
 All party state is transient, with no save section or action save. Singleton
 regressions freeze only the old integration boundaries from exact main
-`1f9804e` and compare complete tick/RNG snapshots for seeds 1, 7 and 42; these
+`1f9804e` and compare complete tick/RNG snapshots for seeds 1, 7 and 42 under
+the same current traffic implementation; these
 written regressions are not a substitute for the required balance comparisons:
 `bash tools/balance_probe.sh --days=5 --seeds=1,2,3,4,5 --setup=default` and
 `bash tools/balance_probe.sh --days=10 --seeds=1,7,42 --setup=default` on exact
@@ -2132,9 +2133,10 @@ invalidate the appropriate cached geometry. HUD/Menu presentation is read-only.
   while a dish on the menu uses them (`set_in_use`; switching one on in the
   morning tops it up at once), and saves their rows only when changed, so
   default orders and saves are unchanged.
-- **Default play is unchanged**: `tests/world/test_default_play_golden.gd`
-  replays two seeded production days against values recorded on main 6f6495d,
-  and the default probe rows match main exactly. Probe set-ups `coffee_shop`
+- **Food-only compatibility**: `tests/world/test_default_play_golden.gd`
+  records two seeded days in the historical manual-stock shop. Its original
+  main 6f6495d provenance is retained; current physical traffic has its own
+  recorded outcomes and separate throughput comparisons. Probe set-ups `coffee_shop`
   and `bar` build, stock and staff a concept (`ProbeSetups.morning` switches
   on newly unlocked drinks). Tests: `tests/sim/test_concepts.gd`,
   `tests/world/test_concept_session.gd`, counter head clearance in
@@ -2793,15 +2795,22 @@ add. The HUD's morning notice compares with the immediately preceding service.
 Menu and Staff keep their existing controls inside an outer vertical scroll so
 both notices and the panels remain readable on short, scaled windows.
 
-The historical thick-divider two-day drinks compatibility fixture uses a
-detached neutral demand context and retains every original expected row and
-assertion. It predates this growth system; actual default play, growth, saves,
-parties and deterministic replay are covered by the demand tests. The manual
-Day 1 observer also compares all ticks, event/private guest seeds and named
-streams with immutable actual main. No compatibility branch exists in production.
+The historical thick-divider two-day fixture retains its manual stock,
+neutral demand, seed7 and $30 rent, comparing all six recorded fields per day
+under current physical traffic. Its private-seat barrier constrains staff
+access; current default throughput and thin-layout save migration are covered
+separately. The manual-stock Day1 test records current-layout service through
+an exact tick, complete named-stream dictionary and canonical event/private-RNG
+digest, and compares both complete same-seed plays. Historical before traces
+remain outside the project. No compatibility branch exists in production.
 
 ### Roomier starter layout and existing saves (#263)
 
 New shops use the 16×14 authored Tier 1 layout, with three tables at columns 3, 7 and 11, a centred pass at (6, 4), two-cell dining, pass and door approaches, and the same $18 rent. The unchanged plant still narrows the outer-right bottom corner; that fringe is outside the central passing corridors. `data/layouts/tier1_original.tres` preserves the previous 14×12 resource exactly. New-shop snapshots add the known `layout_id` value to the existing version-8 shop section; old bases retain their previous markerless shape. Main selects an authored base before decoding: a missing identity or whole shop section means the original base, a known roomier identity selects the new base, and an unknown or malformed present identity fails the load. No save-supplied resource path is loaded.
 
 Lease margins always apply once to that authored base, not to an already leased/expanded snapshot. Candidate plates and owner setup must succeed before the loaded world replaces the live one. The existing morning autosave remains the only write point. Manual probe fixtures adapt their wing/table coordinates to the actual base; coffee/bar keep their original west-table orientation, ten usable seats and four-seat group. Their construction conventions, paid stock and normal service policy remain unchanged.
+
+Guests keep their own routes during deferred seat release; the automatic busser
+step-off route is restricted to staff. Wall previews also protect reserved movement
+edges and their diagonal corners, including exact undo/redo, while allowing
+unrelated walls and removals.

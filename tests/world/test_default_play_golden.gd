@@ -1,24 +1,17 @@
 extends TestCase
-## FK-083 golden: default hours, the default menu and no drink station play
-## exactly as main did before drinks, Café/Bar themes and opening hours
-## (main 6f6495d). Two seeded production days; every value below was
-## recorded on that main. The new arrival weights, visit draw and drink-add
-## chance must draw nothing and change nothing here. Freeze the historical
-## thick-divider fixture for that contract; the shipped thin layout has separate
-## migration, service and balance-probe coverage. FK-120 also freezes demand
-## at 1.0 in this detached historical context; actual default Day 1 draw-for-draw,
-## later demand growth and replay have separate test_demand_session coverage.
-## FK-121 selects genuine manual stock targets before ordinary planning.
-## Director #257 intentionally rebaselined EXPECTED for faster cooking and
-## $30 rent; that declared rent is charged by this historical fixture. Current
-## automatic targets and rent have separate accounting and balance coverage.
-## Rebaselined for FK-077 messes (spill rolls on the cleanliness stream); customer and review end states are unchanged.
+## Two-day snapshot of current deterministic traffic in the historical FK-083
+## thick-divider shop: default hours, food-only menu, seed7, manual stock,
+## neutral demand and the fixture's $30 rent. Original rows came from main
+## 6f6495d and later economy/mess updates; FK-124 records the changed physical
+## service, cash and review consumption while retaining this complete context.
+## Its private-seat barrier constrains staff service; current starter throughput,
+## thin-layout save migration and demand growth have separate coverage.
 
 const MainScene: PackedScene = preload("res://src/world/main.tscn")
 const MANUAL_MAIN: GDScript = preload("res://tests/fixtures/manual_restock_main.gd")
 const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
 ## Day -> [served, lost, sales, closing cash, customers RNG state, reviews RNG state].
-const EXPECTED: Array = [[20, 1, 184, 356, "-3340690172320019757", "-3285513833473108564"], [19, 0, 172, 385, "1894290104310310707", "4855308092454611495"]]
+const EXPECTED: Array = [[17, 4, 157, 309, "-3340690172320019757", "-6198928102474621411"], [18, 1, 163, 349, "1894290104310310707", "6227064950443097254"]]
 
 var _main: Node
 var _layout_backup: Dictionary = {}
@@ -63,12 +56,12 @@ func after_each() -> void:
 	GameState.new_run(1)
 
 
-func test_two_default_days_match_main_draw_for_draw() -> void:
+func test_two_legacy_manual_stock_days_match_recorded_snapshot() -> void:
 	_main = MainScene.instantiate()
 	_main.set_script(MANUAL_MAIN)
 	_main.set("historical_rent", 30)
 	_main.set("use_saves", false)
-	# Keep this pre-demand compatibility oracle's original two-day assertions.
+	# Keep the historical two-day context and all six recorded fields per day.
 	# A per-session Resource prevents any change to shipped authored tuning.
 	var neutral: DemandTuning = DemandTuning.new()
 	neutral.reputation_factors = PackedFloat32Array([1, 1, 1])
