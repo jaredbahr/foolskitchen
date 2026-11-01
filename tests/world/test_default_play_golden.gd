@@ -12,12 +12,13 @@ extends TestCase
 ## Director #257 intentionally rebaselined EXPECTED for faster cooking and
 ## $30 rent; that declared rent is charged by this historical fixture. Current
 ## automatic targets and rent have separate accounting and balance coverage.
+## Rebaselined for FK-077 messes (spill rolls on the cleanliness stream); customer and review end states are unchanged.
 
 const MainScene: PackedScene = preload("res://src/world/main.tscn")
 const MANUAL_MAIN: GDScript = preload("res://tests/fixtures/manual_restock_main.gd")
 const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
 ## Day -> [served, lost, sales, closing cash, customers RNG state, reviews RNG state].
-const EXPECTED: Array = [[19, 2, 175, 347, "-3340690172320019757", "-3285513833473108564"], [19, 0, 172, 376, "1894290104310310707", "4855308092454611495"]]
+const EXPECTED: Array = [[20, 1, 184, 356, "-3340690172320019757", "-3285513833473108564"], [19, 0, 172, 385, "1894290104310310707", "4855308092454611495"]]
 
 var _main: Node
 var _layout_backup: Dictionary = {}

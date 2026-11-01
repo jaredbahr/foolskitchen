@@ -5,6 +5,7 @@ signal next_day_pressed
 
 const LOAN_INTRODUCTION: String = "The bank covered your shortfall. It'll take a share of your profits until it's paid back."
 const MONEY_LABELS: Dictionary = {
+	Ledger.BREAKAGES: "Breakages",
 	Ledger.BANK_LOAN: "Bank loan",
 	Ledger.LOAN_INTEREST: "Loan interest",
 	Ledger.LOAN_REPAYMENT: "Loan repayment",
@@ -23,6 +24,7 @@ const LEAVE_LABELS: Dictionary = {
 }
 const PROFIT_GREEN: Color = Color("38764b")
 const LOSS_RED: Color = Color("a83e35")
+const STAFF_ADVICE_RULES: StaffAdviceTuning = preload("res://data/balance/staff_advice.tres")
 
 var _restaurant_name: Label
 var _header: Label
@@ -70,6 +72,8 @@ func _ready() -> void:
 ## Replaces every section with the supplied day's results, including empty states.
 func show_report(report: DayReport) -> void:
 	_bind_nodes()
+	# Main follows this compatible single-report API with the detached history.
+	show_history([], report.day)
 	_report_shown = true
 	_restaurant_name.text = report.restaurant_name
 	(get_node("Panel/Scroll/Content/ReviewHeading") as Label).text = "Reviews of %s" % report.restaurant_name
@@ -117,9 +121,19 @@ func show_report(report: DayReport) -> void:
 	_cleanliness.text = "Cleanliness: %s" % report.cleanliness_label \
 		if not report.cleanliness_label.is_empty() else ""
 	_cleanliness.visible = not report.cleanliness_label.is_empty()
+	var mishaps: Label = get_node_or_null("Panel/Scroll/Content/Mishaps") as Label
+	if mishaps == null:
+		mishaps = Label.new()
+		mishaps.name = "Mishaps"
+		mishaps.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_cleanliness.get_parent().add_child(mishaps)
+		_cleanliness.get_parent().move_child(mishaps, _cleanliness.get_index() + 1)
+	mishaps.text = report.mishaps_text
+	mishaps.visible = not report.mishaps_text.is_empty()
 	regulars_summary.text = "Regulars: " + "; ".join(PackedStringArray(report.regulars_lines))
 	regulars_summary.visible = not report.regulars_lines.is_empty()
 	_fill_reasons(report.leave_reasons)
+	_render_team(report.staff_activity, report.leave_reasons)
 	_clear(_low_stock)
 	for line: String in report.low_stock:
 		_add_label(_low_stock, line)
@@ -147,6 +161,17 @@ func show_report(report: DayReport) -> void:
 	show()
 
 
+func show_history(rows: Array[Dictionary], today: int) -> void:
+	_bind_nodes()
+	var clean: Array[Dictionary] = BusinessTrendText.display_rows(rows, today)
+	(%BusinessTrendHeading as Label).text = BusinessTrendText.HEADING
+	(%BusinessTrendSummary as Label).text = BusinessTrendText.summary(clean, today)
+	var chart: BusinessTrendChart = %BusinessTrendChart
+	chart.set_history(clean, today if not clean.is_empty() else 0)
+	chart.visible = clean.size() >= 2
+	(%BusinessTrendSection as VBoxContainer).show()
+
+
 ## Current room presentation is derived, never part of the saved day report.
 ## The optional label comes from paid guests' captured arrival effects, not
 ## a rating or an endorsement of the visit as a whole.
@@ -171,6 +196,19 @@ func _render_demand(forecast: Dictionary) -> void:
 	_demand_factors.text = "\n".join(DemandText.factor_lines(forecast))
 	_demand_explanation.text = DemandText.forecast_note(forecast)
 	_demand_section.visible = not _demand_summary.text.is_empty()
+
+
+func _render_team(summary: Dictionary, leave_reasons: Dictionary) -> void:
+	var clean: Dictionary = StaffActivity.public_snapshot(summary)
+	var rows: VBoxContainer = %TeamActivityRows
+	for index: int in range(StaffAdviceText.ROLES.size()):
+		var label: Label = rows.get_node(NodePath(String(StaffAdviceText.ROLE_NODES[index]))) as Label
+		label.text = StaffAdviceText.role_line(StaffAdviceText.ROLES[index], clean)
+		label.visible = not label.text.is_empty()
+	var advice: Label = %TeamAdvice
+	advice.text = StaffAdviceText.recommendation(STAFF_ADVICE_RULES.recommendation(clean, leave_reasons))
+	advice.visible = not advice.text.is_empty()
+	(%TeamSection as VBoxContainer).visible = not clean.is_empty()
 
 
 func _bind_nodes() -> void:
@@ -201,6 +239,8 @@ func _bind_nodes() -> void:
 	_owner_unlocks = %OwnerUnlocks
 	_milestone_heading = %MilestoneHeading
 	_milestone_rows = %MilestoneRows
+	(%TeamHeading as Label).text = StaffAdviceText.TEAM_HEADING
+	IconStyle.decorate_label(%TeamHeading as Label, &"staff")
 	var content: VBoxContainer = get_node("Panel/Scroll/Content") as VBoxContainer
 	regulars_summary = Label.new()
 	regulars_summary.name = "RegularsSummary"

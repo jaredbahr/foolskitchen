@@ -70,6 +70,8 @@ var _has_panned: bool = false
 var _focus_glide: Variant = null
 var _view_viewport: Viewport
 var _preferences: SettingsPreferences
+var _street_pan_normal: Vector2i = Vector2i.ZERO
+var _street_pan_metres: float = 0.0
 
 
 func _enter_tree() -> void:
@@ -196,6 +198,8 @@ func step_view(delta: float, pan_input: Vector2) -> void:
 ## zoom become the defaults. `reset` re-applies the default view at once;
 ## otherwise focus and zoom glide there, keeping the player's rotation.
 func frame_area(center: Vector2, limits: Vector2, zoom: float, reset: bool) -> void:
+	_street_pan_normal = Vector2i.ZERO
+	_street_pan_metres = 0.0
 	initial_focus = center
 	pan_center = center
 	pan_limits = limits
@@ -206,6 +210,20 @@ func frame_area(center: Vector2, limits: Vector2, zoom: float, reset: bool) -> v
 		return
 	_target_zoom = _clamp_zoom(zoom)
 	_focus_glide = Vector3(center.x, 0.0, center.y)
+
+
+## Extend one cardinal clamp side without changing the shop framing defaults
+## or current pose. Main reapplies this after its existing frame_area call.
+func set_street_pan_extension(normal: Vector2i, metres: float) -> bool:
+	if not is_finite(metres) or metres < 0.0:
+		return false
+	if normal != Vector2i.ZERO and absi(normal.x) + absi(normal.y) != 1:
+		return false
+	if normal == Vector2i.ZERO and metres != 0.0:
+		return false
+	_street_pan_normal = normal
+	_street_pan_metres = metres
+	return true
 
 
 func rotate_quarter(turns: int) -> void:
@@ -349,8 +367,18 @@ func _clamp_zoom(value: float) -> float:
 
 
 func _clamp_focus() -> void:
-	position.x = clampf(position.x, pan_center.x - absf(pan_limits.x), pan_center.x + absf(pan_limits.x))
-	position.z = clampf(position.z, pan_center.y - absf(pan_limits.y), pan_center.y + absf(pan_limits.y))
+	var low: Vector2 = pan_center - pan_limits.abs()
+	var high: Vector2 = pan_center + pan_limits.abs()
+	if _street_pan_normal.x < 0:
+		low.x -= _street_pan_metres
+	elif _street_pan_normal.x > 0:
+		high.x += _street_pan_metres
+	elif _street_pan_normal.y < 0:
+		low.y -= _street_pan_metres
+	elif _street_pan_normal.y > 0:
+		high.y += _street_pan_metres
+	position.x = clampf(position.x, low.x, high.x)
+	position.z = clampf(position.z, low.y, high.y)
 	position.y = 0.0
 
 

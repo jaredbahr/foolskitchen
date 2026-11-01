@@ -230,13 +230,54 @@ an active edit/panel/selection first, or opens Settings when none is active.
   `1.0 - 0.3 * spots / 12`; later dirt changes do not rescale that visit or
   replace the retained review input.
   The report captures the day's worst Spotless/A bit messy/Grubby band, F3
-  shows the current spot count, and ShopView draws shaded, matte Walnut floor
+  shows the current spot count, and ShopView draws shaded, matte floor
   decals with a roughly 0.2-unit radius, using the approved swatch palette.
+  The active floor paint and finish's main swatch chooses cream on dark floors
+  and dark brown on light floors; a thin ink outline keeps every kind readable.
   `start_day()` tidies all spots and mop tasks before the existing morning
   autosave. Spots themselves are never saved; only the named RNG stream is
   restored by GameState. The optional Cleaner joins the existing roster,
   candidate and next-morning staff-save paths, with a skill-scaled Tier 1
   base wage of $20 versus a server's $25; cook/server minimums still hold.
+- **Everyday messes (FK-077):** `data/balance/messes.tres` authors every chance,
+  cap and threshold. `RestaurantSim.configure_messes` installs a transient
+  `MishapState` sharing the existing cleanliness RNG; no new stream or save
+  section is created. While genuinely carrying food, a server rolls once per
+  newly entered cell (0.04% normally; Clumsy ×3; extra crowding near the pass
+  adds 0.02% per person above the authored threshold, capped at 0.3%). Standing
+  still and a zero base chance draw nothing. Drinks are excluded. Pickup
+  must finish before any spill rolls, including a reclaimed trip's
+  walk back to the pass after the owner changes duties.
+  The first carried READY meal spills; other tray meals continue on the same route.
+  The original ticket returns to PLACED and follows real ingredient fetching,
+  cooking and plating again, retaining the guest's original wait budget and
+  price. It never charges a second meal or creates a second guest order.
+  A spill enters `CleanlinessState` independently of random dirt's cap;
+  one cleaning task clears a cell's dirt, spill and broken fragments together.
+  Five percent of spills break one actual owned plate. `PlateLedger.spill_order`
+  makes an intact held plate dirty, or removes a broken one from owned stock;
+  legacy no-sink service can break a clean/dirty owned plate without an order
+  token. Clean + dirty + in use remains equal to the live total, even at zero.
+  Main records the authored $2 replacement immediately under **Breakages**.
+  Already-paid replacements arrive during overnight tidy, before the existing
+  morning autosave, restoring the existing `plates.total` section with no new
+  fields or recovery UI. No morning is written with a transient zero total.
+  Each completed recipe station step adds one grease use, once per real task
+  step even across replay. At 24 uses that station works at 90% of its
+  normal work rate (walking, fetching and plating keep their rates).
+  `CleanTaskController` posts a priority-0 **Degrease** walk/work task at the
+  actual station, with normal reservations; completion clears its grease.
+  Cleaning job priorities apply: a dedicated cleaner owns it; without one,
+  servers use low-priority Cleaning, then the owner on Floor duty. Off remains
+  Off. Terminal failed maintenance waits for a layout change before retrying.
+  Uncleaned spills can produce three **Sticky floor** review quotes. The live
+  evening report adds a plain **Mishaps** line with spills, broken plates and
+  stations degreased; this display text is deliberately absent from historical
+  report saves. Overnight withdraws all mess/maintenance tasks and clears floor
+  messes, grease and daily counters. The approved Food Kit `plate-broken` model
+  marks a broken spill and disappears with its cleaning task.
+  Tests: `tests/sim/test_mishaps.gd`, `tests/world/test_mess_view.gd`.
+  Manual visual fixture: `tools/messes_review.tscn` (dark/light, one frame each).
 - **Debug overlay (F3):** paths, claimed tasks, agent states and the task board, from Phase 1 onward.
 
 - **Hygiene overview (FK-097):** the Build/Buy room readout has a session-local
@@ -522,6 +563,21 @@ an active edit/panel/selection first, or opens Settings when none is active.
   order and defaults. MORNING `set_staff_roster` keeps retained agents and the
   exact owner, adds hires at their role's spawn and removes departures through
   normal task/reservation cleanup. Several people may share a spawn.
+- `StaffActivity` observes existing claims at the start of each OPEN tick,
+  including the final tick before last orders. Travel and station waits count
+  as busy; task selection, movement and random streams are unchanged. Employee
+  rows pool busy person-ticks over open person-ticks by their primary role.
+  The owner has a separate row covering assigned open hours only.
+- Closing copies these counts into optional `DayReport.staff_activity` display
+  data. The next morning resets live counters while `StaffPanel` retains a
+  detached last-service summary in memory. No save provider or save point is
+  added; historical reports without observations remain unknown, not 0% busy.
+- `data/balance/staff_advice.tres` authors the high/low busy thresholds and
+  minimum waiting/table losses. Advice checks cooks, servers, then spare team
+  capacity in that order, using unrounded ratios; `StaffAdviceText` owns the
+  shared wording and display rounding. Waiting losses are a staffing heuristic,
+  not proof of which task delayed a guest. The ordinary balance probe output
+  stays unchanged; opt-in daily report snapshots add the activity field.
 - Quick changes walking by its data multiplier once. Its opt-in movement carries
   baseline-tick credit across cells: the existing neutral cadence is four ticks
   per straight edge and six per diagonal at speed 0.25. Scaling that quantized
@@ -1675,7 +1731,8 @@ tables and buys two normal chairs for $20, without changing menu/staff/tuning.
   `VibeInputs.capture(..., wall_items)`: decor charm and themes like rugs
   (no floor space). Actual exterior placements are explicitly excluded even
   when guest cells are empty; outside finishes do not vote in inside wall
-  colour. No curb-appeal state is added. Looks only: no other sim effect.
+  colour. Their existing saved shop facts also feed the derived curb appeal
+  below; geometry, paths and indoor vibe remain unchanged.
 - **Review.** `tools/screenshot.sh --walls-review --speed=0 --frames=12,30`
   (`tools/walls_review.gd`, `[--quarter=N]` for frame 12): finishes on shell
   and interior walls and four hung items (the OPEN sign in a street-front
@@ -1913,6 +1970,36 @@ are unchanged. Cutaway mode and camera quarters change stable wall attachments'
 visibility without reallocating models. Terrain/world replacement rebuilds and
 releases the old dressing. Dressing adds no lights, simulation cells, collision,
 random draws or saved state; functional lamps remain the separate lamp issue.
+`NeighbourhoodDressing` is a separate view-only child of `ShopView` (FK-242).
+Main binds the maximum supported lease footprint separately from the actual
+service lot; all current built cells and native entrance/alley paving also
+participate in exclusion. Native pads, mats, windows and the name board remain
+owned by `RoomDressing`. Additional copied pavement is clipped around those
+actual transformed boxes and the maximum reserve; it never covers future
+buyable land. Static road/crossing/kerb/building/roof/lamp copies are batched by
+material, with no new lights or shadows into the shop. Made models use the
+central furniture scale once; all source-kit and original rig resources remain
+unchanged.
+
+Three reused Mini guest views and one pooled occasional car follow fixed
+presentation paths using monotonic display seconds, independently of the sim
+clock. Whole animated sweeps clear the maximum lot, door approach and paving
+edges. They are not agents, physics bodies, navigation or input targets, and
+never enter the shop's item/agent maps, RNG streams or save providers. Normal
+frame processing stays enabled; the photo-only `set_review_time` override pins
+both real transforms and animation phase without changing game state. Read-only
+`capture_state` exposes actual observations for native and timing tools.
+Terrain/lot changes reconfigure a cached geometry signature while retaining
+actor nodes/time; world replacement frees the old controller and atomically
+binds the new world's reserve through `show_world`.
+
+The camera still frames only the shop with its original defaults and expansion
+glides. Main adds a three-metre extension to only the street-facing pan clamp;
+the other sides and initial focus, yaw, pitch and zoom are unchanged. Frame-time
+comparisons use the same normal-process harness, 60 warm-up plus 300 post-draw
+intervals, in an exclusive local render lane; before/after values and adapter
+limits belong in the PR, not an invented hardware or FPS acceptance threshold.
+
 The floor shader adds a subtle multiplicative plank pattern while retaining its
 existing paint colour and camera-controlled build-grid parameters (D25: it is
 pattern 0 of `floor_finish.gdshader`, unchanged).
@@ -2476,6 +2563,16 @@ refund after complete successful load, before the existing morning checkpoint.
 There is no new save point or SaveSystem migration.
 
 ### 2.4 Save system
+Business trends (FK-123): Main keeps fourteen detached `BusinessHistory` closing
+summaries outside `DayReport` serialization. Reopening the evening report and
+advancing to the next morning upsert the current day after evening purchases;
+`build_report()` stays a read-only query. The optional `business_history` section
+uses decimal strings for signed currency and joins only the existing morning
+autosave. Load stages it until the whole morning validates; older saves start
+empty. The evening report draws seven days in the current theme, with separate
+dish-profit and guest scales, today's label, unknown-profit gaps and comparisons
+between equal recorded-day windows. "Last week" requires two complete weeks.
+
 - JSON in `user://saves/`, with a `version` field and migration functions per version.
 - Only sim state is saved, never nodes. The world is rebuilt from sim state on load.
 - `SaveSystem.register(key, capture, restore)` replaces a unique section provider; capture returns a dictionary and restore returns success.
@@ -2615,11 +2712,32 @@ three PNGs to the PR and keep their state metadata outside Git; this capture set
 is not part of CI.
 
 
+### Curb appeal (FK-118)
+
+`CurbAppealInputs` reads supported street-front finish faces and actual hung
+anchors. Plain paint and the view-only name board stay neutral. Authored item
+families, weights, caps, repeat decay and maximum bonus live in
+`data/balance/curb_appeal.tres`; widths and swatches share each family's repeat
+allowance. The pure model clamps the score to 0–100 and returns
+`1 + score / 100 * max_bonus`, exactly 1 for a bare front and at most 1.10.
+Main derives this before refreshing the existing live/forecast demand hook;
+there is no second arrival multiplier, RNG fetch/draw or countdown reset.
+Edits, undo, support changes and load refresh the derived facts. No score is
+saved: the existing morning shop save already contains its inputs.
+
+Build shows the themed meter beside Vibe when the rendered camera faces the
+street, including during smooth rotation and Paint. The existing “Tomorrow's
+crowd” curb factor supplies its plain bonus line without a new report field.
+The named `curb_appeal` manual setup uses disclosed free construction (nominal
+catalogue/finish cost $256, fixture charge $0), retains ordinary service and
+stock costs, and measures appeal rather than purchase return on investment.
+Its default counterpart and the default setup itself remain unchanged.
+
 ### Demand growth (FK-120)
 
 `DemandTuning` in `data/balance/demand.tres` authors every calibration value.
 `DemandBreakdown` multiplies reputation, word of mouth, menu variety, vibe and
-the neutral curb-appeal hook, then caps the result at 3. Main latches reputation
+the curb-appeal hook (neutral for a bare front), then caps the result at 3. Main latches reputation
 and renown each morning; accepted menu and shop edits refresh only the editable
 factors. `RestaurantSim.arrival_rate()` multiplies the existing hourly visit rate
 by this factor. The existing `CustomerSpawner.scaled_gap` applies it once to the
@@ -2642,7 +2760,7 @@ Calibration (the full paired balance report accompanies the PR):
   alone uses an authored floor of 1 on its effective vibe factor to preserve
   the introductory arrival and random-draw path. Day 1's evening forecast
   already uses the ordinary Day 2 curve.
-- The neutral curb hook is 1. At demand above 1, unlocked party sizes blend
+- The curb hook is exactly 1 for a bare front. At demand above 1, unlocked party sizes blend
   toward authored weights 1/.8/.6/.5/.3/.15 for sizes 1–6, reaching those weights
   at factor 3. This favours smaller groups while allowing larger tables to
   matter. At demand 1 or below, the existing size draw is called unchanged,

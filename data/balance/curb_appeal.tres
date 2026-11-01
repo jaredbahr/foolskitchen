@@ -1,0 +1,35 @@
+[gd_resource type="Resource" script_class="CurbAppealTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/sim/curb_appeal_tuning.gd" id="1_tuning"]
+
+[resource]
+script = ExtResource("1_tuning")
+item_categories = Dictionary[StringName, StringName]({
+&"street_awning_2": &"awning",
+&"street_awning_3": &"awning",
+&"street_awning_4": &"awning",
+&"flower_window_box": &"window_box",
+&"shop_name_sign": &"sign",
+&"string_lights_2": &"lights",
+&"string_lights_3": &"lights",
+&"string_lights_4": &"lights",
+&"neon_open_sign": &"open_sign"
+})
+weights = Dictionary[StringName, float]({
+&"finish": 8.0,
+&"awning": 14.0,
+&"window_box": 8.0,
+&"sign": 15.0,
+&"lights": 8.0,
+&"open_sign": 10.0
+})
+caps = Dictionary[StringName, float]({
+&"finish": 20.0,
+&"awning": 20.0,
+&"window_box": 20.0,
+&"sign": 15.0,
+&"lights": 15.0,
+&"open_sign": 10.0
+})
+repeat_decay = 0.65
+max_bonus = 0.10

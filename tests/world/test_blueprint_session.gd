@@ -117,6 +117,67 @@ func test_restore_is_staged_and_failed_load_does_not_keep_partial_library() -> v
 	assert_eq(FileAccess.get_file_as_string(_path()), broken, "bad saves retain existing first-autosave safety")
 
 
+func test_mixed_booth_library_and_stamp_wait_for_morning_then_reload_looks() -> void:
+	var first: Node = _start()
+	var editor: ShopEditor = first.get("shop_editor") as ShopEditor
+	var library: BlueprintLibrary = first.get("blueprint_library") as BlueprintLibrary
+	var world: SimWorld = first.get("world") as SimWorld
+	var before: String = FileAccess.get_file_as_string(_path())
+	# Isolated persistence fixture: disclosed funds and two unselected table
+	# surfaces supplement the existing tables; ordinary starting cash is untouched.
+	Economy.add_cash(1000 - Economy.cash, Ledger.OTHER, "Blueprint persistence test fixture")
+	assert_eq(Economy.cash, 1000)
+	editor.set_owner_level(3)
+	var content: ContentDB = first.get("content") as ContentDB
+	for origin: Vector2i in [Vector2i(4, 7), Vector2i(8, 7)]:
+		assert_not_null(world.grid.place_def(content.item(&"cross_table"), origin), "unselected dining support")
+	var white_check: EditCheck = editor.check_buy(&"diner_booth", Vector2i(2, 8), 0, null, &"booth_white")
+	assert_true(white_check.ok, white_check.why)
+	assert_true(first.call("shop_buy", &"diner_booth", Vector2i(2, 8), 0, &"", &"booth_white"), editor.last_check.why)
+	var walnut_check: EditCheck = editor.check_buy(&"diner_booth", Vector2i(4, 8), 0, null, &"booth_walnut")
+	assert_true(walnut_check.ok, walnut_check.why)
+	assert_true(first.call("shop_buy", &"diner_booth", Vector2i(4, 8), 0, &"", &"booth_walnut"), editor.last_check.why)
+	var white: PlacedItem = world.grid.item_at(Vector2i(2, 8))
+	var walnut: PlacedItem = world.grid.item_at(Vector2i(4, 8))
+	assert_not_null(white)
+	assert_not_null(walnut)
+	if white == null or walnut == null:
+		return
+	assert_eq(white.variant_id, &"booth_white")
+	assert_eq(walnut.variant_id, &"booth_walnut")
+	assert_eq(Economy.cash, 790, "two authored booth purchases debit the funded fixture")
+	for source: PlacedItem in [white, walnut]:
+		for cell: Vector2i in source.seat_cells:
+			assert_eq(world.grid.dining_furnishing_id(cell), source.id)
+	var blueprint: Blueprint = Blueprint.capture(world.grid, [white.id, walnut.id] as Array[int], "Mixed booths")
+	assert_eq(blueprint.entries.size(), 2, "support tables are excluded from the capture")
+	assert_true(library.add(blueprint))
+	var stamp_check: EditCheck = editor.check_stamp(blueprint, Vector2i(8, 8))
+	assert_true(stamp_check.ok, stamp_check.why)
+	assert_true(first.call("shop_stamp", blueprint, Vector2i(8, 8)), editor.last_check.why)
+	assert_eq(Economy.cash, 580, "one real stamp debits both copied booths")
+	assert_eq(FileAccess.get_file_as_string(_path()), before, "buy, capture and stamp wait for the morning autosave")
+	Clock.sim.phase = SimClock.Phase.CLOSED
+	assert_true(Clock.sim.next_day(), "existing morning checkpoint")
+	var saved: Dictionary = _document()
+	assert_eq(int(saved["data"]["blueprints"]["version"]), 1)
+	assert_eq(int(saved["data"]["shop"]["version"]), 8)
+	assert_eq(saved["data"]["blueprints"]["blueprints"][0]["entries"][0].get("variant_id"), "booth_white")
+	assert_eq(saved["data"]["blueprints"]["blueprints"][0]["entries"][1].get("variant_id"), "booth_walnut")
+	_close(first)
+	var second: Node = _start()
+	var restored: BlueprintLibrary = second.get("blueprint_library") as BlueprintLibrary
+	assert_eq(restored.blueprints.size(), 1)
+	assert_eq(restored.blueprints[0].entries.size(), 2)
+	assert_eq(restored.blueprints[0].entries[0].variant_id, &"booth_white")
+	assert_eq(restored.blueprints[0].entries[1].variant_id, &"booth_walnut")
+	var grid: SimGrid = (second.get("world") as SimWorld).grid
+	assert_eq(grid.item_at(Vector2i(2, 8)).variant_id, &"booth_white")
+	assert_eq(grid.item_at(Vector2i(4, 8)).variant_id, &"booth_walnut")
+	assert_eq(grid.item_at(Vector2i(8, 8)).variant_id, &"booth_white")
+	assert_eq(grid.item_at(Vector2i(10, 8)).variant_id, &"booth_walnut")
+
+
 func _plant(main: Node) -> Blueprint:
 	return Blueprint.capture((main.get("world") as SimWorld).grid, [_id(main, &"potted_plant")] as Array[int], "Plants")
 

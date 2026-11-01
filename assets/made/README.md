@@ -42,6 +42,21 @@ The source envelope is approximately 0.30 × 0.25 × 0.15 m; its wrapper uses
 the shared uniform furniture scale and aligns its bottom with the mirror at
 0.6 m above the floor, fitting the game's person scale.
 
+## Neighbourhood (#242)
+
+Each piece is rebuilt by `tools/build_neighbourhood.py`; dimensions and usage are in `neighbourhood/README.md`. The generator copies existing Furniture Kit PBR colours exactly and creates no textures, lights or emission.
+
+| Asset | Named use and approved style reference |
+|---|---|
+| `neighbourhood/road_segment.glb` | Two-lane road slab based on `floorHalf` thickness, `wall` metalDark and cabinet carpetWhite lane marks. |
+| `neighbourhood/crossing_segment.glb` | Replacement road segment with broad crossing marks in the same kit colours. |
+| `neighbourhood/kerb_segment.glb` | Slightly bevelled kerb following `floorHalf` edges and `lampRoundFloor` metal. |
+| `neighbourhood/shopfront.glb` | Simple shop front using `wall`, `wallWindow` and `doorwayFront` proportions and materials. |
+| `neighbourhood/house_body.glb` | House box with alternate door/window arrangement in the same kit cream/wood/glass colours. |
+| `neighbourhood/gable_roof.glb` | Chunky roof prism in `bathroomCabinet` woodDark, reusable on either building body. |
+| `neighbourhood/compact_car.glb` | Authored bevelled body/cabin and twelve-sided wheels, using `chairModernCushion` carpetBlue and existing metalDark/glass/cream colours; no substituted furniture model. |
+| `neighbourhood/street_lamp.glb` | Authored street post following the kit floor/wall lamp materials and soft box edges; unlit until the separate night feature. |
+
 ## Street-front decor (#240)
 
 These eight pieces use the Furniture Kit's unchanged material colours and flat,

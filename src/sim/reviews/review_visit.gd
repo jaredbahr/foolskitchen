@@ -14,6 +14,7 @@ var quality_weight: float = 0.0
 var review_chance_multiplier: float = 1.0
 ## Zero until the optional cleanliness system is present.
 var dirt_fraction: float = 0.0
+var sticky_floor: bool = false
 ## Raw additive ambience term sampled on arrival; stars still round to integers.
 var vibe_review_bonus: float = 0.0
 ## Restrooms (FK-101): a small raw bonus in a shop with one, and the raw

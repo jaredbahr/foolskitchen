@@ -51,6 +51,9 @@ var dock: DeliveryDock
 ## named cleanliness RNG when constructing the state; legacy sims stay inert.
 var cleanliness: CleanlinessState = null
 var clean_tasks: CleanTaskController = null
+var mishaps: MishapState = null
+## Main records this paid replacement cost in the existing economy ledger.
+signal plate_broken(cost: int)
 var spawner: CustomerSpawner
 var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 ## Opt-in catalogue. An unconfigured sim retains the exact Regular arrival stream.
@@ -64,6 +67,8 @@ var regular_recipe_labels: Dictionary[StringName, String] = {}
 var _regular_cohort_index: int = 0
 var served_today: int = 0
 var lost_today: int = 0
+## Read-only OPEN-hour observations; only the detached report survives a day.
+var staff_activity: StaffActivity = StaffActivity.new()
 var leave_reasons_today: Dictionary[StringName, int] = {}
 ## Optional review dependencies are injected by the game session. Keeping the
 ## stream separate leaves arrivals and individual guest choices unchanged.
@@ -218,6 +223,7 @@ func assign_owner(mode: StringName) -> bool:
 
 ## Clears daily reports and redraws the first arrival; the caller opens the clock.
 func start_day() -> void:
+	staff_activity.reset(world.clock.day)
 	_regular_cohort_index = 0
 	if regulars != null:
 		regulars.begin_day(world.clock.day)
@@ -240,6 +246,8 @@ func start_day() -> void:
 		clean_tasks.tidy_overnight()
 	elif cleanliness != null:
 		cleanliness.tidy_overnight()
+	if mishaps != null:
+		mishaps.tidy_overnight()
 	_staff_to_posts()
 	spawner.reset(arrival_rate())
 
@@ -260,6 +268,10 @@ func advance() -> void:
 	var was_closed: bool = world.clock.phase == SimClock.Phase.CLOSED
 	if clean_tasks != null:
 		clean_tasks.sync_spots()
+	# The incoming OPEN interval includes the tick that reaches last orders.
+	# Observe existing assignments before agents can complete or replace them.
+	if world.clock.phase == SimClock.Phase.OPEN:
+		staff_activity.observe(world)
 	world.advance()
 	if kitchen != null:
 		kitchen.advance()
@@ -318,6 +330,15 @@ func configure_cleanliness(state: CleanlinessState, tuning: CleanlinessTuning) -
 	cleanliness = state
 	clean_tasks = CleanTaskController.new(world, state, tuning)
 	clean_tasks.sync_spots()
+	return true
+
+
+## Optional day-local mishaps share the existing cleanliness RNG.
+func configure_messes(tuning: MessTuning, random: RandomNumberGenerator) -> bool:
+	if cleanliness == null or tuning == null or not tuning.is_valid() or random == null or mishaps != null:
+		return false
+	mishaps = MishapState.new(tuning, random)
+	clean_tasks.bind_mishaps(mishaps)
 	return true
 
 
@@ -893,6 +914,8 @@ func record_departure(customer: CustomerAgent) -> void:
 					standard_price = recipe.standard_price
 					break
 		var visit: ReviewVisit = customer.review_visit(standard_price, customer.arrival_dirt_fraction)
+		visit.sticky_floor = mishaps != null and cleanliness != null \
+			and cleanliness.sticky_spot_count() >= mishaps.tuning.sticky_floor_threshold
 		# A paid guest removed at the closing cutoff retains their happy report
 		# reason, but the forced departure must not sample a late review.
 		visit.closing = visit.closing or world.clock.phase == SimClock.Phase.CLOSED

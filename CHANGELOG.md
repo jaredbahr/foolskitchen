@@ -11,6 +11,11 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- Decorating the street front now raises curb appeal for a small walk-in boost, shown beside Vibe in Build and in the evening crowd forecast. (#266)
+- See seven days of dish profit and guests served in the evening report, with today's results highlighted and a plain trend summary. (#265)
+- Staff carrying meals can spill them and break plates, especially when clumsy or crowded at the pass. Reassigning a delivery makes the next worker collect the meals before they can spill. Meals are cooked again, broken plates are replaced tomorrow, and greasy stations work 10% slower until someone degreases them. Floor messes stand out on light and dark floors, with mishaps listed in the evening report. (#235)
+- See how busy your team was in the evening report and morning Staff panel, with evening advice on hiring or adding tables. (#264)
+- Blueprints keep each piece's furniture look and charge the right price when you stamp it, with exact undo refunds. (#262)
 - The evening report now shows the profit your dishes made, with stock bought and spoiled listed separately. Automatic orders follow the forecast crowd, and the starting shop pays $18 rent each day. (#258)
 - An easier start: cooks work about 30% faster, rent is $30 a day instead of $40, and seafood restocks in smaller batches (mussels also keep a day longer), so a growing shop now makes money. (#257)
 - Your shop gets busier as reputation and word of mouth grow; menu variety and vibe bring more guests, with tomorrow’s crowd shown in the evening report. (#256)
@@ -117,6 +122,7 @@ Each line ends with its PR number.
 - An evening report screen (not yet shown during play): profit, income and costs by category, dishes sold with the best seller marked, guests served versus lost, why guests left, and review quotes. (#25)
 - See a daily Sunny, Cloudy or Rain forecast in the HUD and morning Menu, with gentle rain and cooler light outside. The forecast is saved for the day and leaves service unchanged. (#251)
 - Push tables together to seat bigger parties. (#253)
+- Surround the shop with a street, neighbouring buildings, passing pedestrians and a car, with more room to pan toward the road. (#254)
 
 ### Content
 - Placed chairs now have a usable seat. (#48)

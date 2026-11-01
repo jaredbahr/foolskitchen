@@ -240,7 +240,7 @@ func refresh() -> void:
 				continue
 			var swatch: SwatchDef = entry.get("swatch") as SwatchDef
 			_build_ghost(entry_definition, entry["origin"], entry["turns"], valid,
-				swatch.color if swatch != null else entry_definition.placeholder_color)
+				swatch.color if swatch != null else entry_definition.placeholder_color, entry.get("variant_id", &""))
 			ghost_mesh.name = "BlueprintItem%d" % blueprint_ghosts.size()
 			blueprint_ghosts.append(ghost_mesh)
 		if not valid:

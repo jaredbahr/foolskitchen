@@ -15,11 +15,14 @@ const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tr
 ## Camera fit (FK-080): this zoom frames this many cells; bigger shops zoom out.
 const SHOP_ZOOM: float = 12.0
 const SHOP_FRAME_CELLS: Vector2 = Vector2(14.0, 12.0)
+const STREET_PAN_EXTENSION: float = 3.0
 const LEASE: LeaseUpgrade = preload("res://data/balance/lease_upgrade.tres")
 const TUNING: EconomyTuning = preload("res://data/balance/tier1_economy.tres")
+const MESS_TUNING: MessTuning = preload("res://data/balance/messes.tres")
 const CLEANLINESS_TUNING: CleanlinessTuning = preload("res://data/balance/cleanliness.tres")
 const WEATHER_TUNING: WeatherTuning = preload("res://data/balance/weather.tres")
 const DEMAND_TUNING: DemandTuning = preload("res://data/balance/demand.tres")
+const CURB_APPEAL_TUNING: CurbAppealTuning = preload("res://data/balance/curb_appeal.tres")
 const REVIEW_TUNING: ReviewTuning = preload("res://data/balance/reviews.tres")
 const REVIEW_QUOTES: ReviewQuotes = preload("res://data/reviews/quotes.tres")
 const PROGRESSION_TUNING: ProgressionTuning = preload("res://data/balance/progression.tres")
@@ -59,6 +62,8 @@ var _vibe_grid: SimGrid
 var _vibe_experiences: Dictionary[String, int] = {}
 ## The last evening report put on screen (for tests and tools).
 var shown_report: DayReport = null
+## Previous service's display summary for the morning panel; never a save section.
+var _last_team_activity: Dictionary = {}
 ## Dishes sold today (recipe id -> count), for the evening report.
 var dishes_sold_today: Dictionary[StringName, int] = {}
 var _food_cost_today: Dictionary = PurchaseBasis.zero()
@@ -125,12 +130,17 @@ var weather_tuning: WeatherTuning = WEATHER_TUNING
 var demand_tuning: DemandTuning = DEMAND_TUNING.duplicate(true) as DemandTuning
 var demand_state: DemandState = DemandState.new()
 var _loaded_demand: DemandState = null
+## Detached closing summaries; persistence stays at the morning checkpoint.
+var business_history: BusinessHistory = BusinessHistory.new()
+var _loaded_business_history: BusinessHistory = null
 var _demand_breakdown: DemandBreakdown = null
 var _demand_day: int = 0
 var _demand_reputation: float = 3.0
 var _demand_renown: float = 0.0
-## Neutral until the separate curb-appeal feature supplies its derived factor.
+## Derived from the current frontage; only the existing shop facts are saved.
+var curb_appeal_score: float = 0.0
 var curb_appeal_factor: float = 1.0
+var curb_appeal_tuning: CurbAppealTuning = CURB_APPEAL_TUNING.duplicate(true) as CurbAppealTuning
 ## Today's last daytime delivery ({lines, minute}), for the Stock notes.
 var _last_delivery: Dictionary = {}
 var _storage_fill_key: String = ""
@@ -244,7 +254,10 @@ func _bind_world_presentation() -> void:
 	view.set_lot(lot)
 	if sim.dock != null:
 		sim.dock.lot = lot
-	view.show_world(world)
+	# Keep future scenery off every cell this lease can eventually build on.
+	# The actual service/delivery lot above keeps its existing semantics.
+	var maximum_reserve: Rect2i = ShopFootprint.from_layout(LEASE.layout_for(LAYOUT, 2)).lot.merge(lot)
+	view.show_world(world, maximum_reserve)
 	view.bind_cleanliness(sim.cleanliness)
 	view.bind_restaurant(sim, content)
 	view.bind_dock(sim.dock)
@@ -373,6 +386,7 @@ func _bind_world_presentation() -> void:
 		quit_dialog.canceled.connect(_cancel_quit_to_title)
 	_staff_panel = $Overlay/StaffPanel
 	_staff_panel.bind_roster(staff_roster)
+	_staff_panel.set_team_activity(_last_team_activity)
 	_staff_panel.set_phase(Clock.sim.phase)
 	_staff_panel.set_wage_factor(OpeningHours.wage_factor(Clock.sim, HOURS_TUNING))
 	_staff_panel.set_trays(tray_level, TUNING.tray_prices, Economy.cash, _loan_upgrade_refusal())
@@ -427,6 +441,11 @@ func _frame_shop(reset: bool) -> void:
 	var zoom: float = SHOP_ZOOM * maxf(1.0, maxf(float(area.size.x) / SHOP_FRAME_CELLS.x, float(area.size.y) / SHOP_FRAME_CELLS.y))
 	# Pan around the shop itself, with a 2 m margin on every side.
 	camera.frame_area(low + half, half + Vector2(2.0, 2.0), zoom, reset)
+	var dressing: RoomDressing = ($ShopView as ShopView).room_dressing
+	if dressing != null:
+		var runs: Array[Dictionary] = dressing.frontage_runs()
+		if not runs.is_empty():
+			camera.set_street_pan_extension(runs[0][&"normal"], STREET_PAN_EXTENSION)
 
 
 func _on_header_layout_changed() -> void:
@@ -467,6 +486,8 @@ func _process(_delta: float) -> void:
 		update_build_pointer(get_viewport().get_mouse_position())
 	if _paint_active and is_inside_tree():
 		update_paint_pointer(get_viewport().get_mouse_position())
+	if (is_build_active() or _paint_active) and is_inside_tree():
+		_update_curb_appeal_meter()
 	# Run after ShopView's interpolation, including while the sim is paused.
 	refresh_presentation()
 
@@ -502,6 +523,7 @@ func start() -> void:
 	SaveSystem.register("hints", hints.capture, hints.restore)
 	SaveSystem.register("weather", _capture_weather, _restore_weather)
 	SaveSystem.register("demand", _capture_demand, _restore_demand)
+	SaveSystem.register("business_history", _capture_business_history, _restore_business_history)
 	var loaded: bool = use_saves and _load_autosave()
 	_rooms_note = loaded and _loaded_layout != null and _loaded_layout.rooms_unmarked
 	$HUD.set_rooms_note(ROOMS_NOTE if _rooms_note else "")
@@ -516,6 +538,10 @@ func start() -> void:
 	if not sim.configure_cleanliness(cleanliness, CLEANLINESS_TUNING):
 		push_error("Cannot initialize shop cleanliness")
 		return
+	if not sim.configure_messes(MESS_TUNING, GameState.rng(&"cleanliness")):
+		push_error("Cannot initialize everyday messes")
+		return
+	sim.plate_broken.connect(_on_plate_broken)
 	# The loaded layout can replace both world and view during _load_autosave().
 	($ShopView as ShopView).bind_cleanliness(cleanliness)
 	_debug_overlay.bind_cleanliness(cleanliness)
@@ -983,7 +1009,7 @@ func set_paint_active(active: bool) -> bool:
 		_paint_from_build = false
 		($ShopView as ShopView).clear_paint_preview()
 		if world.clock.phase == SimClock.Phase.CLOSED and shown_report != null:
-			_report.call(&"show_report", build_report(world.clock.day))
+			_show_evening_report(build_report(world.clock.day))
 	# Painting is cosmetic: keep the player's existing G preference. Only
 	# furniture building needs the temporarily forced placement grid.
 	($CameraRig as CameraRig).set_grid_forced(is_build_active())
@@ -1158,6 +1184,7 @@ func _on_vibe_cells_changed(_cells: Array[Vector2i]) -> void:
 func _recompute_vibe() -> void:
 	if sim == null or world == null or shop_editor == null or menu_settings == null:
 		return
+	_recompute_curb_appeal()
 	var inputs: VibeModel.Inputs = VibeInputs.capture(world.grid, content, menu_settings.enabled_recipes(),
 		shop_editor.wall_vibe_swatch(), shop_editor.floor_vibe_swatch(), shop_editor.decor_vibe_items())
 	sim.set_vibe(VibeModel.evaluate(inputs, VIBE_TUNING))
@@ -1167,6 +1194,41 @@ func _recompute_vibe() -> void:
 	_report.call(&"set_vibe", result, _experienced_vibe_theme())
 	vibe_changed.emit(vibe_result)
 	_refresh_demand()
+
+
+## Pure frontage inputs feed the existing demand hook, never a second rate path.
+func _recompute_curb_appeal() -> void:
+	curb_appeal_score = 0.0
+	curb_appeal_factor = 1.0
+	if world != null and shop_editor != null and content != null:
+		var inputs: Array[Dictionary] = CurbAppealInputs.collect(world.grid,
+			shop_editor.walls, shop_editor.decor, content, curb_appeal_tuning)
+		var result: Dictionary = CurbAppealModel.evaluate(inputs, curb_appeal_tuning)
+		if bool(result.get("valid", false)):
+			curb_appeal_score = float(result.get("score", 0.0))
+			curb_appeal_factor = float(result.get("multiplier", 1.0))
+	_update_curb_appeal_meter()
+
+
+## Use the rendered orientation, including its smooth transition between snaps.
+## Translating the camera's focus never changes which side it looks from.
+func curb_appeal_street_visible() -> bool:
+	if world == null or world.grid == null:
+		return false
+	var rig: CameraRig = $CameraRig
+	var camera: Camera3D = $CameraRig/Camera3D
+	if not rig.is_inside_tree() or not camera.is_inside_tree():
+		return false
+	var street: Vector2i = WallRules.street_side(world.grid)
+	var front: Vector3 = global_transform.basis * Vector3(street.x, 0.0, street.y)
+	var offset: Vector3 = camera.global_position - rig.global_position
+	return Vector2(offset.x, offset.z).dot(Vector2(front.x, front.z)) > 0.0001
+
+
+func _update_curb_appeal_meter() -> void:
+	if _build_catalogue != null:
+		_build_catalogue.set_curb_appeal(curb_appeal_score, curb_appeal_factor,
+			curb_appeal_street_visible())
 
 
 ## Reputation and word of mouth stay fixed through this service; accepted menu
@@ -1616,7 +1678,7 @@ func _on_build_changed() -> void:
 	if not active and _was_build_active and _build_ready and world.clock.phase == SimClock.Phase.CLOSED:
 		# Rebuild from current books; do not run closing charges or day setup.
 		shown_report = build_report(world.clock.day)
-		_report.call(&"show_report", shown_report)
+		_show_evening_report(shown_report)
 	_was_build_active = active
 	_update_build_controls()
 
@@ -1674,6 +1736,7 @@ func _update_build_controls() -> void:
 		_build_catalogue.set_blueprint_selection(0 if build_mode.blueprint_dragging else build_mode.blueprint_selection.size())
 	_build_ui_phase = world.clock.phase if world != null else -1
 	_refresh_hygiene_overview()
+	_update_curb_appeal_meter()
 
 
 ## The Wall finish tool's proposal and a held wall item's ghost (D26), drawn
@@ -1777,7 +1840,12 @@ func _on_floor_looks_changed(_cells: Array[Vector2i]) -> void:
 ## An empty list is the shop's own wall colour changing (the legacy wall
 ## paint), which recomputes the vibe itself.
 func _on_wall_looks_changed(faces: Array[Vector3i]) -> void:
-	if not faces.is_empty():
+	if faces.is_empty():
+		# Whole-wall paint can remove explicit faces. Its caller refreshes vibe;
+		# refresh this independent derived input without another vibe event.
+		_recompute_curb_appeal()
+		_refresh_demand()
+	else:
 		_recompute_vibe()
 
 
@@ -2008,10 +2076,16 @@ func run_ticks(ticks: int) -> void:
 	refresh_presentation()
 
 
+## Paid replacements arrive during the existing overnight tidy.
+func _on_plate_broken(cost: int) -> void:
+	Economy.add_cash(-cost, Ledger.BREAKAGES, "Replacement plate, delivered tomorrow morning")
+
+
 ## Builds the evening report for `day` from the ledger and today's counters.
 func build_report(day: int) -> DayReport:
 	var report := DayReport.new()
 	report.day = day
+	report.staff_activity = sim.staff_activity.snapshot()
 	report.restaurant_name = menu_settings.restaurant_name() if menu_settings != null else MenuSettings.DEFAULT_NAME
 	report.regulars_lines = RegularText.report_lines(regulars)
 	report.loan_first_advance = _loan_notice_day == day
@@ -2041,6 +2115,9 @@ func build_report(day: int) -> DayReport:
 	report.dishes_sold = dishes_sold_today.duplicate()
 	report.customers_served = sim.served_today
 	report.customers_lost = sim.lost_today
+	if sim.mishaps != null:
+		report.mishaps_text = MishapText.daily(sim.mishaps.spills_today,
+			sim.mishaps.broken_plates_today, sim.mishaps.degreases_today)
 	report.record_dish_quality(sim.orders.orders_in_state(Order.State.DELIVERED))
 	for reason: StringName in sim.leave_reasons_today:
 		if reason != &"happy":
@@ -2085,6 +2162,11 @@ func build_report(day: int) -> DayReport:
 
 
 func _new_game() -> void:
+	business_history = BusinessHistory.new()
+	_loaded_business_history = null
+	curb_appeal_score = 0.0
+	curb_appeal_factor = 1.0
+	_last_team_activity.clear()
 	hints.restart()
 	demand_state = DemandState.new()
 	_loaded_demand = null
@@ -2152,6 +2234,18 @@ func _new_game() -> void:
 
 
 func _load_autosave() -> bool:
+	business_history = BusinessHistory.new()
+	_loaded_business_history = null
+	var loaded: bool = _load_autosave_sections()
+	if not loaded:
+		_loaded_business_history = null
+	return loaded
+
+
+func _load_autosave_sections() -> bool:
+	curb_appeal_score = 0.0
+	curb_appeal_factor = 1.0
+	_last_team_activity.clear()
 	_loaded_demand = null
 	_loaded_regulars = null
 	_loaded_blueprints = null
@@ -2188,6 +2282,9 @@ func _load_autosave() -> bool:
 			or demand_tuning == null or not demand_tuning.is_valid() \
 			or saved_demand.last_service_factor > demand_tuning.total_cap:
 		world.log_event("Saved shop growth does not match this morning; starting a new game")
+		return false
+	if _loaded_business_history != null and not _loaded_business_history.valid_before(Clock.sim.day):
+		world.log_event("Saved business history is ahead of this morning; starting a new game")
 		return false
 	if not OpeningHours.clock_valid(Clock.sim, HOURS_TUNING):
 		# Keep the game; only the hours go back to the default day.
@@ -2254,6 +2351,21 @@ func _load_autosave() -> bool:
 	# Install only after every other whole-load validation has succeeded.
 	world.weather = saved_weather.copy()
 	demand_state = saved_demand
+	business_history = _loaded_business_history if _loaded_business_history != null else BusinessHistory.new()
+	_loaded_business_history = null
+	return true
+
+
+func _capture_business_history() -> Dictionary:
+	return business_history.capture()
+
+
+## SaveSystem may reject a later provider: never install a partial load here.
+func _restore_business_history(data: Dictionary) -> bool:
+	var restored: BusinessHistory = BusinessHistory.new()
+	if not restored.restore(data):
+		return false
+	_loaded_business_history = restored
 	return true
 
 
@@ -2698,7 +2810,7 @@ func set_staff_visible(value: bool) -> bool:
 	_staff_panel.set_trays(tray_level, TUNING.tray_prices, Economy.cash, _loan_upgrade_refusal())
 	_staff_panel.visible = value
 	if not value and Clock.sim.phase == SimClock.Phase.CLOSED and shown_report != null:
-		_report.call(&"show_report", build_report(Clock.sim.day))
+		_show_evening_report(build_report(Clock.sim.day))
 	return true
 
 
@@ -3097,7 +3209,7 @@ func set_goals_visible(value: bool) -> bool:
 		if return_to_menu:
 			set_menu_visible(true)
 		elif Clock.sim.phase == SimClock.Phase.CLOSED and shown_report != null:
-			_report.call(&"show_report", build_report(Clock.sim.day))
+			_show_evening_report(build_report(Clock.sim.day))
 	return true
 
 
@@ -3448,6 +3560,8 @@ func _begin_morning() -> void:
 		return
 	staff_roster = choices
 	_staff_panel.bind_roster(staff_roster)
+	# Retain yesterday's detached report while today's live counters reset.
+	_staff_panel.set_team_activity(_last_team_activity)
 	if _staff_notice_day != Clock.sim.day:
 		_staff_notice_day = Clock.sim.day
 		_staff_notices.assign(notices)
@@ -3851,7 +3965,7 @@ func set_stock_visible(value: bool) -> bool:
 		_refresh_stock_panel()
 	elif Clock.sim.phase == SimClock.Phase.CLOSED and shown_report != null:
 		# Back to the evening report, rebuilt so closed-phase orders show.
-		_report.call(&"show_report", build_report(Clock.sim.day))
+		_show_evening_report(build_report(Clock.sim.day))
 	return true
 
 
@@ -4168,6 +4282,17 @@ func _on_review_recorded(_row: Dictionary) -> void:
 	_refresh_goals()
 
 
+## Presentation refreshes may revisit a close after evening purchases.
+## build_report itself remains a pure query used by previews and tools.
+func _show_evening_report(report: DayReport) -> void:
+	shown_report = report
+	if Clock.sim.phase == SimClock.Phase.CLOSED and _closed_report_day == report.day \
+			and report.day == Clock.sim.day:
+		business_history.record(report)
+	_report.call(&"show_report", report)
+	_report.call(&"show_history", business_history.summaries(), report.day)
+
+
 ## Service is over and every guest's departure is recorded: close the books.
 func _on_service_closed(day: int) -> void:
 	if day != Clock.sim.day or _closed_report_day == day:
@@ -4209,7 +4334,9 @@ func _on_service_closed(day: int) -> void:
 		_build_catalogue.set_property_tier(owner_progress.property_tier)
 		$HUD.set_owner_progress(owner_progress.level, owner_progress.xp_into_level(), owner_progress.xp_in_level())
 	shown_report = build_report(day)
-	_report.call(&"show_report", shown_report)
+	_last_team_activity = StaffActivity.public_snapshot(shown_report.staff_activity)
+	_staff_panel.set_team_activity(_last_team_activity)
+	_show_evening_report(shown_report)
 	if _paint_active or is_staff_visible() or is_goals_visible():
 		_report.hide()
 	if is_staff_visible():
@@ -4299,6 +4426,10 @@ func _on_day_phase_changed(_day: int, phase: int) -> void:
 
 
 func _on_next_day_pressed() -> void:
+	# Evening purchases can change cash while their panel hides the report.
+	# Capture them before next_day clears day-local counters; do not save here.
+	if Clock.sim.phase == SimClock.Phase.CLOSED and _closed_report_day == Clock.sim.day:
+		business_history.record(build_report(Clock.sim.day))
 	Clock.sim.next_day()
 
 

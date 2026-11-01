@@ -167,6 +167,10 @@ var theme_filters: Dictionary[StringName, bool] = {}
 var selected_swatch_id: StringName = &"butter"
 ## Stable capture path: Panel/Margin/Rows/Scroll/Content/Categories/Readout/VibeMeter.
 var vibe_meter: VibeMeter
+var curb_appeal_meter: CurbAppealMeter
+var _curb_score: float = NAN
+var _curb_multiplier: float = NAN
+var _street_visible: bool = false
 var theme_label: Label
 var hygiene_button: Button
 var hygiene_panel: PanelContainer
@@ -280,6 +284,21 @@ func set_vibe(result: VibeModel.Result) -> void:
 		text = "Theme: %s" % result.theme_label
 	theme_label.text = text
 	_fit_panel()
+
+
+## Main supplies the cached score and the actual street-facing camera flag.
+func set_curb_appeal(score: float, multiplier: float, street_visible: bool) -> void:
+	_prepare_layout()
+	if score == _curb_score and multiplier == _curb_multiplier and street_visible == _street_visible:
+		return
+	if score != _curb_score or multiplier != _curb_multiplier:
+		_curb_score = score
+		_curb_multiplier = multiplier
+		curb_appeal_meter.set_appeal(score, multiplier)
+	if street_visible != _street_visible:
+		_street_visible = street_visible
+		curb_appeal_meter.visible = street_visible
+		_fit_panel()
 
 
 func set_hygiene_lines(lines: PackedStringArray) -> void:
@@ -1392,6 +1411,9 @@ func _prepare_layout() -> void:
 	categories.add_child(readout)
 	vibe_meter = VibeMeter.new()
 	readout.add_child(vibe_meter)
+	curb_appeal_meter = CurbAppealMeter.new()
+	curb_appeal_meter.visible = false
+	readout.add_child(curb_appeal_meter)
 	theme_label = Label.new()
 	theme_label.name = "Theme"
 	theme_label.text = "No theme yet"

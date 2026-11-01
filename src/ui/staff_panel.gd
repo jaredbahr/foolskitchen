@@ -40,6 +40,7 @@ var _priority_headers_ready: bool = false
 var _priority_names: Dictionary[StringName, Label] = {}
 var _priority_buttons: Dictionary[StringName, Dictionary] = {}
 var _owner_name: String = OwnerAppearance.DEFAULT_NAME
+var _team_activity: Dictionary = {}
 
 
 func _ready() -> void:
@@ -66,6 +67,24 @@ func bind_roster(roster: StaffRoster) -> void:
 func set_phase(phase: int) -> void:
 	_phase = phase
 	refresh()
+
+
+## Main retains this detached last-service summary across the morning reset.
+## Updating these read-only labels must retain the existing action buttons.
+func set_team_activity(summary: Dictionary) -> void:
+	_team_activity = StaffActivity.public_snapshot(summary)
+	_refresh_team_activity()
+
+
+func _refresh_team_activity() -> void:
+	var rows: VBoxContainer = %TeamActivityRows
+	for index: int in range(StaffAdviceText.ROLES.size()):
+		var label: Label = rows.get_node(NodePath(String(StaffAdviceText.ROLE_NODES[index]))) as Label
+		label.text = StaffAdviceText.role_line(StaffAdviceText.ROLES[index], _team_activity)
+		label.visible = not label.text.is_empty()
+	(%TeamActivityHeading as Label).text = StaffAdviceText.last_service_heading(_team_activity)
+	(%TeamActivitySection as VBoxContainer).visible = _phase == SimClock.Phase.MORNING \
+		and not _team_activity.is_empty()
 
 
 ## Main supplies the current day and already-readable departure notices.
@@ -113,6 +132,7 @@ func refresh() -> void:
 	IconStyle.decorate_label($Panel/Content/Title, &"staff")
 	IconStyle.decorate_label(%RosterTitle, &"staff")
 	IconStyle.decorate_label($Panel/Content/Scroll/List/CandidateTitle, &"staff")
+	_refresh_team_activity()
 	_refresh_priorities()
 	if _roster == null:
 		return

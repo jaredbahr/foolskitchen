@@ -108,6 +108,10 @@ func _assert_clean_morning(main: Node, day: int) -> void:
 	assert_eq(sim.kitchen.dirty_tables.size(), 0, "day %d: tables clean" % day)
 	assert_not_null(sim.cleanliness, "day %d: cleanliness is installed" % day)
 	assert_eq(sim.cleanliness.spot_count(), 0, "day %d: floor spots are tidied overnight" % day)
+	assert_eq(sim.mishaps.spills_today, 0, "day %d: spills reset overnight" % day)
+	assert_eq(sim.mishaps.broken_plates_today, 0, "day %d: breakages reset overnight" % day)
+	assert_eq(sim.mishaps.degreases_today, 0, "day %d: maintenance report resets overnight" % day)
+	assert_eq(sim.mishaps.greasy_stations(world.grid), [] as Array[int], "day %d: station grease clears overnight" % day)
 	assert_eq(sim.clean_tasks.active_task_count(), 0, "day %d: no mop task survives overnight" % day)
 	var diagnostics: DebugOverlay = main.get_node("Overlay/DebugOverlay") as DebugOverlay
 	assert_true(diagnostics.get("_cleanliness") == sim.cleanliness,
@@ -200,8 +204,11 @@ func _assert_closed_books(main: Node, day: int) -> void:
 	assert_eq(int(totals.get(Ledger.WAGES, 0)), -wages, "day %d: wages once" % day)
 	assert_eq(int(totals.get(Ledger.RENT, 0)), -TUNING.daily_rent, "day %d: rent once" % day)
 	assert_eq(int(totals.get(Ledger.OTHER, 0)), 0, "day %d: no unexplained money" % day)
+	assert_eq(int(totals.get(Ledger.BREAKAGES, 0)),
+		-sim.mishaps.broken_plates_today * sim.mishaps.tuning.replacement_plate_cost,
+		"day %d: exactly one paid replacement per broken plate" % day)
 	var known_categories: Array[StringName] = [Ledger.SALE, Ledger.TIP, Ledger.INGREDIENTS,
-		Ledger.WAGES, Ledger.RENT, Ledger.UPGRADES, Ledger.OTHER,
+		Ledger.WAGES, Ledger.RENT, Ledger.UPGRADES, Ledger.OTHER, Ledger.BREAKAGES,
 		Ledger.BANK_LOAN, Ledger.LOAN_INTEREST, Ledger.LOAN_REPAYMENT, Ledger.MILESTONE_BONUS]
 	for category: StringName in totals:
 		assert_true(known_categories.has(category), "day %d: every flow has a known ledger category" % day)
@@ -242,6 +249,8 @@ func _assert_closed_books(main: Node, day: int) -> void:
 	assert_eq(shown.owner_xp_breakdown.get("milestone_xp", 0), milestone_xp,
 		"day %d: report XP breakdown matches its authored milestone rows" % day)
 	assert_eq(int(shown.income.get(Ledger.BANK_LOAN, 0)), int(totals.get(Ledger.BANK_LOAN, 0)))
+	assert_eq(int(shown.costs.get(Ledger.BREAKAGES, 0)), -int(totals.get(Ledger.BREAKAGES, 0)),
+		"day %d: the report shows every paid replacement" % day)
 	assert_eq(int(shown.costs.get(Ledger.LOAN_INTEREST, 0)), -int(totals.get(Ledger.LOAN_INTEREST, 0)))
 	assert_eq(int(shown.costs.get(Ledger.LOAN_REPAYMENT, 0)), -int(totals.get(Ledger.LOAN_REPAYMENT, 0)))
 	var operating_profit: int = 0
