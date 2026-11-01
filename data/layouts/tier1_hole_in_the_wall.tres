@@ -67,7 +67,7 @@ room_rows = PackedStringArray("", " KKKKKKKKKKKKKK", " KKKKKKKKKKKKKK", " KKKKKK
 staff_spawns = Dictionary[StringName, Vector2i]({
 &"cook": Vector2i(6, 2),
 &"owner": Vector2i(9, 3),
-&"server": Vector2i(10, 6),
+&"server": Vector2i(6, 6),
 &"cleaner": Vector2i(10, 9)
 })
 lot_west = 2
