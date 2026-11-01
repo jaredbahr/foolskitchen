@@ -31,7 +31,7 @@ func test_default_divider_recovers_nine_kitchen_cells_and_keeps_the_pass_gap() -
 	_assert_default_divider(_sim.world.grid)
 	for cell: Vector2i in [Vector2i(0, 4), Vector2i(13, 4), Vector2i(3, 0), Vector2i(3, 10)]:
 		assert_eq(_sim.world.grid.terrain(cell), SimGrid.Terrain.WALL, "the outside shell remains thick")
-	assert_eq(ShopEditor.SNAPSHOT_VERSION, 8, "v7 is reserved for furniture variants")
+	assert_eq(ShopEditor.SNAPSHOT_VERSION, 9, "v9 adds patio ownership after v8 interior terrain")
 	var pass_item: PlacedItem = ShopBuilder.items_with_def(_sim.world, &"pass_counter")[0]
 	assert_eq(pass_item.origin, Vector2i(5, 4), "no furniture moves to recover the divider row")
 	assert_eq(pass_item.work_cells, [Vector2i(5, 3), Vector2i(5, 5)] as Array[Vector2i])
@@ -101,7 +101,7 @@ func test_v6_save_converts_once_with_rooms_items_and_back_door_intact() -> void:
 	assert_eq(WallRules.delivery_cell(_sim.world.grid), Vector2i(12, 6))
 	var converted: Dictionary = _editor.to_dict()
 	assert_eq(converted["items"], old["items"], "the migration does not move or repaint furniture")
-	assert_eq(int(converted["version"]), 8)
+	assert_eq(int(converted["version"]), 9)
 	var again: ShopLayout = ShopEditor.from_dict(converted, LAYOUT, _content, errors)
 	assert_eq(errors, [] as Array[String])
 	assert_not_null(again)
@@ -175,7 +175,7 @@ func test_legacy_face_between_the_same_room_refunds_finish_and_decor_once_withou
 	assert_eq(errors, [] as Array[String])
 	assert_not_null(again)
 	if again != null:
-		assert_eq(again.get("load_refund"), 0, "a v8 reload cannot refund missing decor twice")
+		assert_eq(again.get("load_refund"), 0, "a v9 reload cannot refund missing decor twice")
 		assert_true(again.load_notes.is_empty())
 
 
@@ -312,7 +312,7 @@ func test_legal_window_keeps_its_only_thick_support_across_conversion_and_v8_rel
 	assert_eq(_sim.world.grid.segment(window), SimGrid.Segment.WINDOW)
 	assert_true(WallRules.has_continuing_wall(_sim.world.grid, window))
 	for cell: Vector2i in supports:
-		assert_eq(_sim.world.grid.terrain(cell), SimGrid.Terrain.WALL, "protected terrain survives a v8 reload")
+		assert_eq(_sim.world.grid.terrain(cell), SimGrid.Terrain.WALL, "protected terrain survives a v9 reload")
 	assert_eq(_editor.to_dict(), snapshot)
 	var wing: Array[Vector2i] = [Vector2i(14, 7), Vector2i(14, 8), Vector2i(14, 9)]
 	assert_true(_editor.apply_floor(wing, true), _editor.last_check.why)

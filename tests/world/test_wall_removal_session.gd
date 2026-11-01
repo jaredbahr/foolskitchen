@@ -241,10 +241,10 @@ func test_legacy_lost_face_refund_is_applied_only_after_successful_load_and_once
 	assert_eq(_grid().terrain(Vector2i(4, 4)), SimGrid.Terrain.FLOOR)
 	assert_null(_editor().decor.item(Vector3i(3, 3, 2)))
 	var saved: Dictionary = JSON.parse_string(_saved_text())
-	assert_eq(int(saved["data"]["shop"]["version"]), 8)
+	assert_eq(int(saved["data"]["shop"]["version"]), 9)
 	_close_fixture()
 	await _start()
-	assert_eq(Economy.cash, cash + refund, "reloading v8 never pays the migration refund again")
+	assert_eq(Economy.cash, cash + refund, "reloading the current snapshot never pays the migration refund again")
 
 
 func test_a_later_invalid_save_section_does_not_apply_staged_migration_refunds() -> void:

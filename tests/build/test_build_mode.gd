@@ -476,6 +476,8 @@ func test_all_place_results_have_player_sentences_used_by_actual_editor_checks()
 		SimGrid.PlaceResult.INVALID_LAYER: "This item cannot be placed here",
 		SimGrid.PlaceResult.INVALID_CELLS: "This item has invalid floor space",
 		SimGrid.PlaceResult.WALL_IN_WAY: "A wall is in the way",
+		SimGrid.PlaceResult.OUTDOOR_ONLY: "Outdoor furniture needs patio floor",
+		SimGrid.PlaceResult.INDOOR_ONLY: "Use outdoor furniture on the patio",
 	}
 	assert_eq(reasons.size(), SimGrid.PlaceResult.size(), "every placement result has one mapping")
 	for result: int in SimGrid.PlaceResult.values():
@@ -485,6 +487,16 @@ func test_all_place_results_have_player_sentences_used_by_actual_editor_checks()
 	assert_eq(_editor.check_buy(&"chair", Vector2i(0, 0)).why, reasons[SimGrid.PlaceResult.NOT_FLOOR])
 	assert_eq(_editor.check_buy(&"chair", Vector2i(1, 1)).why, reasons[SimGrid.PlaceResult.OVERLAPS])
 	assert_eq(_editor.check_buy(&"chair", Vector2i(2, 8)).why, reasons[SimGrid.PlaceResult.OK])
+	assert_eq(_editor.check_buy(&"patio_chair", Vector2i(2, 8)).why, reasons[SimGrid.PlaceResult.OUTDOOR_ONLY])
+	var patio_layout: ShopLayout = LAYOUT.duplicate(true) as ShopLayout
+	patio_layout.patio_cells = [Vector2i(5, 11)]
+	var errors: Array[String] = []
+	var patio_sim: RestaurantSim = RestaurantSim.create(patio_layout, _content, 55, errors)
+	assert_eq(errors, [] as Array[String])
+	var patio_editor: ShopEditor = ShopEditor.new(patio_sim, _content, ShopEditBooks.new(_can_spend, _record_cash), patio_layout)
+	var patio_before: Dictionary = patio_editor.to_dict()
+	assert_eq(patio_editor.check_buy(&"chair", Vector2i(5, 11)).why, reasons[SimGrid.PlaceResult.INDOOR_ONLY])
+	assert_eq(patio_editor.to_dict(), patio_before, "the outdoor floor rejection is read-only too")
 	assert_eq(_snapshot(), before)
 
 
