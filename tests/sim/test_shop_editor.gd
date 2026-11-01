@@ -97,12 +97,12 @@ func test_kitchen_equipment_unlocks_and_buy_move_sell_keep_exact_books() -> void
 
 
 func test_partial_table_capacity_warning_is_read_only_and_uses_actual_usable_cells() -> void:
-	# The solid pass blocks one authored seat while its dining work stays free.
+	# The middle table blocks the east seat; the other three stay legal floor.
 	# Keep a reachable coffee station so partial seating is the only warning.
 	assert_not_null(_sim.world.grid.place_def(_content.item(&"coffee_machine"), _coffee_cell(), 2))
 	var west: PlacedItem = _sim.world.grid.item(_id(&"table_2"))
 	var repair_origin: Vector2i = west.origin
-	var partial_origin: Vector2i = _sim.world.grid.item(_id(&"pass_counter")).origin + Vector2i(1, 1)
+	var partial_origin: Vector2i = repair_origin + Vector2i(2, -1)
 	assert_true(_sim.world.grid.remove(west.id))
 	_editor.set_owner_level(2)  # the four-seat table unlocks at level 2
 	var before: Dictionary = _editor.to_dict()
@@ -315,7 +315,7 @@ func test_last_required_station_and_door_guards_use_real_categories() -> void:
 	for def_id: StringName in [&"fridge", &"prep_counter", &"stove", &"pass_counter", &"sink"]:
 		assert_false(_editor.check_sell(_id(def_id)).ok)
 		assert_eq(_editor.sell(_id(def_id)), -1)
-	assert_true(_editor.buy(&"door", Vector2i(4, 8)))
+	assert_true(_editor.buy(&"door", _sim.world.grid.item(_id(&"table_2")).origin + Vector2i(1, 3)))
 	assert_false(_editor.check_sell(_id(&"door")).ok)
 	assert_eq(_editor.sell(_id(&"door")), -1)
 	assert_true(_editor.buy(&"fridge", Vector2i(1, 8)))
@@ -612,7 +612,10 @@ func test_floor_layer_does_not_change_the_service_edit_policy() -> void:
 
 func test_version_one_rug_and_table_round_trip_in_either_wire_order() -> void:
 	_editor.set_owner_level(6)
-	assert_true(_editor.buy(&"rug_rectangle", Vector2i(2, 5), 1))
+	var west: PlacedItem = _sim.world.grid.item(_id(&"table_2"))
+	var table_cell: Vector2i = west.origin
+	# A q1 rectangle covers the actual2x2 table and both north/south seats.
+	assert_true(_editor.buy(&"rug_rectangle", table_cell + Vector2i.UP, 1))
 	var original: Dictionary = _editor.to_dict()
 	assert_eq(original["version"], ShopEditor.SNAPSHOT_VERSION)
 	for reverse_order: bool in [false, true]:
@@ -631,15 +634,15 @@ func test_version_one_rug_and_table_round_trip_in_either_wire_order() -> void:
 		assert_eq(errors, [] as Array[String])
 		var copy: ShopEditor = ShopEditor.new(restored, _content, _books, layout)
 		assert_eq(copy.to_dict(), expected, "wire order is retained rather than sorting gameplay items by layer")
-		var table: PlacedItem = restored.world.grid.item_on_layer(Vector2i(2, 6), ItemDef.PlacementLayer.NORMAL)
-		var rug: PlacedItem = restored.world.grid.item_on_layer(Vector2i(2, 6), ItemDef.PlacementLayer.FLOOR_DECOR)
+		var table: PlacedItem = restored.world.grid.item_on_layer(table_cell, ItemDef.PlacementLayer.NORMAL)
+		var rug: PlacedItem = restored.world.grid.item_on_layer(table_cell, ItemDef.PlacementLayer.FLOOR_DECOR)
 		assert_not_null(table)
 		assert_not_null(rug)
 		if table == null or rug == null:
 			continue
 		assert_eq((table.def as ItemDef).id, &"table_2")
 		assert_eq((rug.def as ItemDef).id, &"rug_rectangle")
-		assert_eq(restored.world.grid.item_at(Vector2i(2, 6)), table)
+		assert_eq(restored.world.grid.item_at(table_cell), table)
 		for seat: Vector2i in table.seat_cells:
 			assert_true(restored.world.grid.is_walkable(seat))
 			assert_eq(restored.world.grid.dining_table_id(seat), table.id)
@@ -710,7 +713,7 @@ func _coffee_cell() -> Vector2i:
 	for table: PlacedItem in tables:
 		if table.origin.x > east.origin.x:
 			east = table
-	return east.origin + Vector2i(-1, -1)
+	return east.origin + Vector2i(1, -2)
 
 
 func _id(def_id: StringName) -> int:
@@ -730,7 +733,7 @@ func _record_cells(cells: Array[Vector2i]) -> void:
 	_changes.append(cells.duplicate())
 	if _try_reentry:
 		_try_reentry = false
-		_reentry_result = _editor.buy(&"chair", Vector2i(3, 8))
+		_reentry_result = _editor.buy(&"chair", _sim.world.grid.item(_id(&"table_2")).origin + Vector2i(1, 2))
 
 
 func _record_removed(_item: PlacedItem) -> void:

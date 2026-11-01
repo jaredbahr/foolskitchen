@@ -419,9 +419,12 @@ func test_ready_burger_rests_on_the_native_pass_top_at_every_rotation() -> void:
 	for blocked_turns: int in [0, 2]:
 		assert_eq(_sim.world.grid.can_place_def(_content.item(&"pass_counter"), Vector2i(8, 5), blocked_turns),
 			SimGrid.PlaceResult.WALL_IN_WAY, "the old fixture crosses the current authored thin divider")
+	# Keep the four-rotation pose three rows inside the actual street entry.
+	# The old row8 west workcell now coincides with a middle-table body.
+	var origin: Vector2i = Vector2i(9, _sim.world.grid.entries()[0].y - 3)
 	for turns: int in range(4):
-		assert_eq(_sim.world.grid.can_place_def(_content.item(&"pass_counter"), Vector2i(9, 8), turns), SimGrid.PlaceResult.OK)
-		var counter: PlacedItem = _sim.world.grid.place_def(_content.item(&"pass_counter"), Vector2i(9, 8), turns)
+		assert_eq(_sim.world.grid.can_place_def(_content.item(&"pass_counter"), origin, turns), SimGrid.PlaceResult.OK)
+		var counter: PlacedItem = _sim.world.grid.place_def(_content.item(&"pass_counter"), origin, turns)
 		assert_not_null(counter)
 		if counter == null:
 			return

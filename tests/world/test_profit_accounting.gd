@@ -43,8 +43,8 @@ func after_each() -> void:
 
 func test_real_paid_meal_and_extra_drink_exclude_consumed_cancelled_food() -> void:
 	var main: Node = await _start(false)
-	# The former (12, 5) is a current dining seat; keep the real machine/front clear.
-	assert_true(main.call("shop_buy", &"coffee_machine", Vector2i(11, 5), 2))
+	# Keep both the machine body and its real work cell clear of current seats.
+	assert_true(main.call("shop_buy", &"coffee_machine", _fixture_coffee_cell(main), 2))
 	var sim: RestaurantSim = main.get("sim")
 	var content: ContentDB = main.get("content")
 	_no_arrivals(sim)
@@ -293,8 +293,8 @@ func test_real_morning_and_opening_station_orders_use_the_forecast_menu_mix() ->
 		assert_eq(Economy.stock.count(id), expected_units, "the real morning order buys the forecast use")
 	for id: StringName in [&"bread", &"cheese", &"tomato", &"soup_stock"]:
 		assert_eq(Economy.stock.count(id), 0, "unused automatic food is absent from the real order")
-	# The former (12, 5) is a current dining seat; keep the real machine/front clear.
-	assert_true(main.call("shop_buy", &"coffee_machine", Vector2i(11, 5), 2))
+	# Keep both the machine body and its real work cell clear of current seats.
+	assert_true(main.call("shop_buy", &"coffee_machine", _fixture_coffee_cell(main), 2))
 	assert_true(main.call("menu_set_enabled", &"tea", false))
 	assert_true(main.call("menu_set_enabled", &"burger", false))
 	assert_eq(sim.menu.size(), 1)
@@ -448,3 +448,13 @@ func _close(main: Node) -> void:
 	if main.is_inside_tree():
 		main.get_parent().remove_child(main)
 	main.free()
+
+
+## Use the actual east table as the anchor, keeping body and work spot off seats.
+func _fixture_coffee_cell(main: Node) -> Vector2i:
+	var tables: Array[PlacedItem] = ShopBuilder.items_with_def(main.get("world") as SimWorld, &"table_2")
+	var east: PlacedItem = tables[0]
+	for table: PlacedItem in tables:
+		if table.origin.x > east.origin.x:
+			east = table
+	return east.origin + Vector2i(1, -2)

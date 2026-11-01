@@ -96,7 +96,7 @@ func test_evening_purchase_refresh_upserts_and_next_morning_load_preserves_it() 
 	var before_profit: int = before_report.profit()
 	var before_cash: int = Economy.cash
 	assert_true(_main.call("set_build_active", true))
-	assert_true(_main.call("shop_buy", &"chair", Vector2i(3, 8)), "ordinary after-hours paid purchase")
+	assert_true(_main.call("shop_buy", &"chair", ShopBuilder.items_with_def(_main.get("world") as SimWorld, &"table_2")[0].origin + Vector2i(1, 2)), "ordinary after-hours paid purchase")
 	var paid_cost: int = before_cash - Economy.cash
 	assert_true(paid_cost > 0)
 	assert_true(_main.call("set_build_active", false))

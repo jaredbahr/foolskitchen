@@ -38,7 +38,7 @@ func test_morning_items_and_books_round_trip_through_the_shop_provider() -> void
 	var original_file: String = FileAccess.get_file_as_string(_path())
 	var price: int = (first.get("content") as ContentDB).item(&"chair").price
 	var before_cash: int = Economy.cash
-	assert_true(first.call("shop_buy", &"chair", Vector2i(3, 8)))
+	assert_true(first.call("shop_buy", &"chair", _authored_origin(&"table_2") + Vector2i(1, 2)))
 	assert_eq(Economy.cash, before_cash - price)
 	assert_true(first.call("shop_move", _id(first, &"potted_plant"), Vector2i(11, 9), 1))
 	assert_eq(FileAccess.get_file_as_string(_path()), original_file, "edits do not introduce another autosave boundary")
@@ -98,7 +98,7 @@ func test_invalid_shop_starts_fresh_skips_one_save_then_autosaves_next_morning()
 	assert_eq((second.get("world") as SimWorld).grid.item(_id(second, &"potted_plant")).origin, _authored_origin(&"potted_plant"))
 	assert_eq(Economy.cash, TUNING.starting_cash - _stock_cost(second))
 	assert_eq(FileAccess.get_file_as_string(_path()), broken, "only the first autosave is skipped")
-	assert_true(second.call("shop_buy", &"chair", Vector2i(3, 8)))
+	assert_true(second.call("shop_buy", &"chair", _authored_origin(&"table_2") + Vector2i(1, 2)))
 	assert_eq(FileAccess.get_file_as_string(_path()), broken, "editing does not write a save")
 	_assert_bindings(second)
 	Clock.sim.phase = SimClock.Phase.CLOSED

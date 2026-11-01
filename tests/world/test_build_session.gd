@@ -461,7 +461,7 @@ func test_native_catalogue_click_consumes_gui_input_and_starts_one_ghost_without
 
 func test_main_build_hud_shows_partial_seats_and_clears_warning_after_the_layout_is_fixed() -> void:
 	await _start()
-	# The pass blocks the north seat; its dining work cell stays clear to the west.
+	# The middle table blocks the east seat; the other three stay legal floor.
 	assert_true(_main.call("shop_buy", &"coffee_machine", _coffee_cell(), 2))
 	var center: PlacedItem = ShopBuilder.items_with_def(_world(), &"table_2")[0]
 	var center_origin: Vector2i = center.origin
@@ -499,6 +499,7 @@ func test_main_build_hud_shows_partial_seats_and_clears_warning_after_the_layout
 
 func test_floor_tool_hint_keeps_the_partial_seat_warning_beside_its_summary() -> void:
 	await _start()
+	# The middle table supplies the same single blocked east seat as the HUD case.
 	assert_true(_main.call("shop_buy", &"coffee_machine", _coffee_cell(), 2))
 	var center: PlacedItem = ShopBuilder.items_with_def(_world(), &"table_2")[0]
 	var center_origin: Vector2i = center.origin
@@ -815,7 +816,7 @@ func test_saved_startup_replaces_initial_world_before_final_controller_clock_bin
 	assert_eq(_editor().to_dict(), snapshot)
 	assert_eq(Economy.ledger.to_dict(), books)
 	assert_true(_main.call("set_build_active", true))
-	assert_true(_mode().begin_buy(&"chair", Vector2i(3, 8)))
+	assert_true(_mode().begin_buy(&"chair", _world().grid.item(_id(&"table_2")).origin + Vector2i(1, 2)))
 	assert_true(Clock.sim.start_service())
 	assert_false(_main.call("is_build_active"), "the final restored clock owns cancellation")
 	assert_null(_preview().ghost_mesh)
@@ -828,7 +829,7 @@ func test_shared_layers_wait_for_normal_morning_save_then_reload_with_poses_pain
 	var content: ContentDB = _main.get("content") as ContentDB
 	var rug_def: ItemDef = content.item(&"rug_square")
 	_editor().set_owner_level(rug_def.unlock_level) # Explicit level-two purchase fixture.
-	var origin: Vector2i = Vector2i(4, 8)
+	var origin: Vector2i = Vector2i(4, _world().grid.entries()[0].y - 3)
 	assert_true(_main.call("shop_buy", rug_def.id, origin, 1))
 	assert_true(_main.call("shop_buy", &"table_2", origin, 0))
 	var rug: PlacedItem = _world().grid.item_on_layer(origin, ItemDef.PlacementLayer.FLOOR_DECOR)
@@ -1363,7 +1364,7 @@ func _coffee_cell() -> Vector2i:
 	for table: PlacedItem in tables:
 		if table.origin.x > east.origin.x:
 			east = table
-	return east.origin + Vector2i(-1, -1)
+	return east.origin + Vector2i(1, -2)
 
 
 func _id(def_id: StringName) -> int:

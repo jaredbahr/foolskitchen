@@ -63,7 +63,7 @@ func _coffee_cell() -> Vector2i:
 	for table: PlacedItem in tables:
 		if table.origin.x > east.origin.x:
 			east = table
-	return east.origin + Vector2i(-1, -1)
+	return east.origin + Vector2i(1, -2)
 
 
 func _item(id: StringName) -> PlacedItem:
