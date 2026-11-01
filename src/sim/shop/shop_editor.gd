@@ -796,6 +796,7 @@ static func _decode_walls(data: Dictionary, preview: SimGrid, content: ContentDB
 	layout.wall_style_id = WallStyleDef.DEFAULT_ID
 	layout.wall_finishes = {}
 	layout.wall_items = {}
+	layout.wall_menu_sections = {}
 	layout.wall_item_mounts = {}
 	layout.wall_item_swatches = {}
 	var limit: int = preview.size.x * preview.size.y * 4
@@ -820,7 +821,9 @@ static func _decode_walls(data: Dictionary, preview: SimGrid, content: ContentDB
 	for value: Variant in (hung as Array).slice(0, limit):
 		var row: Array = value if value is Array else []
 		var extended: bool = row.size() == 6
-		var anchor: Vector3i = _saved_face(row, 6 if extended else 4, ExteriorSupport.MAX_KEY_DIRECTION if extended else 3)
+		var boarded: bool = row.size() == 5
+		var anchor: Vector3i = _saved_face(row.slice(0, 4) if boarded else row, 6 if extended else 4,
+			ExteriorSupport.MAX_KEY_DIRECTION if extended else 3)
 		if anchor == WallFaces.NO_FACE or not (row[3] is String or row[3] is StringName):
 			continue
 		var definition: ItemDef = content.item(StringName(row[3]))
@@ -835,8 +838,14 @@ static func _decode_walls(data: Dictionary, preview: SimGrid, content: ContentDB
 			swatch = _saved_swatch(row[5], content) if definition.paintable else &""
 		elif mount == ItemDef.WallMount.EXTERIOR:
 			continue
-		staged.add(definition.id, anchor, definition.footprint.x, mount == ItemDef.WallMount.WINDOW, mount, swatch)
+		var section: int = -1
+		if boarded and definition.id == WallDecor.MENU_BOARD_ID and mount != ItemDef.WallMount.EXTERIOR \
+				and _integer_in(row[4], -1, RecipeDef.Section.BAKERY):
+			section = int(row[4])
+		staged.add(definition.id, anchor, definition.footprint.x, mount == ItemDef.WallMount.WINDOW, mount, swatch, section)
 		layout.wall_items[anchor] = definition.id
+		if section != -1:
+			layout.wall_menu_sections[anchor] = section
 		if extended:
 			layout.wall_item_mounts[anchor] = mount
 			layout.wall_item_swatches[anchor] = swatch
@@ -879,7 +888,8 @@ func _load_walls(layout: ShopLayout) -> void:
 				continue
 			var swatch: StringName = _saved_swatch(layout.wall_item_swatches.get(anchor, &""), _content) \
 				if definition.paintable and mount == ItemDef.WallMount.EXTERIOR else &""
-			decor.add(definition.id, anchor, definition.footprint.x, mount == ItemDef.WallMount.WINDOW, mount, swatch)
+			var section: int = layout.wall_menu_sections.get(anchor, -1)
+			decor.add(definition.id, anchor, definition.footprint.x, mount == ItemDef.WallMount.WINDOW, mount, swatch, section)
 
 
 ## Invalid or removed palette entries revert to authored colours on old saves.
@@ -1410,6 +1420,12 @@ func hung_definition(anchor: Vector3i) -> ItemDef:
 	return _content.item(hung.def_id) if hung != null and _content != null else null
 
 
+## Chooses the section shown by a placed menu board; -1 follows the first
+## nonempty section. This is a free presentation choice in any phase.
+func set_menu_board_section(anchor: Vector3i, section: int) -> bool:
+	return decor.set_menu_section(anchor, section)
+
+
 ## Read-only check of hanging a new `def_id` from `anchor` (its leftmost face).
 func check_hang(def_id: StringName, anchor: Vector3i, exact: Exact = null, swatch_id: StringName = &"") -> EditCheck:
 	if not can_edit():
@@ -1482,9 +1498,9 @@ func rehang(anchor: Vector3i, to_anchor: Vector3i, exact: Exact = null) -> bool:
 	_applying = true
 	decor.remove(anchor)
 	var mount: ItemDef.WallMount = WallDecor.mount_for(_sim.world.grid, _content.item(hung.def_id), to_anchor)
-	var added: bool = decor.add(hung.def_id, to_anchor, hung.width, mount == ItemDef.WallMount.WINDOW, mount, hung.swatch_id)
+	var added: bool = decor.add(hung.def_id, to_anchor, hung.width, mount == ItemDef.WallMount.WINDOW, mount, hung.swatch_id, hung.menu_section)
 	if not added:
-		decor.add(hung.def_id, anchor, hung.width, hung.window, hung.mount, hung.swatch_id)
+		decor.add(hung.def_id, anchor, hung.width, hung.window, hung.mount, hung.swatch_id, hung.menu_section)
 	_applying = false
 	last_anchor = to_anchor if added else anchor
 	last_cash_change = 0

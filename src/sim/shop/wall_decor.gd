@@ -15,10 +15,11 @@ signal changed()
 
 const OCCUPIED: String = "Something already hangs here"
 const NOT_WALL_DECOR: String = "This item does not hang on a wall"
+const MENU_BOARD_ID: StringName = &"menu_board"
 const UNIQUE: String = "Your shop already has this sign"
 
 
-## One hung item. Values only; never mutate a shared one.
+## One hung item. Callers must not mutate a shared one; use set_menu_section.
 class Hung extends RefCounted:
 	var def_id: StringName = &""
 	var anchor: Vector3i = WallFaces.NO_FACE
@@ -27,9 +28,11 @@ class Hung extends RefCounted:
 	var window: bool = false
 	var mount: ItemDef.WallMount = ItemDef.WallMount.INSIDE_FACE
 	var swatch_id: StringName = &""
+	## -1 picks the first nonempty menu section when the board is drawn.
+	var menu_section: int = -1
 
 	func _init(definition_id: StringName = &"", anchor_face: Vector3i = WallFaces.NO_FACE, faces: int = 1,
-			in_window: bool = false, actual_mount: int = -1, swatch: StringName = &"") -> void:
+			in_window: bool = false, actual_mount: int = -1, swatch: StringName = &"", section: int = -1) -> void:
 		def_id = definition_id
 		anchor = anchor_face
 		width = 1 if in_window else maxi(faces, 1)
@@ -37,9 +40,10 @@ class Hung extends RefCounted:
 			if actual_mount < 0 else actual_mount as ItemDef.WallMount
 		window = mount == ItemDef.WallMount.WINDOW
 		swatch_id = swatch
+		menu_section = section if def_id == MENU_BOARD_ID and WallDecor.valid_menu_section(section) else -1
 
 	func copy() -> Hung:
-		return Hung.new(def_id, anchor, width, window, mount, swatch_id)
+		return Hung.new(def_id, anchor, width, window, mount, swatch_id, menu_section)
 
 	## Where it still hangs on `grid` ("" when it does).
 	func problem_on(grid: SimGrid) -> String:
@@ -92,8 +96,8 @@ func covered_faces() -> Array[Vector3i]:
 ## Hangs without rules (callers check `problem` first). False on overlap.
 ## `window`: in the window slot `anchor` (one wide).
 func add(def_id: StringName, anchor: Vector3i, width: int, window: bool = false,
-		mount: int = -1, swatch_id: StringName = &"") -> bool:
-	var hung: Hung = Hung.new(def_id, anchor, width, window, mount, swatch_id)
+		mount: int = -1, swatch_id: StringName = &"", menu_section: int = -1) -> bool:
+	var hung: Hung = Hung.new(def_id, anchor, width, window, mount, swatch_id, menu_section)
 	for face: Vector3i in hung.faces():
 		if _cover.has(face):
 			return false
@@ -102,6 +106,25 @@ func add(def_id: StringName, anchor: Vector3i, width: int, window: bool = false,
 		_cover[face] = anchor
 	revision += 1
 	changed.emit()
+	return true
+
+
+## -1 is automatic; otherwise only RecipeDef.Section values are accepted.
+static func valid_menu_section(section: int) -> bool:
+	return section >= -1 and section <= RecipeDef.Section.BAKERY
+
+
+## Changes one placed board's section. A repeated choice has no side effects.
+func set_menu_section(anchor: Vector3i, section: int) -> bool:
+	var hung: Hung = item(anchor)
+	if hung == null or hung.def_id != MENU_BOARD_ID or not valid_menu_section(section):
+		return false
+	if hung.menu_section != section:
+		var changed_item: Hung = hung.copy()
+		changed_item.menu_section = section
+		_items[anchor] = changed_item
+		revision += 1
+		changed.emit()
 	return true
 
 
@@ -163,7 +186,8 @@ func lost_on(grid: SimGrid) -> Array[Vector3i]:
 	return out
 
 
-## Save rows [x, y, dir, def_id], sorted (shop snapshot v6).
+## Save rows [x, y, dir, def_id], sorted. Exterior items append [mount, swatch];
+## a menu board with a chosen section appends [menu_section] (inside only).
 func to_rows() -> Array[Array]:
 	var rows: Array[Array] = []
 	for anchor: Vector3i in anchors():
@@ -172,6 +196,8 @@ func to_rows() -> Array[Array]:
 		if hung.mount == ItemDef.WallMount.EXTERIOR:
 			row.append(hung.mount)
 			row.append(String(hung.swatch_id))
+		elif hung.def_id == MENU_BOARD_ID and hung.menu_section != -1:
+			row.append(hung.menu_section)
 		rows.append(row)
 	return rows
 
