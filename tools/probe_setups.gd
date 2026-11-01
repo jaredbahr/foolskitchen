@@ -7,7 +7,7 @@ extends RefCounted
 static func names() -> Array[String]:
 	return ["default", "extra_cook", "extra_server", "owner_kitchen", "owner_floor",
 		"trays_2", "trays_4", "extra_cleaner", "expanded_tables", "coffee_shop", "bar", "fryer_coffee", "joined_tables",
-		"grown", "neglected", "curb_appeal"]
+		"grown", "neglected", "curb_appeal", "patio"]
 
 
 static func apply(name: String, main: Node, extra_cook_skill: int = 3) -> bool:
@@ -51,6 +51,8 @@ static func apply(name: String, main: Node, extra_cook_skill: int = 3) -> bool:
 			return _neglected(main)
 		"curb_appeal":
 			return _curb_appeal(main)
+		"patio":
+			return _patio(main)
 	return false
 
 
@@ -364,3 +366,43 @@ static func curb_appeal_construction(main: Node) -> Dictionary:
 		"nominal_construction_cost": total, "actual_construction_charge": 0,
 		"convention": "Free frontage construction; temporary editor-only level4 restored; no cash or owner-XP grants. Normal paid stock and service.",
 		"comparison_scope": "Appeal and service comparison, not purchase return on investment"}
+
+
+## Default plus two outdoor two-seat tables. As with expanded_tables, this
+## explicit probe builds for free through the actual editor; ordinary stock
+## and daily service costs are paid. Weather is the real morning's selection.
+## All 48 side cells are connected to the existing street entries; their two
+## public approach columns remain untouched. No cash, XP or stock is granted.
+static func _patio(main: Node) -> bool:
+	var editor: ShopEditor = main.get("shop_editor") as ShopEditor
+	var free: ShopEditor.Exact = ShopEditor.Exact.new(0, "Declared free patio probe construction")
+	# Keep ownership on the session's real editor, so its next morning and
+	# snapshot retain the same purchased cells as the live simulation grid.
+	if editor == null or not editor.apply_patio(editor.patio_area().cells(), true, free):
+		return false
+	for origin: Vector2i in patio_table_origins():
+		if not editor.buy(&"patio_table_2", origin, 0, free):
+			return false
+	main.call("refresh_presentation")
+	return editor.last_check.unreachable.is_empty()
+
+
+static func patio_table_origins() -> Array[Vector2i]:
+	return [Vector2i(2, 12), Vector2i(9, 12)]
+
+
+## Read-only disclosure alongside probe results, never a construction ROI row.
+static func patio_construction(main: Node) -> Dictionary:
+	var editor: ShopEditor = main.get("shop_editor") as ShopEditor
+	var content: ContentDB = main.get("content") as ContentDB
+	if editor == null or content == null or content.item(&"patio_table_2") == null:
+		return {"error": "The real patio content is missing"}
+	var cells: int = editor.patio_area().cells().size()
+	var price: int = content.item(&"patio_table_2").price
+	return {"error": "", "profile": "patio", "patio_cells": cells,
+		"price_per_cell": editor.patio_area().cell_price,
+		"items": [{"item": "patio_table_2", "count": 2, "catalogue_price": price}],
+		"nominal_construction_cost": cells * editor.patio_area().cell_price + 2 * price,
+		"actual_construction_charge": 0,
+		"convention": "Free patio construction through the editor; no cash, XP or stock grants. Normal paid stock and service; naturally selected daily weather.",
+		"comparison_scope": "Patio service and weather comparison, not purchase return on investment"}
