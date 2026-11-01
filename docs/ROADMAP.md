@@ -8,23 +8,17 @@ Hobby pace: there are no dates, only exit criteria. Each phase ends with a playa
 - **Jared:** taste and lore calls, playtests each phase build, merges or asks for changes.
 - Each phase has a tracking issue (`Phase N: ...`) that lists its task issues.
 
-## Up next: the Codex queue (reset 2026-10-31)
-Codex takes `worker-ready` issues in this order, skipping any whose **Depends on** hasn't merged. The director reviews, fixes up and merges. Merged since the last reset: #239 thin divider and wall Remove (#248), #246 joined tables (#253), #247 demand growth (#256), #255 honest profit and forecast restock (#258), the director's easier economy (#257), #240 street front (#250), #241 weather (#251), #99 food on plates (#236), #118 icons (#237), #110 first-day guide (#238), #114 lease (#216), #198 restroom decor (#217), #150 furniture looks (#220), #126 seafood (#229), #166 regulars (#234), #203 waiting bench (#228), #179 hygiene (#232), #108 title screen (#230), #211 owner picker (#233).
+## Up next: the Codex queue (reset 2026-11-01)
+Codex takes `worker-ready` issues in this order, skipping any whose **Depends on** hasn't merged. The director reviews, fixes up and merges. Merged since the last reset: #259 staff bottleneck advice (#264), #127 messes (#235), #260 business trend (#265), #244 curb appeal (#266), #242 neighbourhood (#254), #223 blueprints remember looks (#262), #161 menu boards (#231).
 
-**Now: finish open PRs**
-- #254 neighbourhood (merging), #235 messes (retune on the new economy), #231 menu boards (merge main, then finish)
-
-**Wave 5: make growing pay (Jared, 2026-10-30: "struggling to grow")**
+**Wave 5: make growing pay (Jared: "struggling to grow"; "people phase through each other")**
 - #85 Tier 1 balance pass: seats plus staff must clearly pay (re-scoped; do first)
-- #259 Show which staff role is the bottleneck, and what to hire next
-- #260 Business trend: last 7 days in the evening report
-- #244 Curb appeal (plugs into #256's demand multiplier)
+- #263 People never walk through each other or furniture; a roomier starter shop (high priority; right after #85, or first if #85 is taken)
 
 **Wave 6: outside and atmosphere**
 - #205 Smarter cutaway, then #208 Day and night cycle, then #84 Lighting decor
-- #243 Patio: outdoor tables and waiting seats, closed in rain (after #242)
+- #243 Patio: outdoor tables and waiting seats, closed in rain (its dependencies have merged)
 - #117 Sound
-- #223 Blueprints remember furniture looks
 
 **Director-scoped (art or taste first):** the cat #119 (shop level 4), aquarium #125, premium decor #206.
 **Later backlog:** #164 more sites, #167 makeovers, #169 staff drama, #170 design extras, #171 food depth, #172 visitors, #173 neighbourhood rivals, #159 entertainment, #180 café counter.
