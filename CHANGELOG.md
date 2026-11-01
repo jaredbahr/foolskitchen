@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- Wall menu boards show your restaurant name and dishes from a section you choose, and the Menu panel shows which themes your dishes lean toward. (#231)
 - Decorating the street front now raises curb appeal for a small walk-in boost, shown beside Vibe in Build and in the evening crowd forecast. (#266)
 - See seven days of dish profit and guests served in the evening report, with today's results highlighted and a plain trend summary. (#265)
 - Staff carrying meals can spill them and break plates, especially when clumsy or crowded at the pass. Reassigning a delivery makes the next worker collect the meals before they can spill. Meals are cooked again, broken plates are replaced tomorrow, and greasy stations work 10% slower until someone degreases them. Floor messes stand out on light and dark floors, with mishaps listed in the evening report. (#235)
@@ -131,6 +132,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- The roadmap's Codex queue is reset again: the balance pass, then people never walking through each other or furniture, then the outside and atmosphere (the patio is now unblocked). (#267)
 - The roadmap's Codex queue is reset: finish open PRs, then make growing pay (balance pass, staff bottleneck advice, a 7-day trend, curb appeal), then the outside and atmosphere. (#261)
 - `tools/check.sh` gives the test suite 25 minutes instead of 10; the full suite now takes about 11 minutes on a busy machine and was being cut off without a failure. (#252)
 - Workers check GitHub for an existing PR or claim before starting an issue, claim it with a comment, and stop pushing once a PR is ready, so no work is done twice. (#249)

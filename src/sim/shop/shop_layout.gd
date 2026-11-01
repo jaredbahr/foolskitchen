@@ -30,6 +30,8 @@ extends Resource
 @export var wall_style_id: StringName = &""
 @export var wall_finishes: Dictionary[Vector3i, PackedStringArray] = {}
 @export var wall_items: Dictionary[Vector3i, StringName] = {}
+## Explicit section of each saved menu board; absent means automatic (-1).
+var wall_menu_sections: Dictionary[Vector3i, int] = {}
 ## Optional exterior instance data, absent from legacy inside/window rows.
 @export var wall_item_mounts: Dictionary[Vector3i, int] = {}
 @export var wall_item_swatches: Dictionary[Vector3i, StringName] = {}

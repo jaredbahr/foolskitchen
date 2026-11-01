@@ -425,6 +425,8 @@ func _bind_world_presentation() -> void:
 		_hints_bubble.got_it.connect(_on_hint_acknowledged)
 		_hints_bubble.skip_guide.connect(_on_guide_skipped)
 	_inspect_panel.bind_world(world)
+	if not _inspect_panel.menu_board_section_requested.is_connected(_on_menu_board_section_requested):
+		_inspect_panel.menu_board_section_requested.connect(_on_menu_board_section_requested)
 	_sync_owner_appearance()
 	_debug_overlay.bind_world(world)
 	_debug_overlay.bind_cleanliness(sim.cleanliness)
@@ -696,7 +698,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				set_staff_visible(false)
 			elif is_stock_visible():
 				set_stock_visible(false)
-			elif _inspect_panel.selected_agent_id >= 0 or _inspect_panel.selected_item_id >= 0:
+			elif _inspect_panel.selected_agent_id >= 0 or _inspect_panel.selected_item_id >= 0 \
+					or _inspect_panel.selected_menu_board_anchor != WallFaces.NO_FACE:
 				clear_selection()
 			else:
 				set_settings_visible(true)
@@ -1610,6 +1613,8 @@ func _bind_build_session() -> void:
 	if _build_catalogue != null:
 		_build_catalogue.bind_blueprints(blueprint_library)
 	($ShopView as ShopView).bind_wall_finishes(shop_editor.walls, shop_editor.decor)
+	_inspect_panel.bind_menu_boards(shop_editor.decor, menu_settings)
+	_refresh_menu_boards()
 	if _build_catalogue != null:
 		_build_catalogue.set_wall_base_color(($ShopView as ShopView).shop_wall_colour())
 	if not shop_editor.walls.changed.is_connected(_on_wall_looks_changed):
@@ -1856,6 +1861,9 @@ func _on_wall_looks_changed(faces: Array[Vector3i]) -> void:
 
 func _on_wall_decor_changed() -> void:
 	_recompute_vibe()
+	_refresh_menu_boards()
+	if _inspect_panel != null:
+		_inspect_panel.refresh()
 
 
 func _on_build_cash_changed(_cash: int, _delta: int, _reason: StringName) -> void:
@@ -1882,6 +1890,11 @@ func pick_screen_position(screen_position: Vector2) -> void:
 	var ray_origin: Vector3 = camera.project_ray_origin(screen_position)
 	var ray_direction: Vector3 = camera.project_ray_normal(screen_position)
 	var view: ShopView = $ShopView
+	var board_anchor: Vector3i = view.wall_item_at_ray(ray_origin, ray_direction)
+	var board: WallDecor.Hung = shop_editor.decor.item(board_anchor) if shop_editor != null else null
+	if board != null and board.def_id == &"menu_board":
+		select_menu_board(board_anchor)
+		return
 	var preferred_item_id: int = view.item_at_ray(ray_origin, ray_direction)
 	var hit: Variant = Picker.floor_intersection(ray_origin, ray_direction)
 	if hit is Vector3:
@@ -1932,6 +1945,31 @@ func select_agent(agent_id: int) -> bool:
 	_inspect_panel.show_agent(agent_id)
 	refresh_presentation()
 	return _inspect_panel.selected_agent_id == agent_id
+
+
+## Select a hung board through the same production inspector used by clicks.
+func select_menu_board(anchor: Vector3i) -> bool:
+	if world == null or shop_editor == null or _inspect_panel == null or is_build_active() or _paint_active:
+		return false
+	var hung: WallDecor.Hung = shop_editor.decor.item(anchor)
+	if hung == null or hung.def_id != &"menu_board":
+		return false
+	_inspect_panel.show_menu_board(anchor)
+	refresh_presentation()
+	return _inspect_panel.selected_menu_board_anchor == anchor
+
+
+func shop_menu_board_section(anchor: Vector3i, section: int) -> bool:
+	if shop_editor == null or not shop_editor.set_menu_board_section(anchor, section):
+		return false
+	_refresh_menu_boards()
+	if _inspect_panel != null:
+		_inspect_panel.refresh()
+	return true
+
+
+func _on_menu_board_section_requested(anchor: Vector3i, section: int) -> void:
+	shop_menu_board_section(anchor, section)
 
 
 func _selected_owner() -> OwnerAgent:
@@ -1996,6 +2034,7 @@ func inspection_state() -> Dictionary:
 	return {
 		"selected_agent_id": _inspect_panel.selected_agent_id,
 		"selected_item_id": _inspect_panel.selected_item_id,
+		"selected_menu_board_anchor": _inspect_panel.selected_menu_board_anchor,
 		"selected_role": role, "panel_visible": _inspect_panel.visible,
 		"debug_visible": is_debug_visible(), "world_tick": world.now,
 		"owner_mode": String((selected_staff as OwnerAgent).current_mode()) if selected_staff is OwnerAgent else "",
@@ -3123,6 +3162,7 @@ func _on_hours_requested(open_minute: int, close_minute: int) -> void:
 
 func _apply_menu(restaurant: RestaurantSim, choices: MenuSettings) -> void:
 	restaurant.menu = choices.enabled_recipes()
+	_refresh_menu_boards()
 	$HUD.set_restaurant_name(choices.restaurant_name())
 	($ShopView as ShopView).set_restaurant_name(choices.restaurant_name())
 	restaurant.prices.clear()
@@ -3131,6 +3171,15 @@ func _apply_menu(restaurant: RestaurantSim, choices: MenuSettings) -> void:
 		var price: int = choices.price_of(definition)
 		if price != definition.standard_price:
 			restaurant.prices[definition.id] = price
+
+
+func _refresh_menu_boards() -> void:
+	if menu_settings == null:
+		return
+	var view: ShopView = $ShopView
+	if view.wall_finish_view != null:
+		view.wall_finish_view.set_menu_board_content(menu_settings.restaurant_name(),
+			menu_settings.enabled_recipes())
 
 
 func can_edit_menu() -> bool:
@@ -3157,6 +3206,7 @@ func menu_set_restaurant_name(value: String) -> bool:
 		return false
 	$HUD.set_restaurant_name(menu_settings.restaurant_name())
 	($ShopView as ShopView).set_restaurant_name(menu_settings.restaurant_name())
+	_refresh_menu_boards()
 	_refresh_menu_details()
 	return true
 
