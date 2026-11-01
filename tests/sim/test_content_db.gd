@@ -286,6 +286,12 @@ func test_all_item_seats_are_walkable_and_reachable_in_every_rotation() -> void:
 			continue
 		for turns: int in range(4):
 			var grid: SimGrid = SimGrid.new(Vector2i(6, 6))
+			if definition.outdoor_only:
+				var patio: Dictionary[Vector2i, int] = {}
+				for cell: Vector2i in grid.cells():
+					if grid.terrain(cell) == SimGrid.Terrain.FLOOR:
+						patio[cell] = SimGrid.Room.PATIO
+				assert_true(grid.set_rooms(patio), "outdoor seats have legal patio floor")
 			var item: PlacedItem = grid.place_def(definition, Vector2i(2, 2), turns)
 			assert_not_null(item, "%s fits at rotation %d" % [definition.id, turns])
 			if item == null:
