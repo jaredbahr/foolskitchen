@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- Buy and furnish a patio beside the street door; outdoor seats close when it rains. (#269)
 - Wall menu boards show your restaurant name and dishes from a section you choose, and the Menu panel shows which themes your dishes lean toward. (#231)
 - Decorating the street front now raises curb appeal for a small walk-in boost, shown beside Vibe in Build and in the evening crowd forecast. (#266)
 - See seven days of dish profit and guests served in the evening report, with today's results highlighted and a plain trend summary. (#265)
