@@ -59,7 +59,7 @@ func test_stamped_fixture_places_the_pair_with_one_history_step_and_real_cash() 
 	assert_true(REVIEW.valid(REVIEW.evidence(_main), "stamped"))
 	assert_true(_main.call("undo_edit"))
 	var world: SimWorld = _main.get("world")
-	assert_null(world.grid.item_at(REVIEW.TARGET))
+	assert_null(world.grid.item_at(REVIEW.target_origin()))
 	assert_eq(Economy.cash, cash - 30 + 20)
 
 

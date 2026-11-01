@@ -149,6 +149,9 @@ static func _samples(grid: SimGrid) -> Dictionary:
 	if entry == SimGrid.NO_CELL:
 		return {}
 	var samples: Dictionary = SAMPLES.duplicate()
+	var threshold: Vector2i = entry + Vector2i.UP
+	samples.erase(Vector2i(9, 9))  # Original fixture's interior checker sample.
+	samples[threshold + Vector2i(2, -1)] = FloorStyleDef.Pattern.CHECKER
 	samples.erase(Vector2i(6, 11))  # Original fixture's street-entry sample.
 	samples[entry] = FloorStyleDef.Pattern.CHECKER
 	return samples

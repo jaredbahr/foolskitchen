@@ -2003,7 +2003,7 @@ func _process(_delta: float) -> bool:
 				return true
 			if _blueprint_profile == "ghost":
 				var camera: Camera3D = _main.get_node("CameraRig/Camera3D") as Camera3D
-				_build_pointer = camera.unproject_position(GridMath.cell_to_world(BLUEPRINT_REVIEW.TARGET))
+				_build_pointer = camera.unproject_position(GridMath.cell_to_world(BLUEPRINT_REVIEW.target_origin()))
 		_configure_inspection()
 		if _failed:
 			return true
