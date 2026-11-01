@@ -24,24 +24,24 @@ quarter_turns = 2
 [sub_resource type="Resource" id="Resource_aexx1"]
 script = ExtResource("1_f5t7v")
 item_id = &"pass_counter"
-origin = Vector2i(3, 4)
+origin = Vector2i(6, 4)
 
 [sub_resource type="Resource" id="Resource_rgtxa"]
 script = ExtResource("1_f5t7v")
 item_id = &"table_2"
-origin = Vector2i(2, 6)
+origin = Vector2i(3, 7)
 quarter_turns = 1
 
 [sub_resource type="Resource" id="Resource_8ifey"]
 script = ExtResource("1_f5t7v")
 item_id = &"table_2"
-origin = Vector2i(7, 6)
+origin = Vector2i(7, 7)
 quarter_turns = 1
 
 [sub_resource type="Resource" id="Resource_ypch0"]
 script = ExtResource("1_f5t7v")
 item_id = &"table_2"
-origin = Vector2i(12, 6)
+origin = Vector2i(11, 7)
 quarter_turns = 1
 
 [sub_resource type="Resource" id="Resource_vsuro"]
@@ -60,8 +60,8 @@ script = ExtResource("2_asj40")
 id = &"tier1_hole_in_the_wall"
 save_layout_id = &"tier1_roomier"
 display_name = "Hole-in-the-wall"
-rows = PackedStringArray("################", "#..............#", "#..............#", "#..............#", "#..............#", "#..............#", "#..............#", "#..............#", "#..............#", "#..............#", "#..............#", "#######..#######", "       EE       ")
-legacy_rows = PackedStringArray("################", "#..............#", "#..............#", "#..............#", "#..............#", "#..............#", "#..............#", "#..............#", "#..............#", "#..............#", "#..............#", "#######..#######", "       EE       ")
+rows = PackedStringArray("################", "#..............#", "#..............#", "#..............#", "#..............#", "#..............#", "#..............#", "#..............#", "#..............#", "#..............#", "#..............#", "#..............#", "#######..#######", "       EE       ")
+legacy_rows = PackedStringArray("################", "#..............#", "#..............#", "#..............#", "#..............#", "#..............#", "#..............#", "#..............#", "#..............#", "#..............#", "#..............#", "#..............#", "#######..#######", "       EE       ")
 placements = Array[ExtResource("1_f5t7v")]([SubResource("Resource_8swi5"), SubResource("Resource_o0wg6"), SubResource("Resource_3vvd5"), SubResource("Resource_aexx1"), SubResource("Resource_rgtxa"), SubResource("Resource_8ifey"), SubResource("Resource_ypch0"), SubResource("Resource_vsuro"), SubResource("Resource_sink")])
 room_rows = PackedStringArray("", " KKKKKKKKKKKKKK", " KKKKKKKKKKKKKK", " KKKKKKKKKKKKKK", " KKKKKKKKKKKKKK")
 staff_spawns = Dictionary[StringName, Vector2i]({
