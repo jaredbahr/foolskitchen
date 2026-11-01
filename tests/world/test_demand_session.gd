@@ -472,7 +472,7 @@ func _reject_after_demand(_value: Dictionary) -> bool:
 # The trace originated on8fbe652826c34333e6b7b51f63ede116901582f9;
 # economy, messes and traffic subsequently changed its recorded outcomes.
 # Full before/after signed events and source-bound replays remain outside the project.
-const DAY_ONE_EVENTS_SHA256: String = "84f20f5a38aea1d42e4c2fc41b73283bf55b5cef191c3f6a4bb5f8035e45daca"
+const DAY_ONE_EVENTS_SHA256: String = "a6e240f17fc39b056ab0968d8b9a8a5f027055ce9512c9f6331855f1be92ebeb"
 ## Exact whole stream dictionary; existing lifecycle draws follow actual outcomes.
 const DAY_ONE_STREAMS: Dictionary = {
 	"master_seed": "1",
