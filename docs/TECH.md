@@ -99,7 +99,7 @@ an active edit/panel/selection first, or opens Settings when none is active.
   - `TaskStep`:
     - `go_to_item(item_id, label, seat)` reserves a free work cell (or seat) and walks there.
     - `go_to_cell(cell, label)` retains its exact point by default. Ordinary take-order steps also carry candidate service cells and their seat origin: the actual claimant chooses the shortest legal approach when GO starts, retaining the posted point for scoring. Current neighbour, seat, room and edge rules still apply; later repaths keep the selected destination. Serve-across counters keep their exact point.
-    - `go_to_work_cell(item_id, index, label)` is an exact rotated work-cell selector (used for the two pass sides). It retains GO_TO_ITEM reservation, busy wait, removal, repath and timeout handling. `work_cell_index = -1` preserves legacy first-free-cell selection.
+    - `go_to_work_cell(item_id, index, label)` is an exact rotated work-cell selector (used for the two pass sides). It retains GO_TO_ITEM reservation, busy wait, removal, repath and timeout handling. `work_cell_index = -1` lets ordinary non-seat steps choose the closest legal reachable free authored work cell when GO starts, with stable authored ties; seat steps retain their existing selection.
     - `work(ticks, label, on_done)`. `on_done(agent) -> bool`; false cancels the task with `step_failed`.
   - `SimAgent` (movement base, which customers will extend): `cell`, `path`, `path_index`, `move_progress` (0–1 toward `next_cell()`, which the world view lerps), `set_destination`, `step_move`, `why()`.
   - `StaffAgent(role, skill)`:
@@ -147,10 +147,10 @@ an active edit/panel/selection first, or opens Settings when none is active.
     failed-item guard against blind retries; global renderer/stage failures
     keep their existing separate handling.
   - The Tier 1 hole-in-the-wall is `data/layouts/tier1_hole_in_the_wall.tres`:
-    - kitchen at the top (fridge, prep counter and stove facing down), with two seat-free doorway lanes at x=5 and x=6;
-    - the pass at (3,4), worked from both sides, beside the doorway;
-    - three two-seat tables in the dining room;
-    - street entry at (6,11) and (7,11).
+    - kitchen at the top (fridge, prep counter and stove facing down), with seat-free Kitchen/Dining crossings at x=3, x=4 and x=5;
+    - the pass at (6,4), worked from (6,3) in the kitchen and (6,5) in the dining room;
+    - three two-seat tables at (3,7), (7,7) and (11,7), each turned one quarter;
+    - street entries at (7,13) and (8,13), through the two-cell opening in the front wall at row 12.
 - **Customers and orders (FK-014, `src/sim/restaurant/`):**
   - `RestaurantSim.create(layout, content, seed, errors)` owns `world`, `orders`, the tier-one `menu`, and a seeded `spawner`. It adds a cook and server from the layout spawns.
   - `start_day()` resets `served_today`, `lost_today`, `leave_reasons_today` and the arrival countdown, clears departure tracking, prunes finished orders, runs the overnight tidy (`Kitchen.tidy_overnight()`) and puts every staff member back at its layout spawn with no task; open the world's clock separately. `advance()` runs one world tick, then arrivals and departure cleanup; empty last orders closes the clock. At the CLOSED deadline all remaining guests are removed and recorded that day as `closing`.
@@ -2808,7 +2808,7 @@ remain outside the project. No compatibility branch exists in production.
 
 New shops use the 16×14 authored Tier 1 layout, with three tables at columns 3, 7 and 11, a centred pass at (6, 4), two-cell dining, pass and door approaches, and the same $18 rent. The unchanged plant still narrows the outer-right bottom corner; that fringe is outside the central passing corridors. `data/layouts/tier1_original.tres` preserves the previous 14×12 resource exactly. New-shop snapshots add the known `layout_id` value to the existing version-8 shop section; old bases retain their previous markerless shape. Main selects an authored base before decoding: a missing identity or whole shop section means the original base, a known roomier identity selects the new base, and an unknown or malformed present identity fails the load. No save-supplied resource path is loaded.
 
-Lease margins always apply once to that authored base, not to an already leased/expanded snapshot. Candidate plates and owner setup must succeed before the loaded world replaces the live one. The existing morning autosave remains the only write point. Manual probe fixtures adapt their wing/table coordinates to the actual base; coffee/bar keep their original west-table orientation, ten usable seats and four-seat group. Their construction conventions, paid stock and normal service policy remain unchanged.
+Lease margins always apply once to that authored base, not to an already leased/expanded snapshot. Candidate plates and owner setup must succeed before the loaded world replaces the live one. The existing morning autosave remains the only write point. Manual probe fixtures adapt their wing/table coordinates to the actual base. Coffee/bar restore the west table to its complete original pose at (2,6), with no quarter turn, retaining ten usable seats and the four-seat group. Their ordinary editor adds the side floor strips needed to reach those private seats: the west strip spans rows 6–9, and the east strip is added only when the base lacks that floor. The coffee plant sits at (5,8), outside the seat approaches. These remain declared free-construction fixtures, with normal paid stock and service; they do not measure construction return on investment.
 
 Guests keep their own routes during deferred seat release; the automatic busser
 step-off route is restricted to staff. Wall previews also protect reserved movement
