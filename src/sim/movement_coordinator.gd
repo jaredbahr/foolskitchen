@@ -500,7 +500,8 @@ func _wait(world: SimWorld, agent: SimAgent, next: Vector2i) -> void:
 	if waits % world.movement_tuning.repath_after_ticks == 0 \
 			and (not _resume.has(agent.id) or _returning.has(agent.id)) \
 			and not agent is CourierAgent \
-			and not _reciprocal_head_on_winner(world, agent, holder, next):
+			and not (_reciprocal_head_on_winner(world, agent, holder, next) \
+				or (holder != null and _reciprocal_head_on_winner(world, holder, agent, agent.cell))):
 		var alternate: Array[Vector2i] = route(world, agent, agent.cell, agent.destination(), true)
 		if not alternate.is_empty() and alternate.size() > 1 and alternate[1] != next:
 			agent.install_movement_route(alternate)

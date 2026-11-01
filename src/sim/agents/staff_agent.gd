@@ -356,6 +356,16 @@ func _run_go_to_item(world: SimWorld, s: TaskStep) -> void:
 				return
 			if it.reserved_by(target) != -1:
 				target = SimGrid.NO_CELL
+		elif not s.use_seat and target != SimGrid.NO_CELL:
+			# Select once from this worker's real vertex, keeping authored ties.
+			var candidates: Array[Vector2i] = []
+			for work_cell: Vector2i in it.work_cells:
+				if it.reserved_by(work_cell) == -1 and world.grid.is_walkable(work_cell):
+					candidates.append(work_cell)
+			target = _closest_go_to_candidate(world, candidates, SimGrid.NO_CELL)
+			if target == SimGrid.NO_CELL:
+				_drop(world, &"unreachable")
+				return
 		if target == SimGrid.NO_CELL:
 			_waiting_for = s.label if not s.label.is_empty() else "a free spot"
 			last_progress_tick = world.now
