@@ -90,6 +90,7 @@ var world: SimWorld
 var floor_mesh: MeshInstance3D
 ## Authored paving shows through until the player gives patio cells a finish.
 var patio_floor_mesh: MeshInstance3D
+var _has_patio: bool = false
 var room_dressing: RoomDressing
 var neighbourhood_dressing: NeighbourhoodDressing
 ## Separate from the actual delivery/service lot: maximum future building land.
@@ -186,6 +187,7 @@ func show_world(value: SimWorld, maximum_reserve: Rect2i = Rect2i()) -> void:
 	_floor_preview.clear()
 	floor_mesh = null
 	patio_floor_mesh = null
+	_has_patio = false
 	room_dressing = null
 	neighbourhood_dressing = null
 	weather_view = null
@@ -376,8 +378,11 @@ func _build_terrain() -> void:
 	var surface: SurfaceTool = SurfaceTool.new()
 	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var count: int = 0
+	_has_patio = false
 	for cell: Vector2i in world.grid.cells():
 		var terrain: SimGrid.Terrain = world.grid.terrain(cell)
+		if world.grid.is_outdoor_floor(cell):
+			_has_patio = true
 		if terrain == SimGrid.Terrain.WALL:
 			var wall: MeshInstance3D = _box(Vector3(0.5, WALL_HEIGHT, 0.5), wall_color)
 			wall.position = GridMath.cell_to_world(cell)
@@ -810,6 +815,12 @@ func pavement_height() -> float:
 	return 0.055
 
 
+## The one presentation ground lift. Entries and indoor cells keep their
+## original zero height; seats retain their existing lift relative to this floor.
+func ground_height(cell: Vector2i) -> float:
+	return pavement_height() if _has_patio and world != null and world.grid.is_outdoor_floor(cell) else 0.0
+
+
 func _rebuild_patio_floor() -> void:
 	var cells: Array[Vector2i] = []
 	if world != null:
@@ -830,7 +841,7 @@ func _rebuild_patio_floor() -> void:
 		patio_floor_mesh.layers |= WeatherView.OUTDOOR_LAYER
 		patio_floor_mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		add_child(patio_floor_mesh)
-	patio_floor_mesh.mesh = BuildPreview._tile_mesh(cells, pavement_height() + 0.002, 0.0)
+	patio_floor_mesh.mesh = BuildPreview._tile_mesh(cells, ground_height(cells[0]) + 0.002, 0.0)
 	patio_floor_mesh.material_override = floor_mesh.material_override
 
 
@@ -1258,6 +1269,8 @@ func _build_item(item: PlacedItem) -> void:
 	# Relocation retains the item/definition. An edit on either shared layer
 	# updates placement without replacing the surviving wrapper or its paint.
 	node.transform = ItemVisual.placed_transform(definition, item.origin, item.quarter_turns)
+	if _has_patio:
+		node.position.y += ground_height(item.origin)
 	node.rotation.y = -item.quarter_turns * PI * 0.5
 	_apply_stock_slots(node, definition)
 	_sync_item_selection()
@@ -1356,6 +1369,11 @@ func _sync_agents() -> void:
 	for agent: SimAgent in world.agents:
 		alive[agent.id] = true
 		var frame: AgentPresentationController.Frame = frames[agent.id]
+		if _has_patio:
+			# Lift before smoothing, so the previous/current displayed poses share
+			# the same ground. Chair/bench seat_height remains a relative lift.
+			frame.floor_position.y += lerpf(ground_height(agent.cell), ground_height(agent.next_cell()),
+				clampf(agent.move_progress, 0.0, 1.0))
 		motion.observe(agent.id, world.now, frame)
 		if alpha >= 1.0:
 			motion.settle(agent.id)
@@ -1734,11 +1752,11 @@ func _sync_dirt_spots() -> void:
 				node = MeshInstance3D.new()
 				node.name = "Dirt_%d_%d" % [cell.x, cell.y]
 				node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-				node.position = GridMath.cell_to_world(cell) + Vector3(0.0, 0.015, 0.0)
 				node.rotation.y = float(posmod(cell.x * 3 + cell.y, 4)) * PI * 0.5
 				node.set_meta("shop_geometry", true)
 				dirt_nodes[cell] = node
 				add_child(node)
+			node.position = GridMath.cell_to_world(cell) + Vector3(0.0, 0.015 + ground_height(cell), 0.0)
 			var kind: int = _cleanliness.floor_mess_kind(cell)
 			var mesh: ArrayMesh = _dirt_mesh() if kind == CleanlinessState.MessKind.DIRT else _spill_mesh()
 			node.mesh = mesh

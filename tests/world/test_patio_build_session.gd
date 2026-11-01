@@ -166,6 +166,263 @@ func test_owned_pavement_keeps_street_anchor_facade_and_outdoor_rain_mask() -> v
 	assert_true((view.patio_floor_mesh.layers & WeatherView.OUTDOOR_LAYER) != 0)
 
 
+func test_native_furniture_walking_feet_and_seated_pose_follow_the_pavement_once() -> void:
+	await _start()
+	var view: ShopView = _main.get_node("ShopView") as ShopView
+	var indoor_table: PlacedItem = _world().grid.item_at(Vector2i(2, 6))
+	var indoor_visual: ItemVisual = view.item_nodes[indoor_table.id]
+	var indoor_transform: Transform3D = indoor_visual.global_transform
+	var indoor_base: float = _native_minimum_y(indoor_visual)
+	if not _buy_left_patio():
+		return
+	assert_true(_main.call("shop_buy", &"patio_table_2", Vector2i(2, 12), 0))
+	assert_true(_main.call("shop_buy", &"patio_waiting_bench", Vector2i(0, 11), 0))
+	var table: PlacedItem = _world().grid.item_at(Vector2i(2, 12))
+	var bench: PlacedItem = _world().grid.item_at(Vector2i(0, 11))
+	assert_not_null(table)
+	assert_not_null(bench)
+	if table == null or bench == null:
+		return
+	var pavement: float = _measured_pavement(view)
+	assert_true(pavement > 0.0, "the native paving has a raised top surface")
+	assert_almost_eq(view.ground_height(Vector2i(5, 11)), pavement)
+	assert_almost_eq(view.ground_height(Vector2i(6, 11)), 0.0, 0.00001, "the public entry keeps its authored height")
+	assert_almost_eq(view.ground_height(Vector2i(2, 6)), 0.0)
+	assert_eq(indoor_visual.global_transform, indoor_transform, "purchasing pavement leaves indoor furniture in place")
+	assert_almost_eq(_native_minimum_y(view.item_nodes[table.id]) - indoor_base, pavement, 0.00001,
+		"the identical imported table wrapper rises exactly to the measured pavement")
+	var staff: StaffAgent = null
+	for agent: SimAgent in _world().agents:
+		if agent is StaffAgent:
+			staff = agent as StaffAgent
+			break
+	assert_not_null(staff)
+	if staff == null:
+		return
+	var indoor_cell: Vector2i = staff.cell
+	view._process(0.0)
+	var person: PersonView = view.agent_nodes.get(staff.id) as PersonView
+	assert_not_null(person)
+	if person == null:
+		return
+	assert_almost_eq(person.position.y, 0.0, 0.00001, "indoor actor feet keep the old floor plane")
+	staff.cell = Vector2i(5, 11)
+	staff.path.clear()
+	staff.move_progress = 0.0
+	view._process(0.0)
+	assert_almost_eq(person.position.y, pavement, 0.00001, "standing feet sit on the pavement surface")
+	# Use a real legal step across the street entry boundary without advancing
+	# the simulation: the rendered foot plane must cross the height difference.
+	staff.cell = Vector2i(6, 11)
+	assert_true(staff.set_destination(_world().grid, Vector2i(5, 11)))
+	assert_eq(staff.next_cell(), Vector2i(5, 11))
+	staff.move_progress = 0.25
+	view._process(0.0)
+	assert_almost_eq(person.position.y, pavement * 0.25, 0.00001)
+	staff.cell = Vector2i(5, 11)
+	assert_true(staff.set_destination(_world().grid, Vector2i(6, 11)))
+	staff.move_progress = 0.75
+	view._process(0.0)
+	assert_almost_eq(person.position.y, pavement * 0.25, 0.00001, "returning indoors lowers the feet along the same step")
+	staff.cell = indoor_cell
+	staff.path.clear()
+	staff.move_progress = 0.0
+	_world().weather.kind = WeatherState.Kind.SUNNY
+	var sim: RestaurantSim = _main.get("sim") as RestaurantSim
+	var private_rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	private_rng.seed = 243
+	var guest: CustomerAgent = _world().add_agent(CustomerAgent.new(sim, private_rng)) as CustomerAgent
+	guest.state = CustomerAgent.State.QUEUED
+	guest.cell = bench.seat_cells[0]
+	guest.waiting_cell = guest.cell
+	guest.waiting_item_id = bench.id
+	assert_true(bench.reserve(guest.cell, guest.id))
+	assert_true(guest.is_waiting_seated(_world()), "the pose uses a real owned and reserved outdoor bench seat")
+	view._process(0.0)
+	var seated: PersonView = view.agent_nodes.get(guest.id) as PersonView
+	assert_not_null(seated)
+	if seated == null:
+		return
+	var bench_visual: ItemVisual = view.item_nodes[bench.id]
+	assert_not_null(bench_visual.prop)
+	if bench_visual.prop == null:
+		return
+	var relative_seat: float = bench_visual.prop.seat_surface_height()
+	assert_true(relative_seat > 0.0, "the shipped bench supplies a measured seat surface")
+	var pivot: Node3D = seated.get_node("ModelPivot") as Node3D
+	assert_eq(seated.current_clip(), &"sit")
+	assert_almost_eq(seated.position.y, pavement, 0.00001)
+	assert_almost_eq(pivot.position.y, relative_seat, 0.00001, "the seated pose keeps its relative lift")
+	assert_almost_eq(pivot.global_position.y, pavement + relative_seat, 0.00001,
+		"the seat surface receives the pavement height exactly once")
+	assert_eq(indoor_visual.global_transform, indoor_transform)
+	assert_almost_eq(person.position.y, 0.0, 0.00001)
+	assert_eq(_world().now, 0, "all height synchronization is presentation only")
+
+
+func test_native_mess_and_build_overlays_clear_pavement_without_lifting_indoor_tiles() -> void:
+	await _start()
+	if not _buy_left_patio():
+		return
+	assert_true(_main.call("shop_buy", &"patio_waiting_bench", Vector2i(0, 11), 0))
+	var view: ShopView = _main.get_node("ShopView") as ShopView
+	var pavement: float = _measured_pavement(view)
+	var tuning: CleanlinessTuning = (load("res://data/balance/cleanliness.tres") as CleanlinessTuning).duplicate() as CleanlinessTuning
+	tuning.seat_departure_chance = 1.0
+	var private_rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	private_rng.seed = 243
+	var mess: CleanlinessState = CleanlinessState.new(_world().grid, tuning, private_rng)
+	var dirt_cell: Vector2i = Vector2i(4, 12)
+	var spill_cell: Vector2i = Vector2i(5, 12)
+	var indoor_cell: Vector2i = Vector2i(11, 8)
+	assert_true(mess.try_spawn_at_departed_seat(dirt_cell))
+	assert_true(mess.add_spill(spill_cell))
+	assert_true(mess.add_spill(indoor_cell))
+	view.bind_cleanliness(mess)
+	for cell: Vector2i in [dirt_cell, spill_cell, indoor_cell]:
+		assert_true(view.dirt_nodes.has(cell))
+		if not view.dirt_nodes.has(cell):
+			return
+		var ground: float = 0.0 if cell == indoor_cell else pavement
+		_assert_flat_mesh_height(view.dirt_nodes[cell], ground + 0.015, "mess decal at %s" % cell)
+		var outline: MeshInstance3D = view.dirt_nodes[cell].get_node("Outline") as MeshInstance3D
+		_assert_flat_mesh_height(outline, ground + 0.014, "mess outline at %s" % cell)
+	assert_eq(mess.floor_mess_kind(dirt_cell), CleanlinessState.MessKind.DIRT)
+	assert_eq(mess.floor_mess_kind(spill_cell), CleanlinessState.MessKind.SPILL)
+	assert_true(_main.call("set_build_active", true))
+	var preview: BuildPreview = _main.get("_build_preview") as BuildPreview
+	var random_before: Dictionary = GameState.call("_capture_save")
+	var checkpoint: String = _checkpoint()
+	assert_true(_mode().begin_buy(&"patio_table_2", Vector2i(2, 12)))
+	assert_true(_mode().current_check.ok, _mode().current_check.why)
+	assert_not_null(preview.ghost_mesh)
+	if preview.ghost_mesh == null:
+		return
+	var indoor_table: PlacedItem = _world().grid.item_at(Vector2i(2, 6))
+	assert_almost_eq(_native_minimum_y(preview.ghost_mesh) - _native_minimum_y(view.item_nodes[indoor_table.id]),
+		pavement, 0.00001, "the actual furniture ghost clears the existing paving")
+	assert_eq(preview.seat_markers.size(), 2)
+	for marker: MeshInstance3D in preview.seat_markers:
+		var bounds: AABB = marker.global_transform * marker.get_aabb()
+		assert_true(bounds.position.y > pavement, "the seat marker's bottom is above the pavement")
+		assert_almost_eq(marker.global_position.y, pavement + 0.04, 0.00001)
+	_mode().cancel()
+	var bench: PlacedItem = _world().grid.item_at(Vector2i(0, 11))
+	_mode().hover_item(bench.id)
+	assert_not_null(preview.hover_mesh)
+	if preview.hover_mesh == null:
+		return
+	_assert_flat_mesh_height(preview.hover_mesh, pavement + 0.035, "outdoor furniture hover")
+	_mode().hover_item(indoor_table.id)
+	assert_not_null(preview.hover_mesh)
+	if preview.hover_mesh == null:
+		return
+	_assert_flat_mesh_height(preview.hover_mesh, 0.035, "indoor furniture hover keeps its old height")
+	preview.set_hygiene_cells([dirt_cell, spill_cell, indoor_cell] as Array[Vector2i], true)
+	assert_not_null(preview.hygiene_mesh)
+	if preview.hygiene_mesh == null:
+		return
+	var indoor_vertices: int = 0
+	var outdoor_vertices: int = 0
+	for local: Vector3 in preview.hygiene_mesh.mesh.get_faces():
+		var vertex: Vector3 = preview.hygiene_mesh.global_transform * local
+		var cell: Vector2i = GridMath.world_to_cell(vertex)
+		if cell == indoor_cell:
+			indoor_vertices += 1
+			assert_almost_eq(vertex.y, 0.04, 0.00001)
+		else:
+			assert_true(cell == dirt_cell or cell == spill_cell, "every overlay vertex belongs to an actual problem cell")
+			outdoor_vertices += 1
+			assert_almost_eq(vertex.y, pavement + 0.04, 0.00001)
+	assert_true(indoor_vertices > 0 and outdoor_vertices > 0, "one native mesh includes both floor planes")
+	assert_eq(GameState.call("_capture_save"), random_before)
+	assert_eq(_checkpoint(), checkpoint, "presentation and overlay changes add no save point")
+	assert_eq(_world().now, 0)
+
+
+func test_owned_first_row_has_real_paving_triangles_and_sale_restores_the_street() -> void:
+	await _start()
+	var view: ShopView = _main.get_node("ShopView") as ShopView
+	var dressing: NeighbourhoodDressing = view.neighbourhood_dressing
+	var before: Dictionary = dressing.capture_state()
+	var pavement: float = _measured_pavement(view)
+	var cell: Vector2i = Vector2i(8, 11)
+	# This first-row point is beside the original public door approach and
+	# inside the old street reserve, where general neighbourhood paving stops.
+	var point: Vector3 = GridMath.cell_to_world(cell) + Vector3(0.07, pavement, -0.06)
+	assert_null(dressing.get_node_or_null("Static/Pavement/PatioPavement"))
+	assert_true(_main.call("shop_patio", [cell] as Array[Vector2i], true))
+	var paving: MeshInstance3D = dressing.get_node_or_null("Static/Pavement/PatioPavement") as MeshInstance3D
+	assert_not_null(paving, "owned first-row pavement has real native paving geometry")
+	if paving == null:
+		return
+	assert_true(_top_triangles_cover(paving, point), "actual horizontal paving triangles cover the owned cell")
+	var unowned: Vector3 = point + Vector3(GridMath.CELL_SIZE, 0.0, 0.0)
+	assert_false(_top_triangles_cover(paving, unowned), "the paving batch does not extend into unowned cells")
+	var after: Dictionary = dressing.capture_state()
+	assert_eq(after["frame"], before["frame"])
+	assert_eq(after["bounds"], before["bounds"], "owning row 11 cannot move the street, reserve or existing pavement")
+	assert_true(_main.call("shop_patio", [cell] as Array[Vector2i], false))
+	assert_null(dressing.get_node_or_null("Static/Pavement/PatioPavement"), "selling the last cell removes its extra paving")
+	var sold: Dictionary = dressing.capture_state()
+	assert_eq(sold["frame"], before["frame"])
+	assert_eq(sold["bounds"], before["bounds"])
+	assert_eq(sold["static_mesh_count"], before["static_mesh_count"], "the no-patio native street returns exactly")
+	assert_eq(_world().now, 0)
+
+
+func _top_triangles_cover(mesh: MeshInstance3D, point: Vector3) -> bool:
+	var faces: PackedVector3Array = mesh.mesh.get_faces()
+	for index: int in range(0, faces.size(), 3):
+		var first: Vector3 = mesh.global_transform * faces[index]
+		var second: Vector3 = mesh.global_transform * faces[index + 1]
+		var third: Vector3 = mesh.global_transform * faces[index + 2]
+		if absf(first.y - point.y) > 0.00001 or absf(second.y - point.y) > 0.00001 \
+				or absf(third.y - point.y) > 0.00001:
+			continue
+		var triangle: PackedVector2Array = PackedVector2Array([
+			Vector2(first.x, first.z), Vector2(second.x, second.z), Vector2(third.x, third.z)])
+		if Geometry2D.is_point_in_polygon(Vector2(point.x, point.z), triangle):
+			return true
+	return false
+
+
+func _buy_left_patio() -> bool:
+	# Explicit construction budget for the geometry fixture; the original UI
+	# purchase tests above continue to use the untouched starter cash.
+	Economy.add_cash(1000, Ledger.OTHER)
+	var cells: Array[Vector2i] = []
+	for row: int in range(11, 15):
+		for column: int in range(0, 6):
+			cells.append(Vector2i(column, row))
+	var purchased: bool = _main.call("shop_patio", cells, true)
+	assert_true(purchased, "the real street entry connects the full left patio fixture")
+	return purchased
+
+
+func _measured_pavement(view: ShopView) -> float:
+	var bounds: Array[AABB] = view.room_dressing.native_pavement_bounds()
+	assert_false(bounds.is_empty(), "the shipped scene has actual native pavement geometry")
+	return bounds[0].end.y if not bounds.is_empty() else 0.0
+
+
+func _native_minimum_y(visual: ItemVisual) -> float:
+	var minimum: float = INF
+	var meshes: Array[MeshInstance3D] = visual.rendered_meshes()
+	assert_false(meshes.is_empty(), "height checks include imported furniture surfaces")
+	for mesh: MeshInstance3D in meshes:
+		minimum = minf(minimum, (mesh.global_transform * mesh.get_aabb()).position.y)
+	assert_true(is_finite(minimum))
+	return minimum
+
+
+func _assert_flat_mesh_height(node: MeshInstance3D, height: float, context: String) -> void:
+	var vertices: PackedVector3Array = node.mesh.get_faces()
+	assert_false(vertices.is_empty(), context)
+	for local: Vector3 in vertices:
+		assert_almost_eq((node.global_transform * local).y, height, 0.00001, context)
+
+
 func _start() -> void:
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	await tree.process_frame

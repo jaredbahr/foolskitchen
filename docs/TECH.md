@@ -2744,6 +2744,66 @@ catalogue/finish cost $256, fixture charge $0), retains ordinary service and
 stock costs, and measures appeal rather than purchase return on investment.
 Its default counterpart and the default setup itself remain unchanged.
 
+### Patio (FK-117)
+
+`PatioArea` derives a separate pavement strip from the layout's `patio_depth`
+and `patio_cell_price`, beside the existing street door. The starter strip is
+four cells deep with 48 purchasable cells at $15 each; the two public door
+approach columns stay outside ownership. Bought cells become FLOOR with the
+appended `SimGrid.Room.PATIO` kind. They never move the building shell or add
+an entry, and an empty purchase never grows the grid. Build's Patio tool marks
+the available cells; drag buys and Shift-drag removes empty patio while closed.
+Owned gaps beside the doorway reuse clipped native paving without shifting the
+street. Furniture, people, dirt and build overlays follow its measured surface;
+mixed indoor/outdoor previews retain each cell's height and relative seat lift.
+`ShopEditor.check_patio` retains the existing connectivity, people, dining,
+room and path checks. Removal refunds $7 per cell (half, rounded down), plus
+half the laid floor type's price. `ShopEditHistory` restores ownership, floor
+looks and exact ledger amounts; purchases and refunds use `Ledger.UPGRADES`.
+
+`ItemDef.outdoor_only` defaults false. Outdoor furniture requires patio under
+its whole footprint and authored work/seat cells; indoor furniture cannot use
+those cells. `patio_table_2`, `patio_chair` and `patio_waiting_bench` cost
+$40/$10/$35 at level 1 and reuse the approved table, lowered-backrest chair and
+bench wrappers. Their shared `patio_dark_metal` look maps the existing wood
+surface to the kit's `metalDark` donor without changing source models.
+
+`PatioRules` reads the already selected daily weather: Sunny and Cloudy allow
+outdoor dining and waiting; Rain skips those seats. The morning weather line
+reports the patio's status only when cells are owned. Dining capacity, party
+seating and waiting benches use the same eligibility; waiting still uses its
+existing arrival bonus and reservations. Service and bussing follow ordinary
+grid paths through the street door. Weather closes seating without changing
+walkability, creating a stream or drawing randomness.
+
+The shop snapshot is version 9 with sorted `patio: [[x, y], ...]` rows.
+Restore installs owned Patio floor before validating furniture and requires
+saved Patio rooms to match that ownership; versions 1–8 have no patio. There
+is no new save section or save point: the existing morning
+autosave persists cells and outdoor furniture. Curb appeal counts supported
+outdoor tables and waiting benches once each, with a shared `patio` family
+weight 8, cap 15 and existing repeat decay 0.65. Chairs add no separate points.
+Rain leaves these visible furniture contributions in place, and the total
+curb bonus retains its existing +10% maximum.
+
+The manual `--setup patio` probe keeps the default shop and adds two outdoor
+tables at (2,12) and (9,12), with all 48 patio cells. It declares $800 nominal
+construction and a $0 charge through the real editor; stock and service costs
+remain paid, with no cash, XP or stock grants. Daily weather is selected
+normally. This fixture measures patio service and weather, not purchase return
+on investment; the default setup itself is unchanged.
+
+`tools/patio_review_sunny.tscn` and `tools/patio_review_rain.tscn` are unsaved
+visual fixtures, captured with `--speed=0 --frames=60`. Both disclose a $2,000
+cash grant and a weather override without a draw, then pay $835 through normal
+editor/history commands for 48 cells, two tables and one waiting bench. Sunny
+explicitly admits ten guests with fixed private seeds and runs 120 normal
+ticks before pausing; Rain stays at morning tick 0 with the real weather panel
+open. Capture metadata records these synthetic inputs and native guest, seat,
+model and paused-state facts. These captures are separate from natural-weather
+balance samples. Patio source coverage lives in `tests/sim/test_patio_*.gd`,
+`tests/world/test_patio_content.gd` and `tests/world/test_patio_build_session.gd`.
+
 ### Demand growth (FK-120)
 
 `DemandTuning` in `data/balance/demand.tres` authors every calibration value.

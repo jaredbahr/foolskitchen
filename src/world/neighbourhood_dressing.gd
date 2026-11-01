@@ -92,12 +92,17 @@ func configure(grid: SimGrid, maximum_lot: Rect2i, frontage_runs: Array[Dictiona
 func rebuild() -> void:
 	_ensure_roots()
 	var built: Array[Vector2i] = []
+	var patio: Array[Vector2i] = []
 	if _grid != null:
 		for cell: Vector2i in _grid.cells():
-			if _grid.terrain(cell) != SimGrid.Terrain.OUTSIDE and not _grid.is_outdoor_floor(cell):
+			if _grid.is_outdoor_floor(cell):
+				patio.append(cell)
+			elif _grid.terrain(cell) != SimGrid.Terrain.OUTSIDE:
 				built.append(cell)
 	var key: Array = [_grid.get_instance_id() if _grid != null else 0, _maximum_lot,
 		_frontages, _native_pavement, built]
+	if not patio.is_empty():
+		key.append(patio)
 	if key == _geometry_key:
 		return
 	_geometry_key = key.duplicate(true)
@@ -139,6 +144,8 @@ func rebuild() -> void:
 	road_prop.free()
 	_build_paving(paving, paving_box, PAVING_START, PAVING_DEPTH, "NearPavement")
 	_build_paving(paving, paving_box, FAR_START, FAR_DEPTH, "FarPavement")
+	if not patio.is_empty():
+		_build_patio_paving(paving, paving_box, patio)
 	paving.clear_body_tint()
 	paving.free()
 	_build_kerbs(road_box.size.x, count)
@@ -300,6 +307,38 @@ func _build_paving(source: PropView, bounds: AABB, start: float, depth: float, l
 		_near_pavement = box
 	else:
 		_far_pavement = box
+
+
+## The public pavement starts beyond the reserved entrance row. Fill only
+## purchased gaps with the same native-scale paving, leaving the street's
+## frame, reserve and existing tiles untouched. Clipping preserves source
+## materials/UVs and removes every coplanar overlap with those existing tiles.
+func _build_patio_paving(source: PropView, bounds: AABB, cells: Array[Vector2i]) -> void:
+	var batch: NeighbourhoodMeshBatch = NeighbourhoodMeshBatch.new()
+	for cell: Vector2i in cells:
+		var center: Vector3 = GridMath.cell_to_world(cell)
+		center.y = _paving_top - bounds.end.y
+		var placement: Transform3D = Transform3D(_frame.basis * Basis(Vector3.UP, PI), center)
+		var copied: AABB = placement * bounds
+		var tile: AABB = AABB(Vector3(cell.x * GridMath.CELL_SIZE, copied.position.y,
+			cell.y * GridMath.CELL_SIZE), Vector3(GridMath.CELL_SIZE, copied.size.y, GridMath.CELL_SIZE))
+		var holes: Array[AABB] = _native_pavement.duplicate()
+		holes.append(_near_pavement)
+		holes.append(_far_pavement)
+		# Subtract the source copy's four overhanging strips, retaining exactly
+		# this owned square. No model is stretched to fit the simulation grid.
+		if copied.position.x < tile.position.x:
+			holes.append(AABB(copied.position, Vector3(tile.position.x - copied.position.x, copied.size.y, copied.size.z)))
+		if copied.end.x > tile.end.x:
+			holes.append(AABB(Vector3(tile.end.x, copied.position.y, copied.position.z),
+				Vector3(copied.end.x - tile.end.x, copied.size.y, copied.size.z)))
+		if copied.position.z < tile.position.z:
+			holes.append(AABB(copied.position, Vector3(copied.size.x, copied.size.y, tile.position.z - copied.position.z)))
+		if copied.end.z > tile.end.z:
+			holes.append(AABB(Vector3(copied.position.x, copied.position.y, tile.end.z),
+				Vector3(copied.size.x, copied.size.y, copied.end.z - tile.end.z)))
+		batch.add_prop(source, placement, holes)
+	_add_batch(batch, "PatioPavement", "Pavement")
 
 
 func _build_kerbs(width: float, count: int) -> void:
