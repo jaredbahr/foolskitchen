@@ -169,9 +169,13 @@ func test_only_nonpaint_supported_front_finishes_are_collected() -> void:
 func test_all_named_exterior_items_count_once_in_their_family() -> void:
 	var grid: SimGrid = SimGrid.from_ascii(LAYOUT.rows)
 	assert_true(grid.set_segment(Vector3i(10, 10, SimGrid.EDGE_NORTH), SimGrid.Segment.WINDOW))
-	assert_eq(TUNING.item_categories.size(), 9, "all approved street item widths and the OPEN sign are authored")
+	assert_eq(TUNING.item_categories.size(), 11, "nine street mounts and two patio furniture definitions are authored")
+	var wall_count: int = 0
 	for id: StringName in TUNING.item_categories:
 		var definition: ItemDef = _content.item(id)
+		if TUNING.item_categories[id] == &"patio":
+			continue
+		wall_count += 1
 		var base: Vector3i = Vector3i(5, 11, 0)
 		if id == &"flower_window_box":
 			base = Vector3i(10, 11, 0)
@@ -187,6 +191,107 @@ func test_all_named_exterior_items_count_once_in_their_family() -> void:
 		assert_eq(rows.size(), 1, "wide objects have one anchor: " + String(id))
 		if rows.size() == 1:
 			assert_eq(rows[0].category, TUNING.item_categories[id])
+	assert_eq(wall_count, 9, "every original street mount is still tested")
+
+
+func test_patio_tables_and_waiting_benches_count_once_and_chairs_stay_neutral() -> void:
+	var grid: SimGrid = _patio_grid()
+	var table: PlacedItem = grid.place_def(_content.item(&"patio_table_2"), Vector2i(3, 2))
+	var bench: PlacedItem = grid.place_def(_content.item(&"patio_waiting_bench"), Vector2i(8, 4))
+	var chair: PlacedItem = grid.place_def(_content.item(&"patio_chair"), Vector2i(1, 6))
+	assert_not_null(table)
+	assert_not_null(bench)
+	assert_not_null(chair)
+	if table == null or bench == null or chair == null:
+		return
+	var rows: Array[Dictionary] = _collect_patio(grid)
+	assert_eq(rows, [{"category": &"patio", "id": "patio:%d" % table.id},
+		{"category": &"patio", "id": "patio:%d" % bench.id}] as Array[Dictionary])
+	assert_almost_eq(CurbAppealModel.evaluate(rows, TUNING).score, 13.2)
+	var tuning: CurbAppealTuning = TUNING.duplicate(true) as CurbAppealTuning
+	tuning.item_categories[&"patio_chair"] = &"patio"
+	assert_eq(_collect_patio(grid, tuning), rows, "chairs do not multiply the table's contribution")
+	var version: int = grid.version
+	table.swatch_id = &"sage"
+	table.variant_id = &"patio_dark_metal"
+	assert_true(bench.reserve(bench.seat_cells[0], 71))
+	var world: SimWorld = SimWorld.new(grid)
+	var clock: Dictionary = world.clock.to_dict()
+	for kind: WeatherState.Kind in [WeatherState.Kind.SUNNY, WeatherState.Kind.CLOUDY, WeatherState.Kind.RAIN]:
+		world.weather.kind = kind
+		assert_eq(_collect_patio(grid), rows, "weather, paint, look and bookings leave visual appeal unchanged")
+	assert_eq(grid.version, version, "collection never edits the grid")
+	assert_eq(world.clock.to_dict(), clock)
+	assert_eq(bench.reserved_by(bench.seat_cells[0]), 71)
+
+
+func test_patio_family_uses_shared_decay_and_caps_without_raising_global_bonus() -> void:
+	assert_eq(TUNING.weights[&"patio"], 8.0)
+	assert_eq(TUNING.caps[&"patio"], 15.0)
+	assert_eq(TUNING.repeat_decay, 0.65)
+	assert_eq(TUNING.max_bonus, 0.10)
+	assert_almost_eq(CurbAppealModel.evaluate(_copies(&"patio", 1), TUNING).score, 8.0)
+	assert_almost_eq(CurbAppealModel.evaluate(_copies(&"patio", 2), TUNING).score, 13.2)
+	var capped: Dictionary = CurbAppealModel.evaluate(_copies(&"patio", 3), TUNING)
+	assert_eq(capped.score, 15.0)
+	assert_eq(capped.multiplier, 1.015)
+	assert_eq(CurbAppealModel.evaluate(_copies(&"patio", 50), TUNING), capped)
+
+
+func test_patio_collection_excludes_stale_mixed_scope_and_indoor_furniture() -> void:
+	var grid: SimGrid = _patio_grid()
+	var table: PlacedItem = grid.place_def(_content.item(&"patio_table_2"), Vector2i(3, 2))
+	assert_not_null(table)
+	if table == null:
+		return
+	assert_eq(_collect_patio(grid).size(), 1)
+	assert_true(grid.set_rooms({table.cells[0]: SimGrid.Room.DINING} as Dictionary[Vector2i, int]))
+	assert_eq(_collect_patio(grid), [] as Array[Dictionary], "the entire footprint must remain patio")
+	assert_true(grid.set_rooms({table.cells[0]: SimGrid.Room.PATIO} as Dictionary[Vector2i, int]))
+	assert_true(grid.set_rooms({table.seat_cells[0]: SimGrid.Room.DINING} as Dictionary[Vector2i, int]))
+	assert_eq(_collect_patio(grid), [] as Array[Dictionary], "built-in seats must also remain patio")
+	assert_true(grid.set_rooms({table.seat_cells[0]: SimGrid.Room.PATIO} as Dictionary[Vector2i, int]))
+	assert_true(grid.set_terrain(table.seat_cells[0], SimGrid.Terrain.OUTSIDE))
+	assert_eq(_collect_patio(grid), [] as Array[Dictionary], "public pavement is not bought patio floor")
+	var indoor: SimGrid = SimGrid.from_ascii(["E.......", "........", "........", "........", "........"])
+	assert_not_null(indoor.place_def(_content.item(&"table_2"), Vector2i(3, 2)))
+	var tuning: CurbAppealTuning = TUNING.duplicate(true) as CurbAppealTuning
+	tuning.item_categories[&"table_2"] = &"patio"
+	assert_eq(_collect_patio(indoor, tuning), [] as Array[Dictionary], "an indoor table never earns patio appeal")
+
+
+func test_patio_collection_obeys_authored_eligibility_removal_and_legacy_null_contract() -> void:
+	var grid: SimGrid = _patio_grid()
+	var table: PlacedItem = grid.place_def(_content.item(&"patio_table_2"), Vector2i(3, 2))
+	assert_not_null(table)
+	if table == null:
+		return
+	assert_eq(_collect_patio(grid).size(), 1)
+	var tuning: CurbAppealTuning = TUNING.duplicate(true) as CurbAppealTuning
+	tuning.item_categories.erase(&"patio_table_2")
+	assert_eq(_collect_patio(grid, tuning), [] as Array[Dictionary])
+	assert_eq(CurbAppealInputs.collect(grid, null, WallDecor.new(), _content, TUNING), [] as Array[Dictionary])
+	assert_eq(CurbAppealInputs.collect(grid, WallFinishes.new(), null, _content, TUNING), [] as Array[Dictionary])
+	assert_true(grid.remove(table.id))
+	assert_eq(_collect_patio(grid), [] as Array[Dictionary])
+	var result: Dictionary = CurbAppealModel.evaluate(_collect_patio(grid), TUNING)
+	assert_eq(result.score, 0.0)
+	assert_eq(result.multiplier, 1.0)
+
+
+func _patio_grid() -> SimGrid:
+	var grid: SimGrid = SimGrid.from_ascii(["E...........", "............", "............", "............",
+		"............", "............", "............", "............"])
+	var rooms: Dictionary[Vector2i, int] = {}
+	for cell: Vector2i in grid.cells():
+		if grid.terrain(cell) == SimGrid.Terrain.FLOOR:
+			rooms[cell] = SimGrid.Room.PATIO
+	assert_true(grid.set_rooms(rooms))
+	return grid
+
+
+func _collect_patio(grid: SimGrid, tuning: CurbAppealTuning = TUNING) -> Array[Dictionary]:
+	return CurbAppealInputs.collect(grid, WallFinishes.new(), WallDecor.new(), _content, tuning)
 
 
 func test_item_eligibility_and_family_are_read_from_private_authored_tuning() -> void:

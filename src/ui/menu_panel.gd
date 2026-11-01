@@ -44,6 +44,8 @@ var _menu: MenuSettings
 var _phase: int = SimClock.Phase.MORNING
 var _weather_kind: int = WeatherState.Kind.SUNNY
 var _forecast_rendered_kind: int = -1
+var _has_patio: bool = false
+var _forecast_rendered_patio: bool = false
 var _status: Label
 var _empty: Label
 var _rows_node: VBoxContainer
@@ -137,17 +139,19 @@ func _on_lease_pressed() -> void:
 		lease_requested.emit()
 
 
-func set_weather(kind: int) -> void:
+func set_weather(kind: int, has_patio: bool = false) -> void:
 	_weather_kind = kind
+	_has_patio = has_patio
 	_refresh_forecast()
 
 
 func _refresh_forecast() -> void:
 	var forecast: Label = get_node("Panel/Content/WeatherForecast") as Label
 	forecast.visible = _phase == SimClock.Phase.MORNING
-	if _forecast_rendered_kind != _weather_kind:
+	if _forecast_rendered_kind != _weather_kind or _forecast_rendered_patio != _has_patio:
 		_forecast_rendered_kind = _weather_kind
-		forecast.text = WeatherText.forecast_for(_weather_kind)
+		_forecast_rendered_patio = _has_patio
+		forecast.text = WeatherText.forecast_for(_weather_kind, _has_patio)
 		IconStyle.decorate_label(forecast, WeatherText.icon_for(_weather_kind), IconCatalogue.PANEL_SIZE)
 
 

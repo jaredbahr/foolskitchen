@@ -11,7 +11,7 @@ extends RefCounted
 ## WALL_FINISH is the Wall finish tool (D26): click a wall face, drag along
 ## walls (or Shift-click a room) to put a finish up; Alt-click copies a look.
 ## HANG holds a wall item (D26) to hang, bought or moved, on the hovered face.
-enum State { INACTIVE, IDLE, MOVE, BUY, WALLS, FLOOR, ROOMS, FLOORS, WALL_FINISH, HANG, SELECT, BLUEPRINT }
+enum State { INACTIVE, IDLE, MOVE, BUY, WALLS, FLOOR, ROOMS, FLOORS, WALL_FINISH, HANG, SELECT, BLUEPRINT, PATIO }
 ## What a click on placed furniture does while IDLE (FK-085, Sims-style):
 ## HAND picks it up to move or rotate, EYEDROPPER starts buying another of
 ## it (in its colour), SELL sells it straight away.
@@ -48,6 +48,13 @@ var floor_hover: Vector2i = SimGrid.NO_CELL
 var floor_dragging: bool = false
 var floor_drag_start: Vector2i = Vector2i.ZERO
 var floor_removing: bool = false
+## Patio uses the same checked drag interaction without changing the indoor lot.
+var patio_hover: Vector2i = SimGrid.NO_CELL
+var patio_dragging: bool = false
+var patio_drag_start: Vector2i = Vector2i.ZERO
+var patio_removing: bool = false
+var _patio_checks: Dictionary = {}
+var _patio_command: Callable
 ## Rooms tool: the room being painted (SimGrid.Room), the hovered cell and the drag.
 var room_kind: int = SimGrid.Room.DINING
 var room_hover: Vector2i = SimGrid.NO_CELL
@@ -156,6 +163,10 @@ func bind_session(editor: ShopEditor, world: SimWorld, content: ContentDB,
 
 ## The wall commands (D26): (changes) -> bool, (def_id, anchor) -> bool,
 ## (anchor, to_anchor) -> bool and (anchor) -> int.
+func bind_patio(command: Callable) -> void:
+	_patio_command = command
+
+
 func bind_walls(wall_finish_command: Callable, hang_command: Callable, rehang_command: Callable,
 		take_down_command: Callable) -> void:
 	_wall_finish_command = wall_finish_command
@@ -354,6 +365,10 @@ func cancel_ghost() -> bool:
 		floor_dragging = false
 		_recheck_floor()
 		changed.emit()
+	elif state == State.PATIO and patio_dragging:
+		patio_dragging = false
+		_recheck_patio()
+		changed.emit()
 	elif state == State.ROOMS and room_dragging:
 		room_dragging = false
 		_recheck_rooms()
@@ -366,7 +381,7 @@ func cancel_ghost() -> bool:
 		wall_face_dragging = false
 		_recheck_wall_finish()
 		changed.emit()
-	elif has_ghost() or state == State.WALLS or state == State.FLOOR or state == State.ROOMS or state == State.FLOORS \
+	elif has_ghost() or state == State.WALLS or state == State.FLOOR or state == State.PATIO or state == State.ROOMS or state == State.FLOORS \
 			or state == State.WALL_FINISH or state == State.HANG or state == State.SELECT:
 		_clear_ghost(State.IDLE)
 		changed.emit()
@@ -515,6 +530,7 @@ func refresh() -> void:
 		return
 	var before: Dictionary = _comparable_state()
 	_floor_checks.clear()
+	_patio_checks.clear()
 	if is_active() and not _can_interact():
 		return
 	_refresh_committed()
@@ -524,6 +540,8 @@ func refresh() -> void:
 		_recheck_walls()
 	elif state == State.FLOOR:
 		_recheck_floor()
+	elif state == State.PATIO:
+		_recheck_patio()
 	elif state == State.ROOMS:
 		_recheck_rooms()
 	elif state == State.FLOORS:
@@ -553,7 +571,7 @@ func warning_ids() -> Array[int]:
 
 ## A ghost, wall run or floor drag is being checked against the live shop.
 func _proposal_active() -> bool:
-	return has_ghost() or state == State.WALLS or state == State.FLOOR or state == State.ROOMS
+	return has_ghost() or state == State.WALLS or state == State.FLOOR or state == State.PATIO or state == State.ROOMS
 
 
 ## The ghost describes its proposed shop; the hand describes the live one.
@@ -609,6 +627,8 @@ func presentation_state() -> Dictionary:
 		"wall_hover_edge": wall_hover_edge, "wall_dragging": wall_dragging,
 		"wall_cost": current_check.cost, "wall_refund": current_check.refund,
 		"floor_cells": floor_proposal(), "floor_removing": floor_removing,
+		"patio_cells": patio_proposal(), "patio_removing": patio_removing,
+		"patio_dragging": patio_dragging, "patio_open": patio_open_cells(),
 		"floor_dragging": floor_dragging, "lot": lot_rect(), "lot_open": lot_open_cells(),
 		"tool": int(tool), "hover_item_id": hover_item_id,
 		"room_kind": room_kind, "room_cells": room_proposal(), "room_dragging": room_dragging,
@@ -694,6 +714,7 @@ func _clear_ghost(next_state: State) -> void:
 	blueprint_start = SimGrid.NO_CELL
 	blueprint_end = SimGrid.NO_CELL
 	_floor_checks.clear()
+	_patio_checks.clear()
 	selected_item_id = -1
 	selected_definition = null
 	origin = Vector2i.ZERO
@@ -706,6 +727,9 @@ func _clear_ghost(next_state: State) -> void:
 	wall_hover_edge = SimGrid.NO_EDGE
 	wall_dragging = false
 	wall_changes.clear()
+	patio_hover = SimGrid.NO_CELL
+	patio_dragging = false
+	patio_removing = false
 	floor_hover = SimGrid.NO_CELL
 	floor_dragging = false
 	floor_removing = false
@@ -915,6 +939,134 @@ func _commit_walls() -> bool:
 	return accepted
 
 
+# --- Patio tool (FK-117) ------------------------------------------------------
+
+## Outdoor paving stays part of the street; only the player's purchase changes.
+func begin_patio() -> bool:
+	if not _can_interact() or not _patio_command.is_valid() or _editor.patio_area() == null \
+			or _editor.patio_area().cells().is_empty():
+		return false
+	_clear_ghost(State.PATIO)
+	_recheck_patio()
+	changed.emit()
+	return true
+
+
+## Pointer over a patio cell. `removing` (Shift) previews taking patio away.
+func patio_pointer(cell: Vector2i, removing: bool = false) -> void:
+	if state != State.PATIO or not _can_interact():
+		return
+	if cell == patio_hover and (patio_dragging or removing == patio_removing) and not _topology_dirty:
+		return
+	patio_hover = cell
+	if not patio_dragging:
+		patio_removing = removing
+	if _topology_dirty:
+		_refresh_committed()
+	_recheck_patio()
+	changed.emit()
+
+
+func patio_press(cell: Vector2i, removing: bool = false) -> bool:
+	if state != State.PATIO or not _can_interact():
+		return false
+	patio_dragging = true
+	patio_removing = removing
+	patio_drag_start = cell
+	patio_hover = cell
+	_recheck_patio()
+	changed.emit()
+	return true
+
+
+## Ends a drag: buys (or removes) the patio in the dragged rectangle.
+func patio_release(cell: Vector2i) -> bool:
+	if state != State.PATIO or not patio_dragging or not _can_interact():
+		return false
+	patio_hover = cell
+	_recheck_patio()
+	patio_dragging = false
+	if not current_check.ok or current_check.floor_cells.is_empty():
+		changed.emit()
+		return false
+	var previous_check: EditCheck = _editor.last_check
+	var proposal: Array[Vector2i] = current_check.floor_cells.duplicate()
+	_patio_checks.clear()
+	_committing = true
+	var answer: Variant = _patio_command.call(proposal, not patio_removing)
+	var accepted: bool = answer is bool and answer
+	_refresh_committed()
+	if not accepted:
+		var result: EditCheck = _editor.last_check
+		current_check = result if result != previous_check and not result.ok \
+			else EditCheck.new(false, "The change was refused; try again")
+	_committing = false
+	if _clock.phase != _phase or not _editor.can_edit():
+		_phase = _clock.phase
+		_clear_ghost(State.INACTIVE)
+	elif accepted:
+		_recheck_patio()
+	changed.emit()
+	return accepted
+
+
+## Cells of the dragged rectangle (or the hovered cell), row-major.
+func patio_rect() -> Rect2i:
+	if patio_hover == SimGrid.NO_CELL:
+		return Rect2i()
+	var start: Vector2i = patio_drag_start if patio_dragging else patio_hover
+	var low: Vector2i = start.min(patio_hover)
+	return Rect2i(low, (start.max(patio_hover) - low) + Vector2i.ONE)
+
+
+## The cells a valid check would change, else every cell of the rectangle.
+func patio_proposal() -> Array[Vector2i]:
+	if state != State.PATIO:
+		return []
+	if current_check.ok and not current_check.floor_cells.is_empty():
+		return current_check.floor_cells.duplicate()
+	return [] as Array[Vector2i] if current_check.why.is_empty() else _rect_cells(patio_rect())
+
+
+func patio_open_cells() -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	if not is_active() or _editor == null or _editor.patio_area() == null:
+		return out
+	for cell: Vector2i in _editor.patio_area().cells():
+		if not _editor.is_patio_bought(cell):
+			out.append(cell)
+	return out
+
+
+func patio_summary() -> String:
+	if state != State.PATIO:
+		return ""
+	if not current_check.ok:
+		return current_check.why
+	var count: int = current_check.floor_cells.size()
+	var text: String = "%s %d patio tile%s" % ["Remove" if patio_removing else "Add",
+		count, "" if count == 1 else "s"]
+	if current_check.cost > 0:
+		text += "  $%d" % current_check.cost
+	if current_check.refund > 0:
+		text += "  (refund $%d)" % current_check.refund
+	return text
+
+
+func _recheck_patio() -> void:
+	if state != State.PATIO or _editor == null:
+		return
+	var cells: Array[Vector2i] = _rect_cells(patio_rect())
+	if cells.is_empty() or (not patio_dragging and _editor.patio_area() != null
+			and not _editor.patio_area().can_hold(patio_hover)):
+		current_check = EditCheck.new(false, "")
+		return
+	var key: Array = [patio_rect(), patio_removing]
+	if not _patio_checks.has(key):
+		_patio_checks[key] = _editor.check_patio(cells, not patio_removing)
+	current_check = _patio_checks[key]
+
+
 # --- Floor tool (FK-080) ------------------------------------------------------
 
 ## Enters the Floor tool from idle or a held ghost. Only shops with a lot can grow.
@@ -968,6 +1120,7 @@ func floor_release(cell: Vector2i) -> bool:
 	var previous_check: EditCheck = _editor.last_check
 	var proposal: Array[Vector2i] = current_check.floor_cells.duplicate()
 	_floor_checks.clear()
+	_patio_checks.clear()
 	_committing = true
 	var answer: Variant = _floor_command.call(proposal, not floor_removing)
 	var accepted: bool = answer is bool and answer
@@ -1682,6 +1835,7 @@ func _recheck_hang() -> void:
 func _on_cells_changed(_cells: Array[Vector2i]) -> void:
 	_topology_dirty = true
 	_floor_checks.clear()
+	_patio_checks.clear()
 	if not _committing:
 		refresh()
 

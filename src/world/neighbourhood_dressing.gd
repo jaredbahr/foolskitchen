@@ -94,7 +94,7 @@ func rebuild() -> void:
 	var built: Array[Vector2i] = []
 	if _grid != null:
 		for cell: Vector2i in _grid.cells():
-			if _grid.terrain(cell) != SimGrid.Terrain.OUTSIDE:
+			if _grid.terrain(cell) != SimGrid.Terrain.OUTSIDE and not _grid.is_outdoor_floor(cell):
 				built.append(cell)
 	var key: Array = [_grid.get_instance_id() if _grid != null else 0, _maximum_lot,
 		_frontages, _native_pavement, built]

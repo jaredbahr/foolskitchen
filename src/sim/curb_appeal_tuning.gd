@@ -3,17 +3,19 @@ extends Resource
 ## Authored points for street-front families. Widths, colours and styles share
 ## a family's repeat allowance; this resource is never changed by evaluation.
 
-const CATEGORIES: Array[StringName] = [&"finish", &"awning", &"window_box", &"sign", &"lights", &"open_sign"]
+const CATEGORIES: Array[StringName] = [&"finish", &"awning", &"window_box", &"sign", &"lights", &"open_sign", &"patio"]
 
 ## Content IDs belong to the authored resource, not the collector's code.
 @export var item_categories: Dictionary[StringName, StringName] = {}
 @export var weights: Dictionary[StringName, float] = {
 	&"finish": 8.0, &"awning": 14.0, &"window_box": 8.0,
 	&"sign": 15.0, &"lights": 8.0, &"open_sign": 10.0,
+	&"patio": 8.0,
 }
 @export var caps: Dictionary[StringName, float] = {
 	&"finish": 20.0, &"awning": 20.0, &"window_box": 20.0,
 	&"sign": 15.0, &"lights": 15.0, &"open_sign": 10.0,
+	&"patio": 15.0,
 }
 ## Copy N earns weight * repeat_decay^(N - 1), before the family cap.
 @export var repeat_decay: float = 0.65

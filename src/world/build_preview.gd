@@ -24,7 +24,7 @@ const FLOOR_GHOST_INSET: float = 0.03
 ## and a small label per connected room area. Shown only while the tool is on.
 const ROOM_SWATCHES: Array[SwatchDef] = [preload("res://data/swatches/butter.tres"),
 	preload("res://data/swatches/slate_blue.tres"), preload("res://data/swatches/sage.tres"),
-	preload("res://data/swatches/clay.tres")]
+	preload("res://data/swatches/clay.tres"), preload("res://data/swatches/sage.tres")]
 const ROOM_TINT_ALPHA: float = 0.38
 const ROOM_GHOST_ALPHA: float = 0.75
 const ROOM_LABEL_THEME: Theme = preload("res://src/ui/theme/main_theme.tres")
@@ -63,6 +63,7 @@ var _floor_preview_shown: bool = false
 ## The lot outline and fill, shown in every Build mode state.
 var lot_outline: Node3D
 var _lot_root: Node3D
+var patio_lot: MeshInstance3D
 var _controller: BuildMode
 var _shop_view: ShopView
 var _grid: SimGrid
@@ -267,10 +268,13 @@ func refresh() -> void:
 		_build_wall_ghosts(snapshot.get("wall_changes", {}), valid)
 		if not valid:
 			reason = snapshot.get("why", "")
-	elif snapshot.get("active", false) and snapshot.get("state", -1) == BuildMode.State.FLOOR:
+	elif snapshot.get("active", false) and snapshot.get("state", -1) in [BuildMode.State.FLOOR, BuildMode.State.PATIO]:
+		var patio: bool = snapshot.get("state", -1) == BuildMode.State.PATIO
 		var floor_cells: Array[Vector2i] = []
-		floor_cells.assign(snapshot.get("floor_cells", []))
-		_build_floor_ghost(floor_cells, valid, snapshot.get("floor_removing", false))
+		floor_cells.assign(snapshot.get("patio_cells" if patio else "floor_cells", []))
+		_build_floor_ghost(floor_cells, valid, snapshot.get("patio_removing" if patio else "floor_removing", false))
+		if patio and floor_ghost != null:
+			floor_ghost.position.y = _shop_view.pavement_height()
 		if not valid:
 			reason = snapshot.get("why", "")
 	elif snapshot.get("active", false) and snapshot.get("state", -1) == BuildMode.State.ROOMS:
@@ -298,6 +302,19 @@ func refresh() -> void:
 		var open_cells: Array[Vector2i] = []
 		open_cells.assign(snapshot.get("lot_open", []))
 		_build_lot(snapshot.get("lot", Rect2i()), open_cells)
+		# The door approach is absent from this cell list, so the marked lot
+		# never suggests buying the public entrance.
+		var patio_cells: Array[Vector2i] = []
+		patio_cells.assign(snapshot.get("patio_open", []))
+		if not patio_cells.is_empty():
+			patio_lot = MeshInstance3D.new()
+			patio_lot.name = "PatioLot"
+			patio_lot.mesh = _tile_mesh(patio_cells, _shop_view.pavement_height() + 0.004, FLOOR_GHOST_INSET)
+			var patio_color: Color = LOT_SWATCH.color
+			patio_color.a = LOT_FILL_ALPHA
+			patio_lot.material_override = _material(patio_color, true)
+			patio_lot.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			add_child(patio_lot)
 	var warning_ids: Array[int] = []
 	warning_ids.assign(snapshot.get("warning_ids", []))
 	for id: int in warning_ids:
@@ -431,6 +448,9 @@ func _clear_geometry() -> void:
 		_free_node(_lot_root)
 	_lot_root = null
 	lot_outline = null
+	if is_instance_valid(patio_lot):
+		_free_node(patio_lot)
+	patio_lot = null
 	work_markers.clear()
 	seat_markers.clear()
 	for node: Node3D in warning_nodes.values():
@@ -561,7 +581,7 @@ func _build_rooms(proposal: Array[Vector2i], kind: int, valid: bool, why: String
 		tint.a = ROOM_TINT_ALPHA
 		var mesh: MeshInstance3D = MeshInstance3D.new()
 		mesh.name = "Tint%d" % room
-		mesh.mesh = _tile_mesh(cells, 0.02, 0.0)
+		mesh.mesh = _tile_mesh(cells, 0.02 + (_shop_view.pavement_height() if room == SimGrid.Room.PATIO else 0.0), 0.0)
 		mesh.material_override = _material(tint, true)
 		mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		mesh.set_meta("room", room)

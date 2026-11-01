@@ -57,7 +57,8 @@ func advance(sim: RestaurantSim) -> void:
 				# Parties clamp after every draw to the largest usable table, but
 				# never below one: with no usable table a single guest still
 				# arrives and is counted as "no table", as any single would be.
-				count = maxi(1, mini(drawn_count, DiningSeats.largest_usable_capacity(sim.world.grid, entry)))
+				count = maxi(1, mini(drawn_count, DiningSeats.largest_usable_capacity(
+					sim.world.grid, entry, sim.world.weather.kind)))
 			# Retain every private-seed draw, including clamped-away members. Layout
 			# edits must not shift the next arrival's type, gap or private streams.
 			var randoms: Array[RandomNumberGenerator] = []

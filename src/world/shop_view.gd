@@ -88,6 +88,8 @@ var _wall_nodes: Dictionary[Vector2i, MeshInstance3D] = {}
 
 var world: SimWorld
 var floor_mesh: MeshInstance3D
+## Authored paving shows through until the player gives patio cells a finish.
+var patio_floor_mesh: MeshInstance3D
 var room_dressing: RoomDressing
 var neighbourhood_dressing: NeighbourhoodDressing
 ## Separate from the actual delivery/service lot: maximum future building land.
@@ -183,6 +185,7 @@ func show_world(value: SimWorld, maximum_reserve: Rect2i = Rect2i()) -> void:
 	_shell_windows.clear()
 	_floor_preview.clear()
 	floor_mesh = null
+	patio_floor_mesh = null
 	room_dressing = null
 	neighbourhood_dressing = null
 	weather_view = null
@@ -279,7 +282,7 @@ func neighbourhood_reserved_lot() -> Rect2i:
 		reserve = reserve.merge(_lot) if reserve.has_area() else _lot
 	if world != null:
 		for cell: Vector2i in world.grid.cells():
-			if world.grid.terrain(cell) == SimGrid.Terrain.OUTSIDE:
+			if world.grid.terrain(cell) == SimGrid.Terrain.OUTSIDE or world.grid.is_outdoor_floor(cell):
 				continue
 			var single: Rect2i = Rect2i(cell, Vector2i.ONE)
 			reserve = reserve.merge(single) if reserve.has_area() else single
@@ -384,7 +387,7 @@ func _build_terrain() -> void:
 			wall.add_child(top)
 			_wall_nodes[cell] = wall
 			_walls.add_child(wall)
-		elif terrain == SimGrid.Terrain.FLOOR or terrain == SimGrid.Terrain.ENTRY:
+		elif (terrain == SimGrid.Terrain.FLOOR and not world.grid.is_outdoor_floor(cell)) or terrain == SimGrid.Terrain.ENTRY:
 			var corner: Vector3 = Vector3(cell.x * GridMath.CELL_SIZE, 0.0, cell.y * GridMath.CELL_SIZE)
 			var corners: Array[Vector3] = [corner, corner + Vector3(0.5, 0, 0), corner + Vector3(0.5, 0, 0.5), corner + Vector3(0, 0, 0.5)]
 			for index: int in [0, 1, 2, 0, 2, 3]:
@@ -399,6 +402,7 @@ func _build_terrain() -> void:
 	if room_dressing != null:
 		room_dressing.rebuild(world, lowered_wall_cells())
 	_refresh_neighbourhood()
+	_rebuild_patio_floor()
 	if weather_view != null:
 		weather_view.refresh(true)
 
@@ -798,6 +802,38 @@ func finish_origin() -> Vector2i:
 	return _finish_origin
 
 
+## Measured top of the existing Kenney pavement; no new paving asset or tint.
+func pavement_height() -> float:
+	if room_dressing != null:
+		for bounds: AABB in room_dressing.native_pavement_bounds():
+			return bounds.end.y
+	return 0.055
+
+
+func _rebuild_patio_floor() -> void:
+	var cells: Array[Vector2i] = []
+	if world != null:
+		for cell: Vector2i in world.grid.cells():
+			if world.grid.is_outdoor_floor(cell) and (_floor_preview.has(cell)
+					or (_floors != null and not _floors.is_default(cell))):
+				cells.append(cell)
+	if cells.is_empty():
+		if is_instance_valid(patio_floor_mesh):
+			remove_child(patio_floor_mesh)
+			patio_floor_mesh.free()
+		patio_floor_mesh = null
+		return
+	if not is_instance_valid(patio_floor_mesh):
+		patio_floor_mesh = MeshInstance3D.new()
+		patio_floor_mesh.name = "PatioFloor"
+		patio_floor_mesh.set_meta("shop_geometry", true)
+		patio_floor_mesh.layers |= WeatherView.OUTDOOR_LAYER
+		patio_floor_mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(patio_floor_mesh)
+	patio_floor_mesh.mesh = BuildPreview._tile_mesh(cells, pavement_height() + 0.002, 0.0)
+	patio_floor_mesh.material_override = floor_mesh.material_override
+
+
 func _on_floor_finishes_changed(_cells: Array[Vector2i]) -> void:
 	_rebuild_finish_map()
 
@@ -874,6 +910,7 @@ func _rebuild_finish_map() -> void:
 		shader.set_shader_parameter("map_origin", _finish_origin)
 		shader.set_shader_parameter("map_size", size)
 	_sync_dirt_spots()
+	_rebuild_patio_floor()
 
 
 ## A colour's palette index: the shop's own colour is 0 (main only), the

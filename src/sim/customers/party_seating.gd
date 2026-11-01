@@ -43,7 +43,8 @@ static func try_seat(party: Party, world: SimWorld, kitchen: Kitchen = null) -> 
 		var available: Array[Vector2i] = []
 		for seat: Vector2i in table_group_seats(table, world.grid):
 			var owner: PlacedItem = world.grid.item(world.grid.dining_owner_id(table.id, seat))
-			if owner != null and owner.reserved_by(seat) == -1 and world.grid.is_walkable(seat) and not available.has(seat):
+			if owner != null and owner.reserved_by(seat) == -1 and world.grid.is_walkable(seat) \
+					and PatioRules.seat_is_open(world.grid, seat, world.weather.kind) and not available.has(seat):
 				available.append(seat)
 		if available.size() < guests.size():
 			continue
@@ -152,7 +153,8 @@ static func held_for_earlier_party(table: PlacedItem, arrival_id: int, world: Si
 		for member: CustomerAgent in waiting:
 			var reachable: Array[Vector2i] = []
 			for seat: Vector2i in table_group_seats(table, world.grid):
-				if world.grid.is_walkable(seat) and world.grid.is_guest_reachable(member.cell, seat) \
+				if world.grid.is_walkable(seat) and PatioRules.seat_is_open(world.grid, seat, world.weather.kind) \
+						and world.grid.is_guest_reachable(member.cell, seat) \
 						and not reachable.has(seat):
 					reachable.append(seat)
 			choices.append(reachable)

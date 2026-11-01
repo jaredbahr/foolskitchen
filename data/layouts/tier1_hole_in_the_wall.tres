@@ -70,6 +70,8 @@ lot_west = 2
 lot_east = 2
 lot_north = 4
 floor_cell_price = 15
+patio_depth = 4
+patio_cell_price = 15
 pantry_units = 60
 
 wall_segments = Dictionary[Vector3i, StringName]({

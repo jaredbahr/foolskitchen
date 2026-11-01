@@ -366,7 +366,7 @@ static func _hinge_side(root: Node3D, leaf: Node3D) -> Vector2i:
 
 ## Open ground outside: unbought lot, or beyond the grid.
 static func _open_ground(grid: SimGrid, cell: Vector2i) -> bool:
-	return not grid.in_bounds(cell) or grid.terrain(cell) == SimGrid.Terrain.OUTSIDE
+	return not grid.in_bounds(cell) or grid.terrain(cell) == SimGrid.Terrain.OUTSIDE or grid.is_outdoor_floor(cell)
 
 
 ## DOOR_OPEN_SLIDE along the wall toward the leaf's hinge, in the leaf's

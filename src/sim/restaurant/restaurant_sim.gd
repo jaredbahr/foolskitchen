@@ -223,6 +223,10 @@ func assign_owner(mode: StringName) -> bool:
 
 ## Clears daily reports and redraws the first arrival; the caller opens the clock.
 func start_day() -> void:
+	# Daily weather can close patio seats without a layout edit. Indoor-only
+	# shops retain their existing cache and exact morning behavior.
+	if world.grid.rooms().values().has(SimGrid.Room.PATIO):
+		_layout_counted = false
 	staff_activity.reset(world.clock.day)
 	_regular_cohort_index = 0
 	if regulars != null:
@@ -864,7 +868,9 @@ func _count_layout() -> void:
 	for placed: PlacedItem in world.grid.items():
 		var definition: ItemDef = placed.def as ItemDef
 		if definition != null and definition.category == ItemDef.Category.TABLE:
-			_seats += placed.seat_cells.size()
+			for seat: Vector2i in placed.seat_cells:
+				if PatioRules.seat_is_open(world.grid, seat, world.weather.kind):
+					_seats += 1
 
 
 ## Current guests in stable agent-id order.

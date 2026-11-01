@@ -11,7 +11,8 @@ extends RefCounted
 ## paint with nothing hung.
 ## Version 7 is reserved for furniture looks (#220); version 8 normalizes
 ## interior dividers and persists strictly interior thin/thick exceptions.
-const SNAPSHOT_VERSION: int = 8
+## Version 9 adds separately owned outdoor patio cells.
+const SNAPSHOT_VERSION: int = 9
 const WALLS_CLOSED: String = "Walls can only be changed in the morning or after closing"
 const FLOORS_CLOSED: String = "New floors can only be laid in the morning or after closing"
 const FLOORS_NOT_FLOOR: String = "Floors are laid on the shop floor"
@@ -51,6 +52,8 @@ var _property_tier: int = 1
 ## The lot and the bought floor (FK-080). Null without a layout.
 var _footprint: ShopFootprint
 var _bought: Dictionary[Vector2i, bool] = {}
+var _patio: PatioArea
+var _patio_bought: Dictionary[Vector2i, bool] = {}
 var _thin_cells: Array[Vector2i] = []
 var _thick_cells: Array[Vector2i] = []
 ## Built-in dry storage from the layout (FK-087).
@@ -87,6 +90,8 @@ func _init(sim: RestaurantSim, content: ContentDB, books: ShopEditBooks, layout:
 		floor_swatch_id = _known_swatch(layout.floor_swatch_id)
 		_footprint = ShopFootprint.from_layout(layout)
 		_bought = ShopFootprint.to_set(layout.floor_cells)
+		_patio = PatioArea.from_layout(layout)
+		_patio_bought = ShopFootprint.to_set(layout.patio_cells)
 		_thin_cells = layout.thin_cells.duplicate()
 		_thick_cells = layout.thick_cells.duplicate()
 		pantry_units = maxi(0, layout.pantry_units)
@@ -504,10 +509,13 @@ func to_dict() -> Dictionary:
 	for cell: Vector2i in ShopFootprint.sorted(_bought):
 		floor.append([cell.x, cell.y])
 	var rooms: Array[Array] = []
+	var patio: Array[Array] = []
+	for cell: Vector2i in bought_patio():
+		patio.append([cell.x, cell.y])
 	var painted: Dictionary[Vector2i, int] = _sim.world.grid.rooms()
 	for cell: Vector2i in ShopFootprint.sorted(_cell_set(painted.keys())):
 		rooms.append([cell.x, cell.y, String(RoomRules.id_of(painted[cell]))])
-	return {"version": SNAPSHOT_VERSION, "items": placements, "walls": segments, "floor": floor,
+	return {"version": SNAPSHOT_VERSION, "items": placements, "walls": segments, "floor": floor, "patio": patio,
 		"thin_cells": ThinDividers.rows(_thin_cells), "thick_cells": ThinDividers.rows(_thick_cells),
 		"rooms": rooms, "wall_swatch_id": String(wall_swatch_id), "floor_swatch_id": String(floor_swatch_id),
 		"floor_style_id": String(floors.default_style), "floors": floors.to_rows(),
@@ -557,6 +565,19 @@ static func from_dict(data: Dictionary, template_layout: ShopLayout, content: Co
 	if not footprint.problem(bought).is_empty() or not footprint.apply(preview, bought):
 		errors.append("Saved floor does not fit the lot")
 		return null
+	var patio_area: PatioArea = PatioArea.from_layout(terrain_layout)
+	var patio_cells: Array[Vector2i] = []
+	if int(data["version"]) >= 9:
+		if not data.get("patio") is Array:
+			errors.append("Invalid shop patio")
+			return null
+		patio_cells = patio_area.decode(data["patio"], errors)
+		if not errors.is_empty():
+			return null
+	if not patio_area.apply(preview, patio_cells):
+		errors.append("Saved patio does not fit the pavement")
+		return null
+	var patio_set: Dictionary[Vector2i, bool] = ShopFootprint.to_set(patio_cells)
 	var rows: Array = data["items"]
 	# Two grid layers (normal and floor decor); wall decor is saved separately.
 	if rows.size() > preview.size.x * preview.size.y * 2:
@@ -576,6 +597,9 @@ static func from_dict(data: Dictionary, template_layout: ShopLayout, content: Co
 	layout.floor_cell_price = template_layout.floor_cell_price
 	layout.pantry_units = template_layout.pantry_units
 	layout.floor_cells = ShopFootprint.sorted(bought)
+	layout.patio_depth = template_layout.patio_depth
+	layout.patio_cell_price = template_layout.patio_cell_price
+	layout.patio_cells = patio_cells.duplicate()
 	layout.wall_swatch_id = _saved_swatch(data.get("wall_swatch_id", ""), content)
 	layout.floor_swatch_id = _saved_swatch(data.get("floor_swatch_id", ""), content)
 	for value: Variant in rows:
@@ -665,6 +689,11 @@ static func from_dict(data: Dictionary, template_layout: ShopLayout, content: Co
 	if not WallRules.layout_problem(preview).is_empty():
 		errors.append("Saved walls block the shop")
 		return null
+	var patio_reach: Dictionary[Vector2i, bool] = WallRules.reachable(WallRules.walls_only(preview))
+	for cell: Vector2i in patio_cells:
+		if not patio_reach.has(cell):
+			errors.append("Saved patio must join the street door")
+			return null
 	var rooms: Dictionary[Vector2i, int] = {}
 	if int(data["version"]) >= 4 or data.has("rooms"):
 		var saved: Variant = data.get("rooms")
@@ -681,6 +710,9 @@ static func from_dict(data: Dictionary, template_layout: ShopLayout, content: Co
 			var kind: int = RoomRules.kind_of(StringName(row[2]))
 			if kind <= SimGrid.Room.DINING or rooms.has(cell) or preview.terrain(cell) != SimGrid.Terrain.FLOOR:
 				errors.append("Saved rooms do not fit the shop")
+				return null
+			if (kind == SimGrid.Room.PATIO) != patio_set.has(cell):
+				errors.append("Saved patio rooms must match the bought patio")
 				return null
 			rooms[cell] = kind
 	else:
@@ -711,6 +743,10 @@ static func from_dict(data: Dictionary, template_layout: ShopLayout, content: Co
 			layout.rooms_unmarked = true
 		else:
 			rooms = filtered
+	for cell: Vector2i in patio_cells:
+		if rooms.get(cell, -1) != SimGrid.Room.PATIO:
+			errors.append("Saved patio rooms must match the bought patio")
+			return null
 	layout.room_rows = template_layout.room_rows.duplicate()
 	layout.room_cells = rooms
 	layout.rooms_explicit = true
@@ -1065,6 +1101,8 @@ func check_rooms(changes: Dictionary[Vector2i, int], exact: Exact = null) -> Edi
 	var floor_seen: bool = false
 	for cell: Vector2i in changes:
 		var kind: int = changes[cell]
+		if kind == SimGrid.Room.PATIO or live.is_outdoor_floor(cell):
+			return EditCheck.new(false, "Buy or remove outdoor floor with the Patio tool")
 		if kind < SimGrid.Room.DINING or kind > SimGrid.Room.STORAGE:
 			return EditCheck.new(false, "Unknown room")
 		if live.terrain(cell) != SimGrid.Terrain.FLOOR:
@@ -1607,6 +1645,133 @@ func is_bought(cell: Vector2i) -> bool:
 	return _bought.has(cell)
 
 
+func patio_area() -> PatioArea:
+	return _patio
+
+
+func bought_patio() -> Array[Vector2i]:
+	return ShopFootprint.sorted(_patio_bought)
+
+
+func is_patio_bought(cell: Vector2i) -> bool:
+	return _patio_bought.has(cell)
+
+
+## Outdoor ownership never grows a wall or consumes the public door approach.
+func check_patio(cells: Array[Vector2i], adding: bool, exact: Exact = null) -> EditCheck:
+	if not can_edit():
+		return EditCheck.new(false, "Patio floor can only be changed in the morning or after closing")
+	if _patio == null or _patio.cells().is_empty():
+		return EditCheck.new(false, "There is no patio space on this lot")
+	if _content == null:
+		return EditCheck.new(false, "The shop content is unavailable")
+	var effective: Dictionary[Vector2i, bool] = {}
+	for cell: Vector2i in cells:
+		if adding:
+			if not _patio.area.has_point(cell):
+				return EditCheck.new(false, "Patio floor goes on the marked pavement")
+			if _patio.can_hold(cell) and not _patio_bought.has(cell):
+				effective[cell] = true
+		elif _patio_bought.has(cell):
+			effective[cell] = true
+	if effective.is_empty():
+		return EditCheck.new(false, "That patio floor is already bought, or is the street approach" \
+				if adding else "Only bought patio floor can be removed")
+	var next: Dictionary[Vector2i, bool] = _patio_bought.duplicate()
+	for cell: Vector2i in effective:
+		if adding:
+			next[cell] = true
+		else:
+			next.erase(cell)
+	var wanted: Array[Vector2i] = ShopFootprint.sorted(next)
+	var problem: String = _patio.problem(wanted)
+	if not problem.is_empty():
+		return EditCheck.new(false, problem)
+	var live: SimGrid = _sim.world.grid
+	if not adding:
+		for cell: Vector2i in _people_cells():
+			if effective.has(cell):
+				return EditCheck.new(false, "Someone is standing on that patio floor")
+	var ids: Dictionary[int, int] = {}
+	var preview: SimGrid = _preview_without(-1, ids)
+	if preview == null:
+		return EditCheck.new(false, "The current shop has invalid placements")
+	if not _patio.apply(preview, wanted):
+		return EditCheck.new(false, "Clear the patio furniture, seats and work spots off that floor first")
+	var reach: Dictionary[Vector2i, bool] = WallRules.reachable(WallRules.walls_only(preview))
+	if exact == null:
+		if adding:
+			for cell: Vector2i in effective:
+				if not reach.has(cell):
+					return EditCheck.new(false, "New patio floor must join the street door")
+		else:
+			var was: Dictionary[Vector2i, bool] = WallRules.reachable(WallRules.walls_only(live))
+			for cell: Vector2i in next:
+				if was.has(cell) and not reach.has(cell):
+					return EditCheck.new(false, "Keep the remaining patio connected to the street door")
+	problem = WallRules.layout_problem(preview)
+	if problem.is_empty() and exact == null:
+		var dining: EditCheck = EditCheck.validate_dining(live, preview, ids, -1, -1)
+		problem = "" if dining.ok else dining.why
+	if problem.is_empty():
+		problem = WallRules.cut_off_problem(live, preview, _people_cells(), exact != null)
+	if problem.is_empty() and exact == null:
+		problem = RoomRules.problem(live, preview, ids)
+	if not problem.is_empty():
+		return EditCheck.new(false, problem)
+	var check: EditCheck = EditCheck.new(true)
+	_note_menu_access(check, preview, exact != null)
+	if not check.ok:
+		return check
+	check.cost = effective.size() * _patio.cell_price if adding else 0
+	if not adding:
+		check.refund = effective.size() * floori(_patio.cell_price / 2.0)
+		for cell: Vector2i in effective:
+			if floors.is_default(cell):
+				continue
+			var style: FloorStyleDef = _content.floor_style(floors.finish(cell).style)
+			check.floor_finish_refund += floori(style.price / 2.0) if style != null else 0
+		check.refund += check.floor_finish_refund
+	if exact != null:
+		check.cost = maxi(-exact.amount, 0)
+		check.refund = maxi(exact.amount, 0)
+	if _books == null or not _books.is_ready():
+		return EditCheck.new(false, "The shop books are unavailable")
+	if check.cost > check.refund and not _books.can_spend_without_loan(check.cost - check.refund):
+		return EditCheck.new(false, _books.purchase_refusal_reason(check.cost - check.refund))
+	check.floor_cells = ShopFootprint.sorted(effective)
+	check.floor_adding = adding
+	_fill_warnings(check, preview, ids)
+	return check
+
+
+func apply_patio(cells: Array[Vector2i], adding: bool, exact: Exact = null) -> bool:
+	var check: EditCheck = check_patio(cells, adding, exact)
+	last_check = check
+	if not check.ok:
+		return false
+	var next: Dictionary[Vector2i, bool] = _patio_bought.duplicate()
+	for cell: Vector2i in check.floor_cells:
+		if adding:
+			next[cell] = true
+		else:
+			next.erase(cell)
+	_applying = true
+	var applied: bool = _patio.apply(_sim.world.grid, ShopFootprint.sorted(next))
+	if applied:
+		_patio_bought = next
+		if not adding:
+			floors.drop(check.floor_cells)
+			if _sim.cleanliness != null:
+				for cell: Vector2i in check.floor_cells:
+					_sim.cleanliness.clear_spot(cell)
+		_record(check.refund, check.cost, exact)
+	_applying = false
+	if not applied:
+		last_check = EditCheck.new(false, "The shop changed; check the patio floor again")
+	return applied
+
+
 ## Read-only check of buying (`adding`) or removing the floor in `cells`.
 ## Adding uses every unbuilt lot cell; cells of the starting building, already
 ## bought or on the lot's wall ring are skipped, any cell beyond the lot refuses. Removing uses
@@ -1658,7 +1823,8 @@ func check_floor(cells: Array[Vector2i], adding: bool, exact: Exact = null,
 	# standing on it first, then a seat or work spot beside furniture.
 	var losing: Array[Vector2i] = []
 	for cell: Vector2i in target:
-		if target[cell] != SimGrid.Terrain.FLOOR and live.terrain(cell) == SimGrid.Terrain.FLOOR:
+		if not live.is_outdoor_floor(cell) and target[cell] != SimGrid.Terrain.FLOOR \
+				and live.terrain(cell) == SimGrid.Terrain.FLOOR:
 			if not live.items_at(cell).is_empty():
 				return EditCheck.new(false, ShopFootprint.HAS_FURNITURE)
 			losing.append(cell)
@@ -1994,6 +2160,10 @@ static func placement_reason(result: SimGrid.PlaceResult) -> String:
 			return "This item has invalid floor space"
 		SimGrid.PlaceResult.WALL_IN_WAY:
 			return "A wall is in the way"
+		SimGrid.PlaceResult.OUTDOOR_ONLY:
+			return "Outdoor furniture needs patio floor"
+		SimGrid.PlaceResult.INDOOR_ONLY:
+			return "Use outdoor furniture on the patio"
 	return "Cannot place this item here"
 
 

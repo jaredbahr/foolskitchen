@@ -38,7 +38,7 @@ static func is_exterior(grid: SimGrid, key: Vector3i) -> bool:
 	if into != -WallRules.street_side(grid):
 		return false
 	var outside: Vector2i = Vector2i(key.x, key.y)
-	if grid.terrain(outside) not in [SimGrid.Terrain.OUTSIDE, SimGrid.Terrain.ENTRY]:
+	if grid.terrain(outside) not in [SimGrid.Terrain.OUTSIDE, SimGrid.Terrain.ENTRY] and not grid.is_outdoor_floor(outside):
 		return false
 	var shell: Vector2i = shell_cell(key)
 	var doors: Array[Vector2i] = door_cells(grid)
@@ -168,7 +168,7 @@ static func _dressed_cells(grid: SimGrid, entries: Array[Vector2i], outward: Vec
 		for cell: Vector2i in grid.cells():
 			if _axis_value(cell, outward) == plane and grid.terrain(cell) == SimGrid.Terrain.WALL \
 					and grid.terrain(cell - outward) == SimGrid.Terrain.FLOOR \
-					and grid.terrain(cell + outward) in [SimGrid.Terrain.OUTSIDE, SimGrid.Terrain.ENTRY]:
+					and (grid.terrain(cell + outward) in [SimGrid.Terrain.OUTSIDE, SimGrid.Terrain.ENTRY] or grid.is_outdoor_floor(cell + outward)):
 				candidates.append(cell)
 		if not candidates.is_empty():
 			break

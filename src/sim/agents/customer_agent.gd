@@ -379,7 +379,8 @@ func _try_seat(world: SimWorld) -> bool:
 			continue
 		for seat: Vector2i in _preferred_seats(table, world):
 			var owner: PlacedItem = world.grid.item(world.grid.dining_owner_id(table.id, seat))
-			if owner == null or owner.reserved_by(seat) != -1 or not world.grid.is_walkable(seat):
+			if owner == null or owner.reserved_by(seat) != -1 or not world.grid.is_walkable(seat) \
+					or not PatioRules.seat_is_open(world.grid, seat, world.weather.kind):
 				continue
 			if not world.grid.is_guest_reachable(cell, seat) or not owner.reserve(seat, id):
 				continue
@@ -478,7 +479,8 @@ func _queue_inside(world: SimWorld) -> void:
 
 func is_waiting_seated(world: SimWorld) -> bool:
 	if state != State.QUEUED or waiting_item_id == 0 or cell != waiting_cell or not has_arrived() \
-			or not world.grid.is_guest_walkable(waiting_cell):
+			or not world.grid.is_guest_walkable(waiting_cell) \
+			or not PatioRules.seat_is_open(world.grid, waiting_cell, world.weather.kind):
 		return false
 	var bench: PlacedItem = world.grid.item(waiting_item_id)
 	return WaitingBench.is_bench(bench) and bench.seat_cells.has(waiting_cell) \

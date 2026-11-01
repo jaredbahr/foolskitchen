@@ -14,7 +14,7 @@ const MAX_ENTRIES: int = 200
 
 ## D26: WALL_FINISH puts up or recolours wall finishes; HANG, TAKE_DOWN and
 ## REHANG are wall decor bought, sold and moved.
-enum Kind { BUY, MOVE, SELL, WALLS, FLOOR, PAINT, ROOMS, FLOORING, WALL_FINISH, HANG, TAKE_DOWN, REHANG, STAMP, VARIANT, HUNG_PAINT }
+enum Kind { BUY, MOVE, SELL, WALLS, FLOOR, PAINT, ROOMS, FLOORING, WALL_FINISH, HANG, TAKE_DOWN, REHANG, STAMP, VARIANT, HUNG_PAINT, PATIO }
 
 ## One placed item across undo and redo. Re-placing an item gives it a new
 ## grid id, so entries share this reference instead of holding raw ids.
@@ -266,6 +266,26 @@ func apply_rooms(changes: Dictionary[Vector2i, int]) -> bool:
 		entry.rooms_before[cell] = before.get(cell, SimGrid.Room.DINING)
 		entry.rooms_after[cell] = _editor.last_check.rooms[cell]
 	entry.label = "room painting"
+	_push(entry)
+	return true
+
+
+## Patio ownership uses the same exact money reversal as indoor expansion.
+func apply_patio(cells: Array[Vector2i], adding: bool) -> bool:
+	var before: Array[Vector2i] = _editor.bought_patio()
+	var looks: Dictionary[Vector2i, FloorFinishes.Finish] = _editor.floors.snapshot(_editor.floors.cells())
+	if not _editor.apply_patio(cells, adding):
+		return false
+	var entry: Entry = Entry.new()
+	entry.kind = Kind.PATIO
+	entry.floor_cells = _editor.last_check.floor_cells.duplicate()
+	entry.floor_adding = adding
+	entry.cash = _editor.last_cash_change
+	entry.label = "add patio" if adding else "remove patio"
+	if not adding:
+		for cell: Vector2i in entry.floor_cells:
+			if before.has(cell) and looks.has(cell):
+				entry.finishes_before[cell] = looks[cell]
 	_push(entry)
 	return true
 
@@ -545,6 +565,12 @@ func _invert(entry: Entry) -> bool:
 			if not _check(_editor.paint_variant(entry.item.id, entry.variant_id)):
 				return false
 			return _check(_editor.paint_item(entry.item.id, entry.swatch_id))
+		Kind.PATIO:
+			if not _check(_editor.apply_patio(entry.floor_cells, not entry.floor_adding, exact)):
+				return false
+			if not entry.finishes_before.is_empty():
+				_editor.apply_flooring(entry.finishes_before, ShopEditor.Exact.new(0, UNDO_NOTE))
+			return true
 		Kind.PAINT:
 			if not _check(_paint(entry.paint_target, entry.swatch_id, entry.item.id if entry.item != null else -1)):
 				return false
@@ -604,6 +630,8 @@ func _reapply(entry: Entry) -> bool:
 			if not entry.rooms_after.is_empty():
 				_editor.apply_rooms(entry.rooms_after, ShopEditor.Exact.new(0, REDO_NOTE))
 			return true
+		Kind.PATIO:
+			return _check(_editor.apply_patio(entry.floor_cells, entry.floor_adding, exact))
 		Kind.VARIANT:
 			return _check(_editor.paint_variant(entry.item.id, entry.variant_after))
 		Kind.PAINT:

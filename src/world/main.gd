@@ -308,6 +308,8 @@ func _bind_world_presentation() -> void:
 		_build_catalogue.wall_tool_requested.connect(_on_wall_tool_requested)
 	if not _build_catalogue.floor_tool_requested.is_connected(_on_floor_tool_requested):
 		_build_catalogue.floor_tool_requested.connect(_on_floor_tool_requested)
+	if not _build_catalogue.patio_tool_requested.is_connected(_on_patio_tool_requested):
+		_build_catalogue.patio_tool_requested.connect(_on_patio_tool_requested)
 	if not _build_catalogue.rooms_tool_requested.is_connected(_on_rooms_tool_requested):
 		_build_catalogue.rooms_tool_requested.connect(_on_rooms_tool_requested)
 	if not _build_catalogue.floors_tool_requested.is_connected(_on_floors_tool_requested):
@@ -781,6 +783,14 @@ func route_build_input(event: InputEvent) -> bool:
 			else:
 				build_mode.floor_release(floor_cell)
 		return true
+	if mouse != null and mouse.button_index == MOUSE_BUTTON_LEFT and build_mode.state == BuildMode.State.PATIO:
+		var patio_cell: Variant = build_cell_at_screen_position(mouse.position)
+		if patio_cell is Vector2i:
+			if mouse.pressed:
+				build_mode.patio_press(patio_cell, mouse.shift_pressed)
+			else:
+				build_mode.patio_release(patio_cell)
+		return true
 	if mouse != null and mouse.button_index == MOUSE_BUTTON_LEFT and build_mode.state == BuildMode.State.FLOORS:
 		var floors_cell: Variant = build_cell_at_screen_position(mouse.position)
 		if floors_cell is Vector2i:
@@ -881,7 +891,8 @@ func _on_shift_changed(key: InputEventKey) -> void:
 		return
 	if _paint_active:
 		update_paint_pointer(_last_pointer, key.pressed)
-	elif is_build_active() and (build_mode.state == BuildMode.State.FLOORS or build_mode.state == BuildMode.State.WALL_FINISH):
+	elif is_build_active() and build_mode.state in [BuildMode.State.FLOOR, BuildMode.State.PATIO,
+			BuildMode.State.FLOORS, BuildMode.State.WALL_FINISH]:
 		update_build_pointer(_last_pointer, key.pressed)
 
 
@@ -1375,6 +1386,11 @@ func update_build_pointer(screen_position: Vector2, shift: bool = false) -> bool
 		if floor_cell is Vector2i:
 			build_mode.floor_pointer(floor_cell, shift)
 		return floor_cell is Vector2i
+	if build_mode.state == BuildMode.State.PATIO:
+		var patio_cell: Variant = build_cell_at_screen_position(screen_position)
+		if patio_cell is Vector2i:
+			build_mode.patio_pointer(patio_cell, shift)
+		return patio_cell is Vector2i
 	if build_mode.state == BuildMode.State.ROOMS:
 		var room_cell: Variant = build_cell_at_screen_position(screen_position)
 		if room_cell is Vector2i:
@@ -1434,6 +1450,15 @@ func begin_floor_tool() -> bool:
 	if not is_build_active():
 		return false
 	var started: bool = build_mode.begin_floor()
+	if started and is_inside_tree():
+		update_build_pointer(get_viewport().get_mouse_position())
+	return started
+
+
+func begin_patio_tool() -> bool:
+	if not is_build_active():
+		return false
+	var started: bool = build_mode.begin_patio()
 	if started and is_inside_tree():
 		update_build_pointer(get_viewport().get_mouse_position())
 	return started
@@ -1598,6 +1623,7 @@ func _bind_build_session() -> void:
 	edit_history = ShopEditHistory.new(shop_editor, world.grid)
 	build_mode.bind_session(shop_editor, world, content, shop_move, shop_buy, shop_sell, shop_walls, shop_floor,
 		shop_rooms, shop_flooring)
+	build_mode.bind_patio(shop_patio)
 	($ShopView as ShopView).set_paint(content, shop_editor.wall_swatch_id, shop_editor.floor_swatch_id)
 	($ShopView as ShopView).bind_floor_finishes(shop_editor.floors)
 	if not shop_editor.floors.changed.is_connected(_on_floor_looks_changed):
@@ -1622,6 +1648,9 @@ func _bind_build_session() -> void:
 	var lot: ShopFootprint = shop_editor.footprint()
 	if _build_catalogue != null:
 		_build_catalogue.set_floor_price(lot.cell_price if lot != null and lot.has_lot() else 0)
+		var patio: PatioArea = shop_editor.patio_area()
+		_build_catalogue.set_patio_price(patio.cell_price if patio != null else 0,
+			patio != null and not patio.cells().is_empty())
 		_build_catalogue.set_rooms_enabled(true)
 	_build_ready = true
 	_build_ui_phase = -1
@@ -1703,6 +1732,8 @@ func _update_build_controls() -> void:
 		summary = build_mode.wall_summary()
 	elif build_mode.state == BuildMode.State.FLOOR:
 		summary = build_mode.floor_summary()
+	elif build_mode.state == BuildMode.State.PATIO:
+		summary = build_mode.patio_summary()
 	elif build_mode.state == BuildMode.State.ROOMS:
 		summary = build_mode.rooms_summary()
 	elif build_mode.state == BuildMode.State.FLOORS:
@@ -1787,7 +1818,7 @@ func build_restock_warning() -> String:
 		cost = build_mode.selected_definition.variant_price(build_mode.buy_variant_id)
 	elif build_mode.state == BuildMode.State.BLUEPRINT:
 		cost = build_mode.blueprint_cost()
-	elif build_mode.state in [BuildMode.State.WALLS, BuildMode.State.FLOOR, BuildMode.State.FLOORS,
+	elif build_mode.state in [BuildMode.State.WALLS, BuildMode.State.FLOOR, BuildMode.State.PATIO, BuildMode.State.FLOORS,
 			BuildMode.State.WALL_FINISH, BuildMode.State.HANG]:
 		# D26: a wall finish drag's price less its refund; a new wall item's
 		# price (moving one costs nothing).
@@ -1831,6 +1862,10 @@ func _on_wall_tool_requested(kind: int) -> void:
 
 func _on_floor_tool_requested() -> void:
 	begin_floor_tool()
+
+
+func _on_patio_tool_requested() -> void:
+	begin_patio_tool()
 
 
 func _on_rooms_tool_requested(kind: int) -> void:
@@ -3414,6 +3449,18 @@ func shop_floor(cells: Array[Vector2i], adding: bool) -> bool:
 	return accepted
 
 
+## Purchase and refund pavement through the same session history as floor.
+func shop_patio(cells: Array[Vector2i], adding: bool) -> bool:
+	var accepted: bool = shop_editor != null and edit_history.apply_patio(cells, adding)
+	_after_edit(accepted)
+	if accepted:
+		_refresh_weather()
+		_frame_shop(false)
+	if _build_ready:
+		build_mode.refresh()
+	return accepted
+
+
 func _clear_rooms_note() -> void:
 	if _rooms_note:
 		_rooms_note = false
@@ -3498,13 +3545,16 @@ func _step_history(undoing: bool) -> bool:
 		build_mode.cancel_ghost()
 	var label: String = edit_history.undo_label() if undoing else edit_history.redo_label()
 	var floor_before: int = shop_editor.bought_floor().size()
+	var patio_before: int = shop_editor.bought_patio().size()
 	var accepted: bool = edit_history.undo() if undoing else edit_history.redo()
 	if accepted:
 		_edit_notice = ("Undid " if undoing else "Redid ") + label
 		($ShopView as ShopView).set_paint(content, shop_editor.wall_swatch_id, shop_editor.floor_swatch_id)
 		_refresh_menu_catalogue()
 		_recompute_vibe()
-		if shop_editor.bought_floor().size() != floor_before:
+		if shop_editor.bought_patio().size() != patio_before:
+			_refresh_weather()
+		if shop_editor.bought_floor().size() != floor_before or shop_editor.bought_patio().size() != patio_before:
 			_frame_shop(false)
 	else:
 		_edit_notice = ("Can't undo: " if undoing else "Can't redo: ") + edit_history.last_refusal \
@@ -3529,7 +3579,7 @@ func _on_catalogue_mode_requested(mode: StringName) -> void:
 	# Switching side drops a held piece or tool that belongs to the other side.
 	var buying: bool = mode == BuildCatalogue.BUY
 	var state: BuildMode.State = build_mode.state
-	if (buying and (state == BuildMode.State.WALLS or state == BuildMode.State.FLOOR or state == BuildMode.State.ROOMS
+	if (buying and (state == BuildMode.State.WALLS or state == BuildMode.State.FLOOR or state == BuildMode.State.PATIO or state == BuildMode.State.ROOMS
 			or state == BuildMode.State.FLOORS or state == BuildMode.State.WALL_FINISH)) \
 			or (not buying and (state == BuildMode.State.BUY or state == BuildMode.State.MOVE or state == BuildMode.State.HANG)):
 		build_mode.cancel_ghost()
@@ -3690,7 +3740,7 @@ func _refresh_weather() -> void:
 		return
 	$HUD.set_weather(world.weather.kind)
 	if _menu_panel != null:
-		_menu_panel.set_weather(world.weather.kind)
+		_menu_panel.set_weather(world.weather.kind, shop_editor != null and not shop_editor.bought_patio().is_empty())
 	var view: ShopView = $ShopView as ShopView
 	if view.weather_view != null:
 		view.weather_view.refresh()
