@@ -37,7 +37,9 @@ func test_json_round_trip_keeps_outdoor_items_paint_finishes_and_sorted_ownershi
 	cells.reverse()
 	assert_true(_editor.apply_patio(cells, true), _editor.last_check.why)
 	assert_true(_editor.buy(&"patio_table_2", Vector2i(2, 12)), _editor.last_check.why)
-	assert_true(_editor.buy(&"patio_chair", Vector2i(1, 13)), _editor.last_check.why)
+	# The table's built-in seats are (1, 13) and (4, 13). This extra chair
+	# faces north from (2, 14) to the unclaimed south edge at (2, 13).
+	assert_true(_editor.buy(&"patio_chair", Vector2i(2, 14)), _editor.last_check.why)
 	assert_true(_editor.buy(&"patio_waiting_bench", Vector2i(0, 11)), _editor.last_check.why)
 	var table: PlacedItem = _sim.world.grid.item_at(Vector2i(2, 12))
 	var bench: PlacedItem = _sim.world.grid.item_at(Vector2i(0, 11))

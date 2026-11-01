@@ -54,18 +54,22 @@ func test_catalogue_drag_refund_undo_refusal_and_cancel_never_save() -> void:
 	var preview: BuildPreview = _main.get("_build_preview") as BuildPreview
 	assert_not_null(preview.patio_lot)
 	assert_false(_mode().patio_open_cells().has(Vector2i(6, 12)), "the street door approach is public")
-	_press(Vector2i(1, 11))
-	_pointer(Vector2i(2, 12))
+	# The authored entry at (6, 11) reaches this 2×2 patch through (5, 11).
+	# Four tiles preserve the purchase/refund arithmetic without a path fixture.
+	_press(Vector2i(4, 11))
+	_pointer(Vector2i(5, 12))
 	assert_eq(_mode().patio_summary(), "Add 4 patio tiles  $60")
 	assert_true(_mode().current_check.ok)
 	assert_eq(preview.floor_ghost_cells.size(), 4)
-	_release(Vector2i(2, 12))
+	_release(Vector2i(5, 12))
 	assert_eq(_editor().bought_patio().size(), 4)
+	if _editor().bought_patio().size() != 4:
+		return  # Keep the setup assertion; avoid misleading follow-on refusals.
 	assert_eq(Economy.cash, cash - 60)
 	assert_eq(_forecast(), WeatherText.forecast_for(_world().weather.kind, true))
-	_press(Vector2i(2, 12), true)
+	_press(Vector2i(5, 12), true)
 	assert_eq(_mode().patio_summary(), "Remove 1 patio tile  (refund $7)")
-	_release(Vector2i(2, 12))
+	_release(Vector2i(5, 12))
 	assert_eq(_editor().bought_patio().size(), 3)
 	assert_eq(Economy.cash, cash - 53)
 	_key(KEY_Z, true)
@@ -83,7 +87,7 @@ func test_catalogue_drag_refund_undo_refusal_and_cancel_never_save() -> void:
 	_release(Vector2i(6, 11))
 	assert_eq(Economy.cash, cash)
 	assert_true(_editor().bought_patio().is_empty())
-	_press(Vector2i(1, 11))
+	_press(Vector2i(5, 11))
 	_key(KEY_ESCAPE)
 	assert_eq(_mode().state, BuildMode.State.PATIO, "first Esc cancels the drag")
 	assert_false(_mode().patio_dragging)
@@ -99,7 +103,11 @@ func test_morning_status_refreshes_for_rain_sun_and_last_cell_undo() -> void:
 	_main.call("_refresh_weather")
 	assert_eq(_forecast(), "Rain today", "an older shop keeps its exact plain forecast")
 	assert_true(_main.call("set_build_active", true))
-	assert_true(_main.call("shop_patio", [Vector2i(1, 11)] as Array[Vector2i], true))
+	# This one tile borders the real public entry, rather than an isolated lot cell.
+	var purchased: bool = _main.call("shop_patio", [Vector2i(5, 11)] as Array[Vector2i], true)
+	assert_true(purchased, "the entry-adjacent patio cell must be buyable")
+	if not purchased:
+		return
 	assert_eq(_forecast(), "Rain today  |  Patio closed in rain")
 	_world().weather.kind = WeatherState.Kind.CLOUDY
 	_main.call("_refresh_weather")
@@ -124,11 +132,15 @@ func test_owned_pavement_keeps_street_anchor_facade_and_outdoor_rain_mask() -> v
 	var door_before: Array[Vector2i] = _world().grid.entries()
 	var floor_before: int = view.floor_mesh.mesh.get_surface_count()
 	var vertices_before: int = view.floor_mesh.mesh.surface_get_array_len(0)
-	var cells: Array[Vector2i] = []
-	for y: int in range(11, 15):
-		for x: int in range(0, 6):
-			cells.append(Vector2i(x, y))
-	assert_true(_main.call("shop_patio", cells, true))
+	# Connect the rendered test cell (2, 12) to the real entry (6, 11):
+	# four cells along row 11, then one step down. This costs $75 from the
+	# unchanged starter cash and does not require a disconnected floor island.
+	var cells: Array[Vector2i] = [Vector2i(2, 11), Vector2i(3, 11), Vector2i(4, 11),
+		Vector2i(5, 11), Vector2i(2, 12)]
+	var purchased: bool = _main.call("shop_patio", cells, true)
+	assert_true(purchased, "the connected pavement chain must be buyable from starter cash")
+	if not purchased:
+		return
 	var street_after: Dictionary = view.neighbourhood_dressing.capture_state()
 	assert_eq(street_after["frame"], street_before["frame"], "patio never pushes the road or pedestrian lanes forward")
 	assert_eq(street_after["bounds"], street_before["bounds"], "the original pavement and road remain in place")
@@ -145,9 +157,11 @@ func test_owned_pavement_keeps_street_anchor_facade_and_outdoor_rain_mask() -> v
 	var indoors: AABB = AABB(Vector3(1.1, 0.2, 3.1), Vector3(0.01, 1.0, 0.01))
 	assert_false(view.weather_view.call("_outside_bounds", indoors))
 	var changes: Dictionary[Vector2i, FloorFinishes.Finish] = _editor().lay_changes(
-		[Vector2i(1, 12)] as Array[Vector2i], &"herringbone", &"honey")
+		[Vector2i(2, 12)] as Array[Vector2i], &"herringbone", &"honey")
 	assert_true(_main.call("shop_flooring", changes))
 	assert_not_null(view.patio_floor_mesh, "explicitly painted patio reuses the existing floor shader")
+	if view.patio_floor_mesh == null:
+		return  # The failed setup assertion is sufficient; do not raise a Nil error.
 	assert_eq(view.patio_floor_mesh.material_override, view.floor_mesh.material_override)
 	assert_true((view.patio_floor_mesh.layers & WeatherView.OUTDOOR_LAYER) != 0)
 
