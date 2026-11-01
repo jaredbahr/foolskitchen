@@ -996,6 +996,9 @@ func check_segments(changes: Dictionary[Vector3i, int], exact: Exact = null) -> 
 		cost = maxi(-exact.amount, 0)
 		refund = maxi(exact.amount, 0)
 	preview.set_segments(effective)
+	var movement_problem: String = _movement_edges_problem(preview)
+	if not movement_problem.is_empty():
+		return EditCheck.new(false, movement_problem)
 	var menu_check: EditCheck = EditCheck.new(true)
 	_note_menu_access(menu_check, preview, exact != null)
 	# D25: one back door per shop (undo/redo restores accepted layouts as they were).
@@ -1970,6 +1973,29 @@ func _check_placement(definition: ItemDef, origin: Vector2i, turns: int, exclude
 
 ## Physical safety also applies to exact history and complete blueprint previews.
 ## Existing saved/fault-injected geometry is untouched; refuse NEW obstruction.
+## A globally reachable edit still cannot cut an edge already being walked.
+## Compare the complete preview, including exact undo/redo and corner posts.
+func _movement_edges_problem(preview: SimGrid) -> String:
+	var live: SimGrid = _sim.world.grid
+	var claims: Dictionary = _sim.world.movement.snapshot()
+	for edge: Dictionary in claims.edges:
+		var from: Vector2i = edge["from"]
+		var to: Vector2i = edge["to"]
+		var cells: Array[Vector2i] = [from, to]
+		var delta: Vector2i = to - from
+		if delta.x != 0 and delta.y != 0:
+			cells.append(from + Vector2i(delta.x, 0))
+			cells.append(from + Vector2i(0, delta.y))
+		for cell: Vector2i in cells:
+			if live.is_walkable(cell) and not preview.is_walkable(cell):
+				return PERSON_IN_WAY
+		# Off-lot courier edges intentionally have no interior wall layer.
+		if live.is_walkable(from) and live.is_walkable(to) and live.step_open(from, to) \
+				and not preview.step_open(from, to):
+			return PERSON_IN_WAY
+	return ""
+
+
 func _placement_people_problem(preview: SimGrid) -> String:
 	var live: SimGrid = _sim.world.grid
 	var held: Dictionary[Vector2i, bool] = {}
