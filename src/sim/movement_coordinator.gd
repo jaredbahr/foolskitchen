@@ -396,7 +396,7 @@ func _release_vacated_seats(world: SimWorld) -> void:
 		if actor != null and (actor.cell == cell or (actor.move_progress > 0.0 and actor.next_cell() == cell)):
 			# An idle busser must step off the just-cleaned seat rather than
 			# hold it indefinitely while waiting for another job.
-			if actor.has_arrived() and not _stopping.has(actor.id) and not _resume.has(actor.id):
+			if actor is StaffAgent and actor.has_arrived() and not _stopping.has(actor.id) and not _resume.has(actor.id):
 				for next: Vector2i in world.grid.walkable_neighbours(cell):
 					if standing_cell(world, next) and can_enter(world, actor, next):
 						actor.install_movement_route([cell, next] as Array[Vector2i])
