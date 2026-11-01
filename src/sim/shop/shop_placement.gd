@@ -9,3 +9,5 @@ extends Resource
 @export_range(0, 3) var quarter_turns: int = 0
 ## Body paint for this placed item; empty is its default placeholder colour.
 @export var swatch_id: StringName = &""
+## Authored furniture look; empty preserves the first/default look.
+@export var variant_id: StringName = &""

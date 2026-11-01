@@ -7,6 +7,8 @@ signal enable_requested(recipe_id: StringName, enabled: bool)
 signal price_requested(recipe_id: StringName, price: int)
 signal settings_requested()
 signal goals_requested()
+signal lease_requested()
+signal quit_to_title_requested()
 ## Morning opening-hours request (FK-083); the session checks the limits.
 signal hours_requested(open_minute: int, close_minute: int)
 
@@ -15,12 +17,15 @@ const STANDARD_COLOR: Color = Color("3b2a20")
 const LOWER_COLOR: Color = Color("38764b")
 const HIGHER_COLOR: Color = Color("a83e35")
 const LOCKED_COLOR: Color = Color("766b60")
+## Same amber as the HUD restock advice, without importing its autoload adapter.
+const ADVICE_COLOR: Color = Color("7F5100")
 const SECTION_FONT_SIZE: int = 22
 const MORNING_HINT: String = "Menu changes are available in the morning."
 ## Widest panel; narrower windows (or a large UI scale) keep a margin each side.
 const PANEL_MAX_WIDTH: float = 1000.0
 const PANEL_SIDE_MARGIN: float = 12.0
 
+var _regular_favourites: Array[StringName] = []
 var _catalogue: Array[RecipeDef] = []
 var _details: Dictionary[StringName, Dictionary] = {}
 var _selected_recipe: StringName = &""
@@ -37,6 +42,8 @@ var _theme_label: Label
 var _name_dirty: bool = false
 var _menu: MenuSettings
 var _phase: int = SimClock.Phase.MORNING
+var _weather_kind: int = WeatherState.Kind.SUNNY
+var _forecast_rendered_kind: int = -1
 var _status: Label
 var _empty: Label
 var _rows_node: VBoxContainer
@@ -62,6 +69,8 @@ var _hours_tuning: OpeningHoursTuning = null
 
 
 func _ready() -> void:
+	# Keep every header control reachable when HUD notices leave a short panel.
+	$Panel.add_theme_stylebox_override("panel", SHARED_THEME.get_stylebox("panel", "PanelContainer"))
 	refresh()
 	_fit_width()
 
@@ -99,13 +108,59 @@ func bind_menu(model: MenuSettings) -> void:
 	refresh()
 
 
+## Read-only cast preference; this never enables or reprices a recipe.
+func set_regular_favourites(ids: Array[StringName]) -> void:
+	_regular_favourites.assign(ids)
+	refresh()
+
+
+## Request-only morning lease offer, with restock advice directly below cost.
+func set_lease_offer(offered: bool, cost: String, warning: String, refusal: String) -> void:
+	var box: VBoxContainer = get_node("Panel/Content/LeaseOffer")
+	box.visible = offered
+	(box.get_node("Cost") as Label).text = cost
+	var advice: Label = box.get_node("Warning")
+	advice.text = warning
+	advice.visible = not warning.is_empty()
+	advice.add_theme_color_override("font_color", ADVICE_COLOR)
+	var reason: Label = box.get_node("Refusal")
+	reason.text = refusal
+	reason.visible = not refusal.is_empty()
+	var button: Button = box.get_node("Accept")
+	button.disabled = not refusal.is_empty()
+	if not button.pressed.is_connected(_on_lease_pressed):
+		button.pressed.connect(_on_lease_pressed)
+
+
+func _on_lease_pressed() -> void:
+	if _phase == SimClock.Phase.MORNING:
+		lease_requested.emit()
+
+
+func set_weather(kind: int) -> void:
+	_weather_kind = kind
+	_refresh_forecast()
+
+
+func _refresh_forecast() -> void:
+	var forecast: Label = get_node("Panel/Content/WeatherForecast") as Label
+	forecast.visible = _phase == SimClock.Phase.MORNING
+	if _forecast_rendered_kind != _weather_kind:
+		_forecast_rendered_kind = _weather_kind
+		forecast.text = WeatherText.forecast_for(_weather_kind)
+		IconStyle.decorate_label(forecast, WeatherText.icon_for(_weather_kind), IconCatalogue.PANEL_SIZE)
+
+
 func set_phase(phase: int) -> void:
 	_phase = phase
+	if phase != SimClock.Phase.MORNING:
+		get_node("Panel/Content/LeaseOffer").hide()
 	refresh()
 
 
 func refresh() -> void:
 	_bind_nodes()
+	_refresh_forecast()
 	if _needs_rebuild or _catalogue_changed():
 		_rebuild_rows()
 	var editable: bool = _phase == SimClock.Phase.MORNING
@@ -315,6 +370,9 @@ func _bind_nodes() -> void:
 	_build_recipe_tree()
 	IconStyle.configure_button(_settings_button, &"settings", "Settings", "Audio, display and controls", IconCatalogue.PANEL_SIZE)
 	_settings_button.pressed.connect(_on_settings_pressed)
+	var quit_button: Button = %QuitToTitleButton
+	quit_button.text = TitleText.QUIT_TO_TITLE
+	quit_button.pressed.connect(_on_quit_to_title_pressed)
 	_goals_button.pressed.connect(_on_goals_pressed)
 
 
@@ -374,6 +432,10 @@ func _add_separator(parent: Node) -> void:
 
 func _on_settings_pressed() -> void:
 	settings_requested.emit()
+
+
+func _on_quit_to_title_pressed() -> void:
+	quit_to_title_requested.emit()
 
 
 func _on_goals_pressed() -> void:
@@ -678,6 +740,9 @@ func _refresh_tree_state() -> void:
 		if locked:
 			status = "Lv %d" % recipe.unlock_level + (", " + status.to_lower() if missing else "")
 			tooltip = "Unlocks at owner level %d." % recipe.unlock_level + (" " + state + "." if missing else "")
+		node.set_icon(0, IconCatalogue.texture_for(&"reputation") if _regular_favourites.has(recipe.id) else null)
+		node.set_icon_max_width(0, IconCatalogue.PANEL_SIZE)
+		node.set_tooltip_text(0, RegularText.FAVOURITE if _regular_favourites.has(recipe.id) else recipe.display_name)
 		node.set_text(1, status)
 		node.set_tooltip_text(1, tooltip)
 		node.set_custom_color(0, LOCKED_COLOR if locked else STANDARD_COLOR)
@@ -724,6 +789,8 @@ func _refresh_selection() -> void:
 	var quality: float = float(details.get("quality", chosen.base_quality))
 	_quality_label.text = "Quality: %d / 5 stars\n%s" % [RecipeDef.quality_stars(quality),
 		details.get("quality_source", "Recipe base quality; no served-dish sample")]
+	if _regular_favourites.has(chosen.id):
+		_quality_label.text += "\n" + RegularText.FAVOURITE
 	if details.has("reviews"):
 		_quality_label.text += "\n" + String(details["reviews"])
 	if details.has("quality_breakdown"):

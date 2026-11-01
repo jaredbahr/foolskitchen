@@ -12,9 +12,8 @@ extends RefCounted
 ## Vector3i(x, y, axis): EDGE_WEST is the grid line on the west side of cell
 ## (x, y) (between x-1 and x), EDGE_NORTH the line on its north side. Keys are
 ## grid-line positions, independent of whether the line is inside the room or
-## on the outer shell, so they survive terrain changes such as a floor
-## expansion: a window on an outer face becomes an interior window when the
-## wall cell behind it turns into floor.
+## on the outer shell. ShopEditor removes windows and doorways left without
+## a continuing wall when terrain changes, such as a floor expansion.
 ##
 ## Bounds (FK-080): the grid covers `bounds`, which starts at `origin`. An
 ## authored layout starts at (0, 0); a floor expansion may grow the grid north
@@ -31,9 +30,9 @@ enum PlaceResult { OK, OUT_OF_BOUNDS, NOT_FLOOR, OVERLAPS, INVALID_LAYER, INVALI
 ## stored. Kitchen and Storage are staff-only: guests never walk through them.
 enum Room { DINING, KITCHEN, RESTROOM, STORAGE }
 
-## What stands on a cell edge. WALL and WINDOW block movement across the edge;
+## What stands on a cell edge. Walls, windows and stall partitions block crossing;
 ## DOORWAY is open. Any segment blocks diagonal steps past its end posts.
-enum Segment { NONE, WALL, DOORWAY, WINDOW }
+enum Segment { NONE, WALL, DOORWAY, WINDOW, STALL_PARTITION }
 
 ## Emitted after cells change walkability (place/remove/terrain edits).
 ## Agents whose path crosses one of these cells must re-plan.
@@ -109,6 +108,7 @@ var _entries: Array[Vector2i] = []
 ## Derived dining links. These are rebuilt from definitions, never saved.
 var _dining_tables: Dictionary[Vector2i, int] = {}
 var _dining_furnishings: Dictionary[Vector2i, int] = {}
+var _dining_plan: DiningSeats.Plan = null
 
 
 ## A new grid is all FLOOR (handy for tests); from_ascii() sets real terrain.
@@ -351,7 +351,7 @@ func can_place_def(definition: ItemDef, origin: Vector2i, quarter_turns: int = 0
 ## cells, validated against both its authored and these actual placement values.
 func place(footprint: Vector2i, origin: Vector2i, quarter_turns: int, solid: bool,
 		work_cells: Array[Vector2i] = [], seat_cells: Array[Vector2i] = [],
-		def: Resource = null) -> PlacedItem:
+		def: Resource = null, variant_id: StringName = &"") -> PlacedItem:
 	var definition: ItemDef = def as ItemDef
 	var layer: ItemDef.PlacementLayer = definition.placement_layer if definition != null else ItemDef.PlacementLayer.NORMAL
 	if definition != null and (not definition.placement_layer_valid() or not definition.blocking_cells_valid() \
@@ -365,6 +365,7 @@ func place(footprint: Vector2i, origin: Vector2i, quarter_turns: int, solid: boo
 	item.id = _next_id
 	_next_id += 1
 	item.def = def
+	item.variant_id = definition.known_variant_id(variant_id) if definition != null else &""
 	item.placement_layer = layer
 	item.origin = origin
 	item.quarter_turns = posmod(quarter_turns, 4)
@@ -390,10 +391,10 @@ func place(footprint: Vector2i, origin: Vector2i, quarter_turns: int, solid: boo
 
 ## Places an item from its content definition (footprint, solidity, work and
 ## seat cells come from the def). Returns null if it doesn't fit.
-func place_def(def: ItemDef, origin: Vector2i, quarter_turns: int = 0) -> PlacedItem:
+func place_def(def: ItemDef, origin: Vector2i, quarter_turns: int = 0, variant_id: StringName = &"") -> PlacedItem:
 	if can_place_def(def, origin, quarter_turns) != PlaceResult.OK:
 		return null
-	return place(def.footprint, origin, quarter_turns, def.solid, def.work_cells, def.seat_cells, def)
+	return place(def.footprint, origin, quarter_turns, def.solid, def.work_cells, def.seat_cells, def, variant_id)
 
 
 ## Blueprint transaction. Preflight the whole batch before touching this grid
@@ -409,11 +410,11 @@ func place_group(definitions: Array[ItemDef], placements: Array[ShopPlacement]) 
 		walls[edge] = segment(edge)
 	preview.set_segments(walls)
 	for placed: PlacedItem in items():
-		if preview.place_def(placed.def as ItemDef, placed.origin, placed.quarter_turns) == null:
+		if preview.place_def(placed.def as ItemDef, placed.origin, placed.quarter_turns, placed.variant_id) == null:
 			return result
 	for index: int in placements.size():
 		var entry: ShopPlacement = placements[index]
-		if entry == null or preview.place_def(definitions[index], entry.origin, entry.quarter_turns) == null:
+		if entry == null or preview.place_def(definitions[index], entry.origin, entry.quarter_turns, entry.variant_id) == null:
 			return result
 	var blocked: bool = is_blocking_signals()
 	set_block_signals(true)
@@ -423,7 +424,7 @@ func place_group(definitions: Array[ItemDef], placements: Array[ShopPlacement]) 
 		var entry: ShopPlacement = placements[index]
 		# Identical geometry just passed on the preview and no signals or
 		# callbacks run inside this loop, so every placement is guaranteed.
-		var placed: PlacedItem = place_def(definitions[index], entry.origin, entry.quarter_turns)
+		var placed: PlacedItem = place_def(definitions[index], entry.origin, entry.quarter_turns, entry.variant_id)
 		placed.swatch_id = entry.swatch_id
 		result.append(placed)
 		changed.append_array(placed.cells)
@@ -471,6 +472,8 @@ func relocate_def(item_id: int, origin: Vector2i, quarter_turns: int) -> bool:
 	if definition == null or definition.footprint.x < 1 or definition.footprint.y < 1 \
 			or not definition.placement_layer_valid() or not definition.blocking_cells_valid() \
 			or definition.placement_layer != placed.placement_layer:
+		return false
+	if definition.category == ItemDef.Category.TABLE and dining_group_has_reservations(item_id):
 		return false
 	for cell: Vector2i in placed.work_cells + placed.seat_cells:
 		if placed.reserved_by(cell) != -1:
@@ -575,6 +578,83 @@ func dining_table_id(seat_cell: Vector2i) -> int:
 ## Returns 0 when the cell is not part of a valid dining link.
 func dining_furnishing_id(seat_cell: Vector2i) -> int:
 	return _dining_furnishings.get(seat_cell, 0)
+
+
+## Logical components are cached; physical seat ownership remains independent.
+func dining_group_id(member_table_id: int) -> int:
+	return _dining_plan.member_groups.get(member_table_id, 0) if _dining_plan != null else 0
+
+
+func dining_group(member_table_id: int) -> DiningSeats.Group:
+	var group: DiningSeats.Group = _dining_plan.group_for(member_table_id) if _dining_plan != null else null
+	return group.copy() if group != null else null
+
+
+func dining_group_members(member_table_id: int) -> Array[int]:
+	var group: DiningSeats.Group = dining_group(member_table_id)
+	return group.member_ids if group != null else [] as Array[int]
+
+
+func dining_group_seats(member_table_id: int) -> Array[Vector2i]:
+	var group: DiningSeats.Group = dining_group(member_table_id)
+	return group.seat_cells if group != null else [] as Array[Vector2i]
+
+
+## Includes work holds, such as the server currently bussing one member.
+func dining_group_has_reservations(member_table_id: int) -> bool:
+	for table_id: int in dining_group_members(member_table_id):
+		var table: PlacedItem = item(table_id)
+		if table == null:
+			continue
+		for cell: Vector2i in table.work_cells + table.seat_cells:
+			if table.reserved_by(cell) != -1:
+				return true
+	return false
+
+
+## Untyped legacy fixtures have their own seats rather than definition links.
+func dining_owner_id(member_table_id: int, seat: Vector2i) -> int:
+	var members: Array[int] = dining_group_members(member_table_id)
+	var owner: int = dining_table_id(seat)
+	if owner > 0 and members.has(owner):
+		return owner
+	if members.size() == 1:
+		var table: PlacedItem = item(members[0])
+		if table != null and not table.def is ItemDef and table.seat_cells.has(seat):
+			return table.id
+	return 0
+
+
+## Validate the complete group booking before acquiring any physical hold.
+func reserve_dining_seats(member_table_id: int, seats: Array[Vector2i], agent_ids: Array[int]) -> bool:
+	if seats.is_empty() or seats.size() != agent_ids.size() or dining_group_id(member_table_id) == 0:
+		return false
+	var owners: Array[PlacedItem] = []
+	var previous: Array[int] = []
+	var cells_seen: Dictionary[Vector2i, bool] = {}
+	var agents_seen: Dictionary[int, bool] = {}
+	for index: int in seats.size():
+		var seat: Vector2i = seats[index]
+		var agent_id: int = agent_ids[index]
+		var owner: PlacedItem = item(dining_owner_id(member_table_id, seat))
+		if agent_id <= 0 or cells_seen.has(seat) or agents_seen.has(agent_id) \
+				or owner == null or owner.removed or not owner.seat_cells.has(seat) or not is_walkable(seat):
+			return false
+		var held: int = owner.reserved_by(seat)
+		if held != -1 and held != agent_id:
+			return false
+		owners.append(owner)
+		previous.append(held)
+		cells_seen[seat] = true
+		agents_seen[agent_id] = true
+	for index: int in seats.size():
+		if owners[index].reserve(seats[index], agent_ids[index]):
+			continue
+		for acquired: int in range(index):
+			if previous[acquired] == -1:
+				owners[acquired].release(seats[acquired], agent_ids[acquired])
+		return false
+	return true
 
 
 ## All items, ordered by id (placement order), so iteration is deterministic.
@@ -720,6 +800,7 @@ func _refresh_dining_seats() -> void:
 		furnishings[link.cell] = link.furnishing_item_id
 	_dining_tables = tables
 	_dining_furnishings = furnishings
+	_dining_plan = plan
 
 
 func _dining_furnishing_reserved(furnishing_id: int) -> bool:
@@ -904,7 +985,7 @@ func set_segment(edge: Vector3i, kind: Segment) -> bool:
 func set_segments(changes: Dictionary[Vector3i, int]) -> bool:
 	for edge: Vector3i in changes:
 		var kind: int = changes[edge]
-		if not edge_in_bounds(edge) or kind < Segment.NONE or kind > Segment.WINDOW:
+		if not edge_in_bounds(edge) or kind < Segment.NONE or kind > Segment.STALL_PARTITION:
 			return false
 	var touched: Array[Vector2i] = []
 	for edge: Vector3i in changes:
@@ -945,10 +1026,10 @@ func has_segments() -> bool:
 	return not _segments.is_empty()
 
 
-## True when a wall or window stands between two orthogonally adjacent cells.
+## True when a wall, window or stall partition blocks two adjacent cells.
 func edge_blocked(a: Vector2i, b: Vector2i) -> bool:
 	var kind: Segment = segment(edge_between(a, b))
-	return kind == Segment.WALL or kind == Segment.WINDOW
+	return kind in [Segment.WALL, Segment.WINDOW, Segment.STALL_PARTITION]
 
 
 ## Only edges with walkable-shell terrain on both sides take part in pathing,
@@ -966,7 +1047,7 @@ func _refresh_edge(edge: Vector3i) -> void:
 				inside = false
 	if inside:
 		_edge_occupied[edge] = true
-		if kind == Segment.WALL or kind == Segment.WINDOW:
+		if kind in [Segment.WALL, Segment.WINDOW, Segment.STALL_PARTITION]:
 			_edge_blocking[edge] = true
 		else:
 			_edge_blocking.erase(edge)
@@ -1087,6 +1168,7 @@ func set_rooms(changes: Dictionary[Vector2i, int]) -> bool:
 	touched.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return a.y < b.y or (a.y == b.y and a.x < b.x))
 	for cell: Vector2i in touched:
 		_refresh_cell(cell)
+	_refresh_dining_seats()
 	_version += 1
 	cells_changed.emit(touched)
 	return true

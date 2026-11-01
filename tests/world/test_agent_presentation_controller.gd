@@ -706,7 +706,7 @@ func test_head_and_hand_anchors_include_rig_pose_seat_lift_and_shared_scale() ->
 	skeleton.set_bone_rest(3, Transform3D(Basis.IDENTITY, Vector3(-0.1, 0.28775, -0.01725)))
 	skeleton.reset_bone_poses()
 	view._skeleton = skeleton
-	view._model_name = PersonPresentation.OWNER_MODEL
+	view._model_name = OwnerAppearance.DEFAULT_MODEL
 	assert_almost_eq(view.head_anchor_position().y, 0.27 + 0.671325 * ArtScale.CHARACTER_SCALE)
 	var hands: Vector3 = view.carry_anchor_position()
 	assert_almost_eq(hands.x, 0.0)

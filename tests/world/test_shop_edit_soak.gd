@@ -3,6 +3,9 @@ extends TestCase
 ## Keep FK-023's accounting/visit invariants; never replace the kitchen or guests.
 
 const MAIN_SCENE: PackedScene = preload("res://src/world/main.tscn")
+## This edit/save soak keeps its original fixed-stock invariant by choosing
+## real manual targets. Adaptive default stock has separate multi-day coverage.
+const MANUAL_MAIN: GDScript = preload("res://tests/fixtures/manual_restock_main.gd")
 const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
 const TUNING: EconomyTuning = preload("res://data/balance/tier1_economy.tres")
 const SLOT: String = "test_shop_edit_soak"
@@ -115,6 +118,7 @@ func test_five_days_of_seeded_morning_edits_keep_real_session_invariants() -> vo
 
 func _start() -> Node:
 	var main: Node = MAIN_SCENE.instantiate()
+	main.set_script(MANUAL_MAIN)
 	main.set("use_saves", true)
 	main.set("save_slot", SLOT)
 	_mains.append(main)

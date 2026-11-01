@@ -110,7 +110,7 @@ func test_invalid_types_and_missing_rng_cannot_be_selected() -> void:
 	var wrong_party: CustomerType = CustomerType.new()
 	wrong_party.id = &"group"
 	wrong_party.display_name = "Group"
-	wrong_party.party_size_max = 5
+	wrong_party.party_size_max = 7
 	invalid.types.append(wrong_party)
 	assert_false(invalid.is_valid())
 	assert_null(CustomerTypePicker.choose(invalid, 1, 3.0, rng))

@@ -99,7 +99,7 @@ Morning (closed): plan menu and prices, buy stock, hire, rebuild
 | Tier | Property | Unlock | The new decision it adds |
 |---|---|---|---|
 | 1 | Hole-in-the-wall (rented, tiny) | start | menu and price basics, your first hire |
-| 2 | Corner diner (rented) | level 3 | seating layout, restroom, cleaner, the cat |
+| 2 | Larger lease on your current shop | level 3, morning deposit | more lot to expand yourself; keep your entire build |
 | 3 | Bistro (rent or buy) | level 6 | themes, plate cycle, staff specialisation |
 | 4 | Restaurant and piano bar (buy) | level 10 | drinks, evening service with live piano, a second floor |
 | 5 | Fine dining (buy) | level 15 | critics, premium ingredients, chandeliers and a dress code |

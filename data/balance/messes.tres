@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="MessTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/sim/cleanliness/mess_tuning.gd" id="1_tuning"]
+
+[resource]
+script = ExtResource("1_tuning")
+spill_chance_per_cell = 0.0004
+clumsy_multiplier = 3.0
+pass_crowding_radius = 2
+pass_crowding_threshold = 3
+crowding_spill_bonus = 0.0002
+maximum_spill_chance = 0.003
+broken_plate_chance = 0.05
+replacement_plate_cost = 2
+grease_threshold = 24
+greasy_work_multiplier = 0.9
+degrease_work_ticks = 40
+sticky_floor_threshold = 1

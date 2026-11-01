@@ -14,8 +14,8 @@ extends RefCounted
 ##   or west and east) opens into FLOOR. This repeats, so the inner corner of
 ##   an L opens too. The room simply grows: no wall is left on the old
 ##   outline (like a Sims floor extension); the player can build one with the
-##   Walls tool. Wall segments keep their edge keys, so an outer window on an
-##   opened face becomes an interior window.
+##   Walls tool. ShopEditor takes down windows and doorways left without a
+##   continuing wall when the shell opens; supported wall runs stay intact.
 ## - A lot cell touching the floor (8 directions) becomes the new shell WALL;
 ##   any other lot cell is OUTSIDE, unless walls enclose it (a notch): then it
 ##   fills in as WALL, so no void is left inside the wall mass.
@@ -87,6 +87,16 @@ static func from_layout(layout: ShopLayout) -> ShopFootprint:
 			footprint.building.size + Vector2i(west + maxi(layout.lot_east, 0), north))
 		footprint.cell_price = maxi(layout.floor_cell_price, 0)
 	return footprint
+
+
+## The same authored interior classification used by floor expansion. Shell,
+## street-facing cells and divider endpoints on the shell are excluded.
+func interior_wall_cells() -> Array[Vector2i]:
+	var cells: Dictionary[Vector2i, bool] = {}
+	for cell: Vector2i in _interior:
+		if _base.terrain(cell) == SimGrid.Terrain.WALL:
+			cells[cell] = true
+	return sorted(cells)
 
 
 func has_lot() -> bool:

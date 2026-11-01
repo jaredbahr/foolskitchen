@@ -129,6 +129,9 @@ func test_visible_rug_preserves_owner_work_dispatch_and_normal_non_target_and_wa
 	editor.set_owner_level(rug_def.unlock_level) # Explicit purchase-unlock fixture.
 	var prep: PlacedItem = _item(main, &"prep_counter")
 	var work: Vector2i = prep.work_cells[0]
+	# Later the normal-layer blocker covers this prep spot. Another counter
+	# keeps meals cookable while the test isolates owner-target precedence.
+	assert_true(main.call("shop_buy", &"prep_counter", Vector2i(10, 3), 0))
 	assert_eq(work, Vector2i(5, 2), "use the real rotated station's external work cell")
 	assert_true(main.call("shop_buy", rug_def.id, work, 0))
 	var rug: PlacedItem = world.grid.item_on_layer(work, ItemDef.PlacementLayer.FLOOR_DECOR)
@@ -378,7 +381,8 @@ func _item(main: Node, id: StringName) -> PlacedItem:
 
 func _assert_saved_owner(main: Node, mode: StringName) -> void:
 	var saved: Dictionary = _document()["data"]["owner"]
-	assert_eq(saved.size(), 2)
+	assert_eq(saved.size(), 3)
+	assert_eq(saved["appearance"], (main.get("owner_appearance") as OwnerAppearance).to_dict())
 	assert_eq(saved["mode"], String(mode))
 	var progress: OwnerProgress = main.get("owner_progress") as OwnerProgress
 	var raw: Dictionary = saved["progress"]

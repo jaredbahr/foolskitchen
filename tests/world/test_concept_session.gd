@@ -128,6 +128,9 @@ func test_undo_and_redo_of_a_coffee_machine_return_money_exactly_and_keep_menu_c
 	assert_true(main.call("shop_buy", &"storage_shelf", Vector2i(12, 1), 2))
 	assert_true(main.call("set_build_active", false))
 	assert_eq(Economy.stock.count(&"coffee_beans"), 0)
+	# The player fixes these station targets before opening; other rows stay automatic.
+	assert_true(main.call("stock_set_target", &"coffee_beans", TUNING.station_stock[&"coffee_beans"]))
+	assert_true(main.call("stock_set_target", &"pastry", TUNING.station_stock[&"pastry"]))
 	assert_true(Clock.sim.start_service())
 	assert_eq(Economy.stock.count(&"coffee_beans"), TUNING.station_stock[&"coffee_beans"], "opening tops up the new supplies")
 	assert_eq(Economy.stock.count(&"pastry"), TUNING.station_stock[&"pastry"])
@@ -340,6 +343,10 @@ func test_fryer_and_oven_enable_only_their_food_and_show_named_reasons() -> void
 	assert_eq(settings.enabled_count(), 5)
 	# FK-087: the starter pantry is small; the supplies need a storage shelf.
 	assert_true(main.call("shop_buy", &"storage_shelf", Vector2i(12, 1), 2))
+	# The player fixes these station targets before opening; other rows stay automatic.
+	assert_true(main.call("stock_set_target", &"potato", TUNING.station_stock[&"potato"]))
+	assert_true(main.call("stock_set_target", &"oil", TUNING.station_stock[&"oil"]))
+	assert_true(main.call("stock_set_target", &"dough", TUNING.station_stock[&"dough"]))
 	assert_true(Clock.sim.start_service())
 	assert_eq(Economy.stock.count(&"potato"), TUNING.station_stock[&"potato"])
 	assert_eq(Economy.stock.count(&"oil"), TUNING.station_stock[&"oil"])

@@ -1,8 +1,6 @@
 extends TestCase
 ## Presenter tests run before tree readiness and never advance the simulation.
 
-const PANEL_SCENE: PackedScene = preload("res://src/ui/inspect_panel.tscn")
-
 var _panel: InspectPanel
 var _world: SimWorld
 var _restaurant: RestaurantSim
@@ -13,7 +11,9 @@ func before_each() -> void:
 	_world = SimWorld.new(SimGrid.new(Vector2i(8, 8)))
 	_restaurant = RestaurantSim.new()
 	_restaurant.world = _world
-	_panel = PANEL_SCENE.instantiate() as InspectPanel
+	# Load native scenes after autoload initialization; an entry-script
+	# PackedScene preload can retain its dependency graph at shutdown.
+	_panel = (load("res://src/ui/inspect_panel.tscn") as PackedScene).instantiate() as InspectPanel
 	_panel.bind_world(_world)
 	_panel.selection_cleared.connect(_record_clear)
 

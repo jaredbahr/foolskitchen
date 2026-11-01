@@ -1,7 +1,6 @@
 extends TestCase
 ## FK-070 Walls tool: interaction state only, committed through a Main-like wrapper.
 
-const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
 const CAPTURE: Script = preload("res://tools/screenshot.gd")
 
 var _content: ContentDB
@@ -17,7 +16,10 @@ func before_each() -> void:
 	_content = ContentDB.new()
 	assert_eq(_content.load_all(), PackedStringArray())
 	var errors: Array[String] = []
-	_sim = RestaurantSim.create(LAYOUT, _content, 55, errors)
+	# Freeze the old full-cell boundary for these synthetic wall algorithms.
+	# The shipped thin divider has dedicated migration and real-session tests.
+	var layout: ShopLayout = LegacyTier1Layout.make()
+	_sim = RestaurantSim.create(layout, _content, 55, errors)
 	assert_eq(errors, [] as Array[String])
 	_cash = 1000
 	_entries.clear()
@@ -66,6 +68,8 @@ func test_drag_previews_a_priced_run_then_builds_it() -> void:
 
 
 func test_click_cycles_a_segment_and_delete_removes_it() -> void:
+	assert_true(_editor.apply_segments({Vector3i(9, 5, SimGrid.EDGE_WEST): SimGrid.Segment.WALL} \
+		as Dictionary[Vector3i, int]), _editor.last_check.why)
 	assert_true(_mode.enter())
 	assert_true(_mode.begin_walls(SimGrid.Segment.WALL))
 	var on_edge: Vector2 = Vector2(9 * 0.5, 6.5 * 0.5)

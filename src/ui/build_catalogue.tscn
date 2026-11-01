@@ -57,10 +57,10 @@ layout_mode = 2
 mouse_filter = 2
 text = "Furniture"
 
-[node name="Categories" type="HBoxContainer" parent="Panel/Margin/Rows/Scroll/Content"]
+[node name="Categories" type="HFlowContainer" parent="Panel/Margin/Rows/Scroll/Content"]
 layout_mode = 2
 mouse_filter = 2
-theme_override_constants/separation = 6
+theme_override_constants/h_separation = 6
 
 [node name="Filters" type="HBoxContainer" parent="Panel/Margin/Rows/Scroll/Content"]
 layout_mode = 2

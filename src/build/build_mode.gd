@@ -32,6 +32,7 @@ var tool: Tool = Tool.HAND
 var hover_item_id: int = -1
 ## Colour the eyedropper copied; a buy commits it as a free repaint.
 var buy_swatch_id: StringName = &""
+var buy_variant_id: StringName = &""
 var committed_warning_ids: Array[int] = []
 var committed_seat_warnings: Dictionary[int, String] = {}
 ## Walls tool: the kind new edges get, the hovered edge and the dragged run.
@@ -98,6 +99,12 @@ var _editor: ShopEditor
 var _world: SimWorld
 var _content: ContentDB
 var _grid: SimGrid
+## Capacity ignores temporary holds/dirt; only topology or the selected group
+## invalidates the cached path queries. Live reservation names are not cached.
+var _dining_cache_grid: SimGrid
+var _dining_cache_version: int = -1
+var _dining_cache_group: int = 0
+var _dining_cache_capacity: int = 0
 var _clock: SimClock
 var _phase: int = -1
 var _move_command: Callable
@@ -123,6 +130,9 @@ func bind_session(editor: ShopEditor, world: SimWorld, content: ContentDB,
 	_world = world
 	_content = content
 	_grid = world.grid if world != null else null
+	_dining_cache_grid = null
+	_dining_cache_version = -1
+	_dining_cache_group = 0
 	_clock = world.clock if world != null else null
 	_phase = _clock.phase if _clock != null else -1
 	_move_command = move_command
@@ -225,7 +235,7 @@ func _pick_up(item_id: int, clicked_cell: Vector2i, keep_offset: bool) -> bool:
 	return true
 
 
-func begin_buy(def_id: StringName, cell: Vector2i) -> bool:
+func begin_buy(def_id: StringName, cell: Vector2i, variant_id: StringName = &"") -> bool:
 	if not _can_interact():
 		return false
 	var definition: ItemDef = _content.item(def_id)
@@ -237,6 +247,7 @@ func begin_buy(def_id: StringName, cell: Vector2i) -> bool:
 	selected_item_id = -1
 	selected_definition = definition
 	buy_swatch_id = &""
+	buy_variant_id = definition.known_variant_id(variant_id)
 	origin = cell
 	grab_offset = Vector2i.ZERO
 	quarter_turns = 0
@@ -289,6 +300,8 @@ func commit() -> bool:
 		answer = _move_command.call(selected_item_id, origin, quarter_turns)
 	elif state == State.BLUEPRINT:
 		answer = _stamp_command.call(selected_blueprint, origin, quarter_turns)
+	elif not buy_variant_id.is_empty():
+		answer = _buy_command.call(selected_definition.id, origin, quarter_turns, buy_swatch_id, buy_variant_id)
 	elif not buy_swatch_id.is_empty():
 		answer = _buy_command.call(selected_definition.id, origin, quarter_turns, buy_swatch_id)
 	else:
@@ -383,6 +396,30 @@ func hover_item(item_id: int) -> void:
 	changed.emit()
 
 
+## The actual rendered wall hit, separate from decor and floor-item picking.
+func hover_wall_segment(edge: Vector3i) -> void:
+	var next: Vector3i = edge if state == State.IDLE and tool == Tool.SELL and _grid != null \
+		and _grid.segment(edge) != SimGrid.Segment.NONE else SimGrid.NO_EDGE
+	if next == wall_hover_edge:
+		return
+	wall_hover_edge = next
+	_recheck_hover()
+	changed.emit()
+
+
+func sell_hovered_wall() -> int:
+	if not _can_interact() or state != State.IDLE or tool != Tool.SELL \
+			or wall_hover_edge == SimGrid.NO_EDGE or not _walls_command.is_valid():
+		return -1
+	wall_changes = {wall_hover_edge: SimGrid.Segment.NONE} as Dictionary[Vector3i, int]
+	current_check = _editor.check_segments(wall_changes)
+	var refund: int = current_check.refund
+	if not _commit_walls():
+		return -1
+	hover_wall_segment(SimGrid.NO_EDGE)
+	return refund
+
+
 ## Sells the hovered item (the sell tool, or Del while idle). -1 is refusal.
 func sell_hovered() -> int:
 	if not _can_interact() or state != State.IDLE or hover_item_id < 0:
@@ -415,7 +452,7 @@ func eyedrop(item_id: int, cell: Vector2i) -> bool:
 		current_check = EditCheck.new(false, "%s isn't sold in the catalogue" % definition.display_name)
 		changed.emit()
 		return false
-	if not begin_buy(definition.id, cell):
+	if not begin_buy(definition.id, cell, placed.variant_id):
 		return false
 	quarter_turns = posmod(placed.quarter_turns, 4)
 	buy_swatch_id = placed.swatch_id if definition.paintable else &""
@@ -437,6 +474,8 @@ func hover_summary() -> String:
 					return "Hang another %s" % hung.display_name
 				_:
 					return "Pick up %s to move it" % hung.display_name
+	if state == State.IDLE and tool == Tool.SELL and wall_hover_edge != SimGrid.NO_EDGE:
+		return CatalogueText.wall_removal_refund(current_check.refund) if current_check.ok else current_check.why
 	if state != State.IDLE or hover_item_id < 0 or _grid == null:
 		return ""
 	var placed: PlacedItem = _grid.item(hover_item_id)
@@ -445,19 +484,23 @@ func hover_summary() -> String:
 		return ""
 	match tool:
 		Tool.SELL:
-			return "Sell %s for %s" % [definition.display_name, Fmt.money(ShopEditor.sale_refund(definition))] \
+			return "Sell %s for %s" % [definition.display_name, Fmt.money(ShopEditor.sale_refund(definition, placed.variant_id))] \
 				if current_check.ok else current_check.why
 		Tool.EYEDROPPER:
 			return "Place another %s" % definition.display_name if definition.catalogue_visible \
 				and definition.category != ItemDef.Category.DOOR else "%s isn't sold in the catalogue" % definition.display_name
-	return ""
+	return dining_summary() if tool == Tool.HAND else ""
 
 
 func _recheck_hover() -> void:
 	if state != State.IDLE:
 		return
+	wall_changes.clear()
 	if tool == Tool.SELL and hover_anchor != WallFaces.NO_FACE and _editor != null:
 		current_check = _editor.check_take_down(hover_anchor)
+	elif tool == Tool.SELL and wall_hover_edge != SimGrid.NO_EDGE and _editor != null:
+		wall_changes[wall_hover_edge] = SimGrid.Segment.NONE
+		current_check = _editor.check_segments(wall_changes)
 	elif tool == Tool.SELL and hover_item_id >= 0 and _editor != null:
 		current_check = _editor.check_sell(hover_item_id)
 	else:
@@ -513,6 +556,26 @@ func _proposal_active() -> bool:
 	return has_ghost() or state == State.WALLS or state == State.FLOOR or state == State.ROOMS
 
 
+## The ghost describes its proposed shop; the hand describes the live one.
+func dining_summary() -> String:
+	if state in [State.BUY, State.MOVE]:
+		if not current_check.ok or current_check.dining_capacity < 0:
+			return ""
+		return CatalogueText.dining_capacity(current_check.dining_capacity, current_check.dining_joined)
+	if state != State.IDLE or tool != Tool.HAND or _grid == null or hover_item_id < 0:
+		return ""
+	var table: PlacedItem = _grid.item(hover_item_id)
+	var group: DiningSeats.Group = _grid.dining_group(hover_item_id)
+	if table == null or group == null:
+		return ""
+	if _dining_cache_grid != _grid or _dining_cache_version != _grid.version or _dining_cache_group != group.id:
+		_dining_cache_grid = _grid
+		_dining_cache_version = _grid.version
+		_dining_cache_group = group.id
+		_dining_cache_capacity = DiningSeats.usable_cells(_grid, table).size()
+	return CatalogueText.dining_capacity(_dining_cache_capacity, group.is_joined())
+
+
 func seat_warnings() -> Dictionary[int, String]:
 	return current_check.seat_warnings.duplicate() \
 		if _proposal_active() and current_check.ok else committed_seat_warnings.duplicate()
@@ -535,6 +598,7 @@ func feedback_text() -> String:
 func presentation_state() -> Dictionary:
 	return {"state": state, "active": is_active(), "has_ghost": has_ghost(),
 		"item_id": selected_item_id, "definition": selected_definition,
+		"variant_id": _grid.item(selected_item_id).variant_id if state == State.MOVE and _grid.item(selected_item_id) != null else buy_variant_id,
 		"origin": origin, "quarter_turns": quarter_turns, "grab_offset": grab_offset,
 		"check_ok": current_check.ok, "why": current_check.why,
 		"unreachable": current_check.unreachable.duplicate(),
@@ -609,7 +673,7 @@ func _recheck_ghost() -> void:
 	elif state == State.MOVE:
 		current_check = _editor.check_move(selected_item_id, origin, quarter_turns)
 	elif state == State.BUY:
-		current_check = _editor.check_buy(selected_definition.id, origin, quarter_turns)
+		current_check = _editor.check_buy(selected_definition.id, origin, quarter_turns, null, buy_variant_id)
 
 
 func _refresh_committed() -> void:
@@ -638,6 +702,7 @@ func _clear_ghost(next_state: State) -> void:
 	current_check = EditCheck.new(true)
 	hover_item_id = -1
 	buy_swatch_id = &""
+	buy_variant_id = &""
 	wall_hover_edge = SimGrid.NO_EDGE
 	wall_dragging = false
 	wall_changes.clear()
@@ -679,7 +744,7 @@ func _finish_command(accepted: bool, previous_check: EditCheck, fallback_reason:
 
 ## Enters the Walls tool from idle or a held ghost; new edges get `kind`.
 func begin_walls(kind: SimGrid.Segment) -> bool:
-	if not _can_interact() or not _walls_command.is_valid() or kind == SimGrid.Segment.NONE:
+	if not _can_interact() or not _walls_command.is_valid():
 		return false
 	_clear_ghost(State.WALLS)
 	wall_kind = kind
@@ -760,7 +825,7 @@ func wall_summary() -> String:
 	var text: String = ""
 	var definition: WallKindDef = _content.wall_kind_for(last) if _content != null else null
 	if removed > 0 and added == 0:
-		text = "Remove"
+		text = CatalogueText.WALL_REMOVE_LABEL
 	elif added == 1 and definition != null:
 		text = definition.display_name
 	elif definition != null:
@@ -803,14 +868,25 @@ func _recheck_walls() -> void:
 	wall_changes.clear()
 	if wall_dragging and wall_drag_end != wall_drag_start:
 		var run: Array[Vector3i] = run_edges(wall_drag_start, wall_drag_end)
-		wall_changes = _editor.run_changes(run, wall_kind)
+		if wall_kind == SimGrid.Segment.NONE:
+			for edge: Vector3i in run:
+				if _grid.segment(edge) != SimGrid.Segment.NONE:
+					wall_changes[edge] = SimGrid.Segment.NONE
+		else:
+			wall_changes = _editor.run_changes(run, wall_kind)
 		if wall_changes.is_empty():
-			current_check = EditCheck.new(false, "These walls are already built")
+			current_check = EditCheck.new(false, CatalogueText.WALL_REMOVE_EMPTY if wall_kind == SimGrid.Segment.NONE \
+				else "These walls are already built")
 			return
 	elif _grid != null and _grid.edge_in_bounds(wall_hover_edge):
-		wall_changes[wall_hover_edge] = _editor.next_segment(wall_hover_edge, wall_kind)
+		if wall_kind == SimGrid.Segment.NONE:
+			if _grid.segment(wall_hover_edge) != SimGrid.Segment.NONE:
+				wall_changes[wall_hover_edge] = SimGrid.Segment.NONE
+		else:
+			wall_changes[wall_hover_edge] = _editor.next_segment(wall_hover_edge, wall_kind)
 	if wall_changes.is_empty():
-		current_check = EditCheck.new(false, WallRules.NOT_INSIDE)
+		current_check = EditCheck.new(false, CatalogueText.WALL_REMOVE_EMPTY if wall_kind == SimGrid.Segment.NONE \
+			else WallRules.NOT_INSIDE)
 		return
 	current_check = _editor.check_segments(wall_changes)
 
@@ -957,12 +1033,26 @@ func floor_summary() -> String:
 		count, "" if count == 1 else "s"]
 	if current_check.cost > 0:
 		text += "  $%d" % current_check.cost
+	var losses: PackedStringArray = []
+	for kind: SimGrid.Segment in [SimGrid.Segment.WALL, SimGrid.Segment.WINDOW, SimGrid.Segment.DOORWAY]:
+		var removed: int = 0
+		for edge: Vector3i in current_check.changes:
+			if current_check.changes[edge] == SimGrid.Segment.NONE and _grid.segment(edge) == kind:
+				removed += 1
+		if removed > 0:
+			var definition: WallKindDef = _content.wall_kind_for(kind) if _content != null else null
+			if definition != null:
+				losses.append("%d %s%s" % [removed, definition.display_name.to_lower(), "" if removed == 1 else "s"])
+	if not current_check.lost_decor.is_empty():
+		var count_lost: int = current_check.lost_decor.size()
+		losses.append("%d wall decoration%s" % [count_lost, "" if count_lost == 1 else "s"])
 	if current_check.refund > 0:
+		var removes: String = "removes %s, " % ", ".join(losses) if not losses.is_empty() else ""
 		if current_check.floor_finish_refund > 0:
-			text += "  (refund $%d, $%d of it for the flooring)" % [current_check.refund,
+			text += "  (%srefund $%d, $%d of it for the flooring)" % [removes, current_check.refund,
 				current_check.floor_finish_refund]
 		else:
-			text += "  (refund $%d)" % current_check.refund
+			text += "  (%srefund $%d)" % [removes, current_check.refund]
 	return text
 
 
@@ -1470,8 +1560,11 @@ func begin_rehang(anchor: Vector3i) -> bool:
 func hang_pointer(face: Vector3i, offset: float = 0.0) -> void:
 	if state != State.HANG or not _can_interact():
 		return
-	var anchor: Vector3i = WallFaces.NO_FACE if face == WallFaces.NO_FACE \
-		else WallFaces.anchor_for(face, 1 if hang_definition.hangs_in_window() else hang_definition.footprint.x, offset)
+	var target: Vector3i = face
+	if ExteriorSupport.is_exterior(_grid, face) and (hang_definition.wall_mount == ItemDef.WallMount.EXTERIOR or hang_definition.allow_exterior):
+		target = ExteriorSupport.key_for(face, hang_definition.exterior_band)
+	var anchor: Vector3i = WallFaces.NO_FACE if target == WallFaces.NO_FACE \
+		else WallFaces.anchor_for(target, 1 if hang_definition.hangs_in_window() else hang_definition.footprint.x, offset)
 	if anchor == hang_anchor and not _topology_dirty:
 		return
 	hang_anchor = anchor
@@ -1566,12 +1659,13 @@ func hang_summary() -> String:
 	if state != State.HANG or hang_definition == null:
 		return ""
 	if hang_anchor == WallFaces.NO_FACE:
-		return "Point at a %s to hang %s" % ["window" if hang_definition.hangs_in_window() else "wall", hang_definition.display_name]
+		return CatalogueText.hang_pointer_text(hang_definition)
 	if not current_check.ok:
 		return current_check.why
-	if hang_moving != WallFaces.NO_FACE:
-		return "Move %s here (Del sells it)" % hang_definition.display_name
-	return "Hang %s for %s" % [hang_definition.display_name, Fmt.money(hang_definition.price)]
+	var hint: String = WallDecor.room_hint(_grid, hang_definition, hang_anchor)
+	var action: String = "Move %s here (Del sells it)" % hang_definition.display_name if hang_moving != WallFaces.NO_FACE \
+		else "Hang %s for %s" % [hang_definition.display_name, Fmt.money(hang_definition.price)]
+	return action if hint.is_empty() else "%s. %s" % [action, hint]
 
 
 func _recheck_hang() -> void:
@@ -1749,5 +1843,6 @@ func blueprint_visuals() -> Array[Dictionary]:
 	var visuals: Array[Dictionary] = []
 	for placement: ShopPlacement in blueprint_placements():
 		visuals.append({"definition": _content.item(placement.item_id), "origin": placement.origin,
-			"turns": placement.quarter_turns, "swatch": _content.swatch(placement.swatch_id)})
+			"turns": placement.quarter_turns, "swatch": _content.swatch(placement.swatch_id),
+			"variant_id": placement.variant_id})
 	return visuals

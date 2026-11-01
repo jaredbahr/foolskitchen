@@ -515,6 +515,7 @@ func test_ui_loss_and_next_day_signal_without_clock_integration() -> void:
 	tree.root.add_child(_screen)
 	var report: DayReport = DayReport.new()
 	report.costs = {&"rent": 1234}
+	_record_food_cost(report, 0)
 	_screen.call("show_report", report)
 	assert_eq((_screen.get_node("%Profit") as Label).text, "-$1,234 operating profit")
 	_screen.connect("next_day_pressed", _on_next_day)
@@ -557,6 +558,7 @@ func test_native_report_maps_bank_lines_and_wraps_first_notice_then_clears_it() 
 	report.income = {Ledger.BANK_LOAN: 150}
 	report.costs = {Ledger.LOAN_INTEREST: 5, Ledger.LOAN_REPAYMENT: 50}
 	report.loan_first_advance = true
+	_record_food_cost(report, 0)
 	_screen.call("show_report", report)
 	var income: GridContainer = _screen.get_node("%IncomeRows") as GridContainer
 	var costs: GridContainer = _screen.get_node("%CostRows") as GridContainer
@@ -622,6 +624,7 @@ func test_native_headline_and_color_use_operating_profit_while_bank_rows_remain(
 	tree.root.add_child(_screen)
 	var report: DayReport = DayReport.from_dict({"income": {"sale": 40, "bank_loan": 100},
 		"costs": {"rent": 80, "loan_interest": 5, "loan_repayment": 10}})
+	_record_food_cost(report, 0)
 	_screen.call("show_report", report)
 	var headline: Label = _screen.get_node("%Profit") as Label
 	assert_eq(report.profit(), 45)
@@ -632,6 +635,7 @@ func test_native_headline_and_color_use_operating_profit_while_bank_rows_remain(
 	assert_eq((_screen.get_node("%CostRows").get_child(2) as Label).text, "Loan repayment")
 	report = DayReport.from_dict({"income": {"sale": 100},
 		"costs": {"rent": 20, "loan_interest": 5, "loan_repayment": 90}})
+	_record_food_cost(report, 0)
 	_screen.call("show_report", report)
 	assert_eq(report.profit(), -15)
 	assert_eq(headline.text, "$80 operating profit")
@@ -643,6 +647,7 @@ func _full_report() -> DayReport:
 	report.day = 3
 	report.income = {&"sale": 1200, &"tip": 50}
 	report.costs = {&"ingredients": 140, &"rent": 200}
+	_record_food_cost(report, 140)
 	report.dishes_sold = {&"tomato_soup": 2, &"burger": 8}
 	report.customers_served = 12
 	report.customers_lost = 4
@@ -650,6 +655,14 @@ func _full_report() -> DayReport:
 	report.reviews = ["Lovely soup", "Cosy place", "Great burger", "Fourth quote is hidden"]
 	report.cleanliness_label = "Grubby"
 	return report
+
+
+## Native headline fixtures explicitly supply known consumed-food values.
+## Historical decoding tests above keep their genuinely absent metadata.
+func _record_food_cost(report: DayReport, cost: int) -> void:
+	report.stock_values_recorded = true
+	report.food_cost = cost
+	report.food_cost_recorded = true
 
 
 func _on_next_day() -> void:

@@ -16,6 +16,7 @@ signal changed()
 const OCCUPIED: String = "Something already hangs here"
 const NOT_WALL_DECOR: String = "This item does not hang on a wall"
 const MENU_BOARD_ID: StringName = &"menu_board"
+const UNIQUE: String = "Your shop already has this sign"
 
 
 ## One hung item. Callers must not mutate a shared one; use set_menu_section.
@@ -25,19 +26,31 @@ class Hung extends RefCounted:
 	var width: int = 1
 	## Hangs in the window slot `anchor`, not on a wall face.
 	var window: bool = false
+	var mount: ItemDef.WallMount = ItemDef.WallMount.INSIDE_FACE
+	var swatch_id: StringName = &""
 	## -1 picks the first nonempty menu section when the board is drawn.
 	var menu_section: int = -1
 
 	func _init(definition_id: StringName = &"", anchor_face: Vector3i = WallFaces.NO_FACE, faces: int = 1,
-			in_window: bool = false, section: int = -1) -> void:
+			in_window: bool = false, actual_mount: int = -1, swatch: StringName = &"", section: int = -1) -> void:
 		def_id = definition_id
 		anchor = anchor_face
 		width = 1 if in_window else maxi(faces, 1)
-		window = in_window
+		mount = (ItemDef.WallMount.WINDOW if in_window else ItemDef.WallMount.INSIDE_FACE) \
+			if actual_mount < 0 else actual_mount as ItemDef.WallMount
+		window = mount == ItemDef.WallMount.WINDOW
+		swatch_id = swatch
 		menu_section = section if def_id == MENU_BOARD_ID and WallDecor.valid_menu_section(section) else -1
+
+	func copy() -> Hung:
+		return Hung.new(def_id, anchor, width, window, mount, swatch_id, menu_section)
 
 	## Where it still hangs on `grid` ("" when it does).
 	func problem_on(grid: SimGrid) -> String:
+		if mount == ItemDef.WallMount.EXTERIOR:
+			return ExteriorSupport.span_problem(grid, anchor, width)
+		if WallFaces.is_exterior(grid, anchor):
+			return WallFaces.NOT_INSIDE
 		return WallFaces.window_problem(grid, anchor) if window else WallFaces.span_problem(grid, anchor, width)
 
 	func faces() -> Array[Vector3i]:
@@ -82,8 +95,9 @@ func covered_faces() -> Array[Vector3i]:
 
 ## Hangs without rules (callers check `problem` first). False on overlap.
 ## `window`: in the window slot `anchor` (one wide).
-func add(def_id: StringName, anchor: Vector3i, width: int, window: bool = false, menu_section: int = -1) -> bool:
-	var hung: Hung = Hung.new(def_id, anchor, width, window, menu_section)
+func add(def_id: StringName, anchor: Vector3i, width: int, window: bool = false,
+		mount: int = -1, swatch_id: StringName = &"", menu_section: int = -1) -> bool:
+	var hung: Hung = Hung.new(def_id, anchor, width, window, mount, swatch_id, menu_section)
 	for face: Vector3i in hung.faces():
 		if _cover.has(face):
 			return false
@@ -106,7 +120,9 @@ func set_menu_section(anchor: Vector3i, section: int) -> bool:
 	if hung == null or hung.def_id != MENU_BOARD_ID or not valid_menu_section(section):
 		return false
 	if hung.menu_section != section:
-		hung.menu_section = section
+		var changed_item: Hung = hung.copy()
+		changed_item.menu_section = section
+		_items[anchor] = changed_item
 		revision += 1
 		changed.emit()
 	return true
@@ -132,9 +148,25 @@ func remove(anchor: Vector3i) -> Hung:
 func problem(grid: SimGrid, definition: ItemDef, anchor: Vector3i, ignore: Vector3i = WallFaces.NO_FACE) -> String:
 	if definition == null or not definition.hangs_on_wall() or not definition.placement_layer_valid():
 		return NOT_WALL_DECOR
-	var width: int = 1 if definition.hangs_in_window() else definition.footprint.x
-	var why: String = WallFaces.window_problem(grid, anchor) if definition.hangs_in_window() \
-		else WallFaces.span_problem(grid, anchor, width)
+	var outside: bool = WallFaces.is_exterior(grid, anchor)
+	var width: int = definition.footprint.x
+	var why: String = ""
+	if outside:
+		if definition.wall_mount != ItemDef.WallMount.EXTERIOR and not definition.allow_exterior:
+			return WallFaces.NOT_INSIDE if not definition.hangs_in_window() else WallFaces.WINDOW_ONLY
+		if ExteriorSupport.band(anchor) != definition.exterior_band:
+			return ExteriorSupport.STREET_ONLY
+		why = ExteriorSupport.span_problem(grid, anchor, width)
+	elif definition.wall_mount == ItemDef.WallMount.EXTERIOR:
+		return ExteriorSupport.STREET_ONLY
+	elif definition.hangs_in_window():
+		why = WallFaces.window_problem(grid, anchor)
+	else:
+		why = WallFaces.span_problem(grid, anchor, width)
+	if definition.unique_per_shop:
+		for placed: Vector3i in anchors():
+			if placed != ignore and _items[placed].def_id == definition.id:
+				return UNIQUE
 	if not why.is_empty():
 		return why
 	for face: Vector3i in WallFaces.span(anchor, width):
@@ -154,14 +186,48 @@ func lost_on(grid: SimGrid) -> Array[Vector3i]:
 	return out
 
 
-## Save rows [x, y, dir, def_id, optional menu_section], sorted (snapshot v6).
-## Automatic boards and other decor keep the original four-value row.
+## Save rows [x, y, dir, def_id], sorted. Exterior items append [mount, swatch];
+## a menu board with a chosen section appends [menu_section] (inside only).
 func to_rows() -> Array[Array]:
 	var rows: Array[Array] = []
 	for anchor: Vector3i in anchors():
 		var hung: Hung = _items[anchor]
 		var row: Array = [anchor.x, anchor.y, anchor.z, String(hung.def_id)]
-		if hung.def_id == MENU_BOARD_ID and hung.menu_section != -1:
+		if hung.mount == ItemDef.WallMount.EXTERIOR:
+			row.append(hung.mount)
+			row.append(String(hung.swatch_id))
+		elif hung.def_id == MENU_BOARD_ID and hung.menu_section != -1:
 			row.append(hung.menu_section)
 		rows.append(row)
 	return rows
+
+
+## A suggestion only: restroom decor is legal on any suitable inside wall.
+static func room_hint(grid: SimGrid, definition: ItemDef, anchor: Vector3i) -> String:
+	if grid == null or definition == null or definition.category != ItemDef.Category.RESTROOM:
+		return ""
+	for face: Vector3i in WallFaces.span(anchor, definition.footprint.x):
+		if grid.room(WallFaces.cell(face)) != SimGrid.Room.RESTROOM:
+			return "Tip: mark this room as Restroom in Build → Rooms"
+	return ""
+
+
+## Actual placement, rather than the definition's possible mount modes.
+static func mount_for(grid: SimGrid, definition: ItemDef, anchor: Vector3i) -> ItemDef.WallMount:
+	if WallFaces.is_exterior(grid, anchor):
+		return ItemDef.WallMount.EXTERIOR
+	return ItemDef.WallMount.WINDOW if definition.hangs_in_window() else ItemDef.WallMount.INSIDE_FACE
+
+
+func set_swatch(anchor: Vector3i, swatch_id: StringName) -> bool:
+	var hung: Hung = item(anchor)
+	if hung == null:
+		return false
+	if hung.swatch_id == swatch_id:
+		return true
+	var changed_item: Hung = hung.copy()
+	changed_item.swatch_id = swatch_id
+	_items[anchor] = changed_item
+	revision += 1
+	changed.emit()
+	return true

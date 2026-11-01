@@ -45,6 +45,13 @@ This file is read by every coding agent (Codex, harness workers, Claude). Read `
 ## Changelog (required)
 - Every PR adds at least one line under `## Unreleased` in `CHANGELOG.md`, in the right group (Players / Content / Under the hood), ending with `(#<PR number>)`. Use plain words a player would understand for player-facing changes. CI fails without it. The `no-changelog` label is for changelog-only fixes and reverts.
 
+## GitHub is the source of truth (no duplicate work)
+- **Before starting an issue,** check GitHub, not your local state. Look for an open PR whose body says `Closes #N` (search `is:pr is:open "#N"`), a branch named for it, and a claim comment on the issue. If any exists, the issue is taken: pick the next one.
+- **Claim it** with one short issue comment as you start ("Codex: starting this on branch issue-N-..."). One issue, one branch, one PR.
+- **Before every push to an existing PR,** fetch it and compare its head with yours. The director may have pushed a fix-up or a `main` merge. Never overwrite it; merge it in.
+- **After you mark a PR ready, stop pushing** unless CI fails, a director comment asks for a change, or GitHub shows a merge conflict. The director merges `main` in when integrating. Repeated "merge latest main" pushes only restart CI.
+- Never open a second PR for an issue that already has one, and never start an issue without `worker-ready`.
+
 ## Before you mark a PR ready (the director has limited review time)
 - Read every comment on the issue. A comment from the director (`jaredbahr` account, Claude-signed) overrides the issue body.
 - Check **Depends on**. If a listed PR or issue hasn't merged, don't start. Pick another `worker-ready` issue.

@@ -15,6 +15,8 @@ var def: Resource = null
 var placement_layer: ItemDef.PlacementLayer = ItemDef.PlacementLayer.NORMAL
 ## Cosmetic body paint; empty means the ItemDef placeholder colour.
 var swatch_id: StringName = &""
+## Authored furniture look; empty preserves the first/default look.
+var variant_id: StringName = &""
 var origin: Vector2i = Vector2i.ZERO
 var quarter_turns: int = 0
 var solid: bool = true

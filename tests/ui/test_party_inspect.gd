@@ -1,7 +1,6 @@
 extends TestCase
 ## Read-only native inspect text; no scene tree, ticks or RNG draws needed.
 
-const PANEL: PackedScene = preload("res://src/ui/inspect_panel.tscn")
 
 
 func test_inspector_shows_the_shared_party_size_without_drawing_or_advancing() -> void:
@@ -13,7 +12,7 @@ func test_inspector_shows_the_shared_party_size_without_drawing_or_advancing() -
 		random.seed = seed_value
 		randoms.append(random)
 	var party: Party = sim.add_party(Vector2i.ONE, randoms)
-	var panel: InspectPanel = PANEL.instantiate() as InspectPanel
+	var panel: InspectPanel = (load("res://src/ui/inspect_panel.tscn") as PackedScene).instantiate() as InspectPanel
 	panel.bind_world(sim.world)
 	for guest: CustomerAgent in sim.customers():
 		var before: int = guest.rng.state

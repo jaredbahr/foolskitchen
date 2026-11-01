@@ -23,6 +23,9 @@ var prices: Dictionary[StringName, int] = {}
 var pricing_tuning: EconomyTuning = EconomyTuning.new()
 ## Who visits when, and how long a drinks-only visit lasts (FK-083).
 var visit_tuning: VisitTuning = VISIT_TUNING
+## Session-latched deterministic growth, independent of visit-kind/hour weights.
+var demand_factor: float = 1.0
+var demand_tuning: DemandTuning = null
 ## Shop-wide server capacity. Morning upgrades select one of these three values.
 var carry_capacity: int:
 	get:
@@ -48,13 +51,24 @@ var dock: DeliveryDock
 ## named cleanliness RNG when constructing the state; legacy sims stay inert.
 var cleanliness: CleanlinessState = null
 var clean_tasks: CleanTaskController = null
+var mishaps: MishapState = null
+## Main records this paid replacement cost in the existing economy ledger.
+signal plate_broken(cost: int)
 var spawner: CustomerSpawner
 var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 ## Opt-in catalogue. An unconfigured sim retains the exact Regular arrival stream.
 var customer_types: CustomerTypeCatalogue = null
 var customer_level: int = 1
+## Optional persistent cast. A null cast preserves all earlier simulation callers.
+var regulars: RegularCast = null
+## The session supplies a lazy named stream; no stream is created before promotion.
+var regular_rng_provider: Callable
+var regular_recipe_labels: Dictionary[StringName, String] = {}
+var _regular_cohort_index: int = 0
 var served_today: int = 0
 var lost_today: int = 0
+## Read-only OPEN-hour observations; only the detached report survives a day.
+var staff_activity: StaffActivity = StaffActivity.new()
 var leave_reasons_today: Dictionary[StringName, int] = {}
 ## Optional review dependencies are injected by the game session. Keeping the
 ## stream separate leaves arrivals and individual guest choices unchanged.
@@ -209,6 +223,10 @@ func assign_owner(mode: StringName) -> bool:
 
 ## Clears daily reports and redraws the first arrival; the caller opens the clock.
 func start_day() -> void:
+	staff_activity.reset(world.clock.day)
+	_regular_cohort_index = 0
+	if regulars != null:
+		regulars.begin_day(world.clock.day)
 	served_today = 0
 	lost_today = 0
 	leave_reasons_today.clear()
@@ -228,6 +246,8 @@ func start_day() -> void:
 		clean_tasks.tidy_overnight()
 	elif cleanliness != null:
 		cleanliness.tidy_overnight()
+	if mishaps != null:
+		mishaps.tidy_overnight()
 	_staff_to_posts()
 	spawner.reset(arrival_rate())
 
@@ -248,6 +268,10 @@ func advance() -> void:
 	var was_closed: bool = world.clock.phase == SimClock.Phase.CLOSED
 	if clean_tasks != null:
 		clean_tasks.sync_spots()
+	# The incoming OPEN interval includes the tick that reaches last orders.
+	# Observe existing assignments before agents can complete or replace them.
+	if world.clock.phase == SimClock.Phase.OPEN:
+		staff_activity.observe(world)
 	world.advance()
 	if kitchen != null:
 		kitchen.advance()
@@ -306,6 +330,15 @@ func configure_cleanliness(state: CleanlinessState, tuning: CleanlinessTuning) -
 	cleanliness = state
 	clean_tasks = CleanTaskController.new(world, state, tuning)
 	clean_tasks.sync_spots()
+	return true
+
+
+## Optional day-local mishaps share the existing cleanliness RNG.
+func configure_messes(tuning: MessTuning, random: RandomNumberGenerator) -> bool:
+	if cleanliness == null or tuning == null or not tuning.is_valid() or random == null or mishaps != null:
+		return false
+	mishaps = MishapState.new(tuning, random)
+	clean_tasks.bind_mishaps(mishaps)
 	return true
 
 
@@ -479,9 +512,60 @@ func visit_kinds() -> Array[StringName]:
 ## Arrivals relative to the default rate at the current shop minute: exactly
 ## 1.0 for a food-only menu at a full-weight hour (all default opening hours).
 func arrival_rate() -> float:
-	if visit_tuning == null or not visit_tuning.is_valid() or world == null:
-		return 1.0
-	return visit_tuning.arrival_rate(visit_kinds(), world.clock.display_minutes())
+	var base: float = 1.0
+	if visit_tuning != null and visit_tuning.is_valid() and world != null:
+		base = visit_tuning.arrival_rate(visit_kinds(), world.clock.display_minutes())
+	return base * demand_factor
+
+
+## Configuration and live menu edits never redraw the current countdown.
+func configure_demand(tuning: DemandTuning) -> void:
+	demand_tuning = tuning if tuning != null and tuning.is_valid() else null
+	demand_factor = 1.0
+
+
+func set_demand_factor(value: float) -> bool:
+	if demand_tuning == null or not demand_tuning.is_valid() or not is_finite(value) \
+			or value <= 0.0 or value > demand_tuning.total_cap:
+		return false
+	demand_factor = value
+	return true
+
+
+## Read-only menu-kind hours for the same service as expected_demand_guests.
+## Keep the typed visit resource beside its owning sim; callers receive only
+## detached primitive weights, including partial opening hours.
+func expected_visit_weights() -> Dictionary[StringName, float]:
+	var result: Dictionary[StringName, float] = {}
+	if world == null:
+		return result
+	var clock: SimClock = world.clock
+	for kind: StringName in RecipeDef.ORDER_TYPES:
+		var weight: float = 0.0
+		for hour: int in range(24):
+			var minutes: int = maxi(0, mini(clock.display_close_minute, (hour + 1) * 60)
+				- maxi(clock.display_open_minute, hour * 60))
+			weight += minutes * (visit_tuning.weight(kind, hour * 60) if visit_tuning != null else 0.0)
+		result[kind] = weight
+	return result
+
+
+## Read-only approximation from this restaurant's actual opening hours, menu
+## weights and authored base gaps. Parties already space arrivals by headcount.
+func expected_demand_guests(factor: float) -> int:
+	if world == null or not is_finite(factor) or factor <= 0.0:
+		return 0
+	var clock: SimClock = world.clock
+	var minutes: int = clock.display_close_minute - clock.display_open_minute
+	var mean_gap: float = float(spawner.min_gap + spawner.max_gap) / 2.0
+	if minutes <= 0 or clock.open_ticks <= 0 or mean_gap <= 0.0:
+		return 0
+	var weight: float = 0.0
+	var kinds: Array[StringName] = visit_kinds()
+	var valid_visits: bool = visit_tuning != null and visit_tuning.is_valid()
+	for minute: int in range(clock.display_open_minute, clock.display_close_minute):
+		weight += visit_tuning.arrival_rate(kinds, minute) if valid_visits else 1.0
+	return maxi(0, roundi(float(clock.open_ticks) * weight / float(minutes) * factor / mean_gap))
 
 
 ## Where staff stand to take an order or hand over a meal or drink at a seat.
@@ -602,7 +686,6 @@ func _install_customer(entry: Vector2i, random: RandomNumberGenerator,
 	var customer: CustomerAgent = CustomerAgent.new(self, random)
 	if kind != null:
 		customer.configure_type(kind)
-	customer.set_visit_kind(visit, visit_tuning)
 	customer.cell = entry
 	# Only a real service arrival can dirty the floor or consume its stream.
 	if cleanliness != null and world.clock.phase == SimClock.Phase.OPEN:
@@ -621,10 +704,75 @@ func _install_customer(entry: Vector2i, random: RandomNumberGenerator,
 		customer.vibe_review_bonus = _vibe_result.raw_review_bonus
 		if _vibe_result.score > 0.0 and not _vibe_result.active_theme.is_empty():
 			customer.vibe_theme_label = _vibe_result.theme_label
+	if publish:
+		visit = _configure_regular_customer(customer, visit)
+	# Set the duration once, after a returning regular has chosen their usual.
+	customer.set_visit_kind(visit, visit_tuning)
 	world.add_agent(customer)
 	if publish:
 		_publish_customer_arrival(customer)
 	return customer
+
+
+## A due cast member takes the place of an ordinary solo Regular arrival;
+## neither the arrival clock nor its existing draws are changed.
+func _configure_regular_customer(customer: CustomerAgent, visit: StringName) -> StringName:
+	if regulars == null or customer.customer_type_id != &"regular" \
+			or world.clock.phase != SimClock.Phase.OPEN:
+		return visit
+	var profile: RegularProfile = regulars.due_regular(world.clock.day)
+	if profile == null:
+		customer.repeat_guest_key = "guest_%d" % (_regular_cohort_index % 16)
+		_regular_cohort_index += 1
+		return visit
+	if not regular_rng_provider.is_valid() or not regulars.mark_arrived(profile,
+			world.clock.day, regular_rng_provider.call() as RandomNumberGenerator):
+		return visit
+	customer.regular_profile = profile
+	customer.display_name = profile.display_name
+	customer.regular_arrival_tick = world.now
+	customer.regular_favourite_label = regular_recipe_labels.get(profile.favourite_dish, "Favourite dish")
+	for recipe: RecipeDef in menu:
+		if recipe.id == profile.favourite_dish:
+			customer.regular_favourite_available = true
+			customer.regular_favourite_label = recipe.display_name
+			# A listed usual keeps its menu bonus, but must not replace a
+			# stocked visit with an order type that cannot currently be cooked.
+			if available_menu().has(recipe):
+				visit = recipe.order_type
+			break
+	customer.vibe_review_bonus += regulars.menu_happiness(profile, customer.regular_favourite_available)
+	return visit
+
+
+func regular_tip(customer: CustomerAgent, order: Order) -> int:
+	if regulars == null or customer == null or customer.regular_profile == null or order == null:
+		return 0
+	var amount: float = order.price * regulars.tip_rate(customer.regular_profile,
+		customer.regular_favourite_available)
+	# Cash is whole units. Rounding the favourite bonus up keeps a modest
+	# drink's extra tip visible instead of rounding it away on every visit.
+	return maxi(0, ceili(amount) if customer.regular_favourite_available else roundi(amount))
+
+
+func _record_regular_visit(customer: CustomerAgent) -> void:
+	if regulars == null:
+		return
+	var recipe: StringName = customer.order.recipe_id if customer.order != null else &""
+	var quality: float = customer.order.quality if customer.order != null else 0.0
+	var waited: float = maxf(float(customer._queue_wait) / maxi(1, customer.queue_patience),
+		float(customer._food_wait) / maxi(1, customer.food_patience))
+	if customer.regular_profile != null:
+		var enjoyed: Array[StringName] = []
+		if customer.paid and not recipe.is_empty():
+			enjoyed.append(recipe)
+		regulars.finish_visit(customer.regular_profile, world.clock.day, enjoyed,
+			customer.seat_cell, customer.paid, quality, waited, customer.regular_favourite_available)
+	elif not customer.repeat_guest_key.is_empty():
+		regulars.observe_visit(customer.repeat_guest_key, customer.customer_type_id,
+			world.clock.day, review_book.average(), _vibe_result.score, recipe,
+			customer.seat_cell, quality, customer.paid and waited < regulars.tuning.long_wait_fraction,
+			regular_rng_provider)
 
 
 func _publish_customer_arrival(customer: CustomerAgent) -> void:
@@ -636,7 +784,7 @@ func _publish_customer_arrival(customer: CustomerAgent) -> void:
 ## Singletons keep add_customer's exact path, including its signal order.
 func add_party(entry: Vector2i, randoms: Array[RandomNumberGenerator], kind: CustomerType = null,
 		visit: StringName = RecipeDef.FOOD) -> Party:
-	if randoms.is_empty() or randoms.size() > 4 or (kind != null and not kind.is_valid()):
+	if randoms.is_empty() or randoms.size() > Party.MAX_SIZE or (kind != null and not kind.is_valid()):
 		return null
 	for random: RandomNumberGenerator in randoms:
 		if random == null:
@@ -747,6 +895,7 @@ func record_departure(customer: CustomerAgent) -> void:
 		return
 	_departed[customer.id] = true
 	customer.departure_recorded = true
+	_record_regular_visit(customer)
 	if cleanliness != null and customer.paid and customer.seat_cell != SimGrid.NO_CELL:
 		if cleanliness.try_spawn_at_departed_seat(customer.seat_cell) and clean_tasks != null:
 			clean_tasks.sync_spots()
@@ -765,6 +914,8 @@ func record_departure(customer: CustomerAgent) -> void:
 					standard_price = recipe.standard_price
 					break
 		var visit: ReviewVisit = customer.review_visit(standard_price, customer.arrival_dirt_fraction)
+		visit.sticky_floor = mishaps != null and cleanliness != null \
+			and cleanliness.sticky_spot_count() >= mishaps.tuning.sticky_floor_threshold
 		# A paid guest removed at the closing cutoff retains their happy report
 		# reason, but the forced departure must not sample a late review.
 		visit.closing = visit.closing or world.clock.phase == SimClock.Phase.CLOSED

@@ -1,23 +1,25 @@
-[gd_resource type="Resource" script_class="RecipeDef" load_steps=8 format=3]
+[gd_resource type="Resource" script_class="RecipeDef" load_steps=9 format=3]
 
 [ext_resource type="Script" path="res://src/sim/content/recipe_def.gd" id="1_recipe"]
 [ext_resource type="Script" path="res://src/sim/content/ingredient_def.gd" id="2_ingredient"]
 [ext_resource type="Script" path="res://src/sim/content/recipe_step.gd" id="3_step"]
 [ext_resource type="Resource" path="res://data/ingredients/potato.tres" id="ingredient_potato"]
 [ext_resource type="Resource" path="res://data/ingredients/oil.tres" id="ingredient_oil"]
+[ext_resource type="PackedScene" path="res://assets/kenney/food/fries.glb" id="view_model"]
 
 [sub_resource type="Resource" id="Step_prep"]
 script = ExtResource("3_step")
 station_type = &"prep_counter"
-duration_ticks = 20
+duration_ticks = 14
 
 [sub_resource type="Resource" id="Step_cook"]
 script = ExtResource("3_step")
 station_type = &"fryer"
-duration_ticks = 50
+duration_ticks = 35
 
 [resource]
 script = ExtResource("1_recipe")
+view_model = ExtResource("view_model")
 id = &"fries"
 unlock_from = &"burger"
 display_name = "Fries"

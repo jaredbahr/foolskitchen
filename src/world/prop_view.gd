@@ -28,11 +28,17 @@ class BodySurface:
 @export var rest_tint: SwatchDef
 @export_range(0.0, 1.0, 0.01) var rest_tint_mix: float = 0.0
 
+var _variant_materials: PropVariantMaterials
+var _variant: ItemVariant
+var _paint_color: Variant = null
 var _prepared: bool = false
 var _body_surfaces: Array[BodySurface] = []
 
 
 func _notification(what: int) -> void:
+	if what == NOTIFICATION_PREDELETE and _variant_materials != null:
+		_variant_materials.restore()
+		_variant_materials = null
 	if what == NOTIFICATION_SCENE_INSTANTIATED:
 		prepare()
 
@@ -103,6 +109,7 @@ func active_body_material() -> BaseMaterial3D:
 ## Textures, shading and every non-body surface retain the kit's settings.
 func set_body_tint(color: Color) -> void:
 	prepare()
+	_paint_color = color
 	for body: BodySurface in _body_surfaces:
 		if body.tinted == null:
 			body.tinted = body.source.duplicate() as BaseMaterial3D
@@ -112,9 +119,33 @@ func set_body_tint(color: Color) -> void:
 
 func clear_body_tint() -> void:
 	prepare()
+	_paint_color = null
 	for body: BodySurface in _body_surfaces:
 		body.mesh.set_surface_override_material(body.index, body.original_override)
 	_apply_rest_tint()
+	if _variant_materials != null:
+		_variant_materials.apply(_variant)
+
+
+## Paint sits above the selected furniture look; clearing it reveals that look.
+func set_variant(look: ItemVariant) -> bool:
+	prepare()
+	if look == _variant:
+		return true
+	var paint: Variant = _paint_color
+	if _variant_materials == null:
+		# Capture the unpainted baseline even if this wrapper was painted before
+		# its first look selection; no transient paint becomes a recipe source.
+		clear_body_tint()
+		_variant_materials = PropVariantMaterials.new(self)
+	if not _variant_materials.apply(look):
+		if paint is Color:
+			set_body_tint(paint)
+		return false
+	_variant = look
+	if paint is Color:
+		set_body_tint(paint)
+	return true
 
 
 func _apply_rest_tint() -> void:

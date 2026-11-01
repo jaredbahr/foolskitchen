@@ -1,5 +1,7 @@
 class_name ShopView
 extends Node3D
+## Session-owned appearance; only the owner reads this presentation choice.
+var owner_model: StringName = OwnerAppearance.DEFAULT_MODEL
 ## Read-only restaurant view. Simulation ownership stays with the caller.
 
 const GRID_SHADER: Shader = preload("res://src/world/floor_finish.gdshader")
@@ -53,6 +55,11 @@ const HEIGHTS: Dictionary[int, float] = {
 const CUSTOMER_COLORS: Array[Color] = [Color("c8743a"), Color("b89568"), Color("986357")]
 ## Reuse a curated placeholder swatch rather than introduce a one-off art colour.
 const DIRT_SWATCH: SwatchDef = preload("res://data/swatches/walnut.tres")
+const DIRT_LIGHT_SWATCH: SwatchDef = preload("res://data/swatches/cream.tres")
+## Existing palette ink outlines every mess; kit plate materials stay unchanged.
+const MESS_THEME: Theme = preload("res://src/ui/theme/main_theme.tres")
+const BROKEN_PLATE_SCENE: PackedScene = preload("res://assets/kenney/food/plate-broken.glb")
+const MESS_OUTLINE_SCALE: float = 1.1
 const CLEANER_SWATCH: SwatchDef = preload("res://data/swatches/sage.tres")
 const DIRT_OUTLINE: Array[Vector2] = [
 	Vector2(-0.20, -0.09), Vector2(-0.13, 0.14), Vector2(0.03, 0.20),
@@ -82,11 +89,16 @@ var _wall_nodes: Dictionary[Vector2i, MeshInstance3D] = {}
 var world: SimWorld
 var floor_mesh: MeshInstance3D
 var room_dressing: RoomDressing
+var neighbourhood_dressing: NeighbourhoodDressing
+## Separate from the actual delivery/service lot: maximum future building land.
+var _neighbourhood_reserve: Rect2i = Rect2i()
+var weather_view: WeatherView
 var _restaurant_name: String = MenuSettings.DEFAULT_NAME
 var item_nodes: Dictionary[int, ItemVisual] = {}
 var agent_nodes: Dictionary[int, Node3D] = {}
 var dirt_nodes: Dictionary[Vector2i, MeshInstance3D] = {}
 var mood_nodes: Dictionary[int, GuestMoodIndicator] = {}
+var regular_nodes: Dictionary[int, RegularGuestIndicator] = {}
 var _mood_states: Dictionary[int, int] = {}
 var _mood_bands: Dictionary[int, int] = {}
 var _materials: Dictionary[Color, StandardMaterial3D] = {}
@@ -94,7 +106,8 @@ var _paint_materials: Dictionary[StringName, StandardMaterial3D] = {}
 var _paint_content: ContentDB
 var _cleanliness: CleanlinessState
 var _shared_dirt_mesh: ArrayMesh
-var _shared_dirt_material: StandardMaterial3D
+var _shared_spill_mesh: ArrayMesh
+var _mess_materials: Dictionary[Color, StandardMaterial3D] = {}
 var _wall_swatch_id: StringName = &""
 var _floor_swatch_id: StringName = &""
 var _floor_base_color: Color = Color("7d5533")
@@ -134,18 +147,26 @@ var _crates_synced: bool = false
 var _crates_tick: int = 0
 ## Smooth motion: people are drawn between their last two sim ticks.
 var motion: MotionSmoother = MotionSmoother.new()
+var food: FoodPresentation
 ## Faded-out figures of people the sim removed while visible (_keep_as_ghost):
 ## [{node, fade, step}].
 var ghosts: Array[Dictionary] = []
 
 
 ## Replaces a previous world and its signal bindings without modifying either.
-func show_world(value: SimWorld) -> void:
+func show_world(value: SimWorld, maximum_reserve: Rect2i = Rect2i()) -> void:
+	if is_instance_valid(food):
+		food.free()
+	food = null
 	var previous_world: SimWorld = world
+	_neighbourhood_reserve = maximum_reserve
 	_disconnect_grid()
 	mood_nodes.clear()
+	regular_nodes.clear()
 	_mood_states.clear()
 	_mood_bands.clear()
+	if weather_view != null:
+		weather_view.bind(null)
 	for child: Node in get_children():
 		if child.has_meta("shop_geometry"):
 			remove_child(child)
@@ -163,6 +184,8 @@ func show_world(value: SimWorld) -> void:
 	_floor_preview.clear()
 	floor_mesh = null
 	room_dressing = null
+	neighbourhood_dressing = null
+	weather_view = null
 	segment_view = null
 	wall_finish_view = null
 	selection_outline = null
@@ -199,17 +222,37 @@ func show_world(value: SimWorld) -> void:
 	wall_finish_view.set_meta("shop_geometry", true)
 	add_child(wall_finish_view)
 	wall_finish_view.bind(world.grid, _paint_content, _wall_finishes, _wall_decor)
+	wall_finish_view.set_restaurant_name(_restaurant_name)
 	room_dressing = RoomDressing.new()
 	room_dressing.name = "RoomDressing"
 	room_dressing.set_restaurant_name(_restaurant_name)
 	room_dressing.set_meta("shop_geometry", true)
 	add_child(room_dressing)
+	neighbourhood_dressing = NeighbourhoodDressing.new()
+	neighbourhood_dressing.name = "NeighbourhoodDressing"
+	neighbourhood_dressing.set_meta("shop_geometry", true)
+	add_child(neighbourhood_dressing)
 	_build_terrain()
+	weather_view = WeatherView.new()
+	weather_view.name = "Weather"
+	weather_view.set_meta("shop_geometry", true)
+	add_child(weather_view)
+	weather_view.bind(self)
 	for item: PlacedItem in world.grid.items():
 		_build_item(item)
 	_apply_paint()
 	_connect_grid()
 	_process(0.0)
+
+
+## Read-only kitchen dressing is rebound with the same session as the world.
+func bind_restaurant(restaurant: RestaurantSim, definitions: ContentDB) -> void:
+	if is_instance_valid(food):
+		food.free()
+	food = FoodPresentation.new()
+	food.name = "Food"
+	add_child(food)
+	food.bind(restaurant, definitions, item_nodes)
 
 
 ## The shop's lot (Main, before show_world()): the back alley behind a back
@@ -218,6 +261,40 @@ func set_lot(value: Rect2i) -> void:
 	_lot = value
 	if segment_view != null:
 		segment_view.lot = value
+		if world != null:
+			segment_view.rebuild(world.grid, wall_mode != WallMode.UP, lowered_wall_cells())
+	_refresh_neighbourhood()
+
+
+## Active-view update; world replacement binds its own optional reserve in
+## show_world(), rather than inheriting another world's numeric exclusion.
+func set_neighbourhood_reserve(value: Rect2i) -> void:
+	_neighbourhood_reserve = value
+	_refresh_neighbourhood()
+
+
+func neighbourhood_reserved_lot() -> Rect2i:
+	var reserve: Rect2i = _neighbourhood_reserve
+	if _lot.has_area():
+		reserve = reserve.merge(_lot) if reserve.has_area() else _lot
+	if world != null:
+		for cell: Vector2i in world.grid.cells():
+			if world.grid.terrain(cell) == SimGrid.Terrain.OUTSIDE:
+				continue
+			var single: Rect2i = Rect2i(cell, Vector2i.ONE)
+			reserve = reserve.merge(single) if reserve.has_area() else single
+	return reserve
+
+
+func _refresh_neighbourhood() -> void:
+	if neighbourhood_dressing == null or room_dressing == null or world == null:
+		return
+	var paving: Array[AABB] = room_dressing.native_pavement_bounds()
+	if segment_view != null:
+		for tile: PropView in segment_view.path_tiles():
+			paving.append((segment_view.transform * tile.transform) * tile.get_combined_aabb())
+	neighbourhood_dressing.configure(world.grid, neighbourhood_reserved_lot(),
+		room_dressing.frontage_runs(), paving)
 
 
 ## Main binds the delivery dock after show_world(): crates on the floor and
@@ -321,6 +398,9 @@ func _build_terrain() -> void:
 	_apply_paint()
 	if room_dressing != null:
 		room_dressing.rebuild(world, lowered_wall_cells())
+	_refresh_neighbourhood()
+	if weather_view != null:
+		weather_view.refresh(true)
 
 
 ## View-only name survives terrain rebuilds, moves and loading another layout.
@@ -331,6 +411,8 @@ func set_restaurant_name(value: String) -> bool:
 	_restaurant_name = normalized
 	if room_dressing != null:
 		room_dressing.set_restaurant_name(normalized)
+	if wall_finish_view != null:
+		wall_finish_view.set_restaurant_name(normalized)
 	return true
 
 
@@ -442,7 +524,107 @@ func wall_face_at_ray(ray_origin: Vector3, ray_direction: Vector3, floor_fallbac
 				face = candidate
 		if face != WallFaces.NO_FACE:
 			best = _face_hit(face, point, nearest)
+	if not best.is_empty() and best.get("face", WallFaces.NO_FACE) != WallFaces.NO_FACE \
+			and ExteriorSupport.is_exterior(world.grid, best["face"]):
+		if _exterior_occluder_distance(ray_origin, ray_direction) < float(best["distance"]):
+			return {}
 	return best
+
+
+## A street-facing mount slot on the fixed facade, including its door header.
+## Placement uses that support plane; foreground opaque meshes still win.
+func exterior_mount_at_ray(ray_origin: Vector3, ray_direction: Vector3, mount_band: int = ExteriorSupport.Band.BODY) -> Dictionary:
+	if world == null:
+		return {}
+	var outward: Vector2i = WallRules.street_side(world.grid)
+	var normal: Vector3 = Vector3(outward.x, 0.0, outward.y)
+	var denominator: float = ray_direction.dot(normal)
+	if denominator >= -0.00001:
+		return {}
+	var into: Vector2i = -outward
+	var direction: int = WallFaces.DIRS.find(into)
+	var supports: Array[Vector2i] = []
+	supports.assign(_wall_nodes.keys())
+	for cell: Vector2i in ExteriorSupport.door_cells(world.grid):
+		if not supports.has(cell):
+			supports.append(cell)
+	var best: Dictionary = {}
+	for shell: Vector2i in supports:
+		var base: Vector3i = WallFaces.make(shell + outward, direction)
+		var key: Vector3i = ExteriorSupport.key_for(base, mount_band)
+		if not ExteriorSupport.is_exterior(world.grid, key):
+			continue
+		var plane: Vector3 = GridMath.cell_to_world(shell) + normal * GridMath.CELL_SIZE * 0.5
+		var distance: float = (plane - ray_origin).dot(normal) / denominator
+		if distance < 0.0:
+			continue
+		var point: Vector3 = ray_origin + ray_direction * distance
+		var along: Vector2i = WallFaces.along(key)
+		var offset: float = (point - plane).dot(Vector3(along.x, 0.0, along.y))
+		if absf(offset) > GridMath.CELL_SIZE * 0.5 or point.y < 0.0 or point.y > ArtScale.WALL_HEIGHT:
+			continue
+		if _exterior_occluder_distance(ray_origin, ray_direction) < distance - SIDE_EPSILON \
+				or wall_distance(ray_origin, ray_direction) < distance - SIDE_EPSILON:
+			continue
+		if best.is_empty() or distance < float(best["distance"]):
+			best = {"face": key, "offset": offset, "distance": distance}
+	return best
+
+
+## Exterior placement/finish picking never looks through opaque furniture or decor.
+func _exterior_occluder_distance(ray_origin: Vector3, ray_direction: Vector3) -> float:
+	var distance: float = nearest_item_distance(ray_origin, ray_direction)
+	if wall_finish_view != null:
+		var hit: Dictionary = wall_finish_view.item_hit(ray_origin, ray_direction)
+		if not hit.is_empty():
+			distance = minf(distance, float(hit["distance"]))
+	return distance
+
+
+## Sell picks visible segment geometry, including outer fittings and headers.
+## Shell walls occlude it; floor thresholds and separate previews/selections
+## are not targets. Paint keeps the independent face picker above.
+func wall_segment_at_ray(ray_origin: Vector3, ray_direction: Vector3) -> Dictionary:
+	if world == null or ray_direction.y >= -0.00001 or segment_view == null:
+		return {}
+	var nearest: float = -ray_origin.y / ray_direction.y
+	var best: Dictionary = {}
+	for wall: MeshInstance3D in _wall_nodes.values():
+		var distance: float = _wall_mesh_distance(wall, ray_origin, ray_direction)
+		if distance < nearest:
+			nearest = distance
+			best = {}
+		var top: MeshInstance3D = wall.get_node_or_null("Top") as MeshInstance3D
+		if top != null and top.has_meta(&"segment_edge"):
+			var cap_distance: float = _wall_mesh_distance(top, ray_origin, ray_direction)
+			if cap_distance < INF and cap_distance <= nearest:
+				nearest = cap_distance
+				best = {"edge": top.get_meta(&"segment_edge"), "distance": cap_distance}
+	for root: Node in segment_view.get_children():
+		if not root.has_meta(&"edge") and not root.has_meta(&"segment_edge"):
+			continue
+		var distance: float = _wall_mesh_distance(root, ray_origin, ray_direction)
+		if distance < INF and distance <= nearest:
+			nearest = distance
+			best = {"edge": root.get_meta(&"edge", root.get_meta(&"segment_edge", SimGrid.NO_EDGE)),
+				"distance": distance}
+	return best
+
+
+## Descend into kit props rather than filling their window/door openings
+## with one combined bounds box. Segment roots own only rendered fittings.
+func _wall_mesh_distance(node: Node, ray_origin: Vector3, ray_direction: Vector3) -> float:
+	if node.name == &"Floor" or (node is Node3D and not (node as Node3D).is_visible_in_tree()):
+		return INF
+	var nearest: float = INF
+	var mesh: MeshInstance3D = node as MeshInstance3D
+	if mesh != null and mesh.mesh != null:
+		var distance: float = _ray_box_distance(ray_origin, ray_direction, mesh.global_transform * mesh.get_aabb())
+		if distance >= 0.0:
+			nearest = distance
+	for child: Node in node.get_children():
+		nearest = minf(nearest, _wall_mesh_distance(child, ray_origin, ray_direction))
+	return nearest
 
 
 ## The outside window under a ray, as {face (its window slot, see
@@ -691,6 +873,7 @@ func _rebuild_finish_map() -> void:
 		shader.set_shader_parameter("finish_map", finish_texture)
 		shader.set_shader_parameter("map_origin", _finish_origin)
 		shader.set_shader_parameter("map_size", size)
+	_sync_dirt_spots()
 
 
 ## A colour's palette index: the shop's own colour is 0 (main only), the
@@ -713,6 +896,8 @@ func preview_paint(kind: StringName, item_id: int, swatch_id: StringName) -> voi
 
 
 func clear_paint_preview() -> void:
+	if wall_finish_view != null:
+		wall_finish_view.clear_hung_paint_preview()
 	preview_paint(&"", -1, &"")
 	clear_floor_preview()
 	clear_wall_preview()
@@ -726,6 +911,25 @@ func shop_wall_colour() -> Color:
 ## The authored floor brown (the floor material's own colour).
 func floor_base_color() -> Color:
 	return _floor_base_color
+
+
+## Match the floor shader's main colour, including either kind of paint preview.
+func drawn_floor_main_color(cell: Vector2i) -> Color:
+	var look: FloorFinishes.Finish = drawn_finish(cell)
+	if look.swatch == _floor_swatch_id:
+		var id: StringName = _preview_swatch_id if _preview_kind == &"floor" else _floor_swatch_id
+		return _paint_color(id, _floor_base_color)
+	if look.swatch.is_empty():
+		return _floor_base_color
+	return _paint_color(look.swatch, _floor_base_color)
+
+
+## Both tones are already in the game's palette. No fixed Walnut-on-Walnut dirt.
+func mess_fill_color(cell: Vector2i) -> Color:
+	var floor_luma: float = drawn_floor_main_color(cell).get_luminance()
+	return DIRT_LIGHT_SWATCH.color \
+		if absf(DIRT_LIGHT_SWATCH.color.get_luminance() - floor_luma) \
+			> absf(DIRT_SWATCH.color.get_luminance() - floor_luma) else DIRT_SWATCH.color
 
 
 ## Resolve the nearest visible shop mesh before using the floor plane. An item
@@ -903,12 +1107,15 @@ func _apply_paint() -> void:
 		if placed == null or not placed.def is ItemDef:
 			continue
 		var definition: ItemDef = placed.def as ItemDef
+		var variant_preview: bool = _preview_kind == &"variant" and id == _preview_item_id
+		item_nodes[id].apply_variant(definition.variant(_preview_swatch_id if variant_preview else placed.variant_id))
 		var swatch_id: StringName = _preview_swatch_id if _preview_kind == &"item" and id == _preview_item_id else placed.swatch_id
 		var swatch: SwatchDef = _paint_content.swatch(swatch_id) if _paint_content != null else null
-		if definition.paintable and swatch != null:
+		if definition.paintable and swatch != null and not variant_preview:
 			item_nodes[id].apply_paint(swatch.color, _paint_material(swatch_id, definition.placeholder_color))
 		else:
 			item_nodes[id].clear_paint()
+	_sync_dirt_spots()
 
 
 ## Selects the wall presentation without changing terrain or pathfinding.
@@ -968,7 +1175,14 @@ func _apply_wall_heights() -> void:
 		var body: float = sill if _shell_windows.has(cell) and not lowered else height
 		(wall.mesh as BoxMesh).size.y = body
 		wall.position.y = body * 0.5
-		(wall.get_node("Top") as MeshInstance3D).position.y = height - body * 0.5 + 0.005
+		var top: MeshInstance3D = wall.get_node("Top") as MeshInstance3D
+		top.position.y = height - body * 0.5 + 0.005
+		# This visible cap completes the window header, even though its box
+		# belongs to the retained thick shell. Sell still changes only its segment.
+		if _shell_windows.has(cell):
+			top.set_meta(&"segment_edge", SimGrid.edge_between(cell, cell - _shell_windows[cell]))
+		elif top.has_meta(&"segment_edge"):
+			top.remove_meta(&"segment_edge")
 	if segment_view != null and world != null:
 		segment_view.set_materials(_current_wall_material(), _material(wall_top_color), floor_mesh.material_override)
 		segment_view.rebuild(world.grid, wall_mode != WallMode.UP, lowered_wall_cells())
@@ -1074,10 +1288,14 @@ func _on_cells_changed(cells: Array[Vector2i]) -> void:
 		_build_item(world.grid.item(id))
 	_apply_paint()
 	_sync_dirt_spots()
+	if is_instance_valid(food):
+		food.refresh_layout(item_nodes)
 
 
 func _on_item_removed(item: PlacedItem) -> void:
 	_remove_item(item.id)
+	if is_instance_valid(food):
+		food.refresh_layout(item_nodes)
 
 
 func _process(_delta: float) -> void:
@@ -1093,7 +1311,8 @@ func _process(_delta: float) -> void:
 
 func _sync_agents() -> void:
 	var frames: Dictionary[int, AgentPresentationController.Frame] = AgentPresentationController.frames_for(
-		world.agents, world, _dining_seat_heights(), _dining_seat_facings(), _dining_seat_offsets(), _dining_seat_leans())
+		world.agents, world, _dining_seat_heights(), _dining_seat_facings(), _dining_seat_offsets(), _dining_seat_leans(),
+		food.restaurant.orders if is_instance_valid(food) else null)
 	var playback_speed: float = _agent_playback_speed()
 	var alpha: float = interpolation_alpha()
 	var alive: Dictionary[int, bool] = {}
@@ -1110,7 +1329,9 @@ func _sync_agents() -> void:
 			var created: Node3D = PERSON_SCENE.instantiate() as PersonView if frame.look_supported else _legacy_person_fallback(agent)
 			if created is PersonView:
 				# _ready runs on add_child; record the real look before rig creation.
+				(created as PersonView).owner_model = owner_model
 				(created as PersonView).set_look(frame.role, frame.id, frame.customer_type)
+				_set_regular_look(agent, created as PersonView)
 			created.name = "Agent%d" % agent.id
 			created.set_meta("agent_id", agent.id)
 			created.set_meta(&"courier", agent is CourierAgent)
@@ -1127,6 +1348,9 @@ func _sync_agents() -> void:
 		var node: Node3D = agent_nodes[agent.id]
 		var ready_person: bool = false
 		if node is PersonView:
+			_set_regular_look(agent, node as PersonView)
+			if frame.role == &"owner" and (node as PersonView).owner_model != owner_model:
+				(node as PersonView).set_owner_model(owner_model)
 			ready_person = AgentPresentationController.apply(frame, node as PersonView, playback_speed)
 		else:
 			node.position = frame.floor_position + frame.display_offset + Vector3(0.0, 0.875, 0.0)
@@ -1141,6 +1365,9 @@ func _sync_agents() -> void:
 		_show_held_crates(node, frame, ready_person)
 		_apply_fade(node, frame.fade)
 		_update_guest_mood(agent, node, frame)
+		_update_regular(agent, node, frame)
+	if is_instance_valid(food):
+		food.sync(frames, agent_nodes)
 	for id: int in agent_nodes.keys():
 		if not alive.has(id):
 			if not _keep_as_ghost(id):
@@ -1446,6 +1673,7 @@ func _legacy_person_fallback(agent: SimAgent) -> MeshInstance3D:
 
 
 func _remove_agent_visual(id: int) -> void:
+	_remove_regular_icon(id)
 	_remove_mood_icon(id)
 	_mood_states.erase(id)
 	_mood_bands.erase(id)
@@ -1455,8 +1683,8 @@ func _remove_agent_visual(id: int) -> void:
 	agent_nodes.erase(id)
 
 
-## The pure state has no scene signals. A bounded reconciliation observes its
-## at-most-twelve spots without allocating replacement meshes every frame.
+## The pure state has no scene signals. Reconciliation retains unchanged nodes
+## and shared meshes/materials, while paint changes can recolour a live mess.
 func _sync_dirt_spots() -> void:
 	var wanted: Dictionary[Vector2i, bool] = {}
 	if world != null and _cleanliness != null:
@@ -1464,18 +1692,32 @@ func _sync_dirt_spots() -> void:
 			if world.grid.terrain(cell) != SimGrid.Terrain.FLOOR or not world.grid.is_walkable(cell):
 				continue
 			wanted[cell] = true
-			if dirt_nodes.has(cell):
-				continue
-			var node: MeshInstance3D = MeshInstance3D.new()
-			node.name = "Dirt_%d_%d" % [cell.x, cell.y]
-			node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			node.mesh = _dirt_mesh()
-			node.material_override = _dirt_material()
-			node.position = GridMath.cell_to_world(cell) + Vector3(0.0, 0.015, 0.0)
-			node.rotation.y = float(posmod(cell.x * 3 + cell.y, 4)) * PI * 0.5
-			node.set_meta("shop_geometry", true)
-			dirt_nodes[cell] = node
-			add_child(node)
+			var node: MeshInstance3D = dirt_nodes.get(cell) as MeshInstance3D
+			if node == null:
+				node = MeshInstance3D.new()
+				node.name = "Dirt_%d_%d" % [cell.x, cell.y]
+				node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+				node.position = GridMath.cell_to_world(cell) + Vector3(0.0, 0.015, 0.0)
+				node.rotation.y = float(posmod(cell.x * 3 + cell.y, 4)) * PI * 0.5
+				node.set_meta("shop_geometry", true)
+				dirt_nodes[cell] = node
+				add_child(node)
+			var kind: int = _cleanliness.floor_mess_kind(cell)
+			var mesh: ArrayMesh = _dirt_mesh() if kind == CleanlinessState.MessKind.DIRT else _spill_mesh()
+			node.mesh = mesh
+			node.material_override = _dirt_material(mess_fill_color(cell))
+			var outline: MeshInstance3D = node.get_node_or_null("Outline") as MeshInstance3D
+			if outline == null:
+				outline = MeshInstance3D.new()
+				outline.name = "Outline"
+				outline.position.y = -0.001
+				outline.scale = Vector3.ONE * MESS_OUTLINE_SCALE
+				outline.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+				outline.material_override = _dirt_material(MESS_THEME.get_color("font_color", "Label"))
+				node.add_child(outline)
+			outline.mesh = mesh
+			if int(node.get_meta("mess_kind", -1)) != kind:
+				_set_mess_kind(node, kind)
 	for cell: Vector2i in dirt_nodes.keys():
 		if wanted.has(cell):
 			continue
@@ -1500,15 +1742,58 @@ func _dirt_mesh() -> ArrayMesh:
 	return _shared_dirt_mesh
 
 
-func _dirt_material() -> StandardMaterial3D:
-	if _shared_dirt_material == null:
-		_shared_dirt_material = StandardMaterial3D.new()
-		_shared_dirt_material.albedo_color = DIRT_SWATCH.color
-		_shared_dirt_material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
-		_shared_dirt_material.roughness = 1.0
-		_shared_dirt_material.metallic_specular = 0.0
-		_shared_dirt_material.cull_mode = BaseMaterial3D.CULL_DISABLED
-	return _shared_dirt_material
+func _spill_mesh() -> ArrayMesh:
+	if _shared_spill_mesh != null:
+		return _shared_spill_mesh
+	var surface: SurfaceTool = SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for index: int in range(12):
+		for point: Vector2 in [Vector2.ZERO, Vector2.from_angle(float(index + 1) * TAU / 12.0),
+				Vector2.from_angle(float(index) * TAU / 12.0)]:
+			surface.set_normal(Vector3.UP)
+			surface.add_vertex(Vector3(point.x * 0.22, 0.0, point.y * 0.18))
+	_shared_spill_mesh = surface.commit()
+	return _shared_spill_mesh
+
+
+func _dirt_material(color: Color) -> StandardMaterial3D:
+	if not _mess_materials.has(color):
+		var material: StandardMaterial3D = StandardMaterial3D.new()
+		material.albedo_color = color
+		material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
+		material.roughness = 1.0
+		material.metallic_specular = 0.0
+		material.cull_mode = BaseMaterial3D.CULL_DISABLED
+		_mess_materials[color] = material
+	return _mess_materials[color]
+
+
+func _set_mess_kind(node: MeshInstance3D, kind: int) -> void:
+	node.set_meta("mess_kind", kind)
+	for child_name: String in ["BrokenPlate", "PlateContrast"]:
+		var old: Node = node.get_node_or_null(child_name)
+		if old != null:
+			node.remove_child(old)
+			old.free()
+	if kind != CleanlinessState.MessKind.BROKEN_PLATE:
+		return
+	# The white kit fragments also need contrast against a light spill fill.
+	var underlay: MeshInstance3D = MeshInstance3D.new()
+	underlay.name = "PlateContrast"
+	underlay.mesh = _dirt_mesh()
+	underlay.scale = Vector3.ONE * 0.7
+	underlay.position.y = 0.002
+	underlay.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	underlay.material_override = _dirt_material(MESS_THEME.get_color("font_color", "Label"))
+	node.add_child(underlay)
+	var holder: Node3D = Node3D.new()
+	holder.name = "BrokenPlate"
+	var model: Node3D = BROKEN_PLATE_SCENE.instantiate() as Node3D
+	model.scale = Vector3.ONE * ArtScale.FOOD_SCALE
+	holder.add_child(model)
+	var bounds: AABB = PropView._children_aabb(holder)
+	holder.position = Vector3(-bounds.get_center().x, 0.004 - bounds.position.y, -bounds.get_center().z)
+	node.add_child(holder)
 
 
 func _update_guest_mood(agent: SimAgent, body: Node3D, frame: AgentPresentationController.Frame) -> void:
@@ -1543,7 +1828,7 @@ func _dining_seat_heights() -> Dictionary[int, float]:
 		var guest: CustomerAgent = agent as CustomerAgent
 		if guest == null:
 			continue
-		var source_id: int = world.grid.dining_furnishing_id(guest.seat_cell)
+		var source_id: int = _guest_seat_source_id(guest)
 		if source_id == 0 or source_id == guest.table_item_id:
 			continue
 		var visual: ItemVisual = item_nodes.get(source_id) as ItemVisual
@@ -1572,7 +1857,7 @@ func _dining_seat_offsets() -> Dictionary[int, float]:
 		var guest: CustomerAgent = agent as CustomerAgent
 		if guest == null:
 			continue
-		var source: PlacedItem = world.grid.item(world.grid.dining_furnishing_id(guest.seat_cell))
+		var source: PlacedItem = world.grid.item(_guest_seat_source_id(guest))
 		var definition: ItemDef = source.def as ItemDef if source != null else null
 		if definition != null:
 			offsets[guest.id] = definition.seated_forward_offset
@@ -1586,7 +1871,7 @@ func _dining_seat_leans() -> Dictionary[int, float]:
 		var guest: CustomerAgent = agent as CustomerAgent
 		if guest == null:
 			continue
-		var source: PlacedItem = world.grid.item(world.grid.dining_furnishing_id(guest.seat_cell))
+		var source: PlacedItem = world.grid.item(_guest_seat_source_id(guest))
 		var definition: ItemDef = source.def as ItemDef if source != null else null
 		if definition != null:
 			leans[guest.id] = definition.seated_lean_degrees
@@ -1594,16 +1879,24 @@ func _dining_seat_leans() -> Dictionary[int, float]:
 
 
 func _dining_seat_facing(guest: CustomerAgent) -> Vector3:
-	var source_id: int = world.grid.dining_furnishing_id(guest.seat_cell)
+	var source_id: int = _guest_seat_source_id(guest)
 	if source_id == 0 or source_id == guest.table_item_id:
 		return Vector3.ZERO
 	var source: PlacedItem = world.grid.item(source_id)
 	var definition: ItemDef = source.def as ItemDef if source != null else null
-	if definition == null or definition.category != ItemDef.Category.CHAIR:
+	if definition == null or definition.category not in [ItemDef.Category.CHAIR, ItemDef.Category.WAITING]:
 		return Vector3.ZERO
 	var origin: Vector2i = GridMath.rotate_cell(Vector2i.ZERO, definition.footprint, source.quarter_turns)
 	var forward: Vector2i = GridMath.rotate_cell(Vector2i.UP, definition.footprint, source.quarter_turns) - origin
 	return Vector3(forward.x, 0.0, forward.y)
+
+
+## Waiting benches are physical seats without a dining-table link. Resolve
+## their measured surface and facing through their own reservation instead.
+func _guest_seat_source_id(guest: CustomerAgent) -> int:
+	if guest.state == CustomerAgent.State.QUEUED and guest.waiting_item_id > 0:
+		return guest.waiting_item_id
+	return world.grid.dining_furnishing_id(guest.seat_cell)
 
 
 func _remove_mood_icon(id: int) -> void:
@@ -1643,3 +1936,36 @@ func _material(color: Color) -> StandardMaterial3D:
 		material.roughness = 0.9
 		_materials[color] = material
 	return _materials[color]
+
+
+func _set_regular_look(agent: SimAgent, person: PersonView) -> void:
+	var guest: CustomerAgent = agent as CustomerAgent
+	if guest != null and guest.regular_profile != null:
+		person.set_regular_look(guest.regular_profile.model_id, guest.regular_profile.tint_id)
+	else:
+		person.set_regular_look()
+
+
+func _update_regular(agent: SimAgent, body: Node3D, frame: AgentPresentationController.Frame) -> void:
+	var guest: CustomerAgent = agent as CustomerAgent
+	if guest == null or guest.regular_profile == null or frame.hidden:
+		_remove_regular_icon(agent.id)
+		return
+	if not regular_nodes.has(agent.id):
+		var created: RegularGuestIndicator = RegularGuestIndicator.new()
+		body.add_child(created)
+		regular_nodes[agent.id] = created
+	var indicator: RegularGuestIndicator = regular_nodes[agent.id]
+	indicator.position = (frame.head_anchor if frame.anchors_ready else Vector3.UP * 0.8) + Vector3.UP * 0.32
+	indicator.present(guest.regular_profile.display_name, guest.regular_profile.greeting,
+		world.now - guest.regular_arrival_tick < 2 * SimClock.TICKS_PER_SECOND)
+
+
+func _remove_regular_icon(id: int) -> void:
+	if not regular_nodes.has(id):
+		return
+	var indicator: RegularGuestIndicator = regular_nodes[id]
+	if is_instance_valid(indicator):
+		indicator.get_parent().remove_child(indicator)
+		indicator.free()
+	regular_nodes.erase(id)

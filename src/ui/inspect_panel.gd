@@ -30,6 +30,13 @@ var _shown_menu_board_anchor: Vector3i = WallFaces.NO_FACE
 var _menu_section_row: VBoxContainer
 var _menu_section_option: OptionButton
 var _nodes_bound: bool = false
+var _owner_appearance: OwnerAppearance = OwnerAppearance.new()
+var _owner_portrait: OwnerCharacterPreview
+## Reachability changes with topology, not with reservations or dirt.
+var _dining_cache_grid: SimGrid
+var _dining_cache_version: int = -1
+var _dining_cache_group: int = 0
+var _dining_cache_capacity: int = 0
 
 
 func _ready() -> void:
@@ -39,6 +46,9 @@ func _ready() -> void:
 func bind_world(value: SimWorld) -> void:
 	if _world != value:
 		_world = value
+		_dining_cache_grid = null
+		_dining_cache_version = -1
+		_dining_cache_group = 0
 		clear()
 	else:
 		refresh()
@@ -48,6 +58,15 @@ func bind_menu_boards(decor: WallDecor, menu: MenuSettings) -> void:
 	_wall_decor = decor
 	_menu_settings = menu
 	refresh()
+
+
+func set_owner_appearance(appearance: OwnerAppearance) -> void:
+	_owner_appearance = appearance
+	refresh()
+
+
+func owner_portrait_model() -> StringName:
+	return _owner_appearance.model
 
 
 func show_agent(agent_id: int) -> void:
@@ -117,6 +136,13 @@ func refresh() -> void:
 			return
 		_reset_content(agent is OwnerAgent and _shown_owner_id == agent.id)
 		_title.text = _agent_title(agent)
+		if agent is OwnerAgent:
+			# Keep a long chosen name from growing this bottom panel into the HUD.
+			_title.autowrap_mode = TextServer.AUTOWRAP_OFF
+			_title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+			_title.clip_text = true
+			_title.tooltip_text = _title.text
+			_title.mouse_filter = Control.MOUSE_FILTER_PASS
 		_why.text = _agent_why(agent)
 		_why.show()
 		if agent is StaffAgent:
@@ -175,7 +201,16 @@ func _bind_nodes() -> void:
 
 
 func _reset_content(keep_owner_controls: bool = false, keep_menu_board_controls: bool = false) -> void:
-	_title.text = ""
+	if _owner_portrait != null:
+		_owner_portrait.hide()
+	# Preserve hover and its tooltip while the same owner is refreshed each frame.
+	if not keep_owner_controls:
+		_title.text = ""
+		_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_title.text_overrun_behavior = TextServer.OVERRUN_NO_TRIMMING
+		_title.clip_text = false
+		_title.tooltip_text = ""
+		_title.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_why.text = ""
 	_why.hide()
 	_details.text = ""
@@ -202,6 +237,10 @@ func _reset_content(keep_owner_controls: bool = false, keep_menu_board_controls:
 
 
 func _agent_title(agent: SimAgent) -> String:
+	if agent is CustomerAgent and (agent as CustomerAgent).regular_profile != null:
+		return (agent as CustomerAgent).regular_profile.display_name + " (Regular)"
+	if agent is OwnerAgent:
+		return OwnerText.inspect_title(_owner_appearance.display_name, agent.id)
 	var role_name: String = "Guest" if agent is CustomerAgent else String(agent.role).capitalize()
 	# The delivery person's name already says who she is (rule 11: no raw role).
 	if agent is CourierAgent:
@@ -256,6 +295,16 @@ func _show_staff(staff: StaffAgent) -> void:
 
 
 func _show_owner_modes(selected_owner: OwnerAgent) -> void:
+	if _owner_portrait == null:
+		_owner_portrait = OwnerCharacterPreview.new()
+		_owner_portrait.name = "OwnerPortrait"
+		_owner_portrait.custom_minimum_size = Vector2(160.0, 120.0)
+		_owner_portrait.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var rows: VBoxContainer = $Panel/Rows as VBoxContainer
+		rows.add_child(_owner_portrait)
+		rows.move_child(_owner_portrait, 1)
+	_owner_portrait.set_models([_owner_appearance.model] as Array[StringName])
+	_owner_portrait.show()
 	_shown_owner_id = selected_owner.id
 	_owner_modes.show()
 	for mode: StringName in OwnerAgent.MODES:
@@ -289,6 +338,8 @@ func _show_guest(guest: CustomerAgent) -> void:
 	if int(guest.state) >= 0 and int(guest.state) < GUEST_STATES.size():
 		state_name = GUEST_STATES[int(guest.state)]
 	_details.text = "Type: %s\nState: %s" % [guest.customer_type_name, state_name]
+	if guest.regular_profile != null:
+		_details.text += "\n" + RegularText.inspection(guest.regular_profile, guest.regular_favourite_label)
 	for order: Order in [guest.order, guest.extra_order]:
 		if order != null and order.state == Order.State.DELIVERED and order.quality_breakdown != null:
 			_details.text += "\nServed quality: " + order.quality_breakdown.explanation()
@@ -324,12 +375,23 @@ func _show_item(item: PlacedItem) -> void:
 		station_name = CatalogueText.station_name(definition)
 	_title.text = "%s #%d" % [item_name, item.id]
 	_details.text = "Station: %s" % station_name
+	var group: DiningSeats.Group = _world.grid.dining_group(item.id)
+	var seats: Array[Vector2i] = item.seat_cells
+	if group != null:
+		if _dining_cache_grid != _world.grid or _dining_cache_version != _world.grid.version or _dining_cache_group != group.id:
+			_dining_cache_grid = _world.grid
+			_dining_cache_version = _world.grid.version
+			_dining_cache_group = group.id
+			_dining_cache_capacity = DiningSeats.usable_cells(_world.grid, item).size()
+		_details.text += "\n" + CatalogueText.dining_capacity(_dining_cache_capacity, group.is_joined())
+		seats = group.seat_cells
 	_details.show()
 	var lines: PackedStringArray = []
 	for cell: Vector2i in item.work_cells:
 		lines.append(_reservation_line("Work", cell, item.reserved_by(cell)))
-	for cell: Vector2i in item.seat_cells:
-		lines.append(_reservation_line("Seat", cell, item.reserved_by(cell)))
+	for cell: Vector2i in seats:
+		var owner: PlacedItem = _world.grid.item(_world.grid.dining_owner_id(item.id, cell)) if group != null else item
+		lines.append(_reservation_line("Seat", cell, owner.reserved_by(cell) if owner != null else -1))
 	_reservations.text = "No work or seat cells" if lines.is_empty() else "\n".join(lines)
 	_reservations.show()
 

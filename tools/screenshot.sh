@@ -9,6 +9,7 @@
 # --hud-layout --window-size=1280x720|1600x900 --speed=0 --frames=12,90 captures 125%, then 150%.
 # --report --open --fast=100 --speed=0 --frames=60 captures a real closed-day report.
 # --door-queue --open --fast=8 --speed=1 --frames=240 zooms a real queue, or records its absence at the entry.
+# --lease-review=offer|short|expand --speed=0 --frames=12 captures exactly one declared lease state; offer/short also need --menu.
 # --loan-review --speed=0 --frames=12,90 captures an explicit loss fixture's bank report, then next-morning Loan HUD.
 # --milestone-review --speed=0 --frames=12,90 captures Goals, then an explicit close-data reward fixture.
 # --catalogue-review=rustic|modern --speed=0 --frames=90,120 captures real previews, then the furnishing fixture.
@@ -17,7 +18,13 @@
 # --expand=drag --speed=0 --frames=12 holds a dragged floor rectangle on the lot (ghost + cost + lot outline); --expand=shop --open --fast=10 --speed=1 --frames=150 [--quarter=0] shows the finished L-shaped shop.
 # --floors-review --speed=0 --frames=12,30 shows laid floor types (thresholds, both doors, staff on them), then Build > Floors with a held drag.
 # --walls-review --speed=0 --frames=12,30 [--quarter=N] shows wall finishes and hung wall decor in Cutaway, then Walls Up with Build > Wall finish holding a striped wallpaper drag.
+# --street-front-review --speed=0 --frames=60 shows the purchased, finished front in daylight, with its live restaurant name and real owner for scale.
 # --rooms=tool|refused --speed=0 --frames=30 shows the Rooms tool tints or a refused kitchen seat; --rooms=restroom --open --fast=10 --speed=1 --frames=200 pauses on a guest walking round the kitchen to the restroom.
+# Plain Main default/quarter frame60 captures use seed1 and neighbourhood photo time4s; unrelated review modes retain their original behavior.
+# --neighbourhood-review=street --speed=0 --frames=60 uses the real road centre through the street-only pan clamp (photo override only).
+# --weather-review=sunny --menu --speed=0 --frames=60 (or rain without --menu) forces explicitly unsaved morning weather after the real seed-1 selection.
+# --joined-tables-review --speed=0 --frames=90 shows one real party of six after normal table moves/opening/walking (explicit unsaved fixture).
+# --restroom-review --speed=0 --frames=12,30 shows two toilets, partitions, mirror and dryer, then person scale.
 # --blueprints=selection|ghost|stamped --speed=0 --frames=30 [--quarter=N] shows a table/rug box selection, rotated group ghost, or stamped pair.
 # --menu-boards-review --speed=0 --frames=12,30 shows a placed board and its inspector section choice, then the Menu theme readout.
 # Build previews use the production morning input API without buying or saving.
@@ -30,6 +37,7 @@ GODOT="${GODOT:-.tools/godot-$ver/Godot_v${ver}-stable_linux.x86_64}"
 command -v xvfb-run >/dev/null || { echo "BLOCKED: xvfb-run is not preinstalled; a supported Xvfb/Mesa environment is required."; exit 2; }
 out="screens"
 settings_capture=false
+lease_capture=false
 hud_layout=false
 window_size="1600x900"
 window_size_requested=false
@@ -37,6 +45,10 @@ for a in "$@"; do
   [[ "$a" == --out=* ]] && out="${a#--out=}"
   [[ "$a" == --settings || "$a" == --settings-world || "$a" == --loan-review || "$a" == --milestone-review || "$a" == --diner-review || "$a" == --menu-boards-review ]] && settings_capture=true
   [[ "$a" == --catalogue-review=* ]] && settings_capture=true
+  if [[ "$a" == --lease-review* ]]; then
+    settings_capture=true
+    lease_capture=true
+  fi
   if [[ "$a" == --hud-layout ]]; then
     hud_layout=true
     settings_capture=true
@@ -59,6 +71,11 @@ if "$settings_capture"; then
   settings_data="$(mktemp -d)"
   export XDG_DATA_HOME="$settings_data"
   trap 'rm -rf -- "$settings_data"' EXIT
+fi
+if "$lease_capture"; then
+  git diff --quiet && git diff --cached --quiet || { echo "FAIL: lease captures require a committed source tree"; exit 1; }
+  export FK_LEASE_CAPTURE_SHA="$(git rev-parse HEAD)"
+  export FK_LEASE_CAPTURE_TREE="$(git rev-parse HEAD^{tree})"
 fi
 mkdir -p "$out"
 log="$out/capture.log"

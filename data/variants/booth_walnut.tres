@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="ItemVariant" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/sim/content/item_variant.gd" id="1_script"]
+
+[resource]
+script = ExtResource("1_script")
+id = &"booth_walnut"
+display_name = "Walnut"
+theme_tags = Array[StringName]([&"cosy"])
+material_colours = Dictionary[StringName, StringName]({&"carpetWhite": &"woodDark"})
+chip_colour = &"woodDark"

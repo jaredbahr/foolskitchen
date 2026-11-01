@@ -97,6 +97,9 @@ func test_kitchen_equipment_unlocks_and_buy_move_sell_keep_exact_books() -> void
 
 
 func test_partial_table_capacity_warning_is_read_only_and_uses_actual_usable_cells() -> void:
+	# This footprint blocks the kitchen aisle. Keep a reachable coffee station
+	# so the test still isolates partial seating rather than an empty menu.
+	assert_not_null(_sim.world.grid.place_def(_content.item(&"coffee_machine"), Vector2i(12, 5), 2))
 	assert_true(_sim.world.grid.remove(_sim.world.grid.item_at(Vector2i(6, 6)).id))
 	_editor.set_owner_level(2)  # the four-seat table unlocks at level 2
 	var before: Dictionary = _editor.to_dict()
@@ -317,7 +320,8 @@ func test_last_required_station_and_door_guards_use_real_categories() -> void:
 	assert_false(_editor.check_sell(_id(&"fridge")).ok)
 
 
-func test_unreachable_seats_and_each_pass_side_warn_but_do_not_block() -> void:
+func test_unreachable_seats_and_pass_side_stay_warnings_while_a_drink_remains_cookable() -> void:
+	assert_not_null(_sim.world.grid.place_def(_content.item(&"coffee_machine"), Vector2i(12, 5), 2))
 	_editor.set_owner_level(2)
 	var table_id: int = _id(&"table_2")
 	assert_true(_editor.buy(&"potted_plant", Vector2i(1, 7)))

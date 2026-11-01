@@ -15,7 +15,7 @@ mouse_filter = 2
 theme = ExtResource("2_theme")
 script = ExtResource("1_script")
 
-[node name="Panel" type="PanelContainer" parent="."]
+[node name="Panel" type="ScrollContainer" parent="."]
 layout_mode = 1
 anchor_left = 0.5
 anchor_right = 0.5
@@ -27,9 +27,13 @@ offset_bottom = -12.0
 clip_contents = true
 mouse_filter = 0
 mouse_force_pass_scroll_events = false
+horizontal_scroll_mode = 0
+follow_focus = true
 
 [node name="Content" type="VBoxContainer" parent="Panel"]
 layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
 mouse_filter = 2
 
 [node name="Header" type="HBoxContainer" parent="Panel/Content"]
@@ -68,6 +72,13 @@ mouse_filter = 2
 autowrap_mode = 3
 text = "Choose dishes and prices for today."
 
+[node name="QuitToTitleButton" type="Button" parent="Panel/Content/Header"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 4
+focus_mode = 0
+text = "Quit to title"
+
 [node name="Identity" type="VBoxContainer" parent="Panel/Content"]
 layout_mode = 2
 mouse_filter = 2
@@ -94,7 +105,33 @@ layout_mode = 2
 mouse_filter = 2
 autowrap_mode = 3
 
+[node name="WeatherForecast" type="Label" parent="Panel/Content"]
+layout_mode = 2
+mouse_filter = 2
+text = "Sunny today"
+
+[node name="LeaseOffer" type="VBoxContainer" parent="Panel/Content"]
+visible = false
+layout_mode = 2
+
+[node name="Cost" type="Label" parent="Panel/Content/LeaseOffer"]
+layout_mode = 2
+autowrap_mode = 3
+
+[node name="Warning" type="Label" parent="Panel/Content/LeaseOffer"]
+layout_mode = 2
+autowrap_mode = 3
+
+[node name="Refusal" type="Label" parent="Panel/Content/LeaseOffer"]
+layout_mode = 2
+autowrap_mode = 3
+
+[node name="Accept" type="Button" parent="Panel/Content/LeaseOffer"]
+layout_mode = 2
+text = "Upgrade your lease"
+
 [node name="Body" type="HBoxContainer" parent="Panel/Content"]
+custom_minimum_size = Vector2(0, 100)
 layout_mode = 2
 size_flags_vertical = 3
 mouse_filter = 2

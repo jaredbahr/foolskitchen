@@ -1,0 +1,96 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://src/ui/owner_picker.gd" id="1_picker"]
+[ext_resource type="Theme" path="res://src/ui/theme/main_theme.tres" id="2_theme"]
+[ext_resource type="Script" path="res://src/ui/owner_character_preview.gd" id="3_preview"]
+
+[node name="OwnerPicker" type="Control"]
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+theme = ExtResource("2_theme")
+script = ExtResource("1_picker")
+
+[node name="Panel" type="PanelContainer" parent="."]
+layout_mode = 1
+anchor_left = 0.04
+anchor_top = 0.04
+anchor_right = 0.96
+anchor_bottom = 0.96
+grow_vertical = 2
+
+[node name="ContentScroll" type="ScrollContainer" parent="Panel"]
+layout_mode = 2
+horizontal_scroll_mode = 0
+vertical_scroll_mode = 1
+
+[node name="Rows" type="VBoxContainer" parent="Panel/ContentScroll"]
+layout_mode = 2
+theme_override_constants/separation = 12
+size_flags_horizontal = 3
+
+[node name="Title" type="Label" parent="Panel/ContentScroll/Rows"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+horizontal_alignment = 1
+
+[node name="Scroll" type="ScrollContainer" parent="Panel/ContentScroll/Rows"]
+layout_mode = 2
+size_flags_vertical = 3
+vertical_scroll_mode = 0
+
+[node name="Looks" type="VBoxContainer" parent="Panel/ContentScroll/Rows/Scroll"]
+layout_mode = 2
+custom_minimum_size = Vector2(1050, 244)
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="Preview" type="SubViewportContainer" parent="Panel/ContentScroll/Rows/Scroll/Looks"]
+unique_name_in_owner = true
+layout_mode = 2
+custom_minimum_size = Vector2(1050, 190)
+size_flags_horizontal = 3
+size_flags_vertical = 3
+mouse_filter = 2
+stretch = true
+script = ExtResource("3_preview")
+
+[node name="Choices" type="HBoxContainer" parent="Panel/ContentScroll/Rows/Scroll/Looks"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="NameLabel" type="Label" parent="Panel/ContentScroll/Rows"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="OwnerName" type="LineEdit" parent="Panel/ContentScroll/Rows"]
+unique_name_in_owner = true
+layout_mode = 2
+max_length = 32
+
+[node name="Error" type="Label" parent="Panel/ContentScroll/Rows"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="Actions" type="HBoxContainer" parent="Panel/ContentScroll/Rows"]
+layout_mode = 2
+alignment = 2
+
+[node name="Random" type="Button" parent="Panel/ContentScroll/Rows/Actions"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="Cancel" type="Button" parent="Panel/ContentScroll/Rows/Actions"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="Confirm" type="Button" parent="Panel/ContentScroll/Rows/Actions"]
+unique_name_in_owner = true
+layout_mode = 2

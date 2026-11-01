@@ -523,3 +523,24 @@ func _assert_invalid_neutral(inputs: VibeModel.Inputs, tuning: VibeTuning) -> vo
 	assert_false(result.reason.strip_edges().is_empty())
 	assert_eq(_inputs_signature(inputs), before, "invalid evaluation leaves its inputs untouched")
 	_assert_neutral(result)
+
+
+func test_variant_themes_do_not_split_repeat_decay_or_variety() -> void:
+	var first: VibeModel.Item = _item(&"repeatable", 4.0, [&"cosy"], [Vector2i(1, 1)])
+	var second: VibeModel.Item = _item(&"repeatable", 4.0, [&"cosy"], [Vector2i(2, 1)])
+	first.variant_id = &"wood"
+	second.variant_id = &"wood"
+	var same: VibeModel.Result = _evaluate([first, second])
+	second.variant_id = &"metal"
+	second.theme_tags = [&"modern"]
+	var mixed: VibeModel.Result = _evaluate([first, second])
+	assert_true(same.valid)
+	assert_true(mixed.valid, mixed.reason)
+	assert_almost_eq(mixed.decor_points, same.decor_points, 0.000001, "different looks share base repeat decay")
+	assert_almost_eq(mixed.variety_points, same.variety_points, 0.000001, "different looks are not new furniture kinds")
+	assert_almost_eq(mixed.theme_share, 0.5)
+	assert_eq(_result_signature(_evaluate([second, first])), _result_signature(mixed), "look order does not affect votes")
+	second.variant_id = first.variant_id
+	var invalid: VibeModel.Result = _evaluate([first, second])
+	assert_false(invalid.valid, "same look cannot have inconsistent authored tags")
+	assert_eq(invalid.reason, "Copies of an item have different vibe data")

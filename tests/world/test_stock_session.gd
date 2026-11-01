@@ -4,6 +4,9 @@ extends TestCase
 ## the HUD and the evening report's Low stock section.
 
 const MAIN: PackedScene = preload("res://src/world/main.tscn")
+## Fixed-quantity cart, expiry and storage fixtures choose actual manual
+## targets; automatic crowd forecasts have separate production-session tests.
+const MANUAL_MAIN: GDScript = preload("res://tests/fixtures/manual_restock_main.gd")
 const TUNING: EconomyTuning = preload("res://data/balance/tier1_economy.tres")
 const SLOT: String = "stock_session"
 
@@ -39,8 +42,8 @@ func _ingredient_entries(day: int) -> Array[Dictionary]:
 	return found
 
 
-## Defaults buy what the old fixed top-up bought; the premium is one entry.
-func test_new_game_auto_order_buys_the_old_amounts_with_one_premium() -> void:
+## Explicit manual targets retain the old quantities and one order premium.
+func test_manual_targets_buy_the_old_amounts_with_one_premium() -> void:
 	_start(false)
 	for id: StringName in TUNING.morning_stock:
 		assert_eq(Economy.stock.count(id), TUNING.morning_stock[id], "%s topped up as before" % id)
@@ -305,6 +308,7 @@ func _next_morning() -> void:
 
 func _start(with_saves: bool) -> Node:
 	var main: Node = MAIN.instantiate()
+	main.set_script(MANUAL_MAIN)
 	main.set("use_saves", with_saves)
 	main.set("save_slot", SLOT)
 	_mains.append(main)

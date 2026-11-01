@@ -3,6 +3,13 @@ extends TestCase
 
 const START_CASH: int = 10000
 
+class Catalog extends ContentDB:
+	var extra: Dictionary[StringName, ItemDef] = {}
+
+	func item(id: StringName) -> ItemDef:
+		return extra[id] if extra.has(id) else super.item(id)
+
+
 var _content: ContentDB
 var _sim: RestaurantSim
 var _grid: SimGrid
@@ -421,6 +428,228 @@ func test_malformed_library_restore_is_transactional_and_drops_unknown_swatch() 
 	assert_eq(library.blueprints[0].entries[1].swatch_id, &"")
 	assert_false(library.rename(library.blueprints[0], "  "))
 	assert_false(library.rename(library.blueprints[0], "line\nbreak"))
+
+
+func test_real_white_and_walnut_capture_keep_looks_through_every_rotation_and_stamp() -> void:
+	var definition: ItemDef = _content.item(&"diner_booth")
+	# Booths are standalone chairs: their real tables stay outside the selection.
+	var source_entries: Array[ShopPlacement] = [_entry(definition.id, Vector2i(1, 1)),
+		_entry(definition.id, Vector2i(4, 1), 1)]
+	assert_eq(_place_booth_supports(source_entries).size(), 2)
+	var white: PlacedItem = _grid.place_def(definition, Vector2i(1, 1), 0, &"booth_white")
+	var walnut: PlacedItem = _grid.place_def(definition, Vector2i(4, 1), 1, &"booth_walnut")
+	assert_not_null(white)
+	assert_not_null(walnut)
+	if white == null or walnut == null:
+		return
+	assert_eq(white.variant_id, &"booth_white", "fixture has the authored White look")
+	assert_eq(walnut.variant_id, &"booth_walnut", "fixture has the authored Walnut look")
+	for source: PlacedItem in [white, walnut]:
+		for cell: Vector2i in source.seat_cells:
+			assert_eq(_grid.dining_furnishing_id(cell), source.id, "source seats face unselected real tables")
+	var blueprint: Blueprint = Blueprint.capture(_grid, [white.id, walnut.id] as Array[int], "Mixed booths")
+	var expected: Array[StringName] = [&"booth_white", &"booth_walnut"]
+	assert_eq(blueprint.entries.size(), 2)
+	for index: int in blueprint.entries.size():
+		assert_eq(blueprint.entries[index].variant_id, expected[index], "capture retains explicit look ids")
+	for turns: int in 4:
+		var placements: Array[ShopPlacement] = blueprint.placements(_content, Vector2i(8, 8), turns)
+		assert_eq(placements.size(), 2)
+		for index: int in placements.size():
+			assert_eq(placements[index].variant_id, expected[index], "rotation retains look ids")
+		var supports: Array[int] = _place_booth_supports(placements)
+		assert_eq(supports.size(), 2)
+		var check: EditCheck = _editor.check_stamp(blueprint, Vector2i(8, 8), turns)
+		assert_true(check.ok, "real tables make the rotated booth stamp valid: " + check.why)
+		assert_true(_history.stamp(blueprint, Vector2i(8, 8), turns), _editor.last_check.why)
+		assert_eq(_editor.last_stamp_ids.size(), 2)
+		for index: int in _editor.last_stamp_ids.size():
+			var placed: PlacedItem = _grid.item(_editor.last_stamp_ids[index])
+			assert_eq(placed.variant_id, expected[index], "the committed furniture retains its look")
+			assert_eq(placed.quarter_turns, posmod(blueprint.entries[index].quarter_turns + turns, 4))
+			for cell: Vector2i in placed.seat_cells:
+				assert_eq(_grid.dining_furnishing_id(cell), placed.id, "stamped seats face real tables")
+		assert_true(_history.undo(), _history.last_refusal)
+		assert_eq(_ledger.cash, START_CASH)
+		for id: int in supports:
+			_grid.remove(id)
+	assert_eq(definition.variant_tags(walnut.variant_id), [&"cosy"] as Array[StringName])
+	assert_eq(definition.variant(walnut.variant_id).material_colours, {&"carpetWhite": &"woodDark"})
+
+
+func test_direct_group_commit_retains_each_authored_look_without_capture() -> void:
+	var blueprint: Blueprint = _booths()
+	var definitions: Array[ItemDef] = [_content.item(&"diner_booth"), _content.item(&"diner_booth")]
+	# Directly supplied entries isolate actual grid placement from DTO propagation.
+	var placed: Array[PlacedItem] = _grid.place_group(definitions, blueprint.entries)
+	assert_eq(placed.size(), 2)
+	for index: int in placed.size():
+		assert_eq(placed[index].variant_id, blueprint.entries[index].variant_id)
+
+
+func test_priced_blueprint_total_check_ledger_full_undo_and_private_redo_agree() -> void:
+	var blueprint: Blueprint = _priced_plants()
+	var unit: int = _content.item(&"potted_plant").price + 17
+	var total: int = unit * 2
+	assert_eq(blueprint.total_price(_content), total)
+	var check: EditCheck = _editor.check_stamp(blueprint, Vector2i(5, 5))
+	assert_true(check.ok, check.why)
+	assert_eq(check.cost, total)
+	var before: Dictionary = _editor.to_dict()
+	assert_true(_history.stamp(blueprint, Vector2i(5, 5)), _editor.last_check.why)
+	assert_eq(_history.undo_count(), 1)
+	assert_eq(_history.redo_count(), 0)
+	assert_eq(_editor.last_cash_change, -total)
+	assert_eq(_ledger.cash, START_CASH - total)
+	var lines: Array[Dictionary] = _ledger.entries_for_day(1)
+	assert_eq(lines.size(), 2)
+	for line: Dictionary in lines:
+		assert_eq(int(line["amount"]), -unit)
+		assert_eq(line["category"], Ledger.UPGRADES)
+	for id: int in _editor.last_stamp_ids:
+		assert_eq(_grid.item(id).variant_id, &"plus17")
+	var library: BlueprintLibrary = BlueprintLibrary.new()
+	assert_true(library.add(blueprint))
+	assert_true(library.remove(blueprint))
+	blueprint.entries[0].variant_id = &"original"
+	blueprint.entries.clear()
+	blueprint.display_name = "Changed after stamping"
+	assert_true(_history.undo(), _history.last_refusal)
+	assert_eq(_editor.to_dict(), before)
+	assert_eq(_ledger.cash, START_CASH)
+	assert_eq(_ledger.entries_for_day(1).back()["amount"], total, "undo refunds the entire original debit")
+	assert_eq(_ledger.entries_for_day(1).back()["note"], ShopEditHistory.UNDO_NOTE)
+	assert_eq(int(_ledger.day_totals(1).get(Ledger.UPGRADES, 0)), 0)
+	assert_eq(_history.undo_count(), 0)
+	assert_eq(_history.redo_count(), 1)
+	assert_true(_history.redo(), _history.last_refusal)
+	assert_eq(_ledger.cash, START_CASH - total)
+	assert_eq(_ledger.entries_for_day(1).back()["amount"], -total)
+	assert_eq(_ledger.entries_for_day(1).back()["note"], ShopEditHistory.REDO_NOTE)
+	assert_eq(_history.undo_count(), 1)
+	assert_eq(_history.redo_count(), 0)
+	assert_eq(_grid.items().size(), 2)
+	for id: int in _editor.last_stamp_ids:
+		assert_eq(_grid.item(id).variant_id, &"plus17", "redo owns an independent copy")
+
+
+func test_cash_for_base_pair_refuses_priced_pair_atomically() -> void:
+	var blueprint: Blueprint = _priced_plants()
+	_ledger.cash = 2 * _content.item(&"potted_plant").price
+	assert_true(_editor.check_stamp(_plants(), Vector2i(5, 5)).ok, "base-only pair is affordable")
+	var before: Dictionary = _editor.to_dict()
+	var books: Dictionary = _ledger.to_dict()
+	var version: int = _grid.version
+	var next_id: int = int(_grid.get("_next_id"))
+	assert_false(_editor.check_stamp(blueprint, Vector2i(5, 5)).ok)
+	assert_false(_history.stamp(blueprint, Vector2i(5, 5)))
+	assert_eq(_editor.last_check.why, ShopEditBooks.CASH_REFUSAL)
+	assert_eq(_editor.to_dict(), before)
+	assert_eq(_ledger.to_dict(), books)
+	assert_eq(_grid.version, version)
+	assert_eq(int(_grid.get("_next_id")), next_id)
+	assert_true(_grid.items().is_empty())
+	assert_true(_notifications.is_empty())
+	assert_eq(_history.undo_count(), 0)
+	assert_eq(_history.redo_count(), 0)
+
+
+func test_v1_real_json_roundtrip_preserves_explicit_white_and_walnut() -> void:
+	var library: BlueprintLibrary = BlueprintLibrary.new()
+	assert_true(library.add(_booths()))
+	var saved: Dictionary = library.to_dict()
+	assert_eq(saved["version"], 1)
+	var entries: Array = saved["blueprints"][0]["entries"]
+	assert_eq(entries[0].get("variant_id"), "booth_white")
+	assert_eq(entries[1].get("variant_id"), "booth_walnut")
+	var decoded: Dictionary = JSON.parse_string(JSON.stringify(saved)) as Dictionary
+	var restored: BlueprintLibrary = BlueprintLibrary.new()
+	var notes: Array[String] = []
+	assert_true(restored.restore(decoded, _content, notes))
+	assert_eq(restored.blueprints[0].entries.size(), 2)
+	assert_eq(restored.blueprints[0].entries[0].variant_id, &"booth_white")
+	assert_eq(restored.blueprints[0].entries[1].variant_id, &"booth_walnut")
+	assert_eq(restored.to_dict(), saved)
+	assert_true(notes.is_empty())
+
+
+func test_old_v1_missing_and_unknown_look_keep_both_items_with_default() -> void:
+	var saved: Dictionary = {"version": 1, "blueprints": [{"name": "Old mixed booths", "entries": [
+		{"item_id": "diner_booth", "offset": [0, 0], "rotation": 0},
+		{"item_id": "diner_booth", "offset": [3, 0], "rotation": 1, "variant_id": "removed_future_look"}]}]}
+	var decoded: Dictionary = JSON.parse_string(JSON.stringify(saved)) as Dictionary
+	var library: BlueprintLibrary = BlueprintLibrary.new()
+	var notes: Array[String] = []
+	assert_true(library.restore(decoded, _content, notes))
+	assert_eq(library.blueprints.size(), 1)
+	assert_eq(library.blueprints[0].entries.size(), 2, "unknown looks do not skip furniture")
+	for entry: ShopPlacement in library.blueprints[0].entries:
+		assert_eq(entry.item_id, &"diner_booth")
+		assert_eq(entry.variant_id, &"")
+		assert_eq(_content.item(entry.item_id).variant(entry.variant_id).id, &"booth_white")
+	assert_true(notes.is_empty())
+	assert_eq(BlueprintLibrary.VERSION, 1)
+	assert_eq(ShopEditor.SNAPSHOT_VERSION, 8)
+
+
+func test_malformed_optional_look_rejects_transactionally_without_leaking_notes() -> void:
+	var library: BlueprintLibrary = BlueprintLibrary.new()
+	assert_true(library.add(_booths()))
+	var before: Dictionary = library.to_dict()
+	for bad: Variant in [17, true, null, ["booth_walnut"], {"id": "booth_walnut"}]:
+		var saved: Dictionary = {"version": 1, "blueprints": [{"name": "Invalid looks", "entries": [
+			{"item_id": "removed_future_item", "offset": [0, 0], "rotation": 0},
+			{"item_id": "diner_booth", "offset": [3, 0], "rotation": 0, "variant_id": bad}]}]}
+		var notes: Array[String] = ["existing note"]
+		assert_false(library.restore(saved, _content, notes))
+		assert_eq(library.to_dict(), before)
+		assert_eq(notes, ["existing note"] as Array[String])
+
+
+func _place_booth_supports(entries: Array[ShopPlacement]) -> Array[int]:
+	var ids: Array[int] = []
+	var booth: ItemDef = _content.item(&"diner_booth")
+	for entry: ShopPlacement in entries:
+		var first: Vector2i = entry.origin + GridMath.rotate_cell(Vector2i(0, -1), booth.footprint, entry.quarter_turns)
+		var second: Vector2i = entry.origin + GridMath.rotate_cell(Vector2i(1, -1), booth.footprint, entry.quarter_turns)
+		var table: PlacedItem = _grid.place_def(_content.item(&"cross_table"), first.min(second), entry.quarter_turns)
+		assert_not_null(table, "fixture table covers both cells facing the booth")
+		if table != null:
+			ids.append(table.id)
+	return ids
+
+
+func _booths() -> Blueprint:
+	var blueprint: Blueprint = Blueprint.new()
+	blueprint.display_name = "White and Walnut"
+	blueprint.entries = [_entry(&"diner_booth", Vector2i.ZERO), _entry(&"diner_booth", Vector2i(3, 0), 1)]
+	blueprint.entries[0].variant_id = &"booth_white"
+	blueprint.entries[1].variant_id = &"booth_walnut"
+	return blueprint
+
+
+func _priced_plants() -> Blueprint:
+	var catalog: Catalog = Catalog.new()
+	assert_eq(catalog.load_all(), PackedStringArray())
+	var definition: ItemDef = catalog.item(&"potted_plant").duplicate() as ItemDef
+	var original: ItemVariant = ItemVariant.new()
+	original.id = &"original"
+	original.display_name = "Original"
+	original.theme_tags = definition.theme_tags.duplicate()
+	var alternative: ItemVariant = original.duplicate() as ItemVariant
+	alternative.id = &"plus17"
+	alternative.display_name = "Plus 17"
+	alternative.price_delta = 17
+	definition.variants = [original, alternative]
+	catalog.extra[definition.id] = definition
+	_content = catalog
+	_editor = ShopEditor.new(_sim, _content, ShopEditBooks.new(_can_spend, _record))
+	_editor.set_owner_level(20)
+	_history = ShopEditHistory.new(_editor, _grid)
+	var blueprint: Blueprint = _plants()
+	for entry: ShopPlacement in blueprint.entries:
+		entry.variant_id = alternative.id
+	return blueprint
 
 
 func _plants() -> Blueprint:

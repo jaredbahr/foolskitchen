@@ -11,3 +11,5 @@ hourly_weights = Dictionary[StringName, PackedFloat32Array]({
 })
 drink_visit_ticks = 110
 min_arrival_rate = 0.25
+waiting_bench_patience_multiplier = 1.5
+waiting_bench_door_distance = 8

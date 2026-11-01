@@ -5,6 +5,7 @@ signal next_day_pressed
 
 const LOAN_INTRODUCTION: String = "The bank covered your shortfall. It'll take a share of your profits until it's paid back."
 const MONEY_LABELS: Dictionary = {
+	Ledger.BREAKAGES: "Breakages",
 	Ledger.BANK_LOAN: "Bank loan",
 	Ledger.LOAN_INTEREST: "Loan interest",
 	Ledger.LOAN_REPAYMENT: "Loan repayment",
@@ -23,12 +24,16 @@ const LEAVE_LABELS: Dictionary = {
 }
 const PROFIT_GREEN: Color = Color("38764b")
 const LOSS_RED: Color = Color("a83e35")
+const STAFF_ADVICE_RULES: StaffAdviceTuning = preload("res://data/balance/staff_advice.tres")
 
 var _restaurant_name: Label
 var _header: Label
 var _profit: Label
 var _income: GridContainer
 var _costs: GridContainer
+var _stock: GridContainer
+var _stock_summary: VBoxContainer
+var _cash_change: Label
 var _loan_notice: Label
 var _dishes: GridContainer
 var _guests: Label
@@ -48,12 +53,18 @@ var _milestone_heading: Label
 var _milestone_rows: VBoxContainer
 var _nodes_bound: bool = false
 var _report_shown: bool = false
+var regulars_summary: Label
 var vibe_summary: Label
 var _vibe_text: String = ""
+var _demand_section: VBoxContainer
+var _demand_summary: Label
+var _demand_factors: Label
+var _demand_explanation: Label
 
 
 func _ready() -> void:
 	_bind_nodes()
+	_on_report_resized()
 	if not _report_shown:
 		show_report(DayReport.new())
 
@@ -61,15 +72,32 @@ func _ready() -> void:
 ## Replaces every section with the supplied day's results, including empty states.
 func show_report(report: DayReport) -> void:
 	_bind_nodes()
+	# Main follows this compatible single-report API with the detached history.
+	show_history([], report.day)
 	_report_shown = true
 	_restaurant_name.text = report.restaurant_name
 	(get_node("Panel/Scroll/Content/ReviewHeading") as Label).text = "Reviews of %s" % report.restaurant_name
 	_header.text = "Day %d: Closed" % report.day
-	var operating_profit: int = report.operating_profit()
-	_profit.text = "%s operating profit" % _money(operating_profit)
-	_profit.add_theme_color_override("font_color", PROFIT_GREEN if operating_profit >= 0 else LOSS_RED)
+	if report.operating_profit_recorded():
+		var operating_profit: int = report.operating_profit()
+		_profit.text = "%s operating profit" % _money(operating_profit)
+		_profit.add_theme_color_override("font_color", PROFIT_GREEN if operating_profit >= 0 else LOSS_RED)
+	else:
+		_profit.text = "Operating profit not recorded"
+		_profit.remove_theme_color_override("font_color")
 	_fill_money(_income, report.income, "No income today")
-	_fill_money(_costs, report.costs, "No costs today")
+	var displayed_costs: Dictionary = report.costs.duplicate()
+	if report.stock_values_recorded:
+		displayed_costs.erase(Ledger.INGREDIENTS)
+	_fill_money(_costs, displayed_costs, "No costs today" if not report.stock_values_recorded else "")
+	if report.stock_values_recorded:
+		_add_row(_costs, "Cost of food served", _recorded_money(report.food_cost, report.food_cost_recorded))
+	_clear(_stock)
+	_add_row(_stock, "Stock bought today", _recorded_money(report.stock_bought,
+		report.stock_values_recorded and report.stock_bought_recorded))
+	_add_row(_stock, "Spoiled stock", _recorded_money(report.spoiled_stock, report.spoiled_stock_recorded))
+	_add_row(_stock, "Stock on hand worth", _recorded_money(report.stock_on_hand, report.stock_on_hand_recorded))
+	_cash_change.text = "Cash change today: %s" % _money(report.profit())
 	_loan_notice.text = LOAN_INTRODUCTION if report.loan_first_advance else ""
 	_loan_notice.visible = report.loan_first_advance
 	_fill_milestones(DayReport.public_milestones(report.milestones_reached))
@@ -93,7 +121,19 @@ func show_report(report: DayReport) -> void:
 	_cleanliness.text = "Cleanliness: %s" % report.cleanliness_label \
 		if not report.cleanliness_label.is_empty() else ""
 	_cleanliness.visible = not report.cleanliness_label.is_empty()
+	var mishaps: Label = get_node_or_null("Panel/Scroll/Content/Mishaps") as Label
+	if mishaps == null:
+		mishaps = Label.new()
+		mishaps.name = "Mishaps"
+		mishaps.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_cleanliness.get_parent().add_child(mishaps)
+		_cleanliness.get_parent().move_child(mishaps, _cleanliness.get_index() + 1)
+	mishaps.text = report.mishaps_text
+	mishaps.visible = not report.mishaps_text.is_empty()
+	regulars_summary.text = "Regulars: " + "; ".join(PackedStringArray(report.regulars_lines))
+	regulars_summary.visible = not report.regulars_lines.is_empty()
 	_fill_reasons(report.leave_reasons)
+	_render_team(report.staff_activity, report.leave_reasons)
 	_clear(_low_stock)
 	for line: String in report.low_stock:
 		_add_label(_low_stock, line)
@@ -116,8 +156,20 @@ func show_report(report: DayReport) -> void:
 	else:
 		_add_label(_reviews, "No reviews today")
 	_fill_owner_progress(report)
+	_render_demand(report.demand_forecast)
 	_render_vibe()
 	show()
+
+
+func show_history(rows: Array[Dictionary], today: int) -> void:
+	_bind_nodes()
+	var clean: Array[Dictionary] = BusinessTrendText.display_rows(rows, today)
+	(%BusinessTrendHeading as Label).text = BusinessTrendText.HEADING
+	(%BusinessTrendSummary as Label).text = BusinessTrendText.summary(clean, today)
+	var chart: BusinessTrendChart = %BusinessTrendChart
+	chart.set_history(clean, today if not clean.is_empty() else 0)
+	chart.visible = clean.size() >= 2
+	(%BusinessTrendSection as VBoxContainer).show()
 
 
 ## Current room presentation is derived, never part of the saved day report.
@@ -139,6 +191,26 @@ func _render_vibe() -> void:
 	vibe_summary.visible = not _vibe_text.is_empty()
 
 
+func _render_demand(forecast: Dictionary) -> void:
+	_demand_summary.text = DemandText.forecast_summary(forecast)
+	_demand_factors.text = "\n".join(DemandText.factor_lines(forecast))
+	_demand_explanation.text = DemandText.forecast_note(forecast)
+	_demand_section.visible = not _demand_summary.text.is_empty()
+
+
+func _render_team(summary: Dictionary, leave_reasons: Dictionary) -> void:
+	var clean: Dictionary = StaffActivity.public_snapshot(summary)
+	var rows: VBoxContainer = %TeamActivityRows
+	for index: int in range(StaffAdviceText.ROLES.size()):
+		var label: Label = rows.get_node(NodePath(String(StaffAdviceText.ROLE_NODES[index]))) as Label
+		label.text = StaffAdviceText.role_line(StaffAdviceText.ROLES[index], clean)
+		label.visible = not label.text.is_empty()
+	var advice: Label = %TeamAdvice
+	advice.text = StaffAdviceText.recommendation(STAFF_ADVICE_RULES.recommendation(clean, leave_reasons))
+	advice.visible = not advice.text.is_empty()
+	(%TeamSection as VBoxContainer).visible = not clean.is_empty()
+
+
 func _bind_nodes() -> void:
 	if _nodes_bound:
 		return
@@ -147,6 +219,9 @@ func _bind_nodes() -> void:
 	_profit = %Profit
 	_income = %IncomeRows
 	_costs = %CostRows
+	_stock = %StockRows
+	_stock_summary = %StockSummary
+	_cash_change = %CashChange
 	_loan_notice = %LoanNotice
 	_dishes = %DishRows
 	_guests = %Guests
@@ -164,7 +239,16 @@ func _bind_nodes() -> void:
 	_owner_unlocks = %OwnerUnlocks
 	_milestone_heading = %MilestoneHeading
 	_milestone_rows = %MilestoneRows
+	(%TeamHeading as Label).text = StaffAdviceText.TEAM_HEADING
+	IconStyle.decorate_label(%TeamHeading as Label, &"staff")
 	var content: VBoxContainer = get_node("Panel/Scroll/Content") as VBoxContainer
+	regulars_summary = Label.new()
+	regulars_summary.name = "RegularsSummary"
+	regulars_summary.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	regulars_summary.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	regulars_summary.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	content.add_child(regulars_summary)
+	content.move_child(regulars_summary, _cleanliness.get_index() + 1)
 	vibe_summary = Label.new()
 	vibe_summary.name = "VibeSummary"
 	vibe_summary.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -172,6 +256,22 @@ func _bind_nodes() -> void:
 	vibe_summary.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	content.add_child(vibe_summary)
 	content.move_child(vibe_summary, (content.get_node("ReviewHeading") as Control).get_index())
+	_demand_section = VBoxContainer.new()
+	_demand_section.name = "DemandForecast"
+	_demand_section.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	content.add_child(_demand_section)
+	content.move_child(_demand_section, _reviews.get_index() + 1)
+	var demand_heading: Label = _add_label(_demand_section, DemandText.FORECAST_HEADING)
+	demand_heading.name = "Heading"
+	demand_heading.add_theme_font_size_override("font_size", 22)
+	IconStyle.decorate_label(demand_heading, &"report")
+	_demand_summary = _add_label(_demand_section, "")
+	_demand_summary.name = "Summary"
+	_demand_factors = _add_label(_demand_section, "")
+	_demand_factors.name = "Factors"
+	_demand_explanation = _add_label(_demand_section, "")
+	_demand_explanation.name = "Explanation"
+	_demand_section.hide()
 	var next_day: Button = %NextDay
 	IconStyle.decorate_label(_header, &"report")
 	for path: String in ["ReviewHeading", "GuestHeading", "ReasonHeading", "LowStockHeading", "OwnerHeading"]:
@@ -181,6 +281,22 @@ func _bind_nodes() -> void:
 	IconStyle.configure_button(next_day, &"next_day", "Next day", "Begin the next morning", IconCatalogue.PANEL_SIZE)
 	next_day.pressed.connect(_on_next_day_pressed)
 	_nodes_bound = true
+	resized.connect(_on_report_resized)
+	_on_report_resized()
+
+
+## Normal windows keep the stock detail beside the books, leaving the real
+## review cards in view. Large UI sizes give those rows the full scroll width.
+func _on_report_resized() -> void:
+	if not is_inside_tree():
+		return
+	var finances: HBoxContainer = get_node("Panel/Scroll/Content/Finances") as HBoxContainer
+	var content: VBoxContainer = get_node("Panel/Scroll/Content") as VBoxContainer
+	var target: Node = finances if size.x >= 1100.0 else content
+	if _stock_summary.get_parent() != target:
+		_stock_summary.reparent(target, false)
+	if target == content:
+		content.move_child(_stock_summary, finances.get_index() + 1)
 
 
 func _fill_owner_progress(report: DayReport) -> void:
@@ -234,7 +350,7 @@ func _fill_money(rows: GridContainer, amounts: Dictionary, empty_text: String) -
 	_clear(rows)
 	for id: String in _sorted_ids(amounts):
 		_add_row(rows, String(MONEY_LABELS.get(StringName(id), id.capitalize())), _money(int(amounts[StringName(id)])))
-	if amounts.is_empty():
+	if amounts.is_empty() and not empty_text.is_empty():
 		_add_row(rows, empty_text, "")
 
 
@@ -271,6 +387,10 @@ func _add_row(parent: GridContainer, title: String, amount: String) -> void:
 	_add_label(parent, title)
 	var value: Label = _add_label(parent, amount)
 	value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	value.size_flags_horizontal = Control.SIZE_SHRINK_END
+	var font: Font = value.get_theme_font("font")
+	value.custom_minimum_size.x = minf(180.0,
+		font.get_string_size(amount, HORIZONTAL_ALIGNMENT_LEFT, -1, value.get_theme_font_size("font_size")).x)
 
 
 func _add_label(parent: Node, text: String) -> Label:
@@ -290,6 +410,10 @@ func _money(amount: int) -> String:
 			grouped += ","
 		grouped += digits[index]
 	return ("-$" if amount < 0 else "$") + grouped
+
+
+func _recorded_money(amount: int, recorded: bool) -> String:
+	return _money(amount) if recorded else "Not recorded"
 
 
 func _on_next_day_pressed() -> void:

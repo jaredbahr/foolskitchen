@@ -56,8 +56,12 @@ func _restore_save(data: Dictionary) -> bool:
 		restored_loan = LoanAccount.from_dict(data["loan"])
 		if restored_loan == null:
 			return false
-	ledger = Ledger.from_dict(ledger_data)
-	stock = Stock.from_dict(stock_data)
+	var restored_stock: Stock = Stock.from_dict(stock_data)
+	if restored_stock == null:
+		return false
+	var restored_ledger: Ledger = Ledger.from_dict(ledger_data)
+	ledger = restored_ledger
+	stock = restored_stock
 	loan = restored_loan
 	EventBus.cash_changed.emit(cash, 0, Ledger.OTHER)
 	return true
@@ -117,7 +121,7 @@ func buy_ingredient(id: StringName, qty: int, unit_cost: int) -> bool:
 	var price: int = qty * unit_cost
 	if not can_spend_without_loan(price):
 		return false
-	stock.add(id, qty, Clock.day)
+	stock.add(id, qty, Clock.day, price)
 	ledger.record(Clock.day, -price, Ledger.INGREDIENTS, String(id))
 	EventBus.cash_changed.emit(cash, -price, Ledger.INGREDIENTS)
 	return true
@@ -130,7 +134,7 @@ func buy_ingredient(id: StringName, qty: int, unit_cost: int) -> bool:
 func buy_auto_order(lines: Array[Dictionary], cost: int) -> bool:
 	if not pay_order(lines, cost, true):
 		return false
-	receive(lines)
+	receive(lines, cost)
 	return true
 
 
@@ -171,9 +175,10 @@ func pay_order(lines: Array[Dictionary], cost: int, standing: bool) -> bool:
 
 ## A delivery arrives: its lines join the stock, dated today (shelf life
 ## counts from the delivery). Lines: [{id, qty}].
-func receive(lines: Array[Dictionary]) -> void:
-	for line: Dictionary in lines:
-		stock.add(StringName(line.get("id", &"")), int(line.get("qty", 0)), Clock.day)
+func receive(lines: Array[Dictionary], charged_total: int = -1) -> void:
+	for line: Dictionary in PurchaseBasis.allocate(lines, charged_total):
+		stock.add(StringName(line.get("id", &"")), int(line.get("qty", 0)), Clock.day,
+			int(line.get("total_cost", -1)))
 
 
 ## A cancelled order's full refund, as one ingredients entry.

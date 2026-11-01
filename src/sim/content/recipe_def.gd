@@ -11,6 +11,8 @@ const ORDER_TYPES: Array[StringName] = [FOOD, COFFEE, DRINKS]
 
 @export var id: StringName = &""
 @export var display_name: String = ""
+## Presentation only: the approved Food Kit model; never read by preparation.
+@export var view_model: PackedScene
 @export var section: Section = Section.MAINS
 ## One unit per entry; repeated references represent multiple units.
 @export var ingredients: Array[IngredientDef] = []

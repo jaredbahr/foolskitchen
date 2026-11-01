@@ -12,6 +12,32 @@ Each line ends with its PR number.
 
 ### Players
 - Wall menu boards show your restaurant name and dishes from a section you choose, and the Menu panel shows which themes your dishes lean toward. (#231)
+- Decorating the street front now raises curb appeal for a small walk-in boost, shown beside Vibe in Build and in the evening crowd forecast. (#266)
+- See seven days of dish profit and guests served in the evening report, with today's results highlighted and a plain trend summary. (#265)
+- Staff carrying meals can spill them and break plates, especially when clumsy or crowded at the pass. Reassigning a delivery makes the next worker collect the meals before they can spill. Meals are cooked again, broken plates are replaced tomorrow, and greasy stations work 10% slower until someone degreases them. Floor messes stand out on light and dark floors, with mishaps listed in the evening report. (#235)
+- See how busy your team was in the evening report and morning Staff panel, with evening advice on hiring or adding tables. (#264)
+- Blueprints keep each piece's furniture look and charge the right price when you stamp it, with exact undo refunds. (#262)
+- The evening report now shows the profit your dishes made, with stock bought and spoiled listed separately. Automatic orders follow the forecast crowd, and the starting shop pays $18 rent each day. (#258)
+- An easier start: cooks work about 30% faster, rent is $30 a day instead of $40, and seafood restocks in smaller batches (mussels also keep a day longer), so a growing shop now makes money. (#257)
+- Your shop gets busier as reputation and word of mouth grow; menu variety and vibe bring more guests, with tomorrow’s crowd shown in the evening report. (#256)
+- New shops get short, optional hints through their first two mornings; skip them at any time or show the guide again from Settings. (#238)
+- See meals on the pass, in servers' hands or trays and on guests' tables. Plates follow a rotated pass and stay on round tabletops. Dirty plates stay until bussing, collected plates stack by the working sink, and cooking stoves and fryers give off a little steam. Food and drinks use their matching Kenney models without changing service or balance. (#236)
+- Decorate the street front with wall finishes, coloured awnings, flower boxes, string lights and a sign showing your restaurant's name; hang the OPEN sign outside too. (#250)
+- Staff now has a chef hat icon, and Paint uses a matching brush icon with its usual tooltip. (#237)
+- Get to know named regulars after day five: they keep a favourite dish, seat and look, greet you on return visits, tip more for their favourite and may stop coming after poor service. The Menu and evening report show who they are; their history saves each morning. (#234)
+- Regulars who drop in for coffee but order their usual meal now take the normal time to eat it. (#234)
+- The kitchen divider is now thin, leaving more floor space. Walls has a visible Remove button with red refund previews and undo; Sell also handles walls and window or door frames. Existing shops retain or receive refunds for affected wall finishes and decorations. (#248)
+- Build a seafood menu with fish and chips, mussels in broth, salmon maki, shrimp skewers and seafood stew, using new ingredients that restock only while needed. Lay sea-coloured Deck planks at level 4. (#229)
+- Choose diner booth and stool looks in Buy, or change an existing piece in Paint. Copying, undoing and loading keep the chosen look. (#220)
+
+- Add a wall-hung restroom mirror and hand dryer with a little charm, a gentle room-label hint, and thin light-laminate stall partitions in Build > Walls that keep toilet and basin access clear. (#217)
+- Upgrade your lease from owner level 3 in the morning Menu panel: keep your shop, pay a deposit and higher rent, and unlock more land to expand. (#216)
+- Pick your owner's character and name when starting a shop, and change their look from Staff in the morning. (#233)
+- Start from a title screen with New game, Continue and Settings, and quit back to it without overwriting your morning autosave. (#230)
+- Check dirty tables, floor dirt and restroom upkeep in Build's new Hygiene overview, with problem tiles highlighted and today's cleanliness rating. (#232)
+- Waiting benches let guests sit near the door and wait longer for a dining table. (#228)
+- Build warns when an edit would take dishes off the menu and refuses edits that leave nothing cookable. Opening explains dishes removed that morning. (#227)
+- Expanding rooms removes and refunds unsupported windows, back doors and affected wall decorations. Undo restores the complete layout and cash. (#226)
 - See how recipe quality, staff skill, cooking traits and equipment add up in the Menu and on served guests, plus the day's average food quality in the evening report. Dish quality and balance are unchanged. (#224)
 - Croissants now appear in the menu's Bakery section, after Desserts. Existing menus, prices and coffee-with-pastry orders stay the same. (#222)
 - Bar fries unlock at owner level 2 after Beer: a quick, $5 side cooked in the fryer. Frozen fries auto-order only while needed by the menu and within freezer space; the menu explains when a freezer is missing. (#221)
@@ -95,6 +121,9 @@ Each line ends with its PR number.
 - The game opens on a warm wooden test floor with a 0.5 m build grid (press **G** to toggle). The isometric camera pans with WASD, screen edges or middle-mouse drag, zooms with the wheel, and rotates in 90° steps with Q and E. (#22)
 - Day clock and speed controls: each day runs morning → open → last orders → closed. **Space** pauses or resumes, and **1**, **2** and **3** set 1×, 2× and 4× speed. (#15)
 - An evening report screen (not yet shown during play): profit, income and costs by category, dishes sold with the best seller marked, guests served versus lost, why guests left, and review quotes. (#25)
+- See a daily Sunny, Cloudy or Rain forecast in the HUD and morning Menu, with gentle rain and cooler light outside. The forecast is saved for the day and leaves service unchanged. (#251)
+- Push tables together to seat bigger parties. (#253)
+- Surround the shop with a street, neighbouring buildings, passing pedestrians and a car, with more room to pan toward the road. (#254)
 
 ### Content
 - Placed chairs now have a usable seat. (#48)
@@ -103,6 +132,14 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- The roadmap's Codex queue is reset: finish open PRs, then make growing pay (balance pass, staff bottleneck advice, a 7-day trend, curb appeal), then the outside and atmosphere. (#261)
+- `tools/check.sh` gives the test suite 25 minutes instead of 10; the full suite now takes about 11 minutes on a busy machine and was being cut off without a failure. (#252)
+- Workers check GitHub for an existing PR or claim before starting an issue, claim it with a comment, and stop pushing once a PR is ready, so no work is done twice. (#249)
+- Add data-driven furniture looks and named kit-material colour recipes for the first diner seats. (#220)
+
+- Include the lease offer, cash refusal and larger lot in the normal visual review without adding more than two captures. (#216)
+- Keep the morning lease advice independent of the HUD during capture startup, and check that fresh startup path before the full test suite. (#216)
+- The roadmap's Codex queue is reset: finish open PRs, then the thin divider fix, the outside of the shop (street front, weather, neighbourhood, patio, curb appeal) and sound. (#245)
 - Workers mark a PR ready once their own checks and captures are done; director review and decisions happen on the ready PR, and open PRs are finished before new issues start. (#225)
 - Verify keyboard navigation through both grid settings before closing Settings in review captures. (#214)
 - The roadmap puts the expand-over-a-window bug first in the worker queue. (#213)

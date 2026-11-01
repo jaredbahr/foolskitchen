@@ -343,7 +343,7 @@ static func valid(state: Dictionary, frame: int, fixture: Dictionary) -> bool:
 		var pairs: Array = state.get("pairs", [])
 		var mini: Dictionary = state.get("scale_mini", {})
 		if pairs.size() != IDS.size() or mini.get("visible") != true or mini.get("role") != "owner" \
-				or mini.get("model") != String(PersonPresentation.OWNER_MODEL) \
+				or mini.get("model") != String(OwnerAppearance.DEFAULT_MODEL) \
 				or mini.get("scale") != (Vector3.ONE * ArtScale.CHARACTER_SCALE).x \
 				or mini.get("source") != PersonPresentation.model_path_for(&"owner") or not _bounds_valid(mini.get("bounds", {})):
 			return false
@@ -584,8 +584,12 @@ static func _comparison_visibility(shop: ShopView, visible: bool) -> void:
 	for person: Node3D in shop.agent_nodes.values():
 		person.visible = visible
 	shop._walls.visible = visible
+	if shop.segment_view != null:
+		shop.segment_view.visible = visible
 	if shop.room_dressing != null:
 		shop.room_dressing.visible = visible
+	if shop.neighbourhood_dressing != null:
+		shop.neighbourhood_dressing.visible = visible
 
 
 static func _camera(rig: CameraRig, focus: Vector2, yaw: float, zoom: float) -> void:

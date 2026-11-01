@@ -7,6 +7,10 @@ const NON_OPERATING_CATEGORIES: Array[StringName] = [
 	Ledger.MILESTONE_BONUS,
 ]
 const MAX_MILESTONE_REWARD: int = 1000000
+const MAX_FORECAST_INTEGER: int = 9007199254740991
+const DEMAND_FACTOR_KEYS: Array[String] = [
+	"reputation", "word_of_mouth", "menu", "vibe", "curb_appeal", "total",
+]
 
 var day: int = 1
 ## Snapshot of the name used for this service day and its review heading.
@@ -24,6 +28,8 @@ var leave_reasons: Dictionary = {}
 var reviews: Array[String] = []
 ## Worst observed floor condition, already mapped to a player-facing word.
 var cleanliness_label: String = ""
+## Live closing display only: transient mishaps never add save fields.
+var mishaps_text: String = ""
 ## Player-facing reviews for this day. Each card has an integer stars (1-5)
 ## and a quote; simulation cause ids are deliberately excluded.
 var review_cards: Array[Dictionary] = []
@@ -43,6 +49,27 @@ var milestones_reached: Array[Dictionary] = []
 ## Player-facing "Low stock" sentences (StockAlerts): what ran out today and
 ## when, then ingredients below tomorrow's target or expiring tomorrow.
 var low_stock: Array[String] = []
+## Named regular visit, promotion and farewell notes, already player-facing.
+var regulars_lines: Array[String] = []
+## Optional purchase-basis accounting. Historical reports retain their cash
+## basis; missing historical ingredient prices are never fabricated.
+var stock_values_recorded: bool = false
+var food_cost: int = 0
+var food_cost_recorded: bool = false
+var stock_bought: int = 0
+var stock_bought_recorded: bool = false
+var spoiled_stock: int = 0
+var spoiled_stock_recorded: bool = false
+var stock_on_hand: int = 0
+var stock_on_hand_recorded: bool = false
+## Optional detached estimate for the next service day; older reports omit it.
+var demand_forecast: Dictionary = {}:
+	set(value):
+		demand_forecast = public_demand_forecast(value)
+## Optional detached display data; older reports have no measured activity.
+var staff_activity: Dictionary = {}:
+	set(value):
+		staff_activity = StaffActivity.public_snapshot(value)
 
 
 ## Returns income across all categories in whole currency units.
@@ -87,7 +114,39 @@ func profit() -> int:
 ## Shop performance before financing. Borrowing cannot turn a loss into profit,
 ## and paying back principal does not make the shop's operations look worse.
 func operating_profit() -> int:
+	if not stock_values_recorded:
+		return purchase_basis_operating_profit()
+	var result: Dictionary = _served_operating_result()
+	return int(result["amount"]) if bool(result["recorded"]) else 0
+
+
+## Keep existing goal, XP and financing policies on their original basis.
+func purchase_basis_operating_profit() -> int:
 	return _operating_sum(income) - _operating_sum(costs)
+
+
+func operating_profit_recorded() -> bool:
+	return stock_values_recorded and bool(_served_operating_result()["recorded"])
+
+
+## Exclude the signed ingredient net entirely, including refunds. Only the
+## ingredients in paid orders enter the served-food result. Build positive
+## sides first so an oversized valuation is explicitly unavailable.
+func _served_operating_result() -> Dictionary:
+	if not food_cost_recorded:
+		return {"amount": 0, "recorded": false}
+	var takings: Dictionary = PurchaseBasis.zero()
+	var expenses: Dictionary = {"cost": food_cost, "recorded": true}
+	for key: Variant in income:
+		var category: StringName = StringName(str(key))
+		if category != Ledger.INGREDIENTS and not NON_OPERATING_CATEGORIES.has(category):
+			PurchaseBasis.combine(takings, {"cost": int(income[key]), "recorded": true})
+	for key: Variant in costs:
+		var category: StringName = StringName(str(key))
+		if category != Ledger.INGREDIENTS and not NON_OPERATING_CATEGORIES.has(category):
+			PurchaseBasis.combine(expenses, {"cost": int(costs[key]), "recorded": true})
+	return {"amount": int(takings["cost"]) - int(expenses["cost"]),
+		"recorded": bool(takings["recorded"]) and bool(expenses["recorded"])}
 
 
 ## Returns the most-sold recipe, breaking ties by its alphabetical id.
@@ -106,7 +165,7 @@ func to_dict() -> Dictionary:
 	for card: Dictionary in review_cards:
 		cards.append(_public_review_card(card))
 	var milestones: Array[Dictionary] = public_milestones(milestones_reached)
-	return {
+	var result: Dictionary = {
 		"day": day,
 		"restaurant_name": restaurant_name,
 		"income": _string_counts(income),
@@ -131,7 +190,22 @@ func to_dict() -> Dictionary:
 		"owner_tips": owner_tips.duplicate(),
 		"milestones_reached": milestones,
 		"low_stock": low_stock.duplicate(),
+		"regulars_lines": regulars_lines.duplicate(),
+		"stock_values_recorded": stock_values_recorded,
+		"food_cost": str(food_cost),
+		"food_cost_recorded": food_cost_recorded,
+		"stock_bought": str(stock_bought),
+		"stock_bought_recorded": stock_bought_recorded,
+		"spoiled_stock": str(spoiled_stock),
+		"spoiled_stock_recorded": spoiled_stock_recorded,
+		"stock_on_hand": str(stock_on_hand),
+		"stock_on_hand_recorded": stock_on_hand_recorded,
+		"demand_forecast": public_demand_forecast(demand_forecast),
 	}
+	var activity: Dictionary = StaffActivity.public_snapshot(staff_activity)
+	if not activity.is_empty():
+		result["staff_activity"] = activity
+	return result
 
 
 ## Restores a snapshot, including JSON's string keys and numeric values.
@@ -185,7 +259,44 @@ static func from_dict(data: Dictionary) -> DayReport:
 		for line: Variant in saved_low_stock:
 			if line is String:
 				report.low_stock.append(line)
+	var saved_regulars: Variant = data.get("regulars_lines", [])
+	if saved_regulars is Array:
+		for line: Variant in saved_regulars:
+			if line is String:
+				report.regulars_lines.append(line)
+	var recorded: Variant = data.get("stock_values_recorded", false)
+	report.stock_values_recorded = recorded is bool and recorded
+	for field: String in ["food_cost", "stock_bought", "spoiled_stock", "stock_on_hand"]:
+		var value: int = PurchaseBasis.decode(data.get(field, null))
+		var flag: Variant = data.get(field + "_recorded", false)
+		if value >= 0 and flag is bool:
+			report.set(field, value)
+			report.set(field + "_recorded", flag)
+	report.demand_forecast = public_demand_forecast(data.get("demand_forecast", {}))
+	report.staff_activity = StaffActivity.public_snapshot(data.get("staff_activity", {}))
 	return report
+
+
+## Optional display data never prevents a historical report from loading.
+## Copy only known primitives, accepting JSON's whole-valued floats too.
+static func public_demand_forecast(value: Variant) -> Dictionary:
+	if not value is Dictionary:
+		return {}
+	var forecast: Dictionary = value
+	if not _whole_in_range(forecast.get("day"), 1, MAX_FORECAST_INTEGER) \
+			or not _whole_in_range(forecast.get("expected_guests"), 0, MAX_FORECAST_INTEGER):
+		return {}
+	var result: Dictionary = {
+		"day": int(forecast["day"]),
+		"expected_guests": int(forecast["expected_guests"]),
+	}
+	for key: String in DEMAND_FACTOR_KEYS:
+		var factor: Variant = forecast.get(key)
+		if (typeof(factor) != TYPE_INT and typeof(factor) != TYPE_FLOAT) \
+				or not is_finite(float(factor)) or float(factor) <= 0.0:
+			return {}
+		result[key] = float(factor)
+	return result
 
 
 ## Copy only display fields, so a sim result cannot leak its cause into a save.

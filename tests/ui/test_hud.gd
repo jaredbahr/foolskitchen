@@ -204,6 +204,41 @@ func test_scaled_window_keeps_every_hud_control_readable_and_build_hints_below_h
 	view.free()
 
 
+func test_opening_menu_notice_stays_one_line_below_the_header_at_native_and_small_widths() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	await tree.process_frame
+	var viewport: SubViewport = SubViewport.new()
+	viewport.size = Vector2i(1600, 900)
+	tree.root.add_child(viewport)
+	viewport.add_child(_hud)
+	var note: String = "Fries left today's menu: staff can't reach the fryer"
+	_hud.call("set_menu_notice", note)
+	await _layout_frames()
+	var panel: Control = _hud.get_node("MenuNotice") as Control
+	var label: Label = _hud.get_node("MenuNotice/Text") as Label
+	var header: Control = _hud.get_node("Top") as Control
+	assert_true(panel.visible)
+	assert_eq(label.text, note)
+	assert_true(panel.size.y < 100.0, "an opening note leaves the restaurant visible rather than filling the viewport")
+	assert_true(panel.get_global_rect().position.y >= header.get_global_rect().end.y + 5.5)
+	# Long lists and a smaller logical viewport still use one line, with the
+	# complete explanation available on hover instead of covering the shop.
+	viewport.size = Vector2i(854, 480)
+	note = note.repeat(6)
+	_hud.call("set_menu_notice", note)
+	await _layout_frames()
+	assert_eq(label.tooltip_text, note)
+	assert_true(label.mouse_filter != Control.MOUSE_FILTER_IGNORE, "the full note can be read on hover")
+	assert_eq(label.get_line_count(), 1)
+	assert_true(panel.size.y < 100.0, "long lists never turn the note into a tall panel")
+	assert_true(panel.get_global_rect().position.y >= header.get_global_rect().end.y + 5.5)
+	assert_true(viewport.get_visible_rect().encloses(panel.get_global_rect()), "the notice stays inside the smaller viewport")
+	_hud.call("set_menu_notice", "")
+	assert_false(panel.visible)
+	viewport.remove_child(_hud)
+	viewport.free()
+
+
 func test_staff_entry_requests_work_in_every_phase_without_loosening_menu_or_changing_data() -> void:
 	_hud.connect(&"staff_pressed", _record_staff)
 	var staff: Button = _control("Staff") as Button
@@ -218,7 +253,7 @@ func test_staff_entry_requests_work_in_every_phase_without_loosening_menu_or_cha
 		_hud.call("refresh")
 		assert_eq(_control("Staff").get_instance_id(), identity)
 		assert_false(staff.disabled, "staff job choices remain reachable during service")
-		assert_eq(staff.icon.resource_path, "res://assets/kenney/icons/singleplayer.png")
+		assert_eq(staff.icon.resource_path, IconCatalogue.path_for(&"chef"))
 		assert_eq((_control("Menu") as Button).disabled, phase != SimClock.Phase.MORNING)
 		if phase == SimClock.Phase.MORNING:
 			assert_eq(staff.tooltip_text, "Hire staff and plan today's wages")
@@ -492,11 +527,15 @@ func test_every_header_button_has_readable_content_and_tooltip() -> void:
 		assert_true(button.icon != null or not button.text.is_empty(), name + " has readable content")
 		assert_false(button.tooltip_text.is_empty(), name + " explains its action")
 		if button.icon != null:
-			assert_true(button.icon.resource_path.begins_with(IconCatalogue.ROOT))
+			assert_true(button.icon.resource_path.begins_with(IconCatalogue.ROOT) \
+				or button.icon.resource_path in [IconCatalogue.path_for(&"chef"), IconCatalogue.path_for(&"paint")])
 			assert_eq(button.get_theme_constant("icon_max_width"), 28)
-	for name: String in ["Speed1", "Speed2", "Speed4", "Build", "Paint", "Context", "Menu", "Staff"]:
+	for name: String in ["Speed1", "Speed2", "Speed4", "Build", "Context", "Menu", "Staff"]:
 		assert_false((_control(name) as Button).text.is_empty(), name + " keeps its main label")
-	assert_null((_control("Paint") as Button).icon)
+	assert_eq((_control("Paint") as Button).icon.resource_path, IconCatalogue.path_for(&"paint"))
+	assert_eq((_control("Paint") as Button).text, "")
+	assert_eq((_control("Paint") as Button).tooltip_text, "Paint walls, floor and furniture (P)")
+	assert_eq((_control("Staff") as Button).icon.resource_path, IconCatalogue.path_for(&"chef"))
 	assert_eq((_control("Reputation").get_node("ThemeIcon") as TextureRect).texture.resource_path,
 		IconCatalogue.ROOT + "star.png")
 	for name: String in ["Day", "Time", "Phase", "Cash", "Reputation", "Plates"]:
@@ -661,7 +700,7 @@ func _assert_one_row_when_native_content_fits() -> void:
 	# packing result. Icons may legitimately require another row even at 100%.
 	var required_width: float = 24.0 * 2.0
 	var visible_count: int = 0
-	for name: String in ["Day", "Time", "Phase", "Speed0", "Speed1", "Speed2", "Speed4", "Cash",
+	for name: String in ["Day", "Weather", "Time", "Phase", "Speed0", "Speed1", "Speed2", "Speed4", "Cash",
 			"Reputation", "OwnerProgress", "Plates", "Walls", "Build", "Paint", "Context", "Menu", "Stock", "Staff", "Settings"]:
 		var control: Control = _control(name)
 		if control.visible:
@@ -677,7 +716,7 @@ func _assert_one_row_when_native_content_fits() -> void:
 	var previous_end: float = first.position.x
 	# Labels shrink to their text height and center within the native flow line.
 	# Check a shared row band and order rather than requiring equal top edges.
-	for name: String in ["Day", "Time", "Phase", "Speed0", "Speed1", "Speed2", "Speed4", "Cash",
+	for name: String in ["Day", "Weather", "Time", "Phase", "Speed0", "Speed1", "Speed2", "Speed4", "Cash",
 			"Reputation", "OwnerProgress", "Plates", "Walls", "Build", "Paint", "Context", "Menu", "Stock", "Staff", "Settings"]:
 		var rect: Rect2 = _control(name).get_global_rect()
 		assert_true(rect.position.x >= previous_end - 0.01, "a fitting row keeps " + name + " in left-to-right group order")

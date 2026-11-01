@@ -193,6 +193,7 @@ func _build_shell_door(grid: SimGrid, cell: Vector2i, side: Vector2i, lowered: b
 		approach_from: Vector2i = Vector2i.ZERO) -> void:
 	var root: Node3D = Node3D.new()
 	root.name = "BackDoor_%d_%d" % [cell.x, cell.y]
+	root.set_meta(&"segment_edge", SimGrid.edge_between(cell, cell - side))
 	root.position = GridMath.cell_to_world(cell)
 	root.rotation.y = -PI * 0.5 if side.y == 0 else 0.0
 	add_child(root)
@@ -440,6 +441,9 @@ func _build_interior(edge: Vector3i, kind: SimGrid.Segment, interior: Dictionary
 	var full: float = ArtScale.WALL_HEIGHT
 	var low: float = ShopView.LOWERED_HEIGHT
 	match kind:
+		SimGrid.Segment.STALL_PARTITION:
+			var height: float = low if lowered else ArtScale.STALL_PARTITION_HEIGHT
+			root.add_child(StallPartitionView.make_panel(height))
 		SimGrid.Segment.WALL:
 			var height: float = low if lowered else full
 			_slab(root, x0, x1, 0.0, height, THICKNESS)
@@ -481,6 +485,7 @@ func _build_interior(edge: Vector3i, kind: SimGrid.Segment, interior: Dictionary
 func _build_shell_window(cell: Vector2i, side: Vector2i, span: Vector2) -> void:
 	var root: Node3D = Node3D.new()
 	root.name = "ShellWindow_%d_%d" % [cell.x, cell.y]
+	root.set_meta(&"segment_edge", SimGrid.edge_between(cell, cell - side))
 	root.set_meta(&"wall_cell", cell)
 	root.position = GridMath.cell_to_world(cell)
 	# Local +X runs along the wall face; local Z through the wall.

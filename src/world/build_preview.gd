@@ -32,6 +32,9 @@ const ROOM_LABEL_SIZE: int = 64
 ## The label colours of the guests' mood marks: cream on dark brown.
 const ROOM_LABEL_COLOR: Color = Color("f3e6cc")
 const ROOM_LABEL_OUTLINE: Color = Color("3b2a20")
+## Hygiene overview uses an existing paint colour, separate from edit ghosts.
+const HYGIENE_SWATCH: SwatchDef = preload("res://data/swatches/clay.tres")
+const HYGIENE_ALPHA: float = 0.5
 
 var blueprint_ghosts: Array[ItemVisual] = []
 var blueprint_selection_mesh: MeshInstance3D
@@ -50,6 +53,9 @@ var hover_mesh: MeshInstance3D
 var room_tints: Dictionary[int, MeshInstance3D] = {}
 var room_labels: Array[Label3D] = []
 var room_ghost: MeshInstance3D
+var hygiene_mesh: MeshInstance3D
+var _hygiene_cells: Array[Vector2i] = []
+var _hygiene_enabled: bool = false
 ## Floors tool (D25): the proposed look is drawn on the floor itself (ShopView's
 ## preview map); a refused proposal gets red tiles instead.
 var floors_ghost: MeshInstance3D
@@ -70,6 +76,7 @@ var _reason: String = ""
 func bind_build_mode(controller: BuildMode, shop_view: ShopView) -> void:
 	_disconnect_controller()
 	_clear_geometry()
+	_clear_hygiene()
 	_controller = controller
 	_shop_view = shop_view
 	_grid = shop_view.world.grid if is_instance_valid(shop_view) and shop_view.world != null else null
@@ -86,6 +93,19 @@ func displayed_warning_ids() -> Array[int]:
 	ids.assign(warning_nodes.keys())
 	ids.sort()
 	return ids
+
+
+## Only this derived display data is retained; no cleaning state is owned here.
+func set_hygiene_cells(cells: Array[Vector2i], enabled: bool) -> void:
+	if _hygiene_cells == cells and _hygiene_enabled == enabled:
+		return
+	_hygiene_cells = cells.duplicate()
+	_hygiene_enabled = enabled
+	_refresh_hygiene_geometry()
+
+
+func displayed_hygiene_cells() -> Array[Vector2i]:
+	return _hygiene_cells.duplicate() if is_instance_valid(hygiene_mesh) else [] as Array[Vector2i]
 
 
 ## Native-node evidence only, independent of the controller's expected state.
@@ -220,7 +240,7 @@ func refresh() -> void:
 				continue
 			var swatch: SwatchDef = entry.get("swatch") as SwatchDef
 			_build_ghost(entry_definition, entry["origin"], entry["turns"], valid,
-				swatch.color if swatch != null else entry_definition.placeholder_color)
+				swatch.color if swatch != null else entry_definition.placeholder_color, entry.get("variant_id", &""))
 			ghost_mesh.name = "BlueprintItem%d" % blueprint_ghosts.size()
 			blueprint_ghosts.append(ghost_mesh)
 		if not valid:
@@ -228,7 +248,7 @@ func refresh() -> void:
 	elif snapshot.get("active", false) and snapshot.get("state", -1) == BuildMode.State.SELECT:
 		_build_blueprint_selection(snapshot.get("blueprint_selection_cells", []), snapshot.get("blueprint_box", Rect2i()))
 	elif has_ghost:
-		_build_ghost(definition, origin, turns, valid)
+		_build_ghost(definition, origin, turns, valid, Color.TRANSPARENT, snapshot.get("variant_id", &""))
 		if selected_id > 0 and _shop_view.item_nodes.has(selected_id):
 			_hidden_original = _shop_view.item_nodes[selected_id]
 			if is_instance_valid(_hidden_original):
@@ -240,6 +260,11 @@ func refresh() -> void:
 	elif snapshot.get("active", false) and snapshot.get("state", -1) == BuildMode.State.WALLS:
 		var changes: Dictionary = snapshot.get("wall_changes", {})
 		_build_wall_ghosts(changes, valid)
+		if not valid:
+			reason = snapshot.get("why", "")
+	elif snapshot.get("active", false) and snapshot.get("state", -1) == BuildMode.State.IDLE \
+			and snapshot.get("tool", -1) == BuildMode.Tool.SELL and not snapshot.get("wall_changes", {}).is_empty():
+		_build_wall_ghosts(snapshot.get("wall_changes", {}), valid)
 		if not valid:
 			reason = snapshot.get("why", "")
 	elif snapshot.get("active", false) and snapshot.get("state", -1) == BuildMode.State.FLOOR:
@@ -295,12 +320,14 @@ func refresh() -> void:
 			if item != null and item.def is ItemDef:
 				_build_warning(id, item.def as ItemDef, item.origin, item.quarter_turns)
 	_show_floor_preview(floor_preview)
+	_refresh_hygiene_geometry()
 	_set_reason(reason)
 
 
 func clear() -> void:
 	_disconnect_controller()
 	_clear_geometry()
+	_clear_hygiene()
 	_show_floor_preview({})
 	_controller = null
 	_shop_view = null
@@ -316,6 +343,7 @@ func _enter_tree() -> void:
 func _exit_tree() -> void:
 	_disconnect_controller()
 	_clear_geometry()
+	_clear_hygiene()
 	_set_reason("")
 
 
@@ -323,6 +351,7 @@ func _notification(what: int) -> void:
 	if what == NOTIFICATION_PREDELETE or what == NOTIFICATION_UNPARENTED:
 		_disconnect_controller()
 		_clear_geometry()
+		_clear_hygiene()
 		if what == NOTIFICATION_UNPARENTED:
 			_set_reason("")
 
@@ -345,6 +374,37 @@ func _disconnect_controller() -> void:
 
 func _on_cells_changed(_cells: Array[Vector2i]) -> void:
 	refresh()
+
+
+func _refresh_hygiene_geometry() -> void:
+	var shown: bool = _hygiene_enabled and _controller != null and _controller.is_active() \
+		and not _hygiene_cells.is_empty()
+	if not shown:
+		if is_instance_valid(hygiene_mesh):
+			_free_node(hygiene_mesh)
+		hygiene_mesh = null
+		return
+	if is_instance_valid(hygiene_mesh) and hygiene_mesh.get_meta("cells", []) == _hygiene_cells:
+		return
+	if is_instance_valid(hygiene_mesh):
+		_free_node(hygiene_mesh)
+	hygiene_mesh = MeshInstance3D.new()
+	hygiene_mesh.name = "HygieneCells"
+	hygiene_mesh.mesh = _tile_mesh(_hygiene_cells, 0.04, 0.025)
+	var tint: Color = HYGIENE_SWATCH.color
+	tint.a = HYGIENE_ALPHA
+	hygiene_mesh.material_override = _material(tint, true)
+	hygiene_mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	hygiene_mesh.set_meta("cells", _hygiene_cells.duplicate())
+	add_child(hygiene_mesh)
+
+
+func _clear_hygiene() -> void:
+	if is_instance_valid(hygiene_mesh):
+		_free_node(hygiene_mesh)
+	hygiene_mesh = null
+	_hygiene_cells.clear()
+	_hygiene_enabled = false
 
 
 func _clear_geometry() -> void:
@@ -380,7 +440,7 @@ func _clear_geometry() -> void:
 
 
 func _build_ghost(definition: ItemDef, origin: Vector2i, turns: int, valid: bool,
-		body_color: Color = Color.TRANSPARENT) -> void:
+		body_color: Color = Color.TRANSPARENT, variant_id: StringName = &"") -> void:
 	if _ghost_root == null:
 		_ghost_root = Node3D.new()
 		_ghost_root.name = "Ghost"
@@ -390,6 +450,7 @@ func _build_ghost(definition: ItemDef, origin: Vector2i, turns: int, valid: bool
 	var tint: Color = base.lerp(VALID_COLOR if valid else INVALID_COLOR, 0.8)
 	tint.a = VALID_ALPHA if valid else INVALID_ALPHA
 	ghost_mesh = ItemVisual.create(definition, height, _material(definition.placeholder_color))
+	ghost_mesh.apply_variant(definition.variant(variant_id))
 	ghost_mesh.set_ghost_tint(tint)
 	ghost_mesh.name = "Furniture"
 	ghost_mesh.transform = ItemVisual.placed_transform(definition, origin, turns)
@@ -423,7 +484,7 @@ func _build_ghost(definition: ItemDef, origin: Vector2i, turns: int, valid: bool
 
 
 ## Translucent slabs on each proposed edge: full height for a new or changed
-## segment, low for a removal; green when the change is allowed, red if not.
+## segment, low for a removal; removals and refused changes are red.
 func _build_wall_ghosts(changes: Dictionary, valid: bool) -> void:
 	if changes.is_empty():
 		return
@@ -433,6 +494,9 @@ func _build_wall_ghosts(changes: Dictionary, valid: bool) -> void:
 	var tint: Color = VALID_COLOR if valid else INVALID_COLOR
 	tint.a = WALL_GHOST_ALPHA
 	var material: StandardMaterial3D = _material(tint, true)
+	var removal_tint: Color = INVALID_COLOR
+	removal_tint.a = WALL_GHOST_ALPHA
+	var removal_material: StandardMaterial3D = _material(removal_tint, true)
 	for key: Variant in changes:
 		var edge: Vector3i = key
 		var removing: bool = int(changes[key]) == SimGrid.Segment.NONE
@@ -442,7 +506,7 @@ func _build_wall_ghosts(changes: Dictionary, valid: bool) -> void:
 		var length: float = GridMath.CELL_SIZE
 		var depth: float = WALL_GHOST_DEPTH
 		var size: Vector3 = Vector3(depth, height, length) if edge.z == SimGrid.EDGE_WEST else Vector3(length, height, depth)
-		var ghost: MeshInstance3D = _box(size, material)
+		var ghost: MeshInstance3D = _box(size, removal_material if removing else material)
 		ghost.name = "Edge_%d_%d_%d" % [edge.x, edge.y, edge.z]
 		ghost.position = Vector3(mid.x, height * 0.5 + 0.002, mid.y)
 		ghost.set_meta("edge", edge)

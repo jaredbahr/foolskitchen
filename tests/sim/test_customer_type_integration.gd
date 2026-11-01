@@ -257,7 +257,7 @@ func test_configuration_is_detached_rejects_invalid_and_does_not_draw() -> void:
 	assert_eq(sim.customer_level, 4)
 	var count: int = sim.world.agents.size()
 	var bad_kind: CustomerType = TYPES.types[0].duplicate() as CustomerType
-	bad_kind.party_size_max = 5
+	bad_kind.party_size_max = 7
 	assert_null(sim.add_customer(sim.world.grid.entries()[0], _random(92), bad_kind))
 	assert_eq(sim.world.agents.size(), count)
 	assert_eq(sim.rng.state, before)

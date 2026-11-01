@@ -209,6 +209,8 @@ func _score(world: SimWorld, t: SimTask) -> float:
 		if not _can_fallback_clean(world):
 			return 0.0
 		role_prio = 1
+	if t.kind == &"degrease" and role == &"owner" and _idle_server_can_clean(world):
+		return 0.0
 	# Putting deliveries away (FK-099): with a cleaner on the team it is theirs
 	# (Cleaning), as mopping is; otherwise servers do it as Serving.
 	if t.kind == DeliveryDock.TASK_KIND and role != &"cleaner" and _team_has_cleaner(world):
@@ -240,7 +242,19 @@ func _job_level(candidate: SimTask) -> int:
 
 
 func _is_clean_spot(candidate: SimTask) -> bool:
-	return candidate.kind == &"clean_spot" and candidate.role == &"cleaner"
+	return (candidate.kind == &"clean_spot" or candidate.kind == &"degrease") and candidate.role == &"cleaner"
+
+
+## A Floor owner is the last maintenance fallback, even if nearer the stove.
+## Busy servers may keep serving while the owner helps; Cleaning Off stays Off.
+func _idle_server_can_clean(world: SimWorld) -> bool:
+	for agent: SimAgent in world.agents:
+		var server: StaffAgent = agent as StaffAgent
+		if server != null and server.role == &"server" and server.task == null \
+				and int(server.priorities.get(&"server", 0)) > 0 \
+				and (server._job_priorities == null or server._job_priorities.priority(&"cleaning") > StaffJobPriorities.Level.OFF):
+			return true
+	return false
 
 
 ## An available dedicated cleaner keeps this fallback off, even while busy.
@@ -348,7 +362,8 @@ func _run_work(world: SimWorld, s: TaskStep) -> void:
 	if not _step_started:
 		work_left = float(s.ticks)
 		_step_started = true
-	work_left -= work_speed(task.role)
+	var factor: float = float(s.work_rate.call(self)) if s.work_rate.is_valid() else 1.0
+	work_left -= work_speed(task.role) * factor
 	last_progress_tick = world.now
 	if work_left > 0.0:
 		return

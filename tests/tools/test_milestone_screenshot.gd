@@ -224,6 +224,7 @@ func test_real_main_settings_keyboard_traverses_grid_choices_then_closes() -> vo
 			var evidence: Dictionary = CAPTURE.settings_tab_to_close(panel, window)
 			assert_true(evidence["tab_from_edge_pan"])
 			assert_true(evidence["tab_through_grid_controls"], "native Tab visits both play and Build grid checkboxes")
+			assert_true(evidence["tab_through_guide_action"], "native Tab reaches Show guide again before Close")
 			assert_true(evidence["tab_to_close"], "native Tab reaches Close after both grid choices")
 			assert_eq(_preference_snapshot(), before)
 			assert_eq(Preferences.play_grid_enabled, play_before)

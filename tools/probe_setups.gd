@@ -6,7 +6,8 @@ extends RefCounted
 
 static func names() -> Array[String]:
 	return ["default", "extra_cook", "extra_server", "owner_kitchen", "owner_floor",
-		"trays_2", "trays_4", "extra_cleaner", "expanded_tables", "coffee_shop", "bar", "fryer_coffee"]
+		"trays_2", "trays_4", "extra_cleaner", "expanded_tables", "coffee_shop", "bar", "fryer_coffee", "joined_tables",
+		"grown", "neglected", "curb_appeal"]
 
 
 static func apply(name: String, main: Node, extra_cook_skill: int = 3) -> bool:
@@ -14,6 +15,8 @@ static func apply(name: String, main: Node, extra_cook_skill: int = 3) -> bool:
 	if sim == null or sim.world.clock.phase != SimClock.Phase.MORNING or not names().has(name) \
 			or sim.cleanliness == null \
 			or not sim.cleanliness.use_rng(GameState.rng(&"cleanliness")):
+		return false
+	if sim.mishaps != null and not sim.mishaps.use_rng(GameState.rng(&"cleanliness")):
 		return false
 	match name:
 		"default":
@@ -34,12 +37,20 @@ static func apply(name: String, main: Node, extra_cook_skill: int = 3) -> bool:
 			return main.call("tray_buy", 1) and main.call("tray_buy", 2)
 		"expanded_tables":
 			return _expand_with_tables(main)
+		"joined_tables":
+			return _joined_tables(main)
 		"coffee_shop":
 			return _coffee_shop(main)
 		"bar":
 			return _bar(main)
 		"fryer_coffee":
 			return _fryer_coffee(main)
+		"grown":
+			return _grown(main)
+		"neglected":
+			return _neglected(main)
+		"curb_appeal":
+			return _curb_appeal(main)
 	return false
 
 
@@ -47,12 +58,47 @@ static func apply(name: String, main: Node, extra_cook_skill: int = 3) -> bool:
 ## has newly unlocked (wine at level 2), as a player running it would.
 static func morning(name: String, main: Node) -> bool:
 	match name:
+		"neglected":
+			return _neglected(main)
 		"coffee_shop":
 			return _enable(main, [&"coffee", &"tea", &"croissant"])
 		"fryer_coffee":
 			return _enable(main, [&"burger", &"grilled_cheese", &"fries", &"coffee"])
 		"bar":
 			return _enable(main, [&"beer", &"wine", &"soft_drink", &"burger", &"grilled_cheese"])
+	return true
+
+
+## Demand comparison: the existing free expanded layout plus a reachable
+## coffee machine and storage, with all five unlocked dishes enabled through
+## Main. Construction is free, as in expanded_tables; supplies and daily costs
+## are paid normally. No XP, reputation, renown or stock is granted.
+static func _grown(main: Node) -> bool:
+	if not _expand_with_tables(main):
+		return false
+	var editor: ShopEditor = _free_editor(main)
+	if editor == null or not editor.buy(&"coffee_machine", Vector2i(12, 3), 0) \
+			or not _storage_shelves(editor) or not editor.last_check.unreachable.is_empty():
+		return false
+	main.call("_refresh_menu_catalogue")
+	var settings: MenuSettings = main.get("menu_settings") as MenuSettings
+	if settings == null:
+		return false
+	for id: StringName in [&"burger", &"grilled_cheese", &"tomato_soup", &"coffee", &"tea"]:
+		if settings.recipe(id) == null or not main.call("menu_set_enabled", id, true):
+			return false
+	return settings.enabled_recipes().size() == 5
+
+
+## Ordinary maximum menu prices, with genuine reviews earned during service.
+## Repeating the command each morning also covers later enabled dishes.
+static func _neglected(main: Node) -> bool:
+	var settings: MenuSettings = main.get("menu_settings") as MenuSettings
+	if settings == null:
+		return false
+	for recipe: RecipeDef in settings.enabled_recipes():
+		if not main.call("menu_set_price", recipe.id, recipe.standard_price * 2):
+			return false
 	return true
 
 
@@ -233,3 +279,88 @@ static func _fryer_coffee(main: Node) -> bool:
 		return false
 	return _finish(main, 11 * 60, 21 * 60, [&"burger", &"grilled_cheese", &"fries", &"coffee"],
 		[&"tea", &"tomato_soup"])
+
+
+## Joined-table fixture: two starter tables joined, plus two real cushioned chairs bought
+## for $20 through normal morning commands. Third table, menu, stock and staff
+## remain as shipped; service pays its ordinary running costs.
+static func _joined_tables(main: Node) -> bool:
+	var sim: RestaurantSim = main.get("sim") as RestaurantSim
+	if sim == null:
+		return false
+	var starts: Array[Vector2i] = [Vector2i(2, 6), Vector2i(6, 6)]
+	var targets: Array[Vector2i] = [Vector2i(3, 6), Vector2i(5, 6)]
+	var ids: Array[int] = []
+	for origin: Vector2i in starts:
+		var found: int = 0
+		for item: PlacedItem in sim.world.grid.items():
+			var definition: ItemDef = item.def as ItemDef
+			if definition != null and definition.id == &"table_2" and item.origin == origin:
+				found = item.id
+		if found == 0:
+			return false
+		ids.append(found)
+	for index: int in ids.size():
+		if not main.call("shop_move", ids[index], targets[index], 1):
+			return false
+	if not main.call("shop_buy", &"chair", Vector2i(4, 5), 2) \
+			or not main.call("shop_buy", &"chair", Vector2i(6, 8), 0):
+		return false
+	return sim.world.grid.dining_group_members(ids[0]) == ids \
+		and DiningSeats.usable_cells(sim.world.grid, sim.world.grid.item(ids[0])).size() == 6
+
+
+## Default service with a decorated front. Like the existing expanded-layout
+## probe, construction is free: only this temporary editor unlocks level four.
+## No owner XP, cash, stock or service settings are granted or reset. Nominal
+## catalogue/finish costs remain available separately; this is not an ROI test.
+static func _curb_appeal(main: Node) -> bool:
+	var live: ShopEditor = main.get("shop_editor") as ShopEditor
+	var progress: OwnerProgress = main.get("owner_progress") as OwnerProgress
+	var sim: RestaurantSim = main.get("sim") as RestaurantSim
+	if live == null or progress == null or sim == null or live.decor.count() != 0:
+		return false
+	var front: Script = load("res://tools/street_front_review.gd")
+	var pieces: Array[Dictionary] = front._pieces(sim.world.grid)
+	var faces: Array[Vector3i] = front._finish_faces(sim.world.grid)
+	var editor: ShopEditor = _free_editor(main)
+	if editor == null or pieces.size() != 5 or faces.size() != 4:
+		return false
+	# Share the real, signal-connected frontage objects. The temporary free
+	# books and unlock never replace Main's production editor or progression.
+	editor.walls = live.walls
+	editor.decor = live.decor
+	editor.set_owner_level(4)
+	var ok: bool = editor.apply_wall_finishes(editor.wall_lay_changes(faces, &"brick", &"terracotta", &"cream"))
+	for piece: Dictionary in pieces:
+		if ok:
+			ok = editor.hang(piece["id"], piece["anchor"], null, piece["swatch"])
+	editor.set_owner_level(progress.level)
+	return ok
+
+
+## Read-only setup declaration, separate from every existing probe report row.
+static func curb_appeal_construction(main: Node) -> Dictionary:
+	var sim: RestaurantSim = main.get("sim") as RestaurantSim
+	var content: ContentDB = main.get("content") as ContentDB
+	if sim == null or content == null:
+		return {"error": "The real shop content is missing"}
+	var front: Script = load("res://tools/street_front_review.gd")
+	var items: Array[Dictionary] = []
+	var total: int = 0
+	for piece: Dictionary in front._pieces(sim.world.grid):
+		var definition: ItemDef = content.item(piece["id"])
+		if definition == null:
+			return {"error": "A supported street item is missing"}
+		total += definition.price
+		items.append({"item": String(definition.id), "catalogue_price": definition.price})
+	var style: WallStyleDef = content.wall_style(&"brick")
+	if style == null:
+		return {"error": "The authored brick finish is missing"}
+	var faces: int = front._finish_faces(sim.world.grid).size()
+	total += faces * style.price
+	return {"error": "", "profile": "curb_appeal", "items": items,
+		"finish": {"style": "brick", "faces": faces, "price_per_face": style.price},
+		"nominal_construction_cost": total, "actual_construction_charge": 0,
+		"convention": "Free frontage construction; temporary editor-only level4 restored; no cash or owner-XP grants. Normal paid stock and service.",
+		"comparison_scope": "Appeal and service comparison, not purchase return on investment"}

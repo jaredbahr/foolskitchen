@@ -23,6 +23,8 @@ var _dirty: int = 0
 var _tables_by_order: Dictionary[int, int] = {}
 var _returned: Dictionary[int, bool] = {}
 var _retired: Dictionary[int, bool] = {}
+## Already paid for, delivered before the next morning autosave. Never saved.
+var _replacements: int = 0
 
 
 func _init(count: int = 0) -> void:
@@ -102,8 +104,37 @@ func wash_one() -> bool:
 	return true
 
 
+## Spilling reuses the same live order ID. Its plate becomes dirty, or leaves
+## owned stock when broken. Unlike cancellation this does not retire the ticket.
+func spill_order(order_id: int, broken: bool) -> bool:
+	if not _tables_by_order.has(order_id) or _returned.has(order_id):
+		return false
+	_tables_by_order.erase(order_id)
+	if broken:
+		_total -= 1
+		_replacements += 1
+	else:
+		_dirty += 1
+	return true
+
+
+## Legacy no-sink service has no order token, but still owns this stock.
+func break_untracked_plate() -> bool:
+	if _clean > 0:
+		_clean -= 1
+	elif _dirty > 0:
+		_dirty -= 1
+	else:
+		return false
+	_total -= 1
+	_replacements += 1
+	return true
+
+
 ## Morning is the only boundary that permits reuse of retired order IDs.
 func tidy_overnight() -> void:
+	_total += _replacements
+	_replacements = 0
 	_tables_by_order.clear()
 	_returned.clear()
 	_retired.clear()

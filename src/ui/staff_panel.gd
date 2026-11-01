@@ -9,6 +9,7 @@ signal raise_decline_requested(id: StringName)
 signal tray_requested(level: int)
 signal close_requested()
 signal job_priority_requested(id: StringName, job: StringName, value: int)
+signal owner_look_requested()
 
 const SHARED_THEME: Theme = preload("res://src/ui/theme/main_theme.tres")
 const GROWTH_RULES: StaffGrowthTuning = preload("res://data/balance/staff_growth.tres")
@@ -38,10 +39,24 @@ var _cash: int = 0
 var _priority_headers_ready: bool = false
 var _priority_names: Dictionary[StringName, Label] = {}
 var _priority_buttons: Dictionary[StringName, Dictionary] = {}
+var _owner_name: String = OwnerAppearance.DEFAULT_NAME
+var _team_activity: Dictionary = {}
 
 
 func _ready() -> void:
+	# The outer scroll bounds the header as well as the existing staff list.
+	$Panel.add_theme_stylebox_override("panel", SHARED_THEME.get_stylebox("panel", "PanelContainer"))
 	refresh()
+
+
+func set_owner_name(display_name: String) -> void:
+	_owner_name = display_name
+	refresh()
+
+
+func _on_owner_look() -> void:
+	if _phase == SimClock.Phase.MORNING:
+		owner_look_requested.emit()
 
 
 func bind_roster(roster: StaffRoster) -> void:
@@ -52,6 +67,24 @@ func bind_roster(roster: StaffRoster) -> void:
 func set_phase(phase: int) -> void:
 	_phase = phase
 	refresh()
+
+
+## Main retains this detached last-service summary across the morning reset.
+## Updating these read-only labels must retain the existing action buttons.
+func set_team_activity(summary: Dictionary) -> void:
+	_team_activity = StaffActivity.public_snapshot(summary)
+	_refresh_team_activity()
+
+
+func _refresh_team_activity() -> void:
+	var rows: VBoxContainer = %TeamActivityRows
+	for index: int in range(StaffAdviceText.ROLES.size()):
+		var label: Label = rows.get_node(NodePath(String(StaffAdviceText.ROLE_NODES[index]))) as Label
+		label.text = StaffAdviceText.role_line(StaffAdviceText.ROLES[index], _team_activity)
+		label.visible = not label.text.is_empty()
+	(%TeamActivityHeading as Label).text = StaffAdviceText.last_service_heading(_team_activity)
+	(%TeamActivitySection as VBoxContainer).visible = _phase == SimClock.Phase.MORNING \
+		and not _team_activity.is_empty()
 
 
 ## Main supplies the current day and already-readable departure notices.
@@ -86,9 +119,20 @@ func _day_wage(wage: int) -> int:
 
 
 func refresh() -> void:
+	if not (%OwnerLook as Button).pressed.is_connected(_on_owner_look):
+		(%OwnerLook as Button).pressed.connect(_on_owner_look)
+	# These controls share the heading row, but retain ordinary body sizing.
+	(%OwnerName as Label).add_theme_font_size_override("font_size", SHARED_THEME.default_font_size)
+	(%OwnerLook as Button).add_theme_font_size_override("font_size", SHARED_THEME.default_font_size)
+	(%OwnerName as Label).text = OwnerText.owner_label(_owner_name)
+	(%OwnerName as Label).tooltip_text = (%OwnerName as Label).text
+	(%OwnerLook as Button).text = OwnerText.CHANGE_LOOK
+	(%OwnerLook as Button).disabled = _phase != SimClock.Phase.MORNING
+	(%OwnerLook as Button).tooltip_text = "" if _phase == SimClock.Phase.MORNING else OwnerText.MORNING_ONLY
 	IconStyle.decorate_label($Panel/Content/Title, &"staff")
 	IconStyle.decorate_label(%RosterTitle, &"staff")
 	IconStyle.decorate_label($Panel/Content/Scroll/List/CandidateTitle, &"staff")
+	_refresh_team_activity()
 	_refresh_priorities()
 	if _roster == null:
 		return

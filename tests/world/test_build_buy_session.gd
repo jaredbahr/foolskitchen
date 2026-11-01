@@ -299,3 +299,60 @@ func _rect(x: int, y: int, w: int, h: int) -> Array[Vector2i]:
 		for column: int in range(x, x + w):
 			out.append(Vector2i(column, row))
 	return out
+
+
+func test_paint_named_look_uses_real_ui_preview_command_and_undo() -> void:
+	await _start()
+	_editor().set_owner_level(6)
+	_catalogue().set_owner_level(6)
+	assert_true(_main.call("shop_buy", &"diner_stool", Vector2i(10, 8), 0, &"sage", &"stool_chrome_teal"))
+	var placed: PlacedItem = _world().grid.item_at(Vector2i(10, 8))
+	var cash: int = Economy.cash
+	assert_true(_main.call("set_paint_active", true))
+	var looks: VBoxContainer = _catalogue().get_node("Panel/Margin/Rows/Scroll/Content/FurnitureLooks") as VBoxContainer
+	assert_true(looks.visible)
+	(looks.get_node("diner_stool/stool_dark_white") as Button).pressed.emit()
+	assert_eq(_catalogue().paint_variant_id, &"stool_dark_white")
+	_main.call("preview_paint_cell", Vector2i(10, 8))
+	assert_eq(placed.variant_id, &"stool_chrome_teal", "hover does not alter saved look")
+	var view: ShopView = _main.get_node("ShopView") as ShopView
+	assert_eq(view.item_nodes[placed.id].prop.get("_variant"), _content().item(&"diner_stool").variant(&"stool_dark_white"))
+	assert_true(_main.call("paint_cell", Vector2i(10, 8)))
+	assert_eq(placed.variant_id, &"stool_dark_white")
+	assert_eq(placed.swatch_id, &"")
+	assert_eq(Economy.cash, cash)
+	_key(KEY_Z, true)
+	assert_eq(placed.variant_id, &"stool_chrome_teal")
+	assert_eq(placed.swatch_id, &"sage")
+	_catalogue().swatch_buttons[&"butter"].pressed.emit()
+	assert_eq(_catalogue().paint_variant_item, &"")
+	assert_true(_main.call("paint_cell", Vector2i(10, 8)))
+	assert_eq(placed.swatch_id, &"butter")
+	assert_eq(placed.variant_id, &"stool_chrome_teal")
+
+
+func test_mixed_booth_looks_keep_vibe_valid_before_and_after_buy_dot_selection() -> void:
+	await _start()
+	_editor().set_owner_level(6)
+	_catalogue().set_owner_level(6)
+	Economy.add_cash(2000, Ledger.OTHER)
+	assert_true((_main.get("vibe_result") as VibeModel.Result).valid)
+	assert_true(_main.call("shop_buy", &"diner_booth", Vector2i(2, 8), 0, &"", &"booth_white"))
+	var first: VibeModel.Result = _main.get("vibe_result") as VibeModel.Result
+	assert_true(first.valid, first.reason)
+	assert_true(_main.call("shop_buy", &"diner_booth", Vector2i(10, 8), 0, &"", &"booth_walnut"))
+	var mixed: VibeModel.Result = _main.get("vibe_result") as VibeModel.Result
+	var meter: VibeMeter = _catalogue().get_node("Panel/Margin/Rows/Scroll/Content/Categories/Readout/VibeMeter") as VibeMeter
+	print("MIXED_LOOK_VIBE before_dot valid=", mixed.valid, " reason=", mixed.reason, " meter=", meter.view_state().caption)
+	assert_true(mixed.valid, mixed.reason)
+	assert_true(_main.call("set_build_active", true))
+	_catalogue().set_category(&"bar_cafe")
+	var dot: Button = _catalogue().item_buttons[&"diner_stool"].get_node("VariantDots/stool_chrome_teal") as Button
+	dot.pressed.emit()
+	var after: VibeModel.Result = _main.get("vibe_result") as VibeModel.Result
+	print("MIXED_LOOK_VIBE after_dot valid=", after.valid, " reason=", after.reason, " meter=", meter.view_state().caption)
+	assert_true(after.valid, after.reason)
+	assert_eq(after.score, mixed.score, "catalogue look selection does not alter shop vibe")
+	assert_eq(after.theme_share, mixed.theme_share)
+	assert_eq(after.active_theme, mixed.active_theme)
+	assert_true(meter.view_state().caption.begins_with("Vibe ") and meter.view_state().caption != "Vibe —")

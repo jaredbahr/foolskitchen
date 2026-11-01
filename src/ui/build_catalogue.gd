@@ -11,6 +11,8 @@ signal blueprint_requested(blueprint: Blueprint)
 signal blueprint_rename_requested(blueprint: Blueprint, display_name: String)
 signal blueprint_delete_requested(blueprint: Blueprint)
 signal buy_requested(def_id: StringName)
+signal variant_paint_requested(def_id: StringName, variant_id: StringName)
+signal variant_buy_requested(def_id: StringName, variant_id: StringName)
 signal swatch_requested(swatch_id: StringName)
 ## Walls tool (FK-070): the SimGrid.Segment new edges should get.
 signal wall_tool_requested(segment: int)
@@ -30,6 +32,8 @@ signal undo_requested()
 signal redo_requested()
 ## The Build bar's Grid button: show or hide Build's floor grid (like G).
 signal grid_requested()
+## A view-only cleaning overview beside the room's vibe and theme.
+signal hygiene_toggled(active: bool)
 
 const EDGE_MARGIN: float = 12.0
 const MAX_PANEL_WIDTH: float = 980.0
@@ -93,6 +97,11 @@ const FLOOR_THUMBNAIL: PackedScene = preload("res://assets/props/floor_tile.tscn
 const FURNITURE_HINT: String = "Square: work tile   Circle: seat"
 const CHIP_FONT_SIZE: int = 15
 
+var paint_variant_item: StringName = &""
+var paint_variant_id: StringName = &""
+var _paint_variant_rows: VBoxContainer
+var selected_variants: Dictionary[StringName, StringName] = {}
+
 var blueprint_library: BlueprintLibrary
 var blueprint_name: LineEdit
 var blueprint_save: Button
@@ -108,6 +117,7 @@ var _blueprint_panel: VBoxContainer
 var item_buttons: Dictionary[StringName, Button] = {}
 ## Walls tab cards by WallKindDef id.
 var wall_buttons: Dictionary[StringName, Button] = {}
+var wall_remove_button: Button
 ## Floor tab card (FK-080); its tab hides while the shop has no lot to grow into.
 var floor_button: Button
 ## Rooms tab cards, by SimGrid.Room.
@@ -157,7 +167,15 @@ var theme_filters: Dictionary[StringName, bool] = {}
 var selected_swatch_id: StringName = &"butter"
 ## Stable capture path: Panel/Margin/Rows/Scroll/Content/Categories/Readout/VibeMeter.
 var vibe_meter: VibeMeter
+var curb_appeal_meter: CurbAppealMeter
+var _curb_score: float = NAN
+var _curb_multiplier: float = NAN
+var _street_visible: bool = false
 var theme_label: Label
+var hygiene_button: Button
+var hygiene_panel: PanelContainer
+var hygiene_summary: Label
+var hygiene_enabled: bool = false
 ## The item the hover card describes (empty when hidden).
 var hover_id: StringName = &""
 var _floor_price: int = 0
@@ -168,6 +186,7 @@ var _ordered_ids: Array[StringName] = []
 var _layout_ready: bool = false
 var _paint_visible: bool = false
 var _owner_level: int = 1
+var _property_tier: int = 1
 var _tool: int = BuildMode.Tool.HAND
 var _editable: bool = true
 var _mode_category: Dictionary[StringName, StringName] = {BUY: &"", BUILD: WALLS}
@@ -180,6 +199,11 @@ func bind_content(content: ContentDB) -> void:
 
 
 ## Main calls this after restoring progress and on each level change.
+func set_property_tier(tier: int) -> void:
+	_property_tier = clampi(tier, 1, 2)
+	refresh_content()
+
+
 func set_owner_level(level: int) -> void:
 	if level < 1 or level == _owner_level:
 		return
@@ -192,6 +216,7 @@ func set_build_visible(active: bool) -> void:
 		visible = active
 	if not active:
 		_hide_hover_card()
+	_update_hygiene_visibility()
 
 
 ## Paint shows the Build side with the Paint tab and its swatches.
@@ -200,6 +225,7 @@ func set_paint_visible(active: bool) -> void:
 	if _paint_visible == active:
 		return
 	_paint_visible = active
+	_update_hygiene_visibility()
 	if active:
 		if mode == BUY:
 			_mode_category[BUY] = selected_category
@@ -258,6 +284,51 @@ func set_vibe(result: VibeModel.Result) -> void:
 		text = "Theme: %s" % result.theme_label
 	theme_label.text = text
 	_fit_panel()
+
+
+## Main supplies the cached score and the actual street-facing camera flag.
+func set_curb_appeal(score: float, multiplier: float, street_visible: bool) -> void:
+	_prepare_layout()
+	if score == _curb_score and multiplier == _curb_multiplier and street_visible == _street_visible:
+		return
+	if score != _curb_score or multiplier != _curb_multiplier:
+		_curb_score = score
+		_curb_multiplier = multiplier
+		curb_appeal_meter.set_appeal(score, multiplier)
+	if street_visible != _street_visible:
+		_street_visible = street_visible
+		curb_appeal_meter.visible = street_visible
+		_fit_panel()
+
+
+func set_hygiene_lines(lines: PackedStringArray) -> void:
+	_prepare_layout()
+	var text: String = "\n".join(lines)
+	if hygiene_summary.text != text:
+		hygiene_summary.text = text
+		_fit_panel()
+
+
+func set_hygiene_enabled(enabled: bool) -> void:
+	_prepare_layout()
+	if hygiene_enabled == enabled:
+		return
+	hygiene_enabled = enabled
+	hygiene_button.set_pressed_no_signal(enabled)
+	_update_hygiene_visibility()
+	hygiene_toggled.emit(enabled)
+	_fit_panel()
+
+
+func _update_hygiene_visibility() -> void:
+	if hygiene_button == null:
+		return
+	hygiene_button.visible = not _paint_visible
+	hygiene_panel.visible = visible and hygiene_enabled and not _paint_visible
+
+
+func _on_hygiene_pressed() -> void:
+	set_hygiene_enabled(hygiene_button.button_pressed)
 
 
 ## Filters never replace the native buttons or alter the underlying definitions.
@@ -321,7 +392,7 @@ func hover_card_lines(id: StringName) -> Array[String]:
 	var definition: ItemDef = _content.item(id) if _content != null else null
 	if definition == null:
 		return []
-	return CatalogueText.card_lines(definition, _owner_level)
+	return CatalogueText.card_lines(definition, _owner_level, selected_variants.get(id, &""))
 
 
 func _ready() -> void:
@@ -368,7 +439,10 @@ func refresh_content() -> void:
 			item_buttons[definition.id] = button
 			row.add_child(button)
 		var locked: bool = definition.unlock_level > _owner_level
-		var text: String = CatalogueText.tile_text(definition, _owner_level)
+		var text: String = CatalogueText.tile_text(definition, _owner_level, selected_variants.get(definition.id, &""))
+		if not definition.variants.is_empty():
+			text += "\n"
+			_refresh_variant_dots(button, definition)
 		if button.text != text:
 			button.text = text
 		button.disabled = locked
@@ -389,8 +463,9 @@ func refresh_content() -> void:
 	for wanted: bool in [true, false]:
 		for definition: ItemDef in definitions:
 			if (category_for(definition) == selected_category) == wanted:
-				item_buttons[definition.id].icon = _thumbnails.request(definition.view_scene)
+				item_buttons[definition.id].icon = _thumbnails.request(definition.view_scene, definition.variant(selected_variants.get(definition.id, &"")))
 	_refresh_swatches()
+	_refresh_paint_variants()
 	if not hover_id.is_empty():
 		_show_hover_card(hover_id)
 	_fit_panel()
@@ -411,6 +486,12 @@ func _refresh_wall_cards() -> void:
 			row.remove_child(old_button)
 			old_button.free()
 			wall_buttons.erase(id)
+	if _content == null:
+		if wall_remove_button != null:
+			row.remove_child(wall_remove_button)
+			wall_remove_button.free()
+			wall_remove_button = null
+		return
 	for definition: WallKindDef in definitions:
 		var button: Button = wall_buttons.get(definition.id) as Button
 		if button == null:
@@ -424,6 +505,13 @@ func _refresh_wall_cards() -> void:
 		if definition.segment == SimGrid.Segment.DOORWAY:
 			button.tooltip_text += ". On a back or side outside wall, this makes a back door"
 		button.icon = _thumbnails.request(definition.thumbnail_scene)
+	if wall_remove_button == null:
+		wall_remove_button = _tile("WallRemove")
+		wall_remove_button.text = CatalogueText.WALL_REMOVE_LABEL
+		wall_remove_button.tooltip_text = CatalogueText.WALL_REMOVE_TOOLTIP
+		wall_remove_button.pressed.connect(_on_wall_remove_pressed)
+		row.add_child(wall_remove_button)
+	row.move_child(wall_remove_button, row.get_child_count() - 1)
 
 
 ## Main passes the lot's price per floor tile; 0 means there is no lot.
@@ -519,9 +607,9 @@ func _refresh_floor_styles() -> void:
 			floor_style_buttons[definition.id] = button
 			row.add_child(button)
 		row.move_child(button, row.get_child_count() - 1)
-		var locked: String = definition.locked_reason(_owner_level)
+		var locked: String = definition.locked_reason(_owner_level, _property_tier)
 		var price: String = "Free" if definition.price == 0 else "%s a tile" % Fmt.money(definition.price)
-		button.text = "%s\n%s" % [definition.display_name, price if locked.is_empty() else "Level %d" % definition.unlock_level]
+		button.text = "%s\n%s" % [definition.display_name, price if locked.is_empty() else ("Larger lease" if definition.unlock_tier > _property_tier else "Level %d" % definition.unlock_level)]
 		button.disabled = not locked.is_empty()
 		button.tooltip_text = locked if not locked.is_empty() else \
 			"Lay %s for %s. Replacing a floor refunds half its price; recolouring is free" % [
@@ -619,7 +707,7 @@ func _refresh_floor_colours() -> void:
 func _on_floor_style_pressed(style_id: StringName) -> void:
 	var definition: FloorStyleDef = _content.floor_style(style_id) if _content != null else null
 	if definition == null or not visible or _paint_visible or selected_category != FLOORS \
-			or not definition.unlocked(_owner_level) or (is_inside_tree() and not is_visible_in_tree()):
+			or not definition.unlocked(_owner_level, _property_tier) or (is_inside_tree() and not is_visible_in_tree()):
 		if floor_style_buttons.has(style_id):
 			floor_style_buttons[style_id].set_pressed_no_signal(style_id == selected_floor_style)
 		return
@@ -676,9 +764,9 @@ func _refresh_wall_styles() -> void:
 			wall_style_buttons[definition.id] = button
 			row.add_child(button)
 		row.move_child(button, row.get_child_count() - 1)
-		var locked: String = definition.locked_reason(_owner_level)
+		var locked: String = definition.locked_reason(_owner_level, _property_tier)
 		var price: String = "Free" if definition.price == 0 else "%s a wall" % Fmt.money(definition.price)
-		button.text = "%s\n%s" % [definition.display_name, price if locked.is_empty() else "Level %d" % definition.unlock_level]
+		button.text = "%s\n%s" % [definition.display_name, price if locked.is_empty() else ("Larger lease" if definition.unlock_tier > _property_tier else "Level %d" % definition.unlock_level)]
 		button.disabled = not locked.is_empty()
 		button.tooltip_text = locked if not locked.is_empty() else \
 			"Put up %s for %s (each 0.5 m of wall). Replacing a finish refunds half its price; recolouring is free" % [
@@ -772,7 +860,7 @@ func _refresh_wall_colours() -> void:
 func _on_wall_style_pressed(style_id: StringName) -> void:
 	var definition: WallStyleDef = _content.wall_style(style_id) if _content != null else null
 	if definition == null or not visible or _paint_visible or selected_category != WALL_FINISH \
-			or not definition.unlocked(_owner_level) or (is_inside_tree() and not is_visible_in_tree()):
+			or not definition.unlocked(_owner_level, _property_tier) or (is_inside_tree() and not is_visible_in_tree()):
 		if wall_style_buttons.has(style_id):
 			wall_style_buttons[style_id].set_pressed_no_signal(style_id == selected_wall_style)
 		return
@@ -813,6 +901,12 @@ func _on_floor_pressed() -> void:
 			or (is_inside_tree() and not is_visible_in_tree()):
 		return
 	floor_tool_requested.emit()
+
+
+func _on_wall_remove_pressed() -> void:
+	if visible and _editable and not _paint_visible and mode == BUILD and selected_category == WALLS \
+			and wall_remove_button != null and wall_remove_button.is_visible_in_tree():
+		wall_tool_requested.emit(SimGrid.Segment.NONE)
 
 
 func _on_wall_pressed(id: StringName) -> void:
@@ -877,6 +971,8 @@ func _apply_category() -> void:
 			row.move_child(item_buttons[order[index]], index)
 	for id: StringName in wall_buttons:
 		wall_buttons[id].visible = not _paint_visible and mode == BUILD and selected_category == WALLS
+	if wall_remove_button != null:
+		wall_remove_button.visible = not _paint_visible and mode == BUILD and selected_category == WALLS
 	if floor_button != null:
 		floor_button.visible = not _paint_visible and mode == BUILD and selected_category == FLOOR and _floor_price > 0
 	for button: Button in room_buttons:
@@ -906,6 +1002,8 @@ func _apply_category() -> void:
 	(_content_node().get_node("Filters") as Control).visible = buying and not blueprints_shown
 	(_content_node().get_node("Items") as Control).visible = not _paint_visible and not blueprints_shown
 	(_content_node().get_node("PaintSwatches") as Control).visible = _paint_visible
+	if _paint_variant_rows != null:
+		_paint_variant_rows.visible = _paint_visible
 	_refresh_title()
 	var empty: Label = _content_node().get_node("Empty") as Label
 	empty.visible = buying and not blueprints_shown and visible_ids().is_empty()
@@ -924,7 +1022,7 @@ func _passes_filters(definition: ItemDef) -> bool:
 		return false
 	if theme_filters.is_empty():
 		return true
-	for tag: StringName in definition.theme_tags:
+	for tag: StringName in definition.variant_tags(selected_variants.get(definition.id, &"")):
 		if theme_filters.has(tag):
 			return true
 	return false
@@ -939,7 +1037,7 @@ func _display_order() -> Array[StringName]:
 	var ranks: Dictionary[StringName, int] = {}
 	for index: int in range(order.size()):
 		var definition: ItemDef = _content.item(order[index])
-		prices[order[index]] = definition.price if definition != null else 0
+		prices[order[index]] = definition.variant_price(selected_variants.get(definition.id, &"")) if definition != null else 0
 		ranks[order[index]] = index
 	var low_first: bool = sort == Sort.PRICE_LOW
 	order.sort_custom(func(a: StringName, b: StringName) -> bool:
@@ -1082,7 +1180,7 @@ func _on_thumbnail_ready(scene: PackedScene, texture: Texture2D) -> void:
 		floor_button.icon = texture
 	for id: StringName in item_buttons:
 		var definition: ItemDef = _content.item(id)
-		if definition != null and definition.view_scene == scene:
+		if definition != null and definition.view_scene == scene and definition.variants.is_empty():
 			item_buttons[id].icon = texture
 	for id: StringName in wall_buttons:
 		var wall: WallKindDef = _content.wall_kind(id)
@@ -1194,10 +1292,10 @@ func _refresh_swatch_styles() -> void:
 		var style: StyleBoxFlat = StyleBoxFlat.new()
 		style.bg_color = definition.color
 		style.set_corner_radius_all(17)
-		style.set_border_width_all(3 if id == selected_swatch_id else 1)
-		style.border_color = selected_ring if id == selected_swatch_id else Color("5d4637")
+		style.set_border_width_all(3 if id == selected_swatch_id and paint_variant_item.is_empty() else 1)
+		style.border_color = selected_ring if id == selected_swatch_id and paint_variant_item.is_empty() else Color("5d4637")
 		button.pivot_offset = button.custom_minimum_size * 0.5
-		button.scale = Vector2.ONE * (1.1 if id == selected_swatch_id else 1.0)
+		button.scale = Vector2.ONE * (1.1 if id == selected_swatch_id and paint_variant_item.is_empty() else 1.0)
 		button.add_theme_stylebox_override("normal", style)
 		button.add_theme_stylebox_override("hover", style)
 		button.add_theme_stylebox_override("pressed", style)
@@ -1207,6 +1305,11 @@ func _refresh_swatch_styles() -> void:
 func _refresh_title() -> void:
 	var title: Label = _content_node().get_node("Title") as Label
 	title.visible = _paint_visible
+	if _paint_visible and _content != null and not paint_variant_item.is_empty():
+		var definition: ItemDef = _content.item(paint_variant_item)
+		if definition != null:
+			title.text = CatalogueText.paint_variant_title(definition, definition.variant(paint_variant_id))
+			return
 	if not _paint_visible:
 		# Hidden outside Paint: the Build/Buy and room tabs name the page.
 		title.text = CATEGORY_LABELS.get(selected_category, "Furniture")
@@ -1222,6 +1325,9 @@ func _on_swatch_pressed(id: StringName) -> void:
 	if not visible or _content == null or _content.swatch(id) == null or not _paint_visible:
 		return
 	selected_swatch_id = id
+	paint_variant_item = &""
+	paint_variant_id = &""
+	_refresh_paint_variants()
 	_refresh_swatch_styles()
 	swatch_requested.emit(id)
 
@@ -1279,7 +1385,7 @@ func _prepare_layout() -> void:
 	grid_button.button_pressed = true
 	grid_button.pressed.connect(_on_grid_pressed)
 	bar.add_child(grid_button)
-	var categories: HBoxContainer = content.get_node("Categories") as HBoxContainer
+	var categories: HFlowContainer = content.get_node("Categories") as HFlowContainer
 	for category: StringName in CATEGORY_IDS:
 		var button: Button = Button.new()
 		button.name = String(category).capitalize()
@@ -1289,6 +1395,7 @@ func _prepare_layout() -> void:
 		button.toggle_mode = true
 		button.focus_mode = Control.FOCUS_ALL
 		button.mouse_filter = Control.MOUSE_FILTER_STOP
+		button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		button.pressed.connect(_on_category_pressed.bind(category))
 		_tighten(button, 12.0, 5.0)
 		category_buttons[category] = button
@@ -1297,17 +1404,37 @@ func _prepare_layout() -> void:
 	var readout: HBoxContainer = HBoxContainer.new()
 	readout.name = "Readout"
 	readout.mouse_filter = Control.MOUSE_FILTER_PASS
+	readout.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	readout.add_theme_constant_override("separation", 10)
 	readout.tooltip_text = "Your room's vibe and theme right now"
 	categories.add_child(_divider())
 	categories.add_child(readout)
 	vibe_meter = VibeMeter.new()
 	readout.add_child(vibe_meter)
+	curb_appeal_meter = CurbAppealMeter.new()
+	curb_appeal_meter.visible = false
+	readout.add_child(curb_appeal_meter)
 	theme_label = Label.new()
 	theme_label.name = "Theme"
 	theme_label.text = "No theme yet"
 	theme_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	readout.add_child(theme_label)
+	hygiene_button = _chip("Hygiene", HygieneOverview.TITLE)
+	hygiene_button.tooltip_text = HygieneOverview.TOGGLE_TIP
+	hygiene_button.pressed.connect(_on_hygiene_pressed)
+	readout.add_child(hygiene_button)
+	hygiene_panel = PanelContainer.new()
+	hygiene_panel.name = "HygieneOverview"
+	hygiene_panel.visible = false
+	hygiene_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	content.add_child(hygiene_panel)
+	content.move_child(hygiene_panel, categories.get_index() + 1)
+	hygiene_summary = Label.new()
+	hygiene_summary.name = "Summary"
+	hygiene_summary.add_theme_font_size_override("font_size", 18)
+	hygiene_summary.tooltip_text = HygieneOverview.TODAY_TIP
+	hygiene_summary.mouse_filter = Control.MOUSE_FILTER_PASS
+	hygiene_panel.add_child(hygiene_summary)
 	var filters: HBoxContainer = content.get_node("Filters") as HBoxContainer
 	_refresh_groups()
 	filters.add_child(_divider())
@@ -1326,6 +1453,7 @@ func _prepare_layout() -> void:
 	_thumbnails = ItemThumbnailCache.new()
 	_thumbnails.name = "ItemThumbnails"
 	_thumbnails.thumbnail_ready.connect(_on_thumbnail_ready)
+	_thumbnails.variant_thumbnail_ready.connect(_on_variant_thumbnail_ready)
 	add_child(_thumbnails)
 	_prepare_blueprints()
 	_layout_ready = true
@@ -1406,6 +1534,16 @@ func _fit_panel() -> void:
 	for child: Node in content.get_children():
 		if child != row and child is Control and (child as Control).visible:
 			rows_width = maxf(rows_width, (child as Control).get_combined_minimum_size().x)
+			if child is HFlowContainer:
+				# Flow's minimum is only its widest child. Keep the catalogue's
+				# usual card capacity when a complete room/readout row can fit;
+				# its controls may still wrap inside the bounded native panel.
+				var ideal: float = 0.0
+				for control: Node in child.get_children():
+					if control is Control and (control as Control).visible:
+						ideal += (control as Control).get_combined_minimum_size().x \
+							+ (child as HFlowContainer).get_theme_constant("h_separation")
+				rows_width = maxf(rows_width, ideal)
 	var wanted: float = maxf(rows_width, MIN_COLUMNS * (card_width + CARD_GAP) - CARD_GAP)
 	var grid_width: float = minf(wanted, limit.x - bar_width)
 	var columns: int = clampi(floori((grid_width + CARD_GAP) / (card_width + CARD_GAP)), 1, MAX_COLUMNS)
@@ -1434,6 +1572,8 @@ func _visible_cards() -> Array[Button]:
 	for button: Button in wall_buttons.values():
 		if button.visible:
 			cards.append(button)
+	if wall_remove_button != null and wall_remove_button.visible:
+		cards.append(wall_remove_button)
 	if floor_button != null and floor_button.visible:
 		cards.append(floor_button)
 	for button: Button in room_buttons:
@@ -1456,7 +1596,10 @@ func _on_buy_pressed(id: StringName) -> void:
 	var definition: ItemDef = _content.item(id)
 	if button.visible and not button.disabled and _buyable(definition) and _passes_filters(definition) \
 			and definition.unlock_level <= _owner_level:
-		buy_requested.emit(id)
+		if definition.variants.is_empty():
+			buy_requested.emit(id)
+		else:
+			variant_buy_requested.emit(id, selected_variants.get(id, &""))
 
 
 static func _buyable(definition: ItemDef) -> bool:
@@ -1480,6 +1623,102 @@ static func _definition_before(first: ItemDef, second: ItemDef) -> bool:
 		return String(first.id) < String(second.id)
 	return first_name < second_name
 
+
+## Per-item choices stay on the tile, not a second copy of the catalogue item.
+func _refresh_variant_dots(button: Button, definition: ItemDef) -> void:
+	var row: HBoxContainer = button.get_node_or_null("VariantDots") as HBoxContainer
+	if row == null:
+		row = HBoxContainer.new()
+		row.name = "VariantDots"
+		row.add_theme_constant_override("separation", 2)
+		row.alignment = BoxContainer.ALIGNMENT_CENTER
+		row.mouse_filter = Control.MOUSE_FILTER_PASS
+		button.add_child(row)
+		row.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+		row.offset_top = -26.0
+		row.offset_bottom = -4.0
+		button.custom_minimum_size.y = CARD_MINIMUM.y + 24.0
+	var selected: ItemVariant = definition.variant(selected_variants.get(definition.id, &""))
+	var palette: Dictionary[StringName, Color] = KitMaterialColours.colours()
+	for look: ItemVariant in definition.variants:
+		if look == null or not palette.has(look.chip_colour):
+			continue
+		var dot: Button = row.get_node_or_null(NodePath(String(look.id))) as Button
+		if dot == null:
+			dot = Button.new()
+			dot.name = look.id
+			dot.custom_minimum_size = Vector2(22, 22)
+			dot.toggle_mode = true
+			dot.mouse_filter = Control.MOUSE_FILTER_STOP
+			dot.pressed.connect(_on_variant_selected.bind(definition.id, look.id))
+			row.add_child(dot)
+		dot.disabled = definition.unlock_level > _owner_level
+		dot.tooltip_text = look.display_name
+		dot.set_pressed_no_signal(look == selected)
+		var style: StyleBoxFlat = StyleBoxFlat.new()
+		style.bg_color = palette[look.chip_colour]
+		style.border_color = button.get_theme_color("font_color")
+		style.set_border_width_all(3 if look == selected else 1)
+		style.set_corner_radius_all(11)
+		for state: StringName in [&"normal", &"hover", &"pressed", &"hover_pressed", &"disabled"]:
+			dot.add_theme_stylebox_override(state, style)
+
+
+func _on_variant_selected(id: StringName, look: StringName) -> void:
+	if _content == null or not item_buttons.has(id) or not item_buttons[id].is_visible_in_tree() \
+			or item_buttons[id].disabled:
+		return
+	selected_variants[id] = _content.item(id).known_variant_id(look)
+	refresh_content()
+
+
+func _on_variant_thumbnail_ready(scene: PackedScene, look: ItemVariant, texture: Texture2D) -> void:
+	if _content == null:
+		return
+	for id: StringName in item_buttons:
+		var definition: ItemDef = _content.item(id)
+		if definition != null and definition.view_scene == scene \
+				and definition.variant(selected_variants.get(id, &"")) == look:
+			item_buttons[id].icon = texture
+	if not hover_id.is_empty() and item_buttons.has(hover_id):
+		(get_node("HoverCard/Rows/Picture") as TextureRect).texture = item_buttons[hover_id].icon
+
+
+func _refresh_paint_variants() -> void:
+	if _content == null:
+		return
+	if _paint_variant_rows == null:
+		_paint_variant_rows = VBoxContainer.new()
+		_paint_variant_rows.name = "FurnitureLooks"
+		_content_node().add_child(_paint_variant_rows)
+		for definition: ItemDef in _content.items():
+			if definition.variants.is_empty() or not definition.paintable:
+				continue
+			var row: HBoxContainer = HBoxContainer.new()
+			row.name = definition.id
+			_paint_variant_rows.add_child(row)
+			var label: Label = Label.new()
+			label.text = definition.display_name
+			row.add_child(label)
+			for look: ItemVariant in definition.variants:
+				var button: Button = _chip(String(look.id), look.display_name)
+				button.pressed.connect(_on_variant_paint_selected.bind(definition.id, look.id))
+				row.add_child(button)
+	_paint_variant_rows.visible = _paint_visible
+	for row: Node in _paint_variant_rows.get_children():
+		for child: Node in row.get_children():
+			if child is Button:
+				(child as Button).set_pressed_no_signal(StringName(row.name) == paint_variant_item and StringName(child.name) == paint_variant_id)
+
+
+func _on_variant_paint_selected(id: StringName, look: StringName) -> void:
+	if not visible or not _paint_visible or _content == null:
+		return
+	paint_variant_item = id
+	paint_variant_id = look
+	_refresh_paint_variants()
+	_refresh_swatch_styles()
+	variant_paint_requested.emit(id, look)
 
 # --- Player blueprint library (FK-045) ----------------------------------------
 

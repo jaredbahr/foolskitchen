@@ -3,7 +3,7 @@ extends Resource
 ## Placeable content definition in 0.5 m grid cells, facing -Z by default.
 
 ## RESTROOM (FK-101): restroom fixtures; a toilet has station_type &"toilet".
-enum Category { DOOR, TABLE, CHAIR, STATION, STORAGE, PASS, DECOR, RESTROOM }
+enum Category { DOOR, TABLE, CHAIR, STATION, STORAGE, PASS, DECOR, RESTROOM, WAITING }
 ## WALL (D26): hangs on a wall face (ShopEditor.decor, WallDecor), never on
 ## the grid; its footprint is (width along the wall in faces, 1).
 enum PlacementLayer { NORMAL, FLOOR_DECOR, WALL }
@@ -11,7 +11,7 @@ enum PlacementLayer { NORMAL, FLOOR_DECOR, WALL }
 ## inside the shop (prints, boards). WINDOW: in an outside window, one per
 ## window, its front facing the street (the neon OPEN sign). Never renumber;
 ## an exterior-face mount (the street front, #168) would be the next value.
-enum WallMount { INSIDE_FACE, WINDOW }
+enum WallMount { INSIDE_FACE, WINDOW, EXTERIOR }
 ## The widest wall item, in wall faces (0.5 m each).
 const MAX_WALL_WIDTH: int = 4
 
@@ -65,6 +65,8 @@ const MAX_SEATED_LEAN_DEGREES: float = 35.0
 @export var unlock_level: int = 1
 @export var charm: int = 0
 @export var theme_tags: Array[StringName] = []
+## Empty keeps legacy content unchanged; the first authored look is the default.
+@export var variants: Array[ItemVariant] = []
 ## Warm placeholder palette until the shared model palette is locked in Phase 4.
 @export var placeholder_color: Color = Color(0.65, 0.44, 0.27, 1.0)
 ## Optional presentation resource. The sim never instantiates or reads this scene.
@@ -77,6 +79,11 @@ const MAX_SEATED_LEAN_DEGREES: float = 35.0
 ## Wall items only: on an inside wall face, or in an outside window (one
 ## window wide, so `footprint` is (1, 1)).
 @export var wall_mount: WallMount = WallMount.INSIDE_FACE
+## A window item may additionally use an explicit street-facing placement.
+@export var allow_exterior: bool = false
+@export var exterior_band: ExteriorSupport.Band = ExteriorSupport.Band.BODY
+@export var unique_per_shop: bool = false
+@export var shows_restaurant_name: bool = false
 ## One body-colour slot; unpainted items keep their authored placeholder colour.
 @export var paintable: bool = true
 @export var paint_slot: StringName = &"body"
@@ -97,7 +104,9 @@ func placement_layer_valid() -> bool:
 	if placement_layer == PlacementLayer.WALL:
 		return passive and (category == Category.DECOR or category == Category.RESTROOM) \
 			and footprint.y == 1 and footprint.x >= 1 and footprint.x <= MAX_WALL_WIDTH \
-			and (wall_mount == WallMount.INSIDE_FACE or wall_mount == WallMount.WINDOW and footprint.x == 1)
+			and (wall_mount == WallMount.INSIDE_FACE or wall_mount == WallMount.WINDOW and footprint.x == 1 \
+				or wall_mount == WallMount.EXTERIOR) and exterior_band >= ExteriorSupport.Band.BODY \
+			and exterior_band <= ExteriorSupport.Band.LIGHTS
 	return placement_layer == PlacementLayer.FLOOR_DECOR and category == Category.DECOR and passive
 
 
@@ -135,3 +144,29 @@ func blocking_cells_fit(occupied_footprint: Vector2i, standing_cells: Array[Vect
 ## relative to that rectangle; they are deliberately never clamped into it.
 static func rotate_cell(cell: Vector2i, unrotated_footprint: Vector2i, quarter_turns: int) -> Vector2i:
 	return GridMath.rotate_cell(cell, unrotated_footprint, quarter_turns)
+
+
+## Missing/unknown saved IDs resolve to the default, never a random look.
+func variant(variant_id: StringName = &"") -> ItemVariant:
+	for look: ItemVariant in variants:
+		if look != null and look.id == variant_id:
+			return look
+	return variants[0] if not variants.is_empty() else null
+
+
+func variant_price(variant_id: StringName = &"") -> int:
+	var look: ItemVariant = variant(variant_id)
+	return maxi(0, price + (look.price_delta if look != null else 0))
+
+
+func variant_tags(variant_id: StringName = &"") -> Array[StringName]:
+	var look: ItemVariant = variant(variant_id)
+	return look.theme_tags.duplicate() if look != null else theme_tags.duplicate()
+
+
+## Canonical saved selection: unknown or removed looks safely use the default.
+func known_variant_id(value: StringName) -> StringName:
+	for look: ItemVariant in variants:
+		if look != null and look.id == value:
+			return value
+	return &""

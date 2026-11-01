@@ -2,7 +2,6 @@ extends TestCase
 ## Request-only owner controls. Real input routing, factory creation and
 ## checkpoint persistence remain session integration work.
 
-const PANEL: PackedScene = preload("res://src/ui/inspect_panel.tscn")
 
 var _panel: InspectPanel
 var _world: SimWorld
@@ -18,7 +17,7 @@ func before_each() -> void:
 	_restaurant.world = _world
 	_owner = OwnerAgent.new(Vector2i(1, 1))
 	_world.add_agent(_owner)
-	_panel = PANEL.instantiate() as InspectPanel
+	_panel = (load("res://src/ui/inspect_panel.tscn") as PackedScene).instantiate() as InspectPanel
 	_panel.owner_mode_requested.connect(_record_request)
 	_panel.bind_world(_world)
 

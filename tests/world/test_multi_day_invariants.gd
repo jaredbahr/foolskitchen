@@ -108,6 +108,10 @@ func _assert_clean_morning(main: Node, day: int) -> void:
 	assert_eq(sim.kitchen.dirty_tables.size(), 0, "day %d: tables clean" % day)
 	assert_not_null(sim.cleanliness, "day %d: cleanliness is installed" % day)
 	assert_eq(sim.cleanliness.spot_count(), 0, "day %d: floor spots are tidied overnight" % day)
+	assert_eq(sim.mishaps.spills_today, 0, "day %d: spills reset overnight" % day)
+	assert_eq(sim.mishaps.broken_plates_today, 0, "day %d: breakages reset overnight" % day)
+	assert_eq(sim.mishaps.degreases_today, 0, "day %d: maintenance report resets overnight" % day)
+	assert_eq(sim.mishaps.greasy_stations(world.grid), [] as Array[int], "day %d: station grease clears overnight" % day)
 	assert_eq(sim.clean_tasks.active_task_count(), 0, "day %d: no mop task survives overnight" % day)
 	var diagnostics: DebugOverlay = main.get_node("Overlay/DebugOverlay") as DebugOverlay
 	assert_true(diagnostics.get("_cleanliness") == sim.cleanliness,
@@ -128,8 +132,24 @@ func _assert_clean_morning(main: Node, day: int) -> void:
 	for item: PlacedItem in world.grid.items():
 		for cell: Vector2i in item.work_cells + item.seat_cells:
 			assert_eq(item.reserved_by(cell), -1, "day %d: nothing reserved overnight" % day)
-	for id: StringName in TUNING.morning_stock:
-		assert_true(Economy.stock.count(id) >= TUNING.morning_stock[id], "day %d: %s restocked" % [day, id])
+	var planned: ReorderSettings = main.call("_reorder")
+	var space: StorageSpace = main.call("storage_space")
+	var unit_costs: Dictionary = main.call("_unit_costs")
+	var premium: float = main.get("auto_reorder_premium")
+	for kind: int in StorageSpace.KINDS:
+		assert_true(space.in_stock(kind) + space.on_order(kind) <= space.capacity(kind),
+			"day %d: stock plus paid pending deliveries fit their reserved storage" % day)
+	for id: StringName in planned.ids():
+		if not planned.is_enabled(id):
+			continue
+		var available: int = Economy.stock.count(id) + space.pending_of(id)
+		if available < planned.target(id):
+			var one_unit_cost: int = ReorderSettings.auto_cost(int(unit_costs[id]), premium)
+			assert_true(space.free_units(space.kind_of(id)) == 0 or Economy.cash < one_unit_cost,
+				"day %d: %s below its forecast/manual target only when cash or storage prevents restocking" % [day, id])
+	var remainder: Dictionary = planned.plan(Economy.stock, unit_costs, Economy.cash, premium, false, space)
+	assert_true((remainder["lines"] as Array).is_empty(),
+		"day %d: no affordable stock fitting the effective targets remains unordered" % day)
 	assert_true(sim.stock == Economy.stock, "day %d: the kitchen cooks from the books' stock" % day)
 
 
@@ -184,8 +204,11 @@ func _assert_closed_books(main: Node, day: int) -> void:
 	assert_eq(int(totals.get(Ledger.WAGES, 0)), -wages, "day %d: wages once" % day)
 	assert_eq(int(totals.get(Ledger.RENT, 0)), -TUNING.daily_rent, "day %d: rent once" % day)
 	assert_eq(int(totals.get(Ledger.OTHER, 0)), 0, "day %d: no unexplained money" % day)
+	assert_eq(int(totals.get(Ledger.BREAKAGES, 0)),
+		-sim.mishaps.broken_plates_today * sim.mishaps.tuning.replacement_plate_cost,
+		"day %d: exactly one paid replacement per broken plate" % day)
 	var known_categories: Array[StringName] = [Ledger.SALE, Ledger.TIP, Ledger.INGREDIENTS,
-		Ledger.WAGES, Ledger.RENT, Ledger.UPGRADES, Ledger.OTHER,
+		Ledger.WAGES, Ledger.RENT, Ledger.UPGRADES, Ledger.OTHER, Ledger.BREAKAGES,
 		Ledger.BANK_LOAN, Ledger.LOAN_INTEREST, Ledger.LOAN_REPAYMENT, Ledger.MILESTONE_BONUS]
 	for category: StringName in totals:
 		assert_true(known_categories.has(category), "day %d: every flow has a known ledger category" % day)
@@ -226,6 +249,8 @@ func _assert_closed_books(main: Node, day: int) -> void:
 	assert_eq(shown.owner_xp_breakdown.get("milestone_xp", 0), milestone_xp,
 		"day %d: report XP breakdown matches its authored milestone rows" % day)
 	assert_eq(int(shown.income.get(Ledger.BANK_LOAN, 0)), int(totals.get(Ledger.BANK_LOAN, 0)))
+	assert_eq(int(shown.costs.get(Ledger.BREAKAGES, 0)), -int(totals.get(Ledger.BREAKAGES, 0)),
+		"day %d: the report shows every paid replacement" % day)
 	assert_eq(int(shown.costs.get(Ledger.LOAN_INTEREST, 0)), -int(totals.get(Ledger.LOAN_INTEREST, 0)))
 	assert_eq(int(shown.costs.get(Ledger.LOAN_REPAYMENT, 0)), -int(totals.get(Ledger.LOAN_REPAYMENT, 0)))
 	var operating_profit: int = 0
@@ -233,7 +258,11 @@ func _assert_closed_books(main: Node, day: int) -> void:
 		if category != Ledger.BANK_LOAN and category != Ledger.LOAN_INTEREST \
 				and category != Ledger.LOAN_REPAYMENT and category != Ledger.MILESTONE_BONUS:
 			operating_profit += int(totals[category])
-	assert_eq(shown.operating_profit(), operating_profit, "the headline excludes every financing movement")
+	assert_eq(shown.purchase_basis_operating_profit(), operating_profit,
+		"progression and financing retain the original purchase-basis business result")
+	assert_true(shown.operating_profit_recorded(), "real purchased stock has recorded served-food costs")
+	assert_eq(shown.operating_profit(), operating_profit - int(totals.get(Ledger.INGREDIENTS, 0)) - shown.food_cost,
+		"the headline replaces signed stock-purchase cash flows with the cost of sold dishes")
 	assert_eq(shown.profit(), Economy.ledger.day_profit(day), "full financial cash movement still matches the ledger")
 	var dishes: int = 0
 	for recipe: StringName in shown.dishes_sold:

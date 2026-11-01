@@ -2,8 +2,13 @@ extends TestCase
 ## FK-045 selection, pointer state, keyboard rotation and native ghost geometry.
 
 const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
-const PREVIEW: PackedScene = preload("res://src/world/build_preview.tscn")
-const VIEW: PackedScene = preload("res://src/world/shop_view.tscn")
+
+class Catalog extends ContentDB:
+	var extra: Dictionary[StringName, ItemDef] = {}
+
+	func item(id: StringName) -> ItemDef:
+		return extra[id] if extra.has(id) else super.item(id)
+
 
 var _content: ContentDB
 var _sim: RestaurantSim
@@ -119,9 +124,11 @@ func test_native_group_ghost_is_red_when_refused_and_clears_on_cancel() -> void:
 	var second: ShopPlacement = blueprint.entries[0].duplicate() as ShopPlacement
 	second.origin = Vector2i(3, 0)
 	blueprint.entries.append(second)
-	var view: ShopView = VIEW.instantiate() as ShopView
+	# Acquire native scenes after autoload initialization; entry-script
+	# scene preloads can retain a cyclic script graph at shutdown.
+	var view: ShopView = (load("res://src/world/shop_view.tscn") as PackedScene).instantiate() as ShopView
 	view.show_world(_sim.world)
-	var preview: BuildPreview = PREVIEW.instantiate() as BuildPreview
+	var preview: BuildPreview = (load("res://src/world/build_preview.tscn") as PackedScene).instantiate() as BuildPreview
 	preview.bind_build_mode(_mode, view)
 	assert_true(_mode.begin_blueprint(blueprint, Vector2i(-30, -30)))
 	assert_eq(preview.blueprint_ghosts.size(), 2)
@@ -146,6 +153,109 @@ func test_native_group_ghost_is_red_when_refused_and_clears_on_cancel() -> void:
 	preview.free()
 	view.show_world(null)
 	view.free()
+
+
+func test_variant_buy_then_blueprint_uses_stamp_command() -> void:
+	_editor.set_owner_level(6)
+	assert_true(_mode.begin_buy(&"diner_stool", Vector2i.ZERO, &"stool_chrome_teal"))
+	var blueprint: Blueprint = _plant_blueprint()
+	var destination: Vector2i = SimGrid.NO_CELL
+	for y: int in range(_sim.world.grid.bounds.position.y, _sim.world.grid.bounds.end.y):
+		for x: int in range(_sim.world.grid.bounds.position.x, _sim.world.grid.bounds.end.x):
+			var cell: Vector2i = Vector2i(x, y)
+			if _editor.check_stamp(blueprint, cell, 0).ok:
+				destination = cell
+				break
+		if destination != SimGrid.NO_CELL:
+			break
+	assert_ne(destination, SimGrid.NO_CELL)
+	assert_true(_mode.begin_blueprint(blueprint, destination))
+	assert_eq(_mode.buy_variant_id, &"")
+	assert_true(_mode.commit())
+	assert_eq(_stamp_calls, 1)
+
+
+func test_blueprint_presentation_and_native_ghosts_retain_both_authored_looks() -> void:
+	var blueprint: Blueprint = Blueprint.new()
+	blueprint.display_name = "White and Walnut"
+	for index: int in 2:
+		var entry: ShopPlacement = ShopPlacement.new()
+		entry.item_id = &"diner_booth"
+		entry.origin = Vector2i(3 * index, 0)
+		entry.variant_id = &"booth_white" if index == 0 else &"booth_walnut"
+		blueprint.entries.append(entry)
+	var view: ShopView = (load("res://src/world/shop_view.tscn") as PackedScene).instantiate() as ShopView
+	view.show_world(_sim.world)
+	var preview: BuildPreview = (load("res://src/world/build_preview.tscn") as PackedScene).instantiate() as BuildPreview
+	preview.bind_build_mode(_mode, view)
+	assert_true(_mode.begin_blueprint(blueprint, Vector2i(-30, -30)))
+	for turns: int in 4:
+		var visuals: Array = _mode.presentation_state().get("blueprint_visuals", [])
+		assert_eq(visuals.size(), 2)
+		assert_eq(preview.blueprint_ghosts.size(), 2)
+		for index: int in visuals.size():
+			var expected: StringName = blueprint.entries[index].variant_id
+			assert_eq((visuals[index] as Dictionary).get("variant_id", &""), expected)
+			var ghost: ItemVisual = preview.blueprint_ghosts[index]
+			assert_not_null(ghost.prop)
+			if ghost.prop == null:
+				continue
+			var applied: ItemVariant = ghost.prop.get("_variant") as ItemVariant
+			assert_not_null(applied)
+			if applied != null:
+				assert_eq(applied.id, expected, "the native wrapper selected the authored look")
+			# Remove only the presentation tint to expose the controller's selected
+			# material; no variant is applied by this test to repair a lost look.
+			ghost.prop.clear_body_tint()
+			var colour: StringName = &"carpetWhite" if index == 0 else &"woodDark"
+			var material: BaseMaterial3D = _ghost_surface_material(ghost, &"carpetWhite")
+			assert_not_null(material)
+			if material != null:
+				assert_eq(material.albedo_color, KitMaterialColours.colours()[colour])
+		assert_true(_mode.rotate())
+	assert_true(_mode.cancel_ghost())
+	assert_true(preview.blueprint_ghosts.is_empty())
+	preview.clear()
+	preview.free()
+	view.show_world(null)
+	view.free()
+
+
+func test_priced_look_blueprint_cost_summary_and_check_use_variant_total() -> void:
+	var catalog: Catalog = Catalog.new()
+	assert_eq(catalog.load_all(), PackedStringArray())
+	var definition: ItemDef = catalog.item(&"potted_plant").duplicate() as ItemDef
+	var original: ItemVariant = ItemVariant.new()
+	original.id = &"original"
+	original.display_name = "Original"
+	var alternative: ItemVariant = original.duplicate() as ItemVariant
+	alternative.id = &"plus17"
+	alternative.display_name = "Plus 17"
+	alternative.price_delta = 17
+	definition.variants = [original, alternative]
+	catalog.extra[definition.id] = definition
+	_content = catalog
+	_editor = ShopEditor.new(_sim, _content, ShopEditBooks.new(_can_spend, _record_cash))
+	_editor.set_owner_level(20)
+	_mode.bind_session(_editor, _sim.world, _content, _move, _buy, _sell)
+	assert_true(_mode.enter())
+	var blueprint: Blueprint = _plant_blueprint()
+	blueprint.entries[0].variant_id = alternative.id
+	assert_true(_mode.begin_blueprint(blueprint, Vector2i(4, 9)))
+	var expected: int = definition.price + 17
+	assert_true(_mode.current_check.ok, _mode.current_check.why)
+	assert_eq(_mode.current_check.cost, expected)
+	assert_eq(_mode.blueprint_cost(), expected)
+	assert_true(_mode.blueprint_summary().contains(Fmt.money(expected)))
+
+
+func _ghost_surface_material(ghost: ItemVisual, name: StringName) -> BaseMaterial3D:
+	for mesh: MeshInstance3D in ghost.rendered_meshes():
+		for index: int in mesh.mesh.get_surface_count():
+			var source: Material = mesh.mesh.surface_get_material(index)
+			if source != null and StringName(source.resource_name) == name:
+				return mesh.get_active_material(index) as BaseMaterial3D
+	return null
 
 
 func _plant_blueprint() -> Blueprint:

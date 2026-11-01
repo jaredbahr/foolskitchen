@@ -7,7 +7,7 @@ config_version=5
 
 config/name="Fool's Kitchen"
 config/description="A low-poly 3D restaurant tycoon game."
-run/main_scene="res://src/world/main.tscn"
+run/main_scene="res://src/ui/title_screen.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://icon.svg"
 

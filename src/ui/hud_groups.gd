@@ -10,7 +10,7 @@ const ROW_GAP: float = 12.0
 const TITLE: String = "RestaurantName"
 const TITLE_GAP: float = 2.0
 const GROUPS: Array[Array] = [
-	["Day", "Time", "Phase", "Speed0", "Speed1", "Speed2", "Speed4"],
+	["Day", "Weather", "Time", "Phase", "Speed0", "Speed1", "Speed2", "Speed4"],
 	["Cash", "Loan", "Reputation", "OwnerProgress", "Plates", "SoldOut"],
 	["Walls", "Build", "Paint", "Context", "Menu", "Stock", "Staff", "Settings"],
 ]

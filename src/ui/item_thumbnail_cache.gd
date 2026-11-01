@@ -5,6 +5,17 @@ extends Node
 ## Headless tests retain queue contracts without creating rendering resources.
 
 signal thumbnail_ready(scene: PackedScene, texture: Texture2D)
+signal variant_thumbnail_ready(scene: PackedScene, look: ItemVariant, texture: Texture2D)
+
+class Request extends RefCounted:
+	var scene: PackedScene
+	var look: ItemVariant
+	var key: String
+
+	func _init(source: PackedScene, variant: ItemVariant = null) -> void:
+		scene = source
+		look = variant
+		key = "%d:%d" % [source.get_instance_id(), variant.get_instance_id() if variant != null else 0]
 
 const IMAGE_SIZE: Vector2i = Vector2i(96, 96)
 const MAX_DRAW_WAIT_FRAMES: int = 30
@@ -12,16 +23,17 @@ const MAX_DRAW_WAIT_FRAMES: int = 30
 # before drawing; discarding a temporary scene/sky can orphan that queued work.
 const LIGHTING_SCENE: PackedScene = preload("res://src/world/lighting_rig.tscn")
 
-var _textures: Dictionary[int, Texture2D] = {}
-var _scenes: Dictionary[int, PackedScene] = {}
-var _queued: Dictionary[int, bool] = {}
-var _failed: Dictionary[int, bool] = {}
-var _queue: Array[PackedScene] = []
+var _textures: Dictionary[String, Texture2D] = {}
+var _scenes: Dictionary[String, Request] = {}
+var _queued: Dictionary[String, bool] = {}
+var _failed: Dictionary[String, bool] = {}
+var _queue: Array[Request] = []
 var _viewport: SubViewport
 var _stage: Node3D
 var _camera: Camera3D
 var _active: PropView
 var _active_scene: PackedScene
+var _active_request: Request
 var _wait_frames: int = 0
 var _render_unavailable: bool = false
 var last_error: String = ""
@@ -33,17 +45,18 @@ func _ready() -> void:
 
 ## Native callers receive the same cached texture for the same PackedScene.
 ## Holding the scene also prevents an instance ID from being reused mid-cache.
-func request(scene: PackedScene) -> Texture2D:
+func request(scene: PackedScene, look: ItemVariant = null) -> Texture2D:
 	if scene == null:
 		return null
-	var key: int = scene.get_instance_id()
+	var entry: Request = Request.new(scene, look)
+	var key: String = entry.key
 	if _textures.has(key):
 		return _textures[key]
 	if _queued.has(key) or _failed.has(key) or _render_unavailable:
 		return null
-	_scenes[key] = scene
+	_scenes[key] = entry
 	_queued[key] = true
-	_queue.append(scene)
+	_queue.append(entry)
 	if is_inside_tree() and rendering_supported():
 		set_process(true)
 	return null
@@ -135,7 +148,8 @@ static func create_preview_lighting() -> Node3D:
 
 
 func _start_next() -> void:
-	_active_scene = _queue.pop_front()
+	_active_request = _queue.pop_front()
+	_active_scene = _active_request.scene
 	var instance: Node = _active_scene.instantiate()
 	_active = instance as PropView
 	if _active == null:
@@ -144,6 +158,9 @@ func _start_next() -> void:
 		return
 	_stage.add_child(_active)
 	_active.prepare()
+	if not _active.set_variant(_active_request.look):
+		_fail_active("The furniture look has no supported kit material recipe")
+		return
 	if _active.has_node(^"WallMount"):
 		# Wall decor wrappers (D26) face -Z off a wall behind them: turn the
 		# front square to the camera's diagonal (not the back of the frame).
@@ -170,15 +187,19 @@ func _on_frame_post_draw() -> void:
 		return
 	var scene: PackedScene = _active_scene
 	var texture: ImageTexture = ImageTexture.create_from_image(image)
-	_textures[scene.get_instance_id()] = texture
+	var look: ItemVariant = _active_request.look
+	_textures[_active_request.key] = texture
 	_cancel_active()
-	thumbnail_ready.emit(scene, texture)
+	if look == null:
+		thumbnail_ready.emit(scene, texture)
+	else:
+		variant_thumbnail_ready.emit(scene, look, texture)
 
 
 func _fail_active(reason: String) -> void:
 	last_error = reason
 	if _active_scene != null:
-		_failed[_active_scene.get_instance_id()] = true
+		_failed[_active_request.key] = true
 	_cancel_active()
 
 
@@ -186,11 +207,12 @@ func _cancel_active() -> void:
 	if RenderingServer.frame_post_draw.is_connected(_on_frame_post_draw):
 		RenderingServer.frame_post_draw.disconnect(_on_frame_post_draw)
 	if _active_scene != null:
-		_queued.erase(_active_scene.get_instance_id())
+		_queued.erase(_active_request.key)
 	if is_instance_valid(_active):
 		_active.free()
 	_active = null
 	_active_scene = null
+	_active_request = null
 	_wait_frames = 0
 	if _viewport != null:
 		_viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
