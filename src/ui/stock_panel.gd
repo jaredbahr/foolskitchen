@@ -47,6 +47,7 @@ var _armed_throw: StringName = &""
 
 
 func _ready() -> void:
+	$Panel.add_theme_stylebox_override("panel", SHARED_THEME.get_stylebox("panel", "PanelContainer"))
 	refresh()
 
 
@@ -321,6 +322,8 @@ func _build_row(parent: Node, id: StringName, index: int) -> Dictionary:
 		more.pressed.connect(_on_cart_step.bind(id, step))
 		parts["cart%+d" % step] = more
 	var detail: HBoxContainer = _add_line(row, "Reorder")
+	# Leave room for both scrollbars without widening the existing card.
+	detail.add_theme_constant_override("separation", 20)
 	var throw: Button = _add_button(detail, "Throw", "Throw out")
 	throw.pressed.connect(_on_throw_pressed.bind(id))
 	throw.custom_minimum_size.x = 150.0
