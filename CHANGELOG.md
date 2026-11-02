@@ -124,6 +124,7 @@ Each line ends with its PR number.
 - See a daily Sunny, Cloudy or Rain forecast in the HUD and morning Menu, with gentle rain and cooler light outside. The forecast is saved for the day and leaves service unchanged. (#251)
 - Push tables together to seat bigger parties. (#253)
 - Surround the shop with a street, neighbouring buildings, passing pedestrians and a car, with more room to pan toward the road. (#254)
+- Sold-out advice is easier to read and points you to Stock for more ingredients during service. (#279)
 
 ### Content
 - Placed chairs now have a usable seat. (#48)
