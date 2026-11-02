@@ -125,6 +125,8 @@ Each line ends with its PR number.
 - Push tables together to seat bigger parties. (#253)
 - Surround the shop with a street, neighbouring buildings, passing pedestrians and a car, with more room to pan toward the road. (#254)
 
+- Continue now explains when a saved game cannot be loaded and a fresh shop opens, while keeping the existing save for now. (#277)
+
 ### Content
 - Placed chairs now have a usable seat. (#48)
 - Tier 1 money numbers as data: $300 starting cash, $40 rent, wages of $30 (cook) and $25 (server), and a daily fridge restock. (#40)
