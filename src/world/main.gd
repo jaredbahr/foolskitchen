@@ -3655,6 +3655,10 @@ func _begin_morning() -> void:
 	_restock()
 	Economy.ledger.prune_before(Clock.sim.day - Ledger.HISTORY_DAYS)
 	_report.hide()
+	if use_saves and _skip_next_autosave:
+		var warning: AcceptDialog = $Overlay/AutosaveLoadFailure
+		warning.theme = ($Overlay/QuitToTitle as ConfirmationDialog).theme
+		warning.popup_centered(Vector2i(560, 210))
 	if use_saves and not _skip_next_autosave:
 		if SaveSystem.save_game(save_slot) != OK:
 			($Overlay/AutosaveFailure as AcceptDialog).popup_centered(Vector2i(560, 180))
