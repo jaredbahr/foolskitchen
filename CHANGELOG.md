@@ -91,6 +91,7 @@ Each line ends with its PR number.
 - Chairs, tables and kitchen equipment use matching Kenney models; paint keeps their metal, glass and food details. (#131)
 - Staff improve at the jobs they finish and can ask for raises; review their progress and requests each morning. (#130)
 - Change sound, UI size, opening speed, fullscreen and camera edge panning in Settings; your choices are remembered. (#129)
+- Settings shows a visible save error when Escape cannot close the panel. (#281)
 - The shop floor now gets messy during service. Hire a Cleaner to mop it, and see the day's cleanliness in the closing report. (#105)
 - Earn owner XP from happy guests, profit and five-star reviews; new levels unlock a tomato melt and a potted plant. (#104)
 - Guests no longer repeat the same comment in one evening report unless all suitable comments have been used. (#103)
