@@ -61,6 +61,13 @@ layer = 10
 title = "Quit to title"
 dialog_text = "Progress since this morning will be lost."
 
+[node name="AutosaveFailure" type="AcceptDialog" parent="Overlay"]
+title = "Progress wasn't saved"
+exclusive = true
+dialog_text = "Couldn't save this morning. Progress since the last save may be lost if you quit. The game will try again next morning."
+dialog_autowrap = true
+ok_button_text = "Keep playing"
+
 [node name="HintsBubble" type="Control" parent="Overlay"]
 layout_mode = 3
 anchors_preset = 15
