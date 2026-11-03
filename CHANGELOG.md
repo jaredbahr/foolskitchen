@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- The shop has sound: buttons click, guests ring the door bell and pay with a jingle of coins, five-star reviews chime, level-ups and milestones play a sting, the back door creaks, deliveries thud down, and the room hums louder as it fills while stoves sizzle and the coffee machine hisses. Effects volume in Settings controls it all. (#284)
 - A warning now tells you when the morning save fails, so you know progress may be lost if you quit. (#275)
 - Stock ingredient controls stay usable below long warnings at larger UI scales, with scrolling to reach every button. (#273)
 - Wall menu boards show your restaurant name and dishes from a section you choose, and the Menu panel shows which themes your dishes lean toward. (#231)

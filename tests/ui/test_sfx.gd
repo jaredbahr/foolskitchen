@@ -95,3 +95,10 @@ func test_station_level_rises_gently_with_more_busy_stations() -> void:
 	assert_almost_eq(SoundDirector.station_level(1), SoundDirector.ONE_STATION_LEVEL)
 	assert_true(SoundDirector.station_level(2) > SoundDirector.station_level(1))
 	assert_almost_eq(SoundDirector.station_level(20), 1.0, 0.0001, "never above full level")
+
+
+func test_tool_runs_and_headless_runs_stay_silent() -> void:
+	assert_true(Sfx.is_silent_run("headless", PackedStringArray()))
+	assert_true(Sfx.is_silent_run("X11", PackedStringArray(["--path", ".", "--script", "tools/screenshot.gd"])))
+	assert_true(Sfx.is_silent_run("X11", PackedStringArray(["--script=tools/balance_probe.gd"])))
+	assert_false(Sfx.is_silent_run("X11", PackedStringArray(["--path", "."])), "the real game plays sound")

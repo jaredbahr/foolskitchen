@@ -4,8 +4,9 @@ extends Node
 ## Settings already sets its volume. Presentation only: it never touches the
 ## simulation, draws no random numbers and saves nothing.
 ##
-## Headless runs (tests, probes, CI) create no players: `play` still reports
-## the cue through `cue_played`, so tests can check what would be heard.
+## Headless runs and tool scripts (tests, probes, screenshot captures) create
+## no players: `play` still reports the cue through `cue_played`, so tests can
+## check what would be heard, and captures exit with no audio left playing.
 ## On the web, browsers block sound until the player first clicks or presses a
 ## key, so nothing plays (or queues) before then.
 
@@ -31,7 +32,7 @@ var _loop_levels: Dictionary[StringName, float] = {}
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
-	_headless = DisplayServer.get_name() == "headless"
+	_headless = is_silent_run(DisplayServer.get_name(), OS.get_cmdline_args())
 	_unlocked = not OS.has_feature("web")
 	if not _headless:
 		for index: int in ONE_SHOT_PLAYERS:
@@ -42,6 +43,27 @@ func _ready() -> void:
 			_one_shots.append(player)
 	get_tree().node_added.connect(_on_node_added)
 	_bind_buttons(get_tree().root)
+
+
+## The game itself never starts with `--script`; only tools do.
+static func is_silent_run(display: String, arguments: PackedStringArray) -> bool:
+	if display == "headless":
+		return true
+	for argument: String in arguments:
+		if argument == "--script" or argument == "-s" or argument.begins_with("--script="):
+			return true
+	return false
+
+
+## Stop and release every player so nothing is still playing at exit.
+func _exit_tree() -> void:
+	for player: AudioStreamPlayer in _one_shots:
+		player.stop()
+		player.stream = null
+	for loop: StringName in _loop_players:
+		_loop_players[loop].stop()
+		_loop_players[loop].stream = null
+	_loop_levels.clear()
 
 
 func _input(event: InputEvent) -> void:
