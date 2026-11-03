@@ -1,0 +1,66 @@
+[gd_resource type="Resource" script_class="SoundTuning" load_steps=15 format=3]
+
+[ext_resource type="Script" path="res://src/audio/sound_tuning.gd" id="1_tuning"]
+[ext_resource type="AudioStream" path="res://assets/kenney/audio/interface/click_003.ogg" id="2_click"]
+[ext_resource type="AudioStream" path="res://assets/kenney/audio/ui_sfx/rollover2.wav" id="3_hover"]
+[ext_resource type="AudioStream" path="res://assets/kenney/audio/interface/glass_001.ogg" id="4_bell"]
+[ext_resource type="AudioStream" path="res://assets/kenney/audio/rpg/handleCoins2.ogg" id="5_cash"]
+[ext_resource type="AudioStream" path="res://assets/kenney/audio/interface/select_003.ogg" id="6_star"]
+[ext_resource type="AudioStream" path="res://assets/kenney/audio/interface/confirmation_002.ogg" id="7_level"]
+[ext_resource type="AudioStream" path="res://assets/kenney/audio/interface/confirmation_004.ogg" id="8_milestone"]
+[ext_resource type="AudioStream" path="res://assets/kenney/audio/rpg/doorOpen_1.ogg" id="9_door"]
+[ext_resource type="AudioStream" path="res://assets/kenney/audio/rpg/dropLeather.ogg" id="10_drop"]
+[ext_resource type="AudioStream" path="res://assets/made/audio/room_tone.ogg" id="11_room"]
+[ext_resource type="AudioStream" path="res://assets/made/audio/stove_sizzle.ogg" id="12_sizzle"]
+[ext_resource type="AudioStream" path="res://assets/made/audio/fryer_bubble.ogg" id="13_fryer"]
+[ext_resource type="AudioStream" path="res://assets/made/audio/coffee_steam.ogg" id="14_coffee"]
+
+[resource]
+script = ExtResource("1_tuning")
+cues = Dictionary[StringName, AudioStream]({
+&"back_door": ExtResource("9_door"),
+&"cash": ExtResource("5_cash"),
+&"click": ExtResource("2_click"),
+&"delivery_drop": ExtResource("10_drop"),
+&"door_bell": ExtResource("4_bell"),
+&"hover": ExtResource("3_hover"),
+&"level_up": ExtResource("7_level"),
+&"milestone": ExtResource("8_milestone"),
+&"star_chime": ExtResource("6_star")
+})
+volume_db = Dictionary[StringName, float]({
+&"back_door": -12.0,
+&"cash": -4.0,
+&"click": -10.0,
+&"delivery_drop": -8.0,
+&"door_bell": -10.0,
+&"hover": -2.0,
+&"level_up": -6.0,
+&"milestone": -6.0,
+&"star_chime": -8.0
+})
+min_interval = Dictionary[StringName, float]({
+&"back_door": 1.0,
+&"cash": 0.3,
+&"click": 0.05,
+&"delivery_drop": 0.12,
+&"door_bell": 0.5,
+&"hover": 0.08,
+&"level_up": 1.0,
+&"milestone": 1.0,
+&"star_chime": 1.0
+})
+loops = Dictionary[StringName, AudioStream]({
+&"coffee_steam": ExtResource("14_coffee"),
+&"fryer_bubble": ExtResource("13_fryer"),
+&"room_tone": ExtResource("11_room"),
+&"stove_sizzle": ExtResource("12_sizzle")
+})
+loop_volume_db = Dictionary[StringName, float]({
+&"coffee_steam": -8.0,
+&"fryer_bubble": -6.0,
+&"room_tone": -4.0,
+&"stove_sizzle": -6.0
+})
+room_tone_full_guests = 14
+pitch_cycle = PackedFloat32Array(1.0, 1.04, 0.97, 1.02, 0.99)

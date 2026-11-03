@@ -426,3 +426,27 @@ func test_show_world_clears_ghosts() -> void:
 	_view.show_world(_sim.world)
 	assert_true(_view.ghosts.is_empty())
 	assert_false(is_instance_valid(ghost), "freed with the old world's figures")
+
+
+## #117: the back door creaks as it opens for the delivery, and each crate
+## landing at play speed thuds; nothing else here makes either sound.
+func test_the_back_door_creaks_and_crates_thud_as_the_delivery_lands() -> void:
+	await _enter_view()
+	_open_quiet()
+	Sfx.reset_throttle()
+	var heard: Array[StringName] = []
+	var listen: Callable = func(cue: StringName) -> void: heard.append(cue)
+	Sfx.cue_played.connect(listen)
+	_tick(8)
+	assert_eq(heard, [] as Array[StringName], "a quiet shop with no delivery makes no door or crate sound")
+	assert_true(_sim.dock.arrive([{"id": &"cheese", "qty": 4}, {"id": &"bread", "qty": 6}] as Array[Dictionary]))
+	var courier: CourierAgent = _courier()
+	for tick: int in (WallRules.ALLEY_REACH + 8) * 4 + 12:
+		_tick()
+		if courier.state == CourierAgent.State.LEAVING:
+			break
+	_tick()
+	Sfx.cue_played.disconnect(listen)
+	assert_true(heard.has(&"back_door"), "the door creaked as she came in: %s" % [heard])
+	assert_true(heard.has(&"delivery_drop"), "the crates thudded down: %s" % [heard])
+	assert_eq(heard.count(&"back_door"), 1, "one creak per opening, not one per frame")
