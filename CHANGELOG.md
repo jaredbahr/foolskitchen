@@ -36,6 +36,7 @@ Each line ends with its PR number.
 - Upgrade your lease from owner level 3 in the morning Menu panel: keep your shop, pay a deposit and higher rent, and unlock more land to expand. (#216)
 - Pick your owner's character and name when starting a shop, and change their look from Staff in the morning. (#233)
 - Start from a title screen with New game, Continue and Settings, and quit back to it without overwriting your morning autosave. (#230)
+- Hover help now uses warm panels and readable dark text. (#283)
 - Check dirty tables, floor dirt and restroom upkeep in Build's new Hygiene overview, with problem tiles highlighted and today's cleanliness rating. (#232)
 - Waiting benches let guests sit near the door and wait longer for a dining table. (#228)
 - Build warns when an edit would take dishes off the menu and refuses edits that leave nothing cookable. Opening explains dishes removed that morning. (#227)
