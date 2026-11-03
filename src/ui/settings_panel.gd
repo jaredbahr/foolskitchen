@@ -139,7 +139,10 @@ func set_panel_top(top: float) -> void:
 func flush_pending_changes() -> bool:
 	if _save_delay != null:
 		_save_delay.stop()
-	return _preferences == null or _preferences.flush_pending_volumes()
+	var saved: bool = _preferences == null or _preferences.flush_pending_volumes()
+	if not saved and is_node_ready():
+		_record(false)
+	return saved
 
 
 func _layout_card() -> void:
@@ -256,6 +259,7 @@ func _record(saved: bool) -> void:
 	if not saved:
 		refresh()
 		_status.text = "Could not save settings. Please try again."
+		_scroll.ensure_control_visible.call_deferred(_status)
 
 
 ## A session owns guide progress; title Settings has no run to change.

@@ -422,8 +422,8 @@ func _render_sold_out() -> void:
 	var count: int = _sold_out_names.size()
 	# A short count keeps the service header on one row; the tooltip names them.
 	_sold_out_label.text = "%d sold out" % count
-	_sold_out_label.tooltip_text = "Sold out for the rest of today:\n" + "\n".join(_sold_out_names) \
-		+ "\nBuy more in the Stock panel tomorrow morning."
+	_sold_out_label.tooltip_text = "Sold out:\n" + "\n".join(_sold_out_names) \
+		+ "\nOrder more in Stock. Dishes return when the ingredients are put away."
 	# A service-time tag: the evening report and the next morning explain it.
 	_sold_out_label.visible = count > 0 and (Clock.sim.phase == SimClock.Phase.OPEN
 		or Clock.sim.phase == SimClock.Phase.LAST_ORDERS)
@@ -477,6 +477,11 @@ func _style_header() -> void:
 	chip.set_content_margin(SIDE_BOTTOM, 4.0)
 	_loan_label.add_theme_stylebox_override("normal", chip)
 	_sold_out_label.add_theme_stylebox_override("normal", chip)
+	# Keep the tag's advice readable over the world without changing other tooltips.
+	var tooltip_theme: Theme = header_theme.duplicate() as Theme
+	tooltip_theme.set_stylebox("panel", "TooltipPanel", header_theme.get_stylebox("panel", "PanelContainer"))
+	tooltip_theme.set_color("font_color", "TooltipLabel", header_theme.get_color("font_color", "Label"))
+	_sold_out_label.theme = tooltip_theme
 	_day_label.tooltip_text = "Current day"
 	_time_label.tooltip_text = "Shop clock"
 	_phase_label.tooltip_text = "Today's service phase"
