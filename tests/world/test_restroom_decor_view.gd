@@ -20,7 +20,7 @@ func test_partition_and_thumbnail_have_matching_thin_laminate_geometry() -> void
 	assert_true(grid.set_segment(edge, SimGrid.Segment.STALL_PARTITION))
 	var view: WallSegmentView = WallSegmentView.new()
 	view.set_materials(StandardMaterial3D.new(), StandardMaterial3D.new())
-	view.rebuild(grid, false, [])
+	view.rebuild(grid, {} as Dictionary[Vector3i, bool], [])
 	var panel: MeshInstance3D = view.get_node("Segment_2_1_0/StallPanel") as MeshInstance3D
 	assert_eq((panel.mesh as BoxMesh).size, Vector3(GridMath.CELL_SIZE,
 		ArtScale.STALL_PARTITION_HEIGHT, ArtScale.STALL_PARTITION_THICKNESS))
@@ -28,7 +28,7 @@ func test_partition_and_thumbnail_have_matching_thin_laminate_geometry() -> void
 	assert_eq((panel.material_override as StandardMaterial3D).albedo_color, StallPartitionView.SWATCH.color)
 	var thumbnail: PropView = (load("res://assets/props/stall_partition.tscn") as PackedScene).instantiate() as PropView
 	assert_eq(thumbnail.get_combined_aabb().size, (panel.mesh as BoxMesh).size)
-	view.rebuild(grid, true, [])
+	view.rebuild(grid, {edge: true} as Dictionary[Vector3i, bool], [])
 	panel = view.get_node("Segment_2_1_0/StallPanel") as MeshInstance3D
 	assert_almost_eq((panel.mesh as BoxMesh).size.y, ShopView.LOWERED_HEIGHT, 0.0001)
 	assert_eq(grid.segment(edge), SimGrid.Segment.STALL_PARTITION, "lowering changes only presentation")

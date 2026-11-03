@@ -62,7 +62,7 @@ var _decor: WallDecor
 var _preview: Dictionary[Vector3i, FloorFinishes.Finish] = {}
 var _wall_colour: Color = Color("e6d5b8")
 var _shop_swatch: StringName = &""
-var _interior_lowered: bool = false
+var _lowered_edges: Dictionary[Vector3i, bool] = {}
 var _lowered_cells: Dictionary[Vector2i, bool] = {}
 var _materials: Dictionary[String, ShaderMaterial] = {}
 var _finish_nodes: Array[MeshInstance3D] = []
@@ -150,13 +150,13 @@ func set_wall_colour(colour: Color, swatch_id: StringName) -> void:
 
 ## Follows ShopView's wall heights: interior segments lowered (Cutaway and
 ## Down), and the shell cells drawn lowered.
-func set_lowered(interior_lowered: bool, lowered_cells: Array[Vector2i]) -> void:
+func set_lowered(lowered_edges: Dictionary[Vector3i, bool], lowered_cells: Array[Vector2i]) -> void:
 	var cells: Dictionary[Vector2i, bool] = {}
 	for cell: Vector2i in lowered_cells:
 		cells[cell] = true
-	if interior_lowered == _interior_lowered and cells == _lowered_cells:
+	if lowered_edges == _lowered_edges and cells == _lowered_cells:
 		return
-	_interior_lowered = interior_lowered
+	_lowered_edges = lowered_edges.duplicate()
 	_lowered_cells = cells
 	rebuild()
 
@@ -310,7 +310,7 @@ func _rebuild_finishes() -> void:
 
 ## One facing quad: world-metre UV (along the line, up), 0..1 UV2.
 func _add_face(surface: SurfaceTool, face: Vector3i) -> void:
-	var frame: Dictionary = face_frame(_grid, face, _interior_lowered, _lowered_cells)
+	var frame: Dictionary = face_frame(_grid, face, _lowered_edges, _lowered_cells)
 	var origin: Vector3 = frame["origin"]
 	var tangent: Vector3 = frame["tangent"]
 	var normal: Vector3 = frame["normal"]
@@ -336,7 +336,7 @@ func _add_face(surface: SurfaceTool, face: Vector3i) -> void:
 ## the wall to the right (seen from the room), the facing's ends `x0`/`x1`
 ## along it (interior faces reach round or stop at a joining wall's slab) and
 ## its `height` (the wall's drawn height). `inset` is from the grid line.
-static func face_frame(grid: SimGrid, face: Vector3i, interior_lowered: bool,
+static func face_frame(grid: SimGrid, face: Vector3i, lowered_edges: Dictionary[Vector3i, bool],
 		lowered_cells: Dictionary[Vector2i, bool]) -> Dictionary:
 	var here: Vector2i = WallFaces.cell(face)
 	var into: Vector2i = WallFaces.step(face)
@@ -349,7 +349,7 @@ static func face_frame(grid: SimGrid, face: Vector3i, interior_lowered: bool,
 	var half: float = GridMath.CELL_SIZE * 0.5
 	var x0: float = -half
 	var x1: float = half
-	var lowered: bool = interior_lowered if interior else lowered_cells.has(here + into)
+	var lowered: bool = lowered_edges.has(WallFaces.edge(face)) if interior else lowered_cells.has(here + into)
 	if ExteriorSupport.is_exterior(grid, face) and grid.terrain(here + into) != SimGrid.Terrain.WALL:
 		lowered = _opening_lowered(grid, face, lowered_cells)
 	if interior:
@@ -676,7 +676,7 @@ func _sync_item_visibility() -> void:
 
 func is_hung_lowered(anchor: Vector3i, width: int) -> bool:
 	for face: Vector3i in WallFaces.span(anchor, width):
-		if bool(face_frame(_grid, face, _interior_lowered, _lowered_cells)["lowered"]):
+		if bool(face_frame(_grid, face, _lowered_edges, _lowered_cells)["lowered"]):
 			return true
 	return false
 

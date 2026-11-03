@@ -478,6 +478,8 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	if world == null:
 		return
+	# The cutaway follows the camera's focus (#205); cheap unless its cell changes.
+	($ShopView as ShopView).set_camera_focus(($CameraRig as Node3D).global_position)
 	_debug_overlay.sample_rates(float(Time.get_ticks_usec()) / 1000000.0, Engine.get_frames_per_second())
 	_guard_build_phase()
 	if build_mode.blueprint_dragging and not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):

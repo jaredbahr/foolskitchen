@@ -106,7 +106,7 @@ func test_native_outside_paint_keeps_whole_building_behavior_and_per_face_overri
 	_main.call("refresh_presentation")
 	assert_true(_main.call("set_paint_active", true))
 	(_main.get_node("Overlay/BuildCatalogue") as BuildCatalogue).swatch_buttons[&"clay"].pressed.emit()
-	var target: Vector3 = WallFinishView.face_frame(_world().grid, FRONT, false,
+	var target: Vector3 = WallFinishView.face_frame(_world().grid, FRONT, {} as Dictionary[Vector3i, bool],
 		{} as Dictionary[Vector2i, bool])["origin"] + Vector3.UP * 0.7
 	await _focus(target)
 	var point: Vector2 = _camera().unproject_position(target)

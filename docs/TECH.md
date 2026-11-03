@@ -1048,7 +1048,12 @@ tables and buys two normal chairs for $20, without changing menu/staff/tuning.
   native Kenney `wallWindow` pane. An outer window cuts the shell cell: its box
   drops to the sill, jambs and head surround the pane, which sits at the room
   face; `RoomDressing` keeps its street pane/lamp slots but skips that cell.
-  Cutaway and Down lower every interior segment; a lowered doorway keeps a
+  Down lowers every interior segment. Cutaway (#205) lowers only those whose
+  middle stands more than half a cell in front of the camera focus
+  (`ShopView.lowered_interior_edges`, `cutaway_lowers`): walls behind it stay
+  up with their finishes and decor. The set is recomputed on a quarter turn or
+  when the focus enters a new cell, never per frame, and one set drives the
+  segments, finishes, decor visibility and picking. A lowered doorway keeps a
   post stub at each end and a floor threshold, and a lowered window shows a
   Slate blue glass strip instead of the dark cap, so cycling reads there too.
 - **Back doors (FK-099, #187).** The Doorway tool can put a back door on an
