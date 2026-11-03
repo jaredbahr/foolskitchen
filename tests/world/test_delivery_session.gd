@@ -176,6 +176,12 @@ func test_deliveries_arrive_on_the_schedule_and_bring_sold_out_dishes_back() -> 
 	assert_true(Clock.sim.start_service())
 	main.call("run_ticks", 5)
 	assert_true(sim.is_sold_out(&"tomato_soup"))
+	var sold_out: Label = main.get_node("HUD/Top/Row/SoldOut") as Label
+	assert_true(sold_out.visible)
+	assert_true(sold_out.tooltip_text.contains("Tomato soup"))
+	assert_true(sold_out.tooltip_text.contains("Stock"), "the real HUD points to the recovery action")
+	assert_false(sold_out.tooltip_text.contains("rest of today"), "a daytime delivery can restore the dish")
+	assert_false(sold_out.tooltip_text.contains("tomorrow morning"), "ordering need not wait until tomorrow")
 	assert_true(main.call("stock_cart_set", &"soup_stock", 6))
 	var cash: int = Economy.cash
 	assert_true(main.call("stock_place_order"))
@@ -203,6 +209,7 @@ func test_deliveries_arrive_on_the_schedule_and_bring_sold_out_dishes_back() -> 
 		waited += 1
 	assert_eq(Economy.stock.count(&"soup_stock"), 6, "put away by staff")
 	assert_false(sim.is_sold_out(&"tomato_soup"), "the soup is back on")
+	assert_false(sold_out.tooltip_text.contains("Tomato soup"), "the recovered dish leaves the HUD's list")
 	assert_false((main.call("stock_notes") as Array[String]).any(
 		func(note: String) -> bool: return note.begins_with("Still to be put away")))
 	# After the last delivery (20:00) an order waits for the morning.
