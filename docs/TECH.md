@@ -2573,6 +2573,14 @@ The decoder only stages `load_refund` and plain `load_notes`; Main applies a
 refund after complete successful load, before the existing morning checkpoint.
 There is no new save point or SaveSystem migration.
 
+### Sound (FK-067, #117)
+- **`Sfx` autoload** (`src/audio/sfx.gd`): one-shot cues and looped ambience on the Effects bus (Settings already sets its volume). It clicks every `BaseButton` in the tree, including the title screen's, through `SceneTree.node_added`, and plays hover on enabled buttons. Each cue has a minimum interval (`SoundThrottle`) so fast-forward bursts play once. Repeats step through a fixed pitch cycle; there are no random draws.
+- **Headless and web:** headless runs create no players, but `play` still emits `cue_played`, which tests listen to. On the web nothing plays or queues until the first click, key or touch.
+- **`SoundDirector`** (`src/world/sound_director.gd`, owned by Main): listens to `RestaurantSim.customer_arrived` (door bell), `customer_paid` (coins) and `review_recorded` (five stars: chime). Each frame, `refresh()` sets the room tone from the number of guests and plays the stove, fryer and coffee loops while `FoodPresentation.busy_loops` reports a worked station. It is silent outside service and while paused.
+- **View hooks:** ShopView plays the back-door creak when a leaf starts to open and a thud when a crate lands at play speed. Main plays the level-up or milestone sting as the evening report opens.
+- **Tuning:** streams, gains, intervals and loop levels are in `data/audio/sound_tuning.tres` (`SoundTuning`). Kenney files are in `assets/kenney/audio/`; the made loops are in `assets/made/audio/`.
+- **No music yet:** that's a separate taste decision.
+
 ### 2.4 Save system
 Business trends (FK-123): Main keeps fourteen detached `BusinessHistory` closing
 summaries outside `DayReport` serialization. Reopening the evening report and

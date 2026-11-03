@@ -328,6 +328,31 @@ func test_steam_only_during_cooking_and_turns_off_when_station_is_idle() -> void
 	assert_false(_view.food.steam[stove.id].emitting)
 
 
+## #117: a worked stove reports its sizzle loop, and only while worked.
+func test_a_worked_stove_reports_its_sound_loop_only_while_cooking() -> void:
+	var stove: PlacedItem = ShopBuilder.items_with_def(_sim.world, &"stove")[0]
+	var cook: StaffAgent = _staff(&"cook")
+	var task: SimTask = SimTask.new(&"cook", &"cook", "Sizzle fixture")
+	task.steps = [TaskStep.work(50, "cooking")] as Array[TaskStep]
+	_sim.world.board.post(task, 0)
+	assert_true(_sim.world.board.claim(task, cook.id, 0))
+	cook.task = task
+	cook.step_index = 0
+	cook._step_started = true
+	cook.work_left = 50.0
+	cook._held_item_id = stove.id
+	cook._held_cell = stove.work_cells[0]
+	cook.cell = cook._held_cell
+	assert_true(stove.reserve(cook._held_cell, cook.id))
+	var rng_before: int = _sim.rng.state
+	_view._sync_agents()
+	assert_eq(_view.food.busy_loops, {&"stove_sizzle": 1} as Dictionary[StringName, int])
+	cook.work_left = 0.0
+	_view._sync_agents()
+	assert_true(_view.food.busy_loops.is_empty(), "silent once the stove is idle")
+	assert_eq(_sim.rng.state, rng_before, "listening draws no random numbers")
+
+
 func test_one_real_day_reuses_a_bounded_pool_and_never_changes_rng() -> void:
 	for ingredient: IngredientDef in _content.ingredients():
 		_sim.stock.add(ingredient.id, 1000, 1)
