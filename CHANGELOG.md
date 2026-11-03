@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- The shop follows the day: soft morning light while you prep, a bright afternoon and a golden evening, then night after closing. At dusk the shop's own warm lights come on, and the neon OPEN sign and string lights glow brighter after dark. (#286)
 - Cutaway now lowers only the walls between you and the room you're looking at; walls behind it stay up, so their wallpaper and hung decor show. Walls Up and Walls Down work as before. (#285)
 - The shop has sound: buttons click, guests ring the door bell and pay with a jingle of coins, five-star reviews chime, level-ups and milestones play a sting, the back door creaks, deliveries thud down, and the room hums louder as it fills while stoves sizzle and the coffee machine hisses. Effects volume in Settings controls it all. (#284)
 - A warning now tells you when the morning save fails, so you know progress may be lost if you quit. (#275)

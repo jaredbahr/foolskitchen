@@ -2578,6 +2578,18 @@ The decoder only stages `load_refund` and plain `load_notes`; Main applies a
 refund after complete successful load, before the existing morning checkpoint.
 There is no new save point or SaveSystem migration.
 
+### Day and night (FK-109, #208)
+- **A pure function of the clock.** `DayLight.minute_for(clock, tick_fraction)` maps the phase to a time of day: prep one hour before opening (never before 06:00), service scaled across the opening hours, last orders running into the evening, and closed late at night. `DayLight.sample(minute)` blends the key frames in `data/look/day_light.tres` (`DayLightTuning`). Nothing is stored or drawn at random, so paused captures are deterministic.
+- **Applied each frame** by Main's `_refresh_day_light()` through `DayNightView`:
+  - the key light's colour, energy and downward angle (its compass direction is fixed, so light stays upper-left);
+  - fill energy, ambient light and the procedural sky;
+  - a glow multiplier on hung lit items (neon, string lights, window pools; capped at energy 1);
+  - one warm `ShopLights` omni over the floor's middle at dusk and night, so the room glows while the street stays dark.
+- **The 10:00 key frame is the authored `lighting_rig.tscn`.** Default morning prep looks exactly as before; the weather and lighting tests pin this.
+- **Weather** only tints the pavement and is unaffected. **The title backdrop** keeps the authored morning, because Main is disabled there.
+- **Review:** `tools/day_night_review.tscn` with `DAY_NIGHT_STAGE` set to morning, noon, golden, dusk, last_orders or closed (or minute with `DAY_NIGHT_MINUTE`).
+- **Not yet:** chairs up after close; lamps (#84).
+
 ### Sound (FK-067, #117)
 - **`Sfx` autoload** (`src/audio/sfx.gd`): one-shot cues and looped ambience on the Effects bus (Settings already sets its volume). It clicks every `BaseButton` in the tree, including the title screen's, through `SceneTree.node_added`, and plays hover on enabled buttons. Each cue has a minimum interval (`SoundThrottle`) so fast-forward bursts play once. Repeats step through a fixed pitch cycle; there are no random draws.
 - **Headless and web:** headless runs create no players, but `play` still emits `cue_played`, which tests listen to. On the web nothing plays or queues until the first click, key or touch.

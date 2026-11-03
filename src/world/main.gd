@@ -22,6 +22,7 @@ const MESS_TUNING: MessTuning = preload("res://data/balance/messes.tres")
 const CLEANLINESS_TUNING: CleanlinessTuning = preload("res://data/balance/cleanliness.tres")
 const WEATHER_TUNING: WeatherTuning = preload("res://data/balance/weather.tres")
 const DEMAND_TUNING: DemandTuning = preload("res://data/balance/demand.tres")
+const DAY_LIGHT: DayLightTuning = preload("res://data/look/day_light.tres")
 const CURB_APPEAL_TUNING: CurbAppealTuning = preload("res://data/balance/curb_appeal.tres")
 const REVIEW_TUNING: ReviewTuning = preload("res://data/balance/reviews.tres")
 const REVIEW_QUOTES: ReviewQuotes = preload("res://data/reviews/quotes.tres")
@@ -2057,6 +2058,7 @@ func inspection_state() -> Dictionary:
 ## Refreshes after completed morning setup, removals and paused grid edits too.
 func refresh_presentation() -> void:
 	_refresh_weather()
+	_refresh_day_light()
 	if sound != null:
 		sound.refresh()
 	if _inspect_panel == null or _debug_overlay == null or _debug_geometry == null:
@@ -3702,6 +3704,24 @@ func _select_morning_weather() -> bool:
 			return false
 	_refresh_weather()
 	return world.weather.is_for_day(Clock.sim.day)
+
+
+## The day's light follows the clock (#208): a pure function of time, so a
+## paused capture always looks the same. Presentation only.
+func _refresh_day_light() -> void:
+	if world == null or world.clock == null:
+		return
+	var look: DayLight.Look = day_light_look()
+	var rig: Node3D = get_node_or_null(^"LightingRig") as Node3D
+	DayNightView.apply_rig(rig, look)
+	DayNightView.apply_shop_light(rig, world.grid, look.interior_energy, DAY_LIGHT.interior_color)
+	var view: ShopView = $ShopView as ShopView
+	if view.wall_finish_view != null:
+		DayNightView.apply_glow(view.wall_finish_view.item_nodes, look.glow)
+
+
+func day_light_look() -> DayLight.Look:
+	return DayLight.sample(DayLight.minute_for(world.clock, Clock.tick_fraction(), DAY_LIGHT), DAY_LIGHT)
 
 
 func _refresh_weather() -> void:
