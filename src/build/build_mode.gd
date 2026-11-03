@@ -25,6 +25,9 @@ var selected_definition: ItemDef = null
 var origin: Vector2i = Vector2i.ZERO
 var quarter_turns: int = 0
 var grab_offset: Vector2i = Vector2i.ZERO
+## Resolve the editor type before constructing its shared check type. Godot
+## 4.7.2 otherwise retains scripts when loading this class in isolation (#270).
+var _editor: ShopEditor
 var current_check: EditCheck = EditCheck.new()
 var tool: Tool = Tool.HAND
 ## The placed item under the pointer while IDLE (-1 for none), for the sell
@@ -95,7 +98,6 @@ var blueprint_start: Vector2i = SimGrid.NO_CELL
 var blueprint_end: Vector2i = SimGrid.NO_CELL
 var _stamp_command: Callable
 
-var _editor: ShopEditor
 var _world: SimWorld
 var _content: ContentDB
 var _grid: SimGrid

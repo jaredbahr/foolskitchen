@@ -11,6 +11,8 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- A warning now tells you when the morning save fails, so you know progress may be lost if you quit. (#275)
+- Stock ingredient controls stay usable below long warnings at larger UI scales, with scrolling to reach every button. (#273)
 - Wall menu boards show your restaurant name and dishes from a section you choose, and the Menu panel shows which themes your dishes lean toward. (#231)
 - Decorating the street front now raises curb appeal for a small walk-in boost, shown beside Vibe in Build and in the evening crowd forecast. (#266)
 - See seven days of dish profit and guests served in the evening report, with today's results highlighted and a plain trend summary. (#265)
@@ -34,6 +36,7 @@ Each line ends with its PR number.
 - Upgrade your lease from owner level 3 in the morning Menu panel: keep your shop, pay a deposit and higher rent, and unlock more land to expand. (#216)
 - Pick your owner's character and name when starting a shop, and change their look from Staff in the morning. (#233)
 - Start from a title screen with New game, Continue and Settings, and quit back to it without overwriting your morning autosave. (#230)
+- Hover help now uses warm panels and readable dark text. (#283)
 - Check dirty tables, floor dirt and restroom upkeep in Build's new Hygiene overview, with problem tiles highlighted and today's cleanliness rating. (#232)
 - Waiting benches let guests sit near the door and wait longer for a dining table. (#228)
 - Build warns when an edit would take dishes off the menu and refuses edits that leave nothing cookable. Opening explains dishes removed that morning. (#227)
@@ -89,6 +92,7 @@ Each line ends with its PR number.
 - Chairs, tables and kitchen equipment use matching Kenney models; paint keeps their metal, glass and food details. (#131)
 - Staff improve at the jobs they finish and can ask for raises; review their progress and requests each morning. (#130)
 - Change sound, UI size, opening speed, fullscreen and camera edge panning in Settings; your choices are remembered. (#129)
+- Settings shows a visible save error when Escape cannot close the panel. (#281)
 - The shop floor now gets messy during service. Hire a Cleaner to mop it, and see the day's cleanliness in the closing report. (#105)
 - Earn owner XP from happy guests, profit and five-star reviews; new levels unlock a tomato melt and a potted plant. (#104)
 - Guests no longer repeat the same comment in one evening report unless all suitable comments have been used. (#103)
@@ -124,6 +128,9 @@ Each line ends with its PR number.
 - See a daily Sunny, Cloudy or Rain forecast in the HUD and morning Menu, with gentle rain and cooler light outside. The forecast is saved for the day and leaves service unchanged. (#251)
 - Push tables together to seat bigger parties. (#253)
 - Surround the shop with a street, neighbouring buildings, passing pedestrians and a car, with more room to pan toward the road. (#254)
+- Sold-out advice is easier to read and points you to Stock for more ingredients during service. (#279)
+
+- Continue now explains when a saved game cannot be loaded and a fresh shop opens, while keeping the existing save for now. (#277)
 
 ### Content
 - Placed chairs now have a usable seat. (#48)
@@ -132,6 +139,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- Running the catalogue tests on their own now releases their scripts cleanly when Godot closes. (#271)
 - The roadmap's Codex queue is reset again: the balance pass, then people never walking through each other or furniture, then the outside and atmosphere (the patio is now unblocked). (#267)
 - The roadmap's Codex queue is reset: finish open PRs, then make growing pay (balance pass, staff bottleneck advice, a 7-day trend, curb appeal), then the outside and atmosphere. (#261)
 - `tools/check.sh` gives the test suite 25 minutes instead of 10; the full suite now takes about 11 minutes on a busy machine and was being cut off without a failure. (#252)
