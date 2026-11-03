@@ -11,6 +11,8 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- A warning now tells you when the morning save fails, so you know progress may be lost if you quit. (#275)
+- Stock ingredient controls stay usable below long warnings at larger UI scales, with scrolling to reach every button. (#273)
 - Wall menu boards show your restaurant name and dishes from a section you choose, and the Menu panel shows which themes your dishes lean toward. (#231)
 - Decorating the street front now raises curb appeal for a small walk-in boost, shown beside Vibe in Build and in the evening crowd forecast. (#266)
 - See seven days of dish profit and guests served in the evening report, with today's results highlighted and a plain trend summary. (#265)
@@ -134,6 +136,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- Running the catalogue tests on their own now releases their scripts cleanly when Godot closes. (#271)
 - The roadmap's Codex queue is reset again: the balance pass, then people never walking through each other or furniture, then the outside and atmosphere (the patio is now unblocked). (#267)
 - The roadmap's Codex queue is reset: finish open PRs, then make growing pay (balance pass, staff bottleneck advice, a 7-day trend, curb appeal), then the outside and atmosphere. (#261)
 - `tools/check.sh` gives the test suite 25 minutes instead of 10; the full suite now takes about 11 minutes on a busy machine and was being cut off without a failure. (#252)
