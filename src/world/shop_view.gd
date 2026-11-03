@@ -47,6 +47,8 @@ const DITHER_SPAN: float = 200.0
 ## The ramp is 1.25 m, about one second of walking at 1x.
 const DOOR_OPEN_FAR: float = 1.75
 const DOOR_OPEN_NEAR: float = 0.5
+## A back door that opens past this amount creaks once (#117).
+const DOOR_SOUND_START: float = 0.05
 const HEIGHTS: Dictionary[int, float] = {
 	ItemDef.Category.TABLE: 0.75, ItemDef.Category.CHAIR: 0.45,
 	ItemDef.Category.STATION: 0.9, ItemDef.Category.STORAGE: 0.9,
@@ -145,6 +147,8 @@ var crate_nodes: Dictionary[int, Node3D] = {}
 var _crate_reveal: Dictionary[int, int] = {}
 var _crates_synced: bool = false
 var _crates_tick: int = 0
+## Last drawn opening of each back door, for its creak (#117).
+var _door_amounts: Dictionary[Vector2i, float] = {}
 ## Smooth motion: people are drawn between their last two sim ticks.
 var motion: MotionSmoother = MotionSmoother.new()
 var food: FoodPresentation
@@ -1585,6 +1589,8 @@ func _sync_crates() -> void:
 			for index: int in together.size():
 				if index > 0:
 					_crate_reveal[int(together[index][1])] = world.now + index * CRATE_STAGGER_TICKS
+				else:
+					Sfx.play(&"delivery_drop")
 		_crates_synced = true
 		_crates_tick = world.now
 	for id: int in crate_nodes.keys():
@@ -1598,6 +1604,7 @@ func _sync_crates() -> void:
 			crate_nodes[id].visible = world.now >= _crate_reveal[id]
 			if crate_nodes[id].visible:
 				_crate_reveal.erase(id)
+				Sfx.play(&"delivery_drop")
 
 
 ## Where crate `slot` stands on `cell`: one stack, `slot` crates up, on the
@@ -1624,6 +1631,10 @@ func _sync_back_doors() -> void:
 			var drawn: Vector3 = agent_nodes[agent.id].position
 			var distance: float = Vector2(drawn.x - center.x, drawn.z - center.z).length()
 			amount = maxf(amount, door_open_amount(distance))
+		# The door creaks as it starts to open (#117).
+		if amount > DOOR_SOUND_START and float(_door_amounts.get(cell, 0.0)) <= DOOR_SOUND_START:
+			Sfx.play(&"back_door")
+		_door_amounts[cell] = amount
 		segment_view.set_door_open(cell, amount)
 
 

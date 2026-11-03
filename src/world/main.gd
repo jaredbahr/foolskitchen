@@ -60,6 +60,8 @@ signal vibe_changed(result: VibeModel.Result)
 var _vibe_grid: SimGrid
 ## Today's paid departures, grouped by their captured arrival theme label.
 var _vibe_experiences: Dictionary[String, int] = {}
+## Shop sounds (#117); presentation only.
+var sound: SoundDirector
 ## The last evening report put on screen (for tests and tools).
 var shown_report: DayReport = null
 ## Previous service's display summary for the morning panel; never a save section.
@@ -610,9 +612,16 @@ func _connect_session() -> void:
 		EventBus.cash_changed.connect(_on_build_cash_changed)
 	if not _inspect_panel.owner_mode_requested.is_connected(_on_owner_mode_requested):
 		_inspect_panel.owner_mode_requested.connect(_on_owner_mode_requested)
+	if sound == null:
+		sound = SoundDirector.new()
+		sound.name = "SoundDirector"
+		add_child(sound)
+	sound.bind(sim, ($ShopView as ShopView).food)
 
 
 func _exit_tree() -> void:
+	if sound != null:
+		sound.unbind()
 	_disconnect_vibe_grid()
 	_build_ready = false
 	if build_mode.changed.is_connected(_on_build_changed):
@@ -2046,6 +2055,8 @@ func inspection_state() -> Dictionary:
 ## Refreshes after completed morning setup, removals and paused grid edits too.
 func refresh_presentation() -> void:
 	_refresh_weather()
+	if sound != null:
+		sound.refresh()
 	if _inspect_panel == null or _debug_overlay == null or _debug_geometry == null:
 		return
 	_inspect_panel.refresh()
@@ -4392,6 +4403,10 @@ func _on_service_closed(day: int) -> void:
 	shown_report = build_report(day)
 	_last_team_activity = StaffActivity.public_snapshot(shown_report.staff_activity)
 	_staff_panel.set_team_activity(_last_team_activity)
+	if owner_progress.level > level_before:
+		Sfx.play(&"level_up")
+	elif _milestone_award_day == day and not _milestones_reached_today.is_empty():
+		Sfx.play(&"milestone")
 	_show_evening_report(shown_report)
 	if _paint_active or is_staff_visible() or is_goals_visible():
 		_report.hide()
