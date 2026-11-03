@@ -5,6 +5,10 @@ extends Control
 ## under it) with a hover card. Build holds the structure tools: walls,
 ## floor and paint. Requests only: the session/controller owns every edit.
 
+## Resolve the tool's dependency graph before Blueprint's signal types. This
+## order avoids isolated-load script retention in Godot 4.7.2 (#270).
+var _tool: int = BuildMode.Tool.HAND
+
 signal blueprint_selection_requested()
 signal blueprint_save_requested(display_name: String)
 signal blueprint_requested(blueprint: Blueprint)
@@ -187,7 +191,6 @@ var _layout_ready: bool = false
 var _paint_visible: bool = false
 var _owner_level: int = 1
 var _property_tier: int = 1
-var _tool: int = BuildMode.Tool.HAND
 var _editable: bool = true
 var _mode_category: Dictionary[StringName, StringName] = {BUY: &"", BUILD: WALLS}
 

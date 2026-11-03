@@ -262,6 +262,132 @@ func test_growth_notice_and_real_morning_panels_fit_native_and_scaled_windows() 
 	assert_eq(GameState._capture_save(), initial["rng"])
 
 
+func test_stock_controls_remain_usable_below_the_actual_fridge_access_warning() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	await tree.process_frame
+	var host: SubViewport = SubViewport.new()
+	host.size = Vector2i(853, 480)
+	host.gui_embed_subwindows = true
+	_nodes.append(host)
+	tree.root.add_child(host)
+	var window: Window = Window.new()
+	window.borderless = true
+	window.size = host.size
+	window.content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS
+	window.content_scale_aspect = Window.CONTENT_SCALE_ASPECT_EXPAND
+	# Preserve the actual project canvas rather than shrinking the logical UI.
+	window.content_scale_size = Vector2i(1600, 900)
+	window.content_scale_factor = 1.5
+	host.add_child(window)
+	window.show()
+	var main: Node = MAIN.instantiate()
+	main.set("use_saves", false)
+	main.set("skip_owner_picker", true)
+	main.set("new_game_seed_override", 1)
+	window.add_child(main)
+	main.call("start")
+	# Explicit setup funding and a visible loan, not a balance measurement.
+	Economy.add_cash(2000, Ledger.OTHER)
+	assert_true(main.call("shop_buy", &"coffee_machine", Vector2i(12, 5), 2))
+	var world: SimWorld = main.get("world")
+	var plant: PlacedItem = ShopBuilder.items_with_def(world, &"potted_plant")[0]
+	var fridge: PlacedItem = ShopBuilder.items_with_def(world, &"fridge")[0]
+	assert_true(main.call("shop_move", plant.id, fridge.work_cells[0], 0))
+	Economy.loan.principal = 100
+	main.call("_refresh_loan_hud")
+	assert_true(Clock.sim.start_service())
+	Clock.set_speed(0)
+	assert_true(String(main.call("menu_open_note")).contains("staff can't reach the fridge"))
+	assert_true(main.call("set_stock_visible", true))
+	await _layout_frames()
+	var panel: StockPanel = main.get_node("Overlay/StockPanel") as StockPanel
+	var bounds: Rect2 = window.get_visible_rect()
+	var card: Control = panel.get_node("Panel") as Control
+	var list: ScrollContainer = panel.get_node("Panel/Content/Scroll") as ScrollContainer
+	assert_true(bounds.grow(0.5).encloses(card.get_global_rect()), "Stock stays inside the real scaled canvas")
+	assert_almost_eq(card.size.x, 720.0, 0.5, "the existing panel width is preserved")
+	var notice: Control = main.get_node("HUD/MenuNotice") as Control
+	assert_true(card.global_position.y >= notice.get_global_rect().end.y + 11.5, "Stock clears the actual warning")
+	assert_true(list.size.y >= 100.0, "the warning must not collapse the ingredient controls to a nine-pixel strip")
+	var outer: ScrollContainer = card as ScrollContainer
+	assert_not_null(outer, "all Stock content can scroll in the remaining height")
+	if outer == null:
+		return
+	var initial: Dictionary = {"clock": Clock.sim.to_dict(), "books": Economy._capture_save(),
+		"rng": GameState._capture_save()}
+	for path: String in ["%Order", "%Clear", "%Cancel", "%Close"]:
+		await _reveal_stock_control(panel, panel.get_node(path) as Control)
+	var row: Dictionary = panel.row_for(&"beef_patty")
+	for key: String in ["throw", "cart+1", "auto", "minus", "plus"]:
+		await _reveal_stock_control(panel, row[key] as Control)
+	assert_eq(Clock.sim.to_dict(), initial["clock"], "scrolling never advances service")
+	assert_eq(Economy._capture_save(), initial["books"], "scrolling does not buy or discard stock")
+	assert_eq(GameState._capture_save(), initial["rng"])
+	var count: int = Economy.stock.count(&"beef_patty")
+	assert_true(count > 0)
+	await _reveal_stock_control(panel, row["throw"] as Control)
+	await _click_stock_control(panel, row["throw"] as Button)
+	assert_eq(Economy.stock.count(&"beef_patty"), count, "first click still only asks for confirmation")
+	await _click_stock_control(panel, row["throw"] as Button)
+	assert_eq(Economy.stock.count(&"beef_patty"), 0, "the confirmed request reaches Main")
+	await _reveal_stock_control(panel, row["cart+1"] as Control)
+	assert_false((row["cart+1"] as Button).disabled)
+	await _click_stock_control(panel, row["cart+1"] as Button)
+	assert_eq((main.get("stock_cart") as Dictionary).get(&"beef_patty"), 1)
+	await _reveal_stock_control(panel, panel.get_node("%Clear") as Control)
+	await _click_stock_control(panel, panel.get_node("%Clear") as Button)
+	assert_true((main.get("stock_cart") as Dictionary).is_empty(), "the scrolled clear button reaches Main")
+	await _reveal_stock_control(panel, row["cart+1"] as Control)
+	await _click_stock_control(panel, row["cart+1"] as Button)
+	assert_eq((main.get("stock_cart") as Dictionary).get(&"beef_patty"), 1)
+	await _reveal_stock_control(panel, panel.get_node("%Order") as Control)
+	await _click_stock_control(panel, panel.get_node("%Order") as Button)
+	var deliveries: DeliveryBook = main.get("deliveries")
+	assert_eq(deliveries.pending_by_id().get(&"beef_patty"), 1, "the scrolled order button places the real paid order")
+	await _reveal_stock_control(panel, panel.get_node("%Cancel") as Control)
+	await _click_stock_control(panel, panel.get_node("%Cancel") as Button)
+	assert_true(deliveries.is_empty(), "the scrolled cancel button reaches Main")
+	await _reveal_stock_control(panel, panel.get_node("%Close") as Control)
+	await _click_stock_control(panel, panel.get_node("%Close") as Button)
+	assert_false(main.call("is_stock_visible"), "the scrolled close button works")
+
+
+func _reveal_stock_control(panel: StockPanel, control: Control) -> void:
+	var outer: ScrollContainer = panel.get_node("Panel") as ScrollContainer
+	var list: ScrollContainer = panel.get_node("Panel/Content/Scroll") as ScrollContainer
+	if list.is_ancestor_of(control):
+		list.ensure_control_visible(control)
+	outer.ensure_control_visible(control)
+	await _layout_frames()
+	assert_true(outer.get_global_rect().grow(0.5).encloses(control.get_global_rect()),
+		"%s can be scrolled inside Stock" % control.name)
+	if list.is_ancestor_of(control):
+		assert_true(list.get_global_rect().grow(0.5).encloses(control.get_global_rect()),
+			"%s can be scrolled inside the ingredient list" % control.name)
+
+
+func _click_stock_control(panel: StockPanel, button: Button) -> void:
+	# Embedded windows receive pointer input through their containing viewport.
+	var window: Window = panel.get_viewport() as Window
+	var viewport: Viewport = window.get_parent() as Viewport
+	var point: Vector2 = window.get_final_transform() * button.get_global_rect().get_center() + Vector2(window.position)
+	var move: InputEventMouseMotion = InputEventMouseMotion.new()
+	move.position = point
+	move.global_position = point
+	viewport.push_input(move, true)
+	for down: bool in [true, false]:
+		var click: InputEventMouseButton = InputEventMouseButton.new()
+		click.button_index = MOUSE_BUTTON_LEFT
+		click.position = point
+		click.global_position = point
+		click.pressed = down
+		click.button_mask = MOUSE_BUTTON_MASK_LEFT if down else 0
+		viewport.push_input(click, true)
+		if down:
+			assert_true(button.is_pressed(), "%s receives the real pointer press" % button.name)
+		await _layout_frames()
+
+
 func _forecast() -> Dictionary:
 	return {"day": 4, "expected_guests": 28, "reputation": 1.2, "word_of_mouth": 1.0,
 		"menu": 1.0, "vibe": 1.0, "curb_appeal": 1.0, "total": 1.2}

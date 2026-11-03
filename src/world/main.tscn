@@ -61,6 +61,13 @@ layer = 10
 title = "Quit to title"
 dialog_text = "Progress since this morning will be lost."
 
+[node name="AutosaveFailure" type="AcceptDialog" parent="Overlay"]
+title = "Progress wasn't saved"
+exclusive = true
+dialog_text = "Couldn't save this morning. Progress since the last save may be lost if you quit. The game will try again next morning."
+dialog_autowrap = true
+ok_button_text = "Keep playing"
+
 [node name="HintsBubble" type="Control" parent="Overlay"]
 layout_mode = 3
 anchors_preset = 15
@@ -70,3 +77,10 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 script = ExtResource("16_hints")
+
+[node name="AutosaveLoadFailure" type="AcceptDialog" parent="Overlay"]
+title = "Saved game couldn't be loaded"
+exclusive = true
+dialog_text = "We couldn't load your saved game, so a fresh shop has opened. Your existing save is unchanged for now. Going to the next morning will try to save this new shop."
+dialog_autowrap = true
+ok_button_text = "Keep playing"
