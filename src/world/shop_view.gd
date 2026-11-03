@@ -79,6 +79,9 @@ const LOWERED_HEIGHT: float = 0.35
 const AWAY_FROM_CAMERA: Array[Vector2i] = [
 	Vector2i(-1, -1), Vector2i(-1, 1), Vector2i(1, 1), Vector2i(1, -1),
 ]
+## Cutaway (#205): an interior wall lowers only when it stands this many cells
+## or more in front of the camera focus, so walls behind it keep their decor.
+const CUTAWAY_DEAD_BAND_CELLS: float = 0.5
 
 @export var wall_color: Color = Color("e6d5b8")
 @export var wall_top_color: Color = Color("b9a789")
@@ -86,6 +89,8 @@ const AWAY_FROM_CAMERA: Array[Vector2i] = [
 
 var wall_mode: WallMode = WallMode.CUTAWAY
 var _camera_quarter: int = 0
+## The camera focus cell for the cutaway; NO_CELL until Main supplies one.
+var _focus_cell: Vector2i = SimGrid.NO_CELL
 var _wall_nodes: Dictionary[Vector2i, MeshInstance3D] = {}
 
 var world: SimWorld
@@ -266,7 +271,7 @@ func set_lot(value: Rect2i) -> void:
 	if segment_view != null:
 		segment_view.lot = value
 		if world != null:
-			segment_view.rebuild(world.grid, wall_mode != WallMode.UP, lowered_wall_cells())
+			segment_view.rebuild(world.grid, lowered_interior_edges(), lowered_wall_cells())
 	_refresh_neighbourhood()
 
 
@@ -1142,6 +1147,55 @@ func set_camera_quarter(quarter: int) -> void:
 	_apply_wall_heights()
 
 
+## Moves the cutaway with the camera (#205). `point` is the camera's focus in
+## world space; walls only change when it enters a new cell and that changes
+## which interior walls stand in front of it.
+func set_camera_focus(point: Vector3) -> void:
+	var local: Vector3 = to_local(point) if is_inside_tree() else point
+	var cell: Vector2i = Vector2i(floori(local.x / GridMath.CELL_SIZE), floori(local.z / GridMath.CELL_SIZE))
+	if cell == _focus_cell:
+		return
+	var before: Dictionary[Vector3i, bool] = lowered_interior_edges()
+	_focus_cell = cell
+	if wall_mode == WallMode.CUTAWAY and lowered_interior_edges() != before:
+		_apply_wall_heights()
+
+
+## The interior wall segments drawn lowered: all of them in Down, none in Up,
+## and in Cutaway only those standing in front of the camera focus.
+func lowered_interior_edges() -> Dictionary[Vector3i, bool]:
+	var edges: Dictionary[Vector3i, bool] = {}
+	if world == null or wall_mode == WallMode.UP:
+		return edges
+	var away: Vector2 = Vector2(AWAY_FROM_CAMERA[_camera_quarter]).normalized()
+	var focus: Vector2 = cutaway_focus()
+	for edge: Vector3i in world.grid.segment_edges():
+		if not WallRules.is_interior(world.grid, edge):
+			continue
+		if wall_mode == WallMode.DOWN or cutaway_lowers(edge, focus, away):
+			edges[edge] = true
+	return edges
+
+
+## The focus the cutaway uses: the centre of the camera's focus cell, or the
+## middle of the grid before any camera reports one (the title backdrop).
+func cutaway_focus() -> Vector2:
+	if _focus_cell != SimGrid.NO_CELL:
+		var center: Vector3 = GridMath.cell_to_world(_focus_cell)
+		return Vector2(center.x, center.z)
+	if world == null:
+		return Vector2.ZERO
+	return Vector2(world.grid.size) * GridMath.CELL_SIZE * 0.5
+
+
+## True when the segment's middle stands in front of the focus, seen from the
+## camera looking along `away` (a ground direction pointing into the scene).
+static func cutaway_lowers(edge: Vector3i, focus: Vector2, away: Vector2) -> bool:
+	var ends: Array[Vector2i] = SimGrid.edge_vertices(edge)
+	var middle: Vector2 = (Vector2(ends[0]) + Vector2(ends[1])) * 0.5 * GridMath.CELL_SIZE
+	return (middle - focus).dot(away) < -CUTAWAY_DEAD_BAND_CELLS * GridMath.CELL_SIZE
+
+
 ## Returns the currently lowered cells in stable row order for diagnostics.
 func lowered_wall_cells() -> Array[Vector2i]:
 	var cells: Array[Vector2i] = []
@@ -1189,9 +1243,9 @@ func _apply_wall_heights() -> void:
 			top.remove_meta(&"segment_edge")
 	if segment_view != null and world != null:
 		segment_view.set_materials(_current_wall_material(), _material(wall_top_color), floor_mesh.material_override)
-		segment_view.rebuild(world.grid, wall_mode != WallMode.UP, lowered_wall_cells())
+		segment_view.rebuild(world.grid, lowered_interior_edges(), lowered_wall_cells())
 	if wall_finish_view != null and world != null:
-		wall_finish_view.set_lowered(wall_mode != WallMode.UP, lowered_wall_cells())
+		wall_finish_view.set_lowered(lowered_interior_edges(), lowered_wall_cells())
 	if room_dressing != null:
 		room_dressing.set_lowered_walls(lowered_wall_cells())
 

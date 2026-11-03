@@ -50,7 +50,7 @@ func test_exterior_face_frames_point_outward_on_all_four_frontages() -> void:
 		var outside: Vector2i = GridMath.rotate_cell(Vector2i(2, 6), Vector2i(7, 7), turn)
 		var face: Vector3i = WallFaces.make(outside, turn)
 		assert_true(WallFaces.is_exterior(grid, face))
-		var frame: Dictionary = WallFinishView.face_frame(grid, face, false, {} as Dictionary[Vector2i, bool])
+		var frame: Dictionary = WallFinishView.face_frame(grid, face, {} as Dictionary[Vector3i, bool], {} as Dictionary[Vector2i, bool])
 		var into: Vector2i = WallFaces.step(face)
 		var outward: Vector3 = -Vector3(into.x, 0.0, into.y)
 		assert_eq(frame["normal"], outward)
@@ -62,9 +62,9 @@ func test_exterior_face_frames_point_outward_on_all_four_frontages() -> void:
 
 
 func test_inside_and_outside_facings_are_separate_and_follow_the_same_lowered_shell() -> void:
-	var inside: Dictionary = WallFinishView.face_frame(_sim.world.grid, Vector3i(3, 9, 2), false,
+	var inside: Dictionary = WallFinishView.face_frame(_sim.world.grid, Vector3i(3, 9, 2), {} as Dictionary[Vector3i, bool],
 		{} as Dictionary[Vector2i, bool])
-	var outside: Dictionary = WallFinishView.face_frame(_sim.world.grid, FRONT, false,
+	var outside: Dictionary = WallFinishView.face_frame(_sim.world.grid, FRONT, {} as Dictionary[Vector3i, bool],
 		{} as Dictionary[Vector2i, bool])
 	assert_eq(inside["normal"], Vector3(0, 0, -1))
 	assert_eq(outside["normal"], Vector3(0, 0, 1))
@@ -72,7 +72,7 @@ func test_inside_and_outside_facings_are_separate_and_follow_the_same_lowered_sh
 		GridMath.CELL_SIZE + WallFinishView.FACE_GAP * 2.0, 0.0001)
 	var lowered: Dictionary[Vector2i, bool] = {Vector2i(3, 10): true}
 	for face: Vector3i in [FRONT, Vector3i(3, 9, 2)]:
-		var frame: Dictionary = WallFinishView.face_frame(_sim.world.grid, face, false, lowered)
+		var frame: Dictionary = WallFinishView.face_frame(_sim.world.grid, face, {} as Dictionary[Vector3i, bool], lowered)
 		assert_almost_eq(float(frame["height"]), ShopView.LOWERED_HEIGHT, 0.0001)
 
 
