@@ -616,7 +616,7 @@ func _connect_session() -> void:
 		sound = SoundDirector.new()
 		sound.name = "SoundDirector"
 		add_child(sound)
-	sound.bind(sim, ($ShopView as ShopView).food)
+	sound.bind(sim, $ShopView as ShopView)
 
 
 func _exit_tree() -> void:
@@ -4404,9 +4404,9 @@ func _on_service_closed(day: int) -> void:
 	_last_team_activity = StaffActivity.public_snapshot(shown_report.staff_activity)
 	_staff_panel.set_team_activity(_last_team_activity)
 	if owner_progress.level > level_before:
-		Sfx.play(&"level_up")
+		Sounds.play(&"level_up")
 	elif _milestone_award_day == day and not _milestones_reached_today.is_empty():
-		Sfx.play(&"milestone")
+		Sounds.play(&"milestone")
 	_show_evening_report(shown_report)
 	if _paint_active or is_staff_visible() or is_goals_visible():
 		_report.hide()

@@ -1590,7 +1590,7 @@ func _sync_crates() -> void:
 				if index > 0:
 					_crate_reveal[int(together[index][1])] = world.now + index * CRATE_STAGGER_TICKS
 				else:
-					Sfx.play(&"delivery_drop")
+					Sounds.play(&"delivery_drop")
 		_crates_synced = true
 		_crates_tick = world.now
 	for id: int in crate_nodes.keys():
@@ -1604,7 +1604,7 @@ func _sync_crates() -> void:
 			crate_nodes[id].visible = world.now >= _crate_reveal[id]
 			if crate_nodes[id].visible:
 				_crate_reveal.erase(id)
-				Sfx.play(&"delivery_drop")
+				Sounds.play(&"delivery_drop")
 
 
 ## Where crate `slot` stands on `cell`: one stack, `slot` crates up, on the
@@ -1633,7 +1633,7 @@ func _sync_back_doors() -> void:
 			amount = maxf(amount, door_open_amount(distance))
 		# The door creaks as it starts to open (#117).
 		if amount > DOOR_SOUND_START and float(_door_amounts.get(cell, 0.0)) <= DOOR_SOUND_START:
-			Sfx.play(&"back_door")
+			Sounds.play(&"back_door")
 		_door_amounts[cell] = amount
 		segment_view.set_door_open(cell, amount)
 

@@ -13,13 +13,13 @@ const ONE_STATION_LEVEL: float = 0.7
 const EXTRA_STATION_LEVEL: float = 0.15
 
 var _sim: RestaurantSim
-var _food: FoodPresentation
+var _view: ShopView
 
 
-func bind(sim: RestaurantSim, food: FoodPresentation) -> void:
+func bind(sim: RestaurantSim, view: ShopView) -> void:
 	unbind()
 	_sim = sim
-	_food = food
+	_view = view
 	if _sim == null:
 		return
 	_sim.customer_arrived.connect(_on_customer_arrived)
@@ -36,8 +36,8 @@ func unbind() -> void:
 		if _sim.review_recorded.is_connected(_on_review_recorded):
 			_sim.review_recorded.disconnect(_on_review_recorded)
 	_sim = null
-	_food = null
-	Sfx.stop_loops()
+	_view = null
+	Sounds.stop_loops()
 
 
 func _exit_tree() -> void:
@@ -53,10 +53,12 @@ func refresh() -> void:
 		for agent: SimAgent in _sim.world.agents:
 			if agent is CustomerAgent:
 				guests += 1
-	Sfx.set_loop_level(ROOM_TONE, float(guests) / float(Sfx.tuning.room_tone_full_guests) if running else 0.0)
+	Sounds.set_loop_level(ROOM_TONE, float(guests) / float(Sounds.TUNING.room_tone_full_guests) if running else 0.0)
+	# Read the view's current food layer: it is rebuilt when the world changes.
+	var food: FoodPresentation = _view.food if _view != null else null
 	for loop: StringName in FoodPresentation.STATION_LOOPS.values():
-		var busy: int = int(_food.busy_loops.get(loop, 0)) if running and _food != null else 0
-		Sfx.set_loop_level(loop, station_level(busy))
+		var busy: int = int(food.busy_loops.get(loop, 0)) if running and food != null else 0
+		Sounds.set_loop_level(loop, station_level(busy))
 
 
 static func station_level(busy: int) -> float:
@@ -66,13 +68,13 @@ static func station_level(busy: int) -> float:
 
 
 func _on_customer_arrived(_customer: CustomerAgent) -> void:
-	Sfx.play(&"door_bell")
+	Sounds.play(&"door_bell")
 
 
 func _on_customer_paid(_customer: CustomerAgent, _order: Order, _amount: int) -> void:
-	Sfx.play(&"cash")
+	Sounds.play(&"cash")
 
 
 func _on_review_recorded(row: Dictionary) -> void:
 	if int(row.get("stars", 0)) == 5:
-		Sfx.play(&"star_chime")
+		Sounds.play(&"star_chime")
