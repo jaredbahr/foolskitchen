@@ -3718,11 +3718,27 @@ func _refresh_day_light() -> void:
 	var view: ShopView = $ShopView as ShopView
 	if view.wall_finish_view != null:
 		DayNightView.apply_glow(view.wall_finish_view.item_nodes, look.glow)
+	DayNightView.apply_lamps(lamp_visuals(), look.interior_energy, ($CameraRig as Node3D).global_position)
 	# Chairs go up after close, but never while editing in the evening, so
 	# Build and Paint always see and pick the furniture where it stands.
 	var closed: bool = world.clock.phase == SimClock.Phase.CLOSED and not is_build_active() and not _paint_active
 	var dirty: Dictionary[int, bool] = sim.kitchen.dirty_tables if sim != null and sim.kitchen != null else {}
 	view.set_chairs_up(closed, dirty)
+
+
+## Every placed lamp's visual (#84): floor, table and pendant lamps, and hung
+## wall lamps.
+func lamp_visuals() -> Array[ItemVisual]:
+	var lamps: Array[ItemVisual] = []
+	var view: ShopView = $ShopView as ShopView
+	for node: ItemVisual in view.item_nodes.values():
+		if node.has_meta(DayNightView.LAMP_META):
+			lamps.append(node)
+	if view.wall_finish_view != null:
+		for node: ItemVisual in view.wall_finish_view.item_nodes.values():
+			if node.has_meta(DayNightView.LAMP_META):
+				lamps.append(node)
+	return lamps
 
 
 func day_light_look() -> DayLight.Look:

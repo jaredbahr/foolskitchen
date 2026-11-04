@@ -2593,7 +2593,17 @@ There is no new save point or SaveSystem migration.
   - Both a table's built-in chairs (model children tagged `seat_cell`) and separate chair items linked to its seats are handled. Only the model moves inside its wrapper; the item, cells and saves never change.
   - Tables left dirty at close keep their chairs down. Evening Build and Paint show them down, so picking is unchanged.
   - Morning restores the exact resting transforms.
-- **Not yet:** lamps (#84).
+- **Lamps (#84).**
+  - **The items:** six Kenney Furniture Kit lamps in Buy > Lighting (`catalogue_room = &"lighting"`):
+    - floor lamps (solid, one cell);
+    - side tables with a lamp (`sideTable` with the lamp stacked through PropView `support`);
+    - a wall lamp (WALL layer, inside face);
+    - a ceiling pendant (FLOOR_DECOR layer, non-blocking, `ItemDef.ceiling`). The pendant's shade shows only with Walls Up; its light keeps shining.
+  - **Light:** each lamp has one warm `glow_color` omni (about 2700K), short range and no shadow, with its own meshes left out like the neon sign. Floor, table and pendant lights are added in `ShopView._add_lamp_light`; the wall lamp uses the hung-item `_add_glow`.
+  - **Day and night:** `DayNightView.apply_lamps` sets each lamp's light from 35% by day to full once the shop's own lights are on (`DayLight.Look.interior_energy`). Lamps are marked `DayNightView.LAMP_META`, so sign glow doesn't double-scale them.
+  - **Light cap:** at most `LAMP_LIGHT_CAP` (8) lamp lights shine, the ones nearest the camera focus (ties broken by instance id). The rest keep their shade, but their light is hidden. This keeps every mesh within the Compatibility renderer's eight lights.
+  - **Vibe:** the six ids are in `vibe.tres` `lamp_item_ids`.
+  - **Review:** `tools/lamps_review.tscn` (`LAMPS_STAGE`, `LAMPS_WALLS`).
 
 ### Sound (FK-067, #117)
 - **`Sfx` autoload** (`src/audio/sfx.gd`): one-shot cues and looped ambience on the Effects bus (Settings already sets its volume). It clicks every `BaseButton` in the tree, including the title screen's, through `SceneTree.node_added`, and plays hover on enabled buttons. Each cue has a minimum interval (`SoundThrottle`) so fast-forward bursts play once. Repeats step through a fixed pitch cycle; there are no random draws.

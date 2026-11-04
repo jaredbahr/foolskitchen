@@ -84,6 +84,9 @@ const MAX_SEATED_LEAN_DEGREES: float = 35.0
 @export var exterior_band: ExteriorSupport.Band = ExteriorSupport.Band.BODY
 @export var unique_per_shop: bool = false
 @export var shows_restaurant_name: bool = false
+## Hangs from the ceiling (a pendant lamp): drawn at ceiling height over a
+## floor-decor cell, its shade hidden whenever walls are cut away or down.
+@export var ceiling: bool = false
 ## One body-colour slot; unpainted items keep their authored placeholder colour.
 @export var paintable: bool = true
 @export var paint_slot: StringName = &"body"
