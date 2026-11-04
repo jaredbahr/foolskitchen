@@ -44,7 +44,7 @@ func test_lists_are_sorted_and_do_not_expose_index_arrays() -> void:
 		&"a_frame_sign", &"bar_corner", &"bar_counter", &"bar_end_left", &"bar_end_right", &"bar_section",
 		&"bar_stool", &"bathroom_sink", &"bench", &"bookcase_open_low", &"chair", &"cloth_table",
 		&"coat_rack_standing", &"coffee_machine", &"corner_cabinet", &"cross_table", &"cushioned_bench", &"diner_booth", &"diner_stool",
-		&"door", &"drinks_fridge", &"drinks_shelf", &"flower_window_box", &"freezer", &"fridge", &"fryer", &"glass_table",
+		&"door", &"drinks_fridge", &"drinks_shelf", &"flower_window_box", &"freezer", &"fridge", &"fryer", &"glass_table", &"jukebox",
 		&"lamp_floor_round", &"lamp_floor_square", &"lamp_pendant", &"lamp_table_round", &"lamp_table_square", &"lamp_wall",
 		&"lounge_chair", &"menu_board", &"modern_chair", &"modern_frame_chair", &"neon_open_sign", &"oven", &"pass_counter", &"plant_small_1",
 		&"plant_small_2", &"plant_small_3", &"potted_plant", &"prep_cabinet", &"prep_counter", &"restroom_mirror", &"round_table",

@@ -436,6 +436,8 @@ func _bind_world_presentation() -> void:
 	_inspect_panel.bind_world(world)
 	if not _inspect_panel.menu_board_section_requested.is_connected(_on_menu_board_section_requested):
 		_inspect_panel.menu_board_section_requested.connect(_on_menu_board_section_requested)
+	if not _inspect_panel.item_look_requested.is_connected(_on_item_look_requested):
+		_inspect_panel.item_look_requested.connect(_on_item_look_requested)
 	_sync_owner_appearance()
 	_debug_overlay.bind_world(world)
 	_debug_overlay.bind_cleanliness(sim.cleanliness)
@@ -1993,6 +1995,23 @@ func shop_menu_board_section(anchor: Vector3i, section: int) -> bool:
 
 func _on_menu_board_section_requested(anchor: Vector3i, section: int) -> void:
 	shop_menu_board_section(anchor, section)
+
+
+## Picks another look for a placed item (a jukebox's music style) as one undoable
+## edit, with the vibe and the music following at once.
+func shop_item_look(item_id: int, variant_id: StringName) -> bool:
+	if edit_history == null or shop_editor == null or not edit_history.paint_variant(item_id, variant_id):
+		return false
+	($ShopView as ShopView).set_paint(content, shop_editor.wall_swatch_id, shop_editor.floor_swatch_id)
+	_recompute_vibe()
+	_update_build_controls()
+	if _inspect_panel != null:
+		_inspect_panel.refresh()
+	return true
+
+
+func _on_item_look_requested(item_id: int, variant_id: StringName) -> void:
+	shop_item_look(item_id, variant_id)
 
 
 func _selected_owner() -> OwnerAgent:

@@ -4,6 +4,9 @@ extends RefCounted
 ## The caller supplies only today's enabled recipes and recomputes on edits/load.
 
 
+const VIBE_THEMES: Array[StringName] = VibeTuning.KNOWN_THEMES
+
+
 ## Null means an unavailable or invalid source; VibeModel evaluates it neutrally.
 ## No resource, placement, reservation, menu selection or random stream mutates.
 static func capture(grid: SimGrid, content: ContentDB, menu: Array[RecipeDef],
@@ -19,6 +22,7 @@ static func capture(grid: SimGrid, content: ContentDB, menu: Array[RecipeDef],
 	# to the door (furniture ignored). A grid without a street entry (a test
 	# grid) counts everything.
 	var guests: Dictionary[Vector2i, bool] = {}
+	var jukebox_counted: bool = false
 	var gated: bool = not grid.entries().is_empty()
 	if gated:
 		guests = RoomRules.guest_floor(grid)
@@ -31,8 +35,14 @@ static func capture(grid: SimGrid, content: ContentDB, menu: Array[RecipeDef],
 			return null
 		if gated and definition.category == ItemDef.Category.DECOR and not guest_room_item(grid, placed, guests):
 			continue
+		# Only the first jukebox guests can see lifts the vibe (#294).
+		if definition.plays_music:
+			if jukebox_counted:
+				continue
+			jukebox_counted = true
 		var item: VibeModel.Item = VibeModel.Item.new()
 		item.definition_id = definition.id
+		item.music_theme = Jukebox.style_theme(definition, placed.variant_id, VIBE_THEMES)
 		var look: ItemVariant = definition.variant(placed.variant_id)
 		item.variant_id = look.id if look != null else &""
 		item.charm = float(definition.charm)

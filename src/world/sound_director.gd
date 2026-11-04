@@ -12,8 +12,15 @@ const ROOM_TONE: StringName = &"room_tone"
 const ONE_STATION_LEVEL: float = 0.7
 const EXTRA_STATION_LEVEL: float = 0.15
 
+## The jukebox's music is a quiet bed under the room; its loop is the style's id.
+const MUSIC_LEVEL: float = 1.0
+
 var _sim: RestaurantSim
 var _view: ShopView
+## The counted jukebox is looked up again only when the grid changes.
+var _music_grid_version: int = -1
+var _music_item_id: int = -1
+var _music_loop: StringName = &""
 
 
 func bind(sim: RestaurantSim, view: ShopView) -> void:
@@ -37,6 +44,9 @@ func unbind() -> void:
 			_sim.review_recorded.disconnect(_on_review_recorded)
 	_sim = null
 	_view = null
+	_music_grid_version = -1
+	_music_item_id = -1
+	_music_loop = &""
 	Sounds.stop_loops()
 
 
@@ -54,11 +64,33 @@ func refresh() -> void:
 			if agent is CustomerAgent:
 				guests += 1
 	Sounds.set_loop_level(ROOM_TONE, float(guests) / float(Sounds.TUNING.room_tone_full_guests) if running else 0.0)
+	_refresh_music(running)
 	# Read the view's current food layer: it is rebuilt when the world changes.
 	var food: FoodPresentation = _view.food if _view != null else null
 	for loop: StringName in FoodPresentation.STATION_LOOPS.values():
 		var busy: int = int(food.busy_loops.get(loop, 0)) if running and food != null else 0
 		Sounds.set_loop_level(loop, station_level(busy))
+
+
+## The one counted jukebox plays its style while the shop is open; changing the
+## style swaps the loop, and a closed, paused or jukebox-less shop is silent.
+func _refresh_music(running: bool) -> void:
+	var wanted: StringName = &""
+	if running and _sim != null and _sim.world != null:
+		var grid: SimGrid = _sim.world.grid
+		if grid.version != _music_grid_version:
+			_music_grid_version = grid.version
+			var counted: PlacedItem = Jukebox.counted_item(grid)
+			_music_item_id = counted.id if counted != null else -1
+		var placed: PlacedItem = grid.item(_music_item_id) if _music_item_id >= 0 else null
+		if placed != null and not placed.removed:
+			wanted = Jukebox.loop_id(placed.def as ItemDef, placed.variant_id)
+	if wanted != _music_loop:
+		if not _music_loop.is_empty():
+			Sounds.set_loop_level(_music_loop, 0.0)
+		_music_loop = wanted
+	if not _music_loop.is_empty():
+		Sounds.set_loop_level(_music_loop, MUSIC_LEVEL)
 
 
 static func station_level(busy: int) -> float:
