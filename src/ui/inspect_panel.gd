@@ -424,13 +424,23 @@ func _show_item(item: PlacedItem) -> void:
 	_reservations.show()
 
 
+var _counted_music_id: int = 0
+var _counted_music_version: int = -1
+var _counted_music_grid: SimGrid = null
+
+
 func _music_details(item: PlacedItem, definition: ItemDef) -> String:
 	var theme: String = CatalogueText.theme_label(Jukebox.style_theme(definition, item.variant_id, CatalogueText.theme_ids()))
 	var lines: PackedStringArray = ["Plays: %s" % Jukebox.style_name(definition, item.variant_id)]
 	if not theme.is_empty():
 		lines.append("Theme: %s (twice the vibe in a %s shop)" % [theme, theme])
-	var counted: PlacedItem = Jukebox.counted_item(_world.grid)
-	if counted != null and counted.id != item.id:
+	# The panel refreshes every frame: rescan only when the grid changes.
+	if _counted_music_version != _world.grid.version or _counted_music_grid != _world.grid:
+		var found: PlacedItem = Jukebox.counted_item(_world.grid)
+		_counted_music_id = found.id if found != null else 0
+		_counted_music_version = _world.grid.version
+		_counted_music_grid = _world.grid
+	if _counted_music_id != 0 and _counted_music_id != item.id:
 		lines.append("Only one jukebox lifts the vibe; another one counts")
 	return "\n".join(lines)
 
