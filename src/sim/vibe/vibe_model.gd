@@ -15,6 +15,8 @@ class Item extends RefCounted:
 	## Explicit tags supplied by a future paint adapter, not guessed swatch IDs.
 	var paint_theme_tags: Array[StringName] = []
 	var cells: Array[Vector2i] = []
+	## A jukebox (#294): the theme its music style stands for, else empty.
+	var music_theme: StringName = &""
 	## Rugs can add charm/style but never consume another layer's floor space.
 	var floor_decor: bool = false
 
@@ -73,6 +75,9 @@ class _Collected extends RefCounted:
 	var dishes: Dictionary[StringName, Dish] = {}
 	var floor_cells: Dictionary[Vector2i, bool] = {}
 	var occupied_cells: Dictionary[Vector2i, bool] = {}
+	## The first jukebox's style theme and charm (#294); only it earns the bonus.
+	var music_theme: StringName = &""
+	var music_charm: float = 0.0
 
 class _Themes extends RefCounted:
 	var votes: Dictionary[StringName, float] = {}
@@ -128,6 +133,22 @@ static func evaluate(inputs: Inputs, tuning: VibeTuning) -> Result:
 				return _invalid("The vibe amounts are too large")
 		if not _add_item_paint(themes, group, tuning):
 			return _invalid("The vibe amounts are too large")
+	if not _add_tags(themes, _known_tags(inputs.wall_paint_theme_tags, tuning), tuning.theme_paint_weight, 1, true) \
+			or not _add_tags(themes, _known_tags(inputs.floor_paint_theme_tags, tuning), tuning.theme_paint_weight, 1, true):
+		return _invalid("The vibe amounts are too large")
+	var dish_ids: Array[String] = []
+	for menu_id: StringName in collected.dishes:
+		dish_ids.append(String(menu_id))
+	dish_ids.sort()
+	for dish_text: String in dish_ids:
+		var dish_id: StringName = StringName(dish_text)
+		if not _add_tags(themes, _known_tags(collected.dishes[dish_id].theme_tags, tuning), tuning.theme_menu_weight, 1, false):
+			return _invalid("The vibe amounts are too large")
+	_choose_theme(result, themes, tuning)
+	## The music style is heard best in a room of its own theme: a matching
+	## jukebox counts its charm again (a multiplier of 2 doubles it).
+	if not collected.music_theme.is_empty() and result.active_theme == collected.music_theme:
+		decor_charm += collected.music_charm * (tuning.music_match_multiplier - 1.0)
 	var total_charm: float = decor_charm + lamp_charm
 	if not is_finite(total_charm):
 		return _invalid("The vibe amounts are too large")
@@ -142,18 +163,10 @@ static func evaluate(inputs: Inputs, tuning: VibeTuning) -> Result:
 	result.decor_points = minf(tuning.decor_cap, decor_amount)
 	result.lamp_points = minf(tuning.lamp_cap, lamp_amount)
 	result.variety_points = minf(tuning.variety_cap, variety_amount)
-	if not _add_tags(themes, _known_tags(inputs.wall_paint_theme_tags, tuning), tuning.theme_paint_weight, 1, true) \
-			or not _add_tags(themes, _known_tags(inputs.floor_paint_theme_tags, tuning), tuning.theme_paint_weight, 1, true):
-		return _invalid("The vibe amounts are too large")
-	var dish_ids: Array[String] = []
-	for menu_id: StringName in collected.dishes:
-		dish_ids.append(String(menu_id))
-	dish_ids.sort()
-	for dish_text: String in dish_ids:
-		var dish_id: StringName = StringName(dish_text)
-		if not _add_tags(themes, _known_tags(collected.dishes[dish_id].theme_tags, tuning), tuning.theme_menu_weight, 1, false):
-			return _invalid("The vibe amounts are too large")
-	_choose_theme(result, themes, tuning, excess_charm)
+	if not result.active_theme.is_empty() and excess_charm > 0.0:
+		## The starter allowance stays neutral; additional decor ramps the bonus
+		## instead of granting a full theme cap as soon as one extra copy is placed.
+		result.theme_points = result.theme_share * tuning.theme_cap * minf(1.0, excess_charm / tuning.theme_full_charm)
 	result.interior_cells = collected.floor_cells.size()
 	result.occupied_normal_cells = collected.occupied_cells.size()
 	if result.interior_cells > 0:
@@ -204,6 +217,9 @@ static func _collect(inputs: Inputs, tuning: VibeTuning) -> _Collected:
 			return collected
 		copies.count += 1
 		group.count += 1
+		if collected.music_theme.is_empty() and not item.music_theme.is_empty():
+			collected.music_theme = item.music_theme
+			collected.music_charm = item.charm
 		var paint_tags: Array[StringName] = _known_tags(item.paint_theme_tags, tuning)
 		if not paint_tags.is_empty():
 			group.paint_sources += 1
@@ -257,7 +273,7 @@ static func _add_item_paint(themes: _Themes, group: _Group, tuning: VibeTuning) 
 	return is_finite(themes.source_weight) and is_finite(themes.layout_weight)
 
 
-static func _choose_theme(result: Result, themes: _Themes, tuning: VibeTuning, excess_charm: float) -> void:
+static func _choose_theme(result: Result, themes: _Themes, tuning: VibeTuning) -> void:
 	if themes.source_weight <= 0.0 or themes.layout_weight < tuning.theme_min_layout_weight:
 		return
 	var best_vote: float = 0.0
@@ -272,10 +288,6 @@ static func _choose_theme(result: Result, themes: _Themes, tuning: VibeTuning, e
 		return
 	result.active_theme = best_theme
 	result.theme_label = tuning.theme_labels[best_theme]
-	## The starter allowance stays neutral; additional decor ramps the bonus
-	## instead of granting a full theme cap as soon as one extra copy is placed.
-	if excess_charm > 0.0:
-		result.theme_points = share * tuning.theme_cap * minf(1.0, excess_charm / tuning.theme_full_charm)
 
 
 static func _invalid(reason: String) -> Result:

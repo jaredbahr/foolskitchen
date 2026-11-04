@@ -5,6 +5,8 @@ extends Control
 signal selection_cleared()
 signal owner_mode_requested(mode: StringName)
 signal menu_board_section_requested(anchor: Vector3i, section: int)
+## The player picked another look for a placed item: a jukebox's music style.
+signal item_look_requested(item_id: int, variant_id: StringName)
 
 const GUEST_STATES: Array[String] = ["Arriving", "Queued", "Walking to seat", "Ordering",
 	"Waiting for food", "Eating", "Paying", "Leaving", "Left"]
@@ -29,6 +31,10 @@ var _shown_owner_id: int = -1
 var _shown_menu_board_anchor: Vector3i = WallFaces.NO_FACE
 var _menu_section_row: VBoxContainer
 var _menu_section_option: OptionButton
+var _music_row: VBoxContainer
+var _music_buttons: HBoxContainer
+var _music_definition: ItemDef
+var _shown_music_item_id: int = -1
 var _nodes_bound: bool = false
 var _owner_appearance: OwnerAppearance = OwnerAppearance.new()
 var _owner_portrait: OwnerCharacterPreview
@@ -155,7 +161,7 @@ func refresh() -> void:
 		if item == null or item.removed:
 			clear()
 			return
-		_reset_content()
+		_reset_content(false, false, _shown_music_item_id == item.id)
 		_show_item(item)
 		show()
 	else:
@@ -197,10 +203,24 @@ func _bind_nodes() -> void:
 	_menu_section_option.item_selected.connect(_on_menu_section_selected)
 	_menu_section_row.add_child(_menu_section_option)
 	_reservations.get_parent().add_child(_menu_section_row)
+	_music_row = VBoxContainer.new()
+	_music_row.name = "MusicStyleRow"
+	_music_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_music_row.hide()
+	var music_heading: Label = Label.new()
+	music_heading.text = "Music style"
+	music_heading.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_music_row.add_child(music_heading)
+	_music_buttons = HBoxContainer.new()
+	_music_buttons.name = "MusicStyleButtons"
+	_music_buttons.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_music_row.add_child(_music_buttons)
+	_reservations.get_parent().add_child(_music_row)
 	_nodes_bound = true
 
 
-func _reset_content(keep_owner_controls: bool = false, keep_menu_board_controls: bool = false) -> void:
+func _reset_content(keep_owner_controls: bool = false, keep_menu_board_controls: bool = false,
+		keep_music_controls: bool = false) -> void:
 	if _owner_portrait != null:
 		_owner_portrait.hide()
 	# Preserve hover and its tooltip while the same owner is refreshed each frame.
@@ -226,6 +246,9 @@ func _reset_content(keep_owner_controls: bool = false, keep_menu_board_controls:
 			_menu_section_option.get_popup().hide()
 		_shown_menu_board_anchor = WallFaces.NO_FACE
 		_menu_section_row.hide()
+	if not keep_music_controls:
+		_shown_music_item_id = -1
+		_music_row.hide()
 	# Hiding or disabling a BaseButton cancels an in-flight native mouse press.
 	# Tick/frame refreshes must preserve controls for the same live owner.
 	if not keep_owner_controls:
@@ -375,6 +398,9 @@ func _show_item(item: PlacedItem) -> void:
 		station_name = CatalogueText.station_name(definition)
 	_title.text = "%s #%d" % [item_name, item.id]
 	_details.text = "Station: %s" % station_name
+	if definition != null and definition.plays_music:
+		_details.text = _music_details(item, definition)
+		_show_music_styles(item, definition)
 	var group: DiningSeats.Group = _world.grid.dining_group(item.id)
 	var seats: Array[Vector2i] = item.seat_cells
 	if group != null:
@@ -392,8 +418,55 @@ func _show_item(item: PlacedItem) -> void:
 	for cell: Vector2i in seats:
 		var owner: PlacedItem = _world.grid.item(_world.grid.dining_owner_id(item.id, cell)) if group != null else item
 		lines.append(_reservation_line("Seat", cell, owner.reserved_by(cell) if owner != null else -1))
+	if definition != null and definition.plays_music:
+		return
 	_reservations.text = "No work or seat cells" if lines.is_empty() else "\n".join(lines)
 	_reservations.show()
+
+
+func _music_details(item: PlacedItem, definition: ItemDef) -> String:
+	var theme: String = CatalogueText.theme_label(Jukebox.style_theme(definition, item.variant_id, CatalogueText.theme_ids()))
+	var lines: PackedStringArray = ["Plays: %s" % Jukebox.style_name(definition, item.variant_id)]
+	if not theme.is_empty():
+		lines.append("Theme: %s (twice the vibe in a %s shop)" % [theme, theme])
+	var counted: PlacedItem = Jukebox.counted_item(_world.grid)
+	if counted != null and counted.id != item.id:
+		lines.append("Only one jukebox lifts the vibe; another one counts")
+	return "\n".join(lines)
+
+
+## One toggle per music style; the chosen one is pressed. Kept while the same
+## jukebox stays selected, so the per-tick refresh never cancels a click.
+func _show_music_styles(item: PlacedItem, definition: ItemDef) -> void:
+	if _music_definition != definition:
+		_music_definition = definition
+		for child: Node in _music_buttons.get_children():
+			_music_buttons.remove_child(child)
+			child.queue_free()
+		for look: ItemVariant in definition.variants:
+			var button: Button = Button.new()
+			button.name = String(look.id)
+			button.text = look.display_name
+			button.toggle_mode = true
+			button.focus_mode = Control.FOCUS_NONE
+			button.tooltip_text = "%s music" % CatalogueText.theme_label(
+				Jukebox.style_theme(definition, look.id, CatalogueText.theme_ids()))
+			button.pressed.connect(_on_music_style_pressed.bind(look.id))
+			_music_buttons.add_child(button)
+	var chosen: StringName = definition.known_variant_id(item.variant_id)
+	if chosen.is_empty():
+		chosen = definition.variant(&"").id if definition.variant(&"") != null else &""
+	for child: Node in _music_buttons.get_children():
+		(child as Button).set_pressed_no_signal(StringName(child.name) == chosen)
+	_shown_music_item_id = item.id
+	_music_row.show()
+
+
+func _on_music_style_pressed(variant_id: StringName) -> void:
+	if selected_item_id < 0 or not visible or not _music_row.visible:
+		return
+	item_look_requested.emit(selected_item_id, variant_id)
+	refresh()
 
 
 func _show_menu_board(hung: WallDecor.Hung) -> void:
