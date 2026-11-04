@@ -5,6 +5,7 @@ extends RefCounted
 const VIBE_TUNING: VibeTuning = preload("res://data/balance/vibe.tres")
 const VISIT_TUNING: VisitTuning = preload("res://data/balance/visits.tres")
 const RESTROOM_TUNING: RestroomTuning = preload("res://data/balance/restroom.tres")
+const CAT_TUNING: CatTuning = preload("res://data/balance/cat.tres")
 
 signal customer_arrived(customer: CustomerAgent)
 signal customer_paid(customer: CustomerAgent, order: Order, amount: int)
@@ -52,6 +53,9 @@ var dock: DeliveryDock
 var cleanliness: CleanlinessState = null
 var clean_tasks: CleanTaskController = null
 var mishaps: MishapState = null
+## The shop cat (#119): never in world.agents, so it joins no traffic. It does
+## nothing until adopted.
+var cat: RestaurantCat = RestaurantCat.new(CAT_TUNING)
 ## Main records this paid replacement cost in the existing economy ledger.
 signal plate_broken(cost: int)
 var spawner: CustomerSpawner
@@ -249,6 +253,8 @@ func start_day() -> void:
 	if mishaps != null:
 		mishaps.tidy_overnight()
 	_staff_to_posts()
+	if cat != null:
+		cat.begin_day(world.grid)
 	spawner.reset(arrival_rate())
 
 
@@ -277,6 +283,8 @@ func advance() -> void:
 	if dock != null:
 		dock.advance()
 	refresh_sold_out()
+	if cat != null and (world.clock.phase == SimClock.Phase.OPEN or world.clock.phase == SimClock.Phase.LAST_ORDERS):
+		cat.advance(world.grid, customers())
 	spawner.advance(self)
 	for customer: CustomerAgent in customers():
 		if world.clock.phase == SimClock.Phase.CLOSED:
@@ -854,6 +862,8 @@ func restroom_used(spot: Vector2i) -> void:
 
 func _on_layout_changed(_cells: Array[Vector2i]) -> void:
 	_layout_counted = false
+	if cat != null:
+		cat.layout_changed(world.grid)
 
 
 func _count_layout() -> void:

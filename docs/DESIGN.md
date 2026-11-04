@@ -55,7 +55,7 @@ Morning (closed): plan menu and prices, buy stock, hire, rebuild
 - Click-to-assign (D4): pick a station or role, he walks there and works it, using the same task system as staff. Mini-games launch from his station.
 
 **Pets (Tier 2 unlock)**
-- **Restaurant cat:** removes pests, gives a small charm bonus, and guests can pet it. Purely charming, no upkeep beyond food.
+- **Restaurant cat (#119):** a one-time $40 morning offer from owner level 4; cat food is $2 a day ("Cat food" in the evening report). It wanders the dining room and restroom, naps in sunny spots by a window (by a wall when there is no window) and starts each day asleep on its bed spot. Waiting guests within two cells are 10% more patient, and a waiting guest next to it may pet it once per visit for a happy review. Purely charming: it never blocks anyone, and there are no pests (no pest system yet). Prices and the charm live in `data/balance/cat.tres`.
 
 ### 4.2 Kitchen, menu and food
 - **Order chain:** a server takes the order and a ticket goes on the board. A cook fetches ingredients from storage, preps (cutting board), and cooks (stove, fryer or oven). The plate goes to the pass, a server delivers it, the guest eats, and the table needs bussing before it can be reused.
