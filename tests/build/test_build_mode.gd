@@ -490,13 +490,14 @@ func test_all_place_results_have_player_sentences_used_by_actual_editor_checks()
 	assert_eq(_editor.check_buy(&"chair", Vector2i(2, 8)).why, reasons[SimGrid.PlaceResult.OK])
 	assert_eq(_editor.check_buy(&"patio_chair", Vector2i(2, 8)).why, reasons[SimGrid.PlaceResult.OUTDOOR_ONLY])
 	var patio_layout: ShopLayout = LAYOUT.duplicate(true) as ShopLayout
-	patio_layout.patio_cells = [Vector2i(5, 11)]
+	var patio_cell: Vector2i = SimGrid.from_ascii(patio_layout.rows).entries()[0] + Vector2i.LEFT
+	patio_layout.patio_cells = [patio_cell]
 	var errors: Array[String] = []
 	var patio_sim: RestaurantSim = RestaurantSim.create(patio_layout, _content, 55, errors)
 	assert_eq(errors, [] as Array[String])
 	var patio_editor: ShopEditor = ShopEditor.new(patio_sim, _content, ShopEditBooks.new(_can_spend, _record_cash), patio_layout)
 	var patio_before: Dictionary = patio_editor.to_dict()
-	assert_eq(patio_editor.check_buy(&"chair", Vector2i(5, 11)).why, reasons[SimGrid.PlaceResult.INDOOR_ONLY])
+	assert_eq(patio_editor.check_buy(&"chair", patio_cell).why, reasons[SimGrid.PlaceResult.INDOOR_ONLY])
 	assert_eq(patio_editor.to_dict(), patio_before, "the outdoor floor rejection is read-only too")
 	assert_eq(_snapshot(), before)
 

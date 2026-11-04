@@ -267,8 +267,8 @@ func test_editor_buy_and_move_keep_indoor_and_outdoor_furniture_on_their_own_flo
 func test_indoor_expansion_preserves_patio_and_room_paint_cannot_create_or_remove_it() -> void:
 	var cells: Array[Vector2i] = _rect(-2, 0, 2, 2)
 	assert_true(_history.apply_patio(cells, true), _editor.last_check.why)
-	assert_true(_editor.apply_floor(_rect(8, -6, 1, 4), true), _editor.last_check.why)
-	assert_true(_editor.apply_floor(_rect(8, -6, 1, 4), false), _editor.last_check.why)
+	assert_true(_editor.apply_floor(_rect(ShopFootprint.from_layout(LAYOUT).building.end.x - _street(0, 0).x, -6, 1, 4), true), _editor.last_check.why)
+	assert_true(_editor.apply_floor(_rect(ShopFootprint.from_layout(LAYOUT).building.end.x - _street(0, 0).x, -6, 1, 4), false), _editor.last_check.why)
 	for cell: Vector2i in cells:
 		assert_true(_sim.world.grid.is_outdoor_floor(cell))
 	assert_eq(_editor.bought_patio(), cells)

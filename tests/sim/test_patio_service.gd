@@ -27,6 +27,8 @@ func test_sun_and_cloud_seat_singles_and_parties_on_real_outdoor_tables() -> voi
 		assert_eq(guest.rng.state, state, "seating never draws weather or guest randomness")
 		sim.world.remove_agent(guest)
 		var party: Party = sim.add_party(Vector2i(6, 6), [_rng(2432), _rng(2433)])
+		assert_true(sim.world.reset_agent_position(PartySeating.members(party, sim.world)[1], sim.world.grid.entries()[1]),
+			"the isolated MORNING seating fixture admits each body at a distinct real entry")
 		assert_true(PartySeating.try_seat(party, sim.world))
 		var members: Array[CustomerAgent] = PartySeating.members(party, sim.world)
 		assert_eq(members.size(), 2)
@@ -49,6 +51,8 @@ func test_rain_skips_outdoor_regular_favourite_and_party_seats_but_keeps_indoor_
 	assert_eq(guest.table_item_id, inside.id, "an outdoor favourite cannot reopen a rainy patio")
 	sim.world.remove_agent(guest)
 	var party: Party = sim.add_party(Vector2i(6, 6), [_rng(2435), _rng(2436)])
+	assert_true(sim.world.reset_agent_position(PartySeating.members(party, sim.world)[1], sim.world.grid.entries()[1]),
+		"the isolated MORNING seating fixture admits each body at a distinct real entry")
 	assert_true(PartySeating.try_seat(party, sim.world))
 	for member: CustomerAgent in PartySeating.members(party, sim.world):
 		assert_eq(member.table_item_id, inside.id)

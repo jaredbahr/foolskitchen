@@ -522,15 +522,13 @@ func to_dict() -> Dictionary:
 	var painted: Dictionary[Vector2i, int] = _sim.world.grid.rooms()
 	for cell: Vector2i in ShopFootprint.sorted(_cell_set(painted.keys())):
 		rooms.append([cell.x, cell.y, String(RoomRules.id_of(painted[cell]))])
-## Version 9 adds separately owned outdoor patio cells.
-## Optional layout_id identifies a newer authored base; old bases omit it.
-const SNAPSHOT_VERSION: int = 9
+	var snapshot: Dictionary = {"version": SNAPSHOT_VERSION, "items": placements, "walls": segments, "floor": floor, "patio": patio,
 		"thin_cells": ThinDividers.rows(_thin_cells), "thick_cells": ThinDividers.rows(_thick_cells),
 		"rooms": rooms, "wall_swatch_id": String(wall_swatch_id), "floor_swatch_id": String(floor_swatch_id),
 		"floor_style_id": String(floors.default_style), "floors": floors.to_rows(),
 		"wall_style_id": String(walls.default_style), "wall_finishes": walls.to_rows(), "wall_items": decor.to_rows()}
-	# Older bases keep their exact v8 wire shape. New shops always identify
-	# their authored geometry, without adding a section or an action save.
+	# Older bases omit the layout marker. New shops identify their authored
+	# geometry without adding a section or an action save.
 	if not _save_layout_id.is_empty():
 		snapshot["layout_id"] = String(_save_layout_id)
 	return snapshot

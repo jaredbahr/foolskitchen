@@ -152,7 +152,8 @@ func test_owned_pavement_keeps_street_anchor_facade_and_outdoor_rain_mask() -> v
 	assert_eq(view.room_dressing.name_sign_nodes().size(), 1, "the existing sign keeps its facade support")
 	_world().weather.kind = WeatherState.Kind.RAIN
 	_main.call("_refresh_weather")
-	var drop: AABB = AABB(Vector3(1.1, 0.2, 6.1), Vector3(0.01, 1.0, 0.01))
+	var outdoor_point: Vector3 = GridMath.cell_to_world(_street(-4, 1))
+	var drop: AABB = AABB(Vector3(outdoor_point.x, 0.2, outdoor_point.z), Vector3(0.01, 1.0, 0.01))
 	assert_true(view.weather_view.call("_outside_bounds", drop), "patio remains outside the built-roof rain mask")
 	var indoors: AABB = AABB(Vector3(1.1, 0.2, 3.1), Vector3(0.01, 1.0, 0.01))
 	assert_false(view.weather_view.call("_outside_bounds", indoors))
@@ -206,25 +207,25 @@ func test_native_furniture_walking_feet_and_seated_pose_follow_the_pavement_once
 	if person == null:
 		return
 	assert_almost_eq(person.position.y, 0.0, 0.00001, "indoor actor feet keep the old floor plane")
-	staff.cell = _street(-1, 0)
+	assert_true(_world().reset_agent_position(staff, _street(-1, 0)))
 	staff.path.clear()
 	staff.move_progress = 0.0
 	view._process(0.0)
 	assert_almost_eq(person.position.y, pavement, 0.00001, "standing feet sit on the pavement surface")
-	# Use a real legal step across the street entry boundary without advancing
-	# the simulation: the rendered foot plane must cross the height difference.
-	staff.cell = _street(0, 0)
+	# Use real reserved steps across the street entry without advancing the
+	# clock or meal work: the foot plane must cross the height difference.
+	assert_true(_world().reset_agent_position(staff, _street(0, 0)))
 	assert_true(staff.set_destination(_world().grid, _street(-1, 0)))
 	assert_eq(staff.next_cell(), _street(-1, 0))
-	staff.move_progress = 0.25
+	_walk_staff(staff, 1)
 	view._process(0.0)
 	assert_almost_eq(person.position.y, pavement * 0.25, 0.00001)
-	staff.cell = _street(-1, 0)
+	assert_true(_world().reset_agent_position(staff, _street(-1, 0)))
 	assert_true(staff.set_destination(_world().grid, _street(0, 0)))
-	staff.move_progress = 0.75
+	_walk_staff(staff, 3)
 	view._process(0.0)
 	assert_almost_eq(person.position.y, pavement * 0.25, 0.00001, "returning indoors lowers the feet along the same step")
-	staff.cell = indoor_cell
+	assert_true(_world().reset_agent_position(staff, indoor_cell))
 	staff.path.clear()
 	staff.move_progress = 0.0
 	_world().weather.kind = WeatherState.Kind.SUNNY
@@ -237,6 +238,7 @@ func test_native_furniture_walking_feet_and_seated_pose_follow_the_pavement_once
 	guest.waiting_cell = guest.cell
 	guest.waiting_item_id = bench.id
 	assert_true(bench.reserve(guest.cell, guest.id))
+	assert_true(_world().reset_agent_position(guest, guest.waiting_cell))
 	assert_true(guest.is_waiting_seated(_world()), "the pose uses a real owned and reserved outdoor bench seat")
 	view._process(0.0)
 	var seated: PersonView = view.agent_nodes.get(guest.id) as PersonView
@@ -274,7 +276,7 @@ func test_native_mess_and_build_overlays_clear_pavement_without_lifting_indoor_t
 	var mess: CleanlinessState = CleanlinessState.new(_world().grid, tuning, private_rng)
 	var dirt_cell: Vector2i = _street(-2, 1)
 	var spill_cell: Vector2i = _street(-1, 1)
-	var indoor_cell: Vector2i = Vector2i(11, 8)
+	var indoor_cell: Vector2i = _street(0, -3)
 	assert_true(mess.try_spawn_at_departed_seat(dirt_cell))
 	assert_true(mess.add_spill(spill_cell))
 	assert_true(mess.add_spill(indoor_cell))
@@ -427,7 +429,7 @@ func _start() -> void:
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	await tree.process_frame
 	_viewport = SubViewport.new()
-	_viewport.size = _street(1594, 889)
+	_viewport.size = Vector2i(1600, 900)
 	_viewport.own_world_3d = true
 	_viewport.handle_input_locally = true
 	_viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
@@ -506,3 +508,12 @@ func _key(code: Key, control: bool = false) -> void:
 
 func _street(x: int, y: int) -> Vector2i:
 	return _world().grid.entries()[0] + Vector2i(x, y)
+
+
+func _walk_staff(staff: StaffAgent, ticks: int) -> void:
+	for tick: int in ticks:
+		_world().now += 1
+		_world().movement.begin_tick(_world())
+		staff.begin_movement_trace(_world().now)
+		staff.step_move(_world())
+		staff.end_movement_trace()

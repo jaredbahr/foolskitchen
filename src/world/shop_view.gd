@@ -885,6 +885,16 @@ func ground_height(cell: Vector2i) -> float:
 	return pavement_height() if _has_patio and world != null and world.grid.is_outdoor_floor(cell) else 0.0
 
 
+## Sample the existing floor heights at the drawn position between cell centres.
+func _ground_height_at(point: Vector3) -> float:
+	var coordinates: Vector2 = Vector2(point.x, point.z) / GridMath.CELL_SIZE - Vector2(0.5, 0.5)
+	var cell: Vector2i = Vector2i(floori(coordinates.x), floori(coordinates.y))
+	var fraction: Vector2 = coordinates - Vector2(cell)
+	var first_row: float = lerpf(ground_height(cell), ground_height(cell + Vector2i.RIGHT), fraction.x)
+	var second_row: float = lerpf(ground_height(cell + Vector2i.DOWN), ground_height(cell + Vector2i.ONE), fraction.x)
+	return lerpf(first_row, second_row, fraction.y)
+
+
 func _rebuild_patio_floor() -> void:
 	var cells: Array[Vector2i] = []
 	if world != null:
@@ -1597,11 +1607,6 @@ func _sync_agents() -> void:
 	var alive: Dictionary[int, bool] = {}
 	for agent: SimAgent in world.agents:
 		var frame: AgentPresentationController.Frame = frames[agent.id]
-		if _has_patio:
-			# Lift before smoothing, so the previous/current displayed poses share
-			# the same ground. Chair/bench seat_height remains a relative lift.
-			frame.floor_position.y += lerpf(ground_height(agent.cell), ground_height(agent.next_cell()),
-				clampf(agent.move_progress, 0.0, 1.0))
 		motion.observe(agent.id, world.now, frame)
 		if alpha >= 1.0:
 			motion.settle(agent.id)
@@ -1611,6 +1616,9 @@ func _sync_agents() -> void:
 	for agent: SimAgent in world.agents:
 		alive[agent.id] = true
 		var frame: AgentPresentationController.Frame = frames[agent.id]
+		if _has_patio:
+			# Vertical terrain height is not a horizontal seat/separation offset.
+			frame.floor_position.y += _ground_height_at(frame.sim_floor_position)
 		if agent_nodes.has(agent.id) and (agent_nodes[agent.id] is PersonView) != frame.look_supported:
 			_remove_agent_visual(agent.id)
 		if not agent_nodes.has(agent.id):

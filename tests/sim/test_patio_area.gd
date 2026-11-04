@@ -176,8 +176,8 @@ func test_indoor_expansion_preserves_occupied_patio_and_exterior_windows() -> vo
 	assert_true(grid.is_outdoor_floor(_street(-4, 1)))
 	assert_true(grid.item_at(_street(-4, 1)) == placed)
 	assert_eq(WallRules.street_side(grid), Vector2i.DOWN)
-	assert_eq(WallRules.outer_side(grid, Vector3i(5, 10, SimGrid.EDGE_NORTH)), Vector2i.DOWN)
-	assert_eq(WallRules.back_door_side(grid, Vector3i(5, 10, SimGrid.EDGE_NORTH)), Vector2i.ZERO)
+	assert_eq(WallRules.outer_side(grid, Vector3i(_street(-1, -1).x, _street(-1, -1).y, SimGrid.EDGE_NORTH)), Vector2i.DOWN)
+	assert_eq(WallRules.back_door_side(grid, Vector3i(_street(-1, -1).x, _street(-1, -1).y, SimGrid.EDGE_NORTH)), Vector2i.ZERO)
 	assert_false(WallRules.door_cells(grid).has(_street(-1, 0)))
 
 
