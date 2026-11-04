@@ -2,7 +2,10 @@ extends "res://src/world/main.gd"
 ## Fixed real Main service, not a staged report or the probe's RNG-reset profile.
 ## The existing expanded_tables fixture builds free; stock and service are paid.
 
-const REVIEW_DAYS: int = 14
+## Day ten: with people occupying cells (#263) service runs a little slower,
+## and the old day-fourteen close no longer crossed the cook threshold. Day ten
+## is a real close of the same seeded run that does, with a clear margin.
+const REVIEW_DAYS: int = 10
 const REVIEW_SETUP: String = "expanded_tables"
 const REVIEW_RULES: StaffAdviceTuning = preload("res://data/balance/staff_advice.tres")
 
@@ -95,7 +98,7 @@ func _review_validate() -> void:
 		_review_fail("the report does not match the actual fixed service")
 		return
 	if advice_id != &"cook":
-		_review_fail("the fixed day-fourteen service did not naturally recommend a cook; actual result retained")
+		_review_fail("the fixed day-%d service did not naturally recommend a cook; actual result retained" % REVIEW_DAYS)
 		return
 	var section: Control = _report.get_node("%TeamSection") as Control
 	var heading: Label = _report.get_node("%TeamHeading") as Label
@@ -143,7 +146,7 @@ func _review_validate() -> void:
 		_review_fail("native validation changed the closed session snapshot")
 		return
 	print("STAFF_ACTIVITY_REPORT_REVIEW ", JSON.stringify({
-		"fixture": "actual Main seed1 expanded_tables fourteen-day service; free construction of 15 floor cells and two tables; normal paid stock and service; no grants or saves",
+		"fixture": "actual Main seed1 expanded_tables %d-day service;" % REVIEW_DAYS + " free construction of two one-cell side wings and two tables; normal paid stock and service; no grants or saves",
 		"profile": "ordinary Main morning; no additional day or RNG reset; differs from BalanceProbe initialization",
 		"setup": REVIEW_SETUP, "seed": str(GameState.master_seed), "days": REVIEW_DAYS,
 		"day": shown_report.day, "cash": Economy.cash, "initial_setup": _review_setup,

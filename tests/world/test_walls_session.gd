@@ -80,7 +80,7 @@ func test_wall_finish_tool_puts_up_drags_copies_and_undoes() -> void:
 	_mode().wall_finish_press(_face(1, 9, WEST), true)
 	assert_eq(_mode().wall_finish_proposal(), dining)
 	_mode().wall_finish_release(_face(1, 9, WEST))
-	assert_eq(_editor().walls.finish(_face(12, 7, 1)).swatch, &"sage")
+	assert_eq(_editor().walls.finish(_face(14, 7, 1)).swatch, &"sage")
 	assert_eq(Economy.cash, cash - 6 - 2 * (dining.size() - 3), "the three striped walls only change colour")
 	# Alt-click copies a wall's look into the tool and the tab.
 	catalogue.wall_style_buttons[&"wainscot"].pressed.emit()
@@ -157,10 +157,10 @@ func test_the_neon_sign_hangs_in_a_window_facing_the_street_and_glows_both_ways(
 	await _start()
 	Economy.add_cash(500, Ledger.OTHER)
 	_editor().set_owner_level(4)
-	var slot: Vector3i = Vector3i(8, 9, 2)
-	var other: Vector3i = Vector3i(10, 9, 2)
-	var windows: Dictionary[Vector3i, int] = {Vector3i(8, 10, SimGrid.EDGE_NORTH): SimGrid.Segment.WINDOW,
-		Vector3i(10, 10, SimGrid.EDGE_NORTH): SimGrid.Segment.WINDOW}
+	var slot: Vector3i = Vector3i(9, 11, 2)
+	var other: Vector3i = Vector3i(11, 11, 2)
+	var windows: Dictionary[Vector3i, int] = {Vector3i(9, 12, SimGrid.EDGE_NORTH): SimGrid.Segment.WINDOW,
+		Vector3i(11, 12, SimGrid.EDGE_NORTH): SimGrid.Segment.WINDOW}
 	assert_true(_main.call("shop_walls", windows), _editor().last_check.why)
 	assert_true(_main.call("shop_hang", &"wall_art_sunrise", _face(2, 1, 0)))
 	assert_false(_main.call("shop_hang", &"neon_open_sign", _face(1, 9, WEST)), "not on an inside wall")
@@ -175,9 +175,9 @@ func test_the_neon_sign_hangs_in_a_window_facing_the_street_and_glows_both_ways(
 	var opening: Rect2 = WallSegmentView.window_opening()
 	var bounds: AABB = sign.global_transform * sign.get_aabb()
 	assert_true(bounds.size.x <= opening.size.x and bounds.size.y <= opening.size.y, "fits the window")
-	assert_almost_eq(bounds.get_center().x, GridMath.cell_to_world(Vector2i(8, 9)).x, 0.001, "centred across")
+	assert_almost_eq(bounds.get_center().x, GridMath.cell_to_world(Vector2i(9, 11)).x, 0.001, "centred across")
 	assert_almost_eq(bounds.get_center().y, opening.get_center().y, 0.001, "centred up and down")
-	var inner: float = GridMath.cell_to_world(Vector2i(8, 9)).z + GridMath.CELL_SIZE * 0.5
+	var inner: float = GridMath.cell_to_world(Vector2i(9, 11)).z + GridMath.CELL_SIZE * 0.5
 	assert_true(bounds.position.z > inner and bounds.end.z < inner + GridMath.CELL_SIZE, "in the opening")
 	assert_true((sign.global_transform.basis * Vector3.FORWARD).dot(Vector3.BACK) > 0.99, "text faces the street")
 	var glow: OmniLight3D = sign.get_node("Glow") as OmniLight3D
@@ -192,7 +192,7 @@ func test_the_neon_sign_hangs_in_a_window_facing_the_street_and_glows_both_ways(
 	assert_true(glow.omni_range < Vector2(GridMath.CELL_SIZE * 0.5 + WallSegmentView.THICKNESS * 0.5, GridMath.CELL_SIZE * 0.5).length(),
 		"the light never reaches a neighbouring room")
 	# The pools are exactly the floor cell inside and the ground cell outside.
-	var pools: Dictionary[String, Vector2i] = {"PoolInside": Vector2i(8, 9), "PoolOutside": Vector2i(8, 11)}
+	var pools: Dictionary[String, Vector2i] = {"PoolInside": Vector2i(9, 11), "PoolOutside": Vector2i(9, 13)}
 	for pool_name: String in pools:
 		var pool: MeshInstance3D = sign.get_node(pool_name) as MeshInstance3D
 		var area: AABB = pool.global_transform * pool.get_aabb()
@@ -226,7 +226,7 @@ func test_the_neon_sign_hangs_in_a_window_facing_the_street_and_glows_both_ways(
 	assert_eq(finish_view.find_children("Glow", "OmniLight3D", true, false).size(), 1)
 	# Closing the window takes the sign (and its glow) down.
 	_mode().cancel_ghost()
-	var close: Dictionary[Vector3i, int] = {Vector3i(10, 10, SimGrid.EDGE_NORTH): SimGrid.Segment.NONE}
+	var close: Dictionary[Vector3i, int] = {Vector3i(11, 12, SimGrid.EDGE_NORTH): SimGrid.Segment.NONE}
 	assert_true(_main.call("shop_walls", close), _editor().last_check.why)
 	assert_eq(_editor().decor.count(), 1, "only the print is left")
 	assert_eq(finish_view.find_children("Glow", "OmniLight3D", true, false).size(), 0)
@@ -236,15 +236,15 @@ func test_pointing_at_a_window_picks_its_slot_for_the_sign() -> void:
 	await _start()
 	Economy.add_cash(500, Ledger.OTHER)
 	_editor().set_owner_level(4)
-	var windows: Dictionary[Vector3i, int] = {Vector3i(8, 10, SimGrid.EDGE_NORTH): SimGrid.Segment.WINDOW}
+	var windows: Dictionary[Vector3i, int] = {Vector3i(9, 12, SimGrid.EDGE_NORTH): SimGrid.Segment.WINDOW}
 	assert_true(_main.call("shop_walls", windows), _editor().last_check.why)
 	var view: ShopView = _view()
 	view.set_wall_mode(ShopView.WallMode.UP)
 	# A ray from above the street down into the window's opening.
-	var target: Vector3 = GridMath.cell_to_world(Vector2i(8, 10)) + Vector3(0.0, 0.7, 0.0)
+	var target: Vector3 = GridMath.cell_to_world(Vector2i(9, 12)) + Vector3(0.0, 0.7, 0.0)
 	var origin: Vector3 = target + Vector3(0.0, 4.0, 3.0)
 	var hit: Dictionary = view.window_at_ray(origin, (target - origin).normalized())
-	assert_eq(hit.get("face"), Vector3i(8, 9, 2))
+	assert_eq(hit.get("face"), Vector3i(9, 11, 2))
 	assert_true(view.window_at_ray(origin, (GridMath.cell_to_world(Vector2i(3, 6)) - origin).normalized()).is_empty(),
 		"nothing away from windows")
 
@@ -265,6 +265,10 @@ func test_removing_a_wall_takes_its_finish_and_decor_off_the_view() -> void:
 	assert_eq(view.wall_finish_view.finished_faces().size(), 2)
 	assert_true(view.wall_finish_view.item_nodes[_face(9, 6, WEST)].visible)
 	view.set_wall_mode(ShopView.WallMode.CUTAWAY)
+	# Look at a point just past the wall, so the wall stands in front of the focus.
+	var away: Vector2 = Vector2(ShopView.AWAY_FROM_CAMERA[view.get("_camera_quarter")]).normalized()
+	var past: Vector2 = Vector2(9.0, 6.5) * GridMath.CELL_SIZE + away * 3.0 * GridMath.CELL_SIZE
+	view.set_camera_focus(view.to_global(Vector3(past.x, 0.0, past.y)))
 	assert_false(view.wall_finish_view.item_nodes[_face(9, 6, WEST)].visible, "interior walls are lowered in Cutaway")
 	var cash: int = Economy.cash
 	for edge: Vector3i in wall:
@@ -295,10 +299,10 @@ func test_paint_recolours_the_run_of_wall_or_the_room_while_open() -> void:
 		assert_eq(_editor().walls.finish(painted).swatch, &"sage")
 	assert_eq(_editor().walls.finish(_face(3, 1, 0)).swatch, _editor().wall_swatch_id, "the kitchen is another room")
 	assert_true(_main.call("paint_face", _face(3, 1, 0), true))
-	assert_eq(_editor().walls.finish(_face(12, 2, 1)).swatch, &"sage", "Shift paints the kitchen's walls")
+	assert_eq(_editor().walls.finish(_face(14, 2, 1)).swatch, &"sage", "Shift paints the kitchen's walls")
 	assert_eq(_editor().wall_vibe_swatch(), _editor().wall_swatch_id, "guests see mostly the old paint still")
-	assert_true(_main.call("paint_face", _face(12, 7, 1), true))
-	assert_eq(_editor().walls.finish(_face(12, 7, 1)).swatch, &"sage", "Shift paints the dining room's walls")
+	assert_true(_main.call("paint_face", _face(14, 7, 1), true))
+	assert_eq(_editor().walls.finish(_face(14, 7, 1)).swatch, &"sage", "Shift paints the dining room's walls")
 	assert_eq(Economy.cash, cash, "recolouring is free")
 	assert_eq(_editor().wall_vibe_swatch(), &"sage")
 	assert_true(_main.call("set_paint_active", false))
@@ -391,15 +395,15 @@ func test_a_window_sign_is_picked_from_the_street_not_through_the_wall() -> void
 	await _start()
 	Economy.add_cash(500, Ledger.OTHER)
 	_editor().set_owner_level(4)
-	var windows: Dictionary[Vector3i, int] = {Vector3i(8, 10, SimGrid.EDGE_NORTH): SimGrid.Segment.WINDOW}
+	var windows: Dictionary[Vector3i, int] = {Vector3i(9, 12, SimGrid.EDGE_NORTH): SimGrid.Segment.WINDOW}
 	assert_true(_main.call("shop_walls", windows), _editor().last_check.why)
-	assert_true(_main.call("shop_hang", &"neon_open_sign", Vector3i(8, 9, 2)), _editor().last_check.why)
+	assert_true(_main.call("shop_hang", &"neon_open_sign", Vector3i(9, 11, 2)), _editor().last_check.why)
 	var view: ShopView = _view()
 	view.set_wall_mode(ShopView.WallMode.UP)
-	var sign: ItemVisual = view.wall_finish_view.item_nodes[Vector3i(8, 9, 2)]
+	var sign: ItemVisual = view.wall_finish_view.item_nodes[Vector3i(9, 11, 2)]
 	var centre: Vector3 = sign.global_transform * sign.get_aabb().get_center()
 	var street: Vector3 = centre + Vector3(0.0, 2.0, 2.0)
-	assert_eq(view.wall_item_at_ray(street, (centre - street).normalized()), Vector3i(8, 9, 2))
+	assert_eq(view.wall_item_at_ray(street, (centre - street).normalized()), Vector3i(9, 11, 2))
 	# From the room the ray drops past the window head: the wall is in the way.
 	var room: Vector3 = centre + Vector3(0.0, 2.0, -2.0)
 	assert_eq(view.wall_item_at_ray(room, (centre - room).normalized()), WallFaces.NO_FACE)

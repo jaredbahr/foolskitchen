@@ -1,5 +1,5 @@
 extends TestCase
-## Source-prepared FK-066 coverage. Execution is deferred while the demo runs.
+## Isolated seating, reservations and queue policy with physically admitted bodies.
 
 const TYPES: CustomerTypeCatalogue = preload("res://data/customers/types.tres")
 const TABLE: ItemDef = preload("res://data/items/table_4.tres")
@@ -100,10 +100,11 @@ func test_matching_backtracks_instead_of_stranding_the_last_member() -> void:
 func test_route_commit_failure_rolls_back_all_reservations_and_paths() -> void:
 	var sim: RestaurantSim = _sim()
 	var table: PlacedItem = sim.world.grid.place_def(TABLE, Vector2i(4, 5))
-	var first: CustomerAgent = sim.add_customer(Vector2i.ZERO, _rng(1))
+	var first: CustomerAgent = sim.add_customer(_unit_start(sim), _rng(1))
 	var refusing: CustomerAgent = RefusingGuest.new(sim, _rng(2))
+	refusing.cell = _unit_start(sim)
 	sim.world.add_agent(refusing)
-	var last: CustomerAgent = sim.add_customer(Vector2i.ZERO, _rng(3))
+	var last: CustomerAgent = sim.add_customer(_unit_start(sim), _rng(3))
 	var party: Party = Party.new([first.id, refusing.id, last.id] as Array[int])
 	assert_false(PartySeating.try_seat(party, sim.world))
 	assert_eq(party.table_item_id, 0)
@@ -161,16 +162,22 @@ func test_failed_seat_walk_releases_every_hold_and_charges_elapsed_time_once() -
 func test_orders_start_only_after_all_members_reach_the_same_table() -> void:
 	var sim: RestaurantSim = _sim()
 	sim.menu = [preload("res://data/recipes/burger.tres")] as Array[RecipeDef]
+	# Real order-approach reachability needs an admitted server or street entry.
+	# This movement-only unit fixture keeps its worker still and unclaimed.
+	var server: StaffAgent = StaffAgent.new(&"server")
+	server.cell = Vector2i(10, 10)
+	sim.world.add_agent(server)
+	assert_true(server.movement_admitted)
+	assert_eq(sim.world.agent(server.id), server)
 	var table: PlacedItem = sim.world.grid.place_def(TABLE, Vector2i(4, 5))
 	var party: Party = _party(sim, 3)
 	assert_true(PartySeating.try_seat(party, sim.world))
 	var guests: Array[CustomerAgent] = PartySeating.members(party, sim.world)
-	guests[0].cell = guests[0].seat_cell
+	assert_true(_walk_booked_unit_members(sim, [guests[0]] as Array[CustomerAgent]))
 	PartySeating.finish_seating(party, sim.world, sim)
 	assert_false(party.seated)
 	assert_true(sim.world.board.open_tasks().is_empty())
-	for guest: CustomerAgent in guests:
-		guest.cell = guest.seat_cell
+	assert_true(_walk_booked_unit_members(sim, guests))
 	PartySeating.finish_seating(party, sim.world, sim)
 	assert_true(party.seated)
 	assert_eq(sim.world.board.open_tasks().size(), 3)
@@ -212,7 +219,7 @@ func test_waiting_pair_keeps_future_seats_free_of_later_singleton_churn() -> voi
 	var head: Party = _live_party(sim, 2)
 	PartySeating.advance_queue(head, sim.world, sim)
 	for tick: int in 5:
-		var later: CustomerAgent = sim.add_customer(Vector2i.ZERO, _rng(100 + tick))
+		var later: CustomerAgent = sim.add_customer(_unit_start(sim), _rng(100 + tick))
 		assert_false(later._try_seat(sim.world), "later singles cannot keep splitting every table")
 		for table: PlacedItem in tables:
 			assert_eq(table.reserved_by(table.seat_cells[1]), -1)
@@ -237,7 +244,7 @@ func test_backfill_uses_a_small_table_but_keeps_the_head_partys_large_table() ->
 		[], [Vector2i(1, 0)] as Array[Vector2i])
 	var head: Party = _live_party(sim, 3)
 	PartySeating.advance_queue(head, sim.world, sim)
-	var later: CustomerAgent = sim.add_customer(Vector2i.ZERO, _rng(100))
+	var later: CustomerAgent = sim.add_customer(_unit_start(sim), _rng(100))
 	assert_true(later._try_seat(sim.world))
 	assert_eq(later.table_item_id, small.id, "a table the head can never use may backfill")
 	assert_true(large.release(large.seat_cells[0], 900))
@@ -267,7 +274,7 @@ func test_removed_and_replaced_table_does_not_leave_a_stale_queue_hold() -> void
 	assert_true(sim.world.grid.remove(removed.id))
 	var small: PlacedItem = sim.world.grid.place(Vector2i.ONE, Vector2i(9, 3), 0, true,
 		[], [Vector2i(1, 0)] as Array[Vector2i])
-	var later: CustomerAgent = sim.add_customer(Vector2i.ZERO, _rng(100))
+	var later: CustomerAgent = sim.add_customer(_unit_start(sim), _rng(100))
 	assert_true(later._try_seat(sim.world))
 	assert_eq(later.table_item_id, small.id)
 	var replacement: PlacedItem = sim.world.grid.place_def(TABLE, Vector2i(4, 5))
@@ -279,7 +286,11 @@ func _live_party(sim: RestaurantSim, count: int) -> Party:
 	var randoms: Array[RandomNumberGenerator] = []
 	for index: int in count:
 		randoms.append(_rng(10 + index))
-	return sim.add_party(Vector2i.ZERO, randoms)
+	var party: Party = sim.add_party(_unit_start(sim), randoms)
+	for guest: CustomerAgent in PartySeating.members(party, sim.world):
+		if not guest.movement_admitted:
+			assert_true(sim.world.reset_agent_position(guest, _unit_start(sim)))
+	return party
 
 
 func _sim() -> RestaurantSim:
@@ -291,7 +302,7 @@ func _sim() -> RestaurantSim:
 func _party(sim: RestaurantSim, count: int) -> Party:
 	var ids: Array[int] = []
 	for index: int in count:
-		var guest: CustomerAgent = sim.add_customer(Vector2i(0, 0), _rng(index + 1))
+		var guest: CustomerAgent = sim.add_customer(_unit_start(sim), _rng(index + 1))
 		ids.append(guest.id)
 	return Party.new(ids)
 
@@ -300,3 +311,39 @@ func _rng(seed_value: int) -> RandomNumberGenerator:
 	var random: RandomNumberGenerator = RandomNumberGenerator.new()
 	random.seed = seed_value
 	return random
+
+
+## These pure seating fixtures have no street-arrival phase. Every body starts
+## on its own ordinary cell while the clock is still MORNING.
+func _unit_start(sim: RestaurantSim) -> Vector2i:
+	for x: int in sim.world.grid.size.x:
+		var candidate: Vector2i = Vector2i(x, 0)
+		if not sim.world.movement.standing_cell(sim.world, candidate):
+			continue
+		var used: bool = false
+		for agent: SimAgent in sim.world.all_agents():
+			used = used or agent.cell == candidate
+		if not used:
+			return candidate
+	fail("isolated seating fixture ran out of distinct starts")
+	return SimGrid.NO_CELL
+
+
+## Movement-only unit preparation: seat completion remains under the test's
+## explicit control. Real integration below uses RestaurantSim.advance instead.
+func _walk_booked_unit_members(sim: RestaurantSim, guests: Array[CustomerAgent]) -> bool:
+	for tick: int in CustomerAgent.SEAT_WALK_LIMIT:
+		var arrived: bool = true
+		for guest: CustomerAgent in guests:
+			arrived = arrived and guest.cell == guest.seat_cell and guest.has_arrived()
+		if arrived:
+			return true
+		sim.world.now += 1
+		sim.world.movement.begin_tick(sim.world)
+		for guest: CustomerAgent in guests:
+			guest.begin_movement_trace(sim.world.now)
+			if not sim.world.movement.advance_stop(sim.world, guest) \
+					and not sim.world.movement.advance_yield(sim.world, guest):
+				guest.step_move(sim.world)
+			guest.end_movement_trace()
+	return false

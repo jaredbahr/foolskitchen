@@ -45,6 +45,7 @@ var _carry_tasks: Dictionary[int, int] = {}
 ## Uses explicitly supplied stock; a new restaurant never invents ingredients.
 func _init(restaurant: RestaurantSim, content: ContentDB, ingredients: Stock) -> void:
 	_restaurant = weakref(restaurant)
+	restaurant.world.bind_kitchen(self)
 	_content = content
 	stock = ingredients
 	_plate_cycle_enabled = _station(restaurant.world, &"sink", ItemDef.Category.STATION) != null
@@ -916,3 +917,24 @@ func _pass(world: SimWorld) -> PlacedItem:
 		if definition != null and definition.category == ItemDef.Category.PASS and item.work_cells.size() >= 2:
 			return item
 	return null
+
+
+## Pure ownership/state query: a real prepared drink, never a posted/replayed hint.
+func carries_prepared_drink(staff: StaffAgent) -> bool:
+	var sim: RestaurantSim = _restaurant.get_ref() as RestaurantSim
+	if sim == null or staff == null or not staff.movement_admitted \
+			or sim.world.agent(staff.id) != staff:
+		return false
+	var task: SimTask = staff.task
+	if task == null or task.kind != &"pour" or task.state != SimTask.State.CLAIMED \
+			or task.claimed_by != staff.id or _tasks.get(task.id) != task \
+			or sim.world.board.get_task(task.id) != task:
+		return false
+	if task.steps.size() < 2 or staff.step_index < task.steps.size() - 2 \
+			or staff.step_index >= task.steps.size():
+		return false
+	var order: Order = sim.orders.get_order(int(task.payload.get("order_id", 0)))
+	if order == null or order.state != Order.State.READY:
+		return false
+	var recipe: RecipeDef = _content.recipe(order.recipe_id)
+	return recipe != null and recipe.is_drink()

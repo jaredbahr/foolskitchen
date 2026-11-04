@@ -40,9 +40,11 @@ func _ready() -> void:
 	if owner == null or world.grid.entries().is_empty():
 		_review_fail("the real owner or street entry is missing")
 		return
-	owner.cell = world.grid.entries()[-1]
-	owner.path.clear()
-	owner.move_progress = 0.0
+	var entry: Vector2i = world.grid.entries()[-1]
+	if world.clock.phase != SimClock.Phase.MORNING \
+			or not world.reset_agent_position(owner, entry) or owner.cell != entry:
+		_review_fail("the declared morning owner pose could not be placed")
+		return
 	if not set_build_active(true):
 		_review_fail("the normal Build catalogue did not open")
 		return

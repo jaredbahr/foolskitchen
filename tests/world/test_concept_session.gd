@@ -7,6 +7,9 @@ const MainScene: PackedScene = preload("res://src/world/main.tscn")
 const TUNING: EconomyTuning = preload("res://data/balance/tier1_economy.tres")
 const HOURS: OpeningHoursTuning = preload("res://data/balance/hours.tres")
 const SLOT: String = "concept_session"
+## Actual new-shop floor: coffee works east of the table; fryer avoids the owner.
+const COFFEE_CELL: Vector2i = Vector2i(14, 5)
+const FRYER_CELL: Vector2i = Vector2i(4, 3)
 
 var _mains: Array[Node] = []
 var _old_save_dir: String
@@ -76,7 +79,7 @@ func test_a_coffee_machine_puts_coffee_tea_and_pastries_on_the_menu_until_it_is_
 	assert_eq(hints, ["Coffee, tea and croissant: buy a coffee machine.", "Beer: buy a drinks shelf.",
 		"Soft drink: buy a drinks fridge."] as Array[String], "named items, never ids")
 	assert_true(main.call("set_menu_visible", false))
-	assert_true(main.call("shop_buy", &"coffee_machine", Vector2i(12, 5), 2))
+	assert_true(main.call("shop_buy", &"coffee_machine", COFFEE_CELL, 2))
 	var settings: MenuSettings = main.get("menu_settings") as MenuSettings
 	for id: StringName in [&"coffee", &"tea"]:
 		assert_true(settings.is_enabled(id), "%s joins the menu, switched on" % id)
@@ -98,7 +101,7 @@ func test_a_coffee_machine_puts_coffee_tea_and_pastries_on_the_menu_until_it_is_
 	assert_not_null(panel.row_for(&"croissant"), "the pastry is listed under Food")
 	assert_false(panel.drinks_section().is_ancestor_of(panel.row_for(&"croissant")))
 	assert_true(main.call("set_menu_visible", false))
-	var machine: PlacedItem = sim.world.grid.item_at(Vector2i(12, 5))
+	var machine: PlacedItem = sim.world.grid.item_at(COFFEE_CELL)
 	assert_true(int(main.call("shop_sell", machine.id)) >= 0)
 	assert_false(_menu_ids(main).has(&"coffee"), "selling the machine takes coffee off")
 	assert_false(_stock_ids(main).has(&"coffee_beans"))
@@ -110,7 +113,7 @@ func test_undo_and_redo_of_a_coffee_machine_return_money_exactly_and_keep_menu_c
 	Economy.add_cash(1000, Ledger.SALE)
 	assert_true(main.call("set_build_active", true))
 	var cash: int = Economy.cash
-	assert_true(main.call("shop_buy", &"coffee_machine", Vector2i(12, 5), 2))
+	assert_true(main.call("shop_buy", &"coffee_machine", COFFEE_CELL, 2))
 	assert_eq(Economy.cash, cash - 120, "only the machine is paid for; supplies wait for opening")
 	assert_true(main.call("menu_set_price", &"coffee", 6))
 	assert_true(main.call("menu_set_enabled", &"tea", false))
@@ -142,13 +145,13 @@ func test_drinks_behind_a_closed_bar_stay_off_the_menu_with_a_reason() -> void:
 	var sim: RestaurantSim = main.get("sim") as RestaurantSim
 	var editor: ShopEditor = ProbeSetups._free_editor(main)
 	assert_true(ProbeSetups._clear_east_table(main, editor))
-	assert_true(editor.buy(&"drinks_shelf", Vector2i(10, 5), 2) and editor.buy(&"drinks_fridge", Vector2i(11, 5), 2))
-	for x: int in range(9, 13):
+	assert_true(editor.buy(&"drinks_shelf", Vector2i(12, 5), 2) and editor.buy(&"drinks_fridge", Vector2i(13, 5), 2))
+	for x: int in range(11, 15):
 		assert_true(editor.buy(&"bar_section", Vector2i(x, 7), 2) and editor.buy(&"bar_stool", Vector2i(x, 8), 0))
 	main.call("_refresh_menu_catalogue")
 	assert_true(_menu_ids(main).has(&"beer"), "an open-ended bar serves beer")
 	for y: int in [5, 6]:
-		assert_true(editor.buy(&"bar_section", Vector2i(9, y), 1))
+		assert_true(editor.buy(&"bar_section", Vector2i(11, y), 1))
 	assert_false(editor.last_check.unreachable.is_empty(), "build warns about the shut-in shelf")
 	main.call("_refresh_menu_catalogue")
 	assert_false(_menu_ids(main).has(&"beer"), "staff can't reach the shelf")
@@ -160,17 +163,25 @@ func test_drinks_behind_a_closed_bar_stay_off_the_menu_with_a_reason() -> void:
 
 
 func _wall_in_drinks(main: Node) -> void:
-	for placed: PlacedItem in (main.get("sim") as RestaurantSim).world.grid.items():
+	var world: SimWorld = (main.get("sim") as RestaurantSim).world
+	var tables: Array[PlacedItem] = ShopBuilder.items_with_def(world, &"table_2")
+	assert_false(tables.is_empty(), "the current starter has a real east table to clear")
+	if tables.is_empty():
+		return
+	var east: PlacedItem = tables[0]
+	for table: PlacedItem in tables:
+		if table.origin.x > east.origin.x:
+			east = table
+	for placed: PlacedItem in world.grid.items():
 		var definition: ItemDef = placed.def as ItemDef
-		if (definition.id == &"table_2" and placed.origin == Vector2i(10, 6)) \
-				or (definition.id == &"potted_plant" and placed.origin == Vector2i(12, 9)):
+		if placed == east or definition.id == &"potted_plant":
 			assert_true(int(main.call("shop_sell", placed.id)) >= 0)
-	assert_true(main.call("shop_buy", &"drinks_shelf", Vector2i(10, 5), 2))
-	assert_true(main.call("shop_buy", &"drinks_fridge", Vector2i(11, 5), 2))
-	for x: int in range(9, 13):
+	assert_true(main.call("shop_buy", &"drinks_shelf", Vector2i(12, 5), 2))
+	assert_true(main.call("shop_buy", &"drinks_fridge", Vector2i(13, 5), 2))
+	for x: int in range(11, 15):
 		assert_true(main.call("shop_buy", &"bar_section", Vector2i(x, 7), 2))
 	for y: int in [5, 6]:
-		assert_true(main.call("shop_buy", &"bar_section", Vector2i(9, y), 1))
+		assert_true(main.call("shop_buy", &"bar_section", Vector2i(11, y), 1))
 
 
 func test_a_walled_in_bar_saves_and_reloads_without_losing_the_game() -> void:
@@ -197,9 +208,22 @@ func test_a_reachable_second_drinks_shelf_serves_while_the_first_is_walled_in() 
 	var main: Node = _start(false)
 	Economy.add_cash(2000, Ledger.SALE)
 	_wall_in_drinks(main)
-	assert_true(main.call("shop_buy", &"drinks_shelf", Vector2i(1, 9), 0))
+	assert_false(_menu_ids(main).has(&"beer"), "the first shelf is genuinely enclosed")
+	# West1,8 is reachable only through dining seats in the rotated starter.
+	assert_true(main.call("shop_buy", &"drinks_shelf", Vector2i(10, 5), 2))
 	assert_true(_menu_ids(main).has(&"beer"))
 	var sim: RestaurantSim = main.get("sim") as RestaurantSim
+	var second_shelf: PlacedItem = sim.world.grid.item_at(Vector2i(10, 5))
+	assert_eq(second_shelf.work_cells, [Vector2i(10, 6)] as Array[Vector2i])
+	var server: StaffAgent = null
+	for actor: SimAgent in sim.world.agents:
+		if actor is StaffAgent and not actor is OwnerAgent and actor.role == &"server":
+			server = actor as StaffAgent
+	assert_not_null(server)
+	if server == null:
+		return
+	assert_false(sim.world.movement.route(sim.world, server, server.cell,
+		second_shelf.work_cells[0], false).is_empty(), "the positive shelf has a real seat-safe Staff approach")
 	sim.menu = [(main.get("content") as ContentDB).recipe(&"beer")] as Array[RecipeDef]
 	var cancelled: Array[StringName] = []
 	sim.orders.order_cancelled.connect(func(o: Order) -> void: cancelled.append(o.cancellation_reason))
@@ -220,7 +244,7 @@ func test_undo_redo_of_a_drinks_only_menu_is_exact() -> void:
 	var main: Node = _start(false)
 	Economy.add_cash(1000, Ledger.SALE)
 	assert_true(main.call("set_build_active", true))
-	assert_true(main.call("shop_buy", &"coffee_machine", Vector2i(12, 5), 2))
+	assert_true(main.call("shop_buy", &"coffee_machine", COFFEE_CELL, 2))
 	for id: StringName in [&"burger", &"grilled_cheese", &"tomato_soup", &"tea"]:
 		assert_true(main.call("menu_set_enabled", id, false))
 	var settings: MenuSettings = main.get("menu_settings") as MenuSettings
@@ -246,7 +270,7 @@ func test_opening_hours_are_a_morning_choice_saved_at_the_next_morning_and_paid_
 	assert_eq(Clock.sim.display_close_minute, 15 * 60 + 30, "the panel asks the session")
 	assert_true(main.call("set_opening_hours", 7 * 60, 15 * 60))
 	assert_true(main.call("set_menu_visible", false))
-	assert_true(main.call("shop_buy", &"coffee_machine", Vector2i(12, 5), 2))
+	assert_true(main.call("shop_buy", &"coffee_machine", COFFEE_CELL, 2))
 	assert_true(main.call("menu_set_enabled", &"tea", false))
 	assert_true(Clock.sim.start_service())
 	assert_false(main.call("set_opening_hours", 8 * 60, 15 * 60), "mornings only")
@@ -293,7 +317,7 @@ func test_a_drink_left_off_a_full_menu_says_how_to_add_it() -> void:
 	var main: Node = _start(false)
 	var editor: ShopEditor = ProbeSetups._free_editor(main)
 	assert_true(ProbeSetups._clear_east_table(main, editor))
-	assert_true(editor.buy(&"coffee_machine", Vector2i(12, 5), 2))
+	assert_true(editor.buy(&"coffee_machine", COFFEE_CELL, 2))
 	assert_true(editor.buy(&"drinks_shelf", Vector2i(10, 5), 2) and editor.buy(&"drinks_fridge", Vector2i(11, 5), 2))
 	main.call("_refresh_menu_catalogue")
 	var settings: MenuSettings = main.get("menu_settings") as MenuSettings
@@ -326,7 +350,7 @@ func test_fryer_and_oven_enable_only_their_food_and_show_named_reasons() -> void
 	assert_false(_menu_ids(main).has(&"savoury_pie"))
 	assert_true(_equipment(main, &"fries").has({"text": "Buy a fryer", "met": false}))
 	assert_true(_equipment(main, &"savoury_pie").has({"text": "Buy an oven", "met": false}))
-	assert_true(main.call("shop_buy", &"fryer", Vector2i(9, 3), 0))
+	assert_true(main.call("shop_buy", &"fryer", FRYER_CELL, 0))
 	assert_true(_menu_ids(main).has(&"fries"))
 	assert_false(_menu_ids(main).has(&"savoury_pie"), "a fryer does not bake")
 	assert_false(settings.is_enabled(&"fries"), "new food waits for the player")
@@ -356,7 +380,7 @@ func test_fryer_and_oven_enable_only_their_food_and_show_named_reasons() -> void
 func test_new_food_keeps_level_gates_sections_and_choices_when_appliance_returns() -> void:
 	var main: Node = _start(false)
 	var editor: ShopEditor = ProbeSetups._free_editor(main)
-	assert_true(editor.buy(&"fryer", Vector2i(9, 3), 0))
+	assert_true(editor.buy(&"fryer", FRYER_CELL, 0))
 	main.call("_refresh_menu_catalogue")
 	var settings: MenuSettings = main.get("menu_settings") as MenuSettings
 	assert_eq(settings.recipe(&"fries").menu_section(), RecipeDef.Section.SIDES)
@@ -366,12 +390,12 @@ func test_new_food_keeps_level_gates_sections_and_choices_when_appliance_returns
 	assert_true(main.call("menu_set_enabled", &"fries", true))
 	assert_true(main.call("menu_set_price", &"fries", 9))
 	var sim: RestaurantSim = main.get("sim") as RestaurantSim
-	var fryer: PlacedItem = sim.world.grid.item_at(Vector2i(9, 3))
+	var fryer: PlacedItem = sim.world.grid.item_at(FRYER_CELL)
 	assert_true(sim.world.grid.remove(fryer.id))
 	main.call("_refresh_menu_catalogue")
 	assert_false(_menu_ids(main).has(&"fries"))
 	assert_false(_stock_ids(main).has(&"potato"))
-	assert_not_null(sim.world.grid.place_def((main.get("content") as ContentDB).item(&"fryer"), Vector2i(9, 3)))
+	assert_not_null(sim.world.grid.place_def((main.get("content") as ContentDB).item(&"fryer"), FRYER_CELL))
 	main.call("_refresh_menu_catalogue")
 	assert_true(settings.is_enabled(&"fries"))
 	assert_eq(settings.price_of(settings.recipe(&"fries")), 9)
@@ -489,12 +513,22 @@ func test_a_walled_in_fryer_or_fridge_shows_red_in_the_tree_and_fries_leave_the_
 	assert_true(settings.set_owner_level(2))
 	(main.get("shop_editor") as ShopEditor).set_owner_level(2)
 	Economy.add_cash(1000, Ledger.SALE)
-	assert_true(main.call("shop_buy", &"fryer", Vector2i(9, 3), 0))
+	# Isolate this blocked appliance; a crate4,2 also seals the west fridge pocket.
+	var blocked_fryer_cell: Vector2i = Vector2i(12, 3)
+	assert_true(main.call("shop_buy", &"fryer", blocked_fryer_cell, 0))
 	assert_true(_menu_ids(main).has(&"fries"))
 	var sim: RestaurantSim = main.get("sim") as RestaurantSim
-	var fryer: PlacedItem = sim.world.grid.item_at(Vector2i(9, 3))
+	var fryer: PlacedItem = sim.world.grid.item_at(blocked_fryer_cell)
+	for placed: PlacedItem in sim.world.grid.items():
+		if placed == fryer:
+			continue
+		for cell: Vector2i in placed.work_cells:
+			assert_false(fryer.work_cells.has(cell), "the negative fixture blocks only its own appliance work cell")
 	for cell: Vector2i in fryer.work_cells:
 		assert_not_null(sim.world.grid.place(Vector2i.ONE, cell, 0, true), "a crate blocks the fryer")
+	var content: ContentDB = main.get("content") as ContentDB
+	assert_true(MenuAccess.cookable(sim.world.grid, content.recipes(), settings.owner_level()).has(content.recipe(&"burger")),
+		"blocking this fryer retains another real dish instead of the all-food-missing case")
 	main.call("_refresh_menu_catalogue")
 	assert_false(_menu_ids(main).has(&"fries"), "service never takes orders staff can't cook")
 	assert_true(main.call("set_menu_visible", true))

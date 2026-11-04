@@ -159,7 +159,7 @@ func test_shift_alone_switches_the_room_preview_without_a_mouse_move() -> void:
 	# Paint: a click's patch, Shift the room, both without moving.
 	assert_true(_main.call("set_paint_active", true))
 	_main.set("_paint_swatch_id", &"sage")
-	_main.call("update_paint_pointer", _project(Vector2i(3, 9)))
+	_main.call("update_paint_pointer", _project(Vector2i(2, 9)))
 	assert_eq(view.floor_preview_cells().size(), 4)
 	_main.call("_unhandled_input", _shift_event(true))
 	assert_eq(view.floor_preview_cells().size(), dining.size())

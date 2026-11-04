@@ -1,7 +1,8 @@
 extends TestCase
 ## FK-114: exterior finishes and mounts preserve the inside wall contract.
 
-const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
+## Fixed original frontage and genuine v6/v7 rows retain their authored 14x12 base.
+const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_original.tres")
 ## Face coordinates name the cell looking into its wall, on either side.
 const FRONT_FACE: Vector3i = Vector3i(3, 11, 0)
 const INSIDE_FACE: Vector3i = Vector3i(3, 9, 2)

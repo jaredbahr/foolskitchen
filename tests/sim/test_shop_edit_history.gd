@@ -36,18 +36,18 @@ func after_each() -> void:
 
 func test_undo_buy_refunds_the_full_price_and_redo_charges_it_again() -> void:
 	var grid: SimGrid = _sim.world.grid
-	assert_true(_history.buy(&"potted_plant", Vector2i(12, 8)), _editor.last_check.why)
+	assert_true(_history.buy(&"potted_plant", Vector2i(12, 10)), _editor.last_check.why)
 	var price: int = _content.item(&"potted_plant").price
 	assert_eq(_ledger.cash, START_CASH - price)
 	assert_eq(_history.undo_label(), "buy Potted plant")
 	assert_true(_history.undo(), _history.last_refusal)
-	assert_null(grid.item_at(Vector2i(12, 8)))
+	assert_null(grid.item_at(Vector2i(12, 10)))
 	assert_eq(_ledger.cash, START_CASH, "a full refund, not the half-price sell rate")
 	assert_eq(_upgrades(), 0, "the day's upgrades net to zero")
 	assert_eq(_last_entry()["note"], ShopEditHistory.UNDO_NOTE, "the refund is marked as an undo")
 	assert_eq(_history.redo_label(), "buy Potted plant")
 	assert_true(_history.redo(), _history.last_refusal)
-	var placed: PlacedItem = grid.item_at(Vector2i(12, 8))
+	var placed: PlacedItem = grid.item_at(Vector2i(12, 10))
 	assert_not_null(placed)
 	assert_eq((placed.def as ItemDef).id, &"potted_plant")
 	assert_eq(_ledger.cash, START_CASH - price)
@@ -58,40 +58,40 @@ func test_undo_buy_refunds_the_full_price_and_redo_charges_it_again() -> void:
 
 func test_undo_sell_charges_back_the_refund_and_restores_place_turn_and_colour() -> void:
 	var grid: SimGrid = _sim.world.grid
-	assert_true(_history.buy(&"potted_plant", Vector2i(12, 8)), _editor.last_check.why)
-	var plant: PlacedItem = grid.item_at(Vector2i(12, 8))
+	assert_true(_history.buy(&"potted_plant", Vector2i(12, 10)), _editor.last_check.why)
+	var plant: PlacedItem = grid.item_at(Vector2i(12, 10))
 	assert_true(_history.paint(&"item", &"sage", plant.id))
-	assert_true(_history.move(plant.id, Vector2i(11, 8), 1), _editor.last_check.why)
+	assert_true(_history.move(plant.id, Vector2i(11, 10), 1), _editor.last_check.why)
 	var cash_before_sale: int = _ledger.cash
 	var refund: int = _history.sell(plant.id)
 	assert_eq(refund, _content.item(&"potted_plant").price / 2)
 	assert_eq(_ledger.cash, cash_before_sale + refund)
 	assert_true(_history.undo(), _history.last_refusal)
-	var back: PlacedItem = grid.item_at(Vector2i(11, 8))
+	var back: PlacedItem = grid.item_at(Vector2i(11, 10))
 	assert_not_null(back)
 	assert_eq(back.quarter_turns, 1)
 	assert_eq(back.swatch_id, &"sage", "the colour comes back with it")
 	assert_eq(_ledger.cash, cash_before_sale, "exactly the refund is charged back")
 	# Older entries follow the restored item to its new grid id.
 	assert_true(_history.undo(), _history.last_refusal)
-	assert_not_null(grid.item_at(Vector2i(12, 8)), "the move is undone on the restored item")
-	assert_eq(grid.item_at(Vector2i(12, 8)).quarter_turns, 0)
+	assert_not_null(grid.item_at(Vector2i(12, 10)), "the move is undone on the restored item")
+	assert_eq(grid.item_at(Vector2i(12, 10)).quarter_turns, 0)
 	assert_true(_history.undo(), _history.last_refusal)
-	assert_eq(grid.item_at(Vector2i(12, 8)).swatch_id, &"")
+	assert_eq(grid.item_at(Vector2i(12, 10)).swatch_id, &"")
 	assert_true(_history.undo(), _history.last_refusal)
-	assert_null(grid.item_at(Vector2i(12, 8)))
+	assert_null(grid.item_at(Vector2i(12, 10)))
 	assert_eq(_ledger.cash, START_CASH)
 	assert_eq(_upgrades(), 0)
 	# And all the way forward again.
 	for step: int in range(4):
 		assert_true(_history.redo(), "redo %d: %s" % [step, _history.last_refusal])
-	assert_null(grid.item_at(Vector2i(11, 8)), "sold again")
+	assert_null(grid.item_at(Vector2i(11, 10)), "sold again")
 	assert_eq(_ledger.cash, cash_before_sale + refund)
 
 
 func test_undo_move_and_rotate_of_starter_furniture() -> void:
 	var grid: SimGrid = _sim.world.grid
-	var table: PlacedItem = grid.item_at(Vector2i(2, 6))
+	var table: PlacedItem = ShopBuilder.items_with_def(_sim.world, &"table_2")[0]
 	assert_not_null(table)
 	var origin: Vector2i = table.origin
 	assert_true(_history.move(table.id, origin + Vector2i(0, 1), table.quarter_turns), _editor.last_check.why)
@@ -130,21 +130,24 @@ func test_undo_wall_edits_with_an_exact_ledger_round_trip() -> void:
 
 func test_undo_floor_puts_back_the_window_it_took_down() -> void:
 	var grid: SimGrid = _sim.world.grid
-	var window: Vector3i = Vector3i(13, 7, SimGrid.EDGE_WEST)
+	var wing_x: int = _editor.footprint().building.end.x
+	var window: Vector3i = Vector3i(wing_x - 1, 7, SimGrid.EDGE_WEST)
+	assert_eq(grid.terrain(Vector2i(wing_x - 1, 7)), SimGrid.Terrain.WALL)
+	assert_eq(grid.terrain(Vector2i(wing_x, 7)), SimGrid.Terrain.OUTSIDE)
 	assert_true(_history.apply_segments({window: SimGrid.Segment.WINDOW} as Dictionary[Vector3i, int]), _editor.last_check.why)
 	var before_floor: int = _ledger.cash
-	assert_true(_history.apply_floor(_rect(14, 6, 1, 4), true), _editor.last_check.why)
+	assert_true(_history.apply_floor(_rect(wing_x, 6, 1, 4), true), _editor.last_check.why)
 	assert_eq(grid.segment(window), SimGrid.Segment.NONE, "the wing opens the old wall and removes its window")
 	assert_eq(_ledger.cash, before_floor - 60 + 10)
-	assert_eq(grid.terrain(Vector2i(14, 7)), SimGrid.Terrain.FLOOR)
+	assert_eq(grid.terrain(Vector2i(wing_x, 7)), SimGrid.Terrain.FLOOR)
 	assert_true(_history.undo(), _history.last_refusal)
-	assert_eq(grid.terrain(Vector2i(14, 7)), SimGrid.Terrain.OUTSIDE)
-	assert_eq(grid.terrain(Vector2i(13, 7)), SimGrid.Terrain.WALL)
+	assert_eq(grid.terrain(Vector2i(wing_x, 7)), SimGrid.Terrain.OUTSIDE)
+	assert_eq(grid.terrain(Vector2i(wing_x - 1, 7)), SimGrid.Terrain.WALL)
 	assert_eq(grid.segment(window), SimGrid.Segment.WINDOW, "the window is back")
 	assert_eq(_ledger.cash, before_floor, "the floor price and the window refund both reverse")
 	assert_true(_editor.bought_floor().is_empty())
 	assert_true(_history.redo(), _history.last_refusal)
-	assert_eq(grid.terrain(Vector2i(14, 7)), SimGrid.Terrain.FLOOR)
+	assert_eq(grid.terrain(Vector2i(wing_x, 7)), SimGrid.Terrain.FLOOR)
 	assert_eq(grid.segment(window), SimGrid.Segment.NONE)
 	assert_true(_history.undo(), _history.last_refusal)
 	assert_true(_history.undo(), _history.last_refusal)
@@ -173,18 +176,23 @@ func test_undo_wall_removal_restores_its_orphaned_opening_and_exact_cash() -> vo
 
 func test_undo_expansion_restores_the_back_door_and_its_receiving_route() -> void:
 	var grid: SimGrid = _sim.world.grid
-	var door: Vector3i = Vector3i(13, 6, SimGrid.EDGE_WEST)
+	var wing_x: int = _editor.footprint().building.end.x
+	var receiving: Vector2i = Vector2i(wing_x - 2, 6)
+	var door: Vector3i = Vector3i(wing_x - 1, 6, SimGrid.EDGE_WEST)
+	assert_eq(grid.terrain(receiving), SimGrid.Terrain.FLOOR)
+	assert_eq(grid.terrain(Vector2i(wing_x - 1, 6)), SimGrid.Terrain.WALL)
 	assert_true(_history.apply_segments({door: SimGrid.Segment.DOORWAY} as Dictionary[Vector3i, int]), _editor.last_check.why)
+	assert_eq(WallRules.delivery_cell(grid), receiving, "the real side door supplies a receiving route before expansion")
 	var before: Dictionary = _editor.to_dict()
 	var cash: int = _ledger.cash
-	assert_true(_history.apply_floor(_rect(14, 5, 1, 5), true), _editor.last_check.why)
+	assert_true(_history.apply_floor(_rect(wing_x, 5, 1, 5), true), _editor.last_check.why)
 	assert_eq(grid.segment(door), SimGrid.Segment.NONE)
 	assert_eq(_ledger.cash, cash - 75 + 7)
 	assert_eq(WallRules.delivery_cell(grid), grid.entries()[0])
 	assert_true(_history.undo(), _history.last_refusal)
 	assert_eq(_editor.to_dict(), before)
 	assert_eq(_ledger.cash, cash)
-	assert_eq(WallRules.delivery_cell(grid), Vector2i(12, 6))
+	assert_eq(WallRules.delivery_cell(grid), receiving)
 	assert_true(_history.redo(), _history.last_refusal)
 	assert_eq(grid.segment(door), SimGrid.Segment.NONE)
 	assert_eq(_ledger.cash, cash - 75 + 7)
@@ -242,10 +250,10 @@ func test_paint_undo_restores_the_previous_colours() -> void:
 
 
 func test_a_new_edit_clears_redo() -> void:
-	assert_true(_history.buy(&"potted_plant", Vector2i(12, 8)))
+	assert_true(_history.buy(&"potted_plant", Vector2i(12, 10)))
 	assert_true(_history.undo())
 	assert_eq(_history.redo_count(), 1)
-	assert_true(_history.buy(&"potted_plant", Vector2i(11, 8)))
+	assert_true(_history.buy(&"potted_plant", Vector2i(11, 10)))
 	assert_eq(_history.redo_count(), 0)
 	assert_false(_history.redo())
 
@@ -276,7 +284,7 @@ func test_an_undo_that_would_shut_someone_in_is_refused_and_kept() -> void:
 
 
 func test_undo_is_refused_while_open_and_clear_empties_both_stacks() -> void:
-	assert_true(_history.buy(&"potted_plant", Vector2i(12, 8)))
+	assert_true(_history.buy(&"potted_plant", Vector2i(12, 10)))
 	assert_true(_history.undo())
 	assert_true(_history.redo())
 	assert_true(_history.undo())
@@ -285,7 +293,7 @@ func test_undo_is_refused_while_open_and_clear_empties_both_stacks() -> void:
 	assert_false(_history.can_undo())
 	assert_false(_history.undo())
 	assert_eq(_history.last_refusal, "Undo is only available in the morning or after closing")
-	assert_not_null(_sim.world.grid.item_at(Vector2i(12, 8)))
+	assert_not_null(_sim.world.grid.item_at(Vector2i(12, 10)))
 	_history.clear()
 	assert_eq(_history.undo_count(), 0)
 	assert_eq(_history.redo_count(), 0)

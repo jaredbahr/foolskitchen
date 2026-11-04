@@ -1,7 +1,8 @@
 extends TestCase
 ## Street facings and mounted models use the real shell planes and shared scale.
 
-const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
+## Fixed original shell coordinates isolate wall-face and model geometry.
+const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_original.tres")
 const FRONT: Vector3i = Vector3i(3, 11, 0)
 
 var _content: ContentDB

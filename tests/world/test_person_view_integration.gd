@@ -727,9 +727,25 @@ func _assert_upright(person: PersonView) -> void:
 func _guest(state: CustomerAgent.State) -> CustomerAgent:
 	var random: RandomNumberGenerator = RandomNumberGenerator.new()
 	random.seed = 42
-	var guest: CustomerAgent = _world.add_agent(CustomerAgent.new(_restaurant, random)) as CustomerAgent
+	var guest: CustomerAgent = CustomerAgent.new(_restaurant, random)
+	# Existing later pose edits are explicit native-view fixtures, not service.
+	# Each birth itself uses distinct legal staging through real admission.
+	var occupied: Dictionary[Vector2i, bool] = {}
+	for actor: SimAgent in _world.all_agents():
+		occupied[actor.cell] = true
+	var spawn: Vector2i = Vector2i(1, 1)
+	if occupied.has(spawn) or not _world.movement.can_enter(_world, guest, spawn):
+		for cell: Vector2i in _world.grid.cells():
+			if not occupied.has(cell) and _world.movement.can_enter(_world, guest, cell):
+				spawn = cell
+				break
+	guest.cell = spawn
+	assert_false(occupied.has(spawn))
+	assert_true(_world.movement.can_enter(_world, guest, spawn))
+	_world.add_agent(guest)
+	assert_eq(_world.agent(guest.id), guest)
+	assert_true(guest.movement_admitted)
 	guest.state = state
-	guest.cell = Vector2i(1, 1)
 	guest.queue_patience = 100
 	guest.food_patience = 100
 	guest.order = Order.new()

@@ -88,6 +88,20 @@ func movement_multiplier() -> float:
 	return _walk_multiplier
 
 
+## Physical meals in hand, not a retained delivery batch before re-pickup.
+func carries_food() -> bool:
+	if task != null and task.kind == &"pour":
+		var drink_world: SimWorld = movement_world()
+		return drink_world != null and drink_world.carries_prepared_drink(self)
+	if task == null or task.state != SimTask.State.CLAIMED or task.claimed_by != id \
+			or task.kind != &"deliver" or int(task.payload.get("carried_count", 0)) <= 0:
+		return false
+	var world: SimWorld = movement_world()
+	if world != null and world.board.get_task(task.id) != task:
+		return false
+	return not task.payload.has("pass_id") or step_index >= 2
+
+
 ## Skill used for a task role: role-free (&"any") tasks use the agent's own role.
 func skill_for(task_role: StringName) -> int:
 	var r := role if task_role == &"any" else task_role
@@ -109,15 +123,35 @@ func on_removed(world: SimWorld) -> void:
 
 func tick(world: SimWorld) -> void:
 	if task == null:
+		if not world.grid.is_walkable(cell):
+			return
 		_try_claim(world)
 		return
-	if task.state != SimTask.State.CLAIMED or task.claimed_by != id:
-		_let_go(world)
-		return
-	if world.now - task.claimed_tick > task.timeout_ticks:
-		_drop(world, &"timeout")
+	if not _maintain_claim(world):
 		return
 	_run_step(world)
+	_recover_no_progress(world)
+
+
+## Movement owns the physical tick, while task leases still need maintenance.
+## This never claims work or advances a productive task step.
+func maintain_movement_pause(world: SimWorld) -> void:
+	if task == null or not _maintain_claim(world):
+		return
+	_recover_no_progress(world)
+
+
+func _maintain_claim(world: SimWorld) -> bool:
+	if task.state != SimTask.State.CLAIMED or task.claimed_by != id:
+		_let_go(world)
+		return false
+	if world.now - task.claimed_tick > task.timeout_ticks:
+		_drop(world, &"timeout")
+		return false
+	return true
+
+
+func _recover_no_progress(world: SimWorld) -> void:
 	if task != null and _waiting_for.is_empty() and world.now - last_progress_tick > STUCK_TICKS:
 		if _repaths == 0 and _step_started and repath(world.grid):
 			_repaths += 1
@@ -322,6 +356,16 @@ func _run_go_to_item(world: SimWorld, s: TaskStep) -> void:
 				return
 			if it.reserved_by(target) != -1:
 				target = SimGrid.NO_CELL
+		elif not s.use_seat and target != SimGrid.NO_CELL:
+			# Select once from this worker's real vertex, keeping authored ties.
+			var candidates: Array[Vector2i] = []
+			for work_cell: Vector2i in it.work_cells:
+				if it.reserved_by(work_cell) == -1 and world.grid.is_walkable(work_cell):
+					candidates.append(work_cell)
+			target = _closest_go_to_candidate(world, candidates, SimGrid.NO_CELL)
+			if target == SimGrid.NO_CELL:
+				_drop(world, &"unreachable")
+				return
 		if target == SimGrid.NO_CELL:
 			_waiting_for = s.label if not s.label.is_empty() else "a free spot"
 			last_progress_tick = world.now
@@ -339,11 +383,72 @@ func _run_go_to_item(world: SimWorld, s: TaskStep) -> void:
 
 func _run_go_to_cell(world: SimWorld, s: TaskStep) -> void:
 	if not _step_started:
-		if not set_destination(world.grid, s.cell):
+		var target: Vector2i = s.cell
+		if not s.candidate_cells.is_empty():
+			target = _closest_go_to_candidate(world, s.candidate_cells, s.candidate_origin)
+			if target == SimGrid.NO_CELL:
+				_drop(world, &"unreachable")
+				return
+		if not set_destination(world.grid, target):
 			_drop(world, &"unreachable")
 			return
 		_step_started = true
 	_walk(world)
+
+## Read current physical permissions once, when this worker actually starts GO.
+## Later repaths follow the existing selected _goal, not the posted anchor.
+func _closest_go_to_candidate(world: SimWorld, candidates: Array[Vector2i],
+		origin: Vector2i) -> Vector2i:
+	if not movement_admitted or world.agent(id) != self or not is_finite(move_progress) \
+			or move_progress < 0.0 or move_progress >= 1.0:
+		return SimGrid.NO_CELL
+	var start: Vector2i = cell
+	if move_progress > 0.0:
+		var next: Vector2i = next_cell()
+		var snapshot: Dictionary = world.movement.snapshot()
+		var delta: Vector2i = next - cell
+		if maxi(absi(delta.x), absi(delta.y)) != 1 \
+				or not world.grid.is_walkable(cell) or not world.grid.is_walkable(next) \
+				or not world.grid.step_open(cell, next) \
+				or snapshot.occupied.get(cell, -1) != id or snapshot.next.get(next, -1) != id:
+			return SimGrid.NO_CELL
+		var swept: Array[Vector2i] = [next]
+		if delta.x != 0 and delta.y != 0:
+			swept.append(cell + Vector2i(delta.x, 0))
+			swept.append(cell + Vector2i(0, delta.y))
+		for point: Vector2i in swept:
+			if not world.movement.can_enter(world, self, point):
+				return SimGrid.NO_CELL
+		var held_edge: bool = false
+		for edge: Dictionary in snapshot.edges:
+			if edge.id == id and edge["from"] == cell and edge["to"] == next:
+				held_edge = true
+				break
+		if not held_edge:
+			return SimGrid.NO_CELL
+		# set_destination retains this real edge and defers the chosen goal.
+		start = next
+	var current_neighbours: Array[Vector2i] = []
+	if origin != SimGrid.NO_CELL:
+		if not world.grid.is_walkable(origin):
+			return SimGrid.NO_CELL
+		current_neighbours = world.grid.walkable_neighbours(origin)
+	var chosen: Vector2i = SimGrid.NO_CELL
+	var shortest: float = INF
+	for candidate: Vector2i in candidates:
+		if origin != SimGrid.NO_CELL and not current_neighbours.has(candidate):
+			continue
+		if not world.movement.standing_cell(world, candidate):
+			continue
+		var route: Array[Vector2i] = world.movement.route(world, self, start, candidate, false)
+		if route.is_empty():
+			continue
+		var cost: float = GridMath.path_cost(route)
+		if cost < shortest:
+			shortest = cost
+			chosen = candidate
+	return chosen
+
 
 
 func _walk(world: SimWorld) -> void:
@@ -433,7 +538,10 @@ func _release_held(world: SimWorld) -> void:
 	if _held_item_id != 0:
 		var it := world.grid.item(_held_item_id)
 		if it != null:
-			it.release(_held_cell, id)
+			if it.seat_cells.has(_held_cell):
+				world.movement.defer_seat_release(world, it.id, _held_cell, id)
+			else:
+				it.release(_held_cell, id)
 	_held_item_id = 0
 	_held_cell = SimGrid.NO_CELL
 

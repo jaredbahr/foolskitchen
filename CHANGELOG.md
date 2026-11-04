@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- Guests and staff now walk around each other and the furniture, and new shops start a little roomier. (#268)
 - Growing the shop now pays: the starter pantry holds 100 dry units instead of 60, so a bigger, fully staffed shop no longer sells out by evening. When guests leave because dishes sold out, the evening report tells you to buy more storage. (#289)
 - Light up your shop: buy floor lamps, side tables with lamps, a wall lamp and a ceiling pendant in Buy > Lighting. Lamps glow softly by day, light the room warmly at night and add to your vibe. (#288)
 - After closing, the chairs go up on the tables for the night and come back down for morning prep. Tables left dirty keep their chairs down, so you can see what wasn't cleared. (#287)

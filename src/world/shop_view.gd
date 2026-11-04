@@ -1527,12 +1527,16 @@ func _sync_agents() -> void:
 	var alpha: float = interpolation_alpha()
 	var alive: Dictionary[int, bool] = {}
 	for agent: SimAgent in world.agents:
-		alive[agent.id] = true
 		var frame: AgentPresentationController.Frame = frames[agent.id]
 		motion.observe(agent.id, world.now, frame)
 		if alpha >= 1.0:
 			motion.settle(agent.id)
 		motion.blend(agent.id, alpha, frame)
+	# Validate offsets against the complete set of people at this drawn time.
+	AgentPresentationController.constrain_display_offsets(frames, world.grid)
+	for agent: SimAgent in world.agents:
+		alive[agent.id] = true
+		var frame: AgentPresentationController.Frame = frames[agent.id]
 		if agent_nodes.has(agent.id) and (agent_nodes[agent.id] is PersonView) != frame.look_supported:
 			_remove_agent_visual(agent.id)
 		if not agent_nodes.has(agent.id):

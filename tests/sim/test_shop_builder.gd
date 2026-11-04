@@ -75,9 +75,17 @@ func test_unknown_item_is_reported() -> void:
 func test_authored_rug_and_table_build_in_either_placement_order() -> void:
 	for floor_first: bool in [true, false]:
 		var layout: ShopLayout = (load(LAYOUT) as ShopLayout).duplicate(true) as ShopLayout
+		var west_table: ShopPlacement = null
+		for placement: ShopPlacement in layout.placements:
+			if placement.item_id == &"table_2" and (west_table == null or placement.origin.x < west_table.origin.x):
+				west_table = placement
+		assert_not_null(west_table)
+		if west_table == null:
+			continue
 		var floor_placement: ShopPlacement = ShopPlacement.new()
 		floor_placement.item_id = &"rug_rectangle"
-		floor_placement.origin = Vector2i(1, 6)
+		floor_placement.origin = west_table.origin + Vector2i.UP
+		floor_placement.quarter_turns = 1  # Cover both seats of the actual rotated west table.
 		if floor_first:
 			layout.placements.push_front(floor_placement)
 		else:
@@ -85,8 +93,8 @@ func test_authored_rug_and_table_build_in_either_placement_order() -> void:
 		var errors: Array[String] = []
 		var built: SimWorld = ShopBuilder.build(layout, content, errors)
 		assert_eq(errors, [] as Array[String])
-		var rug: PlacedItem = built.grid.item_on_layer(Vector2i(2, 6), ItemDef.PlacementLayer.FLOOR_DECOR)
-		var table: PlacedItem = built.grid.item_on_layer(Vector2i(2, 6), ItemDef.PlacementLayer.NORMAL)
+		var rug: PlacedItem = built.grid.item_on_layer(west_table.origin, ItemDef.PlacementLayer.FLOOR_DECOR)
+		var table: PlacedItem = built.grid.item_on_layer(west_table.origin, ItemDef.PlacementLayer.NORMAL)
 		assert_not_null(rug)
 		assert_not_null(table)
 		if rug == null or table == null:

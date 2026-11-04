@@ -102,11 +102,18 @@ func _bench(turns: int = 0) -> PlacedItem:
 func _guest(bench: PlacedItem, seat: Vector2i) -> CustomerAgent:
 	var random: RandomNumberGenerator = RandomNumberGenerator.new()
 	random.seed = 42
-	var guest: CustomerAgent = _world.add_agent(CustomerAgent.new(_restaurant, random)) as CustomerAgent
+	var guest: CustomerAgent = CustomerAgent.new(_restaurant, random)
+	# Each native-view birth uses real, distinct floor admission before its
+	# declared MORNING pose on a genuinely reserved waiting-bench seat.
+	guest.cell = Vector2i(1 + _world.all_agents().size(), 1)
+	_world.add_agent(guest)
+	assert_eq(_world.agent(guest.id), guest)
+	assert_true(guest.movement_admitted)
 	guest.state = CustomerAgent.State.QUEUED
 	guest.waiting_item_id = bench.id
 	guest.waiting_cell = seat
-	guest.cell = seat
 	guest.clear_path()
 	assert_true(bench.reserve(seat, guest.id))
+	assert_true(_world.reset_agent_position(guest, seat))
+	assert_eq(guest.cell, seat)
 	return guest

@@ -9,17 +9,20 @@ extends "res://src/world/main.gd"
 const REVIEW_SCENE: String = "res://tools/blueprint_looks_review.tscn"
 const SOURCE_CELLS: Array[Vector2i] = [Vector2i(2, 7), Vector2i(5, 7)]
 const LOOKS: Array[StringName] = [&"booth_white", &"booth_walnut"]
-const TARGET: Vector2i = Vector2i(10, 5)
+## One cell east of the server's roomier-starter spawn (10, 6): a person's
+## cell refuses a preview with "Someone is in the way".
+const TARGET: Vector2i = Vector2i(11, 5)
 ## Keep the complete native booth bounds clear of HUD, instructions, catalogue
-## and the fixture notice. Derived from the v2 native projected AABBs.
-const REVIEW_FOCUS: Vector2 = Vector2(2.65, 4.24)
-const REVIEW_ZOOM: float = 7.1
+## and the fixture notice. Derived from the v2 native projected AABBs, then
+## nudged and widened slightly for the one-cell-east target.
+const REVIEW_FOCUS: Vector2 = Vector2(2.72, 4.31)
+const REVIEW_ZOOM: float = 7.3
 const WORLD_SAFE_RECT: Rect2 = Rect2(620, 210, 920, 570)
 const RESERVED_UI: Array[NodePath] = [^"HUD/Top", ^"HUD/BuildHints",
 	^"Overlay/BuildCatalogue/Panel", ^"DinerReviewNotice/Panel"]
 const SUPPORTS: Array[Dictionary] = [
 	{"cell": Vector2i(2, 6), "turns": 0}, {"cell": Vector2i(5, 6), "turns": 0},
-	{"cell": Vector2i(12, 5), "turns": 1}, {"cell": Vector2i(12, 8), "turns": 1},
+	{"cell": TARGET + Vector2i(2, 0), "turns": 1}, {"cell": TARGET + Vector2i(2, 3), "turns": 1},
 ]
 const NOTICE: String = "Unsaved review: free source booths + table supports; level 3 staged; no cash grant."
 
