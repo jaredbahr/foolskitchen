@@ -3258,9 +3258,9 @@ func _on_hours_requested(open_minute: int, close_minute: int) -> void:
 
 func _apply_menu(restaurant: RestaurantSim, choices: MenuSettings) -> void:
 	restaurant.menu = choices.enabled_recipes()
-	_refresh_menu_boards()
 	$HUD.set_restaurant_name(choices.restaurant_name())
 	($ShopView as ShopView).set_restaurant_name(choices.restaurant_name())
+	_refresh_menu_boards()
 	restaurant.prices.clear()
 	restaurant.pricing_tuning = TUNING
 	for definition: RecipeDef in choices.recipes():
@@ -3274,8 +3274,11 @@ func _refresh_menu_boards() -> void:
 		return
 	var view: ShopView = $ShopView
 	if view.wall_finish_view != null:
+		var prices: Dictionary = {}
+		for recipe: RecipeDef in menu_settings.enabled_recipes():
+			prices[recipe.id] = menu_settings.price_of(recipe)
 		view.wall_finish_view.set_menu_board_content(menu_settings.restaurant_name(),
-			menu_settings.enabled_recipes())
+			menu_settings.enabled_recipes(), prices)
 
 
 func can_edit_menu() -> bool:

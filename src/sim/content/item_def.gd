@@ -112,7 +112,7 @@ func placement_layer_valid() -> bool:
 			and footprint.y == 1 and footprint.x >= 1 and footprint.x <= MAX_WALL_WIDTH \
 			and (wall_mount == WallMount.INSIDE_FACE or wall_mount == WallMount.WINDOW and footprint.x == 1 \
 				or wall_mount == WallMount.EXTERIOR) and exterior_band >= ExteriorSupport.Band.BODY \
-			and exterior_band <= ExteriorSupport.Band.LIGHTS
+			and exterior_band <= ExteriorSupport.Band.GROUND
 	return placement_layer == PlacementLayer.FLOOR_DECOR and category == Category.DECOR and passive
 
 
