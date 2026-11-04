@@ -47,6 +47,41 @@ const DITHER_SPAN: float = 200.0
 ## The ramp is 1.25 m, about one second of walking at 1x.
 const DOOR_OPEN_FAR: float = 1.75
 const DOOR_OPEN_NEAR: float = 0.5
+## Lamps (#84): one warm, short, shadowless light at the shade (under it for
+## a ceiling pendant). The lamp's own meshes are left out of it, like the
+## neon sign. DayNightView dims it by day and caps how many shine at once.
+const LAMP_ENERGY: float = 0.6
+const LAMP_RANGE: float = 1.8
+const LAMP_ATTENUATION: float = 1.2
+const LAMP_SHADE_DROP: float = 0.08
+
+
+static func _add_lamp_light(node: ItemVisual, definition: ItemDef) -> void:
+	var box: AABB = node.get_aabb()
+	for mesh: MeshInstance3D in node.rendered_meshes():
+		mesh.layers = WallFinishView.GLOW_SELF_LAYER
+	var light: OmniLight3D = OmniLight3D.new()
+	light.name = "Glow"
+	light.light_color = Color(definition.glow_color, 1.0)
+	light.light_energy = LAMP_ENERGY * definition.glow_color.a
+	light.light_specular = 0.0
+	light.shadow_enabled = false
+	light.omni_range = LAMP_RANGE
+	light.omni_attenuation = LAMP_ATTENUATION
+	light.light_bake_mode = Light3D.BAKE_DISABLED
+	light.light_cull_mask = 0xFFFFF & ~WallFinishView.GLOW_SELF_LAYER
+	var height: float = box.position.y - LAMP_SHADE_DROP if definition.ceiling else box.end.y - LAMP_SHADE_DROP
+	light.position = Vector3(box.get_center().x, maxf(height, 0.1), box.get_center().z)
+	node.add_child(light)
+
+
+## A ceiling pendant's shade shows only with Walls Up (like hung wall decor
+## on lowered walls); its light keeps shining.
+func _sync_ceiling(node: ItemVisual, definition: ItemDef) -> void:
+	if definition.ceiling and node.prop != null:
+		node.prop.visible = wall_mode == WallMode.UP
+
+
 ## Chairs up after close (#208): the model's resting transform, and how far
 ## (in cells) an upturned chair moves in over its table's edge.
 const CHAIR_REST_META: StringName = &"chair_rest_transform"
@@ -1227,6 +1262,10 @@ func _wall_is_lowered(cell: Vector2i) -> bool:
 
 
 func _apply_wall_heights() -> void:
+	if world != null:
+		for item: PlacedItem in world.grid.items():
+			if item_nodes.has(item.id) and item.def is ItemDef:
+				_sync_ceiling(item_nodes[item.id], item.def as ItemDef)
 	var sill: float = segment_view.window_span().x if segment_view != null else WALL_HEIGHT
 	var doors: Dictionary[Vector2i, Vector2i] = {}
 	if world != null:
@@ -1384,11 +1423,16 @@ func _build_item(item: PlacedItem) -> void:
 		node.set_meta("shop_geometry", true)
 		item_nodes[item.id] = node
 		add_child(node)
+		if definition.catalogue_room == &"lighting":
+			node.set_meta(DayNightView.LAMP_META, true)
+		if definition.glow_color.a > 0.0:
+			_add_lamp_light(node, definition)
 	# Relocation retains the item/definition. An edit on either shared layer
 	# updates placement without replacing the surviving wrapper or its paint.
 	node.transform = ItemVisual.placed_transform(definition, item.origin, item.quarter_turns)
 	node.rotation.y = -item.quarter_turns * PI * 0.5
 	_apply_stock_slots(node, definition)
+	_sync_ceiling(node, definition)
 	_sync_item_selection()
 
 

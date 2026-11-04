@@ -554,6 +554,8 @@ func _rebuild_items() -> void:
 			elif hung.mount == ItemDef.WallMount.EXTERIOR:
 				fit_exterior(node, hung.width)
 			add_child(node)
+			if definition.catalogue_room == &"lighting":
+				node.set_meta(DayNightView.LAMP_META, true)
 			_add_glow(node, definition, hung.window, hung.mount == ItemDef.WallMount.EXTERIOR)
 		if hung.mount == ItemDef.WallMount.EXTERIOR:
 			node.transform = exterior_transform(_grid, anchor, hung.width, node.get_aabb())

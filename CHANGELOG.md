@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- Light up your shop: buy floor lamps, side tables with lamps, a wall lamp and a ceiling pendant in Buy > Lighting. Lamps glow softly by day, light the room warmly at night and add to your vibe. (#288)
 - After closing, the chairs go up on the tables for the night and come back down for morning prep. Tables left dirty keep their chairs down, so you can see what wasn't cleared. (#287)
 - The shop follows the day: soft morning light while you prep, a bright afternoon and a golden evening, then night after closing. At dusk the shop's own warm lights come on, and the neon OPEN sign and string lights glow brighter after dark. (#286)
 - Cutaway now lowers only the walls between you and the room you're looking at; walls behind it stay up, so their wallpaper and hung decor show. Walls Up and Walls Down work as before. (#285)

@@ -8,6 +8,13 @@ const BASE_META: StringName = &"day_night_base"
 ## Glow lights stay at or under this energy (the walls test keeps neon <= 1).
 const MAX_GLOW_ENERGY: float = 1.0
 const GLOW_POOLS: Array[StringName] = [&"PoolInside", &"PoolOutside"]
+## Lamps (#84) carry this meta. They follow the shop lights, not sign glow.
+const LAMP_META: StringName = &"lamp"
+## At most this many lamp lights shine at once (the Compatibility renderer
+## lights each mesh with up to 8); the rest keep only their shade.
+const LAMP_LIGHT_CAP: int = 8
+## A lamp's light by day, as a share of its full night strength.
+const LAMP_DAY_SHARE: float = 0.35
 const SHOP_LIGHT: StringName = &"ShopLights"
 ## The shop's lights hang this high over the middle of the floor.
 const SHOP_LIGHT_HEIGHT: float = 2.6
@@ -49,7 +56,7 @@ static func apply_glow(items: Dictionary[Vector3i, ItemVisual], glow: float) -> 
 	for anchor: Vector3i in items:
 		var node: ItemVisual = items[anchor]
 		var light: OmniLight3D = node.get_node_or_null(^"Glow") as OmniLight3D
-		if light == null:
+		if light == null or node.has_meta(LAMP_META):
 			continue
 		if not light.has_meta(BASE_META):
 			light.set_meta(BASE_META, light.light_energy)
@@ -107,3 +114,24 @@ static func floor_bounds(grid: SimGrid) -> Rect2:
 	if not found:
 		return Rect2()
 	return Rect2(Vector2(low) * GridMath.CELL_SIZE, Vector2(high - low + Vector2i.ONE) * GridMath.CELL_SIZE)
+
+
+## Lamps: dim by day, full once the shop's own lights are on (`interior`
+## 0..1), and only the LAMP_LIGHT_CAP nearest `focus` actually shine.
+static func apply_lamps(lamps: Array[ItemVisual], interior: float, focus: Vector3) -> void:
+	var strength: float = lerpf(LAMP_DAY_SHARE, 1.0, clampf(interior, 0.0, 1.0))
+	var lit: Array[ItemVisual] = []
+	for lamp: ItemVisual in lamps:
+		var light: OmniLight3D = lamp.get_node_or_null(^"Glow") as OmniLight3D
+		if light == null:
+			continue
+		if not light.has_meta(BASE_META):
+			light.set_meta(BASE_META, light.light_energy)
+		light.light_energy = minf(float(light.get_meta(BASE_META)) * strength, MAX_GLOW_ENERGY)
+		lit.append(lamp)
+	lit.sort_custom(func(a: ItemVisual, b: ItemVisual) -> bool:
+		var da: float = a.global_position.distance_squared_to(focus) if a.is_inside_tree() else a.position.distance_squared_to(focus)
+		var db: float = b.global_position.distance_squared_to(focus) if b.is_inside_tree() else b.position.distance_squared_to(focus)
+		return da < db if not is_equal_approx(da, db) else a.get_instance_id() < b.get_instance_id())
+	for index: int in lit.size():
+		(lit[index].get_node(^"Glow") as OmniLight3D).visible = index < LAMP_LIGHT_CAP

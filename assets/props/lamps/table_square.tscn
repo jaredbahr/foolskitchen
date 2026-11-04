@@ -1,0 +1,25 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://src/world/prop_view.gd" id="1_view"]
+[ext_resource type="PackedScene" path="res://assets/kenney/furniture/sideTable.glb" id="2_table"]
+[ext_resource type="PackedScene" path="res://assets/kenney/furniture/lampSquareTable.glb" id="3_lamp"]
+
+[node name="SquareTableLamp" type="Node3D"]
+script = ExtResource("1_view")
+footprint = Vector2i(1, 1)
+body_material_names = PackedStringArray("wood")
+
+[node name="Table" type="Node3D" parent="."]
+
+[node name="Art" type="Node3D" parent="Table"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="Table/Art" instance=ExtResource("2_table")]
+
+[node name="Lamp" type="Node3D" parent="."]
+metadata/support = NodePath("../Table")
+
+[node name="Art" type="Node3D" parent="Lamp"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="Lamp/Art" instance=ExtResource("3_lamp")]

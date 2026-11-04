@@ -55,6 +55,9 @@ func test_every_authored_item_has_floor_aligned_parts_inside_its_footprint_or_de
 		elif definition.hangs_on_wall():
 			# Wall decor (D26) hangs off the floor, its back on the face.
 			assert_true(bounds.position.y > 0.2 and bounds.end.y < ArtScale.WALL_HEIGHT, String(definition.id))
+		elif definition.ceiling:
+			# A ceiling pendant (#84) hangs with its top at the wall line.
+			assert_almost_eq(bounds.end.y, ArtScale.WALL_HEIGHT, 0.01, "%s hangs from the ceiling" % definition.id)
 		else:
 			assert_almost_eq(bounds.position.y, 0.0, 0.0001, String(definition.id))
 		var footprint_rect: Rect2 = Rect2(-half_width, -half_depth, half_width * 2.0, half_depth * 2.0)
