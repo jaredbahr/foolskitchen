@@ -8,6 +8,10 @@ var _review_drag: bool = false
 var _review_frames: int = 0
 var _review_reported: bool = false
 var _review_failed: bool = false
+## The starter's authored kitchen/dining divider cells (north edges of dining
+## row DIVIDER_ROW), read from the real layout before any review edit.
+const DIVIDER_ROW: int = 5
+var _review_divider: Array[int] = []
 
 
 func _ready() -> void:
@@ -15,6 +19,7 @@ func _ready() -> void:
 	skip_owner_picker = true
 	new_game_seed_override = 1
 	super._ready()
+	_review_read_divider()
 	_review_stage = OS.get_environment("DIVIDER_REVIEW_STAGE")
 	if _review_stage.is_empty() or _review_stage == "default":
 		return
@@ -59,8 +64,20 @@ func _process(delta: float) -> void:
 			print("DIVIDER_REVIEW verified stage=", _review_stage, " refund=", build_mode.current_check.refund)
 
 
+func _review_read_divider() -> void:
+	for edge: Vector3i in LAYOUT.wall_segments:
+		if edge.y == DIVIDER_ROW and edge.z == SimGrid.EDGE_NORTH and LAYOUT.wall_segments[edge] == &"wall":
+			_review_divider.append(edge.x)
+	_review_divider.sort()
+
+
 func _review_state_valid() -> bool:
-	for x: int in [1, 2, 3, 4, 8, 9, 10, 11, 12]:
+	# The restroom stages build against the west divider run (doorway at x=2)
+	# and add the x=3 wall the roomier starter leaves open.
+	if _review_divider.size() < 4 or not _review_divider.has(1) \
+			or _review_divider.has(3):
+		return false
+	for x: int in _review_divider:
 		if world.grid.terrain(Vector2i(x, 4)) != SimGrid.Terrain.FLOOR:
 			return false
 		if _review_stage.is_empty() or _review_stage == "default":
@@ -101,7 +118,10 @@ func _make_review_restroom() -> bool:
 		walls[Vector3i(x, 3, SimGrid.EDGE_NORTH)] = SimGrid.Segment.WALL
 	for y: int in range(3, 5):
 		walls[Vector3i(4, y, SimGrid.EDGE_WEST)] = SimGrid.Segment.WALL
+	# Close the bathroom's south side: its door replaces divider cell x=2, and
+	# the starter divider leaves x=3 open since the roomier layout.
 	walls[Vector3i(2, 5, SimGrid.EDGE_NORTH)] = SimGrid.Segment.DOORWAY
+	walls[Vector3i(3, 5, SimGrid.EDGE_NORTH)] = SimGrid.Segment.WALL
 	if not shop_walls(walls):
 		return false
 	var rooms: Dictionary[Vector2i, int] = {}

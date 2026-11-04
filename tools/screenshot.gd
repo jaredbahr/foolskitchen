@@ -2463,13 +2463,21 @@ func _configure_paint() -> void:
 	if not bool(_main.call("set_paint_active", true)):
 		_fail_capture("scene refused paint entry")
 		return
+	# Item cells come from the real starter layout, so a roomier shop keeps
+	# colouring the same first table and plant that _paint_state() reads.
+	var tables: Array[PlacedItem] = ShopBuilder.items_with_def(world, &"table_2")
+	var plants: Array[PlacedItem] = ShopBuilder.items_with_def(world, &"potted_plant")
+	var dining: Vector2i = _paint_dining_cell(world)
+	if tables.is_empty() or plants.is_empty() or dining == Vector2i(-1, -1):
+		_fail_capture("paint capture needs the starter table, plant and a clear dining floor cell")
+		return
 	var samples: Array[Dictionary] = [
 		{"swatch": &"sage", "cell": Vector2i(0, 5)},
-		{"swatch": &"honey", "cell": Vector2i(8, 8)},
+		{"swatch": &"honey", "cell": dining},
 		# A floor click stays in its room (D25), so the kitchen takes its own.
 		{"swatch": &"honey", "cell": Vector2i(3, 2)},
-		{"swatch": &"terracotta", "cell": Vector2i(2, 6)},
-		{"swatch": &"sage", "cell": Vector2i(12, 9)},
+		{"swatch": &"terracotta", "cell": tables[0].origin},
+		{"swatch": &"sage", "cell": plants[0].origin},
 	]
 	for sample: Dictionary in samples:
 		var button: Button = catalogue.swatch_buttons.get(sample["swatch"]) as Button
@@ -2482,6 +2490,18 @@ func _configure_paint() -> void:
 			return
 
 
+## The clear floor cell just inside the street door: dining floor in any
+## starter size, never under a table, so its click paints the dining floor.
+func _paint_dining_cell(world: SimWorld) -> Vector2i:
+	var entries: Array[Vector2i] = world.grid.entries()
+	if entries.is_empty():
+		return Vector2i(-1, -1)
+	var cell: Vector2i = entries[0] + Vector2i.UP
+	if world.grid.terrain(cell) != SimGrid.Terrain.FLOOR or world.grid.item_at(cell) != null:
+		return Vector2i(-1, -1)
+	return cell
+
+
 func _paint_state() -> Dictionary:
 	var world: SimWorld = _capture_world()
 	var editor: ShopEditor = _main.get("shop_editor") as ShopEditor
@@ -2492,7 +2512,8 @@ func _paint_state() -> Dictionary:
 		return {}
 	var tables: Array[PlacedItem] = ShopBuilder.items_with_def(world, &"table_2")
 	var plants: Array[PlacedItem] = ShopBuilder.items_with_def(world, &"potted_plant")
-	if tables.is_empty() or plants.is_empty() or view.get_node("Walls").get_child_count() == 0:
+	var dining: Vector2i = _paint_dining_cell(world)
+	if tables.is_empty() or plants.is_empty() or dining == Vector2i(-1, -1) or view.get_node("Walls").get_child_count() == 0:
 		return {}
 	var wall: MeshInstance3D = view.get_node("Walls").get_child(0) as MeshInstance3D
 	var floor_shader: ShaderMaterial = view.floor_mesh.material_override as ShaderMaterial
@@ -2502,15 +2523,15 @@ func _paint_state() -> Dictionary:
 	return {"active": _main.call("is_paint_active"), "catalogue_visible": catalogue.is_visible_in_tree(),
 		"swatch_count": catalogue.swatch_buttons.size(), "grid_forced": rig.is_grid_forced(),
 		"grid_visible": rig.effective_grid_visible(), "wall": String(editor.wall_swatch_id),
-		"floor": String(editor.floors.finish(Vector2i(8, 8)).swatch), "table": String(tables[0].swatch_id),
+		"floor": String(editor.floors.finish(dining).swatch), "table": String(tables[0].swatch_id),
 		"plant": String(plants[0].swatch_id),
 		# D25: a floor click recolours its own room's floor in the finish map;
 		# the capture clicks the dining room and the kitchen, so the whole
 		# starter floor turns honey as before.
 		"rendered": (wall.material_override as StandardMaterial3D).albedo_color == content.swatch(&"sage").color \
 			and floor_shader.get_shader_parameter("finish_map") == view.finish_texture \
-			and view.finish_texel(Vector2i(8, 8)).g8 == ShopView.FINISH_FIRST_SWATCH + content.swatches().find(content.swatch(&"honey")) \
-			and view.finish_texel(Vector2i(3, 2)).g8 == view.finish_texel(Vector2i(8, 8)).g8 \
+			and view.finish_texel(dining).g8 == ShopView.FINISH_FIRST_SWATCH + content.swatches().find(content.swatch(&"honey")) \
+			and view.finish_texel(Vector2i(3, 2)).g8 == view.finish_texel(dining).g8 \
 			and table_material.albedo_color == content.swatch(&"terracotta").color \
 			and plant_material.albedo_color == content.swatch(&"sage").color}
 
@@ -2526,8 +2547,18 @@ func _configure_build() -> void:
 	var editor: ShopEditor = _main.get("shop_editor") as ShopEditor
 	var camera: Camera3D = _main.get_node_or_null("CameraRig/Camera3D") as Camera3D
 	var def_id: StringName = &"table_2" if _build == "green" else &"fridge"
-	var cell: Vector2i = Vector2i(8, 8) if _build == "green" else Vector2i(7, 7)
-	var turns: int = 0 if _build == "green" else 1
+	# Anchored to the real starter tables so a resized shop keeps the same
+	# proposals in view above the catalogue panel: green turns a table like
+	# the starters into the clear gap between the west and middle tables, one
+	# row north; red puts the fridge across the middle table itself.
+	var tables: Array[PlacedItem] = ShopBuilder.items_with_def(world, &"table_2")
+	if tables.size() != 3:
+		_fail_capture("--build review expects the three starter tables")
+		return
+	tables.sort_custom(func(a: PlacedItem, b: PlacedItem) -> bool: return a.origin.x < b.origin.x)
+	var gap_x: int = floori((tables[0].origin.x + tables[1].origin.x) / 2.0)
+	var cell: Vector2i = Vector2i(gap_x, tables[1].origin.y - 1) if _build == "green" else tables[1].origin + Vector2i(1, 1)
+	var turns: int = tables[1].quarter_turns if _build == "green" else 1
 	if editor == null or camera == null or not editor.can_edit() \
 			or editor.check_buy(def_id, cell, turns).ok != (_build == "green"):
 		_fail_capture("review proposal does not match the actual editor result")

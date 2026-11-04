@@ -11,31 +11,33 @@ extends RefCounted
 ## Build > Wall finish holds a brick drag along the dining room's back wall.
 
 ## Faces: Vector3i(x, y, dir), dir 0 north, 1 east, 2 south, 3 west.
-const WALL_X: int = 9
-const WALL_ROWS: Vector2i = Vector2i(5, 7)
-## The street-front window right of the door (the edge between floor (8, 9)
-## and the shell, where the frontage's first plain window was) and
-## the OPEN sign's slot in it.
-const FRONT_WINDOW: Vector3i = Vector3i(8, 10, SimGrid.EDGE_NORTH)
-const SIGN_SLOT: Vector3i = Vector3i(8, 9, 2)
-## [style, main colour, accent, faces] put up in this order.
+## The interior wall stands between the middle and east dining tables.
+const WALL_X: int = 10
+const WALL_ROWS: Vector2i = Vector2i(5, 8)
+## The kitchen/dining divider's row; the dining room runs from it to the front.
+const DINING_TOP: int = 5
+## [style, main colour, accent, first face, last face, dir] put up in this
+## order. A negative coordinate is read from the real shop: x -1 is the east
+## wall's inner column, y -1 the front wall's inner row (see shop_extent()).
 const FINISHES: Array[Array] = [
-	[&"subway_tile", &"cream", &"", [Vector2i(1, 1), Vector2i(12, 1)], 0],
-	[&"wainscot", &"sage", &"", [Vector2i(1, 5), Vector2i(1, 9)], 3],
-	[&"stripes", &"butter", &"cream", [Vector2i(8, 5), Vector2i(8, 7)], 1],
-	[&"brick", &"brick", &"cream", [Vector2i(9, 5), Vector2i(9, 7)], 3],
-	[&"brick", &"terracotta", &"cream", [Vector2i(12, 5), Vector2i(12, 9)], 1],
+	[&"subway_tile", &"cream", &"", Vector2i(1, 1), Vector2i(-1, 1), 0],
+	[&"wainscot", &"sage", &"", Vector2i(1, DINING_TOP), Vector2i(1, -1), 3],
+	[&"stripes", &"butter", &"cream", Vector2i(WALL_X - 1, 5), Vector2i(WALL_X - 1, 8), 1],
+	[&"brick", &"brick", &"cream", Vector2i(WALL_X, 5), Vector2i(WALL_X, 8), 3],
+	[&"brick", &"terracotta", &"cream", Vector2i(-1, DINING_TOP), Vector2i(-1, -1), 1],
 ]
+## [item, face]; the neon OPEN sign goes in the front window (see front_window()).
 const HUNG: Array[Array] = [
-	[&"wall_art_sunrise", Vector3i(1, 7, 3)],
-	[&"neon_open_sign", SIGN_SLOT],
+	[&"wall_art_sunrise", Vector3i(1, 8, 3)],
+	[&"neon_open_sign", Vector3i(-1, -1, 2)],
 	[&"menu_board", Vector3i(2, 1, 0)],
-	[&"wall_art_peaks", Vector3i(9, 6, 3)],
+	[&"wall_art_peaks", Vector3i(WALL_X, 6, 3)],
 ]
 const WALL_UP_FRAME: int = 20
-## The drag along the dining room's back wall (both ends' faces turn north).
+## The drag along the dining room's back wall, the divider's west run (both
+## ends' faces turn north).
 const DRAG_START: Vector3i = Vector3i(1, 5, 0)
-const DRAG_END: Vector3i = Vector3i(3, 5, 0)
+const DRAG_END: Vector3i = Vector3i(2, 5, 0)
 const HANG_FRAME: int = 40
 ## Hand-run: from DOWN_FRAME the tool is put away and the walls are Down.
 const DOWN_FRAME: int = 60
@@ -55,22 +57,59 @@ static func prepare(main: Node, root: Window) -> Dictionary:
 		wall[Vector3i(WALL_X, y, SimGrid.EDGE_WEST)] = SimGrid.Segment.WALL
 	if not bool(main.call("shop_walls", wall)):
 		return {"error": "the interior wall was refused: " + editor.last_check.why}
-	var window: Dictionary[Vector3i, int] = {FRONT_WINDOW: SimGrid.Segment.WINDOW}
+	var extent: Vector2i = shop_extent(world.grid)
+	var front: Vector3i = front_window(world.grid)
+	if extent == SimGrid.NO_CELL or front == Vector3i(-1, -1, -1):
+		return {"error": "walls review needs a rectangular shop with a two-cell south street entry"}
+	var window: Dictionary[Vector3i, int] = {front: SimGrid.Segment.WINDOW}
 	if not bool(main.call("shop_walls", window)):
 		return {"error": "the front window was refused: " + editor.last_check.why}
 	for finish: Array in FINISHES:
 		var faces: Array[Vector3i] = []
-		var ends: Array = finish[3]
-		for y: int in range((ends[0] as Vector2i).y, (ends[1] as Vector2i).y + 1):
-			for x: int in range((ends[0] as Vector2i).x, (ends[1] as Vector2i).x + 1):
-				faces.append(Vector3i(x, y, int(finish[4])))
+		var first: Vector2i = _resolve(finish[3], extent)
+		var last: Vector2i = _resolve(finish[4], extent)
+		for y: int in range(first.y, last.y + 1):
+			for x: int in range(first.x, last.x + 1):
+				faces.append(Vector3i(x, y, int(finish[5])))
 		var changes: Dictionary[Vector3i, FloorFinishes.Finish] = editor.wall_lay_changes(faces, finish[0], finish[1], finish[2])
 		if not bool(main.call("shop_wall_finishes", changes)):
 			return {"error": "putting up %s was refused: %s" % [finish[0], editor.last_check.why]}
 	for hung: Array in HUNG:
-		if not bool(main.call("shop_hang", hung[0], hung[1])):
+		var face: Vector3i = hung[1]
+		if hung[0] == &"neon_open_sign":
+			# The sign hangs in the window, on the inside floor cell's south face.
+			face = Vector3i(front.x, front.y - 1, 2)
+		if not bool(main.call("shop_hang", hung[0], face)):
 			return {"error": "hanging %s was refused: %s" % [hung[0], editor.last_check.why]}
 	return {"error": "", "stored_faces": editor.walls.count(), "hung": editor.decor.count()}
+
+
+## The east wall's inner column and the front wall's inner row, read from the
+## real terrain (the inside row just north of the street entry's door cells),
+## or NO_CELL when the shop has no two-cell south entry.
+static func shop_extent(grid: SimGrid) -> Vector2i:
+	var entries: Array[Vector2i] = grid.entries()
+	if entries.size() != 2 or entries[1] != entries[0] + Vector2i.RIGHT:
+		return SimGrid.NO_CELL
+	var row: int = entries[0].y - 2
+	var east: int = entries[1].x
+	while grid.terrain(Vector2i(east + 1, row)) == SimGrid.Terrain.FLOOR:
+		east += 1
+	return Vector2i(east, row)
+
+
+## The street-front window just east of the door (the edge between the front
+## row's floor and the shell), where the frontage's first plain window was.
+static func front_window(grid: SimGrid) -> Vector3i:
+	var entries: Array[Vector2i] = grid.entries()
+	if shop_extent(grid) == SimGrid.NO_CELL:
+		return Vector3i(-1, -1, -1)
+	var door: Vector2i = entries[1] + Vector2i.UP
+	return Vector3i(door.x + 1, door.y, SimGrid.EDGE_NORTH)
+
+
+static func _resolve(cell: Vector2i, extent: Vector2i) -> Vector2i:
+	return Vector2i(extent.x if cell.x < 0 else cell.x, extent.y if cell.y < 0 else cell.y)
 
 
 ## Walls Up, and Build > Wall finish holding a striped wallpaper drag.
