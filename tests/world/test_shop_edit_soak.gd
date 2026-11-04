@@ -64,7 +64,7 @@ func test_five_days_of_seeded_morning_edits_keep_real_session_invariants() -> vo
 	var main: Node = _start()
 	if main == null:
 		return
-	# New-game startup uses wall time. new_run replaces the named RNG objects,
+	# new_run replaces the named RNG objects (same seed as startup),
 	# so rebind every retained live consumer before any visit. The normal morning
 	# autosaves must capture the same review/dirt streams the sim actually uses.
 	GameState.new_run(CUSTOMER_SEED)
@@ -121,6 +121,8 @@ func _start() -> Node:
 	main.set_script(MANUAL_MAIN)
 	main.set("use_saves", true)
 	main.set("save_slot", SLOT)
+	# Startup otherwise seeds every named stream from wall time (#298).
+	main.set("new_game_seed_override", CUSTOMER_SEED)
 	_mains.append(main)
 	(Engine.get_main_loop() as SceneTree).root.add_child(main)
 	main.call("start")  # Idempotent before or after SceneTree readiness.

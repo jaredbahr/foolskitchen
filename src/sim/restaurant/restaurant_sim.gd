@@ -260,12 +260,21 @@ func start_day() -> void:
 
 ## Each morning staff start at their posts, with nothing in hand.
 func _staff_to_posts() -> void:
+	# Release every staff member's leftover edge/next-cell claims first. A
+	# lower-ID worker reset before a higher-ID one that ended the night mid-edge
+	# toward its post would otherwise find the post still claimed and be moved
+	# to a neighbouring cell. Order and claims then no longer decide who gets
+	# which post.
+	var staff_list: Array[StaffAgent] = []
 	for agent: SimAgent in world.all_agents():
 		if staff_spawns.has(agent.role) and agent is StaffAgent:
 			var staff := agent as StaffAgent
 			if staff.task != null:
 				staff.on_removed(world)
-			world.reset_agent_position(staff, staff_spawns[agent.role])
+			world.reset_agent_position(staff, staff.cell)
+			staff_list.append(staff)
+	for staff: StaffAgent in staff_list:
+		world.reset_agent_position(staff, staff_spawns[staff.role])
 
 
 ## One fixed world tick, arrivals, then departed-guest cleanup.
