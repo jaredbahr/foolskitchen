@@ -4,6 +4,8 @@ extends SceneTree
 ## failure. A test also fails if it raises an engine or script error (a null call,
 ## push_error) even when its asserts pass. Usage: godot --headless --path . --script tools/run_tests.gd
 ## Optional filter: ... --script tools/run_tests.gd -- --filter=clock
+## Optional shard: --shard=K/N runs every Nth test file (sorted), starting at K,
+## so N processes can split the suite (tools/check.sh runs two).
 ## Tests may await a bounded number of process frames for real UI layout. The
 ## runner awaits completion before teardown or counting failures; synchronous
 ## tests still execute immediately. The first await lets the scene root enter.
@@ -13,13 +15,30 @@ const TEST_ROOT: String = "res://tests"
 
 func _initialize() -> void:
 	var filter := ""
+	var shard: int = 0
+	var shards: int = 1
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--filter="):
 			filter = arg.trim_prefix("--filter=")
+		elif arg.begins_with("--shard="):
+			var parts: PackedStringArray = arg.trim_prefix("--shard=").split("/")
+			if parts.size() != 2 or not parts[0].is_valid_int() or not parts[1].is_valid_int() \
+					or int(parts[1]) < 1 or int(parts[0]) < 0 or int(parts[0]) >= int(parts[1]):
+				print("FAIL: --shard needs K/N with 0 <= K < N")
+				quit(1)
+				return
+			shard = int(parts[0])
+			shards = int(parts[1])
 	var errors := ErrorCounter.new()
 	OS.add_logger(errors)
 	var files := _find_tests(TEST_ROOT)
 	files.sort()
+	if shards > 1:
+		var mine: PackedStringArray = []
+		for index: int in files.size():
+			if index % shards == shard:
+				mine.append(files[index])
+		files = mine
 	if files.is_empty():
 		print("FAIL: no test files found under %s" % TEST_ROOT)
 		quit(1)
