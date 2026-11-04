@@ -114,5 +114,9 @@ vendored kit or another made asset. Optional `--manifest /outside/project.json`
 writes audit data outside the shipping project; review comparisons are never
 stored with the assets.
 
+## Restaurant cat (#119)
+`cat/cat.glb` is the shop cat: a light grey-orange tabby in the Mini Characters' flat, chunky style (slightly bevelled boxes, flat shading, big head, 672 triangles against an 800 budget). Its colours come only from the characters kit's `colormap.png` (every face's UVs point at one palette swatch, like the people); the GLB references that file by relative path and nothing is copied. Proportions follow the Mini Characters' big head and short limbs; at `ArtScale.CAT_SCALE` it stands about two thirds of a person's height. Ten rigid-skinned bones and three looping clips: `idle` (2 s), `walk` (1 s) and `nap` (3 s, curled up with the head tucked and the tail wrapped round). Origin at the feet, facing -Z. Measured numbers are in `cat/cat.metrics.json`.
+Rebuild with `blender --background --factory-startup --python tools/build_cat.py` (Blender 4.2; it rewrites the GLB and the metrics file). Review capture: `tools/cat_review.tscn` (cat beside a Mini Character, walking and napping).
+
 ## Kitchen ambience loops (#117)
 The Kenney audio packs have no kitchen ambience, so `audio/stove_sizzle.ogg`, `audio/fryer_bubble.ogg`, `audio/coffee_steam.ogg` and `audio/room_tone.ogg` are made from seeded, frequency-shaped noise with short crackles and bubbles. Each is shaped over its whole length, so it loops without a seam. No recorded or third-party audio is used. Rebuild with `python3 tools/make_kitchen_audio.py` (numpy and ffmpeg); the output is deterministic.

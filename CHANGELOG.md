@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- Adopt a shop cat from owner level 4: a one-time $40 offer in the morning Menu. Biscuit wanders the dining room and restroom, naps in sunny spots by the windows, and waiting guests near it are a little more patient. A waiting guest next to it may pet it for a happy review. Cat food costs $2 a day, shown as "Cat food" in the evening report. (#PRNUM)
 - Guests and staff now walk around each other and the furniture, and new shops start a little roomier. (#268)
 - Growing the shop now pays: the starter pantry holds 100 dry units instead of 60, so a bigger, fully staffed shop no longer sells out by evening. When guests leave because dishes sold out, the evening report tells you to buy more storage. (#289)
 - Light up your shop: buy floor lamps, side tables with lamps, a wall lamp and a ceiling pendant in Buy > Lighting. Lamps glow softly by day, light the room warmly at night and add to your vibe. (#288)

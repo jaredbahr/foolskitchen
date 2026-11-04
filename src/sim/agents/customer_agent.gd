@@ -33,6 +33,10 @@ var waiting_item_id: int = 0
 var waiting_cell: Vector2i = SimGrid.NO_CELL
 ## Retained only for this visit's review and one-time patience bonus.
 var waited_seated: bool = false
+## The shop cat (#119): this guest has petted it this visit (once), and the
+## fraction of a patience tick still owed to them while near it.
+var petted_cat: bool = false
+var _cat_carry: float = 0.0
 var order: Order = null
 ## What this guest came for (FK-083): a meal (RecipeDef.FOOD), or a drink only
 ## (COFFEE or DRINKS). A drinks-only guest orders from that part of the menu,
@@ -213,7 +217,7 @@ func _advance_visit(world: SimWorld, allow_movement: bool = true) -> void:
 			state = State.EATING
 			_eating = 0
 		else:
-			_food_wait += 1
+			_food_wait += 1 - _cat_relief(sim)
 			if _food_wait >= food_patience:
 				if order != null and order.state == Order.State.DELIVERED and _waiting_for_side():
 					# The coffee is here; a slow croissant is dropped, not the guest.
@@ -238,7 +242,7 @@ func _advance_visit(world: SimWorld, allow_movement: bool = true) -> void:
 					_queue_inside(world)
 				else:
 					WaitingBench.observe_arrival(self, world, sim)
-				_queue_wait += 1
+				_queue_wait += 1 - _cat_relief(sim)
 				if _queue_wait >= queue_patience:
 					_leave(world, sim, &"no_table")
 		State.WALKING_TO_SEAT:
@@ -354,7 +358,23 @@ func review_visit(standard_price: int, dirt_fraction: float = 0.0) -> ReviewVisi
 	visit.restroom_penalty = restroom_penalty
 	visit.restroom_was_busy = restroom_was_busy
 	visit.waited_seated = waited_seated
+	visit.petted_cat = petted_cat
 	return visit
+
+
+## Waiting for a table or for the meal, inside and not off at the restroom.
+func is_waiting_in_shop() -> bool:
+	return (state == State.QUEUED or state == State.ORDERING or state == State.WAITING_FOOD) and not away()
+
+
+## One waiting tick handed back (so patience lasts a little longer) now and
+## then while this guest is near the shop cat; 0 otherwise.
+func _cat_relief(sim: RestaurantSim) -> int:
+	if sim.cat == null:
+		return 0
+	var result: Dictionary = sim.cat.relief(cell, _cat_carry)
+	_cat_carry = float(result["carry"])
+	return int(result["refund"])
 
 
 func _waiting_why(text: String) -> String:

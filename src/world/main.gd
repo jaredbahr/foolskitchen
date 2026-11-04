@@ -18,6 +18,7 @@ const SHOP_ZOOM: float = 12.0
 const SHOP_FRAME_CELLS: Vector2 = Vector2(14.0, 12.0)
 const STREET_PAN_EXTENSION: float = 3.0
 const LEASE: LeaseUpgrade = preload("res://data/balance/lease_upgrade.tres")
+const CAT: CatTuning = preload("res://data/balance/cat.tres")
 const TUNING: EconomyTuning = preload("res://data/balance/tier1_economy.tres")
 const MESS_TUNING: MessTuning = preload("res://data/balance/messes.tres")
 const CLEANLINESS_TUNING: CleanlinessTuning = preload("res://data/balance/cleanliness.tres")
@@ -139,6 +140,8 @@ var _loaded_demand: DemandState = null
 ## Detached closing summaries; persistence stays at the morning checkpoint.
 var business_history: BusinessHistory = BusinessHistory.new()
 var _loaded_business_history: BusinessHistory = null
+## The saved cat section (adopted and its name), staged until the load installs.
+var _loaded_cat: Dictionary = {}
 var _demand_breakdown: DemandBreakdown = null
 var _demand_day: int = 0
 var _demand_reputation: float = 3.0
@@ -347,6 +350,8 @@ func _bind_world_presentation() -> void:
 	_menu_panel.bind_menu(menu_settings)
 	if not _menu_panel.lease_requested.is_connected(_on_lease_requested):
 		_menu_panel.lease_requested.connect(_on_lease_requested)
+	if not _menu_panel.cat_adoption_requested.is_connected(_on_cat_adoption_requested):
+		_menu_panel.cat_adoption_requested.connect(_on_cat_adoption_requested)
 	_menu_panel.set_phase(Clock.sim.phase)
 	if not _menu_panel.enable_requested.is_connected(_on_menu_enable_requested):
 		_menu_panel.enable_requested.connect(_on_menu_enable_requested)
@@ -537,6 +542,7 @@ func start() -> void:
 	SaveSystem.register("weather", _capture_weather, _restore_weather)
 	SaveSystem.register("demand", _capture_demand, _restore_demand)
 	SaveSystem.register("business_history", _capture_business_history, _restore_business_history)
+	SaveSystem.register("cat", _capture_cat, _restore_cat)
 	var loaded: bool = use_saves and _load_autosave()
 	_rooms_note = loaded and _loaded_layout != null and _loaded_layout.rooms_unmarked
 	$HUD.set_rooms_note(ROOMS_NOTE if _rooms_note else "")
@@ -546,6 +552,10 @@ func start() -> void:
 	world.clock = Clock.sim
 	sim.stock = Economy.stock
 	sim.use_rng(GameState.rng(&"customers"))
+	# The named stream exists only once there is a cat, so shops without one
+	# keep their exact saved streams.
+	if sim.cat.adopted:
+		sim.cat.use_rng(GameState.rng(&"cat"))
 	var cleanliness: CleanlinessState = CleanlinessState.new(
 		world.grid, CLEANLINESS_TUNING, GameState.rng(&"cleanliness"))
 	if not sim.configure_cleanliness(cleanliness, CLEANLINESS_TUNING):
@@ -2223,6 +2233,7 @@ func build_report(day: int) -> DayReport:
 
 func _new_game() -> void:
 	_base_layout = LAYOUT
+	_loaded_cat = {}
 	business_history = BusinessHistory.new()
 	_loaded_business_history = null
 	curb_appeal_score = 0.0
@@ -2308,6 +2319,7 @@ func _load_autosave_sections() -> bool:
 	curb_appeal_factor = 1.0
 	_last_team_activity.clear()
 	_loaded_demand = null
+	_loaded_cat = {}
 	_loaded_regulars = null
 	_loaded_blueprints = null
 	_blueprint_load_notes.clear()
@@ -2385,6 +2397,9 @@ func _load_autosave_sections() -> bool:
 		return false
 	sim = candidate
 	world = candidate.world
+	if not _loaded_cat.is_empty() and sim.cat.from_dict(_loaded_cat):
+		sim.cat.begin_day(world.grid)
+	_loaded_cat = {}
 	_loaded_layout = layout
 	staff_roster = employees
 	reputation = _loaded_reputation if _loaded_reputation != null else ReputationBook.new()
@@ -2554,6 +2569,7 @@ func lease_refusal() -> String:
 
 
 func _refresh_lease_offer() -> void:
+	_refresh_cat_offer()
 	if _menu_panel == null:
 		return
 	if not LEASE.offered(owner_progress, Clock.sim.phase):
@@ -2592,6 +2608,51 @@ func lease_buy() -> bool:
 
 func _on_lease_requested() -> void:
 	lease_buy()
+
+
+func cat_refusal() -> String:
+	return sim.cat.refusal(owner_progress.level, Clock.sim.phase, Economy.cash)
+
+
+## The one-time morning offer to adopt the shop cat (#119), from owner level 4.
+func _refresh_cat_offer() -> void:
+	if _menu_panel == null or sim == null or sim.cat == null:
+		return
+	if not sim.cat.offered(owner_progress.level, Clock.sim.phase):
+		_menu_panel.set_cat_offer(false, "", "")
+		return
+	_menu_panel.set_cat_offer(true, "%s joins your shop for %s. Cat food is %s a day." % [
+		sim.cat.cat_name, Fmt.money(CAT.adoption_price), Fmt.money(CAT.daily_food_cost)], cat_refusal())
+
+
+## A single morning transaction, saved by the next morning autosave.
+func adopt_cat() -> bool:
+	if not _started or sim == null or not cat_refusal().is_empty():
+		_refresh_cat_offer()
+		return false
+	sim.cat.use_rng(GameState.rng(&"cat"))
+	if not sim.cat.adopt(world.grid):
+		return false
+	Economy.add_cash(-CAT.adoption_price, Ledger.UPGRADES, "cat_adoption")
+	_refresh_cat_offer()
+	refresh_presentation()
+	return true
+
+
+func _on_cat_adoption_requested() -> void:
+	adopt_cat()
+
+
+func _capture_cat() -> Dictionary:
+	return sim.cat.to_dict()
+
+
+## Validate now, install with the rest of the load once the new session exists.
+func _restore_cat(data: Dictionary) -> bool:
+	if not RestaurantCat.new(CAT).from_dict(data):
+		return false
+	_loaded_cat = data.duplicate(true)
+	return true
 
 
 func _capture_owner() -> Dictionary:
@@ -4403,6 +4464,8 @@ func _charge_closing_costs() -> void:
 	var rent: int = LEASE.daily_rent if owner_progress.property_tier == 2 else TUNING.daily_rent
 	if rent > 0:
 		Economy.add_cash(-rent, Ledger.RENT)
+	if sim.cat.adopted and CAT.daily_food_cost > 0:
+		Economy.add_cash(-CAT.daily_food_cost, Ledger.CAT_FOOD)
 
 
 func _on_customer_paid(customer: CustomerAgent, order: Order, amount: int) -> void:

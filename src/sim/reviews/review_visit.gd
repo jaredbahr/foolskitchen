@@ -25,3 +25,5 @@ var restroom_penalty: float = 0.0
 var restroom_was_busy: bool = false
 ## This guest actually reached a waiting bench before a dining seat opened.
 var waited_seated: bool = false
+## This guest petted the shop cat while waiting (#119).
+var petted_cat: bool = false

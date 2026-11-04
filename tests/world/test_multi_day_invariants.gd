@@ -209,7 +209,7 @@ func _assert_closed_books(main: Node, day: int) -> void:
 		"day %d: exactly one paid replacement per broken plate" % day)
 	var known_categories: Array[StringName] = [Ledger.SALE, Ledger.TIP, Ledger.INGREDIENTS,
 		Ledger.WAGES, Ledger.RENT, Ledger.UPGRADES, Ledger.OTHER, Ledger.BREAKAGES,
-		Ledger.BANK_LOAN, Ledger.LOAN_INTEREST, Ledger.LOAN_REPAYMENT, Ledger.MILESTONE_BONUS]
+		Ledger.BANK_LOAN, Ledger.LOAN_INTEREST, Ledger.LOAN_REPAYMENT, Ledger.MILESTONE_BONUS, Ledger.CAT_FOOD]
 	for category: StringName in totals:
 		assert_true(known_categories.has(category), "day %d: every flow has a known ledger category" % day)
 	assert_true(int(totals.get(Ledger.BANK_LOAN, 0)) >= 0)
