@@ -2588,7 +2588,12 @@ There is no new save point or SaveSystem migration.
 - **The 10:00 key frame is the authored `lighting_rig.tscn`.** Default morning prep looks exactly as before; the weather and lighting tests pin this.
 - **Weather** only tints the pavement and is unaffected. **The title backdrop** keeps the authored morning, because Main is disabled there.
 - **Review:** `tools/day_night_review.tscn` with `DAY_NIGHT_STAGE` set to morning, noon, golden, dusk, last_orders or closed (or minute with `DAY_NIGHT_MINUTE`).
-- **Not yet:** chairs up after close; lamps (#84).
+- **Chairs up after close** (`ShopView.set_chairs_up`, view only):
+  - When closed, each dining chair turns upside down onto its table, side to side so the back hangs over the edge.
+  - Both a table's built-in chairs (model children tagged `seat_cell`) and separate chair items linked to its seats are handled. Only the model moves inside its wrapper; the item, cells and saves never change.
+  - Tables left dirty at close keep their chairs down. Evening Build and Paint show them down, so picking is unchanged.
+  - Morning restores the exact resting transforms.
+- **Not yet:** lamps (#84).
 
 ### Sound (FK-067, #117)
 - **`Sfx` autoload** (`src/audio/sfx.gd`): one-shot cues and looped ambience on the Effects bus (Settings already sets its volume). It clicks every `BaseButton` in the tree, including the title screen's, through `SceneTree.node_added`, and plays hover on enabled buttons. Each cue has a minimum interval (`SoundThrottle`) so fast-forward bursts play once. Repeats step through a fixed pitch cycle; there are no random draws.
