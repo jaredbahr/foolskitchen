@@ -11,7 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
-- Buy a jukebox (Build > Decor, $90, level 3) and choose its music style: Diner rock, Café jazz or Bar blues. It adds vibe like other decor, twice as much when its style matches your shop's theme, and plays quietly while the shop is open (Effects volume controls it). Only one jukebox counts, and you can switch its style any time by clicking it. (#PRNUM)
+- Buy a jukebox (Build > Decor, $90, level 3) and choose its music style: Diner rock, Café jazz or Bar blues. It adds vibe like other decor, twice as much when its style matches your shop's theme, and plays quietly while the shop is open (Effects volume controls it). Only one jukebox counts, and you can switch its style any time by clicking it. (#297)
 - Adopt a shop cat from owner level 4: a one-time $40 offer in the morning Menu. Biscuit wanders the dining room and restroom, naps by the walls and side windows, and waiting guests near it are a little more patient. A waiting guest next to it may pet it for a happy review. Cat food costs $2 a day, shown as "Cat food" in the evening report. (#296)
 - Guests and staff now walk around each other and the furniture, and new shops start a little roomier. (#268)
 - Growing the shop now pays: the starter pantry holds 100 dry units instead of 60, so a bigger, fully staffed shop no longer sells out by evening. When guests leave because dishes sold out, the evening report tells you to buy more storage. (#289)
