@@ -113,6 +113,8 @@ static func does(definition: ItemDef) -> String:
 			return "Hangs on a restroom wall" if definition.hangs_on_wall() else RESTROOM_TEXT.get(definition.station_type, "Restroom fixture")
 	if definition.placement_layer == ItemDef.PlacementLayer.FLOOR_DECOR:
 		return "Rug: tables and chairs can stand on it"
+	if definition.wall_mount == ItemDef.WallMount.EXTERIOR and definition.exterior_band == ExteriorSupport.Band.GROUND:
+		return "Stands on the pavement beside the door and shows your name and today's special"
 	if definition.wall_mount == ItemDef.WallMount.EXTERIOR:
 		return "Hangs outside on the street front, %d tiles wide" % definition.footprint.x
 	if definition.hangs_in_window():

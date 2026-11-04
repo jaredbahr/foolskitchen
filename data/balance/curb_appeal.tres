@@ -13,7 +13,8 @@ item_categories = Dictionary[StringName, StringName]({
 &"string_lights_2": &"lights",
 &"string_lights_3": &"lights",
 &"string_lights_4": &"lights",
-&"neon_open_sign": &"open_sign"
+&"neon_open_sign": &"open_sign",
+&"a_frame_sign": &"a_frame"
 })
 weights = Dictionary[StringName, float]({
 &"finish": 8.0,
@@ -21,7 +22,8 @@ weights = Dictionary[StringName, float]({
 &"window_box": 8.0,
 &"sign": 15.0,
 &"lights": 8.0,
-&"open_sign": 10.0
+&"open_sign": 10.0,
+&"a_frame": 6.0
 })
 caps = Dictionary[StringName, float]({
 &"finish": 20.0,
@@ -29,7 +31,8 @@ caps = Dictionary[StringName, float]({
 &"window_box": 20.0,
 &"sign": 15.0,
 &"lights": 15.0,
-&"open_sign": 10.0
+&"open_sign": 10.0,
+&"a_frame": 6.0
 })
 repeat_decay = 0.65
 max_bonus = 0.10

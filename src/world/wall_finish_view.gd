@@ -23,6 +23,10 @@ const AUTO_ACCENT_SHADE: float = 0.78
 ## Wall decor wrappers stand on a cell centre with their back on the cell's
 ## far edge; a face of an interior wall is this much nearer the room.
 const HUNG_FALLBACK_HEIGHT: float = 0.6
+const A_FRAME_ID: StringName = &"a_frame_sign"
+## Widest and tallest chalk line of the A-frame (board-local metres).
+const SIGN_NAME_FIT: Vector2 = Vector2(0.58, 0.19)
+const SIGN_SPECIAL_FIT: Vector2 = Vector2(0.58, 0.11)
 ## A glowing hung item (`ItemDef.glow_color`) gets one small omni light this
 ## far in front of its face, at its middle: a soft pool on the wall and the
 ## floor below, never the whole room. No shadows, so it stays cheap in the
@@ -73,6 +77,7 @@ var _ghost_key: Array = []
 var _hidden_anchor: Vector3i = WallFaces.NO_FACE
 var _menu_board_name: String = MenuSettings.DEFAULT_NAME
 var _menu_board_recipes: Array[RecipeDef] = []
+var _menu_board_prices: Dictionary = {}
 var _restaurant_name: String = MenuSettings.DEFAULT_NAME
 var _hung_preview_anchor: Vector3i = WallFaces.NO_FACE
 var _hung_preview_swatch: StringName = &""
@@ -89,9 +94,11 @@ func bind(grid: SimGrid, content: ContentDB, finishes: WallFinishes, decor: Wall
 
 ## Main supplies today's enabled dishes; the full recipe catalogue is never
 ## used to label a board. Existing nodes update in place on menu/name edits.
-func set_menu_board_content(restaurant_name: String, enabled_recipes: Array[RecipeDef]) -> void:
+func set_menu_board_content(restaurant_name: String, enabled_recipes: Array[RecipeDef],
+		prices: Dictionary = {}) -> void:
 	_menu_board_name = restaurant_name
 	_menu_board_recipes.assign(enabled_recipes)
+	_menu_board_prices = prices.duplicate()
 	refresh_menu_boards()
 
 
@@ -100,10 +107,13 @@ func refresh_menu_boards() -> void:
 		return
 	for anchor: Vector3i in item_nodes:
 		var hung: WallDecor.Hung = _decor.item(anchor)
-		if hung == null or hung.def_id != &"menu_board":
+		if hung == null:
 			continue
 		var node: ItemVisual = item_nodes[anchor]
-		if node.prop == null:
+		if hung.def_id == A_FRAME_ID:
+			apply_street_sign_text(node)
+			continue
+		if hung.def_id != &"menu_board" or node.prop == null:
 			continue
 		var label: Label3D = node.prop.get_node_or_null(^"WallMount/MenuText") as Label3D
 		if label != null:
@@ -117,9 +127,32 @@ func set_restaurant_name(value: String) -> bool:
 	_restaurant_name = normalized
 	for node: ItemVisual in item_nodes.values():
 		node.set_restaurant_name(normalized)
+		if node.get_meta(&"def_id", &"") == A_FRAME_ID:
+			apply_street_sign_text(node)
 	if _ghost != null:
 		_ghost.set_restaurant_name(normalized)
+		if _ghost.get_meta(&"def_id", &"") == A_FRAME_ID:
+			apply_street_sign_text(_ghost)
 	return true
+
+
+## The street A-frame's two chalk lines: the restaurant name, and today's
+## special from the same menu the boards use (StreetSignText).
+func apply_street_sign_text(node: ItemVisual) -> void:
+	if node == null or node.prop == null:
+		return
+	var mount: Node = node.prop.get_node_or_null(^"BoardMount/Art/Board/WallMount")
+	if mount == null:
+		return
+	var title: Label3D = mount.get_node_or_null(^"MenuText") as Label3D
+	var special: Label3D = mount.get_node_or_null(^"SpecialText") as Label3D
+	if title != null:
+		title.call("set_fitted_text", StreetSignText.name_line(_restaurant_name), SIGN_NAME_FIT.x, SIGN_NAME_FIT.y)
+	if special != null:
+		var line: String = StreetSignText.special_line(_menu_board_recipes, _menu_board_prices)
+		special.visible = not line.is_empty()
+		if not line.is_empty():
+			special.call("set_fitted_text", line, SIGN_SPECIAL_FIT.x, SIGN_SPECIAL_FIT.y)
 
 
 func preview_hung_paint(anchor: Vector3i, swatch_id: StringName) -> void:
@@ -208,6 +241,9 @@ func show_ghost(definition: ItemDef, anchor: Vector3i, valid: bool, moving: Vect
 	_ghost = ItemVisual.create(definition, HUNG_FALLBACK_HEIGHT, _flat(definition.placeholder_color))
 	_ghost.name = "WallGhost"
 	_ghost.set_restaurant_name(_restaurant_name)
+	if definition.id == A_FRAME_ID:
+		_ghost.set_meta(&"def_id", definition.id)
+		apply_street_sign_text(_ghost)
 	if definition.paintable and not swatch.is_empty():
 		var color: Color = _colour(swatch, definition.placeholder_color)
 		_ghost.apply_paint(color, _flat(color))
@@ -470,6 +506,10 @@ static func exterior_transform(grid: SimGrid, anchor: Vector3i, width: int, box:
 		+ Vector3(right.x, 0.0, right.y) * GridMath.CELL_SIZE * float(maxi(width, 1) - 1) * 0.5
 	var bottom: float = HUNG_FALLBACK_HEIGHT
 	var outset: float = FACE_GAP
+	if ExteriorSupport.band(anchor) == ExteriorSupport.Band.GROUND:
+		# Stands on the pavement, centred in the cell in front of the wall.
+		var ground: Vector3 = GridMath.cell_to_world(WallFaces.cell(anchor)) + inward * box.size.z * 0.5
+		return Transform3D(basis, ground - basis * Vector3(box.get_center().x, box.position.y, box.end.z))
 	match ExteriorSupport.band(anchor):
 		ExteriorSupport.Band.CANOPY:
 			bottom = ArtScale.EXTERIOR_CANOPY_BOTTOM
@@ -563,6 +603,8 @@ func _rebuild_items() -> void:
 			node.transform = window_transform(anchor, node.get_aabb()) if hung.window \
 				else hung_transform(_grid, anchor, hung.width)
 		node.set_restaurant_name(_restaurant_name)
+		if definition.id == A_FRAME_ID:
+			apply_street_sign_text(node)
 		if hung.mount == ItemDef.WallMount.EXTERIOR and definition.paintable:
 			var swatch: StringName = _hung_preview_swatch if anchor == _hung_preview_anchor else hung.swatch_id
 			if swatch.is_empty():
@@ -673,7 +715,9 @@ func _sync_item_visibility() -> void:
 	for anchor: Vector3i in item_nodes:
 		var node: ItemVisual = item_nodes[anchor]
 		var hung: WallDecor.Hung = _decor.item(anchor) if _decor != null else null
-		node.visible = hung != null and anchor != _hidden_anchor and not is_hung_lowered(anchor, hung.width)
+		node.visible = hung != null and anchor != _hidden_anchor \
+			and (ExteriorSupport.band(anchor) == ExteriorSupport.Band.GROUND and hung.mount == ItemDef.WallMount.EXTERIOR \
+				or not is_hung_lowered(anchor, hung.width))
 
 
 func is_hung_lowered(anchor: Vector3i, width: int) -> bool:

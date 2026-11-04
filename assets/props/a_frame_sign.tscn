@@ -1,0 +1,49 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://src/world/prop_view.gd" id="1_view"]
+[ext_resource type="PackedScene" path="res://assets/kenney/furniture/paneling.glb" id="2_panel"]
+[ext_resource type="PackedScene" path="res://assets/props/diner_chalkboard.tscn" id="3_board"]
+[ext_resource type="Script" path="res://assets/props/diner_chalkboard.gd" id="4_text"]
+
+[node name="AFrameSign" type="Node3D"]
+script = ExtResource("1_view")
+footprint = Vector2i(1, 1)
+
+[node name="Front" type="Node3D" parent="."]
+position = Vector3(0.0006715, 0.004548, -0.1793285)
+rotation = Vector3(0.27925, 0, 0)
+
+[node name="Art" type="Node3D" parent="Front"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="Front/Art" instance=ExtResource("2_panel")]
+
+[node name="Back" type="Node3D" parent="."]
+position = Vector3(0.0006715, 0.004548, 0.1806715)
+rotation = Vector3(-0.27925, 0, 0)
+
+[node name="Art" type="Node3D" parent="Back"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="Back/Art" instance=ExtResource("2_panel")]
+
+[node name="BoardMount" type="Node3D" parent="."]
+position = Vector3(0.0006715, 0.1295, -0.1804285)
+rotation = Vector3(0.27925, 0, 0)
+
+[node name="Art" type="Node3D" parent="BoardMount"]
+
+[node name="Board" parent="BoardMount/Art" instance=ExtResource("3_board")]
+scale = Vector3(0.6, 0.6, 0.6)
+
+[node name="MenuText" parent="BoardMount/Art/Board/WallMount" index="1"]
+position = Vector3(0, 0.375, -0.03)
+text = "Fool's Kitchen"
+
+[node name="SpecialText" type="Label3D" parent="BoardMount/Art/Board/WallMount"]
+script = ExtResource("4_text")
+position = Vector3(0, 0.15, -0.03)
+rotation = Vector3(0, 3.141592653589793, 0)
+text = "Today: Coffee"
+pixel_size = 0.002
+font_size = 40

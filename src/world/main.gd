@@ -3255,8 +3255,11 @@ func _refresh_menu_boards() -> void:
 		return
 	var view: ShopView = $ShopView
 	if view.wall_finish_view != null:
+		var prices: Dictionary = {}
+		for recipe: RecipeDef in menu_settings.enabled_recipes():
+			prices[recipe.id] = menu_settings.price_of(recipe)
 		view.wall_finish_view.set_menu_board_content(menu_settings.restaurant_name(),
-			menu_settings.enabled_recipes())
+			menu_settings.enabled_recipes(), prices)
 
 
 func can_edit_menu() -> bool:

@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- Buy a chalkboard A-frame sign (Build > Decor, $35, from owner level 2) and stand it on the pavement beside your street door. It shows your restaurant name and today's special, the dish with your best margin (or Coffee at a cafe), and adds a little curb appeal for more walk-ins. The cells straight in front of the door stay clear for guests. (#PRNUM)
 - Adopt a shop cat from owner level 4: a one-time $40 offer in the morning Menu. Biscuit wanders the dining room and restroom, naps by the walls and side windows, and waiting guests near it are a little more patient. A waiting guest next to it may pet it for a happy review. Cat food costs $2 a day, shown as "Cat food" in the evening report. (#296)
 - Guests and staff now walk around each other and the furniture, and new shops start a little roomier. (#268)
 - Growing the shop now pays: the starter pantry holds 100 dry units instead of 60, so a bigger, fully staffed shop no longer sells out by evening. When guests leave because dishes sold out, the evening report tells you to buy more storage. (#289)
