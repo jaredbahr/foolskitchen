@@ -2795,6 +2795,26 @@ there is no second arrival multiplier, RNG fetch/draw or countdown reset.
 Edits, undo, support changes and load refresh the derived facts. No score is
 saved: the existing morning shop save already contains its inputs.
 
+**A-frame sign (#292).** `a_frame_sign` is an exterior WALL-layer item in a sixth
+mount band, `ExteriorSupport.Band.GROUND` (face keys now run to direction 23), so
+it reuses the hang request, ghost, undo, sale, morning save row and curb-appeal
+path with no new store. It is one cell wide and `unique_per_shop`. Placement rule
+(`ExteriorSupport.ground_problem`): the face's outside cell must be the street
+pavement **beside** the street door, i.e. the wall shell cell next to a door cell.
+The cells straight in front of the door are the guests' entries (where guests
+appear and leave), so they are always refused ("Keep the doorway clear"); the sign
+therefore never sits on the walking route. It is view-only like every hung item:
+it adds nothing to `SimGrid`, so paths, `MovementCoordinator` occupancy and
+arrivals are untouched. Its curb-appeal family `a_frame` (weight 6, cap 6) is in
+`data/balance/curb_appeal.tres`. The wrapper (`assets/props/a_frame_sign.tscn`) is
+two Kenney `paneling` boards leaning to an A, with the diner chalkboard wrapper
+(#147) mounted on the front board; no new made model. `StreetSignText` gives its
+two lines (the normalized restaurant name, then "Today: " plus the enabled dish
+with the best margin, price minus ingredient cost, ties to the lower id, or
+Coffee when `MenuThemeText.leading_theme` is the cafe), and `WallFinishView`
+refreshes them on a rename, a price change or a menu change. The sign stays
+visible when walls are cut away. `tools/a_frame_review.tscn` is the capture.
+
 Build shows the themed meter beside Vibe when the rendered camera faces the
 street, including during smooth rotation and Paint. The existing “Tomorrow's
 crowd” curb factor supplies its plain bonus line without a new report field.

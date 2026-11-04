@@ -12,6 +12,7 @@ Each line ends with its PR number.
 
 ### Players
 - Staff now always start the morning at their own posts: a worker caught mid-step toward another worker's post at closing no longer pushes that worker to the next cell over. (#PRNUM)
+- Buy a chalkboard A-frame sign (Build > Decor, $35, from owner level 2) and stand it on the pavement beside your street door. It shows your restaurant name and today's special, the dish with your best margin (or Coffee at a cafe), and adds a little curb appeal for more walk-ins. The cells straight in front of the door stay clear for guests. (#299)
 - Buy a jukebox (Build > Decor, $90, level 3) and choose its music style: Diner rock, Café jazz or Bar blues. It adds vibe like other decor, twice as much when its style matches your shop's theme, and plays quietly while the shop is open (Effects volume controls it). Only one jukebox counts, and you can switch its style any time by clicking it. (#297)
 - Adopt a shop cat from owner level 4: a one-time $40 offer in the morning Menu. Biscuit wanders the dining room and restroom, naps by the walls and side windows, and waiting guests near it are a little more patient. A waiting guest next to it may pet it for a happy review. Cat food costs $2 a day, shown as "Cat food" in the evening report. (#296)
 - Guests and staff now walk around each other and the furniture, and new shops start a little roomier. (#268)

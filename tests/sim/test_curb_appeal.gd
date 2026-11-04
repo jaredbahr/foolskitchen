@@ -168,7 +168,7 @@ func test_only_nonpaint_supported_front_finishes_are_collected() -> void:
 func test_all_named_exterior_items_count_once_in_their_family() -> void:
 	var grid: SimGrid = SimGrid.from_ascii(LAYOUT.rows)
 	assert_true(grid.set_segment(WallFaces.edge(_front_window(grid, 4)), SimGrid.Segment.WINDOW))
-	assert_eq(TUNING.item_categories.size(), 9, "all approved street item widths and the OPEN sign are authored")
+	assert_eq(TUNING.item_categories.size(), 10, "all approved street item widths, the OPEN sign and the A-frame are authored")
 	for id: StringName in TUNING.item_categories:
 		var definition: ItemDef = _content.item(id)
 		var base: Vector3i = _front(grid, -1)
@@ -178,6 +178,8 @@ func test_all_named_exterior_items_count_once_in_their_family() -> void:
 			base = _front(grid, 0)
 		elif id == &"neon_open_sign":
 			base = _front(grid, 2)
+		elif id == &"a_frame_sign":
+			base = _front(grid, -1)
 		var anchor: Vector3i = ExteriorSupport.key_for(base, definition.exterior_band)
 		var decor: WallDecor = WallDecor.new()
 		assert_eq(decor.problem(grid, definition, anchor), "", String(id))
