@@ -7,8 +7,8 @@
 # Any "SCRIPT ERROR", "Parse Error" or "ERROR:" line in the output fails the check, so code
 # paths exercised by tests must not push_error() on purpose (test the return value instead).
 # Each step has a timeout so a hung script fails instead of blocking CI: 5
-# minutes for import and parse, 10 for the tests (the suite passed 5 minutes on
-# a loaded 4-core box in Oct 2026; the CI job itself stops at 15).
+# minutes for import and parse, 25 for each test shard (the CI job itself stops
+# at 15; two shards run in parallel, see below).
 # Godot binary: $GODOT, else .tools/ (from tools/get_godot.sh), else `godot` on PATH.
 set -uo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -46,10 +46,28 @@ code=$?
 if [[ $code -ne 0 ]] || has_errors "$log"; then cat "$log"; echo "FAIL: parse"; fail=1; else tail -1 "$log"; fi
 
 echo "== tests"
-timeout 1500 "$GODOT" --headless --path . --script tools/run_tests.gd >"$log" 2>&1
-code=$?
-cat "$log"
-if [[ $code -ne 0 ]] || has_errors "$log"; then echo "FAIL: tests"; fail=1; fi
+# Two shards run side by side, each with its own user:// (XDG_DATA_HOME), so
+# no two processes share save slots or settings. TEST_SHARDS=1 runs one process.
+shards="${TEST_SHARDS:-2}"
+pids=()
+logs=()
+homes=()
+for ((k = 0; k < shards; k++)); do
+  shard_log="$(mktemp)"
+  shard_home="$(mktemp -d)"
+  logs+=("$shard_log")
+  homes+=("$shard_home")
+  XDG_DATA_HOME="$shard_home" timeout 1500 "$GODOT" --headless --path . --script tools/run_tests.gd -- \
+    "--shard=$k/$shards" >"$shard_log" 2>&1 &
+  pids+=($!)
+done
+for ((k = 0; k < shards; k++)); do
+  wait "${pids[$k]}"
+  code=$?
+  cat "${logs[$k]}"
+  if [[ $code -ne 0 ]] || has_errors "${logs[$k]}"; then echo "FAIL: tests (shard $k/$shards)"; fail=1; fi
+  rm -rf -- "${logs[$k]}" "${homes[$k]}"
+done
 
 echo "== release notes"
 if ! bash tools/test_release_notes.sh; then fail=1; fi
