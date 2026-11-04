@@ -47,6 +47,14 @@ const DITHER_SPAN: float = 200.0
 ## The ramp is 1.25 m, about one second of walking at 1x.
 const DOOR_OPEN_FAR: float = 1.75
 const DOOR_OPEN_NEAR: float = 0.5
+## Chairs up after close (#208): the model's resting transform, and how far
+## (in cells) an upturned chair moves in over its table's edge.
+const CHAIR_REST_META: StringName = &"chair_rest_transform"
+const CHAIR_UP_REACH: float = 0.7
+## A table's own chairs move this share of the way in towards its middle.
+const BUILT_IN_CHAIR_PULL: float = 0.62
+## A chair's seat sits at about this share of its full height.
+const CHAIR_SEAT_SHARE: float = 0.5
 ## A back door that opens past this amount creaks once (#117).
 const DOOR_SOUND_START: float = 0.05
 const HEIGHTS: Dictionary[int, float] = {
@@ -1261,6 +1269,106 @@ func _unhandled_input(event: InputEvent) -> void:
 		var code: Key = key.physical_keycode if key.physical_keycode != KEY_NONE else key.keycode
 		if key.pressed and not key.echo and code == KEY_C:
 			cycle_wall_mode()
+
+
+## Chairs up on their tables after close (#208): each dining chair turns
+## upside down onto its own table, seat on the top. View only: the chair's
+## model moves inside its wrapper, so the item, its cells and saves never
+## change. Tables in `keep_down` (left dirty at close) keep their chairs down.
+func set_chairs_up(up: bool, keep_down: Dictionary[int, bool] = {}) -> void:
+	if world == null:
+		return
+	var tables: Dictionary[int, int] = chair_tables()
+	for item: PlacedItem in world.grid.items():
+		var definition: ItemDef = item.def as ItemDef
+		if definition != null and definition.category == ItemDef.Category.TABLE and item_nodes.has(item.id):
+			_built_in_chairs_up(item_nodes[item.id], up and not keep_down.has(item.id))
+			continue
+		if definition == null or definition.category != ItemDef.Category.CHAIR or not item_nodes.has(item.id):
+			continue
+		var node: ItemVisual = item_nodes[item.id]
+		if node.prop == null:
+			continue
+		if not node.prop.has_meta(CHAIR_REST_META):
+			node.prop.set_meta(CHAIR_REST_META, node.prop.transform)
+		var rest: Transform3D = node.prop.get_meta(CHAIR_REST_META)
+		var table_id: int = tables.get(item.id, 0)
+		if not up or table_id == 0 or keep_down.has(table_id) or not item_nodes.has(table_id):
+			node.prop.transform = rest
+			continue
+		node.prop.transform = chair_up_transform(node, item_nodes[table_id], rest)
+
+
+## A table's own chairs (the model's children tagged `seat_cell`) turned
+## upside down onto its top, pulled in towards the middle; or back down.
+static func _built_in_chairs_up(table: ItemVisual, up: bool) -> void:
+	if table.prop == null:
+		return
+	var top: float = -1.0
+	for chair: Node in table.prop.get_children():
+		if not chair is Node3D or not chair.has_meta(&"seat_cell"):
+			continue
+		var node: Node3D = chair as Node3D
+		if not node.has_meta(CHAIR_REST_META):
+			node.set_meta(CHAIR_REST_META, node.transform)
+		var rest: Transform3D = node.get_meta(CHAIR_REST_META)
+		if not up:
+			node.transform = rest
+			continue
+		if top < 0.0:
+			top = _table_top(table.prop)
+		# Turned over side to side, so the back still faces out and hangs over
+		# the table's edge; the seat (about half the chair's height) rests on top.
+		var seat: float = _subtree_top(node, Transform3D.IDENTITY) * CHAIR_SEAT_SHARE
+		var inward: Vector3 = Vector3(rest.origin.x, 0.0, rest.origin.z) * BUILT_IN_CHAIR_PULL
+		node.transform = Transform3D(rest.basis * Basis(Vector3.FORWARD, PI), Vector3(inward.x, top + seat, inward.z))
+
+
+## The height of a table model's top, from its untagged (non-chair) parts.
+static func _table_top(prop: PropView) -> float:
+	var top: float = 0.0
+	for part: Node in prop.get_children():
+		if part is Node3D and not part.has_meta(&"seat_cell"):
+			top = maxf(top, _subtree_top(part as Node3D, (part as Node3D).transform))
+	return top
+
+
+static func _subtree_top(node: Node3D, to_prop: Transform3D) -> float:
+	var top: float = 0.0
+	if node is VisualInstance3D:
+		top = (to_prop * (node as VisualInstance3D).get_aabb()).end.y
+	for child: Node in node.get_children():
+		if child is Node3D:
+			top = maxf(top, _subtree_top(child as Node3D, to_prop * (child as Node3D).transform))
+	return top
+
+
+## Each dining chair's table (chair id -> table id): a table owns its seat
+## cells, and the chair furnishing each seat is linked to that cell.
+func chair_tables() -> Dictionary[int, int]:
+	var tables: Dictionary[int, int] = {}
+	for table: PlacedItem in world.grid.items():
+		var definition: ItemDef = table.def as ItemDef
+		if definition == null or definition.category != ItemDef.Category.TABLE:
+			continue
+		for cell: Vector2i in table.seat_cells:
+			var chair_id: int = world.grid.dining_furnishing_id(cell)
+			if chair_id != 0 and chair_id != table.id and not tables.has(chair_id):
+				tables[chair_id] = table.id
+	return tables
+
+
+## The chair's model, upside down, seat resting on the table top and moved in
+## over the table's edge, in the chair wrapper's own space.
+static func chair_up_transform(chair: ItemVisual, table: ItemVisual, rest: Transform3D) -> Transform3D:
+	var table_box: AABB = table.transform * table.get_aabb()
+	var center: Vector3 = table_box.get_center()
+	var toward: Vector3 = Vector3(center.x - chair.position.x, 0.0, center.z - chair.position.z)
+	var shift: Vector3 = toward.limit_length(GridMath.CELL_SIZE * CHAIR_UP_REACH)
+	var seat: float = chair.prop.seat_surface_height()
+	var target: Vector3 = Vector3(chair.position.x + shift.x, table_box.end.y + seat, chair.position.z + shift.z)
+	# Side to side, so the back faces out and hangs over the table's edge.
+	return Transform3D(rest.basis * Basis(Vector3.FORWARD, PI), chair.transform.affine_inverse() * target)
 
 
 func _build_item(item: PlacedItem) -> void:
