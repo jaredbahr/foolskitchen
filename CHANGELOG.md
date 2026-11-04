@@ -146,6 +146,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- The roadmap's Codex queue is reset: the patio, a street A-frame sign, a jukebox and a café order counter; the director takes the movement speed follow-up and the cat. (#PRNUM)
 - The project checks run the tests in two parallel halves, so a full check takes about half as long. (#290)
 - Running the catalogue tests on their own now releases their scripts cleanly when Godot closes. (#271)
 - The roadmap's Codex queue is reset again: the balance pass, then people never walking through each other or furniture, then the outside and atmosphere (the patio is now unblocked). (#267)
