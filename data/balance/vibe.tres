@@ -15,6 +15,7 @@ variety_cap = 20.0
 lamp_item_ids = Array[StringName]([&"lamp_floor_round", &"lamp_floor_square", &"lamp_table_round", &"lamp_table_square", &"lamp_wall", &"lamp_pendant"])
 lamp_points_per_charm = 6.0
 lamp_cap = 10.0
+music_match_multiplier = 2.0
 theme_cap = 15.0
 theme_full_charm = 4.0
 theme_category_weights = Dictionary[int, float]({

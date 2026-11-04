@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="ItemDef" load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://src/sim/content/item_def.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://assets/props/jukebox.tscn" id="2_view"]
+[ext_resource type="Script" path="res://src/sim/content/item_variant.gd" id="3_variant_script"]
+[ext_resource type="Resource" path="res://data/variants/jukebox_diner_rock.tres" id="4_look"]
+[ext_resource type="Resource" path="res://data/variants/jukebox_cafe_jazz.tres" id="5_look"]
+[ext_resource type="Resource" path="res://data/variants/jukebox_bar_blues.tres" id="6_look"]
+
+[resource]
+script = ExtResource("1_script")
+view_scene = ExtResource("2_view")
+id = &"jukebox"
+display_name = "Jukebox"
+category = 6
+footprint = Vector2i(1, 1)
+solid = true
+work_cells = Array[Vector2i]([])
+seat_cells = Array[Vector2i]([])
+station_type = &""
+capacity = 1
+quality_bonus = 0.0
+price = 90
+unlock_level = 3
+charm = 2
+theme_tags = Array[StringName]([])
+plays_music = true
+variants = Array[ExtResource("3_variant_script")]([ExtResource("4_look"), ExtResource("5_look"), ExtResource("6_look")])

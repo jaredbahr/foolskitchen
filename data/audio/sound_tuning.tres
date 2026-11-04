@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="SoundTuning" load_steps=15 format=3]
+[gd_resource type="Resource" script_class="SoundTuning" load_steps=18 format=3]
 
 [ext_resource type="Script" path="res://src/audio/sound_tuning.gd" id="1_tuning"]
 [ext_resource type="AudioStream" path="res://assets/kenney/audio/interface/click_003.ogg" id="2_click"]
@@ -14,6 +14,9 @@
 [ext_resource type="AudioStream" path="res://assets/made/audio/stove_sizzle.ogg" id="12_sizzle"]
 [ext_resource type="AudioStream" path="res://assets/made/audio/fryer_bubble.ogg" id="13_fryer"]
 [ext_resource type="AudioStream" path="res://assets/made/audio/coffee_steam.ogg" id="14_coffee"]
+[ext_resource type="AudioStream" path="res://assets/made/audio/jukebox_diner_rock.ogg" id="15_rock"]
+[ext_resource type="AudioStream" path="res://assets/made/audio/jukebox_cafe_jazz.ogg" id="16_jazz"]
+[ext_resource type="AudioStream" path="res://assets/made/audio/jukebox_bar_blues.ogg" id="17_blues"]
 
 [resource]
 script = ExtResource("1_tuning")
@@ -53,12 +56,18 @@ min_interval = Dictionary[StringName, float]({
 loops = Dictionary[StringName, AudioStream]({
 &"coffee_steam": ExtResource("14_coffee"),
 &"fryer_bubble": ExtResource("13_fryer"),
+&"jukebox_bar_blues": ExtResource("17_blues"),
+&"jukebox_cafe_jazz": ExtResource("16_jazz"),
+&"jukebox_diner_rock": ExtResource("15_rock"),
 &"room_tone": ExtResource("11_room"),
 &"stove_sizzle": ExtResource("12_sizzle")
 })
 loop_volume_db = Dictionary[StringName, float]({
 &"coffee_steam": -8.0,
 &"fryer_bubble": -6.0,
+&"jukebox_bar_blues": -16.0,
+&"jukebox_cafe_jazz": -16.0,
+&"jukebox_diner_rock": -16.0,
 &"room_tone": -4.0,
 &"stove_sizzle": -6.0
 })
