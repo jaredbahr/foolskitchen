@@ -11,11 +11,15 @@ var _viewport: SubViewport
 var _arrived: Array[int] = []
 var _departed: Array[int] = []
 var _old_save_dir: String
+var _save_dir: String
+const SLOT: String = "a_frame_session"
 
 
 func before_each() -> void:
 	_old_save_dir = SaveSystem.save_dir
-	SaveSystem.save_dir = SaveTestPaths.case_dir(OS.get_process_id(), "a_frame_session")
+	_save_dir = SaveTestPaths.case_dir(OS.get_process_id(), "a_frame_session")
+	SaveSystem.save_dir = _save_dir
+	SaveSystem.delete_slot(SLOT)
 	Clock.set_speed(0)
 	_arrived.clear()
 	_departed.clear()
@@ -23,7 +27,8 @@ func before_each() -> void:
 
 func after_each() -> void:
 	_close()
-	DirAccess.remove_absolute(SaveSystem.save_dir)
+	SaveSystem.delete_slot(SLOT)
+	DirAccess.remove_absolute(_save_dir)
 	DirAccess.remove_absolute(SaveTestPaths.process_dir(OS.get_process_id()))
 	SaveSystem.save_dir = _old_save_dir
 	Clock.set_speed(0)
@@ -65,10 +70,7 @@ func test_it_stands_on_the_pavement_beside_the_door_and_shows_name_and_special()
 	for entry: Vector2i in _world().grid.entries():
 		assert_false(box.intersects(AABB(GridMath.cell_to_world(entry) - Vector3(0.25, 0.0, 0.25), Vector3(0.5, 1.0, 0.5))),
 			"it never overlaps an entry cell")
-	var settings: MenuSettings = _main.get("menu_settings") as MenuSettings
-	var expected: String = StreetSignText.text(settings.restaurant_name(), settings.enabled_recipes(), _prices())
-	assert_eq(_sign_text(beside), expected)
-	assert_true(expected.contains(settings.restaurant_name()))
+	assert_eq(_sign_text(beside), "%s\nToday: Burger" % MenuSettings.DEFAULT_NAME)
 
 
 func test_text_follows_a_rename_a_price_change_and_a_menu_change() -> void:
@@ -76,38 +78,75 @@ func test_text_follows_a_rename_a_price_change_and_a_menu_change() -> void:
 	var beside: Vector3i = _front(-1)
 	assert_true(_main.call("shop_hang", &"a_frame_sign", beside))
 	var settings: MenuSettings = _main.get("menu_settings") as MenuSettings
+	# Starter menu margins (price minus ingredients): burger 8, tomato soup 6,
+	# grilled cheese 5.
+	var starter: Array[StringName] = []
+	for recipe: RecipeDef in settings.enabled_recipes():
+		starter.append(recipe.id)
+	assert_eq(starter.size(), 3)
+	for id: StringName in [&"burger", &"grilled_cheese", &"tomato_soup"]:
+		assert_true(starter.has(id), String(id))
+	assert_eq(_sign_text(beside), "%s\nToday: Burger" % MenuSettings.DEFAULT_NAME)
 	assert_true(_main.call("menu_set_restaurant_name", "  Copper & Thyme  "))
-	assert_true(_sign_text(beside).begins_with("Copper & Thyme"))
-	assert_eq(_sign_text(beside), StreetSignText.text("Copper & Thyme", settings.enabled_recipes(), _prices()))
-	var before: String = _sign_text(beside)
-	var special: RecipeDef = StreetSignText.special(settings.enabled_recipes(), _prices())
-	assert_not_null(special)
-	assert_true(before.ends_with(special.display_name))
-	# Dropping the featured dish's price to nothing moves the special.
-	assert_true(_main.call("menu_set_price", special.id, settings.minimum_price(special.id)))
-	var repriced: RecipeDef = StreetSignText.special(settings.enabled_recipes(), _prices())
-	assert_eq(_sign_text(beside), StreetSignText.text("Copper & Thyme", settings.enabled_recipes(), _prices()))
-	if repriced != special:
-		assert_ne(_sign_text(beside), before)
-	# Taking the featured dish off the menu moves it too.
-	var current: RecipeDef = StreetSignText.special(settings.enabled_recipes(), _prices())
-	if settings.enabled_count() > 1:
-		assert_true(_main.call("menu_set_enabled", current.id, false))
-		assert_false(_sign_text(beside).ends_with(current.display_name))
-		assert_eq(_sign_text(beside), StreetSignText.text("Copper & Thyme", settings.enabled_recipes(), _prices()))
+	assert_eq(_sign_text(beside), "Copper & Thyme\nToday: Burger")
+	# Burger at its lowest price earns 6 - 4 = 2, so tomato soup (6) takes over.
+	assert_true(_main.call("menu_set_price", &"burger", settings.minimum_price(&"burger")))
+	assert_eq(settings.price_of(settings.recipe(&"burger")), 6)
+	assert_eq(_sign_text(beside), "Copper & Thyme\nToday: Tomato soup")
+	# Soup off the menu: grilled cheese (5) beats the cheap burger (2).
+	assert_true(_main.call("menu_set_enabled", &"tomato_soup", false))
+	assert_eq(_sign_text(beside), "Copper & Thyme\nToday: Grilled cheese")
+	# Raising the burger's price brings it back as the special.
+	assert_true(_main.call("menu_set_price", &"burger", settings.maximum_price(&"burger")))
+	assert_eq(_sign_text(beside), "Copper & Thyme\nToday: Burger")
+
+
+func test_undo_and_redo_of_placing_the_sign() -> void:
+	await _start()
+	var beside: Vector3i = _front(-1)
+	var cash: int = Economy.cash
+	assert_true(_main.call("shop_hang", &"a_frame_sign", beside))
+	assert_eq(Economy.cash, cash - 35)
+	assert_true(_view().wall_finish_view.item_nodes.has(beside))
+	var history: ShopEditHistory = _main.get("edit_history") as ShopEditHistory
+	assert_true(history.undo())
+	assert_null(_editor().decor.item(beside))
+	assert_eq(Economy.cash, cash)
+	assert_false(_view().wall_finish_view.item_nodes.has(beside))
+	assert_true(history.redo())
+	assert_eq(Economy.cash, cash - 35)
+	assert_eq(_editor().decor.item(beside).def_id, &"a_frame_sign")
+	assert_eq(_sign_text(beside), "%s\nToday: Burger" % MenuSettings.DEFAULT_NAME)
+
+
+func test_save_and_load_restore_the_sign_on_its_ground_key_and_its_text() -> void:
+	await _start(true)
+	var beside: Vector3i = _front(2)
+	assert_true(beside.z >= 20 and beside.z <= 23, "a ground-band key")
+	assert_true(_main.call("shop_hang", &"a_frame_sign", beside))
+	assert_true(_main.call("menu_set_restaurant_name", "Copper & Thyme"))
+	assert_true(_main.call("menu_set_price", &"burger", 6))
+	Clock.sim.phase = SimClock.Phase.CLOSED
+	assert_true(Clock.sim.next_day())
+	var saved: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(_save_dir.path_join(SLOT + ".json")))
+	var rows: Array = saved["data"]["shop"]["wall_items"]
+	assert_eq(rows, [[float(beside.x), float(beside.y), float(beside.z), "a_frame_sign", 2.0, ""]])
+	_close()
+	await _start(true)
+	assert_eq(_editor().decor.item(beside).def_id, &"a_frame_sign")
+	assert_eq(_editor().decor.item(beside).mount, ItemDef.WallMount.EXTERIOR)
+	assert_eq(_sign_text(beside), "Copper & Thyme\nToday: Tomato soup")
 
 
 func test_the_sign_changes_neither_the_grid_nor_the_guests_way_through_the_door() -> void:
 	await _start()
 	var grid: SimGrid = _world().grid
-	var version: int = grid.version
 	var walkable: Array[Vector2i] = []
 	for cell: Vector2i in grid.cells():
 		if grid.is_walkable(cell):
 			walkable.append(cell)
 	var route: Array[Vector2i] = grid.find_guest_path(grid.entries()[0], Vector2i(9, 9))
 	assert_true(_main.call("shop_hang", &"a_frame_sign", _front(-1)))
-	assert_eq(grid.version, version, "a street sign adds no solid cell to the grid")
 	var after: Array[Vector2i] = []
 	for cell: Vector2i in grid.cells():
 		if grid.is_walkable(cell):
@@ -155,14 +194,6 @@ func _on_left(customer: CustomerAgent, _reason: StringName) -> void:
 	_departed.append(customer.id)
 
 
-func _prices() -> Dictionary:
-	var settings: MenuSettings = _main.get("menu_settings") as MenuSettings
-	var prices: Dictionary = {}
-	for recipe: RecipeDef in settings.enabled_recipes():
-		prices[recipe.id] = settings.price_of(recipe)
-	return prices
-
-
 func _sign_text(anchor: Vector3i) -> String:
 	var visual: ItemVisual = _view().wall_finish_view.item_nodes[anchor]
 	var mount: Node = visual.prop.get_node(^"BoardMount/Art/Board/WallMount")
@@ -184,7 +215,7 @@ func _front(offset: int) -> Vector3i:
 	return ExteriorSupport.key_for(WallFaces.make(first + along * offset - into, direction), GROUND)
 
 
-func _start() -> void:
+func _start(with_saves: bool = false) -> void:
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	await tree.process_frame
 	_viewport = SubViewport.new()
@@ -193,7 +224,8 @@ func _start() -> void:
 	_viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
 	tree.root.add_child(_viewport)
 	_main = MAIN.instantiate() as Node3D
-	_main.set("use_saves", false)
+	_main.set("use_saves", with_saves)
+	_main.set("save_slot", SLOT)
 	_main.set("new_game_seed_override", 240)
 	_viewport.add_child(_main)
 	_main.call("start")

@@ -26,9 +26,9 @@ weights = Dictionary[StringName, float]({
 &"a_frame": 6.0
 })
 caps = Dictionary[StringName, float]({
-&"finish": 20.0,
-&"awning": 20.0,
-&"window_box": 20.0,
+&"finish": 18.0,
+&"awning": 18.0,
+&"window_box": 18.0,
 &"sign": 15.0,
 &"lights": 15.0,
 &"open_sign": 10.0,

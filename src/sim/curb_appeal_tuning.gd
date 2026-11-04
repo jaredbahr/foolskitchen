@@ -11,8 +11,10 @@ const CATEGORIES: Array[StringName] = [&"finish", &"awning", &"window_box", &"si
 	&"finish": 8.0, &"awning": 14.0, &"window_box": 8.0,
 	&"sign": 15.0, &"lights": 8.0, &"open_sign": 10.0, &"a_frame": 6.0,
 }
+## Family caps sum to exactly 100, the score's ceiling (the A-frame's 6 came
+## from the three 20-point families, 2 each).
 @export var caps: Dictionary[StringName, float] = {
-	&"finish": 20.0, &"awning": 20.0, &"window_box": 20.0,
+	&"finish": 18.0, &"awning": 18.0, &"window_box": 18.0,
 	&"sign": 15.0, &"lights": 15.0, &"open_sign": 10.0, &"a_frame": 6.0,
 }
 ## Copy N earns weight * repeat_decay^(N - 1), before the family cap.

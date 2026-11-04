@@ -165,3 +165,77 @@ func _front(offset: int, band: int = GROUND) -> Vector3i:
 		if cell.x * along.x + cell.y * along.y < first.x * along.x + first.y * along.y:
 			first = cell
 	return ExteriorSupport.key_for(WallFaces.make(first + along * offset - into, direction), band)
+
+
+func test_the_caps_of_every_family_sum_to_the_score_ceiling() -> void:
+	var total: float = 0.0
+	for category: StringName in CurbAppealTuning.CATEGORIES:
+		total += TUNING.caps[category]
+	assert_eq(total, 100.0, "family caps fill the 0 to 100 score exactly, never more")
+
+
+func test_exact_curb_score_with_the_sign_and_a_name_board() -> void:
+	var decor: WallDecor = WallDecor.new()
+	assert_true(decor.add(&"a_frame_sign", _front(-1), 1, false, ItemDef.WallMount.EXTERIOR))
+	assert_true(decor.add(&"shop_name_sign", ExteriorSupport.key_for(_front(0, 0), ExteriorSupport.Band.HEADER), 2,
+		false, ItemDef.WallMount.EXTERIOR))
+	var rows: Array[Dictionary] = CurbAppealInputs.collect(_grid, WallFinishes.new(), decor, _content, TUNING)
+	var result: Dictionary = CurbAppealModel.evaluate(rows, TUNING)
+	# One of each family: its authored weight (below its cap), straight from data.
+	assert_almost_eq(result.score, 15.0 + 6.0, 0.0000001)
+	assert_almost_eq(result.multiplier, 1.0 + 21.0 / 100.0 * 0.10, 0.0000001)
+
+
+func test_placing_undoing_and_redoing_the_sign_through_the_editor() -> void:
+	var setup: Dictionary = _editor_setup()
+	var editor: ShopEditor = setup["editor"]
+	var history: ShopEditHistory = setup["history"]
+	var anchor: Vector3i = _front(-1)
+	assert_true(history.hang(&"a_frame_sign", anchor))
+	assert_eq(setup["ledger"].cash, 3000 - 35)
+	assert_true(history.undo())
+	assert_null(editor.decor.item(anchor))
+	assert_eq(setup["ledger"].cash, 3000)
+	assert_true(history.redo())
+	assert_eq(editor.decor.item(anchor).def_id, &"a_frame_sign")
+	assert_false(history.hang(&"a_frame_sign", _front(2)), "a second sign is refused")
+
+
+func test_a_saved_sign_round_trips_and_a_hand_edited_second_sign_is_dropped() -> void:
+	var setup: Dictionary = _editor_setup()
+	var editor: ShopEditor = setup["editor"]
+	var first: Vector3i = _front(-1)
+	var second: Vector3i = _front(2)
+	assert_true(setup["history"].hang(&"a_frame_sign", first))
+	var snapshot: Dictionary = JSON.parse_string(JSON.stringify(editor.to_dict()))
+	assert_eq(snapshot["wall_items"], [[float(first.x), float(first.y), float(first.z), "a_frame_sign", 2.0, ""]])
+	assert_true(first.z >= 20 and first.z <= 23)
+	assert_eq(_decoded_rows(snapshot), editor.decor.to_rows())
+	snapshot["wall_items"].append([float(second.x), float(second.y), float(second.z), "a_frame_sign", 2.0, ""])
+	assert_eq(_decoded_rows(snapshot).size(), 1, "only one sign survives a hand-edited save")
+	assert_eq(_decoded_rows(snapshot)[0][0], first.x)
+
+
+func _editor_setup() -> Dictionary:
+	var errors: Array[String] = []
+	var sim: RestaurantSim = RestaurantSim.create(LAYOUT, _content, 240, errors, null, false)
+	assert_eq(errors, [] as Array[String])
+	var ledger: Ledger = Ledger.new()
+	ledger.cash = 3000
+	var books: ShopEditBooks = ShopEditBooks.new(func(amount: int) -> bool: return amount <= ledger.cash,
+		func(amount: int, category: StringName, note: String = "") -> void: ledger.record(1, amount, category, note))
+	var editor: ShopEditor = ShopEditor.new(sim, _content, books, LAYOUT)
+	editor.set_owner_level(6)
+	return {"editor": editor, "history": ShopEditHistory.new(editor, sim.world.grid), "ledger": ledger, "sim": sim}
+
+
+## Loads a saved snapshot the way a morning load does and returns the decor rows.
+func _decoded_rows(snapshot: Dictionary) -> Array[Array]:
+	var errors: Array[String] = []
+	var layout: ShopLayout = ShopEditor.from_dict(snapshot, LAYOUT, _content, errors)
+	assert_eq(errors, [] as Array[String])
+	var sim: RestaurantSim = RestaurantSim.create(layout, _content, 240, errors, null, false, true)
+	var editor: ShopEditor = ShopEditor.new(sim, _content, ShopEditBooks.new(func(_a: int) -> bool: return true,
+		func(_a: int, _c: StringName, _n: String = "") -> void: pass), layout)
+	return editor.decor.to_rows()
+

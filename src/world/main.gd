@@ -3239,9 +3239,9 @@ func _on_hours_requested(open_minute: int, close_minute: int) -> void:
 
 func _apply_menu(restaurant: RestaurantSim, choices: MenuSettings) -> void:
 	restaurant.menu = choices.enabled_recipes()
-	_refresh_menu_boards()
 	$HUD.set_restaurant_name(choices.restaurant_name())
 	($ShopView as ShopView).set_restaurant_name(choices.restaurant_name())
+	_refresh_menu_boards()
 	restaurant.prices.clear()
 	restaurant.pricing_tuning = TUNING
 	for definition: RecipeDef in choices.recipes():

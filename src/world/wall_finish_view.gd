@@ -127,8 +127,7 @@ func set_restaurant_name(value: String) -> bool:
 	_restaurant_name = normalized
 	for node: ItemVisual in item_nodes.values():
 		node.set_restaurant_name(normalized)
-		if node.get_meta(&"def_id", &"") == A_FRAME_ID:
-			apply_street_sign_text(node)
+	# Placed signs pick the name up in refresh_menu_boards (one refresh per edit).
 	if _ghost != null:
 		_ghost.set_restaurant_name(normalized)
 		if _ghost.get_meta(&"def_id", &"") == A_FRAME_ID:
