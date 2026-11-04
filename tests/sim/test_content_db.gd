@@ -7,7 +7,7 @@ func test_starter_data_loads_without_validation_errors() -> void:
 	assert_eq(db.load_all().size(), 0)
 	assert_eq(db.ingredients().size(), 22)
 	assert_eq(db.recipes().size(), _recipe_resource_count("res://data/recipes"))
-	assert_eq(db.items().size(), 70)
+	assert_eq(db.items().size(), 76)
 
 
 func test_lookups_find_each_kind_and_unknown_ids_return_null() -> void:
@@ -45,6 +45,7 @@ func test_lists_are_sorted_and_do_not_expose_index_arrays() -> void:
 		&"bar_stool", &"bathroom_sink", &"bench", &"bookcase_open_low", &"chair", &"cloth_table",
 		&"coat_rack_standing", &"coffee_machine", &"corner_cabinet", &"cross_table", &"cushioned_bench", &"diner_booth", &"diner_stool",
 		&"door", &"drinks_fridge", &"drinks_shelf", &"flower_window_box", &"freezer", &"fridge", &"fryer", &"glass_table",
+		&"lamp_floor_round", &"lamp_floor_square", &"lamp_pendant", &"lamp_table_round", &"lamp_table_square", &"lamp_wall",
 		&"lounge_chair", &"menu_board", &"modern_chair", &"modern_frame_chair", &"neon_open_sign", &"oven", &"pass_counter",
 		&"patio_chair", &"patio_table_2", &"patio_waiting_bench", &"plant_small_1",
 		&"plant_small_2", &"plant_small_3", &"potted_plant", &"prep_cabinet", &"prep_counter", &"restroom_mirror", &"round_table",
@@ -55,7 +56,7 @@ func test_lists_are_sorted_and_do_not_expose_index_arrays() -> void:
 	])
 	var copy: Array[ItemDef] = db.items()
 	copy.clear()
-	assert_eq(db.items().size(), 70)
+	assert_eq(db.items().size(), 76)
 
 
 func test_reloading_does_not_duplicate_definitions() -> void:
@@ -63,7 +64,7 @@ func test_reloading_does_not_duplicate_definitions() -> void:
 	assert_eq(db.load_all().size(), 0)
 	assert_eq(db.ingredients().size(), 22)
 	assert_eq(db.recipes().size(), _recipe_resource_count("res://data/recipes"))
-	assert_eq(db.items().size(), 70)
+	assert_eq(db.items().size(), 76)
 
 
 func test_recursive_resource_discovery_returns_sorted_original_tres_names() -> void:
@@ -76,7 +77,7 @@ func test_recursive_resource_discovery_returns_sorted_original_tres_names() -> v
 		if path.begins_with("res://data/ingredients/") or path.begins_with("res://data/recipes/") \
 				or path.begins_with("res://data/items/"):
 			content_paths += 1
-	assert_eq(content_paths, 110)
+	assert_eq(content_paths, 116)
 	assert_true(paths.has("res://data/ingredients/bun.tres"))
 	assert_true(paths.has("res://data/recipes/burger.tres"))
 	assert_true(paths.has("res://data/items/table_2.tres"))

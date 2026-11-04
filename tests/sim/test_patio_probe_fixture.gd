@@ -50,7 +50,7 @@ func test_patio_probe_owns_two_tables_and_cells_without_cash_stock_weather_or_rn
 	var streams: Dictionary = GameState._capture_save().duplicate(true)
 	assert_true(ProbeSetups.names().has("patio"))
 	assert_true(ProbeSetups.apply("patio", _host))
-	assert_eq(_host.shop_editor.bought_patio().size(), 48,
+	assert_eq(_host.shop_editor.bought_patio().size(), PatioArea.from_layout(LAYOUT).cells().size(),
 		"probe floor ownership must live on the same editor that the session saves")
 	assert_eq(ShopBuilder.items_with_def(_host.sim.world, &"table_2").size(), 3)
 	assert_eq(ShopBuilder.items_with_def(_host.sim.world, &"patio_table_2").size(), 2)
@@ -60,19 +60,19 @@ func test_patio_probe_owns_two_tables_and_cells_without_cash_stock_weather_or_rn
 	assert_eq(_host.sim.world.weather.to_dict(), weather, "probe setup never forces a convenient weather kind")
 	assert_eq(GameState._capture_save(), streams)
 	assert_eq(_host.refreshes, 1)
-	assert_eq(_host.sim.world.grid.entries(), [Vector2i(6, 11), Vector2i(7, 11)] as Array[Vector2i])
+	assert_eq(_host.sim.world.grid.entries(), SimGrid.from_ascii(LAYOUT.rows).entries())
 	for table: PlacedItem in ShopBuilder.items_with_def(_host.sim.world, &"patio_table_2"):
-		assert_true(ProbeSetups.patio_table_origins().has(table.origin))
+		assert_true(ProbeSetups.patio_table_origins(_host.sim.world.grid).has(table.origin))
 		assert_eq(DiningSeats.usable_cells(_host.sim.world.grid, table).size(), 2)
 		assert_eq(DiningSeats.usable_cells(_host.sim.world.grid, table, SimGrid.NO_CELL,
 			WeatherState.Kind.RAIN).size(), 0)
 	var declaration: Dictionary = ProbeSetups.patio_construction(_host)
 	assert_eq(declaration.get("error"), "")
-	assert_eq(declaration.get("nominal_construction_cost"), 800)
+	assert_eq(declaration.get("nominal_construction_cost"), PatioArea.from_layout(LAYOUT).cells().size() * LAYOUT.patio_cell_price + 2 * _host.content.item(&"patio_table_2").price)
 	assert_eq(declaration.get("actual_construction_charge"), 0)
 	assert_true(String(declaration.get("comparison_scope", "")).contains("not purchase return"))
 	_host.sim.start_day()
-	assert_eq(_host.shop_editor.bought_patio().size(), 48)
+	assert_eq(_host.shop_editor.bought_patio().size(), PatioArea.from_layout(LAYOUT).cells().size())
 	var errors: Array[String] = []
 	var layout: ShopLayout = ShopEditor.from_dict(_host.shop_editor.to_dict(), LAYOUT, _host.content, errors)
 	assert_eq(errors, [] as Array[String])

@@ -3,6 +3,8 @@ extends TestCase
 ## counter seats served across, time-of-day visit weights and opening hours.
 
 const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
+## Fixed counter coordinates below describe the historical custom concept shop.
+const HISTORICAL_LAYOUT: ShopLayout = preload("res://data/layouts/tier1_original.tres")
 const VIBE: VibeTuning = preload("res://data/balance/vibe.tres")
 const VISITS: VisitTuning = preload("res://data/balance/visits.tres")
 const HOURS: OpeningHoursTuning = preload("res://data/balance/hours.tres")
@@ -483,9 +485,9 @@ func _base_layout() -> ShopLayout:
 	var layout: ShopLayout = ShopLayout.new()
 	layout.id = &"concept_fixture"
 	layout.display_name = "Concept fixture"
-	layout.rows = LAYOUT.rows.duplicate()
-	layout.staff_spawns = LAYOUT.staff_spawns.duplicate()
-	for placed: ShopPlacement in LAYOUT.placements:
+	layout.rows = HISTORICAL_LAYOUT.rows.duplicate()
+	layout.staff_spawns = HISTORICAL_LAYOUT.staff_spawns.duplicate()
+	for placed: ShopPlacement in HISTORICAL_LAYOUT.placements:
 		if placed.item_id == &"table_2" and placed.origin == Vector2i(10, 6):
 			continue
 		if placed.item_id == &"potted_plant":
@@ -498,6 +500,10 @@ func _base_layout() -> ShopLayout:
 ## stools on row 8), a drinks shelf and fridge, and a coffee machine.
 func _bar_layout() -> ShopLayout:
 	var layout: ShopLayout = _base_layout()
+	# The middle table leaves a real staff route behind the bar's counter.
+	for placed: ShopPlacement in layout.placements:
+		if placed.item_id == &"table_2" and placed.origin == Vector2i(6, 6):
+			placed.quarter_turns = 1
 	for x: int in range(9, 13):
 		layout.placements.append(_placement(&"bar_end_right" if x == 9 else &"bar_section", Vector2i(x, 7), 2))
 		layout.placements.append(_placement(&"bar_stool", Vector2i(x, 8), 0))

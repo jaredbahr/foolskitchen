@@ -195,11 +195,11 @@ func test_real_patio_meals_cross_the_street_door_pay_and_bus_without_overnight_c
 	layout.patio_cells = PatioArea.from_layout(layout).cells()
 	var placement: ShopPlacement = ShopPlacement.new()
 	placement.item_id = OUTDOOR_TABLE.id
-	placement.origin = Vector2i(2, 12)
+	placement.origin = _street(-4, 1)
 	layout.placements.append(placement)
 	var sim: RestaurantSim = _stocked(layout, content, 2439)
 	var entries: Array[Vector2i] = sim.world.grid.entries()
-	assert_eq(entries, [Vector2i(6, 11), Vector2i(7, 11)] as Array[Vector2i])
+	assert_eq(entries, [_street(0, 0), _street(1, 0)] as Array[Vector2i])
 	var tables: Array[PlacedItem] = ShopBuilder.items_with_def(sim.world, OUTDOOR_TABLE.id)
 	assert_eq(tables.size(), 1)
 	if tables.size() != 1:
@@ -361,3 +361,7 @@ func _rng(seed_value: int) -> RandomNumberGenerator:
 	var random: RandomNumberGenerator = RandomNumberGenerator.new()
 	random.seed = seed_value
 	return random
+
+
+func _street(x: int, y: int) -> Vector2i:
+	return SimGrid.from_ascii(LAYOUT.rows).entries()[0] + Vector2i(x, y)

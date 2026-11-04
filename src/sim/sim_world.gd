@@ -5,6 +5,7 @@ extends RefCounted
 ## background for other sites. The world view only reads it.
 
 const LOG_LIMIT: int = 200
+const MOVEMENT_TUNING: MovementTuning = preload("res://data/balance/movement.tres")
 
 ## World ticks since creation (advances every tick, unlike clock.tick which
 ## only counts while open).
@@ -16,6 +17,11 @@ var weather: WeatherState = WeatherState.new()
 var board: TaskBoard = TaskBoard.new()
 ## Agents in id order.
 var agents: Array[SimAgent] = []
+var movement: MovementCoordinator = MovementCoordinator.new()
+## The restaurant owns Kitchen; traffic only holds a weak read-only query seam.
+var _kitchen: WeakRef
+var movement_tuning: MovementTuning = MOVEMENT_TUNING.duplicate(true) as MovementTuning
+var _pending_agents: Array[SimAgent] = []
 ## Recent human-readable events (newest last), for the debug overlay.
 var event_log: PackedStringArray = []
 
@@ -35,17 +41,89 @@ func _init(world_grid: SimGrid, world_clock: SimClock = null) -> void:
 
 ## Adds an agent, assigns its id and returns it.
 func add_agent(agent: SimAgent) -> SimAgent:
+	if agents.has(agent) or _pending_agents.has(agent):
+		return agent
 	agent.id = _next_agent_id
 	_next_agent_id += 1
 	agent.last_progress_tick = now
-	agents.append(agent)
+	agent.bind_movement(self)
+	var earlier_waiting: bool = false
+	for pending: SimAgent in _pending_agents:
+		if pending.cell == agent.cell:
+			earlier_waiting = true
+			break
+	if not earlier_waiting and movement.register_agent(self, agent):
+		agents.append(agent)
+	else:
+		_pending_agents.append(agent)
+	_sync_pending_movement()
 	return agent
 
 
 ## Removes an agent; it gives back its task and reserved cells first.
 func remove_agent(agent: SimAgent) -> void:
 	agent.on_removed(self)
+	movement.release_actor_seats(self, agent.id)
 	agents.erase(agent)
+	_pending_agents.erase(agent)
+	movement.unregister_agent(agent.id)
+	agent.movement_admitted = false
+	agent.clear_path()
+	_sync_pending_movement()
+
+
+func pending_agents() -> Array[SimAgent]:
+	return _pending_agents.duplicate()
+
+
+func pending_agent(agent_id: int) -> SimAgent:
+	for agent: SimAgent in _pending_agents:
+		if agent.id == agent_id:
+			return agent
+	return null
+
+
+func all_agents() -> Array[SimAgent]:
+	var result: Array[SimAgent] = agents.duplicate()
+	result.append_array(_pending_agents)
+	result.sort_custom(_agent_id_before)
+	return result
+
+
+func _agent_id_before(first: SimAgent, second: SimAgent) -> bool:
+	return first.id < second.id
+
+
+func reset_agent_position(agent: SimAgent, requested: Vector2i) -> bool:
+	if agents.has(agent) and clock.phase in [SimClock.Phase.OPEN, SimClock.Phase.LAST_ORDERS]:
+		return false
+	agents.erase(agent)
+	_pending_agents.erase(agent)
+	var admitted: bool = movement.reset_agent(self, agent, requested)
+	if admitted:
+		agents.append(agent)
+		agents.sort_custom(_agent_id_before)
+	else:
+		_pending_agents.append(agent)
+		_pending_agents.sort_custom(_agent_id_before)
+	_sync_pending_movement()
+	return admitted
+
+
+func _sync_pending_movement() -> void:
+	var ids: Array[int] = []
+	for agent: SimAgent in _pending_agents:
+		ids.append(agent.id)
+	movement.set_pending(ids)
+
+
+func _admit_waiting() -> void:
+	for agent: SimAgent in _pending_agents.duplicate():
+		if movement.register_agent(self, agent):
+			_pending_agents.erase(agent)
+			agents.append(agent)
+	agents.sort_custom(_agent_id_before)
+	_sync_pending_movement()
 
 
 func agent(agent_id: int) -> SimAgent:
@@ -59,10 +137,22 @@ func agent(agent_id: int) -> SimAgent:
 func advance() -> void:
 	now += 1
 	clock.advance()
+	movement.begin_tick(self)
+	_admit_waiting()
 	_heal_board()
 	_open_cache = board.open_tasks()
+	for a: SimAgent in agents:
+		a.begin_movement_trace(now)
 	for a: SimAgent in agents.duplicate():
-		a.tick(self)
+		if movement.advance_stop(self, a) or movement.advance_yield(self, a):
+			if a is StaffAgent:
+				(a as StaffAgent).maintain_movement_pause(self)
+			elif a is CustomerAgent:
+				(a as CustomerAgent).maintain_movement_pause(self)
+		else:
+			a.tick(self)
+	for a: SimAgent in agents:
+		a.end_movement_trace()
 	_open_cache = []
 
 
@@ -121,3 +211,12 @@ func _on_item_removed(item: PlacedItem) -> void:
 			if s.kind == TaskStep.Kind.GO_TO_ITEM and s.item_id == item.id:
 				board.cancel(t, &"target_gone")
 				break
+
+
+func bind_kitchen(kitchen: Kitchen) -> void:
+	_kitchen = weakref(kitchen)
+
+
+func carries_prepared_drink(staff: StaffAgent) -> bool:
+	var kitchen: Kitchen = _kitchen.get_ref() as Kitchen if _kitchen != null else null
+	return kitchen != null and kitchen.carries_prepared_drink(staff)

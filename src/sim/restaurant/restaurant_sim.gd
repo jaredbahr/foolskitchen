@@ -5,6 +5,7 @@ extends RefCounted
 const VIBE_TUNING: VibeTuning = preload("res://data/balance/vibe.tres")
 const VISIT_TUNING: VisitTuning = preload("res://data/balance/visits.tres")
 const RESTROOM_TUNING: RestroomTuning = preload("res://data/balance/restroom.tres")
+const CAT_TUNING: CatTuning = preload("res://data/balance/cat.tres")
 
 signal customer_arrived(customer: CustomerAgent)
 signal customer_paid(customer: CustomerAgent, order: Order, amount: int)
@@ -52,6 +53,9 @@ var dock: DeliveryDock
 var cleanliness: CleanlinessState = null
 var clean_tasks: CleanTaskController = null
 var mishaps: MishapState = null
+## The shop cat (#119): never in world.agents, so it joins no traffic. It does
+## nothing until adopted.
+var cat: RestaurantCat = RestaurantCat.new(CAT_TUNING)
 ## Main records this paid replacement cost in the existing economy ledger.
 signal plate_broken(cost: int)
 var spawner: CustomerSpawner
@@ -173,7 +177,7 @@ func set_staff_roster(people: Array[StaffMember], catalogue: StaffCatalogue = St
 	if not roles.has(&"cook") or not roles.has(&"server"):
 		return false
 	var retained: Dictionary[StringName, bool] = {}
-	for agent: SimAgent in world.agents.duplicate():
+	for agent: SimAgent in world.all_agents():
 		if not agent is StaffAgent or agent is OwnerAgent:
 			continue
 		var employee: StaffAgent = agent as StaffAgent
@@ -198,7 +202,7 @@ func set_staff_roster(people: Array[StaffMember], catalogue: StaffCatalogue = St
 func apply_staff_job_priorities(member_id: StringName, choices: StaffJobPriorities) -> bool:
 	if world == null or member_id.is_empty():
 		return false
-	for agent: SimAgent in world.agents:
+	for agent: SimAgent in world.all_agents():
 		if agent is StaffAgent and not agent is OwnerAgent:
 			var employee: StaffAgent = agent as StaffAgent
 			if employee.member_id == member_id:
@@ -209,7 +213,7 @@ func apply_staff_job_priorities(member_id: StringName, choices: StaffJobPrioriti
 ## The factory's one live owner, or null for a manually constructed world.
 func owner_agent() -> OwnerAgent:
 	if world != null:
-		for agent: SimAgent in world.agents:
+		for agent: SimAgent in world.all_agents():
 			if agent is OwnerAgent:
 				return agent as OwnerAgent
 	return null
@@ -253,18 +257,19 @@ func start_day() -> void:
 	if mishaps != null:
 		mishaps.tidy_overnight()
 	_staff_to_posts()
+	if cat != null:
+		cat.begin_day(world.grid)
 	spawner.reset(arrival_rate())
 
 
 ## Each morning staff start at their posts, with nothing in hand.
 func _staff_to_posts() -> void:
-	for agent: SimAgent in world.agents:
+	for agent: SimAgent in world.all_agents():
 		if staff_spawns.has(agent.role) and agent is StaffAgent:
 			var staff := agent as StaffAgent
 			if staff.task != null:
 				staff.on_removed(world)
-			staff.cell = staff_spawns[agent.role]
-			staff.clear_path()
+			world.reset_agent_position(staff, staff_spawns[agent.role])
 
 
 ## One fixed world tick, arrivals, then departed-guest cleanup.
@@ -282,6 +287,8 @@ func advance() -> void:
 	if dock != null:
 		dock.advance()
 	refresh_sold_out()
+	if cat != null and (world.clock.phase == SimClock.Phase.OPEN or world.clock.phase == SimClock.Phase.LAST_ORDERS):
+		cat.advance(world.grid, customers())
 	spawner.advance(self)
 	for customer: CustomerAgent in customers():
 		if world.clock.phase == SimClock.Phase.CLOSED:
@@ -579,7 +586,11 @@ func service_cells(table_item_id: int, seat_cell: Vector2i) -> Array[Vector2i]:
 	var across: Vector2i = across_cell(table_item_id, seat_cell)
 	if across != SimGrid.NO_CELL:
 		return [across] as Array[Vector2i]
-	return world.grid.walkable_neighbours(seat_cell)
+	var cells: Array[Vector2i] = []
+	for cell: Vector2i in world.grid.walkable_neighbours(seat_cell):
+		if world.movement.standing_cell(world, cell):
+			cells.append(cell)
+	return cells
 
 
 ## The cell behind a serve-across counter, opposite this seat, or NO_CELL.
@@ -855,6 +866,8 @@ func restroom_used(spot: Vector2i) -> void:
 
 func _on_layout_changed(_cells: Array[Vector2i]) -> void:
 	_layout_counted = false
+	if cat != null:
+		cat.layout_changed(world.grid)
 
 
 func _count_layout() -> void:
@@ -873,10 +886,11 @@ func _count_layout() -> void:
 					_seats += 1
 
 
-## Current guests in stable agent-id order.
+## Current guests, including the ordered, non-ticking admission queue. Pending
+## arrivals are still visits and must close/depart exactly once with the shop.
 func customers() -> Array[CustomerAgent]:
 	var out: Array[CustomerAgent] = []
-	for agent: SimAgent in world.agents:
+	for agent: SimAgent in world.all_agents():
 		if agent is CustomerAgent:
 			out.append(agent as CustomerAgent)
 	return out

@@ -8,6 +8,8 @@ signal price_requested(recipe_id: StringName, price: int)
 signal settings_requested()
 signal goals_requested()
 signal lease_requested()
+## The one-time morning cat adoption (#119); the session checks and charges it.
+signal cat_adoption_requested()
 signal quit_to_title_requested()
 ## Morning opening-hours request (FK-083); the session checks the limits.
 signal hours_requested(open_minute: int, close_minute: int)
@@ -139,6 +141,26 @@ func _on_lease_pressed() -> void:
 		lease_requested.emit()
 
 
+## Request-only morning "Adopt a cat" offer (#119): its price and food cost,
+## and the plain reason it cannot be taken yet, if any.
+func set_cat_offer(offered: bool, cost: String, refusal: String) -> void:
+	var box: VBoxContainer = get_node("Panel/Content/CatOffer")
+	box.visible = offered
+	(box.get_node("Cost") as Label).text = cost
+	var reason: Label = box.get_node("Refusal")
+	reason.text = refusal
+	reason.visible = not refusal.is_empty()
+	var button: Button = box.get_node("Accept")
+	button.disabled = not refusal.is_empty()
+	if not button.pressed.is_connected(_on_cat_pressed):
+		button.pressed.connect(_on_cat_pressed)
+
+
+func _on_cat_pressed() -> void:
+	if _phase == SimClock.Phase.MORNING:
+		cat_adoption_requested.emit()
+
+
 func set_weather(kind: int, has_patio: bool = false) -> void:
 	_weather_kind = kind
 	_has_patio = has_patio
@@ -159,6 +181,7 @@ func set_phase(phase: int) -> void:
 	_phase = phase
 	if phase != SimClock.Phase.MORNING:
 		get_node("Panel/Content/LeaseOffer").hide()
+		get_node("Panel/Content/CatOffer").hide()
 	refresh()
 
 

@@ -12,16 +12,19 @@ extends Node3D
 ## F10 starts a new game (deletes the autosave).
 
 const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
+const ORIGINAL_LAYOUT: ShopLayout = preload("res://data/layouts/tier1_original.tres")
 ## Camera fit (FK-080): this zoom frames this many cells; bigger shops zoom out.
 const SHOP_ZOOM: float = 12.0
 const SHOP_FRAME_CELLS: Vector2 = Vector2(14.0, 12.0)
 const STREET_PAN_EXTENSION: float = 3.0
 const LEASE: LeaseUpgrade = preload("res://data/balance/lease_upgrade.tres")
+const CAT: CatTuning = preload("res://data/balance/cat.tres")
 const TUNING: EconomyTuning = preload("res://data/balance/tier1_economy.tres")
 const MESS_TUNING: MessTuning = preload("res://data/balance/messes.tres")
 const CLEANLINESS_TUNING: CleanlinessTuning = preload("res://data/balance/cleanliness.tres")
 const WEATHER_TUNING: WeatherTuning = preload("res://data/balance/weather.tres")
 const DEMAND_TUNING: DemandTuning = preload("res://data/balance/demand.tres")
+const DAY_LIGHT: DayLightTuning = preload("res://data/look/day_light.tres")
 const CURB_APPEAL_TUNING: CurbAppealTuning = preload("res://data/balance/curb_appeal.tres")
 const REVIEW_TUNING: ReviewTuning = preload("res://data/balance/reviews.tres")
 const REVIEW_QUOTES: ReviewQuotes = preload("res://data/reviews/quotes.tres")
@@ -60,6 +63,8 @@ signal vibe_changed(result: VibeModel.Result)
 var _vibe_grid: SimGrid
 ## Today's paid departures, grouped by their captured arrival theme label.
 var _vibe_experiences: Dictionary[String, int] = {}
+## Shop sounds (#117); presentation only.
+var sound: SoundDirector
 ## The last evening report put on screen (for tests and tools).
 var shown_report: DayReport = null
 ## Previous service's display summary for the morning panel; never a save section.
@@ -113,6 +118,8 @@ var _previous_clock: SimClock = null
 var _started: bool = false
 var _skip_next_autosave: bool = false
 var _owner_preferences: OwnerModeSettings = OwnerModeSettings.new()
+## Authored base, never an already leased or expanded loaded layout.
+var _base_layout: ShopLayout = LAYOUT
 var _loaded_layout: ShopLayout = null
 var _loaded_menu: MenuSettings = null
 var _loaded_staff: StaffRoster = null
@@ -133,6 +140,8 @@ var _loaded_demand: DemandState = null
 ## Detached closing summaries; persistence stays at the morning checkpoint.
 var business_history: BusinessHistory = BusinessHistory.new()
 var _loaded_business_history: BusinessHistory = null
+## The saved cat section (adopted and its name), staged until the load installs.
+var _loaded_cat: Dictionary = {}
 var _demand_breakdown: DemandBreakdown = null
 var _demand_day: int = 0
 var _demand_reputation: float = 3.0
@@ -256,7 +265,9 @@ func _bind_world_presentation() -> void:
 		sim.dock.lot = lot
 	# Keep future scenery off every cell this lease can eventually build on.
 	# The actual service/delivery lot above keeps its existing semantics.
-	var maximum_reserve: Rect2i = ShopFootprint.from_layout(LEASE.layout_for(LAYOUT, 2)).lot.merge(lot)
+	var presentation_base: ShopLayout = _base_for_saved_shop({"layout_id": _loaded_layout.save_layout_id}) \
+		if _loaded_layout != null else _base_layout
+	var maximum_reserve: Rect2i = ShopFootprint.from_layout(LEASE.layout_for(presentation_base, 2)).lot.merge(lot)
 	view.show_world(world, maximum_reserve)
 	view.bind_cleanliness(sim.cleanliness)
 	view.bind_restaurant(sim, content)
@@ -341,6 +352,8 @@ func _bind_world_presentation() -> void:
 	_menu_panel.bind_menu(menu_settings)
 	if not _menu_panel.lease_requested.is_connected(_on_lease_requested):
 		_menu_panel.lease_requested.connect(_on_lease_requested)
+	if not _menu_panel.cat_adoption_requested.is_connected(_on_cat_adoption_requested):
+		_menu_panel.cat_adoption_requested.connect(_on_cat_adoption_requested)
 	_menu_panel.set_phase(Clock.sim.phase)
 	if not _menu_panel.enable_requested.is_connected(_on_menu_enable_requested):
 		_menu_panel.enable_requested.connect(_on_menu_enable_requested)
@@ -372,13 +385,14 @@ func _bind_world_presentation() -> void:
 	if not _settings_panel.quit_to_title_requested.is_connected(request_quit_to_title):
 		_settings_panel.quit_to_title_requested.connect(request_quit_to_title)
 	var quit_dialog: ConfirmationDialog = $Overlay/QuitToTitle
-	# Keep native dialog padding, but use the shared palette in this dialog only.
+	# Keep native dialog padding, but use the shared palette in these dialogs only.
 	var dialog_theme: Theme = _menu_panel.theme.duplicate() as Theme
 	var dialog_panel: StyleBoxFlat = quit_dialog.get_theme_stylebox("panel", "AcceptDialog").duplicate() as StyleBoxFlat
 	dialog_panel.bg_color = (_menu_panel.theme.get_stylebox("panel", "PanelContainer") as StyleBoxFlat).bg_color
 	dialog_theme.set_stylebox("panel", "AcceptDialog", dialog_panel)
 	dialog_theme.set_color("font_focus_color", "Button", _menu_panel.theme.get_color("font_color", "Button"))
 	quit_dialog.theme = dialog_theme
+	($Overlay/AutosaveFailure as AcceptDialog).theme = dialog_theme
 	quit_dialog.title = TitleText.QUIT_TO_TITLE
 	quit_dialog.dialog_text = TitleText.LOST_PROGRESS
 	quit_dialog.ok_button_text = TitleText.QUIT_TO_TITLE
@@ -477,6 +491,8 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	if world == null:
 		return
+	# The cutaway follows the camera's focus (#205); cheap unless its cell changes.
+	($ShopView as ShopView).set_camera_focus(($CameraRig as Node3D).global_position)
 	_debug_overlay.sample_rates(float(Time.get_ticks_usec()) / 1000000.0, Engine.get_frames_per_second())
 	_guard_build_phase()
 	if build_mode.blueprint_dragging and not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
@@ -528,6 +544,7 @@ func start() -> void:
 	SaveSystem.register("weather", _capture_weather, _restore_weather)
 	SaveSystem.register("demand", _capture_demand, _restore_demand)
 	SaveSystem.register("business_history", _capture_business_history, _restore_business_history)
+	SaveSystem.register("cat", _capture_cat, _restore_cat)
 	var loaded: bool = use_saves and _load_autosave()
 	_rooms_note = loaded and _loaded_layout != null and _loaded_layout.rooms_unmarked
 	$HUD.set_rooms_note(ROOMS_NOTE if _rooms_note else "")
@@ -537,6 +554,10 @@ func start() -> void:
 	world.clock = Clock.sim
 	sim.stock = Economy.stock
 	sim.use_rng(GameState.rng(&"customers"))
+	# The named stream exists only once there is a cat, so shops without one
+	# keep their exact saved streams.
+	if sim.cat.adopted:
+		sim.cat.use_rng(GameState.rng(&"cat"))
 	var cleanliness: CleanlinessState = CleanlinessState.new(
 		world.grid, CLEANLINESS_TUNING, GameState.rng(&"cleanliness"))
 	if not sim.configure_cleanliness(cleanliness, CLEANLINESS_TUNING):
@@ -611,9 +632,16 @@ func _connect_session() -> void:
 		EventBus.cash_changed.connect(_on_build_cash_changed)
 	if not _inspect_panel.owner_mode_requested.is_connected(_on_owner_mode_requested):
 		_inspect_panel.owner_mode_requested.connect(_on_owner_mode_requested)
+	if sound == null:
+		sound = SoundDirector.new()
+		sound.name = "SoundDirector"
+		add_child(sound)
+	sound.bind(sim, $ShopView as ShopView)
 
 
 func _exit_tree() -> void:
+	if sound != null:
+		sound.unbind()
 	_disconnect_vibe_grid()
 	_build_ready = false
 	if build_mode.changed.is_connected(_on_build_changed):
@@ -2080,6 +2108,9 @@ func inspection_state() -> Dictionary:
 ## Refreshes after completed morning setup, removals and paused grid edits too.
 func refresh_presentation() -> void:
 	_refresh_weather()
+	_refresh_day_light()
+	if sound != null:
+		sound.refresh()
 	if _inspect_panel == null or _debug_overlay == null or _debug_geometry == null:
 		return
 	_inspect_panel.refresh()
@@ -2236,6 +2267,8 @@ func build_report(day: int) -> DayReport:
 
 
 func _new_game() -> void:
+	_base_layout = LAYOUT
+	_loaded_cat = {}
 	business_history = BusinessHistory.new()
 	_loaded_business_history = null
 	curb_appeal_score = 0.0
@@ -2321,6 +2354,7 @@ func _load_autosave_sections() -> bool:
 	curb_appeal_factor = 1.0
 	_last_team_activity.clear()
 	_loaded_demand = null
+	_loaded_cat = {}
 	_loaded_regulars = null
 	_loaded_blueprints = null
 	_blueprint_load_notes.clear()
@@ -2371,20 +2405,37 @@ func _load_autosave_sections() -> bool:
 	if career.last_evaluated_day >= Clock.sim.day:
 		world.log_event("Autosave career goals are ahead of this morning; starting a new game")
 		return false
-	var layout: ShopLayout = _loaded_layout if _loaded_layout != null else LAYOUT
+	# A saved game predating the shop section still owns the original shell.
+	# Initial presentation may already have built the roomier NEW-shop world.
+	var base: ShopLayout = _base_for_saved_shop({"layout_id": _loaded_layout.save_layout_id}) \
+		if _loaded_layout != null else ORIGINAL_LAYOUT
+	if base == null:
+		return false
+	var layout: ShopLayout = _loaded_layout if _loaded_layout != null \
+		else LEASE.layout_for(base, owner_progress.property_tier)
 	var choices: MenuSettings = _loaded_menu if _loaded_menu != null else MenuSettings.new(_cookable_recipes(layout), owner_progress.level)
 	if not choices.is_valid():
 		return false
 	var employees: StaffRoster = _loaded_staff if _loaded_staff != null else StaffRoster.new(TUNING)
 	if employees.candidate_day > Clock.sim.day:
 		return false
-	if _loaded_layout != null or _loaded_staff != null:
-		var errors: Array[String] = []
-		var candidate: RestaurantSim = RestaurantSim.create(layout, content, 1, errors, Economy.stock, true, _loaded_layout != null, employees.members())
-		if not errors.is_empty():
-			return false
-		sim = candidate
-		world = candidate.world
+	var errors: Array[String] = []
+	var candidate: RestaurantSim = RestaurantSim.create(layout, content, 1, errors, Economy.stock, true, _loaded_layout != null, employees.members())
+	if not errors.is_empty():
+		return false
+	# Complete fallible candidate setup before replacing the initialized NEW
+	# world. A refused restore must not leave an old shell as the new game.
+	if candidate.kitchen == null or not candidate.kitchen.configure_plates(
+			_loaded_plates.total if _loaded_plates != null else TUNING.starting_plates):
+		return false
+	if not candidate.assign_owner(_owner_preferences.current_mode()):
+		return false
+	sim = candidate
+	world = candidate.world
+	if not _loaded_cat.is_empty() and sim.cat.from_dict(_loaded_cat):
+		sim.cat.begin_day(world.grid)
+	_loaded_cat = {}
+	_loaded_layout = layout
 	staff_roster = employees
 	reputation = _loaded_reputation if _loaded_reputation != null else ReputationBook.new()
 	regulars = _loaded_regulars if _loaded_regulars != null else RegularCast.new()
@@ -2399,12 +2450,7 @@ func _load_autosave_sections() -> bool:
 	_track_menu_access_losses(enabled, cookable)
 	menu_settings.clear_stash()
 	_apply_menu(sim, menu_settings)
-	if sim.kitchen == null or not sim.kitchen.configure_plates(
-			_loaded_plates.total if _loaded_plates != null else TUNING.starting_plates):
-		return false
 	_bind_world_presentation()
-	if not sim.assign_owner(_owner_preferences.current_mode()):
-		return false
 	milestones = career
 	# Saves from before the Stock panel have no section: today's defaults.
 	reorder_settings = _loaded_reorder if _loaded_reorder != null else ReorderSettings.new(TUNING)
@@ -2425,6 +2471,7 @@ func _load_autosave_sections() -> bool:
 	# Install only after every other whole-load validation has succeeded.
 	world.weather = saved_weather.copy()
 	demand_state = saved_demand
+	_base_layout = base
 	business_history = _loaded_business_history if _loaded_business_history != null else BusinessHistory.new()
 	_loaded_business_history = null
 	return true
@@ -2549,7 +2596,7 @@ func _on_plates_changed(clean: int, total: int, dirty: int, in_use: int) -> void
 
 
 func _lease_layout() -> ShopLayout:
-	return LEASE.layout_for(LAYOUT, owner_progress.property_tier)
+	return LEASE.layout_for(_base_layout, owner_progress.property_tier)
 
 
 func lease_refusal() -> String:
@@ -2557,6 +2604,7 @@ func lease_refusal() -> String:
 
 
 func _refresh_lease_offer() -> void:
+	_refresh_cat_offer()
 	if _menu_panel == null:
 		return
 	if not LEASE.offered(owner_progress, Clock.sim.phase):
@@ -2573,7 +2621,7 @@ func lease_buy() -> bool:
 	if not _started or shop_editor == null or not lease_refusal().is_empty():
 		_refresh_lease_offer()
 		return false
-	var layout: ShopLayout = LEASE.layout_for(LAYOUT, 2)
+	var layout: ShopLayout = LEASE.layout_for(_base_layout, 2)
 	if not shop_editor.grow_lot(layout):
 		return false
 	owner_progress.property_tier = 2
@@ -2595,6 +2643,51 @@ func lease_buy() -> bool:
 
 func _on_lease_requested() -> void:
 	lease_buy()
+
+
+func cat_refusal() -> String:
+	return sim.cat.refusal(owner_progress.level, Clock.sim.phase, Economy.cash)
+
+
+## The one-time morning offer to adopt the shop cat (#119), from owner level 4.
+func _refresh_cat_offer() -> void:
+	if _menu_panel == null or sim == null or sim.cat == null:
+		return
+	if not sim.cat.offered(owner_progress.level, Clock.sim.phase):
+		_menu_panel.set_cat_offer(false, "", "")
+		return
+	_menu_panel.set_cat_offer(true, "%s joins your shop for %s. Cat food is %s a day." % [
+		sim.cat.cat_name, Fmt.money(CAT.adoption_price), Fmt.money(CAT.daily_food_cost)], cat_refusal())
+
+
+## A single morning transaction, saved by the next morning autosave.
+func adopt_cat() -> bool:
+	if not _started or sim == null or not cat_refusal().is_empty():
+		_refresh_cat_offer()
+		return false
+	sim.cat.use_rng(GameState.rng(&"cat"))
+	if not sim.cat.adopt(world.grid):
+		return false
+	Economy.add_cash(-CAT.adoption_price, Ledger.UPGRADES, "cat_adoption")
+	_refresh_cat_offer()
+	refresh_presentation()
+	return true
+
+
+func _on_cat_adoption_requested() -> void:
+	adopt_cat()
+
+
+func _capture_cat() -> Dictionary:
+	return sim.cat.to_dict()
+
+
+## Validate now, install with the rest of the load once the new session exists.
+func _restore_cat(data: Dictionary) -> bool:
+	if not RestaurantCat.new(CAT).from_dict(data):
+		return false
+	_loaded_cat = data.duplicate(true)
+	return true
 
 
 func _capture_owner() -> Dictionary:
@@ -2716,6 +2809,19 @@ func _capture_shop() -> Dictionary:
 	return snapshot
 
 
+## Missing identities are pre-roomier saves. Present identities are authored
+## keys only: never load a path supplied by a save or guess from item positions.
+func _base_for_saved_shop(data: Dictionary) -> ShopLayout:
+	var identity: Variant = data.get("layout_id", "")
+	if not (identity is String or identity is StringName):
+		return null
+	if StringName(identity) == ORIGINAL_LAYOUT.save_layout_id:
+		return ORIGINAL_LAYOUT
+	if StringName(identity) == LAYOUT.save_layout_id:
+		return LAYOUT
+	return null
+
+
 ## Restore callbacks only stage decoded data. Live replacement waits for OK.
 func _restore_shop(data: Dictionary) -> bool:
 	var saved_level: Variant = data.get("tray_level", 0)
@@ -2724,7 +2830,11 @@ func _restore_shop(data: Dictionary) -> bool:
 			or saved_level < 0 or saved_level > 2:
 		return false
 	var errors: Array[String] = []
-	var layout: ShopLayout = ShopEditor.from_dict(data, _lease_layout(), content, errors)
+	var base: ShopLayout = _base_for_saved_shop(data)
+	if base == null:
+		return false
+	var template: ShopLayout = LEASE.layout_for(base, owner_progress.property_tier)
+	var layout: ShopLayout = ShopEditor.from_dict(data, template, content, errors)
 	if layout == null:
 		return false
 	_loaded_layout = layout
@@ -2757,7 +2867,7 @@ func _capture_menu() -> Dictionary:
 
 
 func _restore_menu(data: Dictionary) -> bool:
-	var layout: ShopLayout = _loaded_layout if _loaded_layout != null else LAYOUT
+	var layout: ShopLayout = _loaded_layout if _loaded_layout != null else ORIGINAL_LAYOUT
 	var choices: MenuSettings = MenuSettings.new(_cookable_recipes(layout), owner_progress.level)
 	if not choices.from_dict(data):
 		return false
@@ -3704,8 +3814,13 @@ func _begin_morning() -> void:
 	_restock()
 	Economy.ledger.prune_before(Clock.sim.day - Ledger.HISTORY_DAYS)
 	_report.hide()
+	if use_saves and _skip_next_autosave:
+		var warning: AcceptDialog = $Overlay/AutosaveLoadFailure
+		warning.theme = ($Overlay/QuitToTitle as ConfirmationDialog).theme
+		warning.popup_centered(Vector2i(560, 210))
 	if use_saves and not _skip_next_autosave:
-		SaveSystem.save_game(save_slot)
+		if SaveSystem.save_game(save_slot) != OK:
+			($Overlay/AutosaveFailure as AcceptDialog).popup_centered(Vector2i(560, 180))
 	_skip_next_autosave = false
 	_refresh_loan_hud()
 	$HUD.set_owner_progress(owner_progress.level, owner_progress.xp_into_level(), owner_progress.xp_in_level())
@@ -3733,6 +3848,47 @@ func _select_morning_weather() -> bool:
 			return false
 	_refresh_weather()
 	return world.weather.is_for_day(Clock.sim.day)
+
+
+## The day's light follows the clock (#208): a pure function of time, so a
+## paused capture always looks the same. Presentation only.
+func _refresh_day_light() -> void:
+	if world == null or world.clock == null:
+		return
+	var look: DayLight.Look = day_light_look()
+	var rig: Node3D = get_node_or_null(^"LightingRig") as Node3D
+	DayNightView.apply_rig(rig, look)
+	DayNightView.apply_shop_light(rig, world.grid, look.interior_energy, DAY_LIGHT.interior_color)
+	var view: ShopView = $ShopView as ShopView
+	if view.wall_finish_view != null:
+		DayNightView.apply_glow(view.wall_finish_view.item_nodes, look.glow)
+	var camera: Node3D = $CameraRig as Node3D
+	var focus: Vector3 = camera.global_position if camera.is_inside_tree() else camera.position
+	DayNightView.apply_lamps(lamp_visuals(), look.interior_energy, focus)
+	# Chairs go up after close, but never while editing in the evening, so
+	# Build and Paint always see and pick the furniture where it stands.
+	var closed: bool = world.clock.phase == SimClock.Phase.CLOSED and not is_build_active() and not _paint_active
+	var dirty: Dictionary[int, bool] = sim.kitchen.dirty_tables if sim != null and sim.kitchen != null else {}
+	view.set_chairs_up(closed, dirty)
+
+
+## Every placed lamp's visual (#84): floor, table and pendant lamps, and hung
+## wall lamps.
+func lamp_visuals() -> Array[ItemVisual]:
+	var lamps: Array[ItemVisual] = []
+	var view: ShopView = $ShopView as ShopView
+	for node: ItemVisual in view.item_nodes.values():
+		if node.has_meta(DayNightView.LAMP_META):
+			lamps.append(node)
+	if view.wall_finish_view != null:
+		for node: ItemVisual in view.wall_finish_view.item_nodes.values():
+			if node.has_meta(DayNightView.LAMP_META):
+				lamps.append(node)
+	return lamps
+
+
+func day_light_look() -> DayLight.Look:
+	return DayLight.sample(DayLight.minute_for(world.clock, Clock.tick_fraction(), DAY_LIGHT), DAY_LIGHT)
 
 
 func _refresh_weather() -> void:
@@ -4358,6 +4514,8 @@ func _charge_closing_costs() -> void:
 	var rent: int = LEASE.daily_rent if owner_progress.property_tier == 2 else TUNING.daily_rent
 	if rent > 0:
 		Economy.add_cash(-rent, Ledger.RENT)
+	if sim.cat.adopted and CAT.daily_food_cost > 0:
+		Economy.add_cash(-CAT.daily_food_cost, Ledger.CAT_FOOD)
 
 
 func _on_customer_paid(customer: CustomerAgent, order: Order, amount: int) -> void:
@@ -4436,6 +4594,10 @@ func _on_service_closed(day: int) -> void:
 	shown_report = build_report(day)
 	_last_team_activity = StaffActivity.public_snapshot(shown_report.staff_activity)
 	_staff_panel.set_team_activity(_last_team_activity)
+	if owner_progress.level > level_before:
+		Sounds.play(&"level_up")
+	elif _milestone_award_day == day and not _milestones_reached_today.is_empty():
+		Sounds.play(&"milestone")
 	_show_evening_report(shown_report)
 	if _paint_active or is_staff_visible() or is_goals_visible():
 		_report.hide()

@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="CatTuning" format=3]
+
+[ext_resource type="Script" path="res://src/sim/pets/cat_tuning.gd" id="1_cat"]
+
+[resource]
+script = ExtResource("1_cat")
+unlock_level = 4
+adoption_price = 40
+daily_food_cost = 2
+default_name = "Biscuit"
+max_name_length = 24
+charm_radius = 2
+charm_patience_bonus = 0.1
+pet_radius = 1
+pet_pause_ticks = 20
+step_ticks = 8
+wander_range = 9
+nap_chance = 0.45
+idle_ticks_min = 30
+idle_ticks_max = 90
+nap_ticks_min = 400
+nap_ticks_max = 900
+morning_nap_ticks = 300

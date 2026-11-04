@@ -1,6 +1,7 @@
 extends TestCase
 
-const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
+## Variant edits use the historical right table and its fixed stool cells.
+const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_original.tres")
 class Catalog extends ContentDB:
 	var extra: Dictionary[StringName, ItemDef] = {}
 	func item(id: StringName) -> ItemDef:

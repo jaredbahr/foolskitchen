@@ -103,7 +103,12 @@ func test_purchase_exact_books_preserves_build_and_moves_alley() -> void:
 	var rng: Dictionary = GameState._capture_save()
 	var cash: int = Economy.cash
 	var world: SimWorld = _main.get("world")
-	var old_route: Dictionary = WallRules.back_alley(world.grid, Vector2i(13, 6), Vector2i.RIGHT, lot)
+	# Query the actual east shell; the old (13, 6) point is now interior floor.
+	var door: Vector2i = Vector2i(_editor().footprint().building.end.x - 1, 6)
+	var old_route: Dictionary = WallRules.back_alley(world.grid, door, Vector2i.RIGHT, lot)
+	assert_false(old_route.is_empty(), "the actual east shell has an unobstructed alley approach")
+	if old_route.is_empty():
+		return
 	assert_true(_main.call("lease_buy"))
 	assert_eq(_progress().property_tier, 2)
 	assert_eq(Economy.cash, cash - LEASE.deposit)
@@ -114,7 +119,10 @@ func test_purchase_exact_books_preserves_build_and_moves_alley() -> void:
 	assert_eq(expanded.size, lot.size + Vector2i(LEASE.extra_west + LEASE.extra_east, LEASE.extra_north))
 	assert_eq((_main.get("sim") as RestaurantSim).dock.lot, expanded)
 	assert_eq((_main.get_node("ShopView") as ShopView).segment_view.lot, expanded)
-	var route: Dictionary = WallRules.back_alley(world.grid, Vector2i(13, 6), Vector2i.RIGHT, expanded)
+	var route: Dictionary = WallRules.back_alley(world.grid, door, Vector2i.RIGHT, expanded)
+	assert_false(route.is_empty(), "the expanded lot retains the same real shell approach")
+	if route.is_empty():
+		return
 	assert_eq((route["junction"] as Vector2i).x, (old_route["junction"] as Vector2i).x + LEASE.extra_east)
 	var entries: Array[Dictionary] = Economy.ledger.entries_for_day(Clock.sim.day)
 	assert_eq(entries.back()["note"], "lease_deposit")

@@ -255,15 +255,26 @@ func test_service_change_preserves_real_bus_then_affects_next_pick_only() -> voi
 	assert_eq(server.move_progress, progress_before)
 	assert_eq(server.work_left, work_before)
 	assert_eq(table.reserved_by(held), holder_before)
+	var elapsed: int = 0
 	for _tick: int in range(500):
 		sim.world.advance()
+		elapsed += 1
 		if bus.state == SimTask.State.DONE:
 			break
 	assert_eq(bus.state, SimTask.State.DONE, "the original real bus task completes normally")
 	assert_false(sim.kitchen.is_table_dirty(table.id))
 	assert_null(server.task)
-	sim.world.advance()
+	# The completed busser retains its physical seat until ordinary egress.
+	assert_eq(server.cell, held)
+	assert_eq(table.reserved_by(held), server.id)
+	for _tick: int in range(elapsed, 500):
+		var before: Dictionary = MovementInvariants.capture(sim.world)
+		sim.world.advance()
+		assert_eq(MovementInvariants.problem(sim.world, before), "", "egress preserves physical movement and seat ownership")
+		if server.task != null:
+			break  # Observe the first new claim, never a later preferred outcome.
 	assert_eq(server.task, sim.clean_tasks.task_for(spot), "the changed choice applies at the next claim")
+	assert_eq(table.reserved_by(held), -1, "actual departure releases the completed bus lease")
 
 
 func test_off_is_never_picked_and_high_washing_is_not_deferred_to_low_service() -> void:

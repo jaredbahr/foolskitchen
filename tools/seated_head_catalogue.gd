@@ -139,14 +139,18 @@ static func _sample_item(parent: Node, definition: ItemDef, turns: int, native_b
 		var cell: Vector2i = origin + GridMath.rotate_cell(definition.seat_cells[index], definition.footprint, turns)
 		var random: RandomNumberGenerator = RandomNumberGenerator.new()
 		random.seed = 147 + index
-		var guest: CustomerAgent = world.add_agent(CustomerAgent.new(restaurant, random)) as CustomerAgent
-		guest.cell = cell
+		var guest: CustomerAgent = CustomerAgent.new(restaurant, random)
+		guest.cell = Vector2i(index, 0)
+		world.add_agent(guest)
+		if world.agent(guest.id) != guest or not guest.movement_admitted:
+			errors.append("catalogue native guest was not admitted on legal fixture floor")
+			report["errors"] = errors
+			return
 		if waiting:
 			# Exercise the real queue reservation and arrival path, without
 			# inventing a dining table or setting presentation poses ourselves.
 			guest.state = CustomerAgent.State.QUEUED
-			if not WaitingBench.advance(guest, world, restaurant) or guest.waiting_cell != cell \
-					or not guest.is_waiting_seated(world):
+			if not WaitingBench.advance(guest, world, restaurant) or guest.waiting_cell != cell:
 				errors.append("%s rotation %d: waiting bench did not reserve its native seat" % [definition.id, turns])
 				report["errors"] = errors
 				return
@@ -158,6 +162,16 @@ static func _sample_item(parent: Node, definition: ItemDef, turns: int, native_b
 				errors.append("%s rotation %d: table did not project/reserve the native seat" % [definition.id, turns])
 				report["errors"] = errors
 				return
+		# The offline MORNING pose keeps the real booking and physical occupancy
+		# coherent without advancing, drawing RNG or inventing an admission flag.
+		if not world.reset_agent_position(guest, cell):
+			errors.append("catalogue native guest could not occupy its real booked seat")
+			report["errors"] = errors
+			return
+		if waiting and not guest.is_waiting_seated(world):
+			errors.append("catalogue native waiting guest is not seated under its actual bench reservation")
+			report["errors"] = errors
+			return
 		guests.append(guest)
 	# Load after autoload initialization; entry-script scene preloads retained
 	# the scene/script resource graph at diagnostic shutdown on current main.

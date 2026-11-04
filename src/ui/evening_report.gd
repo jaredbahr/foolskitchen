@@ -6,6 +6,7 @@ signal next_day_pressed
 const LOAN_INTRODUCTION: String = "The bank covered your shortfall. It'll take a share of your profits until it's paid back."
 const MONEY_LABELS: Dictionary = {
 	Ledger.BREAKAGES: "Breakages",
+	Ledger.CAT_FOOD: "Cat food",
 	Ledger.BANK_LOAN: "Bank loan",
 	Ledger.LOAN_INTEREST: "Loan interest",
 	Ledger.LOAN_REPAYMENT: "Loan repayment",

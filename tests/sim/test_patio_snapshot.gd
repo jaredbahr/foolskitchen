@@ -36,13 +36,13 @@ func test_json_round_trip_keeps_outdoor_items_paint_finishes_and_sorted_ownershi
 	var cells: Array[Vector2i] = _left_patio()
 	cells.reverse()
 	assert_true(_editor.apply_patio(cells, true), _editor.last_check.why)
-	assert_true(_editor.buy(&"patio_table_2", Vector2i(2, 12)), _editor.last_check.why)
+	assert_true(_editor.buy(&"patio_table_2", _street(-4, 1)), _editor.last_check.why)
 	# The table's built-in seats are (1, 13) and (4, 13). This extra chair
 	# faces north from (2, 14) to the unclaimed south edge at (2, 13).
-	assert_true(_editor.buy(&"patio_chair", Vector2i(2, 14)), _editor.last_check.why)
-	assert_true(_editor.buy(&"patio_waiting_bench", Vector2i(0, 11)), _editor.last_check.why)
-	var table: PlacedItem = _sim.world.grid.item_at(Vector2i(2, 12))
-	var bench: PlacedItem = _sim.world.grid.item_at(Vector2i(0, 11))
+	assert_true(_editor.buy(&"patio_chair", _street(-4, 3)), _editor.last_check.why)
+	assert_true(_editor.buy(&"patio_waiting_bench", _street(-6, 0)), _editor.last_check.why)
+	var table: PlacedItem = _sim.world.grid.item_at(_street(-4, 1))
+	var bench: PlacedItem = _sim.world.grid.item_at(_street(-6, 0))
 	assert_not_null(table)
 	assert_not_null(bench)
 	if table == null or bench == null:
@@ -51,7 +51,7 @@ func test_json_round_trip_keeps_outdoor_items_paint_finishes_and_sorted_ownershi
 	assert_true(_editor.paint_item(bench.id, &"sage"))
 	assert_true(_editor.paint_wall(&"clay"))
 	assert_true(_editor.paint_floor(&"honey"))
-	assert_true(_editor.apply_flooring(_editor.lay_changes([Vector2i(5, 11)] as Array[Vector2i],
+	assert_true(_editor.apply_flooring(_editor.lay_changes([_street(-1, 0)] as Array[Vector2i],
 		&"herringbone", &"sage")), _editor.last_check.why)
 	var expected: Dictionary = _editor.to_dict()
 	assert_eq(expected["version"], 9)
@@ -76,15 +76,15 @@ func test_json_round_trip_keeps_outdoor_items_paint_finishes_and_sorted_ownershi
 	assert_eq(copy.to_dict(), expected)
 	assert_eq(restored.world.clock.phase, SimClock.Phase.MORNING)
 	assert_eq(restored.world.now, 0)
-	assert_eq(restored.world.grid.entries(), [Vector2i(6, 11), Vector2i(7, 11)] as Array[Vector2i])
+	assert_eq(restored.world.grid.entries(), [_street(0, 0), _street(1, 0)] as Array[Vector2i])
 	assert_eq(ShopBuilder.items_with_def(restored.world, &"patio_table_2").size(), 1)
 	assert_eq(ShopBuilder.items_with_def(restored.world, &"patio_waiting_bench").size(), 1)
 	assert_eq(ShopBuilder.items_with_def(restored.world, &"patio_chair").size(), 1)
 	for cell: Vector2i in layout.patio_cells:
 		assert_true(restored.world.grid.is_outdoor_floor(cell))
 		assert_eq(restored.world.grid.room(cell), SimGrid.Room.PATIO)
-	assert_eq(restored.world.grid.item_at(Vector2i(2, 12)).variant_id, &"patio_dark_metal")
-	assert_eq(restored.world.grid.item_at(Vector2i(0, 11)).swatch_id, &"sage")
+	assert_eq(restored.world.grid.item_at(_street(-4, 1)).variant_id, &"patio_dark_metal")
+	assert_eq(restored.world.grid.item_at(_street(-6, 0)).swatch_id, &"sage")
 	assert_eq(_editor.to_dict(), expected, "building the staged session leaves the live shop alone")
 	assert_eq(_ledger.cash, cash)
 	assert_eq(_ledger.entries_for_day(1).size(), entries, "restoring never replays purchases")
@@ -94,8 +94,8 @@ func test_json_round_trip_keeps_outdoor_items_paint_finishes_and_sorted_ownershi
 
 func test_version_nine_requires_strict_patio_ownership_and_rejects_bad_items_transactionally() -> void:
 	var base: Dictionary = _editor.to_dict()
-	for ownership: Variant in ["patio", null, {}, [[5]], [[5, 11], [5, 11]],
-		[[5, "11"]], [[5.5, 11]], [[NAN, 11]], [[5, 15]], [[6, 11]], [[5, 10]]]:
+	for ownership: Variant in ["patio", null, {}, [[5]], [_row(-1, 0), _row(-1, 0)],
+		[[5, "11"]], [[5.5, 11]], [[NAN, 11]], [_row(-1, 4)], [_row(0, 0)], [_row(-1, -1)]]:
 		var data: Dictionary = base.duplicate(true)
 		data["patio"] = ownership
 		_reject(data, str(ownership))
@@ -103,26 +103,26 @@ func test_version_nine_requires_strict_patio_ownership_and_rejects_bad_items_tra
 	missing.erase("patio")
 	_reject(missing, "version 9 requires the ownership array")
 	var unknown: Dictionary = base.duplicate(true)
-	(unknown["items"] as Array).append({"def_id": "unknown_patio_table", "origin": [5, 11], "quarter_turns": 0})
+	(unknown["items"] as Array).append({"def_id": "unknown_patio_table", "origin": _row(-1, 0), "quarter_turns": 0})
 	_reject(unknown, "unknown saved furniture")
 	var unowned: Dictionary = base.duplicate(true)
-	(unowned["items"] as Array).append({"def_id": "patio_chair", "origin": [5, 11], "quarter_turns": 0})
+	(unowned["items"] as Array).append({"def_id": "patio_chair", "origin": _row(-1, 0), "quarter_turns": 0})
 	_reject(unowned, "outdoor furniture needs purchased pavement")
 
 
 func test_saved_patio_rooms_must_match_ownership_in_both_directions() -> void:
-	assert_true(_editor.apply_patio([Vector2i(5, 11)] as Array[Vector2i], true), _editor.last_check.why)
+	assert_true(_editor.apply_patio([_street(-1, 0)] as Array[Vector2i], true), _editor.last_check.why)
 	var base: Dictionary = _editor.to_dict()
 	var missing: Dictionary = base.duplicate(true)
 	var missing_rooms: Array = missing["rooms"]
 	for index: int in range(missing_rooms.size() - 1, -1, -1):
 		var row: Array = missing_rooms[index]
-		if row[0] == 5 and row[1] == 11:
+		if row[0] == _street(-1, 0).x and row[1] == _street(-1, 0).y:
 			missing_rooms.remove_at(index)
 	_reject(missing, "owned pavement cannot silently turn into dining floor")
 	var changed: Dictionary = base.duplicate(true)
 	for row: Array in changed["rooms"]:
-		if row[0] == 5 and row[1] == 11:
+		if row[0] == _street(-1, 0).x and row[1] == _street(-1, 0).y:
 			row[2] = "storage"
 	_reject(changed, "owned pavement cannot be a staff-only room")
 	var extra: Dictionary = base.duplicate(true)
@@ -174,7 +174,7 @@ func test_versions_one_to_eight_ignore_future_ownership_and_cannot_restore_outdo
 	for version: int in range(1, 9):
 		var data: Dictionary = (current if version == 8 else old_base).duplicate(true)
 		data["version"] = version
-		data["patio"] = [[5, 11]]
+		data["patio"] = [_row(-1, 0)]
 		if version < 2:
 			data.erase("walls")
 		if version < 3:
@@ -195,7 +195,7 @@ func test_versions_one_to_eight_ignore_future_ownership_and_cannot_restore_outdo
 		if layout != null:
 			assert_true(layout.patio_cells.is_empty(), "version %d never grants patio ownership" % version)
 		var outdoor: Dictionary = data.duplicate(true)
-		(outdoor["items"] as Array).append({"def_id": "patio_chair", "origin": [5, 11], "quarter_turns": 0})
+		(outdoor["items"] as Array).append({"def_id": "patio_chair", "origin": _row(-1, 0), "quarter_turns": 0})
 		_reject(outdoor, "version %d has no purchased pavement for outdoor items" % version)
 	assert_eq(_editor.to_dict(), current)
 	assert_eq(_ledger.cash, 1000)
@@ -224,8 +224,8 @@ func _reject(data: Dictionary, label: String) -> void:
 
 func _left_patio() -> Array[Vector2i]:
 	var cells: Array[Vector2i] = []
-	for row: int in range(11, 15):
-		for column: int in range(0, 6):
+	for row: int in range(_street(0, 0).y, _street(0, 0).y + LAYOUT.patio_depth):
+		for column: int in range(0, _street(0, 0).x):
 			cells.append(Vector2i(column, row))
 	return cells
 
@@ -244,3 +244,12 @@ func _record(amount: int, category: StringName, note: String = "") -> void:
 
 func _cells_changed(_cells: Array[Vector2i]) -> void:
 	_changes += 1
+
+
+func _street(x: int, y: int) -> Vector2i:
+	return _sim.world.grid.entries()[0] + Vector2i(x, y)
+
+
+func _row(x: int, y: int) -> Array[int]:
+	var cell: Vector2i = _street(x, y)
+	return [cell.x, cell.y]

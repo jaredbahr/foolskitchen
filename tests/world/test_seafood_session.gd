@@ -122,6 +122,20 @@ func _start() -> Node:
 
 
 func _prepare(main: Node) -> void:
+	# Closed-phase construction staging only: fryer (9, 3) must not cover the
+	# actual owner at (9, 3). Normal start_day retains all service reset policy.
+	var sim: RestaurantSim = main.get("sim") as RestaurantSim
+	assert_eq(sim.world.clock.phase, SimClock.Phase.MORNING)
+	var owner: OwnerAgent = null
+	for agent: SimAgent in sim.world.agents:
+		if agent is OwnerAgent:
+			owner = agent as OwnerAgent
+			break
+	assert_not_null(owner)
+	if owner == null:
+		return
+	assert_true(sim.world.reset_agent_position(owner, Vector2i(8, 3)))
+	assert_true(sim.world.agents.has(owner) and owner.movement_admitted)
 	var progress: OwnerProgress = main.get("owner_progress") as OwnerProgress
 	progress.award_bonus(progress.threshold_for(5))
 	assert_true((main.get("menu_settings") as MenuSettings).set_owner_level(5))

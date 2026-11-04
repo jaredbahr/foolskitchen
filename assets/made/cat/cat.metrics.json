@@ -1,0 +1,32 @@
+{
+  "asset": "cat",
+  "format": "glTF 2 GLB",
+  "metres_per_unit": 1,
+  "up": "+Y",
+  "front": "-Z",
+  "origin": "feet centre",
+  "budget_exclusive": 800,
+  "triangles": 672,
+  "aabb_min": [
+    -0.0866,
+    0.0,
+    -0.2355
+  ],
+  "aabb_max": [
+    0.0866,
+    0.3379,
+    0.2145
+  ],
+  "dimensions": [
+    0.1733,
+    0.3379,
+    0.45
+  ],
+  "animations": {
+    "idle": 2.0,
+    "walk": 1.0,
+    "nap": 3.0
+  },
+  "texture": "assets/kenney/characters/Textures/colormap.png (referenced by path, unmodified)",
+  "sha256": "e5928e6c282ed632958b66771b9940502dfe33be81e07c38f56023d1b68fe7d6"
+}

@@ -4,8 +4,7 @@ extends RefCounted
 ## box-select that pair, save it, then rotate/stamp it where the right table
 ## stood. No state is written to disk and no new assets are involved.
 
-const SOURCE: Vector2i = Vector2i(2, 6)
-const TARGET: Vector2i = Vector2i(10, 6)
+const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
 const PROFILES: Array[String] = ["selection", "ghost", "stamped"]
 
 
@@ -46,9 +45,13 @@ static func prepare(main: Node, profile: String) -> Dictionary:
 	if not PROFILES.has(profile) or world == null or editor == null or mode == null or catalogue == null \
 			or world.clock.phase != SimClock.Phase.MORNING or bool(main.get("use_saves")):
 		return {"error": "blueprint review needs a fresh unsaved Main morning"}
-	if not bool(main.call("shop_buy", &"rug_round", SOURCE, 0)):
+	var source: Vector2i = source_origin()
+	var target_cell: Vector2i = target_origin()
+	if source == SimGrid.NO_CELL or target_cell == SimGrid.NO_CELL:
+		return {"error": "blueprint review needs the authored west and east starter tables"}
+	if not bool(main.call("shop_buy", &"rug_round", source, 0)):
 		return {"error": "blueprint review rug refused: " + editor.last_check.why}
-	var target: PlacedItem = world.grid.item_at(TARGET)
+	var target: PlacedItem = world.grid.item_at(target_cell)
 	if target == null or (target.def as ItemDef).id != &"table_2" \
 			or int(main.call("shop_sell", target.id)) < 0:
 		return {"error": "blueprint review could not clear the original target table"}
@@ -56,7 +59,7 @@ static func prepare(main: Node, profile: String) -> Dictionary:
 		return {"error": "blueprint review could not enter Build"}
 	catalogue.set_category(BuildCatalogue.BLUEPRINTS)
 	catalogue.blueprint_select.pressed.emit()
-	if not mode.blueprint_press(SOURCE) or not mode.blueprint_release(SOURCE + Vector2i.ONE) \
+	if not mode.blueprint_press(source) or not mode.blueprint_release(source + Vector2i.ONE) \
 			or mode.blueprint_selection.size() != 2:
 		return {"error": "blueprint review could not select the whole table and rug"}
 	catalogue.blueprint_name.text = "Dining pair"
@@ -66,7 +69,7 @@ static func prepare(main: Node, profile: String) -> Dictionary:
 	if library.blueprints.size() != 1 or library.blueprints[0].entries.size() != 2:
 		return {"error": "blueprint review could not save its pair"}
 	catalogue.blueprint_buttons[0].pressed.emit()
-	mode.update_origin(TARGET)
+	mode.update_origin(target_cell)
 	if not mode.rotate(1) or not mode.current_check.ok:
 		return {"error": "blueprint review stamp refused: " + mode.current_check.why}
 	if profile == "stamped" and not mode.commit():
@@ -82,8 +85,12 @@ static func evidence(main: Node) -> Dictionary:
 	var library: BlueprintLibrary = main.get("blueprint_library") as BlueprintLibrary
 	if mode == null or world == null or preview == null or catalogue == null or library == null:
 		return {}
-	var target: PlacedItem = world.grid.item_at(TARGET)
-	var placed: bool = target != null and (target.def as ItemDef).id == &"table_2" and target.quarter_turns == 1
+	var source_cell: Vector2i = source_origin()
+	var target_cell: Vector2i = target_origin()
+	var target: PlacedItem = world.grid.item_at(target_cell)
+	var source: PlacedItem = world.grid.item_at(source_cell)
+	var placed: bool = source != null and target != null and (target.def as ItemDef).id == &"table_2" \
+		and target.quarter_turns == posmod(source.quarter_turns + 1, 4)
 	var ghosts: Array[Dictionary] = []
 	for ghost: ItemVisual in preview.blueprint_ghosts:
 		ghosts.append({"visible": ghost.is_visible_in_tree(), "valid": ghost.get_meta("valid", false)})
@@ -113,3 +120,28 @@ static func valid(state: Dictionary, profile: String) -> bool:
 
 static func _visible_valid_ghost(value: Dictionary) -> bool:
 	return value.get("visible", false) and value.get("valid", false)
+
+
+## Fresh Main uses these authored placements. Keep fixture anchors stable after
+## selling/stamping the east table, without retaining a world or invented pose.
+static func source_origin() -> Vector2i:
+	var origins: Array[Vector2i] = _table_origins()
+	return origins[0] if origins.size() == 3 else SimGrid.NO_CELL
+
+
+static func target_origin() -> Vector2i:
+	var origins: Array[Vector2i] = _table_origins()
+	return origins[-1] if origins.size() == 3 else SimGrid.NO_CELL
+
+
+static func _table_origins() -> Array[Vector2i]:
+	var origins: Array[Vector2i] = []
+	for placement: ShopPlacement in LAYOUT.placements:
+		if placement.item_id == &"table_2":
+			origins.append(placement.origin)
+	origins.sort_custom(_origin_before)
+	return origins
+
+
+static func _origin_before(first: Vector2i, second: Vector2i) -> bool:
+	return first.x < second.x or (first.x == second.x and first.y < second.y)

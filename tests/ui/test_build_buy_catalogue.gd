@@ -76,10 +76,15 @@ func test_unknown_rooms_fall_back_to_decor_and_content_validation_names_them() -
 
 func test_rooms_without_items_have_no_tab_and_buy_hides_build_tabs() -> void:
 	# A genuine no-light catalogue still hides the empty room. Shipped content
-	# now has three string lights, so remove only those entries in this fixture.
+	# has string lights and lamps (#84), so remove every Lighting entry here.
 	var no_lights: ContentDB = ContentDB.new()
 	assert_eq(no_lights.load_all(), PackedStringArray())
-	for id: StringName in [&"string_lights_2", &"string_lights_3", &"string_lights_4"]:
+	var shipped: Array[StringName] = []
+	for definition: ItemDef in no_lights.items():
+		if definition.buy_room() == &"lighting":
+			shipped.append(definition.id)
+	assert_true(shipped.size() >= 9, "three string lights and six lamps ship")
+	for id: StringName in shipped:
 		assert_true(no_lights._items.erase(id), "the fixture removes each shipped light")
 	for definition: ItemDef in no_lights.items():
 		assert_false(definition.buy_room() == &"lighting", "this fixture genuinely has no lights")
@@ -99,8 +104,10 @@ func test_shipped_string_lights_have_their_lighting_tab_and_level_gate() -> void
 	assert_eq(_catalogue.category_buttons[&"lighting"].text, "Lighting")
 	_catalogue.set_category(&"lighting")
 	var expected: Array[StringName] = [&"string_lights_2", &"string_lights_3", &"string_lights_4"]
-	assert_eq(_catalogue.visible_ids(), expected, "the three named lighting widths are offered in order")
-	assert_false(_catalogue.group_buttons[&"wall_decor"].visible, "a room with only one group does not need subgroup tabs")
+	# Lamps (#84) share the room; the three widths still come in order.
+	var offered: Array[StringName] = _catalogue.visible_ids().filter(
+		func(id: StringName) -> bool: return expected.has(id))
+	assert_eq(offered, expected, "the three named lighting widths are offered in order")
 	_catalogue.set_owner_level(2)
 	for id: StringName in expected:
 		assert_eq(_content.item(id).catalogue_room, &"lighting")

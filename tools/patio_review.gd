@@ -41,12 +41,12 @@ func _ready() -> void:
 	if not shop_patio(shop_editor.patio_area().cells(), true):
 		_review_fail("could not buy patio cells: " + shop_editor.last_check.why)
 		return
-	for origin: Vector2i in ProbeSetups.patio_table_origins():
+	for origin: Vector2i in ProbeSetups.patio_table_origins(world.grid):
 		if not shop_buy(&"patio_table_2", origin):
 			_review_fail("could not buy outdoor table: " + shop_editor.last_check.why)
 			return
 		_review_table_ids.append(world.grid.item_at(origin).id)
-	if not shop_buy(&"patio_waiting_bench", Vector2i(8, 11)):
+	if not shop_buy(&"patio_waiting_bench", world.grid.entries()[0] + Vector2i(2, 0)):
 		_review_fail("could not buy outdoor bench: " + shop_editor.last_check.why)
 		return
 	_review_construction_charge = _review_cash_before - Economy.cash
@@ -79,7 +79,8 @@ func _configure_review_camera() -> void:
 	rig.minimum_zoom = 3.0
 	rig.edge_pan_enabled = false
 	rig.initial_yaw_degrees = 0.0
-	rig.initial_focus = Vector2(3.5, 5.9) if review_weather == WeatherState.Kind.SUNNY else Vector2(1.8, 6.1)
+	var entry: Vector3 = GridMath.cell_to_world(world.grid.entries()[0])
+	rig.initial_focus = Vector2(entry.x, entry.z) + (Vector2(0.5, 0.4) if review_weather == WeatherState.Kind.SUNNY else Vector2(-1.2, 0.6))
 	rig.initial_zoom = 5.0
 	rig.reset_view()
 	rig.set_process(false)
@@ -141,13 +142,16 @@ func patio_review_evidence() -> Dictionary:
 
 
 func patio_review_valid(state: Dictionary) -> bool:
+	var entries: Array[Array] = []
+	for entry: Vector2i in world.grid.entries():
+		entries.append([entry.x, entry.y])
 	if state.get("tag") != "PATIO_REVIEW" or state.get("ready") != true \
 			or state.get("kind") != review_weather or state.get("day") != 1 \
 			or state.get("weather_override_rng_unchanged") != true or state.get("use_saves") != false \
 			or state.get("paused_tick_unchanged") != true or state.get("named_streams_unchanged_while_paused") != true \
-			or state.get("speed") != 0 or state.get("patio_cells") != 48 \
+			or state.get("speed") != 0 or state.get("patio_cells") != shop_editor.patio_area().cells().size() \
 			or state.get("actual_construction_charge") != state.get("nominal_construction_cost") \
-			or state.get("entries") != [[6, 11], [7, 11]]:
+			or state.get("entries") != entries:
 		return false
 	var tables: Array = state.get("tables", [])
 	if tables.size() != 2:

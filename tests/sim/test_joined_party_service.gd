@@ -129,9 +129,10 @@ func test_party_route_failure_rolls_back_holds_on_every_physical_member() -> voi
 		var guest: CustomerAgent
 		if index == 4:
 			guest = RefusingGuest.new(_sim, _rng(100 + index))
+			guest.cell = _unit_start()
 			_sim.world.add_agent(guest)
 		else:
-			guest = _sim.add_customer(Vector2i.ZERO, _rng(100 + index))
+			guest = _sim.add_customer(_unit_start(), _rng(100 + index))
 		ids.append(guest.id)
 	var party: Party = Party.new(ids)
 	for id: int in ids:
@@ -150,13 +151,42 @@ func test_party_route_failure_rolls_back_holds_on_every_physical_member() -> voi
 
 func test_forced_split_before_seating_requeues_all_members_without_dirtying_unfinished_meals() -> void:
 	_plain()
-	var party: Party = _sim.add_party(Vector2i.ZERO, _randoms(6))
+	var party: Party = _admitted_party(6)
 	assert_true(PartySeating.try_seat(party, _sim.world))
 	var guests: Array[CustomerAgent] = PartySeating.members(party, _sim.world)
 	assert_eq(party.booked_table_ids, _table_ids())
-	assert_true(_sim.world.grid.remove(_tables[1].id))
 	for guest: CustomerAgent in guests:
-		guest.cell = guest.seat_cell
+		assert_true(_sim.world.reset_agent_position(guest, guest.seat_cell))
+	# Removing the middle owner leaves its separate chairs in place. Stage ONLY
+	# those two unit-fixture bodies on ordinary floor before deleting ownership;
+	# four surviving seat owners still exercise deferred physical egress below.
+	assert_eq(_sim.world.clock.phase, SimClock.Phase.MORNING)
+	var middle: PlacedItem = _tables[1]
+	var staging: Array[Vector2i] = [Vector2i(10, 1), Vector2i(11, 1)]
+	var staged: int = 0
+	for guest: CustomerAgent in guests:
+		if guest.table_item_id != middle.id:
+			continue
+		assert_true(staged < staging.size())
+		if staged >= staging.size():
+			return
+		var original_seat: Vector2i = guest.seat_cell
+		var target: Vector2i = staging[staged]
+		assert_eq(middle.reserved_by(original_seat), guest.id)
+		assert_eq(_sim.world.grid.terrain(target), SimGrid.Terrain.FLOOR)
+		assert_true(_sim.world.grid.is_guest_walkable(target))
+		assert_true(_sim.world.movement.standing_cell(_sim.world, target))
+		for other: SimAgent in _sim.world.all_agents():
+			assert_ne(other.cell, target)
+		assert_true(_sim.world.reset_agent_position(guest, target))
+		assert_eq(_sim.world.agent(guest.id), guest)
+		assert_eq(guest.cell, target)
+		assert_true(guest.movement_admitted)
+		assert_eq(middle.reserved_by(original_seat), guest.id, "MORNING pose does not release the real booking")
+		staged += 1
+	assert_eq(staged, 2)
+	assert_true(_sim.world.pending_agents().is_empty())
+	assert_true(_sim.world.grid.remove(_tables[1].id))
 	PartySeating.finish_seating(party, _sim.world, _sim)
 	assert_false(party.seated)
 	assert_eq(party.table_item_id, 0)
@@ -166,6 +196,12 @@ func test_forced_split_before_seating_requeues_all_members_without_dirtying_unfi
 		assert_true(guest.booked_table_ids.is_empty())
 		assert_eq(guest.table_item_id, 0)
 		assert_true(guest.path.is_empty())
+	# A released booking still owns a seat while its person physically occupies it.
+	for guest: CustomerAgent in guests:
+		var physical: PlacedItem = _sim.world.grid.item(_sim.world.grid.dining_table_id(guest.cell))
+		if physical != null:
+			assert_eq(physical.reserved_by(guest.cell), guest.id)
+	assert_true(_egress_released_unit_members(guests), "released physical seat owners step off before the holds disappear")
 	for table: PlacedItem in [_tables[0], _tables[2]]:
 		for seat: Vector2i in table.seat_cells:
 			assert_eq(table.reserved_by(seat), -1)
@@ -189,13 +225,13 @@ func test_favourite_on_nonleader_member_keeps_physical_seat_and_rng_unchanged() 
 
 func test_group_shares_spare_seats_with_singles_but_one_dirty_member_blocks_the_whole_group() -> void:
 	_real_kitchen()
-	var party: Party = _sim.add_party(_sim.world.grid.entries()[0], _randoms(4))
+	var party: Party = _admitted_party(4)
 	assert_true(PartySeating.try_seat(party, _sim.world, _sim.kitchen))
-	var first: CustomerAgent = _sim.add_customer(_sim.world.grid.entries()[0], _rng(88))
-	var second: CustomerAgent = _sim.add_customer(_sim.world.grid.entries()[0], _rng(89))
+	var first: CustomerAgent = _sim.add_customer(_unit_start(), _rng(88))
+	var second: CustomerAgent = _sim.add_customer(_unit_start(), _rng(89))
 	assert_true(first._try_seat(_sim.world))
 	assert_true(second._try_seat(_sim.world))
-	var third: CustomerAgent = _sim.add_customer(_sim.world.grid.entries()[0], _rng(90))
+	var third: CustomerAgent = _sim.add_customer(_unit_start(), _rng(90))
 	assert_false(third._try_seat(_sim.world))
 	for guest: CustomerAgent in PartySeating.members(party, _sim.world):
 		guest._release_seat(_sim.world, false)
@@ -209,7 +245,7 @@ func test_group_shares_spare_seats_with_singles_but_one_dirty_member_blocks_the_
 
 func test_departure_uses_original_member_snapshot_after_forced_split_and_keeps_plate_physical() -> void:
 	_real_kitchen()
-	var party: Party = _sim.add_party(_sim.world.grid.entries()[0], _randoms(6))
+	var party: Party = _admitted_party(6)
 	assert_true(PartySeating.try_seat(party, _sim.world, _sim.kitchen))
 	var guest: CustomerAgent = PartySeating.members(party, _sim.world)[0]
 	var original_members: Array[int] = guest.booked_table_ids.duplicate()
@@ -335,7 +371,7 @@ func _on_task_completed(task: SimTask) -> void:
 
 func test_seated_guests_actual_forced_owner_removal_dirties_survivors_without_reassigning_a_plate() -> void:
 	_real_kitchen()
-	var party: Party = _sim.add_party(_sim.world.grid.entries()[0], _randoms(6))
+	var party: Party = _admitted_party(6)
 	assert_true(PartySeating.try_seat(party, _sim.world, _sim.kitchen))
 	var guests: Array[CustomerAgent] = PartySeating.members(party, _sim.world)
 	for guest: CustomerAgent in guests:
@@ -359,3 +395,64 @@ func test_seated_guests_actual_forced_owner_removal_dirties_survivors_without_re
 	assert_false(_sim.kitchen.plates._tables_by_order.has(departing.order.id),
 		"the removed physical table recovers its own token instead of moving it to a leader")
 	assert_eq(_sim.kitchen.plates.clean + _sim.kitchen.plates.dirty + _sim.kitchen.plates.in_use, 6)
+
+
+## Atomic booking fixtures start with distinct, genuinely admitted bodies.
+## Same-entry birth serialization remains covered by test_party_integration.
+func _admitted_party(count: int) -> Party:
+	assert_eq(_sim.world.clock.phase, SimClock.Phase.MORNING)
+	var party: Party = _sim.add_party(_sim.world.grid.entries()[0], _randoms(count))
+	for guest: CustomerAgent in PartySeating.members(party, _sim.world):
+		if not guest.movement_admitted:
+			assert_true(_sim.world.reset_agent_position(guest, _unit_start()))
+		assert_true(guest.movement_admitted)
+	return party
+
+
+func _unit_start() -> Vector2i:
+	for y: int in _sim.world.grid.size.y:
+		for x: int in _sim.world.grid.size.x:
+			var candidate: Vector2i = _sim.world.grid.origin + Vector2i(x, y)
+			if not _sim.world.grid.is_guest_walkable(candidate) \
+					or not _sim.world.movement.standing_cell(_sim.world, candidate):
+				continue
+			var used: bool = false
+			for agent: SimAgent in _sim.world.all_agents():
+				used = used or agent.cell == candidate
+			if not used:
+				return candidate
+	fail("isolated joined booking fixture ran out of distinct guest starts")
+	return SimGrid.NO_CELL
+
+
+## Unit-level physical egress only: no second booking or meal is started.
+## Released Customers choose a real public exit goal; Staff's idle-busser
+## evacuation must never supply their journey. Keep their actual seat holds.
+func _egress_released_unit_members(guests: Array[CustomerAgent]) -> bool:
+	for guest: CustomerAgent in guests:
+		var exit_route: Array[Vector2i] = _sim.world.grid.find_guest_path_to_any(guest.cell, _sim.world.grid.entries())
+		if exit_route.is_empty() or not guest.set_destination(_sim.world.grid, exit_route.back()):
+			fail("released joined Customer has no legal public exit route")
+			return false
+	for tick: int in CustomerAgent.SEAT_WALK_LIMIT:
+		var released: bool = true
+		for table: PlacedItem in [_tables[0], _tables[2]]:
+			for seat: Vector2i in table.seat_cells:
+				released = released and table.reserved_by(seat) == -1
+		if released:
+			return true
+		var before_tick: Dictionary = MovementInvariants.capture(_sim.world)
+		_sim.world.now += 1
+		_sim.world.movement.begin_tick(_sim.world)
+		for guest: CustomerAgent in guests:
+			guest.begin_movement_trace(_sim.world.now)
+			if not _sim.world.movement.advance_stop(_sim.world, guest) \
+					and not _sim.world.movement.advance_yield(_sim.world, guest):
+				guest.step_move(_sim.world)
+			guest.end_movement_trace()
+		var problem: String = MovementInvariants.problem(_sim.world, before_tick)
+		if not problem.is_empty():
+			fail("released joined Customer physical egress: %s" % problem)
+			return false
+	fail("released joined-party members did not physically leave their seats within the existing seat-walk bound")
+	return false

@@ -147,22 +147,24 @@ func test_native_remove_refusal_keeps_the_person_door_cash_and_reason() -> void:
 	assert_not_null(button)
 	if button == null:
 		return
-	var edge: Vector3i = Vector3i(13, 6, SimGrid.EDGE_WEST)
+	var edge: Vector3i = Vector3i(15, 6, SimGrid.EDGE_WEST)
 	assert_true(_main.call("set_build_active", false))
 	assert_true(_main.call("shop_walls", {edge: SimGrid.Segment.DOORWAY} as Dictionary[Vector3i, int]))
 	var person: SimAgent = SimAgent.new()
-	person.cell = Vector2i(13, 6)
+	person.cell = Vector2i(15, 6)
 	(_main.get("world") as SimWorld).add_agent(person)
+	assert_true(_grid().is_walkable(person.cell), "the person stands in the actual open doorway")
+	assert_true(person.movement_admitted, "the real doorway occupant must be admitted")
 	assert_true(_main.call("set_build_active", true))
 	for frame: int in 2:
 		await _tree().process_frame
 	var cash: int = Economy.cash
 	var saved: String = _saved_text()
-	_focus(Vector2(13.0, 6.5) * GridMath.CELL_SIZE)
+	_focus(Vector2(15.0, 6.5) * GridMath.CELL_SIZE)
 	_native_click(button.get_global_rect().get_center())
 	assert_eq(_mode().state, BuildMode.State.WALLS)
 	assert_eq(_mode().wall_kind, SimGrid.Segment.NONE)
-	var point: Vector2 = _project(Vector2(13.0, 6.5) * GridMath.CELL_SIZE)
+	var point: Vector2 = _project(Vector2(15.0, 6.5) * GridMath.CELL_SIZE)
 	_assert_clear(point)
 	_native_pointer(point)
 	assert_false(_mode().current_check.ok)
@@ -170,7 +172,7 @@ func test_native_remove_refusal_keeps_the_person_door_cash_and_reason() -> void:
 	_native_click(point)
 	assert_eq(_mode().wall_summary(), WallRules.CUT_PERSON)
 	assert_eq(_grid().segment(edge), SimGrid.Segment.DOORWAY)
-	assert_eq(person.cell, Vector2i(13, 6))
+	assert_eq(person.cell, Vector2i(15, 6))
 	assert_eq(Economy.cash, cash)
 	assert_eq(_saved_text(), saved)
 
@@ -279,8 +281,10 @@ func test_native_sell_refuses_an_outer_door_frame_while_someone_stands_in_it() -
 	if mesh == null:
 		return
 	var person: SimAgent = SimAgent.new()
-	person.cell = Vector2i(13, 6)
+	person.cell = Vector2i(15, 6)
 	(_main.get("world") as SimWorld).add_agent(person)
+	assert_true(_grid().is_walkable(person.cell), "the person stands in the actual open doorway")
+	assert_true(person.movement_admitted, "the real doorway occupant must be admitted")
 	_mode().set_tool(BuildMode.Tool.SELL)
 	var centre: Vector3 = mesh.global_transform * mesh.get_aabb().get_center()
 	_rig().initial_yaw_degrees = 90.0
@@ -291,8 +295,8 @@ func test_native_sell_refuses_an_outer_door_frame_while_someone_stands_in_it() -
 	_native_pointer(point)
 	assert_eq(_mode().hover_summary(), WallRules.CUT_PERSON)
 	_native_click(point)
-	assert_eq(_grid().segment(Vector3i(13, 6, SimGrid.EDGE_WEST)), SimGrid.Segment.DOORWAY)
-	assert_eq(person.cell, Vector2i(13, 6))
+	assert_eq(_grid().segment(Vector3i(15, 6, SimGrid.EDGE_WEST)), SimGrid.Segment.DOORWAY)
+	assert_eq(person.cell, Vector2i(15, 6))
 	assert_eq(Economy.cash, cash)
 	assert_eq(_mode().hover_summary(), WallRules.CUT_PERSON)
 
@@ -309,7 +313,7 @@ func test_outer_frame_sell_ray_respects_foreground_furniture_and_thick_shell_geo
 	if fridge == null:
 		return
 	var view: ShopView = _main.get_node("ShopView") as ShopView
-	var frame: Node3D = view.segment_view.get_node("ShellWindow_13_6") as Node3D
+	var frame: Node3D = view.segment_view.get_node("ShellWindow_15_6") as Node3D
 	var jamb: MeshInstance3D = _frame_piece(frame, false)
 	assert_not_null(jamb)
 	if jamb == null:
@@ -323,7 +327,7 @@ func test_outer_frame_sell_ray_respects_foreground_furniture_and_thick_shell_geo
 	var origin: Vector3 = furniture_point + (furniture_point - target).normalized()
 	var direction: Vector3 = (target - origin).normalized()
 	var candidate: Dictionary = view.wall_segment_at_ray(origin, direction)
-	assert_eq(candidate.get("edge", SimGrid.NO_EDGE), Vector3i(13, 6, SimGrid.EDGE_WEST))
+	assert_eq(candidate.get("edge", SimGrid.NO_EDGE), Vector3i(15, 6, SimGrid.EDGE_WEST))
 	assert_true(view.nearest_item_distance(origin, direction) < float(candidate.get("distance", INF)),
 		"the rendered furniture is measurably in front of the frame")
 	_camera().global_position = origin
@@ -335,7 +339,7 @@ func test_outer_frame_sell_ray_respects_foreground_furniture_and_thick_shell_geo
 	_mode().set_tool(BuildMode.Tool.SELL)
 	_native_pointer(point)
 	assert_eq(_mode().wall_hover_edge, SimGrid.NO_EDGE)
-	var shell: MeshInstance3D = (view.get("_wall_nodes") as Dictionary)[Vector2i(13, 5)] as MeshInstance3D
+	var shell: MeshInstance3D = (view.get("_wall_nodes") as Dictionary)[Vector2i(15, 5)] as MeshInstance3D
 	var shell_bounds: AABB = shell.global_transform * shell.get_aabb()
 	var shell_point: Vector3 = shell_bounds.get_center()
 	shell_point.y = shell_bounds.end.y - 0.02
@@ -347,7 +351,7 @@ func test_outer_frame_sell_ray_respects_foreground_furniture_and_thick_shell_geo
 	_camera().look_at(target)
 	point = _camera().unproject_position(target)
 	assert_eq(_main.call("wall_segment_at_screen_position", point), SimGrid.NO_EDGE)
-	assert_eq(_grid().segment(Vector3i(13, 6, SimGrid.EDGE_WEST)), SimGrid.Segment.WINDOW)
+	assert_eq(_grid().segment(Vector3i(15, 6, SimGrid.EDGE_WEST)), SimGrid.Segment.WINDOW)
 
 
 func _start() -> void:
@@ -399,7 +403,7 @@ func _assert_outer_sell(kind: SimGrid.Segment) -> void:
 	var paint: Dictionary = _main.call("wall_face_at_screen_position", point, false)
 	assert_eq(paint.get("face", WallFaces.NO_FACE), WallFaces.NO_FACE,
 		"a removable fitting never becomes a paintable wall face")
-	var edge: Vector3i = Vector3i(13, 6, SimGrid.EDGE_WEST)
+	var edge: Vector3i = Vector3i(15, 6, SimGrid.EDGE_WEST)
 	assert_eq(_main.call("wall_segment_at_screen_position", point), edge)
 	_mode().set_tool(BuildMode.Tool.SELL)
 	var cash: int = Economy.cash
@@ -410,7 +414,7 @@ func _assert_outer_sell(kind: SimGrid.Segment) -> void:
 	assert_true(_mode().hover_summary().contains("$%d" % refund))
 	_native_click(point)
 	assert_eq(_grid().segment(edge), SimGrid.Segment.NONE)
-	assert_false(_grid().is_walkable(Vector2i(13, 6)), "removing the fitting restores the thick shell")
+	assert_false(_grid().is_walkable(Vector2i(15, 6)), "removing the fitting restores the thick shell")
 	assert_eq(Economy.cash, cash + refund)
 	assert_eq(_saved_text(), saved)
 	_native_key(KEY_Z, true)
@@ -421,12 +425,12 @@ func _assert_outer_sell(kind: SimGrid.Segment) -> void:
 
 func _prepare_outer_frame(kind: SimGrid.Segment) -> MeshInstance3D:
 	assert_true(_main.call("set_build_active", false))
-	assert_true(_main.call("shop_walls", {Vector3i(13, 6, SimGrid.EDGE_WEST): kind} as Dictionary[Vector3i, int]),
+	assert_true(_main.call("shop_walls", {Vector3i(15, 6, SimGrid.EDGE_WEST): kind} as Dictionary[Vector3i, int]),
 		_editor().last_check.why)
 	assert_true(_main.call("set_build_active", true))
 	var view: ShopView = _main.get_node("ShopView") as ShopView
 	view.set_wall_mode(ShopView.WallMode.UP)
-	var name: String = "ShellWindow_13_6" if kind == SimGrid.Segment.WINDOW else "BackDoor_13_6"
+	var name: String = "ShellWindow_15_6" if kind == SimGrid.Segment.WINDOW else "BackDoor_15_6"
 	var root: Node3D = view.segment_view.get_node_or_null(name) as Node3D
 	assert_not_null(root)
 	return _frame_piece(root, true) if root != null else null
@@ -451,7 +455,7 @@ func _frame_piece(root: Node3D, highest: bool) -> MeshInstance3D:
 
 
 func _legacy_snapshot_with_lost_face() -> Dictionary:
-	var layout: ShopLayout = (load("res://data/layouts/tier1_hole_in_the_wall.tres") as ShopLayout).duplicate(true) as ShopLayout
+	var layout: ShopLayout = LegacyTier1Layout.make()
 	layout.rows[4] = "#####...######"
 	layout.room_rows = PackedStringArray(["", " KKKKKKKKKKKK", " KKKKKKKKKKKK", " KKKKKKKKKKKK", "     KKK"])
 	layout.wall_segments.clear()

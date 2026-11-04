@@ -1297,13 +1297,15 @@ static func catalogue_cached_evidence(cache: ItemThumbnailCache) -> Dictionary:
 ## Visibility here means native clipping geometry, not an aesthetic verdict.
 static func catalogue_review_evidence(main: Node, context_root: Node) -> Dictionary:
 	var world: SimWorld = main.get("world") as SimWorld
+	var sim: RestaurantSim = main.get("sim") as RestaurantSim
 	var editor: ShopEditor = main.get("shop_editor") as ShopEditor
 	var content: ContentDB = main.get("content") as ContentDB
 	var progress: OwnerProgress = main.get("owner_progress") as OwnerProgress
 	var catalogue: BuildCatalogue = main.get_node_or_null("Overlay/BuildCatalogue") as BuildCatalogue
 	var shop: ShopView = main.get_node_or_null("ShopView") as ShopView
 	var clock: Node = context_root.get_node_or_null("Clock")
-	if world == null or editor == null or content == null or progress == null or catalogue == null or shop == null or clock == null:
+	if world == null or sim == null or not sim.staff_spawns.has(&"server") \
+			or editor == null or content == null or progress == null or catalogue == null or shop == null or clock == null:
 		return {"available": false}
 	var cache: ItemThumbnailCache = catalogue._thumbnails
 	var expected: Dictionary = _catalogue_content_expectations(content, catalogue.selected_variants)
@@ -1396,7 +1398,7 @@ static func catalogue_review_evidence(main: Node, context_root: Node) -> Diction
 			"active": cache._active_scene != null, "failed": cache._failed.size(),
 			"error": cache.last_error, "icons_match": icons_match},
 		"expected_cards": expected["cards"], "expected_wall_scenes": expected["wall_scenes"], "cards": cards, "onscreen_cards": onscreen, "tabs": tabs, "items": items,
-		"server": _catalogue_server_evidence(world, shop, main.get_node_or_null("CameraRig/Camera3D") as Camera3D),
+		"server": _catalogue_server_evidence(world, shop, main.get_node_or_null("CameraRig/Camera3D") as Camera3D, sim.staff_spawns[&"server"]),
 		"vibe": catalogue_vibe_evidence(main, world, content, editor, catalogue),
 		"generated_vibe_uids": generated_uid_evidence(VIBE_UID_SOURCES),
 		"dining_failures": dining.failures, "dining_links": links, "edit_ok": check.ok, "unreachable": check.unreachable}
@@ -1729,13 +1731,13 @@ static func _catalogue_rug_context_valid(state: Dictionary, fixture: Dictionary)
 
 ## Read the existing server and native rig without moving, animating or warming
 ## up the simulation. Visibility/frustum fields still require image review.
-static func _catalogue_server_evidence(world: SimWorld, shop: ShopView, camera: Camera3D) -> Dictionary:
+static func _catalogue_server_evidence(world: SimWorld, shop: ShopView, camera: Camera3D, post: Vector2i) -> Dictionary:
 	for agent: SimAgent in world.agents:
 		if not agent is StaffAgent or agent is OwnerAgent or agent.role != &"server":
 			continue
 		var person: PersonView = shop.agent_nodes.get(agent.id) as PersonView
 		var record: Dictionary = {"available": true, "id": agent.id, "role": String(agent.role),
-			"cell": [agent.cell.x, agent.cell.y], "native_person": person != null,
+			"cell": [agent.cell.x, agent.cell.y], "expected_post": [post.x, post.y], "native_person": person != null,
 			"expected_model": String(PersonPresentation.model_for(agent.role, agent.id))}
 		if person != null:
 			record.merge({"visible": person.is_visible_in_tree(), "native_role": String(person.role),
@@ -1751,9 +1753,12 @@ static func _catalogue_server_evidence(world: SimWorld, shop: ShopView, camera: 
 
 
 static func _catalogue_server_valid(server: Dictionary) -> bool:
+	var post: Variant = server.get("expected_post")
+	if not post is Array or post.size() != 2 or not post[0] is int or not post[1] is int:
+		return false
 	if server.get("available") != true or server.get("native_person") != true \
 			or server.get("visible") != true or server.get("model_visible") != true \
-			or server.get("role") != "server" or server.get("native_role") != "server" or server.get("cell") != [8, 8] \
+			or server.get("role") != "server" or server.get("native_role") != "server" or server.get("cell") != post \
 			or server.get("clip") != "idle" or String(server.get("model", "")).is_empty() \
 			or server.get("model") != server.get("expected_model"):
 		return false
@@ -2016,7 +2021,7 @@ func _process(_delta: float) -> bool:
 				return true
 			if _blueprint_profile == "ghost":
 				var camera: Camera3D = _main.get_node("CameraRig/Camera3D") as Camera3D
-				_build_pointer = camera.unproject_position(GridMath.cell_to_world(BLUEPRINT_REVIEW.TARGET))
+				_build_pointer = camera.unproject_position(GridMath.cell_to_world(BLUEPRINT_REVIEW.target_origin()))
 		_configure_inspection()
 		if _failed:
 			return true
@@ -2458,13 +2463,21 @@ func _configure_paint() -> void:
 	if not bool(_main.call("set_paint_active", true)):
 		_fail_capture("scene refused paint entry")
 		return
+	# Item cells come from the real starter layout, so a roomier shop keeps
+	# colouring the same first table and plant that _paint_state() reads.
+	var tables: Array[PlacedItem] = ShopBuilder.items_with_def(world, &"table_2")
+	var plants: Array[PlacedItem] = ShopBuilder.items_with_def(world, &"potted_plant")
+	var dining: Vector2i = _paint_dining_cell(world)
+	if tables.is_empty() or plants.is_empty() or dining == Vector2i(-1, -1):
+		_fail_capture("paint capture needs the starter table, plant and a clear dining floor cell")
+		return
 	var samples: Array[Dictionary] = [
 		{"swatch": &"sage", "cell": Vector2i(0, 5)},
-		{"swatch": &"honey", "cell": Vector2i(8, 8)},
+		{"swatch": &"honey", "cell": dining},
 		# A floor click stays in its room (D25), so the kitchen takes its own.
 		{"swatch": &"honey", "cell": Vector2i(3, 2)},
-		{"swatch": &"terracotta", "cell": Vector2i(2, 6)},
-		{"swatch": &"sage", "cell": Vector2i(12, 9)},
+		{"swatch": &"terracotta", "cell": tables[0].origin},
+		{"swatch": &"sage", "cell": plants[0].origin},
 	]
 	for sample: Dictionary in samples:
 		var button: Button = catalogue.swatch_buttons.get(sample["swatch"]) as Button
@@ -2477,6 +2490,18 @@ func _configure_paint() -> void:
 			return
 
 
+## The clear floor cell just inside the street door: dining floor in any
+## starter size, never under a table, so its click paints the dining floor.
+func _paint_dining_cell(world: SimWorld) -> Vector2i:
+	var entries: Array[Vector2i] = world.grid.entries()
+	if entries.is_empty():
+		return Vector2i(-1, -1)
+	var cell: Vector2i = entries[0] + Vector2i.UP
+	if world.grid.terrain(cell) != SimGrid.Terrain.FLOOR or world.grid.item_at(cell) != null:
+		return Vector2i(-1, -1)
+	return cell
+
+
 func _paint_state() -> Dictionary:
 	var world: SimWorld = _capture_world()
 	var editor: ShopEditor = _main.get("shop_editor") as ShopEditor
@@ -2487,7 +2512,8 @@ func _paint_state() -> Dictionary:
 		return {}
 	var tables: Array[PlacedItem] = ShopBuilder.items_with_def(world, &"table_2")
 	var plants: Array[PlacedItem] = ShopBuilder.items_with_def(world, &"potted_plant")
-	if tables.is_empty() or plants.is_empty() or view.get_node("Walls").get_child_count() == 0:
+	var dining: Vector2i = _paint_dining_cell(world)
+	if tables.is_empty() or plants.is_empty() or dining == Vector2i(-1, -1) or view.get_node("Walls").get_child_count() == 0:
 		return {}
 	var wall: MeshInstance3D = view.get_node("Walls").get_child(0) as MeshInstance3D
 	var floor_shader: ShaderMaterial = view.floor_mesh.material_override as ShaderMaterial
@@ -2497,15 +2523,15 @@ func _paint_state() -> Dictionary:
 	return {"active": _main.call("is_paint_active"), "catalogue_visible": catalogue.is_visible_in_tree(),
 		"swatch_count": catalogue.swatch_buttons.size(), "grid_forced": rig.is_grid_forced(),
 		"grid_visible": rig.effective_grid_visible(), "wall": String(editor.wall_swatch_id),
-		"floor": String(editor.floors.finish(Vector2i(8, 8)).swatch), "table": String(tables[0].swatch_id),
+		"floor": String(editor.floors.finish(dining).swatch), "table": String(tables[0].swatch_id),
 		"plant": String(plants[0].swatch_id),
 		# D25: a floor click recolours its own room's floor in the finish map;
 		# the capture clicks the dining room and the kitchen, so the whole
 		# starter floor turns honey as before.
 		"rendered": (wall.material_override as StandardMaterial3D).albedo_color == content.swatch(&"sage").color \
 			and floor_shader.get_shader_parameter("finish_map") == view.finish_texture \
-			and view.finish_texel(Vector2i(8, 8)).g8 == ShopView.FINISH_FIRST_SWATCH + content.swatches().find(content.swatch(&"honey")) \
-			and view.finish_texel(Vector2i(3, 2)).g8 == view.finish_texel(Vector2i(8, 8)).g8 \
+			and view.finish_texel(dining).g8 == ShopView.FINISH_FIRST_SWATCH + content.swatches().find(content.swatch(&"honey")) \
+			and view.finish_texel(Vector2i(3, 2)).g8 == view.finish_texel(dining).g8 \
 			and table_material.albedo_color == content.swatch(&"terracotta").color \
 			and plant_material.albedo_color == content.swatch(&"sage").color}
 
@@ -2521,8 +2547,18 @@ func _configure_build() -> void:
 	var editor: ShopEditor = _main.get("shop_editor") as ShopEditor
 	var camera: Camera3D = _main.get_node_or_null("CameraRig/Camera3D") as Camera3D
 	var def_id: StringName = &"table_2" if _build == "green" else &"fridge"
-	var cell: Vector2i = Vector2i(8, 8) if _build == "green" else Vector2i(7, 7)
-	var turns: int = 0 if _build == "green" else 1
+	# Anchored to the real starter tables so a resized shop keeps the same
+	# proposals in view above the catalogue panel: green turns a table like
+	# the starters into the clear gap between the west and middle tables, one
+	# row north; red puts the fridge across the middle table itself.
+	var tables: Array[PlacedItem] = ShopBuilder.items_with_def(world, &"table_2")
+	if tables.size() != 3:
+		_fail_capture("--build review expects the three starter tables")
+		return
+	tables.sort_custom(func(a: PlacedItem, b: PlacedItem) -> bool: return a.origin.x < b.origin.x)
+	var gap_x: int = floori((tables[0].origin.x + tables[1].origin.x) / 2.0)
+	var cell: Vector2i = Vector2i(gap_x, tables[1].origin.y - 1) if _build == "green" else tables[1].origin + Vector2i(1, 1)
+	var turns: int = tables[1].quarter_turns if _build == "green" else 1
 	if editor == null or camera == null or not editor.can_edit() \
 			or editor.check_buy(def_id, cell, turns).ok != (_build == "green"):
 		_fail_capture("review proposal does not match the actual editor result")

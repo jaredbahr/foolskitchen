@@ -1,9 +1,9 @@
 class_name LegacyTier1Layout
 extends RefCounted
-## Frozen terrain for isolated wall algorithms and historical save fixtures.
+## Frozen original authored geometry for wall algorithms and historical saves.
 ## Tests of the shipped thin layout live in test_thin_dividers.gd.
 
-const TEMPLATE: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
+const TEMPLATE: ShopLayout = preload("res://data/layouts/tier1_original.tres")
 const ROWS: PackedStringArray = ["##############", "#............#", "#............#",
 	"#............#", "#####...######", "#............#", "#............#", "#............#",
 	"#............#", "#............#", "######..######", "      EE      "]

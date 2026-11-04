@@ -100,6 +100,8 @@ corner_radius_bottom_left = 6
 [resource]
 default_font_size = 18
 Label/colors/font_color = Color(0.2313726, 0.1647059, 0.1254902, 1)
+TooltipLabel/colors/font_color = Color(0.2313726, 0.1647059, 0.1254902, 1)
+TooltipPanel/styles/panel = SubResource("Panel_cream")
 Label/constants/outline_size = 0
 PanelContainer/styles/panel = SubResource("Panel_cream")
 Button/colors/font_color = Color(0.2313726, 0.1647059, 0.1254902, 1)

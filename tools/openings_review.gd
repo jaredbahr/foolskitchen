@@ -2,6 +2,9 @@ extends "res://src/world/main.gd"
 ## Explicit, unsaved review fixture using the normal morning edit commands.
 ## OPENINGS_REVIEW_STAGE=before|after selects the supported wall or expanded room.
 ## The extra $2,000 and wall-decor unlock only prepare this capture, never a save.
+## The openings go in the east wall, read from the real shop's terrain.
+
+const WALLS_REVIEW: Script = preload("res://tools/walls_review.gd")
 
 
 func _ready() -> void:
@@ -12,16 +15,23 @@ func _ready() -> void:
 	if stage not in ["before", "after"] or sim == null:
 		push_error("Opening review needs a fresh shop and a before or after stage")
 		return
+	var extent: Vector2i = WALLS_REVIEW.shop_extent(world.grid)
+	if extent == SimGrid.NO_CELL:
+		push_error("Opening review needs a rectangular shop with a two-cell south street entry")
+		return
+	# The east wall's inner floor column and the shell column just outside it.
+	var inside: int = extent.x
+	var shell: int = inside + 1
 	Economy.add_cash(2000, Ledger.OTHER)
-	var window: Vector3i = Vector3i(13, 7, SimGrid.EDGE_WEST)
-	var door: Vector3i = Vector3i(13, 6, SimGrid.EDGE_WEST)
+	var window: Vector3i = Vector3i(shell, 7, SimGrid.EDGE_WEST)
+	var door: Vector3i = Vector3i(shell, 6, SimGrid.EDGE_WEST)
 	if not shop_walls({window: SimGrid.Segment.WINDOW, door: SimGrid.Segment.DOORWAY}
 			as Dictionary[Vector3i, int]):
 		push_error("Opening review could not place its openings: " + shop_editor.last_check.why)
 		return
 	shop_editor.set_owner_level(6)
-	if not shop_hang(&"neon_open_sign", Vector3i(12, 7, 1)) \
-			or not shop_hang(&"wall_art_sunrise", Vector3i(12, 8, 1)):
+	if not shop_hang(&"neon_open_sign", Vector3i(inside, 7, 1)) \
+			or not shop_hang(&"wall_art_sunrise", Vector3i(inside, 8, 1)):
 		push_error("Opening review could not hang its wall decor: " + shop_editor.last_check.why)
 		return
 	var cash_before: int = Economy.cash
@@ -30,7 +40,7 @@ func _ready() -> void:
 	if stage == "after":
 		var cells: Array[Vector2i] = []
 		for y: int in range(5, 10):
-			cells.append(Vector2i(14, y))
+			cells.append(Vector2i(shell + 1, y))
 		var check: EditCheck = shop_editor.check_floor(cells, true)
 		if not check.ok or not shop_floor(cells, true):
 			push_error("Opening review could not expand its floor: " + shop_editor.last_check.why)

@@ -53,23 +53,23 @@ func test_catalogue_drag_refund_undo_refusal_and_cancel_never_save() -> void:
 	assert_eq(_mode().state, BuildMode.State.PATIO)
 	var preview: BuildPreview = _main.get("_build_preview") as BuildPreview
 	assert_not_null(preview.patio_lot)
-	assert_false(_mode().patio_open_cells().has(Vector2i(6, 12)), "the street door approach is public")
+	assert_false(_mode().patio_open_cells().has(_street(0, 1)), "the street door approach is public")
 	# The authored entry at (6, 11) reaches this 2×2 patch through (5, 11).
 	# Four tiles preserve the purchase/refund arithmetic without a path fixture.
-	_press(Vector2i(4, 11))
-	_pointer(Vector2i(5, 12))
+	_press(_street(-2, 0))
+	_pointer(_street(-1, 1))
 	assert_eq(_mode().patio_summary(), "Add 4 patio tiles  $60")
 	assert_true(_mode().current_check.ok)
 	assert_eq(preview.floor_ghost_cells.size(), 4)
-	_release(Vector2i(5, 12))
+	_release(_street(-1, 1))
 	assert_eq(_editor().bought_patio().size(), 4)
 	if _editor().bought_patio().size() != 4:
 		return  # Keep the setup assertion; avoid misleading follow-on refusals.
 	assert_eq(Economy.cash, cash - 60)
 	assert_eq(_forecast(), WeatherText.forecast_for(_world().weather.kind, true))
-	_press(Vector2i(5, 12), true)
+	_press(_street(-1, 1), true)
 	assert_eq(_mode().patio_summary(), "Remove 1 patio tile  (refund $7)")
-	_release(Vector2i(5, 12))
+	_release(_street(-1, 1))
 	assert_eq(_editor().bought_patio().size(), 3)
 	assert_eq(Economy.cash, cash - 53)
 	_key(KEY_Z, true)
@@ -80,14 +80,14 @@ func test_catalogue_drag_refund_undo_refusal_and_cancel_never_save() -> void:
 	assert_eq(Economy.cash, cash)
 	assert_eq(_forecast(), WeatherText.forecast_for(_world().weather.kind), "selling the last patio clears its status")
 	assert_true(_main.call("begin_patio_tool"))
-	_press(Vector2i(6, 11))
+	_press(_street(0, 0))
 	assert_false(_mode().current_check.ok)
 	assert_false(_mode().current_check.why.is_empty(), "the refusal is readable")
 	assert_eq(preview.floor_ghost.get_meta("valid"), false)
-	_release(Vector2i(6, 11))
+	_release(_street(0, 0))
 	assert_eq(Economy.cash, cash)
 	assert_true(_editor().bought_patio().is_empty())
-	_press(Vector2i(5, 11))
+	_press(_street(-1, 0))
 	_key(KEY_ESCAPE)
 	assert_eq(_mode().state, BuildMode.State.PATIO, "first Esc cancels the drag")
 	assert_false(_mode().patio_dragging)
@@ -104,7 +104,7 @@ func test_morning_status_refreshes_for_rain_sun_and_last_cell_undo() -> void:
 	assert_eq(_forecast(), "Rain today", "an older shop keeps its exact plain forecast")
 	assert_true(_main.call("set_build_active", true))
 	# This one tile borders the real public entry, rather than an isolated lot cell.
-	var purchased: bool = _main.call("shop_patio", [Vector2i(5, 11)] as Array[Vector2i], true)
+	var purchased: bool = _main.call("shop_patio", [_street(-1, 0)] as Array[Vector2i], true)
 	assert_true(purchased, "the entry-adjacent patio cell must be buyable")
 	if not purchased:
 		return
@@ -135,8 +135,8 @@ func test_owned_pavement_keeps_street_anchor_facade_and_outdoor_rain_mask() -> v
 	# Connect the rendered test cell (2, 12) to the real entry (6, 11):
 	# four cells along row 11, then one step down. This costs $75 from the
 	# unchanged starter cash and does not require a disconnected floor island.
-	var cells: Array[Vector2i] = [Vector2i(2, 11), Vector2i(3, 11), Vector2i(4, 11),
-		Vector2i(5, 11), Vector2i(2, 12)]
+	var cells: Array[Vector2i] = [_street(-4, 0), _street(-3, 0), _street(-2, 0),
+		_street(-1, 0), _street(-4, 1)]
 	var purchased: bool = _main.call("shop_patio", cells, true)
 	assert_true(purchased, "the connected pavement chain must be buyable from starter cash")
 	if not purchased:
@@ -157,7 +157,7 @@ func test_owned_pavement_keeps_street_anchor_facade_and_outdoor_rain_mask() -> v
 	var indoors: AABB = AABB(Vector3(1.1, 0.2, 3.1), Vector3(0.01, 1.0, 0.01))
 	assert_false(view.weather_view.call("_outside_bounds", indoors))
 	var changes: Dictionary[Vector2i, FloorFinishes.Finish] = _editor().lay_changes(
-		[Vector2i(2, 12)] as Array[Vector2i], &"herringbone", &"honey")
+		[_street(-4, 1)] as Array[Vector2i], &"herringbone", &"honey")
 	assert_true(_main.call("shop_flooring", changes))
 	assert_not_null(view.patio_floor_mesh, "explicitly painted patio reuses the existing floor shader")
 	if view.patio_floor_mesh == null:
@@ -169,25 +169,25 @@ func test_owned_pavement_keeps_street_anchor_facade_and_outdoor_rain_mask() -> v
 func test_native_furniture_walking_feet_and_seated_pose_follow_the_pavement_once() -> void:
 	await _start()
 	var view: ShopView = _main.get_node("ShopView") as ShopView
-	var indoor_table: PlacedItem = _world().grid.item_at(Vector2i(2, 6))
+	var indoor_table: PlacedItem = _world().grid.item_at(ShopBuilder.items_with_def(_world(), &"table_2")[0].origin)
 	var indoor_visual: ItemVisual = view.item_nodes[indoor_table.id]
 	var indoor_transform: Transform3D = indoor_visual.global_transform
 	var indoor_base: float = _native_minimum_y(indoor_visual)
 	if not _buy_left_patio():
 		return
-	assert_true(_main.call("shop_buy", &"patio_table_2", Vector2i(2, 12), 0))
-	assert_true(_main.call("shop_buy", &"patio_waiting_bench", Vector2i(0, 11), 0))
-	var table: PlacedItem = _world().grid.item_at(Vector2i(2, 12))
-	var bench: PlacedItem = _world().grid.item_at(Vector2i(0, 11))
+	assert_true(_main.call("shop_buy", &"patio_table_2", _street(-4, 1), 0))
+	assert_true(_main.call("shop_buy", &"patio_waiting_bench", _street(-6, 0), 0))
+	var table: PlacedItem = _world().grid.item_at(_street(-4, 1))
+	var bench: PlacedItem = _world().grid.item_at(_street(-6, 0))
 	assert_not_null(table)
 	assert_not_null(bench)
 	if table == null or bench == null:
 		return
 	var pavement: float = _measured_pavement(view)
 	assert_true(pavement > 0.0, "the native paving has a raised top surface")
-	assert_almost_eq(view.ground_height(Vector2i(5, 11)), pavement)
-	assert_almost_eq(view.ground_height(Vector2i(6, 11)), 0.0, 0.00001, "the public entry keeps its authored height")
-	assert_almost_eq(view.ground_height(Vector2i(2, 6)), 0.0)
+	assert_almost_eq(view.ground_height(_street(-1, 0)), pavement)
+	assert_almost_eq(view.ground_height(_street(0, 0)), 0.0, 0.00001, "the public entry keeps its authored height")
+	assert_almost_eq(view.ground_height(ShopBuilder.items_with_def(_world(), &"table_2")[0].origin), 0.0)
 	assert_eq(indoor_visual.global_transform, indoor_transform, "purchasing pavement leaves indoor furniture in place")
 	assert_almost_eq(_native_minimum_y(view.item_nodes[table.id]) - indoor_base, pavement, 0.00001,
 		"the identical imported table wrapper rises exactly to the measured pavement")
@@ -206,21 +206,21 @@ func test_native_furniture_walking_feet_and_seated_pose_follow_the_pavement_once
 	if person == null:
 		return
 	assert_almost_eq(person.position.y, 0.0, 0.00001, "indoor actor feet keep the old floor plane")
-	staff.cell = Vector2i(5, 11)
+	staff.cell = _street(-1, 0)
 	staff.path.clear()
 	staff.move_progress = 0.0
 	view._process(0.0)
 	assert_almost_eq(person.position.y, pavement, 0.00001, "standing feet sit on the pavement surface")
 	# Use a real legal step across the street entry boundary without advancing
 	# the simulation: the rendered foot plane must cross the height difference.
-	staff.cell = Vector2i(6, 11)
-	assert_true(staff.set_destination(_world().grid, Vector2i(5, 11)))
-	assert_eq(staff.next_cell(), Vector2i(5, 11))
+	staff.cell = _street(0, 0)
+	assert_true(staff.set_destination(_world().grid, _street(-1, 0)))
+	assert_eq(staff.next_cell(), _street(-1, 0))
 	staff.move_progress = 0.25
 	view._process(0.0)
 	assert_almost_eq(person.position.y, pavement * 0.25, 0.00001)
-	staff.cell = Vector2i(5, 11)
-	assert_true(staff.set_destination(_world().grid, Vector2i(6, 11)))
+	staff.cell = _street(-1, 0)
+	assert_true(staff.set_destination(_world().grid, _street(0, 0)))
 	staff.move_progress = 0.75
 	view._process(0.0)
 	assert_almost_eq(person.position.y, pavement * 0.25, 0.00001, "returning indoors lowers the feet along the same step")
@@ -264,7 +264,7 @@ func test_native_mess_and_build_overlays_clear_pavement_without_lifting_indoor_t
 	await _start()
 	if not _buy_left_patio():
 		return
-	assert_true(_main.call("shop_buy", &"patio_waiting_bench", Vector2i(0, 11), 0))
+	assert_true(_main.call("shop_buy", &"patio_waiting_bench", _street(-6, 0), 0))
 	var view: ShopView = _main.get_node("ShopView") as ShopView
 	var pavement: float = _measured_pavement(view)
 	var tuning: CleanlinessTuning = (load("res://data/balance/cleanliness.tres") as CleanlinessTuning).duplicate() as CleanlinessTuning
@@ -272,8 +272,8 @@ func test_native_mess_and_build_overlays_clear_pavement_without_lifting_indoor_t
 	var private_rng: RandomNumberGenerator = RandomNumberGenerator.new()
 	private_rng.seed = 243
 	var mess: CleanlinessState = CleanlinessState.new(_world().grid, tuning, private_rng)
-	var dirt_cell: Vector2i = Vector2i(4, 12)
-	var spill_cell: Vector2i = Vector2i(5, 12)
+	var dirt_cell: Vector2i = _street(-2, 1)
+	var spill_cell: Vector2i = _street(-1, 1)
 	var indoor_cell: Vector2i = Vector2i(11, 8)
 	assert_true(mess.try_spawn_at_departed_seat(dirt_cell))
 	assert_true(mess.add_spill(spill_cell))
@@ -293,12 +293,12 @@ func test_native_mess_and_build_overlays_clear_pavement_without_lifting_indoor_t
 	var preview: BuildPreview = _main.get("_build_preview") as BuildPreview
 	var random_before: Dictionary = GameState.call("_capture_save")
 	var checkpoint: String = _checkpoint()
-	assert_true(_mode().begin_buy(&"patio_table_2", Vector2i(2, 12)))
+	assert_true(_mode().begin_buy(&"patio_table_2", _street(-4, 1)))
 	assert_true(_mode().current_check.ok, _mode().current_check.why)
 	assert_not_null(preview.ghost_mesh)
 	if preview.ghost_mesh == null:
 		return
-	var indoor_table: PlacedItem = _world().grid.item_at(Vector2i(2, 6))
+	var indoor_table: PlacedItem = _world().grid.item_at(ShopBuilder.items_with_def(_world(), &"table_2")[0].origin)
 	assert_almost_eq(_native_minimum_y(preview.ghost_mesh) - _native_minimum_y(view.item_nodes[indoor_table.id]),
 		pavement, 0.00001, "the actual furniture ghost clears the existing paving")
 	assert_eq(preview.seat_markers.size(), 2)
@@ -307,7 +307,7 @@ func test_native_mess_and_build_overlays_clear_pavement_without_lifting_indoor_t
 		assert_true(bounds.position.y > pavement, "the seat marker's bottom is above the pavement")
 		assert_almost_eq(marker.global_position.y, pavement + 0.04, 0.00001)
 	_mode().cancel()
-	var bench: PlacedItem = _world().grid.item_at(Vector2i(0, 11))
+	var bench: PlacedItem = _world().grid.item_at(_street(-6, 0))
 	_mode().hover_item(bench.id)
 	assert_not_null(preview.hover_mesh)
 	if preview.hover_mesh == null:
@@ -346,7 +346,7 @@ func test_owned_first_row_has_real_paving_triangles_and_sale_restores_the_street
 	var dressing: NeighbourhoodDressing = view.neighbourhood_dressing
 	var before: Dictionary = dressing.capture_state()
 	var pavement: float = _measured_pavement(view)
-	var cell: Vector2i = Vector2i(8, 11)
+	var cell: Vector2i = _street(2, 0)
 	# This first-row point is beside the original public door approach and
 	# inside the old street reserve, where general neighbourhood paving stops.
 	var point: Vector3 = GridMath.cell_to_world(cell) + Vector3(0.07, pavement, -0.06)
@@ -392,8 +392,8 @@ func _buy_left_patio() -> bool:
 	# purchase tests above continue to use the untouched starter cash.
 	Economy.add_cash(1000, Ledger.OTHER)
 	var cells: Array[Vector2i] = []
-	for row: int in range(11, 15):
-		for column: int in range(0, 6):
+	for row: int in range(_street(0, 0).y, _street(0, 0).y + _editor().patio_area().area.size.y):
+		for column: int in range(0, _street(0, 0).x):
 			cells.append(Vector2i(column, row))
 	var purchased: bool = _main.call("shop_patio", cells, true)
 	assert_true(purchased, "the real street entry connects the full left patio fixture")
@@ -427,7 +427,7 @@ func _start() -> void:
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	await tree.process_frame
 	_viewport = SubViewport.new()
-	_viewport.size = Vector2i(1600, 900)
+	_viewport.size = _street(1594, 889)
 	_viewport.own_world_3d = true
 	_viewport.handle_input_locally = true
 	_viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
@@ -502,3 +502,7 @@ func _key(code: Key, control: bool = false) -> void:
 	event.pressed = true
 	event.ctrl_pressed = control
 	assert_true(_main.call("route_build_input", event))
+
+
+func _street(x: int, y: int) -> Vector2i:
+	return _world().grid.entries()[0] + Vector2i(x, y)

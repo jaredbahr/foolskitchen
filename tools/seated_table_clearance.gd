@@ -102,21 +102,35 @@ static func _sample_fixture(parent: Node, content: ContentDB, table_id: StringNa
 		chairs.append(chair)
 		var random: RandomNumberGenerator = RandomNumberGenerator.new()
 		random.seed = 147 + guests.size()
-		var guest: CustomerAgent = world.add_agent(CustomerAgent.new(restaurant, random)) as CustomerAgent
+		var guest: CustomerAgent = CustomerAgent.new(restaurant, random)
+		guest.cell = Vector2i(guests.size(), 0)
+		world.add_agent(guest)
+		if world.agent(guest.id) != guest or not guest.movement_admitted:
+			errors.append("opposite native guest was not admitted on legal fixture floor")
+			report["errors"] = errors
+			return
 		guest.state = CustomerAgent.State.WAITING_FOOD
 		guest.table_item_id = table.id
-		guest.cell = cell
 		guest.seat_cell = cell
 		if not table.reserve(cell, guest.id):
 			errors.append("cannot reserve the real table for opposite guests")
+		if not world.reset_agent_position(guest, cell):
+			errors.append("opposite native guest could not occupy its real reserved seat")
+			report["errors"] = errors
+			return
 		guests.append(guest)
 	if guests.size() != 2:
 		report["errors"] = errors
 		return
 	# A normal standing staff view gives the native review a consistent scale
 	# reference beside the furniture, as required by ART_STYLE.
-	var standing: StaffAgent = world.add_agent(StaffAgent.new(&"server")) as StaffAgent
+	var standing: StaffAgent = StaffAgent.new(&"server")
 	standing.cell = origin + Vector2i(3, 0)
+	world.add_agent(standing)
+	if world.agent(standing.id) != standing or not standing.movement_admitted:
+		errors.append("native standing scale reference was not admitted on legal fixture floor")
+		report["errors"] = errors
+		return
 	var view: ShopView = (load("res://src/world/shop_view.tscn") as PackedScene).instantiate() as ShopView
 	parent.add_child(view)
 	view.set_process(false)

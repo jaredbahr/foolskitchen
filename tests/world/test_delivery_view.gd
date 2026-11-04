@@ -4,7 +4,8 @@ extends TestCase
 ## View only: nothing here changes the sim.
 
 const VIEW: PackedScene = preload("res://src/world/shop_view.tscn")
-const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
+## This native door/alley fixture measures the historical east shell at x=13.
+const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_original.tres")
 const DOOR: Vector2i = Vector2i(13, 6)
 const DROP: Vector2i = Vector2i(12, 6)
 
@@ -20,10 +21,27 @@ func before_each() -> void:
 	assert_eq(content.load_all(), PackedStringArray())
 	var errors: Array[String] = []
 	var stock: Stock = Stock.new()
-	_sim = RestaurantSim.create(LAYOUT, content, 1, errors, stock)
+	_sim = RestaurantSim.create(_delivery_fixture_layout(), content, 1, errors, stock)
 	assert_eq(errors, [] as Array[String])
 	assert_true(_sim.world.grid.set_segment(SimGrid.edge_between(DROP, DOOR), SimGrid.Segment.DOORWAY))
 	_view = VIEW.instantiate() as ShopView
+
+
+## Match the reviewed dock fixture: its middle table opens an ordinary aisle
+## for staff carrying crates; shell, item count, capacity and all prices stay.
+func _delivery_fixture_layout() -> ShopLayout:
+	var layout: ShopLayout = LAYOUT.duplicate(true) as ShopLayout
+	layout.placements = []
+	for authored: ShopPlacement in LAYOUT.placements:
+		var placed: ShopPlacement = authored.duplicate(true) as ShopPlacement
+		if placed.item_id == &"table_2" and placed.origin == Vector2i(6, 6):
+			placed.quarter_turns = 1
+		if placed.item_id == &"table_2" and placed.origin == Vector2i(10, 6):
+			# The 2x2 body stays square when turned: move it off the picker footprint.
+			placed.origin = Vector2i(10, 7)
+			placed.quarter_turns = 1
+		layout.placements.append(placed)
+	return layout
 
 
 func after_each() -> void:
@@ -426,3 +444,27 @@ func test_show_world_clears_ghosts() -> void:
 	_view.show_world(_sim.world)
 	assert_true(_view.ghosts.is_empty())
 	assert_false(is_instance_valid(ghost), "freed with the old world's figures")
+
+
+## #117: the back door creaks as it opens for the delivery, and each crate
+## landing at play speed thuds; nothing else here makes either sound.
+func test_the_back_door_creaks_and_crates_thud_as_the_delivery_lands() -> void:
+	await _enter_view()
+	_open_quiet()
+	Sfx.reset_throttle()
+	var heard: Array[StringName] = []
+	var listen: Callable = func(cue: StringName) -> void: heard.append(cue)
+	Sfx.cue_played.connect(listen)
+	_tick(8)
+	assert_eq(heard, [] as Array[StringName], "a quiet shop with no delivery makes no door or crate sound")
+	assert_true(_sim.dock.arrive([{"id": &"cheese", "qty": 4}, {"id": &"bread", "qty": 6}] as Array[Dictionary]))
+	var courier: CourierAgent = _courier()
+	for tick: int in (WallRules.ALLEY_REACH + 8) * 4 + 12:
+		_tick()
+		if courier.state == CourierAgent.State.LEAVING:
+			break
+	_tick()
+	Sfx.cue_played.disconnect(listen)
+	assert_true(heard.has(&"back_door"), "the door creaked as she came in: %s" % [heard])
+	assert_true(heard.has(&"delivery_drop"), "the crates thudded down: %s" % [heard])
+	assert_eq(heard.count(&"back_door"), 1, "one creak per opening, not one per frame")

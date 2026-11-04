@@ -10,9 +10,10 @@ class CountingGrid:
 	func _init() -> void:
 		super(Vector2i(10, 8))
 
-	func find_path(start: Vector2i, goal: Vector2i) -> Array[Vector2i]:
+	func find_path_avoiding(start: Vector2i, goal: Vector2i,
+			blocked: Dictionary[Vector2i, bool], guest: bool = false) -> Array[Vector2i]:
 		searches += 1
-		return super.find_path(start, goal)
+		return super.find_path_avoiding(start, goal, blocked, guest)
 
 var _grid: CountingGrid
 var _world: SimWorld
@@ -176,7 +177,10 @@ func test_reassignment_preserves_normal_drop_limit_and_task_payload() -> void:
 		assert_eq(_station.reserved_by(_station.work_cells[0]), -1)
 		if drop + 1 < TaskBoard.MAX_DROPS:
 			assert_true(_owner.assign_mode(&"kitchen"))
-			_world.advance()
+			for tick: int in 100:
+				_world.advance()
+				if _owner.task == held:
+					break
 			assert_eq(_owner.task, held)
 	assert_eq(held.state, SimTask.State.CANCELLED)
 	assert_eq(_work_done, 0)
@@ -255,7 +259,12 @@ func test_stalled_home_movement_is_bounded_and_can_be_reassigned() -> void:
 func test_changed_return_path_replans_instead_of_teleporting() -> void:
 	_owner.cell = Vector2i(8, 6)
 	_world.advance()
-	var blocked: Vector2i = _owner.next_cell()
+	# Change the future route, leaving its already travelled edge physically legal.
+	assert_true(_owner.path.size() > _owner.path_index + 1)
+	var blocked: Vector2i = _owner.path[_owner.path_index + 1]
+	assert_ne(blocked, _owner.cell)
+	assert_ne(blocked, _owner.next_cell())
+	assert_false(_world.movement.snapshot().next.has(blocked))
 	_grid.set_terrain(blocked, SimGrid.Terrain.WALL)
 	_world.advance()
 	assert_ne(_owner.cell, _owner.home_cell())

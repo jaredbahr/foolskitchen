@@ -59,6 +59,18 @@ func test_initial_labels_and_shared_theme_before_ready() -> void:
 	assert_eq((_hud.get_node("Top") as Control).theme, load("res://src/ui/theme/main_theme.tres"))
 
 
+func test_sold_out_tooltip_is_opaque_and_readable_over_the_world() -> void:
+	var label: Label = _control("SoldOut") as Label
+	var panel: StyleBoxFlat = label.get_theme_stylebox("panel", "TooltipPanel") as StyleBoxFlat
+	assert_almost_eq(panel.bg_color.a, 1.0, 0.001, "the world must not show through this advice")
+	var background: float = panel.bg_color.srgb_to_linear().get_luminance()
+	for role: StringName in [&"Label", &"TooltipLabel"]:
+		var ink: Color = label.get_theme_color("font_color", role)
+		var foreground: float = ink.srgb_to_linear().get_luminance()
+		var contrast: float = (maxf(foreground, background) + 0.05) / (minf(foreground, background) + 0.05)
+		assert_true(contrast >= 4.5, "sold-out advice needs readable %s ink (%.2f:1)" % [role, contrast])
+
+
 func test_reputation_presentation_survives_refresh_and_tracks_window_count() -> void:
 	var cash: Control = _control("Cash")
 	var loan: Label = _control("Loan") as Label

@@ -31,7 +31,7 @@ func before_each() -> void:
 	assert_eq(errors, [] as Array[String])
 	_cash = 1000
 	_books = ShopEditBooks.new(_can_spend, _record_cash)
-	_editor = ShopEditor.new(_sim, _content, _books)
+	_editor = ShopEditor.new(_sim, _content, _books, LAYOUT)
 	_sim.world.grid.cells_changed.connect(_record_cells)
 	_sim.world.grid.item_removed.connect(_record_removed)
 
@@ -97,16 +97,19 @@ func test_kitchen_equipment_unlocks_and_buy_move_sell_keep_exact_books() -> void
 
 
 func test_partial_table_capacity_warning_is_read_only_and_uses_actual_usable_cells() -> void:
-	# This footprint blocks the kitchen aisle. Keep a reachable coffee station
-	# so the test still isolates partial seating rather than an empty menu.
-	assert_not_null(_sim.world.grid.place_def(_content.item(&"coffee_machine"), Vector2i(12, 5), 2))
-	assert_true(_sim.world.grid.remove(_sim.world.grid.item_at(Vector2i(6, 6)).id))
+	# The middle table blocks the east seat; the other three stay legal floor.
+	# Keep a reachable coffee station so partial seating is the only warning.
+	assert_not_null(_sim.world.grid.place_def(_content.item(&"coffee_machine"), _coffee_cell(), 2))
+	var west: PlacedItem = _sim.world.grid.item(_id(&"table_2"))
+	var repair_origin: Vector2i = west.origin
+	var partial_origin: Vector2i = repair_origin + Vector2i(2, -1)
+	assert_true(_sim.world.grid.remove(west.id))
 	_editor.set_owner_level(2)  # the four-seat table unlocks at level 2
 	var before: Dictionary = _editor.to_dict()
 	var cash_before: int = _cash
 	var rng_before: int = _sim.rng.state
 	var changes_before: int = _changes.size()
-	var check: EditCheck = _editor.check_buy(&"table_4", Vector2i(6, 5))
+	var check: EditCheck = _editor.check_buy(&"table_4", partial_origin)
 	assert_true(check.ok)
 	assert_eq(check.seat_warnings.get(0, ""), "Only 3 of 4 seats usable")
 	assert_false(check.unreachable.has(0))
@@ -114,13 +117,13 @@ func test_partial_table_capacity_warning_is_read_only_and_uses_actual_usable_cel
 	assert_eq(_cash, cash_before)
 	assert_eq(_sim.rng.state, rng_before)
 	assert_eq(_changes.size(), changes_before)
-	assert_true(_editor.buy(&"table_4", Vector2i(6, 5)))
-	var table: PlacedItem = _sim.world.grid.item_at(Vector2i(6, 5))
+	assert_true(_editor.buy(&"table_4", partial_origin))
+	var table: PlacedItem = _sim.world.grid.item_at(partial_origin)
 	assert_eq(table.seat_cells.size(), 3)
 	assert_eq(DiningSeats.nominal_capacity(_sim.world.grid, table), 4)
 	assert_eq(DiningSeats.largest_usable_capacity(_sim.world.grid), 3)
 	assert_eq(_editor.check_current().seat_warnings.get(table.id, ""), "Only 3 of 4 seats usable")
-	assert_true(_editor.move(table.id, Vector2i(6, 6), 0))
+	assert_true(_editor.move(table.id, repair_origin, 0))
 	assert_eq(DiningSeats.largest_usable_capacity(_sim.world.grid), 4)
 	assert_false(_editor.check_current().seat_warnings.has(table.id))
 
@@ -145,7 +148,7 @@ func test_service_phases_refuse_every_edit_without_side_effects() -> void:
 
 func test_checks_and_invalid_spots_do_not_touch_live_state() -> void:
 	var before: Dictionary = _editor.to_dict()
-	var check: EditCheck = _editor.check_buy(&"chair", Vector2i(2, 8))
+	var check: EditCheck = _editor.check_buy(&"chair", _chair_cell(), 1)
 	assert_true(check.ok)
 	assert_true(_editor.check_move(_id(&"potted_plant"), Vector2i(11, 9), 1).ok)
 	assert_true(_editor.check_sell(_id(&"potted_plant")).ok)
@@ -228,11 +231,11 @@ func test_reserved_relocation_refuses_even_after_closing() -> void:
 
 func test_purchase_books_one_upgrade_and_repeat_invalid_purchase_is_free() -> void:
 	var price: int = _content.item(&"chair").price
-	assert_true(_editor.buy(&"chair", Vector2i(2, 8)))
+	assert_true(_editor.buy(&"chair", _chair_cell(), 1))
 	assert_eq(_cash, 1000 - price)
 	assert_eq(_entries, [{"amount": -price, "category": Ledger.UPGRADES}] as Array[Dictionary])
 	assert_eq(_changes.size(), 1)
-	assert_false(_editor.buy(&"chair", Vector2i(2, 8)))
+	assert_false(_editor.buy(&"chair", _chair_cell(), 1))
 	assert_eq(_entries.size(), 1)
 	assert_eq(_changes.size(), 1)
 
@@ -312,7 +315,7 @@ func test_last_required_station_and_door_guards_use_real_categories() -> void:
 	for def_id: StringName in [&"fridge", &"prep_counter", &"stove", &"pass_counter", &"sink"]:
 		assert_false(_editor.check_sell(_id(def_id)).ok)
 		assert_eq(_editor.sell(_id(def_id)), -1)
-	assert_true(_editor.buy(&"door", Vector2i(4, 8)))
+	assert_true(_editor.buy(&"door", _sim.world.grid.item(_id(&"table_2")).origin + Vector2i(1, 3)))
 	assert_false(_editor.check_sell(_id(&"door")).ok)
 	assert_eq(_editor.sell(_id(&"door")), -1)
 	assert_true(_editor.buy(&"fridge", Vector2i(1, 8)))
@@ -321,18 +324,20 @@ func test_last_required_station_and_door_guards_use_real_categories() -> void:
 
 
 func test_unreachable_seats_and_pass_side_stay_warnings_while_a_drink_remains_cookable() -> void:
-	assert_not_null(_sim.world.grid.place_def(_content.item(&"coffee_machine"), Vector2i(12, 5), 2))
+	assert_not_null(_sim.world.grid.place_def(_content.item(&"coffee_machine"), _coffee_cell(), 2))
 	_editor.set_owner_level(2)
 	var table_id: int = _id(&"table_2")
-	assert_true(_editor.buy(&"potted_plant", Vector2i(1, 7)))
-	var check: EditCheck = _editor.check_buy(&"potted_plant", Vector2i(4, 7))
+	var seats: Array[Vector2i] = _sim.world.grid.item(table_id).seat_cells.duplicate()
+	var pass_work: Vector2i = _sim.world.grid.item(_id(&"pass_counter")).work_cells[0]
+	assert_true(_editor.buy(&"potted_plant", seats[0]))
+	var check: EditCheck = _editor.check_buy(&"potted_plant", seats[1])
 	assert_true(check.ok)
 	assert_true(check.unreachable.has(table_id))
-	assert_true(_editor.buy(&"potted_plant", Vector2i(4, 7)))
-	check = _editor.check_buy(&"potted_plant", Vector2i(5, 3))
+	assert_true(_editor.buy(&"potted_plant", seats[1]))
+	check = _editor.check_buy(&"potted_plant", pass_work)
 	assert_true(check.ok)
 	assert_true(check.unreachable.has(_id(&"pass_counter")))
-	assert_true(_editor.buy(&"potted_plant", Vector2i(5, 3)))
+	assert_true(_editor.buy(&"potted_plant", pass_work))
 
 
 func test_new_unreachable_station_warning_uses_zero_id() -> void:
@@ -347,7 +352,7 @@ func test_new_unreachable_station_warning_uses_zero_id() -> void:
 
 func test_snapshot_round_trip_stages_layout_and_preserves_stable_order() -> void:
 	assert_true(_editor.move(_id(&"potted_plant"), Vector2i(11, 9), 3))
-	assert_true(_editor.buy(&"chair", Vector2i(2, 8)))
+	assert_true(_editor.buy(&"chair", _chair_cell(), 1))
 	var original: Dictionary = _editor.to_dict()
 	var data: Dictionary = JSON.parse_string(JSON.stringify(original))
 	var errors: Array[String] = []
@@ -356,7 +361,7 @@ func test_snapshot_round_trip_stages_layout_and_preserves_stable_order() -> void
 	assert_eq(errors, [] as Array[String])
 	var restored: RestaurantSim = RestaurantSim.new()
 	restored.world = ShopBuilder.build(layout, _content, errors, true)
-	var editor: ShopEditor = ShopEditor.new(restored, _content, _books)
+	var editor: ShopEditor = ShopEditor.new(restored, _content, _books, layout)
 	assert_eq(editor.to_dict(), original)
 	assert_eq(_editor.to_dict(), original)
 	assert_eq(_entries.size(), 1, "decoding does not replay purchases")
@@ -404,9 +409,18 @@ func test_import_cannot_remove_a_template_door() -> void:
 func test_edited_spawn_allowance_preserves_authored_checks_and_escape() -> void:
 	_editor.set_owner_level(2)
 	var spawn: Vector2i = LAYOUT.staff_spawns[&"server"]
-	assert_true(_editor.buy(&"potted_plant", spawn))
+	var before: Dictionary = _editor.to_dict()
+	assert_false(_editor.buy(&"potted_plant", spawn), "a new player edit cannot cover the active server")
+	assert_eq(_editor.to_dict(), before)
+	assert_eq(_cash, 1000)
+	assert_true(_entries.is_empty())
+	# An actual old wire document may already contain this furniture, even
+	# though new player placement is correctly refused by current physics.
+	var legacy: Dictionary = before.duplicate(true)
+	(legacy["items"] as Array).append({"def_id": "potted_plant", "origin": [spawn.x, spawn.y],
+		"quarter_turns": 0, "swatch_id": "", "variant_id": ""})
 	var errors: Array[String] = []
-	var layout: ShopLayout = ShopEditor.from_dict(_editor.to_dict(), LAYOUT, _content, errors)
+	var layout: ShopLayout = ShopEditor.from_dict(legacy, LAYOUT, _content, errors)
 	assert_not_null(layout)
 	ShopBuilder.build(layout, _content, errors)
 	assert_false(errors.is_empty(), "authored layout default remains strict")
@@ -414,15 +428,30 @@ func test_edited_spawn_allowance_preserves_authored_checks_and_escape() -> void:
 	var world: SimWorld = ShopBuilder.build(layout, _content, errors, true)
 	assert_eq(errors, [] as Array[String])
 	assert_false(world.grid.is_walkable(spawn))
-	var agent: SimAgent = SimAgent.new()
+	var agent: StaffAgent = StaffAgent.new(&"server", 3)
 	agent.cell = spawn
+	world.add_agent(agent)
+	assert_eq(world.agent(agent.id), agent)
+	assert_true(agent.movement_admitted)
+	assert_true(world.pending_agents().is_empty())
+	assert_ne(agent.cell, spawn, "normal admission relocates a newly restored worker off furniture")
+	assert_true(world.grid.is_walkable(agent.cell))
+	var admitted_origin: Vector2i = agent.cell
 	assert_true(agent.set_destination(world.grid, world.grid.entries()[0]))
-	assert_eq(agent.path[0], spawn)
+	assert_eq(agent.path[0], admitted_origin)
+	var task: SimTask = SimTask.new(&"go", &"server", "Walk from the restored shop")
+	task.steps.append(TaskStep.go_to_cell(world.grid.entries()[0], "walking"))
+	world.board.post(task, world.now)
+	assert_true(world.clock.start_service())
 	for index: int in range(200):
-		if agent.has_arrived():
+		var observation: Dictionary = MovementInvariants.capture(world)
+		world.advance()
+		assert_eq(MovementInvariants.problem(world, observation), "", "restored staff walk only legal physical edges")
+		if task.state == SimTask.State.DONE:
 			break
-		assert_ne(agent.step_move(world), SimAgent.MoveResult.BLOCKED)
-	assert_true(agent.has_arrived(), "staff can leave furniture covering the spawn")
+	assert_eq(task.state, SimTask.State.DONE)
+	assert_true(agent.has_arrived(), "restored staff reach the street without crossing the covering furniture")
+	assert_eq(agent.cell, world.grid.entries()[0])
 	var invalid: ShopLayout = layout.duplicate(true) as ShopLayout
 	invalid.staff_spawns[&"server"] = Vector2i(-1, -1)
 	ShopBuilder.build(invalid, _content, errors, true)
@@ -431,7 +460,7 @@ func test_edited_spawn_allowance_preserves_authored_checks_and_escape() -> void:
 
 func test_grid_signal_reentry_cannot_charge_a_second_purchase() -> void:
 	_try_reentry = true
-	assert_true(_editor.buy(&"chair", Vector2i(2, 8)))
+	assert_true(_editor.buy(&"chair", _chair_cell(), 1))
 	assert_false(_reentry_result)
 	assert_true(_editor.last_check.ok)
 	assert_eq(_entries.size(), 1)
@@ -457,7 +486,7 @@ func test_second_sink_can_be_sold_but_last_sink_is_preserved() -> void:
 func test_custom_purchase_refusal_preserves_read_only_checks_and_atomic_rejection() -> void:
 	_cash = 0
 	_books = ShopEditBooks.new(_can_spend, _record_cash, _purchase_refusal)
-	_editor = ShopEditor.new(_sim, _content, _books)
+	_editor = ShopEditor.new(_sim, _content, _books, LAYOUT)
 	var snapshot: Dictionary = _editor.to_dict()
 	var check: EditCheck = _editor.check_buy(&"chair", Vector2i(4, 9))
 	assert_false(check.ok)
@@ -472,7 +501,7 @@ func test_custom_purchase_refusal_preserves_read_only_checks_and_atomic_rejectio
 	assert_eq(_changes.size(), 0)
 	_cash = 1000
 	_refusal_amount = -1
-	assert_true(_editor.check_buy(&"chair", Vector2i(2, 8)).ok)
+	assert_true(_editor.check_buy(&"chair", _chair_cell(), 1).ok)
 	assert_eq(_refusal_amount, -1, "an allowed purchase does not request a refusal")
 	assert_eq(_entries.size(), 0)
 
@@ -482,12 +511,12 @@ func test_optional_purchase_refusal_keeps_legacy_reason_for_missing_empty_or_inv
 	var legacy: String = "Not enough cash; furniture cannot use a loan"
 	assert_eq(_editor.check_buy(&"chair", Vector2i(4, 9)).why, legacy)
 	_books = ShopEditBooks.new(_can_spend, _record_cash, _purchase_refusal)
-	_editor = ShopEditor.new(_sim, _content, _books)
+	_editor = ShopEditor.new(_sim, _content, _books, LAYOUT)
 	for answer: Variant in ["", "  ", 12, null]:
 		_refusal = answer
 		assert_eq(_editor.check_buy(&"chair", Vector2i(4, 9)).why, legacy)
 	_books = ShopEditBooks.new(_can_spend, _record_cash, Callable())
-	_editor = ShopEditor.new(_sim, _content, _books)
+	_editor = ShopEditor.new(_sim, _content, _books, LAYOUT)
 	assert_eq(_editor.check_buy(&"chair", Vector2i(4, 9)).why, legacy)
 	assert_eq(_entries.size(), 0)
 	assert_eq(_changes.size(), 0)
@@ -583,7 +612,10 @@ func test_floor_layer_does_not_change_the_service_edit_policy() -> void:
 
 func test_version_one_rug_and_table_round_trip_in_either_wire_order() -> void:
 	_editor.set_owner_level(6)
-	assert_true(_editor.buy(&"rug_rectangle", Vector2i(1, 6)))
+	var west: PlacedItem = _sim.world.grid.item(_id(&"table_2"))
+	var table_cell: Vector2i = west.origin
+	# A q1 rectangle covers the actual2x2 table and both north/south seats.
+	assert_true(_editor.buy(&"rug_rectangle", table_cell + Vector2i.UP, 1))
 	var original: Dictionary = _editor.to_dict()
 	assert_eq(original["version"], ShopEditor.SNAPSHOT_VERSION)
 	for reverse_order: bool in [false, true]:
@@ -602,15 +634,15 @@ func test_version_one_rug_and_table_round_trip_in_either_wire_order() -> void:
 		assert_eq(errors, [] as Array[String])
 		var copy: ShopEditor = ShopEditor.new(restored, _content, _books, layout)
 		assert_eq(copy.to_dict(), expected, "wire order is retained rather than sorting gameplay items by layer")
-		var table: PlacedItem = restored.world.grid.item_on_layer(Vector2i(2, 6), ItemDef.PlacementLayer.NORMAL)
-		var rug: PlacedItem = restored.world.grid.item_on_layer(Vector2i(2, 6), ItemDef.PlacementLayer.FLOOR_DECOR)
+		var table: PlacedItem = restored.world.grid.item_on_layer(table_cell, ItemDef.PlacementLayer.NORMAL)
+		var rug: PlacedItem = restored.world.grid.item_on_layer(table_cell, ItemDef.PlacementLayer.FLOOR_DECOR)
 		assert_not_null(table)
 		assert_not_null(rug)
 		if table == null or rug == null:
 			continue
 		assert_eq((table.def as ItemDef).id, &"table_2")
 		assert_eq((rug.def as ItemDef).id, &"rug_rectangle")
-		assert_eq(restored.world.grid.item_at(Vector2i(2, 6)), table)
+		assert_eq(restored.world.grid.item_at(table_cell), table)
 		for seat: Vector2i in table.seat_cells:
 			assert_true(restored.world.grid.is_walkable(seat))
 			assert_eq(restored.world.grid.dining_table_id(seat), table.id)
@@ -670,6 +702,20 @@ func _purchase_refusal(amount: int) -> Variant:
 	return _refusal
 
 
+## A real free furnishing seat beside the rotated west table, not its built-in.
+func _chair_cell() -> Vector2i:
+	return _sim.world.grid.item(_id(&"table_2")).origin + Vector2i.LEFT
+
+
+func _coffee_cell() -> Vector2i:
+	var tables: Array[PlacedItem] = ShopBuilder.items_with_def(_sim.world, &"table_2")
+	var east: PlacedItem = tables[0]
+	for table: PlacedItem in tables:
+		if table.origin.x > east.origin.x:
+			east = table
+	return east.origin + Vector2i(1, -2)
+
+
 func _id(def_id: StringName) -> int:
 	return ShopBuilder.items_with_def(_sim.world, def_id)[0].id
 
@@ -687,7 +733,7 @@ func _record_cells(cells: Array[Vector2i]) -> void:
 	_changes.append(cells.duplicate())
 	if _try_reentry:
 		_try_reentry = false
-		_reentry_result = _editor.buy(&"chair", Vector2i(3, 8))
+		_reentry_result = _editor.buy(&"chair", _sim.world.grid.item(_id(&"table_2")).origin + Vector2i(1, 2))
 
 
 func _record_removed(_item: PlacedItem) -> void:

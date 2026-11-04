@@ -3,7 +3,6 @@ extends "res://src/world/main.gd"
 ## use real promotion/arrival/mood APIs; the seated pose and prior schedules are
 ## staged so two images cover recognition, inspection and all report notes.
 
-const TABLE_CELL: Vector2i = Vector2i(6, 6)
 const FRAMES_BEFORE_REPORT: int = 40
 
 var _fixture_frame: int = 0
@@ -22,7 +21,7 @@ func _ready() -> void:
 	new_game_seed_override = 166
 	super._ready()
 	Clock.set_speed(0)
-	var table: PlacedItem = world.grid.item_at(TABLE_CELL)
+	var table: PlacedItem = _middle_table()
 	if table == null or table.seat_cells.is_empty() or regulars.profiles.size() != 0:
 		_fail("requires a fresh shop with the original middle table")
 		return
@@ -84,6 +83,19 @@ func _ready() -> void:
 	_rng_snapshot = GameState._capture_save()
 	_fixture_tick = world.now
 	_fixture_ready = true
+
+
+## The starter layout's three tables sit in one row; picture the middle one,
+## read from the real grid rather than a remembered cell.
+func _middle_table() -> PlacedItem:
+	var tables: Array[PlacedItem] = []
+	for it: PlacedItem in world.grid.items():
+		if not it.seat_cells.is_empty():
+			tables.append(it)
+	if tables.size() != 3:
+		return null
+	tables.sort_custom(func(a: PlacedItem, b: PlacedItem) -> bool: return a.origin.x < b.origin.x)
+	return tables[1]
 
 
 func _promote(key: String, promotion_day: int, seat: Vector2i) -> RegularProfile:

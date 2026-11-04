@@ -5,6 +5,9 @@ extends Resource
 ## start. Layouts live in data/layouts/.
 
 @export var id: StringName = &""
+## Authored base geometry identity. Empty retains the pre-roomier shop template.
+## This is not a resource path; Main selects only its known authored templates.
+@export var save_layout_id: StringName = &""
 @export var display_name: String = ""
 @export var rows: PackedStringArray = []
 ## Authored terrain before thin dividers (snapshot versions 1–7 omit terrain).

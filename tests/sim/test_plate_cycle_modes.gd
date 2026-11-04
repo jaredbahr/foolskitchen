@@ -61,7 +61,7 @@ func test_no_sink_real_service_exceeds_plate_quota_without_ledger_changes_or_was
 			_assert_counts(1, 0, 0)
 			if guest.order != null:
 				assert_false(ledger.has_order(guest.order.id))
-			if guest.state == CustomerAgent.State.LEFT and _sim.world.board.active_count() == 0:
+			if guest.state == CustomerAgent.State.LEFT and _cleanup_finished():
 				break
 		assert_true(guest.paid, "real legacy visit %d completed" % visit)
 		assert_eq(guest.order.state, Order.State.DELIVERED)
@@ -135,7 +135,7 @@ func test_sink_added_after_real_bypass_cannot_take_a_plate_on_cook_replay_or_com
 		_assert_counts(1, 0, 0)
 		if guest.order != null:
 			assert_false(ledger.has_order(guest.order.id))
-		if guest.state == CustomerAgent.State.LEFT and _sim.world.board.active_count() == 0:
+		if guest.state == CustomerAgent.State.LEFT and _cleanup_finished():
 			break
 	assert_true(guest.paid)
 	assert_eq(guest.order.state, Order.State.DELIVERED)
@@ -405,7 +405,7 @@ func _wait_for_first_washed_plate(washing: SimTask) -> void:
 func _drain_guest(guest: CustomerAgent) -> void:
 	for tick: int in range(1400):
 		_tick()
-		if guest.state == CustomerAgent.State.LEFT and _sim.world.board.active_count() == 0:
+		if guest.state == CustomerAgent.State.LEFT and _cleanup_finished():
 			break
 	assert_eq(guest.state, CustomerAgent.State.LEFT)
 
@@ -424,6 +424,19 @@ func _assert_counts(clean: int, dirty: int, in_use: int) -> void:
 	assert_eq(_sim.kitchen.dirty_plates, dirty)
 	assert_eq(_sim.kitchen.in_use_plates, in_use)
 	assert_eq(clean + dirty + in_use, _sim.kitchen.plates.total)
+
+
+## Board completion precedes the busser's real step off its deferred seat lease.
+## Observe the existing cleanup contract within each caller's unchanged budget.
+func _cleanup_finished() -> bool:
+	if not _sim.customers().is_empty() or _sim.world.board.active_count() != 0 \
+			or not _sim.kitchen.is_clean() or not _sim.kitchen.dirty_tables.is_empty():
+		return false
+	for item: PlacedItem in _sim.world.grid.items():
+		for cell: Vector2i in item.work_cells + item.seat_cells:
+			if item.reserved_by(cell) != -1:
+				return false
+	return true
 
 
 func _assert_idle() -> void:

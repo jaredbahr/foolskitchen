@@ -4,7 +4,7 @@ extends TestCase
 ## Two isolated fresh runs skip service and use the normal next-morning route.
 
 const MAIN: PackedScene = preload("res://src/world/main.tscn")
-## Preserve the recorded 8fbe fixed-stock trace in its explicit manual context.
+## Record current traffic in the historical trace's explicit manual-stock context.
 ## All other demand tests use the real adaptive default Main.
 const MANUAL_MAIN: GDScript = preload("res://tests/fixtures/manual_restock_main.gd")
 const SEED: int = 1
@@ -468,18 +468,18 @@ func _reject_after_demand(_value: Dictionary) -> bool:
 	return false
 
 
-# Actual complete default Main day 1, seed 1. Rebaselined for the director's
-# easier-economy tuning (faster cooking, rent $30); originally observed from
-# 8fbe652826c34333e6b7b51f63ede116901582f9. Full signed raw tick/event
-# evidence is retained outside the project in issue247/day1-trace.
-const DAY_ONE_EVENTS_SHA256: String = "ed3f9e0b517932eb92ef6ca358a8689d93648cdbb5f3466a16cbba4b2d981f93"
-## FK-077 spill rolls advance cleanliness; this trace's other streams and events stay unchanged.
+# Complete manual-stock Main day1, seed1, under FK-124 physical traffic.
+# The trace originated on8fbe652826c34333e6b7b51f63ede116901582f9;
+# economy, messes and traffic subsequently changed its recorded outcomes.
+# Full before/after signed events and source-bound replays remain outside the project.
+const DAY_ONE_EVENTS_SHA256: String = "a6e240f17fc39b056ab0968d8b9a8a5f027055ce9512c9f6331855f1be92ebeb"
+## Exact whole stream dictionary; existing lifecycle draws follow actual outcomes.
 const DAY_ONE_STREAMS: Dictionary = {
 	"master_seed": "1",
 	"rngs": {
 		"cleanliness": {
 			"seed": "2378578401",
-			"state": "-7560570339864635624"
+			"state": "-5944420015395999468"
 		},
 		"customers": {
 			"seed": "232337077",
@@ -491,7 +491,7 @@ const DAY_ONE_STREAMS: Dictionary = {
 		},
 		"reviews": {
 			"seed": "7543029",
-			"state": "-7929524535254594193"
+			"state": "7930172525103179214"
 		},
 		"weather": {
 			"seed": "2145409216",
@@ -502,24 +502,24 @@ const DAY_ONE_STREAMS: Dictionary = {
 var _trace_events: Array[Dictionary] = []
 
 
-func test_actual_default_day_one_events_private_seeds_and_every_named_stream_match_8fbe() -> void:
+func test_manual_stock_day_one_events_private_rng_and_named_streams_match_recorded_snapshot() -> void:
 	var first: Dictionary = _played_day_one()
 	var repeated: Dictionary = _played_day_one()
 	assert_eq(first, repeated, "complete actual service repeats from its master seed")
-	assert_eq(first["streams"], DAY_ONE_STREAMS, "every created named stream, including absent extra streams")
+	assert_eq(first["streams"], DAY_ONE_STREAMS, "complete named-stream seed/state dictionary")
 	assert_eq(first["events_sha256"], DAY_ONE_EVENTS_SHA256,
-		"actual arrival/payment/departure ticks and signed private RNG seeds/states match immutable8fbe")
-	assert_eq(first["tick"], 4343)
-	assert_eq(first["served"], 18)
-	assert_eq(first["lost"], 0)
-	assert_eq(first["happy"], 18)
-	assert_almost_eq(float(first["renown"]), 18.0, 0.00001, "new progress accrues only after unchanged service")
+		"recorded arrival/payment/departure ticks and signed private RNG seeds/states")
+	assert_eq(first["tick"], 4500)
+	assert_eq(first["served"], 17)
+	assert_eq(first["lost"], 1)
+	assert_eq(first["happy"], 17)
+	assert_almost_eq(float(first["renown"]), 17.0, 0.00001, "progress accrues from recorded happy departures")
 
 
 func _played_day_one() -> Dictionary:
 	_trace_events.clear()
-	# This immutable event oracle predates forecast-sized stock. Real manual
-	# targets preserve that declared context without changing demand or rent.
+	# Manual targets retain the trace's declared stock context through ordinary
+	# planning, with the current authored demand, rent and physical traffic.
 	_start_demand(false, true, true)
 	var sim: RestaurantSim = _main.get("sim") as RestaurantSim
 	sim.customer_arrived.connect(_demand_trace_arrived)

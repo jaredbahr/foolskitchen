@@ -2,7 +2,8 @@ extends TestCase
 ## Pure interaction tests against the actual editor and Main-equivalent method
 ## wrappers. Camera projection, native input and rendering are session tests.
 
-const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
+## Fixed original geometry isolates interaction checks from new-shop spacing.
+const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_original.tres")
 
 class Catalog extends ContentDB:
 	var extra: Dictionary[StringName, ItemDef] = {}

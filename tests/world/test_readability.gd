@@ -7,14 +7,15 @@ const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tr
 ## Exact outer-shell sets from the layout's two-cell diagonal rays. The
 ## recovered divider row is floor; its nine thin segments are checked separately.
 const LOWERED: Array[String] = [
-	"13,2;13,3;13,4;13,5;13,6;13,7;13,8;13,9;2,10;3,10;4,10;5,10;8,10;9,10;10,10;11,10;12,10;13,10",
-	"2,0;3,0;4,0;5,0;6,0;7,0;8,0;9,0;10,0;11,0;12,0;13,0;13,1;13,2;13,3;13,4;13,5;13,6;13,7;13,8",
-	"0,0;1,0;2,0;3,0;4,0;5,0;6,0;7,0;8,0;9,0;10,0;11,0;0,1;0,2;0,3;0,4;0,5;0,6;0,7;0,8",
-	"0,2;0,3;0,4;0,5;0,6;0,7;0,8;0,9;0,10;1,10;2,10;3,10;4,10;5,10;8,10;9,10;10,10;11,10",
+	"15,2;15,3;15,4;15,5;15,6;15,7;15,8;15,9;15,10;15,11;2,12;3,12;4,12;5,12;6,12;9,12;10,12;11,12;12,12;13,12;14,12;15,12",
+	"2,0;3,0;4,0;5,0;6,0;7,0;8,0;9,0;10,0;11,0;12,0;13,0;14,0;15,0;15,1;15,2;15,3;15,4;15,5;15,6;15,7;15,8;15,9;15,10",
+	"0,0;1,0;2,0;3,0;4,0;5,0;6,0;7,0;8,0;9,0;10,0;11,0;12,0;13,0;0,1;0,2;0,3;0,4;0,5;0,6;0,7;0,8;0,9;0,10",
+	"0,2;0,3;0,4;0,5;0,6;0,7;0,8;0,9;0,10;0,11;0,12;1,12;2,12;3,12;4,12;5,12;6,12;9,12;10,12;11,12;12,12;13,12",
 ]
-## The three-cell pass opening remains free of wall geometry.
-const DIVIDER_COLUMNS: Array[int] = [1, 2, 3, 4, 8, 9, 10, 11, 12]
+## The authored pass approaches and two-cell crossing stay free of divider geometry.
+const DIVIDER_COLUMNS: Array[int] = [1, 2, 8, 9, 10, 11, 12, 13, 14]
 
+const CUTAWAY_RULE: float = -1.0
 var _view: ShopView
 var _rig: CameraRig
 var _quarters: Array[int] = []
@@ -48,14 +49,15 @@ func test_tier_one_exact_cutaway_sets_at_every_camera_quarter() -> void:
 			assert_almost_eq(wall.position.y, height * 0.5)
 		assert_eq(world.grid.terrain(Vector2i(3, 4)), SimGrid.Terrain.FLOOR,
 			"the recovered kitchen row is no longer thick wall geometry")
-		_assert_divider_height(ShopView.LOWERED_HEIGHT)
+		# #205: in Cutaway each divider segment follows the camera-focus rule.
+		_assert_divider_height(CUTAWAY_RULE)
 		_view.set_wall_mode(ShopView.WallMode.UP)
 		_assert_divider_height(ArtScale.WALL_HEIGHT)
 		_view.set_wall_mode(ShopView.WallMode.DOWN)
 		_assert_divider_height(ShopView.LOWERED_HEIGHT)
 		_view.set_wall_mode(ShopView.WallMode.CUTAWAY)
 	assert_false(_cells(LOWERED[0]).has(Vector2i(3, 0)), "north back wall stays up at default quarter")
-	assert_false(_cells(LOWERED[2]).has(Vector2i(3, 10)), "south back wall stays up from opposite quarter")
+	assert_false(_cells(LOWERED[2]).has(Vector2i(3, 12)), "south back wall stays up from opposite quarter")
 	assert_eq(world.now, 0, "presentation never advances the simulation")
 
 
@@ -144,7 +146,10 @@ func test_wall_tops_keep_contrast_and_people_use_the_approved_model_without_sim_
 
 ## Check the actual rendered slabs, including their width, top and visible flag,
 ## at every camera quarter and every wall mode. Shell-only sets cannot cover them.
+## Pass CUTAWAY_RULE to expect each segment's height from the view's own
+## lowered set (#205) instead of one height for all.
 func _assert_divider_height(height: float) -> void:
+	var lowered: Dictionary[Vector3i, bool] = _view.lowered_interior_edges()
 	var expected: Array[Vector3i] = []
 	for x: int in DIVIDER_COLUMNS:
 		expected.append(Vector3i(x, 5, SimGrid.EDGE_NORTH))
@@ -155,22 +160,25 @@ func _assert_divider_height(height: float) -> void:
 		expected.erase(edge)
 		assert_eq(root.get_meta("kind"), SimGrid.Segment.WALL)
 		assert_true(root.visible, "a lowered divider stays drawn")
+		var want: float = height
+		if height == CUTAWAY_RULE:
+			want = ShopView.LOWERED_HEIGHT if lowered.has(edge) else ArtScale.WALL_HEIGHT
 		var slabs: int = 0
 		var tops: int = 0
 		for child: MeshInstance3D in root.get_children():
 			assert_true(child.visible)
 			if child.name == &"Top":
 				tops += 1
-				assert_almost_eq(child.position.y, height + 0.005)
+				assert_almost_eq(child.position.y, want + 0.005)
 			else:
 				slabs += 1
 				var box: BoxMesh = child.mesh as BoxMesh
 				assert_not_null(box)
 				if box != null:
-					assert_almost_eq(box.size.y, height)
+					assert_almost_eq(box.size.y, want)
 					assert_almost_eq(box.size.x, GridMath.CELL_SIZE)
 					assert_almost_eq(box.size.z, WallSegmentView.THICKNESS)
-				assert_almost_eq(child.position.y, height * 0.5)
+				assert_almost_eq(child.position.y, want * 0.5)
 		assert_eq(slabs, 1)
 		assert_eq(tops, 1)
 	assert_true(expected.is_empty(), "no divider wall is missing")

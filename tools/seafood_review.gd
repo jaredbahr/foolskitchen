@@ -20,9 +20,9 @@ func _ready() -> void:
 	menu_settings.set_owner_level(5)
 	_build_catalogue.set_owner_level(5)
 	$HUD.set_owner_progress(owner_progress.level, owner_progress.xp_into_level(), owner_progress.xp_in_level())
-	if not shop_buy(&"fryer", Vector2i(9, 3), 0) or not shop_buy(&"freezer", Vector2i(12, 3), 0) \
+	if not shop_buy(&"fryer", Vector2i(11, 3), 0) or not shop_buy(&"freezer", Vector2i(13, 3), 0) \
 			or not shop_buy(&"fridge", Vector2i(11, 1), 2) or not shop_buy(&"storage_shelf", Vector2i(3, 1), 2):
-		push_error("Seafood review could not prepare the normal kitchen equipment")
+		push_error("Seafood review could not prepare the normal kitchen equipment: " + shop_editor.last_check.why)
 		return
 	for id: StringName in [&"fish_and_chips", &"mussels_broth", &"salmon_maki", &"shrimp_skewer", &"seafood_stew"]:
 		if not menu_set_enabled(id, true):

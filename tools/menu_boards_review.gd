@@ -101,8 +101,8 @@ static func prepare(main: Node, context_root: Node) -> Dictionary:
 		return {"error": "menu boards review has no placed Label3D"}
 	# Move the existing owner into the review composition. No agent is spawned,
 	# and the clock remains paused; the sim and drawn pose are refreshed once.
-	owner.cell = OWNER_CELL
-	owner.clear_path()
+	if not world.reset_agent_position(owner, OWNER_CELL):
+		return {"error": "menu boards review owner could not stand on its clear dining cell"}
 	shop._process(0.0)
 	main.call("refresh_presentation")
 	# Camera-only framing keeps the tiny wall label legible without changing art.

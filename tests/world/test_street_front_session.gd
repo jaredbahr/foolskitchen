@@ -3,7 +3,6 @@ extends TestCase
 
 const MAIN: PackedScene = preload("res://src/world/main.tscn")
 const SLOT: String = "street_front_session"
-const FRONT: Vector3i = Vector3i(3, 11, 0)
 
 var _main: Node3D
 var _viewport: SubViewport
@@ -36,7 +35,7 @@ func after_each() -> void:
 
 func test_purchased_sign_tracks_live_menu_rename_rebuild_and_next_morning_reload() -> void:
 	await _start(true)
-	var sign: Vector3i = ExteriorSupport.key_for(Vector3i(6, 11, 0), ExteriorSupport.Band.HEADER)
+	var sign: Vector3i = ExteriorSupport.key_for(_front_face(0), ExteriorSupport.Band.HEADER)
 	var morning: String = _saved_text()
 	assert_true(_main.call("shop_hang", &"shop_name_sign", sign))
 	assert_eq(_saved_text(), morning, "buying a name sign never writes an action save")
@@ -78,11 +77,11 @@ func test_purchased_sign_tracks_live_menu_rename_rebuild_and_next_morning_reload
 
 func test_awning_colour_and_exterior_finish_join_only_the_existing_morning_checkpoint() -> void:
 	await _start(true)
-	var canopy: Vector3i = ExteriorSupport.key_for(Vector3i(6, 11, 0), ExteriorSupport.Band.CANOPY)
+	var canopy: Vector3i = ExteriorSupport.key_for(_front_face(0), ExteriorSupport.Band.CANOPY)
 	var morning: String = _saved_text()
 	assert_true(_main.call("shop_hang", &"street_awning_2", canopy, &"sage"))
 	_assert_awning_colour(canopy, &"sage")
-	assert_true((_main.get("edit_history") as ShopEditHistory).apply_wall_finishes({FRONT:
+	assert_true((_main.get("edit_history") as ShopEditHistory).apply_wall_finishes({_front_face(-3):
 		FloorFinishes.Finish.new(&"brick", &"sage", &"cream")} as Dictionary[Vector3i, FloorFinishes.Finish]))
 	assert_true((_main.get("edit_history") as ShopEditHistory).paint_hung(canopy, &"clay"))
 	assert_eq(_saved_text(), morning)
@@ -95,18 +94,18 @@ func test_awning_colour_and_exterior_finish_join_only_the_existing_morning_check
 	assert_eq(_editor().decor.to_rows(), expected)
 	assert_eq(_editor().decor.item(canopy).swatch_id, &"clay")
 	_assert_awning_colour(canopy, &"clay")
-	assert_eq(_editor().walls.finish(FRONT).style, &"brick")
-	assert_eq(_editor().walls.finish(FRONT).swatch, &"sage")
+	assert_eq(_editor().walls.finish(_front_face(-3)).style, &"brick")
+	assert_eq(_editor().walls.finish(_front_face(-3)).swatch, &"sage")
 
 
 func test_native_outside_paint_keeps_whole_building_behavior_and_per_face_override() -> void:
 	await _start(true)
-	assert_true((_main.get("edit_history") as ShopEditHistory).apply_wall_finishes({FRONT:
+	assert_true((_main.get("edit_history") as ShopEditHistory).apply_wall_finishes({_front_face(-3):
 		FloorFinishes.Finish.new(&"brick", &"sage", &"cream")} as Dictionary[Vector3i, FloorFinishes.Finish]))
 	_main.call("refresh_presentation")
 	assert_true(_main.call("set_paint_active", true))
 	(_main.get_node("Overlay/BuildCatalogue") as BuildCatalogue).swatch_buttons[&"clay"].pressed.emit()
-	var target: Vector3 = WallFinishView.face_frame(_world().grid, FRONT, false,
+	var target: Vector3 = WallFinishView.face_frame(_world().grid, _front_face(-3), {} as Dictionary[Vector3i, bool],
 		{} as Dictionary[Vector2i, bool])["origin"] + Vector3.UP * 0.7
 	await _focus(target)
 	var point: Vector2 = _camera().unproject_position(target)
@@ -114,7 +113,7 @@ func test_native_outside_paint_keeps_whole_building_behavior_and_per_face_overri
 	var origin: Vector3 = _camera().project_ray_origin(point)
 	var direction: Vector3 = _camera().project_ray_normal(point)
 	var hit: Dictionary = _view().wall_face_at_ray(origin, direction)
-	assert_eq(hit.get("face", WallFaces.NO_FACE), FRONT, "the actual shell ray identifies its street face")
+	assert_eq(hit.get("face", WallFaces.NO_FACE), _front_face(-3), "the actual shell ray identifies its street face")
 	assert_eq(_main.call("paint_face_at_screen_position", point), WallFaces.NO_FACE,
 		"whole-building Paint keeps its original outside route")
 	var books: Dictionary = Economy.ledger.to_dict()
@@ -123,8 +122,8 @@ func test_native_outside_paint_keeps_whole_building_behavior_and_per_face_overri
 	var morning: String = _saved_text()
 	await _native_click(point)
 	assert_eq(_editor().wall_swatch_id, &"clay")
-	assert_eq(_editor().walls.finish(Vector3i(3, 9, 2)).swatch, &"clay")
-	assert_eq(_editor().walls.finish(FRONT).swatch, &"sage")
+	assert_eq(_editor().walls.finish(_inside_front_face(_front_face(-3))).swatch, &"clay")
+	assert_eq(_editor().walls.finish(_front_face(-3)).swatch, &"sage")
 	assert_eq(Economy.ledger.to_dict(), books)
 	assert_eq(Clock.sim.to_dict(), clock)
 	assert_eq(GameState.call("_capture_save"), random)
@@ -133,7 +132,7 @@ func test_native_outside_paint_keeps_whole_building_behavior_and_per_face_overri
 
 func test_native_paint_hits_the_actual_awning_model_and_changes_only_its_swatch() -> void:
 	await _start(true)
-	var canopy: Vector3i = ExteriorSupport.key_for(Vector3i(6, 11, 0), ExteriorSupport.Band.CANOPY)
+	var canopy: Vector3i = ExteriorSupport.key_for(_front_face(0), ExteriorSupport.Band.CANOPY)
 	assert_true(_main.call("shop_hang", &"street_awning_2", canopy, &"sage"))
 	_assert_awning_colour(canopy, &"sage")
 	assert_true(_main.call("set_paint_active", true))
@@ -165,16 +164,18 @@ func test_native_paint_hits_the_actual_awning_model_and_changes_only_its_swatch(
 
 func test_real_window_neon_picking_respects_foreground_furniture_and_opaque_shell() -> void:
 	await _start()
-	var edge: Vector3i = Vector3i(11, 10, SimGrid.EDGE_NORTH)
-	var slot: Vector3i = Vector3i(11, 9, 2)
+	var window_front: Vector3i = _front_face(5)
+	var slot: Vector3i = _inside_front_face(window_front)
+	var edge: Vector3i = WallFaces.edge(slot)
 	assert_true(_main.call("shop_walls", {edge: SimGrid.Segment.WINDOW} as Dictionary[Vector3i, int]))
 	assert_true(_main.call("shop_hang", &"neon_open_sign", slot))
 	var neon: ItemVisual = _view().wall_finish_view.item_nodes[slot]
 	var target: Vector3 = _largest_mesh(neon).global_transform * _largest_mesh(neon).get_aabb().get_center()
 	var from_street: Vector3 = target + Vector3(0, 0.15, 2.0)
 	assert_eq(_view().wall_item_at_ray(from_street, (target - from_street).normalized()), slot)
-	assert_true(_main.call("shop_buy", &"coat_rack_standing", Vector2i(11, 8)))
-	var rack: PlacedItem = _world().grid.item_at(Vector2i(11, 8))
+	var rack_cell: Vector2i = WallFaces.cell(slot) + WallFaces.step(window_front)
+	assert_true(_main.call("shop_buy", &"coat_rack_standing", rack_cell))
+	var rack: PlacedItem = _world().grid.item_at(rack_cell)
 	assert_not_null(rack)
 	if rack == null:
 		return
@@ -186,11 +187,11 @@ func test_real_window_neon_picking_respects_foreground_furniture_and_opaque_shel
 	assert_true(_view().wall_distance(origin, direction) >= origin.distance_to(target) - 0.01,
 		"the real window path is clear of opaque wall, so furniture is the blocker")
 	assert_eq(_view().wall_item_at_ray(origin, direction), WallFaces.NO_FACE)
-	var body: Vector3i = Vector3i(8, 11, 0)
+	var body: Vector3i = _front_face(2)
 	assert_true(_main.call("shop_hang", &"neon_open_sign", body))
 	var exterior: ItemVisual = _view().wall_finish_view.item_nodes[body]
 	var outside_target: Vector3 = _largest_mesh(exterior).global_transform * _largest_mesh(exterior).get_aabb().get_center()
-	var inside_origin: Vector3 = GridMath.cell_to_world(Vector2i(8, 8)) + Vector3.UP * outside_target.y
+	var inside_origin: Vector3 = GridMath.cell_to_world(ExteriorSupport.shell_cell(body) + WallFaces.step(body) * 2) + Vector3.UP * outside_target.y
 	assert_true(_view().wall_distance(inside_origin, (outside_target - inside_origin).normalized()) < inside_origin.distance_to(outside_target))
 	assert_eq(_view().wall_item_at_ray(inside_origin, (outside_target - inside_origin).normalized()), WallFaces.NO_FACE)
 
@@ -324,3 +325,30 @@ func _assert_awning_colour(anchor: Vector3i, swatch_id: StringName) -> void:
 		var content: ContentDB = _main.get("content") as ContentDB
 		assert_eq(material.albedo_color, content.swatch(swatch_id).color,
 			"the actual rendered body uses the canonical selected swatch")
+
+
+## Coordinates are fixture inputs from the actual Main door, not a historical
+## default substitution. Native hits, money, materials and save outcomes remain
+## checked by the original assertions above.
+func _front_face(offset: int) -> Vector3i:
+	var grid: SimGrid = _world().grid
+	var doors: Array[Vector2i] = ExteriorSupport.door_cells(grid)
+	assert_eq(doors.size(), 2, "the fixture uses the actual two-cell street door")
+	if doors.is_empty():
+		return WallFaces.NO_FACE
+	var into: Vector2i = -WallRules.street_side(grid)
+	var direction: int = WallFaces.DIRS.find(into)
+	var along: Vector2i = WallFaces.DIRS[posmod(direction + 1, 4)]
+	var first: Vector2i = doors[0]
+	for cell: Vector2i in doors:
+		if cell.x * along.x + cell.y * along.y < first.x * along.x + first.y * along.y:
+			first = cell
+	assert_true(doors.has(first + along), "the actual shell has adjacent street door cells")
+	var face: Vector3i = WallFaces.make(first + along * offset - into, direction)
+	assert_true(ExteriorSupport.is_exterior(grid, face), "the fixture input faces the current street shell")
+	return face
+
+
+func _inside_front_face(outside: Vector3i) -> Vector3i:
+	var into: Vector2i = WallFaces.step(outside)
+	return WallFaces.make(ExteriorSupport.shell_cell(outside) + into, posmod(outside.z + 2, 4))
