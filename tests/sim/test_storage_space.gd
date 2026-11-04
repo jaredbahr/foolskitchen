@@ -56,7 +56,7 @@ func _need() -> Dictionary:
 func test_starter_storage_holds_the_starter_order_with_headroom() -> void:
 	var space: StorageSpace = _space()
 	assert_eq(space.capacity(StorageSpace.FRIDGE), 40, "the starter fridge")
-	assert_eq(space.capacity(StorageSpace.DRY), 60, "the built-in back-room pantry")
+	assert_eq(space.capacity(StorageSpace.DRY), 100, "the built-in back-room pantry (60 before #85)")
 	assert_eq(space.capacity(StorageSpace.FREEZER), 0)
 	var fridge: int = 0
 	var dry: int = 0
@@ -81,7 +81,8 @@ func test_capacity_is_per_kind_and_items_of_a_kind_add_up() -> void:
 	assert_true(_editor.buy(&"storage_shelf", Vector2i(12, 1), 2), _editor.last_check.why)
 	assert_true(_editor.buy(&"storage_shelf", Vector2i(11, 1), 2), _editor.last_check.why)
 	var space: StorageSpace = _space()
-	assert_eq(space.capacity(StorageSpace.DRY), 60 + 40 + 40)
+	var pantry: int = _editor.pantry_units
+	assert_eq(space.capacity(StorageSpace.DRY), pantry + 40 + 40)
 	assert_eq(space.capacity(StorageSpace.FRIDGE), 40, "shelves add no fridge space")
 	_stock.add(&"cheese", 30, 1)
 	_stock.add(&"lettuce", 6, 1)
@@ -91,11 +92,11 @@ func test_capacity_is_per_kind_and_items_of_a_kind_add_up() -> void:
 	assert_eq(space.in_stock(StorageSpace.FRIDGE), 36, "every fridge ingredient shares the fridge's units")
 	assert_eq(space.on_order(StorageSpace.FRIDGE), 3)
 	assert_eq(space.free_units(StorageSpace.FRIDGE), 1, "orders already take their space")
-	assert_eq(space.free_units(StorageSpace.DRY), 40)
+	assert_eq(space.free_units(StorageSpace.DRY), pantry + 80 - 100)
 	assert_eq(space.first_overflow({&"cheese": 1, &"bread": 20}), -1)
 	assert_eq(space.first_overflow({&"cheese": 2}), StorageSpace.FRIDGE)
 	assert_eq(space.first_overflow({&"lettuce": 1, &"cheese": 1}), StorageSpace.FRIDGE, "the cart counts together")
-	assert_eq(space.first_overflow({&"tomato": 41}), StorageSpace.DRY)
+	assert_eq(space.first_overflow({&"tomato": pantry + 80 - 100 + 1}), StorageSpace.DRY)
 	assert_eq(StorageSpace.refusal(StorageSpace.FRIDGE), "Not enough fridge space")
 	assert_eq(StorageSpace.refusal(StorageSpace.FREEZER), "Not enough freezer space")
 	assert_eq(StorageSpace.refusal(StorageSpace.DRY), "Not enough dry storage space")
@@ -172,9 +173,11 @@ func test_selling_storage_the_stock_needs_is_refused() -> void:
 
 func test_undo_and_redo_refuse_to_overflow_storage_like_any_refused_edit() -> void:
 	assert_true(_history.buy(&"storage_shelf", Vector2i(12, 1), 2), _editor.last_check.why)
-	_stock.add(&"bread", 80, 1)
+	var pantry: int = _editor.pantry_units
+	# Twenty units past the pantry fit only while the shelf stands.
+	_stock.add(&"bread", pantry + 20, 1)
 	var cash: int = _ledger.cash
-	assert_false(_history.undo(), "undoing the shelf would leave 80 dry units in 60")
+	assert_false(_history.undo(), "undoing the shelf would leave more dry stock than the pantry holds")
 	assert_eq(_history.last_refusal, "Move stock out first: the dry stock would not fit without it")
 	assert_eq(_history.undo_count(), 1, "the refused undo stays on the stack")
 	assert_eq(_ledger.cash, cash)

@@ -20,6 +20,7 @@ const ADVICE: Dictionary = {
 	&"cook": "Your cooks are busy and guests are leaving after waiting. Consider hiring another cook before adding tables.",
 	&"server": "Your servers are busy and guests are leaving after waiting. Consider hiring another server before adding tables.",
 	&"tables": "Your team has time to spare. Add tables to make room for more guests.",
+	&"storage": "Dishes sold out and guests left hungry. Buy a storage shelf or another fridge so the morning order can bring enough, or top up in Stock during service.",
 	&"keeping_up": "Your team is keeping up.",
 }
 
