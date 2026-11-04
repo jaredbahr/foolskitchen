@@ -237,7 +237,7 @@ static func advance_queue(party: Party, world: SimWorld, sim: RestaurantSim, all
 		# while any member stands near it.
 		var refund: int = 0
 		for guest: CustomerAgent in guests:
-			refund = maxi(refund, guest._cat_relief(sim))
+			refund = maxi(refund, guest.cat_relief(sim))
 		party.queue_wait += 1 - refund
 	for guest: CustomerAgent in guests:
 		guest.state = CustomerAgent.State.QUEUED

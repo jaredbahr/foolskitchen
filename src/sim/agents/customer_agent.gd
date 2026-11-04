@@ -217,7 +217,7 @@ func _advance_visit(world: SimWorld, allow_movement: bool = true) -> void:
 			state = State.EATING
 			_eating = 0
 		else:
-			_food_wait += 1 - _cat_relief(sim)
+			_food_wait += 1 - cat_relief(sim)
 			if _food_wait >= food_patience:
 				if order != null and order.state == Order.State.DELIVERED and _waiting_for_side():
 					# The coffee is here; a slow croissant is dropped, not the guest.
@@ -242,7 +242,7 @@ func _advance_visit(world: SimWorld, allow_movement: bool = true) -> void:
 					_queue_inside(world)
 				else:
 					WaitingBench.observe_arrival(self, world, sim)
-				_queue_wait += 1 - _cat_relief(sim)
+				_queue_wait += 1 - cat_relief(sim)
 				if _queue_wait >= queue_patience:
 					_leave(world, sim, &"no_table")
 		State.WALKING_TO_SEAT:
@@ -369,10 +369,10 @@ func is_waiting_in_shop() -> bool:
 
 ## One waiting tick handed back (so patience lasts a little longer) now and
 ## then while this guest is near the shop cat; 0 otherwise.
-func _cat_relief(sim: RestaurantSim) -> int:
+func cat_relief(sim: RestaurantSim) -> int:
 	if sim.cat == null:
 		return 0
-	var result: Dictionary = sim.cat.relief(cell, _cat_carry)
+	var result: Dictionary = sim.cat.relief(sim.world.grid, cell, _cat_carry)
 	_cat_carry = float(result["carry"])
 	return int(result["refund"])
 

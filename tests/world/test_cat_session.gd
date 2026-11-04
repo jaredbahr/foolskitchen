@@ -101,18 +101,19 @@ func test_adopting_charges_once_and_food_is_charged_every_day() -> void:
 	assert_false(_main.call("adopt_cat"), "only once")
 	assert_eq(Economy.cash, cash - CAT.adoption_price)
 	assert_false(_offer().visible, "the offer is gone for good")
-	var food_total: int = 0
+	# Through the real close path: once per day, and a repeated close signal
+	# on the same day charges nothing more.
 	for day: int in 3:
 		var day_number: int = Clock.sim.day
-		var before: int = Economy.cash
-		_main.call("_charge_closing_costs")
-		var totals: Dictionary = Economy.ledger.day_totals(day_number)
-		assert_eq(int(totals.get(Ledger.CAT_FOOD, 0)), -CAT.daily_food_cost, "day %d: cat food, under its own heading" % day_number)
-		assert_eq(before - Economy.cash - int(-totals.get(Ledger.WAGES, 0)) - int(-totals.get(Ledger.RENT, 0)),
-			CAT.daily_food_cost, "day %d: exactly one food charge" % day_number)
-		food_total += CAT.daily_food_cost
+		_main.call("_on_service_closed", day_number)
+		var after_first: Dictionary = Economy.ledger.day_totals(day_number)
+		assert_eq(int(after_first.get(Ledger.CAT_FOOD, 0)), -CAT.daily_food_cost, "day %d: cat food, once" % day_number)
+		var cash_after: int = Economy.cash
+		_main.call("_on_service_closed", day_number)
+		assert_eq(Economy.cash, cash_after, "day %d: a second close signal charges nothing" % day_number)
+		assert_eq(int(Economy.ledger.day_totals(day_number).get(Ledger.CAT_FOOD, 0)), -CAT.daily_food_cost)
 		Clock.sim.day += 1
-	assert_eq(food_total, 3 * CAT.daily_food_cost)
+		_main.call("_begin_morning")
 
 
 func test_no_cat_means_no_food_charge() -> void:
@@ -207,3 +208,50 @@ func test_the_cat_is_drawn_only_once_adopted_and_follows_its_state() -> void:
 	assert_eq(view.cat_view.current_clip(), &"walk")
 	var halfway: Vector3 = GridMath.cell_to_world(cat.from_cell).lerp(GridMath.cell_to_world(cat.cell), 0.5)
 	assert_true(view.cat_view.position.distance_to(halfway) < 0.13, "between the cells, not snapped")
+
+
+func test_a_game_with_no_cat_has_no_cat_stream() -> void:
+	var first: Dictionary = _no_cat_streams()
+	var second: Dictionary = _no_cat_streams()
+	assert_false((first["rngs"] as Dictionary).has("cat"), "no cat, no stream")
+	assert_eq(first, second, "and the other streams are exactly as without the feature")
+
+
+func test_loading_an_adopted_game_restores_the_cat_stream() -> void:
+	_start(true)
+	_level(CAT.unlock_level)
+	assert_true(_main.call("adopt_cat"))
+	var warmup: RestaurantCat = _sim().cat
+	for tick: int in 3000:
+		warmup.advance(_sim().world.grid, [])
+	Clock.sim.day += 1
+	_main.call("_begin_morning")
+	var unsaved: Array[Vector2i] = _cat_walk()
+	assert_true(unsaved.size() > 10, "a real walk")
+	_close()
+	_start(true)
+	assert_true(_sim().cat.adopted)
+	assert_eq(_cat_walk(), unsaved, "the saved stream gives the same next walk")
+
+
+func _cat_walk() -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	var cat: RestaurantCat = _sim().cat
+	var last: Vector2i = SimGrid.NO_CELL
+	for tick: int in 6000:
+		cat.advance(_sim().world.grid, [])
+		if cat.cell != last:
+			last = cat.cell
+			out.append(last)
+	return out
+
+
+func _no_cat_streams() -> Dictionary:
+	_start()
+	assert_true(Clock.sim.start_service())
+	_main.call("run_ticks", 600)
+	var saved: Dictionary = GameState._capture_save()
+	_close()
+	Economy.reset(0)
+	GameState.new_run(1)
+	return saved

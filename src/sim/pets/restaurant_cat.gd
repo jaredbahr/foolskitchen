@@ -45,6 +45,11 @@ var petted_by: Array[int] = []
 
 var _rng: RandomNumberGenerator
 var _bed: Vector2i = SimGrid.NO_CELL
+## The grid version at which placing the cat last failed (no free cell).
+var _failed_version: int = -1
+var _door_cache_grid: WeakRef = null
+var _door_cache_version: int = -1
+var _door_zone: Dictionary[Vector2i, bool] = {}
 var _path: Array[Vector2i] = []
 var _timer: int = 0
 var _on_arrival: State = State.STANDING
@@ -166,7 +171,6 @@ func begin_day(grid: SimGrid) -> void:
 func layout_changed(grid: SimGrid) -> void:
 	if not adopted or grid == null:
 		return
-	_nap_cache_version = -1
 	_bed = bed_spot(grid)
 	if cell == SimGrid.NO_CELL or not cell_ok(grid, cell):
 		_path.clear()
@@ -178,6 +182,7 @@ func layout_changed(grid: SimGrid) -> void:
 		_timer = tuning.morning_nap_ticks
 		step_done = 0
 		step_total = 1
+		_failed_version = grid.version if cell == SimGrid.NO_CELL else -1
 
 
 ## One world tick while the shop is open. `guests` are the current visits.
@@ -185,6 +190,9 @@ func advance(grid: SimGrid, guests: Array[CustomerAgent]) -> void:
 	if not adopted or grid == null:
 		return
 	if cell == SimGrid.NO_CELL or not cell_ok(grid, cell):
+		# With nowhere to stand, try again only after the layout changes.
+		if cell == SimGrid.NO_CELL and _failed_version == grid.version:
+			return
 		layout_changed(grid)
 		if cell == SimGrid.NO_CELL:
 			return
@@ -216,15 +224,23 @@ func advance(grid: SimGrid, guests: Array[CustomerAgent]) -> void:
 # --- Charm ---------------------------------------------------------------------
 
 ## Is a guest standing here within charm range of the cat (so a little more patient)?
-func charms(guest_cell: Vector2i) -> bool:
-	return adopted and cell != SimGrid.NO_CELL and _chebyshev(guest_cell, cell) <= tuning.charm_radius
+## It must be someone on the shop floor in the cat's own room, not a guest
+## queued outside on the pavement or in another room behind a wall.
+func charms(grid: SimGrid, guest_cell: Vector2i) -> bool:
+	return adopted and cell != SimGrid.NO_CELL and _chebyshev(guest_cell, cell) <= tuning.charm_radius \
+		and _shares_room(grid, guest_cell)
+
+
+func _shares_room(grid: SimGrid, guest_cell: Vector2i) -> bool:
+	return grid.terrain(guest_cell) == SimGrid.Terrain.FLOOR and grid.is_guest_walkable(guest_cell) \
+		and grid.room(guest_cell) == grid.room(cell)
 
 
 ## Hands back one waiting tick now and then to a waiting guest in charm range.
 ## `carry` is the guest's fractional credit (kept on the guest); returns the new
 ## credit and whether one tick is refunded this time.
-func relief(guest_cell: Vector2i, carry: float) -> Dictionary:
-	if not charms(guest_cell):
+func relief(grid: SimGrid, guest_cell: Vector2i, carry: float) -> Dictionary:
+	if not charms(grid, guest_cell):
 		return {"carry": carry, "refund": 0}
 	carry += tuning.refund_per_tick()
 	if carry >= 1.0:
@@ -236,7 +252,7 @@ func _try_petting(grid: SimGrid, guests: Array[CustomerAgent]) -> bool:
 	for guest: CustomerAgent in guests:
 		if guest.petted_cat or not guest.is_waiting_in_shop():
 			continue
-		if _chebyshev(guest.cell, cell) > tuning.pet_radius:
+		if _chebyshev(guest.cell, cell) > tuning.pet_radius or not _shares_room(grid, guest.cell):
 			continue
 		guest.petted_cat = true
 		petted_by.append(guest.id)
@@ -262,7 +278,27 @@ func cell_ok(grid: SimGrid, candidate: Vector2i) -> bool:
 	var room: SimGrid.Room = grid.room(candidate)
 	if room != SimGrid.Room.DINING and room != SimGrid.Room.RESTROOM:
 		return false
+	if _doors(grid).has(candidate):
+		return false
 	return grid.item_on_layer(candidate, ItemDef.PlacementLayer.NORMAL) == null
+
+
+## The street door's threshold cells and the cell just inside each: guests
+## stream through them, so the cat keeps out. Cached per layout.
+func _doors(grid: SimGrid) -> Dictionary[Vector2i, bool]:
+	var cached: SimGrid = _door_cache_grid.get_ref() as SimGrid if _door_cache_grid != null else null
+	if cached == grid and _door_cache_version == grid.version:
+		return _door_zone
+	_door_zone = {}
+	for threshold: Vector2i in WallRules.door_cells(grid):
+		_door_zone[threshold] = true
+		for entry: Vector2i in grid.entries():
+			var delta: Vector2i = threshold - entry
+			if absi(delta.x) + absi(delta.y) == 1:
+				_door_zone[threshold + delta] = true
+	_door_cache_grid = weakref(grid)
+	_door_cache_version = grid.version
+	return _door_zone
 
 
 func _steps(grid: SimGrid, from: Vector2i) -> Array[Vector2i]:
@@ -284,38 +320,41 @@ func bed_spot(grid: SimGrid) -> Vector2i:
 	return SimGrid.NO_CELL
 
 
-## Cells next to a window (a sunny spot); with no window in the shop, cells
-## next to a wall. In reading order (row, then column). Cached per layout.
+## Where the cat naps, in reading order (row, then column), cached per layout.
+## Preference: beside a window on a side wall or the back wall (a sunny spot),
+## else beside a wall on those sides, and only when the shop has neither, the
+## same two on the street-facing front wall (in the default camera that wall is
+## lowered, so a cat asleep against it looks as if it lay on top of it).
 func nap_spots(grid: SimGrid) -> Array[Vector2i]:
 	var cached: SimGrid = _nap_cache_grid.get_ref() as SimGrid if _nap_cache_grid != null else null
 	if cached == grid and _nap_cache_version == grid.version:
 		return _nap_cache
-	var floor_cells: Array[Vector2i] = _floor_cells(grid)
 	var windows: Dictionary[Vector2i, bool] = {}
 	for window_cell: Vector2i in ExteriorSupport.window_cells(grid):
 		windows[window_cell] = true
-	var doors: Dictionary[Vector2i, bool] = WallRules.door_cells(grid)
-	var sunny: Array[Vector2i] = []
-	var walled: Array[Vector2i] = []
-	for candidate: Vector2i in floor_cells:
-		if doors.has(candidate):
-			continue
-		var beside_window: bool = false
-		var beside_wall: bool = false
+	var front: Vector2i = WallRules.street_side(grid) if not grid.entries().is_empty() else Vector2i.ZERO
+	var tiers: Array[Array] = [[], [], [], []]
+	for candidate: Vector2i in _floor_cells(grid):
+		var tier: int = 4
 		for step: Vector2i in [Vector2i(0, -1), Vector2i(1, 0), Vector2i(0, 1), Vector2i(-1, 0)]:
 			var next: Vector2i = candidate + step
 			var kind: SimGrid.Segment = grid.segment(SimGrid.edge_between(candidate, next))
+			var this_tier: int = 4
 			if windows.has(next) or kind == SimGrid.Segment.WINDOW:
-				beside_window = true
+				this_tier = 0 if step != front else 2
 			elif kind == SimGrid.Segment.WALL or kind == SimGrid.Segment.STALL_PARTITION \
 					or grid.terrain(next) == SimGrid.Terrain.WALL:
-				beside_wall = true
-		if beside_window:
-			sunny.append(candidate)
-		elif beside_wall:
-			walled.append(candidate)
-	_nap_is_sunny = not sunny.is_empty()
-	_nap_cache = sunny if _nap_is_sunny else walled
+				this_tier = 1 if step != front else 3
+			tier = mini(tier, this_tier)
+		if tier < 4:
+			tiers[tier].append(candidate)
+	_nap_is_sunny = false
+	_nap_cache = []
+	for index: int in 4:
+		if not tiers[index].is_empty():
+			_nap_cache.assign(tiers[index])
+			_nap_is_sunny = index == 0 or index == 2
+			break
 	_nap_cache_grid = weakref(grid)
 	_nap_cache_version = grid.version
 	return _nap_cache

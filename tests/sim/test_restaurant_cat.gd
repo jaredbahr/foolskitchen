@@ -125,11 +125,14 @@ func test_morning_start_is_the_bed_spot_and_draws_nothing() -> void:
 	assert_eq(sim.cat.state, RestaurantCat.State.NAPPING)
 	for tick: int in 4000:
 		sim.cat.advance(sim.world.grid, [])
+	assert_ne(GameState.rng(&"cat").state, stream, "the day's walking drew numbers")
+	var before: Dictionary = {"state": GameState.rng(&"cat").state, "seed": GameState.rng(&"cat").seed}
 	sim.start_day()
+	sim.cat.begin_day(sim.world.grid)
 	assert_eq(sim.cat.cell, bed, "every morning begins on the bed")
 	assert_eq(sim.cat.state, RestaurantCat.State.NAPPING)
-	sim.cat.begin_day(sim.world.grid)
-	assert_ne(GameState.rng(&"cat").state, stream, "the day's walking drew numbers")
+	assert_eq(GameState.rng(&"cat").state, before["state"], "beginning the day draws nothing")
+	assert_eq(GameState.rng(&"cat").seed, before["seed"])
 
 
 func test_naps_next_to_a_window_else_next_to_a_wall() -> void:
@@ -187,20 +190,92 @@ func test_patience_bonus_applies_only_within_range() -> void:
 	assert_eq(_queue_wait_after(200, 1), near)
 
 
-func test_food_wait_is_eased_the_same_way_and_never_below_zero() -> void:
+func test_a_guest_near_the_cat_outlasts_an_identical_guest_far_away() -> void:
+	var near: int = _food_wait_after(300, 1)
+	var far: int = _food_wait_after(300, 5)
+	assert_eq(far, 300, "away from the cat each tick of waiting counts in full")
+	# +10% patience: 300 ticks of waiting use about 300 / 1.1 = 273 of the budget.
+	assert_true(near >= 271 and near <= 275, "about 273 ticks used near the cat, got %d" % near)
+	assert_true(far - near >= 25, "the near guest outlasts the far one by about 27 ticks")
+
+
+func test_charm_needs_the_same_room_and_shop_floor() -> void:
 	var sim: RestaurantSim = _empty_sim()
-	var guest: CustomerAgent = sim.add_customer(Vector2i(0, 1), _rng(3))
-	guest.state = CustomerAgent.State.WAITING_FOOD
-	guest.food_patience = 100000
+	var grid: SimGrid = sim.world.grid
 	sim.cat.adopted = true
-	sim.cat.cell = guest.cell
-	var waited: int = 0
-	for tick: int in 1000:
-		waited += 1 - guest._cat_relief(sim)
-	assert_true(waited >= 905 and waited <= 912, "got %d" % waited)
-	guest._queue_wait = 0
-	guest._cat_carry = 0.99
-	assert_true(guest._queue_wait + 1 - guest._cat_relief(sim) >= 0)
+	sim.cat.cell = Vector2i(5, 5)
+	assert_true(sim.cat.charms(grid, Vector2i(6, 5)))
+	assert_false(sim.cat.charms(grid, Vector2i(8, 5)), "three cells away")
+	assert_true(grid.set_rooms({Vector2i(6, 5): SimGrid.Room.RESTROOM}))
+	assert_false(sim.cat.charms(grid, Vector2i(6, 5)), "another room, even through a wall-thin gap")
+	assert_false(sim.cat.charms(grid, Vector2i(0, 1)), "a guest in the street entry is not in the shop")
+	assert_false(sim.cat.charms(grid, Vector2i(-1, 1)), "nor one outside the grid")
+	var guest: CustomerAgent = sim.add_customer(Vector2i(0, 1), _rng(3))
+	guest.state = CustomerAgent.State.QUEUED
+	guest.cell = Vector2i(6, 5)
+	sim.cat.cell = Vector2i(5, 5)
+	sim.cat.from_cell = sim.cat.cell
+	sim.cat.advance(grid, [guest])
+	assert_false(guest.petted_cat, "no petting across rooms")
+
+
+func test_the_cat_keeps_out_of_the_doorway() -> void:
+	var sim: RestaurantSim = _empty_sim()
+	var grid: SimGrid = sim.world.grid
+	var cat: RestaurantCat = sim.cat
+	for blocked: Vector2i in [Vector2i(1, 1), Vector2i(0, 0), Vector2i(0, 2), Vector2i(2, 1)]:
+		assert_false(cat.cell_ok(grid, blocked), "%s is the door or just inside it" % blocked)
+	assert_true(cat.cell_ok(grid, Vector2i(3, 3)))
+	cat.use_rng(_rng(21))
+	cat.adopt(grid)
+	for tick: int in 12000:
+		cat.advance(grid, [])
+		assert_true(cat.cell_ok(grid, cat.cell), "tick %d: %s" % [tick, cat.cell])
+
+
+func test_naps_avoid_the_front_wall_when_another_side_has_one() -> void:
+	var grid: SimGrid = _box(8, 6)
+	assert_true(grid.set_terrain(Vector2i(4, 5), SimGrid.Terrain.ENTRY))
+	assert_true(grid.set_segment(Vector3i(2, 5, SimGrid.EDGE_NORTH), SimGrid.Segment.WINDOW))
+	var cat: RestaurantCat = RestaurantCat.new(TUNING)
+	var spots: Array[Vector2i] = cat.nap_spots(grid)
+	assert_false(spots.has(Vector2i(2, 4)), "a window in the front wall is not chosen while side walls exist")
+	assert_false(spots.has(Vector2i(3, 4)), "nor the front wall itself")
+	assert_true(spots.has(Vector2i(1, 2)), "a side wall will do")
+	assert_false(cat.naps_in_sun(grid), "no side window: wall spots")
+	assert_true(grid.set_segment(Vector3i(7, 2, SimGrid.EDGE_WEST), SimGrid.Segment.WINDOW))
+	assert_eq(cat.nap_spots(grid), [Vector2i(6, 2)] as Array[Vector2i], "a side window beats everything")
+	assert_true(cat.naps_in_sun(grid))
+
+
+func test_naps_use_the_front_wall_only_when_nothing_else_exists() -> void:
+	var grid: SimGrid = SimGrid.new(Vector2i(7, 4))
+	for x: int in 7:
+		grid.set_terrain(Vector2i(x, 3), SimGrid.Terrain.WALL)
+	assert_true(grid.set_terrain(Vector2i(3, 3), SimGrid.Terrain.ENTRY))
+	var cat: RestaurantCat = RestaurantCat.new(TUNING)
+	var spots: Array[Vector2i] = cat.nap_spots(grid)
+	# Only the street wall exists: its panes either side of the door are the sunny spots.
+	assert_eq(spots, [Vector2i(2, 2), Vector2i(4, 2)] as Array[Vector2i], "never in the doorway itself")
+	assert_true(cat.naps_in_sun(grid))
+
+
+func test_a_cat_with_nowhere_to_stand_does_not_rescan_every_tick() -> void:
+	var grid: SimGrid = _box(3, 3)
+	var cat: RestaurantCat = RestaurantCat.new(TUNING, _rng(1))
+	cat.adopt(grid)
+	assert_eq(cat.cell, Vector2i(1, 1))
+	assert_true(grid.set_terrain(Vector2i(1, 1), SimGrid.Terrain.WALL))
+	cat.layout_changed(grid)
+	assert_eq(cat.cell, SimGrid.NO_CELL)
+	var version: int = grid.version
+	for tick: int in 50:
+		cat.advance(grid, [])
+	assert_eq(grid.version, version)
+	assert_eq(cat.cell, SimGrid.NO_CELL)
+	assert_true(grid.set_terrain(Vector2i(1, 1), SimGrid.Terrain.FLOOR))
+	cat.advance(grid, [])
+	assert_eq(cat.cell, Vector2i(1, 1), "it comes back once the layout changes")
 
 
 func test_relief_is_off_without_an_adopted_cat() -> void:
@@ -209,7 +284,7 @@ func test_relief_is_off_without_an_adopted_cat() -> void:
 	sim.cat.cell = guest.cell
 	var refunds: int = 0
 	for tick: int in 500:
-		refunds += guest._cat_relief(sim)
+		refunds += guest.cat_relief(sim)
 	assert_eq(refunds, 0)
 
 
@@ -437,6 +512,32 @@ func _queue_wait_after(ticks: int, distance: int) -> int:
 		guest.tick(sim.world)
 	assert_eq(guest.state, CustomerAgent.State.QUEUED)
 	return guest._queue_wait - before
+
+
+## A real seated guest waiting for a meal that never comes (no kitchen), with
+## the cat parked `distance` cells away; returns how much patience it used.
+func _food_wait_after(ticks: int, distance: int) -> int:
+	var content: ContentDB = ContentDB.new()
+	assert_eq(content.load_all(), PackedStringArray())
+	var errors: Array[String] = []
+	var sim: RestaurantSim = RestaurantSim.create(LAYOUT, content, 4, errors, null, false)
+	assert_eq(errors, [] as Array[String])
+	assert_true(sim.world.clock.start_service())
+	var guest: CustomerAgent = sim.add_customer(sim.world.grid.entries()[0], _rng(3))
+	guest.food_patience = 100000
+	guest.queue_patience = 100000
+	for tick: int in 1500:
+		if guest.state == CustomerAgent.State.ORDERING or guest.state == CustomerAgent.State.WAITING_FOOD:
+			break
+		sim.world.advance()
+	assert_true(guest.state == CustomerAgent.State.ORDERING or guest.state == CustomerAgent.State.WAITING_FOOD)
+	sim.cat.adopted = true
+	sim.cat.cell = guest.cell + Vector2i(distance, 0)
+	var before: int = guest._food_wait
+	for tick: int in ticks:
+		sim.world.advance()
+	assert_true(guest.state == CustomerAgent.State.ORDERING or guest.state == CustomerAgent.State.WAITING_FOOD)
+	return guest._food_wait - before
 
 
 func _people_trace(with_cat: bool) -> Array:
