@@ -11,7 +11,7 @@ const HOURS: int = 24
 
 ## Kind -> 24 hourly weights (hour 0 is midnight to 1am).
 @export var hourly_weights: Dictionary[StringName, PackedFloat32Array] = {}
-## How long a drinks-only guest stays with their drink, in ticks (a meal is 300).
+## How long a drinks-only guest stays with their drink, in ticks (a meal is 270).
 @export var drink_visit_ticks: int = 150
 ## The arrival rate never falls below this, so a quiet hour still sees guests.
 @export var min_arrival_rate: float = 0.25

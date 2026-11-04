@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- Service is quicker again: the cook no longer stalls waiting for a clean plate while the server is busy elsewhere, plating at the pass is faster, and guests finish their meals a little sooner, so the starter shop seats more guests a day. (#301)
 - Staff now always start the morning at their own posts: a worker caught mid-step toward another worker's post at closing no longer pushes that worker to the next cell over. (#300)
 - Buy a chalkboard A-frame sign (Build > Decor, $35, from owner level 2) and stand it on the pavement beside your street door. It shows your restaurant name and today's special, the dish with your best margin (or Coffee at a cafe), and adds a little curb appeal for more walk-ins. The cells straight in front of the door stay clear for guests. (#299)
 - Buy a jukebox (Build > Decor, $90, level 3) and choose its music style: Diner rock, Café jazz or Bar blues. It adds vibe like other decor, twice as much when its style matches your shop's theme, and plays quietly while the shop is open (Effects volume controls it). Only one jukebox counts, and you can switch its style any time by clicking it. (#297)

@@ -275,6 +275,11 @@ func _staff_to_posts() -> void:
 			staff_list.append(staff)
 	for staff: StaffAgent in staff_list:
 		world.reset_agent_position(staff, staff_spawns[staff.role])
+	# A colleague still standing on this post only moved off it after their own
+	# turn: put anyone placed beside their post back on it now.
+	for staff: StaffAgent in staff_list:
+		if staff.cell != staff_spawns[staff.role]:
+			world.reset_agent_position(staff, staff_spawns[staff.role])
 
 
 ## One fixed world tick, arrivals, then departed-guest cleanup.
