@@ -7,7 +7,7 @@ extends RefCounted
 static func names() -> Array[String]:
 	return ["default", "extra_cook", "extra_server", "owner_kitchen", "owner_floor",
 		"trays_2", "trays_4", "extra_cleaner", "expanded_tables", "coffee_shop", "bar", "fryer_coffee", "joined_tables",
-		"grown", "neglected", "curb_appeal"]
+		"grown", "neglected", "curb_appeal", "expanded_staffed"]
 
 
 static func apply(name: String, main: Node, extra_cook_skill: int = 3) -> bool:
@@ -51,6 +51,9 @@ static func apply(name: String, main: Node, extra_cook_skill: int = 3) -> bool:
 			return _neglected(main)
 		"curb_appeal":
 			return _curb_appeal(main)
+		"expanded_staffed":
+			# #85: grow the floor and hire for it, the player's "expand" move.
+			return _expand_with_tables(main) and _add_staff(main, &"cook", 3) and _add_staff(main, &"server", 3)
 	return false
 
 

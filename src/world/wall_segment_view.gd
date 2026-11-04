@@ -142,9 +142,10 @@ func clear() -> void:
 		child.free()
 
 
-## `interior_lowered` follows the cutaway/down wall mode; `lowered_cells` are
-## the shell cells ShopView currently draws lowered (their windows hide).
-func rebuild(grid: SimGrid, interior_lowered: bool, lowered_cells: Array[Vector2i]) -> void:
+## `lowered_edges` are the interior segments ShopView draws lowered (all in
+## Down, those in front of the camera focus in Cutaway); `lowered_cells` are
+## the shell cells it draws lowered (their windows hide).
+func rebuild(grid: SimGrid, lowered_edges: Dictionary[Vector3i, bool], lowered_cells: Array[Vector2i]) -> void:
 	clear()
 	_grid = grid
 	if grid == null:
@@ -155,7 +156,7 @@ func rebuild(grid: SimGrid, interior_lowered: bool, lowered_cells: Array[Vector2
 		if WallRules.is_interior(grid, edge):
 			interior[edge] = grid.segment(edge)
 	for edge: Vector3i in interior:
-		_build_interior(edge, interior[edge] as SimGrid.Segment, interior, interior_lowered, span)
+		_build_interior(edge, interior[edge] as SimGrid.Segment, interior, lowered_edges.has(edge), span)
 	for edge: Vector3i in grid.segment_edges():
 		if grid.segment(edge) != SimGrid.Segment.WINDOW:
 			continue

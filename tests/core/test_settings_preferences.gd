@@ -222,6 +222,61 @@ func test_slider_previews_audio_without_writes_until_drag_release() -> void:
 	panel.free()
 
 
+func test_failed_explicit_flush_reports_the_pending_write_and_recovers_after_the_obstruction_is_removed() -> void:
+	assert_eq(DirAccess.make_dir_recursive_absolute(_path), OK,
+		"an isolated directory prevents writing only this test's preferences file")
+	var panel: SettingsPanel = PANEL.instantiate() as SettingsPanel
+	panel.bind_preferences(_model)
+	assert_true(_model.preview_volume_percent(&"Master", 80))
+	assert_false(panel.flush_pending_changes(), "a view not yet ready still returns the real write error safely")
+	panel.set_quit_to_title_available(true)
+	panel.set_show_guide_available(true)
+	panel.set_panel_top(112.0)
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	var host: SubViewport = SubViewport.new()
+	host.size = Vector2i(1600, 900)
+	host.gui_embed_subwindows = true
+	tree.root.add_child(host)
+	var window: Window = Window.new()
+	window.size = Vector2i(1600, 900)
+	window.content_scale_size = Vector2i(1600, 900)
+	window.content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS
+	window.content_scale_aspect = Window.CONTENT_SCALE_ASPECT_EXPAND
+	host.add_child(window)
+	window.add_child(panel)
+	window.show()
+	panel.show()
+	for frame: int in 3:
+		await tree.process_frame
+	var master: HSlider = panel.get_node("%MasterSlider") as HSlider
+	var status: Label = panel.get_node("%Status") as Label
+	master.value = 60
+	assert_eq(status.text, "Changes are saved automatically.")
+	assert_false(panel.flush_pending_changes(), "keyboard/session callers use this same flush")
+	assert_eq(status.text, "Could not save settings. Please try again.")
+	for frame: int in 3:
+		await tree.process_frame
+	var scroll: ScrollContainer = panel.get_node("Panel/Column/Scroll") as ScrollContainer
+	assert_almost_eq(window.get_visible_rect().size.y, 900.0, 0.01, "use the real project canvas, not the headless root")
+	assert_true(scroll.size.y > 0.0 and status.size.y > 0.0, "the visible controls have settled native bounds")
+	assert_true(scroll.get_global_rect().encloses(status.get_global_rect()),
+		"the reported error must be visible inside the settings scroll area")
+	assert_eq(_model.master_volume_percent, 60, "the pending preview is retained")
+	assert_almost_eq(master.value, 60.0)
+	assert_true(bool(_model.get("_pending_volume_save")))
+	assert_true((panel.get("_save_delay") as Timer).is_stopped())
+	assert_false(FileAccess.file_exists(_path))
+	assert_eq(DirAccess.remove_absolute(ProjectSettings.globalize_path(_path)), OK)
+	assert_true(panel.flush_pending_changes(), "the next ordinary caller can write after recovery")
+	assert_false(bool(_model.get("_pending_volume_save")))
+	var restored: SettingsPreferences = SettingsPreferences.new(_path)
+	assert_true(restored.load_from_disk())
+	assert_eq(restored.master_volume_percent, 60)
+	restored.free()
+	panel.free()
+	host.free()
+
+
 func test_slider_without_drag_saves_after_debounce_and_close_flushes() -> void:
 	assert_true(_model.save_to_disk())
 	var before: String = FileAccess.get_file_as_string(_path)

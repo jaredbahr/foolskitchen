@@ -1053,7 +1053,12 @@ tables and buys two normal chairs for $20, without changing menu/staff/tuning.
   native Kenney `wallWindow` pane. An outer window cuts the shell cell: its box
   drops to the sill, jambs and head surround the pane, which sits at the room
   face; `RoomDressing` keeps its street pane/lamp slots but skips that cell.
-  Cutaway and Down lower every interior segment; a lowered doorway keeps a
+  Down lowers every interior segment. Cutaway (#205) lowers only those whose
+  middle stands more than half a cell in front of the camera focus
+  (`ShopView.lowered_interior_edges`, `cutaway_lowers`): walls behind it stay
+  up with their finishes and decor. The set is recomputed on a quarter turn or
+  when the focus enters a new cell, never per frame, and one set drives the
+  segments, finishes, decor visibility and picking. A lowered doorway keeps a
   post stub at each end and a floor threshold, and a lowered window shows a
   Slate blue glass strip instead of the dark cap, so cycling reads there too.
 - **Back doors (FK-099, #187).** The Doorway tool can put a back door on an
@@ -2579,6 +2584,41 @@ A missing or invalid destination refunds half the original price, rounded down.
 The decoder only stages `load_refund` and plain `load_notes`; Main applies a
 refund after complete successful load, before the existing morning checkpoint.
 There is no new save point or SaveSystem migration.
+
+### Day and night (FK-109, #208)
+- **A pure function of the clock.** `DayLight.minute_for(clock, tick_fraction)` maps the phase to a time of day: prep one hour before opening (never before 06:00), service scaled across the opening hours, last orders running into the evening, and closed late at night. `DayLight.sample(minute)` blends the key frames in `data/look/day_light.tres` (`DayLightTuning`). Nothing is stored or drawn at random, so paused captures are deterministic.
+- **Applied each frame** by Main's `_refresh_day_light()` through `DayNightView`:
+  - the key light's colour, energy and downward angle (its compass direction is fixed, so light stays upper-left);
+  - fill energy, ambient light and the procedural sky;
+  - a glow multiplier on hung lit items (neon, string lights, window pools; capped at energy 1);
+  - one warm `ShopLights` omni over the floor's middle at dusk and night, so the room glows while the street stays dark.
+- **The 10:00 key frame is the authored `lighting_rig.tscn`.** Default morning prep looks exactly as before; the weather and lighting tests pin this.
+- **Weather** only tints the pavement and is unaffected. **The title backdrop** keeps the authored morning, because Main is disabled there.
+- **Review:** `tools/day_night_review.tscn` with `DAY_NIGHT_STAGE` set to morning, noon, golden, dusk, last_orders or closed (or minute with `DAY_NIGHT_MINUTE`).
+- **Chairs up after close** (`ShopView.set_chairs_up`, view only):
+  - When closed, each dining chair turns upside down onto its table, side to side so the back hangs over the edge.
+  - Both a table's built-in chairs (model children tagged `seat_cell`) and separate chair items linked to its seats are handled. Only the model moves inside its wrapper; the item, cells and saves never change.
+  - Tables left dirty at close keep their chairs down. Evening Build and Paint show them down, so picking is unchanged.
+  - Morning restores the exact resting transforms.
+- **Lamps (#84).**
+  - **The items:** six Kenney Furniture Kit lamps in Buy > Lighting (`catalogue_room = &"lighting"`):
+    - floor lamps (solid, one cell);
+    - side tables with a lamp (`sideTable` with the lamp stacked through PropView `support`);
+    - a wall lamp (WALL layer, inside face);
+    - a ceiling pendant (FLOOR_DECOR layer, non-blocking, `ItemDef.ceiling`). The pendant's shade shows only with Walls Up; its light keeps shining.
+  - **Light:** each lamp has one warm `glow_color` omni (about 2700K), short range and no shadow, with its own meshes left out like the neon sign. Floor, table and pendant lights are added in `ShopView._add_lamp_light`; the wall lamp uses the hung-item `_add_glow`.
+  - **Day and night:** `DayNightView.apply_lamps` sets each lamp's light from 35% by day to full once the shop's own lights are on (`DayLight.Look.interior_energy`). Lamps are marked `DayNightView.LAMP_META`, so sign glow doesn't double-scale them.
+  - **Light cap:** at most `LAMP_LIGHT_CAP` (8) lamp lights shine, the ones nearest the camera focus (ties broken by instance id). The rest keep their shade, but their light is hidden. This keeps every mesh within the Compatibility renderer's eight lights.
+  - **Vibe:** the six ids are in `vibe.tres` `lamp_item_ids`.
+  - **Review:** `tools/lamps_review.tscn` (`LAMPS_STAGE`, `LAMPS_WALLS`).
+
+### Sound (FK-067, #117)
+- **`Sfx` autoload** (`src/audio/sfx.gd`): one-shot cues and looped ambience on the Effects bus (Settings already sets its volume). It clicks every `BaseButton` in the tree, including the title screen's, through `SceneTree.node_added`, and plays hover on enabled buttons. Each cue has a minimum interval (`SoundThrottle`) so fast-forward bursts play once. Repeats step through a fixed pitch cycle; there are no random draws.
+- **Headless and web:** headless runs create no players, but `play` still emits `cue_played`, which tests listen to. On the web nothing plays or queues until the first click, key or touch.
+- **`SoundDirector`** (`src/world/sound_director.gd`, owned by Main): listens to `RestaurantSim.customer_arrived` (door bell), `customer_paid` (coins) and `review_recorded` (five stars: chime). Each frame, `refresh()` sets the room tone from the number of guests and plays the stove, fryer and coffee loops while `FoodPresentation.busy_loops` reports a worked station. It is silent outside service and while paused.
+- **View hooks:** ShopView plays the back-door creak when a leaf starts to open and a thud when a crate lands at play speed. Main plays the level-up or milestone sting as the evening report opens.
+- **Tuning:** streams, gains, intervals and loop levels are in `data/audio/sound_tuning.tres` (`SoundTuning`). Kenney files are in `assets/kenney/audio/`; the made loops are in `assets/made/audio/`.
+- **No music yet:** that's a separate taste decision.
 
 ### 2.4 Save system
 Business trends (FK-123): Main keeps fourteen detached `BusinessHistory` closing

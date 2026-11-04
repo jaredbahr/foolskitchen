@@ -47,6 +47,51 @@ const DITHER_SPAN: float = 200.0
 ## The ramp is 1.25 m, about one second of walking at 1x.
 const DOOR_OPEN_FAR: float = 1.75
 const DOOR_OPEN_NEAR: float = 0.5
+## Lamps (#84): one warm, short, shadowless light at the shade (under it for
+## a ceiling pendant). The lamp's own meshes are left out of it, like the
+## neon sign. DayNightView dims it by day and caps how many shine at once.
+const LAMP_ENERGY: float = 0.6
+const LAMP_RANGE: float = 1.8
+const LAMP_ATTENUATION: float = 1.2
+const LAMP_SHADE_DROP: float = 0.08
+
+
+static func _add_lamp_light(node: ItemVisual, definition: ItemDef) -> void:
+	var box: AABB = node.get_aabb()
+	for mesh: MeshInstance3D in node.rendered_meshes():
+		mesh.layers = WallFinishView.GLOW_SELF_LAYER
+	var light: OmniLight3D = OmniLight3D.new()
+	light.name = "Glow"
+	light.light_color = Color(definition.glow_color, 1.0)
+	light.light_energy = LAMP_ENERGY * definition.glow_color.a
+	light.light_specular = 0.0
+	light.shadow_enabled = false
+	light.omni_range = LAMP_RANGE
+	light.omni_attenuation = LAMP_ATTENUATION
+	light.light_bake_mode = Light3D.BAKE_DISABLED
+	light.light_cull_mask = 0xFFFFF & ~WallFinishView.GLOW_SELF_LAYER
+	var height: float = box.position.y - LAMP_SHADE_DROP if definition.ceiling else box.end.y - LAMP_SHADE_DROP
+	light.position = Vector3(box.get_center().x, maxf(height, 0.1), box.get_center().z)
+	node.add_child(light)
+
+
+## A ceiling pendant's shade shows only with Walls Up (like hung wall decor
+## on lowered walls); its light keeps shining.
+func _sync_ceiling(node: ItemVisual, definition: ItemDef) -> void:
+	if definition.ceiling and node.prop != null:
+		node.prop.visible = wall_mode == WallMode.UP
+
+
+## Chairs up after close (#208): the model's resting transform, and how far
+## (in cells) an upturned chair moves in over its table's edge.
+const CHAIR_REST_META: StringName = &"chair_rest_transform"
+const CHAIR_UP_REACH: float = 0.7
+## A table's own chairs move this share of the way in towards its middle.
+const BUILT_IN_CHAIR_PULL: float = 0.62
+## A chair's seat sits at about this share of its full height.
+const CHAIR_SEAT_SHARE: float = 0.5
+## A back door that opens past this amount creaks once (#117).
+const DOOR_SOUND_START: float = 0.05
 const HEIGHTS: Dictionary[int, float] = {
 	ItemDef.Category.TABLE: 0.75, ItemDef.Category.CHAIR: 0.45,
 	ItemDef.Category.STATION: 0.9, ItemDef.Category.STORAGE: 0.9,
@@ -77,6 +122,9 @@ const LOWERED_HEIGHT: float = 0.35
 const AWAY_FROM_CAMERA: Array[Vector2i] = [
 	Vector2i(-1, -1), Vector2i(-1, 1), Vector2i(1, 1), Vector2i(1, -1),
 ]
+## Cutaway (#205): an interior wall lowers only when it stands this many cells
+## or more in front of the camera focus, so walls behind it keep their decor.
+const CUTAWAY_DEAD_BAND_CELLS: float = 0.5
 
 @export var wall_color: Color = Color("e6d5b8")
 @export var wall_top_color: Color = Color("b9a789")
@@ -84,6 +132,8 @@ const AWAY_FROM_CAMERA: Array[Vector2i] = [
 
 var wall_mode: WallMode = WallMode.CUTAWAY
 var _camera_quarter: int = 0
+## The camera focus cell for the cutaway; NO_CELL until Main supplies one.
+var _focus_cell: Vector2i = SimGrid.NO_CELL
 var _wall_nodes: Dictionary[Vector2i, MeshInstance3D] = {}
 
 var world: SimWorld
@@ -145,6 +195,8 @@ var crate_nodes: Dictionary[int, Node3D] = {}
 var _crate_reveal: Dictionary[int, int] = {}
 var _crates_synced: bool = false
 var _crates_tick: int = 0
+## Last drawn opening of each back door, for its creak (#117).
+var _door_amounts: Dictionary[Vector2i, float] = {}
 ## Smooth motion: people are drawn between their last two sim ticks.
 var motion: MotionSmoother = MotionSmoother.new()
 var food: FoodPresentation
@@ -262,7 +314,7 @@ func set_lot(value: Rect2i) -> void:
 	if segment_view != null:
 		segment_view.lot = value
 		if world != null:
-			segment_view.rebuild(world.grid, wall_mode != WallMode.UP, lowered_wall_cells())
+			segment_view.rebuild(world.grid, lowered_interior_edges(), lowered_wall_cells())
 	_refresh_neighbourhood()
 
 
@@ -1138,6 +1190,55 @@ func set_camera_quarter(quarter: int) -> void:
 	_apply_wall_heights()
 
 
+## Moves the cutaway with the camera (#205). `point` is the camera's focus in
+## world space; walls only change when it enters a new cell and that changes
+## which interior walls stand in front of it.
+func set_camera_focus(point: Vector3) -> void:
+	var local: Vector3 = to_local(point) if is_inside_tree() else point
+	var cell: Vector2i = Vector2i(floori(local.x / GridMath.CELL_SIZE), floori(local.z / GridMath.CELL_SIZE))
+	if cell == _focus_cell:
+		return
+	var before: Dictionary[Vector3i, bool] = lowered_interior_edges()
+	_focus_cell = cell
+	if wall_mode == WallMode.CUTAWAY and lowered_interior_edges() != before:
+		_apply_wall_heights()
+
+
+## The interior wall segments drawn lowered: all of them in Down, none in Up,
+## and in Cutaway only those standing in front of the camera focus.
+func lowered_interior_edges() -> Dictionary[Vector3i, bool]:
+	var edges: Dictionary[Vector3i, bool] = {}
+	if world == null or wall_mode == WallMode.UP:
+		return edges
+	var away: Vector2 = Vector2(AWAY_FROM_CAMERA[_camera_quarter]).normalized()
+	var focus: Vector2 = cutaway_focus()
+	for edge: Vector3i in world.grid.segment_edges():
+		if not WallRules.is_interior(world.grid, edge):
+			continue
+		if wall_mode == WallMode.DOWN or cutaway_lowers(edge, focus, away):
+			edges[edge] = true
+	return edges
+
+
+## The focus the cutaway uses: the centre of the camera's focus cell, or the
+## middle of the grid before any camera reports one (the title backdrop).
+func cutaway_focus() -> Vector2:
+	if _focus_cell != SimGrid.NO_CELL:
+		var center: Vector3 = GridMath.cell_to_world(_focus_cell)
+		return Vector2(center.x, center.z)
+	if world == null:
+		return Vector2.ZERO
+	return Vector2(world.grid.size) * GridMath.CELL_SIZE * 0.5
+
+
+## True when the segment's middle stands in front of the focus, seen from the
+## camera looking along `away` (a ground direction pointing into the scene).
+static func cutaway_lowers(edge: Vector3i, focus: Vector2, away: Vector2) -> bool:
+	var ends: Array[Vector2i] = SimGrid.edge_vertices(edge)
+	var middle: Vector2 = (Vector2(ends[0]) + Vector2(ends[1])) * 0.5 * GridMath.CELL_SIZE
+	return (middle - focus).dot(away) < -CUTAWAY_DEAD_BAND_CELLS * GridMath.CELL_SIZE
+
+
 ## Returns the currently lowered cells in stable row order for diagnostics.
 func lowered_wall_cells() -> Array[Vector2i]:
 	var cells: Array[Vector2i] = []
@@ -1161,6 +1262,10 @@ func _wall_is_lowered(cell: Vector2i) -> bool:
 
 
 func _apply_wall_heights() -> void:
+	if world != null:
+		for item: PlacedItem in world.grid.items():
+			if item_nodes.has(item.id) and item.def is ItemDef:
+				_sync_ceiling(item_nodes[item.id], item.def as ItemDef)
 	var sill: float = segment_view.window_span().x if segment_view != null else WALL_HEIGHT
 	var doors: Dictionary[Vector2i, Vector2i] = {}
 	if world != null:
@@ -1185,9 +1290,9 @@ func _apply_wall_heights() -> void:
 			top.remove_meta(&"segment_edge")
 	if segment_view != null and world != null:
 		segment_view.set_materials(_current_wall_material(), _material(wall_top_color), floor_mesh.material_override)
-		segment_view.rebuild(world.grid, wall_mode != WallMode.UP, lowered_wall_cells())
+		segment_view.rebuild(world.grid, lowered_interior_edges(), lowered_wall_cells())
 	if wall_finish_view != null and world != null:
-		wall_finish_view.set_lowered(wall_mode != WallMode.UP, lowered_wall_cells())
+		wall_finish_view.set_lowered(lowered_interior_edges(), lowered_wall_cells())
 	if room_dressing != null:
 		room_dressing.set_lowered_walls(lowered_wall_cells())
 
@@ -1205,6 +1310,106 @@ func _unhandled_input(event: InputEvent) -> void:
 			cycle_wall_mode()
 
 
+## Chairs up on their tables after close (#208): each dining chair turns
+## upside down onto its own table, seat on the top. View only: the chair's
+## model moves inside its wrapper, so the item, its cells and saves never
+## change. Tables in `keep_down` (left dirty at close) keep their chairs down.
+func set_chairs_up(up: bool, keep_down: Dictionary[int, bool] = {}) -> void:
+	if world == null:
+		return
+	var tables: Dictionary[int, int] = chair_tables()
+	for item: PlacedItem in world.grid.items():
+		var definition: ItemDef = item.def as ItemDef
+		if definition != null and definition.category == ItemDef.Category.TABLE and item_nodes.has(item.id):
+			_built_in_chairs_up(item_nodes[item.id], up and not keep_down.has(item.id))
+			continue
+		if definition == null or definition.category != ItemDef.Category.CHAIR or not item_nodes.has(item.id):
+			continue
+		var node: ItemVisual = item_nodes[item.id]
+		if node.prop == null:
+			continue
+		if not node.prop.has_meta(CHAIR_REST_META):
+			node.prop.set_meta(CHAIR_REST_META, node.prop.transform)
+		var rest: Transform3D = node.prop.get_meta(CHAIR_REST_META)
+		var table_id: int = tables.get(item.id, 0)
+		if not up or table_id == 0 or keep_down.has(table_id) or not item_nodes.has(table_id):
+			node.prop.transform = rest
+			continue
+		node.prop.transform = chair_up_transform(node, item_nodes[table_id], rest)
+
+
+## A table's own chairs (the model's children tagged `seat_cell`) turned
+## upside down onto its top, pulled in towards the middle; or back down.
+static func _built_in_chairs_up(table: ItemVisual, up: bool) -> void:
+	if table.prop == null:
+		return
+	var top: float = -1.0
+	for chair: Node in table.prop.get_children():
+		if not chair is Node3D or not chair.has_meta(&"seat_cell"):
+			continue
+		var node: Node3D = chair as Node3D
+		if not node.has_meta(CHAIR_REST_META):
+			node.set_meta(CHAIR_REST_META, node.transform)
+		var rest: Transform3D = node.get_meta(CHAIR_REST_META)
+		if not up:
+			node.transform = rest
+			continue
+		if top < 0.0:
+			top = _table_top(table.prop)
+		# Turned over side to side, so the back still faces out and hangs over
+		# the table's edge; the seat (about half the chair's height) rests on top.
+		var seat: float = _subtree_top(node, Transform3D.IDENTITY) * CHAIR_SEAT_SHARE
+		var inward: Vector3 = Vector3(rest.origin.x, 0.0, rest.origin.z) * BUILT_IN_CHAIR_PULL
+		node.transform = Transform3D(rest.basis * Basis(Vector3.FORWARD, PI), Vector3(inward.x, top + seat, inward.z))
+
+
+## The height of a table model's top, from its untagged (non-chair) parts.
+static func _table_top(prop: PropView) -> float:
+	var top: float = 0.0
+	for part: Node in prop.get_children():
+		if part is Node3D and not part.has_meta(&"seat_cell"):
+			top = maxf(top, _subtree_top(part as Node3D, (part as Node3D).transform))
+	return top
+
+
+static func _subtree_top(node: Node3D, to_prop: Transform3D) -> float:
+	var top: float = 0.0
+	if node is VisualInstance3D:
+		top = (to_prop * (node as VisualInstance3D).get_aabb()).end.y
+	for child: Node in node.get_children():
+		if child is Node3D:
+			top = maxf(top, _subtree_top(child as Node3D, to_prop * (child as Node3D).transform))
+	return top
+
+
+## Each dining chair's table (chair id -> table id): a table owns its seat
+## cells, and the chair furnishing each seat is linked to that cell.
+func chair_tables() -> Dictionary[int, int]:
+	var tables: Dictionary[int, int] = {}
+	for table: PlacedItem in world.grid.items():
+		var definition: ItemDef = table.def as ItemDef
+		if definition == null or definition.category != ItemDef.Category.TABLE:
+			continue
+		for cell: Vector2i in table.seat_cells:
+			var chair_id: int = world.grid.dining_furnishing_id(cell)
+			if chair_id != 0 and chair_id != table.id and not tables.has(chair_id):
+				tables[chair_id] = table.id
+	return tables
+
+
+## The chair's model, upside down, seat resting on the table top and moved in
+## over the table's edge, in the chair wrapper's own space.
+static func chair_up_transform(chair: ItemVisual, table: ItemVisual, rest: Transform3D) -> Transform3D:
+	var table_box: AABB = table.transform * table.get_aabb()
+	var center: Vector3 = table_box.get_center()
+	var toward: Vector3 = Vector3(center.x - chair.position.x, 0.0, center.z - chair.position.z)
+	var shift: Vector3 = toward.limit_length(GridMath.CELL_SIZE * CHAIR_UP_REACH)
+	var seat: float = chair.prop.seat_surface_height()
+	var target: Vector3 = Vector3(chair.position.x + shift.x, table_box.end.y + seat, chair.position.z + shift.z)
+	# Side to side, so the back faces out and hangs over the table's edge.
+	return Transform3D(rest.basis * Basis(Vector3.FORWARD, PI), chair.transform.affine_inverse() * target)
+
+
 func _build_item(item: PlacedItem) -> void:
 	var definition: ItemDef = item.def as ItemDef
 	if definition == null or (definition.category == ItemDef.Category.DOOR and definition.view_scene == null):
@@ -1218,11 +1423,16 @@ func _build_item(item: PlacedItem) -> void:
 		node.set_meta("shop_geometry", true)
 		item_nodes[item.id] = node
 		add_child(node)
+		if definition.catalogue_room == &"lighting":
+			node.set_meta(DayNightView.LAMP_META, true)
+		if definition.glow_color.a > 0.0:
+			_add_lamp_light(node, definition)
 	# Relocation retains the item/definition. An edit on either shared layer
 	# updates placement without replacing the surviving wrapper or its paint.
 	node.transform = ItemVisual.placed_transform(definition, item.origin, item.quarter_turns)
 	node.rotation.y = -item.quarter_turns * PI * 0.5
 	_apply_stock_slots(node, definition)
+	_sync_ceiling(node, definition)
 	_sync_item_selection()
 
 
@@ -1589,6 +1799,8 @@ func _sync_crates() -> void:
 			for index: int in together.size():
 				if index > 0:
 					_crate_reveal[int(together[index][1])] = world.now + index * CRATE_STAGGER_TICKS
+				else:
+					Sounds.play(&"delivery_drop")
 		_crates_synced = true
 		_crates_tick = world.now
 	for id: int in crate_nodes.keys():
@@ -1602,6 +1814,7 @@ func _sync_crates() -> void:
 			crate_nodes[id].visible = world.now >= _crate_reveal[id]
 			if crate_nodes[id].visible:
 				_crate_reveal.erase(id)
+				Sounds.play(&"delivery_drop")
 
 
 ## Where crate `slot` stands on `cell`: one stack, `slot` crates up, on the
@@ -1628,6 +1841,10 @@ func _sync_back_doors() -> void:
 			var drawn: Vector3 = agent_nodes[agent.id].position
 			var distance: float = Vector2(drawn.x - center.x, drawn.z - center.z).length()
 			amount = maxf(amount, door_open_amount(distance))
+		# The door creaks as it starts to open (#117).
+		if amount > DOOR_SOUND_START and float(_door_amounts.get(cell, 0.0)) <= DOOR_SOUND_START:
+			Sounds.play(&"back_door")
+		_door_amounts[cell] = amount
 		segment_view.set_door_open(cell, amount)
 
 

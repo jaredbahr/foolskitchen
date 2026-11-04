@@ -8,3 +8,4 @@ high_busy_percent = 90.0
 low_busy_percent = 70.0
 min_waiting_losses = 1
 min_no_table_losses = 5
+min_out_of_stock_losses = 5

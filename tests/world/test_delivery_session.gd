@@ -41,7 +41,7 @@ func test_a_new_game_fills_the_starter_storage_and_nothing_waits() -> void:
 	assert_eq(space.in_stock(StorageSpace.FRIDGE), 28)
 	assert_eq(space.capacity(StorageSpace.FRIDGE), 40)
 	assert_eq(space.in_stock(StorageSpace.DRY), 50)
-	assert_eq(space.capacity(StorageSpace.DRY), 60)
+	assert_eq(space.capacity(StorageSpace.DRY), 100, "the starter pantry (60 before #85)")
 	assert_true((main.get("deliveries") as DeliveryBook).is_empty(), "the morning delivery came at once")
 	var groups: Array[Dictionary] = main.call("stock_groups")
 	assert_eq(groups.size(), 2, "Fridge and Dry; no freezer in the starter shop")
@@ -58,7 +58,7 @@ func test_a_hand_order_that_does_not_fit_is_refused() -> void:
 	var main: Node = _start(false)
 	assert_true(main.call("stock_cart_set", &"cheese", 12), "28 + 12 fills the 40-unit fridge")
 	assert_false(main.call("stock_cart_set", &"lettuce", 1), "one more does not fit")
-	assert_true(main.call("stock_cart_set", &"bread", 10), "a full fridge cart never blocks dry goods")
+	assert_true(main.call("stock_cart_set", &"bread", 50), "a full fridge cart never blocks dry goods")
 	assert_eq(main.call("stock_cart_refusal"), "")
 	assert_true(main.call("stock_place_order"))
 	assert_eq(Economy.stock.count(&"cheese"), 20, "morning orders arrive at once")
@@ -70,7 +70,7 @@ func test_a_hand_order_that_does_not_fit_is_refused() -> void:
 	assert_false(main.call("stock_place_order"))
 	assert_eq(Economy.cash, cash, "a refused order costs nothing")
 	main.call("stock_clear_cart")
-	assert_false(main.call("stock_cart_set", &"bread", 1), "the pantry is full too: 50 + 10")
+	assert_false(main.call("stock_cart_set", &"bread", 1), "the pantry is full too: 50 + 50")
 	main.call("stock_clear_cart")
 	Economy.stock.take(&"bread", 10)
 	Economy.cash = 3
@@ -176,6 +176,12 @@ func test_deliveries_arrive_on_the_schedule_and_bring_sold_out_dishes_back() -> 
 	assert_true(Clock.sim.start_service())
 	main.call("run_ticks", 5)
 	assert_true(sim.is_sold_out(&"tomato_soup"))
+	var sold_out: Label = main.get_node("HUD/Top/Row/SoldOut") as Label
+	assert_true(sold_out.visible)
+	assert_true(sold_out.tooltip_text.contains("Tomato soup"))
+	assert_true(sold_out.tooltip_text.contains("Stock"), "the real HUD points to the recovery action")
+	assert_false(sold_out.tooltip_text.contains("rest of today"), "a daytime delivery can restore the dish")
+	assert_false(sold_out.tooltip_text.contains("tomorrow morning"), "ordering need not wait until tomorrow")
 	assert_true(main.call("stock_cart_set", &"soup_stock", 6))
 	var cash: int = Economy.cash
 	assert_true(main.call("stock_place_order"))
@@ -203,6 +209,7 @@ func test_deliveries_arrive_on_the_schedule_and_bring_sold_out_dishes_back() -> 
 		waited += 1
 	assert_eq(Economy.stock.count(&"soup_stock"), 6, "put away by staff")
 	assert_false(sim.is_sold_out(&"tomato_soup"), "the soup is back on")
+	assert_false(sold_out.tooltip_text.contains("Tomato soup"), "the recovered dish leaves the HUD's list")
 	assert_false((main.call("stock_notes") as Array[String]).any(
 		func(note: String) -> bool: return note.begins_with("Still to be put away")))
 	# After the last delivery (20:00) an order waits for the morning.
@@ -247,15 +254,15 @@ func test_build_refuses_to_sell_storage_the_stock_needs_and_undo_obeys() -> void
 	Economy.add_cash(500, Ledger.SALE)
 	assert_true(main.call("set_build_active", true))
 	assert_true(main.call("shop_buy", &"storage_shelf", Vector2i(12, 1), 2))
-	assert_true(main.call("stock_cart_set", &"bread", 30))
-	assert_true(main.call("stock_place_order"), "80 dry units fit 100")
-	assert_false(main.call("undo_edit"), "taking the shelf away would leave 80 in 60")
+	assert_true(main.call("stock_cart_set", &"bread", 70))
+	assert_true(main.call("stock_place_order"), "120 dry units fit 140")
+	assert_false(main.call("undo_edit"), "taking the shelf away would leave 120 in 100")
 	assert_eq(main.get("_edit_notice"), "Can't undo: Move stock out first: the dry stock would not fit without it")
 	var shelf: PlacedItem = (main.get("world") as SimWorld).grid.item_at(Vector2i(12, 1))
 	assert_eq(main.call("shop_sell", shelf.id), -1)
 	assert_eq((main.get("shop_editor") as ShopEditor).last_check.why,
 		"Move stock out first: the dry stock would not fit without it")
-	assert_eq(main.call("stock_throw_out", &"bread"), 46)
+	assert_eq(main.call("stock_throw_out", &"bread"), 86)
 	assert_true(main.call("undo_edit"), "with the bread thrown out the shelf can go")
 
 
@@ -370,7 +377,7 @@ func test_shelves_show_crates_in_proportion_to_how_full_dry_storage_is() -> void
 	assert_true(main.call("set_build_active", false))
 	var shelf: PlacedItem = (main.get("world") as SimWorld).grid.item_at(Vector2i(12, 1))
 	main.call("refresh_presentation")
-	assert_eq(_shown(main, shelf.id), 6, "50 of 100 dry units: 6 of 11 crates and boxes")
+	assert_eq(_shown(main, shelf.id), ShopView.stock_slots_shown(50.0 / 140.0, 11), "50 of 140 dry units")
 	for id: StringName in [&"bread", &"bun", &"soup_stock", &"tomato"]:
 		Economy.stock.take(id, Economy.stock.count(id))
 	Economy.stock.add(&"bread", 2, Clock.sim.day)
@@ -379,7 +386,7 @@ func test_shelves_show_crates_in_proportion_to_how_full_dry_storage_is() -> void
 	Economy.stock.take(&"bread", 2)
 	main.call("refresh_presentation")
 	assert_eq(_shown(main, shelf.id), 0)
-	Economy.stock.add(&"bread", 100, Clock.sim.day)
+	Economy.stock.add(&"bread", 140, Clock.sim.day)
 	main.call("refresh_presentation")
 	assert_eq(_shown(main, shelf.id), 11, "full")
 	assert_eq(ShopView.stock_slots_shown(0.5, 11), 6)

@@ -118,6 +118,10 @@ jobs:
           bash tools/screenshot.sh --out=screens/visual-review/weather-rain --weather-review=rain --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/restroom-review --restroom-review --speed=0 --frames=12,30
           bash tools/screenshot.sh --out=screens/visual-review/hygiene-review --scene=res://tools/hygiene_review.tscn --speed=0 --frames=12,60 --quarter=2
+          bash tools/screenshot.sh --out=screens/visual-review/cutaway-review --scene=res://tools/cutaway_review.tscn --speed=0 --frames=30 --quarter=2
+          DAY_NIGHT_STAGE=golden bash tools/screenshot.sh --out=screens/visual-review/day-night-golden --scene=res://tools/day_night_review.tscn --speed=0 --frames=30
+          DAY_NIGHT_STAGE=closed bash tools/screenshot.sh --out=screens/visual-review/day-night-closed --scene=res://tools/day_night_review.tscn --speed=0 --frames=30
+          LAMPS_STAGE=night LAMPS_WALLS=up bash tools/screenshot.sh --out=screens/visual-review/lamps-night --scene=res://tools/lamps_review.tscn --speed=0 --frames=30
           OPENINGS_REVIEW_STAGE=before bash tools/screenshot.sh --out=screens/visual-review/openings-before --scene=res://tools/openings_review.tscn --speed=0 --frames=30 --quarter=2
           OPENINGS_REVIEW_STAGE=after bash tools/screenshot.sh --out=screens/visual-review/openings-after --scene=res://tools/openings_review.tscn --speed=0 --frames=30 --quarter=2
           bash tools/screenshot.sh --out=screens/visual-review/menu-boards-review --menu-boards-review --speed=0 --frames=12,30

@@ -24,6 +24,13 @@ var content: ContentDB
 var pool: Array[DishVisual] = []
 var stack: Array[DishVisual] = []
 var steam: Dictionary[int, CPUParticles3D] = {}
+## Sound loop for each station that makes one while worked (#117).
+const STATION_LOOPS: Dictionary[StringName, StringName] = {
+	&"stove": &"stove_sizzle", &"fryer": &"fryer_bubble", &"coffee_machine": &"coffee_steam",
+}
+var _station_loops: Dictionary[int, StringName] = {}
+## Stations being worked this frame, counted per sound loop (read-only view state).
+var busy_loops: Dictionary[StringName, int] = {}
 var surfaces: Dictionary[int, Vector3] = {}
 var surface_bounds: Dictionary[int, AABB] = {}
 var _tops: Dictionary[int, Surface] = {}
@@ -78,6 +85,7 @@ func refresh_layout(items: Dictionary[int, ItemVisual]) -> void:
 	_sink_id = 0
 	_pass_id = 0
 	var seats: int = 0
+	_station_loops.clear()
 	for id: int in steam.keys():
 		if not items.has(id):
 			steam[id].free()
@@ -88,6 +96,8 @@ func refresh_layout(items: Dictionary[int, ItemVisual]) -> void:
 			continue
 		var visual: ItemVisual = items[item.id]
 		var definition: ItemDef = item.def as ItemDef
+		if STATION_LOOPS.has(definition.id):
+			_station_loops[item.id] = STATION_LOOPS[definition.id]
 		var serving_surface: bool = definition.category == ItemDef.Category.TABLE or definition.category == ItemDef.Category.PASS
 		var surface: Surface = _surface(visual, serving_surface)
 		surfaces[item.id] = surface.point
@@ -222,12 +232,17 @@ func sync(frames: Dictionary[int, AgentPresentationController.Frame], people: Di
 		dish.show_dish(ticket.recipe, stage == &"dirty")
 	for item_id: int in steam:
 		steam[item_id].emitting = false
+	busy_loops.clear()
 	var washing_sink: int = _sink_id
 	for agent: SimAgent in restaurant.world.agents:
 		if agent is StaffAgent and frames.has(agent.id) and frames[agent.id].working:
 			var staff: StaffAgent = agent as StaffAgent
 			if steam.has(staff._held_item_id) and staff.task != null and staff.task.kind == &"cook":
 				steam[staff._held_item_id].emitting = true
+			if _station_loops.has(staff._held_item_id) and staff.task != null \
+					and (staff.task.kind == &"cook" or staff.task.kind == &"pour"):
+				var loop: StringName = _station_loops[staff._held_item_id]
+				busy_loops[loop] = int(busy_loops.get(loop, 0)) + 1
 			if staff.task != null and staff.task.kind == &"wash":
 				var active_sink: int = int(staff.task.payload.get("sink_id", 0))
 				if surfaces.has(active_sink):

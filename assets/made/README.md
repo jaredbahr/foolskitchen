@@ -113,3 +113,6 @@ coordinates between SVG and supersampled PNG output. It never edits the
 vendored kit or another made asset. Optional `--manifest /outside/project.json`
 writes audit data outside the shipping project; review comparisons are never
 stored with the assets.
+
+## Kitchen ambience loops (#117)
+The Kenney audio packs have no kitchen ambience, so `audio/stove_sizzle.ogg`, `audio/fryer_bubble.ogg`, `audio/coffee_steam.ogg` and `audio/room_tone.ogg` are made from seeded, frequency-shaped noise with short crackles and bubbles. Each is shaped over its whole length, so it loops without a seam. No recorded or third-party audio is used. Rebuild with `python3 tools/make_kitchen_audio.py` (numpy and ffmpeg); the output is deterministic.

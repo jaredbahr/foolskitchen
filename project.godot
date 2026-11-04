@@ -19,6 +19,7 @@ Clock="*res://src/core/clock.gd"
 Economy="*res://src/core/economy.gd"
 SaveSystem="*res://src/core/save_system.gd"
 Preferences="*res://src/core/settings_preferences.gd"
+Sfx="*res://src/audio/sfx.gd"
 
 [audio]
 

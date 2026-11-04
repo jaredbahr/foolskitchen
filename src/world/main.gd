@@ -23,6 +23,7 @@ const MESS_TUNING: MessTuning = preload("res://data/balance/messes.tres")
 const CLEANLINESS_TUNING: CleanlinessTuning = preload("res://data/balance/cleanliness.tres")
 const WEATHER_TUNING: WeatherTuning = preload("res://data/balance/weather.tres")
 const DEMAND_TUNING: DemandTuning = preload("res://data/balance/demand.tres")
+const DAY_LIGHT: DayLightTuning = preload("res://data/look/day_light.tres")
 const CURB_APPEAL_TUNING: CurbAppealTuning = preload("res://data/balance/curb_appeal.tres")
 const REVIEW_TUNING: ReviewTuning = preload("res://data/balance/reviews.tres")
 const REVIEW_QUOTES: ReviewQuotes = preload("res://data/reviews/quotes.tres")
@@ -61,6 +62,8 @@ signal vibe_changed(result: VibeModel.Result)
 var _vibe_grid: SimGrid
 ## Today's paid departures, grouped by their captured arrival theme label.
 var _vibe_experiences: Dictionary[String, int] = {}
+## Shop sounds (#117); presentation only.
+var sound: SoundDirector
 ## The last evening report put on screen (for tests and tools).
 var shown_report: DayReport = null
 ## Previous service's display summary for the morning panel; never a save section.
@@ -375,13 +378,14 @@ func _bind_world_presentation() -> void:
 	if not _settings_panel.quit_to_title_requested.is_connected(request_quit_to_title):
 		_settings_panel.quit_to_title_requested.connect(request_quit_to_title)
 	var quit_dialog: ConfirmationDialog = $Overlay/QuitToTitle
-	# Keep native dialog padding, but use the shared palette in this dialog only.
+	# Keep native dialog padding, but use the shared palette in these dialogs only.
 	var dialog_theme: Theme = _menu_panel.theme.duplicate() as Theme
 	var dialog_panel: StyleBoxFlat = quit_dialog.get_theme_stylebox("panel", "AcceptDialog").duplicate() as StyleBoxFlat
 	dialog_panel.bg_color = (_menu_panel.theme.get_stylebox("panel", "PanelContainer") as StyleBoxFlat).bg_color
 	dialog_theme.set_stylebox("panel", "AcceptDialog", dialog_panel)
 	dialog_theme.set_color("font_focus_color", "Button", _menu_panel.theme.get_color("font_color", "Button"))
 	quit_dialog.theme = dialog_theme
+	($Overlay/AutosaveFailure as AcceptDialog).theme = dialog_theme
 	quit_dialog.title = TitleText.QUIT_TO_TITLE
 	quit_dialog.dialog_text = TitleText.LOST_PROGRESS
 	quit_dialog.ok_button_text = TitleText.QUIT_TO_TITLE
@@ -480,6 +484,8 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	if world == null:
 		return
+	# The cutaway follows the camera's focus (#205); cheap unless its cell changes.
+	($ShopView as ShopView).set_camera_focus(($CameraRig as Node3D).global_position)
 	_debug_overlay.sample_rates(float(Time.get_ticks_usec()) / 1000000.0, Engine.get_frames_per_second())
 	_guard_build_phase()
 	if build_mode.blueprint_dragging and not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
@@ -614,9 +620,16 @@ func _connect_session() -> void:
 		EventBus.cash_changed.connect(_on_build_cash_changed)
 	if not _inspect_panel.owner_mode_requested.is_connected(_on_owner_mode_requested):
 		_inspect_panel.owner_mode_requested.connect(_on_owner_mode_requested)
+	if sound == null:
+		sound = SoundDirector.new()
+		sound.name = "SoundDirector"
+		add_child(sound)
+	sound.bind(sim, $ShopView as ShopView)
 
 
 func _exit_tree() -> void:
+	if sound != null:
+		sound.unbind()
 	_disconnect_vibe_grid()
 	_build_ready = false
 	if build_mode.changed.is_connected(_on_build_changed):
@@ -2050,6 +2063,9 @@ func inspection_state() -> Dictionary:
 ## Refreshes after completed morning setup, removals and paused grid edits too.
 func refresh_presentation() -> void:
 	_refresh_weather()
+	_refresh_day_light()
+	if sound != null:
+		sound.refresh()
 	if _inspect_panel == null or _debug_overlay == null or _debug_geometry == null:
 		return
 	_inspect_panel.refresh()
@@ -3687,8 +3703,13 @@ func _begin_morning() -> void:
 	_restock()
 	Economy.ledger.prune_before(Clock.sim.day - Ledger.HISTORY_DAYS)
 	_report.hide()
+	if use_saves and _skip_next_autosave:
+		var warning: AcceptDialog = $Overlay/AutosaveLoadFailure
+		warning.theme = ($Overlay/QuitToTitle as ConfirmationDialog).theme
+		warning.popup_centered(Vector2i(560, 210))
 	if use_saves and not _skip_next_autosave:
-		SaveSystem.save_game(save_slot)
+		if SaveSystem.save_game(save_slot) != OK:
+			($Overlay/AutosaveFailure as AcceptDialog).popup_centered(Vector2i(560, 180))
 	_skip_next_autosave = false
 	_refresh_loan_hud()
 	$HUD.set_owner_progress(owner_progress.level, owner_progress.xp_into_level(), owner_progress.xp_in_level())
@@ -3716,6 +3737,47 @@ func _select_morning_weather() -> bool:
 			return false
 	_refresh_weather()
 	return world.weather.is_for_day(Clock.sim.day)
+
+
+## The day's light follows the clock (#208): a pure function of time, so a
+## paused capture always looks the same. Presentation only.
+func _refresh_day_light() -> void:
+	if world == null or world.clock == null:
+		return
+	var look: DayLight.Look = day_light_look()
+	var rig: Node3D = get_node_or_null(^"LightingRig") as Node3D
+	DayNightView.apply_rig(rig, look)
+	DayNightView.apply_shop_light(rig, world.grid, look.interior_energy, DAY_LIGHT.interior_color)
+	var view: ShopView = $ShopView as ShopView
+	if view.wall_finish_view != null:
+		DayNightView.apply_glow(view.wall_finish_view.item_nodes, look.glow)
+	var camera: Node3D = $CameraRig as Node3D
+	var focus: Vector3 = camera.global_position if camera.is_inside_tree() else camera.position
+	DayNightView.apply_lamps(lamp_visuals(), look.interior_energy, focus)
+	# Chairs go up after close, but never while editing in the evening, so
+	# Build and Paint always see and pick the furniture where it stands.
+	var closed: bool = world.clock.phase == SimClock.Phase.CLOSED and not is_build_active() and not _paint_active
+	var dirty: Dictionary[int, bool] = sim.kitchen.dirty_tables if sim != null and sim.kitchen != null else {}
+	view.set_chairs_up(closed, dirty)
+
+
+## Every placed lamp's visual (#84): floor, table and pendant lamps, and hung
+## wall lamps.
+func lamp_visuals() -> Array[ItemVisual]:
+	var lamps: Array[ItemVisual] = []
+	var view: ShopView = $ShopView as ShopView
+	for node: ItemVisual in view.item_nodes.values():
+		if node.has_meta(DayNightView.LAMP_META):
+			lamps.append(node)
+	if view.wall_finish_view != null:
+		for node: ItemVisual in view.wall_finish_view.item_nodes.values():
+			if node.has_meta(DayNightView.LAMP_META):
+				lamps.append(node)
+	return lamps
+
+
+func day_light_look() -> DayLight.Look:
+	return DayLight.sample(DayLight.minute_for(world.clock, Clock.tick_fraction(), DAY_LIGHT), DAY_LIGHT)
 
 
 func _refresh_weather() -> void:
@@ -4419,6 +4481,10 @@ func _on_service_closed(day: int) -> void:
 	shown_report = build_report(day)
 	_last_team_activity = StaffActivity.public_snapshot(shown_report.staff_activity)
 	_staff_panel.set_team_activity(_last_team_activity)
+	if owner_progress.level > level_before:
+		Sounds.play(&"level_up")
+	elif _milestone_award_day == day and not _milestones_reached_today.is_empty():
+		Sounds.play(&"milestone")
 	_show_evening_report(shown_report)
 	if _paint_active or is_staff_visible() or is_goals_visible():
 		_report.hide()
