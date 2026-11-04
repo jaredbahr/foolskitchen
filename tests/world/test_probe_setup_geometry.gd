@@ -128,19 +128,20 @@ func _close() -> void:
 	_main = null
 
 
-## Thirty-two cheap real setup applications, with no service tick. These report
+## Thirty-four cheap real setup applications, with no service tick. These report
 ## actual actors and claims, never treating an unused authored post as a person.
-func test_original_all_sixteen_setups_apply_before_service() -> void:
+func test_original_all_setups_apply_before_service() -> void:
 	_assert_all_setups(true)
 
 
-func test_roomier_all_sixteen_setups_apply_before_service() -> void:
+func test_roomier_all_setups_apply_before_service() -> void:
 	_assert_all_setups(false)
 
 
 func _assert_all_setups(original: bool) -> void:
 	var profiles: Array[String] = ProbeSetups.names()
-	assert_eq(profiles.size(), 16)
+	assert_eq(profiles.size(), 17)
+	assert_true(profiles.has("expanded_staffed"))
 	for profile: String in profiles:
 		_close()
 		SaveSystem.delete_slot(SLOT)

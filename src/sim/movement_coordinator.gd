@@ -248,9 +248,7 @@ func _legal_cell(world: SimWorld, agent: SimAgent, cell: Vector2i) -> bool:
 		return false
 	var seat: bool = false
 	var own: bool = false
-	for item: PlacedItem in world.grid.items():
-		if not item.seat_cells.has(cell):
-			continue
+	for item: PlacedItem in world.grid.seat_items_at(cell):
 		seat = true
 		var holder: int = item.reserved_by(cell)
 		if holder != -1 and holder != agent.id:
@@ -261,9 +259,8 @@ func _legal_cell(world: SimWorld, agent: SimAgent, cell: Vector2i) -> bool:
 
 ## No person may use an unassigned dining/bench seat as an aisle.
 func standing_cell(world: SimWorld, cell: Vector2i) -> bool:
-	for item: PlacedItem in world.grid.items():
-		if item.seat_cells.has(cell):
-			return false
+	if not world.grid.seat_items_at(cell).is_empty():
+		return false
 	return world.grid.is_walkable(cell)
 
 
@@ -271,6 +268,14 @@ func route(world: SimWorld, agent: SimAgent, from: Vector2i, to: Vector2i,
 		avoid_people: bool = true) -> Array[Vector2i]:
 	if agent is CourierAgent:
 		return _courier_route(world, agent, from, to)
+	return world.grid.find_path_avoiding(from, to, _route_blocked(world, agent, from, to, avoid_people),
+		agent is CustomerAgent)
+
+
+## Cells this actor may not route through: other people's seats and, when
+## avoiding people, every cell another person holds (except the goal itself).
+func _route_blocked(world: SimWorld, agent: SimAgent, from: Vector2i, to: Vector2i,
+		avoid_people: bool) -> Dictionary[Vector2i, bool]:
 	var blocked: Dictionary[Vector2i, bool] = {}
 	for item: PlacedItem in world.grid.items():
 		for cell: Vector2i in item.seat_cells:
@@ -286,7 +291,7 @@ func route(world: SimWorld, agent: SimAgent, from: Vector2i, to: Vector2i,
 		for cell: Vector2i in _swept:
 			if _swept[cell] != agent.id and cell != to:
 				blocked[cell] = true
-	return world.grid.find_path_avoiding(from, to, blocked, agent is CustomerAgent)
+	return blocked
 
 
 ## Physical cells swept by one adjacent edge, including diagonal corners.
@@ -647,10 +652,25 @@ func _yield(world: SimWorld, yielding: SimAgent, winner: SimAgent, avoid_parking
 		winner_route.assign(winner.path.slice(winner.path_index))
 		winner_route.append(winner.cell)
 		winner_route.append_array(avoid_parking)
+	# One flood fill answers which pockets route() could reach at all, so a
+	# boxed actor does not run a full failed search for every nearby cell.
+	# Pockets pass can_enter, so no other person holds them and the shared
+	# blocked set (goal exemption aside) is the one route() would build.
+	var reachable: Dictionary[Vector2i, bool] = {}
+	var courier: bool = yielding is CourierAgent
+	if not courier:
+		reachable = world.grid.reachable_avoiding(yielding.cell,
+			_route_blocked(world, yielding, yielding.cell, SimGrid.NO_CELL, true),
+			yielding is CustomerAgent)
+		if reachable.size() <= 1:
+			# Boxed in by people: no pocket other than its own cell is reachable.
+			return YieldAttempt.NO_POCKET
 	for cell: Vector2i in _nearby(world, yielding, yielding.cell, world.movement_tuning.yield_search_radius):
 		if cell == winner.cell or cell == winner.next_cell() or not can_enter(world, yielding, cell):
 			continue
 		if parking and winner_route.has(cell):
+			continue
+		if not courier and not reachable.has(cell):
 			continue
 		var path: Array[Vector2i] = route(world, yielding, yielding.cell, cell, true)
 		if path.size() < 2 or path.slice(1).has(winner.cell) or path.slice(1).has(winner.next_cell()):

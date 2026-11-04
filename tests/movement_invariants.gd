@@ -5,6 +5,26 @@ extends RefCounted
 
 const EPSILON: float = 0.000001
 
+## Which items project a seat on each cell, rebuilt from the grid's own items
+## whenever the grid or its version changes. Ids only, so no object is kept.
+static var _seat_grid_id: int = 0
+static var _seat_version: int = -1
+static var _seat_ids: Dictionary[Vector2i, Array] = {}
+
+
+static func _seat_item_ids(grid: SimGrid, cell: Vector2i) -> Array:
+	if grid.get_instance_id() != _seat_grid_id or grid.version != _seat_version:
+		_seat_ids.clear()
+		for item: PlacedItem in grid.items():
+			for seat: Vector2i in item.seat_cells:
+				if not _seat_ids.has(seat):
+					_seat_ids[seat] = []
+				if not (_seat_ids[seat] as Array).has(item.id):
+					(_seat_ids[seat] as Array).append(item.id)
+		_seat_grid_id = grid.get_instance_id()
+		_seat_version = grid.version
+	return _seat_ids.get(cell, [])
+
 
 static func capture(world: SimWorld) -> Dictionary:
 	var active: Dictionary[int, Dictionary] = {}
@@ -138,9 +158,8 @@ static func _cell_problem(world: SimWorld, agent: SimAgent, cell: Vector2i, prio
 		return "guest enters staff-only room"
 	var seat: bool = false
 	var own: bool = false
-	for item: PlacedItem in world.grid.items():
-		if not item.seat_cells.has(cell):
-			continue
+	for item_id: int in _seat_item_ids(world.grid, cell):
+		var item: PlacedItem = world.grid.item(item_id)
 		seat = true
 		var holder: int = item.reserved_by(cell)
 		if holder >= 0 and holder != agent.id and prior_owner != agent.id:

@@ -107,6 +107,10 @@ var _next_id: int = 1
 var _entries: Array[Vector2i] = []
 ## Derived dining links. These are rebuilt from definitions, never saved.
 var _dining_tables: Dictionary[Vector2i, int] = {}
+## Seat projection index for movement checks (see seat_items_at).
+var _seat_index: Dictionary[Vector2i, Array] = {}
+var _seat_index_version: int = -1
+const _NO_SEAT_ITEMS: Array[PlacedItem] = []
 var _dining_furnishings: Dictionary[Vector2i, int] = {}
 var _dining_plan: DiningSeats.Plan = null
 
@@ -328,18 +332,20 @@ func find_path_avoiding(start: Vector2i, goal: Vector2i,
 			break
 	if clear:
 		return original
-	var open: Array[Vector2i] = [start]
+	# A* with a binary heap ordered by (estimate, first-open order). This keeps
+	# the earlier linear open list's choice exactly, including its ties.
+	var heap_f: Array[float] = []
+	var heap_seq: Array[int] = []
+	var heap_cell: Array[Vector2i] = []
+	var order: Dictionary[Vector2i, int] = {start: 0}
 	var costs: Dictionary[Vector2i, float] = {start: 0.0}
 	var previous: Dictionary[Vector2i, Vector2i] = {}
 	var closed: Dictionary[Vector2i, bool] = {}
-	while not open.is_empty():
-		var best: int = 0
-		for index: int in range(1, open.size()):
-			if costs[open[index]] + GridMath.octile(open[index], goal) \
-					< costs[open[best]] + GridMath.octile(open[best], goal):
-				best = index
-		var current: Vector2i = open[best]
-		open.remove_at(best)
+	_heap_push(heap_f, heap_seq, heap_cell, GridMath.octile(start, goal), 0, start)
+	while not heap_cell.is_empty():
+		var current: Vector2i = _heap_pop(heap_f, heap_seq, heap_cell)
+		if closed.has(current):
+			continue
 		if current == goal:
 			var path: Array[Vector2i] = [current]
 			while previous.has(current):
@@ -355,9 +361,100 @@ func find_path_avoiding(start: Vector2i, goal: Vector2i,
 				continue
 			costs[next] = cost
 			previous[next] = current
-			if not open.has(next):
-				open.append(next)
+			if not order.has(next):
+				order[next] = order.size()
+			_heap_push(heap_f, heap_seq, heap_cell, cost + GridMath.octile(next, goal), order[next], next)
 	return []
+
+
+static func _heap_before(heap_f: Array[float], heap_seq: Array[int], a: int, b: int) -> bool:
+	return heap_f[a] < heap_f[b] or (heap_f[a] == heap_f[b] and heap_seq[a] < heap_seq[b])
+
+
+static func _heap_swap(heap_f: Array[float], heap_seq: Array[int], heap_cell: Array[Vector2i], a: int, b: int) -> void:
+	var f: float = heap_f[a]
+	heap_f[a] = heap_f[b]
+	heap_f[b] = f
+	var seq: int = heap_seq[a]
+	heap_seq[a] = heap_seq[b]
+	heap_seq[b] = seq
+	var cell: Vector2i = heap_cell[a]
+	heap_cell[a] = heap_cell[b]
+	heap_cell[b] = cell
+
+
+static func _heap_push(heap_f: Array[float], heap_seq: Array[int], heap_cell: Array[Vector2i],
+		f: float, seq: int, cell: Vector2i) -> void:
+	heap_f.append(f)
+	heap_seq.append(seq)
+	heap_cell.append(cell)
+	var index: int = heap_cell.size() - 1
+	while index > 0:
+		var parent: int = (index - 1) >> 1
+		if not _heap_before(heap_f, heap_seq, index, parent):
+			break
+		_heap_swap(heap_f, heap_seq, heap_cell, index, parent)
+		index = parent
+
+
+static func _heap_pop(heap_f: Array[float], heap_seq: Array[int], heap_cell: Array[Vector2i]) -> Vector2i:
+	var top: Vector2i = heap_cell[0]
+	var last: int = heap_cell.size() - 1
+	_heap_swap(heap_f, heap_seq, heap_cell, 0, last)
+	heap_f.resize(last)
+	heap_seq.resize(last)
+	heap_cell.resize(last)
+	var index: int = 0
+	while true:
+		var left: int = index * 2 + 1
+		if left >= last:
+			break
+		var best: int = left
+		if left + 1 < last and _heap_before(heap_f, heap_seq, left + 1, left):
+			best = left + 1
+		if not _heap_before(heap_f, heap_seq, best, index):
+			break
+		_heap_swap(heap_f, heap_seq, heap_cell, index, best)
+		index = best
+	return top
+
+
+## Placed items projecting a seat onto this cell, in id order. The index is
+## rebuilt when the grid version changes (every placement, move, removal and
+## dining-seat refresh bumps it), so movement checks never scan every item.
+func seat_items_at(cell: Vector2i) -> Array[PlacedItem]:
+	if _seat_index_version != _version:
+		_seat_index.clear()
+		for placed: PlacedItem in items():
+			for seat: Vector2i in placed.seat_cells:
+				if not _seat_index.has(seat):
+					_seat_index[seat] = [] as Array[PlacedItem]
+				var holders: Array[PlacedItem] = _seat_index[seat]
+				if not holders.has(placed):
+					holders.append(placed)
+		_seat_index_version = _version
+	return _seat_index.get(cell, _NO_SEAT_ITEMS)
+
+
+## Every cell find_path_avoiding could reach from start with the same blocked
+## set and step rules (start included). Empty when start is not walkable.
+func reachable_avoiding(start: Vector2i, blocked: Dictionary[Vector2i, bool],
+		guest: bool = false) -> Dictionary[Vector2i, bool]:
+	var seen: Dictionary[Vector2i, bool] = {}
+	if not is_walkable(start):
+		return seen
+	seen[start] = true
+	var queue: Array[Vector2i] = [start]
+	var index: int = 0
+	while index < queue.size():
+		var current: Vector2i = queue[index]
+		index += 1
+		for next: Vector2i in walkable_neighbours(current):
+			if seen.has(next) or not _actor_step(current, next, blocked, guest):
+				continue
+			seen[next] = true
+			queue.append(next)
+	return seen
 
 
 func _actor_step(from: Vector2i, to: Vector2i, blocked: Dictionary[Vector2i, bool], guest: bool) -> bool:

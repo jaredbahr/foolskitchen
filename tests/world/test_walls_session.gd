@@ -265,6 +265,10 @@ func test_removing_a_wall_takes_its_finish_and_decor_off_the_view() -> void:
 	assert_eq(view.wall_finish_view.finished_faces().size(), 2)
 	assert_true(view.wall_finish_view.item_nodes[_face(9, 6, WEST)].visible)
 	view.set_wall_mode(ShopView.WallMode.CUTAWAY)
+	# Look at a point just past the wall, so the wall stands in front of the focus.
+	var away: Vector2 = Vector2(ShopView.AWAY_FROM_CAMERA[view.get("_camera_quarter")]).normalized()
+	var past: Vector2 = Vector2(9.0, 6.5) * GridMath.CELL_SIZE + away * 3.0 * GridMath.CELL_SIZE
+	view.set_camera_focus(view.to_global(Vector3(past.x, 0.0, past.y)))
 	assert_false(view.wall_finish_view.item_nodes[_face(9, 6, WEST)].visible, "interior walls are lowered in Cutaway")
 	var cash: int = Economy.cash
 	for edge: Vector3i in wall:
