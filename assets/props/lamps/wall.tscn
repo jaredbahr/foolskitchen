@@ -8,7 +8,7 @@ script = ExtResource("1_view")
 footprint = Vector2i(1, 1)
 
 [node name="WallMount" type="Node3D" parent="."]
-position = Vector3(0, 0.8, 0.14)
+position = Vector3(0, 0.8, 0.1673)
 
 [node name="Art" type="Node3D" parent="WallMount"]
 rotation = Vector3(0, 3.141592653589793, 0)

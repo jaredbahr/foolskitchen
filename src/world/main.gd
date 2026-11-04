@@ -3718,7 +3718,9 @@ func _refresh_day_light() -> void:
 	var view: ShopView = $ShopView as ShopView
 	if view.wall_finish_view != null:
 		DayNightView.apply_glow(view.wall_finish_view.item_nodes, look.glow)
-	DayNightView.apply_lamps(lamp_visuals(), look.interior_energy, ($CameraRig as Node3D).global_position)
+	var camera: Node3D = $CameraRig as Node3D
+	var focus: Vector3 = camera.global_position if camera.is_inside_tree() else camera.position
+	DayNightView.apply_lamps(lamp_visuals(), look.interior_energy, focus)
 	# Chairs go up after close, but never while editing in the evening, so
 	# Build and Paint always see and pick the furniture where it stands.
 	var closed: bool = world.clock.phase == SimClock.Phase.CLOSED and not is_build_active() and not _paint_active
