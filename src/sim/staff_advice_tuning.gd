@@ -6,6 +6,9 @@ extends Resource
 @export var low_busy_percent: float = 70.0
 @export var min_waiting_losses: int = 1
 @export var min_no_table_losses: int = 5
+## Sold-out walkouts that point to storage before staff or tables (#85):
+## a full pantry caps what the morning order can bring.
+@export var min_out_of_stock_losses: int = 5
 
 
 ## One ordered recommendation from unrounded observed ratios and loss counts.
@@ -14,6 +17,8 @@ func recommendation(summary: Dictionary, leave_reasons: Dictionary) -> StringNam
 	if activity.is_empty() or not _valid_thresholds():
 		return &""
 	var roles: Dictionary = activity["roles"]
+	if _loss_count(leave_reasons.get(&"out_of_stock", 0)) >= min_out_of_stock_losses:
+		return &"storage"
 	var waiting: int = _loss_count(leave_reasons.get(&"waited_too_long", 0))
 	if waiting >= min_waiting_losses:
 		for role: StringName in [&"cook", &"server"]:
@@ -35,7 +40,7 @@ func _valid_thresholds() -> bool:
 	return is_finite(high_busy_percent) and is_finite(low_busy_percent) \
 		and high_busy_percent >= 0.0 and high_busy_percent <= 100.0 \
 		and low_busy_percent >= 0.0 and low_busy_percent <= high_busy_percent \
-		and min_waiting_losses >= 0 and min_no_table_losses >= 0
+		and min_waiting_losses >= 0 and min_no_table_losses >= 0 and min_out_of_stock_losses >= 0
 
 
 static func _busy_percent(row: Dictionary) -> float:

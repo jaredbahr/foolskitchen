@@ -10,6 +10,19 @@ func test_authored_thresholds_match_reviewed_policy() -> void:
 	assert_eq(AUTHORED.low_busy_percent, 70.0)
 	assert_eq(AUTHORED.min_waiting_losses, 1)
 	assert_eq(AUTHORED.min_no_table_losses, 5)
+	assert_eq(AUTHORED.min_out_of_stock_losses, 5)
+
+
+## #85: a full pantry caps a growing shop, so sold-out walkouts point to
+## storage before any staffing or tables advice.
+func test_sold_out_walkouts_point_to_storage_first() -> void:
+	var summary: Dictionary = _summary({"cook": _row(950, 1000), "server": _row(950, 1000)})
+	assert_eq(AUTHORED.recommendation(summary, {&"out_of_stock": 5, &"waited_too_long": 9}), &"storage",
+		"storage outranks hiring: more staff can't serve what the pantry can't hold")
+	assert_eq(AUTHORED.recommendation(summary, {&"out_of_stock": 4, &"waited_too_long": 9}), &"cook",
+		"a few sold-out dishes alone don't override staffing advice")
+	assert_eq(AUTHORED.recommendation(summary, {"out_of_stock": 5}), &"storage", "JSON string keys too")
+	assert_false(StaffAdviceText.recommendation(&"storage").is_empty(), "the advice has player words")
 
 
 func test_cook_rule_uses_raw_fraction_and_qualifying_waiting_losses() -> void:
@@ -19,7 +32,7 @@ func test_cook_rule_uses_raw_fraction_and_qualifying_waiting_losses() -> void:
 	assert_eq(AUTHORED.recommendation(summary, {&"waited_too_long": 1}), &"keeping_up",
 		"89.9% can display as90% but must not cross the raw90% threshold")
 	summary["roles"]["cook"]["busy_ticks"] = 900
-	for losses: Dictionary in [{}, {&"closing": 99}, {&"out_of_stock": 99}, {&"no_table": 99}]:
+	for losses: Dictionary in [{}, {&"closing": 99}, {&"out_of_stock": 4}, {&"no_table": 99}]:
 		assert_eq(AUTHORED.recommendation(summary, losses), &"keeping_up")
 	assert_eq(AUTHORED.recommendation(summary, {"waited_too_long": 1}), &"cook",
 		"report JSON string keys carry the same facts as runtime StringName keys")
