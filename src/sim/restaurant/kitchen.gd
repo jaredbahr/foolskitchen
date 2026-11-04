@@ -5,6 +5,8 @@ extends RefCounted
 signal plates_changed(clean: int, total: int, dirty: int, in_use: int)
 
 const WASH_RETRY_TICKS: int = 30
+## Plating at the pass is a quick hand-off to the server, not a second cooking step.
+const PLATING_TICKS: int = 5
 ## A delivery first walks to the pass, then completes its pickup WORK step.
 const DELIVERY_PICKUP_STEP: int = 1
 
@@ -247,7 +249,7 @@ func _on_order_placed(order: Order) -> void:
 	task.payload["station_ids"] = stations
 	task.steps.append(TaskStep.go_to_work_cell(pass_item.id, 0, "plating at kitchen side"))
 	task.steps.append(TaskStep.wait_until(_take_clean_plate, "a clean plate"))
-	task.steps.append(TaskStep.work(10, "plating dish"))
+	task.steps.append(TaskStep.work(PLATING_TICKS, "plating dish"))
 	_post(task, sim)
 
 
@@ -387,6 +389,8 @@ func _take_clean_plate(agent: SimAgent) -> bool:
 	var before: int = _plates.clean
 	var accepted: bool = _plates.take(order.id, order.table_item_id)
 	staff.task.payload["waiting_for_plate"] = not accepted
+	if not accepted:
+		_expedite_wash()
 	if _plates.clean != before:
 		_notify_plates()
 	return accepted
@@ -747,6 +751,18 @@ func _on_task_failed(task: SimTask, reason: StringName) -> void:
 	if order != null and order.state != Order.State.CANCELLED:
 		var failure: StringName = &"no_clean_plates" if bool(task.payload.get("waiting_for_plate", false)) else reason
 		_cancel(order, failure)
+
+
+## A cook is standing at the pass with no clean plate: a waiting wash-up jumps
+## ahead of the server's other work (once, until a server has actually claimed it).
+func _expedite_wash() -> void:
+	var sim: RestaurantSim = _restaurant.get_ref() as RestaurantSim
+	if sim == null or _wash_task <= 0:
+		return
+	var washing: SimTask = sim.world.board.get_task(_wash_task)
+	if washing != null and washing.state == SimTask.State.OPEN:
+		washing.priority = 3
+		washing.defer_to_higher_priority = false
 
 
 func _ensure_wash_task() -> void:

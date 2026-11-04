@@ -11,7 +11,7 @@ const MainScene: PackedScene = preload("res://src/world/main.tscn")
 const MANUAL_MAIN: GDScript = preload("res://tests/fixtures/manual_restock_main.gd")
 const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
 ## Day -> [served, lost, sales, closing cash, customers RNG state, reviews RNG state].
-const EXPECTED: Array = [[17, 4, 157, 309, "-3340690172320019757", "-6198928102474621411"], [18, 1, 163, 349, "1894290104310310707", "6227064950443097254"]]
+const EXPECTED: Array = [[18, 3, 166, 338, "-3340690172320019757", "759273845251939063"], [16, 3, 146, 337, "1894290104310310707", "1950031383951538676"]]
 
 var _main: Node
 var _layout_backup: Dictionary = {}

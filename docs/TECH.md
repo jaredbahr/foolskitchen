@@ -158,7 +158,7 @@ an active edit/panel/selection first, or opens Settings when none is active.
   - Final closing counters are ready when `advance()` returns; raw clock phase signals can precede its cleanup sweep.
   - Signals: `customer_arrived(customer)`, `customer_paid(customer, order, amount)`, `customer_left(customer, reason)`. Payment is emitted once at the captured recipe price; there is no economy dependency.
   - `CustomerAgent` extends `SimAgent`: `state`, `table_item_id`, `seat_cell`, `order`, `leave_reason`, `paid`, and `why()`. Reachable seats are reserved in placement order; leaving retains the physical seat lease until the actor vacates it, while removal releases it immediately. Failed seat paths or a 200-tick seat walk release the reservation and retry within the bounded queue budget. A server takes each order through ordinary `TaskStep`s.
-  - `queue_patience` (300 ticks), `food_patience` (1200 ticks, including order-taking) and `eat_ticks` (300 ticks) are configurable. Missing food cancels work and tickets. An unreachable exit is logged and forcibly removed after 100 ticks.
+  - `queue_patience` (300 ticks), `food_patience` (1200 ticks, including order-taking) and `eat_ticks` (270 ticks, #291) are configurable. Missing food cancels work and tickets. An unreachable exit is logged and forcibly removed after 100 ticks.
   - `CustomerAgent.mood() -> float` reads remaining queue patience in QUEUED and food patience in ORDERING/WAITING_FOOD, clamped to 0..1 (nonpositive waiting budgets give 0). Every other state, including walking, gives 1. `mood_band() -> int` uses named thresholds 0.6/0.35/0.15 for happy/waiting/impatient/about-to-leave; waiting `why()` text adds that band without changing the sim.
   - `ShopView.mood_nodes` holds native billboard dots and ASCII `!`/`!!` above waiting guests. State/band caches avoid repeated presentation updates; state exits, guest removal and world rebinding remove the icons. No textures or imported models are used.
   - Real `--open --fast=8` mood captures record unmodified guest patience/mood/bands, actual visible indicator ids/bands/marks/colours and camera positions, plus actual RNG seeds/state. Post-draw JSON includes the saved PNG's SHA-256. The visual review job samples frames 120/180/240/300 sequentially and reports observed bands without claiming that several bands appeared until the PNGs are reviewed; no waiting fixture is applied.
@@ -181,6 +181,10 @@ an active edit/panel/selection first, or opens Settings when none is active.
   Cancellation and table removal recover plates once, including terminal orders.
   Clean + dirty + in use always equals total; returned plates are a subset of use.
   Priority-0 server `wash` tasks work 15 units per plate, at most four per task.
+  A cook waiting at the pass for a clean plate raises an open (unclaimed) wash
+  task to priority 3 without deferral (`Kitchen._expedite_wash`, #291), because a
+  wash that only runs when the server is otherwise idle leaves the cook, the
+  slowest stage of service, stalled. Plating itself takes `Kitchen.PLATING_TICKS` (5).
   Only washing opts into `SimTask.defer_to_higher_priority`: an idle actor
   defers its claim while eligible OPEN higher-priority work of the same task
   role remains. Existing actor scores decide eligibility and all other ties;

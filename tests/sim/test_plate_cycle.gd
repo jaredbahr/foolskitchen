@@ -321,6 +321,21 @@ func test_isolated_wash_drop_replays_completed_steps_once_and_batches_at_most_fo
 	_assert_cleanup()
 
 
+## A cook standing at the pass with no clean plate makes the waiting wash-up jump
+## ahead of the server's other work (#291); an ordinary wash still yields.
+func test_cook_waiting_for_a_plate_expedites_an_open_wash() -> void:
+	_seed_isolated_dirty_stock(3)
+	var washing: SimTask = _find_task(&"wash")
+	assert_not_null(washing)
+	if washing == null:
+		return
+	assert_eq(washing.priority, 0)
+	assert_true(washing.defer_to_higher_priority, "an unhurried wash yields at claim time")
+	_sim.kitchen._expedite_wash()
+	assert_eq(washing.priority, 3)
+	assert_false(washing.defer_to_higher_priority, "an urgent wash does not yield at claim time")
+
+
 ## A present but genuinely inaccessible sink waits for real topology repair.
 func test_isolated_blocked_sink_cancellation_preserves_dirty_stock_until_real_topology_repair() -> void:
 	_seed_isolated_dirty_stock(3)

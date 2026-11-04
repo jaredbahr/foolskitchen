@@ -23,7 +23,8 @@ const SEAT_WALK_LIMIT: int = 200
 var state: State = State.ARRIVING
 var queue_patience: int = 300
 var food_patience: int = 1200
-var eat_ticks: int = 300
+## A meal at the table (a drinks-only visit uses VisitTuning.drink_visit_ticks).
+var eat_ticks: int = 270
 var table_item_id: int = 0
 ## Physical members captured at booking; never saved or recomputed on departure.
 var booked_table_ids: Array[int] = []

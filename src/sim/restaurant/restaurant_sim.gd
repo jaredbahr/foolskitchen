@@ -260,6 +260,11 @@ func _staff_to_posts() -> void:
 			if staff.task != null:
 				staff.on_removed(world)
 			world.reset_agent_position(staff, staff_spawns[agent.role])
+	# A colleague who ended the night standing on this post only moved off it
+	# after their own turn: put anyone placed beside their post back on it now.
+	for agent: SimAgent in world.all_agents():
+		if staff_spawns.has(agent.role) and agent is StaffAgent and agent.cell != staff_spawns[agent.role]:
+			world.reset_agent_position(agent, staff_spawns[agent.role])
 
 
 ## One fixed world tick, arrivals, then departed-guest cleanup.
