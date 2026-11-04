@@ -401,7 +401,7 @@ func test_menu_then_furniture_edit_reload_keeps_both_committed_sections() -> voi
 	assert_true(first.call("menu_set_enabled", &"tomato_soup", false))
 	assert_true(first.call("menu_set_price", &"burger", 9))
 	var before_buy: String = FileAccess.get_file_as_string(_path())
-	assert_true(first.call("shop_buy", &"chair", Vector2i(2, 8)))
+	assert_true(first.call("shop_buy", &"chair", ShopBuilder.items_with_def(first.get("world") as SimWorld, &"table_2")[0].origin + Vector2i(1, 2)))
 	assert_eq(FileAccess.get_file_as_string(_path()), before_buy, "a shop edit no longer saves itself")
 	var menu: Dictionary = (first.get("menu_settings") as MenuSettings).to_dict()
 	var shop: Dictionary = (first.get("shop_editor") as ShopEditor).to_dict()
@@ -586,7 +586,7 @@ func test_detail_requirements_aggregate_real_stock_and_use_reachable_station_nam
 	details = main.call("menu_recipe_details")
 	assert_true(details[&"grilled_cheese"]["ingredients"].has({"text": "Bread: 0 in stock / 2 needed", "met": false}))
 	Economy.add_cash(1000, Ledger.SALE)
-	assert_true(main.call("shop_buy", &"coffee_machine", Vector2i(12, 5), 2))
+	assert_true(main.call("shop_buy", &"coffee_machine", _fixture_coffee_cell(main), 2))
 	details = main.call("menu_recipe_details")
 	assert_true(details[&"coffee"]["equipment"].has({"text": "Coffee machine ready", "met": true}))
 	assert_eq(Economy.stock.count(&"coffee_beans"), 0, "inspecting and buying equipment never restocks")
@@ -664,3 +664,13 @@ func test_last_service_quality_is_a_read_only_morning_sample_not_a_fake_dish_rev
 	assert_true((panel.get("_quality_label") as Label).text.contains("Shop reviews:"))
 	details = main.call("menu_recipe_details")
 	assert_true(String(details[&"coffee"]["quality_source"]).contains("Recipe base quality"))
+
+
+## Use the actual east table as the anchor, keeping body and work spot off seats.
+func _fixture_coffee_cell(main: Node) -> Vector2i:
+	var tables: Array[PlacedItem] = ShopBuilder.items_with_def(main.get("world") as SimWorld, &"table_2")
+	var east: PlacedItem = tables[0]
+	for table: PlacedItem in tables:
+		if table.origin.x > east.origin.x:
+			east = table
+	return east.origin + Vector2i(1, -2)

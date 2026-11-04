@@ -8,7 +8,8 @@ extends TestCase
 ## default, and the vibe sees exactly the old whole-floor paint by default.
 ## Grid: the starting shell is x 0..13, y 0..10; kitchen x 1..12, y 1..4; dining x 1..12, y 5..9 plus (6..7, 10); street entry (6..7, 11).
 
-const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
+## Historical room sizes and wing coordinates below are fixed flooring fixtures.
+const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_original.tres")
 const START_CASH: int = 1000
 
 var _content: ContentDB

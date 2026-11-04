@@ -21,9 +21,14 @@ func test_quick_advances_real_walk_progress_fifteen_percent_faster() -> void:
 	var world: SimWorld = SimWorld.new(SimGrid.from_ascii(PackedStringArray(["............", "............"])))
 	var steady: StaffAgent = _employee(&"walker_steady", &"cook", &"steady")
 	var quick: StaffAgent = _employee(&"walker_quick", &"cook", &"quick")
+	# Parallel legal lanes isolate the trait from people/edge contention.
+	steady.cell = Vector2i(0, 0)
+	quick.cell = Vector2i(0, 1)
 	for staff: StaffAgent in [steady, quick]:
 		world.add_agent(staff)
-		assert_true(staff.set_destination(world.grid, Vector2i(10, 0)))
+		assert_eq(world.agent(staff.id), staff)
+		assert_true(staff.movement_admitted)
+		assert_true(staff.set_destination(world.grid, Vector2i(10, staff.cell.y)))
 	for tick: int in range(3):
 		assert_eq(steady.step_move(world), SimAgent.MoveResult.MOVING)
 		assert_eq(quick.step_move(world), SimAgent.MoveResult.MOVING)

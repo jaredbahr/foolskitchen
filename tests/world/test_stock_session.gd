@@ -283,6 +283,20 @@ func test_bar_fries_real_service_cooks_delivers_and_pays_for_the_single_fryer_re
 
 func _bar_fries_shop(with_freezer: bool) -> Node:
 	var main: Node = _start(false)
+	# Closed-MORNING construction staging: the fryer at (9, 3) must
+	# not cover the actual owner. Service retains normal start_day resets.
+	var sim: RestaurantSim = main.get("sim") as RestaurantSim
+	assert_eq(sim.world.clock.phase, SimClock.Phase.MORNING)
+	var owner: OwnerAgent = null
+	for agent: SimAgent in sim.world.agents:
+		if agent is OwnerAgent:
+			owner = agent as OwnerAgent
+			break
+	assert_not_null(owner)
+	if owner == null:
+		return main
+	assert_true(sim.world.reset_agent_position(owner, Vector2i(8, 3)))
+	assert_true(sim.world.agents.has(owner) and owner.movement_admitted)
 	var progress: OwnerProgress = main.get("owner_progress")
 	assert_false(progress.award_bonus(progress.threshold_for(2)).is_empty())
 	assert_true((main.get("menu_settings") as MenuSettings).set_owner_level(2))

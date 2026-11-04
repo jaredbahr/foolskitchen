@@ -50,6 +50,7 @@ func _init(cells: Array[Vector2i] = [], crates: int = 0, receiving: Vector2i = S
 	crate_count = crates
 	drop = receiving
 	if not route.is_empty():
+		_goal = route.back()
 		cell = route[0]
 		path = route.duplicate()
 		path_index = 1
@@ -79,6 +80,7 @@ func tick(world: SimWorld) -> void:
 				state = State.LEAVING
 				path = route.duplicate()
 				path.reverse()
+				_goal = path.back()
 				path_index = 1
 				move_progress = 0.0
 		State.LEAVING:
@@ -114,14 +116,20 @@ func unload_progress() -> float:
 ## its off-lot part is not on the grid. True once at the end of the path.
 func _walk(world: SimWorld) -> bool:
 	if has_arrived():
-		return true
+		return not world.movement.is_stopping(id)
 	var next: Vector2i = path[path_index]
+	if not world.movement.try_step(world, self, next):
+		return false
 	var delta: Vector2i = next - cell
 	var step_len: float = GridMath.DIAGONAL_COST if delta.x != 0 and delta.y != 0 else 1.0
+	var before: float = move_progress
 	move_progress += move_speed / step_len
 	last_progress_tick = world.now
 	if move_progress >= 1.0:
 		move_progress = 0.0
+		var from: Vector2i = cell
 		cell = next
 		path_index += 1
-	return has_arrived()
+		world.movement.complete_step(world, self, from, next)
+		movement_trace_point((1.0 - before) * step_len / move_speed)
+	return has_arrived() and not world.movement.is_stopping(id)

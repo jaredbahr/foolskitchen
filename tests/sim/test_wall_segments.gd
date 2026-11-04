@@ -767,7 +767,16 @@ func test_bad_saved_walls_are_rejected() -> void:
 ## doorway, and windows inside and out. Nobody ever crosses a wall or window,
 ## every day drains, and guests still use the walled-off table.
 func test_five_day_soak_with_a_walled_off_dining_corner() -> void:
-	var layout: ShopLayout = _layout.duplicate() as ShopLayout
+	# Keep this historical wall fixture's surfaces and capacity, with ordinary
+	# aisles through both the table row and the walled corner after bussing.
+	var layout: ShopLayout = _layout.duplicate(true) as ShopLayout
+	var rotated: int = 0
+	for placement: ShopPlacement in layout.placements:
+		if placement.item_id == &"table_2" and placement.origin in [Vector2i(6, 6), Vector2i(10, 6)]:
+			assert_eq(placement.quarter_turns, 0)
+			placement.quarter_turns = 1
+			rotated += 1
+	assert_eq(rotated, 2, "only the middle and corner table change orientation")
 	var segments: Dictionary[Vector3i, StringName] = {}
 	for y: int in range(5, 10):
 		segments[_edge(9, y, 0)] = &"wall"
@@ -786,7 +795,22 @@ func test_five_day_soak_with_a_walled_off_dining_corner() -> void:
 	sim.carry_capacity = 2
 	sim.spawner.min_gap = 120
 	sim.spawner.max_gap = 220
-	var corner_seats: Array[Vector2i] = [Vector2i(9, 7), Vector2i(12, 7)]
+	var tables: Array[PlacedItem] = ShopBuilder.items_with_def(sim.world, &"table_2")
+	assert_eq(tables.size(), 3)
+	var capacity: int = 0
+	for table: PlacedItem in tables:
+		assert_eq(table.seat_cells.size(), 2, "all three physical tables keep both seats")
+		capacity += table.seat_cells.size()
+	assert_eq(capacity, 6)
+	var corner_table: PlacedItem = grid.item_at(Vector2i(10, 6))
+	assert_not_null(corner_table)
+	if corner_table == null:
+		return
+	var corner_seats: Array[Vector2i] = corner_table.seat_cells.duplicate()
+	for cell: Vector2i in corner_seats:
+		assert_eq(grid.dining_table_id(cell), corner_table.id)
+		assert_eq(grid.room(cell), SimGrid.Room.DINING)
+	_assert_wall_soak_aisles(sim, corner_table)
 	var corner_guests: int = 0
 	var served: int = 0
 	var crossings: int = 0
@@ -805,7 +829,8 @@ func test_five_day_soak_with_a_walled_off_dining_corner() -> void:
 						crossings += 1
 				previous[agent.id] = agent.cell
 				var guest: CustomerAgent = agent as CustomerAgent
-				if guest != null and corner_seats.has(guest.seat_cell) and guest.cell == guest.seat_cell:
+				if guest != null and guest.table_item_id == corner_table.id \
+						and corner_seats.has(guest.seat_cell) and guest.cell == guest.seat_cell:
 					seated[guest.id] = true
 			if sim.world.clock.phase == SimClock.Phase.CLOSED and sim.customers().is_empty():
 				break
@@ -841,3 +866,49 @@ func _can_spend(amount: int) -> bool:
 func _record_cash(amount: int, category: StringName) -> void:
 	_cash += amount
 	_entries.append({"amount": amount, "category": category})
+
+
+## Fixed setup oracles exclude every dining seat and the other real bodies.
+## No booking, redirect or tick makes a path exist for this fixture.
+func _assert_wall_soak_aisles(sim: RestaurantSim, corner: PlacedItem) -> void:
+	var server: StaffAgent = null
+	var blocked: Dictionary[Vector2i, bool] = {}
+	for actor: SimAgent in sim.world.agents:
+		assert_eq(actor.move_progress, 0.0)
+		if actor.role == &"server":
+			server = actor as StaffAgent
+		else:
+			blocked[actor.cell] = true
+	assert_not_null(server)
+	if server == null:
+		return
+	for item: PlacedItem in sim.world.grid.items():
+		for seat: Vector2i in item.seat_cells:
+			blocked[seat] = true
+	var grid: SimGrid = sim.world.grid
+	var pass_item: PlacedItem = ShopBuilder.items_with_def(sim.world, &"pass_counter")[0]
+	var sink: PlacedItem = ShopBuilder.items_with_def(sim.world, &"sink")[0]
+	var pickup: Vector2i = pass_item.work_cells[1]
+	var inside: Vector2i = corner.origin + Vector2i.LEFT
+	var entry: Vector2i = grid.entries()[0]
+	var rng_before: int = sim.rng.state
+	var tick_before: int = sim.world.now
+	for target: Vector2i in [pickup, sink.work_cells[0]]:
+		assert_false(grid.find_path_avoiding(server.cell, target, blocked).is_empty(),
+			"the actual server has a seat-free aisle to each kitchen handoff")
+	for pair: Array in [[pickup, inside], [inside, entry]]:
+		var path: Array[Vector2i] = grid.find_path_avoiding(pair[0], pair[1], blocked)
+		assert_false(path.is_empty(), "the corner has a seat-free route in and out")
+		assert_true(path.has(Vector2i(8, 8)) and path.has(Vector2i(9, 8)),
+			"the route uses the original corner doorway, never a wall or seat shortcut")
+	for seat: Vector2i in corner.seat_cells:
+		var escapes: int = 0
+		for delta: Vector2i in [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]:
+			var floor_cell: Vector2i = seat + delta
+			if blocked.has(floor_cell) or not grid.is_walkable(floor_cell) or not grid.step_open(seat, floor_cell):
+				continue
+			if not grid.find_path_avoiding(floor_cell, pickup, blocked).is_empty():
+				escapes += 1
+		assert_true(escapes > 0, "after the own seat is vacated, a real aisle still reaches the pass")
+	assert_eq(sim.rng.state, rng_before, "setup reachability consumes no arrival randomness")
+	assert_eq(sim.world.now, tick_before, "setup reachability advances no service tick")

@@ -31,8 +31,8 @@ func _run() -> void:
 	# Resolve through Main after autoload startup. Loading BuildMode's type in
 	# this entry script retained its cyclic script graph at native shutdown.
 	var mode: RefCounted = main.get("build_mode") as RefCounted
-	mode.call("floor_press", Vector2i(14, 5))
-	mode.call("floor_pointer", Vector2i(14, 9))
+	mode.call("floor_press", Vector2i(16, 5))
+	mode.call("floor_pointer", Vector2i(16, 9))
 	var check: RefCounted = mode.get("current_check") as RefCounted
 	var cost: int = int(check.get("cost"))
 	var economy: Node = root.get_node("Economy")
@@ -54,7 +54,7 @@ func _run() -> void:
 	var valid: bool = allowed and not warning.is_empty() and line.text == warning \
 		and not hint.text.contains(warning) and visible and amber
 	valid = valid and cost > 0 and restock_estimate > 0
-	var metadata: Dictionary = {"fixture": "Paused original five-cell expansion preview; input polling frozen; cash set through the ledger to leave one dollar below the current restock estimate; no purchase committed",
+	var metadata: Dictionary = {"fixture": "Paused five-cell east expansion preview beside the roomier shell; input polling frozen; cash set through the ledger to leave one dollar below the current restock estimate; no purchase committed",
 		"cash": int(economy.get("cash")), "preview_cost": cost, "leaves": int(economy.get("cash")) - cost,
 		"restock_estimate": main.call("build_restock_estimate"), "warning": warning,
 		"placement_allowed": allowed, "warning_in_viewport": visible, "warning_amber": amber, "engine_errors": errors.count()}

@@ -41,7 +41,7 @@ func test_real_two_plate_service_day_conserves_every_tick_and_finishes_cleanup()
 		if server.task != null and server.task.kind == &"wash":
 			saw_real_washing = true
 		if _sim.world.clock.phase == SimClock.Phase.CLOSED and _sim.kitchen.is_clean() \
-				and _sim.world.board.active_count() == 0:
+				and _sim.world.board.active_count() == 0 and _reservations_free():
 			break
 	assert_eq(_sim.world.clock.phase, SimClock.Phase.CLOSED)
 	assert_true(_arrivals > 0)
@@ -652,6 +652,16 @@ func _assert_counts(clean: int, dirty: int, in_use: int) -> void:
 	assert_eq(_sim.kitchen.dirty_plates, dirty)
 	assert_eq(_sim.kitchen.in_use_plates, in_use)
 	_assert_conserved()
+
+
+## Completed bus work can retain its seat lease until the busser physically exits.
+## Keep waiting inside the original service loop budget, without forcing release.
+func _reservations_free() -> bool:
+	for item: PlacedItem in _sim.world.grid.items():
+		for cell: Vector2i in item.work_cells + item.seat_cells:
+			if item.reserved_by(cell) != -1:
+				return false
+	return true
 
 
 func _assert_cleanup() -> void:

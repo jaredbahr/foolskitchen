@@ -305,19 +305,25 @@ func test_paint_named_look_uses_real_ui_preview_command_and_undo() -> void:
 	await _start()
 	_editor().set_owner_level(6)
 	_catalogue().set_owner_level(6)
-	assert_true(_main.call("shop_buy", &"diner_stool", Vector2i(10, 8), 0, &"sage", &"stool_chrome_teal"))
-	var placed: PlacedItem = _world().grid.item_at(Vector2i(10, 8))
+	var tables: Array[PlacedItem] = ShopBuilder.items_with_def(_world(), &"table_2")
+	var east: PlacedItem = tables[0]
+	for table: PlacedItem in tables:
+		if table.origin.x > east.origin.x:
+			east = table
+	var cell: Vector2i = east.origin + Vector2i.LEFT
+	assert_true(_main.call("shop_buy", &"diner_stool", cell, 1, &"sage", &"stool_chrome_teal"))
+	var placed: PlacedItem = _world().grid.item_at(cell)
 	var cash: int = Economy.cash
 	assert_true(_main.call("set_paint_active", true))
 	var looks: VBoxContainer = _catalogue().get_node("Panel/Margin/Rows/Scroll/Content/FurnitureLooks") as VBoxContainer
 	assert_true(looks.visible)
 	(looks.get_node("diner_stool/stool_dark_white") as Button).pressed.emit()
 	assert_eq(_catalogue().paint_variant_id, &"stool_dark_white")
-	_main.call("preview_paint_cell", Vector2i(10, 8))
+	_main.call("preview_paint_cell", cell)
 	assert_eq(placed.variant_id, &"stool_chrome_teal", "hover does not alter saved look")
 	var view: ShopView = _main.get_node("ShopView") as ShopView
 	assert_eq(view.item_nodes[placed.id].prop.get("_variant"), _content().item(&"diner_stool").variant(&"stool_dark_white"))
-	assert_true(_main.call("paint_cell", Vector2i(10, 8)))
+	assert_true(_main.call("paint_cell", cell))
 	assert_eq(placed.variant_id, &"stool_dark_white")
 	assert_eq(placed.swatch_id, &"")
 	assert_eq(Economy.cash, cash)
@@ -326,7 +332,7 @@ func test_paint_named_look_uses_real_ui_preview_command_and_undo() -> void:
 	assert_eq(placed.swatch_id, &"sage")
 	_catalogue().swatch_buttons[&"butter"].pressed.emit()
 	assert_eq(_catalogue().paint_variant_item, &"")
-	assert_true(_main.call("paint_cell", Vector2i(10, 8)))
+	assert_true(_main.call("paint_cell", cell))
 	assert_eq(placed.swatch_id, &"butter")
 	assert_eq(placed.variant_id, &"stool_chrome_teal")
 
@@ -336,11 +342,27 @@ func test_mixed_booth_looks_keep_vibe_valid_before_and_after_buy_dot_selection()
 	_editor().set_owner_level(6)
 	_catalogue().set_owner_level(6)
 	Economy.add_cash(2000, Ledger.OTHER)
+	# The look fixture uses two actual supported table/booth pairs.
+	var tables: Array[PlacedItem] = ShopBuilder.items_with_def(_world(), &"table_2")
+	var west: PlacedItem = tables[0]
+	var east: PlacedItem = tables[0]
+	for table: PlacedItem in tables:
+		if table.origin.x < west.origin.x:
+			west = table
+		if table.origin.x > east.origin.x:
+			east = table
+	assert_eq(Clock.sim.phase, SimClock.Phase.MORNING)
+	var staging_cash: int = Economy.cash
+	assert_true(_main.call("shop_move", west.id, west.origin, 0))
+	assert_true(_main.call("shop_move", east.id, east.origin, 0))
+	assert_eq(Economy.cash, staging_cash, "the declared table rotations remain free")
+	var west_cell: Vector2i = west.origin + Vector2i(0, (west.def as ItemDef).footprint.y)
+	var east_cell: Vector2i = east.origin + Vector2i(0, (east.def as ItemDef).footprint.y)
 	assert_true((_main.get("vibe_result") as VibeModel.Result).valid)
-	assert_true(_main.call("shop_buy", &"diner_booth", Vector2i(2, 8), 0, &"", &"booth_white"))
+	assert_true(_main.call("shop_buy", &"diner_booth", west_cell, 0, &"", &"booth_white"))
 	var first: VibeModel.Result = _main.get("vibe_result") as VibeModel.Result
 	assert_true(first.valid, first.reason)
-	assert_true(_main.call("shop_buy", &"diner_booth", Vector2i(10, 8), 0, &"", &"booth_walnut"))
+	assert_true(_main.call("shop_buy", &"diner_booth", east_cell, 0, &"", &"booth_walnut"))
 	var mixed: VibeModel.Result = _main.get("vibe_result") as VibeModel.Result
 	var meter: VibeMeter = _catalogue().get_node("Panel/Margin/Rows/Scroll/Content/Categories/Readout/VibeMeter") as VibeMeter
 	print("MIXED_LOOK_VIBE before_dot valid=", mixed.valid, " reason=", mixed.reason, " meter=", meter.view_state().caption)

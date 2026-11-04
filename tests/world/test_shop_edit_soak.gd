@@ -329,7 +329,9 @@ func _assert_edit_context(main: Node, before: Dictionary) -> void:
 
 
 func _buy_keeps_access(live: SimGrid, definition: ItemDef, origin: Vector2i, turns: int) -> bool:
-	var preview: SimGrid = SimGrid.from_ascii(LAYOUT.rows)
+	var preview: SimGrid = _access_terrain(live)
+	if preview == null:
+		return false
 	for item: PlacedItem in live.items():
 		if preview.place_def(item.def as ItemDef, item.origin, item.quarter_turns) == null:
 			return false
@@ -341,7 +343,9 @@ func _buy_keeps_access(live: SimGrid, definition: ItemDef, origin: Vector2i, tur
 ## This isolated grid only rejects harmful fixture proposals; the actual edit
 ## still has to pass ShopEditor and the session wrapper on the real restaurant.
 func _candidate_keeps_access(live: SimGrid, item_id: int, origin: Vector2i, turns: int) -> bool:
-	var preview: SimGrid = SimGrid.from_ascii(LAYOUT.rows)
+	var preview: SimGrid = _access_terrain(live)
+	if preview == null:
+		return false
 	for item: PlacedItem in live.items():
 		var target: Vector2i = origin if item.id == item_id else item.origin
 		var rotation: int = turns if item.id == item_id else item.quarter_turns
@@ -360,17 +364,26 @@ func _service_access_ok(grid: SimGrid) -> bool:
 		if not _reachable_from_entry(grid, LAYOUT.staff_spawns[role]):
 			return false
 	for item: PlacedItem in grid.items():
-		for cell: Vector2i in item.work_cells + item.seat_cells:
+		for cell: Vector2i in item.work_cells:
 			if not _reachable_from_entry(grid, cell):
+				return false
+		for cell: Vector2i in item.seat_cells:
+			if not _reachable_from_entry(grid, cell, true):
 				return false
 	return true
 
 
-func _reachable_from_entry(grid: SimGrid, cell: Vector2i) -> bool:
+func _reachable_from_entry(grid: SimGrid, cell: Vector2i, guest: bool = false) -> bool:
 	if not grid.is_walkable(cell):
 		return false
+	var blocked: Dictionary[Vector2i, bool] = {}
+	for item: PlacedItem in grid.items():
+		for seat: Vector2i in item.seat_cells:
+			blocked[seat] = true
+	if guest:
+		blocked.erase(cell)  # This guest's own destination, never a foreign-seat aisle.
 	for entry: Vector2i in grid.entries():
-		if grid.is_walkable(entry) and grid.is_reachable(entry, cell):
+		if grid.is_walkable(entry) and not grid.find_path_avoiding(entry, cell, blocked, guest).is_empty():
 			return true
 	return false
 
@@ -661,3 +674,15 @@ func _on_order_placed(order: Order) -> void:
 	assert_false(_guest_tickets.has(order.customer_id), "each visit places one ticket")
 	_ticket_ids[order.id] = true
 	_guest_tickets[order.customer_id] = order.id
+
+
+## Preserve the installed floor/room/edge rules while trying a fixture edit.
+## Items are added by each caller; neither this copy nor its paths mutate live.
+func _access_terrain(live: SimGrid) -> SimGrid:
+	var preview: SimGrid = live.terrain_copy()
+	var walls: Dictionary[Vector3i, int] = {}
+	for edge: Vector3i in live.segment_edges():
+		walls[edge] = live.segment(edge)
+	if not preview.set_segments(walls):
+		return null
+	return preview

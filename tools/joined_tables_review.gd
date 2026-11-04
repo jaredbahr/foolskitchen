@@ -3,11 +3,41 @@ extends RefCounted
 ## opening, routing and seating use the normal game commands and simulation.
 
 const FRAME: int = 90
-const WALK_BUDGET: int = 160
-const STARTS: Array[Vector2i] = [Vector2i(2, 6), Vector2i(6, 6), Vector2i(10, 6)]
-const TARGETS: Array[Vector2i] = [Vector2i(3, 6), Vector2i(5, 6), Vector2i(7, 6)]
-const SEATS: Array[Vector2i] = [Vector2i(3, 5), Vector2i(5, 5), Vector2i(7, 5),
-	Vector2i(3, 8), Vector2i(5, 8), Vector2i(7, 8)]
+## Guests now walk in single file around people and furniture in the roomier
+## starter shop; the party sits after 278 ticks, so this keeps a margin.
+const WALK_BUDGET: int = 360
+const TABLE_COUNT: int = 3
+
+
+## The three real starter tables, west to east, from the actual grid.
+static func starter_tables(world: SimWorld) -> Array[PlacedItem]:
+	var tables: Array[PlacedItem] = []
+	for item: PlacedItem in world.grid.items():
+		var definition: ItemDef = item.def as ItemDef
+		if definition != null and definition.id == &"table_2":
+			tables.append(item)
+	tables.sort_custom(func(a: PlacedItem, b: PlacedItem) -> bool: return a.origin.x < b.origin.x)
+	return tables
+
+
+## The tables close up end to end, quarter-turned, starting one cell east of
+## the west starter table on its row, so the join sits in the dining room
+## whatever the starter layout's size.
+static func targets_for(first: Vector2i) -> Array[Vector2i]:
+	var targets: Array[Vector2i] = []
+	for index: int in TABLE_COUNT:
+		targets.append(first + Vector2i(1 + 2 * index, 0))
+	return targets
+
+
+## One outside seat per table on its north side, then one each on its south side.
+static func seats_for(targets: Array[Vector2i]) -> Array[Vector2i]:
+	var seats: Array[Vector2i] = []
+	for target: Vector2i in targets:
+		seats.append(target + Vector2i(0, -1))
+	for target: Vector2i in targets:
+		seats.append(target + Vector2i(0, 2))
+	return seats
 
 
 static func options(arguments: PackedStringArray) -> Dictionary:
@@ -49,24 +79,24 @@ static func prepare(main: Node, root: Window) -> Dictionary:
 			or world.clock.day != 1 or world.clock.phase != SimClock.Phase.MORNING or clock.get("speed") != 0:
 		result["error"] = "Joined-table review requires a fresh paused unsaved Main morning"
 		return result
+	var starters: Array[PlacedItem] = starter_tables(world)
+	if starters.size() != TABLE_COUNT:
+		result["error"] = "Joined-table review cannot find its actual starter table"
+		return result
 	var ids: Array[int] = []
-	for origin: Vector2i in STARTS:
-		var found: int = 0
-		for item: PlacedItem in world.grid.items():
-			var definition: ItemDef = item.def as ItemDef
-			if definition != null and definition.id == &"table_2" and item.origin == origin:
-				found = item.id
-		if found == 0:
-			result["error"] = "Joined-table review cannot find its actual starter table"
-			return result
-		ids.append(found)
+	for item: PlacedItem in starters:
+		ids.append(item.id)
+	var targets: Array[Vector2i] = targets_for(starters[0].origin)
+	var seats: Array[Vector2i] = seats_for(targets)
+	result["targets"] = vectors(targets)
+	result["seats"] = vectors(seats)
 	for index: int in ids.size():
-		if not main.call("shop_move", ids[index], TARGETS[index], 1):
+		if not main.call("shop_move", ids[index], targets[index], 1):
 			result["error"] = "Joined-table review's normal table move was refused"
 			return result
 	result["table_ids"] = ids
 	var group: DiningSeats.Group = world.grid.dining_group(ids[0])
-	if group == null or group.member_ids != ids or group.seat_cells != SEATS:
+	if group == null or group.member_ids != ids or group.seat_cells != seats:
 		result["error"] = "Three moved tables did not derive the expected six outside seats"
 		return result
 	var context: Button = main.get_node("HUD/Top/Row/Context") as Button
@@ -201,7 +231,7 @@ static func valid(state: Dictionary, fixture: Dictionary) -> bool:
 			or state.get("world_tick") != fixture.get("frozen_world_tick") or state.get("customer_count") != 6 \
 			or state.get("group_joined") != true or state.get("group_usable_capacity") != 6 \
 			or state.get("group_members") != fixture.get("table_ids") \
-			or state.get("group_seats") != vectors(SEATS) or state.get("party_members") != fixture.get("party_member_ids") \
+			or state.get("group_seats") != fixture.get("seats") or state.get("party_members") != fixture.get("party_member_ids") \
 			or state.get("party_table_id") != state.get("canonical_group_id") or state.get("party_seated") != true \
 			or state.get("party_departing") != false or state.get("booked_table_ids") != fixture.get("table_ids") \
 			or state.get("inspection_visible") != false or state.get("menu_visible") != false:
@@ -233,12 +263,13 @@ static func valid(state: Dictionary, fixture: Dictionary) -> bool:
 			if guest[anchor]["in_frustum"] != true or guest[anchor]["inside_viewport"] != true:
 				return false
 	var tables: Array = state["tables"]
-	if tables.size() != TARGETS.size() or seen.size() != 6:
+	var targets: Array = fixture.get("targets", [])
+	if tables.size() != TABLE_COUNT or targets.size() != TABLE_COUNT or seen.size() != 6:
 		return false
 	for index: int in tables.size():
 		var table: Dictionary = tables[index]
 		if table["id"] != fixture["table_ids"][index] or table["definition"] != "table_2" \
-				or table["origin"] != vector(TARGETS[index]) or table["turns"] != 1 \
+				or table["origin"] != targets[index] or table["turns"] != 1 \
 				or table["scene"] != "res://assets/props/table_2.tscn" or table["visible"] != true \
 				or table["inside_viewport"] != true:
 			return false

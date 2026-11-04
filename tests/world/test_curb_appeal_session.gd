@@ -3,10 +3,10 @@ extends TestCase
 
 const MAIN: PackedScene = preload("res://src/world/main.tscn")
 const SLOT: String = "curb_appeal_session"
-const FRONT: Vector3i = Vector3i(3, 11, 0)
-const CANOPY: Vector3i = Vector3i(6, 11, 4)
 
 var _main: Node
+var _front_face: Vector3i
+var _canopy: Vector3i
 var _old_save_dir: String
 var _save_dir: String
 var _old_providers: Dictionary[String, Dictionary] = {}
@@ -96,11 +96,11 @@ func test_accepted_front_finish_hang_remove_undo_and_redo_refresh_derived_facts(
 	var finished: Dictionary = _curb()
 	assert_true(float(finished["score"]) > 0.0)
 	_assert_current_factor()
-	assert_true(_main.call("shop_hang", &"street_awning_2", CANOPY, &"sage"))
+	assert_true(_main.call("shop_hang", &"street_awning_2", _canopy, &"sage"))
 	var decorated: Dictionary = _curb()
 	assert_true(float(decorated["score"]) > float(finished["score"]), "a real additional frontage item is observed")
 	_assert_current_factor()
-	assert_true(int(_main.call("shop_take_down", CANOPY)) >= 0)
+	assert_true(int(_main.call("shop_take_down", _canopy)) >= 0)
 	assert_eq(_curb(), finished, "taking down the item removes its contribution immediately")
 	_assert_current_factor()
 	assert_true(_main.call("undo_edit"))
@@ -133,7 +133,7 @@ func test_front_edit_uses_existing_demand_once_and_keeps_morning_factors_latched
 	assert_true(float(forecast_before["reputation"]) < float(live_before["reputation"]))
 	assert_true(float(forecast_before["word_of_mouth"]) > float(live_before["word_of_mouth"]))
 	var invariants: Dictionary = _edit_invariants()
-	assert_true(_main.call("shop_hang", &"street_awning_2", CANOPY, &"sage"))
+	assert_true(_main.call("shop_hang", &"street_awning_2", _canopy, &"sage"))
 	var factor: float = float(_main.get("curb_appeal_factor"))
 	assert_true(factor > 1.0 and factor <= 1.1)
 	var live: Dictionary = _main.call("current_demand_snapshot")
@@ -167,7 +167,7 @@ func test_front_state_saves_only_next_morning_and_reload_recomputes_score_and_fa
 	var sections: Array = (_document()["data"] as Dictionary).keys()
 	if not _finish_front():
 		return
-	assert_true(_main.call("shop_hang", &"street_awning_2", CANOPY, &"sage"))
+	assert_true(_main.call("shop_hang", &"street_awning_2", _canopy, &"sage"))
 	var decorated: Dictionary = _curb()
 	assert_true(float(decorated["score"]) > 0.0)
 	assert_eq(_saved_text(), morning, "the entire checkpoint remains untouched after purchases")
@@ -199,7 +199,7 @@ func test_legacy_bare_checkpoint_and_fresh_run_do_not_inherit_unsaved_front_scor
 	var data: Dictionary = _document()["data"]
 	assert_false(data.has("curb_appeal"))
 	assert_true((_editor().decor.to_rows()).is_empty())
-	assert_true(_main.call("shop_hang", &"street_awning_2", CANOPY, &"sage"))
+	assert_true(_main.call("shop_hang", &"street_awning_2", _canopy, &"sage"))
 	assert_true(float(_main.get("curb_appeal_score")) > 0.0)
 	assert_eq(_saved_text(), legacy)
 	_close_main()
@@ -207,7 +207,7 @@ func test_legacy_bare_checkpoint_and_fresh_run_do_not_inherit_unsaved_front_scor
 	_assert_bare()
 	assert_eq(_main.call("current_demand_snapshot"), {"reputation": 1.0, "word_of_mouth": 1.0,
 		"menu": 1.0, "vibe": 1.0, "curb_appeal": 1.0, "total": 1.0})
-	assert_true(_main.call("shop_hang", &"street_awning_2", CANOPY, &"sage"))
+	assert_true(_main.call("shop_hang", &"street_awning_2", _canopy, &"sage"))
 	assert_true(float(_main.get("curb_appeal_score")) > 0.0)
 	_close_main()
 	SaveSystem.delete_slot(SLOT)
@@ -225,10 +225,33 @@ func _start_main() -> void:
 	_main.set("new_game_seed_override", 1)
 	(Engine.get_main_loop() as SceneTree).root.add_child(_main)
 	_main.call("start")
+	var grid: SimGrid = _sim().world.grid
+	_front_face = _front(grid, -3)
+	_canopy = _front(grid, 0, ExteriorSupport.Band.CANOPY)
+	assert_eq(ExteriorSupport.finish_problem(grid, _front_face), "", "paid finish uses the actual street shell")
+	assert_eq(ExteriorSupport.span_problem(grid, _canopy,
+		(_main.get("content") as ContentDB).item(&"street_awning_2").footprint.x),
+		"", "paid canopy uses the actual street door")
 	_main.set_process(false)
 	(_main.get_node("CameraRig") as CameraRig).set_process(false)
 	(_main.get_node("ShopView") as ShopView).set_process(false)
 	Clock.set_speed(0)
+
+
+func _front(grid: SimGrid, offset: int, mount_band: int = ExteriorSupport.Band.BODY) -> Vector3i:
+	var doors: Array[Vector2i] = ExteriorSupport.door_cells(grid)
+	assert_eq(doors.size(), 2, "the current starter has its real two-cell street door")
+	if doors.is_empty():
+		return WallFaces.NO_FACE
+	var into: Vector2i = -WallRules.street_side(grid)
+	var direction: int = WallFaces.DIRS.find(into)
+	var along: Vector2i = WallFaces.DIRS[posmod(direction + 1, 4)]
+	var first: Vector2i = doors[0]
+	for cell: Vector2i in doors:
+		if cell.x * along.x + cell.y * along.y < first.x * along.x + first.y * along.y:
+			first = cell
+	assert_true(doors.has(first + along), "frontage offsets use adjacent actual door cells")
+	return ExteriorSupport.key_for(WallFaces.make(first + along * offset - into, direction), mount_band)
 
 
 func _close_main() -> void:
@@ -258,7 +281,7 @@ func _stage_finish_unlock() -> void:
 
 func _finish_front() -> bool:
 	var cash_before: int = Economy.cash
-	var accepted: bool = bool(_main.call("shop_wall_finishes", {FRONT:
+	var accepted: bool = bool(_main.call("shop_wall_finishes", {_front_face:
 		FloorFinishes.Finish.new(&"brick", &"sage", &"cream")} as Dictionary[Vector3i, FloorFinishes.Finish]))
 	assert_true(accepted, "paid street-front brick finish refused: %s" % _editor().last_check.why)
 	if accepted:

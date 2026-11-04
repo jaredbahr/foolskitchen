@@ -86,9 +86,14 @@ static func advance(guest: CustomerAgent, world: SimWorld, sim: RestaurantSim) -
 			guest.release_waiting_seat(world)
 			guest.clear_path()
 			return false
+	observe_arrival(guest, world, sim)
+	return true
+
+
+## Recognize an already completed physical arrival without advancing movement.
+static func observe_arrival(guest: CustomerAgent, world: SimWorld, sim: RestaurantSim) -> void:
 	if guest.is_waiting_seated(world) and not guest.waited_seated:
 		guest.waited_seated = true
 		var tuning: VisitTuning = sim.visit_tuning if sim != null else TUNING
 		var multiplier: float = tuning.waiting_bench_patience_multiplier if tuning != null and tuning.is_valid() else 1.0
 		guest.queue_patience = CustomerAgent._type_patience(guest.queue_patience, multiplier)
-	return true

@@ -8,7 +8,8 @@ extends TestCase
 ## the divider openings (5..7, 4); the pass is at (5, 4) with sides (5, 3) and
 ## (5, 5). The lot lets floor go on y -3..-1 behind and x 14 beside the shop.
 
-const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
+## This suite specifies the preserved 14-wide shell, not the new-shop footprint.
+const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_original.tres")
 
 var _content: ContentDB
 var _sim: RestaurantSim
@@ -79,7 +80,8 @@ func test_starter_guest_paths_are_unchanged_by_the_kitchen() -> void:
 
 
 func test_seats_in_staff_rooms_are_refused() -> void:
-	var check: EditCheck = _editor.check_buy(&"table_2", Vector2i(8, 2), 0)
+	# Both seats and the body avoid the real owner/cook, isolating room refusal.
+	var check: EditCheck = _editor.check_buy(&"table_2", Vector2i(3, 2), 0)
 	assert_false(check.ok)
 	assert_eq(check.why, RoomRules.SEAT_IN_KITCHEN)
 	# A table in the dining room, then its seat painted as storage.
@@ -87,7 +89,7 @@ func test_seats_in_staff_rooms_are_refused() -> void:
 	assert_eq(_editor.check_rooms(_rooms([table.seat_cells[0]], SimGrid.Room.STORAGE)).why, RoomRules.SEAT_IN_STORAGE)
 	assert_eq(_editor.check_rooms(_rooms([table.seat_cells[0]], SimGrid.Room.KITCHEN)).why, RoomRules.SEAT_IN_KITCHEN)
 	# Moving a table into the kitchen is refused the same way.
-	assert_eq(_editor.check_move(table.id, Vector2i(8, 2), 0).why, RoomRules.SEAT_IN_KITCHEN)
+	assert_eq(_editor.check_move(table.id, Vector2i(3, 2), 0).why, RoomRules.SEAT_IN_KITCHEN)
 	# Kitchen stations may stand in any room: staff walk everywhere.
 	assert_true(_editor.check_buy(&"fryer", Vector2i(10, 8), 0).ok, _editor.check_buy(&"fryer", Vector2i(10, 8), 0).why)
 

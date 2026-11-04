@@ -117,10 +117,13 @@ func test_hud_day_weather_group_and_morning_forecast_fit_both_windows_and_all_ui
 func test_rain_upload_packet_stays_outside_before_and_after_floor_expansion_in_every_view() -> void:
 	await _start()
 	_world().weather.kind = WeatherState.Kind.RAIN
+	var wing: Array[Vector2i] = _rain_expansion_wing()
 	for expanded: bool in [false, true]:
 		if expanded:
-			assert_true(_main.call("shop_floor", [Vector2i(14, 7), Vector2i(14, 8), Vector2i(14, 9)] as Array[Vector2i], true))
-			assert_eq(_world().grid.terrain(Vector2i(14, 8)), SimGrid.Terrain.FLOOR)
+			for cell: Vector2i in wing:
+				assert_eq(_world().grid.terrain(cell), SimGrid.Terrain.OUTSIDE, "the weather fixture buys new floor")
+			assert_true(_main.call("shop_floor", wing, true))
+			assert_eq(_world().grid.terrain(wing[1]), SimGrid.Terrain.FLOOR)
 		for quarter: int in 4:
 			_rig().initial_yaw_degrees = 45.0 + float(quarter) * 90.0
 			_rig().reset_view()
@@ -370,3 +373,18 @@ func _rig() -> CameraRig:
 func _frames(count: int) -> void:
 	for frame: int in count:
 		await (Engine.get_main_loop() as SceneTree).process_frame
+
+
+## Read the actual installed editor footprint; the authored row span is the
+## same three-cell east-wing fixture, beyond whichever base Main selected.
+func _rain_expansion_wing() -> Array[Vector2i]:
+	var editor: ShopEditor = _main.get("shop_editor") as ShopEditor
+	var footprint: ShopFootprint = editor.footprint()
+	assert_not_null(footprint)
+	if footprint == null:
+		return [] as Array[Vector2i]
+	var east: int = footprint.building.end.x
+	var wing: Array[Vector2i] = [Vector2i(east, 7), Vector2i(east, 8), Vector2i(east, 9)]
+	for cell: Vector2i in wing:
+		assert_true(footprint.lot.has_point(cell), "the same east-wing fixture fits the selected lot")
+	return wing

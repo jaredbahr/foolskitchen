@@ -5,11 +5,16 @@ extends "res://src/world/main.gd"
 ## --speed=0 --frames=60. The ordinary --door-queue capture stays unchanged.
 
 
+## Beside the doorway of the roomier starter shop, out of the door lane.
+const BENCH_ORIGIN: Vector2i = Vector2i(4, 11)
+const WALK_TICKS: int = 120
+
+
 func _ready() -> void:
 	use_saves = false
 	new_game_seed_override = 1
 	super._ready()
-	if sim == null or not shop_editor.buy(&"waiting_bench", Vector2i(6, 10)):
+	if sim == null or not shop_editor.buy(&"waiting_bench", BENCH_ORIGIN):
 		push_error("Waiting-bench review could not buy its bench")
 		return
 	for item: PlacedItem in world.grid.items():
@@ -25,8 +30,9 @@ func _ready() -> void:
 		var random: RandomNumberGenerator = RandomNumberGenerator.new()
 		random.seed = seed_value
 		streams.append(random)
-	var party: Party = sim.add_party(Vector2i(6, 10), streams)
-	run_ticks(30)
+	var party: Party = sim.add_party(world.grid.entries()[0], streams)
+	# Real walking: in from the street door to the bench beside it.
+	run_ticks(WALK_TICKS)
 	var members: Array[CustomerAgent] = PartySeating.members(party, world)
 	for guest: CustomerAgent in members:
 		if not guest.is_waiting_seated(world):

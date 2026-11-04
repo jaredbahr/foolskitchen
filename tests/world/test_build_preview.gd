@@ -3,7 +3,8 @@ extends TestCase
 
 const PREVIEW: PackedScene = preload("res://src/world/build_preview.tscn")
 const VIEW: PackedScene = preload("res://src/world/shop_view.tscn")
-const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
+## Fixed original geometry isolates preview transforms and warning fixtures.
+const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_original.tres")
 
 class PreviewContent extends ContentDB:
 	var extra: Dictionary[StringName, ItemDef] = {}
@@ -90,7 +91,8 @@ func test_all_camera_and_item_quarters_match_checked_min_corner_and_rotated_mark
 	definition.seat_cells = [Vector2i(0, 2)]
 	_content.extra[definition.id] = definition
 	assert_true(_mode.enter())
-	assert_true(_mode.begin_buy(definition.id, Vector2i(8, 8)))
+	# Keep the green footprint off the real server; tall turns still hit the shell.
+	assert_true(_mode.begin_buy(definition.id, Vector2i(9, 8)))
 	var saw_valid: bool = false
 	var saw_invalid: bool = false
 	for camera_quarter: int in range(4):

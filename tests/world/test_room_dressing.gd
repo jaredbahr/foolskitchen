@@ -41,8 +41,8 @@ func test_name_board_hangs_on_solid_wall_beside_the_starter_door() -> void:
 	var text: Label3D = dressing.name_sign_nodes()[0]
 	var board: Node3D = text.get_parent() as Node3D
 	var cells: Array[Vector2i] = board.get_meta(&"wall_cells")
-	# The starter doorway gap is (6, 10)-(7, 10); the board takes the wall run to its street-left.
-	assert_eq(cells, [Vector2i(5, 10), Vector2i(4, 10), Vector2i(3, 10), Vector2i(2, 10)] as Array[Vector2i])
+	# The starter doorway gap is (7, 12)-(8, 12); the board takes the wall run to its street-left.
+	assert_eq(cells, [Vector2i(6, 12), Vector2i(5, 12), Vector2i(4, 12), Vector2i(3, 12)] as Array[Vector2i])
 	for cell: Vector2i in cells:
 		assert_eq(world.grid.terrain(cell), SimGrid.Terrain.WALL, "the board is mounted on a wall cell, never the doorway")
 	_assert_board_on_wall(board, text, cells, Vector2i.DOWN)
@@ -113,7 +113,7 @@ func test_starter_frontage_uses_two_native_panes_and_two_lamps_on_the_entry_wall
 	var lamps: int = 0
 	for detail: Node3D in details:
 		var cell: Vector2i = detail.get_meta(&"wall_cell")
-		assert_eq(cell.y, 10, "frontage belongs to the entry wall, never the north/side walls")
+		assert_eq(cell.y, 12, "frontage belongs to the entry wall, never the north/side walls")
 		assert_eq(detail.get_meta(&"wall_normal"), Vector2i.DOWN)
 		assert_eq(world.grid.terrain(cell), SimGrid.Terrain.WALL)
 		_assert_wall_geometry(detail as PropView, cell, Vector2i.DOWN)

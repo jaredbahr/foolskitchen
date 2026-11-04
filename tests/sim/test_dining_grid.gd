@@ -276,21 +276,49 @@ func test_real_customer_refuses_definition_backed_chair_without_surface() -> voi
 
 func test_lost_seat_cannot_remain_valid_because_its_cell_is_also_a_work_cell() -> void:
 	var grid: SimGrid = SimGrid.new(Vector2i(8, 8))
+	grid.set_terrain(Vector2i(0, 7), SimGrid.Terrain.ENTRY)
 	var definition: ItemDef = _definition(ItemDef.Category.TABLE)
 	definition.work_cells = [Vector2i.DOWN]
 	var table: PlacedItem = grid.place_def(definition, Vector2i(4, 3))
 	var chair: PlacedItem = grid.place_def(_definition(ItemDef.Category.CHAIR, Vector2i.ONE,
 		[Vector2i.ZERO]), Vector2i(4, 4))
 	var sim: RestaurantSim = _restaurant(grid)
-	var guest: CustomerAgent = _guest(sim, chair.origin)
-	sim.world.advance()
-	sim.world.advance()
+	# An unreserved dining seat is not a legal birth cell. Book and reach it normally.
+	var guest: CustomerAgent = _guest(sim, Vector2i(3, 4))
+	assert_true(guest.movement_admitted)
+	assert_eq(sim.world.agent(guest.id), guest)
+	for tick: int in CustomerAgent.SEAT_WALK_LIMIT:
+		var seating_before: Dictionary = MovementInvariants.capture(sim.world)
+		sim.world.advance()
+		assert_eq(MovementInvariants.problem(sim.world, seating_before), "")
+		if guest.state == CustomerAgent.State.ORDERING:
+			break
 	assert_eq(guest.state, CustomerAgent.State.ORDERING)
+	assert_eq(guest.cell, chair.origin)
+	assert_true(guest.has_arrived())
+	assert_true(table.work_cells.has(chair.origin))
+	assert_eq(table.reserved_by(chair.origin), guest.id)
 	assert_true(grid.remove(chair.id))
+	assert_false(table.seat_cells.has(chair.origin), "the dining link is genuinely gone")
+	assert_true(table.work_cells.has(chair.origin), "projection retains the distinct work-cell role")
 	assert_eq(table.reserved_by(chair.origin), guest.id, "projection does not discard a still-valid work hold")
+	var departure_before: Dictionary = MovementInvariants.capture(sim.world)
 	sim.world.advance()
+	assert_eq(MovementInvariants.problem(sim.world, departure_before), "")
 	assert_eq(guest.state, CustomerAgent.State.LEAVING)
 	assert_eq(guest.leave_reason, &"no_table")
+	# Logical invalidation cannot make a body or its partial edge disappear.
+	for tick: int in 100:
+		var holds_cell: bool = guest.cell == chair.origin \
+			or (guest.move_progress > 0.0 and guest.next_cell() == chair.origin)
+		if not holds_cell:
+			break
+		assert_eq(table.reserved_by(chair.origin), guest.id, "retain the physical hold until real departure")
+		departure_before = MovementInvariants.capture(sim.world)
+		sim.world.advance()
+		assert_eq(MovementInvariants.problem(sim.world, departure_before), "")
+	assert_ne(guest.cell, chair.origin, "the real exit route vacates the former seat")
+	assert_false(guest.move_progress > 0.0 and guest.next_cell() == chair.origin)
 	assert_eq(table.reserved_by(chair.origin), -1, "the guest releases its invalid dining hold")
 
 

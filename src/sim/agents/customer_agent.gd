@@ -161,6 +161,21 @@ static func player_reason(raw: StringName) -> StringName:
 
 ## Advances movement and the visit state, including all timeout backstops.
 func tick(world: SimWorld) -> void:
+	_advance_visit(world)
+
+
+## Movement already consumed this tick. Keep the same logical validation,
+## queue search/deadline and seat-walk budget, with no second move or meal work.
+func maintain_movement_pause(world: SimWorld) -> void:
+	if state <= State.WALKING_TO_SEAT:
+		_advance_visit(world, false)
+	elif state == State.LEAVING and world.clock.phase != SimClock.Phase.CLOSED \
+			and move_progress == 0.0 and world.grid.entries().has(cell):
+		# Consumed recovery movement can physically reach either real exit.
+		state = State.LEFT
+
+
+func _advance_visit(world: SimWorld, allow_movement: bool = true) -> void:
 	var sim: RestaurantSim = _restaurant.get_ref() as RestaurantSim
 	if sim == null:
 		state = State.LEFT
@@ -169,7 +184,7 @@ func tick(world: SimWorld) -> void:
 	if world.clock.phase == SimClock.Phase.CLOSED:
 		return
 	if party != null and party.size() > 1 and state <= State.QUEUED:
-		PartySeating.advance_queue(party, world, sim)
+		PartySeating.advance_queue(party, world, sim, allow_movement)
 		return
 	if state == State.WALKING_TO_SEAT and party != null and party.size() > 1 and not party.seated:
 		if not PartySeating.booking_valid(party, world):
@@ -211,12 +226,18 @@ func tick(world: SimWorld) -> void:
 		State.ARRIVING:
 			if not _try_seat(world):
 				state = State.QUEUED
-				_queue_inside(world)
+				if allow_movement:
+					_queue_inside(world)
+				else:
+					WaitingBench.observe_arrival(self, world, sim)
 		State.QUEUED:
 			if _queue_wait >= queue_patience:
 				_leave(world, sim, &"no_table")
 			elif not _try_seat(world):
-				_queue_inside(world)
+				if allow_movement:
+					_queue_inside(world)
+				else:
+					WaitingBench.observe_arrival(self, world, sim)
 				_queue_wait += 1
 				if _queue_wait >= queue_patience:
 					_leave(world, sim, &"no_table")
@@ -224,7 +245,7 @@ func tick(world: SimWorld) -> void:
 			_walk_wait += 1
 			if _walk_wait >= SEAT_WALK_LIMIT:
 				_requeue(world, sim)
-			else:
+			elif allow_movement:
 				_walk_to_seat(world, sim)
 		State.ORDERING:
 			if _task == null or _task.state == SimTask.State.CANCELLED:
@@ -240,7 +261,8 @@ func tick(world: SimWorld) -> void:
 			sim.pay(self, order)
 			_leave(world, sim, &"happy")
 		State.LEAVING:
-			_walk_to_exit(world)
+			if allow_movement:
+				_walk_to_exit(world)
 
 
 ## Guests never walk through the kitchen or storage (FK-101).
@@ -488,7 +510,7 @@ func is_waiting_seated(world: SimWorld) -> bool:
 func release_waiting_seat(world: SimWorld) -> void:
 	var bench: PlacedItem = world.grid.item(waiting_item_id)
 	if bench != null:
-		bench.release(waiting_cell, id)
+		world.movement.defer_seat_release(world, bench.id, waiting_cell, id)
 	waiting_item_id = 0
 	waiting_cell = SimGrid.NO_CELL
 
@@ -497,6 +519,10 @@ func _move(world: SimWorld, destination: Vector2i) -> bool:
 	if needs_repath or path.is_empty():
 		if not set_destination(world.grid, destination):
 			return false
+	# A new destination can hand a real partial edge to coordinator STOP.
+	# The coordinator owns its next move, including a later party-member slot.
+	if world.movement.is_stopping(id):
+		return false
 	var result: MoveResult = step_move(world)
 	if result == MoveResult.BLOCKED:
 		set_destination(world.grid, destination)
@@ -510,11 +536,16 @@ func _post_order_task(world: SimWorld, sim: RestaurantSim) -> void:
 	# At a serve-across counter the server stands on the far side (FK-083).
 	var target: Vector2i = sim.across_cell(table_item_id, seat_cell)
 	var neighbours: Array[Vector2i] = []
+	var workers: Array[StaffAgent] = []
 	if target == SimGrid.NO_CELL:
 		neighbours = world.grid.walkable_neighbours(seat_cell)
+		workers = _order_approach_workers(world)
 	# Closest to the seat; fixed neighbour order breaks distance ties.
 	var distance: float = INF
 	for neighbour: Vector2i in neighbours:
+		if not world.movement.standing_cell(world, neighbour) \
+				or not _order_approach_reachable(world, neighbour, workers):
+			continue
 		var candidate: float = GridMath.octile(seat_cell, neighbour)
 		if candidate < distance:
 			distance = candidate
@@ -527,9 +558,61 @@ func _post_order_task(world: SimWorld, sim: RestaurantSim) -> void:
 	_task = SimTask.new(&"take_order", &"server", "Take guest #%d's order" % id)
 	_task.priority = 2
 	_task.payload["customer_id"] = id
-	_task.steps.append(TaskStep.go_to_cell(target, "walking to guest"))
+	var approach: TaskStep = TaskStep.go_to_cell(target, "walking to guest")
+	if not neighbours.is_empty():
+		approach.candidate_origin = seat_cell
+	for neighbour: Vector2i in neighbours:
+		if world.movement.standing_cell(world, neighbour):
+			approach.candidate_cells.append(neighbour)
+	_task.steps.append(approach)
 	_task.steps.append(TaskStep.work(30, "taking order", _take_order))
 	world.board.post(_task, world.now)
+
+
+## Use the same role priority and authored job mapping as StaffAgent's claim
+## eligibility, including Floor/Help owners and configured employee choices.
+func _order_approach_workers(world: SimWorld) -> Array[StaffAgent]:
+	var workers: Array[StaffAgent] = []
+	for agent: SimAgent in world.agents:
+		if not agent is StaffAgent or not agent.movement_admitted:
+			continue
+		var staff: StaffAgent = agent as StaffAgent
+		if int(staff.priorities.get(&"server", 0)) <= 0:
+			continue
+		var choices: StaffJobPriorities = staff.job_priorities()
+		var job: StringName = StaffJobPriorities.job_for_task(&"take_order", staff.role)
+		if choices != null and not job.is_empty() and choices.priority(job) == StaffJobPriorities.Level.OFF:
+			continue
+		workers.append(staff)
+	return workers
+
+
+## A locally open neighbour may be a pocket reachable only THROUGH this seat.
+## Ignore temporary people, retaining seat/room/edge rules and old tie order.
+func _order_approach_reachable(world: SimWorld, target: Vector2i, workers: Array[StaffAgent]) -> bool:
+	for worker: StaffAgent in workers:
+		var start: Vector2i = worker.cell
+		if worker.move_progress > 0.0:
+			var next: Vector2i = worker.next_cell()
+			if next == start or not world.grid.is_walkable(next) \
+					or world.movement.snapshot()["next"].get(next) != worker.id:
+				continue
+			# Existing motion must finish its reserved edge before a new task.
+			start = next
+		if not world.movement.route(world, worker, start, target, false).is_empty():
+			return true
+	if not workers.is_empty():
+		return false
+	# No eligible active worker yet (including pending admission): keep useful
+	# order tasks without pretending a person exists or crossing another seat.
+	var blocked: Dictionary[Vector2i, bool] = {}
+	for item: PlacedItem in world.grid.items():
+		for cell: Vector2i in item.seat_cells:
+			blocked[cell] = true
+	for entry: Vector2i in world.grid.entries():
+		if not world.grid.find_path_avoiding(entry, target, blocked).is_empty():
+			return true
+	return false
 
 
 func _take_order(server: SimAgent) -> bool:
@@ -674,7 +757,7 @@ func _release_seat(world: SimWorld, dirty: bool = true) -> void:
 			if plated_extra:
 				sim.kitchen.mark_dining_group_dirty(table_item_id, extra_order.id, booked_table_ids)
 		if held:
-			table.release(seat_cell, id)
+			world.movement.defer_seat_release(world, table.id, seat_cell, id)
 	booked_table_ids.clear()
 
 
@@ -796,18 +879,29 @@ func _release_toilet(world: SimWorld) -> void:
 
 
 func _walk_to_exit(world: SimWorld) -> void:
+	# Both authored street cells are real exits. Reaching one physically is
+	# enough; do not force a guest across a blocked second doorway cell.
+	if move_progress == 0.0 and world.grid.entries().has(cell):
+		state = State.LEFT
+		return
 	if needs_repath or path.is_empty():
 		var route: Array[Vector2i] = world.grid.find_guest_path_to_any(cell, world.grid.entries())
-		if route.is_empty():
+		if route.is_empty() or not set_destination(world.grid, route.back()):
 			_exit_unreachable += 1
 			if _exit_unreachable >= 100:
 				world.log_event("Guest #%d removed: exit unreachable for 100 ticks" % id)
 				state = State.LEFT
 			return
-		set_destination(world.grid, route.back())
 		_exit_unreachable = 0
-	match step_move(world):
+	var result: MoveResult = step_move(world)
+	if move_progress == 0.0 and world.grid.entries().has(cell):
+		state = State.LEFT
+		return
+	match result:
 		MoveResult.ARRIVED:
-			state = State.LEFT
+			if world.grid.entries().has(cell):
+				state = State.LEFT
+			else:
+				clear_path()
 		MoveResult.BLOCKED:
 			clear_path()

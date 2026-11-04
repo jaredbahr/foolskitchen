@@ -63,19 +63,24 @@ an active edit/panel/selection first, or opens Settings when none is active.
 ### 2.3 AI (agents)
 - **The sim owns movement.** Pathfinding runs in `src/sim/` on the 0.5 m build grid using `AStarGrid2D` (a `RefCounted`, so no nodes are involved). Agents have a grid position and a path. Visual nodes in `world/` only interpolate between grid points and play animations.
   - Why not `NavigationAgent3D`: it lives in the scene tree. That would break headless tests, determinism and background simulation of other sites (TECH 2.2 rule 1).
-  - **Smooth motion (view only, `src/world/motion_smoother.gd`).** The sim moves people in 10 Hz steps, so drawn as they are every pose would be held about three frames at 30 fps. `ShopView` feeds `MotionSmoother` each person's presented pose (the `AgentPresentationController.Frame`: drawn floor point with seat, reach and separation offsets, facing, fade, crate slide) every frame, keyed by `world.now`, and draws the blend between the last two ticks at `ShopView.interpolation_alpha()`, which is `Clock.tick_fraction()` (the accumulator's fraction, 0..1). The picture therefore runs one tick behind the sim (0.1 s at 1x, 25 ms at 4x) and moves every frame; the door leaf, held crates and the debug paths follow the drawn positions. Several ticks in one frame (2x/4x) keep the pose one tick back on the line between the two seen. A frame drawn at alpha 1 also settles the blend (`settle`: the previous pose becomes the newest), so a change made while the clock is not running (the morning reset puts staff back at their posts) is never slid across when service opens. A crate slide that ends at a tick finishes towards the spot and layer it slid from (the newest frame has none). Poses are refreshed in place within a tick. Paused, the fraction holds, so the picture freezes in place and resumes without a jump. Alpha is 1 (the newest state, exactly as before) outside OPEN/LAST_ORDERS, when the Clock is not attached to this world, and when the world tick is not the one the Clock last ran (`Clock.driven_world_tick`): tests, tools and `run_ticks` fast-forwards, including the screenshot tool's `--fast` and `--speed=0` captures, draw what they always drew. No blend across a jump: a new person, one hidden or shown again (restroom), a move of more than `SNAP_DISTANCE` (1 m) in a tick (teleports, the morning reset), a tick going backwards (another world, a reload; `show_world` clears it). Sitting down blends the walk onto the seat cell standing and sits at the tick; standing up starts from the seat cell. A stop keeps the walk clip for the last part of the step (not into a crate bend, so a pick-up keeps its timing). Discrete pose states (clips, carrying, bending) still change at the tick. The view never reads the sim beyond what the frames already read and never writes it. One sim change came with this work (#204): the back alley route is longer (`WallRules.ALLEY_REACH` 24 → 56) so the delivery person fades in and out off screen; it delays mid-day deliveries by about 14–17 s at 1x. The default balance probe is byte-identical (it places no mid-day orders), and in the director's paired probes with 1 and 4 orders a day, served, sales and profit stay within noise of main.
+  - **Smooth motion (view only, `src/world/motion_smoother.gd`).** Each production frame carries the sim's timed cell-centre movement trace for the latest tick. `MotionSmoother` samples its actual piecewise route at `Clock.tick_fraction()`, including every crossed centre and any terminal hold; several ticks between rendered frames never create a chord through furniture. Walking reaches the actual seat before the seated pose and its authored offset begin. Missing, invalid or explicitly discontinuous traces snap rather than invent a connecting route. Morning resets, a new world and newly admitted actors are explicit transitions, not ordinary service movement. Hand-authored frame fixtures retain their no-trace interpolation contract. Pausing holds the fraction; direct tools/fast-forwards and worlds not driven by the Clock render at alpha 1. Existing facing, crate and carrying presentation stays in the view. Seat/reach/separation offsets are checked against furniture, internal wall edges and every person's final position; rejecting one offset rechecks the group, so a later fallback cannot invalidate an earlier accepted offset. The view never changes simulation movement.
+  - **Deterministic traffic (`MovementCoordinator`).** `SimWorld` owns value-only current-cell, next-cell, swept-cell and edge claims. Every neutral, Quick and courier edge must claim its destination and diagonal clearance before travel. Crossed cells remain held until the next tick so a later actor cannot cut through the earlier actor's drawn interval. Actors advance in ID order. Both people in a physically valid cardinal head-on pair keep their reciprocal routes until stable-priority yielding; staggered repath deadlines cannot send both into repeated opposing detours. Physical meals and prepared drinks in hand have priority over other staff, staff over guests, with lower-ID ties; a claimed task or stale tray metadata alone is not carried food. Kitchen confirms a drink's real READY ticket, task ownership and carrying stage through a weak world query; replayed preparation, served and cancelled drinks grant no carry priority. Courier crates use ordinary staff priority.
+  - **Cost.** Movement checks stay cheap on busy days: `SimGrid.seat_items_at` keeps a seat index rebuilt only when the grid version changes; `find_path_avoiding` is a binary-heap A* that keeps the old open-list choice and ties exactly; a yield search flood-fills the actor's reachable area once and skips pockets it cannot reach instead of running a failed route for each.
+  - **Waiting and admission.** `data/balance/movement.tres` authors repath/yield delays and search radii. A blocked actor waits, then tries an actor-aware route and deterministic yielding to a reachable pocket. If a distant crowd prevents a complete avoidance route, it can reconnect around a local blocker to a later vertex of its existing route, retaining the real destination and validating the remaining geometry and seat permissions. Physical step claims still stop it at any distant person. Diagonal clearance checks also identify a person holding either corner when the destination itself is free. An outbound sidestep stays protected while fresh or physically moving; after the authored number of denied attempts it can select another pocket or use the existing cooperative recovery without losing its original goal. If the preferred person has no escape, the waiting person can step aside and briefly hold that pocket for physical progress, bounded by the same authored timeout. Impossible enclosures remain blocked instead of teleporting. A pending birth stays outside active `world.agents`, receives no movement/task/patience ticks, and is retried in ID order. Pending customer visits still participate in party, closing and departure accounting. An idle worker, or a worker waiting for a busy station without holding a lease, can clear another worker’s claimed station to a legal pocket without returning to block that station again; active work, carried food and owner commands keep their existing priority. A genuinely idle employee parks outside the moving worker’s remaining route and retires the completed job’s destination only after reaching that pocket. If the escape is behind the incoming person, the existing cooperative retreat opens a real vacancy before the idle blocker moves through it. Staff morning resets choose distinct legal positions. No traffic decision fetches or draws RNG.
+  - **Cancellation and seats.** Cancelling or changing a route mid-edge finishes the current reserved edge before task work or the new goal can advance; it never erases travelled trace segments or reports an intermediate vertex as final arrival. A returning sidestep can re-path or yield again, while productive work stays paused until the actual original goal. Explicit cancellation or a new public destination clears obsolete detour and return intent at a physical vertex; internal and same-goal replanning retains it. An unbooked queued guest can keep waiting on a safe dining-floor pocket after the cooperative hold. Queue searches, patience and seat-walk deadlines continue once per tick during movement recovery, without another physical step or meal work. Shared party queue movement skips reserved stops, including a stop created while choosing a waiting bench. During a detour or reserved stop, existing staff withdrawal, timeout and stuck-task cleanup still runs without claiming new work or advancing productive steps. An idle worker waits to claim a new task while a direct-grid fault covers their actual origin; restoring the floor resumes ordinary claiming without spending a viable task’s retry budget. A direct-grid chaos edit that buries a person or closes a partial edge holds the actual position and claims until the geometry is safe; it does not enable a jump through furniture. Active-service position resets are refused. A physical seat may be projected by both its table and furnishing, but needs a real own reservation and no foreign holder. Empty and foreign seats are not aisles. Guest, bench and staff clearing reservations remain held until the person actually vacates their current/partial-next seat, or is removed/reset. An idle worker steps safely off a cleared seat before releasing it. Rugs and flat floor decor remain walkable.
+  - **Player placement.** The final `ShopEditor` preview shared by buying, moving, blueprint batches and exact history refuses new solid or seat obstructions on active current/next/swept/corner claims with “Someone is in the way.” Refusal changes no geometry, cash or history stack. This is distinct from direct-grid fault injection used by recovery tests.
   - Diagonal moves are allowed, but corners can't be cut. Furniture marks cells solid, and stations expose "work cells" where a worker stands.
+  - **Station approaches.** When an unindexed work step begins, the worker chooses the shortest legal route to an unreserved authored work cell, keeping authored order for ties. A free current cell needs no walk. Explicit work-cell indices and seat steps retain their authored targets; unavailable leases wait, while available but unreachable cells use ordinary task recovery. The selected goal stays fixed for later repaths.
 - **Grid API (FK-012, `src/sim/grid/`):**
   - `GridMath`: `CELL_SIZE` 0.5 m. `rotate_cell(cell, footprint, quarter_turns)` turns clockwise seen from above, mapping one turn `(x, y) → (d-1-y, x)`. `rotated_footprint`, `cell_to_world`/`world_to_cell`, `path_cost`. Cell x → world +X, cell y → world +Z, and an unrotated item faces −Y (world −Z).
   - `SimGrid`:
     - `from_ascii(rows)`: `.` floor, `#` wall, `E` street entry, space for outside.
     - `place(footprint, origin, turns, solid, work_cells, seat_cells, def) -> PlacedItem` (or null), with `can_place` returning `PlaceResult`.
     - `remove(id)`, `item(id)`, `item_at(cell)`, `items()` (in placement order), `entries()`, `is_walkable(cell)`.
-    - `find_path(a, b) -> Array[Vector2i]` includes both ends, is empty when there's no path, and lets an agent walk out of a cell that just became blocked. `find_path_to_any(a, goals)`.
+    - `find_path(a, b) -> Array[Vector2i]` includes both ends and is empty when there is no static route; `find_path_to_any(a, goals)`. Active actors use `MovementCoordinator.route` and `find_path_avoiding`, which apply occupancy, seat permissions and guest room rules without changing shared path layers.
     - `cells_changed(cells)` fires on every walkability change.
   - `PlacedItem`: absolute `cells`, `work_cells` and `seat_cells`. One-agent reservations: `reserve`, `release`, `release_all`, `reserved_by`, `free_work_cell`, `free_seat_cell`.
-  - `find_path` from a blocked start (furniture placed on an agent) starts at that cell and continues from `nearest_walkable`, so agents are never trapped. `free_work_cell(item)`/`free_seat_cell(item)` skip reserved and unwalkable cells. `item_removed(item)` fires when an item is removed, and a removed item can't be reserved.
-  - Agents don't block each other.
+  - The static `find_path` helper retains its historical blocked-start output through `nearest_walkable`; actors may not execute its non-adjacent escape jump through solid cells. `free_work_cell(item)`/`free_seat_cell(item)` skip reserved and unwalkable cells. `item_removed(item)` fires when an item is removed, and a removed item cannot be reserved.
   - **World view:** Godot's positive `rotation.y` turns counter-clockwise seen from above, so a placed item uses `rotation.y = -quarter_turns * PI / 2`, with its mesh anchored at the rotated footprint's minimum corner.
 - **Task board:** stations, tables and orders post tasks (`take_order`, `cook`, `deliver`, `bus_table`, `clean`, `seat`). Each idle agent scores the open tasks: role priority x skill / distance, and claims the best one. Claims are exclusive.
 - **Self-healing (fixes TasteMaker's stuck-AI complaint):**
@@ -94,8 +99,8 @@ an active edit/panel/selection first, or opens Settings when none is active.
   - `SimTask(kind, role, label)`: `priority` 0–3, `timeout_ticks` (default 600), `payload` for the poster's data, and `steps`.
   - `TaskStep`:
     - `go_to_item(item_id, label, seat)` reserves a free work cell (or seat) and walks there.
-    - `go_to_cell(cell, label)`.
-    - `go_to_work_cell(item_id, index, label)` is an exact rotated work-cell selector (used for the two pass sides). It retains GO_TO_ITEM reservation, busy wait, removal, repath and timeout handling. `work_cell_index = -1` preserves legacy first-free-cell selection.
+    - `go_to_cell(cell, label)` retains its exact point by default. Ordinary take-order steps also carry candidate service cells and their seat origin: the actual claimant chooses the shortest legal approach when GO starts, retaining the posted point for scoring. Current neighbour, seat, room and edge rules still apply; later repaths keep the selected destination. Serve-across counters keep their exact point.
+    - `go_to_work_cell(item_id, index, label)` is an exact rotated work-cell selector (used for the two pass sides). It retains GO_TO_ITEM reservation, busy wait, removal, repath and timeout handling. `work_cell_index = -1` lets ordinary non-seat steps choose the closest legal reachable free authored work cell when GO starts, with stable authored ties; seat steps retain their existing selection.
     - `work(ticks, label, on_done)`. `on_done(agent) -> bool`; false cancels the task with `step_failed`.
   - `SimAgent` (movement base, which customers will extend): `cell`, `path`, `path_index`, `move_progress` (0–1 toward `next_cell()`, which the world view lerps), `set_destination`, `step_move`, `why()`.
   - `StaffAgent(role, skill)`:
@@ -143,16 +148,16 @@ an active edit/panel/selection first, or opens Settings when none is active.
     failed-item guard against blind retries; global renderer/stage failures
     keep their existing separate handling.
   - The Tier 1 hole-in-the-wall is `data/layouts/tier1_hole_in_the_wall.tres`:
-    - kitchen at the top (fridge, prep counter and stove facing down, with a kitchen door at x=7);
-    - the pass at (5,4), worked from both sides;
-    - three two-seat tables in the dining room;
-    - street entry at (6,11) and (7,11).
+    - kitchen at the top (fridge, prep counter and stove facing down), with seat-free Kitchen/Dining crossings at x=3, x=4 and x=5;
+    - the pass at (6,4), worked from (6,3) in the kitchen and (6,5) in the dining room;
+    - three two-seat tables at (3,7), (7,7) and (11,7), each turned one quarter;
+    - street entries at (7,13) and (8,13), through the two-cell opening in the front wall at row 12.
 - **Customers and orders (FK-014, `src/sim/restaurant/`):**
   - `RestaurantSim.create(layout, content, seed, errors)` owns `world`, `orders`, the tier-one `menu`, and a seeded `spawner`. It adds a cook and server from the layout spawns.
   - `start_day()` resets `served_today`, `lost_today`, `leave_reasons_today` and the arrival countdown, clears departure tracking, prunes finished orders, runs the overnight tidy (`Kitchen.tidy_overnight()`) and puts every staff member back at its layout spawn with no task; open the world's clock separately. `advance()` runs one world tick, then arrivals and departure cleanup; empty last orders closes the clock. At the CLOSED deadline all remaining guests are removed and recorded that day as `closing`.
   - Final closing counters are ready when `advance()` returns; raw clock phase signals can precede its cleanup sweep.
   - Signals: `customer_arrived(customer)`, `customer_paid(customer, order, amount)`, `customer_left(customer, reason)`. Payment is emitted once at the captured recipe price; there is no economy dependency.
-  - `CustomerAgent` extends `SimAgent`: `state`, `table_item_id`, `seat_cell`, `order`, `leave_reason`, `paid`, and `why()`. Reachable seats are reserved in placement order and released on leaving or removal. Failed seat paths or a 200-tick seat walk release the reservation and retry within the bounded queue budget. A server takes each order through ordinary `TaskStep`s.
+  - `CustomerAgent` extends `SimAgent`: `state`, `table_item_id`, `seat_cell`, `order`, `leave_reason`, `paid`, and `why()`. Reachable seats are reserved in placement order; leaving retains the physical seat lease until the actor vacates it, while removal releases it immediately. Failed seat paths or a 200-tick seat walk release the reservation and retry within the bounded queue budget. A server takes each order through ordinary `TaskStep`s.
   - `queue_patience` (300 ticks), `food_patience` (1200 ticks, including order-taking) and `eat_ticks` (300 ticks) are configurable. Missing food cancels work and tickets. An unreachable exit is logged and forcibly removed after 100 ticks.
   - `CustomerAgent.mood() -> float` reads remaining queue patience in QUEUED and food patience in ORDERING/WAITING_FOOD, clamped to 0..1 (nonpositive waiting budgets give 0). Every other state, including walking, gives 1. `mood_band() -> int` uses named thresholds 0.6/0.35/0.15 for happy/waiting/impatient/about-to-leave; waiting `why()` text adds that band without changing the sim.
   - `ShopView.mood_nodes` holds native billboard dots and ASCII `!`/`!!` above waiting guests. State/band caches avoid repeated presentation updates; state exits, guest removal and world rebinding remove the icons. No textures or imported models are used.
@@ -592,10 +597,11 @@ an active edit/panel/selection first, or opens Settings when none is active.
 - Quick changes walking by its data multiplier once. Its opt-in movement carries
   baseline-tick credit across cells: the existing neutral cadence is four ticks
   per straight edge and six per diagonal at speed 0.25. Scaling that quantized
-  time (rather than only Quick's geometric distance) preserves every neutral
-  tick and avoids an unintended 18% diagonal arrival advantage. Residual credit
-  converts using the next edge's own cost; final arrival, blocking and path
-  resets never bank extra movement. The neutral movement body is unchanged.
+  time (rather than only Quick's geometric distance) preserves uncontested neutral
+  cadence and avoids an unintended 18% diagonal arrival advantage. Residual credit
+  converts using the next edge's own cost; arrival and blocking never bank extra
+  movement. Mid-edge cancellation now finishes its reserved physical edge before
+  stopping or taking the deferred goal; traffic waiting applies to both speeds.
   Careful adds the actual
   completing cook's quality bonus before the normal clamp. Cheerful extends a
   guest's food-patience budget when that server takes an accepted order, inside
@@ -1889,8 +1895,8 @@ and Regular, Student and Foodie parties of 1-2. Each type's
 `party_unlock_level` (data) sets the owner level from which it may arrive as
 a group: 5 for Regular, Student and Foodie, 1 for Family (whose own unlock is
 level 4). Below it the type is a single guest that draws exactly what main's
-single guest draws: no size draw and one private seed, so play before any
-group type unlocks matches single-guest main draw for draw (golden-tested).
+single guest draws: no size draw and one private seed. Frozen single-guest
+integration comparisons share the current traffic and world implementation.
 Fixed-size ranges consume no size draw either. An unlocked type draws one
 ranged party size, then clamps it to the largest currently usable dining group
 reachable from the chosen street entry, but never below one. Capacity counts
@@ -1931,7 +1937,8 @@ chairCushion meshes like the existing cushioned kit seats; classification
 does not grant an exception or establish a measured fit. The inspector adds "Party of N".
 All party state is transient, with no save section or action save. Singleton
 regressions freeze only the old integration boundaries from exact main
-`1f9804e` and compare complete tick/RNG snapshots for seeds 1, 7 and 42; these
+`1f9804e` and compare complete tick/RNG snapshots for seeds 1, 7 and 42 under
+the same current traffic implementation; these
 written regressions are not a substitute for the required balance comparisons:
 `bash tools/balance_probe.sh --days=5 --seeds=1,2,3,4,5 --setup=default` and
 `bash tools/balance_probe.sh --days=10 --seeds=1,7,42 --setup=default` on exact
@@ -2143,9 +2150,10 @@ invalidate the appropriate cached geometry. HUD/Menu presentation is read-only.
   while a dish on the menu uses them (`set_in_use`; switching one on in the
   morning tops it up at once), and saves their rows only when changed, so
   default orders and saves are unchanged.
-- **Default play is unchanged**: `tests/world/test_default_play_golden.gd`
-  replays two seeded production days against values recorded on main 6f6495d,
-  and the default probe rows match main exactly. Probe set-ups `coffee_shop`
+- **Food-only compatibility**: `tests/world/test_default_play_golden.gd`
+  records two seeded days in the historical manual-stock shop. Its original
+  main 6f6495d provenance is retained; current physical traffic has its own
+  recorded outcomes and separate throughput comparisons. Probe set-ups `coffee_shop`
   and `bar` build, stock and staff a concept (`ProbeSetups.morning` switches
   on newly unlocked drinks). Tests: `tests/sim/test_concepts.gd`,
   `tests/world/test_concept_session.gd`, counter head clearance in
@@ -2839,9 +2847,22 @@ add. The HUD's morning notice compares with the immediately preceding service.
 Menu and Staff keep their existing controls inside an outer vertical scroll so
 both notices and the panels remain readable on short, scaled windows.
 
-The historical thick-divider two-day drinks compatibility fixture uses a
-detached neutral demand context and retains every original expected row and
-assertion. It predates this growth system; actual default play, growth, saves,
-parties and deterministic replay are covered by the demand tests. The manual
-Day 1 observer also compares all ticks, event/private guest seeds and named
-streams with immutable actual main. No compatibility branch exists in production.
+The historical thick-divider two-day fixture retains its manual stock,
+neutral demand, seed7 and $30 rent, comparing all six recorded fields per day
+under current physical traffic. Its private-seat barrier constrains staff
+access; current default throughput and thin-layout save migration are covered
+separately. The manual-stock Day1 test records current-layout service through
+an exact tick, complete named-stream dictionary and canonical event/private-RNG
+digest, and compares both complete same-seed plays. Historical before traces
+remain outside the project. No compatibility branch exists in production.
+
+### Roomier starter layout and existing saves (#263)
+
+New shops use the 16×14 authored Tier 1 layout, with three tables at columns 3, 7 and 11, a centred pass at (6, 4), two-cell dining, pass and door approaches, and the same $18 rent. The unchanged plant still narrows the outer-right bottom corner; that fringe is outside the central passing corridors. `data/layouts/tier1_original.tres` preserves the previous 14×12 resource exactly. New-shop snapshots add the known `layout_id` value to the existing version-8 shop section; old bases retain their previous markerless shape. Main selects an authored base before decoding: a missing identity or whole shop section means the original base, a known roomier identity selects the new base, and an unknown or malformed present identity fails the load. No save-supplied resource path is loaded.
+
+Lease margins always apply once to that authored base, not to an already leased/expanded snapshot. Candidate plates and owner setup must succeed before the loaded world replaces the live one. The existing morning autosave remains the only write point. Manual probe fixtures adapt their wing/table coordinates to the actual base. Coffee/bar restore the west table to its complete original pose at (2,6), with no quarter turn, retaining ten usable seats and the four-seat group. Their ordinary editor adds the side floor strips needed to reach those private seats: the west strip spans rows 6–9, and the east strip is added only when the base lacks that floor. The coffee plant sits at (5,8), outside the seat approaches. These remain declared free-construction fixtures, with normal paid stock and service; they do not measure construction return on investment.
+
+Guests keep their own routes during deferred seat release; the automatic busser
+step-off route is restricted to staff. Wall previews also protect reserved movement
+edges and their diagonal corners, including exact undo/redo, while allowing
+unrelated walls and removals.

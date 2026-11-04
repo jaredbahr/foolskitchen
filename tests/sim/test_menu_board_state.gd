@@ -156,12 +156,13 @@ func test_hang_move_sale_and_wall_loss_undo_keep_the_section() -> void:
 
 
 func test_expanding_floor_then_undo_restores_the_board_section() -> void:
-	var anchor: Vector3i = Vector3i(12, 2, EAST)
+	var grid_width: int = _sim.world.grid.size.x
+	var anchor: Vector3i = Vector3i(grid_width - 2, 2, EAST)
 	assert_true(_history.hang(&"menu_board", anchor), _editor.last_check.why)
 	assert_true(_editor.set_menu_board_section(anchor, RecipeDef.Section.SIDES))
 	var bought: Array[Vector2i] = []
 	for y: int in range(0, 10):
-		bought.append(Vector2i(14, y))
+		bought.append(Vector2i(grid_width, y))
 	assert_true(_history.apply_floor(bought, true), _editor.last_check.why)
 	assert_eq(_editor.decor.count(), 0)
 	assert_true(_history.undo(), _history.last_refusal)

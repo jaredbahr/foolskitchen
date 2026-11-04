@@ -159,11 +159,20 @@ func _install_frozen_picker(main: Node, sim: RestaurantSim) -> bool:
 	for member: StaffMember in roster.members():
 		members[member.id] = member
 	var replacements: Dictionary[int, StaffAgent] = {}
+	var movement_before: Dictionary = sim.world.movement.snapshot()
+	var next_id_before: int = sim.world.get("_next_agent_id")
+	var streams_before: Dictionary = GameState.call("_capture_save")
 	for index: int in range(sim.world.agents.size()):
 		var employee: StaffAgent = sim.world.agents[index] as StaffAgent
 		if employee == null or employee is OwnerAgent:
 			continue
 		if employee.task != null or not employee.path.is_empty() or not members.has(employee.member_id):
+			return false
+		assert_eq(movement_before["occupied"].get(employee.cell, -1), employee.id,
+			"the original idle employee owns this exact physical cell")
+		if not employee.movement_admitted or employee.movement_world() != sim.world \
+				or movement_before["occupied"].get(employee.cell, -1) != employee.id \
+				or not sim.world.movement.can_enter(sim.world, employee, employee.cell):
 			return false
 		var member: StaffMember = members[employee.member_id]
 		var replacement: StaffAgent = FrozenMainStaff.new(member.role, member.skill) as StaffAgent
@@ -171,9 +180,21 @@ func _install_frozen_picker(main: Node, sim: RestaurantSim) -> bool:
 		replacement.id = employee.id
 		replacement.cell = employee.cell
 		replacement.last_progress_tick = employee.last_progress_tick
+		replacement.bind_movement(sim.world)
 		replacements[index] = replacement
 	for index: int in replacements:
-		sim.world.agents[index] = replacements[index]
+		var previous: StaffAgent = sim.world.agents[index] as StaffAgent
+		var replacement: StaffAgent = replacements[index]
+		if not sim.world.movement.register_agent(sim.world, replacement) or replacement.cell != previous.cell:
+			return false
+		sim.world.agents[index] = replacement
+		assert_true(replacement.movement_admitted)
+		assert_eq(replacement.movement_world(), sim.world)
+		assert_eq(replacement.id, previous.id)
+		assert_eq(replacement.cell, previous.cell)
+	assert_eq(sim.world.movement.snapshot(), movement_before, "replacement preserves every physical ownership value")
+	assert_eq(sim.world.get("_next_agent_id"), next_id_before, "replacement never allocates another agent ID")
+	assert_eq(GameState.call("_capture_save"), streams_before, "replacement never creates or draws an RNG stream")
 	return replacements.size() == members.size()
 
 
