@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="ItemVariant" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/sim/content/item_variant.gd" id="1_script"]
+
+[resource]
+script = ExtResource("1_script")
+id = &"jukebox_cafe_jazz"
+display_name = "Café jazz"
+theme_tags = Array[StringName]([&"cafe"])
+material_colours = Dictionary[StringName, StringName]({&"wood": &"woodDark"})
+chip_colour = &"woodDark"

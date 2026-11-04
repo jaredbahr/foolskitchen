@@ -8,20 +8,18 @@ Hobby pace: there are no dates, only exit criteria. Each phase ends with a playa
 - **Jared:** taste and lore calls, playtests each phase build, merges or asks for changes.
 - Each phase has a tracking issue (`Phase N: ...`) that lists its task issues.
 
-## Up next: the Codex queue (reset 2026-11-01)
-Codex takes `worker-ready` issues in this order, skipping any whose **Depends on** hasn't merged. The director reviews, fixes up and merges. Merged since the last reset: #259 staff bottleneck advice (#264), #127 messes (#235), #260 business trend (#265), #244 curb appeal (#266), #242 neighbourhood (#254), #223 blueprints remember looks (#262), #161 menu boards (#231).
+## Up next: the Codex queue (reset 2026-11-04)
+Codex takes `worker-ready` issues in this order, skipping any whose **Depends on** hasn't merged. The director reviews, fixes up and merges. Merged since the last reset: #85 balance pass (#289), #263 physical movement and a roomier starter shop (#268), #205 smarter cutaway (#285), #208 day and night (#286), #84 lighting decor (#288), #117 sound (#284), chairs up at night (#287), parallel test shards (#290).
 
-**Wave 5: make growing pay (Jared: "struggling to grow"; "people phase through each other")**
-- #85 Tier 1 balance pass: seats plus staff must clearly pay (re-scoped; do first)
-- #263 People never walk through each other or furniture; a roomier starter shop (high priority; right after #85, or first if #85 is taken)
+**Wave 7: the café and the room**
+- #243 Patio: outdoor tables and waiting seats, closed in rain (open PR #269; re-check movement after #268)
+- #292 Street A-frame sign with the restaurant name
+- #294 Jukebox: a music style for the room
+- #293 Café order counter: order at the counter, then sit or take away
 
-**Wave 6: outside and atmosphere**
-- #205 Smarter cutaway, then #208 Day and night cycle, then #84 Lighting decor
-- #243 Patio: outdoor tables and waiting seats, closed in rain (its dependencies have merged)
-- #117 Sound
-
-**Director-scoped (art or taste first):** the cat #119 (shop level 4), aquarium #125, premium decor #206.
-**Later backlog:** #164 more sites, #167 makeovers, #169 staff drama, #170 design extras, #171 food depth, #172 visitors, #173 neighbourhood rivals, #159 entertainment, #180 café counter.
+**Director (in progress):** #291 win back service speed lost to physical movement; the cat #119 (shop level 4).
+**Director-scoped (art or taste first):** aquarium #125, premium decor #206.
+**Later backlog:** #164 more sites, #167 makeovers, #169 staff drama, #170 design extras, #171 food depth, #172 visitors, #173 neighbourhood rivals, #159 more entertainment (stage, games corner).
 
 ## Phase 0: Foundation
 - [ ] Project skeleton, autoload stubs, test runner, `check.sh`, `get_godot.sh` (FK-001, Claude)

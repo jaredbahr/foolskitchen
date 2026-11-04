@@ -83,6 +83,9 @@ const MAX_SEATED_LEAN_DEGREES: float = 35.0
 @export var allow_exterior: bool = false
 @export var exterior_band: ExteriorSupport.Band = ExteriorSupport.Band.BODY
 @export var unique_per_shop: bool = false
+## A jukebox (#294): its looks are music styles. One placed copy counts toward
+## the vibe and plays its style's loop while the shop is open (see Jukebox).
+@export var plays_music: bool = false
 @export var shows_restaurant_name: bool = false
 ## Hangs from the ceiling (a pendant lamp): drawn at ceiling height over a
 ## floor-decor cell, its shade hidden whenever walls are cut away or down.
@@ -109,7 +112,7 @@ func placement_layer_valid() -> bool:
 			and footprint.y == 1 and footprint.x >= 1 and footprint.x <= MAX_WALL_WIDTH \
 			and (wall_mount == WallMount.INSIDE_FACE or wall_mount == WallMount.WINDOW and footprint.x == 1 \
 				or wall_mount == WallMount.EXTERIOR) and exterior_band >= ExteriorSupport.Band.BODY \
-			and exterior_band <= ExteriorSupport.Band.LIGHTS
+			and exterior_band <= ExteriorSupport.Band.GROUND
 	return placement_layer == PlacementLayer.FLOOR_DECOR and category == Category.DECOR and passive
 
 

@@ -12,6 +12,10 @@ Each line ends with its PR number.
 
 ### Players
 - Service is quicker again: the cook no longer stalls waiting for a clean plate while the server is busy elsewhere, plating at the pass is faster, and guests finish their meals a little sooner, so the starter shop seats more guests a day. (#PRNUM)
+- Staff now always start the morning at their own posts: a worker caught mid-step toward another worker's post at closing no longer pushes that worker to the next cell over. (#300)
+- Buy a chalkboard A-frame sign (Build > Decor, $35, from owner level 2) and stand it on the pavement beside your street door. It shows your restaurant name and today's special, the dish with your best margin (or Coffee at a cafe), and adds a little curb appeal for more walk-ins. The cells straight in front of the door stay clear for guests. (#299)
+- Buy a jukebox (Build > Decor, $90, level 3) and choose its music style: Diner rock, Café jazz or Bar blues. It adds vibe like other decor, twice as much when its style matches your shop's theme, and plays quietly while the shop is open (Effects volume controls it). Only one jukebox counts, and you can switch its style any time by clicking it. (#297)
+- Adopt a shop cat from owner level 4: a one-time $40 offer in the morning Menu. Biscuit wanders the dining room and restroom, naps by the walls and side windows, and waiting guests near it are a little more patient. A waiting guest next to it may pet it for a happy review. Cat food costs $2 a day, shown as "Cat food" in the evening report. (#296)
 - Guests and staff now walk around each other and the furniture, and new shops start a little roomier. (#268)
 - Growing the shop now pays: the starter pantry holds 100 dry units instead of 60, so a bigger, fully staffed shop no longer sells out by evening. When guests leave because dishes sold out, the evening report tells you to buy more storage. (#289)
 - Light up your shop: buy floor lamps, side tables with lamps, a wall lamp and a ceiling pendant in Buy > Lighting. Lamps glow softly by day, light the room warmly at night and add to your vibe. (#288)
@@ -147,6 +151,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- The roadmap's Codex queue is reset: the patio, a street A-frame sign, a jukebox and a café order counter; the director takes the movement speed follow-up and the cat. (#295)
 - The project checks run the tests in two parallel halves, so a full check takes about half as long. (#290)
 - Running the catalogue tests on their own now releases their scripts cleanly when Godot closes. (#271)
 - The roadmap's Codex queue is reset again: the balance pass, then people never walking through each other or furniture, then the outside and atmosphere (the patio is now unblocked). (#267)

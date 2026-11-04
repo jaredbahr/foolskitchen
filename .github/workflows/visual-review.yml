@@ -6,6 +6,7 @@ on:
       - '.github/workflows/visual-review.yml'
       - 'tools/screenshot.*'
       - 'tools/menu_boards_review.gd'
+      - 'tools/jukebox_review.gd'
       - 'src/world/**'
       - 'src/ui/**'
       - 'data/layouts/**'
@@ -75,6 +76,7 @@ jobs:
           SCREENSHOT_TIMEOUT_SECONDS=120 bash tools/screenshot.sh --out=screens/visual-review/movement-passing --scene=res://tools/movement_review.tscn --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/street-front --street-front-review --speed=0 --frames=60
           SCREENSHOT_TIMEOUT_SECONDS=120 bash tools/screenshot.sh --out=screens/visual-review/curb-appeal --scene=res://tools/curb_appeal_review.tscn --speed=0 --frames=60
+          bash tools/screenshot.sh --out=screens/visual-review/a-frame-sign --scene=res://tools/a_frame_review.tscn --speed=0 --frames=60
           for quarter in 0 1 2 3; do
             bash tools/screenshot.sh "--out=screens/visual-review/quarter-$quarter" --frames=60 --speed=1 "--quarter=$quarter"
           done
@@ -101,6 +103,7 @@ jobs:
           bash tools/screenshot.sh --out=screens/visual-review/first-day-guide --scene=res://tools/hints_review.tscn --speed=0 --frames=30
           bash tools/screenshot.sh --scene=res://tools/food_review.tscn --out=screens/visual-review/food-service --speed=0 --frames=12,90
           bash tools/screenshot.sh --out=screens/visual-review/icons-review --scene=res://tools/icons_review.tscn --speed=0 --frames=12,60
+          bash tools/screenshot.sh --out=screens/visual-review/restaurant-cat --scene=res://tools/cat_review.tscn --speed=0 --frames=30,70,110
           OWNER_REVIEW_STAGE=picker bash tools/screenshot.sh --out=screens/visual-review/owner-picker --scene=res://tools/owner_character_review.tscn --speed=0 --frames=60
           OWNER_REVIEW_STAGE=shop bash tools/screenshot.sh --out=screens/visual-review/owner-character --scene=res://tools/owner_character_review.tscn --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/report --report --open --fast=100 --speed=0 --frames=60
@@ -125,6 +128,7 @@ jobs:
           OPENINGS_REVIEW_STAGE=before bash tools/screenshot.sh --out=screens/visual-review/openings-before --scene=res://tools/openings_review.tscn --speed=0 --frames=30 --quarter=2
           OPENINGS_REVIEW_STAGE=after bash tools/screenshot.sh --out=screens/visual-review/openings-after --scene=res://tools/openings_review.tscn --speed=0 --frames=30 --quarter=2
           bash tools/screenshot.sh --out=screens/visual-review/menu-boards-review --menu-boards-review --speed=0 --frames=12,30
+          bash tools/screenshot.sh --out=screens/visual-review/jukebox --scene=res://tools/jukebox_review.tscn --speed=0 --frames=12,40
           bash tools/screenshot.sh --out=screens/visual-review/build-green --build=green --quarter=0 --frames=12 --speed=1
           bash tools/screenshot.sh --out=screens/visual-review/build-red --build=red --quarter=0 --frames=12 --speed=1
           bash tools/screenshot.sh --out=screens/visual-review/menu-access-preview --scene=res://tools/menu_access_review.tscn --speed=0 --frames=12

@@ -200,6 +200,9 @@ var _door_amounts: Dictionary[Vector2i, float] = {}
 ## Smooth motion: people are drawn between their last two sim ticks.
 var motion: MotionSmoother = MotionSmoother.new()
 var food: FoodPresentation
+## The shop cat (#119): created with the restaurant, drawn every frame.
+var cat_view: CatView
+var _cat_source: RestaurantSim
 ## Faded-out figures of people the sim removed while visible (_keep_as_ghost):
 ## [{node, fade, step}].
 var ghosts: Array[Dictionary] = []
@@ -210,6 +213,10 @@ func show_world(value: SimWorld, maximum_reserve: Rect2i = Rect2i()) -> void:
 	if is_instance_valid(food):
 		food.free()
 	food = null
+	if is_instance_valid(cat_view):
+		cat_view.free()
+	cat_view = null
+	_cat_source = null
 	var previous_world: SimWorld = world
 	_neighbourhood_reserve = maximum_reserve
 	_disconnect_grid()
@@ -305,6 +312,11 @@ func bind_restaurant(restaurant: RestaurantSim, definitions: ContentDB) -> void:
 	food.name = "Food"
 	add_child(food)
 	food.bind(restaurant, definitions, item_nodes)
+	if is_instance_valid(cat_view):
+		cat_view.free()
+	cat_view = CatView.new()
+	add_child(cat_view)
+	_cat_source = restaurant
 
 
 ## The shop's lot (Main, before show_world()): the back alley behind a back
@@ -1514,9 +1526,16 @@ func _process(_delta: float) -> void:
 	_sync_dirt_spots()
 	_sync_item_selection()
 	_sync_agents()
+	_sync_cat(_delta)
 	_fade_ghosts(_delta)
 	_sync_crates()
 	_sync_back_doors()
+
+
+func _sync_cat(delta: float) -> void:
+	if not is_instance_valid(cat_view) or _cat_source == null or _cat_source.world != world:
+		return
+	cat_view.sync(_cat_source.cat, interpolation_alpha(), _agent_playback_speed(), delta)
 
 
 func _sync_agents() -> void:

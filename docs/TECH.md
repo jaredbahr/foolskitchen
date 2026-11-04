@@ -2198,6 +2198,17 @@ invalidate the appropriate cached geometry. HUD/Menu presentation is read-only.
   The existing unmodified `--door-queue` capture continues to exercise ordinary
   queue behavior.
 
+### The restaurant cat (#119)
+- **Sim.** `RestaurantCat` (`src/sim/pets/`) is a `RefCounted` owned by `RestaurantSim.cat`. It is **not** a `SimAgent`: it is never in `world.agents`, so it joins no `MovementCoordinator` traffic, reserves no cell or seat and blocks nobody (people and the cat may share a cell). Tuning is `CatTuning` in `data/balance/cat.tres`: unlock level 4, $40 adoption, $2 a day, charm radius 2 and +10%, pet radius 1, walking and nap timings.
+- **Where it goes.** `cell_ok`: `Terrain.FLOOR`, guest-walkable (no staff room, no back door), room Dining or Restroom, nothing on the NORMAL layer. Steps use `SimGrid.guest_neighbours`, so it respects wall edges and the corner rule. A bounded breadth-first search (`wander_range` steps, fixed neighbour order) picks strolls and nap trips. Nap spots (`nap_spots`, cached per `grid.version`) are the cells beside a window (an interior or outer window edge, or one of `ExteriorSupport.window_cells`); with no window, the cells beside a wall. The bed spot is the first nap spot in reading order. `begin_day` (from `RestaurantSim.start_day`) puts it there asleep and draws no random number; `layout_changed` (from the grid's `cells_changed`) sends it back if an edit lands on it. A nap lies along the wall, not into it.
+- **Random numbers.** Only `GameState.rng(&"cat")`, passed in by Main with `use_rng`; the fallback seed is fixed. Same seed, same path (`tests/sim/test_restaurant_cat.gd`).
+- **Charm.** `CustomerAgent._cat_relief` hands back one waiting tick every ~11 while the guest is within `charm_radius` of the cat (`refund_per_tick = b / (1 + b)`, so +10% patience lasts exactly 10% longer), for table waits (`_queue_wait`, and a party's shared wait) and food waits (`_food_wait`). Petting: a guest that `is_waiting_in_shop()` within `pet_radius` sets `petted_cat` once per visit; the cat stands still for `pet_pause_ticks` facing them. `ReviewVisit.petted_cat` selects the `petted_cat` quote (three lines in `data/reviews/quotes.tres`) when the review would otherwise be positive; any real complaint still wins.
+- **Money.** The morning Menu panel's `CatOffer` (`MenuPanel.set_cat_offer`, `cat_adoption_requested`) shows from level 4 until adopted. `Main.adopt_cat` charges `Ledger.UPGRADES` once; `_charge_closing_costs` adds `Ledger.CAT_FOOD` (`Cat food`) every day while adopted.
+- **Save.** Section `cat`: `{version: 1, adopted, name}` (name defaults to "Biscuit"); position is not saved. A save without the section loads as no cat; a malformed section refuses the load like any other. Morning autosave remains the only save point.
+- **View.** `CatView` (a child of `ShopView`, `src/world/cat_view.gd`) loads `assets/made/cat/cat.glb`, scales it by `ArtScale.CAT_SCALE`, draws the sim position blended between its last two cells with the same one-tick-behind alpha as people, and plays `walk` (tempo matched to the step speed), `nap` or `idle`. Hidden until adopted. Capture: `bash tools/screenshot.sh --scene=res://tools/cat_review.tscn --speed=0 --frames=30,70,110` (walking and napping beside a Mini Character, then the shop as played).
+- **Art.** `tools/build_cat.py` (Blender) makes `assets/made/cat/cat.glb`; see `assets/made/README.md`.
+- Coverage: `tests/sim/test_restaurant_cat.gd`, `tests/world/test_cat_session.gd`.
+
 ### 2.3i Stock panel, auto-reorder and sold-out dishes (FK-033, #54)
 - **Served-food accounting (FK-121, #255).** Stock lots retain their actual
   remaining purchase cost, including the charged standing-order premium.
@@ -2787,6 +2798,26 @@ Main derives this before refreshing the existing live/forecast demand hook;
 there is no second arrival multiplier, RNG fetch/draw or countdown reset.
 Edits, undo, support changes and load refresh the derived facts. No score is
 saved: the existing morning shop save already contains its inputs.
+
+**A-frame sign (#292).** `a_frame_sign` is an exterior WALL-layer item in a sixth
+mount band, `ExteriorSupport.Band.GROUND` (face keys now run to direction 23), so
+it reuses the hang request, ghost, undo, sale, morning save row and curb-appeal
+path with no new store. It is one cell wide and `unique_per_shop`. Placement rule
+(`ExteriorSupport.ground_problem`): the face's outside cell must be the street
+pavement **beside** the street door, i.e. the wall shell cell next to a door cell.
+The cells straight in front of the door are the guests' entries (where guests
+appear and leave), so they are always refused ("Keep the doorway clear"); the sign
+therefore never sits on the walking route. It is view-only like every hung item:
+it adds nothing to `SimGrid`, so paths, `MovementCoordinator` occupancy and
+arrivals are untouched. Its curb-appeal family `a_frame` (weight 6, cap 6) is in
+`data/balance/curb_appeal.tres`. The wrapper (`assets/props/a_frame_sign.tscn`) is
+two Kenney `paneling` boards leaning to an A, with the diner chalkboard wrapper
+(#147) mounted on the front board; no new made model. `StreetSignText` gives its
+two lines (the normalized restaurant name, then "Today: " plus the enabled dish
+with the best margin, price minus ingredient cost, ties to the lower id, or
+Coffee when `MenuThemeText.leading_theme` is the cafe), and `WallFinishView`
+refreshes them on a rename, a price change or a menu change. The sign stays
+visible when walls are cut away. `tools/a_frame_review.tscn` is the capture.
 
 Build shows the themed meter beside Vibe when the rendered camera faces the
 street, including during smooth rotation and Paint. The existing “Tomorrow's

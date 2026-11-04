@@ -5,6 +5,7 @@ extends RefCounted
 const VIBE_TUNING: VibeTuning = preload("res://data/balance/vibe.tres")
 const VISIT_TUNING: VisitTuning = preload("res://data/balance/visits.tres")
 const RESTROOM_TUNING: RestroomTuning = preload("res://data/balance/restroom.tres")
+const CAT_TUNING: CatTuning = preload("res://data/balance/cat.tres")
 
 signal customer_arrived(customer: CustomerAgent)
 signal customer_paid(customer: CustomerAgent, order: Order, amount: int)
@@ -52,6 +53,9 @@ var dock: DeliveryDock
 var cleanliness: CleanlinessState = null
 var clean_tasks: CleanTaskController = null
 var mishaps: MishapState = null
+## The shop cat (#119): never in world.agents, so it joins no traffic. It does
+## nothing until adopted.
+var cat: RestaurantCat = RestaurantCat.new(CAT_TUNING)
 ## Main records this paid replacement cost in the existing economy ledger.
 signal plate_broken(cost: int)
 var spawner: CustomerSpawner
@@ -249,22 +253,33 @@ func start_day() -> void:
 	if mishaps != null:
 		mishaps.tidy_overnight()
 	_staff_to_posts()
+	if cat != null:
+		cat.begin_day(world.grid)
 	spawner.reset(arrival_rate())
 
 
 ## Each morning staff start at their posts, with nothing in hand.
 func _staff_to_posts() -> void:
+	# Release every staff member's leftover edge/next-cell claims first. A
+	# lower-ID worker reset before a higher-ID one that ended the night mid-edge
+	# toward its post would otherwise find the post still claimed and be moved
+	# to a neighbouring cell. Order and claims then no longer decide who gets
+	# which post.
+	var staff_list: Array[StaffAgent] = []
 	for agent: SimAgent in world.all_agents():
 		if staff_spawns.has(agent.role) and agent is StaffAgent:
 			var staff := agent as StaffAgent
 			if staff.task != null:
 				staff.on_removed(world)
-			world.reset_agent_position(staff, staff_spawns[agent.role])
-	# A colleague who ended the night standing on this post only moved off it
-	# after their own turn: put anyone placed beside their post back on it now.
-	for agent: SimAgent in world.all_agents():
-		if staff_spawns.has(agent.role) and agent is StaffAgent and agent.cell != staff_spawns[agent.role]:
-			world.reset_agent_position(agent, staff_spawns[agent.role])
+			world.reset_agent_position(staff, staff.cell)
+			staff_list.append(staff)
+	for staff: StaffAgent in staff_list:
+		world.reset_agent_position(staff, staff_spawns[staff.role])
+	# A colleague still standing on this post only moved off it after their own
+	# turn: put anyone placed beside their post back on it now.
+	for staff: StaffAgent in staff_list:
+		if staff.cell != staff_spawns[staff.role]:
+			world.reset_agent_position(staff, staff_spawns[staff.role])
 
 
 ## One fixed world tick, arrivals, then departed-guest cleanup.
@@ -282,6 +297,8 @@ func advance() -> void:
 	if dock != null:
 		dock.advance()
 	refresh_sold_out()
+	if cat != null and (world.clock.phase == SimClock.Phase.OPEN or world.clock.phase == SimClock.Phase.LAST_ORDERS):
+		cat.advance(world.grid, customers())
 	spawner.advance(self)
 	for customer: CustomerAgent in customers():
 		if world.clock.phase == SimClock.Phase.CLOSED:
@@ -859,6 +876,8 @@ func restroom_used(spot: Vector2i) -> void:
 
 func _on_layout_changed(_cells: Array[Vector2i]) -> void:
 	_layout_counted = false
+	if cat != null:
+		cat.layout_changed(world.grid)
 
 
 func _count_layout() -> void:
