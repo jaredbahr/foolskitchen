@@ -199,6 +199,28 @@ func test_a_guest_walking_to_the_restroom_yields_like_anyone_else() -> void:
 	assert_eq(guest.cell, Vector2i(1, 0), "and so does the guest")
 
 
+## A stuck person given right of way keeps the cells of the step it waits
+## for: a passer-by may not slip into one, and a passer-by kept out cannot
+## win the cell from the person who must clear it (that pair locked forever).
+func test_a_held_way_keeps_passers_out_but_lets_the_blocker_clear() -> void:
+	var world: SimWorld = _service_world(["...", "...", "..."])
+	var passer: Walker = _walker(world, Vector2i(0, 0), Vector2i(1, 0))
+	var blocker: Walker = _walker(world, Vector2i(1, 1), Vector2i(1, 0))
+	var stuck: Walker = _walker(world, Vector2i(2, 0), Vector2i(1, 1))
+	assert_true(passer.id < blocker.id, "the passer would win an ordinary lowest-ID tie")
+	world.movement._right_of_way[stuck.id] = 1000000
+	var passer_entered: bool = false
+	for tick: int in 40:
+		if not _advance(world):
+			return
+		passer_entered = passer_entered or passer.cell == Vector2i(1, 0) \
+			or (passer.move_progress > 0.0 and passer.next_cell() == Vector2i(1, 0))
+		if blocker.cell == Vector2i(1, 0):
+			break
+	assert_false(passer_entered, "nobody slips into a held corner")
+	assert_eq(blocker.cell, Vector2i(1, 0), "the person standing in the held step clears it")
+
+
 func _service_world(rows: Array[String], open: bool = true) -> SimWorld:
 	var world: SimWorld = SimWorld.new(SimGrid.from_ascii(PackedStringArray(rows)))
 	if open:
