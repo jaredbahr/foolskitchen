@@ -290,7 +290,7 @@ func test_a_cafe_without_a_counter_keeps_its_table_service_exactly() -> void:
 			row.get("gone", -1), _left.get(guest.id)])
 		assert_false(guest.counter_visit)
 		assert_false(guest.takeaway)
-	assert_eq("|".join(parts), GOLDEN_NO_COUNTER, "recorded on main before the order counter existed")
+	assert_eq("|".join(parts), GOLDEN_NO_COUNTER, "recorded before the order counter existed (timing re-recorded for #306)")
 	assert_eq(_sim.served_today, 7)
 	assert_eq(_sim.takeaways_today, 0)
 
@@ -320,7 +320,11 @@ func test_takeaway_tuning_is_data_and_validated() -> void:
 
 
 
-const GOLDEN_NO_COUNTER: String = "4:0:104:368:478:happy|5:30:161:548:658:happy|6:60:214:433:543:happy|7:90:261:662:772:happy|8:120:-1:-1:421:no_table|9:150:-1:-1:451:no_table|10:180:-1:-1:481:no_table|11:210:733:926:1036:happy|12:240:-1:-1:541:no_table|13:270:776:999:1109:happy|14:300:-1:-1:601:no_table|15:330:-1:-1:631:no_table|16:360:-1:-1:661:no_table|17:390:829:1082:1192:happy"
+## #306: the movement liveness backstop gives someone who has not got any
+## closer for 120 ticks right of way (twice in this run, no one moved aside),
+## so guests 11, 13 and 17 order, get served and leave one tick later. Who is
+## served and why each guest leaves are unchanged.
+const GOLDEN_NO_COUNTER: String = "4:0:104:368:478:happy|5:30:161:548:658:happy|6:60:214:433:543:happy|7:90:261:662:772:happy|8:120:-1:-1:421:no_table|9:150:-1:-1:451:no_table|10:180:-1:-1:481:no_table|11:210:734:927:1037:happy|12:240:-1:-1:541:no_table|13:270:777:1000:1110:happy|14:300:-1:-1:601:no_table|15:330:-1:-1:631:no_table|16:360:-1:-1:661:no_table|17:390:830:1083:1193:happy"
 
 var _paid_orders: Array[Order] = []
 
