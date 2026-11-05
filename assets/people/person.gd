@@ -237,7 +237,8 @@ func set_pose(moving: bool, seated: bool, carrying: bool, working: bool, seat_he
 		return false
 	var lean: float = seated_lean_degrees if seated else 0.0
 	var lean_changed: bool = lean != _seated_lean_degrees
-	_requested_clip = PersonPresentation.clip_for_state(moving, seated, carrying, working, bending)
+	_requested_clip = PersonPresentation.clip_for_role(role,
+		PersonPresentation.clip_for_state(moving, seated, carrying, working, bending))
 	_seat_height = maxf(seat_height, 0.0) if seated else 0.0
 	_seated_lean_degrees = lean
 	var pivot: Node3D = get_node_or_null("ModelPivot") as Node3D
@@ -340,6 +341,9 @@ func _prepare_clips() -> bool:
 	if carry_walk == null:
 		return false
 	library.add_animation(PersonPresentation.CARRY_WALK, carry_walk)
+	if PersonPresentation.has_clipboard(role):
+		library.add_animation(PersonPresentation.CLIPBOARD_WALK, _clipboard_arms(library.get_animation(&"walk")))
+		library.add_animation(PersonPresentation.CLIPBOARD_HOLD, _clipboard_arms(library.get_animation(&"idle")))
 	for name: StringName in _player.get_animation_library_list():
 		_player.remove_animation_library(name)
 	_player.add_animation_library(&"", library)
@@ -363,6 +367,32 @@ static func _carry_walk(walk: Animation, holding: Animation) -> Animation:
 			copied += 1
 	if copied == 0:
 		return null
+	animation.loop_mode = Animation.LOOP_LINEAR
+	return animation
+
+
+## `base` with both arms replaced by the clipboard hold: each rigid arm swung
+## forward about the vertical axis and dropped a little, so the hands meet the
+## sides of a board held at the chest. Only a copy is built.
+static func _clipboard_arms(base: Animation) -> Animation:
+	var animation: Animation = base.duplicate(true) as Animation
+	var paths: Dictionary[String, NodePath] = {}
+	for index: int in range(animation.get_track_count() - 1, -1, -1):
+		if _is_arm_track(animation, index):
+			var bone: String = String(animation.track_get_path(index)).get_slice(":", 1)
+			paths[bone] = animation.track_get_path(index)
+			animation.remove_track(index)
+	var yaw: float = deg_to_rad(PersonPresentation.CLIPBOARD_ARM_YAW_DEGREES)
+	var drop: float = deg_to_rad(PersonPresentation.CLIPBOARD_ARM_DROP_DEGREES)
+	var poses: Dictionary[String, Quaternion] = {
+		"arm-left": Quaternion(Vector3.UP, -yaw) * Quaternion(Vector3.BACK, -drop),
+		"arm-right": Quaternion(Vector3.UP, yaw) * Quaternion(Vector3.BACK, drop),
+	}
+	for bone: String in paths:
+		var track: int = animation.add_track(Animation.TYPE_ROTATION_3D)
+		animation.track_set_path(track, paths[bone])
+		animation.track_insert_key(track, 0.0, poses[bone])
+		animation.track_insert_key(track, animation.length, poses[bone])
 	animation.loop_mode = Animation.LOOP_LINEAR
 	return animation
 

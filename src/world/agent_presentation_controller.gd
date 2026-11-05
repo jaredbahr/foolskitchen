@@ -164,8 +164,8 @@ static func frame_for(agent: SimAgent, world: SimWorld, chair_seat_height: float
 			if frame.working and held != null and staff._held_cell == staff.cell \
 					and held.reserved_by(staff._held_cell) == staff.id:
 				frame.facing_direction = _item_center(held) - start
-	frame.clip = PersonPresentation.clip_for_state(frame.moving, frame.seated, frame.carrying, frame.working,
-		frame.bending)
+	frame.clip = PersonPresentation.clip_for_role(agent.role, PersonPresentation.clip_for_state(
+		frame.moving, frame.seated, frame.carrying, frame.working, frame.bending))
 	return frame
 
 

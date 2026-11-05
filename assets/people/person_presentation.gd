@@ -34,6 +34,14 @@ const ONE_SHOT_CLIPS: Array[StringName] = [&"pick-up"]
 ## `holding-both` and the `pick-up` bend's start differ by 0.2 m).
 const CARRY_BLEND_CLIPS: Array[StringName] = [&"pick-up", &"holding-both", CARRY_WALK]
 const CARRY_BLEND_SECONDS: float = 0.12
+## The inspector's own arms (#302): bent forward, hands to the sides of the
+## clipboard held at the chest, over `walk` legs (CLIPBOARD_WALK) or `idle`
+## (CLIPBOARD_HOLD). Built in PersonView from the kit's own clips.
+const CLIPBOARD_WALK: StringName = &"clipboard-walk"
+const CLIPBOARD_HOLD: StringName = &"clipboard-hold"
+## How far each rigid arm swings forward from the shoulder line, and drops.
+const CLIPBOARD_ARM_YAW_DEGREES: float = 72.0
+const CLIPBOARD_ARM_DROP_DEGREES: float = 35.0
 # Rest-pose head mesh maxima read from the vendored GLB POSITION accessors.
 # These are source measurements, before the single shared character scale.
 const HEAD_TOPS: Dictionary[StringName, float] = {
@@ -113,6 +121,18 @@ static func uniform_recolors(role: StringName) -> Array[Dictionary]:
 ## The inspector holds a clipboard (#302), drawn in the hands of the held pose.
 static func has_clipboard(role: StringName) -> bool:
 	return role == &"inspector"
+
+
+## The clip a role actually plays for the generic `clip`: the inspector holds
+## the clipboard instead of carrying; everyone else plays it unchanged.
+static func clip_for_role(role: StringName, clip: StringName) -> StringName:
+	if not has_clipboard(role):
+		return clip
+	if clip == CARRY_WALK:
+		return CLIPBOARD_WALK
+	if clip == &"holding-both":
+		return CLIPBOARD_HOLD
+	return clip
 
 
 static func source_head_top(model: StringName) -> float:
