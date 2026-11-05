@@ -67,7 +67,7 @@ func advance(sim: RestaurantSim) -> void:
 				if index < count:
 					randoms.append(customer_rng)
 			if count == 1:
-				sim.add_visitor(entry, randoms[0], kind, visit)
+				sim.try_disguise_critic(sim.add_visitor(entry, randoms[0], kind, visit))
 			elif count > 1:
 				sim.add_party(entry, randoms, kind, visit)
 			arrived = count

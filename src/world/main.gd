@@ -28,6 +28,7 @@ const DAY_LIGHT: DayLightTuning = preload("res://data/look/day_light.tres")
 const CURB_APPEAL_TUNING: CurbAppealTuning = preload("res://data/balance/curb_appeal.tres")
 const REVIEW_TUNING: ReviewTuning = preload("res://data/balance/reviews.tres")
 const REVIEW_QUOTES: ReviewQuotes = preload("res://data/reviews/quotes.tres")
+const CRITIC: CriticTuning = preload("res://data/balance/critic.tres")
 const PROGRESSION_TUNING: ProgressionTuning = preload("res://data/balance/progression.tres")
 const VIBE_TUNING: VibeTuning = preload("res://data/balance/vibe.tres")
 const CUSTOMER_TYPES: CustomerTypeCatalogue = preload("res://data/customers/types.tres")
@@ -144,6 +145,8 @@ var _loaded_business_history: BusinessHistory = null
 var _loaded_cat: Dictionary = {}
 ## The saved health inspection section (grade, day, plan), staged likewise.
 var _loaded_inspection: Dictionary = {}
+## The saved food-critic section (#303: cooldown and today's plan), staged the same way.
+var _loaded_critic: Dictionary = {}
 var _demand_breakdown: DemandBreakdown = null
 var _demand_day: int = 0
 var _demand_reputation: float = 3.0
@@ -548,6 +551,7 @@ func start() -> void:
 	SaveSystem.register("business_history", _capture_business_history, _restore_business_history)
 	SaveSystem.register("cat", _capture_cat, _restore_cat)
 	SaveSystem.register("inspection", _capture_inspection, _restore_inspection)
+	SaveSystem.register("critic", _capture_critic, _restore_critic)
 	var loaded: bool = use_saves and _load_autosave()
 	_rooms_note = loaded and _loaded_layout != null and _loaded_layout.rooms_unmarked
 	$HUD.set_rooms_note(ROOMS_NOTE if _rooms_note else "")
@@ -577,6 +581,10 @@ func start() -> void:
 	sim.configure_demand(demand_tuning)
 	sim.regulars = regulars
 	sim.regular_rng_provider = GameState.rng.bind(&"regulars")
+	# The critic's named stream is created only when one can first appear (the
+	# provider is called then), so shops below that level keep their exact streams.
+	sim.critic.tuning = CRITIC
+	sim.critic_rng_provider = GameState.rng.bind(&"critic")
 	for recipe: RecipeDef in content.recipes():
 		sim.regular_recipe_labels[recipe.id] = recipe.display_name
 	# Configure only after the complete restore/new-game decision, using its
@@ -2186,6 +2194,7 @@ func build_report(day: int) -> DayReport:
 	report.staff_activity = sim.staff_activity.snapshot()
 	report.restaurant_name = menu_settings.restaurant_name() if menu_settings != null else MenuSettings.DEFAULT_NAME
 	report.regulars_lines = RegularText.report_lines(regulars)
+	report.critic_lines = FoodCritic.report_lines(sim.critic_result)
 	report.loan_first_advance = _loan_notice_day == day
 	var totals: Dictionary = Economy.ledger.day_totals(day)
 	for category: StringName in totals:
@@ -2265,6 +2274,7 @@ func _new_game() -> void:
 	_base_layout = LAYOUT
 	_loaded_cat = {}
 	_loaded_inspection = {}
+	_loaded_critic = {}
 	business_history = BusinessHistory.new()
 	_loaded_business_history = null
 	curb_appeal_score = 0.0
@@ -2352,6 +2362,7 @@ func _load_autosave_sections() -> bool:
 	_loaded_demand = null
 	_loaded_cat = {}
 	_loaded_inspection = {}
+	_loaded_critic = {}
 	_loaded_regulars = null
 	_loaded_blueprints = null
 	_blueprint_load_notes.clear()
@@ -2435,6 +2446,9 @@ func _load_autosave_sections() -> bool:
 	if not _loaded_inspection.is_empty():
 		sim.inspection.from_dict(_loaded_inspection)
 	_loaded_inspection = {}
+	if not _loaded_critic.is_empty():
+		candidate.critic.from_dict(_loaded_critic)
+	_loaded_critic = {}
 	_loaded_layout = layout
 	staff_roster = employees
 	reputation = _loaded_reputation if _loaded_reputation != null else ReputationBook.new()
@@ -2699,6 +2713,18 @@ func _restore_inspection(data: Dictionary) -> bool:
 	if not InspectionBook.new().from_dict(data):
 		return false
 	_loaded_inspection = data.duplicate(true)
+	return true
+
+
+func _capture_critic() -> Dictionary:
+	return sim.critic.to_dict()
+
+
+## Validate now, install with the rest of the load once the new session exists.
+func _restore_critic(data: Dictionary) -> bool:
+	if not FoodCritic.new(CRITIC).from_dict(data):
+		return false
+	_loaded_critic = data.duplicate(true)
 	return true
 
 

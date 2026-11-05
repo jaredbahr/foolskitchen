@@ -1605,6 +1605,7 @@ func _sync_agents() -> void:
 		tray.visible = frame.show_tray and (ready_person or not frame.look_supported)
 		tray.position = frame.tray_anchor if ready_person else Vector3(0.0, 0.02, -0.48)
 		_show_held_crates(node, frame, ready_person)
+		_show_notebook(node, frame, ready_person)
 		_apply_fade(node, frame.fade)
 		_update_guest_mood(agent, node, frame)
 		_update_regular(agent, node, frame)
@@ -1707,6 +1708,38 @@ func _show_held_crates(node: Node3D, frame: AgentPresentationController.Frame, r
 	elif was_visible and not frame.bending and target.y < held.position.y:
 		target.y = maxf(target.y, held.position.y - CRATE_LOWER_SPEED * get_process_delta_time())
 	held.position = target
+
+
+## A small notebook held out in front of a disguised critic (#303): a red
+## cover, cream pages and a stub of pencil, built from flat boxes like the
+## tray. Made on first use, so ordinary guests never instance it.
+func _show_notebook(node: Node3D, frame: AgentPresentationController.Frame, ready_person: bool) -> void:
+	# Ordinary guests never look anything up: only a holder, or someone who
+	# held one before (flagged on the node), touches the tree.
+	if not frame.holds_notebook and not node.has_meta(&"had_notebook"):
+		return
+	var book: Node3D = node.get_node_or_null("Notebook") as Node3D
+	if not frame.holds_notebook:
+		if book != null:
+			book.visible = false
+		return
+	if book == null:
+		node.set_meta(&"had_notebook", true)
+		book = Node3D.new()
+		book.name = "Notebook"
+		var cover: MeshInstance3D = _box(Vector3(0.26, 0.035, 0.36), Color("9b3a3a"))
+		var pages: MeshInstance3D = _box(Vector3(0.22, 0.035, 0.32), Color("f1e6c8"))
+		pages.position = Vector3(0.0, 0.025, 0.0)
+		var pencil: MeshInstance3D = _box(Vector3(0.03, 0.03, 0.28), Color("e0b030"))
+		pencil.position = Vector3(0.1, 0.06, 0.0)
+		for part: MeshInstance3D in [cover, pages, pencil]:
+			part.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			book.add_child(part)
+		node.add_child(book)
+	book.visible = true
+	var anchor: Vector3 = frame.tray_anchor if ready_person else Vector3(0.0, 0.35, -0.3)
+	book.position = anchor + Vector3(0.0, 0.1, -0.16)
+	book.rotation_degrees = Vector3(-35.0, 0.0, 0.0)
 
 
 ## Fades a person (and what they hold) in or out: each surface gets a
