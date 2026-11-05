@@ -86,7 +86,6 @@ func advance() -> void:
 	_ensure_wash_task()
 
 
-## Dirty tables cannot accept new guests until a real bussing task finishes.
 ## A takeaway pastry (#293) is handed over in a bag: it never takes a plate, so
 ## none has to come back. Called right after the order is placed.
 func bypass_plate(order: Order) -> void:
@@ -94,6 +93,7 @@ func bypass_plate(order: Order) -> void:
 		_plate_bypassed_orders[order.id] = true
 
 
+## Dirty tables cannot accept new guests until a real bussing task finishes.
 func is_table_dirty(table_item_id: int) -> bool:
 	return dirty_tables.has(table_item_id)
 

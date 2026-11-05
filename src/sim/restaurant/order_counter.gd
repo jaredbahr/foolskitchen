@@ -78,6 +78,20 @@ static func standable(world: SimWorld, cell: Vector2i) -> bool:
 ## first) when it ends, a guest every `spacing` cells. It stops at a dead end or
 ## a cell that cannot hold a guest; guests beyond it use the door-side wait.
 static func line_cells(world: SimWorld, item: PlacedItem, spacing: int = LINE_SPACING) -> Array[Vector2i]:
+	# Cached per layout: every queued guest asks every tick.
+	var key: String = "%d:%d:%d" % [world.grid.version, item.id, spacing]
+	var cache: Dictionary = world.grid.get_meta(&"order_counter_lines", {})
+	if cache.get(&"key_prefix", "") != str(world.grid.version):
+		cache = {&"key_prefix": str(world.grid.version)}
+	if cache.has(key):
+		return (cache[key] as Array[Vector2i]).duplicate()
+	var computed: Array[Vector2i] = _compute_line(world, item, spacing)
+	cache[key] = computed
+	world.grid.set_meta(&"order_counter_lines", cache)
+	return computed.duplicate()
+
+
+static func _compute_line(world: SimWorld, item: PlacedItem, spacing: int) -> Array[Vector2i]:
 	var cells: Array[Vector2i] = []
 	var front: Vector2i = order_cell(item)
 	var away: Vector2i = outward(item, front)
@@ -97,7 +111,28 @@ static func line_cells(world: SimWorld, item: PlacedItem, spacing: int = LINE_SP
 		cursor = next
 	for index: int in range(0, path.size(), spacing):
 		cells.append(path[index])
+	# A queue must never wall off a one-cell aisle to a seat, a work cell or the pass.
+	while not cells.is_empty() and _cuts_off(world, cells):
+		cells.pop_back()
 	return cells
+
+
+## True when standing guests on `cells` would leave some seat or work cell that
+## the street can reach today unreachable.
+static func _cuts_off(world: SimWorld, cells: Array[Vector2i]) -> bool:
+	var blocked: Dictionary[Vector2i, bool] = {}
+	for cell: Vector2i in cells:
+		blocked[cell] = true
+	for entry: Vector2i in world.grid.entries():
+		var open: Dictionary[Vector2i, bool] = world.grid.reachable_avoiding(entry, {})
+		if open.is_empty():
+			continue
+		var after: Dictionary[Vector2i, bool] = world.grid.reachable_avoiding(entry, blocked)
+		for item: PlacedItem in world.grid.items():
+			for target: Vector2i in item.seat_cells + item.work_cells:
+				if open.has(target) and not after.has(target) and not blocked.has(target):
+					return true
+	return false
 
 
 ## The cells the queue stands on right now: spaced out while it is short, packed
@@ -123,6 +158,22 @@ static func _turn(world: SimWorld, cursor: Vector2i, heading: Vector2i, used: Ar
 			best_distance = distance
 			best = side
 	return best
+
+
+## The counter the queue forms behind: the first usable one (a clear staff side,
+## the order cell walkable), cached for the tick. Null when none.
+static func line_counter(sim: RestaurantSim) -> PlacedItem:
+	var cached: Array = sim.world.get_meta(&"order_counter_first", [])
+	if cached.size() == 2 and cached[0] == sim.world.now and cached[1] is PlacedItem \
+			and not (cached[1] as PlacedItem).removed:
+		return cached[1] as PlacedItem
+	var found: PlacedItem = null
+	for item: PlacedItem in counters(sim.world.grid):
+		if usable(sim, item, SimGrid.NO_CELL):
+			found = item
+			break
+	sim.world.set_meta(&"order_counter_first", [sim.world.now, found])
+	return found
 
 
 ## A counter guests can use now: a server can stand behind its order cell and

@@ -134,8 +134,13 @@ static func frame_for(agent: SimAgent, world: SimWorld, chair_seat_height: float
 			# Standing in the order counter's line or at its cells (#293): face it.
 			var facing_item: PlacedItem = world.grid.item(customer.counter_item_id)
 			if facing_item == null:
-				var counters: Array[PlacedItem] = OrderCounter.counters(world.grid)
-				facing_item = counters[0] if not counters.is_empty() else null
+				# Still in line: turn to the nearest counter (the one the queue forms behind).
+				var best: float = INF
+				for counter: PlacedItem in OrderCounter.counters(world.grid):
+					var distance: float = GridMath.octile(customer.cell, OrderCounter.order_cell(counter))
+					if distance < best:
+						best = distance
+						facing_item = counter
 			if facing_item != null:
 				frame.facing_direction = _item_center(facing_item) - start
 	if agent is CourierAgent:

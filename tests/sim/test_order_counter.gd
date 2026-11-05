@@ -77,6 +77,54 @@ func test_a_counter_with_no_clear_staff_side_is_not_used() -> void:
 	assert_eq(guests[0].state, CustomerAgent.State.WALKING_TO_SEAT)
 
 
+func test_the_queue_forms_behind_the_first_usable_counter() -> void:
+	# The first counter has a wall behind it (no staff side); the second works.
+	_build(true, Vector2i(13, 5), Vector2i(9, 8))
+	var counters: Array[PlacedItem] = OrderCounter.counters(_sim.world.grid)
+	assert_eq(counters.size(), 2)
+	assert_eq(OrderCounter.line_counter(_sim), counters[1])
+	var guest: CustomerAgent = _guest(_seed_with_draw(true, 1000), 0)
+	_run_until_gone()
+	assert_true(guest.counter_visit)
+	assert_eq(guest.counter_item_id, counters[1].id, "ordered at the counter that can be served")
+	assert_true(guest.paid)
+
+
+func test_a_busy_pickup_does_not_stall_the_line() -> void:
+	_build(true)
+	var counter: PlacedItem = OrderCounter.counters(_sim.world.grid)[0]
+	# Another guest holds the only pickup cell for the whole test.
+	counter.reserve(PICKUP_CELL, 777777)
+	var first: CustomerAgent = _guest(_seed_with_draw(true, 1100), 0)
+	var second: CustomerAgent = _guest(_seed_with_draw(true, 1200), 0)
+	var third: CustomerAgent = _guest(_seed_with_draw(false, 1300), 0)
+	var guests: Array[CustomerAgent] = [first, second, third]
+	var ordered_by: Dictionary[int, int] = {}
+	for tick: int in range(MAX_TICKS):
+		_advance()
+		for guest: CustomerAgent in guests:
+			if guest.order != null and not ordered_by.has(guest.id):
+				ordered_by[guest.id] = tick
+		if ordered_by.size() == 3 and _paid.size() == 3:
+			break
+	for guest: CustomerAgent in guests:
+		assert_true(guest.paid, "nobody is left waiting behind a blocked pickup")
+		assert_eq(guest.leave_reason, &"happy")
+	assert_true(ordered_by[third.id] < 900, "the table guest at the back ordered promptly")
+
+
+func test_a_packed_queue_never_cuts_off_a_seat_or_work_cell() -> void:
+	_build(true)
+	var counter: PlacedItem = OrderCounter.counters(_sim.world.grid)[0]
+	var cells: Array[Vector2i] = OrderCounter.line_cells(_sim.world, counter, 1)
+	assert_false(OrderCounter._cuts_off(_sim.world, cells))
+	# Wall in a one-cell aisle: a line through it would be trimmed.
+	var corridor: Array[Vector2i] = []
+	for y: int in range(1, 12):
+		corridor.append(Vector2i(5, y))
+	assert_true(OrderCounter._cuts_off(_sim.world, corridor), "a full-height column does cut the room")
+
+
 # --- The visit ------------------------------------------------------------
 
 func test_counter_visits_never_create_a_table_order_task() -> void:
@@ -339,7 +387,7 @@ func _note_times(guests: Array[CustomerAgent], ticks: Dictionary[int, Dictionary
 			row["gone"] = _sim.world.now
 
 
-func _build(counter: bool, counter_origin: Vector2i = Vector2i(13, 7)) -> RestaurantSim:
+func _build(counter: bool, counter_origin: Vector2i = Vector2i(13, 7), second_origin: Vector2i = SimGrid.NO_CELL) -> RestaurantSim:
 	var layout: ShopLayout = LAYOUT.duplicate(true) as ShopLayout
 	var kept: Array[ShopPlacement] = []
 	for placed: ShopPlacement in layout.placements:
@@ -350,6 +398,8 @@ func _build(counter: bool, counter_origin: Vector2i = Vector2i(13, 7)) -> Restau
 	var extra: Array = [[&"coffee_machine", Vector2i(9, 5), 2], [&"coffee_machine", Vector2i(10, 5), 2]]
 	if counter:
 		extra.append([&"order_counter", counter_origin, 0])
+		if second_origin != SimGrid.NO_CELL:
+			extra.append([&"order_counter", second_origin, 0])
 	for row: Array in extra:
 		var placement: ShopPlacement = ShopPlacement.new()
 		placement.item_id = row[0]

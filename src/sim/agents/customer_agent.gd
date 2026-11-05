@@ -639,6 +639,13 @@ func _join_counter(world: SimWorld, sim: RestaurantSim) -> bool:
 
 ## Guests still lining up, front of the queue first (arrival order, then id).
 func _counter_line(world: SimWorld) -> Array[CustomerAgent]:
+	# Built once a tick; rebuilt if this guest joined after it was.
+	var cached: Array = world.get_meta(&"order_counter_line", [])
+	if cached.size() == 2 and cached[0] == world.now:
+		var shared: Array[CustomerAgent] = []
+		shared.assign(cached[1])
+		if shared.has(self):
+			return shared
 	var line: Array[CustomerAgent] = []
 	for agent: SimAgent in world.agents:
 		var guest: CustomerAgent = agent as CustomerAgent
@@ -646,6 +653,7 @@ func _counter_line(world: SimWorld) -> Array[CustomerAgent]:
 			line.append(guest)
 	line.sort_custom(func(a: CustomerAgent, b: CustomerAgent) -> bool:
 		return a.counter_join_tick < b.counter_join_tick or a.counter_join_tick == b.counter_join_tick and a.id < b.id)
+	world.set_meta(&"order_counter_line", [world.now, line])
 	return line
 
 
@@ -653,9 +661,9 @@ func _counter_line(world: SimWorld) -> Array[CustomerAgent]:
 ## cell (and the table or pickup spot they will go to next); everyone else walks
 ## to the cell behind the guest ahead, or waits beside the door when the line is full.
 func _counter_step(world: SimWorld, sim: RestaurantSim, allow_movement: bool) -> void:
-	var counters: Array[PlacedItem] = OrderCounter.counters(world.grid)
-	if counters.is_empty():
-		# The counter is gone: queue for a table like any guest.
+	var queue_counter: PlacedItem = OrderCounter.line_counter(sim)
+	if queue_counter == null:
+		# No counter can be used (gone, or its staff side is cut off): queue for a table.
 		counter_visit = false
 		return
 	var line: Array[CustomerAgent] = _counter_line(world)
@@ -671,7 +679,7 @@ func _counter_step(world: SimWorld, sim: RestaurantSim, allow_movement: bool) ->
 			return
 	if not allow_movement:
 		return
-	var slots: Array[Vector2i] = OrderCounter.queue_cells(world, counters[0], line.size())
+	var slots: Array[Vector2i] = OrderCounter.queue_cells(world, queue_counter, line.size())
 	var spot: Vector2i = slots[rank] if rank >= 0 and rank < slots.size() else SimGrid.NO_CELL
 	if spot != SimGrid.NO_CELL and (cell == spot or _line_move(world, spot)):
 		return
@@ -704,17 +712,13 @@ func _claim_counter(world: SimWorld, sim: RestaurantSim, counters: Array[PlacedI
 				table_item_id = item.id
 				booked_table_ids.clear()
 				seat_cell = pickup
-			elif not OrderCounter.pickup_cells(item).is_empty() \
-					and OrderCounter.free_pickup(sim, item, self, true) != SimGrid.NO_CELL:
-				# The pickup spot is in use: wait in line for it.
-				item.release(front, id)
-				continue
 			else:
-				# No pickup spot at all: collect the drink where they order.
+				# The pickup spot is in use (or there is none): collect the drink where
+				# they order rather than hold the line waiting for the pickup cell.
 				table_item_id = item.id
 				booked_table_ids.clear()
 				seat_cell = front
-			takeaway = true
+			takeaway = not booked
 		if not set_destination(world.grid, front):
 			_release_seat(world, false)
 			table_item_id = 0
@@ -936,7 +940,8 @@ func _post_order_task(world: SimWorld, sim: RestaurantSim) -> void:
 			_ordering_block_logged = true
 		return
 	_task = SimTask.new(&"take_order", &"server", "Take guest #%d's order" % id)
-	# A till order outranks serving, so the line keeps moving (#293); table orders keep 2.
+	# A till order ties with pouring and delivering at 3 (urgency, #310, breaks the
+	# tie), so the line keeps moving (#293); table orders keep 2.
 	_task.priority = 3 if at_counter else 2
 	_task.payload["customer_id"] = id
 	var approach: TaskStep = TaskStep.go_to_cell(target, "walking to guest")

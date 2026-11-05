@@ -2163,7 +2163,8 @@ invalidate the appropriate cached geometry. HUD/Menu presentation is read-only.
   line (`counter_stage` LINE; rank by join tick then id picks the line cell, the
   front guest claims a free order cell) -> `WALKING_TO_SEAT` to the order cell
   (TO_COUNTER) -> `ORDERING` there (AT_COUNTER; a priority-3, 15-tick
-  `take_order` task (a table order is priority 2 and 30 ticks) whose approach
+  `take_order` task (ties with pour/deliver at 3, urgency (#310) breaks the tie;
+  a table order is priority 2 and 30 ticks) whose approach
   step is the staff cell, so there is no table order task) ->
   on the order, the guest heads for what was booked at the counter (TO_DEST):
   a free table, nearest first, or, when `takeaway_wanted` or no table is free,
