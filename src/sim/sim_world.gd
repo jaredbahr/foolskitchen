@@ -217,6 +217,12 @@ func bind_kitchen(kitchen: Kitchen) -> void:
 	_kitchen = weakref(kitchen)
 
 
+## Guest behind a ticket, or 0 when the ticket or kitchen is gone (#307).
+func order_customer_id(order_id: int) -> int:
+	var kitchen: Kitchen = _kitchen.get_ref() as Kitchen if _kitchen != null else null
+	return 0 if kitchen == null else kitchen.order_customer_id(order_id)
+
+
 func carries_prepared_drink(staff: StaffAgent) -> bool:
 	var kitchen: Kitchen = _kitchen.get_ref() as Kitchen if _kitchen != null else null
 	return kitchen != null and kitchen.carries_prepared_drink(staff)

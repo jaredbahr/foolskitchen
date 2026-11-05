@@ -371,6 +371,10 @@ func _show_guest(guest: CustomerAgent) -> void:
 			_details.text += "\nServed quality: " + order.quality_breakdown.explanation()
 	if guest.party != null and guest.party.size() > 1:
 		_details.text += "\n%s" % guest.party.label()
+	if _world != null:
+		var coming: String = GuestUrgency.staff_line(_world, guest)
+		if not coming.is_empty():
+			_details.text += "\n" + coming
 	_details.show()
 	match guest.state:
 		CustomerAgent.State.ARRIVING, CustomerAgent.State.QUEUED:

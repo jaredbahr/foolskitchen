@@ -15,6 +15,10 @@ const MAX_TICK_BATCHES: int = 30
 const TICKS_PER_BATCH: int = 1000
 
 var _mains: Array[Node] = []
+## Guest urgency (#307) deliberately changes default picks, so this equivalence
+## check runs with its blend off. It proves the job-priority tiers add nothing
+## of their own; test_guest_urgency covers the urgency blend itself.
+var _urgency_backup: Array[float] = []
 
 
 class TaskTrace:
@@ -52,6 +56,7 @@ class TaskTrace:
 
 
 func after_each() -> void:
+	_restore_urgency()
 	for main: Node in _mains.duplicate():
 		_close(main)
 	Clock.set_speed(0)
@@ -87,6 +92,11 @@ func _check_seed(seed_value: int) -> void:
 
 
 func _run_case(seed_value: int, frozen: bool) -> Dictionary:
+	if _urgency_backup.is_empty():
+		var tuning: GuestUrgencyTuning = StaffAgent.GUEST_URGENCY
+		_urgency_backup = [tuning.guest_weight, tuning.table_weight]
+		tuning.guest_weight = 0.0
+		tuning.table_weight = 0.0
 	var main: Node = MainScene.instantiate()
 	main.set("use_saves", false)
 	main.set("new_game_seed_override", seed_value)
@@ -148,6 +158,15 @@ func _run_case(seed_value: int, frozen: bool) -> Dictionary:
 	if not error.is_empty():
 		return {"error": error}
 	return {"days": daily, "tasks": trace.rows, "served": served}
+
+
+func _restore_urgency() -> void:
+	if _urgency_backup.is_empty():
+		return
+	var tuning: GuestUrgencyTuning = StaffAgent.GUEST_URGENCY
+	tuning.guest_weight = _urgency_backup[0]
+	tuning.table_weight = _urgency_backup[1]
+	_urgency_backup.clear()
 
 
 ## Replace only idle starting employees, preserving the production world,
