@@ -296,6 +296,10 @@ func _before(world: SimWorld, first: SimAgent, second: SimAgent) -> bool:
 	return a > b or (a == b and first.id < second.id)
 
 
+func _holds_way(world: SimWorld, agent: SimAgent) -> bool:
+	return int(_right_of_way.get(agent.id, -1)) >= world.now and agent.move_progress == 0.0
+
+
 func can_enter(world: SimWorld, agent: SimAgent, cell: Vector2i) -> bool:
 	return _legal_cell(world, agent, cell) and _occupied.get(cell, agent.id) == agent.id \
 		and _next.get(cell, agent.id) == agent.id and _swept.get(cell, agent.id) == agent.id
@@ -418,7 +422,9 @@ func try_step(world: SimWorld, agent: SimAgent, next: Vector2i) -> bool:
 			if other == agent or other.has_arrived() or other.move_progress > 0.0:
 				continue
 			if other.next_cell() == next and _before(world, other, agent) \
-					and _edge_feasible(world, other, next):
+					and (_edge_feasible(world, other, next) or _holds_way(world, other)):
+				# A stuck person given right of way (#306) keeps the cell it is
+				# waiting for: nobody else may slip in as soon as it empties.
 				legal = false
 				break
 	if not legal:
@@ -907,8 +913,7 @@ func _watch_liveness(world: SimWorld) -> void:
 		_right_of_way.clear()
 		return
 	var tuning: MovementTuning = world.movement_tuning
-	var chosen: SimAgent = null
-	var chosen_stall: int = -1
+	var due: Array[Array] = []
 	for agent: SimAgent in world.agents:
 		if (agent.has_arrived() and not _resume.has(agent.id)) or _squeezes.has(agent.id) \
 				or not agent.movement_admitted:
@@ -931,19 +936,25 @@ func _watch_liveness(world: SimWorld) -> void:
 			continue
 		if world.now < int(row["next"]):
 			continue
-		var stalled: int = world.now - int(row["since"])
-		if stalled > chosen_stall:
-			chosen = agent
-			chosen_stall = stalled
+		due.append([world.now - int(row["since"]), agent])
 	for id: int in _right_of_way.keys():
 		if _right_of_way[id] < world.now:
 			_right_of_way.erase(id)
-	if chosen == null:
-		return
-	# Someone mid-step is checked again next tick, so a shuffle cannot dodge it.
-	var acted: bool = _escape(world, chosen, chosen_stall)
-	if _stall.has(chosen.id):
-		_stall[chosen.id]["next"] = world.now + (tuning.escape_retry_ticks if acted else 1)
+	# Total order: longest stall first, then lowest ID. One escape per tick;
+	# someone mid-step is skipped (and checked again next tick) so a person
+	# who keeps shuffling can never starve a stuck one of its turn.
+	due.sort_custom(_stalled_before)
+	for entry: Array in due:
+		var agent: SimAgent = entry[1]
+		var acted: bool = _escape(world, agent, int(entry[0]))
+		if _stall.has(agent.id):
+			_stall[agent.id]["next"] = world.now + (tuning.escape_retry_ticks if acted else 1)
+		if acted:
+			return
+
+
+func _stalled_before(a: Array, b: Array) -> bool:
+	return int(a[0]) > int(b[0]) or (int(a[0]) == int(b[0]) and (a[1] as SimAgent).id < (b[1] as SimAgent).id)
 
 
 ## Where this person is actually headed: a sidestep's return goal, not its pocket.
@@ -992,10 +1003,13 @@ func _escape(world: SimWorld, stuck: SimAgent, stalled: int) -> bool:
 	var avoid: Dictionary[Vector2i, bool] = {stuck.cell: true}
 	for cell: Vector2i in route_cells:
 		avoid[cell] = true
+	var cleared: bool = false
 	for blocker: SimAgent in blockers:
 		if not _clearable(world, blocker, stuck) \
-				or (stalled < tuning.squeeze_after_ticks and _busy_worker(blocker)) \
-				or _clear_to_pocket(world, blocker, stuck, avoid) or _push_through(world, blocker, stuck, avoid):
+				or (stalled < tuning.squeeze_after_ticks and _busy_worker(blocker)):
+			continue
+		if _clear_to_pocket(world, blocker, stuck, avoid) or _push_through(world, blocker, stuck, avoid):
+			cleared = true
 			continue
 		# Boxed in: open space around the blocker; a later retry uses it.
 		var around: Dictionary[Vector2i, bool] = avoid.duplicate()
@@ -1004,7 +1018,12 @@ func _escape(world: SimWorld, stuck: SimAgent, stalled: int) -> bool:
 			var other: SimAgent = _holder(world, cell)
 			if other != null and not blockers.has(other) and _clearable(world, other, stuck) \
 					and not _busy_worker(other):
-				_clear_to_pocket(world, other, stuck, around)
+				cleared = _clear_to_pocket(world, other, stuck, around) or cleared
+	if not cleared and stalled < tuning.squeeze_after_ticks:
+		# Nobody in the way can go anywhere (a leaving guest meeting an
+		# arrival in the doorway, with only the street behind it): waiting
+		# for the longer limit cannot help, so squeeze now if allowed.
+		_try_squeeze(world, stuck, route_cells, blockers)
 	return true
 
 
