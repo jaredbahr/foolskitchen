@@ -296,6 +296,13 @@ func _before(world: SimWorld, first: SimAgent, second: SimAgent) -> bool:
 	return a > b or (a == b and first.id < second.id)
 
 
+func _crosses(a: Array[Vector2i], b: Array[Vector2i]) -> bool:
+	for cell: Vector2i in a:
+		if b.has(cell):
+			return true
+	return false
+
+
 func _holds_way(world: SimWorld, agent: SimAgent) -> bool:
 	return int(_right_of_way.get(agent.id, -1)) >= world.now and agent.move_progress == 0.0
 
@@ -422,9 +429,16 @@ func try_step(world: SimWorld, agent: SimAgent, next: Vector2i) -> bool:
 			if other == agent or other.has_arrived() or other.move_progress > 0.0:
 				continue
 			if other.next_cell() == next and _before(world, other, agent) \
-					and (_edge_feasible(world, other, next) or _holds_way(world, other)):
-				# A stuck person given right of way (#306) keeps the cell it is
-				# waiting for: nobody else may slip in as soon as it empties.
+					and _edge_feasible(world, other, next):
+				legal = false
+				break
+			var held: Array[Vector2i] = _step_cells(other.cell, other.next_cell())
+			if _holds_way(world, other) and _before(world, other, agent) and not held.has(agent.cell) \
+					and _crosses(_step_cells(agent.cell, next), held):
+				# A stuck person given right of way (#306) keeps the cells of the
+				# step it is waiting for, corners included: nobody else may slip
+				# in as soon as one empties. Whoever stands in them may still
+				# move about to clear them.
 				legal = false
 				break
 	if not legal:
