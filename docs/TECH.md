@@ -2209,6 +2209,15 @@ invalidate the appropriate cached geometry. HUD/Menu presentation is read-only.
 - **Art.** `tools/build_cat.py` (Blender) makes `assets/made/cat/cat.glb`; see `assets/made/README.md`.
 - Coverage: `tests/sim/test_restaurant_cat.gd`, `tests/world/test_cat_session.gd`.
 
+### The disguised food critic (#303)
+- Data: `data/balance/critic.tres` (`CriticTuning`): unlock level 2, cooldown 5 days, daily chance 0.2, review weight 5, 2 tells, linger x1.2, quality weight, arrival windows (permille of the open hours). Six quotes (3 `critic_good`, 3 `critic_bad`) are in `data/reviews/quotes.tres`.
+- `FoodCritic` (`src/sim/critics/food_critic.gd`) rolls the day once in `RestaurantSim.start_day()` (the morning), from the named stream `GameState.rng(&"critic")`, passed as the lazy provider `critic_rng_provider`. The provider is called only when a critic can appear (level reached and out of cooldown), so shops that cannot have one never create the stream and keep their exact saved streams. Four tells exist: a notebook prop, the dearest dish, an odd hour (very early or very late arrival), lingering. Two are drawn.
+- The critic is an ordinary solo arrival once their hour has come: `CustomerSpawner` makes the arrival with exactly the draws it always made, then `RestaurantSim.try_disguise_critic()` adds the disguise (`CustomerAgent.disguise_as_critic`). Named regulars and parties are skipped; the next lone guest takes the role.
+- The review is `ReputationBook.record_critic()`: it scores the visit with the usual `score_visit` (so wait, food quality, vibe and cleanliness all count; the critic's quality weight is higher), appends the stars `review_weight` times, and picks a `critic_good` / `critic_bad` quote from the critic's own stream. It is not in `reviews_today` (no ordinary card, no five-star XP); `RestaurantSim.critic_result` feeds `DayReport.critic_lines` ("A food critic visited today", verdict, quote).
+- The Inspect panel lists the tells in plain words (`FoodCritic.tell_lines`) and never the word "critic". The notebook is a small box prop in `ShopView` (`Frame.holds_notebook`).
+- Saving: the `critic` section holds the last visit day and today's plan (rolled once per day, so a reload neither redraws nor forgets the cooldown). Absent in old saves.
+- Review capture: `tools/critic_review.tscn` (`food-critic` in `visual-review.yml`).
+
 ### 2.3i Stock panel, auto-reorder and sold-out dishes (FK-033, #54)
 - **Served-food accounting (FK-121, #255).** Stock lots retain their actual
   remaining purchase cost, including the charged standing-order premium.

@@ -74,6 +74,26 @@ func record_visit(visit: ReviewVisit, tuning: ReviewTuning, quotes: ReviewQuotes
 		"before": before, "after": average()}
 
 
+## The disguised critic's review (#303): always written (no review-chance draw),
+## scored from the same causes as any guest, and counted `weight` times in the
+## window. The headline quote comes from the critic groups by verdict; the
+## stream is the critic's own. Returns the report row, or {} for a closing guest.
+func record_critic(visit: ReviewVisit, tuning: ReviewTuning, quotes: ReviewQuotes,
+		random: RandomNumberGenerator, critic: CriticTuning, vibe_tuning: VibeTuning = VIBE_TUNING) -> Dictionary:
+	if visit == null or visit.closing or tuning == null or not tuning.is_valid() \
+			or quotes == null or random == null or critic == null or not critic.is_valid():
+		return {}
+	var before: float = average()
+	var stars: int = score_visit(visit, tuning, vibe_tuning)
+	var cause: StringName = &"critic_good" if stars >= critic.good_stars else &"critic_bad"
+	var quote: String = quotes.pick(cause, random, _quotes_used_today)
+	for _count: int in critic.review_weight:
+		_scores.append(stars)
+	while _scores.size() > WINDOW:
+		_scores.pop_front()
+	return {"stars": stars, "cause": cause, "quote": quote, "before": before, "after": average()}
+
+
 ## Four penalties remain authored in reviews.tres. The optional raw ambience
 ## term is bounded by vibe.tres before rounding; it is not fractional-star storage.
 ## The final rating remains in the physical one-to-five-star range.

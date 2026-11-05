@@ -69,6 +69,12 @@ var regulars: RegularCast = null
 var regular_rng_provider: Callable
 var regular_recipe_labels: Dictionary[StringName, String] = {}
 var _regular_cohort_index: int = 0
+## The disguised food critic (#303). The session supplies the lazy named stream
+## (GameState.rng(&"critic")); with no provider no critic ever appears.
+var critic: FoodCritic = FoodCritic.new()
+var critic_rng_provider: Callable
+## Today's critic verdict (stars, cause, quote), or {} when none has reviewed.
+var critic_result: Dictionary = {}
 var served_today: int = 0
 var lost_today: int = 0
 ## Read-only OPEN-hour observations; only the detached report survives a day.
@@ -235,6 +241,8 @@ func start_day() -> void:
 	lost_today = 0
 	leave_reasons_today.clear()
 	reviews_today.clear()
+	critic_result = {}
+	critic.plan_day(world.clock.day, customer_level, critic_rng_provider)
 	sold_out_today.clear()
 	stock_outs_today.clear()
 	reputation_before_day = review_book.average()
@@ -703,6 +711,20 @@ func add_visitor(entry: Vector2i, random: RandomNumberGenerator, kind: CustomerT
 	return _install_customer(entry, random, kind, true, visit)
 
 
+## The day's critic takes the place of an ordinary solo arrival once their
+## hour has come (#303). The arrival itself is drawn exactly as before; only
+## the guest's disguise is added. A named regular's arrival is left alone.
+func try_disguise_critic(customer: CustomerAgent) -> bool:
+	if customer == null or customer.is_critic() or customer.regular_profile != null \
+			or world.clock.phase != SimClock.Phase.OPEN \
+			or not critic.due(world.clock.phase_tick, world.clock.open_ticks):
+		return false
+	if not customer.disguise_as_critic(critic.tells, critic.tuning):
+		return false
+	critic.mark_arrived()
+	return true
+
+
 ## Party installation defers publication until every member has a shared visit.
 func _install_customer(entry: Vector2i, random: RandomNumberGenerator,
 		kind: CustomerType = null, publish: bool = true, visit: StringName = RecipeDef.FOOD) -> CustomerAgent:
@@ -947,10 +969,26 @@ func record_departure(customer: CustomerAgent) -> void:
 		# A paid guest removed at the closing cutoff retains their happy report
 		# reason, but the forced departure must not sample a late review.
 		visit.closing = visit.closing or world.clock.phase == SimClock.Phase.CLOSED
-		var result: Dictionary = review_book.record_visit(visit, review_tuning, review_quotes, review_rng)
-		if not result.is_empty():
-			var row: Dictionary = {"stars": result["stars"], "quote": result["quote"],
-				"before": result["before"], "after": result["after"]}
-			reviews_today.append(row)
-			review_recorded.emit(row.duplicate())
+		if customer.is_critic():
+			_record_critic_review(visit)
+		else:
+			var result: Dictionary = review_book.record_visit(visit, review_tuning, review_quotes, review_rng)
+			if not result.is_empty():
+				var row: Dictionary = {"stars": result["stars"], "quote": result["quote"],
+					"before": result["before"], "after": result["after"]}
+				reviews_today.append(row)
+				review_recorded.emit(row.duplicate())
 	customer_left.emit(customer, reason)
+
+
+## The critic's review (#303): weighed in the book, kept apart from the day's
+## ordinary review cards and shown on the evening report.
+func _record_critic_review(visit: ReviewVisit) -> void:
+	var random: RandomNumberGenerator = critic_rng_provider.call() as RandomNumberGenerator \
+		if critic_rng_provider.is_valid() else review_rng
+	var result: Dictionary = review_book.record_critic(visit, review_tuning, review_quotes, random, critic.tuning)
+	if result.is_empty():
+		return
+	critic_result = result
+	review_recorded.emit({"stars": result["stars"], "quote": result["quote"],
+		"before": result["before"], "after": result["after"]})

@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="CriticTuning" format=3]
+
+[ext_resource type="Script" path="res://src/sim/critics/critic_tuning.gd" id="1_critic"]
+
+[resource]
+script = ExtResource("1_critic")
+unlock_level = 2
+cooldown_days = 5
+daily_chance = 0.2
+review_weight = 5
+tell_count = 2
+linger_multiplier = 1.2
+quality_weight = 6.0
+good_stars = 4
+bad_stars = 2
+normal_arrival_permille = Vector2i(250, 600)
+early_arrival_permille = Vector2i(0, 60)
+late_arrival_permille = Vector2i(800, 900)
