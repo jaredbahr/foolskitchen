@@ -29,6 +29,7 @@ func _days(critic: FoodCritic, level: int, provider: Callable, count: int) -> Ar
 	for day: int in range(1, count + 1):
 		critic.plan_day(day, level, provider)
 		if critic.pending:
+			critic.mark_arrived(day)
 			out.append({"day": day, "tells": critic.tells.duplicate(), "at": critic.arrival_permille})
 	return out
 
@@ -38,7 +39,8 @@ func test_data_is_valid_and_has_the_specified_defaults() -> void:
 	assert_eq(CRITIC.unlock_level, 2)
 	assert_eq(CRITIC.cooldown_days, 5)
 	assert_almost_eq(CRITIC.daily_chance, 0.2)
-	assert_eq(CRITIC.review_weight, 5)
+	assert_eq(CRITIC.review_weight, 3)
+	assert_true(CRITIC.late_arrival_permille.y <= 750, "the late critic still has a quarter of the day")
 	assert_eq(CRITIC.tell_count, 2)
 	assert_almost_eq(CRITIC.linger_multiplier, 1.2)
 
@@ -108,16 +110,22 @@ func test_the_cooldown_survives_save_and_load_mid_week() -> void:
 	var critic: FoodCritic = FoodCritic.new(_always())
 	critic.plan_day(1, 2, _provider(11))
 	assert_true(critic.pending)
+	assert_eq(critic.last_visit_day, 0, "the cooldown starts on arrival, not at the roll")
+	# A saved morning plan is kept and not redrawn.
+	var plan: Dictionary = JSON.parse_string(JSON.stringify(critic.to_dict())) as Dictionary
+	var kept: FoodCritic = FoodCritic.new(_always())
+	assert_true(kept.from_dict(plan))
+	assert_true(kept.pending)
+	assert_eq(kept.tells, critic.tells)
+	_draws = 0
+	kept.plan_day(1, 2, _provider(99))
+	assert_eq(_draws, 0)
+	# After they arrive, mid-week saves keep the five-day cooldown.
+	critic.mark_arrived(1)
 	var saved: Dictionary = JSON.parse_string(JSON.stringify(critic.to_dict())) as Dictionary
 	var restored: FoodCritic = FoodCritic.new(_always())
 	assert_true(restored.from_dict(saved))
 	assert_eq(restored.last_visit_day, 1)
-	assert_eq(restored.tells, critic.tells)
-	assert_eq(restored.arrival_permille, critic.arrival_permille)
-	assert_true(restored.pending, "today's plan is kept")
-	_draws = 0
-	restored.plan_day(1, 2, _provider(99))
-	assert_eq(_draws, 0)
 	for day: int in range(2, 6):
 		restored.plan_day(day, 2, _provider(99))
 		assert_false(restored.pending, "day %d is inside the cooldown" % day)
@@ -129,29 +137,56 @@ func test_the_cooldown_survives_save_and_load_mid_week() -> void:
 	assert_false(FoodCritic.new().from_dict(bad))
 
 
-func test_the_review_moves_reputation_by_the_data_weight() -> void:
+func test_a_day_without_a_fitting_arrival_costs_no_cooldown() -> void:
+	var critic: FoodCritic = FoodCritic.new(_always())
+	critic.plan_day(1, 2, _provider(3))
+	assert_true(critic.pending)
+	critic.plan_day(2, 2, _provider(3))
+	assert_eq(critic.last_visit_day, 0)
+	assert_true(critic.pending, "tomorrow rolls again, with no cooldown")
+
+
+func _grown_book(count: int) -> ReputationBook:
 	var book: ReputationBook = ReputationBook.new()
+	var scores: Array[int] = []
+	for _i: int in count:
+		scores.append(3)
+	assert_true(book.from_dict({"version": 1, "scores": scores}))
+	return book
+
+
+func test_the_review_moves_reputation_by_the_data_weight() -> void:
 	var random: RandomNumberGenerator = RandomNumberGenerator.new()
 	random.seed = 1
 	var visit: ReviewVisit = _visit(0.95, 0.0)
 	var stars: int = ReputationBook.score_visit(visit, REVIEWS)
-	var before: float = book.average()
+	var book: ReputationBook = _grown_book(16)
 	var row: Dictionary = book.record_critic(visit, REVIEWS, QUOTES, random, CRITIC)
 	assert_eq(row["stars"], stars)
-	assert_eq(book.scores().size(), 5 + CRITIC.review_weight)
-	assert_almost_eq(book.average(), (before * 5.0 + float(stars * CRITIC.review_weight)) / float(5 + CRITIC.review_weight))
+	assert_eq(book.scores().size(), 16 + CRITIC.review_weight)
+	assert_almost_eq(book.average(), (48.0 + float(stars * CRITIC.review_weight)) / float(16 + CRITIC.review_weight))
 	var heavy: CriticTuning = CRITIC.duplicate() as CriticTuning
 	heavy.review_weight = 9
-	var other: ReputationBook = ReputationBook.new()
+	var other: ReputationBook = _grown_book(16)
 	other.record_critic(visit, REVIEWS, QUOTES, random, heavy)
-	assert_eq(other.scores().size(), 5 + 9)
-	# A closing guest is never reviewed, and a window stays at its limit.
+	assert_eq(other.scores().size(), 16 + 4, "never more than a quarter of the reviews held")
 	var closing: ReviewVisit = _visit(0.9, 0.0)
 	closing.closing = true
 	assert_true(ReputationBook.new().record_critic(closing, REVIEWS, QUOTES, random, CRITIC).is_empty())
 	for _round: int in 12:
 		book.record_critic(visit, REVIEWS, QUOTES, random, CRITIC)
 	assert_eq(book.scores().size(), ReputationBook.WINDOW)
+
+
+func test_one_critic_on_a_fresh_shop_moves_the_average_by_at_most_three_quarters_of_a_star() -> void:
+	var random: RandomNumberGenerator = RandomNumberGenerator.new()
+	random.seed = 4
+	for visit: ReviewVisit in [_visit(0.95, 0.0), _visit(0.0, 1.0), ReviewVisit.new()]:
+		var book: ReputationBook = ReputationBook.new()
+		var before: float = book.average()
+		book.record_critic(visit, REVIEWS, QUOTES, random, CRITIC)
+		assert_true(absf(book.average() - before) <= 0.75, "swing %f" % absf(book.average() - before))
+		assert_true(book.scores().size() > 5)
 
 
 func test_a_good_meal_is_positive_and_a_bad_one_negative() -> void:
@@ -256,8 +291,177 @@ func test_a_day_with_a_critic_brings_one_disguised_solo_guest_and_one_review() -
 	critics[0].order.price = 10
 	sim.record_departure(critics[0])
 	assert_eq(sim.critic_result.get("stars"), 5)
-	assert_eq(sim.review_book.scores().size(), mini(book_size + CRITIC.review_weight, ReputationBook.WINDOW))
+	assert_eq(sim.review_book.scores().size(), book_size + mini(CRITIC.review_weight, maxi(1, book_size / 4)))
 	assert_eq(sim.reviews_today.size(), cards)
+
+
+func _seated_critic(sim: RestaurantSim) -> CustomerAgent:
+	var guest: CustomerAgent = sim.add_customer(sim.world.grid.entries()[0], _random(77), null)
+	assert_true(guest.disguise_as_critic([FoodCritic.NOTEBOOK, FoodCritic.LINGERS] as Array[StringName], CRITIC))
+	return guest
+
+
+func _ordered(guest: CustomerAgent, sim: RestaurantSim) -> void:
+	guest.order = Order.new()
+	guest.order.recipe_id = sim.menu[0].id
+	guest.order.price = sim.menu[0].standard_price
+	guest.order.quality = 0.9
+
+
+func test_only_a_critic_who_sat_and_ordered_writes_the_review() -> void:
+	var sim: RestaurantSim = _sim(61)
+	sim.set_customer_level(2)
+	var size: int = sim.review_book.scores().size()
+	# Never sat: no table, no review, no report line.
+	var never: CustomerAgent = _seated_critic(sim)
+	never.leave_reason = &"no_table"
+	sim.record_departure(never)
+	assert_eq(sim.critic_result, {})
+	# No menu or out of stock before ordering: no order exists.
+	for reason: StringName in [&"no_menu", &"out_of_stock"]:
+		var early: CustomerAgent = _seated_critic(sim)
+		early.leave_reason = reason
+		sim.record_departure(early)
+		assert_eq(sim.critic_result, {})
+	# Removed from the world mid-visit.
+	var removed: CustomerAgent = _seated_critic(sim)
+	_ordered(removed, sim)
+	sim.record_departure(removed)
+	assert_eq(removed.leave_reason, &"removed")
+	assert_eq(sim.critic_result, {})
+	assert_eq(sim.review_book.scores().size(), size)
+	assert_eq(FoodCritic.report_lines(sim.critic_result), [] as Array[String])
+	# Closing stays exempt even after ordering.
+	var closing: CustomerAgent = _seated_critic(sim)
+	_ordered(closing, sim)
+	closing.leave_reason = &"closing"
+	sim.record_departure(closing)
+	assert_eq(sim.critic_result, {})
+	# Ordered and left unserved (waited too long, or the dish ran out): a bad review.
+	for reason: StringName in [&"waited_too_long", &"kitchen_failed"]:
+		var sim2: RestaurantSim = _sim(62)
+		var waited: CustomerAgent = _seated_critic(sim2)
+		_ordered(waited, sim2)
+		waited.leave_reason = reason
+		sim2.record_departure(waited)
+		assert_eq(sim2.critic_result.get("stars"), 1)
+		assert_eq(sim2.critic_result.get("cause"), &"critic_bad")
+		assert_true(sim2.review_book.scores().size() > 5)
+
+
+func test_only_a_food_visit_can_be_the_critic_and_the_cohort_slot_is_given_back() -> void:
+	var sim: RestaurantSim = _sim(63)
+	sim.set_customer_level(2)
+	sim.regulars = RegularCast.new()
+	sim.critic.tuning = _always()
+	sim.world.clock.start_service()
+	sim.critic.pending = true
+	sim.critic.tells = [FoodCritic.NOTEBOOK, FoodCritic.LINGERS] as Array[StringName]
+	sim.critic.arrival_permille = 0
+	var coffee: CustomerAgent = sim.add_visitor(sim.world.grid.entries()[0], _random(5), null, RecipeDef.COFFEE)
+	assert_false(sim.try_disguise_critic(coffee), "a drinks-only visit is never the critic")
+	assert_true(sim.critic.pending)
+	var index: int = sim._regular_cohort_index
+	var guest: CustomerAgent = sim.add_customer(sim.world.grid.entries()[0], _random(6), null)
+	assert_eq(sim._regular_cohort_index, index + 1)
+	assert_true(sim.try_disguise_critic(guest))
+	assert_eq(sim._regular_cohort_index, index, "later cohort keys are unchanged")
+	assert_eq(guest.repeat_guest_key, "")
+	assert_eq(sim.critic.last_visit_day, sim.world.clock.day, "the cooldown starts on arrival")
+
+
+func test_a_critic_is_seated_cooked_served_and_paid_through_normal_ticks() -> void:
+	var sim: RestaurantSim = _sim(71)
+	sim.set_customer_level(2)
+	sim.critic.tuning = _always()
+	sim.critic_rng_provider = _provider(72)
+	sim.spawner.min_gap = 80
+	sim.spawner.max_gap = 160
+	var kitchen: FakeKitchen = FakeKitchen.new(sim)
+	sim.start_day()
+	assert_true(sim.critic.pending)
+	var size: int = sim.review_book.scores().size()
+	var seen: CustomerAgent = null
+	sim.world.clock.start_service()
+	for _tick: int in 4400:
+		size = sim.review_book.scores().size()
+		sim.advance()
+		kitchen.advance()
+		for guest: CustomerAgent in sim.customers():
+			if guest.is_critic():
+				seen = guest
+		if not sim.critic_result.is_empty():
+			break
+	assert_not_null(seen)
+	assert_true(seen.paid, "served and paid the ordinary way")
+	assert_false(sim.critic_result.is_empty())
+	assert_true(int(sim.critic_result["stars"]) >= CRITIC.good_stars)
+	assert_eq(sim.review_book.scores().size(), size + mini(CRITIC.review_weight, maxi(1, size / 4)))
+	assert_eq(sim.critic.last_visit_day, 1)
+
+
+func test_below_level_two_the_streams_match_a_run_without_the_critic_system() -> void:
+	var with_critic: Dictionary = _three_days(false)
+	var without: Dictionary = _three_days(true)
+	assert_eq(with_critic["draws"], 0, "the critic stream is never touched")
+	assert_eq(with_critic["customers"], without["customers"])
+	assert_eq(with_critic["reviews"], without["reviews"])
+	assert_eq(with_critic["scores"], without["scores"])
+	assert_eq(with_critic["served"], without["served"])
+	assert_true(int(without["served"]) > 10)
+
+
+func _three_days(disabled: bool) -> Dictionary:
+	var sim: RestaurantSim = _sim(81)
+	_draws = 0
+	if not disabled:
+		sim.critic.tuning = CRITIC
+		sim.critic_rng_provider = _provider(82)
+	sim.spawner.min_gap = 80
+	sim.spawner.max_gap = 160
+	var kitchen: FakeKitchen = FakeKitchen.new(sim)
+	var served: int = 0
+	for _day: int in 3:
+		sim.start_day()
+		sim.world.clock.start_service()
+		for _tick: int in 4501:
+			sim.advance()
+			kitchen.advance()
+			if sim.world.clock.phase == SimClock.Phase.CLOSED and sim.customers().is_empty():
+				break
+		served += sim.served_today
+	return {"draws": _draws, "customers": sim.rng.state, "reviews": sim.review_rng.state,
+		"scores": sim.review_book.scores(), "served": served}
+
+
+class FakeKitchen extends RefCounted:
+	## A bounded test double, never used by the game: cooks everything well in 10 ticks.
+	var _sim: WeakRef
+	var _due: Dictionary[int, int] = {}
+
+	func _init(sim: RestaurantSim) -> void:
+		_sim = weakref(sim)
+		sim.orders.order_placed.connect(_on_order_placed)
+
+	func _on_order_placed(order: Order) -> void:
+		var sim: RestaurantSim = _sim.get_ref() as RestaurantSim
+		_due[order.id] = sim.world.now + 10
+		sim.orders.set_state(order, Order.State.COOKING)
+
+	func advance() -> void:
+		var sim: RestaurantSim = _sim.get_ref() as RestaurantSim
+		var ids: Array[int] = []
+		ids.assign(_due.keys())
+		ids.sort()
+		for id: int in ids:
+			var order: Order = sim.orders.get_order(id)
+			if order == null or order.state == Order.State.CANCELLED:
+				_due.erase(id)
+			elif sim.world.now >= _due[id]:
+				order.quality = 0.9
+				sim.orders.set_state(order, Order.State.READY)
+				sim.orders.set_state(order, Order.State.DELIVERED)
+				_due.erase(id)
 
 
 func _visit(quality: float, food_wait: float) -> ReviewVisit:

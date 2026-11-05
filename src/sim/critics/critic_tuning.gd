@@ -10,8 +10,10 @@ extends Resource
 @export var cooldown_days: int = 5
 ## Chance that a critic comes on an open day that is not in the cooldown.
 @export_range(0.0, 1.0, 0.01) var daily_chance: float = 0.2
-## Their review counts as this many ordinary reviews in the reputation window.
-@export var review_weight: int = 5
+## Their review counts as up to this many ordinary reviews in the reputation
+## window (a young shop, with few reviews, counts it fewer times: see
+## ReputationBook.record_critic).
+@export var review_weight: int = 3
 ## How many of the four tells a critic shows.
 @export var tell_count: int = 2
 ## The "lingers" tell: the meal lasts this many times longer.
@@ -22,10 +24,11 @@ extends Resource
 @export_range(1, 5) var good_stars: int = 4
 @export_range(1, 5) var bad_stars: int = 2
 ## When they arrive, as a share of the open hours (permille, 0..1000).
-## An ordinary critic comes mid-service; "odd hour" ones very early or very late.
-@export var normal_arrival_permille: Vector2i = Vector2i(250, 600)
+## An ordinary critic comes mid-service; "odd hour" ones very early or late (never
+## in the last quarter of the open hours, so they can still be served).
+@export var normal_arrival_permille: Vector2i = Vector2i(200, 500)
 @export var early_arrival_permille: Vector2i = Vector2i(0, 60)
-@export var late_arrival_permille: Vector2i = Vector2i(800, 900)
+@export var late_arrival_permille: Vector2i = Vector2i(650, 700)
 
 
 func is_valid() -> bool:

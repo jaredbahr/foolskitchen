@@ -1705,12 +1705,17 @@ func _show_held_crates(node: Node3D, frame: AgentPresentationController.Frame, r
 ## cover, cream pages and a stub of pencil, built from flat boxes like the
 ## tray. Made on first use, so ordinary guests never instance it.
 func _show_notebook(node: Node3D, frame: AgentPresentationController.Frame, ready_person: bool) -> void:
+	# Ordinary guests never look anything up: only a holder, or someone who
+	# held one before (flagged on the node), touches the tree.
+	if not frame.holds_notebook and not node.has_meta(&"had_notebook"):
+		return
 	var book: Node3D = node.get_node_or_null("Notebook") as Node3D
 	if not frame.holds_notebook:
 		if book != null:
 			book.visible = false
 		return
 	if book == null:
+		node.set_meta(&"had_notebook", true)
 		book = Node3D.new()
 		book.name = "Notebook"
 		var cover: MeshInstance3D = _box(Vector3(0.26, 0.035, 0.36), Color("9b3a3a"))

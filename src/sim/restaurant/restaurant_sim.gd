@@ -716,12 +716,17 @@ func add_visitor(entry: Vector2i, random: RandomNumberGenerator, kind: CustomerT
 ## the guest's disguise is added. A named regular's arrival is left alone.
 func try_disguise_critic(customer: CustomerAgent) -> bool:
 	if customer == null or customer.is_critic() or customer.regular_profile != null \
-			or world.clock.phase != SimClock.Phase.OPEN \
+			or customer.visit_kind != RecipeDef.FOOD or world.clock.phase != SimClock.Phase.OPEN \
 			or not critic.due(world.clock.phase_tick, world.clock.open_ticks):
 		return false
+	var had_cohort_slot: bool = not customer.repeat_guest_key.is_empty()
 	if not customer.disguise_as_critic(critic.tells, critic.tuning):
 		return false
-	critic.mark_arrived()
+	critic.mark_arrived(world.clock.day)
+	# The critic is not a repeat guest: give back the cohort slot they took, so
+	# later arrivals get the same cohort keys as without a critic.
+	if had_cohort_slot:
+		_regular_cohort_index = maxi(0, _regular_cohort_index - 1)
 	return true
 
 
@@ -970,7 +975,9 @@ func record_departure(customer: CustomerAgent) -> void:
 		# reason, but the forced departure must not sample a late review.
 		visit.closing = visit.closing or world.clock.phase == SimClock.Phase.CLOSED
 		if customer.is_critic():
-			_record_critic_review(visit)
+			# Only a critic who sat down and ordered writes the weighted review.
+			if customer.order != null and customer.leave_reason != &"removed":
+				_record_critic_review(visit)
 		else:
 			var result: Dictionary = review_book.record_visit(visit, review_tuning, review_quotes, review_rng)
 			if not result.is_empty():

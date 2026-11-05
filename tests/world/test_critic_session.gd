@@ -86,11 +86,11 @@ func test_level_two_rolls_the_morning_once_from_the_named_stream() -> void:
 	_always()
 	_morning(2)
 	assert_true(_sim().critic.pending)
-	assert_eq(_sim().critic.last_visit_day, 2)
 	assert_true((GameState._capture_save()["rngs"] as Dictionary).has("critic"))
 	var state: int = GameState.rng(&"critic").state
 	_main.call("_begin_morning")
 	assert_eq(GameState.rng(&"critic").state, state, "the same morning is not rolled twice")
+	_sim().critic.mark_arrived(2)
 	_morning(3)
 	assert_false(_sim().critic.pending, "inside the five-day cooldown")
 
@@ -102,6 +102,7 @@ func test_the_cooldown_and_todays_plan_survive_the_morning_save() -> void:
 	_morning(4)
 	var tells: Array[StringName] = _sim().critic.tells.duplicate()
 	assert_eq(tells.size(), 2)
+	_sim().critic.mark_arrived(4)
 	_morning(5)
 	var path: String = SaveSystem.save_dir.path_join(SLOT + ".json")
 	var document: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))

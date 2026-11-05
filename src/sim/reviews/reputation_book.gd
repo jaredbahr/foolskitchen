@@ -75,8 +75,8 @@ func record_visit(visit: ReviewVisit, tuning: ReviewTuning, quotes: ReviewQuotes
 
 
 ## The disguised critic's review (#303): always written (no review-chance draw),
-## scored from the same causes as any guest, and counted `weight` times in the
-## window. The headline quote comes from the critic groups by verdict; the
+## scored from the same causes as any guest, and counted several times in the
+## window (min(weight, a quarter of the reviews held, at least 1)). The headline quote comes from the critic groups by verdict; the
 ## stream is the critic's own. Returns the report row, or {} for a closing guest.
 func record_critic(visit: ReviewVisit, tuning: ReviewTuning, quotes: ReviewQuotes,
 		random: RandomNumberGenerator, critic: CriticTuning, vibe_tuning: VibeTuning = VIBE_TUNING) -> Dictionary:
@@ -87,7 +87,10 @@ func record_critic(visit: ReviewVisit, tuning: ReviewTuning, quotes: ReviewQuote
 	var stars: int = score_visit(visit, tuning, vibe_tuning)
 	var cause: StringName = &"critic_good" if stars >= critic.good_stars else &"critic_bad"
 	var quote: String = quotes.pick(cause, random, _quotes_used_today)
-	for _count: int in critic.review_weight:
+	# Up to review_weight copies, but never more than a quarter of the reviews
+	# already in the window, so a young shop is not swung by one visit.
+	var copies: int = mini(critic.review_weight, maxi(1, _scores.size() / 4))
+	for _count: int in copies:
 		_scores.append(stars)
 	while _scores.size() > WINDOW:
 		_scores.pop_front()

@@ -69,7 +69,6 @@ func plan_day(day: int, shop_level: int, random_provider: Callable) -> void:
 			else tuning.late_arrival_permille
 	tells = chosen
 	arrival_permille = random.randi_range(window.x, window.y)
-	last_visit_day = day
 	pending = true
 
 
@@ -83,10 +82,12 @@ func has_tell(tell: StringName) -> bool:
 	return tells.has(tell)
 
 
-## Marks the critic as arrived (no longer due today).
-func mark_arrived() -> void:
+## Marks the critic as arrived (no longer due today). The cooldown starts
+## here: a day on which no fitting arrival came costs nothing.
+func mark_arrived(day: int) -> void:
 	arrived = true
 	pending = false
+	last_visit_day = day
 
 
 # --- Wording (player-facing; the word "critic" never appears while they sit) ---
