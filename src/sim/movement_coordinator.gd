@@ -296,6 +296,24 @@ func _before(world: SimWorld, first: SimAgent, second: SimAgent) -> bool:
 	return a > b or (a == b and first.id < second.id)
 
 
+## A stuck person given right of way (#306) keeps the cells of the step it is
+## waiting for, corners included: nobody else may slip in as soon as one
+## empties. Whoever already stands in them may still move about to clear them.
+func _held_out(world: SimWorld, agent: SimAgent, next: Vector2i) -> bool:
+	if _right_of_way.is_empty():
+		return false
+	var cells: Array[Vector2i] = _step_cells(agent.cell, next)
+	for id: int in _right_of_way:
+		var holder: SimAgent = world.agent(id)
+		if holder == null or holder == agent or holder.has_arrived() or not _holds_way(world, holder) \
+				or not _before(world, holder, agent):
+			continue
+		var held: Array[Vector2i] = _step_cells(holder.cell, holder.next_cell())
+		if not held.has(agent.cell) and _crosses(cells, held):
+			return true
+	return false
+
+
 func _crosses(a: Array[Vector2i], b: Array[Vector2i]) -> bool:
 	for cell: Vector2i in a:
 		if b.has(cell):
@@ -421,24 +439,16 @@ func try_step(world: SimWorld, agent: SimAgent, next: Vector2i) -> bool:
 		if existing["from"] == agent.cell and existing["to"] == next:
 			return true
 		_release_edge(agent.id)
-	var legal: bool = _edge_feasible(world, agent, next)
+	var legal: bool = _edge_feasible(world, agent, next) and not _held_out(world, agent, next)
 	# Arbitrate simultaneous intentions by physical carrying priority, before
-	# a lower ID can claim a cell merely because its tick runs first.
+	# a lower ID can claim a cell merely because its tick runs first. Someone
+	# a held way keeps out cannot veto anybody either.
 	if legal:
 		for other: SimAgent in world.agents:
 			if other == agent or other.has_arrived() or other.move_progress > 0.0:
 				continue
 			if other.next_cell() == next and _before(world, other, agent) \
-					and _edge_feasible(world, other, next):
-				legal = false
-				break
-			var held: Array[Vector2i] = _step_cells(other.cell, other.next_cell())
-			if _holds_way(world, other) and _before(world, other, agent) and not held.has(agent.cell) \
-					and _crosses(_step_cells(agent.cell, next), held):
-				# A stuck person given right of way (#306) keeps the cells of the
-				# step it is waiting for, corners included: nobody else may slip
-				# in as soon as one empties. Whoever stands in them may still
-				# move about to clear them.
+					and _edge_feasible(world, other, next) and not _held_out(world, other, next):
 				legal = false
 				break
 	if not legal:
