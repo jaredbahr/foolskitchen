@@ -120,15 +120,7 @@ func apply(grid: SimGrid, bought: Array[Vector2i]) -> bool:
 	if changes.is_empty():
 		return true
 	for placed: PlacedItem in grid.items():
-		var scope: Array[Vector2i] = placed.cells.duplicate()
-		var definition: ItemDef = placed.def as ItemDef
-		if definition == null:
-			scope.append_array(placed.work_cells)
-			scope.append_array(placed.seat_cells)
-		else:
-			for authored: Vector2i in definition.work_cells + definition.seat_cells:
-				scope.append(placed.origin + GridMath.rotate_cell(authored, definition.footprint, placed.quarter_turns))
-		for cell: Vector2i in scope:
+		for cell: Vector2i in SimGrid.use_cells(placed):
 			if removed.has(cell):
 				return false
 	var blocked: bool = grid.is_blocking_signals()

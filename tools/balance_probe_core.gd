@@ -163,8 +163,6 @@ static func run_case(tree: SceneTree, seed_value: int, setup_name: String, days:
 		return {"error": "Cannot apply the requested set-up"}
 	sim.start_day()
 	var totals: Dictionary = _empty_stats()
-	if setup_name == "patio":
-		totals["patio_construction"] = ProbeSetups.patio_construction(main)
 	if observe_daily:
 		totals["daily"] = []
 	var observe_staff: bool = trace_staff_growth or auto_accept_raises

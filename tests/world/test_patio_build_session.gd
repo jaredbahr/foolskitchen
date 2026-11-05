@@ -259,7 +259,9 @@ func test_native_furniture_walking_feet_and_seated_pose_follow_the_pavement_once
 		"the seat surface receives the pavement height exactly once")
 	assert_eq(indoor_visual.global_transform, indoor_transform)
 	assert_almost_eq(person.position.y, 0.0, 0.00001)
-	assert_eq(_world().now, 0, "all height synchronization is presentation only")
+	# _walk_staff advanced the clock 1 + 3 ticks to stamp real reservations; every
+	# view._process above must add nothing on top.
+	assert_eq(_world().now, 1 + 3, "all height synchronization is presentation only")
 
 
 func test_native_mess_and_build_overlays_clear_pavement_without_lifting_indoor_tiles() -> void:

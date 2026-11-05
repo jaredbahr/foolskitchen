@@ -66,11 +66,6 @@ func test_patio_probe_owns_two_tables_and_cells_without_cash_stock_weather_or_rn
 		assert_eq(DiningSeats.usable_cells(_host.sim.world.grid, table).size(), 2)
 		assert_eq(DiningSeats.usable_cells(_host.sim.world.grid, table, SimGrid.NO_CELL,
 			WeatherState.Kind.RAIN).size(), 0)
-	var declaration: Dictionary = ProbeSetups.patio_construction(_host)
-	assert_eq(declaration.get("error"), "")
-	assert_eq(declaration.get("nominal_construction_cost"), PatioArea.from_layout(LAYOUT).cells().size() * LAYOUT.patio_cell_price + 2 * _host.content.item(&"patio_table_2").price)
-	assert_eq(declaration.get("actual_construction_charge"), 0)
-	assert_true(String(declaration.get("comparison_scope", "")).contains("not purchase return"))
 	_host.sim.start_day()
 	assert_eq(_host.shop_editor.bought_patio().size(), PatioArea.from_layout(LAYOUT).cells().size())
 	var errors: Array[String] = []

@@ -20,7 +20,7 @@ static func members(party: Party, world: SimWorld) -> Array[CustomerAgent]:
 
 ## Candidate paths are checked for every member before any hold is acquired.
 ## Standalone parties up to four retain their original assignment order.
-static func try_seat(party: Party, world: SimWorld, kitchen: Kitchen = null) -> bool:
+static func try_seat(party: Party, world: SimWorld, kitchen: Kitchen = null, keeping_up: bool = true) -> bool:
 	if party == null or party.departing or party.seated or party.table_item_id != 0:
 		return false
 	var guests: Array[CustomerAgent] = members(party, world)
@@ -48,7 +48,7 @@ static func try_seat(party: Party, world: SimWorld, kitchen: Kitchen = null) -> 
 		for seat: Vector2i in table_group_seats(table, world.grid):
 			var owner: PlacedItem = world.grid.item(world.grid.dining_owner_id(table.id, seat))
 			if owner != null and owner.reserved_by(seat) == -1 and world.grid.is_walkable(seat) \
-					and PatioRules.seat_is_open(world.grid, seat, world.weather.kind) and not available.has(seat):
+					and PatioRules.can_seat(world.grid, seat, world.weather.kind, keeping_up) and not available.has(seat):
 				available.append(seat)
 		if available.size() < guests.size():
 			continue
@@ -230,7 +230,7 @@ static func advance_queue(party: Party, world: SimWorld, sim: RestaurantSim, all
 	if party.queue_started and party.queue_wait >= _budget(guests):
 		leave_waiting(party, world, sim, &"no_table")
 		return
-	if try_seat(party, world, sim.kitchen):
+	if try_seat(party, world, sim.kitchen, sim.patio_keeping_up()):
 		return
 	var already_waiting: bool = party.queue_started
 	party.queue_started = true
@@ -274,7 +274,7 @@ static func finish_seating(party: Party, world: SimWorld, sim: RestaurantSim) ->
 	for guest: CustomerAgent in guests:
 		guest.state = CustomerAgent.State.ORDERING
 	for guest: CustomerAgent in guests:
-		guest._post_order_task(world, sim)
+		guest.sit_down(world, sim)
 
 
 ## A failed walk releases the whole booking. Charge the longest concurrent

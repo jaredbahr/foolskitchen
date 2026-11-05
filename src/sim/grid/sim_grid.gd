@@ -1278,6 +1278,20 @@ func is_outdoor_floor(cell: Vector2i) -> bool:
 	return terrain(cell) == Terrain.FLOOR and room(cell) == Room.PATIO
 
 
+## A placed item's footprint plus every authored work and seat cell, including
+## ones the live projection dropped because something blocks them.
+static func use_cells(placed: PlacedItem) -> Array[Vector2i]:
+	var scope: Array[Vector2i] = placed.cells.duplicate()
+	var definition: ItemDef = placed.def as ItemDef
+	if definition == null:
+		scope.append_array(placed.work_cells)
+		scope.append_array(placed.seat_cells)
+		return scope
+	for authored: Vector2i in definition.work_cells + definition.seat_cells:
+		scope.append(placed.origin + GridMath.rotate_cell(authored, definition.footprint, placed.quarter_turns))
+	return scope
+
+
 ## Indoor access may retain legacy blocked/outside spots, but never crosses
 ## onto patio. Outdoor furniture requires patio under its entire use area.
 func _placement_scope(definition: ItemDef, footprint: Vector2i, at: Vector2i, turns: int,

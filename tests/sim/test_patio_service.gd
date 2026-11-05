@@ -63,6 +63,55 @@ func test_rain_skips_outdoor_regular_favourite_and_party_seats_but_keeps_indoor_
 		"ordinary build path warnings still describe physical access in any weather")
 
 
+func test_a_waiting_ticket_holds_outdoor_seats_but_never_indoor_ones() -> void:
+	var sim: RestaurantSim = _plain(WeatherState.Kind.SUNNY)
+	var outside: PlacedItem = sim.world.grid.place_def(OUTDOOR_TABLE, Vector2i(2, 8))
+	var inside: PlacedItem = sim.world.grid.place_def(TABLE, Vector2i(2, 2))
+	assert_not_null(outside)
+	assert_not_null(inside)
+	var ticket: Order = Order.new()
+	sim.orders.place(ticket, 0)
+	var guest: CustomerAgent = sim.add_customer(Vector2i(6, 6), _rng(2441))
+	assert_true(guest._try_seat(sim.world))
+	assert_eq(guest.table_item_id, inside.id, "a ticket not yet at the stove keeps the earlier-placed patio closed")
+	sim.world.remove_agent(guest)
+	assert_true(sim.world.grid.remove(inside.id))
+	var party: Party = sim.add_party(Vector2i(6, 6), [_rng(2442), _rng(2443)])
+	assert_true(sim.world.reset_agent_position(PartySeating.members(party, sim.world)[1], sim.world.grid.entries()[1]))
+	assert_false(PartySeating.try_seat(party, sim.world, null, sim.patio_keeping_up()))
+	assert_true(PartySeating.try_seat(party, sim.world), "a caller without a kitchen leaves only weather to decide")
+	for member: CustomerAgent in PartySeating.members(party, sim.world):
+		sim.world.remove_agent(member)
+	for state: Order.State in [Order.State.COOKING, Order.State.READY, Order.State.DELIVERED]:
+		sim.orders.set_state(ticket, state)
+		assert_eq(sim.patio_keeping_up(), state != Order.State.READY, "a plate waiting at the pass also holds the patio")
+	assert_false(PatioRules.can_seat(sim.world.grid, outside.seat_cells[0], WeatherState.Kind.RAIN, true))
+	assert_true(PatioRules.can_seat(sim.world.grid, Vector2i(2, 2), WeatherState.Kind.RAIN, false), "indoor seats never ask")
+	var single: CustomerAgent = sim.add_customer(Vector2i(6, 6), _rng(2444))
+	assert_true(single._try_seat(sim.world))
+	assert_eq(single.table_item_id, outside.id)
+
+
+func test_outdoor_guests_are_more_patient_once_seated() -> void:
+	var sim: RestaurantSim = _plain(WeatherState.Kind.SUNNY)
+	var outside: PlacedItem = sim.world.grid.place_def(OUTDOOR_TABLE, Vector2i(2, 8))
+	assert_not_null(outside)
+	var guest: CustomerAgent = sim.add_customer(Vector2i(6, 6), _rng(2445))
+	var base: int = guest.food_patience
+	assert_true(guest._try_seat(sim.world))
+	assert_eq(guest.food_patience, base, "booking alone changes nothing")
+	# This bare fixture has no menu, so the guest then leaves; patience is set first.
+	guest.sit_down(sim.world, sim)
+	assert_eq(guest.food_patience, roundi(base * sim.visit_tuning.patio_patience_multiplier))
+	assert_true(sim.visit_tuning.patio_patience_multiplier > 1.0)
+	var indoor: RestaurantSim = _plain(WeatherState.Kind.SUNNY)
+	assert_not_null(indoor.world.grid.place_def(TABLE, Vector2i(2, 2)))
+	var inside: CustomerAgent = indoor.add_customer(Vector2i(6, 6), _rng(2446))
+	assert_true(inside._try_seat(indoor.world))
+	inside.sit_down(indoor.world, indoor)
+	assert_eq(inside.food_patience, base, "indoor seats keep their exact patience")
+
+
 func test_waiting_bench_keeps_arrival_bonus_and_rain_uses_indoor_waiting() -> void:
 	for kind: int in [WeatherState.Kind.SUNNY, WeatherState.Kind.CLOUDY, WeatherState.Kind.RAIN]:
 		var sim: RestaurantSim = _plain(kind)

@@ -233,6 +233,13 @@ func assign_owner(mode: StringName) -> bool:
 	return selected_owner != null and selected_owner.assign_mode(mode)
 
 
+## #269: the patio seats new guests only while no ticket waits for the stove
+## and no plate waits at the pass. Indoor seating never asks.
+func patio_keeping_up() -> bool:
+	return orders == null or orders.orders_in_state(Order.State.PLACED).is_empty() \
+		and orders.orders_in_state(Order.State.READY).is_empty()
+
+
 ## Clears daily reports and redraws the first arrival; the caller opens the clock.
 func start_day() -> void:
 	# Daily weather can close patio seats without a layout edit. Indoor-only

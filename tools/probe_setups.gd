@@ -494,19 +494,3 @@ static func patio_table_origins(grid: SimGrid) -> Array[Vector2i]:
 	var entry: Vector2i = grid.entries()[0]
 	return [entry + Vector2i(-4, 1), entry + Vector2i(3, 1)]
 
-
-## Read-only disclosure alongside probe results, never a construction ROI row.
-static func patio_construction(main: Node) -> Dictionary:
-	var editor: ShopEditor = main.get("shop_editor") as ShopEditor
-	var content: ContentDB = main.get("content") as ContentDB
-	if editor == null or content == null or content.item(&"patio_table_2") == null:
-		return {"error": "The real patio content is missing"}
-	var cells: int = editor.patio_area().cells().size()
-	var price: int = content.item(&"patio_table_2").price
-	return {"error": "", "profile": "patio", "patio_cells": cells,
-		"price_per_cell": editor.patio_area().cell_price,
-		"items": [{"item": "patio_table_2", "count": 2, "catalogue_price": price}],
-		"nominal_construction_cost": cells * editor.patio_area().cell_price + 2 * price,
-		"actual_construction_charge": 0,
-		"convention": "Free patio construction through the editor; no cash, XP or stock grants. Normal paid stock and service; naturally selected daily weather.",
-		"comparison_scope": "Patio service and weather comparison, not purchase return on investment"}

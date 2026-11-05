@@ -3342,16 +3342,7 @@ func _capture() -> void:
 	if _joined_tables_review:
 		metadata["joined_tables_review"] = {"fixture": _joined_tables_fixture, "state": joined_tables_state}
 	if patio_review:
-		var sources: Dictionary = {}
-		for source_path: String in ["res://tools/patio_review.gd", "res://src/sim/patio_rules.gd",
-				"res://src/sim/shop/patio_area.gd", "res://src/sim/shop/shop_editor.gd",
-				"res://src/world/main.gd", "res://src/world/shop_view.gd"]:
-			var digest: String = FileAccess.get_sha256(source_path)
-			if digest.length() != 64:
-				_fail_capture("cannot bind patio review source: " + source_path)
-				return
-			sources[source_path] = digest
-		metadata["patio_review"] = {"state": patio_state, "source_sha256": sources, "image_sha256": image_hash}
+		metadata["patio_review"] = {"state": patio_state}
 	if _floors_review:
 		metadata["floors_review"] = {"fixture": _floors_fixture, "state": floors_state}
 	if _restroom_review:
@@ -3388,11 +3379,6 @@ func _capture() -> void:
 		return
 	print("saved ", path)
 	print("capture ", JSON.stringify(metadata))
-	if patio_review:
-		print("PATIO_REVIEW ", JSON.stringify({"scene": _scene_path, "frame": _capture_frame,
-			"image_file": path.get_file(), "image_sha256": image_hash,
-			"canonical_sidecar_sha256": FileAccess.get_sha256(path.get_basename() + ".json"),
-			"capture_timing": "frame_post_draw", "proof": metadata["patio_review"]}, "", true, true))
 	_capture_pending = false
 	if _settings_world and world_render.get("verified") != true:
 		# Retain this intended PNG and metadata for review, but fail the capture.

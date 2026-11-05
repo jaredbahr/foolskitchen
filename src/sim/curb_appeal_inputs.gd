@@ -44,20 +44,12 @@ static func collect(grid: SimGrid, finishes: WallFinishes, decor: WallDecor, con
 	return rows
 
 
+## The whole footprint and every authored seat or work cell stand on patio.
 static func _supported_patio(grid: SimGrid, placed: PlacedItem, definition: ItemDef) -> bool:
-	if placed.removed or placed.placement_layer != ItemDef.PlacementLayer.NORMAL \
-			or definition.placement_layer != ItemDef.PlacementLayer.NORMAL or not definition.outdoor_only \
-			or (definition.category != ItemDef.Category.TABLE and definition.category != ItemDef.Category.WAITING) \
-			or placed.cells.is_empty():
+	if placed.removed or not definition.outdoor_only or placed.cells.is_empty() \
+			or (definition.category != ItemDef.Category.TABLE and definition.category != ItemDef.Category.WAITING):
 		return false
-	for cells: Array[Vector2i] in [placed.cells, placed.work_cells, placed.seat_cells]:
-		for cell: Vector2i in cells:
-			if not grid.is_outdoor_floor(cell):
-				return false
-	## The dining projection drops blocked seats. Their authored use cells must
-	## still have patio underneath, even when absent from that live projection.
-	for authored: Vector2i in definition.work_cells + definition.seat_cells:
-		var cell: Vector2i = placed.origin + GridMath.rotate_cell(authored, definition.footprint, placed.quarter_turns)
+	for cell: Vector2i in SimGrid.use_cells(placed):
 		if not grid.is_outdoor_floor(cell):
 			return false
 	return true

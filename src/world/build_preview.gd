@@ -904,32 +904,13 @@ func _build_blueprint_selection(cells: Array, box: Rect2i) -> void:
 		blueprint_selection_mesh.material_override = _material(tint, true)
 		blueprint_selection_mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		_ghost_root.add_child(blueprint_selection_mesh)
-	var ground: Dictionary[Vector2i, float] = {}
+	# A box reaching onto the patio rides at the pavement top, never under it.
+	var lift: float = 0.0
 	for y: int in range(box.position.y, box.end.y):
 		for x: int in range(box.position.x, box.end.x):
-			var cell: Vector2i = Vector2i(x, y)
-			var height: float = _shop_view.ground_height(cell)
-			if height != 0.0:
-				ground[cell] = height
+			lift = maxf(lift, _shop_view.ground_height(Vector2i(x, y)))
+	var border_height: float = 0.05 + lift
 	var outline: StandardMaterial3D = _material(WORK_COLOR)
-	if not ground.is_empty() and ground.size() != box.get_area():
-		# The border crosses a ground step: do not raise the indoor half.
-		for x: int in range(box.position.x, box.end.x):
-			for edge_y: int in [box.position.y, box.end.y]:
-				var cell: Vector2i = Vector2i(x, clampi(edge_y, box.position.y, box.end.y - 1))
-				var rail: MeshInstance3D = _box(Vector3(GridMath.CELL_SIZE, 0.035, LOT_EDGE_WIDTH), outline)
-				rail.position = Vector3((x + 0.5) * GridMath.CELL_SIZE, 0.05 + ground.get(cell, 0.0),
-					edge_y * GridMath.CELL_SIZE)
-				_ghost_root.add_child(rail)
-		for y: int in range(box.position.y, box.end.y):
-			for edge_x: int in [box.position.x, box.end.x]:
-				var cell: Vector2i = Vector2i(clampi(edge_x, box.position.x, box.end.x - 1), y)
-				var rail: MeshInstance3D = _box(Vector3(LOT_EDGE_WIDTH, 0.035, GridMath.CELL_SIZE), outline)
-				rail.position = Vector3(edge_x * GridMath.CELL_SIZE,
-					0.05 + ground.get(cell, 0.0), (y + 0.5) * GridMath.CELL_SIZE)
-				_ghost_root.add_child(rail)
-		return
-	var border_height: float = 0.05 + (float(ground.values()[0]) if not ground.is_empty() else 0.0)
 	var size: Vector2 = Vector2(box.size) * GridMath.CELL_SIZE
 	var corner: Vector2 = Vector2(box.position) * GridMath.CELL_SIZE
 	for y: float in [corner.y, corner.y + size.y]:
