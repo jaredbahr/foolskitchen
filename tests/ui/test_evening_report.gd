@@ -23,6 +23,18 @@ func test_food_quality_line_displays_average_and_empty_day_in_plain_words() -> v
 	assert_eq((_report.get_node("%FoodQuality") as Label).text, "Food quality: no dishes served")
 
 
+func test_takeaways_line_shows_only_on_days_the_order_counter_sold_any() -> void:
+	var day: DayReport = DayReport.new()
+	day.customers_served = 9
+	day.takeaways = 3
+	_report.call("show_report", day)
+	var label: Label = _report.get_node("Panel/Scroll/Content/Takeaways") as Label
+	assert_eq(label.text, "Takeaways: 3")
+	assert_true(label.visible)
+	_report.call("show_report", DayReport.new())
+	assert_false(label.visible, "a shop without takeaways keeps its report as it was")
+
+
 func test_saved_report_name_contextualizes_reviews_without_changing_quotes() -> void:
 	var day: DayReport = DayReport.new()
 	day.restaurant_name = "Copper Cafe"

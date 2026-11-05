@@ -7,7 +7,7 @@ extends RefCounted
 static func names() -> Array[String]:
 	return ["default", "extra_cook", "extra_server", "owner_kitchen", "owner_floor",
 		"trays_2", "trays_4", "extra_cleaner", "expanded_tables", "coffee_shop", "bar", "fryer_coffee", "joined_tables",
-		"grown", "neglected", "curb_appeal", "expanded_staffed"]
+		"grown", "neglected", "curb_appeal", "expanded_staffed", "coffee_counter"]
 
 
 static func apply(name: String, main: Node, extra_cook_skill: int = 3) -> bool:
@@ -41,6 +41,8 @@ static func apply(name: String, main: Node, extra_cook_skill: int = 3) -> bool:
 			return _joined_tables(main)
 		"coffee_shop":
 			return _coffee_shop(main)
+		"coffee_counter":
+			return _coffee_shop(main, true)
 		"bar":
 			return _bar(main)
 		"fryer_coffee":
@@ -63,7 +65,7 @@ static func morning(name: String, main: Node) -> bool:
 	match name:
 		"neglected":
 			return _neglected(main)
-		"coffee_shop":
+		"coffee_shop", "coffee_counter":
 			return _enable(main, [&"coffee", &"tea", &"croissant"])
 		"fryer_coffee":
 			return _enable(main, [&"burger", &"grilled_cheese", &"fries", &"coffee"])
@@ -111,7 +113,12 @@ static func _neglected(main: Node) -> bool:
 ## table (the room reads as a Café), and two storage shelves for the
 ## supplies (FK-087). Built free of charge (like
 ## expanded_tables, so level-two pieces too), stocked at the normal price.
-static func _coffee_shop(main: Node) -> bool:
+##
+## With `counter` (#293, coffee_counter) the same shop also has an order counter
+## continuing the bar's line along row 7 (x 13 and 14): the till's staff side is
+## the end of the bar's back row, three steps from the coffee machines, its guests
+## stand on row 8 and the queue runs down column 13 and along the south wall.
+static func _coffee_shop(main: Node, counter: bool = false) -> bool:
 	var editor: ShopEditor = _free_editor(main)
 	if editor == null or not _clear_east_table(main, editor) or not _concept_west_table(main, editor):
 		return false
@@ -121,6 +128,8 @@ static func _coffee_shop(main: Node) -> bool:
 			[&"side_table", Vector2i(11, 5), 2], [&"plant_small_2", Vector2i(12, 5), 0]]:
 		if not editor.buy(placement[0], placement[1], placement[2]):
 			return false
+	if counter and not editor.buy(&"order_counter", Vector2i(13, 7), 0):
+		return false
 	if not _counter_with_stools(editor, 9, 12) or not _storage_shelves(editor) \
 			or not editor.last_check.unreachable.is_empty():
 		return false

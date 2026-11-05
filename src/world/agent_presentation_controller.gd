@@ -130,6 +130,14 @@ static func frame_for(agent: SimAgent, world: SimWorld, chair_seat_height: float
 				var displacement: Vector3 = forward * seated_forward_offset
 				if displacement.is_finite():
 					frame.display_offset = displacement
+		if not frame.moving and not frame.seated and customer.faces_counter() and world != null:
+			# Standing in the order counter's line or at its cells (#293): face it.
+			var facing_item: PlacedItem = world.grid.item(customer.counter_item_id)
+			if facing_item == null:
+				var counters: Array[PlacedItem] = OrderCounter.counters(world.grid)
+				facing_item = counters[0] if not counters.is_empty() else null
+			if facing_item != null:
+				frame.facing_direction = _item_center(facing_item) - start
 	if agent is CourierAgent:
 		var courier: CourierAgent = agent as CourierAgent
 		frame.carrying = courier.carrying and courier.crate_count > 0
@@ -356,7 +364,9 @@ static func _is_seated(customer: CustomerAgent, world: SimWorld) -> bool:
 			CustomerAgent.State.EATING, CustomerAgent.State.PAYING].has(customer.state):
 		return false
 	var table: PlacedItem = world.grid.item(customer.table_item_id)
-	return table != null and not table.removed and table.seat_cells.has(customer.seat_cell) \
+	# A takeaway guest at a counter pickup cell stands: only tables seat people.
+	return table != null and not table.removed and not OrderCounter.is_counter(table) \
+		and table.seat_cells.has(customer.seat_cell) \
 		and table.reserved_by(customer.seat_cell) == customer.id and world.grid.is_walkable(customer.seat_cell)
 
 

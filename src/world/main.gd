@@ -2213,6 +2213,7 @@ func build_report(day: int) -> DayReport:
 	report.dishes_sold = dishes_sold_today.duplicate()
 	report.customers_served = sim.served_today
 	report.customers_lost = sim.lost_today
+	report.takeaways = sim.takeaways_today
 	if sim.mishaps != null:
 		report.mishaps_text = MishapText.daily(sim.mishaps.spills_today,
 			sim.mishaps.broken_plates_today, sim.mishaps.degreases_today)

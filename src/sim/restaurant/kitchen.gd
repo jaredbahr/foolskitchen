@@ -87,6 +87,13 @@ func advance() -> void:
 
 
 ## Dirty tables cannot accept new guests until a real bussing task finishes.
+## A takeaway pastry (#293) is handed over in a bag: it never takes a plate, so
+## none has to come back. Called right after the order is placed.
+func bypass_plate(order: Order) -> void:
+	if order != null and order.id > 0:
+		_plate_bypassed_orders[order.id] = true
+
+
 func is_table_dirty(table_item_id: int) -> bool:
 	return dirty_tables.has(table_item_id)
 
