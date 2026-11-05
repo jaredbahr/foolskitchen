@@ -2142,6 +2142,52 @@ invalidate the appropriate cached geometry. HUD/Menu presentation is read-only.
   enough reachable seats. A 1x1 counter piece seats one stool, so groups
   take tables (or the long two-cell bar counter); drinks-only parties do too.
   Counters are mainly for singles, which is most drinks-only traffic.
+- **Order counter (#293).** `data/items/order_counter.tres` (Bar & Café, $120,
+  level 1) is a 2x1 STATION with `station_type` `order_counter`, so the editor's
+  work-cell reachability warning covers it. It reuses the bar counter's
+  projection: one work cell is the **staff side** (a server stands there, the
+  till), the first seat cell is the guest's **order cell** and the other seat
+  cell a **pickup cell**. `RestaurantSim.across_cell` accepts it like a
+  `serve_across` piece, so `service_cells` hands a drink across from behind.
+  `OrderCounter` (src/sim/restaurant, static helpers, no state) lists the
+  counters, a counter's usable cells and its **line**: straight out from the
+  order cell while the floor is clear, then bending along the wall (the side
+  nearest the street door) for up to `LINE_LENGTH` (6) cells, never on a seat,
+  work cell or the door lane. A short queue stands one clear cell apart (3
+  places), a longer one packs one per cell (6 places, `queue_cells`). Only a shop that has a usable counter (a clear staff
+  cell behind the order cell, the order cell reachable) takes the new path.
+  A solo drink/coffee guest (`CustomerAgent._join_counter`; parties, food
+  visits and critics keep table service) makes one draw on its own stream
+  (`takeaway_wanted`, `VisitTuning.takeaway_share`, 0.3) and its queue patience
+  is scaled once by `counter_patience_multiplier` (2.0). Visit: `QUEUED` in the
+  line (`counter_stage` LINE; rank by join tick then id picks the line cell, the
+  front guest claims a free order cell) -> `WALKING_TO_SEAT` to the order cell
+  (TO_COUNTER) -> `ORDERING` there (AT_COUNTER; a priority-3, 15-tick
+  `take_order` task (ties with pour/deliver at 3, urgency (#310) breaks the tie;
+  a table order is priority 2 and 30 ticks) whose approach
+  step is the staff cell, so there is no table order task) ->
+  on the order, the guest heads for what was booked at the counter (TO_DEST):
+  a free table, nearest first, or, when `takeaway_wanted` or no table is free,
+  a takeaway at the pickup cell (or the order cell when there is no pickup
+  spot). The order's `table_item_id`/`seat_cell` are that destination, so the
+  pour or delivery is the ordinary one. A takeaway guest never sits (the view
+  only seats guests at TABLE items), pays when the drink is handed over (state
+  `PAYING` straight from `DELIVERED`, then happy), and a takeaway pastry bypasses
+  the plate cycle (`Kitchen.bypass_plate`), so nothing is left to bus. Sales are
+  the usual `customer_paid`; `RestaurantSim.takeaways_today` feeds
+  `DayReport.takeaways` (saved only when above 0) and the evening report's
+  "Takeaways: N" line. A guest in the line who waits out the patience leaves as
+  `waited_too_long`. A shop without a counter takes no new branch and draws
+  nothing extra (`test_a_cafe_without_a_counter_keeps_its_table_service_exactly`
+  replays a recorded café). Probe set-up `coffee_counter` is `coffee_shop` plus a
+  counter continuing the bar along row 7 (x 13-14). Over ten seeds and five
+  days it serves 93.8 guests against `coffee_shop`'s 88.0 (sales 558 vs 524,
+  profit 98 vs 67): the till order is half as long and the server never walks to
+  a table to take it, a takeaway is handed over at the counter, and a full house
+  sends a drink-only guest away with a cup instead of nothing (no-table losses
+  42 -> 23); guests who time out in the line (`waited too long`, 8 -> 27) are the
+  new limit. Capture:
+  `bash tools/screenshot.sh --scene=res://tools/order_counter_review.tscn --speed=0 --frames=90,330`.
 - **Opening hours.** `OpeningHours` + `data/balance/hours.tres` (06:00 to
   24:00, 4 to 13 hours, 30-minute steps, 6 ticks a minute). Morning only, the
   hours set the clock's display minutes and `open_ticks`, so they ride in the

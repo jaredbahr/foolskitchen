@@ -2148,6 +2148,9 @@ static func _unreachable(grid: SimGrid, ids: Dictionary[int, int]) -> Array[int]
 					reachable = false
 		elif definition.category == ItemDef.Category.STATION or definition.category == ItemDef.Category.STORAGE:
 			reachable = _any_reachable(grid, placed.work_cells)
+			# The order counter (#293) also needs its guest side reachable.
+			if reachable and OrderCounter.is_counter(placed):
+				reachable = _any_reachable(grid, [OrderCounter.order_cell(placed)] as Array[Vector2i])
 		if not reachable:
 			warnings.append(ids[placed.id])
 	warnings.sort()

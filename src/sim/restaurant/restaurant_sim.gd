@@ -77,6 +77,8 @@ var critic_rng_provider: Callable
 var critic_result: Dictionary = {}
 var served_today: int = 0
 var lost_today: int = 0
+## Guests who paid at the order counter (#293) and left with their drink.
+var takeaways_today: int = 0
 ## Read-only OPEN-hour observations; only the detached report survives a day.
 var staff_activity: StaffActivity = StaffActivity.new()
 var leave_reasons_today: Dictionary[StringName, int] = {}
@@ -239,6 +241,7 @@ func start_day() -> void:
 		regulars.begin_day(world.clock.day)
 	served_today = 0
 	lost_today = 0
+	takeaways_today = 0
 	leave_reasons_today.clear()
 	reviews_today.clear()
 	critic_result = {}
@@ -615,7 +618,8 @@ func service_cells(table_item_id: int, seat_cell: Vector2i) -> Array[Vector2i]:
 func across_cell(table_item_id: int, seat_cell: Vector2i) -> Vector2i:
 	var table: PlacedItem = world.grid.item(table_item_id)
 	var definition: ItemDef = table.def as ItemDef if table != null else null
-	if definition == null or not definition.serve_across or seat_cell == SimGrid.NO_CELL:
+	if definition == null or seat_cell == SimGrid.NO_CELL \
+			or not (definition.serve_across or definition.station_type == OrderCounter.STATION):
 		return SimGrid.NO_CELL
 	for direction: Vector2i in [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]:
 		var front: Vector2i = seat_cell + direction
@@ -937,6 +941,8 @@ func pay(customer: CustomerAgent, order: Order) -> void:
 		return
 	customer.paid = true
 	served_today += 1
+	if customer.takeaway:
+		takeaways_today += 1
 	customer_paid.emit(customer, order, order.price)
 	# A drink ordered with the meal is paid with it, once it reached the table.
 	var drink: Order = customer.extra_order
@@ -951,7 +957,8 @@ func record_departure(customer: CustomerAgent) -> void:
 	_departed[customer.id] = true
 	customer.departure_recorded = true
 	_record_regular_visit(customer)
-	if cleanliness != null and customer.paid and customer.seat_cell != SimGrid.NO_CELL:
+	# A takeaway leaves no crumbs at a table: they never sat (#293).
+	if cleanliness != null and customer.paid and customer.seat_cell != SimGrid.NO_CELL and not customer.takeaway:
 		if cleanliness.try_spawn_at_departed_seat(customer.seat_cell) and clean_tasks != null:
 			clean_tasks.sync_spots()
 	if not customer.paid and customer.leave_reason == &"happy":

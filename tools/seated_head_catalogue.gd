@@ -28,7 +28,9 @@ static func run(parent: Node, native_bake: bool = false) -> Dictionary:
 		report["errors"] = errors
 		return report
 	for definition: ItemDef in content.items():
-		if definition.seat_cells.is_empty() or not definition.catalogue_visible:
+		# The order counter's guest cells are places to stand and order, not seats (#293).
+		if definition.seat_cells.is_empty() or not definition.catalogue_visible \
+				or definition.station_type == OrderCounter.STATION:
 			continue
 		report["seats"] += 1
 		for turns: int in range(4):
