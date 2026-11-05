@@ -30,6 +30,8 @@ var _seat_releases: Array[Dictionary] = []
 var _stall: Dictionary[int, Dictionary] = {}
 ## A stuck person given right of way wins arbitration until this tick.
 var _right_of_way: Dictionary[int, int] = {}
+## The one person whose held way keeps others out of its step (latest escape).
+var _way_holder: int = -1
 ## A squeeze-past: both partners cross one shared edge in lockstep.
 var _squeezes: Dictionary[int, Dictionary] = {}
 ## Diagnostics only (the liveness soak reads them): how often each escape ran.
@@ -130,6 +132,8 @@ func unregister_agent(agent_id: int) -> void:
 	_after_stop.erase(agent_id)
 	_stall.erase(agent_id)
 	_right_of_way.erase(agent_id)
+	if _way_holder == agent_id:
+		_way_holder = -1
 	_end_squeeze(agent_id)
 	for cell: Vector2i in _swept.keys():
 		if _swept[cell] == agent_id:
@@ -299,19 +303,17 @@ func _before(world: SimWorld, first: SimAgent, second: SimAgent) -> bool:
 ## A stuck person given right of way (#306) keeps the cells of the step it is
 ## waiting for, corners included: nobody else may slip in as soon as one
 ## empties. Whoever already stands in them may still move about to clear them.
+## Only the most recently escaped person holds its way, so two held ways can
+## never keep each other's holders out.
 func _held_out(world: SimWorld, agent: SimAgent, next: Vector2i) -> bool:
-	if _right_of_way.is_empty():
+	if _way_holder == -1 or _way_holder == agent.id:
 		return false
-	var cells: Array[Vector2i] = _step_cells(agent.cell, next)
-	for id: int in _right_of_way:
-		var holder: SimAgent = world.agent(id)
-		if holder == null or holder == agent or holder.has_arrived() or not _holds_way(world, holder) \
-				or not _before(world, holder, agent):
-			continue
-		var held: Array[Vector2i] = _step_cells(holder.cell, holder.next_cell())
-		if not held.has(agent.cell) and _crosses(cells, held):
-			return true
-	return false
+	var holder: SimAgent = world.agent(_way_holder)
+	if holder == null or holder.has_arrived() or not _holds_way(world, holder) \
+			or not _before(world, holder, agent):
+		return false
+	var held: Array[Vector2i] = _step_cells(holder.cell, holder.next_cell())
+	return not held.has(agent.cell) and _crosses(_step_cells(agent.cell, next), held)
 
 
 func _crosses(a: Array[Vector2i], b: Array[Vector2i]) -> bool:
@@ -935,6 +937,7 @@ func _watch_liveness(world: SimWorld) -> void:
 	if world.clock.phase != SimClock.Phase.OPEN and world.clock.phase != SimClock.Phase.LAST_ORDERS:
 		_stall.clear()
 		_right_of_way.clear()
+		_way_holder = -1
 		return
 	var tuning: MovementTuning = world.movement_tuning
 	var due: Array[Array] = []
@@ -1003,6 +1006,7 @@ func _escape(world: SimWorld, stuck: SimAgent, stalled: int) -> bool:
 	if route_cells.size() < 2:
 		return true  # Static unreachability keeps its existing drop/exit handling.
 	_right_of_way[stuck.id] = world.now + tuning.escape_retry_ticks
+	_way_holder = stuck.id
 	escape_counts[&"escape"] = int(escape_counts.get(&"escape", 0)) + 1
 	var step: Vector2i = route_cells[1]
 	var blockers: Array[SimAgent] = []

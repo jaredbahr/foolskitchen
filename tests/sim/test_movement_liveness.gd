@@ -208,7 +208,9 @@ func test_a_held_way_keeps_passers_out_but_lets_the_blocker_clear() -> void:
 	var blocker: Walker = _walker(world, Vector2i(1, 1), Vector2i(1, 0))
 	var stuck: Walker = _walker(world, Vector2i(2, 0), Vector2i(1, 1))
 	assert_true(passer.id < blocker.id, "the passer would win an ordinary lowest-ID tie")
+	# What an escape grants: right of way and the held way.
 	world.movement._right_of_way[stuck.id] = 1000000
+	world.movement._way_holder = stuck.id
 	var passer_entered: bool = false
 	for tick: int in 40:
 		if not _advance(world):
