@@ -1,0 +1,238 @@
+extends TestCase
+## #306: nobody may stay stuck forever. Each fixture deadlocked permanently
+## before the liveness backstop; each now resolves through real claimed steps
+## (no teleports), and every tick keeps the movement safety invariants.
+
+const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
+
+var _previous: Dictionary = {}
+
+
+class Walker extends SimAgent:
+	func tick(world: SimWorld) -> void:
+		step_move(world)
+
+
+class StaffWalker extends StaffAgent:
+	func tick(world: SimWorld) -> void:
+		step_move(world)
+
+
+class GuestWalker extends CustomerAgent:
+	var gave_up_at: int = -1
+
+	func tick(world: SimWorld) -> void:
+		step_move(world)
+
+	func give_up_blocked(world: SimWorld) -> void:
+		if gave_up_at < 0:
+			gave_up_at = world.now
+
+	## No restaurant behind this fixture: movement pauses run no visit logic.
+	func maintain_movement_pause(_world: SimWorld) -> void:
+		pass
+
+
+func after_each() -> void:
+	_previous.clear()
+	GameState.new_run(1)
+
+
+## A boxed blocker: S cannot pass B, B is boxed in by S and C, and C blocks
+## nobody's next step directly, so the old local rules never asked C to move.
+func test_people_between_a_boxed_blocker_and_free_floor_clear_first() -> void:
+	var world: SimWorld = _service_world([".......", "##.####", "##.####"])
+	var stuck: Walker = _walker(world, Vector2i(0, 0), Vector2i(6, 0))
+	var boxed: SimAgent = _standing(world, Vector2i(1, 0))
+	var between: SimAgent = _standing(world, Vector2i(2, 0))
+	var moved: Dictionary[int, bool] = {}
+	for tick: int in 600:
+		if not _advance(world):
+			return
+		for agent: SimAgent in [boxed, between]:
+			if agent.cell != Vector2i(1, 0) and agent.cell != Vector2i(2, 0):
+				moved[agent.id] = true
+		if stuck.cell == Vector2i(6, 0):
+			break
+	assert_eq(stuck.cell, Vector2i(6, 0), "the stuck person reaches its real goal")
+	assert_true(moved.has(between.id), "the person between steps into the side aisle")
+	assert_true(world.now < world.movement_tuning.squeeze_after_ticks,
+		"clearing resolves it before any squeeze (%d ticks)" % world.now)
+	assert_true(int(world.movement.escape_counts.get(&"line", 0)) >= 1)
+
+
+## A dead end with no free cell for the guest: the worker squeezes past over
+## one ordinary step (drawn bowing sideways), never teleporting.
+func test_staff_squeezes_past_a_stationary_guest_in_a_dead_end() -> void:
+	var world: SimWorld = _service_world(["...."])
+	var guest: GuestWalker = _guest(world, Vector2i(3, 0))
+	var staff: StaffWalker = StaffWalker.new(&"server", 3)
+	staff.cell = Vector2i(0, 0)
+	world.add_agent(staff)
+	assert_true(staff.set_destination(world.grid, Vector2i(3, 0)))
+	var squeeze_ticks: int = 0
+	var bowed: bool = false
+	for tick: int in 800:
+		if not _advance(world):
+			return
+		if world.movement.is_squeezing(staff.id):
+			squeeze_ticks += 1
+			assert_true(world.movement.is_squeezing(guest.id), "both partners squeeze together")
+			assert_eq(staff.move_progress, guest.move_progress, "they cross in lockstep")
+			var straight: Vector3 = GridMath.cell_to_world(staff.cell).lerp(
+				GridMath.cell_to_world(staff.next_cell()), staff.move_progress)
+			bowed = bowed or not staff.movement_position().is_equal_approx(straight)
+		if staff.cell == Vector2i(3, 0):
+			break
+	assert_eq(staff.cell, Vector2i(3, 0), "the worker gets through")
+	assert_eq(guest.cell, Vector2i(2, 0), "the guest swapped one cell, not teleported away")
+	assert_eq(squeeze_ticks, 3, "the swap takes one ordinary 4-tick step (3 partial ticks)")
+	assert_true(bowed, "the squeeze is drawn passing to the side, never overlapping")
+	assert_eq(int(world.movement.escape_counts.get(&"squeeze", 0)), 1)
+	var tuning: MovementTuning = world.movement_tuning
+	assert_true(world.now <= tuning.squeeze_after_ticks + tuning.escape_after_ticks,
+		"squeezes soon after the limit (tick %d)" % world.now)
+	assert_eq(guest.gave_up_at, -1)
+
+
+## Nothing can clear a guest's way and a guest who is not leaving never
+## squeezes: it gives up at the authored limit instead of waiting forever.
+func test_a_guest_who_still_cannot_move_gives_up() -> void:
+	var world: SimWorld = _service_world(["...."])
+	var guest: GuestWalker = _guest(world, Vector2i(0, 0))
+	guest.state = CustomerAgent.State.WALKING_TO_SEAT
+	_standing(world, Vector2i(1, 0))
+	assert_true(guest.set_destination(world.grid, Vector2i(3, 0)))
+	for tick: int in 700:
+		if not _advance(world):
+			return
+		if guest.gave_up_at >= 0:
+			break
+	var tuning: MovementTuning = world.movement_tuning
+	assert_true(guest.gave_up_at > tuning.give_up_after_ticks \
+			and guest.gave_up_at <= tuning.give_up_after_ticks + tuning.escape_after_ticks,
+		"gives up soon after the limit, never waiting forever (at %d)" % guest.gave_up_at)
+	assert_eq(int(world.movement.escape_counts.get(&"squeeze", 0)), 0, "a guest on its way in never squeezes")
+
+
+## The real departure: a give-up is an ordinary visible leave with its reason.
+func test_giving_up_is_a_counted_departure_through_the_door() -> void:
+	var content: ContentDB = ContentDB.new()
+	assert_eq(content.load_all(), PackedStringArray())
+	var errors: Array[String] = []
+	var sim: RestaurantSim = RestaurantSim.create(LAYOUT, content, 306, errors, null, false)
+	assert_eq(errors, [] as Array[String])
+	sim.spawner.min_gap = 1000000
+	sim.spawner.max_gap = 1000000
+	sim.spawner.reset()
+	var random: RandomNumberGenerator = RandomNumberGenerator.new()
+	random.seed = 306
+	var guest: CustomerAgent = sim.add_customer(sim.world.grid.entries()[0], random)
+	assert_true(sim.world.clock.start_service())
+	sim.advance()
+	guest.give_up_blocked(sim.world)
+	assert_eq(guest.state, CustomerAgent.State.LEAVING)
+	assert_eq(guest.leave_reason, &"no_way_through")
+	for tick: int in 200:
+		sim.advance()
+		if sim.world.agent(guest.id) == null:
+			break
+	assert_null(sim.world.agent(guest.id), "walks out like any leaving guest")
+	assert_eq(int(sim.leave_reasons_today.get(&"no_way_through", 0)), 1)
+	assert_eq(CustomerAgent.player_reason(&"no_way_through"), &"no_way_through", "shown as-is to the player")
+
+
+## A stop whose edge never started (an idle busser stepping off a cleaned
+## seat) used to wait forever on a diagonal whose corner a seated guest holds.
+## It now stands still and plans afresh.
+func test_a_never_started_stop_on_a_blocked_diagonal_is_abandoned() -> void:
+	var world: SimWorld = _service_world(["..", ".."], false)
+	var seat: PlacedItem = world.grid.place(Vector2i.ONE, Vector2i(1, 0), 0, false,
+		[] as Array[Vector2i], [Vector2i.ZERO] as Array[Vector2i])
+	assert_not_null(seat)
+	var seated: GuestWalker = _guest(world, Vector2i(0, 1))
+	seated.state = CustomerAgent.State.ORDERING
+	seated.table_item_id = seat.id
+	seated.seat_cell = Vector2i(1, 0)
+	assert_true(seat.reserve(Vector2i(1, 0), seated.id))
+	assert_true(world.reset_agent_position(seated, Vector2i(1, 0)), "staged before service")
+	var worker: StaffWalker = StaffWalker.new(&"server", 3)
+	worker.cell = Vector2i(0, 0)
+	world.add_agent(worker)
+	assert_true(world.clock.start_service())
+	worker.install_movement_route([Vector2i(0, 0), Vector2i(1, 1)] as Array[Vector2i])
+	world.movement.stop_motion(worker.id)
+	# The pre-fix step itself breaks the corner rule, so this fixture cannot
+	# pass the per-tick safety check; it only proves the wait is bounded.
+	for tick: int in 60:
+		world.advance()
+	assert_false(world.movement.is_stopping(worker.id), "the stop does not wait forever")
+	assert_true(worker.has_arrived())
+	assert_eq(worker.cell, Vector2i(0, 0), "never cuts past the seated guest's corner")
+	assert_eq(seated.cell, Vector2i(1, 0), "the seated guest is never moved")
+
+
+## A guest walking to the restroom used to be protected from yielding like a
+## seated guest, so a worker meeting one in a one-cell aisle waited forever.
+func test_a_guest_walking_to_the_restroom_yields_like_anyone_else() -> void:
+	var world: SimWorld = _service_world([".......", "###.###"])
+	var guest: GuestWalker = _guest(world, Vector2i(5, 0))
+	guest.state = CustomerAgent.State.WAITING_FOOD
+	guest.seat_cell = Vector2i(6, 0)
+	guest.restroom = CustomerAgent.Restroom.WALKING
+	assert_true(guest.set_destination(world.grid, Vector2i(1, 0)))
+	var staff: StaffWalker = StaffWalker.new(&"server", 3)
+	staff.cell = Vector2i(0, 0)
+	world.add_agent(staff)
+	assert_true(staff.set_destination(world.grid, Vector2i(6, 0)))
+	var yielded: bool = false
+	for tick: int in 400:
+		if not _advance(world):
+			return
+		# Before the liveness backstop could act: the ordinary yield rules.
+		yielded = yielded or (world.movement.is_yielding(guest.id) \
+			and world.now < world.movement_tuning.escape_after_ticks)
+		if staff.cell == Vector2i(6, 0) and guest.cell == Vector2i(1, 0):
+			break
+	assert_true(yielded, "the guest off their seat takes an ordinary sidestep")
+	assert_eq(staff.cell, Vector2i(6, 0), "the worker gets through")
+	assert_eq(guest.cell, Vector2i(1, 0), "and so does the guest")
+
+
+func _service_world(rows: Array[String], open: bool = true) -> SimWorld:
+	var world: SimWorld = SimWorld.new(SimGrid.from_ascii(PackedStringArray(rows)))
+	if open:
+		assert_true(world.clock.start_service())
+	return world
+
+
+func _walker(world: SimWorld, at: Vector2i, goal: Vector2i) -> Walker:
+	var agent: Walker = Walker.new()
+	agent.cell = at
+	world.add_agent(agent)
+	assert_true(agent.set_destination(world.grid, goal))
+	return agent
+
+
+func _standing(world: SimWorld, at: Vector2i) -> SimAgent:
+	var agent: SimAgent = SimAgent.new()
+	agent.cell = at
+	world.add_agent(agent)
+	return agent
+
+
+func _guest(world: SimWorld, at: Vector2i) -> GuestWalker:
+	var random: RandomNumberGenerator = RandomNumberGenerator.new()
+	random.seed = 306
+	var guest: GuestWalker = GuestWalker.new(RestaurantSim.new(), random)
+	guest.cell = at
+	world.add_agent(guest)
+	return guest
+
+
+func _advance(world: SimWorld) -> bool:
+	var before: Dictionary = MovementInvariants.capture(world)
+	world.advance()
+	var problem: String = MovementInvariants.problem(world, before)
+	assert_eq(problem, "", "tick %d keeps movement safety" % world.now)
+	return problem.is_empty()

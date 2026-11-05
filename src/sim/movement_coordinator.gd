@@ -5,6 +5,10 @@ extends RefCounted
 
 enum YieldAttempt { STARTED, IN_PROGRESS_PROTECTED, NO_POCKET }
 
+const CARRYING_PRIORITY: int = 3
+## Liveness key for a leaving guest: any real exit counts as its goal.
+const EXIT_GOAL: Vector2i = Vector2i(-1000001, -1000001)
+
 var _occupied: Dictionary[Vector2i, int] = {}
 var _next: Dictionary[Vector2i, int] = {}
 var _edges: Dictionary[int, Dictionary] = {}
@@ -21,6 +25,17 @@ var _pending: Array[int] = []
 var _stopping: Dictionary[int, bool] = {}
 var _after_stop: Dictionary[int, Vector2i] = {}
 var _seat_releases: Array[Dictionary] = []
+## Liveness backstop (#306): per person with a route, their real goal, the
+## closest they have come to it and since when they have not got closer.
+var _stall: Dictionary[int, Dictionary] = {}
+## A stuck person given right of way wins arbitration until this tick.
+var _right_of_way: Dictionary[int, int] = {}
+## A squeeze-past: both partners cross one shared edge in lockstep.
+var _squeezes: Dictionary[int, Dictionary] = {}
+## Diagnostics only (the liveness soak reads them): how often each escape ran.
+var escape_counts: Dictionary[StringName, int] = {}
+## Pairs whose squeeze finished during the current tick (for observers).
+var _squeezed: Dictionary[int, int] = {}
 ## Door lane cache (#305), valid for one grid version.
 var _lane: Dictionary[Vector2i, bool] = {}
 var _lane_grid: SimGrid = null
@@ -50,8 +65,23 @@ func snapshot() -> Dictionary:
 		var row: Dictionary = _cooperative[id].duplicate(true)
 		row["id"] = id
 		cooperative.append(row)
+	var squeezes: Array[Array] = []
+	var squeezers: Array[int] = []
+	squeezers.assign(_squeezes.keys())
+	squeezers.sort()
+	for id: int in squeezers:
+		var partner: int = int(_squeezes[id]["partner"])
+		if id < partner:
+			squeezes.append([id, partner])
+	var finished: Array[int] = []
+	finished.assign(_squeezed.keys())
+	finished.sort()
+	for id: int in finished:
+		if id < _squeezed[id]:
+			squeezes.append([id, _squeezed[id]])
 	return {"occupied": _occupied.duplicate(), "next": claims,
-		"edges": edges, "pending": _pending.duplicate(), "stopping": stopping, "returning": returning, "cooperative": cooperative}
+		"edges": edges, "pending": _pending.duplicate(), "stopping": stopping, "returning": returning,
+		"cooperative": cooperative, "squeezes": squeezes}
 
 
 func set_pending(ids: Array[int]) -> void:
@@ -98,6 +128,9 @@ func unregister_agent(agent_id: int) -> void:
 			_cooperative.erase(clearer)
 	_stopping.erase(agent_id)
 	_after_stop.erase(agent_id)
+	_stall.erase(agent_id)
+	_right_of_way.erase(agent_id)
+	_end_squeeze(agent_id)
 	for cell: Vector2i in _swept.keys():
 		if _swept[cell] == agent_id:
 			_swept.erase(cell)
@@ -118,6 +151,7 @@ func reset_agent(world: SimWorld, agent: SimAgent, requested: Vector2i) -> bool:
 
 func begin_tick(world: SimWorld) -> void:
 	_swept.clear()
+	_squeezed.clear()
 	_release_vacated_seats(world)
 	# External scenario/reset callers can change cells directly. Reconcile their
 	# admission before they tick, rather than retaining stale reservations.
@@ -191,6 +225,7 @@ func begin_tick(world: SimWorld) -> void:
 				else:
 					agent.clear_path()
 					agent.needs_repath = true
+	_watch_liveness(world)
 
 
 ## Only public NEW destinations replace recovery intent. This never releases
@@ -212,7 +247,7 @@ func _can_queue_in_pocket(world: SimWorld, agent: SimAgent) -> bool:
 
 func priority(world: SimWorld, agent: SimAgent) -> int:
 	if agent is StaffAgent:
-		return 3 if (agent as StaffAgent).carries_food() else 2
+		return CARRYING_PRIORITY if (agent as StaffAgent).carries_food() else 2
 	if agent is CourierAgent:
 		return 2
 	# Door flow (#305): a guest still arriving or queueing yields the front
@@ -252,6 +287,12 @@ func door_lane(world: SimWorld) -> Dictionary[Vector2i, bool]:
 func _before(world: SimWorld, first: SimAgent, second: SimAgent) -> bool:
 	var a: int = priority(world, first)
 	var b: int = priority(world, second)
+	# Food in hand keeps its priority; otherwise a stuck person's granted
+	# right of way (#306) wins until its retry.
+	var first_way: bool = int(_right_of_way.get(first.id, -1)) >= world.now
+	if first_way != (int(_right_of_way.get(second.id, -1)) >= world.now) \
+			and a != CARRYING_PRIORITY and b != CARRYING_PRIORITY:
+		return first_way
 	return a > b or (a == b and first.id < second.id)
 
 
@@ -440,7 +481,9 @@ func _release_vacated_seats(world: SimWorld) -> void:
 			# hold it indefinitely while waiting for another job.
 			if actor is StaffAgent and actor.has_arrived() and not _stopping.has(actor.id) and not _resume.has(actor.id):
 				for next: Vector2i in world.grid.walkable_neighbours(cell):
-					if standing_cell(world, next) and can_enter(world, actor, next):
+					# The whole edge must be open now, corners included: a seated
+					# guest beside a diagonal would hold this step forever (#306).
+					if standing_cell(world, next) and _edge_feasible(world, actor, next):
 						actor.install_movement_route([cell, next] as Array[Vector2i])
 						stop_motion(actor.id)
 						break
@@ -485,6 +528,19 @@ func is_stopping(id: int) -> bool:
 func advance_stop(world: SimWorld, agent: SimAgent) -> bool:
 	if not _stopping.has(agent.id):
 		return false
+	if not agent.has_arrived() and agent.move_progress == 0.0 and not _edges.has(agent.id) \
+			and int(_blocked.get(agent.id, 0)) >= world.movement_tuning.yield_after_ticks:
+		# A stop whose edge never started has nothing to finish. Waiting for a
+		# step that stays blocked (a seated guest on its diagonal corner) would
+		# hold this person forever (#306): stand still and plan afresh instead.
+		var pending_goal: Vector2i = _after_stop.get(agent.id, SimGrid.NO_CELL)
+		_stopping.erase(agent.id)
+		_after_stop.erase(agent.id)
+		_blocked.erase(agent.id)
+		agent.clear_path()
+		if pending_goal != SimGrid.NO_CELL:
+			agent.set_destination(world.grid, pending_goal)
+		return true
 	if not agent.has_arrived():
 		if agent is CourierAgent:
 			(agent as CourierAgent)._walk(world)
@@ -678,7 +734,11 @@ func _yield(world: SimWorld, yielding: SimAgent, winner: SimAgent, avoid_parking
 		return YieldAttempt.IN_PROGRESS_PROTECTED
 	if yielding is CustomerAgent:
 		var guest: CustomerAgent = yielding as CustomerAgent
-		if guest.state >= CustomerAgent.State.ORDERING and guest.state <= CustomerAgent.State.PAYING:
+		# Only a guest at their table (or inside a stall) is protected. One walking to or
+		# from the restroom stands in an ordinary aisle and yields like anyone
+		# else; protecting it let two such trips block each other forever.
+		if guest.state >= CustomerAgent.State.ORDERING and guest.state <= CustomerAgent.State.PAYING \
+				and (guest.cell == guest.seat_cell or guest.restroom == CustomerAgent.Restroom.INSIDE):
 			return YieldAttempt.IN_PROGRESS_PROTECTED
 	var original: Vector2i = _resume.get(yielding.id, yielding.destination())
 	if original == SimGrid.NO_CELL:
@@ -825,3 +885,385 @@ func _nearby(world: SimWorld, agent: SimAgent, start: Vector2i, radius: int) -> 
 			queue.append(next)
 			result.append(next)
 	return result
+
+
+# --- Liveness backstop (#306) ------------------------------------------------
+# The rules above resolve ordinary traffic. Some crowded shapes (a doorway full
+# of leaving and arriving guests, a worker mopping the only free door cell, a
+# line of waiting guests in a one-cell aisle) can still leave someone with a
+# route making no physical progress at all. This watchdog guarantees service
+# never stalls. In a total order (longest stall, then lowest ID), the stuck
+# person gets right of way and whoever holds its next step clears it: to any
+# free cell they can reach (no radius cap), or, when boxed in, by first
+# clearing the stationary people between them and the nearest free cell. A
+# boxed blocker's neighbours are also asked to make room. Past a longer
+# limit the stuck person squeezes past a stationary guest (a visible swap over
+# one ordinary step, never a teleport), and a guest who still cannot move
+# gives up and leaves. Everything walks real claimed edges; no RNG is used.
+
+func _watch_liveness(world: SimWorld) -> void:
+	if world.clock.phase != SimClock.Phase.OPEN and world.clock.phase != SimClock.Phase.LAST_ORDERS:
+		_stall.clear()
+		_right_of_way.clear()
+		return
+	var tuning: MovementTuning = world.movement_tuning
+	var chosen: SimAgent = null
+	var chosen_stall: int = -1
+	for agent: SimAgent in world.agents:
+		if (agent.has_arrived() and not _resume.has(agent.id)) or _squeezes.has(agent.id) \
+				or not agent.movement_admitted:
+			_stall.erase(agent.id)
+			continue
+		# Progress means getting closer to where this person is really going,
+		# so a crowd that only shuffles people back and forth (yield, return,
+		# yield again) counts as stuck too, not just someone standing still.
+		var goal: Vector2i = _real_goal(agent)
+		var distance: float = GridMath.octile(agent.cell, goal)
+		if agent is CustomerAgent and (agent as CustomerAgent).state == CustomerAgent.State.LEAVING:
+			# Either street cell is the way out; switching between them is not progress.
+			goal = EXIT_GOAL
+			for entry: Vector2i in world.grid.entries():
+				distance = minf(distance, GridMath.octile(agent.cell, entry))
+		var row: Dictionary = _stall.get(agent.id, {})
+		if row.is_empty() or row["goal"] != goal or distance < float(row["best"]):
+			_stall[agent.id] = {"goal": goal, "best": distance, "since": world.now,
+				"next": world.now + tuning.escape_after_ticks}
+			continue
+		if world.now < int(row["next"]):
+			continue
+		var stalled: int = world.now - int(row["since"])
+		if stalled > chosen_stall:
+			chosen = agent
+			chosen_stall = stalled
+	for id: int in _right_of_way.keys():
+		if _right_of_way[id] < world.now:
+			_right_of_way.erase(id)
+	if chosen == null:
+		return
+	# Someone mid-step is checked again next tick, so a shuffle cannot dodge it.
+	var acted: bool = _escape(world, chosen, chosen_stall)
+	if _stall.has(chosen.id):
+		_stall[chosen.id]["next"] = world.now + (tuning.escape_retry_ticks if acted else 1)
+
+
+## Where this person is actually headed: a sidestep's return goal, not its pocket.
+func _real_goal(agent: SimAgent) -> Vector2i:
+	if _resume.has(agent.id) and not agent is CourierAgent:
+		return _resume[agent.id]
+	return agent.cell if agent.path.is_empty() else agent.path.back()
+
+
+func _escape(world: SimWorld, stuck: SimAgent, stalled: int) -> bool:
+	if stuck.move_progress > 0.0 or _edges.has(stuck.id) or _stopping.has(stuck.id):
+		return false
+	var tuning: MovementTuning = world.movement_tuning
+	if stuck is CustomerAgent and stalled >= tuning.give_up_after_ticks \
+			and (stuck as CustomerAgent).state < CustomerAgent.State.LEAVING:
+		# Bounded: a guest never waits forever behind a crowd it cannot pass.
+		(stuck as CustomerAgent).give_up_blocked(world)
+		escape_counts[&"give_up"] = int(escape_counts.get(&"give_up", 0)) + 1
+		if stuck.has_arrived() or world.agent(stuck.id) == null:
+			return true
+	var route_cells: Array[Vector2i] = _escape_route(world, stuck)
+	if route_cells.size() < 2:
+		return true  # Static unreachability keeps its existing drop/exit handling.
+	_right_of_way[stuck.id] = world.now + tuning.escape_retry_ticks
+	escape_counts[&"escape"] = int(escape_counts.get(&"escape", 0)) + 1
+	var step: Vector2i = route_cells[1]
+	var blockers: Array[SimAgent] = []
+	for cell: Vector2i in _step_cells(stuck.cell, step):
+		var holder: SimAgent = _holder(world, cell)
+		if holder != null and holder != stuck and not blockers.has(holder):
+			blockers.append(holder)
+	if not stuck is CourierAgent and route_cells != stuck.path.slice(stuck.path_index - 1):
+		# Retake the shortest static route; right of way now wins its first step.
+		stuck.install_movement_route(route_cells)
+	if blockers.is_empty():
+		return true
+	if stalled >= tuning.squeeze_after_ticks:
+		if _try_squeeze(world, stuck, route_cells, blockers):
+			return true
+		if stuck is StaffAgent and (stuck as StaffAgent).task == null and not (stuck as StaffAgent).carries_food():
+			# An idle worker only parking or returning can simply stop here.
+			supersede_destination(stuck.id)
+			stuck.set_destination(world.grid, stuck.cell)
+			escape_counts[&"stay"] = int(escape_counts.get(&"stay", 0)) + 1
+			return true
+	var avoid: Dictionary[Vector2i, bool] = {stuck.cell: true}
+	for cell: Vector2i in route_cells:
+		avoid[cell] = true
+	for blocker: SimAgent in blockers:
+		if not _clearable(world, blocker, stuck) \
+				or (stalled < tuning.squeeze_after_ticks and _busy_worker(blocker)) \
+				or _clear_to_pocket(world, blocker, stuck, avoid) or _push_through(world, blocker, stuck, avoid):
+			continue
+		# Boxed in: open space around the blocker; a later retry uses it.
+		var around: Dictionary[Vector2i, bool] = avoid.duplicate()
+		around[blocker.cell] = true
+		for cell: Vector2i in world.grid.walkable_neighbours(blocker.cell):
+			var other: SimAgent = _holder(world, cell)
+			if other != null and not blockers.has(other) and _clearable(world, other, stuck) \
+					and not _busy_worker(other):
+				_clear_to_pocket(world, other, stuck, around)
+	return true
+
+
+## The stuck person's own static route to where it is really going (people
+## ignored, seats and rooms respected). A courier keeps its planned alley.
+func _escape_route(world: SimWorld, stuck: SimAgent) -> Array[Vector2i]:
+	if stuck is CourierAgent:
+		return stuck.path.slice(stuck.path_index - 1)
+	return route(world, stuck, stuck.cell, _real_goal(stuck), false)
+
+
+func _holder(world: SimWorld, cell: Vector2i) -> SimAgent:
+	var id: int = _occupied.get(cell, _next.get(cell, _swept.get(cell, -1)))
+	return world.agent(id) if id != -1 else null
+
+
+## Physically settled (not mid-edge, stopping or squeezing) and not a courier.
+func _clearable(world: SimWorld, agent: SimAgent, stuck: SimAgent) -> bool:
+	return agent != stuck and world.agents.has(agent) and agent.movement_admitted \
+		and not agent is CourierAgent and agent.move_progress == 0.0 \
+		and not _edges.has(agent.id) and not _stopping.has(agent.id) and not _squeezes.has(agent.id)
+
+
+## Mid-work or carrying food: finishing soon frees the cell anyway, so the
+## backstop leaves them be until its squeeze limit.
+func _busy_worker(agent: SimAgent) -> bool:
+	if not agent is StaffAgent:
+		return false
+	var staff: StaffAgent = agent as StaffAgent
+	if staff.carries_food():
+		return true
+	if staff.task == null or staff.step_index < 0 or staff.step_index >= staff.task.steps.size():
+		return false
+	return staff.task.steps[staff.step_index].kind == TaskStep.Kind.WORK and staff._step_started
+
+
+## Unbounded search for the nearest free floor cell this person can walk to
+## now, off the stuck person's route.
+func _clear_to_pocket(world: SimWorld, agent: SimAgent, stuck: SimAgent,
+		avoid: Dictionary[Vector2i, bool]) -> bool:
+	var reachable: Dictionary[Vector2i, bool] = world.grid.reachable_avoiding(agent.cell,
+		_route_blocked(world, agent, agent.cell, SimGrid.NO_CELL, true), agent is CustomerAgent)
+	if reachable.size() <= 1:
+		return false
+	for cell: Vector2i in _nearby(world, agent, agent.cell, world.grid.size.x + world.grid.size.y):
+		if not reachable.has(cell) or avoid.has(cell) or not _pocket_cell(world, agent, cell):
+			continue
+		var path: Array[Vector2i] = route(world, agent, agent.cell, cell, true)
+		if path.size() < 2 or path.has(stuck.cell):
+			continue
+		_send_aside(world, agent, path)
+		avoid[cell] = true
+		escape_counts[&"pocket"] = int(escape_counts.get(&"pocket", 0)) + 1
+		return true
+	return false
+
+
+func _pocket_cell(world: SimWorld, agent: SimAgent, cell: Vector2i) -> bool:
+	return can_enter(world, agent, cell) and standing_cell(world, cell) \
+		and world.grid.terrain(cell) == SimGrid.Terrain.FLOOR
+
+
+## Nobody can step aside alone: find the nearest free floor cell this person
+## could reach if the stationary people between were not there (unbounded
+## search, never through the stuck person). Each of those people first clears
+## to a pocket off both routes; this person then follows them out, waiting
+## behind each one on ordinary claimed steps.
+func _push_through(world: SimWorld, first: SimAgent, stuck: SimAgent,
+		avoid: Dictionary[Vector2i, bool]) -> bool:
+	var previous: Dictionary[Vector2i, Vector2i] = {}
+	var queue: Array[Vector2i] = [first.cell]
+	var seen: Dictionary[Vector2i, bool] = {first.cell: true, stuck.cell: true}
+	var index: int = 0
+	var found: Vector2i = SimGrid.NO_CELL
+	while index < queue.size() and found == SimGrid.NO_CELL:
+		var current: Vector2i = queue[index]
+		index += 1
+		for delta: Vector2i in [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]:
+			var next: Vector2i = current + delta
+			if seen.has(next) or not _line_step(world, first, current, next):
+				continue
+			var holder: SimAgent = _holder(world, next)
+			if holder != null and not _clearable(world, holder, stuck):
+				continue
+			seen[next] = true
+			previous[next] = current
+			if holder == null and not avoid.has(next) and _pocket_cell(world, first, next):
+				found = next
+				break
+			queue.append(next)
+	if found == SimGrid.NO_CELL:
+		return false
+	var line: Array[Vector2i] = [found]
+	while previous.has(line[0]):
+		line.push_front(previous[line[0]])
+	var keep: Dictionary[Vector2i, bool] = avoid.duplicate()
+	for cell: Vector2i in line:
+		keep[cell] = true
+	for cell: Vector2i in line.slice(1):
+		var holder: SimAgent = _holder(world, cell)
+		if holder != null and not _clear_to_pocket(world, holder, stuck, keep):
+			return false
+	_send_aside(world, first, line)
+	avoid[found] = true
+	escape_counts[&"line"] = int(escape_counts.get(&"line", 0)) + 1
+	return true
+
+
+func _line_step(world: SimWorld, mover: SimAgent, from: Vector2i, to: Vector2i) -> bool:
+	if not world.grid.in_bounds(to) or not world.grid.step_open(from, to) or not _legal_cell(world, mover, to):
+		return false
+	return not mover is CustomerAgent or world.grid.guest_step_ok(from, to)
+
+
+## An ordinary yield: real route, with return intent for anyone who has
+## somewhere to be. Someone only standing about (an idle worker, a waiting
+## guest) keeps the new spot rather than walking back into the same jam.
+func _send_aside(world: SimWorld, agent: SimAgent, path: Array[Vector2i]) -> void:
+	var original: Vector2i = _resume.get(agent.id, agent.destination())
+	if original == SimGrid.NO_CELL:
+		original = agent.cell
+	var standing: bool = not _resume.has(agent.id) and agent.has_arrived() \
+		and (agent is CustomerAgent or not agent is StaffAgent or (agent as StaffAgent).task == null)
+	_resume[agent.id] = path.back() if standing or _idle_without_route(world, agent) else original
+	_returning.erase(agent.id)
+	_cooperative.erase(agent.id)
+	_blocked.erase(agent.id)
+	agent.install_movement_route(path)
+
+
+## Last resort, after squeeze_after_ticks of no movement: swap places with a
+## physically stationary person over one ordinary step. Only staff squeeze
+## past guests, and a leaving guest past anyone but a courier.
+func _try_squeeze(world: SimWorld, stuck: SimAgent, route_cells: Array[Vector2i],
+		blockers: Array[SimAgent]) -> bool:
+	if stuck is CourierAgent:
+		return false
+	var step: Vector2i = route_cells[1]
+	for partner: SimAgent in blockers:
+		if not _clearable(world, partner, stuck) or not _may_squeeze(stuck, partner):
+			continue
+		var through: Vector2i = partner.cell
+		var delta: Vector2i = through - stuck.cell
+		if absi(delta.x) + absi(delta.y) != 1:
+			continue  # Squeezes are cardinal; a diagonal holder is cleared instead.
+		if not _line_step(world, stuck, stuck.cell, through) or not _line_step(world, partner, through, stuck.cell):
+			continue
+		var rest: Array[Vector2i] = [stuck.cell, through]
+		if through == step:
+			rest.append_array(route_cells.slice(2))
+		else:
+			# A corner holder: continue cardinally to the original next step.
+			var onward: Array[Vector2i] = route(world, stuck, through, route_cells.back(), false)
+			if onward.size() < 1:
+				continue
+			rest.append_array(onward.slice(1))
+		_start_squeeze(world, stuck, partner, rest)
+		return true
+	return false
+
+
+func _may_squeeze(stuck: SimAgent, partner: SimAgent) -> bool:
+	if partner is CourierAgent:
+		return false
+	if stuck is StaffAgent:
+		return partner is CustomerAgent
+	return stuck is CustomerAgent and (stuck as CustomerAgent).state == CustomerAgent.State.LEAVING
+
+
+func _start_squeeze(world: SimWorld, stuck: SimAgent, partner: SimAgent, stuck_path: Array[Vector2i]) -> void:
+	var original: Vector2i = _resume.get(partner.id, partner.destination())
+	if original == SimGrid.NO_CELL:
+		original = partner.cell
+	_resume[partner.id] = stuck.cell if _idle_without_route(world, partner) else original
+	_returning.erase(partner.id)
+	_cooperative.erase(partner.id)
+	_blocked.erase(partner.id)
+	_blocked.erase(stuck.id)
+	partner.install_movement_route([partner.cell, stuck.cell] as Array[Vector2i])
+	stuck.install_movement_route(stuck_path)
+	_squeezes[stuck.id] = {"partner": partner.id, "tick": -1}
+	_squeezes[partner.id] = {"partner": stuck.id, "tick": -1}
+	# Opposite sides of the shared edge, so the view draws them passing.
+	stuck.squeeze_side = 1.0
+	partner.squeeze_side = -1.0
+	for pair: Array in [[stuck, partner], [partner, stuck]]:
+		var mover: SimAgent = pair[0]
+		var other: SimAgent = pair[1]
+		_edges[mover.id] = {"id": mover.id, "from": mover.cell, "to": other.cell}
+		_next[other.cell] = mover.id
+	_stall.erase(stuck.id)
+	escape_counts[&"squeeze"] = int(escape_counts.get(&"squeeze", 0)) + 1
+	world.log_event("#%d squeezed past #%d" % [stuck.id, partner.id])
+
+
+func is_squeezing(id: int) -> bool:
+	return _squeezes.has(id)
+
+
+## Both partners advance together at the slower person's ordinary step time.
+func advance_squeeze(world: SimWorld, agent: SimAgent) -> bool:
+	if not _squeezes.has(agent.id):
+		agent.squeeze_side = 0.0
+		return false
+	var row: Dictionary = _squeezes[agent.id]
+	if int(row["tick"]) == world.now:
+		return true
+	var partner: SimAgent = world.agent(int(row["partner"]))
+	if partner == null:
+		_end_squeeze(agent.id)
+		return false
+	var rate: float = minf(_tick_rate(agent), _tick_rate(partner))
+	row["tick"] = world.now
+	_squeezes[partner.id]["tick"] = world.now
+	if rate <= 0.0:
+		return true
+	var before: float = agent.move_progress
+	agent.move_progress += rate
+	partner.move_progress += rate
+	agent.last_progress_tick = world.now
+	partner.last_progress_tick = world.now
+	if agent.move_progress < 1.0:
+		return true
+	var time: float = clampf((1.0 - before) / rate, 0.0, 1.0)
+	var a_from: Vector2i = agent.cell
+	var b_from: Vector2i = partner.cell
+	for mover: SimAgent in [agent, partner]:
+		mover.move_progress = 0.0
+		mover.cell = b_from if mover == agent else a_from
+		mover.path_index += 1
+		mover.squeeze_side = 0.0
+		mover.movement_trace_point(time)
+	_squeezes.erase(agent.id)
+	_squeezes.erase(partner.id)
+	_squeezed[agent.id] = partner.id
+	_squeezed[partner.id] = agent.id
+	_release_edge(agent.id)
+	_release_edge(partner.id)
+	_occupied[agent.cell] = agent.id
+	_occupied[partner.cell] = partner.id
+	_swept[agent.cell] = agent.id
+	_swept[partner.cell] = partner.id
+	_release_vacated_seats(world)
+	return true
+
+
+## Edge fraction per tick at this person's ordinary walking speed (cardinal).
+func _tick_rate(agent: SimAgent) -> float:
+	var multiplier: float = agent.movement_multiplier()
+	if not is_finite(multiplier) or multiplier <= 0.0 or not is_finite(agent.move_speed):
+		return 0.0
+	return maxf(agent.move_speed, 0.0) * multiplier
+
+
+## A removed partner leaves the other on an ordinary claimed edge into a cell
+## that is now empty; it finishes that edge normally.
+func _end_squeeze(agent_id: int) -> void:
+	if not _squeezes.has(agent_id):
+		return
+	var partner: int = int(_squeezes[agent_id]["partner"])
+	_squeezes.erase(agent_id)
+	_squeezes.erase(partner)

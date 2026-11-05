@@ -86,13 +86,28 @@ static func problem(world: SimWorld, before: Dictionary) -> String:
 	if snapshot.pending != pending_ids:
 		return "pending snapshot does not match ordered admission queue"
 	var claims: Dictionary = snapshot.next
+	# A squeeze-past (#306) is the one declared exception: two partners swap
+	# over one shared edge, each claiming the other's current cell.
+	var partners: Dictionary[int, int] = {}
+	for pair: Array in snapshot.get("squeezes", []):
+		partners[int(pair[0])] = int(pair[1])
+		partners[int(pair[1])] = int(pair[0])
 	for destination: Vector2i in claims:
 		var holder: int = claims[destination]
 		if not active.has(holder):
 			return "claim held by missing person: %d" % holder
-		if occupied.has(destination) and occupied[destination] != holder:
+		if occupied.has(destination) and occupied[destination] != holder \
+				and partners.get(holder, -1) != occupied[destination]:
 			return "claim conflicts with another current person at %s" % destination
 	for agent: SimAgent in world.agents:
+		if partners.has(agent.id):
+			# The squeeze bows sideways off the grid line; check its ends only.
+			var prior: Dictionary = before.active.get(agent.id, {})
+			var partner_prior: Dictionary = before.active.get(partners[agent.id], {})
+			if prior.is_empty() or partner_prior.is_empty() \
+					or not agent.cell in [prior.cell, partner_prior.cell]:
+				return "squeeze of %d does not swap with its partner" % agent.id
+			continue
 		var analysis: Dictionary = _actual_segments(world, agent, before)
 		if not analysis.error.is_empty():
 			return "actual trace of %d: %s" % [agent.id, analysis.error]
@@ -119,7 +134,8 @@ static func problem(world: SimWorld, before: Dictionary) -> String:
 			var other: Dictionary = edges[other_index]
 			if edge.id == other.id:
 				continue
-			if edge["from"] == other["to"] and edge["to"] == other["from"]:
+			if edge["from"] == other["to"] and edge["to"] == other["from"] \
+					and partners.get(int(edge.id), -1) != int(other.id):
 				return "opposite edge reservations"
 			var delta: Vector2i = edge["to"] - edge["from"]
 			var other_delta: Vector2i = other["to"] - other["from"]
@@ -134,6 +150,8 @@ static func problem(world: SimWorld, before: Dictionary) -> String:
 			return "stopping edge belongs to a missing person"
 	for left: int in world.agents.size():
 		for right: int in range(left + 1, world.agents.size()):
+			if partners.get(world.agents[left].id, -1) == world.agents[right].id:
+				continue
 			if _traces_touch(world.agents[left].movement_trace(), world.agents[right].movement_trace()):
 				return "timed movement crosses between %d and %d" % [world.agents[left].id, world.agents[right].id]
 	return ""

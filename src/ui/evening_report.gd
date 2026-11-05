@@ -22,6 +22,7 @@ const LEAVE_LABELS: Dictionary = {
 	&"too_expensive": "Too expensive",
 	&"no_table": "No table available",
 	&"no_clean_plates": "No clean plates",
+	&"no_way_through": "Couldn't get through",
 }
 const PROFIT_GREEN: Color = Color("38764b")
 const LOSS_RED: Color = Color("a83e35")
