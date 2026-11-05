@@ -1,13 +1,13 @@
 # Fool's Kitchen: Rules for AI Workers
 
-This file is read by every coding agent (Codex, harness workers, Claude). Read `docs/DESIGN.md` and `docs/TECH.md` before starting a task.
+This file is read by every coding agent (Claude and its subagents). Read `docs/DESIGN.md` and `docs/TECH.md` before starting a task.
 
 ## Project
 - A low-poly 3D restaurant tycoon game. Godot 4.7.2, typed GDScript, Compatibility renderer (it must stay web-exportable).
 - Hobby project with a light process.
 
 ## Workflow
-1. Work comes from an assigned GitHub issue. When choosing your next issue yourself, take open `worker-ready` issues in the order of `docs/ROADMAP.md` → "Up next: the Codex queue" (wave 1 first, top to bottom), skipping any whose **Depends on** / "Start after" hasn't merged. Issues without `worker-ready` are not yours yet. The issue is the brief: do what its **Do** says, stay out of **Don't**, and finish **Done when**.
+1. Work comes from an assigned GitHub issue. When choosing your next issue yourself, take open `worker-ready` issues in the order of `docs/ROADMAP.md` → "Up next: the build queue" (wave 1 first, top to bottom), skipping any whose **Depends on** / "Start after" hasn't merged. Issues without `worker-ready` are not yours yet. The issue is the brief: do what its **Do** says, stay out of **Don't**, and finish **Done when**.
 2. Branch from `main` as `issue-<number>-<slug>`.
 3. Open a PR into `main` with `Closes #<number>` in the body.
 4. One task per PR. If you find extra work, note it in the PR body instead of doing it.
@@ -47,7 +47,7 @@ This file is read by every coding agent (Codex, harness workers, Claude). Read `
 
 ## GitHub is the source of truth (no duplicate work)
 - **Before starting an issue,** check GitHub, not your local state. Look for an open PR whose body says `Closes #N` (search `is:pr is:open "#N"`), a branch named for it, and a claim comment on the issue. If any exists, the issue is taken: pick the next one.
-- **Claim it** with one short issue comment as you start ("Codex: starting this on branch issue-N-..."). One issue, one branch, one PR.
+- **Claim it** with one short issue comment as you start ("Starting this on branch claude/..."). One issue, one branch, one PR.
 - **Before every push to an existing PR,** fetch it and compare its head with yours. The director may have pushed a fix-up or a `main` merge. Never overwrite it; merge it in.
 - **After you mark a PR ready, stop pushing** unless CI fails, a director comment asks for a change, or GitHub shows a merge conflict. The director merges `main` in when integrating. Repeated "merge latest main" pushes only restart CI.
 - Never open a second PR for an issue that already has one, and never start an issue without `worker-ready`.
