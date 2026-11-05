@@ -8,18 +8,19 @@ Hobby pace: there are no dates, only exit criteria. Each phase ends with a playa
 - **Jared:** taste and lore calls, playtests each phase build, merges or asks for changes.
 - Each phase has a tracking issue (`Phase N: ...`) that lists its task issues.
 
-## Up next: the Codex queue (reset 2026-11-04)
-Codex takes `worker-ready` issues in this order, skipping any whose **Depends on** hasn't merged. The director reviews, fixes up and merges. Merged since the last reset: #85 balance pass (#289), #263 physical movement and a roomier starter shop (#268), #205 smarter cutaway (#285), #208 day and night (#286), #84 lighting decor (#288), #117 sound (#284), chairs up at night (#287), parallel test shards (#290).
+## Up next: the build queue (reset 2026-11-05)
+The director builds these in order with Claude subagents (Codex left the project on 2026-11-05), skipping any whose **Depends on** hasn't merged. Every PR gets an independent review. Merged since the last reset: #85 balance pass (#289), #263 physical movement and a roomier starter shop (#268), #205 smarter cutaway (#285), #208 day and night (#286), #84 lighting decor (#288), #117 sound (#284), chairs up at night (#287), parallel test shards (#290).
 
-**Wave 7: the café and the room**
-- #243 Patio: outdoor tables and waiting seats, closed in rain (open PR #269; re-check movement after #268)
-- #292 Street A-frame sign with the restaurant name
-- #294 Jukebox: a music style for the room
-- #293 Café order counter: order at the counter, then sit or take away
+**Now (Jared's playtest, 2026-11-05):**
+- #306 Movement deadlock: people stuck behind someone for good (top priority)
+- #302 Health inspector (PR #309, merges after #306)
+- #293 Café order counter
+- #243 Patio (PR #269, taken over from Codex after #306)
 
-**Director (in progress):** #291 win back service speed lost to physical movement; the cat #119 (shop level 4).
+Merged since the reset: #291 service speed (#301), #119 the cat (#296), #294 jukebox (#297), #292 A-frame sign (#299), #298 staff morning posts (#300), #303 food critic (#304), #305 front door (#308), #307 impatient guests first (#310).
+
 **Director-scoped (art or taste first):** aquarium #125, premium decor #206.
-**Later backlog:** #164 more sites, #167 makeovers, #169 staff drama, #170 design extras, #171 food depth, #172 visitors, #173 neighbourhood rivals, #159 more entertainment (stage, games corner).
+**Later backlog:** #164 more sites, #167 makeovers, #169 staff drama, #170 design extras, #171 food depth, #172 more visitors (group bookings), #173 neighbourhood rivals, #159 more entertainment (stage, games corner).
 
 ## Phase 0: Foundation
 - [ ] Project skeleton, autoload stubs, test runner, `check.sh`, `get_godot.sh` (FK-001, Claude)
