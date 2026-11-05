@@ -24,6 +24,15 @@ const AUTO_ACCENT_SHADE: float = 0.78
 ## far edge; a face of an interior wall is this much nearer the room.
 const HUNG_FALLBACK_HEIGHT: float = 0.6
 const A_FRAME_ID: StringName = &"a_frame_sign"
+## The health inspection grade card (#302) hangs in a street window like the
+## neon sign, on its own and tied to no purchase. Metres: the frame, and how far the face stands in front of it.
+const GRADE_CARD_SIZE: Vector2 = Vector2(0.2, 0.24)
+const GRADE_CARD_DEPTH: float = 0.014
+const GRADE_COLOURS: Dictionary[StringName, Color] = {
+	&"A": Color("3f9b5a"), &"B": Color("e0a030"), &"C": Color("c8483c"),
+}
+const GRADE_FACE: Color = Color("f4efe2")
+const GRADE_INK: Color = Color("322125")
 ## Widest and tallest chalk line of the A-frame (board-local metres).
 const SIGN_NAME_FIT: Vector2 = Vector2(0.58, 0.19)
 const SIGN_SPECIAL_FIT: Vector2 = Vector2(0.58, 0.11)
@@ -81,6 +90,8 @@ var _menu_board_prices: Dictionary = {}
 var _restaurant_name: String = MenuSettings.DEFAULT_NAME
 var _hung_preview_anchor: Vector3i = WallFaces.NO_FACE
 var _hung_preview_swatch: StringName = &""
+var _inspection_grade: StringName = &""
+var _grade_card: Node3D
 
 
 func bind(grid: SimGrid, content: ContentDB, finishes: WallFinishes, decor: WallDecor) -> void:
@@ -274,6 +285,109 @@ func ghost() -> ItemVisual:
 func rebuild() -> void:
 	_rebuild_finishes()
 	_rebuild_items()
+	_rebuild_grade_card()
+
+
+# --- Health inspection grade card (#302) ---------------------------------------
+
+## The grade (A, B or C) the card shows; &"" shows no card. A no-op when the
+## grade is the one already drawn.
+func set_inspection_grade(grade: StringName) -> void:
+	if grade == _inspection_grade:
+		return
+	_inspection_grade = grade
+	_rebuild_grade_card()
+
+
+func grade_card() -> Node3D:
+	return _grade_card
+
+
+func _rebuild_grade_card() -> void:
+	if _grade_card != null:
+		remove_child(_grade_card)
+		_grade_card.free()
+		_grade_card = null
+	if _grid == null or not GRADE_COLOURS.has(_inspection_grade):
+		return
+	var anchor: Vector3i = _card_anchor()
+	if anchor == WallFaces.NO_FACE:
+		return
+	var card: Node3D = _make_grade_card(_inspection_grade)
+	var box: AABB = AABB(Vector3(-GRADE_CARD_SIZE.x * 0.5, -GRADE_CARD_SIZE.y * 0.5, -GRADE_CARD_DEPTH * 0.5),
+		Vector3(GRADE_CARD_SIZE.x, GRADE_CARD_SIZE.y, GRADE_CARD_DEPTH))
+	card.transform = exterior_transform(_grid, anchor, 1, box)
+	card.name = "InspectionGrade"
+	card.set_meta(&"grade", _inspection_grade)
+	add_child(card)
+	_grade_card = card
+
+
+## Where the card hangs: the street window nearest the door that has no other
+## sign on it (the starter's two frontage windows and any the player cut), at
+## eye height on its outside face, like the OPEN sign. With every window taken
+## it shares the nearest one.
+func _card_anchor() -> Vector3i:
+	var doors: Array[Vector2i] = ExteriorSupport.door_cells(_grid)
+	if doors.is_empty():
+		return WallFaces.NO_FACE
+	var into: Vector2i = -WallRules.street_side(_grid)
+	var direction: int = WallFaces.DIRS.find(into)
+	var best: Vector3i = WallFaces.NO_FACE
+	var best_score: float = INF
+	for window: Vector2i in ExteriorSupport.window_cells(_grid):
+		var nearest: float = INF
+		for door: Vector2i in doors:
+			nearest = minf(nearest, GridMath.octile(window, door))
+		var key: Vector3i = ExteriorSupport.key_for(WallFaces.make(window - into, direction), ExteriorSupport.Band.BODY)
+		var taken: bool = _decor != null and _decor.item(key) != null
+		var score: float = nearest + (1000.0 if taken else 0.0)
+		if score < best_score:
+			best = key
+			best_score = score
+	return best
+
+
+## A card in the grade's colour with a dark rim, a cream inner line and the
+## letter in cream. Its front is -Z (toward the street), like every window item.
+static func _make_grade_card(grade: StringName) -> Node3D:
+	var card: Node3D = Node3D.new()
+	var size: Vector2 = GRADE_CARD_SIZE
+	var rim: MeshInstance3D = _card_box("Rim", Vector3(size.x, size.y, GRADE_CARD_DEPTH), GRADE_INK)
+	card.add_child(rim)
+	var line: MeshInstance3D = _card_box("Line", Vector3(size.x - 0.022, size.y - 0.022, 0.004), GRADE_FACE)
+	line.position.z = -GRADE_CARD_DEPTH * 0.5 - 0.0005
+	card.add_child(line)
+	var panel: MeshInstance3D = _card_box("Panel", Vector3(size.x - 0.04, size.y - 0.04, 0.004), GRADE_COLOURS[grade])
+	panel.position.z = -GRADE_CARD_DEPTH * 0.5 - 0.0015
+	card.add_child(panel)
+	var letter: Label3D = Label3D.new()
+	letter.name = "Letter"
+	letter.text = String(grade)
+	letter.font_size = 128
+	letter.pixel_size = 0.0014
+	letter.modulate = GRADE_FACE
+	letter.outline_size = 0
+	letter.shaded = false
+	letter.double_sided = false
+	# Label3D faces +Z; turn it to face the street (-Z).
+	letter.rotation.y = PI
+	letter.position = Vector3(0.0, 0.0, -GRADE_CARD_DEPTH * 0.5 - 0.004)
+	card.add_child(letter)
+	return card
+
+
+static func _card_box(box_name: String, size: Vector3, colour: Color) -> MeshInstance3D:
+	var mesh: BoxMesh = BoxMesh.new()
+	mesh.size = size
+	var material: StandardMaterial3D = StandardMaterial3D.new()
+	material.albedo_color = colour
+	material.roughness = 1.0
+	mesh.material = material
+	var node: MeshInstance3D = MeshInstance3D.new()
+	node.name = box_name
+	node.mesh = mesh
+	return node
 
 
 # --- Finishes -------------------------------------------------------------------

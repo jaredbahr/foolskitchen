@@ -12,6 +12,10 @@ const COURIER_MODEL: StringName = &"character-female-b"
 # Delivery uniform colours (ART_STYLE section 4): no other role wears either.
 const COURIER_BROWN: Color = Color("9a6a3e")
 const COURIER_AMBER: Color = Color("d98e2b")
+# The health inspector (#302): the one kit model no staff, guest or delivery
+# role uses, in slate-blue clothes and with a clipboard in both hands.
+const INSPECTOR_MODEL: StringName = &"character-female-a"
+const INSPECTOR_SLATE: Color = Color("3f6577")
 # Both b models are reserved for cooks; owner and server looks stay distinct.
 const GUEST_MODELS: Array[StringName] = [
 	&"character-female-a", &"character-female-c", &"character-female-d",
@@ -53,6 +57,8 @@ static func model_for(role: StringName, guest_id: int = 0, customer_type: String
 			return owner_model if OwnerAppearance.valid_model(owner_model) else OwnerAppearance.DEFAULT_MODEL
 		&"courier":
 			return COURIER_MODEL
+		&"inspector":
+			return INSPECTOR_MODEL
 		&"customer", &"guest":
 			# Reuse native, unmodified Mini rigs. Each type has a deterministic
 			# pair; Regular retains its complete existing guest-id mapping.
@@ -94,12 +100,19 @@ static func has_courier_cap(role: StringName) -> bool:
 ## baked gradient survives. Only a copy is painted; other roles see the
 ## vendored texture.
 static func uniform_recolors(role: StringName) -> Array[Dictionary]:
+	if role == &"inspector":
+		return [{"rect": Rect2i(480, 256, 32, 128), "color": INSPECTOR_SLATE}]
 	if role != &"courier":
 		return []
 	return [
 		{"rect": Rect2i(480, 256, 32, 128), "color": COURIER_BROWN},
 		{"rect": Rect2i(160, 256, 32, 128), "color": COURIER_AMBER},
 	]
+
+
+## The inspector holds a clipboard (#302), drawn in the hands of the held pose.
+static func has_clipboard(role: StringName) -> bool:
+	return role == &"inspector"
 
 
 static func source_head_top(model: StringName) -> float:

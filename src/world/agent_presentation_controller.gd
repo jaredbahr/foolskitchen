@@ -132,6 +132,9 @@ static func frame_for(agent: SimAgent, world: SimWorld, chair_seat_height: float
 		frame.carrying = courier.carrying and courier.crate_count > 0
 		frame.crate_count = mini(courier.crate_count, MAX_CRATES_IN_HAND) if frame.carrying else 0
 		_courier_frame(frame, courier, world)
+	if agent is InspectorAgent:
+		# Walks and stands with the clipboard held in both hands.
+		frame.carrying = true
 	if agent is StaffAgent:
 		var staff: StaffAgent = agent as StaffAgent
 		var task: SimTask = _active_task(staff, world)

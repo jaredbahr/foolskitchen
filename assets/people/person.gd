@@ -38,6 +38,7 @@ var _player: AnimationPlayer
 var _skeleton: Skeleton3D
 var _hat: Node3D
 var _cap: Node3D
+var _clipboard: Node3D
 var _model_name: StringName = &""
 var _clip: StringName = &""
 var _requested_clip: StringName = &"idle"
@@ -47,6 +48,8 @@ var _playback_speed: float = 1.0
 var _seated_lean_degrees: float = 0.0
 var _sit_lean_track: int = -1
 var _sit_base_rotations: Array[Quaternion] = []
+## Where the clipboard sits from the midpoint of the two palms (person-local).
+const CLIPBOARD_OFFSET: Vector3 = Vector3(0.0, 0.0, -0.1)
 ## Uniform materials by role, built once from the vendored colormap.
 static var _uniform_materials: Dictionary[StringName, Material] = {}
 
@@ -54,6 +57,7 @@ static var _uniform_materials: Dictionary[StringName, Material] = {}
 func _ready() -> void:
 	_hat = get_node("ChefHat") as Node3D
 	_cap = get_node("CourierCap") as Node3D
+	_clipboard = get_node("Clipboard") as Node3D
 	_initialized = true
 	set_look(role, guest_id, customer_type)
 
@@ -104,6 +108,8 @@ func set_look(value: StringName, id: int = 0, kind: StringName = &"regular") -> 
 	if PersonPresentation.has_courier_cap(role) and not _attach_to_head(_cap, "CourierCapAttachment"):
 		_clear_model()
 		return false
+	if _clipboard != null:
+		_clipboard.visible = PersonPresentation.has_clipboard(role)
 	if regular and not _apply_regular_clothing(desired_model):
 		_clear_model()
 		return false
@@ -242,7 +248,9 @@ func set_pose(moving: bool, seated: bool, carrying: bool, working: bool, seat_he
 		if _clip == &"sit" and _player.has_animation(&"sit"):
 			# Re-evaluate the private track without restarting a paused/live pose.
 			_player.seek(_player.current_animation_position, true)
-	return _play_requested_clip()
+	var played: bool = _play_requested_clip()
+	_place_clipboard()
+	return played
 
 
 ## Keeps the last facing while stationary. Only this view's rotation changes.
@@ -296,6 +304,13 @@ func carry_anchor_position() -> Vector3:
 	var left_palm: Vector3 = _skeleton.get_bone_global_pose(left) * Vector3(0.24, 0.0, 0.0)
 	var right_palm: Vector3 = _skeleton.get_bone_global_pose(right) * Vector3(-0.24, 0.0, 0.0)
 	return _skeleton_point_to_person((left_palm + right_palm) * 0.5)
+
+
+## The inspector's clipboard rides in front of the held hands.
+func _place_clipboard() -> void:
+	if _clipboard == null or not _clipboard.visible or _skeleton == null:
+		return
+	_clipboard.position = carry_anchor_position() + CLIPBOARD_OFFSET
 
 
 func _skeleton_point_to_person(point: Vector3) -> Vector3:
@@ -423,6 +438,8 @@ func _play_requested_clip() -> bool:
 
 
 func _clear_model() -> void:
+	if _clipboard != null:
+		_clipboard.visible = false
 	for piece: Node3D in [_hat, _cap]:
 		if piece != null:
 			piece.visible = false

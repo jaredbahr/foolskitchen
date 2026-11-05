@@ -51,6 +51,9 @@ var milestones_reached: Array[Dictionary] = []
 var low_stock: Array[String] = []
 ## Named regular visit, promotion and farewell notes, already player-facing.
 var regulars_lines: Array[String] = []
+## The health inspector's visit today (#302), already player-facing: the grade,
+## then the worst findings. Empty when none came; saved only when present.
+var inspection_lines: Array[String] = []
 ## Optional purchase-basis accounting. Historical reports retain their cash
 ## basis; missing historical ingredient prices are never fabricated.
 var stock_values_recorded: bool = false
@@ -202,6 +205,8 @@ func to_dict() -> Dictionary:
 		"stock_on_hand_recorded": stock_on_hand_recorded,
 		"demand_forecast": public_demand_forecast(demand_forecast),
 	}
+	if not inspection_lines.is_empty():
+		result["inspection_lines"] = inspection_lines.duplicate()
 	var activity: Dictionary = StaffActivity.public_snapshot(staff_activity)
 	if not activity.is_empty():
 		result["staff_activity"] = activity
@@ -264,6 +269,11 @@ static func from_dict(data: Dictionary) -> DayReport:
 		for line: Variant in saved_regulars:
 			if line is String:
 				report.regulars_lines.append(line)
+	var saved_inspection: Variant = data.get("inspection_lines", [])
+	if saved_inspection is Array:
+		for line: Variant in saved_inspection:
+			if line is String:
+				report.inspection_lines.append(line)
 	var recorded: Variant = data.get("stock_values_recorded", false)
 	report.stock_values_recorded = recorded is bool and recorded
 	for field: String in ["food_cost", "stock_bought", "spoiled_stock", "stock_on_hand"]:

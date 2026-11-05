@@ -6,6 +6,7 @@ const VIBE_TUNING: VibeTuning = preload("res://data/balance/vibe.tres")
 const VISIT_TUNING: VisitTuning = preload("res://data/balance/visits.tres")
 const RESTROOM_TUNING: RestroomTuning = preload("res://data/balance/restroom.tres")
 const CAT_TUNING: CatTuning = preload("res://data/balance/cat.tres")
+const INSPECTION_TUNING: InspectionTuning = preload("res://data/balance/inspection.tres")
 
 signal customer_arrived(customer: CustomerAgent)
 signal customer_paid(customer: CustomerAgent, order: Order, amount: int)
@@ -57,6 +58,14 @@ var mishaps: MishapState = null
 ## nothing until adopted.
 var cat: RestaurantCat = RestaurantCat.new(CAT_TUNING)
 ## Main records this paid replacement cost in the existing economy ledger.
+## The health inspector (#302): its schedule and the grade it left, and the
+## person walking the rooms while a visit is on. The inspector is an agent in
+## the world (it reserves cells like a guest) but never a customer: it is not in
+## customers(), so it is never served, lost or reviewed.
+var inspection: InspectionBook = InspectionBook.new(INSPECTION_TUNING)
+var inspector: InspectorAgent = null
+## Emitted once per inspection, when the grade is recorded.
+signal inspection_done(result: Dictionary)
 signal plate_broken(cost: int)
 var spawner: CustomerSpawner
 var rng: RandomNumberGenerator = RandomNumberGenerator.new()
@@ -300,6 +309,7 @@ func advance() -> void:
 	if cat != null and (world.clock.phase == SimClock.Phase.OPEN or world.clock.phase == SimClock.Phase.LAST_ORDERS):
 		cat.advance(world.grid, customers())
 	spawner.advance(self)
+	_advance_inspection()
 	for customer: CustomerAgent in customers():
 		if world.clock.phase == SimClock.Phase.CLOSED:
 			# Guests who already paid are walking out happy; don't relabel them.
@@ -316,6 +326,36 @@ func advance() -> void:
 		if dock != null:
 			dock.store_all()
 		service_closed.emit(world.clock.day)
+
+
+## The inspector walks in on its planned tick, grades the shop once its walk is
+## over, and is gone when it has left or the shop closes.
+func _advance_inspection() -> void:
+	var phase: SimClock.Phase = world.clock.phase
+	if inspector != null:
+		var over: bool = phase == SimClock.Phase.CLOSED or inspector.state == InspectorAgent.State.LEFT
+		# A visit that never got past the door (no room to enter) is not an inspection.
+		var walked: bool = inspector.started_tick >= 0
+		if (inspector.checked or over) and walked and not inspector.recorded:
+			inspector.recorded = true
+			var result: Dictionary = InspectionModel.evaluate(InspectionModel.capture(self), inspection.tuning)
+			inspection.record(world.clock.day, result)
+			world.log_event("Health inspection: grade %s" % String(result["grade"]))
+			inspection_done.emit(result.duplicate(true))
+		if over:
+			world.remove_agent(inspector)
+			inspector = null
+		return
+	if phase != SimClock.Phase.OPEN or not inspection.arriving(world.clock.day, world.clock.phase_tick):
+		return
+	inspection.mark_arrived(world.clock.day)
+	var entries: Array[Vector2i] = world.grid.entries()
+	if entries.is_empty():
+		return
+	var arrival: InspectorAgent = InspectorAgent.new(inspection.tuning)
+	arrival.cell = entries[world.clock.day % entries.size()]
+	inspector = arrival
+	world.add_agent(arrival)
 
 
 ## Uses `random` for arrivals (the spawner and future guests). The game session

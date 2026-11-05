@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- From owner level 3, a health inspector now drops in unannounced on about one open day in seven (never twice in a week). He walks the dining room and restroom with a clipboard for about a minute, takes no table and orders nothing, then leaves. The evening report gives a grade, A, B or C, with the worst things he found (dirty tables, spills, an untidy restroom, food that went off, dirty dishes piling up), the grade stays on a card in your street window until the next visit, and Build > Hygiene shows "Last inspection". An A brings about 5% more guests for the next week, a C about 10% fewer. There are no fines. (#PRNUM)
 - Service is quicker again: the cook no longer stalls waiting for a clean plate while the server is busy elsewhere, plating at the pass is faster, and guests finish their meals a little sooner, so the starter shop seats more guests a day. (#301)
 - Staff now always start the morning at their own posts: a worker caught mid-step toward another worker's post at closing no longer pushes that worker to the next cell over. (#300)
 - Buy a chalkboard A-frame sign (Build > Decor, $35, from owner level 2) and stand it on the pavement beside your street door. It shows your restaurant name and today's special, the dish with your best margin (or Coffee at a cafe), and adds a little curb appeal for more walk-ins. The cells straight in front of the door stay clear for guests. (#299)

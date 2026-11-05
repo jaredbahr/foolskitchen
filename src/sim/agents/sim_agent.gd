@@ -35,6 +35,12 @@ var _trace_cause: String = "admission"
 var _goal: Vector2i = SimGrid.NO_CELL
 
 
+## True for a person who keeps to the guest layer: never through the kitchen
+## or storage (guests, the health inspector). Staff path everywhere.
+func uses_guest_layer() -> bool:
+	return false
+
+
 ## Runs one sim tick. Subclasses override.
 func tick(_world: SimWorld) -> void:
 	pass

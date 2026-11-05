@@ -104,6 +104,7 @@ jobs:
           bash tools/screenshot.sh --scene=res://tools/food_review.tscn --out=screens/visual-review/food-service --speed=0 --frames=12,90
           bash tools/screenshot.sh --out=screens/visual-review/icons-review --scene=res://tools/icons_review.tscn --speed=0 --frames=12,60
           bash tools/screenshot.sh --out=screens/visual-review/restaurant-cat --scene=res://tools/cat_review.tscn --speed=0 --frames=30,70,110
+          bash tools/screenshot.sh --out=screens/visual-review/health-inspector --scene=res://tools/inspector_review.tscn --speed=0 --frames=30,70
           OWNER_REVIEW_STAGE=picker bash tools/screenshot.sh --out=screens/visual-review/owner-picker --scene=res://tools/owner_character_review.tscn --speed=0 --frames=60
           OWNER_REVIEW_STAGE=shop bash tools/screenshot.sh --out=screens/visual-review/owner-character --scene=res://tools/owner_character_review.tscn --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/report --report --open --fast=100 --speed=0 --frames=60
