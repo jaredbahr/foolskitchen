@@ -1,6 +1,6 @@
 extends "res://src/world/main.gd"
 ## Explicit, unsaved review of the health inspector (#302): the real shop in
-## service with a real inspector walking the dining room with his clipboard
+## service with a real inspector walking the dining room with their clipboard
 ## (frame 30, close), the grade card in the street window (frame 70) and a paused
 ## pose lineup of the inspector beside a guest and a server (frame 110).
 ## Capture with
@@ -79,7 +79,7 @@ func _frame_inspector() -> void:
 	rig.initial_focus = Vector2(spot.x, spot.z)
 	rig.initial_zoom = CLOSE_ZOOM
 	# Look at him from the front, a little to the side: the camera faces the
-	# way he is not heading.
+	# way they are not heading.
 	var heading: Vector3 = GridMath.cell_to_world(inspector.next_cell()) - GridMath.cell_to_world(inspector.cell)
 	rig.initial_yaw_degrees = rad_to_deg(atan2(heading.x, heading.z)) + float(OS.get_environment("INSPECTOR_REVIEW_YAW") if OS.has_environment("INSPECTOR_REVIEW_YAW") else "35")
 	rig.reset_view()

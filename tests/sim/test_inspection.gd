@@ -280,29 +280,109 @@ func test_the_inspector_leaves_when_the_shop_closes() -> void:
 
 
 func test_a_visit_never_blocks_the_shop_in_a_busy_day() -> void:
-	# Same seed with and without the inspector: guests still get through.
+	# The same seeded day with and without a visit. The inspector shares cells
+	# with real guests and staff, so outcomes may shift a little, but they still
+	# serve nearly as many guests and never stall the shop.
 	var plain: RestaurantSim = _service_sim()
 	var visited: RestaurantSim = _service_sim()
 	visited.inspection.planned_day = visited.world.clock.day
 	visited.inspection.planned_tick = 100
+	var was_there: bool = false
+	var looked: int = 0
+	var longest_still: int = 0
+	var still: int = 0
+	var last_cell: Vector2i = SimGrid.NO_CELL
 	for tick: int in 3400:
 		plain.advance()
 		visited.advance()
+		if visited.inspector != null:
+			was_there = true
+			looked = maxi(looked, visited.inspector.looked)
+			if visited.inspector.cell == last_cell and visited.inspector.state != InspectorAgent.State.LOOKING:
+				still += 1
+				longest_still = maxi(longest_still, still)
+			else:
+				still = 0
+			last_cell = visited.inspector.cell
+	assert_true(was_there, "the inspector really came")
+	assert_true(looked >= 2, "and looked at stops: %d" % looked)
 	assert_null(visited.inspector)
-	assert_true(visited.served_today >= plain.served_today - 2, "served %d vs %d" % [visited.served_today, plain.served_today])
+	assert_true(longest_still < 300, "never stuck for long: %d ticks" % longest_still)
 	assert_true(visited.served_today > 0)
+	assert_true(visited.served_today >= plain.served_today - 3, "served %d vs %d" % [visited.served_today, plain.served_today])
 
 
-func test_nothing_changes_for_a_shop_that_cannot_be_inspected() -> void:
-	var a: RestaurantSim = _service_sim()
-	var b: RestaurantSim = _service_sim()
+func test_a_visit_that_reaches_no_stop_gives_no_grade_and_no_cooldown() -> void:
+	var sim: RestaurantSim = _service_sim()
+	sim.inspection.planned_day = sim.world.clock.day
+	sim.inspection.planned_tick = 5
+	for tick: int in 12:
+		sim.advance()
+	assert_not_null(sim.inspector)
+	# Closing arrives before they have looked at anything.
+	sim.world.clock.open_ticks = sim.world.clock.phase_tick + 1
+	sim.world.clock.last_orders_max_ticks = 1
+	for tick: int in 10:
+		sim.advance()
+	assert_null(sim.inspector)
+	assert_eq(sim.inspection.last_day, 0, "no inspection happened")
+	assert_eq(sim.inspection.last_grade, &"")
+	assert_true(sim.inspection.can_visit(sim.world.clock.day + 1, 3), "and no cooldown started")
+
+
+func test_a_cut_short_visit_is_graded_from_the_last_completed_stop() -> void:
+	var sim: RestaurantSim = _service_sim()
+	var tuning: CleanlinessTuning = CleanlinessTuning.new()
+	var random: RandomNumberGenerator = RandomNumberGenerator.new()
+	random.seed = 9
+	sim.cleanliness = CleanlinessState.new(sim.world.grid, tuning, random)
+	var spots: Array[Vector2i] = InspectorAgent.choose_stops(sim.world.grid, sim.world.grid.entries()[0], 6)
+	sim.inspection.planned_day = sim.world.clock.day
+	sim.inspection.planned_tick = 5
+	var looked_at_tick: int = -1
 	for tick: int in 1500:
-		a.advance()
-		b.advance()
-	assert_null(a.inspector)
-	assert_eq(a.served_today, b.served_today)
-	assert_eq(a.rng.state, b.rng.state)
-	assert_eq(a.inspection.last_grade, &"")
+		sim.advance()
+		if sim.inspector != null and sim.inspector.looked == 1 and looked_at_tick < 0:
+			looked_at_tick = tick
+			# Make the shop filthy after the first stop: it must not count.
+			for spot: Vector2i in spots:
+				sim.cleanliness.add_spill(spot)
+			sim.world.clock.open_ticks = sim.world.clock.phase_tick + 1
+			sim.world.clock.last_orders_max_ticks = 1
+		if looked_at_tick >= 0 and sim.inspector == null:
+			break
+	assert_true(looked_at_tick >= 0)
+	assert_eq(sim.inspection.last_day, sim.world.clock.day, "graded")
+	for row: Dictionary in sim.inspection.last_result["findings"]:
+		assert_ne(row["kind"], InspectionModel.FLOOR, "the mess made after the last stop is not counted")
+
+
+func test_stops_avoid_the_door_lane_and_work_cells() -> void:
+	var sim: RestaurantSim = _service_sim()
+	var grid: SimGrid = sim.world.grid
+	var from: Vector2i = grid.entries()[0]
+	var stops: Array[Vector2i] = InspectorAgent.choose_stops(grid, from, 6)
+	assert_true(stops.size() >= 3)
+	var lane: Array[Vector2i] = ExteriorSupport.door_cells(grid)
+	for stop: Vector2i in stops:
+		for door: Vector2i in lane:
+			assert_true(GridMath.octile(stop, door) > 1.5, "%s too near the door" % stop)
+		for item: PlacedItem in grid.items():
+			assert_false(item.work_cells.has(stop), "%s is a work cell" % stop)
+		assert_true(grid.is_guest_reachable(from, stop))
+		assert_true(grid.seat_items_at(stop).is_empty())
+
+
+func test_hours_edited_in_the_morning_cannot_drop_a_planned_visit() -> void:
+	var book: InspectionBook = InspectionBook.new(TUNING)
+	book.planned_day = 4
+	book.planned_tick = 3000
+	assert_false(book.arriving(4, 100, 3600))
+	assert_false(book.arriving(4, floori(1200 * TUNING.arrival_to) - 1, 1200), "before the shortened window's late edge")
+	assert_true(book.arriving(4, floori(1200 * TUNING.arrival_to), 1200), "clamped into a 1200-tick day")
+	assert_true(book.arriving(4, 3000, 3600))
+	book.mark_arrived(4)
+	assert_false(book.arriving(4, 3600, 3600), "once a day")
 
 
 # --- Helpers --------------------------------------------------------------------

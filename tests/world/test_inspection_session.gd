@@ -80,6 +80,39 @@ func test_a_game_below_level_three_never_creates_the_stream() -> void:
 	assert_eq(_sim().inspection.planned_tick, -1)
 
 
+func _below_level_three_run(disabled: bool) -> Dictionary:
+	_start()
+	if disabled:
+		# The same shop with inspections switched off for good.
+		var off: InspectionTuning = TUNING.duplicate(true) as InspectionTuning
+		off.unlock_level = 1000000
+		_sim().inspection.tuning = off
+	var served: Array[int] = []
+	for day: int in 2:
+		assert_true(Clock.sim.start_service())
+		_main.call("run_ticks", 6000)
+		served.append(_sim().served_today)
+		if day == 0:
+			assert_true(Clock.sim.next_day())
+		assert_true((_main.get("owner_progress") as OwnerProgress).level < TUNING.unlock_level, "still below level 3")
+	var result: Dictionary = {"served": served, "streams": GameState._capture_save(),
+		"cash": Economy.cash}
+	_close()
+	Economy.reset(0)
+	GameState.new_run(1)
+	return result
+
+
+func test_below_level_three_a_run_is_identical_to_one_with_inspections_off() -> void:
+	var with_system: Dictionary = _below_level_three_run(false)
+	var without: Dictionary = _below_level_three_run(true)
+	assert_true((with_system["served"] as Array).size() == 2 and int((with_system["served"] as Array)[0]) > 0)
+	assert_eq(with_system["served"], without["served"], "the same guests served each day")
+	assert_eq(with_system["streams"], without["streams"], "every saved random stream is identical")
+	assert_eq(with_system["cash"], without["cash"])
+	assert_false((with_system["streams"]["rngs"] as Dictionary).has("inspector"))
+
+
 func test_the_stream_appears_once_inspections_can_happen_and_the_draw_is_seeded() -> void:
 	_start()
 	_level(TUNING.unlock_level)

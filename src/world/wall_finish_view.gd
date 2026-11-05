@@ -326,7 +326,8 @@ func _rebuild_grade_card() -> void:
 ## Where the card hangs: the street window nearest the door that has no other
 ## sign on it (the starter's two frontage windows and any the player cut), at
 ## eye height on its outside face, like the OPEN sign. With every window taken
-## it shares the nearest one.
+## it shares the nearest one. A shop with no street window and no door gets no
+## card. The card stays until the next inspection replaces it.
 func _card_anchor() -> Vector3i:
 	var doors: Array[Vector2i] = ExteriorSupport.door_cells(_grid)
 	if doors.is_empty():

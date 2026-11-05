@@ -55,10 +55,14 @@ func plan_day(day: int, level: int, open_ticks: int, stream: Callable) -> void:
 	planned_tick = random.randi_range(first, last)
 
 
-## True on the open tick the inspector should walk in (once per day).
-func arriving(day: int, service_tick: int) -> bool:
-	return planned_day == day and planned_tick >= 0 and arrived_day != day \
-		and service_tick >= planned_tick
+## True on the open tick the inspector should walk in (once per day). The plan
+## is re-clamped to today's open window, so hours edited in the morning (a
+## shorter day) cannot leave a planned visit past closing.
+func arriving(day: int, service_tick: int, open_ticks: int) -> bool:
+	if planned_day != day or planned_tick < 0 or arrived_day == day:
+		return false
+	var latest: int = maxi(0, floori(float(open_ticks) * tuning.arrival_to))
+	return service_tick >= mini(planned_tick, latest)
 
 
 func mark_arrived(day: int) -> void:

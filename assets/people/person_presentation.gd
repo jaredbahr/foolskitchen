@@ -12,8 +12,8 @@ const COURIER_MODEL: StringName = &"character-female-b"
 # Delivery uniform colours (ART_STYLE section 4): no other role wears either.
 const COURIER_BROWN: Color = Color("9a6a3e")
 const COURIER_AMBER: Color = Color("d98e2b")
-# The health inspector (#302): the one kit model no staff, guest or delivery
-# role uses, in slate-blue clothes and with a clipboard in both hands.
+# The health inspector (#302). Named regulars also wear this model, so the
+# inspector is told apart by the slate repaint of the clothes and the clipboard.
 const INSPECTOR_MODEL: StringName = &"character-female-a"
 const INSPECTOR_SLATE: Color = Color("3f6577")
 # Both b models are reserved for cooks; owner and server looks stay distinct.
