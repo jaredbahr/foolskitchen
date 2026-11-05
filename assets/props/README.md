@@ -41,6 +41,7 @@ only heights above the seat top are squashed. The kit files stay untouched.
 | Bar section (FK-083) | `kitchenBar`, flush to the guest (-Z) edge | `wood` | Metal and dark wood |
 | Bar end, left/right | `kitchenBar` + `kitchenBarEnd` (0.035 over the inner edge, onto the neighbour's identical bar) | `wood` | Metal and dark wood |
 | Bar corner | 2 x `kitchenBar` at right angles (guest sides -Z and +X), overlapping in the corner | `wood` | Metal and dark wood |
+| Order counter (#293) | 2 x `kitchenBar` (as the pass counter) with a `computerScreen` and `computerKeyboard` on the right-hand bar as the till | `wood` | Metal and dark wood, the till |
 | Coffee machine | `kitchenCabinet` + `kitchenCoffeeMachine` on top | `wood` | The whole machine |
 | Drinks fridge | `kitchenFridgeSmall` | none (unpaintable) | All |
 | Drinks shelf | `bookcaseOpenLow` + Food Kit `wine-red`, `wine-white`, `soda-bottle` | `wood` | Every bottle |

@@ -12,6 +12,7 @@ Each line ends with its PR number.
 
 ### Players
 - People no longer get stuck in a crowd for good. When a doorway or aisle jams (leaving guests meeting arriving ones, a worker stepping off a cleared seat, someone waiting in the only way through), the people in the way now step aside to any free spot; as a last resort a worker squeezes past a guest, and a guest who still can't get through gives up and leaves ("Couldn't get through" in the evening report). (#PRNUM)
+- Buy an Order counter (Build > Bar & Café, $120) and drink-only guests queue at it, order and pay at the till, then take a free table or leave with a takeaway. The evening report shows how many takeaways you sold. (#312)
 - Staff now look after the most impatient guests first: when choosing between taking an order, serving a meal or clearing a table, they favour the guest closest to giving up, and cooks start the tickets of the guests who have waited longest. Distance and your Staff-panel job priorities still count. Click a guest to see who is coming to take their order or bring their food. (#310)
 - The front door no longer jams: guests waiting for a table now stand beside the door instead of in it, and anyone leaving gets right of way through the doorway. (#308)
 - From owner level 2, a food critic sometimes drops in disguised as an ordinary guest (at most once every five days). Watch for the tells in the Inspect panel: scribbling in a little notebook, ordering the most expensive dish, dining alone at an odd hour, or lingering over the meal. Seat them quickly and serve them well: their review counts as up to three normal reviews (fewer in a brand-new shop), and the evening report tells you their verdict. A bad meal stings just as much. (#304)
@@ -155,6 +156,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- Codex is off the project: the docs and roadmap now route all work to Claude and its subagents, and the queue reflects the playtest priorities. (#311)
 - The roadmap's Codex queue is reset: the patio, a street A-frame sign, a jukebox and a café order counter; the director takes the movement speed follow-up and the cat. (#295)
 - The project checks run the tests in two parallel halves, so a full check takes about half as long. (#290)
 - Running the catalogue tests on their own now releases their scripts cleanly when Godot closes. (#271)

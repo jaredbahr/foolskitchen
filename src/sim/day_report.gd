@@ -24,6 +24,9 @@ var customers_served: int = 0
 var dish_quality_count: int = 0
 var dish_quality_average: float = 0.0
 var customers_lost: int = 0
+## Guests who paid at the café order counter (#293) and left with their drink,
+## already counted among customers_served. Saved only on days there were any.
+var takeaways: int = 0
 var leave_reasons: Dictionary = {}
 var reviews: Array[String] = []
 ## Worst observed floor condition, already mapped to a player-facing word.
@@ -208,6 +211,8 @@ func to_dict() -> Dictionary:
 	var activity: Dictionary = StaffActivity.public_snapshot(staff_activity)
 	if not activity.is_empty():
 		result["staff_activity"] = activity
+	if takeaways > 0:
+		result["takeaways"] = takeaways
 	# Only on days a critic reviewed, so every other report keeps its exact shape.
 	if not critic_lines.is_empty():
 		result["critic_lines"] = critic_lines.duplicate()
@@ -232,6 +237,7 @@ static func from_dict(data: Dictionary) -> DayReport:
 	report.dish_quality_count = maxi(0, int(data.get("dish_quality_count", 0)))
 	report.dish_quality_average = clampf(float(data.get("dish_quality_average", 0.0)), 0.0, 1.0)
 	report.customers_lost = int(data.get("customers_lost", 0))
+	report.takeaways = clampi(int(data.get("takeaways", 0)), 0, maxi(0, report.customers_served))
 	report.leave_reasons = _name_counts(data.get("leave_reasons", {}))
 	var saved_reviews: Variant = data.get("reviews", [])
 	if saved_reviews is Array:
