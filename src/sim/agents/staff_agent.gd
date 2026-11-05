@@ -9,6 +9,10 @@ extends SimAgent
 ## Waiting for a busy station is not "stuck": the task timeout covers it.
 
 const STUCK_TICKS: int = 30
+const GUEST_URGENCY: GuestUrgencyTuning = preload("res://data/balance/guest_urgency.tres")
+
+## How strongly the guests nearest to leaving are served first (#307).
+var urgency_tuning: GuestUrgencyTuning = GUEST_URGENCY
 
 ## Skill per role, 1 (poor) .. 5 (great).
 var skills: Dictionary[StringName, int] = {}
@@ -185,12 +189,20 @@ func _try_claim(world: SimWorld) -> void:
 	var highest_job_level: int = StaffJobPriorities.Level.OFF
 	var fallback_cleaning: bool = _can_fallback_clean(world)
 	var service_work_open: bool = false
+	var table_urgency: float = -1.0
 	# Actor-local eligibility uses the existing score, including role preferences
 	# and missing targets. Another worker may have claimed a cached task already.
 	for t: SimTask in candidates:
 		if t.state != SimTask.State.OPEN or world.board.get_task(t.id) != t:
 			continue
 		var score: float = _score(world, t)
+		if score > 0.0:
+			if GuestUrgency.is_table_task(t):
+				if table_urgency < 0.0:
+					table_urgency = GuestUrgency.waiting_for_table(world)
+				score *= 1.0 + urgency_tuning.table_weight * table_urgency
+			else:
+				score *= 1.0 + urgency_tuning.guest_weight * GuestUrgency.of_task(world, t)
 		scores[t.id] = score
 		if score > 0.0:
 			if fallback_cleaning and t.role == &"server":

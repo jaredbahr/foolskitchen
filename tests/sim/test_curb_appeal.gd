@@ -168,7 +168,7 @@ func test_only_nonpaint_supported_front_finishes_are_collected() -> void:
 func test_all_named_exterior_items_count_once_in_their_family() -> void:
 	var grid: SimGrid = SimGrid.from_ascii(LAYOUT.rows)
 	assert_true(grid.set_segment(WallFaces.edge(_front_window(grid, 4)), SimGrid.Segment.WINDOW))
-	assert_eq(TUNING.item_categories.size(), 11, "nine street mounts and two patio furniture definitions are authored")
+	assert_eq(TUNING.item_categories.size(), 12, "ten street items and two patio furniture definitions are authored")
 	var wall_count: int = 0
 	for id: StringName in TUNING.item_categories:
 		var definition: ItemDef = _content.item(id)
@@ -182,6 +182,8 @@ func test_all_named_exterior_items_count_once_in_their_family() -> void:
 			base = _front(grid, 0)
 		elif id == &"neon_open_sign":
 			base = _front(grid, 2)
+		elif id == &"a_frame_sign":
+			base = _front(grid, -1)
 		var anchor: Vector3i = ExteriorSupport.key_for(base, definition.exterior_band)
 		var decor: WallDecor = WallDecor.new()
 		assert_eq(decor.problem(grid, definition, anchor), "", String(id))
@@ -190,7 +192,7 @@ func test_all_named_exterior_items_count_once_in_their_family() -> void:
 		assert_eq(rows.size(), 1, "wide objects have one anchor: " + String(id))
 		if rows.size() == 1:
 			assert_eq(rows[0].category, TUNING.item_categories[id])
-	assert_eq(wall_count, 9, "every original street mount is still tested")
+	assert_eq(wall_count, 10, "every street item is still tested")
 
 
 func test_patio_tables_and_waiting_benches_count_once_and_chairs_stay_neutral() -> void:
@@ -206,7 +208,7 @@ func test_patio_tables_and_waiting_benches_count_once_and_chairs_stay_neutral() 
 	var rows: Array[Dictionary] = _collect_patio(grid)
 	assert_eq(rows, [{"category": &"patio", "id": "patio:%d" % table.id},
 		{"category": &"patio", "id": "patio:%d" % bench.id}] as Array[Dictionary])
-	assert_almost_eq(CurbAppealModel.evaluate(rows, TUNING).score, 13.2)
+	assert_almost_eq(CurbAppealModel.evaluate(rows, TUNING).score, 9.0, 0.0001, "one table and one bench reach the patio cap")
 	var tuning: CurbAppealTuning = TUNING.duplicate(true) as CurbAppealTuning
 	tuning.item_categories[&"patio_chair"] = &"patio"
 	assert_eq(_collect_patio(grid, tuning), rows, "chairs do not multiply the table's contribution")
@@ -226,14 +228,13 @@ func test_patio_tables_and_waiting_benches_count_once_and_chairs_stay_neutral() 
 
 func test_patio_family_uses_shared_decay_and_caps_without_raising_global_bonus() -> void:
 	assert_eq(TUNING.weights[&"patio"], 8.0)
-	assert_eq(TUNING.caps[&"patio"], 15.0)
+	assert_eq(TUNING.caps[&"patio"], 9.0)
 	assert_eq(TUNING.repeat_decay, 0.65)
 	assert_eq(TUNING.max_bonus, 0.10)
 	assert_almost_eq(CurbAppealModel.evaluate(_copies(&"patio", 1), TUNING).score, 8.0)
-	assert_almost_eq(CurbAppealModel.evaluate(_copies(&"patio", 2), TUNING).score, 13.2)
-	var capped: Dictionary = CurbAppealModel.evaluate(_copies(&"patio", 3), TUNING)
-	assert_eq(capped.score, 15.0)
-	assert_eq(capped.multiplier, 1.015)
+	var capped: Dictionary = CurbAppealModel.evaluate(_copies(&"patio", 2), TUNING)
+	assert_eq(capped.score, 9.0, "a second patio piece earns 8 * 0.65 before the cap")
+	assert_almost_eq(capped.multiplier, 1.009, 0.0000001)
 	assert_eq(CurbAppealModel.evaluate(_copies(&"patio", 50), TUNING), capped)
 
 

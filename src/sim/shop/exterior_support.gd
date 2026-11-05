@@ -3,13 +3,15 @@ extends RefCounted
 ## Street-facing supports. Old room/window keys stay untouched; new exterior
 ## bands occupy distinct z lanes while x/y always denotes the outside cell.
 
-enum Band { BODY, CANOPY, HEADER, SILL, LIGHTS }
-const MAX_KEY_DIRECTION: int = 19
+enum Band { BODY, CANOPY, HEADER, SILL, LIGHTS, GROUND }
+const MAX_KEY_DIRECTION: int = 23
 const STREET_ONLY: String = "Choose the outside of the street front"
 const SOLID_ONLY: String = "Choose a solid street-facing wall"
 const OPENING_ONLY: String = "Hang this above a street door or window"
 const DOOR_ONLY: String = "Hang this above the street door"
 const WINDOW_ONLY: String = "Hang this below a street-facing window"
+const BESIDE_DOOR_ONLY: String = "Stand this on the pavement beside the street door"
+const DOORWAY_CLEAR: String = "Keep the doorway clear: stand this beside the door"
 const TOO_NARROW: String = "Not enough street-facing wall here"
 const DIRS: Array[Vector2i] = [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]
 
@@ -87,6 +89,24 @@ static func span_problem(grid: SimGrid, key: Vector3i, width: int) -> String:
 			return "" if has_door else DOOR_ONLY
 		Band.SILL:
 			return "" if has_window else WINDOW_ONLY
+		Band.GROUND:
+			return ground_problem(grid, key, width)
+	return ""
+
+
+## A standing street piece (the A-frame sign) is one cell wide on the pavement
+## beside the street door. The cells straight in front of the door are the
+## guests' way in and out (the entries), so they always stay clear.
+static func ground_problem(grid: SimGrid, key: Vector3i, width: int) -> String:
+	if width != 1 or band(key) != Band.GROUND or not is_exterior(grid, key):
+		return STREET_ONLY
+	var shell: Vector2i = shell_cell(key)
+	var doors: Array[Vector2i] = door_cells(grid)
+	if doors.has(shell) or grid.terrain(Vector2i(key.x, key.y)) == SimGrid.Terrain.ENTRY:
+		return DOORWAY_CLEAR
+	var along: Vector2i = DIRS[posmod(key.z + 1, 4)]
+	if not doors.has(shell + along) and not doors.has(shell - along):
+		return BESIDE_DOOR_ONLY
 	return ""
 
 

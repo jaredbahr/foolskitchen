@@ -7,6 +7,11 @@ enum State { ARRIVING, QUEUED, WALKING_TO_SEAT, ORDERING, WAITING_FOOD,
 
 enum MoodBand { HAPPY, WAITING, IMPATIENT, ABOUT_TO_LEAVE }
 
+## Where a café order-counter guest is in the visit (#293): LINE (queued behind
+## the counter), TO_COUNTER (walking to the order cell), AT_COUNTER (ordering),
+## TO_DEST (carrying on to a table, or the pickup cell) and DONE (arrived).
+enum Counter { LINE, TO_COUNTER, AT_COUNTER, TO_DEST, DONE }
+
 ## A restroom trip (FK-101), only while waiting for food: the seat stays
 ## booked, the food waits and patience pauses until the guest is back.
 enum Restroom { NONE, NEEDED, WALKING, INSIDE, RETURNING, DONE }
@@ -19,11 +24,16 @@ const MOOD_LABELS: Array[String] = ["content", "waiting patiently", "getting imp
 
 ## A seat walk must recover well before the food-wait timeout.
 const SEAT_WALK_LIMIT: int = 200
+## Taking an order at the till (#293); a table order takes 30.
+const COUNTER_ORDER_TICKS: int = 15
+## How far from the door a queueing guest looks for a spot to wait (#305).
+const WAIT_SPOT_RADIUS: int = 4
 
 var state: State = State.ARRIVING
 var queue_patience: int = 300
 var food_patience: int = 1200
-var eat_ticks: int = 300
+## A meal at the table (a drinks-only visit uses VisitTuning.drink_visit_ticks).
+var eat_ticks: int = 270
 var table_item_id: int = 0
 ## Physical members captured at booking; never saved or recomputed on departure.
 var booked_table_ids: Array[int] = []
@@ -31,6 +41,21 @@ var seat_cell: Vector2i = SimGrid.NO_CELL
 ## A temporary bench booking while QUEUED. It never becomes a dining order.
 var waiting_item_id: int = 0
 var waiting_cell: Vector2i = SimGrid.NO_CELL
+## Where a bench-less queueing guest stands, clear of the door lane (#305).
+var _wait_spot: Vector2i = SimGrid.NO_CELL
+## The café order counter (#293). A solo drink or coffee guest queues at the
+## counter, orders there (no table order task), then takes the table booked at
+## the counter (`table_item_id`/`seat_cell`) or leaves with a takeaway handed
+## across from a pickup cell. Never set in a shop without an order counter.
+var counter_visit: bool = false
+var counter_stage: Counter = Counter.LINE
+var counter_item_id: int = 0
+## The order cell this guest holds while ordering.
+var counter_cell: Vector2i = SimGrid.NO_CELL
+var counter_join_tick: int = 0
+## Leaves with the drink: the guest's one seeded draw said so, or no table was free.
+var takeaway: bool = false
+var takeaway_wanted: bool = false
 ## Retained only for this visit's review and one-time patience bonus.
 var waited_seated: bool = false
 ## The shop cat (#119): this guest has petted it this visit (once), and the
@@ -58,6 +83,9 @@ var regular_profile: RegularProfile = null
 var regular_arrival_tick: int = 0
 var regular_favourite_label: String = ""
 var regular_favourite_available: bool = false
+## The disguised food critic (#303): the tells they show. Empty for every
+## ordinary guest, so a critic is told apart only by these.
+var critic_tells: Array[StringName] = []
 ## Anonymous repeat cohort; never exposed to the player or randomly drawn.
 var repeat_guest_key: String = ""
 var budget_multiplier: float = 1.0
@@ -137,6 +165,24 @@ func set_visit_kind(kind: StringName, tuning: VisitTuning = null) -> bool:
 	return true
 
 
+## Turns a just-arrived solo guest into the day's critic: judging the food
+## harder, and lingering when that is one of their tells. No random draw.
+func disguise_as_critic(tells: Array[StringName], tuning: CriticTuning) -> bool:
+	if state != State.ARRIVING or is_critic() or tells.is_empty() or tuning == null or regular_profile != null:
+		return false
+	critic_tells = tells.duplicate()
+	quality_weight = tuning.quality_weight
+	review_chance_multiplier = 1.0
+	repeat_guest_key = ""
+	if tells.has(FoodCritic.LINGERS):
+		eat_ticks = roundi(float(eat_ticks) * tuning.linger_multiplier)
+	return true
+
+
+func is_critic() -> bool:
+	return not critic_tells.is_empty()
+
+
 func is_drinks_visit() -> bool:
 	return visit_kind != RecipeDef.FOOD
 
@@ -210,12 +256,17 @@ func _advance_visit(world: SimWorld, allow_movement: bool = true) -> void:
 			_leave(world, sim, player_reason(order.cancellation_reason))
 		elif away():
 			pass  # The food waits and patience pauses while at the restroom.
-		elif order != null and order.state == Order.State.DELIVERED and not _waiting_for_side():
-			if restroom == Restroom.NEEDED:
-				# The meal came before a toilet was free: they make do.
-				_miss_restroom(sim)
-			state = State.EATING
-			_eating = 0
+		elif order != null and order.state == Order.State.DELIVERED and not _waiting_for_side() \
+				and not _counter_walking():
+			if takeaway:
+				# Paid at the counter, drink in hand: straight out the door.
+				state = State.PAYING
+			else:
+				if restroom == Restroom.NEEDED:
+					# The meal came before a toilet was free: they make do.
+					_miss_restroom(sim)
+				state = State.EATING
+				_eating = 0
 		else:
 			_food_wait += 1 - cat_relief(sim)
 			if _food_wait >= food_patience:
@@ -228,7 +279,10 @@ func _advance_visit(world: SimWorld, allow_movement: bool = true) -> void:
 					_leave(world, sim, &"waited_too_long")
 	match state:
 		State.ARRIVING:
-			if not _try_seat(world):
+			if _join_counter(world, sim):
+				state = State.QUEUED
+				_counter_step(world, sim, allow_movement)
+			elif not _try_seat(world):
 				state = State.QUEUED
 				if allow_movement:
 					_queue_inside(world)
@@ -236,7 +290,13 @@ func _advance_visit(world: SimWorld, allow_movement: bool = true) -> void:
 					WaitingBench.observe_arrival(self, world, sim)
 		State.QUEUED:
 			if _queue_wait >= queue_patience:
-				_leave(world, sim, &"no_table")
+				_leave(world, sim, _queue_timeout_reason())
+			elif counter_visit:
+				_counter_step(world, sim, allow_movement)
+				if state == State.QUEUED:
+					_queue_wait += 1 - cat_relief(sim)
+					if _queue_wait >= queue_patience:
+						_leave(world, sim, _queue_timeout_reason())
 			elif not _try_seat(world):
 				if allow_movement:
 					_queue_inside(world)
@@ -255,7 +315,9 @@ func _advance_visit(world: SimWorld, allow_movement: bool = true) -> void:
 			if _task == null or _task.state == SimTask.State.CANCELLED:
 				_post_order_task(world, sim)
 		State.WAITING_FOOD:
-			if restroom != Restroom.NONE and restroom != Restroom.DONE:
+			if _counter_walking():
+				_counter_to_dest(world, sim)
+			elif restroom != Restroom.NONE and restroom != Restroom.DONE:
 				_restroom_tick(world, sim)
 		State.EATING:
 			_eating += 1
@@ -279,6 +341,8 @@ func why() -> String:
 	match state:
 		State.ARRIVING:
 			return "Arriving: looking for a table"
+		State.QUEUED when counter_visit:
+			return _waiting_why("In line at the order counter")
 		State.QUEUED:
 			if waiting_item_id > 0:
 				return _waiting_why("Waiting on a bench for a free table" if cell == waiting_cell and has_arrived() \
@@ -294,8 +358,13 @@ func why() -> String:
 			return "Walking back to my seat"
 		State.WAITING_FOOD when restroom == Restroom.NEEDED:
 			return _waiting_why("Waiting for the restroom")
+		State.ORDERING when counter_visit:
+			return _waiting_why("Ordering at the counter")
 		State.ORDERING:
 			return _waiting_why("Waiting for a server to take my order")
+		State.WAITING_FOOD when takeaway:
+			return _waiting_why("Waiting for my takeaway drink, %ds of patience left" % [
+				ceili(float(maxi(0, food_patience - _food_wait)) / SimClock.TICKS_PER_SECOND)])
 		State.WAITING_FOOD:
 			if is_drinks_visit():
 				return _waiting_why("Waiting for my drink, %ds of patience left" % [
@@ -304,6 +373,8 @@ func why() -> String:
 				ceili(float(maxi(0, food_patience - _food_wait)) / SimClock.TICKS_PER_SECOND)])
 		State.EATING:
 			return "Enjoying my drink" if is_drinks_visit() else "Enjoying my meal"
+		State.PAYING when takeaway:
+			return "Taking my drink to go"
 		State.PAYING:
 			return "Paying for my drink" if is_drinks_visit() else "Paying for my meal"
 		State.LEAVING, State.LEFT:
@@ -320,6 +391,15 @@ func mood() -> float:
 		State.ORDERING, State.WAITING_FOOD:
 			return _patience_fraction(_food_wait, food_patience)
 	return 1.0
+
+
+## Fraction (0..1) of the relevant patience already used while waiting for a
+## table, an order taker or food. 0 in every other state (#307).
+func urgency() -> float:
+	match state:
+		State.QUEUED, State.ORDERING, State.WAITING_FOOD:
+			return 1.0 - mood()
+	return 0.0
 
 
 func mood_band() -> int:
@@ -397,6 +477,7 @@ func on_removed(world: SimWorld) -> void:
 	_cancel_work(world, sim)
 	release_waiting_seat(world)
 	_release_seat(world)
+	_release_counter(world)
 	_release_toilet(world)
 	state = State.LEFT
 	if sim != null:
@@ -404,6 +485,13 @@ func on_removed(world: SimWorld) -> void:
 
 
 func _try_seat(world: SimWorld) -> bool:
+	return _book_table(world, true)
+
+
+## Books a free seat. With `walk` the guest also heads there and the visit moves
+## on to WALKING_TO_SEAT; without it (an order-counter guest, #293) the seat is
+## only held, and the guest stays where they are.
+func _book_table(world: SimWorld, walk: bool) -> bool:
 	var sim: RestaurantSim = _restaurant.get_ref() as RestaurantSim
 	var seen: Dictionary[int, bool] = {}
 	for table: PlacedItem in _seat_order(world):
@@ -426,7 +514,7 @@ func _try_seat(world: SimWorld) -> bool:
 				continue
 			if not world.grid.is_guest_reachable(cell, seat) or not owner.reserve(seat, id):
 				continue
-			if not set_destination(world.grid, seat):
+			if walk and not set_destination(world.grid, seat):
 				owner.release(seat, id)
 				continue
 			release_waiting_seat(world)
@@ -435,7 +523,8 @@ func _try_seat(world: SimWorld) -> bool:
 			seat_cell = seat
 			_walk_wait = 0
 			_ordering_block_logged = false
-			state = State.WALKING_TO_SEAT
+			if walk:
+				state = State.WALKING_TO_SEAT
 			return true
 	return false
 
@@ -451,6 +540,8 @@ func _seat_order(world: SimWorld) -> Array[PlacedItem]:
 				items.remove_at(index)
 				items.push_front(favourite)
 				return items
+	if counter_visit:
+		return _nearest_first(items)
 	if not is_drinks_visit():
 		return items
 	var counters: Array[PlacedItem] = []
@@ -465,6 +556,22 @@ func _seat_order(world: SimWorld) -> Array[PlacedItem]:
 	return counters
 
 
+## An order-counter guest (#293) takes the free table closest to where they
+## stand (the counter), so the walk after ordering is short.
+func _nearest_first(items: Array[PlacedItem]) -> Array[PlacedItem]:
+	var ranked: Array[PlacedItem] = []
+	var distances: Dictionary[int, float] = {}
+	for item: PlacedItem in items:
+		var nearest: float = INF
+		for seat: Vector2i in item.seat_cells:
+			nearest = minf(nearest, GridMath.octile(cell, seat))
+		distances[item.id] = nearest
+		ranked.append(item)
+	ranked.sort_custom(func(a: PlacedItem, b: PlacedItem) -> bool:
+		return distances[a.id] < distances[b.id] or distances[a.id] == distances[b.id] and a.id < b.id)
+	return ranked
+
+
 func _preferred_seats(table: PlacedItem, world: SimWorld) -> Array[Vector2i]:
 	var seats: Array[Vector2i] = PartySeating.table_group_seats(table, world.grid)
 	if regular_profile != null and seats.has(regular_profile.favourite_seat):
@@ -474,20 +581,227 @@ func _preferred_seats(table: PlacedItem, world: SimWorld) -> Array[Vector2i]:
 
 
 func _walk_to_seat(world: SimWorld, sim: RestaurantSim) -> void:
+	# An order-counter guest walks to the order cell first (#293).
+	var goal: Vector2i = counter_cell if counter_visit and counter_stage == Counter.TO_COUNTER else seat_cell
 	if needs_repath or path.is_empty():
-		if not set_destination(world.grid, seat_cell):
+		if not set_destination(world.grid, goal):
 			_requeue(world, sim)
 			return
 	var result: MoveResult = step_move(world)
 	if result == MoveResult.BLOCKED:
-		if not set_destination(world.grid, seat_cell):
+		if not set_destination(world.grid, goal):
 			_requeue(world, sim)
-	elif result == MoveResult.ARRIVED and cell == seat_cell:
+	elif result == MoveResult.ARRIVED and cell == goal:
 		if party != null and party.size() > 1:
 			PartySeating.finish_seating(party, world, sim)
 			return
+		if counter_visit and counter_stage == Counter.TO_COUNTER:
+			counter_stage = Counter.AT_COUNTER
+			clear_path()
 		state = State.ORDERING
 		_post_order_task(world, sim)
+
+
+# --- Order counter (#293) ---------------------------------------------------
+
+## What a guest who waited too long in the queue tells the player.
+func _queue_timeout_reason() -> StringName:
+	return &"waited_too_long" if counter_visit else &"no_table"
+
+
+func _counter_walking() -> bool:
+	return counter_visit and counter_stage == Counter.TO_DEST
+
+
+## True while this guest stands in the counter's line or at its cells, so the
+## view can turn them to face the counter.
+func faces_counter() -> bool:
+	if not counter_visit:
+		return false
+	return state == State.QUEUED or counter_stage == Counter.AT_COUNTER \
+		or takeaway and counter_stage == Counter.DONE and (state == State.WAITING_FOOD or state == State.PAYING)
+
+
+## A solo drink or coffee guest in a shop with a usable order counter joins its
+## queue instead of looking for a table. The seeded takeaway draw is made here,
+## once, so the split depends only on the guest's own stream.
+func _join_counter(world: SimWorld, sim: RestaurantSim) -> bool:
+	if not is_drinks_visit() or is_critic() or (party != null and party.size() > 1) or sim.menu.is_empty() \
+			or OrderCounter.usable_counters(sim, cell).is_empty():
+		return false
+	counter_visit = true
+	counter_stage = Counter.LINE
+	counter_join_tick = world.now
+	takeaway_wanted = rng.randf() < sim.visit_tuning.takeaway_share
+	# A moving line is easier to wait in than an empty doorway.
+	queue_patience = _type_patience(queue_patience, sim.visit_tuning.counter_patience_multiplier)
+	return true
+
+
+## Guests still lining up, front of the queue first (arrival order, then id).
+func _counter_line(world: SimWorld) -> Array[CustomerAgent]:
+	# Built once a tick; rebuilt if this guest joined after it was.
+	var cached: Array = world.get_meta(&"order_counter_line", [])
+	if cached.size() == 2 and cached[0] == world.now:
+		var shared: Array[CustomerAgent] = []
+		shared.assign(cached[1])
+		if shared.has(self):
+			return shared
+	var line: Array[CustomerAgent] = []
+	for agent: SimAgent in world.agents:
+		var guest: CustomerAgent = agent as CustomerAgent
+		if guest != null and guest.counter_visit and guest.state == State.QUEUED and guest.counter_stage == Counter.LINE:
+			line.append(guest)
+	line.sort_custom(func(a: CustomerAgent, b: CustomerAgent) -> bool:
+		return a.counter_join_tick < b.counter_join_tick or a.counter_join_tick == b.counter_join_tick and a.id < b.id)
+	world.set_meta(&"order_counter_line", [world.now, line])
+	return line
+
+
+## One tick in the counter's line: the guest at the front takes a free order
+## cell (and the table or pickup spot they will go to next); everyone else walks
+## to the cell behind the guest ahead, or waits beside the door when the line is full.
+func _counter_step(world: SimWorld, sim: RestaurantSim, allow_movement: bool) -> void:
+	var queue_counter: PlacedItem = OrderCounter.line_counter(sim)
+	if queue_counter == null:
+		# No counter can be used (gone, or its staff side is cut off): queue for a table.
+		counter_visit = false
+		return
+	var line: Array[CustomerAgent] = _counter_line(world)
+	var rank: int = line.find(self)
+	# The front guest claims the till, unless they want a takeaway and the pickup
+	# cell is taken: then the first guest behind them who is not so blocked goes
+	# ahead, so one takeaway never holds up the line.
+	var claimer: CustomerAgent = null
+	for waiting: CustomerAgent in line:
+		if not waiting._pickup_blocked(queue_counter):
+			claimer = waiting
+			break
+	if claimer == self:
+		# Only the claiming guest pays for the reachability search each tick.
+		var usable: Array[PlacedItem] = OrderCounter.usable_counters(sim, cell)
+		if usable.is_empty():
+			# Cut off (no clear staff side, or no way in): look for a table instead.
+			counter_visit = false
+			return
+		if _claim_counter(world, sim, usable):
+			return
+	if not allow_movement:
+		return
+	var slots: Array[Vector2i] = OrderCounter.queue_cells(world, queue_counter, line.size())
+	var spot: Vector2i = slots[rank] if rank >= 0 and rank < slots.size() else SimGrid.NO_CELL
+	if spot != SimGrid.NO_CELL and (cell == spot or _line_move(world, spot)):
+		return
+	# The line is full (or this cell is out of reach): wait beside the door.
+	_stand_clear_of_door(world)
+
+
+## Steps toward a queue cell; false when no route to it exists right now.
+func _line_move(world: SimWorld, spot: Vector2i) -> bool:
+	# A finished path would make _move keep its old goal; never re-aim a real partial edge.
+	if move_progress == 0.0 and (path.is_empty() or needs_repath or destination() != spot):
+		if not set_destination(world.grid, spot):
+			return false
+	_move(world, spot)
+	return true
+
+
+## A guest who wants a takeaway while every pickup cell is held by someone else.
+func _pickup_blocked(item: PlacedItem) -> bool:
+	if not takeaway_wanted:
+		return false
+	var cells: Array[Vector2i] = OrderCounter.pickup_cells(item)
+	if cells.is_empty():
+		return false
+	for pickup: Vector2i in cells:
+		if item.reserved_by(pickup) == -1:
+			return false
+	return true
+
+
+## Reserves the order cell and where the guest goes next: a free table (unless
+## they wanted a takeaway) or else a pickup spot at the counter. False when
+## nothing is free yet, with nothing held.
+func _claim_counter(world: SimWorld, sim: RestaurantSim, counters: Array[PlacedItem]) -> bool:
+	for item: PlacedItem in counters:
+		var front: Vector2i = OrderCounter.order_cell(item)
+		if item.reserved_by(front) != -1 or not item.reserve(front, id):
+			continue
+		var booked: bool = not takeaway_wanted and _book_table(world, false)
+		if not booked:
+			var pickup: Vector2i = OrderCounter.free_pickup(sim, item, self)
+			if pickup != SimGrid.NO_CELL and item.reserve(pickup, id):
+				table_item_id = item.id
+				booked_table_ids.clear()
+				seat_cell = pickup
+			elif not OrderCounter.pickup_cells(item).is_empty() \
+					and OrderCounter.free_pickup(sim, item, self, true) != SimGrid.NO_CELL:
+				# The pickup spot is in use: wait in line for it (the guests behind
+				# are let past, see _counter_step).
+				item.release(front, id)
+				continue
+			else:
+				# No pickup spot at all: collect the drink where they order.
+				table_item_id = item.id
+				booked_table_ids.clear()
+				seat_cell = front
+			takeaway = not booked
+		if not set_destination(world.grid, front):
+			_release_seat(world, false)
+			table_item_id = 0
+			seat_cell = SimGrid.NO_CELL
+			takeaway = false
+			item.release(front, id)
+			continue
+		release_waiting_seat(world)
+		counter_item_id = item.id
+		counter_cell = front
+		counter_stage = Counter.TO_COUNTER
+		_walk_wait = 0
+		_wait_spot = SimGrid.NO_CELL
+		_ordering_block_logged = false
+		state = State.WALKING_TO_SEAT
+		return true
+	return false
+
+
+## Called as the order is placed: from here the guest heads for the table or
+## pickup spot booked at the counter. If that walk is no longer possible they
+## collect the drink where they stand instead.
+func _leave_counter_for_dest(world: SimWorld) -> void:
+	if seat_cell == counter_cell:
+		counter_stage = Counter.DONE
+		return
+	if set_destination(world.grid, seat_cell):
+		counter_stage = Counter.TO_DEST
+		_walk_wait = 0
+		_release_counter(world)
+		return
+	_release_seat(world, false)
+	table_item_id = counter_item_id
+	seat_cell = counter_cell
+	takeaway = true
+	counter_stage = Counter.DONE
+
+
+## Walks on from the counter to the booked table or pickup spot.
+func _counter_to_dest(world: SimWorld, sim: RestaurantSim) -> void:
+	_walk_wait += 1
+	if _walk_wait >= SEAT_WALK_LIMIT:
+		_leave(world, sim, &"no_table")
+		return
+	if _move(world, seat_cell) and cell == seat_cell:
+		counter_stage = Counter.DONE
+		clear_path()
+
+
+## Lets go of the order cell (once the guest has stepped off it).
+func _release_counter(world: SimWorld) -> void:
+	if counter_item_id != 0 and counter_cell != SimGrid.NO_CELL:
+		var item: PlacedItem = world.grid.item(counter_item_id)
+		if item != null and item.reserved_by(counter_cell) == id:
+			world.movement.defer_seat_release(world, item.id, counter_cell, id)
+	counter_cell = SimGrid.NO_CELL
 
 
 func _requeue(world: SimWorld, sim: RestaurantSim) -> void:
@@ -495,6 +809,10 @@ func _requeue(world: SimWorld, sim: RestaurantSim) -> void:
 		PartySeating.requeue(party, world, sim)
 		return
 	_release_seat(world, false)
+	_release_counter(world)
+	if counter_visit:
+		counter_stage = Counter.LINE
+		takeaway = false
 	table_item_id = 0
 	seat_cell = SimGrid.NO_CELL
 	clear_path()
@@ -502,9 +820,10 @@ func _requeue(world: SimWorld, sim: RestaurantSim) -> void:
 	# cannot keep a guest alive forever even if its movement speed is zero.
 	_queue_wait += _walk_wait
 	_walk_wait = 0
+	_wait_spot = SimGrid.NO_CELL
 	state = State.QUEUED
 	if _queue_wait >= queue_patience:
-		_leave(world, sim, &"no_table")
+		_leave(world, sim, _queue_timeout_reason())
 
 
 func _queue_inside(world: SimWorld) -> void:
@@ -512,11 +831,79 @@ func _queue_inside(world: SimWorld) -> void:
 	if WaitingBench.advance(self, world, sim):
 		return
 	if world.grid.terrain(cell) == SimGrid.Terrain.FLOOR:
+		_stand_clear_of_door(world)
 		return
 	for neighbour: Vector2i in world.grid.guest_neighbours(cell):
 		if world.grid.terrain(neighbour) == SimGrid.Terrain.FLOOR:
 			_move(world, neighbour)
 			return
+
+
+## Waiting without a bench (#305): walk beside the front door, never in its
+## lane, and stay there. The spot is sticky until it stops being valid.
+func _stand_clear_of_door(world: SimWorld) -> void:
+	# A yield can leave the guest standing on another good cell: keep it there.
+	if cell != _wait_spot and move_progress == 0.0 and has_arrived() and _wait_cell_free(world, cell):
+		_wait_spot = cell
+	if not _wait_spot_ok(world):
+		_wait_spot = _pick_wait_spot(world)
+	if _wait_spot == SimGrid.NO_CELL or cell == _wait_spot:
+		return
+	# A finished path would make _move keep its old goal: aim at the spot.
+	# Never re-aim a real partial edge: it finishes first.
+	if move_progress == 0.0 and (path.is_empty() or needs_repath or destination() != _wait_spot):
+		if not set_destination(world.grid, _wait_spot):
+			_wait_spot = SimGrid.NO_CELL
+			return
+	_move(world, _wait_spot)
+
+
+func _wait_spot_ok(world: SimWorld) -> bool:
+	if _wait_spot == SimGrid.NO_CELL:
+		return false
+	if not _wait_cell_free(world, _wait_spot):
+		return false
+	for agent: SimAgent in world.agents:
+		if agent != self and agent.cell == _wait_spot and agent.has_arrived():
+			return false
+	return true
+
+
+func _wait_cell_free(world: SimWorld, spot: Vector2i) -> bool:
+	if world.grid.terrain(spot) != SimGrid.Terrain.FLOOR or world.grid.room(spot) != SimGrid.Room.DINING \
+			or not world.grid.is_guest_walkable(spot) or not world.movement.standing_cell(world, spot) \
+			or world.movement.in_door_lane(world, spot):
+		return false
+	for item: PlacedItem in world.grid.items():
+		if item.work_cells.has(spot):
+			return false
+	for agent: SimAgent in world.agents:
+		if agent is CustomerAgent and agent != self and (agent as CustomerAgent).state == State.QUEUED \
+				and (agent as CustomerAgent)._wait_spot == spot:
+			return false
+	return true
+
+
+func _pick_wait_spot(world: SimWorld) -> Vector2i:
+	var best: Vector2i = SimGrid.NO_CELL
+	var best_distance: float = INF
+	for dy: int in range(-WAIT_SPOT_RADIUS, WAIT_SPOT_RADIUS + 1):
+		for dx: int in range(-WAIT_SPOT_RADIUS, WAIT_SPOT_RADIUS + 1):
+			var spot: Vector2i = cell + Vector2i(dx, dy)
+			if not _wait_cell_free(world, spot):
+				continue
+			var occupied: bool = false
+			for agent: SimAgent in world.agents:
+				if agent != self and agent.cell == spot and agent.has_arrived():
+					occupied = true
+					break
+			if occupied or not world.grid.is_guest_reachable(cell, spot):
+				continue
+			var d: float = GridMath.octile(cell, spot)
+			if d < best_distance:
+				best_distance = d
+				best = spot
+	return best
 
 
 func is_waiting_seated(world: SimWorld) -> bool:
@@ -555,11 +942,14 @@ func _post_order_task(world: SimWorld, sim: RestaurantSim) -> void:
 	if sim.menu.is_empty():
 		_leave(world, sim, &"no_menu")
 		return
-	# At a serve-across counter the server stands on the far side (FK-083).
-	var target: Vector2i = sim.across_cell(table_item_id, seat_cell)
+	# At a serve-across counter the server stands on the far side (FK-083); at
+	# the order counter (#293) that is the staff side, where the till is.
+	var at_counter: bool = counter_visit and counter_stage == Counter.AT_COUNTER
+	var target: Vector2i = sim.across_cell(counter_item_id if at_counter else table_item_id,
+		counter_cell if at_counter else seat_cell)
 	var neighbours: Array[Vector2i] = []
 	var workers: Array[StaffAgent] = []
-	if target == SimGrid.NO_CELL:
+	if target == SimGrid.NO_CELL and not at_counter:
 		neighbours = world.grid.walkable_neighbours(seat_cell)
 		workers = _order_approach_workers(world)
 	# Closest to the seat; fixed neighbour order breaks distance ties.
@@ -578,7 +968,9 @@ func _post_order_task(world: SimWorld, sim: RestaurantSim) -> void:
 			_ordering_block_logged = true
 		return
 	_task = SimTask.new(&"take_order", &"server", "Take guest #%d's order" % id)
-	_task.priority = 2
+	# A till order ties with pouring and delivering at 3 (urgency, #310, breaks the
+	# tie), so the line keeps moving (#293); table orders keep 2.
+	_task.priority = 3 if at_counter else 2
 	_task.payload["customer_id"] = id
 	var approach: TaskStep = TaskStep.go_to_cell(target, "walking to guest")
 	if not neighbours.is_empty():
@@ -587,7 +979,8 @@ func _post_order_task(world: SimWorld, sim: RestaurantSim) -> void:
 		if world.movement.standing_cell(world, neighbour):
 			approach.candidate_cells.append(neighbour)
 	_task.steps.append(approach)
-	_task.steps.append(TaskStep.work(30, "taking order", _take_order))
+	# The till is quicker than a table order: the guest is ready and the menu is on the wall.
+	_task.steps.append(TaskStep.work(COUNTER_ORDER_TICKS if at_counter else 30, "taking order", _take_order))
 	world.board.post(_task, world.now)
 
 
@@ -666,12 +1059,20 @@ func _take_order(server: SimAgent) -> bool:
 			if choice.id == regular_profile.favourite_dish:
 				recipe = choice
 				break
+	# A critic with that tell orders the dearest dish they could (#303), and
+	# never walks out over a price: they came to judge the food.
+	if critic_tells.has(FoodCritic.PRICIEST):
+		for choice: RecipeDef in choices:
+			if sim.price_of(choice) > sim.price_of(recipe):
+				recipe = choice
 	var price: int = sim.price_of(recipe)
-	var chance: float = sim.price_walkout_chance(recipe, budget_multiplier)
+	var chance: float = sim.price_walkout_chance(recipe, budget_multiplier) if not is_critic() else 0.0
 	# Standard/cheaper prices preserve the existing guest stream exactly.
 	if chance > 0.0 and rng.randf() < chance:
 		_leave(sim.world, sim, &"too_expensive")
 		return true
+	if counter_visit and counter_stage == Counter.AT_COUNTER:
+		_leave_counter_for_dest(sim.world)
 	order = _new_order(recipe, price)
 	# Apply once, after the ticket replay guard, while food patience still matters.
 	if server is StaffAgent:
@@ -682,7 +1083,8 @@ func _take_order(server: SimAgent) -> bool:
 		_maybe_add_drink(sim, available)
 	elif visit_kind == RecipeDef.COFFEE:
 		_maybe_add_pastry(sim, available)
-	_maybe_need_restroom(sim)
+	if not takeaway:
+		_maybe_need_restroom(sim)
 	return true
 
 
@@ -723,6 +1125,9 @@ func _maybe_add_pastry(sim: RestaurantSim, available: Array[RecipeDef]) -> void:
 		return
 	extra_order = _new_order(pastry, sim.price_of(pastry))
 	sim.orders.place(extra_order, sim.world.now)
+	# A takeaway pastry goes in a paper bag: no plate to lay, bring back or wash.
+	if takeaway and sim.kitchen != null:
+		sim.kitchen.bypass_plate(extra_order)
 
 
 func _new_order(recipe: RecipeDef, price: int) -> Order:
@@ -748,6 +1153,7 @@ func _leave(world: SimWorld, sim: RestaurantSim, reason: StringName) -> void:
 	_cancel_work(world, sim)
 	release_waiting_seat(world)
 	_release_seat(world)
+	_release_counter(world)
 	_release_toilet(world)
 	clear_path()
 	state = State.LEAVING
@@ -773,7 +1179,7 @@ func _release_seat(world: SimWorld, dirty: bool = true) -> void:
 		var sim: RestaurantSim = _restaurant.get_ref() as RestaurantSim
 		# A drinks-only visit leaves no plates to clear: staff take the cup
 		# back with them, so the seat is free at once (FK-083).
-		var plated_extra: bool = extra_order != null and _plated(sim, extra_order)
+		var plated_extra: bool = extra_order != null and not takeaway and _plated(sim, extra_order)
 		if dirty and cell == seat_cell and sim != null and sim.kitchen != null and (not is_drinks_visit() or plated_extra):
 			sim.kitchen.mark_dining_group_dirty(table_item_id, order.id if order != null and not is_drinks_visit() else 0, booked_table_ids)
 			if plated_extra:

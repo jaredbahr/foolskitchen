@@ -28,6 +28,7 @@ const STATION_TEXT: Dictionary[StringName, String] = {
 	&"coffee": "Makes coffee and tea, and warms pastries",
 	&"drinks_fridge": "Keeps soft drinks cold",
 	&"drinks_shelf": "Holds the beer and wine",
+	&"order_counter": "Café guests queue here to order and pay, then take a table or a takeaway",
 }
 ## Restroom fixtures (FK-101): plain words, nothing more (D8).
 const RESTROOM_TEXT: Dictionary[StringName, String] = {
@@ -44,7 +45,7 @@ const STATION_NAMES: Dictionary[StringName, String] = {
 	&"stove": "Stove", &"prep_counter": "Prep counter", &"sink": "Sink", &"fridge": "Fridge",
 	&"fryer": "Fryer", &"oven": "Oven", &"coffee": "Coffee machine",
 	&"drinks_fridge": "Drinks fridge", &"drinks_shelf": "Drinks shelf",
-	&"storage_shelf": "Storage shelf", &"freezer": "Freezer", &"toilet": "Toilet", &"wash_basin": "Wash basin",
+	&"order_counter": "Order counter", &"storage_shelf": "Storage shelf", &"freezer": "Freezer", &"toilet": "Toilet", &"wash_basin": "Wash basin",
 }
 
 
@@ -113,6 +114,8 @@ static func does(definition: ItemDef) -> String:
 			return "Hangs on a restroom wall" if definition.hangs_on_wall() else RESTROOM_TEXT.get(definition.station_type, "Restroom fixture")
 	if definition.placement_layer == ItemDef.PlacementLayer.FLOOR_DECOR:
 		return "Rug: tables and chairs can stand on it"
+	if definition.wall_mount == ItemDef.WallMount.EXTERIOR and definition.exterior_band == ExteriorSupport.Band.GROUND:
+		return "Stands on the pavement beside the door and shows your name and today's special"
 	if definition.wall_mount == ItemDef.WallMount.EXTERIOR:
 		return "Hangs outside on the street front, %d tiles wide" % definition.footprint.x
 	if definition.hangs_in_window():

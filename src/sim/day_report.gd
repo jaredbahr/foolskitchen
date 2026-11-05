@@ -24,6 +24,9 @@ var customers_served: int = 0
 var dish_quality_count: int = 0
 var dish_quality_average: float = 0.0
 var customers_lost: int = 0
+## Guests who paid at the café order counter (#293) and left with their drink,
+## already counted among customers_served. Saved only on days there were any.
+var takeaways: int = 0
 var leave_reasons: Dictionary = {}
 var reviews: Array[String] = []
 ## Worst observed floor condition, already mapped to a player-facing word.
@@ -51,6 +54,9 @@ var milestones_reached: Array[Dictionary] = []
 var low_stock: Array[String] = []
 ## Named regular visit, promotion and farewell notes, already player-facing.
 var regulars_lines: Array[String] = []
+## The disguised food critic's visit (#303): heading, verdict and headline
+## quote, already player-facing; empty on days none reviewed.
+var critic_lines: Array[String] = []
 ## Optional purchase-basis accounting. Historical reports retain their cash
 ## basis; missing historical ingredient prices are never fabricated.
 var stock_values_recorded: bool = false
@@ -205,6 +211,11 @@ func to_dict() -> Dictionary:
 	var activity: Dictionary = StaffActivity.public_snapshot(staff_activity)
 	if not activity.is_empty():
 		result["staff_activity"] = activity
+	if takeaways > 0:
+		result["takeaways"] = takeaways
+	# Only on days a critic reviewed, so every other report keeps its exact shape.
+	if not critic_lines.is_empty():
+		result["critic_lines"] = critic_lines.duplicate()
 	return result
 
 
@@ -226,6 +237,7 @@ static func from_dict(data: Dictionary) -> DayReport:
 	report.dish_quality_count = maxi(0, int(data.get("dish_quality_count", 0)))
 	report.dish_quality_average = clampf(float(data.get("dish_quality_average", 0.0)), 0.0, 1.0)
 	report.customers_lost = int(data.get("customers_lost", 0))
+	report.takeaways = clampi(int(data.get("takeaways", 0)), 0, maxi(0, report.customers_served))
 	report.leave_reasons = _name_counts(data.get("leave_reasons", {}))
 	var saved_reviews: Variant = data.get("reviews", [])
 	if saved_reviews is Array:
@@ -264,6 +276,11 @@ static func from_dict(data: Dictionary) -> DayReport:
 		for line: Variant in saved_regulars:
 			if line is String:
 				report.regulars_lines.append(line)
+	var saved_critic: Variant = data.get("critic_lines", [])
+	if saved_critic is Array:
+		for line: Variant in saved_critic:
+			if line is String:
+				report.critic_lines.append(line)
 	var recorded: Variant = data.get("stock_values_recorded", false)
 	report.stock_values_recorded = recorded is bool and recorded
 	for field: String in ["food_cost", "stock_bought", "spoiled_stock", "stock_on_hand"]:

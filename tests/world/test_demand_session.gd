@@ -470,16 +470,17 @@ func _reject_after_demand(_value: Dictionary) -> bool:
 
 # Complete manual-stock Main day1, seed1, under FK-124 physical traffic.
 # The trace originated on8fbe652826c34333e6b7b51f63ede116901582f9;
-# economy, messes and traffic subsequently changed its recorded outcomes.
+# economy, messes, traffic and the cook/plate service-speed work (#291) subsequently changed its recorded outcomes.
+# #307 (most impatient guests first) shifts which guest staff reach first: same 18 served and 0 lost, close two ticks later (4437), new events hash and cleanliness stream state.
 # Full before/after signed events and source-bound replays remain outside the project.
-const DAY_ONE_EVENTS_SHA256: String = "a6e240f17fc39b056ab0968d8b9a8a5f027055ce9512c9f6331855f1be92ebeb"
+const DAY_ONE_EVENTS_SHA256: String = "53d4a6d1346ab0b2db1758233fe0f12cd30a99913bffa565420bb26f9d0c545f"
 ## Exact whole stream dictionary; existing lifecycle draws follow actual outcomes.
 const DAY_ONE_STREAMS: Dictionary = {
 	"master_seed": "1",
 	"rngs": {
 		"cleanliness": {
 			"seed": "2378578401",
-			"state": "-5944420015395999468"
+			"state": "-6506350273339477378"
 		},
 		"customers": {
 			"seed": "232337077",
@@ -491,7 +492,7 @@ const DAY_ONE_STREAMS: Dictionary = {
 		},
 		"reviews": {
 			"seed": "7543029",
-			"state": "7930172525103179214"
+			"state": "-7929524535254594193"
 		},
 		"weather": {
 			"seed": "2145409216",
@@ -509,11 +510,11 @@ func test_manual_stock_day_one_events_private_rng_and_named_streams_match_record
 	assert_eq(first["streams"], DAY_ONE_STREAMS, "complete named-stream seed/state dictionary")
 	assert_eq(first["events_sha256"], DAY_ONE_EVENTS_SHA256,
 		"recorded arrival/payment/departure ticks and signed private RNG seeds/states")
-	assert_eq(first["tick"], 4500)
-	assert_eq(first["served"], 17)
-	assert_eq(first["lost"], 1)
-	assert_eq(first["happy"], 17)
-	assert_almost_eq(float(first["renown"]), 17.0, 0.00001, "progress accrues from recorded happy departures")
+	assert_eq(first["tick"], 4437)
+	assert_eq(first["served"], 18)
+	assert_eq(first["lost"], 0)
+	assert_eq(first["happy"], 18)
+	assert_almost_eq(float(first["renown"]), 18.0, 0.00001, "progress accrues from recorded happy departures")
 
 
 func _played_day_one() -> Dictionary:

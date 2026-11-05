@@ -66,6 +66,7 @@ an active edit/panel/selection first, or opens Settings when none is active.
   - **Smooth motion (view only, `src/world/motion_smoother.gd`).** Each production frame carries the sim's timed cell-centre movement trace for the latest tick. `MotionSmoother` samples its actual piecewise route at `Clock.tick_fraction()`, including every crossed centre and any terminal hold; several ticks between rendered frames never create a chord through furniture. Walking reaches the actual seat before the seated pose and its authored offset begin. Missing, invalid or explicitly discontinuous traces snap rather than invent a connecting route. Morning resets, a new world and newly admitted actors are explicit transitions, not ordinary service movement. Hand-authored frame fixtures retain their no-trace interpolation contract. Pausing holds the fraction; direct tools/fast-forwards and worlds not driven by the Clock render at alpha 1. Existing facing, crate and carrying presentation stays in the view. Seat/reach/separation offsets are checked against furniture, internal wall edges and every person's final position; rejecting one offset rechecks the group, so a later fallback cannot invalidate an earlier accepted offset. The view never changes simulation movement.
   - **Deterministic traffic (`MovementCoordinator`).** `SimWorld` owns value-only current-cell, next-cell, swept-cell and edge claims. Every neutral, Quick and courier edge must claim its destination and diagonal clearance before travel. Crossed cells remain held until the next tick so a later actor cannot cut through the earlier actor's drawn interval. Actors advance in ID order. Both people in a physically valid cardinal head-on pair keep their reciprocal routes until stable-priority yielding; staggered repath deadlines cannot send both into repeated opposing detours. Physical meals and prepared drinks in hand have priority over other staff, staff over guests, with lower-ID ties; a claimed task or stale tray metadata alone is not carried food. Kitchen confirms a drink's real READY ticket, task ownership and carrying stage through a weak world query; replayed preparation, served and cancelled drinks grant no carry priority. Courier crates use ordinary staff priority.
   - **Cost.** Movement checks stay cheap on busy days: `SimGrid.seat_items_at` keeps a seat index rebuilt only when the grid version changes; `find_path_avoiding` is a binary-heap A* that keeps the old open-list choice and ties exactly; a yield search flood-fills the actor's reachable area once and skips pockets it cannot reach instead of running a failed route for each.
+  - **Door lane (#305).** `MovementCoordinator.door_lane()` derives the front-door lane from `grid.entries()`: the entries, the floor cells beside them and the cells just inside those (cached per grid version, no side assumed). A guest still ARRIVING or QUEUED standing in it has traffic priority 0, below every other guest, so a leaver or seat-walker wins the head-on and the stander yields. A QUEUED guest without a bench picks one sticky waiting spot (`CustomerAgent._stand_clear_of_door`, radius `WAIT_SPOT_RADIUS` = 4): the nearest reachable free dining-floor cell that is not lane, not a seat, not any item work cell and not another queued guest's spot. It is re-picked only when it stops being valid, and cleared on requeue (single and party). With no spot (a crowd that has filled them) the guest stays where it is, still at priority 0.
   - **Waiting and admission.** `data/balance/movement.tres` authors repath/yield delays and search radii. A blocked actor waits, then tries an actor-aware route and deterministic yielding to a reachable pocket. If a distant crowd prevents a complete avoidance route, it can reconnect around a local blocker to a later vertex of its existing route, retaining the real destination and validating the remaining geometry and seat permissions. Physical step claims still stop it at any distant person. Diagonal clearance checks also identify a person holding either corner when the destination itself is free. An outbound sidestep stays protected while fresh or physically moving; after the authored number of denied attempts it can select another pocket or use the existing cooperative recovery without losing its original goal. If the preferred person has no escape, the waiting person can step aside and briefly hold that pocket for physical progress, bounded by the same authored timeout. Impossible enclosures remain blocked instead of teleporting. A pending birth stays outside active `world.agents`, receives no movement/task/patience ticks, and is retried in ID order. Pending customer visits still participate in party, closing and departure accounting. An idle worker, or a worker waiting for a busy station without holding a lease, can clear another worker’s claimed station to a legal pocket without returning to block that station again; active work, carried food and owner commands keep their existing priority. A genuinely idle employee parks outside the moving worker’s remaining route and retires the completed job’s destination only after reaching that pocket. If the escape is behind the incoming person, the existing cooperative retreat opens a real vacancy before the idle blocker moves through it. Staff morning resets choose distinct legal positions. No traffic decision fetches or draws RNG.
   - **Cancellation and seats.** Cancelling or changing a route mid-edge finishes the current reserved edge before task work or the new goal can advance; it never erases travelled trace segments or reports an intermediate vertex as final arrival. A returning sidestep can re-path or yield again, while productive work stays paused until the actual original goal. Explicit cancellation or a new public destination clears obsolete detour and return intent at a physical vertex; internal and same-goal replanning retains it. An unbooked queued guest can keep waiting on a safe dining-floor pocket after the cooperative hold. Queue searches, patience and seat-walk deadlines continue once per tick during movement recovery, without another physical step or meal work. Shared party queue movement skips reserved stops, including a stop created while choosing a waiting bench. During a detour or reserved stop, existing staff withdrawal, timeout and stuck-task cleanup still runs without claiming new work or advancing productive steps. An idle worker waits to claim a new task while a direct-grid fault covers their actual origin; restoring the floor resumes ordinary claiming without spending a viable task’s retry budget. A direct-grid chaos edit that buries a person or closes a partial edge holds the actual position and claims until the geometry is safe; it does not enable a jump through furniture. Active-service position resets are refused. A physical seat may be projected by both its table and furnishing, but needs a real own reservation and no foreign holder. Empty and foreign seats are not aisles. Guest, bench and staff clearing reservations remain held until the person actually vacates their current/partial-next seat, or is removed/reset. An idle worker steps safely off a cleared seat before releasing it. Rugs and flat floor decor remain walkable.
   - **Player placement.** The final `ShopEditor` preview shared by buying, moving, blueprint batches and exact history refuses new solid or seat obstructions on active current/next/swept/corner claims with “Someone is in the way.” Refusal changes no geometry, cash or history stack. This is distinct from direct-grid fault injection used by recovery tests.
@@ -83,6 +84,7 @@ an active edit/panel/selection first, or opens Settings when none is active.
   - The static `find_path` helper retains its historical blocked-start output through `nearest_walkable`; actors may not execute its non-adjacent escape jump through solid cells. `free_work_cell(item)`/`free_seat_cell(item)` skip reserved and unwalkable cells. `item_removed(item)` fires when an item is removed, and a removed item cannot be reserved.
   - **World view:** Godot's positive `rotation.y` turns counter-clockwise seen from above, so a placed item uses `rotation.y = -quarter_turns * PI / 2`, with its mesh anchored at the rotated footprint's minimum corner.
 - **Task board:** stations, tables and orders post tasks (`take_order`, `cook`, `deliver`, `bus_table`, `clean`, `seat`). Each idle agent scores the open tasks: role priority x skill / distance, and claims the best one. Claims are exclusive.
+- **Guest urgency (#307):** inside the job tier and deferral rules above, a claim score is multiplied by `1 + weight x urgency`. Urgency (`GuestUrgency`, `CustomerAgent.urgency()`) is the used fraction (0..1) of the patience that applies to that guest: table patience while queued, food patience while ordering or waiting. `take_order`, `cook`, `pour` and `deliver` use `guest_weight` and read the guest(s) behind the task (a batched delivery uses the most impatient of its orders; cook tickets share the fridge, so urgency decides between them and equal urgency keeps posting order); `bus_table` uses the smaller `table_weight` and the most impatient queued guest. Weights live in `data/balance/guest_urgency.tres` (`GuestUrgencyTuning`). Urgency rises every tick, so a far guest ages up and is not starved. Pure reads, no RNG. Seating needs no rule of its own: queued guests try tables in arrival (id) order, which is longest-waiting first (`test_longest_waiting_guest_gets_a_freed_table`). The guest inspector shows "<name> is coming to take my order" / "is bringing my food" from `GuestUrgency.staff_line`.
 - **Self-healing (fixes TasteMaker's stuck-AI complaint):**
   - Every task has a timeout. When it expires, the agent drops it, the task goes back on the board, and the drop is logged.
   - **No progress for N ticks** (the agent hasn't moved and its task step hasn't advanced) triggers a re-path. A second failure drops the task.
@@ -158,7 +160,7 @@ an active edit/panel/selection first, or opens Settings when none is active.
   - Final closing counters are ready when `advance()` returns; raw clock phase signals can precede its cleanup sweep.
   - Signals: `customer_arrived(customer)`, `customer_paid(customer, order, amount)`, `customer_left(customer, reason)`. Payment is emitted once at the captured recipe price; there is no economy dependency.
   - `CustomerAgent` extends `SimAgent`: `state`, `table_item_id`, `seat_cell`, `order`, `leave_reason`, `paid`, and `why()`. Reachable seats are reserved in placement order; leaving retains the physical seat lease until the actor vacates it, while removal releases it immediately. Failed seat paths or a 200-tick seat walk release the reservation and retry within the bounded queue budget. A server takes each order through ordinary `TaskStep`s.
-  - `queue_patience` (300 ticks), `food_patience` (1200 ticks, including order-taking) and `eat_ticks` (300 ticks) are configurable. Missing food cancels work and tickets. An unreachable exit is logged and forcibly removed after 100 ticks.
+  - `queue_patience` (300 ticks), `food_patience` (1200 ticks, including order-taking) and `eat_ticks` (270 ticks, #291) are configurable. Missing food cancels work and tickets. An unreachable exit is logged and forcibly removed after 100 ticks.
   - `CustomerAgent.mood() -> float` reads remaining queue patience in QUEUED and food patience in ORDERING/WAITING_FOOD, clamped to 0..1 (nonpositive waiting budgets give 0). Every other state, including walking, gives 1. `mood_band() -> int` uses named thresholds 0.6/0.35/0.15 for happy/waiting/impatient/about-to-leave; waiting `why()` text adds that band without changing the sim.
   - `ShopView.mood_nodes` holds native billboard dots and ASCII `!`/`!!` above waiting guests. State/band caches avoid repeated presentation updates; state exits, guest removal and world rebinding remove the icons. No textures or imported models are used.
   - Real `--open --fast=8` mood captures record unmodified guest patience/mood/bands, actual visible indicator ids/bands/marks/colours and camera positions, plus actual RNG seeds/state. Post-draw JSON includes the saved PNG's SHA-256. The visual review job samples frames 120/180/240/300 sequentially and reports observed bands without claiming that several bands appeared until the PNGs are reviewed; no waiting fixture is applied.
@@ -181,6 +183,10 @@ an active edit/panel/selection first, or opens Settings when none is active.
   Cancellation and table removal recover plates once, including terminal orders.
   Clean + dirty + in use always equals total; returned plates are a subset of use.
   Priority-0 server `wash` tasks work 15 units per plate, at most four per task.
+  A cook waiting at the pass for a clean plate raises an open (unclaimed) wash
+  task to priority 3 without deferral (`Kitchen._expedite_wash`, #291), because a
+  wash that only runs when the server is otherwise idle leaves the cook, the
+  slowest stage of service, stalled. Plating itself takes `Kitchen.PLATING_TICKS` (5).
   Only washing opts into `SimTask.defer_to_higher_priority`: an idle actor
   defers its claim while eligible OPEN higher-priority work of the same task
   role remains. Existing actor scores decide eligibility and all other ties;
@@ -2136,6 +2142,52 @@ invalidate the appropriate cached geometry. HUD/Menu presentation is read-only.
   enough reachable seats. A 1x1 counter piece seats one stool, so groups
   take tables (or the long two-cell bar counter); drinks-only parties do too.
   Counters are mainly for singles, which is most drinks-only traffic.
+- **Order counter (#293).** `data/items/order_counter.tres` (Bar & Café, $120,
+  level 1) is a 2x1 STATION with `station_type` `order_counter`, so the editor's
+  work-cell reachability warning covers it. It reuses the bar counter's
+  projection: one work cell is the **staff side** (a server stands there, the
+  till), the first seat cell is the guest's **order cell** and the other seat
+  cell a **pickup cell**. `RestaurantSim.across_cell` accepts it like a
+  `serve_across` piece, so `service_cells` hands a drink across from behind.
+  `OrderCounter` (src/sim/restaurant, static helpers, no state) lists the
+  counters, a counter's usable cells and its **line**: straight out from the
+  order cell while the floor is clear, then bending along the wall (the side
+  nearest the street door) for up to `LINE_LENGTH` (6) cells, never on a seat,
+  work cell or the door lane. A short queue stands one clear cell apart (3
+  places), a longer one packs one per cell (6 places, `queue_cells`). Only a shop that has a usable counter (a clear staff
+  cell behind the order cell, the order cell reachable) takes the new path.
+  A solo drink/coffee guest (`CustomerAgent._join_counter`; parties, food
+  visits and critics keep table service) makes one draw on its own stream
+  (`takeaway_wanted`, `VisitTuning.takeaway_share`, 0.3) and its queue patience
+  is scaled once by `counter_patience_multiplier` (2.0). Visit: `QUEUED` in the
+  line (`counter_stage` LINE; rank by join tick then id picks the line cell, the
+  front guest claims a free order cell) -> `WALKING_TO_SEAT` to the order cell
+  (TO_COUNTER) -> `ORDERING` there (AT_COUNTER; a priority-3, 15-tick
+  `take_order` task (ties with pour/deliver at 3, urgency (#310) breaks the tie;
+  a table order is priority 2 and 30 ticks) whose approach
+  step is the staff cell, so there is no table order task) ->
+  on the order, the guest heads for what was booked at the counter (TO_DEST):
+  a free table, nearest first, or, when `takeaway_wanted` or no table is free,
+  a takeaway at the pickup cell (or the order cell when there is no pickup
+  spot). The order's `table_item_id`/`seat_cell` are that destination, so the
+  pour or delivery is the ordinary one. A takeaway guest never sits (the view
+  only seats guests at TABLE items), pays when the drink is handed over (state
+  `PAYING` straight from `DELIVERED`, then happy), and a takeaway pastry bypasses
+  the plate cycle (`Kitchen.bypass_plate`), so nothing is left to bus. Sales are
+  the usual `customer_paid`; `RestaurantSim.takeaways_today` feeds
+  `DayReport.takeaways` (saved only when above 0) and the evening report's
+  "Takeaways: N" line. A guest in the line who waits out the patience leaves as
+  `waited_too_long`. A shop without a counter takes no new branch and draws
+  nothing extra (`test_a_cafe_without_a_counter_keeps_its_table_service_exactly`
+  replays a recorded café). Probe set-up `coffee_counter` is `coffee_shop` plus a
+  counter continuing the bar along row 7 (x 13-14). Over ten seeds and five
+  days it serves 93.8 guests against `coffee_shop`'s 88.0 (sales 558 vs 524,
+  profit 98 vs 67): the till order is half as long and the server never walks to
+  a table to take it, a takeaway is handed over at the counter, and a full house
+  sends a drink-only guest away with a cup instead of nothing (no-table losses
+  42 -> 23); guests who time out in the line (`waited too long`, 8 -> 27) are the
+  new limit. Capture:
+  `bash tools/screenshot.sh --scene=res://tools/order_counter_review.tscn --speed=0 --frames=90,330`.
 - **Opening hours.** `OpeningHours` + `data/balance/hours.tres` (06:00 to
   24:00, 4 to 13 hours, 30-minute steps, 6 ticks a minute). Morning only, the
   hours set the clock's display minutes and `open_ticks`, so they ride in the
@@ -2204,6 +2256,15 @@ invalidate the appropriate cached geometry. HUD/Menu presentation is read-only.
 - **View.** `CatView` (a child of `ShopView`, `src/world/cat_view.gd`) loads `assets/made/cat/cat.glb`, scales it by `ArtScale.CAT_SCALE`, draws the sim position blended between its last two cells with the same one-tick-behind alpha as people, and plays `walk` (tempo matched to the step speed), `nap` or `idle`. Hidden until adopted. Capture: `bash tools/screenshot.sh --scene=res://tools/cat_review.tscn --speed=0 --frames=30,70,110` (walking and napping beside a Mini Character, then the shop as played).
 - **Art.** `tools/build_cat.py` (Blender) makes `assets/made/cat/cat.glb`; see `assets/made/README.md`.
 - Coverage: `tests/sim/test_restaurant_cat.gd`, `tests/world/test_cat_session.gd`.
+
+### The disguised food critic (#303)
+- Data: `data/balance/critic.tres` (`CriticTuning`): unlock level 2, cooldown 5 days, daily chance 0.2, review weight 3, 2 tells, linger x1.2, quality weight, arrival windows (permille of the open hours; the late odd hour ends at 70%, so they can still be served). Six quotes (3 `critic_good`, 3 `critic_bad`) are in `data/reviews/quotes.tres`.
+- `FoodCritic` (`src/sim/critics/food_critic.gd`) rolls the day once in `RestaurantSim.start_day()` (the morning), from the named stream `GameState.rng(&"critic")`, passed as the lazy provider `critic_rng_provider`. The provider is called only when a critic can appear (level reached and out of cooldown), so shops that cannot have one never create the stream and keep their exact saved streams (a test runs a multi-day service with and without the critic system and compares the customer and review streams). On a critic day the guests' timing and orders differ, so later draws on the customer and review streams can shift from a run without one. Four tells exist: a notebook prop, the dearest dish, an odd hour (very early or very late arrival), lingering. Two are drawn.
+- The critic is an ordinary solo arrival once their hour has come: `CustomerSpawner` makes the arrival with exactly the draws it always made, then `RestaurantSim.try_disguise_critic()` adds the disguise (`CustomerAgent.disguise_as_critic`). Named regulars, parties and drinks-only visits are skipped; the next lone food guest takes the role, and the critic gives back the repeat-guest cohort slot they took. The 5-day cooldown starts when they arrive (`mark_arrived`), so a day with no fitting arrival costs nothing.
+- The review is `ReputationBook.record_critic()`: it scores the visit with the usual `score_visit` (so wait, food quality, vibe and cleanliness all count; the critic's quality weight is higher), appends the stars min(`review_weight`, a quarter of the reviews held, at least 1) times (a fresh shop with 5 reviews gets 1 copy), and picks a `critic_good` / `critic_bad` quote from the critic's own stream. Only a critic who sat and ordered reviews (`customer.order != null`, not removed, not closing); one who never sat, or met no menu or no stock before ordering, gives nothing, and one who ordered but left unserved gives a 1-star review. It is not in `reviews_today` (no ordinary card, no five-star XP); `RestaurantSim.critic_result` feeds `DayReport.critic_lines` ("A food critic visited today", verdict, quote).
+- The Inspect panel lists the tells in plain words (`FoodCritic.tell_lines`) and never the word "critic". The notebook is a small box prop in `ShopView` (`Frame.holds_notebook`).
+- Saving: the `critic` section holds the last visit day and today's plan (rolled once per day, so a reload neither redraws nor forgets the cooldown). Absent in old saves.
+- Review capture: `tools/critic_review.tscn` (`food-critic` in `visual-review.yml`).
 
 ### 2.3i Stock panel, auto-reorder and sold-out dishes (FK-033, #54)
 - **Served-food accounting (FK-121, #255).** Stock lots retain their actual
@@ -2794,6 +2855,26 @@ Main derives this before refreshing the existing live/forecast demand hook;
 there is no second arrival multiplier, RNG fetch/draw or countdown reset.
 Edits, undo, support changes and load refresh the derived facts. No score is
 saved: the existing morning shop save already contains its inputs.
+
+**A-frame sign (#292).** `a_frame_sign` is an exterior WALL-layer item in a sixth
+mount band, `ExteriorSupport.Band.GROUND` (face keys now run to direction 23), so
+it reuses the hang request, ghost, undo, sale, morning save row and curb-appeal
+path with no new store. It is one cell wide and `unique_per_shop`. Placement rule
+(`ExteriorSupport.ground_problem`): the face's outside cell must be the street
+pavement **beside** the street door, i.e. the wall shell cell next to a door cell.
+The cells straight in front of the door are the guests' entries (where guests
+appear and leave), so they are always refused ("Keep the doorway clear"); the sign
+therefore never sits on the walking route. It is view-only like every hung item:
+it adds nothing to `SimGrid`, so paths, `MovementCoordinator` occupancy and
+arrivals are untouched. Its curb-appeal family `a_frame` (weight 6, cap 6) is in
+`data/balance/curb_appeal.tres`. The wrapper (`assets/props/a_frame_sign.tscn`) is
+two Kenney `paneling` boards leaning to an A, with the diner chalkboard wrapper
+(#147) mounted on the front board; no new made model. `StreetSignText` gives its
+two lines (the normalized restaurant name, then "Today: " plus the enabled dish
+with the best margin, price minus ingredient cost, ties to the lower id, or
+Coffee when `MenuThemeText.leading_theme` is the cafe), and `WallFinishView`
+refreshes them on a rename, a price change or a menu change. The sign stays
+visible when walls are cut away. `tools/a_frame_review.tscn` is the capture.
 
 Build shows the themed meter beside Vibe when the rendered camera faces the
 street, including during smooth rotation and Paint. The existing “Tomorrow's

@@ -1,0 +1,89 @@
+[gd_scene load_steps=14 format=3]
+
+[ext_resource type="Script" path="res://src/world/prop_view.gd" id="1_view"]
+[ext_resource type="PackedScene" path="res://assets/kenney/furniture/kitchenCabinetUpper.glb" id="2_cabinet"]
+
+[sub_resource type="StandardMaterial3D" id="mat_wood"]
+resource_name = "wood"
+shading_mode = 1
+albedo_color = Color(0.9529, 0.7987, 0.66, 1)
+
+[sub_resource type="StandardMaterial3D" id="mat_metal"]
+resource_name = "metal"
+shading_mode = 1
+albedo_color = Color(0.8759, 0.9177, 0.9259, 1)
+
+[sub_resource type="StandardMaterial3D" id="mat_light"]
+resource_name = "metalLight"
+shading_mode = 1
+albedo_color = Color(0.9725, 0.9922, 0.9804, 1)
+
+[sub_resource type="StandardMaterial3D" id="mat_dark"]
+resource_name = "metalDark"
+shading_mode = 1
+albedo_color = Color(0.5882, 0.6549, 0.6549, 1)
+
+[sub_resource type="BoxMesh" id="head_box"]
+material = SubResource("mat_wood")
+size = Vector3(0.43, 0.22, 0.33)
+
+[sub_resource type="CylinderMesh" id="arch"]
+material = SubResource("mat_wood")
+top_radius = 0.215
+bottom_radius = 0.215
+height = 0.33
+radial_segments = 16
+rings = 1
+
+[sub_resource type="BoxMesh" id="window_frame"]
+material = SubResource("mat_metal")
+size = Vector3(0.34, 0.28, 0.01)
+
+[sub_resource type="BoxMesh" id="window_glass"]
+material = SubResource("mat_light")
+size = Vector3(0.27, 0.21, 0.012)
+
+[sub_resource type="BoxMesh" id="grille_bar"]
+material = SubResource("mat_dark")
+size = Vector3(0.3, 0.018, 0.008)
+
+[node name="Jukebox" type="Node3D"]
+script = ExtResource("1_view")
+footprint = Vector2i(1, 1)
+body_material_names = PackedStringArray("wood")
+
+[node name="Body" type="Node3D" parent="."]
+
+[node name="Art" type="Node3D" parent="Body"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Cabinet" parent="Body/Art" instance=ExtResource("2_cabinet")]
+transform = Transform3D(1, 0, 0, 0, 1.15, 0, 0, 0, 1.5, 0, 0, 0)
+
+[node name="Head" type="MeshInstance3D" parent="Body/Art"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.215, 0.5585, -0.15)
+mesh = SubResource("head_box")
+
+[node name="Arch" type="MeshInstance3D" parent="Body/Art"]
+transform = Transform3D(1, 0, 0, 0, 0, -1, 0, 1, 0, 0.215, 0.6685, -0.15)
+mesh = SubResource("arch")
+
+[node name="WindowFrame" type="MeshInstance3D" parent="Body/Art"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.215, 0.6, 0.02)
+mesh = SubResource("window_frame")
+
+[node name="WindowGlass" type="MeshInstance3D" parent="Body/Art"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.215, 0.6, 0.0255)
+mesh = SubResource("window_glass")
+
+[node name="GrilleLow" type="MeshInstance3D" parent="Body/Art"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.215, 0.1, 0.0195)
+mesh = SubResource("grille_bar")
+
+[node name="GrilleMid" type="MeshInstance3D" parent="Body/Art"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.215, 0.16, 0.0195)
+mesh = SubResource("grille_bar")
+
+[node name="GrilleHigh" type="MeshInstance3D" parent="Body/Art"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.215, 0.22, 0.0195)
+mesh = SubResource("grille_bar")

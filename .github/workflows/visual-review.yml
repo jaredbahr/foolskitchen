@@ -6,6 +6,8 @@ on:
       - '.github/workflows/visual-review.yml'
       - 'tools/screenshot.*'
       - 'tools/menu_boards_review.gd'
+      - 'tools/jukebox_review.gd'
+      - 'tools/order_counter_review.gd'
       - 'src/world/**'
       - 'src/ui/**'
       - 'data/layouts/**'
@@ -75,6 +77,7 @@ jobs:
           SCREENSHOT_TIMEOUT_SECONDS=120 bash tools/screenshot.sh --out=screens/visual-review/movement-passing --scene=res://tools/movement_review.tscn --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/street-front --street-front-review --speed=0 --frames=60
           SCREENSHOT_TIMEOUT_SECONDS=120 bash tools/screenshot.sh --out=screens/visual-review/curb-appeal --scene=res://tools/curb_appeal_review.tscn --speed=0 --frames=60
+          bash tools/screenshot.sh --out=screens/visual-review/a-frame-sign --scene=res://tools/a_frame_review.tscn --speed=0 --frames=60
           for quarter in 0 1 2 3; do
             bash tools/screenshot.sh "--out=screens/visual-review/quarter-$quarter" --frames=60 --speed=1 "--quarter=$quarter"
           done
@@ -110,6 +113,7 @@ jobs:
           SCREENSHOT_TIMEOUT_SECONDS=120 bash tools/screenshot.sh --out=screens/visual-review/staff-activity-report --scene=res://tools/staff_activity_review.tscn --speed=0 --frames=60
           SCREENSHOT_TIMEOUT_SECONDS=120 bash tools/screenshot.sh --out=screens/visual-review/business-trend --scene=res://tools/business_trend_review.tscn --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/regulars-review --scene=res://tools/regulars_review.tscn --frames=12,90 --speed=0
+          bash tools/screenshot.sh --out=screens/visual-review/food-critic --scene=res://tools/critic_review.tscn --frames=12,90 --speed=0
           bash tools/screenshot.sh --out=screens/visual-review/paint --paint --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/floors-review --floors-review --speed=0 --frames=12,30
           SEAFOOD_REVIEW_STAGE=floor bash tools/screenshot.sh --out=screens/visual-review/seafood-floor --scene=res://tools/seafood_review.tscn --speed=0 --frames=30
@@ -128,6 +132,8 @@ jobs:
           OPENINGS_REVIEW_STAGE=before bash tools/screenshot.sh --out=screens/visual-review/openings-before --scene=res://tools/openings_review.tscn --speed=0 --frames=30 --quarter=2
           OPENINGS_REVIEW_STAGE=after bash tools/screenshot.sh --out=screens/visual-review/openings-after --scene=res://tools/openings_review.tscn --speed=0 --frames=30 --quarter=2
           bash tools/screenshot.sh --out=screens/visual-review/menu-boards-review --menu-boards-review --speed=0 --frames=12,30
+          bash tools/screenshot.sh --out=screens/visual-review/jukebox --scene=res://tools/jukebox_review.tscn --speed=0 --frames=12,40
+          SCREENSHOT_TIMEOUT_SECONDS=120 bash tools/screenshot.sh --out=screens/visual-review/order-counter --scene=res://tools/order_counter_review.tscn --speed=0 --frames=90,330
           bash tools/screenshot.sh --out=screens/visual-review/build-green --build=green --quarter=0 --frames=12 --speed=1
           bash tools/screenshot.sh --out=screens/visual-review/build-red --build=red --quarter=0 --frames=12 --speed=1
           bash tools/screenshot.sh --out=screens/visual-review/menu-access-preview --scene=res://tools/menu_access_review.tscn --speed=0 --frames=12

@@ -11,18 +11,27 @@ const HOURS: int = 24
 
 ## Kind -> 24 hourly weights (hour 0 is midnight to 1am).
 @export var hourly_weights: Dictionary[StringName, PackedFloat32Array] = {}
-## How long a drinks-only guest stays with their drink, in ticks (a meal is 300).
+## How long a drinks-only guest stays with their drink, in ticks (a meal is 270).
 @export var drink_visit_ticks: int = 150
 ## The arrival rate never falls below this, so a quiet hour still sees guests.
 @export var min_arrival_rate: float = 0.25
 ## FK-106: applied once, only after a waiting guest reaches a bench seat.
 @export var waiting_bench_patience_multiplier: float = 1.5
+## The share of order-counter guests (#293) who want their drink to go. A guest
+## who finds no free table takes a takeaway too. One seeded draw per guest.
+@export var takeaway_share: float = 0.3
+## A guest standing in the counter's moving line is this much more patient than
+## one waiting at the door for a table (applied once, when they join the line).
+@export var counter_patience_multiplier: float = 2.0
 ## A placement warning, never a refusal: distance in half-metre grid cells.
 @export var waiting_bench_door_distance: int = 8
 
 
 func is_valid() -> bool:
-	if drink_visit_ticks < 1 or not is_finite(min_arrival_rate) or min_arrival_rate <= 0.0:
+	if drink_visit_ticks < 1 or not is_finite(min_arrival_rate) or min_arrival_rate <= 0.0 \
+			or not is_finite(takeaway_share) or takeaway_share < 0.0 or takeaway_share > 1.0 \
+			or not is_finite(counter_patience_multiplier) or counter_patience_multiplier < 1.0 \
+			or counter_patience_multiplier > 5.0:
 		return false
 	if not is_finite(waiting_bench_patience_multiplier) or waiting_bench_patience_multiplier < 1.0 \
 			or waiting_bench_patience_multiplier > 5.0 or waiting_bench_door_distance < 1:

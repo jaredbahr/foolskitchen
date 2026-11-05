@@ -69,8 +69,16 @@ var regulars: RegularCast = null
 var regular_rng_provider: Callable
 var regular_recipe_labels: Dictionary[StringName, String] = {}
 var _regular_cohort_index: int = 0
+## The disguised food critic (#303). The session supplies the lazy named stream
+## (GameState.rng(&"critic")); with no provider no critic ever appears.
+var critic: FoodCritic = FoodCritic.new()
+var critic_rng_provider: Callable
+## Today's critic verdict (stars, cause, quote), or {} when none has reviewed.
+var critic_result: Dictionary = {}
 var served_today: int = 0
 var lost_today: int = 0
+## Guests who paid at the order counter (#293) and left with their drink.
+var takeaways_today: int = 0
 ## Read-only OPEN-hour observations; only the detached report survives a day.
 var staff_activity: StaffActivity = StaffActivity.new()
 var leave_reasons_today: Dictionary[StringName, int] = {}
@@ -237,8 +245,11 @@ func start_day() -> void:
 		regulars.begin_day(world.clock.day)
 	served_today = 0
 	lost_today = 0
+	takeaways_today = 0
 	leave_reasons_today.clear()
 	reviews_today.clear()
+	critic_result = {}
+	critic.plan_day(world.clock.day, customer_level, critic_rng_provider)
 	sold_out_today.clear()
 	stock_outs_today.clear()
 	reputation_before_day = review_book.average()
@@ -264,12 +275,26 @@ func start_day() -> void:
 
 ## Each morning staff start at their posts, with nothing in hand.
 func _staff_to_posts() -> void:
+	# Release every staff member's leftover edge/next-cell claims first. A
+	# lower-ID worker reset before a higher-ID one that ended the night mid-edge
+	# toward its post would otherwise find the post still claimed and be moved
+	# to a neighbouring cell. Order and claims then no longer decide who gets
+	# which post.
+	var staff_list: Array[StaffAgent] = []
 	for agent: SimAgent in world.all_agents():
 		if staff_spawns.has(agent.role) and agent is StaffAgent:
 			var staff := agent as StaffAgent
 			if staff.task != null:
 				staff.on_removed(world)
-			world.reset_agent_position(staff, staff_spawns[agent.role])
+			world.reset_agent_position(staff, staff.cell)
+			staff_list.append(staff)
+	for staff: StaffAgent in staff_list:
+		world.reset_agent_position(staff, staff_spawns[staff.role])
+	# A colleague still standing on this post only moved off it after their own
+	# turn: put anyone placed beside their post back on it now.
+	for staff: StaffAgent in staff_list:
+		if staff.cell != staff_spawns[staff.role]:
+			world.reset_agent_position(staff, staff_spawns[staff.role])
 
 
 ## One fixed world tick, arrivals, then departed-guest cleanup.
@@ -597,7 +622,8 @@ func service_cells(table_item_id: int, seat_cell: Vector2i) -> Array[Vector2i]:
 func across_cell(table_item_id: int, seat_cell: Vector2i) -> Vector2i:
 	var table: PlacedItem = world.grid.item(table_item_id)
 	var definition: ItemDef = table.def as ItemDef if table != null else null
-	if definition == null or not definition.serve_across or seat_cell == SimGrid.NO_CELL:
+	if definition == null or seat_cell == SimGrid.NO_CELL \
+			or not (definition.serve_across or definition.station_type == OrderCounter.STATION):
 		return SimGrid.NO_CELL
 	for direction: Vector2i in [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]:
 		var front: Vector2i = seat_cell + direction
@@ -691,6 +717,25 @@ func add_visitor(entry: Vector2i, random: RandomNumberGenerator, kind: CustomerT
 	if visit == RecipeDef.FOOD:
 		return add_customer(entry, random, kind)
 	return _install_customer(entry, random, kind, true, visit)
+
+
+## The day's critic takes the place of an ordinary solo arrival once their
+## hour has come (#303). The arrival itself is drawn exactly as before; only
+## the guest's disguise is added. A named regular's arrival is left alone.
+func try_disguise_critic(customer: CustomerAgent) -> bool:
+	if customer == null or customer.is_critic() or customer.regular_profile != null \
+			or customer.visit_kind != RecipeDef.FOOD or world.clock.phase != SimClock.Phase.OPEN \
+			or not critic.due(world.clock.phase_tick, world.clock.open_ticks):
+		return false
+	var had_cohort_slot: bool = not customer.repeat_guest_key.is_empty()
+	if not customer.disguise_as_critic(critic.tells, critic.tuning):
+		return false
+	critic.mark_arrived(world.clock.day)
+	# The critic is not a repeat guest: give back the cohort slot they took, so
+	# later arrivals get the same cohort keys as without a critic.
+	if had_cohort_slot:
+		_regular_cohort_index = maxi(0, _regular_cohort_index - 1)
+	return true
 
 
 ## Party installation defers publication until every member has a shared visit.
@@ -902,6 +947,8 @@ func pay(customer: CustomerAgent, order: Order) -> void:
 		return
 	customer.paid = true
 	served_today += 1
+	if customer.takeaway:
+		takeaways_today += 1
 	customer_paid.emit(customer, order, order.price)
 	# A drink ordered with the meal is paid with it, once it reached the table.
 	var drink: Order = customer.extra_order
@@ -916,7 +963,8 @@ func record_departure(customer: CustomerAgent) -> void:
 	_departed[customer.id] = true
 	customer.departure_recorded = true
 	_record_regular_visit(customer)
-	if cleanliness != null and customer.paid and customer.seat_cell != SimGrid.NO_CELL:
+	# A takeaway leaves no crumbs at a table: they never sat (#293).
+	if cleanliness != null and customer.paid and customer.seat_cell != SimGrid.NO_CELL and not customer.takeaway:
 		if cleanliness.try_spawn_at_departed_seat(customer.seat_cell) and clean_tasks != null:
 			clean_tasks.sync_spots()
 	if not customer.paid and customer.leave_reason == &"happy":
@@ -939,10 +987,28 @@ func record_departure(customer: CustomerAgent) -> void:
 		# A paid guest removed at the closing cutoff retains their happy report
 		# reason, but the forced departure must not sample a late review.
 		visit.closing = visit.closing or world.clock.phase == SimClock.Phase.CLOSED
-		var result: Dictionary = review_book.record_visit(visit, review_tuning, review_quotes, review_rng)
-		if not result.is_empty():
-			var row: Dictionary = {"stars": result["stars"], "quote": result["quote"],
-				"before": result["before"], "after": result["after"]}
-			reviews_today.append(row)
-			review_recorded.emit(row.duplicate())
+		if customer.is_critic():
+			# Only a critic who sat down and ordered writes the weighted review.
+			if customer.order != null and customer.leave_reason != &"removed":
+				_record_critic_review(visit)
+		else:
+			var result: Dictionary = review_book.record_visit(visit, review_tuning, review_quotes, review_rng)
+			if not result.is_empty():
+				var row: Dictionary = {"stars": result["stars"], "quote": result["quote"],
+					"before": result["before"], "after": result["after"]}
+				reviews_today.append(row)
+				review_recorded.emit(row.duplicate())
 	customer_left.emit(customer, reason)
+
+
+## The critic's review (#303): weighed in the book, kept apart from the day's
+## ordinary review cards and shown on the evening report.
+func _record_critic_review(visit: ReviewVisit) -> void:
+	var random: RandomNumberGenerator = critic_rng_provider.call() as RandomNumberGenerator \
+		if critic_rng_provider.is_valid() else review_rng
+	var result: Dictionary = review_book.record_critic(visit, review_tuning, review_quotes, random, critic.tuning)
+	if result.is_empty():
+		return
+	critic_result = result
+	review_recorded.emit({"stars": result["stars"], "quote": result["quote"],
+		"before": result["before"], "after": result["after"]})

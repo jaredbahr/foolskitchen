@@ -192,10 +192,12 @@ func test_party_seat_walk_budget_runs_during_real_partial_retarget_stop_once() -
 	assert_eq(_edge(sim.world, guest), edge)
 
 
+## The street door is far from the waiter's aisle (#305): waiters stand clear of
+## the door lane, and these tests are about an aisle waiter being yielded.
 func _fixture(count: int, crossing: bool = true) -> Dictionary:
 	var sim: RestaurantSim = RestaurantSim.new()
 	sim.world = SimWorld.new(SimGrid.from_ascii(PackedStringArray([
-		"##.####", "E......", "##.....", "##.....", "#######"])))
+		"##.####", ".......", "##.....", "##....E", "#######"])))
 	assert_true(sim.world.grid.is_walkable(POCKET), "the literal dot at x2 is a real yielding pocket")
 	sim.rng.seed = 263
 	sim.spawner = CustomerSpawner.new(sim.rng)
