@@ -120,6 +120,15 @@ func mark_dining_group_dirty(table_item_id: int, order_id: int = 0, member_ids: 
 			mark_table_dirty(member_id)
 
 
+## Guest who placed a ticket, for guest-urgency scoring (#307). 0 if unknown.
+func order_customer_id(order_id: int) -> int:
+	var sim: RestaurantSim = _restaurant.get_ref() as RestaurantSim
+	if sim == null or order_id <= 0:
+		return 0
+	var order: Order = sim.orders.get_order(order_id)
+	return 0 if order == null else order.customer_id
+
+
 ## Reports whether closing cleanup has returned every table to service.
 func is_clean() -> bool:
 	return dirty_tables.is_empty() and (not _plate_cycle_enabled or (_plates.dirty == 0 and _plates.in_use == 0))

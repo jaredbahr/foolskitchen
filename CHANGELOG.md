@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- Staff now look after the most impatient guests first: when choosing between taking an order, serving a meal or clearing a table, they favour the guest closest to giving up, and cooks start the tickets of the guests who have waited longest. Distance and your Staff-panel job priorities still count. Click a guest to see who is coming to take their order or bring their food. (#PRNUM)
 - From owner level 2, a food critic sometimes drops in disguised as an ordinary guest (at most once every five days). Watch for the tells in the Inspect panel: scribbling in a little notebook, ordering the most expensive dish, dining alone at an odd hour, or lingering over the meal. Seat them quickly and serve them well: their review counts as up to three normal reviews (fewer in a brand-new shop), and the evening report tells you their verdict. A bad meal stings just as much. (#304)
 - Service is quicker again: the cook no longer stalls waiting for a clean plate while the server is busy elsewhere, plating at the pass is faster, and guests finish their meals a little sooner, so the starter shop seats more guests a day. (#301)
 - Staff now always start the morning at their own posts: a worker caught mid-step toward another worker's post at closing no longer pushes that worker to the next cell over. (#300)

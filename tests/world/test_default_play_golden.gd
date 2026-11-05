@@ -4,6 +4,9 @@ extends TestCase
 ## neutral demand and the fixture's $30 rent. Original rows came from main
 ## 6f6495d and later economy/mess updates; FK-124 records the changed physical
 ## service, cash and review consumption while retaining this complete context.
+## #307 (staff serve the most impatient guests first) re-ordered which waiting
+## guest staff reach first: day 1 serves and loses the same guests but a review
+## differs; day 2 serves 17 (was 16), loses 2 (was 3), sales 154, cash 349.
 ## Its private-seat barrier constrains staff service; current starter throughput,
 ## thin-layout save migration and demand growth have separate coverage.
 
@@ -11,7 +14,7 @@ const MainScene: PackedScene = preload("res://src/world/main.tscn")
 const MANUAL_MAIN: GDScript = preload("res://tests/fixtures/manual_restock_main.gd")
 const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
 ## Day -> [served, lost, sales, closing cash, customers RNG state, reviews RNG state].
-const EXPECTED: Array = [[18, 3, 166, 338, "-3340690172320019757", "759273845251939063"], [16, 3, 146, 337, "1894290104310310707", "1950031383951538676"]]
+const EXPECTED: Array = [[18, 3, 166, 338, "-3340690172320019757", "-3285513833473108564"], [17, 2, 154, 349, "1894290104310310707", "6227064950443097254"]]
 
 var _main: Node
 var _layout_backup: Dictionary = {}

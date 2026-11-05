@@ -344,6 +344,15 @@ func mood() -> float:
 	return 1.0
 
 
+## Fraction (0..1) of the relevant patience already used while waiting for a
+## table, an order taker or food. 0 in every other state (#307).
+func urgency() -> float:
+	match state:
+		State.QUEUED, State.ORDERING, State.WAITING_FOOD:
+			return 1.0 - mood()
+	return 0.0
+
+
 func mood_band() -> int:
 	var value: float = mood()
 	if value >= MOOD_HAPPY_THRESHOLD:
