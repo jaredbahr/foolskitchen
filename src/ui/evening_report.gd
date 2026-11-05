@@ -55,6 +55,10 @@ var _milestone_rows: VBoxContainer
 var _nodes_bound: bool = false
 var _report_shown: bool = false
 var regulars_summary: Label
+## The disguised food critic's visit (#303), shown only on days one reviewed:
+## a heading, then the verdict and the headline quote.
+var critic_heading: Label
+var critic_summary: Label
 var vibe_summary: Label
 var _vibe_text: String = ""
 var _demand_section: VBoxContainer
@@ -133,6 +137,10 @@ func show_report(report: DayReport) -> void:
 	mishaps.visible = not report.mishaps_text.is_empty()
 	regulars_summary.text = "Regulars: " + "; ".join(PackedStringArray(report.regulars_lines))
 	regulars_summary.visible = not report.regulars_lines.is_empty()
+	critic_heading.text = report.critic_lines[0] if not report.critic_lines.is_empty() else ""
+	critic_heading.visible = not report.critic_lines.is_empty()
+	critic_summary.text = "\n".join(PackedStringArray(report.critic_lines.slice(1)))
+	critic_summary.visible = report.critic_lines.size() > 1
 	_fill_reasons(report.leave_reasons)
 	_render_team(report.staff_activity, report.leave_reasons)
 	_clear(_low_stock)
@@ -262,6 +270,19 @@ func _bind_nodes() -> void:
 	_demand_section.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	content.add_child(_demand_section)
 	content.move_child(_demand_section, _reviews.get_index() + 1)
+	critic_heading = Label.new()
+	critic_heading.name = "CriticHeading"
+	critic_heading.add_theme_font_size_override("font_size", 22)
+	critic_heading.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	content.add_child(critic_heading)
+	content.move_child(critic_heading, _reviews.get_index() + 1)
+	critic_summary = Label.new()
+	critic_summary.name = "CriticSummary"
+	critic_summary.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	critic_summary.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	critic_summary.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	content.add_child(critic_summary)
+	content.move_child(critic_summary, critic_heading.get_index() + 1)
 	var demand_heading: Label = _add_label(_demand_section, DemandText.FORECAST_HEADING)
 	demand_heading.name = "Heading"
 	demand_heading.add_theme_font_size_override("font_size", 22)
