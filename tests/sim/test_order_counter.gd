@@ -102,6 +102,8 @@ func test_a_busy_pickup_does_not_stall_the_line() -> void:
 	var ordered_by: Dictionary[int, int] = {}
 	for tick: int in range(MAX_TICKS):
 		_advance()
+		if tick == 300:
+			counter.release(PICKUP_CELL, 777777)
 		for guest: CustomerAgent in guests:
 			if guest.order != null and not ordered_by.has(guest.id):
 				ordered_by[guest.id] = tick
@@ -110,7 +112,7 @@ func test_a_busy_pickup_does_not_stall_the_line() -> void:
 	for guest: CustomerAgent in guests:
 		assert_true(guest.paid, "nobody is left waiting behind a blocked pickup")
 		assert_eq(guest.leave_reason, &"happy")
-	assert_true(ordered_by[third.id] < 900, "the table guest at the back ordered promptly")
+	assert_true(ordered_by[third.id] < 300, "the table guest at the back went ahead of the blocked takeaways")
 
 
 func test_a_packed_queue_never_cuts_off_a_seat_or_work_cell() -> void:

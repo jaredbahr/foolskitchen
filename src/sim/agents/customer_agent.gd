@@ -668,8 +668,16 @@ func _counter_step(world: SimWorld, sim: RestaurantSim, allow_movement: bool) ->
 		return
 	var line: Array[CustomerAgent] = _counter_line(world)
 	var rank: int = line.find(self)
-	if rank == 0:
-		# Only the front guest pays for the reachability search each tick.
+	# The front guest claims the till, unless they want a takeaway and the pickup
+	# cell is taken: then the first guest behind them who is not so blocked goes
+	# ahead, so one takeaway never holds up the line.
+	var claimer: CustomerAgent = null
+	for waiting: CustomerAgent in line:
+		if not waiting._pickup_blocked(queue_counter):
+			claimer = waiting
+			break
+	if claimer == self:
+		# Only the claiming guest pays for the reachability search each tick.
 		var usable: Array[PlacedItem] = OrderCounter.usable_counters(sim, cell)
 		if usable.is_empty():
 			# Cut off (no clear staff side, or no way in): look for a table instead.
@@ -697,6 +705,19 @@ func _line_move(world: SimWorld, spot: Vector2i) -> bool:
 	return true
 
 
+## A guest who wants a takeaway while every pickup cell is held by someone else.
+func _pickup_blocked(item: PlacedItem) -> bool:
+	if not takeaway_wanted:
+		return false
+	var cells: Array[Vector2i] = OrderCounter.pickup_cells(item)
+	if cells.is_empty():
+		return false
+	for pickup: Vector2i in cells:
+		if item.reserved_by(pickup) == -1:
+			return false
+	return true
+
+
 ## Reserves the order cell and where the guest goes next: a free table (unless
 ## they wanted a takeaway) or else a pickup spot at the counter. False when
 ## nothing is free yet, with nothing held.
@@ -712,9 +733,14 @@ func _claim_counter(world: SimWorld, sim: RestaurantSim, counters: Array[PlacedI
 				table_item_id = item.id
 				booked_table_ids.clear()
 				seat_cell = pickup
+			elif not OrderCounter.pickup_cells(item).is_empty() \
+					and OrderCounter.free_pickup(sim, item, self, true) != SimGrid.NO_CELL:
+				# The pickup spot is in use: wait in line for it (the guests behind
+				# are let past, see _counter_step).
+				item.release(front, id)
+				continue
 			else:
-				# The pickup spot is in use (or there is none): collect the drink where
-				# they order rather than hold the line waiting for the pickup cell.
+				# No pickup spot at all: collect the drink where they order.
 				table_item_id = item.id
 				booked_table_ids.clear()
 				seat_cell = front
