@@ -19,6 +19,8 @@ const MOOD_LABELS: Array[String] = ["content", "waiting patiently", "getting imp
 
 ## A seat walk must recover well before the food-wait timeout.
 const SEAT_WALK_LIMIT: int = 200
+## How far from the door a queueing guest looks for a spot to wait (#305).
+const WAIT_SPOT_RADIUS: int = 4
 
 var state: State = State.ARRIVING
 var queue_patience: int = 300
@@ -32,6 +34,8 @@ var seat_cell: Vector2i = SimGrid.NO_CELL
 ## A temporary bench booking while QUEUED. It never becomes a dining order.
 var waiting_item_id: int = 0
 var waiting_cell: Vector2i = SimGrid.NO_CELL
+## Where a bench-less queueing guest stands, clear of the door lane (#305).
+var _wait_spot: Vector2i = SimGrid.NO_CELL
 ## Retained only for this visit's review and one-time patience bonus.
 var waited_seated: bool = false
 ## The shop cat (#119): this guest has petted it this visit (once), and the
@@ -532,6 +536,7 @@ func _requeue(world: SimWorld, sim: RestaurantSim) -> void:
 	# cannot keep a guest alive forever even if its movement speed is zero.
 	_queue_wait += _walk_wait
 	_walk_wait = 0
+	_wait_spot = SimGrid.NO_CELL
 	state = State.QUEUED
 	if _queue_wait >= queue_patience:
 		_leave(world, sim, &"no_table")
@@ -542,11 +547,79 @@ func _queue_inside(world: SimWorld) -> void:
 	if WaitingBench.advance(self, world, sim):
 		return
 	if world.grid.terrain(cell) == SimGrid.Terrain.FLOOR:
+		_stand_clear_of_door(world)
 		return
 	for neighbour: Vector2i in world.grid.guest_neighbours(cell):
 		if world.grid.terrain(neighbour) == SimGrid.Terrain.FLOOR:
 			_move(world, neighbour)
 			return
+
+
+## Waiting without a bench (#305): walk beside the front door, never in its
+## lane, and stay there. The spot is sticky until it stops being valid.
+func _stand_clear_of_door(world: SimWorld) -> void:
+	# A yield can leave the guest standing on another good cell: keep it there.
+	if cell != _wait_spot and move_progress == 0.0 and has_arrived() and _wait_cell_free(world, cell):
+		_wait_spot = cell
+	if not _wait_spot_ok(world):
+		_wait_spot = _pick_wait_spot(world)
+	if _wait_spot == SimGrid.NO_CELL or cell == _wait_spot:
+		return
+	# A finished path would make _move keep its old goal: aim at the spot.
+	# Never re-aim a real partial edge: it finishes first.
+	if move_progress == 0.0 and (path.is_empty() or needs_repath or destination() != _wait_spot):
+		if not set_destination(world.grid, _wait_spot):
+			_wait_spot = SimGrid.NO_CELL
+			return
+	_move(world, _wait_spot)
+
+
+func _wait_spot_ok(world: SimWorld) -> bool:
+	if _wait_spot == SimGrid.NO_CELL:
+		return false
+	if not _wait_cell_free(world, _wait_spot):
+		return false
+	for agent: SimAgent in world.agents:
+		if agent != self and agent.cell == _wait_spot and agent.has_arrived():
+			return false
+	return true
+
+
+func _wait_cell_free(world: SimWorld, spot: Vector2i) -> bool:
+	if world.grid.terrain(spot) != SimGrid.Terrain.FLOOR or world.grid.room(spot) != SimGrid.Room.DINING \
+			or not world.grid.is_guest_walkable(spot) or not world.movement.standing_cell(world, spot) \
+			or world.movement.in_door_lane(world, spot):
+		return false
+	for item: PlacedItem in world.grid.items():
+		if item.work_cells.has(spot):
+			return false
+	for agent: SimAgent in world.agents:
+		if agent is CustomerAgent and agent != self and (agent as CustomerAgent).state == State.QUEUED \
+				and (agent as CustomerAgent)._wait_spot == spot:
+			return false
+	return true
+
+
+func _pick_wait_spot(world: SimWorld) -> Vector2i:
+	var best: Vector2i = SimGrid.NO_CELL
+	var best_distance: float = INF
+	for dy: int in range(-WAIT_SPOT_RADIUS, WAIT_SPOT_RADIUS + 1):
+		for dx: int in range(-WAIT_SPOT_RADIUS, WAIT_SPOT_RADIUS + 1):
+			var spot: Vector2i = cell + Vector2i(dx, dy)
+			if not _wait_cell_free(world, spot):
+				continue
+			var occupied: bool = false
+			for agent: SimAgent in world.agents:
+				if agent != self and agent.cell == spot and agent.has_arrived():
+					occupied = true
+					break
+			if occupied or not world.grid.is_guest_reachable(cell, spot):
+				continue
+			var d: float = GridMath.octile(cell, spot)
+			if d < best_distance:
+				best_distance = d
+				best = spot
+	return best
 
 
 func is_waiting_seated(world: SimWorld) -> bool:

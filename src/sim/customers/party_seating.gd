@@ -239,14 +239,18 @@ static func advance_queue(party: Party, world: SimWorld, sim: RestaurantSim, all
 		for guest: CustomerAgent in guests:
 			refund = maxi(refund, guest.cat_relief(sim))
 		party.queue_wait += 1 - refund
+	# A party whose patience ends this tick leaves without taking a last step
+	# first: a member must not move twice in one tick (#305).
+	var expired: bool = already_waiting and party.queue_wait >= _budget(guests)
 	for guest: CustomerAgent in guests:
 		guest.state = CustomerAgent.State.QUEUED
 		guest._queue_wait = party.queue_wait
-		if allow_movement and not world.movement.is_yielding(guest.id) and not world.movement.is_stopping(guest.id):
+		if allow_movement and not expired and not world.movement.is_yielding(guest.id) \
+				and not world.movement.is_stopping(guest.id):
 			guest._queue_inside(world)
 		elif not allow_movement:
 			WaitingBench.observe_arrival(guest, world, sim)
-	if already_waiting and party.queue_wait >= _budget(guests):
+	if expired:
 		leave_waiting(party, world, sim, &"no_table")
 
 
@@ -294,6 +298,7 @@ static func requeue(party: Party, world: SimWorld, sim: RestaurantSim) -> void:
 		guest.seat_cell = SimGrid.NO_CELL
 		guest.clear_path()
 		guest._walk_wait = 0
+		guest._wait_spot = SimGrid.NO_CELL
 		guest._queue_wait = party.queue_wait
 		guest.state = CustomerAgent.State.QUEUED
 	if party.queue_wait >= _budget(guests):
