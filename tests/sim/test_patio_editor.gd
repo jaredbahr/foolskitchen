@@ -264,6 +264,29 @@ func test_editor_buy_and_move_keep_indoor_and_outdoor_furniture_on_their_own_flo
 	assert_eq(_ledger.cash, cash, "moving between bought patio cells is free")
 
 
+func test_a_bench_across_the_only_corridor_is_refused_because_nobody_walks_through_a_seat() -> void:
+	# A one-cell corridor (row 0) leads to an outdoor table whose left seat is
+	# reached only from its far end. Bench seats are not solid, but movement
+	# never uses a seat as an aisle, so the bench would strand that seat.
+	var cells: Array[Vector2i] = _rect(-6, 0, 6, 1)
+	cells.append_array(_rect(-5, 1, 4, 2))
+	assert_true(_editor.apply_patio(cells, true), _editor.last_check.why)
+	assert_true(_editor.buy(&"patio_table_2", _street(-4, 1)), _editor.last_check.why)
+	var table: PlacedItem = _sim.world.grid.item_at(_street(-4, 1))
+	assert_not_null(table)
+	if table == null:
+		return
+	assert_eq(table.seat_cells, [_street(-5, 2), _street(-2, 2)] as Array[Vector2i])
+	var before: Dictionary = _editor.to_dict()
+	var check: EditCheck = _editor.check_buy(&"patio_waiting_bench", _street(-4, 0))
+	assert_false(check.ok)
+	assert_true(check.why in [WallRules.CUT_SEAT, WaitingBench.REACHABLE], check.why)
+	assert_false(_editor.buy(&"patio_waiting_bench", _street(-4, 0)))
+	assert_eq(_editor.to_dict(), before)
+	var reach: Dictionary[Vector2i, bool] = WallRules.reachable(_sim.world.grid)
+	assert_true(reach.has(_street(-5, 2)), "the table's far seat is still reachable")
+
+
 func test_indoor_expansion_preserves_patio_and_room_paint_cannot_create_or_remove_it() -> void:
 	var cells: Array[Vector2i] = _rect(-2, 0, 2, 2)
 	assert_true(_history.apply_patio(cells, true), _editor.last_check.why)

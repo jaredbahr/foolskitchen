@@ -40,9 +40,11 @@ func test_json_round_trip_keeps_outdoor_items_paint_finishes_and_sorted_ownershi
 	# The table's built-in seats are (1, 13) and (4, 13). This extra chair
 	# faces north from (2, 14) to the unclaimed south edge at (2, 13).
 	assert_true(_editor.buy(&"patio_chair", _street(-4, 3)), _editor.last_check.why)
-	assert_true(_editor.buy(&"patio_waiting_bench", _street(-6, 0)), _editor.last_check.why)
+	# In the far corner: at (-6, 0) its seats would wall the pocket behind the
+	# table off, since nobody walks through a seat.
+	assert_true(_editor.buy(&"patio_waiting_bench", _street(-7, 0)), _editor.last_check.why)
 	var table: PlacedItem = _sim.world.grid.item_at(_street(-4, 1))
-	var bench: PlacedItem = _sim.world.grid.item_at(_street(-6, 0))
+	var bench: PlacedItem = _sim.world.grid.item_at(_street(-7, 0))
 	assert_not_null(table)
 	assert_not_null(bench)
 	if table == null or bench == null:
@@ -84,7 +86,7 @@ func test_json_round_trip_keeps_outdoor_items_paint_finishes_and_sorted_ownershi
 		assert_true(restored.world.grid.is_outdoor_floor(cell))
 		assert_eq(restored.world.grid.room(cell), SimGrid.Room.PATIO)
 	assert_eq(restored.world.grid.item_at(_street(-4, 1)).variant_id, &"patio_dark_metal")
-	assert_eq(restored.world.grid.item_at(_street(-6, 0)).swatch_id, &"sage")
+	assert_eq(restored.world.grid.item_at(_street(-7, 0)).swatch_id, &"sage")
 	assert_eq(_editor.to_dict(), expected, "building the staged session leaves the live shop alone")
 	assert_eq(_ledger.cash, cash)
 	assert_eq(_ledger.entries_for_day(1).size(), entries, "restoring never replays purchases")

@@ -2895,7 +2895,8 @@ appended `SimGrid.Room.PATIO` kind. They never move the building shell or add
 an entry, and an empty purchase never grows the grid. Build's Patio tool marks
 the available cells; drag buys and Shift-drag removes empty patio while closed.
 Owned gaps beside the doorway reuse clipped native paving without shifting the
-street. Furniture, people, dirt and build overlays follow its measured surface;
+street, tinted toward clay (`NeighbourhoodDressing.patio_color`) and framed by
+a thin darker edge so the bought patio reads apart from the public pavement. Furniture, people, dirt and build overlays follow its measured surface;
 mixed indoor/outdoor previews retain each cell's height and relative seat lift.
 `ShopEditor.check_patio` retains the existing connectivity, people, dining,
 room and path checks. Removal refunds $7 per cell (half, rounded down), plus
@@ -2916,6 +2917,14 @@ seating and waiting benches use the same eligibility; waiting still uses its
 existing arrival bonus and reservations. Service and bussing follow ordinary
 grid paths through the street door. Weather closes seating without changing
 walkability, creating a stream or drawing randomness.
+
+Waiting benches are not solid, but movement never lets anyone use a seat as
+an aisle. So a bench placement or move is refused when it newly cuts off a
+door, table seat or station under that rule (`WallRules.seat_cut_off_problem`),
+for example a bench across the one-cell patio walkway in front of the tables.
+Solid furniture keeps the usual warn-but-allow path check; chairs and booths
+are not checked this way, because joined tables and booth rows rely on seats
+the stricter rule would call cut off.
 
 Two balance rules keep a patio from overfilling a busy starter shop (#269).
 Without them the default shop's one cook and one server were already near

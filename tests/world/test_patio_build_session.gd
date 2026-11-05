@@ -201,7 +201,7 @@ func test_native_furniture_walking_feet_and_seated_pose_follow_the_pavement_once
 	if staff == null:
 		return
 	var indoor_cell: Vector2i = staff.cell
-	view._process(0.0)
+	_present(view)
 	var person: PersonView = view.agent_nodes.get(staff.id) as PersonView
 	assert_not_null(person)
 	if person == null:
@@ -210,7 +210,7 @@ func test_native_furniture_walking_feet_and_seated_pose_follow_the_pavement_once
 	assert_true(_world().reset_agent_position(staff, _street(-1, 0)))
 	staff.path.clear()
 	staff.move_progress = 0.0
-	view._process(0.0)
+	_present(view)
 	assert_almost_eq(person.position.y, pavement, 0.00001, "standing feet sit on the pavement surface")
 	# Use real reserved steps across the street entry without advancing the
 	# clock or meal work: the foot plane must cross the height difference.
@@ -218,12 +218,12 @@ func test_native_furniture_walking_feet_and_seated_pose_follow_the_pavement_once
 	assert_true(staff.set_destination(_world().grid, _street(-1, 0)))
 	assert_eq(staff.next_cell(), _street(-1, 0))
 	_walk_staff(staff, 1)
-	view._process(0.0)
+	_present(view)
 	assert_almost_eq(person.position.y, pavement * 0.25, 0.00001)
 	assert_true(_world().reset_agent_position(staff, _street(-1, 0)))
 	assert_true(staff.set_destination(_world().grid, _street(0, 0)))
 	_walk_staff(staff, 3)
-	view._process(0.0)
+	_present(view)
 	assert_almost_eq(person.position.y, pavement * 0.25, 0.00001, "returning indoors lowers the feet along the same step")
 	assert_true(_world().reset_agent_position(staff, indoor_cell))
 	staff.path.clear()
@@ -240,7 +240,7 @@ func test_native_furniture_walking_feet_and_seated_pose_follow_the_pavement_once
 	assert_true(bench.reserve(guest.cell, guest.id))
 	assert_true(_world().reset_agent_position(guest, guest.waiting_cell))
 	assert_true(guest.is_waiting_seated(_world()), "the pose uses a real owned and reserved outdoor bench seat")
-	view._process(0.0)
+	_present(view)
 	var seated: PersonView = view.agent_nodes.get(guest.id) as PersonView
 	assert_not_null(seated)
 	if seated == null:
@@ -259,9 +259,6 @@ func test_native_furniture_walking_feet_and_seated_pose_follow_the_pavement_once
 		"the seat surface receives the pavement height exactly once")
 	assert_eq(indoor_visual.global_transform, indoor_transform)
 	assert_almost_eq(person.position.y, 0.0, 0.00001)
-	# _walk_staff advanced the clock 1 + 3 ticks to stamp real reservations; every
-	# view._process above must add nothing on top.
-	assert_eq(_world().now, 1 + 3, "all height synchronization is presentation only")
 
 
 func test_native_mess_and_build_overlays_clear_pavement_without_lifting_indoor_tiles() -> void:
@@ -510,6 +507,14 @@ func _key(code: Key, control: bool = false) -> void:
 
 func _street(x: int, y: int) -> Vector2i:
 	return _world().grid.entries()[0] + Vector2i(x, y)
+
+
+## Height sync is presentation only: drawing a frame never advances the clock.
+## (_walk_staff does, on purpose, to stamp real movement reservations.)
+func _present(view: ShopView) -> void:
+	var ticks: int = _world().now
+	view._process(0.0)
+	assert_eq(_world().now, ticks, "all height synchronization is presentation only")
 
 
 func _walk_staff(staff: StaffAgent, ticks: int) -> void:

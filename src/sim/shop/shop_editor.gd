@@ -2142,6 +2142,14 @@ func _check_placement(definition: ItemDef, origin: Vector2i, turns: int, exclude
 		var rooms: String = RoomRules.problem(_sim.world.grid, preview, ids)
 		if not rooms.is_empty():
 			return EditCheck.new(false, rooms)
+		# A waiting bench looks passable but nobody walks through a seat, so
+		# it may not newly cut off a door, seat or station (#269). Solid
+		# furniture keeps the DESIGN rule: it warns, never blocks. Chairs and
+		# booths are left out: joined tables and booth rows rely on today's rule.
+		if definition.category == ItemDef.Category.WAITING:
+			var cut: String = WallRules.seat_cut_off_problem(_sim.world.grid, preview)
+			if not cut.is_empty():
+				return EditCheck.new(false, cut)
 	var check: EditCheck = EditCheck.new(true)
 	_fill_warnings(check, preview, ids)
 	var proposed: PlacedItem = preview.item(proposed_id)

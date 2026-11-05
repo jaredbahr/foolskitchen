@@ -412,7 +412,7 @@ static func closed_door_problem(before: SimGrid, after: SimGrid) -> String:
 
 
 ## Cells reachable on foot from any street entry.
-static func reachable(grid: SimGrid) -> Dictionary[Vector2i, bool]:
+static func reachable(grid: SimGrid, seats_stop: bool = false) -> Dictionary[Vector2i, bool]:
 	var seen: Dictionary[Vector2i, bool] = {}
 	var frontier: Array[Vector2i] = []
 	for entry: Vector2i in grid.entries():
@@ -422,6 +422,8 @@ static func reachable(grid: SimGrid) -> Dictionary[Vector2i, bool]:
 	while not frontier.is_empty():
 		var next: Array[Vector2i] = []
 		for cell: Vector2i in frontier:
+			if seats_stop and not grid.seat_items_at(cell).is_empty():
+				continue
 			for neighbour: Vector2i in grid.walkable_neighbours(cell):
 				if not seen.has(neighbour):
 					seen[neighbour] = true
@@ -445,6 +447,13 @@ static func cut_off_problem(before: SimGrid, after: SimGrid, people: Array[Vecto
 	if problem.is_empty():
 		problem = _cut_off(after, reachable(before), reachable(after), people, people_only)
 	return problem
+
+
+## For a new or moved waiting bench (#269): reachability where a seat ends a
+## walk, as MovementCoordinator never lets anyone use a seat as an aisle. Only
+## what this edit newly cuts off counts, so older layouts are never refused.
+static func seat_cut_off_problem(before: SimGrid, after: SimGrid) -> String:
+	return _cut_off(after, reachable(before, true), reachable(after, true), [] as Array[Vector2i])
 
 
 ## Terrain and segments of `grid`, with no furniture.

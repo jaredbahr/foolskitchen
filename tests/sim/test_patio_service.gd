@@ -78,15 +78,15 @@ func test_a_waiting_ticket_holds_outdoor_seats_but_never_indoor_ones() -> void:
 	assert_true(sim.world.grid.remove(inside.id))
 	var party: Party = sim.add_party(Vector2i(6, 6), [_rng(2442), _rng(2443)])
 	assert_true(sim.world.reset_agent_position(PartySeating.members(party, sim.world)[1], sim.world.grid.entries()[1]))
-	assert_false(PartySeating.try_seat(party, sim.world, null, sim.patio_keeping_up()))
+	assert_false(PartySeating.try_seat(party, sim.world, null, sim.patio_keeping_up))
 	assert_true(PartySeating.try_seat(party, sim.world), "a caller without a kitchen leaves only weather to decide")
 	for member: CustomerAgent in PartySeating.members(party, sim.world):
 		sim.world.remove_agent(member)
 	for state: Order.State in [Order.State.COOKING, Order.State.READY, Order.State.DELIVERED]:
 		sim.orders.set_state(ticket, state)
 		assert_eq(sim.patio_keeping_up(), state != Order.State.READY, "a plate waiting at the pass also holds the patio")
-	assert_false(PatioRules.can_seat(sim.world.grid, outside.seat_cells[0], WeatherState.Kind.RAIN, true))
-	assert_true(PatioRules.can_seat(sim.world.grid, Vector2i(2, 2), WeatherState.Kind.RAIN, false), "indoor seats never ask")
+	assert_false(PatioRules.can_seat(sim.world.grid, outside.seat_cells[0], WeatherState.Kind.RAIN))
+	assert_true(PatioRules.can_seat(sim.world.grid, Vector2i(2, 2), WeatherState.Kind.RAIN, _never), "indoor seats never ask")
 	var single: CustomerAgent = sim.add_customer(Vector2i(6, 6), _rng(2444))
 	assert_true(single._try_seat(sim.world))
 	assert_eq(single.table_item_id, outside.id)
@@ -408,6 +408,11 @@ func _four_seat_outdoor_table() -> ItemDef:
 	definition.outdoor_only = true
 	definition.seat_cells = [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]
 	return definition
+
+
+func _never() -> bool:
+	assert_true(false, "an indoor seat must never ask whether the kitchen keeps up")
+	return false
 
 
 func _rng(seed_value: int) -> RandomNumberGenerator:

@@ -493,6 +493,7 @@ func _try_seat(world: SimWorld) -> bool:
 ## only held, and the guest stays where they are.
 func _book_table(world: SimWorld, walk: bool) -> bool:
 	var sim: RestaurantSim = _restaurant.get_ref() as RestaurantSim
+	var keeping_up: Callable = sim.patio_keeping_up if sim != null else Callable()
 	var seen: Dictionary[int, bool] = {}
 	for table: PlacedItem in _seat_order(world):
 		# Physical ownership remains on the table linked to the chosen seat.
@@ -510,7 +511,7 @@ func _book_table(world: SimWorld, walk: bool) -> bool:
 		for seat: Vector2i in _preferred_seats(table, world):
 			var owner: PlacedItem = world.grid.item(world.grid.dining_owner_id(table.id, seat))
 			if owner == null or owner.reserved_by(seat) != -1 or not world.grid.is_walkable(seat) \
-					or not PatioRules.can_seat(world.grid, seat, world.weather.kind, sim == null or sim.patio_keeping_up()):
+					or not PatioRules.can_seat(world.grid, seat, world.weather.kind, keeping_up):
 				continue
 			if not world.grid.is_guest_reachable(cell, seat) or not owner.reserve(seat, id):
 				continue
