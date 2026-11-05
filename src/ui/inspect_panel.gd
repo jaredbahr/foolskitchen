@@ -363,6 +363,9 @@ func _show_guest(guest: CustomerAgent) -> void:
 	_details.text = "Type: %s\nState: %s" % [guest.customer_type_name, state_name]
 	if guest.regular_profile != null:
 		_details.text += "\n" + RegularText.inspection(guest.regular_profile, guest.regular_favourite_label)
+	# A disguised critic (#303) shows only their tells, in plain words.
+	for line: String in FoodCritic.tell_lines(guest.critic_tells, guest.order != null):
+		_details.text += "\n" + line
 	for order: Order in [guest.order, guest.extra_order]:
 		if order != null and order.state == Order.State.DELIVERED and order.quality_breakdown != null:
 			_details.text += "\nServed quality: " + order.quality_breakdown.explanation()

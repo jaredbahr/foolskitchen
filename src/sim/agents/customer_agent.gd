@@ -63,6 +63,9 @@ var regular_profile: RegularProfile = null
 var regular_arrival_tick: int = 0
 var regular_favourite_label: String = ""
 var regular_favourite_available: bool = false
+## The disguised food critic (#303): the tells they show. Empty for every
+## ordinary guest, so a critic is told apart only by these.
+var critic_tells: Array[StringName] = []
 ## Anonymous repeat cohort; never exposed to the player or randomly drawn.
 var repeat_guest_key: String = ""
 var budget_multiplier: float = 1.0
@@ -140,6 +143,24 @@ func set_visit_kind(kind: StringName, tuning: VisitTuning = null) -> bool:
 	if kind != RecipeDef.FOOD and tuning != null and tuning.drink_visit_ticks > 0:
 		eat_ticks = tuning.drink_visit_ticks
 	return true
+
+
+## Turns a just-arrived solo guest into the day's critic: judging the food
+## harder, and lingering when that is one of their tells. No random draw.
+func disguise_as_critic(tells: Array[StringName], tuning: CriticTuning) -> bool:
+	if state != State.ARRIVING or is_critic() or tells.is_empty() or tuning == null or regular_profile != null:
+		return false
+	critic_tells = tells.duplicate()
+	quality_weight = tuning.quality_weight
+	review_chance_multiplier = 1.0
+	repeat_guest_key = ""
+	if tells.has(FoodCritic.LINGERS):
+		eat_ticks = roundi(float(eat_ticks) * tuning.linger_multiplier)
+	return true
+
+
+func is_critic() -> bool:
+	return not critic_tells.is_empty()
 
 
 func is_drinks_visit() -> bool:
@@ -738,8 +759,14 @@ func _take_order(server: SimAgent) -> bool:
 			if choice.id == regular_profile.favourite_dish:
 				recipe = choice
 				break
+	# A critic with that tell orders the dearest dish they could (#303), and
+	# never walks out over a price: they came to judge the food.
+	if critic_tells.has(FoodCritic.PRICIEST):
+		for choice: RecipeDef in choices:
+			if sim.price_of(choice) > sim.price_of(recipe):
+				recipe = choice
 	var price: int = sim.price_of(recipe)
-	var chance: float = sim.price_walkout_chance(recipe, budget_multiplier)
+	var chance: float = sim.price_walkout_chance(recipe, budget_multiplier) if not is_critic() else 0.0
 	# Standard/cheaper prices preserve the existing guest stream exactly.
 	if chance > 0.0 and rng.randf() < chance:
 		_leave(sim.world, sim, &"too_expensive")

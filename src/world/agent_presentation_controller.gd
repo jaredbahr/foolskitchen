@@ -63,6 +63,8 @@ class Frame extends RefCounted:
 	var seat_height: float = 0.0
 	var seated_lean_degrees: float = 0.0
 	var show_tray: bool = false
+	## A small notebook in hand: one of a disguised critic's tells (#303).
+	var holds_notebook: bool = false
 	var mood_visible: bool = false
 	var mood_band: int = -1
 	## A guest inside the restroom is not drawn (FK-101).
@@ -109,6 +111,7 @@ static func frame_for(agent: SimAgent, world: SimWorld, chair_seat_height: float
 		frame.mood_visible = CustomerAgent.MOOD_WAITING_STATES.has(int(customer.state)) and not customer.away()
 		frame.hidden = frame.hidden or customer.in_restroom()
 		frame.mood_band = customer.mood_band()
+		frame.holds_notebook = customer.critic_tells.has(FoodCritic.NOTEBOOK)
 		frame.seated = _is_seated(customer, world)
 		if frame.seated:
 			frame.seat_height = maxf(chair_seat_height, 0.0) if is_finite(chair_seat_height) else 0.0

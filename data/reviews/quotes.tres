@@ -16,5 +16,7 @@ groups = Dictionary[StringName, PackedStringArray]({
 &"no_restroom": PackedStringArray("Lovely meal, but I couldn't find a restroom.", "A restroom would make a long lunch easier.", "I would have stayed longer with a restroom nearby.", "Good food. The place just needs a restroom.", "I wish there had been somewhere to freshen up.", "A restroom would make this place perfect."),
 &"restroom_busy": PackedStringArray("Nice spot, but the restroom was always busy.", "I waited for the restroom longer than for my food.", "One restroom isn't enough for a place this busy.", "Lovely meal; the restroom queue, less so.", "The restroom was taken every time I tried.", "More restrooms, please. The food was great."),
 &"comfortable_wait": PackedStringArray("A seat on the bench made the wait easy.", "Nice to rest my feet before a table opened.", "The waiting bench was a thoughtful touch.", "A comfortable spot to wait for lunch."),
-&"petted_cat": PackedStringArray("The shop cat let me pet it while I waited. Best part of lunch.", "Petted the resident cat and forgot all about the wait.", "A purring cat and a warm meal. I'll be back.")
+&"petted_cat": PackedStringArray("The shop cat let me pet it while I waited. Best part of lunch.", "Petted the resident cat and forgot all about the wait.", "A purring cat and a warm meal. I'll be back."),
+&"critic_good": PackedStringArray("Confident cooking and prompt service. A table worth booking.", "Every plate arrived just when it should. I will be telling people.", "Honest, careful food in a room that cares. Highly recommended."),
+&"critic_bad": PackedStringArray("Promising ideas, but the meal never quite came together.", "I waited, I chewed, and I was left unconvinced.", "A kitchen with potential. Today it stayed well hidden.")
 })
