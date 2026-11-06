@@ -14,4 +14,5 @@ takeaway_share = 0.3
 counter_patience_multiplier = 2.0
 min_arrival_rate = 0.25
 waiting_bench_patience_multiplier = 1.5
+patio_patience_multiplier = 1.5
 waiting_bench_door_distance = 8

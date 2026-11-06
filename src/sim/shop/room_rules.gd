@@ -11,12 +11,14 @@ extends RefCounted
 ## without the kitchen on its staff side and guests on its other side. Things
 ## that were already like that (an old save) stay, so unrelated edits work.
 
-const IDS: Array[StringName] = [&"dining", &"kitchen", &"restroom", &"storage"]
-const LABELS: Array[String] = ["Dining room", "Kitchen", "Restroom", "Storage"]
+const IDS: Array[StringName] = [&"dining", &"kitchen", &"restroom", &"storage", &"patio"]
+const LABELS: Array[String] = ["Dining room", "Kitchen", "Restroom", "Storage", "Patio"]
 
 const SEAT_IN_KITCHEN: String = "Guests don't sit in the kitchen"
 const SEAT_IN_STORAGE: String = "Guests don't sit in the storage room"
 const SEAT_IN_RESTROOM: String = "Guests don't eat in the restroom"
+const OUTDOOR_SEAT_ONLY: String = "Outdoor seats belong on the patio"
+const INDOOR_SEAT_ONLY: String = "Indoor seats belong in the dining room"
 const THROUGH_KITCHEN: String = "Guests can't reach this without walking through the kitchen"
 const PASS_SIDES: String = "The pass needs the kitchen on one side and guests on the other"
 const ROOMS_CLOSED: String = "Rooms can only be painted in the morning or after closing"
@@ -163,9 +165,12 @@ static func violations(grid: SimGrid, ids: Dictionary[int, int]) -> Dictionary[S
 		elif definition.category == ItemDef.Category.TABLE:
 			for seat: Vector2i in placed.seat_cells:
 				var kind: int = grid.room(seat)
-				if kind != SimGrid.Room.DINING:
-					out["seat:%d:%d:%d" % [live_id, seat.x, seat.y]] = SEAT_IN_KITCHEN \
-						if kind == SimGrid.Room.KITCHEN else (SEAT_IN_STORAGE if kind == SimGrid.Room.STORAGE else SEAT_IN_RESTROOM)
+				if kind != (SimGrid.Room.PATIO if definition.outdoor_only else SimGrid.Room.DINING):
+					var reason: String = OUTDOOR_SEAT_ONLY if definition.outdoor_only else INDOOR_SEAT_ONLY
+					if not definition.outdoor_only and kind != SimGrid.Room.PATIO:
+						reason = SEAT_IN_KITCHEN if kind == SimGrid.Room.KITCHEN \
+							else (SEAT_IN_STORAGE if kind == SimGrid.Room.STORAGE else SEAT_IN_RESTROOM)
+					out["seat:%d:%d:%d" % [live_id, seat.x, seat.y]] = reason
 				elif anyone.has(seat) and not guests.has(seat):
 					cut_off["reach:%d:%d:%d" % [live_id, seat.x, seat.y]] = THROUGH_KITCHEN
 		elif is_toilet(placed):

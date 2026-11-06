@@ -493,6 +493,7 @@ func _try_seat(world: SimWorld) -> bool:
 ## only held, and the guest stays where they are.
 func _book_table(world: SimWorld, walk: bool) -> bool:
 	var sim: RestaurantSim = _restaurant.get_ref() as RestaurantSim
+	var keeping_up: Callable = sim.patio_keeping_up if sim != null else Callable()
 	var seen: Dictionary[int, bool] = {}
 	for table: PlacedItem in _seat_order(world):
 		# Physical ownership remains on the table linked to the chosen seat.
@@ -509,7 +510,8 @@ func _book_table(world: SimWorld, walk: bool) -> bool:
 			continue
 		for seat: Vector2i in _preferred_seats(table, world):
 			var owner: PlacedItem = world.grid.item(world.grid.dining_owner_id(table.id, seat))
-			if owner == null or owner.reserved_by(seat) != -1 or not world.grid.is_walkable(seat):
+			if owner == null or owner.reserved_by(seat) != -1 or not world.grid.is_walkable(seat) \
+					or not PatioRules.can_seat(world.grid, seat, world.weather.kind, keeping_up):
 				continue
 			if not world.grid.is_guest_reachable(cell, seat) or not owner.reserve(seat, id):
 				continue
@@ -597,8 +599,15 @@ func _walk_to_seat(world: SimWorld, sim: RestaurantSim) -> void:
 		if counter_visit and counter_stage == Counter.TO_COUNTER:
 			counter_stage = Counter.AT_COUNTER
 			clear_path()
-		state = State.ORDERING
-		_post_order_task(world, sim)
+		sit_down(world, sim)
+
+
+## Arrived at the seat (alone or as a seated party): start ordering.
+func sit_down(world: SimWorld, sim: RestaurantSim) -> void:
+	state = State.ORDERING
+	if world.grid.is_outdoor_floor(seat_cell) and sim.visit_tuning != null and sim.visit_tuning.is_valid():
+		food_patience = _type_patience(food_patience, sim.visit_tuning.patio_patience_multiplier)
+	_post_order_task(world, sim)
 
 
 # --- Order counter (#293) ---------------------------------------------------
@@ -907,7 +916,8 @@ func _pick_wait_spot(world: SimWorld) -> Vector2i:
 
 func is_waiting_seated(world: SimWorld) -> bool:
 	if state != State.QUEUED or waiting_item_id == 0 or cell != waiting_cell or not has_arrived() \
-			or not world.grid.is_guest_walkable(waiting_cell):
+			or not world.grid.is_guest_walkable(waiting_cell) \
+			or not PatioRules.seat_is_open(world.grid, waiting_cell, world.weather.kind):
 		return false
 	var bench: PlacedItem = world.grid.item(waiting_item_id)
 	return WaitingBench.is_bench(bench) and bench.seat_cells.has(waiting_cell) \

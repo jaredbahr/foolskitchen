@@ -1,6 +1,6 @@
 class_name CurbAppealInputs
 extends RefCounted
-## Read-only bridge from actual supported street mounts to detached model rows.
+## Read-only bridge from supported street mounts and patio furniture to model rows.
 ## The authored tuning maps approved content to families, independently of
 ## swatch and occupied width. Reading it never changes the resource.
 
@@ -32,7 +32,27 @@ static func collect(grid: SimGrid, finishes: WallFinishes, decor: WallDecor, con
 		if not _supported_front(grid, hung, definition):
 			continue
 		rows.append({"category": tuning.item_categories[hung.def_id], "id": _id("decor", anchor)})
+	## Tables and waiting benches share one family. Attached or separate chairs
+	## never multiply a table's points; rain closes service, not its visible front.
+	for placed: PlacedItem in grid.items():
+		var definition: ItemDef = placed.def as ItemDef
+		if definition == null or not tuning.item_categories.has(definition.id) \
+				or tuning.item_categories[definition.id] != &"patio" \
+				or content.item(definition.id) != definition or not _supported_patio(grid, placed, definition):
+			continue
+		rows.append({"category": &"patio", "id": "patio:%d" % placed.id})
 	return rows
+
+
+## The whole footprint and every authored seat or work cell stand on patio.
+static func _supported_patio(grid: SimGrid, placed: PlacedItem, definition: ItemDef) -> bool:
+	if placed.removed or not definition.outdoor_only or placed.cells.is_empty() \
+			or (definition.category != ItemDef.Category.TABLE and definition.category != ItemDef.Category.WAITING):
+		return false
+	for cell: Vector2i in SimGrid.use_cells(placed):
+		if not grid.is_outdoor_floor(cell):
+			return false
+	return true
 
 
 static func _supported_front(grid: SimGrid, hung: WallDecor.Hung, definition: ItemDef) -> bool:

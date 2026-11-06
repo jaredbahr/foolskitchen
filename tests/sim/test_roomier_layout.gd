@@ -80,7 +80,7 @@ func test_new_shop_has_two_cell_aisles_and_six_seats_without_moving_the_old_temp
 func test_current_snapshot_identifies_its_base_and_rejects_wrong_or_malformed_identity() -> void:
 	var editor: ShopEditor = _editor(NEW)
 	var snapshot: Dictionary = editor.to_dict()
-	assert_eq(snapshot["version"], 8)
+	assert_eq(snapshot["version"], 9)
 	assert_eq(snapshot["layout_id"], "tier1_roomier")
 	var errors: Array[String] = []
 	var restored: ShopLayout = ShopEditor.from_dict(snapshot, NEW, _content, errors)

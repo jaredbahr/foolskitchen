@@ -24,7 +24,7 @@ const FLOOR_GHOST_INSET: float = 0.03
 ## and a small label per connected room area. Shown only while the tool is on.
 const ROOM_SWATCHES: Array[SwatchDef] = [preload("res://data/swatches/butter.tres"),
 	preload("res://data/swatches/slate_blue.tres"), preload("res://data/swatches/sage.tres"),
-	preload("res://data/swatches/clay.tres")]
+	preload("res://data/swatches/clay.tres"), preload("res://data/swatches/sage.tres")]
 const ROOM_TINT_ALPHA: float = 0.38
 const ROOM_GHOST_ALPHA: float = 0.75
 const ROOM_LABEL_THEME: Theme = preload("res://src/ui/theme/main_theme.tres")
@@ -63,6 +63,7 @@ var _floor_preview_shown: bool = false
 ## The lot outline and fill, shown in every Build mode state.
 var lot_outline: Node3D
 var _lot_root: Node3D
+var patio_lot: MeshInstance3D
 var _controller: BuildMode
 var _shop_view: ShopView
 var _grid: SimGrid
@@ -267,10 +268,11 @@ func refresh() -> void:
 		_build_wall_ghosts(snapshot.get("wall_changes", {}), valid)
 		if not valid:
 			reason = snapshot.get("why", "")
-	elif snapshot.get("active", false) and snapshot.get("state", -1) == BuildMode.State.FLOOR:
+	elif snapshot.get("active", false) and snapshot.get("state", -1) in [BuildMode.State.FLOOR, BuildMode.State.PATIO]:
+		var patio: bool = snapshot.get("state", -1) == BuildMode.State.PATIO
 		var floor_cells: Array[Vector2i] = []
-		floor_cells.assign(snapshot.get("floor_cells", []))
-		_build_floor_ghost(floor_cells, valid, snapshot.get("floor_removing", false))
+		floor_cells.assign(snapshot.get("patio_cells" if patio else "floor_cells", []))
+		_build_floor_ghost(floor_cells, valid, snapshot.get("patio_removing" if patio else "floor_removing", false), patio)
 		if not valid:
 			reason = snapshot.get("why", "")
 	elif snapshot.get("active", false) and snapshot.get("state", -1) == BuildMode.State.ROOMS:
@@ -298,6 +300,19 @@ func refresh() -> void:
 		var open_cells: Array[Vector2i] = []
 		open_cells.assign(snapshot.get("lot_open", []))
 		_build_lot(snapshot.get("lot", Rect2i()), open_cells)
+		# The door approach is absent from this cell list, so the marked lot
+		# never suggests buying the public entrance.
+		var patio_cells: Array[Vector2i] = []
+		patio_cells.assign(snapshot.get("patio_open", []))
+		if not patio_cells.is_empty():
+			patio_lot = MeshInstance3D.new()
+			patio_lot.name = "PatioLot"
+			patio_lot.mesh = _tile_mesh(patio_cells, _shop_view.pavement_height() + 0.004, FLOOR_GHOST_INSET)
+			var patio_color: Color = LOT_SWATCH.color
+			patio_color.a = LOT_FILL_ALPHA
+			patio_lot.material_override = _material(patio_color, true)
+			patio_lot.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			add_child(patio_lot)
 	var warning_ids: Array[int] = []
 	warning_ids.assign(snapshot.get("warning_ids", []))
 	for id: int in warning_ids:
@@ -384,18 +399,21 @@ func _refresh_hygiene_geometry() -> void:
 			_free_node(hygiene_mesh)
 		hygiene_mesh = null
 		return
-	if is_instance_valid(hygiene_mesh) and hygiene_mesh.get_meta("cells", []) == _hygiene_cells:
+	var ground: Dictionary[Vector2i, float] = _ground_heights(_hygiene_cells)
+	if is_instance_valid(hygiene_mesh) and hygiene_mesh.get_meta("cells", []) == _hygiene_cells \
+			and hygiene_mesh.get_meta("ground", {}) == ground:
 		return
 	if is_instance_valid(hygiene_mesh):
 		_free_node(hygiene_mesh)
 	hygiene_mesh = MeshInstance3D.new()
 	hygiene_mesh.name = "HygieneCells"
-	hygiene_mesh.mesh = _tile_mesh(_hygiene_cells, 0.04, 0.025)
+	hygiene_mesh.mesh = _tile_mesh(_hygiene_cells, 0.04, 0.025, ground)
 	var tint: Color = HYGIENE_SWATCH.color
 	tint.a = HYGIENE_ALPHA
 	hygiene_mesh.material_override = _material(tint, true)
 	hygiene_mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	hygiene_mesh.set_meta("cells", _hygiene_cells.duplicate())
+	hygiene_mesh.set_meta("ground", ground)
 	add_child(hygiene_mesh)
 
 
@@ -431,6 +449,9 @@ func _clear_geometry() -> void:
 		_free_node(_lot_root)
 	_lot_root = null
 	lot_outline = null
+	if is_instance_valid(patio_lot):
+		_free_node(patio_lot)
+	patio_lot = null
 	work_markers.clear()
 	seat_markers.clear()
 	for node: Node3D in warning_nodes.values():
@@ -454,13 +475,14 @@ func _build_ghost(definition: ItemDef, origin: Vector2i, turns: int, valid: bool
 	ghost_mesh.set_ghost_tint(tint)
 	ghost_mesh.name = "Furniture"
 	ghost_mesh.transform = ItemVisual.placed_transform(definition, origin, turns)
+	ghost_mesh.position.y += _shop_view.ground_height(origin)
 	ghost_mesh.rotation.y = -turns * PI * 0.5
 	ghost_mesh.set_meta("valid", valid)
 	_ghost_root.add_child(ghost_mesh)
 	for offset: Vector2i in definition.work_cells:
 		var cell: Vector2i = origin + GridMath.rotate_cell(offset, definition.footprint, turns)
 		var marker: MeshInstance3D = _box(Vector3(0.30, 0.045, 0.30), _material(WORK_COLOR))
-		marker.position = GridMath.cell_to_world(cell) + Vector3(0.0, 0.04, 0.0)
+		marker.position = GridMath.cell_to_world(cell) + Vector3(0.0, 0.04 + _shop_view.ground_height(cell), 0.0)
 		marker.set_meta("cell", cell)
 		marker.name = "Work%d" % work_markers.size()
 		work_markers.append(marker)
@@ -476,7 +498,7 @@ func _build_ghost(definition: ItemDef, origin: Vector2i, turns: int, valid: bool
 		marker.mesh = disc
 		marker.material_override = _material(SEAT_COLOR)
 		marker.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		marker.position = GridMath.cell_to_world(cell) + Vector3(0.0, 0.04, 0.0)
+		marker.position = GridMath.cell_to_world(cell) + Vector3(0.0, 0.04 + _shop_view.ground_height(cell), 0.0)
 		marker.set_meta("cell", cell)
 		marker.name = "Seat%d" % seat_markers.size()
 		seat_markers.append(marker)
@@ -517,7 +539,7 @@ func _build_wall_ghosts(changes: Dictionary, valid: bool) -> void:
 
 ## Flat translucent tiles on each proposed cell: green to add, gold to
 ## remove, red when the change is not allowed.
-func _build_floor_ghost(cells: Array[Vector2i], valid: bool, removing: bool) -> void:
+func _build_floor_ghost(cells: Array[Vector2i], valid: bool, removing: bool, patio: bool = false) -> void:
 	if cells.is_empty():
 		return
 	_ghost_root = Node3D.new()
@@ -527,7 +549,15 @@ func _build_floor_ghost(cells: Array[Vector2i], valid: bool, removing: bool) -> 
 	tint.a = FLOOR_GHOST_ALPHA
 	floor_ghost = MeshInstance3D.new()
 	floor_ghost.name = "Tiles"
-	floor_ghost.mesh = _tile_mesh(cells, 0.03, FLOOR_GHOST_INSET)
+	var ground: Dictionary[Vector2i, float] = _ground_heights(cells)
+	if patio and _controller != null:
+		# Unbought patio is still existing pavement. Invalid indoor cells in
+		# the same drag keep their own height instead of floating as one slab.
+		var available: Array[Vector2i] = _controller.patio_open_cells()
+		for cell: Vector2i in cells:
+			if available.has(cell):
+				ground[cell] = _shop_view.pavement_height()
+	floor_ghost.mesh = _tile_mesh(cells, 0.03, FLOOR_GHOST_INSET, ground)
 	floor_ghost.material_override = _material(tint, true)
 	floor_ghost.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	floor_ghost.set_meta("valid", valid)
@@ -561,7 +591,7 @@ func _build_rooms(proposal: Array[Vector2i], kind: int, valid: bool, why: String
 		tint.a = ROOM_TINT_ALPHA
 		var mesh: MeshInstance3D = MeshInstance3D.new()
 		mesh.name = "Tint%d" % room
-		mesh.mesh = _tile_mesh(cells, 0.02, 0.0)
+		mesh.mesh = _tile_mesh(cells, 0.02, 0.0, _ground_heights(cells))
 		mesh.material_override = _material(tint, true)
 		mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		mesh.set_meta("room", room)
@@ -581,7 +611,8 @@ func _build_rooms(proposal: Array[Vector2i], kind: int, valid: bool, why: String
 		label.outline_render_priority = 1
 		label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 		label.no_depth_test = true
-		label.position = GridMath.cell_to_world(_label_cell(area)) + Vector3(0.0, 0.05, 0.0)
+		var centre: Vector2i = _label_cell(area)
+		label.position = GridMath.cell_to_world(centre) + Vector3(0.0, 0.05 + _shop_view.ground_height(centre), 0.0)
 		label.set_meta("cells", area.size())
 		_ghost_root.add_child(label)
 		room_labels.append(label)
@@ -591,7 +622,7 @@ func _build_rooms(proposal: Array[Vector2i], kind: int, valid: bool, why: String
 	color.a = ROOM_GHOST_ALPHA
 	room_ghost = MeshInstance3D.new()
 	room_ghost.name = "Proposal"
-	room_ghost.mesh = _tile_mesh(proposal, 0.03, FLOOR_GHOST_INSET)
+	room_ghost.mesh = _tile_mesh(proposal, 0.03, FLOOR_GHOST_INSET, _ground_heights(proposal))
 	room_ghost.material_override = _material(color, true)
 	room_ghost.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	room_ghost.set_meta("valid", valid)
@@ -609,7 +640,7 @@ func _build_floors_refusal(cells: Array[Vector2i]) -> void:
 	tint.a = FLOOR_GHOST_ALPHA
 	floors_ghost = MeshInstance3D.new()
 	floors_ghost.name = "Refused"
-	floors_ghost.mesh = _tile_mesh(cells, 0.03, FLOOR_GHOST_INSET)
+	floors_ghost.mesh = _tile_mesh(cells, 0.03, FLOOR_GHOST_INSET, _ground_heights(cells))
 	floors_ghost.material_override = _material(tint, true)
 	floors_ghost.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_ghost_root.add_child(floors_ghost)
@@ -639,10 +670,11 @@ func _build_floors_outline(cells: Array[Vector2i]) -> void:
 			strips.append(Rect2(low + Vector2(size - width, 0.0), Vector2(width, size)))
 		if not inside.has(cell + Vector2i.DOWN):
 			strips.append(Rect2(low + Vector2(0.0, size - width), Vector2(size, width)))
+		var height: float = 0.02 + _shop_view.ground_height(cell)
 		for strip: Rect2 in strips:
-			var corners: Array[Vector3] = [Vector3(strip.position.x, 0.02, strip.position.y),
-				Vector3(strip.end.x, 0.02, strip.position.y), Vector3(strip.end.x, 0.02, strip.end.y),
-				Vector3(strip.position.x, 0.02, strip.end.y)]
+			var corners: Array[Vector3] = [Vector3(strip.position.x, height, strip.position.y),
+				Vector3(strip.end.x, height, strip.position.y), Vector3(strip.end.x, height, strip.end.y),
+				Vector3(strip.position.x, height, strip.end.y)]
 			for index: int in [0, 1, 2, 0, 2, 3]:
 				surface.set_normal(Vector3.UP)
 				surface.add_vertex(corners[index])
@@ -732,7 +764,7 @@ func _build_hover(item_id: int, tool: int, valid: bool) -> void:
 	tint.a = FLOOR_GHOST_ALPHA
 	hover_mesh = MeshInstance3D.new()
 	hover_mesh.name = "Tiles"
-	hover_mesh.mesh = _tile_mesh(item.cells, 0.035, FLOOR_GHOST_INSET)
+	hover_mesh.mesh = _tile_mesh(item.cells, 0.035, FLOOR_GHOST_INSET, _ground_heights(item.cells))
 	hover_mesh.material_override = _material(tint, true)
 	hover_mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	hover_mesh.set_meta("item_id", item_id)
@@ -777,12 +809,25 @@ func _build_lot(lot: Rect2i, open_cells: Array[Vector2i]) -> void:
 		lot_outline.add_child(rail)
 
 
-## One upward-facing quad per cell at `height`, inset from the cell edges.
-static func _tile_mesh(cells: Array[Vector2i], height: float, inset: float) -> ArrayMesh:
+## Only nonzero cell heights are stored; mixed meshes retain indoor levels.
+func _ground_heights(cells: Array[Vector2i]) -> Dictionary[Vector2i, float]:
+	var heights: Dictionary[Vector2i, float] = {}
+	if not is_instance_valid(_shop_view):
+		return heights
+	for cell: Vector2i in cells:
+		var height: float = _shop_view.ground_height(cell)
+		if height != 0.0:
+			heights[cell] = height
+	return heights
+
+
+## One upward-facing quad per cell, inset from the cell edges.
+static func _tile_mesh(cells: Array[Vector2i], height: float, inset: float,
+		ground: Dictionary[Vector2i, float] = {}) -> ArrayMesh:
 	var surface: SurfaceTool = SurfaceTool.new()
 	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
 	for cell: Vector2i in cells:
-		var low: Vector3 = Vector3(cell.x * GridMath.CELL_SIZE + inset, height, cell.y * GridMath.CELL_SIZE + inset)
+		var low: Vector3 = Vector3(cell.x * GridMath.CELL_SIZE + inset, height + ground.get(cell, 0.0), cell.y * GridMath.CELL_SIZE + inset)
 		var size: float = GridMath.CELL_SIZE - inset * 2.0
 		var corners: Array[Vector3] = [low, low + Vector3(size, 0, 0), low + Vector3(size, 0, size), low + Vector3(0, 0, size)]
 		for index: int in [0, 1, 2, 0, 2, 3]:
@@ -802,6 +847,7 @@ func _build_warning(id: int, definition: ItemDef, origin: Vector2i, turns: int) 
 	root.draw_bounds(sample.get_aabb(), INVALID_COLOR)
 	sample.free()
 	root.transform = ItemVisual.placed_transform(definition, origin, turns)
+	root.position.y += _shop_view.ground_height(origin)
 	root.rotation.y = -turns * PI * 0.5
 	warning_nodes[id] = root
 	add_child(root)
@@ -854,18 +900,24 @@ func _build_blueprint_selection(cells: Array, box: Rect2i) -> void:
 	if not selected.is_empty():
 		blueprint_selection_mesh = MeshInstance3D.new()
 		blueprint_selection_mesh.name = "SelectedFurniture"
-		blueprint_selection_mesh.mesh = _tile_mesh(selected, 0.04, FLOOR_GHOST_INSET)
+		blueprint_selection_mesh.mesh = _tile_mesh(selected, 0.04, FLOOR_GHOST_INSET, _ground_heights(selected))
 		blueprint_selection_mesh.material_override = _material(tint, true)
 		blueprint_selection_mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		_ghost_root.add_child(blueprint_selection_mesh)
+	# A box reaching onto the patio rides at the pavement top, never under it.
+	var lift: float = 0.0
+	for y: int in range(box.position.y, box.end.y):
+		for x: int in range(box.position.x, box.end.x):
+			lift = maxf(lift, _shop_view.ground_height(Vector2i(x, y)))
+	var border_height: float = 0.05 + lift
+	var outline: StandardMaterial3D = _material(WORK_COLOR)
 	var size: Vector2 = Vector2(box.size) * GridMath.CELL_SIZE
 	var corner: Vector2 = Vector2(box.position) * GridMath.CELL_SIZE
-	var outline: StandardMaterial3D = _material(WORK_COLOR)
 	for y: float in [corner.y, corner.y + size.y]:
 		var rail: MeshInstance3D = _box(Vector3(size.x, 0.035, LOT_EDGE_WIDTH), outline)
-		rail.position = Vector3(corner.x + size.x * 0.5, 0.05, y)
+		rail.position = Vector3(corner.x + size.x * 0.5, border_height, y)
 		_ghost_root.add_child(rail)
 	for x: float in [corner.x, corner.x + size.x]:
 		var rail: MeshInstance3D = _box(Vector3(LOT_EDGE_WIDTH, 0.035, size.y), outline)
-		rail.position = Vector3(x, 0.05, corner.y + size.y * 0.5)
+		rail.position = Vector3(x, border_height, corner.y + size.y * 0.5)
 		_ghost_root.add_child(rail)

@@ -2884,6 +2884,89 @@ catalogue/finish cost $256, fixture charge $0), retains ordinary service and
 stock costs, and measures appeal rather than purchase return on investment.
 Its default counterpart and the default setup itself remain unchanged.
 
+### Patio (FK-117)
+
+`PatioArea` derives a separate pavement strip from the layout's `patio_depth`
+and `patio_cell_price`, beside the existing street door. The starter strip is
+four cells deep (56 purchasable cells in the roomier shop, 48 in the original)
+at $15 each; the two public door
+approach columns stay outside ownership. Bought cells become FLOOR with the
+appended `SimGrid.Room.PATIO` kind. They never move the building shell or add
+an entry, and an empty purchase never grows the grid. Build's Patio tool marks
+the available cells; drag buys and Shift-drag removes empty patio while closed.
+Owned gaps beside the doorway reuse clipped native paving without shifting the
+street, tinted toward clay (`NeighbourhoodDressing.patio_color`) and framed by
+a thin darker edge so the bought patio reads apart from the public pavement. Furniture, people, dirt and build overlays follow its measured surface;
+mixed indoor/outdoor previews retain each cell's height and relative seat lift.
+`ShopEditor.check_patio` retains the existing connectivity, people, dining,
+room and path checks. Removal refunds $7 per cell (half, rounded down), plus
+half the laid floor type's price. `ShopEditHistory` restores ownership, floor
+looks and exact ledger amounts; purchases and refunds use `Ledger.UPGRADES`.
+
+`ItemDef.outdoor_only` defaults false. Outdoor furniture requires patio under
+its whole footprint and authored work/seat cells; indoor furniture cannot use
+those cells. `patio_table_2`, `patio_chair` and `patio_waiting_bench` cost
+$40/$10/$35 at level 1 and reuse the approved table, lowered-backrest chair and
+bench wrappers. Their shared `patio_dark_metal` look maps the existing wood
+surface to the kit's `metalDark` donor without changing source models.
+
+`PatioRules` reads the already selected daily weather: Sunny and Cloudy allow
+outdoor dining and waiting; Rain skips those seats. The morning weather line
+reports the patio's status only when cells are owned. Dining capacity, party
+seating and waiting benches use the same eligibility; waiting still uses its
+existing arrival bonus and reservations. Service and bussing follow ordinary
+grid paths through the street door. Weather closes seating without changing
+walkability, creating a stream or drawing randomness.
+
+Waiting benches are not solid, but movement never lets anyone use a seat as
+an aisle. So a bench placement or move is refused when it newly cuts off a
+door, table seat or station under that rule (`WallRules.seat_cut_off_problem`),
+for example a bench across the one-cell patio walkway in front of the tables.
+Solid furniture keeps the usual warn-but-allow path check; chairs and booths
+are not checked this way, because joined tables and booth rows rely on seats
+the stricter rule would call cut off.
+
+Two balance rules keep a patio from overfilling a busy starter shop (#269).
+Without them the default shop's one cook and one server were already near
+capacity, so extra outdoor covers only lengthened every food wait until guests
+indoors and out timed out (served fell about 14%, like adding two indoor
+tables). First, `RestaurantSim.patio_keeping_up()` lets an open patio seat take
+a new guest only while no ticket waits for the stove and no plate waits at the
+pass (`PatioRules.can_seat`); indoor seating never asks. Second, a guest seated
+outside is `VisitTuning.patio_patience_multiplier` (1.5) times as patient for
+their order and food, applied once in `CustomerAgent.sit_down`. Because staff
+and cooks rank guests by the share of patience used (#310), indoor guests are
+served first under pressure. Neither rule reads randomness, so a shop without
+patio cells is unchanged tick for tick.
+
+The shop snapshot is version 9 with sorted `patio: [[x, y], ...]` rows.
+Restore installs owned Patio floor before validating furniture and requires
+saved Patio rooms to match that ownership; versions 1–8 have no patio. There
+is no new save section or save point: the existing morning
+autosave persists cells and outdoor furniture. Curb appeal counts supported
+outdoor tables and waiting benches once each, with a shared `patio` family
+weight 8, cap 9 and existing repeat decay 0.65 (the 9 came from the three
+wide street families, 3 each, so the caps still sum to 100). Chairs add no
+separate points.
+Rain leaves these visible furniture contributions in place, and the total
+curb bonus retains its existing +10% maximum.
+
+The manual `--setup patio` probe keeps the default shop and adds two outdoor
+tables beside the door (`ProbeSetups.patio_table_origins`), with every patio
+cell, built for free through the real editor; stock and service costs remain
+paid, with no cash, XP or stock grants. Daily weather is selected normally.
+This fixture measures patio service and weather, not purchase return on
+investment; the default setup itself is unchanged.
+
+`tools/patio_review_sunny.tscn` and `tools/patio_review_rain.tscn` are unsaved
+visual fixtures, captured with `--speed=0 --frames=60`. Both grant $2,000 and
+set the weather without a draw, then pay through normal editor/history commands
+for every patio cell, two tables and one waiting bench. Both open, admit ten
+guests with fixed private seeds and run 120 normal ticks: in sun four guests
+sit outside, in rain the patio stays empty while guests sit indoors. These
+captures are separate from natural-weather balance samples. Patio source coverage lives in `tests/sim/test_patio_*.gd`,
+`tests/world/test_patio_content.gd` and `tests/world/test_patio_build_session.gd`.
+
 ### Demand growth (FK-120)
 
 `DemandTuning` in `data/balance/demand.tres` authors every calibration value.

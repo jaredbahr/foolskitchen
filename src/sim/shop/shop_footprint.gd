@@ -245,6 +245,10 @@ func apply(grid: SimGrid, bought: Dictionary[Vector2i, bool]) -> bool:
 	var all: Dictionary[Vector2i, int] = terrain_for(bought)
 	var changes: Dictionary[Vector2i, int] = {}
 	for cell: Vector2i in all:
+		# Patio is separate ownership beyond the indoor shell. Never clear it
+		# temporarily: occupied outdoor furniture must survive an expansion.
+		if grid.is_outdoor_floor(cell):
+			continue
 		if grid.in_bounds(cell) and grid.terrain(cell) != all[cell]:
 			changes[cell] = all[cell]
 	return grid.set_terrains(changes)

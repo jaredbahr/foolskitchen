@@ -215,7 +215,7 @@ func _frontage_cells(grid: SimGrid, entries: Array[Vector2i], normal: Vector2i) 
 				continue
 			var outside: SimGrid.Terrain = grid.terrain(cell + normal)
 			if grid.terrain(cell - normal) == SimGrid.Terrain.FLOOR \
-					and (outside == SimGrid.Terrain.OUTSIDE or outside == SimGrid.Terrain.ENTRY):
+					and (outside == SimGrid.Terrain.OUTSIDE or outside == SimGrid.Terrain.ENTRY or grid.is_outdoor_floor(cell + normal)):
 				candidates.append(cell)
 		if not candidates.is_empty():
 			break
@@ -369,7 +369,7 @@ func _sign_cells(grid: SimGrid, entries: Array[Vector2i], normal: Vector2i) -> A
 func _is_frontage_wall(grid: SimGrid, cell: Vector2i, normal: Vector2i) -> bool:
 	var outside: SimGrid.Terrain = grid.terrain(cell + normal)
 	return grid.terrain(cell) == SimGrid.Terrain.WALL and grid.terrain(cell - normal) == SimGrid.Terrain.FLOOR \
-		and (outside == SimGrid.Terrain.OUTSIDE or outside == SimGrid.Terrain.ENTRY)
+		and (outside == SimGrid.Terrain.OUTSIDE or outside == SimGrid.Terrain.ENTRY or grid.is_outdoor_floor(cell + normal))
 
 
 ## Four walnut rails standing proud of the cream board, like a picture frame.
@@ -431,7 +431,7 @@ func _only_outside(grid: SimGrid, bounds: AABB) -> bool:
 	var last: Vector2i = GridMath.world_to_cell(bounds.end - Vector3(0.00001, 0.0, 0.00001))
 	for y: int in range(first.y, last.y + 1):
 		for x: int in range(first.x, last.x + 1):
-			if grid.terrain(Vector2i(x, y)) != SimGrid.Terrain.OUTSIDE:
+			if grid.terrain(Vector2i(x, y)) != SimGrid.Terrain.OUTSIDE and not grid.is_outdoor_floor(Vector2i(x, y)):
 				return false
 	return true
 
