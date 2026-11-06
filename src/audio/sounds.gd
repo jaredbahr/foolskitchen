@@ -25,6 +25,19 @@ static func stop_loops() -> void:
 		sfx.call(&"stop_loops")
 
 
+## Where the game is, for the music (`MusicTracks`): "" for none.
+static func set_music_context(context: StringName) -> void:
+	var sfx: Node = _sfx()
+	if sfx != null:
+		sfx.call(&"set_music_context", context)
+
+
+static func set_music_ducked(ducked: bool) -> void:
+	var sfx: Node = _sfx()
+	if sfx != null:
+		sfx.call(&"set_music_ducked", ducked)
+
+
 static func _sfx() -> Node:
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	return tree.root.get_node_or_null(^"Sfx") if tree != null and tree.root != null else null
