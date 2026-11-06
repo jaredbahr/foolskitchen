@@ -106,6 +106,11 @@ func register_agent(world: SimWorld, agent: SimAgent, cause: String = "admission
 	if agent.movement_admitted:
 		return world.agents.has(agent) and _occupied.get(agent.cell, -1) == agent.id
 	var requested: Vector2i = agent.cell
+	if cause == "admission" and agent is CustomerAgent and _someone_leaving_by_the_door(world):
+		# Let them out first: while the door is jammed (someone on the way out
+		# has been stuck in the door lane for the escape limit), a guest
+		# arriving from the street waits outside instead of adding to it.
+		return false
 	if can_enter(world, agent, requested):
 		_occupied[requested] = agent.id
 		agent.movement_admitted = true
@@ -1110,6 +1115,14 @@ func _route_cost(cells: Array[Vector2i]) -> float:
 	for index: int in range(1, cells.size()):
 		cost += GridMath.octile(cells[index - 1], cells[index])
 	return cost
+
+
+func _someone_leaving_by_the_door(world: SimWorld) -> bool:
+	for other: SimAgent in world.agents:
+		if _leaving(other) and in_door_lane(world, other.cell) and _stall.has(other.id) \
+				and world.now - int(_stall[other.id]["since"]) >= world.movement_tuning.escape_after_ticks:
+			return true
+	return false
 
 
 ## A guest or the health inspector on the way out: either street cell will do.

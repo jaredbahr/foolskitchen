@@ -361,6 +361,27 @@ func test_a_leaving_guest_never_squeezes_past_another_leaving_guest() -> void:
 	assert_false(world.movement._may_squeeze(arriving, second), "only the one leaving squeezes")
 
 
+## Let them out first: while someone on the way out has been stuck in the
+## door lane for the escape limit, a guest arriving from the street waits
+## outside (every lasting doorway crowd in the soak was arrivals stepping into
+## a jammed door). A brisk exit never holds anyone up.
+func test_arrivals_wait_outside_while_the_door_is_jammed_with_leavers() -> void:
+	var world: SimWorld = _service_world(["E...."])
+	var leaving: GuestWalker = _guest(world, Vector2i(1, 0))
+	leaving.state = CustomerAgent.State.LEAVING
+	assert_true(world.movement.in_door_lane(world, leaving.cell))
+	var brisk: GuestWalker = _guest(world, Vector2i(0, 0))
+	assert_false(world.pending_agents().has(brisk), "a leaver just passing holds nobody up")
+	world.remove_agent(brisk)
+	world.movement._stall[leaving.id] = {"goal": MovementCoordinator.EXIT_GOAL, "best": 1.0,
+		"since": world.now - world.movement_tuning.escape_after_ticks, "next": world.now + 1000}
+	var held: GuestWalker = _guest(world, Vector2i(0, 0))
+	assert_true(world.pending_agents().has(held), "an arrival waits on the street while the door is jammed")
+	world.movement._stall.erase(leaving.id)
+	world.advance()
+	assert_false(world.pending_agents().has(held), "and comes in once it clears")
+
+
 ## Nobody stands in the stuck person's shortest way: the backstop grants no
 ## right of way and changes nothing.
 func test_an_escape_with_nobody_in_the_way_does_nothing() -> void:
