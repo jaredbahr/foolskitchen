@@ -17,6 +17,11 @@ signal changed
 var tuning: AquariumTuning
 var cleaned_today: int = 0
 var _cleaned: Dictionary[int, int] = {}
+## Each tracked tank's kind and position ("def@x,y").
+var _keys: Dictionary[int, String] = {}
+## Tanks removed today, by kind and position, with their cleaning day: a tank
+## put back there today (Undo of a sale) keeps its water as it was.
+var _removed_today: Dictionary[String, int] = {}
 
 
 func _init(config: AquariumTuning) -> void:
@@ -38,11 +43,29 @@ func track(grid: SimGrid, day: int) -> void:
 	for placed: PlacedItem in grid.items():
 		if is_tank(placed):
 			present[placed.id] = true
-			if not _cleaned.has(placed.id):
-				_cleaned[placed.id] = day
 	for item_id: int in _cleaned.keys():
 		if not present.has(item_id):
+			if _keys.has(item_id):
+				_removed_today[_keys[item_id]] = _cleaned[item_id]
 			_cleaned.erase(item_id)
+			_keys.erase(item_id)
+	for placed: PlacedItem in grid.items():
+		if not present.has(placed.id):
+			continue
+		var key: String = place_key(placed)
+		if not _cleaned.has(placed.id):
+			_cleaned[placed.id] = _removed_today.get(key, day)
+			_removed_today.erase(key)
+		_keys[placed.id] = key
+
+
+## A tank's kind and position, as the save matches them.
+static func place_key(placed: PlacedItem) -> String:
+	return "%s@%d,%d" % [String((placed.def as ItemDef).id), placed.origin.x, placed.origin.y]
+
+
+func tank_count() -> int:
+	return _cleaned.size()
 
 
 func enabled() -> bool:
@@ -93,6 +116,7 @@ func clean(item_id: int, day: int) -> bool:
 
 func begin_day(grid: SimGrid, day: int) -> void:
 	cleaned_today = 0
+	_removed_today.clear()
 	track(grid, day)
 
 
@@ -137,6 +161,8 @@ func restore(grid: SimGrid, value: Variant, day: int) -> bool:
 	if not valid_dict(value):
 		return false
 	_cleaned.clear()
+	_keys.clear()
+	_removed_today.clear()
 	track(grid, day)
 	for row: Variant in (value as Dictionary)["tanks"]:
 		var tank: Dictionary = row

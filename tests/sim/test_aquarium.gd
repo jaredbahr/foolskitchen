@@ -88,6 +88,26 @@ func test_moving_keeps_a_tank_record_and_removing_forgets_it() -> void:
 	assert_false(_sim.aquarium.has_tank(tank.id))
 
 
+func test_a_tank_put_back_at_the_same_spot_the_same_day_keeps_its_water() -> void:
+	_make()
+	var tank: PlacedItem = _place(TANK)
+	_cloud(tank)
+	var day: int = _sim.world.clock.day
+	var cleaned: int = _sim.aquarium.cleaned_day(tank.id)
+	var origin: Vector2i = tank.origin
+	assert_true(_sim.world.grid.remove(tank.id))
+	var again: PlacedItem = _sim.world.grid.place_def(TANK, origin, 0)
+	assert_ne(again.id, tank.id)
+	assert_eq(_sim.aquarium.cleaned_day(again.id), cleaned, "Undo of a sale is not a clean")
+	assert_true(_sim.aquarium.is_cloudy(again.id, day))
+	# Next morning the memory is gone: a tank bought there then starts clean.
+	assert_true(_sim.world.grid.remove(again.id))
+	_sim.world.clock.day = day + 1
+	_sim.start_day()
+	var fresh: PlacedItem = _sim.world.grid.place_def(TANK, origin, 0)
+	assert_eq(_sim.aquarium.cleaned_day(fresh.id), day + 1)
+
+
 func test_maintenance_off_never_clouds() -> void:
 	var tuning: AquariumTuning = TUNING.duplicate() as AquariumTuning
 	tuning.maintenance = false
@@ -173,6 +193,50 @@ func test_with_no_cleaner_the_owner_on_floor_cleans_it_but_not_resting() -> void
 	_work_until_clear(tank)
 	assert_false(_sim.aquarium.is_cloudy(tank.id, _sim.world.clock.day))
 	assert_eq(_sim.aquarium.cleaned_day(tank.id), _sim.world.clock.day)
+
+
+func test_a_tank_moved_with_its_task_open_is_cleaned_at_its_new_spot() -> void:
+	_make()
+	var tank: PlacedItem = _place(TANK)
+	_cloud(tank)
+	var old_task: SimTask = _sim.clean_tasks.tank_task_for(tank.id)
+	assert_not_null(old_task)
+	var old_sides: Array[Vector2i] = old_task.steps[0].candidate_cells.duplicate()
+	var cleaner: StaffAgent = StaffAgent.new(&"cleaner", 3)
+	cleaner.cell = _role(&"server").cell
+	_sim.world.add_agent(cleaner)
+	cleaner.tick(_sim.world)
+	assert_eq(cleaner.task, old_task, "the cleaner is on its way")
+	var moved: bool = false
+	var cells: Array[Vector2i] = _sim.world.grid.cells()
+	for cell: Vector2i in cells:
+		if cell == tank.origin or not _sim.world.grid.relocate_def(tank.id, cell, 0):
+			continue
+		var sides: Array[Vector2i] = CleanTaskController.tank_sides(_sim.world.grid, tank)
+		if sides != old_sides and not sides.is_empty() \
+				and _sim.world.grid.is_reachable(_role(&"server").cell, sides[0]):
+			moved = true
+			break
+	assert_true(moved, "the tank found a new spot")
+	assert_true(_sim.aquarium.is_cloudy(tank.id, _sim.world.clock.day), "a move is not a clean")
+	_sim.clean_tasks.sync_spots()
+	var new_task: SimTask = _sim.clean_tasks.tank_task_for(tank.id)
+	assert_not_null(new_task)
+	assert_ne(new_task, old_task, "the old route was withdrawn and the task posted again")
+	assert_eq(new_task.steps[0].candidate_cells, CleanTaskController.tank_sides(_sim.world.grid, tank))
+	_work_until_clear(tank)
+	assert_false(_sim.aquarium.is_cloudy(tank.id, _sim.world.clock.day))
+	var beside: bool = false
+	for side: Vector2i in CleanTaskController.tank_sides(_sim.world.grid, tank):
+		beside = beside or cleaner.cell == side
+	assert_true(beside, "cleaned from beside its new spot")
+
+
+func test_a_shop_without_tanks_posts_no_tank_tasks() -> void:
+	_make()
+	_sim.clean_tasks.sync_spots()
+	assert_eq(_sim.aquarium.tank_count(), 0)
+	assert_eq(_sim.clean_tasks.active_task_count(), 0)
 
 
 func test_overnight_withdraws_the_task_and_a_still_cloudy_tank_posts_it_again() -> void:

@@ -20,6 +20,10 @@ var _tanks_ref: WeakRef
 var _tank_tasks: Dictionary[int, SimTask] = {}
 var _tanks_by_id: Dictionary[int, int] = {}
 var _tank_suspended: Dictionary[int, bool] = {}
+## The free cells beside each tank when its task was posted; a layout change
+## that moves them (the tank moved, or a neighbour changed) reposts the task.
+var _tank_sides: Dictionary[int, Array] = {}
+var _tank_layout_changed: bool = false
 
 
 func _init(world: SimWorld, dirt: CleanlinessState, tuning: CleanlinessTuning) -> void:
@@ -85,8 +89,15 @@ func sync_tanks() -> void:
 	var care: AquariumCare = _tanks()
 	if _tidying or world == null or care == null:
 		return
+	# Shops without a tank do nothing, and allocate nothing, every tick.
+	if _tank_tasks.is_empty() and care.tank_count() == 0:
+		_tank_layout_changed = false
+		return
+	var recheck: bool = _tank_layout_changed
+	_tank_layout_changed = false
 	for tank_id: int in _tank_tasks.keys():
-		if world.grid.item(tank_id) == null or not care.is_cloudy(tank_id, world.clock.day):
+		if world.grid.item(tank_id) == null or not care.is_cloudy(tank_id, world.clock.day) \
+				or recheck and tank_sides(world.grid, world.grid.item(tank_id)) != _tank_sides.get(tank_id, []):
 			var previous: SimTask = _tank_tasks[tank_id]
 			_forget_tank(tank_id, previous.id)
 			world.board.cancel(previous, &"target_gone")
@@ -107,6 +118,7 @@ func sync_tanks() -> void:
 		world.board.post(task, world.now)
 		_tank_tasks[tank_id] = task
 		_tanks_by_id[task.id] = tank_id
+		_tank_sides[tank_id] = sides
 
 
 ## Walkable floor cells touching the tank, with no wall between, in a fixed order.
@@ -185,6 +197,7 @@ func tidy_overnight() -> void:
 	_tank_tasks.clear()
 	_tanks_by_id.clear()
 	_tank_suspended.clear()
+	_tank_sides.clear()
 	_tasks.clear()
 	_cells_by_id.clear()
 	_suspended.clear()
@@ -245,6 +258,7 @@ func _on_cells_changed(_cells: Array[Vector2i]) -> void:
 	_suspended.clear()
 	_station_suspended.clear()
 	_tank_suspended.clear()
+	_tank_layout_changed = true
 	sync_spots()
 
 
@@ -266,6 +280,7 @@ func _forget_station(station_id: int, task_id: int) -> void:
 
 func _forget_tank(tank_id: int, task_id: int) -> void:
 	_tank_tasks.erase(tank_id)
+	_tank_sides.erase(tank_id)
 	_tanks_by_id.erase(task_id)
 
 

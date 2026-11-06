@@ -110,6 +110,23 @@ func test_four_mornings_later_the_tank_is_cloudy_with_less_charm_and_cleaning_br
 	assert_false(_tank_view(tank).cloudy)
 
 
+func test_selling_a_cloudy_tank_then_undo_keeps_it_cloudy() -> void:
+	_start()
+	var tank: PlacedItem = _buy(3)
+	for morning: int in TUNING.cloudy_after_days:
+		_next_morning()
+	assert_true(_sim().aquarium.is_cloudy(tank.id, Clock.sim.day))
+	var cleaned: int = _sim().aquarium.cleaned_day(tank.id)
+	assert_true(_main.call("set_build_active", true))
+	assert_true(int(_main.call("shop_sell", tank.id)) > 0)
+	assert_null(_sim().world.grid.item_at(SPOT))
+	assert_true(_main.call("undo_edit"))
+	var back: PlacedItem = _sim().world.grid.item_at(SPOT)
+	assert_not_null(back)
+	assert_eq(_sim().aquarium.cleaned_day(back.id), cleaned)
+	assert_true(_sim().aquarium.is_cloudy(back.id, Clock.sim.day), "Undo brings the cloudy water back too")
+
+
 func test_the_morning_save_keeps_a_cloudy_tank_cloudy() -> void:
 	_start(true)
 	var tank: PlacedItem = _buy(3)
