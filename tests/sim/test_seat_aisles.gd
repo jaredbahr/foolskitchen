@@ -9,6 +9,7 @@ class Catalogue extends ContentDB:
 		return definitions.get(id) as ItemDef
 
 const ENTRY: Vector2i = Vector2i(0, 11)
+const CUT_TABLE: String = "Nobody walks through seats: this blocks the way to a table"
 
 var _content: Catalogue
 var _sim: RestaurantSim
@@ -184,6 +185,40 @@ func test_a_plant_that_leaves_only_a_way_through_seats_warns() -> void:
 	assert_eq(check.seat_warnings.get(0, ""), "Nobody walks through seats: this blocks the way to a table")
 
 
+func test_cut_off_warning_stays_on_the_item_until_the_next_change() -> void:
+	_seal_with_plant_gap()
+	assert_true(_editor.buy(&"plant", Vector2i(5, 4)))
+	var plant: PlacedItem = _sim.world.grid.item_at(Vector2i(5, 4))
+	assert_eq(_editor.check_current().seat_warnings.get(plant.id, ""), CUT_TABLE,
+		"after the commit the warning stays on the plant")
+	_place(&"small_surface", Vector2i(9, 9))
+	assert_true(_editor.check_current().seat_warnings.is_empty(), "any later change ends it")
+
+
+func test_cut_off_warning_joins_an_existing_one() -> void:
+	var check: EditCheck = EditCheck.new(true)
+	check.seat_warnings[4] = "Only 3 of 4 seats usable"
+	ShopEditor._add_seat_warning(check, 4, CUT_TABLE)
+	assert_eq(check.seat_warnings[4], "Only 3 of 4 seats usable\n" + CUT_TABLE)
+	ShopEditor._add_seat_warning(check, 4, CUT_TABLE)
+	assert_eq(check.seat_warnings[4], "Only 3 of 4 seats usable\n" + CUT_TABLE, "never twice")
+
+
+func test_stamp_warns_on_the_entry_that_causes_the_cut() -> void:
+	_seal_with_plant_gap()
+	var blueprint: Blueprint = Blueprint.new()
+	blueprint.display_name = "Two plants"
+	blueprint.entries = [_entry(&"plant", Vector2i(0, 3)), _entry(&"plant", Vector2i(2, 0))]
+	var check: EditCheck = _editor.check_stamp(blueprint, Vector2i(3, 4))
+	assert_true(check.ok, check.why)
+	assert_false(check.seat_warnings.has(-1), "the harmless first plant")
+	assert_eq(check.seat_warnings.get(-2, ""), CUT_TABLE, "the plant in the gap")
+	assert_true(_editor.stamp(blueprint, Vector2i(3, 4)), _editor.last_check.why)
+	var gap: PlacedItem = _sim.world.grid.item_at(Vector2i(5, 4))
+	assert_eq(_editor.check_current().seat_warnings.get(gap.id, ""), CUT_TABLE)
+	assert_false(_editor.check_current().seat_warnings.has(_sim.world.grid.item_at(Vector2i(3, 7)).id))
+
+
 func test_starter_layout_gains_no_warning() -> void:
 	var errors: Array[String] = []
 	var content: ContentDB = ContentDB.new()
@@ -216,6 +251,29 @@ func test_a_seat_ends_a_walk_and_diagonals_never_brush_one() -> void:
 	assert_false(WallRules.seat_step_ok(grid, Vector2i(5, 6), Vector2i(6, 5)),
 		"a diagonal step brushing the seat's corner is refused")
 	assert_true(WallRules.seat_step_ok(grid, Vector2i(6, 6), Vector2i(7, 7)))
+
+
+## A wall across the room whose two-cell gap already holds one stool, and a
+## table with its stool behind it: a plant in the other gap cell cuts it off.
+func _seal_with_plant_gap() -> void:
+	var grid: SimGrid = _sim.world.grid
+	var plant: ItemDef = _add(&"plant", ItemDef.Category.DECOR)
+	plant.solid = true
+	for x: int in range(12):
+		if x < 3 or x > 5:
+			assert_true(grid.set_terrain(Vector2i(x, 4), SimGrid.Terrain.WALL))
+	_place(&"small_surface", Vector2i(3, 4))
+	_place(&"stool", Vector2i(4, 4), _facing(Vector2i.LEFT))
+	_place(&"small_surface", Vector2i(8, 1))
+	_place(&"stool", Vector2i(8, 2))
+
+
+func _entry(id: StringName, offset: Vector2i, turns: int = 0) -> ShopPlacement:
+	var entry: ShopPlacement = ShopPlacement.new()
+	entry.item_id = id
+	entry.origin = offset
+	entry.quarter_turns = turns
+	return entry
 
 
 func _facing(direction: Vector2i) -> int:

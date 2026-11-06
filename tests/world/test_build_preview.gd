@@ -349,17 +349,20 @@ func test_partial_four_seat_capacity_warns_in_preview_and_after_commit_until_fix
 	assert_not_null(grid.place_def(_content.item(&"coffee_machine"), Vector2i(12, 5), 2))
 	assert_true(grid.remove(grid.item_at(Vector2i(6, 6)).id))
 	_editor.set_owner_level(2)  # the four-seat table unlocks at level 2
+	# Blocking the kitchen aisle leaves the only way to the sink through seats,
+	# which nobody walks through (#315): that warning joins the capacity one.
+	const PARTIAL: String = "Only 3 of 4 seats usable\nNobody walks through seats: this blocks the way to the sink"
 	assert_true(_mode.enter())
 	assert_true(_mode.begin_buy(&"table_4", Vector2i(6, 5)))
 	assert_true(_mode.current_check.ok, "losing a seat warns without blocking the purchase")
 	assert_false(_mode.current_check.unreachable.has(0), "the other three seats remain reachable")
-	assert_eq(_mode.current_check.seat_warnings.get(0, ""), "Only 3 of 4 seats usable")
-	assert_eq(_preview.invalid_reason(), "Only 3 of 4 seats usable")
+	assert_eq(_mode.current_check.seat_warnings.get(0, ""), PARTIAL)
+	assert_eq(_preview.invalid_reason(), PARTIAL)
 	assert_true(_preview.warning_nodes.has(0))
 	assert_true(_mode.commit())
 	var table: PlacedItem = grid.item_at(Vector2i(6, 5))
 	assert_eq(DiningSeats.usable_cells(grid, table).size(), 3)
-	assert_eq(_mode.seat_warnings().get(table.id, ""), "Only 3 of 4 seats usable")
+	assert_eq(_mode.seat_warnings().get(table.id, ""), PARTIAL)
 	assert_true(_preview.warning_nodes.has(table.id))
 	var detached: Dictionary = _mode.presentation_state()
 	detached["seat_warnings"].clear()
@@ -369,7 +372,7 @@ func test_partial_four_seat_capacity_warns_in_preview_and_after_commit_until_fix
 	assert_false(_mode.current_check.ok)
 	assert_true(_preview.warning_nodes.has(table.id), "invalid ghosts preserve the real warning")
 	_mode.cancel()
-	assert_eq(_preview.invalid_reason(), "Only 3 of 4 seats usable")
+	assert_eq(_preview.invalid_reason(), PARTIAL)
 	assert_true(_mode.pick_up(table.id))
 	_mode.update_origin(Vector2i(6, 6))
 	assert_true(_mode.current_check.ok)
@@ -380,7 +383,8 @@ func test_partial_four_seat_capacity_warns_in_preview_and_after_commit_until_fix
 	assert_eq(_preview.invalid_reason(), SEAT_CUT)
 	assert_true(_mode.commit())
 	assert_eq(DiningSeats.usable_cells(grid, table).size(), 4)
-	assert_false(_preview.warning_nodes.has(table.id))
+	assert_eq(_mode.seat_warnings().get(table.id, ""), SEAT_CUT, "it stays on the table until the next change")
+	assert_true(_preview.warning_nodes.has(table.id))
 
 
 func test_removed_item_and_replaced_shop_mesh_leave_no_hidden_or_orphan_nodes() -> void:

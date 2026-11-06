@@ -2983,7 +2983,14 @@ both corner cells). Every furniture buy, move and blueprint stamp
 that flood before and after the edit, and when the edit newly cuts off a
 table seat, station, sink, restroom fixture or the door for real people the
 placed item gets a seat warning ("Nobody walks through seats: this blocks the
-way to a table"), shown with its highlight. That stays a warning, the
+way to a table"), shown with its highlight. It is a placement-time warning:
+it shows while the item is placed or moved, joins any warning the item
+already has ("Only 3 of 4 seats usable"), and after the commit
+`check_current` keeps it on that item only while the grid version is
+unchanged (`ShopEditor._seat_cut_note`), so the next layout change of any
+kind ends it. A blueprint stamp puts it on the first entry whose placement
+completes the cut (`_stamp_culprit`, run only when the stamp cuts something
+off). That stays a warning, the
 furniture rule (DESIGN 4.3); only waiting benches keep #269's refusal. As in
 #269 only what an edit newly cuts off counts, so no existing layout gains a
 warning. The standing check (`check_current`, the `unreachable` highlights

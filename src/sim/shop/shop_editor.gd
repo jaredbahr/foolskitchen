@@ -28,6 +28,9 @@ const PERSON_IN_WAY: String = "Someone is in the way."
 const SEAT_IN_DOORWAY: String = "Seats can't go in the doorway"
 
 var last_check: EditCheck = EditCheck.new()
+## The last committed placement's seat cut-off warning (#315): {version, id,
+## text}. check_current() shows it on that item while the layout is unchanged.
+var _seat_cut_note: Dictionary = {}
 ## The signed cash change of the last successful edit (negative = spent), and
 ## the id a successful buy gave its item. Undo history reads both (FK-085).
 var last_cash_change: int = 0
@@ -187,6 +190,10 @@ func check_current() -> EditCheck:
 		return EditCheck.new(false, "The current shop has invalid placements")
 	var check: EditCheck = EditCheck.new(true)
 	_fill_warnings(check, preview, ids)
+	var grid: SimGrid = _sim.world.grid
+	if check.ok and not _seat_cut_note.is_empty() and int(_seat_cut_note["version"]) == grid.version \
+			and grid.item(int(_seat_cut_note["id"])) != null:
+		_add_seat_warning(check, int(_seat_cut_note["id"]), String(_seat_cut_note["text"]))
 	return check
 
 
@@ -222,6 +229,8 @@ func move(item_id: int, origin: Vector2i, quarter_turns: int, exact: Exact = nul
 		last_cash_change = 0
 	_applying = false
 	last_check = check if moved else EditCheck.new(false, "The shop changed; check the move again")
+	if moved:
+		_remember_seat_cut(check, item_id)
 	return moved
 
 
@@ -258,6 +267,8 @@ func buy(def_id: StringName, origin: Vector2i, quarter_turns: int = 0, exact: Ex
 		_record_item(-definition.variant_price(placed.variant_id) if exact == null else exact.amount, exact)
 	_applying = false
 	last_check = check if placed != null else EditCheck.new(false, "The shop changed; check the purchase again")
+	if placed != null:
+		_remember_seat_cut(check, placed.id)
 	return placed != null
 
 
@@ -318,7 +329,7 @@ func check_stamp(blueprint: Blueprint, anchor: Vector2i, rotation: int = 0, exac
 	check.cost = charge
 	_fill_warnings(check, preview, ids)
 	if exact == null:
-		_note_seat_cut_off(check, preview, ids[proposed[0]])
+		_note_seat_cut_off(check, preview, _stamp_culprit(blueprint, anchor, rotation, preview))
 	_note_menu_access(check, preview, exact != null)
 	return check
 
@@ -341,6 +352,10 @@ func stamp(blueprint: Blueprint, anchor: Vector2i, rotation: int = 0, exact: Exa
 	last_stamp_ids.clear()
 	for item: PlacedItem in placed:
 		last_stamp_ids.append(item.id)
+	# Stamp previews number their entries -1, -2, ... in placement order.
+	var culprit: int = -1 - check.seat_cut_id
+	if not check.seat_cut_warning.is_empty() and culprit >= 0 and culprit < placed.size():
+		_remember_seat_cut(check, placed[culprit].id)
 	if exact == null:
 		var total: int = 0
 		for item: PlacedItem in placed:
@@ -2328,17 +2343,55 @@ func _fill_warnings(check: EditCheck, grid: SimGrid, ids: Dictionary[int, int]) 
 ## Nobody walks through a seat (#315): MovementCoordinator never lets anyone
 ## use a seat as an aisle, while the standing path check walks across seats.
 ## A placement that newly cuts something off for real people (a row of stools
-## across the only gap, say) warns on the item placed. The highlighted
+## across the only gap, say) warns on the item placed: while it is placed or
+## moved, and after the commit until the next layout change. The highlighted
 ## `unreachable` items keep the standing check, which probes and the soak
-## treat as a hard condition. Like #269, only what this edit newly cuts off counts, so older
-## layouts never gain warnings; and like all furniture it warns, never blocks.
+## treat as a hard condition. Like #269, only what an edit newly cuts off
+## counts, so older layouts never gain warnings; and like all furniture it
+## warns, never blocks.
 func _note_seat_cut_off(check: EditCheck, preview: SimGrid, result_id: int) -> void:
 	if not check.ok:
 		return
+	var cut: String = WallRules.seat_cut_off_problem(_sim.world.grid, preview)
+	if cut.is_empty():
+		return
+	check.seat_cut_warning = WallRules.seat_cut_off_warning(cut)
+	check.seat_cut_id = result_id
+	_add_seat_warning(check, result_id, check.seat_cut_warning)
+
+
+## Joins a warning to any the item already has ("Only 3 of 4 seats usable").
+static func _add_seat_warning(check: EditCheck, item_id: int, text: String) -> void:
+	var existing: String = check.seat_warnings.get(item_id, "")
+	if existing.is_empty():
+		check.seat_warnings[item_id] = text
+	elif not existing.contains(text):
+		check.seat_warnings[item_id] = existing + "\n" + text
+
+
+func _remember_seat_cut(check: EditCheck, item_id: int) -> void:
+	_seat_cut_note = {} if check.seat_cut_warning.is_empty() else \
+		{"version": _sim.world.grid.version, "id": item_id, "text": check.seat_cut_warning}
+
+
+## The stamp entry whose placement first leaves the only way somewhere through
+## seats, as its preview id (-1 for the first entry). Only run when the whole
+## stamp cuts something off; falls back to the first entry.
+func _stamp_culprit(blueprint: Blueprint, anchor: Vector2i, rotation: int, stamped: SimGrid) -> int:
 	var live: SimGrid = _sim.world.grid
-	var cut: String = WallRules.seat_cut_off_problem(live, preview)
-	if not cut.is_empty() and not check.seat_warnings.has(result_id):
-		check.seat_warnings[result_id] = WallRules.seat_cut_off_warning(cut)
+	var was: Dictionary[Vector2i, bool] = WallRules.reachable(live, true)
+	if WallRules.seat_cut_off_from(was, stamped).is_empty():
+		return -1
+	var ids: Dictionary[int, int] = {}
+	var partial: SimGrid = _preview_without(-1, ids)
+	var index: int = 0
+	for entry: ShopPlacement in blueprint.placements(_content, anchor, rotation):
+		if partial == null or partial.place_def(_content.item(entry.item_id), entry.origin, entry.quarter_turns) == null:
+			return -1
+		if not WallRules.seat_cut_off_from(was, partial).is_empty():
+			return -1 - index
+		index += 1
+	return -1
 
 
 ## Tables and stations nobody can walk to from the street. `seats_stop`: walk

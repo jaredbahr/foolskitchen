@@ -475,11 +475,17 @@ static func cut_off_problem(before: SimGrid, after: SimGrid, people: Array[Vecto
 ## walk, as MovementCoordinator never lets anyone use a seat as an aisle. Only
 ## what this edit newly cuts off counts, so older layouts are never flagged.
 static func seat_cut_off_problem(before: SimGrid, after: SimGrid) -> String:
-	return _cut_off(after, reachable(before, true), reachable(after, true), [] as Array[Vector2i])
+	return seat_cut_off_from(reachable(before, true), after)
 
 
-## The player warning for a seat that cuts something off (#315): the
-## furniture rule warns, never blocks (DESIGN 4.3).
+## seat_cut_off_problem() with the seat-aware reach of `before` already known.
+static func seat_cut_off_from(was: Dictionary[Vector2i, bool], after: SimGrid) -> String:
+	return _cut_off(after, was, reachable(after, true), [] as Array[Vector2i])
+
+
+## The player warning for a placement that leaves the only way somewhere
+## through seats (#315): the furniture rule warns, never blocks (DESIGN 4.3).
+## Shown while placing or moving, and on the item until the next layout change.
 static func seat_cut_off_warning(cut: String) -> String:
 	match cut:
 		CUT_DOOR:

@@ -179,17 +179,20 @@ func _assert_all_setups(original: bool) -> void:
 			_assert_fryer_staging_only(original)
 
 
-## #315: every setup still validates with no path or seat warning. Walking as
+## #315: every setup still validates with no path warning (on the roomier
+## starter no seat warning either; a legacy setup's own placement may carry
+## one until the next change). Walking as
 ## people do (a seat ends a walk), nothing is cut off on the roomier starter,
 ## joined tables included. The preserved original layout's middle row is all
 ## tables and seats, so real people there reach the kitchen only by squeezing
-## through: where the seat rule finds its pass cut off, the server's real
-## route to it agrees.
+## through: for every pass, the seat rule and the server's real route agree
+## on whether its guest side can be reached.
 func _assert_seats_stop_paths(sim: RestaurantSim, profile: String, original: bool) -> void:
 	var check: EditCheck = (_main.get("shop_editor") as ShopEditor).check_current()
 	assert_true(check.ok, profile)
 	assert_eq(check.unreachable, [] as Array[int], profile + " has no path warning")
-	assert_true(check.seat_warnings.is_empty(), profile + " has no seat warning")
+	if not original:
+		assert_true(check.seat_warnings.is_empty(), profile + " has no seat warning")
 	var ids: Dictionary[int, int] = {}
 	for item: PlacedItem in sim.world.grid.items():
 		ids[item.id] = item.id
@@ -197,13 +200,21 @@ func _assert_seats_stop_paths(sim: RestaurantSim, profile: String, original: boo
 	if not original:
 		assert_eq(cut, [] as Array[int], profile + " leaves everything reachable for real people")
 		return
+	var server: SimAgent = null
+	for actor: SimAgent in sim.world.agents:
+		if actor is StaffAgent and actor.role == &"server":
+			server = actor
+	assert_not_null(server, profile + " has a server to route")
+	if server == null:
+		return
+	var checked: int = 0
 	for item: PlacedItem in sim.world.grid.items():
-		if (item.def as ItemDef).category != ItemDef.Category.PASS or not cut.has(item.id):
+		if (item.def as ItemDef).category != ItemDef.Category.PASS:
 			continue
-		for actor: SimAgent in sim.world.agents:
-			if actor is StaffAgent and actor.role == &"server":
-				assert_true(sim.world.movement.route(sim.world, actor, actor.cell, item.work_cells[1], false).is_empty(),
-					profile + ": the seat rule matches real routing")
+		checked += 1
+		var route: Array[Vector2i] = sim.world.movement.route(sim.world, server, server.cell, item.work_cells[1], false)
+		assert_eq(route.is_empty(), cut.has(item.id), profile + ": the seat rule matches real routing")
+	assert_true(checked > 0, profile + " checked a pass against real routing")
 
 
 func _start_profile_base(original: bool) -> void:
