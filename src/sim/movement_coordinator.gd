@@ -12,6 +12,8 @@ const ESCAPE_FUTILE: int = 1
 const ESCAPE_ACTED: int = 2
 ## Futile escapes searched in one tick before the rest wait for the next.
 const MAX_ESCAPE_TRIES_PER_TICK: int = 3
+## How far an escape is handed along a line of leavers to reach its head.
+const MAX_LINE_HAND_ON: int = 8
 ## Liveness key for a leaving guest: any real exit counts as its goal.
 const EXIT_GOAL: Vector2i = Vector2i(-1000001, -1000001)
 
@@ -1029,7 +1031,7 @@ func _real_goal(agent: SimAgent) -> Vector2i:
 	return agent.cell if agent.path.is_empty() else agent.path.back()
 
 
-func _escape(world: SimWorld, stuck: SimAgent, stalled: int) -> int:
+func _escape(world: SimWorld, stuck: SimAgent, stalled: int, depth: int = 0) -> int:
 	if stuck.move_progress > 0.0 or _edges.has(stuck.id) or _stopping.has(stuck.id):
 		return ESCAPE_SKIPPED
 	var tuning: MovementTuning = world.movement_tuning
@@ -1049,6 +1051,20 @@ func _escape(world: SimWorld, stuck: SimAgent, stalled: int) -> int:
 		var holder: SimAgent = _holder(world, cell)
 		if holder != null and holder != stuck and not blockers.has(holder):
 			blockers.append(holder)
+	if _leaving(stuck) and not blockers.is_empty() and depth < MAX_LINE_HAND_ON:
+		# A line on the way out: clearing or swapping with the leaver ahead only
+		# shuffles the line. Hand the escape, and this wait, to the one ahead,
+		# until it reaches the head of the line and whoever really blocks it.
+		var ahead: SimAgent = null
+		for blocker: SimAgent in blockers:
+			if not _leaving(blocker) or _may_squeeze(world, stuck, blocker):
+				ahead = null
+				break
+			if ahead == null:
+				ahead = blocker
+		if ahead != null:
+			escape_counts[&"line_head"] = int(escape_counts.get(&"line_head", 0)) + 1
+			return _escape(world, ahead, stalled, depth + 1)
 	var detour: bool = not stuck is CourierAgent and route_cells != stuck.path.slice(stuck.path_index - 1)
 	# Right of way wins the step when someone else reaches for the same cell
 	# at the same moment: in a busy corridor a free first step is exactly

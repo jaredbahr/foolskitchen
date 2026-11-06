@@ -373,6 +373,25 @@ func test_a_leaving_guest_squeezes_past_another_leaver_only_head_on() -> void:
 	assert_true(corridor.movement._may_squeeze(corridor, guest, inspector))
 
 
+## A line of guests on the way out: the one at the back cannot be helped by
+## moving the leavers ahead of it, so its escape (and its wait) goes to the
+## head of the line, which squeezes past whoever really blocks the door.
+func test_an_escape_at_the_back_of_a_leaving_line_goes_to_its_head() -> void:
+	var world: SimWorld = _service_world(["E...."])
+	var queued: GuestWalker = _guest(world, Vector2i(1, 0))
+	var head: GuestWalker = _guest(world, Vector2i(2, 0))
+	var back: GuestWalker = _guest(world, Vector2i(3, 0))
+	queued.state = CustomerAgent.State.QUEUED
+	head.state = CustomerAgent.State.LEAVING
+	back.state = CustomerAgent.State.LEAVING
+	var outcome: int = world.movement._escape(world, back, world.movement_tuning.squeeze_after_ticks)
+	assert_eq(outcome, MovementCoordinator.ESCAPE_ACTED)
+	assert_eq(int(world.movement.escape_counts.get(&"line_head", 0)), 1)
+	assert_true(world.movement.is_squeezing(head.id), "the head of the line squeezes past")
+	assert_true(world.movement.is_squeezing(queued.id))
+	assert_false(world.movement.is_squeezing(back.id), "the back waits its turn")
+
+
 ## The inspector who gave up on one door after being blocked there is led to
 ## the other one, not back to the nearer door it avoids.
 func test_the_backstop_keeps_the_inspector_off_the_door_it_avoids() -> void:
