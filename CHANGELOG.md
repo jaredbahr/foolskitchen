@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- The game now has music: a jazzy "Kitchen Jamboree" on the title screen, "Buoyant Swing Groove" while you serve in the daytime, and a smoky "Smoky Vamp" once the evening lights come on, with a two-second crossfade between them and silence when the shop is closed. The Music slider in Settings controls it, and a jukebox in your shop always takes over. (#PRNUM)
 - Build a patio on the pavement beside your street door (Build > Patio, $15 a tile) and furnish it with outdoor tables, chairs and a waiting bench for a little extra curb appeal. Outdoor seats close in the rain, guests sitting outside are more patient, and the patio only seats new guests while the kitchen is keeping up, so it never swamps a small crew. (#269)
 - Buy an Order counter (Build > Bar & Café, $120) and drink-only guests queue at it, order and pay at the till, then take a free table or leave with a takeaway. The evening report shows how many takeaways you sold. (#312)
 - Staff now look after the most impatient guests first: when choosing between taking an order, serving a meal or clearing a table, they favour the guest closest to giving up, and cooks start the tickets of the guests who have waited longest. Distance and your Staff-panel job priorities still count. Click a guest to see who is coming to take their order or bring their food. (#310)

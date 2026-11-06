@@ -36,6 +36,7 @@ func start() -> void:
 	_started = true
 	_clock_processed = Clock.is_processing()
 	_clock_input = Clock.is_processing_unhandled_input()
+	Sounds.set_music_context(MusicTracks.TITLE)
 	Clock.set_speed(0)
 	Clock.set_process(false)
 	Clock.set_process_unhandled_input(false)
@@ -71,6 +72,7 @@ func start() -> void:
 
 func _exit_tree() -> void:
 	if _started:
+		Sounds.set_music_context(&"")
 		Clock.set_process(_clock_processed)
 		Clock.set_process_unhandled_input(_clock_input)
 

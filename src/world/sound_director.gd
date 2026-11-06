@@ -48,15 +48,21 @@ func unbind() -> void:
 	_music_item_id = -1
 	_music_loop = &""
 	Sounds.stop_loops()
+	Sounds.set_music_ducked(false)
+	Sounds.set_music_context(&"")
 
 
 func _exit_tree() -> void:
 	unbind()
 
 
-## Sets the ambience loops from the current view; main calls it every frame.
-## Everything is silent outside service hours and while the game is paused.
-func refresh() -> void:
+## Sets the ambience loops from the current view; main calls it every frame
+## with the shop's light (`DayLight.Look.interior_energy`). Everything is silent
+## outside service hours and while the game is paused. The music instead picks
+## its daytime or evening track during service and keeps playing while paused.
+func refresh(light: float = 0.0) -> void:
+	var serving: bool = _sim != null and OPEN_PHASES.has(Clock.sim.phase)
+	Sounds.set_music_context(MusicTracks.service_context(serving, light))
 	var running: bool = _sim != null and Clock.speed > 0 and OPEN_PHASES.has(Clock.sim.phase)
 	var guests: int = 0
 	if running and _sim.world != null:
@@ -91,6 +97,7 @@ func _refresh_music(running: bool) -> void:
 		_music_loop = wanted
 	if not _music_loop.is_empty():
 		Sounds.set_loop_level(_music_loop, MUSIC_LEVEL)
+	Sounds.set_music_ducked(not _music_loop.is_empty())
 
 
 static func station_level(busy: int) -> float:
