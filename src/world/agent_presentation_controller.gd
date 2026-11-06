@@ -89,7 +89,8 @@ static func frame_for(agent: SimAgent, world: SimWorld, chair_seat_height: float
 	frame.look_supported = PersonPresentation.model_for(agent.role, agent.id, frame.customer_type) != &""
 	var start: Vector3 = GridMath.cell_to_world(agent.cell)
 	var end: Vector3 = GridMath.cell_to_world(agent.next_cell())
-	frame.sim_floor_position = start.lerp(end, clampf(agent.move_progress, 0.0, 1.0))
+	# Includes a squeeze-past's sideways bow (#306); otherwise the plain lerp.
+	frame.sim_floor_position = agent.movement_position()
 	frame.floor_position = frame.sim_floor_position
 	frame.movement_trace_expected = true
 	frame.movement_trace = agent.movement_trace()

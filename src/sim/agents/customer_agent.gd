@@ -201,6 +201,7 @@ static func _type_patience(budget: int, multiplier: float) -> int:
 ## missing station) becomes &"kitchen_failed"; the raw reason is in the log.
 const PLAYER_REASONS: Array[StringName] = [
 	&"out_of_stock", &"waited_too_long", &"closing", &"no_table", &"too_expensive", &"no_clean_plates",
+	&"no_way_through",
 ]
 
 
@@ -1169,6 +1170,17 @@ func _leave(world: SimWorld, sim: RestaurantSim, reason: StringName) -> void:
 	_release_toilet(world)
 	clear_path()
 	state = State.LEAVING
+
+
+## The movement liveness backstop (#306): this guest has been unable to take a
+## single step for a long time even after the crowd was asked to clear. Leave
+## through the ordinary departure rather than wait forever.
+func give_up_blocked(world: SimWorld) -> void:
+	var sim: RestaurantSim = _restaurant.get_ref() as RestaurantSim
+	if sim == null or state >= State.LEAVING:
+		return
+	world.log_event("Guest #%d couldn't get through and left" % id)
+	_leave(world, sim, &"no_way_through")
 
 
 func _cancel_work(world: SimWorld, sim: RestaurantSim) -> void:

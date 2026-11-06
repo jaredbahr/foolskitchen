@@ -54,6 +54,13 @@ static func problem(world: SimWorld, before: Dictionary) -> String:
 		return "missing exact prior-tick observation"
 	var occupied: Dictionary[Vector2i, int] = {}
 	var active: Dictionary[int, SimAgent] = {}
+	# A squeeze-past (#306) is the one declared exception: two partners swap
+	# over one shared edge, each claiming the other's current cell, and a seat
+	# booking on one of the two cells passes to the partner stepping onto it.
+	var partners: Dictionary[int, int] = {}
+	for pair: Array in world.movement.snapshot().get("squeezes", []):
+		partners[int(pair[0])] = int(pair[1])
+		partners[int(pair[1])] = int(pair[0])
 	for agent: SimAgent in world.agents:
 		if not agent.movement_admitted or active.has(agent.id):
 			return "unadmitted or duplicate active person: %d" % agent.id
@@ -63,11 +70,22 @@ static func problem(world: SimWorld, before: Dictionary) -> String:
 		occupied[agent.cell] = agent.id
 		if not is_finite(agent.move_progress) or agent.move_progress < 0.0 or agent.move_progress >= 1.0:
 			return "invalid fractional progress: %d" % agent.id
-		var invalid: String = _cell_problem(world, agent, agent.cell)
+		# Only the seat a leaving guest handed to its partner may be stood on
+		# under the partner's booking; every other seat rule still applies.
+		var handed_to: int = partners.get(agent.id, -1)
+		var invalid: String = _cell_problem(world, agent, agent.cell, -1, handed_to)
 		if not invalid.is_empty():
 			return "current cell of %d: %s" % [agent.id, invalid]
 		var from: Vector2i = agent.cell
-		for index: int in range(agent.path_index, agent.path.size()):
+		var first: int = agent.path_index
+		if world.movement.is_squeezing(agent.id):
+			# The swap edge itself is the declared exception; the route after it
+			# is checked like anyone's.
+			if first >= agent.path.size():
+				return "squeeze of %d has no swap edge" % agent.id
+			from = agent.path[first]
+			first += 1
+		for index: int in range(first, agent.path.size()):
 			var to: Vector2i = agent.path[index]
 			invalid = _edge_problem(world, agent, from, to)
 			if not invalid.is_empty():
@@ -90,9 +108,18 @@ static func problem(world: SimWorld, before: Dictionary) -> String:
 		var holder: int = claims[destination]
 		if not active.has(holder):
 			return "claim held by missing person: %d" % holder
-		if occupied.has(destination) and occupied[destination] != holder:
+		if occupied.has(destination) and occupied[destination] != holder \
+				and partners.get(holder, -1) != occupied[destination]:
 			return "claim conflicts with another current person at %s" % destination
 	for agent: SimAgent in world.agents:
+		if partners.has(agent.id):
+			# The squeeze bows sideways off the grid line; check its ends only.
+			var prior: Dictionary = before.active.get(agent.id, {})
+			var partner_prior: Dictionary = before.active.get(partners[agent.id], {})
+			if prior.is_empty() or partner_prior.is_empty() \
+					or not agent.cell in [prior.cell, partner_prior.cell]:
+				return "squeeze of %d does not swap with its partner" % agent.id
+			continue
 		var analysis: Dictionary = _actual_segments(world, agent, before)
 		if not analysis.error.is_empty():
 			return "actual trace of %d: %s" % [agent.id, analysis.error]
@@ -119,7 +146,8 @@ static func problem(world: SimWorld, before: Dictionary) -> String:
 			var other: Dictionary = edges[other_index]
 			if edge.id == other.id:
 				continue
-			if edge["from"] == other["to"] and edge["to"] == other["from"]:
+			if edge["from"] == other["to"] and edge["to"] == other["from"] \
+					and partners.get(int(edge.id), -1) != int(other.id):
 				return "opposite edge reservations"
 			var delta: Vector2i = edge["to"] - edge["from"]
 			var other_delta: Vector2i = other["to"] - other["from"]
@@ -134,12 +162,15 @@ static func problem(world: SimWorld, before: Dictionary) -> String:
 			return "stopping edge belongs to a missing person"
 	for left: int in world.agents.size():
 		for right: int in range(left + 1, world.agents.size()):
+			if partners.get(world.agents[left].id, -1) == world.agents[right].id:
+				continue
 			if _traces_touch(world.agents[left].movement_trace(), world.agents[right].movement_trace()):
 				return "timed movement crosses between %d and %d" % [world.agents[left].id, world.agents[right].id]
 	return ""
 
 
-static func _cell_problem(world: SimWorld, agent: SimAgent, cell: Vector2i, prior_owner: int = -1) -> String:
+static func _cell_problem(world: SimWorld, agent: SimAgent, cell: Vector2i, prior_owner: int = -1,
+		handed_to: int = -1) -> String:
 	if agent is CourierAgent:
 		var courier: CourierAgent = agent as CourierAgent
 		var on_route: bool = courier.route.has(cell)
@@ -162,9 +193,10 @@ static func _cell_problem(world: SimWorld, agent: SimAgent, cell: Vector2i, prio
 		var item: PlacedItem = world.grid.item(item_id)
 		seat = true
 		var holder: int = item.reserved_by(cell)
-		if holder >= 0 and holder != agent.id and prior_owner != agent.id:
+		var handed: bool = handed_to >= 0 and holder == handed_to
+		if holder >= 0 and holder != agent.id and prior_owner != agent.id and not handed:
 			return "foreign furniture seat"
-		own = own or holder == agent.id
+		own = own or holder == agent.id or handed
 	if seat and not own and prior_owner != agent.id:
 		return "unassigned furniture seat"
 	return ""

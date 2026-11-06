@@ -6,6 +6,9 @@ extends RefCounted
 
 enum MoveResult { ARRIVED, MOVING, BLOCKED }
 
+## How far (m) each person bows sideways at the middle of a squeeze-past.
+const SQUEEZE_BOW: float = 0.14
+
 ## Assigned by SimWorld.add_agent (never reused).
 var id: int = 0
 ## &"cook", &"server", &"owner", &"customer", ...
@@ -25,6 +28,9 @@ var needs_repath: bool = false
 var last_progress_tick: int = 0
 ## Pending requests live outside SimWorld.agents until physically admitted.
 var movement_admitted: bool = false
+## During a squeeze-past (#306) the two people bow to opposite sides of their
+## shared edge (+1 / -1), so the swap is drawn as passing, never overlapping.
+var squeeze_side: float = 0.0
 var _movement_world: WeakRef
 var _trace_tick: int = -1
 var _trace_points: Array[Vector3] = []
@@ -102,8 +108,14 @@ func install_movement_route(cells: Array[Vector2i]) -> void:
 
 
 func movement_position() -> Vector3:
-	return GridMath.cell_to_world(cell).lerp(GridMath.cell_to_world(next_cell()),
-		clampf(move_progress, 0.0, 1.0))
+	var start: Vector3 = GridMath.cell_to_world(cell)
+	var end: Vector3 = GridMath.cell_to_world(next_cell())
+	var progress: float = clampf(move_progress, 0.0, 1.0)
+	var position: Vector3 = start.lerp(end, progress)
+	if squeeze_side != 0.0 and end != start:
+		var side: Vector3 = (end - start).normalized().cross(Vector3.UP)
+		position += side * SQUEEZE_BOW * squeeze_side * sin(PI * progress)
+	return position
 
 
 func reset_movement_trace(tick: int, cause: String = "reset") -> void:

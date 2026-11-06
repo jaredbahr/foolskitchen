@@ -8,3 +8,7 @@ repath_after_ticks = 6
 yield_after_ticks = 10
 yield_search_radius = 8
 admission_search_radius = 32
+escape_after_ticks = 120
+escape_retry_ticks = 40
+squeeze_after_ticks = 300
+give_up_after_ticks = 450

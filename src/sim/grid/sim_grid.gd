@@ -457,6 +457,12 @@ func reachable_avoiding(start: Vector2i, blocked: Dictionary[Vector2i, bool],
 	return seen
 
 
+## One step find_path_avoiding would take with this blocked set (callers walk
+## walkable_neighbours themselves, e.g. a search that stops at the first match).
+func actor_step(from: Vector2i, to: Vector2i, blocked: Dictionary[Vector2i, bool], guest: bool = false) -> bool:
+	return _actor_step(from, to, blocked, guest)
+
+
 func _actor_step(from: Vector2i, to: Vector2i, blocked: Dictionary[Vector2i, bool], guest: bool) -> bool:
 	var delta: Vector2i = to - from
 	if maxi(absi(delta.x), absi(delta.y)) != 1 or blocked.has(to) \
