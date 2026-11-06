@@ -948,8 +948,8 @@ func _watch_liveness(world: SimWorld) -> void:
 	var tuning: MovementTuning = world.movement_tuning
 	var due: Array[Array] = []
 	for agent: SimAgent in world.agents:
-		if (agent.has_arrived() and not _resume.has(agent.id)) or _squeezes.has(agent.id) \
-				or not agent.movement_admitted:
+		if (agent.has_arrived() and not _resume.has(agent.id) and not _leaving(agent)) \
+				or _squeezes.has(agent.id) or not agent.movement_admitted:
 			_stall.erase(agent.id)
 			continue
 		# Progress means getting closer to where this person is really going,
@@ -1086,7 +1086,30 @@ func _escape(world: SimWorld, stuck: SimAgent, stalled: int) -> int:
 func _escape_route(world: SimWorld, stuck: SimAgent) -> Array[Vector2i]:
 	if stuck is CourierAgent:
 		return stuck.path.slice(stuck.path_index - 1)
+	if _leaving(stuck):
+		# Either street cell is a way out: take the nearer one.
+		var best: Array[Vector2i] = []
+		var best_cost: float = INF
+		for entry: Vector2i in world.grid.entries():
+			var cells: Array[Vector2i] = route(world, stuck, stuck.cell, entry, false)
+			var cost: float = _route_cost(cells)
+			if cells.size() >= 2 and cost < best_cost:
+				best = cells
+				best_cost = cost
+		if not best.is_empty():
+			return best
 	return route(world, stuck, stuck.cell, _real_goal(stuck), false)
+
+
+func _route_cost(cells: Array[Vector2i]) -> float:
+	var cost: float = 0.0
+	for index: int in range(1, cells.size()):
+		cost += GridMath.octile(cells[index - 1], cells[index])
+	return cost
+
+
+func _leaving(agent: SimAgent) -> bool:
+	return agent is CustomerAgent and (agent as CustomerAgent).state == CustomerAgent.State.LEAVING
 
 
 func _holder(world: SimWorld, cell: Vector2i) -> SimAgent:

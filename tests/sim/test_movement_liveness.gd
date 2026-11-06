@@ -301,6 +301,26 @@ func test_a_pocket_prefers_cells_clear_of_work_spots() -> void:
 	assert_eq(path, [Vector2i(0, 0), Vector2i(1, 0)] as Array[Vector2i], "falls back to it when nothing else is free")
 
 
+## A leaving guest drops its path whenever a step is blocked, so between
+## tries it looks arrived. The watchdog still follows it and leads it to the
+## nearer street cell (in a doorway crowd it used to shuffle for good).
+func test_a_leaving_guest_without_a_path_is_still_led_out() -> void:
+	var world: SimWorld = _service_world(["E...", "#.##"])
+	var leaving: GuestWalker = _guest(world, Vector2i(2, 0))
+	leaving.state = CustomerAgent.State.LEAVING
+	var standing: SimAgent = _standing(world, Vector2i(1, 0))
+	assert_true(leaving.has_arrived(), "no path between tries")
+	for tick: int in 400:
+		if not _advance(world):
+			return
+		if leaving.cell == Vector2i(0, 0):
+			break
+	assert_eq(leaving.cell, Vector2i(0, 0), "reaches the street")
+	assert_eq(standing.cell, Vector2i(1, 1), "the person in the way steps aside, not out of the door")
+	assert_true(world.now <= world.movement_tuning.escape_after_ticks + 20,
+		"led out at the first escape (tick %d)" % world.now)
+
+
 ## Nobody stands in the stuck person's shortest way: the backstop grants no
 ## right of way and changes nothing.
 func test_an_escape_with_nobody_in_the_way_does_nothing() -> void:
