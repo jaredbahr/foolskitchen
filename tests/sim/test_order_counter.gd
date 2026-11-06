@@ -321,10 +321,11 @@ func test_takeaway_tuning_is_data_and_validated() -> void:
 
 
 ## #306: the movement liveness backstop gives someone who has not got any
-## closer for 120 ticks right of way (twice in this run, no one moved aside),
-## so guests 11, 13 and 17 order, get served and leave one tick later. Who is
-## served and why each guest leaves are unchanged.
-const GOLDEN_NO_COUNTER: String = "4:0:104:368:478:happy|5:30:161:548:658:happy|6:60:214:433:543:happy|7:90:261:662:772:happy|8:120:-1:-1:421:no_table|9:150:-1:-1:451:no_table|10:180:-1:-1:481:no_table|11:210:734:927:1037:happy|12:240:-1:-1:541:no_table|13:270:777:1000:1110:happy|14:300:-1:-1:601:no_table|15:330:-1:-1:631:no_table|16:360:-1:-1:661:no_table|17:390:830:1083:1193:happy"
+## closer for 120 ticks right of way (no one moved aside), including a leaving
+## guest between tries (its path is dropped whenever a step is blocked), so
+## guests 11, 13 and 17 order, get served and leave two ticks later than
+## before the backstop. Who is served and why each guest leaves are unchanged.
+const GOLDEN_NO_COUNTER: String = "4:0:104:368:478:happy|5:30:161:548:658:happy|6:60:214:433:543:happy|7:90:261:662:772:happy|8:120:-1:-1:421:no_table|9:150:-1:-1:451:no_table|10:180:-1:-1:481:no_table|11:210:735:928:1038:happy|12:240:-1:-1:541:no_table|13:270:778:1001:1111:happy|14:300:-1:-1:601:no_table|15:330:-1:-1:631:no_table|16:360:-1:-1:661:no_table|17:390:831:1084:1194:happy"
 
 var _paid_orders: Array[Order] = []
 
