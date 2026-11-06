@@ -10,6 +10,9 @@ const SECTION: String = "preferences"
 const VERSION: int = 1
 const UI_SCALES: Array[int] = [100, 125, 150]
 const OPEN_SPEEDS: Array[int] = [1, 2]
+## The Music bus sits this far under the slider's level, so the theme is a
+## bed under the room rather than the loudest thing in it.
+const MUSIC_TRIM_DB: float = -6.0
 const MISSING: String = "__missing_preference__"
 const INTEGER_KEYS: Array[String] = ["version", "master_volume", "music_volume",
 	"effects_volume", "ui_scale", "default_open_speed"]
@@ -296,7 +299,8 @@ func apply_audio() -> void:
 			continue
 		var linear: float = float(volume_percent(bus)) / 100.0
 		AudioServer.set_bus_mute(index, is_zero_approx(linear))
-		AudioServer.set_bus_volume_db(index, linear_to_db(maxf(linear, 0.0001)))
+		var trim: float = MUSIC_TRIM_DB if bus == &"Music" else 0.0
+		AudioServer.set_bus_volume_db(index, linear_to_db(maxf(linear, 0.0001)) + trim)
 
 
 func apply_window(window: Window) -> void:
