@@ -95,6 +95,32 @@ func test_staff_squeezes_past_a_stationary_guest_in_a_dead_end() -> void:
 	assert_eq(guest.gave_up_at, -1)
 
 
+## A leaving guest still on its own stool (placed in the only way out) can be
+## passed only over that seat: the partner takes the booking while it stands
+## there, so nobody ever stands on a seat that is not theirs.
+func test_a_leaving_guest_on_its_own_seat_hands_the_seat_to_its_squeeze_partner() -> void:
+	var world: SimWorld = _service_world(["...."], false)
+	var stool: PlacedItem = world.grid.place(Vector2i.ONE, Vector2i(1, 0), 0, false,
+		[] as Array[Vector2i], [Vector2i.ZERO] as Array[Vector2i])
+	assert_not_null(stool)
+	var leaving: GuestWalker = _guest(world, Vector2i(1, 0))
+	assert_true(stool.reserve(Vector2i(1, 0), leaving.id))
+	var waiting: GuestWalker = _guest(world, Vector2i(0, 0))
+	assert_true(world.clock.start_service())
+	leaving.state = CustomerAgent.State.LEAVING
+	assert_true(leaving.set_destination(world.grid, Vector2i(0, 0)))
+	var handed: bool = false
+	for tick: int in 800:
+		if not _advance(world):
+			return
+		handed = handed or stool.reserved_by(Vector2i(1, 0)) == waiting.id
+		if leaving.cell == Vector2i(0, 0):
+			break
+	assert_eq(leaving.cell, Vector2i(0, 0), "the leaving guest gets out")
+	assert_true(handed, "the waiting guest held the stool while standing on it")
+	assert_eq(int(world.movement.escape_counts.get(&"squeeze", 0)), 1)
+
+
 ## Nothing can clear a guest's way and a guest who is not leaving never
 ## squeezes: it gives up at the authored limit instead of waiting forever.
 func test_a_guest_who_still_cannot_move_gives_up() -> void:

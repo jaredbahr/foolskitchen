@@ -54,6 +54,13 @@ static func problem(world: SimWorld, before: Dictionary) -> String:
 		return "missing exact prior-tick observation"
 	var occupied: Dictionary[Vector2i, int] = {}
 	var active: Dictionary[int, SimAgent] = {}
+	# A squeeze-past (#306) is the one declared exception: two partners swap
+	# over one shared edge, each claiming the other's current cell, and a seat
+	# booking on one of the two cells passes to the partner stepping onto it.
+	var partners: Dictionary[int, int] = {}
+	for pair: Array in world.movement.snapshot().get("squeezes", []):
+		partners[int(pair[0])] = int(pair[1])
+		partners[int(pair[1])] = int(pair[0])
 	for agent: SimAgent in world.agents:
 		if not agent.movement_admitted or active.has(agent.id):
 			return "unadmitted or duplicate active person: %d" % agent.id
@@ -63,9 +70,12 @@ static func problem(world: SimWorld, before: Dictionary) -> String:
 		occupied[agent.cell] = agent.id
 		if not is_finite(agent.move_progress) or agent.move_progress < 0.0 or agent.move_progress >= 1.0:
 			return "invalid fractional progress: %d" % agent.id
-		var invalid: String = _cell_problem(world, agent, agent.cell)
+		var squeezing: bool = partners.has(agent.id)
+		var invalid: String = _cell_problem(world, agent, agent.cell, agent.id if squeezing else -1)
 		if not invalid.is_empty():
 			return "current cell of %d: %s" % [agent.id, invalid]
+		if squeezing:
+			continue
 		var from: Vector2i = agent.cell
 		for index: int in range(agent.path_index, agent.path.size()):
 			var to: Vector2i = agent.path[index]
@@ -86,12 +96,6 @@ static func problem(world: SimWorld, before: Dictionary) -> String:
 	if snapshot.pending != pending_ids:
 		return "pending snapshot does not match ordered admission queue"
 	var claims: Dictionary = snapshot.next
-	# A squeeze-past (#306) is the one declared exception: two partners swap
-	# over one shared edge, each claiming the other's current cell.
-	var partners: Dictionary[int, int] = {}
-	for pair: Array in snapshot.get("squeezes", []):
-		partners[int(pair[0])] = int(pair[1])
-		partners[int(pair[1])] = int(pair[0])
 	for destination: Vector2i in claims:
 		var holder: int = claims[destination]
 		if not active.has(holder):

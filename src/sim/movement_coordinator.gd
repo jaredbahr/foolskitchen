@@ -6,6 +6,10 @@ extends RefCounted
 enum YieldAttempt { STARTED, IN_PROGRESS_PROTECTED, NO_POCKET }
 
 const CARRYING_PRIORITY: int = 3
+## _escape outcomes: mid-step (retry next tick), nothing could change, acted.
+const ESCAPE_SKIPPED: int = 0
+const ESCAPE_FUTILE: int = 1
+const ESCAPE_ACTED: int = 2
 ## Liveness key for a leaving guest: any real exit counts as its goal.
 const EXIT_GOAL: Vector2i = Vector2i(-1000001, -1000001)
 
@@ -971,12 +975,14 @@ func _watch_liveness(world: SimWorld) -> void:
 	# someone mid-step is skipped (and checked again next tick) so a person
 	# who keeps shuffling can never starve a stuck one of its turn.
 	due.sort_custom(_stalled_before)
+	# An escape that could change nothing (nobody in the way can move and no
+	# squeeze is allowed) does not use up the turn of the next person.
 	for entry: Array in due:
 		var agent: SimAgent = entry[1]
-		var acted: bool = _escape(world, agent, int(entry[0]))
+		var outcome: int = _escape(world, agent, int(entry[0]))
 		if _stall.has(agent.id):
-			_stall[agent.id]["next"] = world.now + (tuning.escape_retry_ticks if acted else 1)
-		if acted:
+			_stall[agent.id]["next"] = world.now + (1 if outcome == ESCAPE_SKIPPED else tuning.escape_retry_ticks)
+		if outcome == ESCAPE_ACTED:
 			return
 
 
@@ -991,9 +997,9 @@ func _real_goal(agent: SimAgent) -> Vector2i:
 	return agent.cell if agent.path.is_empty() else agent.path.back()
 
 
-func _escape(world: SimWorld, stuck: SimAgent, stalled: int) -> bool:
+func _escape(world: SimWorld, stuck: SimAgent, stalled: int) -> int:
 	if stuck.move_progress > 0.0 or _edges.has(stuck.id) or _stopping.has(stuck.id):
-		return false
+		return ESCAPE_SKIPPED
 	var tuning: MovementTuning = world.movement_tuning
 	if stuck is CustomerAgent and stalled >= tuning.give_up_after_ticks \
 			and (stuck as CustomerAgent).state < CustomerAgent.State.LEAVING:
@@ -1001,10 +1007,10 @@ func _escape(world: SimWorld, stuck: SimAgent, stalled: int) -> bool:
 		(stuck as CustomerAgent).give_up_blocked(world)
 		escape_counts[&"give_up"] = int(escape_counts.get(&"give_up", 0)) + 1
 		if stuck.has_arrived() or world.agent(stuck.id) == null:
-			return true
+			return ESCAPE_ACTED
 	var route_cells: Array[Vector2i] = _escape_route(world, stuck)
 	if route_cells.size() < 2:
-		return true  # Static unreachability keeps its existing drop/exit handling.
+		return ESCAPE_FUTILE  # Static unreachability keeps its existing drop/exit handling.
 	_right_of_way[stuck.id] = world.now + tuning.escape_retry_ticks
 	_way_holder = stuck.id
 	escape_counts[&"escape"] = int(escape_counts.get(&"escape", 0)) + 1
@@ -1018,16 +1024,16 @@ func _escape(world: SimWorld, stuck: SimAgent, stalled: int) -> bool:
 		# Retake the shortest static route; right of way now wins its first step.
 		stuck.install_movement_route(route_cells)
 	if blockers.is_empty():
-		return true
+		return ESCAPE_ACTED
 	if stalled >= tuning.squeeze_after_ticks:
 		if _try_squeeze(world, stuck, route_cells, blockers):
-			return true
+			return ESCAPE_ACTED
 		if stuck is StaffAgent and (stuck as StaffAgent).task == null and not (stuck as StaffAgent).carries_food():
 			# An idle worker only parking or returning can simply stop here.
 			supersede_destination(stuck.id)
 			stuck.set_destination(world.grid, stuck.cell)
 			escape_counts[&"stay"] = int(escape_counts.get(&"stay", 0)) + 1
-			return true
+			return ESCAPE_ACTED
 	var avoid: Dictionary[Vector2i, bool] = {stuck.cell: true}
 	for cell: Vector2i in route_cells:
 		avoid[cell] = true
@@ -1047,12 +1053,17 @@ func _escape(world: SimWorld, stuck: SimAgent, stalled: int) -> bool:
 			if other != null and not blockers.has(other) and _clearable(world, other, stuck) \
 					and not _busy_worker(other):
 				cleared = _clear_to_pocket(world, other, stuck, around) or cleared
-	if not cleared and stalled < tuning.squeeze_after_ticks:
-		# Nobody in the way can go anywhere (a leaving guest meeting an
-		# arrival in the doorway, with only the street behind it): waiting
-		# for the longer limit cannot help, so squeeze now if allowed.
-		_try_squeeze(world, stuck, route_cells, blockers)
-	return true
+	if cleared:
+		return ESCAPE_ACTED
+	# Nobody in the way can go anywhere (a leaving guest meeting an arrival in
+	# the doorway, with only the street behind it): waiting for the longer
+	# limit cannot help, so squeeze now if allowed.
+	if stalled < tuning.squeeze_after_ticks and _try_squeeze(world, stuck, route_cells, blockers):
+		return ESCAPE_ACTED
+	# Futile for now: hand the held way and the turn to the next person.
+	if _way_holder == stuck.id:
+		_way_holder = -1
+	return ESCAPE_FUTILE
 
 
 ## The stuck person's own static route to where it is really going (people
@@ -1197,7 +1208,12 @@ func _try_squeeze(world: SimWorld, stuck: SimAgent, route_cells: Array[Vector2i]
 		var delta: Vector2i = through - stuck.cell
 		if absi(delta.x) + absi(delta.y) != 1:
 			continue  # Squeezes are cardinal; a diagonal holder is cleared instead.
-		if not _line_step(world, stuck, stuck.cell, through) or not _line_step(world, partner, through, stuck.cell):
+		var handover: bool = false
+		if not _line_step(world, partner, through, stuck.cell):
+			handover = _own_seat_handover_ok(world, stuck, partner, through)
+			if not handover:
+				continue
+		if not _line_step(world, stuck, stuck.cell, through):
 			continue
 		var rest: Array[Vector2i] = [stuck.cell, through]
 		if through == step:
@@ -1208,9 +1224,46 @@ func _try_squeeze(world: SimWorld, stuck: SimAgent, route_cells: Array[Vector2i]
 			if onward.size() < 1:
 				continue
 			rest.append_array(onward.slice(1))
+		if handover:
+			_hand_over_seat(world, stuck, partner)
 		_start_squeeze(world, stuck, partner, rest)
 		return true
 	return false
+
+
+## A leaving guest still standing on its own seat (a stool beside the door)
+## can only be passed by someone stepping onto that seat. Only the seat it
+## really holds, and only geometry the partner could otherwise walk.
+func _own_seat_handover_ok(world: SimWorld, stuck: SimAgent, partner: SimAgent, through: Vector2i) -> bool:
+	if not stuck is CustomerAgent or (stuck as CustomerAgent).state != CustomerAgent.State.LEAVING:
+		return false
+	var items: Array[PlacedItem] = world.grid.seat_items_at(stuck.cell)
+	if items.is_empty() or not world.grid.is_walkable(stuck.cell) or not world.grid.step_open(through, stuck.cell):
+		return false
+	# A seat can be projected by both its table and its furnishing: the stuck
+	# guest holds at least one of them and nobody else holds any.
+	var held: bool = false
+	for item: PlacedItem in items:
+		var holder: int = item.reserved_by(stuck.cell)
+		if holder != stuck.id and holder != -1:
+			return false
+		held = held or holder == stuck.id
+	if not held:
+		return false
+	if partner is CustomerAgent:
+		return world.grid.is_guest_walkable(stuck.cell) and world.grid.guest_step_ok(through, stuck.cell)
+	return true
+
+
+## The partner takes over the seat booking for as long as it physically stands
+## there; the ordinary deferred release frees it once it walks off.
+func _hand_over_seat(world: SimWorld, stuck: SimAgent, partner: SimAgent) -> void:
+	for item: PlacedItem in world.grid.seat_items_at(stuck.cell):
+		if item.reserved_by(stuck.cell) != stuck.id:
+			continue
+		item.release(stuck.cell, stuck.id)
+		if item.reserve(stuck.cell, partner.id):
+			_seat_releases.append({"item": item.id, "cell": stuck.cell, "actor": partner.id})
 
 
 func _may_squeeze(stuck: SimAgent, partner: SimAgent) -> bool:
