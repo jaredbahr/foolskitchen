@@ -1152,6 +1152,11 @@ func _escape(world: SimWorld, stuck: SimAgent, stalled: int, visited: Dictionary
 			stuck.set_destination(world.grid, stuck.cell)
 			escape_counts[&"stay"] = int(escape_counts.get(&"stay", 0)) + 1
 			return ESCAPE_ACTED
+		for blocker: SimAgent in blockers:
+			if stuck is StaffAgent and blocker is StaffAgent and _mid_move(blocker):
+				# A worker shuttling in and out of the way (yield, return, yield
+				# again) is settled for a tick at a time: look again next tick.
+				return ESCAPE_SKIPPED
 	var avoid: Dictionary[Vector2i, bool] = {stuck.cell: true}
 	for cell: Vector2i in route_cells:
 		avoid[cell] = true
@@ -1513,6 +1518,12 @@ func _may_squeeze(world: SimWorld, stuck: SimAgent, partner: SimAgent) -> bool:
 	if partner is CourierAgent:
 		return false
 	if stuck is StaffAgent:
+		if partner is StaffAgent:
+			# Two workers head-on in a one-cell corridor: neither can step aside,
+			# so they pass each other, but only when the partner's own way runs
+			# through this worker's cell.
+			var ahead: Array[Vector2i] = _escape_route(world, partner)
+			return ahead.size() >= 2 and ahead[1] == stuck.cell
 		return partner is CustomerAgent or partner is InspectorAgent
 	if not _leaving(stuck):
 		return false

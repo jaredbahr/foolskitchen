@@ -13,6 +13,8 @@ extends TestCase
 ## (day 11) while newer escapes took the held way from them (#317).
 
 const LIMIT: int = 600
+## Staff tasks time out at 600 ticks, which would hide a longer staff stall.
+const STAFF_LIMIT: int = 450
 const MAX_GIVE_UPS: int = 2
 const CASES: Array[Dictionary] = [
 	{"setup": "coffee_shop", "seed": 1, "days": 3},
@@ -32,12 +34,14 @@ func test_busy_days_that_used_to_deadlock_keep_everyone_moving() -> void:
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	for case: Dictionary in CASES:
 		var row: Dictionary = LivenessSoak.run_case(tree, int(case["seed"]), String(case["setup"]),
-			int(case["days"]), LIMIT, false, 1, bool(case.get("inspector", false)))
+			int(case["days"]), LIMIT, false, 1, bool(case.get("inspector", false)), STAFF_LIMIT)
 		var label: String = "%s seed %d" % [case["setup"], case["seed"]]
 		assert_false(row.has("error"), "%s: %s" % [label, row.get("error", "")])
 		assert_eq(int(row.get("stuck_episodes", -1)), 0,
 			"%s: nobody stuck over %d ticks (%s)" % [label, LIMIT, row.get("worst", "")])
 		assert_true(int(row.get("max_no_progress", LIMIT + 1)) <= LIMIT)
+		assert_true(int(row.get("max_staff_stall", STAFF_LIMIT + 1)) <= STAFF_LIMIT,
+			"%s: staff get closer to their goal within %d ticks" % [label, STAFF_LIMIT])
 		assert_true(int(row.get("max_goal_stall", LIMIT + 1)) <= LIMIT,
 			"%s: everyone gets closer to their goal within %d ticks (max %d)" % [label, LIMIT,
 				int(row.get("max_goal_stall", -1))])

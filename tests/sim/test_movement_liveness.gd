@@ -100,6 +100,40 @@ func test_staff_squeezes_past_a_stationary_guest_in_a_dead_end() -> void:
 	assert_eq(guest.gave_up_at, -1)
 
 
+## Two workers on jobs meet head-on in a one-cell corridor: neither can step
+## aside and neither job may be dropped, so they pass each other over one
+## ordinary step, long before a task would time out (#319).
+func test_two_workers_head_on_in_a_corridor_squeeze_past_each_other() -> void:
+	var world: SimWorld = _service_world(["........"])
+	var west: StaffWalker = _worker(world, Vector2i(0, 0))
+	var east: StaffWalker = _worker(world, Vector2i(7, 0))
+	assert_true(west.set_destination(world.grid, Vector2i(7, 0)))
+	assert_true(east.set_destination(world.grid, Vector2i(0, 0)))
+	for tick: int in 600:
+		if not _advance(world):
+			return
+		if west.cell == Vector2i(7, 0) and east.cell == Vector2i(0, 0):
+			break
+	assert_eq(west.cell, Vector2i(7, 0), "the west worker gets through")
+	assert_eq(east.cell, Vector2i(0, 0), "the east worker gets through")
+	assert_eq(int(world.movement.escape_counts.get(&"squeeze", 0)), 1, "one swap")
+	assert_true(world.now < 450, "well before the staff limit (tick %d)" % world.now)
+
+
+## Only head-on: a worker standing in the way at its own station, not heading
+## through the stuck worker's cell, is never swapped out of it.
+func test_a_worker_never_squeezes_past_a_worker_who_is_not_head_on() -> void:
+	var world: SimWorld = _service_world(["...."])
+	var mover: StaffWalker = _worker(world, Vector2i(0, 0))
+	var standing: StaffWalker = _worker(world, Vector2i(3, 0))
+	assert_true(mover.set_destination(world.grid, Vector2i(3, 0)))
+	for tick: int in 400:
+		if not _advance(world):
+			return
+	assert_eq(int(world.movement.escape_counts.get(&"squeeze", 0)), 0)
+	assert_eq(standing.cell, Vector2i(3, 0), "the standing worker keeps its place")
+
+
 ## A leaving guest still on its own stool (placed in the only way out) can be
 ## passed only over that seat: the partner takes the booking while it stands
 ## there, so nobody ever stands on a seat that is not theirs.
@@ -555,6 +589,17 @@ func _walker(world: SimWorld, at: Vector2i, goal: Vector2i) -> Walker:
 	world.add_agent(agent)
 	assert_true(agent.set_destination(world.grid, goal))
 	return agent
+
+
+## A worker on a claimed job, so the backstop may not just park it.
+func _worker(world: SimWorld, at: Vector2i) -> StaffWalker:
+	var staff: StaffWalker = StaffWalker.new(&"server", 3)
+	staff.cell = at
+	world.add_agent(staff)
+	staff.task = SimTask.new(&"deliver", &"server")
+	staff.task.state = SimTask.State.CLAIMED
+	staff.task.claimed_by = staff.id
+	return staff
 
 
 func _standing(world: SimWorld, at: Vector2i) -> SimAgent:
