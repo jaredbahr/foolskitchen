@@ -7,6 +7,7 @@ const VISIT_TUNING: VisitTuning = preload("res://data/balance/visits.tres")
 const RESTROOM_TUNING: RestroomTuning = preload("res://data/balance/restroom.tres")
 const CAT_TUNING: CatTuning = preload("res://data/balance/cat.tres")
 const INSPECTION_TUNING: InspectionTuning = preload("res://data/balance/inspection.tres")
+const AQUARIUM_TUNING: AquariumTuning = preload("res://data/balance/aquarium.tres")
 
 signal customer_arrived(customer: CustomerAgent)
 signal customer_paid(customer: CustomerAgent, order: Order, amount: int)
@@ -54,6 +55,8 @@ var dock: DeliveryDock
 var cleanliness: CleanlinessState = null
 var clean_tasks: CleanTaskController = null
 var mishaps: MishapState = null
+## Fish tank upkeep (#125): when each tank was last cleaned. Inert without tanks.
+var aquarium: AquariumCare = AquariumCare.new(AQUARIUM_TUNING)
 ## The shop cat (#119): never in world.agents, so it joins no traffic. It does
 ## nothing until adopted.
 var cat: RestaurantCat = RestaurantCat.new(CAT_TUNING)
@@ -287,6 +290,7 @@ func start_day() -> void:
 	_staff_to_posts()
 	if cat != null:
 		cat.begin_day(world.grid)
+	aquarium.begin_day(world.grid, world.clock.day)
 	spawner.reset(arrival_rate())
 
 
@@ -424,6 +428,7 @@ func configure_cleanliness(state: CleanlinessState, tuning: CleanlinessTuning) -
 		return false
 	cleanliness = state
 	clean_tasks = CleanTaskController.new(world, state, tuning)
+	clean_tasks.bind_tanks(aquarium)
 	clean_tasks.sync_spots()
 	return true
 
@@ -972,6 +977,7 @@ func _on_layout_changed(_cells: Array[Vector2i]) -> void:
 	_layout_counted = false
 	if cat != null:
 		cat.layout_changed(world.grid)
+	aquarium.track(world.grid, world.clock.day)
 
 
 func _count_layout() -> void:

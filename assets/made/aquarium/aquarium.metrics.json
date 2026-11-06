@@ -1,0 +1,158 @@
+{
+  "issue": 125,
+  "uniform_scale": 1.1,
+  "assets": {
+    "aquarium_2": {
+      "triangles": 1214,
+      "dimensions": [
+        0.8836,
+        0.5755,
+        0.4255
+      ],
+      "world_dimensions": [
+        0.972,
+        0.633,
+        0.468
+      ],
+      "materials": [
+        "woodDark",
+        "wood",
+        "metal",
+        "metalDark",
+        "aquariumGlass",
+        "aquariumGlow",
+        "plant"
+      ],
+      "swim_box_model": {
+        "position": [
+          -0.40182,
+          0.39091,
+          -0.16091
+        ],
+        "size": [
+          0.80364,
+          0.10909,
+          0.32182
+        ]
+      },
+      "glass_inner_model": {
+        "position": [
+          -0.41273,
+          0.32273,
+          -0.17182
+        ],
+        "size": [
+          0.82545,
+          0.19545,
+          0.34364
+        ]
+      }
+    },
+    "aquarium_3": {
+      "triangles": 1468,
+      "dimensions": [
+        1.3382,
+        0.5755,
+        0.4255
+      ],
+      "world_dimensions": [
+        1.472,
+        0.633,
+        0.468
+      ],
+      "materials": [
+        "woodDark",
+        "wood",
+        "metal",
+        "metalDark",
+        "aquariumGlass",
+        "aquariumGlow",
+        "plant"
+      ],
+      "swim_box_model": {
+        "position": [
+          -0.62909,
+          0.39091,
+          -0.16091
+        ],
+        "size": [
+          1.25818,
+          0.10909,
+          0.32182
+        ]
+      },
+      "glass_inner_model": {
+        "position": [
+          -0.64,
+          0.32273,
+          -0.17182
+        ],
+        "size": [
+          1.28,
+          0.19545,
+          0.34364
+        ]
+      }
+    },
+    "fish_neon": {
+      "triangles": 80,
+      "dimensions": [
+        0.0272,
+        0.0585,
+        0.091
+      ],
+      "world_dimensions": [
+        0.0299,
+        0.0644,
+        0.1
+      ],
+      "world_half_length": 0.05,
+      "world_half_height": 0.0322
+    },
+    "fish_orange": {
+      "triangles": 80,
+      "dimensions": [
+        0.0272,
+        0.0585,
+        0.091
+      ],
+      "world_dimensions": [
+        0.0299,
+        0.0644,
+        0.1
+      ],
+      "world_half_length": 0.05,
+      "world_half_height": 0.0322
+    },
+    "fish_yellow": {
+      "triangles": 80,
+      "dimensions": [
+        0.0272,
+        0.0585,
+        0.091
+      ],
+      "world_dimensions": [
+        0.0299,
+        0.0644,
+        0.1
+      ],
+      "world_half_length": 0.05,
+      "world_half_height": 0.0322
+    },
+    "fish_guppy": {
+      "triangles": 80,
+      "dimensions": [
+        0.0272,
+        0.0728,
+        0.1051
+      ],
+      "world_dimensions": [
+        0.0299,
+        0.08,
+        0.1156
+      ],
+      "world_half_length": 0.0578,
+      "world_half_height": 0.04
+    }
+  }
+}

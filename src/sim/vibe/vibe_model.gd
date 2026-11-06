@@ -19,6 +19,9 @@ class Item extends RefCounted:
 	var music_theme: StringName = &""
 	## Rugs can add charm/style but never consume another layer's floor space.
 	var floor_decor: bool = false
+	## This copy's share of its definition's charm, 0-1: a cloudy fish tank
+	## (#125) earns part of it. Copies keep one definition charm.
+	var charm_scale: float = 1.0
 
 ## The caller supplies today's enabled recipes only, once per recipe ID.
 class Dish extends RefCounted:
@@ -68,6 +71,9 @@ class _Group extends RefCounted:
 	var count: int = 0
 	var paint_sources: int = 0
 	var paint_votes: Dictionary[StringName, int] = {}
+	## Per-copy charm shares, kept once any copy earns less than all of it.
+	var scaled: bool = false
+	var scales: Array[float] = []
 
 class _Collected extends RefCounted:
 	var reason: String = ""
@@ -114,7 +120,8 @@ static func evaluate(inputs: Inputs, tuning: VibeTuning) -> Result:
 		if (group.category == ItemDef.Category.DECOR or
 				(group.category == ItemDef.Category.RESTROOM and group.floor_decor)) and group.charm > 0.0:
 			var charm: float = group.charm * (1.0 - pow(tuning.repeat_decay, group.count)) \
-				/ (1.0 - tuning.repeat_decay)
+				/ (1.0 - tuning.repeat_decay) if not group.scaled \
+				else group.charm * _scaled_repeats(group.scales, tuning.repeat_decay)
 			if not is_finite(charm):
 				return _invalid("The vibe amounts are too large")
 			if tuning.lamp_item_ids.has(item_id):
@@ -185,6 +192,20 @@ static func evaluate(inputs: Inputs, tuning: VibeTuning) -> Result:
 	return result
 
 
+## Diminishing repeats when copies earn different shares: the fullest copy
+## counts first, like the ordinary 1 + d + d^2 + ... series.
+static func _scaled_repeats(scales: Array[float], decay: float) -> float:
+	var ordered: Array[float] = scales.duplicate()
+	ordered.sort()
+	ordered.reverse()
+	var total: float = 0.0
+	var weight: float = 1.0
+	for scale: float in ordered:
+		total += scale * weight
+		weight *= decay
+	return total
+
+
 static func _collect(inputs: Inputs, tuning: VibeTuning) -> _Collected:
 	var collected: _Collected = _Collected.new()
 	for cell: Vector2i in inputs.floor_cells:
@@ -192,6 +213,7 @@ static func _collect(inputs: Inputs, tuning: VibeTuning) -> _Collected:
 	for item: Item in inputs.items:
 		if item == null or String(item.definition_id).strip_edges().is_empty() \
 				or not is_finite(item.charm) or item.charm < 0.0 \
+				or not is_finite(item.charm_scale) or item.charm_scale < 0.0 or item.charm_scale > 1.0 \
 				or not ItemDef.Category.values().has(item.category):
 			collected.reason = "A placed item has invalid vibe data"
 			return collected
@@ -217,6 +239,12 @@ static func _collect(inputs: Inputs, tuning: VibeTuning) -> _Collected:
 			return collected
 		copies.count += 1
 		group.count += 1
+		if item.charm_scale != 1.0 and not group.scaled:
+			group.scaled = true
+			for earlier: int in group.count - 1:
+				group.scales.append(1.0)
+		if group.scaled:
+			group.scales.append(item.charm_scale)
 		if collected.music_theme.is_empty() and not item.music_theme.is_empty():
 			collected.music_theme = item.music_theme
 			collected.music_charm = item.charm

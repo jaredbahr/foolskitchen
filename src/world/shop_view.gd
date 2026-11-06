@@ -1503,6 +1503,11 @@ func _build_item(item: PlacedItem) -> void:
 	if _has_patio:
 		node.position.y += ground_height(item.origin)
 	node.rotation.y = -item.quarter_turns * PI * 0.5
+	# A fish tank (#125): its fish swim the loops of this placed item's id.
+	var tank: AquariumView = node.prop as AquariumView
+	if tank != null:
+		tank.set_seed(item.id)
+		tank.set_cloudy(_tank_cloudy(item.id))
 	_apply_stock_slots(node, definition)
 	_sync_ceiling(node, definition)
 	_sync_item_selection()
@@ -1587,6 +1592,7 @@ func _process(_delta: float) -> void:
 	_sync_item_selection()
 	_sync_agents()
 	_sync_cat(_delta)
+	_sync_tanks()
 	_sync_inspection_card()
 	_fade_ghosts(_delta)
 	_sync_crates()
@@ -1599,6 +1605,22 @@ func _sync_inspection_card() -> void:
 	if wall_finish_view == null or _cat_source == null or _cat_source.world != world:
 		return
 	wall_finish_view.set_inspection_grade(_cat_source.inspection.last_grade)
+
+
+## Cloudy fish tanks (#125) show murky glass until cleaned. The tank view only
+## changes its materials when the state flips.
+func _sync_tanks() -> void:
+	for id: int in item_nodes:
+		var tank: AquariumView = item_nodes[id].prop as AquariumView
+		if tank != null:
+			var cloudy: bool = _tank_cloudy(id)
+			if tank.cloudy != cloudy:
+				tank.set_cloudy(cloudy)
+
+
+func _tank_cloudy(item_id: int) -> bool:
+	return _cat_source != null and _cat_source.world == world and world != null \
+		and _cat_source.aquarium.is_cloudy(item_id, world.clock.day)
 
 
 func _sync_cat(delta: float) -> void:

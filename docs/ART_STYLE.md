@@ -50,6 +50,7 @@ Any new building piece (walls, windows, doors, the awning, counters) follows the
 - **Wall finishes (D26):** wall finishes are drawn by the wall finish shader (`wall_finish.gdshader`) on a thin facing just off each finished wall face, as flat patterns in palette swatch colours with no textures, lit like the plain walls; the only extra marks are boards, grout and mortar lines. Catalogue cards draw the same patterns on the CPU (`WallThumbnail`). Wall decor uses the made diner wall pieces (`assets/made/diner/`) through their wrapper scenes; the neon sign keeps its approved emissive red and adds no light.
 - Placeholder colours and new UI colours come from the existing palette (`main_theme.tres`, the swatch list). No one-off hex values.
 - **Exception, glowing parts (Jared, 2026-10-26):** neon tubes, sign letters and lamp glow may use a dedicated emissive colour when no kit colour reads correctly (the kit's only red is a salmon). Define each one once as a named constant in the asset's build script, never inline. Non-glowing surfaces still use kit colours.
+- **Exception, aquarium glass (#125):** the fish tanks' `aquariumGlass` (clear, slightly blue) is the one new material the issue approves. Their lit water uses the glowing-part exception above (`aquariumGlow`, blue-green, emissive, no light). A cloudy tank mixes both toward its own kit `plant` green in the view, never a new colour.
 
 ## 4. People
 - Every person is a Mini Character. **Roles:**

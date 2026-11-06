@@ -88,6 +88,9 @@ const MAX_SEATED_LEAN_DEGREES: float = 35.0
 ## A jukebox (#294): its looks are music styles. One placed copy counts toward
 ## the vibe and plays its style's loop while the shop is open (see Jukebox).
 @export var plays_music: bool = false
+## A fish tank (#125): AquariumCare tracks its cleaning, and it clouds over
+## (less charm) until a "Clean tank" task is done.
+@export var fish_tank: bool = false
 @export var shows_restaurant_name: bool = false
 ## Hangs from the ceiling (a pendant lamp): drawn at ceiling height over a
 ## floor-decor cell, its shade hidden whenever walls are cut away or down.
