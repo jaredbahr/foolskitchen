@@ -51,6 +51,11 @@ func uses_guest_layer() -> bool:
 	return true
 
 
+## The street door it gave up on after being blocked there (NO_CELL if none).
+func avoided_entry() -> Vector2i:
+	return _avoid_entry
+
+
 ## Guests (and the inspector) never walk through the kitchen or storage.
 func plan_path(grid: SimGrid, from_cell: Vector2i, to_cell: Vector2i) -> Array[Vector2i]:
 	return grid.find_guest_path(from_cell, to_cell)

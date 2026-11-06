@@ -9,6 +9,8 @@ extends TestCase
 ## street door jammed with leaving guests and arriving parties (day 10).
 ## coffee_shop seed 2 with a health inspector every day: the visitor walks
 ## the busy room and leaves on its own feet, never taken out as blocked.
+## bar seed 2: leaving guests in the busy bar corridor waited over 700 ticks
+## (day 11) while newer escapes took the held way from them (#317).
 
 const LIMIT: int = 600
 const MAX_GIVE_UPS: int = 2
@@ -16,6 +18,7 @@ const CASES: Array[Dictionary] = [
 	{"setup": "coffee_shop", "seed": 1, "days": 3},
 	{"setup": "default", "seed": 20, "days": 10},
 	{"setup": "coffee_shop", "seed": 2, "days": 2, "inspector": true},
+	{"setup": "bar", "seed": 2, "days": 11},
 ]
 
 
