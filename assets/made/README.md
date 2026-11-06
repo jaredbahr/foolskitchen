@@ -126,3 +126,34 @@ The Kenney audio packs have no kitchen ambience, so `audio/stove_sizzle.ogg`, `a
 
 ## Jukebox music loops (#294)
 `audio/jukebox_diner_rock.ogg` (19 s), `audio/jukebox_cafe_jazz.ogg` (20 s) and `audio/jukebox_bar_blues.ogg` (24 s) are short synthesised loops, one per music style: a boogie-bass 12-bar blues in A with chopped guitar and a backbeat; a ii-V-I turnaround in C with walking bass, soft electric piano and brushes; and a slow 12-bar shuffle in E with a thin organ and a few guitar licks. `tools/make_jukebox_music.py` writes every note and drum hit out by hand (bass, plucks, electric piano, organ and drums are sums of sine partials and a little fixed-seed noise), rolls the top off for a small-speaker sound and wraps whatever rings past the last bar to the first, so each repeats without a seam. Mono, 22.05 kHz, about 70-90 KB each; the game plays them quietly on the Effects bus. No recorded or third-party audio is used. Rebuild with `python3 tools/make_jukebox_music.py` (numpy and ffmpeg); the output is deterministic.
+
+## Aquarium (#125)
+Two planted fish tanks on their own cabinets and four tiny fish, all rebuilt by
+`tools/build_aquarium.py` (Blender, or the `bpy` module: `python tools/build_aquarium.py`),
+which also writes `aquarium/aquarium.metrics.json` (triangles, sizes and each
+tank's swim box). Deterministic: no random draws. No textures, light nodes or baked light.
+
+| Asset under `aquarium/` | Kit reference | Triangles | World size (w × h × d) |
+|---|---|---:|---|
+| `aquarium_2.glb` (Aquarium, 2×1) | `kitchenCabinet` / `sideTable` (cabinet, doors and handles), `plantSmall1-3` (leaf tiers) | 1214 | 0.97 × 0.63 × 0.47 |
+| `aquarium_3.glb` (Large aquarium, 3×1) | the same kit, longer, three doors | 1468 | 1.47 × 0.63 × 0.47 |
+| `fish_neon.glb`, `fish_orange.glb`, `fish_yellow.glb`, `fish_guppy.glb` | Food Kit colormap colours; simple made fish (`fish.glb` is 233 triangles and reads as food, not a live fish) | 80 each | about 0.10 long |
+
+- **Cabinet:** a `woodDark` body and top with lighter `wood` doors and `metal`
+  handles, the kit cabinet's proportions; `woodDark` is the paintable body.
+- **Tank:** `metalDark` base, rim and slim corner posts; a `metalDark`
+  background inside the back glass; a `metalDark` light bar on two feet.
+- **Inside:** a faceted bed sloping up to the back (`metalDark`), two pale
+  stones (`metal`), stem plants built from stacked four-sided leaf tiers like
+  `plantSmall`, a sword plant and low carpet tufts (all kit `plant` green).
+- **Approved new material (the issue's one):** `aquariumGlass`, a clear,
+  slightly blue glass (linear 0.55, 0.80, 1.0, alpha 0.2).
+- **Glowing part (ART_STYLE §3):** `aquariumGlow`, the soft blue-green of the
+  lit water surface and the light's strip (linear 0.04, 0.45, 0.50; emissive).
+  The wrapper draws the water unlit at 22% over what lies beneath, so it reads
+  blue-green by day and glows at night without any light.
+- **Fish:** a six-sided faceted lens body, a forked tail fan (bigger on the
+  guppy), a dorsal fin and eyes; every face's UVs point at one Food Kit
+  `colormap.png` swatch (neon blue, red and white; orange; yellow; purple with
+  a pink tail). The GLBs reference that file by relative path; nothing is copied.
+  Origin at the centre of the whole fish, facing -Z.

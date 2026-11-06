@@ -15,6 +15,11 @@ var _mishaps_ref: WeakRef
 var _station_tasks: Dictionary[int, SimTask] = {}
 var _stations_by_id: Dictionary[int, int] = {}
 var _station_suspended: Dictionary[int, bool] = {}
+## Fish tanks (#125): one "Clean tank" task per cloudy tank.
+var _tanks_ref: WeakRef
+var _tank_tasks: Dictionary[int, SimTask] = {}
+var _tanks_by_id: Dictionary[int, int] = {}
+var _tank_suspended: Dictionary[int, bool] = {}
 
 
 func _init(world: SimWorld, dirt: CleanlinessState, tuning: CleanlinessTuning) -> void:
@@ -36,6 +41,7 @@ func sync_spots() -> void:
 	if _tidying or world == null or dirt == null or _tuning == null or not _tuning.is_valid():
 		return
 	sync_stations()
+	sync_tanks()
 	for cell: Vector2i in _tasks.keys():
 		if not dirt.has_spot(cell) or not _eligible(world, cell):
 			_retire_task(world, cell, &"target_gone")
@@ -62,6 +68,61 @@ func sync_spots() -> void:
 
 func bind_mishaps(state: MishapState) -> void:
 	_mishaps_ref = weakref(state) if state != null else null
+
+
+func bind_tanks(care: AquariumCare) -> void:
+	_tanks_ref = weakref(care) if care != null else null
+
+
+func tank_task_for(item_id: int) -> SimTask:
+	return _tank_tasks.get(item_id, null) as SimTask
+
+
+## Posts a "Clean tank" task for each cloudy tank with a free floor cell beside
+## it. The cleaner does it; with no cleaner, the owner on Floor (never servers).
+func sync_tanks() -> void:
+	var world: SimWorld = _world()
+	var care: AquariumCare = _tanks()
+	if _tidying or world == null or care == null:
+		return
+	for tank_id: int in _tank_tasks.keys():
+		if world.grid.item(tank_id) == null or not care.is_cloudy(tank_id, world.clock.day):
+			var previous: SimTask = _tank_tasks[tank_id]
+			_forget_tank(tank_id, previous.id)
+			world.board.cancel(previous, &"target_gone")
+	for tank_id: int in care.cloudy_ids(world.grid, world.clock.day):
+		if _tank_tasks.has(tank_id) or _tank_suspended.has(tank_id):
+			continue
+		var sides: Array[Vector2i] = tank_sides(world.grid, world.grid.item(tank_id))
+		if sides.is_empty():
+			_tank_suspended[tank_id] = true
+			continue
+		var task: SimTask = SimTask.new(AquariumCare.TASK_KIND, &"cleaner", "Clean the fish tank")
+		task.priority = 0
+		task.defer_to_higher_priority = true
+		var approach: TaskStep = TaskStep.go_to_cell(sides[0], "walking to the fish tank")
+		approach.candidate_cells = sides
+		task.steps.append(approach)
+		task.steps.append(TaskStep.work(care.tuning.clean_work_ticks, "cleaning the fish tank"))
+		world.board.post(task, world.now)
+		_tank_tasks[tank_id] = task
+		_tanks_by_id[task.id] = tank_id
+
+
+## Walkable floor cells touching the tank, with no wall between, in a fixed order.
+static func tank_sides(grid: SimGrid, tank: PlacedItem) -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+	if grid == null or tank == null:
+		return result
+	for cell: Vector2i in tank.cells:
+		for step: Vector2i in [Vector2i.DOWN, Vector2i.UP, Vector2i.LEFT, Vector2i.RIGHT]:
+			var side: Vector2i = cell + step
+			if tank.cells.has(side) or result.has(side) or not grid.in_bounds(side) \
+					or grid.terrain(side) != SimGrid.Terrain.FLOOR or not grid.is_walkable(side) \
+					or grid.edge_blocked(cell, side):
+				continue
+			result.append(side)
+	return result
 
 
 func station_task_for(item_id: int) -> SimTask:
@@ -100,7 +161,7 @@ func task_for(cell: Vector2i) -> SimTask:
 
 
 func active_task_count() -> int:
-	return _tasks.size() + _station_tasks.size()
+	return _tasks.size() + _station_tasks.size() + _tank_tasks.size()
 
 
 ## Morning reset withdraws both open and claimed tasks before removing dirt.
@@ -114,9 +175,16 @@ func tidy_overnight() -> void:
 			var task: SimTask = _station_tasks[station_id]
 			_forget_station(station_id, task.id)
 			world.board.cancel(task, &"overnight_tidy")
+		for tank_id: int in _tank_tasks.keys():
+			var tank_task: SimTask = _tank_tasks[tank_id]
+			_forget_tank(tank_id, tank_task.id)
+			world.board.cancel(tank_task, &"overnight_tidy")
 	_station_tasks.clear()
 	_stations_by_id.clear()
 	_station_suspended.clear()
+	_tank_tasks.clear()
+	_tanks_by_id.clear()
+	_tank_suspended.clear()
 	_tasks.clear()
 	_cells_by_id.clear()
 	_suspended.clear()
@@ -127,6 +195,14 @@ func tidy_overnight() -> void:
 
 
 func _on_task_completed(task: SimTask) -> void:
+	if _tanks_by_id.has(task.id):
+		var tank_id: int = _tanks_by_id[task.id]
+		_forget_tank(tank_id, task.id)
+		var care: AquariumCare = _tanks()
+		var world: SimWorld = _world()
+		if care != null and world != null:
+			care.clean(tank_id, world.clock.day)
+		return
 	if _stations_by_id.has(task.id):
 		var station_id: int = _stations_by_id[task.id]
 		_forget_station(station_id, task.id)
@@ -144,6 +220,12 @@ func _on_task_completed(task: SimTask) -> void:
 
 
 func _on_task_failed(task: SimTask, _reason: StringName) -> void:
+	if _tanks_by_id.has(task.id):
+		var tank_id: int = _tanks_by_id[task.id]
+		_forget_tank(tank_id, task.id)
+		if not _tidying:
+			_tank_suspended[tank_id] = true
+		return
 	if _stations_by_id.has(task.id):
 		var station_id: int = _stations_by_id[task.id]
 		_forget_station(station_id, task.id)
@@ -162,6 +244,7 @@ func _on_task_failed(task: SimTask, _reason: StringName) -> void:
 func _on_cells_changed(_cells: Array[Vector2i]) -> void:
 	_suspended.clear()
 	_station_suspended.clear()
+	_tank_suspended.clear()
 	sync_spots()
 
 
@@ -179,6 +262,15 @@ func _forget(cell: Vector2i, task_id: int) -> void:
 func _forget_station(station_id: int, task_id: int) -> void:
 	_station_tasks.erase(station_id)
 	_stations_by_id.erase(task_id)
+
+
+func _forget_tank(tank_id: int, task_id: int) -> void:
+	_tank_tasks.erase(tank_id)
+	_tanks_by_id.erase(task_id)
+
+
+func _tanks() -> AquariumCare:
+	return _tanks_ref.get_ref() as AquariumCare if _tanks_ref != null else null
 
 
 func _mishaps() -> MishapState:

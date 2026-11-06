@@ -1,0 +1,17 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://src/world/aquarium_view.gd" id="1_view"]
+[ext_resource type="PackedScene" path="res://assets/made/aquarium/aquarium_3.glb" id="2_model"]
+
+[node name="LargeAquarium" type="Node3D"]
+script = ExtResource("1_view")
+footprint = Vector2i(3, 1)
+body_material_names = PackedStringArray("woodDark")
+fish_count = 6
+swim_box_model = AABB(-0.62909, 0.39091, -0.16091, 1.25818, 0.10909, 0.32182)
+
+[node name="Tank" type="Node3D" parent="."]
+
+[node name="Art" type="Node3D" parent="Tank"]
+
+[node name="Model" parent="Tank/Art" instance=ExtResource("2_model")]

@@ -17,6 +17,7 @@ var selected_menu_board_anchor: Vector3i = WallFaces.NO_FACE
 
 var _world: SimWorld
 var _wall_decor: WallDecor
+var _aquarium: AquariumCare
 var _menu_settings: MenuSettings
 var _title: Label
 var _why: Label
@@ -58,6 +59,12 @@ func bind_world(value: SimWorld) -> void:
 		clear()
 	else:
 		refresh()
+
+
+## Fish tank upkeep (#125), for a tank's water line.
+func bind_aquarium(value: AquariumCare) -> void:
+	_aquarium = value
+	refresh()
 
 
 func bind_menu_boards(decor: WallDecor, menu: MenuSettings) -> void:
@@ -408,6 +415,8 @@ func _show_item(item: PlacedItem) -> void:
 	if definition != null and definition.plays_music:
 		_details.text = _music_details(item, definition)
 		_show_music_styles(item, definition)
+	if definition != null and definition.fish_tank:
+		_details.text = tank_details(_aquarium, item.id, _world.clock.day if _world.clock != null else 0)
 	var group: DiningSeats.Group = _world.grid.dining_group(item.id)
 	var seats: Array[Vector2i] = item.seat_cells
 	if group != null:
@@ -429,6 +438,16 @@ func _show_item(item: PlacedItem) -> void:
 		return
 	_reservations.text = "No work or seat cells" if lines.is_empty() else "\n".join(lines)
 	_reservations.show()
+
+
+## A fish tank's water, in plain words (#125).
+static func tank_details(care: AquariumCare, item_id: int, day: int) -> String:
+	if care == null or not care.enabled():
+		return "Water: clear"
+	if care.is_cloudy(item_id, day):
+		return "Water: cloudy. Half the charm until a cleaner (or you, on Floor) cleans it"
+	var days: int = care.tuning.cloudy_after_days - maxi(0, day - care.cleaned_day(item_id))
+	return "Water: clear. Needs a clean in %d %s" % [days, "day" if days == 1 else "days"]
 
 
 var _counted_music_id: int = 0

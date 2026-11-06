@@ -147,6 +147,8 @@ var _loaded_cat: Dictionary = {}
 var _loaded_inspection: Dictionary = {}
 ## The saved food-critic section (#303: cooldown and today's plan), staged the same way.
 var _loaded_critic: Dictionary = {}
+## The saved fish tank section (#125: each tank's last cleaning day), staged likewise.
+var _loaded_aquarium: Dictionary = {}
 var _demand_breakdown: DemandBreakdown = null
 var _demand_day: int = 0
 var _demand_reputation: float = 3.0
@@ -443,6 +445,7 @@ func _bind_world_presentation() -> void:
 		_hints_bubble.got_it.connect(_on_hint_acknowledged)
 		_hints_bubble.skip_guide.connect(_on_guide_skipped)
 	_inspect_panel.bind_world(world)
+	_inspect_panel.bind_aquarium(sim.aquarium if sim != null else null)
 	if not _inspect_panel.menu_board_section_requested.is_connected(_on_menu_board_section_requested):
 		_inspect_panel.menu_board_section_requested.connect(_on_menu_board_section_requested)
 	if not _inspect_panel.item_look_requested.is_connected(_on_item_look_requested):
@@ -556,6 +559,7 @@ func start() -> void:
 	SaveSystem.register("cat", _capture_cat, _restore_cat)
 	SaveSystem.register("inspection", _capture_inspection, _restore_inspection)
 	SaveSystem.register("critic", _capture_critic, _restore_critic)
+	SaveSystem.register("aquarium", _capture_aquarium, _restore_aquarium)
 	var loaded: bool = use_saves and _load_autosave()
 	_rooms_note = loaded and _loaded_layout != null and _loaded_layout.rooms_unmarked
 	$HUD.set_rooms_note(ROOMS_NOTE if _rooms_note else "")
@@ -578,6 +582,8 @@ func start() -> void:
 		push_error("Cannot initialize everyday messes")
 		return
 	sim.plate_broken.connect(_on_plate_broken)
+	if not sim.aquarium.changed.is_connected(_on_aquarium_changed):
+		sim.aquarium.changed.connect(_on_aquarium_changed)
 	# The loaded layout can replace both world and view during _load_autosave().
 	($ShopView as ShopView).bind_cleanliness(cleanliness)
 	_debug_overlay.bind_cleanliness(cleanliness)
@@ -1244,7 +1250,8 @@ func _recompute_vibe() -> void:
 		return
 	_recompute_curb_appeal()
 	var inputs: VibeModel.Inputs = VibeInputs.capture(world.grid, content, menu_settings.enabled_recipes(),
-		shop_editor.wall_vibe_swatch(), shop_editor.floor_vibe_swatch(), shop_editor.decor_vibe_items())
+		shop_editor.wall_vibe_swatch(), shop_editor.floor_vibe_swatch(), shop_editor.decor_vibe_items(),
+		sim.aquarium.charm_factors(world.grid, Clock.sim.day))
 	sim.set_vibe(VibeModel.evaluate(inputs, VIBE_TUNING))
 	var result: VibeModel.Result = vibe_result
 	_build_catalogue.set_vibe(result)
@@ -2314,6 +2321,7 @@ func _new_game() -> void:
 	_loaded_cat = {}
 	_loaded_inspection = {}
 	_loaded_critic = {}
+	_loaded_aquarium = {}
 	business_history = BusinessHistory.new()
 	_loaded_business_history = null
 	curb_appeal_score = 0.0
@@ -2402,6 +2410,7 @@ func _load_autosave_sections() -> bool:
 	_loaded_cat = {}
 	_loaded_inspection = {}
 	_loaded_critic = {}
+	_loaded_aquarium = {}
 	_loaded_regulars = null
 	_loaded_blueprints = null
 	_blueprint_load_notes.clear()
@@ -2488,6 +2497,10 @@ func _load_autosave_sections() -> bool:
 	if not _loaded_critic.is_empty():
 		candidate.critic.from_dict(_loaded_critic)
 	_loaded_critic = {}
+	# Saved tanks keep their cleaning days; any other tank starts clean today.
+	sim.aquarium.restore(world.grid, _loaded_aquarium if not _loaded_aquarium.is_empty()
+		else {"version": AquariumCare.SAVE_VERSION, "tanks": []}, Clock.sim.day)
+	_loaded_aquarium = {}
 	_loaded_layout = layout
 	staff_roster = employees
 	reputation = _loaded_reputation if _loaded_reputation != null else ReputationBook.new()
@@ -2753,6 +2766,23 @@ func _restore_inspection(data: Dictionary) -> bool:
 		return false
 	_loaded_inspection = data.duplicate(true)
 	return true
+
+
+func _capture_aquarium() -> Dictionary:
+	return sim.aquarium.to_dict(world.grid)
+
+
+## Validate now, install with the rest of the load once the new session exists.
+func _restore_aquarium(data: Dictionary) -> bool:
+	if not AquariumCare.valid_dict(data):
+		return false
+	_loaded_aquarium = data.duplicate(true)
+	return true
+
+
+## A tank was cleaned (#125): its full charm is back.
+func _on_aquarium_changed() -> void:
+	_recompute_vibe()
 
 
 func _capture_critic() -> Dictionary:

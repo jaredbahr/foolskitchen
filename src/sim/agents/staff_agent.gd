@@ -257,6 +257,12 @@ func _score(world: SimWorld, t: SimTask) -> float:
 		role_prio = 1
 	if t.kind == &"degrease" and role == &"owner" and _idle_server_can_clean(world):
 		return 0.0
+	# Cleaning a fish tank (#125) is the cleaner's; with no cleaner the owner
+	# on Floor does it, never a server.
+	if t.kind == AquariumCare.TASK_KIND and role != &"cleaner":
+		if role != &"owner" or not _can_fallback_clean(world):
+			return 0.0
+		role_prio = 1
 	# Putting deliveries away (FK-099): with a cleaner on the team it is theirs
 	# (Cleaning), as mopping is; otherwise servers do it as Serving.
 	if t.kind == DeliveryDock.TASK_KIND and role != &"cleaner" and _team_has_cleaner(world):
@@ -272,7 +278,8 @@ func _score(world: SimWorld, t: SimTask) -> float:
 		if it == null:
 			return 0.0
 		target = it.origin
-	elif _is_clean_spot(t) and not t.steps.is_empty() and t.steps[0].kind == TaskStep.Kind.GO_TO_CELL:
+	elif (_is_clean_spot(t) or t.kind == AquariumCare.TASK_KIND) and not t.steps.is_empty() \
+			and t.steps[0].kind == TaskStep.Kind.GO_TO_CELL:
 		target = t.steps[0].cell
 	var skill := skill_for(for_role)
 	return float((t.priority + 1) * role_prio * skill) / (1.0 + GridMath.octile(cell, target))

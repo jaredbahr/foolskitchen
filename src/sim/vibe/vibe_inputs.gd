@@ -8,10 +8,11 @@ const VIBE_THEMES: Array[StringName] = VibeTuning.KNOWN_THEMES
 
 
 ## Null means an unavailable or invalid source; VibeModel evaluates it neutrally.
+## `charm_factors` maps a placed item id to its share of its charm (AquariumCare).
 ## No resource, placement, reservation, menu selection or random stream mutates.
 static func capture(grid: SimGrid, content: ContentDB, menu: Array[RecipeDef],
 		wall_swatch: StringName = &"", floor_swatch: StringName = &"",
-		wall_items: Array[ItemDef] = []) -> VibeModel.Inputs:
+		wall_items: Array[ItemDef] = [], charm_factors: Dictionary[int, float] = {}) -> VibeModel.Inputs:
 	if grid == null or content == null:
 		return null
 	var inputs: VibeModel.Inputs = VibeModel.Inputs.new()
@@ -46,6 +47,8 @@ static func capture(grid: SimGrid, content: ContentDB, menu: Array[RecipeDef],
 		var look: ItemVariant = definition.variant(placed.variant_id)
 		item.variant_id = look.id if look != null else &""
 		item.charm = float(definition.charm)
+		# A cloudy fish tank (#125) earns part of its charm until cleaned.
+		item.charm_scale = charm_factors.get(placed.id, 1.0)
 		item.category = definition.category
 		item.theme_tags = definition.variant_tags(placed.variant_id)
 		item.cells = placed.cells.duplicate()

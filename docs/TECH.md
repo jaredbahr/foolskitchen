@@ -2246,6 +2246,46 @@ invalidate the appropriate cached geometry. HUD/Menu presentation is read-only.
   The existing unmodified `--door-queue` capture continues to exercise ordinary
   queue behavior.
 
+### Fish tanks (#125)
+- **Content:** `data/items/aquarium.tres` (2×1, $180, level 3, charm 4) and
+  `aquarium_large.tres` (3×1, $320, level 5, charm 5), DECOR with `cosy` and
+  `seafood` tags and `ItemDef.fish_tank`. Ordinary solid decor: the usual edit
+  rules apply. Made art in `assets/made/aquarium/` (see its README section).
+- **Fish (view only):** `AquariumView` (a `PropView`) adds 4–6 fish that swim
+  `AquariumSwim` loops: wide ellipses with a second harmonic round the tank, a
+  small bob, a tail wag, nose along the tangent, so each fish turns at the end
+  glass. One school of two or three of a kind shares a loop, each a fixed
+  distance behind. Plans come from a local generator seeded by the placed item
+  id (never `GameState` streams, never saved); fish time is display seconds.
+  Bounds are proved: a fish's centre stays inside the swim box shrunk by the
+  fish's half sizes (measured by the build script), so the whole fish stays in
+  the glass. `set_review_time` pins a still for captures.
+- **Upkeep (sim):** `AquariumCare` keeps each tank's last cleaning day. A tank
+  is cloudy once `cloudy_after_days` (4) days have passed: a pure function of
+  the day, so no tick, no random draw. `data/balance/aquarium.tres` holds the
+  toggle (`maintenance`, on), the days, the cloudy charm share (0.5) and the
+  clean's work ticks. `CleanTaskController.sync_tanks()` posts one
+  `clean_tank` task ("Clean the fish tank") per cloudy tank: walk to a free
+  floor cell beside it, then work. The cleaner takes it; with no cleaner, the
+  owner on Floor (never a server). The job is Cleaning. The task is withdrawn
+  overnight and posted again while the tank stays cloudy. Placing a tank starts
+  it clean; moving keeps its record; removing forgets it.
+- **Charm:** `VibeInputs.capture()` takes item id → charm share
+  (`AquariumCare.charm_factors()`), carried as `VibeModel.Item.charm_scale`.
+  Copies of one definition keep one charm; with any share below 1 the repeats
+  are summed fullest first (charm × Σ share_k × decay^k). With no shares the
+  old closed-form sum runs unchanged. Main recomputes the vibe each morning and
+  when a tank is cleaned (`AquariumCare.changed`).
+- **Save:** section `aquarium`, `{version: 1, tanks: [{def_id, origin,
+  cleaned_day}]}`, matched to the restored layout by kind and position (item
+  ids are not kept by a load). Validated before install; missing rows and old
+  saves start a tank clean today. Written only by the morning autosave.
+- **Look:** cloudy tanks swap the glass and water for murky copies mixed toward
+  the tank's own `plant` green (`ShopView._sync_tanks`). The Inspect panel shows
+  the water ("clear, needs a clean in N days" or "cloudy"). No light nodes.
+- **Review:** `tools/aquarium_review.tscn` (frames 30, 60, 90; set
+  `AQUARIUM_REVIEW_CLOUDY=1` for the cloudy look).
+
 ### The restaurant cat (#119)
 - **Sim.** `RestaurantCat` (`src/sim/pets/`) is a `RefCounted` owned by `RestaurantSim.cat`. It is **not** a `SimAgent`: it is never in `world.agents`, so it joins no `MovementCoordinator` traffic, reserves no cell or seat and blocks nobody (people and the cat may share a cell). Tuning is `CatTuning` in `data/balance/cat.tres`: unlock level 4, $40 adoption, $2 a day, charm radius 2 and +10%, pet radius 1, walking and nap timings.
 - **Where it goes.** `cell_ok`: `Terrain.FLOOR`, guest-walkable (no staff room, no back door), room Dining or Restroom, nothing on the NORMAL layer. Steps use `SimGrid.guest_neighbours`, so it respects wall edges and the corner rule. A bounded breadth-first search (`wander_range` steps, fixed neighbour order) picks strolls and nap trips. Nap spots (`nap_spots`, cached per `grid.version`) are the cells beside a window (an interior or outer window edge, or one of `ExteriorSupport.window_cells`); with no window, the cells beside a wall. The bed spot is the first nap spot in reading order. `begin_day` (from `RestaurantSim.start_day`) puts it there asleep and draws no random number; `layout_changed` (from the grid's `cells_changed`) sends it back if an edit lands on it. A nap lies along the wall, not into it.
