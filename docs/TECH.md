@@ -2972,9 +2972,38 @@ Waiting benches are not solid, but movement never lets anyone use a seat as
 an aisle. So a bench placement or move is refused when it newly cuts off a
 door, table seat or station under that rule (`WallRules.seat_cut_off_problem`),
 for example a bench across the one-cell patio walkway in front of the tables.
-Solid furniture keeps the usual warn-but-allow path check; chairs and booths
-are not checked this way, because joined tables and booth rows rely on seats
-the stricter rule would call cut off.
+
+Seats are stops, never aisles, in the editor's placement checks too (#315).
+`WallRules.reachable(grid, true)` floods from the street the way movement
+lets people walk: a seat cell (any item's `seat_cells`: built-in table seats,
+chairs, stools, booths, benches) is reached but never walked on from, and a
+diagonal step may not brush a seat at either corner (the coordinator claims
+both corner cells). Every furniture buy, move and blueprint stamp
+(`ShopEditor._note_seat_cut_off`, through `seat_cut_off_problem`) compares
+that flood before and after the edit, and when the edit newly cuts off a
+table seat, station, sink, restroom fixture or the door for real people the
+placed item gets a seat warning ("Nobody walks through seats: this blocks the
+way to a table"), shown with its highlight. That stays a warning, the
+furniture rule (DESIGN 4.3); only waiting benches keep #269's refusal. As in
+#269 only what an edit newly cuts off counts, so no existing layout gains a
+warning. The standing check (`check_current`, the `unreachable` highlights
+that probes and the soak treat as a hard condition), wall and floor cut-off
+refusals and the room rules still walk across seats: the preserved original
+template's middle row is all tables and seats (its kitchen is reached only by
+squeezing through), so counting seats there would flag every legacy shop and
+refuse wall edits for a furniture problem.
+A seat item (chair, stool, booth, bench) is refused outright
+(`ShopEditor.SEAT_IN_DOORWAY`) when one of its seats would stand on a street
+door threshold, a door, an entry or just inside a back door, or would fill
+the last clear cell straight in from the street door (the door lane,
+`MovementCoordinator.lane_cells`, #308), in buys, moves and blueprint stamps.
+One seat beside the way in of a two-cell door is allowed (the joined-table
+probe fixture on the original layout has one); a table's built-in seats are
+left to the path warning. Joined tables and back-to-back booth rows still
+pass: each seat is the end of its own walk. A seat reachable only through
+another seat (two booths side by side between tables) is warned about,
+because real routing cannot reach it either. Dining capacity and sim routing
+are unchanged.
 
 Two balance rules keep a patio from overfilling a busy starter shop (#269).
 Without them the default shop's one cook and one server were already near

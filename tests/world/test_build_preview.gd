@@ -373,8 +373,11 @@ func test_partial_four_seat_capacity_warns_in_preview_and_after_commit_until_fix
 	assert_true(_mode.pick_up(table.id))
 	_mode.update_origin(Vector2i(6, 6))
 	assert_true(_mode.current_check.ok)
-	assert_false(_mode.seat_warnings().has(table.id))
-	assert_eq(_preview.invalid_reason(), "")
+	# #315: here all four seats are usable, but the south one stands just inside
+	# the door and nobody walks through a seat, so the east half is cut off.
+	const SEAT_CUT: String = "Nobody walks through seats: this blocks the way to a table"
+	assert_eq(_mode.seat_warnings().get(table.id, ""), SEAT_CUT)
+	assert_eq(_preview.invalid_reason(), SEAT_CUT)
 	assert_true(_mode.commit())
 	assert_eq(DiningSeats.usable_cells(grid, table).size(), 4)
 	assert_false(_preview.warning_nodes.has(table.id))

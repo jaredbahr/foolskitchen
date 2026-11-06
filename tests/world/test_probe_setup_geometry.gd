@@ -156,6 +156,7 @@ func _assert_all_setups(original: bool) -> void:
 		var after_apply: Dictionary = _profile_people(sim)
 		if accepted:
 			_assert_work_cells_not_seats(sim, profile)
+			_assert_seats_stop_paths(sim, profile, original)
 			if profile == "joined_tables":
 				_assert_joined_fixture(sim, original)
 		# This is the same ordinary boundary used immediately after apply by
@@ -176,6 +177,33 @@ func _assert_all_setups(original: bool) -> void:
 		SaveSystem.delete_slot(SLOT)
 		if profile == "fryer_coffee":
 			_assert_fryer_staging_only(original)
+
+
+## #315: every setup still validates with no path or seat warning. Walking as
+## people do (a seat ends a walk), nothing is cut off on the roomier starter,
+## joined tables included. The preserved original layout's middle row is all
+## tables and seats, so real people there reach the kitchen only by squeezing
+## through: where the seat rule finds its pass cut off, the server's real
+## route to it agrees.
+func _assert_seats_stop_paths(sim: RestaurantSim, profile: String, original: bool) -> void:
+	var check: EditCheck = (_main.get("shop_editor") as ShopEditor).check_current()
+	assert_true(check.ok, profile)
+	assert_eq(check.unreachable, [] as Array[int], profile + " has no path warning")
+	assert_true(check.seat_warnings.is_empty(), profile + " has no seat warning")
+	var ids: Dictionary[int, int] = {}
+	for item: PlacedItem in sim.world.grid.items():
+		ids[item.id] = item.id
+	var cut: Array[int] = ShopEditor._unreachable(sim.world.grid, ids, true)
+	if not original:
+		assert_eq(cut, [] as Array[int], profile + " leaves everything reachable for real people")
+		return
+	for item: PlacedItem in sim.world.grid.items():
+		if (item.def as ItemDef).category != ItemDef.Category.PASS or not cut.has(item.id):
+			continue
+		for actor: SimAgent in sim.world.agents:
+			if actor is StaffAgent and actor.role == &"server":
+				assert_true(sim.world.movement.route(sim.world, actor, actor.cell, item.work_cells[1], false).is_empty(),
+					profile + ": the seat rule matches real routing")
 
 
 func _start_profile_base(original: bool) -> void:
