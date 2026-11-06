@@ -345,6 +345,22 @@ func test_a_leaving_inspector_without_a_path_is_led_out_too() -> void:
 	assert_eq(int(world.movement.escape_counts.get(&"give_up", 0)), 0)
 
 
+## In a crowd heading out, two leaving guests swapping gets neither closer to
+## the street (it only reset their stall counts and churned): a leaving guest
+## squeezes past someone coming in or standing about, never another leaver.
+func test_a_leaving_guest_never_squeezes_past_another_leaving_guest() -> void:
+	var world: SimWorld = _service_world(["E..."])
+	var first: GuestWalker = _guest(world, Vector2i(1, 0))
+	var second: GuestWalker = _guest(world, Vector2i(2, 0))
+	var arriving: GuestWalker = _guest(world, Vector2i(3, 0))
+	first.state = CustomerAgent.State.LEAVING
+	second.state = CustomerAgent.State.LEAVING
+	arriving.state = CustomerAgent.State.QUEUED
+	assert_false(world.movement._may_squeeze(second, first))
+	assert_true(world.movement._may_squeeze(second, arriving))
+	assert_false(world.movement._may_squeeze(arriving, second), "only the one leaving squeezes")
+
+
 ## Nobody stands in the stuck person's shortest way: the backstop grants no
 ## right of way and changes nothing.
 func test_an_escape_with_nobody_in_the_way_does_nothing() -> void:

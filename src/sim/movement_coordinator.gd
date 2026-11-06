@@ -949,8 +949,12 @@ func _watch_liveness(world: SimWorld) -> void:
 	var due: Array[Array] = []
 	for agent: SimAgent in world.agents:
 		if (agent.has_arrived() and not _resume.has(agent.id) and not _leaving(agent)) \
-				or _squeezes.has(agent.id) or not agent.movement_admitted:
+				or not agent.movement_admitted:
 			_stall.erase(agent.id)
+			continue
+		if _squeezes.has(agent.id):
+			# Mid-swap: not due, but the stall keeps counting. Only getting
+			# closer resets it; being swapped back a cell never does.
 			continue
 		# Progress means getting closer to where this person is really going,
 		# so a crowd that only shuffles people back and forth (yield, return,
@@ -1357,7 +1361,8 @@ func _may_squeeze(stuck: SimAgent, partner: SimAgent) -> bool:
 		return false
 	if stuck is StaffAgent:
 		return partner is CustomerAgent or partner is InspectorAgent
-	return _leaving(stuck)
+	# Two people on the way out swapping gets neither closer to the street.
+	return _leaving(stuck) and not _leaving(partner)
 
 
 func _start_squeeze(world: SimWorld, stuck: SimAgent, partner: SimAgent, stuck_path: Array[Vector2i]) -> void:
@@ -1381,7 +1386,6 @@ func _start_squeeze(world: SimWorld, stuck: SimAgent, partner: SimAgent, stuck_p
 		var other: SimAgent = pair[1]
 		_edges[mover.id] = {"id": mover.id, "from": mover.cell, "to": other.cell}
 		_next[other.cell] = mover.id
-	_stall.erase(stuck.id)
 	escape_counts[&"squeeze"] = int(escape_counts.get(&"squeeze", 0)) + 1
 	world.log_event("#%d squeezed past #%d" % [stuck.id, partner.id])
 
