@@ -7,12 +7,15 @@ extends TestCase
 ## coffee_shop seed 1: an idle server stepping off a cleaned stool waited
 ## forever on a diagonal cut by the counter (day 3). default seed 20: the
 ## street door jammed with leaving guests and arriving parties (day 10).
+## coffee_shop seed 2 with a health inspector every day: the visitor walks
+## the busy room and leaves on its own feet, never taken out as blocked.
 
 const LIMIT: int = 600
 const MAX_GIVE_UPS: int = 2
 const CASES: Array[Dictionary] = [
 	{"setup": "coffee_shop", "seed": 1, "days": 3},
 	{"setup": "default", "seed": 20, "days": 10},
+	{"setup": "coffee_shop", "seed": 2, "days": 2, "inspector": true},
 ]
 
 
@@ -26,7 +29,7 @@ func test_busy_days_that_used_to_deadlock_keep_everyone_moving() -> void:
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	for case: Dictionary in CASES:
 		var row: Dictionary = LivenessSoak.run_case(tree, int(case["seed"]), String(case["setup"]),
-			int(case["days"]), LIMIT, false, 1)
+			int(case["days"]), LIMIT, false, 1, bool(case.get("inspector", false)))
 		var label: String = "%s seed %d" % [case["setup"], case["seed"]]
 		assert_false(row.has("error"), "%s: %s" % [label, row.get("error", "")])
 		assert_eq(int(row.get("stuck_episodes", -1)), 0,
@@ -39,3 +42,8 @@ func test_busy_days_that_used_to_deadlock_keep_everyone_moving() -> void:
 		assert_true(give_ups <= MAX_GIVE_UPS,
 			"%s: %d guests gave up blocked (cap %d)" % [label, give_ups, MAX_GIVE_UPS])
 		assert_true(int(row.get("served", 0)) > 0, "%s still serves guests" % label)
+		if bool(case.get("inspector", false)):
+			assert_eq(int(row.get("inspector_visits", 0)), int(case["days"]), "%s: the inspector came every day" % label)
+			assert_eq(int(row.get("inspector_removed", -1)), 0, "%s: the inspector always walked out" % label)
+			assert_true(int(row.get("inspector_max_stall", LIMIT + 1)) <= LIMIT,
+				"%s: the inspector kept moving (max %d)" % [label, int(row.get("inspector_max_stall", -1))])

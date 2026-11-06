@@ -957,7 +957,7 @@ func _watch_liveness(world: SimWorld) -> void:
 		# yield again) counts as stuck too, not just someone standing still.
 		var goal: Vector2i = _real_goal(agent)
 		var distance: float = GridMath.octile(agent.cell, goal)
-		if agent is CustomerAgent and (agent as CustomerAgent).state == CustomerAgent.State.LEAVING:
+		if _leaving(agent):
 			# Either street cell is the way out; switching between them is not progress.
 			goal = EXIT_GOAL
 			for entry: Vector2i in world.grid.entries():
@@ -1108,7 +1108,10 @@ func _route_cost(cells: Array[Vector2i]) -> float:
 	return cost
 
 
+## A guest or the health inspector on the way out: either street cell will do.
 func _leaving(agent: SimAgent) -> bool:
+	if agent is InspectorAgent:
+		return (agent as InspectorAgent).state == InspectorAgent.State.LEAVING
 	return agent is CustomerAgent and (agent as CustomerAgent).state == CustomerAgent.State.LEAVING
 
 
@@ -1353,8 +1356,8 @@ func _may_squeeze(stuck: SimAgent, partner: SimAgent) -> bool:
 	if partner is CourierAgent:
 		return false
 	if stuck is StaffAgent:
-		return partner is CustomerAgent
-	return stuck is CustomerAgent and (stuck as CustomerAgent).state == CustomerAgent.State.LEAVING
+		return partner is CustomerAgent or partner is InspectorAgent
+	return _leaving(stuck)
 
 
 func _start_squeeze(world: SimWorld, stuck: SimAgent, partner: SimAgent, stuck_path: Array[Vector2i]) -> void:

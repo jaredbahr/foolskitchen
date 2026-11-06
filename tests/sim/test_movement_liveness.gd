@@ -33,6 +33,11 @@ class GuestWalker extends CustomerAgent:
 		pass
 
 
+class InspectorWalker extends InspectorAgent:
+	func tick(world: SimWorld) -> void:
+		step_move(world)
+
+
 func after_each() -> void:
 	_previous.clear()
 	GameState.new_run(1)
@@ -319,6 +324,25 @@ func test_a_leaving_guest_without_a_path_is_still_led_out() -> void:
 	assert_eq(standing.cell, Vector2i(1, 1), "the person in the way steps aside, not out of the door")
 	assert_true(world.now <= world.movement_tuning.escape_after_ticks + 20,
 		"led out at the first escape (tick %d)" % world.now)
+
+
+## The health inspector on its way out is followed the same way, and never
+## sent home by the guest give-up.
+func test_a_leaving_inspector_without_a_path_is_led_out_too() -> void:
+	var world: SimWorld = _service_world(["E...", "#.##"])
+	var inspector: InspectorWalker = InspectorWalker.new()
+	inspector.cell = Vector2i(2, 0)
+	world.add_agent(inspector)
+	inspector.state = InspectorAgent.State.LEAVING
+	var standing: SimAgent = _standing(world, Vector2i(1, 0))
+	for tick: int in 400:
+		if not _advance(world):
+			return
+		if inspector.cell == Vector2i(0, 0):
+			break
+	assert_eq(inspector.cell, Vector2i(0, 0), "reaches the street")
+	assert_eq(standing.cell, Vector2i(1, 1))
+	assert_eq(int(world.movement.escape_counts.get(&"give_up", 0)), 0)
 
 
 ## Nobody stands in the stuck person's shortest way: the backstop grants no

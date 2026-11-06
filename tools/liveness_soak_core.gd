@@ -19,7 +19,7 @@ const EDIT_TRIES: int = 400
 
 static func run_cli(tree: SceneTree, args: PackedStringArray) -> int:
 	var options: Dictionary = {"days": 14, "seeds": [1], "setups": ["default"],
-		"limit": 600, "edits": false, "dumps": MAX_DUMPS_PER_CASE}
+		"limit": 600, "edits": false, "dumps": MAX_DUMPS_PER_CASE, "inspector": false}
 	var index: int = 0
 	while index + 1 < args.size():
 		var key: String = args[index]
@@ -34,6 +34,8 @@ static func run_cli(tree: SceneTree, args: PackedStringArray) -> int:
 				options["dumps"] = int(value)
 			"--edits":
 				options["edits"] = value == "true"
+			"--inspector":
+				options["inspector"] = value == "true"
 			"--seeds":
 				var seeds: Array = []
 				for part: String in value.split(",", false):
@@ -53,7 +55,7 @@ static func run_cli(tree: SceneTree, args: PackedStringArray) -> int:
 	for setup_name: Variant in options["setups"]:
 		for seed_value: Variant in options["seeds"]:
 			var row: Dictionary = run_case(tree, int(seed_value), String(setup_name), int(options["days"]),
-				int(options["limit"]), bool(options["edits"]), int(options["dumps"]))
+				int(options["limit"]), bool(options["edits"]), int(options["dumps"]), bool(options["inspector"]))
 			print("SOAK_CASE ", JSON.stringify(row))
 			if row.has("error") or int(row.get("stuck_episodes", 0)) > 0:
 				failed = true
@@ -61,10 +63,14 @@ static func run_cli(tree: SceneTree, args: PackedStringArray) -> int:
 
 
 static func run_case(tree: SceneTree, seed_value: int, setup_name: String, days: int,
-		limit: int, edits: bool, max_dumps: int) -> Dictionary:
+		limit: int, edits: bool, max_dumps: int, inspector: bool = false) -> Dictionary:
 	var result: Dictionary = {"setup": setup_name, "seed": seed_value, "days": days, "edits": edits,
 		"agent_days": 0, "max_no_progress": 0, "max_frozen": 0, "max_goal_stall": 0, "max_goal_wait": 0, "stuck_episodes": 0, "served": 0,
 		"lost": 0, "reasons": {}, "edit_actions": 0}
+	if inspector:
+		result["inspector_visits"] = 0
+		result["inspector_max_stall"] = 0
+		result["inspector_removed"] = 0
 	if not ProbeSetups.names().has(setup_name):
 		result["error"] = "unknown setup"
 		return result
@@ -93,6 +99,8 @@ static func run_case(tree: SceneTree, seed_value: int, setup_name: String, days:
 			break
 		if edits:
 			result["edit_actions"] = int(result["edit_actions"]) + _edit_morning(main, edit_rng)
+		if inspector:
+			_force_inspection(sim)
 		if not Clock.sim.start_service():
 			result["error"] = "did not open day %d" % (day_index + 1)
 			break
@@ -114,6 +122,8 @@ static func run_case(tree: SceneTree, seed_value: int, setup_name: String, days:
 				main.call("refresh_presentation")
 			if Clock.sim.phase == SimClock.Phase.CLOSED:
 				break
+			if inspector:
+				result["inspector_removed"] = int(result["inspector_removed"]) + _removals_this_tick(world)
 			for agent: SimAgent in world.agents:
 				seen[agent.id] = true
 				var wants: bool = wants_to_move(world, agent)
@@ -145,6 +155,8 @@ static func run_case(tree: SceneTree, seed_value: int, setup_name: String, days:
 				goal_key[agent.id] = goal
 				result["max_goal_wait"] = maxi(int(result["max_goal_wait"]), int(goal_age[agent.id]))
 				var count: int = maxi(int(still[agent.id]), int(frozen[agent.id]))
+				if inspector and agent is InspectorAgent:
+					result["inspector_max_stall"] = maxi(int(result["inspector_max_stall"]), count)
 				if count > int(result["max_no_progress"]):
 					result["max_no_progress"] = count
 					if count >= 250 and (count == 250 or count % 50 == 0):
@@ -161,6 +173,9 @@ static func run_case(tree: SceneTree, seed_value: int, setup_name: String, days:
 			result["error"] = "did not close day %d" % (day_index + 1)
 			break
 		result["agent_days"] = int(result["agent_days"]) + seen.size()
+		if inspector:
+			result["inspector_visits"] = int(result["inspector_visits"]) \
+				+ (1 if sim.inspection.arrived_day == Clock.sim.day else 0)
 		result["served"] = int(result["served"]) + sim.served_today
 		result["lost"] = int(result["lost"]) + sim.lost_today
 		for reason: StringName in sim.leave_reasons_today:
@@ -186,7 +201,7 @@ static func run_case(tree: SceneTree, seed_value: int, setup_name: String, days:
 static func goal_distance(world: SimWorld, agent: SimAgent) -> Array:
 	var goal: Vector2i = world.movement._real_goal(agent)
 	var distance: float = GridMath.octile(agent.cell, goal)
-	if agent is CustomerAgent and (agent as CustomerAgent).state == CustomerAgent.State.LEAVING:
+	if world.movement._leaving(agent):
 		goal = MovementCoordinator.EXIT_GOAL
 		for entry: Vector2i in world.grid.entries():
 			distance = minf(distance, GridMath.octile(agent.cell, entry))
@@ -202,6 +217,10 @@ static func wants_to_move(world: SimWorld, agent: SimAgent) -> bool:
 		var guest: CustomerAgent = agent as CustomerAgent
 		if guest.state == CustomerAgent.State.LEAVING or guest.state == CustomerAgent.State.WALKING_TO_SEAT:
 			return true
+	if agent is InspectorAgent:
+		# It drops its path whenever blocked; walking or leaving, it is on its way.
+		var visitor: InspectorAgent = agent as InspectorAgent
+		return visitor.state == InspectorAgent.State.WALKING or visitor.state == InspectorAgent.State.LEAVING
 	return not agent.has_arrived()
 
 
@@ -213,6 +232,9 @@ static func describe(world: SimWorld, agent: SimAgent) -> String:
 	elif agent is CourierAgent:
 		kind = "courier"
 		state = CourierAgent.State.keys()[(agent as CourierAgent).state]
+	elif agent is InspectorAgent:
+		kind = "inspector"
+		state = InspectorAgent.State.keys()[(agent as InspectorAgent).state]
 	elif agent is CustomerAgent:
 		var guest: CustomerAgent = agent as CustomerAgent
 		kind = "guest"
@@ -342,6 +364,29 @@ static func _edit_morning(main: Node, rng: RandomNumberGenerator) -> int:
 			done += 1
 			break
 	return done
+
+
+## Inspectors taken out by their own blocked-exit timeout (instead of walking
+## out) this tick, read from this tick's event log lines.
+static func _removals_this_tick(world: SimWorld) -> int:
+	var prefix: String = "[%d] " % world.now
+	var found: int = 0
+	var index: int = world.event_log.size() - 1
+	while index >= 0 and String(world.event_log[index]).begins_with(prefix):
+		if String(world.event_log[index]).contains("Inspector removed"):
+			found += 1
+		index -= 1
+	return found
+
+
+## A visit on every open day, a little before mid-service, whatever the owner
+## level or the gap since the last one (the sim still walks it in normally).
+static func _force_inspection(sim: RestaurantSim) -> void:
+	var book: InspectionBook = sim.inspection
+	book.last_day = 0
+	book.planned_day = Clock.sim.day
+	book.planned_tick = floori(float(Clock.sim.open_ticks) * 0.4)
+	book.arrived_day = 0
 
 
 static func _free(main: Node) -> void:
