@@ -18,10 +18,15 @@ extends Resource
 @export_range(1, 4800, 1) var squeeze_after_ticks: int = 300
 ## A guest who still cannot move gives up and leaves ("couldn't get through").
 @export_range(1, 9600, 1) var give_up_after_ticks: int = 450
+## Let them out first: while the door is jammed with someone leaving, a guest
+## arriving from the street waits outside, but never longer than this; past it
+## the arrival comes in anyway and the backstop sorts the crowd out.
+@export_range(1, 9600, 1) var door_hold_max_ticks: int = 300
 
 
 func is_valid() -> bool:
 	return repath_after_ticks > 0 and yield_after_ticks >= repath_after_ticks \
 		and yield_search_radius > 0 and admission_search_radius > 0 \
 		and escape_after_ticks >= yield_after_ticks and escape_retry_ticks > 0 \
-		and squeeze_after_ticks > escape_after_ticks and give_up_after_ticks > squeeze_after_ticks
+		and squeeze_after_ticks > escape_after_ticks and give_up_after_ticks > squeeze_after_ticks \
+		and door_hold_max_ticks > 0

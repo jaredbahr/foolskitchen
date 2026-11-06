@@ -347,8 +347,9 @@ func test_a_leaving_inspector_without_a_path_is_led_out_too() -> void:
 
 ## In a crowd heading out, two leaving guests swapping gets neither closer to
 ## the street (it only reset their stall counts and churned): a leaving guest
-## squeezes past someone coming in or standing about, never another leaver.
-func test_a_leaving_guest_never_squeezes_past_another_leaving_guest() -> void:
+## squeezes past someone coming in or standing about, and past another leaver
+## only in a real head-on (that leaver's own way out runs through its cell).
+func test_a_leaving_guest_squeezes_past_another_leaver_only_head_on() -> void:
 	var world: SimWorld = _service_world(["E..."])
 	var first: GuestWalker = _guest(world, Vector2i(1, 0))
 	var second: GuestWalker = _guest(world, Vector2i(2, 0))
@@ -356,9 +357,33 @@ func test_a_leaving_guest_never_squeezes_past_another_leaving_guest() -> void:
 	first.state = CustomerAgent.State.LEAVING
 	second.state = CustomerAgent.State.LEAVING
 	arriving.state = CustomerAgent.State.QUEUED
-	assert_false(world.movement._may_squeeze(second, first))
-	assert_true(world.movement._may_squeeze(second, arriving))
-	assert_false(world.movement._may_squeeze(arriving, second), "only the one leaving squeezes")
+	assert_false(world.movement._may_squeeze(world, second, first), "never past the one ahead in the same line")
+	assert_true(world.movement._may_squeeze(world, second, arriving))
+	assert_false(world.movement._may_squeeze(world, arriving, second), "only the one leaving squeezes")
+	# Head-on: the inspector keeps to the far door, the guest to the near one.
+	var corridor: SimWorld = _service_world(["E......E"])
+	var inspector: InspectorWalker = InspectorWalker.new()
+	inspector.cell = Vector2i(2, 0)
+	corridor.add_agent(inspector)
+	inspector.state = InspectorAgent.State.LEAVING
+	inspector._avoid_entry = Vector2i(0, 0)
+	var guest: GuestWalker = _guest(corridor, Vector2i(3, 0))
+	guest.state = CustomerAgent.State.LEAVING
+	assert_true(corridor.movement._may_squeeze(corridor, inspector, guest), "both get closer to their door")
+	assert_true(corridor.movement._may_squeeze(corridor, guest, inspector))
+
+
+## The inspector who gave up on one door after being blocked there is led to
+## the other one, not back to the nearer door it avoids.
+func test_the_backstop_keeps_the_inspector_off_the_door_it_avoids() -> void:
+	var world: SimWorld = _service_world(["E......E"])
+	var inspector: InspectorWalker = InspectorWalker.new()
+	inspector.cell = Vector2i(2, 0)
+	world.add_agent(inspector)
+	inspector.state = InspectorAgent.State.LEAVING
+	assert_eq(world.movement._escape_route(world, inspector).back(), Vector2i(0, 0), "the nearer door")
+	inspector._avoid_entry = Vector2i(0, 0)
+	assert_eq(world.movement._escape_route(world, inspector).back(), Vector2i(7, 0), "the door it chose")
 
 
 ## Let them out first: while someone on the way out has been stuck in the
@@ -382,17 +407,68 @@ func test_arrivals_wait_outside_while_the_door_is_jammed_with_leavers() -> void:
 	assert_false(world.pending_agents().has(held), "and comes in once it clears")
 
 
-## Nobody stands in the stuck person's shortest way: the backstop grants no
-## right of way and changes nothing.
-func test_an_escape_with_nobody_in_the_way_does_nothing() -> void:
+## The hold has limits: waiting arrivals do not tick and nobody else would
+## end the wait, so it lifts once the oldest arrival has waited
+## door_hold_max_ticks, or once the jammed leaver reaches the give-up limit.
+func test_the_arrival_hold_never_lasts_past_its_limits() -> void:
+	var world: SimWorld = _service_world(["E...."])
+	var leaving: GuestWalker = _guest(world, Vector2i(1, 0))
+	leaving.state = CustomerAgent.State.LEAVING
+	var tuning: MovementTuning = world.movement_tuning
+	var jam: Callable = func(stalled: int) -> void:
+		world.movement._stall[leaving.id] = {"goal": MovementCoordinator.EXIT_GOAL, "best": 1.0,
+			"since": world.now - stalled, "next": world.now + 1000}
+	jam.call(tuning.escape_after_ticks)
+	var arriving: GuestWalker = _guest(world, Vector2i(0, 0))
+	assert_true(world.pending_agents().has(arriving), "held while the door is jammed")
+	world.now += tuning.door_hold_max_ticks - 1
+	jam.call(tuning.escape_after_ticks)
+	assert_false(world.movement.register_agent(world, arriving), "still held just before the limit")
+	world.now += 1
+	jam.call(tuning.escape_after_ticks)
+	assert_true(world.movement.register_agent(world, arriving), "comes in at the limit")
+	assert_true(arriving.movement_admitted)
+	var fresh: SimWorld = _service_world(["E...."])
+	var stuck: GuestWalker = _guest(fresh, Vector2i(1, 0))
+	stuck.state = CustomerAgent.State.LEAVING
+	fresh.movement._stall[stuck.id] = {"goal": MovementCoordinator.EXIT_GOAL, "best": 1.0,
+		"since": fresh.now - fresh.movement_tuning.give_up_after_ticks, "next": fresh.now + 1000}
+	var late: GuestWalker = _guest(fresh, Vector2i(0, 0))
+	assert_false(fresh.pending_agents().has(late), "a jam past the give-up limit holds nobody")
+
+
+## Nobody stands in the stuck person's shortest way: nobody is moved and no
+## way is held, but the stalled person gets right of way, so it wins a free
+## step that someone else reaches for at the same moment (#317: in a busy bar
+## corridor that was the cell it kept losing). The turn passes on.
+func test_an_escape_with_nobody_in_the_way_only_grants_right_of_way() -> void:
 	var world: SimWorld = _service_world(["...."])
 	var walker: Walker = _walker(world, Vector2i(0, 0), Vector2i(3, 0))
 	var before: Array[Vector2i] = walker.path.duplicate()
 	var outcome: int = world.movement._escape(world, walker, world.movement_tuning.escape_after_ticks)
-	assert_eq(outcome, MovementCoordinator.ESCAPE_FUTILE)
-	assert_false(world.movement._right_of_way.has(walker.id), "no right of way")
+	assert_eq(outcome, MovementCoordinator.ESCAPE_FUTILE, "does not use up the turn")
+	assert_true(world.movement._right_of_way.has(walker.id), "right of way for the contested step")
 	assert_eq(world.movement._way_holder, -1, "no held way")
 	assert_eq(walker.path, before, "the route is untouched")
+
+
+## Two people stalled in the same crowd: a newer escape cannot take the held
+## way from someone who has waited longer while their right of way lasts.
+func test_the_held_way_stays_with_whoever_has_waited_longest() -> void:
+	var world: SimWorld = _service_world(["......", "......"])
+	var long_wait: Walker = _walker(world, Vector2i(0, 0), Vector2i(5, 0))
+	_standing(world, Vector2i(1, 0))
+	var short_wait: Walker = _walker(world, Vector2i(0, 1), Vector2i(5, 1))
+	_standing(world, Vector2i(1, 1))
+	var limit: int = world.movement_tuning.escape_after_ticks
+	world.movement._escape(world, long_wait, limit + 200)
+	assert_eq(world.movement._way_holder, long_wait.id)
+	world.movement._escape(world, short_wait, limit)
+	assert_eq(world.movement._way_holder, long_wait.id, "the longer wait keeps the held way")
+	assert_true(world.movement._right_of_way.has(short_wait.id), "the newer one still gets right of way")
+	world.movement._right_of_way[long_wait.id] = world.now - 1
+	world.movement._escape(world, short_wait, limit)
+	assert_eq(world.movement._way_holder, short_wait.id, "once that lapses the next in line takes it")
 
 
 func _service_world(rows: Array[String], open: bool = true) -> SimWorld:
