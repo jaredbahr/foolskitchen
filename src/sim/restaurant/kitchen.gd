@@ -462,7 +462,9 @@ func _advance_spills(sim: RestaurantSim) -> void:
 		var radius: int = sim.mishaps.tuning.pass_crowding_radius
 		if pass_item != null and GridMath.octile(staff.cell, pass_item.origin) <= radius:
 			for other: SimAgent in sim.world.agents:
-				if other != staff and GridMath.octile(other.cell, pass_item.origin) <= radius:
+				# The health inspector is not part of the crowd at the pass.
+				if other != staff and not other is InspectorAgent \
+						and GridMath.octile(other.cell, pass_item.origin) <= radius:
 					nearby += 1
 		if sim.mishaps.roll_spill(staff.trait_id == &"clumsy", nearby):
 			spill_carried_meal(staff)

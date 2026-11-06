@@ -38,6 +38,7 @@ var _player: AnimationPlayer
 var _skeleton: Skeleton3D
 var _hat: Node3D
 var _cap: Node3D
+var _clipboard: Node3D
 var _model_name: StringName = &""
 var _clip: StringName = &""
 var _requested_clip: StringName = &"idle"
@@ -47,6 +48,8 @@ var _playback_speed: float = 1.0
 var _seated_lean_degrees: float = 0.0
 var _sit_lean_track: int = -1
 var _sit_base_rotations: Array[Quaternion] = []
+## Where the clipboard sits from the midpoint of the two palms (person-local).
+const CLIPBOARD_OFFSET: Vector3 = Vector3(0.0, 0.0, -0.1)
 ## Uniform materials by role, built once from the vendored colormap.
 static var _uniform_materials: Dictionary[StringName, Material] = {}
 
@@ -54,6 +57,7 @@ static var _uniform_materials: Dictionary[StringName, Material] = {}
 func _ready() -> void:
 	_hat = get_node("ChefHat") as Node3D
 	_cap = get_node("CourierCap") as Node3D
+	_clipboard = get_node("Clipboard") as Node3D
 	_initialized = true
 	set_look(role, guest_id, customer_type)
 
@@ -104,6 +108,8 @@ func set_look(value: StringName, id: int = 0, kind: StringName = &"regular") -> 
 	if PersonPresentation.has_courier_cap(role) and not _attach_to_head(_cap, "CourierCapAttachment"):
 		_clear_model()
 		return false
+	if _clipboard != null:
+		_clipboard.visible = PersonPresentation.has_clipboard(role)
 	if regular and not _apply_regular_clothing(desired_model):
 		_clear_model()
 		return false
@@ -231,7 +237,8 @@ func set_pose(moving: bool, seated: bool, carrying: bool, working: bool, seat_he
 		return false
 	var lean: float = seated_lean_degrees if seated else 0.0
 	var lean_changed: bool = lean != _seated_lean_degrees
-	_requested_clip = PersonPresentation.clip_for_state(moving, seated, carrying, working, bending)
+	_requested_clip = PersonPresentation.clip_for_role(role,
+		PersonPresentation.clip_for_state(moving, seated, carrying, working, bending))
 	_seat_height = maxf(seat_height, 0.0) if seated else 0.0
 	_seated_lean_degrees = lean
 	var pivot: Node3D = get_node_or_null("ModelPivot") as Node3D
@@ -242,7 +249,9 @@ func set_pose(moving: bool, seated: bool, carrying: bool, working: bool, seat_he
 		if _clip == &"sit" and _player.has_animation(&"sit"):
 			# Re-evaluate the private track without restarting a paused/live pose.
 			_player.seek(_player.current_animation_position, true)
-	return _play_requested_clip()
+	var played: bool = _play_requested_clip()
+	_place_clipboard()
+	return played
 
 
 ## Keeps the last facing while stationary. Only this view's rotation changes.
@@ -298,6 +307,13 @@ func carry_anchor_position() -> Vector3:
 	return _skeleton_point_to_person((left_palm + right_palm) * 0.5)
 
 
+## The inspector's clipboard rides in front of the held hands.
+func _place_clipboard() -> void:
+	if _clipboard == null or not _clipboard.visible or _skeleton == null:
+		return
+	_clipboard.position = carry_anchor_position() + CLIPBOARD_OFFSET
+
+
 func _skeleton_point_to_person(point: Vector3) -> Vector3:
 	var transform_to_person: Transform3D = Transform3D.IDENTITY
 	var cursor: Node = _skeleton
@@ -325,6 +341,9 @@ func _prepare_clips() -> bool:
 	if carry_walk == null:
 		return false
 	library.add_animation(PersonPresentation.CARRY_WALK, carry_walk)
+	if PersonPresentation.has_clipboard(role):
+		library.add_animation(PersonPresentation.CLIPBOARD_WALK, _clipboard_arms(library.get_animation(&"walk")))
+		library.add_animation(PersonPresentation.CLIPBOARD_HOLD, _clipboard_arms(library.get_animation(&"idle")))
 	for name: StringName in _player.get_animation_library_list():
 		_player.remove_animation_library(name)
 	_player.add_animation_library(&"", library)
@@ -348,6 +367,32 @@ static func _carry_walk(walk: Animation, holding: Animation) -> Animation:
 			copied += 1
 	if copied == 0:
 		return null
+	animation.loop_mode = Animation.LOOP_LINEAR
+	return animation
+
+
+## `base` with both arms replaced by the clipboard hold: each rigid arm swung
+## forward about the vertical axis and dropped a little, so the hands meet the
+## sides of a board held at the chest. Only a copy is built.
+static func _clipboard_arms(base: Animation) -> Animation:
+	var animation: Animation = base.duplicate(true) as Animation
+	var paths: Dictionary[String, NodePath] = {}
+	for index: int in range(animation.get_track_count() - 1, -1, -1):
+		if _is_arm_track(animation, index):
+			var bone: String = String(animation.track_get_path(index)).get_slice(":", 1)
+			paths[bone] = animation.track_get_path(index)
+			animation.remove_track(index)
+	var yaw: float = deg_to_rad(PersonPresentation.CLIPBOARD_ARM_YAW_DEGREES)
+	var drop: float = deg_to_rad(PersonPresentation.CLIPBOARD_ARM_DROP_DEGREES)
+	var poses: Dictionary[String, Quaternion] = {
+		"arm-left": Quaternion(Vector3.UP, -yaw) * Quaternion(Vector3.BACK, -drop),
+		"arm-right": Quaternion(Vector3.UP, yaw) * Quaternion(Vector3.BACK, drop),
+	}
+	for bone: String in paths:
+		var track: int = animation.add_track(Animation.TYPE_ROTATION_3D)
+		animation.track_set_path(track, paths[bone])
+		animation.track_insert_key(track, 0.0, poses[bone])
+		animation.track_insert_key(track, animation.length, poses[bone])
 	animation.loop_mode = Animation.LOOP_LINEAR
 	return animation
 
@@ -423,6 +468,8 @@ func _play_requested_clip() -> bool:
 
 
 func _clear_model() -> void:
+	if _clipboard != null:
+		_clipboard.visible = false
 	for piece: Node3D in [_hat, _cap]:
 		if piece != null:
 			piece.visible = false

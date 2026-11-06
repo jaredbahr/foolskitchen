@@ -332,6 +332,10 @@ func _advance_visit(world: SimWorld, allow_movement: bool = true) -> void:
 				_walk_to_exit(world)
 
 
+func uses_guest_layer() -> bool:
+	return true
+
+
 ## Guests never walk through the kitchen or storage (FK-101).
 func plan_path(grid: SimGrid, from_cell: Vector2i, to_cell: Vector2i) -> Array[Vector2i]:
 	return grid.find_guest_path(from_cell, to_cell)

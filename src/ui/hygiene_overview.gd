@@ -17,6 +17,8 @@ class Snapshot:
 	var restroom_spots: int = 0
 	var today_label: String = UNAVAILABLE
 	var problem_cells: Array[Vector2i] = []
+	## "Last inspection: B, day 12", or "" before inspections can happen (#302).
+	var inspection_line: String = ""
 
 
 static func capture(sim: RestaurantSim) -> Snapshot:
@@ -24,6 +26,10 @@ static func capture(sim: RestaurantSim) -> Snapshot:
 	if sim == null or sim.world == null:
 		return result
 	var grid: SimGrid = sim.world.grid
+	if sim.inspection != null and sim.inspection.last_day > 0:
+		result.inspection_line = InspectionText.last_line(sim.inspection.last_grade, sim.inspection.last_day)
+	elif sim.inspection != null and sim.customer_level >= sim.inspection.tuning.unlock_level:
+		result.inspection_line = InspectionText.NONE_YET
 	var cells: Dictionary[Vector2i, bool] = {}
 	for cell: Vector2i in grid.cells():
 		if grid.terrain(cell) == SimGrid.Terrain.FLOOR and grid.room(cell) == SimGrid.Room.RESTROOM:
@@ -69,6 +75,8 @@ static func lines(snapshot: Snapshot) -> PackedStringArray:
 			"s" if snapshot.toilets_needing_tidy == 1 else "", snapshot.restroom_spots,
 			"" if snapshot.restroom_spots == 1 else "s"])
 	result.append("Today's cleanliness: %s" % snapshot.today_label)
+	if not snapshot.inspection_line.is_empty():
+		result.append(snapshot.inspection_line)
 	return result
 
 
