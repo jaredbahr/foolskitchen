@@ -24,8 +24,13 @@ const WALL_FINISH_ALREADY: String = "This wall already looks like that"
 const DECOR_CLOSED: String = "Wall decor can only be changed in the morning or after closing"
 const DECOR_GONE: String = "That wall decor is no longer there"
 const PERSON_IN_WAY: String = "Someone is in the way."
+## Nobody walks through a seat (#315), so a seat in the doorway shuts it.
+const SEAT_IN_DOORWAY: String = "Seats can't go in the doorway"
 
 var last_check: EditCheck = EditCheck.new()
+## The last committed placement's seat cut-off warning (#315): {version, id,
+## text}. check_current() shows it on that item while the layout is unchanged.
+var _seat_cut_note: Dictionary = {}
 ## The signed cash change of the last successful edit (negative = spent), and
 ## the id a successful buy gave its item. Undo history reads both (FK-085).
 var last_cash_change: int = 0
@@ -185,6 +190,10 @@ func check_current() -> EditCheck:
 		return EditCheck.new(false, "The current shop has invalid placements")
 	var check: EditCheck = EditCheck.new(true)
 	_fill_warnings(check, preview, ids)
+	var grid: SimGrid = _sim.world.grid
+	if check.ok and not _seat_cut_note.is_empty() and int(_seat_cut_note["version"]) == grid.version \
+			and grid.item(int(_seat_cut_note["id"])) != null:
+		_add_seat_warning(check, int(_seat_cut_note["id"]), String(_seat_cut_note["text"]))
 	return check
 
 
@@ -220,6 +229,8 @@ func move(item_id: int, origin: Vector2i, quarter_turns: int, exact: Exact = nul
 		last_cash_change = 0
 	_applying = false
 	last_check = check if moved else EditCheck.new(false, "The shop changed; check the move again")
+	if moved:
+		_remember_seat_cut(check, item_id)
 	return moved
 
 
@@ -256,6 +267,8 @@ func buy(def_id: StringName, origin: Vector2i, quarter_turns: int = 0, exact: Ex
 		_record_item(-definition.variant_price(placed.variant_id) if exact == null else exact.amount, exact)
 	_applying = false
 	last_check = check if placed != null else EditCheck.new(false, "The shop changed; check the purchase again")
+	if placed != null:
+		_remember_seat_cut(check, placed.id)
 	return placed != null
 
 
@@ -307,11 +320,16 @@ func check_stamp(blueprint: Blueprint, anchor: Vector2i, rotation: int = 0, exac
 			var dining: EditCheck = EditCheck.validate_dining(_sim.world.grid, preview, ids, id, -1)
 			if not dining.ok:
 				return dining
+			var doorway: String = seat_doorway_problem(preview, preview.item(id))
+			if not doorway.is_empty():
+				return EditCheck.new(false, doorway)
 		var problem: String = RoomRules.problem(_sim.world.grid, preview, ids)
 		if not problem.is_empty():
 			return EditCheck.new(false, problem)
 	check.cost = charge
 	_fill_warnings(check, preview, ids)
+	if exact == null:
+		_note_seat_cut_off(check, preview, _stamp_culprit(blueprint, anchor, rotation, preview))
 	_note_menu_access(check, preview, exact != null)
 	return check
 
@@ -334,6 +352,10 @@ func stamp(blueprint: Blueprint, anchor: Vector2i, rotation: int = 0, exact: Exa
 	last_stamp_ids.clear()
 	for item: PlacedItem in placed:
 		last_stamp_ids.append(item.id)
+	# Stamp previews number their entries -1, -2, ... in placement order.
+	var culprit: int = -1 - check.seat_cut_id
+	if not check.seat_cut_warning.is_empty() and culprit >= 0 and culprit < placed.size():
+		_remember_seat_cut(check, placed[culprit].id)
 	if exact == null:
 		var total: int = 0
 		for item: PlacedItem in placed:
@@ -2142,16 +2164,22 @@ func _check_placement(definition: ItemDef, origin: Vector2i, turns: int, exclude
 		var rooms: String = RoomRules.problem(_sim.world.grid, preview, ids)
 		if not rooms.is_empty():
 			return EditCheck.new(false, rooms)
-		# A waiting bench looks passable but nobody walks through a seat, so
-		# it may not newly cut off a door, seat or station (#269). Solid
-		# furniture keeps the DESIGN rule: it warns, never blocks. Chairs and
-		# booths are left out: joined tables and booth rows rely on today's rule.
+		# Nobody walks through a seat (#315): a seat on the doorway would
+		# shut the shop, so it is refused outright.
+		var doorway: String = seat_doorway_problem(preview, preview.item(proposed_id))
+		if not doorway.is_empty():
+			return EditCheck.new(false, doorway)
+		# A waiting bench may not newly cut off a door, seat or station (#269).
+		# Other seats follow the DESIGN furniture rule below: they warn, never
+		# block.
 		if definition.category == ItemDef.Category.WAITING:
 			var cut: String = WallRules.seat_cut_off_problem(_sim.world.grid, preview)
 			if not cut.is_empty():
 				return EditCheck.new(false, cut)
 	var check: EditCheck = EditCheck.new(true)
 	_fill_warnings(check, preview, ids)
+	if not restoring:
+		_note_seat_cut_off(check, preview, result_id)
 	var proposed: PlacedItem = preview.item(proposed_id)
 	if check.ok and proposed != null and definition.category == ItemDef.Category.TABLE:
 		check.dining_capacity = DiningSeats.usable_cells(preview, proposed).size()
@@ -2312,37 +2340,130 @@ func _fill_warnings(check: EditCheck, grid: SimGrid, ids: Dictionary[int, int]) 
 			check.seat_warnings[ids[table.id]] = "Only %d of %d seats usable" % [usable, nominal]
 
 
-static func _unreachable(grid: SimGrid, ids: Dictionary[int, int]) -> Array[int]:
+## Nobody walks through a seat (#315): MovementCoordinator never lets anyone
+## use a seat as an aisle, while the standing path check walks across seats.
+## A placement that newly cuts something off for real people (a row of stools
+## across the only gap, say) warns on the item placed: while it is placed or
+## moved, and after the commit until the next layout change. The highlighted
+## `unreachable` items keep the standing check, which probes and the soak
+## treat as a hard condition. Like #269, only what an edit newly cuts off
+## counts, so older layouts never gain warnings; and like all furniture it
+## warns, never blocks.
+func _note_seat_cut_off(check: EditCheck, preview: SimGrid, result_id: int) -> void:
+	if not check.ok:
+		return
+	var cut: String = WallRules.seat_cut_off_problem(_sim.world.grid, preview)
+	if cut.is_empty():
+		return
+	check.seat_cut_warning = WallRules.seat_cut_off_warning(cut)
+	check.seat_cut_id = result_id
+	_add_seat_warning(check, result_id, check.seat_cut_warning)
+
+
+## Joins a warning to any the item already has ("Only 3 of 4 seats usable").
+static func _add_seat_warning(check: EditCheck, item_id: int, text: String) -> void:
+	var existing: String = check.seat_warnings.get(item_id, "")
+	if existing.is_empty():
+		check.seat_warnings[item_id] = text
+	elif not existing.contains(text):
+		check.seat_warnings[item_id] = existing + "\n" + text
+
+
+func _remember_seat_cut(check: EditCheck, item_id: int) -> void:
+	_seat_cut_note = {} if check.seat_cut_warning.is_empty() else \
+		{"version": _sim.world.grid.version, "id": item_id, "text": check.seat_cut_warning}
+
+
+## The stamp entry whose placement first leaves the only way somewhere through
+## seats, as its preview id (-1 for the first entry). Only run when the whole
+## stamp cuts something off; falls back to the first entry.
+func _stamp_culprit(blueprint: Blueprint, anchor: Vector2i, rotation: int, stamped: SimGrid) -> int:
+	var live: SimGrid = _sim.world.grid
+	var was: Dictionary[Vector2i, bool] = WallRules.reachable(live, true)
+	if WallRules.seat_cut_off_from(was, stamped).is_empty():
+		return -1
+	var ids: Dictionary[int, int] = {}
+	var partial: SimGrid = _preview_without(-1, ids)
+	var index: int = 0
+	for entry: ShopPlacement in blueprint.placements(_content, anchor, rotation):
+		if partial == null or partial.place_def(_content.item(entry.item_id), entry.origin, entry.quarter_turns) == null:
+			return -1
+		if not WallRules.seat_cut_off_from(was, partial).is_empty():
+			return -1 - index
+		index += 1
+	return -1
+
+
+## Tables and stations nobody can walk to from the street. `seats_stop`: walk
+## as people do, a seat ending a walk but never carrying it on (#315).
+static func _unreachable(grid: SimGrid, ids: Dictionary[int, int], seats_stop: bool = false) -> Array[int]:
 	var warnings: Array[int] = []
+	var reach: Dictionary[Vector2i, bool] = WallRules.reachable(grid, seats_stop)
 	for placed: PlacedItem in grid.items():
 		var definition: ItemDef = placed.def as ItemDef
 		var reachable: bool = true
 		if definition.category == ItemDef.Category.TABLE:
-			reachable = _any_reachable(grid, grid.dining_group_seats(placed.id))
+			reachable = _any_reachable(reach, grid.dining_group_seats(placed.id))
 		elif definition.category == ItemDef.Category.PASS:
 			reachable = placed.work_cells.size() >= 2
 			for index: int in range(mini(2, placed.work_cells.size())):
-				if not _any_reachable(grid, [placed.work_cells[index]] as Array[Vector2i]):
+				if not _any_reachable(reach, [placed.work_cells[index]] as Array[Vector2i]):
 					reachable = false
 		elif definition.category == ItemDef.Category.STATION or definition.category == ItemDef.Category.STORAGE:
-			reachable = _any_reachable(grid, placed.work_cells)
+			reachable = _any_reachable(reach, placed.work_cells)
 			# The order counter (#293) also needs its guest side reachable.
 			if reachable and OrderCounter.is_counter(placed):
-				reachable = _any_reachable(grid, [OrderCounter.order_cell(placed)] as Array[Vector2i])
+				reachable = _any_reachable(reach, [OrderCounter.order_cell(placed)] as Array[Vector2i])
 		if not reachable:
 			warnings.append(ids[placed.id])
 	warnings.sort()
 	return warnings
 
 
-static func _any_reachable(grid: SimGrid, cells: Array[Vector2i]) -> bool:
+static func _any_reachable(reach: Dictionary[Vector2i, bool], cells: Array[Vector2i]) -> bool:
 	for cell: Vector2i in cells:
-		if not grid.is_walkable(cell):
-			continue
-		for entry: Vector2i in grid.entries():
-			if grid.is_walkable(entry) and grid.is_reachable(entry, cell):
-				return true
+		if reach.has(cell):
+			return true
 	return false
+
+
+## SEAT_IN_DOORWAY when a seat item (chair, stool, booth, bench) would put a
+## seat on a street door threshold, a door, an entry or just inside a back
+## door, or would leave no clear cell straight in from the street door (the
+## door lane, #308), else "". Nobody walks through a seat, so it would shut the
+## way. One seat beside the way in of a wide door is fine. A table's built-in
+## seats are left to the path warning, as tables have always been free to
+## stand near the door.
+static func seat_doorway_problem(grid: SimGrid, placed: PlacedItem) -> String:
+	var definition: ItemDef = placed.def as ItemDef if placed != null else null
+	if definition == null or placed.seat_cells.is_empty() \
+			or definition.category not in [ItemDef.Category.CHAIR, ItemDef.Category.WAITING]:
+		return ""
+	var blocked: Dictionary[Vector2i, bool] = WallRules.door_cells(grid)
+	var inside: Array[Vector2i] = []
+	var lane: Dictionary[Vector2i, bool] = MovementCoordinator.lane_cells(grid)
+	for entry: Vector2i in grid.entries():
+		blocked[entry] = true
+		for step: Vector2i in [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]:
+			var threshold: Vector2i = entry + step
+			if grid.terrain(threshold) == SimGrid.Terrain.FLOOR and grid.is_walkable(threshold + step) \
+					and lane.has(threshold + step):
+				inside.append(threshold + step)
+	for edge: Vector3i in grid.segment_edges():
+		if grid.segment(edge) == SimGrid.Segment.DOORWAY and WallRules.back_door_side(grid, edge) != Vector2i.ZERO:
+			for cell: Vector2i in SimGrid.edge_cells(edge):
+				blocked[cell] = true
+	var in_lane: bool = false
+	for seat: Vector2i in placed.seat_cells:
+		if blocked.has(seat):
+			return SEAT_IN_DOORWAY
+		in_lane = in_lane or inside.has(seat)
+	if not in_lane:
+		return ""
+	for cell: Vector2i in inside:
+		if not WallRules.is_seat(grid, cell):
+			return ""
+	return SEAT_IN_DOORWAY
 
 
 static func _valid_definition(definition: ItemDef) -> bool:

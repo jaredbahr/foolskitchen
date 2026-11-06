@@ -2247,6 +2247,46 @@ invalidate the appropriate cached geometry. HUD/Menu presentation is read-only.
   The existing unmodified `--door-queue` capture continues to exercise ordinary
   queue behavior.
 
+### Fish tanks (#125)
+- **Content:** `data/items/aquarium.tres` (2×1, $180, level 3, charm 4) and
+  `aquarium_large.tres` (3×1, $320, level 5, charm 5), DECOR with `cosy` and
+  `seafood` tags and `ItemDef.fish_tank`. Ordinary solid decor: the usual edit
+  rules apply. Made art in `assets/made/aquarium/` (see its README section).
+- **Fish (view only):** `AquariumView` (a `PropView`) adds 4–6 fish that swim
+  `AquariumSwim` loops: wide ellipses with a second harmonic round the tank, a
+  small bob, a tail wag, nose along the tangent, so each fish turns at the end
+  glass. One school of two or three of a kind shares a loop, each a fixed
+  distance behind. Plans come from a local generator seeded by the placed item
+  id (never `GameState` streams, never saved); fish time is display seconds.
+  Bounds are proved: a fish's centre stays inside the swim box shrunk by the
+  fish's half sizes (measured by the build script), so the whole fish stays in
+  the glass. `set_review_time` pins a still for captures.
+- **Upkeep (sim):** `AquariumCare` keeps each tank's last cleaning day. A tank
+  is cloudy once `cloudy_after_days` (4) days have passed: a pure function of
+  the day, so no tick, no random draw. `data/balance/aquarium.tres` holds the
+  toggle (`maintenance`, on), the days, the cloudy charm share (0.5) and the
+  clean's work ticks. `CleanTaskController.sync_tanks()` posts one
+  `clean_tank` task ("Clean the fish tank") per cloudy tank: walk to a free
+  floor cell beside it, then work. The cleaner takes it; with no cleaner, the
+  owner on Floor (never a server). The job is Cleaning. The task is withdrawn
+  overnight and posted again while the tank stays cloudy. Placing a tank starts
+  it clean; moving keeps its record; removing forgets it.
+- **Charm:** `VibeInputs.capture()` takes item id → charm share
+  (`AquariumCare.charm_factors()`), carried as `VibeModel.Item.charm_scale`.
+  Copies of one definition keep one charm; with any share below 1 the repeats
+  are summed fullest first (charm × Σ share_k × decay^k). With no shares the
+  old closed-form sum runs unchanged. Main recomputes the vibe each morning and
+  when a tank is cleaned (`AquariumCare.changed`).
+- **Save:** section `aquarium`, `{version: 1, tanks: [{def_id, origin,
+  cleaned_day}]}`, matched to the restored layout by kind and position (item
+  ids are not kept by a load). Validated before install; missing rows and old
+  saves start a tank clean today. Written only by the morning autosave.
+- **Look:** cloudy tanks swap the glass and water for murky copies mixed toward
+  the tank's own `plant` green (`ShopView._sync_tanks`). The Inspect panel shows
+  the water ("clear, needs a clean in N days" or "cloudy"). No light nodes.
+- **Review:** `tools/aquarium_review.tscn` (frames 30, 60, 90; set
+  `AQUARIUM_REVIEW_CLOUDY=1` for the cloudy look).
+
 ### The restaurant cat (#119)
 - **Sim.** `RestaurantCat` (`src/sim/pets/`) is a `RefCounted` owned by `RestaurantSim.cat`. It is **not** a `SimAgent`: it is never in `world.agents`, so it joins no `MovementCoordinator` traffic, reserves no cell or seat and blocks nobody (people and the cat may share a cell). Tuning is `CatTuning` in `data/balance/cat.tres`: unlock level 4, $40 adoption, $2 a day, charm radius 2 and +10%, pet radius 1, walking and nap timings.
 - **Where it goes.** `cell_ok`: `Terrain.FLOOR`, guest-walkable (no staff room, no back door), room Dining or Restroom, nothing on the NORMAL layer. Steps use `SimGrid.guest_neighbours`, so it respects wall edges and the corner rule. A bounded breadth-first search (`wander_range` steps, fixed neighbour order) picks strolls and nap trips. Nap spots (`nap_spots`, cached per `grid.version`) are the cells beside a window (an interior or outer window edge, or one of `ExteriorSupport.window_cells`); with no window, the cells beside a wall. The bed spot is the first nap spot in reading order. `begin_day` (from `RestaurantSim.start_day`) puts it there asleep and draws no random number; `layout_changed` (from the grid's `cells_changed`) sends it back if an edit lands on it. A nap lies along the wall, not into it.
@@ -2932,9 +2972,45 @@ Waiting benches are not solid, but movement never lets anyone use a seat as
 an aisle. So a bench placement or move is refused when it newly cuts off a
 door, table seat or station under that rule (`WallRules.seat_cut_off_problem`),
 for example a bench across the one-cell patio walkway in front of the tables.
-Solid furniture keeps the usual warn-but-allow path check; chairs and booths
-are not checked this way, because joined tables and booth rows rely on seats
-the stricter rule would call cut off.
+
+Seats are stops, never aisles, in the editor's placement checks too (#315).
+`WallRules.reachable(grid, true)` floods from the street the way movement
+lets people walk: a seat cell (any item's `seat_cells`: built-in table seats,
+chairs, stools, booths, benches) is reached but never walked on from, and a
+diagonal step may not brush a seat at either corner (the coordinator claims
+both corner cells). Every furniture buy, move and blueprint stamp
+(`ShopEditor._note_seat_cut_off`, through `seat_cut_off_problem`) compares
+that flood before and after the edit, and when the edit newly cuts off a
+table seat, station, sink, restroom fixture or the door for real people the
+placed item gets a seat warning ("Nobody walks through seats: this blocks the
+way to a table"), shown with its highlight. It is a placement-time warning:
+it shows while the item is placed or moved, joins any warning the item
+already has ("Only 3 of 4 seats usable"), and after the commit
+`check_current` keeps it on that item only while the grid version is
+unchanged (`ShopEditor._seat_cut_note`), so the next layout change of any
+kind ends it. A blueprint stamp puts it on the first entry whose placement
+completes the cut (`_stamp_culprit`, run only when the stamp cuts something
+off). That stays a warning, the
+furniture rule (DESIGN 4.3); only waiting benches keep #269's refusal. As in
+#269 only what an edit newly cuts off counts, so no existing layout gains a
+warning. The standing check (`check_current`, the `unreachable` highlights
+that probes and the soak treat as a hard condition), wall and floor cut-off
+refusals and the room rules still walk across seats: the preserved original
+template's middle row is all tables and seats (its kitchen is reached only by
+squeezing through), so counting seats there would flag every legacy shop and
+refuse wall edits for a furniture problem.
+A seat item (chair, stool, booth, bench) is refused outright
+(`ShopEditor.SEAT_IN_DOORWAY`) when one of its seats would stand on a street
+door threshold, a door, an entry or just inside a back door, or would fill
+the last clear cell straight in from the street door (the door lane,
+`MovementCoordinator.lane_cells`, #308), in buys, moves and blueprint stamps.
+One seat beside the way in of a two-cell door is allowed (the joined-table
+probe fixture on the original layout has one); a table's built-in seats are
+left to the path warning. Joined tables and back-to-back booth rows still
+pass: each seat is the end of its own walk. A seat reachable only through
+another seat (two booths side by side between tables) is warned about,
+because real routing cannot reach it either. Dining capacity and sim routing
+are unchanged.
 
 Two balance rules keep a patio from overfilling a busy starter shop (#269).
 Without them the default shop's one cook and one server were already near

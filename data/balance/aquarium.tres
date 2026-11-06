@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="AquariumTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/sim/cleanliness/aquarium_tuning.gd" id="1_tuning"]
+
+[resource]
+script = ExtResource("1_tuning")
+maintenance = true
+cloudy_after_days = 4
+cloudy_charm_factor = 0.5
+clean_work_ticks = 60

@@ -11,6 +11,10 @@ var dining_joined: bool = false
 var unreachable: Array[int] = []
 ## Partial capacity is still a permitted placement, with a readable warning.
 var seat_warnings: Dictionary[int, String] = {}
+## A placement-time seat cut-off warning (#315) and the item it is on, which
+## ShopEditor keeps on that item until the next layout change.
+var seat_cut_warning: String = ""
+var seat_cut_id: int = 0
 ## Enabled dishes the proposal would take off sale (FK-100), in menu order.
 var menu_losses: Array[RecipeDef] = []
 var menu_warning: String = ""

@@ -8,6 +8,7 @@ on:
       - 'tools/menu_boards_review.gd'
       - 'tools/jukebox_review.gd'
       - 'tools/order_counter_review.gd'
+      - 'tools/aquarium_review.gd'
       - 'src/world/**'
       - 'src/ui/**'
       - 'data/layouts/**'
@@ -24,7 +25,7 @@ jobs:
   capture:
     name: Default, cutaway and inspection views
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       LIBGL_ALWAYS_SOFTWARE: 'true'
       GALLIUM_DRIVER: llvmpipe
@@ -105,6 +106,7 @@ jobs:
           bash tools/screenshot.sh --scene=res://tools/food_review.tscn --out=screens/visual-review/food-service --speed=0 --frames=12,90
           bash tools/screenshot.sh --out=screens/visual-review/icons-review --scene=res://tools/icons_review.tscn --speed=0 --frames=12,60
           bash tools/screenshot.sh --out=screens/visual-review/restaurant-cat --scene=res://tools/cat_review.tscn --speed=0 --frames=30,70,110
+          SCREENSHOT_TIMEOUT_SECONDS=120 bash tools/screenshot.sh --out=screens/visual-review/aquarium --scene=res://tools/aquarium_review.tscn --speed=0 --frames=30,60,90
           bash tools/screenshot.sh --out=screens/visual-review/health-inspector --scene=res://tools/inspector_review.tscn --speed=0 --frames=30,70,110
           OWNER_REVIEW_STAGE=picker bash tools/screenshot.sh --out=screens/visual-review/owner-picker --scene=res://tools/owner_character_review.tscn --speed=0 --frames=60
           OWNER_REVIEW_STAGE=shop bash tools/screenshot.sh --out=screens/visual-review/owner-character --scene=res://tools/owner_character_review.tscn --speed=0 --frames=60

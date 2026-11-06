@@ -144,7 +144,13 @@ func test_move_preview_world_rotations_match_editor_and_cancel_preserves_live_da
 		var expected: EditCheck = _editor.check_move(item.id, _mode.origin, _mode.quarter_turns)
 		assert_eq(_mode.current_check.ok, expected.ok)
 		assert_eq(_mode.current_check.why, expected.why)
-		assert_eq(_mode.warning_ids(), expected.unreachable if expected.ok else _mode.committed_warning_ids)
+		# Seat warnings (#315) mark their item too, as BuildMode.warning_ids does.
+		var expected_ids: Array[int] = expected.unreachable.duplicate()
+		for id: int in expected.seat_warnings:
+			if not expected_ids.has(id):
+				expected_ids.append(id)
+		expected_ids.sort()
+		assert_eq(_mode.warning_ids(), expected_ids if expected.ok else _mode.committed_warning_ids)
 		assert_eq(_mode.quarter_turns, (original_turns + step) % 4)
 		assert_true(_mode.rotate())
 	assert_eq(_mode.quarter_turns, original_turns)

@@ -412,6 +412,9 @@ static func closed_door_problem(before: SimGrid, after: SimGrid) -> String:
 
 
 ## Cells reachable on foot from any street entry.
+## `seats_stop` applies MovementCoordinator's rule that a seat is a stop, never
+## an aisle (#315): a seat cell can end a walk but nobody walks on through it,
+## and a diagonal step may not cut across a seat's corner.
 static func reachable(grid: SimGrid, seats_stop: bool = false) -> Dictionary[Vector2i, bool]:
 	var seen: Dictionary[Vector2i, bool] = {}
 	var frontier: Array[Vector2i] = []
@@ -422,14 +425,31 @@ static func reachable(grid: SimGrid, seats_stop: bool = false) -> Dictionary[Vec
 	while not frontier.is_empty():
 		var next: Array[Vector2i] = []
 		for cell: Vector2i in frontier:
-			if seats_stop and not grid.seat_items_at(cell).is_empty():
+			if seats_stop and is_seat(grid, cell):
 				continue
 			for neighbour: Vector2i in grid.walkable_neighbours(cell):
+				if seats_stop and not seat_step_ok(grid, cell, neighbour):
+					continue
 				if not seen.has(neighbour):
 					seen[neighbour] = true
 					next.append(neighbour)
 		frontier = next
 	return seen
+
+
+## A dining, counter or bench seat stands on `cell`.
+static func is_seat(grid: SimGrid, cell: Vector2i) -> bool:
+	return not grid.seat_items_at(cell).is_empty()
+
+
+## False for a diagonal step that would brush past a seat at either corner:
+## the movement coordinator claims both corner cells of a diagonal step.
+static func seat_step_ok(grid: SimGrid, from_cell: Vector2i, to_cell: Vector2i) -> bool:
+	var delta: Vector2i = to_cell - from_cell
+	if delta.x == 0 or delta.y == 0:
+		return true
+	return not is_seat(grid, from_cell + Vector2i(delta.x, 0)) \
+		and not is_seat(grid, from_cell + Vector2i(0, delta.y))
 
 
 ## The first thing a change would cut off from the street, or "".
@@ -438,7 +458,9 @@ static func reachable(grid: SimGrid, seats_stop: bool = false) -> Dictionary[Vec
 ## target in, even when furniture happens to block it today, because that
 ## furniture can be moved or sold later and the seal would remain. Then with
 ## furniture: a change may not newly cut off something reachable right now;
-## things furniture already blocks stay furniture warnings.
+## things furniture already blocks stay furniture warnings. Seats are furniture
+## here too: a seat that blocks the way is the editor's path warning
+## (ShopEditor._unreachable, #315), never a refusal of a wall or floor edit.
 ## `people_only` (undo/redo, FK-085) checks only the people: a restored layout
 ## was already accepted, unusable seats or stations included.
 static func cut_off_problem(before: SimGrid, after: SimGrid, people: Array[Vector2i],
@@ -449,11 +471,32 @@ static func cut_off_problem(before: SimGrid, after: SimGrid, people: Array[Vecto
 	return problem
 
 
-## For a new or moved waiting bench (#269): reachability where a seat ends a
+## For a new or moved seat item (#269, #315): reachability where a seat ends a
 ## walk, as MovementCoordinator never lets anyone use a seat as an aisle. Only
-## what this edit newly cuts off counts, so older layouts are never refused.
+## what this edit newly cuts off counts, so older layouts are never flagged.
 static func seat_cut_off_problem(before: SimGrid, after: SimGrid) -> String:
-	return _cut_off(after, reachable(before, true), reachable(after, true), [] as Array[Vector2i])
+	return seat_cut_off_from(reachable(before, true), after)
+
+
+## seat_cut_off_problem() with the seat-aware reach of `before` already known.
+static func seat_cut_off_from(was: Dictionary[Vector2i, bool], after: SimGrid) -> String:
+	return _cut_off(after, was, reachable(after, true), [] as Array[Vector2i])
+
+
+## The player warning for a placement that leaves the only way somewhere
+## through seats (#315): the furniture rule warns, never blocks (DESIGN 4.3).
+## Shown while placing or moving, and on the item until the next layout change.
+static func seat_cut_off_warning(cut: String) -> String:
+	match cut:
+		CUT_DOOR:
+			return "Nobody walks through seats: this blocks the way to the door"
+		CUT_SINK:
+			return "Nobody walks through seats: this blocks the way to the sink"
+		CUT_STATION:
+			return "Nobody walks through seats: this blocks the way to a kitchen station"
+		CUT_RESTROOM:
+			return "Nobody walks through seats: this blocks the way to the restroom"
+	return "Nobody walks through seats: this blocks the way to a table"
 
 
 ## Terrain and segments of `grid`, with no furniture.

@@ -319,18 +319,25 @@ func door_lane(world: SimWorld) -> Dictionary[Vector2i, bool]:
 		_lane_grid = world.grid
 		_lane_version = world.grid.version
 		_lane.clear()
-		for entry: Vector2i in world.grid.entries():
-			_lane[entry] = true
-			for neighbour: Vector2i in world.grid.walkable_neighbours(entry):
-				if world.grid.terrain(neighbour) != SimGrid.Terrain.FLOOR:
-					continue
-				_lane[neighbour] = true
-				var delta: Vector2i = neighbour - entry
-				if delta.x == 0 or delta.y == 0:
-					var inside: Vector2i = neighbour + delta
-					if world.grid.is_walkable(inside):
-						_lane[inside] = true
+		_lane.merge(lane_cells(world.grid))
 	return _lane
+
+
+## door_lane() for any grid, uncached (the editor checks previews with it).
+static func lane_cells(grid: SimGrid) -> Dictionary[Vector2i, bool]:
+	var lane: Dictionary[Vector2i, bool] = {}
+	for entry: Vector2i in grid.entries():
+		lane[entry] = true
+		for neighbour: Vector2i in grid.walkable_neighbours(entry):
+			if grid.terrain(neighbour) != SimGrid.Terrain.FLOOR:
+				continue
+			lane[neighbour] = true
+			var delta: Vector2i = neighbour - entry
+			if delta.x == 0 or delta.y == 0:
+				var inside: Vector2i = neighbour + delta
+				if grid.is_walkable(inside):
+					lane[inside] = true
+	return lane
 
 
 func _before(world: SimWorld, first: SimAgent, second: SimAgent) -> bool:
