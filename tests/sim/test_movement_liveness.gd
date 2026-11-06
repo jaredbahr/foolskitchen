@@ -249,6 +249,71 @@ func test_a_held_way_keeps_passers_out_but_lets_the_blocker_clear() -> void:
 	assert_eq(blocker.cell, Vector2i(1, 0), "the person standing in the held step clears it")
 
 
+## The swap finishes inside the first partner's turn; the later partner has
+## then already moved this tick and only holds, instead of starting its next
+## step early.
+func test_both_partners_hold_on_the_tick_their_squeeze_finishes() -> void:
+	# A guest at its place never takes an ordinary sidestep, and every free
+	# cell is on the worker's route: only the squeeze can resolve this.
+	var world: SimWorld = _service_world(["....."])
+	var guest: GuestWalker = _guest(world, Vector2i(3, 0))
+	guest.state = CustomerAgent.State.ORDERING
+	guest.seat_cell = Vector2i(3, 0)
+	var staff: StaffWalker = StaffWalker.new(&"server", 3)
+	staff.cell = Vector2i(0, 0)
+	world.add_agent(staff)
+	assert_true(guest.id < staff.id, "the guest's turn completes the swap")
+	assert_true(staff.set_destination(world.grid, Vector2i(4, 0)))
+	var was_squeezing: bool = false
+	var finished: bool = false
+	for tick: int in 800:
+		if not _advance(world):
+			return
+		var squeezing: bool = world.movement.is_squeezing(staff.id)
+		if was_squeezing and not squeezing:
+			finished = true
+			assert_eq(staff.cell, Vector2i(3, 0), "the swap is done")
+			assert_eq(staff.move_progress, 0.0, "the worker does not start its next step in the same tick")
+			assert_eq(guest.move_progress, 0.0)
+		was_squeezing = squeezing
+		if staff.cell == Vector2i(4, 0):
+			break
+	assert_true(finished, "the worker squeezed past")
+	assert_eq(staff.cell, Vector2i(4, 0), "and then walked on")
+
+
+## A pocket is the nearest free floor cell clear of the door lane and of
+## station work cells, so an idle worker is not parked where work happens.
+## Only when nothing else is free does it take such a cell.
+func test_a_pocket_prefers_cells_clear_of_work_spots() -> void:
+	var world: SimWorld = _service_world(["...", "..."])
+	var station: PlacedItem = world.grid.place(Vector2i.ONE, Vector2i(1, 0), 0, false,
+		[Vector2i.ZERO] as Array[Vector2i])
+	assert_not_null(station)
+	assert_true(station.work_cells.has(Vector2i(1, 0)))
+	var idle: SimAgent = _standing(world, Vector2i(0, 0))
+	var none: Dictionary[Vector2i, bool] = {}
+	var path: Array[Vector2i] = world.movement._pocket_path(world, idle, none)
+	assert_eq(path, [Vector2i(0, 0), Vector2i(0, 1)] as Array[Vector2i], "skips the nearer work cell")
+	var off_route: Dictionary[Vector2i, bool] = {Vector2i(0, 1): true, Vector2i(1, 1): true,
+		Vector2i(2, 0): true, Vector2i(2, 1): true}
+	path = world.movement._pocket_path(world, idle, off_route)
+	assert_eq(path, [Vector2i(0, 0), Vector2i(1, 0)] as Array[Vector2i], "falls back to it when nothing else is free")
+
+
+## Nobody stands in the stuck person's shortest way: the backstop grants no
+## right of way and changes nothing.
+func test_an_escape_with_nobody_in_the_way_does_nothing() -> void:
+	var world: SimWorld = _service_world(["...."])
+	var walker: Walker = _walker(world, Vector2i(0, 0), Vector2i(3, 0))
+	var before: Array[Vector2i] = walker.path.duplicate()
+	var outcome: int = world.movement._escape(world, walker, world.movement_tuning.escape_after_ticks)
+	assert_eq(outcome, MovementCoordinator.ESCAPE_FUTILE)
+	assert_false(world.movement._right_of_way.has(walker.id), "no right of way")
+	assert_eq(world.movement._way_holder, -1, "no held way")
+	assert_eq(walker.path, before, "the route is untouched")
+
+
 func _service_world(rows: Array[String], open: bool = true) -> SimWorld:
 	var world: SimWorld = SimWorld.new(SimGrid.from_ascii(PackedStringArray(rows)))
 	if open:

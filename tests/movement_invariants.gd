@@ -70,14 +70,22 @@ static func problem(world: SimWorld, before: Dictionary) -> String:
 		occupied[agent.cell] = agent.id
 		if not is_finite(agent.move_progress) or agent.move_progress < 0.0 or agent.move_progress >= 1.0:
 			return "invalid fractional progress: %d" % agent.id
-		var squeezing: bool = partners.has(agent.id)
-		var invalid: String = _cell_problem(world, agent, agent.cell, agent.id if squeezing else -1)
+		# Only the seat a leaving guest handed to its partner may be stood on
+		# under the partner's booking; every other seat rule still applies.
+		var handed_to: int = partners.get(agent.id, -1)
+		var invalid: String = _cell_problem(world, agent, agent.cell, -1, handed_to)
 		if not invalid.is_empty():
 			return "current cell of %d: %s" % [agent.id, invalid]
-		if squeezing:
-			continue
 		var from: Vector2i = agent.cell
-		for index: int in range(agent.path_index, agent.path.size()):
+		var first: int = agent.path_index
+		if world.movement.is_squeezing(agent.id):
+			# The swap edge itself is the declared exception; the route after it
+			# is checked like anyone's.
+			if first >= agent.path.size():
+				return "squeeze of %d has no swap edge" % agent.id
+			from = agent.path[first]
+			first += 1
+		for index: int in range(first, agent.path.size()):
 			var to: Vector2i = agent.path[index]
 			invalid = _edge_problem(world, agent, from, to)
 			if not invalid.is_empty():
@@ -161,7 +169,8 @@ static func problem(world: SimWorld, before: Dictionary) -> String:
 	return ""
 
 
-static func _cell_problem(world: SimWorld, agent: SimAgent, cell: Vector2i, prior_owner: int = -1) -> String:
+static func _cell_problem(world: SimWorld, agent: SimAgent, cell: Vector2i, prior_owner: int = -1,
+		handed_to: int = -1) -> String:
 	if agent is CourierAgent:
 		var courier: CourierAgent = agent as CourierAgent
 		var on_route: bool = courier.route.has(cell)
@@ -184,9 +193,10 @@ static func _cell_problem(world: SimWorld, agent: SimAgent, cell: Vector2i, prio
 		var item: PlacedItem = world.grid.item(item_id)
 		seat = true
 		var holder: int = item.reserved_by(cell)
-		if holder >= 0 and holder != agent.id and prior_owner != agent.id:
+		var handed: bool = handed_to >= 0 and holder == handed_to
+		if holder >= 0 and holder != agent.id and prior_owner != agent.id and not handed:
 			return "foreign furniture seat"
-		own = own or holder == agent.id
+		own = own or holder == agent.id or handed
 	if seat and not own and prior_owner != agent.id:
 		return "unassigned furniture seat"
 	return ""

@@ -3,8 +3,10 @@ extends RefCounted
 ## Hand-run movement liveness soak (#306). Plays real production days headless,
 ## like the balance probe, and watches every admitted person each service
 ## tick. Someone who wants to move (a remaining path, a yield, a stop, a guest
-## leaving or walking to a seat) but whose cell and edge progress do not change
-## for longer than --limit ticks is reported once per episode with a full dump:
+## leaving or walking to a seat) but who gets no closer to their real goal
+## (octile distance, as the movement watchdog measures it, so a yield-return
+## shuffle counts), or whose cell and edge progress do not change at all, for
+## longer than --limit ticks is reported once per episode with a full dump:
 ## every person, their movement state and an ASCII map of the shop.
 ## Observation only: it never draws RNG or touches the session, except the
 ## optional seeded morning edits (--edits true), which use their own stream.
@@ -61,7 +63,7 @@ static func run_cli(tree: SceneTree, args: PackedStringArray) -> int:
 static func run_case(tree: SceneTree, seed_value: int, setup_name: String, days: int,
 		limit: int, edits: bool, max_dumps: int) -> Dictionary:
 	var result: Dictionary = {"setup": setup_name, "seed": seed_value, "days": days, "edits": edits,
-		"agent_days": 0, "max_no_progress": 0, "max_goal_wait": 0, "stuck_episodes": 0, "served": 0,
+		"agent_days": 0, "max_no_progress": 0, "max_frozen": 0, "max_goal_stall": 0, "max_goal_wait": 0, "stuck_episodes": 0, "served": 0,
 		"lost": 0, "reasons": {}, "edit_actions": 0}
 	if not ProbeSetups.names().has(setup_name):
 		result["error"] = "unknown setup"
@@ -96,6 +98,8 @@ static func run_case(tree: SceneTree, seed_value: int, setup_name: String, days:
 			break
 		var world: SimWorld = sim.world
 		var last_key: Dictionary = {}
+		var frozen: Dictionary = {}
+		var best_goal: Dictionary = {}
 		var still: Dictionary = {}
 		var goal_key: Dictionary = {}
 		var goal_age: Dictionary = {}
@@ -113,13 +117,26 @@ static func run_case(tree: SceneTree, seed_value: int, setup_name: String, days:
 			for agent: SimAgent in world.agents:
 				seen[agent.id] = true
 				var wants: bool = wants_to_move(world, agent)
+				# Frozen: cell and edge progress unchanged.
 				var key: Array = [agent.cell, agent.move_progress]
 				if not wants or last_key.get(agent.id, []) != key:
+					frozen[agent.id] = 0
+				else:
+					frozen[agent.id] = int(frozen.get(agent.id, 0)) + 1
+				last_key[agent.id] = key
+				result["max_frozen"] = maxi(int(result["max_frozen"]), int(frozen[agent.id]))
+				# No progress: not closer to the real goal (octile, as the
+				# watchdog measures it), so shuffling back and forth counts too.
+				var target: Array = goal_distance(world, agent)
+				var best: Array = best_goal.get(agent.id, [])
+				if not wants or best.is_empty() or best[0] != target[0] or float(target[1]) < float(best[1]):
+					best_goal[agent.id] = target
 					still[agent.id] = 0
-					dumped.erase(agent.id)
 				else:
 					still[agent.id] = int(still.get(agent.id, 0)) + 1
-				last_key[agent.id] = key
+				result["max_goal_stall"] = maxi(int(result["max_goal_stall"]), int(still[agent.id]))
+				if int(still[agent.id]) <= limit and int(frozen[agent.id]) <= limit:
+					dumped.erase(agent.id)
 				var goal: Array = [agent.destination(), wants]
 				if wants and goal_key.get(agent.id, []) == goal:
 					goal_age[agent.id] = int(goal_age.get(agent.id, 0)) + 1
@@ -127,7 +144,7 @@ static func run_case(tree: SceneTree, seed_value: int, setup_name: String, days:
 					goal_age[agent.id] = 0
 				goal_key[agent.id] = goal
 				result["max_goal_wait"] = maxi(int(result["max_goal_wait"]), int(goal_age[agent.id]))
-				var count: int = int(still[agent.id])
+				var count: int = maxi(int(still[agent.id]), int(frozen[agent.id]))
 				if count > int(result["max_no_progress"]):
 					result["max_no_progress"] = count
 					if count >= 250 and (count == 250 or count % 50 == 0):
@@ -161,6 +178,19 @@ static func run_case(tree: SceneTree, seed_value: int, setup_name: String, days:
 		result["escapes"] = escapes
 	_free(main)
 	return result
+
+
+## [goal key, octile distance to it]. The goal is where the person is really
+## headed (a sidestep's return cell, not its pocket); a leaving guest's goal
+## is whichever street cell is nearer, as in the movement watchdog.
+static func goal_distance(world: SimWorld, agent: SimAgent) -> Array:
+	var goal: Vector2i = world.movement._real_goal(agent)
+	var distance: float = GridMath.octile(agent.cell, goal)
+	if agent is CustomerAgent and (agent as CustomerAgent).state == CustomerAgent.State.LEAVING:
+		goal = MovementCoordinator.EXIT_GOAL
+		for entry: Vector2i in world.grid.entries():
+			distance = minf(distance, GridMath.octile(agent.cell, entry))
+	return [goal, distance]
 
 
 ## Someone who is trying to get somewhere. Seated, working, waiting for a

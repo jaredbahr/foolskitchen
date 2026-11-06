@@ -10,6 +10,8 @@ const CARRYING_PRIORITY: int = 3
 const ESCAPE_SKIPPED: int = 0
 const ESCAPE_FUTILE: int = 1
 const ESCAPE_ACTED: int = 2
+## Futile escapes searched in one tick before the rest wait for the next.
+const MAX_ESCAPE_TRIES_PER_TICK: int = 3
 ## Liveness key for a leaving guest: any real exit counts as its goal.
 const EXIT_GOAL: Vector2i = Vector2i(-1000001, -1000001)
 
@@ -976,14 +978,20 @@ func _watch_liveness(world: SimWorld) -> void:
 	# who keeps shuffling can never starve a stuck one of its turn.
 	due.sort_custom(_stalled_before)
 	# An escape that could change nothing (nobody in the way can move and no
-	# squeeze is allowed) does not use up the turn of the next person.
+	# squeeze is allowed) does not use up the turn of the next person, but at
+	# most MAX_ESCAPE_TRIES_PER_TICK are searched; the rest wait a tick.
+	var tries: int = 0
 	for entry: Array in due:
 		var agent: SimAgent = entry[1]
+		if tries >= MAX_ESCAPE_TRIES_PER_TICK:
+			break
 		var outcome: int = _escape(world, agent, int(entry[0]))
 		if _stall.has(agent.id):
 			_stall[agent.id]["next"] = world.now + (1 if outcome == ESCAPE_SKIPPED else tuning.escape_retry_ticks)
 		if outcome == ESCAPE_ACTED:
 			return
+		if outcome == ESCAPE_FUTILE:
+			tries += 1
 
 
 func _stalled_before(a: Array, b: Array) -> bool:
@@ -1011,20 +1019,27 @@ func _escape(world: SimWorld, stuck: SimAgent, stalled: int) -> int:
 	var route_cells: Array[Vector2i] = _escape_route(world, stuck)
 	if route_cells.size() < 2:
 		return ESCAPE_FUTILE  # Static unreachability keeps its existing drop/exit handling.
-	_right_of_way[stuck.id] = world.now + tuning.escape_retry_ticks
-	_way_holder = stuck.id
-	escape_counts[&"escape"] = int(escape_counts.get(&"escape", 0)) + 1
 	var step: Vector2i = route_cells[1]
 	var blockers: Array[SimAgent] = []
 	for cell: Vector2i in _step_cells(stuck.cell, step):
 		var holder: SimAgent = _holder(world, cell)
 		if holder != null and holder != stuck and not blockers.has(holder):
 			blockers.append(holder)
-	if not stuck is CourierAgent and route_cells != stuck.path.slice(stuck.path_index - 1):
+	var detour: bool = not stuck is CourierAgent and route_cells != stuck.path.slice(stuck.path_index - 1)
+	if blockers.is_empty():
+		# Nobody stands in the shortest way: no right of way is needed. Only a
+		# stale detour is worth replacing; otherwise ordinary movement goes on.
+		if not detour:
+			return ESCAPE_FUTILE
+		stuck.install_movement_route(route_cells)
+		escape_counts[&"reroute"] = int(escape_counts.get(&"reroute", 0)) + 1
+		return ESCAPE_ACTED
+	_right_of_way[stuck.id] = world.now + tuning.escape_retry_ticks
+	_way_holder = stuck.id
+	escape_counts[&"escape"] = int(escape_counts.get(&"escape", 0)) + 1
+	if detour:
 		# Retake the shortest static route; right of way now wins its first step.
 		stuck.install_movement_route(route_cells)
-	if blockers.is_empty():
-		return ESCAPE_ACTED
 	if stalled >= tuning.squeeze_after_ticks:
 		if _try_squeeze(world, stuck, route_cells, blockers):
 			return ESCAPE_ACTED
@@ -1101,23 +1116,62 @@ func _busy_worker(agent: SimAgent) -> bool:
 
 ## Unbounded search for the nearest free floor cell this person can walk to
 ## now, off the stuck person's route.
-func _clear_to_pocket(world: SimWorld, agent: SimAgent, stuck: SimAgent,
+func _clear_to_pocket(world: SimWorld, agent: SimAgent, _stuck: SimAgent,
 		avoid: Dictionary[Vector2i, bool]) -> bool:
-	var reachable: Dictionary[Vector2i, bool] = world.grid.reachable_avoiding(agent.cell,
-		_route_blocked(world, agent, agent.cell, SimGrid.NO_CELL, true), agent is CustomerAgent)
-	if reachable.size() <= 1:
+	var path: Array[Vector2i] = _pocket_path(world, agent, avoid)
+	if path.size() < 2:
 		return false
-	for cell: Vector2i in _nearby(world, agent, agent.cell, world.grid.size.x + world.grid.size.y):
-		if not reachable.has(cell) or avoid.has(cell) or not _pocket_cell(world, agent, cell):
-			continue
-		var path: Array[Vector2i] = route(world, agent, agent.cell, cell, true)
-		if path.size() < 2 or path.has(stuck.cell):
-			continue
-		_send_aside(world, agent, path)
-		avoid[cell] = true
-		escape_counts[&"pocket"] = int(escape_counts.get(&"pocket", 0)) + 1
-		return true
-	return false
+	_send_aside(world, agent, path)
+	avoid[path.back()] = true
+	escape_counts[&"pocket"] = int(escape_counts.get(&"pocket", 0)) + 1
+	return true
+
+
+## One breadth-first search over the steps this person can take right now
+## (other people, other people's seats and diagonal corners respected, the
+## same rules as route()). It stops at the first free floor cell that is off
+## the stuck route and clear of the door lane and station work cells; failing
+## that, the nearest free floor cell of any kind. Empty when boxed in.
+func _pocket_path(world: SimWorld, agent: SimAgent, avoid: Dictionary[Vector2i, bool]) -> Array[Vector2i]:
+	var grid: SimGrid = world.grid
+	if not grid.is_walkable(agent.cell):
+		return []
+	var blocked: Dictionary[Vector2i, bool] = _route_blocked(world, agent, agent.cell, SimGrid.NO_CELL, true)
+	var guest: bool = agent is CustomerAgent
+	var work: Dictionary[Vector2i, bool] = {}
+	for item: PlacedItem in grid.items():
+		for cell: Vector2i in item.work_cells:
+			work[cell] = true
+	var previous: Dictionary[Vector2i, Vector2i] = {}
+	var seen: Dictionary[Vector2i, bool] = {agent.cell: true}
+	var queue: Array[Vector2i] = [agent.cell]
+	var fallback: Vector2i = SimGrid.NO_CELL
+	var found: Vector2i = SimGrid.NO_CELL
+	var index: int = 0
+	while index < queue.size() and found == SimGrid.NO_CELL:
+		var current: Vector2i = queue[index]
+		index += 1
+		for next: Vector2i in grid.walkable_neighbours(current):
+			if seen.has(next) or not grid.actor_step(current, next, blocked, guest):
+				continue
+			seen[next] = true
+			previous[next] = current
+			queue.append(next)
+			if avoid.has(next) or not _pocket_cell(world, agent, next):
+				continue
+			if not work.has(next) and not in_door_lane(world, next):
+				found = next
+				break
+			if fallback == SimGrid.NO_CELL:
+				fallback = next
+	if found == SimGrid.NO_CELL:
+		found = fallback
+	if found == SimGrid.NO_CELL:
+		return []
+	var path: Array[Vector2i] = [found]
+	while previous.has(path[0]):
+		path.push_front(previous[path[0]])
+	return path
 
 
 func _pocket_cell(world: SimWorld, agent: SimAgent, cell: Vector2i) -> bool:
@@ -1161,10 +1215,16 @@ func _push_through(world: SimWorld, first: SimAgent, stuck: SimAgent,
 	var keep: Dictionary[Vector2i, bool] = avoid.duplicate()
 	for cell: Vector2i in line:
 		keep[cell] = true
+	var moved: bool = false
 	for cell: Vector2i in line.slice(1):
 		var holder: SimAgent = _holder(world, cell)
-		if holder != null and not _clear_to_pocket(world, holder, stuck, keep):
-			return false
+		if holder == null:
+			continue
+		if not _clear_to_pocket(world, holder, stuck, keep):
+			# Those already sent aside opened real space: that is an action, and
+			# the next retry can push the rest of the line through.
+			return moved
+		moved = true
 	_send_aside(world, first, line)
 	avoid[found] = true
 	escape_counts[&"line"] = int(escape_counts.get(&"line", 0)) + 1
@@ -1308,7 +1368,9 @@ func is_squeezing(id: int) -> bool:
 func advance_squeeze(world: SimWorld, agent: SimAgent) -> bool:
 	if not _squeezes.has(agent.id):
 		agent.squeeze_side = 0.0
-		return false
+		# The partner of a swap that finished earlier this tick has already
+		# moved this tick: it only holds, like the one that completed it.
+		return _squeezed.has(agent.id)
 	var row: Dictionary = _squeezes[agent.id]
 	if int(row["tick"]) == world.now:
 		return true
