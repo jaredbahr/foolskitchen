@@ -28,7 +28,9 @@ static func run(parent: Node, native_bake: bool = false) -> Dictionary:
 		report["errors"] = errors
 		return report
 	for definition: ItemDef in content.items():
-		if definition.seat_cells.is_empty() or not definition.catalogue_visible:
+		# The order counter's guest cells are places to stand and order, not seats (#293).
+		if definition.seat_cells.is_empty() or not definition.catalogue_visible \
+				or definition.station_type == OrderCounter.STATION:
 			continue
 		report["seats"] += 1
 		for turns: int in range(4):
@@ -107,6 +109,14 @@ static func _sample_item(parent: Node, definition: ItemDef, turns: int, native_b
 	var table_def: ItemDef = ItemDef.new()
 	table_def.category = ItemDef.Category.TABLE
 	table_def.footprint = Vector2i.ONE
+	# Outdoor seats use the same geometric probe in their legal room. Nothing
+	# is excluded from head-clearance coverage, including loose facing chairs.
+	if definition.outdoor_only:
+		var patio_rooms: Dictionary[Vector2i, int] = {}
+		for cell: Vector2i in world.grid.cells():
+			patio_rooms[cell] = SimGrid.Room.PATIO
+		world.grid.set_rooms(patio_rooms)
+		table_def.outdoor_only = true
 	var tables: Array[PlacedItem] = []
 	var waiting: bool = definition.category == ItemDef.Category.WAITING
 	if definition.category != ItemDef.Category.TABLE and not waiting:

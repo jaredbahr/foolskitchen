@@ -17,15 +17,31 @@ const HOURS: int = 24
 @export var min_arrival_rate: float = 0.25
 ## FK-106: applied once, only after a waiting guest reaches a bench seat.
 @export var waiting_bench_patience_multiplier: float = 1.5
+## The share of order-counter guests (#293) who want their drink to go. A guest
+## who finds no free table takes a takeaway too. One seeded draw per guest.
+@export var takeaway_share: float = 0.3
+## A guest standing in the counter's moving line is this much more patient than
+## one waiting at the door for a table (applied once, when they join the line).
+@export var counter_patience_multiplier: float = 2.0
+## #269: a guest seated at an open patio table waits this much longer for
+## their order and food (applied once, when they sit down). Their lower urgency
+## lets staff serve indoor guests first, so outdoor seats add covers instead of
+## timing out the whole room when the kitchen is busy.
+@export var patio_patience_multiplier: float = 1.5
 ## A placement warning, never a refusal: distance in half-metre grid cells.
 @export var waiting_bench_door_distance: int = 8
 
 
 func is_valid() -> bool:
-	if drink_visit_ticks < 1 or not is_finite(min_arrival_rate) or min_arrival_rate <= 0.0:
+	if drink_visit_ticks < 1 or not is_finite(min_arrival_rate) or min_arrival_rate <= 0.0 \
+			or not is_finite(takeaway_share) or takeaway_share < 0.0 or takeaway_share > 1.0 \
+			or not is_finite(counter_patience_multiplier) or counter_patience_multiplier < 1.0 \
+			or counter_patience_multiplier > 5.0:
 		return false
 	if not is_finite(waiting_bench_patience_multiplier) or waiting_bench_patience_multiplier < 1.0 \
-			or waiting_bench_patience_multiplier > 5.0 or waiting_bench_door_distance < 1:
+			or waiting_bench_patience_multiplier > 5.0 or waiting_bench_door_distance < 1 \
+			or not is_finite(patio_patience_multiplier) or patio_patience_multiplier < 1.0 \
+			or patio_patience_multiplier > 5.0:
 		return false
 	for kind: StringName in RecipeDef.ORDER_TYPES:
 		if not hourly_weights.has(kind) or hourly_weights[kind].size() != HOURS:

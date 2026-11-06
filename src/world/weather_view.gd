@@ -157,7 +157,8 @@ func _outside_bounds(box: AABB) -> bool:
 	var high: Vector2i = GridMath.world_to_cell(box.end - Vector3.ONE * 0.00001)
 	for y: int in range(low.y, high.y + 1):
 		for x: int in range(low.x, high.x + 1):
-			if _view.world.grid.terrain(Vector2i(x, y)) != SimGrid.Terrain.OUTSIDE:
+			if _view.world.grid.terrain(Vector2i(x, y)) != SimGrid.Terrain.OUTSIDE \
+					and not _view.world.grid.is_outdoor_floor(Vector2i(x, y)):
 				return false
 	return true
 
@@ -174,7 +175,7 @@ func _rebuild_rain() -> void:
 		_camera_transform = camera.global_transform
 		_camera_projection = camera.get_camera_projection()
 		for cell: Vector2i in _view.world.grid.cells():
-			if _view.world.grid.terrain(cell) == SimGrid.Terrain.OUTSIDE:
+			if _view.world.grid.terrain(cell) == SimGrid.Terrain.OUTSIDE or _view.world.grid.is_outdoor_floor(cell):
 				continue
 			var base: Vector3 = Vector3(cell.x * GridMath.CELL_SIZE, 0.0, cell.y * GridMath.CELL_SIZE)
 			occupied.append(_screen_rect(camera, AABB(base, Vector3(GridMath.CELL_SIZE, ArtScale.WALL_HEIGHT, GridMath.CELL_SIZE))))

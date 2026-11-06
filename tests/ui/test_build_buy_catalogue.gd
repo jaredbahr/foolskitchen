@@ -266,7 +266,7 @@ func test_price_sort_reorders_the_tiles_without_replacing_them() -> void:
 	for id: StringName in _catalogue.visible_ids():
 		if _content.item(id).price == 10:
 			ten.append(id)
-	assert_eq(ten, [&"chair", &"wooden_chair"] as Array[StringName])
+	assert_eq(ten, [&"chair", &"patio_chair", &"wooden_chair"] as Array[StringName])
 
 
 func test_hover_card_text() -> void:

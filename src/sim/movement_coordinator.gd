@@ -21,6 +21,10 @@ var _pending: Array[int] = []
 var _stopping: Dictionary[int, bool] = {}
 var _after_stop: Dictionary[int, Vector2i] = {}
 var _seat_releases: Array[Dictionary] = []
+## Door lane cache (#305), valid for one grid version.
+var _lane: Dictionary[Vector2i, bool] = {}
+var _lane_grid: SimGrid = null
+var _lane_version: int = -1
 
 
 func snapshot() -> Dictionary:
@@ -206,10 +210,43 @@ func _can_queue_in_pocket(world: SimWorld, agent: SimAgent) -> bool:
 		and world.grid.room(guest.cell) == SimGrid.Room.DINING and standing_cell(world, guest.cell)
 
 
-func priority(_world: SimWorld, agent: SimAgent) -> int:
+func priority(world: SimWorld, agent: SimAgent) -> int:
 	if agent is StaffAgent:
 		return 3 if (agent as StaffAgent).carries_food() else 2
-	return 2 if agent is CourierAgent else 1
+	if agent is CourierAgent:
+		return 2
+	# Door flow (#305): a guest still arriving or queueing yields the front
+	# door lane to anybody on the way out (and to every other guest).
+	if agent is CustomerAgent and (agent as CustomerAgent).state <= CustomerAgent.State.QUEUED \
+			and in_door_lane(world, agent.cell):
+		return 0
+	return 1
+
+
+## The front door lane: the street entries, the floor cells beside them and the
+## cells just inside those. Derived from the entries, whatever side the shop
+## faces. Waiting guests stand clear of it. Cached per grid edit.
+func in_door_lane(world: SimWorld, cell: Vector2i) -> bool:
+	return door_lane(world).has(cell)
+
+
+func door_lane(world: SimWorld) -> Dictionary[Vector2i, bool]:
+	if _lane_grid != world.grid or _lane_version != world.grid.version:
+		_lane_grid = world.grid
+		_lane_version = world.grid.version
+		_lane.clear()
+		for entry: Vector2i in world.grid.entries():
+			_lane[entry] = true
+			for neighbour: Vector2i in world.grid.walkable_neighbours(entry):
+				if world.grid.terrain(neighbour) != SimGrid.Terrain.FLOOR:
+					continue
+				_lane[neighbour] = true
+				var delta: Vector2i = neighbour - entry
+				if delta.x == 0 or delta.y == 0:
+					var inside: Vector2i = neighbour + delta
+					if world.grid.is_walkable(inside):
+						_lane[inside] = true
+	return _lane
 
 
 func _before(world: SimWorld, first: SimAgent, second: SimAgent) -> bool:

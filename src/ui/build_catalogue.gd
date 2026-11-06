@@ -22,6 +22,7 @@ signal swatch_requested(swatch_id: StringName)
 signal wall_tool_requested(segment: int)
 ## Floor tool (FK-080): buy floor on the lot.
 signal floor_tool_requested()
+signal patio_tool_requested()
 ## Rooms tool (FK-101): paint a room type (SimGrid.Room) onto the floor.
 signal rooms_tool_requested(kind: int)
 ## Floors tool (D25): lay a floor type (FloorStyleDef id) in these colours.
@@ -53,15 +54,15 @@ const BUILD: StringName = &"build"
 const BUY_CATEGORIES: Array[StringName] = [&"dining", &"kitchen", &"bar_cafe", &"decor", &"lighting", &"restroom", &"blueprints"]
 ## &"floor" is the lot expansion tool (FK-080), labelled Expand since the
 ## Floors tab (D25, &"floors") lays floor types.
-const BUILD_CATEGORIES: Array[StringName] = [&"walls", &"wall_finish", &"floors", &"rooms", &"floor", &"paint"]
+const BUILD_CATEGORIES: Array[StringName] = [&"walls", &"wall_finish", &"floors", &"rooms", &"floor", &"patio", &"paint"]
 const CATEGORY_IDS: Array[StringName] = [&"dining", &"kitchen", &"bar_cafe", &"decor", &"lighting", &"restroom", &"blueprints",
-	&"walls", &"wall_finish", &"floors", &"rooms", &"floor", &"paint"]
+	&"walls", &"wall_finish", &"floors", &"rooms", &"floor", &"patio", &"paint"]
 const BLUEPRINTS: StringName = &"blueprints"
 const CATEGORY_LABELS: Dictionary = {
 	&"blueprints": CatalogueText.BLUEPRINTS,
 	&"dining": "Dining", &"kitchen": "Kitchen", &"bar_cafe": "Bar & Café", &"decor": "Decor",
 	&"lighting": "Lighting", &"restroom": "Restroom", &"walls": "Walls", &"wall_finish": "Wall finish",
-	&"floors": "Floors", &"floor": "Expand",
+	&"floors": "Floors", &"floor": "Expand", &"patio": "Patio",
 	&"rooms": "Rooms", &"paint": "Paint",
 }
 const FLOORS: StringName = &"floors"
@@ -82,6 +83,7 @@ const ROOM_TIPS: Array[String] = [
 ]
 const WALLS: StringName = &"walls"
 const FLOOR: StringName = &"floor"
+const PATIO: StringName = &"patio"
 const PAINT: StringName = &"paint"
 ## The sub-tab that shows every group of a room.
 const ALL_GROUPS: StringName = &"all"
@@ -124,6 +126,7 @@ var wall_buttons: Dictionary[StringName, Button] = {}
 var wall_remove_button: Button
 ## Floor tab card (FK-080); its tab hides while the shop has no lot to grow into.
 var floor_button: Button
+var patio_button: Button
 ## Rooms tab cards, by SimGrid.Room.
 var room_buttons: Array[Button] = []
 ## Floors tab (D25): one card per floor type, then colour chips: the main
@@ -183,6 +186,8 @@ var hygiene_enabled: bool = false
 ## The item the hover card describes (empty when hidden).
 var hover_id: StringName = &""
 var _floor_price: int = 0
+var _patio_price: int = 0
+var _patio_enabled: bool = false
 var _thumbnails: ItemThumbnailCache
 var _fitting: bool = false
 var _content: ContentDB
@@ -457,6 +462,7 @@ func refresh_content() -> void:
 	_refresh_groups()
 	_refresh_wall_cards()
 	_refresh_floor_card()
+	_refresh_patio_card()
 	_refresh_room_cards()
 	_refresh_floor_styles()
 	_refresh_wall_styles()
@@ -543,6 +549,33 @@ func _refresh_floor_card() -> void:
 	floor_button.icon = _thumbnails.request(FLOOR_THUMBNAIL)
 
 
+## Available only when the authored street has room beside its door.
+func set_patio_price(price: int, available: bool = true) -> void:
+	if price == _patio_price and available == _patio_enabled:
+		return
+	_patio_price = maxi(price, 0)
+	_patio_enabled = available
+	_refresh_patio_card()
+	if selected_category == PATIO and not _patio_enabled:
+		selected_category = WALLS
+	_apply_category()
+	_fit_panel()
+
+
+func _refresh_patio_card() -> void:
+	if _thumbnails == null or not _patio_enabled:
+		return
+	var row: GridContainer = _items()
+	if patio_button == null:
+		patio_button = _tile("Patio")
+		patio_button.pressed.connect(_on_patio_pressed)
+		row.add_child(patio_button)
+	row.move_child(patio_button, row.get_child_count() - 1)
+	patio_button.text = "Build patio\n%s a tile" % Fmt.money(_patio_price)
+	patio_button.tooltip_text = "Drag beside the street door to buy patio for %s a tile; Shift-drag removes empty patio. Closed in rain" % Fmt.money(_patio_price)
+	patio_button.icon = _thumbnails.request(FLOOR_THUMBNAIL)
+
+
 ## The Rooms tab (FK-101) shows once a shop is bound to paint.
 func set_rooms_enabled(enabled: bool) -> void:
 	if enabled == _rooms_enabled:
@@ -561,7 +594,7 @@ func _refresh_room_cards() -> void:
 		return
 	var row: GridContainer = _items()
 	if room_buttons.is_empty():
-		for kind: int in range(RoomRules.LABELS.size()):
+		for kind: int in range(SimGrid.Room.STORAGE + 1):
 			var button: Button = _tile("Room_%s" % RoomRules.IDS[kind])
 			button.pressed.connect(_on_room_pressed.bind(kind))
 			button.text = "%s\nFree" % RoomRules.label(kind)
@@ -906,6 +939,12 @@ func _on_floor_pressed() -> void:
 	floor_tool_requested.emit()
 
 
+func _on_patio_pressed() -> void:
+	if not visible or _paint_visible or selected_category != PATIO or not _patio_enabled or not _editable:
+		return
+	patio_tool_requested.emit()
+
+
 func _on_wall_remove_pressed() -> void:
 	if visible and _editable and not _paint_visible and mode == BUILD and selected_category == WALLS \
 			and wall_remove_button != null and wall_remove_button.is_visible_in_tree():
@@ -978,6 +1017,8 @@ func _apply_category() -> void:
 		wall_remove_button.visible = not _paint_visible and mode == BUILD and selected_category == WALLS
 	if floor_button != null:
 		floor_button.visible = not _paint_visible and mode == BUILD and selected_category == FLOOR and _floor_price > 0
+	if patio_button != null:
+		patio_button.visible = not _paint_visible and mode == BUILD and selected_category == PATIO and _patio_enabled
 	for button: Button in room_buttons:
 		button.visible = not _paint_visible and mode == BUILD and selected_category == ROOMS and _rooms_enabled
 	var floors_shown: bool = not _paint_visible and mode == BUILD and selected_category == FLOORS
@@ -1069,7 +1110,7 @@ func _category_shown(category: StringName) -> bool:
 	if category == BLUEPRINTS:
 		return blueprint_library != null
 	if BUILD_CATEGORIES.has(category):
-		return (category != FLOOR or _floor_price > 0) and (category != ROOMS or _rooms_enabled) \
+		return (category != FLOOR or _floor_price > 0) and (category != PATIO or _patio_enabled) and (category != ROOMS or _rooms_enabled) \
 			and (category != FLOORS or (_content != null and not _content.floor_styles().is_empty())) \
 			and (category != WALL_FINISH or (_content != null and not _content.wall_styles().is_empty()))
 	if not BUY_CATEGORIES.has(category) or _content == null:
@@ -1181,6 +1222,8 @@ func _on_thumbnail_ready(scene: PackedScene, texture: Texture2D) -> void:
 		return
 	if floor_button != null and scene == FLOOR_THUMBNAIL:
 		floor_button.icon = texture
+	if patio_button != null and scene == FLOOR_THUMBNAIL:
+		patio_button.icon = texture
 	for id: StringName in item_buttons:
 		var definition: ItemDef = _content.item(id)
 		if definition != null and definition.view_scene == scene and definition.variants.is_empty():
@@ -1579,6 +1622,8 @@ func _visible_cards() -> Array[Button]:
 		cards.append(wall_remove_button)
 	if floor_button != null and floor_button.visible:
 		cards.append(floor_button)
+	if patio_button != null and patio_button.visible:
+		cards.append(patio_button)
 	for button: Button in room_buttons:
 		if button.visible:
 			cards.append(button)

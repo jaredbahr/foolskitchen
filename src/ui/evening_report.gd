@@ -122,6 +122,7 @@ func show_report(report: DayReport) -> void:
 	_guest_bar.tooltip_text = "Guests served out of all guests"
 	if guest_total == 0:
 		_guests.text = "No guests visited today"
+	_show_takeaways(report.takeaways)
 	(get_node("%FoodQuality") as Label).text = report.food_quality_text()
 	_cleanliness.text = "Cleanliness: %s" % report.cleanliness_label \
 		if not report.cleanliness_label.is_empty() else ""
@@ -202,6 +203,18 @@ func set_vibe(result: VibeModel.Result, experienced_theme_label: String = "") ->
 		var theme_name: String = result.theme_label if not result.active_theme.is_empty() else "No active theme"
 		_vibe_text = "Vibe: %s, %d / 100." % [theme_name, roundi(result.score)]
 	_render_vibe()
+
+
+## "Takeaways: N" under the guest bar, only on days the order counter sold any.
+func _show_takeaways(count: int) -> void:
+	var label: Label = get_node_or_null("Panel/Scroll/Content/Takeaways") as Label
+	if label == null:
+		label = Label.new()
+		label.name = "Takeaways"
+		_guest_bar.get_parent().add_child(label)
+		_guest_bar.get_parent().move_child(label, _guest_bar.get_index() + 1)
+	label.text = "Takeaways: %d" % count
+	label.visible = count > 0
 
 
 func _render_vibe() -> void:

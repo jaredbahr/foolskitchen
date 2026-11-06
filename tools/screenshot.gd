@@ -3048,6 +3048,17 @@ func _capture() -> void:
 	if _main.has_method("inspection_state"):
 		inspection = _main.call("inspection_state")
 	var world: SimWorld = _capture_world()
+	var patio_state: Dictionary = {}
+	var patio_review: bool = _scene_path in ["res://tools/patio_review_sunny.tscn", "res://tools/patio_review_rain.tscn"]
+	if patio_review:
+		if not _main.has_method("patio_review_evidence") or not _main.has_method("patio_review_valid"):
+			_fail_capture("patio review scene is missing its native validation")
+			return
+		patio_state = _main.call("patio_review_evidence")
+		var expected_weather: int = WeatherState.Kind.RAIN if _scene_path.ends_with("_rain.tscn") else WeatherState.Kind.SUNNY
+		if patio_state.get("kind") != expected_weather or not _main.call("patio_review_valid", patio_state):
+			_fail_capture("patio review failed actual weather, ownership, paid construction, seating or visible status checks: " + JSON.stringify(patio_state))
+			return
 	var neighbourhood_state: Dictionary = NEIGHBOURHOOD_REVIEW.evidence(_main, root, _neighbourhood_fixture) if not _neighbourhood_mode.is_empty() else {}
 	if not _neighbourhood_mode.is_empty() and not NEIGHBOURHOOD_REVIEW.valid(neighbourhood_state, _neighbourhood_fixture):
 		_fail_capture("neighbourhood photo failed actual pose/player, outside-only, simulation isolation or camera checks: " + JSON.stringify(neighbourhood_state))
@@ -3330,6 +3341,8 @@ func _capture() -> void:
 		metadata["weather_review"] = {"fixture": _weather_fixture, "state": weather_state}
 	if _joined_tables_review:
 		metadata["joined_tables_review"] = {"fixture": _joined_tables_fixture, "state": joined_tables_state}
+	if patio_review:
+		metadata["patio_review"] = {"state": patio_state}
 	if _floors_review:
 		metadata["floors_review"] = {"fixture": _floors_fixture, "state": floors_state}
 	if _restroom_review:

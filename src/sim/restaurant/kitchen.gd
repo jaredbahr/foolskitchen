@@ -86,6 +86,13 @@ func advance() -> void:
 	_ensure_wash_task()
 
 
+## A takeaway pastry (#293) is handed over in a bag: it never takes a plate, so
+## none has to come back. Called right after the order is placed.
+func bypass_plate(order: Order) -> void:
+	if order != null and order.id > 0:
+		_plate_bypassed_orders[order.id] = true
+
+
 ## Dirty tables cannot accept new guests until a real bussing task finishes.
 func is_table_dirty(table_item_id: int) -> bool:
 	return dirty_tables.has(table_item_id)
@@ -118,6 +125,15 @@ func mark_dining_group_dirty(table_item_id: int, order_id: int = 0, member_ids: 
 	for member_id: int in targets:
 		if member_id != table_item_id and sim.world.grid.item(member_id) != null:
 			mark_table_dirty(member_id)
+
+
+## Guest who placed a ticket, for guest-urgency scoring (#307). 0 if unknown.
+func order_customer_id(order_id: int) -> int:
+	var sim: RestaurantSim = _restaurant.get_ref() as RestaurantSim
+	if sim == null or order_id <= 0:
+		return 0
+	var order: Order = sim.orders.get_order(order_id)
+	return 0 if order == null else order.customer_id
 
 
 ## Reports whether closing cleanup has returned every table to service.

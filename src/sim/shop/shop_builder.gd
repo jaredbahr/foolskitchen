@@ -19,6 +19,10 @@ static func build(layout: ShopLayout, content: ContentDB, errors: Array[String],
 			footprint.apply(grid, bought)
 		else:
 			errors.append("%s: bought floor: %s" % [layout.id, problem])
+	# Outdoor ownership and room identity must exist before outdoor furniture.
+	var patio: PatioArea = PatioArea.from_layout(layout)
+	if not patio.apply(grid, layout.patio_cells):
+		errors.append("%s: patio does not fit the pavement" % layout.id)
 	for p in layout.placements:
 		var def := content.item(p.item_id)
 		if def == null:
@@ -43,6 +47,11 @@ static func build(layout: ShopLayout, content: ContentDB, errors: Array[String],
 	var rooms: Dictionary[Vector2i, int] = {}
 	var wanted: Dictionary[Vector2i, int] = layout.room_map()
 	for cell: Vector2i in wanted:
+		if grid.is_outdoor_floor(cell):
+			continue
+		if wanted[cell] == SimGrid.Room.PATIO:
+			errors.append("%s: patio room at %s has no purchased pavement" % [layout.id, cell])
+			continue
 		if grid.terrain(cell) == SimGrid.Terrain.FLOOR:
 			rooms[cell] = wanted[cell]
 		else:

@@ -237,7 +237,7 @@ static func run_case(tree: SceneTree, seed_value: int, setup_name: String, days:
 		# terminal orders. No stock operation, RNG lookup or planner runs here.
 		if observe_daily:
 			var before: Dictionary = _control_snapshot(main, sim) if capture_control else {}
-			var daily: Dictionary = _daily_snapshot(main, sim, report, book)
+			var daily: Dictionary = _daily_snapshot(main, sim, report, book, setup_name)
 			if capture_control and before != _control_snapshot(main, sim):
 				_free_main(main)
 				return {"error": "Daily observer changed session state on day %d" % report.day}
@@ -262,7 +262,7 @@ static func run_case(tree: SceneTree, seed_value: int, setup_name: String, days:
 ## Hand-run evidence only. Missing basis remains null instead of presenting
 ## a legacy report's zero defaults as a measured cost or profit.
 static func _daily_snapshot(main: Node, sim: RestaurantSim, report: DayReport,
-		book: Dictionary) -> Dictionary:
+		book: Dictionary, setup_name: String = "") -> Dictionary:
 	var categories: Dictionary = {}
 	var signed_sum: int = 0
 	for category: Variant in book:
@@ -284,7 +284,7 @@ static func _daily_snapshot(main: Node, sim: RestaurantSim, report: DayReport,
 			or report.food_cost_recorded != sold_recorded):
 		return {"error": "Sold-order ingredient cost differs on day %d" % report.day}
 	var op_recorded: bool = report.operating_profit_recorded()
-	return {"day": report.day, "arrivals": sim.served_today + sim.lost_today,
+	var result: Dictionary = {"day": report.day, "arrivals": sim.served_today + sim.lost_today,
 		"served": report.customers_served, "lost": report.customers_lost,
 		"ledger_categories": categories, "ledger_cash_profit": cash_change,
 		"cash": Economy.cash, "report_cash_change": report.profit(),
@@ -308,6 +308,12 @@ static func _daily_snapshot(main: Node, sim: RestaurantSim, report: DayReport,
 		"next_demand": _optional_demand(main, &"forecast_next_demand"),
 		"orders": orders, "report": report.to_dict().duplicate(true),
 		"stock": Economy.stock.to_dict().duplicate(true)}
+	# Only the new outdoor scenario adds weather observations. In particular,
+	# default payloads keep their exact historical field set and values.
+	if setup_name == "patio":
+		result["weather"] = sim.world.weather.to_dict().duplicate(true)
+		result["patio_seating_open"] = PatioRules.is_open(sim.world.weather.kind)
+	return result
 
 
 static func _order_snapshot(sim: RestaurantSim) -> Array[Dictionary]:

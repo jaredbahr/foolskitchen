@@ -47,6 +47,14 @@ func set_state(order: Order, state: Order.State, reason: StringName = &"") -> vo
 			order_cancelled.emit(order)
 
 
+## Any ticket in `state`; stops at the first, without sorting.
+func has_state(state: Order.State) -> bool:
+	for order: Order in _orders.values():
+		if order.state == state:
+			return true
+	return false
+
+
 ## Returns matching tickets in id order.
 func orders_in_state(state: Order.State) -> Array[Order]:
 	var out: Array[Order] = []

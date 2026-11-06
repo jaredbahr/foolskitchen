@@ -1,0 +1,8 @@
+[gd_resource type="Resource" script_class="GuestUrgencyTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/sim/agents/guest_urgency_tuning.gd" id="1_urgency"]
+
+[resource]
+script = ExtResource("1_urgency")
+guest_weight = 2.0
+table_weight = 1.0

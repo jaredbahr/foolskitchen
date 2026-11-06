@@ -14,6 +14,9 @@ signal cue_played(cue: StringName)
 
 const TUNING: SoundTuning = preload("res://data/audio/sound_tuning.tres")
 const BUS: StringName = &"Effects"
+const MUSIC_BUS: StringName = &"Music"
+## Seconds for a track to fade fully in or out; a crossfade runs both at once.
+const MUSIC_FADE_SECONDS: float = 2.0
 const ONE_SHOT_PLAYERS: int = 8
 const BUTTON_META: StringName = &"sfx_bound"
 ## Below this a loop is stopped rather than played very quietly.
@@ -28,6 +31,11 @@ var _next_player: int = 0
 var _pitch_step: Dictionary[StringName, int] = {}
 var _loop_players: Dictionary[StringName, AudioStreamPlayer] = {}
 var _loop_levels: Dictionary[StringName, float] = {}
+## One player and one fade level per track, so a change of context crossfades.
+var _music_players: Dictionary[AudioStream, AudioStreamPlayer] = {}
+var _music_levels: Dictionary[AudioStream, float] = {}
+var _music_context: StringName = &""
+var _music_ducked: bool = false
 
 
 func _ready() -> void:
@@ -64,6 +72,13 @@ func _exit_tree() -> void:
 		_loop_players[loop].stop()
 		_loop_players[loop].stream = null
 	_loop_levels.clear()
+	for track: AudioStream in _music_players:
+		_music_players[track].stop()
+		_music_players[track].stream = null
+
+
+func _process(delta: float) -> void:
+	_step_music(delta)
 
 
 func _input(event: InputEvent) -> void:
@@ -116,6 +131,70 @@ func set_loop_level(loop: StringName, level: float) -> void:
 		_loop_players[loop] = player
 	player.volume_db = tuning.loop_gain_db(loop) + linear_to_db(level)
 	if not player.playing:
+		player.play()
+
+
+## Music for one part of the game (`MusicTracks`); an empty or unknown context
+## fades the music out. Looping, fading and silence in headless runs are handled
+## here, so callers only say where the game is.
+func set_music_context(context: StringName) -> void:
+	_music_context = context
+
+
+## A jukebox playing its own loop takes over: the theme fades out while ducked.
+func set_music_ducked(ducked: bool) -> void:
+	_music_ducked = ducked
+
+
+func music_context() -> StringName:
+	return _music_context
+
+
+## 1 when the current context has a track and nothing is ducking it, else 0.
+func music_target() -> float:
+	return 0.0 if _music_ducked or MusicTracks.track_for(_music_context) == null else 1.0
+
+
+## A track's current fade level, 0 (silent) to 1. Headless runs track it but
+## play nothing. With no track given, the loudest one.
+func music_level(track: AudioStream = null) -> float:
+	if track != null:
+		return float(_music_levels.get(track, 0.0))
+	var loudest: float = 0.0
+	for level: float in _music_levels.values():
+		loudest = maxf(loudest, level)
+	return loudest
+
+
+func is_unlocked() -> bool:
+	return _unlocked
+
+
+func _step_music(delta: float) -> void:
+	var wanted: AudioStream = MusicTracks.track_for(_music_context) if _unlocked and not _music_ducked else null
+	for track: AudioStream in MusicTracks.all_tracks():
+		var target: float = 1.0 if track == wanted else 0.0
+		var level: float = move_toward(float(_music_levels.get(track, 0.0)), target, delta / MUSIC_FADE_SECONDS)
+		_music_levels[track] = level
+		if not _headless:
+			_apply_music_player(track, level, target)
+
+
+func _apply_music_player(track: AudioStream, level: float, target: float) -> void:
+	var player: AudioStreamPlayer = _music_players.get(track)
+	if level < SILENT_LEVEL and target == 0.0:
+		if player != null and player.playing:
+			player.stop()
+		return
+	if player == null:
+		player = AudioStreamPlayer.new()
+		player.name = "Music_" + track.resource_path.get_file().get_basename()
+		player.bus = MUSIC_BUS
+		player.stream = _looping(track)
+		add_child(player)
+		_music_players[track] = player
+	player.volume_db = linear_to_db(maxf(level, 0.0001))
+	if not player.playing and level >= SILENT_LEVEL:
 		player.play()
 
 
