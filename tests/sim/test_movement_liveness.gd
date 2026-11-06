@@ -254,33 +254,6 @@ func test_a_held_way_keeps_passers_out_but_lets_the_blocker_clear() -> void:
 	assert_eq(blocker.cell, Vector2i(1, 0), "the person standing in the held step clears it")
 
 
-## The held way beats priority too: a worker (who outranks a guest) granted
-## right of way of its own, with nobody in its path, still may not walk into
-## the cells a stuck person holds (#318 review).
-func test_a_held_way_keeps_out_a_passer_who_outranks_its_holder() -> void:
-	var world: SimWorld = _service_world(["...", "...", "..."])
-	var passer: StaffWalker = StaffWalker.new(&"server", 3)
-	passer.cell = Vector2i(0, 0)
-	world.add_agent(passer)
-	assert_true(passer.set_destination(world.grid, Vector2i(1, 0)))
-	var blocker: Walker = _walker(world, Vector2i(1, 1), Vector2i(1, 0))
-	var stuck: Walker = _walker(world, Vector2i(2, 0), Vector2i(1, 1))
-	assert_true(world.movement._before(world, passer, stuck), "the worker would win on priority")
-	world.movement._right_of_way[stuck.id] = 1000000
-	world.movement._right_of_way[passer.id] = 1000000
-	world.movement._way_holder = stuck.id
-	var passer_entered: bool = false
-	for tick: int in 40:
-		if not _advance(world):
-			return
-		passer_entered = passer_entered or passer.cell == Vector2i(1, 0) \
-			or (passer.move_progress > 0.0 and passer.next_cell() == Vector2i(1, 0))
-		if blocker.cell == Vector2i(1, 0):
-			break
-	assert_false(passer_entered, "the holder keeps its corner")
-	assert_eq(blocker.cell, Vector2i(1, 0), "the person standing in the held step clears it")
-
-
 ## The swap finishes inside the first partner's turn; the later partner has
 ## then already moved this tick and only holds, instead of starting its next
 ## step early.

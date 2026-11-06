@@ -354,10 +354,8 @@ func _held_out(world: SimWorld, agent: SimAgent, next: Vector2i) -> bool:
 	if _way_holder == -1 or _way_holder == agent.id:
 		return false
 	var holder: SimAgent = world.agent(_way_holder)
-	# The holder always wins its held cells, whatever the passer's priority or
-	# own right of way: otherwise a passer granted right of way with nobody in
-	# its path could walk straight into them (#318 review).
-	if holder == null or holder.has_arrived() or not _holds_way(world, holder):
+	if holder == null or holder.has_arrived() or not _holds_way(world, holder) \
+			or not _before(world, holder, agent):
 		return false
 	var held: Array[Vector2i] = _step_cells(holder.cell, holder.next_cell())
 	return not held.has(agent.cell) and _crosses(_step_cells(agent.cell, next), held)
@@ -1112,7 +1110,10 @@ func _escape(world: SimWorld, stuck: SimAgent, stalled: int, visited: Dictionary
 	var detour: bool = not stuck is CourierAgent and route_cells != stuck.path.slice(stuck.path_index - 1)
 	# Right of way wins the step when someone else reaches for the same cell
 	# at the same moment: in a busy corridor a free first step is exactly
-	# what a stalled person keeps losing (#317).
+	# what a stalled person keeps losing (#317). Even into someone else's held
+	# way: there the two right-of-way holders meet by ordinary arbitration
+	# (_before). Keeping it out (or letting the holder always win) left
+	# leaving lines in edited shops stuck past 600 ticks (#318 review).
 	_right_of_way[stuck.id] = world.now + tuning.escape_retry_ticks
 	if blockers.is_empty():
 		# Nobody stands in the shortest way: no held way and nobody is moved.
