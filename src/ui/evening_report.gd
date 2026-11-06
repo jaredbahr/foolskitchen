@@ -136,6 +136,15 @@ func show_report(report: DayReport) -> void:
 		_cleanliness.get_parent().move_child(mishaps, _cleanliness.get_index() + 1)
 	mishaps.text = report.mishaps_text
 	mishaps.visible = not report.mishaps_text.is_empty()
+	var inspection: Label = get_node_or_null("Panel/Scroll/Content/Inspection") as Label
+	if inspection == null:
+		inspection = Label.new()
+		inspection.name = "Inspection"
+		inspection.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		mishaps.get_parent().add_child(inspection)
+		mishaps.get_parent().move_child(inspection, mishaps.get_index() + 1)
+	inspection.text = "\n".join(PackedStringArray(report.inspection_lines))
+	inspection.visible = not report.inspection_lines.is_empty()
 	regulars_summary.text = "Regulars: " + "; ".join(PackedStringArray(report.regulars_lines))
 	regulars_summary.visible = not report.regulars_lines.is_empty()
 	critic_heading.text = report.critic_lines[0] if not report.critic_lines.is_empty() else ""

@@ -281,7 +281,7 @@ func _legal_cell(world: SimWorld, agent: SimAgent, cell: Vector2i) -> bool:
 			return false
 	elif not world.grid.is_walkable(cell):
 		return false
-	if agent is CustomerAgent and not world.grid.is_guest_walkable(cell):
+	if agent.uses_guest_layer() and not world.grid.is_guest_walkable(cell):
 		return false
 	var seat: bool = false
 	var own: bool = false
@@ -306,7 +306,7 @@ func route(world: SimWorld, agent: SimAgent, from: Vector2i, to: Vector2i,
 	if agent is CourierAgent:
 		return _courier_route(world, agent, from, to)
 	return world.grid.find_path_avoiding(from, to, _route_blocked(world, agent, from, to, avoid_people),
-		agent is CustomerAgent)
+		agent.uses_guest_layer())
 
 
 ## Cells this actor may not route through: other people's seats and, when
@@ -352,7 +352,7 @@ func _edge_feasible(world: SimWorld, agent: SimAgent, next: Vector2i) -> bool:
 	if not agent is CourierAgent:
 		legal = legal and world.grid.is_walkable(agent.cell) \
 			and world.grid.step_open(agent.cell, next)
-		if agent is CustomerAgent:
+		if agent.uses_guest_layer():
 			legal = legal and world.grid.guest_step_ok(agent.cell, next)
 	elif world.grid.is_walkable(agent.cell) and world.grid.is_walkable(next):
 		legal = legal and world.grid.step_open(agent.cell, next)
@@ -570,7 +570,7 @@ func _local_reconnection(world: SimWorld, agent: SimAgent, blocked_next: Vector2
 			var to: Vector2i = original[suffix_index]
 			var delta: Vector2i = to - from
 			if maxi(absi(delta.x), absi(delta.y)) != 1 or not world.grid.step_open(from, to) \
-					or (agent is CustomerAgent and not world.grid.guest_step_ok(from, to)):
+					or (agent.uses_guest_layer() and not world.grid.guest_step_ok(from, to)):
 				valid_suffix = false
 				break
 			for cell: Vector2i in _step_cells(from, to):
@@ -617,7 +617,7 @@ func _reciprocal_head_on_winner(world: SimWorld, agent: SimAgent, holder: SimAge
 		if not _legal_cell(world, mover, mover.cell) or not _legal_cell(world, mover, target) \
 				or not world.grid.step_open(mover.cell, target):
 			return false
-		if mover is CustomerAgent and not world.grid.guest_step_ok(mover.cell, target):
+		if mover.uses_guest_layer() and not world.grid.guest_step_ok(mover.cell, target):
 			return false
 		for point: Vector2i in [mover.cell, target]:
 			var next_owner: int = _next.get(point, mover.id)
@@ -698,7 +698,7 @@ func _yield(world: SimWorld, yielding: SimAgent, winner: SimAgent, avoid_parking
 	if not courier:
 		reachable = world.grid.reachable_avoiding(yielding.cell,
 			_route_blocked(world, yielding, yielding.cell, SimGrid.NO_CELL, true),
-			yielding is CustomerAgent)
+			yielding.uses_guest_layer())
 		if reachable.size() <= 1:
 			# Boxed in by people: no pocket other than its own cell is reachable.
 			return YieldAttempt.NO_POCKET

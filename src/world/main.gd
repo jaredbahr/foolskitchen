@@ -143,6 +143,8 @@ var business_history: BusinessHistory = BusinessHistory.new()
 var _loaded_business_history: BusinessHistory = null
 ## The saved cat section (adopted and its name), staged until the load installs.
 var _loaded_cat: Dictionary = {}
+## The saved health inspection section (grade, day, plan), staged likewise.
+var _loaded_inspection: Dictionary = {}
 ## The saved food-critic section (#303: cooldown and today's plan), staged the same way.
 var _loaded_critic: Dictionary = {}
 var _demand_breakdown: DemandBreakdown = null
@@ -552,6 +554,7 @@ func start() -> void:
 	SaveSystem.register("demand", _capture_demand, _restore_demand)
 	SaveSystem.register("business_history", _capture_business_history, _restore_business_history)
 	SaveSystem.register("cat", _capture_cat, _restore_cat)
+	SaveSystem.register("inspection", _capture_inspection, _restore_inspection)
 	SaveSystem.register("critic", _capture_critic, _restore_critic)
 	var loaded: bool = use_saves and _load_autosave()
 	_rooms_note = loaded and _loaded_layout != null and _loaded_layout.rooms_unmarked
@@ -1294,13 +1297,19 @@ func _refresh_demand() -> void:
 		return
 	var next: DemandBreakdown = DemandBreakdown.evaluate(demand_tuning,
 		_demand_reputation, _demand_renown, _demand_enabled_dishes(),
-		vibe_result.score, _demand_day, curb_appeal_factor)
+		vibe_result.score, _demand_day, _street_factor(_demand_day))
 	if next == null or not sim.set_demand_factor(next.total):
 		return
 	_demand_breakdown = next
 	var previous: float = demand_state.last_service_factor \
 		if demand_state.last_service_day == _demand_day - 1 else 0.0
 	$HUD.set_demand_status(next.total, previous)
+
+
+## What the street sees on `day`: the frontage's curb appeal and the health
+## inspection grade in the window (#302), which nudges arrivals for a week.
+func _street_factor(day: int) -> float:
+	return curb_appeal_factor * sim.inspection.arrival_factor(day)
 
 
 func _demand_enabled_dishes() -> int:
@@ -1326,7 +1335,7 @@ func forecast_next_demand() -> Dictionary:
 		return {}
 	var next: DemandBreakdown = DemandBreakdown.evaluate(demand_tuning,
 		reputation.average(), projected.renown, _demand_enabled_dishes(),
-		vibe_result.score, projected.day, curb_appeal_factor)
+		vibe_result.score, projected.day, _street_factor(projected.day))
 	if next == null:
 		return {}
 	var result: Dictionary = next.to_dict()
@@ -2285,6 +2294,8 @@ func build_report(day: int) -> DayReport:
 		report.owner_tips = _owner_tips_today.duplicate()
 		if _milestone_xp_today > 0:
 			report.owner_xp_breakdown["milestone_xp"] = _milestone_xp_today
+	if sim.inspection.last_day == day:
+		report.inspection_lines = InspectionText.report_lines(sim.inspection.last_result, sim.inspection.tuning)
 	report.low_stock = StockAlerts.sell_out_lines(sim.stock_outs_today, content)
 	var incoming: Dictionary[StringName, int] = deliveries.pending_by_id()
 	report.low_stock.append_array(StockAlerts.forecast_lines(StockAlerts.forecast(Economy.stock,
@@ -2301,6 +2312,7 @@ func build_report(day: int) -> DayReport:
 func _new_game() -> void:
 	_base_layout = LAYOUT
 	_loaded_cat = {}
+	_loaded_inspection = {}
 	_loaded_critic = {}
 	business_history = BusinessHistory.new()
 	_loaded_business_history = null
@@ -2388,6 +2400,7 @@ func _load_autosave_sections() -> bool:
 	_last_team_activity.clear()
 	_loaded_demand = null
 	_loaded_cat = {}
+	_loaded_inspection = {}
 	_loaded_critic = {}
 	_loaded_regulars = null
 	_loaded_blueprints = null
@@ -2469,6 +2482,9 @@ func _load_autosave_sections() -> bool:
 	if not _loaded_cat.is_empty() and sim.cat.from_dict(_loaded_cat):
 		sim.cat.begin_day(world.grid)
 	_loaded_cat = {}
+	if not _loaded_inspection.is_empty():
+		sim.inspection.from_dict(_loaded_inspection)
+	_loaded_inspection = {}
 	if not _loaded_critic.is_empty():
 		candidate.critic.from_dict(_loaded_critic)
 	_loaded_critic = {}
@@ -2724,6 +2740,18 @@ func _restore_cat(data: Dictionary) -> bool:
 	if not RestaurantCat.new(CAT).from_dict(data):
 		return false
 	_loaded_cat = data.duplicate(true)
+	return true
+
+
+func _capture_inspection() -> Dictionary:
+	return sim.inspection.to_dict()
+
+
+## Validate now, install with the rest of the load once the new session exists.
+func _restore_inspection(data: Dictionary) -> bool:
+	if not InspectionBook.new().from_dict(data):
+		return false
+	_loaded_inspection = data.duplicate(true)
 	return true
 
 
@@ -3845,6 +3873,10 @@ func _begin_morning() -> void:
 		sim.demand_factor = 1.0
 		$HUD.set_demand_status(1.0, 0.0)
 	sim.start_day()
+	# A visit is decided here, once a day; the named stream is created only on a
+	# day one is possible, so earlier games' streams are untouched.
+	sim.inspection.plan_day(Clock.sim.day, owner_progress.level, Clock.sim.open_ticks,
+		GameState.rng.bind(&"inspector"))
 	$HUD.set_reputation(reputation.average(), reputation.scores().size())
 	_owner_award_today.clear()
 	_owner_unlocks_today.clear()

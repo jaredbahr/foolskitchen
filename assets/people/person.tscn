@@ -1,4 +1,4 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=15 format=3]
 
 [ext_resource type="Script" path="res://assets/people/person.gd" id="1_person"]
 
@@ -40,6 +40,31 @@ rings = 4
 material = SubResource("Material_cap_peak")
 size = Vector3(0.3, 0.03, 0.13)
 
+[sub_resource type="StandardMaterial3D" id="Material_board"]
+albedo_color = Color(0.5058824, 0.3568628, 0.2156863, 1)
+roughness = 1.0
+
+[sub_resource type="StandardMaterial3D" id="Material_paper"]
+albedo_color = Color(0.96, 0.95, 0.9, 1)
+roughness = 1.0
+
+[sub_resource type="StandardMaterial3D" id="Material_clip"]
+albedo_color = Color(0.72, 0.74, 0.76, 1)
+metallic = 0.4
+roughness = 0.7
+
+[sub_resource type="BoxMesh" id="Mesh_board"]
+material = SubResource("Material_board")
+size = Vector3(0.24, 0.31, 0.02)
+
+[sub_resource type="BoxMesh" id="Mesh_paper"]
+material = SubResource("Material_paper")
+size = Vector3(0.2, 0.26, 0.01)
+
+[sub_resource type="BoxMesh" id="Mesh_clip"]
+material = SubResource("Material_clip")
+size = Vector3(0.11, 0.045, 0.03)
+
 [node name="Person" type="Node3D"]
 script = ExtResource("1_person")
 
@@ -67,3 +92,18 @@ mesh = SubResource("Mesh_cap_crown")
 [node name="Peak" type="MeshInstance3D" parent="CourierCap"]
 position = Vector3(0, 0.27, 0.25)
 mesh = SubResource("Mesh_cap_peak")
+
+[node name="Clipboard" type="Node3D" parent="."]
+visible = false
+rotation = Vector3(0.9, 0, 0)
+
+[node name="Board" type="MeshInstance3D" parent="Clipboard"]
+mesh = SubResource("Mesh_board")
+
+[node name="Paper" type="MeshInstance3D" parent="Clipboard"]
+position = Vector3(0, -0.005, -0.012)
+mesh = SubResource("Mesh_paper")
+
+[node name="Clip" type="MeshInstance3D" parent="Clipboard"]
+position = Vector3(0, 0.145, -0.018)
+mesh = SubResource("Mesh_clip")

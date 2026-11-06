@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="InspectionTuning" format=3]
+
+[ext_resource type="Script" path="res://src/sim/inspection/inspection_tuning.gd" id="1_inspection"]
+
+[resource]
+script = ExtResource("1_inspection")
+unlock_level = 3
+min_gap_days = 7
+daily_chance = 0.15
+arrival_from = 0.15
+arrival_to = 0.55
+visit_ticks = 600
+look_ticks = 30
+dining_stops = 4
+visit_cap_ticks = 1500
+table_points = 2.0
+floor_spot_points = 1.0
+restroom_spot_points = 1.5
+spoiled_points_per_cash = 0.25
+spoiled_points_cap = 6.0
+dirty_plates_free = 3
+dirty_plate_points = 0.5
+grade_a_max = 2.0
+grade_b_max = 7.0
+effect_days = 7
+factor_a = 1.05
+factor_b = 1.0
+factor_c = 0.9
+report_findings = 3

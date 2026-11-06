@@ -1587,9 +1587,18 @@ func _process(_delta: float) -> void:
 	_sync_item_selection()
 	_sync_agents()
 	_sync_cat(_delta)
+	_sync_inspection_card()
 	_fade_ghosts(_delta)
 	_sync_crates()
 	_sync_back_doors()
+
+
+## The health inspection grade card in the street window follows the shop's
+## last inspection; a shop never inspected shows none.
+func _sync_inspection_card() -> void:
+	if wall_finish_view == null or _cat_source == null or _cat_source.world != world:
+		return
+	wall_finish_view.set_inspection_grade(_cat_source.inspection.last_grade)
 
 
 func _sync_cat(delta: float) -> void:
