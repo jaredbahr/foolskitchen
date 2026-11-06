@@ -49,6 +49,11 @@ var wall_menu_sections: Dictionary[Vector3i, int] = {}
 ## Floor cells the player has bought (FK-080), in grid coordinates. The outer
 ## walls are derived from these by ShopFootprint; empty is the starting shell.
 @export var floor_cells: Array[Vector2i] = []
+## Purchaseable pavement depth in cells, beside the fixed street approach.
+@export var patio_depth: int = 0
+@export var patio_cell_price: int = 0
+## Separate from indoor expansion: patio never moves or wraps the shell.
+@export var patio_cells: Array[Vector2i] = []
 ## Rooms (FK-101), authored like `rows`, one character per cell: 'K' kitchen,
 ## 'R' restroom, 'S' storage; anything else (or a missing row) is Dining.
 ## Only floor cells take a room.

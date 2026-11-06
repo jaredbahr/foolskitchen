@@ -233,8 +233,18 @@ func assign_owner(mode: StringName) -> bool:
 	return selected_owner != null and selected_owner.assign_mode(mode)
 
 
+## #269: the patio seats new guests only while no ticket waits for the stove
+## and no plate waits at the pass. Indoor seating never asks.
+func patio_keeping_up() -> bool:
+	return orders == null or not orders.has_state(Order.State.PLACED) and not orders.has_state(Order.State.READY)
+
+
 ## Clears daily reports and redraws the first arrival; the caller opens the clock.
 func start_day() -> void:
+	# Daily weather can close patio seats without a layout edit. Indoor-only
+	# shops retain their existing cache and exact morning behavior.
+	if world.grid.rooms().values().has(SimGrid.Room.PATIO):
+		_layout_counted = false
 	staff_activity.reset(world.clock.day)
 	_regular_cohort_index = 0
 	if regulars != null:
@@ -922,7 +932,9 @@ func _count_layout() -> void:
 	for placed: PlacedItem in world.grid.items():
 		var definition: ItemDef = placed.def as ItemDef
 		if definition != null and definition.category == ItemDef.Category.TABLE:
-			_seats += placed.seat_cells.size()
+			for seat: Vector2i in placed.seat_cells:
+				if PatioRules.seat_is_open(world.grid, seat, world.weather.kind):
+					_seats += 1
 
 
 ## Current guests, including the ordered, non-ticking admission queue. Pending

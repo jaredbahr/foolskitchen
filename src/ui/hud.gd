@@ -560,6 +560,8 @@ static func build_hint(painting: bool, state: int, tool: int) -> String:
 			return CatalogueText.WALLS_KEYS
 		BuildMode.State.FLOOR:
 			return "Drag onto the lot to add floor  |  Shift-drag Remove added floor  |  Esc Cancel"
+		BuildMode.State.PATIO:
+			return "Drag beside the street door to buy patio  |  Shift-drag Remove empty patio  |  Esc Cancel"
 		BuildMode.State.ROOMS:
 			return "Drag over the floor to paint the room  |  Ctrl+Z Undo  Ctrl+Y Redo  |  Esc Cancel"
 		BuildMode.State.FLOORS:

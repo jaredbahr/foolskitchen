@@ -55,7 +55,8 @@ class Plan extends RefCounted:
 
 ## Actual dining capacity ignores temporary bookings and dirt, but requires a
 ## clear seat reachable from the street. Never substitute ItemDef.capacity.
-static func usable_cells(grid: SimGrid, table: PlacedItem, from_cell: Vector2i = SimGrid.NO_CELL) -> Array[Vector2i]:
+static func usable_cells(grid: SimGrid, table: PlacedItem, from_cell: Vector2i = SimGrid.NO_CELL,
+		weather_kind: int = WeatherState.Kind.SUNNY) -> Array[Vector2i]:
 	var usable: Array[Vector2i] = []
 	var definition: ItemDef = table.def as ItemDef
 	if table.removed or definition != null and definition.category != ItemDef.Category.TABLE:
@@ -66,7 +67,7 @@ static func usable_cells(grid: SimGrid, table: PlacedItem, from_cell: Vector2i =
 	else:
 		starts.append(from_cell)
 	for seat: Vector2i in grid.dining_group_seats(table.id):
-		if usable.has(seat) or not grid.is_walkable(seat):
+		if usable.has(seat) or not grid.is_walkable(seat) or not PatioRules.seat_is_open(grid, seat, weather_kind):
 			continue
 		for entry: Vector2i in starts:
 			if grid.is_walkable(entry) and grid.is_guest_reachable(entry, seat):
@@ -75,7 +76,8 @@ static func usable_cells(grid: SimGrid, table: PlacedItem, from_cell: Vector2i =
 	return usable
 
 
-static func largest_usable_capacity(grid: SimGrid, from_cell: Vector2i = SimGrid.NO_CELL) -> int:
+static func largest_usable_capacity(grid: SimGrid, from_cell: Vector2i = SimGrid.NO_CELL,
+		weather_kind: int = WeatherState.Kind.SUNNY) -> int:
 	var largest: int = 0
 	var seen: Dictionary[int, bool] = {}
 	for table: PlacedItem in grid.items():
@@ -83,7 +85,7 @@ static func largest_usable_capacity(grid: SimGrid, from_cell: Vector2i = SimGrid
 		if group_id == 0 or seen.has(group_id):
 			continue
 		seen[group_id] = true
-		largest = maxi(largest, usable_cells(grid, table, from_cell).size())
+		largest = maxi(largest, usable_cells(grid, table, from_cell, weather_kind).size())
 	return largest
 
 

@@ -24,11 +24,11 @@ extends RefCounted
 enum Terrain { OUTSIDE, FLOOR, WALL, ENTRY }
 
 ## Result of a placement check.
-enum PlaceResult { OK, OUT_OF_BOUNDS, NOT_FLOOR, OVERLAPS, INVALID_LAYER, INVALID_CELLS, WALL_IN_WAY }
+enum PlaceResult { OK, OUT_OF_BOUNDS, NOT_FLOOR, OVERLAPS, INVALID_LAYER, INVALID_CELLS, WALL_IN_WAY, OUTDOOR_ONLY, INDOOR_ONLY }
 
 ## What a floor cell is used for (FK-101). Dining is the default and is never
 ## stored. Kitchen and Storage are staff-only: guests never walk through them.
-enum Room { DINING, KITCHEN, RESTROOM, STORAGE }
+enum Room { DINING, KITCHEN, RESTROOM, STORAGE, PATIO }
 
 ## What stands on a cell edge. Walls, windows and stall partitions block crossing;
 ## DOORWAY is open. Any segment blocks diagonal steps past its end posts.
@@ -495,6 +495,9 @@ func can_place_def(definition: ItemDef, origin: Vector2i, quarter_turns: int = 0
 	if not definition.blocking_cells_valid():
 		return PlaceResult.INVALID_CELLS
 	var result: PlaceResult = can_place(definition.footprint, origin, quarter_turns, definition.placement_layer)
+	if result == PlaceResult.OK:
+		result = _placement_scope(definition, definition.footprint, origin, quarter_turns,
+			definition.work_cells, definition.seat_cells)
 	if result == PlaceResult.OK and _access_walled_off(definition, origin, quarter_turns):
 		return PlaceResult.WALL_IN_WAY
 	return result
@@ -513,6 +516,9 @@ func place(footprint: Vector2i, origin: Vector2i, quarter_turns: int, solid: boo
 			or not definition.blocking_cells_fit(footprint, work_cells, seat_cells)):
 		return null
 	if layer == ItemDef.PlacementLayer.FLOOR_DECOR and (solid or not work_cells.is_empty() or not seat_cells.is_empty()):
+		return null
+	if definition != null and _placement_scope(definition, footprint, origin, quarter_turns,
+			work_cells, seat_cells) != PlaceResult.OK:
 		return null
 	if can_place(footprint, origin, quarter_turns, layer) != PlaceResult.OK:
 		return null
@@ -636,6 +642,9 @@ func relocate_def(item_id: int, origin: Vector2i, quarter_turns: int) -> bool:
 	if definition.category == ItemDef.Category.CHAIR and _dining_furnishing_reserved(item_id):
 		return false
 	var turns: int = posmod(quarter_turns, 4)
+	if _placement_scope(definition, definition.footprint, origin, turns,
+			definition.work_cells, definition.seat_cells) != PlaceResult.OK:
+		return false
 	var new_cells: Array[Vector2i] = _footprint_cells(definition.footprint, origin, turns)
 	var cover: Dictionary[Vector2i, int] = _coverage(placed.placement_layer)
 	for cell: Vector2i in new_cells:
@@ -1264,6 +1273,40 @@ func room(cell: Vector2i) -> Room:
 	return _rooms.get(cell, Room.DINING) as Room
 
 
+## Outdoor ownership is floor marked Patio; public pavement remains OUTSIDE.
+func is_outdoor_floor(cell: Vector2i) -> bool:
+	return terrain(cell) == Terrain.FLOOR and room(cell) == Room.PATIO
+
+
+## A placed item's footprint plus every authored work and seat cell, including
+## ones the live projection dropped because something blocks them.
+static func use_cells(placed: PlacedItem) -> Array[Vector2i]:
+	var scope: Array[Vector2i] = placed.cells.duplicate()
+	var definition: ItemDef = placed.def as ItemDef
+	if definition == null:
+		scope.append_array(placed.work_cells)
+		scope.append_array(placed.seat_cells)
+		return scope
+	for authored: Vector2i in definition.work_cells + definition.seat_cells:
+		scope.append(placed.origin + GridMath.rotate_cell(authored, definition.footprint, placed.quarter_turns))
+	return scope
+
+
+## Indoor access may retain legacy blocked/outside spots, but never crosses
+## onto patio. Outdoor furniture requires patio under its entire use area.
+func _placement_scope(definition: ItemDef, footprint: Vector2i, at: Vector2i, turns: int,
+		work: Array[Vector2i], seats: Array[Vector2i]) -> PlaceResult:
+	var scope: Array[Vector2i] = _footprint_cells(footprint, at, turns)
+	for authored: Vector2i in work + seats:
+		scope.append(at + GridMath.rotate_cell(authored, footprint, turns))
+	for cell: Vector2i in scope:
+		if definition.outdoor_only and not is_outdoor_floor(cell):
+			return PlaceResult.OUTDOOR_ONLY
+		if not definition.outdoor_only and is_outdoor_floor(cell):
+			return PlaceResult.INDOOR_ONLY
+	return PlaceResult.OK
+
+
 func is_staff_only(cell: Vector2i) -> bool:
 	return _staff_cells > 0 and room_staff_only(_rooms.get(cell, Room.DINING))
 
@@ -1306,7 +1349,7 @@ func rooms() -> Dictionary[Vector2i, int]:
 func set_rooms(changes: Dictionary[Vector2i, int]) -> bool:
 	for cell: Vector2i in changes:
 		var kind: int = changes[cell]
-		if kind < Room.DINING or kind > Room.STORAGE or (kind != Room.DINING and terrain(cell) != Terrain.FLOOR):
+		if kind < Room.DINING or kind > Room.PATIO or (kind != Room.DINING and terrain(cell) != Terrain.FLOOR):
 			return false
 	var touched: Array[Vector2i] = []
 	for cell: Vector2i in changes:

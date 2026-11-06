@@ -36,7 +36,7 @@ static func is_interior(grid: SimGrid, edge: Vector3i) -> bool:
 	if not grid.edge_in_bounds(edge):
 		return false
 	for cell: Vector2i in SimGrid.edge_cells(edge):
-		if grid.terrain(cell) != SimGrid.Terrain.FLOOR:
+		if grid.terrain(cell) != SimGrid.Terrain.FLOOR or grid.is_outdoor_floor(cell):
 			return false
 	return true
 
@@ -75,13 +75,14 @@ static func outer_side(grid: SimGrid, edge: Vector3i) -> Vector2i:
 	for index: int in 2:
 		var floor_cell: Vector2i = cells[index]
 		var wall_cell: Vector2i = cells[1 - index]
-		if grid.terrain(floor_cell) != SimGrid.Terrain.FLOOR or grid.terrain(wall_cell) != SimGrid.Terrain.WALL:
+		if grid.terrain(floor_cell) != SimGrid.Terrain.FLOOR or grid.is_outdoor_floor(floor_cell) \
+				or grid.terrain(wall_cell) != SimGrid.Terrain.WALL:
 			continue
 		var side: Vector2i = wall_cell - floor_cell
 		var beyond: Vector2i = wall_cell + side
 		var beyond_terrain: SimGrid.Terrain = grid.terrain(beyond)
 		if not grid.in_bounds(beyond) or beyond_terrain == SimGrid.Terrain.OUTSIDE \
-				or beyond_terrain == SimGrid.Terrain.ENTRY:
+				or beyond_terrain == SimGrid.Terrain.ENTRY or grid.is_outdoor_floor(beyond):
 			return side
 	return Vector2i.ZERO
 
@@ -92,7 +93,7 @@ static func door_cells(grid: SimGrid) -> Dictionary[Vector2i, bool]:
 	var cells: Dictionary[Vector2i, bool] = {}
 	for entry: Vector2i in grid.entries():
 		for step: Vector2i in [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]:
-			if grid.terrain(entry + step) == SimGrid.Terrain.FLOOR:
+			if grid.terrain(entry + step) == SimGrid.Terrain.FLOOR and not grid.is_outdoor_floor(entry + step):
 				cells[entry + step] = true
 	for placed: PlacedItem in grid.items():
 		var definition: ItemDef = placed.def as ItemDef
@@ -115,7 +116,7 @@ static func back_door_side(grid: SimGrid, edge: Vector3i) -> Vector2i:
 	if side == Vector2i.ZERO:
 		return Vector2i.ZERO
 	for entry: Vector2i in grid.entries():
-		if grid.terrain(entry - side) == SimGrid.Terrain.FLOOR:
+		if grid.terrain(entry - side) == SimGrid.Terrain.FLOOR and not grid.is_outdoor_floor(entry - side):
 			return Vector2i.ZERO
 	return side
 
@@ -187,7 +188,8 @@ static func _street_route(grid: SimGrid, cell: Vector2i, target: Vector2i) -> Di
 	var none: Array[Vector2i] = []
 	for step: Vector2i in [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]:
 		var inside: Vector2i = cell + step
-		if grid.terrain(inside) == SimGrid.Terrain.FLOOR and grid.is_walkable(inside) \
+		if grid.terrain(inside) == SimGrid.Terrain.FLOOR and not grid.is_outdoor_floor(inside) \
+				and grid.is_walkable(inside) \
 				and grid.step_open(cell, inside) \
 				and (target == SimGrid.NO_CELL or not grid.find_path(inside, target).is_empty()):
 			return {"door": cell, "drop": inside, "out": -step, "approach": none}
@@ -272,7 +274,7 @@ static func back_alley(grid: SimGrid, door: Vector2i, side: Vector2i, lot: Rect2
 static func street_side(grid: SimGrid) -> Vector2i:
 	for entry: Vector2i in grid.entries():
 		for step: Vector2i in [Vector2i.DOWN, Vector2i.UP, Vector2i.LEFT, Vector2i.RIGHT]:
-			if grid.terrain(entry - step) == SimGrid.Terrain.FLOOR:
+			if grid.terrain(entry - step) == SimGrid.Terrain.FLOOR and not grid.is_outdoor_floor(entry - step):
 				return step
 	return Vector2i.DOWN
 
@@ -281,7 +283,7 @@ static func street_side(grid: SimGrid) -> Vector2i:
 static func _built_area(grid: SimGrid) -> Rect2i:
 	var area: Rect2i = Rect2i()
 	for cell: Vector2i in grid.cells():
-		if grid.terrain(cell) == SimGrid.Terrain.OUTSIDE:
+		if grid.terrain(cell) == SimGrid.Terrain.OUTSIDE or grid.is_outdoor_floor(cell):
 			continue
 		area = Rect2i(cell, Vector2i.ONE) if not area.has_area() else area.merge(Rect2i(cell, Vector2i.ONE))
 	return area
@@ -410,7 +412,7 @@ static func closed_door_problem(before: SimGrid, after: SimGrid) -> String:
 
 
 ## Cells reachable on foot from any street entry.
-static func reachable(grid: SimGrid) -> Dictionary[Vector2i, bool]:
+static func reachable(grid: SimGrid, seats_stop: bool = false) -> Dictionary[Vector2i, bool]:
 	var seen: Dictionary[Vector2i, bool] = {}
 	var frontier: Array[Vector2i] = []
 	for entry: Vector2i in grid.entries():
@@ -420,6 +422,8 @@ static func reachable(grid: SimGrid) -> Dictionary[Vector2i, bool]:
 	while not frontier.is_empty():
 		var next: Array[Vector2i] = []
 		for cell: Vector2i in frontier:
+			if seats_stop and not grid.seat_items_at(cell).is_empty():
+				continue
 			for neighbour: Vector2i in grid.walkable_neighbours(cell):
 				if not seen.has(neighbour):
 					seen[neighbour] = true
@@ -443,6 +447,13 @@ static func cut_off_problem(before: SimGrid, after: SimGrid, people: Array[Vecto
 	if problem.is_empty():
 		problem = _cut_off(after, reachable(before), reachable(after), people, people_only)
 	return problem
+
+
+## For a new or moved waiting bench (#269): reachability where a seat ends a
+## walk, as MovementCoordinator never lets anyone use a seat as an aisle. Only
+## what this edit newly cuts off counts, so older layouts are never refused.
+static func seat_cut_off_problem(before: SimGrid, after: SimGrid) -> String:
+	return _cut_off(after, reachable(before, true), reachable(after, true), [] as Array[Vector2i])
 
 
 ## Terrain and segments of `grid`, with no furniture.

@@ -30,6 +30,8 @@ const MAX_SEATED_LEAN_DEGREES: float = 35.0
 @export var category: Category = Category.DECOR
 ## Floor decor shares cells with normal furniture without owning its access.
 @export var placement_layer: PlacementLayer = PlacementLayer.NORMAL
+## Outdoor furniture and all its seats/work spots belong on purchased patio.
+@export var outdoor_only: bool = false
 ## Hidden entries remain valid content so existing saved placements still load.
 @export var catalogue_visible: bool = true
 ## Buy mode room (one of CATALOGUE_ROOMS); empty means Decor.

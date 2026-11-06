@@ -5,6 +5,7 @@ extends RefCounted
 
 const TUNING: VisitTuning = preload("res://data/balance/visits.tres")
 const DINING_ONLY: String = "Waiting benches belong in the dining room"
+const PATIO_ONLY: String = "Outdoor waiting benches belong on the patio"
 const REACHABLE: String = "Guests must be able to reach every waiting bench seat"
 const DINING_OVERLAP: String = "Keep waiting seats separate from dining tables"
 const FAR_FROM_DOOR: String = "Waiting benches work best near the door"
@@ -33,9 +34,10 @@ static func door_distance(grid: SimGrid, cells: Array[Vector2i]) -> float:
 
 static func placement_problem(grid: SimGrid, bench: PlacedItem,
 		guests: Dictionary[Vector2i, bool]) -> String:
+	var outdoor: bool = (bench.def as ItemDef).outdoor_only
 	for seat: Vector2i in bench.seat_cells:
-		if grid.room(seat) != SimGrid.Room.DINING:
-			return DINING_ONLY
+		if grid.room(seat) != (SimGrid.Room.PATIO if outdoor else SimGrid.Room.DINING):
+			return PATIO_ONLY if outdoor else DINING_ONLY
 		if grid.dining_table_id(seat) > 0:
 			return DINING_OVERLAP
 		if not guests.has(seat):
@@ -50,7 +52,7 @@ static func advance(guest: CustomerAgent, world: SimWorld, sim: RestaurantSim) -
 	if not is_bench(bench) or not bench.seat_cells.has(guest.waiting_cell) \
 			or bench.reserved_by(guest.waiting_cell) != guest.id \
 			or not world.grid.is_guest_walkable(guest.waiting_cell) \
-			or world.grid.room(guest.waiting_cell) != SimGrid.Room.DINING:
+			or not _seat_allowed(world, bench, guest.waiting_cell):
 		if guest.waiting_item_id > 0:
 			guest.clear_path()
 		guest.release_waiting_seat(world)
@@ -63,7 +65,7 @@ static func advance(guest: CustomerAgent, world: SimWorld, sim: RestaurantSim) -
 			return first < second or first == second and a.id < b.id)
 		for candidate: PlacedItem in choices:
 			for seat: Vector2i in candidate.seat_cells:
-				if candidate.reserved_by(seat) != -1 or world.grid.room(seat) != SimGrid.Room.DINING \
+				if candidate.reserved_by(seat) != -1 or not _seat_allowed(world, candidate, seat) \
 						or world.grid.dining_table_id(seat) > 0 \
 						or not world.grid.is_guest_walkable(seat) \
 						or not world.grid.is_guest_reachable(guest.cell, seat):
@@ -97,3 +99,9 @@ static func observe_arrival(guest: CustomerAgent, world: SimWorld, sim: Restaura
 		var tuning: VisitTuning = sim.visit_tuning if sim != null else TUNING
 		var multiplier: float = tuning.waiting_bench_patience_multiplier if tuning != null and tuning.is_valid() else 1.0
 		guest.queue_patience = CustomerAgent._type_patience(guest.queue_patience, multiplier)
+
+
+static func _seat_allowed(world: SimWorld, bench: PlacedItem, seat: Vector2i) -> bool:
+	var outdoor: bool = (bench.def as ItemDef).outdoor_only
+	return world.grid.room(seat) == (SimGrid.Room.PATIO if outdoor else SimGrid.Room.DINING) \
+		and PatioRules.seat_is_open(world.grid, seat, world.weather.kind)
