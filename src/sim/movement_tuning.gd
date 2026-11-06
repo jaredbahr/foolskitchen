@@ -15,7 +15,7 @@ extends Resource
 @export_range(1, 600, 1) var escape_retry_ticks: int = 40
 ## Last resort: squeeze past the person in the way, swapping places over one
 ## ordinary step (staff past a guest, or a guest who is already leaving).
-@export_range(1, 4800, 1) var squeeze_after_ticks: int = 300
+@export_range(1, 4800, 1) var squeeze_after_ticks: int = 240
 ## A guest who still cannot move gives up and leaves ("couldn't get through").
 @export_range(1, 9600, 1) var give_up_after_ticks: int = 450
 ## Let them out first: while the door is jammed with someone leaving, a guest
