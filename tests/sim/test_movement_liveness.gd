@@ -254,6 +254,33 @@ func test_a_held_way_keeps_passers_out_but_lets_the_blocker_clear() -> void:
 	assert_eq(blocker.cell, Vector2i(1, 0), "the person standing in the held step clears it")
 
 
+## The held way beats priority too: a worker (who outranks a guest) granted
+## right of way of its own, with nobody in its path, still may not walk into
+## the cells a stuck person holds (#318 review).
+func test_a_held_way_keeps_out_a_passer_who_outranks_its_holder() -> void:
+	var world: SimWorld = _service_world(["...", "...", "..."])
+	var passer: StaffWalker = StaffWalker.new(&"server", 3)
+	passer.cell = Vector2i(0, 0)
+	world.add_agent(passer)
+	assert_true(passer.set_destination(world.grid, Vector2i(1, 0)))
+	var blocker: Walker = _walker(world, Vector2i(1, 1), Vector2i(1, 0))
+	var stuck: Walker = _walker(world, Vector2i(2, 0), Vector2i(1, 1))
+	assert_true(world.movement._before(world, passer, stuck), "the worker would win on priority")
+	world.movement._right_of_way[stuck.id] = 1000000
+	world.movement._right_of_way[passer.id] = 1000000
+	world.movement._way_holder = stuck.id
+	var passer_entered: bool = false
+	for tick: int in 40:
+		if not _advance(world):
+			return
+		passer_entered = passer_entered or passer.cell == Vector2i(1, 0) \
+			or (passer.move_progress > 0.0 and passer.next_cell() == Vector2i(1, 0))
+		if blocker.cell == Vector2i(1, 0):
+			break
+	assert_false(passer_entered, "the holder keeps its corner")
+	assert_eq(blocker.cell, Vector2i(1, 0), "the person standing in the held step clears it")
+
+
 ## The swap finishes inside the first partner's turn; the later partner has
 ## then already moved this tick and only holds, instead of starting its next
 ## step early.
@@ -304,6 +331,9 @@ func test_a_pocket_prefers_cells_clear_of_work_spots() -> void:
 		Vector2i(2, 0): true, Vector2i(2, 1): true}
 	path = world.movement._pocket_path(world, idle, off_route)
 	assert_eq(path, [Vector2i(0, 0), Vector2i(1, 0)] as Array[Vector2i], "falls back to it when nothing else is free")
+	# The work-cell set is cached per grid version: a station placed later counts.
+	assert_true(world.grid.place(Vector2i.ONE, Vector2i(0, 1), 0, false, [Vector2i.ZERO] as Array[Vector2i]) != null)
+	assert_true(world.movement._work_cells(world).has(Vector2i(0, 1)), "the cache rebuilds after an edit")
 
 
 ## A leaving guest drops its path whenever a step is blocked, so between
@@ -390,6 +420,54 @@ func test_an_escape_at_the_back_of_a_leaving_line_goes_to_its_head() -> void:
 	assert_true(world.movement.is_squeezing(head.id), "the head of the line squeezes past")
 	assert_true(world.movement.is_squeezing(queued.id))
 	assert_false(world.movement.is_squeezing(back.id), "the back waits its turn")
+
+
+## The head of a leaving line is already on the move: there is nothing to
+## hand on, so the escape at the back is futile (an ordinary retry) instead of
+## searching the line again every tick while the head walks.
+func test_an_escape_handed_to_a_moving_head_waits_for_it() -> void:
+	var world: SimWorld = _service_world(["E...."])
+	var queued: GuestWalker = _guest(world, Vector2i(1, 0))
+	var head: GuestWalker = _guest(world, Vector2i(2, 0))
+	var back: GuestWalker = _guest(world, Vector2i(3, 0))
+	queued.state = CustomerAgent.State.QUEUED
+	head.state = CustomerAgent.State.LEAVING
+	back.state = CustomerAgent.State.LEAVING
+	head.move_progress = 0.5
+	var outcome: int = world.movement._escape(world, back, world.movement_tuning.squeeze_after_ticks)
+	head.move_progress = 0.0
+	assert_eq(outcome, MovementCoordinator.ESCAPE_FUTILE)
+	assert_eq(int(world.movement.escape_counts.get(&"line_head", 0)), 0, "nothing handed on")
+	assert_false(world.movement.is_squeezing(queued.id))
+
+
+## Only a swap onto the next step of the way earns the quick retry; a corner
+## swap moves the stuck person sideways, no closer, and waits an ordinary
+## retry. The same two people never swap again within the cooldown.
+func test_only_a_forward_squeeze_is_retried_soon_and_pairs_cool_down() -> void:
+	var world: SimWorld = _service_world(["..", ".."])
+	var staff: StaffWalker = StaffWalker.new(&"server", 3)
+	staff.cell = Vector2i(0, 0)
+	world.add_agent(staff)
+	var corner: GuestWalker = _guest(world, Vector2i(1, 0))
+	_guest(world, Vector2i(0, 1))
+	var route_cells: Array[Vector2i] = [Vector2i(0, 0), Vector2i(1, 1)]
+	var blockers: Array[SimAgent] = [corner]
+	assert_eq(world.movement._try_squeeze(world, staff, route_cells, blockers), MovementCoordinator.ESCAPE_ACTED,
+		"a corner swap is an ordinary action")
+	var line: SimWorld = _service_world(["...."])
+	var worker: StaffWalker = StaffWalker.new(&"server", 3)
+	worker.cell = Vector2i(0, 0)
+	line.add_agent(worker)
+	var guest: GuestWalker = _guest(line, Vector2i(1, 0))
+	var ahead: Array[Vector2i] = [Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0)]
+	var in_way: Array[SimAgent] = [guest]
+	line.movement._pair_swapped[line.movement._pair(worker, guest)] = line.now
+	assert_eq(line.movement._try_squeeze(line, worker, ahead, in_way), MovementCoordinator.ESCAPE_FUTILE,
+		"no swap straight back")
+	line.movement._pair_swapped.clear()
+	assert_eq(line.movement._try_squeeze(line, worker, ahead, in_way), MovementCoordinator.ESCAPE_SQUEEZED,
+		"a forward swap is retried soon")
 
 
 ## The inspector who gave up on one door after being blocked there is led to

@@ -10,10 +10,13 @@ const CARRYING_PRIORITY: int = 3
 const ESCAPE_SKIPPED: int = 0
 const ESCAPE_FUTILE: int = 1
 const ESCAPE_ACTED: int = 2
-## Acted by starting a squeeze: in a one-cell corridor the next swap is due as
-## soon as this one is done, not a whole retry later.
+## Acted by starting a forward squeeze (onto the next step of the way): in a
+## one-cell corridor the next swap is due as soon as this one is done, not a
+## whole retry later. A corner swap only moves sideways: an ordinary retry.
 const ESCAPE_SQUEEZED: int = 3
 const SQUEEZE_RETRY_TICKS: int = 8
+## The same two people never swap again within this many ticks.
+const SQUEEZE_PAIR_COOLDOWN_TICKS: int = 40
 ## Futile escapes searched in one tick before the rest wait for the next.
 const MAX_ESCAPE_TRIES_PER_TICK: int = 3
 ## How far an escape is handed along a line of leavers to reach its head.
@@ -42,14 +45,22 @@ var _seat_releases: Array[Dictionary] = []
 var _stall: Dictionary[int, Dictionary] = {}
 ## A stuck person given right of way wins arbitration until this tick.
 var _right_of_way: Dictionary[int, int] = {}
-## The one person whose held way keeps others out of its step (latest escape).
+## The one person whose held way keeps others out of its step: whoever has
+## waited longest among the escapes whose right of way still lasts.
 var _way_holder: int = -1
-## How long the holder had been stalled when it took the held way.
-var _way_stall: int = 0
+## Since when the holder has been waiting (its live stall is now minus this).
+var _way_since: int = 0
 ## Arrivals held on the street by "let them out first": id -> first held tick.
 var _held_since: Dictionary[int, int] = {}
 ## A squeeze-past: both partners cross one shared edge in lockstep.
 var _squeezes: Dictionary[int, Dictionary] = {}
+## When each pair (lower id, higher id) last started a squeeze.
+var _pair_swapped: Dictionary[Vector2i, int] = {}
+## Escape routes searched during one liveness pass: id -> route. Only kept
+## while the pass runs; a pass that acts ends at once, so nothing it changes
+## is ever read back stale.
+var _route_memo: Dictionary[int, Array] = {}
+var _memo_on: bool = false
 ## Diagnostics only (the liveness soak reads them): how often each escape ran.
 var escape_counts: Dictionary[StringName, int] = {}
 ## Pairs whose squeeze finished during the current tick (for observers).
@@ -129,8 +140,8 @@ func register_agent(world: SimWorld, agent: SimAgent, cause: String = "admission
 		_held_since[agent.id] = since
 		if world.now - since < world.movement_tuning.door_hold_max_ticks:
 			return false
-	_held_since.erase(agent.id)
 	if can_enter(world, agent, requested):
+		_held_since.erase(agent.id)
 		_occupied[requested] = agent.id
 		agent.movement_admitted = true
 		agent.reset_movement_trace(world.now, cause)
@@ -340,8 +351,10 @@ func _held_out(world: SimWorld, agent: SimAgent, next: Vector2i) -> bool:
 	if _way_holder == -1 or _way_holder == agent.id:
 		return false
 	var holder: SimAgent = world.agent(_way_holder)
-	if holder == null or holder.has_arrived() or not _holds_way(world, holder) \
-			or not _before(world, holder, agent):
+	# The holder always wins its held cells, whatever the passer's priority or
+	# own right of way: otherwise a passer granted right of way with nobody in
+	# its path could walk straight into them (#318 review).
+	if holder == null or holder.has_arrived() or not _holds_way(world, holder):
 		return false
 	var held: Array[Vector2i] = _step_cells(holder.cell, holder.next_cell())
 	return not held.has(agent.cell) and _crosses(_step_cells(agent.cell, next), held)
@@ -969,8 +982,12 @@ func _watch_liveness(world: SimWorld) -> void:
 		_stall.clear()
 		_right_of_way.clear()
 		_held_since.clear()
+		_pair_swapped.clear()
 		_way_holder = -1
 		return
+	for pair: Vector2i in _pair_swapped.keys():
+		if world.now - _pair_swapped[pair] >= SQUEEZE_PAIR_COOLDOWN_TICKS:
+			_pair_swapped.erase(pair)
 	var tuning: MovementTuning = world.movement_tuning
 	var due: Array[Array] = []
 	for agent: SimAgent in world.agents:
@@ -1010,6 +1027,15 @@ func _watch_liveness(world: SimWorld) -> void:
 	# An escape that could change nothing (nobody in the way can move and no
 	# squeeze is allowed) does not use up the turn of the next person, but at
 	# most MAX_ESCAPE_TRIES_PER_TICK are searched; the rest wait a tick.
+	_route_memo.clear()
+	_memo_on = true
+	_escape_due(world, due)
+	_memo_on = false
+	_route_memo.clear()
+
+
+func _escape_due(world: SimWorld, due: Array[Array]) -> void:
+	var tuning: MovementTuning = world.movement_tuning
 	var tries: int = 0
 	for entry: Array in due:
 		var agent: SimAgent = entry[1]
@@ -1040,8 +1066,9 @@ func _real_goal(agent: SimAgent) -> Vector2i:
 	return agent.cell if agent.path.is_empty() else agent.path.back()
 
 
-func _escape(world: SimWorld, stuck: SimAgent, stalled: int, depth: int = 0) -> int:
-	if stuck.move_progress > 0.0 or _edges.has(stuck.id) or _stopping.has(stuck.id):
+## visited: the leavers this escape has already been handed through.
+func _escape(world: SimWorld, stuck: SimAgent, stalled: int, visited: Dictionary[int, bool] = {}) -> int:
+	if _mid_move(stuck):
 		return ESCAPE_SKIPPED
 	var tuning: MovementTuning = world.movement_tuning
 	if stuck is CustomerAgent and stalled >= tuning.give_up_after_ticks \
@@ -1060,20 +1087,26 @@ func _escape(world: SimWorld, stuck: SimAgent, stalled: int, depth: int = 0) -> 
 		var holder: SimAgent = _holder(world, cell)
 		if holder != null and holder != stuck and not blockers.has(holder):
 			blockers.append(holder)
-	if _leaving(stuck) and not blockers.is_empty() and depth < MAX_LINE_HAND_ON:
+	if _leaving(stuck) and not blockers.is_empty() and visited.size() < MAX_LINE_HAND_ON:
 		# A line on the way out: clearing or swapping with the leaver ahead only
 		# shuffles the line. Hand the escape, and this wait, to the one ahead,
 		# until it reaches the head of the line and whoever really blocks it.
+		# Each person is visited once, so two leavers facing each other never
+		# bounce the escape back and forth.
+		visited[stuck.id] = true
 		var ahead: SimAgent = null
 		for blocker: SimAgent in blockers:
-			if not _leaving(blocker) or _may_squeeze(world, stuck, blocker):
+			if not _leaving(blocker) or visited.has(blocker.id) or _may_squeeze(world, stuck, blocker):
 				ahead = null
 				break
 			if ahead == null:
 				ahead = blocker
 		if ahead != null:
+			if _mid_move(ahead):
+				# The line ahead is already moving: nothing to do but follow it.
+				return ESCAPE_FUTILE
 			escape_counts[&"line_head"] = int(escape_counts.get(&"line_head", 0)) + 1
-			return _escape(world, ahead, stalled, depth + 1)
+			return _escape(world, ahead, stalled, visited)
 	var detour: bool = not stuck is CourierAgent and route_cells != stuck.path.slice(stuck.path_index - 1)
 	# Right of way wins the step when someone else reaches for the same cell
 	# at the same moment: in a busy corridor a free first step is exactly
@@ -1092,16 +1125,17 @@ func _escape(world: SimWorld, stuck: SimAgent, stalled: int, depth: int = 0) -> 
 	# so a newer escape in the same crowd cannot take it away (#317).
 	var current: SimAgent = world.agent(_way_holder) if _way_holder != -1 else null
 	if current == null or current == stuck or current.has_arrived() \
-			or int(_right_of_way.get(current.id, -1)) < world.now or stalled >= _way_stall:
+			or int(_right_of_way.get(current.id, -1)) < world.now or stalled >= world.now - _way_since:
 		_way_holder = stuck.id
-		_way_stall = stalled
+		_way_since = world.now - stalled
 	escape_counts[&"escape"] = int(escape_counts.get(&"escape", 0)) + 1
 	if detour:
 		# Retake the shortest static route; right of way now wins its first step.
 		stuck.install_movement_route(route_cells)
 	if stalled >= tuning.squeeze_after_ticks:
-		if _try_squeeze(world, stuck, route_cells, blockers):
-			return ESCAPE_SQUEEZED
+		var swapped: int = _try_squeeze(world, stuck, route_cells, blockers)
+		if swapped != ESCAPE_FUTILE:
+			return swapped
 		if stuck is StaffAgent and (stuck as StaffAgent).task == null and not (stuck as StaffAgent).carries_food():
 			# An idle worker only parking or returning can simply stop here.
 			supersede_destination(stuck.id)
@@ -1132,8 +1166,10 @@ func _escape(world: SimWorld, stuck: SimAgent, stalled: int, depth: int = 0) -> 
 	# Nobody in the way can go anywhere (a leaving guest meeting an arrival in
 	# the doorway, with only the street behind it): waiting for the longer
 	# limit cannot help, so squeeze now if allowed.
-	if stalled < tuning.squeeze_after_ticks and _try_squeeze(world, stuck, route_cells, blockers):
-		return ESCAPE_SQUEEZED
+	if stalled < tuning.squeeze_after_ticks:
+		var swapped: int = _try_squeeze(world, stuck, route_cells, blockers)
+		if swapped != ESCAPE_FUTILE:
+			return swapped
 	# Futile for now: hand the held way and the turn to the next person.
 	if _way_holder == stuck.id:
 		_way_holder = -1
@@ -1143,6 +1179,18 @@ func _escape(world: SimWorld, stuck: SimAgent, stalled: int, depth: int = 0) -> 
 ## The stuck person's own static route to where it is really going (people
 ## ignored, seats and rooms respected). A courier keeps its planned alley.
 func _escape_route(world: SimWorld, stuck: SimAgent) -> Array[Vector2i]:
+	if not _memo_on:
+		return _search_escape_route(world, stuck)
+	if _route_memo.has(stuck.id):
+		var known: Array[Vector2i] = []
+		known.assign(_route_memo[stuck.id])
+		return known
+	var cells: Array[Vector2i] = _search_escape_route(world, stuck)
+	_route_memo[stuck.id] = cells.duplicate()
+	return cells
+
+
+func _search_escape_route(world: SimWorld, stuck: SimAgent) -> Array[Vector2i]:
 	if stuck is CourierAgent:
 		return stuck.path.slice(stuck.path_index - 1)
 	if _leaving(stuck):
@@ -1188,6 +1236,12 @@ func _leaving(agent: SimAgent) -> bool:
 	if agent is InspectorAgent:
 		return (agent as InspectorAgent).state == InspectorAgent.State.LEAVING
 	return agent is CustomerAgent and (agent as CustomerAgent).state == CustomerAgent.State.LEAVING
+
+
+## Moving now: mid-edge, stopping or squeezing.
+func _mid_move(agent: SimAgent) -> bool:
+	return agent.move_progress > 0.0 or _edges.has(agent.id) or _stopping.has(agent.id) \
+		or _squeezes.has(agent.id)
 
 
 func _holder(world: SimWorld, cell: Vector2i) -> SimAgent:
@@ -1364,15 +1418,19 @@ func _send_aside(world: SimWorld, agent: SimAgent, path: Array[Vector2i]) -> voi
 
 ## Last resort, after squeeze_after_ticks of no movement: swap places with a
 ## physically stationary person over one ordinary step. Only staff squeeze
-## past guests, and a leaving guest past anyone but a courier.
+## past guests, and a leaving guest past anyone but a courier. Returns
+## ESCAPE_SQUEEZED for a swap onto the next step of the way, ESCAPE_ACTED for a
+## corner swap (sideways, no closer yet) and ESCAPE_FUTILE when none is allowed.
 func _try_squeeze(world: SimWorld, stuck: SimAgent, route_cells: Array[Vector2i],
-		blockers: Array[SimAgent]) -> bool:
+		blockers: Array[SimAgent]) -> int:
 	if stuck is CourierAgent:
-		return false
+		return ESCAPE_FUTILE
 	var step: Vector2i = route_cells[1]
 	for partner: SimAgent in blockers:
 		if not _clearable(world, partner, stuck) or not _may_squeeze(world, stuck, partner):
 			continue
+		if _pair_swapped.has(_pair(stuck, partner)):
+			continue  # These two just swapped: never straight back.
 		var through: Vector2i = partner.cell
 		var delta: Vector2i = through - stuck.cell
 		if absi(delta.x) + absi(delta.y) != 1:
@@ -1396,8 +1454,13 @@ func _try_squeeze(world: SimWorld, stuck: SimAgent, route_cells: Array[Vector2i]
 		if handover:
 			_hand_over_seat(world, stuck, partner)
 		_start_squeeze(world, stuck, partner, rest)
-		return true
-	return false
+		_pair_swapped[_pair(stuck, partner)] = world.now
+		return ESCAPE_SQUEEZED if through == step else ESCAPE_ACTED
+	return ESCAPE_FUTILE
+
+
+func _pair(a: SimAgent, b: SimAgent) -> Vector2i:
+	return Vector2i(mini(a.id, b.id), maxi(a.id, b.id))
 
 
 ## A leaving guest still standing on its own seat (a stool beside the door)
