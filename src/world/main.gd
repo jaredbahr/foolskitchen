@@ -191,6 +191,8 @@ var _last_pointer: Variant = null
 var _build_ready: bool = false
 var _was_build_active: bool = false
 var _build_phase: int = -1
+## The shop light of the last `_refresh_day_light`, for the music's dusk.
+var _music_light: float = 0.0
 var _build_ui_phase: int = -1
 var _paint_active: bool = false
 var _paint_variant_item: StringName = &""
@@ -645,6 +647,7 @@ func _connect_session() -> void:
 	if sound == null:
 		sound = SoundDirector.new()
 		sound.name = "SoundDirector"
+		sound.display_only = display_only
 		add_child(sound)
 	sound.bind(sim, $ShopView as ShopView)
 
@@ -2137,7 +2140,7 @@ func refresh_presentation() -> void:
 	_refresh_weather()
 	_refresh_day_light()
 	if sound != null:
-		sound.refresh(day_light_look().interior_energy if world != null and world.clock != null else 0.0)
+		sound.refresh(_music_light)
 	if _inspect_panel == null or _debug_overlay == null or _debug_geometry == null:
 		return
 	_inspect_panel.refresh()
@@ -3903,8 +3906,10 @@ func _select_morning_weather() -> bool:
 ## paused capture always looks the same. Presentation only.
 func _refresh_day_light() -> void:
 	if world == null or world.clock == null:
+		_music_light = 0.0
 		return
 	var look: DayLight.Look = day_light_look()
+	_music_light = look.interior_energy
 	var rig: Node3D = get_node_or_null(^"LightingRig") as Node3D
 	DayNightView.apply_rig(rig, look)
 	DayNightView.apply_shop_light(rig, world.grid, look.interior_energy, DAY_LIGHT.interior_color)

@@ -250,6 +250,17 @@ func test_return_actions_fit_menu_and_settings_at_1280_and_150_percent() -> void
 	assert_true(window.get_visible_rect().encloses(settings_panel.get_global_rect()))
 
 
+func test_title_music_survives_the_display_only_backdrop() -> void:
+	Sfx.set_music_context(&"")
+	var title: TitleScreen = _title()
+	var backdrop: Node = title.get_child(0)
+	assert_true(bool(backdrop.get("display_only")))
+	backdrop.call("refresh_presentation")
+	assert_eq(Sfx.music_context(), MusicTracks.TITLE, "the backdrop never touches the music")
+	title.free()
+	assert_eq(Sfx.music_context(), &"", "leaving the title clears it")
+
+
 func _title() -> TitleScreen:
 	var title: TitleScreen = (load("res://src/ui/title_screen.tscn") as PackedScene).instantiate() as TitleScreen
 	_nodes.append(title)

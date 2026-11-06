@@ -28,11 +28,15 @@ static func track_for(context: StringName) -> AudioStream:
 	return BY_CONTEXT.get(context)
 
 
+static var _all_tracks: Array[AudioStream] = []
+
+
+## Every mapped track, built once (the fade code asks every frame).
 static func all_tracks() -> Array[AudioStream]:
-	var tracks: Array[AudioStream] = []
-	for track: AudioStream in BY_CONTEXT.values():
-		tracks.append(track)
-	return tracks
+	if _all_tracks.is_empty():
+		for track: AudioStream in BY_CONTEXT.values():
+			_all_tracks.append(track)
+	return _all_tracks
 
 
 ## The context during service: daytime or evening by the shop light. Outside

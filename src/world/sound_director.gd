@@ -15,6 +15,10 @@ const EXTRA_STATION_LEVEL: float = 0.15
 ## The jukebox's music is a quiet bed under the room; its loop is the style's id.
 const MUSIC_LEVEL: float = 1.0
 
+## Set by a display-only Main (the title's backdrop): it must never drive the
+## music, which belongs to the title screen there.
+var display_only: bool = false
+
 var _sim: RestaurantSim
 var _view: ShopView
 ## The counted jukebox is looked up again only when the grid changes.
@@ -48,8 +52,9 @@ func unbind() -> void:
 	_music_item_id = -1
 	_music_loop = &""
 	Sounds.stop_loops()
-	Sounds.set_music_ducked(false)
-	Sounds.set_music_context(&"")
+	if not display_only:
+		Sounds.set_music_ducked(false)
+		Sounds.set_music_context(&"")
 
 
 func _exit_tree() -> void:
@@ -62,7 +67,8 @@ func _exit_tree() -> void:
 ## its daytime or evening track during service and keeps playing while paused.
 func refresh(light: float = 0.0) -> void:
 	var serving: bool = _sim != null and OPEN_PHASES.has(Clock.sim.phase)
-	Sounds.set_music_context(MusicTracks.service_context(serving, light))
+	if not display_only:
+		Sounds.set_music_context(MusicTracks.service_context(serving, light))
 	var running: bool = _sim != null and Clock.speed > 0 and OPEN_PHASES.has(Clock.sim.phase)
 	var guests: int = 0
 	if running and _sim.world != null:
@@ -70,7 +76,7 @@ func refresh(light: float = 0.0) -> void:
 			if agent is CustomerAgent:
 				guests += 1
 	Sounds.set_loop_level(ROOM_TONE, float(guests) / float(Sounds.TUNING.room_tone_full_guests) if running else 0.0)
-	_refresh_music(running)
+	_refresh_music(running, serving)
 	# Read the view's current food layer: it is rebuilt when the world changes.
 	var food: FoodPresentation = _view.food if _view != null else null
 	for loop: StringName in FoodPresentation.STATION_LOOPS.values():
@@ -80,9 +86,10 @@ func refresh(light: float = 0.0) -> void:
 
 ## The one counted jukebox plays its style while the shop is open; changing the
 ## style swaps the loop, and a closed, paused or jukebox-less shop is silent.
-func _refresh_music(running: bool) -> void:
+func _refresh_music(running: bool, serving: bool) -> void:
 	var wanted: StringName = &""
-	if running and _sim != null and _sim.world != null:
+	var jukebox_present: bool = false
+	if serving and _sim != null and _sim.world != null:
 		var grid: SimGrid = _sim.world.grid
 		if grid.version != _music_grid_version:
 			_music_grid_version = grid.version
@@ -90,14 +97,18 @@ func _refresh_music(running: bool) -> void:
 			_music_item_id = counted.id if counted != null else -1
 		var placed: PlacedItem = grid.item(_music_item_id) if _music_item_id >= 0 else null
 		if placed != null and not placed.removed:
-			wanted = Jukebox.loop_id(placed.def as ItemDef, placed.variant_id)
+			jukebox_present = true
+			if running:
+				wanted = Jukebox.loop_id(placed.def as ItemDef, placed.variant_id)
 	if wanted != _music_loop:
 		if not _music_loop.is_empty():
 			Sounds.set_loop_level(_music_loop, 0.0)
 		_music_loop = wanted
 	if not _music_loop.is_empty():
 		Sounds.set_loop_level(_music_loop, MUSIC_LEVEL)
-	Sounds.set_music_ducked(not _music_loop.is_empty())
+	# The theme stays out of the way for the whole open shop, paused or not.
+	if not display_only:
+		Sounds.set_music_ducked(jukebox_present)
 
 
 static func station_level(busy: int) -> float:
