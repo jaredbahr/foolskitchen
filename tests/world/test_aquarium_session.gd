@@ -127,6 +127,31 @@ func test_selling_a_cloudy_tank_then_undo_keeps_it_cloudy() -> void:
 	assert_true(_sim().aquarium.is_cloudy(back.id, Clock.sim.day), "Undo brings the cloudy water back too")
 
 
+func test_during_a_busy_service_the_owner_on_floor_walks_over_and_cleans_it() -> void:
+	_start()
+	var tank: PlacedItem = _buy(3)
+	for morning: int in TUNING.cloudy_after_days:
+		_next_morning()
+	assert_true(_sim().aquarium.is_cloudy(tank.id, Clock.sim.day))
+	# The owner rests until the room is busy, then goes on Floor.
+	assert_true(_sim().assign_owner(&"rest"))
+	assert_true(Clock.sim.start_service())
+	for step: int in 40:
+		if _sim().customers().size() >= 2:
+			break
+		_main.call("run_ticks", 100)
+	assert_true(_sim().customers().size() >= 2, "guests are about")
+	assert_true(_sim().aquarium.is_cloudy(tank.id, Clock.sim.day), "nobody cleaned it yet")
+	assert_true(_sim().assign_owner(&"floor"))
+	var cleaned: bool = false
+	for step: int in 60:
+		_main.call("run_ticks", 100)
+		if not _sim().aquarium.is_cloudy(tank.id, Clock.sim.day):
+			cleaned = true
+			break
+	assert_true(cleaned, "cleaned among the guests, with the movement watchdog running")
+
+
 func test_the_morning_save_keeps_a_cloudy_tank_cloudy() -> void:
 	_start(true)
 	var tank: PlacedItem = _buy(3)
