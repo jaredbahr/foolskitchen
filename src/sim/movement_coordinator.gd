@@ -10,11 +10,14 @@ const CARRYING_PRIORITY: int = 3
 const ESCAPE_SKIPPED: int = 0
 const ESCAPE_FUTILE: int = 1
 const ESCAPE_ACTED: int = 2
-## Acted by starting a forward squeeze (onto the next step of the way): in a
-## one-cell corridor the next swap is due as soon as this one is done, not a
-## whole retry later. A corner swap only moves sideways: an ordinary retry.
+## Acted by starting a squeeze: in a one-cell corridor the next swap is due as
+## soon as this one is done, not a whole retry later.
 const ESCAPE_SQUEEZED: int = 3
 const SQUEEZE_RETRY_TICKS: int = 8
+## Handed along a leaving line to a head that is mid-step: looked at again next
+## tick (the head is only settled for a tick at a time), but it counts as one
+## of the tick's searched tries, so a long line cannot search every tick.
+const ESCAPE_WAITING: int = 4
 ## The same two people never swap again within this many ticks.
 const SQUEEZE_PAIR_COOLDOWN_TICKS: int = 40
 ## Futile escapes searched in one tick before the rest wait for the next.
@@ -1044,14 +1047,14 @@ func _escape_due(world: SimWorld, due: Array[Array]) -> void:
 		var outcome: int = _escape(world, agent, int(entry[0]))
 		if _stall.has(agent.id):
 			var retry: int = tuning.escape_retry_ticks
-			if outcome == ESCAPE_SKIPPED:
+			if outcome == ESCAPE_SKIPPED or outcome == ESCAPE_WAITING:
 				retry = 1
 			elif outcome == ESCAPE_SQUEEZED:
 				retry = SQUEEZE_RETRY_TICKS
 			_stall[agent.id]["next"] = world.now + retry
 		if outcome == ESCAPE_ACTED or outcome == ESCAPE_SQUEEZED:
 			return
-		if outcome == ESCAPE_FUTILE:
+		if outcome == ESCAPE_FUTILE or outcome == ESCAPE_WAITING:
 			tries += 1
 
 
@@ -1103,8 +1106,7 @@ func _escape(world: SimWorld, stuck: SimAgent, stalled: int, visited: Dictionary
 				ahead = blocker
 		if ahead != null:
 			if _mid_move(ahead):
-				# The line ahead is already moving: nothing to do but follow it.
-				return ESCAPE_FUTILE
+				return ESCAPE_WAITING
 			escape_counts[&"line_head"] = int(escape_counts.get(&"line_head", 0)) + 1
 			return _escape(world, ahead, stalled, visited)
 	var detour: bool = not stuck is CourierAgent and route_cells != stuck.path.slice(stuck.path_index - 1)
@@ -1419,8 +1421,9 @@ func _send_aside(world: SimWorld, agent: SimAgent, path: Array[Vector2i]) -> voi
 ## Last resort, after squeeze_after_ticks of no movement: swap places with a
 ## physically stationary person over one ordinary step. Only staff squeeze
 ## past guests, and a leaving guest past anyone but a courier. Returns
-## ESCAPE_SQUEEZED for a swap onto the next step of the way, ESCAPE_ACTED for a
-## corner swap (sideways, no closer yet) and ESCAPE_FUTILE when none is allowed.
+## ESCAPE_SQUEEZED when a swap starts (a corner swap too: in a doorway the
+## way out turns, and the next swap is due just as soon; the pair cooldown
+## keeps the same two from swapping back) and ESCAPE_FUTILE when none is allowed.
 func _try_squeeze(world: SimWorld, stuck: SimAgent, route_cells: Array[Vector2i],
 		blockers: Array[SimAgent]) -> int:
 	if stuck is CourierAgent:
@@ -1455,7 +1458,7 @@ func _try_squeeze(world: SimWorld, stuck: SimAgent, route_cells: Array[Vector2i]
 			_hand_over_seat(world, stuck, partner)
 		_start_squeeze(world, stuck, partner, rest)
 		_pair_swapped[_pair(stuck, partner)] = world.now
-		return ESCAPE_SQUEEZED if through == step else ESCAPE_ACTED
+		return ESCAPE_SQUEEZED
 	return ESCAPE_FUTILE
 
 

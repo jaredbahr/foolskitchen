@@ -422,9 +422,9 @@ func test_an_escape_at_the_back_of_a_leaving_line_goes_to_its_head() -> void:
 	assert_false(world.movement.is_squeezing(back.id), "the back waits its turn")
 
 
-## The head of a leaving line is already on the move: there is nothing to
-## hand on, so the escape at the back is futile (an ordinary retry) instead of
-## searching the line again every tick while the head walks.
+## The head of a leaving line is mid-step: nothing is handed on this tick;
+## the back looks again next tick, but that counts as one of the tick's
+## searched tries, so a long line is not searched without limit.
 func test_an_escape_handed_to_a_moving_head_waits_for_it() -> void:
 	var world: SimWorld = _service_world(["E...."])
 	var queued: GuestWalker = _guest(world, Vector2i(1, 0))
@@ -436,15 +436,16 @@ func test_an_escape_handed_to_a_moving_head_waits_for_it() -> void:
 	head.move_progress = 0.5
 	var outcome: int = world.movement._escape(world, back, world.movement_tuning.squeeze_after_ticks)
 	head.move_progress = 0.0
-	assert_eq(outcome, MovementCoordinator.ESCAPE_FUTILE)
+	assert_eq(outcome, MovementCoordinator.ESCAPE_WAITING)
 	assert_eq(int(world.movement.escape_counts.get(&"line_head", 0)), 0, "nothing handed on")
 	assert_false(world.movement.is_squeezing(queued.id))
 
 
-## Only a swap onto the next step of the way earns the quick retry; a corner
-## swap moves the stuck person sideways, no closer, and waits an ordinary
-## retry. The same two people never swap again within the cooldown.
-func test_only_a_forward_squeeze_is_retried_soon_and_pairs_cool_down() -> void:
+## Every swap earns the quick retry, a corner swap too (in a doorway the way
+## out turns: on an ordinary retry a leaving line in an edited shop stalled
+## past 600 ticks), but the same two people never swap again within the
+## cooldown, so nobody swaps back and forth.
+func test_a_squeeze_is_retried_soon_but_pairs_cool_down() -> void:
 	var world: SimWorld = _service_world(["..", ".."])
 	var staff: StaffWalker = StaffWalker.new(&"server", 3)
 	staff.cell = Vector2i(0, 0)
@@ -453,8 +454,8 @@ func test_only_a_forward_squeeze_is_retried_soon_and_pairs_cool_down() -> void:
 	_guest(world, Vector2i(0, 1))
 	var route_cells: Array[Vector2i] = [Vector2i(0, 0), Vector2i(1, 1)]
 	var blockers: Array[SimAgent] = [corner]
-	assert_eq(world.movement._try_squeeze(world, staff, route_cells, blockers), MovementCoordinator.ESCAPE_ACTED,
-		"a corner swap is an ordinary action")
+	assert_eq(world.movement._try_squeeze(world, staff, route_cells, blockers), MovementCoordinator.ESCAPE_SQUEEZED,
+		"a corner swap is retried soon too")
 	var line: SimWorld = _service_world(["...."])
 	var worker: StaffWalker = StaffWalker.new(&"server", 3)
 	worker.cell = Vector2i(0, 0)
@@ -467,7 +468,7 @@ func test_only_a_forward_squeeze_is_retried_soon_and_pairs_cool_down() -> void:
 		"no swap straight back")
 	line.movement._pair_swapped.clear()
 	assert_eq(line.movement._try_squeeze(line, worker, ahead, in_way), MovementCoordinator.ESCAPE_SQUEEZED,
-		"a forward swap is retried soon")
+		"once the cooldown is over they may swap")
 
 
 ## The inspector who gave up on one door after being blocked there is led to
