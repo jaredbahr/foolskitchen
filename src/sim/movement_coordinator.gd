@@ -10,6 +10,10 @@ const CARRYING_PRIORITY: int = 3
 const ESCAPE_SKIPPED: int = 0
 const ESCAPE_FUTILE: int = 1
 const ESCAPE_ACTED: int = 2
+## Acted by starting a squeeze: in a one-cell corridor the next swap is due as
+## soon as this one is done, not a whole retry later.
+const ESCAPE_SQUEEZED: int = 3
+const SQUEEZE_RETRY_TICKS: int = 8
 ## Futile escapes searched in one tick before the rest wait for the next.
 const MAX_ESCAPE_TRIES_PER_TICK: int = 3
 ## How far an escape is handed along a line of leavers to reach its head.
@@ -1013,8 +1017,13 @@ func _watch_liveness(world: SimWorld) -> void:
 			break
 		var outcome: int = _escape(world, agent, int(entry[0]))
 		if _stall.has(agent.id):
-			_stall[agent.id]["next"] = world.now + (1 if outcome == ESCAPE_SKIPPED else tuning.escape_retry_ticks)
-		if outcome == ESCAPE_ACTED:
+			var retry: int = tuning.escape_retry_ticks
+			if outcome == ESCAPE_SKIPPED:
+				retry = 1
+			elif outcome == ESCAPE_SQUEEZED:
+				retry = SQUEEZE_RETRY_TICKS
+			_stall[agent.id]["next"] = world.now + retry
+		if outcome == ESCAPE_ACTED or outcome == ESCAPE_SQUEEZED:
 			return
 		if outcome == ESCAPE_FUTILE:
 			tries += 1
@@ -1092,7 +1101,7 @@ func _escape(world: SimWorld, stuck: SimAgent, stalled: int, depth: int = 0) -> 
 		stuck.install_movement_route(route_cells)
 	if stalled >= tuning.squeeze_after_ticks:
 		if _try_squeeze(world, stuck, route_cells, blockers):
-			return ESCAPE_ACTED
+			return ESCAPE_SQUEEZED
 		if stuck is StaffAgent and (stuck as StaffAgent).task == null and not (stuck as StaffAgent).carries_food():
 			# An idle worker only parking or returning can simply stop here.
 			supersede_destination(stuck.id)
@@ -1124,7 +1133,7 @@ func _escape(world: SimWorld, stuck: SimAgent, stalled: int, depth: int = 0) -> 
 	# the doorway, with only the street behind it): waiting for the longer
 	# limit cannot help, so squeeze now if allowed.
 	if stalled < tuning.squeeze_after_ticks and _try_squeeze(world, stuck, route_cells, blockers):
-		return ESCAPE_ACTED
+		return ESCAPE_SQUEEZED
 	# Futile for now: hand the held way and the turn to the next person.
 	if _way_holder == stuck.id:
 		_way_holder = -1

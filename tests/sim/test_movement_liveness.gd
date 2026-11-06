@@ -385,7 +385,7 @@ func test_an_escape_at_the_back_of_a_leaving_line_goes_to_its_head() -> void:
 	head.state = CustomerAgent.State.LEAVING
 	back.state = CustomerAgent.State.LEAVING
 	var outcome: int = world.movement._escape(world, back, world.movement_tuning.squeeze_after_ticks)
-	assert_eq(outcome, MovementCoordinator.ESCAPE_ACTED)
+	assert_eq(outcome, MovementCoordinator.ESCAPE_SQUEEZED, "the next swap down the line is due soon")
 	assert_eq(int(world.movement.escape_counts.get(&"line_head", 0)), 1)
 	assert_true(world.movement.is_squeezing(head.id), "the head of the line squeezes past")
 	assert_true(world.movement.is_squeezing(queued.id))
