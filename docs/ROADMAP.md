@@ -20,6 +20,22 @@ Codex is back (2026-11-07). **Codex: take the `worker-ready` issues below from t
 6. `codex` #327 First mini-game: supplier haggle
 7. `both` #328 Chop rhythm mini-game (start after #327 merges)
 
+**Wave 2 (`worker-ready`, after wave 1 or alongside it):**
+8. `codex` #334 Speed keys and an F1 shortcuts panel (small)
+9. `codex` #338 Evening report: slowest seller (small)
+10. `codex` #332 Blueprint codes
+11. `codex` #337 Records
+12. `codex` #330 Today's special
+13. `codex` #335 Viral review
+14. `codex` #336 Decor collections
+15. `codex` #331 Signature dish
+16. `codex` #340 Seasons
+17. `codex` #333 Sandbox mode
+18. `both` #339 Dishwasher
+19. `both` #341 Plating mini-game for VIP guests (start after #327 merges)
+
+Several issues touch the same screens (evening report, morning menu panel, Goals panel). Running two or three Codex tasks at once is fine; merge `main` into your branch before marking ready, as `AGENTS.md` says.
+
 **Director (`claude`; Codex never starts these):**
 - #322 Movement: staff head-on and door queues (work in progress)
 - #320 Older saves on the original starter layout (needs Jared's call)
