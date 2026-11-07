@@ -74,6 +74,47 @@ func record_visit(visit: ReviewVisit, tuning: ReviewTuning, quotes: ReviewQuotes
 		"before": before, "after": average()}
 
 
+## One booking-level review uses the average measured guest score. Only a
+## complete, well-served party receives its authored weight; no member writes
+## a separate solo review.
+func record_booking(visits: Array[ReviewVisit], tuning: ReviewTuning, quotes: ReviewQuotes,
+		random: RandomNumberGenerator, booking_tuning: BookingTuning = null,
+		expected_members: int = 0) -> Dictionary:
+	var terms: BookingTuning = booking_tuning if booking_tuning != null else BookingTuning.new()
+	if visits.is_empty() or tuning == null or not tuning.is_valid() or quotes == null \
+			or random == null or not terms.is_valid() or expected_members < 0:
+		return {}
+	var total: int = 0
+	var worst_score: int = 6
+	var cause: StringName = &"lovely_place"
+	for visit: ReviewVisit in visits:
+		if visit == null:
+			return {}
+		# Booking accountability includes a group that expires at closing, while
+		# ordinary closing reviews remain suppressed. Scoring never mutates input.
+		var score: int = score_visit(visit, tuning, VIBE_TUNING, true)
+		total += score
+		if score < worst_score:
+			worst_score = score
+			cause = cause_of(visit, tuning, VIBE_TUNING, true)
+	var stars: int = clampi(roundi(float(total) / float(visits.size())), 1, 5)
+	var all_served: bool = expected_members > 0 and visits.size() == expected_members
+	for visit: ReviewVisit in visits:
+		all_served = all_served and visit.served
+	var good_service: bool = all_served and stars >= terms.good_service_stars
+	var weight: int = terms.review_weight if good_service else 1
+	var before: float = average()
+	var quote: String = quotes.pick(cause, random, _quotes_used_today)
+	if not quote.is_empty():
+		_quotes_used_today[quote] = true
+	for _copy: int in weight:
+		_scores.append(stars)
+	while _scores.size() > WINDOW:
+		_scores.pop_front()
+	return {"stars": stars, "cause": cause, "quote": quote, "weight": weight,
+		"good_service": good_service, "before": before, "after": average()}
+
+
 ## The disguised critic's review (#303): always written (no review-chance draw),
 ## scored from the same causes as any guest, and counted several times in the
 ## window (min(weight, a quarter of the reviews held, at least 1)). The headline quote comes from the critic groups by verdict; the
@@ -101,8 +142,9 @@ func record_critic(visit: ReviewVisit, tuning: ReviewTuning, quotes: ReviewQuote
 ## term is bounded by vibe.tres before rounding; it is not fractional-star storage.
 ## The final rating remains in the physical one-to-five-star range.
 ## Unserved guests always score one star; a closing guest is not scored.
-static func score_visit(visit: ReviewVisit, tuning: ReviewTuning, vibe_tuning: VibeTuning = VIBE_TUNING) -> int:
-	if visit == null or visit.closing or tuning == null or not tuning.is_valid():
+static func score_visit(visit: ReviewVisit, tuning: ReviewTuning, vibe_tuning: VibeTuning = VIBE_TUNING,
+		include_closing: bool = false) -> int:
+	if visit == null or visit.closing and not include_closing or tuning == null or not tuning.is_valid():
 		return 0
 	if not visit.served:
 		return 1
@@ -131,8 +173,9 @@ static func _bounded(value: float, maximum: float) -> float:
 
 ## High ratings and visits without a substantial single complaint get a
 ## positive quote. For lower ratings, stable ties keep this explicit order.
-static func cause_of(visit: ReviewVisit, tuning: ReviewTuning, vibe_tuning: VibeTuning = VIBE_TUNING) -> StringName:
-	if visit == null or visit.closing or tuning == null or not tuning.is_valid():
+static func cause_of(visit: ReviewVisit, tuning: ReviewTuning, vibe_tuning: VibeTuning = VIBE_TUNING,
+		include_closing: bool = false) -> StringName:
+	if visit == null or visit.closing and not include_closing or tuning == null or not tuning.is_valid():
 		return &""
 	if not visit.served:
 		return &"never_served"
@@ -156,7 +199,7 @@ static func cause_of(visit: ReviewVisit, tuning: ReviewTuning, vibe_tuning: Vibe
 		return &"sticky_floor"
 	if best == causes.size() - 1:
 		return &"restroom_busy" if visit.restroom_was_busy else &"no_restroom"
-	if score_visit(visit, tuning, vibe_tuning) >= 4 or largest < tuning.positive_penalty_threshold:
+	if score_visit(visit, tuning, vibe_tuning, include_closing) >= 4 or largest < tuning.positive_penalty_threshold:
 		if visit.petted_cat:
 			return &"petted_cat"
 		if visit.waited_seated:

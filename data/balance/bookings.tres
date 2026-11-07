@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="BookingTuning" format=3]
+
+[ext_resource type="Script" path="res://src/sim/bookings/booking_tuning.gd" id="1_bookings"]
+
+[resource]
+script = ExtResource("1_bookings")
+unlock_level = 2
+offer_chance = 0.25
+min_party_size = 6
+max_party_size = 10
+deposit_per_guest = 5
+tip_bonus = 0.15
+preferred_dish_chance = 0.75
+good_service_stars = 4
+review_weight = 2
+slot_minutes = 15
+hold_before_minutes = 20
+min_service_remaining_minutes = 90
+occasions = PackedStringArray("Birthday", "Office lunch", "Family celebration", "Rehearsal dinner")

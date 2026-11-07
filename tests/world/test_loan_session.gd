@@ -9,6 +9,8 @@ const PROGRESSION: ProgressionTuning = preload("res://data/balance/progression.t
 const SLOT: String = "loan_session"
 const LOAN_HINT: String = "Pay off your bank loan first"
 const CAPTURE_SCRIPT: GDScript = preload("res://tools/screenshot.gd")
+const BOOKING_TUNING: BookingTuning = preload("res://data/balance/bookings.tres")
+const JOINED_BOOKING_REVIEW: Script = preload("res://tools/joined_tables_review.gd")
 
 var _mains: Array[Node] = []
 var _old_save_dir: String
@@ -16,9 +18,17 @@ var _save_dir: String
 var _old_providers: Dictionary = {}
 var _capture_window_size: Vector2i = Vector2i.ZERO
 var _capture_content_scale: float = 1.0
+var _booking_cash_events: Array[Dictionary] = []
+var _lifecycle_paid_total: int = 0
+var _lifecycle_paid_count: int = 0
+var _lifecycle_departure_count: int = 0
 
 
 func before_each() -> void:
+	_booking_cash_events.clear()
+	_lifecycle_paid_total = 0
+	_lifecycle_paid_count = 0
+	_lifecycle_departure_count = 0
 	_old_save_dir = SaveSystem.save_dir
 	_save_dir = SaveTestPaths.case_dir(OS.get_process_id(), "loan_session")
 	SaveSystem.save_dir = _save_dir
@@ -92,31 +102,33 @@ func test_real_close_covers_wages_and_rent_before_report_once_without_bank_xp_or
 	assert_eq(_saved_text(), morning_file)
 
 
-func test_existing_loan_interest_and_repayment_reach_report_but_owner_uses_operating_profit() -> void:
+func test_close_profit_basis_preserves_prior_financing_and_posts_close_finance_once() -> void:
 	var main: Node = await _start()
 	_fresh_books(0, 200)
-	var operating_profit: int = 200
-	Economy.add_cash(_closing_cost(main) + operating_profit, Ledger.SALE)
+	Economy.add_cash(-13, Ledger.LOAN_INTEREST, "Prior financing movement")
+	var close_profit_basis: int = 187
+	Economy.add_cash(_closing_cost(main) + 200, Ledger.SALE)
 	var expected_interest: int = roundi(200.0 * TERMS.daily_interest)
-	var expected_repayment: int = mini(200, maxi(1, floori(float(operating_profit) * TERMS.repay_share)))
+	var expected_repayment: int = mini(200, maxi(1, floori(float(close_profit_basis) * TERMS.repay_share)))
 	var expected_owner: OwnerProgress = OwnerProgress.new(PROGRESSION)
-	var award: Dictionary = expected_owner.award_day(1, 0, operating_profit)
+	var award: Dictionary = expected_owner.award_day(1, 0, close_profit_basis)
 	_close_service(main)
 	var report: DayReport = main.get("shown_report") as DayReport
 	var milestone_rewards: Dictionary = _milestone_rewards(report)
 	if int(milestone_rewards["xp"]) > 0:
 		expected_owner.award_bonus(int(milestone_rewards["xp"]))
-	assert_eq(report.costs.get(Ledger.LOAN_INTEREST, 0), expected_interest)
+	assert_eq(report.costs.get(Ledger.LOAN_INTEREST, 0), expected_interest + 13,
+		"report preserves both the prior interest movement and this close's charge")
 	assert_eq(report.costs.get(Ledger.LOAN_REPAYMENT, 0), expected_repayment)
 	assert_false(report.income.has(Ledger.BANK_LOAN))
 	assert_eq(Economy.loan.principal, 200 - expected_repayment)
-	assert_eq(report.operating_profit(), operating_profit, "one-off milestone cash is excluded from shop performance")
+	assert_eq(report.operating_profit(), 200, "the report's shop-performance basis remains separate")
 	assert_eq(report.income.get(Ledger.MILESTONE_BONUS, 0), milestone_rewards["cash"])
-	assert_eq(report.profit(), operating_profit - expected_interest - expected_repayment + int(milestone_rewards["cash"]),
+	assert_eq(report.profit(), close_profit_basis - expected_interest - expected_repayment + int(milestone_rewards["cash"]),
 		"cash profit includes the authored award while preserving financing flows")
 	assert_eq(report.profit(), Economy.cash)
 	assert_eq(report.owner_xp_breakdown["profit_xp"], award["profit_xp"],
-		"repayment and interest do not reduce owner profit XP")
+		"finance posted during close does not change the captured pre-settlement basis")
 	assert_eq(report.owner_xp_breakdown.get("milestone_xp", 0), milestone_rewards["xp"])
 	assert_eq((main.get("owner_progress") as OwnerProgress).to_dict(), expected_owner.to_dict())
 	var books: Dictionary = Economy.ledger.to_dict()
@@ -147,6 +159,214 @@ func test_solvent_close_with_no_principal_has_no_financing_entries() -> void:
 	assert_eq(Economy.cash, report.profit())
 	assert_eq(report.owner_xp_breakdown.get("milestone_xp", 0), milestone_rewards["xp"])
 	assert_eq((main.get("owner_progress") as OwnerProgress).to_dict(), expected_owner.to_dict())
+
+
+func test_booking_deposit_is_excluded_at_close_and_full_bill_enters_operating_profit_once() -> void:
+	var main: Node = await _start(false)
+	_fresh_books(10000)
+	var booking: GroupBooking = _accepted_booking()
+	main.set("group_booking", booking)
+	(main.get("sim") as RestaurantSim).configure_booking(booking)
+	var deposit: int = int(booking.booking["deposit_amount"])
+	Economy.add_cash(deposit, Ledger.BOOKING_DEPOSIT, "Customer booking deposit")
+	var day_one_cost: int = _closing_cost(main)
+	main.call("_on_service_closed", 1)
+	var deposit_report: DayReport = main.get("shown_report") as DayReport
+	assert_eq(deposit_report.income.get(Ledger.BOOKING_DEPOSIT, 0), deposit)
+	assert_eq(deposit_report.purchase_basis_operating_profit(), -day_one_cost,
+		"cash advances do not count as operating income, owner profit XP or repayment base")
+	assert_eq(deposit_report.owner_xp_breakdown["profit_xp"], 0)
+	assert_eq(Economy.loan.principal, 0, "a customer advance never creates repayment profit")
+
+	Clock.sim.day = 2
+	(main.get("sim") as RestaurantSim).world.clock.day = 2
+	var bill: int = 120
+	main.set("_booking_paid_total", bill)
+	var review: Dictionary = {"no_seat": false, "good_service": false, "stars": 3}
+	EventBus.cash_changed.connect(_record_booking_cash_event)
+	var events_before_settlement: int = _booking_cash_events.size()
+	main.call("_settle_booking", int(booking.booking["booking_id"]), review)
+	EventBus.cash_changed.disconnect(_record_booking_cash_event)
+	var settlement_events: Array[Dictionary] = _booking_cash_events.slice(events_before_settlement)
+	assert_true(settlement_events.has({"delta": bill, "reason": Ledger.SALE}))
+	assert_true(settlement_events.has({"delta": -deposit, "reason": Ledger.BOOKING_DEPOSIT}))
+	assert_eq(Economy.ledger.day_totals(2)[Ledger.SALE], bill)
+	assert_eq(Economy.ledger.day_totals(2)[Ledger.BOOKING_DEPOSIT], -deposit)
+	main.call("_on_service_closed", 2)
+	var service_report: DayReport = main.get("shown_report") as DayReport
+	assert_eq(service_report.purchase_basis_operating_profit(), bill - _closing_cost(main),
+		"the full earned bill appears once after applying the advance")
+	assert_eq(service_report.profit(), Economy.ledger.day_profit(2))
+	var settled_books: Dictionary = Economy.ledger.to_dict()
+	main.call("_on_service_closed", 2)
+	assert_eq(Economy.ledger.to_dict(), settled_books, "repeat close cannot post a second sale")
+
+
+func test_unfulfilled_booking_refunds_once_with_one_bad_review_at_service_close() -> void:
+	var main: Node = await _start(false)
+	_fresh_books(10000)
+	var booking: GroupBooking = _accepted_booking()
+	main.set("group_booking", booking)
+	(main.get("sim") as RestaurantSim).configure_booking(booking)
+	var deposit: int = int(booking.booking["deposit_amount"])
+	Economy.add_cash(deposit, Ledger.BOOKING_DEPOSIT, "Customer booking deposit")
+	main.call("_on_service_closed", 1)
+	Clock.sim.day = 2
+	(main.get("sim") as RestaurantSim).world.clock.day = 2
+	main.call("_on_service_closed", 2)
+	assert_eq(Economy.ledger.day_totals(2)[Ledger.BOOKING_REFUND], -deposit)
+	assert_eq(booking.booking["status"], String(GroupBooking.STATUS_REFUNDED))
+	var report: DayReport = main.get("shown_report") as DayReport
+	assert_eq(report.booking_lines.size(), 1)
+	assert_eq(report.review_cards.size(), 1)
+	assert_eq(report.review_cards[0]["stars"], 1)
+	var ledger_after_close: Dictionary = Economy.ledger.to_dict()
+	main.call("_on_service_closed", 2)
+	assert_eq(Economy.ledger.to_dict(), ledger_after_close)
+
+
+func test_real_decline_and_accept_persist_only_at_the_next_morning_autosave() -> void:
+	var main: Node = await _start()
+	var initial_save: String = _saved_text()
+	var decline_offer: GroupBooking = _offered_booking()
+	main.set("group_booking", decline_offer)
+	(main.get("sim") as RestaurantSim).configure_booking(decline_offer)
+	main.call("_refresh_booking_offer")
+	var decline: Button = main.get_node("Overlay/MenuPanel/Panel/Content/BookingOffer/Buttons/Decline") as Button
+	decline.pressed.emit()
+	assert_true(decline_offer.offer.is_empty())
+	assert_true(decline_offer.booking.is_empty())
+	assert_eq(Economy.ledger.day_totals(1).get(Ledger.BOOKING_DEPOSIT, 0), 0,
+		"declining the actual morning offer takes no deposit")
+	assert_eq(_saved_text(), initial_save, "decline does not add a save point")
+
+	var accepted: GroupBooking = _offered_booking()
+	main.set("group_booking", accepted)
+	(main.get("sim") as RestaurantSim).configure_booking(accepted)
+	main.call("_refresh_booking_offer")
+	var offer_button: Button = main.get_node("Overlay/MenuPanel/Panel/Content/BookingOffer/Buttons/Accept") as Button
+	offer_button.pressed.emit()
+	var booking_id: int = int(accepted.booking["booking_id"])
+	var deposit: int = int(accepted.booking["deposit_amount"])
+	assert_true(accepted.has_active_booking())
+	assert_eq(Economy.ledger.day_totals(1)[Ledger.BOOKING_DEPOSIT], deposit)
+	assert_eq(_saved_text(), initial_save, "acceptance is persisted only by the existing morning save")
+	_close_service(main)
+	assert_true(Clock.sim.next_day())
+	var saved_document: Dictionary = _document()
+	assert_true(saved_document["data"].has("bookings"))
+	assert_eq(int(saved_document["data"]["bookings"]["booking"]["booking_id"]), booking_id)
+	assert_eq(saved_document["data"]["bookings"]["booking"]["status"], String(GroupBooking.STATUS_ACCEPTED))
+	_close(main)
+	Economy.reset(98765)
+	var loaded: Node = await _start()
+	var restored: GroupBooking = loaded.get("group_booking") as GroupBooking
+	assert_not_null(restored)
+	if restored != null:
+		assert_true(restored.has_active_booking())
+		assert_eq(int(restored.booking["booking_id"]), booking_id)
+		assert_eq(Economy.ledger.day_totals(1)[Ledger.BOOKING_DEPOSIT], deposit)
+
+
+func test_real_scheduled_party_payment_departure_and_main_settlement_are_connected() -> void:
+	var main: Node = await _start(false)
+	var root: Window = (Engine.get_main_loop() as SceneTree).root
+	var fixture: Dictionary = JOINED_BOOKING_REVIEW.prepare(main, root)
+	assert_eq(fixture.get("error", ""), "")
+	if not String(fixture.get("error", "")).is_empty():
+		return
+	fixture = JOINED_BOOKING_REVIEW.begin_booking_service(main, root, fixture)
+	assert_eq(fixture.get("error", ""), "")
+	if not String(fixture.get("error", "")).is_empty():
+		return
+	var sim: RestaurantSim = main.get("sim") as RestaurantSim
+	var booking: GroupBooking = main.get("group_booking") as GroupBooking
+	var booking_id: int = int(booking.booking["booking_id"])
+	assert_true(sim.customer_paid.is_connected(Callable(main, "_on_customer_paid")))
+	assert_true(sim.customer_left.is_connected(Callable(main, "_on_vibe_customer_left")))
+	sim.customer_paid.connect(_record_lifecycle_paid)
+	sim.customer_left.connect(_record_lifecycle_departure)
+	for _tick: int in 4000:
+		if not booking.has_active_booking():
+			break
+		main.call("run_ticks", 1)
+	sim.customer_paid.disconnect(_record_lifecycle_paid)
+	sim.customer_left.disconnect(_record_lifecycle_departure)
+	assert_false(booking.has_active_booking(), "the scheduled party settles via its real final departure")
+	assert_eq(String(booking.booking["status"]), String(GroupBooking.STATUS_SETTLED))
+	assert_eq(_lifecycle_paid_count, 6)
+	assert_eq(_lifecycle_departure_count, 6)
+	var result: Dictionary = sim.booking_review_results.get(booking_id, {})
+	assert_false(result.get("no_seat", true))
+	assert_true(result.get("good_service", false), "all six actually served members meet the good-service rule")
+	assert_eq(result.get("weight", 0), booking.tuning.review_weight)
+	assert_eq(sim.reviews_today.size(), 1)
+	var service_totals: Dictionary = Economy.ledger.day_totals(int(fixture["service_day"]))
+	assert_eq(int(service_totals.get(Ledger.SALE, 0)), _lifecycle_paid_total,
+		"Main gathers real paid orders and recognizes the whole meal bill once")
+	assert_eq(int(service_totals.get(Ledger.BOOKING_DEPOSIT, 0)), -int(booking.booking["deposit_amount"]),
+		"the accepted advance is credited once against the sale")
+	assert_eq(int(service_totals.get(Ledger.TIP, 0)),
+		BookingSettlement.good_service_tip(_lifecycle_paid_total, int(result["stars"]), BOOKING_TUNING))
+	_close(main)
+
+
+func test_unseatable_scheduled_party_expires_patience_then_refunds_through_real_departures() -> void:
+	var main: Node = await _start(false)
+	var progress: OwnerProgress = main.get("owner_progress") as OwnerProgress
+	progress.award_bonus(progress.threshold_for(2) - progress.total_xp)
+	(main.get_node("HUD") as Node).call("set_owner_progress", progress.level,
+		progress.xp_into_level(), progress.xp_in_level())
+	(main.get("menu_settings") as MenuSettings).set_owner_level(2)
+	var sim: RestaurantSim = main.get("sim") as RestaurantSim
+	sim.set_customer_level(2)
+	var tuning: BookingTuning = BOOKING_TUNING.duplicate() as BookingTuning
+	tuning.offer_chance = 1.0
+	tuning.min_party_size = 6
+	tuning.max_party_size = 6
+	var booking: GroupBooking = GroupBooking.new(tuning)
+	main.set("group_booking", booking)
+	sim.configure_booking(booking)
+	main.call("_plan_morning_booking")
+	assert_false(booking.offer.is_empty(), "the eligible morning gets a real offer")
+	booking.offer["slot_minute"] = 690
+	main.call("_refresh_booking_offer")
+	var accept: Button = main.get_node("Overlay/MenuPanel/Panel/Content/BookingOffer/Buttons/Accept") as Button
+	accept.pressed.emit()
+	var booking_id: int = int(booking.booking["booking_id"])
+	var deposit: int = int(booking.booking["deposit_amount"])
+	assert_true(booking.has_active_booking())
+	_close_service(main)
+	assert_true(Clock.sim.next_day())
+	Clock.sim.open_ticks = 3600
+	Clock.sim.last_orders_max_ticks = 900
+	assert_true(DiningSeats.largest_usable_capacity(sim.world.grid) < 6,
+		"the unmodified starter layout cannot seat the booked six-person group")
+	sim.spawner._remaining = 100000
+	assert_true(Clock.sim.start_service())
+	main.call("run_ticks", 60)
+	assert_eq(int(booking.booking.get("held_group_id", 0)), 0,
+		"no joined group receives a false hold when every group is too small")
+	main.call("run_ticks", 120)
+	assert_eq(sim.customers().size(), 6, "normal scheduled arrival creates the six real booked guests")
+	for _tick: int in 1800:
+		if not booking.has_active_booking():
+			break
+		main.call("run_ticks", 1)
+	assert_false(booking.has_active_booking(), "the party refunds only after ordinary no-table patience expires")
+	assert_eq(Clock.sim.phase, SimClock.Phase.OPEN, "normal guest patience, not service close, ended the booking")
+	assert_eq(sim.leave_reasons_today.get(&"no_table", 0), 6)
+	assert_eq(String(booking.booking["status"]), String(GroupBooking.STATUS_REFUNDED))
+	assert_true(booking.booking["effects"].has(String(GroupBooking.EFFECT_NO_SEAT)))
+	var result: Dictionary = sim.booking_review_results.get(booking_id, {})
+	assert_true(result.get("no_seat", false))
+	assert_eq(result.get("stars", 0), 1)
+	assert_eq(result.get("weight", 0), 1)
+	assert_eq(Economy.ledger.day_totals(2).get(Ledger.BOOKING_REFUND, 0), -deposit)
+	assert_eq(Economy.ledger.day_totals(2).get(Ledger.SALE, 0), 0)
+	assert_eq(sim.booking_report_lines.size(), 1)
+	assert_eq(sim.reviews_today.size(), 1)
+	_close(main)
 
 
 func test_next_morning_saves_loan_inside_economy_and_reload_preserves_guard_and_books() -> void:
@@ -473,6 +693,50 @@ func _start(saves: bool = true) -> Node:
 	main.call("start")
 	Clock.set_speed(0)
 	return main
+
+
+func _accepted_booking() -> GroupBooking:
+	var tuning: BookingTuning = BOOKING_TUNING.duplicate() as BookingTuning
+	tuning.offer_chance = 1.0
+	tuning.min_party_size = 6
+	tuning.max_party_size = 6
+	var random: RandomNumberGenerator = RandomNumberGenerator.new()
+	random.seed = 316
+	var model: GroupBooking = GroupBooking.new(tuning)
+	var provider: Callable = func() -> RandomNumberGenerator:
+		return random
+	assert_false(model.plan_offer(1, 2, [&"burger"] as Array[StringName], 660, 1260, provider).is_empty())
+	assert_false(model.accept_offer(1).is_empty())
+	return model
+
+
+func _offered_booking() -> GroupBooking:
+	var tuning: BookingTuning = BOOKING_TUNING.duplicate() as BookingTuning
+	tuning.offer_chance = 1.0
+	tuning.min_party_size = 6
+	tuning.max_party_size = 6
+	var random: RandomNumberGenerator = RandomNumberGenerator.new()
+	random.seed = 316
+	var model: GroupBooking = GroupBooking.new(tuning)
+	var provider: Callable = func() -> RandomNumberGenerator:
+		return random
+	assert_false(model.plan_offer(1, 2, [&"burger"] as Array[StringName], 660, 1260, provider).is_empty())
+	return model
+
+
+func _record_booking_cash_event(_cash: int, delta: int, reason: StringName) -> void:
+	_booking_cash_events.append({"delta": delta, "reason": reason})
+
+
+func _record_lifecycle_paid(customer: CustomerAgent, _order: Order, amount: int) -> void:
+	if customer.party != null and customer.party.booking_owned:
+		_lifecycle_paid_total += amount
+		_lifecycle_paid_count += 1
+
+
+func _record_lifecycle_departure(customer: CustomerAgent, _reason: StringName) -> void:
+	if customer.party != null and customer.party.booking_owned:
+		_lifecycle_departure_count += 1
 
 
 func _close(main: Node) -> void:

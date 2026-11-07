@@ -167,6 +167,38 @@ func set_weather(kind: int, has_patio: bool = false) -> void:
 	_refresh_forecast()
 
 
+## Request-only booking offer; Main owns acceptance, settlement and saving.
+func set_booking_offer(offered: bool, details: String, reservation: String = "") -> void:
+	var box: VBoxContainer = get_node("Panel/Content/BookingOffer") as VBoxContainer
+	box.visible = (offered or not reservation.is_empty()) and _phase == SimClock.Phase.MORNING
+	(box.get_node("Heading") as Label).text = "Tomorrow's booking" if offered else "Reserved booking"
+	(box.get_node("Details") as Label).text = details
+	var reserved: Label = box.get_node("Reserved") as Label
+	reserved.visible = not reservation.is_empty()
+	reserved.text = reservation
+	(box.get_node("Buttons") as Control).visible = offered
+	var accept: Button = box.get_node("Buttons/Accept") as Button
+	var decline: Button = box.get_node("Buttons/Decline") as Button
+	if not accept.pressed.is_connected(_on_booking_accept_pressed):
+		accept.pressed.connect(_on_booking_accept_pressed)
+	if not decline.pressed.is_connected(_on_booking_decline_pressed):
+		decline.pressed.connect(_on_booking_decline_pressed)
+
+
+func _on_booking_accept_pressed() -> void:
+	if _phase == SimClock.Phase.MORNING:
+		var event_bus: Node = get_node_or_null("/root/EventBus")
+		if event_bus != null:
+			event_bus.emit_signal(&"booking_accept_requested")
+
+
+func _on_booking_decline_pressed() -> void:
+	if _phase == SimClock.Phase.MORNING:
+		var event_bus: Node = get_node_or_null("/root/EventBus")
+		if event_bus != null:
+			event_bus.emit_signal(&"booking_decline_requested")
+
+
 func _refresh_forecast() -> void:
 	var forecast: Label = get_node("Panel/Content/WeatherForecast") as Label
 	forecast.visible = _phase == SimClock.Phase.MORNING
@@ -182,6 +214,7 @@ func set_phase(phase: int) -> void:
 	if phase != SimClock.Phase.MORNING:
 		get_node("Panel/Content/LeaseOffer").hide()
 		get_node("Panel/Content/CatOffer").hide()
+		get_node("Panel/Content/BookingOffer").hide()
 	refresh()
 
 

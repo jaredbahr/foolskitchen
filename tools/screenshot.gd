@@ -51,7 +51,7 @@ extends SceneTree
 ##             through the normal street-only clamp; photo override never runs in performance.
 ##   --weather-review=sunny --menu --speed=0 --frames=60, or rain without --menu:
 ##             explicit unsaved weather override after the real seed-1 morning selection
-##   --joined-tables-review --speed=0 --frames=90 shows one real six-person party
+##   --joined-tables-review --speed=0 --frames=12,90 shows a real offer and held six-person party
 ##             after normal table moves, opening and bounded walking (unsaved fixture).
 ##   --restroom-review --speed=0 --frames=12,30 shows the complete two-toilet
 ##             restroom, then a close wall-fitting view with the owner for scale.
@@ -2133,6 +2133,11 @@ func _process(_delta: float) -> bool:
 		_hold_build_pointer()
 	if _rooms == "restroom" and _frames > 3 and not _rooms_paused:
 		_pause_on_restroom_walk()
+	if _joined_tables_review and _frames == 24:
+		_joined_tables_fixture = JOINED_TABLES_REVIEW.begin_booking_service(_main, root, _joined_tables_fixture)
+		if not String(_joined_tables_fixture.get("error", "")).is_empty():
+			_fail_capture(String(_joined_tables_fixture["error"]))
+			return true
 	if _fast > 0 and _frames > 3 and _main.has_method("run_ticks"):
 		_main.call("run_ticks", _fast)
 	if not _selection.is_empty() and _frames >= 3:
@@ -3067,8 +3072,10 @@ func _capture() -> void:
 	if not _weather_mode.is_empty() and not WEATHER_REVIEW.valid(weather_state, _weather_mode):
 		_fail_capture("weather review failed its actual morning UI, stream, outside rain or isolated receiver checks: " + JSON.stringify(weather_state))
 		return
-	var joined_tables_state: Dictionary = JOINED_TABLES_REVIEW.evidence(_main, root, _joined_tables_fixture) if _joined_tables_review else {}
-	if _joined_tables_review and not JOINED_TABLES_REVIEW.valid(joined_tables_state, _joined_tables_fixture):
+	var joined_tables_state: Dictionary = JOINED_TABLES_REVIEW.evidence(
+		_main, root, _joined_tables_fixture, _capture_frame) if _joined_tables_review else {}
+	if _joined_tables_review and not JOINED_TABLES_REVIEW.valid(
+		joined_tables_state, _joined_tables_fixture, _capture_frame):
 		_fail_capture("joined-table review failed its actual six-person party, physical holds, group or native sit checks: " + JSON.stringify(joined_tables_state))
 		return
 	var diner_state: Dictionary = DINER_REVIEW.evidence(_main, root, _capture_frame) if _diner_review else {}
