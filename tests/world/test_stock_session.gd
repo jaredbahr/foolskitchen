@@ -315,6 +315,7 @@ func _order_note(list_total: int) -> String:
 
 func _next_morning() -> void:
 	assert_eq(Clock.sim.phase, SimClock.Phase.MORNING)
+	reset_weekly_for_synthetic_day_jump(_mains.back())
 	Clock.sim.phase = SimClock.Phase.CLOSED
 	assert_true(Clock.sim.next_day())
 	assert_eq(Clock.sim.phase, SimClock.Phase.MORNING)

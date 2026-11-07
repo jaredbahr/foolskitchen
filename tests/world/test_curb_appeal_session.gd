@@ -325,6 +325,7 @@ func _query_state() -> Dictionary:
 
 func _empty_next_morning() -> void:
 	# A persistence-boundary fixture, not a played service day or RNG comparison.
+	reset_weekly_for_synthetic_day_jump(_main)
 	Clock.sim.phase = SimClock.Phase.CLOSED
 	assert_true(Clock.sim.next_day())
 

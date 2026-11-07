@@ -134,6 +134,7 @@ func test_completed_work_closes_growth_then_morning_applies_skill_and_requested_
 	assert_false(main.call("staff_accept_raise", &"starter_cook"))
 	assert_true(Clock.sim.start_service())
 	assert_false(main.call("staff_accept_raise", &"starter_cook"))
+	reset_weekly_for_synthetic_day_jump(main)
 	Clock.sim.phase = SimClock.Phase.CLOSED
 	assert_true(Clock.sim.next_day())
 	assert_eq(int(_document()["data"]["staff"]["members"][0]["wage"]), TUNING.staff_wage(&"cook", 4),
@@ -247,6 +248,7 @@ func test_three_rejected_requests_remove_redundant_cook_next_morning_once() -> v
 	assert_null(panel.offer_row_for(&"starter_cook"))
 	assert_eq(FileAccess.get_file_as_string(_path()), original_save)
 	assert_eq(_roster(main).members().size(), 3, "the cook stays until the next morning")
+	reset_weekly_for_synthetic_day_jump(main)
 	Clock.sim.phase = SimClock.Phase.CLOSED
 	assert_true(Clock.sim.next_day())
 	assert_eq(_roster(main).members().size(), 2)
@@ -274,6 +276,7 @@ func test_last_cook_never_dips_to_zero_after_refusal_or_next_morning() -> void:
 		assert_true(main.call("staff_decline_raise", &"starter_cook"))
 		assert_eq(_member(main, &"starter_cook").growth_state().mood, mood_after)
 		assert_eq(_member(main, &"starter_cook").growth_state().quit_due_day(), 0)
+	reset_weekly_for_synthetic_day_jump(main)
 	Clock.sim.phase = SimClock.Phase.CLOSED
 	assert_true(Clock.sim.next_day())
 	assert_eq(_roster(main).members().size(), 2)
@@ -347,6 +350,7 @@ func test_next_morning_persists_roster_and_pool_reload_draws_no_hiring_rng() -> 
 	var first: Node = _start()
 	assert_true(first.call("staff_hire", _roster(first).candidates()[0].id))
 	assert_true((first.get("sim") as RestaurantSim).kitchen.configure_plates(5))
+	reset_weekly_for_synthetic_day_jump(first)
 	Clock.sim.phase = SimClock.Phase.CLOSED
 	assert_true(Clock.sim.next_day())
 	assert_eq(_roster(first).candidates().size(), 3)

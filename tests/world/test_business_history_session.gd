@@ -251,6 +251,7 @@ func _finish_service() -> DayReport:
 
 func _empty_next_morning() -> void:
 	# Persistence-only fixtures skip service; they do not claim a played day.
+	reset_weekly_for_synthetic_day_jump(_main)
 	Clock.sim.phase = SimClock.Phase.CLOSED
 	assert_true(Clock.sim.next_day())
 

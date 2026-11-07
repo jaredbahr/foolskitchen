@@ -278,6 +278,7 @@ func _largest_mesh(visual: ItemVisual) -> MeshInstance3D:
 
 
 func _next_morning() -> void:
+	reset_weekly_for_synthetic_day_jump(_main)
 	Clock.sim.phase = SimClock.Phase.CLOSED
 	assert_true(Clock.sim.next_day())
 

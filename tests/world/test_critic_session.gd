@@ -66,6 +66,7 @@ func _always() -> void:
 
 
 func _morning(day: int) -> void:
+	reset_weekly_for_synthetic_day_jump(_main)
 	Clock.sim.day = day
 	_main.call("_begin_morning")
 
