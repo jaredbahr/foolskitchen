@@ -132,6 +132,7 @@ func test_adoption_and_name_survive_the_morning_save_but_position_does_not() -> 
 	_level(CAT.unlock_level)
 	assert_true(_main.call("adopt_cat"))
 	_sim().cat.cat_name = "Mochi"
+	reset_weekly_for_synthetic_day_jump(_main)
 	Clock.sim.day += 1
 	_main.call("_begin_morning")
 	var path: String = SaveSystem.save_dir.path_join(SLOT + ".json")
@@ -224,6 +225,7 @@ func test_loading_an_adopted_game_restores_the_cat_stream() -> void:
 	var warmup: RestaurantCat = _sim().cat
 	for tick: int in 3000:
 		warmup.advance(_sim().world.grid, [])
+	reset_weekly_for_synthetic_day_jump(_main)
 	Clock.sim.day += 1
 	_main.call("_begin_morning")
 	var unsaved: Array[Vector2i] = _cat_walk()

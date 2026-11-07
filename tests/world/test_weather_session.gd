@@ -41,6 +41,7 @@ func test_real_next_morning_checkpoint_saves_chosen_weather_and_its_named_stream
 	var first_clock: Dictionary = _dictionary(first.get("clock"), "the first save contains the real clock")
 	assert_eq(first_clock.get("day"), 1.0)
 	# Skip service only in this persistence fixture, using the existing next-day path.
+	reset_weekly_for_synthetic_day_jump(_main)
 	Clock.sim.phase = SimClock.Phase.CLOSED
 	assert_true(Clock.sim.next_day())
 	assert_eq(Clock.sim.day, 2)
@@ -269,6 +270,7 @@ func _streams() -> Dictionary:
 
 
 func _advance_morning() -> void:
+	reset_weekly_for_synthetic_day_jump(_main)
 	Clock.sim.phase = SimClock.Phase.CLOSED
 	assert_true(Clock.sim.next_day())
 	Clock.set_speed(0)

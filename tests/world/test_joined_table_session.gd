@@ -184,6 +184,7 @@ func test_joined_groups_remain_derived_across_real_next_morning_save_and_new_wor
 	_mode().hover_item(_tables[0].id)
 	assert_eq(_mode().dining_summary(), "Seats 6 (joined table)")
 	assert_true(_main.call("set_build_active", false))
+	reset_weekly_for_synthetic_day_jump(_main)
 	Clock.sim.phase = SimClock.Phase.CLOSED
 	assert_true(Clock.sim.next_day())
 	var saved: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(_path())) as Dictionary

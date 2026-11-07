@@ -105,6 +105,7 @@ func _sample_second_morning(stars: int) -> Dictionary:
 			return _invalid_sample()
 	# This is a disclosed morning-transition fixture, not a played service day.
 	# It matches the existing weather persistence test's real next-day route.
+	reset_weekly_for_synthetic_day_jump(_main)
 	Clock.sim.phase = SimClock.Phase.CLOSED
 	var advanced: bool = Clock.sim.next_day()
 	assert_true(advanced, "next_day succeeds from CLOSED")
@@ -240,6 +241,7 @@ func test_morning_save_restores_renown_and_guards_without_reapplying_decay() -> 
 
 func test_missing_legacy_demand_starts_at_saved_day_without_retroactive_decay() -> void:
 	_start_demand(true)
+	reset_weekly_for_synthetic_day_jump(_main)
 	Clock.sim.phase = SimClock.Phase.CLOSED
 	assert_true(Clock.sim.next_day())
 	var legacy: Dictionary = _demand_document()
@@ -272,6 +274,7 @@ func test_malformed_or_wrong_day_present_demand_fails_load_and_preserves_checkpo
 		assert_almost_eq((_main.get("demand_state") as DemandState).renown, 0.0)
 		assert_null(_main.get("_loaded_demand"))
 		assert_eq(FileAccess.get_file_as_string(_demand_path()), bad_file)
+	reset_weekly_for_synthetic_day_jump(_main)
 	Clock.sim.phase = SimClock.Phase.CLOSED
 	assert_true(Clock.sim.next_day())
 	assert_eq(_demand_document()["data"]["demand"]["day"], 2.0, "later morning autosaves resume")
@@ -370,6 +373,7 @@ func test_morning_reputation_and_renown_remain_latched_during_edit_refresh() -> 
 	var tomorrow: Dictionary = _main.call("forecast_next_demand")
 	assert_almost_eq(float(tomorrow["reputation"]), 0.6)
 	assert_almost_eq(float(tomorrow["word_of_mouth"]), 1.0 + 0.8 * 57.0 / 147.0)
+	reset_weekly_for_synthetic_day_jump(_main)
 	Clock.sim.phase = SimClock.Phase.CLOSED
 	assert_true(Clock.sim.next_day())
 	current = _main.call("current_demand_snapshot")
@@ -380,6 +384,7 @@ func test_morning_reputation_and_renown_remain_latched_during_edit_refresh() -> 
 
 func test_accepted_layout_edit_updates_actual_raw_vibe_without_rng_gap_reset_or_save() -> void:
 	_start_demand(true)
+	reset_weekly_for_synthetic_day_jump(_main)
 	Clock.sim.phase = SimClock.Phase.CLOSED
 	assert_true(Clock.sim.next_day())
 	var sim: RestaurantSim = _main.get("sim") as RestaurantSim
@@ -493,6 +498,10 @@ const DAY_ONE_STREAMS: Dictionary = {
 		"reviews": {
 			"seed": "7543029",
 			"state": "-7929524535254594193"
+		},
+		"weekly": {
+			"seed": "1106350689",
+			"state": "-2680579914754492782"
 		},
 		"weather": {
 			"seed": "2145409216",

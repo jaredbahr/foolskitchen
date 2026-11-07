@@ -111,12 +111,18 @@ const MILESTONE_UID_SOURCES: Array[String] = [
 	"res://src/sim/progression/milestone_set.gd",
 	"res://src/sim/progression/milestone_tracker.gd",
 	"res://src/sim/progression/milestone_settlement.gd",
+	"res://src/sim/progression/weekly_challenge.gd",
+	"res://src/sim/progression/weekly_challenge_pool.gd",
+	"res://src/sim/progression/weekly_challenge_state.gd",
+	"res://src/sim/progression/weekly_challenge_settlement.gd",
 	"res://src/ui/goals_panel.gd",
 	"res://tests/core/test_milestone_loan_accounting.gd",
 	"res://tests/sim/test_milestone_settlement.gd",
 	"res://tests/sim/test_milestone_tracker.gd",
 	"res://tests/ui/test_goals_panel.gd",
 	"res://tests/world/test_milestone_session.gd",
+	"res://tests/sim/test_weekly_challenge.gd",
+	"res://tests/ui/test_evening_report.gd",
 	"res://tests/tools/test_milestone_screenshot.gd",
 	"res://tools/screenshot.gd",
 ]
@@ -683,6 +689,8 @@ static func milestone_review_evidence(main: Node, context_root: Node, frame: int
 				and goal.unlock_level <= owner.level and expected.size() < GoalsPanel.ACTIVE_GOAL_LIMIT:
 			expected.append(String(goal.id))
 	var goals_panel: Dictionary = _milestone_goals_panel_evidence(goals)
+	var weekly: WeeklyChallengeState = main.get("weekly_challenge") as WeeklyChallengeState \
+		if "weekly_challenge" in main else null
 	var report: DayReport = main.get("shown_report") as DayReport if "shown_report" in main else null
 	var report_evidence: Dictionary = _milestone_report_evidence(main, report_panel, report, ledger)
 	return {"available": true, "frame": frame, "day": time.day, "phase": int(time.phase),
@@ -694,7 +702,8 @@ static func milestone_review_evidence(main: Node, context_root: Node, frame: int
 		"owner_level": owner.level, "owner_xp": owner.total_xp,
 		"tracker": tracker.to_dict(), "completed_ids": completed,
 		"catalogue": _milestone_catalogue_records(catalogue), "expected_active_ids": expected,
-		"goals_panel": goals_panel, "report": report_evidence,
+		"goals_panel": goals_panel,
+		"weekly_challenge": weekly.to_dict() if weekly != null else {}, "report": report_evidence,
 		"ledger_cash": ledger.cash, "ledger_day_totals": _milestone_ledger_totals(ledger, time.day),
 		"ledger_day_profit": ledger.day_profit(time.day),
 		"milestone_bonus_entries": _milestone_bonus_entries(ledger, time.day)}
@@ -713,8 +722,20 @@ static func _milestone_goals_panel_evidence(goals: GoalsPanel) -> Dictionary:
 	var scroll: ScrollContainer = goals.get_node_or_null("Panel/Content/Scroll") as ScrollContainer
 	var active_heading: Label = goals.get_node_or_null("Panel/Content/Scroll/List/ActiveHeading") as Label
 	var rows: VBoxContainer = goals.get_node_or_null("Panel/Content/Scroll/List/ActiveRows") as VBoxContainer
-	if panel == null or scroll == null or active_heading == null or rows == null:
+	var list: VBoxContainer = goals.get_node_or_null("Panel/Content/Scroll/List") as VBoxContainer
+	if panel == null or scroll == null or active_heading == null or rows == null or list == null:
 		return {"available": false}
+	var weekly_node: Control = list.get_node_or_null("WeeklyChallenge") as Control
+	var weekly_card: Dictionary = {"available": weekly_node != null}
+	if weekly_node != null:
+		var weekly_fields: Dictionary = {}
+		for field: String in ["Title", "ProgressText", "DaysLeft", "Reward"]:
+			var path: String = "Body/Title" if field == "Title" else "Body/Details/" + field
+			var control: Control = weekly_node.get_node_or_null(path) as Control
+			weekly_fields[field] = _loan_control_evidence(control) if control != null else {"visible": false}
+		weekly_card = {"available": true, "visible": weekly_node.is_visible_in_tree(),
+			"first_in_list": list.get_child_count() > 0 and list.get_child(0) == weekly_node,
+			"native": _loan_control_evidence(weekly_node), "fields": weekly_fields}
 	var cards: Array[Dictionary] = []
 	for card_node: Node in rows.get_children():
 		var card: Control = card_node as Control
@@ -734,7 +755,7 @@ static func _milestone_goals_panel_evidence(goals: GoalsPanel) -> Dictionary:
 			"native": _loan_control_evidence(active_heading)}, "cards": cards,
 		"active_ids": goals.active_goal_ids().map(func(id: StringName) -> String: return String(id)),
 		"completed_ids": goals.completed_goal_ids().map(func(id: StringName) -> String: return String(id)),
-		"scroll_vertical": scroll.scroll_vertical}
+		"scroll_vertical": scroll.scroll_vertical, "weekly_card": weekly_card}
 
 
 static func _milestone_report_evidence(_main: Node, panel: Control, report: DayReport, ledger: Ledger) -> Dictionary:
@@ -836,10 +857,38 @@ static func milestone_review_valid(state: Dictionary, frame: int, fixture: Dicti
 			return false
 	if frame == 12:
 		var goals: Dictionary = state["goals_panel"]
+		if not state.get("weekly_challenge", {}) is Dictionary:
+			return false
+		var weekly_state: Dictionary = state["weekly_challenge"]
 		if not goals.has("active_heading") or not goals["active_heading"] is Dictionary \
 				or not goals.has("cards") or not goals["cards"] is Array \
 				or not goals.has("active_ids") or not goals["active_ids"] is Array \
-				or not goals.has("completed_ids") or not goals["completed_ids"] is Array:
+				or not goals.has("completed_ids") or not goals["completed_ids"] is Array \
+				or not goals.has("weekly_card") or not goals["weekly_card"] is Dictionary \
+				or weekly_state.get("status") != WeeklyChallengeState.Status.ACTIVE \
+				or String(weekly_state.get("challenge_id", "")).is_empty() \
+				or weekly_state.get("start_day") != 1 or weekly_state.get("end_day") != 7 \
+				or int(weekly_state.get("target", 0)) < 1:
+			return false
+		var weekly: Dictionary = goals["weekly_card"]
+		if not weekly.get("fields", {}) is Dictionary:
+			return false
+		var weekly_fields: Dictionary = weekly["fields"]
+		if weekly.get("available") != true or weekly.get("visible") != true \
+				or weekly.get("first_in_list") != true \
+				or not _milestone_native_rect_valid(weekly.get("native", {})) \
+				or not weekly_fields.get("Title") is Dictionary \
+				or not weekly_fields.get("ProgressText") is Dictionary \
+				or not weekly_fields.get("DaysLeft") is Dictionary \
+				or not weekly_fields.get("Reward") is Dictionary:
+			return false
+		for field: String in ["Title", "ProgressText", "DaysLeft", "Reward"]:
+			if not weekly_fields[field].get("visible", false) \
+					or String(weekly_fields[field].get("text", "")).strip_edges().is_empty() \
+					or not _milestone_native_rect_valid(weekly_fields[field]):
+				return false
+		if weekly_fields["Title"].get("text") != weekly_state.get("text") \
+				or weekly_fields["Reward"].get("text") != "Cash reward: $%d" % int(weekly_state.get("reward_cash", 0)):
 			return false
 		if state["phase"] != SimClock.Phase.MORNING or state["world_tick"] != 0 \
 				or state["day"] != 1 or not state["completed_ids"].is_empty() \

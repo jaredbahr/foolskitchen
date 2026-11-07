@@ -356,6 +356,7 @@ func _without_trays(snapshot: Dictionary) -> Dictionary:
 
 func _empty_next_morning() -> void:
 	# Persistence fixture only: no claim of a played service day.
+	reset_weekly_for_synthetic_day_jump(_main)
 	Clock.sim.phase = SimClock.Phase.CLOSED
 	assert_true(Clock.sim.next_day())
 

@@ -371,6 +371,7 @@ func _skip(main: Node) -> void:
 
 
 func _next_morning() -> void:
+	reset_weekly_for_synthetic_day_jump(_mains.back())
 	Clock.sim.phase = SimClock.Phase.CLOSED
 	assert_true(Clock.sim.next_day())
 
