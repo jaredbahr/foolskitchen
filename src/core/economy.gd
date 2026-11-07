@@ -138,6 +138,32 @@ func buy_auto_order(lines: Array[Dictionary], cost: int) -> bool:
 	return true
 
 
+## Narrow morning-only purchase path. Its exact discounted line costs are
+## both the ledger debits and the received lot values; no refund is invented.
+## The session owns the one-attempt/one-use offer. Ordinary orders keep their
+## existing pay_order and premium validation unchanged.
+func buy_haggled_order(lines: Array[Dictionary], percent: int) -> bool:
+	if Clock.sim.phase != SimClock.Phase.MORNING:
+		return false
+	var quoted: Dictionary = HaggleRules.quote(lines, percent)
+	if quoted.is_empty() or not can_spend_without_loan(int(quoted["cost"])):
+		return false
+	var added: Dictionary[StringName, int] = {}
+	var lots: Array[Dictionary] = []
+	lots.assign(quoted["lines"])
+	for lot: Dictionary in lots:
+		var id: StringName = lot["id"]
+		var qty: int = int(lot["qty"])
+		if qty > Stock.MAX_QUANTITY - stock.count(id) - added.get(id, 0):
+			return false
+		added[id] = added.get(id, 0) + qty
+	for lot: Dictionary in lots:
+		ledger.record(Clock.day, -int(lot["total_cost"]), Ledger.INGREDIENTS, String(lot["id"]))
+	receive(lots)
+	EventBus.cash_changed.emit(cash, -int(quoted["cost"]), Ledger.INGREDIENTS)
+	return true
+
+
 ## Pays for an order without stocking it (FK-087: it arrives with a later
 ## delivery). Atomic: returns false without changes. A standing order (the
 ## auto-reorder) records its lines as auto-order lines plus the premium

@@ -2743,6 +2743,54 @@ There is no new save point or SaveSystem migration.
 - **Tuning:** streams, gains, intervals and loop levels are in `data/audio/sound_tuning.tres` (`SoundTuning`). Kenney files are in `assets/kenney/audio/`; the made loops are in `assets/made/audio/`.
 - **Music** (`Sfx`, `src/audio/music_tracks.gd`): one looping player per track on the **Music** bus (Settings' Music slider; the bus sits 6 dB under the slider via `SettingsPreferences.MUSIC_TRIM_DB`). `MusicTracks.BY_CONTEXT` is the table from context to track: `title` is Kitchen Jamboree, `service_day` Buoyant Swing Groove, `service_evening` Smoky Vamp (`assets/music/*.ogg`, Ogg q5, leading/trailing silence trimmed so loops have no gap); morning, closed and the evening report have none. `Sounds.set_music_context(ctx)` says where the game is, and tracks fade (`Sfx.MUSIC_FADE_SECONDS`, 2 s), so a change of context is a crossfade. The title screen sets `title` and clears it on leaving; `SoundDirector.refresh(light)` sets the service context from the phase and the shop light (dusk is `MusicTracks.EVENING_LIGHT` of `DayLight.Look.interior_energy`), so opening after dusk goes straight to Smoky Vamp. `SoundDirector` ducks the music (`Sounds.set_music_ducked`) for as long as the shop is open with a counted jukebox, paused or not. A display-only Main (the title backdrop) sets `SoundDirector.display_only` and never touches the music. Silence rules match the cues: no players in headless or `--script` runs (fade levels are still tracked for tests), nothing before the first click on the web. A new track is a table line plus a `set_music_context` call.
 
+### Supplier haggle (FK-136, #327)
+
+The optional morning Stock game inherits the small `Minigame` Control boundary:
+`start()`, one `finished(result)` signal, and Skip as -1. `HaggleTuning` in
+`data/balance/haggle.tres` supplies rounds, normalized zone widths/speeds and
+the maximum discount. Main creates `GameState.rng(&"haggle")` only after the
+first accepted start; `HaggleRules.zone_centers` draws all centers once. Marker
+animation uses display delta only. Scores are normalized distance from each
+zone's center, averaged over three stops, then rounded to whole percentages
+within the authored cap (a fractional cap permits only whole percentages below
+it, so 10.5% permits at most 10%). Space and mouse share one stop handler, with release
+and echo guards; Skip/Escape finish once.
+
+The start spends that morning's attempt even when skipped or closed. Failed
+payment/storage checks retain an earned offer. Only the next successful manual
+MORNING order spends it; opening expires an unused offer. Repeated setup of the
+same morning preserves the attempt. Explicit new-run/load initialization resets
+it, including a reload within an existing Main. No haggle state or report note
+is serialized, and no save point or SaveSystem code changes. Generic named RNG
+states retain their existing next-morning persistence.
+
+`HaggleRules.charge` rounds the discounted order up to a whole dollar using
+`total - floor(total * percent / 100)`, with overflow-safe quotient/remainder
+arithmetic. Each actual line cost is the difference of charged cumulative list
+totals in fixed cart order: nonnegative, no more than its list price, zero for
+zero-priced lines, and summing exactly to the displayed charge. The narrow
+morning-only `Economy.buy_haggled_order` validates the whole purchase before
+recording those actual negative ingredient ledger lines and receiving exactly
+those valued lots. It never represents a saving as a refund or positive income.
+Ordinary `pay_order`, `PurchaseBasis.allocate`, automatic premiums and pending
+delivery/refund behavior are unchanged. FIFO use, expiry and existing stock JSON
+carry the actual paid values. The live evening report notes the applied saving
+beside stock bought, separately from cost of food served and cash change.
+
+The full-window game blocks underlying GUI; Main and HUD guard action/Open/speed
+requests. Camera processing is suspended because WASD/edge pan polls input.
+Normal morning completion restores camera processing, prior speed and valid
+prior focus. The clock already advances only during service. No general modal
+framework, art, fonts, colors or sounds are introduced.
+
+Coverage: `tests/sim/test_haggle.gd`, `tests/ui/test_haggle_game.gd` and
+`tests/world/test_haggle_session.gd`, plus existing panel/report regressions.
+The unchanged default five-day probe (seeds1,7,42) remains the balance gate.
+`tools/haggle_review.tscn` is an explicitly unsaved seed327 fixture: it throws
+out starter stock, stages real Space-stop timing and shows the active game at
+frame30 and actual 6%-off ($20 list, $19 charged) panel at frame90. These two
+existing-job captures are UI evidence, not natural human timing or balance play.
+
 ### 2.4 Save system
 Business trends (FK-123): Main keeps fourteen detached `BusinessHistory` closing
 summaries outside `DayReport` serialization. Reopening the evening report and

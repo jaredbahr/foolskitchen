@@ -20,6 +20,7 @@ const STREET_PAN_EXTENSION: float = 3.0
 const LEASE: LeaseUpgrade = preload("res://data/balance/lease_upgrade.tres")
 const CAT: CatTuning = preload("res://data/balance/cat.tres")
 const TUNING: EconomyTuning = preload("res://data/balance/tier1_economy.tres")
+const HAGGLE_TUNING: HaggleTuning = preload("res://data/balance/haggle.tres")
 const MESS_TUNING: MessTuning = preload("res://data/balance/messes.tres")
 const CLEANLINESS_TUNING: CleanlinessTuning = preload("res://data/balance/cleanliness.tres")
 const WEATHER_TUNING: WeatherTuning = preload("res://data/balance/weather.tres")
@@ -114,6 +115,16 @@ var deliveries: DeliveryBook = DeliveryBook.new()
 var delivery_tuning: EconomyTuning = TUNING
 ## The Stock panel's order cart (ingredient id -> units), not yet ordered.
 var stock_cart: Dictionary[StringName, int] = {}
+## Morning-only offer and receipt, deliberately absent from every save provider.
+var _haggle_day: int = 0
+var _haggle_attempted: bool = false
+var _haggle_percent: int = 0
+var _haggle_receipt: Dictionary = {}
+var _haggle_game: HaggleGame
+var _haggle_previous_speed: int = 0
+var _haggle_camera_processing: bool = false
+var _haggle_previous_focus: WeakRef
+var _haggle_modal_open: bool = false
 
 var _previous_clock: SimClock = null
 var _started: bool = false
@@ -428,6 +439,11 @@ func _bind_world_presentation() -> void:
 	if not $HUD.is_connected(&"staff_pressed", toggle_staff):
 		$HUD.connect(&"staff_pressed", toggle_staff)
 	_stock_panel = $Overlay/StockPanel
+	_haggle_game = $Overlay/HaggleGame
+	if not _haggle_game.finished.is_connected(_on_haggle_finished):
+		_haggle_game.finished.connect(_on_haggle_finished)
+	if not _stock_panel.haggle_requested.is_connected(stock_start_haggle):
+		_stock_panel.haggle_requested.connect(stock_start_haggle)
 	if not _stock_panel.cart_requested.is_connected(_on_stock_cart_requested):
 		_stock_panel.cart_requested.connect(_on_stock_cart_requested)
 		_stock_panel.order_requested.connect(_on_stock_order_requested)
@@ -662,6 +678,7 @@ func _connect_session() -> void:
 
 
 func _exit_tree() -> void:
+	_end_haggle_modal()
 	if sound != null:
 		sound.unbind()
 	_disconnect_vibe_grid()
@@ -706,6 +723,9 @@ func _exit_tree() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if is_haggle_active():
+		_mark_input_handled()
+		return
 	if is_owner_picker_visible():
 		_mark_input_handled()
 		return
@@ -1056,6 +1076,8 @@ func is_paint_active() -> bool:
 
 
 func set_paint_active(active: bool) -> bool:
+	if active and is_haggle_active():
+		return false
 	if not _build_ready or shop_editor == null:
 		return false
 	if active == _paint_active:
@@ -1390,6 +1412,8 @@ func _on_swatch_requested(id: StringName) -> void:
 
 
 func set_build_active(active: bool) -> bool:
+	if active and is_haggle_active():
+		return false
 	if not _build_ready:
 		return false
 	if active:
@@ -1969,6 +1993,8 @@ func _on_build_cash_changed(_cash: int, _delta: int, _reason: StringName) -> voi
 ## Visual item bounds choose the furniture hit; the floor still locates agents
 ## and preserves world-position selection for callers without a camera ray.
 func pick_screen_position(screen_position: Vector2) -> void:
+	if is_haggle_active():
+		return
 	if is_build_active() or _paint_active:
 		return
 	var camera: Camera3D = $CameraRig/Camera3D
@@ -2086,6 +2112,8 @@ func _selected_owner() -> OwnerAgent:
 ## The sole player command used by keys, inspector buttons and capture tools.
 ## Changes are included in the next normal MORNING checkpoint.
 func assign_owner_mode(mode: StringName) -> bool:
+	if is_haggle_active():
+		return false
 	if is_build_active():
 		return false
 	var selected_owner: OwnerAgent = _selected_owner()
@@ -2236,6 +2264,9 @@ func _on_plate_broken(cost: int) -> void:
 func build_report(day: int) -> DayReport:
 	var report := DayReport.new()
 	report.day = day
+	if int(_haggle_receipt.get("day", 0)) == day:
+		report.haggle_percent = int(_haggle_receipt["percent"])
+		report.haggle_saved = int(_haggle_receipt["saved"])
 	report.staff_activity = sim.staff_activity.snapshot()
 	report.restaurant_name = menu_settings.restaurant_name() if menu_settings != null else MenuSettings.DEFAULT_NAME
 	report.regulars_lines = RegularText.report_lines(regulars)
@@ -2317,6 +2348,7 @@ func build_report(day: int) -> DayReport:
 
 
 func _new_game() -> void:
+	_reset_haggle()
 	_base_layout = LAYOUT
 	_loaded_cat = {}
 	_loaded_inspection = {}
@@ -2394,6 +2426,7 @@ func _new_game() -> void:
 
 
 func _load_autosave() -> bool:
+	_reset_haggle()
 	business_history = BusinessHistory.new()
 	_loaded_business_history = null
 	var loaded: bool = _load_autosave_sections()
@@ -2996,7 +3029,7 @@ func _restore_staff(data: Dictionary) -> bool:
 
 
 func can_view_staff() -> bool:
-	return _started and staff_roster != null and sim != null and world != null \
+	return _started and staff_roster != null and sim != null and world != null and not is_haggle_active() \
 		and Clock.sim.phase in [SimClock.Phase.MORNING, SimClock.Phase.OPEN,
 			SimClock.Phase.LAST_ORDERS, SimClock.Phase.CLOSED]
 
@@ -3405,7 +3438,8 @@ func _refresh_menu_boards() -> void:
 
 
 func can_edit_menu() -> bool:
-	return _started and menu_settings != null and menu_settings.is_valid() and Clock.sim.phase == SimClock.Phase.MORNING
+	return _started and menu_settings != null and menu_settings.is_valid() \
+		and Clock.sim.phase == SimClock.Phase.MORNING and not is_haggle_active()
 
 
 func menu_set_enabled(recipe_id: StringName, enabled: bool) -> bool:
@@ -3456,6 +3490,8 @@ func toggle_menu() -> void:
 
 ## Idempotent production path for the HUD and genuine review captures.
 func set_menu_visible(value: bool) -> bool:
+	if value and is_haggle_active():
+		return false
 	_refresh_lease_offer()
 	if _menu_panel == null or (value and not can_edit_menu()):
 		return false
@@ -3485,6 +3521,8 @@ func is_menu_visible() -> bool:
 
 ## A view-only panel: opening it neither completes goals nor changes the clock.
 func set_goals_visible(value: bool) -> bool:
+	if value and is_haggle_active():
+		return false
 	if _goals_panel == null or (value and (not _started or sim == null)):
 		return false
 	if _goals_panel.visible == value:
@@ -3563,6 +3601,8 @@ func _refresh_goals(force: bool = false) -> void:
 
 
 func set_settings_visible(value: bool) -> bool:
+	if value and is_haggle_active():
+		return false
 	if _settings_panel == null:
 		return false
 	if _settings_panel.visible == value:
@@ -3850,6 +3890,10 @@ func shop_sell(item_id: int) -> int:
 
 ## Morning setup: new counters, a stocked fridge, and an autosave.
 func _begin_morning() -> void:
+	# Repeated setup of the SAME morning cannot create another attempt.
+	if _haggle_day != Clock.sim.day:
+		_reset_haggle()
+		_haggle_day = Clock.sim.day
 	_refresh_lease_offer()
 	if _menu_access_day != Clock.sim.day:
 		_menu_access_losses.clear()
@@ -4172,7 +4216,7 @@ func _on_delivery_tick(_tick: int) -> void:
 
 ## The panel opens in every phase; orders are paid now and delivered later.
 func can_edit_stock() -> bool:
-	return _started and sim != null and reorder_settings != null
+	return _started and sim != null and reorder_settings != null and not is_haggle_active()
 
 
 ## Sets one cart amount (0..99 units). Refused when it would not fit in
@@ -4203,12 +4247,94 @@ func stock_cart_set(id: StringName, qty: int) -> bool:
 
 
 func stock_cart_total() -> int:
+	return HaggleRules.charge(stock_cart_list_total(), stock_haggle_percent())
+
+
+func stock_cart_list_total() -> int:
 	var total: int = 0
 	for id: StringName in stock_cart:
 		var ingredient: IngredientDef = content.ingredient(id)
 		if ingredient != null:
 			total += ingredient.unit_cost * int(stock_cart[id])
 	return total
+
+
+func is_haggle_active() -> bool:
+	return _haggle_modal_open
+
+
+func stock_haggle_percent() -> int:
+	return _haggle_percent if _haggle_day == Clock.sim.day \
+		and Clock.sim.phase == SimClock.Phase.MORNING else 0
+
+
+func can_start_haggle() -> bool:
+	return can_edit_stock() and Clock.sim.phase == SimClock.Phase.MORNING \
+		and (_haggle_day != Clock.sim.day or not _haggle_attempted) \
+		and not stock_cart.is_empty() and HAGGLE_TUNING.is_valid() and _haggle_game != null
+
+
+## The one attempt is spent before drawing all zones, including on Skip.
+## Lack of cash does not block trying to earn a cheaper affordable order.
+func stock_start_haggle() -> void:
+	if not can_start_haggle() or not is_stock_visible():
+		return
+	if _haggle_day != Clock.sim.day:
+		_reset_haggle()
+		_haggle_day = Clock.sim.day
+	_haggle_attempted = true
+	var centers: Array[float] = HaggleRules.zone_centers(HAGGLE_TUNING, GameState.rng(&"haggle"))
+	if not _haggle_game.prepare(HAGGLE_TUNING, centers):
+		_refresh_stock_panel()
+		return
+	_haggle_previous_speed = Clock.speed
+	_haggle_camera_processing = ($CameraRig as CameraRig).is_processing()
+	var focus: Control = get_viewport().gui_get_focus_owner()
+	_haggle_previous_focus = weakref(focus) if focus != null else null
+	_haggle_modal_open = true
+	Clock.set_speed(0)
+	($CameraRig as CameraRig).set_process(false)
+	$HUD.set_haggle_active(true)
+	_haggle_game.start()
+	_refresh_stock_panel()
+
+
+func _on_haggle_finished(result: float) -> void:
+	if not _haggle_modal_open:
+		return
+	if _haggle_day == Clock.sim.day and Clock.sim.phase == SimClock.Phase.MORNING and result >= 0.0:
+		_haggle_percent = HaggleRules.discount_percent(result, HAGGLE_TUNING.max_discount)
+	_end_haggle_modal()
+	_refresh_stock_panel()
+
+
+func _end_haggle_modal() -> void:
+	if not _haggle_modal_open:
+		return
+	_haggle_modal_open = false
+	var camera: CameraRig = get_node_or_null("CameraRig") as CameraRig
+	if camera != null:
+		camera.set_process(_haggle_camera_processing)
+	var hud: Node = get_node_or_null("HUD")
+	if hud != null:
+		hud.call("set_haggle_active", false)
+	if Clock.sim.phase == SimClock.Phase.MORNING:
+		Clock.set_speed(_haggle_previous_speed)
+	var focus: Control = _haggle_previous_focus.get_ref() as Control if _haggle_previous_focus != null else null
+	if is_instance_valid(focus) and focus.is_visible_in_tree():
+		focus.grab_focus()
+	_haggle_previous_focus = null
+
+
+## Explicit new/load reset, distinct from repeated setup of one morning.
+func _reset_haggle() -> void:
+	if _haggle_game != null and _haggle_game.running:
+		_haggle_game.call("_on_skip_pressed")
+	_end_haggle_modal()
+	_haggle_day = 0
+	_haggle_attempted = false
+	_haggle_percent = 0
+	_haggle_receipt.clear()
 
 
 ## Why the cart cannot be ordered now, as a player sentence, or "".
@@ -4227,8 +4353,8 @@ func stock_cart_refusal() -> String:
 	return ""
 
 
-## Pays for the cart at list price. In the morning it arrives at once (as
-## #156's buys did); otherwise it goes on the next delivery.
+## Pays for the cart, using an earned offer only for a morning manual order.
+## Morning stock arrives at once; otherwise it goes on the next delivery.
 func stock_place_order() -> bool:
 	if not can_edit_stock() or not stock_cart_refusal().is_empty():
 		return false
@@ -4237,13 +4363,21 @@ func stock_place_order() -> bool:
 		var ingredient: IngredientDef = content.ingredient(id)
 		lines.append({"id": id, "qty": int(stock_cart[id]), "unit_cost": ingredient.unit_cost})
 	var cost: int = stock_cart_total()
-	if not Economy.pay_order(lines, cost, false):
-		return false
-	if Clock.sim.phase == SimClock.Phase.MORNING:
-		Economy.receive(lines)
-	elif not deliveries.place(lines, cost, false, DeliveryBook.next_due(Clock.sim, delivery_tuning)):
-		Economy.refund_order(cost)
-		return false
+	var percent: int = stock_haggle_percent()
+	if percent > 0:
+		if not Economy.buy_haggled_order(lines, percent):
+			return false
+		_haggle_receipt = {"day": Clock.sim.day, "percent": percent,
+			"saved": stock_cart_list_total() - cost}
+		_haggle_percent = 0
+	else:
+		if not Economy.pay_order(lines, cost, false):
+			return false
+		if Clock.sim.phase == SimClock.Phase.MORNING:
+			Economy.receive(lines)
+		elif not deliveries.place(lines, cost, false, DeliveryBook.next_due(Clock.sim, delivery_tuning)):
+			Economy.refund_order(cost)
+			return false
 	stock_cart.clear()
 	_refresh_stock_panel()
 	return true
@@ -4317,6 +4451,8 @@ func toggle_stock() -> void:
 
 ## Idempotent production path for the HUD and real captures, in any phase.
 func set_stock_visible(value: bool) -> bool:
+	if is_haggle_active() and not value:
+		_haggle_game.call("_on_skip_pressed")
 	if _stock_panel == null or (value and not can_edit_stock()):
 		return false
 	if value and not _stock_panel.visible:
@@ -4533,6 +4669,8 @@ func _refresh_stock_panel() -> void:
 	_stock_panel.set_view({"rows": stock_rows(), "groups": stock_groups(), "cash": Economy.cash,
 		"editable": can_edit_stock(), "notes": stock_notes(), "premium": auto_reorder_premium,
 		"cart_total": stock_cart_total(), "cart_refusal": stock_cart_refusal(),
+		"haggle_available": can_start_haggle(), "haggle_percent": stock_haggle_percent(),
+		"haggle_morning": Clock.sim.phase == SimClock.Phase.MORNING,
 		"pending": stock_pending_text(), "refund": deliveries.paid_total(),
 		"delivery": delivery_countdown()})
 
@@ -4769,6 +4907,11 @@ func _unlocked_at_levels(previous_level: int, current_level: int) -> Array[Strin
 
 
 func _on_day_phase_changed(_day: int, phase: int) -> void:
+	if phase != SimClock.Phase.MORNING:
+		# The receipt stays for tonight's report; an unspent offer expires.
+		if is_haggle_active():
+			_haggle_game.call("_on_skip_pressed")
+		_haggle_percent = 0
 	_dismiss_goals()
 	_clear_rooms_note()
 	# Undo never reaches back across opening (or into a new morning).

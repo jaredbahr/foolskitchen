@@ -80,6 +80,7 @@ var _settings_button: Button
 var _header_bottom: float = -1.0
 var _preferences: SettingsPreferences
 var _opening_refusal: String = ""
+var _haggle_active: bool = false
 var _demand_status: String = ""
 
 
@@ -161,9 +162,9 @@ func refresh() -> void:
 	_context.visible = Clock.sim.phase == SimClock.Phase.MORNING or Clock.sim.phase == SimClock.Phase.CLOSED
 	_context.text = "Open shop" if Clock.sim.phase == SimClock.Phase.MORNING else "Next day"
 	_context.tooltip_text = "Open for today's service" if Clock.sim.phase == SimClock.Phase.MORNING else "Begin the next morning"
-	_context.disabled = Clock.sim.phase == SimClock.Phase.MORNING and not _opening_refusal.is_empty()
+	_context.disabled = _haggle_active or (Clock.sim.phase == SimClock.Phase.MORNING and not _opening_refusal.is_empty())
 	if _context.disabled:
-		_context.tooltip_text = _opening_refusal
+		_context.tooltip_text = "Finish or skip the haggle first" if _haggle_active else _opening_refusal
 	_on_speed_changed(Clock.speed)
 	_refresh_wall_mode()
 	if is_inside_tree() and _hint_viewport != get_viewport():
@@ -682,7 +683,16 @@ func _disconnect_events() -> void:
 
 
 func _set_speed(speed: int) -> void:
+	if _haggle_active:
+		return
 	Clock.set_speed(speed)
+
+
+## The morning game's overlay blocks pointer input; these guards also stop
+## previously focused or directly signalled Open/speed controls.
+func set_haggle_active(value: bool) -> void:
+	_haggle_active = value
+	refresh()
 
 
 func _on_speed_changed(speed: int) -> void:
@@ -721,6 +731,8 @@ func _on_phase_changed(_day: int, _phase: int) -> void:
 
 
 func _on_context_pressed() -> void:
+	if _haggle_active:
+		return
 	if Clock.sim.phase == SimClock.Phase.MORNING:
 		if not _opening_refusal.is_empty():
 			return
