@@ -76,6 +76,68 @@ func test_non_finite_progress_falls_back_to_zero_within_active_goal_limit() -> v
 		assert_eq(progress_label.text, "Progress: 0 / 10 guests")
 
 
+func test_weekly_challenge_is_the_top_card_and_updates_without_duplicate_nodes() -> void:
+	var challenge: WeeklyChallenge = WeeklyChallenge.new()
+	challenge.id = &"weekly_guests"
+	challenge.kind = WeeklyChallenge.Kind.SERVE_IN_ONE_DAY
+	challenge.text_template = "Serve {target} guests in one day"
+	challenge.base_target = 12
+	challenge.reward_cash = 60
+	var pool: WeeklyChallengePool = WeeklyChallengePool.new()
+	pool.challenges = [challenge] as Array[WeeklyChallenge]
+	var random: RandomNumberGenerator = RandomNumberGenerator.new()
+	random.seed = 12
+	var weekly: WeeklyChallengeState = WeeklyChallengeState.new()
+	assert_true(weekly.begin_week(1, 1, pool, [] as Array[RecipeDef], random))
+	var observation: MilestoneDay = MilestoneDay.new()
+	observation.day = 1
+	observation.served_today = 4
+	_panel.set_goals(_catalogue, [] as Array[StringName], {} as Dictionary[StringName, float],
+		1, weekly, 1, observation)
+	var rows: VBoxContainer = _panel.get_node("Panel/Content/Scroll/List") as VBoxContainer
+	assert_eq(String(rows.get_child(0).name), "WeeklyChallenge")
+	assert_eq((rows.get_node("WeeklyChallenge/Body/Title") as Label).text,
+		"Serve 12 guests in one day")
+	assert_eq((rows.get_node("WeeklyChallenge/Body/Details/ProgressText") as Label).text, "Progress: 4 / 12 guests")
+	assert_eq((rows.get_node("WeeklyChallenge/Body/Details/DaysLeft") as Label).text, "7 days left")
+	assert_eq((rows.get_node("WeeklyChallenge/Body/Details/Reward") as Label).text, "Cash reward: $60")
+	_panel.set_goals(_catalogue, [] as Array[StringName], {} as Dictionary[StringName, float],
+		1, weekly, 1, observation)
+	assert_eq(rows.get_children().filter(func(child: Node) -> bool:
+		return child.name == "WeeklyChallenge").size(), 1)
+
+
+func test_clean_day_progress_waits_for_the_real_close_commit() -> void:
+	var challenge: WeeklyChallenge = WeeklyChallenge.new()
+	challenge.id = &"weekly_clean_days"
+	challenge.kind = WeeklyChallenge.Kind.NO_LOSS_DAYS
+	challenge.text_template = "Finish {target} days without losing a guest"
+	challenge.base_target = 2
+	challenge.reward_cash = 40
+	var pool: WeeklyChallengePool = WeeklyChallengePool.new()
+	pool.challenges = [challenge] as Array[WeeklyChallenge]
+	var random: RandomNumberGenerator = RandomNumberGenerator.new()
+	random.seed = 13
+	var weekly: WeeklyChallengeState = WeeklyChallengeState.new()
+	assert_true(weekly.begin_week(1, 1, pool, [] as Array[RecipeDef], random))
+	var observation: MilestoneDay = MilestoneDay.new()
+	observation.day = 1
+	observation.lost_today = 0
+	_panel.set_goals(_catalogue, [] as Array[StringName], {} as Dictionary[StringName, float],
+		1, weekly, 1, observation)
+	var progress_path: String = "Panel/Content/Scroll/List/WeeklyChallenge/Body/Details/ProgressText"
+	var progress_label: Label = _panel.get_node(progress_path) as Label
+	assert_eq(progress_label.text, "Progress: 0 / 2 days",
+		"a clean-looking open day is not shown as complete prematurely")
+	assert_false(weekly.apply_day(observation).is_empty())
+	observation.day = 2
+	_panel.set_goals(_catalogue, [] as Array[StringName], {} as Dictionary[StringName, float],
+		1, weekly, 2, observation)
+	progress_label = _panel.get_node(progress_path) as Label
+	assert_eq(progress_label.text, "Progress: 1 / 2 days",
+		"the clean day appears once the actual close path commits it")
+
+
 func test_reputation_profit_and_level_progress_use_readable_units() -> void:
 	var reputation: Milestone = _goal(&"reputation", "Good word", 3.5, 1)
 	reputation.condition = Milestone.Condition.REPUTATION

@@ -42,6 +42,15 @@ func test_totals_and_positive_or_negative_profit() -> void:
 	assert_eq(report.profit(), -890)
 
 
+func test_weekly_cash_bonus_is_not_operating_income() -> void:
+	var report: DayReport = DayReport.new()
+	report.income[Ledger.SALE] = 100
+	report.income[Ledger.WEEKLY_CHALLENGE_BONUS] = 60
+	assert_eq(report.total_income(), 160)
+	assert_eq(report.profit(), 160)
+	assert_eq(report.purchase_basis_operating_profit(), 100)
+
+
 func test_empty_report_has_zero_totals_and_no_leaders() -> void:
 	var report: DayReport = DayReport.new()
 	assert_eq(report.total_income(), 0)

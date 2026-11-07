@@ -1,0 +1,98 @@
+[gd_resource type="Resource" script_class="WeeklyChallengePool" load_steps=13 format=3]
+
+[ext_resource type="Script" path="res://src/sim/progression/weekly_challenge_pool.gd" id="1_pool"]
+[ext_resource type="Script" path="res://src/sim/progression/weekly_challenge.gd" id="2_challenge"]
+
+[sub_resource type="Resource" id="challenge_serve_1"]
+script = ExtResource("2_challenge")
+id = &"serve_a_busy_day"
+kind = 0
+text_template = "Serve {target} guests in one day"
+base_target = 12
+per_level = 4
+reward_cash = 60
+
+[sub_resource type="Resource" id="challenge_serve_2"]
+script = ExtResource("2_challenge")
+id = &"serve_a_full_day"
+kind = 0
+text_template = "Serve {target} guests in one day"
+base_target = 24
+per_level = 8
+reward_cash = 120
+
+[sub_resource type="Resource" id="challenge_profit_1"]
+script = ExtResource("2_challenge")
+id = &"earn_weekly_profit"
+kind = 1
+text_template = "Earn ${target} operating profit this week"
+base_target = 100
+per_level = 40
+reward_cash = 75
+
+[sub_resource type="Resource" id="challenge_profit_2"]
+script = ExtResource("2_challenge")
+id = &"earn_strong_weekly_profit"
+kind = 1
+text_template = "Earn ${target} operating profit this week"
+base_target = 250
+per_level = 90
+reward_cash = 150
+
+[sub_resource type="Resource" id="challenge_clean_1"]
+script = ExtResource("2_challenge")
+id = &"lose_no_guests_three_days"
+kind = 2
+text_template = "Finish {target} days without losing a guest"
+base_target = 3
+per_level = 1
+reward_cash = 65
+
+[sub_resource type="Resource" id="challenge_clean_2"]
+script = ExtResource("2_challenge")
+id = &"lose_no_guests_five_days"
+kind = 2
+text_template = "Finish {target} days without losing a guest"
+base_target = 5
+per_level = 1
+reward_cash = 130
+
+[sub_resource type="Resource" id="challenge_reviews_1"]
+script = ExtResource("2_challenge")
+id = &"collect_good_reviews"
+kind = 3
+text_template = "Get {target} good reviews this week"
+base_target = 3
+per_level = 2
+reward_cash = 60
+
+[sub_resource type="Resource" id="challenge_reviews_2"]
+script = ExtResource("2_challenge")
+id = &"collect_glowing_reviews"
+kind = 3
+text_template = "Get {target} good reviews this week"
+base_target = 7
+per_level = 3
+reward_cash = 145
+
+[sub_resource type="Resource" id="challenge_dish_1"]
+script = ExtResource("2_challenge")
+id = &"sell_the_special"
+kind = 4
+text_template = "Sell {target} {dish} this week"
+base_target = 8
+per_level = 3
+reward_cash = 75
+
+[sub_resource type="Resource" id="challenge_dish_2"]
+script = ExtResource("2_challenge")
+id = &"sell_a_favorite"
+kind = 4
+text_template = "Sell {target} {dish} this week"
+base_target = 18
+per_level = 7
+reward_cash = 150
+
+[resource]
+script = ExtResource("1_pool")
+challenges = Array[ExtResource("2_challenge")]([SubResource("challenge_serve_1"), SubResource("challenge_serve_2"), SubResource("challenge_profit_1"), SubResource("challenge_profit_2"), SubResource("challenge_clean_1"), SubResource("challenge_clean_2"), SubResource("challenge_reviews_1"), SubResource("challenge_reviews_2"), SubResource("challenge_dish_1"), SubResource("challenge_dish_2")])
