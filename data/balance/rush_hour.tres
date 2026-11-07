@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="RushTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/sim/rush_tuning.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+unlock_level = 2
+min_gap_days = 4
+daily_chance = 0.2
+min_duration_minutes = 45
+max_duration_minutes = 75
+ramp_minutes = 10
+opening_margin_minutes = 30
+last_orders_margin_minutes = 60
+peak_multiplier = 2.5
+occasions = PackedStringArray("Book club", "Chess meet", "Garden circle", "Craft morning", "Walking group", "Choir practice", "Sketch club", "Local meetup")
