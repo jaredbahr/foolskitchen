@@ -6,6 +6,8 @@ var min_gap: int = 150
 var max_gap: int = 400
 var rng: RandomNumberGenerator
 var _remaining: int = -1
+## Fractional countdown work accumulated only during a planned rush.
+var _rush_extra_ticks: float = 0.0
 
 
 ## Uses only the injected random stream.
@@ -17,6 +19,7 @@ func _init(random: RandomNumberGenerator) -> void:
 ## opening arrival rate (FK-083; exactly the drawn gap at 1.0).
 func reset(rate: float = 1.0) -> void:
 	_remaining = scaled_gap(_gap(), rate)
+	_rush_extra_ticks = 0.0
 
 
 ## A drawn gap at an arrival rate. Rate 1.0 returns it unchanged, so default
@@ -33,8 +36,7 @@ func advance(sim: RestaurantSim) -> void:
 		return
 	if _remaining < 0:
 		reset()
-	_remaining -= 1
-	if _remaining > 0:
+	if not countdown_tick(sim.rush_multiplier()):
 		return
 	var entries: Array[Vector2i] = sim.world.grid.entries()
 	var arrived: int = 1
@@ -68,13 +70,42 @@ func advance(sim: RestaurantSim) -> void:
 				if index < count:
 					randoms.append(customer_rng)
 			if count == 1:
-				sim.try_disguise_critic(sim.add_visitor(entry, randoms[0], kind, visit))
+				var guest: CustomerAgent = sim.add_visitor(entry, randoms[0], kind, visit)
+				sim.try_disguise_critic(guest)
+				if guest != null:
+					sim.record_rush_arrivals([guest.id])
 			elif count > 1:
-				sim.add_party(entry, randoms, kind, visit)
+				var party: Party = sim.add_party(entry, randoms, kind, visit)
+				if party != null:
+					sim.record_rush_arrivals(party.member_ids)
 			arrived = count
 	# Headcount-neutral: a party of N waits N drawn gaps (one draw, scaled), so
 	# groups bring the same guests per hour as singles did.
-	_remaining = scaled_gap(_gap(), sim.arrival_rate()) * maxi(1, arrived)
+	# Preserve overrun from the faster tick countdown across this arrival. No
+	# draw or spacing changes: only the remaining time on the already-drawn next
+	# gap is reduced, and one party per tick remains the existing contract.
+	reset_after_arrival(sim.arrival_rate(), arrived)
+
+
+## Advance the already-drawn integer gap once, with fractional rush progress.
+## A factor of exactly 1 leaves the legacy integer path unchanged.
+func countdown_tick(rush_factor: float) -> bool:
+	if is_finite(rush_factor) and rush_factor > 1.0:
+		_rush_extra_ticks += rush_factor - 1.0
+		var whole_extra: int = floori(_rush_extra_ticks)
+		_rush_extra_ticks -= float(whole_extra)
+		_remaining -= 1 + whole_extra
+	else:
+		_rush_extra_ticks = 0.0
+		_remaining -= 1
+	return _remaining <= 0
+
+
+## Draw exactly one normal next gap. Accelerated work is saturated at one
+## arrival per tick and never leaves a negative value for the reset sentinel.
+func reset_after_arrival(rate: float, arrived: int) -> void:
+	var next_gap: int = scaled_gap(_gap(), rate) * maxi(1, arrived)
+	_remaining = maxi(0, next_gap + _remaining)
 
 
 ## What an arriving guest came for. One available kind draws nothing; with

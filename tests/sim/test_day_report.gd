@@ -60,6 +60,43 @@ func test_empty_report_has_zero_totals_and_no_leaders() -> void:
 	assert_eq(report.top_leave_reason(), &"")
 
 
+func test_rush_report_lines_round_trip_only_when_present() -> void:
+	var report: DayReport = DayReport.new()
+	assert_false(report.to_dict().has("rush_hour_lines"),
+		"Ordinary-day saved reports keep their previous shape")
+	report.rush_hour_lines = ["Book club brought 8 guests between 1:00 pm and 1:45 pm; 2 left without a seat and 1 left after waiting."]
+	var snapshot: Dictionary = JSON.parse_string(JSON.stringify(report.to_dict()))
+	assert_eq(snapshot["rush_hour_lines"], report.rush_hour_lines)
+	assert_eq(DayReport.from_dict(snapshot).rush_hour_lines, report.rush_hour_lines)
+
+
+func test_weekly_and_rush_report_annotations_round_trip_together() -> void:
+	var report: DayReport = DayReport.new()
+	report.weekly_challenge_line = "Weekly challenge: +$60"
+	report.rush_hour_lines = ["Book club brought 8 guests; 2 left without a seat."]
+	var snapshot: Dictionary = JSON.parse_string(JSON.stringify(report.to_dict()))
+	assert_true(snapshot.has("weekly_challenge_line"))
+	assert_true(snapshot.has("rush_hour_lines"))
+	var restored: DayReport = DayReport.from_dict(snapshot)
+	assert_eq(restored.weekly_challenge_line, report.weekly_challenge_line)
+	assert_eq(restored.rush_hour_lines, report.rush_hour_lines)
+	assert_eq(JSON.parse_string(JSON.stringify(restored.to_dict())), snapshot)
+
+
+func test_optional_weekly_and_rush_payloads_ignore_malformed_values_independently() -> void:
+	for invalid_weekly: Variant in [false, 17, [], "x".repeat(101)]:
+		var restored: DayReport = DayReport.from_dict({"weekly_challenge_line": invalid_weekly,
+			"rush_hour_lines": [17, false, {}, "Book club summary."]})
+		assert_eq(restored.weekly_challenge_line, "")
+		assert_eq(restored.rush_hour_lines, ["Book club summary."] as Array[String])
+	for invalid_rush: Variant in [false, 17, {}, "Book club summary."]:
+		var restored: DayReport = DayReport.from_dict({"weekly_challenge_line": "Weekly challenge: +$60",
+			"rush_hour_lines": invalid_rush})
+		assert_eq(restored.weekly_challenge_line, "Weekly challenge: +$60")
+		assert_true(restored.rush_hour_lines.is_empty())
+	assert_eq(DayReport.from_dict({"weekly_challenge_line": "x".repeat(100)}).weekly_challenge_line.length(), 100)
+
+
 func test_best_dish_uses_count_then_alphabetical_id() -> void:
 	var report: DayReport = DayReport.new()
 	report.dishes_sold = {&"tomato_soup": 4, &"burger": 4, &"grilled_cheese": 2}
