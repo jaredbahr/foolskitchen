@@ -8,6 +8,7 @@ const RESTROOM_TUNING: RestroomTuning = preload("res://data/balance/restroom.tre
 const CAT_TUNING: CatTuning = preload("res://data/balance/cat.tres")
 const INSPECTION_TUNING: InspectionTuning = preload("res://data/balance/inspection.tres")
 const AQUARIUM_TUNING: AquariumTuning = preload("res://data/balance/aquarium.tres")
+const BOOKING_TUNING: BookingTuning = preload("res://data/balance/bookings.tres")
 
 signal customer_arrived(customer: CustomerAgent)
 signal customer_paid(customer: CustomerAgent, order: Order, amount: int)
@@ -77,6 +78,9 @@ var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 ## Opt-in catalogue. An unconfigured sim retains the exact Regular arrival stream.
 var customer_types: CustomerTypeCatalogue = null
 var customer_level: int = 1
+## Accepted next-day party, installed by Main after the morning save section loads.
+var group_booking: GroupBooking = null
+var _booking_spawned_id: int = 0
 ## Optional persistent cast. A null cast preserves all earlier simulation callers.
 var regulars: RegularCast = null
 ## The session supplies a lazy named stream; no stream is created before promotion.
@@ -103,6 +107,10 @@ var review_tuning: ReviewTuning
 var review_quotes: ReviewQuotes
 var review_rng: RandomNumberGenerator
 var reviews_today: Array[Dictionary] = []
+var booking_review_results: Dictionary[int, Dictionary] = {}
+var booking_report_lines: Array[String] = []
+var _booking_visits_today: Dictionary[int, Array] = {}
+var _booking_party_sizes: Dictionary[int, int] = {}
 var reputation_before_day: float = 3.0
 ## Detached derived snapshot. Existing guests retain their own arrival effects.
 var vibe_result: VibeModel.Result:
@@ -268,6 +276,10 @@ func start_day() -> void:
 	takeaways_today = 0
 	leave_reasons_today.clear()
 	reviews_today.clear()
+	booking_review_results.clear()
+	booking_report_lines.clear()
+	_booking_visits_today.clear()
+	_booking_party_sizes.clear()
 	critic_result = {}
 	critic.plan_day(world.clock.day, customer_level, critic_rng_provider)
 	sold_out_today.clear()
@@ -327,7 +339,13 @@ func advance() -> void:
 	# Observe existing assignments before agents can complete or replace them.
 	if world.clock.phase == SimClock.Phase.OPEN:
 		staff_activity.observe(world)
+	if world.booking_hold != null:
+		world.booking_hold.prepare_next_tick(world)
 	world.advance()
+	# The hold synchronizes lazily from the advanced service clock inside each
+	# seating query. Spawn the booked party at its slot before the ordinary gap
+	# spawner runs, so random walk-in timing cannot delay the reservation.
+	_spawn_booking_if_due()
 	if kitchen != null:
 		kitchen.advance()
 	if dock != null:
@@ -353,6 +371,34 @@ func advance() -> void:
 		if dock != null:
 			dock.store_all()
 		service_closed.emit(world.clock.day)
+
+
+func configure_booking(model: GroupBooking) -> void:
+	if group_booking != model:
+		_booking_spawned_id = 0
+	group_booking = model
+	if world == null or model == null or not model.has_active_booking():
+		if world != null:
+			world.booking_hold = null
+		return
+	world.booking_hold = BookingSeatHold.new(model, kitchen)
+
+
+func _spawn_booking_if_due() -> void:
+	if group_booking == null or not group_booking.has_active_booking():
+		return
+	var booking: Dictionary = group_booking.booking
+	var booking_id: int = int(booking.get("booking_id", 0))
+	if booking_id <= 0 or booking_id == _booking_spawned_id \
+			or int(booking.get("service_day", 0)) != world.clock.day \
+			or world.clock.phase != SimClock.Phase.OPEN \
+			or world.clock.display_minutes() < int(booking.get("slot_minute", 1440)):
+		return
+	var entries: Array[Vector2i] = world.grid.entries()
+	if entries.is_empty():
+		return
+	if add_booking_party(entries[0], booking) != null:
+		_booking_spawned_id = booking_id
 
 
 ## The inspector walks in on its planned tick, grades the shop once its walk is
@@ -907,8 +953,15 @@ func _publish_customer_arrival(customer: CustomerAgent) -> void:
 ## Members are installed in the same arrival tick and retain private RNGs.
 ## Singletons keep add_customer's exact path, including its signal order.
 func add_party(entry: Vector2i, randoms: Array[RandomNumberGenerator], kind: CustomerType = null,
-		visit: StringName = RecipeDef.FOOD) -> Party:
-	if randoms.is_empty() or randoms.size() > Party.MAX_SIZE or (kind != null and not kind.is_valid()):
+		visit: StringName = RecipeDef.FOOD, booking_id: int = 0,
+		booking_recipe_id: StringName = &"", booking_recipe_preference: float = 0.0) -> Party:
+	var maximum: int = Party.BOOKING_MAX_SIZE if booking_id > 0 else Party.MAX_SIZE
+	if booking_id < 0 or randoms.is_empty() or randoms.size() > maximum \
+			or (booking_id > 0 and randoms.size() < Party.MAX_SIZE) \
+			or (booking_id > 0 and (booking_recipe_id.is_empty() \
+				or not is_finite(booking_recipe_preference) or booking_recipe_preference < 0.0 \
+				or booking_recipe_preference > 1.0)) \
+			or (kind != null and not kind.is_valid()):
 		return null
 	for random: RandomNumberGenerator in randoms:
 		if random == null:
@@ -919,12 +972,43 @@ func add_party(entry: Vector2i, randoms: Array[RandomNumberGenerator], kind: Cus
 		var guest: CustomerAgent = _install_customer(entry, random, kind, false, visit)
 		ids.append(guest.id)
 		guests.append(guest)
-	var group: Party = Party.new(ids)
+	var group: Party = Party.new(ids, booking_id > 0)
+	group.booking_id = booking_id
+	if booking_id > 0:
+		_booking_party_sizes[booking_id] = group.size()
 	for guest: CustomerAgent in guests:
 		guest.party = group
+		guest.booking_recipe_id = booking_recipe_id if booking_id > 0 else &""
+		guest.booking_recipe_preference = booking_recipe_preference if booking_id > 0 else 0.0
 	for guest: CustomerAgent in guests:
 		_publish_customer_arrival(guest)
 	return group
+
+
+## The scheduled party uses only its saved private seeds, never customer-stream draws.
+func add_booking_party(entry: Vector2i, booking: Dictionary) -> Party:
+	var seeds: Variant = booking.get("guest_seeds", null)
+	var party_size: int = int(booking.get("party_size", 0))
+	var booking_id: int = int(booking.get("booking_id", 0))
+	if not seeds is Array or seeds.size() != party_size or party_size < Party.MAX_SIZE \
+			or party_size > Party.BOOKING_MAX_SIZE or booking_id <= 0 \
+			or String(str(booking.get("recipe_id", ""))).is_empty() \
+			or not (booking.get("dish_preference") is int or booking.get("dish_preference") is float) \
+			or not is_finite(float(booking.get("dish_preference", NAN))) \
+			or float(booking.get("dish_preference", -1.0)) < 0.0 \
+			or float(booking.get("dish_preference", 2.0)) > 1.0:
+		return null
+	var randoms: Array[RandomNumberGenerator] = []
+	for seed: Variant in seeds:
+		if (typeof(seed) != TYPE_INT and typeof(seed) != TYPE_FLOAT) \
+				or not is_finite(float(seed)) or float(seed) < 0.0 \
+				or float(seed) > 4294967295.0 or floorf(float(seed)) != float(seed):
+			return null
+		var random: RandomNumberGenerator = RandomNumberGenerator.new()
+		random.seed = int(seed)
+		randoms.append(random)
+	return add_party(entry, randoms, null, RecipeDef.FOOD, booking_id,
+		StringName(str(booking.get("recipe_id", ""))), float(booking.get("dish_preference", 0.0)))
 
 
 # --- Restrooms (FK-101) -------------------------------------------------------
@@ -1052,7 +1136,16 @@ func record_departure(customer: CustomerAgent) -> void:
 		# A paid guest removed at the closing cutoff retains their happy report
 		# reason, but the forced departure must not sample a late review.
 		visit.closing = visit.closing or world.clock.phase == SimClock.Phase.CLOSED
-		if customer.is_critic():
+		if customer.party != null and customer.party.booking_owned and customer.party.booking_id > 0:
+			var visits: Array = _booking_visits_today.get(customer.party.booking_id, [])
+			visits.append(visit)
+			_booking_visits_today[customer.party.booking_id] = visits
+			var all_departed: bool = true
+			for member_id: int in customer.party.member_ids:
+				all_departed = all_departed and _departed.has(member_id)
+			if all_departed:
+				finalize_booking_review(customer.party.booking_id, false)
+		elif customer.is_critic():
 			# Only a critic who sat down and ordered writes the weighted review.
 			if customer.order != null and customer.leave_reason != &"removed":
 				_record_critic_review(visit)
@@ -1064,6 +1157,47 @@ func record_departure(customer: CustomerAgent) -> void:
 				reviews_today.append(row)
 				review_recorded.emit(row.duplicate())
 	customer_left.emit(customer, reason)
+
+
+## Booked members are replaced by exactly one weighted booking review when the
+## complete group has departed. A service-close fallback can create one bad
+## no-seat review when no party ever arrived.
+func finalize_booking_review(booking_id: int, fallback_no_seat: bool = true) -> Dictionary:
+	if booking_id <= 0 or booking_review_results.has(booking_id) \
+			or review_book == null or review_tuning == null or review_quotes == null or review_rng == null:
+		return booking_review_results.get(booking_id, {})
+	var visits: Array[ReviewVisit] = []
+	for value: Variant in _booking_visits_today.get(booking_id, []):
+		if value is ReviewVisit:
+			visits.append(value as ReviewVisit)
+	if visits.is_empty() and fallback_no_seat:
+		var missed: ReviewVisit = ReviewVisit.new()
+		missed.served = false
+		missed.was_seated = false
+		visits.append(missed)
+	if visits.is_empty():
+		return {}
+	var no_seat: bool = true
+	for visit: ReviewVisit in visits:
+		no_seat = no_seat and not visit.was_seated
+	var expected_members: int = _booking_party_sizes.get(booking_id, 0)
+	if group_booking != null and int(group_booking.booking.get("booking_id", 0)) == booking_id:
+		expected_members = int(group_booking.booking.get("party_size", expected_members))
+	var booking_tuning: BookingTuning = group_booking.tuning if group_booking != null \
+		and int(group_booking.booking.get("booking_id", 0)) == booking_id else BOOKING_TUNING
+	var result: Dictionary = review_book.record_booking(visits, review_tuning, review_quotes,
+		review_rng, booking_tuning, expected_members)
+	if result.is_empty():
+		return {}
+	result["no_seat"] = no_seat
+	booking_review_results[booking_id] = result.duplicate(true)
+	var row: Dictionary = {"stars": result["stars"], "quote": result["quote"],
+		"before": result["before"], "after": result["after"]}
+	reviews_today.append(row)
+	review_recorded.emit(row.duplicate())
+	if no_seat:
+		booking_report_lines.append("A reserved group could not be seated and received a full deposit refund.")
+	return result.duplicate(true)
 
 
 ## The critic's review (#303): weighed in the book, kept apart from the day's

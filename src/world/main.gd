@@ -19,6 +19,7 @@ const SHOP_FRAME_CELLS: Vector2 = Vector2(14.0, 12.0)
 const STREET_PAN_EXTENSION: float = 3.0
 const LEASE: LeaseUpgrade = preload("res://data/balance/lease_upgrade.tres")
 const CAT: CatTuning = preload("res://data/balance/cat.tres")
+const BOOKING_TUNING: BookingTuning = preload("res://data/balance/bookings.tres")
 const TUNING: EconomyTuning = preload("res://data/balance/tier1_economy.tres")
 const MESS_TUNING: MessTuning = preload("res://data/balance/messes.tres")
 const CLEANLINESS_TUNING: CleanlinessTuning = preload("res://data/balance/cleanliness.tres")
@@ -90,6 +91,8 @@ var _staff_notice_day: int = 0
 var _staff_notices: Array[Dictionary] = []
 ## Last thirty eligible reviews, including five virtual three-star starters.
 var reputation: ReputationBook = ReputationBook.new()
+## One accepted next-day booking, saved at the normal morning checkpoint.
+var group_booking: GroupBooking = GroupBooking.new(BOOKING_TUNING)
 ## Small persistent named cast, written only with the normal morning save.
 var regulars: RegularCast = RegularCast.new()
 var owner_progress: OwnerProgress = OwnerProgress.new(PROGRESSION_TUNING)
@@ -147,6 +150,9 @@ var _loaded_cat: Dictionary = {}
 var _loaded_inspection: Dictionary = {}
 ## The saved food-critic section (#303: cooldown and today's plan), staged the same way.
 var _loaded_critic: Dictionary = {}
+## The accepted booking plan staged until the whole morning save validates.
+var _loaded_group_booking: GroupBooking = null
+var _booking_paid_total: int = 0
 ## The saved fish tank section (#125: each tank's last cleaning day), staged likewise.
 var _loaded_aquarium: Dictionary = {}
 var _demand_breakdown: DemandBreakdown = null
@@ -247,6 +253,7 @@ func initialize() -> void:
 		push_error("Cannot build shop: %s" % [errors])
 		sim = null
 		return
+	sim.configure_booking(group_booking)
 	world = sim.world
 	menu_settings = MenuSettings.new(_cookable_recipes(LAYOUT), owner_progress.level)
 	_apply_menu(sim, menu_settings)
@@ -363,6 +370,7 @@ func _bind_world_presentation() -> void:
 		_menu_panel.lease_requested.connect(_on_lease_requested)
 	if not _menu_panel.cat_adoption_requested.is_connected(_on_cat_adoption_requested):
 		_menu_panel.cat_adoption_requested.connect(_on_cat_adoption_requested)
+	_refresh_booking_offer()
 	_menu_panel.set_phase(Clock.sim.phase)
 	if not _menu_panel.enable_requested.is_connected(_on_menu_enable_requested):
 		_menu_panel.enable_requested.connect(_on_menu_enable_requested)
@@ -559,6 +567,7 @@ func start() -> void:
 	SaveSystem.register("cat", _capture_cat, _restore_cat)
 	SaveSystem.register("inspection", _capture_inspection, _restore_inspection)
 	SaveSystem.register("critic", _capture_critic, _restore_critic)
+	SaveSystem.register("bookings", _capture_bookings, _restore_bookings)
 	SaveSystem.register("aquarium", _capture_aquarium, _restore_aquarium)
 	var loaded: bool = use_saves and _load_autosave()
 	_rooms_note = loaded and _loaded_layout != null and _loaded_layout.rooms_unmarked
@@ -651,6 +660,10 @@ func _connect_session() -> void:
 		sim.dock.stored.connect(_on_dock_stored)
 	if not EventBus.cash_changed.is_connected(_on_build_cash_changed):
 		EventBus.cash_changed.connect(_on_build_cash_changed)
+	if not EventBus.booking_accept_requested.is_connected(_on_booking_accept_requested):
+		EventBus.booking_accept_requested.connect(_on_booking_accept_requested)
+	if not EventBus.booking_decline_requested.is_connected(_on_booking_decline_requested):
+		EventBus.booking_decline_requested.connect(_on_booking_decline_requested)
 	if not _inspect_panel.owner_mode_requested.is_connected(_on_owner_mode_requested):
 		_inspect_panel.owner_mode_requested.connect(_on_owner_mode_requested)
 	if sound == null:
@@ -686,6 +699,10 @@ func _exit_tree() -> void:
 		sim.kitchen.plates_changed.disconnect(_on_plates_changed)
 	if sim != null and sim.service_closed.is_connected(_on_service_closed):
 		sim.service_closed.disconnect(_on_service_closed)
+	if EventBus.booking_accept_requested.is_connected(_on_booking_accept_requested):
+		EventBus.booking_accept_requested.disconnect(_on_booking_accept_requested)
+	if EventBus.booking_decline_requested.is_connected(_on_booking_decline_requested):
+		EventBus.booking_decline_requested.disconnect(_on_booking_decline_requested)
 	if world != null and world.board != null \
 			and world.board.task_completed.is_connected(_on_staff_task_completed):
 		world.board.task_completed.disconnect(_on_staff_task_completed)
@@ -1353,7 +1370,8 @@ func forecast_next_demand() -> Dictionary:
 
 ## The sim emits each departure once. Observe only its captured presentation
 ## evidence; review calculation and its random stream remain in RestaurantSim.
-func _on_vibe_customer_left(customer: CustomerAgent, _reason: StringName) -> void:
+func _on_vibe_customer_left(customer: CustomerAgent, reason: StringName) -> void:
+	_settle_booking_after_departure(customer, reason)
 	if customer == null or not customer.paid or not is_finite(customer.vibe_review_bonus) \
 			or customer.vibe_review_bonus <= 0.0 \
 			or not VIBE_TUNING.theme_labels.values().has(customer.vibe_theme_label):
@@ -2173,6 +2191,8 @@ func refresh_presentation() -> void:
 func _on_inspection_tick(_tick: int) -> void:
 	# Text follows every tick; geometry follows the drawn agents once per frame.
 	_refresh_sold_out_hud()
+	if group_booking != null and group_booking.has_active_booking():
+		_refresh_booking_offer()
 	refresh_hints()
 	_inspect_panel.refresh()
 	if _debug_overlay.is_enabled():
@@ -2240,6 +2260,7 @@ func build_report(day: int) -> DayReport:
 	report.restaurant_name = menu_settings.restaurant_name() if menu_settings != null else MenuSettings.DEFAULT_NAME
 	report.regulars_lines = RegularText.report_lines(regulars)
 	report.critic_lines = FoodCritic.report_lines(sim.critic_result)
+	report.booking_lines = sim.booking_report_lines.duplicate()
 	report.loan_first_advance = _loan_notice_day == day
 	var totals: Dictionary = Economy.ledger.day_totals(day)
 	for category: StringName in totals:
@@ -2318,9 +2339,14 @@ func build_report(day: int) -> DayReport:
 
 func _new_game() -> void:
 	_base_layout = LAYOUT
+	group_booking = GroupBooking.new(BOOKING_TUNING)
+	_booking_paid_total = 0
+	if sim != null:
+		sim.configure_booking(group_booking)
 	_loaded_cat = {}
 	_loaded_inspection = {}
 	_loaded_critic = {}
+	_loaded_group_booking = null
 	_loaded_aquarium = {}
 	business_history = BusinessHistory.new()
 	_loaded_business_history = null
@@ -2403,6 +2429,7 @@ func _load_autosave() -> bool:
 
 
 func _load_autosave_sections() -> bool:
+	_booking_paid_total = 0
 	curb_appeal_score = 0.0
 	curb_appeal_factor = 1.0
 	_last_team_activity.clear()
@@ -2424,6 +2451,7 @@ func _load_autosave_sections() -> bool:
 	_loaded_reorder = null
 	_loaded_deliveries = null
 	_loaded_weather = null
+	_loaded_group_booking = null
 	if not SaveSystem.list_slots().has(save_slot):
 		return false
 	# Missing sections are skipped by SaveSystem: old runs stay out of the guide.
@@ -2497,6 +2525,11 @@ func _load_autosave_sections() -> bool:
 	if not _loaded_critic.is_empty():
 		candidate.critic.from_dict(_loaded_critic)
 	_loaded_critic = {}
+	group_booking = _loaded_group_booking if _loaded_group_booking != null \
+		else GroupBooking.new(BOOKING_TUNING)
+	_loaded_group_booking = null
+	_booking_paid_total = 0
+	sim.configure_booking(group_booking)
 	# Saved tanks keep their cleaning days; any other tank starts clean today.
 	sim.aquarium.restore(world.grid, _loaded_aquarium if not _loaded_aquarium.is_empty()
 		else {"version": AquariumCare.SAVE_VERSION, "tanks": []}, Clock.sim.day)
@@ -2787,6 +2820,105 @@ func _on_aquarium_changed() -> void:
 
 func _capture_critic() -> Dictionary:
 	return sim.critic.to_dict()
+
+
+func _capture_bookings() -> Dictionary:
+	if group_booking == null or owner_progress.level < BOOKING_TUNING.unlock_level \
+			and not group_booking.has_active_booking():
+		return {}
+	return group_booking.to_dict()
+
+
+func _restore_bookings(data: Dictionary) -> bool:
+	var candidate: GroupBooking = GroupBooking.new(BOOKING_TUNING)
+	if not data.is_empty() and not candidate.from_dict(data):
+		return false
+	_loaded_group_booking = candidate
+	return true
+
+
+func _refresh_booking_offer() -> void:
+	if _menu_panel == null:
+		return
+	var reservation: String = ""
+	var service_card: String = ""
+	if group_booking != null and group_booking.has_active_booking():
+		var accepted: Dictionary = group_booking.booking
+		var today_booking: bool = Clock.sim.day == int(accepted.get("service_day", -1))
+		var day_word: String = "today" if today_booking else "tomorrow"
+		var slot_minute: int = int(accepted.get("slot_minute", 0))
+		var slot_end: int = slot_minute + BOOKING_TUNING.slot_minutes
+		reservation = "Reserved: %s for %d %s, arriving %s–%s. Customer deposit received: %s." % [
+			String(accepted.get("occasion", "Group")), int(accepted.get("party_size", 0)),
+			day_word, Fmt.clock(slot_minute), Fmt.clock(slot_end),
+			Fmt.money(int(accepted.get("deposit_amount", 0)))]
+		if today_booking and int(accepted.get("held_group_id", 0)) > 0:
+			service_card = "Reserved for today's %s: %d guests arriving %s–%s. New walk-ins will use other groups while this group clears." % [
+				String(accepted.get("occasion", "booking")), int(accepted.get("party_size", 0)),
+				Fmt.clock(slot_minute), Fmt.clock(slot_end)]
+	if has_node("HUD"):
+		$HUD.set_booking_status(service_card)
+	var held_group_id: int = 0
+	var marker_text: String = ""
+	if group_booking != null and group_booking.has_active_booking() \
+			and Clock.sim.day == int(group_booking.booking.get("service_day", -1)):
+		held_group_id = int(group_booking.booking.get("held_group_id", 0))
+		if held_group_id > 0:
+			marker_text = "Reserved\n%d guests" % int(group_booking.booking.get("party_size", 0))
+	if has_node("ShopView"):
+		($ShopView as ShopView).set_booking_marker(held_group_id, marker_text)
+	var offered: bool = Clock.sim.phase == SimClock.Phase.MORNING \
+		and group_booking != null and not group_booking.offer.is_empty() \
+		and not group_booking.has_active_booking()
+	if not offered:
+		_menu_panel.set_booking_offer(false, "", reservation)
+		return
+	var offer: Dictionary = group_booking.offer
+	var occasion: String = String(offer.get("occasion", "A group"))
+	var party_size: int = int(offer.get("party_size", 0))
+	var slot: int = int(offer.get("slot_minute", 0))
+	var dish: RecipeDef = menu_settings.recipe(StringName(str(offer.get("recipe_id", "")))) \
+		if menu_settings != null else null
+	var dish_name: String = dish.display_name if dish != null else "a dish from your menu"
+	var deposit: int = party_size * BOOKING_TUNING.deposit_per_guest
+	_menu_panel.set_booking_offer(true, "%s for %d arriving between %s and %s tomorrow. Mostly %s. Accept to receive a %s customer deposit; it counts against their final bill." % [
+		occasion, party_size, Fmt.clock(slot), Fmt.clock(slot + BOOKING_TUNING.slot_minutes),
+		dish_name, Fmt.money(deposit)], reservation)
+
+
+func _plan_morning_booking() -> void:
+	if group_booking == null or sim == null or menu_settings == null:
+		return
+	var menu_ids: Array[StringName] = []
+	for recipe: RecipeDef in menu_settings.enabled_recipes():
+		if sim.menu.has(recipe):
+			menu_ids.append(recipe.id)
+	group_booking.plan_offer(Clock.sim.day, owner_progress.level, menu_ids,
+		Clock.sim.display_open_minute, Clock.sim.display_close_minute,
+		GameState.rng.bind(&"bookings"))
+	_refresh_booking_offer()
+
+
+func _on_booking_accept_requested() -> void:
+	if Clock.sim.phase != SimClock.Phase.MORNING or group_booking == null:
+		_refresh_booking_offer()
+		return
+	var accepted: Dictionary = group_booking.accept_offer(Clock.sim.day)
+	if accepted.is_empty():
+		_refresh_booking_offer()
+		return
+	_booking_paid_total = 0
+	Economy.add_cash(int(accepted["deposit_amount"]), Ledger.BOOKING_DEPOSIT,
+		"Customer booking advance")
+	if sim != null:
+		sim.configure_booking(group_booking)
+	_refresh_booking_offer()
+
+
+func _on_booking_decline_requested() -> void:
+	if Clock.sim.phase == SimClock.Phase.MORNING and group_booking != null:
+		group_booking.decline_offer(Clock.sim.day)
+	_refresh_booking_offer()
 
 
 ## Validate now, install with the rest of the load once the new session exists.
@@ -3926,6 +4058,7 @@ func _begin_morning() -> void:
 	_refresh_sold_out_hud()
 	_expire_stock()
 	_restock()
+	_plan_morning_booking()
 	Economy.ledger.prune_before(Clock.sim.day - Ledger.HISTORY_DAYS)
 	_report.hide()
 	if use_saves and _skip_next_autosave:
@@ -4635,15 +4768,73 @@ func _charge_closing_costs() -> void:
 
 
 func _on_customer_paid(customer: CustomerAgent, order: Order, amount: int) -> void:
-	if not order.paid:
-		order.paid = true
-		PurchaseBasis.combine(_food_cost_today, {"cost": order.ingredient_cost,
-			"recorded": order.ingredient_cost_recorded})
-	Economy.add_cash(amount, Ledger.SALE)
-	var tip: int = sim.regular_tip(customer, order)
-	if tip > 0:
-		Economy.add_cash(tip, Ledger.TIP)
+	if order.paid:
+		return
+	order.paid = true
+	PurchaseBasis.combine(_food_cost_today, {"cost": order.ingredient_cost,
+		"recorded": order.ingredient_cost_recorded})
+	var booking_member: bool = customer.party != null and customer.party.booking_owned \
+		and group_booking != null and group_booking.has_active_booking() \
+		and customer.party.booking_id == int(group_booking.booking.get("booking_id", 0))
+	if booking_member:
+		_booking_paid_total += amount
+	else:
+		Economy.add_cash(amount, Ledger.SALE)
+		var tip: int = sim.regular_tip(customer, order)
+		if tip > 0:
+			Economy.add_cash(tip, Ledger.TIP)
 	dishes_sold_today[order.recipe_id] = dishes_sold_today.get(order.recipe_id, 0) + 1
+
+
+func _settle_booking_after_departure(customer: CustomerAgent, reason: StringName) -> void:
+	if customer == null or customer.party == null or not customer.party.booking_owned \
+			or group_booking == null or not group_booking.has_active_booking() \
+			or customer.party.booking_id != int(group_booking.booking.get("booking_id", 0)):
+		return
+	var review: Dictionary = sim.booking_review_results.get(customer.party.booking_id, {})
+	if not review.is_empty() and (not bool(review.get("no_seat", false)) or reason == &"no_table"):
+		_settle_booking(customer.party.booking_id, review)
+
+
+func _settle_due_booking_at_close(day: int) -> void:
+	if group_booking == null or not group_booking.has_active_booking() \
+			or int(group_booking.booking.get("service_day", 0)) > day:
+		return
+	var booking_id: int = int(group_booking.booking.get("booking_id", 0))
+	var review: Dictionary = sim.finalize_booking_review(booking_id, true)
+	if not review.is_empty():
+		_settle_booking(booking_id, review)
+
+
+func _settle_booking(booking_id: int, review: Dictionary) -> void:
+	if group_booking == null or not group_booking.has_active_booking() \
+			or booking_id != int(group_booking.booking.get("booking_id", 0)):
+		return
+	var booking: Dictionary = group_booking.booking
+	var no_seat: bool = bool(review.get("no_seat", false))
+	if not group_booking.claim_effect(booking_id,
+			GroupBooking.EFFECT_NO_SEAT if no_seat else GroupBooking.EFFECT_PAYMENT):
+		return
+	if not group_booking.claim_effect(booking_id, GroupBooking.EFFECT_REVIEW):
+		return
+	if no_seat:
+		var refund: Dictionary = BookingSettlement.no_seat_refund(booking)
+		if not refund.is_empty():
+			Economy.add_cash(int(refund["amount"]), refund["category"], String(refund["note"]))
+		if group_booking.settle(booking_id, true):
+			_booking_paid_total = 0
+			_refresh_booking_offer()
+		return
+	for movement: Dictionary in BookingSettlement.pay_bill(booking, _booking_paid_total):
+		Economy.add_cash(int(movement["amount"]), movement["category"], String(movement["note"]))
+	if bool(review.get("good_service", false)):
+		var tip: int = BookingSettlement.good_service_tip(_booking_paid_total,
+			int(review.get("stars", 0)), BOOKING_TUNING)
+		if tip > 0 and group_booking.claim_effect(booking_id, GroupBooking.EFFECT_TIP):
+			Economy.add_cash(tip, Ledger.TIP, "Booking service tip")
+	if group_booking.settle(booking_id):
+		_booking_paid_total = 0
+		_refresh_booking_offer()
 
 
 func _on_staff_task_completed(task: SimTask) -> void:
@@ -4676,8 +4867,13 @@ func _on_service_closed(day: int) -> void:
 		sim.demand_factor, demand_tuning)
 	_remember_menu_quality()
 	_charge_closing_costs()
-	# Capture business profit before milestone cash or financing enters the books.
-	var operating_profit: int = Economy.ledger.day_profit(day)
+	_settle_due_booking_at_close(day)
+	# Keep the established close-time cash-profit basis, excluding only booking
+	# advances/refunds so those customer liabilities cannot earn profit awards.
+	var day_movements: Dictionary = Economy.ledger.day_totals(day)
+	var operating_profit: int = Economy.ledger.day_profit(day) \
+		- int(day_movements.get(Ledger.BOOKING_DEPOSIT, 0)) \
+		- int(day_movements.get(Ledger.BOOKING_REFUND, 0))
 	staff_roster.close_growth_day()
 	var five_star_reviews: int = 0
 	for row: Dictionary in sim.reviews_today:

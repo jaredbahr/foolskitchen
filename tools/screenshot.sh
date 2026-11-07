@@ -23,7 +23,7 @@
 # Plain Main default/quarter frame60 captures use seed1 and neighbourhood photo time4s; unrelated review modes retain their original behavior.
 # --neighbourhood-review=street --speed=0 --frames=60 uses the real road centre through the street-only pan clamp (photo override only).
 # --weather-review=sunny --menu --speed=0 --frames=60 (or rain without --menu) forces explicitly unsaved morning weather after the real seed-1 selection.
-# --joined-tables-review --speed=0 --frames=90 shows one real party of six after normal table moves/opening/walking (explicit unsaved fixture).
+# --joined-tables-review --speed=0 --frames=12,90 shows the real morning offer and held joined group (explicit unsaved fixture).
 # --restroom-review --speed=0 --frames=12,30 shows two toilets, partitions, mirror and dryer, then person scale.
 # --blueprints=selection|ghost|stamped --speed=0 --frames=30 [--quarter=N] shows a table/rug box selection, rotated group ghost, or stamped pair.
 # --menu-boards-review --speed=0 --frames=12,30 shows a placed board and its inspector section choice, then the Menu theme readout.

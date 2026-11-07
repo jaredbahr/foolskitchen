@@ -14,6 +14,9 @@ const LOAN_REPAYMENT: StringName = &"loan_repayment"
 const MILESTONE_BONUS: StringName = &"milestone_bonus"
 const BREAKAGES: StringName = &"breakages"
 const CAT_FOOD: StringName = &"cat_food"
+## Customer advances are cash movements, never earned operating income.
+const BOOKING_DEPOSIT: StringName = &"booking_deposit"
+const BOOKING_REFUND: StringName = &"booking_refund"
 const OTHER: StringName = &"other"
 const HISTORY_DAYS: int = 30
 

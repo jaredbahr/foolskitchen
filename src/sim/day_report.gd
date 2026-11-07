@@ -4,7 +4,7 @@ extends RefCounted
 
 const NON_OPERATING_CATEGORIES: Array[StringName] = [
 	Ledger.BANK_LOAN, Ledger.LOAN_INTEREST, Ledger.LOAN_REPAYMENT,
-	Ledger.MILESTONE_BONUS,
+	Ledger.MILESTONE_BONUS, Ledger.BOOKING_DEPOSIT, Ledger.BOOKING_REFUND,
 ]
 const MAX_MILESTONE_REWARD: int = 1000000
 const MAX_FORECAST_INTEGER: int = 9007199254740991
@@ -57,6 +57,8 @@ var regulars_lines: Array[String] = []
 ## The health inspector's visit today (#302), already player-facing: the grade,
 ## then the worst findings. Empty when none came; saved only when present.
 var inspection_lines: Array[String] = []
+## Exceptional booking outcomes for this service day, already player-facing.
+var booking_lines: Array[String] = []
 ## The disguised food critic's visit (#303): heading, verdict and headline
 ## quote, already player-facing; empty on days none reviewed.
 var critic_lines: Array[String] = []
@@ -213,6 +215,8 @@ func to_dict() -> Dictionary:
 	}
 	if not inspection_lines.is_empty():
 		result["inspection_lines"] = inspection_lines.duplicate()
+	if not booking_lines.is_empty():
+		result["booking_lines"] = booking_lines.duplicate()
 	var activity: Dictionary = StaffActivity.public_snapshot(staff_activity)
 	if not activity.is_empty():
 		result["staff_activity"] = activity
@@ -286,6 +290,11 @@ static func from_dict(data: Dictionary) -> DayReport:
 		for line: Variant in saved_inspection:
 			if line is String:
 				report.inspection_lines.append(line)
+	var saved_bookings: Variant = data.get("booking_lines", [])
+	if saved_bookings is Array:
+		for line: Variant in saved_bookings:
+			if line is String:
+				report.booking_lines.append(line)
 	var saved_critic: Variant = data.get("critic_lines", [])
 	if saved_critic is Array:
 		for line: Variant in saved_critic:

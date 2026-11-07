@@ -14,3 +14,7 @@ signal cash_changed(new_cash: int, delta: int, reason: StringName)
 
 ## Emitted for each accepted clock speed request, including keyboard shortcuts.
 signal speed_changed(speed: int)
+
+## Morning menu requests to accept or decline the one offered group booking.
+signal booking_accept_requested()
+signal booking_decline_requested()
