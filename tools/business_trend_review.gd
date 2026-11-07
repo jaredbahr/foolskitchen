@@ -1,12 +1,14 @@
 extends "res://src/world/main.gd"
-## Two actual, paid default weeks in ordinary Main. Only report presentation
+## Two actual, paid default weeks in ordinary Main (30 days with --trend-days=30).
+## Only report presentation
 ## follows the final close; no grants, setup edits, day reset or RNG reset.
 
-const REVIEW_DAYS: int = 14
 const REVIEW_SCENE: String = "res://tools/business_trend_review.tscn"
 const REVIEW_FRAME: int = 60
 
 var _review_ready: bool = false
+var _review_days: int = 14
+var _review_range: int = 7
 var _review_frames: int = 0
 var _review_out: String = ""
 var _review_initial_state: Dictionary = {}
@@ -22,6 +24,12 @@ func _ready() -> void:
 	for argument: String in OS.get_cmdline_user_args():
 		if argument.begins_with("--out="):
 			_review_out = argument.trim_prefix("--out=")
+		elif argument == "--trend-days=30":
+			_review_days = 30
+			_review_range = 30
+		elif argument.begins_with("--trend-days=") and argument != "--trend-days=7":
+			_review_fail("--trend-days must be 7 or 30")
+			return
 	if _review_out.is_empty() or FileAccess.file_exists(_review_out.path_join("shot_0060.png")) \
 			or FileAccess.file_exists(_review_out.path_join("shot_0060.json")):
 		_review_fail("a new capture output directory is required")
@@ -34,7 +42,7 @@ func _ready() -> void:
 		return
 	_review_initial_state = BalanceProbe._control_snapshot(self, sim)
 	# Main already prepared paid stock and the ordinary morning RNG state.
-	for day_index: int in range(REVIEW_DAYS):
+	for day_index: int in range(_review_days):
 		if not Clock.sim.start_service():
 			_review_fail("the ordinary service did not open")
 			return
@@ -57,7 +65,7 @@ func _ready() -> void:
 			return
 		_review_daily.append({"day": shown_report.day, "cash": Economy.cash,
 			"world_tick": world.now, "report": shown_report.to_dict(), "history_row": actual})
-		if day_index + 1 < REVIEW_DAYS and not Clock.sim.next_day():
+		if day_index + 1 < _review_days and not Clock.sim.next_day():
 			_review_fail("the next ordinary morning did not start")
 			return
 	Clock.set_speed(0)
@@ -68,9 +76,12 @@ func _ready() -> void:
 	if is_staff_visible() and not set_staff_visible(false):
 		_review_fail("the ordinary Staff close did not restore the report")
 		return
+	if _review_range == 30:
+		var button: Button = _report.get_node("%BusinessTrendSection/BusinessTrendRanges/Days30") as Button
+		button.pressed.emit()
 	print("BUSINESS_TREND_SERVICE_RESULT ", JSON.stringify({"scene": REVIEW_SCENE,
 		"profile": "ordinary Main seed1 default; no additional day or RNG reset; differs from BalanceProbe initialization",
-		"days": REVIEW_DAYS, "initial_state": _review_initial_state,
+		"days": _review_days, "initial_state": _review_initial_state,
 		"daily": _review_daily, "history": _review_history, "report": _review_report}))
 	_review_ready = true
 
@@ -84,7 +95,7 @@ func _process(_delta: float) -> void:
 		return
 	var section: Control = _report.get_node_or_null("%BusinessTrendSection") as Control
 	if section == null:
-		_review_fail("This week section is missing")
+		_review_fail("Business trend section is missing")
 		return
 	if _review_frames == 10:
 		var scroll: ScrollContainer = _report.get_node("Panel/Scroll") as ScrollContainer
@@ -104,23 +115,26 @@ func _review_validate() -> void:
 	var chart: BusinessTrendChart = _report.get_node("%BusinessTrendChart") as BusinessTrendChart
 	var scroll: ScrollContainer = _report.get_node("Panel/Scroll") as ScrollContainer
 	var drawing: Dictionary = chart.review_snapshot()
+	var rows: Array[Dictionary] = _review_history.slice(maxi(0, _review_history.size() - _review_range))
+	var days: Array[int] = []
 	var labels: PackedStringArray = []
-	for day: int in range(8, 15):
-		labels.append(BusinessTrendText.day_label(day))
-	if not _review_unchanged() or shown_report.day != REVIEW_DAYS \
-			or heading.text != "This week" or summary.text != BusinessTrendText.summary(_review_history, REVIEW_DAYS) \
+	for row: Dictionary in rows:
+		days.append(int(row["day"]))
+		labels.append(BusinessTrendText.day_label(int(row["day"])))
+	if not _review_unchanged() or shown_report.day != _review_days \
+			or heading.text != "Business trend" or summary.text != BusinessTrendText.summary(_review_history, _review_days) \
 			or summary.text.is_empty() or not _report.is_visible_in_tree() \
-			or drawing.get("days") != [8, 9, 10, 11, 12, 13, 14] \
-			or drawing.get("day_labels") != labels or drawing.get("today_index") != 6:
+			or drawing.get("days") != days or drawing.get("range_days") != _review_range \
+			or drawing.get("day_labels") != labels or drawing.get("today_index") != rows.size() - 1:
 		_review_fail("the native chart labels, today highlight or summary differ from actual history")
 		return
 	var profits: Array[int] = []
 	var served: Array[int] = []
-	for row: Dictionary in _review_history.slice(7):
+	for row: Dictionary in rows:
 		profits.append(int(row["dish_profit"]))
 		served.append(int(row["served"]))
 	if drawing.get("profit_values") != profits or drawing.get("served_values") != served \
-			or not _review_chart_geometry(chart, drawing, labels, profits, served):
+			or not _review_chart_geometry(chart, drawing, days):
 		_review_fail("the drawn values differ from actual paid service history")
 		return
 	var clip: Rect2 = scroll.get_global_rect().grow(1.0)
@@ -132,7 +146,7 @@ func _review_validate() -> void:
 			return
 	if is_staff_visible() or is_menu_visible() or is_stock_visible() \
 			or is_settings_visible() or is_goals_visible():
-		_review_fail("another native panel obscures This week")
+		_review_fail("another native panel obscures Business trend")
 		return
 	var png: String = _review_out.path_join("shot_0060.png")
 	if not FileAccess.file_exists(png):
@@ -157,14 +171,14 @@ func _review_validate() -> void:
 			"src/ui/evening_report.tscn", "tools/screenshot.gd"]:
 		source_hashes[path] = FileAccess.get_sha256("res://" + path)
 	print("BUSINESS_TREND_REPORT_REVIEW ", JSON.stringify({
-		"fixture": "actual ordinary Main seed1 default fourteen-day paid service; no grants, setup edits or saves",
+		"fixture": "actual ordinary Main seed1 default paid service; no grants, setup edits or saves",
 		"profile": "ordinary Main morning; no additional day or RNG reset; differs from BalanceProbe initialization",
-		"scene": REVIEW_SCENE, "seed": str(GameState.master_seed), "days": REVIEW_DAYS,
+		"scene": REVIEW_SCENE, "seed": str(GameState.master_seed), "days": _review_days,
 		"day": shown_report.day, "cash": Economy.cash, "world_tick": world.now,
 		"history": _review_history, "history_sha256": JSON.stringify(_review_history).sha256_text(),
 		"report": _review_report, "report_sha256": JSON.stringify(_review_report).sha256_text(),
 		"heading": heading.text, "summary": summary.text, "chart": drawing,
-		"player_meaning": "Two actual weeks supply the comparison; the last seven recorded days show dish profit and guests separately, with today highlighted.",
+		"player_meaning": "Actual paid service supplies the comparison and chart; the selected range shows dish profit and guests separately, with today highlighted.",
 		"section_rect": _review_rect(section), "summary_rect": _review_rect(summary),
 		"chart_rect": _review_rect(chart), "scroll_rect": _review_rect(scroll),
 		"viewport_rect": [viewport.position.x, viewport.position.y, viewport.size.x, viewport.size.y],
@@ -175,8 +189,7 @@ func _review_validate() -> void:
 	_review_ready = false
 
 
-func _review_chart_geometry(chart: BusinessTrendChart, drawing: Dictionary,
-		labels: PackedStringArray, profits: Array[int], served: Array[int]) -> bool:
+func _review_chart_geometry(chart: BusinessTrendChart, drawing: Dictionary, days: Array[int]) -> bool:
 	if drawing.get("chart_rect") != _review_rect(chart):
 		return false
 	var bounds: Rect2 = Rect2(Vector2.ZERO, chart.size).grow(1.0)
@@ -190,22 +203,22 @@ func _review_chart_geometry(chart: BusinessTrendChart, drawing: Dictionary,
 			return false
 		var plot: Rect2 = Rect2(float(values[0]), float(values[1]), float(values[2]), float(values[3]))
 		var bars: Array = track.get("bars", [])
-		if not bounds.encloses(plot) or bars.size() != 7 \
+		if not bounds.encloses(plot) or bars.size() != days.size() \
 				or float(track.get("zero_y", -1)) < plot.position.y \
 				or float(track.get("zero_y", -1)) > plot.end.y:
 			return false
-		var slot: float = plot.size.x / 7.0
-		for index: int in range(7):
+		for index: int in days.size():
 			var bar: Dictionary = bars[index]
 			var rect: Array = bar.get("rect", [])
-			var value_text: String = BusinessTrendText.profit_label(profits[index]) \
-				if key == "profit" else str(served[index])
-			if rect.size() != 4 or bar.get("day") != index + 8 or bar.get("index") != index \
+			if rect.size() != 4 or bar.get("day") != days[index] or bar.get("index") != index \
 					or not bounds.encloses(Rect2(float(rect[0]), float(rect[1]), float(rect[2]), float(rect[3]))):
 				return false
-			for text: String in [labels[index], value_text, BusinessTrendText.TODAY]:
-				if font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x > slot:
-					return false
+	for label: Dictionary in drawing.get("labels", []):
+		var rect: Array = label["rect"]
+		if not bounds.encloses(Rect2(float(rect[0]), float(rect[1]), float(rect[2]), float(rect[3]))) \
+				or font.get_string_size(String(label["text"]), HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x \
+				> float(label["width"]):
+			return false
 	return true
 
 

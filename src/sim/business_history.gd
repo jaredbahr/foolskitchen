@@ -2,7 +2,7 @@ class_name BusinessHistory
 extends RefCounted
 ## Detached closing summaries. Main owns when these join the morning save.
 
-const MAX_DAYS: int = 14
+const MAX_DAYS: int = 30
 const SAVE_VERSION: int = 1
 const MAX_EXACT_INTEGER: int = 9007199254740991
 const MAX_MONEY: int = 9223372036854775807
@@ -60,7 +60,7 @@ func capture() -> Dictionary:
 	return {"version": SAVE_VERSION, "days": days}
 
 
-## Validate every supplied row, even one older than the retained fourteen.
+## Validate every supplied row, even one older than the retained thirty.
 ## Keep the candidate detached and bounded; install only after all rows pass.
 func restore(data: Dictionary) -> bool:
 	if data.is_empty():
