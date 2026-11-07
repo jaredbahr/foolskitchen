@@ -71,8 +71,18 @@ func prioritizes_bussing(world: SimWorld, table_item_id: int) -> bool:
 	if state == null or kitchen == null or not kitchen.is_table_dirty(table_item_id):
 		return false
 	var booking_id: int = int(state.booking.get("booking_id", 0))
-	if _active_held_group(world, booking_id) == 0:
+	var group_id: int = _active_held_group(world, booking_id)
+	if group_id == 0:
 		return false
+	# The promise is fulfilled once this booking owns its joined group. Later
+	# departures still post ordinary bus jobs, but those must not outrank the
+	# remaining party members' food while their occupied table cannot be bused.
+	for agent: SimAgent in world.agents:
+		var guest: CustomerAgent = agent as CustomerAgent
+		if guest != null and guest.party != null and guest.party.booking_owned \
+				and guest.party.booking_id == booking_id and guest.party.seated \
+				and guest.party.table_item_id == group_id:
+			return false
 	for member: Variant in state.booking["held_group_members"]:
 		if int(member) == table_item_id:
 			return true

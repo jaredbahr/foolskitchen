@@ -740,6 +740,77 @@ func test_mid_edge_mop_yield_keeps_physical_ownership_until_the_edge_finishes() 
 	assert_eq(mop.posted_tick, 0)
 
 
+func test_seated_booking_ends_reserved_cleanup_urgency_but_keeps_ordinary_bus_jobs() -> void:
+	var fixture: Dictionary = _reservation_fixture()
+	var sim: RestaurantSim = fixture["sim"]
+	var model: GroupBooking = fixture["model"]
+	var tables: Array[PlacedItem] = fixture["tables"]
+	# Give the real single-file routing time without changing anyone's patience
+	# or positions. No food-service result is claimed by this selection test.
+	sim.world.clock.open_ticks = 3600
+	sim.world.clock.phase_tick = 1080 # The same 11:30 slot, now 12 ticks/minute.
+	var party: Party = sim.add_booking_party(sim.world.grid.entries()[0], model.booking)
+	assert_not_null(party)
+	if party == null:
+		return
+	for _tick: int in 600:
+		if party.seated:
+			break
+		sim.world.advance()
+	assert_true(party.seated, "all six real guests reached their actual reserved seats")
+	if not party.seated:
+		return
+	var group_id: int = int(model.booking["held_group_id"])
+	assert_eq(party.table_item_id, group_id, "the party stores the canonical joined-group identity")
+	assert_true(PartySeating.booking_valid(party, sim.world))
+	sim.kitchen.mark_table_dirty(tables[0].id)
+	var hold: BookingSeatHold = sim.world.booking_hold
+	var before: Dictionary = model.to_dict()
+	assert_false(hold.prioritizes_bussing(sim.world, tables[0].id))
+	# Explicit predicate controls: only the exact seated booking/group can end
+	# reservation urgency. Restore each field before inspecting live selection.
+	party.seated = false
+	assert_true(hold.prioritizes_bussing(sim.world, tables[0].id))
+	party.seated = true
+	party.booking_id += 1
+	assert_true(hold.prioritizes_bussing(sim.world, tables[0].id))
+	party.booking_id -= 1
+	party.booking_owned = false
+	assert_true(hold.prioritizes_bussing(sim.world, tables[0].id))
+	party.booking_owned = true
+	party.table_item_id = -1
+	assert_true(hold.prioritizes_bussing(sim.world, tables[0].id))
+	party.table_item_id = group_id
+	assert_false(hold.prioritizes_bussing(sim.world, tables[0].id))
+	assert_eq(model.to_dict(), before, "the priority query never mutates or reselects the hold")
+	var worker: StaffAgent = StaffAgent.new(&"server", 3)
+	worker.cell = _free_queue_cell(sim.world)
+	sim.world.add_agent(worker)
+	var mop: SimTask = _claimed_mop(sim.world, worker)
+	worker.tick(sim.world)
+	assert_eq(worker.task, mop, "a seated booking cannot interrupt navigation to ordinary mopping")
+	assert_eq(mop.state, SimTask.State.CLAIMED)
+	worker.call("_let_go", sim.world)
+	sim.world.board.cancel(mop, &"selection_control_finished")
+	var choices: StaffJobPriorities = StaffJobPriorities.new(&"server")
+	assert_true(choices.set_priority(&"serving", StaffJobPriorities.Level.HIGH))
+	assert_true(choices.set_priority(&"bussing", StaffJobPriorities.Level.LOW))
+	assert_true(worker.set_job_priorities(choices))
+	var service: SimTask = SimTask.new(&"take_order", &"server", "Ordinary service")
+	service.steps = [TaskStep.go_to_cell(worker.cell), TaskStep.work(1)] as Array[TaskStep]
+	sim.world.board.post(service, sim.world.now)
+	worker.call("_try_claim", sim.world)
+	assert_not_null(worker.task)
+	if worker.task != null:
+		assert_true(worker.task.kind in [&"take_order", &"deliver"],
+			"eligible serving work regains its saved priority after seating")
+	assert_true(sim.kitchen.is_table_dirty(tables[0].id), "normal cleanup was not removed or completed")
+	var has_bus: bool = false
+	for task: SimTask in sim.world.board.open_tasks():
+		has_bus = has_bus or task.kind == &"bus_table" and task.first_item_id() == tables[0].id
+	assert_true(has_bus, "the same ordinary bus job remains available")
+
+
 func _claimed_mop(world: SimWorld, worker: StaffAgent, target: Vector2i = SimGrid.NO_CELL) -> SimTask:
 	var mop: SimTask = SimTask.new(&"clean_spot", &"any", "Mop a floor spot")
 	mop.steps = [TaskStep.go_to_cell(worker.cell if target == SimGrid.NO_CELL else target),

@@ -1994,7 +1994,11 @@ changes. The one claim exception is a floor mop still navigating before its
 first WORK step: an eligible reserved bus task returns that same mop to the
 normal queue without counting a failed attempt. Existing motion finishes its
 real edge before the new task runs. Actual mopping, service and carried food
-are never interrupted. Empty dirty groups rank before occupied groups when
+are never interrupted. Once the matching booked party is seated in that held
+joined group, reserved urgency ends: partial departures still create ordinary
+bus jobs, which cannot take priority over that party's remaining meals merely
+because its booking stays active until everyone leaves. Empty dirty groups rank
+before occupied groups when
 the normal hold chooses a new group. Tick-driven booking presentation refreshes
 only on a changed day, phase or held group; player actions refresh immediately.
 
