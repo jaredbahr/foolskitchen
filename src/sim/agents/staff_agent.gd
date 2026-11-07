@@ -284,6 +284,9 @@ func _eligible(t: SimTask, job_level: int, highest_priorities: Dictionary[String
 func _score(world: SimWorld, t: SimTask) -> float:
 	if _job_level(t) == StaffJobPriorities.Level.OFF:
 		return 0.0
+	if t.state == SimTask.State.OPEN and t.kind == &"bus_table" \
+			and world.booking_hold != null and world.booking_hold.defers_bussing(world, t.first_item_id()):
+		return 0.0
 	var for_role := t.role
 	var role_prio: int = priorities.get(for_role, 0)
 	if _is_clean_spot(t) and role != &"cleaner":

@@ -767,6 +767,7 @@ func test_seated_booking_ends_reserved_cleanup_urgency_but_keeps_ordinary_bus_jo
 	var hold: BookingSeatHold = sim.world.booking_hold
 	var before: Dictionary = model.to_dict()
 	assert_false(hold.prioritizes_bussing(sim.world, tables[0].id))
+	assert_false(hold.defers_bussing(sim.world, tables[0].id), "a fulfilled booking keeps ordinary cleanup eligibility")
 	# Explicit predicate controls: only the exact seated booking/group can end
 	# reservation urgency. Restore each field before inspecting live selection.
 	party.seated = false
@@ -809,6 +810,150 @@ func test_seated_booking_ends_reserved_cleanup_urgency_but_keeps_ordinary_bus_jo
 	for task: SimTask in sim.world.board.open_tasks():
 		has_bus = has_bus or task.kind == &"bus_table" and task.first_item_id() == tables[0].id
 	assert_true(has_bus, "the same ordinary bus job remains available")
+
+
+func test_open_reserved_bus_jobs_wait_for_prior_diners_then_regain_priority_after_physical_release() -> void:
+	var fixture: Dictionary = _reservation_fixture()
+	var sim: RestaurantSim = fixture["sim"]
+	var model: GroupBooking = fixture["model"]
+	var tables: Array[PlacedItem] = fixture["tables"]
+	var diner: CustomerAgent = _prior_diner_at_seat(sim, tables[2])
+	sim.kitchen.mark_dining_group_dirty(tables[0].id)
+	var buses: Array[SimTask] = []
+	var original: Dictionary[int, Array] = {}
+	for task: SimTask in sim.world.board.open_tasks():
+		if task.kind == &"bus_table":
+			buses.append(task)
+			original[task.id] = [task.posted_tick, task.drops]
+	assert_eq(buses.size(), 3)
+	var before: Dictionary = model.to_dict()
+	for table: PlacedItem in tables:
+		assert_true(sim.world.booking_hold.defers_bussing(sim.world, table.id), "one occupied member defers the whole joined cleanup")
+	assert_eq(model.to_dict(), before, "deferral is a pure observation")
+	var worker: StaffAgent = StaffAgent.new(&"server", 3)
+	worker.cell = _free_queue_cell(sim.world)
+	sim.world.add_agent(worker)
+	var choices: StaffJobPriorities = StaffJobPriorities.new(&"server")
+	assert_true(choices.set_priority(&"serving", StaffJobPriorities.Level.HIGH))
+	assert_true(choices.set_priority(&"bussing", StaffJobPriorities.Level.LOW))
+	assert_true(worker.set_job_priorities(choices))
+	# Controlled READY-delivery selection, not a claim that a meal was cooked.
+	var delivery: SimTask = SimTask.new(&"deliver", &"server", "Ready meal delivery")
+	delivery.priority = 3
+	delivery.steps = [TaskStep.go_to_cell(worker.cell), TaskStep.work(1000)] as Array[TaskStep]
+	sim.world.board.post(delivery, sim.world.now)
+	worker.call("_try_claim", sim.world)
+	assert_eq(worker.task, delivery, "prior diners' service wins while their table cannot yet stay clean")
+	for bus: SimTask in buses:
+		assert_eq(bus.state, SimTask.State.OPEN)
+		assert_eq(sim.world.board.get_task(bus.id), bus)
+	# Unit departure control: normal cleanup defers the reservation until the
+	# real body moves off its seat. No payment or full meal is claimed here.
+	var seat: Vector2i = diner.seat_cell
+	diner._leave(sim.world, sim, &"happy")
+	assert_true(sim.world.booking_hold.defers_bussing(sim.world, tables[0].id), "LEAVING alone does not free a physical seat")
+	for _tick: int in 12:
+		if tables[2].reserved_by(seat) == -1:
+			break
+		# Advance only this release's physical actor/movement in the selection
+		# fixture; other staff must not race the following claim assertion.
+		sim.world.now += 1
+		sim.world.movement.begin_tick(sim.world)
+		diner.tick(sim.world)
+	assert_true(diner.cell != seat)
+	assert_eq(tables[2].reserved_by(seat), -1)
+	for bus: SimTask in buses:
+		assert_false(sim.world.booking_hold.defers_bussing(sim.world, bus.first_item_id()))
+		assert_true(sim.world.booking_hold.prioritizes_bussing(sim.world, bus.first_item_id()))
+		assert_eq(bus.state, SimTask.State.OPEN, "deferral never cancels or completes the real job")
+		assert_eq([bus.posted_tick, bus.drops], original[bus.id])
+		assert_eq(sim.world.board.get_task(bus.id), bus)
+	worker.call("_let_go", sim.world)
+	sim.world.board.drop(delivery, &"selection_control")
+	worker.call("_try_claim", sim.world)
+	assert_true(buses.has(worker.task), "the same reserved bus jobs immediately outrank high service after release")
+
+
+func test_reserved_bus_deferral_does_not_escape_its_live_group_day_or_role_controls() -> void:
+	for condition: String in ["active", "settled", "wrong_day", "before_hold", "invalid_group", "unrelated", "off", "wrong_role"]:
+		var fixture: Dictionary = _reservation_fixture([7, 10] as Array[int])
+		var sim: RestaurantSim = fixture["sim"]
+		var model: GroupBooking = fixture["model"]
+		var tables: Array[PlacedItem] = fixture["tables"]
+		_prior_diner_at_seat(sim, tables[0])
+		var target: PlacedItem = tables[3] if condition == "unrelated" else tables[2]
+		sim.kitchen.mark_table_dirty(target.id)
+		if condition == "settled":
+			var id: int = int(model.booking["booking_id"])
+			assert_true(model.claim_effect(id, GroupBooking.EFFECT_NO_SEAT))
+			assert_true(model.claim_effect(id, GroupBooking.EFFECT_REVIEW))
+			assert_true(model.settle(id, true))
+		elif condition == "wrong_day":
+			sim.world.clock.day = 3
+		elif condition == "before_hold":
+			sim.world.clock.phase_tick = 0
+		elif condition == "invalid_group":
+			assert_true(sim.world.grid.remove(tables[1].id))
+		assert_eq(sim.world.booking_hold.defers_bussing(sim.world, target.id), condition in ["active", "off", "wrong_role"], condition)
+		var worker: StaffAgent = StaffAgent.new(&"cook" if condition == "wrong_role" else &"server", 3)
+		worker.cell = _free_queue_cell(sim.world)
+		sim.world.add_agent(worker)
+		if condition == "off":
+			var choices: StaffJobPriorities = StaffJobPriorities.new(&"server")
+			assert_true(choices.set_priority(&"bussing", StaffJobPriorities.Level.OFF))
+			assert_true(worker.set_job_priorities(choices))
+		if condition in ["off", "wrong_role"]:
+			# Check OFF/role independently, after the hold stops deferring.
+			sim.world.clock.day = 3
+		var bus: SimTask = null
+		for candidate: SimTask in sim.world.board.open_tasks():
+			if candidate.kind == &"bus_table" and candidate.first_item_id() == target.id:
+				bus = candidate
+		assert_not_null(bus)
+		if bus == null:
+			return
+		var score: float = worker.call("_score", sim.world, bus)
+		assert_eq(score > 0.0, condition in ["settled", "wrong_day", "before_hold", "invalid_group", "unrelated"], condition)
+
+
+func test_booking_deferral_does_not_preempt_a_bus_claim_made_before_the_hold() -> void:
+	var fixture: Dictionary = _reservation_fixture()
+	var sim: RestaurantSim = fixture["sim"]
+	var tables: Array[PlacedItem] = fixture["tables"]
+	_prior_diner_at_seat(sim, tables[0])
+	sim.world.clock.phase_tick = 0 # Before the hold starts.
+	sim.kitchen.mark_table_dirty(tables[2].id)
+	var worker: StaffAgent = StaffAgent.new(&"server", 3)
+	worker.cell = _free_queue_cell(sim.world)
+	sim.world.add_agent(worker)
+	worker.call("_try_claim", sim.world)
+	var bus: SimTask = worker.task
+	assert_not_null(bus)
+	if bus == null:
+		return
+	assert_eq(bus.kind, &"bus_table")
+	sim.world.clock.phase_tick = 90
+	assert_true(sim.world.booking_hold.defers_bussing(sim.world, tables[2].id))
+	worker.tick(sim.world)
+	assert_eq(worker.task, bus, "this change intentionally does not preempt an existing bus claim")
+	assert_eq(bus.state, SimTask.State.CLAIMED)
+	assert_eq(bus.drops, 0)
+
+
+func _prior_diner_at_seat(sim: RestaurantSim, table: PlacedItem) -> CustomerAgent:
+	# Explicit component-state admission, not a normal-service/meal fixture.
+	# Main lifecycle and the unchanged normal soak provide the full-game proof.
+	sim.world.clock.phase = SimClock.Phase.MORNING
+	var diner: CustomerAgent = sim.add_customer(sim.world.grid.entries()[0], _rng(31601))
+	var seat: Vector2i = table.seat_cells[0]
+	assert_true(table.reserve(seat, diner.id))
+	assert_true(sim.world.reset_agent_position(diner, seat))
+	diner.table_item_id = table.id
+	diner.booked_table_ids = sim.world.grid.dining_group_members(table.id)
+	diner.seat_cell = seat
+	diner.state = CustomerAgent.State.EATING
+	sim.world.clock.phase = SimClock.Phase.OPEN
+	return diner
 
 
 func _claimed_mop(world: SimWorld, worker: StaffAgent, target: Vector2i = SimGrid.NO_CELL) -> SimTask:

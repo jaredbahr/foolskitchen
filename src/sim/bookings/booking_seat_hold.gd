@@ -74,6 +74,36 @@ func prioritizes_bussing(world: SimWorld, table_item_id: int) -> bool:
 	var group_id: int = _active_held_group(world, booking_id)
 	if group_id == 0:
 		return false
+	if _seated_booking_owns_group(world, booking_id, group_id):
+		return false
+	for member: Variant in state.booking["held_group_members"]:
+		if int(member) == table_item_id:
+			return true
+	return false
+
+
+## Joined departures dirty every original member. Cleaning those members while
+## prior diners still hold seats delays their food and must be repeated later.
+## Keep these OPEN jobs queued until the promised group is physically vacated.
+func defers_bussing(world: SimWorld, table_item_id: int) -> bool:
+	if state == null:
+		return false
+	var booking_id: int = int(state.booking.get("booking_id", 0))
+	var group_id: int = _active_held_group(world, booking_id)
+	if group_id == 0 or not state.booking["held_group_members"].has(table_item_id) \
+			or _seated_booking_owns_group(world, booking_id, group_id):
+		return false
+	for member: Variant in state.booking["held_group_members"]:
+		var table: PlacedItem = world.grid.item(int(member))
+		for seat: Vector2i in table.seat_cells:
+			var diner: CustomerAgent = world.agent(table.reserved_by(seat)) as CustomerAgent
+			if diner != null and (diner.party == null or not diner.party.booking_owned \
+					or diner.party.booking_id != booking_id):
+				return true
+	return false
+
+
+func _seated_booking_owns_group(world: SimWorld, booking_id: int, group_id: int) -> bool:
 	# The promise is fulfilled once this booking owns its joined group. Later
 	# departures still post ordinary bus jobs, but those must not outrank the
 	# remaining party members' food while their occupied table cannot be bused.
@@ -82,9 +112,6 @@ func prioritizes_bussing(world: SimWorld, table_item_id: int) -> bool:
 		if guest != null and guest.party != null and guest.party.booking_owned \
 				and guest.party.booking_id == booking_id and guest.party.seated \
 				and guest.party.table_item_id == group_id:
-			return false
-	for member: Variant in state.booking["held_group_members"]:
-		if int(member) == table_item_id:
 			return true
 	return false
 

@@ -1989,6 +1989,12 @@ ordinary patience. The party controller's once-per-world-tick guard remains.
 
 Dirty reserved tables form one narrow staff-selection exception: eligible
 reserved bussing precedes other positive saved job tiers and distance scores.
+Before the booked party seats, OPEN cleanup jobs for its current held joined
+group wait while a prior diner still physically owns any group seat. Every
+departure dirties the joined members, so cleaning them mid-meal both delays
+the remaining diners' food and must be repeated. These jobs keep their IDs,
+post times and failure counts; the last physical seat release restores their
+eligibility and reservation priority. No already-claimed bus job is preempted.
 Jobs set Off and role/target eligibility remain absolute; no saved priority
 changes. The one claim exception is a floor mop still navigating before its
 first WORK step: an eligible reserved bus task returns that same mop to the
