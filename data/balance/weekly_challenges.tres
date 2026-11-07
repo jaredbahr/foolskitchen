@@ -73,7 +73,7 @@ kind = 3
 text_template = "Get {target} good reviews this week"
 base_target = 7
 per_level = 3
-reward_cash = 145
+reward_cash = 100
 
 [sub_resource type="Resource" id="challenge_dish_1"]
 script = ExtResource("2_challenge")
