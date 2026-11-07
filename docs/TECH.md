@@ -1989,8 +1989,12 @@ ordinary patience. The party controller's once-per-world-tick guard remains.
 
 Dirty reserved tables form one narrow staff-selection exception: eligible
 reserved bussing precedes other positive saved job tiers and distance scores.
-Jobs set Off, role/target eligibility and already-claimed work remain absolute;
-no saved priority changes. Empty dirty groups rank before occupied groups when
+Jobs set Off and role/target eligibility remain absolute; no saved priority
+changes. The one claim exception is a floor mop still navigating before its
+first WORK step: an eligible reserved bus task returns that same mop to the
+normal queue without counting a failed attempt. Existing motion finishes its
+real edge before the new task runs. Actual mopping, service and carried food
+are never interrupted. Empty dirty groups rank before occupied groups when
 the normal hold chooses a new group. Tick-driven booking presentation refreshes
 only on a changed day, phase or held group; player actions refresh immediately.
 
@@ -2006,8 +2010,10 @@ group and stages level 2/next morning, while keeping ordinary arrivals, stock
 purchases, staff, kitchen, patience and eating duration. Each seed reports model
 settlement separately from actual seating, paid members and advance application
 or refund; it is not proof for every 6–10-person layout. The occupied-at-slot
-regression alone discloses staged long meals, delayed unrelated arrivals and
-real extra ingredient purchases to isolate the reservation boundary.
+regression alone discloses a later legal 16:15 slot, staged long meals, delayed
+unrelated arrivals and real extra ingredient purchases to isolate the reservation
+boundary. It observes complete physical admission before releasing the diners;
+the fixed slot+30 grace, ordinary staff capacity and patience remain unchanged.
 
 **Lighting and frontage (FK-055):** Main owns one `lighting_rig.tscn` with a
 warm directional key (main's colour, energy and shadows), low-energy cool fill

@@ -133,6 +133,8 @@ func tick(world: SimWorld) -> void:
 		return
 	if not _maintain_claim(world):
 		return
+	if _yield_travelling_mop_for_booking(world):
+		return
 	_run_step(world)
 	_recover_no_progress(world)
 
@@ -153,6 +155,28 @@ func _maintain_claim(world: SimWorld) -> bool:
 		_drop(world, &"timeout")
 		return false
 	return true
+
+
+## Only travel to an unstarted floor mop may yield. Productive work, service
+## and carried meals keep their claims. clear_path preserves a real mid-edge
+## stop; the new bus claim cannot move or work again in this same tick.
+func _yield_travelling_mop_for_booking(world: SimWorld) -> bool:
+	if task.kind != &"clean_spot" or step_index != 0 or task.steps.is_empty() \
+			or task.steps[0].kind != TaskStep.Kind.GO_TO_CELL \
+			or world.board.get_task(task.id) != task or world.booking_hold == null:
+		return false
+	for candidate: SimTask in world.open_tasks_this_tick():
+		if candidate.state != SimTask.State.OPEN or world.board.get_task(candidate.id) != candidate \
+				or candidate.kind != &"bus_table" or _score(world, candidate) <= 0.0 \
+				or not world.booking_hold.prioritizes_bussing(world, candidate.first_item_id()):
+			continue
+		var mop: SimTask = task
+		_let_go(world)
+		world.board.drop(mop, &"reserved_bussing", false)
+		world.log_event("%s paused mopping for reserved table cleanup" % _name())
+		_try_claim(world)
+		return true
+	return false
 
 
 func _recover_no_progress(world: SimWorld) -> void:

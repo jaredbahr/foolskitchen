@@ -619,6 +619,130 @@ func test_new_reserved_cleanup_does_not_interrupt_already_claimed_service() -> v
 	assert_eq(sim.world.board.open_tasks().size(), 1, "reserved cleanup waits for an idle eligible worker")
 
 
+func test_travelling_mop_yields_repeatedly_without_losing_work_or_failure_budget() -> void:
+	var fixture: Dictionary = _reservation_fixture()
+	var sim: RestaurantSim = fixture["sim"]
+	var tables: Array[PlacedItem] = fixture["tables"]
+	var worker: StaffAgent = StaffAgent.new(&"server", 3)
+	worker.cell = _free_queue_cell(sim.world)
+	sim.world.add_agent(worker)
+	var mop: SimTask = _claimed_mop(sim.world, worker)
+	mop.drops = TaskBoard.MAX_DROPS - 1
+	var original_id: int = mop.id
+	var posted_tick: int = mop.posted_tick
+	for _cycle: int in 4:
+		sim.kitchen.mark_table_dirty(tables[2].id)
+		worker.tick(sim.world)
+		assert_eq(mop.state, SimTask.State.OPEN)
+		assert_eq(mop.claimed_by, -1)
+		assert_eq(mop.claimed_tick, -1)
+		assert_eq(mop.drops, TaskBoard.MAX_DROPS - 1)
+		assert_eq(mop.posted_tick, posted_tick)
+		assert_eq(sim.world.board.get_task(original_id), mop)
+		assert_not_null(worker.task)
+		if worker.task == null:
+			return
+		var bus: SimTask = worker.task
+		assert_eq(bus.kind, &"bus_table")
+		assert_eq(worker.step_index, 0)
+		assert_false(worker._step_started, "yielding cannot also run productive bus steps")
+		# Isolated claim-cycle control; the Main lifecycle proves actual WORK.
+		worker.call("_let_go", sim.world)
+		sim.world.board.complete(bus)
+		assert_true(sim.world.board.claim(mop, worker.id, sim.world.now))
+		worker.task = mop
+
+
+func test_mop_yield_respects_off_role_stale_work_and_service_controls() -> void:
+	for condition: String in ["off", "wrong_role", "settled", "wrong_day", "invalid_group",
+			"working", "service", "carrying"]:
+		var fixture: Dictionary = _reservation_fixture()
+		var sim: RestaurantSim = fixture["sim"]
+		var model: GroupBooking = fixture["model"]
+		var tables: Array[PlacedItem] = fixture["tables"]
+		var worker: StaffAgent = StaffAgent.new(&"cook" if condition == "wrong_role" else &"server", 3)
+		worker.cell = _free_queue_cell(sim.world)
+		sim.world.add_agent(worker)
+		var current: SimTask = _claimed_mop(sim.world, worker)
+		if condition == "off":
+			var choices: StaffJobPriorities = StaffJobPriorities.new(&"server")
+			assert_true(choices.set_priority(&"bussing", StaffJobPriorities.Level.OFF))
+			assert_true(worker.set_job_priorities(choices))
+		elif condition == "working":
+			worker.step_index = 1
+			worker._step_started = true
+			worker.work_left = 100.0
+		elif condition == "service":
+			current.kind = &"take_order"
+		elif condition == "carrying":
+			current.kind = &"deliver"
+			current.payload = {"carried_count": 1}
+			assert_true(worker.carries_food())
+		sim.kitchen.mark_table_dirty(tables[2].id)
+		if condition == "settled":
+			var id: int = int(model.booking["booking_id"])
+			assert_true(model.claim_effect(id, GroupBooking.EFFECT_NO_SEAT))
+			assert_true(model.claim_effect(id, GroupBooking.EFFECT_REVIEW))
+			assert_true(model.settle(id, true))
+		elif condition == "wrong_day":
+			sim.world.clock.day = 3
+		elif condition == "invalid_group":
+			assert_true(sim.world.grid.remove(tables[0].id))
+		worker.tick(sim.world)
+		assert_eq(worker.task, current, condition)
+		assert_eq(current.state, SimTask.State.CLAIMED, condition)
+		assert_eq(current.drops, 0, condition)
+
+
+func test_mid_edge_mop_yield_keeps_physical_ownership_until_the_edge_finishes() -> void:
+	var fixture: Dictionary = _reservation_fixture()
+	var sim: RestaurantSim = fixture["sim"]
+	var tables: Array[PlacedItem] = fixture["tables"]
+	var worker: StaffAgent = StaffAgent.new(&"server", 3)
+	worker.cell = Vector2i(2, 10)
+	sim.world.add_agent(worker)
+	var mop: SimTask = _claimed_mop(sim.world, worker, Vector2i(12, 10))
+	sim.world.advance()
+	assert_true(worker.move_progress > 0.0, "the normal navigation step really began")
+	var from: Vector2i = worker.cell
+	var next: Vector2i = worker.next_cell()
+	var progress: float = worker.move_progress
+	var position: Vector3 = worker.movement_position()
+	sim.kitchen.mark_table_dirty(tables[2].id)
+	worker.tick(sim.world)
+	assert_eq(mop.state, SimTask.State.OPEN)
+	assert_eq(worker.task.kind, &"bus_table")
+	assert_eq(worker.cell, from)
+	assert_eq(worker.next_cell(), next)
+	assert_eq(worker.move_progress, progress, "yielding does not move twice")
+	assert_eq(worker.movement_position(), position, "the drawn mid-edge position never jumps")
+	assert_true(sim.world.movement.is_stopping(worker.id))
+	var snapshot: Dictionary = sim.world.movement.snapshot()
+	assert_eq(snapshot["occupied"].get(from, -1), worker.id)
+	assert_eq(snapshot["next"].get(next, -1), worker.id)
+	assert_eq(worker._held_item_id, 0)
+	assert_eq(worker._held_cell, SimGrid.NO_CELL)
+	for _tick: int in 12:
+		if not sim.world.movement.is_stopping(worker.id):
+			break
+		sim.world.advance()
+	assert_false(sim.world.movement.is_stopping(worker.id))
+	assert_eq(worker.cell, next)
+	assert_eq(worker.move_progress, 0.0)
+	assert_false(worker._step_started, "the bus route waits for the physical stop")
+	assert_eq(mop.state, SimTask.State.OPEN)
+
+
+func _claimed_mop(world: SimWorld, worker: StaffAgent, target: Vector2i = SimGrid.NO_CELL) -> SimTask:
+	var mop: SimTask = SimTask.new(&"clean_spot", &"any", "Mop a floor spot")
+	mop.steps = [TaskStep.go_to_cell(worker.cell if target == SimGrid.NO_CELL else target),
+		TaskStep.work(100)] as Array[TaskStep]
+	world.board.post(mop, world.now)
+	assert_true(world.board.claim(mop, worker.id, world.now))
+	worker.task = mop
+	return mop
+
+
 func _reservation_fixture(rows: Array[int] = [7]) -> Dictionary:
 	var content: ContentDB = ContentDB.new()
 	assert_eq(content.load_all(), PackedStringArray())

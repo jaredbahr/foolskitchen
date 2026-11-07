@@ -3,7 +3,7 @@ extends TestCase
 ## dirty-table work, booked seating, payment and Main settlement.
 
 const SOAK: Script = preload("res://tools/booking_soak_core.gd")
-const SLOT_MINUTE: int = 15 * 60 + 30
+const SLOT_MINUTE: int = 16 * 60 + 15
 var _main: Node
 var _paid_members: Dictionary[int, bool] = {}
 var _bus_completed: Dictionary[int, bool] = {}
@@ -81,7 +81,21 @@ func test_walkins_eating_before_hold_and_at_slot_drain_through_real_bussing_then
 	if booked == null:
 		return
 	assert_false(booked.seated)
-	assert_true(booked.queue_started, "all booked bodies have entered their ordinary shared queue")
+	# Five displayed minutes is only 30 ticks: pending street births have no
+	# shared queue budget yet. Observe real admission instead of assuming it.
+	assert_eq(booked.queue_wait, 0, "street admission did not spend queue patience")
+	for _admission_tick: int in 90:
+		if booked.queue_started:
+			break
+		_main.call("run_ticks", 1)
+		assert_eq(booked.queue_wait, 0, "admission and occupied-table grace preserve patience")
+	assert_true(booked.queue_started, "all booked bodies entered their ordinary shared queue")
+	var booked_members: Array[CustomerAgent] = PartySeating.members(booked, sim.world)
+	assert_eq(booked_members.size(), 6)
+	assert_false(booked.departing)
+	assert_true(Clock.sim.display_minutes() < SLOT_MINUTE + 30, "real admission completed inside the fixed grace window")
+	for member: CustomerAgent in booked_members:
+		assert_true(member.movement_admitted)
 	assert_eq(booked.queue_wait, 0, "waiting on actual occupied held seats did not spend patience")
 	assert_true(sim.world.booking_hold.pauses_queue_patience(sim.world, booked.booking_id))
 	var before_tick: int = booked.last_queue_tick
