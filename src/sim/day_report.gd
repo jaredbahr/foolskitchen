@@ -62,6 +62,8 @@ var booking_lines: Array[String] = []
 ## The disguised food critic's visit (#303): heading, verdict and headline
 ## quote, already player-facing; empty on days none reviewed.
 var critic_lines: Array[String] = []
+## Optional event cohort summary; absent on ordinary days to preserve old saves.
+var rush_hour_lines: Array[String] = []
 ## Optional purchase-basis accounting. Historical reports retain their cash
 ## basis; missing historical ingredient prices are never fabricated.
 var stock_values_recorded: bool = false
@@ -225,6 +227,8 @@ func to_dict() -> Dictionary:
 	# Only on days a critic reviewed, so every other report keeps its exact shape.
 	if not critic_lines.is_empty():
 		result["critic_lines"] = critic_lines.duplicate()
+	if not rush_hour_lines.is_empty():
+		result["rush_hour_lines"] = rush_hour_lines.duplicate()
 	return result
 
 
@@ -300,6 +304,11 @@ static func from_dict(data: Dictionary) -> DayReport:
 		for line: Variant in saved_critic:
 			if line is String:
 				report.critic_lines.append(line)
+	var saved_rush: Variant = data.get("rush_hour_lines", [])
+	if saved_rush is Array:
+		for line: Variant in saved_rush:
+			if line is String:
+				report.rush_hour_lines.append(line)
 	var recorded: Variant = data.get("stock_values_recorded", false)
 	report.stock_values_recorded = recorded is bool and recorded
 	for field: String in ["food_cost", "stock_bought", "spoiled_stock", "stock_on_hand"]:

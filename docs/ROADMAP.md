@@ -34,6 +34,22 @@ Codex is back (2026-11-07). **Codex: take the `worker-ready` issues below from t
 18. `both` #339 Dishwasher
 19. `both` #341 Plating mini-game for VIP guests (start after #327 merges)
 
+**Wave 3 (`worker-ready`):**
+20. `codex` #352 Menu prices: -10%, +10%, reset (small)
+21. `codex` #353 Menu prices: walkout readout (small)
+22. `codex` #354 Repay a loan early (small)
+23. `codex` #349 Photo mode (small)
+24. `codex` #348 Auto-pause setting (small)
+25. `codex` #351 Staff panel: work done
+26. `codex` #350 Menu panel: last 7 days per dish
+27. `codex` #357 Evening report: a week of cash flow
+28. `codex` #347 Today log
+29. `codex` #346 Morning paper
+30. `codex` #355 Tip jar decor
+31. `both` #356 Day off
+
+**When this list runs out,** take any open issue labelled `worker-ready` and `codex` (then `both`), lowest number first, with the same checks.
+
 Several issues touch the same screens (evening report, morning menu panel, Goals panel). Running two or three Codex tasks at once is fine; merge `main` into your branch before marking ready, as `AGENTS.md` says.
 
 **Director (`claude`; Codex never starts these):**

@@ -30,6 +30,7 @@ const CURB_APPEAL_TUNING: CurbAppealTuning = preload("res://data/balance/curb_ap
 const REVIEW_TUNING: ReviewTuning = preload("res://data/balance/reviews.tres")
 const REVIEW_QUOTES: ReviewQuotes = preload("res://data/reviews/quotes.tres")
 const CRITIC: CriticTuning = preload("res://data/balance/critic.tres")
+const RUSH_TUNING: RushTuning = preload("res://data/balance/rush_hour.tres")
 const PROGRESSION_TUNING: ProgressionTuning = preload("res://data/balance/progression.tres")
 const VIBE_TUNING: VibeTuning = preload("res://data/balance/vibe.tres")
 const CUSTOMER_TYPES: CustomerTypeCatalogue = preload("res://data/customers/types.tres")
@@ -153,6 +154,8 @@ var _loaded_critic: Dictionary = {}
 ## The accepted booking plan staged until the whole morning save validates.
 var _loaded_group_booking: GroupBooking = null
 var _booking_paid_total: int = 0
+## Staged morning rush plan from the matching saved run.
+var _loaded_rush_hour: Dictionary = {}
 ## The saved fish tank section (#125: each tank's last cleaning day), staged likewise.
 var _loaded_aquarium: Dictionary = {}
 var _demand_breakdown: DemandBreakdown = null
@@ -543,6 +546,7 @@ func start() -> void:
 		return
 	if sim == null:
 		return
+	sim.rush_hour.tuning = RUSH_TUNING
 	_started = true
 	_previous_clock = Clock.sim
 	# Keep the old world detached while save providers restore the new session.
@@ -568,6 +572,7 @@ func start() -> void:
 	SaveSystem.register("inspection", _capture_inspection, _restore_inspection)
 	SaveSystem.register("critic", _capture_critic, _restore_critic)
 	SaveSystem.register("bookings", _capture_bookings, _restore_bookings)
+	SaveSystem.register("rush_hour", _capture_rush_hour, _restore_rush_hour)
 	SaveSystem.register("aquarium", _capture_aquarium, _restore_aquarium)
 	var loaded: bool = use_saves and _load_autosave()
 	_rooms_note = loaded and _loaded_layout != null and _loaded_layout.rooms_unmarked
@@ -2324,6 +2329,7 @@ func build_report(day: int) -> DayReport:
 			report.owner_xp_breakdown["milestone_xp"] = _milestone_xp_today
 	if sim.inspection.last_day == day:
 		report.inspection_lines = InspectionText.report_lines(sim.inspection.last_result, sim.inspection.tuning)
+	report.rush_hour_lines = sim.rush_hour.report_lines()
 	report.low_stock = StockAlerts.sell_out_lines(sim.stock_outs_today, content)
 	var incoming: Dictionary[StringName, int] = deliveries.pending_by_id()
 	report.low_stock.append_array(StockAlerts.forecast_lines(StockAlerts.forecast(Economy.stock,
@@ -2347,6 +2353,8 @@ func _new_game() -> void:
 	_loaded_inspection = {}
 	_loaded_critic = {}
 	_loaded_group_booking = null
+	sim.rush_hour = RushHour.new(RUSH_TUNING)
+	_loaded_rush_hour = {}
 	_loaded_aquarium = {}
 	business_history = BusinessHistory.new()
 	_loaded_business_history = null
@@ -2437,6 +2445,7 @@ func _load_autosave_sections() -> bool:
 	_loaded_cat = {}
 	_loaded_inspection = {}
 	_loaded_critic = {}
+	_loaded_rush_hour = {}
 	_loaded_aquarium = {}
 	_loaded_regulars = null
 	_loaded_blueprints = null
@@ -2530,6 +2539,10 @@ func _load_autosave_sections() -> bool:
 	_loaded_group_booking = null
 	_booking_paid_total = 0
 	sim.configure_booking(group_booking)
+	candidate.rush_hour = RushHour.new(RUSH_TUNING)
+	if not _loaded_rush_hour.is_empty():
+		candidate.rush_hour.from_dict(_loaded_rush_hour)
+	_loaded_rush_hour = {}
 	# Saved tanks keep their cleaning days; any other tank starts clean today.
 	sim.aquarium.restore(world.grid, _loaded_aquarium if not _loaded_aquarium.is_empty()
 		else {"version": AquariumCare.SAVE_VERSION, "tanks": []}, Clock.sim.day)
@@ -2926,6 +2939,19 @@ func _restore_critic(data: Dictionary) -> bool:
 	if not FoodCritic.new(CRITIC).from_dict(data):
 		return false
 	_loaded_critic = data.duplicate(true)
+	return true
+
+
+func _capture_rush_hour() -> Dictionary:
+	return sim.rush_hour.to_dict()
+
+
+## Stage the strict morning plan until the new sim has completed its load.
+func _restore_rush_hour(data: Dictionary) -> bool:
+	if not RushHour.new(RUSH_TUNING).from_dict(data, Clock.sim.display_open_minute,
+		Clock.sim.display_close_minute):
+		return false
+	_loaded_rush_hour = data.duplicate(true)
 	return true
 
 
@@ -3499,6 +3525,9 @@ func set_opening_hours(open_minute: int, close_minute: int) -> bool:
 	if not _started or Clock.sim.phase != SimClock.Phase.MORNING \
 			or not OpeningHours.apply(Clock.sim, open_minute, close_minute, HOURS_TUNING):
 		return false
+	sim.rush_hour.fit_to_hours(Clock.sim.display_open_minute, Clock.sim.display_close_minute)
+	if _menu_panel != null:
+		_menu_panel.set_rush_notice(sim.rush_hour.morning_notice())
 	if _menu_panel != null:
 		_menu_panel.set_hours(Clock.sim.display_open_minute, Clock.sim.display_close_minute, HOURS_TUNING)
 	$HUD.refresh()
@@ -4039,6 +4068,10 @@ func _begin_morning() -> void:
 	# day one is possible, so earlier games' streams are untouched.
 	sim.inspection.plan_day(Clock.sim.day, owner_progress.level, Clock.sim.open_ticks,
 		GameState.rng.bind(&"inspector"))
+	sim.rush_hour.plan_day(Clock.sim.day, owner_progress.level,
+		Clock.sim.display_open_minute, Clock.sim.display_close_minute,
+		GameState.rng.bind(&"rush"))
+	_menu_panel.set_rush_notice(sim.rush_hour.morning_notice())
 	$HUD.set_reputation(reputation.average(), reputation.scores().size())
 	_owner_award_today.clear()
 	_owner_unlocks_today.clear()

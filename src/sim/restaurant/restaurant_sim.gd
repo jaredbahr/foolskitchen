@@ -73,6 +73,8 @@ var inspector: InspectorAgent = null
 var _inspector_looked: int = 0
 ## Emitted once per inspection, when the grade is recorded.
 signal inspection_done(result: Dictionary)
+## The morning-planned rush; its provider is lazy and uses its own named stream.
+var rush_hour: RushHour = RushHour.new()
 var spawner: CustomerSpawner
 var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 ## Opt-in catalogue. An unconfigured sim retains the exact Regular arrival stream.
@@ -123,6 +125,7 @@ var restroom_tuning: RestroomTuning = RESTROOM_TUNING
 var staff_spawns: Dictionary[StringName, Vector2i] = {}
 
 var _departed: Dictionary[int, bool] = {}
+var _rush_cohort_ids: Dictionary[int, bool] = {}
 ## Restroom toilets and dining seats, recounted after a layout change.
 var _layout_counted: bool = false
 var _toilets: Array[int] = []
@@ -268,6 +271,8 @@ func start_day() -> void:
 	if world.grid.rooms().values().has(SimGrid.Room.PATIO):
 		_layout_counted = false
 	staff_activity.reset(world.clock.day)
+	rush_hour.begin_day(world.clock.day)
+	_rush_cohort_ids.clear()
 	_regular_cohort_index = 0
 	if regulars != null:
 		regulars.begin_day(world.clock.day)
@@ -662,6 +667,26 @@ func arrival_rate() -> float:
 	if visit_tuning != null and visit_tuning.is_valid() and world != null:
 		base = visit_tuning.arrival_rate(visit_kinds(), world.clock.display_minutes())
 	return base * demand_factor
+
+
+## Event multiplier is sampled from the authoritative simulation clock each
+## fixed tick. Existing visit/reputation/demand factors remain unchanged.
+func rush_multiplier() -> float:
+	if world == null or world.clock == null or world.clock.phase != SimClock.Phase.OPEN:
+		return 1.0
+	var minute: int = world.clock.display_minutes()
+	rush_hour.mark_started(world.clock.day, minute)
+	return rush_hour.multiplier_at(minute)
+
+
+## Track actual members of parties arriving inside the event window. Later
+## losses count by those IDs even when they depart after the window ends.
+func record_rush_arrivals(member_ids: Array[int]) -> void:
+	if world == null or not rush_hour.record_arrivals(world.clock.day,
+		world.clock.display_minutes(), member_ids.size()):
+		return
+	for member_id: int in member_ids:
+		_rush_cohort_ids[member_id] = true
 
 
 ## Configuration and live menu edits never redraw the current countdown.
@@ -1119,6 +1144,9 @@ func record_departure(customer: CustomerAgent) -> void:
 	if not customer.paid and customer.leave_reason == &"happy":
 		customer.leave_reason = &"removed"
 	var reason: StringName = customer.leave_reason
+	if _rush_cohort_ids.has(customer.id):
+		rush_hour.record_lost(reason)
+		_rush_cohort_ids.erase(customer.id)
 	leave_reasons_today[reason] = leave_reasons_today.get(reason, 0) + 1
 	if not customer.paid:
 		lost_today += 1

@@ -87,6 +87,17 @@ func test_secondary_settings_button_requests_panel_without_editing_dishes() -> v
 	assert_eq(_menu.to_dict(), before)
 
 
+func test_rush_notice_is_visible_only_in_the_morning_menu() -> void:
+	_panel.set_rush_notice("Book club: expect a rush around 1:15 pm.")
+	var notice: Label = _panel.get_node("%RushNotice") as Label
+	assert_true(notice.visible)
+	assert_eq(notice.text, "Book club: expect a rush around 1:15 pm.")
+	_panel.set_phase(SimClock.Phase.OPEN)
+	assert_false(notice.visible)
+	_panel.set_phase(SimClock.Phase.MORNING)
+	assert_true(notice.visible)
+
+
 func test_theme_readout_tracks_accepted_enabled_dishes_without_editing_menu() -> void:
 	var diner: RecipeDef = _recipe(&"diner", "Diner dish", 8)
 	diner.theme_tags = [&"diner"]
