@@ -7,7 +7,7 @@ This file is read by every coding agent (Codex, Claude and Claude's subagents). 
 - Hobby project with a light process.
 
 ## Workflow
-1. Work comes from an assigned GitHub issue. When choosing your next issue yourself, take open `worker-ready` issues in the order of `docs/ROADMAP.md` → "Up next: the build queue" (wave 1 first, top to bottom), skipping any whose **Depends on** / "Start after" hasn't merged. Issues without `worker-ready` are not yours yet.
+1. Work comes from an assigned GitHub issue. When choosing your next issue yourself, take open `worker-ready` issues in the order of `docs/ROADMAP.md` → "Up next: the build queue" (wave 1 first, top to bottom; when the list runs out, any open `worker-ready` + `codex` issue, then `both`, lowest number first), skipping any whose **Depends on** / "Start after" hasn't merged. Issues without `worker-ready` are not yours yet.
    - **Owner labels.** `codex`: Codex takes it. `both`: Codex may take it; it is harder, so be thorough, and Claude takes over if it fails twice. `claude`: director only, **Codex never starts it**, even if it also has `worker-ready`. An issue with no owner label is the director's. The issue is the brief: do what its **Do** says, stay out of **Don't**, and finish **Done when**.
 2. Branch from `main` as `issue-<number>-<slug>`.
 3. Open a PR into `main` with `Closes #<number>` in the body.
