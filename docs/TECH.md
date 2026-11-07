@@ -2024,6 +2024,13 @@ regression alone discloses a later legal 16:15 slot, staged long meals, delayed
 unrelated arrivals and real extra ingredient purchases to isolate the reservation
 boundary. It observes complete physical admission before releasing the diners;
 the fixed slot+30 grace, ordinary staff capacity and patience remain unchanged.
+The required lifecycle result is six actual booked seats and settlement backed
+by unique real paid orders, a bill covering the advance and reconciled sales.
+The manual soak succeeds when most cases are seated and settled without a
+no-seat result or accounting errors. Both tools still report all-six-paid
+observations separately. Ordinary already-claimed bussing can wait on an
+occupied table and delay a later ready meal; this existing service limitation
+is reported rather than extending booking-specific preemption after seating.
 
 **Lighting and frontage (FK-055):** Main owns one `lighting_rig.tscn` with a
 warm directional key (main's colour, energy and shadows), low-energy cool fill

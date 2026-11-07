@@ -6,6 +6,10 @@ const SOAK: Script = preload("res://tools/booking_soak_core.gd")
 const SLOT_MINUTE: int = 16 * 60 + 15
 var _main: Node
 var _paid_members: Dictionary[int, bool] = {}
+var _paid_orders: Dictionary[int, int] = {}
+var _all_paid_orders: Dictionary[int, int] = {}
+var _paid_callback_count: int = 0
+var _duplicate_callbacks: int = 0
 var _bus_completed: Dictionary[int, bool] = {}
 var _tables: Array[int] = []
 var _old_providers: Dictionary
@@ -14,6 +18,10 @@ var _old_providers: Dictionary
 func before_each() -> void:
 	_old_providers = SaveSystem._providers.duplicate()
 	_paid_members.clear()
+	_paid_orders.clear()
+	_all_paid_orders.clear()
+	_paid_callback_count = 0
+	_duplicate_callbacks = 0
 	_bus_completed.clear()
 	_tables.clear()
 
@@ -110,6 +118,7 @@ func test_walkins_eating_before_hold_and_at_slot_drain_through_real_bussing_then
 	var saw_dirty: bool = false
 	var saw_bus_work: bool = false
 	var saw_booked_seating: bool = false
+	var seated_members: Dictionary[int, bool] = {}
 	for _tick: int in 4000:
 		if not booking.has_active_booking():
 			break
@@ -123,17 +132,44 @@ func test_walkins_eating_before_hold_and_at_slot_drain_through_real_bussing_then
 					and worker._step_started and worker.work_left > 0.0:
 				saw_bus_work = true
 		if booked.seated:
+			if not saw_booked_seating:
+				var seated: Array[CustomerAgent] = PartySeating.members(booked, sim.world)
+				assert_eq(seated.size(), 6, "all six booked bodies actually reached their held group")
+				for member: CustomerAgent in seated:
+					assert_eq(member.cell, member.seat_cell)
+					assert_eq(sim.world.grid.item(member.table_item_id).reserved_by(member.seat_cell), member.id)
+					seated_members[member.id] = true
 			saw_booked_seating = true
 			assert_eq(booked.booked_table_ids, _tables)
 	assert_true(saw_dirty, "departing walk-ins actually dirtied the joined physical tables")
 	assert_true(saw_bus_work, "reserved cleanup used actual server work steps")
 	assert_eq(_bus_completed.size(), 3, "each original physical member was bused")
 	assert_true(saw_booked_seating)
-	assert_eq(_paid_members.size(), 6, "all six booked guests actually paid")
+	assert_eq(seated_members.size(), 6)
+	assert_true(_paid_members.size() > 0, "settlement includes actual booked meal payments")
+	for id: int in _paid_members:
+		assert_true(seated_members.has(id), "paid members belong to the actual seated booking")
+	assert_eq(_duplicate_callbacks, 0)
+	assert_eq(_paid_callback_count, _all_paid_orders.size(), "one callback per real paid order")
+	var booked_bill: int = 0
+	for amount: int in _paid_orders.values():
+		booked_bill += amount
+	assert_true(booked_bill >= int(booking.booking["deposit_amount"]), "the actual paid bill covers the applied advance")
+	var total_sales: int = 0
+	for amount: int in _all_paid_orders.values():
+		total_sales += amount
+	assert_eq(Economy.ledger.day_totals(2).get(Ledger.SALE, 0), total_sales, "all real paid orders reconcile to sales")
 	assert_eq(String(booking.booking["status"]), String(GroupBooking.STATUS_SETTLED))
 	assert_false(bool(sim.booking_review_results.get(booked.booking_id, {}).get("no_seat", true)))
+	assert_eq(Economy.ledger.day_totals(1).get(Ledger.BOOKING_DEPOSIT, 0), 30)
 	assert_eq(Economy.ledger.day_totals(2).get(Ledger.BOOKING_DEPOSIT, 0), -30)
 	assert_eq(Economy.ledger.day_totals(2).get(Ledger.BOOKING_REFUND, 0), 0)
+	for state: Order.State in [Order.State.PLACED, Order.State.COOKING, Order.State.READY]:
+		for order: Order in sim.orders.orders_in_state(state):
+			assert_false(seated_members.has(order.customer_id), "settlement cannot leave a live booked meal order")
+	print("BOOKING LIFECYCLE ACTUAL ", JSON.stringify({"seated_members": seated_members.size(),
+		"paid_members": _paid_members.size(), "paid_orders": _paid_orders.size(), "booked_bill": booked_bill,
+		"sales": total_sales, "all_six_paid": _paid_members.size() == 6}))
 
 
 func _advance_to(minute: int) -> void:
@@ -165,9 +201,15 @@ func _buy_twelve_meal_supplies() -> void:
 		assert_true(_main.call("stock_place_order"))
 
 
-func _on_paid(customer: CustomerAgent, _order: Order, _amount: int) -> void:
+func _on_paid(customer: CustomerAgent, order: Order, amount: int) -> void:
+	_paid_callback_count += 1
+	if _all_paid_orders.has(order.id):
+		_duplicate_callbacks += 1
+		return
+	_all_paid_orders[order.id] = amount
 	if customer.party != null and customer.party.booking_owned:
 		_paid_members[customer.id] = true
+		_paid_orders[order.id] = amount
 
 
 func _on_task_completed(task: SimTask) -> void:

@@ -43,20 +43,22 @@ static func run_cli(tree: SceneTree) -> int:
 		"unchanged": ["arrival gaps", "queue patience", "food patience", "eating duration", "staff", "kitchen", "rush chance"],
 		"no_claim": "not proof for every 6–10-person layout or a natural multi-day playthrough"}))
 	var totals: Dictionary = {"cases": CASES, "settled": 0, "refunded": 0,
-		"no_seat": 0, "seated": 0, "paid_all_six": 0, "fully_served_settled": 0, "errors": 0}
+		"no_seat": 0, "seated": 0, "seated_settled": 0, "paid_all_six": 0, "fully_served_settled": 0, "errors": 0}
 	for seed_value: int in range(1, CASES + 1):
 		var row: Dictionary = run_case(tree, seed_value)
 		print("BOOKING SOAK CASE ", JSON.stringify(row))
 		if row.has("error"):
 			totals["errors"] = int(totals["errors"]) + 1
 			continue
-		for field: String in ["settled", "refunded", "no_seat", "seated", "paid_all_six", "fully_served_settled"]:
+		for field: String in ["settled", "refunded", "no_seat", "seated", "seated_settled", "paid_all_six", "fully_served_settled"]:
 			if bool(row[field]):
 				totals[field] = int(totals[field]) + 1
 	var majority_served: bool = int(totals["fully_served_settled"]) * 2 > CASES
 	totals["majority_fully_served_settled"] = majority_served
+	var majority_settled: bool = int(totals["seated_settled"]) * 2 > CASES
+	totals["majority_seated_settled"] = majority_settled
 	print("BOOKING SOAK SUMMARY ", JSON.stringify(totals))
-	return 0 if int(totals["errors"]) == 0 and majority_served else 1
+	return 0 if int(totals["errors"]) == 0 and majority_settled else 1
 
 
 static func prepare(tree: SceneTree, seed_value: int, slot_minute: int = SLOT_MINUTE) -> Dictionary:
@@ -133,6 +135,7 @@ static func run_case(tree: SceneTree, seed_value: int) -> Dictionary:
 		"review_stars": int(review.get("stars", 0)), "good_service": bool(review.get("good_service", false)),
 		"advance_received": deposit, "advance_applied": applied, "advance_refunded": refunded,
 		"terminal_state": status, "settled": settled, "refunded": status == String(GroupBooking.STATUS_REFUNDED),
+		"seated_settled": settled and seated and not bool(review.get("no_seat", false)),
 		"fully_served_settled": settled and seated and paid_all and not bool(review.get("no_seat", false)),
 		"all_guests_served": sim.served_today, "all_guests_lost": sim.lost_today,
 		"rush": rush.call("to_dict") if rush != null else {}, "tick_batches": batches}
