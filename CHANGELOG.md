@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- From owner level 2, an occasional announced rush brings a 2.5x burst of arrivals during a 45–75 minute window that fits your opening hours. The morning Menu shows its occasion and start time, and the evening report shows how many guests arrived during the rush and how many later left without a seat or after waiting. The plan is saved with the morning autosave. (#344)
 - Switch the evening report's business trend between the last 7 and 30 days. (#342)
 - Guests leaving a busy bar no longer wait ages to get past people walking the same narrow way, guests held outside a jammed door always come in after a short wait, and the health inspector heads for the door it picked instead of turning back to the nearer one. (#318)
 - Build mode now knows nobody walks through a seat. Placing chairs, stools, booths or other furniture so that the only way to a table, a kitchen station, the sink or the door runs through seats now warns you while you place or move it, and the warning stays on that item until your next change. Seats can no longer go in the doorway or fill the way in from the street door. (#321)
