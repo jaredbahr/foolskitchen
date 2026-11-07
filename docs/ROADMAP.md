@@ -8,19 +8,26 @@ Hobby pace: there are no dates, only exit criteria. Each phase ends with a playa
 - **Jared:** taste and lore calls, playtests each phase build, merges or asks for changes.
 - Each phase has a tracking issue (`Phase N: ...`) that lists its task issues.
 
-## Up next: the build queue (reset 2026-11-05)
-The director builds these in order with Claude subagents (Codex left the project on 2026-11-05), skipping any whose **Depends on** hasn't merged. Every PR gets an independent review. Merged since the last reset: #85 balance pass (#289), #263 physical movement and a roomier starter shop (#268), #205 smarter cutaway (#285), #208 day and night (#286), #84 lighting decor (#288), #117 sound (#284), chairs up at night (#287), parallel test shards (#290).
+## Up next: the build queue (reset 2026-11-07)
+Codex is back (2026-11-07). **Codex: take the `worker-ready` issues below from the top**, skipping any whose **Depends on** hasn't merged and any that already has an open PR or a claim comment (see `AGENTS.md`). Claude reviews every PR before merge.
 
-**Now (Jared's playtest, 2026-11-05):**
-- #306 Movement deadlock: people stuck behind someone for good (top priority)
-- #302 Health inspector (PR #309, merges after #306)
-- #293 Café order counter
-- #243 Patio (PR #269, taken over from Codex after #306)
+**Wave 1 (`worker-ready`):** `codex` = Codex takes it; `both` = Codex may try, Claude takes over if it fails twice.
+1. `codex` #323 Business trend: 7 or 30 days (small; a good first issue)
+2. `codex` #316 Group bookings
+3. `both` #324 Broken equipment
+4. `codex` #325 Rush hour
+5. `codex` #326 Weekly challenge
+6. `codex` #327 First mini-game: supplier haggle
+7. `both` #328 Chop rhythm mini-game (start after #327 merges)
 
-Merged since the reset: #291 service speed (#301), #119 the cat (#296), #294 jukebox (#297), #292 A-frame sign (#299), #298 staff morning posts (#300), #303 food critic (#304), #305 front door (#308), #307 impatient guests first (#310).
+**Director (`claude`; Codex never starts these):**
+- #322 Movement: staff head-on and door queues (work in progress)
+- #320 Older saves on the original starter layout (needs Jared's call)
 
-**Director-scoped (art or taste first):** aquarium #125, premium decor #206.
-**Later backlog:** #164 more sites, #167 makeovers, #169 staff drama, #170 design extras, #171 food depth, #172 more visitors (group bookings), #173 neighbourhood rivals, #159 more entertainment (stage, games corner).
+Merged since the last reset: #306 deadlock (#314), #317 bar corridor stall (#318), #315 seat warnings (#321), #125 aquarium (#319), #302 health inspector (#309), #293 café counter (#312), #243 patio (#269), music (#313).
+
+**Director-scoped (`claude`, art or taste first):** premium decor #206.
+**Later backlog (`claude` until scoped into `codex` issues):** #164 more sites, #167 makeovers, #169 staff drama, #170 design extras, #171 food depth, #172 more visitors (group bookings), #173 neighbourhood rivals, #159 more entertainment (stage, games corner).
 
 ## Phase 0: Foundation
 - [ ] Project skeleton, autoload stubs, test runner, `check.sh`, `get_godot.sh` (FK-001, Claude)
