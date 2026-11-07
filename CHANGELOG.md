@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- From owner level 2, an occasional announced rush brings a 2.5x burst of arrivals during a 45–75 minute window that fits your opening hours. The morning Menu shows its occasion and start time, and the evening report shows how many guests arrived during the rush and how many later left without a seat or after waiting. The plan is saved with the morning autosave. (#344)
 - Switch the evening report's business trend between the last 7 and 30 days. (#342)
 - Guests leaving a busy bar no longer wait ages to get past people walking the same narrow way, guests held outside a jammed door always come in after a short wait, and the health inspector heads for the door it picked instead of turning back to the nearer one. (#318)
 - Build mode now knows nobody walks through a seat. Placing chairs, stools, booths or other furniture so that the only way to a table, a kitchen station, the sink or the door runs through seats now warns you while you place or move it, and the warning stays on that item until your next change. Seats can no longer go in the doorway or fill the way in from the street door. (#321)
@@ -163,6 +164,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- The roadmap queues a third wave of twelve Codex issues, and `AGENTS.md` says what to take when the queue runs out. (#358)
 - Codex is back on the project. Every open issue now carries an owner label (`codex`, `both` or `claude`), nineteen new `worker-ready` issues are queued for Codex with full briefs, and the docs and roadmap say which issues Codex may take. (#329)
 - Codex is off the project: the docs and roadmap now route all work to Claude and its subagents, and the queue reflects the playtest priorities. (#311)
 - The roadmap's Codex queue is reset: the patio, a street A-frame sign, a jukebox and a café order counter; the director takes the movement speed follow-up and the cat. (#295)

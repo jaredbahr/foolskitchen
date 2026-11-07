@@ -51,6 +51,16 @@ func test_empty_report_has_zero_totals_and_no_leaders() -> void:
 	assert_eq(report.top_leave_reason(), &"")
 
 
+func test_rush_report_lines_round_trip_only_when_present() -> void:
+	var report: DayReport = DayReport.new()
+	assert_false(report.to_dict().has("rush_hour_lines"),
+		"Ordinary-day saved reports keep their previous shape")
+	report.rush_hour_lines = ["Book club brought 8 guests between 1:00 pm and 1:45 pm; 2 left without a seat and 1 left after waiting."]
+	var snapshot: Dictionary = JSON.parse_string(JSON.stringify(report.to_dict()))
+	assert_eq(snapshot["rush_hour_lines"], report.rush_hour_lines)
+	assert_eq(DayReport.from_dict(snapshot).rush_hour_lines, report.rush_hour_lines)
+
+
 func test_best_dish_uses_count_then_alphabetical_id() -> void:
 	var report: DayReport = DayReport.new()
 	report.dishes_sold = {&"tomato_soup": 4, &"burger": 4, &"grilled_cheese": 2}
