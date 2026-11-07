@@ -16,6 +16,9 @@ func _ready() -> void:
 	super._ready()
 	(%Stop as Button).pressed.connect(_on_stop_pressed)
 	(%Bar as Control).gui_input.connect(_on_bar_input)
+	# Godot's default focus text is white; retain the shared dark text on this cream card.
+	for button: Button in [%Stop as Button, %Skip as Button]:
+		button.add_theme_color_override("font_focus_color", SHARED_THEME.get_color("font_color", "Button"))
 	var zone_style: StyleBoxFlat = SHARED_THEME.get_stylebox("fill", "ProgressBar") as StyleBoxFlat
 	(%Zone as ColorRect).color = zone_style.bg_color
 	(%Marker as ColorRect).color = SHARED_THEME.get_color("font_color", "Label")
