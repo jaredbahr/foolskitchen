@@ -730,7 +730,14 @@ func test_mid_edge_mop_yield_keeps_physical_ownership_until_the_edge_finishes() 
 	assert_eq(worker.cell, next)
 	assert_eq(worker.move_progress, 0.0)
 	assert_false(worker._step_started, "the bus route waits for the physical stop")
-	assert_eq(mop.state, SimTask.State.OPEN)
+	# The ordinary original server may reclaim the returned mop while this
+	# worker finishes its edge. It remains the same live queued/claimed job.
+	assert_eq(sim.world.board.get_task(mop.id), mop)
+	assert_true(mop.state in [SimTask.State.OPEN, SimTask.State.CLAIMED])
+	if mop.state == SimTask.State.CLAIMED:
+		assert_true(mop.claimed_by != worker.id, "the yielding worker retained its bus claim")
+	assert_eq(mop.drops, 0, "returning to the queue is not a failed attempt")
+	assert_eq(mop.posted_tick, 0)
 
 
 func _claimed_mop(world: SimWorld, worker: StaffAgent, target: Vector2i = SimGrid.NO_CELL) -> SimTask:
