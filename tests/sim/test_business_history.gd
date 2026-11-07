@@ -18,11 +18,14 @@ func test_record_reads_paid_food_profit_cash_and_reputation_without_mutating_rep
 	assert_eq(report.to_dict(), before, "history is a read-only consumer of the closing report")
 
 
-func test_fifteen_closes_keep_fourteen_newest_in_day_order() -> void:
-	for day: int in range(1, 16):
+func test_thirty_closes_fit_and_the_thirty_first_drops_only_the_oldest() -> void:
+	for day: int in range(1, 31):
 		_history.record(_report(day))
+	assert_eq(_history.summaries().size(), 30)
+	assert_eq(_history.summaries()[0]["day"], 1)
+	_history.record(_report(31))
 	var rows: Array[Dictionary] = _history.summaries()
-	assert_eq(rows.size(), 14)
+	assert_eq(rows.size(), 30)
 	for index: int in rows.size():
 		assert_eq(rows[index]["day"], index + 2)
 
@@ -141,18 +144,27 @@ func test_duplicate_and_out_of_order_days_are_rejected_without_sorting_or_mutati
 		assert_eq(_history.summaries(), expected)
 
 
-func test_restore_retains_newest_fourteen_but_validates_discarded_older_rows() -> void:
+func test_restore_retains_newest_thirty_but_validates_discarded_older_rows() -> void:
 	var days: Array[Dictionary] = []
-	for day: int in range(1, 21):
+	for day: int in range(1, 37):
 		days.append(_saved_row(day))
 	assert_true(_history.restore({"version": 1, "days": days}))
-	assert_eq(_history.summaries().size(), 14)
+	assert_eq(_history.summaries().size(), 30)
 	assert_eq(_history.summaries()[0]["day"], 7)
-	assert_eq(_history.summaries()[13]["day"], 20)
+	assert_eq(_history.summaries()[29]["day"], 36)
 	var expected: Array[Dictionary] = _history.summaries()
 	days[0]["lost"] = -1
 	assert_false(_history.restore({"version": 1, "days": days}))
 	assert_eq(_history.summaries(), expected, "invalid discarded rows cannot be silently skipped")
+
+
+func test_old_fourteen_row_version_one_save_loads_without_changes() -> void:
+	var days: Array[Dictionary] = []
+	for day: int in range(1, 15):
+		days.append(_saved_row(day))
+	var saved: Dictionary = {"version": 1, "days": days}
+	assert_true(_history.restore(saved))
+	assert_eq(_history.capture(), saved)
 
 
 func test_restore_detaches_input_and_discards_unrelated_payload_fields() -> void:

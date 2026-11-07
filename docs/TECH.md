@@ -2792,13 +2792,16 @@ frame30 and actual 6%-off ($20 list, $19 charged) panel at frame90. These two
 existing-job captures are UI evidence, not natural human timing or balance play.
 
 ### 2.4 Save system
-Business trends (FK-123): Main keeps fourteen detached `BusinessHistory` closing
+Business trends (FK-123, FK-132): Main keeps thirty detached `BusinessHistory` closing
 summaries outside `DayReport` serialization. Reopening the evening report and
 advancing to the next morning upsert the current day after evening purchases;
 `build_report()` stays a read-only query. The optional `business_history` section
 uses decimal strings for signed currency and joins only the existing morning
 autosave. Load stages it until the whole morning validates; older saves start
-empty. The evening report draws seven days in the current theme, with separate
+empty. Version 1 saves retain the same row format. The evening report defaults to
+seven days, with a 7 / 30 day toggle remembered by the report for the session only;
+it never enters a save. Thirty-day charts label every fifth day and shorter
+histories show only the rows that exist. Both ranges use the current theme, with separate
 dish-profit and guest scales, today's label, unknown-profit gaps and comparisons
 between equal recorded-day windows. "Last week" requires two complete weeks.
 
