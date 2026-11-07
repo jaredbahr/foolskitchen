@@ -67,6 +67,10 @@ var _demand_section: VBoxContainer
 var _demand_summary: Label
 var _demand_factors: Label
 var _demand_explanation: Label
+var _trend_days: int = 7
+var _trend_rows: Array[Dictionary] = []
+var _trend_today: int = 0
+var _trend_buttons: Array[Button] = []
 
 
 func _ready() -> void:
@@ -187,13 +191,25 @@ func show_report(report: DayReport) -> void:
 
 func show_history(rows: Array[Dictionary], today: int) -> void:
 	_bind_nodes()
-	var clean: Array[Dictionary] = BusinessTrendText.display_rows(rows, today)
+	_trend_rows = BusinessTrendText.display_rows(rows, today)
+	_trend_today = today
+	_refresh_history()
+
+
+func _refresh_history() -> void:
 	(%BusinessTrendHeading as Label).text = BusinessTrendText.HEADING
-	(%BusinessTrendSummary as Label).text = BusinessTrendText.summary(clean, today)
+	(%BusinessTrendSummary as Label).text = BusinessTrendText.summary(_trend_rows, _trend_today)
 	var chart: BusinessTrendChart = %BusinessTrendChart
-	chart.set_history(clean, today if not clean.is_empty() else 0)
-	chart.visible = clean.size() >= 2
+	chart.set_history(_trend_rows, _trend_today if not _trend_rows.is_empty() else 0, _trend_days)
+	chart.visible = not _trend_rows.is_empty()
+	for button: Button in _trend_buttons:
+		button.set_pressed_no_signal(int(button.get_meta("days")) == _trend_days)
 	(%BusinessTrendSection as VBoxContainer).show()
+
+
+func _on_trend_range_pressed(days: int) -> void:
+	_trend_days = days
+	_refresh_history()
 
 
 ## Current room presentation is derived, never part of the saved day report.
@@ -322,6 +338,22 @@ func _bind_nodes() -> void:
 	_demand_explanation.name = "Explanation"
 	_demand_section.hide()
 	var next_day: Button = %NextDay
+	var ranges: HBoxContainer = HBoxContainer.new()
+	ranges.name = "BusinessTrendRanges"
+	var trend_section: VBoxContainer = %BusinessTrendSection
+	trend_section.add_child(ranges)
+	trend_section.move_child(ranges, (%BusinessTrendChart as Control).get_index())
+	var group: ButtonGroup = ButtonGroup.new()
+	for days: int in [7, 30]:
+		var button: Button = Button.new()
+		button.name = "Days%d" % days
+		button.text = BusinessTrendText.SHORT_RANGE if days == 7 else BusinessTrendText.LONG_RANGE
+		button.toggle_mode = true
+		button.button_group = group
+		button.set_meta("days", days)
+		button.pressed.connect(_on_trend_range_pressed.bind(days))
+		ranges.add_child(button)
+		_trend_buttons.append(button)
 	IconStyle.decorate_label(_header, &"report")
 	for path: String in ["ReviewHeading", "GuestHeading", "ReasonHeading", "LowStockHeading", "OwnerHeading"]:
 		IconStyle.decorate_label(get_node("Panel/Scroll/Content/" + path) as Label,

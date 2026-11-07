@@ -95,6 +95,10 @@ func test_evening_purchase_refresh_upserts_and_next_morning_load_preserves_it() 
 		return
 	var before_profit: int = before_report.profit()
 	var before_cash: int = Economy.cash
+	var report_view: Control = _main.get_node("Overlay/EveningReport") as Control
+	var chart: BusinessTrendChart = report_view.get_node("%BusinessTrendChart") as BusinessTrendChart
+	(report_view.get_node("%BusinessTrendSection/BusinessTrendRanges/Days30") as Button).pressed.emit()
+	assert_eq(chart.review_snapshot()["range_days"], 30)
 	assert_true(_main.call("set_build_active", true))
 	assert_true(_main.call("shop_buy", &"chair", ShopBuilder.items_with_def(_main.get("world") as SimWorld, &"table_2")[0].origin + Vector2i(1, 2)), "ordinary after-hours paid purchase")
 	var paid_cost: int = before_cash - Economy.cash
@@ -112,6 +116,7 @@ func test_evening_purchase_refresh_upserts_and_next_morning_load_preserves_it() 
 	assert_true(_main.call("set_staff_visible", true))
 	Economy.add_cash(-2, Ledger.UPGRADES) # A later book change while the report is hidden.
 	assert_true(_main.call("set_staff_visible", false))
+	assert_eq(chart.review_snapshot()["range_days"], 30, "returning to the same report retains the session range")
 	assert_eq(_history().summaries().size(), 1, "returning from a panel cannot duplicate the day")
 	_assert_matches(_history().summaries()[0], _main.get("shown_report") as DayReport)
 	assert_eq(_saved_text(), morning)
@@ -124,6 +129,7 @@ func test_evening_purchase_refresh_upserts_and_next_morning_load_preserves_it() 
 	(_main.get_node("Overlay/EveningReport") as Control).emit_signal(&"next_day_pressed")
 	assert_eq(Clock.sim.day, 2)
 	assert_eq(Clock.sim.phase, SimClock.Phase.MORNING)
+	assert_eq(chart.review_snapshot()["range_days"], 30, "Next day hides rather than replaces the session report")
 	assert_eq(_history().summaries().size(), 1, "morning is not an extra closed day")
 	_assert_matches(_history().summaries()[0], closing)
 	var expected: Dictionary = _json(_history().capture())

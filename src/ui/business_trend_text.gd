@@ -2,7 +2,9 @@ class_name BusinessTrendText
 extends RefCounted
 ## Plain wording and detached display rows for completed business days.
 
-const HEADING: String = "This week"
+const HEADING: String = "Business trend"
+const SHORT_RANGE: String = "7 days"
+const LONG_RANGE: String = "30 days"
 const EMPTY: String = "Come back tomorrow to see your trend."
 const UNAVAILABLE: String = "There isn't enough information to compare dish profit."
 const PROFIT_TRACK: String = "Dish profit ($)"
@@ -34,13 +36,15 @@ static func display_rows(rows: Array[Dictionary], today: int) -> Array[Dictionar
 	days.assign(by_day.keys())
 	days.sort()
 	var result: Array[Dictionary] = []
-	for index: int in range(maxi(0, days.size() - 14), days.size()):
+	for index: int in range(maxi(0, days.size() - BusinessHistory.MAX_DAYS), days.size()):
 		result.append(by_day[days[index]].duplicate(true))
 	return result
 
 
 static func summary(rows: Array[Dictionary], today: int) -> String:
 	var clean: Array[Dictionary] = display_rows(rows, today)
+	# The range toggle changes the chart, not the existing two-week comparison.
+	clean = clean.slice(maxi(0, clean.size() - 14))
 	if clean.size() < 2:
 		return EMPTY
 	var count: int = mini(7, clean.size() / 2)
