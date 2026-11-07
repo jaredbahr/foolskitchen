@@ -149,7 +149,7 @@ func _make_weekly_card() -> Control:
 		progress_text = "Progress: $%d / $%d" % [current, challenge.target]
 	else:
 		progress_text = "Progress: %d / %d%s" % [current, challenge.target, unit]
-	var timing: String = "%d days left" % challenge.days_left(_day)
+	var timing: String = WeeklyChallengeText.days_left(challenge.days_left(_day))
 	if challenge.status == WeeklyChallengeState.Status.COMPLETED:
 		timing = "Complete"
 	elif challenge.status == WeeklyChallengeState.Status.EXPIRED:

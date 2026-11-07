@@ -2475,13 +2475,16 @@ func _load_autosave_sections() -> bool:
 	if career.last_evaluated_day >= Clock.sim.day:
 		world.log_event("Autosave career goals are ahead of this morning; starting a new game")
 		return false
+	var weekly_load_note: String = ""
 	if _loaded_weekly_challenge != null:
 		var challenge_state: WeeklyChallengeState = _loaded_weekly_challenge
 		if challenge_state.last_evaluated_day >= Clock.sim.day \
 				or (challenge_state.is_active() and (challenge_state.last_evaluated_day != Clock.sim.day - 1 \
 				or challenge_state.start_day > Clock.sim.day or challenge_state.end_day < Clock.sim.day)):
-			world.log_event("Saved weekly challenge does not match this morning; starting a new game")
-			return false
+			# Preserve every other valid section. The successfully restored
+			# morning initializes an empty weekly state for the remaining week.
+			_loaded_weekly_challenge = null
+			weekly_load_note = "Saved weekly challenge did not match this morning; started a fresh challenge for the remaining week"
 	# A saved game predating the shop section still owns the original shell.
 	# Initial presentation may already have built the roomier NEW-shop world.
 	var base: ShopLayout = _base_for_saved_shop({"layout_id": _loaded_layout.save_layout_id}) \
@@ -2509,6 +2512,8 @@ func _load_autosave_sections() -> bool:
 		return false
 	sim = candidate
 	world = candidate.world
+	if not weekly_load_note.is_empty():
+		world.log_event(weekly_load_note)
 	if not _loaded_cat.is_empty() and sim.cat.from_dict(_loaded_cat):
 		sim.cat.begin_day(world.grid)
 	_loaded_cat = {}

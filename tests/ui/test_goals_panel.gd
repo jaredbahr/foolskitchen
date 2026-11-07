@@ -105,6 +105,18 @@ func test_weekly_challenge_is_the_top_card_and_updates_without_duplicate_nodes()
 		1, weekly, 1, observation)
 	assert_eq(rows.get_children().filter(func(child: Node) -> bool:
 		return child.name == "WeeklyChallenge").size(), 1)
+	weekly.last_evaluated_day = 6
+	observation.day = 7
+	_panel.set_goals(_catalogue, [] as Array[StringName], {} as Dictionary[StringName, float],
+		1, weekly, 7, observation)
+	assert_eq((rows.get_node("WeeklyChallenge/Body/Details/DaysLeft") as Label).text, "1 day left")
+
+
+func test_weekly_remaining_days_uses_singular_only_for_one() -> void:
+	assert_eq(WeeklyChallengeText.days_left(0), "0 days left")
+	assert_eq(WeeklyChallengeText.days_left(1), "1 day left")
+	assert_eq(WeeklyChallengeText.days_left(2), "2 days left")
+	assert_eq(WeeklyChallengeText.days_left(7), "7 days left")
 
 
 func test_clean_day_progress_waits_for_the_real_close_commit() -> void:

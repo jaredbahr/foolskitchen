@@ -262,7 +262,7 @@ func test_bonus_level_unlocks_refresh_without_recursive_same_close_rewards() -> 
 	assert_eq(Economy.ledger.day_totals(2).get(Ledger.MILESTONE_BONUS), 1)
 
 
-func test_weekly_challenge_real_order_close_reward_save_reload_and_next_rotation() -> void:
+func test_weekly_frozen_dish_counts_after_menu_removal_and_reward_survives_reload() -> void:
 	var career: MilestoneSet = _catalogue()
 	career.milestones[0].target = 1000.0
 	var main: Node = await _start(true, career)
@@ -292,6 +292,12 @@ func test_weekly_challenge_real_order_close_reward_save_reload_and_next_rotation
 	order.price = 20
 	order.ingredient_cost = 0
 	order.ingredient_cost_recorded = true
+	# Component fixture: remove the featured dish directly from MenuSettings
+	# after the order exists, then pay it through the actual sim signal. Player
+	# menu editing remains MORNING-only; this is not mid-service player input.
+	assert_true(settings.set_enabled(recipes[0].id, false))
+	assert_false(settings.enabled_recipes().has(recipes[0]))
+	assert_eq(challenge.dish_id, recipes[0].id, "the drawn dish stays frozen after menu removal")
 	sim.pay(guest, order)
 	assert_eq(int((main.get("dishes_sold_today") as Dictionary).get(recipes[0].id, 0)), 1,
 		"the real RestaurantSim payment signal reaches Main's canonical paid-order counter")
@@ -372,6 +378,64 @@ func test_legacy_weekly_section_starts_midweek_without_fabricated_progress_or_re
 	loaded.call("_begin_weekly_challenge_if_needed")
 	assert_eq(GameState.rng(&"weekly").state, weekly_rng_state,
 		"legacy migration is idempotent after the missing section has initialized")
+
+
+func test_mismatched_weekly_dates_keep_the_rest_of_a_valid_morning_save() -> void:
+	var career: MilestoneSet = _catalogue()
+	career.milestones[0].target = 1000.0
+	var first: Node = await _start(true, career)
+	for _day: int in range(3):
+		_close_day(first, 0)
+		assert_true(Clock.sim.next_day())
+	assert_eq(Clock.sim.day, 4)
+	var original: Dictionary = _document()
+	_close(first)
+	for evaluated_day: int in [2, 4]:
+		var document: Dictionary = original.duplicate(true)
+		var stale: WeeklyChallengeState = WeeklyChallengeState.new()
+		var isolated_pool: WeeklyChallengePool = WeeklyChallengePool.new()
+		isolated_pool.challenges = [WEEKLY_POOL.by_id(&"serve_a_busy_day")] as Array[WeeklyChallenge]
+		var random: RandomNumberGenerator = RandomNumberGenerator.new()
+		random.seed = 326
+		assert_true(stale.begin_legacy_week(4, 1, isolated_pool, [] as Array[RecipeDef], random))
+		stale.progress = 5
+		stale.last_evaluated_day = evaluated_day
+		var validated: WeeklyChallengeState = WeeklyChallengeState.new()
+		assert_true(validated.from_dict(stale.to_dict()), "fixture is structurally valid, only its morning date is wrong")
+		document["data"]["weekly_challenge"] = stale.to_dict()
+		_write_document(document)
+		_remove_backup()
+		var loaded: Node = await _start(true, career)
+		assert_eq(Clock.sim.day, 4, "a weekly-only mismatch never starts a new game")
+		var saved: Dictionary = document["data"]
+		# Compare the complete persisted representation: JSON decodes numbers
+		# as floats and typed collections as untyped arrays/dictionaries.
+		assert_eq(JSON.parse_string(JSON.stringify(Economy._capture_save())), saved["economy"],
+			"cash, ledger, lots and loan survive")
+		for section: String in ["shop", "menu", "staff", "owner", "milestones", "reviews", "business_history"]:
+			assert_eq(JSON.parse_string(JSON.stringify(loaded.call("_capture_" + section))), saved[section],
+				"%s survives the weekly-only reset" % section)
+		var challenge: WeeklyChallengeState = loaded.get("weekly_challenge") as WeeklyChallengeState
+		assert_true(challenge.is_active())
+		assert_eq(challenge.start_day, 1)
+		assert_eq(challenge.end_day, 7)
+		assert_eq(challenge.last_evaluated_day, 3)
+		assert_eq(challenge.progress, 0, "the reset never fabricates elapsed weekly progress")
+		var world: SimWorld = loaded.get("world") as SimWorld
+		assert_true("\n".join(world.event_log).contains("Saved weekly challenge did not match this morning"),
+			"the recovery note survives installation of the restored world")
+		var current: Dictionary = challenge.to_dict()
+		var weekly_rng_state: int = GameState.rng(&"weekly").state
+		loaded.call("_begin_weekly_challenge_if_needed")
+		assert_eq(challenge.to_dict(), current)
+		assert_eq(GameState.rng(&"weekly").state, weekly_rng_state)
+		_close(loaded)
+		var resumed: Node = await _start(true, career)
+		assert_eq((resumed.get("weekly_challenge") as WeeklyChallengeState).to_dict(), current,
+			"the recovered valid morning reloads without another reset")
+		assert_eq(GameState.rng(&"weekly").state, weekly_rng_state)
+		assert_false("\n".join((resumed.get("world") as SimWorld).event_log).contains("Saved weekly challenge did not match this morning"))
+		_close(resumed)
 
 
 func _start(saves: bool, catalogue: MilestoneSet) -> Node:

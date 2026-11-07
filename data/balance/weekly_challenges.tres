@@ -8,7 +8,7 @@ script = ExtResource("2_challenge")
 id = &"serve_a_busy_day"
 kind = 0
 text_template = "Serve {target} guests in one day"
-base_target = 12
+base_target = 24
 per_level = 4
 reward_cash = 60
 
@@ -17,7 +17,7 @@ script = ExtResource("2_challenge")
 id = &"serve_a_full_day"
 kind = 0
 text_template = "Serve {target} guests in one day"
-base_target = 24
+base_target = 36
 per_level = 8
 reward_cash = 120
 
@@ -62,7 +62,7 @@ script = ExtResource("2_challenge")
 id = &"collect_good_reviews"
 kind = 3
 text_template = "Get {target} good reviews this week"
-base_target = 3
+base_target = 12
 per_level = 2
 reward_cash = 60
 
@@ -71,7 +71,7 @@ script = ExtResource("2_challenge")
 id = &"collect_glowing_reviews"
 kind = 3
 text_template = "Get {target} good reviews this week"
-base_target = 7
+base_target = 12
 per_level = 3
 reward_cash = 100
 
@@ -80,7 +80,7 @@ script = ExtResource("2_challenge")
 id = &"sell_the_special"
 kind = 4
 text_template = "Sell {target} {dish} this week"
-base_target = 8
+base_target = 9
 per_level = 3
 reward_cash = 75
 
