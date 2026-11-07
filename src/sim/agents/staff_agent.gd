@@ -185,6 +185,7 @@ func why() -> String:
 func _try_claim(world: SimWorld) -> void:
 	var candidates: Array[SimTask] = world.open_tasks_this_tick()
 	var scores: Dictionary[int, float] = {}
+	var reserved_buses: Dictionary[int, bool] = {}
 	var highest_priorities: Dictionary[StringName, int] = {}
 	var highest_job_level: int = StaffJobPriorities.Level.OFF
 	var fallback_cleaning: bool = _can_fallback_clean(world)
@@ -205,6 +206,9 @@ func _try_claim(world: SimWorld) -> void:
 				score *= 1.0 + urgency_tuning.guest_weight * GuestUrgency.of_task(world, t)
 		scores[t.id] = score
 		if score > 0.0:
+			if t.kind == &"bus_table" and world.booking_hold != null \
+					and world.booking_hold.prioritizes_bussing(world, t.first_item_id()):
+				reserved_buses[t.id] = true
 			if fallback_cleaning and t.role == &"server":
 				service_work_open = true
 			var job_level: int = _job_level(t)
@@ -217,7 +221,14 @@ func _try_claim(world: SimWorld) -> void:
 	var best: SimTask = null
 	var best_score := 0.0
 	for t: SimTask in candidates:
-		if world.board.get_task(t.id) != t or not _eligible(t, highest_job_level, highest_priorities):
+		if world.board.get_task(t.id) != t:
+			continue
+		# A reservation is a temporary promise: its eligible cleanup precedes
+		# other positive saved job tiers. _score still makes OFF/roles absolute.
+		if not reserved_buses.is_empty():
+			if not reserved_buses.has(t.id) or t.state != SimTask.State.OPEN:
+				continue
+		elif not _eligible(t, highest_job_level, highest_priorities):
 			continue
 		# Legacy agents and the Floor-mode owner retain the original mop fallback.
 		# Configured employees instead use the saved job tier above distance.

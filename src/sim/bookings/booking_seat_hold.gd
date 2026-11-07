@@ -31,7 +31,7 @@ func blocks_group(world: SimWorld, group_id: int, arriving_booking_id: int = 0) 
 
 
 ## Runs immediately before the next simulation tick so a walk-in cannot claim
-## the selected group on the first tick whose displayed minute reaches T-20.
+## the selected group on the first tick whose displayed minute reaches the hold.
 func prepare_next_tick(world: SimWorld) -> void:
 	if world == null or state == null or not state.has_active_booking() \
 			or world.clock.phase != SimClock.Phase.OPEN:
@@ -43,6 +43,53 @@ func prepare_next_tick(world: SimWorld) -> void:
 			float(next_tick) / float(maxi(world.clock.open_ticks, 1)) \
 			* float(world.clock.display_close_minute - world.clock.display_open_minute))
 	_sync_at_minute(world, next_minute)
+
+
+## Read-only: normal hold/seat selection establishes the group. A retry never
+## redraws it or moves the absolute slot + grace deadline.
+func pauses_queue_patience(world: SimWorld, booking_id: int) -> bool:
+	var group_id: int = _active_held_group(world, booking_id)
+	if group_id == 0 or world.clock.phase != SimClock.Phase.OPEN:
+		return false
+	var minute: int = world.clock.display_minutes()
+	var slot: int = int(state.booking["slot_minute"])
+	if minute < slot or minute >= slot + state.tuning.reserved_queue_grace_minutes:
+		return false
+	if kitchen != null and kitchen.is_dining_group_dirty(group_id):
+		return true
+	for member: Variant in state.booking["held_group_members"]:
+		var table: PlacedItem = world.grid.item(int(member))
+		for seat: Vector2i in table.seat_cells:
+			if table.reserved_by(seat) != -1:
+				return true
+	return false
+
+
+## Reserved bussing outranks other enabled work, never disabled jobs. Inspect
+## the current hold each claim so settled/reselected groups cannot stay urgent.
+func prioritizes_bussing(world: SimWorld, table_item_id: int) -> bool:
+	if state == null or kitchen == null or not kitchen.is_table_dirty(table_item_id):
+		return false
+	var booking_id: int = int(state.booking.get("booking_id", 0))
+	if _active_held_group(world, booking_id) == 0:
+		return false
+	for member: Variant in state.booking["held_group_members"]:
+		if int(member) == table_item_id:
+			return true
+	return false
+
+
+func _active_held_group(world: SimWorld, booking_id: int) -> int:
+	if world == null or world.clock == null or state == null or state.tuning == null \
+			or not state.tuning.is_valid() or not state.has_active_booking() or booking_id <= 0 \
+			or int(state.booking.get("booking_id", 0)) != booking_id \
+			or int(state.booking.get("service_day", 0)) != world.clock.day \
+			or world.clock.phase not in [SimClock.Phase.OPEN, SimClock.Phase.LAST_ORDERS] \
+			or world.clock.display_minutes() < int(state.booking.get("slot_minute", 0)) - state.tuning.hold_before_minutes:
+		return 0
+	var group_id: int = int(state.booking.get("held_group_id", 0))
+	return group_id if group_id > 0 and _valid_group(group_id,
+		state.booking.get("held_group_members", []), world, int(state.booking.get("party_size", 0))) else 0
 
 
 func _sync(world: SimWorld) -> void:
@@ -96,7 +143,7 @@ func _choose_group(world: SimWorld, party_size: int) -> Dictionary:
 				occupied = true
 		var clear_now: bool = free_count >= party_size and not occupied \
 				and (kitchen == null or not kitchen.is_dining_group_dirty(group_id))
-		var rank: int = 0 if clear_now else (1 if occupied else 2)
+		var rank: int = 0 if clear_now else (2 if occupied else 1)
 		candidates.append({"id": group_id, "members": members, "rank": rank})
 	candidates.sort_custom(_candidate_before)
 	return candidates[0] if not candidates.is_empty() else {}

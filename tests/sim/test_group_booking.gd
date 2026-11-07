@@ -34,6 +34,8 @@ func _offer(seed_value: int = 316) -> GroupBooking:
 
 func test_tuning_and_party_limits_keep_walkins_at_six_and_bookings_at_ten() -> void:
 	assert_true(TUNING.is_valid())
+	assert_eq(TUNING.hold_before_minutes, 75)
+	assert_eq(TUNING.reserved_queue_grace_minutes, 30)
 	assert_eq(TUNING.unlock_level, 2)
 	assert_almost_eq(TUNING.offer_chance, 0.25)
 	assert_eq(TUNING.min_party_size, 6)
@@ -77,14 +79,14 @@ func test_offer_is_deterministic_idempotent_and_requires_a_usable_quarter_hour()
 	assert_eq(_provider_calls, 0, "the morning is never re-rolled after its first offer")
 	var edge: GroupBooking = GroupBooking.new(_certain_tuning())
 	var edge_offer: Dictionary = edge.plan_offer(1, 2, [&"burger"] as Array[StringName],
-		667, 795, _provider(41))
-	assert_eq(edge_offer["slot_minute"], 690, "open 11:07 plus 20-minute hold rounds up to 11:30")
-	assert_eq(795 - int(edge_offer["slot_minute"]) - TUNING.slot_minutes, 90,
+		667, 855, _provider(41))
+	assert_eq(edge_offer["slot_minute"], 750, "open 11:07 plus 75-minute hold rounds up to 12:30")
+	assert_eq(855 - int(edge_offer["slot_minute"]) - TUNING.slot_minutes, 90,
 		"the only slot leaves exactly 90 minutes after the whole slot")
 	var too_short: GroupBooking = GroupBooking.new(_certain_tuning())
 	_provider_calls = 0
 	assert_true(too_short.plan_offer(1, 2, [&"burger"] as Array[StringName],
-		667, 794, _provider(42)).is_empty())
+		667, 854, _provider(42)).is_empty())
 	assert_eq(_provider_calls, 0, "a window too short for one legal slot never fetches RNG")
 
 
@@ -260,11 +262,11 @@ func test_first_hold_tick_blocks_walkin_before_its_seat_acquisition() -> void:
 	var clock: SimClock = sim.world.clock
 	clock.day = 2
 	clock.display_open_minute = 600
-	clock.display_close_minute = 780
-	clock.open_ticks = 180
+	clock.display_close_minute = 900
+	clock.open_ticks = 300
 	assert_true(clock.start_service())
-	clock.phase_tick = 9 # 10:09; the next tick is exactly the 10:10 T-20 hold boundary.
-	var booking_model: GroupBooking = _accepted_for_service_slot(630, 6)
+	clock.phase_tick = 14 # 10:14; the next tick is exactly the 10:15 T-75 hold boundary.
+	var booking_model: GroupBooking = _accepted_for_service_slot(690, 6)
 	sim.configure_booking(booking_model)
 	sim.spawner._remaining = 100000
 	var guest: CustomerAgent = sim.add_customer(sim.world.grid.entries()[0], _rng(95))
@@ -272,8 +274,8 @@ func test_first_hold_tick_blocks_walkin_before_its_seat_acquisition() -> void:
 	sim.advance()
 	var held_id: int = sim.world.booking_hold.group_for_booking(sim.world,
 		int(booking_model.booking["booking_id"]))
-	assert_true(held_id > 0, "the first T-20 query chooses an actual joined dining group")
-	assert_eq(clock.display_minutes(), 610)
+	assert_true(held_id > 0, "the first T-75 query chooses an actual joined dining group")
+	assert_eq(clock.display_minutes(), 615)
 	assert_true(sim.world.booking_hold.blocks_group(sim.world, held_id),
 		"a walk-in cannot acquire the group on the boundary tick")
 	assert_false(guest._book_table(sim.world, false), "the normal singleton path respects the hold")
@@ -297,14 +299,14 @@ func test_unreachable_lower_id_group_does_not_keep_the_hold_from_a_usable_group(
 	for x: int in range(1, 16):
 		wall_edges[Vector3i(x, 7, SimGrid.EDGE_NORTH)] = SimGrid.Segment.WALL
 	assert_true(sim.world.grid.set_segments(wall_edges))
-	var model: GroupBooking = _accepted_for_service_slot(630, 6)
+	var model: GroupBooking = _accepted_for_service_slot(690, 6)
 	sim.configure_booking(model)
 	sim.world.clock.day = 2
 	sim.world.clock.display_open_minute = 600
-	sim.world.clock.display_close_minute = 780
-	sim.world.clock.open_ticks = 180
+	sim.world.clock.display_close_minute = 900
+	sim.world.clock.open_ticks = 300
 	assert_true(sim.world.clock.start_service())
-	sim.world.clock.phase_tick = 10
+	sim.world.clock.phase_tick = 15
 	var tables: Array[PlacedItem] = ShopBuilder.items_with_def(sim.world, &"cloth_table")
 	assert_eq(tables.size(), 6)
 	var inaccessible_id: int = PartySeating.table_group_id(tables[0], sim.world.grid)
@@ -403,13 +405,13 @@ func test_booking_spawns_once_at_its_slot_without_waiting_for_a_walkin_gap() -> 
 	sim.spawner.min_gap = 100000
 	sim.spawner.max_gap = 100000
 	sim.start_day()
-	var model: GroupBooking = _accepted_for_service_slot(675, 6)
+	var model: GroupBooking = _accepted_for_service_slot(735, 6)
 	sim.configure_booking(model)
 	assert_true(clock.start_service())
-	clock.phase_tick = 14
+	clock.phase_tick = 74
 	var state_before_booking_spawn: int = sim.rng.state
 	sim.advance()
-	assert_eq(clock.display_minutes(), 675)
+	assert_eq(clock.display_minutes(), 735)
 	assert_eq(sim.customers().size(), 6, "the booked group arrives at its slot even with no walk-in gap")
 	var booked: Party = sim.customers()[0].party
 	assert_not_null(booked)
@@ -428,13 +430,224 @@ func _accepted_for_service_slot(slot_minute: int, party_size: int) -> GroupBooki
 	tuned.offer_chance = 1.0
 	var model: GroupBooking = GroupBooking.new(tuned)
 	var offer: Dictionary = model.plan_offer(1, 2, [&"burger"] as Array[StringName],
-		maxi(slot_minute - 30, 0), slot_minute + 120, _provider(921))
+		maxi(slot_minute - tuned.hold_before_minutes, 0), slot_minute + 120, _provider(921))
 	assert_false(offer.is_empty())
 	# Pin the slot after a valid deterministic offer; model validation is covered
 	# separately and these scenarios exercise the integration clock path.
 	model.offer["slot_minute"] = slot_minute
 	assert_false(model.accept_offer(1).is_empty())
 	return model
+
+
+func test_reserved_grace_requires_a_live_matching_occupied_or_dirty_group_and_absolute_window() -> void:
+	var fixture: Dictionary = _reservation_fixture()
+	var sim: RestaurantSim = fixture["sim"]
+	var model: GroupBooking = fixture["model"]
+	var tables: Array[PlacedItem] = fixture["tables"]
+	var hold: BookingSeatHold = sim.world.booking_hold
+	var booking_id: int = int(model.booking["booking_id"])
+	assert_false(hold.pauses_queue_patience(sim.world, booking_id), "an empty clean group grants no grace")
+	# Isolated predicate fixture: a physical dining-seat reservation, not a
+	# claim that this synthetic owner has eaten a meal. The lifecycle test uses real diners.
+	var seat: Vector2i = tables[0].seat_cells[0]
+	assert_true(tables[0].reserve(seat, 900))
+	var before: Dictionary = model.to_dict()
+	assert_true(hold.pauses_queue_patience(sim.world, booking_id))
+	assert_false(hold.pauses_queue_patience(sim.world, booking_id + 1))
+	sim.world.clock.day = 3
+	assert_false(hold.pauses_queue_patience(sim.world, booking_id))
+	sim.world.clock.day = 2
+	sim.world.clock.phase_tick = 89 # 11:29, before the 11:30 slot.
+	assert_false(hold.pauses_queue_patience(sim.world, booking_id))
+	sim.world.clock.phase_tick = 119 # 11:59, just before the absolute 12:00 cutoff.
+	assert_true(hold.pauses_queue_patience(sim.world, booking_id))
+	sim.world.clock.phase_tick = 120
+	assert_false(hold.pauses_queue_patience(sim.world, booking_id), "the exact slot+30 minute resumes normal patience")
+	assert_eq(model.to_dict(), before, "predicate calls never choose a group or mutate the model")
+	sim.world.clock.phase_tick = 90
+	assert_true(tables[0].release(seat, 900))
+	assert_false(hold.pauses_queue_patience(sim.world, booking_id))
+	sim.kitchen.mark_table_dirty(tables[0].id)
+	assert_true(hold.pauses_queue_patience(sim.world, booking_id), "empty but dirty is still waiting on its own table")
+	var held: Dictionary = model.to_dict()
+	assert_true(sim.world.grid.remove_group(PartySeating.table_group_members(tables[0], sim.world.grid)))
+	assert_false(hold.pauses_queue_patience(sim.world, booking_id), "a missing held topology gets ordinary patience")
+	assert_eq(model.to_dict(), held, "invalid-group observation cannot silently reselect a reservation")
+
+
+func test_hold_chooses_an_empty_dirty_group_before_an_occupied_lower_id_group() -> void:
+	var fixture: Dictionary = _reservation_fixture([3, 8] as Array[int])
+	var sim: RestaurantSim = fixture["sim"]
+	var model: GroupBooking = fixture["model"]
+	var tables: Array[PlacedItem] = fixture["tables"]
+	assert_true(tables[0].reserve(tables[0].seat_cells[0], 900))
+	sim.kitchen.mark_table_dirty(tables[3].id)
+	assert_true(model.clear_held_group(int(model.booking["booking_id"])))
+	assert_eq(sim.world.booking_hold.group_for_booking(sim.world, int(model.booking["booking_id"])), tables[3].id,
+		"a real dirty empty group can be cleared sooner than the occupied lower-ID group")
+
+
+func test_reserved_bussing_precedes_high_service_but_respects_off_and_stale_reservations() -> void:
+	for condition: String in ["active_low", "active_off", "settled", "wrong_day", "invalid_group"]:
+		var fixture: Dictionary = _reservation_fixture()
+		var sim: RestaurantSim = fixture["sim"]
+		var model: GroupBooking = fixture["model"]
+		var tables: Array[PlacedItem] = fixture["tables"]
+		sim.kitchen.mark_table_dirty(tables[2].id)
+		var bus: SimTask = null
+		for task: SimTask in sim.world.board.open_tasks():
+			if task.kind == &"bus_table" and task.first_item_id() == tables[2].id:
+				bus = task
+		assert_not_null(bus)
+		var worker: StaffAgent = StaffAgent.new(&"server", 3)
+		worker.cell = Vector2i(2, 10)
+		sim.world.add_agent(worker)
+		var priorities: StaffJobPriorities = StaffJobPriorities.new(&"server")
+		assert_true(priorities.set_priority(&"serving", StaffJobPriorities.Level.HIGH))
+		assert_true(priorities.set_priority(&"bussing", StaffJobPriorities.Level.OFF \
+			if condition == "active_off" else StaffJobPriorities.Level.LOW))
+		assert_true(worker.set_job_priorities(priorities))
+		var saved_priorities: Dictionary = worker.job_priorities().to_dict()
+		var service: SimTask = SimTask.new(&"take_order", &"server", "Nearby service")
+		service.priority = 3
+		service.steps = [TaskStep.go_to_cell(worker.cell), TaskStep.work(1)] as Array[TaskStep]
+		sim.world.board.post(service, sim.world.now)
+		if condition == "settled":
+			var id: int = int(model.booking["booking_id"])
+			assert_true(model.claim_effect(id, GroupBooking.EFFECT_NO_SEAT))
+			assert_true(model.claim_effect(id, GroupBooking.EFFECT_REVIEW))
+			assert_true(model.settle(id, true))
+		elif condition == "wrong_day":
+			sim.world.clock.day = 3
+		elif condition == "invalid_group":
+			# Keep the bus's own physical target but invalidate its held joined group.
+			assert_true(sim.world.grid.remove(tables[0].id))
+		worker.call("_try_claim", sim.world)
+		assert_eq(worker.task, bus if condition == "active_low" else service, condition)
+		assert_eq(worker.job_priorities().to_dict(), saved_priorities, "reservation urgency never edits saved choices")
+		if condition == "active_low":
+			assert_eq(service.state, SimTask.State.OPEN)
+		else:
+			assert_eq(bus.state, SimTask.State.OPEN, "ordinary/disabled work is not force-claimed")
+
+
+func test_shared_queue_keeps_spent_patience_and_resumes_once_per_tick_at_the_absolute_cap() -> void:
+	var fixture: Dictionary = _reservation_fixture()
+	var sim: RestaurantSim = fixture["sim"]
+	var model: GroupBooking = fixture["model"]
+	var tables: Array[PlacedItem] = fixture["tables"]
+	assert_true(tables[0].reserve(tables[0].seat_cells[0], 900))
+	# Unit admission staging, not an eating/service claim. Use the normal
+	# reset API only while MORNING so every queued body is genuinely admitted.
+	sim.world.clock.phase = SimClock.Phase.MORNING
+	var party: Party = sim.add_booking_party(sim.world.grid.entries()[0], model.booking)
+	assert_not_null(party)
+	if party == null:
+		return
+	var guests: Array[CustomerAgent] = PartySeating.members(party, sim.world)
+	for guest: CustomerAgent in guests:
+		assert_true(sim.world.reset_agent_position(guest, _free_queue_cell(sim.world)))
+		assert_true(guest.movement_admitted)
+		guest.state = CustomerAgent.State.QUEUED
+		guest.queue_patience = 20
+	party.queue_started = true
+	party.queue_wait = 7
+	sim.world.clock.phase = SimClock.Phase.OPEN
+	var before: Dictionary = model.to_dict()
+	for _guest: CustomerAgent in guests:
+		PartySeating.advance_queue(party, sim.world, sim, false)
+	assert_eq(party.queue_wait, 7, "grace does not erase previously spent queue patience")
+	assert_eq(model.to_dict(), before)
+	sim.world.clock.phase_tick = 120 # Exactly slot+30; the group remains occupied.
+	sim.world.now += 1
+	for _guest: CustomerAgent in guests:
+		PartySeating.advance_queue(party, sim.world, sim, false)
+	assert_eq(party.queue_wait, 8, "all member callbacks spend exactly one shared tick after the cutoff")
+	for guest: CustomerAgent in guests:
+		assert_eq(guest._queue_wait, 8)
+	sim.world.now += 1
+	PartySeating.advance_queue(party, sim.world, sim, false)
+	assert_eq(party.queue_wait, 9, "a retry cannot start a new grace window")
+
+
+func _free_queue_cell(world: SimWorld) -> Vector2i:
+	for y: int in world.grid.size.y:
+		for x: int in world.grid.size.x:
+			var cell: Vector2i = world.grid.origin + Vector2i(x, y)
+			if world.grid.is_guest_walkable(cell) and world.grid.dining_table_id(cell) == 0 \
+					and world.movement.standing_cell(world, cell):
+				var occupied: bool = false
+				for agent: SimAgent in world.all_agents():
+					occupied = occupied or agent.cell == cell
+				if not occupied:
+					return cell
+	fail("Queue-unit fixture has no free non-dining start")
+	return SimGrid.NO_CELL
+
+
+func test_reserved_bussing_cannot_grant_an_ineligible_worker_a_new_role() -> void:
+	var fixture: Dictionary = _reservation_fixture()
+	var sim: RestaurantSim = fixture["sim"]
+	var tables: Array[PlacedItem] = fixture["tables"]
+	sim.kitchen.mark_table_dirty(tables[2].id)
+	var worker: StaffAgent = StaffAgent.new(&"cook", 3)
+	worker.cell = _free_queue_cell(sim.world)
+	sim.world.add_agent(worker)
+	var ordinary: SimTask = SimTask.new(&"cook", &"cook", "Ordinary cooking")
+	ordinary.steps = [TaskStep.go_to_cell(worker.cell), TaskStep.work(1)] as Array[TaskStep]
+	sim.world.board.post(ordinary, sim.world.now)
+	worker.call("_try_claim", sim.world)
+	assert_eq(worker.task, ordinary, "the reservation cannot invent server eligibility")
+
+
+func test_new_reserved_cleanup_does_not_interrupt_already_claimed_service() -> void:
+	var fixture: Dictionary = _reservation_fixture()
+	var sim: RestaurantSim = fixture["sim"]
+	var tables: Array[PlacedItem] = fixture["tables"]
+	var worker: StaffAgent = StaffAgent.new(&"server", 3)
+	worker.cell = _free_queue_cell(sim.world)
+	sim.world.add_agent(worker)
+	var service: SimTask = SimTask.new(&"take_order", &"server", "Already serving")
+	service.steps = [TaskStep.go_to_cell(worker.cell), TaskStep.work(100)] as Array[TaskStep]
+	sim.world.board.post(service, sim.world.now)
+	assert_true(sim.world.board.claim(service, worker.id, sim.world.now))
+	worker.task = service
+	sim.kitchen.mark_table_dirty(tables[2].id)
+	worker.tick(sim.world)
+	assert_eq(worker.task, service)
+	assert_eq(service.state, SimTask.State.CLAIMED)
+	assert_eq(sim.world.board.open_tasks().size(), 1, "reserved cleanup waits for an idle eligible worker")
+
+
+func _reservation_fixture(rows: Array[int] = [7]) -> Dictionary:
+	var content: ContentDB = ContentDB.new()
+	assert_eq(content.load_all(), PackedStringArray())
+	var layout: ShopLayout = LAYOUT.duplicate(true) as ShopLayout
+	layout.placements.clear()
+	for placement: ShopPlacement in LAYOUT.placements:
+		if content.item(placement.item_id).category != ItemDef.Category.TABLE:
+			layout.placements.append(placement.duplicate(true) as ShopPlacement)
+	for y: int in rows:
+		for x: int in [3, 5, 7]:
+			layout.placements.append(_placement(&"cloth_table", Vector2i(x, y)))
+			layout.placements.append(_placement(&"chair", Vector2i(x, y - 1), 2))
+			layout.placements.append(_placement(&"chair", Vector2i(x, y + 1)))
+	var errors: Array[String] = []
+	var sim: RestaurantSim = RestaurantSim.create(layout, content, 316, errors)
+	assert_eq(errors, [] as Array[String])
+	var model: GroupBooking = _accepted_for_service_slot(690, 6)
+	sim.configure_booking(model)
+	sim.world.clock.day = 2
+	sim.world.clock.display_open_minute = 600
+	sim.world.clock.display_close_minute = 900
+	sim.world.clock.open_ticks = 300 # One displayed minute per tick for exact boundary checks.
+	assert_true(sim.world.clock.start_service())
+	sim.world.clock.phase_tick = 90
+	sim.spawner._remaining = 100000
+	var tables: Array[PlacedItem] = ShopBuilder.items_with_def(sim.world, &"cloth_table")
+	assert_eq(tables.size(), 3 * rows.size())
+	assert_eq(sim.world.booking_hold.group_for_booking(sim.world, int(model.booking["booking_id"])), tables[0].id)
+	return {"sim": sim, "model": model, "tables": tables}
 
 
 func _rng(seed_value: int) -> RandomNumberGenerator:

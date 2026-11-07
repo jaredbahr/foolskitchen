@@ -1224,7 +1224,10 @@ func finalize_booking_review(booking_id: int, fallback_no_seat: bool = true) -> 
 	reviews_today.append(row)
 	review_recorded.emit(row.duplicate())
 	if no_seat:
-		booking_report_lines.append("A reserved group could not be seated and received a full deposit refund.")
+		var occasion: String = "reserved"
+		if group_booking != null and int(group_booking.booking.get("booking_id", 0)) == booking_id:
+			occasion = String(group_booking.booking.get("occasion", "Reserved")).strip_edges().to_lower()
+		booking_report_lines.append("Booking: the %s group couldn't be seated. Deposit refunded." % occasion)
 	return result.duplicate(true)
 
 

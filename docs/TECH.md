@@ -1978,6 +1978,37 @@ malformed data rejects the load without partially installing career state. Caree
 state uses the existing next-morning autosave only, including rewards earned at
 the preceding close. New Game resets it. No action or evening save is added.
 
+**Group bookings (FK-131, #343):** The single accepted next-day group uses a
+soft joined-group hold from 75 minutes before its slot. Existing diners retain
+their physical reservations and leave normally. A matching booked party's
+shared queue counter pauses only while its current valid held group is actually
+occupied or dirty, from the slot up to (excluding) slot+30 displayed minutes.
+The read-only predicate never selects another group, erases spent patience or
+moves the deadline on retry. Missing, free/clean, stale and wrong-day holds get
+ordinary patience. The party controller's once-per-world-tick guard remains.
+
+Dirty reserved tables form one narrow staff-selection exception: eligible
+reserved bussing precedes other positive saved job tiers and distance scores.
+Jobs set Off, role/target eligibility and already-claimed work remain absolute;
+no saved priority changes. Empty dirty groups rank before occupied groups when
+the normal hold chooses a new group. Tick-driven booking presentation refreshes
+only on a changed day, phase or held group; player actions refresh immediately.
+
+Customer advances, their application and refunds retain the existing exact
+ledger movements and operating-profit exclusions. The report labels the service
+day's applied amount as "Deposit taken off the bill". Main's paid-order replay
+guard returns before counting any cost, sale or booked bill a second time.
+Saving stays at the existing morning checkpoint with no new booking save fields.
+
+`tools/booking_soak.gd` is a manual fixed 24-seed diagnostic, not a CI loop. It
+forces six-person offers, moves the three actual starter tables into a joined
+group and stages level 2/next morning, while keeping ordinary arrivals, stock
+purchases, staff, kitchen, patience and eating duration. Each seed reports model
+settlement separately from actual seating, paid members and advance application
+or refund; it is not proof for every 6–10-person layout. The occupied-at-slot
+regression alone discloses staged long meals, delayed unrelated arrivals and
+real extra ingredient purchases to isolate the reservation boundary.
+
 **Lighting and frontage (FK-055):** Main owns one `lighting_rig.tscn` with a
 warm directional key (main's colour, energy and shadows), low-energy cool fill
 and warm ambient light, so exposure matches the pre-rig shop. A native procedural

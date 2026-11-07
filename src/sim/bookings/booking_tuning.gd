@@ -12,7 +12,9 @@ extends Resource
 @export var good_service_stars: int = 4
 @export var review_weight: int = 2
 @export var slot_minutes: int = 15
-@export var hold_before_minutes: int = 20
+@export var hold_before_minutes: int = 75
+## Absolute grace after the slot, only while the held group is occupied/dirty.
+@export var reserved_queue_grace_minutes: int = 30
 ## Keep enough service time after arrival for an ordinary meal to finish.
 @export var min_service_remaining_minutes: int = 90
 @export var occasions: PackedStringArray = PackedStringArray([
@@ -34,6 +36,8 @@ func is_valid() -> bool:
 	if good_service_stars < 1 or good_service_stars > 5 or review_weight < 1 or review_weight > 15:
 		return false
 	if slot_minutes != 15 or hold_before_minutes < 0 or min_service_remaining_minutes < slot_minutes:
+		return false
+	if reserved_queue_grace_minutes < 0 or reserved_queue_grace_minutes > 120:
 		return false
 	if occasions.is_empty():
 		return false

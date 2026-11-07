@@ -206,6 +206,7 @@ func test_unfulfilled_booking_refunds_once_with_one_bad_review_at_service_close(
 	var main: Node = await _start(false)
 	_fresh_books(10000)
 	var booking: GroupBooking = _accepted_booking()
+	booking.booking["occasion"] = "Birthday"
 	main.set("group_booking", booking)
 	(main.get("sim") as RestaurantSim).configure_booking(booking)
 	var deposit: int = int(booking.booking["deposit_amount"])
@@ -218,6 +219,7 @@ func test_unfulfilled_booking_refunds_once_with_one_bad_review_at_service_close(
 	assert_eq(booking.booking["status"], String(GroupBooking.STATUS_REFUNDED))
 	var report: DayReport = main.get("shown_report") as DayReport
 	assert_eq(report.booking_lines.size(), 1)
+	assert_eq(report.booking_lines[0], "Booking: the birthday group couldn't be seated. Deposit refunded.")
 	assert_eq(report.review_cards.size(), 1)
 	assert_eq(report.review_cards[0]["stars"], 1)
 	var ledger_after_close: Dictionary = Economy.ledger.to_dict()

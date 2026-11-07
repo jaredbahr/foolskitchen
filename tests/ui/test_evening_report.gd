@@ -23,6 +23,44 @@ func test_food_quality_line_displays_average_and_empty_day_in_plain_words() -> v
 	assert_eq((_report.get_node("%FoodQuality") as Label).text, "Food quality: no dishes served")
 
 
+func test_booking_cash_rows_name_deposit_refund_and_applied_advance() -> void:
+	var day: DayReport = DayReport.new()
+	day.income[Ledger.BOOKING_DEPOSIT] = 30
+	_report.call("show_report", day)
+	assert_eq((_report.get_node("%IncomeRows").get_child(0) as Label).text, "Booking deposit")
+	day = DayReport.new()
+	day.income[Ledger.SALE] = 120
+	day.costs[Ledger.BOOKING_DEPOSIT] = 30
+	day.costs[Ledger.BOOKING_REFUND] = 5
+	_report.call("show_report", day)
+	var costs: GridContainer = _report.get_node("%CostRows") as GridContainer
+	assert_eq((costs.get_child(0) as Label).text, "Deposit taken off the bill")
+	assert_eq((costs.get_child(1) as Label).text, "$30")
+	assert_eq((costs.get_child(2) as Label).text, "Booking refund")
+	assert_eq(day.profit(), 85)
+	assert_eq(day.purchase_basis_operating_profit(), 120)
+
+
+func test_booking_and_rush_annotations_survive_json_and_keep_stable_independent_report_rows() -> void:
+	var day: DayReport = DayReport.new()
+	day.rush_hour_lines = ["Book club brought 8 guests."]
+	_report.call("show_report", day)
+	assert_null(_report.get_node_or_null("Panel/Scroll/Content/Bookings"))
+	day.booking_lines = ["Booking: the birthday group couldn't be seated. Deposit refunded."]
+	var restored: DayReport = DayReport.from_dict(JSON.parse_string(JSON.stringify(day.to_dict())))
+	assert_eq(restored.booking_lines, day.booking_lines)
+	assert_eq(restored.rush_hour_lines, day.rush_hour_lines)
+	_report.call("show_report", restored)
+	var booking: Label = _report.get_node("Panel/Scroll/Content/Bookings") as Label
+	var rush: Label = _report.get_node("Panel/Scroll/Content/RushHour") as Label
+	assert_true(booking.visible)
+	assert_true(rush.visible)
+	assert_true(rush.get_index() < booking.get_index(), "creation order cannot reorder the two annotations")
+	_report.call("show_report", DayReport.new())
+	assert_false(booking.visible)
+	assert_false(rush.visible)
+
+
 func test_takeaways_line_shows_only_on_days_the_order_counter_sold_any() -> void:
 	var day: DayReport = DayReport.new()
 	day.customers_served = 9

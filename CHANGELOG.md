@@ -11,7 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
-- From owner level 2, book a joined-table group of 6–10 guests for tomorrow. A customer deposit counts toward the final bill, the held table group is marked during service, and the evening report records the group review or any refund. (#343)
+- From owner level 2, some mornings a group of 6–10 asks to book for tomorrow. Accept to take a $5-a-head deposit, and a big enough joined table group is held for them before they arrive. Serve them well for a tip bonus and a review that counts double. If they can't be seated they leave, the deposit is refunded and you get a bad review. (#343)
 - From owner level 2, an occasional announced rush brings a 2.5x burst of arrivals during a 45–75 minute window that fits your opening hours. The morning Menu shows its occasion and start time, and the evening report shows how many guests arrived during the rush and how many later left without a seat or after waiting. The plan is saved with the morning autosave. (#344)
 - Switch the evening report's business trend between the last 7 and 30 days. (#342)
 - Guests leaving a busy bar no longer wait ages to get past people walking the same narrow way, guests held outside a jammed door always come in after a short wait, and the health inspector heads for the door it picked instead of turning back to the nearer one. (#318)

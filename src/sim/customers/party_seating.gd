@@ -253,7 +253,9 @@ static func advance_queue(party: Party, world: SimWorld, sim: RestaurantSim, all
 		return
 	var already_waiting: bool = party.queue_started
 	party.queue_started = true
-	if already_waiting:
+	var reserved_grace: bool = party.booking_owned and world.booking_hold != null \
+		and world.booking_hold.pauses_queue_patience(world, party.booking_id)
+	if already_waiting and not reserved_grace:
 		# The shop cat (#119) makes the whole party a little more patient
 		# while any member stands near it.
 		var refund: int = 0

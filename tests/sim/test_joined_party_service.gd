@@ -38,6 +38,14 @@ func after_each() -> void:
 
 
 func test_real_six_person_party_eats_pays_and_busses_three_physical_tables_without_moving_plate_owners() -> void:
+	_run_six_person_service(false)
+
+
+func test_real_six_person_booking_eats_pays_and_busses_with_one_group_review() -> void:
+	_run_six_person_service(true)
+
+
+func _run_six_person_service(as_booking: bool) -> void:
 	_real_kitchen()
 	var tuning: ReviewTuning = REVIEWS.duplicate() as ReviewTuning
 	tuning.review_chance = 1.0
@@ -47,15 +55,19 @@ func test_real_six_person_party_eats_pays_and_busses_three_physical_tables_witho
 	_sim.world.board.task_posted.connect(_on_task_posted)
 	_sim.world.board.task_completed.connect(_on_task_completed)
 	assert_true(_sim.world.clock.start_service())
-	var booking: Dictionary = {"booking_id": 1, "party_size": 6,
-		"guest_seeds": [24600, 24601, 24602, 24603, 24604, 24605],
-		"recipe_id": "burger", "dish_preference": 0.75}
-	var party: Party = _sim.add_booking_party(_sim.world.grid.entries()[0], booking)
+	var party: Party
+	if as_booking:
+		var booking: Dictionary = {"booking_id": 1, "party_size": 6,
+			"guest_seeds": [24600, 24601, 24602, 24603, 24604, 24605],
+			"recipe_id": "burger", "dish_preference": 0.75}
+		party = _sim.add_booking_party(_sim.world.grid.entries()[0], booking)
+	else:
+		party = _sim.add_party(_sim.world.grid.entries()[0], _randoms(6))
 	assert_not_null(party)
 	if party == null:
 		return
-	assert_true(party.booking_owned)
-	assert_eq(party.booking_id, 1)
+	assert_eq(party.booking_owned, as_booking)
+	assert_eq(party.booking_id, 1 if as_booking else 0)
 	var guests: Array[CustomerAgent] = PartySeating.members(party, _sim.world)
 	for guest: CustomerAgent in guests:
 		guest.food_patience = 5000
@@ -101,9 +113,13 @@ func test_real_six_person_party_eats_pays_and_busses_three_physical_tables_witho
 	assert_eq(_paid.size(), 6)
 	assert_eq(_left.size(), 6)
 	assert_eq(owners.size(), 6)
-	assert_eq(_sim.reviews_today.size(), 1, "booking members produce one booking-level review")
-	assert_true(_sim.booking_review_results.has(1))
-	assert_false(_sim.booking_review_results[1]["no_seat"])
+	if as_booking:
+		assert_eq(_sim.reviews_today.size(), 1, "booking members produce one booking-level review")
+		assert_true(_sim.booking_review_results.has(1))
+		assert_false(_sim.booking_review_results[1]["no_seat"])
+	else:
+		assert_eq(_sim.reviews_today.size(), 6, "ordinary walk-in members retain their individual reviews")
+		assert_true(_sim.booking_review_results.is_empty())
 	assert_eq(_bus_members.size(), 3)
 	assert_eq(_bus_completed.size(), 3)
 	assert_true(_saw_bus_work)

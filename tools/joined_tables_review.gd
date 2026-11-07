@@ -9,6 +9,7 @@ const FRAMES: Array[int] = [12, 90]
 ## starter shop; the party sits after 278 ticks, so this keeps a margin.
 const WALK_BUDGET: int = 360
 const TABLE_COUNT: int = 3
+const SLOT_MINUTE: int = 12 * 60 + 15
 
 
 ## The three real starter tables, west to east, from the actual grid.
@@ -75,7 +76,7 @@ static func prepare(main: Node, root: Window) -> Dictionary:
 	var sim: RestaurantSim = main.get("sim") as RestaurantSim
 	var clock: Node = root.get_node("Clock")
 	var result: Dictionary = {"error": "", "kind": "explicit_unsaved_joined_booking_fixture",
-		"description": "Explicit unsaved visual setup: offer probability is forced to 100%, size is fixed at six, and the offer's legal slot is set to 11:30. Frame 12 captures the live morning offer before interaction. At frame 24 the real Accept button is pressed, the fixture advances to the offer's service day, and normal service starts. The scheduled guest's saved private seeds, held-group selection, routing and seating use the live simulation; only walk-in countdown is delayed in this visual fixture. Frame 90 captures the real seated booking and its held-group label.",
+		"description": "Explicit unsaved visual setup: offer probability is forced to 100%, size is fixed at six, and the offer's legal slot is set to 12:15. Frame 12 captures the live morning offer before interaction. At frame 24 the real Accept button is pressed, the fixture advances to the offer's service day, and normal service starts. The scheduled guest's saved private seeds, held-group selection, routing and seating use the live simulation; only walk-in countdown is delayed in this visual fixture. Frame 90 captures the real seated booking and its held-group label.",
 		"walk_tick_limit": WALK_BUDGET, "guest_rng_seeds": [], "table_ids": []}
 	if world == null or sim == null or main.get("use_saves") != false or world.now != 0 \
 			or world.clock.day != 1 or world.clock.phase != SimClock.Phase.MORNING or clock.get("speed") != 0:
@@ -125,7 +126,7 @@ static func prepare(main: Node, root: Window) -> Dictionary:
 	if offer.is_empty():
 		result["error"] = "Joined-table booking fixture could not create its explicit offer"
 		return result
-	model.offer["slot_minute"] = 690 # A legal 11:30 slot in the starter hours.
+	model.offer["slot_minute"] = SLOT_MINUTE # First legal slot after the 75-minute hold.
 	main.set("group_booking", model)
 	sim.configure_booking(model)
 	main.call("_refresh_booking_offer")
@@ -135,7 +136,7 @@ static func prepare(main: Node, root: Window) -> Dictionary:
 	result["offer_day"] = world.clock.day
 	result["service_day"] = int(model.offer["service_day"])
 	result["party_size"] = 6
-	result["slot_minute"] = 690
+	result["slot_minute"] = SLOT_MINUTE
 	result["offer_recipe"] = String(model.offer["recipe_id"])
 	result["menu_ids"] = ["burger"]
 	result["table_ids"] = ids
@@ -179,15 +180,17 @@ static func begin_booking_service(main: Node, root: Window, fixture: Dictionary)
 		result["error"] = "The normal HUD action did not open booking service"
 		return result
 	result["service_start_action"] = "HUD/Top/Row/Context.pressed"
-	# Slot 11:30; the 11:10 tick is the first T-20 hold. Advance only through
-	# normal RestaurantSim ticks so the T-20 marker and scheduled guest are real.
+	# The 12:15 slot starts its 75-minute hold at 11:00 opening. Normal sim ticks
+	# establish the actual marker before the scheduled party arrives.
 	main.call("run_ticks", 60)
 	var held_group: int = sim.world.booking_hold.group_for_booking(world,
 		int(model.booking["booking_id"]))
 	if held_group != int(fixture["table_ids"][0]):
-		result["error"] = "The scheduled six-seat joined group was not held at T-20"
+		result["error"] = "The scheduled six-seat joined group was not held during service"
 		return result
-	main.call("run_ticks", 120) # Opens the exact 11:30 booking slot.
+	var slot_ticks: int = ceili(float(SLOT_MINUTE - world.clock.display_open_minute) \
+		/ float(world.clock.display_close_minute - world.clock.display_open_minute) * world.clock.open_ticks)
+	main.call("run_ticks", maxi(0, slot_ticks - 60))
 	main.call("run_ticks", WALK_BUDGET) # Normal single-file entry and seated-party movement.
 	var party: Party = null
 	for customer: CustomerAgent in sim.customers():
@@ -333,7 +336,7 @@ static func valid(state: Dictionary, fixture: Dictionary, frame: int) -> bool:
 			and state.get("service_day") == 2 and state.get("active_booking") == false \
 			and state.get("use_saves") == false and state.get("owner_level") == 2 \
 			and state.get("owner_level_label") == "Lv 2" and String(state.get("details", "")).contains("tomorrow") \
-			and String(state.get("details", "")).contains("11:30") and String(state.get("details", "")).contains("11:45") \
+			and String(state.get("details", "")).contains("12:15") and String(state.get("details", "")).contains("12:30") \
 			and String(state.get("details", "")).contains("deposit")
 	if frame != 90:
 		return false

@@ -11,6 +11,8 @@ const MONEY_LABELS: Dictionary = {
 	Ledger.LOAN_INTEREST: "Loan interest",
 	Ledger.LOAN_REPAYMENT: "Loan repayment",
 	Ledger.MILESTONE_BONUS: "Milestone bonus",
+	Ledger.BOOKING_DEPOSIT: "Booking deposit",
+	Ledger.BOOKING_REFUND: "Booking refund",
 }
 
 const LEAVE_LABELS: Dictionary = {
@@ -447,7 +449,10 @@ func _fill_milestones(milestones: Array[Dictionary]) -> void:
 func _fill_money(rows: GridContainer, amounts: Dictionary, empty_text: String) -> void:
 	_clear(rows)
 	for id: String in _sorted_ids(amounts):
-		_add_row(rows, String(MONEY_LABELS.get(StringName(id), id.capitalize())), _money(int(amounts[StringName(id)])))
+		var title: String = String(MONEY_LABELS.get(StringName(id), id.capitalize()))
+		if rows == _costs and StringName(id) == Ledger.BOOKING_DEPOSIT:
+			title = "Deposit taken off the bill"
+		_add_row(rows, title, _money(int(amounts[StringName(id)])))
 	if amounts.is_empty() and not empty_text.is_empty():
 		_add_row(rows, empty_text, "")
 

@@ -154,6 +154,8 @@ var _loaded_critic: Dictionary = {}
 ## The accepted booking plan staged until the whole morning save validates.
 var _loaded_group_booking: GroupBooking = null
 var _booking_paid_total: int = 0
+## Tick-driven presentation changes only when its day/phase/held group changes.
+var _booking_presented_key: Array[int] = []
 ## Staged morning rush plan from the matching saved run.
 var _loaded_rush_hour: Dictionary = {}
 ## The saved fish tank section (#125: each tank's last cleaning day), staged likewise.
@@ -2197,7 +2199,9 @@ func _on_inspection_tick(_tick: int) -> void:
 	# Text follows every tick; geometry follows the drawn agents once per frame.
 	_refresh_sold_out_hud()
 	if group_booking != null and group_booking.has_active_booking():
-		_refresh_booking_offer()
+		var key: Array[int] = [Clock.sim.day, Clock.sim.phase, int(group_booking.booking.get("held_group_id", 0))]
+		if key != _booking_presented_key:
+			_refresh_booking_offer()
 	refresh_hints()
 	_inspect_panel.refresh()
 	if _debug_overlay.is_enabled():
@@ -2853,6 +2857,8 @@ func _restore_bookings(data: Dictionary) -> bool:
 func _refresh_booking_offer() -> void:
 	if _menu_panel == null:
 		return
+	_booking_presented_key = [Clock.sim.day, Clock.sim.phase,
+		int(group_booking.booking.get("held_group_id", 0)) if group_booking != null else 0]
 	var reservation: String = ""
 	var service_card: String = ""
 	if group_booking != null and group_booking.has_active_booking():
