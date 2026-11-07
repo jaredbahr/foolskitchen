@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- Switch the evening report's business trend between the last 7 and 30 days. (#342)
 - Guests leaving a busy bar no longer wait ages to get past people walking the same narrow way, guests held outside a jammed door always come in after a short wait, and the health inspector heads for the door it picked instead of turning back to the nearer one. (#318)
 - Build mode now knows nobody walks through a seat. Placing chairs, stools, booths or other furniture so that the only way to a table, a kitchen station, the sink or the door runs through seats now warns you while you place or move it, and the warning stays on that item until your next change. Seats can no longer go in the doorway or fill the way in from the street door. (#321)
 - Buy an Aquarium (Build > Decor, $180, from owner level 3) or a Large aquarium ($320, level 5): a glowing planted fish tank on its own cabinet, with little tetras and guppies swimming among the plants. Tanks add more charm than any other decor and suit cosy and seafood shops. After about four days the water turns cloudy and the tank gives half its charm until your cleaner cleans it (with no cleaner, the owner does it on Floor). Click a tank to see when it next needs a clean. (#319)
