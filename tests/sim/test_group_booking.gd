@@ -476,7 +476,7 @@ func test_reserved_grace_requires_a_live_matching_occupied_or_dirty_group_and_ab
 
 
 func test_hold_chooses_an_empty_dirty_group_before_an_occupied_lower_id_group() -> void:
-	var fixture: Dictionary = _reservation_fixture([3, 8] as Array[int])
+	var fixture: Dictionary = _reservation_fixture([7, 10] as Array[int])
 	var sim: RestaurantSim = fixture["sim"]
 	var model: GroupBooking = fixture["model"]
 	var tables: Array[PlacedItem] = fixture["tables"]
