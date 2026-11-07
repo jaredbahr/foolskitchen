@@ -2744,13 +2744,16 @@ There is no new save point or SaveSystem migration.
 - **Music** (`Sfx`, `src/audio/music_tracks.gd`): one looping player per track on the **Music** bus (Settings' Music slider; the bus sits 6 dB under the slider via `SettingsPreferences.MUSIC_TRIM_DB`). `MusicTracks.BY_CONTEXT` is the table from context to track: `title` is Kitchen Jamboree, `service_day` Buoyant Swing Groove, `service_evening` Smoky Vamp (`assets/music/*.ogg`, Ogg q5, leading/trailing silence trimmed so loops have no gap); morning, closed and the evening report have none. `Sounds.set_music_context(ctx)` says where the game is, and tracks fade (`Sfx.MUSIC_FADE_SECONDS`, 2 s), so a change of context is a crossfade. The title screen sets `title` and clears it on leaving; `SoundDirector.refresh(light)` sets the service context from the phase and the shop light (dusk is `MusicTracks.EVENING_LIGHT` of `DayLight.Look.interior_energy`), so opening after dusk goes straight to Smoky Vamp. `SoundDirector` ducks the music (`Sounds.set_music_ducked`) for as long as the shop is open with a counted jukebox, paused or not. A display-only Main (the title backdrop) sets `SoundDirector.display_only` and never touches the music. Silence rules match the cues: no players in headless or `--script` runs (fade levels are still tracked for tests), nothing before the first click on the web. A new track is a table line plus a `set_music_context` call.
 
 ### 2.4 Save system
-Business trends (FK-123): Main keeps fourteen detached `BusinessHistory` closing
+Business trends (FK-123, FK-132): Main keeps thirty detached `BusinessHistory` closing
 summaries outside `DayReport` serialization. Reopening the evening report and
 advancing to the next morning upsert the current day after evening purchases;
 `build_report()` stays a read-only query. The optional `business_history` section
 uses decimal strings for signed currency and joins only the existing morning
 autosave. Load stages it until the whole morning validates; older saves start
-empty. The evening report draws seven days in the current theme, with separate
+empty. Version 1 saves retain the same row format. The evening report defaults to
+seven days, with a 7 / 30 day toggle remembered by the report for the session only;
+it never enters a save. Thirty-day charts label every fifth day and shorter
+histories show only the rows that exist. Both ranges use the current theme, with separate
 dish-profit and guest scales, today's label, unknown-profit gaps and comparisons
 between equal recorded-day windows. "Last week" requires two complete weeks.
 

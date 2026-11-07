@@ -9,6 +9,7 @@ const LEFT: float = 36.0
 
 var _rows: Array[Dictionary] = []
 var _today: int = 0
+var _range_days: int = 7
 
 
 func _init() -> void:
@@ -19,8 +20,9 @@ func _init() -> void:
 	resized.connect(queue_redraw)
 
 
-func set_history(rows: Array[Dictionary], today: int) -> void:
+func set_history(rows: Array[Dictionary], today: int, range_days: int = 7) -> void:
 	_today = maxi(0, today)
+	_range_days = 30 if range_days == 30 else 7
 	_rows = BusinessTrendText.display_rows(rows, _today)
 	queue_redraw()
 
@@ -31,18 +33,17 @@ func review_snapshot() -> Dictionary:
 	var labels: PackedStringArray = []
 	var profits: Array[Variant] = []
 	var served: Array[Variant] = []
-	for day: int in range(maxi(1, _today - 6), _today + 1):
+	for row: Dictionary in _rows:
+		var day: int = int(row["day"])
+		if day <= _today - _range_days:
+			continue
 		days.append(day)
 		labels.append(BusinessTrendText.day_label(day))
-		var found: Dictionary = {}
-		for row: Dictionary in _rows:
-			if int(row["day"]) == day:
-				found = row
-		profits.append(found["dish_profit"] if not found.is_empty() \
-			and bool(found["dish_profit_recorded"]) else null)
-		served.append(found["served"] if not found.is_empty() else null)
+		profits.append(row["dish_profit"] if bool(row["dish_profit_recorded"]) else null)
+		served.append(row["served"])
 	var rect: Rect2 = get_global_rect()
 	var snapshot: Dictionary = {"today": _today, "today_index": days.find(_today), "days": days,
+		"range_days": _range_days,
 		"day_labels": labels, "profit_values": profits, "served_values": served,
 		"chart_rect": [rect.position.x, rect.position.y, rect.size.x, rect.size.y],
 		"tracks": {"profit": _track(profits, days, 0.0),
@@ -122,15 +123,19 @@ func _labels(snapshot: Dictionary) -> Array[Dictionary]:
 		var values: Array = snapshot["profit_values"] if profit else snapshot["served_values"]
 		var slot: float = plot.size.x / float(maxi(1, labels.size()))
 		var day_baseline: float = plot.end.y + 10.0 + font.get_ascent(font_size)
+		var sparse: bool = _range_days == 30 and labels.size() > 7
 		for index: int in labels.size():
 			var left: float = plot.position.x + float(index) * slot
+			var label_width: float = minf(plot.size.x, slot * 5.0) if sparse else slot
+			var label_left: float = left + (slot - label_width) * 0.5
 			var text: String = BusinessTrendText.GAP if values[index] == null else (
 				BusinessTrendText.profit_label(int(values[index])) if profit \
 				else BusinessTrendText.served_label(int(values[index])))
-			result.append(_label(key, "value", text, left, slot, plot.position.y - 8.0, true))
-			result.append(_label(key, "day", labels[index], left, slot, day_baseline, true))
+			if not sparse or int(snapshot["days"][index]) % 5 == 0:
+				result.append(_label(key, "value", text, label_left, label_width, plot.position.y - 8.0, true))
+				result.append(_label(key, "day", labels[index], label_left, label_width, day_baseline, true))
 			if index == int(snapshot["today_index"]):
-				result.append(_label(key, "today", BusinessTrendText.TODAY, left, slot,
+				result.append(_label(key, "today", BusinessTrendText.TODAY, label_left, label_width,
 					day_baseline + font.get_height(font_size) + 6.0, true))
 	return result
 
@@ -141,6 +146,8 @@ func _label(track: String, kind: String, text: String, left: float, width: float
 	var font_size: int = get_theme_font_size("font_size", "Label")
 	var text_width: float = font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
 	var x: float = left + maxf(0.0, (width - text_width) * 0.5) if centered else left
+	# Wider monthly label slots still point at their own bar, including the edge.
+	x = clampf(x, 0.0, maxf(0.0, size.x - minf(text_width, maxf(0.0, width))))
 	return {"track": track, "kind": kind, "text": text, "position": [x, baseline],
 		"width": maxf(0.0, width), "rect": [x, baseline - font.get_ascent(font_size),
 			minf(text_width, maxf(0.0, width)), font.get_height(font_size)]}
