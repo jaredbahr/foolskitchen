@@ -6,15 +6,17 @@ extends TestCase
 ## service, cash and review consumption while retaining this complete context.
 ## #307 (staff serve the most impatient guests first) re-ordered which waiting
 ## guest staff reach first: day 1 serves and loses the same guests but a review
-## differs; day 2 serves 17 (was 16), loses 2 (was 3), sales 154, cash 349.
+## differs; day 2 serves 17 (was 16), loses 2 (was 3), sales 154, pre-challenge cash 349.
 ## Its private-seat barrier constrains staff service; current starter throughput,
 ## thin-layout save migration and demand growth have separate coverage.
+## The weekly review target now completes on day two, paying its authored
+## $100 separately from operating sales and included in closing cash.
 
 const MainScene: PackedScene = preload("res://src/world/main.tscn")
 const MANUAL_MAIN: GDScript = preload("res://tests/fixtures/manual_restock_main.gd")
 const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
 ## Day -> [served, lost, sales, closing cash, customers RNG state, reviews RNG state].
-const EXPECTED: Array = [[18, 3, 166, 338, "-3340690172320019757", "-3285513833473108564"], [17, 2, 154, 349, "1894290104310310707", "6227064950443097254"]]
+const EXPECTED: Array = [[18, 3, 166, 338, "-3340690172320019757", "-3285513833473108564"], [17, 2, 154, 449, "1894290104310310707", "6227064950443097254"]]
 
 var _main: Node
 var _layout_backup: Dictionary = {}
@@ -86,6 +88,17 @@ func test_two_legacy_manual_stock_days_match_recorded_snapshot() -> void:
 			guard += 1
 		var sim: RestaurantSim = _main.get("sim") as RestaurantSim
 		var book: Dictionary = Economy.ledger.day_totals(Clock.sim.day)
+		var weekly_entries: int = 0
+		var weekly_amount: int = 0
+		for entry: Dictionary in Economy.ledger.entries_for_day(Clock.sim.day):
+			if entry.get("category") == Ledger.WEEKLY_CHALLENGE_BONUS:
+				weekly_entries += 1
+				weekly_amount += int(entry.get("amount", 0))
+		var expected_weekly: int = 100 if day == 1 else 0
+		assert_eq(weekly_entries, 1 if expected_weekly > 0 else 0,
+			"day %d: the deterministic challenge completion settles exactly once" % Clock.sim.day)
+		assert_eq(weekly_amount, expected_weekly,
+			"day %d: weekly reward cash is recorded independently of sales" % Clock.sim.day)
 		rows.append([sim.served_today, sim.lost_today, int(book.get(Ledger.SALE, 0)), Economy.cash,
 			str(GameState.rng(&"customers").state), str(GameState.rng(&"reviews").state)])
 		assert_true(Clock.sim.next_day())

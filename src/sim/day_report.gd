@@ -4,7 +4,7 @@ extends RefCounted
 
 const NON_OPERATING_CATEGORIES: Array[StringName] = [
 	Ledger.BANK_LOAN, Ledger.LOAN_INTEREST, Ledger.LOAN_REPAYMENT,
-	Ledger.MILESTONE_BONUS,
+	Ledger.MILESTONE_BONUS, Ledger.WEEKLY_CHALLENGE_BONUS,
 ]
 const MAX_MILESTONE_REWARD: int = 1000000
 const MAX_FORECAST_INTEGER: int = 9007199254740991
@@ -49,6 +49,8 @@ var owner_unlocks: Array[String] = []
 var owner_tips: Array[String] = []
 ## Player-facing goal names and rewards completed on this day; never contains IDs.
 var milestones_reached: Array[Dictionary] = []
+## Optional cash-only challenge completion line; absent on all other days.
+var weekly_challenge_line: String = ""
 ## Player-facing "Low stock" sentences (StockAlerts): what ran out today and
 ## when, then ingredients below tomorrow's target or expiring tomorrow.
 var low_stock: Array[String] = []
@@ -217,6 +219,8 @@ func to_dict() -> Dictionary:
 	}
 	if not inspection_lines.is_empty():
 		result["inspection_lines"] = inspection_lines.duplicate()
+	if not weekly_challenge_line.is_empty():
+		result["weekly_challenge_line"] = weekly_challenge_line
 	var activity: Dictionary = StaffActivity.public_snapshot(staff_activity)
 	if not activity.is_empty():
 		result["staff_activity"] = activity
@@ -299,6 +303,9 @@ static func from_dict(data: Dictionary) -> DayReport:
 		for line: Variant in saved_critic:
 			if line is String:
 				report.critic_lines.append(line)
+	var saved_weekly_line: Variant = data.get("weekly_challenge_line", "")
+	if saved_weekly_line is String and saved_weekly_line.length() <= 100:
+		report.weekly_challenge_line = saved_weekly_line
 	var saved_rush: Variant = data.get("rush_hour_lines", [])
 	if saved_rush is Array:
 		for line: Variant in saved_rush:

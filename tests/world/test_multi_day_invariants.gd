@@ -209,9 +209,21 @@ func _assert_closed_books(main: Node, day: int) -> void:
 		"day %d: exactly one paid replacement per broken plate" % day)
 	var known_categories: Array[StringName] = [Ledger.SALE, Ledger.TIP, Ledger.INGREDIENTS,
 		Ledger.WAGES, Ledger.RENT, Ledger.UPGRADES, Ledger.OTHER, Ledger.BREAKAGES,
-		Ledger.BANK_LOAN, Ledger.LOAN_INTEREST, Ledger.LOAN_REPAYMENT, Ledger.MILESTONE_BONUS, Ledger.CAT_FOOD]
+		Ledger.BANK_LOAN, Ledger.LOAN_INTEREST, Ledger.LOAN_REPAYMENT, Ledger.MILESTONE_BONUS,
+		Ledger.WEEKLY_CHALLENGE_BONUS, Ledger.CAT_FOOD]
 	for category: StringName in totals:
 		assert_true(known_categories.has(category), "day %d: every flow has a known ledger category" % day)
+	var weekly_bonus: int = int(totals.get(Ledger.WEEKLY_CHALLENGE_BONUS, 0))
+	var weekly_entries: int = 0
+	var weekly_entry_total: int = 0
+	for entry: Dictionary in Economy.ledger.entries_for_day(day):
+		if entry.get("category") == Ledger.WEEKLY_CHALLENGE_BONUS:
+			weekly_entries += 1
+			weekly_entry_total += int(entry.get("amount", 0))
+	assert_true(weekly_bonus >= 0, "day %d: weekly challenge cash is a positive reward" % day)
+	assert_eq(weekly_entry_total, weekly_bonus, "day %d: cash conservation includes the weekly ledger row" % day)
+	assert_eq(weekly_entries, 1 if weekly_bonus > 0 else 0,
+		"day %d: a completed challenge pays once through its own category" % day)
 	assert_true(int(totals.get(Ledger.BANK_LOAN, 0)) >= 0)
 	assert_true(int(totals.get(Ledger.MILESTONE_BONUS, 0)) >= 0)
 	assert_true(int(totals.get(Ledger.LOAN_INTEREST, 0)) <= 0)
@@ -246,6 +258,8 @@ func _assert_closed_books(main: Node, day: int) -> void:
 	assert_eq(int(shown.income.get(Ledger.MILESTONE_BONUS, 0)), milestone_cash)
 	assert_eq(int(totals.get(Ledger.MILESTONE_BONUS, 0)), milestone_cash,
 		"day %d: report reward rows account for the milestone ledger total" % day)
+	assert_eq(int(shown.income.get(Ledger.WEEKLY_CHALLENGE_BONUS, 0)), weekly_bonus,
+		"day %d: the report exposes the weekly reward as cash income" % day)
 	assert_eq(shown.owner_xp_breakdown.get("milestone_xp", 0), milestone_xp,
 		"day %d: report XP breakdown matches its authored milestone rows" % day)
 	assert_eq(int(shown.income.get(Ledger.BANK_LOAN, 0)), int(totals.get(Ledger.BANK_LOAN, 0)))
@@ -256,7 +270,8 @@ func _assert_closed_books(main: Node, day: int) -> void:
 	var operating_profit: int = 0
 	for category: StringName in totals:
 		if category != Ledger.BANK_LOAN and category != Ledger.LOAN_INTEREST \
-				and category != Ledger.LOAN_REPAYMENT and category != Ledger.MILESTONE_BONUS:
+				and category != Ledger.LOAN_REPAYMENT and category != Ledger.MILESTONE_BONUS \
+				and category != Ledger.WEEKLY_CHALLENGE_BONUS:
 			operating_profit += int(totals[category])
 	assert_eq(shown.purchase_basis_operating_profit(), operating_profit,
 		"progression and financing retain the original purchase-basis business result")

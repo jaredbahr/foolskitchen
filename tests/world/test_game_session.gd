@@ -112,9 +112,13 @@ func test_full_day_charges_costs_and_shows_report() -> void:
 		"authored milestone cash is recorded in the matching ledger category")
 	assert_eq(int(Economy.ledger.day_totals(1).get(Ledger.MILESTONE_BONUS, 0)), milestone_cash)
 	assert_eq(day_report.profit(), Economy.ledger.day_profit(1), "the report includes all cash flows")
+	var weekly_bonus: int = int(day_report.income.get(Ledger.WEEKLY_CHALLENGE_BONUS, 0))
+	assert_eq(int(Economy.ledger.day_totals(1).get(Ledger.WEEKLY_CHALLENGE_BONUS, 0)), weekly_bonus,
+		"the weekly challenge reward is recorded in its own cash category")
 	var breakages: int = -int(Economy.ledger.day_totals(1).get(Ledger.BREAKAGES, 0))
-	assert_eq(Economy.cash, cash_at_open + sales - wages - TUNING.daily_rent + milestone_cash - breakages,
-		"sales, closing costs, breakages and authored goal awards reconcile at closing")
+	assert_eq(Economy.cash, cash_at_open + sales - wages - TUNING.daily_rent + milestone_cash
+		+ weekly_bonus - breakages,
+		"sales, closing costs, breakages and authored rewards reconcile at closing")
 	assert_eq(day_report.income.get(Ledger.SALE, 0), sales)
 	assert_eq(day_report.costs.get(Ledger.WAGES, 0), wages)
 	assert_eq(day_report.costs.get(Ledger.RENT, 0), TUNING.daily_rent)

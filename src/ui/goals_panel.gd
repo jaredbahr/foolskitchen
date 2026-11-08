@@ -11,6 +11,9 @@ var _catalogue: MilestoneSet
 var _completed_ids: Array[StringName] = []
 var _progress: Dictionary[StringName, float] = {}
 var _owner_level: int = 1
+var _weekly_challenge: WeeklyChallengeState
+var _observation: MilestoneDay
+var _day: int = 0
 var _active_ids: Array[StringName] = []
 var _completed_known_ids: Array[StringName] = []
 var _record_lines: Array[String] = ["Finish a service day to start your records."]
@@ -37,11 +40,16 @@ func _render_records() -> void:
 
 ## Stores detached read-only display inputs; no model or caller collection is mutated.
 func set_goals(catalogue: MilestoneSet, completed_ids: Array[StringName],
-		progress: Dictionary[StringName, float], owner_level: int) -> void:
+		progress: Dictionary[StringName, float], owner_level: int,
+		weekly_challenge: WeeklyChallengeState = null, day: int = 0,
+		observation: MilestoneDay = null) -> void:
 	_catalogue = catalogue
 	_completed_ids = completed_ids.duplicate()
 	_progress = progress.duplicate()
 	_owner_level = maxi(owner_level, 1)
+	_weekly_challenge = weekly_challenge
+	_day = day
+	_observation = observation
 	_render()
 
 
@@ -69,13 +77,23 @@ func _render() -> void:
 	var active_heading: Label = %ActiveHeading as Label
 	var completed_heading: Label = %CompletedHeading as Label
 	var empty_state: Label = %EmptyState as Label
+	var previous_weekly: Node = (%List as VBoxContainer).get_node_or_null("WeeklyChallenge")
+	if previous_weekly != null:
+		previous_weekly.get_parent().remove_child(previous_weekly)
+		previous_weekly.free()
 	_clear_rows(active_rows)
 	_clear_rows(completed_rows)
+	var weekly_card: Control = _make_weekly_card() if _weekly_challenge != null \
+		and _weekly_challenge.status != WeeklyChallengeState.Status.EMPTY else null
+	if weekly_card != null:
+		var rows: VBoxContainer = %List as VBoxContainer
+		rows.add_child(weekly_card)
+		rows.move_child(weekly_card, 0)
 	_active_ids.clear()
 	_completed_known_ids.clear()
 	active_heading.visible = false
 	completed_heading.visible = false
-	empty_state.visible = true
+	empty_state.visible = weekly_card == null
 
 	if _catalogue == null or not _catalogue.is_valid():
 		return
@@ -104,7 +122,65 @@ func _render() -> void:
 
 	active_heading.visible = not _active_ids.is_empty()
 	completed_heading.visible = not _completed_known_ids.is_empty()
-	empty_state.visible = _active_ids.is_empty() and _completed_known_ids.is_empty()
+	empty_state.visible = weekly_card == null and _active_ids.is_empty() and _completed_known_ids.is_empty()
+
+
+func _make_weekly_card() -> Control:
+	var challenge: WeeklyChallengeState = _weekly_challenge
+	if challenge == null or challenge.status == WeeklyChallengeState.Status.EMPTY:
+		return null
+	var card: PanelContainer = PanelContainer.new()
+	card.name = "WeeklyChallenge"
+	card.theme = SHARED_THEME
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.set_meta(&"weekly_challenge", true)
+	var panel_style: StyleBox = SHARED_THEME.get_stylebox(&"panel", &"PanelContainer").duplicate()
+	if panel_style is StyleBoxFlat:
+		(panel_style as StyleBoxFlat).content_margin_top = 9.0
+		(panel_style as StyleBoxFlat).content_margin_bottom = 9.0
+	card.add_theme_stylebox_override(&"panel", panel_style)
+	var body: VBoxContainer = VBoxContainer.new()
+	body.name = "Body"
+	body.add_theme_constant_override(&"separation", 2)
+	body.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_child(body)
+	var title: Label = _add_label(body, "Title", challenge.text)
+	title.add_theme_font_size_override(&"font_size", 18)
+	var current: int = challenge.projected_progress(_observation)
+	var unit: String = ""
+	match challenge.kind:
+		WeeklyChallenge.Kind.SERVE_IN_ONE_DAY:
+			unit = " guests"
+		WeeklyChallenge.Kind.OPERATING_PROFIT:
+			unit = ""
+		WeeklyChallenge.Kind.NO_LOSS_DAYS:
+			unit = " days"
+		WeeklyChallenge.Kind.GOOD_REVIEWS:
+			unit = " reviews"
+		WeeklyChallenge.Kind.SELL_DISH:
+			unit = " sold"
+	var progress_text: String = ""
+	if challenge.kind == WeeklyChallenge.Kind.OPERATING_PROFIT:
+		progress_text = "Progress: $%d / $%d" % [current, challenge.target]
+	else:
+		progress_text = "Progress: %d / %d%s" % [current, challenge.target, unit]
+	var timing: String = WeeklyChallengeText.days_left(challenge.days_left(_day))
+	if challenge.status == WeeklyChallengeState.Status.COMPLETED:
+		timing = "Complete"
+	elif challenge.status == WeeklyChallengeState.Status.EXPIRED:
+		timing = "Expired"
+	var details: HBoxContainer = HBoxContainer.new()
+	details.name = "Details"
+	details.add_theme_constant_override(&"separation", 8)
+	details.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	body.add_child(details)
+	var progress: Label = _add_label(details, "ProgressText", progress_text)
+	var days_left: Label = _add_label(details, "DaysLeft", timing)
+	var reward: Label = _add_label(details, "Reward", "Cash reward: $%d" % challenge.reward_cash)
+	for label: Label in [progress, days_left, reward]:
+		label.add_theme_font_size_override(&"font_size", 16)
+	return card
 
 
 func _clear_rows(rows: VBoxContainer) -> void:

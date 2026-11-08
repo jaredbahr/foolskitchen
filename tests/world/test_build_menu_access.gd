@@ -302,6 +302,7 @@ func _save_partial_blocked_coffee(enabled: bool) -> Vector2i:
 	var cell: Vector2i = _item(&"coffee_machine").work_cells[0]
 	assert_true(_editor().buy(&"potted_plant", cell, 0, ShopEditor.Exact.new()))
 	assert_eq(_settings().is_enabled(&"coffee"), enabled)
+	reset_weekly_for_synthetic_day_jump(_main)
 	Clock.sim.phase = SimClock.Phase.CLOSED
 	assert_true(Clock.sim.next_day())
 	var document: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(SaveSystem._slot_path(SLOT)))
@@ -338,6 +339,7 @@ func test_loading_enabled_unreachable_dish_keeps_the_same_mornings_opening_note(
 	assert_eq(_main.call("menu_open_note"), note)
 	assert_eq((_main.get_node("HUD/MenuNotice/Text") as Label).text, note)
 	assert_true((_main.get_node("HUD/MenuNotice") as Control).visible)
+	reset_weekly_for_synthetic_day_jump(_main)
 	Clock.sim.phase = SimClock.Phase.CLOSED
 	assert_true(Clock.sim.next_day())
 	assert_true((_main.get("_menu_access_losses") as Dictionary).is_empty())

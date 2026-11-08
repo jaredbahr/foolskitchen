@@ -1978,6 +1978,28 @@ malformed data rejects the load without partially installing career state. Caree
 state uses the existing next-morning autosave only, including rewards earned at
 the preceding close. New Game resets it. No action or evening save is added.
 
+**Weekly challenges (FK-135, #345):** Ten data definitions reuse the close-day
+`MilestoneDay` observation. A draw on mornings 1, 8, 15 and so on uses the named
+weekly stream, excludes the previous objective, and freezes its level-scaled
+target and selected menu dish. Paid sales keep counting for that frozen dish
+after menu removal. A one-time closing cash reward has its own ledger category,
+excluded from business operating profit and owner XP. Goals uses
+`WeeklyChallengeText` for singular/plural days remaining.
+
+The weekly save section is decoded strictly and staged with the other morning
+sections. If its dates do not fit an otherwise valid saved morning, only that
+weekly candidate is discarded. The restored world logs the recovery and the
+normal morning setup starts a fresh challenge for the remaining week, with no
+fabricated prior progress or repeated draw. Other section validation and the
+morning-only save boundary remain unchanged.
+
+Day-one targets are checked against actual default service for seeds 1, 7 and
+42, applying all ten definitions and every eligible selected dish to each
+detached observation. The observed maximum was 19 served, 11 good reviews and
+8 sales of one dish; review targets are therefore 12 and the smaller dish goal
+is 9, with daily serve targets 24/36. The random selected challenge alone is
+insufficient evidence because it may hide an easier unselected definition.
+
 **Lighting and frontage (FK-055):** Main owns one `lighting_rig.tscn` with a
 warm directional key (main's colour, energy and shadows), low-energy cool fill
 and warm ambient light, so exposure matches the pre-rig shop. A native procedural

@@ -151,6 +151,7 @@ func test_new_floor_is_buyable_and_survives_the_next_morning_save() -> void:
 	assert_true(_main.call("shop_floor", cells, true))
 	var floor: Array[Vector2i] = _editor().bought_floor()
 	var upgraded_lot: Rect2i = _editor().footprint().lot
+	reset_weekly_for_synthetic_day_jump(_main)
 	Clock.sim.day += 1
 	_main.call("_begin_morning")
 	_close()
@@ -180,6 +181,7 @@ func test_reloading_before_next_morning_rolls_back_deposit_and_tier_together() -
 	_start(true)
 	_eligible()
 	# Establish a legitimate morning checkpoint with the eligible owner.
+	reset_weekly_for_synthetic_day_jump(_main)
 	Clock.sim.day += 1
 	_main.call("_begin_morning")
 	var cash: int = Economy.cash

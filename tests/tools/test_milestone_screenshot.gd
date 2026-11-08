@@ -115,6 +115,14 @@ func test_real_main_fixture_shows_goals_then_uses_real_close_and_read_only_evide
 	var missing_panel: Dictionary = goals_state.duplicate(true)
 	missing_panel["goals_panel"]["available"] = false
 	assert_false(CAPTURE.milestone_review_valid(missing_panel, 12, fixture), "a missing native panel fails closed")
+	var missing_weekly: Dictionary = goals_state.duplicate(true)
+	missing_weekly["goals_panel"]["weekly_card"]["available"] = false
+	assert_false(CAPTURE.milestone_review_valid(missing_weekly, 12, fixture),
+		"the morning capture requires the actual weekly challenge card")
+	var clipped_weekly: Dictionary = goals_state.duplicate(true)
+	clipped_weekly["goals_panel"]["weekly_card"]["fields"]["Title"]["inside_clip"] = false
+	assert_false(CAPTURE.milestone_review_valid(clipped_weekly, 12, fixture),
+		"a clipped weekly challenge title fails closed")
 
 	fixture = CAPTURE.advance_milestone_review(main, (Engine.get_main_loop() as SceneTree).root, fixture)
 	assert_eq(fixture.get("error"), "")
@@ -149,7 +157,14 @@ func test_real_main_fixture_shows_goals_then_uses_real_close_and_read_only_evide
 	var uid_before: Array[Dictionary] = _uid_snapshot(CAPTURE.MILESTONE_UID_SOURCES)
 	var uid_evidence: Dictionary = CAPTURE.generated_uid_evidence(CAPTURE.MILESTONE_UID_SOURCES)
 	assert_true(uid_evidence["read_only"])
-	assert_eq(uid_evidence["entries"].size(), 13)
+	assert_eq(uid_evidence["entries"].size(), 19,
+		"the review evidence checks the original thirteen sources plus the six weekly/report additions")
+	for source: String in ["res://src/sim/progression/weekly_challenge.gd",
+		"res://src/sim/progression/weekly_challenge_pool.gd",
+		"res://src/sim/progression/weekly_challenge_state.gd",
+		"res://src/sim/progression/weekly_challenge_settlement.gd",
+		"res://tests/sim/test_weekly_challenge.gd", "res://tests/ui/test_evening_report.gd"]:
+		assert_true(CAPTURE.MILESTONE_UID_SOURCES.has(source), "weekly UID evidence includes " + source)
 	assert_eq(uid_evidence["entries"].map(func(entry: Dictionary) -> String: return entry["source"]),
 		CAPTURE.MILESTONE_UID_SOURCES)
 	assert_eq(_uid_snapshot(CAPTURE.MILESTONE_UID_SOURCES), uid_before, "UID provenance never generates or registers sidecars")

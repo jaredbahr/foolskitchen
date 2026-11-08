@@ -126,6 +126,7 @@ func test_save_and_load_restore_the_sign_on_its_ground_key_and_its_text() -> voi
 	assert_true(_main.call("shop_hang", &"a_frame_sign", beside))
 	assert_true(_main.call("menu_set_restaurant_name", "Copper & Thyme"))
 	assert_true(_main.call("menu_set_price", &"burger", 6))
+	reset_weekly_for_synthetic_day_jump(_main)
 	Clock.sim.phase = SimClock.Phase.CLOSED
 	assert_true(Clock.sim.next_day())
 	var saved: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(_save_dir.path_join(SLOT + ".json")))

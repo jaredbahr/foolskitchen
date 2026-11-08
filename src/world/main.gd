@@ -34,6 +34,7 @@ const PROGRESSION_TUNING: ProgressionTuning = preload("res://data/balance/progre
 const VIBE_TUNING: VibeTuning = preload("res://data/balance/vibe.tres")
 const CUSTOMER_TYPES: CustomerTypeCatalogue = preload("res://data/customers/types.tres")
 const MILESTONES: MilestoneSet = preload("res://data/milestones/starter.tres")
+const WEEKLY_CHALLENGES: WeeklyChallengePool = preload("res://data/balance/weekly_challenges.tres")
 const HOURS_TUNING: OpeningHoursTuning = preload("res://data/balance/hours.tres")
 const AUTOSAVE_SLOT: String = "autosave"
 const LOAN_LOCK_REASON: String = "Pay off your bank loan first"
@@ -100,6 +101,8 @@ var customer_type_catalogue: CustomerTypeCatalogue = CUSTOMER_TYPES
 ## Durable once-only career state; the catalogue is authored, never saved.
 var milestones: MilestoneTracker = MilestoneTracker.new()
 var milestone_catalogue: MilestoneSet = MILESTONES
+## One frozen weekly objective; progress is applied only from close summaries.
+var weekly_challenge: WeeklyChallengeState = WeeklyChallengeState.new()
 ## Zero is one plate; the two purchased levels carry two and four.
 var tray_level: int = 0
 ## Per-ingredient morning auto-reorder choices, saved in the "reorder" section.
@@ -129,6 +132,7 @@ var _loaded_plates: PlateLedger = null
 var _loaded_reputation: ReputationBook = null
 var _loaded_regulars: RegularCast = null
 var _loaded_milestones: MilestoneTracker = null
+var _loaded_weekly_challenge: WeeklyChallengeState = null
 var _loaded_tray_level: int = 0
 var _loaded_reorder: ReorderSettings = null
 var _loaded_deliveries: DeliveryBook = null
@@ -185,6 +189,8 @@ var _loan_notice_day: int = 0
 var _milestones_reached_today: Array[Milestone] = []
 var _milestone_award_day: int = 0
 var _milestone_xp_today: int = 0
+var _weekly_challenge_reward_day: int = 0
+var _weekly_challenge_report_line: String = ""
 var _report: Control
 var _inspect_panel: InspectPanel
 var _debug_overlay: DebugOverlay
@@ -563,6 +569,7 @@ func start() -> void:
 	SaveSystem.register("reviews", _capture_reviews, _restore_reviews)
 	SaveSystem.register("regulars", _capture_regulars, _restore_regulars)
 	SaveSystem.register("milestones", _capture_milestones, _restore_milestones)
+	SaveSystem.register("weekly_challenge", _capture_weekly_challenge, _restore_weekly_challenge)
 	SaveSystem.register("reorder", _capture_reorder, _restore_reorder)
 	SaveSystem.register("deliveries", _capture_deliveries, _restore_deliveries)
 	SaveSystem.register("hints", hints.capture, hints.restore)
@@ -1385,13 +1392,13 @@ func forecast_next_demand() -> Dictionary:
 ## The sim emits each departure once. Observe only its captured presentation
 ## evidence; review calculation and its random stream remain in RestaurantSim.
 func _on_vibe_customer_left(customer: CustomerAgent, _reason: StringName) -> void:
-	if customer == null or not customer.paid or not is_finite(customer.vibe_review_bonus) \
-			or customer.vibe_review_bonus <= 0.0 \
-			or not VIBE_TUNING.theme_labels.values().has(customer.vibe_theme_label):
-		return
-	var label: String = customer.vibe_theme_label
-	_vibe_experiences[label] = _vibe_experiences.get(label, 0) + 1
-	_report.call(&"set_vibe", vibe_result, _experienced_vibe_theme())
+	if customer != null and customer.paid and is_finite(customer.vibe_review_bonus) \
+			and customer.vibe_review_bonus > 0.0 \
+			and VIBE_TUNING.theme_labels.values().has(customer.vibe_theme_label):
+		var label: String = customer.vibe_theme_label
+		_vibe_experiences[label] = _vibe_experiences.get(label, 0) + 1
+		_report.call(&"set_vibe", vibe_result, _experienced_vibe_theme())
+	_refresh_goals()
 
 
 func _experienced_vibe_theme() -> String:
@@ -2344,6 +2351,8 @@ func build_report(day: int) -> DayReport:
 		for goal: Milestone in _milestones_reached_today:
 			report.milestones_reached.append({"title": goal.title,
 				"reward_xp": goal.reward_xp, "reward_cash": goal.reward_cash})
+	if _weekly_challenge_reward_day == day:
+		report.weekly_challenge_line = _weekly_challenge_report_line
 	report.demand_forecast = forecast_next_demand()
 	if _record_notice_day == day:
 		report.record_lines = _record_notices.duplicate()
@@ -2395,9 +2404,13 @@ func _new_game() -> void:
 	owner_progress = OwnerProgress.new(PROGRESSION_TUNING)
 	milestones = MilestoneTracker.new()
 	_loaded_milestones = null
+	weekly_challenge = WeeklyChallengeState.new()
+	_loaded_weekly_challenge = null
 	_milestones_reached_today.clear()
 	_milestone_award_day = 0
 	_milestone_xp_today = 0
+	_weekly_challenge_reward_day = 0
+	_weekly_challenge_report_line = ""
 	_dismiss_goals()
 	_owner_award_today.clear()
 	_owner_unlocks_today.clear()
@@ -2466,6 +2479,7 @@ func _load_autosave_sections() -> bool:
 	_loaded_plates = null
 	_loaded_reputation = null
 	_loaded_milestones = null
+	_loaded_weekly_challenge = null
 	_loaded_tray_level = 0
 	_loaded_reorder = null
 	_loaded_deliveries = null
@@ -2510,6 +2524,16 @@ func _load_autosave_sections() -> bool:
 	if career.last_evaluated_day >= Clock.sim.day:
 		world.log_event("Autosave career goals are ahead of this morning; starting a new game")
 		return false
+	var weekly_load_note: String = ""
+	if _loaded_weekly_challenge != null:
+		var challenge_state: WeeklyChallengeState = _loaded_weekly_challenge
+		if challenge_state.last_evaluated_day >= Clock.sim.day \
+				or (challenge_state.is_active() and (challenge_state.last_evaluated_day != Clock.sim.day - 1 \
+				or challenge_state.start_day > Clock.sim.day or challenge_state.end_day < Clock.sim.day)):
+			# Preserve every other valid section. The successfully restored
+			# morning initializes an empty weekly state for the remaining week.
+			_loaded_weekly_challenge = null
+			weekly_load_note = "Saved weekly challenge did not match this morning; started a fresh challenge for the remaining week"
 	# A saved game predating the shop section still owns the original shell.
 	# Initial presentation may already have built the roomier NEW-shop world.
 	var base: ShopLayout = _base_for_saved_shop({"layout_id": _loaded_layout.save_layout_id}) \
@@ -2537,6 +2561,8 @@ func _load_autosave_sections() -> bool:
 		return false
 	sim = candidate
 	world = candidate.world
+	if not weekly_load_note.is_empty():
+		world.log_event(weekly_load_note)
 	if not _loaded_cat.is_empty() and sim.cat.from_dict(_loaded_cat):
 		sim.cat.begin_day(world.grid)
 	_loaded_cat = {}
@@ -2571,6 +2597,9 @@ func _load_autosave_sections() -> bool:
 	_apply_menu(sim, menu_settings)
 	_bind_world_presentation()
 	milestones = career
+	weekly_challenge = _loaded_weekly_challenge if _loaded_weekly_challenge != null \
+		else WeeklyChallengeState.new()
+	_loaded_weekly_challenge = null
 	# Saves from before the Stock panel have no section: today's defaults.
 	reorder_settings = _loaded_reorder if _loaded_reorder != null else ReorderSettings.new(TUNING)
 	# Saves from before deliveries have nothing on order.
@@ -2695,6 +2724,20 @@ func _restore_milestones(data: Dictionary) -> bool:
 	if not candidate.from_dict(data):
 		return false
 	_loaded_milestones = candidate
+	return true
+
+
+func _capture_weekly_challenge() -> Dictionary:
+	return weekly_challenge.to_dict()
+
+
+## Stage an isolated candidate; a missing legacy section remains null until a
+## successfully restored morning can initialize the current week once.
+func _restore_weekly_challenge(data: Dictionary) -> bool:
+	var candidate: WeeklyChallengeState = WeeklyChallengeState.new()
+	if not candidate.from_dict(data):
+		return false
+	_loaded_weekly_challenge = candidate
 	return true
 
 
@@ -3629,7 +3672,28 @@ func _milestone_observation(operating_profit: int) -> MilestoneDay:
 	observation.operating_profit = operating_profit
 	observation.owner_level = owner_progress.level
 	observation.staff_count = staff_roster.members().size()
+	for row: Dictionary in sim.reviews_today:
+		if int(row.get("stars", 0)) >= 4:
+			observation.good_reviews_today += 1
+	observation.dishes_sold = dishes_sold_today.duplicate()
 	return observation
+
+
+func _begin_weekly_challenge_if_needed() -> void:
+	if weekly_challenge == null or Clock.sim == null or menu_settings == null:
+		return
+	var day: int = Clock.sim.day
+	var enabled: Array[RecipeDef] = menu_settings.enabled_recipes()
+	if WeeklyChallengeState.rotation_day(day):
+		if weekly_challenge.start_day == day and not weekly_challenge.challenge_id.is_empty():
+			return
+		weekly_challenge.begin_week(day, owner_progress.level, WEEKLY_CHALLENGES, enabled,
+			GameState.rng(&"weekly"))
+	elif weekly_challenge.status == WeeklyChallengeState.Status.EMPTY:
+		# Saves made before this section existed begin a fresh challenge for the
+		# remaining days of the current week, without inventing earlier progress.
+		weekly_challenge.begin_legacy_week(day, owner_progress.level, WEEKLY_CHALLENGES, enabled,
+			GameState.rng(&"weekly"))
 
 
 func _refresh_goals(force: bool = false) -> void:
@@ -3640,9 +3704,13 @@ func _refresh_goals(force: bool = false) -> void:
 	var completed: Array[StringName] = milestones.completed_ids()
 	var snapshot: Dictionary = {"catalogue": milestone_catalogue.get_instance_id() if milestone_catalogue != null else 0,
 		"completed": completed, "progress": progress, "level": owner_progress.level,
-		"records": shop_records.snapshot()}
+		"records": shop_records.snapshot(),
+		"weekly": weekly_challenge.to_dict() if weekly_challenge != null else {},
+		"weekly_progress": weekly_challenge.projected_progress(observation) if weekly_challenge != null else 0,
+		"day": Clock.sim.day}
 	if force or snapshot != _goals_snapshot:
-		_goals_panel.set_goals(milestone_catalogue, completed, progress, owner_progress.level)
+		_goals_panel.set_goals(milestone_catalogue, completed, progress, owner_progress.level,
+			weekly_challenge, Clock.sim.day, observation)
 		_goals_panel.set_records(ShopRecordsText.rows(snapshot["records"], content))
 		_goals_snapshot = snapshot.duplicate(true)
 
@@ -4038,6 +4106,8 @@ func _begin_morning() -> void:
 	_owner_award_day = 0
 	_closed_report_day = 0
 	_loan_notice_day = 0
+	_weekly_challenge_reward_day = 0
+	_weekly_challenge_report_line = ""
 	# Loading today's persisted pool must not advance the saved hiring stream.
 	if staff_roster.candidate_day != Clock.sim.day:
 		staff_roster.draw_candidates(Clock.sim.day, GameState.rng(&"hiring"))
@@ -4046,6 +4116,7 @@ func _begin_morning() -> void:
 	dishes_sold_today.clear()
 	_food_cost_today = PurchaseBasis.zero()
 	shown_report = null
+	_begin_weekly_challenge_if_needed()
 	_sold_out_shown = -1
 	_refresh_sold_out_hud()
 	_expire_stock()
@@ -4768,6 +4839,7 @@ func _on_customer_paid(customer: CustomerAgent, order: Order, amount: int) -> vo
 	if tip > 0:
 		Economy.add_cash(tip, Ledger.TIP)
 	dishes_sold_today[order.recipe_id] = dishes_sold_today.get(order.recipe_id, 0) + 1
+	_refresh_goals()
 
 
 func _on_staff_task_completed(task: SimTask) -> void:
@@ -4802,6 +4874,8 @@ func _on_service_closed(day: int) -> void:
 	_charge_closing_costs()
 	# Capture business profit before milestone cash or financing enters the books.
 	var operating_profit: int = Economy.ledger.day_profit(day)
+	var closing_observation: MilestoneDay = _milestone_observation(operating_profit)
+	_award_weekly_challenge(closing_observation)
 	staff_roster.close_growth_day()
 	var five_star_reviews: int = 0
 	for row: Dictionary in sim.reviews_today:
@@ -4875,6 +4949,19 @@ func _award_milestones(day: int, operating_profit: int) -> void:
 		_owner_award_day = day
 	if staged.cash_reward > 0:
 		Economy.add_cash(staged.cash_reward, Ledger.MILESTONE_BONUS)
+
+
+func _award_weekly_challenge(observation: MilestoneDay) -> void:
+	var staged: WeeklyChallengeSettlement = WeeklyChallengeSettlement.prepare(
+		weekly_challenge, observation, Economy.cash)
+	if staged == null:
+		return
+	weekly_challenge = staged.state
+	if staged.cash_reward <= 0:
+		return
+	Economy.add_cash(staged.cash_reward, Ledger.WEEKLY_CHALLENGE_BONUS)
+	_weekly_challenge_reward_day = observation.day
+	_weekly_challenge_report_line = staged.report_text
 
 
 ## Only authored display names enter the public level-up banner.
