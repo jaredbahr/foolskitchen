@@ -18,7 +18,7 @@ extends SceneTree
 ##   --settings-world  use the gear, select 150%, keyboard Close, show the world
 ##   --hud-layout --window-size=1280x720|1600x900 --speed=0 --frames=12,90
 ##             use the gear and keyboard Close; capture native HUD at 125%, then 150%
-##   --report    require a closed-day report with at least two real review cards
+##   --report    require a closed-day report, real review cards, and a visible opening-menu slowest seller
 ##   --build=green|red  hold a checked buy preview through the production input API
 ##   --paint     show a painted morning shop using the production paint controls
 ##   --walls=place|room  FK-070 walls: a dragged run with its ghost and cost, or a
@@ -3295,6 +3295,7 @@ func _capture() -> void:
 		"requested_report": _report_requested,
 		"report_review_count": (_main.get("shown_report") as DayReport).review_cards.size()
 			if _report_requested else 0,
+		"slowest_seller": _slowest_seller_capture_evidence() if _report_requested else {},
 		"requested_build": _build, "build": build,
 		"requested_paint": _paint, "paint": paint,
 		"day_phase": int(world.clock.phase) if world != null else null,
@@ -3397,6 +3398,29 @@ func _report_capture_valid(world: SimWorld) -> bool:
 	var panel: Control = _main.get_node_or_null("Overlay/EveningReport") as Control
 	if report == null or report.review_cards.size() < 2 or panel == null or not panel.is_visible_in_tree():
 		return false
+	var seller: Dictionary = report.slowest_dish_details()
+	var seller_label: Label = panel.get_node_or_null("%SlowestSeller") as Label
+	var sale_total: int = 0
+	for count: int in report.dishes_sold.values():
+		sale_total += count
+	if seller.is_empty() or sale_total <= 0 or int(report.income.get(Ledger.SALE, 0)) <= 0 \
+			or seller_label == null or not seller_label.visible:
+		return false
+	var hint: String = "Try a lower price" if int(seller["price"]) > int(seller["standard_price"]) \
+		else "Guests may not fancy it; try another dish"
+	var expected_seller_text: String = "Slowest seller: %s (%d sold). %s or take it off the menu." % [
+		String(seller["display_name"]), int(seller["sold"]), hint]
+	var seller_rect: Rect2 = seller_label.get_global_rect()
+	var seller_scroll: ScrollContainer = panel.get_node_or_null("Panel/Scroll") as ScrollContainer
+	if seller_label.text != expected_seller_text or seller_scroll == null or seller_scroll.scroll_vertical != 0:
+		return false
+	var seller_viewport: Rect2 = seller_scroll.get_global_rect()
+	if not seller_label.is_visible_in_tree() or seller_rect.size.x <= 0.0 or seller_rect.size.y <= 0.0 \
+			or seller_rect.position.x < seller_viewport.position.x - 1.0 \
+			or seller_rect.end.x > seller_viewport.end.x + 1.0 \
+			or seller_rect.position.y < seller_viewport.position.y - 1.0 \
+			or seller_rect.end.y > seller_viewport.end.y + 1.0:
+		return false
 	var rows: Node = panel.get_node_or_null("%ReviewRows")
 	var scroll: ScrollContainer = panel.get_node_or_null("Panel/Scroll") as ScrollContainer
 	if rows == null or rows.get_child_count() < 2 or scroll == null or scroll.scroll_vertical != 0:
@@ -3414,6 +3438,34 @@ func _report_capture_valid(world: SimWorld) -> bool:
 				or rect.position.y < viewport.position.y - 1.0 or rect.end.y > viewport.end.y + 1.0:
 			return false
 	return true
+
+
+## Evidence comes from the closed Main report and its rendered native label.
+func _slowest_seller_capture_evidence() -> Dictionary:
+	if not "shown_report" in _main:
+		return {}
+	var report: DayReport = _main.get("shown_report") as DayReport
+	var panel: Control = _main.get_node_or_null("Overlay/EveningReport") as Control
+	if report == null or panel == null:
+		return {}
+	var label: Label = panel.get_node_or_null("%SlowestSeller") as Label
+	if label == null:
+		return {}
+	var sales: int = 0
+	for count: int in report.dishes_sold.values():
+		sales += count
+	return {
+		"menu_count": report.slowest_seller_snapshot.get("menu_count", 0),
+		"eligible_count": report.slowest_seller_snapshot.get("eligible_dishes", []).size(),
+		"paid_dish_count": sales,
+		"sale_total": int(report.income.get(Ledger.SALE, 0)),
+		"selected": report.slowest_dish_details(),
+		"label_visible": label.is_visible_in_tree(),
+		"label_text": label.text,
+		"label_rect": _staff_rect_data(label.get_global_rect()),
+		"capture_viewport": _staff_rect_data(
+			(panel.get_node("Panel/Scroll") as ScrollContainer).get_global_rect()),
+	}
 
 
 ## Read model records and actual native rows together, after the image draw.

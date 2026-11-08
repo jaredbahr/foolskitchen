@@ -74,13 +74,16 @@ func _morning_food_targets(main: Node) -> Dictionary[StringName, int]:
 	return targets
 
 
-func _run_day(main: Node) -> void:
+func _run_day(main: Node) -> Dictionary:
 	assert_true(Clock.sim.start_service(), "shop opens from the morning")
+	var sim: RestaurantSim = main.get("sim") as RestaurantSim
+	var opening_snapshot: Dictionary = sim.service_menu_report_snapshot()
 	var guard := 0
 	while Clock.sim.phase != SimClock.Phase.CLOSED and guard < 20:
 		main.call("run_ticks", 1000)
 		guard += 1
 	assert_eq(Clock.sim.phase, SimClock.Phase.CLOSED, "the day ends")
+	return {"opening": opening_snapshot, "closing": sim.service_menu_report_snapshot()}
 
 
 func test_new_game_starts_with_cash_minus_morning_stock() -> void:
@@ -96,13 +99,40 @@ func test_new_game_starts_with_cash_minus_morning_stock() -> void:
 func test_full_day_charges_costs_and_shows_report() -> void:
 	var main := _start(false)
 	var cash_at_open := Economy.cash
-	_run_day(main)
+	var service_snapshots: Dictionary = _run_day(main)
+	var opening_snapshot: Dictionary = service_snapshots["opening"]
+	var closing_snapshot: Dictionary = service_snapshots["closing"]
 	var wages: int = (main.get("staff_roster") as StaffRoster).total_wages()
 	var sales: int = int(Economy.ledger.day_totals(Clock.sim.day).get(Ledger.SALE, 0))
 	assert_true(sales > 0, "the real kitchen serves paying guests")
+	assert_true(int(opening_snapshot.get("menu_count", 0)) > 1,
+		"the production Main OPEN hook captures its bounded starter menu")
+	assert_true(not (opening_snapshot.get("eligible_dishes", []) as Array).is_empty(),
+		"the naturally stocked opening menu has eligible dishes")
+	assert_eq(opening_snapshot.get("menu_count"), closing_snapshot.get("menu_count"),
+		"service stockouts change eligible dishes, not the captured opening menu size")
 	var report: Control = main.get_node("Overlay/EveningReport")
 	assert_true(report.visible, "evening report shown at CLOSED")
 	var day_report: DayReport = main.call("build_report", 1)
+	var shown_report: DayReport = main.get("shown_report") as DayReport
+	assert_eq(day_report.slowest_seller_snapshot, closing_snapshot,
+		"the report built after real paid service carries the opening snapshot after sticky outages")
+	assert_eq(shown_report.slowest_seller_snapshot, closing_snapshot,
+		"the ordinary service_closed presentation carries the same closing eligibility")
+	var slowest: Dictionary = shown_report.slowest_dish_details()
+	var slowest_label: Label = report.get_node("Panel/Scroll/Content/SlowestSeller") as Label
+	assert_eq(slowest_label.visible, not slowest.is_empty(),
+		"the native report shows a row exactly when its real closed-day snapshot can select one")
+	if not slowest.is_empty():
+		var opening_match: Dictionary = {}
+		for candidate: Dictionary in opening_snapshot.get("eligible_dishes", []):
+			if candidate.get("id") == slowest.get("id"):
+				opening_match = candidate
+		assert_false(opening_match.is_empty(), "the selected dish came from the captured OPEN menu")
+		for field: String in ["id", "display_name", "price", "standard_price"]:
+			assert_eq(slowest[field], opening_match.get(field), "the selected dish keeps captured %s" % field)
+		assert_true(slowest_label.text.contains(String(slowest["display_name"])),
+			"the native report names the dish selected from the real service snapshot")
 	var milestone_cash: int = 0
 	var milestone_xp: int = 0
 	for milestone: Dictionary in day_report.milestones_reached:

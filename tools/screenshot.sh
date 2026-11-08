@@ -7,7 +7,7 @@
 # --settings --speed=0 --frames=12 shows Settings at the usual 1600x900 / 100%.
 # --settings-world --speed=0 --frames=90 selects 150%, uses keyboard Close and shows the world.
 # --hud-layout --window-size=1280x720|1600x900 --speed=0 --frames=12,90 captures 125%, then 150%.
-# --report --open --fast=100 --speed=0 --frames=60 captures a real closed-day report.
+# --report --open --fast=100 --speed=0 --frames=60 captures a real closed-day report and its opening-menu slowest seller.
 # --door-queue --open --fast=8 --speed=1 --frames=240 zooms a real queue, or records its absence at the entry.
 # --lease-review=offer|short|expand --speed=0 --frames=12 captures exactly one declared lease state; offer/short also need --menu.
 # --loan-review --speed=0 --frames=12,90 captures an explicit loss fixture's bank report, then next-morning Loan HUD.

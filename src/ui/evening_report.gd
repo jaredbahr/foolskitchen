@@ -38,6 +38,7 @@ var _stock_summary: VBoxContainer
 var _cash_change: Label
 var _loan_notice: Label
 var _dishes: GridContainer
+var _slowest_seller: Label
 var _guests: Label
 var _cleanliness: Label
 var _guest_bar: ProgressBar
@@ -120,6 +121,8 @@ func show_report(report: DayReport) -> void:
 		_add_row(_dishes, title, str(report.dishes_sold[StringName(id)]))
 	if report.dishes_sold.is_empty():
 		_add_row(_dishes, "No dishes sold today", "")
+	_slowest_seller.text = _slowest_seller_text(report)
+	_slowest_seller.visible = not _slowest_seller.text.is_empty()
 	_guests.text = "%d served  /  %d lost" % [report.customers_served, report.customers_lost]
 	var guest_total: int = report.customers_served + report.customers_lost
 	_guest_bar.max_value = maxi(guest_total, 1)
@@ -281,6 +284,7 @@ func _bind_nodes() -> void:
 	_cash_change = %CashChange
 	_loan_notice = %LoanNotice
 	_dishes = %DishRows
+	_slowest_seller = %SlowestSeller
 	_guests = %Guests
 	_cleanliness = %Cleanliness
 	_guest_bar = %GuestBar
@@ -369,6 +373,17 @@ func _bind_nodes() -> void:
 	_nodes_bound = true
 	resized.connect(_on_report_resized)
 	_on_report_resized()
+
+
+## One player-facing helper owns the slow-seller line and both hint branches.
+func _slowest_seller_text(report: DayReport) -> String:
+	var dish: Dictionary = report.slowest_dish_details()
+	if dish.is_empty():
+		return ""
+	var hint: String = "Try a lower price" if int(dish["price"]) > int(dish["standard_price"]) \
+		else "Guests may not fancy it; try another dish"
+	return "Slowest seller: %s (%d sold). %s or take it off the menu." % [
+		str(dish["display_name"]), int(dish["sold"]), hint]
 
 
 ## Normal windows keep the stock detail beside the books, leaving the real

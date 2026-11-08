@@ -35,6 +35,29 @@ func test_takeaways_line_shows_only_on_days_the_order_counter_sold_any() -> void
 	assert_false(label.visible, "a shop without takeaways keeps its report as it was")
 
 
+func test_slowest_seller_line_uses_captured_name_and_both_hint_branches() -> void:
+	var day: DayReport = DayReport.new()
+	day.dishes_sold = {&"tomato_soup": 2, &"burger": 7}
+	day.slowest_seller_snapshot = {"menu_count": 2, "eligible_dishes": [
+		{"id": "tomato_soup", "display_name": "Tomato soup", "price": 15, "standard_price": 12},
+		{"id": "burger", "display_name": "Burger", "price": 12, "standard_price": 12},
+	]}
+	_report.call("show_report", day)
+	var line: Label = _report.get_node("%SlowestSeller") as Label
+	assert_true(line.visible)
+	assert_eq(line.text, "Slowest seller: Tomato soup (2 sold). Try a lower price or take it off the menu.")
+	day.slowest_seller_snapshot["eligible_dishes"][0]["price"] = 12
+	_report.call("show_report", day)
+	assert_eq(line.text, "Slowest seller: Tomato soup (2 sold). Guests may not fancy it; try another dish or take it off the menu.")
+	assert_false(line.text.contains("tomato_soup"), "the report uses the display name rather than the recipe id")
+	day.dishes_sold.clear()
+	_report.call("show_report", day)
+	assert_false(line.visible, "no paid dishes means the hint line is hidden")
+	var historical: DayReport = DayReport.from_dict({"dishes_sold": {"tomato_soup": 2}})
+	_report.call("show_report", historical)
+	assert_false(line.visible, "older reports without a service snapshot stay quiet")
+
+
 func test_saved_report_name_contextualizes_reviews_without_changing_quotes() -> void:
 	var day: DayReport = DayReport.new()
 	day.restaurant_name = "Copper Cafe"

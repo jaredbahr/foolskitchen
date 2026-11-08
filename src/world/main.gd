@@ -2270,6 +2270,7 @@ func build_report(day: int) -> DayReport:
 	report.stock_on_hand = int(on_hand["cost"])
 	report.stock_on_hand_recorded = bool(on_hand["recorded"])
 	report.dishes_sold = dishes_sold_today.duplicate()
+	report.slowest_seller_snapshot = sim.service_menu_report_snapshot()
 	report.customers_served = sim.served_today
 	report.customers_lost = sim.lost_today
 	report.takeaways = sim.takeaways_today
@@ -4829,6 +4830,10 @@ func _on_day_phase_changed(_day: int, phase: int) -> void:
 		_restock_station_supplies()
 		# Morning orders arrive at once; this only lands overdue orders from older saves.
 		_deliver_due()
+		# Snapshot after due deliveries and an opening availability check. The
+		# report keeps this menu and its prices even if tomorrow's menu changes.
+		if sim != null:
+			sim.begin_service_menu_snapshot()
 	else:
 		$HUD.set_menu_notice("")
 		# A delivery slot never falls after opening hours; anything overdue lands now.

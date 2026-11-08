@@ -125,6 +125,12 @@ var _seats: int = 0
 ## Dishes that ran out during today's service; they stay sold out until a
 ## delivery covers them again or the next morning.
 var sold_out_today: Dictionary[StringName, bool] = {}
+## Recipes unavailable at any point while OPEN or in LAST_ORDERS. Unlike the
+## current sold-out set, a later delivery never clears this service history.
+var service_stockouts_today: Dictionary[StringName, bool] = {}
+## Detached menu/price facts captured once after opening deliveries land.
+var _service_menu_count: int = -1
+var _service_menu_snapshot: Array[Dictionary] = []
 ## Ingredients that sold dishes out today, in the order it happened:
 ## {ingredient: StringName, minute: int (display clock), dishes: Array[StringName]}.
 var stock_outs_today: Array[Dictionary] = []
@@ -276,6 +282,9 @@ func start_day() -> void:
 	critic_result = {}
 	critic.plan_day(world.clock.day, customer_level, critic_rng_provider)
 	sold_out_today.clear()
+	service_stockouts_today.clear()
+	_service_menu_count = -1
+	_service_menu_snapshot.clear()
 	stock_outs_today.clear()
 	reputation_before_day = review_book.average()
 	review_book.begin_day()
@@ -540,6 +549,42 @@ func refresh_sold_out() -> void:
 			_mark_sold_out(recipe.id, short)
 
 
+## Captures the full menu after opening deliveries. It records an opening
+## stockout only in report history; the existing tick refresh still controls
+## current sold-out behavior and logging.
+func begin_service_menu_snapshot() -> void:
+	if _service_menu_count >= 0 or not _in_service():
+		return
+	_service_menu_count = 0
+	_service_menu_snapshot.clear()
+	var seen: Dictionary[StringName, bool] = {}
+	for recipe: RecipeDef in menu:
+		if recipe == null or seen.has(recipe.id):
+			continue
+		seen[recipe.id] = true
+		_service_menu_count += 1
+		if not _short_ingredient(recipe, {}).is_empty():
+			service_stockouts_today[recipe.id] = true
+		_service_menu_snapshot.append({
+			"id": String(recipe.id),
+			"display_name": recipe.display_name,
+			"price": price_of(recipe),
+			"standard_price": recipe.standard_price,
+		})
+
+
+## Returns only primitive, detached report data for dishes in stock all service.
+func service_menu_report_snapshot() -> Dictionary:
+	if _service_menu_count < 0:
+		return {}
+	var eligible: Array[Dictionary] = []
+	for dish: Dictionary in _service_menu_snapshot:
+		var id: StringName = StringName(str(dish.get("id", "")))
+		if not service_stockouts_today.has(id):
+			eligible.append(dish.duplicate())
+	return {"menu_count": _service_menu_count, "eligible_dishes": eligible}
+
+
 ## A delivery during service (FK-087) brings dishes back: those the stock
 ## can cover again leave today's sold-out list. Returns how many came back.
 func restock_sold_out() -> int:
@@ -761,6 +806,8 @@ func service_minute() -> int:
 
 func _mark_sold_out(recipe_id: StringName, ingredient_id: StringName) -> void:
 	sold_out_today[recipe_id] = true
+	if _in_service():
+		service_stockouts_today[recipe_id] = true
 	for event: Dictionary in stock_outs_today:
 		if event["ingredient"] == ingredient_id:
 			(event["dishes"] as Array[StringName]).append(recipe_id)
