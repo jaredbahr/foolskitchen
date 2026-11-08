@@ -32,7 +32,19 @@ static func try_seat(party: Party, world: SimWorld, kitchen: Kitchen = null, kee
 		if guest.state != CustomerAgent.State.ARRIVING and guest.state != CustomerAgent.State.QUEUED:
 			return false
 	var seen: Dictionary[int, bool] = {}
+	var tables: Array[PlacedItem] = []
+	var preferred_id: int = 0
+	if party.booking_owned and world.booking_hold != null:
+		preferred_id = world.booking_hold.group_for_booking(world, party.booking_id)
+		party.preferred_group_id = preferred_id
+	if preferred_id > 0:
+		var preferred: PlacedItem = world.grid.item(preferred_id)
+		if preferred != null:
+			tables.append(preferred)
 	for table: PlacedItem in world.grid.items():
+		if table.id != preferred_id:
+			tables.append(table)
+	for table: PlacedItem in tables:
 		var definition: ItemDef = table.def as ItemDef
 		if table.removed or (definition != null and definition.category != ItemDef.Category.TABLE):
 			continue
@@ -40,9 +52,13 @@ static func try_seat(party: Party, world: SimWorld, kitchen: Kitchen = null, kee
 		if seen.has(group_id):
 			continue
 		seen[group_id] = true
+		if world.booking_hold != null and world.booking_hold.blocks_group(world, group_id,
+				party.booking_id if party.booking_owned else 0):
+			continue
 		if kitchen != null and kitchen.is_dining_group_dirty(table.id):
 			continue
-		if held_for_earlier_party(table, guests[0].id, world):
+		var is_own_held_group: bool = party.booking_owned and group_id == preferred_id
+		if not is_own_held_group and held_for_earlier_party(table, guests[0].id, world):
 			continue
 		var available: Array[Vector2i] = []
 		for seat: Vector2i in table_group_seats(table, world.grid):
@@ -184,7 +200,8 @@ static func _match_candidate(choices: Array[Array], seats: Array[Vector2i], join
 	return true
 
 
-## At most six guest nodes; each augmentation visits every seat at most once.
+## At most ten guest nodes (six for ordinary groups); each augmentation visits
+## every seat at most once.
 static func _augment(choices: Array[Array], index: int, visited: Dictionary[Vector2i, bool],
 		owners: Dictionary[Vector2i, int]) -> bool:
 	for seat: Vector2i in choices[index]:
@@ -236,7 +253,9 @@ static func advance_queue(party: Party, world: SimWorld, sim: RestaurantSim, all
 		return
 	var already_waiting: bool = party.queue_started
 	party.queue_started = true
-	if already_waiting:
+	var reserved_grace: bool = party.booking_owned and world.booking_hold != null \
+		and world.booking_hold.pauses_queue_patience(world, party.booking_id)
+	if already_waiting and not reserved_grace:
 		# The shop cat (#119) makes the whole party a little more patient
 		# while any member stands near it.
 		var refund: int = 0

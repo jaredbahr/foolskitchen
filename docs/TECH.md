@@ -2011,6 +2011,59 @@ detached observation. The observed maximum was 19 served, 11 good reviews and
 8 sales of one dish; review targets are therefore 12 and the smaller dish goal
 is 9, with daily serve targets 24/36. The random selected challenge alone is
 insufficient evidence because it may hide an easier unselected definition.
+**Group bookings (FK-131, #343):** The single accepted next-day group uses a
+soft joined-group hold from 75 minutes before its slot. Existing diners retain
+their physical reservations and leave normally. A matching booked party's
+shared queue counter pauses only while its current valid held group is actually
+occupied or dirty, from the slot up to (excluding) slot+30 displayed minutes.
+The read-only predicate never selects another group, erases spent patience or
+moves the deadline on retry. Missing, free/clean, stale and wrong-day holds get
+ordinary patience. The party controller's once-per-world-tick guard remains.
+
+Dirty reserved tables form one narrow staff-selection exception: eligible
+reserved bussing precedes other positive saved job tiers and distance scores.
+Before the booked party seats, OPEN cleanup jobs for its current held joined
+group wait while a prior diner still physically owns any group seat. Every
+departure dirties the joined members, so cleaning them mid-meal both delays
+the remaining diners' food and must be repeated. These jobs keep their IDs,
+post times and failure counts; the last physical seat release restores their
+eligibility and reservation priority. No already-claimed bus job is preempted.
+Jobs set Off and role/target eligibility remain absolute; no saved priority
+changes. The one claim exception is a floor mop still navigating before its
+first WORK step: an eligible reserved bus task returns that same mop to the
+normal queue without counting a failed attempt. Existing motion finishes its
+real edge before the new task runs. Actual mopping, service and carried food
+are never interrupted. Once the matching booked party is seated in that held
+joined group, reserved urgency ends: partial departures still create ordinary
+bus jobs, which cannot take priority over that party's remaining meals merely
+because its booking stays active until everyone leaves. Empty dirty groups rank
+before occupied groups when
+the normal hold chooses a new group. Tick-driven booking presentation refreshes
+only on a changed day, phase or held group; player actions refresh immediately.
+
+Customer advances, their application and refunds retain the existing exact
+ledger movements and operating-profit exclusions. The report labels the service
+day's applied amount as "Deposit taken off the bill". Main's paid-order replay
+guard returns before counting any cost, sale or booked bill a second time.
+Saving stays at the existing morning checkpoint with no new booking save fields.
+
+`tools/booking_soak.gd` is a manual fixed 24-seed diagnostic, not a CI loop. It
+forces six-person offers, moves the three actual starter tables into a joined
+group and stages level 2/next morning, while keeping ordinary arrivals, stock
+purchases, staff, kitchen, patience and eating duration. Each seed reports model
+settlement separately from actual seating, paid members and advance application
+or refund; it is not proof for every 6–10-person layout. The occupied-at-slot
+regression alone discloses a later legal 16:15 slot, staged long meals, delayed
+unrelated arrivals and real extra ingredient purchases to isolate the reservation
+boundary. It observes complete physical admission before releasing the diners;
+the fixed slot+30 grace, ordinary staff capacity and patience remain unchanged.
+The required lifecycle result is six actual booked seats and settlement backed
+by unique real paid orders, a bill covering the advance and reconciled sales.
+The manual soak succeeds when most cases are seated and settled without a
+no-seat result or accounting errors. Both tools still report all-six-paid
+observations separately. Ordinary already-claimed bussing can wait on an
+occupied table and delay a later ready meal; this existing service limitation
+is reported rather than extending booking-specific preemption after seating.
 
 **Lighting and frontage (FK-055):** Main owns one `lighting_rig.tscn` with a
 warm directional key (main's colour, energy and shadows), low-energy cool fill

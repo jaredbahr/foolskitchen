@@ -82,13 +82,40 @@ var _preferences: SettingsPreferences
 var _opening_refusal: String = ""
 var _haggle_active: bool = false
 var _demand_status: String = ""
+var _booking_status: Label
 
 
 func bind_preferences(model: SettingsPreferences) -> void:
 	_preferences = model
 
 
+func set_booking_status(text: String) -> void:
+	if _booking_status == null and text.is_empty():
+		return
+	if _booking_status == null:
+		var panel: PanelContainer = PanelContainer.new()
+		panel.name = "BookingStatus"
+		panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+		panel.offset_left = -340.0
+		panel.offset_right = -12.0
+		panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		panel.theme = (get_node("Top") as Control).theme
+		panel.custom_minimum_size = Vector2(328.0, 0.0)
+		add_child(panel)
+		_booking_status = Label.new()
+		_booking_status.name = "Details"
+		_booking_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_booking_status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		panel.add_child(_booking_status)
+	_booking_status.text = text
+	_booking_status.get_parent().visible = not text.is_empty()
+	_layout_booking_status()
+
+
 func _ready() -> void:
+	var viewport: Viewport = get_viewport()
+	if viewport != null and not viewport.size_changed.is_connected(_on_header_resized):
+		viewport.size_changed.connect(_on_header_resized)
 	refresh()
 
 
@@ -334,10 +361,28 @@ func _on_header_resized() -> void:
 		return
 	_layout_menu_notice()
 	_layout_build_hints()
+	_layout_booking_status()
 	var bottom: float = _notices_bottom()
 	if not is_equal_approx(bottom, _header_bottom):
 		_header_bottom = bottom
 		header_layout_changed.emit()
+
+
+func _layout_booking_status() -> void:
+	if _booking_status == null or not is_inside_tree():
+		return
+	var panel: PanelContainer = _booking_status.get_parent() as PanelContainer
+	if panel == null:
+		return
+	var target_y: float = _notices_bottom() + 10.0
+	var font: Font = _booking_status.get_theme_font("font")
+	var font_size: int = _booking_status.get_theme_font_size("font_size")
+	var style: StyleBox = panel.get_theme_stylebox("panel", "PanelContainer")
+	var panel_minimum: Vector2 = style.get_minimum_size() if style != null else Vector2.ZERO
+	var text_size: Vector2 = font.get_multiline_string_size(_booking_status.text,
+		HORIZONTAL_ALIGNMENT_LEFT, maxf(1.0, 328.0 - panel_minimum.x), font_size)
+	panel.offset_top = target_y
+	panel.offset_bottom = target_y + maxf(48.0, text_size.y + panel_minimum.y)
 
 
 func _on_staff_pressed() -> void:

@@ -4,6 +4,7 @@ extends RefCounted
 ## waiting divided by that guest's patience budget, not time remaining.
 
 var served: bool = false
+var was_seated: bool = false
 var closing: bool = false
 var queue_wait_fraction: float = 0.0
 var food_wait_fraction: float = 0.0
