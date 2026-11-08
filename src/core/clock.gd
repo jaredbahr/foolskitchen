@@ -163,14 +163,27 @@ func tick_fraction() -> float:
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_echo():
 		return
+	if text_entry_has_focus():
+		return
 	if event.is_action_pressed(&"speed_pause"):
 		set_speed(_last_non_zero_speed if speed == 0 else 0)
 	elif event.is_action_pressed(&"speed_1"):
 		set_speed(1)
 	elif event.is_action_pressed(&"speed_2"):
 		set_speed(2)
-	elif event.is_action_pressed(&"speed_4"):
+	elif event.is_action_pressed(&"speed_3") or event.is_action_pressed(&"speed_4"):
 		set_speed(4)
+
+
+## Speed keys never leak into a text field that is still receiving gameplay input.
+func text_entry_has_focus() -> bool:
+	if not is_inside_tree():
+		return false
+	var viewport: Viewport = get_viewport()
+	if viewport == null:
+		return false
+	var focused: Control = viewport.gui_get_focus_owner()
+	return focused is LineEdit or focused is TextEdit
 
 
 func _on_phase_changed(current_day: int, current_phase: SimClock.Phase) -> void:
