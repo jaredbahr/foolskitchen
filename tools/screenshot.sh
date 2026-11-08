@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Renders the game (default: src/world/main.tscn) under a virtual display and
 # saves PNGs to screens/ (git-ignored). Needs xvfb and Mesa (software OpenGL).
-# Usage: bash tools/screenshot.sh [--out=dir] [--frames=120,400,900] [--speed=4] [--scene=res://...] [--quarter=0..3] [--open] [--fast=N] [--select=guest|owner] [--assign-owner=kitchen] [--f3] [--menu] [--settings] [--report] [--build=green|red] [--paint]
+# Usage: bash tools/screenshot.sh [--out=dir] [--frames=120,400,900] [--speed=4] [--scene=res://...] [--quarter=0..3] [--open] [--fast=N] [--select=guest|owner] [--assign-owner=kitchen] [--f3] [--menu] [--settings] [--shortcuts] [--report] [--build=green|red] [--paint]
 # --staff --speed=0 shows the production Staff panel without changing its roster.
 # --stock --speed=0 --frames=12 shows the morning Stock panel; --stock --open --fast=2 --speed=0 --frames=30 shows the Sold out tag; add --report (--fast=100 --frames=60) for the report's Low stock section.
 # --settings --speed=0 --frames=12 shows Settings at the usual 1600x900 / 100%.
+# --shortcuts --speed=0 --frames=12 sends F1 through Main and captures its focused panel.
 # --settings-world --speed=0 --frames=90 selects 150%, uses keyboard Close and shows the world.
 # --hud-layout --window-size=1280x720|1600x900 --speed=0 --frames=12,90 captures 125%, then 150%.
 # --report --open --fast=100 --speed=0 --frames=60 captures a real closed-day report.
@@ -43,7 +44,7 @@ window_size="1600x900"
 window_size_requested=false
 for a in "$@"; do
   [[ "$a" == --out=* ]] && out="${a#--out=}"
-  [[ "$a" == --settings || "$a" == --settings-world || "$a" == --loan-review || "$a" == --milestone-review || "$a" == --diner-review || "$a" == --menu-boards-review ]] && settings_capture=true
+  [[ "$a" == --settings || "$a" == --settings-world || "$a" == --shortcuts || "$a" == --loan-review || "$a" == --milestone-review || "$a" == --diner-review || "$a" == --menu-boards-review ]] && settings_capture=true
   [[ "$a" == --catalogue-review=* ]] && settings_capture=true
   if [[ "$a" == --lease-review* ]]; then
     settings_capture=true
