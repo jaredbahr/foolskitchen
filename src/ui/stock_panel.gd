@@ -9,6 +9,7 @@ extends Control
 
 signal cart_requested(ingredient_id: StringName, qty: int)
 signal order_requested()
+signal haggle_requested()
 signal clear_requested()
 signal cancel_requested()
 ## Sent on the second click of a row's Throw out button (the first arms it).
@@ -33,6 +34,8 @@ var _delivery_label: Label
 var _delivery_bar: ProgressBar
 var _cart_total: Label
 var _order: Button
+var _haggle: Button
+var _haggle_result: Label
 var _clear: Button
 var _pending: Label
 var _cancel: Button
@@ -58,7 +61,8 @@ func _notification(what: int) -> void:
 
 
 ## View: {rows, groups, cash, editable, notes, premium, cart_total,
-## cart_refusal, pending, refund, delivery: {text, fraction}}.
+## cart_refusal, pending, refund, delivery: {text, fraction},
+## haggle_morning, haggle_available, haggle_percent}.
 ## rows: {id, name, count, expiring, unit_cost, enabled, target, max_target,
 ## kind, in_use, cart, on_order}; groups: {kind, label, in_stock, on_order,
 ## capacity, cart}. Text is already player wording (rule 11).
@@ -125,6 +129,12 @@ func refresh() -> void:
 	var refusal: String = str(_view.get("cart_refusal", ""))
 	var cash: int = int(_view.get("cash", 0))
 	_cart_total.text = "Order total: %s (cash %s)" % [Fmt.money(total), Fmt.money(cash)]
+	_haggle.visible = bool(_view.get("haggle_morning", false))
+	_haggle.disabled = not bool(_view.get("haggle_available", false))
+	var percent: int = int(_view.get("haggle_percent", 0))
+	_haggle_result.text = "Haggled: %d%% off" % percent if percent > 0 else ""
+	_haggle_result.visible = percent > 0
+	_haggle.tooltip_text = "One try this morning; skipping pays list price. Prices round up to whole dollars."
 	_order.disabled = not editable or not refusal.is_empty()
 	_order.tooltip_text = refusal if not refusal.is_empty() else "Pay %s now" % Fmt.money(total)
 	_clear.disabled = not editable or _cart_units() <= 0
@@ -244,6 +254,8 @@ func _bind_nodes() -> void:
 	_delivery_bar = %DeliveryBar
 	_cart_total = %CartTotal
 	_order = %Order
+	_haggle = %Haggle
+	_haggle_result = %HaggleResult
 	_clear = %Clear
 	_pending = %Pending
 	_cancel = %Cancel
@@ -251,6 +263,7 @@ func _bind_nodes() -> void:
 	_close.pressed.connect(_on_close_pressed)
 	_close.tooltip_text = "Close the stock panel (Esc)"
 	_order.pressed.connect(_on_order_pressed)
+	_haggle.pressed.connect(_on_haggle_pressed)
 	_clear.pressed.connect(_on_clear_pressed)
 	_cancel.pressed.connect(_on_cancel_pressed)
 
@@ -420,6 +433,12 @@ func _on_order_pressed() -> void:
 	_armed_throw = &""
 	if bool(_view.get("editable", false)):
 		order_requested.emit()
+
+
+func _on_haggle_pressed() -> void:
+	_armed_throw = &""
+	if bool(_view.get("haggle_available", false)):
+		haggle_requested.emit()
 
 
 func _on_clear_pressed() -> void:

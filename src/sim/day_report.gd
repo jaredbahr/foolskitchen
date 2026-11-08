@@ -76,6 +76,9 @@ var food_cost: int = 0
 var food_cost_recorded: bool = false
 var stock_bought: int = 0
 var stock_bought_recorded: bool = false
+## Live report note only. Offer/attempt state is never serialized.
+var haggle_percent: int = 0
+var haggle_saved: int = 0
 var spoiled_stock: int = 0
 var spoiled_stock_recorded: bool = false
 var stock_on_hand: int = 0

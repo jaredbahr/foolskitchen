@@ -106,7 +106,8 @@ func show_report(report: DayReport) -> void:
 		_add_row(_costs, "Cost of food served", _recorded_money(report.food_cost, report.food_cost_recorded))
 	_clear(_stock)
 	_add_row(_stock, "Stock bought today", _recorded_money(report.stock_bought,
-		report.stock_values_recorded and report.stock_bought_recorded))
+		report.stock_values_recorded and report.stock_bought_recorded) + (
+		" (haggle saved %s)" % _money(report.haggle_saved) if report.haggle_percent > 0 else ""))
 	_add_row(_stock, "Spoiled stock", _recorded_money(report.spoiled_stock, report.spoiled_stock_recorded))
 	_add_row(_stock, "Stock on hand worth", _recorded_money(report.stock_on_hand, report.stock_on_hand_recorded))
 	_cash_change.text = "Cash change today: %s" % _money(report.profit())
