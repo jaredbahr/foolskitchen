@@ -133,8 +133,11 @@ func test_panel_fits_the_usual_window_and_150_percent_scale() -> void:
 	window.content_scale_size = Vector2i(1600, 900)
 	_host.add_child(window)
 	window.add_child(_panel)
-	_panel.set_view(_view(300, true, ["This morning's auto-order cost $93 ($88 at list price + $5 premium).",
-		"Not enough cash to auto-order 5 Beef patty, 20 Bread and 10 Burger bun."] as Array[String]))
+	var view: Dictionary = _view(300, true, ["This morning's auto-order cost $93 ($88 at list price + $5 premium).",
+		"Not enough cash to auto-order 5 Beef patty, 20 Bread and 10 Burger bun."] as Array[String])
+	view["haggle_morning"] = true
+	view["haggle_percent"] = 6
+	_panel.set_view(view)
 	_panel.show()
 	# An armed Throw out ("Click again") must not widen the panel either.
 	(_panel.row_for(&"beef_patty")["throw"] as Button).pressed.emit()
@@ -148,7 +151,7 @@ func test_panel_fits_the_usual_window_and_150_percent_scale() -> void:
 		var rect: Rect2 = panel.get_global_rect()
 		assert_almost_eq(rect.size.x, 720.0, 0.5, "content never widens the panel at %d%%" % roundi(scale * 100))
 		assert_true(visible.grow(0.5).encloses(rect), "the panel stays on screen at %d%%: %s in %s" % [roundi(scale * 100), rect, visible])
-		for path: String in ["%Close", "%Order", "%Cancel", "%Clear", "%DeliveryBar"]:
+		for path: String in ["%Close", "%Order", "%Cancel", "%Clear", "%Haggle", "%HaggleResult", "%DeliveryBar"]:
 			var control: Control = _panel.get_node(path) as Control
 			assert_true(rect.grow(0.5).encloses(control.get_global_rect()), "%s stays reachable" % path)
 		var scroll: Control = _panel.get_node("Panel/Content/Scroll") as Control
@@ -166,6 +169,37 @@ func test_panel_fits_the_usual_window_and_150_percent_scale() -> void:
 
 func _on_cart(id: StringName, qty: int) -> void:
 	_requests.append(["cart", id, qty])
+
+
+func test_haggle_is_request_only_and_shows_pending_offer_without_changing_total() -> void:
+	_panel.haggle_requested.connect(_on_haggle)
+	var view: Dictionary = _view(30, true)
+	view["haggle_morning"] = true
+	view["haggle_available"] = true
+	_panel.set_view(view)
+	var haggle: Button = _panel.get_node("%Haggle") as Button
+	assert_true(haggle.visible)
+	assert_false(haggle.disabled)
+	haggle.pressed.emit()
+	assert_eq(_requests, [["haggle"]])
+	view["haggle_available"] = false
+	view["haggle_percent"] = 6
+	view["cart_total"] = 19
+	_panel.set_view(view)
+	assert_true(haggle.disabled)
+	assert_eq((_panel.get_node("%HaggleResult") as Label).text, "Haggled: 6% off")
+	assert_eq((_panel.get_node("%CartTotal") as Label).text, "Order total: $19 (cash $30)")
+	haggle.pressed.emit()
+	assert_eq(_requests.size(), 1)
+	view["haggle_morning"] = false
+	view["haggle_percent"] = 0
+	_panel.set_view(view)
+	assert_false(haggle.visible)
+	assert_false((_panel.get_node("%HaggleResult") as Label).visible)
+
+
+func _on_haggle() -> void:
+	_requests.append(["haggle"])
 
 
 func _on_order() -> void:
