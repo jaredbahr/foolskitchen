@@ -5188,19 +5188,16 @@ func _on_service_closed(day: int) -> void:
 		sim.demand_factor, demand_tuning)
 	_remember_menu_quality()
 	_charge_closing_costs()
-	# Capture business profit before milestone cash or financing enters the books.
-	var operating_profit: int = Economy.ledger.day_profit(day)
-	var closing_observation: MilestoneDay = _milestone_observation(operating_profit)
-	_award_weekly_challenge(closing_observation)
-
-
 	_settle_due_booking_at_close(day)
-	# Keep the established close-time cash-profit basis, excluding only booking
-	# advances/refunds so those customer liabilities cannot earn profit awards.
+	# Capture business profit before milestone cash, the weekly reward or
+	# financing enters the books, excluding booking advances/refunds so those
+	# customer liabilities cannot earn profit awards.
 	var day_movements: Dictionary = Economy.ledger.day_totals(day)
 	var operating_profit: int = Economy.ledger.day_profit(day) \
 		- int(day_movements.get(Ledger.BOOKING_DEPOSIT, 0)) \
 		- int(day_movements.get(Ledger.BOOKING_REFUND, 0))
+	var closing_observation: MilestoneDay = _milestone_observation(operating_profit)
+	_award_weekly_challenge(closing_observation)
 	staff_roster.close_growth_day()
 	var five_star_reviews: int = 0
 	for row: Dictionary in sim.reviews_today:
