@@ -5,9 +5,7 @@ extends RefCounted
 const NON_OPERATING_CATEGORIES: Array[StringName] = [
 	Ledger.BANK_LOAN, Ledger.LOAN_INTEREST, Ledger.LOAN_REPAYMENT,
 	Ledger.MILESTONE_BONUS, Ledger.WEEKLY_CHALLENGE_BONUS,
-
-
-	Ledger.MILESTONE_BONUS, Ledger.BOOKING_DEPOSIT, Ledger.BOOKING_REFUND,
+	Ledger.BOOKING_DEPOSIT, Ledger.BOOKING_REFUND,
 ]
 const MAX_MILESTONE_REWARD: int = 1000000
 const MAX_FORECAST_INTEGER: int = 9007199254740991
@@ -261,8 +259,6 @@ func to_dict() -> Dictionary:
 		result["inspection_lines"] = inspection_lines.duplicate()
 	if not weekly_challenge_line.is_empty():
 		result["weekly_challenge_line"] = weekly_challenge_line
-
-
 	if not booking_lines.is_empty():
 		result["booking_lines"] = booking_lines.duplicate()
 	var activity: Dictionary = StaffActivity.public_snapshot(staff_activity)

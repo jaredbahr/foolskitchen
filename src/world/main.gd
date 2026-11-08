@@ -1428,7 +1428,8 @@ func forecast_next_demand() -> Dictionary:
 
 ## The sim emits each departure once. Observe only its captured presentation
 ## evidence; review calculation and its random stream remain in RestaurantSim.
-func _on_vibe_customer_left(customer: CustomerAgent, _reason: StringName) -> void:
+func _on_vibe_customer_left(customer: CustomerAgent, reason: StringName) -> void:
+	_settle_booking_after_departure(customer, reason)
 	if customer != null and customer.paid and is_finite(customer.vibe_review_bonus) \
 			and customer.vibe_review_bonus > 0.0 \
 			and VIBE_TUNING.theme_labels.values().has(customer.vibe_theme_label):
@@ -1436,17 +1437,6 @@ func _on_vibe_customer_left(customer: CustomerAgent, _reason: StringName) -> voi
 		_vibe_experiences[label] = _vibe_experiences.get(label, 0) + 1
 		_report.call(&"set_vibe", vibe_result, _experienced_vibe_theme())
 	_refresh_goals()
-
-
-func _on_vibe_customer_left(customer: CustomerAgent, reason: StringName) -> void:
-	_settle_booking_after_departure(customer, reason)
-	if customer == null or not customer.paid or not is_finite(customer.vibe_review_bonus) \
-			or customer.vibe_review_bonus <= 0.0 \
-			or not VIBE_TUNING.theme_labels.values().has(customer.vibe_theme_label):
-		return
-	var label: String = customer.vibe_theme_label
-	_vibe_experiences[label] = _vibe_experiences.get(label, 0) + 1
-	_report.call(&"set_vibe", vibe_result, _experienced_vibe_theme())
 
 
 func _experienced_vibe_theme() -> String:
