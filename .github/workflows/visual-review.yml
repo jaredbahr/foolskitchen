@@ -112,6 +112,7 @@ jobs:
           OWNER_REVIEW_STAGE=shop bash tools/screenshot.sh --out=screens/visual-review/owner-character --scene=res://tools/owner_character_review.tscn --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/report --report --open --fast=100 --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/blueprint-codes --blueprints=ghost --speed=0 --frames=30
+          bash tools/screenshot.sh --out=screens/visual-review/report-slowest --report-slowest --open --fast=100 --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/profit-review --scene=res://tools/profit_review.tscn --report --open --fast=1 --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/demand-report --scene=res://tools/demand_report_review.tscn --speed=0 --frames=60
           SCREENSHOT_TIMEOUT_SECONDS=120 bash tools/screenshot.sh --out=screens/visual-review/staff-activity-report --scene=res://tools/staff_activity_review.tscn --speed=0 --frames=60

@@ -18,7 +18,8 @@ extends SceneTree
 ##   --settings-world  use the gear, select 150%, keyboard Close, show the world
 ##   --hud-layout --window-size=1280x720|1600x900 --speed=0 --frames=12,90
 ##             use the gear and keyboard Close; capture native HUD at 125%, then 150%
-##   --report    require a closed-day report with at least two real review cards
+##   --report    require a closed-day report and real review cards at the top of the report
+##   --report-slowest  scroll the real closed-day report to its native slowest seller line
 ##   --build=green|red  hold a checked buy preview through the production input API
 ##   --paint     show a painted morning shop using the production paint controls
 ##   --walls=place|room  FK-070 walls: a dragged run with its ghost and cost, or a
@@ -157,6 +158,7 @@ var _hud_layout: bool = false
 var _hud_window_size: Vector2i = Vector2i(1600, 900)
 var _hud_layout_scale: int = 125
 var _report_requested: bool = false
+var _report_slowest_requested: bool = false
 var _build: String = ""
 var _paint: bool = false
 var _walls: String = ""
@@ -321,6 +323,9 @@ func _initialize() -> void:
 			pass # Parsed and strictly validated above.
 		elif arg == "--report":
 			_report_requested = true
+		elif arg == "--report-slowest":
+			_report_requested = true
+			_report_slowest_requested = true
 		elif arg.begins_with("--build"):
 			var requested: String = arg.trim_prefix("--build=")
 			if not ["green", "red"].has(requested):
@@ -445,6 +450,9 @@ func _initialize() -> void:
 		return
 	if _report_requested and (not _open or _fast <= 0 or _speed != 0 or _menu or _staff or not _build.is_empty()):
 		_fail_capture("--report requires a fast-forwarded, paused-clock service view")
+		return
+	if _report_slowest_requested and _stock:
+		_fail_capture("--report-slowest cannot be combined with --stock")
 		return
 	if _settings and (_scene_path != "res://src/world/main.tscn" or _open or _fast != 0 \
 			or not _selection.is_empty() or _assign_owner or _f3 or _menu or _staff \
@@ -2165,6 +2173,8 @@ func _process(_delta: float) -> bool:
 				return true
 	if _stock and _report_requested:
 		_scroll_report_to_low_stock()
+	if _report_slowest_requested:
+		_scroll_report_to_slowest_seller()
 	if _floors_review and _frames == 3:
 		# The floors without grid lines first, as a player sees them with G.
 		var rig: CameraRig = _main.get_node_or_null("CameraRig") as CameraRig
@@ -3196,6 +3206,14 @@ func _scroll_report_to_low_stock() -> void:
 		scroll.scroll_vertical = int(heading.position.y)
 
 
+## Bring the real seller label into the existing report viewport for a focused capture.
+func _scroll_report_to_slowest_seller() -> void:
+	var scroll: ScrollContainer = _main.get_node_or_null("Overlay/EveningReport/Panel/Scroll") as ScrollContainer
+	var label: Label = _main.get_node_or_null("Overlay/EveningReport/Panel/Scroll/Content/SlowestSeller") as Label
+	if scroll != null and label != null and label.visible and scroll.is_visible_in_tree():
+		scroll.scroll_vertical = int(label.position.y)
+
+
 func _low_stock_visible(world: SimWorld) -> bool:
 	var scroll: ScrollContainer = _main.get_node_or_null("Overlay/EveningReport/Panel/Scroll") as ScrollContainer
 	var heading: Control = _main.get_node_or_null("Overlay/EveningReport/Panel/Scroll/Content/LowStockHeading") as Control
@@ -3318,9 +3336,12 @@ func _capture() -> void:
 			or world.now != 0 or not _staff_capture_valid(staff_state)):
 		_fail_capture("requested Staff panel did not show the real paused morning roster and pool")
 		return
-	if _report_requested and not _stock and not _report_capture_valid(world):
-		_fail_capture("requested report did not show visible native reviews after service closed")
-		return
+	if _report_requested and not _stock:
+		var report_valid: bool = _report_slowest_capture_valid(world) if _report_slowest_requested \
+			else _report_capture_valid(world)
+		if not report_valid:
+			_fail_capture("requested report view did not match its real closed-day content and rendered bounds")
+			return
 	var stock_visible: Variant = _main.call("is_stock_visible") if _main.has_method("is_stock_visible") else null
 	if _stock and not _open and (stock_visible != true or world == null \
 			or world.clock.phase != SimClock.Phase.MORNING or world.now != 0):
@@ -3465,8 +3486,10 @@ func _capture() -> void:
 		"low_stock": (_main.get("shown_report") as DayReport).low_stock
 			if _stock and _report_requested and _main.get("shown_report") != null else [],
 		"requested_report": _report_requested,
+		"requested_report_mode": "slowest-seller" if _report_slowest_requested else ("reviews" if _report_requested else ""),
 		"report_review_count": (_main.get("shown_report") as DayReport).review_cards.size()
 			if _report_requested else 0,
+		"slowest_seller": _slowest_seller_capture_evidence() if _report_requested else {},
 		"requested_build": _build, "build": build,
 		"requested_paint": _paint, "paint": paint,
 		"day_phase": int(world.clock.phase) if world != null else null,
@@ -3589,6 +3612,66 @@ func _report_capture_valid(world: SimWorld) -> bool:
 				or rect.position.y < viewport.position.y - 1.0 or rect.end.y > viewport.end.y + 1.0:
 			return false
 	return true
+
+
+## Validate the real closing report while its native seller row is scrolled into view.
+func _report_slowest_capture_valid(world: SimWorld) -> bool:
+	if world == null or world.clock.phase != SimClock.Phase.CLOSED or not "shown_report" in _main:
+		return false
+	var report: DayReport = _main.get("shown_report") as DayReport
+	var panel: Control = _main.get_node_or_null("Overlay/EveningReport") as Control
+	if report == null or report.review_cards.size() < 2 or panel == null or not panel.is_visible_in_tree():
+		return false
+	var seller: Dictionary = report.slowest_dish_details()
+	var label: Label = panel.get_node_or_null("%SlowestSeller") as Label
+	var scroll: ScrollContainer = panel.get_node_or_null("Panel/Scroll") as ScrollContainer
+	var sale_total: int = 0
+	for count: int in report.dishes_sold.values():
+		sale_total += count
+	if seller.is_empty() or sale_total <= 0 or int(report.income.get(Ledger.SALE, 0)) <= 0 \
+			or label == null or not label.is_visible_in_tree() or scroll == null or scroll.scroll_vertical <= 0:
+		return false
+	var hint: String = "Try a lower price" if int(seller["price"]) > int(seller["standard_price"]) \
+		else "Guests may not fancy it; try another dish"
+	var expected_text: String = "Slowest seller: %s (%d sold). %s or take it off the menu." % [
+		String(seller["display_name"]), int(seller["sold"]), hint]
+	var label_rect: Rect2 = label.get_global_rect()
+	var viewport: Rect2 = scroll.get_global_rect()
+	return label.text == expected_text and label_rect.size.x > 0.0 and label_rect.size.y > 0.0 \
+		and label_rect.position.x >= viewport.position.x - 1.0 \
+		and label_rect.end.x <= viewport.end.x + 1.0 \
+		and label_rect.position.y >= viewport.position.y - 1.0 \
+		and label_rect.end.y <= viewport.end.y + 1.0
+
+
+## Evidence comes from the closed Main report and its rendered native label.
+func _slowest_seller_capture_evidence() -> Dictionary:
+	if not "shown_report" in _main:
+		return {}
+	var report: DayReport = _main.get("shown_report") as DayReport
+	var panel: Control = _main.get_node_or_null("Overlay/EveningReport") as Control
+	if report == null or panel == null:
+		return {}
+	var label: Label = panel.get_node_or_null("%SlowestSeller") as Label
+	if label == null:
+		return {}
+	var scroll: ScrollContainer = panel.get_node_or_null("Panel/Scroll") as ScrollContainer
+	var sales: int = 0
+	for count: int in report.dishes_sold.values():
+		sales += count
+	return {
+		"menu_count": report.slowest_seller_snapshot.get("menu_count", 0),
+		"eligible_count": report.slowest_seller_snapshot.get("eligible_dishes", []).size(),
+		"paid_dish_count": sales,
+		"sale_total": int(report.income.get(Ledger.SALE, 0)),
+		"selected": report.slowest_dish_details(),
+		"label_visible": label.is_visible_in_tree(),
+		"label_text": label.text,
+		"scroll_vertical": scroll.scroll_vertical if scroll != null else null,
+		"label_rect": _staff_rect_data(label.get_global_rect()),
+		"capture_viewport": _staff_rect_data(
+			(panel.get_node("Panel/Scroll") as ScrollContainer).get_global_rect()),
+	}
 
 
 ## Read model records and actual native rows together, after the image draw.

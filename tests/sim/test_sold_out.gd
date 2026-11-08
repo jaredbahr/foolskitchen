@@ -188,13 +188,87 @@ func test_nothing_sells_out_outside_service_and_mornings_reset() -> void:
 	_start(Stock.new(), [&"burger"] as Array[StringName])
 	_sim.refresh_sold_out()
 	assert_false(_sim.is_sold_out(&"burger"))
+	assert_false(_sim.service_stockouts_today.has(&"burger"))
 	assert_eq(_sim.available_menu().size(), 1)
 	assert_true(_sim.world.clock.start_service())
 	_sim.advance()
+	_sim.begin_service_menu_snapshot()
 	assert_true(_sim.is_sold_out(&"burger"))
+	assert_true(_sim.service_stockouts_today.has(&"burger"))
 	_sim.start_day()
 	assert_false(_sim.is_sold_out(&"burger"))
+	assert_false(_sim.service_stockouts_today.has(&"burger"))
+	assert_true(_sim.service_menu_report_snapshot().is_empty())
 	assert_true(_sim.stock_outs_today.is_empty())
+
+
+func test_morning_shortage_repaired_before_open_does_not_disqualify_dish() -> void:
+	var stock: Stock = Stock.new()
+	_start(stock, [&"burger"] as Array[StringName])
+	_sim.refresh_sold_out()
+	assert_true(_sim.service_stockouts_today.is_empty(), "morning shortages are not service outages")
+	for ingredient: IngredientDef in _content.recipe(&"burger").ingredients:
+		stock.add(ingredient.id, 20, 1)
+	assert_true(_sim.world.clock.start_service())
+	_sim.begin_service_menu_snapshot()
+	assert_true(_sim.service_stockouts_today.is_empty())
+	var snapshot: Dictionary = _sim.service_menu_report_snapshot()
+	assert_eq(snapshot["menu_count"], 1)
+	assert_eq((snapshot["eligible_dishes"] as Array).size(), 1,
+		"the opening availability check sees ingredients repaired before OPEN")
+
+
+func test_mid_service_stockout_stays_excluded_after_delivery_restock() -> void:
+	var stock: Stock = _full_stock()
+	_start(stock, [&"burger", &"grilled_cheese"] as Array[StringName])
+	_sim.prices[&"burger"] = 25
+	_sim.prices[&"grilled_cheese"] = 17
+	assert_true(_sim.world.clock.start_service())
+	_sim.begin_service_menu_snapshot()
+	assert_true(_sim.service_stockouts_today.is_empty(), "both dishes start in stock")
+	assert_eq((_sim.service_menu_report_snapshot()["eligible_dishes"] as Array).size(), 2)
+	assert_true(stock.take(&"beef_patty", stock.count(&"beef_patty")))
+	_sim.refresh_sold_out()
+	assert_true(_sim.service_stockouts_today.has(&"burger"))
+	stock.add(&"beef_patty", 20, 1)
+	assert_eq(_sim.restock_sold_out(), 1)
+	assert_false(_sim.is_sold_out(&"burger"), "restocking preserves the existing current sold-out behavior")
+	assert_true(_sim.service_stockouts_today.has(&"burger"), "the all-service outage record is sticky")
+	var snapshot: Dictionary = _sim.service_menu_report_snapshot()
+	assert_eq(snapshot["menu_count"], 2, "the full opening menu count is separate from candidates")
+	var eligible: Array = snapshot["eligible_dishes"]
+	assert_eq(eligible.size(), 1)
+	assert_eq(eligible[0]["id"], "grilled_cheese")
+	var report: DayReport = DayReport.new()
+	report.dishes_sold = {&"burger": 1}
+	report.slowest_seller_snapshot = snapshot
+	var restored: DayReport = DayReport.from_dict(JSON.parse_string(JSON.stringify(report.to_dict())))
+	assert_eq(restored.slowest_dish(), &"grilled_cheese",
+		"the remaining menu item can be the zero-sales slowest dish after another dish is excluded")
+	_sim.prices[&"burger"] = 1
+	_sim.prices[&"grilled_cheese"] = 1
+	_sim.menu.clear()
+	assert_eq(snapshot["eligible_dishes"][0]["price"], 17,
+		"later live price changes do not rewrite the opening snapshot")
+	assert_eq(restored.slowest_dish_details()["price"], 17,
+		"serialized report details stay detached from later menu and price edits")
+
+
+func test_one_shared_ingredient_shortage_marks_every_recipe_unavailable() -> void:
+	var first: RecipeDef = _content.recipe(&"tomato_melt")
+	var second: RecipeDef = _content.recipe(&"grilled_cheese")
+	var shared: StringName = &""
+	for left: IngredientDef in first.ingredients:
+		for right: IngredientDef in second.ingredients:
+			if left.id == right.id:
+				shared = left.id
+	assert_ne(shared, &"", "the fixture recipes share a real ingredient")
+	_start(_full_stock({shared: 0}), [first.id, second.id] as Array[StringName])
+	assert_true(_sim.world.clock.start_service())
+	_sim.begin_service_menu_snapshot()
+	assert_true(_sim.service_stockouts_today.has(first.id))
+	assert_true(_sim.service_stockouts_today.has(second.id))
+	assert_true((_sim.service_menu_report_snapshot()["eligible_dishes"] as Array).is_empty())
 
 
 func _on_left(guest: CustomerAgent, reason: StringName) -> void:
