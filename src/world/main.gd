@@ -327,6 +327,7 @@ func _bind_world_presentation() -> void:
 		_build_catalogue.blueprint_requested.connect(_on_blueprint_requested)
 		_build_catalogue.blueprint_rename_requested.connect(_on_blueprint_rename_requested)
 		_build_catalogue.blueprint_delete_requested.connect(_on_blueprint_delete_requested)
+		_build_catalogue.blueprint_code_paste_requested.connect(_on_blueprint_code_paste_requested)
 	if not _build_catalogue.wall_tool_requested.is_connected(_on_wall_tool_requested):
 		_build_catalogue.wall_tool_requested.connect(_on_wall_tool_requested)
 	if not _build_catalogue.floor_tool_requested.is_connected(_on_floor_tool_requested):
@@ -1677,6 +1678,22 @@ func _on_blueprint_delete_requested(blueprint: Blueprint) -> void:
 		if build_mode.selected_blueprint == blueprint:
 			build_mode.cancel_ghost()
 		blueprint_library.remove(blueprint)
+
+
+func _on_blueprint_code_paste_requested(text: String) -> void:
+	if not is_build_active() or not shop_editor.can_edit():
+		return
+	if blueprint_library.blueprints.size() >= BlueprintLibrary.MAX_BLUEPRINTS:
+		_build_catalogue.show_blueprint_code_message(BlueprintCodeText.FULL)
+		return
+	var reasons: Array[String] = []
+	var blueprint: Blueprint = BlueprintCode.decode(text, content, reasons)
+	if blueprint == null:
+		_build_catalogue.show_blueprint_code_message(reasons[0])
+		return
+	var imported: Blueprint = blueprint_library.add_imported(blueprint)
+	_build_catalogue.show_blueprint_code_message(BlueprintCodeText.ADDED % imported.display_name \
+		if imported != null else BlueprintCodeText.FAILED)
 
 
 func _bind_build_session() -> void:

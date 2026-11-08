@@ -1305,8 +1305,8 @@ tables and buys two normal chairs for $20, without changing menu/staff/tuning.
 ### Furniture blueprints (FK-045)
 - `Blueprint` is a Resource containing a player name and `ShopPlacement`
   entries: content id, anchor-relative offset, quarter turns and body swatch.
-  Variant ids in blueprint entries remain a separate follow-up after FK-079;
-  existing blueprints keep their default furniture looks.
+  Furniture variant ids travel with their body swatches, so copies retain
+  their selected looks.
   Only floor furniture and rugs participate, never doors, wall decor or
   structure. Box selection includes whole footprints on both placement layers.
   Rotation turns the group's bounding rectangle and each item's already-rotated
@@ -1344,6 +1344,18 @@ tables and buys two normal chairs for $20, without changing menu/staff/tuning.
   Manual native captures: `bash tools/screenshot.sh
   --blueprints=selection|ghost|stamped --speed=0 --frames=30 --out=<review-dir>`
   (choose one profile per run). No additional CI jobs or repeated probes.
+- **Clipboard codes (#332):** Copy code shares the exact blueprint row as
+  `FK1:` plus base64 of compact JSON; Paste code imports a private library
+  copy, using the first free ` (2)`, ` (3)` name suffix within the 80-character
+  limit. The separate pure `BlueprintCode` decoder accepts at most 40 pieces
+  whose complete rotated footprints fit a nonnegative 20×20 box. It strictly
+  checks transport, UTF-8, JSON, types, content ids and looks before import;
+  malformed input returns null and one plain reason without logging engine
+  errors. This does not change the larger, lenient version-1 saved library.
+  Clipboard actions are available only in the existing closed Build flow;
+  an empty/unavailable Paste reports "Nothing to paste". Successful imports
+  join the next normal morning autosave. The existing blueprint ghost capture
+  also records the actual Copy/Paste buttons; no new job or capture loop.
 
 ### Rooms and restrooms (FK-101)
 - **Rooms on the grid.** `SimGrid.Room` is DINING (the default, never

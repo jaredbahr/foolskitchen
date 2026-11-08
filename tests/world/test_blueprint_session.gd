@@ -10,6 +10,7 @@ const SLOT: String = "blueprints"
 var _mains: Array[Node] = []
 var _old_save_dir: String
 var _save_dir: String
+var _clipboard_code: String = ""
 
 
 func before_each() -> void:
@@ -60,6 +61,44 @@ func test_player_library_only_saves_at_next_morning_and_survives_load() -> void:
 	Clock.sim.phase = SimClock.Phase.CLOSED
 	assert_true(Clock.sim.next_day(), "advance morning")
 	assert_eq((_document()["data"]["blueprints"]["blueprints"] as Array).size(), 0)
+
+
+func test_real_paste_buttons_import_private_named_copies_at_the_next_morning_only() -> void:
+	var first: Node = _start()
+	var source: Blueprint = _plant(first)
+	_clipboard_code = BlueprintCode.encode(source)
+	var catalogue: BuildCatalogue = first.get_node("Overlay/BuildCatalogue") as BuildCatalogue
+	catalogue.bind_blueprint_clipboard(_read_code_clipboard, _ignore_code_clipboard)
+	assert_true(first.call("set_build_active", true))
+	catalogue.set_category(BuildCatalogue.BLUEPRINTS)
+	var before: String = FileAccess.get_file_as_string(_path())
+	var cash: int = Economy.cash
+	var shop: Dictionary = (first.get("shop_editor") as ShopEditor).to_dict()
+	catalogue.blueprint_paste.pressed.emit()
+	catalogue.blueprint_paste.pressed.emit()
+	var library: BlueprintLibrary = first.get("blueprint_library") as BlueprintLibrary
+	assert_eq(library.blueprints.size(), 2)
+	assert_eq(library.blueprints[0].to_dict(), source.to_dict())
+	assert_eq(library.blueprints[1].display_name, source.display_name + " (2)")
+	assert_eq(source.display_name, library.blueprints[0].display_name)
+	assert_eq(Economy.cash, cash)
+	assert_eq((first.get("shop_editor") as ShopEditor).to_dict(), shop)
+	assert_eq(FileAccess.get_file_as_string(_path()), before, "pasting only changes the in-memory library")
+	var imported: Dictionary = library.to_dict()
+	Clock.sim.phase = SimClock.Phase.CLOSED
+	assert_true(Clock.sim.next_day())
+	assert_eq((_document()["data"]["blueprints"]["blueprints"] as Array).size(), 2)
+	_close(first)
+	var second: Node = _start()
+	assert_eq((second.get("blueprint_library") as BlueprintLibrary).to_dict(), imported)
+
+
+func _read_code_clipboard() -> String:
+	return _clipboard_code
+
+
+func _ignore_code_clipboard(_text: String) -> void:
+	pass
 
 
 func test_legacy_save_without_library_loads_empty_and_keeps_shop_and_cash() -> void:
