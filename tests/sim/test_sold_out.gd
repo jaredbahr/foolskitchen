@@ -255,7 +255,7 @@ func test_mid_service_stockout_stays_excluded_after_delivery_restock() -> void:
 
 
 func test_one_shared_ingredient_shortage_marks_every_recipe_unavailable() -> void:
-	var first: RecipeDef = _content.recipe(&"burger")
+	var first: RecipeDef = _content.recipe(&"tomato_melt")
 	var second: RecipeDef = _content.recipe(&"grilled_cheese")
 	var shared: StringName = &""
 	for left: IngredientDef in first.ingredients:
