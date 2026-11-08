@@ -35,6 +35,25 @@ func test_takeaways_line_shows_only_on_days_the_order_counter_sold_any() -> void
 	assert_false(label.visible, "a shop without takeaways keeps its report as it was")
 
 
+func test_weekly_reward_line_and_cash_category_are_distinct_from_milestones() -> void:
+	var day: DayReport = DayReport.new()
+	day.weekly_challenge_line = "Weekly challenge: +$60"
+	day.income[Ledger.WEEKLY_CHALLENGE_BONUS] = 60
+	var restored: DayReport = DayReport.from_dict(JSON.parse_string(JSON.stringify(day.to_dict())))
+	assert_eq(restored.weekly_challenge_line, "Weekly challenge: +$60")
+	_report.call("show_report", restored)
+	var line: Label = _report.get_node("%WeeklyChallengeLine") as Label
+	assert_true(line.visible)
+	assert_eq(line.text, "Weekly challenge: +$60")
+	assert_true(_report.get_node("%IncomeRows").get_children().any(func(child: Node) -> bool:
+		return child is Label and child.text == "Weekly challenge"))
+	var legacy: DayReport = DayReport.new()
+	assert_false(legacy.to_dict().has("weekly_challenge_line"),
+		"default report snapshots keep their previous shape")
+	_report.call("show_report", legacy)
+	assert_false(line.visible)
+
+
 func test_saved_report_name_contextualizes_reviews_without_changing_quotes() -> void:
 	var day: DayReport = DayReport.new()
 	day.restaurant_name = "Copper Cafe"

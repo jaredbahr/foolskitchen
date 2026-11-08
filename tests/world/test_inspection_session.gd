@@ -57,6 +57,7 @@ func _level(level: int) -> void:
 
 
 func _next_morning() -> void:
+	reset_weekly_for_synthetic_day_jump(_main)
 	Clock.sim.day += 1
 	_main.call("_begin_morning")
 

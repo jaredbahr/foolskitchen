@@ -11,6 +11,7 @@ const MONEY_LABELS: Dictionary = {
 	Ledger.LOAN_INTEREST: "Loan interest",
 	Ledger.LOAN_REPAYMENT: "Loan repayment",
 	Ledger.MILESTONE_BONUS: "Milestone bonus",
+	Ledger.WEEKLY_CHALLENGE_BONUS: "Weekly challenge",
 }
 
 const LEAVE_LABELS: Dictionary = {
@@ -111,6 +112,9 @@ func show_report(report: DayReport) -> void:
 	_loan_notice.text = LOAN_INTRODUCTION if report.loan_first_advance else ""
 	_loan_notice.visible = report.loan_first_advance
 	_fill_milestones(DayReport.public_milestones(report.milestones_reached))
+	var weekly_line: Label = %WeeklyChallengeLine
+	weekly_line.text = report.weekly_challenge_line
+	weekly_line.visible = not report.weekly_challenge_line.is_empty()
 	_clear(_dishes)
 	var best: StringName = report.best_dish()
 	for id: String in _sorted_ids(report.dishes_sold):

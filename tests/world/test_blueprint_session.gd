@@ -44,6 +44,7 @@ func test_player_library_only_saves_at_next_morning_and_survives_load() -> void:
 	assert_eq(int(_document()["data"]["shop"]["version"]), 9, "the thin-divider shop snapshot must not go backwards")
 	assert_false((_document()["data"]["shop"] as Dictionary).has("blueprints"))
 	assert_eq((_document()["data"]["blueprints"]["blueprints"] as Array).size(), 0)
+	reset_weekly_for_synthetic_day_jump(first)
 	Clock.sim.phase = SimClock.Phase.CLOSED
 	assert_true(Clock.sim.next_day(), "advance morning")
 	assert_eq((_document()["data"]["blueprints"]["blueprints"] as Array).size(), 1)
@@ -57,6 +58,7 @@ func test_player_library_only_saves_at_next_morning_and_survives_load() -> void:
 	var saved: String = FileAccess.get_file_as_string(_path())
 	assert_true(restored.remove(restored.blueprints[0]), "delete library")
 	assert_eq(FileAccess.get_file_as_string(_path()), saved, "deleting also waits until morning")
+	reset_weekly_for_synthetic_day_jump(second)
 	Clock.sim.phase = SimClock.Phase.CLOSED
 	assert_true(Clock.sim.next_day(), "advance morning")
 	assert_eq((_document()["data"]["blueprints"]["blueprints"] as Array).size(), 0)
@@ -181,6 +183,7 @@ func test_mixed_booth_library_and_stamp_wait_for_morning_then_reload_looks() -> 
 	assert_true(first.call("shop_stamp", blueprint, stamp_origin), editor.last_check.why)
 	assert_eq(Economy.cash, 580, "one real stamp debits both copied booths")
 	assert_eq(FileAccess.get_file_as_string(_path()), before, "buy, capture and stamp wait for the morning autosave")
+	reset_weekly_for_synthetic_day_jump(first)
 	Clock.sim.phase = SimClock.Phase.CLOSED
 	assert_true(Clock.sim.next_day(), "existing morning checkpoint")
 	var saved: Dictionary = _document()

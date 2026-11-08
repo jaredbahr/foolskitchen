@@ -176,6 +176,7 @@ func test_real_morning_spoilage_survives_checkpoint_reload_once() -> void:
 	# Use a deliberately old known-value batch, through the public lot API,
 	# then enter the ordinary morning path that expires and autosaves it.
 	Economy.stock.add(&"coffee_beans", 1, -20, 7)
+	reset_weekly_for_synthetic_day_jump(first)
 	Clock.sim.phase = SimClock.Phase.CLOSED
 	assert_true(Clock.sim.next_day())
 	var morning: DayReport = first.call("build_report", 2)

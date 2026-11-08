@@ -16,6 +16,17 @@ func after_each() -> void:
 	pass
 
 
+## Persistence fixtures that jump a morning directly without running service
+## have no day-close observation to advance a weekly challenge. Reset only the
+## fixture state before that synthetic jump; the next morning then follows the
+## supported legacy initialization path with zero fabricated progress.
+func reset_weekly_for_synthetic_day_jump(main: Node) -> void:
+	if main == null or not is_instance_valid(main):
+		return
+	if main.get("weekly_challenge") is WeeklyChallengeState:
+		main.set("weekly_challenge", WeeklyChallengeState.new())
+
+
 func assert_true(value: bool, msg: String = "") -> void:
 	if not value:
 		_fail("expected true", msg)
