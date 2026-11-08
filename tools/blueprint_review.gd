@@ -99,6 +99,9 @@ static func evidence(main: Node) -> Dictionary:
 		"catalogue_visible": catalogue.is_visible_in_tree(), "category": String(catalogue.selected_category),
 		"selection_visible": is_instance_valid(preview.blueprint_selection_mesh) and preview.blueprint_selection_mesh.is_visible_in_tree(),
 		"ghosts": ghosts, "stamped": placed,
+		"paste_code": _code_button(catalogue.blueprint_paste),
+		"copy_code": _code_button(catalogue.blueprint_copy_buttons[0]) if not catalogue.blueprint_copy_buttons.is_empty() else {},
+		"copy_code_count": catalogue.blueprint_copy_buttons.size(),
 		"cash": int(main.get_node("/root/Economy").get("cash")),
 		"history_steps": (main.get("edit_history") as ShopEditHistory).undo_count()}
 
@@ -106,6 +109,14 @@ static func evidence(main: Node) -> Dictionary:
 static func valid(state: Dictionary, profile: String) -> bool:
 	if not state.get("catalogue_visible", false) or state.get("category", "") != String(BuildCatalogue.BLUEPRINTS):
 		return false
+	var paste: Dictionary = state.get("paste_code", {})
+	if not _code_button_valid(paste, BlueprintCodeText.PASTE):
+		return false
+	if profile != "selection":
+		var copy: Dictionary = state.get("copy_code", {})
+		if not _code_button_valid(copy, BlueprintCodeText.COPY) \
+				or state.get("copy_code_count", 0) != state.get("library_size", 0):
+			return false
 	match profile:
 		"selection":
 			return int(state.get("selected", 0)) == 2 and state.get("selection_visible", false)
@@ -116,6 +127,48 @@ static func valid(state: Dictionary, profile: String) -> bool:
 			return state.get("stamped", false) and int(state.get("library_size", 0)) == 1 \
 				and int(state.get("state", -1)) == BuildMode.State.IDLE
 	return false
+
+
+static func _code_button(button: Button) -> Dictionary:
+	if not is_instance_valid(button):
+		return {}
+	var rect: Rect2 = _screen_rect(button)
+	var clip: Rect2 = button.get_viewport().get_visible_rect()
+	var ancestor: Node = button.get_parent()
+	while ancestor != null:
+		if ancestor is Control:
+			var control: Control = ancestor as Control
+			if control.clip_contents or control is PanelContainer or control is ScrollContainer:
+				var local: Rect2 = Rect2(Vector2.ZERO, control.size)
+				if control is ScrollContainer:
+					var scroll: ScrollContainer = control as ScrollContainer
+					var style: StyleBox = scroll.get_theme_stylebox("panel")
+					local.position = Vector2(style.get_content_margin(SIDE_LEFT), style.get_content_margin(SIDE_TOP))
+					local.size -= local.position + Vector2(style.get_content_margin(SIDE_RIGHT), style.get_content_margin(SIDE_BOTTOM))
+					var vertical: VScrollBar = scroll.get_v_scroll_bar()
+					var horizontal: HScrollBar = scroll.get_h_scroll_bar()
+					if vertical.is_visible_in_tree():
+						local.size.x = minf(local.size.x, vertical.position.x - local.position.x)
+					if horizontal.is_visible_in_tree():
+						local.size.y = minf(local.size.y, horizontal.position.y - local.position.y)
+				clip = clip.intersection(control.get_global_transform_with_canvas() * local)
+		ancestor = ancestor.get_parent()
+	return {"text": button.text, "visible": button.is_visible_in_tree(), "enabled": not button.disabled,
+		"fully_inside_visible_area": rect.has_area() and clip.has_area() and clip.encloses(rect),
+		"rect": _rect_data(rect), "effective_visible_rect": _rect_data(clip)}
+
+
+static func _code_button_valid(value: Dictionary, expected_text: String) -> bool:
+	return value.get("visible", false) and value.get("enabled", false) \
+		and value.get("fully_inside_visible_area", false) and value.get("text", "") == expected_text
+
+
+static func _screen_rect(control: Control) -> Rect2:
+	return control.get_global_transform_with_canvas() * Rect2(Vector2.ZERO, control.size)
+
+
+static func _rect_data(rect: Rect2) -> Dictionary:
+	return {"x": rect.position.x, "y": rect.position.y, "w": rect.size.x, "h": rect.size.y}
 
 
 static func _visible_valid_ghost(value: Dictionary) -> bool:

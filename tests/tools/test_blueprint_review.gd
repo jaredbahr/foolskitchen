@@ -35,6 +35,7 @@ func test_selection_fixture_uses_original_table_and_new_rug_without_a_library_ye
 	assert_eq(mode.state, BuildMode.State.SELECT)
 	assert_eq(mode.blueprint_selection.size(), 2)
 	assert_eq((_main.get("blueprint_library") as BlueprintLibrary).blueprints.size(), 0)
+	await _settle_layout()
 	assert_true(REVIEW.valid(REVIEW.evidence(_main), "selection"))
 
 
@@ -46,6 +47,7 @@ func test_ghost_fixture_uses_valid_rotated_group() -> void:
 	assert_eq(mode.quarter_turns, 1)
 	assert_eq(mode.blueprint_cost(), 70)
 	assert_true(mode.current_check.ok, mode.current_check.why)
+	await _settle_layout()
 	assert_true(REVIEW.valid(REVIEW.evidence(_main), "ghost"))
 
 
@@ -56,6 +58,7 @@ func test_stamped_fixture_places_the_pair_with_one_history_step_and_real_cash() 
 	assert_eq(Economy.cash, cash - 30 + 20 - 70, "rug buy, old table refund, then whole stamp")
 	var history: ShopEditHistory = _main.get("edit_history")
 	assert_eq(history.undo_count(), 3)
+	await _settle_layout()
 	assert_true(REVIEW.valid(REVIEW.evidence(_main), "stamped"))
 	assert_true(_main.call("undo_edit"))
 	var world: SimWorld = _main.get("world")
@@ -70,3 +73,8 @@ func _start() -> void:
 	_main.call("start")
 	_main.set_process(false)
 	Clock.set_speed(0)
+
+
+func _settle_layout() -> void:
+	for frame: int in 3:
+		await (Engine.get_main_loop() as SceneTree).process_frame

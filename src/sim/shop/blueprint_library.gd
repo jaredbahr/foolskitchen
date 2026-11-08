@@ -24,6 +24,30 @@ func add(blueprint: Blueprint) -> bool:
 	return true
 
 
+## Clipboard imports get a private copy and a free name. Ordinary add/rename
+## and the version-1 save decoder retain their existing behavior.
+func add_imported(blueprint: Blueprint) -> Blueprint:
+	if blueprint == null or blueprints.size() >= MAX_BLUEPRINTS or blueprint.entries.is_empty() \
+			or blueprint.entries.size() > MAX_ENTRIES or not valid_name(blueprint.display_name):
+		return null
+	for entry: ShopPlacement in blueprint.entries:
+		if entry == null:
+			return null
+	var names: Dictionary[String, bool] = {}
+	for saved: Blueprint in blueprints:
+		names[saved.display_name] = true
+	var base: String = blueprint.display_name.strip_edges()
+	var name: String = base
+	var suffix_number: int = 2
+	while names.has(name):
+		var suffix: String = " (%d)" % suffix_number
+		name = base.left(MAX_NAME_LENGTH - suffix.length()).strip_edges() + suffix
+		suffix_number += 1
+	var imported: Blueprint = blueprint.copy()
+	imported.display_name = name
+	return imported if add(imported) else null
+
+
 func rename(blueprint: Blueprint, name: String) -> bool:
 	if not blueprints.has(blueprint) or not valid_name(name):
 		return false
