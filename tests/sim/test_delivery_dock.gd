@@ -239,6 +239,23 @@ func test_only_a_service_delivery_is_visible() -> void:
 	assert_true(_sim.dock.is_idle())
 
 
+func test_opening_delivery_at_dock_does_not_retroactively_qualify_dish() -> void:
+	_back_door()
+	_sim.menu = [_content.recipe(&"burger"), _content.recipe(&"grilled_cheese")] as Array[RecipeDef]
+	_open_quiet()
+	assert_true(_sim.dock.arrive([{"id": &"beef_patty", "qty": 20}] as Array[Dictionary]))
+	assert_eq(_stock.count(&"beef_patty"), 0, "a service delivery is not in the fridge while its crate is at the dock")
+	_sim.begin_service_menu_snapshot()
+	assert_true(_sim.service_stockouts_today.has(&"burger"), "the opening availability check sees current stock")
+	assert_false(_sim.is_sold_out(&"burger"), "snapshotting does not change the existing tick-time sold-out state")
+	assert_true(_sim.stock_outs_today.is_empty(), "snapshotting does not add a stockout log event")
+	assert_false(_sim.service_menu_report_snapshot()["eligible_dishes"].any(
+		func(dish: Dictionary) -> bool: return dish["id"] == "burger"))
+	assert_true(_run_until(_idle) >= 0, "the courier can finish the delivery")
+	assert_true(_stock.count(&"beef_patty") > 0, "the crate eventually reaches the fridge")
+	assert_true(_sim.service_stockouts_today.has(&"burger"), "later put-away cannot erase an all-service outage")
+
+
 # --- Carrying --------------------------------------------------------------------
 
 func test_crates_become_stock_only_when_put_away() -> void:

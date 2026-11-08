@@ -105,6 +105,79 @@ func test_best_dish_uses_count_then_alphabetical_id() -> void:
 	assert_eq(report.best_dish(), &"tomato_soup")
 
 
+func test_slowest_dish_counts_zero_sales_and_breaks_ties_by_price_then_id() -> void:
+	var report: DayReport = DayReport.new()
+	report.dishes_sold = {&"burger": 2, &"tomato_soup": 2}
+	report.slowest_seller_snapshot = {
+		"menu_count": 3,
+		"eligible_dishes": [
+			{"id": "burger", "display_name": "Burger", "price": 12, "standard_price": 12},
+			{"id": "tomato_soup", "display_name": "Soup", "price": 15, "standard_price": 12},
+			{"id": "grilled_cheese", "display_name": "Grilled cheese", "price": 11, "standard_price": 11},
+		],
+	}
+	assert_eq(report.slowest_dish(), &"grilled_cheese", "an eligible dish absent from sales has zero sales")
+	report.slowest_seller_snapshot["eligible_dishes"].remove_at(2)
+	assert_eq(report.slowest_dish(), &"tomato_soup", "equal sales favor the higher captured price")
+	report.slowest_seller_snapshot["eligible_dishes"][1]["price"] = 12
+	assert_eq(report.slowest_dish(), &"burger", "equal sales and prices use lexical id order")
+	assert_eq(report.best_dish(), &"burger", "the existing best-dish calculation is unchanged")
+
+
+func test_slowest_dish_is_hidden_for_single_dish_no_sales_and_old_reports() -> void:
+	var report: DayReport = DayReport.new()
+	report.dishes_sold = {&"soup": 3}
+	report.slowest_seller_snapshot = {"menu_count": 1, "eligible_dishes": [
+		{"id": "soup", "display_name": "Soup", "price": 8, "standard_price": 8}]}
+	assert_eq(report.slowest_dish(), &"")
+	report.slowest_seller_snapshot = {"menu_count": 2, "eligible_dishes": [
+		{"id": "soup", "display_name": "Soup", "price": 8, "standard_price": 8}]}
+	report.dishes_sold.clear()
+	assert_eq(report.slowest_dish(), &"", "a day with no paid dishes has no slowest seller")
+	report.dishes_sold = {&"soup": 0}
+	assert_eq(report.slowest_dish(), &"", "a nonempty zero-count map still means nothing was paid")
+	var old_report: DayReport = DayReport.from_dict({"dishes_sold": {"soup": 3}})
+	assert_eq(old_report.slowest_dish(), &"", "legacy reports do not infer eligibility from today's menu")
+
+
+func test_slowest_seller_snapshot_round_trips_and_malformed_data_is_ignored() -> void:
+	var report: DayReport = DayReport.new()
+	report.dishes_sold = {&"soup": 2}
+	report.slowest_seller_snapshot = {"menu_count": 2, "eligible_dishes": [
+		{"id": "soup", "display_name": "Tomato soup", "price": 10, "standard_price": 8}]}
+	var saved: Dictionary = report.to_dict()
+	var restored: DayReport = DayReport.from_dict(JSON.parse_string(JSON.stringify(saved)))
+	assert_eq(restored.slowest_dish(), &"soup", "JSON whole-number values preserve the optional snapshot")
+	report.slowest_seller_snapshot["eligible_dishes"][0]["price"] = 1
+	assert_eq(restored.slowest_dish_details()["price"], 10, "the report owns its captured price after reload")
+	var whole_floats: DayReport = DayReport.from_dict({
+		"dishes_sold": {"soup": 2},
+		"slowest_seller_snapshot": {"menu_count": 2.0, "eligible_dishes": [
+			{"id": "soup", "display_name": "Tomato soup", "price": 10.0, "standard_price": 8.0}]},
+	})
+	assert_eq(whole_floats.slowest_dish(), &"soup", "JSON whole-valued floats are normalized for the snapshot")
+	var malformed: DayReport = DayReport.from_dict({
+		"dishes_sold": {"soup": 2},
+		"slowest_seller_snapshot": {"menu_count": 2, "eligible_dishes": [
+			{"id": "soup", "display_name": "Tomato soup", "price": "bad", "standard_price": 8}]},
+	})
+	assert_eq(malformed.dishes_sold[&"soup"], 2, "bad optional metadata leaves the rest of the report intact")
+	assert_false(malformed.to_dict().has("slowest_seller_snapshot"))
+	var fractional: DayReport = DayReport.from_dict({
+		"dishes_sold": {"soup": 2},
+		"slowest_seller_snapshot": {"menu_count": 2, "eligible_dishes": [
+			{"id": "soup", "display_name": "Tomato soup", "price": 10.5, "standard_price": 8}]},
+	})
+	assert_false(fractional.to_dict().has("slowest_seller_snapshot"), "fractional prices cannot enter the hint")
+	var non_finite: DayReport = DayReport.from_dict({
+		"dishes_sold": {"soup": 2},
+		"slowest_seller_snapshot": {"menu_count": 2, "eligible_dishes": [
+			{"id": "soup", "display_name": "Tomato soup", "price": INF, "standard_price": 8}]},
+	})
+	assert_eq(non_finite.dishes_sold[&"soup"], 2, "a non-finite optional number cannot damage saved sales")
+	assert_false(non_finite.to_dict().has("slowest_seller_snapshot"), "non-finite prices cannot enter the hint")
+
+
 func test_top_leave_reason_is_deterministic_on_ties() -> void:
 	var report: DayReport = DayReport.new()
 	report.leave_reasons = {&"waited_too_long": 3, &"no_table": 3}
