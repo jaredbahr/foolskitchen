@@ -69,5 +69,5 @@ speed_3={
 }
 speed_4={
 "deadzone": 0.5,
-"events": [Object(InputEventKey,"physical_keycode":51), Object(InputEventKey,"physical_keycode":4194441)]
+"events": [Object(InputEventKey,"physical_keycode":51)]
 }

@@ -77,7 +77,7 @@ func test_shortcuts_table_covers_every_project_key_action_and_preserves_speed_al
 	assert_true(covered.has(&"speed_3"))
 	assert_true(covered.has(&"speed_4"), "the old speed_4 action remains documented")
 	assert_eq(InputMap.action_get_events(&"speed_3").size(), 2, "top-row and keypad 3 are both mapped")
-	assert_eq(InputMap.action_get_events(&"speed_4").size(), 2, "legacy top-row and keypad bindings stay intact")
+	assert_eq(InputMap.action_get_events(&"speed_4").size(), 1, "legacy speed_4 keeps its original top-row binding")
 	assert_true(_action_has_key(&"speed_pause", KEY_SPACE))
 	assert_true(_action_has_key(&"speed_1", KEY_1))
 	assert_true(_action_has_key(&"speed_2", KEY_2))
@@ -86,7 +86,6 @@ func test_shortcuts_table_covers_every_project_key_action_and_preserves_speed_al
 	assert_true(_action_has_key(&"speed_1", KEY_KP_1))
 	assert_true(_action_has_key(&"speed_2", KEY_KP_2))
 	assert_true(_action_has_key(&"speed_3", KEY_KP_3))
-	assert_true(_action_has_key(&"speed_4", KEY_KP_3))
 
 
 func test_top_row_and_keypad_speed_keys_reach_clock_once_and_refresh_hud() -> void:

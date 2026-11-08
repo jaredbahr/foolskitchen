@@ -150,7 +150,7 @@ func restore(data: Dictionary) -> bool:
 
 static func text_for(step: int) -> String:
 	match step:
-		Step.MENU: return "Plan today's dishes and prices. F1: shortcuts"
+		Step.MENU: return "Plan your menu. F1: shortcuts"
 		Step.STOCK: return "Check your fridge and shelves; order what you need"
 		Step.BUILD: return "Move or buy furniture; paint rooms in Build"
 		Step.OPEN: return "Ready? Open shop to welcome your first guests"
