@@ -1,0 +1,83 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://src/ui/shortcuts_panel.gd" id="1_script"]
+[ext_resource type="Theme" path="res://src/ui/theme/main_theme.tres" id="2_theme"]
+
+[node name="ShortcutsPanel" type="Control"]
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+theme = ExtResource("2_theme")
+script = ExtResource("1_script")
+
+[node name="Backdrop" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+color = Color(0, 0, 0, 0.62)
+
+[node name="Panel" type="PanelContainer" parent="."]
+layout_mode = 1
+anchors_preset = 0
+mouse_filter = 0
+
+[node name="Column" type="VBoxContainer" parent="Panel"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Header" type="HBoxContainer" parent="Panel/Column"]
+layout_mode = 2
+
+[node name="Title" type="Label" parent="Panel/Column/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 25
+text = "Keyboard shortcuts"
+
+[node name="Close" type="Button" parent="Panel/Column/Header"]
+layout_mode = 2
+focus_mode = 2
+theme_override_colors/font_focus_color = Color(0.2313726, 0.1647059, 0.1254902, 1)
+theme_override_colors/font_hover_color = Color(0.2313726, 0.1647059, 0.1254902, 1)
+theme_override_colors/font_pressed_color = Color(0.2313726, 0.1647059, 0.1254902, 1)
+theme_override_colors/font_hover_pressed_color = Color(0.2313726, 0.1647059, 0.1254902, 1)
+text = "Close (Esc)"
+
+[node name="Columns" type="HBoxContainer" parent="Panel/Column"]
+layout_mode = 2
+theme_override_constants/separation = 18
+
+[node name="KeyHeading" type="Label" parent="Panel/Column/Columns"]
+layout_mode = 2
+custom_minimum_size = Vector2(205, 0)
+theme_override_font_sizes/font_size = 13
+text = "KEY"
+
+[node name="ActionHeading" type="Label" parent="Panel/Column/Columns"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 13
+text = "ACTION"
+
+[node name="Scroll" type="ScrollContainer" parent="Panel/Column"]
+layout_mode = 2
+size_flags_vertical = 3
+clip_contents = true
+mouse_filter = 0
+mouse_force_pass_scroll_events = false
+horizontal_scroll_mode = 0
+vertical_scroll_mode = 1
+
+[node name="Content" type="VBoxContainer" parent="Panel/Column/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4

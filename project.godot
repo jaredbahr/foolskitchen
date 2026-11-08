@@ -57,11 +57,15 @@ speed_pause={
 }
 speed_1={
 "deadzone": 0.5,
-"events": [Object(InputEventKey,"physical_keycode":49)]
+"events": [Object(InputEventKey,"physical_keycode":49), Object(InputEventKey,"physical_keycode":4194439)]
 }
 speed_2={
 "deadzone": 0.5,
-"events": [Object(InputEventKey,"physical_keycode":50)]
+"events": [Object(InputEventKey,"physical_keycode":50), Object(InputEventKey,"physical_keycode":4194440)]
+}
+speed_3={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"physical_keycode":51), Object(InputEventKey,"physical_keycode":4194441)]
 }
 speed_4={
 "deadzone": 0.5,
