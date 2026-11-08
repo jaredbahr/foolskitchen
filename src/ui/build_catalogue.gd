@@ -14,6 +14,7 @@ signal blueprint_save_requested(display_name: String)
 signal blueprint_requested(blueprint: Blueprint)
 signal blueprint_rename_requested(blueprint: Blueprint, display_name: String)
 signal blueprint_delete_requested(blueprint: Blueprint)
+signal blueprint_code_paste_requested(text: String)
 signal buy_requested(def_id: StringName)
 signal variant_paint_requested(def_id: StringName, variant_id: StringName)
 signal variant_buy_requested(def_id: StringName, variant_id: StringName)
@@ -115,6 +116,11 @@ var blueprint_select: Button
 var blueprint_selected: Label
 var blueprint_rows: VBoxContainer
 var blueprint_buttons: Array[Button] = []
+var blueprint_paste: Button
+var blueprint_code_message: Label
+var blueprint_copy_buttons: Array[Button] = []
+var _clipboard_read: Callable
+var _clipboard_write: Callable
 var _blueprint_controls: Array[BaseButton] = []
 var _blueprint_name_fields: Array[LineEdit] = []
 var _blueprint_count: int = 0
@@ -1811,11 +1817,19 @@ func _prepare_blueprints() -> void:
 	blueprint_selected.text = CatalogueText.BLUEPRINT_NONE_SELECTED
 	blueprint_selected.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_blueprint_panel.add_child(blueprint_selected)
+	blueprint_paste = _chip("PasteCode", BlueprintCodeText.PASTE, CHIP_FONT_SIZE, false)
+	blueprint_paste.pressed.connect(_on_blueprint_code_paste)
+	_blueprint_panel.add_child(blueprint_paste)
+	blueprint_code_message = Label.new()
+	blueprint_code_message.name = "CodeMessage"
+	blueprint_code_message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	blueprint_code_message.visible = false
+	_blueprint_panel.add_child(blueprint_code_message)
 	blueprint_rows = VBoxContainer.new()
 	blueprint_rows.name = "Library"
 	blueprint_rows.add_theme_constant_override("separation", 6)
 	_blueprint_panel.add_child(blueprint_rows)
-	_blueprint_controls = [blueprint_select, blueprint_save]
+	_blueprint_controls = [blueprint_select, blueprint_save, blueprint_paste]
 
 
 ## Called only when the library changes, not on pointer motion. Native buttons
@@ -1826,8 +1840,9 @@ func refresh_blueprints() -> void:
 		blueprint_rows.remove_child(child)
 		child.queue_free()
 	blueprint_buttons.clear()
+	blueprint_copy_buttons.clear()
 	_blueprint_name_fields.clear()
-	_blueprint_controls = [blueprint_select, blueprint_save]
+	_blueprint_controls = [blueprint_select, blueprint_save, blueprint_paste]
 	var count: int = blueprint_library.blueprints.size() if blueprint_library != null else 0
 	blueprint_name.text = CatalogueText.blueprint_default_name(count + 1)
 	if count == 0:
@@ -1847,6 +1862,10 @@ func refresh_blueprints() -> void:
 			place.pressed.connect(_on_blueprint_stamp.bind(blueprint))
 			row.add_child(place)
 			blueprint_buttons.append(place)
+			var copy_button: Button = _chip("CopyCode", BlueprintCodeText.COPY, CHIP_FONT_SIZE, false)
+			copy_button.pressed.connect(_on_blueprint_code_copy.bind(blueprint))
+			row.add_child(copy_button)
+			blueprint_copy_buttons.append(copy_button)
 			var name_field: LineEdit = LineEdit.new()
 			name_field.name = "RenameField"
 			name_field.text = blueprint.display_name
@@ -1864,7 +1883,7 @@ func refresh_blueprints() -> void:
 			delete_button.tooltip_text = CatalogueText.BLUEPRINT_SAVE_TIP
 			delete_button.pressed.connect(_on_blueprint_delete.bind(blueprint))
 			row.add_child(delete_button)
-			_blueprint_controls.append_array([place, rename_button, delete_button])
+			_blueprint_controls.append_array([place, copy_button, rename_button, delete_button])
 	_apply_category()
 	_fit_panel()
 
@@ -1904,6 +1923,56 @@ func _on_blueprint_rename(blueprint: Blueprint, field: LineEdit) -> void:
 func _on_blueprint_delete(blueprint: Blueprint) -> void:
 	if _blueprint_available():
 		blueprint_delete_requested.emit(blueprint)
+
+
+## Tests can provide a private clipboard; production uses DisplayServer.
+func bind_blueprint_clipboard(read: Callable, write: Callable) -> void:
+	_clipboard_read = read
+	_clipboard_write = write
+
+
+func show_blueprint_code_message(message: String) -> void:
+	_prepare_layout()
+	blueprint_code_message.text = message
+	blueprint_code_message.visible = not message.is_empty()
+	_fit_panel()
+
+
+func _on_blueprint_code_copy(blueprint: Blueprint) -> void:
+	if not _blueprint_available() or blueprint_library == null or not blueprint_library.blueprints.has(blueprint):
+		return
+	var reasons: Array[String] = []
+	if not BlueprintCode.validate(blueprint, _content, reasons):
+		show_blueprint_code_message(reasons[0])
+		return
+	var code: String = BlueprintCode.encode(blueprint)
+	if code.is_empty():
+		show_blueprint_code_message(BlueprintCodeText.TOO_LONG)
+		return
+	if _clipboard_write.is_valid():
+		_clipboard_write.call(code)
+	elif DisplayServer.has_feature(DisplayServer.FEATURE_CLIPBOARD):
+		DisplayServer.clipboard_set(code)
+	else:
+		show_blueprint_code_message(BlueprintCodeText.CLIPBOARD_UNAVAILABLE)
+		return
+	show_blueprint_code_message(BlueprintCodeText.COPIED)
+
+
+func _on_blueprint_code_paste() -> void:
+	if not _blueprint_available():
+		return
+	var text: String = ""
+	if _clipboard_read.is_valid():
+		var value: Variant = _clipboard_read.call()
+		if value is String:
+			text = value
+	elif DisplayServer.has_feature(DisplayServer.FEATURE_CLIPBOARD):
+		text = DisplayServer.clipboard_get()
+	if text.strip_edges().is_empty():
+		show_blueprint_code_message(BlueprintCodeText.EMPTY)
+		return
+	blueprint_code_paste_requested.emit(text)
 
 
 func blueprint_name_has_focus() -> bool:

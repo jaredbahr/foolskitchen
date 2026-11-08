@@ -127,9 +127,38 @@ func test_release_over_panel_finishes_selection_and_service_refuses_library_muta
 	assert_true(Clock.sim.start_service())
 	_main.call("_on_blueprint_rename_requested", blueprint, "Changed while open")
 	_main.call("_on_blueprint_delete_requested", blueprint)
+	_main.call("_on_blueprint_code_paste_requested", BlueprintCode.encode(blueprint))
 	assert_eq(library.blueprints.size(), 1)
 	assert_ne(blueprint.display_name, "Changed while open")
 	assert_eq(_mode().state, BuildMode.State.INACTIVE)
+
+
+func test_main_rejects_bad_code_and_a_full_library_without_partial_import() -> void:
+	await _start()
+	assert_true(_main.call("set_build_active", true))
+	_catalogue().set_category(BuildCatalogue.BLUEPRINTS)
+	var library: BlueprintLibrary = _main.get("blueprint_library") as BlueprintLibrary
+	_main.call("_on_blueprint_code_paste_requested", "FK1:not base64")
+	assert_true(library.blueprints.is_empty())
+	assert_false(_catalogue().blueprint_code_message.text.is_empty())
+	var blueprint: Blueprint = Blueprint.new()
+	blueprint.display_name = "Dining corner"
+	var placement: ShopPlacement = ShopPlacement.new()
+	placement.item_id = &"potted_plant"
+	blueprint.entries.append(placement)
+	# Fill the valid metadata fixture before refreshing the UI once; repeatedly
+	# rebuilding 256 rows is not part of the full-library refusal under test.
+	for i: int in BlueprintLibrary.MAX_BLUEPRINTS:
+		library.blueprints.append(blueprint.copy())
+	_catalogue().refresh_blueprints()
+	var before: Dictionary = library.to_dict()
+	var cash: int = Economy.cash
+	var shop: Dictionary = _editor().to_dict()
+	_main.call("_on_blueprint_code_paste_requested", BlueprintCode.encode(blueprint))
+	assert_eq(_catalogue().blueprint_code_message.text, BlueprintCodeText.FULL)
+	assert_eq(library.to_dict(), before)
+	assert_eq(Economy.cash, cash)
+	assert_eq(_editor().to_dict(), shop)
 
 
 func _mouse(point: Vector2, pressed: bool) -> void:
