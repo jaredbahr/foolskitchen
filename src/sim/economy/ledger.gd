@@ -15,6 +15,9 @@ const MILESTONE_BONUS: StringName = &"milestone_bonus"
 const WEEKLY_CHALLENGE_BONUS: StringName = &"weekly_challenge_bonus"
 const BREAKAGES: StringName = &"breakages"
 const CAT_FOOD: StringName = &"cat_food"
+## Customer advances are cash movements, never earned operating income.
+const BOOKING_DEPOSIT: StringName = &"booking_deposit"
+const BOOKING_REFUND: StringName = &"booking_refund"
 const OTHER: StringName = &"other"
 const HISTORY_DAYS: int = 30
 

@@ -128,9 +128,12 @@ func test_scaled_window_keeps_every_hud_control_readable_and_build_hints_below_h
 	_hud.call("set_plate_counts", 12, 12, 0, 0)
 	window.add_child(_hud)
 	await _layout_frames()
+	_hud.call("set_booking_status", "Reserved for today's birthday: six guests arriving 11:30–11:45.")
+	await _layout_frames()
 	assert_true(window.is_embedded(), "the fixture uses an isolated embedded Window")
 	assert_eq(window.size, Vector2i(1280, 720))
 	_assert_header_layout(window)
+	_assert_booking_status_layout(window)
 	_assert_one_row_when_native_content_fits()
 	var top: Control = _hud.get_node("Top") as Control
 	var usual_height: float = top.size.y
@@ -173,6 +176,7 @@ func test_scaled_window_keeps_every_hud_control_readable_and_build_hints_below_h
 			_assert_header_layout(window)
 			_assert_one_row_when_native_content_fits()
 			_assert_build_hint_layout(window)
+			_assert_booking_status_layout(window)
 			if percent == 150:
 				assert_true(top.size.y >= usual_height, "larger UI preserves native group height instead of squeezing controls")
 	# Also cover a native-size virtual base: the same physical Window now has
@@ -185,6 +189,7 @@ func test_scaled_window_keeps_every_hud_control_readable_and_build_hints_below_h
 	assert_almost_eq(window.get_visible_rect().size.y, 480.0, 0.01)
 	_assert_header_layout(window)
 	_assert_build_hint_layout(window)
+	_assert_booking_status_layout(window)
 	EventBus.cash_changed.emit(123456789, 0, &"layout")
 	_hud.call("set_restaurant_name", "WWWWWWWWWWWWWWWWWWWWWWWW")
 	_hud.call("set_owner_progress", 123, 99999, 100000)
@@ -192,6 +197,7 @@ func test_scaled_window_keeps_every_hud_control_readable_and_build_hints_below_h
 	await _layout_frames()
 	_assert_header_layout(window)
 	_assert_build_hint_layout(window)
+	_assert_booking_status_layout(window)
 	var settled_height: float = top.size.y
 	await tree.process_frame
 	assert_almost_eq(top.size.y, settled_height, 0.01, "native minimum changes settle without height oscillation")
@@ -748,6 +754,25 @@ func _assert_build_hint_layout(window: Window) -> void:
 	assert_false(_drawn_rect(top, window).intersects(_drawn_rect(hints, window)))
 	assert_true(float(_hud.call("panel_top")) >= top.get_global_rect().end.y + 12.0,
 		"morning panels receive clearance below the final header height")
+
+
+func _assert_booking_status_layout(window: Window) -> void:
+	var top: Control = _hud.get_node("Top") as Control
+	var status: Control = _hud.get_node("BookingStatus") as Control
+	var top_rect: Rect2 = _drawn_rect(top, window)
+	var status_rect: Rect2 = _drawn_rect(status, window)
+	var visible: Rect2 = Rect2(Vector2.ZERO, Vector2(window.size))
+	var notices_bottom: float = top_rect.end.y
+	for path: String in ["MenuNotice", "DemandNotice"]:
+		var notice: Control = _hud.get_node(path) as Control
+		if notice.visible:
+			notices_bottom = maxf(notices_bottom, _drawn_rect(notice, window).end.y)
+	assert_true(status.is_visible_in_tree())
+	assert_true(status_rect.position.y >= notices_bottom + 7.5,
+		"status=%s header=%s window=%s scale=%s logical=%s" % [status_rect, top_rect,
+			window.size, window.content_scale_factor, window.get_visible_rect()])
+	assert_false(top_rect.intersects(status_rect), "the reservation card does not cover header controls")
+	assert_true(visible.encloses(status_rect), "reservation=%s viewport=%s" % [status_rect, visible])
 
 
 func _assert_three_groups() -> void:

@@ -1,4 +1,4 @@
-[gd_scene load_steps=18 format=3 uid="uid://b0fkmain0001"]
+[gd_scene load_steps=19 format=3 uid="uid://b0fkmain0001"]
 
 [ext_resource type="Script" path="res://src/world/main.gd" id="1"]
 [ext_resource type="PackedScene" path="res://src/world/shop_view.tscn" id="2"]
@@ -19,6 +19,7 @@
 
 [ext_resource type="Script" path="res://src/ui/hints_bubble.gd" id="16_hints"]
 [ext_resource type="PackedScene" path="res://src/ui/shortcuts_panel.tscn" id="17_shortcuts"]
+[ext_resource type="PackedScene" path="res://src/minigames/haggle_game.tscn" id="18_haggle"]
 
 [node name="Main" type="Node3D"]
 process_priority = 10
@@ -85,5 +86,7 @@ exclusive = true
 dialog_text = "We couldn't load your saved game, so a fresh shop has opened. Your existing save is unchanged for now. Going to the next morning will try to save this new shop."
 dialog_autowrap = true
 ok_button_text = "Keep playing"
+
+[node name="HaggleGame" parent="Overlay" instance=ExtResource("18_haggle")]
 
 [node name="ShortcutsPanel" parent="Overlay" instance=ExtResource("17_shortcuts")]

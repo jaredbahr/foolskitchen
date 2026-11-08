@@ -1305,8 +1305,8 @@ tables and buys two normal chairs for $20, without changing menu/staff/tuning.
 ### Furniture blueprints (FK-045)
 - `Blueprint` is a Resource containing a player name and `ShopPlacement`
   entries: content id, anchor-relative offset, quarter turns and body swatch.
-  Variant ids in blueprint entries remain a separate follow-up after FK-079;
-  existing blueprints keep their default furniture looks.
+  Furniture variant ids travel with their body swatches, so copies retain
+  their selected looks.
   Only floor furniture and rugs participate, never doors, wall decor or
   structure. Box selection includes whole footprints on both placement layers.
   Rotation turns the group's bounding rectangle and each item's already-rotated
@@ -1344,6 +1344,18 @@ tables and buys two normal chairs for $20, without changing menu/staff/tuning.
   Manual native captures: `bash tools/screenshot.sh
   --blueprints=selection|ghost|stamped --speed=0 --frames=30 --out=<review-dir>`
   (choose one profile per run). No additional CI jobs or repeated probes.
+- **Clipboard codes (#332):** Copy code shares the exact blueprint row as
+  `FK1:` plus base64 of compact JSON; Paste code imports a private library
+  copy, using the first free ` (2)`, ` (3)` name suffix within the 80-character
+  limit. The separate pure `BlueprintCode` decoder accepts at most 40 pieces
+  whose complete rotated footprints fit a nonnegative 20×20 box. It strictly
+  checks transport, UTF-8, JSON, types, content ids and looks before import;
+  malformed input returns null and one plain reason without logging engine
+  errors. This does not change the larger, lenient version-1 saved library.
+  Clipboard actions are available only in the existing closed Build flow;
+  an empty/unavailable Paste reports "Nothing to paste". Successful imports
+  join the next normal morning autosave. The existing blueprint ghost capture
+  also records the actual Copy/Paste buttons; no new job or capture loop.
 
 ### Rooms and restrooms (FK-101)
 - **Rooms on the grid.** `SimGrid.Room` is DINING (the default, never
@@ -1999,6 +2011,59 @@ detached observation. The observed maximum was 19 served, 11 good reviews and
 8 sales of one dish; review targets are therefore 12 and the smaller dish goal
 is 9, with daily serve targets 24/36. The random selected challenge alone is
 insufficient evidence because it may hide an easier unselected definition.
+**Group bookings (FK-131, #343):** The single accepted next-day group uses a
+soft joined-group hold from 75 minutes before its slot. Existing diners retain
+their physical reservations and leave normally. A matching booked party's
+shared queue counter pauses only while its current valid held group is actually
+occupied or dirty, from the slot up to (excluding) slot+30 displayed minutes.
+The read-only predicate never selects another group, erases spent patience or
+moves the deadline on retry. Missing, free/clean, stale and wrong-day holds get
+ordinary patience. The party controller's once-per-world-tick guard remains.
+
+Dirty reserved tables form one narrow staff-selection exception: eligible
+reserved bussing precedes other positive saved job tiers and distance scores.
+Before the booked party seats, OPEN cleanup jobs for its current held joined
+group wait while a prior diner still physically owns any group seat. Every
+departure dirties the joined members, so cleaning them mid-meal both delays
+the remaining diners' food and must be repeated. These jobs keep their IDs,
+post times and failure counts; the last physical seat release restores their
+eligibility and reservation priority. No already-claimed bus job is preempted.
+Jobs set Off and role/target eligibility remain absolute; no saved priority
+changes. The one claim exception is a floor mop still navigating before its
+first WORK step: an eligible reserved bus task returns that same mop to the
+normal queue without counting a failed attempt. Existing motion finishes its
+real edge before the new task runs. Actual mopping, service and carried food
+are never interrupted. Once the matching booked party is seated in that held
+joined group, reserved urgency ends: partial departures still create ordinary
+bus jobs, which cannot take priority over that party's remaining meals merely
+because its booking stays active until everyone leaves. Empty dirty groups rank
+before occupied groups when
+the normal hold chooses a new group. Tick-driven booking presentation refreshes
+only on a changed day, phase or held group; player actions refresh immediately.
+
+Customer advances, their application and refunds retain the existing exact
+ledger movements and operating-profit exclusions. The report labels the service
+day's applied amount as "Deposit taken off the bill". Main's paid-order replay
+guard returns before counting any cost, sale or booked bill a second time.
+Saving stays at the existing morning checkpoint with no new booking save fields.
+
+`tools/booking_soak.gd` is a manual fixed 24-seed diagnostic, not a CI loop. It
+forces six-person offers, moves the three actual starter tables into a joined
+group and stages level 2/next morning, while keeping ordinary arrivals, stock
+purchases, staff, kitchen, patience and eating duration. Each seed reports model
+settlement separately from actual seating, paid members and advance application
+or refund; it is not proof for every 6–10-person layout. The occupied-at-slot
+regression alone discloses a later legal 16:15 slot, staged long meals, delayed
+unrelated arrivals and real extra ingredient purchases to isolate the reservation
+boundary. It observes complete physical admission before releasing the diners;
+the fixed slot+30 grace, ordinary staff capacity and patience remain unchanged.
+The required lifecycle result is six actual booked seats and settlement backed
+by unique real paid orders, a bill covering the advance and reconciled sales.
+The manual soak succeeds when most cases are seated and settled without a
+no-seat result or accounting errors. Both tools still report all-six-paid
+observations separately. Ordinary already-claimed bussing can wait on an
+occupied table and delay a later ready meal; this existing service limitation
+is reported rather than extending booking-specific preemption after seating.
 
 **Lighting and frontage (FK-055):** Main owns one `lighting_rig.tscn` with a
 warm directional key (main's colour, energy and shadows), low-energy cool fill
@@ -2764,6 +2829,54 @@ There is no new save point or SaveSystem migration.
 - **View hooks:** ShopView plays the back-door creak when a leaf starts to open and a thud when a crate lands at play speed. Main plays the level-up or milestone sting as the evening report opens.
 - **Tuning:** streams, gains, intervals and loop levels are in `data/audio/sound_tuning.tres` (`SoundTuning`). Kenney files are in `assets/kenney/audio/`; the made loops are in `assets/made/audio/`.
 - **Music** (`Sfx`, `src/audio/music_tracks.gd`): one looping player per track on the **Music** bus (Settings' Music slider; the bus sits 6 dB under the slider via `SettingsPreferences.MUSIC_TRIM_DB`). `MusicTracks.BY_CONTEXT` is the table from context to track: `title` is Kitchen Jamboree, `service_day` Buoyant Swing Groove, `service_evening` Smoky Vamp (`assets/music/*.ogg`, Ogg q5, leading/trailing silence trimmed so loops have no gap); morning, closed and the evening report have none. `Sounds.set_music_context(ctx)` says where the game is, and tracks fade (`Sfx.MUSIC_FADE_SECONDS`, 2 s), so a change of context is a crossfade. The title screen sets `title` and clears it on leaving; `SoundDirector.refresh(light)` sets the service context from the phase and the shop light (dusk is `MusicTracks.EVENING_LIGHT` of `DayLight.Look.interior_energy`), so opening after dusk goes straight to Smoky Vamp. `SoundDirector` ducks the music (`Sounds.set_music_ducked`) for as long as the shop is open with a counted jukebox, paused or not. A display-only Main (the title backdrop) sets `SoundDirector.display_only` and never touches the music. Silence rules match the cues: no players in headless or `--script` runs (fade levels are still tracked for tests), nothing before the first click on the web. A new track is a table line plus a `set_music_context` call.
+
+### Supplier haggle (FK-136, #327)
+
+The optional morning Stock game inherits the small `Minigame` Control boundary:
+`start()`, one `finished(result)` signal, and Skip as -1. `HaggleTuning` in
+`data/balance/haggle.tres` supplies rounds, normalized zone widths/speeds and
+the maximum discount. Main creates `GameState.rng(&"haggle")` only after the
+first accepted start; `HaggleRules.zone_centers` draws all centers once. Marker
+animation uses display delta only. Scores are normalized distance from each
+zone's center, averaged over three stops, then rounded to whole percentages
+within the authored cap (a fractional cap permits only whole percentages below
+it, so 10.5% permits at most 10%). Space and mouse share one stop handler, with release
+and echo guards; Skip/Escape finish once.
+
+The start spends that morning's attempt even when skipped or closed. Failed
+payment/storage checks retain an earned offer. Only the next successful manual
+MORNING order spends it; opening expires an unused offer. Repeated setup of the
+same morning preserves the attempt. Explicit new-run/load initialization resets
+it, including a reload within an existing Main. No haggle state or report note
+is serialized, and no save point or SaveSystem code changes. Generic named RNG
+states retain their existing next-morning persistence.
+
+`HaggleRules.charge` rounds the discounted order up to a whole dollar using
+`total - floor(total * percent / 100)`, with overflow-safe quotient/remainder
+arithmetic. Each actual line cost is the difference of charged cumulative list
+totals in fixed cart order: nonnegative, no more than its list price, zero for
+zero-priced lines, and summing exactly to the displayed charge. The narrow
+morning-only `Economy.buy_haggled_order` validates the whole purchase before
+recording those actual negative ingredient ledger lines and receiving exactly
+those valued lots. It never represents a saving as a refund or positive income.
+Ordinary `pay_order`, `PurchaseBasis.allocate`, automatic premiums and pending
+delivery/refund behavior are unchanged. FIFO use, expiry and existing stock JSON
+carry the actual paid values. The live evening report notes the applied saving
+beside stock bought, separately from cost of food served and cash change.
+
+The full-window game blocks underlying GUI; Main and HUD guard action/Open/speed
+requests. Camera processing is suspended because WASD/edge pan polls input.
+Normal morning completion restores camera processing, prior speed and valid
+prior focus. The clock already advances only during service. No general modal
+framework, art, fonts, colors or sounds are introduced.
+
+Coverage: `tests/sim/test_haggle.gd`, `tests/ui/test_haggle_game.gd` and
+`tests/world/test_haggle_session.gd`, plus existing panel/report regressions.
+The unchanged default five-day probe (seeds1,7,42) remains the balance gate.
+`tools/haggle_review.tscn` is an explicitly unsaved seed327 fixture: it throws
+out starter stock, stages real Space-stop timing and shows the active game at
+frame30 and actual 6%-off ($20 list, $19 charged) panel at frame90. These two
+existing-job captures are UI evidence, not natural human timing or balance play.
 
 ### 2.4 Save system
 Lifetime records (FK-145): `ShopRecords` is a pure consumer of the one finalized

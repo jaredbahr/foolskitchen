@@ -23,6 +23,60 @@ func test_food_quality_line_displays_average_and_empty_day_in_plain_words() -> v
 	assert_eq((_report.get_node("%FoodQuality") as Label).text, "Food quality: no dishes served")
 
 
+func test_haggle_note_uses_actual_saving_and_is_not_serialized_or_reused() -> void:
+	var day: DayReport = DayReport.new()
+	day.stock_values_recorded = true
+	day.stock_bought_recorded = true
+	day.stock_bought = 19
+	day.haggle_percent = 6
+	day.haggle_saved = 1
+	_report.call("show_report", day)
+	var rows: Node = _report.get_node("%StockRows")
+	assert_eq((rows.get_child(0) as Label).text, "Stock bought today")
+	assert_eq((rows.get_child(1) as Label).text, "$19 (haggle saved $1)")
+	assert_false(day.to_dict().has("haggle_percent"))
+	_report.call("show_report", DayReport.new())
+	assert_false((rows.get_child(1) as Label).text.contains("haggle"))
+
+
+func test_booking_cash_rows_name_deposit_refund_and_applied_advance() -> void:
+	var day: DayReport = DayReport.new()
+	day.income[Ledger.BOOKING_DEPOSIT] = 30
+	_report.call("show_report", day)
+	assert_eq((_report.get_node("%IncomeRows").get_child(0) as Label).text, "Booking deposit")
+	day = DayReport.new()
+	day.income[Ledger.SALE] = 120
+	day.costs[Ledger.BOOKING_DEPOSIT] = 30
+	day.costs[Ledger.BOOKING_REFUND] = 5
+	_report.call("show_report", day)
+	var costs: GridContainer = _report.get_node("%CostRows") as GridContainer
+	assert_eq((costs.get_child(0) as Label).text, "Deposit taken off the bill")
+	assert_eq((costs.get_child(1) as Label).text, "$30")
+	assert_eq((costs.get_child(2) as Label).text, "Booking refund")
+	assert_eq(day.profit(), 85)
+	assert_eq(day.purchase_basis_operating_profit(), 120)
+
+
+func test_booking_and_rush_annotations_survive_json_and_keep_stable_independent_report_rows() -> void:
+	var day: DayReport = DayReport.new()
+	day.rush_hour_lines = ["Book club brought 8 guests."]
+	_report.call("show_report", day)
+	assert_null(_report.get_node_or_null("Panel/Scroll/Content/Bookings"))
+	day.booking_lines = ["Booking: the birthday group couldn't be seated. Deposit refunded."]
+	var restored: DayReport = DayReport.from_dict(JSON.parse_string(JSON.stringify(day.to_dict())))
+	assert_eq(restored.booking_lines, day.booking_lines)
+	assert_eq(restored.rush_hour_lines, day.rush_hour_lines)
+	_report.call("show_report", restored)
+	var booking: Label = _report.get_node("Panel/Scroll/Content/Bookings") as Label
+	var rush: Label = _report.get_node("Panel/Scroll/Content/RushHour") as Label
+	assert_true(booking.visible)
+	assert_true(rush.visible)
+	assert_true(rush.get_index() < booking.get_index(), "creation order cannot reorder the two annotations")
+	_report.call("show_report", DayReport.new())
+	assert_false(booking.visible)
+	assert_false(rush.visible)
+
+
 func test_takeaways_line_shows_only_on_days_the_order_counter_sold_any() -> void:
 	var day: DayReport = DayReport.new()
 	day.customers_served = 9
@@ -52,6 +106,29 @@ func test_weekly_reward_line_and_cash_category_are_distinct_from_milestones() ->
 		"default report snapshots keep their previous shape")
 	_report.call("show_report", legacy)
 	assert_false(line.visible)
+
+
+func test_slowest_seller_line_uses_captured_name_and_both_hint_branches() -> void:
+	var day: DayReport = DayReport.new()
+	day.dishes_sold = {&"tomato_soup": 2, &"burger": 7}
+	day.slowest_seller_snapshot = {"menu_count": 2, "eligible_dishes": [
+		{"id": "tomato_soup", "display_name": "Tomato soup", "price": 15, "standard_price": 12},
+		{"id": "burger", "display_name": "Burger", "price": 12, "standard_price": 12},
+	]}
+	_report.call("show_report", day)
+	var line: Label = _report.get_node("%SlowestSeller") as Label
+	assert_true(line.visible)
+	assert_eq(line.text, "Slowest seller: Tomato soup (2 sold). Try a lower price or take it off the menu.")
+	day.slowest_seller_snapshot["eligible_dishes"][0]["price"] = 12
+	_report.call("show_report", day)
+	assert_eq(line.text, "Slowest seller: Tomato soup (2 sold). Guests may not fancy it; try another dish or take it off the menu.")
+	assert_false(line.text.contains("tomato_soup"), "the report uses the display name rather than the recipe id")
+	day.dishes_sold.clear()
+	_report.call("show_report", day)
+	assert_false(line.visible, "no paid dishes means the hint line is hidden")
+	var historical: DayReport = DayReport.from_dict({"dishes_sold": {"tomato_soup": 2}})
+	_report.call("show_report", historical)
+	assert_false(line.visible, "older reports without a service snapshot stay quiet")
 
 
 func test_saved_report_name_contextualizes_reviews_without_changing_quotes() -> void:

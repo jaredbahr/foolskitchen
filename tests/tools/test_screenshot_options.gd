@@ -3,6 +3,20 @@ extends TestCase
 ## No screenshot, rendered capture fixture or device preference is created.
 
 const CAPTURE: Script = preload("res://tools/screenshot.gd")
+const JOINED_BOOKING_REVIEW: Script = preload("res://tools/joined_tables_review.gd")
+
+
+func test_joined_booking_capture_requires_both_paused_morning_and_service_frames() -> void:
+	var valid: Dictionary = JOINED_BOOKING_REVIEW.options(PackedStringArray([
+		"--joined-tables-review", "--speed=0", "--frames=12,90"]))
+	assert_true(valid["enabled"])
+	assert_eq(valid["error"], "")
+	for arguments: PackedStringArray in [
+		PackedStringArray(["--joined-tables-review", "--speed=0", "--frames=90"]),
+		PackedStringArray(["--joined-tables-review", "--speed=0", "--frames=12,90", "--open"]),
+		PackedStringArray(["--joined-tables-review", "--speed=1", "--frames=12,90"]),
+	]:
+		assert_false(JOINED_BOOKING_REVIEW.options(arguments)["enabled"])
 
 
 func test_catalogue_capture_expectations_include_every_native_card_and_the_waiting_bench() -> void:

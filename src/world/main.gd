@@ -19,7 +19,9 @@ const SHOP_FRAME_CELLS: Vector2 = Vector2(14.0, 12.0)
 const STREET_PAN_EXTENSION: float = 3.0
 const LEASE: LeaseUpgrade = preload("res://data/balance/lease_upgrade.tres")
 const CAT: CatTuning = preload("res://data/balance/cat.tres")
+const BOOKING_TUNING: BookingTuning = preload("res://data/balance/bookings.tres")
 const TUNING: EconomyTuning = preload("res://data/balance/tier1_economy.tres")
+const HAGGLE_TUNING: HaggleTuning = preload("res://data/balance/haggle.tres")
 const MESS_TUNING: MessTuning = preload("res://data/balance/messes.tres")
 const CLEANLINESS_TUNING: CleanlinessTuning = preload("res://data/balance/cleanliness.tres")
 const WEATHER_TUNING: WeatherTuning = preload("res://data/balance/weather.tres")
@@ -92,6 +94,8 @@ var _staff_notice_day: int = 0
 var _staff_notices: Array[Dictionary] = []
 ## Last thirty eligible reviews, including five virtual three-star starters.
 var reputation: ReputationBook = ReputationBook.new()
+## One accepted next-day booking, saved at the normal morning checkpoint.
+var group_booking: GroupBooking = GroupBooking.new(BOOKING_TUNING)
 ## Small persistent named cast, written only with the normal morning save.
 var regulars: RegularCast = RegularCast.new()
 var owner_progress: OwnerProgress = OwnerProgress.new(PROGRESSION_TUNING)
@@ -118,6 +122,16 @@ var deliveries: DeliveryBook = DeliveryBook.new()
 var delivery_tuning: EconomyTuning = TUNING
 ## The Stock panel's order cart (ingredient id -> units), not yet ordered.
 var stock_cart: Dictionary[StringName, int] = {}
+## Morning-only offer and receipt, deliberately absent from every save provider.
+var _haggle_day: int = 0
+var _haggle_attempted: bool = false
+var _haggle_percent: int = 0
+var _haggle_receipt: Dictionary = {}
+var _haggle_game: HaggleGame
+var _haggle_previous_speed: int = 0
+var _haggle_camera_processing: bool = false
+var _haggle_previous_focus: WeakRef
+var _haggle_modal_open: bool = false
 
 var _previous_clock: SimClock = null
 var _started: bool = false
@@ -156,6 +170,11 @@ var _loaded_cat: Dictionary = {}
 var _loaded_inspection: Dictionary = {}
 ## The saved food-critic section (#303: cooldown and today's plan), staged the same way.
 var _loaded_critic: Dictionary = {}
+## The accepted booking plan staged until the whole morning save validates.
+var _loaded_group_booking: GroupBooking = null
+var _booking_paid_total: int = 0
+## Tick-driven presentation changes only when its day/phase/held group changes.
+var _booking_presented_key: Array[int] = []
 ## Staged morning rush plan from the matching saved run.
 var _loaded_rush_hour: Dictionary = {}
 ## The saved fish tank section (#125: each tank's last cleaning day), staged likewise.
@@ -262,6 +281,7 @@ func initialize() -> void:
 		push_error("Cannot build shop: %s" % [errors])
 		sim = null
 		return
+	sim.configure_booking(group_booking)
 	world = sim.world
 	menu_settings = MenuSettings.new(_cookable_recipes(LAYOUT), owner_progress.level)
 	_apply_menu(sim, menu_settings)
@@ -339,6 +359,7 @@ func _bind_world_presentation() -> void:
 		_build_catalogue.blueprint_requested.connect(_on_blueprint_requested)
 		_build_catalogue.blueprint_rename_requested.connect(_on_blueprint_rename_requested)
 		_build_catalogue.blueprint_delete_requested.connect(_on_blueprint_delete_requested)
+		_build_catalogue.blueprint_code_paste_requested.connect(_on_blueprint_code_paste_requested)
 	if not _build_catalogue.wall_tool_requested.is_connected(_on_wall_tool_requested):
 		_build_catalogue.wall_tool_requested.connect(_on_wall_tool_requested)
 	if not _build_catalogue.floor_tool_requested.is_connected(_on_floor_tool_requested):
@@ -378,6 +399,7 @@ func _bind_world_presentation() -> void:
 		_menu_panel.lease_requested.connect(_on_lease_requested)
 	if not _menu_panel.cat_adoption_requested.is_connected(_on_cat_adoption_requested):
 		_menu_panel.cat_adoption_requested.connect(_on_cat_adoption_requested)
+	_refresh_booking_offer()
 	_menu_panel.set_phase(Clock.sim.phase)
 	if not _menu_panel.enable_requested.is_connected(_on_menu_enable_requested):
 		_menu_panel.enable_requested.connect(_on_menu_enable_requested)
@@ -446,6 +468,11 @@ func _bind_world_presentation() -> void:
 	if not $HUD.is_connected(&"staff_pressed", toggle_staff):
 		$HUD.connect(&"staff_pressed", toggle_staff)
 	_stock_panel = $Overlay/StockPanel
+	_haggle_game = $Overlay/HaggleGame
+	if not _haggle_game.finished.is_connected(_on_haggle_finished):
+		_haggle_game.finished.connect(_on_haggle_finished)
+	if not _stock_panel.haggle_requested.is_connected(stock_start_haggle):
+		_stock_panel.haggle_requested.connect(stock_start_haggle)
 	if not _stock_panel.cart_requested.is_connected(_on_stock_cart_requested):
 		_stock_panel.cart_requested.connect(_on_stock_cart_requested)
 		_stock_panel.order_requested.connect(_on_stock_order_requested)
@@ -580,6 +607,7 @@ func start() -> void:
 	SaveSystem.register("cat", _capture_cat, _restore_cat)
 	SaveSystem.register("inspection", _capture_inspection, _restore_inspection)
 	SaveSystem.register("critic", _capture_critic, _restore_critic)
+	SaveSystem.register("bookings", _capture_bookings, _restore_bookings)
 	SaveSystem.register("rush_hour", _capture_rush_hour, _restore_rush_hour)
 	SaveSystem.register("aquarium", _capture_aquarium, _restore_aquarium)
 	var loaded: bool = use_saves and _load_autosave()
@@ -673,6 +701,10 @@ func _connect_session() -> void:
 		sim.dock.stored.connect(_on_dock_stored)
 	if not EventBus.cash_changed.is_connected(_on_build_cash_changed):
 		EventBus.cash_changed.connect(_on_build_cash_changed)
+	if not EventBus.booking_accept_requested.is_connected(_on_booking_accept_requested):
+		EventBus.booking_accept_requested.connect(_on_booking_accept_requested)
+	if not EventBus.booking_decline_requested.is_connected(_on_booking_decline_requested):
+		EventBus.booking_decline_requested.connect(_on_booking_decline_requested)
 	if not _inspect_panel.owner_mode_requested.is_connected(_on_owner_mode_requested):
 		_inspect_panel.owner_mode_requested.connect(_on_owner_mode_requested)
 	if sound == null:
@@ -684,6 +716,7 @@ func _connect_session() -> void:
 
 
 func _exit_tree() -> void:
+	_end_haggle_modal()
 	if sound != null:
 		sound.unbind()
 	_disconnect_vibe_grid()
@@ -708,6 +741,10 @@ func _exit_tree() -> void:
 		sim.kitchen.plates_changed.disconnect(_on_plates_changed)
 	if sim != null and sim.service_closed.is_connected(_on_service_closed):
 		sim.service_closed.disconnect(_on_service_closed)
+	if EventBus.booking_accept_requested.is_connected(_on_booking_accept_requested):
+		EventBus.booking_accept_requested.disconnect(_on_booking_accept_requested)
+	if EventBus.booking_decline_requested.is_connected(_on_booking_decline_requested):
+		EventBus.booking_decline_requested.disconnect(_on_booking_decline_requested)
 	if world != null and world.board != null \
 			and world.board.task_completed.is_connected(_on_staff_task_completed):
 		world.board.task_completed.disconnect(_on_staff_task_completed)
@@ -728,6 +765,9 @@ func _exit_tree() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if is_haggle_active():
+		_mark_input_handled()
+		return
 	if is_owner_picker_visible():
 		_mark_input_handled()
 		return
@@ -1094,6 +1134,8 @@ func is_paint_active() -> bool:
 
 
 func set_paint_active(active: bool) -> bool:
+	if active and is_haggle_active():
+		return false
 	if not _build_ready or shop_editor == null:
 		return false
 	if active == _paint_active:
@@ -1391,7 +1433,8 @@ func forecast_next_demand() -> Dictionary:
 
 ## The sim emits each departure once. Observe only its captured presentation
 ## evidence; review calculation and its random stream remain in RestaurantSim.
-func _on_vibe_customer_left(customer: CustomerAgent, _reason: StringName) -> void:
+func _on_vibe_customer_left(customer: CustomerAgent, reason: StringName) -> void:
+	_settle_booking_after_departure(customer, reason)
 	if customer != null and customer.paid and is_finite(customer.vibe_review_bonus) \
 			and customer.vibe_review_bonus > 0.0 \
 			and VIBE_TUNING.theme_labels.values().has(customer.vibe_theme_label):
@@ -1428,6 +1471,8 @@ func _on_swatch_requested(id: StringName) -> void:
 
 
 func set_build_active(active: bool) -> bool:
+	if active and is_haggle_active():
+		return false
 	if not _build_ready:
 		return false
 	if active:
@@ -1710,6 +1755,22 @@ func _on_blueprint_delete_requested(blueprint: Blueprint) -> void:
 		if build_mode.selected_blueprint == blueprint:
 			build_mode.cancel_ghost()
 		blueprint_library.remove(blueprint)
+
+
+func _on_blueprint_code_paste_requested(text: String) -> void:
+	if not is_build_active() or not shop_editor.can_edit():
+		return
+	if blueprint_library.blueprints.size() >= BlueprintLibrary.MAX_BLUEPRINTS:
+		_build_catalogue.show_blueprint_code_message(BlueprintCodeText.FULL)
+		return
+	var reasons: Array[String] = []
+	var blueprint: Blueprint = BlueprintCode.decode(text, content, reasons)
+	if blueprint == null:
+		_build_catalogue.show_blueprint_code_message(reasons[0])
+		return
+	var imported: Blueprint = blueprint_library.add_imported(blueprint)
+	_build_catalogue.show_blueprint_code_message(BlueprintCodeText.ADDED % imported.display_name \
+		if imported != null else BlueprintCodeText.FAILED)
 
 
 func _bind_build_session() -> void:
@@ -2007,6 +2068,8 @@ func _on_build_cash_changed(_cash: int, _delta: int, _reason: StringName) -> voi
 ## Visual item bounds choose the furniture hit; the floor still locates agents
 ## and preserves world-position selection for callers without a camera ray.
 func pick_screen_position(screen_position: Vector2) -> void:
+	if is_haggle_active():
+		return
 	if is_build_active() or _paint_active:
 		return
 	var camera: Camera3D = $CameraRig/Camera3D
@@ -2124,6 +2187,8 @@ func _selected_owner() -> OwnerAgent:
 ## The sole player command used by keys, inspector buttons and capture tools.
 ## Changes are included in the next normal MORNING checkpoint.
 func assign_owner_mode(mode: StringName) -> bool:
+	if is_haggle_active():
+		return false
 	if is_build_active():
 		return false
 	var selected_owner: OwnerAgent = _selected_owner()
@@ -2211,6 +2276,10 @@ func refresh_presentation() -> void:
 func _on_inspection_tick(_tick: int) -> void:
 	# Text follows every tick; geometry follows the drawn agents once per frame.
 	_refresh_sold_out_hud()
+	if group_booking != null and group_booking.has_active_booking():
+		var key: Array[int] = [Clock.sim.day, Clock.sim.phase, int(group_booking.booking.get("held_group_id", 0))]
+		if key != _booking_presented_key:
+			_refresh_booking_offer()
 	refresh_hints()
 	_inspect_panel.refresh()
 	if _debug_overlay.is_enabled():
@@ -2274,10 +2343,14 @@ func _on_plate_broken(cost: int) -> void:
 func build_report(day: int) -> DayReport:
 	var report := DayReport.new()
 	report.day = day
+	if int(_haggle_receipt.get("day", 0)) == day:
+		report.haggle_percent = int(_haggle_receipt["percent"])
+		report.haggle_saved = int(_haggle_receipt["saved"])
 	report.staff_activity = sim.staff_activity.snapshot()
 	report.restaurant_name = menu_settings.restaurant_name() if menu_settings != null else MenuSettings.DEFAULT_NAME
 	report.regulars_lines = RegularText.report_lines(regulars)
 	report.critic_lines = FoodCritic.report_lines(sim.critic_result)
+	report.booking_lines = sim.booking_report_lines.duplicate()
 	report.loan_first_advance = _loan_notice_day == day
 	var totals: Dictionary = Economy.ledger.day_totals(day)
 	for category: StringName in totals:
@@ -2303,6 +2376,7 @@ func build_report(day: int) -> DayReport:
 	report.stock_on_hand = int(on_hand["cost"])
 	report.stock_on_hand_recorded = bool(on_hand["recorded"])
 	report.dishes_sold = dishes_sold_today.duplicate()
+	report.slowest_seller_snapshot = sim.service_menu_report_snapshot()
 	report.customers_served = sim.served_today
 	report.customers_lost = sim.lost_today
 	report.takeaways = sim.takeaways_today
@@ -2360,11 +2434,17 @@ func build_report(day: int) -> DayReport:
 
 
 func _new_game() -> void:
+	_reset_haggle()
 	_base_layout = LAYOUT
-	sim.rush_hour = RushHour.new(RUSH_TUNING)
+	group_booking = GroupBooking.new(BOOKING_TUNING)
+	_booking_paid_total = 0
+	if sim != null:
+		sim.configure_booking(group_booking)
 	_loaded_cat = {}
 	_loaded_inspection = {}
 	_loaded_critic = {}
+	_loaded_group_booking = null
+	sim.rush_hour = RushHour.new(RUSH_TUNING)
 	_loaded_rush_hour = {}
 	_loaded_aquarium = {}
 	business_history = BusinessHistory.new()
@@ -2447,6 +2527,7 @@ func _new_game() -> void:
 
 
 func _load_autosave() -> bool:
+	_reset_haggle()
 	business_history = BusinessHistory.new()
 	_loaded_business_history = null
 	shop_records = ShopRecords.new()
@@ -2461,6 +2542,7 @@ func _load_autosave() -> bool:
 
 
 func _load_autosave_sections() -> bool:
+	_booking_paid_total = 0
 	curb_appeal_score = 0.0
 	curb_appeal_factor = 1.0
 	_last_team_activity.clear()
@@ -2484,6 +2566,7 @@ func _load_autosave_sections() -> bool:
 	_loaded_reorder = null
 	_loaded_deliveries = null
 	_loaded_weather = null
+	_loaded_group_booking = null
 	if not SaveSystem.list_slots().has(save_slot):
 		return false
 	# Missing sections are skipped by SaveSystem: old runs stay out of the guide.
@@ -2572,6 +2655,11 @@ func _load_autosave_sections() -> bool:
 	if not _loaded_critic.is_empty():
 		candidate.critic.from_dict(_loaded_critic)
 	_loaded_critic = {}
+	group_booking = _loaded_group_booking if _loaded_group_booking != null \
+		else GroupBooking.new(BOOKING_TUNING)
+	_loaded_group_booking = null
+	_booking_paid_total = 0
+	sim.configure_booking(group_booking)
 	candidate.rush_hour = RushHour.new(RUSH_TUNING)
 	if not _loaded_rush_hour.is_empty():
 		candidate.rush_hour.from_dict(_loaded_rush_hour)
@@ -2899,6 +2987,107 @@ func _capture_critic() -> Dictionary:
 	return sim.critic.to_dict()
 
 
+func _capture_bookings() -> Dictionary:
+	if group_booking == null or owner_progress.level < BOOKING_TUNING.unlock_level \
+			and not group_booking.has_active_booking():
+		return {}
+	return group_booking.to_dict()
+
+
+func _restore_bookings(data: Dictionary) -> bool:
+	var candidate: GroupBooking = GroupBooking.new(BOOKING_TUNING)
+	if not data.is_empty() and not candidate.from_dict(data):
+		return false
+	_loaded_group_booking = candidate
+	return true
+
+
+func _refresh_booking_offer() -> void:
+	if _menu_panel == null:
+		return
+	_booking_presented_key = [Clock.sim.day, Clock.sim.phase,
+		int(group_booking.booking.get("held_group_id", 0)) if group_booking != null else 0]
+	var reservation: String = ""
+	var service_card: String = ""
+	if group_booking != null and group_booking.has_active_booking():
+		var accepted: Dictionary = group_booking.booking
+		var today_booking: bool = Clock.sim.day == int(accepted.get("service_day", -1))
+		var day_word: String = "today" if today_booking else "tomorrow"
+		var slot_minute: int = int(accepted.get("slot_minute", 0))
+		var slot_end: int = slot_minute + BOOKING_TUNING.slot_minutes
+		reservation = "Reserved: %s for %d %s, arriving %s–%s. Customer deposit received: %s." % [
+			String(accepted.get("occasion", "Group")), int(accepted.get("party_size", 0)),
+			day_word, Fmt.clock(slot_minute), Fmt.clock(slot_end),
+			Fmt.money(int(accepted.get("deposit_amount", 0)))]
+		if today_booking and int(accepted.get("held_group_id", 0)) > 0:
+			service_card = "Reserved for today's %s: %d guests arriving %s–%s. New walk-ins will use other groups while this group clears." % [
+				String(accepted.get("occasion", "booking")), int(accepted.get("party_size", 0)),
+				Fmt.clock(slot_minute), Fmt.clock(slot_end)]
+	if has_node("HUD"):
+		$HUD.set_booking_status(service_card)
+	var held_group_id: int = 0
+	var marker_text: String = ""
+	if group_booking != null and group_booking.has_active_booking() \
+			and Clock.sim.day == int(group_booking.booking.get("service_day", -1)):
+		held_group_id = int(group_booking.booking.get("held_group_id", 0))
+		if held_group_id > 0:
+			marker_text = "Reserved\n%d guests" % int(group_booking.booking.get("party_size", 0))
+	if has_node("ShopView"):
+		($ShopView as ShopView).set_booking_marker(held_group_id, marker_text)
+	var offered: bool = Clock.sim.phase == SimClock.Phase.MORNING \
+		and group_booking != null and not group_booking.offer.is_empty() \
+		and not group_booking.has_active_booking()
+	if not offered:
+		_menu_panel.set_booking_offer(false, "", reservation)
+		return
+	var offer: Dictionary = group_booking.offer
+	var occasion: String = String(offer.get("occasion", "A group"))
+	var party_size: int = int(offer.get("party_size", 0))
+	var slot: int = int(offer.get("slot_minute", 0))
+	var dish: RecipeDef = menu_settings.recipe(StringName(str(offer.get("recipe_id", "")))) \
+		if menu_settings != null else null
+	var dish_name: String = dish.display_name if dish != null else "a dish from your menu"
+	var deposit: int = party_size * BOOKING_TUNING.deposit_per_guest
+	_menu_panel.set_booking_offer(true, "%s for %d arriving between %s and %s tomorrow. Mostly %s. Accept to receive a %s customer deposit; it counts against their final bill." % [
+		occasion, party_size, Fmt.clock(slot), Fmt.clock(slot + BOOKING_TUNING.slot_minutes),
+		dish_name, Fmt.money(deposit)], reservation)
+
+
+func _plan_morning_booking() -> void:
+	if group_booking == null or sim == null or menu_settings == null:
+		return
+	var menu_ids: Array[StringName] = []
+	for recipe: RecipeDef in menu_settings.enabled_recipes():
+		if sim.menu.has(recipe):
+			menu_ids.append(recipe.id)
+	group_booking.plan_offer(Clock.sim.day, owner_progress.level, menu_ids,
+		Clock.sim.display_open_minute, Clock.sim.display_close_minute,
+		GameState.rng.bind(&"bookings"))
+	_refresh_booking_offer()
+
+
+func _on_booking_accept_requested() -> void:
+	if Clock.sim.phase != SimClock.Phase.MORNING or group_booking == null:
+		_refresh_booking_offer()
+		return
+	var accepted: Dictionary = group_booking.accept_offer(Clock.sim.day)
+	if accepted.is_empty():
+		_refresh_booking_offer()
+		return
+	_booking_paid_total = 0
+	Economy.add_cash(int(accepted["deposit_amount"]), Ledger.BOOKING_DEPOSIT,
+		"Customer booking advance")
+	if sim != null:
+		sim.configure_booking(group_booking)
+	_refresh_booking_offer()
+
+
+func _on_booking_decline_requested() -> void:
+	if Clock.sim.phase == SimClock.Phase.MORNING and group_booking != null:
+		group_booking.decline_offer(Clock.sim.day)
+	_refresh_booking_offer()
+
+
 ## Validate now, install with the rest of the load once the new session exists.
 func _restore_critic(data: Dictionary) -> bool:
 	if not FoodCritic.new(CRITIC).from_dict(data):
@@ -3119,7 +3308,7 @@ func _restore_staff(data: Dictionary) -> bool:
 
 
 func can_view_staff() -> bool:
-	return _started and staff_roster != null and sim != null and world != null \
+	return _started and staff_roster != null and sim != null and world != null and not is_haggle_active() \
 		and Clock.sim.phase in [SimClock.Phase.MORNING, SimClock.Phase.OPEN,
 			SimClock.Phase.LAST_ORDERS, SimClock.Phase.CLOSED]
 
@@ -3531,7 +3720,8 @@ func _refresh_menu_boards() -> void:
 
 
 func can_edit_menu() -> bool:
-	return _started and menu_settings != null and menu_settings.is_valid() and Clock.sim.phase == SimClock.Phase.MORNING
+	return _started and menu_settings != null and menu_settings.is_valid() \
+		and Clock.sim.phase == SimClock.Phase.MORNING and not is_haggle_active()
 
 
 func menu_set_enabled(recipe_id: StringName, enabled: bool) -> bool:
@@ -3582,6 +3772,8 @@ func toggle_menu() -> void:
 
 ## Idempotent production path for the HUD and genuine review captures.
 func set_menu_visible(value: bool) -> bool:
+	if value and is_haggle_active():
+		return false
 	_refresh_lease_offer()
 	if _menu_panel == null or (value and not can_edit_menu()):
 		return false
@@ -3611,6 +3803,8 @@ func is_menu_visible() -> bool:
 
 ## A view-only panel: opening it neither completes goals nor changes the clock.
 func set_goals_visible(value: bool) -> bool:
+	if value and is_haggle_active():
+		return false
 	if _goals_panel == null or (value and (not _started or sim == null)):
 		return false
 	if _goals_panel.visible == value:
@@ -3716,6 +3910,8 @@ func _refresh_goals(force: bool = false) -> void:
 
 
 func set_settings_visible(value: bool) -> bool:
+	if value and is_haggle_active():
+		return false
 	if _settings_panel == null:
 		return false
 	if _settings_panel.visible == value:
@@ -4038,6 +4234,10 @@ func shop_sell(item_id: int) -> int:
 func _begin_morning() -> void:
 	_record_notice_day = 0
 	_record_notices.clear()
+	# Repeated setup of the SAME morning cannot create another attempt.
+	if _haggle_day != Clock.sim.day:
+		_reset_haggle()
+		_haggle_day = Clock.sim.day
 	_refresh_lease_offer()
 	if _menu_access_day != Clock.sim.day:
 		_menu_access_losses.clear()
@@ -4121,6 +4321,7 @@ func _begin_morning() -> void:
 	_refresh_sold_out_hud()
 	_expire_stock()
 	_restock()
+	_plan_morning_booking()
 	Economy.ledger.prune_before(Clock.sim.day - Ledger.HISTORY_DAYS)
 	_report.hide()
 	if use_saves and _skip_next_autosave:
@@ -4367,7 +4568,7 @@ func _on_delivery_tick(_tick: int) -> void:
 
 ## The panel opens in every phase; orders are paid now and delivered later.
 func can_edit_stock() -> bool:
-	return _started and sim != null and reorder_settings != null
+	return _started and sim != null and reorder_settings != null and not is_haggle_active()
 
 
 ## Sets one cart amount (0..99 units). Refused when it would not fit in
@@ -4398,12 +4599,94 @@ func stock_cart_set(id: StringName, qty: int) -> bool:
 
 
 func stock_cart_total() -> int:
+	return HaggleRules.charge(stock_cart_list_total(), stock_haggle_percent())
+
+
+func stock_cart_list_total() -> int:
 	var total: int = 0
 	for id: StringName in stock_cart:
 		var ingredient: IngredientDef = content.ingredient(id)
 		if ingredient != null:
 			total += ingredient.unit_cost * int(stock_cart[id])
 	return total
+
+
+func is_haggle_active() -> bool:
+	return _haggle_modal_open
+
+
+func stock_haggle_percent() -> int:
+	return _haggle_percent if _haggle_day == Clock.sim.day \
+		and Clock.sim.phase == SimClock.Phase.MORNING else 0
+
+
+func can_start_haggle() -> bool:
+	return can_edit_stock() and Clock.sim.phase == SimClock.Phase.MORNING \
+		and (_haggle_day != Clock.sim.day or not _haggle_attempted) \
+		and not stock_cart.is_empty() and HAGGLE_TUNING.is_valid() and _haggle_game != null
+
+
+## The one attempt is spent before drawing all zones, including on Skip.
+## Lack of cash does not block trying to earn a cheaper affordable order.
+func stock_start_haggle() -> void:
+	if not can_start_haggle() or not is_stock_visible():
+		return
+	if _haggle_day != Clock.sim.day:
+		_reset_haggle()
+		_haggle_day = Clock.sim.day
+	_haggle_attempted = true
+	var centers: Array[float] = HaggleRules.zone_centers(HAGGLE_TUNING, GameState.rng(&"haggle"))
+	if not _haggle_game.prepare(HAGGLE_TUNING, centers):
+		_refresh_stock_panel()
+		return
+	_haggle_previous_speed = Clock.speed
+	_haggle_camera_processing = ($CameraRig as CameraRig).is_processing()
+	var focus: Control = get_viewport().gui_get_focus_owner()
+	_haggle_previous_focus = weakref(focus) if focus != null else null
+	_haggle_modal_open = true
+	Clock.set_speed(0)
+	($CameraRig as CameraRig).set_process(false)
+	$HUD.set_haggle_active(true)
+	_haggle_game.start()
+	_refresh_stock_panel()
+
+
+func _on_haggle_finished(result: float) -> void:
+	if not _haggle_modal_open:
+		return
+	if _haggle_day == Clock.sim.day and Clock.sim.phase == SimClock.Phase.MORNING and result >= 0.0:
+		_haggle_percent = HaggleRules.discount_percent(result, HAGGLE_TUNING.max_discount)
+	_end_haggle_modal()
+	_refresh_stock_panel()
+
+
+func _end_haggle_modal() -> void:
+	if not _haggle_modal_open:
+		return
+	_haggle_modal_open = false
+	var camera: CameraRig = get_node_or_null("CameraRig") as CameraRig
+	if camera != null:
+		camera.set_process(_haggle_camera_processing)
+	var hud: Node = get_node_or_null("HUD")
+	if hud != null:
+		hud.call("set_haggle_active", false)
+	if Clock.sim.phase == SimClock.Phase.MORNING:
+		Clock.set_speed(_haggle_previous_speed)
+	var focus: Control = _haggle_previous_focus.get_ref() as Control if _haggle_previous_focus != null else null
+	if is_instance_valid(focus) and focus.is_visible_in_tree():
+		focus.grab_focus()
+	_haggle_previous_focus = null
+
+
+## Explicit new/load reset, distinct from repeated setup of one morning.
+func _reset_haggle() -> void:
+	if _haggle_game != null and _haggle_game.running:
+		_haggle_game.call("_on_skip_pressed")
+	_end_haggle_modal()
+	_haggle_day = 0
+	_haggle_attempted = false
+	_haggle_percent = 0
+	_haggle_receipt.clear()
 
 
 ## Why the cart cannot be ordered now, as a player sentence, or "".
@@ -4422,8 +4705,8 @@ func stock_cart_refusal() -> String:
 	return ""
 
 
-## Pays for the cart at list price. In the morning it arrives at once (as
-## #156's buys did); otherwise it goes on the next delivery.
+## Pays for the cart, using an earned offer only for a morning manual order.
+## Morning stock arrives at once; otherwise it goes on the next delivery.
 func stock_place_order() -> bool:
 	if not can_edit_stock() or not stock_cart_refusal().is_empty():
 		return false
@@ -4432,13 +4715,21 @@ func stock_place_order() -> bool:
 		var ingredient: IngredientDef = content.ingredient(id)
 		lines.append({"id": id, "qty": int(stock_cart[id]), "unit_cost": ingredient.unit_cost})
 	var cost: int = stock_cart_total()
-	if not Economy.pay_order(lines, cost, false):
-		return false
-	if Clock.sim.phase == SimClock.Phase.MORNING:
-		Economy.receive(lines)
-	elif not deliveries.place(lines, cost, false, DeliveryBook.next_due(Clock.sim, delivery_tuning)):
-		Economy.refund_order(cost)
-		return false
+	var percent: int = stock_haggle_percent()
+	if percent > 0:
+		if not Economy.buy_haggled_order(lines, percent):
+			return false
+		_haggle_receipt = {"day": Clock.sim.day, "percent": percent,
+			"saved": stock_cart_list_total() - cost}
+		_haggle_percent = 0
+	else:
+		if not Economy.pay_order(lines, cost, false):
+			return false
+		if Clock.sim.phase == SimClock.Phase.MORNING:
+			Economy.receive(lines)
+		elif not deliveries.place(lines, cost, false, DeliveryBook.next_due(Clock.sim, delivery_tuning)):
+			Economy.refund_order(cost)
+			return false
 	stock_cart.clear()
 	_refresh_stock_panel()
 	return true
@@ -4512,6 +4803,8 @@ func toggle_stock() -> void:
 
 ## Idempotent production path for the HUD and real captures, in any phase.
 func set_stock_visible(value: bool) -> bool:
+	if is_haggle_active() and not value:
+		_haggle_game.call("_on_skip_pressed")
 	if _stock_panel == null or (value and not can_edit_stock()):
 		return false
 	if value and not _stock_panel.visible:
@@ -4728,6 +5021,8 @@ func _refresh_stock_panel() -> void:
 	_stock_panel.set_view({"rows": stock_rows(), "groups": stock_groups(), "cash": Economy.cash,
 		"editable": can_edit_stock(), "notes": stock_notes(), "premium": auto_reorder_premium,
 		"cart_total": stock_cart_total(), "cart_refusal": stock_cart_refusal(),
+		"haggle_available": can_start_haggle(), "haggle_percent": stock_haggle_percent(),
+		"haggle_morning": Clock.sim.phase == SimClock.Phase.MORNING,
 		"pending": stock_pending_text(), "refund": deliveries.paid_total(),
 		"delivery": delivery_countdown()})
 
@@ -4830,16 +5125,74 @@ func _charge_closing_costs() -> void:
 
 
 func _on_customer_paid(customer: CustomerAgent, order: Order, amount: int) -> void:
-	if not order.paid:
-		order.paid = true
-		PurchaseBasis.combine(_food_cost_today, {"cost": order.ingredient_cost,
-			"recorded": order.ingredient_cost_recorded})
-	Economy.add_cash(amount, Ledger.SALE)
-	var tip: int = sim.regular_tip(customer, order)
-	if tip > 0:
-		Economy.add_cash(tip, Ledger.TIP)
+	if order.paid:
+		return
+	order.paid = true
+	PurchaseBasis.combine(_food_cost_today, {"cost": order.ingredient_cost,
+		"recorded": order.ingredient_cost_recorded})
+	var booking_member: bool = customer.party != null and customer.party.booking_owned \
+		and group_booking != null and group_booking.has_active_booking() \
+		and customer.party.booking_id == int(group_booking.booking.get("booking_id", 0))
+	if booking_member:
+		_booking_paid_total += amount
+	else:
+		Economy.add_cash(amount, Ledger.SALE)
+		var tip: int = sim.regular_tip(customer, order)
+		if tip > 0:
+			Economy.add_cash(tip, Ledger.TIP)
 	dishes_sold_today[order.recipe_id] = dishes_sold_today.get(order.recipe_id, 0) + 1
 	_refresh_goals()
+
+
+func _settle_booking_after_departure(customer: CustomerAgent, reason: StringName) -> void:
+	if customer == null or customer.party == null or not customer.party.booking_owned \
+			or group_booking == null or not group_booking.has_active_booking() \
+			or customer.party.booking_id != int(group_booking.booking.get("booking_id", 0)):
+		return
+	var review: Dictionary = sim.booking_review_results.get(customer.party.booking_id, {})
+	if not review.is_empty() and (not bool(review.get("no_seat", false)) or reason == &"no_table"):
+		_settle_booking(customer.party.booking_id, review)
+
+
+func _settle_due_booking_at_close(day: int) -> void:
+	if group_booking == null or not group_booking.has_active_booking() \
+			or int(group_booking.booking.get("service_day", 0)) > day:
+		return
+	var booking_id: int = int(group_booking.booking.get("booking_id", 0))
+	var review: Dictionary = sim.finalize_booking_review(booking_id, true)
+	if not review.is_empty():
+		_settle_booking(booking_id, review)
+
+
+func _settle_booking(booking_id: int, review: Dictionary) -> void:
+	if group_booking == null or not group_booking.has_active_booking() \
+			or booking_id != int(group_booking.booking.get("booking_id", 0)):
+		return
+	var booking: Dictionary = group_booking.booking
+	var no_seat: bool = bool(review.get("no_seat", false))
+	if not group_booking.claim_effect(booking_id,
+			GroupBooking.EFFECT_NO_SEAT if no_seat else GroupBooking.EFFECT_PAYMENT):
+		return
+	if not group_booking.claim_effect(booking_id, GroupBooking.EFFECT_REVIEW):
+		return
+	if no_seat:
+		var refund: Dictionary = BookingSettlement.no_seat_refund(booking)
+		if not refund.is_empty():
+			Economy.add_cash(int(refund["amount"]), refund["category"], String(refund["note"]))
+		if group_booking.settle(booking_id, true):
+			_booking_paid_total = 0
+			_refresh_booking_offer()
+		return
+	for movement: Dictionary in BookingSettlement.pay_bill(booking, _booking_paid_total):
+		Economy.add_cash(int(movement["amount"]), movement["category"], String(movement["note"]))
+	if bool(review.get("good_service", false)):
+		var tip: int = BookingSettlement.good_service_tip(_booking_paid_total,
+			int(review.get("stars", 0)), BOOKING_TUNING)
+		if tip > 0 and group_booking.claim_effect(booking_id, GroupBooking.EFFECT_TIP):
+			Economy.add_cash(tip, Ledger.TIP, "Booking service tip")
+	if group_booking.settle(booking_id):
+		_booking_paid_total = 0
+		_refresh_booking_offer()
 
 
 func _on_staff_task_completed(task: SimTask) -> void:
@@ -4872,8 +5225,14 @@ func _on_service_closed(day: int) -> void:
 		sim.demand_factor, demand_tuning)
 	_remember_menu_quality()
 	_charge_closing_costs()
-	# Capture business profit before milestone cash or financing enters the books.
-	var operating_profit: int = Economy.ledger.day_profit(day)
+	_settle_due_booking_at_close(day)
+	# Capture business profit before milestone cash, the weekly reward or
+	# financing enters the books, excluding booking advances/refunds so those
+	# customer liabilities cannot earn profit awards.
+	var day_movements: Dictionary = Economy.ledger.day_totals(day)
+	var operating_profit: int = Economy.ledger.day_profit(day) \
+		- int(day_movements.get(Ledger.BOOKING_DEPOSIT, 0)) \
+		- int(day_movements.get(Ledger.BOOKING_REFUND, 0))
 	var closing_observation: MilestoneDay = _milestone_observation(operating_profit)
 	_award_weekly_challenge(closing_observation)
 	staff_roster.close_growth_day()
@@ -4984,6 +5343,11 @@ func _unlocked_at_levels(previous_level: int, current_level: int) -> Array[Strin
 
 
 func _on_day_phase_changed(_day: int, phase: int) -> void:
+	if phase != SimClock.Phase.MORNING:
+		# The receipt stays for tonight's report; an unspent offer expires.
+		if is_haggle_active():
+			_haggle_game.call("_on_skip_pressed")
+		_haggle_percent = 0
 	_dismiss_goals()
 	_clear_rooms_note()
 	# Undo never reaches back across opening (or into a new morning).
@@ -5011,6 +5375,10 @@ func _on_day_phase_changed(_day: int, phase: int) -> void:
 		_restock_station_supplies()
 		# Morning orders arrive at once; this only lands overdue orders from older saves.
 		_deliver_due()
+		# Snapshot after due deliveries and an opening availability check. The
+		# report keeps this menu and its prices even if tomorrow's menu changes.
+		if sim != null:
+			sim.begin_service_menu_snapshot()
 	else:
 		$HUD.set_menu_notice("")
 		# A delivery slot never falls after opening hours; anything overdue lands now.

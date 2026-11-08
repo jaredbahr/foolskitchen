@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="HaggleTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/sim/economy/haggle_tuning.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+max_discount = 0.1
+rounds = 3
+zone_widths = Array[float]([0.36, 0.26, 0.18])
+speeds = Array[float]([0.65, 0.9, 1.2])

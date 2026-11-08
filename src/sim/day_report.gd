@@ -5,6 +5,7 @@ extends RefCounted
 const NON_OPERATING_CATEGORIES: Array[StringName] = [
 	Ledger.BANK_LOAN, Ledger.LOAN_INTEREST, Ledger.LOAN_REPAYMENT,
 	Ledger.MILESTONE_BONUS, Ledger.WEEKLY_CHALLENGE_BONUS,
+	Ledger.BOOKING_DEPOSIT, Ledger.BOOKING_REFUND,
 ]
 const MAX_MILESTONE_REWARD: int = 1000000
 const MAX_FORECAST_INTEGER: int = 9007199254740991
@@ -20,6 +21,11 @@ var costs: Dictionary = {}
 ## Transient first-advance introduction, supplied by the closing session.
 var loan_first_advance: bool = false
 var dishes_sold: Dictionary = {}
+## Optional service-opening menu facts. Historical reports without this
+## snapshot remain loadable and simply have no slowest-seller hint.
+var slowest_seller_snapshot: Dictionary = {}:
+	set(value):
+		slowest_seller_snapshot = public_slowest_seller_snapshot(value)
 var customers_served: int = 0
 var dish_quality_count: int = 0
 var dish_quality_average: float = 0.0
@@ -59,6 +65,8 @@ var regulars_lines: Array[String] = []
 ## The health inspector's visit today (#302), already player-facing: the grade,
 ## then the worst findings. Empty when none came; saved only when present.
 var inspection_lines: Array[String] = []
+## Exceptional booking outcomes for this service day, already player-facing.
+var booking_lines: Array[String] = []
 ## The disguised food critic's visit (#303): heading, verdict and headline
 ## quote, already player-facing; empty on days none reviewed.
 var critic_lines: Array[String] = []
@@ -73,6 +81,9 @@ var food_cost: int = 0
 var food_cost_recorded: bool = false
 var stock_bought: int = 0
 var stock_bought_recorded: bool = false
+## Live report note only. Offer/attempt state is never serialized.
+var haggle_percent: int = 0
+var haggle_saved: int = 0
 var spoiled_stock: int = 0
 var spoiled_stock_recorded: bool = false
 var stock_on_hand: int = 0
@@ -169,6 +180,32 @@ func best_dish() -> StringName:
 	return _highest_count(dishes_sold)
 
 
+## Returns the least-sold eligible dish, breaking ties by captured price then id.
+func slowest_dish() -> StringName:
+	return StringName(str(slowest_dish_details().get("id", "")))
+
+
+## Player-facing metadata for the selected dish; empty for unavailable history.
+func slowest_dish_details() -> Dictionary:
+	var snapshot: Dictionary = public_slowest_seller_snapshot(slowest_seller_snapshot)
+	if snapshot.is_empty() or int(snapshot["menu_count"]) <= 1 or _sum(dishes_sold) <= 0:
+		return {}
+	var best: Dictionary = {}
+	var best_sold: int = 0
+	for dish: Dictionary in snapshot["eligible_dishes"]:
+		var id: StringName = StringName(str(dish["id"]))
+		var sold: int = int(dishes_sold.get(id, 0))
+		var price: int = int(dish["price"])
+		var best_price: int = int(best.get("price", -1))
+		var best_id: String = str(best.get("id", ""))
+		if best.is_empty() or sold < best_sold or (sold == best_sold and
+				(price > best_price or (price == best_price and String(id) < best_id))):
+			best = dish.duplicate()
+			best["sold"] = sold
+			best_sold = sold
+	return best
+
+
 ## Returns the leading departure reason, or an empty id if there are none.
 func top_leave_reason() -> StringName:
 	return _highest_count(leave_reasons)
@@ -217,10 +254,15 @@ func to_dict() -> Dictionary:
 		"stock_on_hand_recorded": stock_on_hand_recorded,
 		"demand_forecast": public_demand_forecast(demand_forecast),
 	}
+	var public_slowest_snapshot: Dictionary = public_slowest_seller_snapshot(slowest_seller_snapshot)
+	if not public_slowest_snapshot.is_empty():
+		result["slowest_seller_snapshot"] = public_slowest_snapshot
 	if not inspection_lines.is_empty():
 		result["inspection_lines"] = inspection_lines.duplicate()
 	if not weekly_challenge_line.is_empty():
 		result["weekly_challenge_line"] = weekly_challenge_line
+	if not booking_lines.is_empty():
+		result["booking_lines"] = booking_lines.duplicate()
 	var activity: Dictionary = StaffActivity.public_snapshot(staff_activity)
 	if not activity.is_empty():
 		result["staff_activity"] = activity
@@ -250,6 +292,8 @@ static func from_dict(data: Dictionary) -> DayReport:
 	var saved_loan_notice: Variant = data.get("loan_first_advance", false)
 	report.loan_first_advance = saved_loan_notice is bool and saved_loan_notice
 	report.dishes_sold = _name_counts(data.get("dishes_sold", {}))
+	report.slowest_seller_snapshot = public_slowest_seller_snapshot(
+		data.get("slowest_seller_snapshot", {}))
 	report.customers_served = int(data.get("customers_served", 0))
 	report.dish_quality_count = maxi(0, int(data.get("dish_quality_count", 0)))
 	report.dish_quality_average = clampf(float(data.get("dish_quality_average", 0.0)), 0.0, 1.0)
@@ -298,6 +342,11 @@ static func from_dict(data: Dictionary) -> DayReport:
 		for line: Variant in saved_inspection:
 			if line is String:
 				report.inspection_lines.append(line)
+	var saved_bookings: Variant = data.get("booking_lines", [])
+	if saved_bookings is Array:
+		for line: Variant in saved_bookings:
+			if line is String:
+				report.booking_lines.append(line)
 	var saved_critic: Variant = data.get("critic_lines", [])
 	if saved_critic is Array:
 		for line: Variant in saved_critic:
@@ -349,6 +398,43 @@ static func public_demand_forecast(value: Variant) -> Dictionary:
 			return {}
 		result[key] = float(factor)
 	return result
+
+
+## Copies only a complete optional service snapshot made of JSON primitives.
+## Invalid/older snapshots are omitted without affecting the rest of a report.
+static func public_slowest_seller_snapshot(value: Variant) -> Dictionary:
+	if not value is Dictionary:
+		return {}
+	var source: Dictionary = value
+	var saved_count: Variant = source.get("menu_count")
+	var saved_dishes: Variant = source.get("eligible_dishes")
+	if not _whole_in_range(saved_count, 0, MAX_FORECAST_INTEGER) or not saved_dishes is Array:
+		return {}
+	var copied: Array[Dictionary] = []
+	var seen: Dictionary[String, bool] = {}
+	for item: Variant in saved_dishes:
+		if not item is Dictionary:
+			return {}
+		var dish: Dictionary = item
+		var saved_id: Variant = dish.get("id")
+		var saved_name: Variant = dish.get("display_name")
+		var saved_price: Variant = dish.get("price")
+		var saved_standard: Variant = dish.get("standard_price")
+		if not saved_id is String or String(saved_id).is_empty() or seen.has(String(saved_id)) \
+				or not saved_name is String or String(saved_name).strip_edges().is_empty() \
+				or not _whole_in_range(saved_price, 0, MAX_FORECAST_INTEGER) \
+				or not _whole_in_range(saved_standard, 0, MAX_FORECAST_INTEGER):
+			return {}
+		seen[String(saved_id)] = true
+		copied.append({
+			"id": String(saved_id),
+			"display_name": String(saved_name),
+			"price": int(saved_price),
+			"standard_price": int(saved_standard),
+		})
+	if copied.size() > int(saved_count):
+		return {}
+	return {"menu_count": int(saved_count), "eligible_dishes": copied}
 
 
 ## Copy only display fields, so a sim result cannot leak its cause into a save.

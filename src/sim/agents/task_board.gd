@@ -56,17 +56,19 @@ func claim(task: SimTask, agent_id: int, now_tick: int) -> bool:
 	return true
 
 
-## The claimant gives the task back. It reopens, or fails after MAX_DROPS.
-func drop(task: SimTask, reason: StringName) -> void:
+## Failed attempts count toward MAX_DROPS. A voluntary scheduling yield keeps
+## the same task and its existing failure count without punishing the work.
+func drop(task: SimTask, reason: StringName, count_failure: bool = true) -> void:
 	if task == null or task.state != SimTask.State.CLAIMED:
 		return
 	var agent_id := task.claimed_by
-	task.drops += 1
+	if count_failure:
+		task.drops += 1
 	task.claimed_by = -1
 	task.claimed_tick = -1
 	# Settle the final state before any signal, so a listener can't claim a
 	# task that is about to fail.
-	var failing := task.drops >= MAX_DROPS
+	var failing := count_failure and task.drops >= MAX_DROPS
 	if failing:
 		_finish(task, SimTask.State.CANCELLED)
 	else:

@@ -12,6 +12,8 @@ const MONEY_LABELS: Dictionary = {
 	Ledger.LOAN_REPAYMENT: "Loan repayment",
 	Ledger.MILESTONE_BONUS: "Milestone bonus",
 	Ledger.WEEKLY_CHALLENGE_BONUS: "Weekly challenge",
+	Ledger.BOOKING_DEPOSIT: "Booking deposit",
+	Ledger.BOOKING_REFUND: "Booking refund",
 }
 
 const LEAVE_LABELS: Dictionary = {
@@ -39,6 +41,7 @@ var _stock_summary: VBoxContainer
 var _cash_change: Label
 var _loan_notice: Label
 var _dishes: GridContainer
+var _slowest_seller: Label
 var _guests: Label
 var _cleanliness: Label
 var _guest_bar: ProgressBar
@@ -105,7 +108,8 @@ func show_report(report: DayReport) -> void:
 		_add_row(_costs, "Cost of food served", _recorded_money(report.food_cost, report.food_cost_recorded))
 	_clear(_stock)
 	_add_row(_stock, "Stock bought today", _recorded_money(report.stock_bought,
-		report.stock_values_recorded and report.stock_bought_recorded))
+		report.stock_values_recorded and report.stock_bought_recorded) + (
+		" (haggle saved %s)" % _money(report.haggle_saved) if report.haggle_percent > 0 else ""))
 	_add_row(_stock, "Spoiled stock", _recorded_money(report.spoiled_stock, report.spoiled_stock_recorded))
 	_add_row(_stock, "Stock on hand worth", _recorded_money(report.stock_on_hand, report.stock_on_hand_recorded))
 	_cash_change.text = "Cash change today: %s" % _money(report.profit())
@@ -127,6 +131,8 @@ func show_report(report: DayReport) -> void:
 		_add_row(_dishes, title, str(report.dishes_sold[StringName(id)]))
 	if report.dishes_sold.is_empty():
 		_add_row(_dishes, "No dishes sold today", "")
+	_slowest_seller.text = _slowest_seller_text(report)
+	_slowest_seller.visible = not _slowest_seller.text.is_empty()
 	_guests.text = "%d served  /  %d lost" % [report.customers_served, report.customers_lost]
 	var guest_total: int = report.customers_served + report.customers_lost
 	_guest_bar.max_value = maxi(guest_total, 1)
@@ -157,15 +163,27 @@ func show_report(report: DayReport) -> void:
 		mishaps.get_parent().move_child(inspection, mishaps.get_index() + 1)
 	inspection.text = "\n".join(PackedStringArray(report.inspection_lines))
 	inspection.visible = not report.inspection_lines.is_empty()
+	var bookings: Label = get_node_or_null("Panel/Scroll/Content/Bookings") as Label
+	if bookings == null and not report.booking_lines.is_empty():
+		bookings = Label.new()
+		bookings.name = "Bookings"
+		bookings.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		inspection.get_parent().add_child(bookings)
+		inspection.get_parent().move_child(bookings, inspection.get_index() + 1)
+	if bookings != null:
+		bookings.text = "\n".join(PackedStringArray(report.booking_lines))
+		bookings.visible = not report.booking_lines.is_empty()
 	var rush_hour: Label = get_node_or_null("Panel/Scroll/Content/RushHour") as Label
 	if rush_hour == null:
 		rush_hour = Label.new()
 		rush_hour.name = "RushHour"
 		rush_hour.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		inspection.get_parent().add_child(rush_hour)
-		inspection.get_parent().move_child(rush_hour, inspection.get_index() + 1)
+	inspection.get_parent().move_child(rush_hour, inspection.get_index() + 1)
 	rush_hour.text = "\n".join(PackedStringArray(report.rush_hour_lines))
 	rush_hour.visible = not report.rush_hour_lines.is_empty()
+	if bookings != null:
+		inspection.get_parent().move_child(bookings, rush_hour.get_index() + 1)
 	regulars_summary.text = "Regulars: " + "; ".join(PackedStringArray(report.regulars_lines))
 	regulars_summary.visible = not report.regulars_lines.is_empty()
 	critic_heading.text = report.critic_lines[0] if not report.critic_lines.is_empty() else ""
@@ -288,6 +306,7 @@ func _bind_nodes() -> void:
 	_cash_change = %CashChange
 	_loan_notice = %LoanNotice
 	_dishes = %DishRows
+	_slowest_seller = %SlowestSeller
 	_guests = %Guests
 	_cleanliness = %Cleanliness
 	_guest_bar = %GuestBar
@@ -378,6 +397,17 @@ func _bind_nodes() -> void:
 	_on_report_resized()
 
 
+## One player-facing helper owns the slow-seller line and both hint branches.
+func _slowest_seller_text(report: DayReport) -> String:
+	var dish: Dictionary = report.slowest_dish_details()
+	if dish.is_empty():
+		return ""
+	var hint: String = "Try a lower price" if int(dish["price"]) > int(dish["standard_price"]) \
+		else "Guests may not fancy it; try another dish"
+	return "Slowest seller: %s (%d sold). %s or take it off the menu." % [
+		str(dish["display_name"]), int(dish["sold"]), hint]
+
+
 ## Normal windows keep the stock detail beside the books, leaving the real
 ## review cards in view. Large UI sizes give those rows the full scroll width.
 func _on_report_resized() -> void:
@@ -442,7 +472,10 @@ func _fill_milestones(milestones: Array[Dictionary]) -> void:
 func _fill_money(rows: GridContainer, amounts: Dictionary, empty_text: String) -> void:
 	_clear(rows)
 	for id: String in _sorted_ids(amounts):
-		_add_row(rows, String(MONEY_LABELS.get(StringName(id), id.capitalize())), _money(int(amounts[StringName(id)])))
+		var title: String = String(MONEY_LABELS.get(StringName(id), id.capitalize()))
+		if rows == _costs and StringName(id) == Ledger.BOOKING_DEPOSIT:
+			title = "Deposit taken off the bill"
+		_add_row(rows, title, _money(int(amounts[StringName(id)])))
 	if amounts.is_empty() and not empty_text.is_empty():
 		_add_row(rows, empty_text, "")
 
