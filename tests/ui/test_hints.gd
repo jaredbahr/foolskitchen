@@ -204,7 +204,7 @@ func test_replay_can_start_from_a_later_morning_and_get_its_following_day_hint()
 
 
 func test_required_hint_copy_uses_player_facing_words() -> void:
-	assert_eq(Guide.text_for(Guide.Step.MENU), "Plan today's dishes and prices")
+	assert_eq(Guide.text_for(Guide.Step.MENU), "Plan today's dishes and prices. F1: shortcuts")
 	assert_eq(Guide.text_for(Guide.Step.STOCK), "Check your fridge and shelves; order what you need")
 	assert_eq(Guide.text_for(Guide.Step.BUILD), "Move or buy furniture; paint rooms in Build")
 	assert_eq(Guide.text_for(Guide.Step.DAY_TWO), "Hire and plan in the mornings. You're on your own now")

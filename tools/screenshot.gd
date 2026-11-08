@@ -145,6 +145,8 @@ var _settings_from_menu: bool = false
 var _settings_world: bool = false
 var _settings_scale: int = 100
 var _settings_keyboard: Dictionary = {}
+var _shortcuts: bool = false
+var _shortcuts_input: Dictionary = {}
 var _hud_layout: bool = false
 var _hud_window_size: Vector2i = Vector2i(1600, 900)
 var _hud_layout_scale: int = 125
@@ -255,6 +257,11 @@ func _initialize() -> void:
 		return
 	_hud_layout = layout_options["enabled"]
 	_hud_window_size = layout_options["window_size"]
+	var shortcuts_options: Dictionary = shortcuts_capture_options(OS.get_cmdline_user_args())
+	if not String(shortcuts_options["error"]).is_empty():
+		_fail_capture(shortcuts_options["error"])
+		return
+	_shortcuts = shortcuts_options["enabled"]
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--out="):
 			_out = arg.trim_prefix("--out=")
@@ -304,6 +311,8 @@ func _initialize() -> void:
 			_settings = true
 			_settings_world = _settings_world or arg == "--settings-world"
 			_settings_scale = 150 if _settings_world else 100
+		elif arg == "--shortcuts":
+			pass # Parsed and strictly validated above.
 		elif arg == "--report":
 			_report_requested = true
 		elif arg.begins_with("--build"):
@@ -436,6 +445,17 @@ func _initialize() -> void:
 			or _report_requested or not _build.is_empty() or _paint or _quarter >= 0 \
 			or _speed != 0 or _shots.size() != 1):
 		_fail_capture("--settings requires one paused Main capture without other view/service flags")
+		return
+	if _shortcuts and (_scene_path != "res://src/world/main.tscn" or _open or _fast != 0 \
+			or not _selection.is_empty() or _assign_owner or _f3 or _menu or _staff or _stock \
+			or _settings or _report_requested or not _build.is_empty() or _paint or _quarter >= 0 \
+			or not _walls.is_empty() or not _expand.is_empty() or not _rooms.is_empty() \
+			or _door_queue or _loan_review or _milestone_review or not _catalogue_profile.is_empty() \
+			or _diner_review or _floors_review or _restroom_review or _walls_review or _street_front_review \
+			or _menu_boards_review or not _weather_mode.is_empty() or _joined_tables_review \
+			or not _lease_mode.is_empty() or not _blueprint_profile.is_empty() or _neighbourhood_mode != "" \
+			or _hud_layout or _speed != 0 or _shots.size() != 1):
+		_fail_capture("--shortcuts requires one paused Main capture without other view/service flags")
 		return
 	if _shots.is_empty() or _shots.min() < 1 or ((_quarter >= 0 or not _selection.is_empty() or _f3 or _menu or _staff or _settings or not _build.is_empty() or _paint or _door_queue or not _walls.is_empty() or not _expand.is_empty() or not _rooms.is_empty()) and _shots.min() < 4):
 		_fail_capture("capture frames must be positive, and at least 4 for requested view/UI options")
@@ -1884,6 +1904,38 @@ static func hud_layout_options(arguments: PackedStringArray) -> Dictionary:
 	return result
 
 
+## One paused screenshot of the production F1 shortcuts path. Only the output
+## directory may repeat because screenshot.sh supplies it as well.
+static func shortcuts_capture_options(arguments: PackedStringArray) -> Dictionary:
+	var result: Dictionary = {"enabled": false, "error": ""}
+	var speeds: int = 0
+	var frames: int = 0
+	var scenes: int = 0
+	for argument: String in arguments:
+		if argument == "--shortcuts":
+			if result["enabled"]:
+				result["error"] = "--shortcuts is a single flag without a value"
+				return result
+			result["enabled"] = true
+	if not result["enabled"]:
+		return result
+	for argument: String in arguments:
+		if argument == "--shortcuts" or argument.begins_with("--out="):
+			continue
+		if argument == "--speed=0":
+			speeds += 1
+		elif argument == "--frames=12":
+			frames += 1
+		elif argument == "--scene=res://src/world/main.tscn":
+			scenes += 1
+		else:
+			result["error"] = "--shortcuts requires paused Main frame 12 without other options"
+			return result
+	if speeds != 1 or frames != 1 or scenes > 1:
+		result["error"] = "--shortcuts requires one --speed=0 and one --frames=12"
+	return result
+
+
 func _process(_delta: float) -> bool:
 	if _finished:
 		return true
@@ -1905,6 +1957,15 @@ func _process(_delta: float) -> bool:
 	if _frames == 3:
 		# Autoloads aren't compile-time identifiers in a --script main loop.
 		var clock: Node = root.get_node("Clock")
+		if _shortcuts:
+			# Deliver the real F1 key through the viewport so Main's production
+			# unhandled-input path opens the panel and gives it focus.
+			_settings_key(KEY_F1, true)
+			_settings_key(KEY_F1, false)
+			_shortcuts_input = {"delivery": "Viewport.push_input", "key": "F1", "frame": _frames}
+			if not bool(_main.call("is_shortcuts_visible")):
+				_fail_capture("physical F1 did not open the actual Shortcuts panel")
+				return true
 		if not _walls.is_empty():
 			# Walls are a closed-phase edit, so build them before any --open service.
 			_configure_walls()
@@ -2227,6 +2288,63 @@ func _capture_world() -> SimWorld:
 
 func _configure_settings() -> void:
 	_open_settings_control(_settings_world, _settings_scale)
+
+
+func _shortcuts_state() -> Dictionary:
+	var panel: ShortcutsPanel = _main.get_node_or_null("Overlay/ShortcutsPanel") as ShortcutsPanel
+	var close_button: Button = _main.get_node_or_null("Overlay/ShortcutsPanel/Panel/Column/Header/Close") as Button
+	var columns: HBoxContainer = _main.get_node_or_null("Overlay/ShortcutsPanel/Panel/Column/Columns") as HBoxContainer
+	var content: VBoxContainer = _main.get_node_or_null("Overlay/ShortcutsPanel/Panel/Column/Scroll/Content") as VBoxContainer
+	if panel == null or close_button == null or columns == null or content == null:
+		return {"available": false}
+	var group_headings: Array[String] = []
+	var row_count: int = 0
+	var two_cell_rows: bool = true
+	for child: Node in content.get_children():
+		if child is Label:
+			group_headings.append((child as Label).text)
+		elif child is HBoxContainer:
+			row_count += 1
+			var row: HBoxContainer = child as HBoxContainer
+			if row.get_child_count() != 2 or not row.get_child(0) is Label or not row.get_child(1) is Label:
+				two_cell_rows = false
+		else:
+			two_cell_rows = false
+	var panel_card: PanelContainer = panel.get_node("Panel") as PanelContainer
+	var bounds: Rect2 = panel_card.get_global_rect()
+	var viewport_size: Vector2 = root.get_visible_rect().size
+	return {
+		"available": true,
+		"visible": panel.visible and panel.is_visible_in_tree() and bool(_main.call("is_shortcuts_visible")),
+		"close_button_focused": root.gui_get_focus_owner() == close_button,
+		"group_headings": group_headings,
+		"expected_group_headings": ShortcutsText.GROUPS,
+		"row_count": row_count,
+		"expected_row_count": ShortcutsText.ROWS.size(),
+		"column_count": columns.get_child_count(),
+		"two_cell_rows": two_cell_rows,
+		"panel_bounds": [bounds.position.x, bounds.position.y, bounds.size.x, bounds.size.y],
+		"viewport_bounds": [0.0, 0.0, viewport_size.x, viewport_size.y],
+		"input": _shortcuts_input,
+	}
+
+
+func _shortcuts_capture_valid(state: Dictionary) -> bool:
+	if state.get("available") != true or state.get("visible") != true or state.get("close_button_focused") != true \
+			or state.get("group_headings") != ShortcutsText.GROUPS \
+			or state.get("expected_group_headings") != ShortcutsText.GROUPS \
+			or state.get("row_count") != ShortcutsText.ROWS.size() \
+			or state.get("expected_row_count") != ShortcutsText.ROWS.size() \
+			or state.get("column_count") != 2 or state.get("two_cell_rows") != true:
+		return false
+	var bounds: Array = state["panel_bounds"]
+	var viewport: Array = state["viewport_bounds"]
+	var input: Dictionary = state.get("input", {})
+	return bounds.size() == 4 and viewport.size() == 4 and bounds[2] > 0.0 and bounds[3] > 0.0 \
+		and bounds[0] >= viewport[0] and bounds[1] >= viewport[1] \
+		and bounds[0] + bounds[2] <= viewport[2] and bounds[1] + bounds[3] <= viewport[3] \
+		and input.get("delivery") == "Viewport.push_input" \
+		and input.get("key") == "F1" and input.get("frame") == 3
 
 
 func _open_settings_control(from_gear: bool, percent: int) -> void:
@@ -3116,11 +3234,16 @@ func _capture() -> void:
 		return
 	var settings_state: Dictionary = _settings_state() if _settings else {}
 	var hud_layout_state: Dictionary = _hud_layout_state() if _hud_layout else {}
+	var shortcuts_state: Dictionary = _shortcuts_state() if _shortcuts else {}
 	if _settings and not _settings_capture_valid(settings_state, world):
 		_fail_capture("requested Settings view, UI scale or usual 1600x900 window did not match the rendered morning frame")
 		return
 	if _hud_layout and not _hud_layout_capture_valid(hud_layout_state, world):
 		_fail_capture("HUD layout capture did not match its actual paused scale, window, frame or native Close path")
+		return
+	if _shortcuts and (world == null or world.now != 0 or world.clock.phase != SimClock.Phase.MORNING \
+			or not _shortcuts_capture_valid(shortcuts_state)):
+		_fail_capture("shortcuts capture did not show the actual focused F1 panel in the paused morning viewport")
 		return
 	var build: Dictionary = _build_state()
 	if not _build.is_empty() and (build.get("active") != true or build.get("has_ghost") != true \
@@ -3319,6 +3442,9 @@ func _capture() -> void:
 			"requested_ui_scale_percent": _settings_scale,
 			"requested_window_size": [SETTINGS_CAPTURE_SIZE.x, SETTINGS_CAPTURE_SIZE.y],
 			"requested_clear_world": _settings_world, "world_render": world_render})
+	if _shortcuts:
+		metadata["requested_shortcuts_visible"] = true
+		metadata["shortcuts"] = shortcuts_state
 	if _hud_layout:
 		metadata.merge({"requested_hud_layout": true, "hud_layout": hud_layout_state,
 			"requested_ui_scale_percent": 125 if _capture_frame == 12 else 150,

@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- Press 1, 2 or 3 to change game speed, and press F1 to open a grouped keyboard shortcuts panel. (#362)
 - From owner level 2, an occasional announced rush brings a 2.5x burst of arrivals during a 45–75 minute window that fits your opening hours. The morning Menu shows its occasion and start time, and the evening report shows how many guests arrived during the rush and how many later left without a seat or after waiting. The plan is saved with the morning autosave. (#344)
 - Switch the evening report's business trend between the last 7 and 30 days. (#342)
 - Guests leaving a busy bar no longer wait ages to get past people walking the same narrow way, guests held outside a jammed door always come in after a short wait, and the health inspector heads for the door it picked instead of turning back to the nearer one. (#318)
