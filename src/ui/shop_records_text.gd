@@ -63,7 +63,8 @@ static func _value(id: StringName, value: Variant) -> String:
 		&"reputation":
 			return "%.1f stars" % float(value)
 		&"streak":
-			return "%d days" % int(value)
+			var days: int = int(value)
+			return "%d %s" % [days, "day" if days == 1 else "days"]
 	return str(int(value))
 
 

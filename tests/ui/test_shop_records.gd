@@ -10,6 +10,11 @@ func test_empty_records_and_unknown_profit_have_plain_distinct_messages() -> voi
 		["Finish a service day to start your records."] as Array[String])
 	records.record(DayReport.new())
 	assert_true(ShopRecordsText.rows(records.snapshot()).has("Best operating profit: not recorded yet"))
+	assert_true(ShopRecordsText.rows(records.snapshot()).has("Longest run without angry guests: 1 day (day 1)"))
+	var next: DayReport = DayReport.new()
+	next.day = 2
+	records.record(next)
+	assert_true(ShopRecordsText.rows(records.snapshot()).has("Longest run without angry guests: 2 days (day 2)"))
 
 
 func test_most_sold_ties_use_stable_ids_but_only_display_names_reach_players() -> void:
@@ -42,6 +47,12 @@ func test_record_lines_survive_report_roundtrip_and_clear_on_an_old_report() -> 
 	var beaten: Array[StringName] = records.record(day)
 	day.record_lines = ShopRecordsText.new_record_lines(records.snapshot(), beaten)
 	assert_true(day.record_lines.has("New record: most guests in a day (61)!"))
+	assert_true(day.record_lines.has("New record: longest run without angry guests (1 day)!"))
+	var next: DayReport = DayReport.new()
+	next.day = 2
+	var next_beaten: Array[StringName] = records.record(next)
+	assert_true(ShopRecordsText.new_record_lines(records.snapshot(), next_beaten).has(
+		"New record: longest run without angry guests (2 days)!"))
 	var restored: DayReport = DayReport.from_dict(JSON.parse_string(JSON.stringify(day.to_dict())))
 	assert_eq(restored.record_lines, day.record_lines)
 	var panel: Control = REPORT.instantiate() as Control
@@ -69,6 +80,7 @@ func test_zero_first_bests_are_kept_without_celebration_and_a_recorded_loss_stay
 	assert_eq(ShopRecordsText.new_record_lines(records.snapshot(), beaten),
 		["New record: best operating profit (-$5)!"] as Array[String])
 	assert_eq(records.snapshot()["bests"][&"guests"], {"value": 0, "day": 1})
+	assert_true(ShopRecordsText.rows(records.snapshot()).has("Longest run without angry guests: 0 days (day 1)"))
 
 
 func test_goals_records_are_detached_readonly_rows_and_remain_without_a_goal_catalogue() -> void:
