@@ -263,7 +263,7 @@ func test_one_shared_ingredient_shortage_marks_every_recipe_unavailable() -> voi
 			if left.id == right.id:
 				shared = left.id
 	assert_ne(shared, &"", "the fixture recipes share a real ingredient")
-	_start(_full_stock({shared: 0}), [&"burger", &"grilled_cheese"] as Array[StringName])
+	_start(_full_stock({shared: 0}), [first.id, second.id] as Array[StringName])
 	assert_true(_sim.world.clock.start_service())
 	_sim.begin_service_menu_snapshot()
 	assert_true(_sim.service_stockouts_today.has(first.id))
