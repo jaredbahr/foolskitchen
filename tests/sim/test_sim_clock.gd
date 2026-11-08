@@ -251,18 +251,25 @@ func test_phase_signals_forward_and_restored_clock_rebinds() -> void:
 
 
 func test_input_map_binds_space_and_number_keys() -> void:
-	var bindings: Dictionary[StringName, int] = {
-		&"speed_pause": KEY_SPACE, &"speed_1": KEY_1, &"speed_2": KEY_2, &"speed_4": KEY_3,
+	var bindings: Dictionary[StringName, Array] = {
+		&"speed_pause": [KEY_SPACE],
+		&"speed_1": [KEY_1, KEY_KP_1],
+		&"speed_2": [KEY_2, KEY_KP_2],
+		&"speed_3": [KEY_3, KEY_KP_3],
+		&"speed_4": [KEY_3],
 	}
 	for action: StringName in bindings:
 		assert_true(InputMap.has_action(action))
-		var events: Array[InputEvent] = InputMap.action_get_events(action)
-		assert_eq(events.size(), 1)
-		if events.size() == 1:
-			var key: InputEventKey = events[0] as InputEventKey
-			assert_not_null(key)
+		var actual_keys: Array[int] = []
+		for event: InputEvent in InputMap.action_get_events(action):
+			var key: InputEventKey = event as InputEventKey
+			assert_not_null(key, "%s should only contain physical key events" % action)
 			if key != null:
-				assert_eq(key.physical_keycode, bindings[action])
+				actual_keys.append(key.physical_keycode)
+		var expected_keys: Array = bindings[action]
+		actual_keys.sort()
+		expected_keys.sort()
+		assert_eq(actual_keys, expected_keys, "%s physical key bindings" % action)
 
 
 func _small_clock() -> SimClock:

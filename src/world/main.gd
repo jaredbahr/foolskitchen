@@ -226,6 +226,8 @@ var _menu_access_error: String = ""
 var _menu_panel: MenuPanel
 var _staff_panel: StaffPanel
 var _settings_panel: SettingsPanel
+var _shortcuts_panel: ShortcutsPanel
+var _shortcuts_previous_focus: Control
 var _settings_return_to_menu: bool = false
 var _settings_previous_speed: int = 0
 var _quit_title_previous_speed: int = 0
@@ -391,6 +393,9 @@ func _bind_world_presentation() -> void:
 	if not $HUD.is_connected(&"menu_pressed", toggle_menu):
 		$HUD.connect(&"menu_pressed", toggle_menu)
 	_settings_panel = $Overlay/SettingsPanel
+	_shortcuts_panel = $Overlay/ShortcutsPanel
+	if not _shortcuts_panel.close_requested.is_connected(_on_shortcuts_close_requested):
+		_shortcuts_panel.close_requested.connect(_on_shortcuts_close_requested)
 	_settings_panel.bind_preferences(Preferences)
 	_settings_panel.set_quit_to_title_available(true)
 	_settings_panel.set_show_guide_available(true)
@@ -730,8 +735,24 @@ func _unhandled_input(event: InputEvent) -> void:
 		_mark_input_handled()
 		return
 	var key: InputEventKey = event as InputEventKey
+	if is_shortcuts_visible():
+		if key != null and not key.echo:
+			_on_shift_changed(key)
+		if key != null and key.pressed and not key.echo:
+			var shortcuts_code: Key = key.physical_keycode if key.physical_keycode != KEY_NONE else key.keycode
+			if shortcuts_code == KEY_F1:
+				set_shortcuts_visible(false)
+			elif shortcuts_code == KEY_ESCAPE:
+				set_shortcuts_visible(false)
+		_mark_input_handled()
+		return
 	if key != null and key.pressed and not key.echo:
 		var code: Key = key.physical_keycode if key.physical_keycode != KEY_NONE else key.keycode
+		if code == KEY_F1:
+			if not Clock.text_entry_has_focus():
+				set_shortcuts_visible(true)
+			_mark_input_handled()
+			return
 		if code == KEY_F10:
 			start_over()
 			return
@@ -3658,6 +3679,39 @@ func set_settings_visible(value: bool) -> bool:
 
 func is_settings_visible() -> bool:
 	return _settings_panel != null and _settings_panel.visible
+
+
+func set_shortcuts_visible(value: bool) -> bool:
+	if _shortcuts_panel == null:
+		return false
+	if _shortcuts_panel.visible == value:
+		return true
+	if value:
+		var viewport: Viewport = get_viewport()
+		_shortcuts_previous_focus = viewport.gui_get_focus_owner() if viewport != null else null
+		_shortcuts_panel.visible = true
+		_shortcuts_panel.focus_close_button()
+	else:
+		_shortcuts_panel.visible = false
+		var had_previous_focus: bool = is_instance_valid(_shortcuts_previous_focus)
+		var previous: Control = _shortcuts_previous_focus if had_previous_focus else null
+		_shortcuts_previous_focus = null
+		if had_previous_focus and previous.is_inside_tree() and previous.is_visible_in_tree() \
+				and previous.focus_mode != Control.FOCUS_NONE:
+			previous.grab_focus()
+		else:
+			var viewport: Viewport = get_viewport()
+			if viewport != null:
+				viewport.gui_release_focus()
+	return true
+
+
+func is_shortcuts_visible() -> bool:
+	return _shortcuts_panel != null and _shortcuts_panel.visible
+
+
+func _on_shortcuts_close_requested() -> void:
+	set_shortcuts_visible(false)
 
 
 func _on_menu_settings_requested() -> void:
