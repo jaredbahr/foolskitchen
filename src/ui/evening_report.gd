@@ -12,6 +12,10 @@ const MONEY_LABELS: Dictionary = {
 	Ledger.LOAN_REPAYMENT: "Loan repayment",
 	Ledger.MILESTONE_BONUS: "Milestone bonus",
 	Ledger.WEEKLY_CHALLENGE_BONUS: "Weekly challenge",
+
+
+	Ledger.BOOKING_DEPOSIT: "Booking deposit",
+	Ledger.BOOKING_REFUND: "Booking refund",
 }
 
 const LEAVE_LABELS: Dictionary = {
@@ -158,15 +162,27 @@ func show_report(report: DayReport) -> void:
 		mishaps.get_parent().move_child(inspection, mishaps.get_index() + 1)
 	inspection.text = "\n".join(PackedStringArray(report.inspection_lines))
 	inspection.visible = not report.inspection_lines.is_empty()
+	var bookings: Label = get_node_or_null("Panel/Scroll/Content/Bookings") as Label
+	if bookings == null and not report.booking_lines.is_empty():
+		bookings = Label.new()
+		bookings.name = "Bookings"
+		bookings.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		inspection.get_parent().add_child(bookings)
+		inspection.get_parent().move_child(bookings, inspection.get_index() + 1)
+	if bookings != null:
+		bookings.text = "\n".join(PackedStringArray(report.booking_lines))
+		bookings.visible = not report.booking_lines.is_empty()
 	var rush_hour: Label = get_node_or_null("Panel/Scroll/Content/RushHour") as Label
 	if rush_hour == null:
 		rush_hour = Label.new()
 		rush_hour.name = "RushHour"
 		rush_hour.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		inspection.get_parent().add_child(rush_hour)
-		inspection.get_parent().move_child(rush_hour, inspection.get_index() + 1)
+	inspection.get_parent().move_child(rush_hour, inspection.get_index() + 1)
 	rush_hour.text = "\n".join(PackedStringArray(report.rush_hour_lines))
 	rush_hour.visible = not report.rush_hour_lines.is_empty()
+	if bookings != null:
+		inspection.get_parent().move_child(bookings, rush_hour.get_index() + 1)
 	regulars_summary.text = "Regulars: " + "; ".join(PackedStringArray(report.regulars_lines))
 	regulars_summary.visible = not report.regulars_lines.is_empty()
 	critic_heading.text = report.critic_lines[0] if not report.critic_lines.is_empty() else ""
@@ -455,7 +471,10 @@ func _fill_milestones(milestones: Array[Dictionary]) -> void:
 func _fill_money(rows: GridContainer, amounts: Dictionary, empty_text: String) -> void:
 	_clear(rows)
 	for id: String in _sorted_ids(amounts):
-		_add_row(rows, String(MONEY_LABELS.get(StringName(id), id.capitalize())), _money(int(amounts[StringName(id)])))
+		var title: String = String(MONEY_LABELS.get(StringName(id), id.capitalize()))
+		if rows == _costs and StringName(id) == Ledger.BOOKING_DEPOSIT:
+			title = "Deposit taken off the bill"
+		_add_row(rows, title, _money(int(amounts[StringName(id)])))
 	if amounts.is_empty() and not empty_text.is_empty():
 		_add_row(rows, empty_text, "")
 

@@ -133,6 +133,8 @@ func tick(world: SimWorld) -> void:
 		return
 	if not _maintain_claim(world):
 		return
+	if _yield_travelling_mop_for_booking(world):
+		return
 	_run_step(world)
 	_recover_no_progress(world)
 
@@ -153,6 +155,28 @@ func _maintain_claim(world: SimWorld) -> bool:
 		_drop(world, &"timeout")
 		return false
 	return true
+
+
+## Only travel to an unstarted floor mop may yield. Productive work, service
+## and carried meals keep their claims. clear_path preserves a real mid-edge
+## stop; the new bus claim cannot move or work again in this same tick.
+func _yield_travelling_mop_for_booking(world: SimWorld) -> bool:
+	if task.kind != &"clean_spot" or step_index != 0 or task.steps.is_empty() \
+			or task.steps[0].kind != TaskStep.Kind.GO_TO_CELL \
+			or world.board.get_task(task.id) != task or world.booking_hold == null:
+		return false
+	for candidate: SimTask in world.open_tasks_this_tick():
+		if candidate.state != SimTask.State.OPEN or world.board.get_task(candidate.id) != candidate \
+				or candidate.kind != &"bus_table" or _score(world, candidate) <= 0.0 \
+				or not world.booking_hold.prioritizes_bussing(world, candidate.first_item_id()):
+			continue
+		var mop: SimTask = task
+		_let_go(world)
+		world.board.drop(mop, &"reserved_bussing", false)
+		world.log_event("%s paused mopping for reserved table cleanup" % _name())
+		_try_claim(world)
+		return true
+	return false
 
 
 func _recover_no_progress(world: SimWorld) -> void:
@@ -185,6 +209,7 @@ func why() -> String:
 func _try_claim(world: SimWorld) -> void:
 	var candidates: Array[SimTask] = world.open_tasks_this_tick()
 	var scores: Dictionary[int, float] = {}
+	var reserved_buses: Dictionary[int, bool] = {}
 	var highest_priorities: Dictionary[StringName, int] = {}
 	var highest_job_level: int = StaffJobPriorities.Level.OFF
 	var fallback_cleaning: bool = _can_fallback_clean(world)
@@ -205,6 +230,9 @@ func _try_claim(world: SimWorld) -> void:
 				score *= 1.0 + urgency_tuning.guest_weight * GuestUrgency.of_task(world, t)
 		scores[t.id] = score
 		if score > 0.0:
+			if t.kind == &"bus_table" and world.booking_hold != null \
+					and world.booking_hold.prioritizes_bussing(world, t.first_item_id()):
+				reserved_buses[t.id] = true
 			if fallback_cleaning and t.role == &"server":
 				service_work_open = true
 			var job_level: int = _job_level(t)
@@ -217,7 +245,14 @@ func _try_claim(world: SimWorld) -> void:
 	var best: SimTask = null
 	var best_score := 0.0
 	for t: SimTask in candidates:
-		if world.board.get_task(t.id) != t or not _eligible(t, highest_job_level, highest_priorities):
+		if world.board.get_task(t.id) != t:
+			continue
+		# A reservation is a temporary promise: its eligible cleanup precedes
+		# other positive saved job tiers. _score still makes OFF/roles absolute.
+		if not reserved_buses.is_empty():
+			if not reserved_buses.has(t.id) or t.state != SimTask.State.OPEN:
+				continue
+		elif not _eligible(t, highest_job_level, highest_priorities):
 			continue
 		# Legacy agents and the Floor-mode owner retain the original mop fallback.
 		# Configured employees instead use the saved job tier above distance.
@@ -248,6 +283,9 @@ func _eligible(t: SimTask, job_level: int, highest_priorities: Dictionary[String
 ## over distance to the first target.
 func _score(world: SimWorld, t: SimTask) -> float:
 	if _job_level(t) == StaffJobPriorities.Level.OFF:
+		return 0.0
+	if t.state == SimTask.State.OPEN and t.kind == &"bus_table" \
+			and world.booking_hold != null and world.booking_hold.defers_bussing(world, t.first_item_id()):
 		return 0.0
 	var for_role := t.role
 	var role_prio: int = priorities.get(for_role, 0)

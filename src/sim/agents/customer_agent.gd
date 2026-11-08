@@ -75,6 +75,10 @@ var leave_reason: StringName = &"happy"
 var paid: bool = false
 ## A multi-guest visit shares only its bounded table search, never its order.
 var party: Party = null
+## Booked guests prefer this menu dish when it remains cookable; ordinary
+## guests keep their existing single private draw unchanged.
+var booking_recipe_id: StringName = &""
+var booking_recipe_preference: float = 0.0
 ## Detached preferences captured before arrival. Existing guests never change type.
 var customer_type_id: StringName = &"regular"
 var customer_type_name: String = "Regular"
@@ -424,6 +428,7 @@ func mood_band() -> int:
 func review_visit(standard_price: int, dirt_fraction: float = 0.0) -> ReviewVisit:
 	var visit: ReviewVisit = ReviewVisit.new()
 	visit.served = paid
+	visit.was_seated = seat_cell != SimGrid.NO_CELL
 	visit.closing = leave_reason == &"closing"
 	visit.queue_wait_fraction = float(maxi(0, _queue_wait)) / float(maxi(1, queue_patience))
 	visit.food_wait_fraction = float(maxi(0, _food_wait)) / float(maxi(1, food_patience))
@@ -500,7 +505,18 @@ func _book_table(world: SimWorld, walk: bool) -> bool:
 	var sim: RestaurantSim = _restaurant.get_ref() as RestaurantSim
 	var keeping_up: Callable = sim.patio_keeping_up if sim != null else Callable()
 	var seen: Dictionary[int, bool] = {}
-	for table: PlacedItem in _seat_order(world):
+	var tables: Array[PlacedItem] = _seat_order(world)
+	if party != null and party.booking_owned and world.booking_hold != null:
+		var preferred_id: int = world.booking_hold.group_for_booking(world, party.booking_id)
+		party.preferred_group_id = preferred_id
+		if preferred_id > 0:
+			for index: int in tables.size():
+				if PartySeating.table_group_id(tables[index], world.grid) == preferred_id:
+					var preferred: PlacedItem = tables[index]
+					tables.remove_at(index)
+					tables.push_front(preferred)
+					break
+	for table: PlacedItem in tables:
 		# Physical ownership remains on the table linked to the chosen seat.
 		var definition: ItemDef = table.def as ItemDef
 		if definition != null and definition.category != ItemDef.Category.TABLE:
@@ -509,6 +525,9 @@ func _book_table(world: SimWorld, walk: bool) -> bool:
 		if seen.has(group_id):
 			continue
 		seen[group_id] = true
+		if world.booking_hold != null and world.booking_hold.blocks_group(world, group_id,
+				party.booking_id if party != null and party.booking_owned else 0):
+			continue
 		if sim != null and sim.kitchen != null and sim.kitchen.is_dining_group_dirty(table.id):
 			continue
 		if PartySeating.held_for_earlier_party(table, id, world):
@@ -1065,6 +1084,17 @@ func _take_order(server: SimAgent) -> bool:
 		_leave(sim.world, sim, &"out_of_stock")
 		return true
 	var recipe: RecipeDef = choices[rng.randi_range(0, choices.size() - 1)]
+	if party != null and party.booking_owned and not booking_recipe_id.is_empty():
+		var preferred_available: bool = false
+		for choice: RecipeDef in choices:
+			if choice.id == booking_recipe_id:
+				preferred_available = true
+				break
+		if preferred_available and rng.randf() < booking_recipe_preference:
+			for choice: RecipeDef in choices:
+				if choice.id == booking_recipe_id:
+					recipe = choice
+					break
 	# Keep the ordinary private pick; a returning guest chooses the usual
 	# only while it is genuinely available in this visit's menu section.
 	if regular_profile != null:

@@ -186,6 +186,7 @@ var _lot: Rect2i = Rect2i()
 var _shell_windows: Dictionary[Vector2i, Vector2i] = {}
 var selection_outline: BoundsOutline
 var _selected_item_id: int = -1
+var _booking_marker: Label3D
 var _selection_bounds: AABB
 ## How full each storage kind is, 0..1 (FK-087). Shelves show their stock
 ## crates in proportion. View only; Main sends it when stock changes.
@@ -221,6 +222,8 @@ func show_world(value: SimWorld, maximum_reserve: Rect2i = Rect2i()) -> void:
 	cat_view = null
 	_cat_source = null
 	var previous_world: SimWorld = world
+	if previous_world != value and _booking_marker != null:
+		_booking_marker.visible = false
 	_neighbourhood_reserve = maximum_reserve
 	_disconnect_grid()
 	mood_nodes.clear()
@@ -307,6 +310,54 @@ func show_world(value: SimWorld, maximum_reserve: Rect2i = Rect2i()) -> void:
 	_apply_paint()
 	_connect_grid()
 	_process(0.0)
+
+
+## A compact world label identifies the exact joined group currently held for a booking.
+func set_booking_marker(group_id: int, text: String) -> void:
+	if world == null or group_id <= 0 or text.is_empty():
+		if _booking_marker != null:
+			_booking_marker.visible = false
+		return
+	_ensure_booking_marker()
+	var leader: PlacedItem = world.grid.item(group_id)
+	if leader == null or PartySeating.table_group_id(leader, world.grid) != group_id:
+		_booking_marker.visible = false
+		return
+	var members: Array[int] = PartySeating.table_group_members(leader, world.grid)
+	var points: Array[Vector3] = []
+	for member_id: int in members:
+		var table: PlacedItem = world.grid.item(member_id)
+		if table == null:
+			_booking_marker.visible = false
+			return
+		for cell: Vector2i in table.cells:
+			points.append(GridMath.cell_to_world(cell))
+	if points.is_empty():
+		_booking_marker.visible = false
+		return
+	var center: Vector3 = Vector3.ZERO
+	for point: Vector3 in points:
+		center += point
+	_booking_marker.position = center / float(points.size()) + Vector3.UP * 3.5
+	_booking_marker.text = text
+	_booking_marker.visible = true
+
+
+func _ensure_booking_marker() -> void:
+	if _booking_marker != null:
+		return
+	_booking_marker = Label3D.new()
+	_booking_marker.name = "BookingReservationMarker"
+	_booking_marker.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	_booking_marker.no_depth_test = true
+	_booking_marker.fixed_size = true
+	_booking_marker.font_size = 22
+	_booking_marker.pixel_size = 0.003
+	_booking_marker.modulate = Color("f4e7c9")
+	_booking_marker.outline_size = 4
+	_booking_marker.outline_modulate = Color("3b2b1d")
+	_booking_marker.visible = false
+	add_child(_booking_marker)
 
 
 ## Read-only kitchen dressing is rebound with the same session as the world.

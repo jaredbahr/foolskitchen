@@ -55,6 +55,34 @@ func test_complete_and_cancel() -> void:
 	assert_eq(b.active_count(), 0)
 
 
+func test_voluntary_yields_preserve_identity_failure_count_and_signal_state() -> void:
+	var board: TaskBoard = TaskBoard.new()
+	var task: SimTask = _task()
+	var observations: Array[Dictionary] = []
+	var failures: Array[StringName] = []
+	board.task_dropped.connect(func(dropped: SimTask, agent_id: int, reason: StringName) -> void:
+		observations.append({"state": dropped.state, "claimant": dropped.claimed_by,
+			"claimed_tick": dropped.claimed_tick, "drops": dropped.drops, "agent": agent_id, "reason": reason}))
+	board.task_failed.connect(func(_task: SimTask, reason: StringName) -> void: failures.append(reason))
+	var original_id: int = board.post(task, 12)
+	for attempt: int in TaskBoard.MAX_DROPS - 1:
+		assert_true(board.claim(task, 4, 20 + attempt))
+		board.drop(task, &"stuck")
+	for attempt: int in 5:
+		assert_true(board.claim(task, 4, 30 + attempt))
+		board.drop(task, &"reserved_bussing", false)
+		assert_eq(board.get_task(original_id), task)
+		assert_eq(task.posted_tick, 12)
+		assert_eq(task.drops, TaskBoard.MAX_DROPS - 1)
+		assert_eq(observations[-1], {"state": SimTask.State.OPEN, "claimant": -1,
+			"claimed_tick": -1, "drops": TaskBoard.MAX_DROPS - 1, "agent": 4, "reason": &"reserved_bussing"})
+	assert_true(failures.is_empty(), "voluntary scheduling is not failed work")
+	assert_true(board.claim(task, 4, 40))
+	board.drop(task, &"stuck")
+	assert_eq(task.state, SimTask.State.CANCELLED, "the next real failure still reaches the ordinary threshold")
+	assert_eq(failures, [&"dropped_too_often"] as Array[StringName])
+
+
 func test_open_tasks_in_post_order() -> void:
 	var b := TaskBoard.new()
 	var ids: Array[int] = []

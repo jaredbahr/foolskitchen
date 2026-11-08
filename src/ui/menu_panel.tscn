@@ -117,6 +117,35 @@ layout_mode = 2
 mouse_filter = 2
 text = "Sunny today"
 
+[node name="BookingOffer" type="VBoxContainer" parent="Panel/Content"]
+visible = false
+layout_mode = 2
+
+[node name="Heading" type="Label" parent="Panel/Content/BookingOffer"]
+layout_mode = 2
+text = "Tomorrow's booking"
+theme_override_font_sizes/font_size = 20
+
+[node name="Details" type="Label" parent="Panel/Content/BookingOffer"]
+layout_mode = 2
+autowrap_mode = 3
+
+[node name="Reserved" type="Label" parent="Panel/Content/BookingOffer"]
+visible = false
+layout_mode = 2
+autowrap_mode = 3
+
+[node name="Buttons" type="HBoxContainer" parent="Panel/Content/BookingOffer"]
+layout_mode = 2
+
+[node name="Accept" type="Button" parent="Panel/Content/BookingOffer/Buttons"]
+layout_mode = 2
+text = "Accept"
+
+[node name="Decline" type="Button" parent="Panel/Content/BookingOffer/Buttons"]
+layout_mode = 2
+text = "Decline"
+
 [node name="LeaseOffer" type="VBoxContainer" parent="Panel/Content"]
 visible = false
 layout_mode = 2
