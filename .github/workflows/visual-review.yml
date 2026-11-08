@@ -146,6 +146,7 @@ jobs:
           bash tools/screenshot.sh --out=screens/visual-review/blueprint-looks --scene=res://tools/blueprint_looks_review.tscn --speed=0 --frames=12,60
           FK_MENU_REVIEW_STAGE=open bash tools/screenshot.sh --out=screens/visual-review/menu-access-open --scene=res://tools/menu_access_review.tscn --speed=0 --frames=12
           bash tools/screenshot.sh --out=screens/visual-review/settings --settings --speed=0 --frames=12
+          bash tools/screenshot.sh --out=screens/visual-review/shortcuts --shortcuts --speed=0 --frames=12
           bash tools/screenshot.sh --out=screens/visual-review/settings-world --settings-world --speed=0 --frames=90
           bash tools/screenshot.sh --out=screens/visual-review/hud-1280 --hud-layout --window-size=1280x720 --speed=0 --frames=12,90
           bash tools/screenshot.sh --out=screens/visual-review/hud-1600 --hud-layout --window-size=1600x900 --speed=0 --frames=12,90
@@ -196,6 +197,7 @@ jobs:
           captures += [('paint', -1, False, False, 60)]
           captures += [('build-green', 0, False, False, 12), ('build-red', 0, False, False, 12)]
           captures += [('settings', -1, False, False, 12)]
+          captures += [('shortcuts', -1, False, False, 12)]
           captures += [('settings-world', -1, False, False, 90)]
           observed_bands = set()
           for name, requested, inspect_guest, debug, frame in captures:
@@ -214,6 +216,17 @@ jobs:
                   review = data.get('milestone_review')
                   assert isinstance(review, dict) and isinstance(review.get('fixture'), dict) and isinstance(review.get('state'), dict), f'{name}: missing GDScript-validated milestone evidence'
                   assert review['state'].get('frame') == frame, f'{name}: milestone evidence frame does not match this image'
+              if name == 'shortcuts':
+                  shortcuts = data.get('shortcuts')
+                  assert isinstance(shortcuts, dict), 'shortcuts: missing runtime panel evidence'
+                  assert data.get('requested_shortcuts_visible') is True and shortcuts.get('visible') is True, 'shortcuts: production F1 path did not leave the panel visible'
+                  assert shortcuts.get('close_button_focused') is True, 'shortcuts: Close did not receive actual focus'
+                  assert shortcuts.get('input') == {'delivery': 'Viewport.push_input', 'key': 'F1', 'frame': 3}, 'shortcuts: capture was not opened through the actual viewport F1 event'
+                  assert shortcuts.get('group_headings') == ['Game', 'Owner', 'Build'], 'shortcuts: wrong visible groups/order'
+                  assert shortcuts.get('row_count') == shortcuts.get('expected_row_count') and shortcuts['row_count'] > 0, 'shortcuts: visible table rows are incomplete'
+                  assert shortcuts.get('column_count') == 2 and shortcuts.get('two_cell_rows') is True, 'shortcuts: expected key/action two-column rows'
+                  x, y, width, height = shortcuts['panel_bounds']
+                  assert width > 0 and height > 0 and x >= 0 and y >= 0 and x + width <= data['width'] and y + height <= data['height'], 'shortcuts: panel card is outside the viewport'
               assert data['requested_quarter'] == requested, f'{name}: wrong requested quarter'
               assert data['actual_quarter'] == expected, f'{name}: wrong actual quarter'
               assert math.isclose(data['yaw_degrees'], 45 + 90 * expected, abs_tol=0.01), f'{name}: wrong rendered yaw'
