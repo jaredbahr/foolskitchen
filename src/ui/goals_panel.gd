@@ -13,10 +13,26 @@ var _progress: Dictionary[StringName, float] = {}
 var _owner_level: int = 1
 var _active_ids: Array[StringName] = []
 var _completed_known_ids: Array[StringName] = []
+var _record_lines: Array[String] = ["Finish a service day to start your records."]
 
 
 func _ready() -> void:
 	_render()
+	_render_records()
+
+
+## Detached display text only; Main owns the saved lifetime observations.
+func set_records(lines: Array[String]) -> void:
+	_record_lines = lines.duplicate()
+	_render_records()
+
+
+func _render_records() -> void:
+	var rows: VBoxContainer = %RecordsRows as VBoxContainer
+	_clear_rows(rows)
+	for line: String in _record_lines:
+		var label: Label = _add_label(rows, "Record%d" % rows.get_child_count(), line)
+		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 
 
 ## Stores detached read-only display inputs; no model or caller collection is mutated.

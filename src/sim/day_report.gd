@@ -62,6 +62,8 @@ var inspection_lines: Array[String] = []
 var critic_lines: Array[String] = []
 ## Optional event cohort summary; absent on ordinary days to preserve old saves.
 var rush_hour_lines: Array[String] = []
+## Detached record notices for this close; old reports omit them.
+var record_lines: Array[String] = []
 ## Optional purchase-basis accounting. Historical reports retain their cash
 ## basis; missing historical ingredient prices are never fabricated.
 var stock_values_recorded: bool = false
@@ -225,6 +227,8 @@ func to_dict() -> Dictionary:
 		result["critic_lines"] = critic_lines.duplicate()
 	if not rush_hour_lines.is_empty():
 		result["rush_hour_lines"] = rush_hour_lines.duplicate()
+	if not record_lines.is_empty():
+		result["record_lines"] = record_lines.duplicate()
 	return result
 
 
@@ -301,6 +305,11 @@ static func from_dict(data: Dictionary) -> DayReport:
 			if line is String:
 				report.rush_hour_lines.append(line)
 	var recorded: Variant = data.get("stock_values_recorded", false)
+	var saved_record_lines: Variant = data.get("record_lines", [])
+	if saved_record_lines is Array:
+		for line: Variant in saved_record_lines:
+			if line is String:
+				report.record_lines.append(line)
 	report.stock_values_recorded = recorded is bool and recorded
 	for field: String in ["food_cost", "stock_bought", "spoiled_stock", "stock_on_hand"]:
 		var value: int = PurchaseBasis.decode(data.get(field, null))
