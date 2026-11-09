@@ -38,6 +38,8 @@ var buy_swatch_id: StringName = &""
 var buy_variant_id: StringName = &""
 var committed_warning_ids: Array[int] = []
 var committed_seat_warnings: Dictionary[int, String] = {}
+## Aisle pinch cells (#389) of the last committed placement, until the layout changes.
+var committed_aisle_pinches: Array[Vector2i] = []
 ## Walls tool: the kind new edges get, the hovered edge and the dragged run.
 var wall_kind: SimGrid.Segment = SimGrid.Segment.WALL
 var wall_hover_edge: Vector3i = SimGrid.NO_EDGE
@@ -154,6 +156,7 @@ func bind_session(editor: ShopEditor, world: SimWorld, content: ContentDB,
 	_clear_ghost(State.INACTIVE)
 	committed_warning_ids.clear()
 	committed_seat_warnings.clear()
+	committed_aisle_pinches.clear()
 	_topology_dirty = false
 	if _grid != null:
 		_grid.cells_changed.connect(_on_cells_changed)
@@ -601,6 +604,12 @@ func seat_warnings() -> Dictionary[int, String]:
 		if _proposal_active() and current_check.ok else committed_seat_warnings.duplicate()
 
 
+## Cells where a used walkway narrows to one cell (#389), highlighted with the warning.
+func aisle_pinches() -> Array[Vector2i]:
+	return current_check.aisle_pinches.duplicate() \
+		if _proposal_active() and current_check.ok else committed_aisle_pinches.duplicate()
+
+
 ## Invalid actions take precedence; permitted layouts may still lose seats.
 func feedback_text() -> String:
 	if _proposal_active() and not current_check.ok and not current_check.why.is_empty():
@@ -622,7 +631,7 @@ func presentation_state() -> Dictionary:
 		"origin": origin, "quarter_turns": quarter_turns, "grab_offset": grab_offset,
 		"check_ok": current_check.ok, "why": current_check.why,
 		"unreachable": current_check.unreachable.duplicate(),
-		"seat_warnings": seat_warnings(),
+		"seat_warnings": seat_warnings(), "aisle_pinches": aisle_pinches(),
 		"feedback": feedback_text(),
 		"committed_warning_ids": committed_warning_ids.duplicate(), "warning_ids": warning_ids(),
 		"wall_kind": int(wall_kind), "wall_changes": wall_changes.duplicate(),
@@ -705,6 +714,7 @@ func _refresh_committed() -> void:
 	if check.ok:
 		committed_warning_ids = check.unreachable.duplicate()
 		committed_seat_warnings = check.seat_warnings.duplicate()
+		committed_aisle_pinches = check.aisle_pinches.duplicate()
 	_topology_dirty = false
 
 

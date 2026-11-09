@@ -35,6 +35,8 @@ const ROOM_LABEL_OUTLINE: Color = Color("3b2a20")
 ## Hygiene overview uses an existing paint colour, separate from edit ghosts.
 const HYGIENE_SWATCH: SwatchDef = preload("res://data/swatches/clay.tres")
 const HYGIENE_ALPHA: float = 0.5
+## Aisle pinch tiles (#389) share the warning outline's red, see-through.
+const AISLE_ALPHA: float = 0.7
 
 var blueprint_ghosts: Array[ItemVisual] = []
 var blueprint_selection_mesh: MeshInstance3D
@@ -42,6 +44,8 @@ var ghost_mesh: ItemVisual
 var work_markers: Array[MeshInstance3D] = []
 var seat_markers: Array[MeshInstance3D] = []
 var warning_nodes: Dictionary[int, Node3D] = {}
+## Aisle pinch cells (#389): one merged tile mesh in the warning colour.
+var aisle_mesh: MeshInstance3D
 ## Walls tool ghosts (FK-070), one per proposed edge change.
 var wall_ghosts: Array[MeshInstance3D] = []
 ## Floor tool ghost (one merged mesh) and the cells it covers.
@@ -94,6 +98,14 @@ func displayed_warning_ids() -> Array[int]:
 	ids.assign(warning_nodes.keys())
 	ids.sort()
 	return ids
+
+
+## The aisle pinch cells (#389) currently highlighted.
+func displayed_aisle_pinches() -> Array[Vector2i]:
+	var cells: Array[Vector2i] = []
+	if is_instance_valid(aisle_mesh):
+		cells.assign(aisle_mesh.get_meta("cells", []))
+	return cells
 
 
 ## Only this derived display data is retained; no cleaning state is owned here.
@@ -334,6 +346,10 @@ func refresh() -> void:
 			var item: PlacedItem = _shop_view.world.grid.item(id)
 			if item != null and item.def is ItemDef:
 				_build_warning(id, item.def as ItemDef, item.origin, item.quarter_turns)
+	var pinches: Array[Vector2i] = []
+	pinches.assign(snapshot.get("aisle_pinches", []))
+	if snapshot.get("active", false) and not pinches.is_empty():
+		_build_aisle_pinches(pinches)
 	_show_floor_preview(floor_preview)
 	_refresh_hygiene_geometry()
 	_set_reason(reason)
@@ -452,6 +468,9 @@ func _clear_geometry() -> void:
 	if is_instance_valid(patio_lot):
 		_free_node(patio_lot)
 	patio_lot = null
+	if is_instance_valid(aisle_mesh):
+		_free_node(aisle_mesh)
+	aisle_mesh = null
 	work_markers.clear()
 	seat_markers.clear()
 	for node: Node3D in warning_nodes.values():
@@ -834,6 +853,19 @@ static func _tile_mesh(cells: Array[Vector2i], height: float, inset: float,
 			surface.set_normal(Vector3.UP)
 			surface.add_vertex(corners[index])
 	return surface.commit()
+
+
+## The squeezed cells of a used walkway, tinted like the item warning outline.
+func _build_aisle_pinches(cells: Array[Vector2i]) -> void:
+	aisle_mesh = MeshInstance3D.new()
+	aisle_mesh.name = "AislePinches"
+	aisle_mesh.mesh = _tile_mesh(cells, 0.045, 0.03, _ground_heights(cells))
+	var tint: Color = INVALID_COLOR
+	tint.a = AISLE_ALPHA
+	aisle_mesh.material_override = _material(tint, true)
+	aisle_mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	aisle_mesh.set_meta("cells", cells.duplicate())
+	add_child(aisle_mesh)
 
 
 func _build_warning(id: int, definition: ItemDef, origin: Vector2i, turns: int) -> void:

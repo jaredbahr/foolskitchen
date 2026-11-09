@@ -15,6 +15,10 @@ var seat_warnings: Dictionary[int, String] = {}
 ## ShopEditor keeps on that item until the next layout change.
 var seat_cut_warning: String = ""
 var seat_cut_id: int = 0
+## A placement-time aisle pinch warning (#389): the cells on a used walkway
+## the proposal newly narrows to one cell, and the item the warning is on.
+var aisle_pinches: Array[Vector2i] = []
+var aisle_id: int = 0
 ## Enabled dishes the proposal would take off sale (FK-100), in menu order.
 var menu_losses: Array[RecipeDef] = []
 var menu_warning: String = ""

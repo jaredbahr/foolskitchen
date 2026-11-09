@@ -4,7 +4,7 @@ extends TestCase
 const MAIN: PackedScene = preload("res://src/world/main.tscn")
 ## Fixed restock/save-policy cases choose genuine manual stock targets.
 const MANUAL_MAIN: GDScript = preload("res://tests/fixtures/manual_restock_main.gd")
-const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
+const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_deeper.tres")
 const TUNING: EconomyTuning = preload("res://data/balance/tier1_economy.tres")
 const PROGRESSION: ProgressionTuning = preload("res://data/balance/progression.tres")
 const SLOT: String = "shop_edit"
@@ -40,7 +40,7 @@ func test_morning_items_and_books_round_trip_through_the_shop_provider() -> void
 	var before_cash: int = Economy.cash
 	assert_true(first.call("shop_buy", &"chair", _authored_origin(&"table_2") + Vector2i(1, 2)))
 	assert_eq(Economy.cash, before_cash - price)
-	assert_true(first.call("shop_move", _id(first, &"potted_plant"), Vector2i(11, 9), 1))
+	assert_true(first.call("shop_move", _id(first, &"potted_plant"), Vector2i(13, 12), 1))
 	assert_eq(FileAccess.get_file_as_string(_path()), original_file, "edits do not introduce another autosave boundary")
 	assert_eq(SaveSystem.save_game(SLOT), OK)  # An explicit MORNING save.
 	assert_false(_document()["data"].has("shop_session"))
@@ -66,7 +66,7 @@ func test_morning_items_and_books_round_trip_through_the_shop_provider() -> void
 
 func test_old_morning_save_without_shop_uses_original_layout() -> void:
 	var first: Node = _start()
-	assert_true(first.call("shop_move", _id(first, &"potted_plant"), Vector2i(11, 9), 2))
+	assert_true(first.call("shop_move", _id(first, &"potted_plant"), Vector2i(13, 12), 2))
 	assert_eq(SaveSystem.save_game(SLOT), OK)
 	var document: Dictionary = _document()
 	document["data"].erase("shop")
@@ -110,7 +110,7 @@ func test_invalid_shop_starts_fresh_skips_one_save_then_autosaves_next_morning()
 
 func test_non_morning_save_is_rejected_without_rebuilding_its_items() -> void:
 	var first: Node = _start()
-	assert_true(first.call("shop_move", _id(first, &"potted_plant"), Vector2i(11, 9), 2))
+	assert_true(first.call("shop_move", _id(first, &"potted_plant"), Vector2i(13, 12), 2))
 	assert_eq(SaveSystem.save_game(SLOT), OK)
 	var document: Dictionary = _document()
 	document["data"]["clock"]["phase"] = SimClock.Phase.CLOSED
@@ -130,7 +130,7 @@ func test_restore_callback_only_stages_a_decoded_layout() -> void:
 	var before: Dictionary = editor.to_dict()
 	var saved: Dictionary = before.duplicate(true)
 	var plant: Dictionary = _saved_item(saved, "potted_plant")
-	plant["origin"] = [11, 9]
+	plant["origin"] = [13, 12]
 	var world: SimWorld = main.get("world")
 	assert_true(main.call("_restore_shop", saved))
 	assert_true(main.get("world") == world)

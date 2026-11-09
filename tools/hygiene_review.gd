@@ -15,18 +15,18 @@ func _ready() -> void:
 		push_error("Hygiene review needs a fresh shop")
 		return
 	var plant: PlacedItem = ShopBuilder.items_with_def(world, &"potted_plant")[0]
-	if not shop_move(plant.id, Vector2i(11, 9), 0) \
-			or not shop_rooms({Vector2i(12, 8): SimGrid.Room.RESTROOM,
-			Vector2i(12, 9): SimGrid.Room.RESTROOM} as Dictionary[Vector2i, int]) \
-			or not shop_buy(&"toilet", Vector2i(12, 9), 0):
+	if not shop_move(plant.id, Vector2i(11, 10), 0) \
+			or not shop_rooms({Vector2i(12, 9): SimGrid.Room.RESTROOM,
+			Vector2i(12, 10): SimGrid.Room.RESTROOM} as Dictionary[Vector2i, int]) \
+			or not shop_buy(&"toilet", Vector2i(12, 10), 0):
 		push_error("Hygiene review could not prepare its restroom")
 		return
 	# Keep the problems above the catalogue in the fixed quarter-2 capture.
 	var table: PlacedItem = ShopBuilder.items_with_def(world, &"table_2")[2]
 	sim.kitchen.mark_table_dirty(table.id)
-	sim.restroom_used(Vector2i(12, 8))
-	var floor_cells: Array[Vector2i] = [Vector2i(9, 8), Vector2i(10, 8), Vector2i(11, 8),
-		Vector2i(9, 9), Vector2i(10, 9), Vector2i(8, 9), Vector2i(8, 8), Vector2i(9, 5)]
+	sim.restroom_used(Vector2i(12, 9))
+	var floor_cells: Array[Vector2i] = [Vector2i(9, 9), Vector2i(10, 9), Vector2i(11, 9),
+		Vector2i(9, 10), Vector2i(10, 10), Vector2i(8, 10), Vector2i(8, 9), Vector2i(9, 5)]
 	for attempt: int in range(32):
 		sim.cleanliness.try_spawn_at_departed_seat(floor_cells[attempt % floor_cells.size()])
 		if sim.cleanliness.spot_count() == 2:

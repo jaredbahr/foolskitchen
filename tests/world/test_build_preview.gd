@@ -170,7 +170,7 @@ func test_valid_and_invalid_tints_are_private_and_reason_matches_editor() -> voi
 	var placeholder_color: Color = _content.item(&"potted_plant").placeholder_color
 	assert_true(_mode.enter())
 	assert_true(_mode.pick_up(id))
-	_mode.update_origin(Vector2i(11, 9))
+	_mode.update_origin(Vector2i(12, 6))  # clear of every aisle (#389)
 	assert_true(_mode.current_check.ok)
 	assert_false(original.visible)
 	var green: StandardMaterial3D = _preview.ghost_mesh.primary_body_material() as StandardMaterial3D
@@ -311,7 +311,7 @@ func test_buy_zero_warning_becomes_actual_id_after_commit_and_clears_after_fix()
 	_mode.update_origin(Vector2i(-1, 0))
 	assert_false(_mode.current_check.ok)
 	assert_eq(_preview.warning_nodes[fridge.id].position, ItemVisual.placed_transform(_content.item(&"fridge"), Vector2i(11, 1), 0).origin, "an invalid proposal keeps the actual warning pose")
-	_mode.update_origin(Vector2i(3, 3))
+	_mode.update_origin(Vector2i(10, 3))  # a fix that squeezes no aisle (#389)
 	assert_true(_mode.current_check.ok)
 	assert_false(_mode.current_check.unreachable.has(fridge.id))
 	assert_true(_mode.commit())
@@ -385,6 +385,38 @@ func test_partial_four_seat_capacity_warns_in_preview_and_after_commit_until_fix
 	assert_eq(DiningSeats.usable_cells(grid, table).size(), 4)
 	assert_eq(_mode.seat_warnings().get(table.id, ""), SEAT_CUT, "it stays on the table until the next change")
 	assert_true(_preview.warning_nodes.has(table.id))
+
+
+## #389: a proposal that squeezes a used walkway to one cell tints exactly
+## those cells, keeps them after the commit and drops them on the next change.
+func test_aisle_pinch_cells_are_tinted_while_placing_and_after_commit() -> void:
+	_editor.set_owner_level(5)
+	var pinch_cell: Vector2i = SimGrid.NO_CELL
+	for cell: Vector2i in _sim.world.grid.cells():
+		var check: EditCheck = _editor.check_buy(&"potted_plant", cell)
+		if check.ok and not check.aisle_pinches.is_empty():
+			pinch_cell = cell
+			break
+	assert_ne(pinch_cell, SimGrid.NO_CELL, "some plant spot squeezes a used aisle")
+	if pinch_cell == SimGrid.NO_CELL:
+		return
+	assert_true(_mode.enter())
+	assert_true(_mode.begin_buy(&"potted_plant", pinch_cell))
+	assert_true(_mode.current_check.ok, "a squeeze warns, never refuses")
+	var cells: Array[Vector2i] = _mode.current_check.aisle_pinches
+	assert_false(cells.is_empty())
+	assert_eq(_preview.displayed_aisle_pinches(), cells)
+	assert_eq(_preview.invalid_reason(), AisleRules.WARNING)
+	var tint: StandardMaterial3D = _preview.aisle_mesh.material_override as StandardMaterial3D
+	assert_almost_eq(tint.albedo_color.a, BuildPreview.AISLE_ALPHA)
+	assert_true(_mode.commit())
+	assert_eq(_preview.displayed_aisle_pinches(), cells, "kept on the placed item after the commit")
+	var plant: PlacedItem = _sim.world.grid.item_at(pinch_cell)
+	assert_true(_editor.sell(plant.id) >= 0)
+	_mode.refresh()
+	assert_true(_preview.displayed_aisle_pinches().is_empty(), "the next layout change clears it")
+	_mode.exit()
+	assert_true(_preview.displayed_aisle_pinches().is_empty(), "outside Build nothing is tinted")
 
 
 func test_removed_item_and_replaced_shop_mesh_leave_no_hidden_or_orphan_nodes() -> void:

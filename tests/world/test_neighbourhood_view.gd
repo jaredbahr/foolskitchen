@@ -237,7 +237,7 @@ func test_actual_static_triangles_avoid_maximum_lease_native_pads_and_service_pa
 	assert_not_null(dressing)
 	if dressing == null:
 		return
-	var layout: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
+	var layout: ShopLayout = preload("res://data/layouts/tier1_deeper.tres")
 	var lease: LeaseUpgrade = preload("res://data/balance/lease_upgrade.tres")
 	var lot: Rect2i = ShopFootprint.from_layout(lease.layout_for(layout, 2)).lot
 	var forbidden: Array[Rect2] = [_cell_rect(lot)]
@@ -277,7 +277,7 @@ func test_actual_pedestrian_and_car_meshes_stay_clear_of_the_lease_and_door_acro
 	if dressing == null:
 		return
 	dressing.set_process(false)
-	var layout: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
+	var layout: ShopLayout = preload("res://data/layouts/tier1_deeper.tres")
 	var lease: LeaseUpgrade = preload("res://data/balance/lease_upgrade.tres")
 	var reserve: Rect2 = _cell_rect(ShopFootprint.from_layout(lease.layout_for(layout, 2)).lot)
 	var apron: Rect2 = Rect2(Vector2(3.0, 6.5), Vector2(2.0, 2.2))
@@ -455,10 +455,10 @@ func test_real_main_keeps_the_original_default_shop_framing_and_reserves_the_max
 	await _start()
 	var rig: CameraRig = _main.get_node("CameraRig") as CameraRig
 	var camera: Camera3D = rig.get_node("Camera3D") as Camera3D
-	# The authored new shop is16x14; its height now limits the fit. Retain the14x12 framing scale,
+	# The authored new shop is 16x17 (#389); its height limits the fit. Retain the14x12 framing scale,
 	# yaw, pitch and projection while centring and fitting the larger shell.
-	var expected_focus: Vector2 = Vector2(4.0, 3.5)
-	var expected_zoom: float = 12.0 * (14.0 / 12.0)
+	var expected_focus: Vector2 = Vector2(4.0, 4.25)
+	var expected_zoom: float = 12.0 * (17.0 / 12.0)
 	assert_eq(rig.initial_focus, expected_focus)
 	assert_eq(rig.initial_zoom, expected_zoom)
 	assert_eq(rig.initial_yaw_degrees, 45.0)
@@ -469,7 +469,7 @@ func test_real_main_keeps_the_original_default_shop_framing_and_reserves_the_max
 	# Camera3D's native real_t size is float32; preserve exact comparison.
 	assert_eq(camera.size, PackedFloat32Array([expected_zoom])[0])
 	var view: ShopView = _main.get_node("ShopView") as ShopView
-	var layout: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
+	var layout: ShopLayout = preload("res://data/layouts/tier1_deeper.tres")
 	var lease: LeaseUpgrade = preload("res://data/balance/lease_upgrade.tres")
 	var expected: Rect2i = ShopFootprint.from_layout(lease.layout_for(layout, 2)).lot
 	assert_true(view.neighbourhood_reserved_lot().encloses(expected))
