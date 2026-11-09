@@ -292,6 +292,36 @@ func test_arrival_snapshots_are_detached_and_later_edits_only_affect_new_guests(
 	_assert_neutral_snapshot(sim.vibe_result)
 
 
+func test_collection_result_is_detached_on_vibe_set_and_get() -> void:
+	var sim: RestaurantSim = _restaurant()
+	var definition: CollectionDef = _content.collection(&"diner_classics")
+	var collection: CollectionModel.Result = CollectionModel.evaluate([definition], definition.item_ids,
+		[definition.floor_id], VIBE.max_collection_bonus, _content)
+	assert_true(collection.valid)
+	assert_eq(collection.completed_ids, [&"diner_classics"] as Array[StringName])
+	var inputs: VibeModel.Inputs = VibeModel.Inputs.new()
+	inputs.collection_result = collection
+	var source_vibe: VibeModel.Result = VibeModel.evaluate(inputs, VIBE)
+	assert_true(source_vibe.valid)
+	sim.set_vibe(source_vibe)
+
+	# set_vibe snapshots mutable progress arrays/records rather than retaining them.
+	collection.entries[0].requirements[0].present = false
+	collection.completed_ids.clear()
+	var stored: VibeModel.Result = sim.vibe_result
+	assert_true(stored.collection_result.completed_ids.has(&"diner_classics"))
+	assert_true(stored.collection_result.entries[0].requirements[0].present)
+
+	# The getter also returns a detached snapshot; callers cannot mutate the sim.
+	stored.collection_result.entries[0].requirements[0].present = false
+	stored.collection_result.completed_ids.clear()
+	var fetched_again: VibeModel.Result = sim.vibe_result
+	assert_true(fetched_again.collection_result.completed_ids.has(&"diner_classics"))
+	assert_true(fetched_again.collection_result.entries[0].requirements[0].present)
+	assert_eq(fetched_again.collection_result.entries[0].definition, definition,
+		"immutable authored resource definitions may be shared across detached snapshots")
+
+
 func test_vibe_composes_after_cleanliness_without_extra_random_draws() -> void:
 	var enhanced: RestaurantSim = _restaurant()
 	var control: RestaurantSim = _restaurant()

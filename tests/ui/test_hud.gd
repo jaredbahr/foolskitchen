@@ -9,6 +9,7 @@ var _old_cash: int
 var _old_last_speed: int
 var _old_accumulator: float
 var _speeds: Array[int] = []
+var _shown_collection_ids: Array[StringName] = []
 var _settings_requests: int = 0
 var _staff_requests: int = 0
 
@@ -23,6 +24,8 @@ func before_each() -> void:
 	Clock.set_speed(0)
 	Economy.cash = 1234
 	_hud = HUD_SCENE.instantiate() as CanvasLayer
+	_shown_collection_ids.clear()
+	_hud.collection_toast_shown.connect(_on_collection_toast_shown)
 	_hud.call("refresh")
 
 
@@ -104,6 +107,31 @@ func test_owner_level_and_xp_bar_refresh_beside_reputation() -> void:
 	assert_almost_eq(bar.value, 17.0)
 	_hud.call("set_owner_progress", 3, 100, 50)
 	assert_almost_eq(bar.value, 50.0, 0.0001, "the display clamps an invalid overfull fraction")
+
+
+func test_collection_toasts_are_queued_mouse_ignored_and_unscaled() -> void:
+	_hud.call("queue_collection_toast", &"diner_classics", "Collection complete: Diner Classics")
+	var panel: PanelContainer = _hud.get_node("CollectionToast") as PanelContainer
+	var label: Label = panel.get_node("Text") as Label
+	var timer: Timer = _hud.get_node("CollectionToastTimer") as Timer
+	assert_true(panel.visible)
+	assert_eq(panel.mouse_filter, Control.MOUSE_FILTER_IGNORE)
+	assert_eq(label.mouse_filter, Control.MOUSE_FILTER_IGNORE)
+	assert_eq(label.text, "Collection complete: Diner Classics")
+	assert_true(timer.one_shot)
+	assert_eq(timer.wait_time, 3.0)
+	assert_true(timer.ignore_time_scale)
+	assert_eq(timer.process_mode, Node.PROCESS_MODE_ALWAYS)
+	assert_eq(_shown_collection_ids, [&"diner_classics"] as Array[StringName],
+		"acknowledgement fires only after the line becomes visible")
+	_hud.call("queue_collection_toast", &"coffee_break", "Collection complete: Coffee Break")
+	assert_eq(_hud.get("_collection_toast_queue").size(), 1)
+	assert_eq(_shown_collection_ids, [&"diner_classics"] as Array[StringName],
+		"a queued line is not acknowledged early")
+	_hud.call("clear_collection_toasts")
+	assert_false(panel.visible)
+	assert_true(timer.is_stopped())
+	assert_eq(_shown_collection_ids, [&"diner_classics"] as Array[StringName])
 
 
 func test_scaled_window_keeps_every_hud_control_readable_and_build_hints_below_header() -> void:
@@ -920,3 +948,7 @@ static func _contrast(a: Color, b: Color) -> float:
 static func _luminance(color: Color) -> float:
 	var linear: Color = color.srgb_to_linear()
 	return 0.2126 * linear.r + 0.7152 * linear.g + 0.0722 * linear.b
+
+
+func _on_collection_toast_shown(collection_id: StringName) -> void:
+	_shown_collection_ids.append(collection_id)

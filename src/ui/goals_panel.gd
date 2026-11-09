@@ -16,6 +16,7 @@ var _observation: MilestoneDay
 var _day: int = 0
 var _active_ids: Array[StringName] = []
 var _completed_known_ids: Array[StringName] = []
+var _collection_result: CollectionModel.Result
 
 
 func _ready() -> void:
@@ -35,6 +36,12 @@ func set_goals(catalogue: MilestoneSet, completed_ids: Array[StringName],
 	_day = day
 	_observation = observation
 	_render()
+
+
+## Independent collection display; the session computes progress and owns all state.
+func set_collections(result: CollectionModel.Result) -> void:
+	_collection_result = result
+	_render_collections()
 
 
 ## Stable selection snapshots for tests and presentation capture.
@@ -80,6 +87,8 @@ func _render() -> void:
 	empty_state.visible = weekly_card == null
 
 	if _catalogue == null or not _catalogue.is_valid():
+		empty_state.visible = weekly_card == null and \
+			(_collection_result == null or _collection_result.entries.is_empty())
 		return
 
 	var completed_lookup: Dictionary[StringName, bool] = {}
@@ -106,7 +115,38 @@ func _render() -> void:
 
 	active_heading.visible = not _active_ids.is_empty()
 	completed_heading.visible = not _completed_known_ids.is_empty()
-	empty_state.visible = weekly_card == null and _active_ids.is_empty() and _completed_known_ids.is_empty()
+	empty_state.visible = weekly_card == null and _active_ids.is_empty() and _completed_known_ids.is_empty() \
+		and (_collection_result == null or _collection_result.entries.is_empty())
+
+
+func _render_collections() -> void:
+	var rows: VBoxContainer = %CollectionsRows as VBoxContainer
+	var heading: Label = %CollectionsHeading as Label
+	_clear_rows(rows)
+	if _collection_result != null and _collection_result.valid:
+		for entry: CollectionModel.Entry in _collection_result.entries:
+			var index: int = rows.get_child_count()
+			var title: Label = _add_label(rows, "Collection%d" % index, entry.definition.display_name)
+			title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			var short_line: Label = _add_label(rows, "CollectionShort%d" % index, entry.definition.short_line)
+			short_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			for requirement_index: int in range(entry.requirements.size()):
+				var requirement: CollectionModel.Entry.Requirement = entry.requirements[requirement_index]
+				var mark: String = "✓" if requirement.present else "□"
+				var item_label: Label = _add_label(rows,
+					"Collection%dItem%d" % [index, requirement_index], "%s %s" % [mark, requirement.display_name])
+				item_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			if entry.floor_required:
+				var floor_mark: String = "✓" if entry.has_floor else "□"
+				_add_label(rows, "Collection%dFloor" % index,
+					"%s Floor: %s" % [floor_mark, entry.floor_name])
+			if entry.completed:
+				_add_label(rows, "Collection%dComplete" % index, "Complete!")
+	heading.visible = rows.get_child_count() > 0
+	var empty_state: Label = %EmptyState as Label
+	empty_state.visible = _active_ids.is_empty() and _completed_known_ids.is_empty() \
+		and rows.get_child_count() == 0 and (_weekly_challenge == null \
+		or _weekly_challenge.status == WeeklyChallengeState.Status.EMPTY)
 
 
 func _make_weekly_card() -> Control:

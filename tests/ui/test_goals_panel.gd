@@ -224,6 +224,55 @@ func test_full_completed_catalogue_stays_bounded_and_scrollable_in_native_window
 	await _assert_full_catalogue_window(Vector2i(1600, 900))
 
 
+func test_collection_section_is_independent_from_goal_rows_and_uses_display_names() -> void:
+	var definition: CollectionDef = CollectionDef.new()
+	definition.id = &"fixture_collection"
+	definition.display_name = "Diner Classics"
+	definition.short_line = "The little glow of a place folks know."
+	definition.bonus = 2.0
+	var entry: CollectionModel.Entry = CollectionModel.Entry.new()
+	entry.definition = definition
+	for item: Dictionary in [
+		{"id": &"open_sign", "name": "Booth", "present": true},
+		{"id": &"second_booth_id", "name": "Booth", "present": false},
+		{"id": &"booth", "name": "Booth", "present": true},
+	]:
+		var requirement: CollectionModel.Entry.Requirement = CollectionModel.Entry.Requirement.new()
+		requirement.item_id = StringName(item["id"])
+		requirement.display_name = String(item["name"])
+		requirement.present = bool(item["present"])
+		entry.requirements.append(requirement)
+	entry.floor_required = true
+	entry.floor_name = "Checker tiles"
+	entry.has_floor = false
+	var result: CollectionModel.Result = CollectionModel.Result.new()
+	result.valid = true
+	result.entries = [entry]
+	_panel.set_collections(result)
+	assert_true((_panel.get_node("Panel/Content/Scroll/List/CollectionsHeading") as Label).visible)
+	var rows: VBoxContainer = _panel.get_node("Panel/Content/Scroll/List/CollectionsRows") as VBoxContainer
+	assert_eq(rows.get_child_count(), 6)
+	assert_eq((rows.get_node("Collection0") as Label).text, "Diner Classics")
+	assert_eq((rows.get_node("CollectionShort0") as Label).text, definition.short_line)
+	assert_eq((rows.get_node("Collection0Item0") as Label).text, "✓ Booth")
+	assert_eq((rows.get_node("Collection0Item1") as Label).text, "□ Booth",
+		"equal display names retain separate requirement identity and presence")
+	assert_eq((rows.get_node("Collection0Item2") as Label).text, "✓ Booth")
+	assert_eq((rows.get_node("Collection0Floor") as Label).text, "□ Floor: Checker tiles")
+	assert_null(rows.get_node_or_null("Collection0Complete"))
+	assert_false((rows.get_node("Collection0Item1") as Label).text.contains("fixture_collection"),
+		"the panel never exposes internal collection IDs")
+	entry.requirements[1].present = true
+	entry.has_floor = true
+	entry.completed = true
+	_panel.set_collections(result)
+	assert_eq((rows.get_node("Collection0Item1") as Label).text, "✓ Booth")
+	assert_eq((rows.get_node("Collection0Floor") as Label).text, "✓ Floor: Checker tiles")
+	assert_eq((rows.get_node("Collection0Complete") as Label).text, "Complete!")
+	assert_eq(_panel.active_goal_ids(), [&"first", &"second", &"third"] as Array[StringName],
+		"the separate collection section does not alter selected career goals")
+
+
 func _assert_full_catalogue_window(window_size: Vector2i) -> void:
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	await tree.process_frame

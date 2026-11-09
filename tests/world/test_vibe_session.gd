@@ -163,6 +163,168 @@ func test_only_real_layout_paint_and_enabled_menu_changes_recompute() -> void:
 	assert_eq(_saved_text(), saved)
 
 
+func test_only_visible_collection_toasts_are_saved_and_pending_notice_survives_reload() -> void:
+	var main: Node = await _start()
+	var result: CollectionModel.Result = _complete_coffee_and_rustic_collections_in_main(main)
+	assert_true(result.valid)
+	assert_eq(result.completed_ids, [&"coffee_break", &"rustic_nook"] as Array[StringName])
+	assert_eq(main.get("_shown_collection_toast_ids"), [&"coffee_break"] as Array[StringName])
+	assert_eq(main.get("_pending_collection_toast_ids"), [&"rustic_nook"] as Array[StringName])
+	var hud: Node = main.get_node("HUD")
+	assert_true((hud.get_node("CollectionToast") as Control).visible)
+	assert_eq((hud.get_node("CollectionToast/Text") as Label).text,
+		"Collection complete: Coffee Break — A quiet cup makes the room feel ready.")
+	main.call("_begin_morning")
+	var document: Dictionary = JSON.parse_string(_saved_text()) as Dictionary
+	var saved_section: Dictionary = document["data"]["collection_toasts"]
+	assert_eq(saved_section["shown_ids"], ["coffee_break"])
+	assert_eq(main.get("_pending_collection_toast_ids"), [&"rustic_nook"] as Array[StringName],
+		"the unshown notice stays transient and is not falsely acknowledged by the save")
+	assert_false((document["data"] as Dictionary).has("completed_collections"),
+		"completion itself is never persisted")
+	_close(main)
+	var loaded: Node = await _start()
+	assert_eq(loaded.get("_shown_collection_toast_ids"), [&"coffee_break", &"rustic_nook"] as Array[StringName],
+		"the restored layout shows and acknowledges the pending second notice")
+	assert_eq(loaded.get("_pending_collection_toast_ids"), [] as Array[StringName])
+	var loaded_vibe: VibeModel.Result = loaded.get("vibe_result") as VibeModel.Result
+	assert_eq(loaded_vibe.collection_result.completed_ids, [&"coffee_break", &"rustic_nook"] as Array[StringName],
+		"the collection is still derived from the restored shop layout")
+	var loaded_hud: Node = loaded.get_node("HUD")
+	assert_true((loaded_hud.get_node("CollectionToast") as Control).visible)
+	assert_eq((loaded_hud.get_node("CollectionToast/Text") as Label).text,
+		"Collection complete: Rustic Nook — A leafy corner with room to settle in.")
+	loaded_hud.call("clear_collection_toasts")
+	var loaded_grid: SimGrid = (loaded.get("world") as SimWorld).grid
+	var coffee_item: PlacedItem
+	for placed: PlacedItem in loaded_grid.items():
+		var item_definition: ItemDef = placed.def as ItemDef
+		if item_definition != null and item_definition.id == &"coffee_machine":
+			coffee_item = placed
+			break
+	assert_not_null(coffee_item, "the saved fixture has a removable required item")
+	if coffee_item != null:
+		assert_true(loaded_grid.remove(coffee_item.id))
+		assert_false((loaded.get("vibe_result") as VibeModel.Result).collection_result.completed_ids.has(&"coffee_break"))
+		var replacement: PlacedItem
+		var content: ContentDB = loaded.get("content") as ContentDB
+		for cell: Vector2i in loaded_grid.cells():
+			if loaded_grid.terrain(cell) == SimGrid.Terrain.FLOOR and not loaded_grid.is_outdoor_floor(cell) \
+					and loaded_grid.can_place_def(content.item(&"coffee_machine"), cell, 0) == SimGrid.PlaceResult.OK:
+				replacement = loaded_grid.place_def(content.item(&"coffee_machine"), cell)
+				if replacement != null:
+					break
+		assert_not_null(replacement, "the removed requirement can be restored")
+		assert_true((loaded.get("vibe_result") as VibeModel.Result).collection_result.completed_ids.has(&"coffee_break"))
+	assert_eq(loaded.get("_shown_collection_toast_ids"), [&"coffee_break", &"rustic_nook"] as Array[StringName],
+		"removal and recompletion do not re-toast either set")
+	assert_false((loaded_hud.get_node("CollectionToast") as Control).visible)
+
+
+func test_collection_progress_snapshot_tracks_equal_count_item_replacement() -> void:
+	var main: Node = await _start()
+	var content: ContentDB = main.get("content") as ContentDB
+	var sim: RestaurantSim = main.get("sim") as RestaurantSim
+	assert_true(main.call("set_goals_visible", true))
+	var panel: GoalsPanel = main.get_node("Overlay/GoalsPanel") as GoalsPanel
+	var rows: VBoxContainer = panel.get_node("Panel/Content/Scroll/List/CollectionsRows") as VBoxContainer
+	var definition: CollectionDef = content.collection(&"coffee_break")
+	var before_items: Array[StringName] = [&"coffee_machine", &"round_table"]
+	var after_items: Array[StringName] = [&"coffee_machine", &"rounded_chair"]
+	var floors: Array[StringName] = [definition.floor_id]
+	var before: CollectionModel.Result = CollectionModel.evaluate([definition], before_items, floors,
+		VIBE.max_collection_bonus, content)
+	var after: CollectionModel.Result = CollectionModel.evaluate([definition], after_items, floors,
+		VIBE.max_collection_bonus, content)
+	assert_eq(before.entries[0].progress_text(), after.entries[0].progress_text(),
+		"both snapshots have the same item count, floor status, and completion state")
+	var before_inputs: VibeModel.Inputs = VibeModel.Inputs.new()
+	before_inputs.collection_result = before
+	sim.set_vibe(VibeModel.evaluate(before_inputs, VIBE))
+	main.call("_refresh_goals", true)
+	assert_eq((rows.get_node("Collection0Item0") as Label).text,
+		"✓ %s" % content.item(&"coffee_machine").display_name)
+	assert_eq((rows.get_node("Collection0Item1") as Label).text,
+		"✓ %s" % content.item(&"round_table").display_name)
+	assert_eq((rows.get_node("Collection0Item2") as Label).text,
+		"□ %s" % content.item(&"rounded_chair").display_name)
+	var after_inputs: VibeModel.Inputs = VibeModel.Inputs.new()
+	after_inputs.collection_result = after
+	sim.set_vibe(VibeModel.evaluate(after_inputs, VIBE))
+	main.call("_refresh_goals")
+	assert_eq((rows.get_node("Collection0Item0") as Label).text,
+		"✓ %s" % content.item(&"coffee_machine").display_name)
+	assert_eq((rows.get_node("Collection0Item1") as Label).text,
+		"□ %s" % content.item(&"round_table").display_name)
+	assert_eq((rows.get_node("Collection0Item2") as Label).text,
+		"✓ %s" % content.item(&"rounded_chair").display_name,
+		"Main refreshes visible ticks when the present requirement changes but the count does not")
+	_close(main)
+
+
+func test_laid_floor_on_bought_outdoor_patio_counts_for_collection() -> void:
+	var main: Node = await _start()
+	var editor: ShopEditor = main.get("shop_editor") as ShopEditor
+	var grid: SimGrid = (main.get("world") as SimWorld).grid
+	editor.set_owner_level(6)
+	var patio_cell: Vector2i = Vector2i.ZERO
+	var found_patio_cell: bool = false
+	for candidate: Vector2i in editor.patio_area().cells():
+		for entry: Vector2i in grid.entries():
+			if absi(candidate.x - entry.x) + absi(candidate.y - entry.y) == 1:
+				patio_cell = candidate
+				found_patio_cell = true
+				break
+		if found_patio_cell:
+			break
+	assert_true(found_patio_cell, "the starter lot has purchasable patio beside the guest entrance")
+	if found_patio_cell:
+		assert_true(editor.apply_patio([patio_cell] as Array[Vector2i], true), editor.last_check.why)
+		assert_true(grid.is_outdoor_floor(patio_cell))
+		var changes: Dictionary[Vector2i, FloorFinishes.Finish] = {}
+		changes[patio_cell] = FloorFinishes.Finish.new(&"deck_planks")
+		assert_true(editor.apply_flooring(changes), "ShopEditor permits patio floor finishes: " + editor.last_check.why)
+		main.call("_recompute_vibe")
+		var result: CollectionModel.Result = (main.get("vibe_result") as VibeModel.Result).collection_result
+		var patio_entry: CollectionModel.Entry
+		for entry: CollectionModel.Entry in result.entries:
+			if entry.definition.id == &"patio_picnic":
+				patio_entry = entry
+				break
+		assert_not_null(patio_entry)
+		assert_true(patio_entry.has_floor,
+			"the issue says the required floor style can be laid somewhere; bought patio is part of the shop")
+	_close(main)
+
+
+func test_legacy_and_invalid_collection_toast_sections_are_handled_atomically() -> void:
+	var main: Node = await _start()
+	main.set("_shown_collection_toast_ids", [&"diner_classics"] as Array[StringName])
+	assert_false(main.call("_restore_collection_toasts", {"shown_ids": ["unknown_collection"]}))
+	assert_eq(main.get("_shown_collection_toast_ids"), [&"diner_classics"] as Array[StringName],
+		"an invalid provider payload cannot partially replace live acknowledgements")
+	main.set("_shown_collection_toast_ids", [] as Array[StringName])
+	main.call("_update_collection_toasts", _completed_diner_result(main))
+	main.call("_begin_morning")
+	var legacy: Dictionary = JSON.parse_string(_saved_text()) as Dictionary
+	(legacy["data"] as Dictionary).erase("collection_toasts")
+	_write_save_document(legacy)
+	_close(main)
+	var old_save: Node = await _start()
+	assert_eq(old_save.get("_shown_collection_toast_ids"), [] as Array[StringName],
+		"legacy saves default to no previously shown collection notices")
+	_close(old_save)
+	var broken: Dictionary = JSON.parse_string(_saved_text()) as Dictionary
+	broken["data"]["collection_toasts"] = {"shown_ids": ["unknown_collection"]}
+	_write_save_document(broken)
+	var unchanged: String = _saved_text()
+	var failing: Node = await _start()
+	assert_eq(Clock.sim.day, 1, "an invalid present section rejects the morning save")
+	assert_eq(failing.get("_shown_collection_toast_ids"), [] as Array[StringName])
+	assert_eq(_saved_text(), unchanged, "failed load preserves the rejected checkpoint")
+	_close(failing)
+
+
 func test_derived_state_reloads_from_normal_morning_sources_and_disconnects_old_grid() -> void:
 	var main: Node = await _start()
 	var saved: String = _saved_text()
@@ -421,6 +583,63 @@ func _side_effects() -> Dictionary:
 
 func _saved_text() -> String:
 	return FileAccess.get_file_as_string(_save_dir.path_join(SLOT + ".json"))
+
+
+func _completed_diner_result(main: Node) -> CollectionModel.Result:
+	var content: ContentDB = main.get("content") as ContentDB
+	var definition: CollectionDef = content.collection(&"diner_classics")
+	return CollectionModel.evaluate([definition], definition.item_ids, [definition.floor_id],
+		VIBE.max_collection_bonus, content)
+
+
+## The save/load path below uses actual grid items and interior floor finishes.
+func _complete_coffee_and_rustic_collections_in_main(main: Node) -> CollectionModel.Result:
+	var content: ContentDB = main.get("content") as ContentDB
+	var definitions: Array[CollectionDef] = [content.collection(&"coffee_break"), content.collection(&"rustic_nook")]
+	var world: SimWorld = main.get("world") as SimWorld
+	var editor: ShopEditor = main.get("shop_editor") as ShopEditor
+	var grid: SimGrid = world.grid
+	var floor_cells: Array[Vector2i] = []
+	for cell: Vector2i in grid.cells():
+		if grid.terrain(cell) == SimGrid.Terrain.FLOOR and not grid.is_outdoor_floor(cell):
+			floor_cells.append(cell)
+			if floor_cells.size() == definitions.size():
+				break
+	assert_eq(floor_cells.size(), definitions.size(), "the fixture needs two interior floor cells")
+	if floor_cells.size() != definitions.size():
+		return CollectionModel.Result.new()
+	var floor_changes: Dictionary[Vector2i, FloorFinishes.Finish] = {}
+	for index: int in definitions.size():
+		floor_changes[floor_cells[index]] = FloorFinishes.Finish.new(definitions[index].floor_id)
+	assert_eq(editor.floors.set_finishes(floor_changes).size(), definitions.size())
+	for definition: CollectionDef in definitions:
+		for item_id: StringName in definition.item_ids:
+			var item: ItemDef = content.item(item_id)
+			var placed: PlacedItem
+			for cell: Vector2i in grid.cells():
+				if grid.terrain(cell) == SimGrid.Terrain.FLOOR and not grid.is_outdoor_floor(cell) \
+						and grid.can_place_def(item, cell, 0) == SimGrid.PlaceResult.OK:
+					placed = grid.place_def(item, cell)
+				if placed != null:
+					break
+			assert_not_null(placed, "every actual collection item must fit in the fixture shop")
+			if placed == null:
+				return CollectionModel.Result.new()
+	main.call("_recompute_vibe")
+	var vibe: VibeModel.Result = main.get("vibe_result") as VibeModel.Result
+	return vibe.collection_result
+
+
+func _write_save_document(document: Dictionary) -> void:
+	var path: String = _save_dir.path_join(SLOT + ".json")
+	var file: FileAccess = FileAccess.open(path, FileAccess.WRITE)
+	assert_not_null(file)
+	if file != null:
+		file.store_string(JSON.stringify(document))
+		file.close()
+	if FileAccess.file_exists(path + ".bak"):
+		assert_eq(DirAccess.remove_absolute(path + ".bak"), OK,
+			"the deliberately edited fixture must not recover its old backup")
 
 
 func _frames(count: int) -> void:
