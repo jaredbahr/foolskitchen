@@ -87,7 +87,7 @@ func test_actual_close_counts_once_and_persists_only_at_the_next_morning() -> vo
 	_close()
 	_start()
 	assert_eq(Clock.sim.day, 2)
-	assert_eq(_records().capture(), expected)
+	assert_eq(_records().capture(), _json(expected))
 	assert_null(_main.get("_loaded_shop_records"))
 	assert_eq((_main.call("build_report", 2) as DayReport).record_lines, [] as Array[String])
 	_main.call("_new_game")
