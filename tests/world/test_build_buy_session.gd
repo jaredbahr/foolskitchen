@@ -33,14 +33,14 @@ func test_ctrl_z_and_ctrl_y_round_trip_a_buy_through_the_real_books() -> void:
 	var cash: int = Economy.cash
 	var day: int = Clock.sim.day
 	var entries: int = Economy.ledger.entries_for_day(day).size()
-	assert_true(_mode().begin_buy(&"potted_plant", Vector2i(4, 9)))
+	assert_true(_mode().begin_buy(&"potted_plant", Vector2i(4, 10)))
 	assert_true(_mode().commit())
 	var price: int = _content().item(&"potted_plant").price
 	assert_eq(Economy.cash, cash - price)
 	assert_false(_catalogue().undo_button.disabled)
 	assert_eq(_catalogue().undo_button.tooltip_text, "Undo buy Potted plant (Ctrl+Z)")
 	_key(KEY_Z, true)
-	assert_null(_world().grid.item_at(Vector2i(4, 9)))
+	assert_null(_world().grid.item_at(Vector2i(4, 10)))
 	assert_eq(Economy.cash, cash, "undo refunds the full price")
 	var lines: Array[Dictionary] = Economy.ledger.entries_for_day(day)
 	assert_eq(lines.size(), entries + 2)
@@ -49,7 +49,7 @@ func test_ctrl_z_and_ctrl_y_round_trip_a_buy_through_the_real_books() -> void:
 	assert_true(_hint().contains("Undid buy Potted plant"))
 	assert_false(_catalogue().redo_button.disabled)
 	_key(KEY_Y, true)
-	assert_not_null(_world().grid.item_at(Vector2i(4, 9)))
+	assert_not_null(_world().grid.item_at(Vector2i(4, 10)))
 	assert_eq(Economy.cash, cash - price)
 	_catalogue().undo_button.pressed.emit()
 	assert_eq(Economy.cash, cash)
@@ -61,7 +61,7 @@ func test_history_clears_when_the_shop_opens() -> void:
 	await _start()
 	assert_true(_main.call("set_build_active", true))
 	_editor().set_owner_level(2)
-	assert_true(_mode().begin_buy(&"potted_plant", Vector2i(4, 9)))
+	assert_true(_mode().begin_buy(&"potted_plant", Vector2i(4, 10)))
 	assert_true(_mode().commit())
 	var history: ShopEditHistory = _main.get("edit_history") as ShopEditHistory
 	assert_eq(history.undo_count(), 1)
@@ -70,7 +70,7 @@ func test_history_clears_when_the_shop_opens() -> void:
 	assert_eq(history.redo_count(), 0)
 	assert_false(_main.call("is_build_active"))
 	assert_false(_main.call("undo_edit"))
-	assert_not_null(_world().grid.item_at(Vector2i(4, 9)), "an opened shop keeps the morning's edits")
+	assert_not_null(_world().grid.item_at(Vector2i(4, 10)), "an opened shop keeps the morning's edits")
 
 
 func test_eyedropper_picks_the_clicked_item_and_its_colour() -> void:
@@ -94,18 +94,18 @@ func test_eyedropper_picks_the_clicked_item_and_its_colour() -> void:
 	assert_true(_plant_still_at(plant))
 	# Placing the copy buys one in the same colour; undo removes the copy.
 	_editor().set_owner_level(2)
-	assert_true(_main.call("update_build_pointer", _project(Vector2i(4, 9))))
+	assert_true(_main.call("update_build_pointer", _project(Vector2i(4, 10))))
 	var cash: int = Economy.cash
 	assert_true(_mode().commit())
-	var copy: PlacedItem = _world().grid.item_at(Vector2i(4, 9))
+	var copy: PlacedItem = _world().grid.item_at(Vector2i(4, 10))
 	assert_not_null(copy)
 	assert_eq((copy.def as ItemDef).id, &"potted_plant")
 	assert_eq(copy.swatch_id, &"sage")
 	assert_true(_main.call("undo_edit"))
-	assert_null(_world().grid.item_at(Vector2i(4, 9)))
+	assert_null(_world().grid.item_at(Vector2i(4, 10)))
 	assert_eq(Economy.cash, cash)
 	assert_true(_main.call("redo_edit"))
-	assert_eq(_world().grid.item_at(Vector2i(4, 9)).swatch_id, &"sage", "redo keeps the copied colour")
+	assert_eq(_world().grid.item_at(Vector2i(4, 10)).swatch_id, &"sage", "redo keeps the copied colour")
 
 
 func test_sell_tool_shows_the_refund_sells_on_click_and_undo_restores() -> void:
@@ -142,7 +142,7 @@ func test_sell_tool_shows_the_refund_sells_on_click_and_undo_restores() -> void:
 func test_rotate_keys_and_right_click_cancel_keep_the_mode() -> void:
 	await _start()
 	assert_true(_main.call("set_build_active", true))
-	assert_true(_mode().begin_buy(&"chair", Vector2i(4, 9)))
+	assert_true(_mode().begin_buy(&"chair", Vector2i(4, 10)))
 	_key(KEY_PERIOD)
 	assert_eq(_mode().quarter_turns, 1)
 	_key(KEY_COMMA)
@@ -150,10 +150,10 @@ func test_rotate_keys_and_right_click_cancel_keep_the_mode() -> void:
 	assert_eq(_mode().quarter_turns, 3)
 	_key(KEY_R)
 	assert_eq(_mode().quarter_turns, 0)
-	_right_click(_project(Vector2i(4, 9)))
+	_right_click(_project(Vector2i(4, 10)))
 	assert_false(_mode().has_ghost())
 	assert_true(_main.call("is_build_active"), "right-click only drops the ghost")
-	_right_click(_project(Vector2i(4, 9)))
+	_right_click(_project(Vector2i(4, 10)))
 	assert_true(_main.call("is_build_active"))
 
 
@@ -177,7 +177,7 @@ func test_build_buy_and_paint_tabs_drive_the_session() -> void:
 	await _start()
 	assert_true(_main.call("set_build_active", true))
 	assert_eq(_catalogue().mode, BuildCatalogue.BUY)
-	assert_true(_mode().begin_buy(&"chair", Vector2i(4, 9)))
+	assert_true(_mode().begin_buy(&"chair", Vector2i(4, 10)))
 	_catalogue().mode_buttons[BuildCatalogue.BUILD].pressed.emit()
 	assert_eq(_catalogue().mode, BuildCatalogue.BUILD)
 	assert_false(_mode().has_ghost(), "a held Buy piece is dropped when switching to Build")

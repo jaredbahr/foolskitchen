@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- New games start in a deeper dining room, with half again as much floor between the kitchen and the street door, so there is room for four or five two-seat tables with aisles two people wide. The starting tables are spread out with two-cell aisles, and the rent is the same. Saved games keep their shop as it is. Build mode now also warns you, and marks the spot in red, when furniture you place or move narrows a walkway people use (the door to the tables and the pass, the pass to the tables, or the kitchen stations) to a single cell, where two people can't pass each other. It is only a warning. (#390)
 - Open Goals to see your shop's lifetime totals and personal bests. The evening report celebrates new records. (#365)
 - Take on a rotating weekly challenge: serve a busy day, earn operating profit, finish clean days without losing a guest, collect good reviews, or sell a featured dish. Goals shows your frozen target and progress, and the evening report calls out a cash reward when you complete it. (#345)
 - Share furniture blueprints with Copy code and Paste code in Build. Codes keep each piece's look and rotation, and imported copies get a new name when one is already used. (#364)
@@ -171,6 +172,8 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- Design: the property market is decided (D28): every Tier 3 lot visible with its perks, fixer-uppers, upstairs on some lots, lot-only ingredients and build items, a prestige score for fine dining, bar gambling, and what carries over when you buy or move. (#381)
+- Five new songs by Jared are in the game files: "Diner Boogie" and "Coffee Shop Morning" for diner and café theme music (#367), two upbeat funk tracks ("Hazy Breakbeat", "Sleek Groove") and a sea shanty, whose places in the game come later. (#379)
 - The roadmap queues a third wave of twelve Codex issues, and `AGENTS.md` says what to take when the queue runs out. (#358)
 - Codex is back on the project. Every open issue now carries an owner label (`codex`, `both` or `claude`), nineteen new `worker-ready` issues are queued for Codex with full briefs, and the docs and roadmap say which issues Codex may take. (#329)
 - Codex is off the project: the docs and roadmap now route all work to Claude and its subagents, and the queue reflects the playtest priorities. (#311)

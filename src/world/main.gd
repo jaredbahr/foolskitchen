@@ -11,7 +11,11 @@ extends Node3D
 ##   "Next day" -> MORNING of the next day, autosave
 ## F10 starts a new game (deletes the autosave).
 
-const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
+## New games start in the deeper starter room (#389). Saves name their base:
+## "tier1_roomier" games keep the earlier 7-row dining room, and saves with no
+## name keep the original shell.
+const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_deeper.tres")
+const ROOMIER_LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
 const ORIGINAL_LAYOUT: ShopLayout = preload("res://data/layouts/tier1_original.tres")
 ## Camera fit (FK-080): this zoom frames this many cells; bigger shops zoom out.
 const SHOP_ZOOM: float = 12.0
@@ -264,6 +268,11 @@ var _owner_picker: OwnerPicker
 var _owner_first_morning_pending: bool = false
 
 
+## The room a new game starts in. Review fixtures may keep an older room.
+func _starter_layout() -> ShopLayout:
+	return LAYOUT
+
+
 ## Builds the restaurant and the read-only view. Safe before tree readiness.
 ## HUD binding reads Clock/Economy; session and save registration wait for start().
 func initialize() -> void:
@@ -276,14 +285,14 @@ func initialize() -> void:
 		return
 	var errors: Array[String] = []
 	staff_roster = StaffRoster.new(TUNING)
-	sim = RestaurantSim.create(LAYOUT, content, 1, errors, null, true, false, staff_roster.members())
+	sim = RestaurantSim.create(_starter_layout(), content, 1, errors, null, true, false, staff_roster.members())
 	if not errors.is_empty():
 		push_error("Cannot build shop: %s" % [errors])
 		sim = null
 		return
 	sim.configure_booking(group_booking)
 	world = sim.world
-	menu_settings = MenuSettings.new(_cookable_recipes(LAYOUT), owner_progress.level)
+	menu_settings = MenuSettings.new(_cookable_recipes(_starter_layout()), owner_progress.level)
 	_apply_menu(sim, menu_settings)
 	_bind_world_presentation()
 
@@ -316,7 +325,7 @@ func _bind_world_presentation() -> void:
 	view.bind_cleanliness(sim.cleanliness)
 	view.bind_restaurant(sim, content)
 	view.bind_dock(sim.dock)
-	var painted_layout: ShopLayout = _loaded_layout if _loaded_layout != null else LAYOUT
+	var painted_layout: ShopLayout = _loaded_layout if _loaded_layout != null else _starter_layout()
 	view.set_paint(content, painted_layout.wall_swatch_id, painted_layout.floor_swatch_id)
 	var camera: CameraRig = $CameraRig
 	camera.set_grid_forced(false)
@@ -656,7 +665,7 @@ func start() -> void:
 	sim.spawner.max_gap = TUNING.arrival_gap_max
 	shop_editor = ShopEditor.new(sim, content, ShopEditBooks.new(Economy.can_buy_discretionary,
 		Economy.add_cash, _furniture_purchase_refusal),
-		_loaded_layout if _loaded_layout != null else LAYOUT)
+		_loaded_layout if _loaded_layout != null else _starter_layout())
 	shop_editor.set_owner_level(owner_progress.level)
 	shop_editor.set_property_tier(owner_progress.property_tier)
 	shop_editor.storage_need = _storage_need
@@ -2435,7 +2444,7 @@ func build_report(day: int) -> DayReport:
 
 func _new_game() -> void:
 	_reset_haggle()
-	_base_layout = LAYOUT
+	_base_layout = _starter_layout()
 	group_booking = GroupBooking.new(BOOKING_TUNING)
 	_booking_paid_total = 0
 	if sim != null:
@@ -3236,6 +3245,8 @@ func _base_for_saved_shop(data: Dictionary) -> ShopLayout:
 		return null
 	if StringName(identity) == ORIGINAL_LAYOUT.save_layout_id:
 		return ORIGINAL_LAYOUT
+	if StringName(identity) == ROOMIER_LAYOUT.save_layout_id:
+		return ROOMIER_LAYOUT
 	if StringName(identity) == LAYOUT.save_layout_id:
 		return LAYOUT
 	return null
