@@ -22,6 +22,9 @@ signal service_closed(day: int)
 var world: SimWorld
 var orders: OrderBook = OrderBook.new()
 var menu: Array[RecipeDef] = []
+## Effective selected-and-enabled recipe for this service. Empty keeps the
+## historical review path unchanged, including its seeded quote draw.
+var effective_signature_recipe_id: StringName = &""
 ## Per-shop overrides; recipe resources and their standard prices stay unchanged.
 var prices: Dictionary[StringName, int] = {}
 var pricing_tuning: EconomyTuning = EconomyTuning.new()
@@ -1206,6 +1209,8 @@ func record_departure(customer: CustomerAgent) -> void:
 					standard_price = recipe.standard_price
 					break
 		var visit: ReviewVisit = customer.review_visit(standard_price, customer.arrival_dirt_fraction)
+		visit.ate_signature_dish = not effective_signature_recipe_id.is_empty() \
+			and visit.consumed_recipe_ids.has(effective_signature_recipe_id)
 		visit.sticky_floor = mishaps != null and cleanliness != null \
 			and cleanliness.sticky_spot_count() >= mishaps.tuning.sticky_floor_threshold
 		# A paid guest removed at the closing cutoff retains their happy report

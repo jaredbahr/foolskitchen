@@ -390,6 +390,45 @@ func test_booking_review_replaces_member_reviews_with_one_weighted_group_result(
 	assert_eq(restored.booking_lines, report.booking_lines)
 
 
+func test_positive_booking_quote_can_name_a_signature_consumed_by_one_member() -> void:
+	var ate: ReviewVisit = ReviewVisit.new()
+	ate.served = true
+	ate.was_seated = true
+	ate.ate_signature_dish = true
+	var other: ReviewVisit = ReviewVisit.new()
+	other.served = true
+	other.was_seated = true
+	var visits: Array[ReviewVisit] = [ate, other]
+	var result: Dictionary = ReputationBook.new().record_booking(visits, REVIEW_TUNING,
+		REVIEW_QUOTES, _rng(112), TUNING, 3)
+	assert_true(int(result["stars"]) >= 4)
+	assert_false(result["good_service"], "an incomplete party retains ordinary weight")
+	assert_eq(result["weight"], 1)
+	assert_true(REVIEW_QUOTES.groups[&"signature_dish"].has(result["quote"]))
+	ate.ate_signature_dish = false
+	var no_sig_rng: RandomNumberGenerator = _rng(112)
+	var unconsumed: Dictionary = ReputationBook.new().record_booking(visits, REVIEW_TUNING,
+		REVIEW_QUOTES, no_sig_rng, TUNING, 3)
+	assert_false(REVIEW_QUOTES.groups[&"signature_dish"].has(unconsumed["quote"]))
+	var expected_rng: RandomNumberGenerator = _rng(112)
+	var used: Dictionary[String, bool] = {}
+	assert_eq(unconsumed["quote"], REVIEW_QUOTES.pick(unconsumed["cause"], expected_rng, used))
+	assert_eq(no_sig_rng.state, expected_rng.state, "ordinary booking still makes one quote draw")
+	var contradictory: ReviewVisit = ReviewVisit.new()
+	contradictory.ate_signature_dish = true
+	var positive_group: Array[ReviewVisit] = [contradictory]
+	for _member: int in 4:
+		var served: ReviewVisit = ReviewVisit.new()
+		served.served = true
+		positive_group.append(served)
+	var unserved_tag: Dictionary = ReputationBook.new().record_booking(positive_group,
+		REVIEW_TUNING, REVIEW_QUOTES, _rng(113), TUNING, 6)
+	assert_true(int(unserved_tag["stars"]) >= 4,
+		"the guard is tested even when the aggregate rating qualifies")
+	assert_false(REVIEW_QUOTES.groups[&"signature_dish"].has(unserved_tag["quote"]),
+		"an unserved member's contradictory tag never licenses group praise")
+
+
 func test_booking_spawns_once_at_its_slot_without_waiting_for_a_walkin_gap() -> void:
 	var grid: SimGrid = SimGrid.new(Vector2i(12, 12))
 	grid.set_terrain(Vector2i.ZERO, SimGrid.Terrain.ENTRY)

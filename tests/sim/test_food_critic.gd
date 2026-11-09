@@ -155,6 +155,28 @@ func _grown_book(count: int) -> ReputationBook:
 	return book
 
 
+func test_positive_critic_quote_uses_consumed_signature_without_changing_score() -> void:
+	var visit: ReviewVisit = _visit(0.95, 0.0)
+	var ordinary_rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	ordinary_rng.seed = 30331
+	var signature_rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	signature_rng.seed = 30331
+	var ordinary: Dictionary = ReputationBook.new().record_critic(visit, REVIEWS,
+		QUOTES, ordinary_rng, CRITIC)
+	var expected_rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	expected_rng.seed = 30331
+	var used: Dictionary[String, bool] = {}
+	assert_eq(ordinary["quote"], QUOTES.pick(ordinary["cause"], expected_rng, used))
+	assert_eq(ordinary_rng.state, expected_rng.state,
+		"an ordinary critic still makes only its original quote draw")
+	visit.ate_signature_dish = true
+	var named: Dictionary = ReputationBook.new().record_critic(visit, REVIEWS,
+		QUOTES, signature_rng, CRITIC)
+	assert_true(int(named["stars"]) >= 4)
+	assert_eq(named["stars"], ordinary["stars"])
+	assert_true(QUOTES.groups[&"signature_dish"].has(named["quote"]))
+
+
 func test_the_review_moves_reputation_by_the_data_weight() -> void:
 	var random: RandomNumberGenerator = RandomNumberGenerator.new()
 	random.seed = 1

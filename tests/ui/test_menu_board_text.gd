@@ -68,6 +68,30 @@ func test_long_name_and_dish_fit_the_chalkboard_face_with_ellipses() -> void:
 			"every displayed line stays inside the 0.59-metre board face")
 
 
+func test_signature_star_marks_only_the_enabled_matching_dish_and_still_fits() -> void:
+	var burger: RecipeDef = _recipe(&"burger", "Burger", RecipeDef.Section.MAINS)
+	var fries: RecipeDef = _recipe(&"fries", "Fries", RecipeDef.Section.MAINS)
+	var menu: Array[RecipeDef] = [burger, fries]
+	assert_eq(MenuBoardText.text("Corner", menu, RecipeDef.Section.MAINS, &"burger"),
+		"Corner\nMains\n• ★ Burger\n• Fries")
+	var settings: MenuSettings = MenuSettings.new(menu)
+	assert_true(settings.set_enabled(&"burger", false))
+	var disabled_text: String = MenuBoardText.text("Corner", settings.enabled_recipes(),
+		RecipeDef.Section.MAINS, &"burger")
+	assert_eq(disabled_text, "Corner\nMains\n• Fries", "disabled signatures are absent from the real board list")
+	assert_eq(MenuBoardText.text("Corner", menu), "Corner\nMains\n• Burger\n• Fries",
+		"the default optional ID preserves old board output")
+	var long_starred: String = MenuBoardText.text("Corner",
+		[_recipe(&"long", "W".repeat(100), RecipeDef.Section.MAINS)] as Array[RecipeDef],
+		RecipeDef.Section.MAINS, &"long")
+	assert_true(long_starred.split("\n")[2].begins_with("• ★ "))
+	assert_true(long_starred.split("\n")[2].ends_with(MenuBoardText.ELLIPSIS))
+	var font: Font = MenuBoardText.THEME.default_font if MenuBoardText.THEME.default_font != null else ThemeDB.fallback_font
+	for line: String in long_starred.split("\n"):
+		assert_true(font.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, MenuBoardText.FONT_SIZE).x
+			* MenuBoardText.PIXEL_SIZE <= MenuBoardText.MAX_LINE_WIDTH_M + 0.0001)
+
+
 func test_theme_shares_count_tagged_dishes_using_authored_labels() -> void:
 	var menu: Array[RecipeDef] = []
 	for index: int in 3:

@@ -55,7 +55,22 @@ static func factor_lines(forecast: Dictionary) -> PackedStringArray:
 			lines.append(CurbAppealText.forecast_line(float(clean[String(key)])))
 		else:
 			lines.append("%s: %s" % [factor_label(key), change_text(float(clean[String(key)]))])
+	var signature_line: String = _signature_line(clean)
+	if not signature_line.is_empty():
+		lines.append(signature_line)
 	return lines
+
+
+static func _signature_line(clean: Dictionary) -> String:
+	var raw_factor: Variant = clean.get("signature")
+	var raw_name: Variant = clean.get("signature_name")
+	if not (raw_factor is float or raw_factor is int) or not is_finite(float(raw_factor)) \
+			or float(raw_factor) <= 0.0 or not raw_name is String:
+		return ""
+	var dish_name: String = String(raw_name).strip_edges()
+	if dish_name.is_empty():
+		return ""
+	return "Signature dish: %s %s" % [dish_name, change_text(float(raw_factor))]
 
 
 static func forecast_note(forecast: Dictionary) -> String:
@@ -65,6 +80,12 @@ static func forecast_note(forecast: Dictionary) -> String:
 	var combined: float = 1.0
 	for key: StringName in FACTOR_KEYS:
 		combined *= float(clean[String(key)])
+	var signature_factor: Variant = clean.get("signature")
+	var signature_name: Variant = clean.get("signature_name")
+	if (signature_factor is float or signature_factor is int) and is_finite(float(signature_factor)) \
+			and float(signature_factor) > 0.0 and signature_name is String \
+			and not String(signature_name).strip_edges().is_empty():
+		combined *= float(signature_factor)
 	var total: float = float(clean["total"])
 	if combined > total and not is_equal_approx(combined, total):
 		return FORECAST_EXPLANATION + " Crowd growth is at its limit."

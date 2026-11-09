@@ -26,7 +26,8 @@ static func selected_section(menu: Array[RecipeDef], requested: int = -1) -> int
 	return -1
 
 
-static func text(restaurant_name: String, menu: Array[RecipeDef], requested: int = -1) -> String:
+static func text(restaurant_name: String, menu: Array[RecipeDef], requested: int = -1,
+		signature_recipe_id: StringName = &"") -> String:
 	var section: int = selected_section(menu, requested)
 	var name: String = _one_line(restaurant_name)
 	if name.is_empty():
@@ -42,7 +43,8 @@ static func text(restaurant_name: String, menu: Array[RecipeDef], requested: int
 		lines.append("No dishes today")
 	else:
 		for index: int in mini(dishes.size(), MAX_DISHES):
-			lines.append(_fit("• " + _one_line(dishes[index].display_name)))
+			var marker: String = "★ " if dishes[index].id == signature_recipe_id else ""
+			lines.append(_fit("• " + marker + _one_line(dishes[index].display_name)))
 	return "\n".join(lines)
 
 
