@@ -44,6 +44,31 @@ func test_board_uses_only_todays_enabled_dishes_and_at_most_four() -> void:
 		"name, section and four dishes fit the actual board face vertically")
 
 
+func test_special_uses_a_face_line_and_leaves_room_for_three_dishes() -> void:
+	var menu: Array[RecipeDef] = []
+	for letter: String in ["a", "b", "c", "d", "e"]:
+		menu.append(_recipe(StringName(letter), "Dish " + letter, RecipeDef.Section.MAINS))
+	var ordinary: String = MenuBoardText.text("Fool's Kitchen", menu, RecipeDef.Section.MAINS)
+	var copy: String = MenuBoardText.text("Fool's Kitchen", menu, RecipeDef.Section.MAINS, "Soup")
+	var lines: PackedStringArray = copy.split("\n")
+	assert_eq(ordinary, "Fool's Kitchen\nMains\n• Dish a\n• Dish b\n• Dish c\n• Dish d")
+	assert_eq(lines.size(), 6, "the special keeps the board within its six-line face")
+	assert_eq(lines[2], "Today's special: Soup")
+	assert_eq(lines[3], "• Dish a")
+	assert_eq(lines[5], "• Dish c")
+	assert_false(copy.contains("Dish d"), "a special reserves the fourth dish line")
+	var font: Font = MenuBoardText.THEME.default_font if MenuBoardText.THEME.default_font != null else ThemeDB.fallback_font
+	for line: String in lines:
+		var width: float = font.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, MenuBoardText.FONT_SIZE).x \
+			* MenuBoardText.PIXEL_SIZE
+		assert_true(width <= MenuBoardText.MAX_LINE_WIDTH_M + 0.0001,
+			"the special and dishes stay within the board's existing width limit")
+	var height: float = font.get_multiline_string_size(copy, HORIZONTAL_ALIGNMENT_LEFT, -1,
+		MenuBoardText.FONT_SIZE).y * MenuBoardText.PIXEL_SIZE
+	assert_true(height <= MenuBoardText.FACE_HEIGHT_M,
+		"the special uses the board's existing bounded face height")
+
+
 func test_drinks_use_the_same_section_as_the_menu_panel() -> void:
 	var coffee: RecipeDef = _recipe(&"coffee", "Coffee", RecipeDef.Section.BAKERY)
 	coffee.order_type = RecipeDef.COFFEE

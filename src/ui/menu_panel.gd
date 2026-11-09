@@ -5,6 +5,7 @@ extends Control
 signal restaurant_name_requested(restaurant_name: String)
 signal enable_requested(recipe_id: StringName, enabled: bool)
 signal price_requested(recipe_id: StringName, price: int)
+signal special_requested(recipe_id: StringName)
 signal settings_requested()
 signal goals_requested()
 signal lease_requested()
@@ -40,6 +41,8 @@ var _name_edit: LineEdit
 var _name_apply: Button
 var _name_feedback: Label
 var _menu_count: Label
+var _special_option: OptionButton
+var _special_id: StringName = &""
 var _theme_label: Label
 var _name_dirty: bool = false
 var _menu: MenuSettings
@@ -233,6 +236,7 @@ func set_rush_notice(text: String) -> void:
 
 func refresh() -> void:
 	_bind_nodes()
+	_refresh_special_picker()
 	_rush_notice.text = _rush_notice_text
 	_rush_notice.visible = _phase == SimClock.Phase.MORNING and not _rush_notice_text.is_empty()
 	_refresh_forecast()
@@ -482,8 +486,19 @@ func _build_sections() -> void:
 	identity.move_child(note, _name_feedback.get_index())
 	_hours_controls["note"] = note
 	# Under the dish count, inside the scroll, so short screens keep the list usable.
+	var special_line: HBoxContainer = _add_line(list, "DailySpecial")
+	special_line.add_theme_constant_override("separation", 8)
+	var special_label: Label = _add_label(special_line, "Label", "Today's special")
+	special_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_special_option = OptionButton.new()
+	_special_option.name = "Choice"
+	_special_option.theme = SHARED_THEME
+	_special_option.focus_mode = Control.FOCUS_NONE
+	_special_option.item_selected.connect(_on_special_selected)
+	special_line.add_child(_special_option)
 	_theme_label = _add_label(list, "MenuTheme", "")
 	list.move_child(_theme_label, _menu_count.get_index() + 1)
+	list.move_child(special_line, _menu_count.get_index() + 1)
 	_add_separator(identity)
 	_drinks_title = _add_label(list, "DrinksTitle", "Drinks")
 	_drinks_title.add_theme_font_size_override("font_size", 20)
@@ -505,6 +520,49 @@ func _add_separator(parent: Node) -> void:
 	separator.theme = SHARED_THEME
 	separator.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	parent.add_child(separator)
+
+
+## Main owns the accepted choice; this setter only updates the request control.
+func set_special(recipe_id: StringName) -> void:
+	_special_id = recipe_id
+	_bind_nodes()
+	_refresh_special_picker()
+
+
+func _refresh_special_picker() -> void:
+	if _special_option == null:
+		return
+	_special_option.set_block_signals(true)
+	_special_option.clear()
+	_special_option.add_item("None")
+	_special_option.set_item_metadata(0, &"")
+	var selected: int = 0
+	if _menu != null and _menu.is_valid():
+		for recipe: RecipeDef in _menu.enabled_recipes():
+			if recipe == null:
+				continue
+			_special_option.add_item(recipe.display_name)
+			var item_index: int = _special_option.item_count - 1
+			_special_option.set_item_metadata(item_index, recipe.id)
+			if recipe.id == _special_id:
+				selected = item_index
+	_special_option.select(selected)
+	_special_option.disabled = _phase != SimClock.Phase.MORNING
+	_special_option.tooltip_text = MORNING_HINT if _special_option.disabled else DailySpecialText.selection_hint()
+	_special_option.set_block_signals(false)
+
+
+func _on_special_selected(index: int) -> void:
+	if _phase != SimClock.Phase.MORNING or _special_option == null:
+		_refresh_special_picker()
+		return
+	if index < 0 or index >= _special_option.item_count:
+		_refresh_special_picker()
+		return
+	var requested: StringName = StringName(_special_option.get_item_metadata(index))
+	special_requested.emit(requested)
+	# The session may reject the request; keep displaying its last accepted value.
+	_refresh_special_picker()
 
 
 func _on_settings_pressed() -> void:

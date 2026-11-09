@@ -9,6 +9,7 @@ var _menu: MenuSettings
 var _burger: RecipeDef
 var _enable_requests: Array[Dictionary] = []
 var _price_requests: Array[Dictionary] = []
+var _special_requests: Array[StringName] = []
 var _settings_requests: int = 0
 var _goals_requests: int = 0
 
@@ -17,6 +18,7 @@ func before_each() -> void:
 	_name_requests.clear()
 	_settings_requests = 0
 	_goals_requests = 0
+	_special_requests.clear()
 	_burger = _recipe(&"burger", "Burger", 12)
 	_menu = MenuSettings.new([_recipe(&"tomato_soup", "Tomato soup", 9), _burger,
 		_recipe(&"grilled_cheese", "Grilled cheese", 8)])
@@ -24,6 +26,7 @@ func before_each() -> void:
 	_panel.restaurant_name_requested.connect(_record_name)
 	_panel.enable_requested.connect(_record_enable)
 	_panel.price_requested.connect(_record_price)
+	_panel.special_requested.connect(_record_special)
 	_panel.settings_requested.connect(_record_settings)
 	_panel.goals_requested.connect(_record_goals)
 	_panel.bind_menu(_menu)
@@ -75,6 +78,38 @@ func test_rows_defaults_shared_styles_and_mouse_scope_work_before_ready() -> voi
 	assert_false(_label(&"burger", "Unlock").visible)
 	assert_false(_label(&"burger", "Top/Name").has_theme_color_override("font_color"))
 	assert_null(_panel.row_for(&"missing"))
+
+
+func test_daily_special_picker_is_request_only_enabled_menu_and_morning_gated() -> void:
+	assert_true(_menu.set_enabled(&"grilled_cheese", false))
+	_panel.refresh()
+	var picker: OptionButton = _panel.get_node(
+		"Panel/Content/Body/Scroll/Pad/List/DailySpecial/Choice") as OptionButton
+	assert_eq(picker.item_count, 3, "None plus the two enabled recipes")
+	assert_eq(picker.get_item_text(0), "None")
+	assert_eq(picker.get_item_metadata(picker.selected), &"", "None is the default selection")
+	_panel.set_special(&"tomato_soup")
+	var burger_index: int = -1
+	for index: int in picker.item_count:
+		var recipe_id: StringName = StringName(picker.get_item_metadata(index))
+		assert_ne(recipe_id, &"grilled_cheese", "disabled dishes are not selectable specials")
+		if recipe_id == &"burger":
+			burger_index = index
+	assert_true(burger_index > 0)
+	var before: Dictionary = _menu.to_dict()
+	picker.item_selected.emit(burger_index)
+	assert_eq(_special_requests, [&"burger"] as Array[StringName])
+	assert_eq(_menu.to_dict(), before, "the panel only requests a special")
+	assert_eq(picker.get_item_metadata(picker.selected), &"tomato_soup",
+		"a rejected request restores the accepted selection")
+	_panel.set_special(&"burger")
+	assert_eq(picker.get_item_metadata(picker.selected), &"burger")
+	_panel.set_phase(SimClock.Phase.OPEN)
+	assert_true(picker.disabled)
+	picker.item_selected.emit(0)
+	assert_eq(_special_requests, [&"burger"] as Array[StringName],
+		"a forged selection event outside morning is ignored")
+	assert_eq(picker.get_item_metadata(picker.selected), &"burger")
 
 
 func test_secondary_settings_button_requests_panel_without_editing_dishes() -> void:
@@ -334,6 +369,10 @@ func _record_enable(id: StringName, enabled: bool) -> void:
 
 func _record_price(id: StringName, price: int) -> void:
 	_price_requests.append({"id": id, "price": price})
+
+
+func _record_special(id: StringName) -> void:
+	_special_requests.append(id)
 
 
 func _record_settings() -> void:

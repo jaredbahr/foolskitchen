@@ -87,6 +87,7 @@ var _hidden_anchor: Vector3i = WallFaces.NO_FACE
 var _menu_board_name: String = MenuSettings.DEFAULT_NAME
 var _menu_board_recipes: Array[RecipeDef] = []
 var _menu_board_prices: Dictionary = {}
+var _menu_board_special_name: String = ""
 var _restaurant_name: String = MenuSettings.DEFAULT_NAME
 var _hung_preview_anchor: Vector3i = WallFaces.NO_FACE
 var _hung_preview_swatch: StringName = &""
@@ -106,10 +107,11 @@ func bind(grid: SimGrid, content: ContentDB, finishes: WallFinishes, decor: Wall
 ## Main supplies today's enabled dishes; the full recipe catalogue is never
 ## used to label a board. Existing nodes update in place on menu/name edits.
 func set_menu_board_content(restaurant_name: String, enabled_recipes: Array[RecipeDef],
-		prices: Dictionary = {}) -> void:
+		prices: Dictionary = {}, special_name: String = "") -> void:
 	_menu_board_name = restaurant_name
 	_menu_board_recipes.assign(enabled_recipes)
 	_menu_board_prices = prices.duplicate()
+	_menu_board_special_name = special_name
 	refresh_menu_boards()
 
 
@@ -129,7 +131,7 @@ func refresh_menu_boards() -> void:
 		var label: Label3D = node.prop.get_node_or_null(^"WallMount/MenuText") as Label3D
 		if label != null:
 			label.call("set_menu_board_text", MenuBoardText.text(_menu_board_name,
-				_menu_board_recipes, hung.menu_section))
+				_menu_board_recipes, hung.menu_section, _menu_board_special_name))
 ## The same normalized name used by the HUD and the existing free name board.
 func set_restaurant_name(value: String) -> bool:
 	var normalized: String = MenuSettings.normalized_restaurant_name(value)

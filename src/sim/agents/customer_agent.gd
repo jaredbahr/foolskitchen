@@ -1084,6 +1084,8 @@ func _take_order(server: SimAgent) -> bool:
 		_leave(sim.world, sim, &"out_of_stock")
 		return true
 	var recipe: RecipeDef = choices[rng.randi_range(0, choices.size() - 1)]
+	if sim.daily_special != null:
+		recipe = sim.daily_special.pick(recipe, choices, rng)
 	if party != null and party.booking_owned and not booking_recipe_id.is_empty():
 		var preferred_available: bool = false
 		for choice: RecipeDef in choices:

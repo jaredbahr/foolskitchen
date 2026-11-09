@@ -473,6 +473,31 @@ func _visit(quality: float, food_wait: float) -> ReviewVisit:
 	return visit
 
 
+func test_priciest_critic_overrides_an_active_guaranteed_special_pull() -> void:
+	var sim: RestaurantSim = _sim(41)
+	var config: MenuTuning = MenuTuning.new()
+	config.special_pull = 1.0
+	sim.daily_special = DailySpecial.new(config)
+	var food: Array[RecipeDef] = sim.available_of(RecipeDef.FOOD, sim.available_menu())
+	assert_true(food.size() >= 2)
+	var dearest: RecipeDef = food[0]
+	var cheapest: RecipeDef = food[0]
+	for recipe: RecipeDef in food:
+		if sim.price_of(recipe) > sim.price_of(dearest):
+			dearest = recipe
+		if sim.price_of(recipe) < sim.price_of(cheapest):
+			cheapest = recipe
+	assert_ne(cheapest.id, dearest.id)
+	assert_true(sim.daily_special.select(cheapest.id, sim.menu))
+	var guest: CustomerAgent = sim.add_customer(sim.world.grid.entries()[0], _random(42), null)
+	assert_true(guest.disguise_as_critic([FoodCritic.PRICIEST] as Array[StringName], CRITIC))
+	guest.state = CustomerAgent.State.ORDERING
+	assert_true(guest._take_order(SimAgent.new()))
+	assert_not_null(guest.order)
+	assert_eq(guest.order.recipe_id, dearest.id)
+	assert_eq(guest.order.price, sim.price_of(dearest))
+
+
 func _sim(seed_value: int) -> RestaurantSim:
 	var content: ContentDB = ContentDB.new()
 	assert_eq(content.load_all(), PackedStringArray())
