@@ -170,6 +170,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- Design: the property market is decided (D28): every Tier 3 lot visible with its perks, fixer-uppers, upstairs on some lots, lot-only ingredients and build items, a prestige score for fine dining, bar gambling, and what carries over when you buy or move. (#PRNUM)
 - Five new songs by Jared are in the game files: "Diner Boogie" and "Coffee Shop Morning" for diner and café theme music (#367), two upbeat funk tracks ("Hazy Breakbeat", "Sleek Groove") and a sea shanty, whose places in the game come later. (#379)
 - The roadmap queues a third wave of twelve Codex issues, and `AGENTS.md` says what to take when the queue runs out. (#358)
 - Codex is back on the project. Every open issue now carries an owner label (`codex`, `both` or `claude`), nineteen new `worker-ready` issues are queued for Codex with full briefs, and the docs and roadmap say which issues Codex may take. (#329)
