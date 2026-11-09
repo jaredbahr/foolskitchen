@@ -9,8 +9,9 @@ extends RefCounted
 ## the street door to every seat and to the pass, the pass's dining side to
 ## every seat, and the pass's kitchen side to every kitchen station. A cell on
 ## one of these routes is a pinch when both of its sides across one axis are
-## closed (a wall, an item, a seat, or a wall segment between them). Dead ends
-## and corners no route crosses are never flagged.
+## closed (a wall, an item, a seat, or a wall segment between them). Cells no
+## route crosses are never flagged; a one-cell lane to a single seat is, since
+## the guest and the server both walk it.
 
 const WARNING: String = "Tight squeeze: people can't pass each other here"
 
