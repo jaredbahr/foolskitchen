@@ -11,7 +11,11 @@ extends Node3D
 ##   "Next day" -> MORNING of the next day, autosave
 ## F10 starts a new game (deletes the autosave).
 
-const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
+## New games start in the deeper starter room (#389). Saves name their base:
+## "tier1_roomier" games keep the earlier 7-row dining room, and saves with no
+## name keep the original shell.
+const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_deeper.tres")
+const ROOMIER_LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
 const ORIGINAL_LAYOUT: ShopLayout = preload("res://data/layouts/tier1_original.tres")
 ## Camera fit (FK-080): this zoom frames this many cells; bigger shops zoom out.
 const SHOP_ZOOM: float = 12.0
@@ -3203,6 +3207,8 @@ func _base_for_saved_shop(data: Dictionary) -> ShopLayout:
 		return null
 	if StringName(identity) == ORIGINAL_LAYOUT.save_layout_id:
 		return ORIGINAL_LAYOUT
+	if StringName(identity) == ROOMIER_LAYOUT.save_layout_id:
+		return ROOMIER_LAYOUT
 	if StringName(identity) == LAYOUT.save_layout_id:
 		return LAYOUT
 	return null

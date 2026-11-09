@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- New games start in a deeper dining room, with half again as much floor between the kitchen and the street door, so there is room for four or five two-seat tables with aisles two people wide. The starting tables are spread out with two-cell aisles, and the rent is the same. Saved games keep their shop as it is. Build mode now also warns you, and marks the spot in red, when furniture you place or move narrows a walkway people use (the door to the tables and the pass, the pass to the tables, or the kitchen stations) to a single cell, where two people can't pass each other. It is only a warning. (#PRNUM)
 - Take on a rotating weekly challenge: serve a busy day, earn operating profit, finish clean days without losing a guest, collect good reviews, or sell a featured dish. Goals shows your frozen target and progress, and the evening report calls out a cash reward when you complete it. (#345)
 - Share furniture blueprints with Copy code and Paste code in Build. Codes keep each piece's look and rotation, and imported copies get a new name when one is already used. (#364)
 - The evening report now names the slowest-selling dish that stayed in stock through service and suggests a lower price or a menu change. (#363)

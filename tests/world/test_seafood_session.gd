@@ -103,7 +103,7 @@ func test_deck_planks_lays_through_the_normal_edit_and_survives_the_shop_snapsho
 	assert_eq(Economy.cash, cash - style.price * cells.size())
 	var errors: Array[String] = []
 	var layout: ShopLayout = ShopEditor.from_dict(editor.to_dict(),
-		load("res://data/layouts/tier1_hole_in_the_wall.tres") as ShopLayout,
+		load("res://data/layouts/tier1_deeper.tres") as ShopLayout,
 		main.get("content") as ContentDB, errors)
 	assert_eq(errors, [] as Array[String])
 	assert_not_null(layout)

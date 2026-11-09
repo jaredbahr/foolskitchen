@@ -7,7 +7,7 @@ const SOURCE_FILES: Array[String] = ["res://tools/movement_review.gd", "res://to
 	"res://src/sim/agents/sim_agent.gd", "res://src/sim/movement_coordinator.gd",
 	"res://src/world/agent_presentation_controller.gd", "res://src/world/motion_smoother.gd",
 	"res://src/world/shop_view.gd", "res://src/world/main.gd", "res://tools/screenshot.gd",
-	"res://data/balance/movement.tres", "res://data/layouts/tier1_hole_in_the_wall.tres"]
+	"res://data/balance/movement.tres", "res://data/layouts/tier1_deeper.tres"]
 var _review_pair: Array[int] = []
 var _review_state: Dictionary = {}
 var _review_render: Dictionary = {}

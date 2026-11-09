@@ -89,7 +89,10 @@ func test_chair_row_that_seals_off_a_table_warns_but_is_allowed() -> void:
 	var right: int = _facing(Vector2i.RIGHT)
 	var first: EditCheck = _editor.check_buy(&"stool", Vector2i(4, 4), left)
 	assert_true(first.ok)
-	assert_true(first.seat_warnings.is_empty(), "one stool still leaves the gap open")
+	assert_eq(first.seat_cut_warning, "", "one stool still leaves the gap open")
+	# ...but only one cell of it, on the way to the table (#389).
+	assert_false(first.aisle_pinches.is_empty())
+	assert_eq(first.seat_warnings.get(0, ""), AisleRules.WARNING)
 	assert_true(_editor.buy(&"stool", Vector2i(4, 4), left))
 	var sealing: EditCheck = _editor.check_buy(&"stool", Vector2i(5, 4), right)
 	assert_true(sealing.ok, "seat cut-offs follow the furniture rule: warn, never block")

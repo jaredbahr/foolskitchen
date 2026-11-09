@@ -4,7 +4,7 @@ extends RefCounted
 ## box-select that pair, save it, then rotate/stamp it where the right table
 ## stood. No state is written to disk and no new assets are involved.
 
-const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
+const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_deeper.tres")
 const PROFILES: Array[String] = ["selection", "ghost", "stamped"]
 
 

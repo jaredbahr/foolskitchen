@@ -93,7 +93,13 @@ func test_projected_world_clicks_match_editor_for_four_camera_quarters_and_four_
 			assert_eq(_mode().origin, target)
 			assert_eq(_mode().current_check.ok, expected.ok)
 			assert_eq(_mode().current_check.why, expected.why)
-			assert_eq(_mode().warning_ids(), expected.unreachable)
+			# Unreachable items plus any seat or aisle warning (#389) on the moved fridge.
+			var warned: Array[int] = expected.unreachable.duplicate()
+			for id: int in expected.seat_warnings:
+				if not warned.has(id):
+					warned.append(id)
+			warned.sort()
+			assert_eq(_mode().warning_ids(), warned)
 			_main.call("update_build_pointer", _project(bad_cell + _mode().grab_offset))
 			# The last hover is red: click must refresh from its own position.
 			_click(_project(target + _mode().grab_offset))
@@ -109,7 +115,7 @@ func test_projected_world_clicks_match_editor_for_four_camera_quarters_and_four_
 func test_stationary_pointer_reprojects_after_camera_smoothing_without_a_mouse_event() -> void:
 	await _start()
 	assert_true(_main.call("set_build_active", true))
-	assert_true(_mode().begin_buy(&"chair", Vector2i(4, 9)))
+	assert_true(_mode().begin_buy(&"chair", Vector2i(4, 10)))
 	var pointer: Vector2 = _viewport.get_mouse_position()
 	_main.call("_process", 0.0)
 	var before: Vector2i = _mode().origin
@@ -180,7 +186,7 @@ func test_build_keys_suspend_inspection_cycle_world_turns_and_leave_service_r_un
 	assert_eq(inspection["selected_agent_id"], -1)
 	assert_false(inspection["panel_visible"])
 	assert_false(_main.call("select_agent", _world().agents[0].id))
-	assert_true(_mode().begin_buy(&"chair", Vector2i(4, 9)))
+	assert_true(_mode().begin_buy(&"chair", Vector2i(4, 10)))
 	for turn: int in [1, 2, 3, 0]:
 		_key(KEY_R)
 		assert_eq(_mode().quarter_turns, turn)
@@ -218,7 +224,7 @@ func test_open_phase_refuses_b_and_hud_and_direct_phase_writes_exit_cheaply() ->
 	_main.call("_process", 0.0)
 	assert_false(button.disabled)
 	assert_true(_main.call("set_build_active", true))
-	assert_true(_mode().begin_buy(&"chair", Vector2i(4, 9)))
+	assert_true(_mode().begin_buy(&"chair", Vector2i(4, 10)))
 	Clock.sim.phase = SimClock.Phase.LAST_ORDERS
 	_main.call("_process", 0.0)
 	assert_false(_main.call("is_build_active"))
@@ -248,7 +254,7 @@ func test_native_build_input_precedes_selected_owner_keys_and_station_commands()
 	assert_false(panel.visible)
 	assert_false(owner_controls.is_visible_in_tree())
 	assert_true(_main.call("begin_buy_item", &"chair"))
-	_main.call("update_build_pointer", _project(Vector2i(4, 9)))
+	_main.call("update_build_pointer", _project(Vector2i(4, 10)))
 	assert_eq(_mode().quarter_turns, 0)
 	_native_key(KEY_R)
 	assert_eq(_mode().quarter_turns, 1, "native R rotates the ghost through Main's build route")
@@ -361,7 +367,7 @@ func test_native_alt_buy_commit_and_gui_clicks_keep_existing_input_ownership() -
 	var content: ContentDB = _main.get("content") as ContentDB
 	var plant_def: ItemDef = content.item(&"potted_plant")
 	_editor().set_owner_level(plant_def.unlock_level) # Explicit purchase-unlock fixture.
-	var origin: Vector2i = Vector2i(4, 9)
+	var origin: Vector2i = Vector2i(4, 10)
 	assert_true(_mode().begin_buy(plant_def.id, origin))
 	assert_true(_mode().current_check.ok)
 	var before: Dictionary = _build_side_effect_state()
@@ -373,7 +379,7 @@ func test_native_alt_buy_commit_and_gui_clicks_keep_existing_input_ownership() -
 	assert_eq(Economy.cash, cash - plant_def.price)
 	assert_eq(_saved_build_text(), before["saved"])
 	assert_eq(GameState._capture_save(), before["rng"])
-	assert_true(_mode().begin_buy(&"fridge", Vector2i(2, 8)))
+	assert_true(_mode().begin_buy(&"fridge", Vector2i(2, 9)))
 	var catalogue: BuildCatalogue = _main.get_node("Overlay/BuildCatalogue") as BuildCatalogue
 	await _frames(2)
 	before = _build_side_effect_state()
@@ -531,7 +537,7 @@ func test_build_hints_match_available_actions_and_fit_content_or_small_viewport_
 	await _frames(2)
 	assert_eq(label.text, "Click Pick up  |  Alt-click Pick up rug  |  Ctrl+Z Undo  Ctrl+Y Redo  |  Esc Exit")
 	assert_true(panel.size.x < 700.0 and panel.size.y < 96.0, "one-line hints follow their content")
-	assert_true(_mode().begin_buy(&"chair", Vector2i(4, 9)))
+	assert_true(_mode().begin_buy(&"chair", Vector2i(4, 10)))
 	assert_true(label.text.contains("R Rotate"))
 	assert_false(label.text.contains("Del Sell"))
 	assert_true(_mode().pick_up(_id(&"potted_plant")))
@@ -540,7 +546,7 @@ func test_build_hints_match_available_actions_and_fit_content_or_small_viewport_
 	assert_eq(label.text, "Click Pick up  |  Alt-click Pick up rug  |  Ctrl+Z Undo  Ctrl+Y Redo  |  Esc Exit")
 	# Reproduce the real two-line red hint through the same proposal as capture.
 	assert_true(_main.call("begin_buy_item", &"fridge"))
-	assert_true(_main.call("update_build_pointer", _project(Vector2i(7, 7))))
+	assert_true(_main.call("update_build_pointer", _project(Vector2i(7, 8))))
 	_key(KEY_R)
 	assert_false(_mode().current_check.ok)
 	await _frames(3)
@@ -603,7 +609,7 @@ func test_forced_grid_preserves_both_preferences_and_rebinds_the_actual_new_floo
 	assert_eq(_rig().grid_material.get_shader_parameter("grid_visible"), false)
 	assert_true(_rig().grid_floor == (_main.get_node("ShopView") as ShopView).floor_mesh)
 	assert_true(_mode().enter())
-	assert_true(_mode().begin_buy(&"chair", Vector2i(4, 9)))
+	assert_true(_mode().begin_buy(&"chair", Vector2i(4, 10)))
 	assert_true(old_clock.start_service())
 	assert_true(_main.call("is_build_active"), "the detached clock cannot exit the rebound controller")
 	assert_true(Clock.sim.start_service())
@@ -643,18 +649,18 @@ func test_delete_books_refund_once_and_preserves_upstream_zero_popup_policy() ->
 		ShopEditBooks.new(Economy.can_spend_without_loan, Economy.add_cash)))
 	_main.call("_bind_build_session")
 	assert_true(_mode().enter())
-	assert_true(_mode().begin_buy(catalog.free_item.id, Vector2i(4, 9)))
+	assert_true(_mode().begin_buy(catalog.free_item.id, Vector2i(4, 10)))
 	assert_true(_mode().commit())
 	count = deltas.get_child_count()
 	entries = Economy.ledger.entries_for_day(Clock.sim.day).size()
 	cash = Economy.cash
-	_click(_project(Vector2i(4, 9)))
+	_click(_project(Vector2i(4, 10)))
 	assert_eq(_mode().sell_selected(), 0)
 	assert_eq(Economy.cash, cash)
 	assert_eq(Economy.ledger.entries_for_day(Clock.sim.day).size(), entries + 1)
 	assert_eq(deltas.get_child_count(), count, "upstream HUD ignores zero cash changes while the sale still succeeds")
 	assert_eq(_mode().state, BuildMode.State.IDLE)
-	assert_null(_world().grid.item_at(Vector2i(4, 9)))
+	assert_null(_world().grid.item_at(Vector2i(4, 10)))
 	_key(KEY_DELETE)
 	assert_eq(deltas.get_child_count(), count)
 	assert_eq(Economy.ledger.entries_for_day(Clock.sim.day).size(), entries + 1)
@@ -748,7 +754,8 @@ func test_preview_warning_ids_match_proposal_actual_purchase_cancel_exit_and_fix
 	assert_eq(_preview().displayed_warning_ids(), _mode().committed_warning_ids)
 	_key(KEY_ESCAPE)
 	assert_true(_preview().displayed_warning_ids().has(id))
-	var repair: Vector2i = _world().grid.item(_id(&"pass_counter")).origin + Vector2i(-3, -1)
+	# A clear kitchen spot that neither blocks a station nor squeezes an aisle (#389).
+	var repair: Vector2i = _world().grid.item(_id(&"pass_counter")).origin + Vector2i(6, -1)
 	assert_true(_main.call("shop_move", id, repair, 0))
 	assert_eq(_preview().displayed_warning_ids(), _editor().check_current().unreachable)
 	assert_false(_preview().displayed_warning_ids().has(id))
@@ -795,8 +802,8 @@ func test_saved_startup_replaces_initial_world_before_final_controller_clock_bin
 	await _start(true)
 	var morning_file: String = FileAccess.get_file_as_string(_save_dir.path_join(SLOT + ".json"))
 	assert_true(_main.call("set_build_active", true))
-	assert_true(_mode().begin_buy(&"chair", Vector2i(2, 8)))
-	_click(_project(Vector2i(2, 8)))
+	assert_true(_mode().begin_buy(&"chair", Vector2i(2, 9)))
+	_click(_project(Vector2i(2, 9)))
 	assert_eq(FileAccess.get_file_as_string(_save_dir.path_join(SLOT + ".json")), morning_file,
 		"build commits do not introduce another autosave")
 	assert_eq(SaveSystem.save_game(SLOT), OK)  # Existing explicit MORNING save.

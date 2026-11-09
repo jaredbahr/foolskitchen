@@ -203,7 +203,7 @@ func test_pre_sink_save_keeps_its_layout_and_defaults_missing_plate_stock() -> v
 		if value["def_id"] == "sink":
 			continue
 		if value["def_id"] == "potted_plant":
-			value["origin"] = [11, 9]
+			value["origin"] = [13, 12]
 		placements.append(value)
 	shop["items"] = placements
 	_write_document(document)
@@ -211,7 +211,7 @@ func test_pre_sink_save_keeps_its_layout_and_defaults_missing_plate_stock() -> v
 	_reload_main()
 	assert_eq(Economy.cash, cash, "a valid legacy layout does not silently start a new game")
 	assert_eq(ShopBuilder.items_with_def(_sim().world, &"sink").size(), 0, "loading does not insert furniture")
-	assert_eq(ShopBuilder.items_with_def(_sim().world, &"potted_plant")[0].origin, Vector2i(11, 9))
+	assert_eq(ShopBuilder.items_with_def(_sim().world, &"potted_plant")[0].origin, Vector2i(13, 12))
 	assert_eq(_sim().kitchen.clean_plates, 12)
 	assert_false(_sim().kitchen.plate_cycle_enabled)
 	var label: Label = _main.get_node("HUD/Top/Row/Plates") as Label
