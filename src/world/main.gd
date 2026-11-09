@@ -2740,8 +2740,9 @@ func _load_autosave_sections() -> bool:
 	_base_layout = base
 	business_history = _loaded_business_history if _loaded_business_history != null else BusinessHistory.new()
 	_loaded_business_history = null
-	_shown_collection_toast_ids = _loaded_collection_toast_ids.duplicate() \
-		if _has_loaded_collection_toast_section else [] as Array[StringName]
+	_shown_collection_toast_ids.clear()
+	if _has_loaded_collection_toast_section:
+		_shown_collection_toast_ids.assign(_loaded_collection_toast_ids)
 	_loaded_collection_toast_ids.clear()
 	_has_loaded_collection_toast_section = false
 	return true

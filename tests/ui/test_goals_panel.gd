@@ -248,6 +248,7 @@ func test_collection_section_is_independent_from_goal_rows_and_uses_display_name
 	var result: CollectionModel.Result = CollectionModel.Result.new()
 	result.valid = true
 	result.entries = [entry]
+	var active_goals_before: Array[StringName] = _panel.active_goal_ids()
 	_panel.set_collections(result)
 	assert_true((_panel.get_node("Panel/Content/Scroll/List/CollectionsHeading") as Label).visible)
 	var rows: VBoxContainer = _panel.get_node("Panel/Content/Scroll/List/CollectionsRows") as VBoxContainer
@@ -269,7 +270,7 @@ func test_collection_section_is_independent_from_goal_rows_and_uses_display_name
 	assert_eq((rows.get_node("Collection0Item1") as Label).text, "✓ Booth")
 	assert_eq((rows.get_node("Collection0Floor") as Label).text, "✓ Floor: Checker tiles")
 	assert_eq((rows.get_node("Collection0Complete") as Label).text, "Complete!")
-	assert_eq(_panel.active_goal_ids(), [&"first", &"second", &"third"] as Array[StringName],
+	assert_eq(_panel.active_goal_ids(), active_goals_before,
 		"the separate collection section does not alter selected career goals")
 
 

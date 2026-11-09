@@ -110,6 +110,9 @@ func test_owner_level_and_xp_bar_refresh_beside_reputation() -> void:
 
 
 func test_collection_toasts_are_queued_mouse_ignored_and_unscaled() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	tree.root.add_child(_hud)
+	await tree.process_frame
 	_hud.call("queue_collection_toast", &"diner_classics", "Collection complete: Diner Classics")
 	var panel: PanelContainer = _hud.get_node("CollectionToast") as PanelContainer
 	var label: Label = panel.get_node("Text") as Label
