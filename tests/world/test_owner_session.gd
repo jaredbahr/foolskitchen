@@ -172,7 +172,7 @@ func test_visible_rug_preserves_owner_work_dispatch_and_normal_non_target_and_wa
 func test_owner_menu_and_shop_changes_restore_after_next_morning() -> void:
 	var first: Node = _start(true)
 	var morning_file: String = FileAccess.get_file_as_string(_path())
-	assert_true(first.call("shop_move", _item(first, &"potted_plant").id, Vector2i(11, 9), 1))
+	assert_true(first.call("shop_move", _item(first, &"potted_plant").id, Vector2i(13, 12), 1))
 	assert_true(first.call("menu_set_enabled", &"tomato_soup", false))
 	assert_true(first.call("menu_set_price", &"burger", 15))
 	var saved_menu: Dictionary = (first.get("menu_settings") as MenuSettings).to_dict()

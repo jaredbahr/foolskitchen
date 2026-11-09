@@ -173,7 +173,7 @@ func test_legacy_owner_progress_loads_as_tier_one() -> void:
 	_close()
 	_start(true)
 	assert_eq(_progress().property_tier, 1)
-	var base: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
+	var base: ShopLayout = preload("res://data/layouts/tier1_deeper.tres")
 	assert_eq(_editor().footprint().lot, ShopFootprint.from_layout(base).lot)
 
 

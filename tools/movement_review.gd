@@ -16,6 +16,13 @@ var _review_ready: bool = false
 var _review_out: String = ""
 
 
+## The deeper starter room spreads people out, so seed one never brings two
+## staff face to face in a two-cell aisle there. Keep the older roomier room,
+## which still has that natural moment (same native people and movement code).
+func _starter_layout() -> ShopLayout:
+	return ROOMIER_LAYOUT
+
+
 func _ready() -> void:
 	use_saves = false
 	new_game_seed_override = 1

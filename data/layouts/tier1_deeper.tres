@@ -1,0 +1,91 @@
+[gd_resource type="Resource" script_class="ShopLayout" format=3]
+
+[ext_resource type="Script" path="res://src/sim/shop/shop_placement.gd" id="1_f5t7v"]
+[ext_resource type="Script" path="res://src/sim/shop/shop_layout.gd" id="2_asj40"]
+
+[sub_resource type="Resource" id="Resource_8swi5"]
+script = ExtResource("1_f5t7v")
+item_id = &"fridge"
+origin = Vector2i(1, 1)
+quarter_turns = 2
+
+[sub_resource type="Resource" id="Resource_o0wg6"]
+script = ExtResource("1_f5t7v")
+item_id = &"prep_counter"
+origin = Vector2i(4, 1)
+quarter_turns = 2
+
+[sub_resource type="Resource" id="Resource_3vvd5"]
+script = ExtResource("1_f5t7v")
+item_id = &"stove"
+origin = Vector2i(7, 1)
+quarter_turns = 2
+
+[sub_resource type="Resource" id="Resource_aexx1"]
+script = ExtResource("1_f5t7v")
+item_id = &"pass_counter"
+origin = Vector2i(6, 4)
+
+[sub_resource type="Resource" id="Resource_rgtxa"]
+script = ExtResource("1_f5t7v")
+item_id = &"table_2"
+origin = Vector2i(3, 8)
+quarter_turns = 1
+
+[sub_resource type="Resource" id="Resource_8ifey"]
+script = ExtResource("1_f5t7v")
+item_id = &"table_2"
+origin = Vector2i(7, 8)
+quarter_turns = 1
+
+[sub_resource type="Resource" id="Resource_ypch0"]
+script = ExtResource("1_f5t7v")
+item_id = &"table_2"
+origin = Vector2i(11, 8)
+quarter_turns = 1
+
+[sub_resource type="Resource" id="Resource_vsuro"]
+script = ExtResource("1_f5t7v")
+item_id = &"potted_plant"
+origin = Vector2i(14, 10)
+
+[sub_resource type="Resource" id="Resource_sink"]
+script = ExtResource("1_f5t7v")
+item_id = &"sink"
+origin = Vector2i(10, 1)
+quarter_turns = 2
+
+[resource]
+script = ExtResource("2_asj40")
+id = &"tier1_hole_in_the_wall"
+save_layout_id = &"tier1_deeper"
+display_name = "Hole-in-the-wall"
+rows = PackedStringArray("################", "#..............#", "#..............#", "#..............#", "#..............#", "#..............#", "#..............#", "#..............#", "#..............#", "#..............#", "#..............#", "#..............#", "#..............#", "#..............#", "#..............#", "#######..#######", "       EE       ")
+legacy_rows = PackedStringArray("################", "#..............#", "#..............#", "#..............#", "#..............#", "#..............#", "#..............#", "#..............#", "#..............#", "#..............#", "#..............#", "#..............#", "#..............#", "#..............#", "#..............#", "#######..#######", "       EE       ")
+placements = Array[ExtResource("1_f5t7v")]([SubResource("Resource_8swi5"), SubResource("Resource_o0wg6"), SubResource("Resource_3vvd5"), SubResource("Resource_aexx1"), SubResource("Resource_rgtxa"), SubResource("Resource_8ifey"), SubResource("Resource_ypch0"), SubResource("Resource_vsuro"), SubResource("Resource_sink")])
+room_rows = PackedStringArray("", " KKKKKKKKKKKKKK", " KKKKKKKKKKKKKK", " KKKKKKKKKKKKKK", " KKKKKKKKKKKKKK")
+staff_spawns = Dictionary[StringName, Vector2i]({
+&"cook": Vector2i(6, 2),
+&"owner": Vector2i(9, 3),
+&"server": Vector2i(10, 6),
+&"cleaner": Vector2i(10, 12)
+})
+lot_west = 2
+lot_east = 2
+lot_north = 4
+floor_cell_price = 15
+patio_depth = 4
+patio_cell_price = 15
+pantry_units = 100
+
+wall_segments = Dictionary[Vector3i, StringName]({
+Vector3i(1, 5, 1): &"wall",
+Vector3i(2, 5, 1): &"wall",
+Vector3i(8, 5, 1): &"wall",
+Vector3i(9, 5, 1): &"wall",
+Vector3i(10, 5, 1): &"wall",
+Vector3i(11, 5, 1): &"wall",
+Vector3i(12, 5, 1): &"wall",
+Vector3i(13, 5, 1): &"wall",
+Vector3i(14, 5, 1): &"wall"
+})
