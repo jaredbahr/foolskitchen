@@ -55,6 +55,8 @@ static func factor_lines(forecast: Dictionary) -> PackedStringArray:
 			lines.append(CurbAppealText.forecast_line(float(clean[String(key)])))
 		else:
 			lines.append("%s: %s" % [factor_label(key), change_text(float(clean[String(key)]))])
+	if clean.has("viral"):
+		lines.append(ViralReviewText.demand_line(float(clean["viral"])))
 	return lines
 
 
@@ -65,6 +67,7 @@ static func forecast_note(forecast: Dictionary) -> String:
 	var combined: float = 1.0
 	for key: StringName in FACTOR_KEYS:
 		combined *= float(clean[String(key)])
+	combined *= float(clean.get("viral", 1.0))
 	var total: float = float(clean["total"])
 	if combined > total and not is_equal_approx(combined, total):
 		return FORECAST_EXPLANATION + " Crowd growth is at its limit."

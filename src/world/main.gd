@@ -32,6 +32,7 @@ const REVIEW_TUNING: ReviewTuning = preload("res://data/balance/reviews.tres")
 const REVIEW_QUOTES: ReviewQuotes = preload("res://data/reviews/quotes.tres")
 const CRITIC: CriticTuning = preload("res://data/balance/critic.tres")
 const RUSH_TUNING: RushTuning = preload("res://data/balance/rush_hour.tres")
+const VIRAL_TUNING: ViralTuning = preload("res://data/balance/viral.tres")
 const PROGRESSION_TUNING: ProgressionTuning = preload("res://data/balance/progression.tres")
 const VIBE_TUNING: VibeTuning = preload("res://data/balance/vibe.tres")
 const CUSTOMER_TYPES: CustomerTypeCatalogue = preload("res://data/customers/types.tres")
@@ -157,6 +158,9 @@ var weather_tuning: WeatherTuning = WEATHER_TUNING
 var demand_tuning: DemandTuning = DEMAND_TUNING.duplicate(true) as DemandTuning
 var demand_state: DemandState = DemandState.new()
 var _loaded_demand: DemandState = null
+var viral_tuning: ViralTuning = VIRAL_TUNING.duplicate(true) as ViralTuning
+var viral_review: ViralReview = ViralReview.new(viral_tuning)
+var _loaded_viral: ViralReview = null
 ## Detached closing summaries; persistence stays at the morning checkpoint.
 var business_history: BusinessHistory = BusinessHistory.new()
 var _loaded_business_history: BusinessHistory = null
@@ -598,6 +602,7 @@ func start() -> void:
 	SaveSystem.register("hints", hints.capture, hints.restore)
 	SaveSystem.register("weather", _capture_weather, _restore_weather)
 	SaveSystem.register("demand", _capture_demand, _restore_demand)
+	SaveSystem.register("viral", _capture_viral, _restore_viral)
 	SaveSystem.register("business_history", _capture_business_history, _restore_business_history)
 	SaveSystem.register("cat", _capture_cat, _restore_cat)
 	SaveSystem.register("inspection", _capture_inspection, _restore_inspection)
@@ -1379,7 +1384,8 @@ func _refresh_demand() -> void:
 		return
 	var next: DemandBreakdown = DemandBreakdown.evaluate(demand_tuning,
 		_demand_reputation, _demand_renown, _demand_enabled_dishes(),
-		vibe_result.score, _demand_day, _street_factor(_demand_day))
+		vibe_result.score, _demand_day, _street_factor(_demand_day),
+		viral_review.factor(_demand_day))
 	if next == null or not sim.set_demand_factor(next.total):
 		return
 	_demand_breakdown = next
@@ -1417,7 +1423,8 @@ func forecast_next_demand() -> Dictionary:
 		return {}
 	var next: DemandBreakdown = DemandBreakdown.evaluate(demand_tuning,
 		reputation.average(), projected.renown, _demand_enabled_dishes(),
-		vibe_result.score, projected.day, _street_factor(projected.day))
+		vibe_result.score, projected.day, _street_factor(projected.day),
+		viral_review.factor(projected.day))
 	if next == null:
 		return {}
 	var result: Dictionary = next.to_dict()
@@ -2345,6 +2352,9 @@ func build_report(day: int) -> DayReport:
 	report.restaurant_name = menu_settings.restaurant_name() if menu_settings != null else MenuSettings.DEFAULT_NAME
 	report.regulars_lines = RegularText.report_lines(regulars)
 	report.critic_lines = FoodCritic.report_lines(sim.critic_result)
+	if viral_review.triggered_on(day):
+		var best: RecipeDef = content.recipe(viral_review.dish)
+		report.viral_line = ViralReviewText.evening(best.display_name if best != null else "food")
 	report.booking_lines = sim.booking_report_lines.duplicate()
 	report.loan_first_advance = _loan_notice_day == day
 	var totals: Dictionary = Economy.ledger.day_totals(day)
@@ -2448,6 +2458,8 @@ func _new_game() -> void:
 	hints.restart()
 	demand_state = DemandState.new()
 	_loaded_demand = null
+	viral_review = ViralReview.new(viral_tuning)
+	_loaded_viral = null
 	_demand_breakdown = null
 	_demand_day = 0
 	regulars = RegularCast.new()
@@ -2531,6 +2543,7 @@ func _load_autosave_sections() -> bool:
 	curb_appeal_factor = 1.0
 	_last_team_activity.clear()
 	_loaded_demand = null
+	_loaded_viral = null
 	_loaded_cat = {}
 	_loaded_inspection = {}
 	_loaded_critic = {}
@@ -2573,6 +2586,11 @@ func _load_autosave_sections() -> bool:
 			or demand_tuning == null or not demand_tuning.is_valid() \
 			or saved_demand.last_service_factor > demand_tuning.total_cap:
 		world.log_event("Saved shop growth does not match this morning; starting a new game")
+		return false
+	var saved_viral: ViralReview = _loaded_viral if _loaded_viral != null \
+		else ViralReview.new(viral_tuning)
+	if not saved_viral.valid_before_morning(Clock.sim.day):
+		world.log_event("Saved trending post is ahead of this morning; starting a new game")
 		return false
 	if _loaded_business_history != null and not _loaded_business_history.valid_before(Clock.sim.day):
 		world.log_event("Saved business history is ahead of this morning; starting a new game")
@@ -2688,6 +2706,8 @@ func _load_autosave_sections() -> bool:
 	# Install only after every other whole-load validation has succeeded.
 	world.weather = saved_weather.copy()
 	demand_state = saved_demand
+	viral_review = saved_viral
+	_loaded_viral = null
 	_base_layout = base
 	business_history = _loaded_business_history if _loaded_business_history != null else BusinessHistory.new()
 	_loaded_business_history = null
@@ -2704,6 +2724,19 @@ func _restore_business_history(data: Dictionary) -> bool:
 	if not restored.restore(data):
 		return false
 	_loaded_business_history = restored
+	return true
+
+
+func _capture_viral() -> Dictionary:
+	return viral_review.to_dict()
+
+
+## A later provider may reject the save; install only after whole-load validation.
+func _restore_viral(data: Dictionary) -> bool:
+	var restored: ViralReview = ViralReview.new(viral_tuning)
+	if not restored.from_dict(data):
+		return false
+	_loaded_viral = restored
 	return true
 
 
@@ -4253,6 +4286,7 @@ func _begin_morning() -> void:
 		_demand_breakdown = null
 		sim.demand_factor = 1.0
 		$HUD.set_demand_status(1.0, 0.0)
+	_menu_panel.set_viral_notice(ViralReviewText.morning(viral_review.factor(Clock.sim.day)))
 	sim.start_day()
 	# A visit is decided here, once a day; the named stream is created only on a
 	# day one is possible, so earlier games' streams are untouched.
@@ -5184,6 +5218,11 @@ func _on_service_closed(day: int) -> void:
 	if day != Clock.sim.day or _closed_report_day == day:
 		return
 	_closed_report_day = day
+	var sold: DayReport = DayReport.new()
+	sold.dishes_sold = dishes_sold_today.duplicate()
+	viral_review.close_open_day(day, sim.served_today, sim.lost_today,
+		int(sim.leave_reasons_today.get(&"happy", 0)), sold.best_dish(),
+		GameState.rng.bind(&"viral"))
 	demand_state.award_close(day, int(sim.leave_reasons_today.get(&"happy", 0)),
 		sim.demand_factor, demand_tuning)
 	_remember_menu_quality()

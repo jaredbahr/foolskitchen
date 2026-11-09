@@ -26,6 +26,8 @@ var dishes_sold: Dictionary = {}
 var slowest_seller_snapshot: Dictionary = {}:
 	set(value):
 		slowest_seller_snapshot = public_slowest_seller_snapshot(value)
+## Optional closing announcement, captured once from the finalized viral spell.
+var viral_line: String = ""
 var customers_served: int = 0
 var dish_quality_count: int = 0
 var dish_quality_average: float = 0.0
@@ -255,6 +257,8 @@ func to_dict() -> Dictionary:
 	var public_slowest_snapshot: Dictionary = public_slowest_seller_snapshot(slowest_seller_snapshot)
 	if not public_slowest_snapshot.is_empty():
 		result["slowest_seller_snapshot"] = public_slowest_snapshot
+	if not viral_line.is_empty():
+		result["viral_line"] = viral_line
 	if not inspection_lines.is_empty():
 		result["inspection_lines"] = inspection_lines.duplicate()
 	if not weekly_challenge_line.is_empty():
@@ -348,6 +352,9 @@ static func from_dict(data: Dictionary) -> DayReport:
 		for line: Variant in saved_critic:
 			if line is String:
 				report.critic_lines.append(line)
+	var saved_viral_line: Variant = data.get("viral_line", "")
+	if saved_viral_line is String and saved_viral_line.length() <= 300:
+		report.viral_line = saved_viral_line
 	var saved_weekly_line: Variant = data.get("weekly_challenge_line", "")
 	if saved_weekly_line is String and saved_weekly_line.length() <= 100:
 		report.weekly_challenge_line = saved_weekly_line
@@ -388,6 +395,14 @@ static func public_demand_forecast(value: Variant) -> Dictionary:
 				or not is_finite(float(factor)) or float(factor) <= 0.0:
 			return {}
 		result[key] = float(factor)
+	# Old forecasts have no viral factor and stay neutral without a shape change.
+	if forecast.has("viral"):
+		var viral: Variant = forecast["viral"]
+		if (typeof(viral) != TYPE_INT and typeof(viral) != TYPE_FLOAT) \
+				or not is_finite(float(viral)) or float(viral) < 1.0:
+			return {}
+		if float(viral) > 1.0:
+			result["viral"] = float(viral)
 	return result
 
 

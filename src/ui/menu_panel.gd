@@ -51,6 +51,8 @@ var _forecast_rendered_patio: bool = false
 var _status: Label
 var _rush_notice: Label
 var _rush_notice_text: String = ""
+var _viral_notice: Label
+var _viral_notice_text: String = ""
 var _empty: Label
 var _rows_node: VBoxContainer
 ## The name and hours sit above two columns. Left: the unlock tree and the
@@ -231,8 +233,17 @@ func set_rush_notice(text: String) -> void:
 	_rush_notice.visible = _phase == SimClock.Phase.MORNING and not _rush_notice_text.is_empty()
 
 
+func set_viral_notice(text: String) -> void:
+	_viral_notice_text = text.strip_edges()
+	_bind_nodes()
+	_viral_notice.text = _viral_notice_text
+	_viral_notice.visible = _phase == SimClock.Phase.MORNING and not _viral_notice_text.is_empty()
+
+
 func refresh() -> void:
 	_bind_nodes()
+	_viral_notice.text = _viral_notice_text
+	_viral_notice.visible = _phase == SimClock.Phase.MORNING and not _viral_notice_text.is_empty()
 	_rush_notice.text = _rush_notice_text
 	_rush_notice.visible = _phase == SimClock.Phase.MORNING and not _rush_notice_text.is_empty()
 	_refresh_forecast()
@@ -427,6 +438,7 @@ func _bind_nodes() -> void:
 		return
 	_status = %Status
 	_rush_notice = %RushNotice
+	_viral_notice = %ViralNotice
 	_empty = %Empty
 	_rows_node = %Rows
 	_list = get_node("Panel/Content/Body/Scroll/Pad/List") as VBoxContainer

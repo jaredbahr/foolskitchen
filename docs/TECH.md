@@ -3265,3 +3265,31 @@ Guests keep their own routes during deferred seat release; the automatic busser
 step-off route is restricted to staff. Wall previews also protect reserved movement
 edges and their diagonal corners, including exact undo/redo, while allowing
 unrelated walls and removals.
+
+### Viral reviews (#335)
+
+`ViralReview` is pure close-time state with authored `ViralTuning` in
+`data/balance/viral.tres`. Main passes actual happy departures divided by
+served + lost guests, the existing report's stable best-dish selection, and a
+lazy `GameState.rng(&"viral")` provider. Only a qualifying, out-of-cooldown
+close asks for that stream. The ten-day interval is between trigger closes.
+The next three completed open services use 1.35, 1.233333..., 1.116666...;
+calendar gaps, morning reloads and report/forecast queries consume nothing.
+A duplicate/stale close neither draws nor consumes. The just-closed factor
+stays available for current-day queries while the forecast reads the next one.
+
+The versioned `viral` save provider stages detached state; only a wholly
+accepted morning load installs it. Absent old-save sections and new runs are
+neutral. Only the existing `_begin_morning()` autosave writes it. Demand
+multiplies the separate optional `viral` factor exactly once before the existing
+total cap; neutral legacy snapshots retain their shape. `ViralReviewText` owns
+the shared plain report, demand and morning wording. The report announcement
+sits below all existing review cards so their ordinary top-scroll geometry
+stays unchanged.
+
+The existing Visual job adds one two-image `tools/viral_review.tscn` capture.
+It is explicitly an unsaved close-data UI fixture, not a played-service or
+probability claim: 34 served/happy, 6 lost, soup20/cheese14, fixture-only
+chance1. Real Main close and next-morning handlers render the report and
+reminder; observers25/75 check visible bounds and unchanged state before
+photos30/90. Statistical odds and default balance are validated separately.
