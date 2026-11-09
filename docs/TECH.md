@@ -150,11 +150,12 @@ an active edit/panel/selection first, or opens Settings when none is active.
     timeout fails only that scene, preserving later queued previews and the
     failed-item guard against blind retries; global renderer/stage failures
     keep their existing separate handling.
-  - The Tier 1 hole-in-the-wall is `data/layouts/tier1_hole_in_the_wall.tres`:
+  - New games start in the deeper Tier 1 hole-in-the-wall, `data/layouts/tier1_deeper.tres` (#389):
     - kitchen at the top (fridge, prep counter and stove facing down), with seat-free Kitchen/Dining crossings at x=3, x=4 and x=5;
     - the pass at (6,4), worked from (6,3) in the kitchen and (6,5) in the dining room;
-    - three two-seat tables at (3,7), (7,7) and (11,7), each turned one quarter;
-    - street entries at (7,13) and (8,13), through the two-cell opening in the front wall at row 12.
+    - ten dining rows (5–14): three two-seat tables at (3,8), (7,8) and (11,8), each turned one quarter, with two-cell aisles above (rows 5–6), below (rows 11–12) and between them; rows 13–14 leave room for two more tables at the corners;
+    - street entries at (7,16) and (8,16), through the two-cell opening in the front wall at row 15.
+  - `tier1_hole_in_the_wall.tres` is the earlier 7-row dining room (16×14, entries at row 13), kept for saves named `tier1_roomier`; `tier1_original.tres` is the first 14×12 shell.
 - **Customers and orders (FK-014, `src/sim/restaurant/`):**
   - `RestaurantSim.create(layout, content, seed, errors)` owns `world`, `orders`, the tier-one `menu`, and a seeded `spawner`. It adds a cook and server from the layout spawns.
   - `start_day()` resets `served_today`, `lost_today`, `leave_reasons_today` and the arrival countdown, clears departure tracking, prunes finished orders, runs the overnight tidy (`Kitchen.tidy_overnight()`) and puts every staff member back at its layout spawn with no task; open the world's clock separately. `advance()` runs one world tick, then arrivals and departure cleanup; empty last orders closes the clock. At the CLOSED deadline all remaining guests are removed and recorded that day as `closing`.
@@ -3266,6 +3267,12 @@ separately. The manual-stock Day1 test records current-layout service through
 an exact tick, complete named-stream dictionary and canonical event/private-RNG
 digest, and compares both complete same-seed plays. Historical before traces
 remain outside the project. No compatibility branch exists in production.
+
+### Deeper starter room and aisle pinches (#389)
+
+New games use `tier1_deeper.tres` (`save_layout_id = tier1_deeper`): the roomier shop with three more dining rows added on the street side, so the kitchen, pass, wall segments, lot margins, patio depth, pantry and rent are unchanged and every kitchen coordinate keeps its value. The starter tables sit one row lower than in the roomier shop, leaving a two-cell lane between the pass and their north seats. `Main.LAYOUT` is the deeper base; `Main.ROOMIER_LAYOUT` (`tier1_hole_in_the_wall.tres`, `tier1_roomier`) and `ORIGINAL_LAYOUT` stay selectable by a save's `layout_id`, so older saves load their own size. Neighbourhood, street dressing, patio, camera framing, the A-frame sign and the cat's spots are all derived from the loaded grid.
+
+`AisleRules` (`src/sim/shop/aisle_rules.gd`) finds the walkways people actually use: one route tree each (octile Dijkstra, seats are stops, never aisles) from the street entries to every dining seat (guest steps) and to the pass's dining side, from the pass's dining side to every seat, and from the pass's kitchen side to every station and storage work cell. A route cell is a pinch when both of its sides across one axis are closed (a wall or wall segment, an item, or a seat); doorways, back doors and route endpoints never count, and cells no route crosses are ignored. A one-cell lane to a single seat still counts, because the guest and the server both walk it. Furniture buys, moves and blueprint stamps (`ShopEditor._note_aisle_pinch`) compare pinches before and after and warn on the placed item ("Tight squeeze: people can't pass each other here") when the edit newly makes one; `EditCheck.aisle_pinches` lists the cells, which `BuildPreview` tints red. Like the seat cut-off warning it never refuses, and after the commit `check_current` keeps it on that item until the next layout change (`_aisle_note`). Older layouts never gain it for a squeeze they already had.
 
 ### Roomier starter layout and existing saves (#263)
 

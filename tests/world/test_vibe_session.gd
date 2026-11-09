@@ -109,12 +109,12 @@ func test_only_real_layout_paint_and_enabled_menu_changes_recompute() -> void:
 	editor.set_owner_level(2) # Explicit purchase-unlock fixture.
 	var rng: Dictionary = GameState._capture_save()
 	var saved: String = _saved_text()
-	assert_true(main.call("shop_buy", &"potted_plant", Vector2i(11, 9), 0))
+	assert_true(main.call("shop_buy", &"potted_plant", Vector2i(13, 12), 0))
 	assert_eq(_notifications, 1)
 	assert_true((main.get("vibe_result") as VibeModel.Result).score > 0.0)
 	var world: SimWorld = main.get("world") as SimWorld
-	var plant: PlacedItem = world.grid.item_at(Vector2i(11, 9))
-	assert_true(main.call("shop_move", plant.id, Vector2i(10, 9), 0))
+	var plant: PlacedItem = world.grid.item_at(Vector2i(13, 12))
+	assert_true(main.call("shop_move", plant.id, Vector2i(12, 12), 0))
 	assert_eq(_notifications, 2)
 	assert_true(main.call("shop_move", plant.id, plant.origin, 0))
 	assert_false(main.call("shop_move", plant.id, Vector2i.ZERO, 0))
@@ -158,7 +158,7 @@ func test_only_real_layout_paint_and_enabled_menu_changes_recompute() -> void:
 	main.call("run_ticks", 2)
 	assert_eq(_notifications, 7)
 	assert_false(main.call("menu_set_enabled", &"tomato_soup", false))
-	assert_false(main.call("shop_move", plant.id, Vector2i(11, 9), 0))
+	assert_false(main.call("shop_move", plant.id, Vector2i(13, 12), 0))
 	assert_eq(_notifications, 7)
 	assert_eq(_saved_text(), saved)
 

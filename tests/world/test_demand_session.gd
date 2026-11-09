@@ -394,7 +394,7 @@ func test_accepted_layout_edit_updates_actual_raw_vibe_without_rng_gap_reset_or_
 	var saved: String = FileAccess.get_file_as_string(_demand_path())
 	var editor: ShopEditor = _main.get("shop_editor") as ShopEditor
 	editor.set_owner_level(2) # Explicit purchase-unlock fixture, as in vibe session tests.
-	assert_true(_main.call("shop_buy", &"potted_plant", Vector2i(11, 9), 0))
+	assert_true(_main.call("shop_buy", &"potted_plant", Vector2i(13, 11), 0))
 	assert_true(sim.vibe_result.valid)
 	assert_true(sim.vibe_result.score > 0.0)
 	assert_almost_eq(sim.demand_factor, 0.9 + 0.25 * sim.vibe_result.score / 100.0)
@@ -477,15 +477,16 @@ func _reject_after_demand(_value: Dictionary) -> bool:
 # The trace originated on8fbe652826c34333e6b7b51f63ede116901582f9;
 # economy, messes, traffic and the cook/plate service-speed work (#291) subsequently changed its recorded outcomes.
 # #307 (most impatient guests first) shifts which guest staff reach first: same 18 served and 0 lost, close two ticks later (4437), new events hash and cleanliness stream state.
+# #389 (the deeper starter room, tables one row lower): same 18 served and 0 lost, close at tick 4443, new events hash and cleanliness stream state.
 # Full before/after signed events and source-bound replays remain outside the project.
-const DAY_ONE_EVENTS_SHA256: String = "53d4a6d1346ab0b2db1758233fe0f12cd30a99913bffa565420bb26f9d0c545f"
+const DAY_ONE_EVENTS_SHA256: String = "ef56a8dc95c0954618a0dacaf23dae87643d365cda3137b81938d5310c526565"
 ## Exact whole stream dictionary; existing lifecycle draws follow actual outcomes.
 const DAY_ONE_STREAMS: Dictionary = {
 	"master_seed": "1",
 	"rngs": {
 		"cleanliness": {
 			"seed": "2378578401",
-			"state": "-6506350273339477378"
+			"state": "6142260159820504405"
 		},
 		"customers": {
 			"seed": "232337077",
@@ -519,7 +520,7 @@ func test_manual_stock_day_one_events_private_rng_and_named_streams_match_record
 	assert_eq(first["streams"], DAY_ONE_STREAMS, "complete named-stream seed/state dictionary")
 	assert_eq(first["events_sha256"], DAY_ONE_EVENTS_SHA256,
 		"recorded arrival/payment/departure ticks and signed private RNG seeds/states")
-	assert_eq(first["tick"], 4437)
+	assert_eq(first["tick"], 4443)
 	assert_eq(first["served"], 18)
 	assert_eq(first["lost"], 0)
 	assert_eq(first["happy"], 18)

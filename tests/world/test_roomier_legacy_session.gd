@@ -2,7 +2,9 @@ extends TestCase
 ## Real SaveSystem startup, including saves without any shop or staff section.
 
 const MAIN: PackedScene = preload("res://src/world/main.tscn")
-const NEW: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
+const NEW: ShopLayout = preload("res://data/layouts/tier1_deeper.tres")
+## #389: the 7-row dining room new games had before the deeper starter.
+const ROOMIER: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
 const ORIGINAL: ShopLayout = preload("res://data/layouts/tier1_original.tres")
 const LEASE: LeaseUpgrade = preload("res://data/balance/lease_upgrade.tres")
 const SLOT: String = "roomier_legacy_session"
@@ -55,13 +57,13 @@ func after_each() -> void:
 	Clock.set_process(_old_clock_processing)
 
 
-func test_only_a_new_shop_uses_the_roomier_base_and_its_next_morning_roundtrips() -> void:
+func test_only_a_new_shop_uses_the_deeper_base_and_its_next_morning_roundtrips() -> void:
 	_start()
 	_assert_base(NEW)
-	assert_eq(_document()["data"]["shop"]["layout_id"], "tier1_roomier")
+	assert_eq(_document()["data"]["shop"]["layout_id"], "tier1_deeper")
 	var expected: Dictionary = _editor().to_dict()
 	_empty_next_morning()
-	assert_eq(_document()["data"]["shop"]["layout_id"], "tier1_roomier")
+	assert_eq(_document()["data"]["shop"]["layout_id"], "tier1_deeper")
 	_close()
 	_start()
 	assert_eq(Clock.sim.day, 2)
@@ -104,6 +106,29 @@ func test_pre_roomier_v8_restores_old_looks_and_keeps_old_lease_bounds_after_rel
 	assert_eq((_main.get("world") as SimWorld).grid.rooms(), expected_rooms)
 	assert_eq(_editor().footprint().lot, ShopFootprint.from_layout(old_tier_two).lot,
 		"reloading an old lease applies its extra margins once")
+
+
+## #389: a game saved in the earlier 7-row dining room keeps that room and
+## its furniture after the deeper starter became the default, and saves it
+## under the same name again.
+func test_roomier_save_keeps_its_seven_row_dining_room() -> void:
+	_start()
+	var doc: Dictionary = _document()
+	var snapshot: Dictionary = _snapshot_of(ROOMIER)
+	assert_eq(snapshot["layout_id"], "tier1_roomier")
+	doc["data"]["shop"] = snapshot
+	_write(doc)
+	_close()
+	_start()
+	_assert_base(ROOMIER)
+	assert_eq((_main.get("world") as SimWorld).grid.bounds.size, Vector2i(16, 14))
+	assert_eq(_editor().to_dict(), _without_trays(snapshot))
+	assert_eq((_main.get("sim") as RestaurantSim).staff_spawns, ROOMIER.staff_spawns)
+	_empty_next_morning()
+	assert_eq(_document()["data"]["shop"]["layout_id"], "tier1_roomier")
+	_close()
+	_start()
+	_assert_base(ROOMIER)
 
 
 func test_missing_shop_and_staff_sections_rebuild_original_world_after_new_world_initialization() -> void:
@@ -344,6 +369,17 @@ func _original_snapshot(decorated: bool) -> Dictionary:
 			FloorFinishes.Finish.new(&"brick", &"sage", &"cream")} as Dictionary[Vector3i, FloorFinishes.Finish]))
 		assert_true(editor.hang(&"street_awning_2", Vector3i(6, 11, 4), null, &"clay"))
 	var snapshot: Dictionary = editor.to_dict()
+	snapshot["tray_level"] = 0
+	return snapshot
+
+
+func _snapshot_of(base: ShopLayout) -> Dictionary:
+	var content: ContentDB = _main.get("content") as ContentDB
+	var errors: Array[String] = []
+	var sim: RestaurantSim = RestaurantSim.new()
+	sim.world = ShopBuilder.build(base, content, errors)
+	assert_eq(errors, [] as Array[String])
+	var snapshot: Dictionary = ShopEditor.new(sim, content, ShopEditBooks.new(_can_spend, _ignore_cash), base).to_dict()
 	snapshot["tray_level"] = 0
 	return snapshot
 

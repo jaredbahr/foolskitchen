@@ -125,7 +125,8 @@ func test_partial_table_capacity_warning_is_read_only_and_uses_actual_usable_cel
 	assert_eq(_editor.check_current().seat_warnings.get(table.id, ""), "Only 3 of 4 seats usable")
 	assert_true(_editor.move(table.id, repair_origin, 0))
 	assert_eq(DiningSeats.largest_usable_capacity(_sim.world.grid), 4)
-	assert_false(_editor.check_current().seat_warnings.has(table.id))
+	# The repaired pose may still narrow an aisle (#389); the seat warning is gone.
+	assert_false(String(_editor.check_current().seat_warnings.get(table.id, "")).contains("seats usable"))
 
 
 func test_service_phases_refuse_every_edit_without_side_effects() -> void:

@@ -20,7 +20,8 @@ extends SceneTree
 ##             use the gear and keyboard Close; capture native HUD at 125%, then 150%
 ##   --report    require a closed-day report and real review cards at the top of the report
 ##   --report-slowest  scroll the real closed-day report to its native slowest seller line
-##   --build=green|red  hold a checked buy preview through the production input API
+##   --build=green|red|pinch  hold a checked buy preview through the production input API
+##             (pinch: a valid fourth table that squeezes an aisle to one cell, #389)
 ##   --paint     show a painted morning shop using the production paint controls
 ##   --walls=place|room  FK-070 walls: a dragged run with its ghost and cost, or a
 ##             built room (interior wall, doorway, windows inside and out). Room
@@ -328,8 +329,8 @@ func _initialize() -> void:
 			_report_slowest_requested = true
 		elif arg.begins_with("--build"):
 			var requested: String = arg.trim_prefix("--build=")
-			if not ["green", "red"].has(requested):
-				_fail_capture("--build supports green or red")
+			if not ["green", "red", "pinch"].has(requested):
+				_fail_capture("--build supports green, red or pinch")
 				return
 			_build = requested
 		elif arg == "--paint":
@@ -2728,7 +2729,7 @@ func _configure_build() -> void:
 		return
 	var editor: ShopEditor = _main.get("shop_editor") as ShopEditor
 	var camera: Camera3D = _main.get_node_or_null("CameraRig/Camera3D") as Camera3D
-	var def_id: StringName = &"table_2" if _build == "green" else &"fridge"
+	var def_id: StringName = &"fridge" if _build == "red" else &"table_2"
 	# Anchored to the real starter tables so a resized shop keeps the same
 	# proposals in view above the catalogue panel: green turns a table like
 	# the starters into the clear gap between the west and middle tables, one
@@ -2741,8 +2742,14 @@ func _configure_build() -> void:
 	var gap_x: int = floori((tables[0].origin.x + tables[1].origin.x) / 2.0)
 	var cell: Vector2i = Vector2i(gap_x, tables[1].origin.y - 1) if _build == "green" else tables[1].origin + Vector2i(1, 1)
 	var turns: int = tables[1].quarter_turns if _build == "green" else 1
+	if _build == "pinch":
+		# #389: a fourth table squeezed under the middle one, unturned, leaves
+		# one cell between its seats and the tables above and the street wall.
+		cell = tables[1].origin + Vector2i(-1, 4)
+		turns = 0
+	var check: EditCheck = editor.check_buy(def_id, cell, turns) if editor != null else null
 	if editor == null or camera == null or not editor.can_edit() \
-			or editor.check_buy(def_id, cell, turns).ok != (_build == "green"):
+			or check.ok != (_build != "red") or check.aisle_pinches.is_empty() != (_build != "pinch"):
 		_fail_capture("review proposal does not match the actual editor result")
 		return
 	_build_pointer = camera.unproject_position(GridMath.cell_to_world(cell))
@@ -3141,7 +3148,15 @@ func _build_state() -> Dictionary:
 		"pointer_cell": [pointer_cell.x, pointer_cell.y] if pointer_cell is Vector2i else null,
 		"ok": mode.current_check.ok, "why": mode.current_check.why,
 		"ghost_visible": is_instance_valid(ghost) and ghost.is_visible_in_tree(),
-		"ghost_valid": ghost.get_meta("valid", null) if is_instance_valid(ghost) else null}
+		"ghost_valid": ghost.get_meta("valid", null) if is_instance_valid(ghost) else null,
+		"aisle_pinches": _cell_pairs(preview.displayed_aisle_pinches())}
+
+
+static func _cell_pairs(cells: Array[Vector2i]) -> Array:
+	var out: Array = []
+	for cell: Vector2i in cells:
+		out.append([cell.x, cell.y])
+	return out
 
 
 func _select_live_agent() -> void:
@@ -3321,8 +3336,9 @@ func _capture() -> void:
 		return
 	var build: Dictionary = _build_state()
 	if not _build.is_empty() and (build.get("active") != true or build.get("has_ghost") != true \
-			or build.get("ghost_visible") != true or build.get("ok") != (_build == "green") \
-			or build.get("ghost_valid") != (_build == "green") or build.get("origin") != build.get("pointer_cell")):
+			or build.get("ghost_visible") != true or build.get("ok") != (_build != "red") \
+			or build.get("ghost_valid") != (_build != "red") or build.get("origin") != build.get("pointer_cell") \
+			or (_build == "pinch" and (build.get("aisle_pinches", []) as Array).is_empty())):
 		_fail_capture("requested build preview was not present in the rendered frame")
 		return
 	if not _walls.is_empty() and not _walls_capture_valid():

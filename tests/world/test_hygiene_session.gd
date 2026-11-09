@@ -33,10 +33,10 @@ func test_toggle_shows_actual_problem_cells_updates_after_cleaning_and_clears_ou
 	var table: PlacedItem = ShopBuilder.items_with_def(world, &"table_2")[0]
 	# Keep the actual toilet/work spot clear of all current dining seats.
 	sim.kitchen.mark_table_dirty(table.id)
-	assert_true(sim.cleanliness.add_use_spot(Vector2i(4, 9)))
-	assert_true(_main.call("shop_rooms", {Vector2i(4, 9): SimGrid.Room.RESTROOM,
-		Vector2i(4, 10): SimGrid.Room.RESTROOM} as Dictionary[Vector2i, int]))
-	assert_true(_main.call("shop_buy", &"toilet", Vector2i(4, 10), 0))
+	assert_true(sim.cleanliness.add_use_spot(Vector2i(4, 11)))
+	assert_true(_main.call("shop_rooms", {Vector2i(4, 11): SimGrid.Room.RESTROOM,
+		Vector2i(4, 12): SimGrid.Room.RESTROOM} as Dictionary[Vector2i, int]))
+	assert_true(_main.call("shop_buy", &"toilet", Vector2i(4, 12), 0))
 	var catalogue: BuildCatalogue = _main.get_node("Overlay/BuildCatalogue") as BuildCatalogue
 	var preview: BuildPreview = _main.get_node("BuildPreview") as BuildPreview
 	var random: Dictionary = GameState.call("_capture_save")
@@ -51,7 +51,7 @@ func test_toggle_shows_actual_problem_cells_updates_after_cleaning_and_clears_ou
 	assert_true(catalogue.hygiene_summary.text.contains("Restroom: 1 toilet needs a tidy · 1 upkeep spot"))
 	assert_not_null(preview.hygiene_mesh)
 	assert_true(preview.displayed_hygiene_cells().has(table.cells[0]))
-	assert_eq(preview.displayed_hygiene_cells().count(Vector2i(4, 9)), 1)
+	assert_eq(preview.displayed_hygiene_cells().count(Vector2i(4, 11)), 1)
 	var material: StandardMaterial3D = preview.hygiene_mesh.material_override as StandardMaterial3D
 	assert_almost_eq(material.albedo_color.a, BuildPreview.HYGIENE_ALPHA)
 	assert_almost_eq(material.albedo_color.r, BuildPreview.HYGIENE_SWATCH.color.r)
@@ -70,10 +70,10 @@ func test_toggle_shows_actual_problem_cells_updates_after_cleaning_and_clears_ou
 	assert_true(catalogue.hygiene_button.visible)
 	assert_true(catalogue.hygiene_panel.visible)
 	assert_not_null(preview.hygiene_mesh, "returning from Paint restores the chosen overview")
-	sim.cleanliness.clear_spot(Vector2i(4, 9))
+	sim.cleanliness.clear_spot(Vector2i(4, 11))
 	_main.call("refresh_presentation")
 	assert_true(catalogue.hygiene_summary.text.contains("Restroom: 0 toilets need a tidy · 0 upkeep spots"))
-	assert_false(preview.displayed_hygiene_cells().has(Vector2i(4, 9)))
+	assert_false(preview.displayed_hygiene_cells().has(Vector2i(4, 11)))
 	assert_true(_main.call("set_build_active", false))
 	assert_false(catalogue.hygiene_panel.visible)
 	assert_null(preview.hygiene_mesh)

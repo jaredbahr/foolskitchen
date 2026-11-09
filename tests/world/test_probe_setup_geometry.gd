@@ -3,7 +3,8 @@ extends TestCase
 
 const MAIN: PackedScene = preload("res://src/world/main.tscn")
 const ORIGINAL: ShopLayout = preload("res://data/layouts/tier1_original.tres")
-const ROOMIER: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
+## A fresh Main: the deeper starter (#389), which the probes run on.
+const ROOMIER: ShopLayout = preload("res://data/layouts/tier1_deeper.tres")
 const SLOT: String = "probe_setup_geometry"
 
 var _main: Node
@@ -311,7 +312,7 @@ func _assert_work_cells_not_seats(sim: RestaurantSim, profile: String) -> void:
 
 
 func _assert_joined_fixture(sim: RestaurantSim, original: bool) -> void:
-	var origin: Vector2i = Vector2i(3, 7) if original else Vector2i(4, 8)
+	var origin: Vector2i = Vector2i(3, 7) if original else Vector2i(4, 9)
 	var west: PlacedItem = sim.world.grid.item_at(origin)
 	var east: PlacedItem = sim.world.grid.item_at(origin + Vector2i(2, 0))
 	assert_not_null(west)
