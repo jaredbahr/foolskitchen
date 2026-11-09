@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- Choose an optional Today's special from your enabled dishes in the morning Menu. It gets 10% off and guests are more likely to pick it; the HUD, menu boards and evening report show the offer and how many you sold. Pick None to keep your usual menu. (#388)
 - Take on a rotating weekly challenge: serve a busy day, earn operating profit, finish clean days without losing a guest, collect good reviews, or sell a featured dish. Goals shows your frozen target and progress, and the evening report calls out a cash reward when you complete it. (#345)
 - Share furniture blueprints with Copy code and Paste code in Build. Codes keep each piece's look and rotation, and imported copies get a new name when one is already used. (#364)
 - The evening report now names the slowest-selling dish that stayed in stock through service and suggests a lower price or a menu change. (#363)
