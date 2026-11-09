@@ -313,9 +313,9 @@ func _bind_nodes() -> void:
 	_daily_special.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_daily_special.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_daily_special.hide()
-	var content: VBoxContainer = get_node("Panel/Scroll/Content") as VBoxContainer
-	content.add_child(_daily_special)
-	content.move_child(_daily_special, _slowest_seller.get_index() + 1)
+	var special_content: VBoxContainer = get_node("Panel/Scroll/Content") as VBoxContainer
+	special_content.add_child(_daily_special)
+	special_content.move_child(_daily_special, _slowest_seller.get_index() + 1)
 	_guests = %Guests
 	_cleanliness = %Cleanliness
 	_guest_bar = %GuestBar
