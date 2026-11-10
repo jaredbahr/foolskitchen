@@ -14,6 +14,8 @@ var _tuning: EconomyTuning
 var _growth_tuning: StaffGrowthTuning
 var _members: Array[StaffMember] = []
 var _candidates: Array[StaffMember] = []
+## Daily work is transient; runtime command copies retain the morning guard.
+var _work_day: int = 0
 
 
 func _init(tuning: EconomyTuning = null, definitions: StaffCatalogue = CATALOGUE,
@@ -34,6 +36,7 @@ func _init(tuning: EconomyTuning = null, definitions: StaffCatalogue = CATALOGUE
 func copy() -> StaffRoster:
 	var result: StaffRoster = StaffRoster.new(_tuning, catalogue, _growth_tuning)
 	result.candidate_day = candidate_day
+	result._work_day = _work_day
 	result._members = _copies(_members)
 	result._candidates = _copies(_candidates)
 	return result
@@ -71,7 +74,11 @@ func total_wages() -> int:
 ## The session must call this once from a completed task's stable claimant ID.
 func record_completed_task(member_id: StringName, kind: StringName) -> bool:
 	var index: int = _find(_members, member_id)
-	return index >= 0 and _members[index].growth_state().record_task(kind, _growth_tuning)
+	if index < 0:
+		return false
+	_members[index].record_completed_work(kind)
+	# Keep the existing XP-result contract, including false for unknown kinds.
+	return _members[index].growth_state().record_task(kind, _growth_tuning)
 
 
 ## Apply newly staged XP after service closes and before morning serialization
@@ -142,6 +149,10 @@ func process_morning_quits(day: int, phase: int) -> Array[Dictionary]:
 	var notices: Array[Dictionary] = []
 	if day < 1 or phase != SimClock.Phase.MORNING:
 		return notices
+	if day > _work_day:
+		for member: StaffMember in _members:
+			member.clear_work_today()
+		_work_day = day
 	for member: StaffMember in _members.duplicate():
 		var growth_state: StaffGrowth = member.growth_state()
 		if growth_state.quit_due_day() == 0 or day < growth_state.quit_due_day():
@@ -319,6 +330,7 @@ func from_dict(data: Dictionary) -> bool:
 	_members = next_members
 	_candidates = next_candidates
 	candidate_day = int(data["candidate_day"])
+	_work_day = 0
 	return true
 
 

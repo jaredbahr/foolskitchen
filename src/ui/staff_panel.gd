@@ -49,6 +49,11 @@ func _ready() -> void:
 	refresh()
 
 
+func _process(_delta: float) -> void:
+	if visible and _roster != null:
+		_refresh_work()
+
+
 func set_owner_name(display_name: String) -> void:
 	_owner_name = display_name
 	refresh()
@@ -137,14 +142,16 @@ func refresh() -> void:
 	if _roster == null:
 		return
 	var snapshot: Dictionary = _roster.to_dict()
-	# Job cells update in place. Their new saved field is not part of the
-	# existing hire/growth cards and must not replace those buttons either.
+	# Job cells and work totals update in place. Neither saved field belongs
+	# to structural hire/growth cards or should replace their native buttons.
 	for section: String in ["members", "candidates"]:
 		for member: Dictionary in snapshot.get(section, []):
 			member.erase("priorities")
+			member.erase("work")
 	if snapshot != _snapshot:
 		_rebuild_rows()
 		_snapshot = snapshot
+	_refresh_work()
 	var offers: Array[Dictionary] = _roster.morning_raise_offers(_morning_day, _phase)
 	var morning_snapshot: Dictionary = {"offers": offers,
 		"notices": _morning_notices if _phase == SimClock.Phase.MORNING else []}
@@ -445,7 +452,24 @@ func _add_row(parent: VBoxContainer, member: StaffMember, candidate: bool) -> vo
 	row.add_child(detail)
 	if not candidate:
 		_add_growth(row, member)
+		var work: Label = Label.new()
+		work.name = "Work"
+		work.text = member.work_summary()
+		work.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		work.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.add_child(work)
 	_rows[member.id] = row
+
+
+## Work changes during service; never replace native action buttons for it.
+func _refresh_work() -> void:
+	for member: StaffMember in _roster.members():
+		var row: Control = _rows.get(member.id) as Control
+		if row == null:
+			continue
+		var work: Label = row.get_node_or_null("Work") as Label
+		if work != null:
+			work.text = member.work_summary()
 
 
 func _add_growth(row: VBoxContainer, member: StaffMember) -> void:
