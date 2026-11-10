@@ -3332,3 +3332,66 @@ probability claim: 34 served/happy, 6 lost, soup20/cheese14, fixture-only
 chance1. Real Main close and next-morning handlers render the report and
 reminder; observers25/75 check visible bounds and unchanged state before
 photos30/90. Statistical odds and default balance are validated separately.
+
+### Sites and the property market (FK-087, D28) — design
+Status: design for #164. Parts 2, 4 and 6 can be built before part 1; buying a
+lot waits for part 1.
+
+**Lots (data).** `data/lots/<id>.tres` is a `LotDef` resource: `id`,
+`display_name`, `blurb`, `base_layout` (a `ShopLayout`, its own rows and
+lot margins), `price` (move-in ready) or `fixer_price` plus
+`renovation_bill` and `renovation_days` (2 to 5), `daily_rent`,
+`min_tier`, `min_reputation` (0 = none), `guest_mix` (a
+`Dictionary[StringName, float]` of weights over the existing customer types,
+renormalised like the street mix), `upstairs_allowed: bool`, and `tags:
+Array[StringName]` (for example `&"seaside"`, `&"rooftop"`). `ContentDB`
+loads and validates lots like recipes: an unknown customer type, a negative
+price or a layout that fails `ShopLayout` validation fails the load. The
+current starter shop is the implicit home lot and is never listed.
+
+**Lot-only content.** `ItemDef` and `IngredientDef` gain `lot_tags:
+Array[StringName]` (empty = everywhere). The build catalogue and the stock
+panel show a tagged entry only at a site whose lot has one of those tags.
+Placed lot-only items never move to another site (D28: everything else
+carries over).
+
+**Sites (model, part 1).** Exactly one site is *active*: the one Main
+simulates, renders and saves through the existing providers. Every save
+section is classed once in a table in `src/world/site_sections.gd`:
+- **global**: `owner`, `blueprints`, `milestones`, `weekly_challenge`,
+  `hints`, `weather`, the cash/loan books (Economy), and the new `sites`
+  section;
+- **per site**: every other current section (`shop`, `menu`,
+  `daily_special`, `signature`, `staff`, `plates`, `reviews`, `regulars`,
+  `reorder`, `deliveries`, `demand`, `viral`, `business_history`,
+  `shop_records`, `collection_toasts`, `cat`, `inspection`, `critic`,
+  `bookings`, `rush_hour`, `aquarium`). A new section must be added to the
+  table or a test fails.
+
+The `sites` section stores, for each inactive site, its lot id, name,
+manager staff id (or none) and a frozen copy of its per-site section
+payloads, exactly as their providers captured them. **Switching** happens
+only in the morning, before opening, as a normal checkpoint: capture the
+active site's per-site sections into its frozen copy, then restore the
+target's frozen copy through the same staged whole-load path used by
+`load_game` (all providers validate before any install; a refusal leaves the
+active site untouched). No new save code per feature: a section that loads
+from a save also loads on a switch.
+
+**Away sites.** An inactive site with a manager earns at each close of the
+active site: `manager_rate × mean operating profit of its last 7 recorded
+in-person days` (from its frozen `business_history`), where `manager_rate`
+is 0.70 at skill 1 rising to 1.00 at skill 5 (D28), and never more than that
+mean. With no manager it stays closed and pays rent. Both lines go to the
+ledger as `AWAY_SITE` income and `RENT`. The away sim draws no RNG.
+
+**Limits.** `data/balance/sites.tres`: maximum sites by tier (2 at Tier 3,
+3 at Tier 5, unlimited from Tier 6). The market screen lists every lot from
+Tier 3, with a lock line for tier, reputation or the site limit.
+
+**Prestige (part 6).** `Prestige.score(grid, content, staff)` is pure: the sum
+of placed items' `prestige` field, plus staff roles that add it (sommelier,
+live pianist), then capped by the lowest `prestige_cap` among placed items
+(slots, pool table, neon set a cap). Golden Ladles (0 to 3) are awarded by the
+existing food critic visit when the score is at or above data thresholds and
+the critic's review is good. Ladles are per site, saved in `critic`.
