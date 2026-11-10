@@ -11,7 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
-- Use −10%, +10%, or Reset to standard to change menu prices together in the morning. (#<PR number>)
+- Use −10%, +10%, or Reset to standard to change menu prices together in the morning. (#409)
 - Two staff who meet head-on in a one-cell corridor now squeeze past each other instead of stepping back and forth until a task times out. (#402)
 - A new Mediterranean seaside song, "Coastal Afternoon", is in the game files. It will play in seafood restaurants and the seaside café once those music themes arrive. (#396)
 - A busy service with lots of happy guests can now draw a trending food post. The evening report names the dish, and Menu shows the extra demand, which fades over the next three open services. (#392)
@@ -179,6 +179,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- The coffee shop test layout leaves a two-cell aisle between the coffee machines and the counter in the deeper starter room, as Build mode now advises; a one-cell gap had the cook looping round the full counter. (#403)
 - The Records screenshot check now plays ordinary days until a close beats a record, since the first day sets every record quietly. (#401)
 - Design: the property market is decided (D28): every Tier 3 lot visible with its perks, fixer-uppers, upstairs on some lots, lot-only ingredients and build items, a prestige score for fine dining, bar gambling, and what carries over when you buy or move. (#381)
 - Five new songs by Jared are in the game files: "Diner Boogie" and "Coffee Shop Morning" for diner and café theme music (#367), two upbeat funk tracks ("Hazy Breakbeat", "Sleek Groove") and a sea shanty, whose places in the game come later. (#379)
