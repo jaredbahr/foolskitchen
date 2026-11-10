@@ -67,7 +67,7 @@ func test_actual_close_counts_once_and_persists_only_at_the_next_morning() -> vo
 	assert_eq(state["guests"], report.customers_served)
 	assert_eq(state["dishes"], report.dishes_sold)
 	assert_eq(state["revenue"], int(report.income.get(Ledger.SALE, 0)) + int(report.income.get(Ledger.TIP, 0)))
-	assert_true(report.record_lines.has("New record: most guests in a day (%d)!" % report.customers_served))
+	assert_eq(report.record_lines, [] as Array[String], "the first recorded close sets bests quietly")
 	var expected: Dictionary = _records().capture()
 	var random_state: Dictionary = GameState.call("_capture_save")
 	_main.call("build_report", report.day)

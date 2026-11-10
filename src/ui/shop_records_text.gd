@@ -50,7 +50,7 @@ static func new_record_lines(records: Dictionary, beaten: Array[StringName]) -> 
 	for id: StringName in ShopRecords.BEST_IDS:
 		if beaten.has(id):
 			var best: Dictionary = records["bests"][id]
-			if id != &"profit" and float(best["value"]) <= 0.0:
+			if float(best["value"]) <= 0.0:
 				continue
 			lines.append("New record: %s (%s)!" % [String(TITLES[id]).to_lower(), _value(id, best["value"])])
 	return lines

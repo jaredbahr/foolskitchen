@@ -63,12 +63,18 @@ func record(report: DayReport) -> Array[StringName]:
 	_revenue += revenue
 	_dishes = dishes
 	_last_day = report.day
+	var first_day: bool = _bests.is_empty()
 	_beat(&"guests", report.customers_served, report.day, beaten)
 	if report.operating_profit_recorded():
 		_beat(&"profit", report.operating_profit(), report.day, beaten)
 	_beat(&"dishes", today, report.day, beaten)
-	_beat(&"reputation", report.reputation_after, report.day, beaten)
+	# Hundredths, so a value that went through a save compares equal to the
+	# same reputation recomputed after loading.
+	_beat(&"reputation", snappedf(report.reputation_after, 0.01), report.day, beaten)
 	_beat(&"streak", _streak, report.day, beaten)
+	# The first recorded day sets every record; it is not news to the player.
+	if first_day:
+		beaten.clear()
 	return beaten
 
 
