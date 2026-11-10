@@ -170,6 +170,10 @@ var _loaded_viral: ViralReview = null
 ## Detached closing summaries; persistence stays at the morning checkpoint.
 var business_history: BusinessHistory = BusinessHistory.new()
 var _loaded_business_history: BusinessHistory = null
+var shop_records: ShopRecords = ShopRecords.new()
+var _loaded_shop_records: ShopRecords = null
+var _record_notice_day: int = 0
+var _record_notices: Array[String] = []
 ## The saved cat section (adopted and its name), staged until the load installs.
 var _loaded_cat: Dictionary = {}
 ## The saved health inspection section (grade, day, plan), staged likewise.
@@ -619,6 +623,7 @@ func start() -> void:
 	SaveSystem.register("demand", _capture_demand, _restore_demand)
 	SaveSystem.register("viral", _capture_viral, _restore_viral)
 	SaveSystem.register("business_history", _capture_business_history, _restore_business_history)
+	SaveSystem.register("shop_records", _capture_shop_records, _restore_shop_records)
 	SaveSystem.register("cat", _capture_cat, _restore_cat)
 	SaveSystem.register("inspection", _capture_inspection, _restore_inspection)
 	SaveSystem.register("critic", _capture_critic, _restore_critic)
@@ -2451,6 +2456,8 @@ func build_report(day: int) -> DayReport:
 	if _weekly_challenge_reward_day == day:
 		report.weekly_challenge_line = _weekly_challenge_report_line
 	report.demand_forecast = forecast_next_demand()
+	if _record_notice_day == day:
+		report.record_lines = _record_notices.duplicate()
 	return report
 
 
@@ -2470,6 +2477,10 @@ func _new_game() -> void:
 	_loaded_aquarium = {}
 	business_history = BusinessHistory.new()
 	_loaded_business_history = null
+	shop_records = ShopRecords.new()
+	_loaded_shop_records = null
+	_record_notice_day = 0
+	_record_notices.clear()
 	curb_appeal_score = 0.0
 	curb_appeal_factor = 1.0
 	_last_team_activity.clear()
@@ -2551,9 +2562,14 @@ func _load_autosave() -> bool:
 	_reset_haggle()
 	business_history = BusinessHistory.new()
 	_loaded_business_history = null
+	shop_records = ShopRecords.new()
+	_loaded_shop_records = null
+	_record_notice_day = 0
+	_record_notices.clear()
 	var loaded: bool = _load_autosave_sections()
 	if not loaded:
 		_loaded_business_history = null
+		_loaded_shop_records = null
 	return loaded
 
 
@@ -2615,6 +2631,9 @@ func _load_autosave_sections() -> bool:
 		return false
 	if _loaded_business_history != null and not _loaded_business_history.valid_before(Clock.sim.day):
 		world.log_event("Saved business history is ahead of this morning; starting a new game")
+		return false
+	if _loaded_shop_records != null and not _loaded_shop_records.valid_before(Clock.sim.day):
+		world.log_event("Saved records are ahead of this morning; starting a new game")
 		return false
 	if not OpeningHours.clock_valid(Clock.sim, HOURS_TUNING):
 		# Keep the game; only the hours go back to the default day.
@@ -2740,11 +2759,25 @@ func _load_autosave_sections() -> bool:
 	_base_layout = base
 	business_history = _loaded_business_history if _loaded_business_history != null else BusinessHistory.new()
 	_loaded_business_history = null
+	shop_records = _loaded_shop_records if _loaded_shop_records != null else ShopRecords.new()
+	_loaded_shop_records = null
 	return true
 
 
 func _capture_business_history() -> Dictionary:
 	return business_history.capture()
+
+
+func _capture_shop_records() -> Dictionary:
+	return shop_records.capture()
+
+
+func _restore_shop_records(data: Dictionary) -> bool:
+	var restored: ShopRecords = ShopRecords.new()
+	if not restored.restore(data):
+		return false
+	_loaded_shop_records = restored
+	return true
 
 
 ## SaveSystem may reject a later provider: never install a partial load here.
@@ -3956,12 +3989,14 @@ func _refresh_goals(force: bool = false) -> void:
 	var completed: Array[StringName] = milestones.completed_ids()
 	var snapshot: Dictionary = {"catalogue": milestone_catalogue.get_instance_id() if milestone_catalogue != null else 0,
 		"completed": completed, "progress": progress, "level": owner_progress.level,
+		"records": shop_records.snapshot(),
 		"weekly": weekly_challenge.to_dict() if weekly_challenge != null else {},
 		"weekly_progress": weekly_challenge.projected_progress(observation) if weekly_challenge != null else 0,
 		"day": Clock.sim.day}
 	if force or snapshot != _goals_snapshot:
 		_goals_panel.set_goals(milestone_catalogue, completed, progress, owner_progress.level,
 			weekly_challenge, Clock.sim.day, observation)
+		_goals_panel.set_records(ShopRecordsText.rows(snapshot["records"], content))
 		_goals_snapshot = snapshot.duplicate(true)
 
 
@@ -4290,6 +4325,8 @@ func shop_sell(item_id: int) -> int:
 func _begin_morning() -> void:
 	daily_special.begin_morning(Clock.sim.day)
 	_apply_menu(sim, menu_settings)
+	_record_notice_day = 0
+	_record_notices.clear()
 	# Repeated setup of the SAME morning cannot create another attempt.
 	if _haggle_day != Clock.sim.day:
 		_reset_haggle()
@@ -5327,6 +5364,10 @@ func _on_service_closed(day: int) -> void:
 		_build_catalogue.set_property_tier(owner_progress.property_tier)
 		$HUD.set_owner_progress(owner_progress.level, owner_progress.xp_into_level(), owner_progress.xp_in_level())
 	shown_report = build_report(day)
+	var beaten: Array[StringName] = shop_records.record(shown_report)
+	_record_notice_day = day
+	_record_notices = ShopRecordsText.new_record_lines(shop_records.snapshot(), beaten)
+	shown_report.record_lines = _record_notices.duplicate()
 	_last_team_activity = StaffActivity.public_snapshot(shown_report.staff_activity)
 	_staff_panel.set_team_activity(_last_team_activity)
 	if owner_progress.level > level_before:

@@ -2892,6 +2892,26 @@ frame30 and actual 6%-off ($20 list, $19 charged) panel at frame90. These two
 existing-job captures are UI evidence, not natural human timing or balance play.
 
 ### 2.4 Save system
+Lifetime records (FK-145): `ShopRecords` is a pure consumer of the one finalized
+`DayReport` in Main's guarded `service_closed` handler. Report previews, returning
+from Goals and evening purchases never add another close. Meals plus tips are
+revenue; loans, bonuses and refunds are not. Operating-profit bests require the
+report's recorded paid-food basis; a first recorded loss is valid, while unknown
+profit does not become zero. Reputation is the closing rolling average. Equal
+bests retain their original day. Per-dish totals survive missing recipe content;
+the UI uses its current display name, or "Former dish", with stable id tie order.
+
+The no-angry-guest streak counts the existing public service-failure departure
+reasons, not all unpaid guests or sampled review stars. Closing and administrative
+removal do not break it; a paid guest's low review is not an angry departure in
+the current lifecycle. Consecutive closed days with no such failures extend it,
+including an empty service; a missing day restarts the run. The versioned optional
+`shop_records` section stages and validates before whole-load installation, with
+empty records for older saves. Counts stay within exact JSON integers; currency
+uses decimal strings. It joins only the existing morning autosave. New-record
+notices are detached close-local text, retained across report refreshes and cleared
+at the next morning. Records award nothing and draw no RNG.
+
 Business trends (FK-123, FK-132): Main keeps thirty detached `BusinessHistory` closing
 summaries outside `DayReport` serialization. Reopening the evening report and
 advancing to the next morning upsert the current day after evening purchases;

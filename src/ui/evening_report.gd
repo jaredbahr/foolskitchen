@@ -119,6 +119,9 @@ func show_report(report: DayReport) -> void:
 	_cash_change.text = "Cash change today: %s" % _money(report.profit())
 	_loan_notice.text = LOAN_INTRODUCTION if report.loan_first_advance else ""
 	_loan_notice.visible = report.loan_first_advance
+	var record_notices: Label = %RecordNotices as Label
+	record_notices.text = "\n".join(PackedStringArray(report.record_lines))
+	record_notices.visible = not report.record_lines.is_empty()
 	_fill_milestones(DayReport.public_milestones(report.milestones_reached))
 	var weekly_line: Label = %WeeklyChallengeLine
 	weekly_line.text = report.weekly_challenge_line
