@@ -47,7 +47,7 @@ func after_each() -> void:
 func test_two_providers_round_trip_and_envelope() -> void:
 	assert_eq(_save.save_game("morning"), OK)
 	var document: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(_path("morning")))
-	assert_eq(int(document["version"]), 1)
+	assert_eq(int(document["version"]), SaveScript.FORMAT_VERSION)
 	assert_true(float(document["saved_at"]) > 0.0)
 	_first.clear()
 	_second.clear()
@@ -80,7 +80,7 @@ func test_missing_corrupt_and_future_version_errors() -> void:
 	assert_eq(_save.load_game("missing"), ERR_FILE_NOT_FOUND)
 	_write("broken", "{bad json")
 	assert_eq(_save.load_game("broken"), ERR_PARSE_ERROR)
-	_write("future", JSON.stringify({"version": 2, "data": {}}))
+	_write("future", JSON.stringify({"version": SaveScript.FORMAT_VERSION + 1, "data": {}}))
 	assert_eq(_save.load_game("future"), ERR_FILE_UNRECOGNIZED)
 	assert_eq(_restore_calls, 0)
 
@@ -106,6 +106,29 @@ func test_version_zero_migrates_and_missing_section_is_skipped() -> void:
 	assert_eq(int(_first["value"]), 41)
 	assert_eq(_second["name"], "Diner")
 	assert_eq(_restore_calls, 1)
+
+
+func test_version_one_moves_stock_into_the_pantry_section() -> void:
+	var pantry: Dictionary = {}
+	var economy: Dictionary = {}
+	_save.register("economy", func() -> Dictionary: return {},
+		func(data: Dictionary) -> bool: economy.merge(data); return true)
+	_save.register("pantry", func() -> Dictionary: return {},
+		func(data: Dictionary) -> bool: pantry.merge(data); return true)
+	_write("v1", JSON.stringify({"version": 1, "data": {"economy": {"ledger": {"cash": 5}, "stock": {"batches": {}}}}}))
+	assert_eq(_save.load_game("v1"), OK)
+	assert_eq(economy, {"ledger": {"cash": 5.0}}, "the books keep everything but the stock")
+	assert_eq(pantry, {"stock": {"batches": {}}}, "the stock becomes the pantry section")
+	assert_eq(_save.keys(), PackedStringArray(["first", "second", "economy", "pantry"]))
+
+
+func test_version_one_economy_without_stock_still_reaches_a_refusing_pantry() -> void:
+	var seen: Array[Dictionary] = []
+	_save.register("pantry", func() -> Dictionary: return {},
+		func(data: Dictionary) -> bool: seen.append(data); return data.has("stock"))
+	_write("v1", JSON.stringify({"version": 1, "data": {"economy": {"ledger": {}}}}))
+	assert_eq(_save.load_game("v1"), FAILED)
+	assert_eq(seen, [{}] as Array[Dictionary])
 
 
 func test_missing_all_sections_and_unknown_sections_are_allowed() -> void:
@@ -339,7 +362,7 @@ func test_unreadable_backup_is_not_restored_and_unknown_future_is_not_rolled_bac
 	assert_eq(_save.save_game("future"), OK)
 	_first["value"] = 8
 	assert_eq(_save.save_game("future"), OK)
-	_write("future", JSON.stringify({"version": 2, "data": {}}))
+	_write("future", JSON.stringify({"version": SaveScript.FORMAT_VERSION + 1, "data": {}}))
 	assert_eq(_save.load_game("future"), ERR_FILE_UNRECOGNIZED)
 	assert_eq(_restore_calls, 0)
 

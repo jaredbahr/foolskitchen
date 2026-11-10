@@ -4,8 +4,8 @@ extends Node
 ## A retained backup makes interrupted replacements recoverable. This is not a
 ## filesystem-atomic overwrite on Windows or a power-loss durability guarantee.
 
-const FORMAT_VERSION: int = 1
-const MIGRATIONS: Dictionary = {0: &"_migrate_0_to_1"}
+const FORMAT_VERSION: int = 2
+const MIGRATIONS: Dictionary = {0: &"_migrate_0_to_1", 1: &"_migrate_1_to_2"}
 
 var save_dir: String = "user://saves/"
 var _providers: Dictionary[String, Dictionary] = {}
@@ -14,6 +14,11 @@ var _providers: Dictionary[String, Dictionary] = {}
 ## Adds or replaces a section's capture() -> Dictionary and restore(data) -> bool.
 func register(key: String, capture: Callable, restore: Callable) -> void:
 	_providers[key] = {"capture": capture, "restore": restore}
+
+
+## The registered section keys, in registration (and restore) order.
+func keys() -> PackedStringArray:
+	return PackedStringArray(_providers.keys())
 
 
 ## Publishes a completed temporary file while preserving a prior recovery copy.
@@ -206,4 +211,18 @@ func _valid_slot(slot: String) -> bool:
 func _migrate_0_to_1(document: Dictionary) -> Dictionary:
 	# Version zero has the same sections; demonstrate a single-version step.
 	document["version"] = 1
+	return document
+
+
+func _migrate_1_to_2(document: Dictionary) -> Dictionary:
+	# FK-087: the kitchen stock moved out of the shared "economy" section into
+	# the per-site "pantry" section. A version-1 economy section without stock
+	# was refused before, so it moves as an empty pantry that is still refused.
+	document["version"] = 2
+	var sections: Variant = document.get("data", null)
+	if not sections is Dictionary or not sections.get("economy", null) is Dictionary:
+		return document
+	var economy: Dictionary = sections["economy"]
+	sections["pantry"] = {"stock": economy["stock"]} if economy.has("stock") else {}
+	economy.erase("stock")
 	return document
