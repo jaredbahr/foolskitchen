@@ -102,7 +102,7 @@ func test_staff_squeezes_past_a_stationary_guest_in_a_dead_end() -> void:
 
 ## Two workers on jobs meet head-on in a one-cell corridor: neither can step
 ## aside and neither job may be dropped, so they pass each other over one
-## ordinary step, long before a task would time out (#319).
+## ordinary step, long before a task would time out (#322).
 func test_two_workers_head_on_in_a_corridor_squeeze_past_each_other() -> void:
 	var world: SimWorld = _service_world(["........"])
 	var west: StaffWalker = _worker(world, Vector2i(0, 0))
