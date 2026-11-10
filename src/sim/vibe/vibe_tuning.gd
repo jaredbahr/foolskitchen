@@ -20,6 +20,8 @@ const KNOWN_THEMES: Array[StringName] = [&"cosy", &"modern", &"rustic", &"diner"
 @export var lamp_item_ids: Array[StringName] = []
 @export var lamp_points_per_charm: float = 6.0
 @export var lamp_cap: float = 10.0
+## Total bonus from completed decor collections (#336).
+@export var max_collection_bonus: float = 6.0
 ## A jukebox whose music style matches the shop's theme counts this many times
 ## over (#294): 2 doubles its charm.
 @export var music_match_multiplier: float = 2.0
@@ -64,14 +66,15 @@ const KNOWN_THEMES: Array[StringName] = [&"cosy", &"modern", &"rustic", &"diner"
 func is_valid() -> bool:
 	for value: float in [score_cap, repeat_decay, free_charm, decor_points_per_charm,
 			decor_cap, variety_points_per_kind, variety_cap, lamp_points_per_charm,
-			lamp_cap, music_match_multiplier, theme_cap, theme_full_charm, theme_paint_weight, theme_menu_weight, theme_min_share,
+			lamp_cap, max_collection_bonus, music_match_multiplier, theme_cap, theme_full_charm,
+			theme_paint_weight, theme_menu_weight, theme_min_share,
 			theme_min_layout_weight, crowding_start_density, crowding_cap,
 			max_patience_bonus, max_review_bonus]:
 		if not is_finite(value) or value < 0.0:
 			return false
 	if music_match_multiplier < 1.0 or score_cap <= 0.0 or score_cap > 100.0 or repeat_decay >= 1.0 or free_variety < 0 or theme_full_charm <= 0.0:
 		return false
-	for cap: float in [decor_cap, variety_cap, lamp_cap, theme_cap, crowding_cap]:
+	for cap: float in [decor_cap, variety_cap, lamp_cap, max_collection_bonus, theme_cap, crowding_cap]:
 		if cap > score_cap:
 			return false
 	if theme_min_share <= 0.5 or theme_min_share > 1.0 or theme_min_layout_weight <= 0.0 \

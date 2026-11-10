@@ -40,6 +40,8 @@ extends SceneTree
 ##   --lease-review=offer|short|expand --speed=0 --frames=12; offer/short also require --menu
 ##   --loan-review --speed=0 --frames=12,90  explicit financial-fixture UI evidence
 ##   --milestone-review --speed=0 --frames=12,90  authored goals and close reward evidence
+##   --collections-review --speed=0 --frames=240  unsaved placed-item/floor fixture,
+##             real Main collection progress and native Goals rows after the toast clears
 ##   --catalogue-review=rustic|modern --speed=0 --frames=90,120  furnishing fixture
 ##   --diner-review --speed=0 --frames=12,90  six native comparisons, then seated diner fixture
 ##   --floors-review --speed=0 --frames=12,30  D25 floor types fixture (tools/floors_review.gd):
@@ -63,6 +65,8 @@ extends SceneTree
 ##             FK-045 original table + rug selection, rotated ghost, or stamped pair.
 ##   --menu-boards-review --speed=0 --frames=12,30  #161 placed chalk board
 ##             with real inspector section choice, then Menu theme readout.
+##   --signature-review=menu|demand --speed=0 --frames=60  seeded unsaved signature UI
+##             fixture: menu plus star board, or one real service and demand report.
 ## Ordinary captures record real moods, markers and seeds without a fixture.
 
 const MAX_CAPTURE_WAIT_FRAMES: int = 8
@@ -182,6 +186,8 @@ var _loan_review: bool = false
 var _loan_fixture: Dictionary = {}
 var _milestone_review: bool = false
 var _milestone_fixture: Dictionary = {}
+var _collections_review: bool = false
+var _collections_fixture: Dictionary = {}
 var _catalogue_profile: StringName = &""
 var _catalogue_fixture: Dictionary = {}
 var _diner_review: bool = false
@@ -195,6 +201,8 @@ var _street_front_fixture: Dictionary = {}
 var _floors_fixture: Dictionary = {}
 var _menu_boards_review: bool = false
 var _menu_boards_fixture: Dictionary = {}
+var _signature_review: String = ""
+var _signature_fixture: Dictionary = {}
 var _build_pointer: Vector2 = Vector2.ZERO
 var _selected_agent_id: int = -1
 var _capture_pending: bool = false
@@ -210,6 +218,11 @@ func _initialize() -> void:
 		_fail_capture(menu_boards_options["error"])
 		return
 	_menu_boards_review = menu_boards_options["enabled"]
+	var signature_options: Dictionary = signature_review_options(OS.get_cmdline_user_args())
+	if not String(signature_options["error"]).is_empty():
+		_fail_capture(signature_options["error"])
+		return
+	_signature_review = signature_options["mode"]
 	var neighbourhood_options: Dictionary = NEIGHBOURHOOD_REVIEW.options(OS.get_cmdline_user_args())
 	if not String(neighbourhood_options["error"]).is_empty():
 		_fail_capture(neighbourhood_options["error"])
@@ -250,6 +263,11 @@ func _initialize() -> void:
 		_fail_capture(milestone_options["error"])
 		return
 	_milestone_review = milestone_options["enabled"]
+	var collections_options: Dictionary = collections_review_options(OS.get_cmdline_user_args())
+	if not String(collections_options["error"]).is_empty():
+		_fail_capture(collections_options["error"])
+		return
+	_collections_review = collections_options["enabled"]
 	var blueprint_options: Dictionary = BLUEPRINT_REVIEW.options(OS.get_cmdline_user_args())
 	if not String(blueprint_options["error"]).is_empty():
 		_fail_capture(blueprint_options["error"])
@@ -295,6 +313,8 @@ func _initialize() -> void:
 				_fail_capture("--f3 does not accept a value")
 				return
 			_f3 = true
+		elif arg.begins_with("--signature-review="):
+			pass # Parsed and strictly validated above.
 		elif arg == "--menu-boards-review":
 			# Parsed and validated above, before the generic --menu prefix.
 			pass
@@ -489,11 +509,39 @@ func _initialize() -> void:
 	# Preserve capture isolation when the integrated game session supports saves.
 	if "use_saves" in _main:
 		_main.set("use_saves", false)
-	if (not _lease_mode.is_empty() or _report_requested or _milestone_review or _diner_review or _expand == "shop" or not _rooms.is_empty() \
-			or _floors_review or _walls_review or _restroom_review or _street_front_review or _menu_boards_review or _assign_owner or not _weather_mode.is_empty() or _joined_tables_review or not _neighbourhood_mode.is_empty()) \
+	if (not _lease_mode.is_empty() or _report_requested or _milestone_review or _collections_review or _diner_review or _expand == "shop" or not _rooms.is_empty() \
+			or _floors_review or _walls_review or _restroom_review or _street_front_review or _menu_boards_review or _signature_review != "" or _assign_owner or not _weather_mode.is_empty() or _joined_tables_review or not _neighbourhood_mode.is_empty()) \
 			and "new_game_seed_override" in _main:
 		_main.set("new_game_seed_override", 1)
 	root.add_child(_main)
+
+
+## A separate signature fixture; legacy review modes retain their exact arguments.
+static func signature_review_options(arguments: PackedStringArray) -> Dictionary:
+	var result: Dictionary = {"mode": "", "error": ""}
+	for argument: String in arguments:
+		if argument.begins_with("--signature-review"):
+			if argument not in ["--signature-review=menu", "--signature-review=demand"] or not String(result["mode"]).is_empty():
+				result["error"] = "--signature-review supports one menu or demand mode"
+				return result
+			result["mode"] = argument.trim_prefix("--signature-review=")
+	if String(result["mode"]).is_empty():
+		return result
+	var speeds: int = 0
+	var frames: int = 0
+	for argument: String in arguments:
+		if argument == "--signature-review=menu" or argument == "--signature-review=demand" or argument.begins_with("--out="):
+			continue
+		if argument == "--speed=0":
+			speeds += 1
+		elif argument == "--frames=60":
+			frames += 1
+		else:
+			result["error"] = "--signature-review requires only --speed=0 --frames=60 and optional --out"
+			return result
+	if speeds != 1 or frames != 1:
+		result["error"] = "--signature-review requires one --speed=0 and one --frames=60"
+	return result
 
 
 ## Pure CLI guard; the shell wrapper may supply the same --out twice.
@@ -557,6 +605,245 @@ static func milestone_review_options(arguments: PackedStringArray) -> Dictionary
 	if speeds != 1 or frames != 1 or scenes > 1:
 		result["error"] = "--milestone-review requires one --speed=0 and one --frames=12,90"
 	return result
+
+
+## A single paused Main capture. The shell wrapper may repeat --out.
+static func collections_review_options(arguments: PackedStringArray) -> Dictionary:
+	var result: Dictionary = {"enabled": false, "error": ""}
+	for argument: String in arguments:
+		if argument.begins_with("--collections-review"):
+			if argument != "--collections-review" or result["enabled"]:
+				result["error"] = "--collections-review is a single flag without a value"
+				return result
+			result["enabled"] = true
+	if not result["enabled"]:
+		return result
+	var speeds: int = 0
+	var frames: int = 0
+	var scenes: int = 0
+	for argument: String in arguments:
+		if argument == "--collections-review" or argument.begins_with("--out="):
+			continue
+		if argument == "--speed=0":
+			speeds += 1
+		elif argument == "--frames=240":
+			frames += 1
+		elif argument == "--scene=res://src/world/main.tscn":
+			scenes += 1
+		else:
+			result["error"] = "--collections-review requires paused Main frame 240 without other options"
+			return result
+	if speeds != 1 or frames != 1 or scenes > 1:
+		result["error"] = "--collections-review requires one --speed=0 and one --frames=240"
+	return result
+
+
+## Unsaved fixture: place real content in the shop, then let Main derive the
+## collection result and open the normal Menu -> Goals controls.
+static func prepare_collections_review(main: Node, context_root: Node) -> Dictionary:
+	var fixture: Dictionary = {"kind": "unsaved_placed_collection_review_not_balance_proof",
+		"error": "", "disclosure": "Unsaved placed-item/floor fixture; not a played purchase or balance proof."}
+	var clock: Node = context_root.get_node_or_null("Clock")
+	var time: SimClock = clock.get("sim") as SimClock if clock != null else null
+	var world: SimWorld = main.get("world") as SimWorld if "world" in main else null
+	var content: ContentDB = main.get("content") as ContentDB if "content" in main else null
+	var editor: ShopEditor = main.get("shop_editor") as ShopEditor if "shop_editor" in main else null
+	var goals: GoalsPanel = main.get_node_or_null("Overlay/GoalsPanel") as GoalsPanel
+	var menu: MenuPanel = main.get_node_or_null("Overlay/MenuPanel") as MenuPanel
+	if time == null or world == null or content == null or editor == null or goals == null or menu == null \
+			or world.clock != time or world.now != 0 or time.day != 1 or time.phase != SimClock.Phase.MORNING \
+			or clock.get("speed") != 0 or main.get("use_saves") != false:
+		fixture["error"] = "collections review requires fresh paused unsaved Main"
+		return fixture
+	var coffee: CollectionDef = content.collection(&"coffee_break")
+	var cozy: CollectionDef = content.collection(&"cozy_corner")
+	if coffee == null or cozy == null or coffee.floor_id != &"small_tile" \
+			or not cozy.item_ids.has(&"rug_round"):
+		fixture["error"] = "collections review content no longer matches the authored fixture"
+		return fixture
+	var grid: SimGrid = world.grid
+	var floor_cell: Vector2i = Vector2i.ZERO
+	var found_floor: bool = false
+	for cell: Vector2i in grid.cells():
+		if grid.terrain(cell) == SimGrid.Terrain.FLOOR and not grid.is_outdoor_floor(cell):
+			floor_cell = cell
+			found_floor = true
+			break
+	if not found_floor:
+		fixture["error"] = "collections review has no interior floor cell"
+		return fixture
+	var floor_changes: Dictionary[Vector2i, FloorFinishes.Finish] = {}
+	floor_changes[floor_cell] = FloorFinishes.Finish.new(coffee.floor_id)
+	if editor.floors.set_finishes(floor_changes).size() != 1:
+		fixture["error"] = "collections review could not lay the authored floor in the real shop"
+		return fixture
+	var item_ids: Array[StringName] = coffee.item_ids.duplicate()
+	item_ids.append(&"rug_round")
+	for item_id: StringName in item_ids:
+		var item: ItemDef = content.item(item_id)
+		var placed: PlacedItem = null
+		if item == null:
+			fixture["error"] = "collections review item is missing: %s" % item_id
+			return fixture
+		for cell: Vector2i in grid.cells():
+			if grid.terrain(cell) == SimGrid.Terrain.FLOOR and not grid.is_outdoor_floor(cell) \
+					and grid.can_place_def(item, cell, 0) == SimGrid.PlaceResult.OK:
+				placed = grid.place_def(item, cell)
+			if placed != null:
+				break
+		if placed == null:
+			fixture["error"] = "collections review could not place real item: %s" % item_id
+			return fixture
+	var toast_started_ms: int = Time.get_ticks_msec()
+	main.call("_recompute_vibe")
+	var vibe: VibeModel.Result = main.get("vibe_result") as VibeModel.Result
+	var result: CollectionModel.Result = vibe.collection_result if vibe != null else null
+	var expected_completed: Array[StringName] = [&"coffee_break"]
+	if result == null or not result.valid or result.completed_ids != expected_completed:
+		fixture["error"] = "Main did not derive exactly the completed Coffee Break collection"
+		return fixture
+	var cozy_entry: CollectionModel.Entry = null
+	for entry: CollectionModel.Entry in result.entries:
+		if entry.definition.id == &"cozy_corner":
+			cozy_entry = entry
+			break
+	if cozy_entry == null or cozy_entry.completed or cozy_entry.has_floor:
+		fixture["error"] = "Main did not derive the partial Cozy Corner collection"
+		return fixture
+	var menu_opened: bool = bool(main.call("set_menu_visible", true))
+	var goals_button: Button = menu.get_node_or_null("%GoalsButton") as Button
+	if not menu_opened or goals_button == null or goals_button.disabled or not goals_button.visible:
+		fixture["error"] = "collections review could not open the native Menu Goals button"
+		return fixture
+	goals_button.pressed.emit()
+	if not bool(main.call("is_goals_visible")) or menu.visible:
+		fixture["error"] = "collections review did not open Goals through Menu"
+		return fixture
+	fixture.merge({"toast_started_ms": toast_started_ms,
+		"placed_item_ids": item_ids.map(func(id: StringName) -> String: return String(id)),
+		"floor_cell": [floor_cell.x, floor_cell.y], "floor_style_id": String(coffee.floor_id)})
+	return fixture
+
+
+## Frame 240 is a minimum. The toast's real three-second timer, not a frame
+## estimate or a changed shown-state, decides when the final image is taken.
+func _collections_review_ready() -> bool:
+	var elapsed_ms: int = Time.get_ticks_msec() - int(_collections_fixture.get("toast_started_ms", -1))
+	var hud: Node = _main.get_node_or_null("HUD")
+	var toast: Control = hud.get_node_or_null("CollectionToast") as Control if hud != null else null
+	var timer: Timer = hud.get_node_or_null("CollectionToastTimer") as Timer if hud != null else null
+	if toast == null or timer == null:
+		_fail_capture("collections review did not use the real HUD toast")
+		return false
+	if elapsed_ms >= 3000 and timer.is_stopped() and not toast.visible:
+		return true
+	if elapsed_ms > 10000:
+		_fail_capture("collections review toast did not finish within ten real seconds")
+	return false
+
+
+## Read the displayed native rows after Main has recomputed its pure result.
+static func collections_review_evidence(main: Node, context_root: Node, fixture: Dictionary,
+		frame: int) -> Dictionary:
+	var clock: Node = context_root.get_node_or_null("Clock")
+	var time: SimClock = clock.get("sim") as SimClock if clock != null else null
+	var goals: GoalsPanel = main.get_node_or_null("Overlay/GoalsPanel") as GoalsPanel
+	var scroll: ScrollContainer = goals.get_node_or_null("Panel/Content/Scroll") as ScrollContainer \
+		if goals != null else null
+	var heading: Label = goals.get_node_or_null("Panel/Content/Scroll/List/CollectionsHeading") as Label \
+		if goals != null else null
+	var rows: VBoxContainer = goals.get_node_or_null("Panel/Content/Scroll/List/CollectionsRows") as VBoxContainer \
+		if goals != null else null
+	var hud: Node = main.get_node_or_null("HUD")
+	var toast: Control = hud.get_node_or_null("CollectionToast") as Control if hud != null else null
+	var timer: Timer = hud.get_node_or_null("CollectionToastTimer") as Timer if hud != null else null
+	var vibe: VibeModel.Result = main.get("vibe_result") as VibeModel.Result
+	var result: CollectionModel.Result = vibe.collection_result if vibe != null else null
+	if time == null or goals == null or scroll == null or heading == null or rows == null \
+			or toast == null or timer == null or result == null or not result.valid or result.entries.size() < 2:
+		return {"available": false}
+	var coffee: CollectionModel.Entry = result.entries[0]
+	var cozy: CollectionModel.Entry = result.entries[1]
+	if coffee.definition.id != &"coffee_break" or cozy.definition.id != &"cozy_corner" \
+			or coffee.requirements.size() != 3 or cozy.requirements.size() != 3:
+		return {"available": false}
+	# GoalsPanel names each title from CollectionsRows.get_child_count(), not
+	# from the collection's position in the result array.
+	var cozy_index: int = 2 + coffee.requirements.size()
+	if coffee.floor_required:
+		cozy_index += 1
+	if coffee.completed:
+		cozy_index += 1
+	if rows.get_child_count() <= cozy_index or String(rows.get_child(0).name) != "Collection0" \
+			or String(rows.get_child(cozy_index).name) != "Collection%d" % cozy_index:
+		return {"available": false}
+	var expected: Dictionary = {"Collection0": coffee.definition.display_name,
+		"CollectionShort0": coffee.definition.short_line,
+		"Collection0Floor": "✓ Floor: %s" % coffee.floor_name,
+		"Collection0Complete": "Complete!"}
+	expected["Collection%d" % cozy_index] = cozy.definition.display_name
+	expected["CollectionShort%d" % cozy_index] = cozy.definition.short_line
+	expected["Collection%dFloor" % cozy_index] = "□ Floor: %s" % cozy.floor_name
+	for index: int in range(3):
+		var first: CollectionModel.Entry.Requirement = coffee.requirements[index]
+		var second: CollectionModel.Entry.Requirement = cozy.requirements[index]
+		expected["Collection0Item%d" % index] = "%s %s" % ["✓" if first.present else "□", first.display_name]
+		expected["Collection%dItem%d" % [cozy_index, index]] = "%s %s" % ["✓" if second.present else "□", second.display_name]
+	var visible_rows: Dictionary = {}
+	for name: String in expected:
+		var label: Label = rows.get_node_or_null(name) as Label
+		visible_rows[name] = _loan_control_evidence(label) if label != null else {}
+	var completed: Array[String] = []
+	for id: StringName in result.completed_ids:
+		completed.append(String(id))
+	var coffee_present: Array[bool] = []
+	var cozy_present: Array[bool] = []
+	for requirement: CollectionModel.Entry.Requirement in coffee.requirements:
+		coffee_present.append(requirement.present)
+	for requirement: CollectionModel.Entry.Requirement in cozy.requirements:
+		cozy_present.append(requirement.present)
+	return {"available": true, "frame": frame, "elapsed_ms": Time.get_ticks_msec() - int(fixture["toast_started_ms"]),
+		"day": time.day, "phase": int(time.phase), "clock_speed": clock.get("speed"),
+		"use_saves": main.get("use_saves"), "goals_visible": goals.is_visible_in_tree(),
+		"menu_visible": (goals.get_parent().get_node("MenuPanel") as Control).visible,
+		"scroll_vertical": scroll.scroll_vertical, "heading": _loan_control_evidence(heading),
+		"expected_text": expected, "rows": visible_rows, "collection_title_indices": [0, cozy_index],
+		"completed_ids": completed,
+		"coffee_present": coffee_present, "coffee_has_floor": coffee.has_floor,
+		"cozy_present": cozy_present, "cozy_has_floor": cozy.has_floor,
+		"collection_points": vibe.collection_points, "toast_visible": toast.visible,
+		"toast_timer_stopped": timer.is_stopped(),
+		"toast_shown": (main.get("_shown_collection_toast_ids") as Array).has(&"coffee_break"),
+		"toast_pending": (main.get("_pending_collection_toast_ids") as Array).has(&"coffee_break")}
+
+
+static func collections_review_valid(state: Dictionary, fixture: Dictionary) -> bool:
+	if fixture.get("kind") != "unsaved_placed_collection_review_not_balance_proof" \
+			or fixture.get("error") != "" or state.get("available") != true \
+			or int(state.get("frame", 0)) < 240 or int(state.get("elapsed_ms", 0)) < 3000 \
+			or state.get("day") != 1 or state.get("phase") != SimClock.Phase.MORNING \
+			or state.get("clock_speed") != 0 or state.get("use_saves") != false \
+			or state.get("goals_visible") != true or state.get("menu_visible") != false \
+			or int(state.get("scroll_vertical", 0)) <= 0 \
+			or state.get("completed_ids") != ["coffee_break"] \
+			or state.get("coffee_present") != [true, true, true] or state.get("coffee_has_floor") != true \
+			or state.get("cozy_present") != [false, true, false] or state.get("cozy_has_floor") != false \
+			or state.get("collection_points") != 2.0 or state.get("toast_visible") != false \
+			or state.get("toast_timer_stopped") != true or state.get("toast_shown") != true \
+			or state.get("toast_pending") != false:
+		return false
+	var heading: Dictionary = state.get("heading", {})
+	if heading.get("text") != "Decor collections" or not _milestone_native_rect_valid(heading):
+		return false
+	var expected: Dictionary = state.get("expected_text", {})
+	var rows: Dictionary = state.get("rows", {})
+	if expected.size() != 13 or rows.size() != expected.size():
+		return false
+	for name: String in expected:
+		var row: Dictionary = rows.get(name, {})
+		if row.get("text") != expected[name] or not _milestone_native_rect_valid(row):
+			return false
+	return true
 
 
 ## Uses the real Menu -> Goals native controls; the queried UI never awards state.
@@ -2004,6 +2291,10 @@ func _process(_delta: float) -> bool:
 			_fail_capture("viewport did not finish drawing the pending capture")
 		return _finished
 	_frames += 1
+	if _frames == 8 and not _signature_review.is_empty():
+		_prepare_signature_review_layout()
+		if _failed:
+			return true
 	if _frames == 2 and _stock and _open:
 		# Explicit morning fixture: today's soup stock is gone and its
 		# auto-reorder is off, so the real service sells Tomato soup out.
@@ -2063,6 +2354,11 @@ func _process(_delta: float) -> bool:
 			(clock.get("sim") as SimClock).start_service()
 		clock.call("set_speed", _speed)
 		_configure_camera()
+		if not _signature_review.is_empty():
+			_signature_fixture = _prepare_signature_review()
+			if not String(_signature_fixture.get("error", "")).is_empty():
+				_fail_capture(String(_signature_fixture["error"]))
+				return true
 		if _menu_boards_review:
 			_menu_boards_fixture = MENU_BOARDS_REVIEW.prepare(_main, root)
 			if not String(_menu_boards_fixture.get("error", "")).is_empty():
@@ -2128,6 +2424,11 @@ func _process(_delta: float) -> bool:
 			if not String(_milestone_fixture["error"]).is_empty():
 				_fail_capture(String(_milestone_fixture["error"]))
 				return true
+		if _collections_review:
+			_collections_fixture = prepare_collections_review(_main, root)
+			if not String(_collections_fixture["error"]).is_empty():
+				_fail_capture(String(_collections_fixture["error"]))
+				return true
 		if not _catalogue_profile.is_empty():
 			_catalogue_fixture = prepare_catalogue_review(_main, root, _catalogue_profile)
 			if not String(_catalogue_fixture["error"]).is_empty():
@@ -2172,6 +2473,13 @@ func _process(_delta: float) -> bool:
 			_configure_paint()
 			if _failed:
 				return true
+	if _collections_review and _frames == 8:
+		var goals_scroll: ScrollContainer = _main.get_node_or_null("Overlay/GoalsPanel/Panel/Content/Scroll") as ScrollContainer
+		var collections_heading: Label = _main.get_node_or_null("Overlay/GoalsPanel/Panel/Content/Scroll/List/CollectionsHeading") as Label
+		if goals_scroll == null or collections_heading == null or not collections_heading.visible:
+			_fail_capture("collections review has no real visible Goals section to scroll to")
+			return true
+		goals_scroll.scroll_vertical = int(collections_heading.position.y)
 	if _stock and _report_requested:
 		_scroll_report_to_low_stock()
 	if _report_slowest_requested:
@@ -2266,7 +2574,11 @@ func _process(_delta: float) -> bool:
 		if _failed:
 			return true
 	_finish_requested = _frames >= _shots.max()
-	if _shots.has(_frames):
+	if _collections_review and _finish_requested:
+		_finish_requested = _collections_review_ready()
+		if _failed:
+			return true
+	if (_shots.has(_frames) and not _collections_review) or (_collections_review and _finish_requested):
 		if _door_queue:
 			_focus_door_queue()
 			if _failed:
@@ -2279,6 +2591,258 @@ func _process(_delta: float) -> bool:
 	if _finish_requested and not _capture_pending:
 		_finish_capture()
 	return _finished
+
+
+func _prepare_signature_review() -> Dictionary:
+	var world: SimWorld = _capture_world()
+	var menu: MenuSettings = _main.get("menu_settings") as MenuSettings if "menu_settings" in _main else null
+	var signature_state: Object = _main.get("signature_state") as Object if "signature_state" in _main else null
+	if world == null or menu == null or signature_state == null or world.clock.phase != SimClock.Phase.MORNING \
+			 or world.now != 0 or bool(_main.get("use_saves")) or int(_main.get("new_game_seed_override")) != 1:
+		return {"error": "signature review needs a fresh unsaved seed-1 morning and the Main signature API"}
+	if not _main.has_method("menu_recipe_details") or not _main.has_method("menu_set_signature"):
+		return {"error": "signature review needs Main menu_recipe_details and menu_set_signature"}
+	var enabled: Array[RecipeDef] = menu.enabled_recipes()
+	if enabled.is_empty():
+		return {"error": "signature review needs one enabled recipe"}
+	var recipe: RecipeDef = enabled[0]
+	var all_details: Dictionary = _main.call("menu_recipe_details")
+	var recipe_details: Dictionary = all_details.get(recipe.id, {})
+	var signature_details: Dictionary = recipe_details.get("signature", {})
+	var threshold: int = int(signature_details.get("unlock_sales", 0))
+	var current_sales: int = int(signature_state.call("sales_for", recipe.id))
+	if threshold < 1 or current_sales < 0:
+		return {"error": "signature review cannot read the authored paid-sales threshold"}
+	var seeded_sales: int = maxi(0, threshold - current_sales)
+	if seeded_sales > 0 and not bool(signature_state.call("record_sale", recipe.id, seeded_sales)):
+		return {"error": "signature review could not seed the explicit unsaved paid-sales fixture"}
+	if not bool(_main.call("menu_set_signature", recipe.id)):
+		return {"error": "Main refused the eligible signature fixture through its public request path"}
+	if _main.has_method("refresh_presentation"):
+		_main.call("refresh_presentation")
+	var panel: MenuPanel = _main.get_node_or_null("Overlay/MenuPanel") as MenuPanel
+	if panel == null or not panel.select_recipe(recipe.id):
+		return {"error": "signature review could not select the dish in the actual Menu panel"}
+	var fixture: Dictionary = {"recipe_id": String(recipe.id), "display_name": recipe.display_name,
+		"seed": 1, "use_saves": false, "seeded_prior_paid_sales": seeded_sales,
+		"sales_before_seed": current_sales, "unlock_sales": threshold,
+		"selection_path": "Main.menu_set_signature", "counter_path": "SignatureState.record_sale",
+		"selection_unsaved": true, "played_sales_claimed": false, "actual_service_days": 0}
+	if _signature_review == "menu":
+		var anchor: Vector3i = Vector3i(1, 6, 3)
+		if not bool(_main.call("shop_hang", &"menu_board", anchor)) \
+				 or not bool(_main.call("shop_menu_board_section", anchor, recipe.menu_section())):
+			return {"error": "signature review could not place the real menu board in the recipe section"}
+		var shop: ShopView = _main.get_node_or_null("ShopView") as ShopView
+		if shop == null:
+			return {"error": "signature menu fixture has no ShopView"}
+		shop.set_wall_mode(ShopView.WallMode.CUTAWAY)
+		_main.call("clear_selection")
+		if not bool(_main.call("set_menu_visible", true)):
+			return {"error": "signature review could not open the actual Menu panel"}
+		var board: ItemVisual = shop.wall_finish_view.item_nodes.get(anchor) as ItemVisual if shop.wall_finish_view != null else null
+		var label: Label3D = board.prop.get_node_or_null(^"WallMount/MenuText") as Label3D if board != null and board.prop != null else null
+		var rig: CameraRig = _main.get_node_or_null("CameraRig") as CameraRig
+		if label == null or rig == null:
+			return {"error": "signature menu fixture has no placed board label or camera"}
+		rig.minimum_zoom = 2.4
+		rig.initial_yaw_degrees = 90.0
+		rig.pitch_degrees = 25.0
+		rig.frame_area(Vector2(label.global_position.x, label.global_position.z), Vector2(12.0, 12.0), 2.4, true)
+		rig.position.y = 0.4
+		rig.set_process(false)
+		fixture["anchor"] = [anchor.x, anchor.y, anchor.z]
+		fixture["menu_snapshot"] = menu.to_dict()
+		fixture["state_snapshot"] = signature_state.call("to_dict")
+		fixture["world_tick_at_setup"] = world.now
+		return fixture
+	var clock_node: Node = root.get_node_or_null("Clock")
+	var sim_clock: SimClock = clock_node.get("sim") as SimClock if clock_node != null else null
+	if sim_clock == null or not sim_clock.start_service():
+		return {"error": "signature demand fixture could not start one ordinary service day"}
+	var batches: int = 0
+	while world.clock.phase != SimClock.Phase.CLOSED and batches < 30:
+		_main.call("run_ticks", 1000)
+		batches += 1
+	if world.clock.phase != SimClock.Phase.CLOSED or not ("shown_report" in _main):
+		return {"error": "signature demand fixture did not close one ordinary service day within 30000 ticks"}
+	var report: DayReport = _main.get("shown_report") as DayReport
+	if report == null:
+		return {"error": "signature demand fixture did not produce an actual DayReport"}
+	var section: Control = _main.get_node_or_null("Overlay/EveningReport/Panel/Scroll/Content/DemandForecast") as Control
+	var scroll: ScrollContainer = _main.get_node_or_null("Overlay/EveningReport/Panel/Scroll") as ScrollContainer
+	if section == null or scroll == null or not section.visible:
+		return {"error": "the real Evening Report did not show its demand section"}
+	fixture["actual_service_days"] = 1
+	fixture["report_day"] = report.day
+	fixture["ticks"] = world.now
+	fixture["selection_unsaved"] = true
+	fixture["played_sales_claimed"] = false
+	fixture["world_tick_at_setup"] = world.now
+	fixture["report_snapshot"] = report.to_dict().duplicate(true)
+	fixture["state_snapshot"] = signature_state.call("to_dict")
+	fixture["menu_snapshot"] = menu.to_dict()
+	return fixture
+
+
+func _prepare_signature_review_layout() -> void:
+	if _signature_review == "menu":
+		var panel: MenuPanel = _main.get_node_or_null("Overlay/MenuPanel") as MenuPanel
+		var panel_rect: Control = panel.get_node_or_null("Panel") as Control if panel != null else null
+		var shop: ShopView = _main.get_node_or_null("ShopView") as ShopView
+		var anchor: Vector3i = Vector3i(int(_signature_fixture.get("anchor", [1, 6, 3])[0]),
+			int(_signature_fixture.get("anchor", [1, 6, 3])[1]), int(_signature_fixture.get("anchor", [1, 6, 3])[2]))
+		var board: ItemVisual = shop.wall_finish_view.item_nodes.get(anchor) as ItemVisual \
+				if shop != null and shop.wall_finish_view != null else null
+		var label: Label3D = board.prop.get_node_or_null(^"WallMount/MenuText") as Label3D \
+				if board != null and board.prop != null else null
+		var rig: CameraRig = _main.get_node_or_null("CameraRig") as CameraRig
+		var camera: Camera3D = rig.get_node_or_null("Camera3D") as Camera3D if rig != null else null
+		if panel_rect == null or label == null or camera == null or rig == null:
+			_fail_capture("signature menu framing could not read the actual Menu rect, board or camera")
+			return
+		var viewport_rect: Rect2 = root.get_viewport().get_visible_rect()
+		var menu_rect: Rect2 = panel_rect.get_global_rect()
+		if camera.projection != Camera3D.PROJECTION_ORTHOGONAL or viewport_rect.size.x <= 0.0 \
+				or viewport_rect.size.y <= 0.0 or camera.size <= 0.0 \
+				or menu_rect.position.x <= viewport_rect.position.x:
+			_fail_capture("signature menu framing has no orthographic view or actual left margin")
+			return
+		var left_margin: Rect2 = Rect2(viewport_rect.position,
+			Vector2(menu_rect.position.x - viewport_rect.position.x, viewport_rect.size.y))
+		if not left_margin.has_area():
+			_fail_capture("signature menu has no visible left margin for its board")
+			return
+		var board_screen: Vector2 = camera.unproject_position(label.global_position)
+		var horizontal_span: float = camera.size
+		if camera.keep_aspect == Camera3D.KEEP_HEIGHT:
+			horizontal_span *= viewport_rect.size.x / viewport_rect.size.y
+		var world_shift: float = (board_screen.x - left_margin.get_center().x) * horizontal_span / viewport_rect.size.x
+		rig.global_position += camera.global_transform.basis.x.normalized() * world_shift
+		rig.force_update_transform()
+		return
+	if _signature_review == "demand":
+		var section: Control = _main.get_node_or_null("Overlay/EveningReport/Panel/Scroll/Content/DemandForecast") as Control
+		var scroll: ScrollContainer = _main.get_node_or_null("Overlay/EveningReport/Panel/Scroll") as ScrollContainer
+		if section == null or scroll == null or not section.visible:
+			_fail_capture("signature demand framing could not find the real visible forecast section")
+			return
+		scroll.ensure_control_visible(section)
+
+
+func _signature_review_evidence(world: SimWorld) -> Dictionary:
+	var menu: MenuSettings = _main.get("menu_settings") as MenuSettings
+	var signature_state: Object = _main.get("signature_state") as Object
+	var recipe_id: StringName = StringName(_signature_fixture.get("recipe_id", ""))
+	var panel: MenuPanel = _main.get_node_or_null("Overlay/MenuPanel") as MenuPanel
+	if menu == null or signature_state == null or panel == null:
+		return {}
+	var details: Dictionary = _main.call("menu_recipe_details").get(recipe_id, {})
+	var signature: Dictionary = details.get("signature", {})
+	var row: Control = panel.row_for(recipe_id)
+	var status: Label = row.get_node_or_null("Signature/Status") as Label if row != null else null
+	var action: Button = row.get_node_or_null("Signature/MakeSignature") as Button if row != null else null
+	var sales: Label = row.get_node_or_null("Signature/Sales") as Label if row != null else null
+	var menu_panel: Control = panel.get_node_or_null("Panel") as Control
+	var board_text: Label3D = null
+	var board_point: Vector2 = Vector2(-1.0, -1.0)
+	var board_visible: bool = false
+	var board_text_value: String = ""
+	var camera: Camera3D = _main.get_node_or_null("CameraRig/Camera3D") as Camera3D
+	if _signature_review == "menu":
+		var shop: ShopView = _main.get_node_or_null("ShopView") as ShopView
+		var anchor: Vector3i = Vector3i(int(_signature_fixture.get("anchor", [1, 6, 3])[0]), int(_signature_fixture.get("anchor", [1, 6, 3])[1]), int(_signature_fixture.get("anchor", [1, 6, 3])[2]))
+		var node: ItemVisual = shop.wall_finish_view.item_nodes.get(anchor) as ItemVisual if shop != null and shop.wall_finish_view != null else null
+		board_text = node.prop.get_node_or_null(^"WallMount/MenuText") as Label3D if node != null and node.prop != null else null
+		if board_text != null and camera != null:
+			board_point = camera.unproject_position(board_text.global_position)
+			board_visible = board_text.is_visible_in_tree() and not camera.is_position_behind(board_text.global_position)
+			board_text_value = board_text.text
+	var report: DayReport = _main.get("shown_report") as DayReport if "shown_report" in _main else null
+	var section: Control = _main.get_node_or_null("Overlay/EveningReport/Panel/Scroll/Content/DemandForecast") as Control
+	var factors: Label = section.get_node_or_null("Factors") as Label if section != null else null
+	var forecast: Dictionary = report.demand_forecast if report != null else {}
+	var state_after: Dictionary = signature_state.call("to_dict")
+	var unchanged: bool = state_after == _signature_fixture.get("state_snapshot", {})
+	if _signature_review == "menu":
+		unchanged = unchanged and menu.to_dict() == _signature_fixture.get("menu_snapshot", {}) \
+				and world.now == int(_signature_fixture.get("world_tick_at_setup", -1))
+	else:
+		unchanged = unchanged and report != null and report.to_dict() == _signature_fixture.get("report_snapshot", {}) \
+				and menu.to_dict() == _signature_fixture.get("menu_snapshot", {}) \
+				and world.now == int(_signature_fixture.get("world_tick_at_setup", -1))
+	return {"mode": _signature_review, "world_phase": int(world.clock.phase) if world != null else -1,
+		"world_tick": world.now if world != null else -1, "use_saves": bool(_main.get("use_saves")),
+		"recipe_id": String(recipe_id), "display_name": String(_signature_fixture.get("display_name", "")),
+		"model_signature_id": String(signature_state.call("signature_recipe_id")),
+		"lifetime_sales": int(signature_state.call("sales_for", recipe_id)),
+		"unlock_sales": int(_signature_fixture.get("unlock_sales", 0)),
+		"menu_enabled": menu.is_enabled(recipe_id), "signature_details": signature,
+		"menu_visible": bool(_main.call("is_menu_visible")), "status_text": status.text if status != null else "",
+		"status_visible": status != null and status.is_visible_in_tree(),
+		"action_visible": action != null and action.is_visible_in_tree(),
+		"action_disabled": action.disabled if action != null else true,
+		"sales_text": sales.text if sales != null else "",
+		"menu_panel_rect": _signature_rect(menu_panel), "status_rect": _signature_rect(status),
+		"board_present": board_text != null, "board_visible": board_visible,
+		"board_text": board_text_value, "board_screen_point": [board_point.x, board_point.y],
+		"report_visible": _main.get_node_or_null("Overlay/EveningReport") != null and _main.get_node("Overlay/EveningReport").is_visible_in_tree(),
+		"report_day": report.day if report != null else -1, "forecast": forecast,
+		"demand_section_rect": _signature_rect(section), "demand_factors_text": factors.text if factors != null else "",
+		"demand_factors_visible": factors != null and factors.is_visible_in_tree(),
+		"demand_factors_rect": _signature_rect(factors), "unchanged_after_draw": unchanged}
+
+
+func _signature_review_valid(state: Dictionary, world: SimWorld) -> bool:
+	if state.is_empty() or world == null or state.get("use_saves") != false \
+			 or state.get("recipe_id") != _signature_fixture.get("recipe_id") \
+			 or state.get("model_signature_id") != state.get("recipe_id") \
+			 or int(state.get("lifetime_sales", 0)) < int(state.get("unlock_sales", 1)) \
+			 or state.get("menu_enabled") != true or not state.get("signature_details", {}).get("eligible", false) \
+			 or state.get("signature_details", {}).get("selected", false) != true \
+			 or state.get("unchanged_after_draw") != true:
+		return false
+	if _signature_review == "menu":
+		var menu_rect: Rect2 = _signature_rect_to_rect(state.get("menu_panel_rect", {}))
+		var status_rect: Rect2 = _signature_rect_to_rect(state.get("status_rect", {}))
+		var viewport: Rect2 = root.get_viewport().get_visible_rect()
+		var board_point: Vector2 = Vector2(state.get("board_screen_point", [-1.0, -1.0])[0], state.get("board_screen_point", [-1.0, -1.0])[1])
+		return world.clock.phase == SimClock.Phase.MORNING and state.get("menu_visible") == true \
+				and state.get("status_text") == "Signature" and state.get("status_visible") == true \
+				and state.get("action_visible") == false and state.get("board_present") == true \
+				and state.get("board_visible") == true \
+				and String(state.get("board_text", "")).contains("* " + String(state.get("display_name", ""))) \
+				and viewport.has_point(board_point) and not menu_rect.has_point(board_point) \
+				and menu_rect.has_area() and menu_rect.encloses(status_rect)
+	var forecast: Dictionary = state.get("forecast", {})
+	var name: String = String(forecast.get("signature_name", ""))
+	var factor: float = float(forecast.get("signature", 0.0))
+	var expected_line: String = "Signature dish: %s %s" % [name, DemandText.change_text(factor)]
+	var demand_rect: Rect2 = _signature_rect_to_rect(state.get("demand_section_rect", {}))
+	var factors_rect: Rect2 = _signature_rect_to_rect(state.get("demand_factors_rect", {}))
+	return world.clock.phase == SimClock.Phase.CLOSED and state.get("report_visible") == true \
+				and state.get("report_day") == int(_signature_fixture.get("report_day", -1)) \
+				and int(forecast.get("day", 0)) == int(state.get("report_day", 0)) + 1 \
+				and name == state.get("display_name") and factor > 1.0 \
+				and String(state.get("demand_factors_text", "")).contains(expected_line) \
+				and state.get("demand_factors_visible") == true \
+				and demand_rect.has_area() and factors_rect.has_area() and demand_rect.encloses(factors_rect) \
+				and root.get_viewport().get_visible_rect().encloses(demand_rect)
+
+
+func _signature_rect(control: Control) -> Dictionary:
+	if control == null:
+		return {}
+	var rect: Rect2 = control.get_global_rect()
+	return {"position": [rect.position.x, rect.position.y], "size": [rect.size.x, rect.size.y]}
+
+
+func _signature_rect_to_rect(value: Dictionary) -> Rect2:
+	var position: Array = value.get("position", [])
+	var size: Array = value.get("size", [])
+	if position.size() != 2 or size.size() != 2:
+		return Rect2()
+	return Rect2(Vector2(float(position[0]), float(position[1])), Vector2(float(size[0]), float(size[1])))
 
 
 func _configure_camera() -> void:
@@ -3294,6 +3858,12 @@ func _capture() -> void:
 	if _milestone_review and not milestone_review_valid(milestone_state, _capture_frame, _milestone_fixture):
 		_fail_capture("milestone review did not match authored goals, the real close reward, ledger, XP or visible native rows")
 		return
+	var collections_state: Dictionary = collections_review_evidence(_main, root,
+		_collections_fixture, _capture_frame) if _collections_review else {}
+	if _collections_review and not collections_review_valid(collections_state, _collections_fixture):
+		_fail_capture("collections review did not show Main-derived completion, missing ticks and visible native Goals rows: " \
+			+ JSON.stringify(collections_state))
+		return
 	var catalogue_state: Dictionary = catalogue_review_evidence(_main, root) if not _catalogue_profile.is_empty() else {}
 	if not _catalogue_profile.is_empty() and not catalogue_review_valid(catalogue_state, _capture_frame, _catalogue_fixture):
 		_fail_capture("catalogue review did not match its fixture, real previews, seating links or bounds: " + JSON.stringify({
@@ -3320,6 +3890,10 @@ func _capture() -> void:
 	var menu_boards_state: Dictionary = MENU_BOARDS_REVIEW.evidence(_main, root, _capture_frame) if _menu_boards_review else {}
 	if _menu_boards_review and not MENU_BOARDS_REVIEW.valid(menu_boards_state, _capture_frame, _menu_boards_fixture):
 		_fail_capture("menu boards review did not match its placed label or native inspector/Menu controls: " + JSON.stringify(menu_boards_state))
+		return
+	var signature_review_state: Dictionary = _signature_review_evidence(world) if not _signature_review.is_empty() else {}
+	if not _signature_review.is_empty() and not _signature_review_valid(signature_review_state, world):
+		_fail_capture("signature review did not match the actual Menu/board or demand report: " + JSON.stringify(signature_review_state))
 		return
 	var settings_state: Dictionary = _settings_state() if _settings else {}
 	var hud_layout_state: Dictionary = _hud_layout_state() if _hud_layout else {}
@@ -3450,6 +4024,9 @@ func _capture() -> void:
 	if _milestone_review and (image == null or image.get_size() != SETTINGS_CAPTURE_SIZE):
 		_fail_capture("milestone review image did not match the usual 1600x900 dimensions")
 		return
+	if _collections_review and (image == null or image.get_size() != SETTINGS_CAPTURE_SIZE):
+		_fail_capture("collections review image did not match the usual 1600x900 dimensions")
+		return
 	if _menu_boards_review and (image == null or image.get_size() != SETTINGS_CAPTURE_SIZE):
 		_fail_capture("menu boards review image did not match 1600x900")
 		return
@@ -3553,6 +4130,8 @@ func _capture() -> void:
 	if _milestone_review:
 		metadata["milestone_review"] = {"fixture": _milestone_fixture, "state": milestone_state,
 			"generated_uids": generated_uid_evidence(MILESTONE_UID_SOURCES)}
+	if _collections_review:
+		metadata["collections_review"] = {"fixture": _collections_fixture, "state": collections_state}
 	if not _catalogue_profile.is_empty():
 		metadata["catalogue_review"] = {"fixture": _catalogue_fixture, "state": catalogue_state,
 			"generated_uids": generated_uid_evidence(CATALOGUE_UID_SOURCES)}
@@ -3575,6 +4154,9 @@ func _capture() -> void:
 		metadata["walls_review"] = {"fixture": _walls_fixture, "state": walls_state}
 	if _menu_boards_review:
 		metadata["menu_boards_review"] = {"fixture": _menu_boards_fixture, "state": menu_boards_state}
+	if not _signature_review.is_empty():
+		metadata["signature_review"] = {"mode": _signature_review, "fixture": _signature_fixture,
+			"state": signature_review_state}
 	if _street_front_review:
 		metadata["street_front_review"] = {"fixture": _street_front_fixture, "state": street_front_state}
 	if _diner_review:

@@ -98,4 +98,32 @@ layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 2
 
+[node name="CollectionsHeading" type="Label" parent="Panel/Content/Scroll/List"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+mouse_filter = 2
+theme_override_font_sizes/font_size = 20
+text = "Decor collections"
+
+[node name="CollectionsRows" type="VBoxContainer" parent="Panel/Content/Scroll/List"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+theme_override_constants/separation = 6
+
+[node name="RecordsHeading" type="Label" parent="Panel/Content/Scroll/List"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_font_sizes/font_size = 20
+text = "Records"
+
+[node name="RecordsRows" type="VBoxContainer" parent="Panel/Content/Scroll/List"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+theme_override_constants/separation = 8
+
 [connection signal="pressed" from="Panel/Content/Header/Close" to="." method="_on_close_pressed"]

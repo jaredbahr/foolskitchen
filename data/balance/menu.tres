@@ -9,3 +9,5 @@ levels_per_extra_dish = 2
 max_dishes = 12
 quality_skill_base = 0.7
 quality_per_skill = 0.1
+special_discount = 0.1
+special_pull = 0.25

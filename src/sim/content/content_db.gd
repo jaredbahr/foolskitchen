@@ -10,6 +10,7 @@ var _swatches: Dictionary[StringName, SwatchDef] = {}
 var _walls: Dictionary[StringName, WallKindDef] = {}
 var _floors: Dictionary[StringName, FloorStyleDef] = {}
 var _wall_styles: Dictionary[StringName, WallStyleDef] = {}
+var _collections: Dictionary[StringName, CollectionDef] = {}
 
 
 ## On failure the database is empty, so an earlier load cannot hide bad data.
@@ -21,6 +22,7 @@ func load_all(root: String = "res://data") -> PackedStringArray:
 	_walls.clear()
 	_floors.clear()
 	_wall_styles.clear()
+	_collections.clear()
 	var errors: PackedStringArray = []
 	var ingredient_defs: Array[IngredientDef] = []
 	var recipe_defs: Array[RecipeDef] = []
@@ -71,11 +73,19 @@ func load_all(root: String = "res://data") -> PackedStringArray:
 			wall_style_defs.append(resource as WallStyleDef)
 		else:
 			errors.append("%s: expected WallStyleDef" % path)
+	var collection_defs: Array[CollectionDef] = []
+	for path: String in _resource_paths(root.path_join("collections"), errors):
+		var resource: Resource = ResourceLoader.load(path)
+		if resource is CollectionDef:
+			collection_defs.append(resource as CollectionDef)
+		else:
+			errors.append("%s: expected CollectionDef" % path)
 	errors.append_array(validate_definitions(ingredient_defs, recipe_defs, item_defs))
 	errors.append_array(validate_swatches(swatch_defs))
 	errors.append_array(validate_wall_kinds(wall_defs))
 	errors.append_array(validate_floor_styles(floor_defs, swatch_defs))
 	errors.append_array(validate_wall_styles(wall_style_defs, swatch_defs))
+	errors.append_array(validate_collections(collection_defs, item_defs, floor_defs))
 	if not errors.is_empty():
 		return errors
 	for definition: IngredientDef in ingredient_defs:
@@ -92,6 +102,8 @@ func load_all(root: String = "res://data") -> PackedStringArray:
 		_floors[definition.id] = definition
 	for definition: WallStyleDef in wall_style_defs:
 		_wall_styles[definition.id] = definition
+	for definition: CollectionDef in collection_defs:
+		_collections[definition.id] = definition
 	return errors
 
 
@@ -218,6 +230,61 @@ func wall_styles() -> Array[WallStyleDef]:
 	result.sort_custom(func(a: WallStyleDef, b: WallStyleDef) -> bool:
 		return a.order < b.order or (a.order == b.order and String(a.id) < String(b.id)))
 	return result
+
+
+func collection(id: StringName) -> CollectionDef:
+	return _collections.get(id) as CollectionDef
+
+
+func collections() -> Array[CollectionDef]:
+	var result: Array[CollectionDef] = []
+	var ids: Array[StringName] = []
+	ids.assign(_collections.keys())
+	ids.sort_custom(_id_before)
+	for id: StringName in ids:
+		result.append(_collections[id])
+	return result
+
+
+static func validate_collections(definitions: Array[CollectionDef], item_defs: Array[ItemDef],
+		floor_defs: Array[FloorStyleDef]) -> PackedStringArray:
+	var errors: PackedStringArray = []
+	var ids: Dictionary[StringName, bool] = {}
+	var item_ids: Dictionary[StringName, bool] = {}
+	var floor_ids: Dictionary[StringName, bool] = {}
+	for item: ItemDef in item_defs:
+		if item != null:
+			item_ids[item.id] = true
+	for floor: FloorStyleDef in floor_defs:
+		if floor != null:
+			floor_ids[floor.id] = true
+	for index: int in range(definitions.size()):
+		var definition: CollectionDef = definitions[index]
+		if definition == null:
+			errors.append("collection[%d] is null" % index)
+			continue
+		_check_id(definition.id, "collection", ids, errors)
+		if definition.display_name.strip_edges().is_empty():
+			errors.append("collection '%s': display_name is empty" % definition.id)
+		if definition.short_line.strip_edges().is_empty():
+			errors.append("collection '%s': short_line is empty" % definition.id)
+		if not is_finite(definition.bonus) or definition.bonus < 0.0:
+			errors.append("collection '%s': bonus must be finite and >= 0" % definition.id)
+		if definition.item_ids.is_empty():
+			errors.append("collection '%s': item requirements are empty" % definition.id)
+		var required: Dictionary[StringName, bool] = {}
+		for item_id: StringName in definition.item_ids:
+			if item_id.is_empty():
+				errors.append("collection '%s': item requirement is empty" % definition.id)
+			elif required.has(item_id):
+				errors.append("collection '%s': item '%s' is duplicated" % [definition.id, item_id])
+			else:
+				required[item_id] = true
+				if not item_ids.has(item_id):
+					errors.append("collection '%s': unknown item '%s'" % [definition.id, item_id])
+		if not definition.floor_id.is_empty() and not floor_ids.has(definition.floor_id):
+			errors.append("collection '%s': unknown floor '%s'" % [definition.id, definition.floor_id])
+	return errors
 
 
 ## Wall finishes (D26): unique ids with names, prices of 0 or more, a known

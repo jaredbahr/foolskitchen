@@ -22,6 +22,9 @@ signal service_closed(day: int)
 var world: SimWorld
 var orders: OrderBook = OrderBook.new()
 var menu: Array[RecipeDef] = []
+## Effective selected-and-enabled recipe for this service. Empty keeps the
+## historical review path unchanged, including its seeded quote draw.
+var effective_signature_recipe_id: StringName = &""
 ## Per-shop overrides; recipe resources and their standard prices stay unchanged.
 var prices: Dictionary[StringName, int] = {}
 var pricing_tuning: EconomyTuning = EconomyTuning.new()
@@ -96,6 +99,8 @@ var critic_rng_provider: Callable
 ## Today's critic verdict (stars, cause, quote), or {} when none has reviewed.
 var critic_result: Dictionary = {}
 var served_today: int = 0
+## Optional morning offer; absent callers keep their original prices and picks.
+var daily_special: DailySpecial = null
 var lost_today: int = 0
 ## Guests who paid at the order counter (#293) and left with their drink.
 var takeaways_today: int = 0
@@ -528,8 +533,20 @@ static func _copy_vibe(source: VibeModel.Result, tuning: VibeTuning = VIBE_TUNIN
 	for value: float in [source.score, source.decor_points, source.variety_points,
 			source.theme_points, source.lamp_points, source.crowding_penalty,
 			source.theme_share, source.patience_multiplier, source.raw_review_bonus,
-			source.arrival_theme_strength, source.crowding_density]:
+			source.arrival_theme_strength, source.crowding_density,
+		source.collection_points, source.collection_nominal_bonus, source.collection_cap]:
 		if not is_finite(value) or value < 0.0:
+			return copy
+	if source.collection_result == null:
+		if source.collection_nominal_bonus != 0.0 or source.collection_points != 0.0 \
+				or (source.collection_cap != 0.0 and source.collection_cap != tuning.max_collection_bonus):
+			return copy
+	else:
+		if not source.collection_result.valid or not is_finite(source.collection_result.nominal_bonus) \
+				or source.collection_result.nominal_bonus < 0.0 \
+				or source.collection_result.nominal_bonus != source.collection_nominal_bonus \
+				or source.collection_cap != tuning.max_collection_bonus \
+				or source.collection_points != minf(source.collection_nominal_bonus, tuning.max_collection_bonus):
 			return copy
 	for component: float in [source.decor_points, source.variety_points,
 			source.theme_points, source.lamp_points, source.crowding_penalty]:
@@ -553,16 +570,55 @@ static func _copy_vibe(source: VibeModel.Result, tuning: VibeTuning = VIBE_TUNIN
 	copy.variety_points = source.variety_points
 	copy.theme_points = source.theme_points
 	copy.lamp_points = source.lamp_points
+	copy.collection_points = source.collection_points
+	copy.collection_nominal_bonus = source.collection_nominal_bonus
+	copy.collection_cap = tuning.max_collection_bonus
 	copy.crowding_penalty = source.crowding_penalty
 	copy.active_theme = source.active_theme
 	copy.theme_label = source.theme_label
 	copy.theme_share = source.theme_share
+	copy.collection_result = _copy_collection_result(source.collection_result)
+	if source.collection_result != null and copy.collection_result == null:
+		return VibeModel.Result.new()
 	copy.patience_multiplier = source.patience_multiplier
 	copy.raw_review_bonus = source.raw_review_bonus
 	copy.arrival_theme_strength = source.arrival_theme_strength
 	copy.interior_cells = source.interior_cells
 	copy.occupied_normal_cells = source.occupied_normal_cells
 	copy.crowding_density = source.crowding_density
+	return copy
+
+
+static func _copy_collection_result(source: CollectionModel.Result) -> CollectionModel.Result:
+	if source == null:
+		return null
+	if not source.valid or not is_finite(source.nominal_bonus) or source.nominal_bonus < 0.0 \
+			or not is_finite(source.effective_bonus) or source.effective_bonus < 0.0:
+		return null
+	var copy: CollectionModel.Result = CollectionModel.Result.new()
+	copy.valid = source.valid
+	copy.completed_ids = source.completed_ids.duplicate()
+	copy.nominal_bonus = source.nominal_bonus
+	copy.effective_bonus = source.effective_bonus
+	copy.capped = source.capped
+	for entry: CollectionModel.Entry in source.entries:
+		if entry == null or entry.definition == null:
+			return null
+		var entry_copy: CollectionModel.Entry = CollectionModel.Entry.new()
+		entry_copy.definition = entry.definition
+		entry_copy.floor_required = entry.floor_required
+		entry_copy.floor_name = entry.floor_name
+		entry_copy.has_floor = entry.has_floor
+		entry_copy.completed = entry.completed
+		for requirement: CollectionModel.Entry.Requirement in entry.requirements:
+			if requirement == null:
+				return null
+			var requirement_copy: CollectionModel.Entry.Requirement = CollectionModel.Entry.Requirement.new()
+			requirement_copy.item_id = requirement.item_id
+			requirement_copy.display_name = requirement.display_name
+			requirement_copy.present = requirement.present
+			entry_copy.requirements.append(requirement_copy)
+		copy.entries.append(entry_copy)
 	return copy
 
 
@@ -869,7 +925,8 @@ func _mark_sold_out(recipe_id: StringName, ingredient_id: StringName) -> void:
 func price_of(recipe: RecipeDef) -> int:
 	if recipe == null:
 		return 0
-	return maxi(0, prices.get(recipe.id, recipe.standard_price))
+	var price: int = maxi(0, prices.get(recipe.id, recipe.standard_price))
+	return daily_special.price_for(recipe, price) if daily_special != null else price
 
 
 ## No chance below/equal to standard; callers must not draw RNG when this is 0.
@@ -1206,6 +1263,8 @@ func record_departure(customer: CustomerAgent) -> void:
 					standard_price = recipe.standard_price
 					break
 		var visit: ReviewVisit = customer.review_visit(standard_price, customer.arrival_dirt_fraction)
+		visit.ate_signature_dish = not effective_signature_recipe_id.is_empty() \
+			and visit.consumed_recipe_ids.has(effective_signature_recipe_id)
 		visit.sticky_floor = mishaps != null and cleanliness != null \
 			and cleanliness.sticky_spot_count() >= mishaps.tuning.sticky_floor_threshold
 		# A paid guest removed at the closing cutoff retains their happy report

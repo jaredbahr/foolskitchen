@@ -428,6 +428,13 @@ func mood_band() -> int:
 func review_visit(standard_price: int, dirt_fraction: float = 0.0) -> ReviewVisit:
 	var visit: ReviewVisit = ReviewVisit.new()
 	visit.served = paid
+	if paid and not takeaway and _eating >= eat_ticks and order != null \
+			and order.state == Order.State.DELIVERED:
+		visit.consumed_recipe_ids.append(order.recipe_id)
+		if extra_order != null and extra_order != order \
+				and extra_order.state == Order.State.DELIVERED \
+				and not visit.consumed_recipe_ids.has(extra_order.recipe_id):
+			visit.consumed_recipe_ids.append(extra_order.recipe_id)
 	visit.was_seated = seat_cell != SimGrid.NO_CELL
 	visit.closing = leave_reason == &"closing"
 	visit.queue_wait_fraction = float(maxi(0, _queue_wait)) / float(maxi(1, queue_patience))
@@ -1084,6 +1091,8 @@ func _take_order(server: SimAgent) -> bool:
 		_leave(sim.world, sim, &"out_of_stock")
 		return true
 	var recipe: RecipeDef = choices[rng.randi_range(0, choices.size() - 1)]
+	if sim.daily_special != null:
+		recipe = sim.daily_special.pick(recipe, choices, rng)
 	if party != null and party.booking_owned and not booking_recipe_id.is_empty():
 		var preferred_available: bool = false
 		for choice: RecipeDef in choices:

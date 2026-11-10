@@ -455,6 +455,18 @@ an active edit/panel/selection first, or opens Settings when none is active.
   selected seafood stew details. No service, stock grant or save is faked.
 
 ### 2.3d Menu and prices (FK-030)
+- **Today's special (#330):** `DailySpecial` holds one enabled recipe for the
+  current day. Main accepts morning requests without saving or drawing RNG;
+  its optional registered section joins the existing morning checkpoint.
+  Re-entering the same morning retains the selection; the next morning clears
+  it. Restore validates against the staged menu and day before installation;
+  saves without the section have no special. Discount and pull live in the
+  existing menu tuning resource. Tickets capture the discounted player price,
+  rounded to whole dollars. The primary order keeps its ordinary private
+  choice first, then draws the special pull only when that recipe is available;
+  booking, regular-favourite and critic preferences still run afterward.
+  Menu, board and service HUD show the accepted choice. The detached report
+  keeps its name and paid sales count after tomorrow's selection is cleared.
 - **Live menu boards (FK-086 remainder):** each placed `menu_board` keeps a
   section choice in `WallDecor.Hung.menu_section` (`-1`: first nonempty section).
   The inspector changes it through `ShopEditor.set_menu_board_section`; its
@@ -2880,6 +2892,26 @@ frame30 and actual 6%-off ($20 list, $19 charged) panel at frame90. These two
 existing-job captures are UI evidence, not natural human timing or balance play.
 
 ### 2.4 Save system
+Lifetime records (FK-145): `ShopRecords` is a pure consumer of the one finalized
+`DayReport` in Main's guarded `service_closed` handler. Report previews, returning
+from Goals and evening purchases never add another close. Meals plus tips are
+revenue; loans, bonuses and refunds are not. Operating-profit bests require the
+report's recorded paid-food basis; a first recorded loss is valid, while unknown
+profit does not become zero. Reputation is the closing rolling average. Equal
+bests retain their original day. Per-dish totals survive missing recipe content;
+the UI uses its current display name, or "Former dish", with stable id tie order.
+
+The no-angry-guest streak counts the existing public service-failure departure
+reasons, not all unpaid guests or sampled review stars. Closing and administrative
+removal do not break it; a paid guest's low review is not an angry departure in
+the current lifecycle. Consecutive closed days with no such failures extend it,
+including an empty service; a missing day restarts the run. The versioned optional
+`shop_records` section stages and validates before whole-load installation, with
+empty records for older saves. Counts stay within exact JSON integers; currency
+uses decimal strings. It joins only the existing morning autosave. New-record
+notices are detached close-local text, retained across report refreshes and cleared
+at the next morning. Records award nothing and draw no RNG.
+
 Business trends (FK-123, FK-132): Main keeps thirty detached `BusinessHistory` closing
 summaries outside `DayReport` serialization. Reopening the evening report and
 advancing to the next morning upsert the current day after evening purchases;
@@ -3272,3 +3304,31 @@ Guests keep their own routes during deferred seat release; the automatic busser
 step-off route is restricted to staff. Wall previews also protect reserved movement
 edges and their diagonal corners, including exact undo/redo, while allowing
 unrelated walls and removals.
+
+### Viral reviews (#335)
+
+`ViralReview` is pure close-time state with authored `ViralTuning` in
+`data/balance/viral.tres`. Main passes actual happy departures divided by
+served + lost guests, the existing report's stable best-dish selection, and a
+lazy `GameState.rng(&"viral")` provider. Only a qualifying, out-of-cooldown
+close asks for that stream. The ten-day interval is between trigger closes.
+The next three completed open services use 1.35, 1.233333..., 1.116666...;
+calendar gaps, morning reloads and report/forecast queries consume nothing.
+A duplicate/stale close neither draws nor consumes. The just-closed factor
+stays available for current-day queries while the forecast reads the next one.
+
+The versioned `viral` save provider stages detached state; only a wholly
+accepted morning load installs it. Absent old-save sections and new runs are
+neutral. Only the existing `_begin_morning()` autosave writes it. Demand
+multiplies the separate optional `viral` factor exactly once before the existing
+total cap; neutral legacy snapshots retain their shape. `ViralReviewText` owns
+the shared plain report, demand and morning wording. The report announcement
+sits below all existing review cards so their ordinary top-scroll geometry
+stays unchanged.
+
+The existing Visual job adds one two-image `tools/viral_review.tscn` capture.
+It is explicitly an unsaved close-data UI fixture, not a played-service or
+probability claim: 34 served/happy, 6 lost, soup20/cheese14, fixture-only
+chance1. Real Main close and next-morning handlers render the report and
+reminder; observers25/75 check visible bounds and unchanged state before
+photos30/90. Statistical odds and default balance are validated separately.

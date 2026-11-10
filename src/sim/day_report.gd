@@ -26,6 +26,8 @@ var dishes_sold: Dictionary = {}
 var slowest_seller_snapshot: Dictionary = {}:
 	set(value):
 		slowest_seller_snapshot = public_slowest_seller_snapshot(value)
+## Optional closing announcement, captured once from the finalized viral spell.
+var viral_line: String = ""
 var customers_served: int = 0
 var dish_quality_count: int = 0
 var dish_quality_average: float = 0.0
@@ -57,6 +59,8 @@ var owner_tips: Array[String] = []
 var milestones_reached: Array[Dictionary] = []
 ## Optional cash-only challenge completion line; absent on all other days.
 var weekly_challenge_line: String = ""
+## The selected offer and its paid-dish count, detached from tomorrow's choice.
+var daily_special_line: String = ""
 ## Player-facing "Low stock" sentences (StockAlerts): what ran out today and
 ## when, then ingredients below tomorrow's target or expiring tomorrow.
 var low_stock: Array[String] = []
@@ -72,6 +76,8 @@ var booking_lines: Array[String] = []
 var critic_lines: Array[String] = []
 ## Optional event cohort summary; absent on ordinary days to preserve old saves.
 var rush_hour_lines: Array[String] = []
+## Detached record notices for this close; old reports omit them.
+var record_lines: Array[String] = []
 ## Optional purchase-basis accounting. Historical reports retain their cash
 ## basis; missing historical ingredient prices are never fabricated.
 var stock_values_recorded: bool = false
@@ -255,10 +261,14 @@ func to_dict() -> Dictionary:
 	var public_slowest_snapshot: Dictionary = public_slowest_seller_snapshot(slowest_seller_snapshot)
 	if not public_slowest_snapshot.is_empty():
 		result["slowest_seller_snapshot"] = public_slowest_snapshot
+	if not viral_line.is_empty():
+		result["viral_line"] = viral_line
 	if not inspection_lines.is_empty():
 		result["inspection_lines"] = inspection_lines.duplicate()
 	if not weekly_challenge_line.is_empty():
 		result["weekly_challenge_line"] = weekly_challenge_line
+	if not daily_special_line.is_empty():
+		result["daily_special_line"] = daily_special_line
 	if not booking_lines.is_empty():
 		result["booking_lines"] = booking_lines.duplicate()
 	var activity: Dictionary = StaffActivity.public_snapshot(staff_activity)
@@ -271,6 +281,8 @@ func to_dict() -> Dictionary:
 		result["critic_lines"] = critic_lines.duplicate()
 	if not rush_hour_lines.is_empty():
 		result["rush_hour_lines"] = rush_hour_lines.duplicate()
+	if not record_lines.is_empty():
+		result["record_lines"] = record_lines.duplicate()
 	return result
 
 
@@ -348,15 +360,26 @@ static func from_dict(data: Dictionary) -> DayReport:
 		for line: Variant in saved_critic:
 			if line is String:
 				report.critic_lines.append(line)
+	var saved_viral_line: Variant = data.get("viral_line", "")
+	if saved_viral_line is String and saved_viral_line.length() <= 300:
+		report.viral_line = saved_viral_line
 	var saved_weekly_line: Variant = data.get("weekly_challenge_line", "")
 	if saved_weekly_line is String and saved_weekly_line.length() <= 100:
 		report.weekly_challenge_line = saved_weekly_line
+	var saved_special_line: Variant = data.get("daily_special_line", "")
+	if saved_special_line is String and saved_special_line.length() <= 160:
+		report.daily_special_line = saved_special_line
 	var saved_rush: Variant = data.get("rush_hour_lines", [])
 	if saved_rush is Array:
 		for line: Variant in saved_rush:
 			if line is String:
 				report.rush_hour_lines.append(line)
 	var recorded: Variant = data.get("stock_values_recorded", false)
+	var saved_record_lines: Variant = data.get("record_lines", [])
+	if saved_record_lines is Array:
+		for line: Variant in saved_record_lines:
+			if line is String:
+				report.record_lines.append(line)
 	report.stock_values_recorded = recorded is bool and recorded
 	for field: String in ["food_cost", "stock_bought", "spoiled_stock", "stock_on_hand"]:
 		var value: int = PurchaseBasis.decode(data.get(field, null))
@@ -388,6 +411,26 @@ static func public_demand_forecast(value: Variant) -> Dictionary:
 				or not is_finite(float(factor)) or float(factor) <= 0.0:
 			return {}
 		result[key] = float(factor)
+	# Old forecasts have no viral factor and stay neutral without a shape change.
+	if forecast.has("viral"):
+		var viral: Variant = forecast["viral"]
+		if (typeof(viral) != TYPE_INT and typeof(viral) != TYPE_FLOAT) \
+				or not is_finite(float(viral)) or float(viral) < 1.0:
+			return {}
+		if float(viral) > 1.0:
+			result["viral"] = float(viral)
+	if forecast.has("signature") != forecast.has("signature_name"):
+		return {}
+	if forecast.has("signature"):
+		var signature_factor: Variant = forecast["signature"]
+		var signature_name: Variant = forecast["signature_name"]
+		if (typeof(signature_factor) != TYPE_INT and typeof(signature_factor) != TYPE_FLOAT) \
+				or not is_finite(float(signature_factor)) or float(signature_factor) <= 0.0 \
+				or typeof(signature_name) != TYPE_STRING \
+				or String(signature_name).strip_edges().is_empty():
+			return {}
+		result["signature"] = float(signature_factor)
+		result["signature_name"] = String(signature_name).strip_edges()
 	return result
 
 

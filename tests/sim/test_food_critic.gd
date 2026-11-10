@@ -155,6 +155,28 @@ func _grown_book(count: int) -> ReputationBook:
 	return book
 
 
+func test_positive_critic_quote_uses_consumed_signature_without_changing_score() -> void:
+	var visit: ReviewVisit = _visit(0.95, 0.0)
+	var ordinary_rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	ordinary_rng.seed = 30331
+	var signature_rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	signature_rng.seed = 30331
+	var ordinary: Dictionary = ReputationBook.new().record_critic(visit, REVIEWS,
+		QUOTES, ordinary_rng, CRITIC)
+	var expected_rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	expected_rng.seed = 30331
+	var used: Dictionary[String, bool] = {}
+	assert_eq(ordinary["quote"], QUOTES.pick(ordinary["cause"], expected_rng, used))
+	assert_eq(ordinary_rng.state, expected_rng.state,
+		"an ordinary critic still makes only its original quote draw")
+	visit.ate_signature_dish = true
+	var named: Dictionary = ReputationBook.new().record_critic(visit, REVIEWS,
+		QUOTES, signature_rng, CRITIC)
+	assert_true(int(named["stars"]) >= 4)
+	assert_eq(named["stars"], ordinary["stars"])
+	assert_true(QUOTES.groups[&"signature_dish"].has(named["quote"]))
+
+
 func test_the_review_moves_reputation_by_the_data_weight() -> void:
 	var random: RandomNumberGenerator = RandomNumberGenerator.new()
 	random.seed = 1
@@ -471,6 +493,31 @@ func _visit(quality: float, food_wait: float) -> ReviewVisit:
 	visit.quality_weight = CRITIC.quality_weight
 	visit.food_wait_fraction = food_wait
 	return visit
+
+
+func test_priciest_critic_overrides_an_active_guaranteed_special_pull() -> void:
+	var sim: RestaurantSim = _sim(41)
+	var config: MenuTuning = MenuTuning.new()
+	config.special_pull = 1.0
+	sim.daily_special = DailySpecial.new(config)
+	var food: Array[RecipeDef] = sim.available_of(RecipeDef.FOOD, sim.available_menu())
+	assert_true(food.size() >= 2)
+	var dearest: RecipeDef = food[0]
+	var cheapest: RecipeDef = food[0]
+	for recipe: RecipeDef in food:
+		if sim.price_of(recipe) > sim.price_of(dearest):
+			dearest = recipe
+		if sim.price_of(recipe) < sim.price_of(cheapest):
+			cheapest = recipe
+	assert_ne(cheapest.id, dearest.id)
+	assert_true(sim.daily_special.select(cheapest.id, sim.menu))
+	var guest: CustomerAgent = sim.add_customer(sim.world.grid.entries()[0], _random(42), null)
+	assert_true(guest.disguise_as_critic([FoodCritic.PRICIEST] as Array[StringName], CRITIC))
+	guest.state = CustomerAgent.State.ORDERING
+	assert_true(guest._take_order(SimAgent.new()))
+	assert_not_null(guest.order)
+	assert_eq(guest.order.recipe_id, dearest.id)
+	assert_eq(guest.order.price, sim.price_of(dearest))
 
 
 func _sim(seed_value: int) -> RestaurantSim:

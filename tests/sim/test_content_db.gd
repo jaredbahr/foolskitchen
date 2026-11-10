@@ -8,6 +8,8 @@ func test_starter_data_loads_without_validation_errors() -> void:
 	assert_eq(db.ingredients().size(), 22)
 	assert_eq(db.recipes().size(), _recipe_resource_count("res://data/recipes"))
 	assert_eq(db.items().size(), 81)
+	assert_eq(db.collections().size(), 6)
+	assert_eq(db.collection(&"diner_classics").item_ids, [&"neon_open_sign", &"menu_board", &"diner_booth"])
 
 
 func test_lookups_find_each_kind_and_unknown_ids_return_null() -> void:
@@ -91,8 +93,8 @@ func test_recursive_resource_discovery_returns_sorted_original_tres_names() -> v
 func test_missing_resource_directories_report_errors_and_clear_old_indices() -> void:
 	var db: ContentDB = _starter_db()
 	var errors: PackedStringArray = db.load_all("res://data/missing_content_db_test_root")
-	# Seven folders, plus the missing starting floor and wall finish.
-	assert_eq(errors.size(), 9)
+	# Eight folders, plus the missing starting floor and wall finish.
+	assert_eq(errors.size(), 10)
 	assert_true(_has_error(errors, "Cannot open content directory:"))
 	assert_eq(db.ingredients().size(), 0)
 	assert_eq(db.recipes().size(), 0)

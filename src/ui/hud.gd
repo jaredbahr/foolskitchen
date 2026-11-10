@@ -25,6 +25,7 @@ signal staff_pressed()
 signal stock_pressed()
 signal settings_pressed()
 signal header_layout_changed()
+signal collection_toast_shown(collection_id: StringName)
 
 var _restaurant_name: String = MenuSettings.DEFAULT_NAME
 var _weather_kind: int = WeatherState.Kind.SUNNY
@@ -83,6 +84,11 @@ var _opening_refusal: String = ""
 var _haggle_active: bool = false
 var _demand_status: String = ""
 var _booking_status: Label
+var _special_name: String = ""
+var _collection_toast_queue: Array[Dictionary] = []
+var _collection_toast_panel: PanelContainer
+var _collection_toast_label: Label
+var _collection_toast_timer: Timer
 
 
 func bind_preferences(model: SettingsPreferences) -> void:
@@ -110,6 +116,64 @@ func set_booking_status(text: String) -> void:
 	_booking_status.text = text
 	_booking_status.get_parent().visible = not text.is_empty()
 	_layout_booking_status()
+
+
+func queue_collection_toast(collection_id: StringName, text: String) -> void:
+	if collection_id.is_empty() or text.strip_edges().is_empty():
+		return
+	_collection_toast_queue.append({"id": collection_id, "text": text})
+	_show_collection_toast()
+
+
+func clear_collection_toasts() -> void:
+	_collection_toast_queue.clear()
+	if _collection_toast_timer != null:
+		_collection_toast_timer.stop()
+	if _collection_toast_panel != null:
+		_collection_toast_panel.visible = false
+
+
+func _show_collection_toast() -> void:
+	if _collection_toast_queue.is_empty() or (_collection_toast_timer != null \
+			and not _collection_toast_timer.is_stopped()):
+		return
+	if _collection_toast_panel == null:
+		_collection_toast_panel = PanelContainer.new()
+		_collection_toast_panel.name = "CollectionToast"
+		_collection_toast_panel.theme = (get_node("Top") as Control).theme
+		_collection_toast_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_collection_toast_panel.custom_minimum_size = Vector2(520.0, 0.0)
+		_collection_toast_panel.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+		_collection_toast_panel.offset_left = -260.0
+		_collection_toast_panel.offset_top = -92.0
+		_collection_toast_panel.offset_right = 260.0
+		_collection_toast_panel.offset_bottom = -44.0
+		_collection_toast_panel.visible = false
+		add_child(_collection_toast_panel)
+		_collection_toast_label = Label.new()
+		_collection_toast_label.name = "Text"
+		_collection_toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_collection_toast_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_collection_toast_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_collection_toast_panel.add_child(_collection_toast_label)
+		_collection_toast_timer = Timer.new()
+		_collection_toast_timer.name = "CollectionToastTimer"
+		_collection_toast_timer.one_shot = true
+		_collection_toast_timer.wait_time = 3.0
+		_collection_toast_timer.ignore_time_scale = true
+		_collection_toast_timer.process_mode = Node.PROCESS_MODE_ALWAYS
+		_collection_toast_timer.timeout.connect(_on_collection_toast_timeout)
+		add_child(_collection_toast_timer)
+	var notice: Dictionary = _collection_toast_queue.pop_front()
+	_collection_toast_label.text = notice["text"]
+	_collection_toast_panel.visible = true
+	_collection_toast_timer.start()
+	collection_toast_shown.emit(StringName(notice["id"]))
+
+
+func _on_collection_toast_timeout() -> void:
+	_collection_toast_panel.visible = false
+	_show_collection_toast()
 
 
 func _ready() -> void:
@@ -178,7 +242,7 @@ func refresh() -> void:
 		EventBus.cash_changed.connect(_on_cash_changed)
 	_day_label.text = "Day %d" % Clock.sim.day
 	_time_label.text = Fmt.clock(Clock.sim.display_minutes())
-	_phase_label.text = PHASE_NAMES[Clock.sim.phase]
+	_render_phase_label()
 	_cash_label.text = Fmt.money(_cash)
 	_render_loan()
 	_render_reputation()
@@ -217,6 +281,28 @@ func set_weather(kind: int) -> void:
 	_weather_kind = kind
 	_render_weather()
 	_layout_header()
+
+
+## Shows the accepted daily offer in the existing phase label during service.
+func set_special(recipe_display_name: String) -> void:
+	_special_name = recipe_display_name.strip_edges()
+	if _phase_label != null:
+		_render_phase_label()
+		_layout_header()
+
+
+func _render_phase_label() -> void:
+	if _phase_label == null:
+		return
+	var phase: int = Clock.sim.phase
+	var in_service: bool = phase == SimClock.Phase.OPEN or phase == SimClock.Phase.LAST_ORDERS
+	var special_text: String = DailySpecialText.hud(_special_name) if in_service else ""
+	_phase_label.text = PHASE_NAMES[phase]
+	if not special_text.is_empty():
+		_phase_label.text += "  ·  " + special_text
+		_phase_label.add_theme_font_size_override("font_size", 14)
+	else:
+		_phase_label.remove_theme_font_size_override("font_size")
 
 
 func _render_weather() -> void:

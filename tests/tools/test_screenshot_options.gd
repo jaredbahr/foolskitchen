@@ -19,6 +19,26 @@ func test_joined_booking_capture_requires_both_paused_morning_and_service_frames
 		assert_false(JOINED_BOOKING_REVIEW.options(arguments)["enabled"])
 
 
+func test_signature_review_options_are_exact_and_do_not_change_legacy_defaults() -> void:
+	assert_eq(CAPTURE.signature_review_options([]), {"mode": "", "error": ""})
+	for mode: String in ["menu", "demand"]:
+		var args: PackedStringArray = PackedStringArray(["--signature-review=" + mode,
+			"--speed=0", "--frames=60"])
+		var accepted: Dictionary = CAPTURE.signature_review_options(args)
+		assert_eq(accepted, {"mode": mode, "error": ""})
+		args.append_array(["--out=screens/signature", "--out=screens/signature"])
+		assert_eq(CAPTURE.signature_review_options(args), {"mode": mode, "error": ""})
+	for args: PackedStringArray in [
+		PackedStringArray(["--signature-review=unknown", "--speed=0", "--frames=60"]),
+		PackedStringArray(["--signature-review=menu", "--speed=1", "--frames=60"]),
+		PackedStringArray(["--signature-review=menu", "--speed=0", "--frames=30"]),
+		PackedStringArray(["--signature-review=menu", "--signature-review=demand", "--speed=0", "--frames=60"]),
+		PackedStringArray(["--signature-review=menu", "--speed=0", "--frames=60", "--menu"]),
+		PackedStringArray(["--signature-review=demand", "--speed=0", "--frames=60", "--scene=res://tools/demand_report_review.tscn"]),
+	]:
+		assert_false(String(CAPTURE.signature_review_options(args)["error"]).is_empty())
+
+
 func test_catalogue_capture_expectations_include_every_native_card_and_the_waiting_bench() -> void:
 	var content: ContentDB = ContentDB.new()
 	assert_eq(content.load_all(), PackedStringArray())

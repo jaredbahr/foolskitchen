@@ -72,6 +72,12 @@ mouse_filter = 2
 autowrap_mode = 3
 text = "Choose dishes and prices for today."
 
+[node name="ViralNotice" type="Label" parent="Panel/Content"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+autowrap_mode = 3
+
 [node name="RushNotice" type="Label" parent="Panel/Content"]
 unique_name_in_owner = true
 visible = false

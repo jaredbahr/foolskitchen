@@ -9,6 +9,8 @@ on:
       - 'tools/jukebox_review.gd'
       - 'tools/order_counter_review.gd'
       - 'tools/aquarium_review.gd'
+      - 'tools/daily_special_review.gd'
+      - 'tools/daily_special_review.tscn'
       - 'src/world/**'
       - 'src/ui/**'
       - 'data/layouts/**'
@@ -51,6 +53,8 @@ jobs:
             printf '%s %s\n' "$package" "$status" | tee -a screens/visual-review/capture-context.txt
           done
           printf 'checkout_commit=%s\nworkflow_sha=%s\nrunner_os=%s\n' "$(git rev-parse HEAD)" "$GITHUB_SHA" "$RUNNER_OS" >> screens/visual-review/capture-context.txt
+          printf 'daily_special_review_gd_sha256=%s\n' "$(sha256sum tools/daily_special_review.gd | cut -d' ' -f1)" >> screens/visual-review/capture-context.txt
+          printf 'daily_special_review_tscn_sha256=%s\n' "$(sha256sum tools/daily_special_review.tscn | cut -d' ' -f1)" >> screens/visual-review/capture-context.txt
 
       - name: Restore Godot cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -94,6 +98,8 @@ jobs:
           DIVIDER_REVIEW_STAGE=remove bash tools/screenshot.sh --out=screens/visual-review/divider-remove-restroom --scene=res://tools/divider_review.tscn --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/loan-review --loan-review --speed=0 --frames=12,90
           bash tools/screenshot.sh --out=screens/visual-review/milestone-review --milestone-review --speed=0 --frames=12,90
+          bash tools/screenshot.sh --out=screens/visual-review/records --scene=res://tools/records_review.tscn --speed=0 --frames=30,90
+          bash tools/screenshot.sh --out=screens/visual-review/collections --collections-review --speed=0 --frames=240
           bash tools/screenshot.sh --out=screens/visual-review/catalogue-rustic --catalogue-review=rustic --speed=0 --frames=90,120
           bash tools/screenshot.sh --out=screens/visual-review/catalogue-modern --catalogue-review=modern --speed=0 --frames=90,120
           bash tools/screenshot.sh --out=screens/visual-review/joined-tables --joined-tables-review --speed=0 --frames=12,90
@@ -114,6 +120,7 @@ jobs:
           bash tools/screenshot.sh --out=screens/visual-review/report --report --open --fast=100 --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/blueprint-codes --blueprints=ghost --speed=0 --frames=30
           bash tools/screenshot.sh --out=screens/visual-review/report-slowest --report-slowest --open --fast=100 --speed=0 --frames=60
+          bash tools/screenshot.sh --out=screens/visual-review/daily-special --scene=res://tools/daily_special_review.tscn --speed=0 --frames=30,120
           bash tools/screenshot.sh --out=screens/visual-review/profit-review --scene=res://tools/profit_review.tscn --report --open --fast=1 --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/demand-report --scene=res://tools/demand_report_review.tscn --speed=0 --frames=60
           SCREENSHOT_TIMEOUT_SECONDS=120 bash tools/screenshot.sh --out=screens/visual-review/staff-activity-report --scene=res://tools/staff_activity_review.tscn --speed=0 --frames=60
@@ -140,11 +147,14 @@ jobs:
           OPENINGS_REVIEW_STAGE=before bash tools/screenshot.sh --out=screens/visual-review/openings-before --scene=res://tools/openings_review.tscn --speed=0 --frames=30 --quarter=2
           OPENINGS_REVIEW_STAGE=after bash tools/screenshot.sh --out=screens/visual-review/openings-after --scene=res://tools/openings_review.tscn --speed=0 --frames=30 --quarter=2
           bash tools/screenshot.sh --out=screens/visual-review/menu-boards-review --menu-boards-review --speed=0 --frames=12,30
+          bash tools/screenshot.sh --out=screens/visual-review/signature-menu --signature-review=menu --speed=0 --frames=60
+          bash tools/screenshot.sh --out=screens/visual-review/signature-demand --signature-review=demand --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/jukebox --scene=res://tools/jukebox_review.tscn --speed=0 --frames=12,40
           SCREENSHOT_TIMEOUT_SECONDS=120 bash tools/screenshot.sh --out=screens/visual-review/order-counter --scene=res://tools/order_counter_review.tscn --speed=0 --frames=90,330
           bash tools/screenshot.sh --out=screens/visual-review/build-green --build=green --quarter=0 --frames=12 --speed=1
           bash tools/screenshot.sh --out=screens/visual-review/build-red --build=red --quarter=0 --frames=12 --speed=1
           bash tools/screenshot.sh --out=screens/visual-review/build-pinch --build=pinch --quarter=2 --frames=12 --speed=1
+          bash tools/screenshot.sh --out=screens/visual-review/viral --scene=res://tools/viral_review.tscn --speed=0 --frames=30,90
           bash tools/screenshot.sh --out=screens/visual-review/menu-access-preview --scene=res://tools/menu_access_review.tscn --speed=0 --frames=12
           bash tools/screenshot.sh --out=screens/visual-review/blueprint-looks --scene=res://tools/blueprint_looks_review.tscn --speed=0 --frames=12,60
           FK_MENU_REVIEW_STAGE=open bash tools/screenshot.sh --out=screens/visual-review/menu-access-open --scene=res://tools/menu_access_review.tscn --speed=0 --frames=12
@@ -380,6 +390,38 @@ jobs:
           assert review['advice_id'] == 'cook' and 'hiring another cook' in review['advice'], 'staff-activity-report: missing natural cook advice'
           print(f'staff-activity-report: actual expanded_tables day10 cook advice, unchanged session, sha256={hashlib.sha256(raw).hexdigest()}')
 
+          # One ordinary seed-one run: morning choice, live service HUD, and
+          # paid evening report. Native GDScript checks validate the real UI state.
+          special_dir = root / 'daily-special'
+          special_context = (root / 'capture-context.txt').read_text().splitlines()
+          context = dict(line.split('=', 1) for line in special_context if '=' in line)
+          for key, relative in [('daily_special_review_gd_sha256', 'tools/daily_special_review.gd'),
+                                ('daily_special_review_tscn_sha256', 'tools/daily_special_review.tscn')]:
+              assert context.get(key) == hashlib.sha256(Path(relative).read_bytes()).hexdigest(), f'daily-special: source context mismatch for {relative}'
+          log = (special_dir / 'capture.log').read_text()
+          assert log.count('SPECIAL_REVIEW ') == 3, 'daily-special: missing unique morning/HUD/report receipts'
+          reviews = {}
+          for line in log.splitlines():
+              if 'SPECIAL_REVIEW ' not in line:
+                  continue
+              review = json.loads(line.split('SPECIAL_REVIEW ', 1)[1])
+              assert review['view'] not in reviews, 'daily-special: duplicate native review receipt'
+              reviews[review['view']] = review
+          assert set(reviews) == {'morning', 'service_hud', 'evening_report'}, 'daily-special: incomplete native view receipts'
+          for name, frame, phase in [('morning', 30, 0), ('report', 120, 3)]:
+              png = special_dir / f'shot_{frame:04d}.png'
+              raw = png.read_bytes()
+              assert raw[:8] == b'\x89PNG\r\n\x1a\n' and len(raw) > 1000, f'daily-special/{name}: missing/invalid PNG'
+              assert struct.unpack('>II', raw[16:24]) == (1600, 900), f'daily-special/{name}: wrong PNG dimensions'
+              data = json.loads(png.with_suffix('.json').read_text())
+              assert data['image_file'] == png.name and data['image_sha256'] == hashlib.sha256(raw).hexdigest(), f'daily-special/{name}: image metadata mismatch'
+              assert data['scene'] == 'res://tools/daily_special_review.tscn' and data['capture_timing'] == 'frame_post_draw', f'daily-special/{name}: wrong source or capture timing'
+              assert (data['width'], data['height'], data['frame'], data['day_phase']) == (1600, 900, frame, phase), f'daily-special/{name}: wrong size/frame/phase'
+              assert type(data['engine_errors']) is int and data['engine_errors'] == 0 and 'llvmpipe' in data['video_adapter'].lower(), f'daily-special/{name}: renderer or engine diagnostics mismatch'
+              assert data['capture_parameters'] == {'open': False, 'fast_ticks_per_frame': 0, 'speed': 0}, f'daily-special/{name}: wrong normal paused capture parameters'
+              assert data['master_seed'] == data['new_game_seed_override'] == '1', f'daily-special/{name}: wrong seed'
+              assert data['world_tick'] == 0 if name == 'morning' else data['world_tick'] > 0, f'daily-special/{name}: wrong simulation time'
+              print(f'daily-special/{name}: frame={frame}, phase={phase}, seed=1, sha256={hashlib.sha256(raw).hexdigest()}')
           PY
           timeout 60 "$GODOT" --headless --path . --script tools/diner_capture_validator.gd
 
