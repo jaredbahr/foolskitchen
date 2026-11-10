@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="ViralTuning" format=3]
+
+[ext_resource type="Script" path="res://src/sim/viral_tuning.gd" id="1_viral"]
+
+[resource]
+script = ExtResource("1_viral")
+min_happy_share = 0.85
+min_served = 25
+viral_chance = 0.15
+viral_multiplier = 1.35
+boosted_open_days = 3
+cooldown_days = 10

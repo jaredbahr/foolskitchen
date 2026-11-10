@@ -91,6 +91,9 @@ func show_report(report: DayReport) -> void:
 	show_history([], report.day)
 	_report_shown = true
 	_restaurant_name.text = report.restaurant_name
+	var viral: Label = %ViralReviewLine
+	viral.text = report.viral_line
+	viral.visible = not report.viral_line.is_empty()
 	(get_node("Panel/Scroll/Content/ReviewHeading") as Label).text = "Reviews of %s" % report.restaurant_name
 	_header.text = "Day %d: Closed" % report.day
 	if report.operating_profit_recorded():
