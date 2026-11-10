@@ -179,6 +179,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- Design: how several restaurant sites work (one active site, the rest frozen in the save and run by managers), lot data, lot-only content and the prestige score (#404)
 - The coffee shop test layout leaves a two-cell aisle between the coffee machines and the counter in the deeper starter room, as Build mode now advises; a one-cell gap had the cook looping round the full counter. (#403)
 - The Records screenshot check now plays ordinary days until a close beats a record, since the first day sets every record quietly. (#401)
 - Design: the property market is decided (D28): every Tier 3 lot visible with its perks, fixer-uppers, upstairs on some lots, lot-only ingredients and build items, a prestige score for fine dining, bar gambling, and what carries over when you buy or move. (#381)
