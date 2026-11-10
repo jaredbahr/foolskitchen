@@ -451,6 +451,8 @@ func _add_row(parent: VBoxContainer, member: StaffMember, candidate: bool) -> vo
 	detail.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(detail)
 	if not candidate:
+		# Keep the work line with the member details without adding a full card gap.
+		row.add_theme_constant_override(&"separation", 2)
 		_add_growth(row, member)
 		var work: Label = Label.new()
 		work.name = "Work"
