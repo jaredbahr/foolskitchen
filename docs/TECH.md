@@ -3447,7 +3447,10 @@ active.
 **Bookings.** A group booking belongs to its site. If that site is not
 active on the booked day, the booking lapses at that day's close with the
 deposit refunded (`BOOKING_REFUND`) and no reputation change. New offers come
-only to the active site.
+only to the active site. Built so far (#414): `SiteThaw` refunds such a
+booking when its site is switched back to; part 1's close-time processing of
+away sites must settle it at that day's close instead, after which the thaw
+finds nothing to refund.
 
 **Weekly challenge.** It stays global and counts the active site's sales. A
 featured dish the active site cannot cook simply makes no progress that day.
