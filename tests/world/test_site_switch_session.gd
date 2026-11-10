@@ -138,6 +138,7 @@ func test_a_switch_and_back_is_lossless() -> void:
 	_assert_sections(_book().frozen_sections(SiteBook.HOME_ID), home, "the home site frozen whole")
 	assert_eq(Economy.cash, cash, "a same-morning switch costs nothing")
 	assert_true(_sim().stock == Economy.stock)
+	assert_eq(Economy.active_site, &"second", "money now goes to the arriving site's books")
 	assert_true(Clock.attached_world == _main.get("world"), "the clock drives the new world")
 	assert_true(_main.get("world") == _sim().world)
 	var view: ShopView = _main.get_node("ShopView")
@@ -150,6 +151,7 @@ func test_a_switch_and_back_is_lossless() -> void:
 	assert_eq(_price(dish), second_price + 3)
 	assert_eq(Economy.cash, cash, "a lossless round trip costs nothing")
 	assert_true(_sim().stock == Economy.stock)
+	assert_eq(Economy.active_site, SiteBook.HOME_ID, "and back to the home site's books")
 
 	# The day still plays on the switched-back session.
 	assert_true(Clock.sim.start_service())
