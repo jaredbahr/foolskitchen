@@ -9,6 +9,7 @@ var _menu: MenuSettings
 var _burger: RecipeDef
 var _enable_requests: Array[Dictionary] = []
 var _price_requests: Array[Dictionary] = []
+var _reset_requests: int = 0
 var _special_requests: Array[StringName] = []
 var _signature_requests: Array[StringName] = []
 var _settings_requests: int = 0
@@ -21,6 +22,7 @@ func before_each() -> void:
 	_settings_requests = 0
 	_goals_requests = 0
 	_special_requests.clear()
+	_reset_requests = 0
 	_burger = _recipe(&"burger", "Burger", 12)
 	_menu = MenuSettings.new([_recipe(&"tomato_soup", "Tomato soup", 9), _burger,
 		_recipe(&"grilled_cheese", "Grilled cheese", 8)])
@@ -28,6 +30,7 @@ func before_each() -> void:
 	_panel.restaurant_name_requested.connect(_record_name)
 	_panel.enable_requested.connect(_record_enable)
 	_panel.price_requested.connect(_record_price)
+	_panel.reset_prices_requested.connect(_record_reset)
 	_panel.special_requested.connect(_record_special)
 	_panel.signature_requested.connect(_record_signature)
 	_panel.settings_requested.connect(_record_settings)
@@ -67,6 +70,9 @@ func test_rows_defaults_shared_styles_and_mouse_scope_work_before_ready() -> voi
 	assert_eq(_label(&"burger", "Reference/Standard").text, "Suggested $12")
 	assert_eq(_label(&"burger", "Reference/Ratio").text, "100% of suggested")
 	assert_eq(_label(&"burger", "Reference/Ratio").get_theme_color("font_color"), MenuPanel.STANDARD_COLOR)
+	assert_eq(_bulk_button("MinusTen").text, "−10%")
+	assert_eq(_bulk_button("PlusTen").text, "+10%")
+	assert_eq(_bulk_button("Reset").text, "Reset to standard")
 	for path: String in ["Top/Enabled", "Price/Minus", "Price/Plus"]:
 		var button: Button = _button(&"burger", path)
 		assert_eq(button.theme, MenuPanel.SHARED_THEME)
@@ -236,6 +242,49 @@ func test_buttons_emit_primitive_requests_and_never_change_the_bound_model() -> 
 	assert_eq(_burger.standard_price, 12)
 
 
+func test_bulk_ten_percent_requests_only_enabled_dishes_without_mutating_the_view_model() -> void:
+	assert_true(_menu.set_enabled(&"grilled_cheese", false))
+	assert_true(_menu.set_price(&"burger", 15))
+	assert_true(_menu.set_price(&"grilled_cheese", 9))
+	assert_true(_menu.set_price(&"tomato_soup", 10))
+	_panel.refresh()
+	var before: Dictionary = _menu.to_dict()
+	_bulk_button("PlusTen").pressed.emit()
+	assert_eq(_price_requests, [{"id": &"burger", "price": 17},
+		{"id": &"tomato_soup", "price": 11}] as Array[Dictionary])
+	_price_requests.clear()
+	_bulk_button("MinusTen").pressed.emit()
+	assert_eq(_price_requests, [{"id": &"burger", "price": 14},
+		{"id": &"tomato_soup", "price": 9}] as Array[Dictionary])
+	assert_eq(_menu.to_dict(), before, "the session must accept each request")
+	assert_eq(_label(&"burger", "Price/Amount").text, "$15")
+	_bulk_button("Reset").pressed.emit()
+	assert_eq(_reset_requests, 1, "reset asks the session without mutating the bound model")
+	assert_eq(_menu.to_dict(), before)
+
+
+func test_bulk_acceptance_refreshes_prices_and_reset_includes_disabled_available_dishes() -> void:
+	assert_true(_menu.set_enabled(&"grilled_cheese", false))
+	assert_true(_menu.set_price(&"burger", 15))
+	assert_true(_menu.set_price(&"grilled_cheese", 9))
+	_panel.refresh()
+	_panel.price_requested.connect(_accept_price)
+	_panel.reset_prices_requested.connect(_accept_reset)
+	_bulk_button("PlusTen").pressed.emit()
+	assert_eq(_menu.price_of(_burger), 17)
+	assert_eq(_menu.price_of(_menu.recipe(&"grilled_cheese")), 9)
+	assert_eq(_menu.price_of(_menu.recipe(&"tomato_soup")), 10)
+	assert_eq(_label(&"burger", "Price/Amount").text, "$17")
+	_price_requests.clear()
+	_bulk_button("Reset").pressed.emit()
+	assert_eq(_reset_requests, 1)
+	assert_true(_price_requests.is_empty(), "reset uses its dedicated all-prices request")
+	for definition: RecipeDef in _menu.recipes():
+		assert_eq(_menu.price_of(definition), definition.standard_price)
+	assert_false(_menu.is_enabled(&"grilled_cheese"), "reset does not change today's dishes")
+	assert_eq(_label(&"grilled_cheese", "Price/Amount").text, "$8")
+
+
 func test_every_nonmorning_phase_gates_controls_and_direct_handlers() -> void:
 	var before: Dictionary = _menu.to_dict()
 	for phase: int in [SimClock.Phase.OPEN, SimClock.Phase.LAST_ORDERS, SimClock.Phase.CLOSED, -1]:
@@ -244,10 +293,17 @@ func test_every_nonmorning_phase_gates_controls_and_direct_handlers() -> void:
 			assert_true(_button(&"burger", path).disabled)
 			assert_true(_button(&"burger", path).tooltip_text.contains("morning"))
 		_panel._on_price_step(&"burger", 1)
+		_panel._on_bulk_price(1)
+		_panel._on_bulk_reset()
 		_panel._on_enable_toggled(false, &"burger")
 		_button(&"burger", "Price/Minus").pressed.emit()
 		_button(&"burger", "Top/Enabled").toggled.emit(false)
+		for action: String in ["MinusTen", "PlusTen", "Reset"]:
+			assert_true(_bulk_button(action).disabled)
+			assert_true(_bulk_button(action).tooltip_text.contains("morning"))
+			_bulk_button(action).pressed.emit()
 	assert_eq(_price_requests.size(), 0)
+	assert_eq(_reset_requests, 0)
 	assert_eq(_enable_requests.size(), 0)
 	assert_eq(_menu.to_dict(), before)
 	_panel.set_phase(SimClock.Phase.MORNING)
@@ -460,6 +516,10 @@ func _button(id: StringName, path: String) -> Button:
 	return _panel.row_for(id).get_node(path) as Button
 
 
+func _bulk_button(action: String) -> Button:
+	return _panel.get_node("Panel/Content/Body/Scroll/Pad/List/BulkPrices/" + action) as Button
+
+
 func _label(id: StringName, path: String) -> Label:
 	return _panel.row_for(id).get_node(path) as Label
 
@@ -470,6 +530,20 @@ func _record_enable(id: StringName, enabled: bool) -> void:
 
 func _record_price(id: StringName, price: int) -> void:
 	_price_requests.append({"id": id, "price": price})
+
+
+func _accept_price(id: StringName, price: int) -> void:
+	assert_true(_menu.set_price(id, price))
+	_panel.refresh()
+
+
+func _record_reset() -> void:
+	_reset_requests += 1
+
+
+func _accept_reset() -> void:
+	assert_true(_menu.reset_all_prices_to_standard())
+	_panel.refresh()
 
 
 func _record_special(id: StringName) -> void:

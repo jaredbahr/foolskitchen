@@ -140,6 +140,8 @@ func price_of(definition: RecipeDef) -> int:
 ## shows the price it will come back at, not the standard one.
 func shown_price(definition: RecipeDef) -> int:
 	if definition != null and not _prices.has(definition.id) and _stash.has(definition.id):
+		if bool(_stash[definition.id].get("reset_to_standard", false)):
+			return definition.standard_price
 		return int(_stash[definition.id]["price"])
 	return price_of(definition)
 
@@ -207,7 +209,10 @@ func set_catalogue(cookable_recipes: Array[RecipeDef]) -> bool:
 			prices[id] = clampi(_prices[id], next.minimum_price(id), next.maximum_price(id))
 		elif _stash.has(id):
 			var kept: Dictionary = _stash[id]
-			prices[id] = clampi(int(kept["price"]), next.minimum_price(id), next.maximum_price(id))
+			if bool(kept.get("reset_to_standard", false)):
+				prices[id] = definition.standard_price
+			else:
+				prices[id] = clampi(int(kept["price"]), next.minimum_price(id), next.maximum_price(id))
 			if bool(kept["enabled"]) and definition.unlock_level <= _owner_level:
 				if enabled.size() < limit:
 					enabled[id] = true
@@ -275,6 +280,38 @@ func set_price(id: StringName, price: int) -> bool:
 		return false
 	_prices[id] = clampi(price, minimum_price(id), maximum_price(id))
 	return true
+
+
+## Reset every known price, including locked and station-removed session choices.
+## A removed dish uses its current authored standard when its station returns.
+func reset_all_prices_to_standard() -> bool:
+	if not _valid:
+		return false
+	for definition: RecipeDef in _recipes:
+		_prices[definition.id] = definition.standard_price
+	for id: StringName in _stash:
+		var kept: Dictionary = _stash[id]
+		kept["reset_to_standard"] = true
+		_stash[id] = kept
+	return true
+
+
+## A request target, not a mutation. Integer parts avoid float precision loss
+## and overflow when a saved menu price is close to MAX_PRICE.
+func ten_percent_price(id: StringName, direction: int) -> int:
+	var definition: RecipeDef = recipe(id)
+	if not _valid or definition == null or (direction != -1 and direction != 1):
+		return -1
+	var current: int = price_of(definition)
+	@warning_ignore("integer_division")
+	var tenth: int = current / 10
+	var remainder: int = current % 10
+	if direction > 0:
+		var increment: int = tenth + (1 if remainder >= 5 else 0)
+		var upper: int = maximum_price(id)
+		return upper if current > upper - increment else current + increment
+	var decrement: int = tenth + (1 if remainder > 5 else 0)
+	return maxi(minimum_price(id), current - decrement)
 
 
 ## Decimal strings preserve every int64 price through JSON's float parser.

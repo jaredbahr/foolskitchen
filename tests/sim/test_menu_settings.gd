@@ -109,6 +109,35 @@ func test_level_advance_allows_selection_without_enabling_it_automatically() -> 
 	assert_eq(menu.price_of(seasonal), 18)
 
 
+func test_reset_includes_locked_disabled_and_station_removed_prices() -> void:
+	var later: RecipeDef = _recipe(&"later", 14)
+	later.unlock_level = 2
+	var coffee: RecipeDef = _recipe(&"coffee", 5)
+	var menu: MenuSettings = MenuSettings.new([_burger, _cheese, coffee, later] as Array[RecipeDef], 2)
+	assert_true(menu.set_price(&"later", 18))
+	assert_true(menu.set_price(&"grilled_cheese", 10))
+	assert_true(menu.set_price(&"coffee", 7))
+	assert_true(menu.set_enabled(&"grilled_cheese", false))
+	assert_true(menu.set_enabled(&"later", false))
+	assert_true(menu.set_owner_level(1))
+	assert_false(menu.set_price(&"later", 15), "ordinary single-dish editing stays locked")
+	assert_true(menu.set_catalogue([_burger, _cheese, later] as Array[RecipeDef]))
+	assert_eq(menu.shown_price(coffee), 7, "station removal stashes the custom price")
+	var enabled_before: Array[RecipeDef] = menu.enabled_recipes()
+	assert_true(menu.reset_all_prices_to_standard())
+	assert_eq(menu.price_of(later), 14)
+	assert_eq(menu.price_of(_cheese), 8)
+	assert_eq(menu.shown_price(coffee), 5)
+	assert_eq(_ids(menu.enabled_recipes()), _ids(enabled_before))
+	var changed_coffee: RecipeDef = _recipe(&"coffee", 6)
+	assert_eq(menu.shown_price(changed_coffee), 6, "a reset uses the returning authored standard")
+	assert_true(menu.set_catalogue([_burger, _cheese, changed_coffee, later] as Array[RecipeDef]))
+	assert_eq(menu.price_of(changed_coffee), 6)
+	assert_eq(menu.to_dict()["prices"]["coffee"], "6")
+	assert_false(menu.is_enabled(&"grilled_cheese"))
+	assert_false(menu.set_price(&"later", 18))
+
+
 func test_old_menu_save_adds_only_disabled_new_locked_recipe_transactionally() -> void:
 	var seasonal: RecipeDef = _recipe(&"seasonal", 14)
 	seasonal.unlock_level = 2
@@ -145,6 +174,31 @@ func test_whole_dollar_price_requests_clamp_to_ceil_half_and_double() -> void:
 	assert_eq(_menu.standard_price(&"tomato_soup"), 9)
 	assert_eq(_menu.minimum_price(&"missing"), 0)
 	assert_eq(_menu.maximum_price(&"missing"), 0)
+
+
+func test_ten_percent_targets_round_half_up_and_clamp_without_mutation() -> void:
+	assert_true(_menu.set_price(&"burger", 15))
+	var before: Dictionary = _menu.to_dict()
+	assert_eq(_menu.ten_percent_price(&"burger", 1), 17, "15 plus ten percent is 16.5")
+	assert_eq(_menu.ten_percent_price(&"burger", -1), 14, "15 minus ten percent is 13.5")
+	assert_eq(_menu.to_dict(), before, "targets are requests, not price changes")
+	assert_true(_menu.set_price(&"burger", 6))
+	assert_eq(_menu.ten_percent_price(&"burger", -1), 6, "the existing half-standard floor")
+	assert_true(_menu.set_price(&"burger", 24))
+	assert_eq(_menu.ten_percent_price(&"burger", 1), 24, "the existing double-standard ceiling")
+	assert_eq(_menu.ten_percent_price(&"missing", 1), -1)
+	assert_eq(_menu.ten_percent_price(&"burger", 0), -1)
+	var five: RecipeDef = _recipe(&"five", 5)
+	var small: MenuSettings = MenuSettings.new([five])
+	assert_eq(small.ten_percent_price(&"five", 1), 6)
+	assert_eq(small.ten_percent_price(&"five", -1), 5, "4.5 rounds to 5")
+	var free: RecipeDef = _recipe(&"free", 0)
+	var large: RecipeDef = _recipe(&"large", MenuSettings.MAX_PRICE)
+	var extremes: MenuSettings = MenuSettings.new([free, large])
+	assert_eq(extremes.ten_percent_price(&"free", 1), 0)
+	assert_eq(extremes.ten_percent_price(&"free", -1), 0)
+	assert_eq(extremes.ten_percent_price(&"large", 1), MenuSettings.MAX_PRICE,
+		"saturate before adding a tenth near int64 max")
 
 
 func test_zero_and_largest_integer_standard_prices_use_safe_bounds() -> void:
