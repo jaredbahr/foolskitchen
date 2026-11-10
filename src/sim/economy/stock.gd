@@ -202,6 +202,14 @@ func to_dict() -> Dictionary:
 	return result
 
 
+## Takes over another stock's lots and spoilage record, keeping this object, so
+## every holder of a reference (the kitchen sim, deliveries) sees the change.
+func replace_with(other: Stock) -> void:
+	_batches = other._batches.duplicate(true)
+	_spoilage_day = other._spoilage_day
+	_spoilage = other._spoilage.duplicate(true)
+
+
 ## Every candidate is checked before a stock can be installed. Old lots have
 ## no total_cost key and retain unknown basis; no current price is substituted.
 static func from_dict(d: Dictionary) -> Stock:

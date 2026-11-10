@@ -655,6 +655,30 @@ func start() -> void:
 	if not loaded:
 		_skip_next_autosave = use_saves and SaveSystem.list_slots().has(save_slot)
 		_new_game()
+	if not _wire_session():
+		return
+	if not loaded and not skip_owner_picker and (owner_creation_requested \
+			or use_saves and DisplayServer.get_name() != "headless"):
+		# Creation finishes before the existing initial morning checkpoint.
+		# It does not introduce a save on Confirm or after a later look change.
+		_owner_first_morning_pending = true
+		_bind_build_session()
+		_bind_vibe_grid()
+		$HUD.hide()
+		show_owner_picker(true)
+	else:
+		_begin_morning()
+		_bind_build_session()
+		_bind_vibe_grid()
+
+
+## Binds the installed session (sim, world, autoload state) together after a
+## load or a new game: RNG streams, cleanliness, reviews, customer types, the
+## shop editor, signals and the clock. A site switch will reuse it (FK-087)
+## with a fresh sim: the signal connections here are not guarded against a
+## second call on the same sim, and the clock must be detached first, as in
+## start().
+func _wire_session() -> bool:
 	world.clock = Clock.sim
 	sim.stock = Economy.stock
 	sim.use_rng(GameState.rng(&"customers"))
@@ -666,10 +690,10 @@ func start() -> void:
 		world.grid, CLEANLINESS_TUNING, GameState.rng(&"cleanliness"))
 	if not sim.configure_cleanliness(cleanliness, CLEANLINESS_TUNING):
 		push_error("Cannot initialize shop cleanliness")
-		return
+		return false
 	if not sim.configure_messes(MESS_TUNING, GameState.rng(&"cleanliness")):
 		push_error("Cannot initialize everyday messes")
-		return
+		return false
 	sim.plate_broken.connect(_on_plate_broken)
 	if not sim.aquarium.changed.is_connected(_on_aquarium_changed):
 		sim.aquarium.changed.connect(_on_aquarium_changed)
@@ -690,7 +714,7 @@ func start() -> void:
 	# real reputation and owner level. This consumes no customer RNG draw.
 	if not sim.configure_customer_types(customer_type_catalogue, owner_progress.level):
 		push_error("Cannot initialize customer preferences")
-		return
+		return false
 	sim.spawner.min_gap = TUNING.arrival_gap_min
 	sim.spawner.max_gap = TUNING.arrival_gap_max
 	shop_editor = ShopEditor.new(sim, content, ShopEditBooks.new(Economy.can_buy_discretionary,
@@ -701,19 +725,7 @@ func start() -> void:
 	shop_editor.storage_need = _storage_need
 	_connect_session()
 	Clock.attach_world(world, sim.advance)
-	if not loaded and not skip_owner_picker and (owner_creation_requested \
-			or use_saves and DisplayServer.get_name() != "headless"):
-		# Creation finishes before the existing initial morning checkpoint.
-		# It does not introduce a save on Confirm or after a later look change.
-		_owner_first_morning_pending = true
-		_bind_build_session()
-		_bind_vibe_grid()
-		$HUD.hide()
-		show_owner_picker(true)
-	else:
-		_begin_morning()
-		_bind_build_session()
-		_bind_vibe_grid()
+	return true
 
 
 func _connect_session() -> void:

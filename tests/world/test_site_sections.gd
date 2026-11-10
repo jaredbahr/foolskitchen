@@ -23,13 +23,24 @@ func after_each() -> void:
 	GameState.new_run(1)
 
 
-func test_every_registered_section_is_global_or_per_site_and_never_both() -> void:
+func _start() -> void:
 	_main = MAIN.instantiate()
 	_main.set("use_saves", false)
 	_main.set("new_game_seed_override", 1)
 	(Engine.get_main_loop() as SceneTree).root.add_child(_main)
 	_main.call("start")
 	Clock.set_speed(0)
+
+
+func _captures() -> Dictionary:
+	var sections: Dictionary = {}
+	for key: String in SaveSystem.keys():
+		sections[key] = SaveSystem._providers[key]["capture"].call()
+	return sections
+
+
+func test_every_registered_section_is_global_or_per_site_and_never_both() -> void:
+	_start()
 	var keys: PackedStringArray = SaveSystem.keys()
 	assert_true(keys.has("pantry") and keys.has("economy"), "the session registers both money sections")
 	for key: String in keys:
@@ -58,3 +69,19 @@ func test_books_and_pantry_restore_independently() -> void:
 	assert_false(Economy._restore_pantry({"stock": 5}))
 	assert_false(Economy._restore_books({"ledger": 5}))
 	assert_true(Economy.stock == stock and Economy.ledger == ledger, "a refused section changes nothing")
+
+
+func test_a_live_session_restores_its_own_site_sections_and_survives_a_refusal() -> void:
+	_start()
+	var sim: RestaurantSim = _main.get("sim")
+	assert_true(sim.stock == Economy.stock)
+	var sections: Dictionary = _captures()
+	assert_eq(SaveSystem.restore_sections(sections, SiteSections.PER_SITE), OK,
+		"every per-site provider accepts its own capture")
+	var stock_before: Dictionary = Economy.stock.to_dict()
+	var bad: Dictionary = sections.duplicate(true)
+	bad["pantry"] = {"stock": {"batches": {}}}
+	bad["shop"] = {"tray_level": 99}
+	assert_eq(SaveSystem.restore_sections(bad, SiteSections.PER_SITE), FAILED)
+	assert_true(sim.stock == Economy.stock, "the kitchen still shares the pantry after a rollback")
+	assert_eq(Economy.stock.to_dict(), stock_before, "the pantry is put back")

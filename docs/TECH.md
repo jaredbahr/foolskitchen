@@ -3393,10 +3393,12 @@ made): that morning's results stay with it. Steps:
    signature, viral and rush-hour days shift or lapse; delivery due days move
    forward by the gap, once, here only).
 3. Stage the thawed copy through a new
-   `SaveSystem.restore_sections(sections, keys)`: every per-site provider
-   stages and validates from the dictionary, and nothing installs until all
-   pass. A refusal returns false and leaves the active site exactly as it was;
-   it never starts a new game. Global sections are never touched. (#411
+   `SaveSystem.restore_sections(sections, keys)` (#412): every per-site
+   provider restores from the dictionary in registration order; if one
+   refuses, all of them are restored again from a capture taken first, so the
+   active site is exactly as it was (in place: the pantry keeps its `Stock`
+   object). The switch then clears main.gd's `_loaded_*` staging, which holds
+   the rolled-back copy. A refusal never starts a new game. Global sections are never touched. (#411
    already split the old single `economy` section into the global books and
    the per-site `pantry`; `SiteSections` lists both sides.)
 4. Install, then rewire the session: the existing post-load setup in
