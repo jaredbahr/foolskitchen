@@ -2959,6 +2959,7 @@ func can_switch_site(target: StringName) -> bool:
 	return _started and not display_only and sim != null and world != null \
 		and shop_editor != null and Clock.sim.phase == SimClock.Phase.MORNING \
 		and Clock.attached_world == world and not _owner_first_morning_pending \
+		and not is_owner_picker_visible() \
 		and not is_haggle_active() and not is_build_active() and not _paint_active \
 		and site_book.can_swap(target, Clock.sim.day)
 
@@ -2967,7 +2968,8 @@ func can_switch_site(target: StringName) -> bool:
 ## The departing site's per-site sections are frozen as of today; the
 ## target's frozen copy is thawed to today, restored, checked and installed
 ## by the same code as a morning load, and its morning runs (restock, plans)
-## with the one autosave of that morning. Global state is never touched.
+## with the one autosave of that morning. Global sections are not changed,
+## except that, like any reload, rewiring redraws the customers RNG stream.
 ## Returns false with nothing changed when refused, or when the target does
 ## not load (the session stays exactly as it was). The one exception is a
 ## refused rollback inside SaveSystem (an error is pushed): the session may
@@ -3014,6 +3016,14 @@ func switch_site(target: StringName) -> bool:
 		_log_switch_refusal(target, _staged_refusal if not _staged_refusal.is_empty()
 			else "its saved restaurant did not load")
 		return false
+	# Record the swap while it can still be undone: pure bookkeeping, and
+	# can_swap was checked, so it is not expected to refuse.
+	if not site_book.swap_active(target, day, departing):
+		SaveSystem.restore_sections(departing, SiteSections.PER_SITE)
+		_clear_site_staging()
+		_loaded_layout = kept_layout
+		_log_switch_refusal(target, "the site list could not record it")
+		return false
 	# From here the switch cannot be refused.
 	_disconnect_session()
 	Clock.attach_world(null)
@@ -3031,8 +3041,6 @@ func switch_site(target: StringName) -> bool:
 	if not _wire_session():
 		push_error("Cannot wire the switched site; the session is inconsistent")
 		return false
-	if not site_book.swap_active(target, day, departing):
-		push_error("Cannot record the site switch in the site book")
 	var refunds: Array = thawed["refunds"]
 	for refund: Dictionary in refunds:
 		Economy.add_cash(int(refund["amount"]), StringName(refund["category"]), String(refund["note"]))

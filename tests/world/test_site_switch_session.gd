@@ -122,8 +122,12 @@ func test_a_switch_and_back_is_lossless() -> void:
 	var home: Dictionary = _captures()
 	var cash: int = Economy.cash
 	var home_sim: RestaurantSim = _sim()
+	var home_editor: ShopEditor = _main.get("shop_editor")
 
 	assert_true(_main.call("switch_site", &"second"))
+	for old: Object in [home_sim, home_sim.world.grid, home_sim.world.board, home_sim.kitchen,
+			home_editor.floors, home_editor.walls, home_editor.decor]:
+		_assert_not_linked_to_session(old)
 	assert_eq(_saves, 1, "the switch autosaves once")
 	assert_eq(_book().active_id, &"second")
 	assert_eq(_book().frozen_day(SiteBook.HOME_ID), day)
@@ -282,3 +286,16 @@ func test_a_save_after_a_switch_reloads_the_switched_site() -> void:
 	_assert_sections(_book().frozen_sections(SiteBook.HOME_ID), home, "the home site stays frozen")
 	assert_eq(_price(dish), second_price)
 	_assert_sections(_captures(), switched, "the second site reloads as it was")
+
+
+## The departing site's objects keep no signal connections into the session
+## (main, its view or its sound), so nothing of the old site keeps reacting.
+func _assert_not_linked_to_session(old: Object) -> void:
+	if old == null:
+		return
+	var view: Node = _main.get_node("ShopView")
+	for signal_info: Dictionary in old.get_signal_list():
+		for connection: Dictionary in old.get_signal_connection_list(signal_info["name"]):
+			var target: Object = (connection["callable"] as Callable).get_object()
+			assert_false(target == _main or target == view or target == _main.get("sound"),
+				"%s.%s still reaches the session after the switch" % [old.get_class(), signal_info["name"]])

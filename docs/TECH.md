@@ -3407,7 +3407,8 @@ made): that morning's results stay with it. Steps:
    refuses, all of them are restored again from a capture taken first, so the
    active site is exactly as it was (in place: the pantry keeps its `Stock`
    object). The switch then clears main.gd's `_loaded_*` staging, which holds
-   the rolled-back copy. A refusal never starts a new game. Global sections are never touched. (#411
+   the rolled-back copy. A refusal never starts a new game. Global sections are never touched
+   (except that rewiring, like any reload, redraws the customers RNG stream). (#411
    already split the old single `economy` section into the global books and
    the per-site `pantry`; `SiteSections` lists both sides.)
 4. Install, then rewire the session: the existing post-load setup in
