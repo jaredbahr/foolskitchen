@@ -98,6 +98,7 @@ jobs:
           DIVIDER_REVIEW_STAGE=remove bash tools/screenshot.sh --out=screens/visual-review/divider-remove-restroom --scene=res://tools/divider_review.tscn --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/loan-review --loan-review --speed=0 --frames=12,90
           bash tools/screenshot.sh --out=screens/visual-review/milestone-review --milestone-review --speed=0 --frames=12,90
+          bash tools/screenshot.sh --out=screens/visual-review/records --scene=res://tools/records_review.tscn --speed=0 --frames=30,90
           bash tools/screenshot.sh --out=screens/visual-review/catalogue-rustic --catalogue-review=rustic --speed=0 --frames=90,120
           bash tools/screenshot.sh --out=screens/visual-review/catalogue-modern --catalogue-review=modern --speed=0 --frames=90,120
           bash tools/screenshot.sh --out=screens/visual-review/joined-tables --joined-tables-review --speed=0 --frames=12,90
