@@ -3341,12 +3341,16 @@ before part 1; buying a lot and switching wait for part 1 (#408).
 `owner`) is separate from the home lease. Today's `property_tier` (1 or 2)
 only means "the home lease is expanded"; part 1 moves it into that site's own
 data (`lease_expanded`), and a missing career tier loads as 1, or 2 when the
-old `property_tier` was 2. Tiers 3 to 6 need an owner level **and** the active
-site's closing reputation, checked at each close and never lost:
+old `property_tier` was 2. Tier 2 needs owner level 3 (the level today's lease
+offer needs), with or without buying the lease. Tiers 3 to 6 need an owner
+level **and** the active site's closing reputation. Tiers are climbed in order,
+checked at each close and never lost:
 `data/balance/career_tiers.tres` (placeholders: Tier 3 level 6 and 4.0
 stars, Tier 4 level 9 and 4.2, Tier 5 level 12 and 4.4, Tier 6 level 15 and
-4.5). The evening report announces a new tier. Until part 1 lands, code that
-asks "Tier 3 or above?" reads `career_tier`.
+4.5). The evening report announces a new tier. Content gates (`unlock_tier`
+on items, recipes, floors and wall finishes) read `career_tier`; the lease
+offer needs `career_tier >= 2`, and lease size and rent read the site's own
+`lease_expanded` (today `property_tier == 2`).
 
 **Lots (data).** `data/lots/<id>.tres` is a `LotDef`: `id`,
 `display_name`, `blurb`, `base_layout` (its own `ShopLayout` and lot
@@ -3380,23 +3384,26 @@ site when furniture moves (part 5).
 **Switching (part 1).** Only in the morning, before opening, and only after
 the departing site's morning has run (restock bought, staff changes, plans
 made): that morning's results stay with it. Steps:
-1. Settle the departing site: deliveries due later stay in its book and
-   arrive when it is next active (their due day moves forward by the gap).
-2. Capture its per-site sections into its frozen copy in `sites`.
-3. Stage the target's frozen copy through a new
+1. Capture the departing site's per-site sections into its frozen copy in
+   `sites`, with today as its frozen day. Deliveries due later stay in its
+   book.
+2. **Thaw** the target's frozen copy in memory: each per-site section with
+   day-bound state gets a `thaw(frozen_day, today)` step (demand decays across
+   the gap like `DemandState.begin_morning`; the daily special clears;
+   signature, viral and rush-hour days shift or lapse; delivery due days move
+   forward by the gap, once, here only).
+3. Stage the thawed copy through a new
    `SaveSystem.restore_sections(sections, keys)`: every per-site provider
    stages and validates from the dictionary, and nothing installs until all
    pass. A refusal returns false and leaves the active site exactly as it was;
-   it never starts a new game. Global sections are never touched.
-4. **Thaw**: each per-site section with day-bound state gets a
-   `thaw(frozen_day, today)` step before validation (demand decays across the
-   gap like `DemandState.begin_morning`; the daily special clears; signature,
-   viral and rush-hour days shift or lapse; delivery due days shift).
-5. Install, then rewire the session: the existing post-load setup in
+   it never starts a new game. Global sections are never touched. Part 1 also
+   splits today's single `economy` section into the global books and the
+   per-site `pantry`.
+4. Install, then rewire the session: the existing post-load setup in
    `start()` (RNG binding, cleanliness, reviews, customer types, editor,
    clock attach, build session) moves into one `_wire_session()` used by both
    start and switch, and the old sim's signals disconnect first.
-6. Run the target's morning entry (`_begin_morning` without the autosave),
+5. Run the target's morning entry (`_begin_morning` without the autosave),
    then autosave once.
 Owner is global and already installed, so its order before `shop` and `menu`
 still holds.
@@ -3412,7 +3419,10 @@ else. An unmanaged inactive site stays closed and pays only its rent. Away
 days are never written into a site's history. No RNG (D24 amended: a
 deterministic summary, not a seeded sim).
 
-**Ledger.** New categories `AWAY_SITE_INCOME`, `AWAY_SITE_RENT`,
+**Ledger.** Each ledger entry records the site that made it (an id; entries
+from saves before part 1 belong to the home site). The day report, business
+history, records and XP read only the active site's entries for the day, so a
+departing site's morning spending stays in its own books. New categories `AWAY_SITE_INCOME`, `AWAY_SITE_RENT`,
 `LOT_PURCHASE` and `RENOVATION`, all in `DayReport.NON_OPERATING_CATEGORIES`,
 so they never reach the active site's operating profit, XP, records,
 business history or weekly challenge.
@@ -3422,6 +3432,11 @@ tier (2 at Tier 3, 3 at Tier 5, unlimited at Tier 6). A fixer-upper's site
 stores `renovation_days_left`; while above 0 it can be active for designing but
 cannot open, and the days count down at each close of whichever site is
 active.
+
+**Bookings.** A group booking belongs to its site. If that site is not
+active on the booked day, the booking lapses at that day's close with the
+deposit refunded (`BOOKING_REFUND`) and no reputation change. New offers come
+only to the active site.
 
 **Weekly challenge.** It stays global and counts the active site's sales. A
 featured dish the active site cannot cook simply makes no progress that day.
