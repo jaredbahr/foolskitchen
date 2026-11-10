@@ -130,6 +130,25 @@ func test_plain_percentages_keep_individual_effects_distinct_from_overall_demand
 	assert_eq(DemandText.factor_lines({}), PackedStringArray())
 
 
+func test_signature_forecast_line_is_conditional_and_included_in_cap_note() -> void:
+	var legacy: Dictionary = _forecast()
+	assert_eq(DemandText.factor_lines(legacy).size(), 5, "legacy forecasts retain their five existing lines")
+	var forecast: Dictionary = _forecast()
+	for key: String in ["reputation", "word_of_mouth", "menu", "vibe", "curb_appeal"]:
+		forecast[key] = 1.0
+	forecast["signature"] = 1.05
+	forecast["signature_name"] = "Burger"
+	forecast["total"] = 1.02
+	assert_eq(DemandText.factor_lines(forecast).size(), 6)
+	assert_eq(DemandText.factor_lines(forecast)[5], "Signature dish: Burger +5%")
+	assert_true(DemandText.forecast_note(forecast).contains("Crowd growth is at its limit."),
+		"the optional effective signature factor participates in the combined cap note")
+	forecast.erase("signature_name")
+	assert_eq(DemandText.forecast_summary(forecast), "", "an incomplete optional pair invalidates the forecast snapshot")
+	assert_eq(DemandText.factor_lines(forecast), PackedStringArray())
+	assert_eq(DemandText.forecast_note(forecast), "")
+
+
 func test_actual_evening_report_replaces_forecast_without_mutating_snapshot() -> void:
 	var view: Control = REPORT.instantiate() as Control
 	_nodes.append(view)
@@ -147,6 +166,13 @@ func test_actual_evening_report_replaces_forecast_without_mutating_snapshot() ->
 		"Reputation: +20%\nWord of mouth: no change\nMenu variety: no change\nVibe: no change\nCurb appeal: no change")
 	assert_eq(report.to_dict(), before, "rendering and rebuilding the report is read-only")
 	assert_eq(section.get_child_count(), 4, "repeated builds reuse one section")
+	var signature_forecast: Dictionary = _forecast()
+	signature_forecast["signature"] = 1.05
+	signature_forecast["signature_name"] = "Burger"
+	report.demand_forecast = signature_forecast
+	view.call("show_report", report)
+	assert_true((section.get_node("Factors") as Label).text.ends_with("Signature dish: Burger +5%"),
+		"the actual Evening Report displays the sanitized signature forecast line")
 	view.call("show_report", DayReport.from_dict({"day": 2}))
 	assert_false(section.visible)
 	assert_eq((section.get_node("Summary") as Label).text, "")

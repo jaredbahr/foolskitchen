@@ -147,6 +147,8 @@ jobs:
           OPENINGS_REVIEW_STAGE=before bash tools/screenshot.sh --out=screens/visual-review/openings-before --scene=res://tools/openings_review.tscn --speed=0 --frames=30 --quarter=2
           OPENINGS_REVIEW_STAGE=after bash tools/screenshot.sh --out=screens/visual-review/openings-after --scene=res://tools/openings_review.tscn --speed=0 --frames=30 --quarter=2
           bash tools/screenshot.sh --out=screens/visual-review/menu-boards-review --menu-boards-review --speed=0 --frames=12,30
+          bash tools/screenshot.sh --out=screens/visual-review/signature-menu --signature-review=menu --speed=0 --frames=60
+          bash tools/screenshot.sh --out=screens/visual-review/signature-demand --signature-review=demand --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/jukebox --scene=res://tools/jukebox_review.tscn --speed=0 --frames=12,40
           SCREENSHOT_TIMEOUT_SECONDS=120 bash tools/screenshot.sh --out=screens/visual-review/order-counter --scene=res://tools/order_counter_review.tscn --speed=0 --frames=90,330
           bash tools/screenshot.sh --out=screens/visual-review/build-green --build=green --quarter=0 --frames=12 --speed=1

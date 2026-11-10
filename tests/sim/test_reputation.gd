@@ -86,6 +86,69 @@ func test_four_and_five_star_reviews_use_positive_authored_quotes() -> void:
 	assert_eq(ReputationBook.cause_of(visit, TUNING), &"great_value")
 
 
+func test_signature_quote_requires_positive_consumed_context_and_preserves_measured_cause() -> void:
+	var visit: ReviewVisit = ReviewVisit.new()
+	visit.served = true
+	var ordinary_rng: RandomNumberGenerator = _random(86055)
+	var signature_rng: RandomNumberGenerator = _random(86055)
+	var ordinary: Dictionary = ReputationBook.new().record_visit(visit, _certain_tuning(),
+		QUOTES, ordinary_rng)
+	visit.ate_signature_dish = true
+	var signature: Dictionary = ReputationBook.new().record_visit(visit, _certain_tuning(),
+		QUOTES, signature_rng)
+	assert_eq(signature["stars"], ordinary["stars"])
+	assert_eq(signature["cause"], ordinary["cause"], "the measured cause is unchanged")
+	assert_true(QUOTES.groups[&"signature_dish"].has(signature["quote"]))
+	visit.food_wait_fraction = 1.0
+	visit.queue_wait_fraction = 1.0
+	var poor: Dictionary = ReputationBook.new().record_visit(visit, _certain_tuning(),
+		QUOTES, _random(86056))
+	assert_true(int(poor["stars"]) < 4)
+	assert_false(QUOTES.groups[&"signature_dish"].has(poor["quote"]),
+		"a low-scoring served guest cannot praise the signature")
+
+
+func test_no_signature_visit_keeps_the_original_chance_and_one_quote_draw() -> void:
+	var visit: ReviewVisit = ReviewVisit.new()
+	visit.served = true
+	var expected_rng: RandomNumberGenerator = _random(86058)
+	var actual_rng: RandomNumberGenerator = _random(86058)
+	assert_true(expected_rng.randf() < 1.0)
+	var cause: StringName = ReputationBook.cause_of(visit, _certain_tuning())
+	var used: Dictionary[String, bool] = {}
+	var expected_quote: String = QUOTES.pick(cause, expected_rng, used)
+	var actual: Dictionary = ReputationBook.new().record_visit(visit, _certain_tuning(),
+		QUOTES, actual_rng)
+	assert_eq(actual["cause"], cause)
+	assert_eq(actual["quote"], expected_quote)
+	assert_eq(actual_rng.state, expected_rng.state)
+
+
+func test_review_visit_records_only_completed_dining_plates_including_a_delivered_side() -> void:
+	var sim: RestaurantSim = RestaurantSim.new()
+	var guest: CustomerAgent = CustomerAgent.new(sim, _random(86057))
+	var main_order: Order = Order.new()
+	main_order.recipe_id = &"burger"
+	main_order.state = Order.State.DELIVERED
+	var side: Order = Order.new()
+	side.recipe_id = &"coffee"
+	side.state = Order.State.DELIVERED
+	guest.order = main_order
+	guest.extra_order = side
+	guest.paid = true
+	assert_true(guest.review_visit(12).consumed_recipe_ids.is_empty(),
+		"payment alone is not proof of eating")
+	guest._eating = guest.eat_ticks
+	assert_eq(guest.review_visit(12).consumed_recipe_ids, [&"burger", &"coffee"])
+	side.state = Order.State.CANCELLED
+	assert_eq(guest.review_visit(12).consumed_recipe_ids, [&"burger"])
+	guest.takeaway = true
+	assert_true(guest.review_visit(12).consumed_recipe_ids.is_empty())
+	guest.takeaway = false
+	guest.paid = false
+	assert_true(guest.review_visit(12).consumed_recipe_ids.is_empty())
+
+
 func test_diffuse_low_penalties_use_positive_threshold_even_at_three_stars() -> void:
 	var tuning: ReviewTuning = TUNING.duplicate() as ReviewTuning
 	tuning.queue_wait_weight = 0.45

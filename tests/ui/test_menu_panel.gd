@@ -10,12 +10,14 @@ var _burger: RecipeDef
 var _enable_requests: Array[Dictionary] = []
 var _price_requests: Array[Dictionary] = []
 var _special_requests: Array[StringName] = []
+var _signature_requests: Array[StringName] = []
 var _settings_requests: int = 0
 var _goals_requests: int = 0
 
 
 func before_each() -> void:
 	_name_requests.clear()
+	_signature_requests.clear()
 	_settings_requests = 0
 	_goals_requests = 0
 	_special_requests.clear()
@@ -27,6 +29,7 @@ func before_each() -> void:
 	_panel.enable_requested.connect(_record_enable)
 	_panel.price_requested.connect(_record_price)
 	_panel.special_requested.connect(_record_special)
+	_panel.signature_requested.connect(_record_signature)
 	_panel.settings_requested.connect(_record_settings)
 	_panel.goals_requested.connect(_record_goals)
 	_panel.bind_menu(_menu)
@@ -347,6 +350,104 @@ func test_refresh_is_idempotent_and_rebinding_replaces_rows_without_requests() -
 	assert_false(_panel.visible)
 
 
+func test_signature_action_is_eligible_request_only_and_preserves_selected_label() -> void:
+	var before: Dictionary = _menu.to_dict()
+	var signature: Dictionary = {"sales": 150, "unlock_sales": 150, "selected": false,
+		"eligible": true, "can_select": true, "next_change_day": 0, "cooldown_days": 7,
+		"is_morning": true}
+	_panel.set_recipe_details([_burger] as Array[RecipeDef],
+		{&"burger": {"signature": signature}} as Dictionary[StringName, Dictionary])
+	var action: Button = _button(&"burger", "Signature/MakeSignature")
+	assert_true(action.visible)
+	assert_false(action.disabled)
+	assert_eq(_label(&"burger", "Signature/Sales").text, "150 / 150 paid sales")
+	action.pressed.emit()
+	assert_eq(_signature_requests, [&"burger"] as Array[StringName])
+	assert_eq(_menu.to_dict(), before, "the panel only requests the Main-owned selection")
+	var chosen: Dictionary = signature.duplicate(true)
+	chosen["selected"] = true
+	chosen["can_select"] = false
+	_panel.set_recipe_details([_burger] as Array[RecipeDef],
+		{&"burger": {"signature": chosen}} as Dictionary[StringName, Dictionary])
+	assert_false(action.visible)
+	assert_true(_label(&"burger", "Signature/Status").visible)
+	assert_eq(_label(&"burger", "Signature/Status").text, "Signature")
+	assert_eq(_signature_requests.size(), 1)
+
+
+func test_signature_action_explains_cooldown_and_nonmorning_refusals() -> void:
+	var signature: Dictionary = {"sales": 150, "unlock_sales": 150, "selected": false,
+		"eligible": true, "can_select": false, "next_change_day": 8, "cooldown_days": 7,
+		"is_morning": true}
+	_panel.set_recipe_details([_burger] as Array[RecipeDef],
+		{&"burger": {"signature": signature}} as Dictionary[StringName, Dictionary])
+	var action: Button = _button(&"burger", "Signature/MakeSignature")
+	assert_true(action.visible)
+	assert_true(action.disabled)
+	assert_true(action.tooltip_text.contains("day 8"))
+	action.pressed.emit()
+	assert_true(_signature_requests.is_empty())
+	signature["is_morning"] = false
+	_panel.set_phase(SimClock.Phase.OPEN)
+	_panel.set_recipe_details([_burger] as Array[RecipeDef],
+		{&"burger": {"signature": signature}} as Dictionary[StringName, Dictionary])
+	assert_true(action.disabled)
+	assert_true(action.tooltip_text.contains("morning"))
+	signature["eligible"] = false
+	_panel.set_recipe_details([_burger] as Array[RecipeDef],
+		{&"burger": {"signature": signature}} as Dictionary[StringName, Dictionary])
+	assert_false(action.visible, "ineligible dishes do not offer the signature action")
+
+
+func test_selected_signature_labels_fit_the_visible_menu_at_1600_by_900() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	var host: SubViewport = SubViewport.new()
+	host.size = Vector2i(1600, 900)
+	tree.root.add_child(host)
+	host.add_child(_panel)
+	_panel.visible = true
+	_panel.set_phase(SimClock.Phase.MORNING)
+	_panel.set_recipe_details([_burger] as Array[RecipeDef],
+		{&"burger": {"signature": {"sales": 150, "unlock_sales": 150,
+			"selected": true, "eligible": true, "can_select": true,
+			"next_change_day": 8, "cooldown_days": 7, "is_morning": true}}}
+		as Dictionary[StringName, Dictionary])
+	assert_true(_panel.select_recipe(&"burger"))
+	await tree.process_frame
+	await tree.process_frame
+	var panel: ScrollContainer = _panel.get_node("Panel") as ScrollContainer
+	var detail_scroll: ScrollContainer = _panel.get_node("Panel/Content/Body/DetailScroll") as ScrollContainer
+	var row: Control = _panel.row_for(&"burger")
+	detail_scroll.ensure_control_visible(row)
+	panel.ensure_control_visible(detail_scroll)
+	await tree.process_frame
+	await tree.process_frame
+	var row_rect: Rect2 = row.get_global_rect()
+	assert_true(detail_scroll.get_global_rect().grow(1.0).encloses(row_rect),
+		"the selected dish row fits in the native detail scroller")
+	assert_true(panel.get_global_rect().grow(1.0).encloses(row_rect),
+		"the selected dish row stays inside the Menu panel")
+	for path: String in ["Signature/Status", "Signature/Sales"]:
+		var label: Label = row.get_node(path) as Label
+		var rect: Rect2 = label.get_global_rect()
+		var font: Font = label.get_theme_font("font")
+		var font_size: int = label.get_theme_font_size("font_size")
+		var text_width: float = font.get_string_size(label.text,
+			HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+		assert_true(label.is_visible_in_tree(), "%s is visible" % path)
+		assert_true(rect.size.x >= text_width - 1.0,
+			"%s shows its full text at readable width: %s" % [path, rect])
+		assert_true(rect.size.y > 0.0 and rect.size.y <= font.get_height(font_size) * 2.0,
+			"%s stays near one text line: %s" % [path, rect])
+		assert_true(row_rect.encloses(rect), "%s stays inside its dish row" % path)
+		assert_true(detail_scroll.get_global_rect().grow(1.0).encloses(rect),
+			"%s stays inside the native detail scroller" % path)
+		assert_true(host.get_visible_rect().grow(1.0).encloses(rect),
+			"%s stays inside the 1600 by 900 canvas" % path)
+	host.remove_child(_panel)
+	host.free()
+
+
 func _recipe(id: StringName, title: String, price: int) -> RecipeDef:
 	var definition: RecipeDef = RecipeDef.new()
 	definition.id = id
@@ -373,6 +474,10 @@ func _record_price(id: StringName, price: int) -> void:
 
 func _record_special(id: StringName) -> void:
 	_special_requests.append(id)
+
+
+func _record_signature(id: StringName) -> void:
+	_signature_requests.append(id)
 
 
 func _record_settings() -> void:

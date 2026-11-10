@@ -16,6 +16,39 @@ func test_authored_starting_context_has_five_neutral_factors_and_no_hidden_vibe(
 		"menu": 1.0, "vibe": 1.0, "curb_appeal": 1.0, "total": 1.0})
 
 
+func test_signature_factor_multiplies_before_existing_total_cap_and_is_optional_in_snapshots() -> void:
+	var tuning: DemandTuning = _tuning()
+	var neutral: DemandBreakdown = DemandBreakdown.evaluate(tuning, 3.0, 0.0, 3, 0.0, 1)
+	var named: DemandBreakdown = DemandBreakdown.evaluate(tuning, 3.0, 0.0, 3, 0.0,
+		1, 1.0, 1.0, 1.05, "Burger")
+	assert_almost_eq(named.total, neutral.total * 1.05)
+	assert_false(neutral.to_dict().has("signature"))
+	assert_eq(named.to_dict()["signature"], 1.05)
+	assert_eq(named.to_dict()["signature_name"], "Burger")
+	var capped: DemandBreakdown = DemandBreakdown.evaluate(tuning, 5.0, 1000000.0,
+		99, 100.0, 2, 2.0, 1.0, 1.05, "Burger")
+	assert_almost_eq(capped.total, tuning.total_cap)
+	assert_null(DemandBreakdown.evaluate(tuning, 3.0, 0.0, 3, 0.0, 1, 1.0, 1.0, 1.05, ""))
+	assert_null(DemandBreakdown.evaluate(tuning, 3.0, 0.0, 3, 0.0, 1, 1.0, 1.0, NAN, "Burger"))
+
+
+func test_public_forecast_copies_only_a_complete_signature_factor_name_pair() -> void:
+	var legacy: Dictionary = DemandBreakdown.evaluate(_tuning(), 3.0, 0.0, 3, 0.0, 1).to_dict()
+	legacy["day"] = 2
+	legacy["expected_guests"] = 10
+	assert_eq(DayReport.public_demand_forecast(legacy), legacy)
+	var named: Dictionary = legacy.duplicate(true)
+	named["signature"] = 1.05
+	named["signature_name"] = "Burger"
+	assert_eq(DayReport.public_demand_forecast(named), named)
+	var missing: Dictionary = named.duplicate(true)
+	missing.erase("signature_name")
+	assert_eq(DayReport.public_demand_forecast(missing), {})
+	var malformed: Dictionary = named.duplicate(true)
+	malformed["signature_name"] = "   "
+	assert_eq(DayReport.public_demand_forecast(malformed), {})
+
+
 func test_reputation_uses_both_literal_segments_and_all_three_knots() -> void:
 	var tuning: DemandTuning = _tuning()
 	for row: Vector2 in [Vector2(1, 0.6), Vector2(2, 0.8), Vector2(3, 1), Vector2(4, 1.3), Vector2(5, 1.6)]:

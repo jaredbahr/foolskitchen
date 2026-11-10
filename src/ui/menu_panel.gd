@@ -6,6 +6,7 @@ signal restaurant_name_requested(restaurant_name: String)
 signal enable_requested(recipe_id: StringName, enabled: bool)
 signal price_requested(recipe_id: StringName, price: int)
 signal special_requested(recipe_id: StringName)
+signal signature_requested(recipe_id: StringName)
 signal settings_requested()
 signal goals_requested()
 signal lease_requested()
@@ -623,6 +624,17 @@ func _rebuild_rows() -> void:
 		toggle.toggle_mode = true
 		toggle.toggled.connect(_on_enable_toggled.bind(definition.id))
 		var unlock: Label = _add_label(row, "Unlock", "")
+		var signature_line: HBoxContainer = _add_line(row, "Signature")
+		var signature_button: Button = _add_button(signature_line, "MakeSignature", "Make signature")
+		signature_button.custom_minimum_size.x = 0
+		signature_button.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		signature_button.pressed.connect(_on_signature_pressed.bind(definition.id))
+		var signature_status: Label = _add_label(signature_line, "Status", "")
+		signature_status.autowrap_mode = TextServer.AUTOWRAP_OFF
+		signature_status.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		var signature_sales: Label = _add_label(signature_line, "Sales", "")
+		signature_sales.autowrap_mode = TextServer.AUTOWRAP_OFF
+		signature_sales.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 		unlock.visible = false
 		unlock.add_theme_color_override("font_color", LOCKED_COLOR)
 		var price_line: HBoxContainer = _add_line(row, "Price")
@@ -645,7 +657,9 @@ func _rebuild_rows() -> void:
 		row.add_child(separator)
 		_rows[definition.id] = {"root": row, "title": title, "unlock": unlock,
 			"toggle": toggle, "minus": minus,
-			"plus": plus, "amount": amount, "standard": standard, "ratio": ratio}
+			"plus": plus, "amount": amount, "standard": standard, "ratio": ratio,
+			"signature_button": signature_button, "signature_status": signature_status,
+			"signature_sales": signature_sales}
 		index += 1
 	_rebuild_recipe_tree()
 	if not _rows.has(_selected_recipe):
@@ -700,6 +714,31 @@ func _on_enable_toggled(enabled: bool, recipe_id: StringName) -> void:
 		enable_requested.emit(recipe_id, enabled)
 	# Restore committed state even when the session rejects or ignores a request.
 	refresh()
+
+
+func _on_signature_pressed(recipe_id: StringName) -> void:
+	var signature: Dictionary = _signature_details(recipe_id)
+	if not bool(signature.get("eligible", false)) or not bool(signature.get("can_select", false)) \
+			or not bool(signature.get("is_morning", false)) or _phase != SimClock.Phase.MORNING:
+		refresh()
+		return
+	signature_requested.emit(recipe_id)
+	refresh()
+
+
+func _signature_details(recipe_id: StringName) -> Dictionary:
+	var details: Dictionary = _details.get(recipe_id, {})
+	var value: Variant = details.get("signature", {})
+	return value if value is Dictionary else {}
+
+
+func _signature_reason(signature: Dictionary) -> String:
+	if not bool(signature.get("is_morning", false)) or _phase != SimClock.Phase.MORNING:
+		return MORNING_HINT
+	var day: int = int(signature.get("next_change_day", 0))
+	if day > 0:
+		return "You can choose a different signature on day %d." % day
+	return "This dish cannot be selected right now."
 
 
 func _on_price_step(recipe_id: StringName, direction: int) -> void:
@@ -933,6 +972,20 @@ func _refresh_selection() -> void:
 		return
 	_detail_heading.text = "%s - %s" % [chosen.display_name, RecipeDef.section_name(chosen.menu_section())]
 	var details: Dictionary = _details.get(chosen.id, {})
+	var signature: Dictionary = _signature_details(chosen.id)
+	var signature_button: Button = _rows[chosen.id]["signature_button"] as Button
+	var signature_status: Label = _rows[chosen.id]["signature_status"] as Label
+	var signature_sales: Label = _rows[chosen.id]["signature_sales"] as Label
+	var selected_signature: bool = bool(signature.get("selected", false))
+	var eligible_signature: bool = bool(signature.get("eligible", false))
+	signature_button.visible = eligible_signature and not selected_signature
+	signature_button.disabled = not bool(signature.get("can_select", false)) \
+			or not bool(signature.get("is_morning", false)) or _phase != SimClock.Phase.MORNING
+	signature_button.tooltip_text = "Choose this dish as your signature." if not signature_button.disabled else _signature_reason(signature)
+	signature_status.visible = selected_signature
+	signature_status.text = "Signature" if selected_signature else ""
+	signature_sales.visible = not signature.is_empty()
+	signature_sales.text = "%d / %d paid sales" % [int(signature.get("sales", 0)), int(signature.get("unlock_sales", 0))] if not signature.is_empty() else ""
 	var quality: float = float(details.get("quality", chosen.base_quality))
 	_quality_label.text = "Quality: %d / 5 stars\n%s" % [RecipeDef.quality_stars(quality),
 		details.get("quality_source", "Recipe base quality; no served-dish sample")]
