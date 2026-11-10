@@ -6,6 +6,7 @@ on:
       - '.github/workflows/visual-review.yml'
       - 'tools/screenshot.*'
       - 'tools/menu_boards_review.gd'
+      - 'tools/records_review.*'
       - 'tools/jukebox_review.gd'
       - 'tools/order_counter_review.gd'
       - 'tools/aquarium_review.gd'

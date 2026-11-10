@@ -6,7 +6,9 @@ extends RefCounted
 ## leaving or walking to a seat) but who gets no closer to their real goal
 ## (octile distance, as the movement watchdog measures it, so a yield-return
 ## shuffle counts), or whose cell and edge progress do not change at all, for
-## longer than --limit ticks is reported once per episode with a full dump:
+## longer than --limit ticks (--staff-limit for staff, default 450: a staff
+## task times out at 600 ticks, which would hide a longer stall) is reported
+## once per episode with a full dump:
 ## every person, their movement state and an ASCII map of the shop.
 ## Observation only: it never draws RNG or touches the session, except the
 ## optional seeded morning edits (--edits true), which use their own stream.
@@ -19,7 +21,7 @@ const EDIT_TRIES: int = 400
 
 static func run_cli(tree: SceneTree, args: PackedStringArray) -> int:
 	var options: Dictionary = {"days": 14, "seeds": [1], "setups": ["default"],
-		"limit": 600, "edits": false, "dumps": MAX_DUMPS_PER_CASE, "inspector": false}
+		"limit": 600, "staff_limit": 450, "edits": false, "dumps": MAX_DUMPS_PER_CASE, "inspector": false}
 	var index: int = 0
 	while index + 1 < args.size():
 		var key: String = args[index]
@@ -30,6 +32,8 @@ static func run_cli(tree: SceneTree, args: PackedStringArray) -> int:
 				options["days"] = int(value)
 			"--limit":
 				options["limit"] = int(value)
+			"--staff-limit":
+				options["staff_limit"] = int(value)
 			"--dumps":
 				options["dumps"] = int(value)
 			"--edits":
@@ -55,7 +59,8 @@ static func run_cli(tree: SceneTree, args: PackedStringArray) -> int:
 	for setup_name: Variant in options["setups"]:
 		for seed_value: Variant in options["seeds"]:
 			var row: Dictionary = run_case(tree, int(seed_value), String(setup_name), int(options["days"]),
-				int(options["limit"]), bool(options["edits"]), int(options["dumps"]), bool(options["inspector"]))
+				int(options["limit"]), bool(options["edits"]), int(options["dumps"]), bool(options["inspector"]),
+				int(options["staff_limit"]))
 			print("SOAK_CASE ", JSON.stringify(row))
 			if row.has("error") or int(row.get("stuck_episodes", 0)) > 0:
 				failed = true
@@ -63,9 +68,9 @@ static func run_cli(tree: SceneTree, args: PackedStringArray) -> int:
 
 
 static func run_case(tree: SceneTree, seed_value: int, setup_name: String, days: int,
-		limit: int, edits: bool, max_dumps: int, inspector: bool = false) -> Dictionary:
+		limit: int, edits: bool, max_dumps: int, inspector: bool = false, staff_limit: int = 450) -> Dictionary:
 	var result: Dictionary = {"setup": setup_name, "seed": seed_value, "days": days, "edits": edits,
-		"agent_days": 0, "max_no_progress": 0, "max_frozen": 0, "max_goal_stall": 0, "max_goal_wait": 0, "stuck_episodes": 0, "served": 0,
+		"agent_days": 0, "max_no_progress": 0, "max_frozen": 0, "max_goal_stall": 0, "max_goal_wait": 0, "max_staff_stall": 0, "stuck_episodes": 0, "served": 0,
 		"lost": 0, "reasons": {}, "edit_actions": 0}
 	if inspector:
 		result["inspector_visits"] = 0
@@ -145,7 +150,8 @@ static func run_case(tree: SceneTree, seed_value: int, setup_name: String, days:
 				else:
 					still[agent.id] = int(still.get(agent.id, 0)) + 1
 				result["max_goal_stall"] = maxi(int(result["max_goal_stall"]), int(still[agent.id]))
-				if int(still[agent.id]) <= limit and int(frozen[agent.id]) <= limit:
+				var cap: int = staff_limit if agent is StaffAgent else limit
+				if int(still[agent.id]) <= cap and int(frozen[agent.id]) <= cap:
 					dumped.erase(agent.id)
 				var goal: Array = [agent.destination(), wants]
 				if wants and goal_key.get(agent.id, []) == goal:
@@ -162,7 +168,9 @@ static func run_case(tree: SceneTree, seed_value: int, setup_name: String, days:
 					if count >= 250 and (count == 250 or count % 50 == 0):
 						result["worst"] = "day %d tick %d stalled %d: %s" % [Clock.sim.day, Clock.sim.tick,
 							count, describe(world, agent)]
-				if count > limit and not dumped.has(agent.id):
+				if agent is StaffAgent:
+					result["max_staff_stall"] = maxi(int(result["max_staff_stall"]), count)
+				if count > cap and not dumped.has(agent.id):
 					dumped[agent.id] = true
 					result["stuck_episodes"] = int(result["stuck_episodes"]) + 1
 					if dumps < max_dumps:

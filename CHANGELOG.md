@@ -12,6 +12,7 @@ Each line ends with its PR number.
 
 ### Players
 - Seasons change every 28 days, bringing lower and higher ingredient purchase prices. The date names the season, Stock marks seasonal ingredients, and dish details point out ingredients in season. (#395)
+- Two staff who meet head-on in a one-cell corridor now squeeze past each other instead of stepping back and forth until a task times out. (#402)
 - A new Mediterranean seaside song, "Coastal Afternoon", is in the game files. It will play in seafood restaurants and the seaside café once those music themes arrive. (#396)
 - A busy service with lots of happy guests can now draw a trending food post. The evening report names the dish, and Menu shows the extra demand, which fades over the next three open services. (#392)
 - Complete six themed decor collections for two vibe points each, up to six collection points total. Each set asks for specific furniture and a matching floor somewhere in the shop. (#393)
@@ -178,6 +179,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- The Records screenshot check now plays ordinary days until a close beats a record, since the first day sets every record quietly. (#401)
 - Design: the property market is decided (D28): every Tier 3 lot visible with its perks, fixer-uppers, upstairs on some lots, lot-only ingredients and build items, a prestige score for fine dining, bar gambling, and what carries over when you buy or move. (#381)
 - Five new songs by Jared are in the game files: "Diner Boogie" and "Coffee Shop Morning" for diner and café theme music (#367), two upbeat funk tracks ("Hazy Breakbeat", "Sleek Groove") and a sea shanty, whose places in the game come later. (#379)
 - The roadmap queues a third wave of twelve Codex issues, and `AGENTS.md` says what to take when the queue runs out. (#358)

@@ -1,6 +1,9 @@
 extends "res://src/world/main.gd"
-## One real, paid default service; frame30 Records, frame90 its new-record notice.
-## No grants, synthetic report, extra day/RNG reset, or saves.
+## Real, paid default services; frame30 Records, frame90 a new-record notice.
+## The first recorded day sets every best quietly, so ordinary days are played
+## until a close beats one. No grants, synthetic report, RNG reset, or saves.
+
+const MAX_DAYS: int = 5
 
 var _records_ready: bool = false
 var _records_frame: int = 0
@@ -14,13 +17,28 @@ func _ready() -> void:
 	new_game_seed_override = 1
 	super._ready()
 	Clock.set_speed(0)
-	if Clock.sim.day != 1 or not Clock.sim.start_service():
-		_records_fail("the ordinary seed-one service did not open")
+	if Clock.sim.day != 1:
+		_records_fail("the ordinary seed-one game did not start on day one")
 		return
-	run_ticks(6000)
-	if Clock.sim.phase != SimClock.Phase.CLOSED or shown_report == null \
-			or shown_report.customers_served <= 0 or shown_report.record_lines.is_empty():
-		_records_fail("the real service did not produce a record-bearing closing report")
+	for day_index: int in MAX_DAYS:
+		if day_index > 0 and not Clock.sim.next_day():
+			_records_fail("the ordinary next morning did not begin")
+			return
+		if not Clock.sim.start_service():
+			_records_fail("the ordinary seed-one service did not open")
+			return
+		run_ticks(6000)
+		if Clock.sim.phase != SimClock.Phase.CLOSED or shown_report == null \
+				or shown_report.customers_served <= 0:
+			_records_fail("the real service did not close with paid guests")
+			return
+		if day_index == 0 and not shown_report.record_lines.is_empty():
+			_records_fail("the first recorded close announced records")
+			return
+		if not shown_report.record_lines.is_empty():
+			break
+	if shown_report.record_lines.is_empty():
+		_records_fail("no real close beat a record within the bound")
 		return
 	_records_expected = shop_records.capture()
 	_records_control = BalanceProbe._control_snapshot(self, sim)
@@ -86,7 +104,7 @@ func _records_validate(goals: bool) -> void:
 			return
 		bounds.append({"name": String(control.name), "rect": [rect.position.x, rect.position.y, rect.size.x, rect.size.y]})
 	print("SHOP_RECORDS_REVIEW ", JSON.stringify({"view": "records" if goals else "notice",
-		"fixture": "ordinary Main seed1 paid default service; no grants, synthetic report or saves",
+		"fixture": "ordinary Main seed1 paid default services until a close beats a record; no grants, synthetic report or saves",
 		"observed_frame": _records_frame, "validation_timing": "frame_post_draw",
 		"master_seed": str(GameState.master_seed), "world_tick": world.now,
 		"records": shop_records.capture(), "report": shown_report.to_dict(), "texts": texts,
