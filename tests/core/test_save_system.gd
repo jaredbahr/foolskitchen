@@ -143,6 +143,45 @@ func test_failed_provider_returns_failed() -> void:
 	assert_eq(_save.load_game("fail"), FAILED)
 
 
+func test_restore_sections_restores_only_the_named_keys_in_json_shape() -> void:
+	var sections: Dictionary = {"first": {"value": 7}, "second": {"name": "Bistro", "items": []}}
+	assert_eq(_save.restore_sections(sections, PackedStringArray(["second"])), OK)
+	assert_eq(int(_first["value"]), 3, "an unnamed section is left alone")
+	assert_eq(_second["name"], "Bistro")
+	sections["second"]["name"] = "Changed"
+	assert_eq(_second["name"], "Bistro", "the provider gets its own copy")
+	assert_eq(_save.restore_sections({"first": {"value": 9}}, PackedStringArray(["first", "second"])), OK,
+		"a named section that is missing is skipped")
+	assert_true(_first["value"] is float, "numbers arrive as a decoded file has them")
+	assert_eq(_second["name"], "Bistro")
+
+
+func test_restore_sections_refuses_unknown_keys_and_bad_shapes_before_any_restore() -> void:
+	assert_eq(_save.restore_sections({"first": {"value": 1}}, PackedStringArray(["first", "nope"])),
+		ERR_INVALID_PARAMETER)
+	assert_eq(_save.restore_sections({"first": {"value": 1}, "second": []},
+		PackedStringArray(["first", "second"])), ERR_INVALID_PARAMETER)
+	assert_eq(_restore_calls, 0)
+	assert_eq(int(_first["value"]), 3)
+
+
+func test_restore_sections_rolls_back_earlier_sections_when_one_refuses() -> void:
+	var refused: Array[int] = [0]
+	_save.register("second", _capture_second, func(data: Dictionary) -> bool:
+		if data.get("name", "") == "Bad":
+			refused[0] += 1
+			_second = {"name": "half changed"}
+			return false
+		_second = data
+		return true)
+	var sections: Dictionary = {"first": {"value": 50}, "second": {"name": "Bad"}}
+	assert_eq(_save.restore_sections(sections, PackedStringArray(["first", "second"])), FAILED)
+	assert_eq(refused[0], 1)
+	assert_eq(int(_first["value"]), 3, "the section restored before the refusal is put back")
+	assert_eq(_second["name"], "Diner", "the refusing section is put back too")
+	assert_eq(_second["items"], ["bun", "cheese"])
+
+
 func test_malformed_envelopes_and_sections_are_rejected_before_restore() -> void:
 	for document: Variant in [[], {}, {"version": -1, "data": {}}, {"version": 0.5, "data": {}},
 		{"version": "1", "data": {}}, {"version": 1, "data": []},
