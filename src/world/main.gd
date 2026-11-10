@@ -174,6 +174,11 @@ var shop_records: ShopRecords = ShopRecords.new()
 var _loaded_shop_records: ShopRecords = null
 var _record_notice_day: int = 0
 var _record_notices: Array[String] = []
+## Only first-completion toast acknowledgements persist; progress is derived.
+var _shown_collection_toast_ids: Array[StringName] = []
+var _pending_collection_toast_ids: Array[StringName] = []
+var _loaded_collection_toast_ids: Array[StringName] = []
+var _has_loaded_collection_toast_section: bool = false
 ## The saved cat section (adopted and its name), staged until the load installs.
 var _loaded_cat: Dictionary = {}
 ## The saved health inspection section (grade, day, plan), staged likewise.
@@ -600,6 +605,8 @@ func start() -> void:
 		return
 	sim.rush_hour.tuning = RUSH_TUNING
 	_started = true
+	if not $HUD.collection_toast_shown.is_connected(_on_collection_toast_shown):
+		$HUD.collection_toast_shown.connect(_on_collection_toast_shown)
 	_previous_clock = Clock.sim
 	# Keep the old world detached while save providers restore the new session.
 	Clock.attach_world(null)
@@ -624,6 +631,7 @@ func start() -> void:
 	SaveSystem.register("viral", _capture_viral, _restore_viral)
 	SaveSystem.register("business_history", _capture_business_history, _restore_business_history)
 	SaveSystem.register("shop_records", _capture_shop_records, _restore_shop_records)
+	SaveSystem.register("collection_toasts", _capture_collection_toasts, _restore_collection_toasts)
 	SaveSystem.register("cat", _capture_cat, _restore_cat)
 	SaveSystem.register("inspection", _capture_inspection, _restore_inspection)
 	SaveSystem.register("critic", _capture_critic, _restore_critic)
@@ -1352,12 +1360,33 @@ func _recompute_vibe() -> void:
 	var inputs: VibeModel.Inputs = VibeInputs.capture(world.grid, content, menu_settings.enabled_recipes(),
 		shop_editor.wall_vibe_swatch(), shop_editor.floor_vibe_swatch(), shop_editor.decor_vibe_items(),
 		sim.aquarium.charm_factors(world.grid, Clock.sim.day))
+	var placed_ids: Array[StringName] = []
+	for placed: PlacedItem in world.grid.items():
+		var definition: ItemDef = placed.def as ItemDef
+		if not placed.removed and definition != null:
+			placed_ids.append(definition.id)
+	for anchor: Vector3i in shop_editor.decor.anchors():
+		var hung: WallDecor.Hung = shop_editor.decor.item(anchor)
+		if hung != null:
+			placed_ids.append(hung.def_id)
+	var floor_ids: Array[StringName] = []
+	for cell: Vector2i in world.grid.cells():
+		if world.grid.terrain(cell) == SimGrid.Terrain.FLOOR:
+			var finish: FloorFinishes.Finish = shop_editor.floors.finish(cell)
+			floor_ids.append(finish.style)
+	var collection_result: CollectionModel.Result = CollectionModel.evaluate(content.collections(),
+		placed_ids, floor_ids, VIBE_TUNING.max_collection_bonus, content)
+	if inputs != null:
+		inputs.collection_result = collection_result
 	sim.set_vibe(VibeModel.evaluate(inputs, VIBE_TUNING))
 	var result: VibeModel.Result = vibe_result
+	if inputs != null:
+		_update_collection_toasts(collection_result)
 	_build_catalogue.set_vibe(result)
 	$HUD.set_vibe(result)
 	_report.call(&"set_vibe", result, _experienced_vibe_theme())
 	vibe_changed.emit(vibe_result)
+	_refresh_goals()
 	_refresh_demand()
 
 
@@ -2462,6 +2491,11 @@ func build_report(day: int) -> DayReport:
 
 
 func _new_game() -> void:
+	_shown_collection_toast_ids.clear()
+	_pending_collection_toast_ids.clear()
+	_loaded_collection_toast_ids.clear()
+	_has_loaded_collection_toast_section = false
+	$HUD.clear_collection_toasts()
 	_reset_haggle()
 	_base_layout = _starter_layout()
 	group_booking = GroupBooking.new(BOOKING_TUNING)
@@ -2560,6 +2594,10 @@ func _new_game() -> void:
 
 func _load_autosave() -> bool:
 	_reset_haggle()
+	_pending_collection_toast_ids.clear()
+	_loaded_collection_toast_ids.clear()
+	_has_loaded_collection_toast_section = false
+	$HUD.clear_collection_toasts()
 	business_history = BusinessHistory.new()
 	_loaded_business_history = null
 	shop_records = ShopRecords.new()
@@ -2601,6 +2639,8 @@ func _load_autosave_sections() -> bool:
 	_loaded_deliveries = null
 	_loaded_weather = null
 	_loaded_group_booking = null
+	_loaded_collection_toast_ids.clear()
+	_has_loaded_collection_toast_section = false
 	if not SaveSystem.list_slots().has(save_slot):
 		return false
 	# Missing sections are skipped by SaveSystem: old runs stay out of the guide.
@@ -2761,6 +2801,11 @@ func _load_autosave_sections() -> bool:
 	_loaded_business_history = null
 	shop_records = _loaded_shop_records if _loaded_shop_records != null else ShopRecords.new()
 	_loaded_shop_records = null
+	_shown_collection_toast_ids.clear()
+	if _has_loaded_collection_toast_section:
+		_shown_collection_toast_ids.assign(_loaded_collection_toast_ids)
+	_loaded_collection_toast_ids.clear()
+	_has_loaded_collection_toast_section = false
 	return true
 
 
@@ -2800,6 +2845,62 @@ func _restore_viral(data: Dictionary) -> bool:
 		return false
 	_loaded_viral = restored
 	return true
+
+
+func _capture_collection_toasts() -> Dictionary:
+	var ids: Array[String] = []
+	for id: StringName in _shown_collection_toast_ids:
+		ids.append(String(id))
+	return {"shown_ids": ids}
+
+
+## Stage only. A failed later section leaves the current run untouched.
+func _restore_collection_toasts(data: Dictionary) -> bool:
+	_loaded_collection_toast_ids.clear()
+	_has_loaded_collection_toast_section = false
+	var raw_ids: Variant = data.get("shown_ids", null)
+	if not raw_ids is Array:
+		return false
+	var known: Dictionary[StringName, bool] = {}
+	for definition: CollectionDef in content.collections():
+		known[definition.id] = true
+	var staged: Array[StringName] = []
+	var seen: Dictionary[StringName, bool] = {}
+	for raw: Variant in raw_ids:
+		if typeof(raw) != TYPE_STRING:
+			return false
+		var id: StringName = StringName(raw)
+		# A collection renamed or removed in a later version is simply
+		# forgotten: it must never make an old save unloadable.
+		if not known.has(id) or seen.has(id):
+			continue
+		seen[id] = true
+		staged.append(id)
+	_loaded_collection_toast_ids = staged
+	_has_loaded_collection_toast_section = true
+	return true
+
+
+func _update_collection_toasts(result: CollectionModel.Result) -> void:
+	if result == null or not result.valid:
+		return
+	for id: StringName in result.completed_ids:
+		if _shown_collection_toast_ids.has(id) or _pending_collection_toast_ids.has(id):
+			continue
+		for entry: CollectionModel.Entry in result.entries:
+			if entry.definition.id == id:
+				_pending_collection_toast_ids.append(id)
+				$HUD.queue_collection_toast(id,
+					"Collection complete: %s — %s" % [entry.definition.display_name, entry.definition.short_line])
+				break
+
+
+func _on_collection_toast_shown(collection_id: StringName) -> void:
+	if not _pending_collection_toast_ids.has(collection_id):
+		return
+	_pending_collection_toast_ids.erase(collection_id)
+	if not _shown_collection_toast_ids.has(collection_id):
+		_shown_collection_toast_ids.append(collection_id)
 
 
 func _capture_demand() -> Dictionary:
@@ -3992,12 +4093,27 @@ func _refresh_goals(force: bool = false) -> void:
 		"records": shop_records.snapshot(),
 		"weekly": weekly_challenge.to_dict() if weekly_challenge != null else {},
 		"weekly_progress": weekly_challenge.projected_progress(observation) if weekly_challenge != null else 0,
-		"day": Clock.sim.day}
+		"day": Clock.sim.day,
+		"collections": _collection_progress_snapshot(vibe_result.collection_result)}
 	if force or snapshot != _goals_snapshot:
 		_goals_panel.set_goals(milestone_catalogue, completed, progress, owner_progress.level,
 			weekly_challenge, Clock.sim.day, observation)
 		_goals_panel.set_records(ShopRecordsText.rows(snapshot["records"], content))
+		_goals_panel.set_collections(vibe_result.collection_result)
 		_goals_snapshot = snapshot.duplicate(true)
+
+
+func _collection_progress_snapshot(result: CollectionModel.Result) -> Array[String]:
+	var snapshot: Array[String] = []
+	if result == null or not result.valid:
+		return snapshot
+	for entry: CollectionModel.Entry in result.entries:
+		snapshot.append(entry.progress_text())
+		for requirement: CollectionModel.Entry.Requirement in entry.requirements:
+			snapshot.append("item:%s:%s" % [requirement.item_id, requirement.present])
+		if entry.floor_required:
+			snapshot.append("floor:%s:%s" % [entry.definition.floor_id, entry.has_floor])
+	return snapshot
 
 
 func set_settings_visible(value: bool) -> bool:

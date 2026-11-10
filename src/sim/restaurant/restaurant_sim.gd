@@ -530,8 +530,20 @@ static func _copy_vibe(source: VibeModel.Result, tuning: VibeTuning = VIBE_TUNIN
 	for value: float in [source.score, source.decor_points, source.variety_points,
 			source.theme_points, source.lamp_points, source.crowding_penalty,
 			source.theme_share, source.patience_multiplier, source.raw_review_bonus,
-			source.arrival_theme_strength, source.crowding_density]:
+			source.arrival_theme_strength, source.crowding_density,
+		source.collection_points, source.collection_nominal_bonus, source.collection_cap]:
 		if not is_finite(value) or value < 0.0:
+			return copy
+	if source.collection_result == null:
+		if source.collection_nominal_bonus != 0.0 or source.collection_points != 0.0 \
+				or (source.collection_cap != 0.0 and source.collection_cap != tuning.max_collection_bonus):
+			return copy
+	else:
+		if not source.collection_result.valid or not is_finite(source.collection_result.nominal_bonus) \
+				or source.collection_result.nominal_bonus < 0.0 \
+				or source.collection_result.nominal_bonus != source.collection_nominal_bonus \
+				or source.collection_cap != tuning.max_collection_bonus \
+				or source.collection_points != minf(source.collection_nominal_bonus, tuning.max_collection_bonus):
 			return copy
 	for component: float in [source.decor_points, source.variety_points,
 			source.theme_points, source.lamp_points, source.crowding_penalty]:
@@ -555,16 +567,55 @@ static func _copy_vibe(source: VibeModel.Result, tuning: VibeTuning = VIBE_TUNIN
 	copy.variety_points = source.variety_points
 	copy.theme_points = source.theme_points
 	copy.lamp_points = source.lamp_points
+	copy.collection_points = source.collection_points
+	copy.collection_nominal_bonus = source.collection_nominal_bonus
+	copy.collection_cap = tuning.max_collection_bonus
 	copy.crowding_penalty = source.crowding_penalty
 	copy.active_theme = source.active_theme
 	copy.theme_label = source.theme_label
 	copy.theme_share = source.theme_share
+	copy.collection_result = _copy_collection_result(source.collection_result)
+	if source.collection_result != null and copy.collection_result == null:
+		return VibeModel.Result.new()
 	copy.patience_multiplier = source.patience_multiplier
 	copy.raw_review_bonus = source.raw_review_bonus
 	copy.arrival_theme_strength = source.arrival_theme_strength
 	copy.interior_cells = source.interior_cells
 	copy.occupied_normal_cells = source.occupied_normal_cells
 	copy.crowding_density = source.crowding_density
+	return copy
+
+
+static func _copy_collection_result(source: CollectionModel.Result) -> CollectionModel.Result:
+	if source == null:
+		return null
+	if not source.valid or not is_finite(source.nominal_bonus) or source.nominal_bonus < 0.0 \
+			or not is_finite(source.effective_bonus) or source.effective_bonus < 0.0:
+		return null
+	var copy: CollectionModel.Result = CollectionModel.Result.new()
+	copy.valid = source.valid
+	copy.completed_ids = source.completed_ids.duplicate()
+	copy.nominal_bonus = source.nominal_bonus
+	copy.effective_bonus = source.effective_bonus
+	copy.capped = source.capped
+	for entry: CollectionModel.Entry in source.entries:
+		if entry == null or entry.definition == null:
+			return null
+		var entry_copy: CollectionModel.Entry = CollectionModel.Entry.new()
+		entry_copy.definition = entry.definition
+		entry_copy.floor_required = entry.floor_required
+		entry_copy.floor_name = entry.floor_name
+		entry_copy.has_floor = entry.has_floor
+		entry_copy.completed = entry.completed
+		for requirement: CollectionModel.Entry.Requirement in entry.requirements:
+			if requirement == null:
+				return null
+			var requirement_copy: CollectionModel.Entry.Requirement = CollectionModel.Entry.Requirement.new()
+			requirement_copy.item_id = requirement.item_id
+			requirement_copy.display_name = requirement.display_name
+			requirement_copy.present = requirement.present
+			entry_copy.requirements.append(requirement_copy)
+		copy.entries.append(entry_copy)
 	return copy
 
 

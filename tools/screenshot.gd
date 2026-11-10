@@ -40,6 +40,8 @@ extends SceneTree
 ##   --lease-review=offer|short|expand --speed=0 --frames=12; offer/short also require --menu
 ##   --loan-review --speed=0 --frames=12,90  explicit financial-fixture UI evidence
 ##   --milestone-review --speed=0 --frames=12,90  authored goals and close reward evidence
+##   --collections-review --speed=0 --frames=240  unsaved placed-item/floor fixture,
+##             real Main collection progress and native Goals rows after the toast clears
 ##   --catalogue-review=rustic|modern --speed=0 --frames=90,120  furnishing fixture
 ##   --diner-review --speed=0 --frames=12,90  six native comparisons, then seated diner fixture
 ##   --floors-review --speed=0 --frames=12,30  D25 floor types fixture (tools/floors_review.gd):
@@ -182,6 +184,8 @@ var _loan_review: bool = false
 var _loan_fixture: Dictionary = {}
 var _milestone_review: bool = false
 var _milestone_fixture: Dictionary = {}
+var _collections_review: bool = false
+var _collections_fixture: Dictionary = {}
 var _catalogue_profile: StringName = &""
 var _catalogue_fixture: Dictionary = {}
 var _diner_review: bool = false
@@ -250,6 +254,11 @@ func _initialize() -> void:
 		_fail_capture(milestone_options["error"])
 		return
 	_milestone_review = milestone_options["enabled"]
+	var collections_options: Dictionary = collections_review_options(OS.get_cmdline_user_args())
+	if not String(collections_options["error"]).is_empty():
+		_fail_capture(collections_options["error"])
+		return
+	_collections_review = collections_options["enabled"]
 	var blueprint_options: Dictionary = BLUEPRINT_REVIEW.options(OS.get_cmdline_user_args())
 	if not String(blueprint_options["error"]).is_empty():
 		_fail_capture(blueprint_options["error"])
@@ -489,7 +498,7 @@ func _initialize() -> void:
 	# Preserve capture isolation when the integrated game session supports saves.
 	if "use_saves" in _main:
 		_main.set("use_saves", false)
-	if (not _lease_mode.is_empty() or _report_requested or _milestone_review or _diner_review or _expand == "shop" or not _rooms.is_empty() \
+	if (not _lease_mode.is_empty() or _report_requested or _milestone_review or _collections_review or _diner_review or _expand == "shop" or not _rooms.is_empty() \
 			or _floors_review or _walls_review or _restroom_review or _street_front_review or _menu_boards_review or _assign_owner or not _weather_mode.is_empty() or _joined_tables_review or not _neighbourhood_mode.is_empty()) \
 			and "new_game_seed_override" in _main:
 		_main.set("new_game_seed_override", 1)
@@ -557,6 +566,245 @@ static func milestone_review_options(arguments: PackedStringArray) -> Dictionary
 	if speeds != 1 or frames != 1 or scenes > 1:
 		result["error"] = "--milestone-review requires one --speed=0 and one --frames=12,90"
 	return result
+
+
+## A single paused Main capture. The shell wrapper may repeat --out.
+static func collections_review_options(arguments: PackedStringArray) -> Dictionary:
+	var result: Dictionary = {"enabled": false, "error": ""}
+	for argument: String in arguments:
+		if argument.begins_with("--collections-review"):
+			if argument != "--collections-review" or result["enabled"]:
+				result["error"] = "--collections-review is a single flag without a value"
+				return result
+			result["enabled"] = true
+	if not result["enabled"]:
+		return result
+	var speeds: int = 0
+	var frames: int = 0
+	var scenes: int = 0
+	for argument: String in arguments:
+		if argument == "--collections-review" or argument.begins_with("--out="):
+			continue
+		if argument == "--speed=0":
+			speeds += 1
+		elif argument == "--frames=240":
+			frames += 1
+		elif argument == "--scene=res://src/world/main.tscn":
+			scenes += 1
+		else:
+			result["error"] = "--collections-review requires paused Main frame 240 without other options"
+			return result
+	if speeds != 1 or frames != 1 or scenes > 1:
+		result["error"] = "--collections-review requires one --speed=0 and one --frames=240"
+	return result
+
+
+## Unsaved fixture: place real content in the shop, then let Main derive the
+## collection result and open the normal Menu -> Goals controls.
+static func prepare_collections_review(main: Node, context_root: Node) -> Dictionary:
+	var fixture: Dictionary = {"kind": "unsaved_placed_collection_review_not_balance_proof",
+		"error": "", "disclosure": "Unsaved placed-item/floor fixture; not a played purchase or balance proof."}
+	var clock: Node = context_root.get_node_or_null("Clock")
+	var time: SimClock = clock.get("sim") as SimClock if clock != null else null
+	var world: SimWorld = main.get("world") as SimWorld if "world" in main else null
+	var content: ContentDB = main.get("content") as ContentDB if "content" in main else null
+	var editor: ShopEditor = main.get("shop_editor") as ShopEditor if "shop_editor" in main else null
+	var goals: GoalsPanel = main.get_node_or_null("Overlay/GoalsPanel") as GoalsPanel
+	var menu: MenuPanel = main.get_node_or_null("Overlay/MenuPanel") as MenuPanel
+	if time == null or world == null or content == null or editor == null or goals == null or menu == null \
+			or world.clock != time or world.now != 0 or time.day != 1 or time.phase != SimClock.Phase.MORNING \
+			or clock.get("speed") != 0 or main.get("use_saves") != false:
+		fixture["error"] = "collections review requires fresh paused unsaved Main"
+		return fixture
+	var coffee: CollectionDef = content.collection(&"coffee_break")
+	var cozy: CollectionDef = content.collection(&"cozy_corner")
+	if coffee == null or cozy == null or coffee.floor_id != &"small_tile" \
+			or not cozy.item_ids.has(&"rug_round"):
+		fixture["error"] = "collections review content no longer matches the authored fixture"
+		return fixture
+	var grid: SimGrid = world.grid
+	var floor_cell: Vector2i = Vector2i.ZERO
+	var found_floor: bool = false
+	for cell: Vector2i in grid.cells():
+		if grid.terrain(cell) == SimGrid.Terrain.FLOOR and not grid.is_outdoor_floor(cell):
+			floor_cell = cell
+			found_floor = true
+			break
+	if not found_floor:
+		fixture["error"] = "collections review has no interior floor cell"
+		return fixture
+	var floor_changes: Dictionary[Vector2i, FloorFinishes.Finish] = {}
+	floor_changes[floor_cell] = FloorFinishes.Finish.new(coffee.floor_id)
+	if editor.floors.set_finishes(floor_changes).size() != 1:
+		fixture["error"] = "collections review could not lay the authored floor in the real shop"
+		return fixture
+	var item_ids: Array[StringName] = coffee.item_ids.duplicate()
+	item_ids.append(&"rug_round")
+	for item_id: StringName in item_ids:
+		var item: ItemDef = content.item(item_id)
+		var placed: PlacedItem = null
+		if item == null:
+			fixture["error"] = "collections review item is missing: %s" % item_id
+			return fixture
+		for cell: Vector2i in grid.cells():
+			if grid.terrain(cell) == SimGrid.Terrain.FLOOR and not grid.is_outdoor_floor(cell) \
+					and grid.can_place_def(item, cell, 0) == SimGrid.PlaceResult.OK:
+				placed = grid.place_def(item, cell)
+			if placed != null:
+				break
+		if placed == null:
+			fixture["error"] = "collections review could not place real item: %s" % item_id
+			return fixture
+	var toast_started_ms: int = Time.get_ticks_msec()
+	main.call("_recompute_vibe")
+	var vibe: VibeModel.Result = main.get("vibe_result") as VibeModel.Result
+	var result: CollectionModel.Result = vibe.collection_result if vibe != null else null
+	var expected_completed: Array[StringName] = [&"coffee_break"]
+	if result == null or not result.valid or result.completed_ids != expected_completed:
+		fixture["error"] = "Main did not derive exactly the completed Coffee Break collection"
+		return fixture
+	var cozy_entry: CollectionModel.Entry = null
+	for entry: CollectionModel.Entry in result.entries:
+		if entry.definition.id == &"cozy_corner":
+			cozy_entry = entry
+			break
+	if cozy_entry == null or cozy_entry.completed or cozy_entry.has_floor:
+		fixture["error"] = "Main did not derive the partial Cozy Corner collection"
+		return fixture
+	var menu_opened: bool = bool(main.call("set_menu_visible", true))
+	var goals_button: Button = menu.get_node_or_null("%GoalsButton") as Button
+	if not menu_opened or goals_button == null or goals_button.disabled or not goals_button.visible:
+		fixture["error"] = "collections review could not open the native Menu Goals button"
+		return fixture
+	goals_button.pressed.emit()
+	if not bool(main.call("is_goals_visible")) or menu.visible:
+		fixture["error"] = "collections review did not open Goals through Menu"
+		return fixture
+	fixture.merge({"toast_started_ms": toast_started_ms,
+		"placed_item_ids": item_ids.map(func(id: StringName) -> String: return String(id)),
+		"floor_cell": [floor_cell.x, floor_cell.y], "floor_style_id": String(coffee.floor_id)})
+	return fixture
+
+
+## Frame 240 is a minimum. The toast's real three-second timer, not a frame
+## estimate or a changed shown-state, decides when the final image is taken.
+func _collections_review_ready() -> bool:
+	var elapsed_ms: int = Time.get_ticks_msec() - int(_collections_fixture.get("toast_started_ms", -1))
+	var hud: Node = _main.get_node_or_null("HUD")
+	var toast: Control = hud.get_node_or_null("CollectionToast") as Control if hud != null else null
+	var timer: Timer = hud.get_node_or_null("CollectionToastTimer") as Timer if hud != null else null
+	if toast == null or timer == null:
+		_fail_capture("collections review did not use the real HUD toast")
+		return false
+	if elapsed_ms >= 3000 and timer.is_stopped() and not toast.visible:
+		return true
+	if elapsed_ms > 10000:
+		_fail_capture("collections review toast did not finish within ten real seconds")
+	return false
+
+
+## Read the displayed native rows after Main has recomputed its pure result.
+static func collections_review_evidence(main: Node, context_root: Node, fixture: Dictionary,
+		frame: int) -> Dictionary:
+	var clock: Node = context_root.get_node_or_null("Clock")
+	var time: SimClock = clock.get("sim") as SimClock if clock != null else null
+	var goals: GoalsPanel = main.get_node_or_null("Overlay/GoalsPanel") as GoalsPanel
+	var scroll: ScrollContainer = goals.get_node_or_null("Panel/Content/Scroll") as ScrollContainer \
+		if goals != null else null
+	var heading: Label = goals.get_node_or_null("Panel/Content/Scroll/List/CollectionsHeading") as Label \
+		if goals != null else null
+	var rows: VBoxContainer = goals.get_node_or_null("Panel/Content/Scroll/List/CollectionsRows") as VBoxContainer \
+		if goals != null else null
+	var hud: Node = main.get_node_or_null("HUD")
+	var toast: Control = hud.get_node_or_null("CollectionToast") as Control if hud != null else null
+	var timer: Timer = hud.get_node_or_null("CollectionToastTimer") as Timer if hud != null else null
+	var vibe: VibeModel.Result = main.get("vibe_result") as VibeModel.Result
+	var result: CollectionModel.Result = vibe.collection_result if vibe != null else null
+	if time == null or goals == null or scroll == null or heading == null or rows == null \
+			or toast == null or timer == null or result == null or not result.valid or result.entries.size() < 2:
+		return {"available": false}
+	var coffee: CollectionModel.Entry = result.entries[0]
+	var cozy: CollectionModel.Entry = result.entries[1]
+	if coffee.definition.id != &"coffee_break" or cozy.definition.id != &"cozy_corner" \
+			or coffee.requirements.size() != 3 or cozy.requirements.size() != 3:
+		return {"available": false}
+	# GoalsPanel names each title from CollectionsRows.get_child_count(), not
+	# from the collection's position in the result array.
+	var cozy_index: int = 2 + coffee.requirements.size()
+	if coffee.floor_required:
+		cozy_index += 1
+	if coffee.completed:
+		cozy_index += 1
+	if rows.get_child_count() <= cozy_index or String(rows.get_child(0).name) != "Collection0" \
+			or String(rows.get_child(cozy_index).name) != "Collection%d" % cozy_index:
+		return {"available": false}
+	var expected: Dictionary = {"Collection0": coffee.definition.display_name,
+		"CollectionShort0": coffee.definition.short_line,
+		"Collection0Floor": "✓ Floor: %s" % coffee.floor_name,
+		"Collection0Complete": "Complete!"}
+	expected["Collection%d" % cozy_index] = cozy.definition.display_name
+	expected["CollectionShort%d" % cozy_index] = cozy.definition.short_line
+	expected["Collection%dFloor" % cozy_index] = "□ Floor: %s" % cozy.floor_name
+	for index: int in range(3):
+		var first: CollectionModel.Entry.Requirement = coffee.requirements[index]
+		var second: CollectionModel.Entry.Requirement = cozy.requirements[index]
+		expected["Collection0Item%d" % index] = "%s %s" % ["✓" if first.present else "□", first.display_name]
+		expected["Collection%dItem%d" % [cozy_index, index]] = "%s %s" % ["✓" if second.present else "□", second.display_name]
+	var visible_rows: Dictionary = {}
+	for name: String in expected:
+		var label: Label = rows.get_node_or_null(name) as Label
+		visible_rows[name] = _loan_control_evidence(label) if label != null else {}
+	var completed: Array[String] = []
+	for id: StringName in result.completed_ids:
+		completed.append(String(id))
+	var coffee_present: Array[bool] = []
+	var cozy_present: Array[bool] = []
+	for requirement: CollectionModel.Entry.Requirement in coffee.requirements:
+		coffee_present.append(requirement.present)
+	for requirement: CollectionModel.Entry.Requirement in cozy.requirements:
+		cozy_present.append(requirement.present)
+	return {"available": true, "frame": frame, "elapsed_ms": Time.get_ticks_msec() - int(fixture["toast_started_ms"]),
+		"day": time.day, "phase": int(time.phase), "clock_speed": clock.get("speed"),
+		"use_saves": main.get("use_saves"), "goals_visible": goals.is_visible_in_tree(),
+		"menu_visible": (goals.get_parent().get_node("MenuPanel") as Control).visible,
+		"scroll_vertical": scroll.scroll_vertical, "heading": _loan_control_evidence(heading),
+		"expected_text": expected, "rows": visible_rows, "collection_title_indices": [0, cozy_index],
+		"completed_ids": completed,
+		"coffee_present": coffee_present, "coffee_has_floor": coffee.has_floor,
+		"cozy_present": cozy_present, "cozy_has_floor": cozy.has_floor,
+		"collection_points": vibe.collection_points, "toast_visible": toast.visible,
+		"toast_timer_stopped": timer.is_stopped(),
+		"toast_shown": (main.get("_shown_collection_toast_ids") as Array).has(&"coffee_break"),
+		"toast_pending": (main.get("_pending_collection_toast_ids") as Array).has(&"coffee_break")}
+
+
+static func collections_review_valid(state: Dictionary, fixture: Dictionary) -> bool:
+	if fixture.get("kind") != "unsaved_placed_collection_review_not_balance_proof" \
+			or fixture.get("error") != "" or state.get("available") != true \
+			or int(state.get("frame", 0)) < 240 or int(state.get("elapsed_ms", 0)) < 3000 \
+			or state.get("day") != 1 or state.get("phase") != SimClock.Phase.MORNING \
+			or state.get("clock_speed") != 0 or state.get("use_saves") != false \
+			or state.get("goals_visible") != true or state.get("menu_visible") != false \
+			or int(state.get("scroll_vertical", 0)) <= 0 \
+			or state.get("completed_ids") != ["coffee_break"] \
+			or state.get("coffee_present") != [true, true, true] or state.get("coffee_has_floor") != true \
+			or state.get("cozy_present") != [false, true, false] or state.get("cozy_has_floor") != false \
+			or state.get("collection_points") != 2.0 or state.get("toast_visible") != false \
+			or state.get("toast_timer_stopped") != true or state.get("toast_shown") != true \
+			or state.get("toast_pending") != false:
+		return false
+	var heading: Dictionary = state.get("heading", {})
+	if heading.get("text") != "Decor collections" or not _milestone_native_rect_valid(heading):
+		return false
+	var expected: Dictionary = state.get("expected_text", {})
+	var rows: Dictionary = state.get("rows", {})
+	if expected.size() != 13 or rows.size() != expected.size():
+		return false
+	for name: String in expected:
+		var row: Dictionary = rows.get(name, {})
+		if row.get("text") != expected[name] or not _milestone_native_rect_valid(row):
+			return false
+	return true
 
 
 ## Uses the real Menu -> Goals native controls; the queried UI never awards state.
@@ -2128,6 +2376,11 @@ func _process(_delta: float) -> bool:
 			if not String(_milestone_fixture["error"]).is_empty():
 				_fail_capture(String(_milestone_fixture["error"]))
 				return true
+		if _collections_review:
+			_collections_fixture = prepare_collections_review(_main, root)
+			if not String(_collections_fixture["error"]).is_empty():
+				_fail_capture(String(_collections_fixture["error"]))
+				return true
 		if not _catalogue_profile.is_empty():
 			_catalogue_fixture = prepare_catalogue_review(_main, root, _catalogue_profile)
 			if not String(_catalogue_fixture["error"]).is_empty():
@@ -2172,6 +2425,13 @@ func _process(_delta: float) -> bool:
 			_configure_paint()
 			if _failed:
 				return true
+	if _collections_review and _frames == 8:
+		var goals_scroll: ScrollContainer = _main.get_node_or_null("Overlay/GoalsPanel/Panel/Content/Scroll") as ScrollContainer
+		var collections_heading: Label = _main.get_node_or_null("Overlay/GoalsPanel/Panel/Content/Scroll/List/CollectionsHeading") as Label
+		if goals_scroll == null or collections_heading == null or not collections_heading.visible:
+			_fail_capture("collections review has no real visible Goals section to scroll to")
+			return true
+		goals_scroll.scroll_vertical = int(collections_heading.position.y)
 	if _stock and _report_requested:
 		_scroll_report_to_low_stock()
 	if _report_slowest_requested:
@@ -2266,7 +2526,11 @@ func _process(_delta: float) -> bool:
 		if _failed:
 			return true
 	_finish_requested = _frames >= _shots.max()
-	if _shots.has(_frames):
+	if _collections_review and _finish_requested:
+		_finish_requested = _collections_review_ready()
+		if _failed:
+			return true
+	if (_shots.has(_frames) and not _collections_review) or (_collections_review and _finish_requested):
 		if _door_queue:
 			_focus_door_queue()
 			if _failed:
@@ -3294,6 +3558,12 @@ func _capture() -> void:
 	if _milestone_review and not milestone_review_valid(milestone_state, _capture_frame, _milestone_fixture):
 		_fail_capture("milestone review did not match authored goals, the real close reward, ledger, XP or visible native rows")
 		return
+	var collections_state: Dictionary = collections_review_evidence(_main, root,
+		_collections_fixture, _capture_frame) if _collections_review else {}
+	if _collections_review and not collections_review_valid(collections_state, _collections_fixture):
+		_fail_capture("collections review did not show Main-derived completion, missing ticks and visible native Goals rows: " \
+			+ JSON.stringify(collections_state))
+		return
 	var catalogue_state: Dictionary = catalogue_review_evidence(_main, root) if not _catalogue_profile.is_empty() else {}
 	if not _catalogue_profile.is_empty() and not catalogue_review_valid(catalogue_state, _capture_frame, _catalogue_fixture):
 		_fail_capture("catalogue review did not match its fixture, real previews, seating links or bounds: " + JSON.stringify({
@@ -3450,6 +3720,9 @@ func _capture() -> void:
 	if _milestone_review and (image == null or image.get_size() != SETTINGS_CAPTURE_SIZE):
 		_fail_capture("milestone review image did not match the usual 1600x900 dimensions")
 		return
+	if _collections_review and (image == null or image.get_size() != SETTINGS_CAPTURE_SIZE):
+		_fail_capture("collections review image did not match the usual 1600x900 dimensions")
+		return
 	if _menu_boards_review and (image == null or image.get_size() != SETTINGS_CAPTURE_SIZE):
 		_fail_capture("menu boards review image did not match 1600x900")
 		return
@@ -3553,6 +3826,8 @@ func _capture() -> void:
 	if _milestone_review:
 		metadata["milestone_review"] = {"fixture": _milestone_fixture, "state": milestone_state,
 			"generated_uids": generated_uid_evidence(MILESTONE_UID_SOURCES)}
+	if _collections_review:
+		metadata["collections_review"] = {"fixture": _collections_fixture, "state": collections_state}
 	if not _catalogue_profile.is_empty():
 		metadata["catalogue_review"] = {"fixture": _catalogue_fixture, "state": catalogue_state,
 			"generated_uids": generated_uid_evidence(CATALOGUE_UID_SOURCES)}
