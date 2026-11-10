@@ -2043,6 +2043,10 @@ func _process(_delta: float) -> bool:
 			_fail_capture("viewport did not finish drawing the pending capture")
 		return _finished
 	_frames += 1
+	if _frames == 8 and not _signature_review.is_empty():
+		_prepare_signature_review_layout()
+		if _failed:
+			return true
 	if _frames == 2 and _stock and _open:
 		# Explicit morning fixture: today's soup stock is gone and its
 		# auto-reorder is off, so the real service sells Tomato soup out.
@@ -2405,7 +2409,6 @@ func _prepare_signature_review() -> Dictionary:
 	var scroll: ScrollContainer = _main.get_node_or_null("Overlay/EveningReport/Panel/Scroll") as ScrollContainer
 	if section == null or scroll == null or not section.visible:
 		return {"error": "the real Evening Report did not show its demand section"}
-	scroll.ensure_control_visible(section)
 	fixture["actual_service_days"] = 1
 	fixture["report_day"] = report.day
 	fixture["ticks"] = world.now
@@ -2416,6 +2419,51 @@ func _prepare_signature_review() -> Dictionary:
 	fixture["state_snapshot"] = signature_state.call("to_dict")
 	fixture["menu_snapshot"] = menu.to_dict()
 	return fixture
+
+
+func _prepare_signature_review_layout() -> void:
+	if _signature_review == "menu":
+		var panel: MenuPanel = _main.get_node_or_null("Overlay/MenuPanel") as MenuPanel
+		var panel_rect: Control = panel.get_node_or_null("Panel") as Control if panel != null else null
+		var shop: ShopView = _main.get_node_or_null("ShopView") as ShopView
+		var anchor: Vector3i = Vector3i(int(_signature_fixture.get("anchor", [1, 6, 3])[0]),
+			int(_signature_fixture.get("anchor", [1, 6, 3])[1]), int(_signature_fixture.get("anchor", [1, 6, 3])[2]))
+		var board: ItemVisual = shop.wall_finish_view.item_nodes.get(anchor) as ItemVisual \
+				if shop != null and shop.wall_finish_view != null else null
+		var label: Label3D = board.prop.get_node_or_null(^"WallMount/MenuText") as Label3D \
+				if board != null and board.prop != null else null
+		var rig: CameraRig = _main.get_node_or_null("CameraRig") as CameraRig
+		var camera: Camera3D = rig.get_node_or_null("Camera3D") as Camera3D if rig != null else null
+		if panel_rect == null or label == null or camera == null or rig == null:
+			_fail_capture("signature menu framing could not read the actual Menu rect, board or camera")
+			return
+		var viewport_rect: Rect2 = root.get_viewport().get_visible_rect()
+		var menu_rect: Rect2 = panel_rect.get_global_rect()
+		if camera.projection != Camera3D.PROJECTION_ORTHOGONAL or viewport_rect.size.x <= 0.0 \
+				or viewport_rect.size.y <= 0.0 or camera.size <= 0.0 \
+				or menu_rect.position.x <= viewport_rect.position.x:
+			_fail_capture("signature menu framing has no orthographic view or actual left margin")
+			return
+		var left_margin: Rect2 = Rect2(viewport_rect.position,
+			Vector2(menu_rect.position.x - viewport_rect.position.x, viewport_rect.size.y))
+		if not left_margin.has_area():
+			_fail_capture("signature menu has no visible left margin for its board")
+			return
+		var board_screen: Vector2 = camera.unproject_position(label.global_position)
+		var horizontal_span: float = camera.size
+		if camera.keep_aspect == Camera3D.KEEP_HEIGHT:
+			horizontal_span *= viewport_rect.size.x / viewport_rect.size.y
+		var world_shift: float = (board_screen.x - left_margin.get_center().x) * horizontal_span / viewport_rect.size.x
+		rig.global_position += camera.global_transform.basis.x.normalized() * world_shift
+		rig.force_update_transform()
+		return
+	if _signature_review == "demand":
+		var section: Control = _main.get_node_or_null("Overlay/EveningReport/Panel/Scroll/Content/DemandForecast") as Control
+		var scroll: ScrollContainer = _main.get_node_or_null("Overlay/EveningReport/Panel/Scroll") as ScrollContainer
+		if section == null or scroll == null or not section.visible:
+			_fail_capture("signature demand framing could not find the real visible forecast section")
+			return
+		scroll.ensure_control_visible(section)
 
 
 func _signature_review_evidence(world: SimWorld) -> Dictionary:

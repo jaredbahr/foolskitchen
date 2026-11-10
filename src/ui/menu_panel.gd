@@ -560,7 +560,11 @@ func _rebuild_rows() -> void:
 		signature_button.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 		signature_button.pressed.connect(_on_signature_pressed.bind(definition.id))
 		var signature_status: Label = _add_label(signature_line, "Status", "")
+		signature_status.autowrap_mode = TextServer.AUTOWRAP_OFF
+		signature_status.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 		var signature_sales: Label = _add_label(signature_line, "Sales", "")
+		signature_sales.autowrap_mode = TextServer.AUTOWRAP_OFF
+		signature_sales.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 		unlock.visible = false
 		unlock.add_theme_color_override("font_color", LOCKED_COLOR)
 		var price_line: HBoxContainer = _add_line(row, "Price")
