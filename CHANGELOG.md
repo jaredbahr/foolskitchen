@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- Two staff who meet head-on in a one-cell corridor now squeeze past each other instead of stepping back and forth until a task times out. (#402)
 - A new Mediterranean seaside song, "Coastal Afternoon", is in the game files. It will play in seafood restaurants and the seaside café once those music themes arrive. (#396)
 - A busy service with lots of happy guests can now draw a trending food post. The evening report names the dish, and Menu shows the extra demand, which fades over the next three open services. (#392)
 - Complete six themed decor collections for two vibe points each, up to six collection points total. Each set asks for specific furniture and a matching floor somewhere in the shop. (#393)
