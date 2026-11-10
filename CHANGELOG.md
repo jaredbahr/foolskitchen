@@ -178,6 +178,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- A shop left closed for a few days can now be brought back up to date: its stock, waiting deliveries and tank cleaning wait for it, its renown fades, and that morning's special, rush, critic visit and booking offer lapse, with deposits for missed bookings set aside for refund. Groundwork for switching between shops; nothing changes in play. (#PRNUM)
 - Saves can now restore just a chosen set of sections and put everything back if one of them is refused, and the game's post-load setup is one reusable step. Both are groundwork for switching between shops; nothing changes in play. (#412)
 - The kitchen's stock now saves in its own "pantry" section, apart from cash and the loan, and a new table says which save sections every shop shares and which belong to one shop. Older saves move their stock across when loaded. First step towards owning more than one shop. (#411)
 - Design: how several restaurant sites work (one active site, the rest frozen in the save and run by managers), lot data, lot-only content and the prestige score (#404)
