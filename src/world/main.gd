@@ -674,7 +674,10 @@ func start() -> void:
 
 ## Binds the installed session (sim, world, autoload state) together after a
 ## load or a new game: RNG streams, cleanliness, reviews, customer types, the
-## shop editor, signals and the clock. A site switch will reuse it (FK-087).
+## shop editor, signals and the clock. A site switch will reuse it (FK-087)
+## with a fresh sim: the signal connections here are not guarded against a
+## second call on the same sim, and the clock must be detached first, as in
+## start().
 func _wire_session() -> bool:
 	world.clock = Clock.sim
 	sim.stock = Economy.stock
@@ -723,6 +726,7 @@ func _wire_session() -> bool:
 	_connect_session()
 	Clock.attach_world(world, sim.advance)
 	return true
+
 
 func _connect_session() -> void:
 	if not _report.is_connected(&"next_day_pressed", _on_next_day_pressed):

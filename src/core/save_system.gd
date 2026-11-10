@@ -116,8 +116,12 @@ func load_game(slot: String) -> Error:
 ## sections are skipped, as in load_game. Sections go through JSON first, so
 ## they reach providers exactly as a loaded file would. If a provider refuses, every section
 ## already restored is put back from a capture taken before the call, and the
-## result is FAILED. Providers that only stage data for a later install still
-## need their owner to drop that staging after a refusal.
+## result is FAILED (ERR_BUG if a rollback itself was refused, so the caller
+## knows the session is no longer whole). Rollback restores values: a provider
+## that swaps in new objects leaves holders of the old ones stale, so providers
+## used here restore in place (the pantry does). Providers that only stage data
+## for a later install (main.gd's _loaded_* fields) end up staging the rolled
+## back copy; their owner must clear that staging after a refusal.
 func restore_sections(sections: Dictionary, keys: PackedStringArray) -> Error:
 	for key: String in keys:
 		if not _providers.has(key):
@@ -147,11 +151,13 @@ func restore_sections(sections: Dictionary, keys: PackedStringArray) -> Error:
 		# Put back the sections already replaced, and the refusing one in case
 		# it changed part of its state before saying no.
 		done.append(key)
+		var result: Error = FAILED
 		for undo: String in done:
 			var undone: Variant = _providers[undo]["restore"].call(before[undo])
 			if not undone is bool or not undone:
 				push_error("SaveSystem: could not roll back section '%s'" % undo)
-		return FAILED
+				result = ERR_BUG
+		return result
 	return OK
 
 

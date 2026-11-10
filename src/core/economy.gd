@@ -78,7 +78,9 @@ func _restore_books(data: Dictionary) -> bool:
 	return true
 
 
-## The per-site "pantry" save section: the kitchen's stock on hand.
+## The per-site "pantry" section: the kitchen's stock on hand. Restoring fills
+## the existing Stock in place, so the kitchen's reference stays valid even
+## when SaveSystem.restore_sections rolls a refused site switch back.
 func _capture_pantry() -> Dictionary:
 	return {"stock": stock.to_dict()}
 
@@ -87,7 +89,7 @@ func _restore_pantry(data: Dictionary) -> bool:
 	var restored_stock: Stock = _parse_stock(data)
 	if restored_stock == null:
 		return false
-	stock = restored_stock
+	stock.replace_with(restored_stock)
 	return true
 
 
