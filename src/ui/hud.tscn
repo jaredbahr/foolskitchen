@@ -32,6 +32,13 @@ text_overrun_behavior = 3
 [node name="Day" type="Label" parent="Top/Row"]
 layout_mode = 2
 text = "Day 1"
+vertical_alignment = 0
+
+[node name="Season" type="Label" parent="Top/Row/Day"]
+layout_mode = 0
+mouse_filter = 2
+theme_override_font_sizes/font_size = 14
+text = "Spring"
 
 [node name="Weather" type="Label" parent="Top/Row"]
 layout_mode = 2

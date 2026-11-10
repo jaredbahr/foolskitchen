@@ -30,6 +30,7 @@ var _restaurant_name: String = MenuSettings.DEFAULT_NAME
 var _weather_kind: int = WeatherState.Kind.SUNNY
 var _weather_rendered_kind: int = -1
 var _day_label: Label
+var _season_label: Label
 var _time_label: Label
 var _phase_label: Label
 var _cash_label: Label
@@ -125,6 +126,7 @@ func refresh() -> void:
 	_render_weather()
 	if _day_label == null:
 		_day_label = get_node("Top/Row/Day") as Label
+		_season_label = _day_label.get_node("Season") as Label
 		_time_label = get_node("Top/Row/Time") as Label
 		_phase_label = get_node("Top/Row/Phase") as Label
 		_cash_label = get_node("Top/Row/Cash") as Label
@@ -176,7 +178,7 @@ func refresh() -> void:
 		EventBus.day_phase_changed.connect(_on_phase_changed)
 		EventBus.speed_changed.connect(_on_speed_changed)
 		EventBus.cash_changed.connect(_on_cash_changed)
-	_day_label.text = "Day %d\n%s" % [Clock.sim.day, SeasonText.name_for_day(Clock.sim.day)]
+	_render_day_and_season()
 	_time_label.text = Fmt.clock(Clock.sim.display_minutes())
 	_phase_label.text = PHASE_NAMES[Clock.sim.phase]
 	_cash_label.text = Fmt.money(_cash)
@@ -217,6 +219,23 @@ func set_weather(kind: int) -> void:
 	_weather_kind = kind
 	_render_weather()
 	_layout_header()
+
+
+func _render_day_and_season() -> void:
+	_day_label.text = "Day %d" % Clock.sim.day
+	_season_label.text = SeasonText.name_for_day(Clock.sim.day)
+	var day_font: Font = _day_label.get_theme_font("font")
+	var day_size: int = _day_label.get_theme_font_size("font_size")
+	var day_width: float = day_font.get_string_size(_day_label.text,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, day_size).x
+	var day_height: float = day_font.get_height(day_size)
+	var season_minimum: Vector2 = _season_label.get_combined_minimum_size()
+	# The smaller season line shares the weather icon's existing vertical band.
+	# Reserve its full native width so no season name clips at a year boundary.
+	_day_label.custom_minimum_size = Vector2(maxf(ceilf(day_width), season_minimum.x),
+		day_height + season_minimum.y)
+	_season_label.position = Vector2(0.0, day_height)
+	_season_label.size = season_minimum
 
 
 func _render_weather() -> void:
