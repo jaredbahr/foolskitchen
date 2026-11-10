@@ -37,3 +37,24 @@ func test_every_registered_section_is_global_or_per_site_and_never_both() -> voi
 			"save section '%s' must be in exactly one SiteSections list" % key)
 	for key: String in SiteSections.GLOBAL + SiteSections.PER_SITE:
 		assert_true(keys.has(key), "SiteSections lists '%s', but nothing registers it" % key)
+
+
+func test_books_and_pantry_restore_independently() -> void:
+	Economy.reset(500)
+	Economy.stock.add(&"bun", 4, 1)
+	var books: Dictionary = Economy._capture_books()
+	var pantry: Dictionary = Economy._capture_pantry()
+	Economy.reset(9)
+	var empty_stock: Stock = Economy.stock
+	assert_true(Economy._restore_books(books))
+	assert_eq(Economy.cash, 500, "the books bring back cash")
+	assert_true(Economy.stock == empty_stock, "restoring the books leaves the pantry alone")
+	var ledger: Ledger = Economy.ledger
+	var loan: LoanAccount = Economy.loan
+	assert_true(Economy._restore_pantry(pantry))
+	assert_eq(Economy.stock.count(&"bun"), 4, "the pantry brings back the stock")
+	assert_true(Economy.ledger == ledger and Economy.loan == loan, "restoring the pantry leaves the books alone")
+	var stock: Stock = Economy.stock
+	assert_false(Economy._restore_pantry({"stock": 5}))
+	assert_false(Economy._restore_books({"ledger": 5}))
+	assert_true(Economy.stock == stock and Economy.ledger == ledger, "a refused section changes nothing")

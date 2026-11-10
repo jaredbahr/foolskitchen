@@ -3378,8 +3378,8 @@ site when furniture moves (part 5).
   `plates`, `reviews`, `regulars`, `reorder`, `deliveries`, `demand`, `viral`,
   `business_history`, `shop_records`, `cat`, `inspection`, `critic`,
   `bookings`, `rush_hour`, `aquarium`, plus two split out in part 1: `pantry`
-  (today's `economy.stock`) and `site_hours` (opening hours, today in
-  `clock`).
+  (the kitchen stock, split out of `economy` in #411) and `site_hours`
+  (opening hours, today in `clock`).
 
 **Switching (part 1).** Only in the morning, before opening, and only after
 the departing site's morning has run (restock bought, staff changes, plans
@@ -3396,9 +3396,9 @@ made): that morning's results stay with it. Steps:
    `SaveSystem.restore_sections(sections, keys)`: every per-site provider
    stages and validates from the dictionary, and nothing installs until all
    pass. A refusal returns false and leaves the active site exactly as it was;
-   it never starts a new game. Global sections are never touched. Part 1 also
-   splits today's single `economy` section into the global books and the
-   per-site `pantry`.
+   it never starts a new game. Global sections are never touched. (#411
+   already split the old single `economy` section into the global books and
+   the per-site `pantry`; `SiteSections` lists both sides.)
 4. Install, then rewire the session: the existing post-load setup in
    `start()` (RNG binding, cleanliness, reviews, customer types, editor,
    clock attach, build session) moves into one `_wire_session()` used by both

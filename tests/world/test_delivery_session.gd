@@ -341,6 +341,10 @@ func test_legacy_saves_load_with_nothing_on_order_and_keep_over_full_stock() -> 
 	# A save from before storage limits: far more cheese than the fridge holds.
 	var batches: Dictionary = document["data"]["pantry"]["stock"]["batches"]
 	batches["cheese"] = [{"qty": "60", "bought_day": "1"}]
+	# Written as a version-1 file, from before the pantry had its own section.
+	document["version"] = 1
+	document["data"]["economy"]["stock"] = document["data"]["pantry"]["stock"]
+	document["data"].erase("pantry")
 	var file: FileAccess = FileAccess.open(_path(), FileAccess.WRITE)
 	file.store_string(JSON.stringify(document))
 	file.close()
