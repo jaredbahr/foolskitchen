@@ -176,7 +176,7 @@ func refresh() -> void:
 		EventBus.day_phase_changed.connect(_on_phase_changed)
 		EventBus.speed_changed.connect(_on_speed_changed)
 		EventBus.cash_changed.connect(_on_cash_changed)
-	_day_label.text = "Day %d · %s" % [Clock.sim.day, SeasonText.name_for_day(Clock.sim.day)]
+	_day_label.text = "Day %d\n%s" % [Clock.sim.day, SeasonText.name_for_day(Clock.sim.day)]
 	_time_label.text = Fmt.clock(Clock.sim.display_minutes())
 	_phase_label.text = PHASE_NAMES[Clock.sim.phase]
 	_cash_label.text = Fmt.money(_cash)

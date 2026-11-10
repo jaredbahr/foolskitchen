@@ -38,7 +38,7 @@ func after_each() -> void:
 
 
 func test_initial_labels_and_shared_theme_before_ready() -> void:
-	assert_eq((_control("Day") as Label).text, "Day 1 · Spring")
+	assert_eq((_control("Day") as Label).text, "Day 1\nSpring")
 	assert_eq((_control("Time") as Label).text, "11:00")
 	assert_eq((_control("Phase") as Label).text, "Morning")
 	assert_eq((_control("Cash") as Label).text, "$1,234")
@@ -64,7 +64,7 @@ func test_day_label_tracks_season_boundaries() -> void:
 	for row: Array in [[28, "Spring"], [29, "Summer"], [112, "Winter"], [113, "Spring"]]:
 		Clock.sim.day = int(row[0])
 		_hud.call("refresh")
-		assert_eq(day_label.text, "Day %d · %s" % [int(row[0]), String(row[1])])
+		assert_eq(day_label.text, "Day %d\n%s" % [int(row[0]), String(row[1])])
 
 
 func test_sold_out_tooltip_is_opaque_and_readable_over_the_world() -> void:
@@ -395,7 +395,7 @@ func test_context_cycles_day_and_tick_events_update_clock() -> void:
 	assert_true(context.visible)
 	assert_eq(context.text, "Next day")
 	context.pressed.emit()
-	assert_eq((_control("Day") as Label).text, "Day 2 · Spring")
+	assert_eq((_control("Day") as Label).text, "Day 2\nSpring")
 	assert_eq(context.text, "Open shop")
 
 
