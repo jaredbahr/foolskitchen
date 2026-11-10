@@ -581,11 +581,11 @@ func test_detail_requirements_aggregate_real_stock_and_use_reachable_station_nam
 	var main: Node = _start(false, null, true)
 	var details: Dictionary[StringName, Dictionary] = main.call("menu_recipe_details")
 	var ingredients: Array = details[&"grilled_cheese"]["ingredients"]
-	assert_true(ingredients.has({"text": "Bread: 16 in stock / 2 needed", "met": true}))
+	assert_true(ingredients.has({"text": "Bread: 16 in stock / 2 needed · In season", "met": true}))
 	assert_true(details[&"coffee"]["equipment"].has({"text": "Buy a coffee machine", "met": false}))
 	assert_true(Economy.stock.take(&"bread", 16))
 	details = main.call("menu_recipe_details")
-	assert_true(details[&"grilled_cheese"]["ingredients"].has({"text": "Bread: 0 in stock / 2 needed", "met": false}))
+	assert_true(details[&"grilled_cheese"]["ingredients"].has({"text": "Bread: 0 in stock / 2 needed · In season", "met": false}))
 	Economy.add_cash(1000, Ledger.SALE)
 	assert_true(main.call("shop_buy", &"coffee_machine", _fixture_coffee_cell(main), 2))
 	details = main.call("menu_recipe_details")

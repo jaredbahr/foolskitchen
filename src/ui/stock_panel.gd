@@ -160,6 +160,9 @@ func _refresh_row(row: Dictionary, data: Dictionary, editable: bool, free: int) 
 	var on_order: int = int(data.get("on_order", 0))
 	(row["root"] as Control).modulate.a = 1.0 if in_use else UNUSED_ALPHA
 	(row["name"] as Label).text = display
+	var season_tag: Label = row["season"] as Label
+	season_tag.text = str(data.get("season_tag", ""))
+	season_tag.visible = not season_tag.text.is_empty()
 	# One label holds the count, what is on order, expiry and menu use.
 	var count_text: String = "%d in stock" % count
 	if on_order > 0:
@@ -314,15 +317,25 @@ func _build_row(parent: Node, id: StringName, index: int) -> Dictionary:
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	parent.add_child(row)
 	var top: HBoxContainer = _add_line(row, "Top")
-	var title: Label = _add_label(top, "Name")
-	title.custom_minimum_size.x = 130.0
+	var identity: VBoxContainer = VBoxContainer.new()
+	identity.name = "Identity"
+	identity.theme = SHARED_THEME
+	identity.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	identity.custom_minimum_size.x = 130.0
+	top.add_child(identity)
+	var title: Label = _add_label(identity, "Name")
 	var count: Label = _add_label(top, "Count")
 	count.custom_minimum_size.x = 120.0
 	count.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	count.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var season: Label = _add_label(identity, "Season")
+	season.add_theme_font_size_override("font_size", 14)
+	season.add_theme_color_override("font_color", MUTED_COLOR)
+	season.visible = false
 	var price: Label = _add_label(top, "Price")
 	price.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	var parts: Dictionary = {"root": row, "name": title, "count": count, "price": price}
+	var parts: Dictionary = {"root": row, "identity": identity, "name": title, "count": count,
+		"season": season, "price": price}
 	var less: Button = _add_button(top, "CartMinus", "−")
 	less.pressed.connect(_on_cart_step.bind(id, -1))
 	parts["cart-1"] = less
