@@ -4,7 +4,8 @@ extends RefCounted
 ## dishes; the same section choice can be used by inspection and the 3D view.
 
 ## The chalkboard's dark face is 0.59 by 0.45 metres. Leave a 0.02-metre
-## margin on either side, and room vertically for name, section and four dishes.
+## margin on either side, and room vertically for name, section and four dishes
+## or a special plus three dishes.
 const FONT_SIZE: int = 25
 const PIXEL_SIZE: float = 0.002
 const MAX_LINE_WIDTH_M: float = 0.55
@@ -26,13 +27,17 @@ static func selected_section(menu: Array[RecipeDef], requested: int = -1) -> int
 	return -1
 
 
-static func text(restaurant_name: String, menu: Array[RecipeDef], requested: int = -1) -> String:
+static func text(restaurant_name: String, menu: Array[RecipeDef], requested: int = -1,
+		special_name: String = "") -> String:
 	var section: int = selected_section(menu, requested)
 	var name: String = _one_line(restaurant_name)
 	if name.is_empty():
 		name = MenuSettings.DEFAULT_NAME
 	var lines: Array[String] = [_fit(name)]
 	lines.append(_fit(RecipeDef.section_name(section) if section >= 0 else "Today's menu"))
+	var special: String = DailySpecialText.board(_one_line(special_name))
+	if not special.is_empty():
+		lines.append(_fit(special))
 	var dishes: Array[RecipeDef] = []
 	for recipe: RecipeDef in menu:
 		if recipe != null and recipe.menu_section() == section:
@@ -41,7 +46,8 @@ static func text(restaurant_name: String, menu: Array[RecipeDef], requested: int
 	if dishes.is_empty():
 		lines.append("No dishes today")
 	else:
-		for index: int in mini(dishes.size(), MAX_DISHES):
+		var dish_limit: int = MAX_DISHES - 1 if not special.is_empty() else MAX_DISHES
+		for index: int in mini(dishes.size(), dish_limit):
 			lines.append(_fit("• " + _one_line(dishes[index].display_name)))
 	return "\n".join(lines)
 

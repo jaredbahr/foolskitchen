@@ -455,6 +455,18 @@ an active edit/panel/selection first, or opens Settings when none is active.
   selected seafood stew details. No service, stock grant or save is faked.
 
 ### 2.3d Menu and prices (FK-030)
+- **Today's special (#330):** `DailySpecial` holds one enabled recipe for the
+  current day. Main accepts morning requests without saving or drawing RNG;
+  its optional registered section joins the existing morning checkpoint.
+  Re-entering the same morning retains the selection; the next morning clears
+  it. Restore validates against the staged menu and day before installation;
+  saves without the section have no special. Discount and pull live in the
+  existing menu tuning resource. Tickets capture the discounted player price,
+  rounded to whole dollars. The primary order keeps its ordinary private
+  choice first, then draws the special pull only when that recipe is available;
+  booking, regular-favourite and critic preferences still run afterward.
+  Menu, board and service HUD show the accepted choice. The detached report
+  keeps its name and paid sales count after tomorrow's selection is cleared.
 - **Live menu boards (FK-086 remainder):** each placed `menu_board` keeps a
   section choice in `WallDecor.Hung.menu_section` (`-1`: first nonempty section).
   The inspector changes it through `ShopEditor.set_menu_board_section`; its

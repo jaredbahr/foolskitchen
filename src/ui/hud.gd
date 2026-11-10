@@ -83,6 +83,7 @@ var _opening_refusal: String = ""
 var _haggle_active: bool = false
 var _demand_status: String = ""
 var _booking_status: Label
+var _special_name: String = ""
 
 
 func bind_preferences(model: SettingsPreferences) -> void:
@@ -178,7 +179,7 @@ func refresh() -> void:
 		EventBus.cash_changed.connect(_on_cash_changed)
 	_day_label.text = "Day %d" % Clock.sim.day
 	_time_label.text = Fmt.clock(Clock.sim.display_minutes())
-	_phase_label.text = PHASE_NAMES[Clock.sim.phase]
+	_render_phase_label()
 	_cash_label.text = Fmt.money(_cash)
 	_render_loan()
 	_render_reputation()
@@ -217,6 +218,28 @@ func set_weather(kind: int) -> void:
 	_weather_kind = kind
 	_render_weather()
 	_layout_header()
+
+
+## Shows the accepted daily offer in the existing phase label during service.
+func set_special(recipe_display_name: String) -> void:
+	_special_name = recipe_display_name.strip_edges()
+	if _phase_label != null:
+		_render_phase_label()
+		_layout_header()
+
+
+func _render_phase_label() -> void:
+	if _phase_label == null:
+		return
+	var phase: int = Clock.sim.phase
+	var in_service: bool = phase == SimClock.Phase.OPEN or phase == SimClock.Phase.LAST_ORDERS
+	var special_text: String = DailySpecialText.hud(_special_name) if in_service else ""
+	_phase_label.text = PHASE_NAMES[phase]
+	if not special_text.is_empty():
+		_phase_label.text += "  ·  " + special_text
+		_phase_label.add_theme_font_size_override("font_size", 14)
+	else:
+		_phase_label.remove_theme_font_size_override("font_size")
 
 
 func _render_weather() -> void:

@@ -93,6 +93,7 @@ var _loaded_blueprints: BlueprintLibrary
 var _blueprint_load_notes: Array[String] = []
 ## Cookable dishes/prices belong to this shop, never to shared recipe resources.
 var menu_settings: MenuSettings
+var daily_special: DailySpecial = DailySpecial.new()
 var staff_roster: StaffRoster
 var _staff_notice_day: int = 0
 var _staff_notices: Array[Dictionary] = []
@@ -145,6 +146,7 @@ var _owner_preferences: OwnerModeSettings = OwnerModeSettings.new()
 var _base_layout: ShopLayout = LAYOUT
 var _loaded_layout: ShopLayout = null
 var _loaded_menu: MenuSettings = null
+var _loaded_daily_special: Variant = null
 var _loaded_staff: StaffRoster = null
 var _loaded_plates: PlateLedger = null
 var _loaded_reputation: ReputationBook = null
@@ -400,6 +402,9 @@ func _bind_world_presentation() -> void:
 	$HUD.set_paint_state(false)
 	_menu_panel = $Overlay/MenuPanel
 	_menu_panel.bind_menu(menu_settings)
+	_menu_panel.set_special(daily_special.recipe_id())
+	if not _menu_panel.special_requested.is_connected(_on_special_requested):
+		_menu_panel.special_requested.connect(_on_special_requested)
 	if not _menu_panel.lease_requested.is_connected(_on_lease_requested):
 		_menu_panel.lease_requested.connect(_on_lease_requested)
 	if not _menu_panel.cat_adoption_requested.is_connected(_on_cat_adoption_requested):
@@ -596,6 +601,7 @@ func start() -> void:
 	SaveSystem.register("shop", _capture_shop, _restore_shop)
 	SaveSystem.register("blueprints", _capture_blueprints, _restore_blueprints)
 	SaveSystem.register("menu", _capture_menu, _restore_menu)
+	SaveSystem.register("daily_special", _capture_daily_special, _restore_daily_special)
 	SaveSystem.register("staff", _capture_staff, _restore_staff)
 	SaveSystem.register("plates", _capture_plates, _restore_plates)
 	SaveSystem.register("reviews", _capture_reviews, _restore_reviews)
@@ -2380,6 +2386,9 @@ func build_report(day: int) -> DayReport:
 	report.stock_on_hand = int(on_hand["cost"])
 	report.stock_on_hand_recorded = bool(on_hand["recorded"])
 	report.dishes_sold = dishes_sold_today.duplicate()
+	report.daily_special_line = DailySpecialText.report(
+		DailySpecialText.name_for(daily_special.recipe_id(), menu_settings.enabled_recipes()),
+		int(report.dishes_sold.get(daily_special.recipe_id(), 0)))
 	report.slowest_seller_snapshot = sim.service_menu_report_snapshot()
 	report.customers_served = sim.served_today
 	report.customers_lost = sim.lost_today
@@ -2498,6 +2507,8 @@ func _new_game() -> void:
 	_loan_notice_day = 0
 	sim.assign_owner(&"rest")
 	_loaded_menu = null
+	_loaded_daily_special = null
+	daily_special = DailySpecial.new()
 	_loaded_staff = null
 	_loaded_reputation = null
 	reputation = ReputationBook.new()
@@ -2550,6 +2561,7 @@ func _load_autosave_sections() -> bool:
 	_blueprint_load_notes.clear()
 	_loaded_layout = null
 	_loaded_menu = null
+	_loaded_daily_special = null
 	_loaded_staff = null
 	_loaded_plates = null
 	_loaded_reputation = null
@@ -2618,6 +2630,12 @@ func _load_autosave_sections() -> bool:
 	var choices: MenuSettings = _loaded_menu if _loaded_menu != null else MenuSettings.new(_cookable_recipes(layout), owner_progress.level)
 	if not choices.is_valid():
 		return false
+	var restored_special: DailySpecial = DailySpecial.new()
+	if _loaded_daily_special != null:
+		if not restored_special.from_dict(_loaded_daily_special, choices.enabled_recipes(), Clock.sim.day):
+			return false
+	else:
+		restored_special.begin_morning(Clock.sim.day)
 	var employees: StaffRoster = _loaded_staff if _loaded_staff != null else StaffRoster.new(TUNING)
 	if employees.candidate_day > Clock.sim.day:
 		return false
@@ -2665,6 +2683,8 @@ func _load_autosave_sections() -> bool:
 	tray_level = _loaded_tray_level
 	sim.carry_capacity = 1 << tray_level
 	menu_settings = choices
+	daily_special = restored_special
+	_loaded_daily_special = null
 	# The saved layout lists every station; drinks at a station staff cannot
 	# reach stay off the live menu (and out of the next save), as in play.
 	var enabled: Array[RecipeDef] = menu_settings.enabled_recipes()
@@ -3263,6 +3283,16 @@ func _capture_menu() -> Dictionary:
 	return menu_settings.to_dict() if menu_settings != null else {}
 
 
+func _capture_daily_special() -> Dictionary:
+	return daily_special.to_dict()
+
+
+## Validation uses the fully staged menu/day before the live world is replaced.
+func _restore_daily_special(data: Dictionary) -> bool:
+	_loaded_daily_special = data.duplicate(true)
+	return true
+
+
 func _restore_menu(data: Dictionary) -> bool:
 	var layout: ShopLayout = _loaded_layout if _loaded_layout != null else ORIGINAL_LAYOUT
 	var choices: MenuSettings = MenuSettings.new(_cookable_recipes(layout), owner_progress.level)
@@ -3674,6 +3704,11 @@ func _on_hours_requested(open_minute: int, close_minute: int) -> void:
 
 func _apply_menu(restaurant: RestaurantSim, choices: MenuSettings) -> void:
 	restaurant.menu = choices.enabled_recipes()
+	daily_special.reconcile(restaurant.menu)
+	restaurant.daily_special = daily_special
+	$HUD.set_special(DailySpecialText.name_for(daily_special.recipe_id(), restaurant.menu))
+	if _menu_panel != null:
+		_menu_panel.set_special(daily_special.recipe_id())
 	$HUD.set_restaurant_name(choices.restaurant_name())
 	($ShopView as ShopView).set_restaurant_name(choices.restaurant_name())
 	_refresh_menu_boards()
@@ -3694,12 +3729,24 @@ func _refresh_menu_boards() -> void:
 		for recipe: RecipeDef in menu_settings.enabled_recipes():
 			prices[recipe.id] = menu_settings.price_of(recipe)
 		view.wall_finish_view.set_menu_board_content(menu_settings.restaurant_name(),
-			menu_settings.enabled_recipes(), prices)
+			menu_settings.enabled_recipes(), prices,
+			DailySpecialText.name_for(daily_special.recipe_id(), menu_settings.enabled_recipes()))
 
 
 func can_edit_menu() -> bool:
 	return _started and menu_settings != null and menu_settings.is_valid() \
 		and Clock.sim.phase == SimClock.Phase.MORNING and not is_haggle_active()
+
+
+func menu_set_special(recipe_id: StringName) -> bool:
+	if not can_edit_menu() or not daily_special.select(recipe_id, menu_settings.enabled_recipes()):
+		return false
+	_apply_menu(sim, menu_settings)
+	return true
+
+
+func _on_special_requested(recipe_id: StringName) -> void:
+	menu_set_special(recipe_id)
 
 
 func menu_set_enabled(recipe_id: StringName, enabled: bool) -> bool:
@@ -4208,6 +4255,8 @@ func shop_sell(item_id: int) -> int:
 
 ## Morning setup: new counters, a stocked fridge, and an autosave.
 func _begin_morning() -> void:
+	daily_special.begin_morning(Clock.sim.day)
+	_apply_menu(sim, menu_settings)
 	# Repeated setup of the SAME morning cannot create another attempt.
 	if _haggle_day != Clock.sim.day:
 		_reset_haggle()

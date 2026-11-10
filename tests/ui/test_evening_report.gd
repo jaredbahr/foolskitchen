@@ -131,6 +131,27 @@ func test_slowest_seller_line_uses_captured_name_and_both_hint_branches() -> voi
 	assert_false(line.visible, "older reports without a service snapshot stay quiet")
 
 
+func test_daily_special_line_round_trips_and_hides_for_legacy_or_empty_reports() -> void:
+	var day: DayReport = DayReport.new()
+	day.daily_special_line = "Today's special: Tomato soup, 4 sold"
+	var encoded: Dictionary = day.to_dict()
+	assert_eq(encoded.get("daily_special_line", ""), day.daily_special_line)
+	var restored: DayReport = DayReport.from_dict(JSON.parse_string(JSON.stringify(encoded)))
+	assert_eq(restored.daily_special_line, day.daily_special_line)
+	_report.call("show_report", restored)
+	var label: Label = _report.get_node("Panel/Scroll/Content/DailySpecial") as Label
+	assert_true(label.visible)
+	assert_eq(label.text, day.daily_special_line)
+	assert_eq(label.get_index(), (_report.get_node("%SlowestSeller") as Label).get_index() + 1,
+		"the special sits beside the dish rows")
+	_report.call("show_report", DayReport.new())
+	assert_false(label.visible, "reports without a special keep the original layout")
+	_report.call("show_report", DayReport.from_dict({"day": 2}))
+	assert_false(label.visible, "legacy reports without the optional field stay quiet")
+	assert_false(DayReport.new().to_dict().has("daily_special_line"),
+		"the default saved report shape stays unchanged")
+
+
 func test_saved_report_name_contextualizes_reviews_without_changing_quotes() -> void:
 	var day: DayReport = DayReport.new()
 	day.restaurant_name = "Copper Cafe"

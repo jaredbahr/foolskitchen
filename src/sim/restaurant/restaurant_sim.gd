@@ -96,6 +96,8 @@ var critic_rng_provider: Callable
 ## Today's critic verdict (stars, cause, quote), or {} when none has reviewed.
 var critic_result: Dictionary = {}
 var served_today: int = 0
+## Optional morning offer; absent callers keep their original prices and picks.
+var daily_special: DailySpecial = null
 var lost_today: int = 0
 ## Guests who paid at the order counter (#293) and left with their drink.
 var takeaways_today: int = 0
@@ -869,7 +871,8 @@ func _mark_sold_out(recipe_id: StringName, ingredient_id: StringName) -> void:
 func price_of(recipe: RecipeDef) -> int:
 	if recipe == null:
 		return 0
-	return maxi(0, prices.get(recipe.id, recipe.standard_price))
+	var price: int = maxi(0, prices.get(recipe.id, recipe.standard_price))
+	return daily_special.price_for(recipe, price) if daily_special != null else price
 
 
 ## No chance below/equal to standard; callers must not draw RNG when this is 0.

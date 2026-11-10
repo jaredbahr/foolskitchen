@@ -42,6 +42,7 @@ var _cash_change: Label
 var _loan_notice: Label
 var _dishes: GridContainer
 var _slowest_seller: Label
+var _daily_special: Label
 var _guests: Label
 var _cleanliness: Label
 var _guest_bar: ProgressBar
@@ -130,6 +131,8 @@ func show_report(report: DayReport) -> void:
 		_add_row(_dishes, "No dishes sold today", "")
 	_slowest_seller.text = _slowest_seller_text(report)
 	_slowest_seller.visible = not _slowest_seller.text.is_empty()
+	_daily_special.text = report.daily_special_line
+	_daily_special.visible = not _daily_special.text.is_empty()
 	_guests.text = "%d served  /  %d lost" % [report.customers_served, report.customers_lost]
 	var guest_total: int = report.customers_served + report.customers_lost
 	_guest_bar.max_value = maxi(guest_total, 1)
@@ -304,6 +307,15 @@ func _bind_nodes() -> void:
 	_loan_notice = %LoanNotice
 	_dishes = %DishRows
 	_slowest_seller = %SlowestSeller
+	_daily_special = Label.new()
+	_daily_special.name = "DailySpecial"
+	_daily_special.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_daily_special.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_daily_special.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_daily_special.hide()
+	var special_content: VBoxContainer = get_node("Panel/Scroll/Content") as VBoxContainer
+	special_content.add_child(_daily_special)
+	special_content.move_child(_daily_special, _slowest_seller.get_index() + 1)
 	_guests = %Guests
 	_cleanliness = %Cleanliness
 	_guest_bar = %GuestBar

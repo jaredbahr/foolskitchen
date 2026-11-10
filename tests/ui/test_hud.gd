@@ -59,6 +59,29 @@ func test_initial_labels_and_shared_theme_before_ready() -> void:
 	assert_eq((_hud.get_node("Top") as Control).theme, load("res://src/ui/theme/main_theme.tres"))
 
 
+func test_daily_special_uses_phase_label_only_during_service() -> void:
+	var phase: Label = _control("Phase") as Label
+	var original_font_size: int = phase.get_theme_font_size("font_size")
+	_hud.call("set_special", "Tomato soup")
+	_hud.call("refresh")
+	assert_eq(phase.text, "Morning", "the special is hidden before service")
+	Clock.sim.phase = SimClock.Phase.OPEN
+	_hud.call("refresh")
+	assert_eq(phase.text, "Open  ·  Special: Tomato soup")
+	Clock.sim.phase = SimClock.Phase.LAST_ORDERS
+	_hud.call("refresh")
+	assert_eq(phase.text, "Last orders  ·  Special: Tomato soup")
+	Clock.sim.phase = SimClock.Phase.CLOSED
+	_hud.call("refresh")
+	assert_eq(phase.text, "Closed", "the report phase does not carry the service offer")
+	_hud.call("set_special", "")
+	Clock.sim.phase = SimClock.Phase.OPEN
+	_hud.call("refresh")
+	assert_eq(phase.text, "Open", "an empty special preserves the original label")
+	assert_eq(phase.get_theme_font_size("font_size"), original_font_size,
+		"clearing the offer restores the original phase typography")
+
+
 func test_sold_out_tooltip_is_opaque_and_readable_over_the_world() -> void:
 	var label: Label = _control("SoldOut") as Label
 	var panel: StyleBoxFlat = label.get_theme_stylebox("panel", "TooltipPanel") as StyleBoxFlat

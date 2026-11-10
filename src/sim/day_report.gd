@@ -57,6 +57,8 @@ var owner_tips: Array[String] = []
 var milestones_reached: Array[Dictionary] = []
 ## Optional cash-only challenge completion line; absent on all other days.
 var weekly_challenge_line: String = ""
+## The selected offer and its paid-dish count, detached from tomorrow's choice.
+var daily_special_line: String = ""
 ## Player-facing "Low stock" sentences (StockAlerts): what ran out today and
 ## when, then ingredients below tomorrow's target or expiring tomorrow.
 var low_stock: Array[String] = []
@@ -259,6 +261,8 @@ func to_dict() -> Dictionary:
 		result["inspection_lines"] = inspection_lines.duplicate()
 	if not weekly_challenge_line.is_empty():
 		result["weekly_challenge_line"] = weekly_challenge_line
+	if not daily_special_line.is_empty():
+		result["daily_special_line"] = daily_special_line
 	if not booking_lines.is_empty():
 		result["booking_lines"] = booking_lines.duplicate()
 	var activity: Dictionary = StaffActivity.public_snapshot(staff_activity)
@@ -351,6 +355,9 @@ static func from_dict(data: Dictionary) -> DayReport:
 	var saved_weekly_line: Variant = data.get("weekly_challenge_line", "")
 	if saved_weekly_line is String and saved_weekly_line.length() <= 100:
 		report.weekly_challenge_line = saved_weekly_line
+	var saved_special_line: Variant = data.get("daily_special_line", "")
+	if saved_special_line is String and saved_special_line.length() <= 160:
+		report.daily_special_line = saved_special_line
 	var saved_rush: Variant = data.get("rush_hour_lines", [])
 	if saved_rush is Array:
 		for line: Variant in saved_rush:
