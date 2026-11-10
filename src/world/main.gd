@@ -2938,6 +2938,9 @@ func _install_staged_sections(staged: StagedSite, with_globals: bool) -> void:
 			world.log_event(note)
 		# The decoder stages this; only a wholly successful load may pay it once.
 		if _loaded_layout.load_refund > 0:
+			# The installed site's books, even before _wire_session (a switch has
+			# already recorded the arriving site as active).
+			Economy.set_active_site(site_book.active_id)
 			Economy.add_cash(_loaded_layout.load_refund, Ledger.UPGRADES)
 			_loaded_layout.load_refund = 0
 	# Install only after every other whole-load validation has succeeded.
@@ -5821,6 +5824,10 @@ func _on_service_closed(day: int) -> void:
 	var site: StringName = Economy.active_site
 	var day_movements: Dictionary = Economy.ledger.day_totals(day, site)
 	var operating_profit: int = Economy.ledger.day_profit(day, site)
+	# Deliberately not all of DayReport.NON_OPERATING_CATEGORIES: same-day
+	# financing posted before the close keeps its existing profit basis
+	# (test_loan_session). A new non-operating category that can be booked
+	# before the close must be added here as well as to DayReport.
 	for category: StringName in [Ledger.BOOKING_DEPOSIT, Ledger.BOOKING_REFUND,
 			Ledger.AWAY_SITE_INCOME, Ledger.AWAY_SITE_RENT, Ledger.LOT_PURCHASE, Ledger.RENOVATION]:
 		operating_profit -= int(day_movements.get(category, 0))
