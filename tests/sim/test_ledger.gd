@@ -302,3 +302,121 @@ func test_json_round_trip_preserves_maximum_cash() -> void:
 	assert_eq(archived.cash, maximum)
 	assert_eq(archived.day_totals(day)[Ledger.SALE], maximum)
 	assert_eq(archived.day_income(day), maximum)
+
+
+## FK-087: every entry carries the site that made it; home is the default.
+func test_entries_are_stamped_with_their_site() -> void:
+	var ledger: Ledger = Ledger.new()
+	ledger.record(1, 10, Ledger.SALE, "home sale")
+	ledger.record(1, -4, Ledger.INGREDIENTS, "pier stock", &"pier")
+	var entries: Array[Dictionary] = ledger.entries_for_day(1)
+	assert_eq(entries[0]["site"], Ledger.HOME_SITE)
+	assert_eq(entries[1]["site"], &"pier")
+	assert_eq(Ledger.HOME_SITE, SiteBook.HOME_ID, "the ledger's home is the site book's home")
+
+
+## A site filter reads only that site's entries; no filter reads the whole books.
+func test_site_filtered_queries() -> void:
+	var ledger: Ledger = Ledger.new()
+	ledger.record(1, 100, Ledger.SALE)
+	ledger.record(1, -30, Ledger.WAGES)
+	ledger.record(1, -12, Ledger.INGREDIENTS, "", &"pier")
+	ledger.record(1, 7, Ledger.SALE, "", &"pier")
+	ledger.record(2, 50, Ledger.SALE, "", &"pier")
+	assert_eq(ledger.day_totals(1), {Ledger.SALE: 107, Ledger.WAGES: -30, Ledger.INGREDIENTS: -12})
+	assert_eq(ledger.day_totals(1, Ledger.HOME_SITE), {Ledger.SALE: 100, Ledger.WAGES: -30})
+	assert_eq(ledger.day_totals(1, &"pier"), {Ledger.SALE: 7, Ledger.INGREDIENTS: -12})
+	assert_eq(ledger.day_income(1), 107)
+	assert_eq(ledger.day_income(1, Ledger.HOME_SITE), 100)
+	assert_eq(ledger.day_income(1, &"pier"), 7)
+	assert_eq(ledger.day_costs(1), 42)
+	assert_eq(ledger.day_costs(1, Ledger.HOME_SITE), 30)
+	assert_eq(ledger.day_costs(1, &"pier"), 12)
+	assert_eq(ledger.day_profit(1, Ledger.HOME_SITE), 70)
+	assert_eq(ledger.day_profit(1, &"pier"), -5)
+	assert_eq(ledger.day_profit(1), 65)
+	assert_eq(ledger.entries_for_day(1).size(), 4)
+	assert_eq(ledger.entries_for_day(1, &"pier").size(), 2)
+	assert_eq(ledger.entries_for_day(2, Ledger.HOME_SITE).size(), 0)
+	assert_eq(ledger.day_totals(1, &"other"), {})
+	assert_eq(ledger.cash, 115, "cash is every site's money")
+	# Archived days are whole-books totals only: a site filter sees no split.
+	ledger.prune_before(2)
+	assert_eq(ledger.day_profit(1), 65)
+	assert_eq(ledger.day_totals(1, Ledger.HOME_SITE), {})
+	assert_eq(ledger.day_profit(2, &"pier"), 50)
+
+
+## One-site books save exactly as before part 1: no "site" key anywhere.
+func test_one_site_save_bytes_are_unchanged() -> void:
+	var ledger: Ledger = Ledger.new()
+	ledger.cash = 40
+	ledger.record(1, 30, Ledger.SALE, "meals")
+	ledger.record(1, -5, Ledger.RENT)
+	ledger.prune_before(2)
+	ledger.record(2, -8, Ledger.INGREDIENTS, "bun")
+	ledger.record(2, 3, Ledger.TIP, "", Ledger.HOME_SITE)
+	var old_format: Dictionary = {"cash": "60", "entries": [
+		{"day": "2", "amount": "-8", "category": "ingredients", "note": "bun"},
+		{"day": "2", "amount": "3", "category": "tip", "note": ""}],
+		"history": {"1": {"sale": "30", "rent": "-5"}},
+		"history_income": {"1": "30"}, "history_costs": {"1": "5"}}
+	assert_eq(JSON.stringify(ledger.to_dict()), JSON.stringify(old_format))
+	var restored: Ledger = Ledger.from_dict(JSON.parse_string(JSON.stringify(old_format)))
+	assert_not_null(restored)
+	assert_eq(JSON.stringify(restored.to_dict()), JSON.stringify(old_format), "an old save writes the same bytes")
+	for entry: Dictionary in restored.entries_for_day(2):
+		assert_eq(entry["site"], Ledger.HOME_SITE, "entries from old saves are the home site's")
+	assert_eq(restored.day_profit(2, Ledger.HOME_SITE), -5)
+
+
+## Another site's entries keep their id through JSON; bad ids refuse the books.
+func test_site_ids_round_trip_and_bad_ids_are_refused() -> void:
+	var ledger: Ledger = Ledger.new()
+	ledger.record(1, 9, Ledger.SALE, "", &"pier_2")
+	var saved: Dictionary = ledger.to_dict()
+	assert_eq(saved["entries"][0]["site"], "pier_2")
+	var restored: Ledger = Ledger.from_dict(JSON.parse_string(JSON.stringify(saved)))
+	assert_eq(restored.entries_for_day(1)[0]["site"], &"pier_2")
+	assert_eq(restored.to_dict(), saved)
+	for bad: Variant in ["", "Pier", "pier shack", "a".repeat(41), "pier-2", 3, null]:
+		var broken: Dictionary = saved.duplicate(true)
+		broken["entries"][0]["site"] = bad
+		assert_null(Ledger.from_dict(broken), str(bad))
+	assert_true(Ledger.is_valid_site(&"home"))
+	assert_true(Ledger.is_valid_site(StringName("a".repeat(40))))
+	assert_false(Ledger.is_valid_site(Ledger.ALL_SITES))
+	assert_false(Ledger.is_valid_site(&"Home"))
+
+
+## The four site-money categories never count as a site's operating profit.
+func test_site_money_categories_are_non_operating() -> void:
+	for category: StringName in [Ledger.AWAY_SITE_INCOME, Ledger.AWAY_SITE_RENT,
+			Ledger.LOT_PURCHASE, Ledger.RENOVATION]:
+		assert_true(DayReport.NON_OPERATING_CATEGORIES.has(category), String(category))
+	var report: DayReport = DayReport.new()
+	report.income = {Ledger.SALE: 100, Ledger.AWAY_SITE_INCOME: 500}
+	report.costs = {Ledger.WAGES: 20, Ledger.AWAY_SITE_RENT: 40, Ledger.LOT_PURCHASE: 900,
+		Ledger.RENOVATION: 300}
+	assert_eq(report.operating_profit(), 80)
+
+
+## Economy stamps what it records with its active site, which refuses bad ids.
+func test_economy_stamps_its_active_site() -> void:
+	_make_economy()
+	assert_eq(_economy.active_site, Ledger.HOME_SITE)
+	_economy.add_cash(20, Ledger.SALE)
+	assert_true(_economy.set_active_site(&"pier"))
+	assert_false(_economy.set_active_site(&"Not ok"))
+	assert_eq(_economy.active_site, &"pier", "a refused id changes nothing")
+	_economy.add_cash(5, Ledger.TIP)
+	assert_true(_economy.buy_ingredient(&"bun", 1, 3))
+	_economy.loan.principal = 100
+	_economy.settle_loan_day(maxi(1, Clock.day), 0)
+	var sites: Array[StringName] = []
+	for entry: Dictionary in _economy.ledger.entries_for_day(Clock.day):
+		sites.append(entry["site"])
+	assert_eq(sites, [Ledger.HOME_SITE, &"pier", &"pier", &"pier"] as Array[StringName])
+	assert_eq(_economy.ledger.day_profit(Clock.day, &"pier"), -3)
+	_economy.reset(10)
+	assert_eq(_economy.active_site, Ledger.HOME_SITE, "a new game starts at home")

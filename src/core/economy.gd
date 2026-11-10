@@ -14,6 +14,11 @@ const ORDER_REFUND_NOTE: String = "order_refund"
 var ledger: Ledger = Ledger.new()
 var stock: Stock = Stock.new()
 var loan: LoanAccount = LoanAccount.new()
+## The site whose day is being played (FK-087). Every ledger entry Economy
+## records is stamped with it. Not saved: main.gd sets it from its SiteBook in
+## _wire_session(), which runs after a new game, a load and (later) a site
+## switch, before that site's morning. Change it only via set_active_site().
+var active_site: StringName = Ledger.HOME_SITE
 ## Legacy balance access. Assignments record their difference under OTHER.
 var cash: int:
 	get:
@@ -40,7 +45,17 @@ func reset(starting_cash: int) -> void:
 	ledger.cash = starting_cash
 	stock = Stock.new()
 	loan = LoanAccount.new()
+	active_site = Ledger.HOME_SITE
 	EventBus.cash_changed.emit(cash, 0, Ledger.OTHER)
+
+
+## Makes `site` the one new ledger entries belong to. Returns false, changing
+## nothing, for an id SiteBook would refuse.
+func set_active_site(site: StringName) -> bool:
+	if not Ledger.is_valid_site(site):
+		return false
+	active_site = site
+	return true
 
 
 ## The whole money state (books and pantry) as one snapshot. Tests use it to
@@ -124,7 +139,7 @@ func _parse_stock(data: Dictionary) -> Stock:
 ## Adds (or, with a negative amount, removes) cash and announces it. The
 ## optional note marks special lines, such as shop-edit undo and redo (FK-085).
 func add_cash(amount: int, reason: StringName, note: String = "") -> void:
-	ledger.record(Clock.day, amount, reason, note)
+	ledger.record(Clock.day, amount, reason, note, active_site)
 	EventBus.cash_changed.emit(cash, amount, reason)
 
 
@@ -154,7 +169,7 @@ func can_buy_upgrade(amount: int) -> bool:
 ## Optional pre-bonus profit changes only the repayment base, never actual cash.
 func settle_loan_day(day: int, repayment_profit: Variant = null) -> Dictionary:
 	var running_cash: int = cash
-	var result: Dictionary = loan.settle_day(ledger, day, LOAN_TERMS, repayment_profit)
+	var result: Dictionary = loan.settle_day(ledger, day, LOAN_TERMS, repayment_profit, active_site)
 	for movement: Dictionary in result.get("movements", []):
 		var amount: int = int(movement["amount"])
 		var reason: StringName = movement["category"]
@@ -176,7 +191,7 @@ func buy_ingredient(id: StringName, qty: int, unit_cost: int) -> bool:
 	if not can_spend_without_loan(price):
 		return false
 	stock.add(id, qty, Clock.day, price)
-	ledger.record(Clock.day, -price, Ledger.INGREDIENTS, String(id))
+	ledger.record(Clock.day, -price, Ledger.INGREDIENTS, String(id), active_site)
 	EventBus.cash_changed.emit(cash, -price, Ledger.INGREDIENTS)
 	return true
 
@@ -212,7 +227,7 @@ func buy_haggled_order(lines: Array[Dictionary], percent: int) -> bool:
 			return false
 		added[id] = added.get(id, 0) + qty
 	for lot: Dictionary in lots:
-		ledger.record(Clock.day, -int(lot["total_cost"]), Ledger.INGREDIENTS, String(lot["id"]))
+		ledger.record(Clock.day, -int(lot["total_cost"]), Ledger.INGREDIENTS, String(lot["id"]), active_site)
 	receive(lots)
 	EventBus.cash_changed.emit(cash, -int(quoted["cost"]), Ledger.INGREDIENTS)
 	return true
@@ -245,10 +260,11 @@ func pay_order(lines: Array[Dictionary], cost: int, standing: bool) -> bool:
 	for line: Dictionary in lines:
 		var id: StringName = line["id"]
 		var price: int = int(line["qty"]) * int(line["unit_cost"])
-		ledger.record(Clock.day, -price, Ledger.INGREDIENTS, (AUTO_LINE_PREFIX + String(id)) if standing else String(id))
+		ledger.record(Clock.day, -price, Ledger.INGREDIENTS,
+			(AUTO_LINE_PREFIX + String(id)) if standing else String(id), active_site)
 		EventBus.cash_changed.emit(cash, -price, Ledger.INGREDIENTS)
 	if cost > list_total:
-		ledger.record(Clock.day, list_total - cost, Ledger.INGREDIENTS, AUTO_PREMIUM_NOTE)
+		ledger.record(Clock.day, list_total - cost, Ledger.INGREDIENTS, AUTO_PREMIUM_NOTE, active_site)
 		EventBus.cash_changed.emit(cash, list_total - cost, Ledger.INGREDIENTS)
 	return true
 
@@ -265,5 +281,5 @@ func receive(lines: Array[Dictionary], charged_total: int = -1) -> void:
 func refund_order(amount: int) -> void:
 	if amount <= 0:
 		return
-	ledger.record(Clock.day, amount, Ledger.INGREDIENTS, ORDER_REFUND_NOTE)
+	ledger.record(Clock.day, amount, Ledger.INGREDIENTS, ORDER_REFUND_NOTE, active_site)
 	EventBus.cash_changed.emit(cash, amount, Ledger.INGREDIENTS)

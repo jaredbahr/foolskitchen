@@ -178,6 +178,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- Money in the books now remembers which restaurant earned or spent it, so once you own a second site, the evening report, business history, records and XP count only the restaurant you are playing that day, while your cash still covers all of them. Income and rent from your other restaurants, buying new premises and renovation get their own lines in the books and never count toward a day's profit. One-restaurant games play and save exactly as before. (#416)
 - The game can now switch which of your shops is open, in the morning: the shop you leave is put away as it is, the other one is brought up to date and set up exactly like a loaded save, and a shop that cannot be set up leaves everything as it was. Nothing in the game uses it yet. (#415)
 - A shop left closed for a few days can now be brought back up to date: its stock, tanks and waiting deliveries are kept as they were, its renown fades, and that morning's special, rush, critic visit and booking offer lapse, with deposits for missed bookings set aside for refund. Groundwork for switching between shops; nothing changes in play. (#414)
 - Saves now have a "sites" section that can hold other restaurants, each frozen as it was on the day you left it. Every existing save loads as your one starter shop, so nothing changes in play yet. (#413)
