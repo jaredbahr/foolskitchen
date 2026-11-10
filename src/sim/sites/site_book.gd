@@ -11,7 +11,9 @@ const HOME_ID: StringName = &"home"
 const HOME_LOT: StringName = &"home"
 const MAX_NAME_LENGTH: int = 40
 
-## id -> {"lot": StringName, "name": String, "manager": String}
+## id -> {"lot": StringName, "name": String, "manager": StringName}. A manager
+## is a member id in that site's own "staff" section (ids are unique only
+## within one roster).
 var _info: Dictionary[StringName, Dictionary] = {}
 ## id -> {"day": int, "sections": Dictionary}; never holds the active site.
 var _frozen: Dictionary[StringName, Dictionary] = {}
@@ -19,7 +21,7 @@ var active_id: StringName = HOME_ID
 
 
 func _init() -> void:
-	_info[HOME_ID] = {"lot": HOME_LOT, "name": "", "manager": ""}
+	_info[HOME_ID] = {"lot": HOME_LOT, "name": "", "manager": &""}
 
 
 ## Every site id: the active one first, then the frozen ones sorted.
@@ -50,8 +52,8 @@ func site_name(id: StringName) -> String:
 	return _info[id]["name"] if _info.has(id) else ""
 
 
-func manager(id: StringName) -> String:
-	return _info[id]["manager"] if _info.has(id) else ""
+func manager(id: StringName) -> StringName:
+	return _info[id]["manager"] if _info.has(id) else &""
 
 
 func is_frozen(id: StringName) -> bool:
@@ -69,23 +71,31 @@ func frozen_sections(id: StringName) -> Dictionary:
 
 
 ## Adds a new inactive site, frozen as of `day` with the given sections.
+## Each lot holds at most one site.
 func add_site(id: StringName, lot: StringName, display_name: String, day: int, sections: Dictionary) -> bool:
 	if _info.has(id) or not _valid_id(String(id)) or not _valid_id(String(lot)) \
-			or not _valid_name(display_name) or day < 0 or not _valid_sections(sections):
+			or _has_lot(lot) or not _valid_name(display_name) or day < 0 \
+			or not _valid_sections(sections):
 		return false
-	_info[id] = {"lot": lot, "name": display_name, "manager": ""}
-	_frozen[id] = {"day": day, "sections": sections.duplicate(true)}
+	_info[id] = {"lot": lot, "name": display_name, "manager": &""}
+	_frozen[id] = {"day": day, "sections": _as_json(sections)}
 	return true
+
+
+## True when `target` is a frozen site that can become active on `day` (never
+## before the day it was frozen). A switch checks this before restoring
+## anything, so the swap after the restore cannot refuse.
+func can_swap(target: StringName, day: int) -> bool:
+	return target != active_id and _frozen.has(target) and day >= int(_frozen[target]["day"])
 
 
 ## Makes `target` the active site: the departing one is frozen with `sections`
 ## as of `day`, and the target's frozen copy is dropped (the caller has
 ## already restored it). Returns false and changes nothing on bad input.
 func swap_active(target: StringName, day: int, departing_sections: Dictionary) -> bool:
-	if target == active_id or not _frozen.has(target) or day < 0 \
-			or not _valid_sections(departing_sections):
+	if not can_swap(target, day) or not _valid_sections(departing_sections):
 		return false
-	_frozen[active_id] = {"day": day, "sections": departing_sections.duplicate(true)}
+	_frozen[active_id] = {"day": day, "sections": _as_json(departing_sections)}
 	_frozen.erase(target)
 	active_id = target
 	return true
@@ -99,8 +109,9 @@ func valid_before(day: int) -> bool:
 	return true
 
 
-func set_manager(id: StringName, staff_id: String) -> bool:
-	if not _info.has(id) or staff_id.length() > MAX_NAME_LENGTH:
+## An empty id clears the manager.
+func set_manager(id: StringName, staff_id: StringName) -> bool:
+	if not _info.has(id) or (staff_id != &"" and not _valid_id(String(staff_id))):
 		return false
 	_info[id]["manager"] = staff_id
 	return true
@@ -110,7 +121,7 @@ func to_dict() -> Dictionary:
 	var sites: Array[Dictionary] = []
 	for id: StringName in site_ids():
 		var row: Dictionary = {"id": String(id), "lot": String(_info[id]["lot"]),
-			"name": _info[id]["name"], "manager": _info[id]["manager"]}
+			"name": _info[id]["name"], "manager": String(_info[id]["manager"])}
 		if _frozen.has(id):
 			row["frozen_day"] = str(_frozen[id]["day"])
 			row["sections"] = (_frozen[id]["sections"] as Dictionary).duplicate(true)
@@ -118,10 +129,14 @@ func to_dict() -> Dictionary:
 	return {"version": VERSION, "active": String(active_id), "sites": sites}
 
 
-## Strict: returns null for anything malformed. The active site must be listed
-## without frozen data; every other site must carry it.
+## Strict: returns null for anything malformed, including unknown keys (a
+## newer field must come with a new VERSION, never be dropped silently). The
+## active site must be listed without frozen data; every other site must
+## carry it. The home site may be absent (a future sale).
 static func from_dict(data: Dictionary) -> SiteBook:
-	if int(data.get("version", -1)) != VERSION:
+	var version: Variant = data.get("version", null)
+	if not (version is int or version is float) or float(version) != float(VERSION) \
+			or not _only_keys(data, ["version", "active", "sites"]):
 		return null
 	var active: Variant = data.get("active", null)
 	var rows: Variant = data.get("sites", null)
@@ -133,16 +148,19 @@ static func from_dict(data: Dictionary) -> SiteBook:
 		if not raw is Dictionary:
 			return null
 		var row: Dictionary = raw
+		if not _only_keys(row, ["id", "lot", "name", "manager", "frozen_day", "sections"]):
+			return null
 		var id: Variant = row.get("id", null)
 		var lot: Variant = row.get("lot", null)
 		var display_name: Variant = row.get("name", null)
 		var staff: Variant = row.get("manager", null)
 		if not id is String or not _valid_id(id) or not lot is String or not _valid_id(lot) \
 				or not display_name is String or not _valid_name(display_name) \
-				or not staff is String or (staff as String).length() > MAX_NAME_LENGTH \
-				or book._info.has(StringName(id)):
+				or not staff is String or (not (staff as String).is_empty() and not _valid_id(staff)) \
+				or book._info.has(StringName(id)) or book._has_lot(StringName(lot)):
 			return null
-		book._info[StringName(id)] = {"lot": StringName(lot), "name": display_name, "manager": staff}
+		book._info[StringName(id)] = {"lot": StringName(lot), "name": display_name,
+			"manager": StringName(staff)}
 		var frozen: bool = row.has("frozen_day") or row.has("sections")
 		if id == active:
 			if frozen:
@@ -170,7 +188,32 @@ static func _valid_id(id: String) -> bool:
 
 
 static func _valid_name(display_name: String) -> bool:
-	return display_name.length() <= MAX_NAME_LENGTH and display_name == display_name.strip_edges()
+	if display_name.length() > MAX_NAME_LENGTH or display_name != display_name.strip_edges():
+		return false
+	for character: String in display_name:
+		if character.unicode_at(0) < 32:
+			return false
+	return true
+
+
+func _has_lot(lot: StringName) -> bool:
+	for id: StringName in _info:
+		if _info[id]["lot"] == lot:
+			return true
+	return false
+
+
+static func _only_keys(data: Dictionary, allowed: Array[String]) -> bool:
+	for key: Variant in data:
+		if not key is String or not allowed.has(key):
+			return false
+	return true
+
+
+## Frozen copies are kept in exactly the shape a loaded file gives (numbers as
+## floats, no StringNames), so they save the same bytes every time.
+static func _as_json(sections: Dictionary) -> Dictionary:
+	return JSON.parse_string(JSON.stringify(sections))
 
 
 ## Only per-site sections, each a Dictionary. Missing sections are allowed:

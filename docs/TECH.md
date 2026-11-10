@@ -3381,6 +3381,15 @@ site when furniture moves (part 5).
   (the kitchen stock, split out of `economy` in #411) and `site_hours`
   (opening hours, today in `clock`).
 
+**Where a site's own fields live (#413).** `SiteBook` (`src/sim/sites`)
+holds the active site id and one row per site: id, lot, name, manager (a
+member id in that site's own `staff` section) and, for an inactive site, its
+frozen day and per-site sections, kept in loaded-file JSON shape. Fields that
+only change while a site is active (such as `lease_expanded`) belong in its
+per-site sections and swap with it. Fields that change while it is inactive
+(renovation days left) go on its book row, which needs a new `sites`
+VERSION: the decoder refuses unknown keys rather than drop them.
+
 **Switching (part 1).** Only in the morning, before opening, and only after
 the departing site's morning has run (restock bought, staff changes, plans
 made): that morning's results stay with it. Steps:

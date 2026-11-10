@@ -80,7 +80,13 @@ func test_a_save_holding_two_sites_round_trips() -> void:
 	assert_eq(loaded.site_ids(), [&"home", &"harbour"] as Array[StringName])
 	assert_eq(loaded.frozen_day(&"harbour"), day)
 	assert_eq(JSON.parse_string(JSON.stringify(loaded.to_dict())), saved,
-		"the frozen site comes back byte for byte")
+		"the frozen site comes back whole")
+	var saved_text: String = JSON.stringify(saved)
+	reset_weekly_for_synthetic_day_jump(_main)
+	Clock.sim.day += 1
+	_main.call("_begin_morning")
+	assert_eq(JSON.stringify(_document()["data"]["sites"]), saved_text,
+		"saving again after a reload writes the same bytes")
 
 
 func test_an_old_save_without_sites_loads_as_the_starter_site() -> void:

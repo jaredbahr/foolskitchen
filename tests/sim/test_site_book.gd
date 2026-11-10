@@ -20,7 +20,7 @@ func test_a_new_book_is_the_home_site_alone() -> void:
 func test_two_sites_round_trip_through_json() -> void:
 	var book: SiteBook = SiteBook.new()
 	assert_true(book.add_site(&"harbour", &"pier_lot", "Pier Shack", 4, SECTIONS))
-	assert_true(book.set_manager(&"harbour", "staff_7"))
+	assert_true(book.set_manager(&"harbour", &"staff_7"))
 	var copy: SiteBook = SiteBook.from_dict(_json(book.to_dict()))
 	assert_true(copy != null)
 	assert_eq(_json(copy.to_dict()), _json(book.to_dict()), "a second round trip is identical")
@@ -28,7 +28,7 @@ func test_two_sites_round_trip_through_json() -> void:
 	assert_eq(copy.frozen_day(&"harbour"), 4)
 	assert_eq(copy.frozen_sections(&"harbour"), _json(SECTIONS))
 	assert_eq(copy.site_name(&"harbour"), "Pier Shack")
-	assert_eq(copy.manager(&"harbour"), "staff_7")
+	assert_eq(copy.manager(&"harbour"), &"staff_7")
 	assert_false(copy.valid_before(3), "a site frozen after this morning is refused")
 	assert_true(copy.valid_before(4))
 
@@ -54,7 +54,7 @@ func test_swap_active_freezes_the_departing_site_and_drops_the_target_copy() -> 
 	assert_eq(book.active_id, &"harbour")
 	assert_false(book.is_frozen(&"harbour"))
 	assert_eq(book.frozen_day(&"home"), 2)
-	assert_eq(book.frozen_sections(&"home"), {"shop": {"version": 3}})
+	assert_eq(book.frozen_sections(&"home"), _json({"shop": {"version": 3}}))
 	assert_true(SiteBook.from_dict(_json(book.to_dict())) != null)
 
 
@@ -66,7 +66,29 @@ func test_bad_new_sites_are_refused() -> void:
 	assert_false(book.add_site(&"a", &"x", "", -1, {}))
 	assert_false(book.add_site(&"a", &"x", "", 1, {"clock": {}}), "global sections never freeze with a site")
 	assert_false(book.add_site(&"a", &"x", "", 1, {"shop": 5}))
+	assert_false(book.add_site(&"a", SiteBook.HOME_LOT, "", 1, {}), "one site per lot")
+	assert_false(book.add_site(&"a", &"x", "Tab\there", 1, {}))
+	assert_false(book.set_manager(SiteBook.HOME_ID, &"Not An Id"))
 	assert_eq(book.site_count(), 1)
+
+
+func test_frozen_copies_take_the_shape_of_a_loaded_file_and_save_stable_bytes() -> void:
+	var book: SiteBook = SiteBook.new()
+	assert_true(book.add_site(&"harbour", &"pier_lot", "", 1, {"shop": {"n": 3, "s": &"sn", "k": {5: 1}}}))
+	var first: String = JSON.stringify(book.to_dict())
+	var reloaded: SiteBook = SiteBook.from_dict(_json(book.to_dict()))
+	assert_eq(JSON.stringify(reloaded.to_dict()), first, "the same bytes after a reload")
+	assert_eq(book.frozen_sections(&"harbour"), reloaded.frozen_sections(&"harbour"))
+	assert_true(book.frozen_sections(&"harbour")["shop"]["n"] is float)
+
+
+func test_a_site_cannot_become_active_before_the_day_it_was_frozen() -> void:
+	var book: SiteBook = SiteBook.new()
+	assert_true(book.add_site(&"harbour", &"pier_lot", "", 5, SECTIONS))
+	assert_false(book.can_swap(&"harbour", 4))
+	assert_false(book.swap_active(&"harbour", 4, SECTIONS))
+	assert_true(book.can_swap(&"harbour", 5))
+	assert_false(book.can_swap(SiteBook.HOME_ID, 5), "the active site is not a swap target")
 
 
 func test_malformed_sections_are_refused() -> void:
@@ -88,6 +110,16 @@ func test_malformed_sections_are_refused() -> void:
 		func(d: Dictionary) -> void: d["sites"][1]["lot"] = "",
 		func(d: Dictionary) -> void: d["sites"][1]["name"] = 7,
 		func(d: Dictionary) -> void: d["sites"][1]["manager"] = null,
+		func(d: Dictionary) -> void: d["sites"][1]["manager"] = "Bad Id",
+		func(d: Dictionary) -> void: d["version"] = "1",
+		func(d: Dictionary) -> void: d["version"] = 1.5,
+		func(d: Dictionary) -> void: d["version"] = true,
+		func(d: Dictionary) -> void: d["version"] = [1],
+		func(d: Dictionary) -> void: d["version"] = {},
+		func(d: Dictionary) -> void: d["future"] = 1,
+		func(d: Dictionary) -> void: d["sites"][1]["lease_expanded"] = true,
+		func(d: Dictionary) -> void: d["sites"][1]["lot"] = "home",
+		func(d: Dictionary) -> void: d["sites"][1]["name"] = "Two\nlines",
 	]
 	for index: int in cases.size():
 		var data: Dictionary = good.duplicate(true)
