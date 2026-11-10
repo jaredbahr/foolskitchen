@@ -3,6 +3,10 @@ extends RefCounted
 ## A real frozen site (FK-087): every per-site section a session captured on
 ## the morning of day 3, after two played days, with a delivery due on day 4.
 ## Shaped exactly as a save file decodes (numbers as floats).
+## When a section's save format changes, rebuild it: in
+## tests/world/test_site_thaw_session.gd, print JSON.stringify of the captured
+## sections on day 3 (the "frozen" capture) and paste it into SECTIONS_JSON.
+## The session test captures live, so the real path stays covered meanwhile.
 
 const FROZEN_DAY: int = 3
 

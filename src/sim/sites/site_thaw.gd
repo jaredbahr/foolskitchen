@@ -33,6 +33,8 @@ extends RefCounted
 ## - everything else is unchanged (see DECISIONS for the reasons).
 
 const MAX_DAY: int = 9007199254740991
+## Delivery due days are stored in a Vector2i (32-bit).
+const MAX_DELIVERY_DAY: int = 2147483647
 const REFUND_NOTE: String = "Booking refunded: the restaurant was closed that day"
 
 ## Every per-site section and what the thaw does to it. A test checks this
@@ -131,23 +133,16 @@ static func _thaw_section(key: String, data: Dictionary, frozen_day: int, today:
 	return data.duplicate(true)
 
 
-## Decays exactly as the mornings in between would have, one day at a time.
+## Decays across the closed days in one step, as begin_morning does for any
+## gap (pow(1 - decay, gap)); a per-day loop would cost one step per day.
 ## No close ran, so last_award_day stays before today.
 static func _thaw_demand(data: Dictionary, frozen_day: int, today: int,
 		tuning: DemandTuning) -> Variant:
 	var state: DemandState = DemandState.new()
-	if not state.from_dict(data) or state.day > frozen_day or state.last_award_day >= frozen_day:
+	if not state.from_dict(data) or state.day != frozen_day or state.last_award_day >= frozen_day:
 		return null
-	var day: int = state.day
-	while day < today:
-		day += 1
-		if not state.begin_morning(day, tuning):
-			return null
-		if state.renown == 0.0:
-			# Nothing left to decay: every remaining morning is the same.
-			if not state.begin_morning(today, tuning):
-				return null
-			break
+	if not state.begin_morning(today, tuning):
+		return null
 	if state.day != today or state.last_decay_day != today:
 		return null
 	return _json(state.to_dict())
@@ -214,7 +209,8 @@ static func _thaw_deliveries(data: Dictionary, gap: int) -> Variant:
 	var moved: DeliveryBook = DeliveryBook.new()
 	for order: Dictionary in book.orders():
 		var due: Vector2i = order["due"]
-		if due.x > MAX_DAY - gap:
+		# Vector2i holds 32-bit days.
+		if due.x > MAX_DELIVERY_DAY - gap:
 			return null
 		var lines: Array[Dictionary] = []
 		lines.assign(order["lines"])

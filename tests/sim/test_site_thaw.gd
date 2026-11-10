@@ -96,18 +96,43 @@ func test_a_real_site_three_days_later_passes_the_morning_checks() -> void:
 		assert_eq(JSON.stringify(out[key]), JSON.stringify(sections[key]), "%s is unchanged" % key)
 
 
-func test_renown_decays_exactly_like_the_mornings_in_between() -> void:
+func test_renown_decays_like_the_mornings_in_between() -> void:
 	var sections: Dictionary = SiteThawFixture.sections()
-	var expected: DemandState = DemandState.new()
-	assert_true(expected.from_dict(sections["demand"]))
-	assert_true(expected.renown > 0.0)
+	var stepped: DemandState = DemandState.new()
+	assert_true(stepped.from_dict(sections["demand"]))
+	assert_true(stepped.renown > 0.0)
 	for day: int in range(F + 1, F + 6):
-		assert_true(expected.begin_morning(day, DEMAND))
+		assert_true(stepped.begin_morning(day, DEMAND))
+	var jumped: DemandState = DemandState.new()
+	assert_true(jumped.from_dict(sections["demand"]))
+	assert_true(jumped.begin_morning(F + 5, DEMAND))
 	var out: Dictionary = _thaw(sections, F + 5)["sections"]
 	# Compared as a save file holds it (JSON keeps 15 significant digits).
-	assert_eq(out["demand"], _json(expected.to_dict()))
+	assert_eq(out["demand"], _json(jumped.to_dict()), "one step over the whole gap")
+	assert_true(absf(float(out["demand"]["renown"]) - stepped.renown) <= 1e-9 * maxf(1.0, stepped.renown),
+		"the same renown as five separate mornings, to rounding")
 	assert_eq(int(out["demand"]["last_award_day"]), int(sections["demand"]["last_award_day"]),
 		"no close ran while frozen")
+
+
+func test_a_long_gap_costs_one_step() -> void:
+	var sections: Dictionary = SiteThawFixture.sections()
+	var started: int = Time.get_ticks_msec()
+	var out: Dictionary = _thaw(sections, F + 10000000)
+	assert_false(out.is_empty())
+	assert_true(Time.get_ticks_msec() - started < 2000, "ten million days thaw at once")
+
+
+func test_demand_frozen_on_another_day_is_refused() -> void:
+	var sections: Dictionary = {"demand": _json(DemandState.legacy_for_day(F - 1).to_dict())}
+	assert_true(SiteThaw.thaw(sections, F, F, SiteThawTunings.authored()).is_empty())
+	assert_true(SiteThaw.thaw(sections, F, F + 2, SiteThawTunings.authored()).is_empty())
+
+
+func test_a_delivery_day_past_the_32_bit_range_is_refused() -> void:
+	var sections: Dictionary = SiteThawFixture.sections()
+	assert_false((sections["deliveries"]["orders"] as Array).is_empty(), "the fixture has a delivery waiting")
+	assert_true(SiteThaw.thaw(sections, F, F + 2147483647, SiteThawTunings.authored()).is_empty())
 
 
 func test_no_renown_ages_to_today_with_no_work() -> void:
