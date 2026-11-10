@@ -2281,7 +2281,7 @@ invalidate the appropriate cached geometry. HUD/Menu presentation is read-only.
   `waited_too_long`. A shop without a counter takes no new branch and draws
   nothing extra (`test_a_cafe_without_a_counter_keeps_its_table_service_exactly`
   replays a recorded café). Probe set-up `coffee_counter` is `coffee_shop` plus a
-  counter continuing the bar along row 7 (x 13-14). Over ten seeds and five
+  counter continuing the bar along its row (7, or 8 in the deeper room; x 13-14). Over ten seeds and five
   days it serves 93.8 guests against `coffee_shop`'s 88.0 (sales 558 vs 524,
   profit 98 vs 67): the till order is half as long and the server never walks to
   a table to take it, a takeaway is handed over at the counter, and a full house

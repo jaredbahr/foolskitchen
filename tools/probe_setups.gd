@@ -117,9 +117,9 @@ static func _neglected(main: Node) -> bool:
 ## expanded_tables, so level-two pieces too), stocked at the normal price.
 ##
 ## With `counter` (#293, coffee_counter) the same shop also has an order counter
-## continuing the bar's line along row 7 (x 13 and 14): the till's staff side is
+## continuing the bar's line along its row (7, or 8 in the deeper room; x 13 and 14): the till's staff side is
 ## the end of the bar's back row, three steps from the coffee machines, its guests
-## stand on row 8 and the queue runs down column 13 and along the south wall.
+## stand on the row below and the queue runs down column 13 and along the south wall.
 static func _coffee_shop(main: Node, counter: bool = false) -> bool:
 	var editor: ShopEditor = _free_editor(main)
 	if editor == null or not _clear_east_table(main, editor) or not _concept_west_table(main, editor):
@@ -196,8 +196,8 @@ static func _storage_shelves(editor: ShopEditor) -> bool:
 	return editor.buy(&"storage_shelf", Vector2i(11, 1), 2) and editor.buy(&"storage_shelf", Vector2i(12, 1), 2)
 
 
-## A counter along row 7 from x0 to x1 (guests to the south on stools at row
-## 8, staff behind it on row 6): an end piece at the open west end.
+## A counter along `row` from x0 to x1 (guests to the south on stools at row + 1,
+## staff behind it on row - 1): an end piece at the open west end.
 static func _counter_with_stools(editor: ShopEditor, x0: int, x1: int, row: int = 7) -> bool:
 	for x: int in range(x0, x1 + 1):
 		var piece: StringName = &"bar_end_right" if x == x0 else &"bar_section"
