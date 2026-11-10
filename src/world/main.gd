@@ -2784,8 +2784,10 @@ func _restore_collection_toasts(data: Dictionary) -> bool:
 		if typeof(raw) != TYPE_STRING:
 			return false
 		var id: StringName = StringName(raw)
+		# A collection renamed or removed in a later version is simply
+		# forgotten: it must never make an old save unloadable.
 		if not known.has(id) or seen.has(id):
-			return false
+			continue
 		seen[id] = true
 		staged.append(id)
 	_loaded_collection_toast_ids = staged

@@ -106,8 +106,7 @@ func _make_tooltip(result: VibeModel.Result) -> String:
 				lines.append("Collection: %s — %s (+%d)" % [entry.definition.display_name,
 					entry.definition.short_line, roundi(entry.definition.bonus)])
 		if result.collection_nominal_bonus > 0.0:
-			lines.append("Collections: +%d effective (%d nominal)" % [
-				roundi(result.collection_points), roundi(result.collection_nominal_bonus)])
+			lines.append("Collections: +%d in total" % roundi(result.collection_points))
 		if result.collection_nominal_bonus > result.collection_cap:
 			lines.append("Collections capped at +%d total." % roundi(result.collection_cap))
 	return "\n".join(lines)

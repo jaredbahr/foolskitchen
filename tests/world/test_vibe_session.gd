@@ -300,9 +300,12 @@ func test_laid_floor_on_bought_outdoor_patio_counts_for_collection() -> void:
 func test_legacy_and_invalid_collection_toast_sections_are_handled_atomically() -> void:
 	var main: Node = await _start()
 	main.set("_shown_collection_toast_ids", [&"diner_classics"] as Array[StringName])
-	assert_false(main.call("_restore_collection_toasts", {"shown_ids": ["unknown_collection"]}))
+	assert_false(main.call("_restore_collection_toasts", {"shown_ids": [42]}))
 	assert_eq(main.get("_shown_collection_toast_ids"), [&"diner_classics"] as Array[StringName],
 		"an invalid provider payload cannot partially replace live acknowledgements")
+	assert_true(main.call("_restore_collection_toasts", {"shown_ids": ["renamed_collection", "diner_classics"]}),
+		"a collection that no longer exists is forgotten, not a broken save")
+	assert_eq(main.get("_loaded_collection_toast_ids"), [&"diner_classics"] as Array[StringName])
 	main.set("_shown_collection_toast_ids", [] as Array[StringName])
 	main.call("_update_collection_toasts", _completed_diner_result(main))
 	main.call("_begin_morning")
@@ -315,7 +318,7 @@ func test_legacy_and_invalid_collection_toast_sections_are_handled_atomically() 
 		"legacy saves default to no previously shown collection notices")
 	_close(old_save)
 	var broken: Dictionary = JSON.parse_string(_saved_text()) as Dictionary
-	broken["data"]["collection_toasts"] = {"shown_ids": ["unknown_collection"]}
+	broken["data"]["collection_toasts"] = {"shown_ids": [42]}
 	_write_save_document(broken)
 	var unchanged: String = _saved_text()
 	var failing: Node = await _start()

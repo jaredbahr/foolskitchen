@@ -121,7 +121,7 @@ func test_collection_tooltip_explains_nominal_set_rewards_and_total_cap() -> voi
 	var tooltip: String = _meter.caption_label.tooltip_text
 	assert_true(tooltip.contains("Collection: Diner Classics — A little moment of comfort. (+2)"))
 	assert_true(tooltip.contains("Collection: Patio Picnic — A little moment of comfort. (+2)"))
-	assert_true(tooltip.contains("Collections: +3 effective (8 nominal)"))
+	assert_true(tooltip.contains("Collections: +3 in total"))
 	assert_true(tooltip.contains("Collections capped at +3 total"),
 		"the tooltip uses the cap in the actual vibe result")
 
