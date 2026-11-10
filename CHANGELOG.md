@@ -12,6 +12,7 @@ Each line ends with its PR number.
 
 ### Players
 - Seasons change every 28 days, bringing lower and higher ingredient purchase prices. The date names the season, Stock marks seasonal ingredients, and dish details point out ingredients in season. (#395)
+- A new Mediterranean seaside song, "Coastal Afternoon", is in the game files. It will play in seafood restaurants and the seaside café once those music themes arrive. (#396)
 - A busy service with lots of happy guests can now draw a trending food post. The evening report names the dish, and Menu shows the extra demand, which fades over the next three open services. (#392)
 - Complete six themed decor collections for two vibe points each, up to six collection points total. Each set asks for specific furniture and a matching floor somewhere in the shop. (#393)
 - Name a best-selling dish as your house signature, marked with an asterisk on its menu board and a small crowd boost while it is on the menu. (#394)
