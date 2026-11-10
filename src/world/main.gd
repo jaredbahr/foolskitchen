@@ -30,6 +30,7 @@ const MESS_TUNING: MessTuning = preload("res://data/balance/messes.tres")
 const CLEANLINESS_TUNING: CleanlinessTuning = preload("res://data/balance/cleanliness.tres")
 const WEATHER_TUNING: WeatherTuning = preload("res://data/balance/weather.tres")
 const DEMAND_TUNING: DemandTuning = preload("res://data/balance/demand.tres")
+const SIGNATURE_TUNING: SignatureTuning = preload("res://data/balance/signature.tres")
 const DAY_LIGHT: DayLightTuning = preload("res://data/look/day_light.tres")
 const CURB_APPEAL_TUNING: CurbAppealTuning = preload("res://data/balance/curb_appeal.tres")
 const REVIEW_TUNING: ReviewTuning = preload("res://data/balance/reviews.tres")
@@ -95,6 +96,8 @@ var _blueprint_load_notes: Array[String] = []
 ## Cookable dishes/prices belong to this shop, never to shared recipe resources.
 var menu_settings: MenuSettings
 var daily_special: DailySpecial = DailySpecial.new()
+## Full-catalogue paid sales and the named house dish; saved only at morning.
+var signature_state: SignatureState
 var staff_roster: StaffRoster
 var _staff_notice_day: int = 0
 var _staff_notices: Array[Dictionary] = []
@@ -148,6 +151,7 @@ var _base_layout: ShopLayout = LAYOUT
 var _loaded_layout: ShopLayout = null
 var _loaded_menu: MenuSettings = null
 var _loaded_daily_special: Variant = null
+var _loaded_signature: SignatureState = null
 var _loaded_staff: StaffRoster = null
 var _loaded_plates: PlateLedger = null
 var _loaded_reputation: ReputationBook = null
@@ -294,6 +298,10 @@ func initialize() -> void:
 	if not load_errors.is_empty():
 		push_error("Cannot load shop content: %s" % [load_errors])
 		return
+	var known_recipe_ids: Array[StringName] = []
+	for recipe: RecipeDef in content.recipes():
+		known_recipe_ids.append(recipe.id)
+	signature_state = SignatureState.new(known_recipe_ids)
 	var errors: Array[String] = []
 	staff_roster = StaffRoster.new(TUNING)
 	sim = RestaurantSim.create(_starter_layout(), content, 1, errors, null, true, false, staff_roster.members())
@@ -428,6 +436,8 @@ func _bind_world_presentation() -> void:
 		_menu_panel.enable_requested.connect(_on_menu_enable_requested)
 		_menu_panel.price_requested.connect(_on_menu_price_requested)
 		_menu_panel.settings_requested.connect(_on_menu_settings_requested)
+	if not _menu_panel.signature_requested.is_connected(_on_menu_signature_requested):
+		_menu_panel.signature_requested.connect(_on_menu_signature_requested)
 	if not _menu_panel.restaurant_name_requested.is_connected(_on_restaurant_name_requested):
 		_menu_panel.restaurant_name_requested.connect(_on_restaurant_name_requested)
 	if not _menu_panel.goals_requested.is_connected(_on_menu_goals_requested):
@@ -617,6 +627,7 @@ func start() -> void:
 	SaveSystem.register("blueprints", _capture_blueprints, _restore_blueprints)
 	SaveSystem.register("menu", _capture_menu, _restore_menu)
 	SaveSystem.register("daily_special", _capture_daily_special, _restore_daily_special)
+	SaveSystem.register("signature", _capture_signature, _restore_signature)
 	SaveSystem.register("staff", _capture_staff, _restore_staff)
 	SaveSystem.register("plates", _capture_plates, _restore_plates)
 	SaveSystem.register("reviews", _capture_reviews, _restore_reviews)
@@ -1431,10 +1442,14 @@ func _refresh_demand() -> void:
 	if sim == null or _demand_day != Clock.sim.day or menu_settings == null \
 			or not vibe_result.valid:
 		return
+	var signature_id: StringName = _effective_signature_id()
+	var signature_recipe: RecipeDef = content.recipe(signature_id) if not signature_id.is_empty() else null
 	var next: DemandBreakdown = DemandBreakdown.evaluate(demand_tuning,
 		_demand_reputation, _demand_renown, _demand_enabled_dishes(),
 		vibe_result.score, _demand_day, _street_factor(_demand_day),
-		viral_review.factor(_demand_day))
+		viral_review.factor(_demand_day),
+		_effective_signature_factor(),
+		signature_recipe.display_name if signature_recipe != null else "")
 	if next == null or not sim.set_demand_factor(next.total):
 		return
 	_demand_breakdown = next
@@ -1456,6 +1471,27 @@ func _demand_enabled_dishes() -> int:
 	return unique.size()
 
 
+func _effective_signature_id() -> StringName:
+	if signature_state == null or menu_settings == null or content == null:
+		return &""
+	var selected: StringName = signature_state.signature_recipe_id()
+	return selected if not selected.is_empty() and menu_settings.is_enabled(selected) \
+		and content.recipe(selected) != null else &""
+
+
+func _effective_signature_factor() -> float:
+	var selected: StringName = _effective_signature_id()
+	if selected.is_empty():
+		return 1.0
+	var enabled: Array[StringName] = [selected]
+	return signature_state.demand_factor(enabled, SIGNATURE_TUNING)
+
+
+func _sync_effective_signature() -> void:
+	if sim != null:
+		sim.effective_signature_recipe_id = _effective_signature_id()
+
+
 func current_demand_snapshot() -> Dictionary:
 	return _demand_breakdown.to_dict() if _demand_breakdown != null else {}
 
@@ -1470,10 +1506,14 @@ func forecast_next_demand() -> Dictionary:
 	if not projected.from_dict(demand_state.to_dict()) \
 			or not projected.begin_morning(Clock.sim.day + 1, demand_tuning):
 		return {}
+	var signature_id: StringName = _effective_signature_id()
+	var signature_recipe: RecipeDef = content.recipe(signature_id) if not signature_id.is_empty() else null
 	var next: DemandBreakdown = DemandBreakdown.evaluate(demand_tuning,
 		reputation.average(), projected.renown, _demand_enabled_dishes(),
 		vibe_result.score, projected.day, _street_factor(projected.day),
-		viral_review.factor(projected.day))
+		viral_review.factor(projected.day),
+		_effective_signature_factor(),
+		signature_recipe.display_name if signature_recipe != null else "")
 	if next == null:
 		return {}
 	var result: Dictionary = next.to_dict()
@@ -2566,6 +2606,10 @@ func _new_game() -> void:
 	_loaded_menu = null
 	_loaded_daily_special = null
 	daily_special = DailySpecial.new()
+	_loaded_signature = null
+	if signature_state != null:
+		signature_state.clear()
+	sim.effective_signature_recipe_id = &""
 	_loaded_staff = null
 	_loaded_reputation = null
 	reputation = ReputationBook.new()
@@ -2629,6 +2673,7 @@ func _load_autosave_sections() -> bool:
 	_loaded_layout = null
 	_loaded_menu = null
 	_loaded_daily_special = null
+	_loaded_signature = null
 	_loaded_staff = null
 	_loaded_plates = null
 	_loaded_reputation = null
@@ -2713,6 +2758,8 @@ func _load_autosave_sections() -> bool:
 			return false
 	else:
 		restored_special.begin_morning(Clock.sim.day)
+	var loaded_signature: SignatureState = _loaded_signature if _loaded_signature != null \
+		else _new_signature_state()
 	var employees: StaffRoster = _loaded_staff if _loaded_staff != null else StaffRoster.new(TUNING)
 	if employees.candidate_day > Clock.sim.day:
 		return false
@@ -2762,6 +2809,7 @@ func _load_autosave_sections() -> bool:
 	menu_settings = choices
 	daily_special = restored_special
 	_loaded_daily_special = null
+	signature_state = loaded_signature
 	# The saved layout lists every station; drinks at a station staff cannot
 	# reach stay off the live menu (and out of the next save), as in play.
 	var enabled: Array[RecipeDef] = menu_settings.enabled_recipes()
@@ -2770,6 +2818,7 @@ func _load_autosave_sections() -> bool:
 	_track_menu_access_losses(enabled, cookable)
 	menu_settings.clear_stash()
 	_apply_menu(sim, menu_settings)
+	_sync_effective_signature()
 	_bind_world_presentation()
 	milestones = career
 	weekly_challenge = _loaded_weekly_challenge if _loaded_weekly_challenge != null \
@@ -2905,6 +2954,26 @@ func _on_collection_toast_shown(collection_id: StringName) -> void:
 
 func _capture_demand() -> Dictionary:
 	return demand_state.to_dict()
+
+
+func _new_signature_state() -> SignatureState:
+	var known_recipe_ids: Array[StringName] = []
+	if content != null:
+		for recipe: RecipeDef in content.recipes():
+			known_recipe_ids.append(recipe.id)
+	return SignatureState.new(known_recipe_ids)
+
+
+func _capture_signature() -> Dictionary:
+	return signature_state.to_dict() if signature_state != null else {}
+
+
+func _restore_signature(data: Dictionary) -> bool:
+	var restored: SignatureState = _new_signature_state()
+	if not restored.from_dict(data, Clock.sim.day, SIGNATURE_TUNING):
+		return false
+	_loaded_signature = restored
+	return true
 
 
 func _restore_demand(data: Dictionary) -> bool:
@@ -3876,6 +3945,7 @@ func _apply_menu(restaurant: RestaurantSim, choices: MenuSettings) -> void:
 	$HUD.set_special(DailySpecialText.name_for(daily_special.recipe_id(), restaurant.menu))
 	if _menu_panel != null:
 		_menu_panel.set_special(daily_special.recipe_id())
+	restaurant.effective_signature_recipe_id = _effective_signature_id()
 	$HUD.set_restaurant_name(choices.restaurant_name())
 	($ShopView as ShopView).set_restaurant_name(choices.restaurant_name())
 	_refresh_menu_boards()
@@ -3897,7 +3967,8 @@ func _refresh_menu_boards() -> void:
 			prices[recipe.id] = menu_settings.price_of(recipe)
 		view.wall_finish_view.set_menu_board_content(menu_settings.restaurant_name(),
 			menu_settings.enabled_recipes(), prices,
-			DailySpecialText.name_for(daily_special.recipe_id(), menu_settings.enabled_recipes()))
+			DailySpecialText.name_for(daily_special.recipe_id(), menu_settings.enabled_recipes()),
+			signature_state.signature_recipe_id() if signature_state != null else &"")
 
 
 func can_edit_menu() -> bool:
@@ -3923,10 +3994,22 @@ func menu_set_enabled(recipe_id: StringName, enabled: bool) -> bool:
 	if not menu_settings.set_enabled(recipe_id, enabled):
 		return false
 	_apply_menu(sim, menu_settings)
+	_sync_effective_signature()
 	_refresh_menu_details()
 	if was_enabled != menu_settings.is_enabled(recipe_id):
 		_recompute_vibe()
 		_refresh_stock_panel()
+	return true
+
+
+func menu_set_signature(recipe_id: StringName) -> bool:
+	if not can_edit_menu() or signature_state == null \
+			or not signature_state.select(recipe_id, Clock.sim.day, Clock.sim.phase, SIGNATURE_TUNING):
+		return false
+	_sync_effective_signature()
+	_refresh_menu_boards()
+	_refresh_menu_details()
+	_refresh_demand()
 	return true
 
 
@@ -4201,6 +4284,10 @@ func _on_menu_enable_requested(recipe_id: StringName, enabled: bool) -> void:
 	# menu_set_enabled refreshes the dish details once when it accepts.
 	menu_set_enabled(recipe_id, enabled)
 	_menu_panel.set_drink_hints(drink_station_hints())
+
+
+func _on_menu_signature_requested(recipe_id: StringName) -> void:
+	menu_set_signature(recipe_id)
 
 
 func _on_menu_price_requested(recipe_id: StringName, price: int) -> void:
@@ -5351,6 +5438,8 @@ func _on_customer_paid(customer: CustomerAgent, order: Order, amount: int) -> vo
 		if tip > 0:
 			Economy.add_cash(tip, Ledger.TIP)
 	dishes_sold_today[order.recipe_id] = dishes_sold_today.get(order.recipe_id, 0) + 1
+	if signature_state != null:
+		signature_state.record_sale(order.recipe_id)
 	_refresh_goals()
 
 
@@ -5659,7 +5748,20 @@ func menu_recipe_details() -> Dictionary[StringName, Dictionary]:
 		other.append({"text": "Menu space: %d / %d dishes" % [menu_settings.enabled_count(), menu_settings.menu_limit()], "met": room})
 		var quality: Dictionary = _menu_quality.get(recipe.id, {})
 		var expected: DishQuality = _expected_dish_quality(recipe)
+		var selected: bool = signature_state != null \
+			and signature_state.signature_recipe_id() == recipe.id
+		var signature_details: Dictionary = {"sales": signature_state.sales_for(recipe.id) if signature_state != null else 0,
+			"unlock_sales": SIGNATURE_TUNING.signature_unlock_sales,
+			"selected": selected,
+			"eligible": signature_state.eligible(recipe.id, SIGNATURE_TUNING) if signature_state != null else false,
+			"can_select": signature_state.can_select(recipe.id, Clock.sim.day, Clock.sim.phase,
+				SIGNATURE_TUNING) if signature_state != null and Clock.sim != null else false,
+			"next_change_day": signature_state.last_changed_day() + SIGNATURE_TUNING.change_cooldown_days
+				if signature_state != null and not signature_state.signature_recipe_id().is_empty() else 0,
+			"cooldown_days": SIGNATURE_TUNING.change_cooldown_days,
+			"is_morning": Clock.sim != null and Clock.sim.phase == SimClock.Phase.MORNING}
 		rows[recipe.id] = {"equipment": equipment, "ingredients": ingredients, "other": other,
+			"signature": signature_details,
 			"quality_breakdown": expected.explanation() if expected != null else "No available worker or reachable station",
 			"quality": quality.get("quality", recipe.base_quality),
 			"quality_source": "%d served dishes on day %d" % [quality.get("count", 0), quality.get("day", 0)]

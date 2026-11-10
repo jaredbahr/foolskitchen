@@ -419,6 +419,18 @@ static func public_demand_forecast(value: Variant) -> Dictionary:
 			return {}
 		if float(viral) > 1.0:
 			result["viral"] = float(viral)
+	if forecast.has("signature") != forecast.has("signature_name"):
+		return {}
+	if forecast.has("signature"):
+		var signature_factor: Variant = forecast["signature"]
+		var signature_name: Variant = forecast["signature_name"]
+		if (typeof(signature_factor) != TYPE_INT and typeof(signature_factor) != TYPE_FLOAT) \
+				or not is_finite(float(signature_factor)) or float(signature_factor) <= 0.0 \
+				or typeof(signature_name) != TYPE_STRING \
+				or String(signature_name).strip_edges().is_empty():
+			return {}
+		result["signature"] = float(signature_factor)
+		result["signature_name"] = String(signature_name).strip_edges()
 	return result
 
 

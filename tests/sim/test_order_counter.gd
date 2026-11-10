@@ -160,6 +160,9 @@ func test_a_takeaway_guest_pays_leaves_with_the_drink_and_never_sits() -> void:
 	for guest: CustomerAgent in guests:
 		assert_true(guest.takeaway)
 		assert_true(guest.paid, "paid at the counter")
+		assert_true(guest.departure_recorded)
+		assert_true(guest.review_visit(_content.recipe(guest.order.recipe_id).standard_price).consumed_recipe_ids.is_empty(),
+			"paid takeaway food is not an eaten signature")
 		assert_eq(_left[guest.id], &"happy")
 		assert_eq(guest.order.state, Order.State.DELIVERED)
 		assert_true(guest.seat_cell == PICKUP_CELL or guest.seat_cell == ORDER_CELL, "collected at the counter")
@@ -218,6 +221,8 @@ func test_a_takeaway_pastry_takes_no_plate_and_leaves_nothing_to_clear() -> void
 	assert_eq(_sim.kitchen.in_use_plates, 0, "no plate left the shelf")
 	assert_true(_sim.kitchen.dirty_tables.is_empty())
 	assert_eq(_paid_orders.size(), 2, "coffee and pastry were both paid")
+	assert_true(guest.review_visit(_content.recipe(&"coffee").standard_price).consumed_recipe_ids.is_empty(),
+		"even a delivered and paid takeaway side was not eaten at the shop")
 
 
 func test_the_queue_never_shares_a_cell_and_waits_clear_of_the_door() -> void:

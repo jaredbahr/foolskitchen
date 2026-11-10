@@ -28,7 +28,7 @@ static func selected_section(menu: Array[RecipeDef], requested: int = -1) -> int
 
 
 static func text(restaurant_name: String, menu: Array[RecipeDef], requested: int = -1,
-		special_name: String = "") -> String:
+		special_name: String = "", signature_recipe_id: StringName = &"") -> String:
 	var section: int = selected_section(menu, requested)
 	var name: String = _one_line(restaurant_name)
 	if name.is_empty():
@@ -48,7 +48,10 @@ static func text(restaurant_name: String, menu: Array[RecipeDef], requested: int
 	else:
 		var dish_limit: int = MAX_DISHES - 1 if not special.is_empty() else MAX_DISHES
 		for index: int in mini(dishes.size(), dish_limit):
-			lines.append(_fit("• " + _one_line(dishes[index].display_name)))
+			# The board font has no star glyph, so the signature dish swaps its
+			# bullet for an asterisk.
+			var bullet: String = "* " if dishes[index].id == signature_recipe_id else "• "
+			lines.append(_fit(bullet + _one_line(dishes[index].display_name)))
 	return "\n".join(lines)
 
 
