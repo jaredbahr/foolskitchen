@@ -683,7 +683,14 @@ func start() -> void:
 ## with a fresh sim: the signal connections here are not guarded against a
 ## second call on the same sim, and the clock must be detached first, as in
 ## start().
+##
+## It also tells Economy which site is active, so every ledger entry from here
+## on is that site's (FK-087). A switch must set site_book.active_id before
+## calling this, and call this before the arriving site's morning.
 func _wire_session() -> bool:
+	if not Economy.set_active_site(site_book.active_id):
+		push_error("Cannot book money to the active site")
+		return false
 	world.clock = Clock.sim
 	sim.stock = Economy.stock
 	sim.use_rng(GameState.rng(&"customers"))
@@ -2463,7 +2470,8 @@ func build_report(day: int) -> DayReport:
 		report.viral_line = ViralReviewText.evening(best.display_name if best != null else "food")
 	report.booking_lines = sim.booking_report_lines.duplicate()
 	report.loan_first_advance = _loan_notice_day == day
-	var totals: Dictionary = Economy.ledger.day_totals(day)
+	# Only this site's books (FK-087): another site's morning stays in its own.
+	var totals: Dictionary = Economy.ledger.day_totals(day, Economy.active_site)
 	for category: StringName in totals:
 		var amount: int = totals[category]
 		if amount > 0:
@@ -2475,7 +2483,7 @@ func build_report(day: int) -> DayReport:
 	report.food_cost_recorded = bool(_food_cost_today["recorded"])
 	# Gross purchases remain visible even when a cancelled order was refunded.
 	var bought: Dictionary = PurchaseBasis.zero()
-	for entry: Dictionary in Economy.ledger.entries_for_day(day):
+	for entry: Dictionary in Economy.ledger.entries_for_day(day, Economy.active_site):
 		if entry["category"] == Ledger.INGREDIENTS and int(entry["amount"]) < 0:
 			PurchaseBasis.combine(bought, {"cost": -int(entry["amount"]), "recorded": true})
 	report.stock_bought = int(bought["cost"])
@@ -5280,7 +5288,7 @@ func stock_notes() -> Array[String]:
 	# Read back from today's ledger, so a reloaded morning still shows it.
 	var list_total: int = 0
 	var premium: int = 0
-	for entry: Dictionary in Economy.ledger.entries_for_day(Clock.sim.day):
+	for entry: Dictionary in Economy.ledger.entries_for_day(Clock.sim.day, Economy.active_site):
 		if entry["category"] != Ledger.INGREDIENTS:
 			continue
 		var note: String = String(entry["note"])
@@ -5570,11 +5578,14 @@ func _on_service_closed(day: int) -> void:
 	_settle_due_booking_at_close(day)
 	# Capture business profit before milestone cash, the weekly reward or
 	# financing enters the books, excluding booking advances/refunds so those
-	# customer liabilities cannot earn profit awards.
-	var day_movements: Dictionary = Economy.ledger.day_totals(day)
-	var operating_profit: int = Economy.ledger.day_profit(day) \
-		- int(day_movements.get(Ledger.BOOKING_DEPOSIT, 0)) \
-		- int(day_movements.get(Ledger.BOOKING_REFUND, 0))
+	# customer liabilities cannot earn profit awards. Only the active site's
+	# entries count (FK-087), and other sites' money never does.
+	var site: StringName = Economy.active_site
+	var day_movements: Dictionary = Economy.ledger.day_totals(day, site)
+	var operating_profit: int = Economy.ledger.day_profit(day, site)
+	for category: StringName in [Ledger.BOOKING_DEPOSIT, Ledger.BOOKING_REFUND,
+			Ledger.AWAY_SITE_INCOME, Ledger.AWAY_SITE_RENT, Ledger.LOT_PURCHASE, Ledger.RENOVATION]:
+		operating_profit -= int(day_movements.get(category, 0))
 	var closing_observation: MilestoneDay = _milestone_observation(operating_profit)
 	_award_weekly_challenge(closing_observation)
 	staff_roster.close_growth_day()
