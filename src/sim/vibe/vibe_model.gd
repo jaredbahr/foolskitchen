@@ -35,6 +35,8 @@ class Inputs extends RefCounted:
 	var floor_cells: Array[Vector2i] = []
 	var wall_paint_theme_tags: Array[StringName] = []
 	var floor_paint_theme_tags: Array[StringName] = []
+	## The exact shared collection snapshot shown by Goals and used for score.
+	var collection_result: CollectionModel.Result
 
 ## Transient readable breakdown and bounded effects. No result is serialized.
 ## Invalid input returns a neutral result, without partially computed effects.
@@ -46,6 +48,10 @@ class Result extends RefCounted:
 	var variety_points: float = 0.0
 	var theme_points: float = 0.0
 	var lamp_points: float = 0.0
+	var collection_points: float = 0.0
+	var collection_nominal_bonus: float = 0.0
+	var collection_cap: float = 0.0
+	var collection_result: CollectionModel.Result
 	var crowding_penalty: float = 0.0
 	var active_theme: StringName = &""
 	var theme_label: String = ""
@@ -101,7 +107,15 @@ static func evaluate(inputs: Inputs, tuning: VibeTuning) -> Result:
 	var collected: _Collected = _collect(inputs, tuning)
 	if not collected.reason.is_empty():
 		return _invalid(collected.reason)
+	if inputs.collection_result != null and (not inputs.collection_result.valid \
+			or not is_finite(inputs.collection_result.nominal_bonus) \
+			or inputs.collection_result.nominal_bonus < 0.0):
+		return _invalid("The collection progress is invalid")
 	var result: Result = Result.new()
+	result.collection_result = inputs.collection_result
+	result.collection_cap = tuning.max_collection_bonus
+	result.collection_nominal_bonus = inputs.collection_result.nominal_bonus \
+		if inputs.collection_result != null else 0.0
 	result.theme_label = tuning.no_theme_label
 	var themes: _Themes = _Themes.new()
 	for theme: StringName in tuning.theme_order:
@@ -181,8 +195,9 @@ static func evaluate(inputs: Inputs, tuning: VibeTuning) -> Result:
 	var crowding_fraction: float = clampf((result.crowding_density - tuning.crowding_start_density) \
 		/ (1.0 - tuning.crowding_start_density), 0.0, 1.0)
 	result.crowding_penalty = crowding_fraction * tuning.crowding_cap
+	result.collection_points = minf(result.collection_nominal_bonus, result.collection_cap)
 	result.score = clampf(result.decor_points + result.variety_points + result.theme_points \
-		+ result.lamp_points - result.crowding_penalty, 0.0, tuning.score_cap)
+		+ result.lamp_points + result.collection_points - result.crowding_penalty, 0.0, tuning.score_cap)
 	var strength: float = result.score / tuning.score_cap
 	result.patience_multiplier = 1.0 + strength * tuning.max_patience_bonus
 	result.raw_review_bonus = strength * tuning.max_review_bonus

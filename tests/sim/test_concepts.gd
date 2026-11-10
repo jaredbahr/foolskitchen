@@ -257,6 +257,14 @@ func test_a_coffee_guest_may_add_a_pastry_and_has_it_with_the_coffee() -> void:
 	assert_eq(_content.recipe(&"croissant").menu_section(), RecipeDef.Section.BAKERY)
 	assert_true(_content.recipe(&"croissant").with_drinks)
 	_sim.menu = [_content.recipe(&"coffee"), _content.recipe(&"croissant")] as Array[RecipeDef]
+	var authored_reviews: ReviewTuning = preload("res://data/balance/reviews.tres") as ReviewTuning
+	var review_tuning: ReviewTuning = authored_reviews.duplicate() as ReviewTuning
+	review_tuning.review_chance = 1.0
+	var quotes: ReviewQuotes = preload("res://data/reviews/quotes.tres") as ReviewQuotes
+	var review_rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	review_rng.seed = 83012
+	_sim.configure_reviews(ReputationBook.new(), review_tuning, quotes, review_rng)
+	_sim.effective_signature_recipe_id = &"croissant"
 	var kind: CustomerType = CustomerType.new()
 	kind.id = &"peckish"
 	kind.display_name = "Peckish"
@@ -267,8 +275,13 @@ func test_a_coffee_guest_may_add_a_pastry_and_has_it_with_the_coffee() -> void:
 	guest.food_patience = 5000
 	assert_true(_sim.world.clock.start_service())
 	var ate_before_pastry: bool = false
+	var checked_early_review: bool = false
 	for tick: int in range(MAX_TICKS):
 		_sim.advance()
+		if guest.state == CustomerAgent.State.EATING and not checked_early_review:
+			assert_true(guest.review_visit(_content.recipe(&"coffee").standard_price).consumed_recipe_ids.is_empty(),
+				"entering EATING is not a completed meal")
+			checked_early_review = true
 		if guest.state == CustomerAgent.State.EATING and guest.extra_order != null \
 				and guest.extra_order.state != Order.State.DELIVERED:
 			ate_before_pastry = true
@@ -278,13 +291,30 @@ func test_a_coffee_guest_may_add_a_pastry_and_has_it_with_the_coffee() -> void:
 	assert_not_null(guest.extra_order)
 	assert_eq(guest.extra_order.recipe_id, &"croissant")
 	assert_false(ate_before_pastry, "the coffee waits for its croissant")
+	assert_true(checked_early_review)
+	assert_true(guest.paid)
+	assert_true(guest.departure_recorded, "the real tick path paid and recorded departure")
 	assert_eq(_paid, [&"coffee", &"croissant"] as Array[StringName])
+	assert_eq(guest.review_visit(_content.recipe(&"coffee").standard_price).consumed_recipe_ids,
+		[&"coffee", &"croissant"] as Array[StringName])
+	assert_eq(_sim.reviews_today.size(), 1)
+	assert_true(int(_sim.reviews_today[0]["stars"]) >= 4)
+	assert_true(quotes.groups[&"signature_dish"].has(_sim.reviews_today[0]["quote"]),
+		"the real side reached the paid departure's positive quote")
 	assert_true(_sim.kitchen.is_clean(), "the plate came back and the seat was cleared")
 
 
 func test_a_slow_pastry_is_dropped_and_the_coffee_still_paid() -> void:
 	_build(_bar_layout())
 	_sim.menu = [_content.recipe(&"coffee"), _content.recipe(&"croissant")] as Array[RecipeDef]
+	var authored_reviews: ReviewTuning = preload("res://data/balance/reviews.tres") as ReviewTuning
+	var review_tuning: ReviewTuning = authored_reviews.duplicate() as ReviewTuning
+	review_tuning.review_chance = 1.0
+	var quotes: ReviewQuotes = preload("res://data/reviews/quotes.tres") as ReviewQuotes
+	var review_rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	review_rng.seed = 83013
+	_sim.configure_reviews(ReputationBook.new(), review_tuning, quotes, review_rng)
+	_sim.effective_signature_recipe_id = &"croissant"
 	var kind: CustomerType = CustomerType.new()
 	kind.id = &"peckish"
 	kind.display_name = "Peckish"
@@ -307,6 +337,12 @@ func test_a_slow_pastry_is_dropped_and_the_coffee_still_paid() -> void:
 	assert_eq(_left.get(guest.id), &"happy", "the guest stayed for the coffee")
 	assert_eq(guest.extra_order.state, Order.State.CANCELLED)
 	assert_eq(_paid, [&"coffee"] as Array[StringName])
+	assert_true(guest.departure_recorded)
+	assert_eq(guest.review_visit(_content.recipe(&"coffee").standard_price).consumed_recipe_ids,
+		[&"coffee"] as Array[StringName], "the cancelled side was never eaten")
+	assert_eq(_sim.reviews_today.size(), 1)
+	assert_false(quotes.groups[&"signature_dish"].has(_sim.reviews_today[0]["quote"]),
+		"a cancelled side never licenses a signature quote")
 	assert_eq(_sim.kitchen.in_use_plates, 0)
 
 

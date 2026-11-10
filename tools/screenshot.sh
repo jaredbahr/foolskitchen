@@ -14,6 +14,7 @@
 # --lease-review=offer|short|expand --speed=0 --frames=12 captures exactly one declared lease state; offer/short also need --menu.
 # --loan-review --speed=0 --frames=12,90 captures an explicit loss fixture's bank report, then next-morning Loan HUD.
 # --milestone-review --speed=0 --frames=12,90 captures Goals, then an explicit close-data reward fixture.
+# --collections-review --speed=0 --frames=240 captures real derived collection ticks in Goals after the toast clears.
 # --catalogue-review=rustic|modern --speed=0 --frames=90,120 captures real previews, then the furnishing fixture.
 # --diner-review --speed=0 --frames=12,90 captures six native comparisons, then real seated diner guests.
 # --walls=place --speed=0 --frames=12 holds a dragged wall run (ghost + cost); --walls=room --open --fast=10 --speed=1 --frames=150 [--quarter=0] shows a built room, Walls Up or Cutaway.
@@ -29,6 +30,7 @@
 # --restroom-review --speed=0 --frames=12,30 shows two toilets, partitions, mirror and dryer, then person scale.
 # --blueprints=selection|ghost|stamped --speed=0 --frames=30 [--quarter=N] shows a table/rug box selection, rotated group ghost, or stamped pair.
 # --menu-boards-review --speed=0 --frames=12,30 shows a placed board and its inspector section choice, then the Menu theme readout.
+# --signature-review=menu|demand --speed=0 --frames=60 shows the actual selected signature UI and board, or one real service-day demand report.
 # Build previews use the production morning input API without buying or saving.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -45,8 +47,9 @@ window_size="1600x900"
 window_size_requested=false
 for a in "$@"; do
   [[ "$a" == --out=* ]] && out="${a#--out=}"
-  [[ "$a" == --settings || "$a" == --settings-world || "$a" == --shortcuts || "$a" == --loan-review || "$a" == --milestone-review || "$a" == --diner-review || "$a" == --menu-boards-review ]] && settings_capture=true
+  [[ "$a" == --settings || "$a" == --settings-world || "$a" == --shortcuts || "$a" == --loan-review || "$a" == --milestone-review || "$a" == --collections-review || "$a" == --diner-review || "$a" == --menu-boards-review ]] && settings_capture=true
   [[ "$a" == --catalogue-review=* ]] && settings_capture=true
+  [[ "$a" == --signature-review=* ]] && settings_capture=true
   if [[ "$a" == --lease-review* ]]; then
     settings_capture=true
     lease_capture=true

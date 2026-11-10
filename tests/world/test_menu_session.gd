@@ -87,6 +87,120 @@ func test_legacy_menu_section_loads_current_choices_with_default_name() -> void:
 	assert_true(choices.is_enabled(&"grilled_cheese"))
 
 
+func test_signature_selection_is_morning_only_and_waits_for_the_existing_autosave() -> void:
+	var first: Node = _start()
+	var state: SignatureState = first.get("signature_state") as SignatureState
+	assert_true(state.record_sale(&"burger", 150))
+	var saved_before: String = FileAccess.get_file_as_string(_path())
+	var books_before: Dictionary = Economy.ledger.to_dict()
+	var rng_before: int = GameState.rng(&"customers").state
+	assert_true(first.call("menu_set_signature", &"burger"))
+	assert_eq(state.signature_recipe_id(), &"burger")
+	assert_eq((first.get("sim") as RestaurantSim).effective_signature_recipe_id, &"burger")
+	assert_eq(FileAccess.get_file_as_string(_path()), saved_before)
+	assert_eq(Economy.ledger.to_dict(), books_before)
+	assert_eq(GameState.rng(&"customers").state, rng_before)
+	var details: Dictionary = first.call("menu_recipe_details")
+	assert_eq(details[&"burger"]["signature"]["sales"], 150)
+	assert_true(details[&"burger"]["signature"]["selected"])
+	assert_true((first.call("current_demand_snapshot") as Dictionary).has("signature"))
+	assert_true((first.call("forecast_next_demand") as Dictionary).has("signature"))
+	Clock.sim.phase = SimClock.Phase.OPEN
+	assert_false(first.call("menu_set_signature", &"grilled_cheese"))
+	assert_eq(state.signature_recipe_id(), &"burger")
+	# The normal next morning is the first save that may include this edit.
+	Clock.sim.phase = SimClock.Phase.MORNING
+	_next_morning()
+	assert_eq(_document()["data"]["signature"]["signature_id"], "burger")
+	_close(first)
+	var second: Node = _start()
+	assert_eq((second.get("signature_state") as SignatureState).sales_for(&"burger"), 150)
+	assert_eq((second.get("signature_state") as SignatureState).signature_recipe_id(), &"burger")
+	assert_eq((second.get("sim") as RestaurantSim).effective_signature_recipe_id, &"burger")
+
+
+func test_legacy_signature_section_defaults_and_malformed_present_section_fails_whole_load() -> void:
+	var first: Node = _start()
+	_next_morning()
+	var saved: Dictionary = _document()
+	saved["data"].erase("signature")
+	_write_document(saved)
+	_remove_backup()
+	_close(first)
+	var legacy: Node = _start()
+	assert_eq((legacy.get("signature_state") as SignatureState).to_dict()["signature_id"], "")
+	_close(legacy)
+	saved["data"]["signature"] = {}
+	_write_document(saved)
+	_remove_backup()
+	var rejected: Node = _start()
+	assert_eq(Clock.sim.day, 1, "a present malformed section must not partially restore the morning")
+	assert_eq((rejected.get("signature_state") as SignatureState).signature_recipe_id(), &"")
+
+
+func test_valid_signature_restore_is_staged_until_the_whole_morning_load_succeeds() -> void:
+	var main: Node = _start()
+	var live: SignatureState = main.get("signature_state") as SignatureState
+	var before_state: Dictionary = live.to_dict()
+	var before_demand: Dictionary = main.call("current_demand_snapshot")
+	var before_file: String = FileAccess.get_file_as_string(_path())
+	var staged: SignatureState = SignatureState.new([&"burger"] as Array[StringName])
+	assert_true(staged.record_sale(&"burger", 150))
+	assert_true(staged.select(&"burger", Clock.sim.day, SimClock.Phase.MORNING,
+		preload("res://data/balance/signature.tres") as SignatureTuning))
+	assert_true(main.call("_restore_signature", staged.to_dict()))
+	assert_eq(live.to_dict(), before_state)
+	assert_eq(main.call("current_demand_snapshot"), before_demand)
+	assert_eq((main.get("sim") as RestaurantSim).effective_signature_recipe_id, &"")
+	assert_eq(FileAccess.get_file_as_string(_path()), before_file)
+
+
+func test_disabling_selected_signature_removes_demand_line_then_reenabling_restores_it() -> void:
+	var main: Node = _start()
+	var model: SignatureState = main.get("signature_state") as SignatureState
+	var choices: MenuSettings = main.get("menu_settings") as MenuSettings
+	var burger: RecipeDef = (main.get("content") as ContentDB).recipe(&"burger")
+	var saved_before: String = FileAccess.get_file_as_string(_path())
+	var price_before: int = choices.price_of(burger)
+	var quality_before: float = burger.base_quality
+	var books_before: Dictionary = Economy.ledger.to_dict()
+	assert_true(model.record_sale(&"burger", 150))
+	assert_true(main.call("menu_set_signature", &"burger"))
+	var chosen_day: int = model.last_changed_day()
+	var active: Dictionary = main.call("forecast_next_demand")
+	assert_eq(active["signature"], 1.05)
+	assert_eq(active["signature_name"], burger.display_name)
+	assert_true(DemandText.factor_lines(active).has("Signature dish: Burger +5%"))
+	assert_true(main.call("menu_set_enabled", &"burger", false))
+	assert_eq((main.get("sim") as RestaurantSim).effective_signature_recipe_id, &"")
+	assert_eq(model.signature_recipe_id(), &"burger", "disabling does not erase the named choice")
+	assert_eq(model.sales_for(&"burger"), 150)
+	assert_eq(model.last_changed_day(), chosen_day)
+	var paused: Dictionary = main.call("current_demand_snapshot")
+	var paused_forecast: Dictionary = main.call("forecast_next_demand")
+	assert_false(paused.has("signature"))
+	assert_false(paused.has("signature_name"))
+	assert_false(paused_forecast.has("signature"))
+	assert_false(paused_forecast.has("signature_name"))
+	assert_false(DemandText.factor_lines(paused_forecast).has("Signature dish: Burger +5%"))
+	assert_true(main.call("menu_set_enabled", &"burger", true))
+	assert_eq((main.get("sim") as RestaurantSim).effective_signature_recipe_id, &"burger")
+	assert_eq(model.signature_recipe_id(), &"burger")
+	assert_eq(model.sales_for(&"burger"), 150)
+	assert_eq(model.last_changed_day(), chosen_day)
+	var resumed: Dictionary = main.call("current_demand_snapshot")
+	var resumed_forecast: Dictionary = main.call("forecast_next_demand")
+	assert_eq(resumed["signature"], 1.05)
+	assert_eq(resumed["signature_name"], burger.display_name)
+	assert_eq(resumed_forecast["signature"], 1.05)
+	assert_eq(resumed_forecast["signature_name"], burger.display_name)
+	assert_true(DemandText.factor_lines(resumed_forecast).has("Signature dish: Burger +5%"))
+	assert_eq(choices.price_of(burger), price_before)
+	assert_eq(burger.base_quality, quality_before)
+	assert_eq(Economy.ledger.to_dict(), books_before)
+	assert_eq(FileAccess.get_file_as_string(_path()), saved_before)
+
+
 func test_menu_edits_wait_for_next_morning_then_reload_without_recipe_mutation() -> void:
 	var first: Node = _start()
 	var settings: MenuSettings = first.get("menu_settings")
@@ -335,6 +449,8 @@ func test_actual_kitchen_orders_and_sales_use_only_enabled_override() -> void:
 		assert_eq(_paid_recipes[index], &"burger")
 	assert_eq(Economy.ledger.day_totals(Clock.sim.day).get(Ledger.SALE, 0), _paid_amounts.size() * 9)
 	assert_eq(sim.served_today, _paid_amounts.size())
+	assert_eq((main.get("signature_state") as SignatureState).sales_for(&"burger"),
+		_paid_amounts.size(), "only the actual paid-sale callback advances lifetime sales")
 	assert_eq(sim.leave_reasons_today.get(&"too_expensive", 0), 0)
 	assert_eq((main.get("content") as ContentDB).recipe(&"burger").standard_price, 12)
 

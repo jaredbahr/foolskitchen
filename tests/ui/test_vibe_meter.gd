@@ -96,6 +96,36 @@ func test_score_is_clamped_and_tooltip_amounts_are_bounded() -> void:
 		"Decor 999, Variety -999, Theme: Cosy +999, Lamps 999, Crowding -999")
 
 
+func test_collection_tooltip_explains_nominal_set_rewards_and_total_cap() -> void:
+	var collection: CollectionModel.Result = CollectionModel.Result.new()
+	collection.valid = true
+	collection.nominal_bonus = 8.0
+	collection.effective_bonus = 6.0
+	collection.capped = true
+	for collection_name: String in ["Diner Classics", "Coffee Break", "Cozy Corner", "Patio Picnic"]:
+		var definition: CollectionDef = CollectionDef.new()
+		definition.id = StringName(collection_name.to_snake_case())
+		definition.display_name = collection_name
+		definition.short_line = "A little moment of comfort."
+		definition.bonus = 2.0
+		var entry: CollectionModel.Entry = CollectionModel.Entry.new()
+		entry.definition = definition
+		entry.completed = true
+		collection.entries.append(entry)
+	var result: VibeModel.Result = _result(48.0)
+	result.collection_result = collection
+	result.collection_points = 3.0
+	result.collection_nominal_bonus = 8.0
+	result.collection_cap = 3.0
+	_meter.set_vibe(result)
+	var tooltip: String = _meter.caption_label.tooltip_text
+	assert_true(tooltip.contains("Collection: Diner Classics — A little moment of comfort. (+2)"))
+	assert_true(tooltip.contains("Collection: Patio Picnic — A little moment of comfort. (+2)"))
+	assert_true(tooltip.contains("Collections: +3 in total"))
+	assert_true(tooltip.contains("Collections capped at +3 total"),
+		"the tooltip uses the cap in the actual vibe result")
+
+
 func test_invalid_or_non_finite_result_returns_to_neutral_fallback() -> void:
 	_meter.set_vibe(_result(28.0))
 	var invalid: VibeModel.Result = _result(88.0)

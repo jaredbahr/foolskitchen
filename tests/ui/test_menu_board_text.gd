@@ -38,10 +38,36 @@ func test_board_uses_only_todays_enabled_dishes_and_at_most_four() -> void:
 	assert_false(copy.contains("Dish f"), "the fifth enabled dish does not overflow the board")
 	assert_false(copy.contains("$"), "the board does not advertise prices")
 	var font: Font = MenuBoardText.THEME.default_font if MenuBoardText.THEME.default_font != null else ThemeDB.fallback_font
+	assert_true(font.has_char("*".unicode_at(0)), "the signature marker is drawn by the board's own font")
 	var height: float = font.get_multiline_string_size(copy, HORIZONTAL_ALIGNMENT_LEFT, -1, MenuBoardText.FONT_SIZE).y \
 		* MenuBoardText.PIXEL_SIZE
 	assert_true(height <= MenuBoardText.FACE_HEIGHT_M,
 		"name, section and four dishes fit the actual board face vertically")
+
+
+func test_special_uses_a_face_line_and_leaves_room_for_three_dishes() -> void:
+	var menu: Array[RecipeDef] = []
+	for letter: String in ["a", "b", "c", "d", "e"]:
+		menu.append(_recipe(StringName(letter), "Dish " + letter, RecipeDef.Section.MAINS))
+	var ordinary: String = MenuBoardText.text("Fool's Kitchen", menu, RecipeDef.Section.MAINS)
+	var copy: String = MenuBoardText.text("Fool's Kitchen", menu, RecipeDef.Section.MAINS, "Soup")
+	var lines: PackedStringArray = copy.split("\n")
+	assert_eq(ordinary, "Fool's Kitchen\nMains\n• Dish a\n• Dish b\n• Dish c\n• Dish d")
+	assert_eq(lines.size(), 6, "the special keeps the board within its six-line face")
+	assert_eq(lines[2], "Today's special: Soup")
+	assert_eq(lines[3], "• Dish a")
+	assert_eq(lines[5], "• Dish c")
+	assert_false(copy.contains("Dish d"), "a special reserves the fourth dish line")
+	var font: Font = MenuBoardText.THEME.default_font if MenuBoardText.THEME.default_font != null else ThemeDB.fallback_font
+	for line: String in lines:
+		var width: float = font.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, MenuBoardText.FONT_SIZE).x \
+			* MenuBoardText.PIXEL_SIZE
+		assert_true(width <= MenuBoardText.MAX_LINE_WIDTH_M + 0.0001,
+			"the special and dishes stay within the board's existing width limit")
+	var height: float = font.get_multiline_string_size(copy, HORIZONTAL_ALIGNMENT_LEFT, -1,
+		MenuBoardText.FONT_SIZE).y * MenuBoardText.PIXEL_SIZE
+	assert_true(height <= MenuBoardText.FACE_HEIGHT_M,
+		"the special uses the board's existing bounded face height")
 
 
 func test_drinks_use_the_same_section_as_the_menu_panel() -> void:
@@ -61,11 +87,37 @@ func test_long_name_and_dish_fit_the_chalkboard_face_with_ellipses() -> void:
 	assert_true(lines[0].ends_with(MenuBoardText.ELLIPSIS))
 	assert_true(lines[2].ends_with(MenuBoardText.ELLIPSIS))
 	var font: Font = MenuBoardText.THEME.default_font if MenuBoardText.THEME.default_font != null else ThemeDB.fallback_font
+	assert_true(font.has_char("*".unicode_at(0)), "the signature marker is drawn by the board's own font")
 	for line: String in lines:
 		var width: float = font.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, MenuBoardText.FONT_SIZE).x \
 			* MenuBoardText.PIXEL_SIZE
 		assert_true(width <= MenuBoardText.MAX_LINE_WIDTH_M + 0.0001,
 			"every displayed line stays inside the 0.59-metre board face")
+
+
+func test_signature_star_marks_only_the_enabled_matching_dish_and_still_fits() -> void:
+	var burger: RecipeDef = _recipe(&"burger", "Burger", RecipeDef.Section.MAINS)
+	var fries: RecipeDef = _recipe(&"fries", "Fries", RecipeDef.Section.MAINS)
+	var menu: Array[RecipeDef] = [burger, fries]
+	assert_eq(MenuBoardText.text("Corner", menu, RecipeDef.Section.MAINS, "", &"burger"),
+		"Corner\nMains\n* Burger\n• Fries")
+	var settings: MenuSettings = MenuSettings.new(menu)
+	assert_true(settings.set_enabled(&"burger", false))
+	var disabled_text: String = MenuBoardText.text("Corner", settings.enabled_recipes(),
+		RecipeDef.Section.MAINS, "", &"burger")
+	assert_eq(disabled_text, "Corner\nMains\n• Fries", "disabled signatures are absent from the real board list")
+	assert_eq(MenuBoardText.text("Corner", menu), "Corner\nMains\n• Burger\n• Fries",
+		"the default optional ID preserves old board output")
+	var long_starred: String = MenuBoardText.text("Corner",
+		[_recipe(&"long", "W".repeat(100), RecipeDef.Section.MAINS)] as Array[RecipeDef],
+		RecipeDef.Section.MAINS, "", &"long")
+	assert_true(long_starred.split("\n")[2].begins_with("* "))
+	assert_true(long_starred.split("\n")[2].ends_with(MenuBoardText.ELLIPSIS))
+	var font: Font = MenuBoardText.THEME.default_font if MenuBoardText.THEME.default_font != null else ThemeDB.fallback_font
+	assert_true(font.has_char("*".unicode_at(0)), "the signature marker is drawn by the board's own font")
+	for line: String in long_starred.split("\n"):
+		assert_true(font.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, MenuBoardText.FONT_SIZE).x
+			* MenuBoardText.PIXEL_SIZE <= MenuBoardText.MAX_LINE_WIDTH_M + 0.0001)
 
 
 func test_theme_shares_count_tagged_dishes_using_authored_labels() -> void:

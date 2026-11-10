@@ -64,7 +64,9 @@ func record_visit(visit: ReviewVisit, tuning: ReviewTuning, quotes: ReviewQuotes
 	var before: float = average()
 	var stars: int = score_visit(visit, tuning, vibe_tuning)
 	var cause: StringName = cause_of(visit, tuning, vibe_tuning)
-	var quote: String = quotes.pick(cause, random, _quotes_used_today)
+	var quote_cause: StringName = &"signature_dish" if stars >= 4 \
+			and visit.ate_signature_dish else cause
+	var quote: String = quotes.pick(quote_cause, random, _quotes_used_today)
 	if not quote.is_empty():
 		_quotes_used_today[quote] = true
 	_scores.append(stars)
@@ -104,7 +106,12 @@ func record_booking(visits: Array[ReviewVisit], tuning: ReviewTuning, quotes: Re
 	var good_service: bool = all_served and stars >= terms.good_service_stars
 	var weight: int = terms.review_weight if good_service else 1
 	var before: float = average()
-	var quote: String = quotes.pick(cause, random, _quotes_used_today)
+	var ate_signature: bool = false
+	for visit: ReviewVisit in visits:
+		ate_signature = ate_signature or (visit.served and visit.ate_signature_dish)
+	var quote_cause: StringName = &"signature_dish" if stars >= 4 \
+			and ate_signature else cause
+	var quote: String = quotes.pick(quote_cause, random, _quotes_used_today)
 	if not quote.is_empty():
 		_quotes_used_today[quote] = true
 	for _copy: int in weight:
@@ -127,7 +134,9 @@ func record_critic(visit: ReviewVisit, tuning: ReviewTuning, quotes: ReviewQuote
 	var before: float = average()
 	var stars: int = score_visit(visit, tuning, vibe_tuning)
 	var cause: StringName = &"critic_good" if stars >= critic.good_stars else &"critic_bad"
-	var quote: String = quotes.pick(cause, random, _quotes_used_today)
+	var quote_cause: StringName = &"signature_dish" if stars >= 4 \
+			and visit.ate_signature_dish else cause
+	var quote: String = quotes.pick(quote_cause, random, _quotes_used_today)
 	# Up to review_weight copies, but never more than a quarter of the reviews
 	# already in the window, so a young shop is not swung by one visit.
 	var copies: int = mini(critic.review_weight, maxi(1, _scores.size() / 4))

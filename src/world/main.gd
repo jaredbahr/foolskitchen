@@ -31,12 +31,14 @@ const CLEANLINESS_TUNING: CleanlinessTuning = preload("res://data/balance/cleanl
 const WEATHER_TUNING: WeatherTuning = preload("res://data/balance/weather.tres")
 const SEASON_TUNING: SeasonTuning = preload("res://data/balance/seasons.tres")
 const DEMAND_TUNING: DemandTuning = preload("res://data/balance/demand.tres")
+const SIGNATURE_TUNING: SignatureTuning = preload("res://data/balance/signature.tres")
 const DAY_LIGHT: DayLightTuning = preload("res://data/look/day_light.tres")
 const CURB_APPEAL_TUNING: CurbAppealTuning = preload("res://data/balance/curb_appeal.tres")
 const REVIEW_TUNING: ReviewTuning = preload("res://data/balance/reviews.tres")
 const REVIEW_QUOTES: ReviewQuotes = preload("res://data/reviews/quotes.tres")
 const CRITIC: CriticTuning = preload("res://data/balance/critic.tres")
 const RUSH_TUNING: RushTuning = preload("res://data/balance/rush_hour.tres")
+const VIRAL_TUNING: ViralTuning = preload("res://data/balance/viral.tres")
 const PROGRESSION_TUNING: ProgressionTuning = preload("res://data/balance/progression.tres")
 const VIBE_TUNING: VibeTuning = preload("res://data/balance/vibe.tres")
 const CUSTOMER_TYPES: CustomerTypeCatalogue = preload("res://data/customers/types.tres")
@@ -94,6 +96,9 @@ var _loaded_blueprints: BlueprintLibrary
 var _blueprint_load_notes: Array[String] = []
 ## Cookable dishes/prices belong to this shop, never to shared recipe resources.
 var menu_settings: MenuSettings
+var daily_special: DailySpecial = DailySpecial.new()
+## Full-catalogue paid sales and the named house dish; saved only at morning.
+var signature_state: SignatureState
 var staff_roster: StaffRoster
 var _staff_notice_day: int = 0
 var _staff_notices: Array[Dictionary] = []
@@ -146,6 +151,8 @@ var _owner_preferences: OwnerModeSettings = OwnerModeSettings.new()
 var _base_layout: ShopLayout = LAYOUT
 var _loaded_layout: ShopLayout = null
 var _loaded_menu: MenuSettings = null
+var _loaded_daily_special: Variant = null
+var _loaded_signature: SignatureState = null
 var _loaded_staff: StaffRoster = null
 var _loaded_plates: PlateLedger = null
 var _loaded_reputation: ReputationBook = null
@@ -164,9 +171,21 @@ var season_tuning: SeasonTuning = SEASON_TUNING
 var demand_tuning: DemandTuning = DEMAND_TUNING.duplicate(true) as DemandTuning
 var demand_state: DemandState = DemandState.new()
 var _loaded_demand: DemandState = null
+var viral_tuning: ViralTuning = VIRAL_TUNING.duplicate(true) as ViralTuning
+var viral_review: ViralReview = ViralReview.new(viral_tuning)
+var _loaded_viral: ViralReview = null
 ## Detached closing summaries; persistence stays at the morning checkpoint.
 var business_history: BusinessHistory = BusinessHistory.new()
 var _loaded_business_history: BusinessHistory = null
+var shop_records: ShopRecords = ShopRecords.new()
+var _loaded_shop_records: ShopRecords = null
+var _record_notice_day: int = 0
+var _record_notices: Array[String] = []
+## Only first-completion toast acknowledgements persist; progress is derived.
+var _shown_collection_toast_ids: Array[StringName] = []
+var _pending_collection_toast_ids: Array[StringName] = []
+var _loaded_collection_toast_ids: Array[StringName] = []
+var _has_loaded_collection_toast_section: bool = false
 ## The saved cat section (adopted and its name), staged until the load installs.
 var _loaded_cat: Dictionary = {}
 ## The saved health inspection section (grade, day, plan), staged likewise.
@@ -286,6 +305,10 @@ func initialize() -> void:
 	if not load_errors.is_empty():
 		push_error("Cannot load shop content: %s" % [load_errors])
 		return
+	var known_recipe_ids: Array[StringName] = []
+	for recipe: RecipeDef in content.recipes():
+		known_recipe_ids.append(recipe.id)
+	signature_state = SignatureState.new(known_recipe_ids)
 	var errors: Array[String] = []
 	staff_roster = StaffRoster.new(TUNING)
 	sim = RestaurantSim.create(_starter_layout(), content, 1, errors, null, true, false, staff_roster.members())
@@ -407,6 +430,9 @@ func _bind_world_presentation() -> void:
 	$HUD.set_paint_state(false)
 	_menu_panel = $Overlay/MenuPanel
 	_menu_panel.bind_menu(menu_settings)
+	_menu_panel.set_special(daily_special.recipe_id())
+	if not _menu_panel.special_requested.is_connected(_on_special_requested):
+		_menu_panel.special_requested.connect(_on_special_requested)
 	if not _menu_panel.lease_requested.is_connected(_on_lease_requested):
 		_menu_panel.lease_requested.connect(_on_lease_requested)
 	if not _menu_panel.cat_adoption_requested.is_connected(_on_cat_adoption_requested):
@@ -417,6 +443,8 @@ func _bind_world_presentation() -> void:
 		_menu_panel.enable_requested.connect(_on_menu_enable_requested)
 		_menu_panel.price_requested.connect(_on_menu_price_requested)
 		_menu_panel.settings_requested.connect(_on_menu_settings_requested)
+	if not _menu_panel.signature_requested.is_connected(_on_menu_signature_requested):
+		_menu_panel.signature_requested.connect(_on_menu_signature_requested)
 	if not _menu_panel.restaurant_name_requested.is_connected(_on_restaurant_name_requested):
 		_menu_panel.restaurant_name_requested.connect(_on_restaurant_name_requested)
 	if not _menu_panel.goals_requested.is_connected(_on_menu_goals_requested):
@@ -594,6 +622,8 @@ func start() -> void:
 		return
 	sim.rush_hour.tuning = RUSH_TUNING
 	_started = true
+	if not $HUD.collection_toast_shown.is_connected(_on_collection_toast_shown):
+		$HUD.collection_toast_shown.connect(_on_collection_toast_shown)
 	_previous_clock = Clock.sim
 	# Keep the old world detached while save providers restore the new session.
 	Clock.attach_world(null)
@@ -603,6 +633,8 @@ func start() -> void:
 	SaveSystem.register("shop", _capture_shop, _restore_shop)
 	SaveSystem.register("blueprints", _capture_blueprints, _restore_blueprints)
 	SaveSystem.register("menu", _capture_menu, _restore_menu)
+	SaveSystem.register("daily_special", _capture_daily_special, _restore_daily_special)
+	SaveSystem.register("signature", _capture_signature, _restore_signature)
 	SaveSystem.register("staff", _capture_staff, _restore_staff)
 	SaveSystem.register("plates", _capture_plates, _restore_plates)
 	SaveSystem.register("reviews", _capture_reviews, _restore_reviews)
@@ -614,7 +646,10 @@ func start() -> void:
 	SaveSystem.register("hints", hints.capture, hints.restore)
 	SaveSystem.register("weather", _capture_weather, _restore_weather)
 	SaveSystem.register("demand", _capture_demand, _restore_demand)
+	SaveSystem.register("viral", _capture_viral, _restore_viral)
 	SaveSystem.register("business_history", _capture_business_history, _restore_business_history)
+	SaveSystem.register("shop_records", _capture_shop_records, _restore_shop_records)
+	SaveSystem.register("collection_toasts", _capture_collection_toasts, _restore_collection_toasts)
 	SaveSystem.register("cat", _capture_cat, _restore_cat)
 	SaveSystem.register("inspection", _capture_inspection, _restore_inspection)
 	SaveSystem.register("critic", _capture_critic, _restore_critic)
@@ -1343,12 +1378,33 @@ func _recompute_vibe() -> void:
 	var inputs: VibeModel.Inputs = VibeInputs.capture(world.grid, content, menu_settings.enabled_recipes(),
 		shop_editor.wall_vibe_swatch(), shop_editor.floor_vibe_swatch(), shop_editor.decor_vibe_items(),
 		sim.aquarium.charm_factors(world.grid, Clock.sim.day))
+	var placed_ids: Array[StringName] = []
+	for placed: PlacedItem in world.grid.items():
+		var definition: ItemDef = placed.def as ItemDef
+		if not placed.removed and definition != null:
+			placed_ids.append(definition.id)
+	for anchor: Vector3i in shop_editor.decor.anchors():
+		var hung: WallDecor.Hung = shop_editor.decor.item(anchor)
+		if hung != null:
+			placed_ids.append(hung.def_id)
+	var floor_ids: Array[StringName] = []
+	for cell: Vector2i in world.grid.cells():
+		if world.grid.terrain(cell) == SimGrid.Terrain.FLOOR:
+			var finish: FloorFinishes.Finish = shop_editor.floors.finish(cell)
+			floor_ids.append(finish.style)
+	var collection_result: CollectionModel.Result = CollectionModel.evaluate(content.collections(),
+		placed_ids, floor_ids, VIBE_TUNING.max_collection_bonus, content)
+	if inputs != null:
+		inputs.collection_result = collection_result
 	sim.set_vibe(VibeModel.evaluate(inputs, VIBE_TUNING))
 	var result: VibeModel.Result = vibe_result
+	if inputs != null:
+		_update_collection_toasts(collection_result)
 	_build_catalogue.set_vibe(result)
 	$HUD.set_vibe(result)
 	_report.call(&"set_vibe", result, _experienced_vibe_theme())
 	vibe_changed.emit(vibe_result)
+	_refresh_goals()
 	_refresh_demand()
 
 
@@ -1393,9 +1449,14 @@ func _refresh_demand() -> void:
 	if sim == null or _demand_day != Clock.sim.day or menu_settings == null \
 			or not vibe_result.valid:
 		return
+	var signature_id: StringName = _effective_signature_id()
+	var signature_recipe: RecipeDef = content.recipe(signature_id) if not signature_id.is_empty() else null
 	var next: DemandBreakdown = DemandBreakdown.evaluate(demand_tuning,
 		_demand_reputation, _demand_renown, _demand_enabled_dishes(),
-		vibe_result.score, _demand_day, _street_factor(_demand_day))
+		vibe_result.score, _demand_day, _street_factor(_demand_day),
+		viral_review.factor(_demand_day),
+		_effective_signature_factor(),
+		signature_recipe.display_name if signature_recipe != null else "")
 	if next == null or not sim.set_demand_factor(next.total):
 		return
 	_demand_breakdown = next
@@ -1417,6 +1478,27 @@ func _demand_enabled_dishes() -> int:
 	return unique.size()
 
 
+func _effective_signature_id() -> StringName:
+	if signature_state == null or menu_settings == null or content == null:
+		return &""
+	var selected: StringName = signature_state.signature_recipe_id()
+	return selected if not selected.is_empty() and menu_settings.is_enabled(selected) \
+		and content.recipe(selected) != null else &""
+
+
+func _effective_signature_factor() -> float:
+	var selected: StringName = _effective_signature_id()
+	if selected.is_empty():
+		return 1.0
+	var enabled: Array[StringName] = [selected]
+	return signature_state.demand_factor(enabled, SIGNATURE_TUNING)
+
+
+func _sync_effective_signature() -> void:
+	if sim != null:
+		sim.effective_signature_recipe_id = _effective_signature_id()
+
+
 func current_demand_snapshot() -> Dictionary:
 	return _demand_breakdown.to_dict() if _demand_breakdown != null else {}
 
@@ -1431,9 +1513,14 @@ func forecast_next_demand() -> Dictionary:
 	if not projected.from_dict(demand_state.to_dict()) \
 			or not projected.begin_morning(Clock.sim.day + 1, demand_tuning):
 		return {}
+	var signature_id: StringName = _effective_signature_id()
+	var signature_recipe: RecipeDef = content.recipe(signature_id) if not signature_id.is_empty() else null
 	var next: DemandBreakdown = DemandBreakdown.evaluate(demand_tuning,
 		reputation.average(), projected.renown, _demand_enabled_dishes(),
-		vibe_result.score, projected.day, _street_factor(projected.day))
+		vibe_result.score, projected.day, _street_factor(projected.day),
+		viral_review.factor(projected.day),
+		_effective_signature_factor(),
+		signature_recipe.display_name if signature_recipe != null else "")
 	if next == null:
 		return {}
 	var result: Dictionary = next.to_dict()
@@ -2361,6 +2448,9 @@ func build_report(day: int) -> DayReport:
 	report.restaurant_name = menu_settings.restaurant_name() if menu_settings != null else MenuSettings.DEFAULT_NAME
 	report.regulars_lines = RegularText.report_lines(regulars)
 	report.critic_lines = FoodCritic.report_lines(sim.critic_result)
+	if viral_review.triggered_on(day):
+		var best: RecipeDef = content.recipe(viral_review.dish)
+		report.viral_line = ViralReviewText.evening(best.display_name if best != null else "food")
 	report.booking_lines = sim.booking_report_lines.duplicate()
 	report.loan_first_advance = _loan_notice_day == day
 	var totals: Dictionary = Economy.ledger.day_totals(day)
@@ -2387,6 +2477,9 @@ func build_report(day: int) -> DayReport:
 	report.stock_on_hand = int(on_hand["cost"])
 	report.stock_on_hand_recorded = bool(on_hand["recorded"])
 	report.dishes_sold = dishes_sold_today.duplicate()
+	report.daily_special_line = DailySpecialText.report(
+		DailySpecialText.name_for(daily_special.recipe_id(), menu_settings.enabled_recipes()),
+		int(report.dishes_sold.get(daily_special.recipe_id(), 0)))
 	report.slowest_seller_snapshot = sim.service_menu_report_snapshot()
 	report.customers_served = sim.served_today
 	report.customers_lost = sim.lost_today
@@ -2439,10 +2532,17 @@ func build_report(day: int) -> DayReport:
 	if _weekly_challenge_reward_day == day:
 		report.weekly_challenge_line = _weekly_challenge_report_line
 	report.demand_forecast = forecast_next_demand()
+	if _record_notice_day == day:
+		report.record_lines = _record_notices.duplicate()
 	return report
 
 
 func _new_game() -> void:
+	_shown_collection_toast_ids.clear()
+	_pending_collection_toast_ids.clear()
+	_loaded_collection_toast_ids.clear()
+	_has_loaded_collection_toast_section = false
+	$HUD.clear_collection_toasts()
 	_reset_haggle()
 	_base_layout = _starter_layout()
 	group_booking = GroupBooking.new(BOOKING_TUNING)
@@ -2458,12 +2558,18 @@ func _new_game() -> void:
 	_loaded_aquarium = {}
 	business_history = BusinessHistory.new()
 	_loaded_business_history = null
+	shop_records = ShopRecords.new()
+	_loaded_shop_records = null
+	_record_notice_day = 0
+	_record_notices.clear()
 	curb_appeal_score = 0.0
 	curb_appeal_factor = 1.0
 	_last_team_activity.clear()
 	hints.restart()
 	demand_state = DemandState.new()
 	_loaded_demand = null
+	viral_review = ViralReview.new(viral_tuning)
+	_loaded_viral = null
 	_demand_breakdown = null
 	_demand_day = 0
 	regulars = RegularCast.new()
@@ -2505,6 +2611,12 @@ func _new_game() -> void:
 	_loan_notice_day = 0
 	sim.assign_owner(&"rest")
 	_loaded_menu = null
+	_loaded_daily_special = null
+	daily_special = DailySpecial.new()
+	_loaded_signature = null
+	if signature_state != null:
+		signature_state.clear()
+	sim.effective_signature_recipe_id = &""
 	_loaded_staff = null
 	_loaded_reputation = null
 	reputation = ReputationBook.new()
@@ -2533,11 +2645,20 @@ func _new_game() -> void:
 
 func _load_autosave() -> bool:
 	_reset_haggle()
+	_pending_collection_toast_ids.clear()
+	_loaded_collection_toast_ids.clear()
+	_has_loaded_collection_toast_section = false
+	$HUD.clear_collection_toasts()
 	business_history = BusinessHistory.new()
 	_loaded_business_history = null
+	shop_records = ShopRecords.new()
+	_loaded_shop_records = null
+	_record_notice_day = 0
+	_record_notices.clear()
 	var loaded: bool = _load_autosave_sections()
 	if not loaded:
 		_loaded_business_history = null
+		_loaded_shop_records = null
 	return loaded
 
 
@@ -2547,6 +2668,7 @@ func _load_autosave_sections() -> bool:
 	curb_appeal_factor = 1.0
 	_last_team_activity.clear()
 	_loaded_demand = null
+	_loaded_viral = null
 	_loaded_cat = {}
 	_loaded_inspection = {}
 	_loaded_critic = {}
@@ -2557,6 +2679,8 @@ func _load_autosave_sections() -> bool:
 	_blueprint_load_notes.clear()
 	_loaded_layout = null
 	_loaded_menu = null
+	_loaded_daily_special = null
+	_loaded_signature = null
 	_loaded_staff = null
 	_loaded_plates = null
 	_loaded_reputation = null
@@ -2567,6 +2691,8 @@ func _load_autosave_sections() -> bool:
 	_loaded_deliveries = null
 	_loaded_weather = null
 	_loaded_group_booking = null
+	_loaded_collection_toast_ids.clear()
+	_has_loaded_collection_toast_section = false
 	if not SaveSystem.list_slots().has(save_slot):
 		return false
 	# Missing sections are skipped by SaveSystem: old runs stay out of the guide.
@@ -2590,8 +2716,16 @@ func _load_autosave_sections() -> bool:
 			or saved_demand.last_service_factor > demand_tuning.total_cap:
 		world.log_event("Saved shop growth does not match this morning; starting a new game")
 		return false
+	var saved_viral: ViralReview = _loaded_viral if _loaded_viral != null \
+		else ViralReview.new(viral_tuning)
+	if not saved_viral.valid_before_morning(Clock.sim.day):
+		world.log_event("Saved trending post is ahead of this morning; starting a new game")
+		return false
 	if _loaded_business_history != null and not _loaded_business_history.valid_before(Clock.sim.day):
 		world.log_event("Saved business history is ahead of this morning; starting a new game")
+		return false
+	if _loaded_shop_records != null and not _loaded_shop_records.valid_before(Clock.sim.day):
+		world.log_event("Saved records are ahead of this morning; starting a new game")
 		return false
 	if not OpeningHours.clock_valid(Clock.sim, HOURS_TUNING):
 		# Keep the game; only the hours go back to the default day.
@@ -2625,6 +2759,14 @@ func _load_autosave_sections() -> bool:
 	var choices: MenuSettings = _loaded_menu if _loaded_menu != null else MenuSettings.new(_cookable_recipes(layout), owner_progress.level)
 	if not choices.is_valid():
 		return false
+	var restored_special: DailySpecial = DailySpecial.new()
+	if _loaded_daily_special != null:
+		if not restored_special.from_dict(_loaded_daily_special, choices.enabled_recipes(), Clock.sim.day):
+			return false
+	else:
+		restored_special.begin_morning(Clock.sim.day)
+	var loaded_signature: SignatureState = _loaded_signature if _loaded_signature != null \
+		else _new_signature_state()
 	var employees: StaffRoster = _loaded_staff if _loaded_staff != null else StaffRoster.new(TUNING)
 	if employees.candidate_day > Clock.sim.day:
 		return false
@@ -2672,6 +2814,9 @@ func _load_autosave_sections() -> bool:
 	tray_level = _loaded_tray_level
 	sim.carry_capacity = 1 << tray_level
 	menu_settings = choices
+	daily_special = restored_special
+	_loaded_daily_special = null
+	signature_state = loaded_signature
 	# The saved layout lists every station; drinks at a station staff cannot
 	# reach stay off the live menu (and out of the next save), as in play.
 	var enabled: Array[RecipeDef] = menu_settings.enabled_recipes()
@@ -2680,6 +2825,7 @@ func _load_autosave_sections() -> bool:
 	_track_menu_access_losses(enabled, cookable)
 	menu_settings.clear_stash()
 	_apply_menu(sim, menu_settings)
+	_sync_effective_signature()
 	_bind_world_presentation()
 	milestones = career
 	weekly_challenge = _loaded_weekly_challenge if _loaded_weekly_challenge != null \
@@ -2704,14 +2850,35 @@ func _load_autosave_sections() -> bool:
 	# Install only after every other whole-load validation has succeeded.
 	world.weather = saved_weather.copy()
 	demand_state = saved_demand
+	viral_review = saved_viral
+	_loaded_viral = null
 	_base_layout = base
 	business_history = _loaded_business_history if _loaded_business_history != null else BusinessHistory.new()
 	_loaded_business_history = null
+	shop_records = _loaded_shop_records if _loaded_shop_records != null else ShopRecords.new()
+	_loaded_shop_records = null
+	_shown_collection_toast_ids.clear()
+	if _has_loaded_collection_toast_section:
+		_shown_collection_toast_ids.assign(_loaded_collection_toast_ids)
+	_loaded_collection_toast_ids.clear()
+	_has_loaded_collection_toast_section = false
 	return true
 
 
 func _capture_business_history() -> Dictionary:
 	return business_history.capture()
+
+
+func _capture_shop_records() -> Dictionary:
+	return shop_records.capture()
+
+
+func _restore_shop_records(data: Dictionary) -> bool:
+	var restored: ShopRecords = ShopRecords.new()
+	if not restored.restore(data):
+		return false
+	_loaded_shop_records = restored
+	return true
 
 
 ## SaveSystem may reject a later provider: never install a partial load here.
@@ -2723,8 +2890,97 @@ func _restore_business_history(data: Dictionary) -> bool:
 	return true
 
 
+func _capture_viral() -> Dictionary:
+	return viral_review.to_dict()
+
+
+## A later provider may reject the save; install only after whole-load validation.
+func _restore_viral(data: Dictionary) -> bool:
+	var restored: ViralReview = ViralReview.new(viral_tuning)
+	if not restored.from_dict(data):
+		return false
+	_loaded_viral = restored
+	return true
+
+
+func _capture_collection_toasts() -> Dictionary:
+	var ids: Array[String] = []
+	for id: StringName in _shown_collection_toast_ids:
+		ids.append(String(id))
+	return {"shown_ids": ids}
+
+
+## Stage only. A failed later section leaves the current run untouched.
+func _restore_collection_toasts(data: Dictionary) -> bool:
+	_loaded_collection_toast_ids.clear()
+	_has_loaded_collection_toast_section = false
+	var raw_ids: Variant = data.get("shown_ids", null)
+	if not raw_ids is Array:
+		return false
+	var known: Dictionary[StringName, bool] = {}
+	for definition: CollectionDef in content.collections():
+		known[definition.id] = true
+	var staged: Array[StringName] = []
+	var seen: Dictionary[StringName, bool] = {}
+	for raw: Variant in raw_ids:
+		if typeof(raw) != TYPE_STRING:
+			return false
+		var id: StringName = StringName(raw)
+		# A collection renamed or removed in a later version is simply
+		# forgotten: it must never make an old save unloadable.
+		if not known.has(id) or seen.has(id):
+			continue
+		seen[id] = true
+		staged.append(id)
+	_loaded_collection_toast_ids = staged
+	_has_loaded_collection_toast_section = true
+	return true
+
+
+func _update_collection_toasts(result: CollectionModel.Result) -> void:
+	if result == null or not result.valid:
+		return
+	for id: StringName in result.completed_ids:
+		if _shown_collection_toast_ids.has(id) or _pending_collection_toast_ids.has(id):
+			continue
+		for entry: CollectionModel.Entry in result.entries:
+			if entry.definition.id == id:
+				_pending_collection_toast_ids.append(id)
+				$HUD.queue_collection_toast(id,
+					"Collection complete: %s — %s" % [entry.definition.display_name, entry.definition.short_line])
+				break
+
+
+func _on_collection_toast_shown(collection_id: StringName) -> void:
+	if not _pending_collection_toast_ids.has(collection_id):
+		return
+	_pending_collection_toast_ids.erase(collection_id)
+	if not _shown_collection_toast_ids.has(collection_id):
+		_shown_collection_toast_ids.append(collection_id)
+
+
 func _capture_demand() -> Dictionary:
 	return demand_state.to_dict()
+
+
+func _new_signature_state() -> SignatureState:
+	var known_recipe_ids: Array[StringName] = []
+	if content != null:
+		for recipe: RecipeDef in content.recipes():
+			known_recipe_ids.append(recipe.id)
+	return SignatureState.new(known_recipe_ids)
+
+
+func _capture_signature() -> Dictionary:
+	return signature_state.to_dict() if signature_state != null else {}
+
+
+func _restore_signature(data: Dictionary) -> bool:
+	var restored: SignatureState = _new_signature_state()
+	if not restored.from_dict(data, Clock.sim.day, SIGNATURE_TUNING):
+		return false
+	_loaded_signature = restored
+	return true
 
 
 func _restore_demand(data: Dictionary) -> bool:
@@ -3270,6 +3526,16 @@ func _capture_menu() -> Dictionary:
 	return menu_settings.to_dict() if menu_settings != null else {}
 
 
+func _capture_daily_special() -> Dictionary:
+	return daily_special.to_dict()
+
+
+## Validation uses the fully staged menu/day before the live world is replaced.
+func _restore_daily_special(data: Dictionary) -> bool:
+	_loaded_daily_special = data.duplicate(true)
+	return true
+
+
 func _restore_menu(data: Dictionary) -> bool:
 	var layout: ShopLayout = _loaded_layout if _loaded_layout != null else ORIGINAL_LAYOUT
 	var choices: MenuSettings = MenuSettings.new(_cookable_recipes(layout), owner_progress.level)
@@ -3681,6 +3947,12 @@ func _on_hours_requested(open_minute: int, close_minute: int) -> void:
 
 func _apply_menu(restaurant: RestaurantSim, choices: MenuSettings) -> void:
 	restaurant.menu = choices.enabled_recipes()
+	daily_special.reconcile(restaurant.menu)
+	restaurant.daily_special = daily_special
+	$HUD.set_special(DailySpecialText.name_for(daily_special.recipe_id(), restaurant.menu))
+	if _menu_panel != null:
+		_menu_panel.set_special(daily_special.recipe_id())
+	restaurant.effective_signature_recipe_id = _effective_signature_id()
 	$HUD.set_restaurant_name(choices.restaurant_name())
 	($ShopView as ShopView).set_restaurant_name(choices.restaurant_name())
 	_refresh_menu_boards()
@@ -3701,12 +3973,25 @@ func _refresh_menu_boards() -> void:
 		for recipe: RecipeDef in menu_settings.enabled_recipes():
 			prices[recipe.id] = menu_settings.price_of(recipe)
 		view.wall_finish_view.set_menu_board_content(menu_settings.restaurant_name(),
-			menu_settings.enabled_recipes(), prices)
+			menu_settings.enabled_recipes(), prices,
+			DailySpecialText.name_for(daily_special.recipe_id(), menu_settings.enabled_recipes()),
+			signature_state.signature_recipe_id() if signature_state != null else &"")
 
 
 func can_edit_menu() -> bool:
 	return _started and menu_settings != null and menu_settings.is_valid() \
 		and Clock.sim.phase == SimClock.Phase.MORNING and not is_haggle_active()
+
+
+func menu_set_special(recipe_id: StringName) -> bool:
+	if not can_edit_menu() or not daily_special.select(recipe_id, menu_settings.enabled_recipes()):
+		return false
+	_apply_menu(sim, menu_settings)
+	return true
+
+
+func _on_special_requested(recipe_id: StringName) -> void:
+	menu_set_special(recipe_id)
 
 
 func menu_set_enabled(recipe_id: StringName, enabled: bool) -> bool:
@@ -3716,10 +4001,22 @@ func menu_set_enabled(recipe_id: StringName, enabled: bool) -> bool:
 	if not menu_settings.set_enabled(recipe_id, enabled):
 		return false
 	_apply_menu(sim, menu_settings)
+	_sync_effective_signature()
 	_refresh_menu_details()
 	if was_enabled != menu_settings.is_enabled(recipe_id):
 		_recompute_vibe()
 		_refresh_stock_panel()
+	return true
+
+
+func menu_set_signature(recipe_id: StringName) -> bool:
+	if not can_edit_menu() or signature_state == null \
+			or not signature_state.select(recipe_id, Clock.sim.day, Clock.sim.phase, SIGNATURE_TUNING):
+		return false
+	_sync_effective_signature()
+	_refresh_menu_boards()
+	_refresh_menu_details()
+	_refresh_demand()
 	return true
 
 
@@ -3883,13 +4180,30 @@ func _refresh_goals(force: bool = false) -> void:
 	var completed: Array[StringName] = milestones.completed_ids()
 	var snapshot: Dictionary = {"catalogue": milestone_catalogue.get_instance_id() if milestone_catalogue != null else 0,
 		"completed": completed, "progress": progress, "level": owner_progress.level,
+		"records": shop_records.snapshot(),
 		"weekly": weekly_challenge.to_dict() if weekly_challenge != null else {},
 		"weekly_progress": weekly_challenge.projected_progress(observation) if weekly_challenge != null else 0,
-		"day": Clock.sim.day}
+		"day": Clock.sim.day,
+		"collections": _collection_progress_snapshot(vibe_result.collection_result)}
 	if force or snapshot != _goals_snapshot:
 		_goals_panel.set_goals(milestone_catalogue, completed, progress, owner_progress.level,
 			weekly_challenge, Clock.sim.day, observation)
+		_goals_panel.set_records(ShopRecordsText.rows(snapshot["records"], content))
+		_goals_panel.set_collections(vibe_result.collection_result)
 		_goals_snapshot = snapshot.duplicate(true)
+
+
+func _collection_progress_snapshot(result: CollectionModel.Result) -> Array[String]:
+	var snapshot: Array[String] = []
+	if result == null or not result.valid:
+		return snapshot
+	for entry: CollectionModel.Entry in result.entries:
+		snapshot.append(entry.progress_text())
+		for requirement: CollectionModel.Entry.Requirement in entry.requirements:
+			snapshot.append("item:%s:%s" % [requirement.item_id, requirement.present])
+		if entry.floor_required:
+			snapshot.append("floor:%s:%s" % [entry.definition.floor_id, entry.has_floor])
+	return snapshot
 
 
 func set_settings_visible(value: bool) -> bool:
@@ -3977,6 +4291,10 @@ func _on_menu_enable_requested(recipe_id: StringName, enabled: bool) -> void:
 	# menu_set_enabled refreshes the dish details once when it accepts.
 	menu_set_enabled(recipe_id, enabled)
 	_menu_panel.set_drink_hints(drink_station_hints())
+
+
+func _on_menu_signature_requested(recipe_id: StringName) -> void:
+	menu_set_signature(recipe_id)
 
 
 func _on_menu_price_requested(recipe_id: StringName, price: int) -> void:
@@ -4215,6 +4533,10 @@ func shop_sell(item_id: int) -> int:
 
 ## Morning setup: new counters, a stocked fridge, and an autosave.
 func _begin_morning() -> void:
+	daily_special.begin_morning(Clock.sim.day)
+	_apply_menu(sim, menu_settings)
+	_record_notice_day = 0
+	_record_notices.clear()
 	# Repeated setup of the SAME morning cannot create another attempt.
 	if _haggle_day != Clock.sim.day:
 		_reset_haggle()
@@ -4271,6 +4593,7 @@ func _begin_morning() -> void:
 		_demand_breakdown = null
 		sim.demand_factor = 1.0
 		$HUD.set_demand_status(1.0, 0.0)
+	_menu_panel.set_viral_notice(ViralReviewText.morning(viral_review.factor(Clock.sim.day)))
 	sim.start_day()
 	# A visit is decided here, once a day; the named stream is created only on a
 	# day one is possible, so earlier games' streams are untouched.
@@ -5130,6 +5453,8 @@ func _on_customer_paid(customer: CustomerAgent, order: Order, amount: int) -> vo
 		if tip > 0:
 			Economy.add_cash(tip, Ledger.TIP)
 	dishes_sold_today[order.recipe_id] = dishes_sold_today.get(order.recipe_id, 0) + 1
+	if signature_state != null:
+		signature_state.record_sale(order.recipe_id)
 	_refresh_goals()
 
 
@@ -5210,6 +5535,11 @@ func _on_service_closed(day: int) -> void:
 	if day != Clock.sim.day or _closed_report_day == day:
 		return
 	_closed_report_day = day
+	var sold: DayReport = DayReport.new()
+	sold.dishes_sold = dishes_sold_today.duplicate()
+	viral_review.close_open_day(day, sim.served_today, sim.lost_today,
+		int(sim.leave_reasons_today.get(&"happy", 0)), sold.best_dish(),
+		GameState.rng.bind(&"viral"))
 	demand_state.award_close(day, int(sim.leave_reasons_today.get(&"happy", 0)),
 		sim.demand_factor, demand_tuning)
 	_remember_menu_quality()
@@ -5254,6 +5584,10 @@ func _on_service_closed(day: int) -> void:
 		_build_catalogue.set_property_tier(owner_progress.property_tier)
 		$HUD.set_owner_progress(owner_progress.level, owner_progress.xp_into_level(), owner_progress.xp_in_level())
 	shown_report = build_report(day)
+	var beaten: Array[StringName] = shop_records.record(shown_report)
+	_record_notice_day = day
+	_record_notices = ShopRecordsText.new_record_lines(shop_records.snapshot(), beaten)
+	shown_report.record_lines = _record_notices.duplicate()
 	_last_team_activity = StaffActivity.public_snapshot(shown_report.staff_activity)
 	_staff_panel.set_team_activity(_last_team_activity)
 	if owner_progress.level > level_before:
@@ -5431,7 +5765,20 @@ func menu_recipe_details() -> Dictionary[StringName, Dictionary]:
 		other.append({"text": "Menu space: %d / %d dishes" % [menu_settings.enabled_count(), menu_settings.menu_limit()], "met": room})
 		var quality: Dictionary = _menu_quality.get(recipe.id, {})
 		var expected: DishQuality = _expected_dish_quality(recipe)
+		var selected: bool = signature_state != null \
+			and signature_state.signature_recipe_id() == recipe.id
+		var signature_details: Dictionary = {"sales": signature_state.sales_for(recipe.id) if signature_state != null else 0,
+			"unlock_sales": SIGNATURE_TUNING.signature_unlock_sales,
+			"selected": selected,
+			"eligible": signature_state.eligible(recipe.id, SIGNATURE_TUNING) if signature_state != null else false,
+			"can_select": signature_state.can_select(recipe.id, Clock.sim.day, Clock.sim.phase,
+				SIGNATURE_TUNING) if signature_state != null and Clock.sim != null else false,
+			"next_change_day": signature_state.last_changed_day() + SIGNATURE_TUNING.change_cooldown_days
+				if signature_state != null and not signature_state.signature_recipe_id().is_empty() else 0,
+			"cooldown_days": SIGNATURE_TUNING.change_cooldown_days,
+			"is_morning": Clock.sim != null and Clock.sim.phase == SimClock.Phase.MORNING}
 		rows[recipe.id] = {"equipment": equipment, "ingredients": ingredients, "other": other,
+			"signature": signature_details,
 			"quality_breakdown": expected.explanation() if expected != null else "No available worker or reachable station",
 			"quality": quality.get("quality", recipe.base_quality),
 			"quality_source": "%d served dishes on day %d" % [quality.get("count", 0), quality.get("day", 0)]

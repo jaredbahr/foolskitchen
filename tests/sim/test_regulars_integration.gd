@@ -158,6 +158,22 @@ func test_food_favourite_replacing_coffee_arrival_keeps_normal_meal_duration() -
 		assert_eq(guest.order.recipe_id, profile.favourite_dish)
 
 
+func test_regular_favourite_wins_over_an_active_guaranteed_special_pull() -> void:
+	var sim: RestaurantSim = _sim()
+	var profile: RegularProfile = _cast_member(sim)
+	var config: MenuTuning = MenuTuning.new()
+	config.special_pull = 1.0
+	sim.daily_special = DailySpecial.new(config)
+	assert_ne(sim.menu[1].id, profile.favourite_dish)
+	assert_true(sim.daily_special.select(sim.menu[1].id, sim.menu))
+	var guest: CustomerAgent = sim.add_customer(sim.world.grid.entries()[0], _random(48))
+	guest.regular_profile = profile
+	guest.state = CustomerAgent.State.ORDERING
+	assert_true(guest._take_order(SimAgent.new()))
+	assert_not_null(guest.order)
+	assert_eq(guest.order.recipe_id, profile.favourite_dish)
+
+
 func _sim() -> RestaurantSim:
 	var content: ContentDB = ContentDB.new()
 	assert_true(content.load_all().is_empty())

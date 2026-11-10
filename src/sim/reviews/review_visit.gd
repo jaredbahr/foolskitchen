@@ -4,6 +4,11 @@ extends RefCounted
 ## waiting divided by that guest's patience budget, not time remaining.
 
 var served: bool = false
+## Detached identities of meals actually finished during this visit. Payment or
+## an order alone is not evidence that the guest consumed a dish.
+var consumed_recipe_ids: Array[StringName] = []
+## Set by RestaurantSim against the currently effective signature recipe.
+var ate_signature_dish: bool = false
 var was_seated: bool = false
 var closing: bool = false
 var queue_wait_fraction: float = 0.0

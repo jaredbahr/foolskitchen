@@ -18,5 +18,6 @@ groups = Dictionary[StringName, PackedStringArray]({
 &"comfortable_wait": PackedStringArray("A seat on the bench made the wait easy.", "Nice to rest my feet before a table opened.", "The waiting bench was a thoughtful touch.", "A comfortable spot to wait for lunch."),
 &"petted_cat": PackedStringArray("The shop cat let me pet it while I waited. Best part of lunch.", "Petted the resident cat and forgot all about the wait.", "A purring cat and a warm meal. I'll be back."),
 &"critic_good": PackedStringArray("Confident cooking and prompt service. A table worth booking.", "Every plate arrived just when it should. I will be telling people.", "Honest, careful food in a room that cares. Highly recommended."),
-&"critic_bad": PackedStringArray("Promising ideas, but the meal never quite came together.", "I waited, I chewed, and I was left unconvinced.", "A kitchen with potential. Today it stayed well hidden.")
+&"critic_bad": PackedStringArray("Promising ideas, but the meal never quite came together.", "I waited, I chewed, and I was left unconvinced.", "A kitchen with potential. Today it stayed well hidden."),
+&"signature_dish": PackedStringArray("The house dish earns its place on the menu.", "The kitchen's signature gets deserved attention.", "A house favourite worth sharing.", "The signature plate gives this café character.", "The named house dish has earned its reputation.")
 })
