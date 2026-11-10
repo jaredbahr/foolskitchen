@@ -76,7 +76,10 @@ func _is_presentable(result: VibeModel.Result) -> bool:
 		and is_finite(result.variety_points) \
 		and is_finite(result.theme_points) \
 		and is_finite(result.lamp_points) \
-		and is_finite(result.crowding_penalty)
+		and is_finite(result.crowding_penalty) \
+		and is_finite(result.collection_points) \
+		and is_finite(result.collection_nominal_bonus) \
+		and is_finite(result.collection_cap)
 
 
 func _make_tooltip(result: VibeModel.Result) -> String:
@@ -88,14 +91,25 @@ func _make_tooltip(result: VibeModel.Result) -> String:
 	var theme_points: int = _display_points(result.theme_points)
 	var lamps: int = _display_points(result.lamp_points)
 	var crowding: int = _display_points(result.crowding_penalty)
-	return "Decor %d, Variety %d, Theme: %s %s, Lamps %d, Crowding %d" % [
+	var lines: PackedStringArray = ["Decor %d, Variety %d, Theme: %s %s, Lamps %d, Crowding %d" % [
 		decor,
 		variety,
 		theme_name,
 		("+%d" % theme_points) if theme_points >= 0 else str(theme_points),
 		lamps,
 		-crowding,
-	]
+	]]
+	var collections: CollectionModel.Result = result.collection_result
+	if collections != null:
+		for entry: CollectionModel.Entry in collections.entries:
+			if entry.completed:
+				lines.append("Collection: %s — %s (+%d)" % [entry.definition.display_name,
+					entry.definition.short_line, roundi(entry.definition.bonus)])
+		if result.collection_nominal_bonus > 0.0:
+			lines.append("Collections: +%d in total" % roundi(result.collection_points))
+		if result.collection_nominal_bonus > result.collection_cap:
+			lines.append("Collections capped at +%d total." % roundi(result.collection_cap))
+	return "\n".join(lines)
 
 
 func _display_points(value: float) -> int:
