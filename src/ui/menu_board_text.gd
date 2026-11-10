@@ -43,8 +43,10 @@ static func text(restaurant_name: String, menu: Array[RecipeDef], requested: int
 		lines.append("No dishes today")
 	else:
 		for index: int in mini(dishes.size(), MAX_DISHES):
-			var marker: String = "★ " if dishes[index].id == signature_recipe_id else ""
-			lines.append(_fit("• " + marker + _one_line(dishes[index].display_name)))
+			# The board font has no star glyph, so the signature dish swaps its
+			# bullet for an asterisk.
+			var bullet: String = "* " if dishes[index].id == signature_recipe_id else "• "
+			lines.append(_fit(bullet + _one_line(dishes[index].display_name)))
 	return "\n".join(lines)
 
 

@@ -2547,7 +2547,7 @@ func _signature_review_valid(state: Dictionary, world: SimWorld) -> bool:
 				and state.get("status_text") == "Signature" and state.get("status_visible") == true \
 				and state.get("action_visible") == false and state.get("board_present") == true \
 				and state.get("board_visible") == true \
-				and String(state.get("board_text", "")).contains("• ★ " + String(state.get("display_name", ""))) \
+				and String(state.get("board_text", "")).contains("* " + String(state.get("display_name", ""))) \
 				and viewport.has_point(board_point) and not menu_rect.has_point(board_point) \
 				and menu_rect.has_area() and menu_rect.encloses(status_rect)
 	var forecast: Dictionary = state.get("forecast", {})

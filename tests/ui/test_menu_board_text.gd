@@ -38,6 +38,7 @@ func test_board_uses_only_todays_enabled_dishes_and_at_most_four() -> void:
 	assert_false(copy.contains("Dish f"), "the fifth enabled dish does not overflow the board")
 	assert_false(copy.contains("$"), "the board does not advertise prices")
 	var font: Font = MenuBoardText.THEME.default_font if MenuBoardText.THEME.default_font != null else ThemeDB.fallback_font
+	assert_true(font.has_char("*".unicode_at(0)), "the signature marker is drawn by the board's own font")
 	var height: float = font.get_multiline_string_size(copy, HORIZONTAL_ALIGNMENT_LEFT, -1, MenuBoardText.FONT_SIZE).y \
 		* MenuBoardText.PIXEL_SIZE
 	assert_true(height <= MenuBoardText.FACE_HEIGHT_M,
@@ -61,6 +62,7 @@ func test_long_name_and_dish_fit_the_chalkboard_face_with_ellipses() -> void:
 	assert_true(lines[0].ends_with(MenuBoardText.ELLIPSIS))
 	assert_true(lines[2].ends_with(MenuBoardText.ELLIPSIS))
 	var font: Font = MenuBoardText.THEME.default_font if MenuBoardText.THEME.default_font != null else ThemeDB.fallback_font
+	assert_true(font.has_char("*".unicode_at(0)), "the signature marker is drawn by the board's own font")
 	for line: String in lines:
 		var width: float = font.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, MenuBoardText.FONT_SIZE).x \
 			* MenuBoardText.PIXEL_SIZE
@@ -73,7 +75,7 @@ func test_signature_star_marks_only_the_enabled_matching_dish_and_still_fits() -
 	var fries: RecipeDef = _recipe(&"fries", "Fries", RecipeDef.Section.MAINS)
 	var menu: Array[RecipeDef] = [burger, fries]
 	assert_eq(MenuBoardText.text("Corner", menu, RecipeDef.Section.MAINS, &"burger"),
-		"Corner\nMains\n• ★ Burger\n• Fries")
+		"Corner\nMains\n* Burger\n• Fries")
 	var settings: MenuSettings = MenuSettings.new(menu)
 	assert_true(settings.set_enabled(&"burger", false))
 	var disabled_text: String = MenuBoardText.text("Corner", settings.enabled_recipes(),
@@ -84,9 +86,10 @@ func test_signature_star_marks_only_the_enabled_matching_dish_and_still_fits() -
 	var long_starred: String = MenuBoardText.text("Corner",
 		[_recipe(&"long", "W".repeat(100), RecipeDef.Section.MAINS)] as Array[RecipeDef],
 		RecipeDef.Section.MAINS, &"long")
-	assert_true(long_starred.split("\n")[2].begins_with("• ★ "))
+	assert_true(long_starred.split("\n")[2].begins_with("* "))
 	assert_true(long_starred.split("\n")[2].ends_with(MenuBoardText.ELLIPSIS))
 	var font: Font = MenuBoardText.THEME.default_font if MenuBoardText.THEME.default_font != null else ThemeDB.fallback_font
+	assert_true(font.has_char("*".unicode_at(0)), "the signature marker is drawn by the board's own font")
 	for line: String in long_starred.split("\n"):
 		assert_true(font.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, MenuBoardText.FONT_SIZE).x
 			* MenuBoardText.PIXEL_SIZE <= MenuBoardText.MAX_LINE_WIDTH_M + 0.0001)

@@ -202,9 +202,6 @@ func test_malformed_restore_rejects_atomically_with_existing_state() -> void:
 		var bad: Dictionary = state.to_dict()
 		bad["last_change_day"] = day
 		_reject_unchanged(state, bad, 2)
-	var insufficient: Dictionary = state.to_dict()
-	insufficient["sales"]["burger"] = 149
-	_reject_unchanged(state, insufficient, 2)
 	var empty_with_day: Dictionary = {"version": 1, "sales": {}, "signature_id": "", "last_change_day": 1}
 	_reject_unchanged(state, empty_with_day, 2)
 	var extra: Dictionary = state.to_dict()
@@ -283,3 +280,15 @@ func _state() -> SignatureState:
 
 func _ids() -> Array[StringName]:
 	return [&"burger", &"tomato_soup", &"fries", &"wine"]
+
+
+func test_a_signature_saved_under_a_lower_threshold_still_loads() -> void:
+	var low: SignatureTuning = SignatureTuning.new()
+	low.signature_unlock_sales = 2
+	var state: SignatureState = _state()
+	assert_true(state.record_sale(&"burger", 2))
+	assert_true(state.select(&"burger", 4, SimClock.Phase.MORNING, low))
+	var restored: SignatureState = _state()
+	assert_true(restored.from_dict(JSON.parse_string(JSON.stringify(state.to_dict())), 4, AUTHORED),
+		"raising the threshold later keeps the saved choice")
+	assert_eq(restored.to_dict(), state.to_dict())

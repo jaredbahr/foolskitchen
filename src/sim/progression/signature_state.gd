@@ -124,8 +124,9 @@ func from_dict(value: Variant, saved_day: int, tuning: SignatureTuning) -> bool:
 	if next_id.is_empty():
 		if next_day != 0:
 			return false
-	elif not _known_ids.has(next_id) or next_day < 1 \
-			or int(next_sales.get(next_id, 0)) < tuning.signature_unlock_sales:
+	# A signature chosen under an older, lower unlock threshold stays chosen:
+	# a balance change must never make an old save unloadable.
+	elif not _known_ids.has(next_id) or next_day < 1:
 		return false
 	_sales = next_sales
 	_signature_id = next_id
