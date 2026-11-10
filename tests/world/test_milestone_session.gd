@@ -410,8 +410,10 @@ func test_mismatched_weekly_dates_keep_the_rest_of_a_valid_morning_save() -> voi
 		var saved: Dictionary = document["data"]
 		# Compare the complete persisted representation: JSON decodes numbers
 		# as floats and typed collections as untyped arrays/dictionaries.
-		assert_eq(JSON.parse_string(JSON.stringify(Economy._capture_save())), saved["economy"],
-			"cash, ledger, lots and loan survive")
+		assert_eq(JSON.parse_string(JSON.stringify(Economy._capture_books())), saved["economy"],
+			"cash, ledger and loan survive")
+		assert_eq(JSON.parse_string(JSON.stringify(Economy._capture_pantry())), saved["pantry"],
+			"stock lots survive")
 		for section: String in ["shop", "menu", "staff", "owner", "milestones", "reviews", "business_history", "rush_hour"]:
 			assert_eq(JSON.parse_string(JSON.stringify(loaded.call("_capture_" + section))), saved[section],
 				"%s survives the weekly-only reset" % section)

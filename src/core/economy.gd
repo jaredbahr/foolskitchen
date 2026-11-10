@@ -30,7 +30,8 @@ func _ready() -> void:
 ## Registers this autoload's save section. Idempotent; the game session also
 ## calls it, because some hosts (the test runner) never deliver _ready().
 func register_save_provider() -> void:
-	SaveSystem.register("economy", _capture_save, _restore_save)
+	SaveSystem.register("economy", _capture_books, _restore_books)
+	SaveSystem.register("pantry", _capture_pantry, _restore_pantry)
 
 
 ## Starts a fresh game's books: no history, the given cash, empty stock.
@@ -42,29 +43,80 @@ func reset(starting_cash: int) -> void:
 	EventBus.cash_changed.emit(cash, 0, Ledger.OTHER)
 
 
+## The whole money state (books and pantry) as one snapshot. Tests use it to
+## save and put back everything Economy owns; saves use the two sections below.
 func _capture_save() -> Dictionary:
-	return {"ledger": ledger.to_dict(), "stock": stock.to_dict(), "loan": loan.to_dict()}
+	var data: Dictionary = _capture_books()
+	data.merge(_capture_pantry())
+	return data
 
 
+## Restores a whole snapshot from _capture_save(). Nothing changes on a refusal.
 func _restore_save(data: Dictionary) -> bool:
-	var ledger_data: Variant = data.get("ledger", null)
-	var stock_data: Variant = data.get("stock", null)
-	if not ledger_data is Dictionary or not stock_data is Dictionary:
+	var parsed: Dictionary = _parse_books(data)
+	var restored_stock: Stock = _parse_stock(data)
+	if parsed.is_empty() or restored_stock == null:
 		return false
+	_install_books(parsed)
+	stock = restored_stock
+	EventBus.cash_changed.emit(cash, 0, Ledger.OTHER)
+	return true
+
+
+## The shared "economy" save section: the ledger (cash) and the loan. These
+## belong to the owner and stay put when sites switch (FK-087).
+func _capture_books() -> Dictionary:
+	return {"ledger": ledger.to_dict(), "loan": loan.to_dict()}
+
+
+func _restore_books(data: Dictionary) -> bool:
+	var parsed: Dictionary = _parse_books(data)
+	if parsed.is_empty():
+		return false
+	_install_books(parsed)
+	EventBus.cash_changed.emit(cash, 0, Ledger.OTHER)
+	return true
+
+
+## The per-site "pantry" save section: the kitchen's stock on hand.
+func _capture_pantry() -> Dictionary:
+	return {"stock": stock.to_dict()}
+
+
+func _restore_pantry(data: Dictionary) -> bool:
+	var restored_stock: Stock = _parse_stock(data)
+	if restored_stock == null:
+		return false
+	stock = restored_stock
+	return true
+
+
+## Returns {"ledger", "loan"} models, or {} when the data is not valid books.
+func _parse_books(data: Dictionary) -> Dictionary:
+	var ledger_data: Variant = data.get("ledger", null)
+	if not ledger_data is Dictionary:
+		return {}
 	var restored_loan: LoanAccount = LoanAccount.new()
 	if data.has("loan"):
 		restored_loan = LoanAccount.from_dict(data["loan"])
 		if restored_loan == null:
-			return false
-	var restored_stock: Stock = Stock.from_dict(stock_data)
-	if restored_stock == null:
-		return false
+			return {}
 	var restored_ledger: Ledger = Ledger.from_dict(ledger_data)
-	ledger = restored_ledger
-	stock = restored_stock
-	loan = restored_loan
-	EventBus.cash_changed.emit(cash, 0, Ledger.OTHER)
-	return true
+	if restored_ledger == null:
+		return {}
+	return {"ledger": restored_ledger, "loan": restored_loan}
+
+
+func _install_books(parsed: Dictionary) -> void:
+	ledger = parsed["ledger"]
+	loan = parsed["loan"]
+
+
+func _parse_stock(data: Dictionary) -> Stock:
+	var stock_data: Variant = data.get("stock", null)
+	if not stock_data is Dictionary:
+		return null
+	return Stock.from_dict(stock_data)
 
 
 ## Adds (or, with a negative amount, removes) cash and announces it. The

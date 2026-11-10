@@ -178,6 +178,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- The kitchen's stock now saves in its own "pantry" section, apart from cash and the loan, and a new table says which save sections every shop shares and which belong to one shop. Older saves move their stock across when loaded. First step towards owning more than one shop. (#411)
 - Design: how several restaurant sites work (one active site, the rest frozen in the save and run by managers), lot data, lot-only content and the prestige score (#404)
 - The coffee shop test layout leaves a two-cell aisle between the coffee machines and the counter in the deeper starter room, as Build mode now advises; a one-cell gap had the cook looping round the full counter. (#403)
 - The Records screenshot check now plays ordinary days until a close beats a record, since the first day sets every record quietly. (#401)
