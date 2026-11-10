@@ -198,6 +198,10 @@ var _booking_presented_key: Array[int] = []
 var _loaded_rush_hour: Dictionary = {}
 ## The saved fish tank section (#125: each tank's last cleaning day), staged likewise.
 var _loaded_aquarium: Dictionary = {}
+## The owner's sites (FK-087): the active one plus frozen copies of the rest.
+var site_book: SiteBook = SiteBook.new()
+## The saved sites section, staged until the rest of the morning load passes.
+var _loaded_sites: SiteBook = null
 var _demand_breakdown: DemandBreakdown = null
 var _demand_day: int = 0
 var _demand_reputation: float = 3.0
@@ -649,6 +653,7 @@ func start() -> void:
 	SaveSystem.register("bookings", _capture_bookings, _restore_bookings)
 	SaveSystem.register("rush_hour", _capture_rush_hour, _restore_rush_hour)
 	SaveSystem.register("aquarium", _capture_aquarium, _restore_aquarium)
+	SaveSystem.register("sites", _capture_sites, _restore_sites)
 	var loaded: bool = use_saves and _load_autosave()
 	_rooms_note = loaded and _loaded_layout != null and _loaded_layout.rooms_unmarked
 	$HUD.set_rooms_note(ROOMS_NOTE if _rooms_note else "")
@@ -2561,6 +2566,8 @@ func _new_game() -> void:
 	sim.rush_hour = RushHour.new(RUSH_TUNING)
 	_loaded_rush_hour = {}
 	_loaded_aquarium = {}
+	site_book = SiteBook.new()
+	_loaded_sites = null
 	business_history = BusinessHistory.new()
 	_loaded_business_history = null
 	shop_records = ShopRecords.new()
@@ -2679,6 +2686,7 @@ func _load_autosave_sections() -> bool:
 	_loaded_critic = {}
 	_loaded_rush_hour = {}
 	_loaded_aquarium = {}
+	_loaded_sites = null
 	_loaded_regulars = null
 	_loaded_blueprints = null
 	_blueprint_load_notes.clear()
@@ -2731,6 +2739,9 @@ func _load_autosave_sections() -> bool:
 		return false
 	if _loaded_shop_records != null and not _loaded_shop_records.valid_before(Clock.sim.day):
 		world.log_event("Saved records are ahead of this morning; starting a new game")
+		return false
+	if _loaded_sites != null and not _loaded_sites.valid_before(Clock.sim.day):
+		world.log_event("Saved sites are ahead of this morning; starting a new game")
 		return false
 	if not OpeningHours.clock_valid(Clock.sim, HOURS_TUNING):
 		# Keep the game; only the hours go back to the default day.
@@ -2812,6 +2823,8 @@ func _load_autosave_sections() -> bool:
 	sim.aquarium.restore(world.grid, _loaded_aquarium if not _loaded_aquarium.is_empty()
 		else {"version": AquariumCare.SAVE_VERSION, "tanks": []}, Clock.sim.day)
 	_loaded_aquarium = {}
+	site_book = _loaded_sites if _loaded_sites != null else SiteBook.new()
+	_loaded_sites = null
 	_loaded_layout = layout
 	staff_roster = employees
 	reputation = _loaded_reputation if _loaded_reputation != null else ReputationBook.new()
@@ -3219,6 +3232,19 @@ func _restore_aquarium(data: Dictionary) -> bool:
 	if not AquariumCare.valid_dict(data):
 		return false
 	_loaded_aquarium = data.duplicate(true)
+	return true
+
+
+func _capture_sites() -> Dictionary:
+	return site_book.to_dict()
+
+
+## Older saves have no sites section and stay one site (the starter shop).
+func _restore_sites(data: Dictionary) -> bool:
+	var book: SiteBook = SiteBook.from_dict(data)
+	if book == null:
+		return false
+	_loaded_sites = book
 	return true
 
 

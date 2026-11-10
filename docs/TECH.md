@@ -3369,7 +3369,7 @@ entry only at a site whose lot shares a tag. Lot-only items stay with their
 site when furniture moves (part 5).
 
 **Save sections.** Every registered section is classed once in
-`src/world/site_sections.gd`; a test fails when one is missing.
+`src/sim/sites/site_sections.gd`; a test fails when one is missing.
 - **Global:** `owner`, `game_state` (seed and RNG streams), `clock` (day and
   phase), the economy books (`ledger`, `loan`), `blueprints`, `milestones`,
   `weekly_challenge`, `hints`, `weather`, `collection_toasts` (a collection
