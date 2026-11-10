@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- A busy service with lots of happy guests can now draw a trending food post. The evening report names the dish, and Menu shows the extra demand, which fades over the next three open services. (#392)
 - New games start in a deeper dining room, with half again as much floor between the kitchen and the street door, so there is room for four or five two-seat tables with aisles two people wide. The starting tables are spread out with two-cell aisles, and the rent is the same. Saved games keep their shop as it is. Build mode now also warns you, and marks the spot in red, when furniture you place or move narrows a walkway people use (the door to the tables and the pass, the pass to the tables, or the kitchen stations) to a single cell, where two people can't pass each other. It is only a warning. (#390)
 - Choose an optional Today's special from your enabled dishes in the morning Menu. It gets 10% off and guests are more likely to pick it; the HUD, menu boards and evening report show the offer and how many you sold. Pick None to keep your usual menu. (#388)
 - Take on a rotating weekly challenge: serve a busy day, earn operating profit, finish clean days without losing a guest, collect good reviews, or sell a featured dish. Goals shows your frozen target and progress, and the evening report calls out a cash reward when you complete it. (#345)
