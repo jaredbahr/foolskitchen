@@ -11,7 +11,7 @@ const GLOBAL: PackedStringArray = [
 	# later as "site_hours".
 	"clock",
 	"economy", "blueprints", "milestones", "weekly_challenge", "hints", "weather",
-	"collection_toasts",
+	"collection_toasts", "sites",
 ]
 
 const PER_SITE: PackedStringArray = [
