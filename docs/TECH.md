@@ -3407,7 +3407,8 @@ made): that morning's results stay with it. Steps:
    refuses, all of them are restored again from a capture taken first, so the
    active site is exactly as it was (in place: the pantry keeps its `Stock`
    object). The switch then clears main.gd's `_loaded_*` staging, which holds
-   the rolled-back copy. A refusal never starts a new game. Global sections are never touched. (#411
+   the rolled-back copy. A refusal never starts a new game. Global sections are never touched
+   (except that rewiring, like any reload, redraws the customers RNG stream). (#411
    already split the old single `economy` section into the global books and
    the per-site `pantry`; `SiteSections` lists both sides.)
 4. Install, then rewire the session: the existing post-load setup in
@@ -3418,6 +3419,15 @@ made): that morning's results stay with it. Steps:
    then autosave once.
 Owner is global and already installed, so its order before `shop` and `menu`
 still holds.
+Built so far (#408 C3): `main.gd` `switch_site(target)` (tests only, no UI
+yet). Validation and install are `_validate_staged_sections` and
+`_install_staged_sections`, shared with the morning load (which also stages
+the global sections); the switch carries today's weather to the new world. A
+frozen copy without a `pantry` gets an empty one (the pantry restores in
+place, so skipping it would keep the departing stock); other missing sections
+take their load defaults. A refusal after a successful restore restores the
+departing capture again (for the pantry) and clears the staging. The
+morning's one supplier haggle is the owner's and is not reset by a switch.
 
 **Managers and away sites.** A new staff role **Manager** (hired at Tier 3,
 skill is the existing service skill). An inactive site with a manager earns,

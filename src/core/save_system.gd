@@ -110,6 +110,24 @@ func load_game(slot: String) -> Error:
 	return OK
 
 
+## Captures only the named sections, JSON-shaped (as a saved file would hold
+## them), for a site switch (FK-087). Returns {} when a key is unknown or a
+## provider fails.
+func capture_sections(keys: PackedStringArray) -> Dictionary:
+	var sections: Dictionary = {}
+	for key: String in keys:
+		if not _providers.has(key):
+			return {}
+		var capture: Callable = _providers[key]["capture"]
+		if not capture.is_valid():
+			return {}
+		var section: Variant = capture.call()
+		if not section is Dictionary:
+			return {}
+		sections[key] = _as_json(section)
+	return sections
+
+
 ## Restores only the named sections from an in-memory dictionary, for a site
 ## switch (FK-087). Every key must be registered and every present section must
 ## be a Dictionary, or nothing is touched (ERR_INVALID_PARAMETER). Missing
