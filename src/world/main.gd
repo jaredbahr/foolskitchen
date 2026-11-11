@@ -5755,7 +5755,12 @@ func _charge_closing_costs() -> void:
 	for member: StaffMember in staff_roster.members():
 		if member.role == StaffMember.MANAGER:
 			Economy.add_cash(-OpeningHours.wage_for_day(member.wage, Clock.sim, HOURS_TUNING), Ledger.WAGES)
-	var rent: int = _home_rent()
+	# The active site pays its own lot's rent: the home lease rule on the home
+	# lot (one-site play, unchanged), nothing yet on a lot with no rent data.
+	var rent: int = AwaySites.lot_rent(site_book.lot_id(site_book.active_id), _home_rent())
+	if rent == AwaySites.UNKNOWN_RENT:
+		push_warning("No rent is known for this site's lot yet; none charged")
+		rent = 0
 	if rent > 0:
 		Economy.add_cash(-rent, Ledger.RENT)
 	if sim.cat.adopted and CAT.daily_food_cost > 0:
@@ -5809,7 +5814,8 @@ func site_manager() -> StringName:
 ## this site, so it earns while the owner is at another; &"" clears it. Saved
 ## on the site's row at the next morning autosave. Tests only so far.
 func assign_site_manager(member_id: StringName) -> bool:
-	if not can_view_staff():
+	# Morning only, like other staff changes: it is saved by the morning autosave.
+	if not can_edit_staff():
 		return false
 	if not member_id.is_empty() and not _is_roster_manager(member_id):
 		return false

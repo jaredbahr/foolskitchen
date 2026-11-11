@@ -194,6 +194,9 @@ func test_an_unmanaged_home_site_pays_only_its_rent() -> void:
 	assert_eq(charged.size(), 1)
 	assert_eq(int(charged[0]["amount"]), -rent)
 	assert_eq(_entries(day, SiteBook.HOME_ID, Ledger.AWAY_SITE_INCOME).size(), 0)
+	assert_eq(_entries(day, &"second", Ledger.RENT).size(), 0,
+		"the second site does not pay the home lot's rent as well")
+	assert_eq(_entries(day, SiteBook.HOME_ID, Ledger.RENT).size(), 0, "home rent is charged once, as away rent")
 	_assert_report_excludes_away(report, "the active report")
 	assert_eq(report.away_site_lines, ["Fool's Kitchen (closed): rent -$%d" % rent] as Array[String])
 
