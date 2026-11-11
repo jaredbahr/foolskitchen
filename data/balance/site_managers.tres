@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="SiteManagerTuning" format=3]
+
+[ext_resource type="Script" path="res://src/sim/sites/site_manager_tuning.gd" id="1_tuning"]
+
+[resource]
+script = ExtResource("1_tuning")
+hire_tier = 3
+rate_at_skill_1 = 0.7
+rate_at_skill_5 = 1.0
+history_days = 7

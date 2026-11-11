@@ -65,7 +65,9 @@ func to_dict() -> Dictionary:
 ## Validate the complete row before replacing any choice. JSON whole-number
 ## floats are accepted; booleans, missing/unknown jobs and forbidden Off fail.
 func from_dict(data: Variant) -> bool:
-	if not data is Dictionary or data.size() != JOBS.size() or main_job(role).is_empty():
+	# A manager has no main job (no floor work): every job must be Off.
+	if not data is Dictionary or data.size() != JOBS.size() \
+			or (main_job(role).is_empty() and role != StaffMember.MANAGER):
 		return false
 	var row: Dictionary = data
 	var staged: Dictionary[StringName, int] = {}
