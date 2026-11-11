@@ -307,10 +307,11 @@ func ten_percent_price(id: StringName, direction: int) -> int:
 	var tenth: int = current / 10
 	var remainder: int = current % 10
 	if direction > 0:
-		var increment: int = tenth + (1 if remainder >= 5 else 0)
+		# At least $1, so a cheap dish still moves when the player clicks.
+		var increment: int = maxi(1, tenth + (1 if remainder >= 5 else 0))
 		var upper: int = maximum_price(id)
 		return upper if current > upper - increment else current + increment
-	var decrement: int = tenth + (1 if remainder > 5 else 0)
+	var decrement: int = maxi(1, tenth + (1 if remainder > 5 else 0))
 	return maxi(minimum_price(id), current - decrement)
 
 
