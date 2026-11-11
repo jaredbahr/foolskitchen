@@ -85,12 +85,20 @@ func test_save_round_trip_and_strict_decode() -> void:
 
 
 func test_legacy_saves_load_tier_from_the_lease() -> void:
-	var progress: OwnerProgress = _owner_at(4)
+	var progress: OwnerProgress = _owner_at(2)
 	var legacy: Dictionary = progress.to_dict()
 	legacy.erase("career_tier")
 	var restored: OwnerProgress = OwnerProgress.new(PROGRESSION)
 	assert_true(restored.from_dict(legacy))
-	assert_eq(restored.career_tier, 1, "without an expanded lease")
+	assert_eq(restored.career_tier, 1, "below Tier 2's level and without an expanded lease")
+	var levelled: Dictionary = _owner_at(4).to_dict()
+	levelled.erase("career_tier")
+	assert_true(restored.from_dict(levelled))
+	assert_eq(restored.career_tier, 2, "an old save already at Tier 2's level keeps the lease offer")
+	var ladder: CareerTierTuning = preload("res://data/balance/career_tiers.tres")
+	assert_eq(OwnerProgress.LEGACY_TIER_TWO_LEVEL, ladder.rung_for(2).min_level,
+		"the legacy rule matches the authored Tier 2 level")
+	assert_eq(ladder.rung_for(2).min_reputation, 0.0, "Tier 2 has no star condition")
 	legacy["property_tier"] = 2
 	assert_true(restored.from_dict(legacy))
 	assert_eq(restored.career_tier, 2, "an expanded lease meant Tier 2")

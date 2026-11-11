@@ -8,6 +8,9 @@ const MAX_TOTAL_XP: int = 1000000000
 const MAX_DAILY_COUNT: int = 1000000
 const MAX_PROFIT_MAGNITUDE: int = 1000000000
 const MAX_LEVEL: int = 1000000
+## Tier 2's level in data/balance/career_tiers.tres, for saves from before
+## the ladder (it had no reputation condition, so level alone decides).
+const LEGACY_TIER_TWO_LEVEL: int = 3
 
 var tuning: ProgressionTuning
 var total_xp: int = 0
@@ -145,8 +148,10 @@ func from_dict(value: Variant) -> bool:
 	level = saved_level
 	last_awarded_day = int(row["last_awarded_day"])
 	property_tier = int(row.get("property_tier", 1))
-	# Saves from before the ladder: an expanded lease meant Tier 2.
-	career_tier = int(row.get("career_tier", 2 if property_tier == 2 else 1))
+	# Saves from before the ladder: an expanded lease, or the level that
+	# Tier 2 needs, meant Tier 2 (so the lease offer stays open on load).
+	var legacy_tier: int = 2 if property_tier == 2 or level >= LEGACY_TIER_TWO_LEVEL else 1
+	career_tier = int(row.get("career_tier", legacy_tier))
 	return true
 
 
