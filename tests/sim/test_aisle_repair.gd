@@ -103,6 +103,34 @@ func test_a_table_pushed_into_the_aisle_moves_the_least() -> void:
 	assert_true(layout.placements[6] == ORIGINAL.placements[6])
 
 
+## Load time (#320 review): a big messy shop, two rows of loose chairs
+## across the deeper starter room, has many movable items and no fix the
+## editor would accept. The search stays inside its budget, counted in tries
+## and full checks rather than wall time, and leaves the shop alone.
+func test_a_fruitless_search_stays_inside_its_budget() -> void:
+	var layout: ShopLayout = DEEPER.duplicate() as ShopLayout
+	layout.placements = DEEPER.placements.duplicate()
+	for y: int in [12, 13]:
+		for x: int in range(1, 15):
+			var chair: ShopPlacement = ShopPlacement.new()
+			chair.item_id = &"chair"
+			chair.origin = Vector2i(x, y)
+			layout.placements.append(chair)
+	var before: Array[ShopPlacement] = layout.placements.duplicate()
+	assert_false(AisleRepair.cut_off(_grid(layout), true).is_empty(), "the chairs shut the kitchen off")
+	assert_eq(AisleRepair.repair(layout, _content), 0)
+	assert_true(AisleRepair.last_tries <= AisleRepair.MAX_TRIES, "tries %d" % AisleRepair.last_tries)
+	assert_true(AisleRepair.last_checks <= AisleRepair.MAX_CHECKS, "checks %d" % AisleRepair.last_checks)
+	assert_eq(layout.placements, before, "nothing moves")
+	assert_eq(layout.aisle_moved, 0)
+
+
+func test_the_original_row_needs_few_tries() -> void:
+	assert_eq(AisleRepair.repair(_blocked_original(), _content), 1)
+	assert_true(AisleRepair.last_tries <= 40, "tries %d" % AisleRepair.last_tries)
+	assert_true(AisleRepair.last_checks <= 5, "checks %d" % AisleRepair.last_checks)
+
+
 func test_a_shop_people_can_walk_is_left_alone() -> void:
 	var layout: ShopLayout = DEEPER.duplicate() as ShopLayout
 	assert_eq(AisleRepair.repair(layout, _content), 0)

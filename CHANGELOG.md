@@ -11,7 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
-- Older saves on the original starter layout, where a row of tables and seats left no way through to the kitchen, now have the blocking table moved on load (keeping its look and every seat) so your staff can reach the pass. A note says so that morning. Build mode's path warnings and checks now walk the way people do: nobody walks through a seat. (#436)
+- Older saves on the original starter layout, where a row of tables and seats left no way through to the kitchen, now have the blocking table moved on load (keeping its look and every seat) so your staff can reach the pass. A note says so that morning. Build mode's path checks now walk the way people do: nobody walks through a seat. Moving furniture so the only way to the pass, a station or a table runs through seats now warns (it never blocks the move), and a wall or floor change that would leave the only way through seats is refused. (#436)
 - Open Staff to see what each employee did today and in total. (#417)
 - Your restaurant now climbs career tiers 1 to 6. Tier 2 comes at owner level 3; Tiers 3 to 6 need both an owner level and a good reputation at closing (Tier 3: level 6 and 4.0 stars). A tier is never lost. Goals shows what the next tier needs, and the evening report announces a new one. The larger lease is now offered once you reach Tier 2. (#419)
 - Two staff who meet head-on in a one-cell corridor now squeeze past each other instead of stepping back and forth until a task times out. (#402)

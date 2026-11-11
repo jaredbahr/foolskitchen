@@ -2269,8 +2269,10 @@ func _note_menu_access(check: EditCheck, preview: SimGrid, restoring: bool) -> v
 	check.menu_losses = MenuAccess.lost(_sim.world.grid, preview, _sim.menu, _career_tier)
 	check.menu_warning = MenuAccess.warning(check.menu_losses, preview, _content)
 	var recipes: Array[RecipeDef] = _content.recipes()
-	if MenuAccess.cookable(preview, recipes, _owner_level, _career_tier).is_empty() \
-			and not MenuAccess.cookable(_sim.world.grid, recipes, _owner_level, _career_tier).is_empty():
+	# Refused only when walls or furniture other than seats shut the kitchen
+	# off; seats alone get the path warning (#315, #320).
+	if MenuAccess.cookable(preview, recipes, _owner_level, _career_tier, false).is_empty() \
+			and not MenuAccess.cookable(_sim.world.grid, recipes, _owner_level, _career_tier, false).is_empty():
 		check.ok = false
 		check.why = MenuAccess.NO_DISH
 		return

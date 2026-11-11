@@ -3167,8 +3167,13 @@ furniture rule (DESIGN 4.3); only waiting benches keep #269's refusal. As in
 warning. Since #320 the standing checks walk the same way: the `unreachable`
 highlights (`ShopEditor._unreachable`, which probes and the soak treat as a
 hard condition), the furniture pass of wall and floor cut-off refusals
-(`WallRules.cut_off_problem`), the room rules (`RoomRules.guest_reachable`,
-and with it `restroom_toilets`) and menu access (`MenuAccess`).
+(`WallRules.cut_off_problem`), `RoomRules.guest_reachable` (and with it
+`restroom_toilets`, which feeds the sim) and the live menu (`MenuAccess`).
+Furniture still only warns: the room rules' refusals (`RoomRules.violations`)
+and the editor's empty-menu refusal walk across seats (`seats_stop` false), so
+a move that leaves the pass, a station or a seat reachable only through seats
+gets the seat warning (the pass has its own, `WallRules.CUT_PASS`) and the
+highlight, never "The pass needs the kitchen on one side…".
 
 Older shops whose staff can't reach the kitchen that way (#320): the
 preserved original template's middle row is all tables and seats, so its
@@ -3178,11 +3183,17 @@ that predates the shop section (Main's staging of the original template). It
 compares what is cut off walking as people do with what is cut off walking
 across seats (items as `_unreachable` names them, street-door cells, toilets)
 and, when people miss anything, moves only tables and chairs until they miss
-nothing: the fewest moves, then the shortest (cells moved, plus one for a
-turn; within `RADIUS` of where the item stood, fixed tie order, no RNG). A
-move must be one the editor accepts (fits, same room kind, chairs keep their
-table, no new room problem, no seat in the doorway, no dining seat lost, no
-staff start covered). Each item keeps its variant, colour and placement
+nothing. The search is greedy: each round takes the move that fixes the most,
+the shortest on ties (cells moved, plus one for a turn; within `RADIUS` of
+where the item stood, fixed tie order, no RNG). It tries only tables and
+chairs touching the cut-off cells (tables first), scores a pose with one
+flood, and runs the editor's full checks only on a pose that beats the best so
+far. A move must be one the editor accepts (fits, same room kind, chairs face
+a table, no new room problem, no seat in the doorway, no dining seat lost, the
+largest joined table group no smaller, no staff start covered). Load time is
+capped: past `MAX_TRIES` poses or `MAX_CHECKS` full checks it gives up and
+changes nothing (a repair that fails runs again on each load until the next
+morning autosave writes version 10). Each item keeps its variant, colour and placement
 order; when no repair is found nothing moves. On the original layout it
 turns the west table a quarter where it stands, which opens a lane beside the
 pass; the template (`tier1_original.tres`) now holds that arrangement, so a

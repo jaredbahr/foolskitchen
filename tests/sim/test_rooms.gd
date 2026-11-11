@@ -412,3 +412,24 @@ func _can_spend(amount: int) -> bool:
 
 func _record_cash(amount: int, _category: StringName) -> void:
 	_cash += amount
+
+
+## #320 review: in a shop with rooms, a furniture move that leaves the pass
+## (and the kitchen behind it) reachable only through seats warns, never
+## refuses: turning the west table back into the original row of seats.
+func test_seats_cutting_off_the_pass_warn_and_never_refuse() -> void:
+	var west: PlacedItem = _sim.world.grid.item_at(Vector2i(2, 6))
+	assert_eq(west.quarter_turns, 1)
+	var check: EditCheck = _editor.check_move(west.id, Vector2i(2, 6), 0)
+	assert_true(check.ok, check.why)
+	assert_true(String(check.seat_warnings.get(west.id, "")).begins_with("Nobody walks through seats: this blocks the way to the"),
+		"a clear seat warning: %s" % check.seat_warnings)
+	var pass_counter: PlacedItem = ShopBuilder.items_with_def(_sim.world, &"pass_counter")[0]
+	assert_true(check.unreachable.has(pass_counter.id), "the pass is highlighted")
+	assert_true(_editor.move(west.id, Vector2i(2, 6), 0), _editor.last_check.why)
+	assert_true(_editor.check_current().ok)
+
+
+func test_the_pass_has_its_own_seat_warning() -> void:
+	assert_eq(WallRules.seat_cut_off_warning(WallRules.CUT_PASS),
+		"Nobody walks through seats: this blocks the way to the pass")

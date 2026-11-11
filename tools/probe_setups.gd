@@ -340,10 +340,7 @@ static func _joined_tables(main: Node) -> bool:
 	var targets: Array[Vector2i] = [tables[0].origin + Vector2i(1, 1),
 		tables[0].origin + Vector2i(3, 1)]
 	var ids: Array[int] = [tables[0].id, tables[1].id]
-	# East one first: on the original layout the west table moved first would
-	# stand in the only seat-free lane to the pass while the east one is still
-	# in its old place, and that move is refused (#320).
-	for index: int in range(ids.size() - 1, -1, -1):
+	for index: int in ids.size():
 		if not main.call("shop_move", ids[index], targets[index], 1):
 			return false
 	if not main.call("shop_buy", &"chair", targets[0] + Vector2i(1, -1), 2) \

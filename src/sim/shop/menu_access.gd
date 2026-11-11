@@ -6,9 +6,12 @@ extends RefCounted
 const NO_DISH: String = "Staff must be able to reach a stove or prep counter"
 
 
+## `seats_stop` (the default) walks as staff do, never on through a seat
+## (#320); false walks across seats, for the editor's refusal, since a way
+## only seats block is a warning, never a refusal (#315).
 static func cookable(grid: SimGrid, recipes: Array[RecipeDef], level: int = 0,
-		tier: int = 1) -> Array[RecipeDef]:
-	var state: Dictionary = _state(grid)
+		tier: int = 1, seats_stop: bool = true) -> Array[RecipeDef]:
+	var state: Dictionary = _state(grid, seats_stop)
 	var result: Array[RecipeDef] = []
 	if not state["fridge"] or not state["pass"]:
 		return result
@@ -97,9 +100,8 @@ static func _requirements(recipe: RecipeDef) -> Array[StringName]:
 	return stations
 
 
-static func _state(grid: SimGrid) -> Dictionary:
-	# Walking as staff do: a seat ends a walk, never carries it on (#320).
-	var reach: Dictionary[Vector2i, bool] = WallRules.reachable(grid, true)
+static func _state(grid: SimGrid, seats_stop: bool = true) -> Dictionary:
+	var reach: Dictionary[Vector2i, bool] = WallRules.reachable(grid, seats_stop)
 	var reachable: Dictionary[StringName, bool] = {}
 	var installed: Dictionary[StringName, bool] = {}
 	var fridge: bool = false
