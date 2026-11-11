@@ -269,6 +269,119 @@ func test_a_switch_after_a_gap_thaws_the_site() -> void:
 	assert_eq(_book().frozen_day(SiteBook.HOME_ID), today)
 
 
+## A real switch's books (#408 D2): the departing site's morning spending (a
+## haggled order, a list-price order, a hand throw-out) stays its own, and the
+## arriving site's report, stock bought, operating profit and the thaw's
+## booking refund are only the arriving site's.
+func test_a_switch_keeps_each_sites_morning_books() -> void:
+	_start()
+	var frozen_day: int = Clock.sim.day
+	var frozen: Dictionary = _captures()
+	# A booking for the day after the freeze, which the site misses (as in
+	# the gap test): entering it again refunds the deposit.
+	var offer: Dictionary = SiteThawFixture.sections()["bookings"]["offer"]
+	offer["offer_day"] = float(frozen_day)
+	offer["service_day"] = float(frozen_day + 1)
+	var booking: GroupBooking = GroupBooking.new(BOOKINGS)
+	assert_true(booking.from_dict({"version": 1.0, "planned_day": float(frozen_day), "offer": offer, "booking": {}}))
+	assert_false(booking.accept_offer(frozen_day).is_empty())
+	var deposit: int = int(booking.booking["deposit_amount"])
+	frozen["bookings"] = JSON.parse_string(JSON.stringify(booking.to_dict()))
+	assert_true(_book().add_site(&"second", &"second_lot", "Second", frozen_day, frozen))
+	for step: int in 2:
+		reset_weekly_for_synthetic_day_jump(_main)
+		Clock.sim.day += 1
+		_main.call("_begin_morning")
+	var day: int = Clock.sim.day
+
+	# The home site's morning: throw stock out by hand, then a haggled order
+	# (the owner's one haggle, won at 10%) and a list-price order.
+	for id: StringName in Economy.stock.ids():
+		_main.call("stock_throw_out", id)
+	_main.set("_haggle_day", day)
+	_main.set("_haggle_attempted", true)
+	_main.set("_haggle_percent", 10)
+	assert_true(_main.call("stock_cart_set", &"tomato", 20))
+	assert_true(_main.call("stock_place_order"))
+	assert_true(_main.call("stock_cart_set", &"tomato", 15))
+	assert_true(_main.call("stock_place_order"))
+	var home_report: DayReport = _main.call("build_report", day)
+	assert_eq(home_report.haggle_percent, 10, "the home site's own report has its haggle")
+	assert_true(home_report.haggle_saved > 0)
+	var home_bought: int = home_report.stock_bought
+	assert_true(home_bought >= 33, "the home site bought both orders")
+	assert_true((_main.call("stock_notes") as Array).any(_thrown_note), "the throw-out is noted at home")
+	var home_entries: String = JSON.stringify(Economy.ledger.entries_for_day(day, SiteBook.HOME_ID))
+
+	assert_true(_main.call("switch_site", &"second"))
+	assert_eq(JSON.stringify(Economy.ledger.entries_for_day(day, SiteBook.HOME_ID)), home_entries,
+		"the departing site's entries keep its id")
+	var refunds: Array[Dictionary] = []
+	for entry: Dictionary in Economy.ledger.entries_for_day(day):
+		if entry["category"] == Ledger.BOOKING_REFUND:
+			refunds.append(entry)
+	assert_eq(refunds.size(), 1, "one thaw refund")
+	assert_eq(int(refunds[0]["amount"]), -deposit)
+	assert_eq(refunds[0]["site"], &"second", "the thaw refund is the arriving site's")
+	var report: DayReport = _main.call("build_report", day)
+	assert_eq(report.haggle_percent, 0, "no haggle on the arriving site's report")
+	assert_eq(report.haggle_saved, 0)
+	assert_eq(report.stock_bought, _bought(day, &"second"), "only the arriving site's purchases")
+	assert_eq(_bought(day, Ledger.ALL_SITES), report.stock_bought + home_bought)
+	assert_eq(int(report.costs.get(Ledger.BOOKING_REFUND, 0)), deposit)
+	assert_false((_main.call("stock_notes") as Array).any(_thrown_note),
+		"the departing site's throw-out is not the arriving site's note")
+	# The haggle is the owner's, once a morning, whichever site.
+	assert_true(_main.call("stock_cart_set", &"tomato", 1))
+	assert_false(_main.call("can_start_haggle"), "one haggle a morning, across sites")
+	_main.call("stock_clear_cart")
+
+	assert_true(Clock.sim.start_service())
+	_main.call("run_ticks", 30000)
+	assert_eq(Clock.sim.phase, SimClock.Phase.CLOSED)
+	var closed: DayReport = _main.get("shown_report")
+	assert_true(closed != null and closed.day == day, "the arriving site closed its day")
+	assert_eq(closed.haggle_saved, 0, "the evening report has no departing haggle")
+	assert_eq(closed.stock_bought, _bought(day, &"second"))
+	assert_eq(int(closed.costs.get(Ledger.INGREDIENTS, 0)), -_net(day, &"second", Ledger.INGREDIENTS),
+		"ingredient costs are only the arriving site's")
+	assert_true(closed.food_cost_recorded and closed.food_cost > 0, "food cost is today's sales here")
+	assert_eq(JSON.stringify(Economy.ledger.entries_for_day(day, SiteBook.HOME_ID)), home_entries,
+		"the home site's morning stays in its books after the close")
+	# The close's operating profit (owner XP) is the arriving site's alone.
+	var operating: int = _operating(day, &"second")
+	var award: Dictionary = _main.get("_owner_award_today")
+	var tuning: ProgressionTuning = (_main.get("owner_progress") as OwnerProgress).tuning
+	assert_true(operating >= tuning.profit_step, "the arriving site made a profit to tell apart")
+	assert_eq(int(award["profit_xp"]), maxi(0, operating) / tuning.profit_step * tuning.profit_step_xp)
+	assert_true(maxi(0, _operating(day, Ledger.ALL_SITES)) / tuning.profit_step
+		!= maxi(0, operating) / tuning.profit_step, "the departing spending would have changed it")
+
+
+static func _thrown_note(note: Variant) -> bool:
+	return String(note).begins_with("Thrown out today")
+
+
+func _bought(day: int, site: StringName) -> int:
+	var total: int = 0
+	for entry: Dictionary in Economy.ledger.entries_for_day(day, site):
+		if entry["category"] == Ledger.INGREDIENTS and int(entry["amount"]) < 0:
+			total -= int(entry["amount"])
+	return total
+
+
+func _net(day: int, site: StringName, category: StringName) -> int:
+	return int(Economy.ledger.day_totals(day, site).get(category, 0))
+
+
+func _operating(day: int, site: StringName) -> int:
+	var total: int = 0
+	for entry: Dictionary in Economy.ledger.entries_for_day(day, site):
+		if not DayReport.NON_OPERATING_CATEGORIES.has(entry["category"]):
+			total += int(entry["amount"])
+	return total
+
+
 func test_a_save_after_a_switch_reloads_the_switched_site() -> void:
 	_start()
 	var day: int = Clock.sim.day
