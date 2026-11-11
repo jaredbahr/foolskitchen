@@ -12,6 +12,7 @@ Each line ends with its PR number.
 
 ### Players
 - Seasons change every 28 days, bringing lower and higher ingredient purchase prices. The date names the season, Stock marks seasonal ingredients, and dish details point out ingredients in season. (#395)
+- Open Staff to see what each employee did today and in total. (#417)
 - Your restaurant now climbs career tiers 1 to 6. Tier 2 comes at owner level 3; Tiers 3 to 6 need both an owner level and a good reputation at closing (Tier 3: level 6 and 4.0 stars). A tier is never lost. Goals shows what the next tier needs, and the evening report announces a new one. The larger lease is now offered once you reach Tier 2. (#419)
 - Two staff who meet head-on in a one-cell corridor now squeeze past each other instead of stepping back and forth until a task times out. (#402)
 - A new Mediterranean seaside song, "Coastal Afternoon", is in the game files. It will play in seafood restaurants and the seaside café once those music themes arrive. (#396)
@@ -180,6 +181,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- CI: the Godot checks job now has 25 minutes instead of 15, since the full suite takes about 14. (#427)
 - A new staff role, the Manager, can be hired from Tier 3 once you own a second restaurant: they do no floor work but run a restaurant while you are at your other one. At each closing, a managed restaurant you are away from earns 70% (manager skill 1) to 100% (skill 5) of its average profit over its last seven days you ran it, never more; one without a manager stays closed and pays only its rent. A group booking at a restaurant you are away from is cancelled that day with the deposit refunded, managed or not. The evening report lists each of your other restaurants. Buying a second restaurant has no menu yet, so one-restaurant games play exactly as before. (#420)
 - Switching restaurants no longer carries the morning's haggle saving or hand throw-outs into the next restaurant's evening report and Stock notes, and a test plays a real switch to check each restaurant keeps its own books (#418)
 - Money in the books now remembers which restaurant earned or spent it, so once you own a second site, the evening report, business history, records and XP count only the restaurant you are playing that day, while your cash still covers all of them. Income and rent from your other restaurants, buying new premises and renovation get their own lines in the books and never count toward a day's profit. One-restaurant games play and save exactly as before. (#416)
