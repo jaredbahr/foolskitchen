@@ -2,9 +2,9 @@ extends TestCase
 ## Focused metadata and wrapper checks for the first furniture catalogue decor set.
 
 const CASES: Array[Dictionary] = [
-	{"id": &"rug_round", "name": "Round rug", "asset": "rugRound", "price": 30, "unlock": 1, "charm": 1, "tags": [&"cosy", &"rustic"], "footprint": Vector2i(2, 2), "solid": false, "paintable": false},
-	{"id": &"rug_rectangle", "name": "Rectangular rug", "asset": "rugRectangle", "price": 45, "unlock": 2, "charm": 2, "tags": [&"cosy"], "footprint": Vector2i(4, 2), "solid": false, "paintable": false},
-	{"id": &"rug_square", "name": "Square rug", "asset": "rugSquare", "price": 40, "unlock": 2, "charm": 2, "tags": [&"modern"], "footprint": Vector2i(2, 2), "solid": false, "paintable": false},
+	{"id": &"rug_round", "name": "Round rug", "asset": "rugRound", "price": 30, "unlock": 1, "charm": 1, "tags": [&"cosy", &"rustic"], "footprint": Vector2i(2, 2), "solid": false, "paintable": true},
+	{"id": &"rug_rectangle", "name": "Rectangular rug", "asset": "rugRectangle", "price": 45, "unlock": 2, "charm": 2, "tags": [&"cosy"], "footprint": Vector2i(4, 2), "solid": false, "paintable": true},
+	{"id": &"rug_square", "name": "Square rug", "asset": "rugSquare", "price": 40, "unlock": 2, "charm": 2, "tags": [&"modern"], "footprint": Vector2i(2, 2), "solid": false, "paintable": true},
 	{"id": &"plant_small_1", "name": "Small plant", "asset": "plantSmall1", "price": 15, "unlock": 1, "charm": 1, "tags": [&"cosy"], "footprint": Vector2i(1, 1), "solid": true, "paintable": true},
 	{"id": &"plant_small_2", "name": "Leafy plant", "asset": "plantSmall2", "price": 20, "unlock": 2, "charm": 1, "tags": [&"modern", &"cafe"], "footprint": Vector2i(1, 1), "solid": true, "paintable": true},
 	{"id": &"plant_small_3", "name": "Tall plant", "asset": "plantSmall3", "price": 25, "unlock": 3, "charm": 1, "tags": [&"rustic"], "footprint": Vector2i(1, 1), "solid": true, "paintable": true},
@@ -59,7 +59,8 @@ func test_decor_catalogue_data_and_wrappers_match_the_approved_entries() -> void
 		assert_eq(model.scene_file_path, "res://assets/kenney/furniture/%s.glb" % entry["asset"])
 		assert_almost_eq(art.rotation.y, PI)
 		assert_eq(art.scale, Vector3.ONE * ArtScale.FURNITURE_SCALE)
-		if definition.paintable:
+		# Rugs paint their own named slots (#431), not a body surface.
+		if definition.paintable and definition.main_slot().surfaces.is_empty():
 			assert_eq(view.body_material_names, PackedStringArray(["wood"]), String(item_id))
 		else:
 			assert_true(view.body_material_names.is_empty(), String(item_id))

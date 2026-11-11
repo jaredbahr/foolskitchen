@@ -209,7 +209,7 @@ func test_saved_furniture_covering_owner_home_keeps_old_shop_and_valid_owner_mod
 	# furniture and requested home; movement may admit the owner elsewhere or
 	# leave them pending. A pending owner is still part of the saved population.
 	snapshot["items"].append({"def_id": "prep_counter", "origin": [8, 3],
-		"quarter_turns": 0, "swatch_id": "", "variant_id": ""})
+		"quarter_turns": 0, "swatch_id": "", "variant_id": "", "paint": []})
 	doc["data"]["shop"] = snapshot
 	doc["data"]["owner"]["mode"] = "floor"
 	_write(doc)

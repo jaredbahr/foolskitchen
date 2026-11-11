@@ -1,7 +1,22 @@
-[gd_resource type="Resource" script_class="ItemDef" load_steps=3 format=3]
+[gd_resource type="Resource" script_class="ItemDef" format=3]
 
 [ext_resource type="Script" path="res://src/sim/content/item_def.gd" id="1_script"]
 [ext_resource type="PackedScene" path="res://assets/props/freezer.tscn" id="2_view"]
+[ext_resource type="Script" path="res://src/sim/content/paint_slot_def.gd" id="paint_slot_script"]
+
+[sub_resource type="Resource" id="slot_body"]
+script = ExtResource("paint_slot_script")
+id = &"body"
+display_name = "Body"
+surfaces = PackedStringArray()
+default_material = &"painted"
+
+[sub_resource type="Resource" id="slot_trim"]
+script = ExtResource("paint_slot_script")
+id = &"trim"
+display_name = "Trim"
+surfaces = PackedStringArray("metalMedium")
+default_material = &"metal"
 
 [resource]
 script = ExtResource("1_script")
@@ -24,3 +39,4 @@ unlock_level = 2
 charm = 0
 theme_tags = Array[StringName]([])
 placeholder_color = Color(0.83, 0.79, 0.67, 1)
+paint_slots = Array[ExtResource("paint_slot_script")]([SubResource("slot_body"), SubResource("slot_trim")])

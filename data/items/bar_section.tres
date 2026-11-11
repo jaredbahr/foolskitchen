@@ -1,7 +1,29 @@
-[gd_resource type="Resource" script_class="ItemDef" load_steps=3 format=3]
+[gd_resource type="Resource" script_class="ItemDef" format=3]
 
 [ext_resource type="Script" path="res://src/sim/content/item_def.gd" id="1_script"]
 [ext_resource type="PackedScene" path="res://assets/props/bar_section.tscn" id="2_view"]
+[ext_resource type="Script" path="res://src/sim/content/paint_slot_def.gd" id="paint_slot_script"]
+
+[sub_resource type="Resource" id="slot_counter"]
+script = ExtResource("paint_slot_script")
+id = &"counter"
+display_name = "Counter"
+surfaces = PackedStringArray()
+default_material = &"wood"
+
+[sub_resource type="Resource" id="slot_top"]
+script = ExtResource("paint_slot_script")
+id = &"top"
+display_name = "Top"
+surfaces = PackedStringArray("metal")
+default_material = &"metal"
+
+[sub_resource type="Resource" id="slot_panels"]
+script = ExtResource("paint_slot_script")
+id = &"panels"
+display_name = "Panels"
+surfaces = PackedStringArray("woodDark")
+default_material = &"wood"
 
 [resource]
 script = ExtResource("1_script")
@@ -23,3 +45,4 @@ charm = 0
 theme_tags = Array[StringName]([&"cafe", &"bar"])
 placeholder_color = Color(0.65, 0.44, 0.27, 1)
 serve_across = true
+paint_slots = Array[ExtResource("paint_slot_script")]([SubResource("slot_counter"), SubResource("slot_top"), SubResource("slot_panels")])

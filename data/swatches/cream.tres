@@ -6,3 +6,5 @@ id = &"cream"
 display_name = "Cream"
 color = Color(0.9137255, 0.8627451, 0.7647059, 1)
 theme_tags = Array[StringName]([&"cosy"])
+family = &"neutral"
+family_order = 1

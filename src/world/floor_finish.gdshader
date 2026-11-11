@@ -13,7 +13,7 @@ render_mode cull_back;
 //   the neighbour there is a different floor type).
 // Colour index 0 is floor_color (the shop's own floor paint), 1.. are palette.
 
-const int PALETTE_SIZE = 32;
+const int PALETTE_SIZE = 48;
 
 // Warm placeholder palette; world-space spacing stays 0.5 m at every zoom.
 uniform vec4 floor_color : source_color = vec4(0.58, 0.48, 0.34, 1.0);
