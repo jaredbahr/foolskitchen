@@ -91,8 +91,8 @@ Morning (closed): plan menu and prices, buy stock, hire, rebuild
 ### 4.4b The outside look (D32)
 Every street is a "cutesy but fun" frame around the shop. Not playable yet (patio and rivals come later, #168, #173).
 - **Grounded, never floating:** everything sits on real ground (meadow, lawns, verges, kerbs), and every building and prop stands on a baked shadow. The world ends in a deliberate edge (a tree line), and the camera can never see past it.
-- **Chunky and warm:** rounded, low-poly shapes at person scale; warm, soft palette from the shared swatches; playful details (awnings, flower boxes, birds, swaying signs) over realism. Lively, never cluttered: props stay off walking lanes, doors and the lot.
-- **Day and night:** street lamps glow at night; windows will too (#440).
+- **Chunky and warm:** rounded, low-poly shapes at person scale; warm, soft palette from the shared swatches (gentle pastel roofs, so the player's shop is the strongest colour); playful details (awnings, flower boxes, birds, swaying signs, cosy back gardens, a toy shop and a pet shop) over realism. Lively, never cluttered: props stay off walking lanes, doors and the lot.
+- **Day and night:** street lamps glow at night and so do the neighbours' windows, a few going dark late (#440).
 - **One recipe per street:** a street is built from swappable parts, so each new site gets the same polish with its own character:
   - `GroundSkin`: ground colours and planting.
   - `StreetSet`: the building set (neighbour businesses, houses), palette and street furniture.

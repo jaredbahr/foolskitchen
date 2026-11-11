@@ -25,6 +25,12 @@ enum Fence { PICKET, HEDGE, WALL, RAIL }
 @export var stone: Color = Color.WHITE
 @export var path: Color = Color.WHITE
 @export var wood: Color = Color.WHITE
+## Back gardens (#440): soil, the pastel cloths on a washing line, play-set and toy colours.
+@export var soil: Color = Color.WHITE
+@export var laundry_colors: Array[Color] = []
+@export var play_colors: Array[Color] = []
+## Night windows (#440): the warm tints a lit window takes, one per window by hash.
+@export var window_glows: Array[Color] = []
 @export var house_roofs: Array[int] = []
 @export var shop_roofs: Array[int] = []
 @export var house_heights: Array[float] = []
@@ -75,8 +81,9 @@ static func standard() -> StreetSet:
 	var tomato: Color = _swatch("tomato")
 	var tangerine: Color = _swatch("tangerine")
 	set.wall_colors = [cream, butter, peach, blush, mint, sky, sand, oat, rose.lightened(0.25)]
-	set.roof_colors = [terracotta, brick.lightened(0.1), slate.lightened(0.12), honey.darkened(0.08), rose.darkened(0.08),
-		teal.lightened(0.28), walnut.lightened(0.3)]
+	# Softer, warm and pastel roofs, so the player's own shop is the strongest colour on the street.
+	set.roof_colors = [terracotta.lightened(0.2), butter.darkened(0.14), _swatch("sage").lightened(0.15), teal.lightened(0.4),
+		_swatch("lilac").darkened(0.12), oat.darkened(0.22), rose.lightened(0.1), peach.darkened(0.2)]
 	set.door_colors = [terracotta, teal, honey, slate, coral, plum.lightened(0.15), moss]
 	set.hedge_colors = [moss.lightened(0.08), _swatch("leaf"), _swatch("sage").darkened(0.1), _swatch("forest").lightened(0.1)]
 	set.bloom_colors = [butter, rose, cream, coral, honey, sky]
@@ -85,6 +92,10 @@ static func standard() -> StreetSet:
 	set.stone = _swatch("pebble")
 	set.path = sand.lerp(cream, 0.4)
 	set.wood = walnut.lightened(0.12)
+	set.soil = walnut.darkened(0.22)
+	set.laundry_colors = [milk, blush, butter, sky, mint, coral.lightened(0.2)]
+	set.play_colors = [tomato.lightened(0.1), tangerine, butter, teal.lightened(0.1), sky.darkened(0.1), coral]
+	set.window_glows = [Color(1.0, 0.82, 0.46), Color(1.0, 0.74, 0.38), Color(1.0, 0.88, 0.58)]
 	set.house_roofs = [Roof.GABLE_FRONT, Roof.GABLE_SIDE, Roof.HIP, Roof.PYRAMID]
 	set.shop_roofs = [Roof.GABLE_SIDE, Roof.SHED, Roof.FLAT, Roof.FALSE_FRONT]
 	set.house_heights = [1.45, 1.65, 1.85]
@@ -93,7 +104,8 @@ static func standard() -> StreetSet:
 	set.shops = [
 		ShopStyle.make(&"bakery", butter, terracotta, cream, oat, terracotta, ShopStyle.Accent.CRATE),
 		ShopStyle.make(&"florist", mint, moss.lightened(0.1), cream, blush, teal, ShopStyle.Accent.BUCKETS),
-		ShopStyle.make(&"laundromat", sky, slate, milk, cream, navy.lightened(0.2), ShopStyle.Accent.PORTHOLE),
+		ShopStyle.make(&"toy_shop", sky, tangerine, butter, cream, tomato.lightened(0.12), ShopStyle.Accent.TOYS),
+		ShopStyle.make(&"pet_shop", _swatch("lilac").lightened(0.35), teal, cream, oat, coral, ShopStyle.Accent.PETS),
 		ShopStyle.make(&"sweet_shop", blush, rose, cream, butter, plum.lightened(0.2), ShopStyle.Accent.JARS),
 		ShopStyle.make(&"tea_room", cream, navy.lightened(0.25), milk, sand, coral, ShopStyle.Accent.TABLE),
 	]
@@ -118,7 +130,8 @@ static func standard() -> StreetSet:
 func signature() -> String:
 	var parts: Array = [seed_salt, shops_per_side, house_count, wall_colors, roof_colors, door_colors, hedge_colors,
 		bloom_colors, trim, glass, stone, path, wood, house_roofs, shop_roofs, house_heights, shop_heights, fences,
-		metal, signal_red, bin_colors, birds, bird_colors, leaves, leaf_colors, sign_sway_degrees]
+		metal, signal_red, bin_colors, birds, bird_colors, leaves, leaf_colors, sign_sway_degrees,
+		soil, laundry_colors, play_colors, window_glows]
 	for spec: StreetPropSpec in furniture:
 		parts.append([int(spec.kind), spec.count, int(spec.zone)])
 	for style: ShopStyle in shops:

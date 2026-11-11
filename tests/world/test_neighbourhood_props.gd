@@ -245,7 +245,8 @@ func test_street_furniture_and_life_are_view_only_and_cheap() -> void:
 				triangles += (instances.multimesh.mesh as ArrayMesh).surface_get_arrays(0)[Mesh.ARRAY_VERTEX].size() / 3 * instances.multimesh.instance_count
 	assert_true(triangles > 500, "the props and life exist: %d triangles" % triangles)
 	assert_true(triangles < 4000, "the props, lamps' glow and life stay cheap: %d triangles" % triangles)
-	assert_true(draws <= 16, "the props, lamps' glow and life batch into few draw calls: %d" % draws)
+	# Sixteen for the props, lamps and life, plus up to three lit-window meshes (#440).
+	assert_true(draws <= 19, "the props, lamps' glow, windows and life batch into few draw calls: %d" % draws)
 	var furniture: MeshInstance3D = dressing.find_child("PropBody", true, false) as MeshInstance3D
 	assert_eq(furniture.mesh.get_surface_count(), 1, "every static prop is one batched mesh")
 	_free_dressing(dressing)
