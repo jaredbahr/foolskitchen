@@ -72,11 +72,11 @@ func total_wages() -> int:
 
 ## Stage XP for an actual employee, never a candidate or the unsalaried owner.
 ## The session must call this once from a completed task's stable claimant ID.
-func record_completed_task(member_id: StringName, kind: StringName) -> bool:
+func record_completed_task(member_id: StringName, kind: StringName, quantity: int = 1) -> bool:
 	var index: int = _find(_members, member_id)
 	if index < 0:
 		return false
-	_members[index].record_completed_work(kind)
+	_members[index].record_completed_work(kind, quantity)
 	# Keep the existing XP-result contract, including false for unknown kinds.
 	return _members[index].growth_state().record_task(kind, _growth_tuning)
 

@@ -5,7 +5,7 @@ extends Resource
 const ROLES: Array[StringName] = [&"cook", &"server", &"cleaner"]
 const MAX_WORK_COUNT: int = 9007199254740991
 ## One mapping owns both task grouping and player-facing words; everything else
-## is Other. Counts describe completed tasks, not inferred batch quantities.
+## is Other. Served and washed count plates, so one batched trip can add several.
 const WORK_GROUPS: Array[Dictionary] = [
 	{"kind": &"cook", "key": "cooked", "label": "cooked"},
 	{"kind": &"take_order", "key": "orders", "singular": "order taken", "label": "orders taken"},
@@ -63,14 +63,20 @@ func priority_state() -> StaffJobPriorities:
 
 ## Called only through the roster's completed-task signal path. The board,
 ## not an XP success result, owns once-only completion.
-func record_completed_work(kind: StringName) -> void:
+func record_completed_work(kind: StringName, quantity: int = 1) -> void:
+	if quantity <= 0:
+		return
 	var key: String = "other"
 	for group: Dictionary in WORK_GROUPS:
 		if kind == group["kind"]:
 			key = String(group["key"])
 			break
-	_work_today[key] = mini(MAX_WORK_COUNT, int(_work_today.get(key, 0)) + 1)
-	_work_total[key] = mini(MAX_WORK_COUNT, int(_work_total.get(key, 0)) + 1)
+	_work_today[key] = _capped_add(int(_work_today.get(key, 0)), quantity)
+	_work_total[key] = _capped_add(int(_work_total.get(key, 0)), quantity)
+
+
+static func _capped_add(count: int, quantity: int) -> int:
+	return MAX_WORK_COUNT if quantity >= MAX_WORK_COUNT - count else count + quantity
 
 
 func clear_work_today() -> void:
@@ -155,16 +161,17 @@ static func from_dict(data: Variant, catalogue: StaffCatalogue) -> StaffMember:
 		if not row["work"] is Dictionary:
 			return null
 		var counts: Dictionary = row["work"]
-		if counts.size() != WORK_GROUPS.size():
-			return null
-		for key: Variant in counts:
-			if not key is String:
-				return null
+		var known: Array[String] = []
 		for group: Dictionary in WORK_GROUPS:
-			var key: String = String(group["key"])
-			if not _whole_number(counts.get(key), 0, MAX_WORK_COUNT):
+			known.append(String(group["key"]))
+		for key: Variant in counts:
+			if not key is String or not known.has(key):
 				return null
-			member._work_total[key] = int(counts[key])
+		# A group added after this save was written simply starts at zero.
+		for key: String in known:
+			if not _whole_number(counts.get(key, 0), 0, MAX_WORK_COUNT):
+				return null
+			member._work_total[key] = int(counts.get(key, 0))
 	return member
 
 

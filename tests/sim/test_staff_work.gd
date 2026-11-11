@@ -95,11 +95,40 @@ func test_bad_work_counts_reject_the_whole_roster_without_clearing_today() -> vo
 		assert_eq(roster.to_dict(), before)
 		assert_eq(roster.members()[0].work_today(), today)
 	var wrong_keys: Dictionary = before.duplicate(true)
-	wrong_keys["members"][0]["work"].erase("washed")
 	wrong_keys["members"][0]["work"]["unknown"] = 0
 	assert_false(roster.from_dict(wrong_keys))
 	assert_eq(roster.to_dict(), before)
 	assert_eq(random.state, rng_state)
+
+
+func test_a_missing_work_group_loads_as_zero() -> void:
+	var roster: StaffRoster = StaffRoster.new()
+	var saved: Dictionary = roster.to_dict()
+	saved["members"][0]["work"]["cooked"] = 4
+	saved["members"][0]["work"].erase("washed")
+	assert_true(roster.from_dict(saved))
+	assert_eq(roster.members()[0].work_total()["cooked"], 4)
+	assert_eq(roster.members()[0].work_total()["washed"], 0)
+
+
+func test_batched_trips_count_every_plate() -> void:
+	var delivered: SimTask = SimTask.new(&"deliver", &"server", "Deliver")
+	delivered.payload["order_ids"] = [3, 4, 9]
+	assert_eq(StaffTaskCredit.work_quantity(delivered), 3)
+	var washed: SimTask = SimTask.new(&"wash", &"cleaner", "Wash")
+	washed.payload["washed_steps"] = [1, 3]
+	assert_eq(StaffTaskCredit.work_quantity(washed), 2)
+	assert_eq(StaffTaskCredit.work_quantity(SimTask.new(&"cook", &"cook", "Cook")), 1)
+	var roster: StaffRoster = StaffRoster.new()
+	assert_true(roster.record_completed_task(&"starter_server", &"deliver", 3))
+	assert_true(roster.record_completed_task(&"starter_server", &"deliver", 0))
+	var member: StaffMember = null
+	for candidate: StaffMember in roster.members():
+		if candidate.id == &"starter_server":
+			member = candidate
+	assert_not_null(member)
+	assert_eq(member.work_today()["served"], 3)
+	assert_eq(member.work_total()["served"], 3)
 
 
 func test_work_count_cap_does_not_suppress_earned_xp() -> void:
