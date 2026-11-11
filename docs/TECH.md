@@ -3369,7 +3369,7 @@ entry only at a site whose lot shares a tag. Lot-only items stay with their
 site when furniture moves (part 5).
 
 **Save sections.** Every registered section is classed once in
-`src/world/site_sections.gd`; a test fails when one is missing.
+`src/sim/sites/site_sections.gd`; a test fails when one is missing.
 - **Global:** `owner`, `game_state` (seed and RNG streams), `clock` (day and
   phase), the economy books (`ledger`, `loan`), `blueprints`, `milestones`,
   `weekly_challenge`, `hints`, `weather`, `collection_toasts` (a collection
@@ -3378,8 +3378,17 @@ site when furniture moves (part 5).
   `plates`, `reviews`, `regulars`, `reorder`, `deliveries`, `demand`, `viral`,
   `business_history`, `shop_records`, `cat`, `inspection`, `critic`,
   `bookings`, `rush_hour`, `aquarium`, plus two split out in part 1: `pantry`
-  (today's `economy.stock`) and `site_hours` (opening hours, today in
-  `clock`).
+  (the kitchen stock, split out of `economy` in #411) and `site_hours`
+  (opening hours, today in `clock`).
+
+**Where a site's own fields live (#413).** `SiteBook` (`src/sim/sites`)
+holds the active site id and one row per site: id, lot, name, manager (a
+member id in that site's own `staff` section) and, for an inactive site, its
+frozen day and per-site sections, kept in loaded-file JSON shape. Fields that
+only change while a site is active (such as `lease_expanded`) belong in its
+per-site sections and swap with it. Fields that change while it is inactive
+(renovation days left) go on its book row, which needs a new `sites`
+VERSION: the decoder refuses unknown keys rather than drop them.
 
 **Switching (part 1).** Only in the morning, before opening, and only after
 the departing site's morning has run (restock bought, staff changes, plans
@@ -3393,12 +3402,15 @@ made): that morning's results stay with it. Steps:
    signature, viral and rush-hour days shift or lapse; delivery due days move
    forward by the gap, once, here only).
 3. Stage the thawed copy through a new
-   `SaveSystem.restore_sections(sections, keys)`: every per-site provider
-   stages and validates from the dictionary, and nothing installs until all
-   pass. A refusal returns false and leaves the active site exactly as it was;
-   it never starts a new game. Global sections are never touched. Part 1 also
-   splits today's single `economy` section into the global books and the
-   per-site `pantry`.
+   `SaveSystem.restore_sections(sections, keys)` (#412): every per-site
+   provider restores from the dictionary in registration order; if one
+   refuses, all of them are restored again from a capture taken first, so the
+   active site is exactly as it was (in place: the pantry keeps its `Stock`
+   object). The switch then clears main.gd's `_loaded_*` staging, which holds
+   the rolled-back copy. A refusal never starts a new game. Global sections are never touched
+   (except that rewiring, like any reload, redraws the customers RNG stream). (#411
+   already split the old single `economy` section into the global books and
+   the per-site `pantry`; `SiteSections` lists both sides.)
 4. Install, then rewire the session: the existing post-load setup in
    `start()` (RNG binding, cleanliness, reviews, customer types, editor,
    clock attach, build session) moves into one `_wire_session()` used by both
@@ -3407,6 +3419,21 @@ made): that morning's results stay with it. Steps:
    then autosave once.
 Owner is global and already installed, so its order before `shop` and `menu`
 still holds.
+Built so far (#408 C3): `main.gd` `switch_site(target)` (tests only, no UI
+yet). Validation and install are `_validate_staged_sections` and
+`_install_staged_sections`, shared with the morning load (which also stages
+the global sections); the switch carries today's weather to the new world. A
+frozen copy without a `pantry` gets an empty one (the pantry restores in
+place, so skipping it would keep the departing stock); other missing sections
+take their load defaults. A refusal after a successful restore restores the
+departing capture again (for the pantry) and clears the staging. The
+morning's one supplier haggle is the owner's and is not reset by a switch
+(an offer won and not yet spent still applies at the arriving site). Today's
+main.gd report state follows the site (#408 D2): the haggle receipt names
+its site, so the saving shows only on that site's report; the arriving
+morning resets dishes sold, food cost, expiry, the auto-order and delivery
+notes; and notes kept nowhere else (hand throw-outs, a trimmed cart, staff
+notices, team activity, menu access losses) are dropped on a switch.
 
 **Managers and away sites.** A new staff role **Manager** (hired at Tier 3,
 skill is the existing service skill). An inactive site with a manager earns,
@@ -3436,7 +3463,10 @@ active.
 **Bookings.** A group booking belongs to its site. If that site is not
 active on the booked day, the booking lapses at that day's close with the
 deposit refunded (`BOOKING_REFUND`) and no reputation change. New offers come
-only to the active site.
+only to the active site. Built so far (#414): `SiteThaw` refunds such a
+booking when its site is switched back to; part 1's close-time processing of
+away sites must settle it at that day's close instead, after which the thaw
+finds nothing to refund.
 
 **Weekly challenge.** It stays global and counts the active site's sales. A
 featured dish the active site cannot cook simply makes no progress that day.

@@ -4,8 +4,8 @@ extends Node
 ## A retained backup makes interrupted replacements recoverable. This is not a
 ## filesystem-atomic overwrite on Windows or a power-loss durability guarantee.
 
-const FORMAT_VERSION: int = 1
-const MIGRATIONS: Dictionary = {0: &"_migrate_0_to_1"}
+const FORMAT_VERSION: int = 2
+const MIGRATIONS: Dictionary = {0: &"_migrate_0_to_1", 1: &"_migrate_1_to_2"}
 
 var save_dir: String = "user://saves/"
 var _providers: Dictionary[String, Dictionary] = {}
@@ -14,6 +14,11 @@ var _providers: Dictionary[String, Dictionary] = {}
 ## Adds or replaces a section's capture() -> Dictionary and restore(data) -> bool.
 func register(key: String, capture: Callable, restore: Callable) -> void:
 	_providers[key] = {"capture": capture, "restore": restore}
+
+
+## The registered section keys, in registration (and restore) order.
+func keys() -> PackedStringArray:
+	return PackedStringArray(_providers.keys())
 
 
 ## Publishes a completed temporary file while preserving a prior recovery copy.
@@ -103,6 +108,81 @@ func load_game(slot: String) -> Error:
 		if not success is bool or not success:
 			return FAILED
 	return OK
+
+
+## Captures only the named sections, JSON-shaped (as a saved file would hold
+## them), for a site switch (FK-087). Returns {} when a key is unknown or a
+## provider fails.
+func capture_sections(keys: PackedStringArray) -> Dictionary:
+	var sections: Dictionary = {}
+	for key: String in keys:
+		if not _providers.has(key):
+			return {}
+		var capture: Callable = _providers[key]["capture"]
+		if not capture.is_valid():
+			return {}
+		var section: Variant = capture.call()
+		if not section is Dictionary:
+			return {}
+		sections[key] = _as_json(section)
+	return sections
+
+
+## Restores only the named sections from an in-memory dictionary, for a site
+## switch (FK-087). Every key must be registered and every present section must
+## be a Dictionary, or nothing is touched (ERR_INVALID_PARAMETER). Missing
+## sections are skipped, as in load_game. Sections go through JSON first, so
+## they reach providers exactly as a loaded file would. If a provider refuses, every section
+## already restored is put back from a capture taken before the call, and the
+## result is FAILED (ERR_BUG if a rollback itself was refused, so the caller
+## knows the session is no longer whole). Rollback restores values: a provider
+## that swaps in new objects leaves holders of the old ones stale, so providers
+## used here restore in place (the pantry does). Providers that only stage data
+## for a later install (main.gd's _loaded_* fields) end up staging the rolled
+## back copy; their owner must clear that staging after a refusal.
+func restore_sections(sections: Dictionary, keys: PackedStringArray) -> Error:
+	for key: String in keys:
+		if not _providers.has(key):
+			return ERR_INVALID_PARAMETER
+		if sections.has(key) and not sections[key] is Dictionary:
+			return ERR_INVALID_PARAMETER
+	var ordered: Array[String] = []
+	for key: String in _providers:
+		if keys.has(key) and sections.has(key):
+			ordered.append(key)
+	var before: Dictionary = {}
+	for key: String in ordered:
+		var capture: Callable = _providers[key]["capture"]
+		var restore: Callable = _providers[key]["restore"]
+		if not capture.is_valid() or not restore.is_valid():
+			return FAILED
+		var snapshot: Variant = capture.call()
+		if not snapshot is Dictionary:
+			return FAILED
+		before[key] = _as_json(snapshot)
+	var done: Array[String] = []
+	for key: String in ordered:
+		var success: Variant = _providers[key]["restore"].call(_as_json(sections[key]))
+		if success is bool and success:
+			done.append(key)
+			continue
+		# Put back the sections already replaced, and the refusing one in case
+		# it changed part of its state before saying no.
+		done.append(key)
+		var result: Error = FAILED
+		for undo: String in done:
+			var undone: Variant = _providers[undo]["restore"].call(before[undo])
+			if not undone is bool or not undone:
+				push_error("SaveSystem: could not roll back section '%s'" % undo)
+				result = ERR_BUG
+		return result
+	return OK
+
+
+## Providers restore what a JSON file decodes to (numbers as floats, no
+## StringNames), so in-memory sections take the same shape first.
+func _as_json(section: Dictionary) -> Dictionary:
+	return JSON.parse_string(JSON.stringify(section))
 
 
 ## Returns sorted slot names, including backup-only slots awaiting recovery.
@@ -206,4 +286,18 @@ func _valid_slot(slot: String) -> bool:
 func _migrate_0_to_1(document: Dictionary) -> Dictionary:
 	# Version zero has the same sections; demonstrate a single-version step.
 	document["version"] = 1
+	return document
+
+
+func _migrate_1_to_2(document: Dictionary) -> Dictionary:
+	# FK-087: the kitchen stock moved out of the shared "economy" section into
+	# the per-site "pantry" section. A version-1 economy section without stock
+	# was refused before, so it moves as an empty pantry that is still refused.
+	document["version"] = 2
+	var sections: Variant = document.get("data", null)
+	if not sections is Dictionary or not sections.get("economy", null) is Dictionary:
+		return document
+	var economy: Dictionary = sections["economy"]
+	sections["pantry"] = {"stock": economy["stock"]} if economy.has("stock") else {}
+	economy.erase("stock")
 	return document

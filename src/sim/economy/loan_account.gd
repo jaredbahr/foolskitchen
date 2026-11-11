@@ -18,8 +18,11 @@ var has_borrowed: bool = false
 ## A captured pre-bonus profit can exclude closing rewards from the repayment
 ## base while the real ledger cash, including those rewards, still caps payment.
 ## Null preserves existing callers; explicit values must be whole int64 units.
+## The loan is the owner's (global); its entries are stamped with `site`, the
+## site whose close settles it. Without a profit it reads the whole day's books.
 @warning_ignore("integer_division")
-func settle_day(ledger: Ledger, day: int, terms: LoanTuning, repayment_profit: Variant = null) -> Dictionary:
+func settle_day(ledger: Ledger, day: int, terms: LoanTuning, repayment_profit: Variant = null,
+		site: StringName = Ledger.HOME_SITE) -> Dictionary:
 	if ledger == null or terms == null or not terms.is_valid() \
 			or principal < 0 or day < 1 or day <= last_settled_day:
 		return {}
@@ -68,14 +71,14 @@ func settle_day(ledger: Ledger, day: int, terms: LoanTuning, repayment_profit: V
 	var borrowed_before: bool = has_borrowed or principal > 0
 	var first_advance: bool = advance > 0 and not borrowed_before
 	if interest > 0:
-		ledger.record(day, -interest, Ledger.LOAN_INTEREST)
+		ledger.record(day, -interest, Ledger.LOAN_INTEREST, "", site)
 		movements.append({"amount": -interest, "category": Ledger.LOAN_INTEREST})
 	if repayment > 0:
-		ledger.record(day, -repayment, Ledger.LOAN_REPAYMENT)
+		ledger.record(day, -repayment, Ledger.LOAN_REPAYMENT, "", site)
 		movements.append({"amount": -repayment, "category": Ledger.LOAN_REPAYMENT})
 	principal -= repayment
 	if advance > 0:
-		ledger.record(day, advance, Ledger.BANK_LOAN)
+		ledger.record(day, advance, Ledger.BANK_LOAN, "", site)
 		movements.append({"amount": advance, "category": Ledger.BANK_LOAN})
 		principal += advance
 	has_borrowed = borrowed_before or advance > 0

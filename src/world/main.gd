@@ -198,6 +198,12 @@ var _booking_presented_key: Array[int] = []
 var _loaded_rush_hour: Dictionary = {}
 ## The saved fish tank section (#125: each tank's last cleaning day), staged likewise.
 var _loaded_aquarium: Dictionary = {}
+## The owner's sites (FK-087): the active one plus frozen copies of the rest.
+var site_book: SiteBook = SiteBook.new()
+## The saved sites section, staged until the rest of the morning load passes.
+var _loaded_sites: SiteBook = null
+## Why the last staged sections were refused (a site switch logs it).
+var _staged_refusal: String = ""
 var _demand_breakdown: DemandBreakdown = null
 var _demand_day: int = 0
 var _demand_reputation: float = 3.0
@@ -651,12 +657,44 @@ func start() -> void:
 	SaveSystem.register("bookings", _capture_bookings, _restore_bookings)
 	SaveSystem.register("rush_hour", _capture_rush_hour, _restore_rush_hour)
 	SaveSystem.register("aquarium", _capture_aquarium, _restore_aquarium)
+	SaveSystem.register("sites", _capture_sites, _restore_sites)
 	var loaded: bool = use_saves and _load_autosave()
 	_rooms_note = loaded and _loaded_layout != null and _loaded_layout.rooms_unmarked
 	$HUD.set_rooms_note(ROOMS_NOTE if _rooms_note else "")
 	if not loaded:
 		_skip_next_autosave = use_saves and SaveSystem.list_slots().has(save_slot)
 		_new_game()
+	if not _wire_session():
+		return
+	if not loaded and not skip_owner_picker and (owner_creation_requested \
+			or use_saves and DisplayServer.get_name() != "headless"):
+		# Creation finishes before the existing initial morning checkpoint.
+		# It does not introduce a save on Confirm or after a later look change.
+		_owner_first_morning_pending = true
+		_bind_build_session()
+		_bind_vibe_grid()
+		$HUD.hide()
+		show_owner_picker(true)
+	else:
+		_begin_morning()
+		_bind_build_session()
+		_bind_vibe_grid()
+
+
+## Binds the installed session (sim, world, autoload state) together after a
+## load or a new game: RNG streams, cleanliness, reviews, customer types, the
+## shop editor, signals and the clock. A site switch will reuse it (FK-087)
+## with a fresh sim: the signal connections here are not guarded against a
+## second call on the same sim, and the clock must be detached first, as in
+## start().
+##
+## It also tells Economy which site is active, so every ledger entry from here
+## on is that site's (FK-087). A switch must set site_book.active_id before
+## calling this, and call this before the arriving site's morning.
+func _wire_session() -> bool:
+	if not Economy.set_active_site(site_book.active_id):
+		push_error("Cannot book money to the active site")
+		return false
 	world.clock = Clock.sim
 	sim.stock = Economy.stock
 	sim.use_rng(GameState.rng(&"customers"))
@@ -668,10 +706,10 @@ func start() -> void:
 		world.grid, CLEANLINESS_TUNING, GameState.rng(&"cleanliness"))
 	if not sim.configure_cleanliness(cleanliness, CLEANLINESS_TUNING):
 		push_error("Cannot initialize shop cleanliness")
-		return
+		return false
 	if not sim.configure_messes(MESS_TUNING, GameState.rng(&"cleanliness")):
 		push_error("Cannot initialize everyday messes")
-		return
+		return false
 	sim.plate_broken.connect(_on_plate_broken)
 	if not sim.aquarium.changed.is_connected(_on_aquarium_changed):
 		sim.aquarium.changed.connect(_on_aquarium_changed)
@@ -692,7 +730,7 @@ func start() -> void:
 	# real reputation and owner level. This consumes no customer RNG draw.
 	if not sim.configure_customer_types(customer_type_catalogue, owner_progress.level):
 		push_error("Cannot initialize customer preferences")
-		return
+		return false
 	sim.spawner.min_gap = TUNING.arrival_gap_min
 	sim.spawner.max_gap = TUNING.arrival_gap_max
 	shop_editor = ShopEditor.new(sim, content, ShopEditBooks.new(Economy.can_buy_discretionary,
@@ -703,19 +741,7 @@ func start() -> void:
 	shop_editor.storage_need = _storage_need
 	_connect_session()
 	Clock.attach_world(world, sim.advance)
-	if not loaded and not skip_owner_picker and (owner_creation_requested \
-			or use_saves and DisplayServer.get_name() != "headless"):
-		# Creation finishes before the existing initial morning checkpoint.
-		# It does not introduce a save on Confirm or after a later look change.
-		_owner_first_morning_pending = true
-		_bind_build_session()
-		_bind_vibe_grid()
-		$HUD.hide()
-		show_owner_picker(true)
-	else:
-		_begin_morning()
-		_bind_build_session()
-		_bind_vibe_grid()
+	return true
 
 
 func _connect_session() -> void:
@@ -2436,7 +2462,10 @@ func _on_plate_broken(cost: int) -> void:
 func build_report(day: int) -> DayReport:
 	var report := DayReport.new()
 	report.day = day
-	if int(_haggle_receipt.get("day", 0)) == day:
+	# The receipt names its site: a haggled order bought before a switch
+	# stays out of the arriving site's report (FK-087).
+	if int(_haggle_receipt.get("day", 0)) == day \
+			and StringName(_haggle_receipt.get("site", &"")) == Economy.active_site:
 		report.haggle_percent = int(_haggle_receipt["percent"])
 		report.haggle_saved = int(_haggle_receipt["saved"])
 	report.staff_activity = sim.staff_activity.snapshot()
@@ -2448,7 +2477,8 @@ func build_report(day: int) -> DayReport:
 		report.viral_line = ViralReviewText.evening(best.display_name if best != null else "food")
 	report.booking_lines = sim.booking_report_lines.duplicate()
 	report.loan_first_advance = _loan_notice_day == day
-	var totals: Dictionary = Economy.ledger.day_totals(day)
+	# Only this site's books (FK-087): another site's morning stays in its own.
+	var totals: Dictionary = Economy.ledger.day_totals(day, Economy.active_site)
 	for category: StringName in totals:
 		var amount: int = totals[category]
 		if amount > 0:
@@ -2460,7 +2490,7 @@ func build_report(day: int) -> DayReport:
 	report.food_cost_recorded = bool(_food_cost_today["recorded"])
 	# Gross purchases remain visible even when a cancelled order was refunded.
 	var bought: Dictionary = PurchaseBasis.zero()
-	for entry: Dictionary in Economy.ledger.entries_for_day(day):
+	for entry: Dictionary in Economy.ledger.entries_for_day(day, Economy.active_site):
 		if entry["category"] == Ledger.INGREDIENTS and int(entry["amount"]) < 0:
 			PurchaseBasis.combine(bought, {"cost": -int(entry["amount"]), "recorded": true})
 	report.stock_bought = int(bought["cost"])
@@ -2551,6 +2581,8 @@ func _new_game() -> void:
 	sim.rush_hour = RushHour.new(RUSH_TUNING)
 	_loaded_rush_hour = {}
 	_loaded_aquarium = {}
+	site_book = SiteBook.new()
+	_loaded_sites = null
 	business_history = BusinessHistory.new()
 	_loaded_business_history = null
 	shop_records = ShopRecords.new()
@@ -2669,6 +2701,7 @@ func _load_autosave_sections() -> bool:
 	_loaded_critic = {}
 	_loaded_rush_hour = {}
 	_loaded_aquarium = {}
+	_loaded_sites = null
 	_loaded_regulars = null
 	_loaded_blueprints = null
 	_blueprint_load_notes.clear()
@@ -2695,13 +2728,51 @@ func _load_autosave_sections() -> bool:
 	if SaveSystem.load_game(save_slot) != OK:
 		world.log_event("Autosave could not be loaded; starting a new game")
 		return false
-	if Clock.sim.phase != SimClock.Phase.MORNING:
-		world.log_event("Autosave is not from a morning; starting a new game")
+	var staged: StagedSite = _validate_staged_sections(true)
+	if staged == null:
 		return false
-	var saved_weather: WeatherState = _loaded_weather if _loaded_weather != null else WeatherState.legacy_sunny(Clock.sim.day)
-	if saved_weather == null or not saved_weather.is_for_day(Clock.sim.day):
-		world.log_event("Saved weather does not match this morning; starting a new game")
-		return false
+	_install_staged_sections(staged, true)
+	return true
+
+
+## What _validate_staged_sections built and checked, for the install.
+class StagedSite extends RefCounted:
+	var candidate: RestaurantSim
+	var base: ShopLayout
+	var layout: ShopLayout
+	var choices: MenuSettings
+	var special: DailySpecial
+	var signature: SignatureState
+	var employees: StaffRoster
+	var demand: DemandState
+	var viral: ViralReview
+	## Global parts, staged by a morning load only.
+	var weather: WeatherState
+	var career: MilestoneTracker
+	var weekly_note: String = ""
+
+
+## Checks the staged `_loaded_*` sections against this morning and builds the
+## candidate restaurant, changing nothing live. Shared by the morning load
+## (`with_globals`: every section was staged) and a site switch (FK-087: only
+## the per-site sections were staged; the global ones, which are the clock,
+## owner, books, weather, milestones, weekly challenge, blueprints, collection
+## toasts and sites, are live and stay as they are). A missing per-site
+## section takes its new-game or legacy default, exactly as a load does.
+## Returns null on a refusal, with the reason in _staged_refusal; only a load
+## logs it, the switch logs its own sentence.
+func _validate_staged_sections(with_globals: bool) -> StagedSite:
+	_staged_refusal = ""
+	var staged: StagedSite = StagedSite.new()
+	if with_globals:
+		if Clock.sim.phase != SimClock.Phase.MORNING:
+			world.log_event("Autosave is not from a morning; starting a new game")
+			return null
+		var saved_weather: WeatherState = _loaded_weather if _loaded_weather != null else WeatherState.legacy_sunny(Clock.sim.day)
+		if saved_weather == null or not saved_weather.is_for_day(Clock.sim.day):
+			world.log_event("Saved weather does not match this morning; starting a new game")
+			return null
+		staged.weather = saved_weather
 	var saved_demand: DemandState = _loaded_demand if _loaded_demand != null \
 		else DemandState.legacy_for_day(Clock.sim.day)
 	if saved_demand == null or saved_demand.day != Clock.sim.day \
@@ -2709,77 +2780,104 @@ func _load_autosave_sections() -> bool:
 			or saved_demand.last_award_day >= Clock.sim.day \
 			or demand_tuning == null or not demand_tuning.is_valid() \
 			or saved_demand.last_service_factor > demand_tuning.total_cap:
-		world.log_event("Saved shop growth does not match this morning; starting a new game")
-		return false
+		return _refuse_staged(with_globals, "Saved shop growth does not match this morning")
+	staged.demand = saved_demand
 	var saved_viral: ViralReview = _loaded_viral if _loaded_viral != null \
 		else ViralReview.new(viral_tuning)
 	if not saved_viral.valid_before_morning(Clock.sim.day):
-		world.log_event("Saved trending post is ahead of this morning; starting a new game")
-		return false
+		return _refuse_staged(with_globals, "Saved trending post is ahead of this morning")
+	staged.viral = saved_viral
 	if _loaded_business_history != null and not _loaded_business_history.valid_before(Clock.sim.day):
-		world.log_event("Saved business history is ahead of this morning; starting a new game")
-		return false
+		return _refuse_staged(with_globals, "Saved business history is ahead of this morning")
 	if _loaded_shop_records != null and not _loaded_shop_records.valid_before(Clock.sim.day):
-		world.log_event("Saved records are ahead of this morning; starting a new game")
-		return false
-	if not OpeningHours.clock_valid(Clock.sim, HOURS_TUNING):
-		# Keep the game; only the hours go back to the default day.
-		OpeningHours.apply(Clock.sim, HOURS_TUNING.default_open_minute, HOURS_TUNING.default_close_minute, HOURS_TUNING)
-		world.log_event("Saved opening hours were outside the limits; reset to the default hours")
-	if owner_progress.last_awarded_day >= Clock.sim.day:
-		world.log_event("Autosave owner progress is ahead of this morning; starting a new game")
-		return false
-	var career: MilestoneTracker = _loaded_milestones if _loaded_milestones != null else MilestoneTracker.new()
-	if career.last_evaluated_day >= Clock.sim.day:
-		world.log_event("Autosave career goals are ahead of this morning; starting a new game")
-		return false
-	var weekly_load_note: String = ""
-	if _loaded_weekly_challenge != null:
-		var challenge_state: WeeklyChallengeState = _loaded_weekly_challenge
-		if challenge_state.last_evaluated_day >= Clock.sim.day \
-				or (challenge_state.is_active() and (challenge_state.last_evaluated_day != Clock.sim.day - 1 \
-				or challenge_state.start_day > Clock.sim.day or challenge_state.end_day < Clock.sim.day)):
-			# Preserve every other valid section. The successfully restored
-			# morning initializes an empty weekly state for the remaining week.
-			_loaded_weekly_challenge = null
-			weekly_load_note = "Saved weekly challenge did not match this morning; started a fresh challenge for the remaining week"
+		return _refuse_staged(with_globals, "Saved records are ahead of this morning")
+	if with_globals:
+		if _loaded_sites != null and not _loaded_sites.valid_before(Clock.sim.day):
+			world.log_event("Saved sites are ahead of this morning; starting a new game")
+			return null
+		if not OpeningHours.clock_valid(Clock.sim, HOURS_TUNING):
+			# Keep the game; only the hours go back to the default day.
+			OpeningHours.apply(Clock.sim, HOURS_TUNING.default_open_minute, HOURS_TUNING.default_close_minute, HOURS_TUNING)
+			world.log_event("Saved opening hours were outside the limits; reset to the default hours")
+		if owner_progress.last_awarded_day >= Clock.sim.day:
+			world.log_event("Autosave owner progress is ahead of this morning; starting a new game")
+			return null
+		var career: MilestoneTracker = _loaded_milestones if _loaded_milestones != null else MilestoneTracker.new()
+		if career.last_evaluated_day >= Clock.sim.day:
+			world.log_event("Autosave career goals are ahead of this morning; starting a new game")
+			return null
+		staged.career = career
+		if _loaded_weekly_challenge != null:
+			var challenge_state: WeeklyChallengeState = _loaded_weekly_challenge
+			if challenge_state.last_evaluated_day >= Clock.sim.day \
+					or (challenge_state.is_active() and (challenge_state.last_evaluated_day != Clock.sim.day - 1 \
+					or challenge_state.start_day > Clock.sim.day or challenge_state.end_day < Clock.sim.day)):
+				# Preserve every other valid section. The successfully restored
+				# morning initializes an empty weekly state for the remaining week.
+				_loaded_weekly_challenge = null
+				staged.weekly_note = "Saved weekly challenge did not match this morning; started a fresh challenge for the remaining week"
 	# A saved game predating the shop section still owns the original shell.
 	# Initial presentation may already have built the roomier NEW-shop world.
 	var base: ShopLayout = _base_for_saved_shop({"layout_id": _loaded_layout.save_layout_id}) \
 		if _loaded_layout != null else ORIGINAL_LAYOUT
 	if base == null:
-		return false
+		return _refuse_staged(false, "its shop layout is unknown")
+	staged.base = base
 	var layout: ShopLayout = _loaded_layout if _loaded_layout != null \
 		else LEASE.layout_for(base, owner_progress.property_tier)
+	staged.layout = layout
 	var choices: MenuSettings = _loaded_menu if _loaded_menu != null else MenuSettings.new(_cookable_recipes(layout), owner_progress.level)
 	if not choices.is_valid():
-		return false
+		return _refuse_staged(false, "its menu is not valid")
+	staged.choices = choices
 	var restored_special: DailySpecial = DailySpecial.new()
 	if _loaded_daily_special != null:
 		if not restored_special.from_dict(_loaded_daily_special, choices.enabled_recipes(), Clock.sim.day):
-			return false
+			return _refuse_staged(false, "its daily special does not match this morning")
 	else:
 		restored_special.begin_morning(Clock.sim.day)
-	var loaded_signature: SignatureState = _loaded_signature if _loaded_signature != null \
+	staged.special = restored_special
+	staged.signature = _loaded_signature if _loaded_signature != null \
 		else _new_signature_state()
 	var employees: StaffRoster = _loaded_staff if _loaded_staff != null else StaffRoster.new(TUNING)
 	if employees.candidate_day > Clock.sim.day:
-		return false
+		return _refuse_staged(false, "its staff are ahead of this morning")
+	staged.employees = employees
 	var errors: Array[String] = []
 	var candidate: RestaurantSim = RestaurantSim.create(layout, content, 1, errors, Economy.stock, true, _loaded_layout != null, employees.members())
 	if not errors.is_empty():
-		return false
+		return _refuse_staged(false, "its restaurant could not be built")
 	# Complete fallible candidate setup before replacing the initialized NEW
 	# world. A refused restore must not leave an old shell as the new game.
 	if candidate.kitchen == null or not candidate.kitchen.configure_plates(
 			_loaded_plates.total if _loaded_plates != null else TUNING.starting_plates):
-		return false
+		return _refuse_staged(false, "its kitchen could not be set up")
 	if not candidate.assign_owner(_owner_preferences.current_mode()):
-		return false
+		return _refuse_staged(false, "the owner could not be placed")
+	staged.candidate = candidate
+	return staged
+
+
+## Records why staged sections were refused; a load also logs the reason.
+func _refuse_staged(log_for_load: bool, reason: String) -> StagedSite:
+	_staged_refusal = reason
+	if log_for_load:
+		world.log_event(reason + "; starting a new game")
+	return null
+
+
+## Replaces the live restaurant with a validated candidate. The global parts
+## (`with_globals`, a morning load) install at the same points as before the
+## switch existed (FK-087); a site switch keeps them, and carries today's
+## weather over to the new world.
+func _install_staged_sections(staged: StagedSite, with_globals: bool) -> void:
+	var today_weather: WeatherState = world.weather
+	var candidate: RestaurantSim = staged.candidate
+	var layout: ShopLayout = staged.layout
 	sim = candidate
 	world = candidate.world
-	if not weekly_load_note.is_empty():
-		world.log_event(weekly_load_note)
+	if with_globals and not staged.weekly_note.is_empty():
+		world.log_event(staged.weekly_note)
 	if not _loaded_cat.is_empty() and sim.cat.from_dict(_loaded_cat):
 		sim.cat.begin_day(world.grid)
 	_loaded_cat = {}
@@ -2802,16 +2900,19 @@ func _load_autosave_sections() -> bool:
 	sim.aquarium.restore(world.grid, _loaded_aquarium if not _loaded_aquarium.is_empty()
 		else {"version": AquariumCare.SAVE_VERSION, "tanks": []}, Clock.sim.day)
 	_loaded_aquarium = {}
+	if with_globals:
+		site_book = _loaded_sites if _loaded_sites != null else SiteBook.new()
+		_loaded_sites = null
 	_loaded_layout = layout
-	staff_roster = employees
+	staff_roster = staged.employees
 	reputation = _loaded_reputation if _loaded_reputation != null else ReputationBook.new()
 	regulars = _loaded_regulars if _loaded_regulars != null else RegularCast.new()
 	tray_level = _loaded_tray_level
 	sim.carry_capacity = 1 << tray_level
-	menu_settings = choices
-	daily_special = restored_special
+	menu_settings = staged.choices
+	daily_special = staged.special
 	_loaded_daily_special = null
-	signature_state = loaded_signature
+	signature_state = staged.signature
 	# The saved layout lists every station; drinks at a station staff cannot
 	# reach stay off the live menu (and out of the next save), as in play.
 	var enabled: Array[RecipeDef] = menu_settings.enabled_recipes()
@@ -2822,42 +2923,220 @@ func _load_autosave_sections() -> bool:
 	_apply_menu(sim, menu_settings)
 	_sync_effective_signature()
 	_bind_world_presentation()
-	milestones = career
-	weekly_challenge = _loaded_weekly_challenge if _loaded_weekly_challenge != null \
-		else WeeklyChallengeState.new()
-	_loaded_weekly_challenge = null
+	if with_globals:
+		milestones = staged.career
+		weekly_challenge = _loaded_weekly_challenge if _loaded_weekly_challenge != null \
+			else WeeklyChallengeState.new()
+		_loaded_weekly_challenge = null
 	# Saves from before the Stock panel have no section: today's defaults.
 	reorder_settings = _loaded_reorder if _loaded_reorder != null else ReorderSettings.new(TUNING)
 	# Saves from before deliveries have nothing on order.
 	deliveries = _loaded_deliveries if _loaded_deliveries != null else DeliveryBook.new()
 	stock_cart.clear()
 	_last_delivery.clear()
-	blueprint_library = _loaded_blueprints if _loaded_blueprints != null else BlueprintLibrary.new()
-	for note: String in _blueprint_load_notes:
-		world.log_event(note)
+	if with_globals:
+		blueprint_library = _loaded_blueprints if _loaded_blueprints != null else BlueprintLibrary.new()
+		for note: String in _blueprint_load_notes:
+			world.log_event(note)
 	if _loaded_layout != null:
 		for note: String in _loaded_layout.load_notes:
 			world.log_event(note)
 		# The decoder stages this; only a wholly successful load may pay it once.
 		if _loaded_layout.load_refund > 0:
+			# The installed site's books, even before _wire_session (a switch has
+			# already recorded the arriving site as active).
+			Economy.set_active_site(site_book.active_id)
 			Economy.add_cash(_loaded_layout.load_refund, Ledger.UPGRADES)
 			_loaded_layout.load_refund = 0
 	# Install only after every other whole-load validation has succeeded.
-	world.weather = saved_weather.copy()
-	demand_state = saved_demand
-	viral_review = saved_viral
+	world.weather = staged.weather.copy() if with_globals else today_weather
+	demand_state = staged.demand
+	viral_review = staged.viral
 	_loaded_viral = null
-	_base_layout = base
+	_base_layout = staged.base
 	business_history = _loaded_business_history if _loaded_business_history != null else BusinessHistory.new()
 	_loaded_business_history = null
 	shop_records = _loaded_shop_records if _loaded_shop_records != null else ShopRecords.new()
 	_loaded_shop_records = null
-	_shown_collection_toast_ids.clear()
-	if _has_loaded_collection_toast_section:
-		_shown_collection_toast_ids.assign(_loaded_collection_toast_ids)
-	_loaded_collection_toast_ids.clear()
-	_has_loaded_collection_toast_section = false
+	if with_globals:
+		_shown_collection_toast_ids.clear()
+		if _has_loaded_collection_toast_section:
+			_shown_collection_toast_ids.assign(_loaded_collection_toast_ids)
+		_loaded_collection_toast_ids.clear()
+		_has_loaded_collection_toast_section = false
+
+
+## True when the owner can switch to `target` now (FK-087, docs/TECH.md
+## "Switching (part 1)"): in a started session's morning, after that morning
+## has run, with no build, paint, haggle or owner picker in progress (they
+## hold the live sim or world), to another site that is frozen no later than
+## today.
+func can_switch_site(target: StringName) -> bool:
+	return _started and not display_only and sim != null and world != null \
+		and shop_editor != null and Clock.sim.phase == SimClock.Phase.MORNING \
+		and Clock.attached_world == world and not _owner_first_morning_pending \
+		and not is_owner_picker_visible() \
+		and not is_haggle_active() and not is_build_active() and not _paint_active \
+		and site_book.can_swap(target, Clock.sim.day)
+
+
+## Makes another of the owner's sites the active one, this morning (FK-087).
+## The departing site's per-site sections are frozen as of today; the
+## target's frozen copy is thawed to today, restored, checked and installed
+## by the same code as a morning load, and its morning runs (restock, plans)
+## with the one autosave of that morning. Global sections are not changed,
+## except that, like any reload, rewiring redraws the customers RNG stream.
+## Returns false with nothing changed when refused, or when the target does
+## not load (the session stays exactly as it was). The one exception is a
+## refused rollback inside SaveSystem (an error is pushed): the session may
+## then be inconsistent. Called from tests only so far; a site picker comes
+## later. Never starts a new game.
+func switch_site(target: StringName) -> bool:
+	if not can_switch_site(target):
+		return false
+	var day: int = Clock.sim.day
+	var departing: Dictionary = SaveSystem.capture_sections(SiteSections.PER_SITE)
+	if departing.size() != SiteSections.PER_SITE.size():
+		push_error("Cannot capture the departing site's sections")
+		return false
+	var thawed: Dictionary = SiteThaw.thaw(site_book.frozen_sections(target),
+		site_book.frozen_day(target), day, SiteThawTunings.new(demand_tuning, viral_tuning,
+		RUSH_TUNING, BOOKING_TUNING, SIGNATURE_TUNING))
+	if thawed.is_empty():
+		_log_switch_refusal(target, "its saved restaurant could not be brought up to today")
+		return false
+	var sections: Dictionary = thawed["sections"]
+	# The pantry restores in place, so a missing section would keep the
+	# departing site's stock: a site saved without one has an empty pantry.
+	if not sections.has("pantry"):
+		sections["pantry"] = {"stock": Stock.new().to_dict()}
+	var kept_layout: ShopLayout = _loaded_layout
+	_clear_site_staging()
+	var restored: Error = SaveSystem.restore_sections(sections, SiteSections.PER_SITE)
+	if restored != OK:
+		# SaveSystem already put every section back from its own capture.
+		_clear_site_staging()
+		_loaded_layout = kept_layout
+		if restored == ERR_BUG:
+			push_error("A refused site switch could not be rolled back; the session may be inconsistent")
+		_log_switch_refusal(target, "its saved restaurant did not load")
+		return false
+	var staged: StagedSite = _validate_staged_sections(false)
+	if staged == null:
+		# Put the departing site's in-place sections (the pantry) back.
+		var undone: Error = SaveSystem.restore_sections(departing, SiteSections.PER_SITE)
+		_clear_site_staging()
+		_loaded_layout = kept_layout
+		if undone != OK:
+			push_error("A refused site switch could not be rolled back; the session may be inconsistent")
+		_log_switch_refusal(target, _staged_refusal if not _staged_refusal.is_empty()
+			else "its saved restaurant did not load")
+		return false
+	# Record the swap while it can still be undone: pure bookkeeping, and
+	# can_swap was checked, so it is not expected to refuse.
+	if not site_book.swap_active(target, day, departing):
+		SaveSystem.restore_sections(departing, SiteSections.PER_SITE)
+		_clear_site_staging()
+		_loaded_layout = kept_layout
+		_log_switch_refusal(target, "the site list could not record it")
+		return false
+	# From here the switch cannot be refused.
+	_disconnect_session()
+	Clock.attach_world(null)
+	# Notes kept from the departing site's morning belong to it and are saved
+	# nowhere: they are dropped. (The haggle receipt names its site instead.)
+	_menu_access_losses.clear()
+	_last_team_activity.clear()
+	_staff_notice_day = 0
+	_staff_notices.clear()
+	_cart_trimmed.clear()
+	_thrown_today.clear()
+	_install_staged_sections(staged, false)
+	_clear_site_staging()
+	_loaded_layout = staged.layout
+	_rooms_note = _loaded_layout.rooms_unmarked
+	$HUD.set_rooms_note(ROOMS_NOTE if _rooms_note else "")
+	if not _wire_session():
+		push_error("Cannot wire the switched site; the session is inconsistent")
+		return false
+	var refunds: Array = thawed["refunds"]
+	for refund: Dictionary in refunds:
+		Economy.add_cash(int(refund["amount"]), StringName(refund["category"]), String(refund["note"]))
+	# The arriving site's morning, for today: delivery and restock, staff, plans
+	# and offers. Weather, the weekly challenge and the calendar are global
+	# and already set for today, so they are not drawn again. Its autosave is
+	# the switch's only save.
+	_begin_morning()
+	_bind_build_session()
+	_bind_vibe_grid()
 	return true
+
+
+func _log_switch_refusal(target: StringName, reason: String) -> void:
+	var label: String = site_book.site_name(target)
+	world.log_event("Could not switch to %s: %s" % [label if not label.is_empty() else "the other restaurant",
+		reason.left(1).to_lower() + reason.substr(1)])
+
+
+## Drops every staged per-site section, so a switch's missing sections take
+## their defaults and a refused switch leaves nothing staged behind.
+func _clear_site_staging() -> void:
+	_loaded_layout = null
+	_loaded_tray_level = 0
+	_loaded_menu = null
+	_loaded_daily_special = null
+	_loaded_signature = null
+	_loaded_staff = null
+	_loaded_plates = null
+	_loaded_reputation = null
+	_loaded_regulars = null
+	_loaded_reorder = null
+	_loaded_deliveries = null
+	_loaded_demand = null
+	_loaded_viral = null
+	_loaded_business_history = null
+	_loaded_shop_records = null
+	_loaded_cat = {}
+	_loaded_inspection = {}
+	_loaded_critic = {}
+	_loaded_group_booking = null
+	_loaded_rush_hour = {}
+	_loaded_aquarium = {}
+
+
+## Disconnects main from the live sim, world and shop editor before a site
+## switch replaces them (the counterpart of _wire_session, _connect_session
+## and _bind_build_session). Autoload and panel signals stay connected.
+func _disconnect_session() -> void:
+	clear_selection()
+	if sound != null:
+		sound.unbind()
+	if sim.plate_broken.is_connected(_on_plate_broken):
+		sim.plate_broken.disconnect(_on_plate_broken)
+	if sim.aquarium.changed.is_connected(_on_aquarium_changed):
+		sim.aquarium.changed.disconnect(_on_aquarium_changed)
+	if sim.customer_paid.is_connected(_on_customer_paid):
+		sim.customer_paid.disconnect(_on_customer_paid)
+	if sim.customer_left.is_connected(_on_vibe_customer_left):
+		sim.customer_left.disconnect(_on_vibe_customer_left)
+	if sim.review_recorded.is_connected(_on_review_recorded):
+		sim.review_recorded.disconnect(_on_review_recorded)
+	if sim.service_closed.is_connected(_on_service_closed):
+		sim.service_closed.disconnect(_on_service_closed)
+	if sim.kitchen != null and sim.kitchen.plates_changed.is_connected(_on_plates_changed):
+		sim.kitchen.plates_changed.disconnect(_on_plates_changed)
+	if sim.dock != null and sim.dock.stored.is_connected(_on_dock_stored):
+		sim.dock.stored.disconnect(_on_dock_stored)
+	if world.board != null and world.board.task_completed.is_connected(_on_staff_task_completed):
+		world.board.task_completed.disconnect(_on_staff_task_completed)
+	_disconnect_vibe_grid()
+	if shop_editor != null:
+		if shop_editor.floors.changed.is_connected(_on_floor_looks_changed):
+			shop_editor.floors.changed.disconnect(_on_floor_looks_changed)
+		if shop_editor.walls.changed.is_connected(_on_wall_looks_changed):
+			shop_editor.walls.changed.disconnect(_on_wall_looks_changed)
+		if shop_editor.decor.changed.is_connected(_on_wall_decor_changed):
+			shop_editor.decor.changed.disconnect(_on_wall_decor_changed)
 
 
 func _capture_business_history() -> Dictionary:
@@ -3209,6 +3488,19 @@ func _restore_aquarium(data: Dictionary) -> bool:
 	if not AquariumCare.valid_dict(data):
 		return false
 	_loaded_aquarium = data.duplicate(true)
+	return true
+
+
+func _capture_sites() -> Dictionary:
+	return site_book.to_dict()
+
+
+## Older saves have no sites section and stay one site (the starter shop).
+func _restore_sites(data: Dictionary) -> bool:
+	var book: SiteBook = SiteBook.from_dict(data)
+	if book == null:
+		return false
+	_loaded_sites = book
 	return true
 
 
@@ -5030,7 +5322,7 @@ func stock_place_order() -> bool:
 	if percent > 0:
 		if not Economy.buy_haggled_order(lines, percent):
 			return false
-		_haggle_receipt = {"day": Clock.sim.day, "percent": percent,
+		_haggle_receipt = {"day": Clock.sim.day, "site": Economy.active_site, "percent": percent,
 			"saved": stock_cart_list_total() - cost}
 		_haggle_percent = 0
 	else:
@@ -5256,7 +5548,7 @@ func stock_notes() -> Array[String]:
 	# Read back from today's ledger, so a reloaded morning still shows it.
 	var list_total: int = 0
 	var premium: int = 0
-	for entry: Dictionary in Economy.ledger.entries_for_day(Clock.sim.day):
+	for entry: Dictionary in Economy.ledger.entries_for_day(Clock.sim.day, Economy.active_site):
 		if entry["category"] != Ledger.INGREDIENTS:
 			continue
 		var note: String = String(entry["note"])
@@ -5546,11 +5838,18 @@ func _on_service_closed(day: int) -> void:
 	_settle_due_booking_at_close(day)
 	# Capture business profit before milestone cash, the weekly reward or
 	# financing enters the books, excluding booking advances/refunds so those
-	# customer liabilities cannot earn profit awards.
-	var day_movements: Dictionary = Economy.ledger.day_totals(day)
-	var operating_profit: int = Economy.ledger.day_profit(day) \
-		- int(day_movements.get(Ledger.BOOKING_DEPOSIT, 0)) \
-		- int(day_movements.get(Ledger.BOOKING_REFUND, 0))
+	# customer liabilities cannot earn profit awards. Only the active site's
+	# entries count (FK-087), and other sites' money never does.
+	var site: StringName = Economy.active_site
+	var day_movements: Dictionary = Economy.ledger.day_totals(day, site)
+	var operating_profit: int = Economy.ledger.day_profit(day, site)
+	# Deliberately not all of DayReport.NON_OPERATING_CATEGORIES: same-day
+	# financing posted before the close keeps its existing profit basis
+	# (test_loan_session). A new non-operating category that can be booked
+	# before the close must be added here as well as to DayReport.
+	for category: StringName in [Ledger.BOOKING_DEPOSIT, Ledger.BOOKING_REFUND,
+			Ledger.AWAY_SITE_INCOME, Ledger.AWAY_SITE_RENT, Ledger.LOT_PURCHASE, Ledger.RENOVATION]:
+		operating_profit -= int(day_movements.get(category, 0))
 	var closing_observation: MilestoneDay = _milestone_observation(operating_profit)
 	_award_weekly_challenge(closing_observation)
 	staff_roster.close_growth_day()
