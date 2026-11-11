@@ -18,12 +18,12 @@ func after_each() -> void:
 	NeighbourhoodDressing.clear_mesh_cache()
 
 
-func _builder(salt: int = 7) -> NeighbourhoodBuildings:
+func _builder(salt: int = 7, shift: float = 0.0) -> NeighbourhoodBuildings:
 	var builder: NeighbourhoodBuildings = NeighbourhoodBuildings.new()
 	builder.street = StreetSet.standard()
 	builder.street.seed_salt = salt
-	builder.local_reserve = RESERVE
-	builder.shift = 0.0
+	builder.local_reserve = AABB(RESERVE.position + Vector3(0.0, 0.0, shift), RESERVE.size)
+	builder.shift = shift
 	builder.plan()
 	return builder
 
@@ -89,7 +89,11 @@ func test_the_street_varies_heights_colours_roofs_and_businesses() -> void:
 
 
 func test_no_building_touches_the_lot_the_door_approach_or_each_other_and_none_can_shade_the_lot() -> void:
-	var builder: NeighbourhoodBuildings = _builder()
+	for salt: int in [7, 11, 23, 99, 1234]:
+		_assert_clear_street(_builder(salt), salt)
+
+
+func _assert_clear_street(builder: NeighbourhoodBuildings, salt: int) -> void:
 	var lot: Rect2 = _xz(RESERVE)
 	# The widest door approach: the lot's whole frontage, 2.2 m deep, out to the street.
 	var approach: Rect2 = Rect2(RESERVE.position.x, 0.0, RESERVE.size.x, 2.2)
@@ -97,26 +101,30 @@ func test_no_building_touches_the_lot_the_door_approach_or_each_other_and_none_c
 	for index: int in boxes.size():
 		var box: AABB = boxes[index]
 		var rect: Rect2 = _xz(box)
-		assert_false(_overlaps(rect, lot), "%s clears the maximum lot" % builder.plans[index].id)
-		assert_false(_overlaps(rect, approach), "%s clears the door approach" % builder.plans[index].id)
-		assert_true(box.size.y <= NeighbourhoodBuildings.MAX_NEAR_HEIGHT + 0.3 or not builder.plans[index].is_shop,
-			"a near shop stays low enough")
+		var id: String = "salt %d %s" % [salt, builder.plans[index].id]
+		assert_false(_overlaps(rect, lot), "%s clears the maximum lot" % id)
+		assert_false(_overlaps(rect, approach), "%s clears the door approach" % id)
 		for other: int in range(index + 1, boxes.size()):
-			assert_false(_overlaps(rect, _xz(boxes[other])), "%s and %s do not overlap" % [builder.plans[index].id, builder.plans[other].id])
+			assert_false(_overlaps(rect, _xz(boxes[other])), "%s and %s do not overlap" % [id, builder.plans[other].id])
 		if builder.plans[index].is_shop:
+			assert_true(box.size.y <= NeighbourhoodBuildings.MAX_NEAR_HEIGHT + 0.0001, "%s stays low enough: %f" % [id, box.size.y])
 			# Seen from any of the four diagonal views the box and its hidden ground
 			# stay off the lot: no rotation lets a neighbour hide the shop.
 			for diagonal: Vector2 in [Vector2(1, 1), Vector2(1, -1), Vector2(-1, 1), Vector2(-1, -1)]:
 				var push: Vector2 = diagonal * SHADE_PER_METRE * box.size.y
 				var swept: Rect2 = rect.merge(Rect2(rect.position + push, rect.size))
-				assert_false(_overlaps(swept, lot), "%s cannot hide the lot from %s" % [builder.plans[index].id, diagonal])
+				assert_false(_overlaps(swept, lot), "%s cannot hide the lot from %s" % [id, diagonal])
 	for lot_box: AABB in builder.lots():
 		assert_false(_overlaps(_xz(lot_box), approach), "house lots stay across the road")
 		assert_true(lot_box.position.z >= NeighbourhoodBuildings.FENCE_V - 0.001)
 
 
 func test_every_house_lot_holds_its_house_path_and_fence() -> void:
-	var builder: NeighbourhoodBuildings = _builder()
+	for shift: float in [0.0, 2.0]:
+		_assert_yards(_builder(7, shift), shift)
+
+
+func _assert_yards(builder: NeighbourhoodBuildings, shift: float) -> void:
 	var houses: int = 0
 	for p: NeighbourhoodBuildings.Plan in builder.plans:
 		if p.is_shop:
@@ -130,8 +138,9 @@ func test_every_house_lot_holds_its_house_path_and_fence() -> void:
 			box = box.expand(point)
 		var extent: Rect2 = _xz(box)
 		assert_true(extent.position.x >= p.lot.position.x - 0.2 and extent.end.x <= p.lot.end.x + 0.2
-			and extent.position.y >= NeighbourhoodBuildings.PAVEMENT_EDGE_V - 0.01 and extent.end.y <= p.lot.end.y + 0.2,
-			"%s's yard, fence and path stay on its lot (the path runs on to the pavement)" % p.id)
+			and extent.position.y >= shift + NeighbourhoodBuildings.PAVEMENT_EDGE_V - 0.01 and extent.end.y <= p.lot.end.y + 0.2,
+			"%s's yard, fence and path stay on its lot at shift %f (the path runs on to the pavement)" % [p.id, shift])
+		assert_true(p.lot.position.y >= shift + NeighbourhoodBuildings.FENCE_V - 0.001)
 		# The house faces the road: its door is on the street side of its body.
 		assert_true(p.xf.basis.z.z < -0.9, "%s faces the street" % p.id)
 		mesh.free()
@@ -190,9 +199,23 @@ func test_a_rebuild_reuses_the_cached_street_and_a_new_set_replaces_it() -> void
 	var frontage: Array[Dictionary] = [{"cells": grid.entries().duplicate(), "normal": Vector2i.DOWN}] as Array[Dictionary]
 	dressing.configure(grid, Rect2i(-2, -2, 12, 9), frontage, [] as Array[AABB])
 	var buildings: Node3D = dressing.find_child("Buildings", true, false) as Node3D
-	var first: Array[PackedVector3Array] = []
+	var first: Array[Mesh] = []
 	for mesh: Node in buildings.get_children():
-		first.append((mesh as MeshInstance3D).mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX])
+		first.append((mesh as MeshInstance3D).mesh)
+	dressing.rebuild()
+	for index: int in first.size():
+		assert_true((buildings.get_child(index) as MeshInstance3D).mesh == first[index], "an unchanged rebuild keeps the meshes")
+	# A salt-only swap restyles the street without changing its building count.
+	var salted: StreetSet = StreetSet.standard()
+	salted.seed_salt = 99
+	dressing.street_set = salted
+	dressing.rebuild()
+	buildings = dressing.find_child("Buildings", true, false) as Node3D
+	assert_eq(buildings.get_child_count(), 9)
+	var changed: bool = false
+	for index: int in first.size():
+		changed = changed or (buildings.get_child(index) as MeshInstance3D).mesh != first[index]
+	assert_true(changed, "a new seed salt builds different meshes")
 	# A different set (a seaside street, say) swaps the whole building set.
 	var other: StreetSet = StreetSet.standard()
 	other.seed_salt = 99
@@ -206,8 +229,8 @@ func test_a_rebuild_reuses_the_cached_street_and_a_new_set_replaces_it() -> void
 	buildings = dressing.find_child("Buildings", true, false) as Node3D
 	assert_eq(buildings.get_child_count(), 9)
 	for index: int in buildings.get_child_count():
-		assert_eq((buildings.get_child(index) as MeshInstance3D).mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX], first[index],
-			"going back to the standard set restores the same street")
+		assert_true((buildings.get_child(index) as MeshInstance3D).mesh == first[index],
+			"going back to the standard set restores the identical cached mesh")
 	dressing.get_parent().remove_child(dressing)
 	dressing.free()
 

@@ -2214,7 +2214,7 @@ about 20 ms and cached with the ground by street frame); no new art packs, and t
 `house_body` and `gable_roof` models are no longer loaded. Near shops are kept off the lot by
 geometry rather than a fade: the camera pitch is 54.7 degrees, so a point h metres up hides 0.5 h
 of ground per axis along a diagonal view, and every near shop and roof stays under 2.7 m with a gap
-of 1.4 m, so no rotation lets one hide any lot ground (checked per diagonal in
+of 1.4 m, so no resting view lets one hide any lot ground (checked per diagonal in
 `test_neighbourhood_buildings.gd`). The ground builder receives the footprints and house lots so it
 plants nothing on them, stretches the far lawn under the lots, and bakes lawn shadows for every
 building (walls at wall height plus a narrower roof core at full height). Planning exposes

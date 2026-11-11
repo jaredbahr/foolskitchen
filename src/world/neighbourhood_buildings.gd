@@ -19,8 +19,9 @@ const GAP: float = 1.4
 const FRONT_INSET: float = 0.05
 ## A hairline between row neighbours (roof eaves overhang less than half of it).
 const ROW_GAP: float = 0.22
-## The tallest a near shop or its roof may stand: GAP / 0.5 less a margin.
-const MAX_NEAR_HEIGHT: float = 2.7
+## The tallest a near shop may stand, roof included: the real clearance (GAP less
+## the eave overhang and a margin) over the 0.5 m of hidden ground per metre of height.
+const MAX_NEAR_HEIGHT: float = (GAP - EAVE - 0.02) / 0.5
 ## Street-edge distance of every house lot's front fence line.
 const FENCE_V: float = 8.7
 const PAVEMENT_EDGE_V: float = 8.22
@@ -68,6 +69,8 @@ var shift: float = 0.0
 ## Top of the pavement the awnings' stock stands on.
 var paving_top: float = 0.055
 var plans: Array[Plan] = []
+## One flat-shaded vertex-colour material shared by every building this builder meshes.
+var _material: StandardMaterial3D
 
 
 func _r(index: int, attribute: int) -> float:
@@ -136,8 +139,9 @@ func _plan_shops() -> void:
 			recent_roof = [roof_choice]
 			p.roof = street.shop_roofs[roof_choice]
 			p.roof_h = _roof_height(p.roof, index)
-			while p.total_height() > MAX_NEAR_HEIGHT and p.roof_h > 0.2:
+			while p.total_height() > MAX_NEAR_HEIGHT + 0.0001 and p.roof_h > 0.2:
 				p.roof_h -= 0.05
+			p.wall_h = minf(p.wall_h, MAX_NEAR_HEIGHT - p.roof_h)
 			p.wall = p.style.wall if p.style != null else street.wall_colors[0]
 			p.roof_col = street.roof_colors[_pick(street.roof_colors.size(), index, 5)]
 			p.door_col = p.style.door if p.style != null else street.door_colors[0]
@@ -363,14 +367,15 @@ func build_mesh(p: Plan) -> MeshInstance3D:
 		_yard(pen, p)
 	var instance: MeshInstance3D = MeshInstance3D.new()
 	instance.name = p.id
-	var material: StandardMaterial3D = StandardMaterial3D.new()
-	material.vertex_color_use_as_albedo = true
-	material.roughness = 1.0
-	material.metallic_specular = 0.0
-	material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_VERTEX
-	material.disable_receive_shadows = true
+	if _material == null:
+		_material = StandardMaterial3D.new()
+		_material.vertex_color_use_as_albedo = true
+		_material.roughness = 1.0
+		_material.metallic_specular = 0.0
+		_material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_VERTEX
+		_material.disable_receive_shadows = true
 	instance.mesh = pen.soup.to_mesh()
-	instance.material_override = material
+	instance.material_override = _material
 	instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	return instance
 
@@ -732,14 +737,19 @@ func _yard(pen: Pen, p: Plan) -> void:
 		pen.box(Vector3(mx - 0.07, 0.32, fence_z + 0.17), Vector3(mx + 0.07, 0.42, fence_z + 0.28), p.door_col)
 		pen.box(Vector3(mx + 0.07, 0.34, fence_z + 0.18), Vector3(mx + 0.09, 0.42, fence_z + 0.2), Color("c8412f"))
 	var bed_z: float = door_z - 0.26
-	var bed_u: float = p.xf.origin.x
 	var bed_half: float = p.width * 0.5 - 0.1
-	pen.box(Vector3(bed_u - bed_half, 0.0, bed_z), Vector3(bed_u - bed_half + 0.5, 0.07, door_z - 0.02), street.wood.darkened(0.35))
-	pen.box(Vector3(bed_u + bed_half - 0.5, 0.0, bed_z), Vector3(bed_u + bed_half, 0.07, door_z - 0.02), street.wood.darkened(0.35))
-	for index: int in 6:
-		var bloom: Color = street.bloom_colors[(seed_value + index) % street.bloom_colors.size()]
-		var bx: float = bed_u - bed_half + 0.1 + 0.15 * float(index % 3) if index < 3 else bed_u + bed_half - 0.4 + 0.15 * float(index % 3)
-		pen.lump(Vector3(bx, 0.11, door_z - 0.14), 0.06, 0.06, 0.06, float(index), bloom, bloom.darkened(0.2))
+	for side: float in [-1.0, 1.0]:
+		var inner: float = p.xf.origin.x + side * (bed_half - 0.5)
+		var outer: float = p.xf.origin.x + side * bed_half
+		var low: float = minf(inner, outer)
+		var high: float = maxf(inner, outer)
+		# A bed never crosses the path or its step.
+		if high > door_u - 0.36 and low < door_u + 0.36:
+			continue
+		pen.box(Vector3(low, 0.0, bed_z), Vector3(high, 0.07, door_z - 0.02), street.wood.darkened(0.35))
+		for index: int in 3:
+			var bloom: Color = street.bloom_colors[(seed_value + index + (3 if side > 0.0 else 0)) % street.bloom_colors.size()]
+			pen.lump(Vector3(low + 0.1 + 0.15 * float(index), 0.11, door_z - 0.14), 0.06, 0.06, 0.06, float(index), bloom, bloom.darkened(0.2))
 	var corner: float = -1.0 if _r(seed_value, 22) < 0.5 else 1.0
 	var tx: float = lot.get_center().x + corner * (lot.size.x * 0.5 - 0.5)
 	if _r(seed_value, 23) < 0.6:
