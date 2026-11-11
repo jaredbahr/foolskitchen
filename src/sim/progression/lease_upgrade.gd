@@ -3,6 +3,8 @@ extends Resource
 ## A larger lease on the same shop. No furniture or floor is supplied.
 ## Initial prices and margins are provisional balance tuning for review.
 
+## No longer the offer's gate: the offer needs career Tier 2 (D30), which is
+## reached at owner level 3 in career_tiers.tres. Kept until part 1 (#408).
 @export var owner_level: int = 3
 @export var deposit: int = 300
 @export var daily_rent: int = 60
@@ -30,7 +32,7 @@ func layout_for(base: ShopLayout, tier: int) -> ShopLayout:
 
 func offered(progress: OwnerProgress, phase: int) -> bool:
 	return is_valid() and progress != null and progress.property_tier == 1 \
-		and progress.level >= owner_level and phase == SimClock.Phase.MORNING
+		and progress.career_tier >= 2 and phase == SimClock.Phase.MORNING
 
 
 ## One source of plain player-facing refusal text for the panel and command.
@@ -41,8 +43,8 @@ func refusal(progress: OwnerProgress, phase: int, cash: int, loan: int) -> Strin
 		return "Your lease is already upgraded"
 	if phase != SimClock.Phase.MORNING:
 		return "Upgrade your lease in the morning"
-	if progress.level < owner_level:
-		return "Unlocks at owner level %d" % owner_level
+	if progress.career_tier < 2:
+		return "Unlocks when your restaurant reaches Tier 2"
 	if loan > 0:
 		return "Pay off your loan before upgrading your lease"
 	if cash < deposit:

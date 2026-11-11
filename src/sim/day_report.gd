@@ -60,6 +60,9 @@ var owner_tips: Array[String] = []
 var milestones_reached: Array[Dictionary] = []
 ## Optional cash-only challenge completion line; absent on all other days.
 var weekly_challenge_line: String = ""
+## Optional career tier line ("Your restaurant reached Tier 3!"); absent on
+## every day the tier did not rise.
+var career_tier_line: String = ""
 ## The selected offer and its paid-dish count, detached from tomorrow's choice.
 var daily_special_line: String = ""
 ## Player-facing "Low stock" sentences (StockAlerts): what ran out today and
@@ -268,6 +271,8 @@ func to_dict() -> Dictionary:
 		result["inspection_lines"] = inspection_lines.duplicate()
 	if not weekly_challenge_line.is_empty():
 		result["weekly_challenge_line"] = weekly_challenge_line
+	if not career_tier_line.is_empty():
+		result["career_tier_line"] = career_tier_line
 	if not daily_special_line.is_empty():
 		result["daily_special_line"] = daily_special_line
 	if not booking_lines.is_empty():
@@ -367,6 +372,9 @@ static func from_dict(data: Dictionary) -> DayReport:
 	var saved_weekly_line: Variant = data.get("weekly_challenge_line", "")
 	if saved_weekly_line is String and saved_weekly_line.length() <= 100:
 		report.weekly_challenge_line = saved_weekly_line
+	var saved_tier_line: Variant = data.get("career_tier_line", "")
+	if saved_tier_line is String and saved_tier_line.length() <= 100:
+		report.career_tier_line = saved_tier_line
 	var saved_special_line: Variant = data.get("daily_special_line", "")
 	if saved_special_line is String and saved_special_line.length() <= 160:
 		report.daily_special_line = saved_special_line

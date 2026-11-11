@@ -3341,7 +3341,7 @@ before part 1; buying a lot and switching wait for part 1 (#408).
 `owner`) is separate from the home lease. Today's `property_tier` (1 or 2)
 only means "the home lease is expanded"; part 1 moves it into that site's own
 data (`lease_expanded`), and a missing career tier loads as 1, or 2 when the
-old `property_tier` was 2. Tier 2 needs owner level 3 (the level today's lease
+old `property_tier` was 2 or the owner was already at Tier 2's level (#419). Tier 2 needs owner level 3 (the level today's lease
 offer needs), with or without buying the lease. Tiers 3 to 6 need an owner
 level **and** the active site's closing reputation. Tiers are climbed in order,
 checked at each close and never lost:

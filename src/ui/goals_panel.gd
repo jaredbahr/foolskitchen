@@ -25,6 +25,13 @@ func _ready() -> void:
 	_render_records()
 
 
+## The career ladder line (D30); Main owns the tier and its text.
+func set_career_tier_line(text: String) -> void:
+	var label: Label = %CareerTier as Label
+	label.text = text
+	label.visible = not text.is_empty()
+
+
 ## Detached display text only; Main owns the saved lifetime observations.
 func set_records(lines: Array[String]) -> void:
 	_record_lines = lines.duplicate()
