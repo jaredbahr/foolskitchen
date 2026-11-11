@@ -376,6 +376,9 @@ func _bind_world_presentation() -> void:
 		if _loaded_layout != null else _base_layout
 	var maximum_reserve: Rect2i = ShopFootprint.from_layout(LEASE.layout_for(presentation_base, 2)).lot.merge(lot)
 	view.show_world(world, maximum_reserve)
+	# A new dressing starts at day: light its lamps now, not a frame later.
+	if view.neighbourhood_dressing != null and world.clock != null:
+		view.neighbourhood_dressing.set_night(DayNightView.street_night(day_light_look()))
 	view.bind_cleanliness(sim.cleanliness)
 	view.bind_restaurant(sim, content)
 	view.bind_dock(sim.dock)
@@ -5195,6 +5198,8 @@ func _refresh_day_light() -> void:
 	var camera: Node3D = $CameraRig as Node3D
 	var focus: Vector3 = camera.global_position if camera.is_inside_tree() else camera.position
 	DayNightView.apply_lamps(lamp_visuals(), look.interior_energy, focus)
+	if view.neighbourhood_dressing != null:
+		view.neighbourhood_dressing.set_night(DayNightView.street_night(look))
 	# Chairs go up after close, but never while editing in the evening, so
 	# Build and Paint always see and pick the furniture where it stands.
 	var closed: bool = world.clock.phase == SimClock.Phase.CLOSED and not is_build_active() and not _paint_active

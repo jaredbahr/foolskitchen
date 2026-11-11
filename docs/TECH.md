@@ -2220,6 +2220,40 @@ plants nothing on them, stretches the far lawn under the lots, and bakes lawn sh
 building (walls at wall height plus a narrower roof core at full height). Planning exposes
 `building_footprints()`, `lot_footprints()` and `building_boxes_in_view()` for tools and tests.
 
+Street furniture, night lamps and small life (#423) sit on top of the street set and stay view-only
+(no colliders, nav, sim, saves, RNG or `Light3D`). `StreetSet.furniture` is a list of `StreetPropSpec`
+(kind, count, kerb or wall zone), so a seaside street swaps the whole prop list with its other palettes;
+the list, metal/red/bin colours, bird and leaf colours, bird and leaf counts and the sign sway angle are
+all part of `StreetSet.signature()`. `NeighbourhoodFurniture` plans and meshes it in the street's local
+frame: planter trees, benches, bins, a bike rack, a hydrant, a bus stop and a postbox stand only in the free
+band of the near pavement (`BAND_LO` 0.56 m to `BAND_HI` 2.14 m from the street line, short of the near
+walking lane at 2.255 m), never in front of the maximum lot (plus 0.5 m), the door approaches, the native
+entrance pads and paths (0.2 m margin), a walking sweep, a neighbouring shop's door (0.75 m each side,
+2.3 m deep) or another prop (0.3 m). A spot is the lowest-scoring free 0.25 m step along the street, scored by
+`NeighbourhoodGround.hash01` (no RNG), distance from the lot, a cost for sitting near the same kind, and a
+bonus for wall props in front of a shop and bins beside a bench. All props are one flat-shaded vertex-coloured
+shadowless mesh (`PropBody`) and every prop, plus each street lamp's foot, has a baked translucent contact
+shadow in one flat mesh (`PropShadows`) laid just above the paving, so everything stands on its own shadow;
+shadow polygons are the convex hull of the footprint and the footprint pushed along the key light's ground run.
+The planner runs on every dressing rebuild (a few milliseconds, no cache); `furniture_plan()` exposes it.
+`NeighbourhoodBuildings` adds a flower box under each neighbouring shop window (not the laundromat's
+portholes) and a hanging sign bracket on each shop.
+
+Night lamps: `Main._refresh_day_light` calls `NeighbourhoodDressing.set_night(DayNightView.street_night(look))`,
+a smoothstep of the day's interior light (0 by day, 1 from dusk), so the street comes on with the shop. The
+two street lamps get an emissive bulb mesh (emission energy and tint follow the night level), a soft additive
+glow disc on the pavement and a camera-facing additive halo, all unlit meshes under `Life` that are hidden by
+day: no `Light3D` is added.
+
+`NeighbourhoodLife` is the small life, a pure function of the dressing's display clock (the review time pins it),
+applied from `_apply_time` so it stops with the dressing's processing. Hanging signs swing about their bracket
+(`sign_angle`, at most `sign_sway_degrees`); each bird alternates between two spots on the lawn beside the lot
+(`bird_pose`: pecks, looks up, hops two cycles in three, turns back; its own shadow is one MultiMesh); a few leaves
+(one MultiMesh, `leaf_transform`) lift off the planter trees, tumble along the pavement and shrink away. Birds
+stay outside the lot and every building and hop under 0.15 m. The whole addition is 15 draw calls and about
+2,200 triangles; `tests/world/test_neighbourhood_props.gd` bounds both and checks the clear zones across
+salts, lot sizes and the four rotations.
+
 The camera still frames only the shop with its original defaults and expansion
 glides. Main adds a three-metre extension to only the street-facing pan clamp;
 the other sides and initial focus, yaw, pitch and zoom are unchanged. Frame-time

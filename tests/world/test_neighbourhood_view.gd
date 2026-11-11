@@ -204,14 +204,15 @@ func test_actors_use_existing_guest_models_and_no_neighbourhood_nodes_add_lights
 			assert_ne(item_view.get_instance_id(), person.get_instance_id())
 		assert_eq((person.get_node("ModelPivot") as Node3D).scale, Vector3.ONE * ArtScale.CHARACTER_SCALE)
 	for node: Node in _nodes_below(dressing):
-		assert_false(node is Light3D, "street lamps remain unlit until the night-lighting issue")
+		assert_false(node is Light3D, "the street lamps glow through an emissive bulb mesh, never a Light3D (#423)")
 		assert_false(node is CollisionObject3D)
 		assert_false(node is CollisionShape3D)
 		assert_false(node is NavigationRegion3D)
 		assert_false(node is RayCast3D)
 		assert_false(node.has_meta("agent_id"))
 		assert_false(node.has_meta("item_id"))
-		if node is MeshInstance3D:
+		# The lamp bulb is the one emissive mesh; it is dark by day (see test_neighbourhood_props).
+		if node is MeshInstance3D and node.name != &"LampBulbs":
 			var mesh: MeshInstance3D = node as MeshInstance3D
 			for surface: int in mesh.mesh.get_surface_count():
 				var material: Material = mesh.get_active_material(surface)
