@@ -96,7 +96,7 @@ Every street is a "cutesy but fun" frame around the shop. Not playable yet (pati
 - **One recipe per street:** a street is built from swappable parts, so each new site gets the same polish with its own character:
   - `GroundSkin`: ground colours and planting.
   - `StreetSet`: the building set (neighbour businesses, houses), palette and street furniture.
-  - A lot chooses its street (downtown, seaside, suburb). The second site is a seaside seafood shack (D32): boardwalk, blues, rope, shells.
+  - A lot chooses its street (downtown, seaside, suburb). The second site is a seaside seafood shack (Jared, 2026-11-11): boardwalk, blues, rope, shells.
 - **Cheap to draw:** batched, view-only meshes. A new street must keep the visual capture within about 15% of the starter street.
 
 ### 4.5 Economy and progression
