@@ -75,6 +75,13 @@ layout_mode = 2
 size_flags_horizontal = 3
 autowrap_mode = 3
 
+[node name="CareerTierUp" type="Label" parent="Panel/Scroll/Content"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "Your restaurant reached Tier 2!"
+
 [node name="Finances" type="HBoxContainer" parent="Panel/Scroll/Content"]
 layout_mode = 2
 

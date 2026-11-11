@@ -58,6 +58,7 @@ var _reviews: VBoxContainer
 var _owner_level: Label
 var _owner_callout: HBoxContainer
 var _owner_level_up: Label
+var _career_tier_up: Label
 var _owner_xp_rows: GridContainer
 var _owner_unlocks: Label
 var _milestone_heading: Label
@@ -337,6 +338,7 @@ func _bind_nodes() -> void:
 	_owner_level = %OwnerLevel
 	_owner_callout = get_node("Panel/Scroll/Content/LevelUpCallout") as HBoxContainer
 	_owner_level_up = %OwnerLevelUp
+	_career_tier_up = %CareerTierUp
 	_owner_xp_rows = %OwnerXPRows
 	_owner_unlocks = %OwnerUnlocks
 	_milestone_heading = %MilestoneHeading
@@ -463,6 +465,8 @@ func _fill_owner_progress(report: DayReport) -> void:
 		lines.append("Unlocked: %s" % ", ".join(PackedStringArray(report.owner_unlocks)))
 	lines.append_array(PackedStringArray(report.owner_tips))
 	_owner_unlocks.text = "\n".join(lines)
+	_career_tier_up.text = report.career_tier_line
+	_career_tier_up.visible = not report.career_tier_line.is_empty()
 	_owner_callout.visible = _owner_level_up.visible or _owner_unlocks.visible
 
 

@@ -39,6 +39,7 @@ const CRITIC: CriticTuning = preload("res://data/balance/critic.tres")
 const RUSH_TUNING: RushTuning = preload("res://data/balance/rush_hour.tres")
 const VIRAL_TUNING: ViralTuning = preload("res://data/balance/viral.tres")
 const PROGRESSION_TUNING: ProgressionTuning = preload("res://data/balance/progression.tres")
+const CAREER_TIERS: CareerTierTuning = preload("res://data/balance/career_tiers.tres")
 const VIBE_TUNING: VibeTuning = preload("res://data/balance/vibe.tres")
 const CUSTOMER_TYPES: CustomerTypeCatalogue = preload("res://data/customers/types.tres")
 const MILESTONES: MilestoneSet = preload("res://data/milestones/starter.tres")
@@ -228,6 +229,9 @@ var _owner_award_today: Dictionary = {}
 var _owner_unlocks_today: Array[String] = []
 var _owner_tips_today: Array[String] = []
 var _owner_award_day: int = 0
+## The close that raised the career tier, and the tier it reached (report line).
+var _career_tier_day: int = 0
+var _career_tier_reached: int = 0
 var _closed_report_day: int = 0
 var _loan_notice_day: int = 0
 var _milestones_reached_today: Array[Milestone] = []
@@ -377,7 +381,7 @@ func _bind_world_presentation() -> void:
 	_build_catalogue = $Overlay/BuildCatalogue
 	_build_catalogue.bind_content(content)
 	_build_catalogue.set_owner_level(owner_progress.level)
-	_build_catalogue.set_property_tier(owner_progress.property_tier)
+	_build_catalogue.set_career_tier(owner_progress.career_tier)
 	_build_catalogue.set_build_visible(false)
 	_build_catalogue.set_paint_visible(false)
 	_paint_swatch_id = _build_catalogue.selected_swatch_id
@@ -735,7 +739,7 @@ func _wire_session() -> bool:
 		Economy.add_cash, _furniture_purchase_refusal),
 		_loaded_layout if _loaded_layout != null else _starter_layout())
 	shop_editor.set_owner_level(owner_progress.level)
-	shop_editor.set_property_tier(owner_progress.property_tier)
+	shop_editor.set_career_tier(owner_progress.career_tier)
 	shop_editor.storage_need = _storage_need
 	_connect_session()
 	Clock.attach_world(world, sim.advance)
@@ -2554,6 +2558,8 @@ func build_report(day: int) -> DayReport:
 				"reward_xp": goal.reward_xp, "reward_cash": goal.reward_cash})
 	if _weekly_challenge_reward_day == day:
 		report.weekly_challenge_line = _weekly_challenge_report_line
+	if _career_tier_day == day:
+		report.career_tier_line = CareerTierTuning.reached_text(_career_tier_reached)
 	report.demand_forecast = forecast_next_demand()
 	if _record_notice_day == day:
 		report.record_lines = _record_notices.duplicate()
@@ -2632,6 +2638,8 @@ func _new_game() -> void:
 	_owner_unlocks_today.clear()
 	_owner_tips_today.clear()
 	_owner_award_day = 0
+	_career_tier_day = 0
+	_career_tier_reached = 0
 	_closed_report_day = 0
 	_loan_notice_day = 0
 	sim.assign_owner(&"rest")
@@ -3400,8 +3408,6 @@ func lease_buy() -> bool:
 	if not shop_editor.grow_lot(layout):
 		return false
 	owner_progress.property_tier = 2
-	shop_editor.set_property_tier(2)
-	_build_catalogue.set_property_tier(2)
 	var lot: Rect2i = shop_editor.footprint().lot
 	($ShopView as ShopView).set_lot(lot)
 	if sim.dock != null:
@@ -4001,7 +4007,7 @@ func _cookable_recipes(layout: ShopLayout) -> Array[RecipeDef]:
 ## A station staff cannot reach (a bar or a fryer walled in on every side)
 ## does not count, so its dishes never go on sale only to be cancelled.
 func _cookable_live() -> Array[RecipeDef]:
-	return MenuAccess.cookable(world.grid, content.recipes(), 0, owner_progress.property_tier)
+	return MenuAccess.cookable(world.grid, content.recipes(), 0, owner_progress.career_tier)
 
 
 func _station_reachable(placed: PlacedItem) -> bool:
@@ -4027,7 +4033,7 @@ func _cookable_from(definitions: Array[ItemDef]) -> Array[RecipeDef]:
 	if not fridge or not pass_counter:
 		return recipes
 	for definition: RecipeDef in content.recipes():
-		if definition.unlock_tier > owner_progress.property_tier:
+		if definition.unlock_tier > owner_progress.career_tier:
 			continue
 		var cookable: bool = true
 		for step: RecipeStep in definition.steps:
@@ -4046,7 +4052,7 @@ func _refresh_menu_catalogue() -> void:
 		return
 	var cookable: Array[RecipeDef] = _cookable_live()
 	if MenuAccess.cookable(world.grid, content.recipes(), menu_settings.owner_level(),
-			owner_progress.property_tier).is_empty():
+			owner_progress.career_tier).is_empty():
 		# An older or externally edited layout can already be broken. Explain
 		# why it cannot open rather than silently leaving stale dishes on sale.
 		_menu_access_error = MenuAccess.NO_DISH
@@ -4158,7 +4164,7 @@ func drink_station_hints() -> Array[String]:
 	for drinks_pass: bool in [true, false]:
 		for kind: StringName in RecipeDef.ORDER_TYPES:
 			for recipe: RecipeDef in content.recipes():
-				if recipe.order_type == kind and recipe.is_drink() == drinks_pass and recipe.unlock_tier <= owner_progress.property_tier \
+				if recipe.order_type == kind and recipe.is_drink() == drinks_pass and recipe.unlock_tier <= owner_progress.career_tier \
 						and recipe.unlock_level <= owner_progress.level:
 					waiting.append(recipe)
 	for recipe: RecipeDef in waiting:
@@ -4468,11 +4474,12 @@ func _refresh_goals(force: bool = false) -> void:
 		"records": shop_records.snapshot(),
 		"weekly": weekly_challenge.to_dict() if weekly_challenge != null else {},
 		"weekly_progress": weekly_challenge.projected_progress(observation) if weekly_challenge != null else 0,
-		"day": Clock.sim.day,
+		"day": Clock.sim.day, "career_tier": owner_progress.career_tier,
 		"collections": _collection_progress_snapshot(vibe_result.collection_result)}
 	if force or snapshot != _goals_snapshot:
 		_goals_panel.set_goals(milestone_catalogue, completed, progress, owner_progress.level,
 			weekly_challenge, Clock.sim.day, observation)
+		_goals_panel.set_career_tier_line(CAREER_TIERS.goal_text(owner_progress.career_tier))
 		_goals_panel.set_records(ShopRecordsText.rows(snapshot["records"], content))
 		_goals_panel.set_collections(vibe_result.collection_result)
 		_goals_snapshot = snapshot.duplicate(true)
@@ -4893,6 +4900,8 @@ func _begin_morning() -> void:
 	_owner_unlocks_today.clear()
 	_owner_tips_today.clear()
 	_owner_award_day = 0
+	_career_tier_day = 0
+	_career_tier_reached = 0
 	_closed_report_day = 0
 	_loan_notice_day = 0
 	_weekly_challenge_reward_day = 0
@@ -5856,16 +5865,25 @@ func _on_service_closed(day: int) -> void:
 	var settlement: Dictionary = Economy.settle_loan_day(day, operating_profit)
 	if settlement.get("first_advance", false):
 		_loan_notice_day = day
+	# The career tier reads tonight's final level and the active site's
+	# closing reputation (D30); it never drops.
+	var tier_before: int = owner_progress.career_tier
+	var tier_reached: int = owner_progress.raise_career_tier(CAREER_TIERS, reputation.average())
+	if tier_reached > 0:
+		_career_tier_day = day
+		_career_tier_reached = tier_reached
+		shop_editor.set_career_tier(owner_progress.career_tier)
+		_build_catalogue.set_career_tier(owner_progress.career_tier)
+		# Newly opened dishes join the menu catalogue at the morning refresh.
 	if _owner_award_day == day:
-		_owner_unlocks_today = _unlocked_at_levels(level_before, owner_progress.level)
+		_owner_unlocks_today = _unlocked_at_levels(level_before, owner_progress.level,
+			tier_before, owner_progress.career_tier)
 		_owner_tips_today = customer_type_catalogue.level_up_tips(level_before, owner_progress.level) \
 			if customer_type_catalogue != null else [] as Array[String]
 		menu_settings.set_owner_level(owner_progress.level)
 		sim.set_customer_level(owner_progress.level)
 		shop_editor.set_owner_level(owner_progress.level)
-		shop_editor.set_property_tier(owner_progress.property_tier)
 		_build_catalogue.set_owner_level(owner_progress.level)
-		_build_catalogue.set_property_tier(owner_progress.property_tier)
 		$HUD.set_owner_progress(owner_progress.level, owner_progress.xp_into_level(), owner_progress.xp_in_level())
 	shown_report = build_report(day)
 	var beaten: Array[StringName] = shop_records.record(shown_report)
@@ -5926,23 +5944,36 @@ func _award_weekly_challenge(observation: MilestoneDay) -> void:
 	_weekly_challenge_report_line = staged.report_text
 
 
-## Only authored display names enter the public level-up banner.
-func _unlocked_at_levels(previous_level: int, current_level: int) -> Array[String]:
+## Only authored display names enter the public level-up banner. Content
+## counts when tonight's level and career tier open it and last night's did
+## not; a tier of 0 means the current career tier.
+func _unlocked_at_levels(previous_level: int, current_level: int,
+		previous_tier: int = 0, current_tier: int = 0) -> Array[String]:
+	if previous_tier <= 0:
+		previous_tier = owner_progress.career_tier
+	if current_tier <= 0:
+		current_tier = owner_progress.career_tier
 	var unlocked: Array[String] = []
 	for recipe: RecipeDef in content.recipes():
-		if recipe.unlock_tier <= owner_progress.property_tier and recipe.unlock_level > previous_level and recipe.unlock_level <= current_level:
+		if _newly_open(recipe.unlock_level, recipe.unlock_tier, previous_level, current_level, previous_tier, current_tier):
 			unlocked.append(recipe.display_name + " recipe")
 	for item: ItemDef in content.items():
 		if item.catalogue_visible and item.unlock_level > previous_level and item.unlock_level <= current_level:
 			unlocked.append(item.display_name)
 	for style: FloorStyleDef in content.floor_styles():
-		if style.unlock_tier <= owner_progress.property_tier and style.unlock_level > previous_level and style.unlock_level <= current_level:
+		if _newly_open(style.unlock_level, style.unlock_tier, previous_level, current_level, previous_tier, current_tier):
 			unlocked.append(style.display_name + " floor")
 	for wall_style: WallStyleDef in content.wall_styles():
-		if wall_style.unlock_tier <= owner_progress.property_tier and wall_style.unlock_level > previous_level and wall_style.unlock_level <= current_level:
+		if _newly_open(wall_style.unlock_level, wall_style.unlock_tier, previous_level, current_level, previous_tier, current_tier):
 			unlocked.append(wall_style.display_name + " walls")
 	unlocked.sort()
 	return unlocked
+
+
+static func _newly_open(level: int, tier: int, previous_level: int, current_level: int,
+		previous_tier: int, current_tier: int) -> bool:
+	return level <= current_level and tier <= current_tier \
+		and (level > previous_level or tier > previous_tier)
 
 
 func _on_day_phase_changed(_day: int, phase: int) -> void:
@@ -6035,7 +6066,7 @@ func menu_recipe_details() -> Dictionary[StringName, Dictionary]:
 				"met": count >= amounts[id]})
 		var other: Array[Dictionary] = []
 		if recipe.unlock_tier > 1:
-			other.append({"text": "Requires a larger lease", "met": owner_progress.property_tier >= recipe.unlock_tier})
+			other.append({"text": "Requires Tier %d" % recipe.unlock_tier, "met": owner_progress.career_tier >= recipe.unlock_tier})
 		other.append({"text": "Owner level %d (you are level %d)" % [recipe.unlock_level, menu_settings.owner_level()],
 			"met": menu_settings.owner_level() >= recipe.unlock_level})
 		if not recipe.unlock_from.is_empty():
