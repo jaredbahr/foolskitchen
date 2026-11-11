@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="SwatchDef" format=3]
+[ext_resource type="Script" path="res://src/sim/content/swatch_def.gd" id="1"]
+[resource]
+script = ExtResource("1")
+id = &"brass"
+display_name = "Brass"
+color = Color(0.7686275, 0.627451, 0.3098039, 1)
+theme_tags = Array[StringName]([&"cosy"])
+family = &"metal"
+family_order = 0

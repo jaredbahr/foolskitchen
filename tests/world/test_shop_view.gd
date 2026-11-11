@@ -82,12 +82,17 @@ func test_paint_preview_reuses_materials_and_restores_room_colours() -> void:
 	var second_material: BaseMaterial3D = _view.item_nodes[tables[1].id].primary_body_material()
 	assert_eq(first_material.albedo_color, content.swatch(&"terracotta").color)
 	assert_eq(second_material.albedo_color, first_material.albedo_color)
-	assert_true(first_material != second_material, "body tint copies stay local to each model")
+	# Paint slots (#431): painted copies are shared per kit surface, colour and
+	# material (PaintMaterials.shared); the imported kit material never changes.
+	assert_true(first_material == second_material, "one shared painted copy for both tables")
+	var kit: BaseMaterial3D = (_view.item_nodes[tables[0].id].prop.get("_body_surfaces")[0] as PropView.BodySurface).source
+	assert_true(kit != first_material and kit.albedo_color != content.swatch(&"terracotta").color)
 	_view.preview_paint(&"item", tables[0].id, &"sage")
-	assert_eq(first_material.albedo_color, content.swatch(&"sage").color)
-	assert_eq(second_material.albedo_color, content.swatch(&"terracotta").color)
+	# Paint slots (#431): a slot look is its own material copy, so read the drawn one.
+	assert_eq(_view.item_nodes[tables[0].id].primary_body_material().albedo_color, content.swatch(&"sage").color)
+	assert_eq(_view.item_nodes[tables[1].id].primary_body_material().albedo_color, content.swatch(&"terracotta").color)
 	_view.clear_paint_preview()
-	assert_eq(first_material.albedo_color, content.swatch(&"terracotta").color)
+	assert_eq(_view.item_nodes[tables[0].id].primary_body_material().albedo_color, content.swatch(&"terracotta").color)
 	assert_eq(errors, [] as Array[String])
 
 
@@ -462,3 +467,45 @@ func _show(world: SimWorld) -> void:
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	tree.root.add_child(_view)
 	_view.show_world(world)
+
+
+func test_a_paint_hover_goes_stale_when_its_item_is_removed() -> void:
+	var content: ContentDB = ContentDB.new()
+	assert_eq(content.load_all(), PackedStringArray())
+	var errors: Array[String] = []
+	var world: SimWorld = ShopBuilder.build(LAYOUT, content, errors)
+	_show(world)
+	_view.set_paint(content, &"", &"")
+	var tables: Array[PlacedItem] = ShopBuilder.items_with_def(world, &"table_2")
+	_view.preview_slot_paint([tables[0].id, tables[1].id] as Array[int], &"cushion", PaintFinish.FABRIC, &"tomato")
+	assert_true(world.grid.remove(tables[0].id))
+	assert_false(_view.item_nodes.has(tables[0].id))
+	assert_eq(_view.get("_preview_items"), [tables[1].id] as Array[int], "the removed piece leaves the hover")
+	assert_true(world.grid.remove(tables[1].id))
+	assert_eq(_view.get("_preview_kind"), &"", "a hover with no pieces left is over")
+	assert_true(tables[1].paint.is_empty(), "hover never changes the shop")
+	assert_eq(errors, [] as Array[String])
+
+
+func test_painted_materials_stay_bounded_across_a_room_of_pieces_and_colours() -> void:
+	var content: ContentDB = ContentDB.new()
+	assert_eq(content.load_all(), PackedStringArray())
+	var world: SimWorld = SimWorld.new(SimGrid.new(Vector2i(16, 16)))
+	var chairs: Array[int] = []
+	for y: int in range(0, 16, 2):
+		for x: int in range(0, 16, 2):
+			chairs.append(world.grid.place_def(content.item(&"chair"), Vector2i(x, y)).id)
+	assert_eq(chairs.size(), 64)
+	_show(world)
+	_view.set_paint(content, &"", &"")
+	PaintMaterials.clear_cache()
+	var palette: Array[SwatchDef] = content.palette()
+	for swatch: SwatchDef in palette:
+		_view.preview_slot_paint(chairs, &"cushion", PaintFinish.FABRIC, swatch.id)
+		_view.preview_slot_paint(chairs, &"frame", &"", swatch.id)
+	# One shared copy per (kit surface, colour, material): never one per chair.
+	assert_true(PaintMaterials.cached_count() <= palette.size() * 2,
+		"%d copies for 64 chairs and 40 colours" % PaintMaterials.cached_count())
+	_view.clear_paint_preview()
+	var first: BaseMaterial3D = _view.item_nodes[chairs[0]].primary_body_material()
+	assert_null(first.albedo_texture, "clearing the hover puts the kit material back")

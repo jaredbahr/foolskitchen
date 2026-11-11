@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="SwatchDef" format=3]
+[ext_resource type="Script" path="res://src/sim/content/swatch_def.gd" id="1"]
+[resource]
+script = ExtResource("1")
+id = &"pebble"
+display_name = "Pebble"
+color = Color(0.4980392, 0.4627451, 0.4313725, 1)
+theme_tags = Array[StringName]([&"modern"])
+family = &"neutral"
+family_order = 6

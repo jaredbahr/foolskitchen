@@ -67,7 +67,8 @@ func test_seating_and_table_catalogue_matches_the_approved_entries() -> void:
 		assert_eq(definition.unlock_level, entry["unlock"])
 		assert_eq(definition.charm, entry["charm"])
 		assert_eq(definition.theme_tags, entry["tags"])
-		assert_eq(definition.paintable, not (entry["materials"] as Array).is_empty())
+		# The modern chairs paint only their cushion slot (#431), not a body surface.
+		assert_eq(definition.paintable, not (entry["materials"] as Array).is_empty() or not definition.paint_slots.is_empty())
 		assert_eq(definition.view_scene.resource_path, "res://assets/props/%s.tscn" % item_id)
 
 		var view: PropView = definition.view_scene.instantiate() as PropView

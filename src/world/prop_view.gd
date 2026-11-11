@@ -8,9 +8,19 @@ class BodySurface:
 	extends RefCounted
 	var mesh: MeshInstance3D
 	var index: int
+	var name: StringName
 	var source: BaseMaterial3D
 	var original_override: Material
 	var tinted: BaseMaterial3D
+
+## One paint slot's look (#431). Empty `surfaces` means the body surfaces;
+## a null `color` keeps the surface's own (kit or look) colour; an empty
+## `material` with a colour is the flat legacy coat.
+class SlotPaint:
+	extends RefCounted
+	var surfaces: PackedStringArray = []
+	var color: Variant = null
+	var material: StringName = &""
 
 @export var footprint: Vector2i = Vector2i.ONE
 ## Exact imported material names. All other surfaces keep their kit materials.
@@ -33,6 +43,14 @@ var _variant: ItemVariant
 var _paint_color: Variant = null
 var _prepared: bool = false
 var _body_surfaces: Array[BodySurface] = []
+## Every named furniture surface, for the other paint slots (#431).
+var _named_surfaces: Array[BodySurface] = []
+## Slot looks beyond the plain body tint, and the key of the last refresh.
+var _slot_paints: Array[SlotPaint] = []
+var _paint_key: String = ""
+## Non-body surfaces slot paint changed, put back first on the next refresh.
+## Other views (an aquarium's cloudy glass) keep their own surfaces.
+var _touched: Array[BodySurface] = []
 
 
 func _notification(what: int) -> void:
@@ -86,6 +104,16 @@ func get_combined_aabb() -> AABB:
 	return _children_aabb(self)
 
 
+## Imported material names of every furniture surface (paint slots, #431).
+func surface_names() -> PackedStringArray:
+	prepare()
+	var names: PackedStringArray = []
+	for surface: BodySurface in _named_surfaces:
+		if not names.has(String(surface.name)):
+			names.append(String(surface.name))
+	return names
+
+
 func body_surface_count() -> int:
 	prepare()
 	return _body_surfaces.size()
@@ -110,6 +138,11 @@ func active_body_material() -> BaseMaterial3D:
 func set_body_tint(color: Color) -> void:
 	prepare()
 	_paint_color = color
+	if not _slot_paints.is_empty() or not _touched.is_empty():
+		# Coming from slot paint: put other parts back before the flat coat.
+		_slot_paints.clear()
+		_restore_unpainted()
+	_paint_key = ""
 	for body: BodySurface in _body_surfaces:
 		if body.tinted == null:
 			body.tinted = body.source.duplicate() as BaseMaterial3D
@@ -120,8 +153,56 @@ func set_body_tint(color: Color) -> void:
 func clear_body_tint() -> void:
 	prepare()
 	_paint_color = null
-	for body: BodySurface in _body_surfaces:
-		body.mesh.set_surface_override_material(body.index, body.original_override)
+	_slot_paints.clear()
+	_paint_key = ""
+	_restore_unpainted()
+
+
+## Paint slots (#431), main slot first. Layers, bottom up: the kit material,
+## the rest tint, the selected look, then each painted slot. Unpainted slots
+## (no colour, no material) show the layers below. Unchanged input is a no-op.
+func set_slot_paint(slots: Array[SlotPaint]) -> void:
+	prepare()
+	var key: String = _slot_key(slots)
+	if key == _paint_key and not key.is_empty():
+		return
+	var main: SlotPaint = slots[0] if not slots.is_empty() else null
+	_paint_color = main.color if main != null and main.surfaces.is_empty() else null
+	_slot_paints = slots.duplicate()
+	_paint_key = key
+	_restore_unpainted()
+	for slot: SlotPaint in _slot_paints:
+		if slot.color == null and slot.material.is_empty():
+			continue
+		for surface: BodySurface in (_body_surfaces if slot.surfaces.is_empty() else _named_surfaces):
+			if slot.surfaces.is_empty() or slot.surfaces.has(String(surface.name)):
+				_paint_surface(surface, slot)
+
+
+## Slot paint key: equal looks skip the refresh (ShopView repaints every item
+## on each hover change).
+func _slot_key(slots: Array[SlotPaint]) -> String:
+	var parts: PackedStringArray = [str(_variant.get_instance_id() if _variant != null else 0)]
+	for slot: SlotPaint in slots:
+		parts.append("%s/%s/%s" % [",".join(slot.surfaces),
+			(slot.color as Color).to_html() if slot.color is Color else "-", slot.material])
+	return "|".join(parts)
+
+
+func _paint_surface(surface: BodySurface, slot: SlotPaint) -> void:
+	var active: BaseMaterial3D = surface.mesh.get_active_material(surface.index) as BaseMaterial3D
+	var color: Color = slot.color if slot.color is Color else (active.albedo_color if active != null else surface.source.albedo_color)
+	surface.mesh.set_surface_override_material(surface.index,
+		PaintMaterials.shared(surface.source, color, slot.material))
+	if not _touched.has(surface) and not _body_surfaces.has(surface):
+		_touched.append(surface)
+
+
+## The unpainted stack: kit material, rest tint, then the selected look.
+func _restore_unpainted() -> void:
+	for surface: BodySurface in _body_surfaces + _touched:
+		surface.mesh.set_surface_override_material(surface.index, surface.original_override)
+	_touched.clear()
 	_apply_rest_tint()
 	if _variant_materials != null:
 		_variant_materials.apply(_variant)
@@ -133,19 +214,21 @@ func set_variant(look: ItemVariant) -> bool:
 	if look == _variant:
 		return true
 	var paint: Variant = _paint_color
+	var slots: Array[SlotPaint] = _slot_paints.duplicate()
 	if _variant_materials == null:
 		# Capture the unpainted baseline even if this wrapper was painted before
 		# its first look selection; no transient paint becomes a recipe source.
 		clear_body_tint()
 		_variant_materials = PropVariantMaterials.new(self)
-	if not _variant_materials.apply(look):
-		if paint is Color:
-			set_body_tint(paint)
-		return false
-	_variant = look
-	if paint is Color:
+	var accepted: bool = _variant_materials.apply(look)
+	if accepted:
+		_variant = look
+	if not slots.is_empty():
+		_paint_key = ""
+		set_slot_paint(slots)
+	elif paint is Color:
 		set_body_tint(paint)
-	return true
+	return accepted
 
 
 func _apply_rest_tint() -> void:
@@ -165,7 +248,7 @@ func _collect_body_surfaces(node: Node) -> void:
 	if mesh_node != null and mesh_node.mesh != null:
 		for index: int in range(mesh_node.mesh.get_surface_count()):
 			var imported: Material = mesh_node.mesh.surface_get_material(index)
-			if imported == null or not body_material_names.has(imported.resource_name):
+			if imported == null:
 				continue
 			var source: BaseMaterial3D = mesh_node.get_active_material(index) as BaseMaterial3D
 			if source == null:
@@ -173,9 +256,12 @@ func _collect_body_surfaces(node: Node) -> void:
 			var body: BodySurface = BodySurface.new()
 			body.mesh = mesh_node
 			body.index = index
+			body.name = StringName(imported.resource_name)
 			body.source = source
 			body.original_override = mesh_node.get_surface_override_material(index)
-			_body_surfaces.append(body)
+			_named_surfaces.append(body)
+			if body_material_names.has(imported.resource_name):
+				_body_surfaces.append(body)
 	for child: Node in node.get_children():
 		_collect_body_surfaces(child)
 

@@ -593,6 +593,7 @@ func place_group(definitions: Array[ItemDef], placements: Array[ShopPlacement]) 
 		# callbacks run inside this loop, so every placement is guaranteed.
 		var placed: PlacedItem = place_def(definitions[index], entry.origin, entry.quarter_turns, entry.variant_id)
 		placed.swatch_id = entry.swatch_id
+		placed.paint = entry.paint.copy()
 		result.append(placed)
 		changed.append_array(placed.cells)
 	_version = before_version + 1

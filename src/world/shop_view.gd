@@ -13,7 +13,7 @@ const FINISH_SHOP_COLOUR: int = 0
 const FINISH_AUTHORED_COLOUR: int = 1
 const FINISH_FIRST_SWATCH: int = 2
 ## The shader's palette uniform size (floor_finish.gdshader PALETTE_SIZE).
-const FINISH_PALETTE_SIZE: int = 32
+const FINISH_PALETTE_SIZE: int = 48
 ## Threshold mask bits: the neighbour west, north, east or south differs.
 const FINISH_EDGES: Array[Vector2i] = [Vector2i.LEFT, Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN]
 const PERSON_SCENE: PackedScene = preload("res://assets/people/person.tscn")
@@ -167,6 +167,16 @@ var _floor_base_color: Color = Color("7d5533")
 var _preview_kind: StringName = &""
 var _preview_item_id: int = -1
 var _preview_swatch_id: StringName = &""
+## Paint slot hover preview (#431, kind &"slot"): the items (Shift: every piece
+## of a kind in the room) and the slot, material and colour they would take.
+var _preview_items: Array[int] = []
+var _preview_slot: StringName = &""
+var _preview_material: StringName = &""
+## A pasted look's preview (kind &"look").
+var _preview_look: PaintLook
+## What each item node last drew (item id -> key), so a repaint skips items
+## that are neither previewed nor changed.
+var _drawn_paint: Dictionary[int, String] = {}
 ## Floor types (D25): the editor's looks, a preview overlay (cell -> Finish)
 ## and the per-cell data texture the floor shader reads.
 var _floors: FloorFinishes
@@ -460,6 +470,7 @@ func drawn_agent_colors() -> Dictionary[int, Color]:
 
 func _exit_tree() -> void:
 	_disconnect_grid()
+	PaintMaterials.clear_cache()
 
 
 func _notification(what: int) -> void:
@@ -1065,7 +1076,68 @@ func preview_paint(kind: StringName, item_id: int, swatch_id: StringName) -> voi
 	_preview_kind = kind
 	_preview_item_id = item_id
 	_preview_swatch_id = swatch_id
+	_preview_items.clear()
 	_apply_paint()
+
+
+## Hover preview of a whole pasted look (#431) on `item_ids`; looks only.
+func preview_item_look(item_ids: Array[int], swatch_id: StringName, look: PaintLook) -> void:
+	_preview_kind = &"look" if not item_ids.is_empty() else &""
+	_preview_item_id = item_ids[0] if not item_ids.is_empty() else -1
+	_preview_items = item_ids.duplicate()
+	_preview_swatch_id = swatch_id
+	_preview_look = look
+	_apply_paint()
+
+
+## Hover preview of one paint slot (#431) on `item_ids`; looks only.
+func preview_slot_paint(item_ids: Array[int], slot_id: StringName, material: StringName, swatch_id: StringName) -> void:
+	if _preview_kind == &"slot" and _preview_items == item_ids and _preview_slot == slot_id \
+			and _preview_material == material and _preview_swatch_id == swatch_id:
+		return
+	_preview_kind = &"slot" if not item_ids.is_empty() else &""
+	_preview_item_id = item_ids[0] if not item_ids.is_empty() else -1
+	_preview_items = item_ids.duplicate()
+	_preview_slot = slot_id
+	_preview_material = material
+	_preview_swatch_id = swatch_id
+	_apply_paint()
+
+
+## True when an item's paint is nothing or a flat coat on its body surfaces
+## only: drawn by the legacy body-tint path, exactly as before paint slots.
+static func flat_body_only(definition: ItemDef, has_main_colour: bool, look: PaintLook) -> bool:
+	var main: PaintSlotDef = definition.main_slot()
+	if main == null or not main.surfaces.is_empty() or not look.swatches.is_empty():
+		return false
+	var chosen: StringName = look.material(main.id)
+	if look.materials.size() > (1 if not chosen.is_empty() else 0):
+		return false
+	if not has_main_colour:
+		return chosen.is_empty()
+	return (chosen if not chosen.is_empty() else main.default_material) == PaintFinish.PAINTED
+
+
+## An item's paint slots (#431) as PropView layers, main slot first. Unpainted
+## slots (no colour, no material) are empty layers; a painted slot without a
+## chosen material wears its default one.
+static func slot_paints(definition: ItemDef, swatch_id: StringName, look: PaintLook,
+		content: ContentDB) -> Array[PropView.SlotPaint]:
+	var result: Array[PropView.SlotPaint] = []
+	var slots: Array[PaintSlotDef] = definition.slots()
+	for index: int in slots.size():
+		var slot: PaintSlotDef = slots[index]
+		var layer: PropView.SlotPaint = PropView.SlotPaint.new()
+		layer.surfaces = slot.surfaces
+		var colour_id: StringName = swatch_id if index == 0 else look.swatch(slot.id)
+		var swatch: SwatchDef = content.swatch(colour_id) if content != null and not colour_id.is_empty() else null
+		var material: StringName = look.material(slot.id)
+		if swatch != null:
+			layer.color = swatch.color
+		if swatch != null or not material.is_empty():
+			layer.material = material if not material.is_empty() else slot.default_material
+		result.append(layer)
+	return result
 
 
 func clear_paint_preview() -> void:
@@ -1275,19 +1347,56 @@ func _apply_paint() -> void:
 	var floor_shader: ShaderMaterial = floor_mesh.material_override as ShaderMaterial
 	if floor_shader != null:
 		floor_shader.set_shader_parameter("floor_color", _paint_color(floor_id, _floor_base_color))
+	# A hover on an item that has since gone (sold, undone) is stale: drop it.
+	for stale: int in _preview_items.duplicate():
+		if not item_nodes.has(stale) or world.grid.item(stale) == null:
+			_preview_items.erase(stale)
+	if _preview_items.is_empty() and (_preview_kind == &"slot" or _preview_kind == &"look"):
+		_preview_kind = &""
+		_preview_item_id = -1
+	for id: int in _drawn_paint.keys():
+		if not item_nodes.has(id):
+			_drawn_paint.erase(id)
 	for id: int in item_nodes:
 		var placed: PlacedItem = world.grid.item(id)
 		if placed == null or not placed.def is ItemDef:
 			continue
 		var definition: ItemDef = placed.def as ItemDef
 		var variant_preview: bool = _preview_kind == &"variant" and id == _preview_item_id
+		var previewed: bool = id == _preview_item_id or _preview_items.has(id)
+		var key: String = "%d|%s|%s|%s|%s|%d" % [item_nodes[id].get_instance_id(), placed.variant_id, placed.swatch_id,
+			str(placed.paint.to_rows()), definition.paintable, _paint_content.get_instance_id() if _paint_content != null else 0]
+		if not previewed and _drawn_paint.get(id, "") == key:
+			continue
+		# A previewed item is drawn again when the preview moves on.
+		_drawn_paint[id] = "" if previewed else key
 		item_nodes[id].apply_variant(definition.variant(_preview_swatch_id if variant_preview else placed.variant_id))
 		var swatch_id: StringName = _preview_swatch_id if _preview_kind == &"item" and id == _preview_item_id else placed.swatch_id
+		var look: PaintLook = placed.paint
+		if _preview_kind == &"look" and _preview_items.has(id) and _preview_look != null:
+			swatch_id = _preview_swatch_id
+			look = _preview_look
+		elif _preview_kind == &"slot" and _preview_items.has(id):
+			look = placed.paint.copy()
+			var slot_index: int = definition.slot_index(_preview_slot)
+			if slot_index == 0:
+				swatch_id = _preview_swatch_id
+			elif slot_index > 0:
+				look.set_swatch(_preview_slot, _preview_swatch_id)
+			if slot_index >= 0:
+				look.set_material(_preview_slot, _preview_material)
 		var swatch: SwatchDef = _paint_content.swatch(swatch_id) if _paint_content != null else null
-		if definition.paintable and swatch != null and not variant_preview:
-			item_nodes[id].apply_paint(swatch.color, _paint_material(swatch_id, definition.placeholder_color))
-		else:
+		if not definition.paintable or variant_preview:
 			item_nodes[id].clear_paint()
+		elif flat_body_only(definition, swatch != null, look):
+			# A flat body coat or nothing: the exact legacy paint path.
+			if swatch != null:
+				item_nodes[id].apply_paint(swatch.color, _paint_material(swatch_id, definition.placeholder_color))
+			else:
+				item_nodes[id].clear_paint()
+		else:
+			item_nodes[id].apply_slot_paint(slot_paints(definition, swatch_id, look, _paint_content),
+				_paint_material(swatch_id, definition.placeholder_color))
 	_sync_dirt_spots()
 
 
