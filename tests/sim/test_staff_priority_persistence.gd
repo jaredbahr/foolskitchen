@@ -55,6 +55,7 @@ func test_employee_and_candidate_legacy_rows_get_role_defaults_with_or_without_g
 		for records: Array in [legacy["members"], legacy["candidates"]]:
 			for row: Dictionary in records:
 				row.erase("priorities")
+				row.erase("work")
 				if not keep_growth:
 					row.erase("growth")
 				assert_eq(row.size(), 7 if keep_growth else 6)

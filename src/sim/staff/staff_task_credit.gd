@@ -12,4 +12,17 @@ static func credit_completed(task: SimTask, world: SimWorld, roster: StaffRoster
 	if not claimant is StaffAgent or claimant is OwnerAgent:
 		return false
 	var member_id: StringName = (claimant as StaffAgent).member_id
-	return not member_id.is_empty() and roster.record_completed_task(member_id, task.kind)
+	return not member_id.is_empty() and roster.record_completed_task(member_id, task.kind, work_quantity(task))
+
+
+## Plates behind one completed task: a batched delivery serves every order it
+## still carries and a wash trip cleans one plate per finished wash step.
+static func work_quantity(task: SimTask) -> int:
+	match task.kind:
+		&"deliver":
+			if task.payload.get("order_ids") is Array:
+				return (task.payload["order_ids"] as Array).size()
+		&"wash":
+			if task.payload.get("washed_steps") is Array:
+				return (task.payload["washed_steps"] as Array).size()
+	return 1
