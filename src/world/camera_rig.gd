@@ -72,6 +72,9 @@ var _view_viewport: Viewport
 var _preferences: SettingsPreferences
 var _street_pan_normal: Vector2i = Vector2i.ZERO
 var _street_pan_metres: float = 0.0
+## The dressed world (#424): a square on the XZ plane the view must never leave.
+## An empty rect means no world edge is set and only the pan clamp applies.
+var _world_bounds: Rect2 = Rect2()
 
 
 func _enter_tree() -> void:
@@ -226,6 +229,37 @@ func set_street_pan_extension(normal: Vector2i, metres: float) -> bool:
 	return true
 
 
+## Tells the rig where the dressed world ends. Zoom is then capped so that, at
+## any rotation, the view from the farthest allowed pan stays inside it. An
+## empty rect clears the limit.
+func set_world_bounds(bounds: Rect2) -> void:
+	_world_bounds = bounds
+	_target_zoom = _clamp_zoom(_target_zoom)
+	_zoom = minf(_zoom, _clamp_zoom(_zoom))
+	_apply_camera()
+
+
+## Metres from the focus to the farthest ground point on screen at `zoom`, at
+## any rotation: the half-diagonal of the visible ground rectangle.
+func view_reach(zoom: float) -> float:
+	var aspect: float = 16.0 / 9.0
+	if _view_viewport != null and _view_viewport.get_visible_rect().has_area():
+		var size: Vector2 = _view_viewport.get_visible_rect().size
+		aspect = size.x / size.y
+	var pitch: float = deg_to_rad(clampf(pitch_degrees, 20.0, 80.0))
+	return zoom * Vector2(aspect * 0.5, 0.5 / sin(pitch)).length()
+
+
+## The largest zoom the world edge allows (maximum_zoom when none is set).
+func world_zoom_limit() -> float:
+	if not _world_bounds.has_area():
+		return maximum_zoom
+	var focus: Rect2 = _focus_bounds()
+	var margin: float = minf(minf(focus.position.x - _world_bounds.position.x, _world_bounds.end.x - focus.end.x),
+		minf(focus.position.y - _world_bounds.position.y, _world_bounds.end.y - focus.end.y))
+	return maxf(margin, 0.0) / maxf(view_reach(1.0), 0.0001)
+
+
 func rotate_quarter(turns: int) -> void:
 	if turns == 0:
 		return
@@ -272,6 +306,9 @@ func _edge_pan_input(mouse: Vector2, viewport_rect: Rect2) -> Vector2:
 ## translates the view. Resize must not reset their rotation, zoom or grid.
 func _on_viewport_resized() -> void:
 	_pointer_position_valid = false
+	if _world_bounds.has_area():
+		_target_zoom = _clamp_zoom(_target_zoom)
+		_zoom = minf(_zoom, _clamp_zoom(_zoom))
 	if _view_viewport == null or not _view_viewport.get_visible_rect().has_area():
 		return
 	if not _has_panned:
@@ -363,10 +400,15 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _clamp_zoom(value: float) -> float:
-	return clampf(value, maxf(0.1, minimum_zoom), maxf(maximum_zoom, maxf(0.1, minimum_zoom)))
+	var floor_zoom: float = maxf(0.1, minimum_zoom)
+	var ceiling: float = maxf(maximum_zoom, floor_zoom)
+	if _world_bounds.has_area():
+		ceiling = maxf(floor_zoom, minf(ceiling, world_zoom_limit()))
+	return clampf(value, floor_zoom, ceiling)
 
 
-func _clamp_focus() -> void:
+## The rectangle the focus may roam: pan limits plus the street extension.
+func _focus_bounds() -> Rect2:
 	var low: Vector2 = pan_center - pan_limits.abs()
 	var high: Vector2 = pan_center + pan_limits.abs()
 	if _street_pan_normal.x < 0:
@@ -377,8 +419,13 @@ func _clamp_focus() -> void:
 		low.y -= _street_pan_metres
 	elif _street_pan_normal.y > 0:
 		high.y += _street_pan_metres
-	position.x = clampf(position.x, low.x, high.x)
-	position.z = clampf(position.z, low.y, high.y)
+	return Rect2(low, high - low)
+
+
+func _clamp_focus() -> void:
+	var bounds: Rect2 = _focus_bounds()
+	position.x = clampf(position.x, bounds.position.x, bounds.end.x)
+	position.z = clampf(position.z, bounds.position.y, bounds.end.y)
 	position.y = 0.0
 
 

@@ -2123,6 +2123,24 @@ Terrain/lot changes reconfigure a cached geometry signature while retaining
 actor nodes/time; world replacement frees the old controller and atomically
 binds the new world's reserve through `show_world`.
 
+The neighbourhood stands on a ground of its own (#421, #424): `NeighbourhoodGround`
+builds, in the street's local frame, a meadow, lawn and packed-earth back lane, flat
+contact shadows, hedge rows, scattered trees, bushes and flowers, and a ring of
+trees that closes a square clearing of `WORLD_HALF` metres around the maximum
+lot. It is three vertex-coloured, flat-shaded, shadowless meshes (three draw calls),
+parented under `NeighbourhoodDressing/Ground`, outside `Static` because it
+deliberately lies under the whole lot. Placement comes from an integer hash of each
+position (no RNG), colours from the existing swatches, and it is rebuilt only when
+the street frame or lot changes. Every colour and planting knob lives in a `GroundSkin`
+resource (`NeighbourhoodDressing.ground_skin`, default `GroundSkin.standard()`), so a
+future site's neighbourhood and cuisine can re-skin the ground and tree line without
+touching the geometry or the camera edge. The road, pavement and kerbs run on to the tree
+line (actors keep their original span), and a low kerb step edges the pavement
+where it meets grass. The clearing is the camera's world edge:
+`CameraRig.set_world_bounds` (Main sets `NeighbourhoodDressing.world_rect()` after
+framing) caps zoom to `world_zoom_limit()` so that, from any allowed pan and at
+any rotation, the farthest visible ground point (`view_reach`) stays inside it.
+
 The camera still frames only the shop with its original defaults and expansion
 glides. Main adds a three-metre extension to only the street-facing pan clamp;
 the other sides and initial focus, yaw, pitch and zoom are unchanged. Frame-time

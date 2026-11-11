@@ -569,6 +569,10 @@ func _frame_shop(reset: bool) -> void:
 		var runs: Array[Dictionary] = dressing.frontage_runs()
 		if not runs.is_empty():
 			camera.set_street_pan_extension(runs[0][&"normal"], STREET_PAN_EXTENSION)
+	# The dressed world ends in a tree line; the view never goes past it (#424).
+	var street: NeighbourhoodDressing = ($ShopView as ShopView).neighbourhood_dressing
+	if street != null:
+		camera.set_world_bounds(street.world_rect())
 
 
 func _on_header_layout_changed() -> void:

@@ -33,7 +33,16 @@ const ROAD_END: float = 5.805
 const FAR_START: float = 5.905
 const FAR_DEPTH: float = 2.20
 
+## Far street and ground meshes by street signature, shared by every dressing
+## (a new game or a loaded save re-uses them instead of re-batching ~100k triangles).
+static var _mesh_cache: Dictionary[String, Array] = {}
 var static_root: Node3D
+## The grass, planting and tree line under and around everything (#421, #424).
+## Kept apart from static_root: it deliberately lies under the whole lot.
+var ground_root: Node3D
+## The street's far runs, out past the actors' span to the tree line. Cached:
+## they never depend on purchases, so a rebuild keeps them.
+var far_root: Node3D
 var pedestrians: Array[PersonView] = []
 var car: PropView
 var display_seconds: float:
@@ -74,6 +83,12 @@ var _street_half: float = 0.0
 var _shift: float = 0.0
 var _paving_top: float = 0.055
 var _generation: int = 0
+## Re-skin a street by setting this before `configure` (null = standard meadow).
+var ground_skin: GroundSkin
+var _ground_key: Array = []
+var _far_key: Array = []
+var _building_boxes: Array[AABB] = []
+var _visual_half: float = 0.0
 var _configured: bool = false
 
 
@@ -146,10 +161,17 @@ func rebuild() -> void:
 	if count % 2 == 0:
 		count += 1
 	_street_half = float(count) * road_box.size.x * 0.5
+	# The street itself runs on past the actors' span, out to the tree line.
+	var far_count: int = ceili((NeighbourhoodGround.WORLD_HALF + NeighbourhoodGround.BEYOND * 0.5) * 2.0 / road_box.size.x)
+	if far_count % 2 == 0:
+		far_count += 1
+	far_count = maxi(far_count, count)
+	_visual_half = float(far_count) * road_box.size.x * 0.5
 	_build_road(road_prop, road_box, count)
-	road_prop.free()
 	_build_paving(paving, paving_box, PAVING_START, PAVING_DEPTH, "NearPavement")
 	_build_paving(paving, paving_box, FAR_START, FAR_DEPTH, "FarPavement")
+	_build_far_street(road_prop, road_box, paving, paving_box, count, far_count)
+	road_prop.free()
 	if not patio.is_empty():
 		paving.set_body_tint(patio_color())
 		_build_patio_paving(paving, paving_box, patio)
@@ -157,12 +179,15 @@ func rebuild() -> void:
 	paving.free()
 	_build_kerbs(road_box.size.x, count)
 	_build_buildings()
+	_build_ground()
 	_ensure_actors()
 	_build_routes()
 	_build_lamps()
 	_initialize_players()
 	_configured = build_error.is_empty()
 	static_root.visible = _configured
+	ground_root.visible = _configured
+	far_root.visible = _configured
 	_actors_root.visible = _configured
 	_traffic_root.visible = _configured
 	_apply_time(_effective_time())
@@ -179,6 +204,12 @@ func _ensure_roots() -> void:
 		group.name = label
 		static_root.add_child(group)
 		_groups[label] = group
+	ground_root = Node3D.new()
+	ground_root.name = "Ground"
+	add_child(ground_root)
+	far_root = Node3D.new()
+	far_root.name = "FarStreet"
+	add_child(far_root)
 	_actors_root = Node3D.new()
 	_actors_root.name = "PassersBy"
 	add_child(_actors_root)
@@ -196,6 +227,7 @@ func _clear_static() -> void:
 	_routes.clear()
 	_pedestrian_sweeps.clear()
 	_door_approaches.clear()
+	_building_boxes.clear()
 	_frame = Transform3D.IDENTITY
 	_outward = Vector3.FORWARD
 	_tangent = Vector3.RIGHT
@@ -212,6 +244,8 @@ func _clear_static() -> void:
 
 func _hide_actors() -> void:
 	static_root.hide()
+	ground_root.hide()
+	far_root.hide()
 	_actors_root.hide()
 	_traffic_root.hide()
 	if car != null:
@@ -392,6 +426,72 @@ func _build_patio_edge(cells: Array[Vector2i]) -> void:
 	_static_meshes.append(edge)
 
 
+## Road, pavement and kerbs for every run beyond the actors' span, to the tree
+## line. They lie far from the lot and the entrance pads, so they need no holes.
+## Built once per street frame (see far_root) and kept across rebuilds.
+func _build_far_street(road: PropView, road_box: AABB, paving: PropView, paving_box: AABB,
+		count: int, far_count: int) -> void:
+	var key: Array = [_frame, _street_half, _shift, _paving_top, far_count]
+	if key == _far_key and far_root.get_child_count() > 0:
+		far_root.transform = _frame
+		return
+	_far_key = key.duplicate(true)
+	for child: Node in far_root.get_children():
+		far_root.remove_child(child)
+		child.free()
+	far_root.transform = _frame
+	if _restore_cached(far_root, "far" + str(_far_key)):
+		return
+	var width: float = road_box.size.x
+	var middle: int = far_count >> 1
+	var inner: int = count >> 1
+	var road_batch: NeighbourhoodMeshBatch = NeighbourhoodMeshBatch.new()
+	var kerb_batches: Array[NeighbourhoodMeshBatch] = [NeighbourhoodMeshBatch.new(), NeighbourhoodMeshBatch.new(),
+		NeighbourhoodMeshBatch.new(), NeighbourhoodMeshBatch.new()]
+	var kerb: PropView = _made_prop("kerb_segment")
+	for index: int in far_count:
+		if absi(index - middle) <= inner:
+			continue
+		var u: float = (float(index) - float(far_count - 1) * 0.5) * width
+		road_batch.add_prop(road, _far_placement(u, -road_box.end.y, (ROAD_START + ROAD_END) * 0.5))
+		kerb_batches[0].add_prop(kerb, _far_placement(u, 0.0, 3.355))
+		kerb_batches[1].add_prop(kerb, _far_placement(u, 0.0, 5.855))
+		kerb_batches[2].add_prop(kerb, _far_placement(u, -0.03, PAVING_START - 0.05))
+		kerb_batches[3].add_prop(kerb, _far_placement(u, -0.03, FAR_START + FAR_DEPTH + 0.05))
+	kerb.free()
+	_add_far(road_batch, "FarRoad")
+	var kerb_names: Array[String] = ["FarNearKerb", "FarFarKerb", "FarNearEdgeKerb", "FarFarEdgeKerb"]
+	for index: int in 4:
+		_add_far(kerb_batches[index], kerb_names[index])
+	var columns: int = ceili(_street_half * 2.0 / paving_box.size.x)
+	var rows_near: int = roundi(PAVING_DEPTH / paving_box.size.z)
+	var rows_far: int = roundi(FAR_DEPTH / paving_box.size.z)
+	var outer: int = ceili((_visual_half - _street_half) / paving_box.size.x)
+	var pave: NeighbourhoodMeshBatch = NeighbourhoodMeshBatch.new()
+	for column: int in range(-outer, columns + outer):
+		if column >= 0 and column < columns:
+			continue
+		var u: float = -_street_half + (float(column) + 0.5) * paving_box.size.x
+		for spec: Vector3i in [Vector3i(0, rows_near, 0), Vector3i(1, rows_far, 1)]:
+			var start: float = PAVING_START if spec.x == 0 else FAR_START
+			for row: int in spec.y:
+				var v: float = start + (float(row) + 0.5) * paving_box.size.z
+				pave.add_prop(paving, _far_placement(u, _paving_top - paving_box.end.y, v, PI))
+	_add_far(pave, "FarPavement")
+	_store_cached(far_root, "far" + str(_far_key))
+
+
+func _far_placement(u: float, y: float, v: float, yaw: float = 0.0) -> Transform3D:
+	return Transform3D(Basis(Vector3.UP, yaw), Vector3(u, y, _shift + v))
+
+
+func _add_far(batch: NeighbourhoodMeshBatch, label: String) -> void:
+	if batch.triangles == 0:
+		return
+	var mesh: MeshInstance3D = batch.finish(label)
+	far_root.add_child(mesh)
+
+
 func _build_kerbs(width: float, count: int) -> void:
 	var prop: PropView = _made_prop("kerb_segment")
 	for side: int in 2:
@@ -400,6 +500,18 @@ func _build_kerbs(width: float, count: int) -> void:
 			var u: float = (float(index) - float(count - 1) * 0.5) * width
 			batch.add_prop(prop, _placement(u, 0.0, 3.355 if side == 0 else 5.855))
 		_add_batch(batch, "NearKerb" if side == 0 else "FarKerb", "Kerbs")
+	# A low kerb step where the pavement meets the grass, skipping the shop's own
+	# frontage, its entrance pads and the door approaches.
+	var box: AABB = prop.get_combined_aabb()
+	for side: int in 2:
+		var batch: NeighbourhoodMeshBatch = NeighbourhoodMeshBatch.new()
+		var v: float = PAVING_START - 0.05 if side == 0 else FAR_START + FAR_DEPTH + 0.05
+		for index: int in count:
+			var u: float = (float(index) - float(count - 1) * 0.5) * width
+			var placement: Transform3D = _placement(u, -0.03, v)
+			if _clear_bounds(placement * box):
+				batch.add_prop(prop, placement)
+		_add_batch(batch, "NearEdgeKerb" if side == 0 else "FarEdgeKerb", "Kerbs")
 	prop.free()
 
 
@@ -422,6 +534,7 @@ func _build_buildings() -> void:
 			u = float(index - 3) * 3.3
 		var placement: Transform3D = _placement(u, 0.0, v, yaw)
 		var actual: AABB = placement * full
+		_building_boxes.append(_frame.affine_inverse() * actual)
 		if _clear_bounds(actual):
 			var batch: NeighbourhoodMeshBatch = NeighbourhoodMeshBatch.new()
 			batch.add_prop(body, placement)
@@ -431,6 +544,66 @@ func _build_buildings() -> void:
 			build_error = "A neighbouring building has no clear outside position"
 		body.free()
 		roof.free()
+
+
+## The world square the camera is held inside, in world metres on the XZ plane.
+func world_rect() -> Rect2:
+	if not _maximum_lot.has_area():
+		return Rect2()
+	return NeighbourhoodGround.world_rect(_maximum_lot)
+
+
+## Grass, planting and the tree line, rebuilt only when the street frame or lot
+## changes (they never depend on purchases, patios or the clock).
+func _build_ground() -> void:
+	var key: Array = [_frame, _local_reserve, _shift, _maximum_lot, _building_boxes, ground_skin]
+	if key == _ground_key and ground_root.get_child_count() > 0:
+		ground_root.transform = _frame
+		return
+	_ground_key = key.duplicate(true)
+	for child: Node in ground_root.get_children():
+		ground_root.remove_child(child)
+		child.free()
+	ground_root.transform = _frame
+	var cache_key: String = "ground" + str(_ground_key)
+	if _restore_cached(ground_root, cache_key):
+		return
+	var builder: NeighbourhoodGround = NeighbourhoodGround.new()
+	builder.local_reserve = _local_reserve
+	builder.shift = _shift
+	builder.buildings = _building_boxes
+	builder.skin = ground_skin
+	var rect: Rect2 = world_rect()
+	var centre: Vector3 = _frame.affine_inverse() * Vector3(rect.get_center().x, 0.0, rect.get_center().y)
+	builder.world_centre = Vector2(centre.x, centre.z)
+	for node: MeshInstance3D in builder.build():
+		ground_root.add_child(node)
+	_store_cached(ground_root, cache_key)
+
+
+func _restore_cached(parent: Node3D, key: String) -> bool:
+	if not _mesh_cache.has(key):
+		return false
+	for entry: Array in _mesh_cache[key]:
+		var node: MeshInstance3D = MeshInstance3D.new()
+		node.name = entry[0]
+		node.mesh = entry[1]
+		if entry[2] != null:
+			node.material_override = entry[2]
+		node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		parent.add_child(node)
+	return true
+
+
+func _store_cached(parent: Node3D, key: String) -> void:
+	var entries: Array = []
+	for child: Node in parent.get_children():
+		var node: MeshInstance3D = child as MeshInstance3D
+		if node != null and node.mesh != null:
+			entries.append([String(node.name), node.mesh, node.material_override])
+	if _mesh_cache.size() > 6:
+		_mesh_cache.clear()
+	_mesh_cache[key] = entries
 
 
 func _build_approaches() -> void:
