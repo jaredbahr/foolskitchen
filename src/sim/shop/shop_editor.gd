@@ -12,8 +12,11 @@ extends RefCounted
 ## Version 7 is reserved for furniture looks (#220); version 8 normalizes
 ## interior dividers and persists strictly interior thin/thick exceptions.
 ## Version 9 adds separately owned outdoor patio cells.
+## Version 10 adds nothing new to the data: it marks a shop the seat-aware
+## aisle repair (#320) has seen. Older shops whose staff can't walk to the
+## kitchen without crossing seats have tables moved once, on load.
 ## Optional layout_id identifies a newer authored base; old bases omit it.
-const SNAPSHOT_VERSION: int = 9
+const SNAPSHOT_VERSION: int = 10
 const WALLS_CLOSED: String = "Walls can only be changed in the morning or after closing"
 const FLOORS_CLOSED: String = "New floors can only be laid in the morning or after closing"
 const FLOORS_NOT_FLOOR: String = "Floors are laid on the shop floor"
@@ -168,7 +171,69 @@ func paint_variant(item_id: int, variant_id: StringName) -> bool:
 		return false
 	placed.variant_id = definition.known_variant_id(variant_id)
 	placed.swatch_id = &""
+	placed.paint = PaintLook.new()
 	last_check = EditCheck.new(true)
+	return true
+
+
+## Paint one slot (#431): a colour (empty: the kit colour) and a material
+## (empty: the slot's default). Free at any phase, like body paint; the main
+## slot's colour is `swatch_id`, so the vibe keeps reading it.
+func paint_slot(item_id: int, slot_id: StringName, material: StringName, swatch_id: StringName) -> bool:
+	if not _can_paint(swatch_id) or not (material.is_empty() or PaintFinish.valid(material)):
+		return false
+	var placed: PlacedItem = _sim.world.grid.item(item_id)
+	var definition: ItemDef = placed.def as ItemDef if placed != null else null
+	var index: int = definition.slot_index(slot_id) if definition != null else -1
+	if index < 0:
+		return false
+	if index == 0:
+		placed.swatch_id = swatch_id
+	else:
+		placed.paint.set_swatch(slot_id, swatch_id)
+	placed.paint.set_material(slot_id, material)
+	return true
+
+
+## Replace an item's whole paint (undo, copied looks). Unknown slots, colours
+## or materials refuse the whole change before anything is touched.
+func set_item_look(item_id: int, swatch_id: StringName, look: PaintLook) -> bool:
+	if not _can_paint(swatch_id) or look == null:
+		return false
+	var placed: PlacedItem = _sim.world.grid.item(item_id)
+	var definition: ItemDef = placed.def as ItemDef if placed != null else null
+	if definition == null or not definition.paintable or not look_fits(definition, look):
+		return false
+	placed.swatch_id = swatch_id
+	placed.paint = look.copy()
+	return true
+
+
+## Shift-paint (#431): `item_id` and every other piece of the same kind in its
+## room (the connected room its origin is in), in grid order. A piece outside
+## any room (the patio) is just itself.
+func items_alike_in_room(item_id: int) -> Array[int]:
+	var placed: PlacedItem = _sim.world.grid.item(item_id) if _sim != null and _sim.world != null else null
+	if placed == null:
+		return []
+	var room: Dictionary[Vector2i, bool] = ShopFootprint.to_set(floor_room_cells(placed.origin))
+	if not room.has(placed.origin):
+		return [item_id]
+	var result: Array[int] = []
+	for other: PlacedItem in _sim.world.grid.items():
+		if other.def == placed.def and room.has(other.origin):
+			result.append(other.id)
+	return result
+
+
+## Every slot, colour and material of `look` is known for `definition`.
+func look_fits(definition: ItemDef, look: PaintLook) -> bool:
+	for slot_id: StringName in look.materials:
+		if definition.slot_index(slot_id) < 0 or not PaintFinish.valid(look.materials[slot_id]):
+			return false
+	for slot_id: StringName in look.swatches:
+		if definition.slot_index(slot_id) < 1 or _content.swatch(look.swatches[slot_id]) == null:
+			return false
 	return true
 
 
@@ -543,7 +608,8 @@ func to_dict() -> Dictionary:
 		var definition: ItemDef = placed.def as ItemDef
 		placements.append({"def_id": String(definition.id),
 			"origin": [placed.origin.x, placed.origin.y], "quarter_turns": placed.quarter_turns,
-			"swatch_id": String(placed.swatch_id), "variant_id": String(placed.variant_id)})
+			"swatch_id": String(placed.swatch_id), "variant_id": String(placed.variant_id),
+			"paint": placed.paint.to_rows()})
 	var segments: Array[Dictionary] = []
 	for edge: Vector3i in _sim.world.grid.segment_edges():
 		var kind: WallKindDef = _content.wall_kind_for(_sim.world.grid.segment(edge)) if _content != null else null
@@ -686,6 +752,10 @@ static func from_dict(data: Dictionary, template_layout: ShopLayout, content: Co
 		placement.variant_id = definition.known_variant_id(StringName(saved_variant)) \
 			if saved_variant is String or saved_variant is StringName else &""
 		placement.swatch_id = _saved_swatch(row.get("swatch_id", ""), content) if definition.paintable else &""
+		# Paint slots (#431) ride on the version-9 rows: a row without "paint"
+		# is from before slots and keeps its flat body coat (PaintLook.legacy).
+		placement.paint = PaintLook.from_rows(row["paint"], definition, content) if row.has("paint") \
+			else PaintLook.legacy(definition, placement.swatch_id)
 		if preview.place_def(definition, placement.origin, placement.quarter_turns) == null:
 			errors.append("Saved item does not fit on the layout's floor")
 			return null
@@ -817,6 +887,8 @@ static func from_dict(data: Dictionary, template_layout: ShopLayout, content: Co
 	_decode_walls(data, preview, content, layout)
 	if int(data["version"]) < 8:
 		ThinDividers.convert(layout, preview, content)
+	if int(data["version"]) < 10:
+		AisleRepair.repair(layout, content)
 	return layout
 
 
@@ -2264,8 +2336,10 @@ func _note_menu_access(check: EditCheck, preview: SimGrid, restoring: bool) -> v
 	check.menu_losses = MenuAccess.lost(_sim.world.grid, preview, _sim.menu, _career_tier)
 	check.menu_warning = MenuAccess.warning(check.menu_losses, preview, _content)
 	var recipes: Array[RecipeDef] = _content.recipes()
-	if MenuAccess.cookable(preview, recipes, _owner_level, _career_tier).is_empty() \
-			and not MenuAccess.cookable(_sim.world.grid, recipes, _owner_level, _career_tier).is_empty():
+	# Refused only when walls or furniture other than seats shut the kitchen
+	# off; seats alone get the path warning (#315, #320).
+	if MenuAccess.cookable(preview, recipes, _owner_level, _career_tier, false).is_empty() \
+			and not MenuAccess.cookable(_sim.world.grid, recipes, _owner_level, _career_tier, false).is_empty():
 		check.ok = false
 		check.why = MenuAccess.NO_DISH
 		return
@@ -2357,14 +2431,12 @@ func _fill_warnings(check: EditCheck, grid: SimGrid, ids: Dictionary[int, int]) 
 
 
 ## Nobody walks through a seat (#315): MovementCoordinator never lets anyone
-## use a seat as an aisle, while the standing path check walks across seats.
-## A placement that newly cuts something off for real people (a row of stools
-## across the only gap, say) warns on the item placed: while it is placed or
-## moved, and after the commit until the next layout change. The highlighted
-## `unreachable` items keep the standing check, which probes and the soak
-## treat as a hard condition. Like #269, only what an edit newly cuts off
-## counts, so older layouts never gain warnings; and like all furniture it
-## warns, never blocks.
+## use a seat as an aisle, and the standing path check walks the same way
+## (#320). A placement that newly cuts something off for real people (a row of
+## stools across the only gap, say) also warns on the item placed: while it is
+## placed or moved, and after the commit until the next layout change. Only
+## what an edit newly cuts off counts; and like all furniture it warns, never
+## blocks.
 func _note_seat_cut_off(check: EditCheck, preview: SimGrid, result_id: int) -> void:
 	if not check.ok:
 		return
@@ -2457,11 +2529,15 @@ func _stamp_culprit(blueprint: Blueprint, anchor: Vector2i, rotation: int, stamp
 	return -1
 
 
-## Tables and stations nobody can walk to from the street. `seats_stop`: walk
-## as people do, a seat ending a walk but never carrying it on (#315).
-static func _unreachable(grid: SimGrid, ids: Dictionary[int, int], seats_stop: bool = false) -> Array[int]:
+## Tables and stations nobody can walk to from the street, walking as people
+## do: a seat ends a walk but never carries it on (#315, #320).
+static func _unreachable(grid: SimGrid, ids: Dictionary[int, int]) -> Array[int]:
+	return _unreachable_in(grid, ids, WallRules.reachable(grid, true))
+
+
+## _unreachable() with the reachable cells already known.
+static func _unreachable_in(grid: SimGrid, ids: Dictionary[int, int], reach: Dictionary[Vector2i, bool]) -> Array[int]:
 	var warnings: Array[int] = []
-	var reach: Dictionary[Vector2i, bool] = WallRules.reachable(grid, seats_stop)
 	for placed: PlacedItem in grid.items():
 		var definition: ItemDef = placed.def as ItemDef
 		var reachable: bool = true

@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="SwatchDef" format=3]
+[ext_resource type="Script" path="res://src/sim/content/swatch_def.gd" id="1"]
+[resource]
+script = ExtResource("1")
+id = &"berry"
+display_name = "Berry"
+color = Color(0.745098, 0.3098039, 0.4666667, 1)
+theme_tags = Array[StringName]([&"diner"])
+family = &"bright"
+family_order = 7

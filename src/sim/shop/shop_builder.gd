@@ -34,6 +34,7 @@ static func build(layout: ShopLayout, content: ContentDB, errors: Array[String],
 					p.quarter_turns, SimGrid.PlaceResult.keys()[grid.can_place_def(def, p.origin, p.quarter_turns)]])
 		else:
 			placed.swatch_id = p.swatch_id if def.paintable and content.swatch(p.swatch_id) != null else &""
+			placed.paint = p.paint.copy() if def.paintable else PaintLook.new()
 	var segments: Dictionary[Vector3i, int] = {}
 	for edge: Vector3i in layout.wall_segments:
 		var kind: WallKindDef = content.wall_kind(layout.wall_segments[edge])

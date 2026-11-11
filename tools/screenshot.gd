@@ -23,6 +23,8 @@ extends SceneTree
 ##   --build=green|red|pinch  hold a checked buy preview through the production input API
 ##             (pinch: a valid fourth table that squeezes an aisle to one cell, #389)
 ##   --paint     show a painted morning shop using the production paint controls
+##   --paint-slots  --paint, then paint second parts (cloths, cushions) with Shift
+##               and hover a table so the Paint panel names its parts (#431)
 ##   --walls=place|room  FK-070 walls: a dragged run with its ghost and cost, or a
 ##             built room (interior wall, doorway, windows inside and out). Room
 ##             is Walls Up unless --quarter selects the cutaway; add --open --fast=N for guests.
@@ -166,6 +168,7 @@ var _report_requested: bool = false
 var _report_slowest_requested: bool = false
 var _build: String = ""
 var _paint: bool = false
+var _paint_slots: bool = false
 var _walls: String = ""
 var _walls_initial: Dictionary[Vector3i, int] = {}
 var _expand: String = ""
@@ -355,6 +358,9 @@ func _initialize() -> void:
 			_build = requested
 		elif arg == "--paint":
 			_paint = true
+		elif arg == "--paint-slots":
+			_paint = true
+			_paint_slots = true
 		elif arg == "--restroom-review":
 			_restroom_review = true
 		elif arg == "--street-front-review":
@@ -3235,6 +3241,33 @@ func _configure_paint() -> void:
 		if not bool(_main.call("paint_cell", sample["cell"])):
 			_fail_capture("paint capture could not colour its requested shop surface")
 			return
+	if _paint_slots:
+		_configure_paint_slots(world, catalogue, tables[0])
+
+
+## Paint slots (#431): every kind of piece with a second part gets it painted
+## with Shift (the whole room's), cycling warm colours; then the first table
+## is hovered so the panel names its parts. Production controls only.
+func _configure_paint_slots(world: SimWorld, catalogue: BuildCatalogue, table: PlacedItem) -> void:
+	var colours: Array[StringName] = [&"butter", &"tomato", &"mint", &"berry", &"sky"]
+	var done: Dictionary[StringName, bool] = {}
+	(catalogue.part_buttons[1] as Button).pressed.emit()
+	for placed: PlacedItem in world.grid.items():
+		var definition: ItemDef = placed.def as ItemDef
+		if definition == null or definition.slots().size() < 2 or done.has(definition.id):
+			continue
+		(catalogue.swatch_buttons[colours[done.size() % colours.size()]] as Button).pressed.emit()
+		if not bool(_main.call("paint_cell", placed.origin, true)):
+			_fail_capture("paint slot capture could not paint a second part")
+			return
+		done[definition.id] = true
+	(catalogue.swatch_buttons[&"butter"] as Button).pressed.emit()
+	# Close enough to see the materials (photo framing only, like a player's zoom).
+	var rig: CameraRig = _main.get_node_or_null("CameraRig") as CameraRig
+	rig.frame_area(Vector2(table.origin) * GridMath.CELL_SIZE + Vector2(0.5, 0.9), Vector2(40.0, 40.0), 8.0, true)
+	_main.call("preview_paint_cell", table.origin)
+	if catalogue.paint_target() == null or table.paint.swatch(&"cushion").is_empty():
+		_fail_capture("paint slot capture did not paint the table cloth or name its parts")
 
 
 ## The clear floor cell just inside the street door: dining floor in any
@@ -3954,7 +3987,7 @@ func _capture() -> void:
 		return
 	var paint: Dictionary = _paint_state() if _paint else {}
 	if _paint and (paint.get("active") != true or paint.get("catalogue_visible") != true \
-			or paint.get("swatch_count") != 12 or paint.get("grid_forced") != false \
+			or paint.get("swatch_count") != 40 or paint.get("grid_forced") != false \
 			or paint.get("grid_visible") != false or paint.get("wall") != "sage" \
 			or paint.get("floor") != "honey" or paint.get("table") != "terracotta" \
 			or paint.get("plant") != "sage" or paint.get("rendered") != true \

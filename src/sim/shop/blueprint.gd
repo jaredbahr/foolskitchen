@@ -33,6 +33,7 @@ static func capture(grid: SimGrid, ids: Array[int], name: String) -> Blueprint:
 		entry.quarter_turns = placed.quarter_turns
 		entry.swatch_id = placed.swatch_id
 		entry.variant_id = placed.variant_id
+		entry.paint = placed.paint.copy()
 		result.entries.append(entry)
 	return result
 
@@ -71,6 +72,7 @@ func placements(content: ContentDB, anchor: Vector2i, rotation: int) -> Array[Sh
 		placed.quarter_turns = posmod(entry.quarter_turns + rotation, 4)
 		placed.swatch_id = entry.swatch_id
 		placed.variant_id = entry.variant_id
+		placed.paint = entry.paint.copy()
 		result.append(placed)
 	return result
 
@@ -79,14 +81,19 @@ func copy() -> Blueprint:
 	var result: Blueprint = Blueprint.new()
 	result.display_name = display_name
 	for entry: ShopPlacement in entries:
-		result.entries.append(entry.duplicate() as ShopPlacement)
+		result.entries.append(entry.copy())
 	return result
 
 
 func to_dict() -> Dictionary:
 	var rows: Array[Dictionary] = []
 	for entry: ShopPlacement in entries:
-		rows.append({"item_id": String(entry.item_id), "offset": [entry.origin.x, entry.origin.y],
+		var row: Dictionary = {"item_id": String(entry.item_id), "offset": [entry.origin.x, entry.origin.y],
 			"rotation": entry.quarter_turns, "swatch_id": String(entry.swatch_id),
-			"variant_id": String(entry.variant_id)})
+			"variant_id": String(entry.variant_id)}
+		# Paint slots (#431): present whenever the piece is painted, so a row
+		# without it is an older flat-painted one (PaintLook.legacy).
+		if not entry.swatch_id.is_empty() or not entry.paint.is_empty():
+			row["paint"] = entry.paint.to_rows()
+		rows.append(row)
 	return {"name": display_name, "entries": rows}

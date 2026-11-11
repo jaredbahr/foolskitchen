@@ -11,8 +11,7 @@ const PATIO_WARM_MIX: float = 0.45
 const PATIO_EDGE_DARKEN: float = 0.25
 const PATIO_EDGE_WIDTH: float = 0.035
 const MADE_ROOT: String = "res://assets/made/neighbourhood/"
-const ASSETS: Array[String] = ["road_segment", "crossing_segment", "kerb_segment", "shopfront",
-	"house_body", "gable_roof", "compact_car", "street_lamp"]
+const ASSETS: Array[String] = ["road_segment", "crossing_segment", "kerb_segment", "compact_car", "street_lamp"]
 const GUEST_IDS: Array[int] = [1, 4, 6]
 const PHASES: Array[float] = [0.0, 0.33, 0.67]
 const WALK_LANES: Array[float] = [2.755, 6.455, 7.555]
@@ -22,7 +21,6 @@ const WALK_BOTTOM: float = -0.05
 const WALK_TOP: float = 1.10
 const MARGIN: float = 0.05
 const SIDE_MARGIN: float = 6.0
-const BUILDING_GAP: float = 1.25
 const CAR_SPEED: float = 2.8
 const CAR_REST: float = 14.0
 const CAR_LANE: float = 4.005
@@ -33,7 +31,17 @@ const ROAD_END: float = 5.805
 const FAR_START: float = 5.905
 const FAR_DEPTH: float = 2.20
 
+## Far street and ground meshes by street signature, shared by every dressing
+## (a new game or a loaded save re-uses them instead of re-batching ~100k triangles).
+static var _mesh_cache: Dictionary[String, Array] = {}
+static var _cache_exit_bound: bool = false
 var static_root: Node3D
+## The grass, planting and tree line under and around everything (#421, #424).
+## Kept apart from static_root: it deliberately lies under the whole lot.
+var ground_root: Node3D
+## The street's far runs, out past the actors' span to the tree line. Cached:
+## they never depend on purchases, so a rebuild keeps them.
+var far_root: Node3D
 var pedestrians: Array[PersonView] = []
 var car: PropView
 var display_seconds: float:
@@ -74,6 +82,18 @@ var _street_half: float = 0.0
 var _shift: float = 0.0
 var _paving_top: float = 0.055
 var _generation: int = 0
+## Re-skin a street by setting this before `configure` (null = standard meadow).
+var ground_skin: GroundSkin
+## Re-style a street's buildings by setting this before `configure` (null = the standard row).
+var street_set: StreetSet
+var _ground_key: Array = []
+var _far_key: Array = []
+var _building_boxes: Array[AABB] = []
+var _lot_boxes: Array[AABB] = []
+var _building_casters: Array[AABB] = []
+var _shadow_casters: Array[AABB] = []
+var _light_shift: Vector2 = Vector2.ZERO
+var _visual_half: float = 0.0
 var _configured: bool = false
 
 
@@ -97,6 +117,8 @@ func configure(grid: SimGrid, maximum_lot: Rect2i, frontage_runs: Array[Dictiona
 
 func rebuild() -> void:
 	_ensure_roots()
+	if street_set == null:
+		street_set = StreetSet.standard()
 	var built: Array[Vector2i] = []
 	var patio: Array[Vector2i] = []
 	if _grid != null:
@@ -106,7 +128,8 @@ func rebuild() -> void:
 			elif _grid.terrain(cell) != SimGrid.Terrain.OUTSIDE:
 				built.append(cell)
 	var key: Array = [_grid.get_instance_id() if _grid != null else 0, _maximum_lot,
-		_frontages, _native_pavement, built]
+		_frontages, _native_pavement, built, ground_skin.signature() if ground_skin != null else "standard",
+		street_set.signature()]
 	if not patio.is_empty():
 		key.append(patio)
 	if key == _geometry_key:
@@ -146,10 +169,17 @@ func rebuild() -> void:
 	if count % 2 == 0:
 		count += 1
 	_street_half = float(count) * road_box.size.x * 0.5
+	# The street itself runs on past the actors' span, out to the tree line.
+	var far_count: int = ceili((NeighbourhoodGround.WORLD_HALF + NeighbourhoodGround.BEYOND * 0.5) * 2.0 / road_box.size.x)
+	if far_count % 2 == 0:
+		far_count += 1
+	far_count = maxi(far_count, count)
+	_visual_half = float(far_count) * road_box.size.x * 0.5
 	_build_road(road_prop, road_box, count)
-	road_prop.free()
 	_build_paving(paving, paving_box, PAVING_START, PAVING_DEPTH, "NearPavement")
 	_build_paving(paving, paving_box, FAR_START, FAR_DEPTH, "FarPavement")
+	_build_far_street(road_prop, road_box, paving, paving_box, count, far_count)
+	road_prop.free()
 	if not patio.is_empty():
 		paving.set_body_tint(patio_color())
 		_build_patio_paving(paving, paving_box, patio)
@@ -157,12 +187,15 @@ func rebuild() -> void:
 	paving.free()
 	_build_kerbs(road_box.size.x, count)
 	_build_buildings()
+	_build_ground()
 	_ensure_actors()
 	_build_routes()
 	_build_lamps()
 	_initialize_players()
 	_configured = build_error.is_empty()
 	static_root.visible = _configured
+	ground_root.visible = _configured
+	far_root.visible = _configured
 	_actors_root.visible = _configured
 	_traffic_root.visible = _configured
 	_apply_time(_effective_time())
@@ -179,6 +212,12 @@ func _ensure_roots() -> void:
 		group.name = label
 		static_root.add_child(group)
 		_groups[label] = group
+	ground_root = Node3D.new()
+	ground_root.name = "Ground"
+	add_child(ground_root)
+	far_root = Node3D.new()
+	far_root.name = "FarStreet"
+	add_child(far_root)
 	_actors_root = Node3D.new()
 	_actors_root.name = "PassersBy"
 	add_child(_actors_root)
@@ -196,6 +235,9 @@ func _clear_static() -> void:
 	_routes.clear()
 	_pedestrian_sweeps.clear()
 	_door_approaches.clear()
+	_building_boxes.clear()
+	_lot_boxes.clear()
+	_building_casters.clear()
 	_frame = Transform3D.IDENTITY
 	_outward = Vector3.FORWARD
 	_tangent = Vector3.RIGHT
@@ -212,6 +254,8 @@ func _clear_static() -> void:
 
 func _hide_actors() -> void:
 	static_root.hide()
+	ground_root.hide()
+	far_root.hide()
 	_actors_root.hide()
 	_traffic_root.hide()
 	if car != null:
@@ -392,6 +436,87 @@ func _build_patio_edge(cells: Array[Vector2i]) -> void:
 	_static_meshes.append(edge)
 
 
+## Road, pavement and kerbs for every run beyond the actors' span, to the tree
+## line. They lie far from the lot and the entrance pads, so they need no holes.
+## Built once per street frame (see far_root) and kept across rebuilds.
+func _build_far_street(road: PropView, road_box: AABB, paving: PropView, paving_box: AABB,
+		count: int, far_count: int) -> void:
+	var key: Array = [_frame, _street_half, _shift, _paving_top, far_count]
+	if key == _far_key and far_root.get_child_count() > 0:
+		far_root.transform = _frame
+		return
+	_far_key = key.duplicate(true)
+	for child: Node in far_root.get_children():
+		far_root.remove_child(child)
+		child.free()
+	far_root.transform = _frame
+	if _restore_cached(far_root, "far" + str(_far_key)):
+		return
+	var width: float = road_box.size.x
+	var middle: int = far_count >> 1
+	var inner: int = count >> 1
+	var road_batch: NeighbourhoodMeshBatch = NeighbourhoodMeshBatch.new()
+	var kerb_batches: Array[NeighbourhoodMeshBatch] = [NeighbourhoodMeshBatch.new(), NeighbourhoodMeshBatch.new(),
+		NeighbourhoodMeshBatch.new(), NeighbourhoodMeshBatch.new()]
+	var kerb: PropView = _made_prop("kerb_segment")
+	for index: int in far_count:
+		if absi(index - middle) <= inner:
+			continue
+		var u: float = (float(index) - float(far_count - 1) * 0.5) * width
+		road_batch.add_prop(road, _far_placement(u, -road_box.end.y, (ROAD_START + ROAD_END) * 0.5))
+	# Kerbs are long straight runs: each piece is stretched along the street to
+	# cover several tile widths, so far runs cost a fraction of the triangles.
+	var chunk: int = 6
+	for run: Vector2i in [Vector2i(0, middle - inner - 1), Vector2i(middle + inner + 1, far_count - 1)]:
+		var start: int = run.x
+		while start <= run.y:
+			var last: int = mini(start + chunk - 1, run.y)
+			var n: int = last - start + 1
+			var u: float = (float(start + last) * 0.5 - float(far_count - 1) * 0.5) * width
+			var stretch: Basis = Basis.from_scale(Vector3(float(n), 1.0, 1.0))
+			var specs: Array[Vector2] = [Vector2(0.0, 3.355), Vector2(0.0, 5.855), Vector2(-0.03, PAVING_START - 0.05),
+				Vector2(-0.03, FAR_START + FAR_DEPTH + 0.05)]
+			for side: int in 4:
+				kerb_batches[side].add_prop(kerb, Transform3D(stretch, Vector3(u, specs[side].x, _shift + specs[side].y)))
+			start = last + 1
+	kerb.free()
+	_add_far(road_batch, "FarRoad")
+	var kerb_names: Array[String] = ["FarNearKerb", "FarFarKerb", "FarNearEdgeKerb", "FarFarEdgeKerb"]
+	for index: int in 4:
+		_add_far(kerb_batches[index], kerb_names[index])
+	var columns: int = ceili(_street_half * 2.0 / paving_box.size.x)
+	var rows_near: int = roundi(PAVING_DEPTH / paving_box.size.z)
+	var rows_far: int = roundi(FAR_DEPTH / paving_box.size.z)
+	var outer: int = ceili((_visual_half - _street_half) / paving_box.size.x)
+	var pave: NeighbourhoodMeshBatch = NeighbourhoodMeshBatch.new()
+	var span: int = 5
+	for run: Vector2i in [Vector2i(-outer, -1), Vector2i(columns, columns + outer - 1)]:
+		var first: int = run.x
+		while first <= run.y:
+			var last: int = mini(first + span - 1, run.y)
+			var u: float = -_street_half + (float(first + last) * 0.5 + 0.5) * paving_box.size.x
+			var stretch: Basis = Basis(Vector3.UP, PI) * Basis.from_scale(Vector3(float(last - first + 1), 1.0, 1.0))
+			for spec: Vector3i in [Vector3i(0, rows_near, 0), Vector3i(1, rows_far, 1)]:
+				var start_v: float = PAVING_START if spec.x == 0 else FAR_START
+				for row: int in spec.y:
+					var v: float = start_v + (float(row) + 0.5) * paving_box.size.z
+					pave.add_prop(paving, Transform3D(stretch, Vector3(u, _paving_top - paving_box.end.y, _shift + v)))
+			first = last + 1
+	_add_far(pave, "FarPavement")
+	_store_cached(far_root, "far" + str(_far_key))
+
+
+func _far_placement(u: float, y: float, v: float, yaw: float = 0.0) -> Transform3D:
+	return Transform3D(Basis(Vector3.UP, yaw), Vector3(u, y, _shift + v))
+
+
+func _add_far(batch: NeighbourhoodMeshBatch, label: String) -> void:
+	if batch.triangles == 0:
+		return
+	var mesh: MeshInstance3D = batch.finish(label)
+	far_root.add_child(mesh)
+
+
 func _build_kerbs(width: float, count: int) -> void:
 	var prop: PropView = _made_prop("kerb_segment")
 	for side: int in 2:
@@ -400,37 +525,174 @@ func _build_kerbs(width: float, count: int) -> void:
 			var u: float = (float(index) - float(count - 1) * 0.5) * width
 			batch.add_prop(prop, _placement(u, 0.0, 3.355 if side == 0 else 5.855))
 		_add_batch(batch, "NearKerb" if side == 0 else "FarKerb", "Kerbs")
+	# A low kerb step where the pavement meets the grass, skipping the shop's own
+	# frontage, its entrance pads and the door approaches.
+	var box: AABB = prop.get_combined_aabb()
+	for side: int in 2:
+		var batch: NeighbourhoodMeshBatch = NeighbourhoodMeshBatch.new()
+		var v: float = PAVING_START - 0.05 if side == 0 else FAR_START + FAR_DEPTH + 0.05
+		for index: int in count:
+			var u: float = (float(index) - float(count - 1) * 0.5) * width
+			var placement: Transform3D = _placement(u, -0.03, v)
+			if _clear_bounds(placement * box):
+				batch.add_prop(prop, placement)
+		_add_batch(batch, "NearEdgeKerb" if side == 0 else "FarEdgeKerb", "Kerbs")
 	prop.free()
 
 
+## The row of shopfronts beside the lot and the houses across the road, built by
+## NeighbourhoodBuildings from the street's StreetSet. Planned every rebuild (cheap),
+## meshed once per street frame and reused from the shared cache afterwards.
 func _build_buildings() -> void:
-	for index: int in 5:
-		var body: PropView = _made_prop("shopfront" if index < 3 else "house_body")
-		var roof: PropView = _made_prop("gable_roof")
-		var body_box: AABB = body.get_combined_aabb()
-		var roof_box: AABB = roof.get_combined_aabb()
-		var full: AABB = body_box.merge(AABB(roof_box.position + Vector3.UP * body_box.end.y, roof_box.size))
-		var u: float = 0.0
-		var v: float = 8.355 + full.size.z * 0.5
-		var yaw: float = 0.0
-		if index < 2:
-			u = _local_reserve.position.x - BUILDING_GAP - full.size.x * 0.5 if index == 0 \
-				else _local_reserve.end.x + BUILDING_GAP + full.size.x * 0.5
-			v = -full.size.z * 0.5 - 0.15
-			yaw = PI
-		else:
-			u = float(index - 3) * 3.3
-		var placement: Transform3D = _placement(u, 0.0, v, yaw)
-		var actual: AABB = placement * full
-		if _clear_bounds(actual):
-			var batch: NeighbourhoodMeshBatch = NeighbourhoodMeshBatch.new()
-			batch.add_prop(body, placement)
-			batch.add_prop(roof, placement * Transform3D(Basis.IDENTITY, Vector3.UP * body_box.end.y))
-			_add_batch(batch, "Building%d" % index, "Buildings")
-		else:
+	var builder: NeighbourhoodBuildings = NeighbourhoodBuildings.new()
+	builder.street = street_set
+	builder.local_reserve = _local_reserve
+	builder.shift = _shift
+	builder.paving_top = _paving_top
+	builder.plan()
+	_building_boxes = builder.footprints()
+	_lot_boxes = builder.lots()
+	_building_casters = builder.casters()
+	for plan: NeighbourhoodBuildings.Plan in builder.plans:
+		if not _clear_bounds(_frame * plan.bounds):
 			build_error = "A neighbouring building has no clear outside position"
-		body.free()
-		roof.free()
+			return
+	var group: Node3D = _groups["Buildings"]
+	var key: String = "buildings" + str([_frame, _local_reserve, _shift, _paving_top, street_set.signature()])
+	if _restore_cached(group, key):
+		for child: Node in group.get_children():
+			(child as MeshInstance3D).transform = _frame
+			_static_meshes.append(child as MeshInstance3D)
+		return
+	for plan: NeighbourhoodBuildings.Plan in builder.plans:
+		var mesh: MeshInstance3D = builder.build_mesh(plan)
+		mesh.transform = _frame
+		group.add_child(mesh)
+		_static_meshes.append(mesh)
+	_store_cached(group, key)
+
+
+## Local-frame footprints (height in y) of every building and, flat, the house lots.
+func building_footprints() -> Array[AABB]:
+	return _building_boxes.duplicate()
+
+
+func lot_footprints() -> Array[AABB]:
+	return _lot_boxes.duplicate()
+
+
+## The same boxes in the dressing's own space (the shop view's space), for clearance checks.
+func building_boxes_in_view() -> Array[AABB]:
+	var result: Array[AABB] = []
+	for box: AABB in _building_boxes:
+		result.append(_frame * box)
+	return result
+
+
+## The world square the camera is held inside, in world metres on the XZ plane.
+func world_rect() -> Rect2:
+	if not _maximum_lot.has_area():
+		return Rect2()
+	return NeighbourhoodGround.world_rect(_maximum_lot)
+
+
+## Grass, planting and the tree line, rebuilt only when the street frame or lot
+## changes (they never depend on purchases, patios or the clock).
+func _build_ground() -> void:
+	_shadow_casters = _compute_shadow_casters()
+	_light_shift = _compute_light_shift()
+	var key: Array = [_frame, _local_reserve, _shift, _maximum_lot, _building_boxes, _lot_boxes, _shadow_casters, _light_shift,
+			ground_skin.signature() if ground_skin != null else "standard"]
+	if key == _ground_key and ground_root.get_child_count() > 0:
+		ground_root.transform = _frame
+		return
+	_ground_key = key.duplicate(true)
+	for child: Node in ground_root.get_children():
+		ground_root.remove_child(child)
+		child.free()
+	ground_root.transform = _frame
+	var cache_key: String = "ground" + str(_ground_key)
+	if _restore_cached(ground_root, cache_key):
+		return
+	var builder: NeighbourhoodGround = NeighbourhoodGround.new()
+	builder.local_reserve = _local_reserve
+	builder.shift = _shift
+	builder.buildings = _building_boxes
+	builder.lots = _lot_boxes
+	builder.skin = ground_skin
+	builder.shadow_casters = _shadow_casters
+	builder.light_shift = _light_shift
+	var rect: Rect2 = world_rect()
+	var centre: Vector3 = _frame.affine_inverse() * Vector3(rect.get_center().x, 0.0, rect.get_center().y)
+	builder.world_centre = Vector2(centre.x, centre.z)
+	for node: MeshInstance3D in builder.build():
+		ground_root.add_child(node)
+	_store_cached(ground_root, cache_key)
+
+
+## Drops the shared meshes (also done when the game's window closes, so they do
+## not show up as leaked resources at exit).
+static func clear_mesh_cache() -> void:
+	_mesh_cache.clear()
+
+
+## The key light's ground run per metre of height, in the street's local (u, z).
+## Baked at the rig's authored light (lighting_rig.tscn KeyLight, -55 / -35 degrees).
+func _compute_light_shift() -> Vector2:
+	var aim: Vector3 = Basis.from_euler(Vector3(deg_to_rad(-55.0), deg_to_rad(-35.0), 0.0)) * Vector3.FORWARD
+	var local: Vector3 = _frame.basis.inverse() * Vector3(aim.x, 0.0, aim.z)
+	return Vector2(local.x, local.z) / maxf(-aim.y, 0.2)
+
+
+## Boxes whose baked shadows plant them on the lawn: the shop's built floor at
+## wall height and every neighbouring building and house.
+func _compute_shadow_casters() -> Array[AABB]:
+	var casters: Array[AABB] = []
+	var inverse: Transform3D = _frame.affine_inverse()
+	if _grid != null:
+		var low: Vector3 = Vector3(INF, 0.0, INF)
+		var high: Vector3 = Vector3(-INF, 0.0, -INF)
+		var half: float = GridMath.CELL_SIZE * 0.5
+		for cell: Vector2i in _grid.cells():
+			if _grid.terrain(cell) == SimGrid.Terrain.OUTSIDE:
+				continue
+			var centre: Vector3 = GridMath.cell_to_world(cell)
+			low = Vector3(minf(low.x, centre.x - half), 0.0, minf(low.z, centre.z - half))
+			high = Vector3(maxf(high.x, centre.x + half), 0.0, maxf(high.z, centre.z + half))
+		if low.x <= high.x:
+			casters.append(inverse * AABB(low, Vector3(high.x - low.x, ArtScale.WALL_HEIGHT, high.z - low.z)))
+	casters.append_array(_building_casters)
+	return casters
+
+
+func _restore_cached(parent: Node3D, key: String) -> bool:
+	if not _mesh_cache.has(key):
+		return false
+	for entry: Array in _mesh_cache[key]:
+		var node: MeshInstance3D = MeshInstance3D.new()
+		node.name = entry[0]
+		node.mesh = entry[1]
+		if entry[2] != null:
+			node.material_override = entry[2]
+		node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		parent.add_child(node)
+	return true
+
+
+func _store_cached(parent: Node3D, key: String) -> void:
+	var entries: Array = []
+	for child: Node in parent.get_children():
+		var node: MeshInstance3D = child as MeshInstance3D
+		if node != null and node.mesh != null:
+			entries.append([String(node.name), node.mesh, node.material_override])
+	if _mesh_cache.size() > 6:
+		_mesh_cache.clear()
+	if not _cache_exit_bound:
+		var tree: SceneTree = Engine.get_main_loop() as SceneTree
+		if tree != null:
+			tree.root.tree_exiting.connect(clear_mesh_cache)
+			_cache_exit_bound = true
+	_mesh_cache[key] = entries
 
 
 func _build_approaches() -> void:

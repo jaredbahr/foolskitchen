@@ -268,6 +268,17 @@ var _paint_active: bool = false
 var _paint_variant_item: StringName = &""
 var _paint_variant_id: StringName = &""
 var _paint_swatch_id: StringName = &"butter"
+## Paint slots (#431): the brush's part (index into an item's slots; past the
+## end paints the main slot) and material (empty: each part's own).
+var _paint_slot_index: int = 0
+var _paint_material: StringName = &""
+## A look copied with Alt-click in Paint (#431): pasted on the items clicked
+## until another colour, part or material is picked. Null: none.
+var _paint_copied: ItemDef
+var _paint_copied_swatch: StringName = &""
+var _paint_copied_look: PaintLook
+## The Paint panel's "Copy look" was pressed: the next piece clicked is copied.
+var _paint_copy_armed: bool = false
 ## Paint was opened from Build mode's Paint tab: Esc goes back to Build.
 var _paint_from_build: bool = false
 ## The last undo/redo refusal or result, shown in the hint strip until the
@@ -276,6 +287,8 @@ var _edit_notice: String = ""
 ## FK-101: an older save's kitchen could not be marked; asked once that morning.
 const ROOMS_NOTE: String = "Mark your kitchen in Build → Rooms."
 var _rooms_note: bool = false
+## The morning after an older shop's tables were moved for an aisle (#320).
+var _aisle_note: bool = false
 var _menu_quality: Dictionary[StringName, Dictionary] = {}
 ## Day-local advice only: these choices were enabled before a layout edit
 ## made their station unavailable. Undo removes restored dishes from the note.
@@ -419,6 +432,9 @@ func _bind_world_presentation() -> void:
 	_build_catalogue.set_wall_base_color(view.shop_wall_colour())
 	if not _build_catalogue.swatch_requested.is_connected(_on_swatch_requested):
 		_build_catalogue.swatch_requested.connect(_on_swatch_requested)
+		_build_catalogue.paint_slot_requested.connect(_on_paint_slot_requested)
+		_build_catalogue.paint_material_requested.connect(_on_paint_material_requested)
+		_build_catalogue.copy_look_requested.connect(_on_copy_look_requested)
 	if not _build_catalogue.mode_requested.is_connected(_on_catalogue_mode_requested):
 		_build_catalogue.mode_requested.connect(_on_catalogue_mode_requested)
 		_build_catalogue.paint_requested.connect(_on_catalogue_paint_requested)
@@ -571,6 +587,12 @@ func _frame_shop(reset: bool) -> void:
 		var runs: Array[Dictionary] = dressing.frontage_runs()
 		if not runs.is_empty():
 			camera.set_street_pan_extension(runs[0][&"normal"], STREET_PAN_EXTENSION)
+	# The dressed world ends in a tree line; the view never goes past it (#424).
+	var street: NeighbourhoodDressing = ($ShopView as ShopView).neighbourhood_dressing
+	if street != null:
+		camera.set_world_bounds(street.world_rect())
+	else:
+		camera.set_world_bounds(Rect2())
 
 
 func _on_header_layout_changed() -> void:
@@ -670,6 +692,7 @@ func start() -> void:
 	var loaded: bool = use_saves and _load_autosave()
 	_rooms_note = loaded and _loaded_layout != null and _loaded_layout.rooms_unmarked
 	$HUD.set_rooms_note(ROOMS_NOTE if _rooms_note else "")
+	_show_aisle_note(loaded and _loaded_layout != null and _loaded_layout.aisle_moved > 0)
 	if not loaded:
 		_skip_next_autosave = use_saves and SaveSystem.list_slots().has(save_slot)
 		_new_game()
@@ -1136,7 +1159,9 @@ func route_paint_input(event: InputEvent) -> bool:
 			paint_hung(hung)
 			return true  # Never paint the wall behind a hung item.
 		var cell: Variant = paint_cell_at_screen_position(mouse.position)
-		if cell is Vector2i:
+		if cell is Vector2i and mouse.alt_pressed:
+			copy_paint_look(cell)
+		elif cell is Vector2i:
 			paint_cell(cell, mouse.shift_pressed)
 		return true
 	return false
@@ -1166,7 +1191,7 @@ func paint_face_at_screen_position(screen_position: Vector2) -> Vector3i:
 ## (inside its room), or with Shift every wall of the room, takes the paint
 ## colour and keeps its finish. Free at any time, like all paint.
 func paint_face(face: Vector3i, whole_room: bool = false) -> bool:
-	if not _paint_variant_item.is_empty():
+	if not _paint_variant_item.is_empty() or _paint_copy_armed:
 		return false
 	if not _paint_active or shop_editor == null:
 		return false
@@ -1179,7 +1204,7 @@ func paint_face(face: Vector3i, whole_room: bool = false) -> bool:
 
 ## Exterior body swatches use the existing palette and morning undo boundary.
 func paint_hung(anchor: Vector3i) -> bool:
-	if not _paint_active or shop_editor == null or not _paint_variant_item.is_empty():
+	if not _paint_active or shop_editor == null or not _paint_variant_item.is_empty() or _paint_copy_armed:
 		return false
 	var accepted: bool = edit_history.paint_hung(anchor, _paint_swatch_id)
 	if accepted:
@@ -1227,6 +1252,7 @@ func set_paint_active(active: bool) -> bool:
 	_paint_active = active
 	if not active:
 		_paint_from_build = false
+		_clear_copied_look()
 		($ShopView as ShopView).clear_paint_preview()
 		if world.clock.phase == SimClock.Phase.CLOSED and shown_report != null:
 			_show_evening_report(build_report(world.clock.day))
@@ -1321,6 +1347,23 @@ func preview_paint_cell(cell: Variant, whole_room: bool = false) -> void:
 		view.preview_floor_finishes(_floor_paint_preview(cell, whole_room))
 		return
 	view.clear_floor_preview()
+	if kind == &"item" and _paint_copy_armed:
+		# Copying shows the piece's parts but previews no paint.
+		_show_paint_target(world.grid.item(item_id))
+		view.preview_paint(&"", -1, &"")
+		return
+	if kind == &"item" and _paint_copied != null:
+		var hovered: PlacedItem = world.grid.item(item_id)
+		_show_paint_target(hovered)
+		view.preview_item_look(_paint_item_ids(item_id, whole_room), _paint_copied_swatch,
+			PaintLook.mapped(_paint_copied, _paint_copied_look, hovered.def as ItemDef))
+		return
+	if kind == &"item":
+		var placed: PlacedItem = world.grid.item(item_id)
+		_show_paint_target(placed)
+		view.preview_slot_paint(_paint_item_ids(item_id, whole_room), _paint_slot_id(placed.def as ItemDef),
+			_paint_material, _paint_swatch_id)
+		return
 	view.preview_paint(kind, item_id, _paint_swatch_id)
 
 
@@ -1362,6 +1405,8 @@ func paint_cell(cell: Vector2i, whole_room: bool = false) -> bool:
 			_update_build_controls()
 		return changed
 	var kind: StringName = target.get("kind", &"")
+	if _paint_copy_armed:
+		return copy_paint_look(cell) if kind == &"item" else false
 	if kind == &"floor":
 		# Free at any time; recorded for undo while editing is allowed.
 		var recoloured: bool = edit_history.apply_flooring(_floor_paint_changes(cell, whole_room))
@@ -1370,6 +1415,8 @@ func paint_cell(cell: Vector2i, whole_room: bool = false) -> bool:
 			_update_build_controls()
 		# Painting a floor its own colour again is fine, like any paint.
 		return recoloured or shop_editor.last_check.why == ShopEditor.FLOORS_ALREADY
+	if kind == &"item":
+		return _paint_item(target["item_id"], whole_room)
 	var previous: StringName = shop_editor.wall_swatch_id if kind == &"wall" else (
 		shop_editor.floor_swatch_id if kind == &"floor" else (
 			world.grid.item(target["item_id"]).swatch_id if kind == &"item" else &""))
@@ -1590,7 +1637,111 @@ func _on_paint_toggled() -> void:
 	set_paint_active(not _paint_active)
 
 
+# --- Paint slots (#431) ---------------------------------------------------------
+
+## The slot the brush paints on `definition`: the chosen part, else the main.
+func _paint_slot_id(definition: ItemDef) -> StringName:
+	var slots: Array[PaintSlotDef] = []
+	if definition != null:
+		slots = definition.slots()
+	if slots.is_empty():
+		return &""
+	return slots[_paint_slot_index].id if _paint_slot_index < slots.size() else slots[0].id
+
+
+## The item, or with Shift every piece of its kind in its room.
+func _paint_item_ids(item_id: int, whole_room: bool) -> Array[int]:
+	if whole_room and shop_editor != null:
+		return shop_editor.items_alike_in_room(item_id)
+	return [item_id]
+
+
+## Name the hovered item's parts (and their current paint) in the Paint panel.
+func _show_paint_target(placed: PlacedItem) -> void:
+	if _build_catalogue == null or placed == null or not placed.def is ItemDef:
+		return
+	var definition: ItemDef = placed.def as ItemDef
+	var swatches: Array[StringName] = []
+	var materials: Array[StringName] = []
+	var slots: Array[PaintSlotDef] = definition.slots()
+	for index: int in slots.size():
+		swatches.append(placed.swatch_id if index == 0 else placed.paint.swatch(slots[index].id))
+		materials.append(placed.paint.material(slots[index].id))
+	_build_catalogue.set_paint_target(definition, swatches, materials)
+
+
+func _paint_item(item_id: int, whole_room: bool) -> bool:
+	var placed: PlacedItem = world.grid.item(item_id)
+	if placed == null or edit_history == null:
+		return false
+	var previous: StringName = placed.swatch_id
+	var accepted: bool = edit_history.apply_look(_paint_item_ids(item_id, whole_room), _paint_copied_swatch,
+		PaintLook.mapped(_paint_copied, _paint_copied_look, placed.def as ItemDef)) if _paint_copied != null \
+		else edit_history.paint_slot(_paint_item_ids(item_id, whole_room),
+			_paint_slot_id(placed.def as ItemDef), _paint_material, _paint_swatch_id)
+	if accepted:
+		_edit_notice = ""
+		_update_build_controls()
+		var view: ShopView = $ShopView as ShopView
+		view.clear_paint_preview()
+		view.set_paint(content, shop_editor.wall_swatch_id, shop_editor.floor_swatch_id)
+		_show_paint_target(placed)
+		if previous != placed.swatch_id or whole_room:
+			_recompute_vibe()
+	return accepted
+
+
+## Alt-click in Paint (#431): copy a piece's whole look (every part's colour
+## and material) to paste on the pieces clicked next. False off a paintable item.
+func copy_paint_look(cell: Vector2i) -> bool:
+	var placed: PlacedItem = world.grid.item_at(cell) if world != null else null
+	if placed == null or not placed.def is ItemDef or not (placed.def as ItemDef).paintable:
+		return false
+	_paint_copy_armed = false
+	_paint_copied = placed.def as ItemDef
+	_paint_copied_swatch = placed.swatch_id
+	_paint_copied_look = placed.paint.copy()
+	_paint_variant_item = &""
+	if _build_catalogue != null:
+		_build_catalogue.set_copied_look(_paint_copied.display_name)
+	preview_paint_cell(cell)
+	return true
+
+
+func _on_copy_look_requested() -> void:
+	_clear_copied_look()
+	_paint_copy_armed = true
+	_paint_variant_item = &""
+	if _build_catalogue != null:
+		_build_catalogue.set_copied_look("", true)
+
+
+func _clear_copied_look() -> void:
+	_paint_copy_armed = false
+	_paint_copied = null
+	_paint_copied_look = null
+	if _build_catalogue != null:
+		_build_catalogue.set_copied_look("")
+
+
+func _on_paint_slot_requested(index: int) -> void:
+	_clear_copied_look()
+	_paint_slot_index = clampi(index, 0, ItemDef.MAX_PAINT_SLOTS - 1)
+	_paint_variant_item = &""
+	if _paint_active and is_inside_tree():
+		update_paint_pointer(get_viewport().get_mouse_position())
+
+
+func _on_paint_material_requested(material: StringName) -> void:
+	_clear_copied_look()
+	_paint_material = material if PaintFinish.valid(material) else &""
+	_paint_variant_item = &""
+	if _paint_active and is_inside_tree():
+		update_paint_pointer(get_viewport().get_mouse_position())
+
+
 func _on_swatch_requested(id: StringName) -> void:
+	_clear_copied_look()
 	_paint_variant_item = &""
 	_paint_variant_id = &""
 	_paint_swatch_id = id
@@ -2842,8 +2993,12 @@ func _validate_staged_sections(with_globals: bool) -> StagedSite:
 	if base == null:
 		return _refuse_staged(false, "its shop layout is unknown")
 	staged.base = base
-	var layout: ShopLayout = _loaded_layout if _loaded_layout != null \
-		else LEASE.layout_for(base, owner_progress.property_tier)
+	var layout: ShopLayout = _loaded_layout
+	if layout == null:
+		layout = LEASE.layout_for(base, owner_progress.property_tier)
+		# The template's west table now stands turned for an aisle (#320); in
+		# this save's day it stood in a row of seats that shut the kitchen off.
+		layout.aisle_moved = 1
 	staged.layout = layout
 	var choices: MenuSettings = _loaded_menu if _loaded_menu != null else MenuSettings.new(_cookable_recipes(layout), owner_progress.level)
 	if not choices.is_valid():
@@ -3075,6 +3230,7 @@ func switch_site(target: StringName) -> bool:
 	_loaded_layout = staged.layout
 	_rooms_note = _loaded_layout.rooms_unmarked
 	$HUD.set_rooms_note(ROOMS_NOTE if _rooms_note else "")
+	_show_aisle_note(_loaded_layout.aisle_moved > 0)
 	if not _wire_session():
 		push_error("Cannot wire the switched site; the session is inconsistent")
 		return false
@@ -4648,9 +4804,9 @@ func shop_move(item_id: int, origin: Vector2i, quarter_turns: int) -> bool:
 
 ## A colour (the eyedropper's copy) is applied as a free repaint with the buy.
 func shop_buy(def_id: StringName, origin: Vector2i, quarter_turns: int = 0, swatch_id: StringName = &"",
-		variant_id: StringName = &"") -> bool:
-	var accepted: bool = shop_editor != null and edit_history.buy(def_id, origin, quarter_turns, swatch_id, variant_id)
-	if accepted and not swatch_id.is_empty():
+		variant_id: StringName = &"", look: PaintLook = null) -> bool:
+	var accepted: bool = shop_editor != null and edit_history.buy(def_id, origin, quarter_turns, swatch_id, variant_id, look)
+	if accepted and (not swatch_id.is_empty() or look != null):
 		($ShopView as ShopView).set_paint(content, shop_editor.wall_swatch_id, shop_editor.floor_swatch_id)
 	_after_edit(accepted)
 	if _build_ready:
@@ -4705,6 +4861,14 @@ func _clear_rooms_note() -> void:
 	if _rooms_note:
 		_rooms_note = false
 		$HUD.set_rooms_note("")
+
+
+## The aisle repair note (#320) shows for the morning the shop loaded in. It
+## is never saved: the next morning autosave writes the repaired shop, which
+## no longer needs a repair, so the note never comes back.
+func _show_aisle_note(shown: bool) -> void:
+	_aisle_note = shown
+	$HUD.set_aisle_note(AisleRepair.NOTE if shown else "")
 
 
 ## Floor types (D25): lay or recolour floor looks (cell -> Finish), checked
@@ -6117,6 +6281,8 @@ func _on_day_phase_changed(_day: int, phase: int) -> void:
 		_haggle_percent = 0
 	_dismiss_goals()
 	_clear_rooms_note()
+	if _aisle_note:
+		_show_aisle_note(false)
 	# Undo never reaches back across opening (or into a new morning).
 	edit_history.clear()
 	if menu_settings != null:
@@ -6339,6 +6505,7 @@ func _support_item_name(kind: StringName) -> String:
 func _on_variant_paint_requested(id: StringName, look: StringName) -> void:
 	if not _paint_active or content.item(id) == null:
 		return
+	_clear_copied_look()
 	_paint_variant_item = id
 	_paint_variant_id = content.item(id).known_variant_id(look)
 	($ShopView as ShopView).clear_paint_preview()

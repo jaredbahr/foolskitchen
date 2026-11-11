@@ -495,6 +495,21 @@ func set_rooms_note(text: String) -> void:
 	row.queue_sort()
 
 
+## The one-morning note that older shops' tables were moved for an aisle
+## (#320). Empty hides it.
+func set_aisle_note(text: String) -> void:
+	var label: Label = get_node_or_null("Top/Row/AisleNote") as Label
+	if label == null:
+		return
+	label.text = text
+	label.tooltip_text = "Nobody walks through seats, so the tables were moved to leave a way through." \
+		if not text.is_empty() else ""
+	label.visible = not text.is_empty() and Clock.sim.phase == SimClock.Phase.MORNING
+	var row: Container = get_node("Top/Row") as Container
+	row.update_minimum_size()
+	row.queue_sort()
+
+
 ## Layout advice at opening; a legacy empty catalogue also disables Open shop
 ## until the player repairs access. This never changes the clock itself.
 func set_menu_notice(text: String, refuses_opening: bool = false) -> void:
@@ -678,7 +693,7 @@ func _refresh_build_controls() -> void:
 ## The key strip for Build/Buy (FK-085): what the mouse and keys do now.
 static func build_hint(painting: bool, state: int, tool: int) -> String:
 	if painting:
-		return "Click to paint  |  Shift-click: whole room  |  Ctrl+Z Undo  Ctrl+Y Redo  |  Esc Back"
+		return "Click to paint  |  Shift-click: whole room  |  Alt-click: copy a look  |  Ctrl+Z Undo  Ctrl+Y Redo  |  Esc Back"
 	match state:
 		BuildMode.State.SELECT:
 			return CatalogueText.BLUEPRINT_SELECTION_KEYS

@@ -768,10 +768,64 @@ an active edit/panel/selection first, or opens Settings when none is active.
   final level and the first days reaching levels two, three and six; it is a
   manual tool, not an added CI job.
 
-### 2.3g Paint and colour slots (FK-042)
-- `data/swatches/*.tres` contains twelve named `SwatchDef` resources. `ContentDB`
-  validates nonempty unique IDs and names; UI only exposes this curated list.
-- `ItemDef.paintable` and its one `body` slot control furniture painting. A
+### 2.3g Paint and colour slots (FK-042, #431)
+- `data/swatches/*.tres` contains forty named `SwatchDef` resources (the original
+  twelve keep their ids, names, colours and tags). Each has a `family` (neutral,
+  pastel, bright, deep, wood, metal: `SwatchDef.FAMILIES`) and a `family_order`;
+  `ContentDB.palette()` is that order (the Paint grid, the Floors and Wall finish
+  colour rows), while `swatches()` stays sorted by id (the floor shader palette,
+  now 48 entries). `ContentDB` validates nonempty unique IDs, names and known
+  families; UI only exposes this curated list.
+- **Paint slots (#431).** `ItemDef.paint_slots` lists up to three
+  `PaintSlotDef` sub-resources (id, player name, imported surface names, default
+  `PaintFinish` material). The first is the main slot; empty `surfaces` there
+  means the wrapper scene's `body_material_names`. An item without authored slots
+  has one derived "Body" slot (`ItemDef.slots()`), so unchanged content paints as
+  before. `PlacedItem.swatch_id` stays the main slot's colour, so the vibe and
+  every older reader are untouched; `PlacedItem.paint` (`PaintLook`) holds a
+  material per slot (absent: the slot's default) and the other slots' colours
+  (absent: the kit colour). `ShopEditor.paint_slot`, `set_item_look`,
+  `look_fits` and `items_alike_in_room` (Shift: same definition, same connected
+  room) are free at any phase; `ShopEditHistory.paint_slot` / `apply_look`
+  record one `ITEM_LOOK` step for any number of items while editing is
+  allowed. Buys, sales, look changes and blueprints copy the whole look.
+- **Materials.** `PaintFinish` ids: `painted`, `wood`, `fabric`, `metal`.
+  `PaintMaterials` (view) configures a duplicate of the kit surface material:
+  Paint is the legacy flat `albedo_color`; Wood, Fabric and Metal add a light
+  64-pixel pattern drawn from integer hashes (deterministic, shared texture)
+  in object-space triplanar mapping, plus their roughness (Metal: low metallic
+  and high specular, since the Compatibility renderer has no reflections).
+  `albedo_color` is always the swatch colour. `PropView.set_slot_paint` layers
+  kit material, rest tint, look recipe, then each painted slot, and restores
+  only the surfaces it touched (an aquarium's cloudy glass stays its own).
+  `ShopView.flat_body_only` sends unpainted items and a flat body coat down
+  the unchanged `set_body_tint` path, so older shops render exactly as before.
+- **Save.** Version-9 `shop` item rows gain `"paint": [[slot, material, swatch],
+  ...]` (sorted, main colour still in `swatch_id`); no version bump. A row
+  without `"paint"` is from before slots: `PaintLook.legacy` pins a painted main
+  slot to `painted`, so its flat coat does not become the new wood default.
+  Unknown slots, materials, colours and malformed rows are skipped. Blueprint
+  rows (library and `FK1:` codes) carry the same optional `"paint"` key, written
+  whenever the piece is painted, with the same legacy rule. Older builds can
+  read such saves and libraries (they ignore the key), but their strict code
+  decoder refuses an `FK1:` code whose rows carry `"paint"` (six keys, one
+  more nesting level), so a painted blueprint's code only pastes into this
+  build or newer. Saves and codes both cap paint rows at `PaintLook.MAX_ROWS`
+  (8): a save truncates, a code is refused.
+- `PaintMaterials.shared` keeps one painted copy per (kit source material,
+  colour, material) for every item, capped at 1024 and cleared when the shop
+  view leaves the tree; `ShopView._apply_paint` redraws only previewed items
+  and items whose look changed, and drops a hover whose item is gone.
+- **UI.** Paint shows a Part row (the hovered item's slot names with their
+  colours, plus Original, which resets a part, wall or floor), a Material row
+  (Auto + the four, with pattern chips) and the palette as an 8-wide grid, one
+  family a row. A part an item lacks paints its main slot. Hovering previews the
+  brush on that part (`ShopView.preview_slot_paint`); Shift previews and paints
+  every piece of that kind in the room. Alt-click, or the Copy look button
+  (some Linux window managers take Alt-click), copies a piece's look; clicks
+  then paste it (part by part onto other kinds, `PaintLook.mapped`). `--paint-slots` (screenshot.sh) captures
+  the panel and a painted room up close.
+- `ItemDef.paintable` and its main slot control furniture painting. A
   `PlacedItem.swatch_id` is cosmetic; moving preserves it, removing drops it,
   and buying starts with an empty ID and the authored placeholder colour.
 - `ShopEditor` owns whole-room wall and floor IDs plus per-item paint commands.
@@ -2123,6 +2177,49 @@ Terrain/lot changes reconfigure a cached geometry signature while retaining
 actor nodes/time; world replacement frees the old controller and atomically
 binds the new world's reserve through `show_world`.
 
+The neighbourhood stands on a ground of its own (#421, #424): `NeighbourhoodGround`
+builds, in the street's local frame, a meadow, lawn and packed-earth back lane, flat
+contact shadows, hedge rows, scattered trees, bushes and flowers, and a ring of
+trees that closes a square clearing of `WORLD_HALF` metres around the maximum
+lot. It is three vertex-coloured, flat-shaded, shadowless meshes (three draw calls),
+parented under `NeighbourhoodDressing/Ground`, outside `Static` because it
+deliberately lies under the whole lot. Placement comes from an integer hash of each
+position (no RNG), colours from the existing swatches, and it is rebuilt only when
+the street frame or lot changes. Every colour and planting knob lives in a `GroundSkin`
+resource (`NeighbourhoodDressing.ground_skin`, default `GroundSkin.standard()`), so a
+future site's neighbourhood and cuisine can re-skin the ground and tree line without
+touching the geometry or the camera edge. The road, pavement and kerbs run on to the tree
+line (actors keep their original span), and a low kerb step edges the pavement
+where it meets grass. The clearing is the camera's world edge:
+`CameraRig.set_world_bounds` (Main sets `NeighbourhoodDressing.world_rect()` after
+framing) caps zoom to `world_zoom_limit()` so that, from any allowed pan and at
+any rotation, the farthest visible ground point (`view_reach`) stays inside it.
+
+The buildings are a street preset of their own (#422): `StreetSet` is a resource holding every
+palette (wall, roof, door, hedge and bloom colours from the existing swatches), the allowed roof shapes
+(gable front or side, hip, pyramid, shed, flat, false front), the wall heights, the fence styles, the
+house count and the list of `ShopStyle` businesses (id, walls, awning stripes, blank sign board, door
+and the one small thing it sets out: crate of loaves, flower buckets, portholes, jars, a table and
+stools). Like `GroundSkin` it is swapped as a whole, so a seaside street (#425) supplies its own set:
+`NeighbourhoodDressing.street_set` (null = `StreetSet.standard()`), part of every cache key.
+`NeighbourhoodBuildings` plans and meshes it. Planning is cheap and pure: an integer hash of each
+building's index and `StreetSet.seed_salt` (`NeighbourhoodGround.hash01`, no RNG) picks sizes,
+heights, roofs and colours, avoiding the previous building's choice so neighbours differ. Two
+shopfronts per side sit `GAP` (1.4 m) from the maximum lot, sharing the street line with awnings
+over the paving and a 0.22 m hairline between row neighbours; five houses across the road each get a
+lot (front fence line at 8.7 m from the street edge) with a gate, a path to the door, side and back
+hedges, a mailbox, flower beds and a bush or small tree. Meshing is generated vertex-coloured boxes
+and slabs (flat-shaded, shadowless, one surface per building, about 8.7k triangles in all, built in
+about 20 ms and cached with the ground by street frame); no new art packs, and the old `shopfront`,
+`house_body` and `gable_roof` models are no longer loaded. Near shops are kept off the lot by
+geometry rather than a fade: the camera pitch is 54.7 degrees, so a point h metres up hides 0.5 h
+of ground per axis along a diagonal view, and every near shop and roof stays under 2.7 m with a gap
+of 1.4 m, so no resting view lets one hide any lot ground (checked per diagonal in
+`test_neighbourhood_buildings.gd`). The ground builder receives the footprints and house lots so it
+plants nothing on them, stretches the far lawn under the lots, and bakes lawn shadows for every
+building (walls at wall height plus a narrower roof core at full height). Planning exposes
+`building_footprints()`, `lot_footprints()` and `building_boxes_in_view()` for tools and tests.
+
 The camera still frames only the shop with its original defaults and expansion
 glides. Main adds a three-metre extension to only the street-facing pan clamp;
 the other sides and initial focus, yaw, pitch and zoom are unchanged. Frame-time
@@ -3164,12 +3261,49 @@ completes the cut (`_stamp_culprit`, run only when the stamp cuts something
 off). That stays a warning, the
 furniture rule (DESIGN 4.3); only waiting benches keep #269's refusal. As in
 #269 only what an edit newly cuts off counts, so no existing layout gains a
-warning. The standing check (`check_current`, the `unreachable` highlights
-that probes and the soak treat as a hard condition), wall and floor cut-off
-refusals and the room rules still walk across seats: the preserved original
-template's middle row is all tables and seats (its kitchen is reached only by
-squeezing through), so counting seats there would flag every legacy shop and
-refuse wall edits for a furniture problem.
+warning. Since #320 the standing checks walk the same way: the `unreachable`
+highlights (`ShopEditor._unreachable`, which probes and the soak treat as a
+hard condition), the furniture pass of wall and floor cut-off refusals
+(`WallRules.cut_off_problem`), `RoomRules.guest_reachable` (and with it
+`restroom_toilets`, which feeds the sim) and the live menu (`MenuAccess`).
+Furniture still only warns: the room rules' refusals (`RoomRules.violations`)
+and the editor's empty-menu refusal walk across seats (`seats_stop` false), so
+a move that leaves the pass, a station or a seat reachable only through seats
+gets the seat warning (the pass has its own, `WallRules.CUT_PASS`) and the
+highlight, never "The pass needs the kitchen on one side…".
+
+Older shops whose staff can't reach the kitchen that way (#320): the
+preserved original template's middle row is all tables and seats, so its
+servers had no way to the pass. `AisleRepair.repair` runs once on load, for a
+shop snapshot older than version 10 (`ShopEditor.from_dict`) and for a save
+that predates the shop section (Main's staging of the original template). It
+compares what is cut off walking as people do with what is cut off walking
+across seats (items as `_unreachable` names them, street-door cells, toilets)
+and, when people miss anything, moves only tables and chairs until they miss
+nothing. The search is greedy: each round takes the move that fixes the most,
+the shortest on ties (cells moved, plus one for a turn; within `RADIUS` of
+where the item stood, fixed tie order, no RNG). It tries only tables and
+chairs touching the cut-off cells (tables first), scores a pose with one
+flood, and runs the editor's full checks only on a pose that beats the best so
+far. A move must be one the editor accepts (fits, same room kind, chairs face
+a table, no new room problem, no seat in the doorway, no dining seat lost, the
+largest joined table group no smaller, no staff start covered). Load time is
+capped: past `MAX_TRIES` poses or `MAX_CHECKS` full checks it gives up and
+changes nothing (a repair that fails runs again on each load until the next
+morning autosave writes version 10). Each item keeps its variant, colour and placement
+order; when no repair is found nothing moves. On the original layout it
+turns the west table a quarter where it stands, which opens a lane beside the
+pass; the template (`tier1_original.tres`) now holds that arrangement, so a
+save from before the shop section gets it too. The issue's first choice, the
+current starter's row of turned tables, does not fit this shallower room (its
+cells cover the server's start post), and turning all three in place served
+fewer guests than the blocked row in the balance probe (84.7 against 93.7 over
+five days, seeds 1, 7, 42), while the one-table turn served 100.3 (the deeper
+starter 100.7, the roomier 96.3).
+`ShopLayout.aisle_moved` drives the HUD's one-morning note ("We moved a few
+tables so your staff can reach the kitchen.", `HUD.set_aisle_note`, gone at
+opening). It is never saved: the next morning autosave writes version 10,
+which is never repaired again.
 A seat item (chair, stool, booth, bench) is refused outright
 (`ShopEditor.SEAT_IN_DOORWAY`) when one of its seats would stand on a street
 door threshold, a door, an entry or just inside a back door, or would fill

@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="SwatchDef" format=3]
+[ext_resource type="Script" path="res://src/sim/content/swatch_def.gd" id="1"]
+[resource]
+script = ExtResource("1")
+id = &"sky"
+display_name = "Sky"
+color = Color(0.3843137, 0.627451, 0.8, 1)
+theme_tags = Array[StringName]([&"seafood"])
+family = &"bright"
+family_order = 6
