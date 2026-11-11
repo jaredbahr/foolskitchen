@@ -99,6 +99,15 @@ func apply_paint(color: Color, material: Material) -> void:
 		fallback.material_override = material
 
 
+## Paint slots (#431); a box fallback shows only the main slot's colour.
+func apply_slot_paint(slots: Array[PropView.SlotPaint], main_material: Material) -> void:
+	if prop != null:
+		prop.set_slot_paint(slots)
+	elif fallback != null:
+		fallback.material_override = main_material if not slots.is_empty() and slots[0].color is Color \
+			else _fallback_material
+
+
 func clear_paint() -> void:
 	if prop != null:
 		prop.clear_body_tint()

@@ -168,7 +168,69 @@ func paint_variant(item_id: int, variant_id: StringName) -> bool:
 		return false
 	placed.variant_id = definition.known_variant_id(variant_id)
 	placed.swatch_id = &""
+	placed.paint = PaintLook.new()
 	last_check = EditCheck.new(true)
+	return true
+
+
+## Paint one slot (#431): a colour (empty: the kit colour) and a material
+## (empty: the slot's default). Free at any phase, like body paint; the main
+## slot's colour is `swatch_id`, so the vibe keeps reading it.
+func paint_slot(item_id: int, slot_id: StringName, material: StringName, swatch_id: StringName) -> bool:
+	if not _can_paint(swatch_id) or not (material.is_empty() or PaintFinish.valid(material)):
+		return false
+	var placed: PlacedItem = _sim.world.grid.item(item_id)
+	var definition: ItemDef = placed.def as ItemDef if placed != null else null
+	var index: int = definition.slot_index(slot_id) if definition != null else -1
+	if index < 0:
+		return false
+	if index == 0:
+		placed.swatch_id = swatch_id
+	else:
+		placed.paint.set_swatch(slot_id, swatch_id)
+	placed.paint.set_material(slot_id, material)
+	return true
+
+
+## Replace an item's whole paint (undo, copied looks). Unknown slots, colours
+## or materials refuse the whole change before anything is touched.
+func set_item_look(item_id: int, swatch_id: StringName, look: PaintLook) -> bool:
+	if not _can_paint(swatch_id) or look == null:
+		return false
+	var placed: PlacedItem = _sim.world.grid.item(item_id)
+	var definition: ItemDef = placed.def as ItemDef if placed != null else null
+	if definition == null or not definition.paintable or not look_fits(definition, look):
+		return false
+	placed.swatch_id = swatch_id
+	placed.paint = look.copy()
+	return true
+
+
+## Shift-paint (#431): `item_id` and every other piece of the same kind in its
+## room (the connected room its origin is in), in grid order. A piece outside
+## any room (the patio) is just itself.
+func items_alike_in_room(item_id: int) -> Array[int]:
+	var placed: PlacedItem = _sim.world.grid.item(item_id) if _sim != null and _sim.world != null else null
+	if placed == null:
+		return []
+	var room: Dictionary[Vector2i, bool] = ShopFootprint.to_set(floor_room_cells(placed.origin))
+	if not room.has(placed.origin):
+		return [item_id]
+	var result: Array[int] = []
+	for other: PlacedItem in _sim.world.grid.items():
+		if other.def == placed.def and room.has(other.origin):
+			result.append(other.id)
+	return result
+
+
+## Every slot, colour and material of `look` is known for `definition`.
+func look_fits(definition: ItemDef, look: PaintLook) -> bool:
+	for slot_id: StringName in look.materials:
+		if definition.slot_index(slot_id) < 0 or not PaintFinish.valid(look.materials[slot_id]):
+			return false
+	for slot_id: StringName in look.swatches:
+		if definition.slot_index(slot_id) < 1 or _content.swatch(look.swatches[slot_id]) == null:
+			return false
 	return true
 
 
@@ -543,7 +605,8 @@ func to_dict() -> Dictionary:
 		var definition: ItemDef = placed.def as ItemDef
 		placements.append({"def_id": String(definition.id),
 			"origin": [placed.origin.x, placed.origin.y], "quarter_turns": placed.quarter_turns,
-			"swatch_id": String(placed.swatch_id), "variant_id": String(placed.variant_id)})
+			"swatch_id": String(placed.swatch_id), "variant_id": String(placed.variant_id),
+			"paint": placed.paint.to_rows()})
 	var segments: Array[Dictionary] = []
 	for edge: Vector3i in _sim.world.grid.segment_edges():
 		var kind: WallKindDef = _content.wall_kind_for(_sim.world.grid.segment(edge)) if _content != null else null
@@ -686,6 +749,10 @@ static func from_dict(data: Dictionary, template_layout: ShopLayout, content: Co
 		placement.variant_id = definition.known_variant_id(StringName(saved_variant)) \
 			if saved_variant is String or saved_variant is StringName else &""
 		placement.swatch_id = _saved_swatch(row.get("swatch_id", ""), content) if definition.paintable else &""
+		# Paint slots (#431) ride on the version-9 rows: a row without "paint"
+		# is from before slots and keeps its flat body coat (PaintLook.legacy).
+		placement.paint = PaintLook.from_rows(row["paint"], definition, content) if row.has("paint") \
+			else PaintLook.legacy(definition, placement.swatch_id)
 		if preview.place_def(definition, placement.origin, placement.quarter_turns) == null:
 			errors.append("Saved item does not fit on the layout's floor")
 			return null

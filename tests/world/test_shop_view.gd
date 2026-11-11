@@ -84,10 +84,11 @@ func test_paint_preview_reuses_materials_and_restores_room_colours() -> void:
 	assert_eq(second_material.albedo_color, first_material.albedo_color)
 	assert_true(first_material != second_material, "body tint copies stay local to each model")
 	_view.preview_paint(&"item", tables[0].id, &"sage")
-	assert_eq(first_material.albedo_color, content.swatch(&"sage").color)
-	assert_eq(second_material.albedo_color, content.swatch(&"terracotta").color)
+	# Paint slots (#431): a slot look is its own material copy, so read the drawn one.
+	assert_eq(_view.item_nodes[tables[0].id].primary_body_material().albedo_color, content.swatch(&"sage").color)
+	assert_eq(_view.item_nodes[tables[1].id].primary_body_material().albedo_color, content.swatch(&"terracotta").color)
 	_view.clear_paint_preview()
-	assert_eq(first_material.albedo_color, content.swatch(&"terracotta").color)
+	assert_eq(_view.item_nodes[tables[0].id].primary_body_material().albedo_color, content.swatch(&"terracotta").color)
 	assert_eq(errors, [] as Array[String])
 
 

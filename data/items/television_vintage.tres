@@ -1,7 +1,22 @@
-[gd_resource type="Resource" script_class="ItemDef" load_steps=3 format=3]
+[gd_resource type="Resource" script_class="ItemDef" format=3]
 
 [ext_resource type="Script" path="res://src/sim/content/item_def.gd" id="1_script"]
 [ext_resource type="PackedScene" path="res://assets/props/television_vintage.tscn" id="2_view"]
+[ext_resource type="Script" path="res://src/sim/content/paint_slot_def.gd" id="paint_slot_script"]
+
+[sub_resource type="Resource" id="slot_cabinet"]
+script = ExtResource("paint_slot_script")
+id = &"cabinet"
+display_name = "Cabinet"
+surfaces = PackedStringArray()
+default_material = &"wood"
+
+[sub_resource type="Resource" id="slot_case"]
+script = ExtResource("paint_slot_script")
+id = &"case"
+display_name = "Case"
+surfaces = PackedStringArray("metalDark")
+default_material = &"painted"
 
 [resource]
 script = ExtResource("1_script")
@@ -20,3 +35,4 @@ price = 150
 unlock_level = 6
 charm = 3
 theme_tags = Array[StringName]([&"diner", &"bar"])
+paint_slots = Array[ExtResource("paint_slot_script")]([SubResource("slot_cabinet"), SubResource("slot_case")])

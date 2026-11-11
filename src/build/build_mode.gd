@@ -35,6 +35,8 @@ var tool: Tool = Tool.HAND
 var hover_item_id: int = -1
 ## Colour the eyedropper copied; a buy commits it as a free repaint.
 var buy_swatch_id: StringName = &""
+## The eyedropper's copied paint slots (#431); empty for a catalogue buy.
+var buy_paint: PaintLook = PaintLook.new()
 var buy_variant_id: StringName = &""
 var committed_warning_ids: Array[int] = []
 var committed_seat_warnings: Dictionary[int, String] = {}
@@ -263,6 +265,7 @@ func begin_buy(def_id: StringName, cell: Vector2i, variant_id: StringName = &"")
 	selected_item_id = -1
 	selected_definition = definition
 	buy_swatch_id = &""
+	buy_paint = PaintLook.new()
 	buy_variant_id = definition.known_variant_id(variant_id)
 	origin = cell
 	grab_offset = Vector2i.ZERO
@@ -316,6 +319,9 @@ func commit() -> bool:
 		answer = _move_command.call(selected_item_id, origin, quarter_turns)
 	elif state == State.BLUEPRINT:
 		answer = _stamp_command.call(selected_blueprint, origin, quarter_turns)
+	elif not buy_paint.is_empty():
+		answer = _buy_command.call(selected_definition.id, origin, quarter_turns, buy_swatch_id, buy_variant_id,
+			buy_paint.copy())
 	elif not buy_variant_id.is_empty():
 		answer = _buy_command.call(selected_definition.id, origin, quarter_turns, buy_swatch_id, buy_variant_id)
 	elif not buy_swatch_id.is_empty():
@@ -476,6 +482,7 @@ func eyedrop(item_id: int, cell: Vector2i) -> bool:
 		return false
 	quarter_turns = posmod(placed.quarter_turns, 4)
 	buy_swatch_id = placed.swatch_id if definition.paintable else &""
+	buy_paint = placed.paint.copy() if definition.paintable else PaintLook.new()
 	_recheck_ghost()
 	changed.emit()
 	return true
@@ -735,6 +742,7 @@ func _clear_ghost(next_state: State) -> void:
 	current_check = EditCheck.new(true)
 	hover_item_id = -1
 	buy_swatch_id = &""
+	buy_paint = PaintLook.new()
 	buy_variant_id = &""
 	wall_hover_edge = SimGrid.NO_EDGE
 	wall_dragging = false

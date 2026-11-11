@@ -188,6 +188,28 @@ static func card_lines(definition: ItemDef, owner_level: int, variant_id: String
 	return lines
 
 
+## The Paint title (#431): colour, material and part, e.g.
+## "Paint | Sage wood on the cushion - Click a wall, floor or item".
+static func paint_title(swatch: SwatchDef, original: bool, material: StringName, part: String,
+		main_part: bool = true) -> String:
+	var colour: String = "Original" if original else (swatch.display_name if swatch != null else "Pick a colour")
+	var finish: String = " " + PaintFinish.label(material).to_lower() if PaintFinish.valid(material) else ""
+	var where: String = "" if main_part or part.is_empty() else " on the " + part.to_lower()
+	return "Paint | %s%s%s - Click a wall, floor or item" % [colour, finish, where]
+
+
+static func paint_copied_title(piece: String) -> String:
+	return "Paint | %s look copied - Click pieces to paste it" % piece
+
+
+## A part chip's tooltip: "Cushion: Sage fabric" (or "Cushion: as it came").
+static func paint_part_tip(part: String, swatch: SwatchDef, material: StringName) -> String:
+	if swatch == null and not PaintFinish.valid(material):
+		return "%s: as it came" % part
+	var finish: String = " " + PaintFinish.label(material).to_lower() if PaintFinish.valid(material) else ""
+	return "%s: %s%s" % [part, swatch.display_name if swatch != null else "its own colour", finish]
+
+
 static func paint_variant_title(definition: ItemDef, look: ItemVariant) -> String:
 	return "Paint | %s: %s - Click a matching piece" % [definition.display_name, look.display_name]
 

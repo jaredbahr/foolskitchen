@@ -1,7 +1,15 @@
-[gd_resource type="Resource" script_class="ItemDef" load_steps=3 format=3]
+[gd_resource type="Resource" script_class="ItemDef" format=3]
 
 [ext_resource type="Script" path="res://src/sim/content/item_def.gd" id="1_script"]
 [ext_resource type="PackedScene" path="res://assets/props/storage_shelf.tscn" id="2_view"]
+[ext_resource type="Script" path="res://src/sim/content/paint_slot_def.gd" id="paint_slot_script"]
+
+[sub_resource type="Resource" id="slot_shelf"]
+script = ExtResource("paint_slot_script")
+id = &"shelf"
+display_name = "Shelves"
+surfaces = PackedStringArray()
+default_material = &"wood"
 
 [resource]
 script = ExtResource("1_script")
@@ -24,3 +32,4 @@ unlock_level = 1
 charm = 0
 theme_tags = Array[StringName]([])
 placeholder_color = Color(0.65, 0.44, 0.27, 1)
+paint_slots = Array[ExtResource("paint_slot_script")]([SubResource("slot_shelf")])

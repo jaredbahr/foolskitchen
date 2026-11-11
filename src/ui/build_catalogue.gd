@@ -19,6 +19,10 @@ signal buy_requested(def_id: StringName)
 signal variant_paint_requested(def_id: StringName, variant_id: StringName)
 signal variant_buy_requested(def_id: StringName, variant_id: StringName)
 signal swatch_requested(swatch_id: StringName)
+## Paint slots (#431): which part of an item the brush paints (0 = main), and
+## its material (a PaintFinish id; empty = each part's own, "Auto").
+signal paint_slot_requested(index: int)
+signal paint_material_requested(material: StringName)
 ## Walls tool (FK-070): the SimGrid.Segment new edges should get.
 signal wall_tool_requested(segment: int)
 ## Floor tool (FK-080): buy floor on the lot.
@@ -103,6 +107,13 @@ const FLOOR_THUMBNAIL: PackedScene = preload("res://assets/props/floor_tile.tscn
 ## The ghost's marker legend; Main shows it in the HUD key strip while a piece is held.
 const FURNITURE_HINT: String = "Square: work tile   Circle: seat"
 const CHIP_FONT_SIZE: int = 15
+## Paint grid chips (#431): eight a row, one palette family a row.
+const SWATCH_SIZE: float = 30.0
+const PART_FALLBACK_NAMES: Array[String] = ["Main", "Part 2", "Part 3"]
+const AUTO_TIP: String = "Auto: each part keeps its own material (wood stays wood, cushions stay fabric)"
+const ORIGINAL_TIP: String = "Original: put a part, wall or floor back to how it came"
+## Floors and Wall finish colour rows: Original/Auto plus the palette in two rows.
+const COLOUR_ROW_COLUMNS: int = 21
 
 var paint_variant_item: StringName = &""
 var paint_variant_id: StringName = &""
@@ -178,6 +189,21 @@ var sort: Sort = Sort.NAME
 ## Theme filters that are on; none on shows every theme.
 var theme_filters: Dictionary[StringName, bool] = {}
 var selected_swatch_id: StringName = &"butter"
+## Paint slots (#431). The part row shows the slots of the item Main last
+## pointed at in Paint (set_paint_target); before that, generic part names.
+var selected_paint_slot: int = 0
+var selected_paint_material: StringName = &""
+var part_buttons: Array[Button] = []
+## Material chips by PaintFinish id; &"" is Auto.
+var material_buttons: Dictionary[StringName, Button] = {}
+## "Original": the brush puts a part (or a wall or floor) back to how it came.
+var original_button: Button
+var _paint_target: ItemDef
+var _paint_target_swatches: Array[StringName] = []
+var _paint_target_materials: Array[StringName] = []
+var _material_icons: Dictionary[StringName, ImageTexture] = {}
+## The name of the piece whose look Alt-click copied ("" when none).
+var copied_look: String = ""
 ## Stable capture path: Panel/Margin/Rows/Scroll/Content/Categories/Readout/VibeMeter.
 var vibe_meter: VibeMeter
 var curb_appeal_meter: CurbAppealMeter
@@ -708,8 +734,15 @@ func _refresh_floor_colours() -> void:
 			label.text = "Accent" if accent else "Colour"
 			label.custom_minimum_size = Vector2(64.0, 0.0)
 			line.add_child(label)
+			# The palette (#431) is too long for one line: two rows of chips.
+			var grid: GridContainer = GridContainer.new()
+			grid.name = "Chips"
+			grid.columns = COLOUR_ROW_COLUMNS
+			grid.add_theme_constant_override("h_separation", 4)
+			grid.add_theme_constant_override("v_separation", 4)
+			line.add_child(grid)
 			var ids: Array[StringName] = [&""]
-			for swatch: SwatchDef in _content.swatches():
+			for swatch: SwatchDef in _content.palette():
 				ids.append(swatch.id)
 			for id: StringName in ids:
 				var chip: Button = Button.new()
@@ -718,7 +751,7 @@ func _refresh_floor_colours() -> void:
 				chip.focus_mode = Control.FOCUS_NONE
 				chip.mouse_filter = Control.MOUSE_FILTER_STOP
 				chip.pressed.connect(_on_floor_colour_pressed.bind(id, accent))
-				line.add_child(chip)
+				grid.add_child(chip)
 				if accent:
 					floor_accent_buttons[id] = chip
 				else:
@@ -859,8 +892,15 @@ func _refresh_wall_colours() -> void:
 			label.text = "Accent" if accent else "Colour"
 			label.custom_minimum_size = Vector2(64.0, 0.0)
 			line.add_child(label)
+			# The palette (#431) is too long for one line: two rows of chips.
+			var grid: GridContainer = GridContainer.new()
+			grid.name = "Chips"
+			grid.columns = COLOUR_ROW_COLUMNS
+			grid.add_theme_constant_override("h_separation", 4)
+			grid.add_theme_constant_override("v_separation", 4)
+			line.add_child(grid)
 			var ids: Array[StringName] = [&""]
-			for swatch: SwatchDef in _content.swatches():
+			for swatch: SwatchDef in _content.palette():
 				ids.append(swatch.id)
 			for id: StringName in ids:
 				var chip: Button = Button.new()
@@ -869,7 +909,7 @@ func _refresh_wall_colours() -> void:
 				chip.focus_mode = Control.FOCUS_NONE
 				chip.mouse_filter = Control.MOUSE_FILTER_STOP
 				chip.pressed.connect(_on_wall_colour_pressed.bind(id, accent))
-				line.add_child(chip)
+				grid.add_child(chip)
 				if accent:
 					wall_accent_buttons[id] = chip
 				else:
@@ -1051,7 +1091,7 @@ func _apply_category() -> void:
 	sort_button.text = SORT_LABELS[sort]
 	(_content_node().get_node("Filters") as Control).visible = buying and not blueprints_shown
 	(_content_node().get_node("Items") as Control).visible = not _paint_visible and not blueprints_shown
-	(_content_node().get_node("PaintSwatches") as Control).visible = _paint_visible
+	(_content_node().get_node("PaintArea") as Control).visible = _paint_visible
 	if _paint_variant_rows != null:
 		_paint_variant_rows.visible = _paint_visible
 	_refresh_title()
@@ -1297,10 +1337,11 @@ func _on_tile_exited(id: StringName) -> void:
 # --- Paint swatches -------------------------------------------------------------
 
 func _refresh_swatches() -> void:
-	var row: HBoxContainer = _content_node().get_node("PaintSwatches") as HBoxContainer
+	var row: GridContainer = _content_node().get_node("PaintArea/PaintSwatches") as GridContainer
+	_prepare_paint_parts()
 	var definitions: Array[SwatchDef] = []
 	if _content != null:
-		definitions.assign(_content.swatches())
+		definitions.assign(_content.palette())
 	var desired: Array[StringName] = []
 	for definition: SwatchDef in definitions:
 		desired.append(definition.id)
@@ -1313,7 +1354,7 @@ func _refresh_swatches() -> void:
 	if definitions.is_empty():
 		_refresh_title()
 		return
-	if _content.swatch(selected_swatch_id) == null:
+	if not selected_swatch_id.is_empty() and _content.swatch(selected_swatch_id) == null:
 		selected_swatch_id = definitions[0].id
 	for index: int in range(definitions.size()):
 		var definition: SwatchDef = definitions[index]
@@ -1321,7 +1362,7 @@ func _refresh_swatches() -> void:
 		if button == null:
 			button = Button.new()
 			button.name = "Swatch_%s" % definition.id
-			button.custom_minimum_size = Vector2(34.0, 34.0)
+			button.custom_minimum_size = Vector2(SWATCH_SIZE, SWATCH_SIZE)
 			button.focus_mode = Control.FOCUS_NONE
 			button.mouse_filter = Control.MOUSE_FILTER_STOP
 			button.pressed.connect(_on_swatch_pressed.bind(definition.id))
@@ -1331,6 +1372,7 @@ func _refresh_swatches() -> void:
 			row.move_child(button, index)
 		button.tooltip_text = definition.display_name
 	_refresh_swatch_styles()
+	_refresh_paint_parts()
 
 
 func _refresh_swatch_styles() -> void:
@@ -1343,7 +1385,7 @@ func _refresh_swatch_styles() -> void:
 		var button: Button = swatch_buttons[id]
 		var style: StyleBoxFlat = StyleBoxFlat.new()
 		style.bg_color = definition.color
-		style.set_corner_radius_all(17)
+		style.set_corner_radius_all(int(SWATCH_SIZE / 2.0))
 		style.set_border_width_all(3 if id == selected_swatch_id and paint_variant_item.is_empty() else 1)
 		style.border_color = selected_ring if id == selected_swatch_id and paint_variant_item.is_empty() else Color("5d4637")
 		button.pivot_offset = button.custom_minimum_size * 0.5
@@ -1368,9 +1410,12 @@ func _refresh_title() -> void:
 		IconStyle.decorate_label(title, &"catalogue")
 		return
 	IconStyle.decorate_label(title, &"paint")
-	var selected: SwatchDef = _content.swatch(selected_swatch_id) if _content != null else null
-	var name: String = selected.display_name if selected != null else "Pick a colour"
-	title.text = "Paint | %s - Click a wall, floor or item" % name
+	if not copied_look.is_empty():
+		title.text = CatalogueText.paint_copied_title(copied_look)
+		return
+	title.text = CatalogueText.paint_title(_content.swatch(selected_swatch_id) if _content != null else null,
+		selected_swatch_id.is_empty(), selected_paint_material, _paint_part_name(_painted_part()),
+		_painted_part() == 0)
 
 
 func _on_swatch_pressed(id: StringName) -> void:
@@ -1381,7 +1426,181 @@ func _on_swatch_pressed(id: StringName) -> void:
 	paint_variant_id = &""
 	_refresh_paint_variants()
 	_refresh_swatch_styles()
+	_refresh_paint_parts()
 	swatch_requested.emit(id)
+
+
+# --- Paint parts and materials (#431) -------------------------------------------
+
+## Main tells the panel which item the brush is over (null: none yet), with
+## each slot's colour and chosen material, so the part row names its parts.
+func set_paint_target(definition: ItemDef, swatches: Array[StringName] = [], materials: Array[StringName] = []) -> void:
+	if definition == _paint_target and swatches == _paint_target_swatches and materials == _paint_target_materials:
+		return
+	_paint_target = definition if definition != null and definition.paintable else null
+	_paint_target_swatches = swatches.duplicate()
+	_paint_target_materials = materials.duplicate()
+	_refresh_paint_parts()
+	_refresh_title()
+
+
+## Main names the piece whose look Alt-click copied ("" clears it).
+func set_copied_look(display_name: String) -> void:
+	copied_look = display_name
+	_refresh_title()
+
+
+func paint_target() -> ItemDef:
+	return _paint_target
+
+
+## The part a click paints now: the chosen one, or the main part of an item
+## without it.
+func _painted_part() -> int:
+	if _paint_target != null and selected_paint_slot >= _paint_target.slots().size():
+		return 0
+	return selected_paint_slot
+
+
+func _paint_part_name(index: int) -> String:
+	var slots: Array[PaintSlotDef] = []
+	if _paint_target != null:
+		slots = _paint_target.slots()
+	if index < slots.size():
+		return slots[index].display_name
+	return PART_FALLBACK_NAMES[index] if index < PART_FALLBACK_NAMES.size() else ""
+
+
+func _prepare_paint_parts() -> void:
+	if _content_node().get_node_or_null("PaintArea/PaintParts") != null:
+		return
+	# Parts and materials on the left, the palette grid on the right.
+	var rows: VBoxContainer = VBoxContainer.new()
+	rows.name = "PaintParts"
+	rows.add_theme_constant_override("separation", 6)
+	var area: Control = _content_node().get_node("PaintArea") as Control
+	area.add_child(rows)
+	area.move_child(rows, 0)
+	var parts: HBoxContainer = HBoxContainer.new()
+	parts.name = "Parts"
+	parts.add_theme_constant_override("separation", 4)
+	rows.add_child(parts)
+	var label: Label = Label.new()
+	label.text = "Part"
+	label.custom_minimum_size = Vector2(72.0, 0.0)
+	parts.add_child(label)
+	for index: int in ItemDef.MAX_PAINT_SLOTS:
+		var button: Button = _chip("Part%d" % index, PART_FALLBACK_NAMES[index])
+		button.pressed.connect(_on_part_pressed.bind(index))
+		parts.add_child(button)
+		part_buttons.append(button)
+	original_button = _chip("Original", "Original")
+	original_button.tooltip_text = ORIGINAL_TIP
+	original_button.pressed.connect(_on_original_pressed)
+	parts.add_child(original_button)
+	var materials: HBoxContainer = HBoxContainer.new()
+	materials.name = "Materials"
+	materials.add_theme_constant_override("separation", 4)
+	rows.add_child(materials)
+	var material_label: Label = Label.new()
+	material_label.text = "Material"
+	material_label.custom_minimum_size = Vector2(72.0, 0.0)
+	materials.add_child(material_label)
+	var ids: Array[StringName] = [&""]
+	ids.append_array(PaintFinish.ALL)
+	for id: StringName in ids:
+		var chip: Button = _chip("Material_%s" % ("auto" if id.is_empty() else String(id)), PaintFinish.label(id))
+		chip.tooltip_text = AUTO_TIP if id.is_empty() else PaintFinish.TIPS[id]
+		chip.icon = _material_icon(id)
+		chip.expand_icon = false
+		chip.pressed.connect(_on_material_pressed.bind(id))
+		materials.add_child(chip)
+		material_buttons[id] = chip
+
+
+## A small swatch of the material's pattern in a warm neutral (Auto: none).
+func _material_icon(id: StringName) -> ImageTexture:
+	if id.is_empty():
+		return null
+	if not _material_icons.has(id):
+		var base: Color = _content.swatch(&"oat").color if _content != null and _content.swatch(&"oat") != null \
+			else Color("d8c5a4")
+		var image: Image = Image.create_empty(18, 18, false, Image.FORMAT_RGBA8)
+		var pattern: Image = PaintMaterials.pattern(id) if PaintFinish.valid(id) and id != PaintFinish.PAINTED else null
+		for y: int in 18:
+			for x: int in 18:
+				var shade: float = pattern.get_pixel(x * 3 % PaintMaterials.SIZE, y * 3 % PaintMaterials.SIZE).r \
+					if pattern != null else 1.0
+				# Stronger than in the world, so the tiny chip still reads.
+				shade = 1.0 - (1.0 - shade) * 2.2
+				image.set_pixel(x, y, Color(base.r * shade, base.g * shade, base.b * shade, 1.0))
+		_material_icons[id] = ImageTexture.create_from_image(image)
+	return _material_icons[id]
+
+
+func _refresh_paint_parts() -> void:
+	if _content_node().get_node_or_null("PaintArea/PaintParts") == null:
+		return
+	var slots: Array[PaintSlotDef] = []
+	if _paint_target != null:
+		slots = _paint_target.slots()
+	var shown: int = slots.size() if _paint_target != null else ItemDef.MAX_PAINT_SLOTS
+	# The choice stays for the next item; a piece without that part takes
+	# the paint on its main part, so that is the one lit.
+	var painted: int = selected_paint_slot if selected_paint_slot < shown else 0
+	for index: int in part_buttons.size():
+		var button: Button = part_buttons[index]
+		button.visible = index < shown
+		button.text = _paint_part_name(index)
+		button.set_pressed_no_signal(index == painted)
+		var colour_id: StringName = _paint_target_swatches[index] if index < _paint_target_swatches.size() else &""
+		var swatch: SwatchDef = _content.swatch(colour_id) if _content != null and not colour_id.is_empty() else null
+		var material: StringName = _paint_target_materials[index] if index < _paint_target_materials.size() else &""
+		button.icon = _part_dot(swatch.color) if swatch != null else null
+		button.tooltip_text = CatalogueText.paint_part_tip(button.text, swatch, material) if _paint_target != null \
+			else "Paint this part of the item you click"
+	original_button.set_pressed_no_signal(selected_swatch_id.is_empty())
+	for id: StringName in material_buttons:
+		material_buttons[id].set_pressed_no_signal(id == selected_paint_material)
+
+
+func _part_dot(colour: Color) -> ImageTexture:
+	var image: Image = Image.create_empty(12, 12, false, Image.FORMAT_RGBA8)
+	for y: int in 12:
+		for x: int in 12:
+			var inside: bool = Vector2(x - 5.5, y - 5.5).length() <= 5.5
+			image.set_pixel(x, y, colour if inside else Color(0, 0, 0, 0))
+	return ImageTexture.create_from_image(image)
+
+
+func _on_part_pressed(index: int) -> void:
+	if not visible or not _paint_visible:
+		return
+	selected_paint_slot = index
+	_refresh_paint_parts()
+	_refresh_title()
+	paint_slot_requested.emit(index)
+
+
+func _on_material_pressed(id: StringName) -> void:
+	if not visible or not _paint_visible:
+		return
+	selected_paint_material = id
+	_refresh_paint_parts()
+	_refresh_title()
+	paint_material_requested.emit(id)
+
+
+func _on_original_pressed() -> void:
+	if not visible or not _paint_visible or _content == null:
+		return
+	selected_swatch_id = &""
+	paint_variant_item = &""
+	paint_variant_id = &""
+	_refresh_paint_variants()
+	_refresh_swatch_styles()
+	_refresh_paint_parts()
+	swatch_requested.emit(&"")
 
 
 # --- Layout ---------------------------------------------------------------------

@@ -768,10 +768,53 @@ an active edit/panel/selection first, or opens Settings when none is active.
   final level and the first days reaching levels two, three and six; it is a
   manual tool, not an added CI job.
 
-### 2.3g Paint and colour slots (FK-042)
-- `data/swatches/*.tres` contains twelve named `SwatchDef` resources. `ContentDB`
-  validates nonempty unique IDs and names; UI only exposes this curated list.
-- `ItemDef.paintable` and its one `body` slot control furniture painting. A
+### 2.3g Paint and colour slots (FK-042, #431)
+- `data/swatches/*.tres` contains forty named `SwatchDef` resources (the original
+  twelve keep their ids, names, colours and tags). Each has a `family` (neutral,
+  pastel, bright, deep, wood, metal: `SwatchDef.FAMILIES`) and a `family_order`;
+  `ContentDB.palette()` is that order (the Paint grid, the Floors and Wall finish
+  colour rows), while `swatches()` stays sorted by id (the floor shader palette,
+  now 48 entries). `ContentDB` validates nonempty unique IDs, names and known
+  families; UI only exposes this curated list.
+- **Paint slots (#431).** `ItemDef.paint_slots` lists up to three
+  `PaintSlotDef` sub-resources (id, player name, imported surface names, default
+  `PaintFinish` material). The first is the main slot; empty `surfaces` there
+  means the wrapper scene's `body_material_names`. An item without authored slots
+  has one derived "Body" slot (`ItemDef.slots()`), so unchanged content paints as
+  before. `PlacedItem.swatch_id` stays the main slot's colour, so the vibe and
+  every older reader are untouched; `PlacedItem.paint` (`PaintLook`) holds a
+  material per slot (absent: the slot's default) and the other slots' colours
+  (absent: the kit colour). `ShopEditor.paint_slot`, `set_item_look`,
+  `look_fits` and `items_alike_in_room` (Shift: same definition, same connected
+  room) are free at any phase; `ShopEditHistory.paint_slot` / `apply_look`
+  record one `ITEM_LOOK` step for any number of items while editing is
+  allowed. Buys, sales, look changes and blueprints copy the whole look.
+- **Materials.** `PaintFinish` ids: `painted`, `wood`, `fabric`, `metal`.
+  `PaintMaterials` (view) configures a duplicate of the kit surface material:
+  Paint is the legacy flat `albedo_color`; Wood, Fabric and Metal add a light
+  64-pixel pattern drawn from integer hashes (deterministic, shared texture)
+  in object-space triplanar mapping, plus their roughness (Metal: low metallic
+  and high specular, since the Compatibility renderer has no reflections).
+  `albedo_color` is always the swatch colour. `PropView.set_slot_paint` layers
+  kit material, rest tint, look recipe, then each painted slot, and restores
+  only the surfaces it touched (an aquarium's cloudy glass stays its own).
+  `ShopView.flat_body_only` sends unpainted items and a flat body coat down
+  the unchanged `set_body_tint` path, so older shops render exactly as before.
+- **Save.** Version-9 `shop` item rows gain `"paint": [[slot, material, swatch],
+  ...]` (sorted, main colour still in `swatch_id`); no version bump. A row
+  without `"paint"` is from before slots: `PaintLook.legacy` pins a painted main
+  slot to `painted`, so its flat coat does not become the new wood default.
+  Unknown slots, materials, colours and malformed rows are skipped. Blueprint
+  rows (library and `FK1:` codes) carry the same optional `"paint"` key, written
+  whenever the piece is painted, with the same legacy rule.
+- **UI.** Paint shows a Part row (the hovered item's slot names with their
+  colours, plus Original, which resets a part, wall or floor), a Material row
+  (Auto + the four, with pattern chips) and the palette as an 8-wide grid, one
+  family a row. A part an item lacks paints its main slot. Hovering previews the
+  brush on that part (`ShopView.preview_slot_paint`); Shift previews and paints
+  every piece of that kind in the room. `--paint-slots` (screenshot.sh) captures
+  the panel and a painted room up close.
+- `ItemDef.paintable` and its main slot control furniture painting. A
   `PlacedItem.swatch_id` is cosmetic; moving preserves it, removing drops it,
   and buying starts with an empty ID and the authored placeholder colour.
 - `ShopEditor` owns whole-room wall and floor IDs plus per-item paint commands.

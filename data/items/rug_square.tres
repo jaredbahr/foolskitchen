@@ -1,7 +1,22 @@
-[gd_resource type="Resource" script_class="ItemDef" load_steps=3 format=3]
+[gd_resource type="Resource" script_class="ItemDef" format=3]
 
 [ext_resource type="Script" path="res://src/sim/content/item_def.gd" id="1_script"]
 [ext_resource type="PackedScene" path="res://assets/props/rug_square.tscn" id="2_view"]
+[ext_resource type="Script" path="res://src/sim/content/paint_slot_def.gd" id="paint_slot_script"]
+
+[sub_resource type="Resource" id="slot_rug"]
+script = ExtResource("paint_slot_script")
+id = &"rug"
+display_name = "Rug"
+surfaces = PackedStringArray("carpet")
+default_material = &"fabric"
+
+[sub_resource type="Resource" id="slot_border"]
+script = ExtResource("paint_slot_script")
+id = &"border"
+display_name = "Border"
+surfaces = PackedStringArray("carpetDarker")
+default_material = &"fabric"
 
 [resource]
 script = ExtResource("1_script")
@@ -21,4 +36,5 @@ price = 40
 unlock_level = 2
 charm = 2
 theme_tags = Array[StringName]([&"modern"])
-paintable = false
+paintable = true
+paint_slots = Array[ExtResource("paint_slot_script")]([SubResource("slot_rug"), SubResource("slot_border")])

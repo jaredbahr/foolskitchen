@@ -24,7 +24,23 @@ func after_each() -> void:
 
 
 func test_curated_swatches_load_with_unique_ids_and_names() -> void:
-	assert_eq(_content.swatches().size(), 12)
+	assert_eq(_content.swatches().size(), 40)
+	# The original twelve keep their exact colours (#431), so old paint is unchanged.
+	var legacy: Dictionary[StringName, Color] = {
+		&"brick": Color(0.6627451, 0.3764706, 0.3019608), &"butter": Color(0.9019608, 0.7843137, 0.4627451),
+		&"charcoal": Color(0.3843137, 0.3529412, 0.3215686), &"cream": Color(0.9137255, 0.8627451, 0.7647059),
+	}
+	for id: StringName in legacy:
+		assert_true(_content.swatch(id).color.is_equal_approx(legacy[id]), String(id))
+	# The Paint grid: six families in order, 8 + 8 + 8 + 8 + 5 + 3.
+	var families: Array[StringName] = []
+	for swatch: SwatchDef in _content.palette():
+		families.append(swatch.family)
+	assert_eq(families.count(&"neutral"), 8)
+	assert_eq(families.count(&"wood"), 5)
+	assert_eq(families.count(&"metal"), 3)
+	assert_eq(families[0], &"neutral")
+	assert_eq(families[39], &"metal")
 	var ids: Dictionary[StringName, bool] = {}
 	for swatch: SwatchDef in _content.swatches():
 		assert_false(swatch.id.is_empty())
