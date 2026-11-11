@@ -112,7 +112,7 @@ func test_locked_floor_types_wait_for_their_level() -> void:
 	var bigger: FloorStyleDef = FloorStyleDef.new()
 	bigger.unlock_tier = 2
 	assert_false(bigger.unlocked(99))
-	assert_eq(bigger.locked_reason(99), "Unlocks with a bigger restaurant")
+	assert_eq(bigger.locked_reason(99), "Unlocks at Tier 2")
 	assert_eq(_content.floor_style(&"checker").locked_reason(3), "")
 	assert_eq(_editor.check_flooring(_editor.lay_changes(cells, &"marble", &"cream")).why, "Unknown floor type")
 	assert_eq(_editor.check_flooring(_editor.lay_changes(cells, &"checker", &"neon")).why, "Unknown colour")

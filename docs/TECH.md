@@ -3341,7 +3341,7 @@ before part 1; buying a lot and switching wait for part 1 (#408).
 `owner`) is separate from the home lease. Today's `property_tier` (1 or 2)
 only means "the home lease is expanded"; part 1 moves it into that site's own
 data (`lease_expanded`), and a missing career tier loads as 1, or 2 when the
-old `property_tier` was 2. Tier 2 needs owner level 3 (the level today's lease
+old `property_tier` was 2 or the owner was already at Tier 2's level (#419). Tier 2 needs owner level 3 (the level today's lease
 offer needs), with or without buying the lease. Tiers 3 to 6 need an owner
 level **and** the active site's closing reputation. Tiers are climbed in order,
 checked at each close and never lost:
@@ -3445,6 +3445,43 @@ That mean is already net of its wages and rent, so a managed site pays nothing
 else. An unmanaged inactive site stays closed and pays only its rent. Away
 days are never written into a site's history. No RNG (D24 amended: a
 deterministic summary, not a seeded sim).
+Built so far (#408 D2): `StaffMember.MANAGER` (`&"manager"`, primary skill
+`service`, wage in `tier1_economy.tres`). `StaffMember.ROLES` stays the floor
+roles; `StaffRoster.draw_candidates(day, rng, managers)` adds Manager to the
+role draw only from `data/balance/site_managers.tres` `hire_tier` (3), with
+the same number of draws, so pools below it are unchanged (a test pins them),
+and `main.gd` refuses a manager hire below that tier. A manager does no floor
+work anywhere: `RestaurantSim.set_staff_roster` gives them no agent (so no
+tasks), and `_charge_closing_costs` pays their wage from the roster.
+`main.gd` `assign_site_manager(member_id)` (tests only, no UI) stores a
+Manager of the active roster on the active site's book row; it clears when
+that member leaves (`_prune_site_manager`, after a hire/let-go and each
+morning's roster install). At the active site's close, after its own costs
+and booking, `_close_away_sites` applies `AwaySites.plan_close` (pure,
+`src/sim/sites/away_sites.gd`) to every frozen site and books each movement
+with `Economy.add_cash_for_site` to the site that made it, so the active
+site's report, history, records and XP never see it:
+- A **valid manager** (the row's id is a Manager in that site's frozen
+  `staff`) earns `round(min(rate × mean, mean))` over the last
+  `history_days` (7) recorded rows of its frozen `business_history`, as
+  `AWAY_SITE_INCOME`; `rate` runs linearly from `rate_at_skill_1` (0.70) to
+  `rate_at_skill_5` (1.00). A **negative mean is paid as a loss**: the
+  formula is applied as written, and min() takes the whole mean, since a
+  manager never does better than the owner did (and the mean already
+  includes the wages and rent that would otherwise make the loss).
+- **No valid manager**: rent only, as `AWAY_SITE_RENT`. `AwaySites.lot_rent`
+  knows the home lot (today's rule: the lease rent when `property_tier` is 2,
+  else `daily_rent`); any other lot is unknown until `LotDef.daily_rent`
+  (#405) and is charged nothing, with a warning.
+- **Bookings**: an accepted booking whose service day is today or earlier
+  lapses, managed or not: `BOOKING_REFUND` of the deposit to that site, and
+  its frozen `bookings` section is rewritten in place
+  (`SiteBook.set_frozen_section`, JSON shape, frozen day kept), so the thaw
+  finds nothing more to refund.
+The evening report lists one line per other site (`DayReport.away_site_lines`,
+saved in the report only when present): "Pier Shack (managed): +$84",
+"Pier Shack (closed): rent -$40". A one-site game adds no save field and
+books nothing here.
 
 **Ledger.** Each ledger entry records the site that made it (an id; entries
 from saves before part 1 belong to the home site). The day report, business
@@ -3464,9 +3501,9 @@ active.
 active on the booked day, the booking lapses at that day's close with the
 deposit refunded (`BOOKING_REFUND`) and no reputation change. New offers come
 only to the active site. Built so far (#414): `SiteThaw` refunds such a
-booking when its site is switched back to; part 1's close-time processing of
-away sites must settle it at that day's close instead, after which the thaw
-finds nothing to refund.
+booking when its site is switched back to; since #408 D2 the close of the
+active site settles it on its day (`AwaySites`), so the thaw's refund is only
+a safety net (a booking that slipped past a close).
 
 **Weekly challenge.** It stays global and counts the active site's sales. A
 featured dish the active site cannot cook simply makes no progress that day.

@@ -201,7 +201,7 @@ var _ordered_ids: Array[StringName] = []
 var _layout_ready: bool = false
 var _paint_visible: bool = false
 var _owner_level: int = 1
-var _property_tier: int = 1
+var _career_tier: int = 1
 var _editable: bool = true
 var _mode_category: Dictionary[StringName, StringName] = {BUY: &"", BUILD: WALLS}
 
@@ -212,9 +212,9 @@ func bind_content(content: ContentDB) -> void:
 	refresh_content()
 
 
-## Main calls this after restoring progress and on each level change.
-func set_property_tier(tier: int) -> void:
-	_property_tier = clampi(tier, 1, 2)
+## Main calls this after restoring progress and when the career tier rises.
+func set_career_tier(tier: int) -> void:
+	_career_tier = clampi(tier, 1, CareerTierTuning.TOP_TIER)
 	refresh_content()
 
 
@@ -649,9 +649,9 @@ func _refresh_floor_styles() -> void:
 			floor_style_buttons[definition.id] = button
 			row.add_child(button)
 		row.move_child(button, row.get_child_count() - 1)
-		var locked: String = definition.locked_reason(_owner_level, _property_tier)
+		var locked: String = definition.locked_reason(_owner_level, _career_tier)
 		var price: String = "Free" if definition.price == 0 else "%s a tile" % Fmt.money(definition.price)
-		button.text = "%s\n%s" % [definition.display_name, price if locked.is_empty() else ("Larger lease" if definition.unlock_tier > _property_tier else "Level %d" % definition.unlock_level)]
+		button.text = "%s\n%s" % [definition.display_name, price if locked.is_empty() else ("Tier %d" % definition.unlock_tier if definition.unlock_tier > _career_tier else "Level %d" % definition.unlock_level)]
 		button.disabled = not locked.is_empty()
 		button.tooltip_text = locked if not locked.is_empty() else \
 			"Lay %s for %s. Replacing a floor refunds half its price; recolouring is free" % [
@@ -749,7 +749,7 @@ func _refresh_floor_colours() -> void:
 func _on_floor_style_pressed(style_id: StringName) -> void:
 	var definition: FloorStyleDef = _content.floor_style(style_id) if _content != null else null
 	if definition == null or not visible or _paint_visible or selected_category != FLOORS \
-			or not definition.unlocked(_owner_level, _property_tier) or (is_inside_tree() and not is_visible_in_tree()):
+			or not definition.unlocked(_owner_level, _career_tier) or (is_inside_tree() and not is_visible_in_tree()):
 		if floor_style_buttons.has(style_id):
 			floor_style_buttons[style_id].set_pressed_no_signal(style_id == selected_floor_style)
 		return
@@ -806,9 +806,9 @@ func _refresh_wall_styles() -> void:
 			wall_style_buttons[definition.id] = button
 			row.add_child(button)
 		row.move_child(button, row.get_child_count() - 1)
-		var locked: String = definition.locked_reason(_owner_level, _property_tier)
+		var locked: String = definition.locked_reason(_owner_level, _career_tier)
 		var price: String = "Free" if definition.price == 0 else "%s a wall" % Fmt.money(definition.price)
-		button.text = "%s\n%s" % [definition.display_name, price if locked.is_empty() else ("Larger lease" if definition.unlock_tier > _property_tier else "Level %d" % definition.unlock_level)]
+		button.text = "%s\n%s" % [definition.display_name, price if locked.is_empty() else ("Tier %d" % definition.unlock_tier if definition.unlock_tier > _career_tier else "Level %d" % definition.unlock_level)]
 		button.disabled = not locked.is_empty()
 		button.tooltip_text = locked if not locked.is_empty() else \
 			"Put up %s for %s (each 0.5 m of wall). Replacing a finish refunds half its price; recolouring is free" % [
@@ -902,7 +902,7 @@ func _refresh_wall_colours() -> void:
 func _on_wall_style_pressed(style_id: StringName) -> void:
 	var definition: WallStyleDef = _content.wall_style(style_id) if _content != null else null
 	if definition == null or not visible or _paint_visible or selected_category != WALL_FINISH \
-			or not definition.unlocked(_owner_level, _property_tier) or (is_inside_tree() and not is_visible_in_tree()):
+			or not definition.unlocked(_owner_level, _career_tier) or (is_inside_tree() and not is_visible_in_tree()):
 		if wall_style_buttons.has(style_id):
 			wall_style_buttons[style_id].set_pressed_no_signal(style_id == selected_wall_style)
 		return

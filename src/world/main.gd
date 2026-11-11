@@ -39,6 +39,8 @@ const CRITIC: CriticTuning = preload("res://data/balance/critic.tres")
 const RUSH_TUNING: RushTuning = preload("res://data/balance/rush_hour.tres")
 const VIRAL_TUNING: ViralTuning = preload("res://data/balance/viral.tres")
 const PROGRESSION_TUNING: ProgressionTuning = preload("res://data/balance/progression.tres")
+const CAREER_TIERS: CareerTierTuning = preload("res://data/balance/career_tiers.tres")
+const SITE_MANAGERS: SiteManagerTuning = preload("res://data/balance/site_managers.tres")
 const VIBE_TUNING: VibeTuning = preload("res://data/balance/vibe.tres")
 const CUSTOMER_TYPES: CustomerTypeCatalogue = preload("res://data/customers/types.tres")
 const MILESTONES: MilestoneSet = preload("res://data/milestones/starter.tres")
@@ -228,6 +230,13 @@ var _owner_award_today: Dictionary = {}
 var _owner_unlocks_today: Array[String] = []
 var _owner_tips_today: Array[String] = []
 var _owner_award_day: int = 0
+## The close that raised the career tier, and the tier it reached (report line).
+var _career_tier_day: int = 0
+var _career_tier_reached: int = 0
+## The close that settled the owner's inactive sites, and its report lines
+## (FK-087): one per away site, empty with a single site.
+var _away_site_day: int = 0
+var _away_site_lines: Array[String] = []
 var _closed_report_day: int = 0
 var _loan_notice_day: int = 0
 var _milestones_reached_today: Array[Milestone] = []
@@ -377,7 +386,7 @@ func _bind_world_presentation() -> void:
 	_build_catalogue = $Overlay/BuildCatalogue
 	_build_catalogue.bind_content(content)
 	_build_catalogue.set_owner_level(owner_progress.level)
-	_build_catalogue.set_property_tier(owner_progress.property_tier)
+	_build_catalogue.set_career_tier(owner_progress.career_tier)
 	_build_catalogue.set_build_visible(false)
 	_build_catalogue.set_paint_visible(false)
 	_paint_swatch_id = _build_catalogue.selected_swatch_id
@@ -735,7 +744,7 @@ func _wire_session() -> bool:
 		Economy.add_cash, _furniture_purchase_refusal),
 		_loaded_layout if _loaded_layout != null else _starter_layout())
 	shop_editor.set_owner_level(owner_progress.level)
-	shop_editor.set_property_tier(owner_progress.property_tier)
+	shop_editor.set_career_tier(owner_progress.career_tier)
 	shop_editor.storage_need = _storage_need
 	_connect_session()
 	Clock.attach_world(world, sim.advance)
@@ -2527,6 +2536,8 @@ func build_report(day: int) -> DayReport:
 	report.reputation_after = reputation.average()
 	report.owner_level_before = owner_progress.level
 	report.owner_level_after = owner_progress.level
+	if _owner_award_day != day and _career_tier_reached > 0 and not _owner_unlocks_today.is_empty():
+		report.owner_unlocks = _owner_unlocks_today.duplicate()
 	if _owner_award_day == day:
 		report.owner_xp_breakdown = {
 			"happy_xp": int(_owner_award_today["happy_xp"]),
@@ -2554,6 +2565,10 @@ func build_report(day: int) -> DayReport:
 				"reward_xp": goal.reward_xp, "reward_cash": goal.reward_cash})
 	if _weekly_challenge_reward_day == day:
 		report.weekly_challenge_line = _weekly_challenge_report_line
+	if _career_tier_day == day:
+		report.career_tier_line = CareerTierTuning.reached_text(_career_tier_reached)
+	if _away_site_day == day:
+		report.away_site_lines = _away_site_lines.duplicate()
 	report.demand_forecast = forecast_next_demand()
 	if _record_notice_day == day:
 		report.record_lines = _record_notices.duplicate()
@@ -2632,6 +2647,10 @@ func _new_game() -> void:
 	_owner_unlocks_today.clear()
 	_owner_tips_today.clear()
 	_owner_award_day = 0
+	_career_tier_day = 0
+	_career_tier_reached = 0
+	_away_site_day = 0
+	_away_site_lines.clear()
 	_closed_report_day = 0
 	_loan_notice_day = 0
 	sim.assign_owner(&"rest")
@@ -3400,8 +3419,6 @@ func lease_buy() -> bool:
 	if not shop_editor.grow_lot(layout):
 		return false
 	owner_progress.property_tier = 2
-	shop_editor.set_property_tier(2)
-	_build_catalogue.set_property_tier(2)
 	var lot: Rect2i = shop_editor.footprint().lot
 	($ShopView as ShopView).set_lot(lot)
 	if sim.dock != null:
@@ -3914,14 +3931,34 @@ func _change_staff(id: StringName, hiring: bool) -> bool:
 	var choices: StaffRoster = StaffRoster.new(TUNING)
 	if not choices.from_dict(staff_roster.to_dict()):
 		return false
+	if hiring and not _may_hire_role(_candidate_role(choices, id)):
+		return false
 	if not (choices.hire(id) if hiring else choices.let_go(id)):
 		return false
 	if not sim.set_staff_roster(choices.members()):
 		return false
 	staff_roster = choices
+	_prune_site_manager()
 	_staff_panel.bind_roster(staff_roster)
 	refresh_presentation()
 	return true
+
+
+## Managers are hired only from the manager tier (FK-087), and only once the
+## owner has a second site for one to run; floor roles always.
+func _may_hire_role(role: StringName) -> bool:
+	return role != StaffMember.MANAGER or _managers_on_offer()
+
+
+func _managers_on_offer() -> bool:
+	return owner_progress.career_tier >= SITE_MANAGERS.hire_tier and site_book.site_count() > 1
+
+
+static func _candidate_role(roster: StaffRoster, id: StringName) -> StringName:
+	for member: StaffMember in roster.candidates():
+		if member.id == id:
+			return member.role
+	return &""
 
 
 func toggle_staff() -> void:
@@ -4001,7 +4038,7 @@ func _cookable_recipes(layout: ShopLayout) -> Array[RecipeDef]:
 ## A station staff cannot reach (a bar or a fryer walled in on every side)
 ## does not count, so its dishes never go on sale only to be cancelled.
 func _cookable_live() -> Array[RecipeDef]:
-	return MenuAccess.cookable(world.grid, content.recipes(), 0, owner_progress.property_tier)
+	return MenuAccess.cookable(world.grid, content.recipes(), 0, owner_progress.career_tier)
 
 
 func _station_reachable(placed: PlacedItem) -> bool:
@@ -4027,7 +4064,7 @@ func _cookable_from(definitions: Array[ItemDef]) -> Array[RecipeDef]:
 	if not fridge or not pass_counter:
 		return recipes
 	for definition: RecipeDef in content.recipes():
-		if definition.unlock_tier > owner_progress.property_tier:
+		if definition.unlock_tier > owner_progress.career_tier:
 			continue
 		var cookable: bool = true
 		for step: RecipeStep in definition.steps:
@@ -4046,7 +4083,7 @@ func _refresh_menu_catalogue() -> void:
 		return
 	var cookable: Array[RecipeDef] = _cookable_live()
 	if MenuAccess.cookable(world.grid, content.recipes(), menu_settings.owner_level(),
-			owner_progress.property_tier).is_empty():
+			owner_progress.career_tier).is_empty():
 		# An older or externally edited layout can already be broken. Explain
 		# why it cannot open rather than silently leaving stale dishes on sale.
 		_menu_access_error = MenuAccess.NO_DISH
@@ -4158,7 +4195,7 @@ func drink_station_hints() -> Array[String]:
 	for drinks_pass: bool in [true, false]:
 		for kind: StringName in RecipeDef.ORDER_TYPES:
 			for recipe: RecipeDef in content.recipes():
-				if recipe.order_type == kind and recipe.is_drink() == drinks_pass and recipe.unlock_tier <= owner_progress.property_tier \
+				if recipe.order_type == kind and recipe.is_drink() == drinks_pass and recipe.unlock_tier <= owner_progress.career_tier \
 						and recipe.unlock_level <= owner_progress.level:
 					waiting.append(recipe)
 	for recipe: RecipeDef in waiting:
@@ -4468,11 +4505,12 @@ func _refresh_goals(force: bool = false) -> void:
 		"records": shop_records.snapshot(),
 		"weekly": weekly_challenge.to_dict() if weekly_challenge != null else {},
 		"weekly_progress": weekly_challenge.projected_progress(observation) if weekly_challenge != null else 0,
-		"day": Clock.sim.day,
+		"day": Clock.sim.day, "career_tier": owner_progress.career_tier,
 		"collections": _collection_progress_snapshot(vibe_result.collection_result)}
 	if force or snapshot != _goals_snapshot:
 		_goals_panel.set_goals(milestone_catalogue, completed, progress, owner_progress.level,
 			weekly_challenge, Clock.sim.day, observation)
+		_goals_panel.set_career_tier_line(CAREER_TIERS.goal_text(owner_progress.career_tier))
 		_goals_panel.set_records(ShopRecordsText.rows(snapshot["records"], content))
 		_goals_panel.set_collections(vibe_result.collection_result)
 		_goals_snapshot = snapshot.duplicate(true)
@@ -4855,6 +4893,7 @@ func _begin_morning() -> void:
 		push_error("Cannot install the morning staff roster")
 		return
 	staff_roster = choices
+	_prune_site_manager()
 	_staff_panel.bind_roster(staff_roster)
 	# Retain yesterday's detached report while today's live counters reset.
 	_staff_panel.set_team_activity(_last_team_activity)
@@ -4893,13 +4932,18 @@ func _begin_morning() -> void:
 	_owner_unlocks_today.clear()
 	_owner_tips_today.clear()
 	_owner_award_day = 0
+	_career_tier_day = 0
+	_career_tier_reached = 0
+	_away_site_day = 0
+	_away_site_lines.clear()
 	_closed_report_day = 0
 	_loan_notice_day = 0
 	_weekly_challenge_reward_day = 0
 	_weekly_challenge_report_line = ""
 	# Loading today's persisted pool must not advance the saved hiring stream.
 	if staff_roster.candidate_day != Clock.sim.day:
-		staff_roster.draw_candidates(Clock.sim.day, GameState.rng(&"hiring"))
+		staff_roster.draw_candidates(Clock.sim.day, GameState.rng(&"hiring"),
+			_managers_on_offer())
 	_staff_panel.set_phase(Clock.sim.phase)
 	_staff_panel.set_morning(Clock.sim.day, _staff_notices)
 	dishes_sold_today.clear()
@@ -5706,11 +5750,90 @@ func _charge_closing_costs() -> void:
 		if agent is StaffAgent and not agent is OwnerAgent:
 			# Paid by the hour: the default day keeps the exact daily wage.
 			Economy.add_cash(-OpeningHours.wage_for_day((agent as StaffAgent).wage, Clock.sim, HOURS_TUNING), Ledger.WAGES)
-	var rent: int = LEASE.daily_rent if owner_progress.property_tier == 2 else TUNING.daily_rent
+	# Managers have no worker in the world (no floor work) but are paid the
+	# same way (FK-087). A roster without one charges exactly as before.
+	for member: StaffMember in staff_roster.members():
+		if member.role == StaffMember.MANAGER:
+			Economy.add_cash(-OpeningHours.wage_for_day(member.wage, Clock.sim, HOURS_TUNING), Ledger.WAGES)
+	# The active site pays its own lot's rent: the home lease rule on the home
+	# lot (one-site play, unchanged), nothing yet on a lot with no rent data.
+	var rent: int = AwaySites.lot_rent(site_book.lot_id(site_book.active_id), _home_rent())
+	if rent == AwaySites.UNKNOWN_RENT:
+		push_warning("No rent is known for this site's lot yet; none charged")
+		rent = 0
 	if rent > 0:
 		Economy.add_cash(-rent, Ledger.RENT)
 	if sim.cat.adopted and CAT.daily_food_cost > 0:
 		Economy.add_cash(-CAT.daily_food_cost, Ledger.CAT_FOOD)
+
+
+## Today's rent rule for the home lease: expanded or not (D30). The home
+## lot's rent whether it is active or another site is (FK-087).
+func _home_rent() -> int:
+	return LEASE.daily_rent if owner_progress.property_tier == 2 else TUNING.daily_rent
+
+
+## Settles every inactive site at the active site's close (FK-087,
+## AwaySites): a managed site's away earnings, a closed site's rent, and a
+## booking there whose day has come, refunded. Each movement is booked to the
+## site that made it, so the active site's report, history, records and XP
+## leave it out. A single site does nothing here.
+func _close_away_sites(day: int) -> void:
+	_away_site_day = day
+	_away_site_lines.clear()
+	if site_book.site_count() < 2:
+		return
+	for plan: Dictionary in AwaySites.plan_close(site_book, day, _home_rent(), SITE_MANAGERS,
+			BOOKING_TUNING):
+		var site: StringName = plan["site"]
+		var label: String = AwaySites.display_name(site_book, site)
+		if not bool(plan["rent_known"]):
+			push_warning("No rent is known for the lot of an inactive site; none was charged")
+		if plan.has("bookings"):
+			if not site_book.set_frozen_section(site, "bookings", plan["bookings"]):
+				push_warning("An inactive site's lapsed booking could not be recorded; not refunded")
+				plan["refund"] = 0
+				var kept: Array[Dictionary] = []
+				for movement: Dictionary in plan["movements"]:
+					if movement["category"] != Ledger.BOOKING_REFUND:
+						kept.append(movement)
+				plan["movements"] = kept
+		for movement: Dictionary in plan["movements"]:
+			Economy.add_cash_for_site(int(movement["amount"]), movement["category"],
+				String(movement["note"]), site)
+		_away_site_lines.append(AwaySites.report_line(label, plan))
+
+
+## The member running the active site while the owner is at another, or
+## &"" (FK-087).
+func site_manager() -> StringName:
+	return site_book.manager(site_book.active_id)
+
+
+## Makes `member_id` (a Manager on the active site's roster) the manager of
+## this site, so it earns while the owner is at another; &"" clears it. Saved
+## on the site's row at the next morning autosave. Tests only so far.
+func assign_site_manager(member_id: StringName) -> bool:
+	# Morning only, like other staff changes: it is saved by the morning autosave.
+	if not can_edit_staff():
+		return false
+	if not member_id.is_empty() and not _is_roster_manager(member_id):
+		return false
+	return site_book.set_manager(site_book.active_id, member_id)
+
+
+func _is_roster_manager(member_id: StringName) -> bool:
+	for member: StaffMember in staff_roster.members():
+		if member.id == member_id:
+			return member.role == StaffMember.MANAGER
+	return false
+
+
+## Clears the active site's manager once that person has left the roster.
+func _prune_site_manager() -> void:
+	var current: StringName = site_manager()
+	if not current.is_empty() and not _is_roster_manager(current):
+		site_book.set_manager(site_book.active_id, &"")
 
 
 func _on_customer_paid(customer: CustomerAgent, order: Order, amount: int) -> void:
@@ -5822,6 +5945,7 @@ func _on_service_closed(day: int) -> void:
 	_remember_menu_quality()
 	_charge_closing_costs()
 	_settle_due_booking_at_close(day)
+	_close_away_sites(day)
 	# Capture business profit before milestone cash, the weekly reward or
 	# financing enters the books, excluding booking advances/refunds so those
 	# customer liabilities cannot earn profit awards. Only the active site's
@@ -5856,16 +5980,29 @@ func _on_service_closed(day: int) -> void:
 	var settlement: Dictionary = Economy.settle_loan_day(day, operating_profit)
 	if settlement.get("first_advance", false):
 		_loan_notice_day = day
+	# The career tier reads tonight's final level and the active site's
+	# closing reputation (D30); it never drops.
+	var tier_before: int = owner_progress.career_tier
+	var tier_reached: int = owner_progress.raise_career_tier(CAREER_TIERS, reputation.average())
+	if tier_reached > 0:
+		_career_tier_day = day
+		_career_tier_reached = tier_reached
+		shop_editor.set_career_tier(owner_progress.career_tier)
+		_build_catalogue.set_career_tier(owner_progress.career_tier)
+		# Newly opened dishes join the menu catalogue at the morning refresh.
+		if _owner_award_day != day:
+			# A tier can rise on a day with no XP: still list what it opens.
+			_owner_unlocks_today = _unlocked_at_levels(level_before, owner_progress.level,
+				tier_before, owner_progress.career_tier)
 	if _owner_award_day == day:
-		_owner_unlocks_today = _unlocked_at_levels(level_before, owner_progress.level)
+		_owner_unlocks_today = _unlocked_at_levels(level_before, owner_progress.level,
+			tier_before, owner_progress.career_tier)
 		_owner_tips_today = customer_type_catalogue.level_up_tips(level_before, owner_progress.level) \
 			if customer_type_catalogue != null else [] as Array[String]
 		menu_settings.set_owner_level(owner_progress.level)
 		sim.set_customer_level(owner_progress.level)
 		shop_editor.set_owner_level(owner_progress.level)
-		shop_editor.set_property_tier(owner_progress.property_tier)
 		_build_catalogue.set_owner_level(owner_progress.level)
-		_build_catalogue.set_property_tier(owner_progress.property_tier)
 		$HUD.set_owner_progress(owner_progress.level, owner_progress.xp_into_level(), owner_progress.xp_in_level())
 	shown_report = build_report(day)
 	var beaten: Array[StringName] = shop_records.record(shown_report)
@@ -5926,23 +6063,36 @@ func _award_weekly_challenge(observation: MilestoneDay) -> void:
 	_weekly_challenge_report_line = staged.report_text
 
 
-## Only authored display names enter the public level-up banner.
-func _unlocked_at_levels(previous_level: int, current_level: int) -> Array[String]:
+## Only authored display names enter the public level-up banner. Content
+## counts when tonight's level and career tier open it and last night's did
+## not; a tier of 0 means the current career tier.
+func _unlocked_at_levels(previous_level: int, current_level: int,
+		previous_tier: int = 0, current_tier: int = 0) -> Array[String]:
+	if previous_tier <= 0:
+		previous_tier = owner_progress.career_tier
+	if current_tier <= 0:
+		current_tier = owner_progress.career_tier
 	var unlocked: Array[String] = []
 	for recipe: RecipeDef in content.recipes():
-		if recipe.unlock_tier <= owner_progress.property_tier and recipe.unlock_level > previous_level and recipe.unlock_level <= current_level:
+		if _newly_open(recipe.unlock_level, recipe.unlock_tier, previous_level, current_level, previous_tier, current_tier):
 			unlocked.append(recipe.display_name + " recipe")
 	for item: ItemDef in content.items():
 		if item.catalogue_visible and item.unlock_level > previous_level and item.unlock_level <= current_level:
 			unlocked.append(item.display_name)
 	for style: FloorStyleDef in content.floor_styles():
-		if style.unlock_tier <= owner_progress.property_tier and style.unlock_level > previous_level and style.unlock_level <= current_level:
+		if _newly_open(style.unlock_level, style.unlock_tier, previous_level, current_level, previous_tier, current_tier):
 			unlocked.append(style.display_name + " floor")
 	for wall_style: WallStyleDef in content.wall_styles():
-		if wall_style.unlock_tier <= owner_progress.property_tier and wall_style.unlock_level > previous_level and wall_style.unlock_level <= current_level:
+		if _newly_open(wall_style.unlock_level, wall_style.unlock_tier, previous_level, current_level, previous_tier, current_tier):
 			unlocked.append(wall_style.display_name + " walls")
 	unlocked.sort()
 	return unlocked
+
+
+static func _newly_open(level: int, tier: int, previous_level: int, current_level: int,
+		previous_tier: int, current_tier: int) -> bool:
+	return level <= current_level and tier <= current_tier \
+		and (level > previous_level or tier > previous_tier)
 
 
 func _on_day_phase_changed(_day: int, phase: int) -> void:
@@ -6035,7 +6185,7 @@ func menu_recipe_details() -> Dictionary[StringName, Dictionary]:
 				"met": count >= amounts[id]})
 		var other: Array[Dictionary] = []
 		if recipe.unlock_tier > 1:
-			other.append({"text": "Requires a larger lease", "met": owner_progress.property_tier >= recipe.unlock_tier})
+			other.append({"text": "Requires Tier %d" % recipe.unlock_tier, "met": owner_progress.career_tier >= recipe.unlock_tier})
 		other.append({"text": "Owner level %d (you are level %d)" % [recipe.unlock_level, menu_settings.owner_level()],
 			"met": menu_settings.owner_level() >= recipe.unlock_level})
 		if not recipe.unlock_from.is_empty():

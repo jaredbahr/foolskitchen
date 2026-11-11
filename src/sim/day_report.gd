@@ -60,6 +60,9 @@ var owner_tips: Array[String] = []
 var milestones_reached: Array[Dictionary] = []
 ## Optional cash-only challenge completion line; absent on all other days.
 var weekly_challenge_line: String = ""
+## Optional career tier line ("Your restaurant reached Tier 3!"); absent on
+## every day the tier did not rise.
+var career_tier_line: String = ""
 ## The selected offer and its paid-dish count, detached from tomorrow's choice.
 var daily_special_line: String = ""
 ## Player-facing "Low stock" sentences (StockAlerts): what ran out today and
@@ -79,6 +82,9 @@ var critic_lines: Array[String] = []
 var rush_hour_lines: Array[String] = []
 ## Detached record notices for this close; old reports omit them.
 var record_lines: Array[String] = []
+## The owner's other sites at this close (FK-087), already player-facing:
+## "Pier Shack (managed): +$84". Empty (and not saved) with a single site.
+var away_site_lines: Array[String] = []
 ## Optional purchase-basis accounting. Historical reports retain their cash
 ## basis; missing historical ingredient prices are never fabricated.
 var stock_values_recorded: bool = false
@@ -268,6 +274,8 @@ func to_dict() -> Dictionary:
 		result["inspection_lines"] = inspection_lines.duplicate()
 	if not weekly_challenge_line.is_empty():
 		result["weekly_challenge_line"] = weekly_challenge_line
+	if not career_tier_line.is_empty():
+		result["career_tier_line"] = career_tier_line
 	if not daily_special_line.is_empty():
 		result["daily_special_line"] = daily_special_line
 	if not booking_lines.is_empty():
@@ -284,6 +292,8 @@ func to_dict() -> Dictionary:
 		result["rush_hour_lines"] = rush_hour_lines.duplicate()
 	if not record_lines.is_empty():
 		result["record_lines"] = record_lines.duplicate()
+	if not away_site_lines.is_empty():
+		result["away_site_lines"] = away_site_lines.duplicate()
 	return result
 
 
@@ -367,6 +377,9 @@ static func from_dict(data: Dictionary) -> DayReport:
 	var saved_weekly_line: Variant = data.get("weekly_challenge_line", "")
 	if saved_weekly_line is String and saved_weekly_line.length() <= 100:
 		report.weekly_challenge_line = saved_weekly_line
+	var saved_tier_line: Variant = data.get("career_tier_line", "")
+	if saved_tier_line is String and saved_tier_line.length() <= 100:
+		report.career_tier_line = saved_tier_line
 	var saved_special_line: Variant = data.get("daily_special_line", "")
 	if saved_special_line is String and saved_special_line.length() <= 160:
 		report.daily_special_line = saved_special_line
@@ -381,6 +394,11 @@ static func from_dict(data: Dictionary) -> DayReport:
 		for line: Variant in saved_record_lines:
 			if line is String:
 				report.record_lines.append(line)
+	var saved_away_lines: Variant = data.get("away_site_lines", [])
+	if saved_away_lines is Array:
+		for line: Variant in saved_away_lines:
+			if line is String:
+				report.away_site_lines.append(line)
 	report.stock_values_recorded = recorded is bool and recorded
 	for field: String in ["food_cost", "stock_bought", "spoiled_stock", "stock_on_hand"]:
 		var value: int = PurchaseBasis.decode(data.get(field, null))

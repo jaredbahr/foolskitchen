@@ -3,6 +3,7 @@ extends TestCase
 
 const MAIN: PackedScene = preload("res://src/world/main.tscn")
 const LEASE: LeaseUpgrade = preload("res://data/balance/lease_upgrade.tres")
+const CAREER: CareerTierTuning = preload("res://data/balance/career_tiers.tres")
 const SLOT: String = "lease_session"
 var _main: Node
 var _old_dir: String
@@ -56,8 +57,11 @@ func _editor() -> ShopEditor:
 
 func _eligible() -> void:
 	_progress().award_bonus(_progress().threshold_for(LEASE.owner_level))
+	# The offer needs career Tier 2 (D30), which a real close grants at this level.
+	assert_eq(_progress().raise_career_tier(CAREER, 3.0), 2)
 	(_main.get("menu_settings") as MenuSettings).set_owner_level(_progress().level)
 	_editor().set_owner_level(_progress().level)
+	_editor().set_career_tier(_progress().career_tier)
 	Economy.cash = LEASE.deposit + 10000
 	_main.call("_refresh_lease_offer")
 
@@ -195,9 +199,10 @@ func test_reloading_before_next_morning_rolls_back_deposit_and_tier_together() -
 	assert_true(_main.call("lease_buy"), "the rolled-back purchase can be made once again")
 
 
-func test_recipe_gate_opens_without_selecting_new_food() -> void:
+## Content gates read the career tier (D30), not the lease: buying the lease
+## at Tier 1 opens nothing, and Tier 2 opens the dish without the lease.
+func test_recipe_gate_follows_career_tier_not_the_lease() -> void:
 	_start()
-	_eligible()
 	var content: ContentDB = _main.get("content")
 	# Restore the cached definition before leaving this fixture.
 	var recipe: RecipeDef = content.recipe(&"tomato_melt")
@@ -207,7 +212,9 @@ func test_recipe_gate_opens_without_selecting_new_food() -> void:
 	var menu: MenuSettings = _main.get("menu_settings")
 	assert_null(menu.recipe(recipe.id))
 	assert_false(_main.call("menu_set_enabled", recipe.id, true))
-	assert_true(_main.call("lease_buy"))
+	_eligible()
+	_main.call("_refresh_menu_catalogue")
+	assert_eq(_progress().property_tier, 1)
 	assert_true(menu.recipe(recipe.id) != null)
 	assert_false(menu.is_enabled(recipe.id), "new food remains a player choice")
 	assert_true(_main.call("menu_set_enabled", recipe.id, true))

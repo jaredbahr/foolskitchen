@@ -143,6 +143,18 @@ func add_cash(amount: int, reason: StringName, note: String = "") -> void:
 	EventBus.cash_changed.emit(cash, amount, reason)
 
 
+## Like add_cash, but booked to another site's books (FK-087): an inactive
+## site's away income, rent or lapsed booking refund at the active site's
+## close, so the active site's per-site readers leave it out. Returns false
+## and moves nothing for an invalid site id.
+func add_cash_for_site(amount: int, reason: StringName, note: String, site: StringName) -> bool:
+	if not Ledger.is_valid_site(site):
+		return false
+	ledger.record(Clock.day, amount, reason, note, site)
+	EventBus.cash_changed.emit(cash, amount, reason)
+	return true
+
+
 ## Ingredients and wages remain available while a bank loan is open.
 func can_spend_without_loan(amount: int) -> bool:
 	return amount >= 0 and cash >= amount

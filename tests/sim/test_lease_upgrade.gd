@@ -2,14 +2,18 @@ extends TestCase
 
 const LEASE: LeaseUpgrade = preload("res://data/balance/lease_upgrade.tres")
 const PROGRESSION: ProgressionTuning = preload("res://data/balance/progression.tres")
+const CAREER: CareerTierTuning = preload("res://data/balance/career_tiers.tres")
 
 
 func test_offer_starts_at_authored_level_and_tier_is_strictly_decoded() -> void:
 	var progress: OwnerProgress = OwnerProgress.new(PROGRESSION)
 	assert_true(LEASE.is_valid())
 	progress.award_bonus(progress.threshold_for(LEASE.owner_level) - 1)
+	assert_eq(progress.raise_career_tier(CAREER, 5.0), 0)
 	assert_false(LEASE.offered(progress, SimClock.Phase.MORNING))
 	progress.award_bonus(1)
+	assert_false(LEASE.offered(progress, SimClock.Phase.MORNING), "the offer waits for the close's Tier 2")
+	assert_eq(progress.raise_career_tier(CAREER, 3.0), 2)
 	assert_true(LEASE.offered(progress, SimClock.Phase.MORNING))
 	progress.property_tier = 2
 	var saved: Dictionary = progress.to_dict()

@@ -2,6 +2,8 @@ class_name StaffMember
 extends Resource
 ## A saved employee or candidate. Runtime agents receive their own copy.
 
+## Floor roles: each becomes a worker in the restaurant and is drawn in every
+## candidate pool. Kept as is so candidate draws below Tier 3 never change.
 const ROLES: Array[StringName] = [&"cook", &"server", &"cleaner"]
 const MAX_WORK_COUNT: int = 9007199254740991
 ## One mapping owns both task grouping and player-facing words; everything else
@@ -14,6 +16,10 @@ const WORK_GROUPS: Array[Dictionary] = [
 	{"kind": &"wash", "key": "washed", "label": "washed"},
 	{"kind": &"", "key": "other", "label": "other"},
 ]
+## A Manager (FK-087, D24) runs a site while the owner is at another. They do
+## no floor work (no worker in the world; their wage is still paid at close)
+## and join candidate pools only from the manager hiring tier.
+const MANAGER: StringName = &"manager"
 
 @export var id: StringName = &""
 @export var display_name: String = ""
@@ -143,7 +149,7 @@ static func from_dict(data: Variant, catalogue: StaffCatalogue) -> StaffMember:
 	member.skill = int(row["skill"])
 	member.wage = int(row["wage"])
 	member.trait_id = StringName(row["trait"])
-	if not ROLES.has(member.role) or catalogue.find_trait(member.trait_id) == null:
+	if not is_known_role(member.role) or catalogue.find_trait(member.trait_id) == null:
 		return null
 	var restored: StaffGrowth = StaffGrowth.new(_primary_skill(member.role), member.skill, member.wage)
 	if row.has("growth"):
@@ -175,10 +181,15 @@ static func from_dict(data: Variant, catalogue: StaffCatalogue) -> StaffMember:
 	return member
 
 
+## Every role a saved member may have: the floor roles and the manager.
+static func is_known_role(staff_role: StringName) -> bool:
+	return ROLES.has(staff_role) or staff_role == MANAGER
+
+
 static func _primary_skill(staff_role: StringName) -> StringName:
 	match staff_role:
 		&"cook": return &"cooking"
-		&"server": return &"service"
+		&"server", &"manager": return &"service"
 		&"cleaner": return &"cleaning"
 	return &""
 

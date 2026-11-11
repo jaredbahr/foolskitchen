@@ -33,7 +33,7 @@ const DEFAULT_ID: StringName = &"paint"
 @export var theme_tags: Array[StringName] = []
 ## Owner level that unlocks putting this finish up; 1 is the starting set.
 @export var unlock_level: int = 1
-## Property tier that unlocks it.
+## Career tier that unlocks it (D30).
 @export var unlock_tier: int = 1
 
 
@@ -45,7 +45,7 @@ func unlocked(level: int, tier: int = 1) -> bool:
 ## Player words for why this finish is locked, or "" when it is not.
 func locked_reason(level: int, tier: int = 1) -> String:
 	if unlock_tier > tier:
-		return "Unlocks with a bigger restaurant"
+		return "Unlocks at Tier %d" % unlock_tier
 	if unlock_level > level:
 		return "Unlocks at level %d" % unlock_level
 	return ""
