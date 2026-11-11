@@ -5,6 +5,7 @@ extends Control
 signal restaurant_name_requested(restaurant_name: String)
 signal enable_requested(recipe_id: StringName, enabled: bool)
 signal price_requested(recipe_id: StringName, price: int)
+signal reset_prices_requested()
 signal special_requested(recipe_id: StringName)
 signal signature_requested(recipe_id: StringName)
 signal settings_requested()
@@ -78,6 +79,7 @@ var _hours_controls: Dictionary[String, Control] = {}
 var _open_minute: int = 11 * 60
 var _close_minute: int = 21 * 60
 var _hours_tuning: OpeningHoursTuning = null
+var _bulk_controls: Dictionary[String, Button] = {}
 
 
 func _ready() -> void:
@@ -263,6 +265,7 @@ func refresh() -> void:
 	_name_apply.disabled = not _name_edit.editable
 	_name_edit.tooltip_text = "Name your restaurant (up to 24 characters)." if editable else MORNING_HINT
 	_name_apply.tooltip_text = "Use this restaurant name." if editable else MORNING_HINT
+	_refresh_bulk_controls(editable)
 	_refresh_hours(editable)
 	_refresh_drinks_section()
 	if _menu == null or not _menu.is_valid():
@@ -509,9 +512,23 @@ func _build_sections() -> void:
 	_special_option.focus_mode = Control.FOCUS_NONE
 	_special_option.item_selected.connect(_on_special_selected)
 	special_line.add_child(_special_option)
+	var bulk_line: HBoxContainer = _add_line(list, "BulkPrices")
+	bulk_line.add_theme_constant_override("separation", 6)
+	var bulk_label: Label = _add_label(bulk_line, "Label", "All prices")
+	bulk_label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	var lower: Button = _add_button(bulk_line, "MinusTen", "−10%")
+	lower.pressed.connect(_on_bulk_price.bind(-1))
+	_bulk_controls["MinusTen"] = lower
+	var higher: Button = _add_button(bulk_line, "PlusTen", "+10%")
+	higher.pressed.connect(_on_bulk_price.bind(1))
+	_bulk_controls["PlusTen"] = higher
+	var reset: Button = _add_button(bulk_line, "Reset", "Reset to standard")
+	reset.pressed.connect(_on_bulk_reset)
+	_bulk_controls["Reset"] = reset
 	_theme_label = _add_label(list, "MenuTheme", "")
 	list.move_child(_theme_label, _menu_count.get_index() + 1)
 	list.move_child(special_line, _menu_count.get_index() + 1)
+	list.move_child(bulk_line, _menu_count.get_index() + 1)
 	_add_separator(identity)
 	_drinks_title = _add_label(list, "DrinksTitle", "Drinks")
 	_drinks_title.add_theme_font_size_override("font_size", 20)
@@ -758,6 +775,39 @@ func _on_price_step(recipe_id: StringName, direction: int) -> void:
 			return
 		price -= 1
 	price_requested.emit(recipe_id, price)
+	refresh()
+
+
+func _refresh_bulk_controls(editable: bool) -> void:
+	for button_name: String in _bulk_controls:
+		var button: Button = _bulk_controls[button_name]
+		button.disabled = not editable or _menu == null or not _menu.is_valid()
+		button.tooltip_text = MORNING_HINT if not editable else "Change prices through today's menu."
+
+
+## The session handles each request through its existing single-dish path.
+func _on_bulk_price(direction: int) -> void:
+	if _phase != SimClock.Phase.MORNING or _menu == null or not _menu.is_valid() \
+			or (direction != -1 and direction != 1):
+		return
+	var model: MenuSettings = _menu
+	for definition: RecipeDef in model.enabled_recipes():
+		if _phase != SimClock.Phase.MORNING or _menu != model:
+			break
+		if not model.is_enabled(definition.id):
+			continue
+		var current: int = model.price_of(definition)
+		var target: int = model.ten_percent_price(definition.id, direction)
+		if target >= 0 and target != current:
+			price_requested.emit(definition.id, target)
+	refresh()
+
+
+## The session resets all known prices, including disabled and stashed dishes.
+func _on_bulk_reset() -> void:
+	if _phase != SimClock.Phase.MORNING or _menu == null or not _menu.is_valid():
+		return
+	reset_prices_requested.emit()
 	refresh()
 
 

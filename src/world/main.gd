@@ -467,6 +467,8 @@ func _bind_world_presentation() -> void:
 		_menu_panel.enable_requested.connect(_on_menu_enable_requested)
 		_menu_panel.price_requested.connect(_on_menu_price_requested)
 		_menu_panel.settings_requested.connect(_on_menu_settings_requested)
+	if not _menu_panel.reset_prices_requested.is_connected(_on_menu_reset_prices_requested):
+		_menu_panel.reset_prices_requested.connect(_on_menu_reset_prices_requested)
 	if not _menu_panel.signature_requested.is_connected(_on_menu_signature_requested):
 		_menu_panel.signature_requested.connect(_on_menu_signature_requested)
 	if not _menu_panel.restaurant_name_requested.is_connected(_on_restaurant_name_requested):
@@ -4522,6 +4524,14 @@ func menu_set_price(recipe_id: StringName, price: int) -> bool:
 	return true
 
 
+func menu_reset_prices() -> bool:
+	if not can_edit_menu() or not menu_settings.reset_all_prices_to_standard():
+		return false
+	_apply_menu(sim, menu_settings)
+	_refresh_menu_details()
+	return true
+
+
 func toggle_menu() -> void:
 	if is_settings_visible():
 		set_settings_visible(false)
@@ -4778,6 +4788,10 @@ func _on_menu_signature_requested(recipe_id: StringName) -> void:
 
 func _on_menu_price_requested(recipe_id: StringName, price: int) -> void:
 	menu_set_price(recipe_id, price)
+
+
+func _on_menu_reset_prices_requested() -> void:
+	menu_reset_prices()
 
 
 func shop_move(item_id: int, origin: Vector2i, quarter_turns: int) -> bool:

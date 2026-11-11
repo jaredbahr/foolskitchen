@@ -237,6 +237,36 @@ func test_menu_edits_wait_for_next_morning_then_reload_without_recipe_mutation()
 	assert_eq((second.get("content") as ContentDB).recipe(&"burger").standard_price, standard)
 
 
+func test_real_menu_reset_uses_morning_session_bridge_and_refreshes_prices() -> void:
+	var main: Node = _start()
+	var settings: MenuSettings = main.get("menu_settings") as MenuSettings
+	var burger: RecipeDef = (main.get("content") as ContentDB).recipe(&"burger")
+	var panel: MenuPanel = main.get_node("Overlay/MenuPanel") as MenuPanel
+	assert_true(main.call("menu_set_price", &"burger", 18))
+	assert_true(main.call("menu_set_enabled", &"grilled_cheese", false))
+	var saved_before: String = FileAccess.get_file_as_string(_path())
+	var enabled_before: Array[StringName] = []
+	for definition: RecipeDef in settings.enabled_recipes():
+		enabled_before.append(definition.id)
+	var rng_before: int = GameState.rng(&"customers").state
+	assert_true(main.call("set_menu_visible", true))
+	var reset: Button = panel.get_node("Panel/Content/Body/Scroll/Pad/List/BulkPrices/Reset") as Button
+	assert_false(reset.disabled)
+	reset.pressed.emit()
+	assert_eq(settings.price_of(burger), burger.standard_price)
+	assert_eq((main.get("sim") as RestaurantSim).price_of(burger), burger.standard_price)
+	assert_eq((panel.row_for(&"burger").get_node("Price/Amount") as Label).text, "$12")
+	var enabled_after: Array[StringName] = []
+	for definition: RecipeDef in settings.enabled_recipes():
+		enabled_after.append(definition.id)
+	assert_eq(enabled_after, enabled_before, "reset does not change enabled dishes")
+	assert_eq(FileAccess.get_file_as_string(_path()), saved_before, "morning edits wait for the next save")
+	assert_eq(GameState.rng(&"customers").state, rng_before)
+	assert_true(Clock.sim.start_service())
+	assert_false(main.call("menu_reset_prices"), "open service rejects the same reset request")
+	assert_eq(settings.price_of(burger), burger.standard_price)
+
+
 func test_old_save_without_menu_gets_all_cookable_dishes_at_standard_prices() -> void:
 	var first: Node = _start()
 	assert_true(first.call("menu_set_enabled", &"tomato_soup", false))
